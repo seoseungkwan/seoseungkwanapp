@@ -452,3 +452,26 @@ def test_tdd_run_expect_red_and_green(proj, home):
     log = L.read_log(proj, "greet")
     assert [e["phase"] for e in log] == ["RED", "RED", "GREEN", "GREEN"]
     assert log[0]["reqs"] == ["REQ-001"] and log[0]["source"] == "tdd-run"
+
+
+def test_tdd_run_timeout_is_not_red_and_does_not_unlock(proj, home):
+    """시간 초과는 실패 테스트(RED)가 아니다 — `--timeout 1`로 RED 를 만들어 구현 차단을 풀 수 없어야 한다."""
+    approve(proj, home)
+    (proj / "test_greet.py").write_text("import time\ntime.sleep(5)\n" + TEST_FAIL)
+    r = cli("tdd-run", ["TASK-1", "--expect", "red", "--timeout", "1"], proj, home)
+    assert r.returncode == 1 and "시간 초과" in r.stdout
+    assert [e["phase"] for e in L.read_log(proj, "greet")] == ["TIMEOUT"]
+    assert denied(guard(proj, home, "greet.py"))
+
+
+def test_has_red_ignores_entries_without_failing_exit(proj, home):
+    approve(proj, home)
+    L.append_log(proj, "greet", {"task": "TASK-1", "phase": "RED", "exit": None})  # 예전 버전이 남긴 시간 초과 기록
+    assert not L.has_red(proj, "greet", ["TASK-1"])
+    assert denied(guard(proj, home, "greet.py"))
+    L.append_log(proj, "greet", {"task": "TASK-1", "phase": "RED", "exit": 1})
+    assert L.has_red(proj, "greet", ["TASK-1"])
+
+
+def test_test_phase():
+    assert (L.test_phase(0), L.test_phase(1), L.test_phase(None)) == ("GREEN", "RED", "TIMEOUT")

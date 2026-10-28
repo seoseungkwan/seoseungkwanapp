@@ -52,7 +52,7 @@ def main():
     print(f"$ {cmd}")
     code, tail = L.run_shell(cmd, root, a.timeout)
     print(tail)
-    phase = "GREEN" if code == 0 else "RED"
+    phase = L.test_phase(code)  # 시간 초과는 TIMEOUT — RED 로 기록하면 구현 차단이 풀린다
     reqs = task["reqs"] if task else []
     L.append_log(root, fid, {"task": task["id"] if task else None, "reqs": reqs, "phase": phase, "exit": code,
                              "cmd": cmd, "tests": tests or [], "expect": a.expect, "source": "tdd-run"})

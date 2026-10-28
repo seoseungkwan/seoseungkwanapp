@@ -370,9 +370,16 @@ def read_log(root: Path, fid: str) -> list:
     return out
 
 
+def test_phase(code) -> str:
+    """테스트 종료 코드 → 기록할 단계. 시간 초과(None)는 RED 가 아니다 (실패 테스트를 확인한 것이 아님)."""
+    return "GREEN" if code == 0 else ("TIMEOUT" if code is None else "RED")
+
+
 def has_red(root: Path, fid: str, task_ids, since: str | None = None) -> bool:
     for e in read_log(root, fid):
-        if e.get("phase") == "RED" and e.get("task") in task_ids and (not since or e.get("ts", "") >= since):
+        exit_code = e.get("exit")
+        failed = type(exit_code) is int and exit_code != 0  # 예전 버전이 시간 초과를 RED(exit None)로 남긴 기록은 세지 않는다
+        if e.get("phase") == "RED" and failed and e.get("task") in task_ids and (not since or e.get("ts", "") >= since):
             return True
     return False
 
@@ -500,7 +507,7 @@ def run_checks(root: Path, cfg: dict | None, timeout: int, source: str) -> tuple
         ran.append(cmd)
         fid = active_feature(root) if cfg is not None and name == "test" else None
         if fid:
-            append_log(root, fid, {"task": None, "phase": "GREEN" if code == 0 else "RED", "exit": code,
+            append_log(root, fid, {"task": None, "phase": test_phase(code), "exit": code,
                                    "cmd": cmd, "source": source})
         if code != 0:
             return ((f"`{cmd}` 실패" if code is not None else f"`{cmd}` 시간 초과"), tail), ran

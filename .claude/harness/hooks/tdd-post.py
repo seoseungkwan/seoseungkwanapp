@@ -73,7 +73,7 @@ def handle(file_path: str, cwd: str) -> str | None:
         schedule(root, tests, "시간 초과")
         return f"[harness TDD] 관련 테스트가 {timeout}초를 넘어 Stop 검증으로 예약했다: {', '.join(tests)}"
 
-    phase = "GREEN" if code == 0 else "RED"
+    phase = L.test_phase(code)
     if fid:
         task_ids = [t["id"] for t in tasks] or [None]
         for tid in task_ids:

@@ -12,7 +12,7 @@
 | `~/.claude/skills/tdd/` | `/tdd` — RED → GREEN → REFACTOR. 실패 테스트 확인 후 구현, 테스트 이름에 AC ID |
 | `~/.claude/agents/harness-reviewer.md` | 독립 리뷰어. 읽기 전용, `VERDICT: PASS/FIX`, 명세 추적 확인 |
 | `~/.claude/harness/bin/sdd` | `init` / `check` / `status`(REQ·AC → TASK → 테스트 → 최근 결과 추적표) / `use` |
-| `~/.claude/harness/bin/tdd-run` | TASK 테스트 실행, `--expect red|green`, `tdd-log.jsonl`에 기록 |
+| `~/.claude/harness/bin/tdd-run` | TASK 테스트 실행, `--expect red` 또는 `--expect green`, `tdd-log.jsonl`에 기록. 시간 초과는 RED 가 아니라 TIMEOUT 으로 기록해 구현 차단을 풀지 않는다 |
 | `~/.claude/harness/bin/verify` | Stop 훅과 같은 검증(SDD 사후 점검 + lint → build → test). 통과하면 PR 생성 게이트용 기록을 남긴다 |
 | `~/.claude/harness/bin/cr-review` | CodeRabbit CLI 로 커밋된 변경을 리뷰. 통과하면 CodeRabbit PR 게이트용 기록, 막히면 라운드를 센다 (아래 "CodeRabbit 리뷰 게이트") |
 | `~/.claude/harness/lib/crlib.py` | CodeRabbit 정책·출력 판정·기록·PR/merge 게이트 |
