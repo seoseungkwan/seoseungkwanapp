@@ -1,0 +1,203 @@
+#!/usr/bin/python3 -I
+"""SDD 명세 도구.
+
+  sdd init <기능ID> [--title 제목] [--test CMD --test-file CMD --lint CMD --build CMD]
+                                     specs/<id>/ 템플릿과 .harness/config.json(없을 때만) 생성, 활성 기능 지정
+                                     --test-file 은 {files}(경로) 또는 {modules}(python 모듈명) 자리표시자를 쓴다
+  sdd check [<기능ID>]               명세 형식 검사 (승인 가능 여부)
+  sdd status [<기능ID>]              승인 상태 + 요구사항/AC → TASK → 테스트 → 최근 결과 추적표
+  sdd use <기능ID>                   활성 기능 지정 (.harness/active)
+
+승인은 이 도구로 할 수 없다. 사용자가 프롬프트에 `/sdd approve <기능ID>`를 직접 입력해야
+UserPromptSubmit 훅이 기록한다.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import sddlib as L  # noqa: E402
+
+REQ_TMPL = """# 요구사항: {title}
+
+> 기능 ID: `{fid}` · 형식: 요구사항은 `### REQ-001: 제목`, 수용 기준은 `- AC-001.1: Given/When/Then`.
+> 각 AC 는 테스트 하나 이상으로 검증되어야 하며, 테스트 이름에 AC ID 를 넣는다.
+
+## 배경 / 목표
+- TODO
+
+## 요구사항
+
+### REQ-001: TODO
+- AC-001.1: Given TODO, When TODO, Then TODO
+
+## 범위 밖
+- TODO
+"""
+
+DESIGN_TMPL = """# 설계: {title}
+
+## 개요
+- TODO: 접근 방식 한두 문단
+
+## 구성 요소 / 인터페이스
+- TODO: 모듈, 함수·클래스 시그니처, 데이터 구조
+
+## 데이터 흐름
+- TODO
+
+## 결정과 트레이드오프
+- TODO
+
+## 위험 / 미해결 질문
+- TODO
+"""
+
+TASKS_TMPL = """# 작업 분할: {title}
+
+> 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
+> 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
+
+## TASK-1: TODO
+- REQ: REQ-001
+- Files: src/TODO.ts, src/TODO.test.ts
+- Tests: src/TODO.test.ts
+- TDD: required
+"""
+
+
+def root_or_die() -> Path:
+    root = L.git_root(Path.cwd())
+    if root is None:
+        sys.exit("git 저장소 안에서 실행하세요.")
+    return root
+
+
+def pick(root: Path, fid: str | None) -> str:
+    fid = fid or L.active_feature(root)
+    if not fid:
+        sys.exit("기능 ID 를 지정하거나 `sdd use <id>` / feat-<id> 브랜치로 활성 기능을 정하세요.")
+    if not L.spec_dir(root, fid).is_dir():
+        sys.exit(f"specs/{fid}/ 가 없습니다.")
+    return fid
+
+
+def cmd_init(a):
+    root = root_or_die()
+    if not L.FEATURE_ID_RE.match(a.feature):
+        sys.exit("기능 ID 는 영문/숫자/.-_ 만 (예: user-login)")
+    d = L.spec_dir(root, a.feature)
+    if d.exists():
+        sys.exit(f"specs/{a.feature}/ 가 이미 있습니다. 덮어쓰지 않습니다.")
+    title = a.title or a.feature
+    d.mkdir(parents=True)
+    for name, tmpl in (("requirements.md", REQ_TMPL), ("design.md", DESIGN_TMPL), ("tasks.md", TASKS_TMPL)):
+        (d / name).write_text(tmpl.format(fid=a.feature, title=title), encoding="utf-8")
+    cfg_path = root / L.CONFIG_REL
+    created_cfg = False
+    if not cfg_path.exists():
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cmds = L.detect_commands(root)
+        for k in ("test", "test_file", "lint", "build"):
+            if getattr(a, k):
+                cmds[k] = getattr(a, k)
+        cfg = {"sdd": {"enforce": True}, "tdd": {"mode": "strict"}, "commands": cmds}
+        cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        created_cfg = True
+    (root / L.ACTIVE_REL).write_text(a.feature + "\n", encoding="utf-8")
+    print(f"생성: specs/{a.feature}/requirements.md, design.md, tasks.md")
+    print(f"활성 기능: {a.feature} (.harness/active)")
+    if created_cfg:
+        print(f"생성: {L.CONFIG_REL} — 감지한 명령: {json.dumps(L.load_config(root)['commands'], ensure_ascii=False)}")
+        print("  명령이 틀리면 사용자가 직접 수정해야 합니다 (Claude 는 이 파일을 수정할 수 없음).")
+    print(f"다음: 명세를 채운 뒤 `sdd check {a.feature}` → 사용자가 `/sdd approve {a.feature}` 입력")
+
+
+def cmd_use(a):
+    root = root_or_die()
+    fid = pick(root, a.feature)
+    (root / L.ACTIVE_REL).parent.mkdir(parents=True, exist_ok=True)
+    (root / L.ACTIVE_REL).write_text(fid + "\n", encoding="utf-8")
+    print(f"활성 기능: {fid}")
+
+
+def cmd_check(a):
+    root = root_or_die()
+    fid = pick(root, a.feature)
+    problems = L.validate_spec(root, fid)
+    if problems:
+        print(f"✗ {fid}: 명세 문제 {len(problems)}건")
+        for p in problems:
+            print(f"  - {p}")
+        sys.exit(1)
+    print(f"✓ {fid}: 명세 형식 OK — 사용자가 `/sdd approve {fid}`를 입력하면 승인됩니다.")
+
+
+def tests_mentioning(root: Path, tests, ac_id: str) -> list:
+    hits = []
+    for t in tests:
+        for p in (root.glob(t) if any(c in t for c in "*?[") else [root / t]):
+            try:
+                if p.is_file() and ac_id in p.read_text(encoding="utf-8", errors="ignore"):
+                    hits.append(L.rel(root, p))
+            except Exception:
+                pass
+    return sorted(set(hits))
+
+
+def cmd_status(a):
+    root = root_or_die()
+    fid = pick(root, a.feature)
+    state, appr = L.approval_state(root, fid)
+    label = {"approved": "✅ 승인됨", "stale": "⚠️ 승인 후 명세 변경됨 (재승인 필요)", "none": "⏳ 미승인"}[state]
+    print(f"# {fid} — {label}" + (f" ({appr.get('approved_at')})" if appr and state != "none" else ""))
+    reqs = L.parse_requirements((L.spec_dir(root, fid) / "requirements.md").read_text(encoding="utf-8")) \
+        if (L.spec_dir(root, fid) / "requirements.md").is_file() else {}
+    tasks = L.load_tasks(root, fid)
+    print("\n| 요구사항 | 수용 기준 | TASK | 테스트 (AC ID 언급) | 최근 결과 |")
+    print("|---|---|---|---|---|")
+    uncovered = []
+    for rid, acs in reqs.items():
+        owners = [t for t in tasks if rid in t["reqs"]]
+        for ac in acs or ["(AC 없음)"]:
+            tests = sorted({x for t in owners for x in tests_mentioning(root, t["tests"], ac)})
+            last = [L.last_result(root, fid, t["id"]) for t in owners]
+            last = [x for x in last if x]
+            res = " ".join(f"{e.get('task')}:{e['phase']}" for e in last) or "-"
+            if not tests:
+                uncovered.append(ac)
+            print(f"| {rid} | {ac} | {', '.join(t['id'] for t in owners) or '-'} | "
+                  f"{', '.join(tests) or '❌ 없음'} | {res} |")
+    if uncovered:
+        print(f"\n⚠️ 테스트에서 언급되지 않은 수용 기준: {', '.join(uncovered)}")
+    log = L.read_log(root, fid)
+    if log:
+        print(f"\n최근 TDD 기록 ({len(log)}건 중 최대 5건):")
+        for e in log[-5:]:
+            print(f"  {e.get('ts')} {e.get('task') or '-'} {e.get('phase')} exit={e.get('exit')} ({e.get('source')})")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="sdd", description="SDD 명세 도구 (승인은 사용자가 /sdd approve 입력)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("init"); p.add_argument("feature"); p.add_argument("--title")
+    for k in ("test", "test-file", "lint", "build"):
+        p.add_argument(f"--{k}", dest=k.replace("-", "_"), help="설정 파일이 처음 만들어질 때만 적용")
+    p.set_defaults(fn=cmd_init)
+    p = sub.add_parser("use"); p.add_argument("feature"); p.set_defaults(fn=cmd_use)
+    p = sub.add_parser("check"); p.add_argument("feature", nargs="?"); p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("status"); p.add_argument("feature", nargs="?"); p.set_defaults(fn=cmd_status)
+    for name in ("approve", "revoke"):
+        p = sub.add_parser(name)
+        p.add_argument("feature", nargs="?")
+        p.set_defaults(fn=lambda a, n=name: sys.exit(
+            f"`{n}`은 이 도구로 할 수 없습니다. 사용자가 프롬프트에 `/sdd {n} <기능ID>`를 직접 입력해야 합니다."))
+    a = ap.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

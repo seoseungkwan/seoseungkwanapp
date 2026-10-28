@@ -1,0 +1,22 @@
+# .vercelignore 템플릿 — 프로젝트 루트에 .vercelignore로 복사한다
+# 비밀값은 Vercel 환경 변수로만 넣는다
+.env*
+
+# 실제 자료 파일은 배포하지 않는다(가짜 시험 자료만 예외로 연다). 프로젝트에 맞게 확장자를 고친다
+# *.csv
+# *.xlsx
+# !fixtures/fake-*/**
+
+# 개발 전용
+phases/
+specs/
+scripts/
+plan*.md
+
+# 시험·빌드·배포 산출물
+__pycache__/
+.pytest_cache/
+.vercel/
+coverage/
+playwright-report/
+test-results/

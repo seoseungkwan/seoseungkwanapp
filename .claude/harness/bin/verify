@@ -1,0 +1,37 @@
+#!/usr/bin/python3 -I
+"""현재 프로젝트를 Stop 훅과 같은 방식으로 검증하고, 통과하면 PR 생성 게이트용 기록을 남긴다.
+
+  verify        SDD 사후 점검(.harness/config.json 프로젝트) + lint → build → test
+
+guard-bash 훅은 Claude 의 `gh pr create`를 지금 코드가 이 검증(또는 Stop 검증)을 통과했을 때만 허용한다.
+검증 없이 PR 을 만들려면 사용자가 입력창에 `PR-ALLOW`를 직접 입력해야 한다.
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import sddlib as L  # noqa: E402
+
+
+def main():
+    root = L.git_root(Path.cwd())
+    if root is None:
+        sys.exit("git 저장소 안에서 실행하세요.")
+    cfg = L.load_config(root)
+    cmds = L.verify_commands(root, cfg)
+    if cfg is None and not cmds:
+        print("검증할 명령이 없는 프로젝트입니다 (package.json 스크립트·.harness/config.json 없음). PR 게이트도 적용되지 않습니다.")
+        return 0
+    for _, cmd in cmds:
+        print(f"$ {cmd}")
+    failure, ran = L.run_checks(root, cfg, 600, "verify")
+    if failure:
+        print(f"✗ {failure[0]}\n{failure[1][-3000:]}")
+        return 1
+    L.record_verified(root, ran)
+    print(f"✓ 검증 통과 ({len(ran)}개 명령) — PR 생성 가능")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
