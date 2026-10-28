@@ -1,0 +1,14 @@
+{
+  "sdd": {
+    "enforce": true
+  },
+  "tdd": {
+    "mode": "strict"
+  },
+  "commands": {
+    "test": "npm test",
+    "test_file": "npx vitest run {files}",
+    "lint": "npm run lint",
+    "build": "npm run build"
+  }
+}
