@@ -1,0 +1,71 @@
+/* 색·글꼴 변수 (docs/UI_GUIDE.md). 글꼴 변수 --font-sans·--font-num은 layout.tsx의 next/font가 넣는다 */
+:root {
+  /* 배경 */
+  --bg-page: #ffffff;
+  --bg-soft: #f5f8fc;
+  --bg-ai: #f6f4ff;
+  --bg-how: #fff9f1;
+  --bg-start: #f1f6fc;
+  --border-card: rgba(11, 21, 48, 0.08);
+
+  /* 텍스트 */
+  --text-strong: #0b1530;
+  --text-body: #3d4a66;
+  --text-muted: #5b6785;
+
+  /* 포인트 색: 글자 / 연한 배경 / 채움. 글자에는 -text만 쓴다 */
+  --teal-text: #077a73;
+  --teal-soft: #e6faf8;
+  --teal-fill: #14c8ba;
+  --violet-text: #5546e0;
+  --violet-soft: #f1efff;
+  --violet-fill: #6d5df5;
+  --amber-text: #a84b08;
+  --amber-soft: #fff1d6;
+  --amber-card: #fff8e6;
+  --amber-fill: #f59e0b;
+  --pink-text: #be185d;
+  --pink-soft: #ffe8f0;
+  --pink-card: #ffeff4;
+  --pink-fill: #e11d74;
+  --blue-text: #2556d6;
+  --blue-soft: #eaf2ff;
+  --blue-fill: #2556d6;
+  --coral-text: #b83a26;
+  --coral-text-large: #e5533d; /* 24px 이상 굵은 글자만 */
+  --coral-soft: #ffede8;
+  --coral-fill: #e5533d;
+  --warn-text: #c2410c;
+  --warn-soft: #fff1e8;
+
+  /* 레이아웃 */
+  --content-max: 1200px;
+  --gutter: 24px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-strong);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  word-break: keep-all;
+  overflow-x: clip; /* 떠 있는 장식이 옆으로 삐져나가도 가로 스크롤이 생기지 않게. clip은 sticky 메뉴를 깨지 않는다 */
+}
+
+a {
+  color: var(--teal-text);
+}
+
+a:hover {
+  color: #055f59;
+}
+
+/* 모션 줄이기: 모든 움직임을 끈다. 멈춘 화면도 그대로 읽힌다(히어로 차트는 틱 0) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
