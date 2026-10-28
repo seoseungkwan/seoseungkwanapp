@@ -4,6 +4,24 @@ out/
 next-env.d.ts
 tsconfig.tsbuildinfo
 
+# Local credentials (keep only the empty template in version control)
+.env*
+!.env.example
+
+# Real EMR exports must never be committed (fake fixtures only)
+# 확장자 대소문자를 가리지 않는다(Windows에서 온 REAL.XLS 등). 되살리는 것은 가짜 파일의 이 확장자뿐(.env* 등은 그대로 막힌다)
+*.[cC][sS][vV]
+*.[xX][lL][sS]
+*.[xX][lL][sS][xX]
+!fixtures/fake-*/*.csv
+!fixtures/fake-*/*.xls
+!fixtures/fake-*/*.xlsx
+!public/fake-sample/*.csv
+
+# Test and build outputs
+coverage/
+.vercel/
+
 # phase execution outputs
 phases/**/phase*-output.json
 phases/**/step*-output.json

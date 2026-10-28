@@ -1,0 +1,5 @@
+{"ts": "2026-10-28T05:53:26Z", "task": "TASK-2", "reqs": ["REQ-001"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/guardrails.test.ts'", "tests": ["src/guardrails.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-28T05:53:44Z", "task": "TASK-2", "reqs": ["REQ-001"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/guardrails.test.ts'", "tests": ["src/guardrails.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T05:58:55Z", "task": "TASK-2", "reqs": ["REQ-001"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/guardrails.test.ts'", "tests": ["src/guardrails.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T05:59:27Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-28T05:59:40Z", "task": "TASK-2", "reqs": ["REQ-001"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/guardrails.test.ts'", "tests": ["src/guardrails.test.ts"], "expect": "green", "source": "tdd-run"}

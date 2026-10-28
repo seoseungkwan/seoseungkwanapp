@@ -1,0 +1,31 @@
+{
+  "name": "seoseungkwanapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "fixtures": "tsx fixtures/make-fake-fixtures.ts"
+  },
+  "dependencies": {
+    "next": "15.5.28",
+    "react": "~19.1.10",
+    "react-dom": "~19.1.10",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "15.5.28",
+    "iconv-lite": "^0.7.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  }
+}
