@@ -475,3 +475,37 @@ def test_has_red_ignores_entries_without_failing_exit(proj, home):
 
 def test_test_phase():
     assert (L.test_phase(0), L.test_phase(1), L.test_phase(None)) == ("GREEN", "RED", "TIMEOUT")
+    # 테스트가 실패한 것이 아니라 실행되지 않은 경우: 명령 없음/실행 불가, pytest 사용법 오류·테스트 없음, 시그널 종료
+    assert [L.test_phase(c) for c in (127, 126, 5, 4, -9)] == ["ERROR"] * 5
+    assert L.test_phase(2) == "RED"
+
+
+@pytest.mark.parametrize("test_file", [
+    "",                                   # 비어 있는 테스트 파일: unittest 가 NO TESTS RAN (exit 5)
+    "import unittest\n",                  # 테스트가 하나도 없음
+])
+def test_tdd_run_tests_not_run_is_not_red(proj, home, test_file):
+    approve(proj, home)
+    (proj / "test_greet.py").write_text(test_file)
+    r = cli("tdd-run", ["TASK-1", "--expect", "red"], proj, home)
+    assert r.returncode == 1 and "실행되지" in r.stdout, r.stdout
+    assert [e["phase"] for e in L.read_log(proj, "greet")] == ["ERROR"]
+    assert denied(guard(proj, home, "greet.py"))
+
+
+def test_tdd_run_missing_runner_is_not_red(proj, home):
+    approve(proj, home)
+    (proj / "test_greet.py").write_text(TEST_FAIL)
+    cfg = json.loads((proj / ".harness/config.json").read_text())
+    cfg["commands"]["test_file"] = "no-such-test-runner {files}"
+    (proj / ".harness/config.json").write_text(json.dumps(cfg))
+    r = cli("tdd-run", ["TASK-1", "--expect", "red"], proj, home)
+    assert r.returncode == 1 and [e["phase"] for e in L.read_log(proj, "greet")] == ["ERROR"]
+    assert denied(guard(proj, home, "greet.py"))
+
+
+@pytest.mark.parametrize("exit_code", [127, 126, 5, 4, -9])
+def test_has_red_ignores_legacy_red_for_tests_not_run(proj, home, exit_code):
+    approve(proj, home)
+    L.append_log(proj, "greet", {"task": "TASK-1", "phase": "RED", "exit": exit_code})  # 예전 버전이 남긴 기록
+    assert not L.has_red(proj, "greet", ["TASK-1"])

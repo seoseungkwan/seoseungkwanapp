@@ -370,15 +370,27 @@ def read_log(root: Path, fid: str) -> list:
     return out
 
 
+# 테스트가 실패한 것이 아니라 실행 자체가 안 된 종료 코드: 명령 없음(127)/실행 불가(126), pytest 사용법 오류(4)·
+# 테스트 없음(5, unittest 의 NO TESTS RAN 도 5). 시그널 종료(음수)도 같다.
+NOT_A_TEST_FAILURE = {126, 127, 4, 5}
+
+
 def test_phase(code) -> str:
-    """테스트 종료 코드 → 기록할 단계. 시간 초과(None)는 RED 가 아니다 (실패 테스트를 확인한 것이 아님)."""
-    return "GREEN" if code == 0 else ("TIMEOUT" if code is None else "RED")
+    """테스트 종료 코드 → 기록할 단계. 시간 초과(TIMEOUT)·실행 안 됨(ERROR)은 RED 가 아니다 (실패 테스트를 확인한 것이 아님)."""
+    if code == 0:
+        return "GREEN"
+    if code is None:
+        return "TIMEOUT"
+    if code < 0 or code in NOT_A_TEST_FAILURE:
+        return "ERROR"
+    return "RED"
 
 
 def has_red(root: Path, fid: str, task_ids, since: str | None = None) -> bool:
     for e in read_log(root, fid):
         exit_code = e.get("exit")
-        failed = type(exit_code) is int and exit_code != 0  # 예전 버전이 시간 초과를 RED(exit None)로 남긴 기록은 세지 않는다
+        # 예전 버전이 시간 초과·실행 안 됨을 RED 로 남긴 기록은 세지 않는다
+        failed = type(exit_code) is int and test_phase(exit_code) == "RED"
         if e.get("phase") == "RED" and failed and e.get("task") in task_ids and (not since or e.get("ts", "") >= since):
             return True
     return False

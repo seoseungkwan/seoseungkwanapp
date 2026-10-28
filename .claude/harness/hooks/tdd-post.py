@@ -79,8 +79,10 @@ def handle(file_path: str, cwd: str) -> str | None:
         for tid in task_ids:
             L.append_log(root, fid, {"task": tid, "phase": phase, "exit": code, "cmd": cmd,
                                      "tests": tests, "trigger": relpath, "source": "post-hook"})
-    hint = ("실패 테스트가 확인됐다. 테스트를 막 작성했다면 정상적인 RED 이다. 구현 중이었다면 원인을 고쳐라."
-            if phase == "RED" else "통과했다.")
+    hint = {"RED": "실패 테스트가 확인됐다. 테스트를 막 작성했다면 정상적인 RED 이다. 구현 중이었다면 원인을 고쳐라.",
+            "GREEN": "통과했다.",
+            "ERROR": "테스트가 실행되지 않았다 (명령 없음·테스트 없음·강제 종료 등). RED 로 인정되지 않는다. 원인을 고쳐라."
+            }.get(phase, "")
     return f"[harness TDD] `{relpath}` 수정 후 관련 테스트 {phase} (exit {code}). {hint}\n{tail[-1500:]}"
 
 
