@@ -54,3 +54,4 @@
 {"ts": "2026-10-28T07:37:58Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'fixtures/make-fake-fixtures.test.ts'", "tests": ["fixtures/make-fake-fixtures.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-10-28T07:39:08Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-28T07:40:27Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'fixtures/make-fake-fixtures.test.ts'", "tests": ["fixtures/make-fake-fixtures.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T07:41:20Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
