@@ -48,7 +48,8 @@ DEFAULT_ALLOWED_TOOLS = [
     "Read", "Glob", "Grep", "Edit", "Write", "MultiEdit", "TodoWrite",
     "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)", "Bash(pnpm:*)", "Bash(yarn:*)",
     "Bash(python3:*)", "Bash(pytest:*)",
-    "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git add:*)", "Bash(git commit:*)",
+    # git commit 은 넣지 않는다: 커밋은 리뷰 PASS 뒤 _commit_step 만 한다
+    "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git add:*)",
     "Bash(ls:*)", "Bash(mkdir:*)", "Bash(cat:*)",
 ]
 
@@ -160,7 +161,9 @@ def run_step_session(cmd: list, *, input: str, cwd: str, timeout: int) -> subpro
     """cmd를 새 프로세스 그룹에서 돌리고, 끝나거나 시간이 넘으면 그룹을 통째로 끈다.
     출력은 파이프 대신 임시 파일로 받는다 — 남은 자식이 파이프를 쥐고 있어도 기다리다 멈추지 않는다."""
     token = uuid.uuid4().hex
-    env = {**os.environ, "HARNESS_STEP_SESSION": token}
+    # step 세션은 커밋하지 않고 변경을 남긴 채 끝나므로 Stop 훅 검증을 끈다 (AC·리뷰 게이트가 대신한다).
+    # 켜 두면 RED 만 쓰는 step 이 Stop 훅에 밀려 구현까지 하고, 검증 시간이 step 시간 제한을 잡아먹는다.
+    env = {**os.environ, "HARNESS_STEP_SESSION": token, "HARNESS_STOP_CHECK": "0"}
     with tempfile.TemporaryFile("w+", encoding="utf-8") as fin, \
             tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace") as fout, \
             tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace") as ferr:
@@ -381,9 +384,6 @@ class StepExecutor:
 
     def _build_preamble(self, guardrails: str, step_context: str,
                         prev_error: Optional[str] = None) -> str:
-        commit_example = self.FEAT_MSG.format(
-            phase=self._phase_name, num="N", name="<step-name>"
-        )
         retry_section = ""
         if prev_error:
             retry_section = (
@@ -403,8 +403,7 @@ class StepExecutor:
             f"   - AC 통과 → \"completed\" + \"summary\" 필드에 이 step의 산출물을 한 줄로 요약\n"
             f"   - {self.MAX_RETRIES}회 수정 시도 후에도 실패 → \"error\" + \"error_message\" 기록\n"
             f"   - 사용자 개입이 필요한 경우 (API 키, 인증, 수동 설정 등) → \"blocked\" + \"blocked_reason\" 기록 후 즉시 중단\n"
-            f"6. 모든 변경사항을 커밋하라:\n"
-            f"   {commit_example}\n\n---\n\n"
+            f"6. 커밋하지 마라. 변경은 작업 트리에 남겨 두면 실행기가 리뷰(harness-reviewer) PASS 뒤에 커밋한다.\n\n---\n\n"
         )
 
     # --- Claude 호출 ---
@@ -643,8 +642,9 @@ class StepExecutor:
                         s["error_message"] = f"[{self.MAX_RETRIES}회 시도 후 실패] {err_msg}"
                         s["failed_at"] = ts
                 self._write_json(self._index_file, index)
-                self._commit_step(step_num, step_name)
-                print(f"  ✗ Step {step_num}: {step_name} failed after {self.MAX_RETRIES} attempts [{elapsed}s]")
+                # 리뷰가 거부했거나 AC 를 통과하지 못한 코드는 커밋하지 않는다 (시간 초과·리뷰 실패와 같음)
+                print(f"  ✗ Step {step_num}: {step_name} failed after {self.MAX_RETRIES} attempts [{elapsed}s] — "
+                      f"커밋하지 않고 멈춥니다.")
                 print(f"    Error: {err_msg}")
                 self._update_top_index("error")
                 sys.exit(1)

@@ -192,7 +192,7 @@ python3 ~/.claude/harness/scripts/execute.py {task-name}        # 순차 실행
 python3 ~/.claude/harness/scripts/execute.py {task-name} --push  # 실행 후 feat 브랜치 push
 ```
 
-- step 세션은 `--dangerously-skip-permissions` 없이 `acceptEdits` + 허용 도구 목록(npm/npx/node/python3/git add·commit·diff 등)으로 실행된다. 다른 명령이 필요하면 `HARNESS_ALLOWED_TOOLS="Read,Edit,Write,Bash(make:*)"`처럼 쉼표로 지정한다.
+- step 세션은 `--dangerously-skip-permissions` 없이 `acceptEdits` + 허용 도구 목록(npm/npx/node/python3/git add·diff 등)으로 실행된다. step 세션은 커밋하지 않는다 (`git commit`은 허용 목록에 없음). 커밋은 리뷰 PASS 뒤 execute.py 가 하고, 끝내 실패한 step 은 커밋하지 않고 멈춘다. 다른 명령이 필요하면 `HARNESS_ALLOWED_TOOLS="Read,Edit,Write,Bash(make:*)"`처럼 쉼표로 지정한다.
 - `.env`, 키 파일 등 비밀정보로 보이는 파일은 자동 커밋에서 제외된다.
 - `--push`는 `feat-{task-name}` 브랜치만 push 한다. PR 생성과 main merge 는 사람이 한다.
 - 리뷰 게이트: step이 완료되면 execute.py가 별도의 읽기 전용 Claude 세션으로 `harness-reviewer` 리뷰를 실행한다. PASS면 커밋하고 다음 step으로 넘어간다. FIX면 리뷰 내용을 다음 시도에 전달해 다시 구현하게 한다(재시도 최대 5회에 포함). 리뷰 결과는 `phases/{task-name}/step{N}-review-output.json`에 저장된다. 리뷰 세션 자체가 실패하면 커밋하지 않고 error로 멈춘다. 리뷰를 끄려면 `--no-review`.
@@ -210,5 +210,5 @@ execute.py가 자동으로 처리하는 것:
 
 에러 복구:
 
-- **error 발생 시**: `phases/{task-name}/index.json`에서 해당 step의 `status`를 `"pending"`으로 바꾸고 `error_message`를 삭제한 뒤 재실행한다.
+- **error 발생 시**: `phases/{task-name}/index.json`에서 해당 step의 `status`를 `"pending"`으로 바꾸고 `error_message`를 삭제한 뒤 재실행한다. 끝내 실패한 step 의 변경은 커밋되지 않고 작업 트리에 남는다. 이어서 고칠지, 버릴지(`git restore`·`git stash` — `git reset --hard`는 훅이 막는다) 사용자와 정한다.
 - **blocked 발생 시**: `blocked_reason`에 적힌 사유를 해결한 뒤, `status`를 `"pending"`으로 바꾸고 `blocked_reason`을 삭제한 뒤 재실행한다.

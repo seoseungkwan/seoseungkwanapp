@@ -246,9 +246,14 @@ class TestBuildPreamble:
         result = executor._build_preamble("", ctx)
         assert "이전 Step 산출물" in result
 
-    def test_includes_commit_example(self, executor):
+    def test_step_session_told_not_to_commit(self, executor):
+        """커밋은 리뷰 PASS 뒤 _commit_step 만 한다 (세션이 먼저 커밋하면 FIX 판정이 막지 못한다)."""
         result = executor._build_preamble("", "")
-        assert "feat(mvp):" in result
+        assert "커밋하라" not in result and "feat(mvp):" not in result
+        assert "커밋하지 마라" in result
+
+    def test_step_session_cannot_run_git_commit(self):
+        assert not any("git commit" in t for t in ex.DEFAULT_ALLOWED_TOOLS)
 
     def test_includes_rules(self, executor):
         result = executor._build_preamble("", "")
@@ -547,6 +552,11 @@ class TestRunStepSession:
         assert r.returncode == 3
         assert r.stdout == "hi\ndone\n"
 
+    def test_stop_hook_check_disabled_in_step_session(self, tmp_path):
+        """step 세션은 커밋하지 않고 변경을 남기므로, Stop 훅 검증이 세션 안에서 돌지 않게 한다 (AC·리뷰 게이트가 대신)."""
+        r = ex.run_step_session(["bash", "-c", "echo $HARNESS_STOP_CHECK"], input="", cwd=str(tmp_path), timeout=30)
+        assert r.stdout.strip() == "0"
+
     def test_kills_leftover_background_process_after_exit(self, tmp_path):
         r = ex.run_step_session(["bash", "-c", "sleep 300 & echo $!"], input="", cwd=str(tmp_path), timeout=30)
         pid = int(r.stdout.strip())
@@ -719,8 +729,26 @@ class TestReviewGate:
         with pytest.raises(SystemExit) as e:
             executor._execute_single_step({"step": 2, "name": "ui"}, "")
         assert e.value.code == 1 and len(prompts) == 5
+        assert commits == []  # 리뷰가 거부한 코드는 마지막 시도 뒤에도 커밋하지 않는다
         st = self._status(executor)
         assert st["status"] == "error" and "리뷰 본문 FIX" in st["error_message"]
+
+    def test_final_failure_without_review_does_not_commit(self, executor):
+        commits, prompts = self._setup(executor, [])
+
+        def fails(step, preamble):
+            prompts.append(preamble)
+            index = executor._read_json(executor._index_file)
+            for s in index["steps"]:
+                if s["step"] == step["step"]:
+                    s["status"] = "error"
+                    s["error_message"] = "AC 실패"
+            executor._write_json(executor._index_file, index)
+
+        executor._invoke_claude = fails
+        with pytest.raises(SystemExit) as e:
+            executor._execute_single_step({"step": 2, "name": "ui"}, "")
+        assert e.value.code == 1 and commits == [] and len(prompts) == 5
 
     def test_review_unavailable_stops_without_commit(self, executor):
         commits, prompts = self._setup(executor, [ex.ReviewUnavailable("boom")])

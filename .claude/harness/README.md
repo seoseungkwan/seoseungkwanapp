@@ -17,7 +17,7 @@
 | `~/.claude/harness/bin/cr-review` | CodeRabbit CLI 로 커밋된 변경을 리뷰. 통과하면 CodeRabbit PR 게이트용 기록, 막히면 라운드를 센다 (아래 "CodeRabbit 리뷰 게이트") |
 | `~/.claude/harness/lib/crlib.py` | CodeRabbit 정책·출력 판정·기록·PR/merge 게이트 |
 | `~/.claude/harness/coderabbit.json` | CodeRabbit 정책 (대상 저장소, 막는 심각도, 최대 횟수). 사용자만 고친다 |
-| `~/.claude/harness/scripts/execute.py` | step 순차 실행기 (리뷰 게이트, 재시도 5회, feat/chore 2단계 커밋, step 세션이 띄운 프로세스 정리, 시간 초과 기록) |
+| `~/.claude/harness/scripts/execute.py` | step 순차 실행기 (리뷰 게이트, 재시도 5회, feat/chore 2단계 커밋, step 세션이 띄운 프로세스 정리, 시간 초과 기록). step 세션은 커밋하지 못하고, 리뷰 PASS 뒤에만 실행기가 커밋한다. 5회 끝내 실패하면 커밋하지 않는다 (2026-10-28 CodeRabbit 지적으로 수정) |
 | `~/.claude/harness/templates/` | 프로젝트용 CLAUDE.md(보안 규칙 기본값 포함), docs/*.md, gitignore, vercelignore 템플릿 |
 
 ## 훅
