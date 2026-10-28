@@ -137,6 +137,7 @@ admins(user_id uuid pk references auth.users on delete cascade, created_at times
 - **문지기 두 겹(파일럿 그대로)**: middleware는 로그인 여부만, 병원 상태는 페이지 guard가 그리기 전에 본다. middleware에서 DB를 읽지 않아 정적 파일·랜딩이 빠르다. 대가: `/login`에서 로그인한 사람은 `/dashboard`를 거쳐 한 번 더 돌 수 있다
 - **이메일은 DB가 넣는다**: 관리자 화면이 `auth.users`를 읽을 수 없어 `hospitals.email`에 둔다. 토큰 값을 DB 기본값으로 넣고 열 권한을 주지 않아 위조를 막는다
 - **승인은 함수 하나**: 사용자에게 update 권한을 주지 않으므로 자기 상태를 바꿀 길이 없다. 관리자도 함수가 허용한 바꿈만 할 수 있다
+- **오류 화면에 [로그아웃]** (사용자 결정 2026-10-28, 목업 https://claude.ai/artifact/QMvbZSMCGjJHeXJh9jEKbk 의 A): 내 병원 줄 읽기가 계속 실패하면 `/login`도 `/dashboard`로 돌아와 빠져나갈 길이 없다. `SignOutButton`을 [다시 시도] 옆에 둔다 (AC-003.7, TASK-9)
 - **아직 없는 메뉴·버튼은 누를 수 없게**: 목업은 `href="#"`이지만 실제 앱에서 빈 링크는 혼란스럽다. 같은 모양에 `aria-disabled`만 단다
 - **대시보드는 빈 화면만**: 통계 저장(`months`·`days`)이 아직 없어서, 승인된 목업의 '첫 화면(파일 없음)' 상태만 만든다. 예시 숫자 화면은 통계 기능 때 만든다
 - **자동 로그아웃은 브라우저 타이머**: 다른 탭 움직임은 BroadcastChannel로 나눈다(브라우저 저장소 금지 규칙). `signOut()` 기본(전역)이 갱신 토큰을 끊는다

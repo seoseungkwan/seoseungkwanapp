@@ -53,8 +53,8 @@
 
 ## TASK-9: 로그인 화면과 로그아웃 단추
 - REQ: REQ-003
-- Files: src/lib/auth/inAppBrowser.ts, src/lib/auth/inAppBrowser.test.ts, src/components/auth/AuthFrame.tsx, src/components/auth/AuthFrame.module.css, src/components/auth/LoginCard.tsx, src/components/auth/LoginCard.module.css, src/components/auth/LoginCard.test.tsx, src/components/auth/SignOutButton.tsx, src/components/auth/SignOutButton.test.tsx, src/app/login/page.tsx, src/app/login/page.test.tsx
-- Tests: src/lib/auth/inAppBrowser.test.ts, src/components/auth/LoginCard.test.tsx, src/components/auth/SignOutButton.test.tsx, src/app/login/page.test.tsx
+- Files: src/lib/auth/inAppBrowser.ts, src/lib/auth/inAppBrowser.test.ts, src/components/auth/AuthFrame.tsx, src/components/auth/AuthFrame.module.css, src/components/auth/LoginCard.tsx, src/components/auth/LoginCard.module.css, src/components/auth/LoginCard.test.tsx, src/components/auth/SignOutButton.tsx, src/components/auth/SignOutButton.test.tsx, src/app/login/page.tsx, src/app/login/page.test.tsx, src/app/error.tsx, src/app/error.test.tsx, src/components/common/ErrorCard.module.css
+- Tests: src/lib/auth/inAppBrowser.test.ts, src/components/auth/LoginCard.test.tsx, src/components/auth/SignOutButton.test.tsx, src/app/login/page.test.tsx, src/app/error.test.tsx
 - TDD: required
 
 ## TASK-10: 가입 신청

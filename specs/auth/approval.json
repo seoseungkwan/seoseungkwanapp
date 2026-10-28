@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "auth",
-  "approved_at": "2026-10-28T12:37:54Z",
+  "approved_at": "2026-10-28T22:42:22Z",
   "approved_via": "user-prompt",
-  "session_id": "53e3e785-34d3-48f5-8eef-6ca601bae5e0",
-  "spec_sha256": "f5dd5d34b94e6eb5ce275f59b902866982936e144d0496050afa88b6ab595f35",
+  "session_id": "0aa18262-b1d4-4aa2-9d9d-d63ab8c57152",
+  "spec_sha256": "51615921696872e0ae76e9d8d6ae3da292c03ed6e99eca8ce9f8daf0594ed6f1",
   "scope": [
     ".env.example",
     "next.config.ts",
