@@ -5,7 +5,8 @@
 ## 디렉토리 구조
 ```
 src/
-├── app/                 # 페이지(App Router). 지금은 빌드용 빈 자리(layout·page)
+├── app/                 # 페이지(App Router). page.tsx = 랜딩(섹션은 components/landing/)
+│   ├── globals.css      # 색·글꼴 변수, 모션 줄이기 규칙 (docs/UI_GUIDE.md)
 │   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'. 매출 파서도 여기 (예정)
@@ -14,16 +15,17 @@ src/
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
+├── components/<화면>/  # 화면 컴포넌트와 그 CSS Module. landing/ = 랜딩
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
-public/                  # fake-sample/. 랜딩 영상·이미지 (예정, §2-10)
+public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본 복사)
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳은 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
 - `lib/auth`·`lib/supabase`·`services`는 ESLint 규칙에 이름만 있다(파일럿 경로). 미정 — 로그인을 옮길 때 정함
-- 화면 컴포넌트 폴더: 미정 — 첫 화면 목업 승인 뒤 정함
+- 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
 
 ## 패턴
 - 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0)
@@ -32,7 +34,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 저장은 세기 숫자만. 비율은 읽을 때 계산한다
 - 날짜는 `lib/analytics/dates.ts` 한 곳에서 한국 날짜로. 시험도 `TZ=Asia/Seoul`
 - 오류 카드는 '무엇이 · 어떻게 고치나 · 번호'. 문구는 `lib/errors.ts` (§8)
-- Server/Client Component 나누는 법: 미정 — 첫 화면 작업 때 정함
+- Server/Client Component: 기본은 Server. 값이 바뀌거나 브라우저 API가 필요한 부분만 `'use client'`로 작게 뗀다(예: 랜딩 히어로 차트). 움직임 로직은 순수 함수로 떼어 시험한다
 
 ## 데이터 흐름
 ```
