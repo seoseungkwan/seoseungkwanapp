@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -461,5 +461,24 @@ describe('AC-005.2 writeAllFixtures', SLOW, () => {
     }
     const sample = new Uint8Array(readFileSync(COMMITTED_SAMPLE))
     expect(Buffer.from(sample).equals(Buffer.from(file('fake-utf8-bom.csv')))).toBe(true)
+  })
+})
+
+// 가짜 파일 폴더는 .gitignore가 생성기 파일 이름 하나하나만 되살린다(실제 비트 파일이 커밋되지 않게)
+describe('AC-005.2 저장소의 가짜 파일 폴더 · .gitignore 되살리기 목록', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url))
+
+  it('fixtures/fake-bit·public/fake-sample에는 생성기가 만드는 파일만 있다(실제 파일이 섞이면 멈춘다)', () => {
+    expect(readdirSync(join(root, 'fixtures', 'fake-bit')).sort()).toEqual([...FILES].sort())
+    expect(readdirSync(join(root, 'public', 'fake-sample'))).toEqual(['bit-sample.csv'])
+  })
+
+  it('.gitignore가 되살리는 것은 생성기 파일 이름 그대로뿐이다(글롭 없음)', () => {
+    const allowed = readFileSync(join(root, '.gitignore'), 'utf8')
+      .split(/\r?\n/) // Windows에서 받은 저장소는 줄 끝이 CRLF다
+      .filter((line) => line.startsWith('!') && line !== '!.env.example')
+    expect(allowed.sort()).toEqual(
+      [...FILES.map((name) => `!fixtures/fake-bit/${name}`), '!public/fake-sample/bit-sample.csv'].sort(),
+    )
   })
 })

@@ -49,3 +49,8 @@
 {"ts": "2026-10-28T06:56:37Z", "task": "TASK-11", "reqs": ["REQ-010"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/workers/analyzeFiles.test.ts' 'src/workers/runAnalysis.test.ts'", "tests": ["src/workers/analyzeFiles.test.ts", "src/workers/runAnalysis.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-10-28T06:59:02Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-28T07:00:32Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-28T07:33:23Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'fixtures/make-fake-fixtures.test.ts'", "tests": ["fixtures/make-fake-fixtures.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T07:34:40Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-28T07:37:58Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'fixtures/make-fake-fixtures.test.ts'", "tests": ["fixtures/make-fake-fixtures.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T07:39:08Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-28T07:40:27Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'fixtures/make-fake-fixtures.test.ts'", "tests": ["fixtures/make-fake-fixtures.test.ts"], "expect": "green", "source": "tdd-run"}
