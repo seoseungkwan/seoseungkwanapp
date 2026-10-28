@@ -9,7 +9,7 @@
 - 시험: Vitest 4 (node 환경, `TZ=Asia/Seoul`). E2E 도구: 미정 — 파일럿 이식 때 정함
 - 파일 읽기: SheetJS `xlsx` 0.20.3 (CDN 패키지)
 - Supabase(서울, 무료 플랜) · 구글 OAuth · Vercel · Claude API — 패키지는 쓰는 기능에서 넣는다
-- 스타일링: 미정 — UI/UX md(2026-10-29)와 첫 화면 목업 승인 뒤 정함
+- 스타일링: CSS Modules(화면별 `*.module.css`) + `src/app/globals.css`의 색·글꼴 변수. 글꼴은 `next/font` (ADR-014)
 
 ## 아키텍처 규칙
 - CRITICAL: 환자 개인정보는 의원 PC 밖으로 나가지 않는다. 환자 파일은 브라우저 Web Worker 안에서만 읽고 계산한다. 서버·Claude API에는 집계 숫자만 간다. 읽는 칸·차트번호·파일 이름 규칙은 `plan.md §4`

@@ -1,0 +1,96 @@
+/* 정형외과·통증 의원 섹션(#ortho). 값은 docs/mockups/landing/landing-mockup.dc.html #ortho 그대로 */
+.section {
+  padding: 112px var(--gutter) 40px;
+}
+
+.inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+}
+
+.eyebrow {
+  font-family: var(--font-num), sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  color: var(--teal-text);
+  font-weight: 700;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(32px, 3.8vw, 48px);
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.lead {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--text-body);
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.tile {
+  margin: 0;
+  flex: 1 1 240px;
+  min-width: 0;
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border-radius: 22px;
+  background: #eef5fb;
+  overflow: hidden;
+}
+
+/* 그림 타일: 천천히 위아래로 뜬다 (UI_GUIDE) */
+.img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: float 6s ease-in-out infinite;
+}
+
+.caption {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.captionTitle {
+  font-size: 18px;
+}
+
+.captionDesc {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-body);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}

@@ -1,0 +1,73 @@
+/* 위쪽 메뉴 띠. 값은 docs/mockups/landing/landing-mockup.dc.html header 그대로. backdrop-filter는 이 띠 하나에만 쓴다(UI_GUIDE) */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-card);
+}
+
+.inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 10px var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+/* 링크 글자색은 globals의 a:hover(청록)가 덮지 않게 :hover까지 같이 정한다 */
+.logo,
+.logo:hover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  text-decoration: none;
+  color: var(--text-strong);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  font-size: 15px;
+}
+
+.navLink,
+.navLink:hover {
+  padding: 12px 10px;
+  color: var(--text-body);
+  text-decoration: none;
+}
+
+.start,
+.start:hover {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: var(--text-strong);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+/* 좁은 화면(720px 미만): 섹션 링크 4개를 숨기고 로고와 [구글로 시작하기]만 둔다 (design.md, Claude 판단) */
+@media (max-width: 719.98px) {
+  .nav {
+    display: none;
+  }
+
+  .start {
+    margin-left: auto;
+  }
+}

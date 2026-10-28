@@ -5,13 +5,15 @@ process.env.TZ = 'Asia/Seoul'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
-// 찾는 시험: src/**/*.test.ts, fixtures/**/*.test.ts
+// 찾는 시험: src/**/*.test.ts(x), fixtures/**/*.test.ts
+// tsconfig는 Next용 jsx: preserve라, 시험에서는 JSX를 automatic 런타임으로 바꾼다
 export default defineConfig({
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    include: ['src/**/*.test.ts', 'fixtures/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'fixtures/**/*.test.ts'],
     exclude: ['node_modules/**'],
     environment: 'node',
   },

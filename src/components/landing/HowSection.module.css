@@ -1,0 +1,97 @@
+/* 시작 3단계 섹션(#how). 값은 docs/mockups/landing/landing-mockup.dc.html #how 그대로. 03의 보라는 UI_GUIDE에서 허용 */
+.section {
+  padding: 96px var(--gutter);
+  background: var(--bg-how);
+}
+
+.inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.eyebrow {
+  font-family: var(--font-num), sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  color: var(--teal-text);
+  font-weight: 700;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(32px, 3.8vw, 48px);
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+/* 흐르는 연결선 */
+.line {
+  height: 3px;
+  border-radius: 2px;
+  background-image: linear-gradient(90deg, rgba(20, 200, 186, 0) 0, #14c8ba 50px, rgba(109, 93, 245, 0) 100px);
+  background-size: 200px 3px;
+  background-color: rgba(11, 21, 48, 0.06);
+  animation: flow 2.4s linear infinite;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.step {
+  flex: 1 1 300px;
+  min-width: 0;
+  padding: 28px;
+  border-radius: 20px;
+  border: 1px solid var(--border-card);
+  box-shadow: 0 10px 30px rgba(11, 21, 48, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stepTeal { background: var(--teal-soft); }
+.stepCoral { background: var(--coral-soft); }
+.stepViolet { background: var(--violet-soft); }
+
+.num {
+  font-family: var(--font-num), sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+}
+
+.numTeal { color: var(--teal-text); }
+.numCoral { color: var(--coral-text-large); } /* 40px 굵은 글자라 #E5533D (UI_GUIDE) */
+.numViolet { color: var(--violet-text); }
+
+.stepTitle {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.stepDesc {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text-body);
+}
+
+@keyframes flow {
+  from { background-position: 0 0; }
+  to { background-position: 200px 0; }
+}
