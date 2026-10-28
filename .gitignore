@@ -4,6 +4,47 @@ out/
 next-env.d.ts
 tsconfig.tsbuildinfo
 
+# Local credentials (keep only the empty template in version control)
+.env*
+!.env.example
+
+# Real EMR exports must never be committed (fake fixtures only)
+# 확장자 대소문자를 가리지 않는다(Windows에서 온 REAL.XLS 등). 되살리는 것은 생성기(fixtures/make-fake-fixtures.ts)가
+# 만드는 파일 이름 하나하나뿐이다 — 가짜 파일 폴더에 실제 파일을 넣어도(이름에 fake를 붙여도) 커밋되지 않는다.
+# 가짜 파일을 더하면 여기에도 한 줄 더한다(빠뜨리면 그 파일이 무시될 뿐이고, fixture 시험이 어긋남을 알린다)
+*.[cC][sS][vV]
+*.[xX][lL][sS]
+*.[xX][lL][sS][xX]
+!fixtures/fake-bit/fake-utf8-bom.csv
+!fixtures/fake-bit/fake-utf8.csv
+!fixtures/fake-bit/fake-cp949.csv
+!fixtures/fake-bit/fake.xlsx
+!fixtures/fake-bit/fake-biff.xls
+!fixtures/fake-bit/fake-html.xls
+!fixtures/fake-bit/fake-dates-mixed.csv
+!fixtures/fake-bit/fake-dates-serial.xlsx
+!fixtures/fake-bit/fake-no-period.csv
+!fixtures/fake-bit/fake-reordered.csv
+!fixtures/fake-bit/fake-missing-visit.csv
+!fixtures/fake-bit/fake-missing-address.csv
+!fixtures/fake-bit/fake-bad-rows.csv
+!fixtures/fake-bit/fake-script-name.csv
+!fixtures/fake-bit/fake-empty.csv
+!fixtures/fake-bit/fake-2026-08.csv
+!fixtures/fake-bit/fake-2025-09.csv
+!public/fake-sample/bit-sample.csv
+
+# OS·오피스가 만드는 파일(열어 둔 엑셀의 잠금 파일 등)
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+.~lock.*#
+
+# Test and build outputs
+coverage/
+.vercel/
+
 # phase execution outputs
 phases/**/phase*-output.json
 phases/**/step*-output.json
