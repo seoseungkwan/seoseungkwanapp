@@ -44,7 +44,7 @@
   color: var(--text-muted);
 }
 
-/* app/error.tsx(화면 오류) 틀과 [다시 시도] 단추. 그 화면만 쓰는 모양이라 카드 옆에 둔다 */
+/* app/error.tsx(화면 오류) 틀과 [다시 시도]·[로그아웃] 단추. 그 화면만 쓰는 모양이라 카드 옆에 둔다 */
 .page {
   display: flex;
   min-height: 100dvh;
@@ -62,9 +62,17 @@
   max-width: 440px;
 }
 
-/* Primary 단추(docs/UI_GUIDE.md): 남색 배경·흰 글자·radius 999px */
-.retry {
+/* [다시 시도] 옆에 [로그아웃](AC-003.7, 목업 https://claude.ai/artifact/QMvbZSMCGjJHeXJh9jEKbk 의 A). 좁으면 아래로 내려간다 */
+.actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* Primary 단추(docs/UI_GUIDE.md): 남색 배경·흰 글자·radius 999px */
+.primary {
+  display: flex;
+  flex: 1 1 160px;
   align-items: center;
   justify-content: center;
   min-height: 52px;
@@ -74,12 +82,31 @@
   background: var(--text-strong);
   color: var(--bg-page);
   font: inherit;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.retry:focus-visible {
+/* Secondary 단추: 흰 바탕·남색 글자·옅은 테두리(목업 거절됨 [다른 계정으로 로그인]과 같은 모양) */
+.secondary {
+  display: flex;
+  flex: 1 1 160px;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 1px solid color-mix(in srgb, var(--text-strong) 15%, transparent);
+  border-radius: 999px;
+  background: var(--bg-page);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
   outline: 3px solid var(--teal-fill);
   outline-offset: 2px;
 }
