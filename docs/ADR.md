@@ -28,6 +28,7 @@
 
 ### ADR-004: 서버 코드는 AI 경로 하나, 나머지는 RLS
 **결정**: 서버 경로는 `app/api/ai/`뿐. 나머지는 브라우저 + Supabase RLS. 가입 승인은 DB 함수 하나가 한다. service role 키는 두지 않는다 (§0, §5)
+**예외 (2026-10-28 사용자 결정)**: 인증은 파일럿처럼 서버에서 돈다 — 로그인 콜백 `/auth/callback`, `middleware.ts`(세션 갱신·로그인 여부), 페이지 그리기 전 상태 확인(`lib/auth/*.server.ts`). 세션과 `hospitals`·`admins`의 내 줄만 읽고, 쓰기는 하지 않는다 (specs/auth/design.md)
 **이유**: 서버 코드를 줄인다. 같은 효과면 DB 제약을 쓴다
 **트레이드오프**: 권한은 RLS와 DB 함수가 유일한 방어선이다. 그래서 시험으로 증명한다
 

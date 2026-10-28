@@ -24,11 +24,11 @@ public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳은 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
-- `lib/auth`·`lib/supabase`·`services`는 ESLint 규칙에 이름만 있다(파일럿 경로). 미정 — 로그인을 옮길 때 정함
+- `lib/supabase/`(연결), `lib/auth/`(문지기·가입·관리자·자동 로그아웃), `components/{auth,shell,dashboard,admin,common}/`, `supabase/migrations/`(SQL 편집기에 붙여 넣음) — `specs/auth/design.md`
 - 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
 
 ## 패턴
-- 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0)
+- 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄만 읽는다 (ADR-004)
 - 같은 효과면 코드 대신 DB 제약. 예: 급여 `final` 잠금, 승인 DB 함수
 - 통계: 원래 숫자는 `aggregate`, 비율·'집계 중' 판정은 `compare`, 저장 모양은 `payload` (`specs/stats-core/design.md`)
 - 저장은 세기 숫자만. 비율은 읽을 때 계산한다
@@ -57,7 +57,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 
 | 표 | 내용 |
 |---|---|
-| `hospitals` | 파일럿 그대로(이름·요양기관번호·상태) |
+| `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
 | `months` · `days` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용) |
 | `rx_groups` | 그룹 이름·코드 목록·즐겨찾기 |
