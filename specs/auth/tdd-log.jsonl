@@ -56,3 +56,11 @@
 {"ts": "2026-10-28T22:03:04Z", "task": "TASK-7", "reqs": ["REQ-002", "REQ-003"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/middleware.test.ts' 'src/app/auth/callback/route.test.ts'", "tests": ["src/middleware.test.ts", "src/app/auth/callback/route.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-10-28T22:04:03Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-28T22:05:19Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-28T22:06:57Z", "task": "TASK-8", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "trigger": "src/lib/csp.test.ts", "source": "post-hook"}
+{"ts": "2026-10-28T22:06:58Z", "task": "TASK-8", "reqs": ["REQ-011"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-28T22:07:03Z", "task": "TASK-8", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "trigger": "src/lib/csp.ts", "source": "post-hook"}
+{"ts": "2026-10-28T22:07:04Z", "task": "TASK-8", "reqs": ["REQ-011"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-28T22:07:20Z", "task": "TASK-8", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "trigger": "src/lib/csp.ts", "source": "post-hook"}
+{"ts": "2026-10-28T22:07:21Z", "task": "TASK-8", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "trigger": "next.config.ts", "source": "post-hook"}
+{"ts": "2026-10-28T22:07:22Z", "task": "TASK-8", "reqs": ["REQ-011"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/csp.test.ts'", "tests": ["src/lib/csp.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T22:10:19Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
