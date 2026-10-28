@@ -16,3 +16,10 @@
 {"ts": "2026-10-28T21:30:12Z", "task": "TASK-3", "reqs": ["REQ-006"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/rls.test.ts'", "tests": ["supabase/rls.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-10-28T21:31:41Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-28T21:34:31Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-28T21:36:57Z", "task": "TASK-4", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/auth/gate.test.ts'", "tests": ["src/lib/auth/gate.test.ts"], "trigger": "src/lib/auth/gate.test.ts", "source": "post-hook"}
+{"ts": "2026-10-28T21:36:58Z", "task": "TASK-4", "reqs": ["REQ-002"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/auth/gate.test.ts'", "tests": ["src/lib/auth/gate.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-28T21:37:04Z", "task": "TASK-4", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/auth/gate.test.ts'", "tests": ["src/lib/auth/gate.test.ts"], "trigger": "src/lib/auth/gate.ts", "source": "post-hook"}
+{"ts": "2026-10-28T21:37:05Z", "task": "TASK-4", "reqs": ["REQ-002"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/auth/gate.test.ts'", "tests": ["src/lib/auth/gate.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-28T21:37:15Z", "task": "TASK-4", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/auth/gate.test.ts'", "tests": ["src/lib/auth/gate.test.ts"], "trigger": "src/lib/auth/gate.ts", "source": "post-hook"}
+{"ts": "2026-10-28T21:37:16Z", "task": "TASK-4", "reqs": ["REQ-002"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/auth/gate.test.ts'", "tests": ["src/lib/auth/gate.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-28T21:38:38Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
