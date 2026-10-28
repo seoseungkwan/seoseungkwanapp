@@ -1,0 +1,8 @@
+{
+  "repos": ["seoseungkwan/seoseungkwanapp", "seoseungkwan/claude-harness"],
+  "gate": "major",
+  "max_rounds": 3,
+  "base": "main",
+  "timeout": 1200,
+  "context_files": ["CLAUDE.md"]
+}

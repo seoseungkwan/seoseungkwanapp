@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# phase execution outputs
+phases/**/phase*-output.json
+phases/**/step*-output.json
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# test, coverage and deploy outputs (E2E 결과에는 세션 쿠키가 남을 수 있다)
+test-results/
+playwright-report/
+coverage/
+.vercel/
