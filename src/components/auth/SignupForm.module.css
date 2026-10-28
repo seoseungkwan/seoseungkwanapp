@@ -1,0 +1,259 @@
+/* 가입 신청 본문 — 목업 docs/mockups/auth/Signup.dc.html. 색·글꼴은 globals.css 변수만 */
+
+/* 본문 한 줄(최대 560px) 가운데. 위 56px · 아래 80px */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: calc(560px + var(--gutter) * 2);
+  margin: 0 auto;
+  padding: 56px var(--gutter) 80px;
+  box-sizing: border-box;
+}
+
+/* 가입 단계 칩: 끝남(청록) · 지금(코랄) · 다음(흰 바탕 + 테두리) */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.stepDone {
+  background: var(--teal-soft);
+  color: var(--teal-text);
+}
+
+.stepCurrent {
+  background: var(--coral-soft);
+  color: var(--coral-text);
+}
+
+.stepNext {
+  border: 1px solid var(--border-card);
+  background: var(--bg-page);
+  color: var(--text-muted);
+}
+
+.stepNum {
+  font-family: var(--font-num), system-ui, sans-serif;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.lead {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-body);
+}
+
+/* 폼 카드 */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 32px;
+  border: 1px solid var(--border-card);
+  border-radius: 20px;
+  background: var(--bg-page);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--text-strong) 5%, transparent);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.required {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--coral-text);
+}
+
+.optional {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* 구글 계정(읽기 전용): 자물쇠 + 연한 배경 */
+.readonlyBox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--text-strong) 10%, transparent);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  color: var(--text-muted);
+}
+
+/* 안의 칸은 테두리가 없어 상자에 초점 표시를 단다 */
+.readonlyBox:focus-within {
+  outline: 3px solid var(--teal-fill);
+  outline-offset: 1px;
+}
+
+.lock {
+  flex: none;
+}
+
+.readonlyInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-body);
+  outline: none;
+}
+
+/* 입력 칸(docs/UI_GUIDE.md 입력 필드) */
+.input {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--text-strong) 15%, transparent);
+  border-radius: 12px;
+  background: var(--bg-page);
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-strong);
+  box-sizing: border-box;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--coral-text);
+}
+
+.help {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 틀린 칸 아래 문구. '필수' 표시와 같은 코랄 */
+.error {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--coral-text);
+}
+
+/* 동의 */
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-soft);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-body);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.checkbox {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--teal-text);
+}
+
+.requiredInline {
+  font-weight: 600;
+  color: var(--coral-text);
+}
+
+/* Primary 단추(docs/UI_GUIDE.md): 남색 배경·흰 글자·radius 999px */
+.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--text-strong);
+  color: var(--bg-page);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.primary:focus-visible {
+  outline: 3px solid var(--teal-fill);
+  outline-offset: 2px;
+}
+
+/* [다른 계정으로 로그인]: 글자 링크 모양의 단추(로그아웃 → /login). 클릭 영역 44px */
+.otherAccount {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-body);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.otherAccount:focus-visible {
+  outline: 3px solid var(--teal-fill);
+  outline-offset: 2px;
+}
