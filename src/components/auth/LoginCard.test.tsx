@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ui } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { LoginCard } from './LoginCard'
 
@@ -24,7 +23,14 @@ const loginSection = () => screen.getByRole('region', { name: '로그인' })
 // a가 문서에서 b보다 앞에 있다
 const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 
-const css = (path: string) => readFileSync(join(process.cwd(), path), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
+const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
+// 요소가 그 묶음(ui.*)의 클래스를 모두 가진다
+const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
+const ARBITRARY_COLOR = /\[#|rgba?\(|hsla?\(|color-mix\(/
+const noArbitraryColor = () => {
+  for (const el of document.querySelectorAll('[class]')) expect(el.getAttribute('class') ?? '').not.toMatch(ARBITRARY_COLOR)
+}
 
 beforeEach(() => {
   signInWithOAuth.mockReset()
@@ -71,35 +77,43 @@ describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
     expect(button.querySelector('svg')?.closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
-  it('AC-003.1: 색·글꼴은 globals.css 변수만 쓴다(목업 색: 남색 단추·연한 배경·청록 안내·칩 4색)', () => {
-    const card = css('src/components/auth/LoginCard.module.css')
-    for (const v of [
-      '--text-strong',
-      '--text-body',
-      '--text-muted',
-      '--teal-soft',
-      '--teal-text',
-      '--violet-soft',
-      '--violet-text',
-      '--amber-soft',
-      '--amber-text',
-      '--pink-soft',
-      '--pink-text',
-      '--border-card',
-      '--font-num',
-    ]) {
-      expect(card, v).toContain(`var(${v})`)
+  it('AC-003.1·AC-013.2·AC-013.3: 모양 — [구글로 시작하기]는 주 단추 전체 폭, 기능 칩 4개는 범주(중립) 칩, 카드는 ui.card, 임의 색 없음', () => {
+    render(<LoginCard failed={false} />)
+    const button = googleButton()
+    hasAll(button, ui.button.primary)
+    expect(classesOf(button)).toContain('w-full')
+    for (const label of ['환자 통계', 'AI 리포트', '급여·인센티브', '일일마감·보고']) {
+      const chip = screen.getByText(label)
+      hasAll(chip, ui.chip.neutral)
+      // 색 칩(완료·진행중·거절 바탕, 강조색)이 아니다
+      expect(classesOf(chip).filter((c) => c.endsWith('-soft') || c.includes('accent')), label).toEqual([])
     }
-    const frame = css('src/components/auth/AuthFrame.module.css')
-    expect(frame).toContain('var(--bg-soft)')
-    expect(frame).toContain('var(--border-card)')
-    for (const [name, text] of [
-      ['LoginCard', card],
-      ['AuthFrame', frame],
-    ]) {
-      expect(text, name).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
-      expect(text, name).not.toMatch(/rgba?\(/)
-    }
+    const card = loginSection().firstElementChild as HTMLElement
+    hasAll(card, ui.card)
+    expect(card.contains(button)).toBe(true)
+    expect(card.contains(screen.getByText(PRIVACY))).toBe(true)
+    noArbitraryColor()
+  })
+
+  it('AC-003.1·AC-013.3: 글자 — SIGN IN은 caption 600 muted, 제목 title 600, 설명 body ink-2, 개인정보 안내는 위 1px 선 + muted 방패 + table ink-2', () => {
+    render(<LoginCard failed={false} />)
+    expect(classesOf(screen.getByText('SIGN IN'))).toEqual(expect.arrayContaining(['text-caption', 'font-semibold', 'text-muted']))
+    expect(classesOf(screen.getByRole('heading', { level: 1 }))).toEqual(expect.arrayContaining(['text-title', 'font-semibold']))
+    expect(classesOf(screen.getByRole('heading', { level: 2, name: '로그인' }))).toEqual(
+      expect.arrayContaining(['text-title-sm', 'font-semibold']),
+    )
+    expect(
+      classesOf(screen.getByText('로그인하면 우리 의원의 오늘 숫자, AI 리포트, 급여와 보고를 한 곳에서 이어서 봅니다.')),
+    ).toEqual(expect.arrayContaining(['text-body', 'text-ink-2']))
+    const privacy = screen.getByText(PRIVACY)
+    expect(classesOf(privacy)).toEqual(expect.arrayContaining(['text-table', 'text-ink-2']))
+    const box = privacy.closest('.border-t') as HTMLElement
+    expect(box).not.toBeNull()
+    expect(classesOf(box)).toContain('border-line')
+    expect(classesOf(box.querySelector('svg') as Element)).toContain('text-muted')
+    expect(classesOf(screen.getByText('처음 가입하면 관리자가 승인한 뒤부터 쓸 수 있습니다.'))).toEqual(
+      expect.arrayContaining(['text-caption', 'text-muted']),
+    )
   })
 })
 
@@ -255,6 +269,18 @@ describe('LoginCard: 앱 안 브라우저(카카오톡·네이버·인스타그�
     expect(await screen.findByText('복사하지 못했어요. 위 주소를 길게 눌러 복사해 주세요.')).toBeTruthy()
     expect(screen.queryByText('복사했어요.')).toBeNull()
     expect(document.body.textContent).not.toContain('denied')
+  })
+
+  it('AC-003.2·AC-013.3: 앱 안 안내는 canvas 상자(1px 선·6px) + 읽기 전용 주소 칸(전체 선택) + [주소 복사] 보조 단추', () => {
+    render(<LoginCard failed={false} />)
+    const address = screen.getByText(`${window.location.origin}/login`)
+    hasAll(address, ui.readonly)
+    expect(classesOf(address)).toContain('select-all')
+    hasAll(screen.getByRole('button', { name: '주소 복사' }), ui.button.secondary)
+    const box = address.parentElement as HTMLElement
+    expect(classesOf(box)).toEqual(expect.arrayContaining(['bg-canvas', 'border', 'border-line', 'rounded-card']))
+    expect(box.contains(screen.getByText(IN_APP_TITLE))).toBe(true)
+    noArbitraryColor()
   })
 
   it('AC-003.2: 앱 안 브라우저에서도 /login?error=1 카드는 보인다', () => {

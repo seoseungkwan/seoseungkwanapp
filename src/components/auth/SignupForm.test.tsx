@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ui } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { SignupForm } from './SignupForm'
 
@@ -58,7 +57,15 @@ const errorOf = (el: HTMLElement) => {
   return node ?? null
 }
 
-const css = (path: string) => readFileSync(join(process.cwd(), path), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
+const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
+// 요소가 그 묶음(ui.*)의 클래스를 모두 가진다
+const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
+const noArbitraryColor = () => {
+  for (const el of document.querySelectorAll('[class]')) {
+    expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
+  }
+}
 
 async function fillValid(user: ReturnType<typeof userEvent.setup>, phone = '010-1234-5678') {
   await user.type(nameInput(), '  가나 정형외과의원 ')
@@ -165,25 +172,39 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     for (const message of Object.values(MESSAGES)) expect(screen.queryByText(message)).toBeNull()
   })
 
-  it('AC-004.2: 색·글꼴은 globals.css 변수만 쓴다(목업 색: 청록 끝난 단계·코랄 지금 단계·남색 단추·연한 배경)', () => {
-    const text = css('src/components/auth/SignupForm.module.css')
-    for (const v of [
-      '--teal-soft',
-      '--teal-text',
-      '--coral-soft',
-      '--coral-text',
-      '--text-strong',
-      '--text-body',
-      '--text-muted',
-      '--bg-soft',
-      '--bg-page',
-      '--border-card',
-      '--font-num',
-    ]) {
-      expect(text, v).toContain(`var(${v})`)
+  it('AC-004.2·AC-013.3: 단계 표시 색 — 끝난 단계 ok 체크 + ink-2, 지금 단계 ink 600, 다음 단계 muted', () => {
+    render(<SignupForm email={EMAIL} />)
+    const [done, current, next] = within(screen.getByRole('list', { name: '가입 단계' })).getAllByRole('listitem')
+    expect(classesOf(done)).toContain('text-ink-2')
+    expect(classesOf(done.querySelector('svg') as Element)).toContain('text-ok')
+    expect(classesOf(current)).toEqual(expect.arrayContaining(['text-ink', 'font-semibold']))
+    expect(classesOf(next)).toContain('text-muted')
+    expect(classesOf(screen.getByRole('list', { name: '가입 단계' }))).toContain('list-none')
+  })
+
+  it('AC-004.2·AC-013.2·AC-013.3: 모양 — 카드 ui.card, 입력란 ui.input, 구글 계정 읽기 전용 칸, 체크 상자 ui.checkbox, [가입 신청] 주 단추 전체 폭, [다른 계정으로 로그인] 글자 단추, 임의 색 없음', () => {
+    render(<SignupForm email={EMAIL} />)
+    hasAll(form(), ui.card)
+    for (const el of [nameInput(), applicantInput(), phoneInput()]) hasAll(el, ui.input)
+    hasAll(emailInput().parentElement as HTMLElement, ui.readonly)
+    expect(emailInput().parentElement?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true') // 자물쇠
+    hasAll(consent(), ui.checkbox)
+    // 흰 체크 그림은 체크 상자 바로 뒤(peer-checked로 보인다), 읽지 않는다
+    const mark = consent().nextElementSibling as Element
+    hasAll(mark, ui.checkboxMark)
+    expect(mark.getAttribute('aria-hidden')).toBe('true')
+    hasAll(submit(), ui.button.primary)
+    expect(classesOf(submit())).toContain('w-full')
+    hasAll(otherAccount(), ui.textButton)
+    for (const text of ['구글 계정', '병원 이름 필수', '신청자 이름 필수', '연락처 선택']) {
+      const label = [...document.querySelectorAll('label')].find((l) => l.textContent === text) as HTMLElement
+      hasAll(label, ui.label)
     }
-    expect(text).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
-    expect(text).not.toMatch(/rgba?\(/)
+    // 필수·선택 표시는 caption muted
+    for (const tag of screen.getAllByText(/^(필수|선택)$/)) {
+      expect(classesOf(tag)).toEqual(expect.arrayContaining(['text-caption', 'text-muted']))
+    }
+    noArbitraryColor()
   })
 })
 
@@ -213,6 +234,19 @@ describe('SignupForm: 값 검사', () => {
     expect(router.replace).not.toHaveBeenCalled()
     expect(screen.queryByRole('alert')).toBeNull() // 저장 실패 카드가 아니다
     expect(document.activeElement).toBe(nameInput()) // 첫 틀린 칸으로
+  })
+
+  it('AC-004.1·AC-013.3: 틀린 칸은 aria-invalid(테두리 danger)이고 칸 아래 문구는 ui.fieldError', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await user.click(submit())
+    for (const el of [nameInput(), applicantInput(), consent()]) {
+      expect(el.getAttribute('aria-invalid')).toBe('true')
+      hasAll(errorOf(el) as HTMLElement, ui.fieldError)
+    }
+    expect(tokens(ui.input)).toContain('aria-invalid:border-danger')
+    expect(tokens(ui.checkbox)).toContain('aria-invalid:border-danger')
+    noArbitraryColor()
   })
 
   it('AC-004.1: 연락처만 틀리면 연락처 아래에만 문구', async () => {

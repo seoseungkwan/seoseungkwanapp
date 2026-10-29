@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ui } from '@/components/ui/classes'
 import { HeaderSignOut, PendingCard, type PendingHospital } from './PendingCard'
 
 // 실제 Supabase·Next 라우터에 붙지 않는다. [상태 다시 확인] → router.refresh(), 로그아웃 → signOut() 뒤 /login만 본다
@@ -49,7 +48,20 @@ const valueOf = (label: string) => rowsOf(summary()).find(([name]) => name === l
 const refresh = () => screen.getByRole<HTMLButtonElement>('button', { name: '상태 다시 확인' })
 // a가 문서에서 b보다 앞에 있다
 const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-const css = (path: string) => readFileSync(join(process.cwd(), path), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
+const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
+// 요소가 그 묶음(ui.*)의 클래스를 모두 가진다
+const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
+const noArbitraryColor = () => {
+  for (const el of document.querySelectorAll('[class]')) {
+    expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
+  }
+}
+// 제목 옆 상태 그림(제목 묶음 바로 앞의 svg)
+const stateIcon = () => {
+  const head = screen.getByRole('heading', { level: 1 }).parentElement?.parentElement as HTMLElement
+  return head.querySelector(':scope > svg') as SVGElement
+}
 
 // jsdom의 location.assign은 바꿔 끼울 수 없다 → location을 통째로 가짜로
 const assign = vi.fn()
@@ -244,25 +256,54 @@ describe('HeaderSignOut: 머리띠 [로그아웃](목업 Pending·Rejected)', ()
 })
 
 describe('PendingCard: 모양', () => {
-  it('AC-005.1·AC-005.3: 색·글꼴은 globals.css 변수만 쓴다(목업 색: 청록 끝난 단계·파랑 지금 단계와 대기 그림·주황 거절 그림·흰 카드)', () => {
-    const text = css('src/components/auth/PendingCard.module.css')
-    for (const v of [
-      '--teal-soft',
-      '--teal-text',
-      '--blue-soft',
-      '--blue-text',
-      '--warn-soft',
-      '--warn-text',
-      '--text-strong',
-      '--text-body',
-      '--text-muted',
-      '--bg-page',
-      '--border-card',
-      '--font-num',
-    ]) {
-      expect(text, v).toContain(`var(${v})`)
+  it('AC-005.1·AC-013.3: 단계 표시 색 — 끝난 단계 ok 체크 + ink-2, 지금 단계(03) ink 600', () => {
+    render(<PendingCard hospital={PENDING} />)
+    const [login, signup, approval] = within(screen.getByRole('list', { name: '가입 단계' })).getAllByRole('listitem')
+    for (const done of [login, signup]) {
+      expect(classesOf(done)).toContain('text-ink-2')
+      expect(classesOf(done.querySelector('svg') as Element)).toContain('text-ok')
     }
-    expect(text).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
-    expect(text).not.toMatch(/rgba?\(/)
+    expect(classesOf(approval)).toEqual(expect.arrayContaining(['text-ink', 'font-semibold']))
+  })
+
+  it('AC-005.1·AC-013.2·AC-013.3: 대기 — 20px 선 아이콘 ink-2(색 원 바탕 없음), 신청 내용 카드 ui.card, [상태 다시 확인] 주 단추, 본문 [로그아웃] 글자 단추, 임의 색 없음', () => {
+    render(<PendingCard hospital={PENDING} />)
+    const icon = stateIcon()
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+    expect(icon.getAttribute('width')).toBe('20')
+    expect(classesOf(icon)).toContain('text-ink-2')
+    expect(classesOf(icon).filter((c) => c.startsWith('bg-'))).toEqual([])
+    hasAll(summary(), ui.card)
+    hasAll(refresh(), ui.button.primary)
+    hasAll(screen.getByRole('button', { name: '로그아웃' }), ui.textButton)
+    noArbitraryColor()
+  })
+
+  it('AC-005.3·AC-013.2·AC-013.3: 거절 — 20px 선 아이콘 danger, 신청 내용 카드 ui.card, [다른 계정으로 로그인] 보조 단추, 임의 색 없음', () => {
+    render(<PendingCard hospital={REJECTED} />)
+    const icon = stateIcon()
+    expect(icon.getAttribute('width')).toBe('20')
+    expect(classesOf(icon)).toContain('text-danger')
+    expect(classesOf(icon).filter((c) => c.startsWith('bg-'))).toEqual([])
+    hasAll(summary(), ui.card)
+    hasAll(screen.getByRole('button', { name: '다른 계정으로 로그인' }), ui.button.secondary)
+    hasAll(screen.getByRole('button', { name: '로그아웃' }), ui.textButton)
+    noArbitraryColor()
+  })
+
+  it('AC-005.1·AC-013.3: 신청 내용은 기록 목록 — 칸 이름 96px table muted, 값 table ink, 줄마다 1px 선', () => {
+    render(<PendingCard hospital={PENDING} />)
+    const list = summary().querySelector('dl') as HTMLElement
+    expect(classesOf(list)).toContain('text-table')
+    for (const dt of list.querySelectorAll('dt')) {
+      expect(classesOf(dt)).toEqual(expect.arrayContaining(['w-24', 'text-muted']))
+      expect(classesOf(dt.nextElementSibling as Element)).toContain('text-ink')
+      expect(classesOf(dt.parentElement as Element)).toEqual(expect.arrayContaining(['border-t', 'border-line']))
+    }
+  })
+
+  it('AC-005.1·AC-005.3·AC-013.3: 머리띠 [로그아웃]은 글자 단추', () => {
+    render(<HeaderSignOut />)
+    hasAll(screen.getByRole('button', { name: '로그아웃' }), ui.textButton)
   })
 })

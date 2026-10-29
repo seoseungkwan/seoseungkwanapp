@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthFrame } from '@/components/auth/AuthFrame'
-import frameStyles from '@/components/auth/AuthFrame.module.css'
 import { errorInfo } from '@/lib/errors'
 import LoginPage from './page'
 
@@ -70,26 +67,44 @@ describe('/login 화면', () => {
 // 승인 대기·거절 화면(목업 Pending·Rejected)은 머리띠 오른쪽 끝에 [로그아웃]을 둔다 → 틀이 그 자리를 마련한다
 describe('AuthFrame 머리띠 오른쪽 끝 자리(headerEnd)', () => {
   const headerInner = () => screen.getByRole('banner').firstElementChild as HTMLElement
+  const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 
   it('AC-003.6: headerEnd가 없으면 머리띠에 로고·[서비스 이름]만 있다(빈 자리도 그리지 않는다)', () => {
     render(<AuthFrame>본문</AuthFrame>)
     expect([...headerInner().children].map((el) => el.tagName.toLowerCase())).toEqual(['svg', 'span'])
-    expect(document.querySelector(`.${frameStyles.headerEnd}`)).toBeNull()
+    expect(screen.getByRole('banner').querySelector('.ml-auto')).toBeNull()
   })
 
-  it('AC-003.6: headerEnd를 주면 머리띠 맨 끝(로고 뒤, margin-left: auto로 오른쪽 끝)에 그린다', () => {
+  it('AC-003.6: headerEnd를 주면 머리띠 맨 끝(로고 뒤, ml-auto 슬롯으로 오른쪽 끝)에 그린다', () => {
     render(<AuthFrame headerEnd={<button type="button">로그아웃</button>}>본문</AuthFrame>)
     const banner = screen.getByRole('banner')
     const button = within(banner).getByRole('button', { name: '로그아웃' })
     const slot = button.parentElement as HTMLElement
-    expect(slot.className).toBe(frameStyles.headerEnd)
+    expect(classesOf(slot)).toContain('ml-auto')
     expect(headerInner().lastElementChild).toBe(slot)
     expect(headerInner().children).toHaveLength(3)
     expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull()
-    const css = readFileSync(join(process.cwd(), 'src/components/auth/AuthFrame.module.css'), 'utf8').replace(
-      /\/\*[\s\S]*?\*\//g,
-      '',
+  })
+
+  it('AC-003.6: 로그인 화면 머리띠에는 오른쪽 끝 자리가 없다', async () => {
+    await pageWith({})
+    expect(screen.getByRole('banner').querySelector('.ml-auto')).toBeNull()
+    expect(headerInner().children).toHaveLength(2)
+  })
+
+  it('AC-013.2·AC-013.3: 틀 모양 — .app-ui 뿌리·canvas 바탕, 흰 띠 64px(폰 48px)·아래 1px 선, 본문 위 64px(폰 24px)·좌우 24px(폰 16px), 임의 색 없음', () => {
+    render(<AuthFrame>본문</AuthFrame>)
+    const banner = screen.getByRole('banner')
+    const root = banner.parentElement as HTMLElement
+    expect(classesOf(root)).toEqual(expect.arrayContaining(['app-ui', 'bg-canvas', 'min-h-dvh']))
+    expect(classesOf(banner)).toEqual(expect.arrayContaining(['bg-surface', 'border-b', 'border-line']))
+    expect(classesOf(headerInner())).toEqual(expect.arrayContaining(['h-16', 'px-6', 'max-md:h-12', 'max-md:px-4']))
+    expect(classesOf(screen.getByRole('main'))).toEqual(expect.arrayContaining(['pt-16', 'px-6', 'max-md:pt-6', 'max-md:px-4']))
+    expect(classesOf(headerInner().querySelector('span') as Element)).toEqual(
+      expect.arrayContaining(['text-logo', 'font-semibold', 'text-ink']),
     )
-    expect(css.match(/\.headerEnd\s*\{([^}]*)\}/)?.[1] ?? '').toMatch(/margin-left:\s*auto/)
+    for (const el of document.querySelectorAll('[class]')) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
+    }
   })
 })

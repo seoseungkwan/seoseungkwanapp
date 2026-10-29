@@ -3,10 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { useRef, useState, type FormEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { ui } from '@/components/ui/classes'
 import { submitSignup } from '@/lib/auth/hospital'
 import { validateSignup, type SignupErrors, type SignupInput } from '@/lib/auth/signup'
 import { SignOutButton } from './SignOutButton'
-import styles from './SignupForm.module.css'
 
 // 칸 id(목업과 같은 이름). 틀린 칸 문구는 `${id}-error`로 칸에 이어 둔다(aria-describedby)
 const IDS: Record<keyof SignupInput, string> = {
@@ -19,10 +19,17 @@ const IDS: Record<keyof SignupInput, string> = {
 const ORDER: (keyof SignupInput)[] = ['name', 'applicantName', 'phone', 'agreed']
 const EMPTY: SignupInput = { name: '', applicantName: '', phone: '', agreed: false }
 
+// 단계 하나: 앞 단계와 1px 선(before)으로 잇는다. 첫 단계는 선 없음
+const STEP = 'flex items-center gap-1.5 before:h-px before:w-6 before:bg-line first:before:hidden'
+// 칸 이름 + 필수·선택 표시(caption muted)
+const LABEL = `${ui.label} flex items-center gap-1.5`
+const MARK = 'text-caption text-muted'
+
 // 칸이 가리킬 설명 id들(틀린 문구 먼저, 그다음 안내). 없으면 속성을 달지 않는다
 const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(' ') || undefined
 
-// 가입 신청 본문(목업 docs/mockups/auth/Signup.dc.html): 단계 칩 · 제목 · 폼 카드 · [다른 계정으로 로그인].
+// 가입 신청 본문(목업 docs/mockups/auth/Signup.dc.html): 단계 표시 · 제목 · 폼 카드 · [다른 계정으로 로그인].
+// 모양은 UI_GUIDE '앱 화면'의 공통 모양(ui.*): 카드·입력란·읽기 전용 칸·체크 상자·주 단추·글자 단추
 // 이메일은 로그인한 구글 계정(서버 guard의 Me) — 보이기만 하고 보내지 않는다(DB가 토큰에서 넣는다)
 export function SignupForm({ email }: { email: string }) {
   const router = useRouter()
@@ -66,18 +73,20 @@ export function SignupForm({ email }: { email: string }) {
   const errorId = (key: keyof SignupInput) => errors[key] !== undefined && `${IDS[key]}-error`
   const fieldError = (key: keyof SignupInput) =>
     errors[key] !== undefined && (
-      <p id={`${IDS[key]}-error`} className={styles.error}>
+      <p id={`${IDS[key]}-error`} className={ui.fieldError}>
         {errors[key]}
       </p>
     )
   const invalid = (key: keyof SignupInput) => (errors[key] !== undefined ? true : undefined)
 
   return (
-    <div className={styles.page}>
-      <ol aria-label="가입 단계" className={styles.steps}>
-        <li className={`${styles.step} ${styles.stepDone}`}>
+    <div className="flex w-full max-w-140 flex-col gap-6">
+      {/* 단계 표시: 끝난 단계 ok 체크 + ink-2 · 지금 단계 ink 600 · 다음 단계 muted, 사이 1px 선 */}
+      <ol aria-label="가입 단계" className="flex list-none flex-wrap items-center gap-2 text-table">
+        <li className={`${STEP} text-ink-2`}>
           <svg
             aria-hidden="true"
+            className="shrink-0 text-ok"
             width="16"
             height="16"
             viewBox="0 0 24 24"
@@ -91,30 +100,30 @@ export function SignupForm({ email }: { email: string }) {
           </svg>
           구글 로그인
         </li>
-        <li aria-current="step" className={`${styles.step} ${styles.stepCurrent}`}>
-          <span className={styles.stepNum}>02</span>가입 신청
+        <li aria-current="step" className={`${STEP} font-semibold text-ink`}>
+          <span>02</span>가입 신청
         </li>
-        <li className={`${styles.step} ${styles.stepNext}`}>
-          <span className={styles.stepNum}>03</span>관리자 승인
+        <li className={`${STEP} text-muted`}>
+          <span>03</span>관리자 승인
         </li>
       </ol>
 
-      <div className={styles.head}>
-        <h1 className={styles.title}>가입 신청</h1>
-        <p className={styles.lead}>처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인합니다.</p>
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-title font-semibold text-ink max-md:text-title-sm">가입 신청</h1>
+        <p className="text-body text-ink-2">처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인합니다.</p>
       </div>
 
-      <form className={styles.form} noValidate onSubmit={(event) => void onSubmit(event)}>
-        <div className={styles.field}>
-          <label htmlFor="su-email" className={styles.label}>
+      <form className={`${ui.card} flex flex-col gap-5`} noValidate onSubmit={(event) => void onSubmit(event)}>
+        <div className={ui.field}>
+          <label htmlFor="su-email" className={ui.label}>
             구글 계정
           </label>
-          <div className={styles.readonlyBox}>
+          <div className={ui.readonly}>
             <svg
               aria-hidden="true"
-              className={styles.lock}
-              width="18"
-              height="18"
+              className="shrink-0 text-muted"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -131,17 +140,17 @@ export function SignupForm({ email }: { email: string }) {
               value={email}
               readOnly
               aria-describedby="su-email-help"
-              className={styles.readonlyInput}
+              className="min-w-0 flex-1 bg-transparent text-ink-2 outline-hidden"
             />
           </div>
-          <p id="su-email-help" className={styles.help}>
+          <p id="su-email-help" className={ui.help}>
             로그인한 계정이라 바꿀 수 없습니다.
           </p>
         </div>
 
-        <div className={styles.field}>
-          <label htmlFor={IDS.name} className={styles.label}>
-            병원 이름 <span className={styles.required}>필수</span>
+        <div className={ui.field}>
+          <label htmlFor={IDS.name} className={LABEL}>
+            병원 이름 <span className={MARK}>필수</span>
           </label>
           <input
             id={IDS.name}
@@ -153,14 +162,14 @@ export function SignupForm({ email }: { email: string }) {
             onChange={(event) => set('name', event.target.value)}
             aria-invalid={invalid('name')}
             aria-describedby={describedBy(errorId('name'))}
-            className={styles.input}
+            className={ui.input}
           />
           {fieldError('name')}
         </div>
 
-        <div className={styles.field}>
-          <label htmlFor={IDS.applicantName} className={styles.label}>
-            신청자 이름 <span className={styles.required}>필수</span>
+        <div className={ui.field}>
+          <label htmlFor={IDS.applicantName} className={LABEL}>
+            신청자 이름 <span className={MARK}>필수</span>
           </label>
           <input
             id={IDS.applicantName}
@@ -172,14 +181,14 @@ export function SignupForm({ email }: { email: string }) {
             onChange={(event) => set('applicantName', event.target.value)}
             aria-invalid={invalid('applicantName')}
             aria-describedby={describedBy(errorId('applicantName'))}
-            className={styles.input}
+            className={ui.input}
           />
           {fieldError('applicantName')}
         </div>
 
-        <div className={styles.field}>
-          <label htmlFor={IDS.phone} className={styles.label}>
-            연락처 <span className={styles.optional}>선택</span>
+        <div className={ui.field}>
+          <label htmlFor={IDS.phone} className={LABEL}>
+            연락처 <span className={MARK}>선택</span>
           </label>
           <input
             id={IDS.phone}
@@ -190,29 +199,43 @@ export function SignupForm({ email }: { email: string }) {
             onChange={(event) => set('phone', event.target.value)}
             aria-invalid={invalid('phone')}
             aria-describedby={describedBy(errorId('phone'), 'su-phone-help')}
-            className={styles.input}
+            className={ui.input}
           />
           {fieldError('phone')}
-          <p id="su-phone-help" className={styles.help}>
+          <p id="su-phone-help" className={ui.help}>
             승인 관련해 연락이 필요할 때만 씁니다.
           </p>
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.consent}>
-            <input
-              id={IDS.agreed}
-              type="checkbox"
-              required
-              checked={values.agreed}
-              onChange={(event) => set('agreed', event.target.checked)}
-              aria-invalid={invalid('agreed')}
-              aria-describedby={describedBy(errorId('agreed'))}
-              className={styles.checkbox}
-            />
+        <div className={ui.field}>
+          <label className="flex cursor-pointer items-start gap-2.5 text-body text-ink-2 max-md:min-h-11">
+            <span className={`${ui.checkboxWrap} mt-0.75`}>
+              <input
+                id={IDS.agreed}
+                type="checkbox"
+                required
+                checked={values.agreed}
+                onChange={(event) => set('agreed', event.target.checked)}
+                aria-invalid={invalid('agreed')}
+                aria-describedby={describedBy(errorId('agreed'))}
+                className={ui.checkbox}
+              />
+              <svg
+                aria-hidden="true"
+                className={ui.checkboxMark}
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3.5 8.5l3 3 6-7" />
+              </svg>
+            </span>
             <span>
               가입 확인을 위해 이메일·이름·연락처를 저장하는 데 동의합니다.{' '}
-              <span className={styles.requiredInline}>필수</span>
+              <span className={MARK}>필수</span>
             </span>
           </label>
           {fieldError('agreed')}
@@ -220,12 +243,12 @@ export function SignupForm({ email }: { email: string }) {
 
         {failed && <ErrorCard code="E-SIGNUP-FAILED" />}
 
-        <button type="submit" className={styles.primary} disabled={busy}>
+        <button type="submit" className={`${ui.button.primary} w-full`} disabled={busy}>
           가입 신청
         </button>
       </form>
 
-      <SignOutButton className={styles.otherAccount}>다른 계정으로 로그인</SignOutButton>
+      <SignOutButton className={`${ui.textButton} self-center`}>다른 계정으로 로그인</SignOutButton>
     </div>
   )
 }

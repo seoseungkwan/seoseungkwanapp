@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { createElement, type ComponentType } from 'react'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import styles from '@/components/common/ErrorCard.module.css'
+import { ui } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import PageError from './error'
 
@@ -20,6 +18,8 @@ const leak = Object.assign(new Error('relation "public.hospitals" does not exist
   digest: '4213370001',
 })
 const reset = vi.fn()
+const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
+const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
 const page = () => render(createElement(PageError as ComponentType<NextErrorProps>, { error: leak, reset }))
 
 // jsdom의 location.reload·assign은 바꿔 끼울 수 없다 → location을 통째로 가짜로
@@ -113,34 +113,34 @@ describe('app/error.tsx: [로그아웃] (오류가 이어져도 화면에 갇히
     expect(document.body.textContent).not.toContain('network')
   })
 
-  it('AC-003.7: [다시 시도]는 Primary, [로그아웃]은 Secondary 단추 모양(목업 A)', () => {
+  it('AC-003.7·AC-013.3: [다시 시도]는 주 단추(ui.button.primary), [로그아웃]은 보조 단추(ui.button.secondary)', () => {
     page()
-    expect(screen.getByRole('button', { name: '다시 시도' }).className).toBe(styles.primary)
-    expect(screen.getByRole('button', { name: '로그아웃' }).className).toBe(styles.secondary)
+    expect(classesOf(screen.getByRole('button', { name: '다시 시도' }))).toEqual(
+      expect.arrayContaining(tokens(ui.button.primary)),
+    )
+    expect(classesOf(screen.getByRole('button', { name: '로그아웃' }))).toEqual(
+      expect.arrayContaining(tokens(ui.button.secondary)),
+    )
   })
 
-  it('AC-003.7: 두 단추는 한 줄에 나란히(좁으면 아래로), Secondary는 흰 바탕·남색 글자·옅은 테두리(globals.css 변수만)', () => {
-    const css = readFileSync(join(process.cwd(), 'src/components/common/ErrorCard.module.css'), 'utf8').replace(
-      /\/\*[\s\S]*?\*\//g,
-      '',
-    )
-    const rule = (name: string) => css.match(new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`))?.[1] ?? ''
-    const actions = rule('actions')
-    expect(actions).toMatch(/display:\s*flex/)
-    expect(actions).toMatch(/flex-wrap:\s*wrap/)
-    expect(actions).toMatch(/gap:\s*12px/)
-    for (const name of ['primary', 'secondary']) {
-      const r = rule(name)
-      expect(r, name).toMatch(/flex:\s*1 1 160px/)
-      expect(r, name).toMatch(/min-height:\s*52px/)
-      expect(r, name).toMatch(/border-radius:\s*999px/)
-      expect(r, name).toMatch(/font-size:\s*15px/)
-      expect(r, name).toMatch(/font-weight:\s*700/)
+  it('AC-003.7·AC-013.2: 두 단추는 한 줄에 나란히(flex·flex-wrap·gap-2, 좁으면 아래로), 단추마다 flex-[1_1_160px], 임의 색 없음', () => {
+    page()
+    const retry = screen.getByRole('button', { name: '다시 시도' })
+    const row = retry.parentElement as HTMLElement
+    expect(classesOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-2']))
+    for (const name of ['다시 시도', '로그아웃']) {
+      expect(classesOf(screen.getByRole('button', { name })), name).toContain('flex-[1_1_160px]')
     }
-    expect(rule('primary')).toMatch(/background:\s*var\(--text-strong\)/)
-    const secondary = rule('secondary')
-    expect(secondary).toMatch(/background:\s*var\(--bg-page\)/)
-    expect(secondary).toMatch(/color:\s*var\(--text-strong\)/)
-    expect(secondary).toMatch(/border:\s*1px solid color-mix\(in srgb, var\(--text-strong\) 15%, transparent\)/)
+    for (const el of document.querySelectorAll('[class]')) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
+    }
+  })
+
+  it('AC-013.2: 화면 뿌리는 앱 초기화 범위(.app-ui), 가운데 한 칸은 최대 400px', () => {
+    page()
+    const main = screen.getByRole('main')
+    expect(classesOf(main)).toContain('app-ui')
+    const column = screen.getByRole('alert').parentElement as HTMLElement
+    expect(classesOf(column)).toEqual(expect.arrayContaining(['max-w-100', 'w-full']))
   })
 })

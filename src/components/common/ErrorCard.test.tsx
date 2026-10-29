@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { errorInfo } from '@/lib/errors'
@@ -60,15 +58,21 @@ describe('ErrorCard', () => {
     expect(svg?.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('AC-012.2: 카드 색·글꼴은 globals.css 변수(주의 색·숫자 글꼴)만 쓴다', () => {
-    const css = readFileSync(join(process.cwd(), 'src/components/common/ErrorCard.module.css'), 'utf8').replace(
-      /\/\*[\s\S]*?\*\//g,
-      '',
+  it('AC-012.2·AC-013.2·AC-013.3: 오류 카드 모양 — danger-soft 바탕·6px 모서리, 무엇이 danger 600, 어떻게 ink-2, 오류 번호 caption muted, 임의 색 없음', () => {
+    render(<ErrorCard code="E-SIGNUP-FAILED" />)
+    const card = screen.getByRole('alert')
+    const info = errorInfo('E-SIGNUP-FAILED')
+    const classes = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
+    expect(classes(card)).toEqual(expect.arrayContaining(['bg-danger-soft', 'rounded-card']))
+    expect(classes(card).some((c) => c.startsWith('shadow'))).toBe(false)
+    expect(classes(within(card).getByText(info.what))).toEqual(expect.arrayContaining(['text-danger', 'font-semibold', 'text-body']))
+    expect(classes(within(card).getByText(info.fix))).toEqual(expect.arrayContaining(['text-ink-2', 'text-table']))
+    expect(classes(within(card).getByText('오류 번호 E-SIGNUP-FAILED'))).toEqual(
+      expect.arrayContaining(['text-muted', 'text-caption']),
     )
-    expect(css).toContain('var(--warn-soft)')
-    expect(css).toContain('var(--warn-text)')
-    expect(css).toContain('var(--text-body)')
-    expect(css).toContain('var(--font-num)')
-    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(classes(card.querySelector('svg') as Element)).toContain('text-danger')
+    for (const el of [card, ...card.querySelectorAll('[class]')]) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
+    }
   })
 })
