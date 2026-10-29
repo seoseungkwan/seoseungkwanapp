@@ -13,6 +13,7 @@ src/
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
 │   ├── payload/         # [환자 구역] 저장 모양(toMonthPayload·toDayPayloads)·검사(validate.ts)
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
+│   ├── report/          # 월간보고 PPT: 양식(template)·숫자(numbers)·AI 자료(aiInput)·AI 답 검사(aiAnswer)·PPT(deck). 환자 구역 밖, 달 숫자만 읽는다 (ADR-016)
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트와 그 CSS Module. landing/ = 랜딩
@@ -20,6 +21,7 @@ src/
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
+scripts/                 # make-sample-deck.ts = 예시 PPT를 out/report/에 만든다(npm run report:sample)
 public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본 복사)
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
@@ -45,12 +47,16 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
        → ai_usage 기록 → 화면(글자로만)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
+[보고] 달 숫자 → lib/report: computeReport(코드가 숫자·그래프·표 계산)
+       → (예정) app/api/ai: buildAiPrompt → Claude → validateAiAnswer(문장만, 자료에 있는 숫자만)
+       → 브라우저 buildDeck(pptxgenjs) → .pptx 내려받기. 서버에서 파일을 만들지 않는다
 ```
 - 환자 줄·차트번호·파일 이름은 Worker 밖으로 나가지 않는다. 차트번호는 메모리 안 번호로만 쓴다 (§4)
 - 서버로 가는 것: 통계·매출 집계, 재고, 직원 이름·직종·금액, 일일마감·보고 내용, 병원 이름 (§4)
 - Claude API로 가는 것: 서버가 DB에서 꺼낸 집계와 인건비 총액뿐. 직원 이름·개인별 급여는 안 보낸다 (§2-3)
 - 채팅 입력에 전화·주민번호·메일 모양이 있으면 보내지 않는다. 처방명은 '데이터'로 감싼다 (§6-2)
 - AI 경로 로그에는 오류 번호·경로만 남긴다 (§8)
+- 보고서 PPT: 모양(쪽 순서·색·글꼴·글자 수)은 `lib/report/template.ts` 한 곳에 고정. AI는 '한눈에'·'다음 할 일' 문장만 쓴다. 1단계(로그인 없이 도는 로직)는 `specs/ai-report/`, 화면·서버 연결은 로그인 작업 뒤 (ADR-016)
 
 ## DB 표 (§5)
 모든 표에 `hospital_id`를 둔다(§0). 모든 표에 RLS.
