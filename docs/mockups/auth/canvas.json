@@ -1,0 +1,34 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-28T10:30:00Z" },
+  "title": "로그인·승인 화면 목업",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 900, "title": "로그인", "expand": "fill", "is_interactive": true },
+    "LoginError.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 900, "title": "로그인 실패", "expand": "fill", "is_interactive": true },
+    "Signup.dc.html": { "x": 3040, "y": 0, "w": 1440, "h": 980, "title": "가입 신청 (처음 로그인)", "expand": "fill", "is_interactive": true },
+    "Pending.dc.html": { "x": 4560, "y": 0, "w": 1440, "h": 900, "title": "승인 대기", "expand": "fill", "is_interactive": true },
+    "Rejected.dc.html": { "x": 6080, "y": 0, "w": 1440, "h": 900, "title": "거절됨", "expand": "fill", "is_interactive": true },
+    "Admin.dc.html": { "x": 0, "y": 1600, "w": 1440, "h": 1000, "title": "관리자 · 가입 신청 목록", "expand": "fill", "is_interactive": true },
+    "Dashboard.dc.html": { "x": 1520, "y": 1600, "w": 1440, "h": 1000, "title": "대시보드", "expand": "fill", "is_interactive": true },
+    "DashboardEmpty.dc.html": { "x": 3040, "y": 1600, "w": 1440, "h": 1000, "title": "대시보드 · 첫 화면 (파일 없음)", "expand": "fill", "is_interactive": true },
+    "DashboardPhone.dc.html": { "x": 4560, "y": 1600, "w": 390, "h": 844, "title": "대시보드 · 폰 (보기 전용)", "is_interactive": true }
+  },
+  "order": [
+    "Main.dc.html",
+    "LoginError.dc.html",
+    "Signup.dc.html",
+    "Pending.dc.html",
+    "Rejected.dc.html",
+    "Admin.dc.html",
+    "Dashboard.dc.html",
+    "DashboardEmpty.dc.html",
+    "DashboardPhone.dc.html"
+  ],
+  "notes": {
+    "flowTitle": { "x": 0, "y": -300, "text": "로그인 · 가입 신청 · 승인 대기", "kind": "title1", "maxW": 7520 },
+    "appTitle": { "x": 0, "y": 1300, "text": "관리자 · 대시보드 틀", "kind": "title1", "maxW": 4950 }
+  },
+  "designSystems": []
+}

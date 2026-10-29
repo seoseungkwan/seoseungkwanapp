@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>대시보드 폰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body { margin: 0; background: #F5F8FC; word-break: keep-all; }
+a { color: #077A73; } a:hover { color: #055F59; }
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #F5F8FC; color: #0B1530; font-family: 'IBM Plex Sans KR', system-ui, sans-serif; display: flex; flex-direction: column">
+
+<header style="flex: none; background: #FFFFFF; border-bottom: 1px solid rgba(11, 21, 48, 0.08); padding: 6px 8px; display: flex; align-items: center; gap: 4px">
+<button type="button" aria-label="메뉴 열기" aria-expanded="{{drawerExpanded}}" onClick="{{openDrawer}}" style="width: 44px; height: 44px; border: 0; background: transparent; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B1530" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
+<p style="margin: 0; flex: 1; min-width: 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">[병원 이름]</p>
+<button type="button" aria-label="계정 메뉴" aria-haspopup="menu" style="width: 44px; height: 44px; border: 0; background: transparent; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><span aria-hidden="true" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; background: #EAF2FF"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2556D6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.5"></circle><path d="M5 20c1.2-3.6 3.8-5.5 7-5.5s5.8 1.9 7 5.5"></path></svg></span></button>
+</header>
+
+<main style="flex: 1; overflow-y: auto; padding: 20px 16px 32px; display: flex; flex-direction: column; gap: 16px">
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<p style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; color: #077A73">TODAY</p>
+<h1 style="margin: 0; font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: -0.02em">10월 28일 (수)</h1>
+<p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: #5B6785">09:12에 올린 파일 기준 <span style="padding: 4px 10px; border-radius: 6px; border: 1px dashed rgba(109, 93, 245, 0.6); font-size: 12px; font-weight: 600; color: #5546E0">숫자는 예시</span></p>
+</div>
+
+<section aria-label="오늘 숫자" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="border-radius: 16px; padding: 16px; background: #E6FAF8; display: flex; flex-direction: column; gap: 4px">
+<p style="margin: 0; font-size: 14px; font-weight: 600; color: #077A73">오늘 외래</p>
+<p style="margin: 0; display: flex; align-items: baseline; gap: 2px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; line-height: 1.15">138</span><span style="font-size: 14px; font-weight: 600; color: #3D4A66">명</span></p>
+</div>
+<div style="border-radius: 16px; padding: 16px; background: #EAF2FF; display: flex; flex-direction: column; gap: 4px">
+<p style="margin: 0; font-size: 14px; font-weight: 600; color: #2556D6">신환</p>
+<p style="margin: 0; display: flex; align-items: baseline; gap: 2px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; line-height: 1.15">24</span><span style="font-size: 14px; font-weight: 600; color: #3D4A66">명</span></p>
+</div>
+<div style="border-radius: 16px; padding: 16px; background: #FFEDE8; display: flex; flex-direction: column; gap: 4px">
+<p style="margin: 0; font-size: 14px; font-weight: 600; color: #B83A26">재진</p>
+<p style="margin: 0; display: flex; align-items: baseline; gap: 2px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; line-height: 1.15">114</span><span style="font-size: 14px; font-weight: 600; color: #3D4A66">명</span></p>
+</div>
+<div style="border-radius: 16px; padding: 16px; background: #FFFFFF; border: 1px solid rgba(11, 21, 48, 0.08); display: flex; flex-direction: column; gap: 4px; box-sizing: border-box">
+<p style="margin: 0; font-size: 14px; font-weight: 600; color: #0B1530">신환율</p>
+<p style="margin: 0; display: flex; align-items: baseline; gap: 2px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; line-height: 1.15">17.4</span><span style="font-size: 14px; font-weight: 600; color: #3D4A66">%</span></p>
+</div>
+</section>
+
+<section aria-labelledby="ph-order" style="border-radius: 16px; padding: 18px; background: #FFF8E6; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 8px">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5v-9z"></path><path d="M3.5 7.5L12 12l8.5-4.5"></path><path d="M12 12v9"></path></svg>
+<h2 id="ph-order" style="margin: 0; font-size: 17px; font-weight: 700">발주 알림</h2>
+<span style="margin-left: auto; padding: 4px 10px; border-radius: 999px; background: #FFF1D6; color: #A84B08; font-size: 13px; font-weight: 700">3개 품목</span>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<li style="display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #FFFFFF; font-size: 14px"><span style="flex: 1; min-width: 0; font-weight: 600">주사기 5mL</span><span style="color: #3D4A66">남은 <b style="font-family: 'Space Grotesk', sans-serif; color: #0B1530">12</b> / 30</span></li>
+<li style="display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #FFFFFF; font-size: 14px"><span style="flex: 1; min-width: 0; font-weight: 600">알코올 솜</span><span style="color: #3D4A66">남은 <b style="font-family: 'Space Grotesk', sans-serif; color: #0B1530">4</b> / 10</span></li>
+<li style="display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #FFFFFF; font-size: 14px"><span style="flex: 1; min-width: 0; font-weight: 600">테이핑 테이프</span><span style="color: #3D4A66">남은 <b style="font-family: 'Space Grotesk', sans-serif; color: #0B1530">2</b> / 6</span></li>
+</ul>
+</section>
+
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid rgba(11, 21, 48, 0.08); font-size: 14px; color: #3D4A66"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6785" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8"></path><path d="M12 16v4"></path></svg>파일 올리기와 입력은 PC에서 합니다.</p>
+
+</main>
+
+<sc-if value="{{drawerOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; z-index: 20; background: rgba(11, 21, 48, 0.45); display: flex">
+<nav aria-label="메뉴" style="width: 290px; height: 100%; background: #FFFFFF; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; overflow-y: auto">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px 8px 8px; font-weight: 700; font-size: 17px">
+<svg aria-hidden="true" width="26" height="26" viewBox="0 0 30 30" fill="none"><rect x="9" y="3" width="12" height="6" rx="3" stroke="#14C8BA" stroke-width="2.2"></rect><rect x="11" y="12" width="12" height="6" rx="3" stroke="#14C8BA" stroke-width="2.2"></rect><rect x="8" y="21" width="12" height="6" rx="3" stroke="#6D5DF5" stroke-width="2.2"></rect></svg>
+<span style="flex: 1">[서비스 이름]</span>
+<button type="button" aria-label="메뉴 닫기" onClick="{{closeDrawer}}" style="width: 44px; height: 44px; border: 0; background: transparent; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B1530" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
+</div>
+<a href="DashboardPhone.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; background: #E6FAF8; color: #077A73; text-decoration: none; font-size: 15px; font-weight: 700">대시보드</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">통계</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">AI 리포트</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">매출</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">재고</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">급여</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">일일마감·보고</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">월간 PDF</a>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">설정</a>
+<div aria-hidden="true" style="height: 1px; background: rgba(11, 21, 48, 0.08); margin: 6px 12px"></div>
+<a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #3D4A66; text-decoration: none; font-size: 15px">관리자</a>
+</nav>
+<button type="button" aria-label="메뉴 닫기" onClick="{{closeDrawer}}" style="flex: 1; border: 0; background: transparent; cursor: pointer"></button>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const open = !!(this.state && this.state.drawerOpen);
+    return {
+      drawerOpen: open,
+      drawerExpanded: open ? 'true' : 'false',
+      openDrawer: () => this.setState({ drawerOpen: true }),
+      closeDrawer: () => this.setState({ drawerOpen: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

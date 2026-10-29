@@ -1,0 +1,110 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AuthFrame } from '@/components/auth/AuthFrame'
+import { errorInfo } from '@/lib/errors'
+import LoginPage from './page'
+
+// 로그인 요청은 components/auth/LoginCard.test.tsx가 본다. 여기서는 쿼리 → 화면만 본다
+vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { signInWithOAuth: vi.fn() } }) }))
+
+type SearchParams = Record<string, string | string[] | undefined>
+const pageWith = async (searchParams: SearchParams) => render(await LoginPage({ searchParams: Promise.resolve(searchParams) }))
+
+afterEach(cleanup)
+
+describe('/login 화면', () => {
+  it('AC-003.1: 위쪽 띠(로고·[서비스 이름])와 본문(main) 틀 안에 소개와 로그인 카드가 있다', async () => {
+    await pageWith({})
+    const banner = screen.getByRole('banner')
+    expect(banner.textContent).toBe('[서비스 이름]')
+    expect(banner.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    // 목업 머리띠에는 메뉴·단추가 없다
+    expect(within(banner).queryAllByRole('link')).toHaveLength(0)
+    expect(within(banner).queryAllByRole('button')).toHaveLength(0)
+    const main = screen.getByRole('main')
+    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('통증 의원 관리자를 위한AI 업무 도구')
+    expect(within(main).getByRole('region', { name: '로그인' })).toBeTruthy()
+  })
+
+  it('AC-003.1: error 쿼리가 없으면 오류 카드 없이 [구글로 시작하기]', async () => {
+    await pageWith({})
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '구글로 시작하기' }).disabled).toBe(false)
+  })
+
+  it('AC-003.5: /login?error=1이면 "구글 로그인을 마치지 못했어요" 카드 + E-AUTH-CALLBACK + [다시 구글로 시작하기]', async () => {
+    await pageWith({ error: '1' })
+    const alert = screen.getByRole('alert')
+    const info = errorInfo('E-AUTH-CALLBACK')
+    expect(info.what).toBe('구글 로그인을 마치지 못했어요')
+    expect(within(alert).getByText(info.what)).toBeTruthy()
+    expect(within(alert).getByText(info.fix)).toBeTruthy()
+    expect(within(alert).getByText('오류 번호 E-AUTH-CALLBACK')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '로그인' })).getByRole('alert')).toBe(alert)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '다시 구글로 시작하기' }).disabled).toBe(false)
+  })
+
+  it('AC-003.5: error 값은 "1"인지만 본다(다른 값·여러 값이면 카드 없음)', async () => {
+    for (const error of ['0', 'true', '', ['1', '1']]) {
+      await pageWith({ error })
+      expect(screen.queryByRole('alert'), JSON.stringify(error)).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('AC-003.5: error 쿼리 값을 화면에 그대로 찍지 않는다', async () => {
+    const injected = '<img src=x onerror=alert(1)>피싱 안내: 010-1234-5678로 전화하세요'
+    await pageWith({ error: injected })
+    expect(document.body.textContent).not.toContain('피싱')
+    expect(document.querySelector('img')).toBeNull()
+    cleanup()
+    await pageWith({ error: ['1', injected] })
+    expect(document.body.textContent).not.toContain('피싱')
+  })
+})
+
+// 승인 대기·거절 화면(목업 Pending·Rejected)은 머리띠 오른쪽 끝에 [로그아웃]을 둔다 → 틀이 그 자리를 마련한다
+describe('AuthFrame 머리띠 오른쪽 끝 자리(headerEnd)', () => {
+  const headerInner = () => screen.getByRole('banner').firstElementChild as HTMLElement
+  const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+
+  it('AC-003.6: headerEnd가 없으면 머리띠에 로고·[서비스 이름]만 있다(빈 자리도 그리지 않는다)', () => {
+    render(<AuthFrame>본문</AuthFrame>)
+    expect([...headerInner().children].map((el) => el.tagName.toLowerCase())).toEqual(['svg', 'span'])
+    expect(screen.getByRole('banner').querySelector('.ml-auto')).toBeNull()
+  })
+
+  it('AC-003.6: headerEnd를 주면 머리띠 맨 끝(로고 뒤, ml-auto 슬롯으로 오른쪽 끝)에 그린다', () => {
+    render(<AuthFrame headerEnd={<button type="button">로그아웃</button>}>본문</AuthFrame>)
+    const banner = screen.getByRole('banner')
+    const button = within(banner).getByRole('button', { name: '로그아웃' })
+    const slot = button.parentElement as HTMLElement
+    expect(classesOf(slot)).toContain('ml-auto')
+    expect(headerInner().lastElementChild).toBe(slot)
+    expect(headerInner().children).toHaveLength(3)
+    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull()
+  })
+
+  it('AC-003.6: 로그인 화면 머리띠에는 오른쪽 끝 자리가 없다', async () => {
+    await pageWith({})
+    expect(screen.getByRole('banner').querySelector('.ml-auto')).toBeNull()
+    expect(headerInner().children).toHaveLength(2)
+  })
+
+  it('AC-013.2·AC-013.3: 틀 모양 — .app-ui 뿌리·canvas 바탕, 흰 띠 64px(폰 48px)·아래 1px 선, 본문 위 64px(폰 24px)·좌우 24px(폰 16px), 임의 색 없음', () => {
+    render(<AuthFrame>본문</AuthFrame>)
+    const banner = screen.getByRole('banner')
+    const root = banner.parentElement as HTMLElement
+    expect(classesOf(root)).toEqual(expect.arrayContaining(['app-ui', 'bg-canvas', 'min-h-dvh']))
+    expect(classesOf(banner)).toEqual(expect.arrayContaining(['bg-surface', 'border-b', 'border-line']))
+    expect(classesOf(headerInner())).toEqual(expect.arrayContaining(['h-16', 'px-6', 'max-md:h-12', 'max-md:px-4']))
+    expect(classesOf(screen.getByRole('main'))).toEqual(expect.arrayContaining(['pt-16', 'px-6', 'max-md:pt-6', 'max-md:px-4']))
+    expect(classesOf(headerInner().querySelector('span') as Element)).toEqual(
+      expect.arrayContaining(['text-logo', 'font-semibold', 'text-ink']),
+    )
+    for (const el of document.querySelectorAll('[class]')) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
+    }
+  })
+})

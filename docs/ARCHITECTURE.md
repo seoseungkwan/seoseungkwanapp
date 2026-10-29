@@ -6,7 +6,7 @@
 ```
 src/
 ├── app/                 # 페이지(App Router). page.tsx = 랜딩(섹션은 components/landing/)
-│   ├── globals.css      # 색·글꼴 변수, 모션 줄이기 규칙 (docs/UI_GUIDE.md)
+│   ├── globals.css      # 색·글꼴 변수, Tailwind `@theme` 토큰, 모션 줄이기 규칙 (docs/UI_GUIDE.md, ADR-015)
 │   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'. 매출 파서도 여기 (예정)
@@ -16,7 +16,7 @@ src/
 │   ├── report/          # 월간보고 PPT: 양식·색 벌(template)·숫자(numbers)·AI 자료(aiInput)·AI 답 검사(aiAnswer)·그래프/움직임 XML(chartXml·animate)·표지 자산(coverMedia)·PPT(deck). 환자 구역 밖, 달 숫자만 읽는다 (ADR-016)
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
-├── components/<화면>/  # 화면 컴포넌트와 그 CSS Module. landing/ = 랜딩
+├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
@@ -26,11 +26,11 @@ public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳은 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
-- `lib/auth`·`lib/supabase`·`services`는 ESLint 규칙에 이름만 있다(파일럿 경로). 미정 — 로그인을 옮길 때 정함
+- `lib/supabase/`(연결), `lib/auth/`(문지기·가입·관리자·자동 로그아웃), `components/{auth,shell,dashboard,admin,common}/`, `supabase/migrations/`(SQL 편집기에 붙여 넣음) — `specs/auth/design.md`
 - 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
 
 ## 패턴
-- 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0)
+- 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄만 읽는다 (ADR-004)
 - 같은 효과면 코드 대신 DB 제약. 예: 급여 `final` 잠금, 승인 DB 함수
 - 통계: 원래 숫자는 `aggregate`, 비율·'집계 중' 판정은 `compare`, 저장 모양은 `payload` (`specs/stats-core/design.md`)
 - 저장은 세기 숫자만. 비율은 읽을 때 계산한다
@@ -63,7 +63,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 
 | 표 | 내용 |
 |---|---|
-| `hospitals` | 파일럿 그대로(이름·요양기관번호·상태) |
+| `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
 | `months` · `days` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용) |
 | `rx_groups` | 그룹 이름·코드 목록·즐겨찾기 |

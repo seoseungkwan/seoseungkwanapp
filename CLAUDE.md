@@ -9,12 +9,12 @@
 - 시험: Vitest 4 (node 환경, `TZ=Asia/Seoul`). E2E 도구: 미정 — 파일럿 이식 때 정함
 - 파일 읽기: SheetJS `xlsx` 0.20.3 (CDN 패키지)
 - Supabase(서울, 무료 플랜) · 구글 OAuth · Vercel · Claude API — 패키지는 쓰는 기능에서 넣는다
-- 스타일링: CSS Modules(화면별 `*.module.css`) + `src/app/globals.css`의 색·글꼴 변수. 글꼴은 `next/font` (ADR-014)
+- 스타일링: 앱 화면은 Tailwind CSS v4(토큰은 `src/app/globals.css`의 `@theme`, 반복 모양은 `components/ui/classes.ts`), 랜딩은 CSS Modules(`*.module.css`) + globals.css 변수. 글꼴은 `next/font` (ADR-014·ADR-015)
 
 ## 아키텍처 규칙
 - CRITICAL: 환자 개인정보는 의원 PC 밖으로 나가지 않는다. 환자 파일은 브라우저 Web Worker 안에서만 읽고 계산한다. 서버·Claude API에는 집계 숫자만 간다. 읽는 칸·차트번호·파일 이름 규칙은 `plan.md §4`
 - CRITICAL: `lib/parsers`·`lib/analytics`·`lib/payload`·`workers`는 환자 자료 구역이다. 네트워크·console·브라우저 저장소·React/Next/supabase/auth import를 쓰지 않는다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 규칙을 풀지 않는다
-- CRITICAL: 서버 코드는 `app/api/ai/` 하나뿐이다. 나머지는 브라우저 + Supabase RLS
+- CRITICAL: 서버 코드는 `app/api/ai/` 하나뿐이다. 나머지는 브라우저 + Supabase RLS. 예외는 인증뿐이다: 로그인 콜백·middleware·페이지 guard(`*.server.ts`)는 세션과 내 병원·관리자 줄만 읽고 쓰지 않는다 (ADR-004)
 - CRITICAL: AI 경로는 브라우저가 보낸 숫자를 쓰지 않는다. 서버가 DB에서 읽어 `validate.ts`로 검사한 집계만 보낸다. 답은 글자로만 그린다(HTML 금지) (`plan.md §6-2`)
 - 날짜 계산은 `lib/analytics/dates.ts` 한 곳(한국 날짜). 오류 문구는 `lib/errors.ts` 한 곳('무엇이 · 어떻게 고치나 · 번호')
 - 금액은 원 단위 정수다. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 금액의 합 (`plan.md §5`)
