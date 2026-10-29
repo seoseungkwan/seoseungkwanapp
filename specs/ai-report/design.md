@@ -4,7 +4,7 @@
 - 1단계는 순수 함수 묶음이다. 로그인·화면·서버·DB 없이 시험으로 끝까지 확인한다
   1. **양식**(`template.ts`): 모양 값을 얼려 둔 상수 하나. 다른 모듈은 여기서만 색·글꼴·크기·한도·고정 문구를 읽는다
   2. **숫자**(`format.ts`·`numbers.ts`): 저장된 달 숫자(`MonthPayload[]`) → 카드·그래프·결론 줄·요약 표·계산 기준(`ReportNumbers`). PPT에 보일 글자까지 여기서 만든다
-  3. **AI 자료·검사**(`sensitive.ts`·`aiInput.ts`·`aiAnswer.ts`): `ReportNumbers` → system·user 글. AI 답 글 → 검사한 `AiAnswer` 또는 거부
+  3. **AI 자료·검사**(`sensitive.ts`·`aiInput.ts`·`aiAnswer.ts`): `ReportNumbers` → system·user 글. AI 답 글(발견 = 꼬리표 + 문장, 할 일 = 문장 + 근거) → 검사한 `AiAnswer` 또는 거부
   4. **PPT**(`deck.ts`): `ReportNumbers` + `AiAnswer | null` → .pptx 바이트(`pptxgenjs`)
   5. **예시**(`sample.ts` + `scripts/make-sample-deck.ts`): 가짜 숫자로 PPT를 만들어 눈으로 본다
 - 쪽 모양의 기준은 검토용 PPT 목업(https://claude.ai/artifact/Amc46niE2pgiJos22MmQdN, 1920×1080 캔버스 = 13.333인치, 1px = 0.5pt)이다
@@ -72,10 +72,13 @@ export type ReportNumbers = {
   notes: string[]             // 계산 기준 '· …'(잠정 줄은 맨 끝)
 }
 
-export type AiAnswer = { findings: [string, string, string, string]; actions: string[] }
+export type FindingTag = '외래' | '신환' | '재진' | '신환율' | '처방군' | '재방문' // TEMPLATE.findingTags와 같은 목록
+export type Finding = { tag: FindingTag; text: string }
+export type Action = { text: string; basis: string } // basis: '핵심 숫자: 신환 413명, 지난달보다 −9.0%' (PPT에서 '근거 · ' 뒤에)
+export type AiAnswer = { findings: [Finding, Finding, Finding, Finding]; actions: Action[] }
 export type AiPrompt = { system: string; user: string }
 export type AnswerProblem =
-  | 'json' | 'keys' | 'count' | 'empty' | 'length' | 'markup' | 'sensitive' | 'tone' | 'number' | 'provisional'
+  | 'json' | 'keys' | 'count' | 'empty' | 'length' | 'tag' | 'markup' | 'sensitive' | 'tone' | 'number' | 'provisional'
 ```
 
 ### 오류 번호 (`src/types/errors.ts`, `src/lib/errors.ts`)
@@ -115,8 +118,9 @@ export const TEMPLATE = deepFreeze({
   // 목업 px ÷ 2 = pt
   fontSizes: { eyebrow: 12, coverTitle: 48, coverScope: 18, coverHospital: 14, periodValue: 18, slideTitle: 28,
                body: 18, kpiValue: 48, kpiUnit: 18, kpiDelta: 18, endLabel: 14, tableBody: 14, notes: 14, small: 12 },
-  limits: { findings: 4, findingChars: 70, actionsMin: 1, actionsMax: 3, actionChars: 60,
+  limits: { findings: 4, findingChars: 70, actionsMin: 1, actionsMax: 3, actionChars: 60, basisChars: 50,
             groupLabelChars: 12, hospitalNameChars: 30, groupSeries: 4 },
+  findingTags: ['외래', '신환', '재진', '신환율', '처방군', '재방문'], // AI가 고르는 발견 꼬리표. 이 밖은 거부
   copy: {
     eyebrows: { cover: 'MONTHLY REPORT', glance: 'SUMMARY', kpis: 'KEY NUMBERS', table: 'TABLE', actions: 'NEXT', notes: 'NOTES' },
     titles: { glance: '한눈에', kpis: '핵심 숫자', table: '요약 표', actions: '다음 할 일', notes: '계산 기준' },
@@ -126,7 +130,7 @@ export const TEMPLATE = deepFreeze({
     privacy: '환자 이름·차트번호 없음 · 숫자만 담았습니다',
     sampleCover: '예시 · 숫자는 모두 가짜예요', sampleFooter: '예시 숫자',
     provisionalTag: '잠정 · 달이 끝나지 않았어요',
-    noAi: 'AI 요약 없이 숫자 결론만 담았어요',
+    noAi: 'AI 요약 없이 숫자 결론만 담았어요', basisPrefix: '근거 · ',
     glanceNote: '· 문장은 AI가 쓰고 숫자는 앱이 계산해요. ‘추정’은 AI의 짐작이에요.',
     kpiNote: '· 파랑 ↑ = 늘었음, 주황 ↓ = 줄었음. 신환율의 늘고 준 폭은 %p(퍼센트포인트)로 적어요.',
     notes: [/* 아래 '계산 기준' */],
@@ -134,19 +138,22 @@ export const TEMPLATE = deepFreeze({
 })
 ```
 - 색은 `#` 없는 6자리(pptxgenjs 모양). `deepFreeze`는 이 파일 안 함수(객체·배열을 깊이 얼린다)
-- 글자 수 한도·쪽 순서·색은 AI 요청(system 글)과 PPT가 모두 여기서 읽는다
+- 글자 수 한도·꼬리표 목록·쪽 순서·색은 AI 요청(system 글)·답 검사·PPT가 모두 여기서 읽는다
 
 ### 숫자 글자 (`src/lib/report/format.ts`)
 ```ts
 export function formatCount(n: number): string                          // '3,412'
-export function rateTenths(numerator: number, denominator: number): number | null // 0.1% 단위 정수, 버림. 분모 0 → null
+export function rateTenths(numerator: number, denominator: number): number | null // 0.1% 단위 정수, 반올림. 분모 0 → null
 export function formatTenths(tenths: number): string                    // 121 → '12.1'
 export function countChange(current: number, previous: number): Change  // 증감률
 export function pointChange(currentTenths: number, previousTenths: number): Change // %p
 export function arrowOf(change: Change): '↑' | '↓' | ''
 ```
-- 증감률: `tenths = Math.trunc((current − previous) × 1000 / previous)`(정수끼리 나누기라 나누어떨어지면 정확하다). 부호·방향은 `current − previous`를 따른다. 빼기는 U+2212
-- %p: 표시한 두 비율의 0.1% 단위 정수 차. 표의 두 숫자를 빼면 늘 맞는다
+- 반올림은 정수 몫으로만 한다(실수 나누기·`toFixed` 안 씀): `roundDiv(a, b) = (2a + b − ((2a + b) % (2b))) / (2b)` (a ≥ 0, b > 0) = a/b를 0.5에서 올린 정수
+- 비율: `rateTenths = roundDiv(numerator × 1000, denominator)` (6.25% → 63, 10.05% → 101)
+- 증감률: `tenths = roundDiv(|current − previous| × 1000, previous)`에 차이의 부호를 붙인다(음수는 절댓값 반올림: −0.05% → −0.1%). 부호·방향은 `current − previous`를 따른다. 빼기는 U+2212
+- %p: 반올림해 표시한 두 비율의 0.1% 단위 정수 차(따로 반올림 없음). 표의 두 숫자를 빼면 늘 맞는다
+- 값은 의원 한 달 환자 수라 `× 2000`을 해도 2^53보다 훨씬 작다(정수 그대로 정확). 금액은 이 기능에 없고, 금액 규칙(원 미만 버림)은 그대로다
 
 ### 월간 숫자 (`src/lib/report/numbers.ts`)
 ```ts
@@ -170,11 +177,11 @@ export function axisMaxOf(values: Array<number | null>): number
 - 설명 줄: 잠정 칸이 있으면 '금색 칸 = 10월은 달이 끝나지 않은 잠정 숫자 · ', 그다음 외래 '회색 점선 = 작년 같은 달', 신환 '회색 점선 상자 = 작년 같은 달', 처방군 '처방군 4개까지 · 한 환자가 여러 처방군에 들 수 있어요', 끝에 ' · 단위: 명'
 - `axisMaxOf`: 가장 큰 값 × 1.15를 유효숫자 한 자리로 올림(3412 → 3923.8 → 4000, 84 → 96.6 → 100). 값이 없거나 0이면 10
 - 계산 기준(고정 + 조건부, 목업 문구를 숫자 정의에 맞춤)
-  - `· 외래는 그 달에 외래로 온 서로 다른 환자 수입니다. 같은 사람이 여러 번 와도 1명으로 셉니다.`
+  - `· 외래는 그 달에 외래로 온 실인원(서로 다른 환자 수)입니다. 같은 사람이 여러 번 와도 1명으로 셉니다.`
   - `· 신환은 우리 의원에 처음 온 환자, 재진은 그 밖의 환자입니다. 초재진 구분이 없는 줄은 어느 쪽에도 넣지 않습니다.`
   - `· 신환율 = 신환 ÷ 외래입니다. 늘고 준 폭은 %p(퍼센트포인트)로 적습니다.`
   - `· N일 재방문율 = 그 달에 처음 온 신환 중 다음 날부터 N일 안에 다시 온 비율입니다.`
-  - `· 증감률 = 이번 달 ÷ 비교 − 1이며, 소수 첫째 자리까지 적고 그 아래는 버립니다. 비교가 0이면 ‘신규’로 적습니다.`
+  - `· 증감률 = 이번 달 ÷ 비교 − 1이며, 퍼센트는 소수 첫째 자리까지 반올림합니다. 비교가 0이면 ‘신규’로 적습니다.`
   - `· 잠정인 달은 비교하지 않습니다(완전한 달끼리만 비교).`
   - `· 처방군은 의원에서 정한 치료 묶음입니다. 한 환자가 여러 묶음에 들 수 있습니다.`
   - `· 숫자·그래프·표는 앱이 계산합니다. ‘한눈에’와 ‘다음 할 일’ 문장만 AI가 쓰고, AI의 짐작은 ‘추정’으로 적습니다.`
@@ -209,8 +216,10 @@ export function buildAiPrompt(report: ReportNumbers):
 - 허용 숫자: 자료 글자 값(직렬화 전)에서 `\d[\d,]*(?:\.\d+)?`를 뽑아 쉼표를 뺀 모음
 - `SYSTEM_PROMPT` 줄(한도 숫자는 `TEMPLATE.limits`에서 끼운다)
   - 너는 정형외과 의원 월간보고의 '한눈에'와 '다음 할 일' 문장만 쓴다
-  - 답은 JSON 하나: `{"findings": [문장 4개], "actions": [문장 1~3개]}`. 그 밖의 글자를 쓰지 않는다
-  - 문장마다 해요체 한 문장으로, 숫자를 문장 앞쪽에 둔다('외래 3,412명 — …예요.'). findings는 70자, actions는 60자 이하
+  - 답은 JSON 하나: `{"findings": [{"tag", "text"} 4개], "actions": [{"text", "basis"} 1~3개]}`. 그 밖의 글자를 쓰지 않는다
+  - `tag`는 외래·신환·재진·신환율·처방군·재방문 중 그 문장이 다루는 것 하나(`TEMPLATE.findingTags`를 끼운다)
+  - `text`는 해요체 한 문장으로, 숫자를 문장 앞쪽에 둔다('외래 3,412명 — …예요.'). findings 70자, actions 60자 이하
+  - `basis`는 그 할 일이 기댄 숫자를 적은 짧은 줄('핵심 숫자: 신환 413명, 지난달보다 −9.0%'), 50자 이하, 숫자 하나 이상
   - 숫자는 `<data>`에 있는 글자 그대로만 쓴다. 새로 계산하거나 반올림하지 않는다
   - 원인을 짐작하면 '추정'이라고 쓴다. 자료에 '잠정'인 숫자를 쓰면 '잠정'이라고 쓴다
   - HTML·마크다운·줄바꿈을 쓰지 않는다. 사람 이름·개인별 급여를 쓰지 않는다
@@ -222,13 +231,15 @@ export function validateAiAnswer(raw: string, report: ReportNumbers):
   | { ok: true; answer: AiAnswer }
   | { ok: false; code: 'E-AI-ANSWER'; problem: AnswerProblem }
 ```
-- 검사 순서: json → keys → count → empty → length → markup → sensitive → tone → number → provisional. 처음 걸린 까닭 하나를 돌려준다
+- 검사 순서: json → keys → count → empty → length → tag → markup → sensitive → tone → number → provisional. 처음 걸린 까닭 하나를 돌려준다
+- 칸: 발견 `tag`·`text`, 할 일 `text`·`basis`. keys는 맨 위와 항목마다 열쇠가 정확히 같은지, 값이 글자인지 본다
+- tag: `TEMPLATE.findingTags.includes(tag)`(글자 그대로, 앞뒤 빈칸도 거부)
 - markup: `<[A-Za-z/!?]`, `**`, `__`, 백틱, `[..](..)`, 줄 앞 `#`·`- `·`* `, `\n`·`\r`·제어 글자
 - sensitive: `findSensitive(text, { chartNumber: false })`(숫자는 number 검사가 본다)
-- tone: 끝이 '요' 또는 '요.'. 숫자 사이 점을 뺀 뒤 `.`·`?`·`!`가 끝 하나뿐. 발견에는 숫자가 하나 이상
-- number: 문장의 숫자(쉼표 뺀 것)가 모두 `allowedNumbers(report)` 안
+- tone(발견·할 일 문장만, 근거 줄은 빼고): 끝이 '요' 또는 '요.'. 숫자 사이 점을 뺀 뒤 `.`·`?`·`!`가 끝 하나뿐. 발견 문장에는 숫자가 하나 이상
+- number(발견 문장·할 일 문장·근거 줄 모두): 숫자(쉼표 뺀 것)가 모두 `allowedNumbers(report)` 안. 근거 줄에 숫자가 없으면 거부
 - provisional: `report.provisional`이면 발견 중 하나 이상에 '잠정'
-- 통과하면 `{ findings: [...], actions: [...] }`를 새로 만든다. 거부 결과에는 답 글을 담지 않는다(오류 내용을 화면·로그에 옮기지 않는다, plan §8)
+- 통과하면 `{ findings: [{ tag, text }…], actions: [{ text, basis }…] }`를 새로 만든다. 거부 결과에는 답 글을 담지 않는다(오류 내용을 화면·로그에 옮기지 않는다, plan §8)
 
 ### PPT (`src/lib/report/deck.ts`)
 ```ts
@@ -240,7 +251,7 @@ export function deckFileName(report: ReportNumbers): string // '월간보고-202
 - **색·선**: 색은 `TEMPLATE.palette`에서만. 모든 도형·그래프 줄에 그림자 없음을 직접 적는다(pptxgenjs 기본 그림자를 막는다). 테두리 0.75pt, 카드 `roundRect`(둥글기 10px = 0.104인치)
 - 쪽별(목업과 같은 자리)
   - **표지**: 왼쪽 위 병원 이름(없으면 비움) · 오른쪽 위 예시 꼬리표(점선 #9CA3AF 테두리) · 꼬리표 'MONTHLY REPORT'(강조 색) · 제목(48pt 굵게) · 범위 줄 · 기간 카드 3개(이번 달 카드에 잠정 꼬리표) · 아래 '만든 시각 … · 환자 이름·차트번호 없음 · 숫자만 담았습니다'. 로고 자리는 두지 않는다
-  - **한눈에**: 꼬리표 + 제목 → 테두리 상자 안 발견 4줄(줄 사이 1px 선, 문장 18pt, ' — ' 앞을 굵게) → 아래 안내 줄. AI 없음이면 상자 안에 AI 없음 안내(+ 오류 번호) 한 줄과 그래프 결론 줄
+  - **한눈에**: 꼬리표 + 제목 → 테두리 상자 안 발견 4줄(줄 사이 1px 선). 줄마다 왼쪽 꼬리표 상자(12pt 굵게, 강조 색 글자·1px 테두리·둥글기 10px, 문장에 '추정'이 있으면 흐린 글자 + 점선 테두리) + 문장(18pt, ' — ' 앞을 굵게) → 아래 안내 줄. AI 없음이면 상자 안에 AI 없음 안내(+ 오류 번호) 한 줄과 그래프 결론 줄
   - **핵심 숫자**: 꼬리표 + 제목(+ 잠정이면 오른쪽 잠정 꼬리표) → 카드 4개 — 카드 꼬리표 · 큰 숫자 48pt(신환 = 신환 색, 신환율 = 비율 색, 나머지 글자색) + 단위 · 가는 선 · '지난달 3,060' · 증감(18pt 굵게, 늘었음·줄었음 색, 비교 못 함은 흐린 글자 '잠정이라 비교 안 함'·'비교 없음') · '작년 같은 달 …' · 증감 → 아래 안내 줄
   - **그래프**: 꼬리표 → 제목 = 결론 줄(끝 'N% ↑/↓'만 늘었음·줄었음 색) → PowerPoint 그래프(`addChart`) → 아래 설명 줄(잠정이면 앞에 잠정 바탕 작은 상자). 범례 끔, 점 숫자 끔, 점 모양 없음, y축 최소 0·최대 `axisMax`·간격 `axisMax/2`, 눈금선 #D5D9E2 0.75pt, 가로축 선 #9CA3AF, 그림 영역 바탕 없음
     - 외래: 꺾은선 두 줄(올해 #5B4BC4 실선, 작년 #9CA3AF 점선)
@@ -248,11 +259,11 @@ export function deckFileName(report: ReportNumbers): string // '월간보고-202
     - 처방군: 꺾은선 최대 4줄, 처방군 색 순서
   - **잠정 칸·끝 이름**: 그림 영역 위치(`layout`)와 y축 최댓값을 고정해 두고 자리를 계산한다. 잠정 칸은 그래프보다 먼저 놓는 잠정 바탕 상자(그 칸 너비). 끝 이름은 그래프 오른쪽 여백의 글상자로, 마지막 값 높이에 놓고 겹치면 0.3인치씩 아래로 민다. 외래·신환은 올해 = 그 줄 색(강조·신환), 작년 = 흐린 글자. 처방군은 진한 글자 + 앞에 그 줄 색 '●'(연보라·노랑처럼 옅은 색도 읽히게)
   - **요약 표**: 꼬리표 + 제목 → `addTable`(14pt). 머리줄 흐린 글자(잠정이면 '이번 달 (잠정)'만 잠정 글자색), 숫자 칸 오른쪽 정렬, 증감 칸 늘었음·줄었음 색, 신환 값 신환 색, 신환율 값 비율 색 → 아래 안내 줄
-  - **다음 할 일**: 꼬리표 + 제목 → 1~3개 테두리 상자(왼쪽 강조 색 바탕 + 흰 번호, 문장 18pt, ' — ' 앞을 굵게). AI 없음이면 안내 한 줄
+  - **다음 할 일**: 꼬리표 + 제목 → 1~3개 테두리 상자(왼쪽 강조 색 바탕 + 흰 번호, 문장 18pt, ' — ' 앞을 굵게, 그 아래 '근거 · …' 12pt 흐린 글자). AI 없음이면 안내 한 줄
   - **계산 기준**: 꼬리표 + 제목 → '· ' 줄들(14pt 보조 글자). 잠정 줄은 굵게 + 잠정 글자색·잠정 바탕
   - **바닥글**(표지 밖 모든 쪽): 왼쪽 '[병원 이름] · 2026년 10월 월간보고'(병원 이름이 없으면 제목만), 오른쪽 예시면 '예시 숫자'(점선 테두리) + 'n / 전체'
 - **그래프 XML 손보기**: pptxgenjs는 줄마다 점선을 주거나 막대 한 줄만 채움 없이 점선 테두리로 그리는 옵션이 없다. 그래서 `write` 뒤 `jszip`으로 `ppt/charts/chartN.xml`을 열어 작년 줄(`c:ser` 첫 번째)의 `c:spPr`만 정해 둔 모양(`a:noFill` + `a:ln w="9525"` + `a:prstDash val="dash"`, 꺾은선은 `w="25400"` 점선)으로 바꾸고 다시 묶는다. 바꾸는 곳은 이 한 곳뿐이고 시험(AC-006.3·AC-006.4)이 XML로 확인한다
-- AI 글은 pptxgenjs 글자로만 넣는다(pptxgenjs가 `<`·`&`를 바꿔 쓴다). `ai`에서는 `findings[0..3]`·`actions[0..2]`만 읽는다
+- AI 글은 pptxgenjs 글자로만 넣는다(pptxgenjs가 `<`·`&`를 바꿔 쓴다). `ai`에서는 `findings[0..3].tag·text`·`actions[0..2].text·basis`만 읽는다
 - 시험 도우미 `pptxTestUtil.ts`: 바이트를 `jszip`으로 열어 쪽 XML 목록(`presentation.xml` 순서)·그래프 XML·테마 XML·글자를 꺼낸다
 
 ### 예시 (`src/lib/report/sample.ts`, `scripts/make-sample-deck.ts`)
@@ -288,9 +299,11 @@ sample.ts ─→ buildSampleDecks ─→ scripts/make-sample-deck.ts ─→ out/
 - **글꼴 이름 `맑은 고딕`을 모든 글자 조각에 직접**: 받은 PC의 기본 글꼴로 바뀌지 않게 한다(조정자 지시). 테마 제목·본문 글꼴도 같은 이름이다. 맑은 고딕은 보통·굵게만 있어 제목은 굵게(700)다(900은 없다)
 - **신환 색 = 청록 #0E7490 (검토용 목업에서 정함)**: 그래프 보고서 목업의 주황이 '줄었음'과 '신환' 둘 다였다. dataviz 검사기(`validate_palette.js --mode light`, 짝마다): 줄었음 #B45309와 색각 이상 ΔE 16.5·정상 24.1, 처방군 연보라·파랑·노랑과 15.9 이상, 강조 보라 11.1·15.9, 늘었음 14.3·16.2, 잠정 16.3·21.3, 흰 바탕 대비 5.4:1. 처방군 분홍 #DB2777과는 적색맹 ΔE 6.3(주의, 같은 그래프에 나오지 않는다). 비율 청록 #0F766E와는 거의 같은 색(ΔE 5.5·5.8)이다 — 둘은 '신환'과 '신환율'에만 쓰여 같은 계열로 읽혀도 되고, 목업도 핵심 숫자 카드에 나란히 쓴다
 - **처방군 옅은 색(#C4B5FD·#FBBF24)**: 계획 값 그대로 쓰고, 끝 이름은 진한 글자 + 색 점으로 읽히게 한다(조정자 지시·목업)
-- **퍼센트는 소수 첫째 자리까지 버림**: '반올림하지 않는다'(plan §5)를 퍼센트 표시에도 같게 쓴다. %p는 표시한 두 값의 차라 표의 숫자와 늘 맞는다. AI 답 숫자 검사도 이 글자를 기준으로 한다. 목업 계산 기준의 '반올림' 문구와 다르다 → 열린 질문
+- **퍼센트는 소수 첫째 자리까지 반올림(사용자 결정 2026-10-29)**: 신환율·증감률·%p 모두. 정수 몫으로 계산해 1.005·10.05 같은 경계에서 실수 오차가 없다. %p는 반올림한 두 표시 값의 차라 표의 숫자와 늘 맞는다. AI 답 숫자 검사도 이 글자를 기준으로 한다. 금액 규칙(원 미만 버림, plan §5)은 그대로다
 - **%p에도 부호를 붙인다**('−2.7%p', 목업과 같음)
-- **잠정 달은 비교하지 않는다**: 파일럿 규칙(완전한 칸끼리만 비교, plan §2-2 사용자 결정)과 `history.ts`와 같다. 값은 잠정 표시와 함께 보인다. 목업은 잠정 10월도 비교한다 → 열린 질문
+- **잠정 달은 비교하지 않는다(사용자 결정 2026-10-29 확인)**: 파일럿 규칙(완전한 칸끼리만 비교, plan §2-2)과 `history.ts`와 같다. 값은 잠정 표시와 함께 보인다. 목업의 잠정 10월 비교는 예시일 뿐이다
+- **외래 = 실인원(사용자 결정 2026-10-29)**: 저장된 달 숫자 `totals.patients` 그대로
+- **발견 꼬리표·할 일 근거 줄(사용자 결정 2026-10-29)**: 꼬리표는 AI가 고르지만 목록은 양식에 고정되어 검사기가 목록 밖을 거부한다. 근거 줄은 문장과 같은 숫자 검사를 받아 자료에 없는 숫자를 쓸 수 없다. 꼬리표 색은 하나(강조 색)로 두고, 문장에 '추정'이 있을 때만 점선으로 바꾼다(목업의 '추정' 점선 꼬리표)
 - **외래·신환 그래프는 그 해 1월~M, 처방군은 최근 6달**: 목업과 같다. 1월 보고서는 칸이 하나다
 - **결론 줄의 비교 상대는 그래프마다 다르다**: 외래 = 작년 같은 달, 신환·처방군 = 지난달(목업과 같음)
 - **요약 표에 7일·14일 재방문율 두 줄을 더한다**: 목업에는 없지만 plan §2-2의 숫자다. 카드·그래프에는 넣지 않는다
@@ -308,4 +321,4 @@ sample.ts ─→ buildSampleDecks ─→ scripts/make-sample-deck.ts ─→ out/
 - pptxgenjs의 Node 쪽 의존성(`https`·`image-size`)이 2단계 Next 브라우저 번들에서 문제를 내면 그때 동적 import 경로를 조정한다(1단계는 화면에서 부르지 않아 `next build` 번들에 들어가지 않는다)
 - AI가 숫자를 한글로 쓰면('두 배', '1만 2천') 숫자 검사가 못 잡는다 → system 글로 막고, 2단계 실제 호출 결과로 다시 본다
 - `feat-auth`도 `src/lib/errors.ts`·`src/types/errors.ts`·`package.json`·`docs/UI_GUIDE.md`·`docs/ADR.md`에 줄을 더한다. 합칠 때 두 쪽 줄을 모두 남기면 된다
-- 열린 질문(퍼센트 끝자리, 외래 뜻, 잠정 달 비교, 한눈에 꼬리표·근거 줄)은 `requirements.md` 끝에 있다
+- 사용자 결정(2026-10-29: 퍼센트 반올림, 외래 실인원, 꼬리표·근거 줄, 잠정 달 비교 안 함)은 `requirements.md` 끝에 있다

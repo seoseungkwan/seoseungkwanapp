@@ -67,7 +67,7 @@
 - Tests: src/lib/report/aiAnswer.test.ts
 - TDD: required
 
-시험: AC-005.1~AC-005.7.
+시험: AC-005.1~AC-005.8.
 
 ## TASK-9: PPT 만들기 (pptxgenjs 넣기)
 - REQ: REQ-006
