@@ -283,6 +283,16 @@ describe('LoginCard: 앱 안 브라우저(카카오톡·네이버·인스타그�
     noArbitraryColor()
   })
 
+  it('AC-003.2: 설명 문장 속 "크롬·엣지"는 한 덩이로 줄을 바꾼다(줄 첫머리가 "·"로 시작하지 않게)', () => {
+    render(<LoginCard failed={false} />)
+    const sentence = screen.getByText((_, el) =>
+      el?.tagName === 'P' && el.textContent === '구글은 앱 안에서 여는 로그인을 막아요. 주소를 복사해 크롬·엣지 주소창에 붙여 넣어 주세요.',
+    )
+    const names = within(sentence).getByText('크롬·엣지')
+    expect(names.tagName).toBe('SPAN')
+    expect(classesOf(names)).toContain('whitespace-nowrap')
+  })
+
   it('AC-003.2: 앱 안 브라우저에서도 /login?error=1 카드는 보인다', () => {
     render(<LoginCard failed />)
     expect(within(screen.getByRole('alert')).getByText('오류 번호 E-AUTH-CALLBACK')).toBeTruthy()

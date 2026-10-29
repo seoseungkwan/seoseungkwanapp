@@ -139,6 +139,23 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(email.value).toBe(EMAIL)
   })
 
+  it('AC-004.2: 긴 구글 이메일도 잘리지 않고 읽기 전용 칸 안에서 줄을 바꿔 다 보인다(폰 390px)', () => {
+    const long = 'newclinic.department.owner.longname@example-hospital.co.kr'
+    render(<SignupForm email={long} />)
+    const input = emailInput()
+    expect(input.value).toBe(long)
+    const box = input.parentElement as HTMLElement
+    hasAll(box, ui.readonly)
+    // 보이는 글자는 줄을 바꾸는 글자. 화면 읽기는 입력란 하나만 읽는다(같은 주소를 두 번 읽지 않게 숨김)
+    const shown = within(box).getByText(long)
+    expect(shown.tagName).toBe('SPAN')
+    expect(shown.getAttribute('aria-hidden')).toBe('true')
+    hasAll(shown, 'min-w-0 wrap-anywhere')
+    // 입력란은 한 줄이라 긴 주소를 자른다 → 화면에서는 숨기고(sr-only) 라벨·설명·키보드 초점만 맡는다(초점은 칸 테두리로 보인다)
+    hasAll(input, 'sr-only')
+    expect(classesOf(box)).toContain('focus-within:border-accent')
+  })
+
   it('AC-004.2: 필수·선택 표시와 자리표시 글자는 목업 그대로', () => {
     render(<SignupForm email={EMAIL} />)
     expect(nameInput().required).toBe(true)

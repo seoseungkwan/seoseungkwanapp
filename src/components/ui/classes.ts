@@ -10,8 +10,10 @@ const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-
 const disabled =
   'disabled:cursor-not-allowed disabled:opacity-40 aria-disabled:cursor-not-allowed aria-disabled:opacity-40'
 
-// 단추 공통: 6px 모서리, 1px 테두리(색은 종류마다), 500
-const buttonBase = `inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-card border font-medium ${focusRing} ${disabled}`
+// 단추 공통: 6px 모서리, 1px 테두리(색은 종류마다), 500.
+// flex 크기(flex-·grow·shrink·basis)는 두지 않는다 — 놓는 자리가 정한다(error.tsx flex-[1_1_160px]·관리자 max-md:flex-1).
+// 줄바꿈 없는 글자라 flex 안에서도 글자 폭 아래로는 줄지 않는다
+const buttonBase = `inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-card border font-medium ${focusRing} ${disabled}`
 // 기본 36px·좌우 14px·body / 작은 단추(표 안) 32px·좌우 12px·table. 폰은 둘 다 44px
 const buttonSize = 'h-9 px-3.5 text-body max-md:h-11'
 const buttonSizeSmall = 'h-8 px-3 text-table max-md:h-11'

@@ -144,8 +144,10 @@ function OpenInBrowser() {
     <div className="flex flex-col gap-3 rounded-card border border-line bg-canvas p-4">
       <div className="flex flex-col gap-1">
         <p className="text-body font-semibold text-ink">크롬·엣지에서 열어 주세요</p>
+        {/* "크롬·엣지"는 한 덩이로 줄을 바꾼다(가운뎃점 앞에서 끊기면 줄이 "·"로 시작한다) */}
         <p className="text-table text-ink-2">
-          구글은 앱 안에서 여는 로그인을 막아요. 주소를 복사해 크롬·엣지 주소창에 붙여 넣어 주세요.
+          구글은 앱 안에서 여는 로그인을 막아요. 주소를 복사해 <span className="whitespace-nowrap">크롬·엣지</span> 주소창에 붙여
+          넣어 주세요.
         </p>
       </div>
       {/* 읽기 전용 주소 칸. 누르면 주소 전체가 잡힌다(select-all은 -webkit-user-select도 낸다) */}

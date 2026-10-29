@@ -4,7 +4,10 @@
    랜딩 a·a:hover는 @layer base 안에 둬서 앱 <a>의 Tailwind 글자색이 이긴다 */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss/utilities.css" layer(utilities) source("../");
+/* 클래스는 src/ 안 소스에서만 찾는다(source("../") = src/). 문서·명세·시안 HTML과 시험 글자에만 있는 이름으로 쓰지 않는 클래스를 만들지 않는다 */
+@source not "../**/*.test.ts";
+@source not "../**/*.test.tsx";
 
 /* 앱 토큰. 값은 docs/UI_GUIDE.md '앱 화면' 표 그대로. 기본 색 팔레트는 지워 토큰 색만 클래스가 된다(흰 글자는 text-surface) */
 @theme {

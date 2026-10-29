@@ -193,7 +193,7 @@ describe('AdminApplications: 승인', () => {
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['다라 통증의학과의원'])
     await user.click(tabNamed('승인'))
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['가나 정형외과의원', '마바 정형외과의원'])
-    expect(screen.queryByRole('status')).toBeNull() // 탭을 바꾸면 완료 줄은 지운다(목업)
+    expect(status().textContent).toBe('') // 탭을 바꾸면 완료 줄은 지운다(목업). 자리(role=status)는 남는다
     expect(screen.queryByRole('dialog')).toBeNull() // 승인은 확인 창 없이 바로
   })
 
@@ -210,6 +210,58 @@ describe('AdminApplications: 승인', () => {
     expect(rpc).toHaveBeenCalledTimes(1)
     await act(async () => resolve({ data: null, error: null, status: 204 }))
     for (const b of within(table()).getAllByRole<HTMLButtonElement>('button')) expect(b.disabled).toBe(false)
+  })
+})
+
+describe('AdminApplications: 완료 알림 자리와 초점', () => {
+  it('AC-007.2: 완료 줄 자리(role="status")는 처음부터 늘 있고 글만 바뀐다 — 화면 읽기가 새 글을 놓치지 않는다. 비었을 때는 자리를 차지하지 않는다', async () => {
+    const user = await renderLoaded()
+    const region = status()
+    expect(region.textContent).toBe('')
+    hasAll(region, 'empty:sr-only')
+    hasNone(region, 'empty:hidden hidden')
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
+    expect(status()).toBe(region)
+    expect(region.textContent).toBe('가나 정형외과의원 신청을 승인했습니다.')
+    await user.click(tabNamed('승인'))
+    expect(status()).toBe(region)
+    expect(region.textContent).toBe('')
+    expect(region.childNodes).toHaveLength(0) // :empty — 체크 아이콘도 남지 않는다
+  })
+
+  it('AC-007.2·AC-007.3·AC-007.4: 바꾸기가 끝나면 초점은 지금 탭으로 간다(누른 단추의 줄이 다른 탭으로 옮겨져 사라져도 초점이 문서 처음으로 떨어지지 않는다)', async () => {
+    const user = await renderLoaded()
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
+    expect(document.activeElement).toBe(tabNamed('대기'))
+    await user.click(within(rowOf('다라 통증의학과의원')).getByRole('button', { name: '거절' }))
+    await user.click(within(dialog()).getByRole('button', { name: '거절' }))
+    expect(document.activeElement).toBe(tabNamed('대기'))
+    await user.click(tabNamed('거절'))
+    await user.click(within(rowOf('사아 의원')).getByRole('button', { name: '되돌리기' }))
+    expect(document.activeElement).toBe(tabNamed('거절'))
+  })
+
+  it('AC-007.2: 보내는 동안 다른 탭으로 옮겼으면, 끝난 뒤 초점은 그때의 지금 탭으로 간다', async () => {
+    let finish: (value: unknown) => void = () => {}
+    rpc.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+    const user = await renderLoaded()
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
+    await user.click(tabNamed('거절'))
+    await act(async () => finish({ data: null, error: null, status: 204 }))
+    expect(document.activeElement).toBe(tabNamed('거절'))
+  })
+
+  it('AC-007.6: 실패하면 초점은 처음 누른 단추로 돌아온다(줄이 그대로라 단추도 그대로 있다)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: RAW }, status: 403 })
+    const user = await renderLoaded()
+    const approve = within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' })
+    await user.click(approve)
+    expect(document.activeElement).toBe(approve)
+    const opener = within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' })
+    await user.click(opener)
+    await user.click(within(dialog()).getByRole('button', { name: '거절' }))
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-ADMIN-FAILED')
+    expect(document.activeElement).toBe(opener)
   })
 })
 
@@ -235,7 +287,7 @@ describe('AdminApplications: 거절 확인 창', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(rpc).not.toHaveBeenCalled()
     expect(tabNames()).toEqual(['대기 2', '승인 1', '거절 1'])
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(status().textContent).toBe('')
     expect(document.activeElement).toBe(opener)
   })
 
@@ -259,6 +311,23 @@ describe('AdminApplications: 거절 확인 창', () => {
     expect(document.activeElement).toBe(cancel)
     await user.tab({ shift: true })
     expect(document.activeElement).toBe(confirm)
+  })
+
+  it('AC-007.3: 창 안 빈 곳(글자)을 눌러도 초점은 창에 남고(창 tabIndex=-1), 그 뒤 Tab·Shift+Tab도 창 밖으로 나가지 않는다', async () => {
+    const user = await renderLoaded()
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
+    const d = dialog()
+    expect(d.getAttribute('tabindex')).toBe('-1')
+    const [cancel, confirm] = within(d).getAllByRole('button')
+    await user.click(within(d).getByText(CONFIRM_BODY))
+    expect(d.contains(document.activeElement)).toBe(true)
+    await user.tab({ shift: true })
+    expect(document.activeElement).toBe(confirm)
+    await user.click(within(d).getByText(CONFIRM_BODY))
+    await user.tab()
+    expect(document.activeElement).toBe(cancel)
+    // 창에 초점이 와도 고리를 그리지 않는다(누른 자리일 뿐 조작 요소가 아니다)
+    hasAll(d, 'outline-hidden')
   })
 
   it('AC-007.3: 창의 [거절]이면 rejected로 바꾸고, 줄이 거절 탭으로 옮겨지고 완료 줄을 보인다', async () => {
@@ -320,6 +389,9 @@ describe('AdminApplications: 빈 탭', () => {
     expect(cells[0].getAttribute('colspan')).toBe('6')
     expect(cells[0].textContent).toContain(title)
     expect(cells[0].textContent).toContain(body)
+    // 제목과 설명은 한 문장으로 이어지지 않게 따로 줄(블록)로 — 목업처럼 <p> 둘
+    expect([...cells[0].querySelectorAll('p')].map((el) => el.textContent)).toEqual([title, body])
+    expect([...cells[0].childNodes].every((n) => n.nodeType !== Node.TEXT_NODE)).toBe(true)
     hasAll(cells[0], ui.table.emptyRow)
     expect(within(table()).queryAllByRole('button')).toEqual([])
   })
@@ -334,7 +406,7 @@ describe('AdminApplications: 함수 호출 실패', () => {
     expect(card.textContent).toContain(errorInfo('E-ADMIN-FAILED').what)
     expect(card.textContent).toContain('오류 번호 E-ADMIN-FAILED')
     expect(document.body.textContent).not.toContain('secret-detail')
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(status().textContent).toBe('')
     expect(tabNames()).toEqual(['대기 2', '승인 1', '거절 1'])
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['가나 정형외과의원', '다라 통증의학과의원'])
     expect(rpc).toHaveBeenCalledTimes(1) // 저절로 다시 보내지 않는다
@@ -458,6 +530,27 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     for (const c of [clinic, applicant, action]) hasAll(c, ui.table.td)
     hasAll(rowOf('가나 정형외과의원'), ui.table.row)
     hasAll(screen.getByRole('tabpanel'), ui.panel)
+  })
+
+  it('AC-007.1·AC-013.3: PC 표는 칸 폭을 정해 둔다(table-fixed) — 승인으로 줄이 바뀌거나 탭이 비어도 칸 자리가 움직이지 않는다', async () => {
+    const user = await renderLoaded()
+    const widths = () =>
+      within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /^(max-|md:)?w-/.test(t)))
+    // 신청일·신청자·연락처·동작은 정한 폭, 병원 이름·이메일은 남은 폭을 반씩
+    const FIXED = [['w-28'], [], ['w-28'], [], ['w-32'], ['w-36']]
+    hasAll(table(), 'md:table-fixed md:min-w-250')
+    expect(widths()).toEqual(FIXED)
+    // 정한 폭이 없는 두 칸은 PC에서 넘치면 말줄임(옆 칸을 덮지 않는다). 폰은 줄바꿈 그대로
+    const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
+    for (const c of [cells[1], cells[2], cells[3]]) hasAll(c, 'md:truncate')
+    // 말줄임으로 잘려도 전체 값은 마우스를 올리면 보인다(title)
+    expect([cells[1], cells[2], cells[3]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
+    // 빈 탭에서도 머리 폭은 같다
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
+    await user.click(within(rowOf('다라 통증의학과의원')).getByRole('button', { name: '승인' }))
+    expect(bodyRows()).toHaveLength(1)
+    expect(widths()).toEqual(FIXED)
+    hasAll(table(), 'md:table-fixed')
   })
 
   it('AC-013.3: 표 안 단추 — [승인] 주(small), [거절]·[되돌리기] 보조(small)', async () => {

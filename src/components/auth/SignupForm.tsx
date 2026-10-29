@@ -134,14 +134,12 @@ export function SignupForm({ email }: { email: string }) {
               <rect x="5" y="11" width="14" height="9" rx="2" />
               <path d="M8 11V8a4 4 0 0 1 8 0v3" />
             </svg>
-            <input
-              id="su-email"
-              type="email"
-              value={email}
-              readOnly
-              aria-describedby="su-email-help"
-              className="min-w-0 flex-1 bg-transparent text-ink-2 outline-hidden"
-            />
+            {/* 입력란은 한 줄이라 긴 주소를 자른다 → 화면에는 줄을 바꾸는 글자로 보이고(화면 읽기는 건너뜀),
+                입력란은 숨겨 두고 라벨·설명·키보드 초점만 맡는다(초점은 칸 테두리 focus-within으로 보인다) */}
+            <input id="su-email" type="email" value={email} readOnly aria-describedby="su-email-help" className="sr-only" />
+            <span aria-hidden="true" className="min-w-0 flex-1 wrap-anywhere">
+              {email}
+            </span>
           </div>
           <p id="su-email-help" className={ui.help}>
             로그인한 계정이라 바꿀 수 없습니다.

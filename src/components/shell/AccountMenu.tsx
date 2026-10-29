@@ -64,7 +64,8 @@ export function AccountMenu({ email, hospitalName, isAdmin }: { email: string; h
           <circle cx="12" cy="8" r="4" />
           <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
         </svg>
-        <span className="max-w-60 truncate max-md:hidden">{email}</span>
+        {/* 1024px 미만(시각이 같이 보이는 좁은 PC 띠)에서는 128px로 줄여 병원 이름 자리를 남긴다. 넘치면 말줄임(이름은 aria-label에 전체) */}
+        <span className="max-w-32 truncate max-md:hidden lg:max-w-60">{email}</span>
         <svg aria-hidden="true" className="shrink-0 text-ink-2 max-md:hidden" width="12" height="12" viewBox="0 0 12 12">
           <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>

@@ -153,6 +153,13 @@ describe('AC-013.3: 단추·칩 색 (UI_GUIDE 단추·칩 표)', () => {
   it('AC-013.3: 카드·패널은 흰 바탕 + 1px line', () => {
     for (const value of [ui.card, ui.panel, ui.layer]) expect(has(value, 'bg-surface', 'border', 'border-line')).toBe(true)
   })
+
+  it('AC-013.3: 단추 묶음은 flex 크기(flex-·grow·shrink·basis)를 정하지 않는다 — 놓는 자리(flex-[1_1_160px]·max-md:flex-1)가 정해도 같은 속성 클래스가 둘 겹치지 않는다', () => {
+    const FLEX_SIZE = /^(flex-(?!col|row|wrap|nowrap)|grow|shrink|basis-)/
+    for (const [name, value] of BUTTONS) {
+      expect(tokens(value).filter((t) => FLEX_SIZE.test(split(t).utility)), name).toEqual([])
+    }
+  })
 })
 
 describe('AC-013.4: 폰(768px 미만) 누름 영역 44px·입력란 16px', () => {

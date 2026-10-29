@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { hydrateRoot, type Root } from 'react-dom/client'
+import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ui } from '@/components/ui/classes'
 import { AccountMenu } from './AccountMenu'
@@ -42,6 +44,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.useRealTimers()
   delete (Element.prototype as Partial<Element>).scrollIntoView
@@ -126,16 +129,78 @@ describe('TabBar', () => {
     expect(within(nav()).getByRole('link', { name: '대시보드' }).hasAttribute('aria-describedby')).toBe(false)
   })
 
-  it('AC-008.5: 툴팁은 평소 숨고, 1024px 이상에서 올림·초점에 보인다(ink 바탕·흰 caption 500·4px·shadow-float)', () => {
+  // 툴팁이 보이는지: 늘 hidden이고, 보일 때만 lg:block이 붙는다(1024px 미만은 띠 안 스크롤이라 숨긴다)
+  const tipOf = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-describedby') as string) as HTMLElement
+  const tipShown = (button: HTMLElement) => {
+    const classes = classesOf(tipOf(button))
+    expect(classes).toContain('hidden')
+    return classes.includes('lg:block')
+  }
+
+  it('AC-008.5: 툴팁은 평소 숨고, 1024px 이상에서 올림·초점에 보인다(ink 바탕·흰 caption 500·4px·shadow-float)', async () => {
+    const user = userEvent.setup()
     render(<TabBar isAdmin={false} />)
     const button = tab('통계')
-    const tip = document.getElementById(button.getAttribute('aria-describedby') as string) as HTMLElement
-    hasAll(tip, 'hidden lg:group-hover:block lg:group-focus-within:block')
-    hasAll(tip, 'absolute top-full bg-ink text-surface text-caption font-medium rounded-chip px-2 py-1 shadow-float whitespace-nowrap')
-    // 올림·초점을 받는 group은 단추와 툴팁을 함께 감싼다
+    const tip = tipOf(button)
+    hasAll(tip, 'absolute bg-ink text-surface text-caption font-medium rounded-chip px-2 py-1 shadow-float whitespace-nowrap')
+    hasNone(tip, 'max-lg:block md:block block')
+    expect(tipShown(button)).toBe(false)
+    // 올림·초점을 받는 덩이는 단추와 툴팁을 함께 감싼다
     const group = button.parentElement as HTMLElement
     expect(group.contains(tip)).toBe(true)
-    hasAll(group, 'group relative')
+    hasAll(group, 'relative')
+
+    await user.hover(button)
+    expect(tipShown(button)).toBe(true)
+    await user.unhover(button)
+    expect(tipShown(button)).toBe(false)
+
+    act(() => button.focus())
+    expect(tipShown(button)).toBe(true)
+    act(() => button.blur())
+    expect(tipShown(button)).toBe(false)
+  })
+
+  it('AC-008.5: 툴팁은 Esc로 닫히고(올림·초점은 그대로), 다시 올리거나 초점이 오면 또 보인다 (WCAG 1.4.13)', async () => {
+    const user = userEvent.setup()
+    render(<TabBar isAdmin={false} />)
+    const button = tab('통계')
+    // 키보드 초점
+    act(() => button.focus())
+    expect(tipShown(button)).toBe(true)
+    await user.keyboard('{Escape}')
+    expect(tipShown(button)).toBe(false)
+    expect(document.activeElement).toBe(button)
+    act(() => button.blur())
+    act(() => button.focus())
+    expect(tipShown(button)).toBe(true)
+    act(() => button.blur())
+    // 마우스 올림
+    await user.hover(button)
+    expect(tipShown(button)).toBe(true)
+    await user.keyboard('{Escape}')
+    expect(tipShown(button)).toBe(false)
+    await user.unhover(button)
+    await user.hover(button)
+    expect(tipShown(button)).toBe(true)
+  })
+
+  it('AC-008.5: 마우스를 툴팁 위로 옮겨도 닫히지 않는다 — 툴팁은 탭과 붙어 있고(사이 틈 없음) 마우스를 받는다 (WCAG 1.4.13)', async () => {
+    const user = userEvent.setup()
+    render(<TabBar isAdmin={false} />)
+    const button = tab('통계')
+    const tip = tipOf(button)
+    hasNone(tip, 'pointer-events-none')
+    await user.hover(button)
+    await user.hover(tip)
+    expect(tipShown(button)).toBe(true)
+  })
+
+  it('AC-008.5: 툴팁은 탭 띠 아래 페이지 제목을 덮지 않는다 — 탭(50px) 안 40px에서 시작해 띠 밑으로 조금만 내려온다', () => {
+    render(<TabBar isAdmin={false} />)
+    const tip = tipOf(tab('통계'))
+    hasAll(tip, 'top-10 left-1/2 -translate-x-1/2')
+    hasNone(tip, 'top-full mt-1')
   })
 
   it('AC-008.5: 준비 중 탭을 눌러도 주소가 바뀌지 않는다', async () => {
@@ -195,12 +260,43 @@ describe('TabBar', () => {
     for (const item of tabItems()) hasAll(item, 'max-md:h-11.5 max-md:px-3.5 max-md:text-body')
   })
 
-  it('AC-008.7: 처음 그릴 때 지금 탭이 보이게 옮긴다(scrollIntoView, 지금 탭에만)', () => {
+  // jsdom은 배치를 계산하지 않는다 → 탭 띠(390px)와 지금 탭의 자리를 정해 준다. 지금 탭은 띠 안에서 900~980px(밀기 전)
+  const layout = ({ overflow }: { overflow: boolean }) => {
+    const rect = (left: number, width: number) =>
+      ({ left, right: left + width, top: 0, bottom: 50, width, height: 50, x: left, y: 0, toJSON: () => ({}) }) as DOMRect
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
+      return this.tagName === 'NAV' ? (overflow ? 1000 : 390) : 0
+    })
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this.tagName === 'NAV' ? 390 : 0
+    })
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const navEl = this.closest('nav')
+      if (this.tagName === 'NAV') return rect(0, 390)
+      if (this.getAttribute('aria-current') === 'page') return rect(900 - (navEl?.scrollLeft ?? 0), 80)
+      return rect(0, 0)
+    })
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    return { scrollTo }
+  }
+
+  it('AC-008.7: 처음 그릴 때 지금 탭이 보이게 탭 띠만 옆으로 민다(띠 오른쪽 끝에 맞춤). 페이지(창)는 움직이지 않는다', () => {
+    const { scrollTo } = layout({ overflow: true })
     pathname.mockReturnValue('/admin')
     render(<TabBar isAdmin />)
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView.mock.contexts[0]).toBe(within(nav()).getByRole('link', { name: '관리자' }))
-    expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ block: 'nearest' })
+    expect(nav().scrollLeft).toBe(590) // 980 - 390
+    expect(scrollIntoView).not.toHaveBeenCalled() // scrollIntoView는 창까지 밀 수 있다
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it('AC-008.7: 탭이 한 줄에 다 들어가면(넘치지 않으면) 아무것도 밀지 않는다', () => {
+    const { scrollTo } = layout({ overflow: false })
+    pathname.mockReturnValue('/admin')
+    render(<TabBar isAdmin />)
+    expect(nav().scrollLeft).toBe(0)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
   })
 
   it('AC-008.7: 메뉴 서랍·[메뉴 열기] 단추가 없다', () => {
@@ -358,9 +454,29 @@ describe('KstClock', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('AC-008.6·AC-008.7: table 글자 muted, 폰에서는 숨긴다', () => {
+  it('AC-008.6: 화면에 붙자마자(hydration 직후) 브라우저 시각으로 바꾼다 — 서버가 그린 분이 다음 분까지 남지 않는다', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-29T00:41:59Z')) // 서버가 그린 때: 한국 09:41
+    const container = document.createElement('div')
+    container.innerHTML = renderToString(<KstClock />)
+    document.body.appendChild(container)
+    expect(container.textContent).toBe('2026년 10월 29일 (목) 09:41 (KST)')
+    vi.setSystemTime(new Date('2026-10-29T00:42:01Z')) // 브라우저가 붙인 때: 09:42
+    let root: Root | undefined
+    await act(async () => {
+      root = hydrateRoot(container, <KstClock />)
+    })
+    const time = container.querySelector('time') as HTMLElement
+    expect(time.textContent).toBe('2026년 10월 29일 (목) 09:42 (KST)')
+    expect(time.getAttribute('datetime')).toBe('2026-10-29T00:42:00.000Z')
+    act(() => root?.unmount())
+    container.remove()
+  })
+
+  it('AC-008.6·AC-008.7: table 글자 muted, 폰(768px 미만)에서만 숨긴다', () => {
     render(<KstClock />)
     hasAll(screen.getByText(/\(KST\)$/), 'text-table text-muted whitespace-nowrap max-md:hidden')
+    hasNone(screen.getByText(/\(KST\)$/), 'max-lg:hidden')
   })
 })
 
@@ -419,6 +535,15 @@ describe('AppShell', () => {
     const banner = screen.getByRole('banner')
     hasAll(within(banner).getByText('[서비스 이름]'), 'text-logo font-semibold text-ink')
     hasAll(within(banner).getByText(HOSPITAL), 'text-lead font-medium text-ink truncate')
+  })
+
+  it('AC-008.3: 768~1023px 띠에서도 병원 이름 자리가 남는다 — 계정 단추 이메일은 1024px 미만에서 128px(넘치면 말줄임), 병원 이름은 80px 아래로 줄지 않고 말줄임', () => {
+    shell()
+    const banner = screen.getByRole('banner')
+    hasAll(within(banner).getByText(EMAIL), 'truncate max-w-32 lg:max-w-60')
+    hasAll(within(banner).getByText(HOSPITAL), 'truncate min-w-20')
+    // 단추의 화면 읽기 이름은 보이는 이메일로 시작한다(잘려 보여도 이름은 전체)
+    expect(within(banner).getByRole('button', { name: new RegExp(EMAIL) }).getAttribute('aria-label')?.startsWith(EMAIL)).toBe(true)
   })
 
   it('AC-008.1: 본문은 좌우 24px·위 24px·아래 28px', () => {

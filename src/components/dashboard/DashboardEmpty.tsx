@@ -5,12 +5,13 @@ import { ui } from '@/components/ui/classes'
 const EMPTY_TITLE_ID = 'dashboard-empty-title'
 
 // title = koreanDateTitle(…) ('2026년 10월 29일 (목)'). 제목은 "오늘" + 10px + 날짜(title 600, 폰 title-sm).
-// h1이 flex라 두 span 사이 빈칸은 그리지 않고(간격은 gap 10px), 글자로는 "오늘 2026년 …"으로 읽힌다
+// h1은 flex가 아닌 글 줄이다 → 사이 빈칸이 진짜로 그려져 화면 읽기·복사도 "오늘 2026년 …"이다.
+// 10px = 빈칸(25px 글자에서 약 6px) + "오늘" 오른쪽 4px
 export function DashboardEmpty({ title }: { title: string }) {
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
-      <h1 className="flex flex-wrap items-baseline gap-x-2.5 text-title font-semibold text-ink max-md:text-title-sm">
-        <span>오늘</span> <span>{title}</span>
+      <h1 className="text-title font-semibold text-ink max-md:text-title-sm">
+        <span className="mr-1">오늘</span> <span>{title}</span>
       </h1>
       {/* 빈 안내 상자(ui.card): 상자 제목 panel 600 + 회색 안내 한 줄(UI_GUIDE '빈 상태': table muted) */}
       <section aria-labelledby={EMPTY_TITLE_ID} className={`${ui.card} flex flex-col gap-1`}>

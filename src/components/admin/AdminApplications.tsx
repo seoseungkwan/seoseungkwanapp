@@ -30,14 +30,25 @@ const labeled = `${cellPhone} max-md:flex max-md:gap-3 max-md:before:w-14 max-md
 // DOM은 PC 칸 순서(신청일 먼저). 폰은 병원 이름·신청자·이메일·연락처·신청일 / 상태 칩·단추 순서
 const cell = {
   date: `${ui.table.tdSub} ${labeled} max-md:order-1`,
-  clinic: `${ui.table.td} ${cellPhone} font-medium max-md:text-body max-md:font-semibold`,
-  applicant: `${ui.table.td} ${labeled}`,
-  email: `${ui.table.tdSub} ${labeled} max-md:break-all`,
+  clinic: `${ui.table.td} ${cellPhone} font-medium md:truncate max-md:text-body max-md:font-semibold`,
+  applicant: `${ui.table.td} ${labeled} md:truncate`,
+  email: `${ui.table.tdSub} ${labeled} md:truncate max-md:break-all`,
   phone: `${ui.table.tdSub} ${labeled}`,
   action: `${ui.table.td} ${cellPhone} max-md:order-2 max-md:mt-2 max-md:flex max-md:flex-col max-md:gap-3`,
 }
-const emptyClass = `${ui.table.emptyRow} max-md:block max-md:h-auto max-md:rounded-card max-md:border max-md:bg-surface max-md:px-4 max-md:py-3`
-const COLUMNS = ['신청일', '병원 이름', '신청자', '이메일', '연락처', '동작'] as const
+// 빈 탭 안내: 제목과 설명을 따로 줄로(목업 <p> 둘). 두 줄이라 위아래 여백을 둔다
+const emptyClass = `${ui.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:rounded-card max-md:border max-md:bg-surface max-md:px-4 max-md:py-3`
+// PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
+// 신청일·신청자·연락처·동작은 정한 폭, 병원 이름·이메일은 남은 폭을 반씩. 글 칸(병원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
+// 표는 최소 1000px — 더 좁으면 표만 옆으로 밀린다
+const COLUMNS = [
+  { label: '신청일', width: 'w-28' },
+  { label: '병원 이름', width: '' },
+  { label: '신청자', width: 'w-28' },
+  { label: '이메일', width: '' },
+  { label: '연락처', width: 'w-32' },
+  { label: '동작', width: 'w-36' },
+] as const
 
 function CheckIcon({ size }: { size: number }) {
   return (
@@ -75,13 +86,15 @@ function RejectDialog({ row, onCancel, onConfirm }: { row: Application; onCancel
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onCancel])
 
+  // 창 안 빈 곳을 누르면 초점은 창 자신(tabIndex=-1)에 남는다 → 거기서도 Tab은 [취소]·[거절] 사이만 돈다
   const trapTab = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Tab') return
     const [first, last] = [cancelRef.current, confirmRef.current]
-    if (e.shiftKey && document.activeElement === first) {
+    const active = document.activeElement
+    if (e.shiftKey && (active === first || active === e.currentTarget)) {
       e.preventDefault()
       last?.focus()
-    } else if (!e.shiftKey && document.activeElement === last) {
+    } else if (!e.shiftKey && (active === last || active === e.currentTarget)) {
       e.preventDefault()
       first?.focus()
     }
@@ -94,8 +107,9 @@ function RejectDialog({ row, onCancel, onConfirm }: { row: Application; onCancel
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
+        tabIndex={-1}
         onKeyDown={trapTab}
-        className={`${ui.layer} flex w-full max-w-100 flex-col gap-4 p-6 max-md:p-5`}
+        className={`${ui.layer} flex w-full max-w-100 flex-col gap-4 p-6 outline-hidden max-md:p-5`}
       >
         <h2 id={titleId} className="text-lead font-semibold text-ink">
           이 신청을 거절할까요?
@@ -129,6 +143,10 @@ export function AdminApplications() {
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState<Application | null>(null)
   const openerRef = useRef<HTMLButtonElement | null>(null)
+  // 바꾸기가 끝난 뒤 초점을 둘 곳: 성공 = 그때의 지금 탭('tab', 누른 단추의 줄은 다른 탭으로 옮겨져 사라진다), 실패 = 처음 누른 단추.
+  // 다시 그린 뒤에 옮기므로 effect가 맡는다(focusTick이 바뀔 때). 한 번 쓰면 비운다
+  const focusAfterRef = useRef<'tab' | HTMLElement | null>(null)
+  const [focusTick, setFocusTick] = useState(0)
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const baseId = useId()
   const tabId = (key: Tab) => `${baseId}-tab-${key}`
@@ -170,19 +188,29 @@ export function AdminApplications() {
     tabRefs.current[key]?.focus()
   }
 
+  useEffect(() => {
+    const target = focusAfterRef.current
+    if (focusTick === 0 || target === null) return
+    focusAfterRef.current = null
+    ;(target === 'tab' ? tabRefs.current[tab] : target)?.focus()
+  }, [focusTick, tab])
+
   // 함수가 성공한 뒤에만 줄을 옮긴다. 실패하면 줄은 그대로 두고 E-ADMIN-FAILED 카드(저절로 다시 보내지 않는다)
-  const change = async (row: Application, status: Tab) => {
+  const change = async (row: Application, status: Tab, origin: HTMLButtonElement | null) => {
     setBusy(true)
     try {
       await setHospitalStatus(row.id, status)
       setRows((prev) => (prev === null ? prev : withStatus(prev, row.id, status)))
       setFailed(false)
       setMessage(doneMessage(row.name, status))
+      focusAfterRef.current = 'tab'
     } catch {
       setMessage('')
       setFailed(true)
+      focusAfterRef.current = origin
     } finally {
       setBusy(false)
+      setFocusTick((n) => n + 1)
     }
   }
 
@@ -240,23 +268,26 @@ export function AdminApplications() {
             })}
           </div>
 
-          {/* 완료 줄과 오류 카드는 같은 자리(탭 줄과 표 사이) */}
-          {message !== '' && (
-            <p role="status" className="flex items-center gap-2 text-table text-ok">
-              <CheckIcon size={16} />
-              {message}
-            </p>
-          )}
+          {/* 완료 줄과 오류 카드는 같은 자리(탭 줄과 표 사이). 완료 줄 자리(role=status)는 늘 두고 글만 바꾼다 —
+              새로 붙은 알림 자리는 화면 읽기가 놓칠 수 있다. 비면(:empty) 화면 밖으로 빼 자리를 차지하지 않는다(sr-only) */}
+          <p role="status" className="flex items-center gap-2 text-table text-ok empty:sr-only">
+            {message !== '' && (
+              <>
+                <CheckIcon size={16} />
+                {message}
+              </>
+            )}
+          </p>
           {failed && <ErrorCard code="E-ADMIN-FAILED" />}
 
           <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)} className={panelClass}>
             <div className={`${ui.table.wrap} max-md:overflow-visible`}>
-              <table aria-label={`${label} 신청`} className={`${ui.table.table} max-md:block`}>
+              <table aria-label={`${label} 신청`} className={`${ui.table.table} md:table-fixed md:min-w-250 max-md:block`}>
                 <thead className="max-md:hidden">
                   <tr>
                     {COLUMNS.map((c) => (
-                      <th key={c} scope="col" className={ui.table.th}>
-                        {c}
+                      <th key={c.label} scope="col" className={`${ui.table.th} ${c.width}`}>
+                        {c.label}
                       </th>
                     ))}
                   </tr>
@@ -265,7 +296,8 @@ export function AdminApplications() {
                   {list.length === 0 ? (
                     <tr>
                       <td colSpan={COLUMNS.length} className={emptyClass}>
-                        <span className="font-medium">{EMPTY[tab].title}</span> <span>{EMPTY[tab].body}</span>
+                        <p className="font-medium">{EMPTY[tab].title}</p>
+                        <p>{EMPTY[tab].body}</p>
                       </td>
                     </tr>
                   ) : (
@@ -274,11 +306,13 @@ export function AdminApplications() {
                         <td data-label="신청일" className={cell.date}>
                           {appliedOn(row.createdAt)}
                         </td>
-                        <td className={cell.clinic}>{row.name}</td>
-                        <td data-label="신청자" className={cell.applicant}>
+                        <td className={cell.clinic} title={row.name}>
+                          {row.name}
+                        </td>
+                        <td data-label="신청자" className={cell.applicant} title={row.applicantName}>
                           {row.applicantName}
                         </td>
-                        <td data-label="이메일" className={cell.email}>
+                        <td data-label="이메일" className={cell.email} title={row.email}>
                           {row.email}
                         </td>
                         <td data-label="연락처" className={cell.phone}>
@@ -303,7 +337,7 @@ export function AdminApplications() {
                                     <button
                                       type="button"
                                       disabled={busy}
-                                      onClick={() => void change(row, 'approved')}
+                                      onClick={(e) => void change(row, 'approved', e.currentTarget)}
                                       className={`${ui.button.primarySmall} max-md:flex-1`}
                                     >
                                       승인
@@ -321,7 +355,7 @@ export function AdminApplications() {
                                   <button
                                     type="button"
                                     disabled={busy}
-                                    onClick={() => void change(row, 'pending')}
+                                    onClick={(e) => void change(row, 'pending', e.currentTarget)}
                                     className={`${ui.button.secondarySmall} max-md:flex-1`}
                                   >
                                     <RestoreIcon />
@@ -348,7 +382,7 @@ export function AdminApplications() {
           onCancel={cancelReject}
           onConfirm={() => {
             setConfirming(null)
-            void change(confirming, 'rejected')
+            void change(confirming, 'rejected', openerRef.current)
           }}
         />
       )}

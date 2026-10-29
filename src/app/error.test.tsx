@@ -130,6 +130,11 @@ describe('app/error.tsx: [로그아웃] (오류가 이어져도 화면에 갇히
     expect(classesOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-2']))
     for (const name of ['다시 시도', '로그아웃']) {
       expect(classesOf(screen.getByRole('button', { name })), name).toContain('flex-[1_1_160px]')
+      // flex 크기를 정하는 클래스는 그것 하나(shrink-0 같은 것이 겹치면 어느 쪽이 이길지 모른다 — classes.ts 규칙)
+      const flexSize = classesOf(screen.getByRole('button', { name })).filter((t) =>
+        /^(flex-(?!col|row|wrap|nowrap)|grow|shrink|basis-)/.test(t.split(':').pop() ?? ''),
+      )
+      expect(flexSize, name).toEqual(['flex-[1_1_160px]'])
     }
     for (const el of document.querySelectorAll('[class]')) {
       expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)

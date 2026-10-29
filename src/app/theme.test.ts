@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest'
 // 앱 화면 토큰과 Tailwind 설정 (REQ-013, ADR-015, docs/UI_GUIDE.md '앱 화면', specs/auth/design.md 'Tailwind는 Preflight 없이')
 const ROOT = process.cwd()
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8')
-const withoutComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+// 따옴표 안의 "/*"(예: @source not "../**/*.test.ts")는 주석이 아니다 → 따옴표 글은 그대로 두고 주석만 지운다
+const withoutComments = (css: string) =>
+  css.replace(/("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|\/\*[\s\S]*?\*\//g, (_, quoted: string | undefined) => quoted ?? '')
 const globals = () => withoutComments(read('src/app/globals.css'))
 
 // head가 가리키는 블록의 몸통(중괄호 짝을 맞춘다). 없으면 null
@@ -152,9 +154,28 @@ describe('AC-013.1: Tailwind 불러오기 (Preflight 없음)', () => {
     const imports = [...css.matchAll(/@import\s+[^;]+;/g)].map((m) => m[0].replace(/'/g, '"').replace(/\s+/g, ' '))
     expect(imports).toEqual([
       '@import "tailwindcss/theme.css" layer(theme);',
-      '@import "tailwindcss/utilities.css" layer(utilities);',
+      '@import "tailwindcss/utilities.css" layer(utilities) source("../");',
     ])
   })
+
+  it('AC-013.1: Tailwind는 src/ 안 소스만 보고 시험 파일(*.test.ts·*.test.tsx)은 보지 않는다 — 문서·명세·시험 글자에만 있는 클래스를 만들지 않는다', async () => {
+    const css = globals()
+    expect(css).toContain('@source not "../**/*.test.ts";')
+    expect(css).toContain('@source not "../**/*.test.tsx";')
+    // 실제 Tailwind로 돌려 본다(저장소 뿌리를 base로 줘도 src/만 본다)
+    const { default: postcss } = await import('postcss')
+    const { default: tailwind } = await import('@tailwindcss/postcss')
+    const result = await postcss([tailwind({ base: ROOT, optimize: false })]).process(read('src/app/globals.css'), {
+      from: join(ROOT, 'src/app/globals.css'),
+    })
+    const out = result.css
+    // 앱 화면이 쓰는 클래스는 그대로 만든다
+    for (const cls of ['.max-md\\:hidden', '.lg\\:max-w-60', '.md\\:table-fixed', '.empty\\:sr-only', '.flex-\\[1_1_160px\\]', '.bg-ink', '.shadow-float']) {
+      expect(out, cls).toContain(cls)
+    }
+    // 시험 글자(hasNone의 'overflow-hidden')·문서·시안(rounded-2xl·text-4xl)에만 있는 클래스는 만들지 않는다
+    for (const cls of ['.overflow-hidden {', '.rounded-2xl {', '.text-4xl {']) expect(out, cls).not.toContain(cls)
+  }, 30_000)
 
   it('AC-013.1: Preflight(기본 초기화)를 불러오지 않는다', () => {
     const css = globals()

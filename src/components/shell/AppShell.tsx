@@ -32,7 +32,8 @@ export function AppShell({
               <span className="whitespace-nowrap text-logo font-semibold text-ink max-md:hidden">[서비스 이름]</span>
             </div>
             <span aria-hidden="true" className="h-5.5 w-px shrink-0 bg-line max-md:hidden" />
-            <span className="min-w-0 truncate text-lead font-medium text-ink max-md:text-body max-md:font-semibold">
+            {/* 넘치면 말줄임. 좁은 PC 띠(768~1023px)에서도 80px 아래로는 줄지 않는다 */}
+            <span className="min-w-20 truncate text-lead font-medium text-ink max-md:text-body max-md:font-semibold">
               {hospitalName}
             </span>
           </div>

@@ -53,10 +53,21 @@ describe('DashboardEmpty: 제목 (오늘 + 한국 날짜)', () => {
     expect(textOf(html)).not.toMatch(/[A-Za-z]/)
   })
 
-  it('AC-009.1·AC-013.3: 제목 글자는 title 600 ink(폰 title-sm), "오늘"과 날짜 사이 10px(flex gap — 사이 빈칸은 그리지 않는다)', () => {
+  it('AC-009.1·AC-013.3: 제목 글자는 title 600 ink(폰 title-sm), "오늘"과 날짜 사이 10px', () => {
     const { attrs, inner } = h1()
-    hasAll(attrs, 'flex gap-x-2.5 text-title font-semibold text-ink max-md:text-title-sm')
+    hasAll(attrs, 'text-title font-semibold text-ink max-md:text-title-sm')
     expect(tagsOf(inner, 'span').map((s) => textOf(s.inner))).toEqual(['오늘', TITLE])
+    // 사이 10px = 진짜 빈칸(25px 글자에서 약 6px) + "오늘" 오른쪽 4px
+    const [today] = tagsOf(inner, 'span')
+    hasAll(today.attrs, 'mr-1')
+  })
+
+  it('AC-009.1: 화면 읽기·복사 글자도 "오늘 2026년 …"(진짜 빈칸 하나) — 제목은 flex·grid가 아니어서 사이 빈칸이 지워지지 않는다', () => {
+    const { attrs, inner } = h1()
+    // 태그만 지운 글자(빈칸을 새로 넣지 않는다)
+    expect(inner.replace(/<[^>]+>/g, '')).toBe(`오늘 ${TITLE}`)
+    for (const layout of ['flex', 'inline-flex', 'grid', 'inline-grid']) expect(classesOf(attrs), layout).not.toContain(layout)
+    expect(classesOf(attrs).filter((t) => t.startsWith('gap'))).toEqual([])
   })
 })
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ADMIN_ITEM, MENU } from './menu'
 
 // 탭 띠 (AC-008.1·008.2·008.5·008.7, UI_GUIDE '앱 화면' 탭·폰). 흰 바탕·아래 1px 선, 위쪽 띠 아래에 놓이고 붙어 따라오지 않는다.
@@ -41,18 +41,47 @@ function TabLink({ label, href, pathname }: { label: string; href: string; pathn
 }
 
 // 아직 없는 화면: 링크가 아니고 눌러도 아무 일이 없다. 모양은 기본 탭과 같고, 올림·초점에 '준비 중' 툴팁(AC-008.5).
-// 툴팁 글은 aria-describedby로 늘 읽힌다(숨겨져 있어도)
+// 툴팁 글은 aria-describedby로 늘 읽힌다(숨겨져 있어도). WCAG 1.4.13: Esc로 닫히고, 마우스를 툴팁 위로 옮겨도 남는다
+// (툴팁은 탭 안 40px에서 시작해 탭과 사이 틈이 없고, 탭을 감싼 덩이 안에 있어 마우스를 받는다).
+// 탭(50px) 아래로 14px만 내려와 본문 위 여백(24px) 안에 머문다 → 페이지 제목을 덮지 않는다
 function NotReadyTab({ label }: { label: string }) {
   const tipId = useId()
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [dismissed, setDismissed] = useState(false) // Esc로 닫음. 다시 올리거나 초점이 오면 풀린다
+  const open = (hovered || focused) && !dismissed
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDismissed(true)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open])
+
   return (
-    <span className="group relative flex shrink-0">
+    <span
+      className="relative flex shrink-0"
+      onMouseEnter={() => {
+        setHovered(true)
+        setDismissed(false)
+      }}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => {
+        setFocused(true)
+        setDismissed(false)
+      }}
+      onBlur={() => setFocused(false)}
+    >
       <button type="button" aria-disabled="true" aria-describedby={tipId} className={tabIdle}>
         <TabLabel label={label} />
       </button>
+      {/* 1024px 미만은 띠 안 스크롤이라 띠 밖으로 나갈 수 없어 늘 숨긴다 */}
       <span
         role="tooltip"
         id={tipId}
-        className="pointer-events-none absolute top-full left-1/2 z-20 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-chip bg-ink px-2 py-1 text-caption font-medium text-surface shadow-float lg:group-focus-within:block lg:group-hover:block"
+        className={`absolute top-10 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-chip bg-ink px-2 py-1 text-caption font-medium text-surface shadow-float ${open ? 'lg:block' : ''}`}
       >
         준비 중
       </span>
@@ -64,9 +93,16 @@ export function TabBar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname()
   const navRef = useRef<HTMLElement>(null)
 
-  // 폰에서 지금 탭이 밀려 안 보이면 보이게 옮긴다(AC-008.7). 띠 안에서만 옮기고 페이지는 위아래로 움직이지 않게 nearest
+  // 좁은 폭에서 지금 탭이 밀려 안 보이면 보이게 옮긴다(AC-008.7). 탭 띠가 넘칠 때만, 띠의 scrollLeft만 바꾼다
+  // (scrollIntoView는 창까지 밀 수 있다 — 1024px 이상은 띠가 넘치지 않아 아무것도 하지 않는다)
   useEffect(() => {
-    navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    const nav = navRef.current
+    const current = nav?.querySelector('[aria-current="page"]')
+    if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return
+    const bar = nav.getBoundingClientRect()
+    const box = current.getBoundingClientRect()
+    if (box.left < bar.left) nav.scrollLeft += box.left - bar.left
+    else if (box.right > bar.right) nav.scrollLeft += box.right - bar.right
   }, [pathname])
 
   return (
