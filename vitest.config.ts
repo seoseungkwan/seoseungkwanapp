@@ -5,7 +5,8 @@ process.env.TZ = 'Asia/Seoul'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
-// 찾는 시험: src/**/*.test.ts(x), fixtures/**/*.test.ts, supabase/**/*.test.ts(RLS, PGlite)
+// 찾는 시험: src/**/*.test.ts(x), fixtures/**/*.test.ts, supabase/**/*.test.ts(RLS, PGlite), e2e/**/*.test.ts(E2E 도우미 단위 시험)
+// e2e/**/*.spec.ts는 Playwright 시험이라 여기서 잡지 않는다
 // tsconfig는 Next용 jsx: preserve라, 시험에서는 JSX를 automatic 런타임으로 바꾼다
 // 화면 시험은 파일 맨 위 `// @vitest-environment jsdom`으로 브라우저 환경을 고른다
 export default defineConfig({
@@ -21,7 +22,7 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'fixtures/**/*.test.ts', 'supabase/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'fixtures/**/*.test.ts', 'supabase/**/*.test.ts', 'e2e/**/*.test.ts'],
     exclude: ['node_modules/**'],
     environment: 'node',
   },
