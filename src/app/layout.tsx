@@ -3,17 +3,18 @@ import { IBM_Plex_Sans_KR, Space_Grotesk } from 'next/font/google'
 import './globals.css'
 
 // 본문·제목은 IBM Plex Sans KR, 숫자·영문 소제목은 Space Grotesk (docs/UI_GUIDE.md). next/font가 빌드 때 받아 우리 쪽에서 낸다
+// 변수 이름은 --font-plex·--font-grotesk. Tailwind 테마 변수 --font-sans와 겹치지 않게 하고, globals.css의 :root가 --font-sans·--font-num으로 잇는다
 const sans = IBM_Plex_Sans_KR({
   weight: ['400', '500', '600', '700'],
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-sans',
+  variable: '--font-plex',
 })
 const num = Space_Grotesk({
   weight: ['500', '600', '700'],
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-num',
+  variable: '--font-grotesk',
 })
 
 export const metadata: Metadata = {
