@@ -6,7 +6,7 @@
 ## 기술 스택
 - Next.js 15.5 (App Router) · React 19.1 — 파일럿과 같은 버전
 - TypeScript strict · 경로 별칭 `@/*` → `src/*`
-- 시험: Vitest 4 (node 환경, `TZ=Asia/Seoul`). E2E 도구: 미정 — 파일럿 이식 때 정함
+- 시험: Vitest 4 (node 환경, `TZ=Asia/Seoul`). E2E 도구: `@playwright/test` 1.64.1 (`npm run e2e`, `npm test`와 따로, ADR-017)
 - 파일 읽기: SheetJS `xlsx` 0.20.3 (CDN 패키지)
 - Supabase(서울, 무료 플랜) · 구글 OAuth · Vercel · Claude API — 패키지는 쓰는 기능에서 넣는다
 - 스타일링: 앱 화면은 Tailwind CSS v4(토큰은 `src/app/globals.css`의 `@theme`, 반복 모양은 `components/ui/classes.ts`), 랜딩은 CSS Modules(`*.module.css`) + globals.css 변수. 글꼴은 `next/font` (ADR-014·ADR-015)
@@ -44,5 +44,7 @@ npm run build      # 프로덕션 빌드
 npm run start      # 빌드한 앱 실행
 npm run lint       # ESLint (환자 자료 구역 울타리 포함)
 npm run test       # Vitest 전체
+npm run e2e        # E2E (Playwright, 실제 Supabase + 시험 계정, .env.local 필요)
+npm run e2e:env    # .env.local에 E2E 값 넣기 (입력 숨김, 사용자가 직접 실행)
 npx vitest run <파일>  # 시험 파일 하나
 npm run fixtures   # 가짜 비트 파일 다시 만들기

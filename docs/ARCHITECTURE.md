@@ -20,6 +20,8 @@ src/
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
+e2e/                     # E2E. Playwright 시험 `*.spec.ts` + Vitest `*.test.ts`(config.test.ts·lib/). `npm run e2e` (ADR-017)
+supabase/*.sql           # 시험 계정·처음 관리자 SQL(SQL 편집기에 붙여 넣음). 시험은 supabase/setup-sql.test.ts
 public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본 복사)
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
