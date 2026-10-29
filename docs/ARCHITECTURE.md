@@ -13,7 +13,7 @@ src/
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
 │   ├── payload/         # [환자 구역] 저장 모양(toMonthPayload·toDayPayloads)·검사(validate.ts)
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
-│   ├── report/          # 월간보고 PPT: 양식(template)·숫자(numbers)·AI 자료(aiInput)·AI 답 검사(aiAnswer)·PPT(deck). 환자 구역 밖, 달 숫자만 읽는다 (ADR-016)
+│   ├── report/          # 월간보고 PPT: 양식·색 벌(template)·숫자(numbers)·AI 자료(aiInput)·AI 답 검사(aiAnswer)·그래프/움직임 XML(chartXml·animate)·표지 자산(coverMedia)·PPT(deck). 환자 구역 밖, 달 숫자만 읽는다 (ADR-016)
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트와 그 CSS Module. landing/ = 랜딩
@@ -22,7 +22,7 @@ src/
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
 scripts/                 # make-sample-deck.ts = 예시 PPT를 out/report/에 만든다(npm run report:sample)
-public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본 복사)
+public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본 복사). report/ = PPT 표지 반복 영상·정지 그림(한 번 만든 고정 자산)
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳은 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
