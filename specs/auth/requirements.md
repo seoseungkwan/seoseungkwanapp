@@ -5,13 +5,23 @@
 
 ## 배경 / 목표
 - plan.md §9-2 "로그인·승인·관리자 화면·대시보드 틀"을 만든다. 흐름은 plan.md §2-1, 규칙은 §5·§6
-- 화면 기준: 2026-10-28 사용자가 승인한 목업 `docs/mockups/auth/*.dc.html`(문구·순서·색). 캔버스: https://claude.ai/artifact/KS65LvXErcJ7dCqNyxMz3c. 색·글자 규칙은 `docs/UI_GUIDE.md`
+- 화면 문구·순서 기준: 2026-10-28 사용자가 승인한 목업 `docs/mockups/auth/*.dc.html`. 캔버스: https://claude.ai/artifact/KS65LvXErcJ7dCqNyxMz3c
+- 화면 모양·색 기준(2026-10-29 바꿈): 시안 A `docs/mockups/app-redesign/A.jpg`(배치), 블루 팔레트 `docs/mockups/app-redesign/palette-blue.html`(색·크기, 원본 https://claude.ai/artifact/759XodQPMJkyCHdQiRFLNK), 폰 배치는 "진료 기록지" 시안(https://claude.ai/artifact/RRP5YUhtnXzc5cJRdmpCjV)의 폰 화면을 블루로. 규칙은 `docs/UI_GUIDE.md` '앱 화면'
 - 이식 원본: 파일럿 `seoseungkwan/tonggye-bunseok` main `fbb303a`의 `src/lib/supabase`·`src/lib/auth`·`src/components/auth`·`src/components/common/ErrorCard`·`src/app/auth/callback`·`src/middleware.ts`·`src/lib/csp.ts`·`supabase/` (ADR-002)
 - 사용자 결정(2026-10-28)
   - 인증만 서버 코드 예외로 둔다: 로그인 콜백 `/auth/callback`, middleware(세션 갱신·로그인 여부), 페이지 그리기 전 상태 확인. 이 서버 코드는 세션과 내 병원 줄만 다루고 다른 데이터는 읽지 않는다 (ADR-004 고침)
   - 가입 칸은 목업 그대로: 병원 이름·신청자 이름·연락처(선택)·동의. 요양기관번호는 받지 않는다
   - 실제 로그인 E2E(Playwright)와 새 Supabase·구글 OAuth 설정은 다음 단계로 나눈다. 이번에는 단위 시험과 DB 권한 시험(PGlite)까지
-- 목업에서 물었지만 답이 없던 것은 목업 상태 그대로: 승인한 계정 막기 없음, 대시보드 숫자 움직임 없음, 아직 없는 메뉴는 누를 수 없음("준비 중" 표시 없음)
+- 사용자 결정(2026-10-29, 앱 리디자인): 앱 모양이 "AI가 만든 SaaS 템플릿" 같다며 상용 B2B 수준으로 다시 그린다
+  - 배치는 시안 A: 흰 위쪽 띠(로고·서비스 이름·구분선·병원 이름 | 한국 시각·계정 단추) + 가로 밑줄 탭 + "오늘" 날짜 제목. 숫자 카드와 패널은 이번에 만들지 않는다(대시보드 내용은 별도 명세)
+  - 색은 블루 팔레트. 강조색은 지금 탭·초점·링크·체크 상자·'진행중' 칩에만
+  - 스타일링은 Tailwind CSS v4 (ADR-015, ADR-014를 앱 화면에서 대체). 랜딩은 CSS Modules 그대로
+  - 폰은 탭이 띠 안에서 옆으로 밀리고 서랍이 없다. 누름 영역 44px
+  - 아직 없는 탭은 링크가 아니고 "준비 중" 툴팁을 보인다. 제목은 'TODAY' 대신 "오늘"
+  - 화면 확인은 이미 설치된 `dev-browser`로 Claude가 한다. `@playwright/test`는 넣지 않는다
+  - 이미 만든 화면(로그인·가입 신청·승인 대기·오류)도 새 모양으로 다시 입힌다. 동작·문구는 그대로
+- 목업에서 물었지만 답이 없던 것은 목업 상태 그대로: 승인한 계정 막기 없음, 대시보드 숫자 움직임 없음, 아직 없는 메뉴는 누를 수 없음
+- 대시보드는 빈 자리만: 제목과 "준비 중" 안내 상자 하나. 숫자 카드·패널은 사용자가 질문 정리(grill-me)로 따로 정한 뒤 새 명세로 만든다 (design.md '대시보드 범위')
 
 ## 요구사항
 
@@ -60,22 +70,25 @@
 - AC-006.7: Given 이 마이그레이션, When 표를 만들면, Then 모든 표에 RLS가 켜져 있고 `anon`·`authenticated`의 기본 권한을 먼저 회수한 뒤 필요한 것만 준다. 함수는 `security definer`·`search_path = ''`이고 `authenticated`만 부를 수 있다
 
 ### REQ-007: 관리자 · 가입 신청 목록
-- AC-007.1: Given `/admin`, When 그리면, Then 대기·승인·거절 탭에 줄 수가 보이고, 표에 신청일·병원 이름·신청자·이메일·연락처·동작 칸이 있다. 처음 탭은 대기다
+- AC-007.1: Given `/admin`, When 그리면, Then 화면 안 밑줄 탭(대기·승인·거절)마다 줄 수 칩이 보이고, 표에 신청일·병원 이름·신청자·이메일·연락처·동작 칸이 있다. 처음 탭은 대기다
 - AC-007.2: Given 대기 줄, When [승인]을 누르면, Then `set_hospital_status(id, 'approved')`를 부르고 성공하면 줄이 승인 탭으로 옮겨지고 "○○ 신청을 승인했습니다." 줄을 보인다
 - AC-007.3: Given 대기 줄, When [거절]을 누르면, Then 확인 창("이 신청을 거절할까요?")을 먼저 띄우고, [취소]면 아무것도 안 하며, [거절]이면 `'rejected'`로 바꾼다
-- AC-007.4: Given 거절 줄, When [되돌리기]를 누르면, Then `'pending'`으로 바꾸고 "○○ 신청을 대기로 되돌렸습니다."를 보인다. 승인 줄에는 동작 버튼이 없다(승인됨 표시만)
-- AC-007.5: Given 빈 탭, When 그 탭을 보면, Then 목업의 빈 탭 안내(예: "대기 중인 신청이 없습니다")를 보인다
+- AC-007.4: Given 거절 줄, When [되돌리기]를 누르면, Then `'pending'`으로 바꾸고 "○○ 신청을 대기로 되돌렸습니다."를 보인다. 승인 줄에는 동작 버튼이 없다(승인됨 칩만)
+- AC-007.5: Given 빈 탭, When 그 탭을 보면, Then 목업의 빈 탭 안내(예: "대기 중인 신청이 없습니다")를 표 안 한 줄로 보인다
 - AC-007.6: Given 함수 호출 실패, When 버튼을 누르면, Then 줄 상태는 바뀌지 않고 `E-ADMIN-FAILED` 카드를 보인다
+- AC-007.7: Given 폰 폭(768px 미만), When `/admin`을 보면, Then 표 머리를 숨기고 줄마다 병원 이름·신청자·이메일·연락처·신청일과 상태 칩, 전체 폭 동작 단추(높이 44px 이상)를 세로로 쌓아 가로 스크롤 없이 읽힌다
 
-### REQ-008: 앱 틀 (메뉴·위쪽 띠)
-- AC-008.1: Given 승인된 사용자의 앱 화면, When 그리면, Then 왼쪽 메뉴에 대시보드·통계·AI 리포트·매출·재고·급여·일일마감·보고·월간 PDF·설정이 목업 순서로 있고, 지금 화면은 `aria-current="page"`다. 아직 없는 화면(대시보드·관리자 밖)은 링크가 아니라 누를 수 없는 항목이다
-- AC-008.2: Given 관리자, When 메뉴를 그리면, Then 구분선 아래 [관리자]가 `/admin` 링크로 있다. 관리자가 아니면 없다
-- AC-008.3: Given 위쪽 띠, When 그리면, Then 내 병원 이름과 로그인한 구글 이메일이 보이고, 계정 단추를 누르면 메뉴(관리자면 "관리자 계정" 표시)에 로그아웃이 있다
-- AC-008.4: Given 폰 폭(768px 미만), When 앱 화면을 보면, Then 왼쪽 메뉴 대신 [메뉴 열기] 단추가 보이고, 누르면 메뉴 서랍이 열리고 [메뉴 닫기]·바깥 누름으로 닫힌다
+### REQ-008: 앱 틀 (위쪽 띠·가로 탭)
+- AC-008.1: Given 승인된 사용자의 앱 화면, When 그리면, Then 위쪽 띠 아래 가로 밑줄 탭 줄(`nav`, 이름 "메뉴")에 대시보드·통계·AI 리포트·매출·재고·급여·일일마감·보고·월간 PDF·설정이 시안 A 순서로 있고, 지금 화면 탭은 `aria-current="page"`다. 아직 없는 화면(대시보드·관리자 밖)은 링크가 아니라 누를 수 없는 항목이다
+- AC-008.2: Given 관리자, When 탭 줄을 그리면, Then 설정 뒤 세로 구분선 다음에 [관리자]가 `/admin` 링크로 있다. 관리자가 아니면 구분선과 [관리자]가 없다
+- AC-008.3: Given 위쪽 띠, When 그리면, Then 왼쪽에 로고·`[서비스 이름]`·구분선·내 병원 이름이, 오른쪽에 로그인한 구글 이메일이 든 계정 단추가 있다. 계정 단추를 누르면 메뉴(이메일·병원 이름, 관리자면 "관리자 계정" 표시)에 로그아웃이 있고, 바깥 누름·Esc로 닫힌다
+- AC-008.5: Given 아직 없는 화면의 탭, When 마우스를 올리거나 키보드 초점이 오면, Then "준비 중" 툴팁이 보인다. 그 탭은 `aria-disabled="true"`이고 `aria-describedby`로 "준비 중"이 읽히며, 눌러도 주소가 바뀌지 않는다
+- AC-008.6: Given 위쪽 띠, When 그리면, Then 오른쪽에 한국 시각이 `kstNow`로 "2026년 10월 29일 (목) 09:42 (KST)" 꼴로 보이고(서버가 UTC여도 한국 시각), 1분마다 새 값으로 바뀐다. 앱 화면을 떠나면 타이머가 풀린다
+- AC-008.7: Given 폰 폭(768px 미만), When 앱 화면을 보면, Then 메뉴 서랍·[메뉴 열기] 단추 없이 탭 줄이 띠 안에서 옆으로 밀리고(줄바꿈 없음) 처음 그릴 때 지금 탭이 보이게 옮겨진다. 위쪽 띠는 로고·병원 이름·44px 계정 단추(이메일은 `aria-label`)만 보이고 `[서비스 이름]`·구분선·시각은 숨긴다. 탭 높이는 44px 이상이다
 
 ### REQ-009: 대시보드 첫 화면
-- AC-009.1: Given `/dashboard`, When 그리면, Then 'TODAY'와 한국 날짜 제목(예: "2026년 10월 28일 (수)", `todayInKorea` 기준)을 보인다
-- AC-009.2: Given 아직 통계 기능이 없음, When `/dashboard`를 그리면, Then 목업 '대시보드 첫 화면'처럼 "아직 올린 통계 파일이 없습니다" 안내, 빈 숫자 카드 4개(오늘 외래·신환·재진·신환율, 값 "—"), 발주 알림 빈 안내를 보인다. [통계 파일 올리기]·[재고 등록하기]는 아직 누를 수 없다. 예시 숫자는 보이지 않는다
+- AC-009.1: Given `/dashboard`, When 그리면, Then 제목이 "오늘 2026년 10월 29일 (목)" 꼴이다(`todayInKorea` 기준 한국 날짜). 'TODAY' 같은 영문 소제목은 없다
+- AC-009.2: Given 대시보드에 둘 숫자·칸은 별도 명세에서 정함, When `/dashboard`를 그리면, Then 제목 아래에 빈 안내 상자 하나만 있다: "대시보드는 준비 중입니다"와 "어떤 숫자와 칸을 둘지는 따로 정한 뒤 만듭니다." 숫자 카드·패널·표·예시 숫자는 없다
 
 ### REQ-010: 30분 자동 로그아웃
 - AC-010.1: Given 앱 화면, When 30분 동안 누름·키·스크롤·화면 보이기 바뀜이 없으면, Then 한 번만 `signOut()` 뒤 `/login`으로 새로 연다
@@ -90,9 +103,19 @@
 - AC-012.1: Given `E-AUTH-CALLBACK`·`E-AUTH-START`·`E-SIGNUP-FAILED`·`E-ADMIN-FAILED`·`E-PAGE-FAILED`, When `errorInfo(code)`를 부르면, Then '무엇이·어떻게 고치나' 문구가 `lib/errors.ts` 한 곳에서 나온다
 - AC-012.2: Given 오류 카드, When 그리면, Then 무엇이·어떻게 고치나·오류 번호만 보이고 원래 오류 내용(메시지·스택)은 보이지 않는다
 
+### REQ-013: 앱 화면 디자인 (블루 팔레트·Tailwind)
+- AC-013.1: Given `src/app/globals.css`, When 읽으면, Then Tailwind는 theme·utilities만 불러오고(Preflight 없음), `@theme`은 기본 색을 지운 뒤(`--color-*: initial`) 색 토큰 `ink #111827`·`ink-2 #374151`·`muted #6B7280`·`line #E5E7EB`·`canvas #F7F8FA`·`surface #FFFFFF`·`accent #2563EB`·`accent-soft #EAF1FE`·`ok #166534`·`ok-soft #E7F6EC`·`danger #C2410C`·`danger-soft #FFF1E8`·`warn #B45309`만 두고, 모서리 `card` 6px·`chip` 4px, UI_GUIDE의 글자 크기 토큰, 그림자 `float` 하나, 글꼴 `sans` = next/font IBM Plex Sans KR을 둔다. 앱 초기화는 `.app-ui` 안에만 있고(고정폭 숫자 포함), 랜딩 변수와 모션 줄이기 블록은 그대로 있다. `postcss.config.mjs`는 `@tailwindcss/postcss` 하나다
+- AC-013.2: Given 앱 화면 소스(`src/components/{auth,common,shell,dashboard,admin,ui}`, `src/app`의 로그인·가입·승인 대기·오류·앱 페이지), When 읽으면, Then `*.module.css`를 import하지 않고, 클래스(`className`·`ui` 값)에 임의 색 값(`[#…]`·`rgb(`·`hsl(`·`color-mix(`)이나 Tailwind 기본 색 이름(`blue-500` 같은)이 없다. 로고·구글 마크 SVG의 `fill`·`stroke` 값은 그림이라 예외다
+- AC-013.3: Given 공통 모양 `src/components/ui/classes.ts`, When 클래스를 보면, Then 카드·패널·단추·입력란은 `rounded-card`, 칩·체크 상자는 `rounded-chip`이고, 그림자는 없다(떠 있는 층만 `shadow-float`). `accent`는 초점 고리·글자 단추(링크)·체크한 체크 상자·'진행중' 칩에만 있고 주·보조 단추, 다른 칩, 패널, 입력란 바탕·테두리에는 없다. 완료 칩은 `ok`/`ok-soft`, 대기 칩은 `muted`/`canvas`/`line`, 거절 칩은 `danger`/`danger-soft`, 범주 칩은 `ink-2`/`surface`/`line`이다
+- AC-013.4: Given 폰 폭(768px 미만), When 앱 화면의 단추·입력란·탭·계정 단추·메뉴 항목을 보면, Then 높이가 44px 이상(`max-md:` 아래 44px 클래스)이고, 입력란 글자는 16px다
+
 ## 범위 밖
 - 실제 구글 로그인 E2E(Playwright), 새 Supabase 프로젝트·구글 OAuth 만들기, 마이그레이션을 Supabase에 넣기 → 다음 단계 (사용자 결정)
 - 승인한 계정 막기, 직원·원장 계정과 역할 (plan.md §10)
 - 대시보드의 실제 숫자·발주 알림 내용 → 통계·재고 기능
+- 대시보드 '오늘 할 일' 패널: plan.md §10(오늘 할 일 체크리스트)이라 사용자가 다시 꺼낼 때까지 만들지 않는다
+- 대시보드의 숫자 카드·패널(시안 A의 오늘 숫자·발주·업로드·할 일 칸) → 대시보드 별도 명세
+- 랜딩 모양(CSS Modules 그대로), 다크 모드
+- `@playwright/test` 패키지와 저장소 안 스크린샷 (화면 확인은 이미 설치된 dev-browser, 결과는 저장소 밖)
 - 통계·AI·매출 등 다른 메뉴 화면
 - 30분 로그아웃 뒤 안내 문구(목업에 없음)

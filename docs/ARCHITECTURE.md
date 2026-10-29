@@ -6,7 +6,7 @@
 ```
 src/
 ├── app/                 # 페이지(App Router). page.tsx = 랜딩(섹션은 components/landing/)
-│   ├── globals.css      # 색·글꼴 변수, 모션 줄이기 규칙 (docs/UI_GUIDE.md)
+│   ├── globals.css      # 색·글꼴 변수, Tailwind `@theme` 토큰, 모션 줄이기 규칙 (docs/UI_GUIDE.md, ADR-015)
 │   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'. 매출 파서도 여기 (예정)
@@ -15,7 +15,7 @@ src/
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
-├── components/<화면>/  # 화면 컴포넌트와 그 CSS Module. landing/ = 랜딩
+├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
