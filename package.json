@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "e2e": "tsx e2e/preflight.ts && next build && playwright test",
+    "e2e:env": "tsx e2e/setup-env.ts",
     "fixtures": "tsx fixtures/make-fake-fixtures.ts"
   },
   "dependencies": {
