@@ -1,0 +1,521 @@
+<!-- 2026-10-29 사용자 승인: 앱 화면 색은 이 파일의 "블루" 팔레트다(나머지 세 색은 고르지 않은 후보). 원본 https://claude.ai/artifact/759XodQPMJkyCHdQiRFLNK 의 사본이고, 처음 열 때 블루로 열리게만 바꿨다. 화면 속 병원 이름·숫자·파일은 모두 예시. -->
+<title>대시보드 색 고르기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: palette switcher on a neutral page, then concept A recreated 1:1 inside one framed app; only the frame's color tokens change. */
+:root {
+  color-scheme: light;
+  --page-bg: #E9EBEF;
+  --page-surface: #FFFFFF;
+  --page-track: #DDE0E6;
+  --page-ink: #15181E;
+  --page-muted: #5E6573;
+  --page-line: #CDD2DA;
+  --page-strong: #9AA1AD;
+  --font: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page-bg);
+  color: var(--page-ink);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px); z-index: 10;
+  background: var(--page-bg);
+}
+.page { max-width: 1600px; margin: 0 auto; display: grid; gap: 20px; }
+
+/* ---------- intro + switcher (outside the app frame) ---------- */
+.intro { display: grid; gap: 4px; }
+.intro h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.intro p { margin: 0; color: var(--page-muted); font-size: 14px; max-width: 65ch; }
+
+.picker { display: grid; gap: 10px; }
+.picker-hd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.picker-hd h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.picker-hd p { margin: 0; font-size: 13px; color: var(--page-muted); }
+
+.seg {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;
+  padding: 4px; background: var(--page-track); border-radius: 10px;
+}
+.opt {
+  position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+  column-gap: 10px; row-gap: 2px; padding: 10px 12px; min-width: 0;
+  border: 1px solid transparent; border-radius: 7px; cursor: pointer; color: var(--page-ink);
+}
+.opt:hover { background: rgba(255, 255, 255, 0.55); }
+.opt input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.opt-dot {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--page-strong); background: var(--page-surface);
+}
+.opt-name { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.opt-desc { grid-column: 2 / -1; font-size: 12.5px; color: var(--page-muted); line-height: 1.4; }
+.sw { display: inline-flex; gap: 4px; }
+.sw i { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.12); display: block; }
+.opt.is-on { background: var(--page-surface); border-color: var(--page-line); }
+.opt.is-on .opt-dot { border: 5px solid var(--page-ink); }
+.opt.is-on .opt-name { font-weight: 700; }
+.opt:focus-within:has(:focus-visible) { outline: 2px solid var(--page-ink); outline-offset: 1px; }
+
+.foot { margin: 0; font-size: 12.5px; color: var(--page-muted); }
+
+/* ---------- the app frame: palette tokens ---------- */
+.app {
+  /* 네이비 (default) */
+  --ink: #0F172A; --ink-2: #334155; --muted: #64748B; --line: #E2E8F0;
+  --canvas: #F5F7FA; --surface: #FFFFFF; --accent: #1E3A8A; --accent-soft: #E8EDF8;
+  /* shared semantic colors, same in every palette */
+  --ok: #166534; --ok-soft: #E7F6EC; --low: #C2410C; --warn: #B45309;
+}
+.app[data-palette="blue"] {
+  --ink: #111827; --ink-2: #374151; --muted: #6B7280; --line: #E5E7EB;
+  --canvas: #F7F8FA; --surface: #FFFFFF; --accent: #2563EB; --accent-soft: #EAF1FE;
+}
+.app[data-palette="mono"] {
+  --ink: #18181B; --ink-2: #3F3F46; --muted: #71717A; --line: #E4E4E7;
+  --canvas: #FAFAFA; --surface: #FFFFFF; --accent: #18181B; --accent-soft: #F1F1F3;
+}
+.app[data-palette="teal"] {
+  --ink: #0B1530; --ink-2: #2F3A52; --muted: #5B6785; --line: #E4E7EC;
+  --canvas: #F6F7F9; --surface: #FFFFFF; --accent: #0E7C74; --accent-soft: #E3F2F0;
+}
+
+.app {
+  background: var(--canvas); color: var(--ink);
+  font-family: var(--font); font-variant-numeric: tabular-nums;
+  border: 1px solid var(--page-line); border-radius: 8px;
+  overflow: clip; min-width: 0;
+}
+.app :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app button { font: inherit; color: inherit; }
+
+/* header */
+.hd {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px 20px; min-height: 64px; padding: 10px 24px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.logo { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 19px; font-weight: 600; white-space: nowrap; }
+.logo svg { flex: none; }
+.vdiv { width: 1px; height: 22px; background: var(--line); flex: none; }
+.clinic { font-size: 16px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.hd-right { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
+.now { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.acct {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.acct svg { color: var(--ink-2); }
+.acct:hover { background: var(--canvas); }
+
+/* tab bar */
+.tabs { background: var(--surface); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.tabs-in { display: flex; align-items: stretch; gap: 6px; padding: 0 16px; width: max-content; min-width: 100%; }
+.tab {
+  position: relative; height: 50px; padding: 0 20px; border: 0; background: none; cursor: pointer;
+  font-size: 15px; font-weight: 500; color: var(--ink-2); white-space: nowrap;
+}
+.tab .t { display: inline-flex; flex-direction: column; align-items: center; }
+.tab .t::after { content: attr(data-t); font-weight: 700; height: 0; visibility: hidden; overflow: hidden; }
+.tab:hover { color: var(--ink); }
+.tab[aria-current="page"] { color: var(--accent); font-weight: 700; }
+.tab[aria-current="page"]::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px;
+  background: var(--accent); border-radius: 2px 2px 0 0;
+}
+.tab-sep { align-self: center; width: 1px; height: 16px; background: var(--line); flex: none; margin: 0 -6px; }
+
+/* main */
+.main { display: grid; gap: 16px; padding: 24px 24px 28px; min-width: 0; }
+.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.title { margin: 0; font-size: 25px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); text-wrap: balance; }
+.title .today { margin-right: 10px; }
+.sample {
+  font-size: 12px; font-weight: 500; color: var(--muted); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px; white-space: nowrap;
+}
+
+/* KPI cards */
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.kpi {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px 16px;
+}
+.kpi-label { font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.kpi-value { font-size: 34px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--ink); }
+.kpi-value .unit { font-size: 20px; font-weight: 500; margin-left: 3px; }
+.kpi-delta {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px;
+  margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px;
+}
+.kpi-delta .vs { color: var(--muted); }
+.kpi-delta .up { color: var(--accent); font-weight: 500; white-space: nowrap; }
+.kpi-delta .up .pct { margin-left: 6px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* panels */
+.panels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.panel {
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 18px 16px;
+}
+.panel-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.panel-hd h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
+.count { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.tbl-wrap { overflow-x: auto; min-width: 0; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th {
+  height: 34px; padding: 0 6px; text-align: left; white-space: nowrap;
+  font-weight: 500; color: var(--ink-2); background: var(--canvas);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.tbl td { height: 36px; padding: 0 6px; white-space: nowrap; color: var(--ink); border-bottom: 1px solid var(--line); }
+.tbl th:first-child, .tbl td:first-child { padding-left: 8px; }
+.tbl .num { text-align: right; }
+.tbl .c-check { width: 34px; padding-right: 4px; }
+.tbl .cat { color: var(--ink-2); }
+.tbl .time, .tbl .muted { color: var(--ink-2); }
+.panel-ft { margin-top: auto; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 24px; }
+
+/* checkboxes */
+.cb {
+  appearance: none; -webkit-appearance: none; display: block; width: 16px; height: 16px; margin: 0;
+  border: 1px solid var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 55%, var(--surface));
+  border-radius: 3px; background: var(--surface) center / 12px 12px no-repeat; cursor: pointer;
+}
+.cb:checked {
+  background-color: var(--accent); border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.cb:indeterminate {
+  background-color: var(--accent); border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8h8' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* chips */
+.chip {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 7px;
+  border: 1px solid transparent; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.chip-cat { color: var(--ink-2); background: var(--surface); border-color: var(--line); }
+.st-done { color: var(--ok); background: var(--ok-soft); }
+.st-prog { color: var(--accent); background: var(--accent-soft); }
+.st-wait { color: var(--muted); background: var(--canvas); border-color: var(--line); }
+
+/* stock levels */
+.qty-low { color: var(--low); font-weight: 600; }
+.qty-warn { color: var(--warn); font-weight: 600; }
+.legend { margin: 0 auto 0 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 8px; height: 8px; border-radius: 2px; display: block; }
+.legend .l-low { background: var(--low); }
+.legend .l-warn { background: var(--warn); }
+
+.link {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 0; border: 0; background: none; cursor: pointer;
+  color: var(--accent); font-size: 13px; font-weight: 500;
+}
+.link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1519px) {
+  .main { padding: 20px 16px 24px; }
+  .kpis, .panels { gap: 12px; }
+  .panels { grid-template-columns: minmax(0, 0.83fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .panel { padding: 16px 14px 14px; }
+}
+@media (max-width: 1359px) {
+  .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel-uploads { grid-column: 1 / -1; }
+}
+@media (max-width: 1039px) {
+  .panels { grid-template-columns: minmax(0, 1fr); }
+  .panel-uploads { grid-column: auto; }
+}
+@media (max-width: 899px) {
+  .seg { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 759px) {
+  .hd { padding: 10px 14px; }
+  .hd-right { width: 100%; flex-wrap: nowrap; justify-content: space-between; gap: 10px; }
+  .acct { padding: 0 8px 0 10px; gap: 6px; }
+  .brand { gap: 10px; }
+  .logo { font-size: 16px; gap: 8px; }
+  .clinic { font-size: 14px; }
+  .hd-right { gap: 6px 14px; }
+  .now { font-size: 12px; }
+  .acct { height: 34px; font-size: 13px; }
+  .tabs-in { padding: 0 6px; gap: 0; }
+  .tab { padding: 0 14px; height: 46px; font-size: 14px; }
+  .main { padding: 16px 12px 20px; gap: 12px; }
+  .title { font-size: 20px; }
+  .kpi { padding: 14px 14px 12px; }
+  .kpi-value { font-size: 28px; }
+  .kpi-value .unit { font-size: 17px; }
+  .panel { padding: 14px 12px 12px; }
+}
+@media (max-width: 479px) {
+  .opt { padding: 9px 10px; column-gap: 8px; }
+  .sw { grid-column: 2 / -1; grid-row: 3; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app, .app * { transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+}
+</style>
+
+<div class="page">
+  <header class="intro">
+    <h1>대시보드 색 고르기</h1>
+    <p>시안 A의 배치는 그대로 두고 색만 바꿔 볼 수 있어요. 아래 네 가지를 하나씩 눌러 보고 마음에 드는 색을 골라 주세요.</p>
+  </header>
+
+  <section class="picker" aria-labelledby="picker-title">
+    <div class="picker-hd">
+      <h2 id="picker-title">색 고르기</h2>
+      <p>강조색은 선택된 메뉴 밑줄, 링크, 체크 표시, ‘진행중’ 표시, 지난주 대비 숫자에만 들어가요.</p>
+    </div>
+    <div class="seg" role="radiogroup" aria-labelledby="picker-title">
+      <label class="opt is-on" for="pal-navy">
+        <input type="radio" name="palette" id="pal-navy" value="navy">
+        <span class="opt-dot" aria-hidden="true"></span>
+        <span class="opt-name">네이비</span>
+        <span class="sw" aria-hidden="true"><i style="background:#1E3A8A"></i><i style="background:#0F172A"></i><i style="background:#F5F7FA"></i></span>
+        <span class="opt-desc">차분하고 신뢰감 있는 남색</span>
+      </label>
+      <label class="opt" for="pal-blue">
+        <input type="radio" name="palette" id="pal-blue" value="blue" checked>
+        <span class="opt-dot" aria-hidden="true"></span>
+        <span class="opt-name">블루</span>
+        <span class="sw" aria-hidden="true"><i style="background:#2563EB"></i><i style="background:#111827"></i><i style="background:#F7F8FA"></i></span>
+        <span class="opt-desc">밝고 선명한 파랑 (토스 느낌)</span>
+      </label>
+      <label class="opt" for="pal-mono">
+        <input type="radio" name="palette" id="pal-mono" value="mono">
+        <span class="opt-dot" aria-hidden="true"></span>
+        <span class="opt-name">먹색</span>
+        <span class="sw" aria-hidden="true"><i style="background:#18181B"></i><i style="background:#71717A"></i><i style="background:#FAFAFA"></i></span>
+        <span class="opt-desc">색을 거의 안 쓰는 흑백 (Linear 느낌)</span>
+      </label>
+      <label class="opt" for="pal-teal">
+        <input type="radio" name="palette" id="pal-teal" value="teal">
+        <span class="opt-dot" aria-hidden="true"></span>
+        <span class="opt-name">청록 (원래 A)</span>
+        <span class="sw" aria-hidden="true"><i style="background:#0E7C74"></i><i style="background:#0B1530"></i><i style="background:#F6F7F9"></i></span>
+        <span class="opt-desc">처음 시안 A의 색</span>
+      </label>
+    </div>
+  </section>
+
+  <div class="app" id="app" data-palette="blue">
+    <header class="hd">
+      <div class="brand">
+        <div class="logo">
+          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="9" y="1.5" width="8" height="23" rx="2.5" fill="currentColor"/><rect x="1.5" y="9" width="23" height="8" rx="2.5" fill="currentColor"/></svg>
+          <span>[서비스 이름]</span>
+        </div>
+        <span class="vdiv" aria-hidden="true"></span>
+        <span class="clinic">예시튼튼의원</span>
+      </div>
+      <div class="hd-right">
+        <span class="now">2026년 10월 29일 (목) 09:42 (KST)</span>
+        <button class="acct" type="button" id="acct-btn" aria-haspopup="menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+          <span>홍길동 님</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="메뉴">
+      <div class="tabs-in" id="tabs">
+        <button class="tab" type="button" aria-current="page"><span class="t" data-t="대시보드">대시보드</span></button>
+        <button class="tab" type="button"><span class="t" data-t="통계">통계</span></button>
+        <button class="tab" type="button"><span class="t" data-t="AI 리포트">AI 리포트</span></button>
+        <button class="tab" type="button"><span class="t" data-t="매출">매출</span></button>
+        <button class="tab" type="button"><span class="t" data-t="재고">재고</span></button>
+        <button class="tab" type="button"><span class="t" data-t="급여">급여</span></button>
+        <button class="tab" type="button"><span class="t" data-t="일일마감·보고">일일마감·보고</span></button>
+        <button class="tab" type="button"><span class="t" data-t="월간 PDF">월간 PDF</span></button>
+        <button class="tab" type="button"><span class="t" data-t="설정">설정</span></button>
+        <span class="tab-sep" aria-hidden="true"></span>
+        <button class="tab" type="button"><span class="t" data-t="관리자">관리자</span></button>
+      </div>
+    </nav>
+
+    <main class="main">
+      <div class="title-row">
+        <h1 class="title"><span class="today">오늘</span>2026년 10월 29일 (목)</h1>
+        <span class="sample">예시 자료</span>
+      </div>
+
+      <section class="kpis" aria-label="오늘 숫자 요약">
+        <div class="kpi">
+          <div class="kpi-label">오늘 외래</div>
+          <div class="kpi-value">142<span class="unit">명</span></div>
+          <div class="kpi-delta"><span class="vs">지난주 대비</span><span class="up"><span aria-hidden="true">▲</span><span class="sr">증가</span> 12명<span class="pct">(+9.2%)</span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">신환</div>
+          <div class="kpi-value">18<span class="unit">명</span></div>
+          <div class="kpi-delta"><span class="vs">지난주 대비</span><span class="up"><span aria-hidden="true">▲</span><span class="sr">증가</span> 3명<span class="pct">(+20.0%)</span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">재진</div>
+          <div class="kpi-value">124<span class="unit">명</span></div>
+          <div class="kpi-delta"><span class="vs">지난주 대비</span><span class="up"><span aria-hidden="true">▲</span><span class="sr">증가</span> 9명<span class="pct">(+7.8%)</span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">신환율</div>
+          <div class="kpi-value">12.7<span class="unit">%</span></div>
+          <div class="kpi-delta"><span class="vs">지난주 대비</span><span class="up"><span aria-hidden="true">▲</span><span class="sr">증가</span> 1.9%p<span class="pct">(+17.6%)</span></span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">7일 재방문율</div>
+          <div class="kpi-value">34.2<span class="unit">%</span></div>
+          <div class="kpi-delta"><span class="vs">지난주 대비</span><span class="up"><span aria-hidden="true">▲</span><span class="sr">증가</span> 4.8%p<span class="pct">(+16.3%)</span></span></div>
+        </div>
+      </section>
+
+      <div class="panels">
+        <section class="panel" aria-labelledby="p-todo">
+          <div class="panel-hd"><h2 id="p-todo">오늘 할 일</h2><span class="count">총 8건</span></div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th class="c-check"><input class="cb" type="checkbox" id="todo-all" aria-label="모두 선택"></th><th>구분</th><th>내용</th><th>마감시간</th><th>상태</th></tr>
+              </thead>
+              <tbody id="todo-body">
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-1" aria-label="오전 진료실 정리 및 소독" checked></td><td class="cat">진료</td><td>오전 진료실 정리 및 소독</td><td class="time">09:30</td><td><span class="chip st-done">완료</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-2" aria-label="보험 청구 자료 확인"></td><td class="cat">업무</td><td>보험 청구 자료 확인</td><td class="time">11:00</td><td><span class="chip st-prog">진행중</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-3" aria-label="소모품 발주 요청"></td><td class="cat">발주</td><td>소모품 발주 요청</td><td class="time">12:00</td><td><span class="chip st-wait">대기</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-4" aria-label="직원 근태 체크"></td><td class="cat">서류</td><td>직원 근태 체크</td><td class="time">13:00</td><td><span class="chip st-wait">대기</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-5" aria-label="오후 진료실 준비"></td><td class="cat">진료</td><td>오후 진료실 준비</td><td class="time">14:00</td><td><span class="chip st-wait">대기</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-6" aria-label="일일 진료 현황 보고서 작성"></td><td class="cat">보고</td><td>일일 진료 현황 보고서 작성</td><td class="time">16:30</td><td><span class="chip st-wait">대기</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-7" aria-label="냉장고 온도 확인"></td><td class="cat">점검</td><td>냉장고 온도 확인</td><td class="time">17:00</td><td><span class="chip st-wait">대기</span></td></tr>
+                <tr><td class="c-check"><input class="cb" type="checkbox" id="todo-8" aria-label="원내 청소 상태 점검"></td><td class="cat">기타</td><td>원내 청소 상태 점검</td><td class="time">18:00</td><td><span class="chip st-wait">대기</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="p-order">
+          <div class="panel-hd"><h2 id="p-order">발주 필요 품목</h2><span class="count">총 6건</span></div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>품목명</th><th>규격 / 단위</th><th class="num">현재 재고</th><th class="num">권장 발주량</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>일회용 주사기</td><td class="muted">3mL / 박스(100개)</td><td class="num"><span class="qty-warn">5</span></td><td class="num">3</td></tr>
+                <tr><td>알코올 솜</td><td class="muted">60매 / 팩</td><td class="num"><span class="qty-low">2</span></td><td class="num">5</td></tr>
+                <tr><td>멸균 거즈</td><td class="muted">10cm x 10cm / 박스(100매)</td><td class="num"><span class="qty-low">3</span></td><td class="num">5</td></tr>
+                <tr><td>니트릴 장갑</td><td class="muted">S / 박스(100매)</td><td class="num"><span class="qty-warn">8</span></td><td class="num">10</td></tr>
+                <tr><td>생리식염수</td><td class="muted">1000mL / 병</td><td class="num">12</td><td class="num">10</td></tr>
+                <tr><td>자가혈당측정지</td><td class="muted">50매 / 박스</td><td class="num">15</td><td class="num">10</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel-ft">
+            <p class="legend"><span><i class="l-low"></i>재고 3 이하</span><span><i class="l-warn"></i>재고 4~8</span></p>
+          </div>
+        </section>
+
+        <section class="panel panel-uploads" aria-labelledby="p-upl">
+          <div class="panel-hd"><h2 id="p-upl">최근 업로드</h2><span class="count">총 12건</span></div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>구분</th><th>파일명</th><th>업로드 일시</th><th>업로더</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><span class="chip chip-cat">진료기록</span></td><td>20261029_진료기록_예시.pdf</td><td class="time">10-29 09:12</td><td>김의사</td></tr>
+                <tr><td><span class="chip chip-cat">매출</span></td><td>20261028_매출보고_예시.csv</td><td class="time">10-28 18:45</td><td>이팀장</td></tr>
+                <tr><td><span class="chip chip-cat">재고</span></td><td>20261028_재고현황_예시.xlsx</td><td class="time">10-28 17:32</td><td>이팀장</td></tr>
+                <tr><td><span class="chip chip-cat">급여</span></td><td>20261028_급여명세서_예시.pdf</td><td class="time">10-28 16:20</td><td>박과장</td></tr>
+                <tr><td><span class="chip chip-cat">일일마감</span></td><td>20261028_일일마감_예시.xlsx</td><td class="time">10-28 15:10</td><td>김의사</td></tr>
+                <tr><td><span class="chip chip-cat">기타</span></td><td>20261027_공지사항_예시.pdf</td><td class="time">10-27 14:05</td><td>홍길동</td></tr>
+                <tr><td><span class="chip chip-cat">서류</span></td><td>20261026_직원근태_예시.csv</td><td class="time">10-26 09:33</td><td>박과장</td></tr>
+                <tr><td><span class="chip chip-cat">보고서</span></td><td>20261025_주간리포트_예시.pdf</td><td class="time">10-25 17:48</td><td>이팀장</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel-ft">
+            <button class="link" type="button" id="see-all">전체보기<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M5.5 3.5 9 7l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <p class="foot">고른 색은 이 브라우저에 기억돼요. 화면의 병원 이름, 숫자, 파일은 모두 예시예요.</p>
+</div>
+
+<script>
+(function () {
+  var KEY = 'dashPaletteChoice';
+  var VALID = ['navy', 'blue', 'mono', 'teal'];
+  var app = document.getElementById('app');
+  var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="palette"]'));
+
+  function apply(p) {
+    app.setAttribute('data-palette', p);
+    radios.forEach(function (r) {
+      r.checked = r.value === p;
+      r.closest('.opt').classList.toggle('is-on', r.checked);
+    });
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) { saved = null; }
+  apply(VALID.indexOf(saved) > -1 ? saved : 'blue');
+
+  radios.forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (!r.checked) return;
+      apply(r.value);
+      try { localStorage.setItem(KEY, r.value); } catch (e) { /* storage unavailable */ }
+    });
+  });
+
+  // Tabs: move the active underline (visual only, the page stays the same).
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('#tabs .tab'));
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (o) { o.removeAttribute('aria-current'); });
+      t.setAttribute('aria-current', 'page');
+    });
+  });
+
+  // To-do checkboxes: header box selects all and reflects partial selection.
+  var all = document.getElementById('todo-all');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#todo-body .cb'));
+  function sync() {
+    var n = rows.filter(function (c) { return c.checked; }).length;
+    all.checked = n === rows.length;
+    all.indeterminate = n > 0 && n < rows.length;
+  }
+  all.addEventListener('change', function () {
+    rows.forEach(function (c) { c.checked = all.checked; });
+    sync();
+  });
+  rows.forEach(function (c) { c.addEventListener('change', sync); });
+  sync();
+})();
+</script>

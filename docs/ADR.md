@@ -28,6 +28,7 @@
 
 ### ADR-004: 서버 코드는 AI 경로 하나, 나머지는 RLS
 **결정**: 서버 경로는 `app/api/ai/`뿐. 나머지는 브라우저 + Supabase RLS. 가입 승인은 DB 함수 하나가 한다. service role 키는 두지 않는다 (§0, §5)
+**예외 (2026-10-28 사용자 결정)**: 인증은 파일럿처럼 서버에서 돈다 — 로그인 콜백 `/auth/callback`, `middleware.ts`(세션 갱신·로그인 여부), 페이지 그리기 전 상태 확인(`lib/auth/*.server.ts`). 세션과 `hospitals`·`admins`의 내 줄만 읽고, 쓰기는 하지 않는다 (specs/auth/design.md)
 **이유**: 서버 코드를 줄인다. 같은 효과면 DB 제약을 쓴다
 **트레이드오프**: 권한은 RLS와 DB 함수가 유일한 방어선이다. 그래서 시험으로 증명한다
 
@@ -77,6 +78,12 @@
 **트레이드오프**: 무료 플랜은 비상업 용도만 → 다른 병원을 받기 시작하면 Pro (§10). 서버가 UTC라 날짜는 `dates.ts`로 한국 날짜를 쓴다
 
 ### ADR-014: 스타일링은 CSS Modules
+**상태**: 앱 화면은 ADR-015가 대체한다(2026-10-29). 랜딩은 이 결정 그대로다
 **결정**: 화면마다 `*.module.css`를 두고, 색·글꼴 값은 `src/app/globals.css` 변수 한 곳에 둔다. 글꼴은 `next/font/google`로 빌드 때 받아 우리 쪽에서 낸다 (2026-10-28 사용자 결정)
 **이유**: Next 기본 기능이라 새 패키지가 없다. 승인된 목업의 inline 값을 그대로 옮기기 쉽다. 글꼴을 우리 쪽에서 내면 CSP에 Google을 열지 않아도 된다
 **트레이드오프**: 유틸리티 클래스(Tailwind)보다 화면을 새로 만들 때 손이 더 간다. 애니메이션 keyframes는 CSS Module마다 따로 둔다(이름이 모듈 안으로 갇힌다)
+
+### ADR-015: 앱 화면 스타일링은 Tailwind CSS v4 (ADR-014를 앱 화면에서 대체)
+**결정**: 앱 화면(로그인·가입 신청·승인 대기·오류·앱 틀·대시보드·관리자)은 Tailwind CSS v4로 그린다. 패키지는 `tailwindcss`·`@tailwindcss/postcss`·`postcss`(개발 패키지, 버전 고정), 설정은 `postcss.config.mjs` 하나. 색·모서리·글자 크기·그림자 토큰은 `src/app/globals.css`의 `@theme` 한 곳에 두고, Tailwind 기본 색 팔레트는 지워 토큰 색만 쓰게 한다. Preflight(기본 초기화)는 불러오지 않고, 앱 화면 뿌리(`.app-ui`) 안에만 작은 초기화를 둔다. 글꼴은 그대로 `next/font`의 IBM Plex Sans KR. 랜딩은 CSS Modules 그대로 두고 둘이 함께 산다. 화면 확인은 이미 설치된 `dev-browser`로 하고 `@playwright/test`는 넣지 않는다 (docs/UI_GUIDE.md '앱 화면', specs/auth/design.md)
+**이유**: 사용자 결정 2026-10-29: 앱 리디자인. 앱이 "AI가 만든 SaaS 템플릿"처럼 보인다며 상용 B2B 수준(토스의 정돈, Linear의 디테일, ERP의 밀도)을 요구했고, 시안 A 배치와 블루 팔레트를 승인하면서 Tailwind를 골랐다. 토큰을 클래스 이름으로 강제하면 화면마다 값이 흩어지지 않는다. 빌드 때 정적 CSS 파일로 나오므로 CSP는 바꾸지 않는다
+**트레이드오프**: 개발 패키지 3개가 는다. 스타일링 방식이 둘(랜딩 CSS Modules, 앱 Tailwind)이다. `postcss.config.mjs`가 Next 기본 PostCSS 설정을 대신하므로 랜딩 빌드 결과가 바뀌지 않는지 확인해야 한다. Preflight 없이 쓰므로 앱 화면은 초기화를 `.app-ui` 범위 안에서 직접 준다. 클래스 문자열이 길어진다 → 반복되는 모양은 `src/components/ui/classes.ts`에 모은다

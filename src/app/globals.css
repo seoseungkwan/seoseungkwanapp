@@ -1,4 +1,104 @@
-/* 색·글꼴 변수 (docs/UI_GUIDE.md). 글꼴 변수 --font-sans·--font-num은 layout.tsx의 next/font가 넣는다 */
+/* 앱 화면: Tailwind CSS v4 (ADR-015, docs/UI_GUIDE.md '앱 화면'). theme·utilities만 불러온다.
+   Preflight(기본 초기화)는 넣지 않는다 — 랜딩 CSS가 브라우저 기본값에 기대고 있다. 앱 초기화는 아래 @layer base의 .app-ui 안에만 둔다.
+   layer 밖 CSS(아래 랜딩 변수·body, 랜딩 CSS Module)는 Tailwind보다 늘 이긴다.
+   랜딩 a·a:hover는 @layer base 안에 둬서 앱 <a>의 Tailwind 글자색이 이긴다 */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source("../");
+/* 클래스는 src/ 안 소스에서만 찾는다(source("../") = src/). 문서·명세·시안 HTML과 시험 글자에만 있는 이름으로 쓰지 않는 클래스를 만들지 않는다 */
+@source not "../**/*.test.ts";
+@source not "../**/*.test.tsx";
+
+/* 앱 토큰. 값은 docs/UI_GUIDE.md '앱 화면' 표 그대로. 기본 색 팔레트는 지워 토큰 색만 클래스가 된다(흰 글자는 text-surface) */
+@theme {
+  --color-*: initial;
+  --color-ink: #111827;
+  --color-ink-2: #374151;
+  --color-muted: #6b7280;
+  --color-line: #e5e7eb;
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-accent: #2563eb;
+  --color-accent-soft: #eaf1fe;
+  --color-ok: #166534;
+  --color-ok-soft: #e7f6ec;
+  --color-danger: #c2410c;
+  --color-danger-soft: #fff1e8;
+  --color-warn: #b45309;
+
+  --radius-card: 6px;
+  --radius-chip: 4px;
+
+  /* 떠 있는 층(계정 메뉴·툴팁·확인 창)에만. ink 6%·10% */
+  --shadow-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
+}
+
+/* 글자 크기·글꼴: 클래스에 값을 바로 쓴다(inline). 이름이 layer 밖 :root 변수와 겹친다 — 랜딩 --text-body(글자 색), 아래 글꼴 --font-sans.
+   var()로 두면 그쪽 값이 이겨 text-body 크기가 무효가 된다 */
+@theme inline {
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-table: 13px;
+  --text-table--line-height: 20px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-tab: 15px;
+  --text-tab--line-height: 20px;
+  --text-lead: 16px;
+  --text-lead--line-height: 24px;
+  --text-panel: 18px;
+  --text-panel--line-height: 26px;
+  --text-logo: 19px;
+  --text-logo--line-height: 24px;
+  --text-title-sm: 20px;
+  --text-title-sm--line-height: 28px;
+  --text-title: 25px;
+  --text-title--line-height: 32px;
+  --text-title--letter-spacing: -0.01em;
+  --text-kpi-sm: 28px;
+  --text-kpi-sm--line-height: 34px;
+  --text-kpi: 34px;
+  --text-kpi--line-height: 40px;
+  --text-kpi--letter-spacing: -0.01em;
+
+  --font-sans: var(--font-plex), system-ui, sans-serif;
+}
+
+/* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
+@layer base {
+  .app-ui {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+    word-break: keep-all;
+  }
+
+  .app-ui,
+  .app-ui *,
+  .app-ui ::before,
+  .app-ui ::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  .app-ui :where(button, input, select, textarea) {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    background-color: transparent;
+  }
+}
+
+/* 글꼴: layout.tsx의 next/font가 --font-plex(IBM Plex Sans KR)·--font-grotesk(Space Grotesk, 랜딩만)를 넣고 여기서 잇는다.
+   랜딩 CSS Module은 var(--font-sans)·var(--font-num) 뒤에 대체 글꼴을 직접 적으므로 --font-num에는 대체 글꼴을 붙이지 않는다 */
+:root {
+  --font-sans: var(--font-plex), system-ui, sans-serif;
+  --font-num: var(--font-grotesk);
+}
+
+/* 랜딩 색·레이아웃 변수 (docs/UI_GUIDE.md 랜딩) */
 :root {
   /* 배경 */
   --bg-page: #ffffff;
@@ -52,12 +152,16 @@ body {
   overflow-x: clip; /* 떠 있는 장식이 옆으로 삐져나가도 가로 스크롤이 생기지 않게. clip은 sticky 메뉴를 깨지 않는다 */
 }
 
-a {
-  color: var(--teal-text);
-}
+/* 랜딩 링크 색. 앱 화면 <a>에도 닿는 요소 규칙이라 @layer base에 둔다 — 앱의 Tailwind 글자색 클래스(utilities)가 이기게.
+   랜딩 CSS Module은 layer 밖이라 지금처럼 이 규칙을 이긴다 */
+@layer base {
+  a {
+    color: var(--teal-text);
+  }
 
-a:hover {
-  color: #055f59;
+  a:hover {
+    color: #055f59;
+  }
 }
 
 /* 모션 줄이기: 모든 움직임을 끈다. 멈춘 화면도 그대로 읽힌다(히어로 차트는 틱 0) */

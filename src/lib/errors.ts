@@ -34,6 +34,28 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '계산하다가 문제가 생겼어요',
     fix: '다시 시도해 보세요. 계속되면 오류 번호와 함께 문의해 주세요',
   },
+  // 인증(spec auth). 문구는 승인된 목업 docs/mockups/auth/LoginError.dc.html 기준
+  'E-AUTH-CALLBACK': {
+    what: '구글 로그인을 마치지 못했어요',
+    fix: '다시 시도해 보세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  // 로그인 시작 실패도 같은 카드로 보인다(AC-003.5). 번호만 다르다
+  'E-AUTH-START': {
+    what: '구글 로그인을 마치지 못했어요',
+    fix: '다시 시도해 보세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-SIGNUP-FAILED': {
+    what: '가입 신청을 보내지 못했어요',
+    fix: '적은 내용은 그대로 있어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-ADMIN-FAILED': {
+    what: '신청 상태를 바꾸지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-PAGE-FAILED': {
+    what: '화면을 열지 못했어요',
+    fix: '잠시 뒤 [다시 시도]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

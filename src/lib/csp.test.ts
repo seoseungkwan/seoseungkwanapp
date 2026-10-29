@@ -1,0 +1,157 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import nextConfig from '../../next.config'
+import { buildCsp } from './csp'
+
+// 'connect-src x y; ...' → { 'connect-src': ['x', 'y'], ... }
+function directives(csp: string): Record<string, string[]> {
+  return Object.fromEntries(
+    csp
+      .split(';')
+      .map((part) => part.trim().split(/\s+/))
+      .filter(([name]) => name)
+      .map(([name, ...values]) => [name, values]),
+  )
+}
+
+const SUPABASE = 'https://abcd.supabase.co'
+
+// AC-011.1이 정한 지시어(이 순서, 이것만)
+const DIRECTIVE_NAMES = [
+  'default-src',
+  'script-src',
+  'style-src',
+  'img-src',
+  'font-src',
+  'media-src',
+  'connect-src',
+  'worker-src',
+  'object-src',
+  'base-uri',
+  'form-action',
+  'frame-ancestors',
+]
+
+describe('buildCsp(운영)', () => {
+  const csp = buildCsp(false, SUPABASE)
+  const d = directives(csp)
+
+  it('AC-011.1 지시어는 정해 둔 12개뿐이다', () => {
+    expect(Object.keys(d)).toEqual(DIRECTIVE_NAMES)
+  })
+
+  it('AC-011.1 연결은 자기 서버와 Supabase origin만', () => {
+    expect(d['connect-src']).toEqual(["'self'", SUPABASE])
+  })
+
+  it('AC-011.1 영상은 자기 서버에서만(media-src)', () => {
+    expect(d['media-src']).toEqual(["'self'"])
+  })
+
+  it('AC-011.1 끼워 넣기·플러그인·base·form을 막는다', () => {
+    expect(d['frame-ancestors']).toEqual(["'none'"])
+    expect(d['object-src']).toEqual(["'none'"])
+    expect(d['base-uri']).toEqual(["'self'"])
+    expect(d['form-action']).toEqual(["'self'"])
+  })
+
+  it('AC-011.1 나머지 지시어', () => {
+    expect(d['default-src']).toEqual(["'self'"])
+    expect(d['script-src']).toEqual(["'self'", "'unsafe-inline'"])
+    expect(d['style-src']).toEqual(["'self'", "'unsafe-inline'"])
+    expect(d['img-src']).toEqual(["'self'", 'data:', 'blob:'])
+    expect(d['font-src']).toEqual(["'self'"])
+    expect(d['worker-src']).toEqual(["'self'", 'blob:'])
+  })
+
+  it('AC-011.1 운영에는 unsafe-eval·ws:·https:(모든 https)·와일드카드가 없다', () => {
+    expect(csp).not.toContain('unsafe-eval')
+    expect(csp).not.toContain('ws:')
+    expect(csp).not.toContain('*')
+    expect(Object.values(d).flat()).not.toContain('https:')
+  })
+})
+
+describe('buildCsp(개발)', () => {
+  const dev = directives(buildCsp(true, SUPABASE))
+  const prod = directives(buildCsp(false, SUPABASE))
+
+  it("AC-011.1 개발에만 'unsafe-eval'(Next 개발 서버)과 ws:(새로 고침)를 더한다", () => {
+    expect(dev['script-src']).toEqual(["'self'", "'unsafe-inline'", "'unsafe-eval'"])
+    expect(dev['connect-src']).toEqual(["'self'", SUPABASE, 'ws:'])
+  })
+
+  it('AC-011.1 개발도 그 둘 말고는 운영과 같다(와일드카드 없음)', () => {
+    const others = (d: Record<string, string[]>) =>
+      Object.entries(d).filter(([name]) => name !== 'script-src' && name !== 'connect-src')
+    expect(others(dev)).toEqual(others(prod))
+    expect(buildCsp(true, SUPABASE)).not.toContain('*')
+  })
+})
+
+describe('buildCsp connect-src의 Supabase 주소', () => {
+  it('AC-011.1 경로·검색어가 붙어도 origin만 더한다', () => {
+    const csp = buildCsp(false, `${SUPABASE}/rest/v1/?apikey=x`)
+    expect(directives(csp)['connect-src']).toEqual(["'self'", SUPABASE])
+    expect(csp).not.toContain('/rest')
+    expect(csp).not.toContain('apikey')
+  })
+
+  it('AC-011.1 Supabase 주소는 connect-src에만 들어간다', () => {
+    const others = (csp: string) => Object.entries(directives(csp)).filter(([name]) => name !== 'connect-src')
+    expect(others(buildCsp(false, SUPABASE))).toEqual(others(buildCsp(false, '')))
+    expect(others(buildCsp(true, SUPABASE))).toEqual(others(buildCsp(true, '')))
+  })
+
+  it.each(['', '   ', 'not a url', 'http://abcd.supabase.co', 'https://*.supabase.co', `${SUPABASE};script-src`, `${SUPABASE} https:`])(
+    "AC-011.1 주소가 없거나 잘못되면(%j) 'self'만 있다",
+    (url) => {
+      const csp = buildCsp(false, url)
+      expect(directives(csp)['connect-src']).toEqual(["'self'"])
+      expect(Object.keys(directives(csp))).toEqual(DIRECTIVE_NAMES)
+      expect(csp).not.toContain('*')
+    },
+  )
+})
+
+describe('next.config headers()', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  async function headers() {
+    const rules = await nextConfig.headers!()
+    const all = rules.find((r) => r.source === '/:path*')
+    expect(all).toBeDefined()
+    return Object.fromEntries(all!.headers.map((h) => [h.key, h.value]))
+  }
+
+  it('AC-011.2 모든 경로에 CSP·nosniff·no-referrer·DENY를 붙인다', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', SUPABASE)
+    const h = await headers()
+    // 시험은 NODE_ENV=test → 운영 CSP
+    expect(h['Content-Security-Policy']).toBe(buildCsp(false, SUPABASE))
+    expect(h['X-Content-Type-Options']).toBe('nosniff')
+    expect(h['Referrer-Policy']).toBe('no-referrer')
+    expect(h['X-Frame-Options']).toBe('DENY')
+  })
+
+  it('AC-011.2 NEXT_PUBLIC_SUPABASE_URL을 CSP connect-src에 넘긴다', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', SUPABASE)
+    const h = await headers()
+    expect(directives(h['Content-Security-Policy'])['connect-src']).toEqual(["'self'", SUPABASE])
+  })
+
+  it("AC-011.2 주소가 없어도 헤더는 붙고 connect-src는 'self'만", async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', undefined)
+    const h = await headers()
+    expect(h['Content-Security-Policy']).toBe(buildCsp(false, ''))
+    expect(h['X-Frame-Options']).toBe('DENY')
+  })
+
+  it('AC-011.2 개발 서버(NODE_ENV=development)에는 개발 CSP를 붙인다', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', SUPABASE)
+    const h = await headers()
+    expect(h['Content-Security-Policy']).toBe(buildCsp(true, SUPABASE))
+  })
+})
