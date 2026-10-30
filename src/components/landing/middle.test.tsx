@@ -6,6 +6,7 @@ import AiSection from './AiSection'
 import aiStyles from './AiSection.module.css'
 import base from './base.module.css'
 import FeaturesSection from './FeaturesSection'
+import featStyles from './FeaturesSection.module.css'
 import OrthoSection from './OrthoSection'
 import orthoStyles from './OrthoSection.module.css'
 
@@ -360,6 +361,216 @@ describe('AC-108.3: 정형외과 섹션의 짜임', () => {
     const { checked, missing } = classCheck(ortho, [
       [base.wrap, 'base.module.css'],
       [orthoStyles.orthoCard, 'OrthoSection.module.css'],
+    ])
+    expect(checked, '본 클래스 수').toBeGreaterThan(0)
+    expect(missing).toEqual([])
+  })
+})
+
+// ---------- 기능 섹션의 짜임 (specs/landing-v2 REQ-109, 시안 #features) ----------
+
+// section#features > .wrap.stack > .head(h2) + .featBig(article × 2) + ul.grid3.group(li × 3)
+const FEATURES_SHAPE =
+  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([\s\S]*?)<\/h2><\/div>(<div\b[^>]*>)((?:<article\b[^>]*>[\s\S]*?<\/article>){2})<\/div>(<ul\b[^>]*>)([\s\S]*?)<\/ul><\/div><\/section>$/
+// 기능 카드: article > .fcardText(이름표 p · h3 · 본문 p · 칩 3개) + .fcardShot(미리보기)
+const FCARD_SHAPE =
+  /^(<article\b[^>]*>)(<div\b[^>]*>)(<p\b[^>]*>)([^<]*)<\/p>(<h3\b[^>]*>)([\s\S]*?)<\/h3>(<p\b[^>]*>)([\s\S]*?)<\/p>(<div\b[^>]*>)((?:<span\b[^>]*>[^<]*<\/span>){3})<\/div><\/div>(<div\b[^>]*>)([\s\S]*)<\/div><\/article>$/
+// 통계 미리보기: 파일 놓는 칸(div: svg + 글) + 작은 패널(머리: 이름 + 칩 / 몸통: dl 비율 + 처방 그룹)
+const STATS_SHOT =
+  /^(<div\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>([^<]*)<\/div>(<div\b[^>]*>)(<div\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<span\b[^>]*>)([^<]*)<\/span><\/div>(<div\b[^>]*>)(<dl\b[^>]*>)([\s\S]*?)<\/dl>(<div\b[^>]*>)(<div\b[^>]*>)([^<]*)<\/div>([\s\S]*?)<\/div><\/div><\/div>$/
+// 비율 하나: div(dt + dd)
+const RATE = /(<div\b[^>]*>)<dt>([^<]*)<\/dt><dd>([^<]*)<\/dd><\/div>/g
+// 처방 그룹 한 줄: 이름 · 막대(span > i) · 환자 수
+const GROUP_ROW = /(<div\b[^>]*>)<span>([^<]*)<\/span>(<span\b[^>]*>)(<i\b[^>]*>)<\/i><\/span><b>([^<]*)<\/b><\/div>/g
+// 급여 미리보기: 패널(머리: 이름 + 확정 칩(svg + 글) / 감싸개 > table)
+const PAY_SHOT =
+  /^(<div\b[^>]*>)(<div\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<span\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>([^<]*)<\/span><\/div>(<div\b[^>]*>)(<table\b[^>]*>)<thead><tr>([\s\S]*?)<\/tr><\/thead><tbody>([\s\S]*?)<\/tbody><\/table><\/div><\/div>$/
+// 작은 카드 하나: li > 머리(svg + h3) + p
+const SMALL_CARD =
+  /(<li\b[^>]*>)(<div\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>(<h3\b[^>]*>)([^<]*)<\/h3><\/div>(<p\b[^>]*>)([^<]*)<\/p><\/li>/g
+
+describe('AC-109.1: 기능 섹션의 짜임', () => {
+  const parts = features.match(FEATURES_SHAPE)
+  const [, section, wrap, head, h2, h2In, big, articlesIn, list, listIn] = parts ?? []
+  const articles = [...(articlesIn ?? '').matchAll(/<article\b[^>]*>[\s\S]*?<\/article>/g)].map((m) => m[0].match(FCARD_SHAPE))
+  const [stats, pay] = articles
+  const statsParts = (stats?.[12] ?? '').match(STATS_SHOT)
+  const payParts = (pay?.[12] ?? '').match(PAY_SHOT)
+  const smallCards = [...(listIn ?? '').matchAll(SMALL_CARD)]
+
+  it('AC-109.1: section#features(.sec·.secCanvas) > .wrap.stack 안이 제목 덩어리 → 기능 카드 2개 → 작은 카드 목록 순서다', () => {
+    expect(parts, 'section > .wrap > .head(h2) + .featBig(article × 2) + ul').not.toBeNull()
+    expect(section).toMatch(/\bid="features"/)
+    expect(classesOf(section)).toEqual(expect.arrayContaining([base.sec, base.secCanvas]))
+    expect(classesOf(wrap)).toEqual(expect.arrayContaining([base.wrap, base.stack]))
+    expect(classesOf(head)).toContain(base.head)
+    expect(classesOf(big)).toContain(featStyles.featBig)
+  })
+
+  it('AC-109.1: h2는 .tH2이고 "매일 하던 일,<br/>이제 숫자가 알아서 움직입니다"뿐이다', () => {
+    expect(classesOf(h2)).toContain(base.tH2)
+    expect(h2In).toBe('매일 하던 일,<br/>이제 숫자가 알아서 움직입니다')
+  })
+
+  it('AC-109.1: <article class="fcard"> 2개가 순서대로 이름표 p(.tLabel) → h3(.tH3l, 줄바꿈 그대로) → 본문 p(.tBody) → .chipNeutral 칩 3개 → 미리보기를 담는다', () => {
+    expect(articles).toHaveLength(2)
+    for (const article of articles) expect(article, 'article > .fcardText(p · h3 · p · 칩) + .fcardShot').not.toBeNull()
+    expect(articles.map((m) => m?.[4])).toEqual(['01 · 환자 통계', '02 · 급여·인센티브'])
+    expect(articles.map((m) => m?.[6])).toEqual([
+      '파일을 끌어다 놓으면,<br/>숫자가 살아납니다',
+      '월 실적만 넣으면<br/>급여 계산이 끝납니다',
+    ])
+    expect(articles.map((m) => textOf(m?.[8] ?? ''))).toEqual([
+      'EMR에서 내려받은 통계 파일을 올리면 신환율·재진율, 7일·14일 재방문, 처방 그룹별 환자 수가 바로 계산됩니다.',
+      '직원별 인센티브 규칙을 한 번 정해 두면, 월 실적으로 급여를 계산하고 확정합니다. 세무사 전달표와 인건비율·치료사 생산성도 함께 나옵니다.',
+    ])
+    const chipTexts = articles.map((m) => [...(m?.[10] ?? '').matchAll(/(<span\b[^>]*>)([^<]*)<\/span>/g)])
+    expect(chipTexts.map((chips) => chips.map((c) => c[2]))).toEqual([
+      ['신환율·재진율', '7·14일 재방문', '처방 그룹'],
+      ['인센티브 규칙', '확정하면 잠금', '세무사 전달표'],
+    ])
+    for (const chips of chipTexts) {
+      for (const [, open] of chips) expect(classesOf(open)).toEqual(expect.arrayContaining([base.chip, base.chipNeutral]))
+    }
+    for (const m of articles) {
+      const [, article, text, label, , h3, , body, , chips, , shot] = m ?? []
+      expect(classesOf(article)).toContain(featStyles.fcard)
+      expect(classesOf(text)).toContain(featStyles.fcardText)
+      expect(classesOf(label)).toContain(base.tLabel)
+      expect(classesOf(h3)).toContain(base.tH3l)
+      expect(classesOf(body)).toContain(base.tBody)
+      expect(classesOf(chips)).toContain(base.chips)
+      expect(classesOf(shot)).toContain(featStyles.fcardShot)
+    }
+  })
+
+  it('AC-109.1: 통계 미리보기는 파일 놓는 <div>(svg + "통계 파일을 여기에 놓기") → aria-hidden 작은 패널 "환자 통계" + "예시" 칩이다', () => {
+    expect(statsParts, '.drop(svg + 글) + .mini(머리 + 몸통(dl + 처방 그룹))').not.toBeNull()
+    const [, drop, svg, , dropText, mini, miniHead, title, titleIn, chip, chipIn] = statsParts ?? []
+    expect(classesOf(drop)).toContain(featStyles.drop)
+    expect(svg).toMatch(/\baria-hidden="true"/)
+    expect(svg).toMatch(/\bstroke="currentColor"/)
+    expect(dropText).toBe('통계 파일을 여기에 놓기')
+    expect(mini).toMatch(/\baria-hidden="true"/)
+    expect(classesOf(mini)).toContain(featStyles.mini)
+    expect(classesOf(miniHead)).toContain(featStyles.miniHead)
+    expect(classesOf(title)).toContain(featStyles.miniTitle)
+    expect(titleIn).toBe('환자 통계')
+    expect(classesOf(chip)).toEqual(expect.arrayContaining([base.chip, base.chipSample]))
+    expect(chipIn).toBe('예시')
+  })
+
+  it('AC-109.1: 통계 패널의 <dl> 비율 4개는 신환율 18.2% · 재진율 81.8% · 7일 재방문 41.0% · 14일 재방문 52.6%다', () => {
+    const [, , , , , , , , , , , body, dl, dlIn] = statsParts ?? []
+    expect(classesOf(body)).toContain(featStyles.miniBody)
+    expect(classesOf(dl)).toContain(featStyles.rates)
+    const rates = [...(dlIn ?? '').matchAll(RATE)]
+    expect((dlIn ?? '').replace(RATE, ''), 'dl 안에는 비율 div만 있다').toBe('')
+    expect(rates.map((m) => `${m[2]} ${m[3]}`)).toEqual(['신환율 18.2%', '재진율 81.8%', '7일 재방문 41.0%', '14일 재방문 52.6%'])
+    for (const [, rate] of rates) expect(classesOf(rate)).toContain(featStyles.rate)
+  })
+
+  it('AC-109.1: "처방 그룹 · 환자 수" 4줄은 물리치료 214 · 주사 142 · 도수 86 · 체외충격파 31이고, 막대 폭은 100·66·40·14%이며 첫 막대만 .fillFirst다', () => {
+    const [, , , , , , , , , , , , , , groups, groupsTitle, groupsTitleIn, rowsIn] = statsParts ?? []
+    expect(classesOf(groups)).toContain(featStyles.groups)
+    expect(classesOf(groupsTitle)).toContain(featStyles.groupsTitle)
+    expect(groupsTitleIn).toBe('처방 그룹 · 환자 수')
+    const rows = [...(rowsIn ?? '').matchAll(GROUP_ROW)]
+    expect((rowsIn ?? '').replace(GROUP_ROW, ''), '처방 그룹 줄 밖의 다른 원소가 없다').toBe('')
+    expect(rows.map((m) => `${m[2]} ${m[5]}`)).toEqual(['물리치료 214', '주사 142', '도수 86', '체외충격파 31'])
+    expect(rows.map((m) => /\bstyle="([^"]*)"/.exec(m[4])?.[1])).toEqual([
+      'width:100%',
+      'width:66%',
+      'width:40%',
+      'width:14%',
+    ])
+    rows.forEach(([, row, , track, fill], i) => {
+      expect(classesOf(row)).toContain(featStyles.grp)
+      expect(classesOf(track)).toContain(featStyles.track)
+      expect(classesOf(fill)).toContain(featStyles.fill)
+      if (i === 0) expect(classesOf(fill)).toContain(featStyles.fillFirst)
+      else expect(classesOf(fill)).not.toContain(featStyles.fillFirst)
+    })
+  })
+
+  it('AC-109.1: 급여 미리보기는 패널 "10월 급여" + .chipOk(체크 svg + "10월 확정됨")이고, 표는 감싸개 안에 있으며 읽힌다(aria-hidden 없음)', () => {
+    expect(payParts, '.mini > .miniHead(이름 + 칩) + .tblWrap > table').not.toBeNull()
+    const [, mini, miniHead, title, titleIn, chip, svg, svgIn, chipText, tblWrap, table] = payParts ?? []
+    expect(classesOf(mini)).toContain(featStyles.mini)
+    expect(mini).not.toMatch(/aria-hidden/)
+    expect(classesOf(miniHead)).toContain(featStyles.miniHead)
+    expect(classesOf(title)).toContain(featStyles.miniTitle)
+    expect(titleIn).toBe('10월 급여')
+    expect(classesOf(chip)).toEqual(expect.arrayContaining([base.chip, base.chipOk]))
+    expect(svg).toMatch(/\baria-hidden="true"/)
+    expect(svg).toMatch(/\bstroke="currentColor"/)
+    expect(svgIn).toContain('d="M2.5 7.5l3 3 6-7"')
+    expect(chipText).toBe('10월 확정됨')
+    expect(classesOf(tblWrap)).toContain(featStyles.tblWrap)
+    expect(classesOf(table)).toContain(featStyles.tbl)
+  })
+
+  it('AC-109.1: 급여표 머리는 직원·직종·인센티브·합계, 줄은 [직원 A]~[직원 D] 4개이고 금액 칸은 [금액]이며 오른쪽 정렬 클래스를 단다', () => {
+    const [, , , , , , , , , , , headIn, bodyIn] = payParts ?? []
+    const ths = [...(headIn ?? '').matchAll(/(<th\b[^>]*>)([^<]*)<\/th>/g)]
+    expect(ths.map((m) => m[2])).toEqual(['직원', '직종', '인센티브', '합계'])
+    expect(ths.map((m) => classesOf(m[1]).includes(featStyles.right))).toEqual([false, false, true, true])
+    const rows = [...(bodyIn ?? '').matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((m) => [
+      ...m[1].matchAll(/(<td\b[^>]*>)([^<]*)<\/td>/g),
+    ])
+    expect(rows.map((tds) => tds.map((td) => td[2]))).toEqual([
+      ['[직원 A]', '물리치료사', '[금액]', '[금액]'],
+      ['[직원 B]', '도수치료사', '[금액]', '[금액]'],
+      ['[직원 C]', '간호조무사', '[금액]', '[금액]'],
+      ['[직원 D]', '방사선사', '[금액]', '[금액]'],
+    ])
+    for (const tds of rows) {
+      expect(classesOf(tds[1][1])).toContain(featStyles.sub)
+      expect(classesOf(tds[2][1])).toContain(featStyles.right)
+      expect(classesOf(tds[3][1])).toContain(featStyles.right)
+    }
+  })
+
+  it('AC-109.1: 그 아래 <ul class="grid3 group"> 안의 <li class="card smallCard"> 3개는 svg + h3(.tH3) + p(.tBody)다', () => {
+    expect(classesOf(list)).toEqual(expect.arrayContaining([base.grid3, base.group]))
+    expect(smallCards).toHaveLength(3)
+    expect((listIn ?? '').replace(SMALL_CARD, ''), 'li 카드 밖의 다른 원소가 없다').toBe('')
+    expect(smallCards.map((m) => [m[6], m[8]])).toEqual([
+      ['매출·재고', '매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.'],
+      ['일일마감·보고', '일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.'],
+      ['원장님 월간 보고', '월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.'],
+    ])
+    for (const [, li, cardHead, svg, , h3, , p] of smallCards) {
+      expect(classesOf(li)).toEqual(expect.arrayContaining([base.card, featStyles.smallCard]))
+      expect(classesOf(cardHead)).toContain(featStyles.smallHead)
+      expect(svg).toMatch(/\baria-hidden="true"/)
+      expect(svg).toMatch(/\bstroke="currentColor"/)
+      expect(classesOf(h3)).toContain(base.tH3)
+      expect(classesOf(p)).toContain(base.tBody)
+    }
+  })
+
+  it('AC-109.1: 사진·출렁이는 막대·스캔 띠·"FEATURES"·카드 색·색 글자가 없고, svg는 5개, inline style은 처방 그룹 막대 폭뿐이다', () => {
+    expect(features).not.toMatch(/<(img|picture|video|figure)\b/)
+    expect(textOf(features)).not.toMatch(/FEATURES/i)
+    for (const old of ['eyebrow', 'bars', 'bar', 'scan', 'row', 'rowReverse', 'visual', 'cardAmber', 'cardPink', 'cardBlue', 'done']) {
+      expect(features, old).not.toContain(featStyles[old])
+    }
+    expect(features).not.toMatch(/="#[0-9a-f]{3,8}"/i)
+    expect(features.match(/<svg\b/g) ?? []).toHaveLength(5)
+    expect(features.match(/\bstyle="[^"]*"/g)).toEqual([
+      'style="width:100%"',
+      'style="width:66%"',
+      'style="width:40%"',
+      'style="width:14%"',
+    ])
+    expect(features).not.toMatch(/placeholder=|contenteditable|tabindex/i)
+  })
+
+  it('AC-109.1: 기능 섹션에 붙은 클래스가 모두 base.module.css·FeaturesSection.module.css에 정의돼 있다', () => {
+    const { checked, missing } = classCheck(features, [
+      [base.wrap, 'base.module.css'],
+      [featStyles.fcard, 'FeaturesSection.module.css'],
     ])
     expect(checked, '본 클래스 수').toBeGreaterThan(0)
     expect(missing).toEqual([])

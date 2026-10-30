@@ -15,6 +15,7 @@ const CHECKED = [
   'PromiseBand.module.css',
   'AiSection.module.css',
   'OrthoSection.module.css',
+  'FeaturesSection.module.css',
 ]
 
 // ---------- CSS 글자 읽기 도우미 ----------
@@ -1014,6 +1015,263 @@ describe('AC-108.2 · AC-108.4: 쓰는 변수', () => {
     const used = [...source(name).matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
     expect(used.length).toBeGreaterThan(0)
     for (const varName of used) expect(defined.has(varName), `${name}: ${varName}`).toBe(true)
+  })
+})
+
+// ---------- 기능 섹션 (REQ-109, 시안 .feat-big · .fcard · .drop · .mini · .rates · .groups · .tbl · .feat-small) ----------
+
+const FEAT = 'FeaturesSection.module.css'
+const feat = () => parse(source(FEAT))
+
+describe('AC-109.2: 기능 섹션 CSS (FeaturesSection.module.css)', () => {
+  it('AC-109.2: 기능 카드 둘은 한 칸으로 쌓이고 사이가 12px → 16px(1024)이다', () => {
+    for (const bp of ALL_BPS) expectStyle('.featBig', bp, { display: 'grid', 'grid-template-columns': COLS(1) }, FEAT)
+    expectSteps(FEAT, '.featBig', 'gap', ['12px', '12px', '16px'])
+  })
+
+  it('AC-109.2: 휴대폰 기능 카드 .fcard는 세로로 쌓인 흰 상자(1px line · 6px · 넘침 숨김 · min-width 0)이고 미리보기 위에 1px 선이 있다', () => {
+    expectStyle(
+      '.fcard',
+      0,
+      {
+        display: 'flex',
+        'flex-direction': 'column',
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
+        'border-radius': '6px',
+        overflow: 'hidden',
+        'min-width': '0',
+      },
+      FEAT,
+    )
+    expectStyle('.fcardShot', 0, { 'border-top': '1px solid var(--line)', 'min-width': '0' }, FEAT)
+    expect(at(feat(), '.fcardShot', 'border-left', 0), '.fcardShot border-left @0').toBeUndefined()
+  })
+
+  it('AC-109.2: 768부터 기능 카드는 minmax(0, 1fr) minmax(0, 1fr)이고 미리보기는 위 선 대신 왼쪽 1px 선이다', () => {
+    for (const bp of [768, 1024] as Bp[]) {
+      expectStyle('.fcard', bp, { display: 'grid' }, FEAT)
+      expectStyle('.fcardShot', bp, { 'border-top': '0', 'border-left': '1px solid var(--line)' }, FEAT)
+    }
+    expectStyle('.fcard', 768, { 'grid-template-columns': 'minmax(0, 1fr) minmax(0, 1fr)' }, FEAT)
+  })
+
+  it('AC-109.2: 1024부터 기능 카드는 minmax(0, 5fr) minmax(0, 7fr)이다', () => {
+    expectStyle('.fcard', 1024, { 'grid-template-columns': 'minmax(0, 5fr) minmax(0, 7fr)' }, FEAT)
+  })
+
+  it('AC-109.2: 글 쪽 .fcardText 안쪽 16 → 24 → 32px, 미리보기 .fcardShot은 canvas 바탕 · 안쪽 16 → 20 → 32px이다', () => {
+    expectStyle('.fcardText', 0, { display: 'grid', gap: '10px', 'align-content': 'start' }, FEAT)
+    expectSteps(FEAT, '.fcardText', 'padding', ['16px', '24px', '32px'])
+    expectStyle('.fcardText', 1024, { 'align-content': 'center' }, FEAT)
+    expectStyle('.fcardChips', 0, { 'margin-top': '4px' }, FEAT)
+    expectStyle('.fcardShot', 0, { background: 'var(--canvas)', display: 'grid', gap: '12px', 'align-content': 'start' }, FEAT)
+    expectSteps(FEAT, '.fcardShot', 'padding', ['16px', '20px', '32px'])
+    expectStyle('.fcardShot', 768, { 'align-content': 'center' }, FEAT)
+  })
+
+  it('AC-109.2: 파일 놓는 칸 .drop은 48px · 1px 점선 field · 6px · 흰 바탕 · 14px ink-2 · 가운데 정렬이다', () => {
+    expectStyle(
+      '.drop',
+      0,
+      {
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'center',
+        gap: '8px',
+        height: '48px',
+        border: '1px dashed var(--field)',
+        'border-radius': '6px',
+        background: 'var(--surface)',
+        'font-size': '14px',
+        color: 'var(--ink-2)',
+      },
+      FEAT,
+    )
+  })
+
+  it('AC-109.2: 작은 패널 .mini는 흰 바탕 · 1px line · 6px · min-width 0 · 넘침 숨김이고, 머리는 44px · 0 12px · 아래 1px line · 이름 14/20 600이다', () => {
+    expectStyle(
+      '.mini',
+      0,
+      {
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
+        'border-radius': '6px',
+        'min-width': '0',
+        overflow: 'hidden',
+      },
+      FEAT,
+    )
+    expectStyle(
+      '.miniHead',
+      0,
+      {
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'space-between',
+        gap: '8px',
+        height: '44px',
+        padding: '0 12px',
+        'border-bottom': '1px solid var(--line)',
+      },
+      FEAT,
+    )
+    expectStyle('.miniTitle', 0, { 'font-size': '14px', 'line-height': '20px', 'font-weight': '600' }, FEAT)
+  })
+
+  it('AC-109.2: 통계 패널은 휴대폰·768에서 비율 4칸 줄(아래 1px 선) 아래에 처방 그룹이 오고, 1024부터 2칸(비율 2×2 | 처방 그룹)이다', () => {
+    expectSteps(FEAT, '.miniBody', 'grid-template-columns', [COLS(1), COLS(1), 'minmax(0, 1fr) minmax(0, 1fr)'])
+    for (const bp of [0, 768] as Bp[]) {
+      expectStyle('.rates', bp, { display: 'grid', 'grid-template-columns': COLS(4), 'border-bottom': '1px solid var(--line)' }, FEAT)
+      expect(at(feat(), '.rates', 'border-right', bp), `.rates border-right @${bp}`).toBeUndefined()
+    }
+    expectStyle(
+      '.rates',
+      1024,
+      { 'grid-template-columns': COLS(2), 'border-bottom': '0', 'border-right': '1px solid var(--line)' },
+      FEAT,
+    )
+  })
+
+  it('AC-109.2: 비율 칸은 휴대폰에서 왼쪽 선으로 나뉘고, 1024부터 2×2 칸을 오른쪽·아래 선으로 나눈다', () => {
+    expectStyle('.rate', 0, { display: 'grid', gap: '2px', 'min-width': '0', padding: '10px 4px 10px 10px' }, FEAT)
+    expectStyle('.rate + .rate', 0, { 'border-left': '1px solid var(--line)', 'padding-left': '8px' }, FEAT)
+    expectStyle('.rate', 1024, { padding: '12px 16px', 'border-left': '0' }, FEAT)
+    expectStyle('.rate + .rate', 1024, { padding: '12px 16px', 'border-left': '0' }, FEAT)
+    expectStyle('.rate:nth-child(odd)', 1024, { 'border-right': '1px solid var(--line)' }, FEAT)
+    expectStyle('.rate:nth-child(-n+2)', 1024, { 'border-bottom': '1px solid var(--line)' }, FEAT)
+    expect(at(feat(), '.rate:nth-child(odd)', 'border-right', 768), '2×2 선은 1024부터').toBeUndefined()
+  })
+
+  it('AC-109.2: 비율 이름은 12/16 muted · 줄바꿈 없음, 값은 16/22 → 18/24(1024) 600 ink다', () => {
+    expectStyle('.rate dt', 0, { 'font-size': '12px', 'line-height': '16px', color: 'var(--muted)', 'white-space': 'nowrap' }, FEAT)
+    expectStyle('.rate dd', 0, { 'font-weight': '600', color: 'var(--ink)' }, FEAT)
+    expectSteps(FEAT, '.rate dd', 'font-size', ['16px', '16px', '18px'])
+    expectSteps(FEAT, '.rate dd', 'line-height', ['22px', '22px', '24px'])
+  })
+
+  it('AC-109.2: 처방 그룹은 안쪽 10px 12px 12px → 12px 16px(1024)이고, 한 줄은 64px | 막대 | 40px · 13/18 ink-2다', () => {
+    expectStyle('.groups', 0, { display: 'grid', gap: '8px', 'align-content': 'start' }, FEAT)
+    expectSteps(FEAT, '.groups', 'padding', ['10px 12px 12px', '10px 12px 12px', '12px 16px'])
+    expectStyle('.groups', 1024, { 'align-content': 'center' }, FEAT)
+    expectStyle('.groupsTitle', 0, { 'font-size': '12px', 'line-height': '16px', color: 'var(--muted)' }, FEAT)
+    expectStyle(
+      '.grp',
+      0,
+      {
+        display: 'grid',
+        'grid-template-columns': '64px minmax(0, 1fr) 40px',
+        gap: '8px',
+        'align-items': 'center',
+        'font-size': '13px',
+        'line-height': '18px',
+        color: 'var(--ink-2)',
+      },
+      FEAT,
+    )
+    expectStyle('.grp b', 0, { 'text-align': 'right', 'font-weight': '600', color: 'var(--ink)' }, FEAT)
+  })
+
+  it('AC-109.2: 처방 그룹 막대는 6px canvas 홈 안의 accent-tint이고, 첫 막대(.fillFirst)만 accent다', () => {
+    expectStyle('.track', 0, { height: '6px', 'border-radius': '3px', background: 'var(--canvas)', overflow: 'hidden' }, FEAT)
+    expectStyle('.fill', 0, { display: 'block', height: '100%', 'border-radius': '3px', background: 'var(--accent-tint)' }, FEAT)
+    const rules = feat()
+    for (const bp of ALL_BPS) {
+      expect(cascade(rules, ['.fill'], 'background', bp), `.fill @${bp}`).toBe('var(--accent-tint)')
+      expect(cascade(rules, ['.fill', '.fillFirst'], 'background', bp), `.fill.fillFirst @${bp}`).toBe('var(--accent)')
+    }
+    const accentUsers = rules.filter((rule) => rule.decls.some(([, v]) => /var\(--accent\)/.test(v))).flatMap((r) => r.selectors)
+    expect(accentUsers, 'var(--accent)를 쓰는 선택자').toEqual(['.fillFirst'])
+  })
+
+  it('AC-109.2: 급여표는 13/20 · 폭 100%, 머리 34px canvas 500 ink-2, 칸 36px ink, 머리·칸 모두 줄바꿈 없음, 금액 칸 오른쪽 정렬이다', () => {
+    expectStyle('.tbl', 0, { width: '100%', 'border-collapse': 'collapse', 'font-size': '13px', 'line-height': '20px' }, FEAT)
+    expectStyle(
+      '.tbl th',
+      0,
+      {
+        height: '34px',
+        padding: '0 6px',
+        'text-align': 'left',
+        'font-weight': '500',
+        color: 'var(--ink-2)',
+        background: 'var(--canvas)',
+        'border-bottom': '1px solid var(--line)',
+        'white-space': 'nowrap',
+      },
+      FEAT,
+    )
+    expectStyle(
+      '.tbl td',
+      0,
+      { height: '36px', padding: '0 6px', color: 'var(--ink)', 'border-bottom': '1px solid var(--line)', 'white-space': 'nowrap' },
+      FEAT,
+    )
+    expectStyle('.tbl tr:last-child td', 0, { 'border-bottom': '0' }, FEAT)
+    expectStyle('.tbl .right', 0, { 'text-align': 'right' }, FEAT)
+    expectStyle('.tbl .sub', 0, { color: 'var(--ink-2)' }, FEAT)
+  })
+
+  it('AC-109.2: 급여표 감싸개는 overflow-x: auto이고, 첫·끝 칸 바깥 여백은 12px이라 390px 폰에서도 잘리지 않는다', () => {
+    expectStyle('.tblWrap', 0, { 'overflow-x': 'auto' }, FEAT)
+    for (const cell of ['th', 'td']) {
+      expectStyle(`.tbl ${cell}:first-child`, 0, { 'padding-left': '12px' }, FEAT)
+      expectStyle(`.tbl ${cell}:last-child`, 0, { 'padding-right': '12px' }, FEAT)
+    }
+    // 표를 품은 상자들이 내용 폭 때문에 넓어지지 않는다(넘치면 감싸개 안에서만 옆으로 민다)
+    for (const box of ['.fcard', '.fcardShot', '.mini']) expectStyle(box, 0, { 'min-width': '0' }, FEAT)
+    for (const bp of ALL_BPS) {
+      expect(at(feat(), '.tbl', 'min-width', bp), `.tbl min-width @${bp}`).toBeUndefined()
+      expect(at(feat(), '.tblWrap', 'overflow-x', bp), `.tblWrap overflow-x @${bp}`).toBe('auto')
+    }
+  })
+
+  it('AC-109.2: 작은 카드 .smallCard는 grid · gap 6px이고 카드 모양(테두리 · 바탕 · 모서리 · 안쪽)은 base .card에 맡긴다, 머리는 svg ink-2 + h3다', () => {
+    expectStyle('.smallCard', 0, { display: 'grid', gap: '6px', 'align-content': 'start' }, FEAT)
+    for (const bp of ALL_BPS) {
+      for (const prop of ['background', 'border', 'border-radius', 'padding', 'min-width']) {
+        expect(at(feat(), '.smallCard', prop, bp), `.smallCard ${prop} @${bp}`).toBeUndefined()
+      }
+    }
+    expectStyle('.smallHead', 0, { display: 'flex', 'align-items': 'center', gap: '10px' }, FEAT)
+    expectStyle('.smallHead svg', 0, { color: 'var(--ink-2)' }, FEAT)
+  })
+
+  it('AC-109.2: 옛 규칙(영문 소제목 · 출렁이는 막대 · 스캔 띠 · 카드 색 · 번갈아 놓는 줄 · 그림 .img)이 없다', () => {
+    const css = source(FEAT)
+    for (const old of [
+      '.eyebrow',
+      '.bars',
+      '.bar',
+      '.scan',
+      '.img',
+      '.row',
+      '.rowReverse',
+      '.visual',
+      '.visualStats',
+      '.visualPayroll',
+      '.step',
+      '.stepTeal',
+      '.stepAmber',
+      '.chipTeal',
+      '.chipAmber',
+      '.cardAmber',
+      '.cardPink',
+      '.cardBlue',
+      '.done',
+    ]) {
+      expect(css, `${FEAT}: ${old}`).not.toMatch(new RegExp(`\\${old}(?![\\w-])`))
+    }
+    expect(css).not.toMatch(/row-reverse|wrap-reverse|aspect-ratio/)
+  })
+
+  it('AC-109.2: FeaturesSection.module.css가 쓰는 var(--…)는 모두 globals.css에 정의돼 있다', () => {
+    const globals = withoutComments(readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8'))
+    const defined = new Set([...globals.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
+    const used = [...source(FEAT).matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
+    expect(used.length).toBeGreaterThan(0)
+    for (const varName of used) expect(defined.has(varName), `${FEAT}: ${varName}`).toBe(true)
   })
 })
 
