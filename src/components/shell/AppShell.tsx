@@ -24,7 +24,7 @@ export function AppShell({
         <div className="flex h-16 items-center justify-between gap-5 px-6 max-md:h-12 max-md:gap-2 max-md:px-4">
           <div className="flex min-w-0 items-center gap-4 max-md:gap-2">
             <div className="flex shrink-0 items-center gap-2.5">
-              {/* 로고는 랜딩·인증 화면과 같은 LogoMark(시안의 십자는 자리표시). 한 색으로 띠 글자색 ink를 따르고 읽지 않는다 */}
+              {/* 로고는 랜딩·인증 화면과 같은 LogoMark. LogoMark가 정한 고정 두 색(로고 C③)으로 그리고 읽지 않는다 */}
               <LogoMark size={26} className="shrink-0" />
               <span className="whitespace-nowrap text-logo font-semibold text-ink max-md:hidden">[서비스 이름]</span>
             </div>

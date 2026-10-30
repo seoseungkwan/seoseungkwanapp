@@ -9,7 +9,7 @@ import { ADMIN_ITEM, MENU } from './menu'
 // 1024px 미만은 띠 안에서 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음). 그때 툴팁은 띠 밖으로 나갈 수 없어 숨긴다(design.md '탭 띠 스크롤과 툴팁')
 
 // 탭 공통: 50px·좌우 20px·tab, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리). 폰 46px·좌우 14px·body.
-// 랜딩 a 규칙(teal 글자·밑줄)이 닿지 않게 글자색·no-underline을 직접 준다
+// 전역 a 규칙·브라우저 기본 밑줄에 기대지 않게 글자색·no-underline을 직접 준다
 const tabBase =
   'relative inline-flex h-12.5 shrink-0 items-center whitespace-nowrap rounded-chip px-5 text-tab no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11.5 max-md:px-3.5 max-md:text-body'
 // 기본: ink-2 500, 올림 ink

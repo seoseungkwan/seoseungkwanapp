@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // _next/·favicon.ico·랜딩 그림(public/landing/)·가짜 견본(public/fake-sample/)·그림·영상 파일은 거치지 않는다
+  // _next/·favicon.ico·옛 landing/ 경로(그 그림은 landing-v2에서 뺐고 matcher는 그대로 둔다)·가짜 견본(public/fake-sample/)·그림·영상 파일은 거치지 않는다
   matcher: [
     '/((?!_next/|favicon\\.ico|landing/|fake-sample/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|mp4|webm)$).*)',
   ],
