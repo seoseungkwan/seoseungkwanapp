@@ -4,7 +4,7 @@
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
 > 모양 기준: `docs/mockups/landing-v2/index.html`. 값 표: requirements.md·design.md, 규칙: `docs/UI_GUIDE.md` 랜딩 절.
 > 모든 TASK에서 REQ-101(바뀌지 않는 동작)을 지킨다. 옛 동작 시험은 이름·내용을 고치지 않는다(design.md '옛 시험 다루기').
-> **할 순서**: Phase 1(TASK-1~6) → Phase 2(TASK-7~10) → Phase 3(TASK-11).
+> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11). TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
 > 각 Phase 끝에 `python3 ~/.claude/harness/bin/verify`(lint·build·test)를 돌리고 1440·390 화면을 찍어 보고한다. Phase 1·2 끝 사진은 중간 상태다. 안 고친 섹션은 깨져 보인다(design.md 위험).
 
 ## Phase 1 — 기초: 토큰·글꼴·로고·그림 빼기·공통 모양·위쪽 메뉴
@@ -42,6 +42,7 @@
   - AC-103.2: 시험 밖 `src/`를 읽어 rect 좌표 글자가 LogoMark.tsx에만 있는지, 세 파일에 옛 색 두 개가 없는지 본다.
   - 그다음 세 곳의 svg를 `<LogoMark size={26 | 22} className=… />`로 바꾼다. SiteHeader는 로고만 바꾸고 나머지는 TASK-6에서 한다.
   - `shell.test.tsx`·`login/page.test.tsx`(svg가 aria-hidden, 띠 안 원소가 svg·span 순서)와 `top.test.tsx`가 그대로 통과해야 한다.
+  - (2026-10-30 뒤 바뀜) 사용자가 마크를 병원 십자 C③으로 바꿨다. 마크 모양·색과 AC-103.1·103.2 시험은 TASK-12가 바꾼다. 이 TASK에서 만든 "LogoMark 한 곳에서 그리기"는 그대로다.
 
 ## TASK-4: 그림 6장 빼기
 - REQ: REQ-104, REQ-101
@@ -74,6 +75,23 @@
   - `styles.test.ts`에 AC-106.2·106.3을 더하고, `CHECKED`에 SiteHeader.module.css를 넣는다.
   - 그다음 시안의 `.lp-hd`를 옮긴다(grid 두 줄 → 768 한 줄, glass·pill 제거).
   - 옛 AC-001.2·002.1 시험은 그대로 통과해야 한다.
+
+## TASK-12: 로고 십자 모양(C③)
+- REQ: REQ-103, REQ-101
+- Files: src/components/common/LogoMark.tsx, src/components/common/LogoMark.test.tsx
+- Tests: src/components/common/LogoMark.test.tsx, src/components/shell/shell.test.tsx, src/app/login/page.test.tsx, src/components/landing/top.test.tsx
+- TDD: required — 먼저 `LogoMark.test.tsx`의 AC-103.1·103.2 시험을 새 AC로 고치고 RED를 본다.
+  - AC-103.1: 바깥 svg 속성(aria-hidden·size·viewBox, fill·stroke 없음), 안쪽 두 원소(rect 테두리 `#14C8BA` 2.4 · 십자 path `#6D5DF5`)와 그 순서, `currentColor`·다른 색·`style` 없음, className 전달.
+  - AC-103.2: 시험 밖 `src/`를 읽어 다음을 본다.
+    - 십자 path 글자는 LogoMark.tsx에만 있다.
+    - 옛 막대 좌표는 어디에도 없다.
+    - AppShell·AuthFrame·SiteHeader는 LogoMark를 하나씩 쓰고, 직접 그린 svg·로고 색이 없다.
+    - 그린 세 화면의 로고가 LogoMark 출력과 같다.
+    - "부모 글자색 ink를 따른다" 확인은 지운다.
+  - 그다음 LogoMark.tsx의 svg를 비교 시안 C③(`docs/mockups/landing-v2/logo-options.html`) 그대로 바꾼다. 크기 22·26·20과 `aria-hidden`은 그대로다.
+  - 쓰는 곳 세 파일은 이미 LogoMark를 쓰므로 고치지 않는다.
+  - `top.test.tsx` AC-106.1은 LogoMark 출력과 비교하므로 그대로 통과한다. `shell.test.tsx`·`login/page.test.tsx`도 그대로 통과해야 한다.
+  - `SiteHeader.module.css`의 `.logo` 주석("마크(currentColor)도 ink")은 맞지 않게 된다. 이 TASK에서는 두고, TASK-11에서 랜딩 CSS를 정리할 때 고친다(`.logo` 글자색 ink는 그대로).
 
 ## Phase 2 — 섹션
 

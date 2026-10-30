@@ -16,7 +16,7 @@ src/
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
-│   └── common/LogoMark.tsx  # 로고 마크 한 곳(한 색 `currentColor`). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
+│   └── common/LogoMark.tsx  # 로고 마크 한 곳(병원 십자 C③, 고정 두 색). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험

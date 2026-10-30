@@ -12,7 +12,13 @@
   - 칸: 휴대폰 1줄 · 태블릿 2줄 · PC 12칸. 휴대폰 메뉴는 작게.
   - 쓸데없는 그림자·그라데이션·장식을 없앤다.
   - **기능과 동작은 바꾸지 않는다(UI/UX만).**
-- 사용자 결정(2026-10-30): 로고 마크를 어디서나 한 색(ink)으로 그린다. 랜딩과 같은 그림을 쓰는 앱 틀(AppShell)·인증 화면 틀(AuthFrame)도 포함한다.
+- 사용자 결정(2026-10-30, 같은 날 고침): 로고 마크를 병원 십자(비교 시안 `docs/mockups/landing-v2/logo-options.html`의 **C③**, 게시본 https://claude.ai/artifact/X9wdjCVHdHuBnsoonUEpT6)로 바꾼다.
+  - 모양: 둥근 네모 테두리 안에 꽉 찬 둥근 십자가 있다.
+  - 색: 테두리 청록 `#14C8BA`, 십자 보라 `#6D5DF5`로 고정한다. 예전 로고 색이 좋다고 했다.
+  - 강조색 하나 규칙에서 로고만 예외다.
+  - 빨강은 쓰지 않는다. 적십자 표장은 법으로 사용이 제한된다.
+  - 랜딩 메뉴·앱 틀(AppShell)·인증 화면 틀(AuthFrame)이 같은 `LogoMark`를 쓴다.
+  - 처음에 정했던 "막대 세 개를 한 색(ink)으로"를 대체한다.
 - 기준 시안: 사용자가 승인한 `docs/mockups/landing-v2/index.html`(게시본 https://claude.ai/artifact/UbFfEzgrKExnLgsjtoZv2o)이다. 아래 값은 모두 이 시안의 CSS에서 옮겼다. 색·글자·간격 규칙은 `docs/UI_GUIDE.md` 랜딩 절(이 명세와 함께 고침)을 따른다.
 - 이 명세가 옛 명세를 대체하는 부분:
   - 옛 `landing` 명세의 REQ-006(그림 6장)
@@ -71,16 +77,22 @@
   - `:root`에 `--font-sans: var(--font-plex), system-ui, sans-serif`가 있다.
   - `--font-num`·`--font-grotesk`는 시험 파일 밖 `src/` 어디에도 없다.
 
-### REQ-103: 로고 마크 한 색
+### REQ-103: 로고 마크 (병원 십자 C③)
 - AC-103.1: Given `<LogoMark size={22} />`, When 그리면, Then 다음과 같다.
-  - `<svg aria-hidden="true" width="22" height="22" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2.4">`
-  - 안에 지금과 같은 자리의 `<rect>` 3개가 있다: (9,3) (11,12) (8,21), 12×6, rx 3.
-  - 색 값(`#…`)이 없다.
-  - `className`을 넘기면 svg에 붙는다.
-- AC-103.2: Given 시험 파일 밖 `src/`, When 로고 그림을 찾으면, Then 다음과 같다.
-  - rect 좌표 글자(`x="9" y="3"`)는 `src/components/common/LogoMark.tsx`에만 있다.
-  - `AppShell.tsx`(26)·`AuthFrame.tsx`(26)·`SiteHeader.tsx`(22)는 `LogoMark`로 그리고, 세 파일에 `#14C8BA`·`#6D5DF5`(대소문자 무시)가 없다.
-  - 색은 부모 글자색 ink를 따른다.
+  - 바깥: `<svg aria-hidden="true" width="22" height="22" viewBox="0 0 30 30">`. 바깥 svg에는 `fill`·`stroke`가 없다.
+  - 안에는 정확히 두 원소가 이 순서로 있다(비교 시안 C③ 그대로).
+    - 테두리: `<rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/>`
+    - 십자: `<path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/>`
+  - 색은 이 두 값으로 고정이다. `currentColor`·다른 색 값·`style`이 없다. 빨강 계열도 없다(적십자 표장 혼동 금지).
+  - `size`가 너비·높이가 된다(앱 틀·인증 틀 26). `className`을 넘기면 svg에 붙고, 안 넘기면 class가 없다.
+- AC-103.2: Given 시험 파일 밖 `src/`와 로고를 그리는 세 화면, When 보면, Then 다음과 같다.
+  - 십자 path 글자(`M13.5 8h3`)는 `src/components/common/LogoMark.tsx`에만 있다.
+  - 옛 막대 좌표 글자(`x="9" y="3"`·`x="11" y="12"`·`x="8" y="21"`)는 어디에도 없다.
+  - `AppShell.tsx`(26)·`AuthFrame.tsx`(26)·`SiteHeader.tsx`(22)는 다음을 지킨다.
+    - `LogoMark`를 하나씩 import해 그린다.
+    - 직접 그린 `<svg>`·`<rect>`가 없다.
+    - `#14C8BA`·`#6D5DF5`(대소문자 무시)가 없다. 로고 색은 LogoMark 한 곳에만 있다.
+  - 그린 화면마다 로고 svg(viewBox 0 0 30 30)가 하나이고, `LogoMark` 출력과 같다(배치용 class만 다를 수 있음).
 
 ### REQ-104: 그림을 모두 뺀다
 - AC-104.1: Given `/` 마크업과 `src/components/landing/`, When 보면, Then 다음이 모두 없다.
@@ -156,6 +168,7 @@
   - (h) `--accent`·`--accent-soft`·`--accent-tint`는 `base.module.css`(초점 고리)·`HeroChart.module.css`·`FeaturesSection.module.css`에만 나온다. `--ok*`·`--danger*`는 `base.module.css`(칩)·`PrivacySection.module.css`("여기서 멈춤")에만 나온다.
 - AC-105.8: Given `src/components/landing/`의 `*.tsx`(시험 제외), When 읽으면, Then 다음과 같다.
   - 색 글자(`#` + 16진수 3·6자리)가 없다. svg 선·채움은 `currentColor`나 CSS 클래스로 정한다.
+  - 로고 마크는 이 규칙 밖이다. 고정 두 색은 `src/components/common/LogoMark.tsx`에 있고, 랜딩 TSX는 `<LogoMark />`를 부르기만 한다.
   - inline `style`은 % 값의 높이·폭·위치에만 쓴다: 히어로 막대 높이, 신환율 막대 폭, 처방 그룹 막대 폭, 눈금선 위치.
 
 ### REQ-106: 위쪽 메뉴
@@ -325,7 +338,7 @@
 ## 범위 밖
 - 기능·동작·문구 바꾸기(위 예외 둘만 바뀜)
 - CSP·보안 헤더·middleware matcher
-- 앱 화면(로그인·대시보드·관리자)의 모양. 바꾸는 것은 로고 마크 색뿐이다.
+- 앱 화면(로그인·대시보드·관리자)의 모양. 바꾸는 것은 로고 마크(모양·색)뿐이다.
 - 랜딩을 Tailwind로 옮기기(ADR-014 그대로), 새 `@theme` 토큰
 - 서비스 이름·문의 메일 확정, 다크 모드
 - 옛 명세 `specs/landing/` 고치기

@@ -25,7 +25,11 @@
 - 동작: 링크 6종, 시작 링크 3개, 섹션 8개 순서, heroFrames 틱, 모션 줄이기, CSP.
 - 옛 동작 시험은 고치지 않는다.
 
-**로고.** 마크를 `src/components/common/LogoMark.tsx` 하나로 모으고 `currentColor` 한 색으로 그린다. 랜딩 메뉴·히어로 미리보기·앱 틀·인증 틀이 모두 이것을 쓴다.
+**로고.** 마크는 `src/components/common/LogoMark.tsx` 하나에서 그린다. 랜딩 메뉴(22)·히어로 미리보기(20)·앱 틀(26)·인증 틀(26)이 모두 이것을 쓴다.
+- 모양: 2026-10-30 사용자가 고른 병원 십자 C③(`docs/mockups/landing-v2/logo-options.html`). 둥근 네모 테두리(rect 3,3 24×24 rx 6, 선 2.4) 안에 꽉 찬 둥근 십자 path가 있다.
+- 색: 테두리 `#14C8BA`, 십자 `#6D5DF5`로 고정한다(`currentColor` 아님). 강조색 하나 규칙의 유일한 예외라, 색 값은 LogoMark.tsx 한 곳에만 둔다.
+- 빨강 계열은 쓰지 않는다. 적십자 표장은 「대한적십자사 조직법」으로 사용이 제한된다.
+- 꾸밈이라 `aria-hidden="true"`이다. 옆의 `[서비스 이름]` 글자가 읽힌다.
 
 ## 구성 요소 / 인터페이스
 
@@ -147,7 +151,9 @@ src/components/landing/
 **사용자 결정(2026-10-30)**
 1. 전면 개편: Linear 절제 + Stripe 데이터 중심, 그림 제거, 제품 화면 미리보기, 중립색 + 강조색 하나, 1/2/12칸, 작은 휴대폰 메뉴, 장식 제거. UI/UX만 바꾼다.
    - UI_GUIDE 랜딩 원칙 2와 옛 `landing` REQ-006을 대체한다.
-2. 로고 마크를 어디서나 한 색(ink)으로 그린다. 앱 틀·인증 틀 포함.
+2. 로고 마크는 병원 십자 C③이다. 테두리 청록 `#14C8BA`, 십자 보라 `#6D5DF5`로 고정한다(예전 로고 색). 앱 틀·인증 틀에도 같은 마크를 쓴다.
+   - 같은 날 처음 정한 "막대 세 개를 한 색(ink)으로"(TASK-3에서 만듦)를 대체한다. TASK-12가 바꾼다.
+   - 로고만 강조색 하나 규칙의 예외다. 빨강은 쓰지 않는다(적십자 표장).
 
 **Claude 판단**
 
@@ -182,6 +188,11 @@ src/components/landing/
   - `page.test.tsx`: 'AC-006.1' 2개 → AC-104.1·104.2.
   - `theme.test.ts`: describe '랜딩은 그대로'(옛 값·`--font-num`·Space Grotesk·`a:hover`) → AC-102.1~102.4. Tailwind·`@theme` 시험은 그대로다.
   - 그 밖(top·bottom·HeroChart·heroFrames·globals·csp·middleware·shell·login): 그대로 둔다. 새 AC 시험만 더한다.
+- **로고 시험(TASK-12).**
+  - `LogoMark.test.tsx`의 AC-103.1·103.2 시험을 C③에 맞게 바꾼다. 안쪽 두 원소와 고정 두 색을 보고, 옛 막대 좌표가 없는지 본다.
+  - `top.test.tsx` AC-106.1(로고 링크 안 = `LogoMark` 출력 + 이름)은 LogoMark 출력과 비교하므로 고치지 않는다.
+  - `shell.test.tsx`·`login/page.test.tsx`도 그대로 통과한다. 이들은 svg가 aria-hidden인지, 띠 안 원소가 svg·span 순서인지 본다.
+  - 메뉴 `.logo`의 글자색 ink(`styles.test.ts` AC-106.2)는 이름 글자 색이라 그대로 둔다.
 - **CSS 시험 방식.**
   - `styles.test.ts`가 `*.module.css`를 글자로 읽는다. 주석을 지운 뒤 맨 위 규칙과 `@media` 블록을 나눠 값을 확인한다. `theme.test.ts`의 `blockBody`·`rules`와 같은 방식이다.
   - 마크업 쪽 시험은 `renderToStaticMarkup` 글자에서 확인한다. 클래스는 `import base from './base.module.css'`의 `base.grid4`처럼 찾는다.
