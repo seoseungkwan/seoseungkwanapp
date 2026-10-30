@@ -100,7 +100,8 @@ export default function FeaturesSection() {
             }
             desc={
               <>
-                EMR에서 내려받은 통계 파일을 올리면 신환율·재진율, <span className={base.nowrap}>7일·14일</span> 재방문,
+                EMR에서 내려받은 통계 파일을 올리면 <span className={base.nowrap}>신환율·재진율,</span>{' '}
+                <span className={base.nowrap}>7일·14일</span> 재방문,
                 처방 그룹별 환자 수가 바로 계산됩니다.
               </>
             }

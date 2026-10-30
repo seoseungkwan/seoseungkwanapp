@@ -68,6 +68,7 @@
 }
 
 /* ---------- 글자 단계 (한 벌) ---------- */
+/* 본문 글(.tLead·.tBody·.tSmall)은 text-wrap: pretty로 마지막 줄에 낱말 하나만 남지 않게 한다(TASK-11 화면 확인) */
 .tDisplay {
   font-size: 34px;
   line-height: 42px;
@@ -98,15 +99,18 @@
   line-height: 26px;
   color: var(--ink-2);
   max-width: 640px;
+  text-wrap: pretty;
 }
 .tBody {
   font-size: 14px;
   line-height: 22px;
   color: var(--ink-2);
+  text-wrap: pretty;
 }
 .tSmall {
   font-size: 13px;
   line-height: 20px;
+  text-wrap: pretty;
 }
 .tLabel {
   font-size: 13px;

@@ -331,6 +331,10 @@
     font-size: 13px;
     line-height: 20px;
   }
+  /* 막대 칸을 아래 글 한 줄(20px)과 같은 높이로 → 세 카드의 아래 선이 한 높이에 선다 */
+  .meter {
+    margin-block: 7px;
+  }
   .kpiAi {
     grid-column: auto;
   }

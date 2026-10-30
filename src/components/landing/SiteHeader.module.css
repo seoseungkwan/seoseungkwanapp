@@ -17,9 +17,11 @@
   grid-template-areas: "logo cta" "nav nav";
   align-items: center;
   column-gap: 16px;
+  /* header 아래 1px 선을 마지막 줄 안에 겹친다 → 메뉴 높이가 휴대폰 94(48 + 46), 768부터 64 그대로다(AC-111.1) */
+  margin-bottom: -1px;
 }
 
-/* 로고 줄 48px. 글자색을 직접 정해 마크(currentColor)도 ink로 그린다 */
+/* 로고 줄 48px. 글자색 ink를 직접 정한다(LogoMark는 자기 색으로 그린다) */
 .logo {
   grid-area: logo;
   display: inline-flex;
@@ -37,11 +39,13 @@
   grid-area: cta;
   position: relative;
 }
-/* 36px 단추의 누름 영역을 위아래로 4px씩 늘려 44px로 */
+/* 36px 단추의 누름 영역을 위아래로 4px씩 늘려 44px로.
+   inset은 테두리 안쪽(padding box)에서 재므로 margin -1px로 단추 테두리 1px만큼 더 늘린다 */
 .start::after {
   content: "";
   position: absolute;
   inset: -4px 0;
+  margin-block: -1px;
 }
 
 /* 섹션 링크 줄: wrap 좌우 여백(16px)까지 넓혀 옆으로 넘긴다. 링크를 숨기지 않는다 */
@@ -53,6 +57,8 @@
   margin-inline: -16px;
   padding-inline: 2px;
   border-top: 1px solid var(--line);
+  /* 위 1px 선을 로고 줄 48px 안에 겹친다 → 링크 줄이 46px다 */
+  margin-top: -1px;
 }
 .nav::-webkit-scrollbar {
   display: none;
