@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "extension",
-      "status": "pending"
+      "status": "completed",
+      "summary": "extension/: manifest.json(MV3 0.1.0 '청구 사전점검 연결', permissions [nativeMessaging], externally_connectable 우리 origin 하나, key=commands.json extensionKey, background service_worker background.js type module), tsconfig.json(src→dist). relay.ts: isOurOrigin(===)·checkRequest(v===protocol, id ^[A-Za-z0-9-]{1,64}$, 키 4개, cmd는 표의 own key, 아니면 E-BRIDGE-REJECTED, id 모르면 '')·withExtensionInfo(hello result data에 extensionVersion·extensionProtocol — TASK-4는 이 이름을 쓴다). background.ts startBackground(chrome, manifest): origin 먼저, 웹 연결 하나(BUSY), 첫 정상 메시지 때 connectNative, 답 그대로 전달, 도우미 끊기면 기다리던 id마다 E-HELPER-MISSING 후 다음 메시지에 다시 켬, bit.input 중 웹 끊기면 end·error·30분까지 붙잡음. npm run ext:build = tsc + manifest 복사 + commands.json→dist/commands.js. ESLint extension/src/** 저장소·storage·console·네트워크 금지. helper.yml extension 일 → precheck-extension-<version>.zip, release needs [helper, extension]. @types/chrome 0.3.7. [웹스토어가 manifest key를 거부하거나 새 ID를 주면 commands.json 갱신 필요]"
     },
     {
       "step": 3,

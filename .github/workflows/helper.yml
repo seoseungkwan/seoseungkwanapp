@@ -1,7 +1,7 @@
 # 청구 사전점검 도우미(윈도우) 시험·빌드·zip (specs/precheck/design.md 12절, REQ-002)
 # - 서명하지 않는다(ADR-016). 비밀값을 쓰지 않는다. 태그 릴리스도 이 실행의 기본 토큰(github.token)만 쓴다
 # - action은 판을 고정한다. 움직이는 판(main 등)은 쓰지 않는다
-# - 확장 zip을 만드는 extension 일은 TASK-3이 더한다
+# - extension 일(TASK-3)은 크롬 확장 zip을 만든다. 태그 때 release 일이 도우미 zip과 함께 올린다
 name: helper
 
 on:
@@ -75,9 +75,48 @@ jobs:
           path: dist/precheck-helper-*.zip
           if-no-files-found: error
 
+  # 크롬 확장 zip: 웹스토어에 올리는 것과 '압축 풀린 확장' 시험용(풀어서 그 폴더를 불러온다)
+  extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 설치
+        run: npm ci
+
+      - name: 확장 빌드
+        run: npm run ext:build
+
+      # precheck-extension-<manifest.version>.zip = extension/dist 안 파일(manifest.json이 zip 맨 위)
+      - name: zip 묶기
+        run: |
+          version=$(node -p "require('./extension/manifest.json').version")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "extension/manifest.json version이 틀렸다: $version"; exit 1; fi
+          test -f extension/dist/manifest.json
+          test -f extension/dist/background.js
+          mkdir -p dist
+          zip="precheck-extension-$version.zip"
+          (cd extension/dist && zip -r -X "../../dist/$zip" .)
+          unzip -l "dist/$zip"
+          echo "만든 zip: dist/$zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precheck-extension
+          path: dist/precheck-extension-*.zip
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/helper-v')
-    needs: helper
+    needs: [helper, extension]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -93,4 +132,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/*.zip --verify-tag --title "$TAG" --notes "청구 사전점검 도우미 $TAG. zip을 모두 풀고 install.cmd를 누릅니다(zip 안 README.md)."
+        run: gh release create "$TAG" dist/*.zip --verify-tag --title "$TAG" --notes "청구 사전점검 도우미 $TAG. precheck-helper zip을 모두 풀고 install.cmd를 누릅니다(zip 안 README.md). precheck-extension zip은 크롬 확장입니다(웹스토어 등록·압축 풀린 확장 시험용)."

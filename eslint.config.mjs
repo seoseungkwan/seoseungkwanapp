@@ -19,10 +19,14 @@ const STORAGE = ['indexedDB', 'localStorage', 'sessionStorage']
 // 동적 import()용. 아래 no-restricted-imports group과 같은 목록이다
 const BLOCKED_IMPORT = /^(react|react-dom|next)(\/|$)|^@supabase\/|(^|\/)(services|supabase|auth)(\/|$)/
 const STORAGE_IMPORT = /(^|\/)storage(\/|$)/
+// 크롬 확장(AC-003.4): 도우미 답(환자 자료)이 확장 안에 남거나 로그·네트워크로 새지 않게
+const EXTENSION_STORAGE_MESSAGE = '크롬 확장은 chrome.storage·브라우저 저장소를 쓸 수 없다(도우미 답이 확장 안에 남는다)'
+const EXTENSION_NETWORK_MESSAGE = '크롬 확장은 네트워크를 쓸 수 없다(도우미 답은 그 웹 연결로만 간다)'
+const EXTENSION_CONSOLE_MESSAGE = '크롬 확장은 console을 쓸 수 없다(도우미 답이 로그에 남는다)'
 
 const eslintConfig = [
   {
-    ignores: ['.next/', 'node_modules/', '.claude/', 'scripts/', 'phases/', 'next-env.d.ts'],
+    ignores: ['.next/', 'node_modules/', '.claude/', 'scripts/', 'phases/', 'next-env.d.ts', 'extension/dist/'],
   },
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
@@ -92,6 +96,34 @@ const eslintConfig = [
         ...[...NETWORK, 'sendBeacon'].map((property) => ({ property, message: PATIENT_ZONE_MESSAGE })),
         ...STORAGE.map((property) => ({ property, message: STORAGE_MESSAGE })),
         { property: 'console', message: CONSOLE_MESSAGE },
+      ],
+      'no-console': 'error',
+    },
+  },
+  {
+    // 크롬 확장: 시험 파일도 같은 규칙 아래(src/guardrails.test.ts가 규칙마다 증명)
+    files: ['extension/src/**'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...NETWORK.map((name) => ({ name, message: EXTENSION_NETWORK_MESSAGE })),
+        ...STORAGE.map((name) => ({ name, message: EXTENSION_STORAGE_MESSAGE })),
+        { name: 'console', message: EXTENSION_CONSOLE_MESSAGE },
+      ],
+      // 어느 객체를 거쳐도 막는다. storage는 chrome.storage·const { storage } = chrome·c = chrome; c.storage 모두
+      'no-restricted-properties': [
+        'error',
+        ...[...NETWORK, 'sendBeacon'].map((property) => ({ property, message: EXTENSION_NETWORK_MESSAGE })),
+        ...[...STORAGE, 'storage'].map((property) => ({ property, message: EXTENSION_STORAGE_MESSAGE })),
+        { property: 'console', message: EXTENSION_CONSOLE_MESSAGE },
+      ],
+      // chrome[이름]처럼 글자로 고정하지 않은 멤버 접근은 무엇을 꺼내는지 알 수 없다
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[computed=true][object.name='chrome'][property.type!='Literal']",
+          message: EXTENSION_STORAGE_MESSAGE,
+        },
       ],
       'no-console': 'error',
     },

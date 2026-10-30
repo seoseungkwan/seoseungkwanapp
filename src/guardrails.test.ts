@@ -254,3 +254,54 @@ describe('AC-001.4 react/no-danger: 어디서든 dangerouslySetInnerHTML 금지'
     },
   )
 })
+
+describe('AC-003.4 크롬 확장(extension/src/**): 저장소·console·네트워크 금지', SLOW, () => {
+  const EXT = 'extension/src/probe.ts'
+
+  it.each([
+    // chrome.storage: 어느 객체를 거치든, 꺼내 쓰든 막힌다
+    ["chrome.storage.local.set({ k: 1 })", 'no-restricted-properties'],
+    ["chrome.storage.session.get('k')", 'no-restricted-properties'],
+    ["chrome['storage'].local.get('k')", 'no-restricted-properties'],
+    ['const { storage } = chrome', 'no-restricted-properties'],
+    ["globalThis.chrome.storage.local.set({ k: 1 })", 'no-restricted-properties'],
+    ["const c = chrome; c.storage.local.get('k')", 'no-restricted-properties'],
+    ["export const f = (k: 'storage') => chrome[k]", 'no-restricted-syntax'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["self.indexedDB.open('x')", 'no-restricted-properties'],
+    ["globalThis.localStorage.getItem('k')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['self.console.error(1)', 'no-restricted-properties'],
+    ["fetch('x')", 'no-restricted-globals'],
+    ["self.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["new globalThis.WebSocket('x')", 'no-restricted-properties'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, EXT)).toContain(rule)
+  })
+
+  it('하위 폴더와 확장 시험 파일도 같은 규칙 아래 있다', async () => {
+    expect(await errorRules('chrome.storage.local.clear()', 'extension/src/sub/probe.ts')).toContain(
+      'no-restricted-properties',
+    )
+    expect(await errorRules('console.log(1)', 'extension/src/probe.test.ts')).toContain('no-console')
+  })
+
+  it('확장이 쓰는 chrome.runtime(웹 연결 받기·도우미 켜기)은 막히지 않는다', async () => {
+    const code = [
+      "const port = chrome.runtime.connectNative('com.seoseungkwan.precheck')",
+      'chrome.runtime.onConnectExternal.addListener((p) => p.onMessage.addListener((m) => port.postMessage(m)))',
+      'export const v = chrome.runtime.getManifest().version',
+    ].join('\n')
+    expect(await lint(code, EXT)).toEqual([])
+  })
+
+  it('빌드 산출물 extension/dist/는 ESLint가 보지 않는다', async () => {
+    expect(await eslint.isPathIgnored('extension/dist/background.js')).toBe(true)
+  })
+})
