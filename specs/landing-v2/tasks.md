@@ -4,7 +4,7 @@
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
 > 모양 기준: `docs/mockups/landing-v2/index.html`. 값 표: requirements.md·design.md, 규칙: `docs/UI_GUIDE.md` 랜딩 절.
 > 모든 TASK에서 REQ-101(바뀌지 않는 동작)을 지킨다. 옛 동작 시험은 이름·내용을 고치지 않는다(design.md '옛 시험 다루기').
-> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11). TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
+> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11) → Phase 4(TASK-13 → TASK-14). Phase 4는 2026-10-30 화면 확인 뒤 사용자 결정으로 더했다. TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
 > 각 Phase 끝에 `python3 ~/.claude/harness/bin/verify`(lint·build·test)를 돌리고 1440·390 화면을 찍어 보고한다. Phase 1·2 끝 사진은 중간 상태다. 안 고친 섹션은 깨져 보인다(design.md 위험).
 
 ## Phase 1 — 기초: 토큰·글꼴·로고·그림 빼기·공통 모양·위쪽 메뉴
@@ -152,3 +152,29 @@
   - **고치기.** 다른 곳은 랜딩 파일 안에서만 고친다. 마크업을 고치면 그 시험도 함께 맞추고 `verify`를 다시 돌린다. 고친 점은 보고에 적는다.
   - **정리(AC-111.3).** 서버·브라우저를 모두 멈추고 `ss -ltnp`로 확인한다. 로그인하지 않는다.
   - **끝 조건.** 세 폭 사진을 사용자에게 보여 주고, 배포 여부를 묻는다.
+
+## Phase 4 — 태블릿·PC 마무리
+
+## TASK-13: 메뉴 누름 영역과 줄바꿈 두 곳
+- REQ: REQ-112, REQ-106, REQ-101
+- Files: src/components/landing/SiteHeader.module.css, src/components/landing/PrivacySection.tsx, src/components/landing/FeaturesSection.tsx, src/components/landing/styles.test.ts, src/components/landing/bottom.test.tsx, src/components/landing/middle.test.tsx
+- Tests: src/components/landing/styles.test.ts, src/components/landing/bottom.test.tsx, src/components/landing/middle.test.tsx, src/app/page.test.tsx
+- TDD: required — 시험부터 고치고 RED를 본다.
+  - `styles.test.ts`: AC-106.3의 "`::after`는 끈다" 시험을 AC-112.1 시험으로 바꾼다. 768·1024 블록에 `.start::after`의 `display` 값이 없고, 휴대폰 값 `inset: -4px 0`이 있는지 본다.
+  - `bottom.test.tsx`: AC-112.2를 더한다. `LIST_ITEM`이 약속 3의 `<p>` 안 `<span>` 하나를 받도록 고친다. 다른 세 약속은 지금처럼 태그 없는 글자만 받는다. 문구 시험(약속 설명 4개)은 태그를 빈칸 없이 지운 글자(`replace(/<[^>]+>/g, '')`)를 정해 둔 문구와 비교한다. `textOf`는 빈칸을 모아 `<span>` 앞뒤 띄어쓰기가 사라져도 통과하므로 이 비교에 쓰지 않는다. 문구는 그대로 둔다.
+  - `middle.test.tsx`: AC-112.3을 더한다. `SMALL_CARD`가 작은 카드 3의 `<p>` 안 `<span>` 하나를 받도록 고친다. 다른 두 카드는 그대로 태그 없는 글자만 받는다. 작은 카드 문구 시험도 bottom과 같이 태그를 빈칸 없이 지운 글자로 비교한다.
+  - 두 `<span>` 모두 `base.nowrap` 클래스이고, `base.module.css`에 `.nowrap { white-space: nowrap }`이 정의돼 있는지 짝으로 본다(design.md 'CSS 시험 방식' 주의).
+  - 그다음 구현한다.
+    - `SiteHeader.module.css`: 768 블록의 `.start::after { display: none }`을 지우고 주석을 맞춘다.
+    - `PrivacySection.tsx`·`FeaturesSection.tsx`: 해당 설명만 `<span className={base.nowrap}>`로 감싼다. 문구는 바꾸지 않는다.
+  - 옛 시험(AC-001.1~008.1)과 다른 landing-v2 시험은 이름·내용을 고치지 않고 그대로 통과해야 한다.
+  - 끝 조건: `npm test`·`npm run lint`·`npm run build` 통과.
+
+## TASK-14: 세 폭 다시 찍기
+- REQ: REQ-112
+- Files: src/components/landing/*.module.css
+- TDD: exempt — 화면 측정 작업이라 먼저 쓸 실패 시험이 없다. 새 로직을 만들지 않는다.
+  - TASK-11과 같은 서버·찍기 방법을 쓴다. 스크립트는 scratchpad에 두고 저장소에 넣지 않는다.
+  - AC-112.4를 잰다. 고치기 전 사진은 TASK-13 앞 커밋 `b060462`를 `git archive`로 띄워 찍고, 고친 세 곳을 768에서 나란히 놓는다.
+  - 측정이 어긋나면 랜딩 CSS 안에서만 고치고 `verify`를 다시 돌린다. 고친 점은 보고에 적는다. 시험 값을 바꿔야 하는 수정이면 고치지 말고 멈춰 보고한다.
+  - 끝나면 서버·브라우저를 모두 멈추고 `ss -ltnp`로 확인한다.
