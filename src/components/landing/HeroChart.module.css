@@ -1,201 +1,416 @@
-/* 히어로 차트. 값은 docs/mockups/landing/landing-mockup.dc.html 히어로 오른쪽 그대로 */
-.root {
-  flex: 1 1 460px;
-  min-width: 0;
-  position: relative;
-  min-height: 540px;
-}
+/* 히어로 아래 앱 화면 미리보기 (specs/landing-v2 AC-107.4). 앱 시안 A + 블루를 줄여 다시 그렸다.
+   값은 승인 시안 docs/mockups/landing-v2/index.html의 .app · .kpi · .panel CSS 그대로다(@container lp → @media).
+   색은 모두 변수다. 도넛·막대 색도 여기서 정한다(마크업에 색 글자 없음). 굵기 700은 지금 탭에만 쓴다 */
 
-.panel {
-  position: absolute;
-  inset: 4% 6%;
-  border-radius: 32px;
-  background: #ffffff;
-  border: 1px solid rgba(11, 21, 48, 0.07);
+/* ---------- 틀 · 위쪽 띠 · 탭 ---------- */
+.app {
+  border: 1px solid var(--line);
+  border-radius: 6px;
   overflow: hidden;
+  background: var(--canvas);
 }
-
-.canvas {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, #f4f8ff, #ffffff);
-}
-
-.ring {
-  position: absolute;
-  right: 6%;
-  top: 5%;
-  width: 120px;
-  height: 120px;
-}
-
-.ringValue {
-  transition: stroke-dasharray 1.2s ease;
-}
-
-.ringText {
-  font-family: var(--font-num), sans-serif;
-  font-size: 22px;
-  font-weight: 700;
-  fill: var(--text-strong);
-}
-
-.bars {
-  position: absolute;
-  left: 58%;
-  right: 6%;
-  bottom: 8%;
-  height: 38%;
+.top {
+  height: 48px;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  border-bottom: 2px solid #d5e2f7;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.acct {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+}
+.tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  padding-inline: 2px;
+}
+.tab {
+  flex: none;
+  position: relative;
+  height: 46px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+/* .tab 뒤에 둬서 같은 구체성일 때 이긴다 */
+.tabOn {
+  color: var(--accent);
+  font-weight: 700;
+}
+.tabOn::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
 }
 
-.barCol {
-  flex: 1;
+/* ---------- 본문 · 제목 · KPI 카드 ---------- */
+.body {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+.heading {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 14px 12px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  height: 100%;
+  gap: 2px;
+  min-width: 0;
 }
-
-.barLabel {
-  font-family: var(--font-num), sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1f3fbf;
+.kpiBody {
+  padding-bottom: 10px;
 }
-
-.bar {
-  width: 100%;
-  border-radius: 8px 8px 0 0;
-  transition: height 1.2s ease;
+.kpiLabel {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--ink-2);
 }
-
-/* 막대 색: 왼쪽에서 오른쪽으로 점점 진하게 (UI_GUIDE) */
-.barCol:nth-child(1) .bar { background: #9cc2ff; }
-.barCol:nth-child(2) .bar { background: #6ea0ff; }
-.barCol:nth-child(3) .bar { background: #3f78f0; }
-.barCol:nth-child(4) .bar { background: #2556d6; }
-.barCol:nth-child(5) .bar { background: #1f3fbf; }
-.barCol:nth-child(6) .bar { background: #0b1530; }
-
-.example {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
+.kpiValue {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
   white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px dashed rgba(109, 93, 245, 0.6);
-  color: var(--violet-text);
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.9);
 }
-
-.card {
-  position: absolute;
-  padding: 16px 18px;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid var(--border-card);
-  box-shadow: 0 16px 40px rgba(11, 21, 48, 0.12);
-}
-
-.visits {
-  left: 0;
-  top: 8%;
-  width: 186px;
-  animation: float 6s ease-in-out infinite;
-}
-
-.rate {
-  right: 0;
-  top: 30%;
-  width: 160px;
-  animation: float 7s ease-in-out 1s infinite;
-}
-
-.ai {
-  left: 2%;
-  bottom: 10%;
-  width: 270px;
-  border: 1.5px solid rgba(109, 93, 245, 0.45);
-  box-shadow: 0 16px 40px rgba(109, 93, 245, 0.2);
-  animation: float 6.5s ease-in-out 2s infinite;
-}
-
-.cardTitle {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.visitsValue {
-  margin-top: 4px;
-  font-family: var(--font-num), sans-serif;
-  font-size: 36px;
-  font-weight: 700;
-  color: var(--text-strong);
-}
-
 .unit {
-  margin-left: 4px;
   font-size: 16px;
-  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 2px;
+  letter-spacing: 0;
 }
-
-.delta {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--teal-text);
+.kpiFoot {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  text-wrap: balance;
 }
-
-.rateValue {
-  margin-top: 4px;
-  font-family: var(--font-num), sans-serif;
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--teal-text);
+.up {
+  color: var(--accent);
 }
-
-.aiTitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--violet-text);
+.meter {
+  height: 6px;
+  margin-block: 6px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  overflow: hidden;
 }
-
-.sparkle {
-  animation: sparkle 2.4s ease-in-out infinite;
+.meterFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width .6s ease;
 }
-
+/* AI 카드는 휴대폰에서 한 줄 전체 */
+.kpiAi {
+  grid-column: 1 / -1;
+}
 .aiText {
-  margin-top: 6px;
   font-size: 15px;
-  line-height: 1.5;
-  color: var(--text-strong);
+  line-height: 23px;
+  font-weight: 500;
+  color: var(--ink);
+  padding-block: 4px 10px;
 }
-
-.aiLink {
-  margin-top: 6px;
+.link {
+  color: var(--accent);
+  font-weight: 500;
   font-size: 13px;
+}
+
+/* ---------- 패널 "월별 추이": 도넛 + 막대 6개 ---------- */
+.panel {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.panelTitle {
+  font-size: 15px;
+  line-height: 22px;
   font-weight: 600;
-  color: var(--violet-text);
+}
+.chart {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+.ring {
+  width: 84px;
+}
+.ring svg {
+  width: 100%;
+  height: auto;
+}
+.ringTrack,
+.ringValue {
+  stroke-width: 12px;
+}
+.ringTrack {
+  stroke: var(--accent-soft);
+}
+.ringValue {
+  stroke: var(--accent);
+  transition: stroke-dasharray .6s ease;
+}
+/* viewBox 120 안의 글자라 도넛 폭을 따라 커진다 */
+.ringText {
+  font-size: 22px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+.bars {
+  min-width: 0;
+}
+.plot {
+  position: relative;
+  height: 116px;
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+}
+/* 눈금선: 위치(bottom %)는 마크업 inline style */
+.gridLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--line);
+}
+.barCol {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bar {
+  position: relative;
+  width: 100%;
+  max-width: 44px;
+  background: var(--accent-tint);
+  border-radius: 2px 2px 0 0;
+  transition: height .6s ease;
+}
+/* .bar 뒤에 둬서 같은 구체성일 때 이긴다 */
+.barLast {
+  background: var(--accent);
+}
+.barLabel {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding-bottom: 3px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.months {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--muted);
+  text-align: center;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-12px); }
+/* ---------- 768px부터 ---------- */
+@media (min-width: 768px) {
+  .top {
+    height: 56px;
+    padding: 0 20px;
+  }
+  .logo {
+    font-size: 16px;
+  }
+  .tabs {
+    padding-inline: 6px;
+  }
+  .tab {
+    height: 48px;
+    padding: 0 16px;
+    font-size: 15px;
+  }
+  .body {
+    padding: 20px 20px 24px;
+    gap: 16px;
+  }
+  .heading {
+    font-size: 22px;
+    line-height: 30px;
+  }
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .kpi {
+    padding: 16px 18px 14px;
+  }
+  .kpiLabel {
+    font-size: 14px;
+    line-height: 22px;
+  }
+  .kpiValue {
+    font-size: 30px;
+    line-height: 38px;
+  }
+  .unit {
+    font-size: 18px;
+  }
+  .kpiFoot {
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .kpiAi {
+    grid-column: auto;
+  }
+  .aiText {
+    padding-block: 2px 10px;
+  }
+  .panel {
+    padding: 18px 18px 16px;
+    gap: 12px;
+  }
+  .panelTitle {
+    font-size: 17px;
+    line-height: 24px;
+  }
+  .chart {
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 40px;
+  }
+  .ring {
+    width: 132px;
+  }
+  .plot {
+    height: 150px;
+    gap: 16px;
+  }
+  .months {
+    gap: 16px;
+    font-size: 12px;
+  }
+  .barLabel {
+    font-size: 12px;
+  }
 }
 
-@keyframes sparkle {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.18) rotate(12deg); }
+/* ---------- 1024px부터 ---------- */
+@media (min-width: 1024px) {
+  .top {
+    height: 64px;
+    padding: 0 24px;
+  }
+  .logo {
+    font-size: 17px;
+  }
+  .tabs {
+    padding-inline: 8px;
+  }
+  .tab {
+    height: 50px;
+    padding: 0 20px;
+  }
+  .body {
+    padding: 24px 24px 28px;
+  }
+  .heading {
+    font-size: 25px;
+    line-height: 32px;
+  }
+  .kpi {
+    padding: 18px 20px 16px;
+  }
+  .kpiValue {
+    font-size: 34px;
+    line-height: 40px;
+  }
+  .unit {
+    font-size: 20px;
+  }
+  .chart {
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 64px;
+    padding: 0 16px 0 8px;
+  }
+  .ring {
+    width: 156px;
+  }
+  .plot {
+    height: 168px;
+    gap: 24px;
+  }
+  .months {
+    gap: 24px;
+  }
 }

@@ -1,185 +1,87 @@
-/* 히어로 왼쪽 글 칸과 배경(격자·원형 빛·떠다니는 점). 값은 docs/mockups/landing/landing-mockup.dc.html #top 그대로. 오른쪽은 HeroChart */
+/* 히어로(#top) 배치 (specs/landing-v2 AC-107.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .hero CSS 그대로다.
+   글자 단계·단추는 base.module.css 클래스를 쓰고, 여기서는 여백과 칸만 정한다. 배경 장식은 없다.
+   휴대폰·768은 한 줄로 쌓고, 1024부터 12칸: 글(1~6칸) | 안내·단추(8~12칸). 그 아래 앱 화면 미리보기(.shot) */
 .hero {
-  position: relative;
-  padding: 80px var(--gutter) 96px;
-  overflow: hidden;
+  padding-block: 32px 56px;
+  scroll-margin-top: 96px; /* 휴대폰은 메뉴가 두 줄이라 더 띄운다 */
 }
-
 .grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(11, 21, 48, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(11, 21, 48, 0.04) 1px, transparent 1px);
-  background-size: 56px 56px;
+  display: grid;
+  gap: 16px;
 }
-
-/* 연한 원형 빛: 히어로·AI·시작하기 섹션에만 (UI_GUIDE) */
-.glow {
-  position: absolute;
-  border-radius: 50%;
-}
-
-.glowTeal {
-  width: 640px;
-  height: 640px;
-  left: -240px;
-  top: -280px;
-  background: radial-gradient(circle, rgba(20, 200, 186, 0.16), rgba(20, 200, 186, 0) 68%);
-}
-
-.glowViolet {
-  width: 760px;
-  height: 760px;
-  right: -280px;
-  top: 0;
-  background: radial-gradient(circle, rgba(109, 93, 245, 0.14), rgba(109, 93, 245, 0) 68%);
-}
-
-.dots {
-  position: absolute;
-  inset: 0;
-}
-
-.dot {
-  position: absolute;
-  border-radius: 50%;
-}
-
-.dot:nth-child(1) { left: 8%; top: 22%; width: 5px; height: 5px; background: var(--teal-fill); animation: drift 7s ease-in-out infinite; }
-.dot:nth-child(2) { left: 24%; top: 74%; width: 4px; height: 4px; background: var(--violet-fill); animation: drift 9s ease-in-out 1s infinite; }
-.dot:nth-child(3) { left: 40%; top: 12%; width: 4px; height: 4px; background: var(--teal-fill); animation: drift 8s ease-in-out 2s infinite; }
-.dot:nth-child(4) { left: 62%; top: 8%; width: 5px; height: 5px; background: var(--violet-fill); animation: drift 7.5s ease-in-out 1.5s infinite; }
-.dot:nth-child(5) { left: 92%; top: 80%; width: 4px; height: 4px; background: var(--teal-fill); animation: drift 8.5s ease-in-out 2.5s infinite; }
-
-.inner {
-  position: relative;
-  max-width: var(--content-max);
-  margin: 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 48px;
-  align-items: center;
-}
-
 .text {
-  flex: 1 1 500px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  align-content: end;
 }
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(109, 93, 245, 0.3);
-  background: var(--violet-soft);
-  color: var(--violet-text);
+.kicker {
   font-size: 14px;
-  font-weight: 600;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--ink-2);
 }
-
-.sparkle {
-  animation: sparkle 2.4s ease-in-out infinite;
+.side {
+  display: grid;
+  gap: 24px;
+  align-content: end;
 }
-
-.title {
-  margin: 0;
-  font-size: clamp(42px, 5.4vw, 72px);
-  line-height: 1.12;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.titleAccent {
-  color: var(--teal-text);
-}
-
-.lead {
-  margin: 0;
-  max-width: 560px;
-  font-size: 20px;
-  line-height: 1.6;
-  color: var(--text-body);
-  word-break: keep-all;
-  text-wrap: balance;
-}
-
-.nowrap {
-  white-space: nowrap;
-}
-
-.leadAi {
-  color: var(--violet-text);
-}
-
 .actions {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
-}
-
-/* 링크 글자색은 globals의 a:hover(청록)가 덮지 않게 :hover까지 같이 정한다 */
-.start,
-.start:hover {
-  display: inline-flex;
-  align-items: center;
-  min-height: 52px;
-  padding: 0 28px;
-  border-radius: 999px;
-  background: var(--text-strong);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 17px;
-  text-decoration: none;
-  box-shadow: 0 10px 30px rgba(11, 21, 48, 0.2);
-}
-
-.aiLink,
-.aiLink:hover {
-  display: inline-flex;
-  align-items: center;
   gap: 8px;
-  min-height: 52px;
-  padding: 0 26px;
-  border-radius: 999px;
-  border: 1px solid rgba(109, 93, 245, 0.35);
-  background: #ffffff;
-  color: var(--violet-text);
-  font-weight: 700;
-  font-size: 17px;
-  text-decoration: none;
 }
-
 .privacy {
-  margin: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: var(--teal-soft);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-strong);
+  gap: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
 }
-
 .privacy svg {
-  flex: none;
+  color: var(--ink-2);
+}
+.shot {
+  margin-top: 32px;
 }
 
-@keyframes drift {
-  0% { transform: translate(0, 0); opacity: 0.25; }
-  50% { transform: translate(22px, -34px); opacity: 0.9; }
-  100% { transform: translate(0, 0); opacity: 0.25; }
+/* ---------- 768px부터 ---------- */
+@media (min-width: 768px) {
+  .hero {
+    padding-block: 64px 80px;
+    scroll-margin-top: 64px;
+  }
+  .grid {
+    gap: 20px;
+    max-width: 680px;
+  }
+  .side {
+    gap: 28px;
+  }
+  .shot {
+    margin-top: 48px;
+  }
 }
 
-@keyframes sparkle {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.18) rotate(12deg); }
+/* ---------- 1024px부터 (12칸) ---------- */
+@media (min-width: 1024px) {
+  .hero {
+    padding-block: 88px 96px;
+  }
+  .grid {
+    max-width: none;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: end;
+  }
+  .text {
+    grid-column: 1 / span 6;
+    gap: 16px;
+  }
+  .side {
+    grid-column: 8 / span 5;
+  }
+  .shot {
+    margin-top: 64px;
+  }
 }

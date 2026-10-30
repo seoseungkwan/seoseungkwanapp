@@ -5,8 +5,11 @@ import { describe, expect, it } from 'vitest'
 import { LogoMark } from '@/components/common/LogoMark'
 import base from './base.module.css'
 import Hero from './Hero'
+import heroStyles from './Hero.module.css'
+import HeroChart from './HeroChart'
 import { START_HREF } from './links'
 import PromiseBand from './PromiseBand'
+import bandStyles from './PromiseBand.module.css'
 import SiteHeader from './SiteHeader'
 
 const header = renderToStaticMarkup(<SiteHeader />)
@@ -77,6 +80,153 @@ describe('AC-106.1: 위쪽 메뉴의 짜임', () => {
   it('AC-106.1: 메뉴를 여닫는 단추가 없다 — header에 button·input·tabindex가 없다', () => {
     expect(header).not.toMatch(/<(button|input|select|textarea|form|label)\b/)
     expect(header).not.toMatch(/tabindex/i)
+  })
+})
+
+// Vitest의 CSS Module 이름은 `_이름_파일해시6자`다 → 마크업에 붙은 클래스마다 그 파일 CSS에 `.이름`이 정의돼 있는지 본다
+const cssOf = (name: string) =>
+  readFileSync(join(process.cwd(), 'src/components/landing', name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+function undefinedClasses(html: string, modules: Array<[sample: string, file: string]>): string[] {
+  const files = new Map(modules.map(([sample, file]) => [sample.slice(-6), [file, cssOf(file)] as const]))
+  const missing: string[] = []
+  for (const cls of new Set([...html.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/).filter(Boolean)))) {
+    const m = /^_(\w+)_([0-9a-f]{6})$/.exec(cls)
+    const file = m && files.get(m[2])
+    if (!m || !file) continue
+    if (!new RegExp(`\\.${m[1]}(?![\\w-])`).test(file[1])) missing.push(`${file[0]} .${m[1]}`)
+  }
+  return missing
+}
+const heroCss = cssOf('Hero.module.css')
+const bandCss = cssOf('PromiseBand.module.css')
+const chart = renderToStaticMarkup(<HeroChart />)
+
+// 히어로에서 미리보기(HeroChart)를 표시 하나로 바꾼 마크업
+const heroOwn = hero.replace(chart, '@@CHART@@')
+// section#top > .wrap > .grid( .text(kicker p · h1) / .side(lead p · 단추 2 · 개인정보 p) ) + .shot(HeroChart)
+const HERO_SHAPE = new RegExp(
+  [
+    '^(<section\\b[^>]*>)(<div\\b[^>]*>)(<div\\b[^>]*>)',
+    '(<div\\b[^>]*>)(<p\\b[^>]*>)([\\s\\S]*?)</p>(<h1\\b[^>]*>)([\\s\\S]*?)</h1></div>',
+    '(<div\\b[^>]*>)(<p\\b[^>]*>)([\\s\\S]*?)</p>',
+    '(<div\\b[^>]*>)(<a\\b[^>]*>)([\\s\\S]*?)</a>(<a\\b[^>]*>)([\\s\\S]*?)</a></div>',
+    '(<p\\b[^>]*>)([\\s\\S]*?)</p></div></div>',
+    '(<div\\b[^>]*>)@@CHART@@</div></div></section>$',
+  ].join(''),
+)
+
+describe('AC-107.1: 히어로의 짜임', () => {
+  const parts = heroOwn.match(HERO_SHAPE)
+  const [, section, wrap, grid, text, kicker, kickerIn, h1, h1In, side, lead, leadIn, actions, start, startIn, ai, aiIn, privacy, privacyIn, shot] =
+    parts ?? []
+
+  it('AC-107.1: section#top > .wrap > .grid(.text · .side) + .shot(HeroChart) 순서다', () => {
+    expect(hero, '히어로 안에 HeroChart 그림이 그대로 있다').toContain(chart)
+    expect(parts, 'section#top > .wrap > .grid(text: p·h1 / side: p·단추 2·p) + .shot').not.toBeNull()
+    expect(section).toMatch(/\bid="top"/)
+    expect(classesOf(section)).toContain(heroStyles.hero)
+    expect(classesOf(wrap)).toContain(base.wrap)
+    expect(classesOf(grid)).toContain(heroStyles.grid)
+    expect(classesOf(text)).toContain(heroStyles.text)
+    expect(classesOf(side)).toContain(heroStyles.side)
+    expect(classesOf(actions)).toContain(heroStyles.actions)
+    expect(classesOf(shot)).toContain(heroStyles.shot)
+  })
+
+  it('AC-107.1: 소개 줄은 <p> 글자만(칩·svg 없음), h1은 .tDisplay이고 안이 "숫자로 보는<br/>우리 의원"뿐이다', () => {
+    expect(classesOf(kicker)).toContain(heroStyles.kicker)
+    expect(kickerIn).toBe('통증 의원 관리자를 위한 AI 업무 도구')
+    expect(classesOf(h1)).toContain(base.tDisplay)
+    expect(h1In, '색 강조 span 없음').toBe('숫자로 보는<br/>우리 의원')
+  })
+
+  it('AC-107.1: 안내 <p>는 .tLead이고 문구가 그대로다', () => {
+    expect(classesOf(lead)).toContain(base.tLead)
+    expect(textOf(leadIn)).toBe(
+      '환자 통계, 급여·인센티브, 매출·재고, 일일마감과 원장님 보고까지 한 화면에서. 이번 달 숫자는 AI가 읽고 근거와 함께 설명합니다.',
+    )
+  })
+
+  it('AC-107.1: [구글로 시작하기]는 .btn·.btnLg·.btnPrimary, [AI 분석 보기]는 .btn·.btnLg·.btnSecondary이고 둘 다 글자만 있다', () => {
+    expect(start).toMatch(/href="\/login"/)
+    expect(startIn).toBe('구글로 시작하기')
+    expect(ai).toMatch(/href="#ai"/)
+    expect(aiIn, '반짝이 svg 없음').toBe('AI 분석 보기')
+    for (const name of ['btn', 'btnLg', 'btnPrimary'] as const) expect(classesOf(start), name).toContain(base[name])
+    for (const name of ['btn', 'btnLg', 'btnSecondary'] as const) expect(classesOf(ai), name).toContain(base[name])
+  })
+
+  it('AC-107.1: 개인정보 줄은 방패 svg 하나(currentColor) + 문구다', () => {
+    expect(classesOf(privacy)).toContain(heroStyles.privacy)
+    const svgs = privacyIn.match(/<svg\b[^>]*>/g) ?? []
+    expect(svgs).toHaveLength(1)
+    expect(svgs[0]).toMatch(/stroke="currentColor"/)
+    expect(privacyIn).toContain('d="M11 2l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3z"')
+    expect(textOf(privacyIn)).toBe('환자 개인정보는 병원 PC 밖으로 나가지 않습니다')
+  })
+
+  it('AC-107.1: 배경 장식(격자·원형 빛·점)·반짝이·색 글자가 없다 — 미리보기 밖 svg는 방패 하나, aria-hidden도 그 하나뿐이다', () => {
+    expect(heroOwn.match(/<svg\b/g) ?? []).toHaveLength(1)
+    expect(heroOwn.match(/aria-hidden=/g) ?? []).toHaveLength(1)
+    expect(heroOwn).not.toMatch(/\bstyle="/)
+    expect(heroOwn).not.toMatch(/="#[0-9a-f]{3,8}"/i)
+    expect(heroOwn).not.toContain('M8 1.5l1.6 4.2')
+  })
+
+  it('AC-107.1: 히어로에 붙은 클래스가 모두 base.module.css·Hero.module.css에 정의돼 있다', () => {
+    expect(heroCss.trim().length).toBeGreaterThan(0)
+    expect(
+      undefinedClasses(heroOwn, [
+        [base.wrap, 'base.module.css'],
+        [heroStyles.hero, 'Hero.module.css'],
+      ]),
+    ).toEqual([])
+  })
+})
+
+describe('AC-107.5: 약속 띠의 짜임', () => {
+  const parts = band.match(/^(<section\b[^>]*>)(<div\b[^>]*>)((?:<div\b[^>]*>[\s\S]*?<\/div>){3})<\/div><\/section>$/)
+  const items = [...(parts?.[3] ?? '').matchAll(/(<div\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>([^<]*)<\/div>/g)]
+
+  it('AC-107.5: section[aria-label="핵심 약속"].band > .wrap.inner 안에 항목 3개가 있다', () => {
+    expect(parts, 'section > div > div×3').not.toBeNull()
+    expect(parts![1]).toMatch(/aria-label="핵심 약속"/)
+    expect(classesOf(parts![1])).toContain(bandStyles.band)
+    expect(classesOf(parts![2])).toContain(base.wrap)
+    expect(classesOf(parts![2])).toContain(bandStyles.inner)
+    expect(items.map((m) => m[4].trim())).toEqual([
+      '환자 개인정보 서버 전송 0건',
+      '환자 파일은 브라우저 안에서만 계산',
+      'AI에는 합계 숫자만',
+    ])
+  })
+
+  it('AC-107.5: 각 항목은 .bandItem이고 20px svg(stroke="currentColor", 굵기 1.5) + 글자다', () => {
+    expect(items).toHaveLength(3)
+    for (const [, open, svg] of items) {
+      expect(classesOf(open)).toContain(bandStyles.bandItem)
+      expect(svg).toMatch(/\bwidth="20"/)
+      expect(svg).toMatch(/\bheight="20"/)
+      expect(svg).toMatch(/\bstroke="currentColor"/)
+      expect(svg).toMatch(/\bstroke-width="1\.5"/)
+      expect(svg).toMatch(/aria-hidden="true"/)
+    }
+  })
+
+  it('AC-107.5: AI 항목 아이콘은 반짝이 대신 합계 기호(Σ)이고, 띠에 색 글자가 없다', () => {
+    expect(items[2]?.[3]).toContain('d="M14.5 4h-9l5 6-5 6h9"')
+    expect(band).not.toContain('M8 1.5l1.6 4.2')
+    expect(band).not.toMatch(/="#[0-9a-f]{3,8}"/i)
+  })
+
+  it('AC-107.5: 띠에 붙은 클래스가 모두 base.module.css·PromiseBand.module.css에 정의돼 있다', () => {
+    expect(bandCss.trim().length).toBeGreaterThan(0)
+    expect(
+      undefinedClasses(band, [
+        [base.wrap, 'base.module.css'],
+        [bandStyles.band, 'PromiseBand.module.css'],
+      ]),
+    ).toEqual([])
   })
 })
 

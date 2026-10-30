@@ -7,7 +7,13 @@ import { describe, expect, it } from 'vitest'
 const DIR = join(process.cwd(), 'src/components/landing')
 
 // 규칙 시험(AC-105.7)이 보는 모듈. TASK마다 고친 모듈을 더하고, TASK-10에서 폴더 전체 읽기로 바꾼다(design.md)
-const CHECKED = ['base.module.css', 'SiteHeader.module.css']
+const CHECKED = [
+  'base.module.css',
+  'SiteHeader.module.css',
+  'Hero.module.css',
+  'HeroChart.module.css',
+  'PromiseBand.module.css',
+]
 
 // ---------- CSS 글자 읽기 도우미 ----------
 
@@ -530,6 +536,212 @@ describe('AC-106.3: 위쪽 메뉴 — 768px 이상', () => {
     expectStyle('.nav', 768, { padding: '0' }, HEADER)
     expect(at(header(), '.nav', 'padding-left', 768), '.nav { padding-left } @768').toBeUndefined()
     expectStyle('.nav', 1024, { 'padding-left': '16px' }, HEADER)
+  })
+})
+
+// ---------- Hero · HeroChart · PromiseBand (REQ-107, 시안 .hero · .shot · .app · .band) ----------
+
+const HERO = 'Hero.module.css'
+const CHART = 'HeroChart.module.css'
+const BAND = 'PromiseBand.module.css'
+const ALL_BPS: Bp[] = [0, 768, 1024]
+
+// 한 선택자의 휴대폰 → 768 → 1024 값을 한 번에 본다
+function expectSteps(file: string, selector: string, prop: string, steps: [string, string, string]) {
+  ALL_BPS.forEach((bp, i) => expectStyle(selector, bp, { [prop]: steps[i] }, file))
+}
+
+describe('AC-107.2: 히어로 CSS (Hero.module.css)', () => {
+  it('AC-107.2: .hero 위아래 여백 32px 56px → 64px 80px → 88px 96px, scroll-margin-top 96px → 64px', () => {
+    expectSteps(HERO, '.hero', 'padding-block', ['32px 56px', '64px 80px', '88px 96px'])
+    expectSteps(HERO, '.hero', 'scroll-margin-top', ['96px', '64px', '64px'])
+  })
+
+  it('AC-107.2: .grid는 grid이고 1024px부터 12칸 · column-gap 24px · align-items end다', () => {
+    expectStyle('.grid', 0, { display: 'grid', gap: '16px' }, HERO)
+    expectStyle('.grid', 768, { gap: '20px', 'max-width': '680px' }, HERO)
+    expectStyle(
+      '.grid',
+      1024,
+      { 'max-width': 'none', 'grid-template-columns': COLS(12), 'column-gap': '24px', 'align-items': 'end' },
+      HERO,
+    )
+    expect(at(parse(source(HERO)), '.grid', 'grid-template-columns', 768), '.grid 칸 @768').toBeUndefined()
+  })
+
+  it('AC-107.2: 1024px부터 글 덩어리 .text는 1 / span 6, 단추 덩어리 .side는 8 / span 5다', () => {
+    expectStyle('.text', 1024, { 'grid-column': '1 / span 6' }, HERO)
+    expectStyle('.side', 1024, { 'grid-column': '8 / span 5' }, HERO)
+    for (const selector of ['.text', '.side']) {
+      expect(at(parse(source(HERO)), selector, 'grid-column', 768), `${selector} @768`).toBeUndefined()
+    }
+  })
+
+  it('AC-107.2: 글 덩어리 gap 12 → 16px(1024), 단추 덩어리 gap 24 → 28px(768), 둘 다 아래 정렬이다', () => {
+    expectSteps(HERO, '.text', 'gap', ['12px', '12px', '16px'])
+    expectSteps(HERO, '.side', 'gap', ['24px', '28px', '28px'])
+    for (const selector of ['.text', '.side']) expectStyle(selector, 0, { display: 'grid', 'align-content': 'end' }, HERO)
+  })
+
+  it('AC-107.2: 소개 줄 14/22 500 ink-2, 단추 줄 flex · gap 8px, 개인정보 줄 14/22 ink-2 · gap 8px', () => {
+    expectStyle('.kicker', 0, { 'font-size': '14px', 'line-height': '22px', 'font-weight': '500', color: 'var(--ink-2)' }, HERO)
+    expectStyle('.actions', 0, { display: 'flex', 'flex-wrap': 'wrap', gap: '8px' }, HERO)
+    expectStyle(
+      '.privacy',
+      0,
+      { display: 'flex', 'align-items': 'center', gap: '8px', 'font-size': '14px', 'line-height': '22px', color: 'var(--ink-2)' },
+      HERO,
+    )
+  })
+
+  it('AC-107.2: 미리보기 위 여백 .shot margin-top 32px → 48px → 64px', () => {
+    expectSteps(HERO, '.shot', 'margin-top', ['32px', '48px', '64px'])
+  })
+})
+
+describe('AC-107.4: 미리보기 CSS (HeroChart.module.css)', () => {
+  it('AC-107.4: 틀 .app은 1px line · 모서리 6px · canvas 바탕 · 넘침 숨김이다', () => {
+    expectStyle(
+      '.app',
+      0,
+      { border: '1px solid var(--line)', 'border-radius': '6px', background: 'var(--canvas)', overflow: 'hidden' },
+      CHART,
+    )
+  })
+
+  it('AC-107.4: 위쪽 띠 높이 48 → 56 → 64px, 흰 바탕 · 아래 1px line', () => {
+    expectSteps(CHART, '.top', 'height', ['48px', '56px', '64px'])
+    expectSteps(CHART, '.top', 'padding', ['0 16px', '0 20px', '0 24px'])
+    expectStyle('.top', 0, { background: 'var(--surface)', 'border-bottom': '1px solid var(--line)' }, CHART)
+    expectSteps(CHART, '.logo', 'font-size', ['15px', '16px', '17px'])
+  })
+
+  it('AC-107.4: 탭 높이 46 → 48 → 50px, 글자 14 → 15px 500 ink-2', () => {
+    expectSteps(CHART, '.tab', 'height', ['46px', '48px', '50px'])
+    expectSteps(CHART, '.tab', 'padding', ['0 14px', '0 16px', '0 20px'])
+    expectSteps(CHART, '.tab', 'font-size', ['14px', '15px', '15px'])
+    expectStyle('.tab', 0, { 'font-weight': '500', color: 'var(--ink-2)', position: 'relative' }, CHART)
+  })
+
+  it('AC-107.4: 지금 탭은 accent 700이고 아래 3px accent 밑줄(좌우 10px 안쪽, 모서리 2px 2px 0 0)이 붙는다', () => {
+    const rules = parse(source(CHART))
+    expect(cascade(rules, ['.tab', '.tabOn'], 'color', 0)).toBe('var(--accent)')
+    expect(cascade(rules, ['.tab', '.tabOn'], 'font-weight', 0)).toBe('700')
+    expectStyle(
+      '.tabOn::after',
+      0,
+      {
+        content: '""',
+        position: 'absolute',
+        left: '10px',
+        right: '10px',
+        bottom: '0',
+        height: '3px',
+        background: 'var(--accent)',
+        'border-radius': '2px 2px 0 0',
+      },
+      CHART,
+    )
+  })
+
+  it('AC-107.4: 화면 제목 20/28 → 22/30 → 25/32', () => {
+    expectSteps(CHART, '.heading', 'font-size', ['20px', '22px', '25px'])
+    expectSteps(CHART, '.heading', 'line-height', ['28px', '30px', '32px'])
+  })
+
+  it('AC-107.4: KPI 칸은 2칸(AI 카드는 한 줄 전체) → 768부터 3칸, 패널은 한 줄 전체다', () => {
+    expectSteps(CHART, '.grid', 'grid-template-columns', [COLS(2), COLS(3), COLS(3)])
+    expectSteps(CHART, '.kpiAi', 'grid-column', ['1 / -1', 'auto', 'auto'])
+    expectSteps(CHART, '.panel', 'grid-column', ['1 / -1', '1 / -1', '1 / -1'])
+  })
+
+  it('AC-107.4: KPI 카드는 흰 바탕 · 1px line · 6px이고, 이름 13/20 → 14/22, 값 28/34 → 30/38 → 34/40, 단위 16 → 18 → 20', () => {
+    expectStyle('.kpi', 0, { background: 'var(--surface)', border: '1px solid var(--line)', 'border-radius': '6px' }, CHART)
+    expectSteps(CHART, '.kpiLabel', 'font-size', ['13px', '14px', '14px'])
+    expectSteps(CHART, '.kpiLabel', 'line-height', ['20px', '22px', '22px'])
+    expectSteps(CHART, '.kpiValue', 'font-size', ['28px', '30px', '34px'])
+    expectSteps(CHART, '.kpiValue', 'line-height', ['34px', '38px', '40px'])
+    expectStyle('.kpiValue', 0, { 'font-weight': '600', color: 'var(--ink)' }, CHART)
+    expectSteps(CHART, '.unit', 'font-size', ['16px', '18px', '20px'])
+    expectStyle('.up', 0, { color: 'var(--accent)' }, CHART)
+  })
+
+  it('AC-107.4: 도넛은 바탕 고리 accent-soft · 값 고리 accent · 굵기 12이고, 폭 84 → 132 → 156px다', () => {
+    expectStyle('.ringTrack', 0, { stroke: 'var(--accent-soft)' }, CHART)
+    expectStyle('.ringValue', 0, { stroke: 'var(--accent)' }, CHART)
+    const rules = parse(source(CHART))
+    for (const selector of ['.ringTrack', '.ringValue']) {
+      expect(at(rules, selector, 'stroke-width'), `${selector} stroke-width`).toMatch(/^12(px)?$/)
+    }
+    expectSteps(CHART, '.ring', 'width', ['84px', '132px', '156px'])
+  })
+
+  it('AC-107.4: 막대는 accent-tint이고 마지막 막대(.barLast)만 accent, 막대 영역 높이 116 → 150 → 168px', () => {
+    const rules = parse(source(CHART))
+    expect(at(rules, '.bar', 'background')).toBe('var(--accent-tint)')
+    for (const bp of ALL_BPS) expect(cascade(rules, ['.bar', '.barLast'], 'background', bp), `.bar.barLast @${bp}`).toBe('var(--accent)')
+    expectSteps(CHART, '.plot', 'height', ['116px', '150px', '168px'])
+  })
+
+  it('AC-107.4: 신환율 막대는 accent-soft 바탕에 accent 채움이다', () => {
+    expectStyle('.meter', 0, { height: '6px', background: 'var(--accent-soft)' }, CHART)
+    expectStyle('.meterFill', 0, { background: 'var(--accent)', height: '100%' }, CHART)
+  })
+
+  it('AC-107.4: 도넛 · 막대 · 신환율 막대는 .6s ease로 따라 움직인다', () => {
+    const rules = parse(source(CHART))
+    expect(at(rules, '.ringValue', 'transition')).toMatch(/^stroke-dasharray 0?\.6s ease$/)
+    expect(at(rules, '.bar', 'transition')).toMatch(/^height 0?\.6s ease$/)
+    expect(at(rules, '.meterFill', 'transition')).toMatch(/^width 0?\.6s ease$/)
+  })
+})
+
+describe('AC-107.5: 약속 띠 CSS (PromiseBand.module.css)', () => {
+  it('AC-107.5: 띠는 위아래 1px line · 흰 바탕이다', () => {
+    expectStyle('.band', 0, { 'border-block': '1px solid var(--line)', background: 'var(--surface)' }, BAND)
+  })
+
+  it('AC-107.5: 휴대폰은 1칸 세 줄 → 768부터 3칸이다', () => {
+    expectStyle('.inner', 0, { display: 'grid' }, BAND)
+    expectSteps(BAND, '.inner', 'grid-template-columns', [COLS(1), COLS(3), COLS(3)])
+  })
+
+  it('AC-107.5: 항목 글자는 15px 500 ink이고 아이콘은 ink-2다', () => {
+    expectStyle(
+      '.bandItem',
+      0,
+      {
+        display: 'flex',
+        'align-items': 'center',
+        gap: '12px',
+        'padding-block': '14px',
+        'font-size': '15px',
+        'line-height': '22px',
+        'font-weight': '500',
+        color: 'var(--ink)',
+      },
+      BAND,
+    )
+    expectStyle('.bandItem svg', 0, { color: 'var(--ink-2)' }, BAND)
+  })
+
+  it('AC-107.5: 휴대폰은 위 선으로 나누고, 768부터 왼쪽 선으로 나눈다(첫 항목은 왼쪽 여백 0)', () => {
+    expectStyle('.bandItem + .bandItem', 0, { 'border-top': '1px solid var(--line)' }, BAND)
+    for (const bp of [768, 1024] as Bp[]) {
+      expectStyle('.bandItem + .bandItem', bp, { 'border-top': '0', 'border-left': '1px solid var(--line)' }, BAND)
+      expectStyle('.bandItem', bp, { padding: '20px' }, BAND)
+      expectStyle('.bandItem:first-child', bp, { 'padding-left': '0' }, BAND)
+    }
+  })
+})
+
+describe('AC-107.2 · AC-107.4 · AC-107.5: 쓰는 변수', () => {
+  it.each([HERO, CHART, BAND])('AC-107.2 · AC-107.4 · AC-107.5: %s가 쓰는 var(--…)는 모두 globals.css에 정의돼 있다', (name) => {
+    const globals = withoutComments(readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8'))
+    const defined = new Set([...globals.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
+    const used = [...source(name).matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
+    expect(used.length).toBeGreaterThan(0)
+    for (const varName of used) expect(defined.has(varName), `${name}: ${varName}`).toBe(true)
   })
 })
 
