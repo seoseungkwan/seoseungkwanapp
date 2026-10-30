@@ -49,7 +49,7 @@ describe('AC-005.1: 정한 문구', () => {
   // 카드 짜임(옛 figcaption 확인)은 AC-108.3 시험으로 옮겼다(specs/landing-v2 design.md '옛 시험 다루기')
   it('AC-005.1: 정형외과 타일 4개의 설명 문구', () => {
     const text = textOf(ortho)
-    for (const line of ['주사 치료 수와 F/U 기록', '물리치료 내원 환자 수', '비급여 치료 내역', '한 장으로 받는 월간 보고']) {
+    for (const line of ['주사 치료 수와 F/U', '물리치료 내원 환자 수', '비급여 치료 내역', '한 장으로 받는 월간 보고']) {
       expect(text).toContain(line)
     }
   })
@@ -322,7 +322,7 @@ describe('AC-108.3: 정형외과 섹션의 짜임', () => {
     expect(cards).toHaveLength(4)
     expect((listIn ?? '').replace(ORTHO_CARD, ''), 'li 카드 밖의 다른 원소가 없다').toBe('')
     expect(cards.map((m) => [m[4], m[6]])).toEqual([
-      ['주사', '주사 치료 수와 F/U 기록'],
+      ['주사', '주사 치료 수와 F/U'],
       ['물리치료', '물리치료 내원 환자 수'],
       ['비급여', '비급여 치료 내역'],
       ['월말 보고', '한 장으로 받는 월간 보고'],
@@ -347,7 +347,7 @@ describe('AC-108.3: 정형외과 섹션의 짜임', () => {
       return [period, lines.map((m) => `${m[2]} ${m[3]}`).join(' · ')]
     })
     expect(snips).toEqual([
-      ['이번 달', '주사 치료 142건 · F/U 기록 37건'],
+      ['이번 달', '주사 치료 142건 · F/U 37건'],
       ['오늘', '오전 21명 · 오후 17명'],
       ['이번 달', '도수치료 86건 · 체외충격파 31건'],
       ['10월', '보고서 PDF 1장 · AI 분석 포함'],
@@ -368,6 +368,33 @@ describe('AC-108.3: 정형외과 섹션의 짜임', () => {
     ])
     expect(checked, '본 클래스 수').toBeGreaterThan(0)
     expect(missing).toEqual([])
+  })
+})
+
+// ---------- 주사 카드 문구 (specs/landing-v2 REQ-114, 2026-10-30 사용자 결정 "F/U 기록을 그냥 F/U로 바꾸자") ----------
+
+describe('AC-114.1: 주사 카드 "F/U 기록" → "F/U"', () => {
+  const cards = [...(ortho.match(ORTHO_SHAPE)?.[9] ?? '').matchAll(ORTHO_CARD)]
+  const shot = cards[0]
+
+  it('AC-114.1: #ortho의 글자와 마크업 어디에도 "F/U 기록"이 없다', () => {
+    expect(textOf(ortho)).not.toContain('F/U 기록')
+    expect(ortho).not.toContain('F/U 기록')
+  })
+
+  it('AC-114.1: 주사 카드(첫 카드)의 p 설명은 정확히 "주사 치료 수와 F/U"다', () => {
+    expect(cards).toHaveLength(4)
+    expect(shot?.[4]).toBe('주사')
+    expect(shot?.[6]).toBe('주사 치료 수와 F/U')
+  })
+
+  it('AC-114.1: 주사 카드 조각은 이번 달 · 예시, 두 줄은 주사 치료 142건 · F/U 37건이다', () => {
+    expect([shot?.[9], shot?.[10]]).toEqual(['이번 달', '예시'])
+    const rows = [...(shot?.[11] ?? '').matchAll(/<span>([^<]*)<\/span><b>([^<]*)<\/b>/g)].map((r) => [r[1], r[2]])
+    expect(rows).toEqual([
+      ['주사 치료', '142건'],
+      ['F/U', '37건'],
+    ])
   })
 })
 

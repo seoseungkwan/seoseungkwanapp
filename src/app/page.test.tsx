@@ -124,7 +124,7 @@ describe('AC-005.1: 정한 문구', () => {
       '환자 개인정보는 병원 PC 밖으로 나가지 않습니다',
       '환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다',
       'EMR',
-      '주사 치료 수와 F/U 기록',
+      '주사 치료 수와 F/U',
       '물리치료 내원 환자 수',
       '비급여 치료 내역',
       '한 장으로 받는 월간 보고',
@@ -139,6 +139,15 @@ describe('AC-005.1: 정한 문구', () => {
       '환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다',
     )
     expect(privacy).toMatch(/>0<span\b[^>]*>건<\/span>/)
+  })
+})
+
+// 2026-10-30 사용자 결정 "F/U 기록을 그냥 F/U로 바꾸자" (specs/landing-v2 REQ-114)
+describe('AC-114.1: "F/U 기록" → "F/U"', () => {
+  it('AC-114.1: 페이지 글자와 마크업 어디에도 "F/U 기록"이 없고, "주사 치료 수와 F/U"는 있다', () => {
+    expect(text).not.toContain('F/U 기록')
+    expect(html).not.toContain('F/U 기록')
+    expect(text).toContain('주사 치료 수와 F/U')
   })
 })
 

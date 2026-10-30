@@ -5,11 +5,11 @@ import styles from './OrthoSection.module.css'
 const TILES: { title: string; desc: string; period: string; rows: [label: string, value: string][] }[] = [
   {
     title: '주사',
-    desc: '주사 치료 수와 F/U 기록',
+    desc: '주사 치료 수와 F/U',
     period: '이번 달',
     rows: [
       ['주사 치료', '142건'],
-      ['F/U 기록', '37건'],
+      ['F/U', '37건'],
     ],
   },
   {
