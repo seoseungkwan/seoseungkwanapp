@@ -94,7 +94,8 @@ src/
 │   ├── versions.ts                 # MIN_HELPER·LATEST_HELPER·MIN_EXTENSION
 │   ├── extensionId.ts              # EXTENSION_ID 상수 하나
 │   ├── handshake.ts                # checkVersions
-│   └── client.ts                   # connectBridge({ runtime, sink })
+│   ├── client.ts                   # connectBridge({ runtime, sink }) — lib/bridge 안에서만 import
+│   └── workerSink.ts               # connectScreenBridge({ runtime, worker }) — 화면이 쓰는 입구. 조각·보낼 글자는 전용 포트로 Worker와만
 ├── lib/precheck/                   # [환자 구역] 계산 (TASK-7·9·10·11·14·16·21·24)
 │   ├── data/                       # rules.json(262개)·dxFlags.json·drugInfo.json·codeMap.json — Worker가 import()로 그때 불러옴
 │   ├── tables.ts · shape.ts · rules/ · dx/ · memo/ · memoCompare.ts · excel.ts · counts.ts · sam/ · followup/
@@ -122,21 +123,25 @@ scripts/precheck/                   # 원본에서 표 옮기기·골든 만들�
 ### 4-1. 틀과 크기
 - 크롬 ↔ 도우미: 메시지마다 앞 4바이트(리틀 엔디언) 길이 + UTF-8 JSON (크롬 규칙)
 - 크기 한도(크롬 규칙): 도우미 → 크롬 메시지 하나는 **1MB**까지, 크롬 → 도우미는 64MiB까지. 도우미는 한 메시지를 1,000,000바이트(머리 포함) 이하로 만든다
+- 크롬 → 도우미 메시지의 길이 머리가 64MiB를 넘으면 틀이 깨진 것으로 보고 도우미는 본문을 읽지 않고 끝난다(다음 메시지 자리를 찾을 수 없다, AC-001.1)
 - 웹 ↔ 확장: `chrome.runtime.connect(EXTENSION_ID)`의 Port 메시지(JSON). 확장은 봉투를 검사만 하고 그대로 넘긴다
 
 ### 4-2. 봉투
 ```ts
 // 웹 → 확장 → 도우미
 type Request = { v: 1; id: string /* 요청마다 새 UUID */; cmd: CommandName; args: Record<string, unknown> }
+//   보내는 명령(store.save·bit.input)은 args가 { payload: string } 하나다. payload = Worker가 만든 JSON 글자 그대로(통로·확장은 풀지 않는다)
+type SendRequest = { v: 1; id: string; cmd: 'store.save' | 'bit.input'; args: { payload: string } }
 // 도우미 → 확장 → 웹 (메시지 하나 ≤ 1MB)
 type Reply =
   | { v: 1; id: string; type: 'result'; data: unknown }                   // 숫자·상태 명령의 답(작음)
   | { v: 1; id: string; type: 'chunk'; seq: number; data: string }        // 환자 자료: JSON 글자를 UTF-8 경계에서 자른 조각
   | { v: 1; id: string; type: 'end'; count: number; bytes: number; sha256: string } // 조각 수·바이트 수·전체 SHA-256
-  | { v: 1; id: string; type: 'progress'; done: number; total: number }  // 입력 진행(숫자만)
+  | { v: 1; id: string; type: 'progress'; done: number; total: number }  // 입력 진행(숫자만. 통로가 0 ≤ done ≤ total ≤ 500 정수인지 검사, AC-004.10)
   | { v: 1; id: string; type: 'error'; code: string /* 'E-…' */ }
 ```
 - 웹 → 도우미로 가는 큰 자료(작업 저장·입력 묶음)는 메시지 하나(64MiB 이하)로 보낸다. 웹 쪽은 나누지 않는다
+- 그 봉투는 `SendRequest`(`args: {payload}`) 모양이다. 통로는 `payload` 글자를 그대로 넣고(AC-004.9), 도우미가 `payload`를 풀어 명령 표의 안쪽 모양으로 검사한 뒤 처리기에 넘긴다(AC-001.2)
 
 ### 4-3. 명령 표 (`src/lib/bridge/commands.json`)
 | cmd | 하는 일 | 답 | 환자 자료 | PC 확인 창 |
@@ -154,7 +159,8 @@ type Reply =
 | `contact.targets` | F/U·정기 주사 대상 기록 | chunk … end | 예 | — |
 | `stats.rows` | 통계 자료(소모 47 표 줄·추세 사실·일 운영 숫자) | chunk … end | 예 | — |
 - `commands.json`에는 `protocol`·`extensionId`·`hostName`(`com.seoseungkwan.precheck`)·`origin`(우리 사이트)·`extensionKey`(확장 manifest `key`에 넣는 공개키, 비밀 아님)와 명령 표(이름·`patient`·`args` 모양)를 둔다. `extensionId.ts`는 이 값을 `EXTENSION_ID` 상수로 내보내고, 도우미는 같은 파일을 EmbeddedResource로 읽어 호출 origin을 검사한다
-- 명령마다 `args`의 칸 이름·종류·범위를 정해 둔다(예: 날짜는 `YYYY-MM-DD`, 기간은 400일 이하). 모르는 칸이 있으면 거절한다. 확장·도우미·웹이 같은 표를 읽는다
+- 명령마다 `args`의 칸 이름·종류·범위를 정해 둔다(예: 날짜는 `YYYY-MM-DD`. 기간은 시작·끝 날을 함께 세어 `claim.month` 35일 이하 — 12개월 이력까지 원본 한도 400일 안에 들게, `claim.dates`·`claim.memos` 400일 이하). 모르는 칸이 있으면 거절한다. 확장·도우미·웹이 같은 표를 읽는다
+- 보내는 명령(`store.save`·`bit.input`)은 표에 `payload` 안쪽 모양을 적는다. 이 문서와 AC에서 `store.save {…}`·`bit.input {items}`라고 쓴 것은 `payload` 안의 모양이다
 - '환자 자료' 명령의 답은 늘 chunk … end로 온다(작아도). 통로 코드는 이 답을 풀지 않는다
 
 ### 4-4. 버전 맞추기
@@ -168,41 +174,52 @@ type Reply =
 ## 5. 환자 자료 길과 울타리
 
 ```
-도우미(비트 DB·화면) ─chunk─▶ 확장(검사만) ─chunk─▶ lib/bridge(풀지 않음) ─postMessage─▶ Worker
+도우미(비트 DB·화면) ─chunk─▶ 확장(검사만) ─chunk─▶ lib/bridge(풀지 않음) ─전용 포트─▶ Worker
   ▲                                                                                   │
-  └──────────── store.save · bit.input (Worker가 만든 글자, 통로가 그대로 넘김) ◀──────────┤
+  └──── store.save · bit.input (Worker가 만든 글자 → 전용 포트 → 통로가 그대로 넘김) ◀────┤
                                                                                       ▼
                                                      화면: 보기 모양만 (components/claim/rows · contact/rows)
                                                      서버: 건수(정수)만 · 엑셀: 그 PC 파일
 ```
 - **통로 코드 `lib/bridge`**: 환자 자료 구역 규칙 전부(네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import 금지)에 더해 `window.postMessage`·`BroadcastChannel`·`parent`·`top`·`opener`를 막는다. `chrome.runtime.connect`·`sendMessage`는 첫 인자가 `EXTENSION_ID`일 때만 된다(ESLint `no-restricted-syntax`). 환자 자료 답 조각은 `JSON.parse` 없이 `sink.chunk(id, seq, data)`로 Worker에 넘긴다
+- **화면은 Worker만 넘긴다**: 화면(`components/claim/useBridge`)은 `lib/bridge/workerSink.ts`의 `connectScreenBridge({ runtime, worker })`에 Worker 객체만 넘긴다. `workerSink`가 `MessageChannel` 하나를 만들어 한쪽 포트를 Worker에 주고, 조각·`end`·`abort`와 Worker가 만든 보낼 글자(`store.save`·`bit.input`)는 이 포트로만 오간다. 화면 코드는 조각·보낼 글자를 받지 않는다. 화면이 받는 것은 상태·숫자·상태 명령의 검사한 답(AC-004.6)·진행 숫자·`{id, count}`·오류 번호와 Worker가 만든 보기 모양뿐이다. `lib/bridge/client.ts`는 `lib/bridge` 밖에서 import할 수 없다(AC-004.11)
 - **계산 `lib/precheck`**: 기존 구역 규칙 그대로. 규칙표 등 큰 표는 Worker가 글자로 고정한 경로의 `import()`로 불러온다(구역 안 `fetch` 금지를 지킨다)
 - **화면 줄 `components/claim/rows`·`components/contact/rows`**: JSX는 되고, 네트워크·console·브라우저 저장소·supabase·storage·auth import는 막는다. 줄은 props로만 받는다
 - **오류 수집 없음**: `components/claim`·`components/contact`·`app/(app)/claim`·`app/(app)/contact`는 오류 보고 패키지(`@sentry/*`·`@vercel/analytics`·`@vercel/speed-insights` 등)를 import할 수 없다. 오류 카드는 번호만 보인다
 - **CSP**: 바꾸지 않는다. 확장 ID는 코드 상수(`extensionId.ts`)와 확장 manifest에만 있다
 - **브라우저 저장소**: 쓰지 않는다. 고치던 메모·완료 표시·입력 기록·연락 표시는 도우미 저장(9-3)
+- **주소(URL)에는 날짜만**: 화면 사이 이동은 주소·쿼리에 날짜(`from`·`to`)만 넣는다. 차트번호·이름·`visitKey`·메모·전화는 주소·쿼리·화면 제목에 넣지 않고 같은 탭 메모리로 넘긴다. 주소는 서버 기록과 브라우저 방문 기록에 남기 때문이다(AC-022.2)
 - 화면에 보이는 환자 칸: 청구는 진료일·차트번호·이름·경고·메모, 연락은 이름·전화·다음 날짜·내용. 모두 그 PC 화면에만 보인다 **(사용자 결정에서 나옴: 환자마다 경고·메모를 보고, 명단을 보고 문자를 보낸다)**
 
 ## 6. 웹 안
 
-### 6-1. 통로 코드 `lib/bridge/client.ts`
+### 6-1. 통로 코드 `lib/bridge/client.ts` · `workerSink.ts`
 ```ts
 export type BridgeState = 'connecting' | 'ready' | 'no-extension' | 'no-helper' | 'busy' | 'update-helper' | 'update-extension' | 'disconnected'
 export type ChunkSink = { chunk(id: string, seq: number, data: string): void; end(id: string, count: number, bytes: number, sha256: string): void; abort(id: string, code: string): void }
-export function connectBridge(deps: { runtime: ChromeRuntimeLike | undefined; sink: ChunkSink; newId?: () => string }): Bridge
+export function connectBridge(deps: { runtime: ChromeRuntimeLike | undefined; sink: ChunkSink; newId?: () => string }): Bridge   // lib/bridge 안(workerSink)에서만 import
 export type Bridge = {
   state(): BridgeState; onState(fn: (s: BridgeState) => void): () => void
+  onProgress(fn: (p: { id: string; done: number; total: number }) => void): () => void   // bit.input 진행(숫자만, AC-004.10)
   hello(): Promise<HelloResult>                                    // 버전 맞추기까지
   call<C extends SmallCommand>(cmd: C, args: ArgsOf<C>): Promise<ResultOf<C>>   // 숫자·상태 명령(모양 검사)
   stream<C extends PatientCommand>(cmd: C, args: ArgsOf<C>): Promise<{ id: string; count: number }>  // 환자 자료 명령: 조각은 sink로
-  send<C extends PatientSendCommand>(cmd: C, payload: string /* Worker가 만든 JSON 글자 */): Promise<ResultOf<C>>
+  send<C extends PatientSendCommand>(cmd: C, payload: string /* Worker가 만든 JSON 글자 */): Promise<SendResult<C>>
+    // 봉투 { v: 1, id, cmd, args: { payload } }에 글자 그대로. store.save → { saved: true }, bit.input → 조각은 sink, { id, count } (AC-004.9)
   close(): void
 }
+
+// lib/bridge/workerSink.ts — 화면이 쓰는 입구 [환자 구역·통로]
+export type WorkerLike = { postMessage(message: unknown, transfer: Transferable[]): void }
+export type ScreenBridge = Omit<Bridge, 'send'>        // 화면은 보낼 글자를 쥐지 않는다
+export function connectScreenBridge(deps: { runtime: ChromeRuntimeLike | undefined; worker?: WorkerLike; newId?: () => string }): ScreenBridge
 ```
+- `connectScreenBridge`는 `MessageChannel`을 만들어 `port2`를 Worker에 한 번 넘긴다(`{type: 'bridge-port'}`). 통로 → Worker: `{type: 'chunk', id, seq, data}`·`{type: 'end', id, count, bytes, sha256}`·`{type: 'abort', id, code}`. Worker → 통로: `{type: 'send', ticket, cmd, payload}` → `send` → Worker에 `{type: 'sent', ticket, ok: true, id?, count?}` 또는 `{type: 'sent', ticket, ok: false, code}`. `send`의 `cmd`가 `store.save`·`bit.input`이 아니면 보내지 않고 `E-BRIDGE-REJECTED`
+- 화면은 Worker에 '저장해 줘'·'입력해 줘'처럼 일만 시키고, 결과는 Worker가 만든 보기 모양과 `onProgress` 숫자로 받는다. `worker`가 없으면(설치 화면) 조각은 울타리 안에서 버리고 보낼 글자는 없다
 
 ### 6-2. Worker `workers/precheck.worker.ts`
-- 받는 일: `chunk`·`end`·`abort`(통로에서), `load`(기간·설정·표 불러오기), `check`(점검), `editMemo`, `buildInputBatch`, `applyInputResults`, `excel`, `samMatch`, `followup`, `stats`
-- 보내는 것: 보기 모양(`ClaimView`·`MonthCloseView`·`ContactView`·`StatsExtrasView`), 서버에 올릴 건수, 도우미에 보낼 글자(`store.save`·`bit.input` payload), 엑셀 바이트
+- 받는 일: 통로 포트(`bridge-port`로 받은 `MessagePort`)에서 `chunk`·`end`·`abort`·`sent`, 화면에서 `load`(기간·설정·표 불러오기), `check`(점검), `editMemo`, `buildInputBatch`, `applyInputResults`, `excel`, `samMatch`, `followup`, `stats`
+- 보내는 것: 화면에는 보기 모양(`ClaimView`·`MonthCloseView`·`ContactView`·`StatsExtrasView`)·서버에 올릴 건수·엑셀 바이트·보내기 결과(됨·오류 번호). 통로 포트에는 도우미에 보낼 글자(`store.save`·`bit.input` payload) — 메모 저장·입력 묶음·연락 표시·설정 사본은 Worker가 글자를 만들어 포트로 바로 보낸다(화면을 지나지 않는다)
 - `jobs.ts`의 순수 함수를 부르기만 한다(시험은 jobs를 바로 부른다, `analyzeFiles`와 같은 방식)
 
 ### 6-3. 계산 모양 (TASK-9, `types/precheck.ts`)
@@ -219,7 +236,7 @@ type Finding = { visitKey: string; ruleId: string; grade: '확인필요' | '알�
 ### 6-4. 날짜 목록 (TASK-13)
 - 재료: 도우미 `claim.dates`(최근 60일, 날짜별 외래 진료 수·비트 메모 수) + 서버 `claim_day_counts`(불러와 점검한 날의 메모 필요 수·입력 수)
 - 진료 0건인 날은 뺀다. 순서: ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터
-- 기간은 달을 넘겨 고를 수 있다(예: 10/30~11/2). 월말 마감은 달마다 따로 한다
+- 기간은 달을 넘겨 고를 수 있다(예: 10/30~11/2). 한 번에 35일까지다(12개월 이력까지 원본 한도 400일 안, AC-008.1). 월말 마감은 달마다 따로 한다
 
 ### 6-5. 설정이 바뀌었을 때
 - 청구 화면은 점검에 쓴 설정을 기억한다. 창에 초점이 돌아올 때와 [비트에 입력] 직전에 서버 설정을 다시 읽어 다르면 "설정이 바뀌었어요, 다시 점검하세요" 띠를 띄우고, [다시 점검]을 누르기 전까지 [비트에 입력]을 막는다 **(Claude 판단)**
@@ -227,7 +244,7 @@ type Finding = { visitKey: string; ruleId: string; grade: '확인필요' | '알�
 ## 7. 화면 (내용만, 배치는 목업 승인본)
 | 화면 | 보이는 것 | 단추 | 상태 |
 |---|---|---|---|
-| 설치·연결 확인 `/claim/setup` | 확장·도우미·비트·기관기호 단계별 ✓/✗와 오류 번호 | [연결 확인] · [처음 등록] · 확장 설치 링크 · 도우미 내려받기 안내 | 확장 없음 · 도우미 없음 · 업데이트 필요 · 새 도우미 있음 · 연결됨 · 다른 창에서 작업 중 |
+| 설치·연결 확인 `/claim/setup` | 확장·도우미·비트·기관기호 단계별 ✓/✗와 오류 번호 | [연결 확인] · [처음 등록] · [다시 등록](병원이 다를 때) · 확장 설치 링크 · 도우미 내려받기 안내 | 확장 없음 · 도우미 없음 · 업데이트 필요 · 새 도우미 있음 · 연결됨 · 다른 창에서 작업 중 |
 | 청구 `/claim` | 날짜 목록(6-4) · 기간 · 환자별 경고(확인 필요·알림·참고)와 고시 근거 · 추천 상병 · 메모 초안 | [자료 불러오기] · [엑셀 내려받기](규칙별·환자별) · [비트에 입력] · [다시 하기] · [다시 점검] | 불러오는 중 · 일부만 옴(멈춤) · 설정 바뀜 · 입력 중(진행 숫자) · 결과(완료·확인 필요·건너뜀+이유) |
 | 월말 마감 `/claim/close` | 달 고르기 · 미완료 · 빠진 것 · 확인 표시 남은 것 · SAM 파일 이름·받은 시각 | [청구 파일 불러오기] · 줄마다 청구 화면으로 가기 | 파일 없음 · 대조 끝 |
 | 환자 연락 `/contact` | F/U 명단 · 정기 주사 명단(이름·전화·다음 날짜·내용·지남/남은 날) · 연락 표시 | [문구 복사] · [연락함] 표시 · 기간 고르기 | 대상 없음 · 불러오는 중 |
@@ -296,18 +313,27 @@ create table public.contact_counts (
 - 시험: `supabase/precheck.rls.test.ts`(PGlite, `rls.test.ts`와 같은 흉내) — anon 거부, 남의 병원 줄 못 봄·못 씀, `hospital_id`를 직접 넣으면 거부, 건수 음수·글자 거부, 승인 안 된 병원 거부
 - 운영자가 SQL 편집기에 붙여 넣는다(auth와 같은 방식). Phase 2·3 의원 PC 시험 전에 사용자 할 일로 안내한다
 
+### 8-4. 백업 되돌려 넣기 SQL (`lib/backup/restoreSql.ts`, TASK-32)
+- 운영자가 SQL 편집기(모든 권한)에서 돌린다. 그래서 값이 SQL로 도는 일이 없게 감싸는 방법을 한 가지로 정한다 **(Claude 판단)**
+- 표·칸 이름은 `lib/backup/tables.ts`의 고정 목록에서만 가져온다(백업 파일의 키를 SQL에 넣지 않는다). 목록에 없는 표·칸이 있으면 SQL을 만들지 않고 던진다
+- 값 감싸기: 글자·jsonb·uuid·시각은 모두 작은따옴표로 감싸고 안의 `'`만 `''`로 두 번 쓴다. `\`·`$$`·`;`·`--`·줄바꿈 등 다른 글자는 바꾸지 않는다. 파일 첫 줄에 `set standard_conforming_strings = on;`을 두어 `\`가 글자 그대로 읽히게 한다. `E'…'`·`$태그$` 따옴표는 쓰지 않는다. 뒤에 칸 종류를 붙인다(`'…'::jsonb`·`'…'::uuid`·`'…'::timestamptz`, jsonb는 `JSON.stringify` 결과를 감싼다). 정수는 `Number.isSafeInteger`를 통과한 것만 숫자로, 참·거짓은 `true`·`false`, 비어 있음은 `null`
+- 글자에 NUL(`\u0000`)이 있으면 Postgres가 받지 못하므로 SQL을 만들지 않고 던진다
+- 전체를 `begin; … commit;`으로 감싸고 표마다 `insert … on conflict (기본 키) do update`
+- 시험(AC-032.2): `'`·`$$`·`;`·`\`·줄바꿈·`'); drop table public.hospitals; --`가 든 값을 되살려 글자 칸은 바이트까지, jsonb는 같은 값인지, 다른 표가 그대로인지 본다
+
 ## 9. 도우미 안
 
 ### 9-1. 처음 등록과 매번 확인 (TASK-5)
 - 비트 찾기: 원본 `InstallationLocator.FindCandidates`·`NormalizeAndValidate`·`NativeEnvironmentGuard.Validate`(지원 위치는 원본처럼 `C:\DrBIT50`)
 - 접속: 원본 `ReadOnlyConnection`처럼 비트 DLL(`BITDataBaseCommon`)의 접속 정보를 쓰고, `ConnectTimeout=10`, 서버 이름은 `CheckPrivateServer`(내 PC·사설 IP만). 읽기는 정해 둔 매개변수 SELECT만, 끝내지 않는 트랜잭션 안에서(원본 그대로)
 - 처음 등록(`bit.register`): 비트 로그인 창(원본 `BITUserLogIn` `bitDisplayDialog`) → 그 사용자의 병원 범위(`ValidateScope`) → 기관기호(`VerifyInstitutionNumber`, 8자리) → **PC 확인 창** "이 병원으로 등록할까요? ○○의원 · 기관기호 1234****" → [확인]이면 등록 파일(DPAPI)에 저장
+- 다시 등록: 이미 등록돼 있어도 같은 길로 다시 등록할 수 있다(설치 화면의 [다시 등록], `E-BIT-HOSPITAL-MISMATCH`일 때). 확인 창에 전 등록 값과 새 값을 함께 보인다. 기관기호가 같으면 프로필 ID를 그대로 두어 작업 저장을 이어 읽고, 다르면 새 ID라 전 병원의 작업 파일은 읽지 않는다(9-3, AC-005.5)
 - 매번: 모든 읽기·입력 명령 전에 등록 파일과 비트 DB의 기관기호·범위·설치 위치·서버·DB 이름을 비교한다(원본 `VerifyCurrentInstitution`). 다르면 `E-BIT-HOSPITAL-MISMATCH`로 멈춘다
 - 기관기호는 서버에 올리지 않는다(2026-10-28 사용자: 요양기관번호는 받지 않는다). 화면에는 뒤 4자리를 가려 보인다 **(Claude 판단)**
 
 ### 9-2. 읽기 (TASK-8·16·20·23·27)
 - 한 달 자료: `VendorGridExport`가 원본 `NativeReportAdapter`처럼 비트 통계 화면(83 증상·83D 상병·47 소모)을 숨겨서 열고 날짜를 넣어 표를 읽는다. 표 칸 이름은 비트 화면의 것을 그대로 쓰고, `GridRows`가 원본 `medicore/claim_import.py`·`mx999 build/parseRx`가 읽는 칸만 남긴다
-- 12개월 이력: `RxHistory.VisitSql`·`CodeSql` 그대로(최대 400일). 기간 시작 365일 전부터(원본 `loadHistory`)
+- 12개월 이력: `RxHistory.VisitSql`·`CodeSql` 그대로(원본 한도 `MaximumDays` 400일). 기간 시작 365일 전부터 기간 끝까지(원본 `loadHistory`). `claim.month` 기간을 35일 이하로 막아 이 범위가 늘 400일 안에 든다. 나눠 읽지 않는다
 - 이미 있는 메모: `ClaimMemoHistory.RowsSql` 그대로(최대 300,000줄, 메모 4,000자)
 - 날짜별 수(`claim.dates`): 원본 방문 조건(`OcmPatTyp='O'`, `OcmRsuYon<>'O'`, 범위)을 그대로 쓴 세기 SQL. 숫자만 돌려준다
 - 시간 제한은 원본 값(메타 15초, 자료 120~150초). 넘으면 `E-BIT-READ-FAILED`
@@ -331,7 +357,9 @@ create table public.contact_counts (
 - 결과 세 가지: **완료**(입력·이미 입력됨) · **확인 필요**(쓴 뒤 다시 읽은 값이 다름·저장 확인 못함·멈춰서 미처리) · **건너뜀**(이유: 이미 있음·내원일 없음·환자 불일치·검색 결과 여러 줄 등 원본 문구)
 - **이어서 하기**: 다시 열면 `writing`·미처리 줄을 비트와 비교한다. 비트 메모가 우리 글과 같으면 완료, 비었으면 다시 할 수 있음, 다르면 건너뜀(이미 있음)
 - 지문: `BITDoctorOrder.exe` 프로세스(원본 `NativeTarget` 규칙), '외래진료실' 창 하나와 칸 `txtChtNum`·`lbPatName`·`txtBilCmt`·`btnBilCmtModify`, '내원내역' 창 하나와 칸 `cbSch`·`txtSch`·`btnSch`·`ctgMain`. 모두 정확히 하나씩
-- 웹 창이 닫혀도 확장은 입력이 끝날 때까지(최대 30분) 도우미 연결을 둔다. 결과는 작업 저장에 남아 다시 열면 보인다
+- 웹 창이 닫혀도 확장은 입력이 끝날 때까지(최대 30분) 도우미 연결을 둔다. 결과는 작업 저장에 남아 다시 열면 보인다. 그동안 새 웹 연결은 `E-BRIDGE-BUSY`(AC-003.9)
+- **입력 중 표준 입력이 닫힘**(확장이 30분 뒤 닫음·크롬 종료 등): 도우미는 표준 입력을 따로 읽는 스레드(`Program.cs`)에서 닫힘을 알아채고 [멈추기]처럼 다룬다. 지금 사람은 쓰기 전이면 시작하지 않고, 쓰기를 시작했으면 쓰기 → 다시 읽기 → 저장 → 다시 읽기까지 마친다. 남은 사람은 '확인 필요: 미처리'로 입력 기록·결과를 작업 저장에 남기고 끝난다. 확인 창이 떠 있었으면 [취소]와 같다(AC-017.9)
+- **한 번에 하나**: 이름 있는 뮤텍스 `Local\SeoseungkwanPrecheckHelper.Work`를 잡은 동안에만 `bit.input`(확인 창부터 결과 기록까지)·`store.save`를 한다. 다른 도우미 프로세스가 잡고 있으면 `bit.input`은 바로, `store.save`는 5초 기다린 뒤 `E-BRIDGE-BUSY`. 잡은 채 끝난 프로세스의 뮤텍스(abandoned)는 잡은 것으로 보고 이어서 하기를 따른다(AC-017.10)
 
 ### 9-5. SAM (TASK-20)
 - 원본 `latest_sam_files` 그대로: `C:\HIRA\DDMD\sam\in\backup\<청구월>\<전송폴더>\<청구번호>.GHP|.CAR`, 머리 80바이트 `(\d{10})([HC]\d{3})(\d{8})`. 종류마다 수정 시각이 가장 늦은 파일, 32MB 이하
@@ -368,6 +396,8 @@ create table public.contact_counts (
 - `release` 일(태그 때만): 두 zip으로 GitHub 릴리스를 만든다. 업데이트 안내 링크가 이 릴리스 쪽을 가리킨다
 - action은 버전을 고정한다(`actions/checkout@v4` 등). 서명하지 않는다 → 처음 실행 때 SmartScreen 경고가 뜬다(설치 안내에 "추가 정보 → 실행" 그림)
 - 설치: zip을 풀고 `install.cmd`(→ `powershell -ExecutionPolicy Bypass -File install.ps1`)를 누른다. 관리자 권한이 필요 없다(`HKCU`). 돌던 도우미를 먼저 끝내고 덮어쓴다
+- **Phase 끝 흐름 (사용자 규칙)**: Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다
+  - 까닭: 확장 `externally_connectable`과 `commands.json` `origin`에는 운영 주소 하나만 있다(AC-003.1). 새 화면은 운영 사이트에 배포돼야 의원 PC에서 확장과 말할 수 있고, 새 도우미 zip은 `helper-v*` 태그의 릴리스로 받는다. 개발용 두 번째 주소는 넣지 않는다
 
 ## 13. 운영 (Claude 제안, 사용자가 운영·비용을 아직 안 봄)
 - **버전 맞추기**: 청구 화면을 열 때마다 `hello`로 웹·확장·도우미 `protocol`과 버전을 맞춘다. 맞지 않으면 그 자리에서 막고 무엇을 업데이트할지 보인다
@@ -376,7 +406,7 @@ create table public.contact_counts (
   - 화면이 바뀜 → 입력 전 지문 확인에서 멈추고 어떤 칸이 없는지 보인다(`E-BIT-UI-CHANGED`). 입력 중이면 그 사람에서 멈춘다
   - DB가 바뀜(칸 이름 등) → 읽기가 `E-BIT-READ-FAILED`로 멈춘다. 반쪽 자료로 점검하지 않는다
   - 통계 화면 DLL이 바뀜 → `E-BIT-EXPORT-FAILED`
-  - 사용자가 오류 번호를 알려 주면 Claude가 도우미를 고쳐 새 릴리스를 만든다. 그동안 비트 입력은 손으로 한다
+  - 사용자가 오류 번호를 알려 주면 Claude가 도우미를 고쳐 PR을 만든다. 합치기·릴리스 태그는 사용자가 지시할 때 한다(12절). 그동안 비트 입력은 손으로 한다
 - **비용**: 구글 개발자 등록 5달러(한 번). GitHub Actions 윈도우 시간은 저장소 무료 한도 안에서 쓴다(빌드 한 번 몇 분)
 - **계정**: GitHub·Vercel·크롬 웹스토어 계정 2단계 로그인(사용자)
 
@@ -407,6 +437,8 @@ create table public.contact_counts (
 - **건수 올리기 실패**: 값을 메모리에 두고 다음에 바뀔 때·창에 초점이 올 때 다시 올린다. 화면에 "마지막으로 올린 시각"
 - **날짜 목록 기간**: 도우미에서 최근 60일 + 서버 건수에 남은 일이 있는 더 옛날
 - **입력 묶음 한도**: 500명. 확인 창은 5분 뒤 취소
+- **한 번에 불러오는 기간 35일**: 12개월 이력(시작 365일 전부터)까지 원본 이력 SQL 한도 400일 안에 들게. 달을 넘기는 묶음(예: 10/30~11/2)은 그대로 된다
+- **화면은 Worker만 넘김**: 조각과 보낼 글자가 울타리 밖 화면 코드를 지나지 않게 `workerSink`의 전용 포트로만 다닌다
 - **작업 파일 보관**: 13개월
 - **기관기호 표시**: 화면에는 뒤 4자리 가림
 - **통계 금액·소모량**: 도우미 자료에만 있다. 파일 올리기(예비)로는 건수만 그린다
@@ -423,6 +455,7 @@ create table public.contact_counts (
 - **통계 화면 순서**: 통계 탭의 기본 화면(통계 명세)이 Phase 6 전에 없으면, 통계 탭은 이 기능의 추가분과 자료 고르기만 먼저 보인다(사용자 확인 필요, 17절)
 - **정기 주사 36개월 읽기**: 원본은 36개월 기록을 쓴다. 비트 통계 화면으로 36개월을 읽으면 오래 걸릴 수 있다. Phase 5 Step 0에서 시간을 재고, 너무 길면 달마다 나눠 읽는다(조각마다 실패하면 전체를 멈추는 규칙은 같다)
 - **30분 자동 로그아웃**: 청구 작업 중 로그아웃되면 메모리 자료가 사라진다. 고친 메모는 도우미에 있어 다시 불러오면 이어진다(PRD 8)
+- **입력 중 도우미가 끝남**: 크롬이 연결을 닫은 뒤 도우미 프로세스를 강제로 끝낼 수도 있다(윈도우). 그래도 쓰기 전 `writing` 기록과 이어서 하기(비트 메모와 비교, AC-017.7)가 두 번 입력·덮어쓰기를 막는다. Phase 3 의원 PC 시험에서 입력 중 크롬을 닫아 도우미가 지금 사람까지 마치고 끝나는지 본다
 
 ## 17. 사용자에게 물은 것 (답 받음)
 1. **통계 탭 순서**: Phase 6(통계 추가분)을 할 때 통계 기본 화면이 아직 없으면, 통계 탭을 추가분만으로 먼저 열어도 되나요? 아니면 통계 화면 명세를 먼저 할까요? (Claude 기본: 추가분만 먼저) → **Claude 판단으로 추가분만 먼저 연다**

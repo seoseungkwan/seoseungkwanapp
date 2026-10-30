@@ -1,6 +1,6 @@
 # Step 3: bit-input
 
-> **TASK-17** 비트 자동 입력 (FlaUI · PC 확인 창) · **REQ-017** · AC-017.1 ~ AC-017.8
+> **TASK-17** 비트 자동 입력 (FlaUI · PC 확인 창) · **REQ-017** · AC-017.1 ~ AC-017.10
 > Phase 3 `precheck-3-memo` · Step 3 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-17 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -16,6 +16,8 @@
 - **AC-017.6**: 사람마다 결과는 완료(입력·이미 입력됨)·확인 필요(다시 읽은 값 다름·저장 확인 못함·미처리)·건너뜀(이유: 이미 있음·내원일 없음·환자 불일치·검색 결과 여러 줄 등 원본 문구) 셋 중 하나. 진행은 `progress {done, total}` 숫자만, 결과는 조각으로
 - **AC-017.7**: 입력 기록(`Journal`, 작업 저장 안)에 쓰기 전·확인 뒤 `writing`·`done`·`skipped`·`check`. 도중에 멈춘 묶음을 다시 열어 같은 진료를 입력하면 비트 메모와 비교해 우리 글과 같으면 완료, 비었으면 입력, 다르면 건너뜀(이미 있음)
 - **AC-017.8**: 원본 `SecurityTests`의 입력 보호 사례(승인한 메모 줄바꿈·공백 그대로, 쓰기 직전 바뀐 메모 거절, 환자 바뀜 거절, 거절이면 절대 안 씀, 가짜 화면에만 씀)를 가짜 `IChartUi`로 돌리면 원본과 같은 결과
+- **AC-017.9**: `bit.input` 중에 표준 입력이 닫히면(웹 창이 닫혀 확장이 30분 뒤 연결을 닫음·로그아웃 뒤·크롬 종료 등) 지금 사람을 안전한 자리까지만 한다: 쓰기 전이면 시작하지 않고, 시작했으면 쓰기 → 다시 읽기 → 저장 → 다시 읽기까지 마친다. 남은 사람은 '확인 필요: 미처리'로 `Journal`과 결과를 작업 저장에 남기고 끝난다. 확인 창이 떠 있던 중이면 [취소]와 같다. 반쯤 쓴 메모를 남기지 않는다
+- **AC-017.10**: 이름 있는 뮤텍스 `Local\SeoseungkwanPrecheckHelper.Work`를 잡은 동안에만 `bit.input`(확인 창부터 결과 기록까지)·`store.save`를 한다. 다른 도우미 프로세스가 잡고 있으면 `bit.input`은 바로, `store.save`는 5초 기다린 뒤 `E-BRIDGE-BUSY`로 답하고 아무것도 쓰거나 입력하지 않는다. 놓지 않고 끝난 뮤텍스(abandoned)는 잡은 것으로 보고 이어서 하기(AC-017.7)를 따른다
 
 ## 읽어야 할 파일
 
@@ -33,8 +35,9 @@
   - `helper/src/Precheck.Core/Store/*`(`WorkStore`, `journal`) (Step 1)
   - `helper/src/Precheck.Core/Claim/MemoCompare.cs` (Step 2)
   - `helper/src/Precheck.Core/Protocol/*` (`Envelope.Progress`, `Chunker`)
-  - `src/lib/bridge/commands.json` (`bit.input` args)
-  - `extension/src/background.ts` (Phase 1: 웹이 끊겨도 `bit.input`은 30분까지 둔다)
+  - `src/lib/bridge/commands.json` (`bit.input` args. `{payload}` 안쪽 모양)
+  - `extension/src/background.ts` (Phase 1: 웹이 끊겨도 `bit.input`은 30분까지 둔다. 그동안 새 웹 연결은 `E-BRIDGE-BUSY`, AC-003.9)
+  - `helper/src/Precheck.Helper/Program.cs` (Phase 1: 표준 입력 고리)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -73,6 +76,7 @@
   - `helper/src/Precheck.Windows/ConfirmWindow.cs`
   - `helper/src/Precheck.Windows/ProgressWindow.cs`
   - `helper/src/Precheck.Helper/Commands/*`
+  - `helper/src/Precheck.Helper/Program.cs`
   - `helper/tests/Precheck.Core.Tests/Input/*`
   - `helper/tests/Precheck.Windows.Tests/Input/*`
 - Tests:
@@ -108,11 +112,17 @@ public sealed class InputRunner {                 // 원본 autoOne 고리를 �
 }
 public static class MemoApproval { /* 원본 그대로: 승인한 글과 쓰기 직전 글 비교, 줄바꿈·공백 보존 */ }
 public sealed class Journal { /* WorkStore의 journal 칸: visitKey → writing|done|skipped|check */ }
+public sealed class HostSignal { public void MarkStdinClosed(); public bool StdinClosed { get; } }   // Program.cs의 읽기 스레드가 세운다
+public sealed class WorkLock : IDisposable {      // 이름 있는 뮤텍스 Local\SeoseungkwanPrecheckHelper.Work
+  public static WorkLock? TryAcquire(TimeSpan wait);   // 못 잡으면 null → E-BRIDGE-BUSY. abandoned면 잡은 것으로 본다
+}
 ```
 - 순서(AC-017.1~017.3): 등록 확인(관문) → `CheckFingerprint`(하나라도 0개나 2개 이상이면 `E-BIT-UI-CHANGED` + 칸 ID 목록) → `BatchCheck` → `InputPrompt`로 만든 글로 확인 창(5분) → 사람마다: 열기 → 이름·차트번호·내원일 검사 → 메모 다시 읽기(같음 → 완료 '이미 입력됨', 다른 글 → 건너뜀 '이미 있음') → `journal=writing` → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지 → `journal=done` 또는 `check`
 - 멈춤(AC-017.5): 저장 안 한 처방 창(누르지 않음, `E-BIT-UNSAVED-RX`) · fatal 문구 · 3번 잇따른 실패(`E-INPUT-STOPPED`) · [멈추기](지금 사람까지) → 남은 사람은 '확인 필요: 미처리'
 - 결과(AC-017.6): 사람마다 `{visitKey, result: '완료'|'확인 필요'|'건너뜀', reason}` — 이유 글은 원본 문구. 진행은 `progress {done, total}`만, 결과는 끝에 JSON 하나 → `Chunker.Split`
 - 이어서 하기(AC-017.7): `journal`에 `writing`이나 미처리로 남은 진료는 다시 열 때 비트 메모와 비교: 우리 글과 같음 → 완료, 비었음 → 입력, 다름 → 건너뜀(이미 있음)
+- 표준 입력 닫힘(AC-017.9): `stopRequested`는 [멈추기] 또는 `HostSignal.StdinClosed`다. 사람 하나의 안전한 자리는 '쓰기 전'과 '저장 뒤 다시 읽기까지'다. 쓰기 전에 신호가 섰으면 쓰지 않고, 쓰기를 시작했으면 그 사람의 쓰기 → 다시 읽기 → 저장 → 다시 읽기를 마친 뒤 멈춘다. 남은 사람은 '확인 필요: 미처리', `Journal`과 결과를 저장하고 처리기를 끝낸다(보낼 곳이 닫혔으니 보내기 실패는 무시). 확인 창이 떠 있으면 닫고 `cancelled`
+- 한 번에 하나(AC-017.10): `bit.input`은 `WorkLock.TryAcquire(TimeSpan.Zero)`를 확인 창 전에 잡고 결과 기록 뒤에 놓는다. 못 잡으면 확인 창도 띄우지 않고 `E-BRIDGE-BUSY`
 
 ### 2. Windows (net48)
 - `Precheck.Windows.csproj`: `FlaUI.Core`·`FlaUI.UIA3` **4.0.0**(정확한 버전, 원본과 같은 판)
@@ -122,10 +132,12 @@ public sealed class Journal { /* WorkStore의 journal 칸: visitKey → writing|
 - 확인 창은 맨 위, 작업 표시줄 이름 '청구메모 도우미'
 
 ### 3. 명령 (`Commands/*`)
-- `bit.input`: args 검사(명령 표 + `BatchCheck`) → `InputRunner.Run` → 진행·결과 보내기 → `journal` 저장(`WorkStore`). 웹 연결이 끊겨도 끝까지 하고 결과는 작업 저장에 남는다(다시 열면 보임)
+- `bit.input`: args 검사(명령 표 + `BatchCheck`) → `WorkLock` → `InputRunner.Run` → 진행·결과 보내기 → `journal` 저장(`WorkStore`). 웹 연결만 끊기면 확장이 도우미 연결을 30분까지 두므로 끝까지 하고 결과는 작업 저장에 남는다(다시 열면 보임). 표준 입력이 닫히면 AC-017.9
+- `store.save`(TASK-15 처리기): 저장 전에 `WorkLock.TryAcquire(5초)`. 못 잡으면 `E-BRIDGE-BUSY`로 답하고 쓰지 않는다(AC-017.10)
+- `Program.cs`: 표준 입력을 따로 읽는 스레드를 두고, 메시지는 차례 줄에 넣어 지금처럼 하나씩 처리한다. 표준 입력이 닫히면 `HostSignal.MarkStdinClosed()`를 부르고, 처리 중인 명령이 끝나면 끝난다(AC-001.1은 그대로)
 
 ### 4. 시험
-- Core(`Input/*.test.cs`): 가짜 `IChartUi`·가짜 확인 창으로 AC-017.1~017.7 전부, 원본 `SecurityTests.cs` 입력 보호 사례(AC-017.8) — 확인 창 [취소]면 `WriteMemo`가 한 번도 불리지 않음, 지문 칸이 둘이면 시작 안 함, 3번 실패면 멈춤, 진행 메시지에 숫자만
+- Core(`Input/*.test.cs`): 가짜 `IChartUi`·가짜 확인 창으로 AC-017.1~017.7 전부, 원본 `SecurityTests.cs` 입력 보호 사례(AC-017.8) — 확인 창 [취소]면 `WriteMemo`가 한 번도 불리지 않음, 지문 칸이 둘이면 시작 안 함, 3번 실패면 멈춤, 진행 메시지에 숫자만. 표준 입력 닫힘 신호를 쓰기 전에 세우면 `WriteMemo`가 안 불리고, 쓰기 중에 세우면 그 사람의 저장·다시 읽기까지 마친 뒤 남은 사람이 '미처리'로 `Journal`에 남는다. 확인 창 중이면 `cancelled`(AC-017.9). 다른 스레드가 같은 이름 뮤텍스를 쥔 동안 `bit.input` → 바로 `E-BRIDGE-BUSY`(확인 창 안 뜸), `store.save` → 5초 뒤 `E-BRIDGE-BUSY`(파일 안 바뀜), 쥔 스레드가 놓지 않고 끝나면(abandoned) 잡힘(AC-017.10)
 - Windows(`Precheck.Windows.Tests/Input/*`): Actions에서. 가짜 WinForms 창(같은 칸 이름)에만 쓰는 시험. 실제 비트는 의원 PC
 - 감싸개 `input.dotnet.test.ts`: `runDotnet('Precheck.Core.Tests.Input')`
 
@@ -155,7 +167,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-017.1 ~ AC-017.8이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-017.1 ~ AC-017.10이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

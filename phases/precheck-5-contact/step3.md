@@ -112,8 +112,8 @@
 
 ### 2. 화면 (목업 화면 8 '환자 연락')
 - `/contact` → `src/components/contact/ContactScreen.tsx`: 기간 고르기(이번 주·다음 주·오늘), 안쪽 탭 `F/U 목록 | 정기 주사`(남은 수), 줄마다 연락함·차트번호·환자·전화·마지막 진료·이유(근거 문구)·연락할 날(지남/남은 날)·문자([문구 보기]/복사). 환자 줄은 `components/contact/rows/ContactRows.tsx`가 props로만
-- 불러오기: `useBridge`의 `stream('contact.targets', {kind, from, to})` → Worker `followup` → `ContactView`. 연락 표시는 `store.load {contact: true}`로 가져와 합친다
-- [연락함](AC-026.2): Worker가 만든 `store.save {contact}` 글자를 `send` → 성공하면 '연락함'. 실패면 값 유지 + 오류 줄
+- 불러오기: `useBridge({ worker })`의 `stream('contact.targets', {kind, from, to})` → Worker `followup` → `ContactView`. 연락 표시는 `store.load {contact: true}`로 가져와 합친다
+- [연락함](AC-026.2): Worker에 연락 표시를 시킨다. Worker가 `store.save {contact}` 글자를 만들어 통로 포트로 보내고(화면에는 `send`가 없다, AC-004.11) 됨·오류 번호만 알린다 → 됨이면 '연락함'. 실패면 값 유지 + 오류 줄
 - [문구 복사](AC-026.3): 그 명단 종류(`followup`·`injection`)의 문자 문구를 `fillTemplate`로 채워 `CopyButton`
 - `useBridge.ts`는 청구·연락이 같이 쓴다. 창 하나 규칙(`E-BRIDGE-BUSY`)도 같다 — 청구 화면이 다른 탭에 열려 있으면 이 화면도 '다른 창에서 작업 중'
 
@@ -187,3 +187,4 @@ python3 ~/.claude/harness/bin/verify
 ## 참고
 
 - Phase 5 마지막 step이다. 메인 세션이 Phase 끝에 할 일: `verify` → 화면 캡처(PC·휴대폰) → 쉬운 말 보고 → 의원 PC 시험 목록(이번 주 F/U 명단을 양지바른과 비교). 새 도우미 zip(`contact.targets` 포함) 설치 안내
+- Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)

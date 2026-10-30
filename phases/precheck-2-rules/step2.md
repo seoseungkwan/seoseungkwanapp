@@ -30,6 +30,7 @@
 - `/fixtures/make-fake-fixtures.ts` (기존 가짜 파일 생성기 방식)
 - 이전 step에서 만든 파일:
   - `src/lib/bridge/client.ts`, `src/types/bridge.ts` (Phase 1: `ChunkSink` 모양)
+  - `src/lib/bridge/workerSink.ts` (Phase 1: Worker에 넘기는 포트와 `chunk`·`end`·`abort`·`send`·`sent` 메시지 모양)
   - `helper/src/Precheck.Core/Protocol/Chunker.cs` (Phase 1: `end.sha256`은 소문자 hex, `bytes`는 UTF-8 바이트 수)
   - `helper/src/Precheck.Core/Claim/ClaimMonthPayload.cs` (Step 1: JSON 모양·`counts`)
   - `src/workers/precheck/tables.ts`, `src/types/precheck.ts` (Step 0)
@@ -110,7 +111,7 @@ export function shapeClaimMonth(raw: unknown): ClaimMonth    // 틀리면 Preche
 
 ### 3. Worker (`src/workers/precheck/jobs.ts`, `src/workers/precheck.worker.ts`)
 - `jobs.ts`는 시험이 바로 부르는 순수 함수 모음이다. 이 step: `loadMonth(text) → ClaimMonth | { code }`
-- `precheck.worker.ts`(입구, 얇게): 통로 sink 메시지 `chunk`·`end`·`abort`를 받아 `assemble` → `jobs`. 보내는 것은 보기 모양·오류 번호뿐(조각 글자·풀린 자료를 화면으로 돌려보내지 않는다)
+- `precheck.worker.ts`(입구, 얇게): 처음에 통로(`lib/bridge/workerSink.ts`)가 보낸 `{type: 'bridge-port'}`의 `MessagePort`를 받아 두고, 그 포트로 오는 `chunk`·`end`·`abort`를 `assemble` → `jobs`로 넘긴다(화면 메시지 길과 따로, design.md 6-1·6-2, AC-004.11). 보내는 것은 보기 모양·오류 번호뿐(조각 글자·풀린 자료를 화면으로 돌려보내지 않는다)
 - **설정 화면용 규칙 목록**도 이 입구에 지금 넣는다: 메시지 `ruleList` → `loadTables()` 뒤 규칙마다 `{id, title, domain, grade, basis, enabled_default}`만 돌려준다(환자 자료 아님). TASK-12(설정 화면) 수정 범위에 Worker 파일이 없고, 표 JSON은 `workers/precheck/tables.ts`만 부를 수 있기(AC-007.4) 때문이다. summary에 적는다
 
 ### 4. 가짜 자료 (`fixtures/precheck/make-fake-claims.ts`, `fixtures/precheck/fake/*`)

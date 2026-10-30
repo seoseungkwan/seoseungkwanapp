@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-008에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-008.1**: 기간(400일 이하, 달을 넘겨도 됨)으로 `claim.month` → 증상(83)·상병(83D)·소모(47) 표 줄과 12개월 이력(기간 시작 365일 전부터 기간 끝까지)·상병 추세·처방 목록을 하나의 JSON으로 만들어 조각으로 보낸다. 칸은 원본 `build`·`parseRx`·`claim_import.py`가 읽는 칸만 남긴다
+- **AC-008.1**: 기간(시작·끝 날을 함께 세어 35일 이하, 달을 넘겨도 됨)으로 `claim.month` → 증상(83)·상병(83D)·소모(47) 표 줄과 12개월 이력(기간 시작 365일 전부터 기간 끝까지. 400일 이하라 원본 `RxHistory.MaximumDays` 안)·상병 추세·처방 목록을 하나의 JSON으로 만들어 조각으로 보낸다. 칸은 원본 `build`·`parseRx`·`claim_import.py`가 읽는 칸만 남긴다
 - **AC-008.2**: 이력·이미 있는 메모·상병 추세 SQL은 `Sql.cs`와 원본(`RxHistory.VisitSql`·`CodeSql`, `ClaimMemoHistory.RowsSql`, `RxDiagnosisTrend`)이 공백만 다르다. 이력 줄 모양은 원본처럼 `{v, p, d, c[], m}`
 - **AC-008.3**: 비트 통계 화면 표(가짜 표 값)를 `GridRows`로 바꾸면 원본 `NativeMappings`의 키(83·83D·47)별 칸 이름으로 줄을 만들고, 필요한 칸이 없으면 `E-BIT-EXPORT-FAILED`로 그 명령 전체를 멈춘다
 - **AC-008.4**: 표 하나라도 읽기 실패·시간 초과(원본 값: 메타 15초, 자료 120~150초)면 `end` 없이 `error`(`E-BIT-READ-FAILED` 또는 `E-BIT-EXPORT-FAILED`). 반쪽 자료를 보내지 않는다
@@ -91,7 +91,7 @@ public static class GridRows {
 ```
 
 ### 3. 한 달 자료 모양 (`Core/Claim/ClaimMonthPayload.cs`)
-- `claim.month {from, to}` 처리 순서: 등록 병원 확인 → 83·83D·47 표 읽기(`VendorGridExport`) → 이력(`from - 365일` ~ `to`, 최대 400일 규칙은 원본 `MaximumDays`대로 나눠 읽거나 원본처럼 막는다 — 원본을 보고 정해 summary에) → 상병 추세 → 처방 목록 → **모두 성공하면** JSON 하나 → `Chunker.Split`
+- `claim.month {from, to}` 처리 순서: 등록 병원 확인 → 83·83D·47 표 읽기(`VendorGridExport`) → 이력(`from - 365일` ~ `to`. 명령 표가 `claim.month` 기간을 35일 이하로 막아 이 범위는 늘 400일 이하, 원본 `RxHistory.MaximumDays` 안이다. 나눠 읽지 않는다. 처리기도 400일을 넘으면 `E-HELPER-BAD-MESSAGE`로 한 번 더 막는다) → 상병 추세 → 처방 목록 → **모두 성공하면** JSON 하나 → `Chunker.Split`
 - JSON 머리에 선언 값을 넣는다: `{ "version": 1, "period": {from, to}, "historyRange": {from, to}, "counts": {"s83": n, "s83d": n, "s47": n, "history": n}, … }`. TASK-9 Worker가 받은 줄 수와 비교한다(AC-009.4)
 - 하나라도 실패·시간 초과(메타 15초, 자료 120~150초, 원본 값)면 `error` 하나만 보낸다(`end` 없음)
 

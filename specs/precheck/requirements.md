@@ -19,8 +19,8 @@
 ## 요구사항
 
 ### REQ-001: 도우미 메시지 틀 (Phase 1 · Step 0 · helper-skeleton)
-- AC-001.1: Given 앞 4바이트(리틀 엔디언) 길이 + UTF-8 JSON 메시지, When 도우미가 표준 입력에서 읽으면, Then 봉투 `{v, id, cmd, args}`로 푼다. 길이가 0이거나 64MiB를 넘거나 JSON·봉투 모양이 틀리면 `E-HELPER-BAD-MESSAGE`로 답하고 다음 메시지를 기다린다(끝나지 않는다). 표준 입력이 닫히면 끝난다
-- AC-001.2: Given 명령 표 `src/lib/bridge/commands.json`, When 표에 없는 `cmd`이거나 `args`에 모르는 칸·틀린 종류·범위 밖 값이 있으면, Then 아무 일도 하지 않고 `E-HELPER-UNKNOWN-COMMAND`(명령) 또는 `E-HELPER-BAD-MESSAGE`(칸)로 답한다. 도우미의 명령 표는 그 JSON과 같다(시험이 비교)
+- AC-001.1: Given 앞 4바이트(리틀 엔디언) 길이 + UTF-8 JSON 메시지, When 도우미가 표준 입력에서 읽으면, Then 봉투 `{v, id, cmd, args}`로 푼다. 길이가 0이거나 JSON·봉투 모양이 틀리면 `E-HELPER-BAD-MESSAGE`로 답하고 다음 메시지를 기다린다(끝나지 않는다). 길이가 64MiB를 넘으면 본문을 읽지 않고 바로 끝난다(크롬은 그런 길이를 보내지 않으므로 틀이 깨진 것이고, 다음 메시지 자리를 찾을 수 없다). 표준 입력이 닫히면 끝난다(`bit.input` 중이면 AC-017.9)
+- AC-001.2: Given 명령 표 `src/lib/bridge/commands.json`, When 표에 없는 `cmd`이거나 `args`에 모르는 칸·틀린 종류·범위 밖 값이 있으면, Then 아무 일도 하지 않고 `E-HELPER-UNKNOWN-COMMAND`(명령) 또는 `E-HELPER-BAD-MESSAGE`(칸)로 답한다. 도우미의 명령 표는 그 JSON과 같다(시험이 비교). 웹이 환자 글자를 보내는 명령(`store.save`·`bit.input`)은 `args`가 `{payload: 글자}` 하나이고, 도우미는 `payload`를 JSON으로 푼 뒤 표에 적힌 안쪽 모양으로 같은 검사를 한다(풀지 못하거나 틀리면 `E-HELPER-BAD-MESSAGE`)
 - AC-001.3: Given 크롬이 넘긴 호출 origin 인자, When `chrome-extension://<EXTENSION_ID>/`가 아니면, Then 메시지를 하나도 처리하지 않고 끝난다
 - AC-001.4: Given `hello`, When 부르면, Then `result {helperVersion, protocol}`을 돌려준다. `helperVersion`은 `Directory.Build.props`의 `Version`, `protocol`은 `commands.json`의 `protocol`(처음 1)이다
 - AC-001.5: Given 환자 자료 명령의 답(크기 상관없음), When 보내면, Then 메시지마다 머리 포함 1,000,000바이트 이하가 되게 `chunk`(`seq` 0부터)로 나누고 마지막에 `end {count, bytes, sha256}`를 보낸다. 조각을 이으면 원래 글자와 바이트까지 같다(한글·이모지·따옴표가 조각 경계에 와도)
@@ -38,10 +38,11 @@
 - AC-003.2: Given 웹에서 온 연결(`onConnectExternal`), When `sender.origin`이 우리 origin이 아니면, Then 바로 끊고 도우미를 켜지 않는다
 - AC-003.3: Given 우리 origin의 메시지, When 봉투가 `{v, id, cmd, args}` 모양이고 `cmd`가 명령 표에 있으면 도우미에 그대로 넘기고, 아니면 `E-BRIDGE-REJECTED`로 답하고 넘기지 않는다
 - AC-003.4: Given 도우미 답, When 오면, Then 고치거나 쌓아 두지 않고 그 웹 연결에 그대로 넘긴다. `extension/src/**`는 `chrome.storage`·`localStorage`·`indexedDB`·console·`fetch`·`XMLHttpRequest`·`WebSocket`을 쓰지 않는다(ESLint가 막고 `src/guardrails.test.ts`가 증명)
-- AC-003.5: Given 웹 연결이 이미 하나 있음, When 두 번째 연결이 오면, Then `E-BRIDGE-BUSY`로 답하고 끊는다. 첫 연결이 끊기면 다시 받는다
+- AC-003.5: Given 웹 연결이 이미 하나 있음, When 두 번째 연결이 오면, Then `E-BRIDGE-BUSY`로 답하고 끊는다. 첫 연결이 끊기면 다시 받는다(AC-003.9일 때는 빼고)
 - AC-003.6: Given `hello`, When 웹이 부르면, Then 도우미 답에 확장 버전(`manifest.version`)과 확장 `protocol`을 붙여 돌려준다. 도우미를 켜지 못하면(`connectNative` 끊김·`lastError`) `E-HELPER-MISSING`
 - AC-003.7: Given `bit.input`이 진행 중, When 웹 연결이 끊기면, Then 도우미 연결은 그 요청의 `end`·`error`가 오거나 30분이 지날 때까지 두었다가 닫는다. 그 밖의 명령 중에 끊기면 도우미 연결도 바로 닫는다
 - AC-003.8: Given `npm run ext:build`, When 돌리면, Then `extension/tsconfig.json`으로 `extension/dist/`에 JS와 manifest를 만든다. 루트 `tsconfig.json`은 `extension/`·`helper/`를 빼서 `npm run build`가 그대로 통과한다
+- AC-003.9: Given AC-003.7로 웹 연결 없이 도우미 연결을 붙잡고 있음(`bit.input` 진행 중), When 새 웹 연결이 오면, Then `E-BRIDGE-BUSY`로 답하고 끊는다. 새 도우미를 켜지 않고, 붙잡은 도우미 연결에도 넘기지 않는다. 그 연결을 닫은 뒤에는 다시 받는다
 
 ### REQ-004: 웹 통로 코드 (Phase 1 · Step 3 · bridge-client)
 - AC-004.1: Given `src/lib/bridge/**`, When ESLint를 돌리면, Then 기존 환자 자료 구역 규칙(네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import·JSX 금지)이 모두 걸리고, 더해서 `window.postMessage`·`BroadcastChannel`·`parent`·`top`·`opener`가 막히며, `chrome.runtime.connect`·`chrome.runtime.sendMessage`는 첫 인자가 `EXTENSION_ID`가 아니면 막힌다. `src/guardrails.test.ts`가 규칙마다 증명한다
@@ -52,19 +53,22 @@
 - AC-004.6: Given 숫자·상태 명령, When `result`가 오면, Then 명령마다 정해 둔 모양(숫자·날짜·정해 둔 상태 글자)인지 검사해 돌려준다. 다르면 `E-BRIDGE-BAD-REPLY`. 환자 자료 명령에 `result`가 오거나 숫자 명령에 `chunk`가 오면 같은 오류다
 - AC-004.7: Given 연결이 끊김, When 기다리던 요청이 있으면, Then 그 요청은 `E-BRIDGE-DISCONNECTED`로 끝나고 환자 자료 요청은 `sink.abort(id, code)`로 모으던 조각을 버리게 한다
 - AC-004.8: Given `buildCsp`, When 운영·개발 값을 만들면, Then 이 기능 전과 글자까지 같다(`chrome-extension:`이나 확장 ID가 없다)
+- AC-004.9: Given `send(cmd, payload)`(`store.save`·`bit.input`, `payload`는 Worker가 만든 JSON 글자), When 보내면, Then 통로 코드는 `payload`를 풀거나 고치지 않고 봉투 `{v: 1, id, cmd, args: {payload}}`(design.md 4-2)에 글자 그대로 넣어 확장에 넘긴다. 다른 명령이거나 `payload`가 글자가 아니면 보내지 않고 `E-BRIDGE-REJECTED`. 답은 `store.save`면 `result {saved: true}`인지 검사하고, `bit.input`이면 결과 조각을 sink로 넘기고 `{id, count}`로 끝난다(AC-004.5와 같음)
+- AC-004.10: Given `bit.input` 요청에 온 `progress`, When 받으면, Then 칸이 `{v, id, type, done, total}`뿐이고 `done`·`total`이 `0 ≤ done ≤ total ≤ 500`인 정수일 때만 `onProgress({id, done, total})`로 알린다. 다른 칸·숫자 아닌 값·범위 밖이거나 `bit.input`이 아닌 요청에 오면 `E-BRIDGE-BAD-REPLY`로 그 요청을 끝내고 `sink.abort(id, code)`
+- AC-004.11: Given 화면이 쓰는 입구 `connectScreenBridge({runtime, worker})`(`src/lib/bridge/workerSink.ts`), When 환자 자료 조각이 오거나 Worker가 보낼 글자를 넘기면, Then 조각·`end`·`abort`와 보낼 글자는 `workerSink`가 만든 전용 `MessageChannel` 포트로만 Worker와 오간다. 화면이 받는 것(`ScreenBridge`의 약속 값·`onState`·`onProgress`)은 상태·숫자·상태 명령의 검사한 답(AC-004.6)·진행 숫자·`{id, count}`·오류 번호뿐이고, `ScreenBridge`에는 `send`가 없다. `src/lib/bridge/client.ts`는 `src/lib/bridge/**` 밖에서 import할 수 없다(ESLint, guardrails 시험). 시험: 가짜 조각과 보낼 글자 속 '가상환자01'이 화면 쪽 콜백·약속 값 어디에도 없다
 
 ### REQ-005: 비트 연결·기관기호 (Phase 1 · Step 4 · bit-connect)
 - AC-005.1: Given 가짜 설치 후보(앱 폴더·레지스트리 값·기본 폴더)와 가짜 파일 모양, When 비트를 찾으면, Then 원본 `InstallationLocator`·`NativeEnvironmentGuard`와 같은 규칙으로 고른다: UNC·상대 경로 거절, `ini\BITSTATISTICS.Xml`·`EXE\BITDataBaseCommon.dll`·`EXE\BITStatistics.exe`가 모두 있는 곳, 환경 파일의 `Path`·`Bin`과 일치, 지원 위치 `C:\DrBIT50`. 못 찾으면 `E-BIT-NOT-FOUND`
 - AC-005.2: Given DB 서버 이름, When 접속 전에 검사하면, Then 원본 `CheckPrivateServer`처럼 `.`·`(local)`·`localhost`·이 PC 이름·사설 IPv4(`tcp:` 앞붙임 허용)만 되고 그 밖은 `E-BIT-DB-FAILED`. 접속은 `ConnectTimeout=10`이다
 - AC-005.3: Given 도우미가 돌리려는 SQL, When `ReadOnlyGuard`를 거치면, Then `Sql.cs`에 정해 둔 상수만 매개변수와 함께 돌고, 끝내지 않는(되돌리는) 트랜잭션 안에서 읽는다(원본 그대로). 정해 둔 것 밖의 SQL 글자는 돌리지 않는다
 - AC-005.4: Given 병원 범위·기관기호 줄, When 원본 `ValidateScope`·`ValidateInstitutionNumbers`로 검사하면, Then 범위가 정확히 하나이고 모든 기관기호가 8자리 숫자이며 등록한 것과 같을 때만 통과한다(원본 시험 사례를 옮긴다)
-- AC-005.5: Given 처음 등록(`bit.register`), When 비트 로그인을 마치고 PC 확인 창에서 [확인]을 누르면, Then 병원 이름·기관기호·범위·설치 위치·서버·DB 이름을 `registration.dat`(DPAPI)에 저장하고 `{registered: true}`. [취소]·창 닫기면 저장하지 않는다. 확인 창의 글은 도우미가 비트에서 읽은 값으로만 만든다
+- AC-005.5: Given 처음 등록(`bit.register`), When 비트 로그인을 마치고 PC 확인 창에서 [확인]을 누르면, Then 병원 이름·기관기호·범위·설치 위치·서버·DB 이름을 `registration.dat`(DPAPI)에 저장하고 `{registered: true}`. [취소]·창 닫기면 저장하지 않는다. 확인 창의 글은 도우미가 비트에서 읽은 값으로만 만든다. 이미 등록돼 있어도(`E-BIT-HOSPITAL-MISMATCH` 뒤 등) 같은 길로 다시 등록할 수 있다: 확인 창에 전 등록 값과 새 값을 함께 보이고 [확인]이면 바꿔 쓴다. 기관기호가 같으면 전 등록의 프로필 ID를 그대로 둔다(작업 저장을 이어 읽게, AC-015.4)
 - AC-005.6: Given 등록된 도우미, When 읽기·입력 명령을 받으면, Then 먼저 원본 `VerifyCurrentInstitution`처럼 오늘 날짜로 기관기호·범위를 다시 확인하고, 등록이 없으면 `E-BIT-NOT-REGISTERED`, 다르면 `E-BIT-HOSPITAL-MISMATCH`로 그 명령을 하지 않는다
 - AC-005.7: Given `bit.check`, When 부르면, Then 단계별 결과 `steps`(비트 찾기·DB 읽기·등록 확인)를 `{name, ok, code?}`로 돌려주고, 등록됐으면 병원 이름과 기관기호를 함께 준다. 실패한 단계 뒤는 `ok: false`·`code: 'E-…'`로 채운다
 
 ### REQ-006: 설치·연결 확인 화면 (Phase 1 · Step 5 · setup-screen)
 - AC-006.1: Given `/claim/setup`, When 통로 상태가 `no-extension`·`no-helper`·`update-helper`·`update-extension`·`busy`이면, Then 목업 승인본의 상태별 안내를 보인다: 확장 설치 링크, 도우미 zip 받는 곳과 설치 순서(경고 창 넘기는 법 포함), "도우미를 업데이트하세요", "확장을 업데이트하세요", "다른 창에서 작업 중"
-- AC-006.2: Given 상태 `ready`, When [연결 확인]을 누르면, Then `bit.check`를 부르고 단계마다 ✓/✗와 오류 번호를 보인다. 등록이 없으면 [처음 등록]이 보이고, 누르면 `bit.register`를 부른 뒤 다시 확인한다. 누른 동안 단추를 막는다
+- AC-006.2: Given 상태 `ready`, When [연결 확인]을 누르면, Then `bit.check`를 부르고 단계마다 ✓/✗와 오류 번호를 보인다. 등록이 없으면 [처음 등록]이, `E-BIT-HOSPITAL-MISMATCH`면 [다시 등록]이 보이고, 누르면 `bit.register`(PC 확인 창, AC-005.5)를 부른 뒤 다시 확인한다. 누른 동안 단추를 막는다
 - AC-006.3: Given `helperUpdateAvailable`, When 화면을 그리면, Then "새 도우미가 있어요" 한 줄과 받는 곳 링크를 보이고 나머지는 그대로 쓸 수 있다
 - AC-006.4: Given 탭 줄, When 승인된 사용자가 보면, Then 목업 승인본 위치에 [청구] 탭이 `/claim` 링크로 있다(`aria-current` 포함). 기관기호는 뒤 4자리를 가려 보인다
 - AC-006.5: Given 휴대폰이나 확장 없는 브라우저, When `/claim/setup`을 열면, Then "비트 PC의 크롬에서 엽니다" 안내와 밖에서 보는 건수(`/claim`)로 가는 링크를 보인다
@@ -78,7 +82,7 @@
 - AC-007.5: Given `loadTables()`, When 부르면, Then 네 표를 한 번만 불러 기억하고, 실패하면 `E-RULES-LOAD-FAILED`를 돌려준다(점검을 시작하지 않는다)
 
 ### REQ-008: 한 달 자료·12개월 이력 읽기 (Phase 2 · Step 1 · bit-claim-read)
-- AC-008.1: Given 기간(400일 이하, 달을 넘겨도 됨), When `claim.month`, Then 증상(83)·상병(83D)·소모(47) 표 줄과 12개월 이력(기간 시작 365일 전부터 기간 끝까지)·상병 추세·처방 목록을 하나의 JSON으로 만들어 조각으로 보낸다. 칸은 원본 `build`·`parseRx`·`claim_import.py`가 읽는 칸만 남긴다(나머지 칸은 버린다)
+- AC-008.1: Given 기간(시작·끝 날을 함께 세어 35일 이하, 달을 넘겨도 됨), When `claim.month`, Then 증상(83)·상병(83D)·소모(47) 표 줄과 12개월 이력(기간 시작 365일 전부터 기간 끝까지. 400일 이하라 원본 `RxHistory.MaximumDays` 400일 안)·상병 추세·처방 목록을 하나의 JSON으로 만들어 조각으로 보낸다. 칸은 원본 `build`·`parseRx`·`claim_import.py`가 읽는 칸만 남긴다(나머지 칸은 버린다)
 - AC-008.2: Given 이력·이미 있는 메모·상병 추세 SQL, When `Sql.cs`를 원본(`RxHistory.VisitSql`·`CodeSql`, `RxDiagnosisTrend`)과 비교하면, Then 공백만 다르다. 줄 모양은 원본처럼 이력 `{v, p, d, c[], m}`이다
 - AC-008.3: Given 비트 통계 화면 표(가짜 표 값), When `GridRows`로 바꾸면, Then 원본 `NativeMappings`의 키(83·83D·47)별 칸 이름으로 줄을 만들고, 필요한 칸이 없으면 `E-BIT-EXPORT-FAILED`로 그 명령 전체를 멈춘다
 - AC-008.4: Given 표 하나라도 읽기 실패·시간 초과(원본 값: 메타 15초, 자료 120~150초), When `claim.month`를 처리하면, Then `end` 없이 `error`(`E-BIT-READ-FAILED` 또는 `E-BIT-EXPORT-FAILED`)를 보낸다. 반쪽 자료를 보내지 않는다
@@ -96,7 +100,7 @@
 - AC-010.2: Given 조건 종류 18가지(`count_window`·`claim_code`·`same_day_pair`·`documentation`·`required_dx`·`info_only`·`same_day_limit`·`interval`·`dur`·`multiplier_cap`·`drug_requirement`·`dx_site_match`·`dx_master`·`visit_fee`·`imaging_count`·`episode_period`·`forbidden_dx_combo`·`prerequisite`), When 골든을 보면, Then 종류마다 걸리는 사례와 안 걸리는 사례가 하나 이상 있다
 - AC-010.3: Given 규칙 262개, When `rules-coverage.json`과 골든을 맞춰 보면, Then 모든 규칙이 골든에서 한 번 이상 걸리거나 걸리게 할 수 없는 이유가 적혀 있다. 둘 다 없는 규칙이 있으면 실패한다
 - AC-010.4: Given 설정 `{off, on, grade}`(원본 저장 모양), When 점검하면, Then 끈 규칙은 결과가 없고, 켠 규칙은 `enabled_default`가 꺼져 있어도 돌고, 등급을 바꾼 규칙은 바뀐 등급으로 나오며 정렬도 바뀐 등급을 따른다. 시작·끝 날짜(`effective_from`·`effective_to`) 밖의 진료에는 돌지 않는다
-- AC-010.5: Given 이력이 필요한 규칙(`stage`에 `history`), When 이력이 없으면, Then 원본처럼 그 규칙을 '이력 없어 건너뜀'으로 세고 걸렸다고 하지 않는다
+- AC-010.5: Given 이력이 필요한 규칙(`stage`에 `history`), When 점검하면, Then 늘 함께 오는 12개월 이력(AC-008.1)으로 센다. 이력이 없으면 AC-009.4가 먼저 멈추므로, 원본의 '이력을 아직 안 받음' 길(`historyReady()`가 거짓 → '이력 없어 건너뜀')은 옮기지 않고 `historyReady()`를 늘 참으로 둔다. 골든은 원본에 이력을 넣고 만들며 이력 건너뜀 수는 0이다
 - AC-010.6: Given 원본의 Python식 정규식(`(?i)` 등)과 `regions.*` 경로, When 규칙을 읽으면, Then 원본 JS와 같은 방법으로 바꿔 쓴다(골든으로 확인)
 
 ### REQ-011: 추천 상병·상병 확인 (Phase 2 · Step 4 · dx-check)
@@ -116,7 +120,7 @@
 
 ### REQ-013: 청구 화면 · 날짜 목록·점검 (Phase 2 · Step 6 · precheck-screen)
 - AC-013.1: Given 도우미 `claim.dates`와 서버 `claim_day_counts`, When `buildDateList`, Then 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터 놓는다. 날마다 진료 수·남은 수·마지막으로 바뀐 시각이 있다
-- AC-013.2: Given 날짜 목록, When 시작·끝 날을 고르면, Then 달을 넘겨도 되고 400일 이하만 된다. [자료 불러오기]를 누르면 `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검한다. 누른 동안 단추를 막고 진행 상태를 보인다. Phase 3 전이라 도우미가 `claim.memos`·`store.load`에 `E-HELPER-UNKNOWN-COMMAND`로 답하면 메모 비교는 '조회 못함', 저장한 작업은 '없음'으로 보고 점검을 계속한다(다른 오류는 멈춤)
+- AC-013.2: Given 날짜 목록, When 시작·끝 날을 고르면, Then 달을 넘겨도 되고 35일 이하만 된다(AC-008.1). [자료 불러오기]를 누르면 `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검한다. 누른 동안 단추를 막고 진행 상태를 보인다. Phase 3 전이라 도우미가 `claim.memos`·`store.load`에 `E-HELPER-UNKNOWN-COMMAND`로 답하면 메모 비교는 '조회 못함', 저장한 작업은 '없음'으로 보고 점검을 계속한다(다른 오류는 멈춤)
 - AC-013.3: Given 점검 결과, When 화면을 그리면, Then 환자(진료)마다 등급 칩(확인 필요·알림·참고)과 규칙 제목·내용·고시 근거, 추천 상병, 상병 확인 경고가 목업 승인본처럼 보인다. 등급·규칙으로 거를 수 있다. 등급은 색만이 아니라 글자로도 구분한다
 - AC-013.4: Given [엑셀 내려받기], When 누르면, Then Worker가 원본과 같은 두 시트(규칙별 `[규칙, 제목, 분야, 등급, 건수, 근거]`, 내원별 `[진료일, 차트번호, 이름, 등급, 규칙, 제목, 내용, 세부]`)의 xlsx를 만들고 그 PC에 내려받는다. 서버로 보내지 않는다
 - AC-013.5: Given `E-CLAIM-PARTIAL`·`E-RULES-LOAD-FAILED`·읽기 오류, When 생기면, Then 점검 결과를 보이지 않고 오류 카드("다시 불러오세요")와 [다시 불러오기]를 보인다
@@ -155,6 +159,8 @@
 - AC-017.6: Given 사람마다 결과, When 끝나면, Then 결과는 완료(입력·이미 입력됨)·확인 필요(다시 읽은 값 다름·저장 확인 못함·미처리)·건너뜀(이유: 이미 있음·내원일 없음·환자 불일치·검색 결과 여러 줄 등 원본 문구) 셋 중 하나다. 진행은 `progress {done, total}` 숫자만, 결과는 조각으로 보낸다
 - AC-017.7: Given 입력 기록(`Journal`, 작업 저장 안), When 쓰기 전·확인 뒤, Then `writing`·`done`·`skipped`·`check`를 남긴다. Given 도중에 멈춘 묶음, When 다시 열어 같은 진료를 입력하면, Then 비트 메모와 비교해 우리 글과 같으면 완료, 비었으면 입력, 다르면 건너뜀(이미 있음)으로 한다
 - AC-017.8: Given 원본 `SecurityTests`의 입력 보호 사례(승인한 메모 줄바꿈·공백 그대로, 쓰기 직전 바뀐 메모 거절, 환자 바뀜 거절, 거절이면 절대 안 씀, 가짜 화면에만 씀), When 가짜 `IChartUi`로 돌리면, Then 원본과 같은 결과다
+- AC-017.9: Given `bit.input` 진행 중, When 표준 입력이 닫히면(웹 창이 닫혀 확장이 30분 뒤 도우미 연결을 닫음·로그아웃 뒤·크롬 종료 등), Then 도우미는 지금 사람을 안전한 자리까지만 한다: 쓰기를 아직 시작하지 않았으면 시작하지 않고, 시작했으면 쓰기 → 다시 읽기 → 저장 → 다시 읽기까지 마친다. 그 뒤 남은 사람을 '확인 필요: 미처리'로 두어 입력 기록(`Journal`)과 결과를 작업 저장에 남기고 끝난다. 확인 창이 떠 있던 중이면 [취소]와 같다(하나도 입력하지 않음). 반쯤 쓴 메모를 남기지 않는다
+- AC-017.10: Given 이름 있는 뮤텍스 `Local\SeoseungkwanPrecheckHelper.Work`(여러 도우미 프로세스가 함께 봄), When `bit.input`(확인 창부터 결과 기록까지)·`store.save`를 하면, Then 그동안 이 뮤텍스를 잡는다. 다른 프로세스가 잡고 있으면 `bit.input`은 바로, `store.save`는 5초 기다린 뒤 `E-BRIDGE-BUSY`로 답하고 아무것도 쓰거나 입력하지 않는다. 잡은 프로세스가 놓지 않고 끝났으면(abandoned) 잡은 것으로 보고 이어서 하기(AC-017.7)를 따른다
 
 ### REQ-018: 메모 화면 · 입력 결과 (Phase 3 · Step 4 · memo-screen)
 - AC-018.1: Given 점검한 기간, When 메모 칸을 보면, Then 진료마다 메모 초안(고친 것은 고친 것), 비트 메모와의 비교(같음·다름·비트에 없음·조회 못함), 입력 상태가 목업 승인본처럼 보이고, 아직 입력 안 된 것만 거를 수 있다
@@ -186,7 +192,7 @@
 
 ### REQ-022: 월말 마감 화면 (Phase 4 · Step 2 · month-close-screen)
 - AC-022.1: Given `/claim/close`, When 달을 고르고 [청구 파일 불러오기]를 누르면, Then `sam.latest`로 파일을 받아 대조하고, 미완료·빠진 것·확인 표시 남은 것을 목업 승인본처럼 나눠 보이며 파일 이름·받은 시각을 보인다
-- AC-022.2: Given 줄 하나, When 누르면, Then 그 진료가 있는 청구 화면(날짜·환자)으로 간다
+- AC-022.2: Given 줄 하나, When 누르면, Then 그 진료가 있는 청구 화면으로 간다. 주소(URL)에는 날짜만 넣고(`/claim?from=YYYY-MM-DD&to=YYYY-MM-DD`) 차트번호·이름·`visitKey`는 넣지 않는다. 어느 진료인지는 같은 탭 메모리로 넘긴다(시험: 주소·쿼리에 날짜 말고 다른 값이 없다)
 - AC-022.3: Given 대조 결과, When 끝나면, Then `claim_month_counts`에 `{claim_month, incomplete, missing, flagged}` 정수만 upsert한다(실패 처리는 REQ-019 건수 올리기와 같음)
 - AC-022.4: Given 밖에서 보는 건수, When 그리면, Then 월말 마감 남은 일(미완료·빠진 것·확인 표시)을 달마다 마지막 바뀐 시각과 함께 보인다
 - AC-022.5: Given `E-SAM-NOT-FOUND`, When 생기면, Then "청구 파일이 없어요"와 찾는 폴더(`C:\HIRA\DDMD\sam\in\backup`)를 보인다
@@ -249,7 +255,7 @@
 
 ### REQ-032: 백업에 설정 넣기 (Phase 7 · Step 0 · backup-settings)
 - AC-032.1: Given [백업 내려받기], When 누르면, Then 내 병원의 `claim_rule_settings`·`claim_hospital_settings`·`message_templates` 줄을 브라우저에서 읽어 `{version, made_at, tables: {…}}` JSON 파일 하나로 내려받는다. 표 목록은 `lib/backup/tables.ts` 한 곳에 있고 다른 표는 나중에 더한다. 건수 표는 넣지 않는다(다시 계산됨)
-- AC-032.2: Given 백업 JSON, When `restoreSql(backup)`로 만든 SQL을 빈 DB(PGlite, 같은 마이그레이션)에 운영자처럼 돌리면, Then 같은 줄이 되살아난다(되돌려 넣기 시험)
+- AC-032.2: Given 백업 JSON, When `restoreSql(backup)`로 만든 SQL을 빈 DB(PGlite, 같은 마이그레이션)에 운영자처럼 돌리면, Then 같은 줄이 되살아난다(되돌려 넣기 시험). 값에 `'`·`$$`·`;`·`\`·줄바꿈·`--`가 들어 있어도 글자 칸은 바이트까지 같게, jsonb 칸은 같은 값으로 되살아나고 그 값이 SQL로 돌지 않는다(시험: `'); drop table public.hospitals; --`가 든 문구를 되살려도 다른 표가 그대로이고 값이 글자로 들어간다). 값 감싸기는 design.md 8-4의 한 가지 방법만 쓴다
 - AC-032.3: Given 백업 파일, When 내용을 보면, Then 설정 표 칸만 있고 환자 정보·건수·기관기호가 없다
 - AC-032.4: Given 읽기 실패, When 누르면, Then 파일을 만들지 않고 `E-BACKUP-FAILED`를 보인다
 

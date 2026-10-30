@@ -1,6 +1,6 @@
 # Step 2: extension
 
-> **TASK-3** 크롬 확장 · **REQ-003** · AC-003.1 ~ AC-003.8
+> **TASK-3** 크롬 확장 · **REQ-003** · AC-003.1 ~ AC-003.9
 > Phase 1 `precheck-1-helper` · Step 2 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-3 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -12,10 +12,11 @@
 - **AC-003.2**: 웹에서 온 연결(`onConnectExternal`)의 `sender.origin`이 우리 origin이 아니면 바로 끊고 도우미를 켜지 않는다
 - **AC-003.3**: 우리 origin의 메시지가 봉투 `{v, id, cmd, args}` 모양이고 `cmd`가 명령 표에 있으면 도우미에 그대로 넘기고, 아니면 `E-BRIDGE-REJECTED`로 답하고 넘기지 않는다
 - **AC-003.4**: 도우미 답은 고치거나 쌓아 두지 않고 그 웹 연결에 그대로 넘긴다. `extension/src/**`는 `chrome.storage`·`localStorage`·`indexedDB`·console·`fetch`·`XMLHttpRequest`·`WebSocket`을 쓰지 않는다(ESLint가 막고 `src/guardrails.test.ts`가 증명)
-- **AC-003.5**: 웹 연결이 이미 하나 있으면 두 번째 연결은 `E-BRIDGE-BUSY`로 답하고 끊는다. 첫 연결이 끊기면 다시 받는다
+- **AC-003.5**: 웹 연결이 이미 하나 있으면 두 번째 연결은 `E-BRIDGE-BUSY`로 답하고 끊는다. 첫 연결이 끊기면 다시 받는다(AC-003.9일 때는 빼고)
 - **AC-003.6**: `hello`: 도우미 답에 확장 버전(`manifest.version`)과 확장 `protocol`을 붙여 돌려준다. 도우미를 켜지 못하면(`connectNative` 끊김·`lastError`) `E-HELPER-MISSING`
 - **AC-003.7**: `bit.input` 진행 중 웹 연결이 끊기면 도우미 연결은 그 요청의 `end`·`error`가 오거나 30분이 지날 때까지 두었다가 닫는다. 그 밖의 명령 중 끊기면 도우미 연결도 바로 닫는다
 - **AC-003.8**: `npm run ext:build` → `extension/tsconfig.json`으로 `extension/dist/`에 JS와 manifest를 만든다. 루트 `tsconfig.json`은 `extension/`·`helper/`를 빼서 `npm run build`가 그대로 통과
+- **AC-003.9**: AC-003.7로 웹 연결 없이 도우미 연결을 붙잡고 있는 동안(`bit.input` 진행 중) 새 웹 연결이 오면 `E-BRIDGE-BUSY`로 답하고 끊는다. 새 도우미를 켜지 않고 붙잡은 연결에도 넘기지 않는다. 그 연결을 닫은 뒤에는 다시 받는다
 
 ## 읽어야 할 파일
 
@@ -99,7 +100,7 @@ export function startBackground(chrome: ChromeLike, manifest: { version: string 
 ```
 - 흐름: 웹 연결 → origin 검사(아니면 끊기, `connectNative` 부르지 않음) → 이미 연결이 있으면 `E-BRIDGE-BUSY` 후 끊기 → 첫 메시지 때 `connectNative(hostName)` → 웹 메시지마다 `checkRequest` → 통과하면 그대로 넘김 → 도우미 답은 그대로 웹에 넘김(`hello`의 `result`에만 확장 정보 붙임)
 - 도우미 연결이 `onDisconnect`로 끊기고 `lastError`가 있으면 기다리던 요청마다 `E-HELPER-MISSING`
-- 웹이 끊길 때 진행 중인 `bit.input` 요청이 있으면 도우미 연결을 그 요청의 `end`·`error`까지, 길어도 30분까지 두고 닫는다. 그 사이 새 웹 연결은 `E-BRIDGE-BUSY`
+- 웹이 끊길 때 진행 중인 `bit.input` 요청이 있으면 도우미 연결을 그 요청의 `end`·`error`까지, 길어도 30분까지 두고 닫는다. 그 사이 새 웹 연결은 `E-BRIDGE-BUSY`(AC-003.9: 새 도우미를 켜지 않고, 붙잡은 연결에도 넘기지 않는다)
 - 답을 쌓아 두거나 고치지 않는다. 조각은 1MB 이하로 이미 나뉘어 온다
 
 ### 4. 울타리
@@ -113,7 +114,7 @@ export function startBackground(chrome: ChromeLike, manifest: { version: string 
 ### 6. 시험
 - `manifest.test.ts`: AC-003.1(칸 검사) + `key`로 계산한 ID가 `commands.json` `extensionId`와 같다 + `externally_connectable` 호스트가 `commands.json` `origin`과 같다
 - `relay.test.ts`: AC-003.2·003.3·003.6(정보 붙이기)
-- `background.test.ts`: 가짜 `ChromeLike`로 AC-003.2·003.4·003.5·003.6(`E-HELPER-MISSING`)·003.7(가짜 시계로 30분)
+- `background.test.ts`: 가짜 `ChromeLike`로 AC-003.2·003.4·003.5·003.6(`E-HELPER-MISSING`)·003.7(가짜 시계로 30분)·003.9(붙잡은 동안 새 웹 연결 → `E-BRIDGE-BUSY`, `connectNative`를 두 번 부르지 않음, 닫은 뒤에는 받음)
 - AC-003.8은 `npm run ext:build` 뒤 `extension/dist/manifest.json`·`background.js`가 있는지 보는 시험(또는 AC 커맨드)
 
 ## TDD 순서
@@ -135,7 +136,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-003.1 ~ AC-003.8이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-003.1 ~ AC-003.9가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

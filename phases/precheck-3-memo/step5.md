@@ -174,4 +174,5 @@ python3 ~/.claude/harness/bin/verify
 ## 참고
 
 - Phase 3 마지막 step이다. 메인 세션이 Phase 끝에 할 일: `verify` → 화면 캡처(PC·휴대폰) → 쉬운 말 보고 → 의원 PC 시험 목록(먼저 시험용 환자 한 명으로 입력 → 그다음 실제 하루치)
+- Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)
 - 사용자 할 일(Phase 3 의원 PC 시험 전): 건수 마이그레이션(`20261030000100_precheck_counts.sql`)을 SQL 편집기에 붙여 넣기. 새 도우미 zip(Phase 3 처리기 포함)을 설치

@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-032에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-032.1**: [백업 내려받기]는 내 병원의 `claim_rule_settings`·`claim_hospital_settings`·`message_templates` 줄을 브라우저에서 읽어 `{version, made_at, tables: {…}}` JSON 파일 하나로 내려받는다. 표 목록은 `lib/backup/tables.ts` 한 곳(다른 표는 나중에 더함). 건수 표는 넣지 않는다(다시 계산됨)
-- **AC-032.2**: 백업 JSON으로 `restoreSql(backup)`이 만든 SQL을 빈 DB(PGlite, 같은 마이그레이션)에 운영자처럼 돌리면 같은 줄이 되살아난다(되돌려 넣기 시험)
+- **AC-032.2**: 백업 JSON으로 `restoreSql(backup)`이 만든 SQL을 빈 DB(PGlite, 같은 마이그레이션)에 운영자처럼 돌리면 같은 줄이 되살아난다(되돌려 넣기 시험). 값에 `'`·`$$`·`;`·`\`·줄바꿈·`--`가 들어 있어도 글자 칸은 바이트까지 같게(jsonb는 같은 값) 되살아나고 SQL로 돌지 않는다(`'); drop table public.hospitals; --` 사례). 감싸기는 design.md 8-4 한 가지
 - **AC-032.3**: 백업 파일에는 설정 표 칸만 있고 환자 정보·건수·기관기호가 없다
 - **AC-032.4**: 읽기 실패면 파일을 만들지 않고 `E-BACKUP-FAILED`
 
@@ -97,7 +97,8 @@ export async function makeBackup(sb: SupabaseClient, now: () => string): Promise
 ```ts
 export function restoreSql(backup: unknown): string   // 모양 검사 → 표마다 insert … on conflict do update
 ```
-- 운영자가 SQL 편집기(관리 권한)에서 돌린다(되살리기 화면은 범위 밖). 값은 SQL 글자로 안전하게 감싼다(작은따옴표 두 번·`$tag$` 따옴표 등). `jsonb`는 `'…'::jsonb`
+- 운영자가 SQL 편집기(관리 권한)에서 돌린다(되살리기 화면은 범위 밖). 값 감싸기는 design.md 8-4의 한 가지 방법만 쓴다: 파일 첫 줄 `set standard_conforming_strings = on;`, 글자·jsonb·uuid·시각은 작은따옴표로 감싸고 안의 `'`만 `''`로 두 번(다른 글자는 그대로), 뒤에 `::jsonb`·`::uuid`·`::timestamptz`(jsonb는 `JSON.stringify` 결과를 감쌈). `E'…'`·`$태그$` 따옴표는 쓰지 않는다. 정수는 `Number.isSafeInteger`를 통과한 것만, 비어 있음은 `null`, NUL(`\u0000`) 글자가 있으면 던진다. 전체를 `begin; … commit;`으로 감싼다
+- 표·칸 이름은 `tables.ts` 목록에서만 가져온다(백업 파일의 키를 SQL에 넣지 않는다)
 - 모르는 표·칸이 있으면 SQL을 만들지 않고 던진다
 
 ### 4. 화면 (목업 화면 10 '백업' 칸)
@@ -106,8 +107,8 @@ export function restoreSql(backup: unknown): string   // 모양 검사 → 표�
 - 오류 번호 `E-BACKUP-FAILED`
 
 ### 5. 시험
-- `backup.test.ts`(가짜 supabase: 칸·표 목록·건수 표 없음·실패 → 파일 없음: AC-032.1·032.4), `restoreSql.test.ts`(따옴표·jsonb·모르는 칸 거절)
-- `supabase/backup.test.ts`(AC-032.2): PGlite에 auth + 설정 + 건수 마이그레이션 → 가짜 병원 줄 넣기 → 백업 모양 만들기 → 새 빈 PGlite에 같은 마이그레이션 → `restoreSql` 실행(운영자 역할) → 줄이 같다
+- `backup.test.ts`(가짜 supabase: 칸·표 목록·건수 표 없음·실패 → 파일 없음: AC-032.1·032.4), `restoreSql.test.ts`(`'`·`$$`·`;`·`\`·줄바꿈·`--`가 든 값의 SQL 글자 모양, jsonb, NUL 거절, 모르는 표·칸 거절)
+- `supabase/backup.test.ts`(AC-032.2): PGlite에 auth + 설정 + 건수 마이그레이션 → 가짜 병원 줄 넣기 → 백업 모양 만들기 → 새 빈 PGlite에 같은 마이그레이션 → `restoreSql` 실행(운영자 역할) → 줄이 같다. 병원 문구·문자 문구에 `'`·`$$`·`;`·`\`·줄바꿈과 `'); drop table public.hospitals; --`를 넣은 사례도 글자가 바이트까지 같고 `hospitals` 표가 그대로다
 - AC-032.3: 백업 JSON에 정해 둔 칸 밖 키·건수 표·기관기호 모양(8자리 숫자 칸)이 없다
 - `BackupButton.test.tsx`(jsdom)
 
@@ -162,3 +163,4 @@ python3 ~/.claude/harness/bin/verify
 ## 참고
 
 - Phase 7(마지막 Phase)의 마지막 step이다. 메인 세션이 할 일: `verify` → 화면 캡처 → 쉬운 말 보고 → `sdd status precheck`로 빠진 AC가 없는지 → PR 흐름(harness.md 7번, CodeRabbit 리뷰 포함)은 사용자 지시에 따라
+- Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)

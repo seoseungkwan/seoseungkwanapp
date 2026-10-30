@@ -12,7 +12,7 @@
 - **AC-010.2**: 조건 종류 18가지(`count_window`·`claim_code`·`same_day_pair`·`documentation`·`required_dx`·`info_only`·`same_day_limit`·`interval`·`dur`·`multiplier_cap`·`drug_requirement`·`dx_site_match`·`dx_master`·`visit_fee`·`imaging_count`·`episode_period`·`forbidden_dx_combo`·`prerequisite`)마다 골든에 걸리는 사례와 안 걸리는 사례가 하나 이상
 - **AC-010.3**: 규칙 262개 모두 골든에서 한 번 이상 걸리거나, 걸리게 할 수 없는 이유가 `rules-coverage.json`에 있다. 둘 다 없는 규칙이 있으면 실패
 - **AC-010.4**: 설정 `{off, on, grade}`(원본 저장 모양): 끈 규칙은 결과 없음, 켠 규칙은 `enabled_default`가 꺼져 있어도 돈다, 등급을 바꾼 규칙은 바뀐 등급으로 나오고 정렬도 따른다. `effective_from`·`effective_to` 밖 진료에는 돌지 않는다
-- **AC-010.5**: 이력이 필요한 규칙(`stage`에 `history`)은 이력이 없으면 원본처럼 '이력 없어 건너뜀'으로 세고 걸렸다고 하지 않는다
+- **AC-010.5**: 이력이 필요한 규칙(`stage`에 `history`)은 늘 함께 오는 12개월 이력(AC-008.1)으로 센다. 이력이 없으면 AC-009.4가 먼저 멈추므로 원본의 '이력을 아직 안 받음' 길(`historyReady()` 거짓 → '이력 없어 건너뜀')은 옮기지 않고 `historyReady()`를 늘 참으로 둔다. 골든은 원본에 이력을 넣고 만들며 이력 건너뜀 수는 0
 - **AC-010.6**: 원본의 Python식 정규식(`(?i)` 등)과 `regions.*` 경로는 원본 JS와 같은 방법으로 바꿔 쓴다(골든으로 확인)
 
 ## 읽어야 할 파일
@@ -97,7 +97,7 @@ export function runRules(month: ClaimMonth, tables: Tables, settings: RuleSettin
 - 원본 `evaluate`·`collect`·`statusOf`의 줄을 그대로 TypeScript로 옮긴다(조건 종류마다 파일 하나여도 된다). 원본 전역 값 대신 `month`·`tables`를 인자로 받는다
 - 정규식: 원본 JS가 Python식(`(?i)` 등)을 바꾸는 방식 그대로(AC-010.6). `regions.*` 경로 풀기도 원본 그대로
 - 설정(AC-010.4): `off`면 결과 없음, `on`이면 `enabled_default`와 상관없이 돎, `grade` 바꿈은 결과 등급과 정렬에 반영. `effective_from`·`effective_to` 밖 진료는 건너뜀
-- 이력 없음(AC-010.5): `stage`에 `history`가 있는 규칙은 이력이 없으면 '이력 없어 건너뜀'으로 센다
+- 이력(AC-010.5): 이력은 늘 함께 온다(없으면 Step 2의 AC-009.4가 먼저 멈춘다). 원본 `historyReady()`는 늘 참으로 옮기고 '이력을 아직 안 받음' 길은 옮기지 않는다. `skippedNoHistory`는 늘 0이고(칸은 원본 `collect` 모양 그대로 둔다), 골든은 원본에 이력(`HIST`)을 넣고 만든다
 
 ### 4. 덮기 (`fixtures/precheck/golden/rules-coverage.json`)
 - 262개 규칙마다 `{ "id": "XX-NN", "hitIn": "rules-….json" }` 또는 `{ "id": …, "reason": "info_only라 걸리지 않음" }`. `coverage.test.ts`가 둘 다 없는 규칙을 찾으면 실패(AC-010.3)

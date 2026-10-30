@@ -111,10 +111,10 @@
 ### 1. 메모 칸 (목업 화면 4)
 - 단계 줄 `1 날짜 고르기 · 2 점검 결과 · 3 메모 확인 · 4 비트에 입력 · 5 입력 결과`와 안쪽 탭 `메모 점검 | 월말 마감`(월말 마감 화면은 TASK-22)
 - `src/components/claim/memo/MemoPanel.tsx`: 진료마다 초안(고친 것 표시)·비교 상태 칩(같음·다름·비트에 없음·조회 못함, 글자로)·입력 상태. '아직 입력 안 된 것만' 거르기. 환자 줄은 `components/claim/rows/MemoRows.tsx`가 props로만 그린다
-- `useMemoDrafts.ts`: 고친 메모를 Worker에 `editMemo`로 알리고, 1초 동안 더 고치지 않으면 Worker가 만든 `store.save` 글자를 `bridge.send('store.save', payload)`로 보낸다. 실패면 값을 그대로 두고 `E-STORE-FAILED` + [다시 저장]
+- `useMemoDrafts.ts`: 고친 메모를 Worker에 `editMemo`로 알리고, 1초 동안 더 고치지 않으면 Worker에 `saveDrafts`를 시킨다. Worker가 `store.save` 글자를 만들어 통로 포트로 바로 보내고(화면은 글자를 쥐지 않는다, `send` 없음, AC-004.11) 됨·오류 번호만 화면에 알린다. 실패면 값을 그대로 두고 `E-STORE-FAILED` + [다시 저장]
 
 ### 2. 비트에 입력 (목업 화면 5의 웹 쪽 상태)
-- [비트에 입력]: 설정을 다시 읽어(design.md 6-5) 바뀌었으면 띠를 띄우고 막는다. 아니면 Worker `buildInputBatch`(이미 있음·완료 제외) → `bridge.send('bit.input', payload)` → '확인 기다리는 중'("PC 화면의 확인 창에서 [확인]을 눌러 주세요", 창이 안 보이면 작업 표시줄 '청구메모 도우미') → `progress`로 '입력하는 중 N / M명'
+- [비트에 입력]: 설정을 다시 읽어(design.md 6-5) 바뀌었으면 띠를 띄우고 막는다. 아니면 Worker `buildInputBatch`(이미 있음·완료 제외. Worker가 `bit.input` 글자를 만들어 통로 포트로 바로 보낸다) → '확인 기다리는 중'("PC 화면의 확인 창에서 [확인]을 눌러 주세요", 창이 안 보이면 작업 표시줄 '청구메모 도우미') → `useBridge`의 `onProgress` 숫자(`done/total`)로 '입력하는 중 N / M명'
 - 웹은 확인 창을 흉내 내지 않는다. 확인은 도우미 창에서만
 
 ### 3. 입력 결과 (목업 화면 6)

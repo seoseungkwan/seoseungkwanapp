@@ -12,7 +12,7 @@
 - **AC-005.2**: DB 서버 이름은 원본 `CheckPrivateServer`처럼 `.`·`(local)`·`localhost`·이 PC 이름·사설 IPv4(`tcp:` 앞붙임 허용)만, 그 밖은 `E-BIT-DB-FAILED`. 접속은 `ConnectTimeout=10`
 - **AC-005.3**: 도우미가 돌리는 SQL은 `ReadOnlyGuard`를 거쳐 `Sql.cs`에 정해 둔 상수만 매개변수와 함께, 끝내지 않는(되돌리는) 트랜잭션 안에서 읽는다(원본 그대로). 정해 둔 것 밖의 SQL 글자는 돌리지 않는다
 - **AC-005.4**: 원본 `ValidateScope`·`ValidateInstitutionNumbers`처럼 범위가 정확히 하나이고 모든 기관기호가 8자리 숫자이며 등록한 것과 같을 때만 통과(원본 시험 사례를 옮긴다)
-- **AC-005.5**: 처음 등록(`bit.register`): 비트 로그인 → PC 확인 창 [확인] → 병원 이름·기관기호·범위·설치 위치·서버·DB 이름을 `registration.dat`(DPAPI)에 저장하고 `{registered: true}`. [취소]·창 닫기면 저장하지 않는다. 확인 창 글은 도우미가 비트에서 읽은 값으로만 만든다
+- **AC-005.5**: 처음 등록(`bit.register`): 비트 로그인 → PC 확인 창 [확인] → 병원 이름·기관기호·범위·설치 위치·서버·DB 이름을 `registration.dat`(DPAPI)에 저장하고 `{registered: true}`. [취소]·창 닫기면 저장하지 않는다. 확인 창 글은 도우미가 비트에서 읽은 값으로만 만든다. 이미 등록돼 있어도(`E-BIT-HOSPITAL-MISMATCH` 뒤 등) 같은 길로 다시 등록할 수 있다: 확인 창에 전 등록 값과 새 값을 함께 보이고 [확인]이면 바꿔 쓴다. 기관기호가 같으면 전 등록의 프로필 ID를 그대로 둔다(AC-015.4)
 - **AC-005.6**: 등록된 도우미는 읽기·입력 명령 전에 원본 `VerifyCurrentInstitution`처럼 오늘 날짜로 기관기호·범위를 다시 확인한다. 등록이 없으면 `E-BIT-NOT-REGISTERED`, 다르면 `E-BIT-HOSPITAL-MISMATCH`로 그 명령을 하지 않는다
 - **AC-005.7**: `bit.check`: 단계별 결과 `steps`(비트 찾기·DB 읽기·등록 확인)를 `{name, ok, code?}`로, 등록됐으면 병원 이름과 기관기호도. 실패한 단계 뒤는 `ok: false`·`code: 'E-…'`
 
@@ -117,7 +117,7 @@ namespace Precheck.Core.Bit {
 namespace Precheck.Core.Registration {
   public sealed class Registration { HospitalName; InstitutionCode; Scope; InstallPath; Server; Database; ProfileId; }
   public static class RegistrationFile { byte[] Write(Registration r, IProtector p); Registration? Read(byte[] data, IProtector p); }
-  public static class RegisterPrompt { public static string Build(Registration r); } // "이 병원으로 등록할까요? ○○의원 · 기관기호 1234****"
+  public static class RegisterPrompt { public static string Build(Registration r, Registration? previous = null); } // "이 병원으로 등록할까요? ○○의원 · 기관기호 1234****"
 }
 namespace Precheck.Core.Store { public interface IProtector { byte[] Protect(byte[] plain); byte[] Unprotect(byte[] cipher); } }
 ```
@@ -135,6 +135,7 @@ namespace Precheck.Core.Store { public interface IProtector { byte[] Protect(byt
 ### 4. 명령 (`Precheck.Helper/Commands/`)
 - `bit.check`: 단계 `find`(비트 찾기) → `db`(DB 읽기) → `registration`(등록 확인) 순서. 실패한 단계 뒤는 모두 `ok: false`와 그 번호. 등록됐으면 `hospitalName`·`institutionCode`(웹 화면이 뒤 4자리를 가린다)
 - `bit.register`: 비트 로그인 → `ValidateScope` → `VerifyInstitutionNumber`(8자리) → `RegisterPrompt.Build`로 만든 글로 `ConfirmWindow` → [확인]일 때만 `registration.dat` 저장 → `{registered: true}`. [취소]·닫기·시간 지남 → `{registered: false}`, 저장 안 함
+- 다시 등록(AC-005.5): 이미 등록돼 있으면 확인 창에 전 등록 값과 새 값을 함께 보인다(`RegisterPrompt.Build(r, previous)`, 기관기호는 둘 다 가림). [확인]이면 바꿔 쓰고, 기관기호가 같으면 전 `ProfileId`를 그대로 둔다(작업 저장을 이어 읽게). 다르면 새 `ProfileId`
 - 등록 확인 관문: 뒤 TASK의 모든 읽기·입력 명령이 처음에 부를 함수 하나(예: `Commands/RequireHospital.cs`)를 지금 만든다(AC-005.6)
 - 저장 폴더는 `%LOCALAPPDATA%\Seoseungkwan\PrecheckHelper\data\`
 

@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-006에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-006.1**: `/claim/setup`에서 통로 상태가 `no-extension`·`no-helper`·`update-helper`·`update-extension`·`busy`이면 목업 승인본의 상태별 안내: 확장 설치 링크, 도우미 zip 받는 곳과 설치 순서(경고 창 넘기는 법 포함), "도우미를 업데이트하세요", "확장을 업데이트하세요", "다른 창에서 작업 중"
-- **AC-006.2**: 상태 `ready`에서 [연결 확인] → `bit.check` → 단계마다 ✓/✗와 오류 번호. 등록이 없으면 [처음 등록] → `bit.register` → 다시 확인. 누른 동안 단추를 막는다
+- **AC-006.2**: 상태 `ready`에서 [연결 확인] → `bit.check` → 단계마다 ✓/✗와 오류 번호. 등록이 없으면 [처음 등록], `E-BIT-HOSPITAL-MISMATCH`면 [다시 등록] → `bit.register`(PC 확인 창) → 다시 확인. 누른 동안 단추를 막는다
 - **AC-006.3**: `helperUpdateAvailable`이면 "새 도우미가 있어요" 한 줄과 받는 곳 링크, 나머지는 그대로 쓸 수 있다
 - **AC-006.4**: 탭 줄의 목업 승인본 위치에 [청구] 탭이 `/claim` 링크로 있다(`aria-current` 포함). 기관기호는 뒤 4자리를 가려 보인다
 - **AC-006.5**: 휴대폰이나 확장 없는 브라우저에서 `/claim/setup`을 열면 "비트 PC의 크롬에서 엽니다" 안내와 밖에서 보는 건수(`/claim`)로 가는 링크
@@ -103,15 +103,15 @@
 ### 3. 코드 (시그니처)
 ```ts
 // src/components/claim/useBridge.ts ('use client' 훅, 환자 자료 구역 밖)
-export function useBridge(opts?: { sink?: ChunkSink }): {
+export function useBridge(opts?: { worker?: WorkerLike }): {
   state: BridgeState; hello: HelloResult | null; helperUpdateAvailable: boolean
-  call: Bridge['call']; stream: Bridge['stream']; send: Bridge['send']; retry(): void
-}
+  call: ScreenBridge['call']; stream: ScreenBridge['stream']; onProgress: ScreenBridge['onProgress']; retry(): void
+}   // send 없음: 보낼 글자는 Worker가 통로 포트로 보낸다(AC-004.11)
 // src/components/claim/maskInstitution.ts
 export function maskInstitution(code: string): string   // '12345678' → '1234****'
 ```
-- `useBridge`는 `globalThis.chrome?.runtime`을 `connectBridge`에 넘기고, 화면을 떠나면 `close()`한다(창 하나 규칙 때문에 연결을 남기지 않는다). sink는 받는 쪽에서 넘긴다 — 이 step에는 Worker가 없으니 기본 sink는 받은 조각을 버린다(TASK-13이 Worker sink를 넣는다)
-- `src/components/claim/setup/SetupScreen.tsx`(+필요한 작은 컴포넌트): 상태별 안내, [연결 확인]·[처음 등록](누르는 동안 `disabled`), 단계별 ✓/✗(글자도 같이: '됨'/'안 됨')와 오류 번호
+- `useBridge`는 `globalThis.chrome?.runtime`과 받은 Worker 객체를 `connectScreenBridge`(`src/lib/bridge/workerSink.ts`)에 넘기고, 화면을 떠나면 `close()`한다(창 하나 규칙 때문에 연결을 남기지 않는다). 화면은 sink를 만들지 않고 조각을 받지 않는다(`client.ts` import는 ESLint가 막는다, AC-004.11). 이 step에는 Worker가 없으니 `worker` 없이 부른다(조각은 울타리 안에서 버려진다). TASK-13이 `precheck.worker.ts` Worker를 넘긴다
+- `src/components/claim/setup/SetupScreen.tsx`(+필요한 작은 컴포넌트): 상태별 안내, [연결 확인]·[처음 등록]·[다시 등록](`E-BIT-HOSPITAL-MISMATCH`일 때. 누르는 동안 `disabled`), 단계별 ✓/✗(글자도 같이: '됨'/'안 됨')와 오류 번호
 - 링크: 확장 설치 = 웹스토어 주소 상수(등록 전이면 설치 안내 글로 대신), 도우미 받는 곳 = `https://github.com/seoseungkwan/seoseungkwanapp/releases`(태그 `helper-v*`). 주소 상수는 한 곳에 둔다
 - `/claim/page.tsx`(이 step에서는 자리만): 통로가 `ready`가 아니고 PC 크롬(확장 있음)이면 `/claim/setup`으로 안내, 확장 없는 곳·휴대폰이면 '밖에서 보는 건수' 자리(빈 안내 한 줄)와 "비트 PC의 크롬에서 엽니다". 점검 화면은 TASK-13, 건수는 TASK-19
 
@@ -119,7 +119,7 @@ export function maskInstitution(code: string): string   // '12345678' → '1234*
 - 비트 접속 번호를 더한다: `E-BIT-NOT-FOUND`·`E-BIT-DB-FAILED`·`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`(연결 번호는 Step 3이 넣었다). 화면은 `errorInfo(code)`만 쓴다
 
 ### 5. 시험 (jsdom, `// @vitest-environment jsdom`)
-- 상태 5가지 안내(AC-006.1), [연결 확인] → `bit.check` 가짜 답 → ✓/✗·번호, 등록 없음 → [처음 등록] → 다시 확인, 누르는 동안 막힘(AC-006.2), 새 도우미 한 줄(AC-006.3), 탭 [청구] 링크·`aria-current`·가린 기관기호(AC-006.4), 확장 없음 안내·`/claim` 링크(AC-006.5), 오류 문구가 `errors.ts`에서 옴·원래 오류 글이 안 보임(AC-006.6)
+- 상태 5가지 안내(AC-006.1), [연결 확인] → `bit.check` 가짜 답 → ✓/✗·번호, 등록 없음 → [처음 등록] → 다시 확인, `E-BIT-HOSPITAL-MISMATCH` → [다시 등록] → `bit.register` → 다시 확인, 누르는 동안 막힘(AC-006.2), 새 도우미 한 줄(AC-006.3), 탭 [청구] 링크·`aria-current`·가린 기관기호(AC-006.4), 확장 없음 안내·`/claim` 링크(AC-006.5), 오류 문구가 `errors.ts`에서 옴·원래 오류 글이 안 보임(AC-006.6)
 
 ## TDD 순서
 
@@ -172,3 +172,4 @@ python3 ~/.claude/harness/bin/verify
 ## 참고
 
 - Phase 1 마지막 step이다. 메인 세션이 Phase 끝에 할 일(docs/precheck/plan.md §6): `verify` → 바뀐 화면 캡처(PC·휴대폰) → 쉬운 말 보고 → 의원 PC 시험 목록(설치 → 연결 확인 → 비트 읽기 → 기관기호 확인). Actions 확인이 남은 step(1·4)이 있으면 같이 확인한다
+- Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)

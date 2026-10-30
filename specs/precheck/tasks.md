@@ -3,6 +3,7 @@
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`(plan.md §6), `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 = `docs/precheck/plan.md` §6 Phase 1~7의 Step 순서다. 이 순서대로 한다.
 > 승인은 이 명세 하나로 한 번만 받는다(사용자: "단계마다 sdd 승인받는거 빼줘"). Phase가 끝날 때마다 `verify`·화면 캡처·쉬운 말 보고·의원 PC 시험 목록(plan.md §6).
+> Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장과 `commands.json`에는 운영 주소 하나만 있어, 새 화면이 운영에 배포돼야 의원 PC에서 시험할 수 있다. design.md 12절).
 > 화면 TASK(6·12·13·18·19·22·25·26·31·32)는 Phase 0 목업(승인본)이 있어야 시작한다(CLAUDE.md: 화면은 목업 승인 뒤).
 > 도우미 C# 시험 파일 이름은 `*.test.cs`다(하네스가 시험 파일로 알아보게). 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(design.md 11절).
 > 원본 경로는 `YANGJI_SRC`(저장소 밖, `seoseungkwan/shared@2a1069b`)로만 받는다. 원본 파일은 커밋하지 않는다.
@@ -14,7 +15,7 @@
 - Files: helper/Precheck.sln, helper/Directory.Build.props, helper/.editorconfig, helper/src/Precheck.Core/Precheck.Core.csproj, helper/src/Precheck.Core/Protocol/*, helper/src/Precheck.Helper/Precheck.Helper.csproj, helper/src/Precheck.Helper/Program.cs, helper/src/Precheck.Helper/DiagnosticLog.cs, helper/tests/Precheck.Core.Tests/Precheck.Core.Tests.csproj, helper/tests/Precheck.Core.Tests/Protocol/*, helper/tests/runDotnet.ts, src/lib/bridge/commands.json, vitest.config.ts, tsconfig.json, .gitignore
 - Tests: helper/tests/protocol.dotnet.test.ts
 - TDD: required
-- 먼저: 이 서버에 .NET 10 SDK를 `~/.dotnet`에 설치한다(dotnet-install.sh, 관리자 권한 없음). NuGet: `System.Text.Json`·`Microsoft.NETFramework.ReferenceAssemblies`·`xunit`·`xunit.runner.visualstudio`·`Microsoft.NET.Test.Sdk`를 정확한 버전으로 고정한다(design.md 14절). vitest `include`에 `helper/tests/*.test.ts`·`extension/**/*.test.ts`를 더하고, 루트 tsconfig `exclude`에 `extension`·`helper`를 더한다. `.gitignore`에 `helper/**/bin/`·`helper/**/obj/`
+- 먼저: 이 서버에 .NET 10 SDK를 `~/.dotnet`에 설치한다(dotnet-install.sh, 관리자 권한 없음). NuGet: `System.Text.Json`·`Microsoft.NETFramework.ReferenceAssemblies`·`xunit`·`xunit.runner.visualstudio`·`Microsoft.NET.Test.Sdk`를 정확한 버전으로 고정한다(design.md 14절). vitest `include`에 `helper/tests/*.test.ts`·`extension/**/*.test.ts`를 더하고, 루트 tsconfig `exclude`에 `extension`·`helper`를 더한다. `.gitignore`에 `helper/**/bin/`·`helper/**/obj/`·`*.pem`(확장 개인키가 실수로 들어가지 않게)
 
 ## TASK-2: 도우미 윈도우 빌드 · 설치 파일
 - Step: Phase 1 · Step 1 · `helper-build`
@@ -27,7 +28,7 @@
 
 ## TASK-3: 크롬 확장
 - Step: Phase 1 · Step 2 · `extension`
-- AC: AC-003.1~AC-003.8
+- AC: AC-003.1~AC-003.9
 - REQ: REQ-003
 - Files: extension/manifest.json, extension/tsconfig.json, extension/src/background.ts, extension/src/relay.ts, extension/src/chromeLike.ts, extension/src/*.test.ts, package.json, package-lock.json, vitest.config.ts, tsconfig.json, eslint.config.mjs, src/guardrails.test.ts, .gitignore, .github/workflows/helper.yml
 - Tests: extension/src/manifest.test.ts, extension/src/relay.test.ts, extension/src/background.test.ts, src/guardrails.test.ts
@@ -36,10 +37,10 @@
 
 ## TASK-4: 웹 통로 코드 · 울타리
 - Step: Phase 1 · Step 3 · `bridge-client`
-- AC: AC-004.1~AC-004.8
+- AC: AC-004.1~AC-004.11
 - REQ: REQ-004
-- Files: src/lib/bridge/protocol.ts, src/lib/bridge/versions.ts, src/lib/bridge/extensionId.ts, src/lib/bridge/handshake.ts, src/lib/bridge/client.ts, src/lib/bridge/*.test.ts, src/types/bridge.ts, eslint.config.mjs, src/guardrails.test.ts, src/lib/csp.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
-- Tests: src/lib/bridge/protocol.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, src/guardrails.test.ts, src/lib/csp.test.ts, src/lib/errors.test.ts
+- Files: src/lib/bridge/protocol.ts, src/lib/bridge/versions.ts, src/lib/bridge/extensionId.ts, src/lib/bridge/handshake.ts, src/lib/bridge/client.ts, src/lib/bridge/workerSink.ts, src/lib/bridge/*.test.ts, src/types/bridge.ts, eslint.config.mjs, src/guardrails.test.ts, src/lib/csp.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: src/lib/bridge/protocol.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, src/lib/bridge/workerSink.test.ts, src/guardrails.test.ts, src/lib/csp.test.ts, src/lib/errors.test.ts
 - TDD: required
 
 ## TASK-5: 비트 찾기 · 읽기 전용 접속 · 기관기호
@@ -145,12 +146,13 @@
 
 ## TASK-17: 비트 자동 입력 (FlaUI · PC 확인 창)
 - Step: Phase 3 · Step 3 · `bit-input`
-- AC: AC-017.1~AC-017.8
+- AC: AC-017.1~AC-017.10
 - REQ: REQ-017
-- Files: helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Store/*, helper/src/Precheck.Windows/Precheck.Windows.csproj, helper/src/Precheck.Windows/NativeTarget.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/src/Precheck.Windows/ConfirmWindow.cs, helper/src/Precheck.Windows/ProgressWindow.cs, helper/src/Precheck.Helper/Commands/*, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Windows.Tests/Input/*
+- Files: helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Store/*, helper/src/Precheck.Windows/Precheck.Windows.csproj, helper/src/Precheck.Windows/NativeTarget.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/src/Precheck.Windows/ConfirmWindow.cs, helper/src/Precheck.Windows/ProgressWindow.cs, helper/src/Precheck.Helper/Commands/*, helper/src/Precheck.Helper/Program.cs, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Windows.Tests/Input/*
 - Tests: helper/tests/input.dotnet.test.ts
 - TDD: required
-- NuGet `FlaUI.Core`·`FlaUI.UIA3` 4.0.0(정확한 버전). 의원 PC 시험: 시험용 환자 한 명 → 실제 하루치
+- NuGet `FlaUI.Core`·`FlaUI.UIA3` 4.0.0(정확한 버전). 의원 PC 시험: 시험용 환자 한 명 → 실제 하루치 → 입력 중 크롬 닫기(지금 사람까지 마치고 끝나는지)
+- `Program.cs`에는 표준 입력을 따로 읽는 스레드와 닫힘 신호만 더한다(AC-017.9). 이름 있는 뮤텍스는 `Core/Input`에 두고 `store.save` 처리기도 같이 쓴다(AC-017.10)
 
 ## TASK-18: 메모 화면 · 입력 결과 · 병원 문구 칸
 - Step: Phase 3 · Step 4 · `memo-screen`

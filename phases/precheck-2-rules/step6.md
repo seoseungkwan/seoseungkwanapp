@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-013에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-013.1**: 도우미 `claim.dates`와 서버 `claim_day_counts`로 `buildDateList`: 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터. 날마다 진료 수·남은 수·마지막으로 바뀐 시각
-- **AC-013.2**: 시작·끝 날을 고르면 달을 넘겨도 되고 400일 이하만. [자료 불러오기] → `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검. 누른 동안 단추를 막고 진행 상태를 보인다
+- **AC-013.2**: 시작·끝 날을 고르면 달을 넘겨도 되고 35일 이하만(AC-008.1). [자료 불러오기] → `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검. 누른 동안 단추를 막고 진행 상태를 보인다
 - **AC-013.3**: 점검 결과: 환자(진료)마다 등급 칩(확인 필요·알림·참고)과 규칙 제목·내용·고시 근거, 추천 상병, 상병 확인 경고가 목업 승인본처럼. 등급·규칙으로 거를 수 있고, 등급은 색만이 아니라 글자로도 구분
 - **AC-013.4**: [엑셀 내려받기] → Worker가 원본과 같은 두 시트(규칙별 `[규칙, 제목, 분야, 등급, 건수, 근거]`, 내원별 `[진료일, 차트번호, 이름, 등급, 규칙, 제목, 내용, 세부]`)의 xlsx를 만들어 그 PC에 내려받는다. 서버로 보내지 않는다
 - **AC-013.5**: `E-CLAIM-PARTIAL`·`E-RULES-LOAD-FAILED`·읽기 오류면 점검 결과를 보이지 않고 오류 카드("다시 불러오세요")와 [다시 불러오기]
@@ -129,9 +129,9 @@ export async function readDayCounts(sb: SupabaseClient, from: string, to: string
 - `claimCounts.ts` 쓰기는 TASK-19가 만든다
 
 ### 3. 불러오기·점검 흐름 (`src/components/claim/*`, Worker)
-- `useBridge({ sink })`: sink는 `precheck.worker.ts`로 `chunk`·`end`·`abort`를 그대로 `postMessage`한다
-- [자료 불러오기]: 기간 검사(달 넘김 허용, 400일 이하) → `stream('claim.month')`·`stream('claim.memos')`·`stream('store.load')` → 모두 끝나면 Worker `check`. 누르는 동안 `disabled`와 진행 상태(목업 화면 2 '불러오는 중')
-- 설정: 점검 직전에 `readRuleSettings`·`readHospitalSettings`로 읽어 Worker에 넘기고, 읽었으면 `send('store.save', {settings})`로 사본을 저장. 서버 읽기 실패면 `store.load {settings: true}` 사본으로 점검하고 안내 한 줄, 사본도 없으면 `E-SETTINGS-FAILED`(AC-013.9)
+- `useBridge({ worker })`: 화면은 `precheck.worker.ts` Worker 객체만 넘긴다. 조각은 통로 울타리 안 `workerSink`가 전용 포트로 Worker에 넣고, 화면 코드는 조각을 받지 않는다(AC-004.11)
+- [자료 불러오기]: 기간 검사(달 넘김 허용, 35일 이하) → `stream('claim.month')`·`stream('claim.memos')`·`stream('store.load')` → 모두 끝나면 Worker `check`. 누르는 동안 `disabled`와 진행 상태(목업 화면 2 '불러오는 중')
+- 설정: 점검 직전에 `readRuleSettings`·`readHospitalSettings`로 읽어 Worker에 넘기고, 읽었으면 Worker에 `saveSettingsCopy`를 시켜 Worker가 `store.save {settings}` 글자를 통로 포트로 보내게 한다(화면에는 `send`가 없다, AC-004.11). 서버 읽기 실패면 `store.load {settings: true}` 사본으로 점검하고 안내 한 줄, 사본도 없으면 `E-SETTINGS-FAILED`(AC-013.9)
 - **순서 문제(Phase 2 시점)**: `claim.memos`(TASK-16)·`store.load/save`(TASK-15)의 도우미 처리기는 Phase 3에 생긴다. 지금 도우미는 이 명령에 `E-HELPER-UNKNOWN-COMMAND`로 답한다(명령 표에는 있음). 이 번호일 때만 메모 비교는 '조회 못함'(AC-016.2), 저장한 작업·설정 사본은 '없음'으로 보고 점검은 계속하며, 안내 한 줄("도우미 업데이트 뒤 메모 비교·이어서 하기가 됩니다")을 보인다. 다른 오류는 AC-013.5대로 멈춘다. Phase 2에는 비트 입력이 없어 두 번 입력 위험이 없다. 이 처리를 summary에 적는다
 - 결과(목업 화면 3): 진료마다 등급 칩(글자 포함)·규칙 제목·내용·고시 근거·추천 상병·상병 경고. 등급·규칙 거르기. 환자 줄은 `components/claim/rows/FindingRows.tsx`가 props로만 그린다
 - 오류(AC-013.5): `E-CLAIM-PARTIAL`·`E-RULES-LOAD-FAILED`·읽기 오류면 결과를 지우고 오류 카드 + [다시 불러오기](목업 화면 2 '자료 일부만 옴')
@@ -202,4 +202,5 @@ python3 ~/.claude/harness/bin/verify
 ## 참고
 
 - Phase 2 마지막 step이다. 메인 세션이 Phase 끝에 할 일: `verify` → 화면 캡처(PC·휴대폰) → 쉬운 말 보고 → 의원 PC 시험 목록(실제 한 달 자료로 점검하고 같은 달을 양지바른 결과와 나란히 비교). 사용자 할 일: 설정 마이그레이션(`20261030000000_precheck_settings.sql`)을 SQL 편집기에 붙여 넣기(Step 5)
+- Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)
 - 이 Phase에는 메모 비교·이어서 하기가 아직 없다(도우미 처리기는 Phase 3). 의원 PC 시험 목록에 그렇게 적는다

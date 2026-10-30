@@ -90,7 +90,7 @@
 - `ReportText.tsx`: 보고 글, '확인 필요' 줄 표시, `CopyButton`(AC-031.3)
 
 ### 3. 자료 고르기 (AC-031.2)
-- 비트 PC(`useBridge` 상태 `ready`): [도우미에서 불러오기] → `stream('stats.rows', {from, to})`(비교 기간까지 합친 범위, 800일 이하) → `precheck.worker.ts` `stats`
+- 비트 PC(`useBridge({ worker })` 상태 `ready`, 화면은 Worker만 넘긴다): [도우미에서 불러오기] → `stream('stats.rows', {from, to})`(비교 기간까지 합친 범위, 800일 이하) → `precheck.worker.ts` `stats`
 - 파일: 끌어다 놓기 → 지금 `analyze` Worker 길 그대로(추세는 건수만)
 - 휴대폰·확장 없는 곳: 파일 길만 보인다
 - 계산은 모두 Worker 안. 화면에는 보기 모양(숫자·칸 키)만 온다. 차트번호는 오지 않는다
@@ -152,3 +152,4 @@ python3 ~/.claude/harness/bin/verify
 ## 참고
 
 - Phase 6 마지막 step이다. 메인 세션이 Phase 끝에 할 일: `verify` → 화면 캡처(PC·휴대폰) → 쉬운 말 보고 → 의원 PC 시험 목록(지난달 숫자를 양지바른·비트 통계와 비교). 새 도우미 zip(`stats.rows` 포함) 설치 안내
+- Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)

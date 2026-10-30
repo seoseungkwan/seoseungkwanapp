@@ -1,6 +1,6 @@
 # Step 3: bridge-client
 
-> **TASK-4** 웹 통로 코드 · 울타리 · **REQ-004** · AC-004.1 ~ AC-004.8
+> **TASK-4** 웹 통로 코드 · 울타리 · **REQ-004** · AC-004.1 ~ AC-004.11
 > Phase 1 `precheck-1-helper` · Step 3 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -16,6 +16,9 @@
 - **AC-004.6**: 숫자·상태 명령의 `result`는 명령마다 정해 둔 모양(숫자·날짜·정해 둔 상태 글자)인지 검사해 돌려준다. 다르면 `E-BRIDGE-BAD-REPLY`. 환자 자료 명령에 `result`가 오거나 숫자 명령에 `chunk`가 와도 같은 오류
 - **AC-004.7**: 연결이 끊기면 기다리던 요청은 `E-BRIDGE-DISCONNECTED`로 끝나고, 환자 자료 요청은 `sink.abort(id, code)`로 모으던 조각을 버리게 한다
 - **AC-004.8**: `buildCsp` 운영·개발 값이 이 기능 전과 글자까지 같다(`chrome-extension:`·확장 ID 없음)
+- **AC-004.9**: `send(cmd, payload)`(`store.save`·`bit.input`, Worker가 만든 JSON 글자)는 `payload`를 풀거나 고치지 않고 봉투 `{v: 1, id, cmd, args: {payload}}`에 글자 그대로 넣어 넘긴다. 다른 명령이거나 `payload`가 글자가 아니면 보내지 않고 `E-BRIDGE-REJECTED`. 답은 `store.save`면 `result {saved: true}`인지 검사, `bit.input`이면 결과 조각을 sink로 넘기고 `{id, count}`
+- **AC-004.10**: `bit.input` 요청의 `progress`는 칸이 `{v, id, type, done, total}`뿐이고 `0 ≤ done ≤ total ≤ 500` 정수일 때만 `onProgress({id, done, total})`. 다르거나 `bit.input`이 아닌 요청에 오면 `E-BRIDGE-BAD-REPLY`로 그 요청을 끝내고 `sink.abort(id, code)`
+- **AC-004.11**: 화면이 쓰는 입구 `connectScreenBridge({runtime, worker})`(`src/lib/bridge/workerSink.ts`): 조각·`end`·`abort`와 Worker가 보낼 글자는 `workerSink`가 만든 전용 `MessageChannel` 포트로만 Worker와 오간다. 화면이 받는 것(약속 값·`onState`·`onProgress`)은 상태·숫자·상태 명령의 검사한 답·진행 숫자·`{id, count}`·오류 번호뿐이고 `ScreenBridge`에는 `send`가 없다. `client.ts`는 `src/lib/bridge/**` 밖에서 import할 수 없다(ESLint, guardrails). 시험: 가짜 조각·보낼 글자 속 '가상환자01'이 화면 쪽 어디에도 없다
 
 ## 읽어야 할 파일
 
@@ -26,7 +29,7 @@
 - `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-004
-- `/specs/precheck/design.md` — 4절(메시지 약속, 4-4 버전, 4-5 오류 번호), 5절(환자 자료 길과 울타리), 6-1절(`client.ts` 시그니처), 15절(환자 자료 답은 늘 조각)
+- `/specs/precheck/design.md` — 4절(메시지 약속, 4-4 버전, 4-5 오류 번호), 5절(환자 자료 길과 울타리), 6-1절(`client.ts`·`workerSink.ts` 시그니처, Worker 포트 메시지), 6-2절(Worker가 받는 일), 15절(환자 자료 답은 늘 조각)
 - `/specs/precheck/tasks.md` — TASK-4 (수정 범위·메모)
 - `/eslint.config.mjs`, `/src/guardrails.test.ts`, `/src/lib/csp.ts`, `/src/lib/csp.test.ts`
 - `/src/lib/errors.ts`, `/src/types/errors.ts`, `/src/lib/errors.test.ts`
@@ -47,6 +50,7 @@
   - `src/lib/bridge/extensionId.ts`
   - `src/lib/bridge/handshake.ts`
   - `src/lib/bridge/client.ts`
+  - `src/lib/bridge/workerSink.ts`
   - `src/lib/bridge/*.test.ts`
   - `src/types/bridge.ts`
   - `eslint.config.mjs`
@@ -59,6 +63,7 @@
   - `src/lib/bridge/protocol.test.ts`
   - `src/lib/bridge/handshake.test.ts`
   - `src/lib/bridge/client.test.ts`
+  - `src/lib/bridge/workerSink.test.ts`
   - `src/guardrails.test.ts`
   - `src/lib/csp.test.ts`
   - `src/lib/errors.test.ts`
@@ -78,7 +83,8 @@
 - `src/lib/bridge/**`에만 더하는 규칙:
   - `window.postMessage`·`BroadcastChannel`·`parent`·`top`·`opener` 금지(`no-restricted-globals`·`no-restricted-properties`)
   - `chrome.runtime.connect(...)`·`chrome.runtime.sendMessage(...)`는 첫 인자가 식별자 `EXTENSION_ID`일 때만(`no-restricted-syntax`, 예: `CallExpression[callee.property.name=/^(connect|sendMessage)$/]:not([arguments.0.name='EXTENSION_ID'])`). 주입받은 `runtime.connect`도 같은 규칙에 걸리게 선택자를 짠다
-- `src/guardrails.test.ts`: 새 규칙마다 '막힌다' 시험, `lib/precheck`도 기존 규칙이 걸린다는 시험(AC-004.1·004.2). `EXTENSION_ID`로 부르는 것은 '막히지 않는다' 시험도 하나
+- `src/lib/bridge/client.ts`는 `src/lib/bridge/**` 밖에서 import 금지(`no-restricted-imports`, `@/lib/bridge/client`와 상대 경로 모두). 화면은 `workerSink.ts`만 쓴다(AC-004.11). `worker.postMessage`·`MessagePort.postMessage`·`MessageChannel`은 막지 않는다(막는 것은 `window.postMessage`와 전역 `postMessage`)
+- `src/guardrails.test.ts`: 새 규칙마다 '막힌다' 시험, `lib/precheck`도 기존 규칙이 걸린다는 시험(AC-004.1·004.2). `EXTENSION_ID`로 부르는 것은 '막히지 않는다' 시험도 하나. `components/claim`에서 `client.ts` import는 막히고 `workerSink.ts` import는 된다(AC-004.11)
 
 ### 2. 모양·상수
 - `src/types/bridge.ts`: `Request`·`Reply`(design.md 4-2), `BridgeState`, `ChunkSink`, `HelloResult`, 명령별 `ArgsOf`·`ResultOf`
@@ -95,9 +101,23 @@ export function connectBridge(deps: { runtime: ChromeRuntimeLike | undefined; si
 - `hello()`: `hello`를 보내 확장·도우미 버전을 받아 `checkVersions` → 상태 `ready`·`update-helper`·`update-extension`. `E-HELPER-MISSING`이면 `no-helper`, `E-BRIDGE-BUSY`면 `busy`
 - `call(cmd, args)`: `patient: false` 명령만. `result.data`를 명령마다 정한 검사기(숫자 범위·`YYYY-MM-DD`·정해 둔 상태 글자·`E-` 번호)로 확인. 틀리면 `E-BRIDGE-BAD-REPLY`
 - `stream(cmd, args)`: `patient: true` 명령만. 들어오는 `chunk`는 `sink.chunk(id, seq, data)`로, `end`는 `sink.end(id, count, bytes, sha256)`로 바로 넘기고, 약속은 `{ id, count }`로 끝난다. `error`면 `sink.abort(id, code)` 뒤 거절. 조각 글자를 풀거나 들여다보지 않는다
-- `send(cmd, payload)`: `store.save`·`bit.input`처럼 Worker가 만든 JSON 글자를 보내는 명령. `bit.input`은 `progress`(숫자만)를 `onProgress`로 알리고 결과 조각은 sink로
+- `send(cmd, payload)`: `store.save`·`bit.input`만. 봉투 `{v: 1, id, cmd, args: {payload}}`에 Worker가 만든 JSON 글자를 그대로 넣는다(풀지 않음. 글자가 아니거나 다른 명령이면 `E-BRIDGE-REJECTED`). `store.save`는 `result {saved: true}`인지 검사한다. `bit.input`은 `progress`를 검사해(`{v, id, type, done, total}`만, `0 ≤ done ≤ total ≤ 500` 정수) `onProgress`로 알리고 결과 조각은 sink로, 약속은 `{id, count}`(AC-004.9·004.10)
+- `onProgress(fn)`: `Bridge` 타입에 더한다(design.md 6-1). 숫자만 넘긴다
 - 끊김: 기다리던 요청 모두 `E-BRIDGE-DISCONNECTED`, 환자 자료 요청은 `sink.abort(id, 'E-BRIDGE-DISCONNECTED')`
 - 시험은 가짜 `runtime`(Port 흉내)으로 한다
+
+### 3-1. `workerSink.ts` (design.md 6-1, AC-004.11)
+```ts
+export type WorkerLike = { postMessage(message: unknown, transfer: Transferable[]): void }
+export type ScreenBridge = Omit<Bridge, 'send'>
+export function connectScreenBridge(deps: { runtime: ChromeRuntimeLike | undefined; worker?: WorkerLike; newId?: () => string }): ScreenBridge
+```
+- `MessageChannel`을 만들어 `port2`를 Worker에 한 번 넘긴다: `worker.postMessage({type: 'bridge-port'}, [port2])`
+- 안에서 `connectBridge({runtime, sink})`를 부르고, sink는 `port1`로 `{type: 'chunk', id, seq, data}`·`{type: 'end', id, count, bytes, sha256}`·`{type: 'abort', id, code}`를 보낸다
+- `port1`로 Worker가 보낸 `{type: 'send', ticket, cmd, payload}`를 받으면 `send(cmd, payload)` → `port1`로 `{type: 'sent', ticket, ok: true, id?, count?}` 또는 `{type: 'sent', ticket, ok: false, code}`. `cmd`가 `store.save`·`bit.input`이 아니면 보내지 않고 `E-BRIDGE-REJECTED`
+- 돌려주는 `ScreenBridge`에는 `send`가 없다. 화면 쪽 콜백·약속 값에는 상태·숫자·상태 명령의 검사한 답(AC-004.6)·진행 숫자·`{id, count}`·오류 번호만 간다
+- `worker`가 없으면(설치 화면) sink는 받은 조각을 울타리 안에서 버린다
+- `workerSink.test.ts`: 가짜 Worker(받은 포트를 시험이 쥔다)로 조각·`end`·`abort`가 포트로만 가는지, `send` 요청의 `payload`가 봉투 `args.payload`에 글자 그대로 들어가는지, 화면 쪽 콜백·약속 값에 '가상환자01'이 없는지, `ScreenBridge`에 `send`가 없는지(타입 시험)
 
 ### 4. 오류 번호와 CSP
 - `src/types/errors.ts`·`src/lib/errors.ts`: 연결 오류 번호를 더한다 — `E-EXT-MISSING`·`E-HELPER-MISSING`·`E-HELPER-OLD`·`E-EXT-OLD`·`E-BRIDGE-BUSY`·`E-BRIDGE-DISCONNECTED`·`E-BRIDGE-REJECTED`·`E-BRIDGE-BAD-REPLY`·`E-HELPER-BAD-MESSAGE`·`E-HELPER-UNKNOWN-COMMAND`. 문구는 '무엇이·어떻게 고치나', 쉬운 말. 비트 접속 번호는 TASK-6이 더한다
@@ -113,7 +133,7 @@ export function connectBridge(deps: { runtime: ChromeRuntimeLike | undefined; si
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/bridge/protocol.test.ts src/lib/bridge/handshake.test.ts src/lib/bridge/client.test.ts
+npx vitest run src/lib/bridge/protocol.test.ts src/lib/bridge/handshake.test.ts src/lib/bridge/client.test.ts src/lib/bridge/workerSink.test.ts
 npx vitest run src/guardrails.test.ts src/lib/csp.test.ts src/lib/errors.test.ts
 python3 ~/.claude/harness/bin/tdd-run TASK-4 --expect green
 npm run lint && npm test && npm run build
@@ -121,7 +141,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-004.1 ~ AC-004.8이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-004.1 ~ AC-004.11이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -141,6 +161,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - 통로 코드에서 조각을 `JSON.parse`하거나 내용을 들여다보지 마라. 이유: 통로가 환자 자료를 풀 일이 아예 없게 하는 것이 설계다(AC-004.5, design.md 15절)
+- 화면에 조각이나 보낼 글자를 넘기는 콜백·반환 값을 만들지 마라. 이유: 화면 코드(`components/claim`)는 환자 자료 구역 울타리 밖이다(AC-004.11)
 - `EXTENSION_ID`를 두 군데 이상에 적거나 바깥에서 받게 하지 마라. 이유: 확장 ID는 `commands.json` → `extensionId.ts` 상수 하나다. 다른 값으로 말을 걸 길을 남기지 않는다(AC-004.1)
 - `src/lib/csp.ts`와 CSP 값을 바꾸지 마라. 이유: 네이티브 메시징은 `connect-src`와 상관없다. CSP는 이 기능 전과 글자까지 같아야 한다(AC-004.8, ADR-017)
 - 울타리 시험을 '경고'로 낮추거나 `eslint-disable` 주석으로 피하지 마라. 이유: 울타리가 환자 개인정보를 지키는 장치다(CLAUDE.md CRITICAL)

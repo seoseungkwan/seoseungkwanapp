@@ -30,7 +30,7 @@
 - 이전 step에서 만든 파일:
   - `helper/src/Precheck.Core/Store/IProtector.cs`, `helper/src/Precheck.Windows/DpapiProtector.cs`, `helper/src/Precheck.Core/Registration/*`(`ProfileId`, 등록 파일 틀) (Phase 1 Step 4)
   - `helper/src/Precheck.Core/Protocol/*`(Chunker·Dispatcher), `helper/src/Precheck.Helper/Commands/*`(등록 확인 관문) (Phase 1)
-  - `src/lib/bridge/commands.json` (`store.load`·`store.save` args)
+  - `src/lib/bridge/commands.json` (`store.load`·`store.save` args. `store.save`는 `{payload}` 안쪽 모양)
   - `src/components/claim/*` (Phase 2 Step 6: 웹이 `store.load`·`store.save {settings}`를 어떻게 부르는지)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
@@ -89,7 +89,7 @@ public sealed class WorkStore {
 - 입력 기록(`journal`, TASK-17이 쓴다)도 같은 달 파일 안에 둔다(design.md 9-4)
 
 ### 2. 명령 (`Precheck.Helper/Commands/*`)
-- `store.save`: 등록 확인 → args 안쪽 모양 검사(`month` 모양, `drafts`·`done`·`journal`·`contact`·`settings`는 object) → 저장 → `Prune` → `result {saved: true}`
+- `store.save`: 등록 확인 → args 안쪽 모양 검사(`month` 모양, `drafts`·`done`·`journal`·`contact`·`settings`는 object) → 저장 → `Prune` → `result {saved: true}`. 웹이 보내는 `args`는 `{payload: 글자}`이고, 명령 표 검사(TASK-1)가 `payload`를 풀어 처리기에는 안쪽 값을 넘긴다(AC-001.2)
 - `store.load`: 등록 확인 → `Load` → `Chunker.Split`(환자 자료 명령이라 늘 조각). 파일이 없으면 빈 내용
 - 저장 폴더: `%LOCALAPPDATA%\Seoseungkwan\PrecheckHelper\data\`(설치·업데이트가 지우지 않는 곳)
 

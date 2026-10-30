@@ -8,8 +8,8 @@
 
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-001에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-001.1**: 앞 4바이트(리틀 엔디언) 길이 + UTF-8 JSON을 표준 입력에서 읽어 봉투 `{v, id, cmd, args}`로 푼다. 길이 0·64MiB 넘음·JSON이나 봉투 모양이 틀리면 `E-HELPER-BAD-MESSAGE`로 답하고 다음 메시지를 기다린다(끝나지 않는다). 표준 입력이 닫히면 끝난다
-- **AC-001.2**: 명령 표 `src/lib/bridge/commands.json`에 없는 `cmd`면 `E-HELPER-UNKNOWN-COMMAND`, `args`에 모르는 칸·틀린 종류·범위 밖 값이 있으면 `E-HELPER-BAD-MESSAGE`. 둘 다 아무 일도 하지 않는다. 도우미가 쓰는 명령 표는 그 JSON과 같다(시험이 비교)
+- **AC-001.1**: 앞 4바이트(리틀 엔디언) 길이 + UTF-8 JSON을 표준 입력에서 읽어 봉투 `{v, id, cmd, args}`로 푼다. 길이 0·JSON이나 봉투 모양이 틀리면 `E-HELPER-BAD-MESSAGE`로 답하고 다음 메시지를 기다린다(끝나지 않는다). 길이가 64MiB를 넘으면 본문을 읽지 않고 바로 끝난다(틀이 깨져 다음 메시지 자리를 찾을 수 없다). 표준 입력이 닫히면 끝난다(`bit.input` 중이면 AC-017.9, TASK-17)
+- **AC-001.2**: 명령 표 `src/lib/bridge/commands.json`에 없는 `cmd`면 `E-HELPER-UNKNOWN-COMMAND`, `args`에 모르는 칸·틀린 종류·범위 밖 값이 있으면 `E-HELPER-BAD-MESSAGE`. 둘 다 아무 일도 하지 않는다. 도우미가 쓰는 명령 표는 그 JSON과 같다(시험이 비교). 보내는 명령(`store.save`·`bit.input`)은 `args`가 `{payload: 글자}` 하나이고, 도우미가 `payload`를 JSON으로 풀어 표의 안쪽 모양으로 같은 검사를 한다(풀지 못하거나 틀리면 `E-HELPER-BAD-MESSAGE`)
 - **AC-001.3**: 크롬이 넘긴 호출 origin 인자가 `chrome-extension://<EXTENSION_ID>/`가 아니면 메시지를 하나도 처리하지 않고 끝난다
 - **AC-001.4**: `hello` → `result {helperVersion, protocol}`. `helperVersion`은 `Directory.Build.props`의 `Version`, `protocol`은 `commands.json`의 `protocol`(처음 1)
 - **AC-001.5**: 환자 자료 명령의 답은 크기와 상관없이 메시지마다 머리 포함 1,000,000바이트 이하가 되게 `chunk`(`seq` 0부터)로 나누고 마지막에 `end {count, bytes, sha256}`. 조각을 이으면 원래 글자와 바이트까지 같다(한글·이모지·따옴표가 경계에 와도)
@@ -84,7 +84,7 @@
 ### 1. 설정 파일 (RED 전에 고쳐도 되는 파일)
 - `vitest.config.ts`: `test.include`에 `'helper/tests/*.test.ts'`, `'extension/**/*.test.ts'`를 더한다(TASK-3이 쓸 자리도 지금 연다)
 - `tsconfig.json`: `exclude`에 `"extension"`, `"helper"`를 더한다(확장은 자기 tsconfig로, 도우미는 C#)
-- `.gitignore`: `helper/**/bin/`, `helper/**/obj/`
+- `.gitignore`: `helper/**/bin/`, `helper/**/obj/`, `*.pem`(아래 2절에서 만드는 확장 개인키가 실수로 들어가지 않게)
 
 ### 2. 명령 표 `src/lib/bridge/commands.json` (이 TASK에서만 고칠 수 있다)
 - 다른 TASK의 수정 범위에 이 파일이 없다. 그래서 **12개 명령 모두의 `args` 모양을 지금 정한다**. 확장(TASK-3)·도우미·웹 통로(TASK-4)가 같은 파일을 읽는다
@@ -98,21 +98,24 @@
   "extensionKey": "<manifest key로 쓸 공개키 base64>",
   "commands": {
     "hello": { "patient": false, "args": {} },
-    "claim.month": { "patient": true, "args": { "from": { "type": "date" }, "to": { "type": "date" } }, "maxDays": 400 }
+    "claim.month": { "patient": true, "args": { "from": { "type": "date" }, "to": { "type": "date" } }, "maxDays": 35 },
+    "bit.input": { "patient": true, "send": true, "confirm": true, "args": { "payload": { "type": "payload", "fields": { "items": { "type": "array", "min": 1, "max": 500, "items": { … } } } } } }
   }
 }
 ```
 - 명령 12개(design.md 4-3)와 `args`(칸 이름·종류·범위). 모르는 칸은 거절한다
   - `hello`·`bit.check`·`bit.register`: `{}` (`patient: false`)
   - `claim.dates`: `{from, to}` 날짜, 400일 이하 (`patient: false`, 숫자만 답)
-  - `claim.month`·`claim.memos`: `{from, to}` 날짜, 400일 이하, 달을 넘겨도 됨 (`patient: true`)
+  - `claim.month`: `{from, to}` 날짜, **35일 이하**, 달을 넘겨도 됨 (`patient: true`). 12개월 이력(`from - 365일` ~ `to`)이 원본 `RxHistory.MaximumDays` 400일 안에 들게 한다(AC-008.1)
+  - `claim.memos`: `{from, to}` 날짜, 400일 이하(원본 `ClaimMemoHistory.MaximumDays`), 달을 넘겨도 됨 (`patient: true`)
   - `store.load`: `{months?: "YYYY-MM"[] (1~24개), settings?: boolean, contact?: boolean}` (`patient: true`)
-  - `store.save`: `{month?: "YYYY-MM", drafts?: object, done?: object, journal?: object, contact?: object, settings?: object}` (`patient: true`, 보내는 쪽). 칸 안쪽 모양은 TASK-15가 검사한다
-  - `bit.input`: `{items: [{visitKey: string(1~64), chart: /^[0-9]{1,20}$/, name: string(1~100), date: 날짜, memo: string(1~32000)}] (1~500개)}` (`patient: true`, 확인 창)
+  - `store.save`: `{payload}` — 안쪽 모양 `{month?: "YYYY-MM", drafts?: object, done?: object, journal?: object, contact?: object, settings?: object}` (`patient: true`, `send: true`). object들의 자세한 안쪽 모양은 TASK-15가 검사한다
+  - `bit.input`: `{payload}` — 안쪽 모양 `{items: [{visitKey: string(1~64), chart: /^[0-9]{1,20}$/, name: string(1~100), date: 날짜, memo: string(1~32000)}] (1~500개)}` (`patient: true`, `send: true`, 확인 창)
+- 보내는 명령(`send: true`)의 `args`는 `{payload: 글자}` 하나다(design.md 4-2 `SendRequest`). 웹 통로는 Worker가 만든 JSON 글자를 풀지 않고 그대로 넣는다(TASK-4, AC-004.9). `CommandTable.Validate`가 `payload`를 JSON으로 풀어 안쪽 모양(`fields`)을 같은 칸 종류로 검사하고, 처리기에는 푼 안쪽 값을 `Request.Args`로 넘긴다(AC-001.2)
   - `sam.latest`: `{}` (원본 `latest_sam_files(root, institution_code)`도 달 인자가 없다) (`patient: true`)
   - `contact.targets`: `{kind: "followup" | "injection", from, to}` 날짜. 표의 최대 기간은 1,100일(정기 주사 36개월)이고, F/U 120일은 TASK-23 처리기가 한 번 더 막는다 (`patient: true`)
   - `stats.rows`: `{from, to}` 날짜, 800일 이하(추세 비교 기간까지 한 번에 읽게, Claude 판단) (`patient: true`)
-- 칸 종류는 작게 정한다: `date`(`YYYY-MM-DD`, 실제 있는 날), `month`(`YYYY-MM`), `int{min,max}`, `string{min,max,pattern}`, `bool`, `enum`, `array{items,min,max}`, `object{fields}`, `json`(안쪽은 처리기가 검사). 기간 명령은 `from ≤ to`와 `maxDays`를 검사한다
+- 칸 종류는 작게 정한다: `date`(`YYYY-MM-DD`, 실제 있는 날), `month`(`YYYY-MM`), `int{min,max}`, `string{min,max,pattern}`, `bool`, `enum`, `array{items,min,max}`, `object{fields}`, `json`(안쪽은 처리기가 검사), `payload`(JSON 글자. 풀어서 `fields`로 검사). 기간 명령은 `from ≤ to`와 `maxDays`(시작·끝 날을 함께 센 날 수)를 검사한다
 - `origin`은 운영 주소 `https://seoseungkwanapp.vercel.app` 하나다(2026-10-29 배포). 개발용 localhost는 넣지 않는다(AC-003.1: origin 하나)
 - `extensionId`·`extensionKey`: 개발용 키 쌍을 임시 폴더에서 만든다(`openssl genrsa 2048` → 공개키 DER → base64가 `extensionKey`, DER의 SHA-256 앞 32 hex 글자를 `0-9a-f` → `a-p`로 바꾼 것이 `extensionId`). **개인키는 저장소에 두지 말고 지운다**(크롬 웹스토어가 서명하므로 필요 없다). 공개키는 비밀이 아니다. TASK-3이 manifest `key`에 같은 값을 넣는다. 웹스토어 등록 뒤 대시보드의 공개키로 바꿀 때는 두 칸을 같은 커밋에서 같이 바꾼다
   - `extensionKey`는 design.md 4-3에 있는 칸이다. TASK-3이 이 파일을 고칠 수 없어서 TASK-1에서 미리 채운다
@@ -130,7 +133,7 @@ namespace Precheck.Core.Protocol {
   public static class Framing {
     public const int MaxIncoming = 64 * 1024 * 1024;   // 크롬 → 도우미
     public const int MaxOutgoing = 1_000_000;          // 도우미 → 크롬, 머리 4바이트 포함
-    public static byte[]? ReadMessage(Stream input);   // null = 표준 입력 닫힘. 길이 0·초과는 ProtocolException("E-HELPER-BAD-MESSAGE")
+    public static byte[]? ReadMessage(Stream input);   // null = 표준 입력 닫힘. 길이 0은 ProtocolException("E-HELPER-BAD-MESSAGE")(답하고 다음 메시지), 64MiB 초과는 FramingBrokenException(본문을 읽지 않음 → Program이 끝남)
     public static void WriteMessage(Stream output, byte[] utf8Json); // MaxOutgoing을 넘으면 던진다(쓰지 않는다)
   }
   public sealed class Request { public int V; public string Id; public string Cmd; public JsonElement Args; }
@@ -162,7 +165,7 @@ namespace Precheck.Core.Protocol {
 - `LogLine`: 명령 이름은 표에 있는 이름만 쓰고, 표에 없으면 `"unknown"`으로 쓴다(모르는 `cmd` 글자에 환자 글자가 섞여 올 수 있다). 요청 `id`·`args`는 쓰지 않는다
 
 ### 5. `Precheck.Helper` (net48 exe, 얇게)
-- `Program.Main(string[] args)`: `OriginGuard`가 아니면 바로 끝 → 표준 입력 고리(`Framing.ReadMessage` → `Dispatcher.Handle`) → 표준 입력이 닫히면 끝. 표준 출력은 `Framing.WriteMessage`만 쓴다(`Console.WriteLine` 금지)
+- `Program.Main(string[] args)`: `OriginGuard`가 아니면 바로 끝 → 표준 입력 고리(`Framing.ReadMessage` → `Dispatcher.Handle`) → 표준 입력이 닫히거나 `FramingBrokenException`(64MiB 넘는 길이)이면 끝. 표준 출력은 `Framing.WriteMessage`만 쓴다(`Console.WriteLine` 금지)
 - `DiagnosticLog`: `%LOCALAPPDATA%\Seoseungkwan\PrecheckHelper\logs\`에 `LogLine.Format` 한 줄씩. 예외 메시지를 그대로 쓰지 않는다
 - `hello` 처리기만 둔다(다른 명령은 뒤 TASK가 `Commands/`에 더한다)
 
@@ -175,7 +178,7 @@ export function runDotnet(filter: string, opts?: { timeoutMs?: number }): { code
 - 잠금 폴더(예: `os.tmpdir()/precheck-dotnet.lock`, `mkdir`으로 잡고 끝나면 지움)로 한 번에 하나만 돈다. vitest가 감싸개 파일을 나란히 돌려도 `dotnet build`가 부딪히지 않게
 
 ### 7. 시험 (먼저 쓴다)
-- `helper/tests/Precheck.Core.Tests/Protocol/*.test.cs`: 틀 읽기·쓰기(길이 0, 64MiB+1, 깨진 JSON, 봉투 칸 빠짐, 끝난 입력), 명령 표 검사(모르는 cmd, 모르는 칸, 틀린 종류, 400일 넘는 기간, 500개 넘는 묶음), 도우미 표 = `src/lib/bridge/commands.json`(파일을 읽어 비교), origin 거절, `hello` 버전, 나누기(한글·이모지·따옴표·역슬래시가 경계에 오는 글, 3MB 글, 빈 글 → 메시지마다 ≤1,000,000, 이으면 같음, `end` 값 맞음), 기록 줄에 가짜 환자 글자('가상환자01'·`900001`)가 없음
+- `helper/tests/Precheck.Core.Tests/Protocol/*.test.cs`: 틀 읽기·쓰기(길이 0 → 답하고 다음 메시지, 64MiB+1 → 본문을 읽지 않고 끝남, 깨진 JSON, 봉투 칸 빠짐, 끝난 입력), 명령 표 검사(모르는 cmd, 모르는 칸, 틀린 종류, 35일 넘는 `claim.month`·400일 넘는 `claim.dates` 기간, 500개 넘는 묶음, `payload`가 글자가 아님·풀리지 않음·안쪽 모양 틀림), 도우미 표 = `src/lib/bridge/commands.json`(파일을 읽어 비교), origin 거절, `hello` 버전, 나누기(한글·이모지·따옴표·역슬래시가 경계에 오는 글, 3MB 글, 빈 글 → 메시지마다 ≤1,000,000, 이으면 같음, `end` 값 맞음), 기록 줄에 가짜 환자 글자('가상환자01'·`900001`)가 없음
 - `helper/tests/protocol.dotnet.test.ts`: AC마다 `it('AC-001.x …', () => expect(runDotnet('Precheck.Core.Tests.Protocol').code).toBe(0))`처럼 AC ID를 이름에 넣는다
 
 ## TDD 순서
