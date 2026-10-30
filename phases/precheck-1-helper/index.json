@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "helper-skeleton",
-      "status": "pending"
+      "status": "completed",
+      "summary": "helper/ C# 뼈대(Precheck.sln·Core netstandard2.0·Helper net48·Core.Tests net10.0;net48, 버전은 Directory.Build.props 한 곳)와 Protocol(Framing·Envelope·CommandTable/FieldSpec·Chunker·OriginGuard·Dispatcher(환자 명령은 NoResultSink로 result 금지, store.save만 예외)·Hello·MessageLoop·LogLine). commands.json에 명령 12개 args 모양과 개발용 extensionId/extensionKey. 처리기는 HelperException(code)로 실패, 환자 답은 Chunker.Send. 감싸개는 runDotnet('<이름공간>'), .NET 10 SDK는 ~/.dotnet"
     },
     {
       "step": 1,

@@ -52,3 +52,10 @@ phases/**/step*-output.json
 # python
 __pycache__/
 .pytest_cache/
+
+# 도우미(C#) 빌드 산출물
+helper/**/bin/
+helper/**/obj/
+
+# 확장 개인키는 저장소에 두지 않는다(웹스토어가 서명한다. 공개키만 commands.json에)
+*.pem
