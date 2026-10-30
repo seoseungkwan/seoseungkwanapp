@@ -1,0 +1,41 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-2-rules",
+  "steps": [
+    {
+      "step": 0,
+      "name": "rule-data",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "bit-claim-read",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "claim-shape",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "rule-engine",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "dx-check",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "rule-settings",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "precheck-screen",
+      "status": "pending"
+    }
+  ]
+}

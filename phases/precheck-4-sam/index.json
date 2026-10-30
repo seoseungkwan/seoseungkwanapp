@@ -1,0 +1,21 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-4-sam",
+  "steps": [
+    {
+      "step": 0,
+      "name": "sam-read",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "sam-match",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "month-close-screen",
+      "status": "pending"
+    }
+  ]
+}

@@ -116,14 +116,14 @@
 
 ### REQ-013: 청구 화면 · 날짜 목록·점검 (Phase 2 · Step 6 · precheck-screen)
 - AC-013.1: Given 도우미 `claim.dates`와 서버 `claim_day_counts`, When `buildDateList`, Then 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터 놓는다. 날마다 진료 수·남은 수·마지막으로 바뀐 시각이 있다
-- AC-013.2: Given 날짜 목록, When 시작·끝 날을 고르면, Then 달을 넘겨도 되고 400일 이하만 된다. [자료 불러오기]를 누르면 `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검한다. 누른 동안 단추를 막고 진행 상태를 보인다
+- AC-013.2: Given 날짜 목록, When 시작·끝 날을 고르면, Then 달을 넘겨도 되고 400일 이하만 된다. [자료 불러오기]를 누르면 `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검한다. 누른 동안 단추를 막고 진행 상태를 보인다. Phase 3 전이라 도우미가 `claim.memos`·`store.load`에 `E-HELPER-UNKNOWN-COMMAND`로 답하면 메모 비교는 '조회 못함', 저장한 작업은 '없음'으로 보고 점검을 계속한다(다른 오류는 멈춤)
 - AC-013.3: Given 점검 결과, When 화면을 그리면, Then 환자(진료)마다 등급 칩(확인 필요·알림·참고)과 규칙 제목·내용·고시 근거, 추천 상병, 상병 확인 경고가 목업 승인본처럼 보인다. 등급·규칙으로 거를 수 있다. 등급은 색만이 아니라 글자로도 구분한다
 - AC-013.4: Given [엑셀 내려받기], When 누르면, Then Worker가 원본과 같은 두 시트(규칙별 `[규칙, 제목, 분야, 등급, 건수, 근거]`, 내원별 `[진료일, 차트번호, 이름, 등급, 규칙, 제목, 내용, 세부]`)의 xlsx를 만들고 그 PC에 내려받는다. 서버로 보내지 않는다
 - AC-013.5: Given `E-CLAIM-PARTIAL`·`E-RULES-LOAD-FAILED`·읽기 오류, When 생기면, Then 점검 결과를 보이지 않고 오류 카드("다시 불러오세요")와 [다시 불러오기]를 보인다
 - AC-013.6: Given 점검 뒤 설정이 바뀜(창 초점이 돌아올 때 다시 읽음), When `settingsChanged`가 `true`면, Then "설정이 바뀌었어요, 다시 점검하세요" 띠와 [다시 점검]을 보인다
 - AC-013.7: Given `src/components/claim/rows/**`, When ESLint를 돌리면, Then 네트워크·console·브라우저 저장소·supabase·storage·auth import가 막힌다(JSX는 된다). Given `src/components/claim/**`·`src/app/(app)/claim/**`, When 오류 보고 패키지(`@sentry/*`·`@vercel/analytics`·`@vercel/speed-insights`)를 import하면, Then 막힌다. `package.json`에 그런 패키지가 없다(guardrails 시험)
 - AC-013.8: Given 휴대폰이나 확장 없는 브라우저, When `/claim`을 열면, Then 점검 칸 대신 밖에서 보는 건수(REQ-019) 자리와, PC 크롬이면 설치·연결 확인으로 가는 링크를 보인다
-- AC-013.9: Given 서버 설정 읽기 실패, When 점검하려 하면, Then 도우미에 둔 마지막 설정 사본(REQ-015)으로 점검하고 "서버에 닿지 않아 마지막으로 받은 설정을 씁니다"를 보인다. 사본도 없으면 점검하지 않고 `E-SETTINGS-FAILED`. 설정을 읽으면 사본을 새로 저장한다
+- AC-013.9: Given 서버 설정 읽기 실패, When 점검하려 하면, Then 도우미에 둔 마지막 설정 사본(REQ-015)으로 점검하고 "서버에 닿지 않아 마지막으로 받은 설정을 씁니다"를 보인다. 사본도 없으면(도우미가 `store.*`에 `E-HELPER-UNKNOWN-COMMAND`로 답하는 Phase 3 전 포함) 점검하지 않고 `E-SETTINGS-FAILED`. 설정을 읽으면 사본을 새로 저장한다(Phase 3 전에는 건너뜀)
 
 ### REQ-014: 청구메모 문장 (Phase 3 · Step 0 · memo-text)
 - AC-014.1: Given 가짜 자료와 원본 기본 병원 문구(`TPL_DEF`·`FIXED_PHRASES_DEF`·`SITE_NAMES_DEF`), When `buildMemo(visit, region, phrases)`·`memoText`, Then 원본 `buildMemo`·`compose`·`fill`과 같은 문장이 나온다(골든 `memo-*.json`)

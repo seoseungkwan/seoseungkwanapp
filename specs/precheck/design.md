@@ -153,7 +153,7 @@ type Reply =
 | `sam.latest` | 최신 심평원 청구 파일(우리 기관만) | chunk … end | 예 | — |
 | `contact.targets` | F/U·정기 주사 대상 기록 | chunk … end | 예 | — |
 | `stats.rows` | 통계 자료(소모 47 표 줄·추세 사실·일 운영 숫자) | chunk … end | 예 | — |
-- `commands.json`에는 `protocol`·`extensionId`·`hostName`(`com.seoseungkwan.precheck`)·`origin`(우리 사이트)과 명령 표(이름·`patient`·`args` 모양)를 둔다. `extensionId.ts`는 이 값을 `EXTENSION_ID` 상수로 내보내고, 도우미는 같은 파일을 EmbeddedResource로 읽어 호출 origin을 검사한다
+- `commands.json`에는 `protocol`·`extensionId`·`hostName`(`com.seoseungkwan.precheck`)·`origin`(우리 사이트)·`extensionKey`(확장 manifest `key`에 넣는 공개키, 비밀 아님)와 명령 표(이름·`patient`·`args` 모양)를 둔다. `extensionId.ts`는 이 값을 `EXTENSION_ID` 상수로 내보내고, 도우미는 같은 파일을 EmbeddedResource로 읽어 호출 origin을 검사한다
 - 명령마다 `args`의 칸 이름·종류·범위를 정해 둔다(예: 날짜는 `YYYY-MM-DD`, 기간은 400일 이하). 모르는 칸이 있으면 거절한다. 확장·도우미·웹이 같은 표를 읽는다
 - '환자 자료' 명령의 답은 늘 chunk … end로 온다(작아도). 통로 코드는 이 답을 풀지 않는다
 
@@ -290,7 +290,7 @@ create table public.contact_counts (
 
 ### 8-3. 권한 (두 파일 같음)
 - `alter table … enable row level security` → `revoke all … from anon, authenticated` → 필요한 것만 `grant`
-- `authenticated`: `select` · `insert`(칸 단위, `hospital_id`·`updated_at`·`id` 제외) · `update`(칸 단위, 같은 제외) · `delete`(`message_templates`만)
+- `authenticated`: `select` · `insert`(칸 단위, `hospital_id`·`updated_at`·`id` 제외) · `update`(칸 단위, 같은 제외) · `delete`(`message_templates`와, [기본값으로]용 `claim_rule_settings`의 내 병원 줄만. AC-012.6)
 - 정책: `using (hospital_id = (select public.my_hospital_id()))`, `with check`도 같음. 승인 안 된 병원은 아무 줄도 못 본다
 - `my_hospital_id()`·`touch_updated_at()`: `security definer`·`search_path = ''`, `public`·`anon`에서 회수하고 `authenticated`만 실행
 - 시험: `supabase/precheck.rls.test.ts`(PGlite, `rls.test.ts`와 같은 흉내) — anon 거부, 남의 병원 줄 못 봄·못 씀, `hospital_id`를 직접 넣으면 거부, 건수 음수·글자 거부, 승인 안 된 병원 거부

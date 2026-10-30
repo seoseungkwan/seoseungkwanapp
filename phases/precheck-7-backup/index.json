@@ -1,0 +1,11 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-7-backup",
+  "steps": [
+    {
+      "step": 0,
+      "name": "backup-settings",
+      "status": "pending"
+    }
+  ]
+}

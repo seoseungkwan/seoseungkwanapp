@@ -1,0 +1,36 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-1-helper",
+  "steps": [
+    {
+      "step": 0,
+      "name": "helper-skeleton",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "helper-build",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "extension",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "bridge-client",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "bit-connect",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "setup-screen",
+      "status": "pending"
+    }
+  ]
+}
