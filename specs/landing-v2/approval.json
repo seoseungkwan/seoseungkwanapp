@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "landing-v2",
-  "approved_at": "2026-10-30T11:58:46Z",
+  "approved_at": "2026-10-30T13:41:23Z",
   "approved_via": "user-prompt",
   "session_id": "ac89f8bc-d5d6-4f41-8b90-82a3fc0e1fac",
-  "spec_sha256": "68cde21aba35f94cd462d8a5218a1cb0ce230164b9cf459cacec98661721bbda",
+  "spec_sha256": "cc0e3505d8342070f12de908542fc1e7d6790a8885338f7a8af66e9dedc185b4",
   "scope": [
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
