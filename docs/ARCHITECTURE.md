@@ -16,13 +16,14 @@ src/
 │   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
+│   └── common/LogoMark.tsx  # 로고 마크 한 곳(한 색 `currentColor`). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
 ├── types/               # 공용 타입
 └── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
 e2e/                     # E2E. Playwright 시험 `*.spec.ts` + Vitest `*.test.ts`(config.test.ts·lib/). `npm run e2e` (ADR-017)
 supabase/*.sql           # 시험 계정·처음 관리자 SQL(SQL 편집기에 붙여 넣음). 시험은 supabase/setup-sql.test.ts
-public/                  # fake-sample/. landing/ = 랜딩 그림 6장(승인본 복사)
+public/                  # fake-sample/
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳은 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
