@@ -29,7 +29,8 @@
     {
       "step": 4,
       "name": "bit-connect",
-      "status": "pending"
+      "status": "completed",
+      "summary": "helper/ Core에 Bit/(BitInstallRules·WinPath·NativeEnvironmentFile·PrivateServer·Sql 4개 원본 상수+매개변수 표·ReadOnlyGuard·HospitalCheck·IBitDb/IBitSession·BitCheck(steps find→db→registration)·BitCommands·BitServices)와 Registration/(HospitalRegistration·RegistrationFile 머리 PRECHECK-STORE-1+IProtector·RegistrationStore data\\registration.dat(.bak)·RegisterPrompt·RegisterFlow·HospitalGate), Precheck.Windows(net48: InstallationLocator·NativeEnvironmentGuard·ReadOnlyConnection/VendorRuntime(비트 DLL 리플렉션)·SqlBitDb(되돌리는 트랜잭션)·VendorLogin·DpapiProtector·ConfirmWindow+Sta, 기본 단추 [취소]), Commands/HelperServices·RequireHospital. 뒤 TASK 읽기 명령은 `using var h = RequireHospital.Open(services)` 다음 `ReadOnlyGuard.Query(h.Db, Sql.X, args, timeout)`로 읽고, 새 SQL은 Sql.cs 상수+매개변수 표+original-sql 사본으로 더한다. [남은 것: Helper.csproj에 Windows ProjectReference·PlatformTarget x86, 병원 이름은 사이트 이름으로(사용자 결정) — 후속 명세 변경; 의원 PC·Actions 확인]"
     },
     {
       "step": 5,
