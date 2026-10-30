@@ -3,8 +3,8 @@
 > 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
 > 모양 기준: `docs/mockups/landing-v2/index.html`. 값 표: requirements.md·design.md, 규칙: `docs/UI_GUIDE.md` 랜딩 절.
-> 모든 TASK에서 REQ-101(바뀌지 않는 동작)을 지킨다. 옛 동작 시험은 이름·내용을 고치지 않는다(design.md '옛 시험 다루기').
-> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11) → Phase 4(TASK-13 → TASK-14) → Phase 5(TASK-15 → TASK-16 → TASK-17 → TASK-18). Phase 4·5는 2026-10-30 화면 확인 뒤 사용자 결정으로 더했다. TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
+> 모든 TASK에서 REQ-101(바뀌지 않는 동작)을 지킨다. 옛 동작 시험은 이름·내용을 고치지 않는다(design.md '옛 시험 다루기'). 예외는 TASK-19의 문구 한 줄뿐이다(AC-101.3).
+> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11) → Phase 4(TASK-13 → TASK-14) → Phase 5(TASK-15 → TASK-16 → TASK-17 → TASK-18) → Phase 6(TASK-19). Phase 4·5·6은 2026-10-30 화면 확인 뒤 사용자 결정으로 더했다. TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
 > 각 Phase 끝에 `python3 ~/.claude/harness/bin/verify`(lint·build·test)를 돌리고 1440·390 화면을 찍어 보고한다. Phase 1·2 끝 사진은 중간 상태다. 안 고친 섹션은 깨져 보인다(design.md 위험).
 
 ## Phase 1 — 기초: 토큰·글꼴·로고·그림 빼기·공통 모양·위쪽 메뉴
@@ -225,3 +225,18 @@
   - AC-111.1·112.4 측정값이 그대로인지도 다시 본다.
   - 측정이 어긋나면 랜딩 CSS 안에서만 고치고 `verify`를 다시 돌린다. 시험 값을 바꿔야 하는 수정이면 고치지 말고 멈춰 보고한다.
   - 끝나면 서버·브라우저를 모두 멈추고 `ss -ltnp`로 확인한다.
+
+## Phase 6 — 문구 고침
+
+## TASK-19: 주사 카드 "F/U 기록" → "F/U"
+- REQ: REQ-114
+- Files: src/components/landing/OrthoSection.tsx, src/components/landing/middle.test.tsx, src/app/page.test.tsx, docs/mockups/landing-v2/index.html
+- Tests: src/components/landing/middle.test.tsx, src/app/page.test.tsx
+- TDD: required — 시험부터 고치고 RED를 본다.
+  - `middle.test.tsx`: AC-114.1 시험을 새로 둔다. `#ortho` 글자에 "F/U 기록"이 없고, 주사 카드 p 글자 전체가 "주사 치료 수와 F/U"이고, 조각 둘째 줄이 "F/U"·"37건"인지 본다.
+  - `middle.test.tsx`: AC-108.3 시험 두 개의 기대값 중 주사 카드 두 곳만 새 문구로 바꾼다(설명, 조각 줄 `F/U 37건`).
+  - `page.test.tsx`: 페이지 전체 글자에 "F/U 기록"이 없다는 AC-114.1 시험을 둔다.
+  - 옛 AC-005.1 이름 시험 두 곳(`page.test.tsx`·`middle.test.tsx`)은 '주사 치료 수와 F/U 기록' 한 줄만 '주사 치료 수와 F/U'로 바꾼다. 시험 이름과 다른 줄은 그대로다(AC-101.3 예외).
+  - 지금 코드로 RED를 본다(`tdd-run TASK-19 --expect red`).
+  - 그다음 `OrthoSection.tsx`의 두 글자만 고친다. 시안 `docs/mockups/landing-v2/index.html`의 같은 두 곳(주사 카드 설명 `<p>`, 조각 줄 `<span>`)도 같이 고친다. 다른 줄은 바꾸지 않는다.
+  - 끝 조건: `npm test`·`npm run lint`·`npm run build` 통과. 127.0.0.1 개발 서버(가짜 Supabase 값, 로그인 안 함)에서 390·1440 폭의 주사 카드를 찍어 본다. 사진과 스크립트는 scratchpad에 두고 저장소에 넣지 않는다. 끝나면 서버·브라우저를 멈추고 `ss -ltnp`로 확인한다.
