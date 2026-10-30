@@ -1,9 +1,4 @@
-import Image from 'next/image'
 import styles from './FeaturesSection.module.css'
-import { LANDING_IMAGES } from './images'
-
-const STATS = LANDING_IMAGES.featureStats
-const PAYROLL = LANDING_IMAGES.featurePayroll
 
 // 급여표 예시. 이름·금액은 [ ] 빈칸
 const STAFF = [
@@ -46,14 +41,6 @@ export default function FeaturesSection() {
             </div>
           </div>
           <div className={`${styles.visual} ${styles.visualStats}`}>
-            <Image
-              src={STATS.src}
-              alt={STATS.alt}
-              width={STATS.width}
-              height={STATS.height}
-              unoptimized
-              className={styles.img}
-            />
             <div aria-hidden="true" className={styles.bars}>
               {Array.from({ length: 8 }, (_, i) => (
                 <div key={i} className={styles.bar} />
@@ -88,14 +75,6 @@ export default function FeaturesSection() {
             </div>
           </div>
           <div className={`${styles.visual} ${styles.visualPayroll}`}>
-            <Image
-              src={PAYROLL.src}
-              alt={PAYROLL.alt}
-              width={PAYROLL.width}
-              height={PAYROLL.height}
-              unoptimized
-              className={styles.img}
-            />
             <div className={styles.table}>
               <div className={`${styles.tr} ${styles.th}`}>
                 <span>직원</span>

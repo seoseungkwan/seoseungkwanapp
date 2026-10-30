@@ -1,8 +1,9 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import AiSection from './AiSection'
 import FeaturesSection from './FeaturesSection'
-import { LANDING_IMAGES } from './images'
 import OrthoSection from './OrthoSection'
 
 const ai = renderToStaticMarkup(<AiSection />)
@@ -18,11 +19,11 @@ const textOf = (html: string) =>
     .replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
     .replace(/\s+/g, ' ')
     .trim()
-// <img> 태그마다 속성 묶음
-const imgsOf = (html: string) =>
-  [...html.matchAll(/<img\b([^>]*?)\/?>/g)].map((m) =>
-    Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])),
-  )
+// 랜딩 폴더의 시험이 아닌 소스 파일(ts·tsx·css)과 그 글자
+const LANDING_DIR = join(process.cwd(), 'src/components/landing')
+const landingSources = readdirSync(LANDING_DIR)
+  .filter((name) => /\.(tsx?|css)$/.test(name) && !/\.test\.tsx?$/.test(name))
+  .map((name) => ({ name, body: readFileSync(join(LANDING_DIR, name), 'utf8') }))
 
 describe('AC-001.1: 섹션 id', () => {
   it('AC-001.1: 세 섹션이 각각 section#ai · section#ortho · section#features다', () => {
@@ -68,37 +69,23 @@ describe('AC-005.2: 예시 표시와 빈칸', () => {
   })
 })
 
-describe('AC-006.1: 그림', () => {
-  it('AC-006.1: 정형외과 4장 + 기능 2장, AI 섹션은 0장', () => {
-    expect(imgsOf(ortho)).toHaveLength(4)
-    expect(imgsOf(features)).toHaveLength(2)
-    expect(imgsOf(ai)).toHaveLength(0)
+describe('AC-104.1: 그림을 모두 뺀다', () => {
+  it('AC-104.1: ai·ortho·features 마크업에 img·picture·video가 0개다', () => {
+    for (const html of [ai, ortho, features]) {
+      expect(html).not.toMatch(/<(img|picture|video)\b/i)
+    }
   })
 
-  it('AC-006.1: 6장 모두 LANDING_IMAGES의 src·alt·width·height 그대로, /landing/ 경로(최적화 주소 아님)', () => {
-    const imgs = imgsOf(ortho + features)
-    const expected = [
-      LANDING_IMAGES.tileInjection,
-      LANDING_IMAGES.tilePhysio,
-      LANDING_IMAGES.tileNoncovered,
-      LANDING_IMAGES.tileReport,
-      LANDING_IMAGES.featureStats,
-      LANDING_IMAGES.featurePayroll,
-    ]
-    expect(imgs.map((img) => img.src)).toEqual(expected.map((e) => e.src))
-    imgs.forEach((img, i) => {
-      expect(img.alt).toBe(expected[i].alt)
-      expect(img.alt.length).toBeGreaterThan(0)
-      expect(img.width).toBe(String(expected[i].width))
-      expect(img.height).toBe(String(expected[i].height))
-      expect(img.src).toMatch(/^\/landing\/[\w-]+\.jpg$/)
-      expect(img.srcset).toBeUndefined()
-    })
+  it('AC-104.1: 랜딩 폴더 소스에 next/image import와 CSS url(이 없다', () => {
+    expect(landingSources.length).toBeGreaterThan(0)
+    for (const { name, body } of landingSources) {
+      expect(body, name).not.toMatch(/['"]next\/image['"]/)
+      expect(body, name).not.toMatch(/url\(/i)
+    }
   })
 
-  it('AC-006.1: http로 시작하는 바깥 주소 그림이 없다', () => {
-    for (const img of imgsOf(all)) expect(img.src).not.toMatch(/^https?:/)
-    expect(all).not.toMatch(/src="https?:/)
+  it('AC-104.1: http로 시작하는 바깥 주소 그림이 없다', () => {
+    expect(all).not.toMatch(/src(set)?="https?:/i)
   })
 })
 

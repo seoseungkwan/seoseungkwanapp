@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import Home from './page'
@@ -19,9 +21,7 @@ const links = [...html.matchAll(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g
   text: textOf(m[2]),
 }))
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])
-const imgs = [...html.matchAll(/<img\b([^>]*?)\/?>/g)].map((m) =>
-  Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])),
-)
+const ROOT = process.cwd()
 
 describe('AC-001.1: 섹션 순서', () => {
   it('AC-001.1: header → #top → 핵심 약속 → #ai → #ortho → #features → #privacy → #how → #start → footer', () => {
@@ -148,27 +148,33 @@ describe('AC-005.3: 금지한 장식', () => {
   })
 })
 
-describe('AC-006.1: 그림', () => {
-  it('AC-006.1: img는 6장이고 승인본 6개 경로로 나온다', () => {
-    expect(imgs).toHaveLength(6)
-    expect(imgs.map((img) => img.src).sort()).toEqual(
-      [
-        '/landing/feature-payroll.jpg',
-        '/landing/feature-stats.jpg',
-        '/landing/tile-injection.jpg',
-        '/landing/tile-noncovered.jpg',
-        '/landing/tile-physio.jpg',
-        '/landing/tile-report.jpg',
-      ].sort(),
-    )
-  })
+// 지운 그림 6장의 이름. 승인 기록(docs/mockups/landing/images/)에는 남는다
+const LANDING_JPGS = [
+  'feature-payroll.jpg',
+  'feature-stats.jpg',
+  'tile-injection.jpg',
+  'tile-noncovered.jpg',
+  'tile-physio.jpg',
+  'tile-report.jpg',
+]
 
-  it('AC-006.1: 모두 빈칸 아닌 alt가 있고, http로 시작하는 바깥 주소 그림이 없다', () => {
-    for (const img of imgs) {
-      expect(img.alt?.trim().length, img.src).toBeGreaterThan(0)
-      expect(img.src).not.toMatch(/^https?:/i)
-    }
+describe('AC-104.1: 그림을 모두 뺀다', () => {
+  it('AC-104.1: 페이지 전체에 img·picture·video가 0개이고, http로 시작하는 바깥 주소 그림이 없다', () => {
+    expect(html).not.toMatch(/<(img|picture|video)\b/i)
     expect(html).not.toMatch(/\ssrc(set)?="https?:/i)
+  })
+})
+
+describe('AC-104.2: 그림 파일이 없다', () => {
+  it('AC-104.2: public/landing/ 그림과 images.ts·images.test.ts가 없고, 승인 기록 그림 6장은 남는다', () => {
+    const served = join(ROOT, 'public/landing')
+    const servedJpgs = existsSync(served) ? readdirSync(served).filter((name) => /\.jpe?g$/i.test(name)) : []
+    expect(servedJpgs).toEqual([])
+    expect(existsSync(join(ROOT, 'src/components/landing/images.ts'))).toBe(false)
+    expect(existsSync(join(ROOT, 'src/components/landing/images.test.ts'))).toBe(false)
+    for (const name of LANDING_JPGS) {
+      expect(existsSync(join(ROOT, 'docs/mockups/landing/images', name)), name).toBe(true)
+    }
   })
 })
 

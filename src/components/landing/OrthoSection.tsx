@@ -1,15 +1,13 @@
-import Image from 'next/image'
-import { LANDING_IMAGES, type LandingImage } from './images'
 import styles from './OrthoSection.module.css'
 
-const TILES: { image: LandingImage; title: string; desc: string }[] = [
-  { image: LANDING_IMAGES.tileInjection, title: '주사', desc: '주사 치료 수와 F/U 기록' },
-  { image: LANDING_IMAGES.tilePhysio, title: '물리치료', desc: '물리치료 내원 환자 수' },
-  { image: LANDING_IMAGES.tileNoncovered, title: '비급여', desc: '비급여 치료 내역' },
-  { image: LANDING_IMAGES.tileReport, title: '월말 보고', desc: '한 장으로 받는 월간 보고' },
+const TILES: { title: string; desc: string }[] = [
+  { title: '주사', desc: '주사 치료 수와 F/U 기록' },
+  { title: '물리치료', desc: '물리치료 내원 환자 수' },
+  { title: '비급여', desc: '비급여 치료 내역' },
+  { title: '월말 보고', desc: '한 장으로 받는 월간 보고' },
 ]
 
-// 정형외과·통증 의원 섹션(#ortho): 그림 타일 4장
+// 정형외과·통증 의원 섹션(#ortho): 타일 4장
 export default function OrthoSection() {
   return (
     <section id="ortho" className={styles.section}>
@@ -22,16 +20,8 @@ export default function OrthoSection() {
           </p>
         </div>
         <div className={styles.tiles}>
-          {TILES.map(({ image, title, desc }) => (
-            <figure key={image.src} className={styles.tile}>
-              <Image
-                src={image.src}
-                alt={image.alt}
-                width={image.width}
-                height={image.height}
-                unoptimized
-                className={styles.img}
-              />
+          {TILES.map(({ title, desc }) => (
+            <figure key={title} className={styles.tile}>
               <figcaption className={styles.caption}>
                 <strong className={styles.captionTitle}>{title}</strong>
                 <span className={styles.captionDesc}>{desc}</span>
