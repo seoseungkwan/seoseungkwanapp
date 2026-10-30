@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "landing-v2",
-  "approved_at": "2026-10-30T18:54:36Z",
+  "approved_at": "2026-10-30T19:50:47Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "e56a059d18746ac655d85291ce7d8e9785624954c7821ae9b2a141e79efebbe2",
+  "spec_sha256": "3fdde0392beddbf04e2fa9fbed1ccd5f66eb0eaf8dd154d760309b04e7736b05",
   "scope": [
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
@@ -21,6 +21,7 @@
     "src/app/page.test.tsx",
     "src/app/page.tsx",
     "src/app/theme.test.ts",
+    "src/comments.test.ts",
     "src/components/auth/AuthFrame.tsx",
     "src/components/common/LogoMark.test.tsx",
     "src/components/common/LogoMark.tsx",
@@ -58,8 +59,10 @@
     "src/components/landing/styles.test.ts",
     "src/components/landing/top.test.tsx",
     "src/components/shell/AppShell.tsx",
+    "src/components/shell/TabBar.tsx",
     "src/components/shell/shell.test.tsx",
     "src/lib/csp.test.ts",
-    "src/middleware.test.ts"
+    "src/middleware.test.ts",
+    "src/middleware.ts"
   ]
 }

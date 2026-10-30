@@ -4,7 +4,7 @@
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
 > 모양 기준: `docs/mockups/landing-v2/index.html`. 값 표: requirements.md·design.md, 규칙: `docs/UI_GUIDE.md` 랜딩 절.
 > 모든 TASK에서 REQ-101(바뀌지 않는 동작)을 지킨다. 옛 동작 시험은 이름·내용을 고치지 않는다(design.md '옛 시험 다루기').
-> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11) → Phase 4(TASK-13 → TASK-14). Phase 4는 2026-10-30 화면 확인 뒤 사용자 결정으로 더했다. TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
+> **할 순서**: Phase 1(TASK-1~6 → TASK-12) → Phase 2(TASK-7~10) → Phase 3(TASK-11) → Phase 4(TASK-13 → TASK-14) → Phase 5(TASK-15 → TASK-16 → TASK-17 → TASK-18). Phase 4·5는 2026-10-30 화면 확인 뒤 사용자 결정으로 더했다. TASK-12는 2026-10-30 로고 결정이 바뀌어 뒤에 더했다. 번호는 뒤지만 Phase 1 안에서 Phase 2보다 먼저 한다.
 > 각 Phase 끝에 `python3 ~/.claude/harness/bin/verify`(lint·build·test)를 돌리고 1440·390 화면을 찍어 보고한다. Phase 1·2 끝 사진은 중간 상태다. 안 고친 섹션은 깨져 보인다(design.md 위험).
 
 ## Phase 1 — 기초: 토큰·글꼴·로고·그림 빼기·공통 모양·위쪽 메뉴
@@ -134,7 +134,7 @@
   - `page.test.tsx`: AC-110.6(`.secCanvas`는 `#ai`·`#features`·`#how`에만), AC-105.8(랜딩 TSX 색 글자·inline style 범위).
   - `styles.test.ts`:
     - AC-110.2~110.5의 CSS 부분을 더한다.
-    - `CHECKED`를 폴더 전체 읽기로 바꾼다. 랜딩의 `*.module.css` 11개 모두와 강조색 위치 (h)를 검사한다.
+    - `CHECKED`를 폴더 전체 읽기로 바꾼다. 랜딩의 `*.module.css` 12개 모두와 강조색 위치 (h)를 검사한다.
   - 옛 AC-001.1·002.1·005.1·005.2·007.1·008.1 시험은 그대로 통과해야 한다.
   - 끝 조건: `npm test`·`npm run lint`·`npm run build` 통과.
 
@@ -177,4 +177,51 @@
   - TASK-11과 같은 서버·찍기 방법을 쓴다. 스크립트는 scratchpad에 두고 저장소에 넣지 않는다.
   - AC-112.4를 잰다. 고치기 전 사진은 TASK-13 앞 커밋 `b060462`를 `git archive`로 띄워 찍고, 고친 세 곳을 768에서 나란히 놓는다.
   - 측정이 어긋나면 랜딩 CSS 안에서만 고치고 `verify`를 다시 돌린다. 고친 점은 보고에 적는다. 시험 값을 바꿔야 하는 수정이면 고치지 말고 멈춰 보고한다.
+  - 끝나면 서버·브라우저를 모두 멈추고 `ss -ltnp`로 확인한다.
+
+## Phase 5 — 남은 정리
+
+## TASK-15: 옛 주석 정리
+- REQ: REQ-113
+- Files: src/components/shell/AppShell.tsx, src/components/auth/AuthFrame.tsx, src/components/common/LogoMark.tsx, src/middleware.ts, src/components/shell/TabBar.tsx, src/comments.test.ts
+- Tests: src/comments.test.ts
+- TDD: required — 시험부터 쓰고 RED를 본다. 세 파일(AppShell·AuthFrame·LogoMark)은 TASK-3·12의 범위이기도 해서, 이 TASK의 RED 기록 없이 고치면 훅이 막는다.
+  - `src/comments.test.ts`(새 파일): AC-113.2. 다섯 파일을 글자로 읽어 확인한다.
+    - AppShell·AuthFrame에 "한 색"·"글자색 ink를 따"·"자리표시"가 없다.
+    - middleware.ts에 "랜딩 그림"이 없다. 그래서 새 주석은 이 낱말을 쓰지 않고 다른 말로 적는다(예: "옛 `landing/` 경로").
+    - TabBar.tsx에 "teal"이 없다.
+    - LogoMark.tsx 주석의 쓰는 곳 크기 목록에 20(히어로 미리보기)이 있다.
+    - 지금 주석으로 RED를 본다(`tdd-run TASK-15 --expect red`).
+  - 그다음 AC-113.2대로 주석만 고친다. 클래스·JSX·matcher 글자는 한 글자도 바꾸지 않는다(`git diff`에 주석 줄만 나와야 한다). 새 주석에 색 값을 쓰지 않는다.
+  - 끝 조건: `npm test`·`npm run lint`·`npm run build` 통과.
+
+## TASK-16: 로고 초점 고리
+- REQ: REQ-113
+- Files: src/components/landing/SiteHeader.module.css, src/components/landing/styles.test.ts
+- Tests: src/components/landing/styles.test.ts
+- TDD: required — 시험부터 더하고 RED를 본다.
+  - `styles.test.ts`: AC-113.1의 CSS 부분을 더한다. 맨 위(휴대폰) 블록에 선택자가 `.logo:focus-visible`로 끝나고 클래스가 둘 이상인 규칙이 하나 있고 `outline-offset: -2px`인지 본다. 768·1024 블록에는 `.logo:focus-visible`을 고르는 규칙의 `outline-offset`이 없는지 본다.
+  - 그다음 `SiteHeader.module.css`에 규칙을 더한다. `.nav .navLink:focus-visible` 옆에 같은 주석 방식으로 둔다.
+  - 화면 측정(AC-113.1 마지막 줄)은 TASK-18에서 한다.
+  - 끝 조건: `npm test`·`npm run lint`·`npm run build` 통과.
+
+## TASK-17: 시험 보강
+- REQ: REQ-113
+- Files: src/app/theme.test.ts, src/components/landing/top.test.tsx, src/components/landing/HeroChart.test.tsx, src/components/landing/styles.test.ts
+- Tests: src/app/theme.test.ts, src/components/landing/top.test.tsx, src/components/landing/HeroChart.test.tsx, src/components/landing/styles.test.ts
+- TDD: exempt — 시험만 단단하게 고친다. 구현을 바꾸지 않으므로 지금 코드에서 RED가 나올 수 없다. 대신 검사 함수에 일부러 틀린 CSS·마크업 글자를 넣고 실패를 기대하는 시험을 영구로 둔다. 랜딩 CSS를 잠깐 고쳐 보는 방식은 쓰지 않는다(TASK-17 Files 밖이다).
+  - AC-113.3: `theme.test.ts` AC-102.4의 임시 예외(`LEGACY`·`pending`)와 그 주석을 지운다. 쓰지 않게 된 `OLD_LANDING_VARS`가 다른 곳에서 안 쓰이면 함께 지운다.
+  - AC-113.4: `top.test.tsx`·`HeroChart.test.tsx`의 클래스 확인 도우미가 넘겨받은 모듈 파일마다 확인한 클래스 수를 센다. 0인 파일이 하나라도 있거나 견본 해시 키가 겹치면 실패하게 한다.
+  - AC-113.5: `styles.test.ts`의 AC-112.1 시험이 맨 위·768·1024 블록 규칙을 모두 훑게 한다(AC-106.2 nav 시험처럼). `.start`와 `::after`·`:after`를 함께 고르는 선택자에 `display: none`과 `content: none`이 둘 다 없는지 본다.
+  - 새 시험 이름에 AC-113.3·113.4·113.5를 넣는다. 도우미만 고치면 AC-107.x 이름 안에 AC-113.4가 나오지 않으므로, AC-113.4 이름의 시험을 따로 둔다. 기존 시험의 기대값은 바꾸지 않는다.
+  - 끝 조건: `npm test`·`npm run lint`·`npm run build` 통과.
+
+## TASK-18: 로고 초점 고리 화면 측정
+- REQ: REQ-113
+- Files: src/components/landing/*.module.css
+- TDD: exempt — 화면 측정 작업이라 먼저 쓸 실패 시험이 없다. 새 로직을 만들지 않는다.
+  - TASK-14와 같은 서버·찍기 방법을 쓴다(지금 커밋을 `git archive`로 띄움). 스크립트는 scratchpad에 두고 저장소에 넣지 않는다.
+  - AC-113.1 마지막 줄을 390·768·1440에서 잰다. 초점이 간 로고를 찍어, 안쪽 고리가 로고 마크·글자와 겹쳐 보기 싫지 않은지 본다.
+  - AC-111.1·112.4 측정값이 그대로인지도 다시 본다.
+  - 측정이 어긋나면 랜딩 CSS 안에서만 고치고 `verify`를 다시 돌린다. 시험 값을 바꿔야 하는 수정이면 고치지 말고 멈춰 보고한다.
   - 끝나면 서버·브라우저를 모두 멈추고 `ss -ltnp`로 확인한다.

@@ -358,6 +358,21 @@
   - AC-111.1의 측정값이 그대로다: 가로 넘침 없음, `<img>` 0, 메뉴 높이 94·64·64, 390 급여표가 카드 안에 들어옴.
   - AC-111.3과 같이 끝나면 서버·브라우저를 멈추고, 로그인하지 않는다.
 
+### REQ-113: 남은 정리 (로고 초점 고리·옛 주석·시험 보강)
+- 배경: 사용자가 2026-10-30에 "F/U 목록 말고 F/U로 해"라고 했다. 리뷰와 화면 확인에서 남은 작은 일을 목록으로 남기지 않고 고친다. 동작·문구·모양은 로고 초점 고리 말고는 바뀌지 않는다.
+- AC-113.1: Given `SiteHeader.module.css`, When 읽으면, Then 로고 링크의 초점 고리가 안쪽으로 그려진다.
+  - 선택자가 `.logo:focus-visible`로 끝나는 규칙이 맨 위(휴대폰) 블록에 하나 있고, 값은 `outline-offset: -2px`다. 768·1024 블록에서 이 값을 다시 바꾸지 않는다.
+  - 그 선택자는 클래스를 둘 이상 가진다(예: `.inner .logo:focus-visible`). base의 `.root a:focus-visible`보다 구체성이 높아야 CSS 순서와 상관없이 이긴다. `.nav .navLink:focus-visible`과 같은 방식이다.
+  - AC-111.1과 같은 방법(127.0.0.1 개발 서버, 가짜 Supabase 값, 모션 줄이기, 로그인 안 함, 끝나면 `ss -ltnp`)으로 390·768·1440을 열고 Tab으로 `header a[href="#top"]`에 초점을 주면, `getBoundingClientRect().top - (outline-offset + outline-width)`가 0 이상이다(TASK-18).
+- AC-113.2: Given 아래 파일의 주석, When 시험이 파일을 글자로 읽으면, Then 지금 동작과 맞다. 코드는 바꾸지 않는다. 새 주석에 색 값(`#14C8BA`·`#6D5DF5` 등)을 쓰지 않는다(AC-103.2가 주석까지 읽는다).
+  - `src/components/shell/AppShell.tsx`·`src/components/auth/AuthFrame.tsx`: 로고가 "한 색"이거나 "글자색 ink를 따른다", 또는 "십자는 자리표시"라는 말이 없다. LogoMark가 고정 두 색(C③)으로 그린다고 적는다.
+  - `src/components/common/LogoMark.tsx`: 쓰는 곳 크기 목록에 히어로 미리보기(20)가 들어 있다.
+  - `src/middleware.ts`: matcher 주석이 "랜딩 그림"이 있는 것처럼 말하지 않는다. `landing/` 제외는 그대로 둔다(matcher는 범위 밖). 그림은 landing-v2에서 뺐다고 적는다.
+  - `src/components/shell/TabBar.tsx`: "teal 글자·밑줄" 같은 옛 랜딩 색 이야기가 없다.
+- AC-113.3: Given `src/app/theme.test.ts`의 AC-102.4 시험, When 읽으면, Then "아직 안 고친 랜딩 모듈" 임시 예외(옛 `font-family: var(--font-num)` 줄을 지워 주는 부분)가 없다. 모든 파일을 같은 규칙으로 엄격하게 본다. 시험은 그대로 통과한다.
+- AC-113.4: Given `top.test.tsx`·`HeroChart.test.tsx`의 "마크업에 붙은 클래스가 CSS에 정의돼 있다" 시험, When 돌리면, Then 넘겨받은 모듈 파일마다 실제로 확인한 클래스가 하나 이상이다. 한 파일이라도 하나도 확인하지 못하면(해시 대응이 깨지거나 견본 키가 겹치면) 실패한다. 헛돌며 통과하지 않는다.
+- AC-113.5: Given `styles.test.ts`의 AC-112.1 시험, When 돌리면, Then 맨 위·768·1024 블록의 모든 규칙을 훑는다. `.start`와 `::after`(또는 `:after`)를 함께 고르는 선택자에 `display: none`·`content: none`이 없다. 선택자 글자가 `.start::after`와 똑같지 않아도 잡는다.
+
 ## 범위 밖
 - 기능·동작·문구 바꾸기(위 예외 둘만 바뀜)
 - CSP·보안 헤더·middleware matcher
