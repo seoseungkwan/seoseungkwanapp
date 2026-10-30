@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 const DIR = join(process.cwd(), 'src/components/landing')
 
 // 규칙 시험(AC-105.7)이 보는 모듈. TASK마다 고친 모듈을 더하고, TASK-10에서 폴더 전체 읽기로 바꾼다(design.md)
-const CHECKED = ['base.module.css']
+const CHECKED = ['base.module.css', 'SiteHeader.module.css']
 
 // ---------- CSS 글자 읽기 도우미 ----------
 
@@ -146,10 +146,11 @@ const allDecls = (name: string): Array<[string, string, string]> =>
 
 const base = () => parse(source('base.module.css'))
 
-function expectStyle(selector: string, bp: Bp, want: Record<string, string>) {
-  const rules = base()
+// 파일 하나에서 선택자의 그 폭 값들을 본다(기본은 base.module.css)
+function expectStyle(selector: string, bp: Bp, want: Record<string, string>, file = 'base.module.css') {
+  const rules = parse(source(file))
   for (const [prop, value] of Object.entries(want)) {
-    expect(at(rules, selector, prop, bp), `${selector} { ${prop} } @${bp}`).toBe(normValue(value))
+    expect(at(rules, selector, prop, bp), `${file}: ${selector} { ${prop} } @${bp}`).toBe(normValue(value))
   }
 }
 
@@ -375,6 +376,160 @@ describe('AC-105.6: 칸', () => {
     for (const [selector, , value] of columns) {
       expect(value, selector).toMatch(/^(minmax\(0, 1fr\)|repeat\(\d+, minmax\(0, 1fr\)\))$/)
     }
+  })
+})
+
+// ---------- SiteHeader.module.css 값 (REQ-106, 시안 .lp-hd · .lp-hd-in · .logo · .lp-nav) ----------
+
+const HEADER = 'SiteHeader.module.css'
+const header = () => parse(source(HEADER))
+
+describe('AC-106.2: 위쪽 메뉴 — 휴대폰(767px 이하)', () => {
+  it('AC-106.2: header는 sticky · top 0 · z-index 20 · 흰 바탕 · 아래 1px line이고 그림자·blur가 없다', () => {
+    expectStyle(
+      '.header',
+      0,
+      {
+        position: 'sticky',
+        top: '0',
+        'z-index': '20',
+        background: 'var(--surface)',
+        'border-bottom': '1px solid var(--line)',
+      },
+      HEADER,
+    )
+    expect(source(HEADER)).not.toMatch(/backdrop-filter|blur\(/i)
+    for (const [selector, prop, value] of allDecls(HEADER)) {
+      if (prop === 'box-shadow') expect(value, `${selector} { box-shadow }`).toBe('none')
+    }
+  })
+
+  it('AC-106.2: 안쪽은 grid 두 줄 "logo cta" "nav nav"이다', () => {
+    expectStyle(
+      '.inner',
+      0,
+      {
+        display: 'grid',
+        'grid-template-columns': 'minmax(0, 1fr) auto',
+        'grid-template-areas': '"logo cta" "nav nav"',
+        'align-items': 'center',
+        'column-gap': '16px',
+      },
+      HEADER,
+    )
+  })
+
+  it('AC-106.2: 로고 줄은 48px이고, 로고는 logo 칸 · ink 글자색(직접 정함) · 16px 600이다', () => {
+    expectStyle(
+      '.logo',
+      0,
+      {
+        'grid-area': 'logo',
+        display: 'inline-flex',
+        'align-items': 'center',
+        gap: '8px',
+        height: '48px',
+        color: 'var(--ink)',
+        'font-size': '16px',
+        'font-weight': '600',
+        'white-space': 'nowrap',
+      },
+      HEADER,
+    )
+  })
+
+  it('AC-106.2: SiteHeader.module.css가 쓰는 var(--…)는 모두 globals.css에 정의돼 있다(지운 --text-strong 같은 이름이 없다)', () => {
+    const globals = withoutComments(readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8'))
+    const defined = new Set([...globals.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
+    const used = [...source(HEADER).matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
+    expect(used.length).toBeGreaterThan(0)
+    for (const name of used) expect(defined.has(name), `${HEADER}: ${name}`).toBe(true)
+  })
+
+  it('AC-106.2: nav 줄은 위 1px line · 옆으로 스크롤 · 스크롤바 숨김이고, wrap 좌우 16px까지 넓힌다', () => {
+    expectStyle(
+      '.nav',
+      0,
+      {
+        'grid-area': 'nav',
+        display: 'flex',
+        'border-top': '1px solid var(--line)',
+        'overflow-x': 'auto',
+        'scrollbar-width': 'none',
+        'margin-inline': '-16px',
+        'padding-inline': '2px',
+      },
+      HEADER,
+    )
+    expectStyle('.nav::-webkit-scrollbar', 0, { display: 'none' }, HEADER)
+  })
+
+  it('AC-106.2: 링크는 높이 46px · 0 14px · 14px 500 ink-2 · flex none이다', () => {
+    expectStyle(
+      '.navLink',
+      0,
+      {
+        flex: 'none',
+        display: 'flex',
+        'align-items': 'center',
+        height: '46px',
+        padding: '0 14px',
+        'font-size': '14px',
+        'font-weight': '500',
+        color: 'var(--ink-2)',
+      },
+      HEADER,
+    )
+  })
+
+  it('AC-106.2: [구글로 시작하기]는 cta 칸이고 ::after가 누름 영역을 44px로 늘린다(inset: -4px 0)', () => {
+    expectStyle('.start', 0, { 'grid-area': 'cta', position: 'relative' }, HEADER)
+    expectStyle('.start::after', 0, { content: '""', position: 'absolute', inset: '-4px 0' }, HEADER)
+  })
+
+  it('AC-106.2: nav와 링크에는 어느 폭에서도 display: none이 없다(::-webkit-scrollbar만 예외)', () => {
+    const rules = header()
+    expect(rules.some((rule) => rule.selectors.includes('.nav'))).toBe(true)
+    for (const rule of rules) {
+      for (const selector of rule.selectors) {
+        if (!/\.(nav|navLink)\b/.test(selector) || selector === '.nav::-webkit-scrollbar') continue
+        for (const [prop, value] of rule.decls) {
+          if (prop === 'display') expect(value, `${rule.head ?? ''} ${selector} { display }`).not.toBe('none')
+        }
+      }
+    }
+  })
+})
+
+describe('AC-106.3: 위쪽 메뉴 — 768px 이상', () => {
+  it.each([768, 1024] as Bp[])('AC-106.3: @%ipx 한 줄 "logo nav cta" · 높이 64px, 로고 64px · 17px', (bp) => {
+    expectStyle(
+      '.inner',
+      bp,
+      {
+        'grid-template-columns': 'auto minmax(0, 1fr) auto',
+        'grid-template-areas': '"logo nav cta"',
+        'column-gap': '24px',
+        height: '64px',
+      },
+      HEADER,
+    )
+    expectStyle('.logo', bp, { height: '64px', 'font-size': '17px', color: 'var(--ink)' }, HEADER)
+  })
+
+  it.each([768, 1024] as Bp[])('AC-106.3: @%ipx 링크는 64px · 0 12px이고 nav는 스크롤하지 않는다(overflow: visible)', (bp) => {
+    expectStyle('.navLink', bp, { height: '64px', padding: '0 12px' }, HEADER)
+    expectStyle('.nav', bp, { overflow: 'visible', margin: '0', 'border-top': '0' }, HEADER)
+  })
+
+  it.each([768, 1024] as Bp[])('AC-106.3: @%ipx [구글로 시작하기]의 ::after는 끈다', (bp) => {
+    expectStyle('.start::after', bp, { display: 'none' }, HEADER)
+  })
+
+  it('AC-106.3: 1024px부터 nav 왼쪽 여백 16px(768에서는 0)', () => {
+    expectStyle('.nav', 768, { padding: '0' }, HEADER)
+    expect(at(header(), '.nav', 'padding-left', 768), '.nav { padding-left } @768').toBeUndefined()
+    expectStyle('.nav', 1024, { 'padding-left': '16px' }, HEADER)
   })
 })
 

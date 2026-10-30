@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { LogoMark } from '@/components/common/LogoMark'
+import base from './base.module.css'
 import Hero from './Hero'
 import { START_HREF } from './links'
 import PromiseBand from './PromiseBand'
@@ -31,6 +35,48 @@ describe('AC-001.2: 위쪽 메뉴', () => {
     const logo = linksOf(header).find((l) => l.text.includes('[서비스 이름]'))
     expect(logo?.href).toBe('#top')
     expect(hero).toMatch(/<section\b[^>]*id="top"/)
+  })
+})
+
+// 여는 태그의 class 목록
+const classesOf = (openTag: string) => (/\bclass="([^"]*)"/.exec(openTag)?.[1] ?? '').split(/\s+/).filter(Boolean)
+// Vitest의 CSS Module은 없는 이름에도 클래스를 돌려준다 → 붙인 클래스가 base.module.css에 정의돼 있는지 짝으로 본다(design.md)
+const baseCss = readFileSync(join(process.cwd(), 'src/components/landing/base.module.css'), 'utf8')
+
+describe('AC-106.1: 위쪽 메뉴의 짜임', () => {
+  it('AC-106.1: header 안은 .wrap 틀 하나에 로고 링크 · 주요 메뉴 nav · [구글로 시작하기]가 이 순서로 있다', () => {
+    const parts = header.match(
+      /^<header\b[^>]*>(<div\b[^>]*>)(<a\b[^>]*href="#top"[^>]*>[\s\S]*?<\/a>)(<nav\b[^>]*aria-label="주요 메뉴"[^>]*>[\s\S]*?<\/nav>)(<a\b[^>]*href="\/login"[^>]*>[\s\S]*?<\/a>)<\/div><\/header>$/,
+    )
+    expect(parts, 'header > div > a#top · nav · a/login').not.toBeNull()
+    expect(classesOf(parts![1])).toContain(base.wrap)
+    expect(baseCss).toMatch(/^\.wrap\s*\{/m)
+  })
+
+  it('AC-106.1: 로고 링크 안은 LogoMark 22와 [서비스 이름]뿐이다', () => {
+    const logo = header.match(/<a\b[^>]*href="#top"[^>]*>([\s\S]*?)<\/a>/)
+    expect(logo).not.toBeNull()
+    expect(logo![1]).toBe(`${renderToStaticMarkup(<LogoMark size={22} />)}<span>[서비스 이름]</span>`)
+  })
+
+  it('AC-106.1: header 안의 svg는 로고 하나다', () => {
+    expect(header.match(/<svg\b/g) ?? []).toHaveLength(1)
+  })
+
+  it('AC-106.1: [구글로 시작하기]는 .btn·.btnMd·.btnPrimary 클래스이고 안에 글자만 있다', () => {
+    const cta = header.match(/(<a\b[^>]*href="\/login"[^>]*>)([\s\S]*?)<\/a>/)
+    expect(cta).not.toBeNull()
+    const classes = classesOf(cta![1])
+    for (const name of ['btn', 'btnMd', 'btnPrimary'] as const) {
+      expect(classes, name).toContain(base[name])
+      expect(baseCss, `base.module.css .${name}`).toMatch(new RegExp(`^\\.${name}\\s*\\{`, 'm'))
+    }
+    expect(cta![2]).toBe('구글로 시작하기')
+  })
+
+  it('AC-106.1: 메뉴를 여닫는 단추가 없다 — header에 button·input·tabindex가 없다', () => {
+    expect(header).not.toMatch(/<(button|input|select|textarea|form|label)\b/)
+    expect(header).not.toMatch(/tabindex/i)
   })
 })
 
