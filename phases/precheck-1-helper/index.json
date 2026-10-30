@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "helper-build",
-      "status": "pending"
+      "status": "completed",
+      "summary": "helper.yml(push: helper/**·extension/**·src/lib/bridge/commands.json·자기 파일일 때 모든 브랜치, 태그 helper-v*, 수동 실행 / contents: read, release 일만 write / windows-latest에서 dotnet test→build→Directory.Build.props Version으로 dist/precheck-helper-<Version>.zip (app\\에 exe·config·dll, 루트에 helper/install/*), artifact precheck-helper, 태그≠Version이면 실패). helper/install/: install.cmd→install.ps1 (PrecheckHelper 끄기→app\\만 %LOCALAPPDATA%\\Seoseungkwan\\PrecheckHelper\\에 덮어쓰기, data\\·logs\\ 보존→com.seoseungkwan.precheck.json→HKCU 키), uninstall.ps1은 data\\를 물은 뒤에만 지움, .ps1은 UTF-8 BOM. exe 이름은 csproj AssemblyName PrecheckHelper.exe. extension 일은 TASK-3이 같은 workflow에 더함. [Actions 실제 실행 확인 남음]"
     },
     {
       "step": 2,

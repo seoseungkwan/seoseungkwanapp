@@ -70,3 +70,20 @@
 {"ts": "2026-10-30T20:15:39Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-30T20:19:44Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-30T20:22:03Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-30T20:32:50Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "trigger": "helper/tests/build.test.ts", "source": "post-hook"}
+{"ts": "2026-10-30T20:33:07Z", "task": "TASK-2", "reqs": ["REQ-002"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-30T20:33:28Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts' 'src/guardrails.test.ts'", "tests": ["helper/tests/build.test.ts", "src/guardrails.test.ts"], "trigger": ".github/workflows/helper.yml", "source": "post-hook"}
+{"ts": "2026-10-30T20:33:28Z", "task": "TASK-3", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts' 'src/guardrails.test.ts'", "tests": ["helper/tests/build.test.ts", "src/guardrails.test.ts"], "trigger": ".github/workflows/helper.yml", "source": "post-hook"}
+{"ts": "2026-10-30T20:33:29Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "trigger": "helper/install/host-manifest.json", "source": "post-hook"}
+{"ts": "2026-10-30T20:34:01Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "trigger": "helper/install/install.ps1", "source": "post-hook"}
+{"ts": "2026-10-30T20:34:02Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "trigger": "helper/install/uninstall.ps1", "source": "post-hook"}
+{"ts": "2026-10-30T20:37:00Z", "task": "TASK-2", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "trigger": "helper/install/install.ps1", "source": "post-hook"}
+{"ts": "2026-10-30T20:37:02Z", "task": "TASK-2", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "trigger": "helper/install/uninstall.ps1", "source": "post-hook"}
+{"ts": "2026-10-30T20:48:14Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-30T20:51:15Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-30T20:53:45Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-30T20:54:12Z", "task": "TASK-2", "reqs": ["REQ-002"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'helper/tests/build.test.ts'", "tests": ["helper/tests/build.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-30T20:56:13Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-30T20:58:16Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-30T21:00:18Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-30T21:02:40Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
