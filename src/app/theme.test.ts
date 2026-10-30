@@ -328,6 +328,10 @@ const LANDING_ROOT: Record<string, string> = {
   '--gutter': '24px',
   '--font-sans': FONT_SANS,
 }
+// 옛 글꼴 변수(--font-num·--font-grotesk)를 쓰는 파일: 주석까지 글자 그대로, 예외 없이 본다(AC-102.4 · AC-113.3)
+const fontVarOffenders = (files: Array<[string, string]>) =>
+  files.filter(([, text]) => /--font-(num|grotesk)(?![\w-])/.test(text)).map(([rel]) => rel)
+
 // 옛 랜딩 변수 이름(landing 명세 시절)
 const OLD_LANDING_VARS = /--(bg-[\w-]+|border-card|text-(strong|body|muted)|(teal|violet|amber|pink|blue|coral|warn)-[\w-]+)(?![\w-])/
 
@@ -419,17 +423,16 @@ describe('AC-102.4: 글꼴은 IBM Plex Sans KR 하나', () => {
   })
 
   it('AC-102.4: --font-num·--font-grotesk는 시험 파일 밖 src/ 어디에도 없다(주석 포함)', () => {
-    // 잠시 예외 하나: 아직 안 고친 랜딩 섹션 모듈(옛 변수 --teal-* 등을 아직 쓰는 파일, Phase 2에서 고침)의
-    // 옛 줄 'font-family: var(--font-num), sans-serif;'. 모듈을 고쳐 옛 변수가 사라지면 그 파일도 바로 엄격하게 본다.
-    // (고친 모듈에는 AC-105.7(c)로 font-family 자체가 없다)
-    const LEGACY = /font-family:\s*var\(--font-num\),\s*sans-serif\s*;/g
-    const offenders = sourceFiles().filter((rel) => {
-      let text = read(rel)
-      const pending = /^src\/components\/landing\/[^/]+\.module\.css$/.test(rel) && OLD_LANDING_VARS.test(withoutComments(text))
-      if (pending) text = text.replace(LEGACY, '')
-      return /--font-(num|grotesk)(?![\w-])/.test(text)
-    })
-    expect(offenders).toEqual([])
+    expect(fontVarOffenders(sourceFiles().map((rel) => [rel, read(rel)]))).toEqual([])
+  })
+
+  it('AC-113.3: 임시 예외 없이 모든 파일을 같은 규칙으로 본다 — 옛 변수를 쓰는 랜딩 모듈의 옛 font-family 줄과 주석도 잡는다', () => {
+    const files: Array<[string, string]> = [
+      ['src/components/landing/Old.module.css', '.x { color: var(--teal-text); font-family: var(--font-num), sans-serif; }'],
+      ['src/components/landing/Note.module.css', '/* 예전에는 var(--font-grotesk)를 썼다 */\n.x { color: var(--ink); }'],
+      ['src/components/landing/Ok.module.css', '.x { color: var(--teal-text); font-family: var(--font-sans); }'],
+    ]
+    expect(fontVarOffenders(files)).toEqual(['src/components/landing/Old.module.css', 'src/components/landing/Note.module.css'])
   })
 })
 

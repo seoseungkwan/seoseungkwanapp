@@ -86,19 +86,40 @@ describe('AC-106.1: 위쪽 메뉴의 짜임', () => {
 // Vitest의 CSS Module 이름은 `_이름_파일해시6자`다 → 마크업에 붙은 클래스마다 그 파일 CSS에 `.이름`이 정의돼 있는지 본다
 const cssOf = (name: string) =>
   readFileSync(join(process.cwd(), 'src/components/landing', name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-function undefinedClasses(html: string, modules: Array<[sample: string, file: string]>): string[] {
-  const files = new Map(modules.map(([sample, file]) => [sample.slice(-6), [file, cssOf(file)] as const]))
-  const missing: string[] = []
+type Modules = Array<[sample: string, file: string]>
+// checked: 파일마다 실제로 확인한 클래스 수. problems: CSS에 정의되지 않은 클래스 + 견본 해시 키가 겹친 파일 +
+// 확인한 클래스가 0개인 파일. 해시 대응이 깨져도 헛돌며 통과하지 않게 한다(AC-113.4)
+function checkClasses(html: string, modules: Modules): { checked: Record<string, number>; problems: string[] } {
+  const problems: string[] = []
+  const files = new Map<string, readonly [file: string, css: string]>()
+  for (const [sample, file] of modules) {
+    const key = sample.slice(-6)
+    const taken = files.get(key)
+    if (taken) problems.push(`${taken[0]}·${file}: 견본 해시 키 ${key}가 겹친다`)
+    else files.set(key, [file, cssOf(file)])
+  }
+  const checked: Record<string, number> = Object.fromEntries(modules.map(([, file]) => [file, 0]))
   for (const cls of new Set([...html.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/).filter(Boolean)))) {
     const m = /^_(\w+)_([0-9a-f]{6})$/.exec(cls)
     const file = m && files.get(m[2])
     if (!m || !file) continue
-    if (!new RegExp(`\\.${m[1]}(?![\\w-])`).test(file[1])) missing.push(`${file[0]} .${m[1]}`)
+    checked[file[0]]++
+    if (!new RegExp(`\\.${m[1]}(?![\\w-])`).test(file[1])) problems.push(`${file[0]} .${m[1]}`)
   }
-  return missing
+  for (const [file, n] of Object.entries(checked)) if (n === 0) problems.push(`${file}: 확인한 클래스가 0개다`)
+  return { checked, problems }
 }
 const heroCss = cssOf('Hero.module.css')
 const bandCss = cssOf('PromiseBand.module.css')
+// 견본 클래스 하나로 모듈 파일의 해시를 알린다
+const HERO_MODULES: Modules = [
+  [base.wrap, 'base.module.css'],
+  [heroStyles.hero, 'Hero.module.css'],
+]
+const BAND_MODULES: Modules = [
+  [base.wrap, 'base.module.css'],
+  [bandStyles.band, 'PromiseBand.module.css'],
+]
 const chart = renderToStaticMarkup(<HeroChart />)
 
 // 히어로에서 미리보기(HeroChart)를 표시 하나로 바꾼 마크업
@@ -175,12 +196,7 @@ describe('AC-107.1: 히어로의 짜임', () => {
 
   it('AC-107.1: 히어로에 붙은 클래스가 모두 base.module.css·Hero.module.css에 정의돼 있다', () => {
     expect(heroCss.trim().length).toBeGreaterThan(0)
-    expect(
-      undefinedClasses(heroOwn, [
-        [base.wrap, 'base.module.css'],
-        [heroStyles.hero, 'Hero.module.css'],
-      ]),
-    ).toEqual([])
+    expect(checkClasses(heroOwn, HERO_MODULES).problems).toEqual([])
   })
 })
 
@@ -221,12 +237,45 @@ describe('AC-107.5: 약속 띠의 짜임', () => {
 
   it('AC-107.5: 띠에 붙은 클래스가 모두 base.module.css·PromiseBand.module.css에 정의돼 있다', () => {
     expect(bandCss.trim().length).toBeGreaterThan(0)
-    expect(
-      undefinedClasses(band, [
-        [base.wrap, 'base.module.css'],
-        [bandStyles.band, 'PromiseBand.module.css'],
-      ]),
-    ).toEqual([])
+    expect(checkClasses(band, BAND_MODULES).problems).toEqual([])
+  })
+})
+
+describe('AC-113.4: 클래스 확인 도우미가 헛돌며 통과하지 않는다', () => {
+  it.each([
+    ['히어로', () => heroOwn, HERO_MODULES],
+    ['약속 띠', () => band, BAND_MODULES],
+  ] as Array<[string, () => string, Modules]>)(
+    'AC-113.4: %s — 넘겨받은 모듈 파일마다 확인한 클래스가 하나 이상이고 문제가 없다',
+    (_, markup, modules) => {
+      const { checked, problems } = checkClasses(markup(), modules)
+      expect(Object.keys(checked)).toEqual(modules.map(([, file]) => file))
+      for (const [file, n] of Object.entries(checked)) expect(n, `${file} 확인한 클래스 수`).toBeGreaterThan(0)
+      expect(problems).toEqual([])
+    },
+  )
+
+  // 일부러 틀린 마크업·견본을 넣어 도우미가 실패를 알리는지 본다(영구 음성 시험)
+  it('AC-113.4: 한 파일이라도 확인한 클래스가 0개면 실패로 알린다', () => {
+    const { checked, problems } = checkClasses(`<div class="${base.wrap}"></div>`, HERO_MODULES)
+    expect(checked).toEqual({ 'base.module.css': 1, 'Hero.module.css': 0 })
+    expect(problems).toEqual(['Hero.module.css: 확인한 클래스가 0개다'])
+  })
+
+  it('AC-113.4: 견본 해시 키가 겹치면(같은 모듈의 견본 둘) 실패로 알린다', () => {
+    const key = base.wrap.slice(-6)
+    const { problems } = checkClasses(`<div class="${base.wrap} ${heroStyles.hero}"></div>`, [
+      [base.wrap, 'base.module.css'],
+      [base.btn, 'Hero.module.css'],
+    ])
+    expect(problems).toContain(`base.module.css·Hero.module.css: 견본 해시 키 ${key}가 겹친다`)
+  })
+
+  it('AC-113.4: CSS에 정의되지 않은 클래스를 실패로 알린다', () => {
+    const fake = `_noSuchClass_${base.wrap.slice(-6)}`
+    expect(checkClasses(`<div class="${base.wrap} ${fake}"></div>`, [[base.wrap, 'base.module.css']]).problems).toEqual([
+      'base.module.css .noSuchClass',
+    ])
   })
 })
 

@@ -51,6 +51,36 @@ const openTags = [...html.matchAll(/<[a-z][a-z0-9]*\b[^>]*>/g)].map((m) => m[0])
 const withClass = (cls: string) => openTags.filter((tag) => classesOf(tag).includes(cls))
 const cssOf = (name: string) =>
   readFileSync(join(process.cwd(), 'src/components/landing', name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+// Vitest의 CSS Module 이름은 `_이름_파일해시6자`다 → 마크업에 붙은 클래스마다 그 파일 CSS에 `.이름`이 정의돼 있는지 본다.
+// checked: 파일마다 실제로 확인한 클래스 수. problems: CSS에 정의되지 않은 클래스 + 견본 해시 키가 겹친 파일 +
+// 확인한 클래스가 0개인 파일. 해시 대응이 깨져도 헛돌며 통과하지 않게 한다(AC-113.4)
+type Modules = Array<[sample: string, file: string]>
+function checkClasses(markup: string, modules: Modules): { checked: Record<string, number>; problems: string[] } {
+  const problems: string[] = []
+  const files = new Map<string, readonly [file: string, css: string]>()
+  for (const [sample, file] of modules) {
+    const key = sample.slice(-6)
+    const taken = files.get(key)
+    if (taken) problems.push(`${taken[0]}·${file}: 견본 해시 키 ${key}가 겹친다`)
+    else files.set(key, [file, cssOf(file)])
+  }
+  const checked: Record<string, number> = Object.fromEntries(modules.map(([, file]) => [file, 0]))
+  const tags = [...markup.matchAll(/<[a-z][a-z0-9]*\b[^>]*>/g)].map((m) => m[0])
+  for (const cls of new Set(tags.flatMap(classesOf))) {
+    const m = /^_(\w+)_([0-9a-f]{6})$/.exec(cls)
+    const file = m && files.get(m[2])
+    if (!m || !file) continue
+    checked[file[0]]++
+    if (!new RegExp(`\\.${m[1]}(?![\\w-])`).test(file[1])) problems.push(`${file[0]} .${m[1]}`)
+  }
+  for (const [file, n] of Object.entries(checked)) if (n === 0) problems.push(`${file}: 확인한 클래스가 0개다`)
+  return { checked, problems }
+}
+// 견본 클래스 하나로 모듈 파일의 해시를 알린다
+const CHART_MODULES: Modules = [
+  [base.chip, 'base.module.css'],
+  [styles.app, 'HeroChart.module.css'],
+]
 const logo20 = renderToStaticMarkup(<LogoMark size={20} />)
 
 // .app > .top(aria-hidden) · .tabs(aria-hidden) · .body( .title · .grid )
@@ -182,17 +212,38 @@ describe('AC-107.4: 미리보기 색은 CSS가 정한다', () => {
   })
 
   it('AC-107.4: 미리보기에 붙은 클래스가 모두 base.module.css·HeroChart.module.css에 정의돼 있다', () => {
-    const files = new Map([
-      [base.chip.slice(-6), ['base.module.css', cssOf('base.module.css')]],
-      [styles.app.slice(-6), ['HeroChart.module.css', cssOf('HeroChart.module.css')]],
+    expect(checkClasses(html, CHART_MODULES).problems).toEqual([])
+  })
+})
+
+describe('AC-113.4: 클래스 확인 도우미가 헛돌며 통과하지 않는다', () => {
+  it('AC-113.4: 미리보기 — 넘겨받은 모듈 파일마다 확인한 클래스가 하나 이상이고 문제가 없다', () => {
+    const { checked, problems } = checkClasses(html, CHART_MODULES)
+    expect(Object.keys(checked)).toEqual(CHART_MODULES.map(([, file]) => file))
+    for (const [file, n] of Object.entries(checked)) expect(n, `${file} 확인한 클래스 수`).toBeGreaterThan(0)
+    expect(problems).toEqual([])
+  })
+
+  // 일부러 틀린 마크업·견본을 넣어 도우미가 실패를 알리는지 본다(영구 음성 시험)
+  it('AC-113.4: 한 파일이라도 확인한 클래스가 0개면 실패로 알린다', () => {
+    const { checked, problems } = checkClasses(`<span class="${base.chip}"></span>`, CHART_MODULES)
+    expect(checked).toEqual({ 'base.module.css': 1, 'HeroChart.module.css': 0 })
+    expect(problems).toEqual(['HeroChart.module.css: 확인한 클래스가 0개다'])
+  })
+
+  it('AC-113.4: 견본 해시 키가 겹치면(같은 모듈의 견본 둘) 실패로 알린다', () => {
+    const key = base.chip.slice(-6)
+    const { problems } = checkClasses(`<span class="${base.chip} ${styles.app}"></span>`, [
+      [base.chip, 'base.module.css'],
+      [base.wrap, 'HeroChart.module.css'],
     ])
-    const missing: string[] = []
-    for (const cls of new Set(openTags.flatMap(classesOf))) {
-      const m = /^_(\w+)_([0-9a-f]{6})$/.exec(cls)
-      const file = m && files.get(m[2])
-      if (!m || !file) continue
-      if (!new RegExp(`\\.${m[1]}(?![\\w-])`).test(file[1])) missing.push(`${file[0]} .${m[1]}`)
-    }
-    expect(missing).toEqual([])
+    expect(problems).toContain(`base.module.css·HeroChart.module.css: 견본 해시 키 ${key}가 겹친다`)
+  })
+
+  it('AC-113.4: CSS에 정의되지 않은 클래스를 실패로 알린다', () => {
+    const fake = `_noSuchClass_${styles.app.slice(-6)}`
+    expect(checkClasses(`<div class="${styles.app} ${fake}"></div>`, [[styles.app, 'HeroChart.module.css']]).problems).toEqual([
+      'HeroChart.module.css .noSuchClass',
+    ])
   })
 })

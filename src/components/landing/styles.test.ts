@@ -402,6 +402,24 @@ describe('AC-105.6: 칸', () => {
 const HEADER = 'SiteHeader.module.css'
 const header = () => parse(source(HEADER))
 
+// [구글로 시작하기]의 누름 영역(::after)을 끄는 선언: .start와 ::after(또는 :after)를 함께 고르는 선택자의
+// display: none · content: none(::after에서 normal도 none과 같다). 선택자 글자가 .start::after와 같지 않아도 잡는다(AC-113.5)
+const START_AFTER = (selector: string) => /\.start(?![\w-])/.test(selector) && /::?after(?![\w-])/.test(selector)
+const DISPLAY_OFF = /^none(\s*!important)?$/i
+const CONTENT_OFF = /^(none|normal)(\s*!important)?$/i
+function startAfterOff(rules: Rule[]): string[] {
+  const out: string[] = []
+  for (const rule of rules) {
+    for (const selector of rule.selectors.filter(START_AFTER)) {
+      for (const [prop, value] of rule.decls) {
+        const off = (prop === 'display' && DISPLAY_OFF.test(value)) || (prop === 'content' && CONTENT_OFF.test(value))
+        if (off) out.push(`${rule.head ?? 'top'} ${selector} { ${prop}: ${value} }`)
+      }
+    }
+  }
+  return out
+}
+
 describe('AC-106.2: 위쪽 메뉴 — 휴대폰(767px 이하)', () => {
   it('AC-106.2: header는 sticky · top 0 · z-index 20 · 흰 바탕 · 아래 1px line이고 그림자·blur가 없다', () => {
     expectStyle(
@@ -545,13 +563,85 @@ describe('AC-106.3: 위쪽 메뉴 — 768px 이상', () => {
     (bp) => {
       expect(at(header(), '.start::after', 'display', bp), `${HEADER}: .start::after { display } @${bp}`).toBeUndefined()
       expectStyle('.start::after', bp, { content: '""', position: 'absolute', inset: '-4px 0' }, HEADER)
+      // 그 폭에 걸리는 규칙(맨 위 ~ 그 폭)을 모두 훑는다: .start::after와 글자가 다른 선택자로 꺼도 잡는다(AC-113.5)
+      expect(startAfterOff(header().filter((rule) => rule.bp !== null && rule.bp <= bp))).toEqual([])
     },
   )
+
+  it('AC-113.5: 맨 위·768·1024 블록의 모든 규칙을 훑어, .start와 ::after·:after를 함께 고르는 선택자에 display: none · content: none이 없다', () => {
+    const rules = header()
+    for (const bp of [0, 768, 1024] as Bp[]) expect(rules.some((rule) => rule.bp === bp), `${HEADER}: @${bp} 블록`).toBe(true)
+    expect(rules.some((rule) => rule.selectors.some(START_AFTER)), `${HEADER}: .start::after 규칙`).toBe(true)
+    expect(startAfterOff(rules)).toEqual([])
+  })
+
+  // 일부러 틀린 CSS 글자를 넣어 검사가 잡는지 본다(영구 음성 시험)
+  it('AC-113.5: 글자가 .start::after와 달라도(:after · 앞 선택자 · 클래스 둘 · 쉼표 목록) 끄는 선언을 잡는다', () => {
+    const css = `
+      .start::after { content: ""; position: absolute; }
+      .inner .start:after { display: none; }
+      @media (min-width: 768px) {
+        a.start.big::after, .other { content: none; }
+        .startLink::after { display: none; }
+        .start .icon::before { display: none; }
+      }
+      @media (min-width: 1024px) {
+        .start:hover::after { display: none !important; }
+        .start::after { content: normal; }
+      }`
+    const rules = parse(withoutComments(css))
+    // 선택자 글자가 '.start::after'와 똑같은 규칙만 보는 at()은 display 끄기를 하나도 못 잡는다
+    for (const bp of [0, 768, 1024] as Bp[]) expect(at(rules, '.start::after', 'display', bp)).toBeUndefined()
+    expect(startAfterOff(rules)).toEqual([
+      'top .inner .start:after { display: none }',
+      '@media (min-width: 768px) a.start.big::after { content: none }',
+      '@media (min-width: 1024px) .start:hover::after { display: none !important }',
+      '@media (min-width: 1024px) .start::after { content: normal }',
+    ])
+  })
 
   it('AC-106.3: 1024px부터 nav 왼쪽 여백 16px(768에서는 0)', () => {
     expectStyle('.nav', 768, { padding: '0' }, HEADER)
     expect(at(header(), '.nav', 'padding-left', 768), '.nav { padding-left } @768').toBeUndefined()
     expectStyle('.nav', 1024, { 'padding-left': '16px' }, HEADER)
+  })
+})
+
+describe('AC-113.1: 로고 링크 초점 고리는 안쪽으로 (SiteHeader.module.css)', () => {
+  const logoFocus = (selector: string) => /\.logo:focus-visible$/.test(selector)
+  const classesOf = (selector: string) => selector.match(/\.[A-Za-z_][\w-]*/g) ?? []
+
+  it('AC-113.1: 맨 위(휴대폰) 블록에 선택자가 .logo:focus-visible로 끝나는 규칙이 하나 있고, 클래스가 둘 이상이며 outline-offset: -2px다', () => {
+    const rules = header()
+    const top = rules.filter((rule) => rule.head === null && rule.selectors.some(logoFocus))
+    expect(top, `${HEADER}: 맨 위 블록의 .logo:focus-visible 규칙`).toHaveLength(1)
+    const [rule] = top
+    // base의 .root a:focus-visible(클래스 하나 + 원소 + 가상 클래스)보다 구체성이 높아야 CSS 순서와 상관없이 이긴다
+    for (const selector of rule.selectors.filter(logoFocus)) {
+      const classes = classesOf(selector)
+      expect(classes.length, `${HEADER}: ${selector} 클래스 수`).toBeGreaterThanOrEqual(2)
+      // 고르는 클래스는 모두 이 모듈에 정의돼 있다(.inner처럼 오타가 없다)
+      for (const cls of classes) {
+        expect(rules.some((r) => r.selectors.includes(cls)), `${HEADER}: ${cls} 정의`).toBe(true)
+      }
+    }
+    expect(
+      rule.decls.filter(([prop]) => prop === 'outline-offset').map(([, value]) => value),
+      `${HEADER}: ${rule.selectors.join(', ')} { outline-offset }`,
+    ).toEqual(['-2px'])
+  })
+
+  it('AC-113.1: 768·1024 블록은 .logo:focus-visible을 고르는 규칙의 outline-offset을 다시 바꾸지 않는다', () => {
+    const rules = header()
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(rules.some((rule) => rule.bp === bp), `${HEADER}: @${bp} 블록`).toBe(true)
+    }
+    for (const rule of rules) {
+      if (rule.head === null || !rule.selectors.some(logoFocus)) continue
+      for (const [prop] of rule.decls) {
+        expect(prop, `${rule.head} ${rule.selectors.join(', ')} { ${prop} }`).not.toBe('outline-offset')
+      }
+    }
   })
 })
 
