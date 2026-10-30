@@ -1,0 +1,1095 @@
+<title>랜딩 개편 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: the landing is a 12-column, 1200px container on white / canvas bands; product UI previews replace pictures.
+   Light only by the user's choice: every color is set explicitly, no dark blocks. */
+:root {
+  --ink: #111827;
+  --ink-2: #374151;
+  --muted: #6B7280;
+  --line: #E5E7EB;
+  --canvas: #F7F8FA;
+  --surface: #FFFFFF;
+  --accent: #2563EB;
+  --accent-soft: #EAF1FE;
+  --accent-tint: color-mix(in srgb, #2563EB 32%, #FFFFFF);
+  --ok: #166534;
+  --ok-soft: #E7F6EC;
+  --danger: #C2410C;
+  --danger-soft: #FFF1E8;
+  --warn: #B45309;
+  --field: color-mix(in srgb, #6B7280 55%, #FFFFFF);
+  --page: #EEF0F3;
+  --font: "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color-scheme: light;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 22px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 72px;
+}
+
+/* ---------- 바깥 설명 영역 (d-) ---------- */
+.d { max-width: 1480px; margin: 0 auto; display: grid; gap: 16px; }
+.d-head, .d-card, .d-bar, .d-meta { width: 100%; max-width: 1200px; margin-inline: auto; }
+.d * { box-sizing: border-box; }
+.d-head { display: grid; gap: 6px; padding-block: 8px 8px; }
+.d-kicker { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
+.d-head h1 { margin: 0; font-size: 26px; line-height: 34px; font-weight: 600; letter-spacing: -0.01em; }
+.d-head p { margin: 0; font-size: 15px; line-height: 24px; color: var(--ink-2); max-width: 66ch; }
+.d-jump { color: var(--accent); font-weight: 500; font-size: 14px; text-decoration: none; }
+.d-jump:hover { text-decoration: underline; text-underline-offset: 3px; }
+.d-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.d-card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.d-card h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+.d-changes ol { margin: 0; padding: 0; list-style: none; counter-reset: c; display: grid; grid-template-columns: 1fr; gap: 0 32px; }
+.d-changes li { counter-increment: c; display: grid; grid-template-columns: 28px 1fr; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; line-height: 24px; color: var(--ink-2); }
+.d-changes li::before { content: counter(c); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.d-changes b { font-weight: 600; color: var(--ink); }
+@media (min-width: 900px) {
+  .d-changes ol { grid-template-columns: 1fr 1fr; }
+}
+
+.d-sys { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 900px) { .d-sys { grid-template-columns: 1fr 1fr; } }
+.d-block { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.d-block h3 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
+.d-note { margin: 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.d-sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.d-sw div { display: grid; grid-template-columns: 28px 1fr; column-gap: 10px; align-items: center; font-size: 13px; line-height: 18px; }
+.d-sw i { grid-row: span 2; width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--line); display: block; }
+.d-sw span { color: var(--ink); font-weight: 500; }
+.d-sw small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.d-tbl-wrap { overflow-x: auto; }
+.d-tbl { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.d-tbl th { text-align: left; font-weight: 500; color: var(--ink-2); background: var(--canvas); height: 32px; padding: 0 8px; border-block: 1px solid var(--line); white-space: nowrap; }
+.d-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: middle; }
+.d-tbl td.n { white-space: nowrap; color: var(--ink-2); }
+.d-tbl .s { display: block; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.d-shapes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.d-mini { display: grid; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); max-width: 320px; }
+.d-mini b { font-size: 15px; font-weight: 600; }
+.d-mini span { font-size: 13px; color: var(--ink-2); }
+
+.d-preview { display: grid; gap: 12px; }
+.d-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.d-bar h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+.d-switch { display: inline-flex; padding: 3px; gap: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.d-switch button {
+  font: inherit; font-size: 14px; font-weight: 500; height: 34px; padding: 0 14px; border: 0; border-radius: 4px;
+  background: transparent; color: var(--ink-2); cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.d-switch button:hover { background: var(--canvas); color: var(--ink); }
+.d-switch button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.d-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.d-meta { margin: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.d-stage { min-width: 0; }
+.d-frame {
+  width: 1440px; margin: 0 auto; background: var(--surface);
+  border: 1px solid #D5D9DF; border-radius: 8px; overflow: clip;
+}
+.d-toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--surface); font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 6px;
+  box-shadow: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1); z-index: 50; max-width: calc(100% - 32px);
+}
+
+/* =====================================================================
+   랜딩 (lp) — 휴대폰 기준으로 쓰고, 폭 768px·1024px부터 바뀐다.
+   시안에서는 틀 폭을 보는 @container, 실제 사이트에서는 같은 숫자의 @media.
+   ===================================================================== */
+.lp {
+  container: lp / inline-size;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-align: left;
+}
+.lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
+.lp :where(h1, h2, h3, p, ol, ul, dl, dd, figure) { margin: 0; padding: 0; }
+.lp :where(ol, ul) { list-style: none; }
+.lp :where(a) { color: inherit; text-decoration: none; }
+.lp a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.lp svg { display: block; flex: none; }
+.lp .nowrap { white-space: nowrap; }
+
+/* 틀 · 섹션 리듬 */
+.wrap { max-width: 1248px; margin-inline: auto; padding-inline: 16px; }
+.sec { padding-block: 56px; scroll-margin-top: 96px; }
+.sec-canvas { background: var(--canvas); }
+.stack { display: grid; gap: 32px; }
+.head { display: grid; gap: 12px; max-width: 760px; }
+
+/* 글자 크기 (한 벌) */
+.t-display { font-size: 34px; line-height: 42px; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; }
+.t-h2 { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.015em; text-wrap: balance; }
+.t-h3l { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.t-h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
+.t-lead { font-size: 16px; line-height: 26px; color: var(--ink-2); max-width: 640px; }
+.t-body { font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.t-small { font-size: 13px; line-height: 20px; }
+.t-label { font-size: 13px; line-height: 20px; font-weight: 500; color: var(--muted); }
+
+/* 단추 · 칩 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 6px; border: 1px solid transparent; font-weight: 500; white-space: nowrap;
+  transition: background-color .15s ease;
+}
+.btn-md { height: 36px; padding: 0 14px; font-size: 14px; }
+.btn-lg { height: 44px; padding: 0 20px; font-size: 15px; }
+.btn-primary { background: var(--ink); color: var(--surface); }
+.btn-primary:hover { background: var(--ink-2); }
+.btn-secondary { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.btn-secondary:hover { background: var(--canvas); }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
+  border-radius: 4px; border: 1px solid transparent; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap;
+}
+.chip-neutral { color: var(--ink-2); background: var(--surface); border-color: var(--line); }
+.chip-sample { color: var(--muted); background: var(--surface); border-color: var(--line); }
+.chip-ok { color: var(--ok); background: var(--ok-soft); }
+.chip-attn { color: var(--danger); background: var(--danger-soft); }
+.chip-wait { color: var(--muted); background: var(--canvas); border-color: var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 카드(테두리 상자)와 항목(위 선 한 줄) */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-width: 0; }
+.item { border-top: 1px solid var(--line); padding-top: 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.grid4, .grid3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.items { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 24px; }
+
+/* ---------- 위쪽 메뉴 ---------- */
+.lp-hd { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); }
+.lp-hd-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "logo cta" "nav nav"; align-items: center; column-gap: 16px; }
+.logo { grid-area: logo; display: inline-flex; align-items: center; gap: 8px; height: 48px; font-size: 16px; font-weight: 600; color: var(--ink); white-space: nowrap; justify-self: start; }
+.lp-hd .btn { grid-area: cta; position: relative; }
+.lp-hd .btn::after { content: ""; position: absolute; inset: -4px 0; } /* 휴대폰 누름 영역 44px */
+.lp-nav {
+  grid-area: nav; display: flex; overflow-x: auto; scrollbar-width: none;
+  margin-inline: -16px; padding-inline: 2px; border-top: 1px solid var(--line);
+}
+.lp-nav::-webkit-scrollbar { display: none; }
+.lp-nav a { flex: none; display: flex; align-items: center; height: 46px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.lp-nav a:hover { color: var(--ink); }
+.lp-nav a:focus-visible { outline-offset: -2px; }
+
+/* ---------- 히어로 ---------- */
+.hero { padding-block: 32px 56px; scroll-margin-top: 96px; }
+.hero-grid { display: grid; gap: 16px; }
+.hero-a { display: grid; gap: 12px; align-content: end; }
+.kicker { font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink-2); }
+.hero-b { display: grid; gap: 24px; align-content: end; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.hero-privacy { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.hero-privacy svg { color: var(--ink-2); }
+.shot { margin-top: 32px; }
+
+/* 프로그램 화면 미리보기 (앱 시안 A + 블루) */
+.app { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--canvas); }
+.app-top { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.app-logo { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; white-space: nowrap; }
+.app-acct { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; color: var(--ink-2); }
+.app-tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--line); overflow: hidden; padding-inline: 2px; }
+.app-tabs span { flex: none; position: relative; height: 46px; padding: 0 14px; display: flex; align-items: center; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.app-tabs .on { color: var(--accent); font-weight: 700; }
+.app-tabs .on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; background: var(--accent); border-radius: 2px 2px 0 0; }
+.app-body { padding: 16px; display: grid; gap: 12px; }
+.app-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.app-h { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.app-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpi-l { font-size: 13px; line-height: 20px; font-weight: 500; color: var(--ink-2); }
+.kpi-v { font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
+.kpi-v .u { font-size: 16px; font-weight: 500; margin-left: 2px; letter-spacing: 0; }
+.kpi-f { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; line-height: 18px; color: var(--muted); text-wrap: balance; }
+.kpi-body { padding-bottom: 10px; }
+.kpi-f .up { color: var(--accent); }
+.meter { height: 6px; margin-block: 6px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .6s ease; }
+.kpi-ai { grid-column: 1 / -1; }
+.ai-text { font-size: 15px; line-height: 23px; font-weight: 500; color: var(--ink); padding-block: 4px 10px; }
+.kpi-f .lnk, .lnk { color: var(--accent); font-weight: 500; font-size: 13px; }
+.panel { grid-column: 1 / -1; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px; display: grid; gap: 8px; min-width: 0; }
+.panel-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.panel-t { font-size: 15px; line-height: 22px; font-weight: 600; }
+.chart { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; align-items: center; }
+.ring { width: 84px; }
+.ring svg { width: 100%; height: auto; }
+.ring-v { transition: stroke-dasharray .6s ease; }
+.bars { min-width: 0; }
+.plot { position: relative; height: 116px; margin-top: 20px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; align-items: end; border-bottom: 1px solid var(--line); }
+.gl { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line); }
+.bcol { position: relative; z-index: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.bar { position: relative; width: 100%; max-width: 44px; background: var(--accent-tint); border-radius: 2px 2px 0 0; transition: height .6s ease; }
+.bcol:last-child .bar { background: var(--accent); }
+.blab { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding-bottom: 3px; font-size: 11px; line-height: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 6px; font-size: 11px; line-height: 14px; color: var(--muted); text-align: center; }
+
+/* ---------- 핵심 약속 띠 ---------- */
+.band { border-block: 1px solid var(--line); background: var(--surface); }
+.band-in { display: grid; grid-template-columns: minmax(0, 1fr); }
+.band-item { display: flex; align-items: center; gap: 12px; padding-block: 14px; font-size: 15px; line-height: 22px; font-weight: 500; color: var(--ink); }
+.band-item + .band-item { border-top: 1px solid var(--line); }
+.band-item svg { color: var(--ink-2); }
+
+/* ---------- AI 섹션: 리포트 미리보기 ---------- */
+.rep { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; min-width: 0; overflow: hidden; }
+.rep-hd { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.rep-t { font-size: 17px; line-height: 24px; font-weight: 600; }
+.rep-body { display: grid; grid-template-columns: minmax(0, 1fr); }
+.rep-items { padding: 0 16px; }
+.rep-item { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding-block: 14px; border-bottom: 1px solid var(--line); }
+.rep-item:last-child { border-bottom: 0; }
+.rep-item .chip { justify-self: start; margin-top: 0; }
+.rep-text { font-size: 14px; line-height: 22px; color: var(--ink); }
+.rep-basis { grid-column: 2; font-size: 13px; line-height: 20px; color: var(--muted); }
+.chat { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.q { align-self: flex-end; max-width: 85%; background: var(--canvas); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 14px; line-height: 22px; color: var(--ink); }
+.typing { align-self: flex-start; display: inline-flex; gap: 4px; align-items: center; height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--field); display: block; }
+.typing i:nth-child(2) { background: var(--muted); }
+.ask { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px; padding: 0 5px 0 12px; border: 1px solid var(--field); border-radius: 6px; font-size: 14px; color: var(--muted); }
+.send { width: 30px; height: 30px; border-radius: 4px; background: var(--ink); color: var(--surface); display: grid; place-items: center; }
+
+/* ---------- 정형외과 섹션: 카드 4장 ---------- */
+.ortho .card { display: grid; grid-template-columns: minmax(0, 1fr) 136px; gap: 16px; align-items: start; }
+.ortho-text { display: grid; gap: 4px; align-content: start; }
+.snip { background: var(--canvas); border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 16px; }
+.snip-hd { display: flex; justify-content: space-between; color: var(--muted); padding-bottom: 6px; }
+.snip-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-block: 6px; border-top: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.snip-row b { font-size: 13px; font-weight: 600; color: var(--ink); }
+
+.group { gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.group > .card { border: 0; border-radius: 0; background: transparent; }
+.group > .card + .card { border-top: 1px solid var(--line); }
+
+/* ---------- 기능 섹션 ---------- */
+.feat-big { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.fcard { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.fcard-text { padding: 16px; display: grid; gap: 10px; align-content: start; }
+.fcard-text .chips { margin-top: 4px; }
+.fcard-shot { flex: 1; border-top: 1px solid var(--line); background: var(--canvas); padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.drop { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border: 1px dashed var(--field); border-radius: 6px; background: var(--surface); font-size: 14px; color: var(--ink-2); }
+.drop svg { color: var(--ink-2); }
+.mini { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; min-width: 0; overflow: hidden; }
+.mini-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.mini-t { font-size: 14px; line-height: 20px; font-weight: 600; }
+.mini-body { display: grid; grid-template-columns: minmax(0, 1fr); }
+.rates { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.rate { padding: 10px 4px 10px 10px; display: grid; gap: 2px; min-width: 0; }
+.rate + .rate { border-left: 1px solid var(--line); padding-left: 8px; }
+.rate dt { font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; }
+.rate dd { font-size: 16px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.groups { padding: 10px 12px 12px; display: grid; gap: 8px; align-content: start; }
+.groups-t { font-size: 12px; line-height: 16px; color: var(--muted); }
+.grp { display: grid; grid-template-columns: 64px minmax(0, 1fr) 40px; gap: 8px; align-items: center; font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.grp .track { height: 6px; border-radius: 3px; background: var(--canvas); overflow: hidden; }
+.grp .track i { display: block; height: 100%; background: var(--accent-tint); border-radius: 3px; }
+.grp:first-of-type .track i { background: var(--accent); }
+.grp b { text-align: right; font-weight: 600; color: var(--ink); }
+.tbl-wrap { overflow-x: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.tbl th { height: 34px; padding: 0 6px; text-align: left; font-weight: 500; color: var(--ink-2); background: var(--canvas); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { height: 36px; padding: 0 6px; color: var(--ink); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl th:first-child, .tbl td:first-child { padding-left: 12px; }
+.tbl th:last-child, .tbl td:last-child { padding-right: 12px; }
+.tbl .r { text-align: right; }
+.tbl .sub { color: var(--ink-2); }
+.feat-small .card { display: grid; gap: 6px; align-content: start; }
+.fs-hd { display: flex; align-items: center; gap: 10px; }
+.fs-hd svg { color: var(--ink-2); }
+
+/* ---------- 개인정보 섹션 ---------- */
+.priv-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.zero { display: flex; align-items: center; gap: 20px; }
+.zero-n { font-size: 48px; line-height: 52px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); white-space: nowrap; }
+.zero-n span { font-size: 22px; font-weight: 500; margin-left: 2px; letter-spacing: 0; }
+.zero-c { font-size: 15px; line-height: 22px; color: var(--ink-2); padding-left: 20px; border-left: 1px solid var(--line); }
+.flow { display: grid; grid-template-columns: minmax(0, 1fr); }
+.node { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.node-hd { display: flex; align-items: center; gap: 8px; }
+.node-hd svg { color: var(--ink-2); }
+.stop { margin-top: 6px; background: var(--danger-soft); border-radius: 4px; padding: 10px 12px; display: grid; gap: 2px; }
+.stop-t { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--danger); }
+.stop-i { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.link { position: relative; display: flex; align-items: center; gap: 12px; height: 44px; padding-left: 25px; }
+.link-line { position: relative; width: 1px; align-self: stretch; background: var(--ink-2); margin-block: 4px 9px; }
+.link-line::after { content: ""; position: absolute; left: -4px; bottom: -6px; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 7px solid var(--ink-2); }
+
+/* ---------- 시작 3단계 ---------- */
+.steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 24px; }
+.step-n { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+
+/* ---------- 마지막 시작하기 ---------- */
+.start { display: grid; gap: 24px; justify-items: start; }
+.start-text { display: grid; gap: 12px; }
+
+/* ---------- 푸터 ---------- */
+.lp-ft { border-top: 1px solid var(--line); background: var(--surface); }
+.ft-in { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; padding-block: 24px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.ft-r { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+
+/* =========================== 태블릿 768px~ =========================== */
+@container lp (min-width: 768px) {
+  .wrap { padding-inline: 24px; }
+  .sec { padding-block: 80px; scroll-margin-top: 64px; }
+  .card { padding: 24px; }
+  .stack { gap: 40px; }
+  .head { gap: 16px; }
+  .t-display { font-size: 44px; line-height: 52px; }
+  .t-h2 { font-size: 28px; line-height: 36px; }
+  .t-h3l { font-size: 22px; line-height: 30px; }
+  .t-h3 { font-size: 18px; line-height: 26px; }
+  .t-lead { font-size: 18px; line-height: 28px; }
+  .t-body { font-size: 15px; line-height: 24px; }
+  .card { padding: 24px; }
+  .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .group { background: transparent; border: 0; border-radius: 0; }
+  .group > .card { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .group > .card + .card { border-top: 1px solid var(--line); }
+  .items { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 24px; }
+  .item { padding-top: 20px; gap: 8px; }
+
+  .lp-hd-in { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "logo nav cta"; column-gap: 24px; height: 64px; }
+  .logo { height: 64px; font-size: 17px; }
+  .lp-hd .btn::after { display: none; }
+  .lp-nav { margin: 0; padding: 0; border-top: 0; overflow: visible; }
+  .lp-nav a { height: 64px; padding: 0 12px; }
+
+  .hero { padding-block: 64px 80px; scroll-margin-top: 64px; }
+  .hero-grid { gap: 20px; max-width: 680px; }
+  .hero-b { gap: 28px; }
+  .shot { margin-top: 48px; }
+  .app-top { height: 56px; padding: 0 20px; }
+  .app-logo { font-size: 16px; }
+  .app-tabs { padding-inline: 6px; }
+  .app-tabs span { height: 48px; padding: 0 16px; font-size: 15px; }
+  .app-body { padding: 20px 20px 24px; gap: 16px; }
+  .app-h { font-size: 22px; line-height: 30px; }
+  .app-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpi { padding: 16px 18px 14px; }
+  .kpi-l { font-size: 14px; line-height: 22px; }
+  .kpi-v { font-size: 30px; line-height: 38px; }
+  .kpi-v .u { font-size: 18px; }
+  .kpi-f { font-size: 13px; line-height: 20px; }
+  .kpi-ai { grid-column: auto; }
+  .ai-text { padding-block: 2px 10px; }
+  .panel { padding: 18px 18px 16px; gap: 12px; }
+  .panel-t { font-size: 17px; line-height: 24px; }
+  .chart { grid-template-columns: 132px minmax(0, 1fr); gap: 40px; }
+  .ring { width: 132px; }
+  .plot { height: 150px; gap: 16px; }
+  .months { gap: 16px; font-size: 12px; }
+  .blab { font-size: 12px; }
+
+  .band-in { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .band-item { padding: 20px 20px; }
+  .band-item:first-child { padding-left: 0; }
+  .band-item + .band-item { border-top: 0; border-left: 1px solid var(--line); }
+
+  .rep-hd { padding: 16px 20px; }
+  .rep-t { font-size: 18px; line-height: 26px; }
+  .rep-body { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+  .rep-items { padding: 0 20px; }
+  .chat { padding: 20px; border-top: 0; border-left: 1px solid var(--line); }
+
+  .ortho .card { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 20px; }
+  .ortho .snip { order: -1; }
+  .snip { padding: 10px 12px; }
+
+  .fcard { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .fcard-text { padding: 24px; }
+  .fcard-shot { border-top: 0; border-left: 1px solid var(--line); padding: 20px; align-content: center; }
+
+  .priv-top { grid-template-columns: minmax(0, 1fr); }
+  .node { padding: 20px 24px; }
+  .link { padding-left: 33px; }
+
+  .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .start { grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 32px; }
+}
+
+/* =========================== PC 1024px~ =========================== */
+@container lp (min-width: 1024px) {
+  .sec { padding-block: 96px; }
+  .stack { gap: 48px; }
+  .t-display { font-size: 56px; line-height: 64px; }
+  .t-h2 { font-size: 32px; line-height: 40px; }
+  .grid4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .items.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+  .lp-nav { padding-left: 16px; }
+
+  .hero { padding-block: 88px 96px; }
+  .hero-grid { max-width: none; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: end; }
+  .hero-a { grid-column: 1 / span 6; gap: 16px; }
+  .hero-b { grid-column: 8 / span 5; }
+  .shot { margin-top: 64px; }
+  .app-top { height: 64px; padding: 0 24px; }
+  .app-logo { font-size: 17px; }
+  .app-tabs { padding-inline: 8px; }
+  .app-tabs span { height: 50px; padding: 0 20px; }
+  .app-body { padding: 24px 24px 28px; }
+  .app-h { font-size: 25px; line-height: 32px; }
+  .kpi { padding: 18px 20px 16px; }
+  .kpi-v { font-size: 34px; line-height: 40px; }
+  .kpi-v .u { font-size: 20px; }
+  .chart { grid-template-columns: 160px minmax(0, 1fr); gap: 64px; padding: 0 16px 0 8px; }
+  .ring { width: 156px; }
+  .plot { height: 168px; gap: 24px; }
+  .months { gap: 24px; }
+
+  .feat-big { gap: 16px; }
+  .fcard { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+  .fcard-text { padding: 32px; align-content: center; }
+  .fcard-shot { padding: 32px; }
+  .mini-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .rates { grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 0; border-right: 1px solid var(--line); }
+  .rate, .rate + .rate { padding: 12px 16px; border-left: 0; }
+  .rate:nth-child(odd) { border-right: 1px solid var(--line); }
+  .rate:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .rate dd { font-size: 18px; line-height: 24px; }
+  .groups { padding: 12px 16px; align-content: center; }
+  
+  .priv-top { grid-template-columns: minmax(0, 1fr) 360px; column-gap: 48px; align-items: end; }
+  .zero { display: grid; gap: 4px; justify-items: start; }
+  .zero-n { font-size: 56px; line-height: 64px; }
+  .zero-n span { font-size: 24px; }
+  .zero-c { padding-left: 0; border-left: 0; }
+  .flow { grid-template-columns: minmax(0, 1fr) 112px minmax(0, 1fr) 112px minmax(0, 1fr); align-items: stretch; }
+  .node { padding: 24px; }
+  .link { flex-direction: column; justify-content: center; gap: 8px; height: auto; padding: 0 12px; }
+  .link-line { width: 100%; height: 1px; align-self: auto; margin: 0 6px 0 0; }
+  .link-line::after { left: auto; right: -6px; bottom: -4px; border: 0; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; border-left: 7px solid var(--ink-2); }
+  .link .chip { order: -1; }
+}
+</style>
+
+<div class="d">
+  <header class="d-head">
+    <p class="d-kicker">첫 화면(랜딩) · 승인 전 시안</p>
+    <h1>랜딩 개편 시안</h1>
+    <p>기능과 문구는 그대로 두고 모양만 새로 잡았습니다. 맨 아래 시안에서 휴대폰·태블릿·PC 폭을 바꿔 가며 봐 주세요. 괜찮으면 이 모양으로 만듭니다.</p>
+    <p><a class="d-jump" href="#d-preview">시안 바로 보기 ↓</a></p>
+  </header>
+
+  <section class="d-card d-changes" aria-labelledby="d-changes-t">
+    <h2 id="d-changes-t">바뀌는 점</h2>
+    <ol>
+      <li><span>큰 그림과 사진 6장을 모두 뺐습니다. 그 자리에 <b>실제 프로그램 화면을 줄여서</b> 넣었습니다. 숫자는 모두 예시입니다.</span></li>
+      <li><span>색을 줄였습니다. 회색 글자와 흰 바탕에 <b>파랑 한 가지만</b> 씁니다. 섹션마다 달랐던 바탕색과 카드 색은 없앴습니다.</span></li>
+      <li><span>그림자, 그라데이션, 반짝이 아이콘, 떠다니는 점 같은 장식을 없앴습니다. 움직이는 것은 첫 화면의 예시 숫자뿐입니다.</span></li>
+      <li><span>첫 화면의 숫자 카드들이 이제 <b>프로그램 화면 안</b>에 들어가 있어서 서로 겹치지 않습니다.</span></li>
+      <li><span>글자 크기, 간격, 카드 모양을 한 가지 규칙으로 맞췄습니다. 카드 모서리는 프로그램 화면과 같은 6px입니다.</span></li>
+      <li><span>휴대폰은 1줄, 태블릿은 2줄, PC는 넓은 칸으로 나눕니다. <b>휴대폰에서도 메뉴가 보입니다</b>(옆으로 밀어서 보기).</span></li>
+      <li><span>휴대폰에서 스크롤 길이가 약 40% 줄었습니다. 급여표도 휴대폰 화면 안에 다 들어옵니다.</span></li>
+      <li><span>문구는 그대로입니다. 영어 소제목(AI ANALYSIS, FEATURES 같은 것)만 뺐습니다.</span></li>
+    </ol>
+  </section>
+
+  <section class="d-card" aria-labelledby="d-sys-t">
+    <h2 id="d-sys-t">디자인 규칙</h2>
+    <div class="d-sys">
+      <div class="d-block">
+        <h3>색 (프로그램 화면과 같은 색)</h3>
+        <div class="d-sw">
+          <div><i style="background:#111827"></i><span>제목 글자</span><small>#111827</small></div>
+          <div><i style="background:#374151"></i><span>본문 글자</span><small>#374151</small></div>
+          <div><i style="background:#6B7280"></i><span>보조 글자</span><small>#6B7280</small></div>
+          <div><i style="background:#E5E7EB"></i><span>선</span><small>#E5E7EB</small></div>
+          <div><i style="background:#F7F8FA"></i><span>회색 바탕</span><small>#F7F8FA</small></div>
+          <div><i style="background:#FFFFFF"></i><span>흰 바탕</span><small>#FFFFFF</small></div>
+          <div><i style="background:#2563EB"></i><span>강조 (파랑)</span><small>#2563EB</small></div>
+          <div><i style="background:#EAF1FE"></i><span>연한 파랑</span><small>#EAF1FE</small></div>
+        </div>
+        <p class="d-note">파랑은 링크, 차트, 지금 탭에만 씁니다. 단추는 검정 바탕입니다. 초록·주황은 상태 칩(완료·살펴볼 것)과 "여기서 멈춤" 상자에만 씁니다.</p>
+      </div>
+
+      <div class="d-block">
+        <h3>글자 (IBM Plex Sans KR 한 가지)</h3>
+        <div class="d-tbl-wrap">
+          <table class="d-tbl">
+            <thead><tr><th>쓰는 곳</th><th>PC · 태블릿 · 휴대폰</th><th>보기</th></tr></thead>
+            <tbody>
+              <tr><td>큰 제목</td><td class="n">56 · 44 · 34</td><td><span class="s" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">숫자로 보는</span></td></tr>
+              <tr><td>섹션 제목</td><td class="n">32 · 28 · 24</td><td><span class="s" style="font-size:18px;font-weight:600">시작은 3단계면</span></td></tr>
+              <tr><td>기능 제목</td><td class="n">22 · 22 · 20</td><td><span class="s" style="font-size:16px;font-weight:600">숫자가 살아납니다</span></td></tr>
+              <tr><td>카드 제목</td><td class="n">18 · 18 · 17</td><td><span class="s" style="font-size:15px;font-weight:600">매출·재고</span></td></tr>
+              <tr><td>안내 글</td><td class="n">18 · 18 · 16</td><td><span class="s" style="font-size:14px;color:#374151">정형외과에서 매일 보는 숫자</span></td></tr>
+              <tr><td>본문</td><td class="n">15 · 15 · 14</td><td><span class="s" style="font-size:13px;color:#374151">필요한 칸만 읽습니다</span></td></tr>
+              <tr><td>작은 글 · 칩</td><td class="n">13 · 12</td><td><span class="s" style="font-size:12px;color:#6B7280">방금 생성 · 예시</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="d-note">굵기는 본문 400, 단추·칩 500, 제목·숫자 600 세 가지. 숫자는 자리가 맞는 고정폭 숫자.</p>
+      </div>
+
+      <div class="d-block">
+        <h3>간격 (4px 단위)</h3>
+        <div class="d-tbl-wrap">
+          <table class="d-tbl">
+            <thead><tr><th>어디</th><th>PC · 태블릿 · 휴대폰</th></tr></thead>
+            <tbody>
+              <tr><td>섹션 위아래</td><td class="n">96 · 80 · 64</td></tr>
+              <tr><td>섹션 제목과 내용 사이</td><td class="n">48 · 40 · 32</td></tr>
+              <tr><td>카드와 카드 사이</td><td class="n">16 · 16 · 12</td></tr>
+              <tr><td>카드 안쪽</td><td class="n">24 · 24 · 20</td></tr>
+              <tr><td>화면 좌우 여백</td><td class="n">24 · 24 · 16</td></tr>
+              <tr><td>내용 최대 폭</td><td class="n">1200 (12칸)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="d-note">화면 폭: 휴대폰 767 이하 1줄 · 태블릿 768~1023 2줄 · PC 1024 이상 12칸.</p>
+      </div>
+
+      <div class="d-block">
+        <h3>모양</h3>
+        <div class="d-shapes">
+          <span style="display:inline-flex;align-items:center;height:44px;padding:0 20px;border-radius:6px;background:#111827;color:#fff;font-size:15px;font-weight:500">주 단추</span>
+          <span style="display:inline-flex;align-items:center;height:44px;padding:0 20px;border-radius:6px;background:#fff;border:1px solid #E5E7EB;color:#111827;font-size:15px;font-weight:500">보조 단추</span>
+          <span style="color:#2563EB;font-size:13px;font-weight:500">링크 →</span>
+        </div>
+        <div class="d-shapes">
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;border:1px solid #E5E7EB;color:#6B7280;font-size:12px;font-weight:500">예시</span>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;background:#E7F6EC;color:#166534;font-size:12px;font-weight:500">늘었어요</span>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;background:#FFF1E8;color:#C2410C;font-size:12px;font-weight:500">살펴볼 것</span>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;border:1px solid #E5E7EB;background:#F7F8FA;color:#6B7280;font-size:12px;font-weight:500">추정</span>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:4px;border:1px solid #E5E7EB;color:#374151;font-size:12px;font-weight:500">처방 그룹</span>
+        </div>
+        <div class="d-mini"><b>카드 한 가지</b><span>흰 바탕 · 1px 선 · 모서리 6px · 안쪽 24px · 그림자 없음</span></div>
+        <p class="d-note">단추 높이 44 (메뉴 안 단추 36) · 칩 높이 22, 모서리 4px · 아이콘은 꼭 필요한 곳에만, 선 굵기 1.5.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="d-preview" id="d-preview" aria-labelledby="d-prev-t">
+    <div class="d-bar">
+      <h2 id="d-prev-t">시안</h2>
+      <div class="d-switch" role="group" aria-label="화면 폭 고르기">
+        <button type="button" data-w="390" aria-pressed="false">휴대폰 390</button>
+        <button type="button" data-w="768" aria-pressed="false">태블릿 768</button>
+        <button type="button" data-w="1440" aria-pressed="true">PC 1440</button>
+      </div>
+    </div>
+    <p class="d-meta" id="d-meta" aria-live="polite">PC 1440px</p>
+    <div class="d-stage" id="d-stage">
+      <div class="d-frame" id="d-frame">
+
+<!-- ======================= 랜딩 시작 ======================= -->
+<div class="lp">
+  <header class="lp-hd">
+    <div class="wrap lp-hd-in">
+      <a href="#top" class="logo">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="9" y="3" width="12" height="6" rx="3"/><rect x="11" y="12" width="12" height="6" rx="3"/><rect x="8" y="21" width="12" height="6" rx="3"/></svg>
+        <span>[서비스 이름]</span>
+      </a>
+      <nav aria-label="주요 메뉴" class="lp-nav">
+        <a href="#ai">AI 분석</a>
+        <a href="#features">기능</a>
+        <a href="#privacy">개인정보 보호</a>
+        <a href="#how">시작 방법</a>
+      </nav>
+      <a href="/login" class="btn btn-md btn-primary">구글로 시작하기</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- 히어로 -->
+    <section id="top" class="hero">
+      <div class="wrap">
+        <div class="hero-grid">
+          <div class="hero-a">
+            <p class="kicker">통증 의원 관리자를 위한 AI 업무 도구</p>
+            <h1 class="t-display">숫자로 보는<br>우리 의원</h1>
+          </div>
+          <div class="hero-b">
+            <p class="t-lead">환자 통계, 급여·인센티브, 매출·재고, 일일마감과 <span class="nowrap">원장님 보고까지</span> 한 화면에서. 이번 달 숫자는 AI가 읽고 근거와 함께 설명합니다.</p>
+            <div class="actions">
+              <a href="/login" class="btn btn-lg btn-primary">구글로 시작하기</a>
+              <a href="#ai" class="btn btn-lg btn-secondary">AI 분석 보기</a>
+            </div>
+            <p class="hero-privacy">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M11 2l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3z"/><path d="M7.5 11l2.5 2.5 4.5-5" stroke-linecap="round"/></svg>
+              환자 개인정보는 병원 PC 밖으로 나가지 않습니다
+            </p>
+          </div>
+        </div>
+
+        <div class="shot">
+          <div class="app">
+            <div class="app-top" aria-hidden="true">
+              <span class="app-logo">
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="9" y="3" width="12" height="6" rx="3"/><rect x="11" y="12" width="12" height="6" rx="3"/><rect x="8" y="21" width="12" height="6" rx="3"/></svg>
+                [서비스 이름]
+              </span>
+              <span class="app-acct"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span>
+            </div>
+            <div class="app-tabs" aria-hidden="true">
+              <span class="on">대시보드</span><span>통계</span><span>AI 리포트</span><span>매출</span><span>재고</span><span>급여</span><span>일일마감·보고</span><span>월간 PDF</span>
+            </div>
+            <div class="app-body">
+              <div class="app-title">
+                <span class="app-h">대시보드</span>
+                <span class="chip chip-sample">숫자는 예시</span>
+              </div>
+              <div class="app-grid">
+                <div class="kpi">
+                  <div class="kpi-body">
+                    <div class="kpi-l">오늘 외래</div>
+                    <div class="kpi-v"><span data-k="visits">128</span><span class="u">명</span></div>
+                  </div>
+                  <div class="kpi-f"><span class="up">▲</span> 지난주 같은 요일보다</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-body">
+                    <div class="kpi-l">신환율</div>
+                    <div class="kpi-v"><span data-k="rate">18.2</span>%</div>
+                  </div>
+                  <div class="kpi-f"><div class="meter" aria-hidden="true"><i data-k="meter" style="width:18.2%"></i></div></div>
+                </div>
+                <div class="kpi kpi-ai">
+                  <div class="kpi-l">AI 한 줄 요약</div>
+                  <div class="ai-text">도수치료 처방이 지난달보다 늘었어요.</div>
+                  <div class="kpi-f"><span class="lnk">근거 숫자 보기 →</span></div>
+                </div>
+                <div class="panel">
+                  <div class="panel-hd"><span class="panel-t">월별 추이</span></div>
+                  <div class="chart">
+                    <div class="ring">
+                      <svg aria-hidden="true" viewBox="0 0 120 120">
+                        <circle cx="60" cy="60" r="46" fill="none" stroke="#EAF1FE" stroke-width="12"/>
+                        <circle class="ring-v" data-k="ring" cx="60" cy="60" r="46" fill="none" stroke="#2563EB" stroke-width="12" pathLength="100" stroke-dasharray="18 100" transform="rotate(-90 60 60)"/>
+                        <text data-k="ringText" x="60" y="68" text-anchor="middle" font-size="22" font-weight="600" fill="#111827" font-family="IBM Plex Sans KR, system-ui, sans-serif">18%</text>
+                      </svg>
+                    </div>
+                    <div class="bars">
+                      <div class="plot">
+                        <span class="gl" style="bottom:25%"></span><span class="gl" style="bottom:50%"></span><span class="gl" style="bottom:75%"></span><span class="gl" style="bottom:100%"></span>
+                        <div class="bcol"><div class="bar" data-k="bar" style="height:22%"><span class="blab">22%</span></div></div>
+                        <div class="bcol"><div class="bar" data-k="bar" style="height:35%"><span class="blab">35%</span></div></div>
+                        <div class="bcol"><div class="bar" data-k="bar" style="height:41%"><span class="blab">41%</span></div></div>
+                        <div class="bcol"><div class="bar" data-k="bar" style="height:52%"><span class="blab">52%</span></div></div>
+                        <div class="bcol"><div class="bar" data-k="bar" style="height:60%"><span class="blab">60%</span></div></div>
+                        <div class="bcol"><div class="bar" data-k="bar" style="height:74%"><span class="blab">74%</span></div></div>
+                      </div>
+                      <div class="months" aria-hidden="true"><span>5월</span><span>6월</span><span>7월</span><span>8월</span><span>9월</span><span>10월</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 핵심 약속 띠 -->
+    <section aria-label="핵심 약속" class="band">
+      <div class="wrap band-in">
+        <div class="band-item">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M11 2l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3z"/></svg>
+          환자 개인정보 서버 전송 0건
+        </div>
+        <div class="band-item">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="4" width="18" height="12" rx="2"/><path d="M7 19h8"/></svg>
+          환자 파일은 브라우저 안에서만 계산
+        </div>
+        <div class="band-item">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-9l5 6-5 6h9"/></svg>
+          AI에는 합계 숫자만
+        </div>
+      </div>
+    </section>
+
+    <!-- AI 분석 -->
+    <section id="ai" class="sec sec-canvas">
+      <div class="wrap stack">
+        <div class="head">
+          <h2 class="t-h2">버튼 한 번이면,<br>AI가 이번 달을 읽어 줍니다</h2>
+          <p class="t-lead">숫자를 늘어놓는 데서 끝나지 않습니다. 무엇이 달라졌는지, 왜 그런지, 다음 달 무엇을 봐야 하는지 말로 정리합니다.</p>
+        </div>
+
+        <div class="rep">
+          <div class="rep-hd">
+            <h3 class="rep-t">10월 AI 리포트</h3>
+            <span class="chip chip-sample">방금 생성 · 예시</span>
+          </div>
+          <div class="rep-body">
+            <div class="rep-items">
+              <div class="rep-item">
+                <span class="chip chip-ok">늘었어요</span>
+                <span class="rep-text">신환이 지난달보다 늘었습니다.</span>
+                <span class="rep-basis">근거 · 신환 <span class="nowrap">[지난달]명</span> → <span class="nowrap">[이번 달]명</span></span>
+              </div>
+              <div class="rep-item">
+                <span class="chip chip-attn">살펴볼 것</span>
+                <span class="rep-text">인건비율이 지난달보다 올랐습니다.</span>
+                <span class="rep-basis">근거 · 인건비 총액 ÷ 매출</span>
+              </div>
+              <div class="rep-item">
+                <span class="chip chip-wait">추정</span>
+                <span class="rep-text">도수치료 증가는 신환 증가와 함께 움직인 것으로 보입니다.</span>
+                <span class="rep-basis">근거 · 처방 그룹 '도수' <span class="nowrap">[지난달]건</span> → <span class="nowrap">[이번 달]건</span></span>
+              </div>
+            </div>
+            <div class="chat">
+              <div class="q">다음 달엔 뭘 보면 좋을까?</div>
+              <span class="typing" role="img" aria-label="AI가 답을 쓰는 중"><i></i><i></i><i></i></span>
+              <div class="chips">
+                <span class="chip chip-neutral">재방문율이 낮은 처방은?</span>
+                <span class="chip chip-neutral">인건비율 괜찮아?</span>
+              </div>
+              <div class="ask" aria-hidden="true">
+                <span>AI에게 물어보기</span>
+                <span class="send"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h11M10 4.5L14.5 9 10 13.5"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ul class="items four">
+          <li class="item"><h3 class="t-h3">근거 숫자와 함께</h3><p class="t-body">모든 문장에 어떤 숫자를 보고 말했는지 붙입니다.</p></li>
+          <li class="item"><h3 class="t-h3">짐작은 '추정'이라고</h3><p class="t-body">원인을 짐작할 때는 추정이라고 분명히 밝힙니다.</p></li>
+          <li class="item"><h3 class="t-h3">이어서 채팅으로 질문</h3><p class="t-body">리포트를 보다가 궁금한 점을 바로 물어봅니다.</p></li>
+          <li class="item"><h3 class="t-h3">환자 정보 없이</h3><p class="t-body">AI에는 합계 숫자만 보내고, 채팅 기록은 저장하지 않습니다.</p></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 정형외과·통증 의원 -->
+    <section id="ortho" class="sec">
+      <div class="wrap stack">
+        <div class="head">
+          <h2 class="t-h2">정형외과·통증 의원을 위해 만들었습니다</h2>
+          <p class="t-lead">척추·관절 환자 흐름, 도수·물리치료 처방, 치료사 생산성까지. 정형외과에서 매일 보는 숫자에 맞췄습니다.</p>
+        </div>
+        <ul class="grid4 ortho group">
+          <li class="card">
+            <div class="ortho-text"><h3 class="t-h3">주사</h3><p class="t-body">주사 치료 수와 F/U 기록</p></div>
+            <div class="snip" aria-hidden="true">
+              <div class="snip-hd"><span>이번 달</span><span>예시</span></div>
+              <div class="snip-row"><span>주사 치료</span><b>142건</b></div>
+              <div class="snip-row"><span>F/U 기록</span><b>37건</b></div>
+            </div>
+          </li>
+          <li class="card">
+            <div class="ortho-text"><h3 class="t-h3">물리치료</h3><p class="t-body">물리치료 내원 환자 수</p></div>
+            <div class="snip" aria-hidden="true">
+              <div class="snip-hd"><span>오늘</span><span>예시</span></div>
+              <div class="snip-row"><span>오전</span><b>21명</b></div>
+              <div class="snip-row"><span>오후</span><b>17명</b></div>
+            </div>
+          </li>
+          <li class="card">
+            <div class="ortho-text"><h3 class="t-h3">비급여</h3><p class="t-body">비급여 치료 내역</p></div>
+            <div class="snip" aria-hidden="true">
+              <div class="snip-hd"><span>이번 달</span><span>예시</span></div>
+              <div class="snip-row"><span>도수치료</span><b>86건</b></div>
+              <div class="snip-row"><span>체외충격파</span><b>31건</b></div>
+            </div>
+          </li>
+          <li class="card">
+            <div class="ortho-text"><h3 class="t-h3">월말 보고</h3><p class="t-body">한 장으로 받는 월간 보고</p></div>
+            <div class="snip" aria-hidden="true">
+              <div class="snip-hd"><span>10월</span><span>예시</span></div>
+              <div class="snip-row"><span>보고서</span><b>PDF 1장</b></div>
+              <div class="snip-row"><span>AI 분석</span><b>포함</b></div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 기능 -->
+    <section id="features" class="sec sec-canvas">
+      <div class="wrap stack">
+        <div class="head">
+          <h2 class="t-h2">매일 하던 일,<br>이제 숫자가 알아서 움직입니다</h2>
+        </div>
+
+        <div class="feat-big">
+          <article class="fcard">
+            <div class="fcard-text">
+              <p class="t-label">01 · 환자 통계</p>
+              <h3 class="t-h3l">파일을 끌어다 놓으면,<br>숫자가 살아납니다</h3>
+              <p class="t-body">EMR에서 내려받은 통계 파일을 올리면 신환율·재진율, <span class="nowrap">7일·14일</span> 재방문, 처방 그룹별 환자 수가 바로 계산됩니다.</p>
+              <div class="chips">
+                <span class="chip chip-neutral">신환율·재진율</span>
+                <span class="chip chip-neutral">7·14일 재방문</span>
+                <span class="chip chip-neutral">처방 그룹</span>
+              </div>
+            </div>
+            <div class="fcard-shot">
+              <div class="drop">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2h7l4 4v10H4z"/><path d="M11 2v4h4"/></svg>
+                통계 파일을 여기에 놓기
+              </div>
+              <div class="mini" aria-hidden="true">
+                <div class="mini-hd"><span class="mini-t">환자 통계</span><span class="chip chip-sample">예시</span></div>
+                <div class="mini-body">
+                  <dl class="rates">
+                    <div class="rate"><dt>신환율</dt><dd>18.2%</dd></div>
+                    <div class="rate"><dt>재진율</dt><dd>81.8%</dd></div>
+                    <div class="rate"><dt>7일 재방문</dt><dd>41.0%</dd></div>
+                    <div class="rate"><dt>14일 재방문</dt><dd>52.6%</dd></div>
+                  </dl>
+                  <div class="groups">
+                    <div class="groups-t">처방 그룹 · 환자 수</div>
+                    <div class="grp"><span>물리치료</span><span class="track"><i style="width:100%"></i></span><b>214</b></div>
+                    <div class="grp"><span>주사</span><span class="track"><i style="width:66%"></i></span><b>142</b></div>
+                    <div class="grp"><span>도수</span><span class="track"><i style="width:40%"></i></span><b>86</b></div>
+                    <div class="grp"><span>체외충격파</span><span class="track"><i style="width:14%"></i></span><b>31</b></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="fcard">
+            <div class="fcard-text">
+              <p class="t-label">02 · 급여·인센티브</p>
+              <h3 class="t-h3l">월 실적만 넣으면<br>급여 계산이 끝납니다</h3>
+              <p class="t-body">직원별 인센티브 규칙을 한 번 정해 두면, 월 실적으로 급여를 계산하고 확정합니다. 세무사 전달표와 인건비율·치료사 생산성도 함께 나옵니다.</p>
+              <div class="chips">
+                <span class="chip chip-neutral">인센티브 규칙</span>
+                <span class="chip chip-neutral">확정하면 잠금</span>
+                <span class="chip chip-neutral">세무사 전달표</span>
+              </div>
+            </div>
+            <div class="fcard-shot">
+              <div class="mini">
+                <div class="mini-hd">
+                  <span class="mini-t">10월 급여</span>
+                  <span class="chip chip-ok"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5l3 3 6-7"/></svg>10월 확정됨</span>
+                </div>
+                <div class="tbl-wrap">
+                  <table class="tbl">
+                    <thead><tr><th>직원</th><th>직종</th><th class="r">인센티브</th><th class="r">합계</th></tr></thead>
+                    <tbody>
+                      <tr><td>[직원 A]</td><td class="sub">물리치료사</td><td class="r">[금액]</td><td class="r">[금액]</td></tr>
+                      <tr><td>[직원 B]</td><td class="sub">도수치료사</td><td class="r">[금액]</td><td class="r">[금액]</td></tr>
+                      <tr><td>[직원 C]</td><td class="sub">간호조무사</td><td class="r">[금액]</td><td class="r">[금액]</td></tr>
+                      <tr><td>[직원 D]</td><td class="sub">방사선사</td><td class="r">[금액]</td><td class="r">[금액]</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <ul class="grid3 feat-small group">
+          <li class="card">
+            <div class="fs-hd">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 16.5V10M8 16.5V6M12 16.5V11M16 16.5V3.5"/></svg>
+              <h3 class="t-h3">매출·재고</h3>
+            </div>
+            <p class="t-body">매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.</p>
+          </li>
+          <li class="card">
+            <div class="fs-hd">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="15" rx="1.5"/><path d="M7 7.5h6M7 10.5h6M7 13.5h4"/></svg>
+              <h3 class="t-h3">일일마감·보고</h3>
+            </div>
+            <p class="t-body">일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.</p>
+          </li>
+          <li class="card">
+            <div class="fs-hd">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2.5h7l3.5 3.5v11.5H5z"/><path d="M7.5 14l2-2.5 2 1.5 2.5-3.5"/></svg>
+              <h3 class="t-h3">원장님 월간 보고</h3>
+            </div>
+            <p class="t-body">월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 개인정보 보호 -->
+    <section id="privacy" class="sec">
+      <div class="wrap stack">
+        <div class="priv-top">
+          <div class="head">
+            <h2 class="t-h2">환자 개인정보는<br>절대 병원 PC 밖으로 나가지 않습니다</h2>
+            <p class="t-lead">환자 이름·주민번호·차트번호는 서버에도, AI에도 가지 않습니다. 처음부터 그렇게 설계했습니다.</p>
+          </div>
+          <div class="card zero">
+            <p class="zero-n">0<span>건</span></p>
+            <p class="zero-c">서버와 AI로 보내는<br>환자 개인정보</p>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="node">
+            <div class="node-hd">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="4" width="18" height="12" rx="2"/><path d="M7 19h8"/></svg>
+              <h3 class="t-h3">병원 PC · 브라우저</h3>
+            </div>
+            <p class="t-body">환자 파일을 여기서만 열고 계산합니다.</p>
+            <div class="stop">
+              <span class="stop-t">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.5"/><path d="M3.5 12.5l9-9"/></svg>
+                여기서 멈춤
+              </span>
+              <span class="stop-i">환자 이름 · 주민번호 · 차트번호 · 파일 이름</span>
+            </div>
+          </div>
+          <div class="link" aria-hidden="true"><span class="link-line"></span><span class="chip chip-neutral">합계 숫자만</span></div>
+          <div class="node">
+            <div class="node-hd">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="16" height="6" rx="1.5"/><rect x="3" y="12" width="16" height="6" rx="1.5"/></svg>
+              <h3 class="t-h3">서버</h3>
+            </div>
+            <p class="t-body">통계·매출 합계만 저장합니다. 원본 파일은 올라가지 않습니다.</p>
+          </div>
+          <div class="link" aria-hidden="true"><span class="link-line"></span><span class="chip chip-neutral">집계만</span></div>
+          <div class="node">
+            <div class="node-hd">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2.5h7l3.5 3.5v11.5H5z"/><path d="M7.5 9.5h5M7.5 12.5h5M7.5 15.5h3"/></svg>
+              <h3 class="t-h3">AI 분석</h3>
+            </div>
+            <p class="t-body">서버가 꺼낸 합계 숫자로만 리포트를 씁니다.</p>
+          </div>
+        </div>
+
+        <ul class="items four">
+          <li class="item"><h3 class="t-h3">필요한 칸만 읽습니다</h3><p class="t-body">계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.</p></li>
+          <li class="item"><h3 class="t-h3">주민번호가 보이면 멈춥니다</h3><p class="t-body">'-' 없이 붙여 쓴 13자리까지 잡아서, 섞여 있으면 계산하지 않고 알려 줍니다.</p></li>
+          <li class="item"><h3 class="t-h3">AI에는 합계 숫자만</h3><p class="t-body">통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.</p></li>
+          <li class="item"><h3 class="t-h3">승인한 사람만, 공용 PC도 안심</h3><p class="t-body">구글 로그인 뒤 관리자가 승인한 계정만 들어옵니다. 30분 동안 움직임이 없으면 자동으로 로그아웃합니다.</p></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 시작 방법 -->
+    <section id="how" class="sec sec-canvas">
+      <div class="wrap stack">
+        <div class="head">
+          <h2 class="t-h2">시작은 3단계면 충분합니다</h2>
+        </div>
+        <ol class="steps">
+          <li class="item"><span class="step-n">01</span><h3 class="t-h3">구글로 시작하기</h3><p class="t-body">쓰던 구글 계정으로 로그인합니다. 새 비밀번호를 만들 필요가 없습니다.</p></li>
+          <li class="item"><span class="step-n">02</span><h3 class="t-h3">가입 신청</h3><p class="t-body">처음 한 번만 의원 이름을 적어 신청합니다.</p></li>
+          <li class="item"><span class="step-n">03</span><h3 class="t-h3">승인 후 바로 사용</h3><p class="t-body">관리자가 승인하면 대시보드가 열립니다.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 시작하기 -->
+    <section id="start" class="sec">
+      <div class="wrap">
+        <div class="start">
+          <div class="start-text">
+            <h2 class="t-h2">우리 의원도<br>숫자로 운영해 보세요</h2>
+            <p class="t-lead">처음이면 가입 신청 후 관리자 승인을 받습니다.</p>
+          </div>
+          <a href="/login" class="btn btn-lg btn-primary">구글로 시작하기</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="lp-ft">
+    <div class="wrap ft-in">
+      <span>[서비스 이름]</span>
+      <span class="ft-r"><span>문의 [이메일 주소]</span><span>© 2026</span></span>
+    </div>
+  </footer>
+</div>
+<!-- ======================= 랜딩 끝 ======================= -->
+
+      </div>
+    </div>
+  </section>
+</div>
+<div class="d-toast" id="d-toast" role="status" hidden></div>
+
+<script>
+(function () {
+  var stage = document.getElementById('d-stage');
+  var frame = document.getElementById('d-frame');
+  var meta = document.getElementById('d-meta');
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.d-switch button'));
+  var names = { 390: '휴대폰', 768: '태블릿', 1440: 'PC' };
+  var current = 1440;
+
+  function fit() {
+    var avail = stage.clientWidth;
+    var z = Math.min(1, avail / current);
+    frame.style.width = (current + 2) + 'px'; /* 1px 테두리 양쪽 → 안쪽 랜딩 폭이 정확히 current */
+    frame.style.zoom = z < 1 ? String(z) : '';
+    var pct = Math.round(z * 100);
+    meta.textContent = names[current] + ' ' + current + 'px' + (pct < 100 ? ' · 화면에 맞춰 ' + pct + '%로 줄여 보여 줍니다' : ' · 실제 크기');
+  }
+  function choose(w) {
+    current = w;
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.dataset.w) === w)); });
+    fit();
+    try { localStorage.setItem('lp-width', String(w)); } catch (e) {}
+  }
+  buttons.forEach(function (b) { b.addEventListener('click', function () { choose(Number(b.dataset.w)); }); });
+  var saved = null;
+  try { saved = Number(localStorage.getItem('lp-width')); } catch (e) {}
+  var params = new URLSearchParams(location.search);
+  var forced = Number(params.get('w'));
+  var start = forced || (saved && names[saved] ? saved : (window.innerWidth < 700 ? 390 : (window.innerWidth < 1100 ? 768 : 1440)));
+  choose(start);
+  window.addEventListener('resize', fit);
+
+  // 실제 사이트에서는 /login으로 간다. 시안에서는 안내만 띄운다
+  var toast = document.getElementById('d-toast');
+  var timer = null;
+  document.querySelectorAll('.lp a[href="/login"]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      toast.textContent = '실제 사이트에서는 구글 로그인 화면으로 이동합니다';
+      toast.hidden = false;
+      clearTimeout(timer);
+      timer = setTimeout(function () { toast.hidden = true; }, 2200);
+    });
+  });
+
+  // 히어로 예시 숫자: 2.6초마다 바뀐다 (실제 사이트 heroFrames.ts와 같은 값). 모션 줄이기면 멈춘다
+  var VISITS = [128, 129, 131, 132, 134, 135, 137, 138];
+  var RATES = ['18.2', '18.4', '18.6', '18.4'];
+  var RINGS = [18, 24, 31, 27];
+  var BARS = [[22, 35, 41, 52, 60, 74], [30, 38, 49, 58, 71, 82], [26, 44, 53, 63, 77, 91], [34, 41, 56, 66, 80, 88]];
+  var q = function (k) { return document.querySelector('.lp [data-k="' + k + '"]'); };
+  var bars = document.querySelectorAll('.lp [data-k="bar"]');
+  function render(t) {
+    q('visits').textContent = VISITS[t % VISITS.length];
+    var r = RATES[t % RATES.length];
+    q('rate').textContent = r;
+    q('meter').style.width = r + '%';
+    var ring = RINGS[t % RINGS.length];
+    q('ring').setAttribute('stroke-dasharray', ring + ' 100');
+    q('ringText').textContent = ring + '%';
+    var b = BARS[t % BARS.length];
+    bars.forEach(function (el, i) { el.style.height = b[i] + '%'; el.firstElementChild.textContent = b[i] + '%'; });
+  }
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce && !params.has('still')) {
+    var tick = 0;
+    setInterval(function () { tick += 1; render(tick); }, 2600);
+  }
+})();
+</script>
