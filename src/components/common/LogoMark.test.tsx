@@ -7,8 +7,8 @@ import SiteHeader from '@/components/landing/SiteHeader'
 import { AppShell } from '@/components/shell/AppShell'
 import { LogoMark } from './LogoMark'
 
-// 로고 마크 한 색 (REQ-103, design.md '로고', 시안 docs/mockups/landing-v2 .logo svg).
-// 마크는 LogoMark 하나에서만 그리고, 색은 currentColor 하나 → 부모 글자색(ink)을 따른다
+// 로고 마크 병원 십자 C③ (REQ-103, design.md '로고', 비교 시안 docs/mockups/landing-v2/logo-options.html C③).
+// 마크는 LogoMark 하나에서만 그린다. 색은 테두리 청록 #14C8BA · 십자 보라 #6D5DF5로 고정한다(currentColor 아님)
 
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { signOut: vi.fn() } }) }))
 vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }))
@@ -31,47 +31,55 @@ function sourceFiles(dir = 'src'): string[] {
 // 태그 하나의 속성 → { 이름: 값 } (속성 순서 그대로)
 const attrsOf = (tag: string) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]))
 const openTag = (html: string) => html.match(/^<svg\b[^>]*>/)?.[0] ?? ''
+const innerOf = (html: string) => html.slice(openTag(html).length, -'</svg>'.length)
 // 마크업 안 로고 svg(viewBox 0 0 30 30) 전부
 const logosIn = (html: string): string[] => html.match(/<svg\b[^>]*viewBox="0 0 30 30"[^>]*>[\s\S]*?<\/svg>/g) ?? []
 const withoutClass = (attrs: Record<string, string>) => Object.fromEntries(Object.entries(attrs).filter(([k]) => k !== 'class'))
 
-const RECTS = [
-  { x: '9', y: '3', width: '12', height: '6', rx: '3' },
-  { x: '11', y: '12', width: '12', height: '6', rx: '3' },
-  { x: '8', y: '21', width: '12', height: '6', rx: '3' },
+const TEAL = '#14C8BA'
+const VIOLET = '#6D5DF5'
+const CROSS =
+  'M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z'
+
+// 안쪽 원소 [태그, 속성] (시안 C③ 그대로, 이 순서)
+const INNER: [string, Record<string, string>][] = [
+  ['rect', { x: '3', y: '3', width: '24', height: '24', rx: '6', fill: 'none', stroke: TEAL, 'stroke-width': '2.4' }],
+  ['path', { d: CROSS, fill: VIOLET }],
 ]
+const OLD_COORDS = ['x="9" y="3"', 'x="11" y="12"', 'x="8" y="21"']
 
 describe('AC-103.1: LogoMark 마크업', () => {
-  it('AC-103.1: <LogoMark size={22} />의 svg는 aria-hidden·22×22·viewBox 0 0 30 30·fill none·stroke currentColor·stroke-width 2.4다(시안과 같다)', () => {
+  it('AC-103.1: <LogoMark size={22} />의 바깥 svg는 aria-hidden·22×22·viewBox 0 0 30 30뿐이고 fill·stroke가 없다', () => {
     const html = draw({ size: 22 })
-    expect(openTag(html)).toBe(
-      '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2.4">',
-    )
+    expect(openTag(html)).toBe('<svg aria-hidden="true" width="22" height="22" viewBox="0 0 30 30">')
+    expect(attrsOf(openTag(html))).not.toHaveProperty('fill')
+    expect(attrsOf(openTag(html))).not.toHaveProperty('stroke')
     expect(html.endsWith('</svg>')).toBe(true)
   })
 
-  it('AC-103.1: 안에는 지금과 같은 자리의 rect 3개만 있다 — (9,3) (11,12) (8,21), 12×6, rx 3, rect에는 색·선 속성이 없다', () => {
-    const html = draw({ size: 22 })
-    const inner = html.slice(openTag(html).length, -'</svg>'.length)
-    const rects = [...inner.matchAll(/<rect\b[^>]*>(?:<\/rect>)?/g)].map((m) => m[0])
-    expect(rects.map(attrsOf)).toEqual(RECTS)
-    // rect 말고 다른 원소·글자가 없다
-    expect(rects.join('')).toBe(inner)
+  it('AC-103.1: 안에는 정확히 두 원소가 이 순서로 있다 — 테두리 rect(#14C8BA, 선 2.4) · 십자 path(#6D5DF5)', () => {
+    const inner = innerOf(draw({ size: 22 }))
+    const elements = [...inner.matchAll(/<(\w+)\b([^>]*?)\/?>(?:<\/\1>)?/g)]
+    expect(elements.map((m) => [m[1], attrsOf(m[2] ?? '')])).toEqual(INNER)
+    // 두 원소 말고 다른 원소·글자가 없다
+    expect(elements.map((m) => m[0]).join('')).toBe(inner)
   })
 
-  it('AC-103.1: 색 값(#…·rgb·hsl·style)이 없고 선 색은 currentColor 하나다', () => {
+  it('AC-103.1: 색은 #14C8BA·#6D5DF5 두 값으로 고정이고 currentColor·다른 색 값·style·빨강 계열이 없다', () => {
     for (const size of [22, 26]) {
       const html = draw({ size, className: 'shrink-0' })
-      expect(html).not.toMatch(/#[0-9a-f]{3,8}\b/i)
-      expect(html).not.toMatch(/rgba?\(|hsla?\(|color-mix\(|style=/i)
-      expect(html.match(/\bstroke="[^"]*"/g)).toEqual(['stroke="currentColor"'])
-      expect(html.match(/\bfill="[^"]*"/g)).toEqual(['fill="none"'])
+      expect(html).not.toMatch(/currentColor/i)
+      expect(html).not.toMatch(/rgba?\(|hsla?\(|color-mix\(|style=|\bred\b/i)
+      expect(html.match(/#[0-9a-f]{3,8}\b/gi)).toEqual([TEAL, VIOLET])
+      expect(html.match(/\bstroke="[^"]*"/g)).toEqual([`stroke="${TEAL}"`])
+      expect(html.match(/\bfill="[^"]*"/g)).toEqual(['fill="none"', `fill="${VIOLET}"`])
     }
   })
 
-  it('AC-103.1: size가 너비·높이가 되고 viewBox는 그대로다(앱 틀·인증 틀은 26)', () => {
-    const attrs = attrsOf(openTag(draw({ size: 26 })))
-    expect(attrs).toMatchObject({ width: '26', height: '26', viewBox: '0 0 30 30' })
+  it('AC-103.1: size가 너비·높이가 되고 viewBox·안쪽 원소는 그대로다(앱 틀·인증 틀은 26)', () => {
+    const html = draw({ size: 26 })
+    expect(attrsOf(openTag(html))).toMatchObject({ width: '26', height: '26', viewBox: '0 0 30 30' })
+    expect(innerOf(html)).toBe(innerOf(draw({ size: 22 })))
   })
 
   it('AC-103.1: className을 넘기면 svg에 붙고, 안 넘기면 class가 없다', () => {
@@ -82,16 +90,20 @@ describe('AC-103.1: LogoMark 마크업', () => {
   })
 })
 
-describe('AC-103.2: 로고는 LogoMark 한 곳에서 한 색으로', () => {
+describe('AC-103.2: 로고는 LogoMark 한 곳에서', () => {
   const USERS = [
     { file: 'src/components/shell/AppShell.tsx', size: 26 },
     { file: 'src/components/auth/AuthFrame.tsx', size: 26 },
     { file: 'src/components/landing/SiteHeader.tsx', size: 22 },
   ]
 
-  it('AC-103.2: rect 좌표 글자(x="9" y="3" 등)는 시험 밖 src/에서 src/components/common/LogoMark.tsx에만 있다', () => {
-    for (const coord of ['x="9" y="3"', 'x="11" y="12"', 'x="8" y="21"']) {
-      expect(sourceFiles().filter((rel) => read(rel).includes(coord)), coord).toEqual(['src/components/common/LogoMark.tsx'])
+  it('AC-103.2: 십자 path 글자(M13.5 8h3)는 시험 밖 src/에서 src/components/common/LogoMark.tsx에만 있다', () => {
+    expect(sourceFiles().filter((rel) => read(rel).includes('M13.5 8h3'))).toEqual(['src/components/common/LogoMark.tsx'])
+  })
+
+  it('AC-103.2: 옛 막대 좌표 글자(x="9" y="3"·x="11" y="12"·x="8" y="21")는 시험 밖 src/ 어디에도 없다', () => {
+    for (const coord of OLD_COORDS) {
+      expect(sourceFiles().filter((rel) => read(rel).includes(coord)), coord).toEqual([])
     }
   })
 
@@ -106,7 +118,7 @@ describe('AC-103.2: 로고는 LogoMark 한 곳에서 한 색으로', () => {
     }
   })
 
-  it('AC-103.2: 그린 화면의 로고는 LogoMark와 같은 svg 하나이고 색은 부모 글자색(ink)을 따른다', () => {
+  it('AC-103.2: 그린 화면마다 로고 svg(viewBox 0 0 30 30)가 하나이고 LogoMark 출력과 같다(배치용 class만 다를 수 있음)', () => {
     const screens = [
       {
         name: 'AppShell',
@@ -125,15 +137,11 @@ describe('AC-103.2: 로고는 LogoMark 한 곳에서 한 색으로', () => {
       expect(logos, name).toHaveLength(1)
       const [logo = ''] = logos
       const mark = draw({ size })
-      // class(배치용 shrink-0 등)만 다를 수 있고 속성·안쪽 rect는 LogoMark 그대로
+      // class(배치용 shrink-0 등)만 다를 수 있고 속성·안쪽 두 원소는 LogoMark 그대로
       expect(withoutClass(attrsOf(openTag(logo))), name).toEqual(attrsOf(openTag(mark)))
       expect(logo.slice(openTag(logo).length), name).toBe(mark.slice(openTag(mark).length))
-      // svg에 글자색·선색 클래스를 따로 주지 않는다 → currentColor가 부모 글자색을 따른다
+      // 배치용 class만: 고정 색을 덮는 글자색·선색·채움색 class가 없다
       expect(attrsOf(openTag(logo)).class ?? '', name).not.toMatch(/(^|\s)(text|stroke|fill)-/)
-      // 앱 틀·인증 틀 뿌리는 글자색 ink(랜딩 메뉴는 .logo 글자색)
-      if (name !== 'SiteHeader') {
-        expect((attrsOf(html.match(/^<div\b[^>]*>/)?.[0] ?? '').class ?? '').split(' '), name).toContain('text-ink')
-      }
     }
   })
 })
