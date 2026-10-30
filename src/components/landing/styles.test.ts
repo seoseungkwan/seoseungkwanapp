@@ -540,9 +540,13 @@ describe('AC-106.3: 위쪽 메뉴 — 768px 이상', () => {
     expectStyle('.nav', bp, { overflow: 'visible', margin: '0', 'border-top': '0' }, HEADER)
   })
 
-  it.each([768, 1024] as Bp[])('AC-106.3: @%ipx [구글로 시작하기]의 ::after는 끈다', (bp) => {
-    expectStyle('.start::after', bp, { display: 'none' }, HEADER)
-  })
+  it.each([768, 1024] as Bp[])(
+    'AC-112.1: @%ipx [구글로 시작하기]의 ::after를 끄지 않는다(display 없음) — 휴대폰 값 content·position·inset: -4px 0이 그대로다',
+    (bp) => {
+      expect(at(header(), '.start::after', 'display', bp), `${HEADER}: .start::after { display } @${bp}`).toBeUndefined()
+      expectStyle('.start::after', bp, { content: '""', position: 'absolute', inset: '-4px 0' }, HEADER)
+    },
+  )
 
   it('AC-106.3: 1024px부터 nav 왼쪽 여백 16px(768에서는 0)', () => {
     expectStyle('.nav', 768, { padding: '0' }, HEADER)

@@ -39,7 +39,7 @@
   grid-area: cta;
   position: relative;
 }
-/* 36px 단추의 누름 영역을 위아래로 4px씩 늘려 44px로.
+/* 36px 단추의 누름 영역을 위아래로 4px씩 늘려 44px로. 어느 폭에서나 켠다(768부터도 64px 줄 안에 들어간다, AC-112.1).
    inset은 테두리 안쪽(padding box)에서 재므로 margin -1px로 단추 테두리 1px만큼 더 늘린다 */
 .start::after {
   content: "";
@@ -94,10 +94,6 @@
   .logo {
     height: 64px;
     font-size: 17px;
-  }
-
-  .start::after {
-    display: none;
   }
 
   .nav {

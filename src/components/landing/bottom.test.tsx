@@ -26,6 +26,10 @@ const textOf = (html: string) =>
     .replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
     .replace(/\s+/g, ' ')
     .trim()
+// 태그를 빈칸 없이 지운 글자 (&#x27; 같은 글자는 textOf처럼 되돌린다). 빈칸을 모으지 않는다
+// → <span> 앞뒤 띄어쓰기가 사라지거나 늘면 걸린다(AC-112.2)
+const plainOf = (html: string) =>
+  html.replace(/<[^>]+>/g, '').replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
 // <a> 링크 목록: href와 글자
 const linksOf = (html: string) =>
   [...html.matchAll(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => ({ href: m[1], text: textOf(m[2]) }))
@@ -143,8 +147,10 @@ const NODE_PARTS = new RegExp(
     '(?:(<div\\b[^>]*>)(<span\\b[^>]*>)(<svg\\b[^>]*>)[\\s\\S]*?</svg>([^<]*)</span>(<span\\b[^>]*>)([^<]*)</span></div>)?</div>$',
 )
 const LINK_PARTS = /^(<div\b[^>]*>)(<span\b[^>]*>)<\/span>(<span\b[^>]*>)([^<]*)<\/span><\/div>$/
-// 약속 하나: <li>(h3 + p). p 안에 태그(<br> 등)가 없다
-const LIST_ITEM = /(<li\b[^>]*>)(<h3\b[^>]*>)([^<]*)<\/h3>(<p\b[^>]*>)([^<]*)<\/p><\/li>/g
+// 약속 하나: <li>(h3 + p). p 안에는 줄바꿈을 막는 <span> 하나까지만 받는다(<br> 등 다른 태그는 없다).
+// <span>은 약속 3에만 있고 나머지 세 <p>는 태그 없는 글자뿐이다(AC-112.2에서 따로 본다)
+const LIST_ITEM =
+  /(<li\b[^>]*>)(<h3\b[^>]*>)([^<]*)<\/h3>(<p\b[^>]*>)([^<]*(?:<span\b[^>]*>[^<]*<\/span>[^<]*)?)<\/p><\/li>/g
 
 describe('AC-110.1: 개인정보 섹션의 짜임', () => {
   const parts = privacy.match(PRIV_SHAPE)
@@ -244,7 +250,7 @@ describe('AC-110.1: 개인정보 섹션의 짜임', () => {
       'AI에는 합계 숫자만',
       '승인한 사람만, 공용 PC도 안심',
     ])
-    expect(rules.map((m) => textOf(m[5]))).toEqual([
+    expect(rules.map((m) => plainOf(m[5]))).toEqual([
       '계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.',
       "'-' 없이 붙여 쓴 13자리까지 잡아서, 섞여 있으면 계산하지 않고 알려 줍니다.",
       '통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.',
@@ -273,6 +279,28 @@ describe('AC-110.1: 개인정보 섹션의 짜임', () => {
     ])
     expect(checked, '본 클래스 수').toBeGreaterThan(0)
     expect(missing).toEqual([])
+  })
+})
+
+describe('AC-112.2: 약속 3 "이름·개인별" 줄바꿈 막기', () => {
+  const listIn = privacy.match(PRIV_SHAPE)?.[17] ?? ''
+  const descs = [...listIn.matchAll(LIST_ITEM)].map((m) => m[5])
+
+  it('AC-112.2: 약속 3 설명 <p>는 "이름·개인별"만 base.nowrap <span> 하나에 넣고, 앞뒤 띄어쓰기는 그대로다', () => {
+    expect(descs).toHaveLength(4)
+    expect(descs[2]).toBe(
+      `통계·매출 합계와 인건비 총액만 보냅니다. 직원 <span class="${base.nowrap}">이름·개인별</span> 급여도 보내지 않습니다.`,
+    )
+    expect(plainOf(descs[2] ?? '')).toBe('통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.')
+  })
+
+  it('AC-112.2: 다른 약속 세 개(1·2·4)의 설명 <p>에는 태그가 없다(약속 2에 <br> 없음, AC-110.1)', () => {
+    expect(descs).toHaveLength(4)
+    for (const i of [0, 1, 3]) expect(descs[i], `약속 ${i + 1}`).not.toMatch(/</)
+  })
+
+  it('AC-112.2: base.module.css에 .nowrap { white-space: nowrap }이 정의돼 있다(CSS Module은 없는 이름에도 값을 준다)', () => {
+    expect(cssOf('base.module.css')).toMatch(/(?:^|\})\s*\.nowrap\s*\{\s*white-space:\s*nowrap\s*;?\s*\}/)
   })
 })
 

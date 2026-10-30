@@ -24,8 +24,9 @@ const STAFF = [
   { name: '[직원 D]', job: '방사선사' },
 ]
 
-// 작은 기능 카드 3개. 아이콘은 20px 선 그림(stroke="currentColor", 색은 CSS가 정한다)
-const SMALL: { title: string; desc: string; icon: ReactNode }[] = [
+// 작은 기능 카드 3개. 아이콘은 20px 선 그림(stroke="currentColor", 색은 CSS가 정한다).
+// 카드 3은 768에서 마지막 줄에 "저장합니다."만 남지 않게 "PDF로 저장합니다."를 nowrap으로 묶는다(AC-112.3)
+const SMALL: { title: string; desc: ReactNode; icon: ReactNode }[] = [
   {
     title: '매출·재고',
     desc: '매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.',
@@ -43,7 +44,11 @@ const SMALL: { title: string; desc: string; icon: ReactNode }[] = [
   },
   {
     title: '원장님 월간 보고',
-    desc: '월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.',
+    desc: (
+      <>
+        월말보고·통계 그래프·AI 분석을 한 장에 모아 <span className={base.nowrap}>PDF로 저장합니다.</span>
+      </>
+    ),
     icon: (
       <>
         <path d="M5 2.5h7l3.5 3.5v11.5H5z" />

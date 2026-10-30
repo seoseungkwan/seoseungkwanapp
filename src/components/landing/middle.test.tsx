@@ -23,6 +23,10 @@ const textOf = (html: string) =>
     .replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
     .replace(/\s+/g, ' ')
     .trim()
+// 태그를 빈칸 없이 지운 글자 (&#x27; 같은 글자는 textOf처럼 되돌린다). 빈칸을 모으지 않는다
+// → <span> 앞뒤 띄어쓰기가 사라지거나 늘면 걸린다(AC-112.3)
+const plainOf = (html: string) =>
+  html.replace(/<[^>]+>/g, '').replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
 // 랜딩 폴더의 시험이 아닌 소스 파일(ts·tsx·css)과 그 글자
 const LANDING_DIR = join(process.cwd(), 'src/components/landing')
 const landingSources = readdirSync(LANDING_DIR)
@@ -385,9 +389,10 @@ const GROUP_ROW = /(<div\b[^>]*>)<span>([^<]*)<\/span>(<span\b[^>]*>)(<i\b[^>]*>
 // 급여 미리보기: 패널(머리: 이름 + 확정 칩(svg + 글) / 감싸개 > table)
 const PAY_SHOT =
   /^(<div\b[^>]*>)(<div\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<span\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>([^<]*)<\/span><\/div>(<div\b[^>]*>)(<table\b[^>]*>)<thead><tr>([\s\S]*?)<\/tr><\/thead><tbody>([\s\S]*?)<\/tbody><\/table><\/div><\/div>$/
-// 작은 카드 하나: li > 머리(svg + h3) + p
+// 작은 카드 하나: li > 머리(svg + h3) + p. p 안에는 줄바꿈을 막는 <span> 하나까지만 받는다.
+// <span>은 작은 카드 3에만 있고 나머지 두 <p>는 태그 없는 글자뿐이다(AC-112.3에서 따로 본다)
 const SMALL_CARD =
-  /(<li\b[^>]*>)(<div\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>(<h3\b[^>]*>)([^<]*)<\/h3><\/div>(<p\b[^>]*>)([^<]*)<\/p><\/li>/g
+  /(<li\b[^>]*>)(<div\b[^>]*>)(<svg\b[^>]*>)([\s\S]*?)<\/svg>(<h3\b[^>]*>)([^<]*)<\/h3><\/div>(<p\b[^>]*>)([^<]*(?:<span\b[^>]*>[^<]*<\/span>[^<]*)?)<\/p><\/li>/g
 
 describe('AC-109.1: 기능 섹션의 짜임', () => {
   const parts = features.match(FEATURES_SHAPE)
@@ -535,7 +540,7 @@ describe('AC-109.1: 기능 섹션의 짜임', () => {
     expect(classesOf(list)).toEqual(expect.arrayContaining([base.grid3, base.group]))
     expect(smallCards).toHaveLength(3)
     expect((listIn ?? '').replace(SMALL_CARD, ''), 'li 카드 밖의 다른 원소가 없다').toBe('')
-    expect(smallCards.map((m) => [m[6], m[8]])).toEqual([
+    expect(smallCards.map((m) => [m[6], plainOf(m[8])])).toEqual([
       ['매출·재고', '매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.'],
       ['일일마감·보고', '일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.'],
       ['원장님 월간 보고', '월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.'],
@@ -574,5 +579,25 @@ describe('AC-109.1: 기능 섹션의 짜임', () => {
     ])
     expect(checked, '본 클래스 수').toBeGreaterThan(0)
     expect(missing).toEqual([])
+  })
+})
+
+describe('AC-112.3: 작은 카드 3 "PDF로 저장합니다." 줄바꿈 막기', () => {
+  const listIn = features.match(FEATURES_SHAPE)?.[9] ?? ''
+  const descs = [...listIn.matchAll(SMALL_CARD)].map((m) => m[8])
+
+  it('AC-112.3: 작은 카드 3 설명 <p>는 "PDF로 저장합니다."만 base.nowrap <span> 하나에 넣고, 앞 띄어쓰기는 그대로다', () => {
+    expect(descs).toHaveLength(3)
+    expect(descs[2]).toBe(`월말보고·통계 그래프·AI 분석을 한 장에 모아 <span class="${base.nowrap}">PDF로 저장합니다.</span>`)
+    expect(plainOf(descs[2] ?? '')).toBe('월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.')
+  })
+
+  it('AC-112.3: 다른 작은 카드 두 개(1·2)의 설명 <p>에는 태그가 없다', () => {
+    expect(descs).toHaveLength(3)
+    for (const i of [0, 1]) expect(descs[i], `작은 카드 ${i + 1}`).not.toMatch(/</)
+  })
+
+  it('AC-112.3: base.module.css에 .nowrap { white-space: nowrap }이 정의돼 있다(CSS Module은 없는 이름에도 값을 준다)', () => {
+    expect(cssOf('base.module.css')).toMatch(/(?:^|\})\s*\.nowrap\s*\{\s*white-space:\s*nowrap\s*;?\s*\}/)
   })
 })

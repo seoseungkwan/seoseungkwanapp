@@ -2,8 +2,9 @@ import type { ReactNode } from 'react'
 import base from './base.module.css'
 import styles from './PrivacySection.module.css'
 
-// 개인정보 약속 4개. 문구는 plan.md §4·§6에 정한 사실만
-const RULES = [
+// 개인정보 약속 4개. 문구는 plan.md §4·§6에 정한 사실만.
+// 약속 3은 768에서 "이름·개인별"이 가운뎃점 뒤에서 끊기지 않게 그 낱말만 nowrap으로 묶는다(AC-112.2)
+const RULES: { title: string; desc: ReactNode }[] = [
   {
     title: '필요한 칸만 읽습니다',
     desc: '계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.',
@@ -14,7 +15,11 @@ const RULES = [
   },
   {
     title: 'AI에는 합계 숫자만',
-    desc: '통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.',
+    desc: (
+      <>
+        통계·매출 합계와 인건비 총액만 보냅니다. 직원 <span className={base.nowrap}>이름·개인별</span> 급여도 보내지 않습니다.
+      </>
+    ),
   },
   {
     title: '승인한 사람만, 공용 PC도 안심',
