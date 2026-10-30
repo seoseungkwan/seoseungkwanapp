@@ -1,7 +1,7 @@
 /* 앱 화면: Tailwind CSS v4 (ADR-015, docs/UI_GUIDE.md '앱 화면'). theme·utilities만 불러온다.
    Preflight(기본 초기화)는 넣지 않는다 — 랜딩 CSS가 브라우저 기본값에 기대고 있다. 앱 초기화는 아래 @layer base의 .app-ui 안에만 둔다.
    layer 밖 CSS(아래 랜딩 변수·body, 랜딩 CSS Module)는 Tailwind보다 늘 이긴다.
-   랜딩 a·a:hover는 @layer base 안에 둬서 앱 <a>의 Tailwind 글자색이 이긴다 */
+   랜딩 a는 @layer base 안에 둬서 앱 <a>의 Tailwind 글자색이 이긴다 */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source("../");
@@ -33,8 +33,8 @@
   --shadow-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
 }
 
-/* 글자 크기·글꼴: 클래스에 값을 바로 쓴다(inline). 이름이 layer 밖 :root 변수와 겹친다 — 랜딩 --text-body(글자 색), 아래 글꼴 --font-sans.
-   var()로 두면 그쪽 값이 이겨 text-body 크기가 무효가 된다 */
+/* 글자 크기·글꼴: 클래스에 값을 바로 쓴다(inline). 이름이 layer 밖 :root 변수(아래 글꼴 --font-sans)와 겹칠 수 있다.
+   var()로 두면 그쪽 값이 이겨 클래스 값이 무효가 될 수 있다 */
 @theme inline {
   --text-caption: 12px;
   --text-caption--line-height: 16px;
@@ -91,76 +91,50 @@
   }
 }
 
-/* 글꼴: layout.tsx의 next/font가 --font-plex(IBM Plex Sans KR)·--font-grotesk(Space Grotesk, 랜딩만)를 넣고 여기서 잇는다.
-   랜딩 CSS Module은 var(--font-sans)·var(--font-num) 뒤에 대체 글꼴을 직접 적으므로 --font-num에는 대체 글꼴을 붙이지 않는다 */
+/* 랜딩 변수 (landing-v2, docs/UI_GUIDE.md 랜딩). 값은 승인 시안 docs/mockups/landing-v2 그대로.
+   색 12개는 위 @theme의 같은 이름 --color-* 값과 같다(theme.test.ts가 묶는다). 이름은 Tailwind 테마 이름 공간과 겹치지 않는다.
+   글꼴: layout.tsx의 next/font가 --font-plex(IBM Plex Sans KR)를 넣고 여기서 --font-sans로 잇는다 */
 :root {
-  --font-sans: var(--font-plex), system-ui, sans-serif;
-  --font-num: var(--font-grotesk);
-}
+  /* 색 */
+  --ink: #111827;
+  --ink-2: #374151;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --canvas: #f7f8fa;
+  --surface: #ffffff;
+  --accent: #2563eb;
+  --accent-soft: #eaf1fe;
+  --ok: #166534;
+  --ok-soft: #e7f6ec;
+  --danger: #c2410c;
+  --danger-soft: #fff1e8;
 
-/* 랜딩 색·레이아웃 변수 (docs/UI_GUIDE.md 랜딩) */
-:root {
-  /* 배경 */
-  --bg-page: #ffffff;
-  --bg-soft: #f5f8fc;
-  --bg-ai: #f6f4ff;
-  --bg-how: #fff9f1;
-  --bg-start: #f1f6fc;
-  --border-card: rgba(11, 21, 48, 0.08);
+  /* 섞은 색: 차트 막대(--accent-tint), 점선·테두리·점(--field) */
+  --accent-tint: color-mix(in srgb, #2563eb 32%, #ffffff);
+  --field: color-mix(in srgb, #6b7280 55%, #ffffff);
 
-  /* 텍스트 */
-  --text-strong: #0b1530;
-  --text-body: #3d4a66;
-  --text-muted: #5b6785;
-
-  /* 포인트 색: 글자 / 연한 배경 / 채움. 글자에는 -text만 쓴다 */
-  --teal-text: #077a73;
-  --teal-soft: #e6faf8;
-  --teal-fill: #14c8ba;
-  --violet-text: #5546e0;
-  --violet-soft: #f1efff;
-  --violet-fill: #6d5df5;
-  --amber-text: #a84b08;
-  --amber-soft: #fff1d6;
-  --amber-card: #fff8e6;
-  --amber-fill: #f59e0b;
-  --pink-text: #be185d;
-  --pink-soft: #ffe8f0;
-  --pink-card: #ffeff4;
-  --pink-fill: #e11d74;
-  --blue-text: #2556d6;
-  --blue-soft: #eaf2ff;
-  --blue-fill: #2556d6;
-  --coral-text: #b83a26;
-  --coral-text-large: #e5533d; /* 24px 이상 굵은 글자만 */
-  --coral-soft: #ffede8;
-  --coral-fill: #e5533d;
-  --warn-text: #c2410c;
-  --warn-soft: #fff1e8;
-
-  /* 레이아웃 */
+  /* 틀 */
   --content-max: 1200px;
   --gutter: 24px;
+
+  /* 글꼴 */
+  --font-sans: var(--font-plex), system-ui, sans-serif;
 }
 
 body {
   margin: 0;
-  background: var(--bg-page);
-  color: var(--text-strong);
+  background: var(--surface);
+  color: var(--ink);
   font-family: var(--font-sans), system-ui, sans-serif;
   word-break: keep-all;
-  overflow-x: clip; /* 떠 있는 장식이 옆으로 삐져나가도 가로 스크롤이 생기지 않게. clip은 sticky 메뉴를 깨지 않는다 */
+  overflow-x: clip; /* 넓은 표·미리보기가 옆으로 삐져나가도 가로 스크롤이 생기지 않게. clip은 sticky 메뉴를 깨지 않는다 */
 }
 
 /* 랜딩 링크 색. 앱 화면 <a>에도 닿는 요소 규칙이라 @layer base에 둔다 — 앱의 Tailwind 글자색 클래스(utilities)가 이기게.
-   랜딩 CSS Module은 layer 밖이라 지금처럼 이 규칙을 이긴다 */
+   랜딩 링크는 layer 밖 base.module.css의 .root a { color: inherit }가 이긴다 */
 @layer base {
   a {
-    color: var(--teal-text);
-  }
-
-  a:hover {
-    color: #055f59;
+    color: var(--accent);
   }
 }
 
