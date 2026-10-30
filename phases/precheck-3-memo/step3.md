@@ -203,3 +203,6 @@ python3 ~/.claude/harness/bin/verify
 
 - 의원 PC 시험(Phase 3): 먼저 시험용 환자 한 명으로 입력해 본다 → 그다음 실제 하루치(docs/precheck/plan.md §6·§7)
 - FlaUI 4.0.0 net48 빌드가 Actions에서 안 되면 메인 세션이 사용자에게 알린다(런타임을 바꾸는 큰 결정, design.md 16절)
+
+## 구현 메모 (명세 2차 리뷰 참고 사항)
+- AC-017.10에서 다른 프로세스가 잠금을 쥐고 있을 때 `E-BRIDGE-BUSY`를 쓴다. 화면은 이때 연결 상태를 바꾸지 않고 오류 카드만 보인다

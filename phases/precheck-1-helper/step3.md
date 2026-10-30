@@ -171,3 +171,6 @@ python3 ~/.claude/harness/bin/verify
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
 - `.harness/*`·`CLAUDE.md`·`docs/*`를 고치지 마라. 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다
+
+## 구현 메모 (명세 2차 리뷰 참고 사항)
+- AC-004.6('환자 자료 명령에 result가 오면 오류')에서 `store.save`는 예외다. 이 명령은 보내는 쪽만 환자 자료이고 답은 result `{ saved: true }`다(AC-004.9). 시험에 이 예외 사례를 넣는다

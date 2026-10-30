@@ -156,3 +156,7 @@ python3 ~/.claude/harness/bin/verify
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
 - `.harness/*`·`CLAUDE.md`·`docs/*`를 고치지 마라. 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다
+
+## 구현 메모 (명세 2차 리뷰 참고 사항)
+- `store.save`는 파일 전체를 덮어쓰지 않는다. 보낸 칸만 합치고, `journal`과 입력 결과는 도우미가 가진다. 입력 중에 고친 메모 저장이 입력이 끝난 뒤에 돌아도 입력 기록을 지우지 않게 한다. 시험으로 증명한다
+- 기관기호가 다른 병원으로 다시 등록한 뒤 남은 예전 작업 파일 때문에 `store.load`가 계속 `E-BIT-HOSPITAL-MISMATCH`로 멈추지 않게 한다. 그 파일은 '다른 병원 작업'으로 따로 두고 건너뛴다
