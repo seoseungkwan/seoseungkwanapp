@@ -13,6 +13,8 @@ const CHECKED = [
   'Hero.module.css',
   'HeroChart.module.css',
   'PromiseBand.module.css',
+  'AiSection.module.css',
+  'OrthoSection.module.css',
 ]
 
 // ---------- CSS 글자 읽기 도우미 ----------
@@ -737,6 +739,276 @@ describe('AC-107.5: 약속 띠 CSS (PromiseBand.module.css)', () => {
 
 describe('AC-107.2 · AC-107.4 · AC-107.5: 쓰는 변수', () => {
   it.each([HERO, CHART, BAND])('AC-107.2 · AC-107.4 · AC-107.5: %s가 쓰는 var(--…)는 모두 globals.css에 정의돼 있다', (name) => {
+    const globals = withoutComments(readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8'))
+    const defined = new Set([...globals.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
+    const used = [...source(name).matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])
+    expect(used.length).toBeGreaterThan(0)
+    for (const varName of used) expect(defined.has(varName), `${name}: ${varName}`).toBe(true)
+  })
+})
+
+// ---------- AI 섹션 · 정형외과 섹션 (REQ-108, 시안 .rep · .chat · .ortho .card · .snip) ----------
+
+const AI = 'AiSection.module.css'
+const ORTHO = 'OrthoSection.module.css'
+
+describe('AC-108.2: AI 섹션 CSS (AiSection.module.css)', () => {
+  it('AC-108.2: 리포트 패널 .rep은 흰 바탕 · 1px line · 6px · 넘침 숨김 · min-width 0이다', () => {
+    expectStyle(
+      '.rep',
+      0,
+      {
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
+        'border-radius': '6px',
+        'min-width': '0',
+        overflow: 'hidden',
+      },
+      AI,
+    )
+  })
+
+  it('AC-108.2: 머리 .repHead는 양끝 정렬 · 줄바꿈 · gap 8px 12px · 아래 1px line, 안쪽 14px 16px → 16px 20px', () => {
+    expectStyle(
+      '.repHead',
+      0,
+      {
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'space-between',
+        'flex-wrap': 'wrap',
+        gap: '8px 12px',
+        'border-bottom': '1px solid var(--line)',
+      },
+      AI,
+    )
+    expectSteps(AI, '.repHead', 'padding', ['14px 16px', '16px 20px', '16px 20px'])
+  })
+
+  it('AC-108.2: 리포트 본문 .repBody는 1칸 → 768부터 minmax(0, 7fr) minmax(0, 5fr)이다', () => {
+    expectStyle('.repBody', 0, { display: 'grid' }, AI)
+    expectSteps(AI, '.repBody', 'grid-template-columns', [
+      COLS(1),
+      'minmax(0, 7fr) minmax(0, 5fr)',
+      'minmax(0, 7fr) minmax(0, 5fr)',
+    ])
+  })
+
+  it('AC-108.2: 항목 줄 .repItem은 72px minmax(0, 1fr) · 칸 사이 10px 2px · 위아래 14px · 아래 1px line(마지막 줄 0)이다', () => {
+    expectSteps(AI, '.repItems', 'padding', ['0 16px', '0 20px', '0 20px'])
+    for (const bp of ALL_BPS) {
+      expectStyle('.repItem', bp, { display: 'grid', 'grid-template-columns': '72px minmax(0, 1fr)' }, AI)
+    }
+    expectStyle(
+      '.repItem',
+      0,
+      { 'column-gap': '10px', 'row-gap': '2px', 'padding-block': '14px', 'border-bottom': '1px solid var(--line)' },
+      AI,
+    )
+    expectStyle('.repItem:last-child', 0, { 'border-bottom': '0' }, AI)
+    expectStyle('.repTag', 0, { 'justify-self': 'start' }, AI)
+  })
+
+  it('AC-108.2: 항목 글은 14/22 ink, 근거는 둘째 칸 · 13/20 muted다', () => {
+    expectStyle('.repText', 0, { 'font-size': '14px', 'line-height': '22px', color: 'var(--ink)' }, AI)
+    expectStyle(
+      '.repBasis',
+      0,
+      { 'grid-column': '2', 'font-size': '13px', 'line-height': '20px', color: 'var(--muted)' },
+      AI,
+    )
+  })
+
+  it('AC-108.2: 채팅 칸 .chat은 세로 flex · gap 10px · 흰 바탕, 휴대폰은 위 1px 선 → 768부터 왼쪽 1px 선이다', () => {
+    expectStyle(
+      '.chat',
+      0,
+      {
+        display: 'flex',
+        'flex-direction': 'column',
+        gap: '10px',
+        background: 'var(--surface)',
+        'border-top': '1px solid var(--line)',
+      },
+      AI,
+    )
+    expect(at(parse(source(AI)), '.chat', 'border-left', 0), '.chat border-left @0').toBeUndefined()
+    expectSteps(AI, '.chat', 'padding', ['16px', '20px', '20px'])
+    for (const bp of [768, 1024] as Bp[]) {
+      expectStyle('.chat', bp, { 'border-top': '0', 'border-left': '1px solid var(--line)' }, AI)
+    }
+  })
+
+  it('AC-108.2: 질문 말풍선은 오른쪽 · 최대 85% · canvas 바탕 · 1px line · 6px · 8px 12px · 14/22 ink다', () => {
+    expectStyle(
+      '.question',
+      0,
+      {
+        'align-self': 'flex-end',
+        'max-width': '85%',
+        background: 'var(--canvas)',
+        border: '1px solid var(--line)',
+        'border-radius': '6px',
+        padding: '8px 12px',
+        'font-size': '14px',
+        'line-height': '22px',
+        color: 'var(--ink)',
+      },
+      AI,
+    )
+  })
+
+  it('AC-108.2: 점 3개 .typing은 36px 상자 안의 움직이지 않는 6px 점(field, 가운데만 muted)이다', () => {
+    expectStyle(
+      '.typing',
+      0,
+      {
+        'align-self': 'flex-start',
+        display: 'inline-flex',
+        gap: '4px',
+        'align-items': 'center',
+        height: '36px',
+        padding: '0 12px',
+        border: '1px solid var(--line)',
+        'border-radius': '6px',
+      },
+      AI,
+    )
+    expectStyle(
+      '.typing i',
+      0,
+      { display: 'block', width: '6px', height: '6px', 'border-radius': '50%', background: 'var(--field)' },
+      AI,
+    )
+    expectStyle('.typing i:nth-child(2)', 0, { background: 'var(--muted)' }, AI)
+    for (const [selector, prop] of allDecls(AI)) {
+      expect(/^(animation|transition)/.test(prop), `${AI}: ${selector} { ${prop} }`).toBe(false)
+    }
+  })
+
+  it('AC-108.2: 물어보기 칸 .ask는 아래로 밀린 40px 칸(1px field · 6px · 14px muted)이고 보내기 .send는 30px ink 상자다', () => {
+    expectStyle(
+      '.ask',
+      0,
+      {
+        'margin-top': 'auto',
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'space-between',
+        gap: '8px',
+        height: '40px',
+        padding: '0 5px 0 12px',
+        border: '1px solid var(--field)',
+        'border-radius': '6px',
+        'font-size': '14px',
+        color: 'var(--muted)',
+      },
+      AI,
+    )
+    expectStyle(
+      '.send',
+      0,
+      {
+        width: '30px',
+        height: '30px',
+        'border-radius': '4px',
+        background: 'var(--ink)',
+        color: 'var(--surface)',
+        display: 'grid',
+        'place-items': 'center',
+      },
+      AI,
+    )
+  })
+
+  it('AC-108.2: 옛 장식(원형 빛 · 반짝이 · 쉬머 · 번호 상자 · 영문 소제목) 규칙이 없다', () => {
+    const css = source(AI)
+    for (const old of ['.glow', '.sparkle', '.shimmer', '.eyebrow', '.titleAccent', '.num', '.point']) {
+      expect(css, `${AI}: ${old}`).not.toMatch(new RegExp(`\\${old}(?![\\w-])`))
+    }
+  })
+})
+
+describe('AC-108.4: 정형외과 섹션 CSS (OrthoSection.module.css)', () => {
+  it('AC-108.4: 휴대폰 카드 .orthoCard는 grid minmax(0, 1fr) 136px(글 | 조각) · gap 16px · 위 정렬이다', () => {
+    expectStyle(
+      '.orthoCard',
+      0,
+      { display: 'grid', 'grid-template-columns': 'minmax(0, 1fr) 136px', gap: '16px', 'align-items': 'start' },
+      ORTHO,
+    )
+  })
+
+  it('AC-108.4: 768부터 카드는 한 칸(auto 1fr 두 줄) · gap 20px이고, 조각이 위로 간다(order: -1)', () => {
+    for (const bp of [768, 1024] as Bp[]) {
+      expectStyle(
+        '.orthoCard',
+        bp,
+        { 'grid-template-columns': COLS(1), 'grid-template-rows': 'auto 1fr', gap: '20px' },
+        ORTHO,
+      )
+      expectStyle('.snip', bp, { order: '-1' }, ORTHO)
+    }
+    expect(at(parse(source(ORTHO)), '.snip', 'order', 0), '.snip order @0').toBeUndefined()
+  })
+
+  it('AC-108.4: 글 덩어리 .text는 grid · gap 4px · 위 정렬이다', () => {
+    expectStyle('.text', 0, { display: 'grid', gap: '4px', 'align-content': 'start' }, ORTHO)
+  })
+
+  it('AC-108.4: 숫자 조각 .snip은 canvas 바탕 · 4px · 12/16, 안쪽 8px 10px → 10px 12px이다', () => {
+    expectStyle(
+      '.snip',
+      0,
+      { background: 'var(--canvas)', 'border-radius': '4px', 'font-size': '12px', 'line-height': '16px' },
+      ORTHO,
+    )
+    expectSteps(ORTHO, '.snip', 'padding', ['8px 10px', '10px 12px', '10px 12px'])
+  })
+
+  it('AC-108.4: 조각 머리는 양끝 · muted · 아래 6px, 줄은 양끝 · 위 1px line · ink-2 · 줄바꿈 없음, 값은 13px 600 ink다', () => {
+    expectStyle(
+      '.snipHead',
+      0,
+      { display: 'flex', 'justify-content': 'space-between', color: 'var(--muted)', 'padding-bottom': '6px' },
+      ORTHO,
+    )
+    expectStyle(
+      '.snipRow',
+      0,
+      {
+        display: 'flex',
+        'justify-content': 'space-between',
+        'align-items': 'baseline',
+        gap: '8px',
+        'padding-block': '6px',
+        'border-top': '1px solid var(--line)',
+        color: 'var(--ink-2)',
+        'white-space': 'nowrap',
+      },
+      ORTHO,
+    )
+    expectStyle('.snipRow b', 0, { 'font-size': '13px', 'font-weight': '600', color: 'var(--ink)' }, ORTHO)
+  })
+
+  it('AC-108.4: 카드 모양(테두리 · 바탕 · 모서리 · 안쪽)은 base .card가 정하고 .orthoCard는 덮어쓰지 않는다', () => {
+    for (const bp of ALL_BPS) {
+      for (const prop of ['background', 'border', 'border-radius', 'padding', 'min-width']) {
+        expect(at(parse(source(ORTHO)), '.orthoCard', prop, bp), `.orthoCard ${prop} @${bp}`).toBeUndefined()
+      }
+    }
+  })
+
+  it('AC-108.4: 옛 그림 타일 규칙(.img · .tile · .caption · 영문 소제목)이 없다', () => {
+    const css = source(ORTHO)
+    for (const old of ['.img', '.tile', '.tiles', '.caption', '.eyebrow']) {
+      expect(css, `${ORTHO}: ${old}`).not.toMatch(new RegExp(`\\${old}(?![\\w-])`))
+    }
+  })
+})
+
+describe('AC-108.2 · AC-108.4: 쓰는 변수', () => {
+  it.each([AI, ORTHO])('AC-108.2 · AC-108.4: %s가 쓰는 var(--…)는 모두 globals.css에 정의돼 있다', (name) => {
     const globals = withoutComments(readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8'))
     const defined = new Set([...globals.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
     const used = [...source(name).matchAll(/var\((--[\w-]+)/g)].map((m) => m[1])

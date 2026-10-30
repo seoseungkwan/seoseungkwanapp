@@ -1,342 +1,139 @@
-/* AI 섹션(#ai). 값은 docs/mockups/landing/landing-mockup.dc.html #ai 그대로. 보라는 AI 영역이라 여기서 쓴다(UI_GUIDE) */
-.section {
-  position: relative;
-  padding: 112px var(--gutter);
-  background: var(--bg-ai);
+/* AI 섹션(#ai) (specs/landing-v2 AC-108.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .rep · .chat 그대로다.
+   섹션 틀·제목·칩·약속 목록은 base.module.css가 정하고, 여기서는 리포트 패널만 그린다.
+   휴대폰 값을 먼저 쓰고 768px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
+
+/* ---------- 리포트 패널 ---------- */
+.rep {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
   overflow: hidden;
 }
-
-/* 연한 원형 빛: 히어로·AI·시작하기 섹션에만 (UI_GUIDE) */
-.glow {
-  position: absolute;
-  width: 700px;
-  height: 700px;
-  right: -200px;
-  top: -200px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(109, 93, 245, 0.16), rgba(109, 93, 245, 0) 68%);
-}
-
-.inner {
-  position: relative;
-  max-width: var(--content-max);
-  margin: 0 auto;
+.repHead {
   display: flex;
-  flex-direction: column;
-  gap: 56px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 760px;
-}
-
-.eyebrow {
-  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-family: var(--font-num), sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  color: var(--violet-text);
-  font-weight: 700;
-}
-
-.sparkle {
-  animation: sparkle 2.4s ease-in-out infinite;
-}
-
-.title {
-  margin: 0;
-  font-size: clamp(34px, 4.2vw, 54px);
-  line-height: 1.18;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.titleAccent {
-  color: var(--violet-text);
-}
-
-.lead {
-  margin: 0;
-  font-size: 19px;
-  line-height: 1.7;
-  color: var(--text-body);
-}
-
-.body {
-  display: flex;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 48px;
-  align-items: flex-start;
-}
-
-/* 왼쪽: 약속 목록 */
-.points {
-  flex: 1 1 360px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.point {
-  display: flex;
-  gap: 14px;
-  padding: 18px 20px;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid rgba(109, 93, 245, 0.18);
-}
-
-.pointSafe {
-  background: var(--teal-soft);
-  border-color: rgba(7, 122, 115, 0.25);
-}
-
-.num {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  font-family: var(--font-num), sans-serif;
-  font-weight: 700;
-}
-
-.numTeal { background: var(--teal-soft); color: var(--teal-text); }
-.numAmber { background: var(--amber-soft); color: var(--amber-text); }
-.numPink { background: var(--pink-soft); color: var(--pink-text); }
-.numSafe { background: #ffffff; }
-
-.pointText {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.pointTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.pointDesc {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-body);
-}
-
-/* 오른쪽: AI 리포트 카드 */
-.report {
-  flex: 1 1 520px;
-  min-width: 0;
-  border-radius: 24px;
-  background: #ffffff;
-  border: 1.5px solid rgba(109, 93, 245, 0.35);
-  box-shadow: 0 30px 70px rgba(109, 93, 245, 0.18);
-  overflow: hidden;
-}
-
-.reportHead {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 18px 22px;
-  border-bottom: 1px solid rgba(11, 21, 48, 0.07);
-}
-
-.reportTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.example {
-  margin-left: auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--violet-soft);
-  color: var(--violet-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.shimmer {
-  height: 3px;
-  background-image: linear-gradient(90deg, rgba(109, 93, 245, 0), #6d5df5, rgba(20, 200, 186, 0));
-  background-size: 300px 3px;
-  background-repeat: no-repeat;
-  animation: shimmer 2.2s linear infinite;
-}
-
-.items {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px 22px;
-}
-
-.item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  gap: 8px 12px;
   padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--bg-soft);
-  animation: rise 10s ease-out infinite both;
+  border-bottom: 1px solid var(--line);
+}
+/* 휴대폰은 항목 위·채팅 아래 한 칸, 768부터 7 : 5 두 칸 */
+.repBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.item:nth-child(2) { animation-delay: 0.7s; }
-.item:nth-child(3) { animation-delay: 1.4s; }
-
-.itemLine {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* ---------- 항목 3줄: 칩 | 글, 그 아래 근거 ---------- */
+.repItems {
+  padding: 0 16px;
 }
-
-.tag {
-  flex: none;
-  padding: 2px 8px;
-  border-radius: 6px;
+.repItem {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  padding-block: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.repItem:last-child {
+  border-bottom: 0;
+}
+/* 칩이 72px 칸을 꽉 채우지 않고 글자 폭만큼만 */
+.repTag {
+  justify-self: start;
+}
+.repText {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink);
+}
+.repBasis {
+  grid-column: 2;
   font-size: 13px;
-  font-weight: 700;
+  line-height: 20px;
+  color: var(--muted);
 }
 
-.tagUp { background: var(--teal-soft); color: var(--teal-text); }
-.tagWarn { background: var(--warn-soft); color: var(--warn-text); }
-.tagGuess { background: var(--violet-soft); color: var(--violet-text); }
-
-.itemText {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.basis {
-  align-self: flex-start;
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(11, 21, 48, 0.12);
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-/* 채팅 예시: 그림처럼 보이기만 하고 아무것도 받지 않는다(button·input 아님). 누를 수 있어 보이지 않게 cursor 기본값 */
+/* ---------- 채팅 칸(그림일 뿐 아무것도 받지 않는다) ---------- */
 .chat {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 22px 22px;
-  border-top: 1px solid rgba(11, 21, 48, 0.07);
-  background: #fbfaff;
-  cursor: default;
+  gap: 10px;
+  padding: 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
 }
-
 .question {
   align-self: flex-end;
-  max-width: 75%;
-  padding: 10px 14px;
-  border-radius: 14px 14px 4px 14px;
-  background: var(--text-strong);
-  color: #ffffff;
-  font-size: 15px;
+  max-width: 85%;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink);
 }
-
+/* 답을 쓰는 중: 움직이지 않는 점 3개 */
 .typing {
   align-self: flex-start;
-  display: flex;
-  gap: 6px;
-  padding: 12px 16px;
-  border-radius: 14px;
-  background: var(--violet-soft);
-}
-
-.typingDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--violet-fill);
-  animation: dot 1.4s ease-in-out infinite;
-}
-
-.typingDot:nth-child(2) { animation-delay: 0.2s; }
-.typingDot:nth-child(3) { animation-delay: 0.4s; }
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
   display: inline-flex;
+  gap: 4px;
   align-items: center;
-  min-height: 36px;
+  height: 36px;
   padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(109, 93, 245, 0.35);
-  background: #ffffff;
-  color: var(--violet-text);
-  font-size: 14px;
-  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
-
+.typing i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--field);
+}
+.typing i:nth-child(2) {
+  background: var(--muted);
+}
 .ask {
+  margin-top: auto;
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  align-items: center;
+  height: 40px;
+  padding: 0 5px 0 12px;
+  border: 1px solid var(--field);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--muted);
 }
-
-.askBox {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  min-height: 46px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(11, 21, 48, 0.15);
-  background: #ffffff;
-  font-size: 15px;
-  color: var(--text-muted);
-  box-sizing: border-box;
-}
-
 .send {
-  flex: none;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--violet-fill);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--surface);
+  display: grid;
+  place-items: center;
 }
 
-@keyframes sparkle {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.18) rotate(12deg); }
-}
-
-@keyframes shimmer {
-  from { background-position: -300px 0; }
-  to { background-position: 300px 0; }
-}
-
-@keyframes rise {
-  0% { opacity: 0; transform: translateY(10px); }
-  8%, 92% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(0); }
-}
-
-@keyframes dot {
-  0%, 80%, 100% { opacity: 0.25; }
-  40% { opacity: 1; }
+/* ---------- 768px부터: 항목 | 채팅 두 칸, 채팅은 왼쪽 선 ---------- */
+@media (min-width: 768px) {
+  .repHead {
+    padding: 16px 20px;
+  }
+  .repBody {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+  .repItems {
+    padding: 0 20px;
+  }
+  .chat {
+    padding: 20px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
 }
