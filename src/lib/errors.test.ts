@@ -17,6 +17,30 @@ const ALL_CODES = [
   'E-SIGNUP-FAILED',
   'E-ADMIN-FAILED',
   'E-PAGE-FAILED',
+  'E-EXT-MISSING',
+  'E-HELPER-MISSING',
+  'E-HELPER-OLD',
+  'E-EXT-OLD',
+  'E-BRIDGE-BUSY',
+  'E-BRIDGE-DISCONNECTED',
+  'E-BRIDGE-REJECTED',
+  'E-BRIDGE-BAD-REPLY',
+  'E-HELPER-BAD-MESSAGE',
+  'E-HELPER-UNKNOWN-COMMAND',
+] as const satisfies readonly ErrorCode[]
+
+// 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
+const BRIDGE_CODES = [
+  'E-EXT-MISSING',
+  'E-HELPER-MISSING',
+  'E-HELPER-OLD',
+  'E-EXT-OLD',
+  'E-BRIDGE-BUSY',
+  'E-BRIDGE-DISCONNECTED',
+  'E-BRIDGE-REJECTED',
+  'E-BRIDGE-BAD-REPLY',
+  'E-HELPER-BAD-MESSAGE',
+  'E-HELPER-UNKNOWN-COMMAND',
 ] as const satisfies readonly ErrorCode[]
 
 const AUTH_CODES = [
@@ -89,5 +113,34 @@ describe('AC-012.1 인증 오류 문구', () => {
 
   it.each(AUTH_CODES)('AC-012.1: %s 문구는 오류 번호와 함께 문의하라고 한다', (code) => {
     expect(errorInfo(code).fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
+describe('AC-004.3·AC-004.6·AC-004.7·AC-004.9 연결 오류 번호 문구', () => {
+  it.each(BRIDGE_CODES)('%s: lib/errors.ts에 무엇이·어떻게 고치나가 있다', (code) => {
+    expect(Object.keys(ERRORS)).toContain(code)
+    const info = errorInfo(code)
+    expect(info.what.trim()).not.toBe('')
+    expect(info.fix.trim()).not.toBe('')
+  })
+
+  it.each(BRIDGE_CODES)('%s: 번호는 도우미·확장과 같은 E-… 모양이다', (code) => {
+    expect(code).toMatch(/^E-[A-Z0-9]+(?:-[A-Z0-9]+)*$/)
+  })
+
+  it('E-EXT-MISSING은 확장 설치를, E-HELPER-MISSING은 도우미 설치를 안내한다', () => {
+    expect(errorInfo('E-EXT-MISSING').fix).toContain('확장')
+    expect(errorInfo('E-EXT-MISSING').fix).toContain('설치')
+    expect(errorInfo('E-HELPER-MISSING').fix).toContain('도우미')
+    expect(errorInfo('E-HELPER-MISSING').fix).toContain('설치')
+  })
+
+  it('E-HELPER-OLD·E-EXT-OLD는 무엇을 업데이트할지 말한다', () => {
+    expect(errorInfo('E-HELPER-OLD').fix).toContain('도우미')
+    expect(errorInfo('E-EXT-OLD').fix).toContain('확장')
+  })
+
+  it('E-BRIDGE-BUSY는 다른 창에서 쓰고 있다고 알린다', () => {
+    expect(errorInfo('E-BRIDGE-BUSY').what).toContain('다른 창')
   })
 })

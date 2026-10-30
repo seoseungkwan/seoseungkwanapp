@@ -305,3 +305,222 @@ describe('AC-003.4 크롬 확장(extension/src/**): 저장소·console·네트�
     expect(await eslint.isPathIgnored('extension/dist/background.js')).toBe(true)
   })
 })
+
+describe('AC-004.1 통로 코드(src/lib/bridge/**)도 환자 자료 구역 규칙 전부 아래 있다', SLOW, () => {
+  const BRIDGE = 'src/lib/bridge/probe.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["import React from 'react'", 'no-restricted-imports'],
+    ["import { NextResponse } from 'next/server'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { saveMonths } from '@/lib/storage/monthStore'", 'no-restricted-imports'],
+    ["export const load = async () => await import('react')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, BRIDGE)).toContain(rule)
+  })
+
+  it('JSX가 막힌다(.tsx)', async () => {
+    expect(await errorRules('export const A = () => <div />', 'src/lib/bridge/probe.tsx')).toContain('no-restricted-syntax')
+  })
+
+  it('통로 시험 파일도 같은 규칙 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/lib/bridge/probe.test.ts')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/lib/bridge/probe.test.ts')).toContain('no-console')
+  })
+})
+
+describe('AC-004.1 통로 코드: 창 사이 통신 금지, 확장에는 EXTENSION_ID로만 말한다', SLOW, () => {
+  const BRIDGE = 'src/lib/bridge/probe.ts'
+
+  it.each([
+    ["window.postMessage('x', '*')", 'no-restricted-properties'],
+    ["self.postMessage('x')", 'no-restricted-properties'],
+    ["globalThis.postMessage('x')", 'no-restricted-properties'],
+    ["postMessage('x', '*')", 'no-restricted-globals'],
+    ["new BroadcastChannel('x')", 'no-restricted-globals'],
+    ["new window.BroadcastChannel('x')", 'no-restricted-properties'],
+    ["new globalThis.BroadcastChannel('x')", 'no-restricted-properties'],
+    ["parent.postMessage('x', '*')", 'no-restricted-globals'],
+    ["top.postMessage('x', '*')", 'no-restricted-globals'],
+    ["opener.postMessage('x', '*')", 'no-restricted-globals'],
+    ["window.parent.postMessage('x', '*')", 'no-restricted-properties'],
+    ["window.top.postMessage('x', '*')", 'no-restricted-properties'],
+    ["window.opener.postMessage('x', '*')", 'no-restricted-properties'],
+    ["globalThis.parent.postMessage('x', '*')", 'no-restricted-properties'],
+    // 창 객체를 다른 이름에 담아 우회하지 못한다
+    ["const w = window; w.postMessage('x', '*')", 'no-restricted-globals'],
+    ["const g = globalThis; g.postMessage('x')", 'no-restricted-globals'],
+    ["const { postMessage: p } = self; p('x')", 'no-restricted-globals'],
+    // 문서 객체·전역 꺼내기로 창에 닿지 못한다
+    ["document.defaultView.postMessage('x', '*')", 'no-restricted-globals'],
+    ["export const f = (d: Document) => d.defaultView", 'no-restricted-properties'],
+    ["export const f = () => Function('return this')()", 'no-restricted-globals'],
+    ["export const f = () => eval('this')", 'no-restricted-globals'],
+    ["export const f = (o: object) => Reflect.ownKeys(o)", 'no-restricted-globals'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, BRIDGE)).toContain(rule)
+  })
+
+  it.each([
+    "chrome.runtime.connect('abcdefghijklmnopabcdefghijklmnop')",
+    "chrome.runtime.sendMessage('abcdefghijklmnopabcdefghijklmnop', {})",
+    'chrome.runtime.connect()',
+    "chrome.runtime.connect({ name: 'x' })",
+    // 주입받은 runtime도 같다
+    'export const open = (runtime: R, id: string) => runtime.connect(id)',
+    'export const ping = (runtime: R) => runtime.sendMessage(OTHER_ID, {})',
+    'export const open = (runtime: R, ids: string[]) => runtime.connect(...ids)',
+    // 꺼내 쓰기·글자 이름·call/apply/bind로 우회하지 못한다
+    "const { connect } = chrome.runtime; connect('x')",
+    "export const open = (runtime: R) => runtime['connect'](EXTENSION_ID)",
+    'export const open = (runtime: R) => runtime.connect.call(runtime, EXTENSION_ID)',
+    'export const open = (runtime: R) => runtime.sendMessage.apply(runtime, [EXTENSION_ID, {}])',
+    'export const open = (runtime: R) => runtime.connect.bind(runtime)',
+    "export const open = (runtime: R, k: 'connect') => runtime[k](EXTENSION_ID)",
+    // 이름만 빌려 다른 값을 넣지 못한다
+    "const EXTENSION_ID = 'other'; chrome.runtime.connect(EXTENSION_ID)",
+    "let EXTENSION_ID = 'other'; chrome.runtime.connect(EXTENSION_ID)",
+    "import { EXTENSION_ID } from './other'\nexport const open = (runtime: R) => runtime.connect(EXTENSION_ID)",
+    "import { OTHER as EXTENSION_ID } from './extensionId'\nexport const open = (runtime: R) => runtime.connect(EXTENSION_ID)",
+    'export const open = (runtime: R, EXTENSION_ID: string) => runtime.connect(EXTENSION_ID)',
+    "export function open(runtime: R, EXTENSION_ID = 'other') { return runtime.connect(EXTENSION_ID) }",
+    // connect·sendMessage를 값으로 꺼내 다른 이름으로 부르지 못한다
+    "export const open = (runtime: R) => { const c = runtime.connect; return c('other') }",
+    "const { connect: c } = chrome.runtime; c('other')",
+    "const { sendMessage: s } = chrome.runtime; s('other', {})",
+    "const { 'connect': c } = chrome.runtime; c('other')",
+    "export const open = (runtime: R, k: string) => { const { [k]: c } = runtime; return c('other') }",
+    "export const open = (runtime: R) => Reflect.apply(runtime.connect, runtime, ['other'])",
+    "export const open = (runtime: R) => [runtime.connect][0]('other')",
+    "export const open = (runtime: R) => Reflect.get(runtime, 'connect')('other')",
+    "export const open = (runtime: R) => Object.getOwnPropertyDescriptor(runtime, `sendMessage`)",
+  ])('%s → no-restricted-syntax', async (code) => {
+    expect(await errorRules(code, BRIDGE)).toContain('no-restricted-syntax')
+  })
+
+  it('extensionId.ts의 EXTENSION_ID로 부르는 것은 막히지 않는다(주입받은 runtime·chrome.runtime 모두)', async () => {
+    const code = [
+      "import { EXTENSION_ID } from './extensionId'",
+      'type R = { connect(id: string): unknown; sendMessage(id: string, m: unknown): unknown }',
+      'export const open = (runtime: R) => runtime.connect(EXTENSION_ID)',
+      'export const ping = (runtime: R) => runtime.sendMessage(EXTENSION_ID, {})',
+      'export const viaChrome = () => chrome.runtime.connect(EXTENSION_ID)',
+      // 확장이 있는지 보는 typeof는 된다
+      "export const has = (runtime: R) => typeof runtime.connect === 'function'",
+      'export const maybe = (runtime?: R) => runtime?.connect(EXTENSION_ID)',
+    ].join('\n')
+    expect(await lint(code, BRIDGE)).toEqual([])
+  })
+
+  it('EXTENSION_ID는 extensionId.ts에서만 commands.json으로 만든다', async () => {
+    const code = "import commands from './commands.json'\nexport const EXTENSION_ID: string = commands.extensionId"
+    expect(await lint(code, 'src/lib/bridge/extensionId.ts')).toEqual([])
+    expect(await errorRules(code, 'src/lib/bridge/client.ts')).toContain('no-restricted-syntax')
+  })
+
+  it('Worker·MessagePort의 postMessage와 MessageChannel은 막히지 않는다', async () => {
+    const code = [
+      'type W = { postMessage(m: unknown, t: Transferable[]): void }',
+      'export function open(worker: W) {',
+      '  const channel = new MessageChannel()',
+      "  worker.postMessage({ type: 'bridge-port' }, [channel.port2])",
+      "  channel.port1.postMessage({ type: 'chunk' })",
+      '  return channel.port1',
+      '}',
+    ].join('\n')
+    expect(await lint(code, BRIDGE)).toEqual([])
+  })
+})
+
+describe('AC-004.2 src/lib/precheck/**도 환자 자료 구역 규칙 아래 있다', SLOW, () => {
+  const PRECHECK = 'src/lib/precheck/probe.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["import React from 'react'", 'no-restricted-imports'],
+    ["import next from 'next'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { saveMonths } from '@/lib/storage/monthStore'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@/lib/supabase/browser')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, PRECHECK)).toContain(rule)
+  })
+
+  it('JSX가 막히고, 하위 폴더·시험 파일도 같은 규칙 아래 있다', async () => {
+    expect(await errorRules('export const A = () => <div />', 'src/lib/precheck/probe.tsx')).toContain('no-restricted-syntax')
+    expect(await errorRules("fetch('x')", 'src/lib/precheck/rules/probe.ts')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/lib/precheck/probe.test.ts')).toContain('no-console')
+  })
+
+  it('규칙표를 글자로 고정한 경로의 import()로 불러오는 것은 된다', async () => {
+    expect(await lint("export const load = async () => await import('./rules/table.json')", PRECHECK)).toEqual([])
+  })
+
+  it('안내는 lib/precheck·lib/bridge를 환자 자료 구역으로 말한다', async () => {
+    const messages = (await lint("fetch('x')", PRECHECK)).map((m) => m.message).join('\n')
+    expect(messages).toContain('lib/precheck')
+    expect(messages).toContain('lib/bridge')
+  })
+})
+
+describe('AC-004.11 client.ts는 src/lib/bridge 밖에서 import할 수 없다(화면은 workerSink.ts만)', SLOW, () => {
+  it.each([
+    ["import { connectBridge } from '@/lib/bridge/client'", 'src/components/claim/probe.ts'],
+    ["import { connectBridge } from '../../lib/bridge/client'", 'src/components/claim/probe.ts'],
+    ["import { connectBridge } from '@/lib/bridge/client.ts'", 'src/components/claim/probe.ts'],
+    ["import type { Bridge } from '@/lib/bridge/client'", 'src/components/claim/probe.ts'],
+    ["export { connectBridge } from '@/lib/bridge/client'", 'src/components/claim/probe.ts'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'src/app/(app)/claim/page.tsx'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'src/workers/probe.ts'],
+    ["import { connectBridge } from '../bridge/client'", 'src/lib/precheck/probe.ts'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'src/lib/parsers/probe.ts'],
+  ])('%s (%s) → no-restricted-imports', async (code, filePath) => {
+    expect(await errorRules(code, filePath)).toContain('no-restricted-imports')
+  })
+
+  it.each(['src/components/claim/probe.ts', 'src/workers/probe.ts', 'src/lib/precheck/probe.ts', 'extension/src/probe.ts'])(
+    "%s에서 import('@/lib/bridge/client')도 막힌다",
+    async (filePath) => {
+      const code = "export const load = async () => await import('@/lib/bridge/client')"
+      expect(await errorRules(code, filePath)).toContain('no-restricted-syntax')
+    },
+  )
+
+  it('components/claim에서 workerSink.ts(화면 입구)와 types/bridge는 import할 수 있다', async () => {
+    const code = [
+      "import { connectScreenBridge } from '@/lib/bridge/workerSink'",
+      "import type { BridgeState } from '@/types/bridge'",
+      'export const open = connectScreenBridge',
+      "export const first: BridgeState = 'connecting'",
+    ].join('\n')
+    expect(await lint(code, 'src/components/claim/probe.ts')).toEqual([])
+  })
+
+  it('lib/bridge 안(workerSink.ts)에서는 ./client를 import할 수 있다', async () => {
+    const code = "import { connectBridge } from './client'\nexport const open = connectBridge"
+    expect(await lint(code, 'src/lib/bridge/workerSink.ts')).toEqual([])
+  })
+})

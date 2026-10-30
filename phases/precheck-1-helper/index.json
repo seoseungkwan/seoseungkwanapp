@@ -23,7 +23,8 @@
     {
       "step": 3,
       "name": "bridge-client",
-      "status": "pending"
+      "status": "completed",
+      "summary": "TASK-4 통로: types/bridge.ts(Bridge·BridgeState·ChunkSink·HelloResult{state,helperVersion?,extensionVersion?,helperUpdateAvailable}·ChromeRuntimeLike·ArgsOf/ResultOf, bit.check steps find→db→registration), lib/bridge protocol.ts(PROTOCOL·명령 목록·readReply·checkResult·BridgeError{code})·extensionId.ts(EXTENSION_ID 하나)·versions.ts(MIN/LATEST_HELPER·MIN_EXTENSION 0.1.0, WEB_VERSIONS, LATEST_HELPER=Directory.Build.props 시험)·handshake.ts(checkVersions 확장 먼저)·client.ts connectBridge(명령은 hello 뒤 ready에서만, 아니면 상태 번호로 거절; hello는 끊긴 뒤 E-BRIDGE-DISCONNECTED로 거절 → useBridge는 새 connectScreenBridge로 다시; 조각 seq·count 검사; sink.abort는 조각 받는 요청(환자 stream·bit.input)만, store.save는 sent{ok:false}로 앎)·workerSink.ts connectScreenBridge({runtime,worker?})(bridge-port·chunk/end/abort·send→sent{ticket,ok,id?,count?|code}, worker 없으면 버림, send 없음); ESLint: lib/precheck·lib/bridge 구역, bridge는 window·self·globalThis·frames·document·eval·Function·Reflect·defaultView·postMessage·BroadcastChannel·parent·top·opener 금지, connect/sendMessage는 그 자리에서 EXTENSION_ID로 부를 때만(값 꺼내기·구조 분해·'connect' 글자 금지, typeof만 됨), client.ts는 bridge 밖 import 금지(뒤 설정에 CLIENT_IMPORT·CLIENT_IMPORT_SYNTAX를 다시 넣을 것); 연결 오류 번호 10개 errors.ts에 추가."
     },
     {
       "step": 4,
