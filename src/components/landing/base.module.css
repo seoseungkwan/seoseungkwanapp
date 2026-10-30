@@ -1,0 +1,340 @@
+/* 랜딩 공통 모양 (specs/landing-v2 REQ-105, design.md 'base.module.css 클래스')
+   값은 승인 시안 docs/mockups/landing-v2/index.html의 .lp 공통 CSS 그대로다.
+   휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media).
+   섹션 모듈은 여기 클래스와 같은 속성을 덮어쓰지 않고 배치(grid·order·폭)만 더한다(design.md 'CSS 적용 순서'). */
+
+/* ---------- 뿌리: 초기화와 기본 글자. page.tsx의 감싸개 하나에만 붙여 앱 화면에 새지 않게 한다 ---------- */
+.root {
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-align: left;
+}
+.root *,
+.root *::before,
+.root *::after {
+  box-sizing: border-box;
+}
+.root :where(h1, h2, h3, p, ol, ul, dl, dd, figure) {
+  margin: 0;
+  padding: 0;
+}
+.root :where(ol, ul) {
+  list-style: none;
+}
+/* layer 밖이라 globals.css @layer base의 a { color: accent }를 이긴다. :where라 단추 클래스보다는 약하다 */
+.root :where(a) {
+  color: inherit;
+  text-decoration: none;
+}
+.root a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.root svg {
+  display: block;
+  flex: none;
+}
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ---------- 틀 · 섹션 리듬 ---------- */
+.wrap {
+  max-width: 1248px; /* 내용 1200 + 좌우 24 */
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+.sec {
+  padding-block: 56px;
+  scroll-margin-top: 96px; /* 휴대폰은 메뉴가 두 줄이라 더 띄운다 */
+}
+.secCanvas {
+  background: var(--canvas);
+}
+.stack {
+  display: grid;
+  gap: 32px;
+}
+.head {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+
+/* ---------- 글자 단계 (한 벌) ---------- */
+.tDisplay {
+  font-size: 34px;
+  line-height: 42px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.tH2 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.tH3l {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.tH3 {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.tLead {
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ink-2);
+  max-width: 640px;
+}
+.tBody {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+.tSmall {
+  font-size: 13px;
+  line-height: 20px;
+}
+.tLabel {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ---------- 단추 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color .15s ease;
+}
+.btnMd {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.btnLg {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 15px;
+}
+.btnPrimary {
+  background: var(--ink);
+  color: var(--surface);
+}
+.btnPrimary:hover {
+  background: var(--ink-2);
+}
+.btnSecondary {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.btnSecondary:hover {
+  background: var(--canvas);
+}
+
+/* ---------- 칩 ---------- */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chipNeutral {
+  color: var(--ink-2);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.chipSample {
+  color: var(--muted);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.chipOk {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.chipAttn {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.chipWait {
+  color: var(--muted);
+  background: var(--canvas);
+  border-color: var(--line);
+}
+
+/* ---------- 카드(테두리 상자) · 항목(위 선 한 줄) · 칸 ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 16px;
+  min-width: 0;
+}
+.item {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+}
+.grid4,
+.grid3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px 24px;
+}
+
+/* 묶음: 휴대폰에서는 테두리 하나 안에 카드들이 위 1px 선으로 나뉜다. 칸 규칙(gap 12px) 뒤에 둬서 gap 0이 이긴다 */
+.group {
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.group > .card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.group > .card + .card {
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- 768px부터 (태블릿: 2줄) ---------- */
+@media (min-width: 768px) {
+  .wrap {
+    padding-inline: 24px;
+  }
+  .sec {
+    padding-block: 80px;
+    scroll-margin-top: 64px;
+  }
+  .stack {
+    gap: 40px;
+  }
+  .head {
+    gap: 16px;
+  }
+  .tDisplay {
+    font-size: 44px;
+    line-height: 52px;
+  }
+  .tH2 {
+    font-size: 28px;
+    line-height: 36px;
+  }
+  .tH3l {
+    font-size: 22px;
+    line-height: 30px;
+  }
+  .tH3 {
+    font-size: 18px;
+    line-height: 26px;
+  }
+  .tLead {
+    font-size: 18px;
+    line-height: 28px;
+  }
+  .tBody {
+    font-size: 15px;
+    line-height: 24px;
+  }
+  .card {
+    padding: 24px;
+  }
+  .item {
+    padding-top: 20px;
+    gap: 8px;
+  }
+  /* 묶음(.group)과 함께 달면 이 gap 16px이 휴대폰의 gap 0을 이긴다(파일에서 뒤에 온다) */
+  .grid4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .grid3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 24px;
+  }
+  .group {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+  .group > .card {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .group > .card + .card {
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* ---------- 1024px부터 (PC: 12칸) ---------- */
+@media (min-width: 1024px) {
+  .sec {
+    padding-block: 96px;
+  }
+  .stack {
+    gap: 48px;
+  }
+  .tDisplay {
+    font-size: 56px;
+    line-height: 64px;
+  }
+  .tH2 {
+    font-size: 32px;
+    line-height: 40px;
+  }
+  .grid4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* .items와 함께 단다. 768 규칙(.items 2칸) 뒤에 와서 이긴다 */
+  .itemsFour {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -51,6 +51,22 @@ describe('AC-001.1: 섹션 순서', () => {
     expect(html.search(/<footer\b/)).toBeGreaterThan(html.search(/<\/main>/))
     expect(html.match(/<header\b/g)).toHaveLength(1)
     expect(html.match(/<footer\b/g)).toHaveLength(1)
+  })
+})
+
+describe('AC-105.1: 랜딩 뿌리 감싸개', () => {
+  it('AC-105.1: base.module.css의 .root 클래스 <div> 하나가 header·main·footer를 감싼다', () => {
+    // 페이지 전체가 <div class="…">header main footer</div> 하나다
+    const wrapper = html.match(/^<div class="([^"]+)">([\s\S]*)<\/div>$/)
+    expect(wrapper, '맨 바깥 <div>').not.toBeNull()
+    const [, className, inner] = wrapper!
+    expect(className.split(/\s+/)).toHaveLength(1)
+    expect(className).toMatch(/root/)
+    expect(inner).toMatch(/^<header\b[\s\S]*<\/header><main\b[\s\S]*<\/main><footer\b[\s\S]*<\/footer>$/)
+    // 그 클래스는 base.module.css의 .root다(CSS 쪽 값은 styles.test.ts가 본다)
+    const page = readFileSync(join(ROOT, 'src/app/page.tsx'), 'utf8')
+    expect(page).toMatch(/^import base from '@\/components\/landing\/base\.module\.css'$/m)
+    expect(page).toMatch(/<div className=\{base\.root\}>/)
   })
 })
 
