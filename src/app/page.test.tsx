@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { LogoMark } from '@/components/common/LogoMark'
+import base from '@/components/landing/base.module.css'
 import Home from './page'
 
 const html = renderToStaticMarkup(<Home />)
@@ -205,5 +207,65 @@ describe('AC-008.1: 접근성', () => {
     const svgs = html.match(/<svg\b[^>]*>/g) ?? []
     expect(svgs.length).toBeGreaterThan(10)
     for (const svg of svgs) expect(svg).toContain('aria-hidden="true"')
+  })
+})
+
+describe('AC-110.6: 회색 바탕 섹션', () => {
+  it('AC-110.6: .secCanvas는 #ai · #features · #how 세 섹션에만 있다', () => {
+    const sections = [...html.matchAll(/<section\b[^>]*>/g)].map((m) => ({
+      id: /\sid="([^"]+)"/.exec(m[0])?.[1] ?? m[0],
+      classes: (/\bclass="([^"]*)"/.exec(m[0])?.[1] ?? '').split(/\s+/),
+    }))
+    expect(sections).toHaveLength(8)
+    expect(sections.filter((s) => s.classes.includes(base.secCanvas)).map((s) => s.id)).toEqual(['ai', 'features', 'how'])
+    // 섹션 밖(메뉴·푸터·미리보기 안)에도 붙지 않는다
+    const all = [...html.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
+    expect(all.filter((c) => c === base.secCanvas)).toHaveLength(3)
+  })
+})
+
+// ---------- AC-105.8: 랜딩 TSX의 색 글자·inline style 범위 ----------
+
+const LANDING_DIR = join(ROOT, 'src/components/landing')
+const landingTsx = readdirSync(LANDING_DIR)
+  .filter((name) => name.endsWith('.tsx') && !/\.test\.tsx$/.test(name))
+  .map((name) => ({ name, body: readFileSync(join(LANDING_DIR, name), 'utf8') }))
+// '#' + 16진수 3·4·6·8자리 색 글자 (#features·#ai 같은 # 링크는 뒤에 글자가 이어져 걸리지 않는다)
+const HEX_COLOR = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/i
+// 로고 마크 출력(고정 두 색)을 뺀 페이지 마크업. 메뉴(22)와 히어로 미리보기(20)에 하나씩 있다
+const LOGOS = [renderToStaticMarkup(<LogoMark size={22} />), renderToStaticMarkup(<LogoMark size={20} />)]
+const withoutLogos = LOGOS.reduce((markup, logo) => markup.split(logo).join(''), html)
+
+describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
+  it('AC-105.8: 랜딩 폴더의 *.tsx(시험 제외)에 색 글자(# + 16진수)가 없다', () => {
+    expect(landingTsx.map((f) => f.name)).toEqual(
+      expect.arrayContaining(['PrivacySection.tsx', 'HowSection.tsx', 'StartSection.tsx', 'SiteFooter.tsx', 'HeroChart.tsx']),
+    )
+    for (const { name, body } of landingTsx) expect(body, name).not.toMatch(HEX_COLOR)
+  })
+
+  it('AC-105.8: 로고는 <LogoMark />를 부르기만 한다(메뉴 22 · 미리보기 20), 그 밖의 페이지 마크업에는 색 글자가 없다', () => {
+    for (const logo of LOGOS) expect(html.split(logo).length - 1, logo).toBe(1)
+    for (const { name, body } of landingTsx) {
+      expect(body, `${name}: 로고 십자 경로를 따로 그리지 않는다`).not.toContain('M13.5 8h3a1')
+      if (/<LogoMark\b/.test(body)) expect(body, name).toMatch(/^import \{ LogoMark \} from '@\/components\/common\/LogoMark'$/m)
+    }
+    expect(withoutLogos).not.toMatch(HEX_COLOR)
+  })
+
+  it('AC-105.8: 로고 밖 svg의 선·채움은 currentColor나 none뿐이다(색은 CSS 클래스가 정한다)', () => {
+    const paints = [...withoutLogos.matchAll(/\s(fill|stroke)="([^"]*)"/g)].map((m) => `${m[1]}="${m[2]}"`)
+    expect(paints.length).toBeGreaterThan(0)
+    for (const paint of paints) expect(paint).toMatch(/^(fill|stroke)="(currentColor|none)"$/)
+  })
+
+  it('AC-105.8: inline style은 % 값의 높이·폭·위치 하나씩뿐이다(히어로 막대 높이 6 · 신환율·처방 그룹 막대 폭 5 · 눈금선 위치 4)', () => {
+    const styles = [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1])
+    for (const style of styles) expect(style).toMatch(/^(height|width|bottom):\d+(\.\d+)?%$/)
+    const count = (prop: string) => styles.filter((s) => s.startsWith(`${prop}:`)).length
+    expect({ height: count('height'), width: count('width'), bottom: count('bottom') }).toEqual({ height: 6, width: 5, bottom: 4 })
+    // style을 쓰는 랜딩 TSX는 미리보기 둘뿐이다
+    const withStyle = landingTsx.filter((f) => /\bstyle=\{/.test(f.body)).map((f) => f.name)
+    expect(withStyle.sort()).toEqual(['FeaturesSection.tsx', 'HeroChart.tsx'])
   })
 })

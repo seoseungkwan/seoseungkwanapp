@@ -1,60 +1,23 @@
-/* 시작하기(CTA) 섹션(#start). 값은 docs/mockups/landing/landing-mockup.dc.html #start 그대로. 가운데 정렬은 목업대로 */
-.section {
-  position: relative;
-  padding: 120px var(--gutter);
-  overflow: hidden;
-  text-align: center;
-  background: var(--bg-start);
-}
+/* 시작하기(#start) (specs/landing-v2 AC-110.4). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .start · .start-text 그대로다.
+   섹션 틀·제목·단추는 base.module.css가 정하고, 여기서는 글 | 단추 배치만 정한다.
+   휴대폰 값을 먼저 쓰고 768px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
 
-/* 연한 원형 빛: 히어로·AI·시작하기 섹션에만 (UI_GUIDE) */
-.glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 900px;
-  height: 900px;
-  margin: -450px 0 0 -450px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(20, 200, 186, 0.16), rgba(109, 93, 245, 0.08) 40%, rgba(241, 246, 252, 0) 70%);
-}
-
-.inner {
-  position: relative;
-  max-width: 720px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
+/* 휴대폰: 글 위, 단추 아래(왼쪽 맞춤) */
+.start {
+  display: grid;
   gap: 24px;
-  align-items: center;
+  justify-items: start;
+}
+.text {
+  display: grid;
+  gap: 12px;
 }
 
-.title {
-  margin: 0;
-  font-size: clamp(32px, 4.2vw, 52px);
-  line-height: 1.2;
-  font-weight: 700;
-}
-
-.lead {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.6;
-  color: var(--text-body);
-}
-
-/* 링크 글자색은 globals의 a:hover(청록)가 덮지 않게 :hover까지 같이 정한다 */
-.start,
-.start:hover {
-  display: inline-flex;
-  align-items: center;
-  min-height: 56px;
-  padding: 0 36px;
-  border-radius: 999px;
-  background: var(--text-strong);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 18px;
-  text-decoration: none;
-  box-shadow: 0 14px 36px rgba(11, 21, 48, 0.22);
+/* 768부터: 글 | 단추, 아래 맞춤 */
+@media (min-width: 768px) {
+  .start {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 32px;
+  }
 }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -6,8 +6,13 @@ import { describe, expect, it } from 'vitest'
 // 값은 승인 시안 docs/mockups/landing-v2/index.html의 .lp CSS다. 시안의 @container lp(768·1024)는 같은 숫자의 @media로 옮긴다
 const DIR = join(process.cwd(), 'src/components/landing')
 
-// 규칙 시험(AC-105.7)이 보는 모듈. TASK마다 고친 모듈을 더하고, TASK-10에서 폴더 전체 읽기로 바꾼다(design.md)
-const CHECKED = [
+// 규칙 시험(AC-105.7)이 보는 모듈: 랜딩 폴더의 *.module.css 전부(TASK-10에서 목록 대신 폴더 전체 읽기로 바꿨다, design.md).
+// 새 모듈을 더하면 저절로 검사된다
+const CHECKED = readdirSync(DIR)
+  .filter((name) => name.endsWith('.module.css'))
+  .sort()
+// 지금 있어야 하는 랜딩 모듈: base + 섹션 모듈 11개
+const LANDING_MODULES = [
   'base.module.css',
   'SiteHeader.module.css',
   'Hero.module.css',
@@ -16,6 +21,10 @@ const CHECKED = [
   'AiSection.module.css',
   'OrthoSection.module.css',
   'FeaturesSection.module.css',
+  'PrivacySection.module.css',
+  'HowSection.module.css',
+  'StartSection.module.css',
+  'SiteFooter.module.css',
 ]
 
 // ---------- CSS 글자 읽기 도우미 ----------
@@ -1275,6 +1284,251 @@ describe('AC-109.2: 기능 섹션 CSS (FeaturesSection.module.css)', () => {
   })
 })
 
+// ---------- 개인정보 · 시작 3단계 · 시작하기 · 푸터 (REQ-110, 시안 .priv-top · .zero · .flow · .node · .stop · .link · .steps · .start · .lp-ft) ----------
+
+const PRIV = 'PrivacySection.module.css'
+const HOW = 'HowSection.module.css'
+const START = 'StartSection.module.css'
+const FOOT = 'SiteFooter.module.css'
+const priv = () => parse(source(PRIV))
+// 옛 규칙 이름이 없다(뒤에 이름 글자가 이어지면 다른 이름이다)
+function expectNoOld(file: string, olds: string[]) {
+  const css = source(file)
+  for (const old of olds) expect(css, `${file}: ${old}`).not.toMatch(new RegExp(`\\${old}(?![\\w-])`))
+}
+
+describe('AC-110.2: 개인정보 섹션 CSS (PrivacySection.module.css)', () => {
+  it('AC-110.2: 윗부분 .top은 한 칸(gap 24px)이고 1024부터 minmax(0, 1fr) 360px · 칸 사이 48px · 아래 맞춤이다', () => {
+    expectStyle('.top', 0, { display: 'grid', 'grid-template-columns': COLS(1), gap: '24px' }, PRIV)
+    expectStyle('.top', 768, { 'grid-template-columns': COLS(1) }, PRIV)
+    expectStyle('.top', 1024, { 'grid-template-columns': 'minmax(0, 1fr) 360px', 'column-gap': '48px', 'align-items': 'end' }, PRIV)
+  })
+
+  it('AC-110.2: 0건 카드 .zero는 휴대폰·768에서 숫자 | 설명(가운데 맞춤 · gap 20px), 1024부터 위아래(grid · gap 4px)다', () => {
+    expectStyle('.zero', 0, { display: 'flex', 'align-items': 'center', gap: '20px' }, PRIV)
+    expectStyle('.zero', 1024, { display: 'grid', gap: '4px', 'justify-items': 'start' }, PRIV)
+    expectStyle('.zeroCaption', 0, { 'padding-left': '20px', 'border-left': '1px solid var(--line)' }, PRIV)
+    expectStyle('.zeroCaption', 1024, { 'padding-left': '0', 'border-left': '0' }, PRIV)
+    expectStyle('.zeroCaption', 0, { 'font-size': '15px', 'line-height': '22px', color: 'var(--ink-2)' }, PRIV)
+  })
+
+  it('AC-110.2: 0건 숫자는 48/52 → 56/64(1024) · 600 · ink · 줄바꿈 없음, 단위 "건"은 22px → 24px · 500이다', () => {
+    expectSteps(PRIV, '.zeroNum', 'font-size', ['48px', '48px', '56px'])
+    expectSteps(PRIV, '.zeroNum', 'line-height', ['52px', '52px', '64px'])
+    expectStyle('.zeroNum', 0, { 'font-weight': '600', color: 'var(--ink)', 'white-space': 'nowrap' }, PRIV)
+    expectSteps(PRIV, '.zeroNum span', 'font-size', ['22px', '22px', '24px'])
+    expectStyle('.zeroNum span', 0, { 'font-weight': '500' }, PRIV)
+  })
+
+  it('AC-110.2: 흐름 .flow는 1024 미만 세로 한 칸, 1024부터 minmax(0, 1fr) 112px minmax(0, 1fr) 112px minmax(0, 1fr)이다', () => {
+    for (const bp of [0, 768] as Bp[]) expectStyle('.flow', bp, { display: 'grid', 'grid-template-columns': COLS(1) }, PRIV)
+    expectStyle(
+      '.flow',
+      1024,
+      { 'grid-template-columns': 'minmax(0, 1fr) 112px minmax(0, 1fr) 112px minmax(0, 1fr)', 'align-items': 'stretch' },
+      PRIV,
+    )
+  })
+
+  it('AC-110.2: 흐름 카드 .node는 흰 상자(1px line · 6px · min-width 0)이고 안쪽 16px → 20px 24px → 24px, 머리는 왼쪽 정렬이다', () => {
+    expectStyle(
+      '.node',
+      0,
+      { background: 'var(--surface)', border: '1px solid var(--line)', 'border-radius': '6px', 'min-width': '0' },
+      PRIV,
+    )
+    expectSteps(PRIV, '.node', 'padding', ['16px', '20px 24px', '24px'])
+    expectStyle('.nodeHead', 0, { display: 'flex', 'align-items': 'center', gap: '8px' }, PRIV)
+    for (const [selector, prop, value] of allDecls(PRIV)) {
+      if (prop === 'text-align') expect(value, `${PRIV}: ${selector} { ${prop} }`).not.toBe('center')
+      if (selector.startsWith('.node') && prop.startsWith('justify')) {
+        expect(value, `${PRIV}: ${selector} { ${prop} }`).not.toBe('center')
+      }
+    }
+  })
+
+  it('AC-110.2: 1024 미만 연결은 1px var(--ink-2) 세로 선 + 아래 화살표(위 테두리 삼각형)다', () => {
+    expectStyle('.link', 0, { display: 'flex', 'align-items': 'center' }, PRIV)
+    expect(at(priv(), '.link', 'flex-direction', 768), '.link flex-direction @768').toBeUndefined()
+    expectStyle('.linkLine', 0, { width: '1px', background: 'var(--ink-2)', 'align-self': 'stretch' }, PRIV)
+    expectStyle(
+      '.linkLine::after',
+      0,
+      {
+        content: '""',
+        position: 'absolute',
+        'border-left': '4.5px solid transparent',
+        'border-right': '4.5px solid transparent',
+        'border-top': '7px solid var(--ink-2)',
+      },
+      PRIV,
+    )
+  })
+
+  it('AC-110.2: 1024부터 연결은 가로 화살표(1px 가로 선 + 오른쪽 삼각형)이고 칩이 선 위에 온다(order: -1)', () => {
+    expectStyle('.link', 1024, { 'flex-direction': 'column', 'justify-content': 'center' }, PRIV)
+    expectStyle('.linkLine', 1024, { width: '100%', height: '1px' }, PRIV)
+    expectStyle(
+      '.linkLine::after',
+      1024,
+      {
+        border: '0',
+        'border-top': '4.5px solid transparent',
+        'border-bottom': '4.5px solid transparent',
+        'border-left': '7px solid var(--ink-2)',
+      },
+      PRIV,
+    )
+    expectStyle('.linkChip', 1024, { order: '-1' }, PRIV)
+    expect(at(priv(), '.linkChip', 'order', 768), '.linkChip order @768').toBeUndefined()
+  })
+
+  it('AC-110.2: "여기서 멈춤" 상자는 var(--danger-soft) · 모서리 4px, 제목은 var(--danger) 13px 600, 항목은 13px ink-2다', () => {
+    expectStyle('.stop', 0, { background: 'var(--danger-soft)', 'border-radius': '4px' }, PRIV)
+    expectStyle('.stopTitle', 0, { color: 'var(--danger)', 'font-size': '13px', 'font-weight': '600' }, PRIV)
+    expectStyle('.stopItems', 0, { 'font-size': '13px', color: 'var(--ink-2)' }, PRIV)
+  })
+
+  it('AC-110.2: ok·danger 색은 "여기서 멈춤"(.stop · .stopTitle)에만 쓴다', () => {
+    let seen = 0
+    for (const rule of priv()) {
+      const body = rule.decls.map(([p, v]) => `${p}: ${v}`).join('; ')
+      if (!/--(ok|danger)\b/.test(body)) continue
+      seen++
+      for (const s of rule.selectors) expect(['.stop', '.stopTitle'], `${s} { ${body} }`).toContain(s)
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
+  it('AC-110.2: 옛 규칙(영문 소제목 · 두 색 제목 · 빛나는 0 · 색 연결선 · 가운데 머리 · 옛 카드)이 없다', () => {
+    expectNoOld(PRIV, [
+      '.section',
+      '.inner',
+      '.eyebrow',
+      '.title',
+      '.titleAccent',
+      '.lead',
+      '.zeroCard',
+      '.zeroUnit',
+      '.center',
+      '.nodePc',
+      '.nodeServer',
+      '.nodeAi',
+      '.nodeTitle',
+      '.nodeDesc',
+      '.linkTeal',
+      '.linkViolet',
+      '.line',
+      '.lineTeal',
+      '.lineViolet',
+      '.rules',
+      '.rule',
+      '.ruleTitle',
+      '.ruleDesc',
+    ])
+  })
+})
+
+describe('AC-110.3: 시작 3단계 CSS (HowSection.module.css)', () => {
+  it('AC-110.3: .steps는 한 칸 → 768부터 3칸이고 간격은 20px 24px이다', () => {
+    expectStyle('.steps', 0, { display: 'grid', 'grid-template-columns': COLS(1), gap: '20px 24px' }, HOW)
+    for (const bp of [768, 1024] as Bp[]) expectStyle('.steps', bp, { 'grid-template-columns': COLS(3) }, HOW)
+  })
+
+  it('AC-110.3: 번호 .stepNum은 13px/20px · 600 · muted 한 가지 색이다', () => {
+    for (const bp of ALL_BPS) {
+      expectStyle('.stepNum', bp, { 'font-size': '13px', 'line-height': '20px', 'font-weight': '600', color: 'var(--muted)' }, HOW)
+    }
+  })
+
+  it('AC-110.3: 옛 규칙(흐르는 선 · 세 색 번호 · 색 카드 · 영문 소제목)이 없다', () => {
+    expectNoOld(HOW, [
+      '.section',
+      '.inner',
+      '.eyebrow',
+      '.title',
+      '.line',
+      '.step',
+      '.stepTeal',
+      '.stepCoral',
+      '.stepViolet',
+      '.num',
+      '.numTeal',
+      '.numCoral',
+      '.numViolet',
+      '.stepTitle',
+      '.stepDesc',
+    ])
+  })
+})
+
+describe('AC-110.4: 시작하기 CSS (StartSection.module.css)', () => {
+  it('AC-110.4: 휴대폰 .start는 grid · gap 24px · 왼쪽 맞춤으로 위아래로 쌓인다', () => {
+    expectStyle('.start', 0, { display: 'grid', gap: '24px', 'justify-items': 'start' }, START)
+    expect(at(parse(source(START)), '.start', 'grid-template-columns', 0), '.start 칸 @0').toBeUndefined()
+    expectStyle('.text', 0, { display: 'grid', gap: '12px' }, START)
+  })
+
+  it('AC-110.4: 768부터 .start는 minmax(0, 1fr) auto · 아래 맞춤 · gap 32px이다', () => {
+    for (const bp of [768, 1024] as Bp[]) {
+      expectStyle('.start', bp, { 'grid-template-columns': 'minmax(0, 1fr) auto', 'align-items': 'end', gap: '32px' }, START)
+    }
+  })
+
+  it('AC-110.4: 원형 빛과 가운데 정렬이 없다', () => {
+    expectNoOld(START, ['.section', '.inner', '.glow', '.title', '.lead'])
+    const css = source(START)
+    expect(css).not.toMatch(/radial/i)
+    expect(css).not.toMatch(/text-align\s*:\s*center/i)
+    expect(css).not.toMatch(/align-items\s*:\s*center/i)
+  })
+})
+
+describe('AC-110.5: 푸터 CSS (SiteFooter.module.css)', () => {
+  it('AC-110.5: footer는 위 1px line · 흰 바탕이다', () => {
+    expectStyle('.footer', 0, { 'border-top': '1px solid var(--line)', background: 'var(--surface)' }, FOOT)
+  })
+
+  it('AC-110.5: 안쪽 .inner는 위아래 24px · 13px/20px · muted이고 양끝으로 나뉘며 접히면 줄을 바꾼다', () => {
+    expectStyle(
+      '.inner',
+      0,
+      {
+        display: 'flex',
+        'flex-wrap': 'wrap',
+        'justify-content': 'space-between',
+        gap: '4px 20px',
+        'padding-block': '24px',
+        'font-size': '13px',
+        'line-height': '20px',
+        color: 'var(--muted)',
+      },
+      FOOT,
+    )
+    expectStyle('.right', 0, { display: 'flex', 'flex-wrap': 'wrap', gap: '4px 20px' }, FOOT)
+  })
+
+  it('AC-110.5: 틀 폭·좌우 여백은 base .wrap이 정하고 .inner는 덮어쓰지 않는다', () => {
+    for (const bp of ALL_BPS) {
+      for (const prop of ['max-width', 'margin', 'margin-inline', 'padding', 'padding-inline']) {
+        expect(at(parse(source(FOOT)), '.inner', prop, bp), `.inner ${prop} @${bp}`).toBeUndefined()
+      }
+    }
+  })
+})
+
+describe('AC-105.7: 랜딩 모듈이 쓰는 변수', () => {
+  it.each(CHECKED)('AC-105.7: %s가 쓰는 var(--…)는 모두 globals.css의 랜딩 :root에 정의돼 있다(옛 변수 없음)', (name) => {
+    const globals = withoutComments(readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8'))
+    const roots = blocks(globals).filter(([head]) => head === ':root')
+    expect(roots.length, 'globals.css의 :root').toBeGreaterThan(0)
+    const defined = new Set(roots.flatMap(([, body]) => [...body.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1])))
+    for (const varName of [...source(name).matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1])) {
+      expect(defined.has(varName), `${name}: ${varName}`).toBe(true)
+    }
+  })
+})
+
 // ---------- AC-105.7: 랜딩 CSS Module 규칙 (검사 목록 CHECKED) ----------
 
 const ACCENT_FILES = ['base.module.css', 'HeroChart.module.css', 'FeaturesSection.module.css']
@@ -1288,6 +1542,11 @@ const COLOR_PROP =
 const COLOR_WORDS = new Set(['transparent', 'currentcolor', 'inherit', 'none', 'solid', 'dashed', 'dotted'])
 
 describe('AC-105.7: 랜딩 CSS Module 규칙', () => {
+  it('AC-105.7: 검사 목록은 랜딩 폴더의 *.module.css 전부이고 base + 섹션 모듈 11개를 모두 담는다', () => {
+    expect(CHECKED).toEqual(expect.arrayContaining(LANDING_MODULES))
+    expect(CHECKED.length).toBeGreaterThanOrEqual(LANDING_MODULES.length)
+  })
+
   it.each(CHECKED)('AC-105.7: 검사할 파일 %s가 있고 비어 있지 않다', (name) => {
     expect(source(name).trim().length, name).toBeGreaterThan(0)
   })
