@@ -16,3 +16,6 @@
 {"ts": "2026-10-31T12:40:44Z", "task": "TASK-2", "reqs": ["REQ-313"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/components/ui/classes.test.ts'", "tests": ["src/components/ui/classes.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-10-31T12:45:52Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "verify"}
 {"ts": "2026-10-31T12:50:00Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-31T12:36:22Z", "task": "TASK-4", "reqs": ["REQ-315"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/components/common/Icon.test.tsx'", "tests": ["src/components/common/Icon.test.tsx"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-31T12:36:37Z", "task": "TASK-4", "reqs": ["REQ-315"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/components/common/Icon.test.tsx'", "tests": ["src/components/common/Icon.test.tsx"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-31T12:42:11Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
