@@ -9,7 +9,8 @@ import { ds } from '@/components/ui/classes'
 import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
-import { ADMIN_ITEM, MENU, currentMenuLabel } from './menu'
+import * as menuModule from './menu'
+import { ADMIN_LINK, MENU, currentMenuLabel } from './menu'
 import { TabBar } from './TabBar'
 
 // 앱 틀 (REQ-008, b2b-redesign REQ-218, design.md '앱 틀·대시보드·관리자', UI_GUIDE '앱 화면' 앱 틀·탭·폰).
@@ -29,10 +30,27 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 청구는 매출 바로 뒤(청구 사전점검 목업 '탭 자리', AC-006.4). 환자 연락은 TASK-26이 더한다
-const LABELS = ['대시보드', '통계', 'AI 리포트', '매출', '청구', '재고', '급여', '일일마감·보고', '월간 PDF', '설정']
+// 탭 13개와 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 대시보드·청구뿐이다
+const PATHS: readonly (readonly [string, string])[] = [
+  ['대시보드', '/dashboard'],
+  ['통계', '/stats'],
+  ['청구', '/claim'],
+  ['고시·공지', '/notices'],
+  ['환자', '/patients'],
+  ['매출', '/revenue'],
+  ['AI 리포트', '/ai-report'],
+  ['서식', '/forms'],
+  ['직원', '/staff'],
+  ['업무일지', '/worklog'],
+  ['재고', '/inventory'],
+  ['주소록', '/contacts'],
+  ['설정', '/claim/setup'],
+]
+const LABELS = PATHS.map(([label]) => label)
 const READY = ['대시보드', '청구']
 const NOT_READY = LABELS.filter((l) => !READY.includes(l))
+// 준비 중 화면 주소 10개(설정 빼고 화면이 없는 탭)
+const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
 const HOSPITAL = '가나 정형외과의원'
 
@@ -56,21 +74,37 @@ afterEach(() => {
 })
 
 const nav = () => screen.getByRole('navigation', { name: '메뉴' })
-// 탭 줄의 항목(링크·준비 중 단추)을 화면 순서대로
+// 탭 줄의 항목을 화면 순서대로(모두 링크. 단추가 끼면 AC-303.1이 잡는다)
 const tabItems = () => Array.from(nav().querySelectorAll<HTMLElement>('a, button'))
 const tab = (name: string) => within(nav()).getByText(name, { selector: 'span[data-label]' }).parentElement as HTMLElement
-const tipOfTab = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-describedby') as string) as HTMLElement
 
 describe('menu', () => {
-  it('AC-008.1·AC-006.4: 시안 A 순서에 청구(매출 뒤) — 대시보드·청구만 화면이 있고 나머지는 아직 없다(href null)', () => {
-    expect(MENU.map((m) => m.label)).toEqual(LABELS)
+  it('AC-302.1: 탭은 13개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · 매출 · AI 리포트 · 서식 · 직원 · 업무일지 · 재고 · 주소록 · 설정. 급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
+    expect(MENU.map((m) => m.label)).toEqual([
+      '대시보드', '통계', '청구', '고시·공지', '환자', '매출', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정',
+    ])
+    expect(MENU).toHaveLength(13)
+    for (const gone of ['급여', '일일마감·보고', '월간 PDF', '관리자']) expect(MENU.map((m) => m.label as string), gone).not.toContain(gone)
+  })
+
+  it('AC-302.2: 탭 주소(path)는 표와 같고 13개가 모두 다르며 같은 origin 고정 경로다', () => {
+    expect(MENU.map((m) => [m.label, m.path])).toEqual(PATHS)
+    expect(new Set(MENU.map((m) => m.path)).size).toBe(13)
+    for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
+  })
+
+  it('AC-302.3: 기능 자신의 화면(href)은 대시보드 /dashboard · 청구 /claim뿐이고 나머지 11개(설정 포함)는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '청구', href: '/claim' },
     ])
+    expect(MENU.filter((m) => m.href === null).map((m) => m.label)).toEqual(NOT_READY)
+    // 설치·연결 확인 화면(SetupScreen)의 [청구·연락]이 고치지 않고도 '준비 중'이려면 설정 href가 null이어야 한다
+    expect(MENU.find((m) => m.label === '설정')?.href).toBeNull()
+    for (const { label, path, href } of MENU) if (href !== null) expect(href, label).toBe(path)
   })
 
-  it('AC-006.4: 지금 탭 — /claim과 /claim/*은 청구, 설치·연결 확인(/claim/setup)은 목업처럼 설정 자리', () => {
+  it('AC-006.4·AC-302.4: 지금 탭 — /claim과 /claim/*은 청구, 설치·연결 확인(/claim/setup)은 목업처럼 설정 자리', () => {
     expect(currentMenuLabel('/dashboard')).toBe('대시보드')
     expect(currentMenuLabel('/claim')).toBe('청구')
     expect(currentMenuLabel('/claim/close')).toBe('청구')
@@ -78,60 +112,50 @@ describe('menu', () => {
     expect(currentMenuLabel('/claim/setup/x')).toBe('설정')
     expect(currentMenuLabel('/claimed')).toBeNull()
     expect(currentMenuLabel('/admin')).toBeNull()
+    // 준비 중 주소 10개와 그 아래 경로는 그 탭
+    expect(NOT_READY_PATHS).toHaveLength(10)
+    for (const [label, path] of NOT_READY_PATHS) {
+      expect(currentMenuLabel(path), path).toBe(label)
+      expect(currentMenuLabel(`${path}/x`), `${path}/x`).toBe(label)
+    }
+    expect(currentMenuLabel('/stats')).toBe('통계')
+    expect(currentMenuLabel('/stats/x')).toBe('통계')
+    expect(currentMenuLabel('/ai-report')).toBe('AI 리포트')
+    for (const path of ['/admin', '/', '/statsx', '/claimx', '/settings']) expect(currentMenuLabel(path), path).toBeNull()
   })
 
-  it('AC-008.2: 관리자 탭은 /admin', () => {
-    expect(ADMIN_ITEM).toEqual({ label: '관리자', href: '/admin' })
+  it('AC-303.4·AC-304.1: 관리자 링크는 탭이 아니라 계정 메뉴의 [가입 승인] /admin(ADMIN_LINK). 옛 관리자 탭(ADMIN_ITEM)은 없다', () => {
+    expect(ADMIN_LINK).toEqual({ label: '가입 승인', href: '/admin' })
+    expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 })
 
 describe('TabBar', () => {
-  it('AC-008.1·AC-006.4: nav "메뉴" 안에 시안 A 순서대로, 대시보드·청구만 링크이고 대시보드가 지금 화면이라 aria-current="page"', () => {
-    render(<TabBar isAdmin={false} />)
+  it('AC-303.1: nav "메뉴" 안에 링크 13개가 MENU 순서·이름대로이고 링크마다 href가 그 탭의 path다. 대시보드가 지금 화면이라 aria-current="page"', () => {
+    render(<TabBar />)
     expect(nav().tagName).toBe('NAV')
     expect(tabItems().map((el) => el.textContent)).toEqual(LABELS)
     const links = within(nav()).getAllByRole('link')
-    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      ['대시보드', '/dashboard'],
-      ['청구', '/claim'],
-    ])
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual(PATHS)
     expect(links[0].getAttribute('aria-current')).toBe('page')
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
+    // 준비 중 단추·툴팁이 없다
+    expect(nav().querySelectorAll('button, [aria-disabled], [role="tooltip"], [aria-describedby]')).toHaveLength(0)
+    expect(nav().textContent).not.toContain('준비 중')
   })
 
-  it('AC-008.1: 아직 없는 화면은 링크가 아니라 누를 수 없는 단추다', () => {
-    render(<TabBar isAdmin={false} />)
-    for (const label of NOT_READY) {
-      const item = tab(label)
-      expect(item.tagName, label).toBe('BUTTON')
-      expect(item.getAttribute('type'), label).toBe('button')
-      expect(item.getAttribute('aria-disabled'), label).toBe('true')
-      expect(item.closest('a'), label).toBeNull()
-      expect(item.hasAttribute('aria-current'), label).toBe(false)
-    }
-  })
-
-  it('AC-008.2: 관리자면 설정 뒤 세로 구분선(읽지 않음) 다음에 [관리자] /admin 링크', () => {
-    render(<TabBar isAdmin />)
-    expect(tabItems().map((el) => el.textContent)).toEqual([...LABELS, '관리자'])
-    const admin = within(nav()).getByRole('link', { name: '관리자' })
-    expect(admin.getAttribute('href')).toBe('/admin')
-    const sep = admin.previousElementSibling as HTMLElement
-    expect(sep.getAttribute('aria-hidden')).toBe('true')
-    expect(sep.textContent).toBe('')
-    hasAll(sep, 'w-px h-4 bg-line')
-    expect(sep.previousElementSibling?.contains(tab('설정'))).toBe(true)
-  })
-
-  it('AC-008.2: 관리자가 아니면 구분선과 [관리자]가 없다', () => {
-    render(<TabBar isAdmin={false} />)
+  it('AC-303.4: 탭 줄에 [관리자] 링크와 세로 구분선이 없다 — TabBar는 관리자 여부를 받지 않는다', () => {
+    expect(TabBar.length).toBe(0)
+    render(<TabBar />)
     expect(within(nav()).queryByText('관리자')).toBeNull()
+    expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
     expect(nav().querySelectorAll('[aria-hidden="true"].w-px')).toHaveLength(0)
+    expect(tabItems().map((el) => el.textContent)).toEqual(LABELS)
   })
 
   it.each(['/claim', '/claim/close'])('AC-006.4·AC-034.1: %s에서는 [청구] /claim 링크가 지금 탭(aria-current="page")이고 하나뿐이다', (path) => {
     pathname.mockReturnValue(path)
-    render(<TabBar isAdmin />)
+    render(<TabBar />)
     const claim = within(nav()).getByRole('link', { name: '청구' })
     expect(claim.getAttribute('href')).toBe('/claim')
     expect(claim.getAttribute('aria-current')).toBe('page')
@@ -139,147 +163,54 @@ describe('TabBar', () => {
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
   })
 
-  it('AC-006.4·AC-034.1: /claim/setup에서는 목업처럼 [설정] 자리가 지금 탭이다 — 설정 화면이 아직 없어 링크가 아니고 표시만(준비 중), 청구는 지금 탭이 아니다', () => {
-    pathname.mockReturnValue('/claim/setup')
-    render(<TabBar isAdmin={false} />)
-    const settings = tab('설정')
-    expect(settings.tagName).toBe('BUTTON')
-    expect(settings.getAttribute('aria-disabled')).toBe('true')
-    expect(settings.getAttribute('aria-current')).toBe('page')
-    hasAll(settings, 'text-ink font-semibold after:bg-accent')
-    hasNone(settings, 'text-faint text-ink-2 font-medium')
-    expect(tipOfTab(settings).textContent).toBe('준비 중')
-    expect(within(nav()).getByRole('link', { name: '청구' }).hasAttribute('aria-current')).toBe(false)
+  it.each([
+    ['/claim/setup', '설정', '/claim/setup'],
+    ['/stats', '통계', '/stats'],
+    ['/stats/x', '통계', '/stats'],
+    ['/contacts', '주소록', '/contacts'],
+  ])('AC-303.2: %s에서는 [%s](%s 링크)만 지금 탭이고 지금 탭 모양이다. [청구]·[대시보드]는 아니다', (path, label, href) => {
+    pathname.mockReturnValue(path)
+    render(<TabBar />)
+    const current = within(nav()).getByRole('link', { name: label })
+    expect(current.getAttribute('href')).toBe(href)
+    expect(current.getAttribute('aria-current')).toBe('page')
+    hasAll(current, 'text-ink font-semibold after:absolute after:bottom-0 after:h-0.5 after:bg-accent')
+    hasNone(current, 'text-faint text-ink-2 font-medium')
+    expect(current.hasAttribute('aria-describedby')).toBe(false)
+    for (const other of ['청구', '대시보드']) expect(within(nav()).getByRole('link', { name: other }).hasAttribute('aria-current'), other).toBe(false)
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
   })
 
-  it('AC-008.1·AC-008.2: /admin에서는 [관리자]가 지금 탭이고 대시보드는 아니다', () => {
+  it('AC-303.2: /admin에서는 지금 탭이 없다(대시보드도 아니다)', () => {
     pathname.mockReturnValue('/admin')
-    render(<TabBar isAdmin />)
-    expect(within(nav()).getByRole('link', { name: '관리자' }).getAttribute('aria-current')).toBe('page')
+    render(<TabBar />)
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(0)
     expect(within(nav()).getByRole('link', { name: '대시보드' }).hasAttribute('aria-current')).toBe(false)
+    expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
   })
 
-  it('AC-008.5: 준비 중 탭은 aria-describedby로 "준비 중" 툴팁을 읽힌다(탭마다 다른 id)', () => {
-    render(<TabBar isAdmin={false} />)
-    const ids = NOT_READY.map((label) => {
-      const id = tab(label).getAttribute('aria-describedby')
-      expect(id, label).toBeTruthy()
-      const tip = document.getElementById(id as string) as HTMLElement
-      expect(tip.getAttribute('role'), label).toBe('tooltip')
-      expect(tip.textContent, label).toBe('준비 중')
-      return id
-    })
-    expect(new Set(ids).size).toBe(NOT_READY.length)
-    // 화면이 있는 탭에는 툴팁이 없다
-    expect(within(nav()).getByRole('link', { name: '대시보드' }).hasAttribute('aria-describedby')).toBe(false)
-  })
-
-  // 툴팁이 보이는지: 늘 hidden이고, 보일 때만 lg:block이 붙는다(1024px 미만은 띠 안 스크롤이라 숨긴다)
-  const tipOf = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-describedby') as string) as HTMLElement
-  const tipShown = (button: HTMLElement) => {
-    const classes = classesOf(tipOf(button))
-    expect(classes).toContain('hidden')
-    return classes.includes('lg:block')
-  }
-
-  it('AC-008.5·AC-218.2: 툴팁은 평소 숨고, 1024px 이상에서 올림·초점에 보인다(ink 바탕·흰 caption 500·좌우 8px·위아래 6px·8px·shadow-float)', async () => {
-    const user = userEvent.setup()
-    render(<TabBar isAdmin={false} />)
-    const button = tab('통계')
-    const tip = tipOf(button)
-    hasAll(tip, 'absolute bg-ink text-surface text-caption font-medium rounded-float px-2 py-1.5 shadow-float whitespace-nowrap')
-    hasNone(tip, 'rounded-chip py-1')
-    hasNone(tip, 'max-lg:block md:block block')
-    expect(tipShown(button)).toBe(false)
-    // 올림·초점을 받는 덩이는 단추와 툴팁을 함께 감싼다
-    const group = button.parentElement as HTMLElement
-    expect(group.contains(tip)).toBe(true)
-    hasAll(group, 'relative')
-
-    await user.hover(button)
-    expect(tipShown(button)).toBe(true)
-    await user.unhover(button)
-    expect(tipShown(button)).toBe(false)
-
-    act(() => button.focus())
-    expect(tipShown(button)).toBe(true)
-    act(() => button.blur())
-    expect(tipShown(button)).toBe(false)
-  })
-
-  it('AC-008.5: 툴팁은 Esc로 닫히고(올림·초점은 그대로), 다시 올리거나 초점이 오면 또 보인다 (WCAG 1.4.13)', async () => {
-    const user = userEvent.setup()
-    render(<TabBar isAdmin={false} />)
-    const button = tab('통계')
-    // 키보드 초점
-    act(() => button.focus())
-    expect(tipShown(button)).toBe(true)
-    await user.keyboard('{Escape}')
-    expect(tipShown(button)).toBe(false)
-    expect(document.activeElement).toBe(button)
-    act(() => button.blur())
-    act(() => button.focus())
-    expect(tipShown(button)).toBe(true)
-    act(() => button.blur())
-    // 마우스 올림
-    await user.hover(button)
-    expect(tipShown(button)).toBe(true)
-    await user.keyboard('{Escape}')
-    expect(tipShown(button)).toBe(false)
-    await user.unhover(button)
-    await user.hover(button)
-    expect(tipShown(button)).toBe(true)
-  })
-
-  it('AC-008.5: 마우스를 툴팁 위로 옮겨도 닫히지 않는다 — 툴팁은 탭과 붙어 있고(사이 틈 없음) 마우스를 받는다 (WCAG 1.4.13)', async () => {
-    const user = userEvent.setup()
-    render(<TabBar isAdmin={false} />)
-    const button = tab('통계')
-    const tip = tipOf(button)
-    hasNone(tip, 'pointer-events-none')
-    await user.hover(button)
-    await user.hover(tip)
-    expect(tipShown(button)).toBe(true)
-  })
-
-  it('AC-008.5·AC-218.2: 툴팁은 탭 띠 아래 페이지 제목을 덮지 않는다 — 탭(44px) 안 38px에서 시작해(틈 없음) 띠 밑으로 22px만 내려와 본문 위 여백(24px) 안에 머문다', () => {
-    render(<TabBar isAdmin={false} />)
-    const tip = tipOf(tab('통계'))
-    hasAll(tip, 'top-9.5 left-1/2 -translate-x-1/2')
-    hasNone(tip, 'top-10 top-full mt-1')
-  })
-
-  it('AC-008.5: 준비 중 탭을 눌러도 주소가 바뀌지 않는다', async () => {
-    const user = userEvent.setup()
-    render(<TabBar isAdmin={false} />)
-    const before = window.location.href
-    for (const label of NOT_READY) await user.click(tab(label))
-    expect(window.location.href).toBe(before)
-  })
-
-  // 탭 글자색 클래스(기본 ink-2 → 올림 ink, 준비 중 faint). 나머지(크기·글자·초점)는 모든 탭이 같다
-  const TAB_COLORS = ['text-ink-2', 'hover:text-ink', 'text-faint']
-  const withoutColor = (el: Element) => classesOf(el).filter((c) => !TAB_COLORS.includes(c))
-
-  it('AC-008.5·AC-218.2: 준비 중 탭은 다른 탭과 같은 크기·글자이고 색만 faint(올림에도 그대로)', () => {
+  it('AC-303.3: 화면이 아직 없는 기능의 탭도 다른 탭과 같은 기본 모양(faint 아님)이고, 모든 탭은 올림 글자색만 짧게 바뀐다(transition, 그 밖의 움직임 없음)', () => {
     pathname.mockReturnValue('/dashboard')
-    render(<TabBar isAdmin />)
-    const link = within(nav()).getByRole('link', { name: '관리자' }) // 지금 탭이 아닌 링크
+    render(<TabBar />)
+    const ready = within(nav()).getByRole('link', { name: '청구' }) // 화면이 있고 지금 탭이 아닌 링크
     for (const label of NOT_READY) {
       const item = tab(label)
-      expect(withoutColor(item), label).toEqual(withoutColor(link))
-      hasAll(item, 'text-faint')
-      hasNone(item, 'text-ink-2 hover:text-ink')
+      expect(item.tagName, label).toBe('A')
+      expect(classesOf(item), label).toEqual(classesOf(ready))
+      hasAll(item, 'text-ink-2 hover:text-ink transition')
+      hasNone(item, 'text-faint')
     }
-    hasAll(link, 'text-ink-2 hover:text-ink')
-    hasNone(link, 'text-faint')
+    for (const item of tabItems()) {
+      hasAll(item, 'transition')
+      const motion = classesOf(item).filter((c) => /(?:^|:)(?:animate-|transition-|duration-|delay-|ease-|-?translate-|-?rotate-|scale-)/.test(c))
+      expect(motion, item.textContent ?? '').toEqual([])
+    }
   })
 
   it('AC-218.2: 탭 모양 — 44px·좌우 12px·body 500 ink-2, 올림 ink, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리)', () => {
     pathname.mockReturnValue('/dashboard')
-    render(<TabBar isAdmin />)
-    const idle = within(nav()).getByRole('link', { name: '관리자' })
+    render(<TabBar />)
+    const idle = within(nav()).getByRole('link', { name: '통계' })
     hasAll(idle, 'h-11 px-3 text-body font-medium text-ink-2 hover:text-ink whitespace-nowrap')
     for (const item of [idle, tab('통계')]) {
       hasAll(item, 'h-11 px-3 text-body font-medium')
@@ -289,7 +220,7 @@ describe('TabBar', () => {
   })
 
   it('AC-218.2: 지금 탭은 ink 600 + 아래 2px accent 밑줄(좌우 12px 안쪽, 모서리 없음), 밑줄 장식 없음', () => {
-    render(<TabBar isAdmin={false} />)
+    render(<TabBar />)
     const current = within(nav()).getByRole('link', { name: '대시보드' })
     hasAll(current, 'h-11 px-3 text-body text-ink font-semibold')
     hasAll(current, 'relative after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-accent')
@@ -299,7 +230,7 @@ describe('TabBar', () => {
   })
 
   it('AC-008.1·AC-218.2: 굵기가 바뀌어도 탭 폭이 흔들리지 않게 지금 탭 굵기(600) 글자 폭을 미리 잡는다', () => {
-    render(<TabBar isAdmin={false} />)
+    render(<TabBar />)
     for (const label of LABELS) {
       const span = within(nav()).getByText(label, { selector: 'span[data-label]' })
       expect(span.getAttribute('data-label')).toBe(label)
@@ -308,8 +239,8 @@ describe('TabBar', () => {
     }
   })
 
-  it('AC-008.7: 1024px 미만에서는 띠 안에서 옆으로 밀린다(얇은 스크롤바, 줄바꿈 없음), 그 이상은 넘침을 보인다(툴팁)', () => {
-    render(<TabBar isAdmin />)
+  it('AC-008.7: 1024px 미만에서는 띠 안에서 옆으로 밀린다(얇은 스크롤바, 줄바꿈 없음), 그 이상은 넘침을 보인다', () => {
+    render(<TabBar />)
     hasAll(nav(), 'bg-surface border-b border-line max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]')
     hasNone(nav(), 'overflow-x-auto overflow-hidden')
     const row = nav().firstElementChild as HTMLElement
@@ -319,7 +250,7 @@ describe('TabBar', () => {
   })
 
   it('AC-008.7·AC-218.2: 탭은 모든 폭에서 44px·좌우 12px·body다(폰만 다른 크기가 없다)', () => {
-    render(<TabBar isAdmin />)
+    render(<TabBar />)
     for (const item of tabItems()) {
       hasAll(item, 'h-11 px-3 text-body')
       expect(classesOf(item).filter((c) => /^max-md:(?:h|px|text)-/.test(c)), item.textContent ?? '').toEqual([])
@@ -327,23 +258,16 @@ describe('TabBar', () => {
   })
 
   it('AC-218.2: 탭 줄 — nav 첫 자식 줄 하나에 1280 폭·좌우 24px(폰 16px), 첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다', () => {
-    render(<TabBar isAdmin />)
+    render(<TabBar />)
     expect(nav().children).toHaveLength(1)
     const row = nav().firstElementChild as HTMLElement
     hasAll(row, 'flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl')
     hasAll(row, '[&>:first-child]:-ml-3')
     // 탭 사이 틈이 없다(탭 좌우 12px가 사이를 만든다)
     expect(classesOf(row).filter((c) => /(?:^|:)gap-/.test(c))).toEqual([])
-    // 줄 안에 감싸개를 따로 두지 않는다 — 탭(또는 준비 중 탭 덩이)이 줄의 바로 아래 자식이다
+    // 줄 안에 감싸개를 따로 두지 않는다 — 탭이 줄의 바로 아래 자식이다
     expect(row.firstElementChild).toBe(within(nav()).getByRole('link', { name: '대시보드' }))
-    expect(tab('통계').parentElement?.parentElement).toBe(row)
-  })
-
-  it('AC-218.2: 관리자 구분선은 가운데 16px 세로선, 좌우 8px', () => {
-    render(<TabBar isAdmin />)
-    const sep = within(nav()).getByRole('link', { name: '관리자' }).previousElementSibling as HTMLElement
-    hasAll(sep, 'w-px h-4 bg-line self-center shrink-0 mx-2')
-    hasNone(sep, '-mx-1.5')
+    expect(tab('통계').parentElement).toBe(row)
   })
 
   // jsdom은 배치를 계산하지 않는다 → 탭 띠(390px)와 지금 탭의 자리를 정해 준다. 지금 탭은 띠 안에서 900~980px(밀기 전)
@@ -369,8 +293,8 @@ describe('TabBar', () => {
 
   it('AC-008.7: 처음 그릴 때 지금 탭이 보이게 탭 띠만 옆으로 민다(띠 오른쪽 끝에 맞춤). 페이지(창)는 움직이지 않는다', () => {
     const { scrollTo } = layout({ overflow: true })
-    pathname.mockReturnValue('/admin')
-    render(<TabBar isAdmin />)
+    pathname.mockReturnValue('/contacts')
+    render(<TabBar />)
     expect(nav().scrollLeft).toBe(590) // 980 - 390
     expect(scrollIntoView).not.toHaveBeenCalled() // scrollIntoView는 창까지 밀 수 있다
     expect(scrollTo).not.toHaveBeenCalled()
@@ -378,15 +302,32 @@ describe('TabBar', () => {
 
   it('AC-008.7: 탭이 한 줄에 다 들어가면(넘치지 않으면) 아무것도 밀지 않는다', () => {
     const { scrollTo } = layout({ overflow: false })
-    pathname.mockReturnValue('/admin')
-    render(<TabBar isAdmin />)
+    pathname.mockReturnValue('/contacts')
+    render(<TabBar />)
     expect(nav().scrollLeft).toBe(0)
     expect(scrollIntoView).not.toHaveBeenCalled()
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
+  it('AC-303.5: 1024px 미만은 띠 안에서 옆으로 밀리고 처음 그릴 때 지금 탭(준비 중 주소 /worklog의 [업무일지])이 보이게 띠만 민다. 서랍·[메뉴 열기]·띠 끝 흐림이 없다', () => {
+    const { scrollTo } = layout({ overflow: true })
+    pathname.mockReturnValue('/worklog')
+    render(<TabBar />)
+    hasAll(nav(), 'max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]')
+    hasNone(nav().firstElementChild as HTMLElement, 'flex-wrap')
+    expect(within(nav()).getByRole('link', { name: '업무일지' }).getAttribute('aria-current')).toBe('page')
+    expect(nav().scrollLeft).toBe(590)
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /메뉴/ })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // 띠 끝 흐림(그라데이션·가림)을 넣지 않는다
+    for (const el of [nav(), ...Array.from(nav().querySelectorAll('*'))]) {
+      expect(classesOf(el).filter((c) => /(?:^|:)(?:bg-(?:linear|radial|conic|gradient)|from-|via-|to-|mask-)/.test(c))).toEqual([])
+    }
+  })
+
   it('AC-008.7: 메뉴 서랍·[메뉴 열기] 단추가 없다', () => {
-    render(<TabBar isAdmin />)
+    render(<TabBar />)
     expect(screen.queryByRole('button', { name: /메뉴/ })).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -515,6 +456,128 @@ describe('AccountMenu', () => {
     await user.click(button())
     hasAll(screen.getByRole('menuitem'), 'max-md:h-11')
   })
+
+  const openMenu = async (isAdmin: boolean) => {
+    const user = userEvent.setup()
+    render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin={isAdmin} />)
+    await user.click(button())
+    return user
+  }
+  const menuItems = () => within(screen.getByRole('menu', { name: '계정' })).getAllByRole('menuitem')
+
+  it('AC-304.1: 관리자면 메뉴 항목이 위에서부터 [가입 승인](/admin 링크, menuitem, 왼쪽 꾸밈 아이콘 userCheck 16) · [로그아웃]이고, 메뉴 머리는 그대로다', async () => {
+    await openMenu(true)
+    const items = menuItems()
+    expect(items.map((i) => i.textContent)).toEqual(['가입 승인', '로그아웃'])
+    const [admin] = items
+    expect(admin.tagName).toBe('A')
+    expect(admin.getAttribute('href')).toBe('/admin')
+    expect(admin.getAttribute('role')).toBe('menuitem')
+    // 아이콘은 글자 앞(왼쪽), 공통 아이콘 userCheck 16 그대로, 꾸밈(읽지 않음)
+    const svg = admin.firstElementChild as SVGElement
+    expect(svg.tagName.toLowerCase()).toBe('svg')
+    expect(admin.querySelectorAll('svg')).toHaveLength(1)
+    expect([svg.getAttribute('width'), svg.getAttribute('height'), svg.getAttribute('viewBox')]).toEqual(['16', '16', '0 0 16 16'])
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expect(svg.innerHTML).toBe(iconInner('userCheck'))
+    hasAll(svg, 'shrink-0 text-ink-2')
+    // 메뉴 머리(이메일·병원 이름·"관리자 계정" 칩)
+    const head = document.getElementById(screen.getByRole('menu').getAttribute('aria-describedby') as string) as HTMLElement
+    expect(within(head).getByText(EMAIL)).toBeTruthy()
+    expect(within(head).getByText(HOSPITAL)).toBeTruthy()
+    hasAll(within(head).getByText('관리자 계정'), ds.chip.neutral)
+  })
+
+  it('AC-304.1: 관리자가 아니면 항목은 [로그아웃] 하나뿐이고 "가입 승인" 글자가 없다', async () => {
+    await openMenu(false)
+    expect(menuItems().map((i) => i.textContent)).toEqual(['로그아웃'])
+    expect(screen.queryByText('가입 승인')).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('AC-304.2: 열면 첫 항목에 초점, ↓·↑로 항목 사이를 옮기고 끝에서 처음(처음에서 끝)으로 돈다', async () => {
+    const user = await openMenu(true)
+    const [admin, logout] = menuItems()
+    expect(document.activeElement).toBe(admin)
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(logout)
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(admin)
+    await user.keyboard('{ArrowUp}')
+    expect(document.activeElement).toBe(logout)
+    await user.keyboard('{ArrowUp}')
+    expect(document.activeElement).toBe(admin)
+    // 옮기는 동안 메뉴는 열려 있다
+    expect(screen.getByRole('menu')).toBeTruthy()
+  })
+
+  it('AC-304.2: 항목이 하나(관리자 아님)면 ↓·↑에도 [로그아웃]에 머문다', async () => {
+    const user = await openMenu(false)
+    const [logout] = menuItems()
+    await user.keyboard('{ArrowDown}')
+    expect(document.activeElement).toBe(logout)
+    await user.keyboard('{ArrowUp}')
+    expect(document.activeElement).toBe(logout)
+  })
+
+  it('AC-304.2: Esc는 닫고 계정 단추로 초점을 돌려주고, Tab은 닫는다(↓로 옮긴 뒤에도)', async () => {
+    const user = await openMenu(true)
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(button())
+    await user.click(button())
+    expect(document.activeElement).toBe(menuItems()[0])
+    await user.keyboard('{Tab}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(button().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('AC-304.3: [가입 승인]을 누르면 메뉴가 닫히고 /admin으로 간다(링크 이동을 막지 않는다)', async () => {
+    const user = await openMenu(true)
+    // jsdom은 페이지 이동을 하지 않는다 → 문서까지 올라온 누름이 /admin 링크이고 막히지 않았는지 본다
+    const clicks: { href: string | null; blocked: boolean }[] = []
+    const onClick = (e: MouseEvent) => {
+      clicks.push({ href: (e.target as Element).closest('a')?.getAttribute('href') ?? null, blocked: e.defaultPrevented })
+      e.preventDefault()
+    }
+    document.addEventListener('click', onClick)
+    try {
+      await user.click(screen.getByRole('menuitem', { name: '가입 승인' }))
+    } finally {
+      document.removeEventListener('click', onClick)
+    }
+    expect(clicks).toEqual([{ href: '/admin', blocked: false }])
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(button().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('AC-304.3: [가입 승인]은 [로그아웃]과 같은 메뉴 항목 모양(36px·폰 44px·올림 canvas·누름 아래 1px·안쪽 초점 고리)', async () => {
+    await openMenu(true)
+    const [admin, logout] = menuItems()
+    expect(classesOf(admin)).toEqual(classesOf(logout))
+    for (const item of [admin, logout]) {
+      hasAll(item, 'h-9 max-md:h-11 w-full text-body text-ink hover:bg-canvas active:translate-y-px transition')
+      hasAll(item, 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent')
+    }
+  })
+
+  it('AC-304.4: 계정 단추는 올림과 열린 동안 바탕 canvas(색 150ms), 메뉴 층은 나타날 때만 투명·위 4px에서 제자리로 150ms, 닫으면 바로 없어진다', async () => {
+    const user = userEvent.setup()
+    render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin />)
+    hasAll(button(), 'transition not-disabled:not-aria-disabled:hover:bg-canvas aria-expanded:bg-canvas')
+    await user.click(button())
+    expect(button().getAttribute('aria-expanded')).toBe('true')
+    const layer = screen.getByRole('menu').parentElement as HTMLElement
+    hasAll(layer, 'transition starting:opacity-0 starting:-translate-y-1')
+    // 움직임은 짧은 반응(transition 기본 150ms)뿐이다
+    for (const el of [button(), layer, ...Array.from(layer.querySelectorAll('*'))]) {
+      expect(classesOf(el).filter((c) => /(?:^|:)(?:animate-|transition-|duration-|delay-|ease-)/.test(c))).toEqual([])
+    }
+    await user.click(button())
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(document.querySelector('[class*="starting:opacity-0"]')).toBeNull()
+  })
 })
 
 describe('KstClock', () => {
@@ -617,9 +680,43 @@ describe('AppShell', () => {
     expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
   })
 
-  it('AC-008.2: 관리자면 탭 줄에 [관리자]', () => {
+  it('AC-303.4·AC-304.1: 관리자여도 탭 줄에 [관리자]·구분선이 없고, 계정 메뉴를 열면 첫 항목이 [가입 승인] /admin이다', async () => {
+    const user = userEvent.setup()
     shell(true)
-    expect(within(nav()).getByRole('link', { name: '관리자' }).getAttribute('href')).toBe('/admin')
+    expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
+    expect(within(nav()).queryByText('관리자')).toBeNull()
+    expect(nav().querySelectorAll('[aria-hidden="true"].w-px')).toHaveLength(0)
+    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(LABELS)
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: new RegExp(EMAIL) }))
+    const items = within(screen.getByRole('menu', { name: '계정' })).getAllByRole('menuitem')
+    expect(items.map((i) => i.textContent)).toEqual(['가입 승인', '로그아웃'])
+    expect(items[0].getAttribute('href')).toBe('/admin')
+    // [가입 승인]은 띠(계정 메뉴) 안에 있고 탭 줄에는 없다
+    expect(nav().contains(items[0])).toBe(false)
+  })
+
+  it('AC-303.6: 본문에 흰 바탕 표시(data-page-surface)가 있는 페이지면 main이 그때만 surface가 되는 클래스를 갖고, 없는 페이지는 앱 틀 바탕(canvas) 그대로다. 안쪽 감싸개는 그대로', () => {
+    const { container } = render(
+      <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false}>
+        <div data-page-surface="">
+          <h1>대시보드</h1>
+        </div>
+      </AppShell>,
+    )
+    const main = screen.getByRole('main')
+    hasAll(main, 'flex-1 has-[[data-page-surface]]:bg-surface')
+    // 표시 없이도 늘 칠하는 바탕은 없다(뿌리의 canvas가 보인다)
+    expect(classesOf(main).filter((c) => /^bg-/.test(c))).toEqual([])
+    hasAll(container.firstElementChild as HTMLElement, 'bg-canvas')
+    const inner = main.firstElementChild as HTMLElement
+    expect(inner.querySelector('[data-page-surface]')).not.toBeNull()
+    hasAll(inner, `mx-auto w-full ${wrapper} pt-6 pb-12 max-md:pt-4 max-md:pb-8`)
+    cleanup()
+    // 표시가 없는 페이지: 같은 main 클래스, 본문 안에 표시가 없다 → canvas 그대로
+    shell()
+    const plain = screen.getByRole('main')
+    expect(classesOf(plain)).toEqual(classesOf(main))
+    expect(plain.querySelector('[data-page-surface]')).toBeNull()
   })
 
   it('AC-218.1: 앱 뿌리 .app-ui·canvas 바탕. 위에 붙는 묶음(sticky·top 0·z 10)이 띠와 탭 줄을 함께 붙인다 — 띠·탭 줄 자신은 붙지 않는다', () => {

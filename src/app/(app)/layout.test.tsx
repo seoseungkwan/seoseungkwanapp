@@ -78,14 +78,17 @@ describe('(app) 레이아웃', () => {
     expect(guard).toHaveBeenCalledExactlyOnceWith('/dashboard')
   })
 
-  it('AC-008.2: 관리자면 탭 줄에 [관리자], 아니면 없다', async () => {
-    read.mockResolvedValue(me('approved', true))
-    render(await AppLayout({ children: page }))
-    expect(screen.getByRole('link', { name: '관리자' }).getAttribute('href')).toBe('/admin')
-    cleanup()
-    read.mockResolvedValue(me('approved', false))
-    render(await AppLayout({ children: page }))
-    expect(screen.queryByRole('link', { name: '관리자' })).toBeNull()
+  it('AC-303.4: 관리자든 아니든 탭 줄에 [관리자] 링크와 세로 구분선이 없다', async () => {
+    for (const isAdmin of [true, false]) {
+      read.mockResolvedValue(me('approved', isAdmin))
+      render(await AppLayout({ children: page }))
+      const nav = screen.getByRole('navigation', { name: '메뉴' })
+      expect(within(nav).queryByRole('link', { name: '관리자' }), String(isAdmin)).toBeNull()
+      expect(within(nav).queryByText('관리자'), String(isAdmin)).toBeNull()
+      expect(nav.querySelectorAll('[aria-hidden="true"].w-px'), String(isAdmin)).toHaveLength(0)
+      expect(screen.queryByRole('link', { name: '관리자' }), String(isAdmin)).toBeNull()
+      cleanup()
+    }
   })
 
   it('AC-010.1: 앱 화면마다 자동 로그아웃(IdleLogout)을 하나 붙인다', async () => {
