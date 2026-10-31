@@ -11,7 +11,7 @@ const thisMinute = () => new Date(Math.floor(Date.now() / MINUTE) * MINUTE)
 // 서버와 브라우저가 분 경계에서 다를 수 있어 이 <time> 하나만 suppressHydrationWarning(design.md '한국 시각').
 // suppressHydrationWarning이면 React는 서버 글자를 그대로 두고 고치지 않는다 → 붙은 뒤 <time>을 새로 만들어(key) 브라우저 시각을 바로 보인다.
 // 시각이 바뀌는 것은 자동 로그아웃의 '움직임'이 아니다(이벤트를 내지 않는다).
-// 폰(768px 미만)에서는 숨긴다(AC-008.7)
+// small muted 글자(AC-218.1). 폰(768px 미만)에서는 숨긴다(AC-008.7)
 export function KstClock() {
   const [now, setNow] = useState(thisMinute)
   const [mounted, setMounted] = useState(false)
@@ -38,7 +38,7 @@ export function KstClock() {
       key={mounted ? 'browser' : 'server'}
       dateTime={now.toISOString()}
       suppressHydrationWarning
-      className="whitespace-nowrap text-table text-muted max-md:hidden"
+      className="whitespace-nowrap text-small text-muted max-md:hidden"
     >
       {kstNow(now)}
     </time>
