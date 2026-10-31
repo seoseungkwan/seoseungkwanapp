@@ -1,0 +1,31 @@
+# Vercel CLI 배포는 내 폴더 파일을 그대로 올린다. 여기 적은 것은 올라가지 않는다(specs/auth-live AC-009.2)
+# 비밀값은 Vercel 환경 변수로만 넣는다. .env.local에는 E2E 시험 계정 비밀번호도 있다. 되살리는 줄(!.env…)을 두지 않는다
+.env*
+
+# 실제 EMR 파일 모양은 올리지 않는다. .gitignore처럼 확장자 대소문자를 가리지 않는다(Windows에서 온 REAL.XLS 등)
+# 되살리는 것은 사이트가 내주는 가짜 견본 파일 이름 하나뿐이다. fixtures/의 가짜 파일은 빌드에 필요 없어 올리지 않는다
+*.[cC][sS][vV]
+*.[xX][lL][sS]
+*.[xX][lL][sS][xX]
+!public/fake-sample/bit-sample.csv
+
+# 개발 전용
+.harness/
+.claude/
+specs/
+phases/
+scripts/
+plan*.md
+
+# E2E(Playwright). playwright.config.ts가 e2e/를 import하므로 함께 뺀다(남기면 Vercel 빌드 타입 검사가 깨진다)
+e2e/
+playwright.config.ts
+
+# 시험·빌드·배포 산출물(E2E 결과에는 화면 글자 요약이 남을 수 있다)
+__pycache__/
+.pytest_cache/
+.vercel/
+coverage/
+test-results/
+playwright-report/
+blob-report/
