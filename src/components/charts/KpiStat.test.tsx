@@ -318,3 +318,54 @@ describe('AC-205.3·AC-204.7: KpiStat은 상자가 아니다 — 패널 안에 �
     expect(stat.querySelector('[role="img"]')).toBeNull()
   })
 })
+
+// ── KpiStat 빈 값 아래 글 emptyText (tab-frame REQ-314 AC-314.1, design.md '차트 부품').
+// 예시 글 "연결하면 보여요"는 requirements.md AC-314.1의 것이다. 옵션을 주지 않으면 마크업이 REQ-314 전과 한 글자도 같다
+
+const EMPTY_TEXT = '연결하면 보여요'
+const markup = (props: Partial<KpiStatProps> = {}) => renderToStaticMarkup(<KpiStat {...BASE} {...props} />)
+const sha256 = async (text: string) => (await import('node:crypto')).createHash('sha256').update(text).digest('hex')
+// REQ-314 전 마크업의 sha256(BASE · 값 null · 값 null 작은 크기)
+const BEFORE_REQ_314 = {
+  base: '0e10e1b00d1bd17fda85c8b36ebc8b0679713d7beb28de8040e9ba0bf4e5b935',
+  empty: '3aa8e05ea1326241091b6f1dec040c5cee68c269871d6afe4817de80a2239399',
+  emptySmall: 'ee8b5536ad86cc995642bf5ceafc96c8923834eb220d5de08a85edbbffe54faa',
+}
+
+describe('AC-314.1: KpiStat emptyText — 값이 null일 때 "–" 아래 글', () => {
+  it('AC-314.1: emptyText를 주면 "–" 아래 글이 그 글(small muted)이고 "자료 없음"이 없다', () => {
+    const stat = kpi({ value: null, emptyText: EMPTY_TEXT })
+    expect(Array.from(stat.children).map(textOf)).toEqual(['환자 수', '–', EMPTY_TEXT])
+    const [, dash, note] = Array.from(stat.children)
+    expectClasses(dash, 'text-metric', 'text-faint')
+    expectClasses(note, 'text-small', 'text-muted')
+    expect(stat.textContent).not.toContain('자료 없음')
+    expect(stat.querySelector('svg')).toBeNull()
+  })
+
+  it('AC-314.1: emptyText는 글자만 바꾼다 — 마크업이 기본 빈 값에서 "자료 없음"만 그 글로 바뀐 것이다(기본·작은 크기)', () => {
+    for (const size of ['md', 'sm'] as const) {
+      expect(markup({ value: null, size, emptyText: EMPTY_TEXT }), size).toBe(
+        markup({ value: null, size }).replace('자료 없음', EMPTY_TEXT),
+      )
+    }
+  })
+
+  it('AC-314.1: emptyText를 주지 않으면 지금처럼 "자료 없음"이다', () => {
+    expect(textOf(kpi({ value: null }).lastElementChild)).toBe('자료 없음')
+    expect(markup({ value: null, emptyText: undefined })).toBe(markup({ value: null }))
+  })
+
+  it('AC-314.1: 값이 있으면(0 포함) emptyText가 보이지 않고 마크업이 주지 않은 것과 같다', () => {
+    for (const props of [{}, { value: 0 }, { size: 'sm' as const }, { delta: null }]) {
+      expect(kpi({ ...props, emptyText: EMPTY_TEXT }).textContent).not.toContain(EMPTY_TEXT)
+      expect(markup({ ...props, emptyText: EMPTY_TEXT })).toBe(markup(props))
+    }
+  })
+
+  it('AC-314.1: emptyText를 주지 않은 마크업은 REQ-314 전과 한 글자도 같다(sha256)', async () => {
+    expect(await sha256(markup())).toBe(BEFORE_REQ_314.base)
+    expect(await sha256(markup({ value: null }))).toBe(BEFORE_REQ_314.empty)
+    expect(await sha256(markup({ value: null, size: 'sm' }))).toBe(BEFORE_REQ_314.emptySmall)
+  })
+})
