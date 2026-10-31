@@ -37,10 +37,10 @@ describe('/pending 화면', () => {
     expect(guard).toHaveBeenCalledExactlyOnceWith('/pending')
   })
 
-  it('AC-005.1: pending — 위쪽 띠(로고·[서비스 이름]·[로그아웃])와 본문에 승인 대기 카드', async () => {
+  it('AC-005.1: pending — 위쪽 띠(로고·[로그아웃])와 본문에 승인 대기 카드', async () => {
     render(await PendingPage())
     const banner = screen.getByRole('banner')
-    expect(banner.textContent).toBe('[서비스 이름]로그아웃')
+    expect(banner.textContent).toBe('로그아웃')
     expect(within(banner).getAllByRole('button').map((b) => b.textContent)).toEqual(['로그아웃'])
     expect(within(banner).queryAllByRole('link')).toHaveLength(0)
     const main = screen.getByRole('main')
@@ -56,7 +56,7 @@ describe('/pending 화면', () => {
     guard.mockResolvedValue(me({ ...HOSPITAL, status: 'rejected' }))
     render(await PendingPage())
     const banner = screen.getByRole('banner')
-    expect(banner.textContent).toBe('[서비스 이름]로그아웃')
+    expect(banner.textContent).toBe('로그아웃')
     const main = screen.getByRole('main')
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('가입이 승인되지 않았습니다')
     expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['다른 계정으로 로그인', '로그아웃'])
