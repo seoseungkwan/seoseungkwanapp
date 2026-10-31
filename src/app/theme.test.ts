@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -95,10 +95,39 @@ function layerBodies(css: string, name: string): string[] {
   return out
 }
 
-// 랜딩이 쓰는 요소 규칙 중 앱 요소에도 닿는 것. @layer base에 두어 앱의 Tailwind 클래스(utilities)가 이기게 한다
+// 랜딩이 쓰는 요소 규칙 중 앱 요소에도 닿는 것. @layer base에 두어 앱의 Tailwind 클래스(utilities)가 이기게 한다 (AC-102.3: a 하나)
 const LANDING_BASE: Record<string, RegExp> = {
-  a: /color:\s*var\(--teal-text\)/,
-  'a:hover': /color:\s*#055f59/,
+  a: /^\s*color:\s*var\(--accent\)\s*;?\s*$/,
+}
+
+// head로 시작하는 블록을 모두 지운다(중괄호 짝을 맞춘다)
+function removeBlocks(css: string, head: RegExp): string {
+  let rest = css
+  for (;;) {
+    const match = head.exec(rest)
+    if (match === null) return rest
+    const open = rest.indexOf('{', match.index + match[0].length - 1)
+    let depth = 0
+    let end = rest.length
+    for (let i = open; i < rest.length; i++) {
+      if (rest[i] === '{') depth++
+      if (rest[i] === '}' && --depth === 0) {
+        end = i + 1
+        break
+      }
+    }
+    rest = rest.slice(0, match.index) + rest.slice(end)
+  }
+}
+
+// 시험 파일 밖 src/ 소스 전부(상대 경로)
+function sourceFiles(dir = 'src'): string[] {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+    const rel = `${dir}/${entry.name}`
+    if (entry.isDirectory()) return sourceFiles(rel)
+    if (/\.test\.tsx?$/.test(entry.name)) return []
+    return /\.(ts|tsx|js|jsx|mjs|cjs|css)$/.test(entry.name) ? [rel] : []
+  })
 }
 
 // @theme·@theme inline 블록의 선언 전부(파일 순서대로)
@@ -276,55 +305,134 @@ describe('AC-013.1: 앱 초기화는 .app-ui 안에만', () => {
   })
 })
 
-describe('AC-013.1: 랜딩은 그대로', () => {
-  it('AC-013.1: 랜딩 변수·body·모션 줄이기 블록이 layer 밖에 그대로 있다', () => {
-    const outside = outsideLayers(globals())
-    const landingRoot = blockBody(outside, /:root\s*\{(?=[^}]*--bg-page)/)
-    expect(landingRoot, '랜딩 :root 변수 블록이 없다').not.toBeNull()
-    const vars = Object.fromEntries(declarations(landingRoot!))
-    expect(vars).toMatchObject({
-      '--bg-page': '#ffffff',
-      '--text-strong': '#0b1530',
-      '--teal-text': '#077a73',
-      '--warn-text': '#c2410c',
-      '--content-max': '1200px',
-      '--gutter': '24px',
-    })
-    const body = blockBody(outside, /(^|\})\s*body\s*\{/)
-    expect(body).toMatch(/font-family:\s*var\(--font-sans\), system-ui, sans-serif/)
-    expect(body).toMatch(/word-break:\s*keep-all/)
-    expect(body).toMatch(/overflow-x:\s*clip/)
-    expect(outside).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/)
+// 랜딩 :root 변수 (landing-v2 REQ-102). 값은 승인 시안 docs/mockups/landing-v2 그대로이고, 색은 @theme과 같다
+const LANDING_COLORS: Record<string, string> = {
+  '--ink': '#111827',
+  '--ink-2': '#374151',
+  '--muted': '#6b7280',
+  '--line': '#e5e7eb',
+  '--canvas': '#f7f8fa',
+  '--surface': '#ffffff',
+  '--accent': '#2563eb',
+  '--accent-soft': '#eaf1fe',
+  '--ok': '#166534',
+  '--ok-soft': '#e7f6ec',
+  '--danger': '#c2410c',
+  '--danger-soft': '#fff1e8',
+}
+const LANDING_ROOT: Record<string, string> = {
+  ...LANDING_COLORS,
+  '--accent-tint': 'color-mix(in srgb, #2563eb 32%, #ffffff)',
+  '--field': 'color-mix(in srgb, #6b7280 55%, #ffffff)',
+  '--content-max': '1200px',
+  '--gutter': '24px',
+  '--font-sans': FONT_SANS,
+}
+// 옛 글꼴 변수(--font-num·--font-grotesk)를 쓰는 파일: 주석까지 글자 그대로, 예외 없이 본다(AC-102.4 · AC-113.3)
+const fontVarOffenders = (files: Array<[string, string]>) =>
+  files.filter(([, text]) => /--font-(num|grotesk)(?![\w-])/.test(text)).map(([rel]) => rel)
+
+// 옛 랜딩 변수 이름(landing 명세 시절)
+const OLD_LANDING_VARS = /--(bg-[\w-]+|border-card|text-(strong|body|muted)|(teal|violet|amber|pink|blue|coral|warn)-[\w-]+)(?![\w-])/
+
+// layer 밖 :root 규칙들의 몸통
+const landingRootBodies = () =>
+  rules(outsideLayers(globals()))
+    .filter(([s]) => s === ':root')
+    .map(([, body]) => body)
+const landingRoot = () => Object.fromEntries(landingRootBodies().flatMap(declarations))
+
+describe('AC-102.1: 랜딩 :root 변수', () => {
+  it('AC-102.1: layer 밖 랜딩 :root는 색 12·섞은 색 2·틀 2와 --font-sans(AC-102.4)만 둔다', () => {
+    const bodies = landingRootBodies()
+    expect(bodies.length, 'layer 밖 :root가 없다').toBeGreaterThan(0)
+    const statements = bodies.flatMap((body) => body.split(';').map((d) => d.trim()).filter(Boolean))
+    expect(statements.filter((d) => !d.startsWith('--')), ':root에 변수 말고 다른 선언이 있다').toEqual([])
+    const decls = bodies.flatMap(declarations)
+    const names = decls.map(([name]) => name)
+    expect(names.length, '같은 변수를 두 번 선언했다').toBe(new Set(names).size)
+    const lower = (entries: Array<[string, string]>) => Object.fromEntries(entries.map(([n, v]) => [n, v.toLowerCase()]))
+    expect(lower(decls)).toEqual(lower(Object.entries(LANDING_ROOT)))
   })
 
-  it('AC-013.1: 앱 요소에도 닿는 랜딩 요소 규칙(a·a:hover)은 값 그대로 @layer base 안에 있다(앱 <a>의 Tailwind 글자색 클래스가 이긴다)', () => {
-    // layer 밖에 남는 것은 변수(:root)·body 자신·모션 줄이기뿐. 요소·전체 선택자가 layer 밖에 있으면 utilities를 이긴다
-    const outsideSelectors = rules(outsideLayers(globals())).map(([s]) => s.replace(/\s+/g, ' '))
-    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)'])
-    expect(outsideSelectors.filter((s) => !allowed.has(s))).toEqual([])
-    const baseRules = layerBodies(globals(), 'base').flatMap(rules)
-    for (const [selector, value] of Object.entries(LANDING_BASE)) {
-      const rule = baseRules.find(([s]) => s === selector)
-      expect(rule, `${selector} 규칙이 @layer base에 없다`).toBeDefined()
-      expect(rule![1], selector).toMatch(value)
+  it('AC-102.1: 랜딩 색 12개는 @theme의 같은 이름 --color-* 값과 같다(대소문자 무시)', () => {
+    const tokens = Object.fromEntries(theme().filter(([name]) => name.startsWith('--color-')))
+    const vars = landingRoot()
+    for (const name of Object.keys(LANDING_COLORS)) {
+      const token = tokens[`--color-${name.slice(2)}`]
+      expect(token, `@theme에 --color-${name.slice(2)}가 없다`).toBeDefined()
+      expect(vars[name], `:root에 ${name}가 없다`).toBeDefined()
+      expect(vars[name].toLowerCase(), name).toBe(token.toLowerCase())
     }
   })
 
-  it('AC-013.1: :root가 next/font 변수를 --font-sans·--font-num으로 잇는다(랜딩 CSS Module이 그대로 쓴다)', () => {
-    const vars = Object.fromEntries(
-      rules(outsideLayers(globals()))
-        .filter(([s]) => s === ':root')
-        .flatMap(([, body]) => declarations(body)),
-    )
-    expect(vars['--font-sans']).toBe(FONT_SANS)
-    expect(vars['--font-num']).toMatch(/^var\(--font-grotesk\)/)
+  it('AC-102.1: 옛 랜딩 변수(--bg-*·--border-card·--text-strong·body·muted·--teal·violet·amber·pink·blue·coral·warn-*)를 선언하지도 쓰지도 않는다', () => {
+    // @theme 안의 앱 토큰(--text-body: 14px 등)은 빼고 본다
+    const css = removeBlocks(globals(), /@theme(\s+inline)?\s*\{/)
+    expect([...css.matchAll(new RegExp(OLD_LANDING_VARS.source, 'g'))].map((m) => m[0])).toEqual([])
+  })
+})
+
+describe('AC-102.2: body와 layer 밖 규칙', () => {
+  it('AC-102.2: body는 바탕 surface·글자 ink·Plex 글꼴·keep-all·가로 넘침 clip', () => {
+    const bodies = rules(outsideLayers(globals())).filter(([s]) => s === 'body')
+    expect(bodies.length, 'body 규칙은 하나다').toBe(1)
+    const body = bodies[0][1]
+    expect(body).toMatch(/(^|[;\s])background:\s*var\(--surface\)\s*;/)
+    expect(body).toMatch(/(^|[;\s])color:\s*var\(--ink\)\s*;/)
+    expect(body).toMatch(/font-family:\s*var\(--font-sans\), system-ui, sans-serif\s*;/)
+    expect(body).toMatch(/word-break:\s*keep-all\s*;/)
+    expect(body).toMatch(/overflow-x:\s*clip\s*;/)
   })
 
-  it('AC-013.1: layout.tsx의 next/font 변수는 --font-plex·--font-grotesk다(Tailwind --font-sans와 겹치지 않게)', () => {
+  it('AC-102.2: layer 밖 선택자는 :root·body·모션 줄이기 블록뿐이다(요소·전체 선택자가 layer 밖이면 앱의 utilities를 이긴다)', () => {
+    const outside = outsideLayers(globals())
+    const selectors = rules(outside).map(([s]) => s.replace(/\s+/g, ' '))
+    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)'])
+    expect(selectors.filter((s) => !allowed.has(s))).toEqual([])
+    expect(outside).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/)
+  })
+})
+
+describe('AC-102.3: @layer base의 랜딩 링크 색', () => {
+  it('AC-102.3: @layer base의 랜딩 요소 규칙은 a { color: var(--accent) } 하나뿐이고 a:hover 규칙이 없다(.app-ui 초기화는 AC-013.1 시험이 본다)', () => {
+    const baseRules = layerBodies(globals(), 'base').flatMap(rules)
+    const landing = baseRules.filter(([s]) => !splitSelectors(s).every((part) => /^\.app-ui(?![\w-])/.test(part)))
+    expect(landing.map(([s]) => s.replace(/\s+/g, ' '))).toEqual(['a'])
+    expect(landing[0][1]).toMatch(LANDING_BASE.a)
+    expect(globals()).not.toMatch(/(^|[^\w-])a:hover/)
+  })
+})
+
+describe('AC-102.4: 글꼴은 IBM Plex Sans KR 하나', () => {
+  it('AC-102.4: layout.tsx는 next/font/google에서 IBM_Plex_Sans_KR(400·500·600·700, --font-plex) 하나만 불러오고 Space_Grotesk가 없다', () => {
     const layout = read('src/app/layout.tsx')
-    expect(layout).toMatch(/IBM_Plex_Sans_KR\(\{[\s\S]*?variable:\s*'--font-plex'/)
-    expect(layout).toMatch(/Space_Grotesk\(\{[\s\S]*?variable:\s*'--font-grotesk'/)
-    expect(layout).not.toMatch(/variable:\s*'--font-(sans|num)'/)
+    const imports = [...layout.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]next\/font\/google['"]/g)]
+    expect(imports.length, 'next/font/google import는 하나다').toBe(1)
+    expect(imports[0][1].split(',').map((name) => name.trim()).filter(Boolean)).toEqual(['IBM_Plex_Sans_KR'])
+    expect(layout).not.toMatch(/next\/font\/local/)
+    expect([...layout.matchAll(/IBM_Plex_Sans_KR\(/g)].length).toBe(1)
+    const options = layout.match(/IBM_Plex_Sans_KR\(\{([\s\S]*?)\}\)/)?.[1] ?? ''
+    expect(options.replace(/\s+/g, '').replace(/"/g, "'")).toContain("weight:['400','500','600','700']")
+    expect(options).toMatch(/variable:\s*'--font-plex'/)
+    expect(layout).not.toMatch(/Space_Grotesk|Grotesk/)
+  })
+
+  it('AC-102.4: :root가 --font-sans를 next/font 변수 --font-plex로 잇는다', () => {
+    expect(landingRoot()['--font-sans']).toBe(FONT_SANS)
+  })
+
+  it('AC-102.4: --font-num·--font-grotesk는 시험 파일 밖 src/ 어디에도 없다(주석 포함)', () => {
+    expect(fontVarOffenders(sourceFiles().map((rel) => [rel, read(rel)]))).toEqual([])
+  })
+
+  it('AC-113.3: 임시 예외 없이 모든 파일을 같은 규칙으로 본다 — 옛 변수를 쓰는 랜딩 모듈의 옛 font-family 줄과 주석도 잡는다', () => {
+    const files: Array<[string, string]> = [
+      ['src/components/landing/Old.module.css', '.x { color: var(--teal-text); font-family: var(--font-num), sans-serif; }'],
+      ['src/components/landing/Note.module.css', '/* 예전에는 var(--font-grotesk)를 썼다 */\n.x { color: var(--ink); }'],
+      ['src/components/landing/Ok.module.css', '.x { color: var(--teal-text); font-family: var(--font-sans); }'],
+    ]
+    expect(fontVarOffenders(files)).toEqual(['src/components/landing/Old.module.css', 'src/components/landing/Note.module.css'])
   })
 })
 

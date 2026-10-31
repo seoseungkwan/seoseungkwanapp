@@ -1,82 +1,112 @@
+import type { ReactNode } from 'react'
+import base from './base.module.css'
 import styles from './PrivacySection.module.css'
 
-const SHIELD_PATH = 'M11 2l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3z'
-
-// 개인정보 약속 카드. 문구는 plan.md §4·§6에 정한 사실만
-const RULES = [
+// 개인정보 약속 4개. 문구는 plan.md §4·§6에 정한 사실만.
+// 약속 3은 768에서 "이름·개인별"이 가운뎃점 뒤에서 끊기지 않게 그 낱말만 nowrap으로 묶는다(AC-112.2)
+const RULES: { title: string; desc: ReactNode }[] = [
   {
     title: '필요한 칸만 읽습니다',
-    desc: <>계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.</>,
+    desc: '계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.',
   },
   {
     title: '주민번호가 보이면 멈춥니다',
+    desc: "'-' 없이 붙여 쓴 13자리까지 잡아서, 섞여 있으면 계산하지 않고 알려 줍니다.",
+  },
+  {
+    title: 'AI에는 합계 숫자만',
     desc: (
       <>
-        &apos;-&apos; 없이 붙여 쓴 13자리까지 잡아서,
-        <br />
-        섞여 있으면 계산하지 않고 알려 줍니다.
+        통계·매출 합계와 인건비 총액만 보냅니다. 직원 <span className={base.nowrap}>이름·개인별</span> 급여도 보내지 않습니다.
       </>
     ),
   },
   {
-    title: 'AI에는 합계 숫자만',
-    desc: <>통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.</>,
-  },
-  {
     title: '승인한 사람만, 공용 PC도 안심',
-    desc: <>구글 로그인 뒤 관리자가 승인한 계정만 들어옵니다. 30분 동안 움직임이 없으면 자동으로 로그아웃합니다.</>,
+    desc: '구글 로그인 뒤 관리자가 승인한 계정만 들어옵니다. 30분 동안 움직임이 없으면 자동으로 로그아웃합니다.',
   },
 ]
 
-// 개인정보 섹션(#privacy): 제목과 0건 카드 · 병원 PC → 서버 → AI 흐름 · 약속 카드 4개
+// 흐름 카드의 20px 아이콘(꾸밈). 색은 CSS(.nodeHead svg)가 currentColor로 정한다
+function Icon({ viewBox, children }: { viewBox: string; children: ReactNode }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="20"
+      height="20"
+      viewBox={viewBox}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  )
+}
+
+// 카드 사이 연결(꾸밈): 화살표 선 + 칩. 1024 미만은 아래 화살표, 1024부터 가로 화살표에 칩이 선 위로 간다
+function FlowLink({ label }: { label: string }) {
+  return (
+    <div aria-hidden="true" className={styles.link}>
+      <span className={styles.linkLine} />
+      <span className={`${base.chip} ${base.chipNeutral} ${styles.linkChip}`}>{label}</span>
+    </div>
+  )
+}
+
+// 개인정보 섹션(#privacy) (specs/landing-v2 AC-110.1): 제목 + 0건 카드 → 병원 PC → 서버 → AI 흐름 → 약속 4개
 export default function PrivacySection() {
   return (
-    <section id="privacy" className={styles.section}>
-      <div className={styles.inner}>
+    <section id="privacy" className={base.sec}>
+      <div className={`${base.wrap} ${base.stack}`}>
         <div className={styles.top}>
-          <div className={styles.head}>
-            <span className={styles.eyebrow}>
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 22 22" fill="none">
-                <path d={SHIELD_PATH} stroke="#077A73" strokeWidth="2.2" strokeLinejoin="round" />
-              </svg>
-              PRIVACY FIRST
-            </span>
-            <h2 className={styles.title}>
+          <div className={base.head}>
+            <h2 className={base.tH2}>
               환자 개인정보는
               <br />
-              <span className={styles.titleAccent}>절대 병원 PC 밖으로 나가지 않습니다</span>
+              절대 병원 PC 밖으로 나가지 않습니다
             </h2>
-            <p className={styles.lead}>
+            <p className={base.tLead}>
               환자 이름·주민번호·차트번호는 서버에도, AI에도 가지 않습니다. 처음부터 그렇게 설계했습니다.
             </p>
           </div>
-          <div className={styles.zeroCard}>
-            <div className={styles.zero}>
-              0<span className={styles.zeroUnit}>건</span>
-            </div>
-            <div className={styles.zeroCaption}>
+          <div className={`${base.card} ${styles.zero}`}>
+            <p className={styles.zeroNum}>
+              0<span>건</span>
+            </p>
+            <p className={styles.zeroCaption}>
               서버와 AI로 보내는
               <br />
               환자 개인정보
-            </div>
+            </p>
           </div>
         </div>
 
         <div className={styles.flow}>
-          <div className={`${styles.node} ${styles.nodePc}`}>
-            <div className={`${styles.nodeHead} ${styles.center}`}>
-              <svg aria-hidden="true" width="26" height="26" viewBox="0 0 22 22" fill="none">
-                <rect x="2" y="4" width="18" height="12" rx="2" stroke="#077A73" strokeWidth="1.8" />
-                <path d="M7 19h8" stroke="#077A73" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-              <h3 className={styles.nodeTitle}>병원 PC · 브라우저</h3>
+          <div className={styles.node}>
+            <div className={styles.nodeHead}>
+              <Icon viewBox="0 0 22 22">
+                <rect x="2" y="4" width="18" height="12" rx="2" />
+                <path d="M7 19h8" />
+              </Icon>
+              <h3 className={base.tH3}>병원 PC · 브라우저</h3>
             </div>
-            <p className={styles.nodeDesc}>환자 파일을 여기서만 열고 계산합니다.</p>
+            <p className={base.tBody}>환자 파일을 여기서만 열고 계산합니다.</p>
             <div className={styles.stop}>
               <span className={styles.stopTitle}>
-                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="6.5" stroke="#C2410C" strokeWidth="1.6" />
-                  <path d="M3.5 12.5l9-9" stroke="#C2410C" strokeWidth="1.6" />
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                >
+                  <circle cx="8" cy="8" r="6.5" />
+                  <path d="M3.5 12.5l9-9" />
                 </svg>
                 여기서 멈춤
               </span>
@@ -84,46 +114,41 @@ export default function PrivacySection() {
             </div>
           </div>
 
-          <div aria-hidden="true" className={`${styles.link} ${styles.linkTeal}`}>
-            <span>합계 숫자만</span>
-            <div className={`${styles.line} ${styles.lineTeal}`} />
-          </div>
+          <FlowLink label="합계 숫자만" />
 
-          <div className={`${styles.node} ${styles.nodeServer}`}>
-            <div className={`${styles.nodeHead} ${styles.center}`}>
-              <svg aria-hidden="true" width="26" height="26" viewBox="0 0 22 22" fill="none">
-                <rect x="3" y="3" width="16" height="6" rx="1.5" stroke="#0B1530" strokeWidth="1.8" />
-                <rect x="3" y="12" width="16" height="6" rx="1.5" stroke="#0B1530" strokeWidth="1.8" />
-              </svg>
-              <h3 className={styles.nodeTitle}>서버</h3>
-            </div>
-            <p className={styles.nodeDesc}>통계·매출 합계만 저장합니다. 원본 파일은 올라가지 않습니다.</p>
-          </div>
-
-          <div aria-hidden="true" className={`${styles.link} ${styles.linkViolet}`}>
-            <span>집계만</span>
-            <div className={`${styles.line} ${styles.lineViolet}`} />
-          </div>
-
-          <div className={`${styles.node} ${styles.nodeAi}`}>
+          <div className={styles.node}>
             <div className={styles.nodeHead}>
-              <svg aria-hidden="true" width="26" height="26" viewBox="0 0 16 16" fill="none">
-                <path d="M8 1.5l1.6 4.2 4.4 1.3-4.4 1.3L8 12.5 6.4 8.3 2 7l4.4-1.3z" fill="#6D5DF5" />
-              </svg>
-              <h3 className={styles.nodeTitle}>AI 분석</h3>
+              <Icon viewBox="0 0 22 22">
+                <rect x="3" y="3" width="16" height="6" rx="1.5" />
+                <rect x="3" y="12" width="16" height="6" rx="1.5" />
+              </Icon>
+              <h3 className={base.tH3}>서버</h3>
             </div>
-            <p className={styles.nodeDesc}>서버가 꺼낸 합계 숫자로만 리포트를 씁니다.</p>
+            <p className={base.tBody}>통계·매출 합계만 저장합니다. 원본 파일은 올라가지 않습니다.</p>
+          </div>
+
+          <FlowLink label="집계만" />
+
+          <div className={styles.node}>
+            <div className={styles.nodeHead}>
+              <Icon viewBox="0 0 20 20">
+                <path d="M5 2.5h7l3.5 3.5v11.5H5z" />
+                <path d="M7.5 9.5h5M7.5 12.5h5M7.5 15.5h3" />
+              </Icon>
+              <h3 className={base.tH3}>AI 분석</h3>
+            </div>
+            <p className={base.tBody}>서버가 꺼낸 합계 숫자로만 리포트를 씁니다.</p>
           </div>
         </div>
 
-        <div className={styles.rules}>
+        <ul className={`${base.items} ${base.itemsFour}`}>
           {RULES.map((rule) => (
-            <div key={rule.title} className={styles.rule}>
-              <h3 className={styles.ruleTitle}>{rule.title}</h3>
-              <p className={styles.ruleDesc}>{rule.desc}</p>
-            </div>
+            <li key={rule.title} className={base.item}>
+              <h3 className={base.tH3}>{rule.title}</h3>
+              <p className={base.tBody}>{rule.desc}</p>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   )

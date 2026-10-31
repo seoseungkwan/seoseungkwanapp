@@ -1,73 +1,121 @@
-/* 위쪽 메뉴 띠. 값은 docs/mockups/landing/landing-mockup.dc.html header 그대로. backdrop-filter는 이 띠 하나에만 쓴다(UI_GUIDE) */
+/* 위쪽 메뉴 (specs/landing-v2 REQ-106). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .lp-hd · .lp-hd-in · .logo · .lp-nav 그대로다.
+   휴대폰은 두 줄(로고 + [구글로 시작하기] 48px / 옆으로 넘기는 섹션 링크 46px), 768px부터 64px 한 줄. 여닫는 단추는 없다.
+   틀(.wrap)과 단추 모양(.btn·.btnMd·.btnPrimary)은 base.module.css가 맡고, 여기서는 배치만 더한다(design.md 'CSS 적용 순서') */
+
+/* 화면 위에 붙어 따라온다. 흰 바탕 + 아래 1px 선만 쓴다(그림자·blur 없음) */
 .header {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border-card);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
 }
 
 .inner {
-  max-width: var(--content-max);
-  margin: 0 auto;
-  padding: 10px var(--gutter);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "logo cta" "nav nav";
   align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
+  column-gap: 16px;
+  /* header 아래 1px 선을 마지막 줄 안에 겹친다 → 메뉴 높이가 휴대폰 94(48 + 46), 768부터 64 그대로다(AC-111.1) */
+  margin-bottom: -1px;
 }
 
-/* 링크 글자색은 globals의 a:hover(청록)가 덮지 않게 :hover까지 같이 정한다 */
-.logo,
-.logo:hover {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  text-decoration: none;
-  color: var(--text-strong);
-  font-weight: 700;
-  font-size: 18px;
-}
-
-.nav {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  margin-left: auto;
-  font-size: 15px;
-}
-
-.navLink,
-.navLink:hover {
-  padding: 12px 10px;
-  color: var(--text-body);
-  text-decoration: none;
-}
-
-.start,
-.start:hover {
+/* 로고 줄 48px. 글자색 ink를 직접 정한다(LogoMark는 자기 색으로 그린다) */
+.logo {
+  grid-area: logo;
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  padding: 0 20px;
-  border-radius: 999px;
-  background: var(--text-strong);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 15px;
-  text-decoration: none;
+  gap: 8px;
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  justify-self: start;
 }
 
-/* 좁은 화면(720px 미만): 섹션 링크 4개를 숨기고 로고와 [구글로 시작하기]만 둔다 (design.md, Claude 판단) */
-@media (max-width: 719.98px) {
-  .nav {
-    display: none;
+.start {
+  grid-area: cta;
+  position: relative;
+}
+/* 36px 단추의 누름 영역을 위아래로 4px씩 늘려 44px로. 어느 폭에서나 켠다(768부터도 64px 줄 안에 들어간다, AC-112.1).
+   inset은 테두리 안쪽(padding box)에서 재므로 margin -1px로 단추 테두리 1px만큼 더 늘린다 */
+.start::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+  margin-block: -1px;
+}
+
+/* 섹션 링크 줄: wrap 좌우 여백(16px)까지 넓혀 옆으로 넘긴다. 링크를 숨기지 않는다 */
+.nav {
+  grid-area: nav;
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-inline: -16px;
+  padding-inline: 2px;
+  border-top: 1px solid var(--line);
+  /* 위 1px 선을 로고 줄 48px 안에 겹친다 → 링크 줄이 46px다 */
+  margin-top: -1px;
+}
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.navLink {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 46px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.navLink:hover {
+  color: var(--ink);
+}
+/* 옆 스크롤 줄 안에서 초점 고리가 잘리지 않게 안쪽으로. base의 .root a:focus-visible보다 구체성이 높다 */
+.nav .navLink:focus-visible {
+  outline-offset: -2px;
+}
+/* 로고 링크의 초점 고리도 안쪽으로 그려 화면 맨 위에서 잘리지 않게 한다(AC-113.1). base의 .root a:focus-visible보다 구체성이 높다 */
+.inner .logo:focus-visible {
+  outline-offset: -2px;
+}
+
+/* 768px~: 64px 한 줄 */
+@media (min-width: 768px) {
+  .inner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "logo nav cta";
+    column-gap: 24px;
+    height: 64px;
   }
 
-  .start {
-    margin-left: auto;
+  .logo {
+    height: 64px;
+    font-size: 17px;
+  }
+
+  .nav {
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+    overflow: visible;
+  }
+
+  .navLink {
+    height: 64px;
+    padding: 0 12px;
+  }
+}
+
+/* 1024px~ */
+@media (min-width: 1024px) {
+  .nav {
+    padding-left: 16px;
   }
 }

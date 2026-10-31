@@ -1,9 +1,20 @@
-import Image from 'next/image'
+import type { ReactNode } from 'react'
+import base from './base.module.css'
 import styles from './FeaturesSection.module.css'
-import { LANDING_IMAGES } from './images'
 
-const STATS = LANDING_IMAGES.featureStats
-const PAYROLL = LANDING_IMAGES.featurePayroll
+// 통계 미리보기 예시 값(승인 시안 그대로). 비율 4개와 처방 그룹 4줄(막대 폭 %)
+const RATES: [label: string, value: string][] = [
+  ['신환율', '18.2%'],
+  ['재진율', '81.8%'],
+  ['7일 재방문', '41.0%'],
+  ['14일 재방문', '52.6%'],
+]
+const GROUPS: [name: string, width: number, count: number][] = [
+  ['물리치료', 100, 214],
+  ['주사', 66, 142],
+  ['도수', 40, 86],
+  ['체외충격파', 14, 31],
+]
 
 // 급여표 예시. 이름·금액은 [ ] 빈칸
 const STAFF = [
@@ -13,152 +24,224 @@ const STAFF = [
   { name: '[직원 D]', job: '방사선사' },
 ]
 
-// 기능 섹션(#features): 01 환자 통계 · 02 급여·인센티브 · 작은 기능 카드 3개
+// 작은 기능 카드 3개. 아이콘은 20px 선 그림(stroke="currentColor", 색은 CSS가 정한다).
+// 카드 3은 768에서 마지막 줄에 "저장합니다."만 남지 않게 "PDF로 저장합니다."를 nowrap으로 묶는다(AC-112.3)
+const SMALL: { title: string; desc: ReactNode; icon: ReactNode }[] = [
+  {
+    title: '매출·재고',
+    desc: '매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.',
+    icon: <path d="M4 16.5V10M8 16.5V6M12 16.5V11M16 16.5V3.5" />,
+  },
+  {
+    title: '일일마감·보고',
+    desc: '일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.',
+    icon: (
+      <>
+        <rect x="4" y="3" width="12" height="15" rx="1.5" />
+        <path d="M7 7.5h6M7 10.5h6M7 13.5h4" />
+      </>
+    ),
+  },
+  {
+    title: '원장님 월간 보고',
+    desc: (
+      <>
+        월말보고·통계 그래프·AI 분석을 한 장에 모아 <span className={base.nowrap}>PDF로 저장합니다.</span>
+      </>
+    ),
+    icon: (
+      <>
+        <path d="M5 2.5h7l3.5 3.5v11.5H5z" />
+        <path d="M7.5 14l2-2.5 2 1.5 2.5-3.5" />
+      </>
+    ),
+  },
+]
+
+// 기능 카드 하나: 글(이름표 · 제목 · 설명 · 칩 3개) | 미리보기
+function FeatureCard(props: { label: string; title: ReactNode; desc: ReactNode; chips: string[]; children: ReactNode }) {
+  return (
+    <article className={styles.fcard}>
+      <div className={styles.fcardText}>
+        <p className={base.tLabel}>{props.label}</p>
+        <h3 className={base.tH3l}>{props.title}</h3>
+        <p className={base.tBody}>{props.desc}</p>
+        <div className={`${base.chips} ${styles.fcardChips}`}>
+          {props.chips.map((chip) => (
+            <span key={chip} className={`${base.chip} ${base.chipNeutral}`}>
+              {chip}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className={styles.fcardShot}>{props.children}</div>
+    </article>
+  )
+}
+
+// 기능 섹션(#features) (specs/landing-v2 AC-109.1): 제목 → 기능 카드 2개(통계·급여 미리보기) → 작은 카드 3개.
+// 미리보기는 그림일 뿐 아무것도 받지 않는다(파일 놓는 칸은 div). 통계 패널은 aria-hidden, 급여표는 읽힌다
 export default function FeaturesSection() {
   return (
-    <section id="features" className={styles.section}>
-      <div className={styles.inner}>
-        <div className={styles.head}>
-          <span className={styles.eyebrow}>FEATURES</span>
-          <h2 className={styles.title}>
+    <section id="features" className={`${base.sec} ${base.secCanvas}`}>
+      <div className={`${base.wrap} ${base.stack}`}>
+        <div className={base.head}>
+          <h2 className={base.tH2}>
             매일 하던 일,
             <br />
             이제 숫자가 알아서 움직입니다
           </h2>
         </div>
 
-        <div className={styles.row}>
-          <div className={styles.text}>
-            <span className={`${styles.step} ${styles.stepTeal}`}>01 · 환자 통계</span>
-            <h3 className={styles.featureTitle}>
-              파일을 끌어다 놓으면,
-              <br />
-              숫자가 살아납니다
-            </h3>
-            <p className={styles.desc}>
-              EMR에서 내려받은 통계 파일을 올리면 신환율·재진율, 7일·14일 재방문, 처방 그룹별 환자 수가 바로
-              계산됩니다.
-            </p>
-            <div className={styles.chips}>
-              <span className={`${styles.chip} ${styles.chipTeal}`}>신환율·재진율</span>
-              <span className={`${styles.chip} ${styles.chipTeal}`}>7·14일 재방문</span>
-              <span className={`${styles.chip} ${styles.chipTeal}`}>처방 그룹</span>
-            </div>
-          </div>
-          <div className={`${styles.visual} ${styles.visualStats}`}>
-            <Image
-              src={STATS.src}
-              alt={STATS.alt}
-              width={STATS.width}
-              height={STATS.height}
-              unoptimized
-              className={styles.img}
-            />
-            <div aria-hidden="true" className={styles.bars}>
-              {Array.from({ length: 8 }, (_, i) => (
-                <div key={i} className={styles.bar} />
-              ))}
-            </div>
+        <div className={styles.featBig}>
+          <FeatureCard
+            label="01 · 환자 통계"
+            title={
+              <>
+                파일을 끌어다 놓으면,
+                <br />
+                숫자가 살아납니다
+              </>
+            }
+            desc={
+              <>
+                EMR에서 내려받은 통계 파일을 올리면 <span className={base.nowrap}>신환율·재진율,</span>{' '}
+                <span className={base.nowrap}>7일·14일</span> 재방문,
+                처방 그룹별 환자 수가 바로 계산됩니다.
+              </>
+            }
+            chips={['신환율·재진율', '7·14일 재방문', '처방 그룹']}
+          >
             <div className={styles.drop}>
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M4 2h7l4 4v10H4z" stroke="#077A73" strokeWidth="1.6" strokeLinejoin="round" />
-                <path d="M11 2v4h4" stroke="#077A73" strokeWidth="1.6" />
+              <svg
+                aria-hidden="true"
+                width="16"
+                height="16"
+                viewBox="0 0 18 18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              >
+                <path d="M4 2h7l4 4v10H4z" />
+                <path d="M11 2v4h4" />
               </svg>
               통계 파일을 여기에 놓기
             </div>
-          </div>
+            <div aria-hidden="true" className={styles.mini}>
+              <div className={styles.miniHead}>
+                <span className={styles.miniTitle}>환자 통계</span>
+                <span className={`${base.chip} ${base.chipSample}`}>예시</span>
+              </div>
+              <div className={styles.miniBody}>
+                <dl className={styles.rates}>
+                  {RATES.map(([label, value]) => (
+                    <div key={label} className={styles.rate}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className={styles.groups}>
+                  <div className={styles.groupsTitle}>처방 그룹 · 환자 수</div>
+                  {GROUPS.map(([name, width, count], i) => (
+                    <div key={name} className={styles.grp}>
+                      <span>{name}</span>
+                      <span className={styles.track}>
+                        <i
+                          className={i === 0 ? `${styles.fill} ${styles.fillFirst}` : styles.fill}
+                          style={{ width: `${width}%` }}
+                        />
+                      </span>
+                      <b>{count}</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </FeatureCard>
+
+          <FeatureCard
+            label="02 · 급여·인센티브"
+            title={
+              <>
+                월 실적만 넣으면
+                <br />
+                급여 계산이 끝납니다
+              </>
+            }
+            desc="직원별 인센티브 규칙을 한 번 정해 두면, 월 실적으로 급여를 계산하고 확정합니다. 세무사 전달표와 인건비율·치료사 생산성도 함께 나옵니다."
+            chips={['인센티브 규칙', '확정하면 잠금', '세무사 전달표']}
+          >
+            <div className={styles.mini}>
+              <div className={styles.miniHead}>
+                <span className={styles.miniTitle}>10월 급여</span>
+                <span className={`${base.chip} ${base.chipOk}`}>
+                  <svg
+                    aria-hidden="true"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M2.5 7.5l3 3 6-7" />
+                  </svg>
+                  10월 확정됨
+                </span>
+              </div>
+              <div className={styles.tblWrap}>
+                <table className={styles.tbl}>
+                  <thead>
+                    <tr>
+                      <th>직원</th>
+                      <th>직종</th>
+                      <th className={styles.right}>인센티브</th>
+                      <th className={styles.right}>합계</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {STAFF.map((s) => (
+                      <tr key={s.name}>
+                        <td>{s.name}</td>
+                        <td className={styles.sub}>{s.job}</td>
+                        <td className={styles.right}>[금액]</td>
+                        <td className={styles.right}>[금액]</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </FeatureCard>
         </div>
 
-        <div className={`${styles.row} ${styles.rowReverse}`}>
-          <div className={styles.text}>
-            <span className={`${styles.step} ${styles.stepAmber}`}>02 · 급여·인센티브</span>
-            <h3 className={styles.featureTitle}>
-              월 실적만 넣으면
-              <br />
-              급여 계산이 끝납니다
-            </h3>
-            <p className={styles.desc}>
-              직원별 인센티브 규칙을 한 번 정해 두면, 월 실적으로 급여를 계산하고 확정합니다. 세무사 전달표와
-              인건비율·치료사 생산성도 함께 나옵니다.
-            </p>
-            <div className={styles.chips}>
-              <span className={`${styles.chip} ${styles.chipAmber}`}>인센티브 규칙</span>
-              <span className={`${styles.chip} ${styles.chipAmber}`}>확정하면 잠금</span>
-              <span className={`${styles.chip} ${styles.chipAmber}`}>세무사 전달표</span>
-            </div>
-          </div>
-          <div className={`${styles.visual} ${styles.visualPayroll}`}>
-            <Image
-              src={PAYROLL.src}
-              alt={PAYROLL.alt}
-              width={PAYROLL.width}
-              height={PAYROLL.height}
-              unoptimized
-              className={styles.img}
-            />
-            <div className={styles.table}>
-              <div className={`${styles.tr} ${styles.th}`}>
-                <span>직원</span>
-                <span>직종</span>
-                <span className={styles.right}>인센티브</span>
-                <span className={styles.right}>합계</span>
-              </div>
-              {STAFF.map((s) => (
-                <div key={s.name} className={styles.tr}>
-                  <span>{s.name}</span>
-                  <span className={styles.job}>{s.job}</span>
-                  <span className={`${styles.right} ${styles.incentive}`}>[금액]</span>
-                  <span className={styles.right}>[금액]</span>
-                </div>
-              ))}
-              <div aria-hidden="true" className={styles.scan} />
-            </div>
-            <span className={styles.done}>
-              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M2.5 7.5l3 3 6-7"
-                  stroke="#077A73"
-                  strokeWidth="1.8"
+        <ul className={`${base.grid3} ${base.group}`}>
+          {SMALL.map(({ title, desc, icon }) => (
+            <li key={title} className={`${base.card} ${styles.smallCard}`}>
+              <div className={styles.smallHead}>
+                <svg
+                  aria-hidden="true"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                />
-              </svg>
-              10월 확정됨
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.cards}>
-          <div className={`${styles.card} ${styles.cardAmber}`}>
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <path d="M5 26V14M12 26V8M19 26V16M26 26V5" stroke="#F59E0B" strokeWidth="2.6" strokeLinecap="round" />
-            </svg>
-            <h3 className={styles.cardTitle}>매출·재고</h3>
-            <p className={styles.cardDesc}>매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.</p>
-          </div>
-          <div className={`${styles.card} ${styles.cardPink}`}>
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect x="6" y="4" width="20" height="24" rx="3" stroke="#E11D74" strokeWidth="2.4" />
-              <path d="M11 12h10M11 17h10M11 22h6" stroke="#E11D74" strokeWidth="2.4" strokeLinecap="round" />
-            </svg>
-            <h3 className={styles.cardTitle}>일일마감·보고</h3>
-            <p className={styles.cardDesc}>일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.</p>
-          </div>
-          <div className={`${styles.card} ${styles.cardBlue}`}>
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <path d="M8 4h11l6 6v18H8z" stroke="#2556D6" strokeWidth="2.4" strokeLinejoin="round" />
-              <path
-                d="M12 22l3-4 3 2 4-6"
-                stroke="#2556D6"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <h3 className={styles.cardTitle}>원장님 월간 보고</h3>
-            <p className={styles.cardDesc}>월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.</p>
-          </div>
-        </div>
+                >
+                  {icon}
+                </svg>
+                <h3 className={base.tH3}>{title}</h3>
+              </div>
+              <p className={base.tBody}>{desc}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   )

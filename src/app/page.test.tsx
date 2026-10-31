@@ -1,5 +1,9 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { LogoMark } from '@/components/common/LogoMark'
+import base from '@/components/landing/base.module.css'
 import Home from './page'
 
 const html = renderToStaticMarkup(<Home />)
@@ -19,9 +23,7 @@ const links = [...html.matchAll(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g
   text: textOf(m[2]),
 }))
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])
-const imgs = [...html.matchAll(/<img\b([^>]*?)\/?>/g)].map((m) =>
-  Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])),
-)
+const ROOT = process.cwd()
 
 describe('AC-001.1: 섹션 순서', () => {
   it('AC-001.1: header → #top → 핵심 약속 → #ai → #ortho → #features → #privacy → #how → #start → footer', () => {
@@ -51,6 +53,22 @@ describe('AC-001.1: 섹션 순서', () => {
     expect(html.search(/<footer\b/)).toBeGreaterThan(html.search(/<\/main>/))
     expect(html.match(/<header\b/g)).toHaveLength(1)
     expect(html.match(/<footer\b/g)).toHaveLength(1)
+  })
+})
+
+describe('AC-105.1: 랜딩 뿌리 감싸개', () => {
+  it('AC-105.1: base.module.css의 .root 클래스 <div> 하나가 header·main·footer를 감싼다', () => {
+    // 페이지 전체가 <div class="…">header main footer</div> 하나다
+    const wrapper = html.match(/^<div class="([^"]+)">([\s\S]*)<\/div>$/)
+    expect(wrapper, '맨 바깥 <div>').not.toBeNull()
+    const [, className, inner] = wrapper!
+    expect(className.split(/\s+/)).toHaveLength(1)
+    expect(className).toMatch(/root/)
+    expect(inner).toMatch(/^<header\b[\s\S]*<\/header><main\b[\s\S]*<\/main><footer\b[\s\S]*<\/footer>$/)
+    // 그 클래스는 base.module.css의 .root다(CSS 쪽 값은 styles.test.ts가 본다)
+    const page = readFileSync(join(ROOT, 'src/app/page.tsx'), 'utf8')
+    expect(page).toMatch(/^import base from '@\/components\/landing\/base\.module\.css'$/m)
+    expect(page).toMatch(/<div className=\{base\.root\}>/)
   })
 })
 
@@ -106,7 +124,7 @@ describe('AC-005.1: 정한 문구', () => {
       '환자 개인정보는 병원 PC 밖으로 나가지 않습니다',
       '환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다',
       'EMR',
-      '주사 치료 수와 F/U 기록',
+      '주사 치료 수와 F/U',
       '물리치료 내원 환자 수',
       '비급여 치료 내역',
       '한 장으로 받는 월간 보고',
@@ -121,6 +139,15 @@ describe('AC-005.1: 정한 문구', () => {
       '환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다',
     )
     expect(privacy).toMatch(/>0<span\b[^>]*>건<\/span>/)
+  })
+})
+
+// 2026-10-30 사용자 결정 "F/U 기록을 그냥 F/U로 바꾸자" (specs/landing-v2 REQ-114)
+describe('AC-114.1: "F/U 기록" → "F/U"', () => {
+  it('AC-114.1: 페이지 글자와 마크업 어디에도 "F/U 기록"이 없고, "주사 치료 수와 F/U"는 있다', () => {
+    expect(text).not.toContain('F/U 기록')
+    expect(html).not.toContain('F/U 기록')
+    expect(text).toContain('주사 치료 수와 F/U')
   })
 })
 
@@ -148,27 +175,33 @@ describe('AC-005.3: 금지한 장식', () => {
   })
 })
 
-describe('AC-006.1: 그림', () => {
-  it('AC-006.1: img는 6장이고 승인본 6개 경로로 나온다', () => {
-    expect(imgs).toHaveLength(6)
-    expect(imgs.map((img) => img.src).sort()).toEqual(
-      [
-        '/landing/feature-payroll.jpg',
-        '/landing/feature-stats.jpg',
-        '/landing/tile-injection.jpg',
-        '/landing/tile-noncovered.jpg',
-        '/landing/tile-physio.jpg',
-        '/landing/tile-report.jpg',
-      ].sort(),
-    )
-  })
+// 지운 그림 6장의 이름. 승인 기록(docs/mockups/landing/images/)에는 남는다
+const LANDING_JPGS = [
+  'feature-payroll.jpg',
+  'feature-stats.jpg',
+  'tile-injection.jpg',
+  'tile-noncovered.jpg',
+  'tile-physio.jpg',
+  'tile-report.jpg',
+]
 
-  it('AC-006.1: 모두 빈칸 아닌 alt가 있고, http로 시작하는 바깥 주소 그림이 없다', () => {
-    for (const img of imgs) {
-      expect(img.alt?.trim().length, img.src).toBeGreaterThan(0)
-      expect(img.src).not.toMatch(/^https?:/i)
-    }
+describe('AC-104.1: 그림을 모두 뺀다', () => {
+  it('AC-104.1: 페이지 전체에 img·picture·video가 0개이고, http로 시작하는 바깥 주소 그림이 없다', () => {
+    expect(html).not.toMatch(/<(img|picture|video)\b/i)
     expect(html).not.toMatch(/\ssrc(set)?="https?:/i)
+  })
+})
+
+describe('AC-104.2: 그림 파일이 없다', () => {
+  it('AC-104.2: public/landing/ 그림과 images.ts·images.test.ts가 없고, 승인 기록 그림 6장은 남는다', () => {
+    const served = join(ROOT, 'public/landing')
+    const servedJpgs = existsSync(served) ? readdirSync(served).filter((name) => /\.jpe?g$/i.test(name)) : []
+    expect(servedJpgs).toEqual([])
+    expect(existsSync(join(ROOT, 'src/components/landing/images.ts'))).toBe(false)
+    expect(existsSync(join(ROOT, 'src/components/landing/images.test.ts'))).toBe(false)
+    for (const name of LANDING_JPGS) {
+      expect(existsSync(join(ROOT, 'docs/mockups/landing/images', name)), name).toBe(true)
+    }
   })
 })
 
@@ -183,5 +216,65 @@ describe('AC-008.1: 접근성', () => {
     const svgs = html.match(/<svg\b[^>]*>/g) ?? []
     expect(svgs.length).toBeGreaterThan(10)
     for (const svg of svgs) expect(svg).toContain('aria-hidden="true"')
+  })
+})
+
+describe('AC-110.6: 회색 바탕 섹션', () => {
+  it('AC-110.6: .secCanvas는 #ai · #features · #how 세 섹션에만 있다', () => {
+    const sections = [...html.matchAll(/<section\b[^>]*>/g)].map((m) => ({
+      id: /\sid="([^"]+)"/.exec(m[0])?.[1] ?? m[0],
+      classes: (/\bclass="([^"]*)"/.exec(m[0])?.[1] ?? '').split(/\s+/),
+    }))
+    expect(sections).toHaveLength(8)
+    expect(sections.filter((s) => s.classes.includes(base.secCanvas)).map((s) => s.id)).toEqual(['ai', 'features', 'how'])
+    // 섹션 밖(메뉴·푸터·미리보기 안)에도 붙지 않는다
+    const all = [...html.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
+    expect(all.filter((c) => c === base.secCanvas)).toHaveLength(3)
+  })
+})
+
+// ---------- AC-105.8: 랜딩 TSX의 색 글자·inline style 범위 ----------
+
+const LANDING_DIR = join(ROOT, 'src/components/landing')
+const landingTsx = readdirSync(LANDING_DIR)
+  .filter((name) => name.endsWith('.tsx') && !/\.test\.tsx$/.test(name))
+  .map((name) => ({ name, body: readFileSync(join(LANDING_DIR, name), 'utf8') }))
+// '#' + 16진수 3·4·6·8자리 색 글자 (#features·#ai 같은 # 링크는 뒤에 글자가 이어져 걸리지 않는다)
+const HEX_COLOR = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/i
+// 로고 마크 출력(고정 두 색)을 뺀 페이지 마크업. 메뉴(22)와 히어로 미리보기(20)에 하나씩 있다
+const LOGOS = [renderToStaticMarkup(<LogoMark size={22} />), renderToStaticMarkup(<LogoMark size={20} />)]
+const withoutLogos = LOGOS.reduce((markup, logo) => markup.split(logo).join(''), html)
+
+describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
+  it('AC-105.8: 랜딩 폴더의 *.tsx(시험 제외)에 색 글자(# + 16진수)가 없다', () => {
+    expect(landingTsx.map((f) => f.name)).toEqual(
+      expect.arrayContaining(['PrivacySection.tsx', 'HowSection.tsx', 'StartSection.tsx', 'SiteFooter.tsx', 'HeroChart.tsx']),
+    )
+    for (const { name, body } of landingTsx) expect(body, name).not.toMatch(HEX_COLOR)
+  })
+
+  it('AC-105.8: 로고는 <LogoMark />를 부르기만 한다(메뉴 22 · 미리보기 20), 그 밖의 페이지 마크업에는 색 글자가 없다', () => {
+    for (const logo of LOGOS) expect(html.split(logo).length - 1, logo).toBe(1)
+    for (const { name, body } of landingTsx) {
+      expect(body, `${name}: 로고 십자 경로를 따로 그리지 않는다`).not.toContain('M13.5 8h3a1')
+      if (/<LogoMark\b/.test(body)) expect(body, name).toMatch(/^import \{ LogoMark \} from '@\/components\/common\/LogoMark'$/m)
+    }
+    expect(withoutLogos).not.toMatch(HEX_COLOR)
+  })
+
+  it('AC-105.8: 로고 밖 svg의 선·채움은 currentColor나 none뿐이다(색은 CSS 클래스가 정한다)', () => {
+    const paints = [...withoutLogos.matchAll(/\s(fill|stroke)="([^"]*)"/g)].map((m) => `${m[1]}="${m[2]}"`)
+    expect(paints.length).toBeGreaterThan(0)
+    for (const paint of paints) expect(paint).toMatch(/^(fill|stroke)="(currentColor|none)"$/)
+  })
+
+  it('AC-105.8: inline style은 % 값의 높이·폭·위치 하나씩뿐이다(히어로 막대 높이 6 · 신환율·처방 그룹 막대 폭 5 · 눈금선 위치 4)', () => {
+    const styles = [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1])
+    for (const style of styles) expect(style).toMatch(/^(height|width|bottom):\d+(\.\d+)?%$/)
+    const count = (prop: string) => styles.filter((s) => s.startsWith(`${prop}:`)).length
+    expect({ height: count('height'), width: count('width'), bottom: count('bottom') }).toEqual({ height: 6, width: 5, bottom: 4 })
+    // style을 쓰는 랜딩 TSX는 미리보기 둘뿐이다
+    const withStyle = landingTsx.filter((f) => /\bstyle=\{/.test(f.body)).map((f) => f.name)
+    expect(withStyle.sort()).toEqual(['FeaturesSection.tsx', 'HeroChart.tsx'])
   })
 })

@@ -1,282 +1,273 @@
-/* 기능 섹션(#features). 값은 docs/mockups/landing/landing-mockup.dc.html #features 그대로. 호박 글자는 #A84B08(--amber-text) */
-.section {
-  padding: 96px var(--gutter) 48px;
-}
+/* 기능 섹션(#features) (specs/landing-v2 AC-109.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의
+   .feat-big · .fcard · .drop · .mini · .rates · .groups · .tbl · .feat-small 그대로다.
+   제목·칩·작은 카드 모양은 base가 정하고, 여기서는 기능 카드 배치와 미리보기만 그린다(design.md 'CSS 적용 순서').
+   휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
 
-.inner {
-  max-width: var(--content-max);
-  margin: 0 auto;
+/* ---------- 기능 카드 2개: 휴대폰은 글 위 · 미리보기 아래 ---------- */
+.featBig {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.fcard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 96px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 720px;
-}
-
-.eyebrow {
-  font-family: var(--font-num), sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  color: var(--teal-text);
-  font-weight: 700;
-}
-
-.title {
-  margin: 0;
-  font-size: clamp(32px, 3.8vw, 48px);
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-/* 기능 행: 두 칸, 좁으면 아래로 쌓인다 */
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 56px;
-  align-items: center;
-}
-
-.rowReverse {
-  flex-wrap: wrap-reverse;
-  flex-direction: row-reverse;
-}
-
-.text {
-  flex: 1 1 420px;
   min-width: 0;
+}
+.fcardText {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.fcardChips {
+  margin-top: 4px;
+}
+.fcardShot {
+  flex: 1;
+  border-top: 1px solid var(--line);
+  background: var(--canvas);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* 파일 놓는 칸: 그림일 뿐 파일을 받지 않는다 */
+.drop {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.step {
-  font-family: var(--font-num), sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.stepTeal { color: var(--teal-text); }
-.stepAmber { color: var(--amber-text); }
-
-.featureTitle {
-  margin: 0;
-  font-size: 32px;
-  line-height: 1.3;
-  font-weight: 700;
-}
-
-.desc {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.7;
-  color: var(--text-body);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
+  height: 48px;
+  border: 1px dashed var(--field);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--ink-2);
 }
 
-.chip {
-  padding: 6px 12px;
-  border-radius: 8px;
+/* ---------- 작은 패널(통계 · 급여 공통) ---------- */
+.mini {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+.miniHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.miniTitle {
   font-size: 14px;
+  line-height: 20px;
   font-weight: 600;
 }
 
-.chipTeal { background: var(--teal-soft); color: var(--teal-text); }
-.chipAmber { background: var(--amber-soft); color: var(--amber-text); }
-
-.visual {
-  flex: 1 1 480px;
+/* 통계 패널: 휴대폰은 비율 4칸 줄 아래에 처방 그룹 */
+.miniBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.rates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+.rate {
+  padding: 10px 4px 10px 10px;
+  display: grid;
+  gap: 2px;
   min-width: 0;
-  position: relative;
-  border-radius: 22px;
-  border: 1px solid var(--border-card);
-  background: var(--bg-soft);
+}
+.rate + .rate {
+  border-left: 1px solid var(--line);
+  padding-left: 8px;
+}
+.rate dt {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.rate dd {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 처방 그룹: 이름 | 막대 | 환자 수. 막대 폭은 TSX의 inline style(%)이 정한다 */
+.groups {
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.groupsTitle {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.grp {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+.track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--canvas);
   overflow: hidden;
 }
-
-.visualStats { aspect-ratio: 16 / 10; }
-.visualPayroll { aspect-ratio: 16 / 11; }
-
-.img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
+.fill {
+  display: block;
   height: 100%;
-  object-fit: cover;
+  border-radius: 3px;
+  background: var(--accent-tint);
+}
+/* .fill 뒤에 둬서 같은 구체성일 때 이긴다 */
+.fillFirst {
+  background: var(--accent);
+}
+.grp b {
+  text-align: right;
+  font-weight: 600;
+  color: var(--ink);
 }
 
-/* 통계 그림 위 막대: 3초마다 출렁인다. 보라 막대 일부는 UI_GUIDE에서 허용 */
-.bars {
-  position: absolute;
-  right: 5%;
-  bottom: 7%;
-  width: 44%;
-  height: 42%;
-  padding: 14px 14px 0;
-  box-sizing: border-box;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 12px 30px rgba(11, 21, 48, 0.15);
-  display: flex;
-  align-items: flex-end;
-  gap: 4%;
+/* 급여표: 줄바꿈 없이 13px. 좁으면 감싸개 안에서만 옆으로 민다 */
+.tblWrap {
+  overflow-x: auto;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+}
+.tbl th {
+  height: 34px;
+  padding: 0 6px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.tbl td {
+  height: 36px;
+  padding: 0 6px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.tbl tr:last-child td {
+  border-bottom: 0;
+}
+.tbl th:first-child,
+.tbl td:first-child {
+  padding-left: 12px;
+}
+.tbl th:last-child,
+.tbl td:last-child {
+  padding-right: 12px;
+}
+.tbl .right {
+  text-align: right;
+}
+.tbl .sub {
+  color: var(--ink-2);
 }
 
-.bar {
-  flex: 1;
-  border-radius: 6px 6px 0 0;
-  transform-origin: bottom;
-  animation: bar 3s ease-in-out infinite;
+/* ---------- 작은 카드 3개: 카드 모양은 base .card·.group(휴대폰은 한 묶음)이 정한다 ---------- */
+.smallCard {
+  display: grid;
+  gap: 6px;
+  align-content: start;
 }
-
-.bar:nth-child(1) { height: 42%; background: rgba(20, 200, 186, 0.45); animation-delay: 0s; }
-.bar:nth-child(2) { height: 60%; background: rgba(20, 200, 186, 0.55); animation-delay: 0.2s; }
-.bar:nth-child(3) { height: 50%; background: rgba(20, 200, 186, 0.45); animation-delay: 0.4s; }
-.bar:nth-child(4) { height: 78%; background: rgba(109, 93, 245, 0.65); animation-delay: 0.6s; }
-.bar:nth-child(5) { height: 66%; background: rgba(20, 200, 186, 0.55); animation-delay: 0.8s; }
-.bar:nth-child(6) { height: 88%; background: rgba(20, 200, 186, 0.75); animation-delay: 1s; }
-.bar:nth-child(7) { height: 72%; background: rgba(109, 93, 245, 0.65); animation-delay: 1.2s; }
-.bar:nth-child(8) { height: 96%; background: var(--teal-fill); animation-delay: 1.4s; }
-
-/* 파일 놓는 칸 모양: 그림일 뿐 파일을 받지 않는다. 누를 수 있어 보이지 않게 cursor 기본값 */
-.drop {
-  position: absolute;
-  left: 6%;
-  top: 9%;
+.smallHead {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1.5px dashed rgba(7, 122, 115, 0.5);
-  background: #ffffff;
-  font-size: 14px;
-  color: var(--text-strong);
-  cursor: default;
+}
+.smallHead svg {
+  color: var(--ink-2);
 }
 
-/* 급여표 */
-.table {
-  position: absolute;
-  left: 34%;
-  right: 4%;
-  top: 7%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 12px;
-  border: 1px solid var(--border-card);
-  background: #ffffff;
-  box-shadow: 0 14px 34px rgba(11, 21, 48, 0.18);
-  overflow: hidden;
-  font-size: 13px;
+/* ---------- 768px부터: 글 | 미리보기 두 칸 ---------- */
+@media (min-width: 768px) {
+  .fcard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .fcardText {
+    padding: 24px;
+  }
+  .fcardShot {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+    padding: 20px;
+    align-content: center;
+  }
 }
 
-.tr {
-  display: flex;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(11, 21, 48, 0.06);
-}
-
-.th {
-  border-top: 0;
-  background: var(--bg-soft);
-  color: var(--text-muted);
-}
-
-.tr > span {
-  flex: 2;
-}
-
-.right {
-  text-align: right;
-}
-
-.job {
-  color: var(--text-body);
-}
-
-.incentive {
-  color: var(--teal-text);
-}
-
-/* 급여표 위를 지나가는 스캔 띠 (3.5초) */
-.scan {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 30%;
-  background: linear-gradient(180deg, rgba(20, 200, 186, 0), rgba(20, 200, 186, 0.14), rgba(20, 200, 186, 0));
-  animation: scan 3.5s linear infinite;
-}
-
-.done {
-  position: absolute;
-  left: 7%;
-  bottom: 7%;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--teal-soft);
-  color: var(--teal-text);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-/* 작은 기능 카드 3개: 카드마다 다른 색 */
-.cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-
-.card {
-  flex: 1 1 300px;
-  min-width: 0;
-  padding: 28px;
-  border-radius: 20px;
-  border: 1px solid var(--border-card);
-  box-shadow: 0 10px 30px rgba(11, 21, 48, 0.05);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.cardAmber { background: var(--amber-card); }
-.cardPink { background: var(--pink-card); }
-.cardBlue { background: var(--blue-soft); }
-
-.cardTitle {
-  margin: 0;
-  font-size: 21px;
-  font-weight: 700;
-}
-
-.cardDesc {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.65;
-  color: var(--text-body);
-}
-
-@keyframes bar {
-  0%, 100% { transform: scaleY(0.5); }
-  50% { transform: scaleY(1); }
-}
-
-@keyframes scan {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(400%); }
+/* ---------- 1024px부터: 5 : 7, 통계 패널은 비율 2×2 | 처방 그룹 ---------- */
+@media (min-width: 1024px) {
+  .featBig {
+    gap: 16px;
+  }
+  .fcard {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+  .fcardText {
+    padding: 32px;
+    align-content: center;
+  }
+  .fcardShot {
+    padding: 32px;
+  }
+  .miniBody {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .rates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+  }
+  .rate,
+  .rate + .rate {
+    padding: 12px 16px;
+    border-left: 0;
+  }
+  .rate:nth-child(odd) {
+    border-right: 1px solid var(--line);
+  }
+  .rate:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+  .rate dd {
+    font-size: 18px;
+    line-height: 24px;
+  }
+  .groups {
+    padding: 12px 16px;
+    align-content: center;
+  }
 }

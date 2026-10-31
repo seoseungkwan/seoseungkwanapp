@@ -33,7 +33,7 @@
 - 시험 산출물(trace·네트워크 로그·스크린샷)에 쿠키·토큰을 남기지 않는다(Playwright를 쓰면 `trace: 'off'`)
 
 ## 개발 프로세스
-- CRITICAL: 새 기능은 `/sdd`로 명세(`specs/<기능ID>/`)를 쓰고 사용자가 `/sdd approve <기능ID>`로 승인한 뒤에만 구현한다 (SDD)
+- CRITICAL: 새 기능은 `/sdd`로 명세(`specs/<기능ID>/`)를 쓰고 승인된 뒤에만 구현한다 (SDD). 승인은 사용자가 `/sdd approve <기능ID>`를 입력하거나, 사용자가 `SDD-AUTO-ON`으로 켠 저장소에서 `harness-reviewer` 명세 검토 PASS 뒤 `sdd approve <기능ID>`로 자동 기록한다 (2026-10-30 사용자 결정)
 - CRITICAL: 테스트를 먼저 쓰고 실패(RED)를 확인한 뒤 구현한다 (TDD, `/tdd`). 테스트 이름에 AC ID(AC-001.1 등)를 넣는다
 - CRITICAL: 화면은 클릭 목업을 사용자가 승인한 뒤에만 구현한다. 승인 전에는 화면 코드를 만들지 않는다 (`plan.md §3·§9`)
 - 커밋 메시지는 conventional commits (`feat(stats-core): …`처럼 기능 ID를 scope로)
