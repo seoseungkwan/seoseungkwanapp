@@ -1,10 +1,10 @@
 // 도우미 메시지 틀(TASK-1, REQ-001)의 C# 시험(helper/tests/Precheck.Core.Tests/Protocol/*.test.cs)을 감싼다.
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { lockIsStale, runDotnet } from './runDotnet'
+import { lockIsStale, runDotnet, takeOverStaleLock } from './runDotnet'
 
 const FILTER = 'Precheck.Core.Tests.Protocol'
 let run: { code: number; output: string } = { code: -1, output: '' }
@@ -54,7 +54,8 @@ describe('REQ-001 도우미 메시지 틀 (C# Precheck.Core.Tests.Protocol)', ()
   })
 })
 
-// 감싸개 공용 잠금 폴더(runDotnet.ts): 잡은 프로세스가 죽었거나, pid 파일 없이 오래 남은 폴더는 버린다
+// 감싸개 공용 잠금 폴더(runDotnet.ts): 잡은 프로세스가 죽었거나, pid 파일 없이 오래 남은 폴더는 버린다.
+// 버리기(넘겨받기)는 넘겨받기 표시(<잠금>.takeover)를 잡은 한 쪽만 한다. 시험은 임시 lockDir()만 쓴다(공용 잠금은 건드리지 않음)
 describe('runDotnet 잠금 폴더', () => {
   const made: string[] = []
 
@@ -89,5 +90,45 @@ describe('runDotnet 잠금 폴더', () => {
 
     writeFileSync(path.join(lock, 'pid'), 'not a pid')
     expect(lockIsStale(lock)).toBe(true)
+  })
+
+  it('pid 파일이 비어 있으면(쓰는 중) 없는 것처럼 막 잡은 참으로 보아 버리지도 넘겨받지도 않고, 30초가 지나면 버린다', () => {
+    const lock = lockDir()
+    writeFileSync(path.join(lock, 'pid'), '')
+    expect(lockIsStale(lock)).toBe(false)
+    expect(takeOverStaleLock(lock)).toBe(false)
+    expect(readFileSync(path.join(lock, 'pid'), 'utf8')).toBe('')
+
+    const old = (Date.now() - 60_000) / 1000
+    utimesSync(lock, old, old)
+    expect(lockIsStale(lock)).toBe(true)
+  })
+
+  it('다른 쪽이 넘겨받는 중(<잠금>.takeover가 있음)이면 죽은 pid 잠금도 지우지 않는다', () => {
+    const lock = lockDir()
+    writeFileSync(path.join(lock, 'pid'), '2147483646')
+    mkdirSync(`${lock}.takeover`)
+
+    expect(takeOverStaleLock(lock)).toBe(false)
+    expect(readFileSync(path.join(lock, 'pid'), 'utf8')).toBe('2147483646')
+    expect(existsSync(`${lock}.takeover`)).toBe(true)
+  })
+
+  it('넘겨받는 쪽이 없으면 죽은 pid 잠금을 지우고, 넘겨받기 표시도 남기지 않는다', () => {
+    const lock = lockDir()
+    writeFileSync(path.join(lock, 'pid'), '2147483646')
+
+    expect(takeOverStaleLock(lock)).toBe(true)
+    expect(existsSync(lock)).toBe(false)
+    expect(existsSync(`${lock}.takeover`)).toBe(false)
+  })
+
+  it('살아 있는 잠금은 넘겨받지 않고, 넘겨받기 표시도 남기지 않는다', () => {
+    const lock = lockDir()
+    writeFileSync(path.join(lock, 'pid'), String(process.pid))
+
+    expect(takeOverStaleLock(lock)).toBe(false)
+    expect(readFileSync(path.join(lock, 'pid'), 'utf8')).toBe(String(process.pid))
+    expect(existsSync(`${lock}.takeover`)).toBe(false)
   })
 })

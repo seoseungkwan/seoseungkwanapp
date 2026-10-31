@@ -3,7 +3,7 @@
 // - 잠금 폴더(os.tmpdir()/precheck-dotnet.lock)로 한 번에 하나만 돈다. vitest가 감싸개 파일을 나란히 돌려도
 //   dotnet build·test가 같은 obj/bin에서 부딪히지 않게
 import { spawnSync } from 'node:child_process'
-import { accessSync, constants, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,19 +37,21 @@ function sleep(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
-/** pid 파일 없이 이보다 오래된 잠금 폴더는 잡다가 죽은 것으로 본다(mkdir 뒤 pid를 쓰기 전 아주 잠깐만 없다) */
+/** pid 파일 없이(또는 빈 채로) 이보다 오래된 잠금 폴더는 잡다가 죽은 것으로 본다(mkdir 뒤 pid를 쓰기 전 아주 잠깐만 없다) */
 const PID_GRACE_MS = 30_000
 
 /**
  * 잠금 폴더를 버려도 되나: pid 파일의 프로세스가 없거나 pid가 틀렸으면 true.
- * pid 파일이 없으면 막 잡은 참일 수 있어 폴더 시각이 graceMs보다 오래됐을 때만 true.
+ * pid 파일이 없거나 비어 있으면 막 잡은 참일 수 있어 폴더 시각이 graceMs보다 오래됐을 때만 true.
  */
 export function lockIsStale(lockDir: string, graceMs: number = PID_GRACE_MS): boolean {
-  let text: string
+  let text = ''
   try {
-    text = readFileSync(path.join(lockDir, 'pid'), 'utf8')
+    text = readFileSync(path.join(lockDir, 'pid'), 'utf8').trim()
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false
+  }
+  if (text === '') {
     try {
       return Date.now() - statSync(lockDir).mtimeMs > graceMs
     } catch {
@@ -57,7 +59,7 @@ export function lockIsStale(lockDir: string, graceMs: number = PID_GRACE_MS): bo
       return false
     }
   }
-  const pid = Number(text.trim())
+  const pid = Number(text)
   if (!Number.isInteger(pid) || pid <= 0) return true
   try {
     process.kill(pid, 0)
@@ -68,21 +70,45 @@ export function lockIsStale(lockDir: string, graceMs: number = PID_GRACE_MS): bo
   }
 }
 
+/**
+ * 버려진 잠금 폴더를 넘겨받는다(지웠으면 true). 넘겨받기 표시 폴더(`<lockDir>.takeover`)를 mkdir로 잡은
+ * 한 쪽만 잠금을 다시 확인하고 지운다. 그래서 두 쪽이 같은 잠금을 버려졌다고 봐도, 늦은 쪽이 먼저 쪽의
+ * 새 잠금을 지우지 않는다. 표시가 이미 있으면(다른 쪽이 넘겨받는 중) 아무것도 지우지 않는다.
+ * 표시는 넘겨받는 동안(아주 잠깐)만 있다. 그사이 죽어 남은 표시는 지우지 않는다(acquireLock 시간 초과 글이 알려 준다)
+ */
+export function takeOverStaleLock(lockDir: string): boolean {
+  const mark = `${lockDir}.takeover`
+  try {
+    mkdirSync(mark)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
+    throw error
+  }
+  try {
+    if (!lockIsStale(lockDir)) return false
+    rmSync(lockDir, { recursive: true, force: true })
+    return true
+  } finally {
+    rmSync(mark, { recursive: true, force: true })
+  }
+}
+
 function acquireLock(timeoutMs: number): void {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     try {
       mkdirSync(LOCK)
-      writeFileSync(path.join(LOCK, 'pid'), String(process.pid))
+      // pid는 임시 파일에 다 쓴 뒤 이름을 바꿔 넣는다: 다른 쪽이 반쯤 쓴 pid를 읽지 않게
+      writeFileSync(path.join(LOCK, 'pid.tmp'), String(process.pid))
+      renameSync(path.join(LOCK, 'pid.tmp'), path.join(LOCK, 'pid'))
       return
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
-    if (lockIsStale(LOCK)) {
-      rmSync(LOCK, { recursive: true, force: true })
-      continue
+    if (takeOverStaleLock(LOCK)) continue
+    if (Date.now() > deadline) {
+      throw new Error(`잠금 폴더 ${LOCK}을 ${timeoutMs}ms 동안 잡지 못했다(${LOCK}.takeover가 오래 남아 있으면 지운다)`)
     }
-    if (Date.now() > deadline) throw new Error(`잠금 폴더 ${LOCK}을 ${timeoutMs}ms 동안 잡지 못했다`)
     sleep(250)
   }
 }

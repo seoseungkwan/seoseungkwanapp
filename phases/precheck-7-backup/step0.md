@@ -91,7 +91,7 @@ export const BACKUP_TABLES = [
 ```ts
 export async function makeBackup(sb: SupabaseClient, now: () => string): Promise<{ version: 1; made_at: string; tables: Record<string, unknown[]> }>  // 실패 → E-BACKUP-FAILED
 ```
-- 표마다 `select(정해 둔 칸)`만(`*` 금지). RLS가 내 병원 줄만 준다. 하나라도 실패하면 파일을 만들지 않는다(AC-032.4)
+- 표마다 `select(정해 둔 칸)`만(`*` 금지) 한다. 서버는 한 번에 정해 둔 줄 수(기본 1,000줄)까지만 돌려주므로, 기본 키 순서(`order`)로 `range(from, from + PAGE - 1)`씩 나눠 빈 페이지가 올 때까지 읽어 합친다(`from`은 받은 줄 수만큼 늘린다. 서버 한도가 PAGE보다 작아도 빠지지 않게). RLS가 내 병원 줄만 준다. 한 페이지라도 실패하면 파일을 만들지 않는다(AC-032.4)
 
 ### 3. 되돌려 넣기 SQL (`src/lib/backup/restoreSql.ts`)
 ```ts
@@ -107,7 +107,7 @@ export function restoreSql(backup: unknown): string   // 모양 검사 → 표�
 - 오류 번호 `E-BACKUP-FAILED`
 
 ### 5. 시험
-- `backup.test.ts`(가짜 supabase: 칸·표 목록·건수 표 없음·실패 → 파일 없음: AC-032.1·032.4), `restoreSql.test.ts`(`'`·`$$`·`;`·`\`·줄바꿈·`--`가 든 값의 SQL 글자 모양, jsonb, NUL 거절, 모르는 표·칸 거절)
+- `backup.test.ts`(가짜 supabase: 칸·표 목록·건수 표 없음·실패 → 파일 없음: AC-032.1·032.4. 가짜가 한 번에 2줄만 줄 때 5줄 표를 다 합치고, 두 번째 페이지가 실패하면 파일이 없다), `restoreSql.test.ts`(`'`·`$$`·`;`·`\`·줄바꿈·`--`가 든 값의 SQL 글자 모양, jsonb, NUL 거절, 모르는 표·칸 거절)
 - `supabase/backup.test.ts`(AC-032.2): PGlite에 auth + 설정 + 건수 마이그레이션 → 가짜 병원 줄 넣기 → 백업 모양 만들기 → 새 빈 PGlite에 같은 마이그레이션 → `restoreSql` 실행(운영자 역할) → 줄이 같다. 병원 문구·문자 문구에 `'`·`$$`·`;`·`\`·줄바꿈과 `'); drop table public.hospitals; --`를 넣은 사례도 글자가 바이트까지 같고 `hospitals` 표가 그대로다
 - AC-032.3: 백업 JSON에 정해 둔 칸 밖 키·건수 표·기관기호 모양(8자리 숫자 칸)이 없다
 - `BackupButton.test.tsx`(jsdom)

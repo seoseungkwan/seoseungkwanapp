@@ -126,6 +126,7 @@ export function contactCounts(view: ContactView, today: string): ContactCount   
 export function checkContactCount(row: unknown): ContactCount
 export async function upsertContactCount(sb: SupabaseClient, row: ContactCount): Promise<void>
 ```
+- 건수는 화면에서 고른 기간·안쪽 탭과 상관없이 센다: F/U·정기 주사 두 명단 모두에서, 오늘까지 날짜가 온 것 전부(지난 것 포함) 중 연락함이 아닌 것. `contactCounts`에는 기간·탭으로 거르기 전의 전체 `ContactView`(두 `kind`를 다 불러 합친 것)를 넣는다. 두 명단을 다 불러온 뒤에만 올린다(한쪽 칸을 0으로 덮어쓰지 않게)
 - `OutsideCounts.tsx`: '연락 남은 건수' 칸(F/U·정기 주사 수, 마지막 바뀐 시각). 목업 화면 11
 
 ### 4. 탭과 확장 없는 곳
@@ -133,7 +134,7 @@ export async function upsertContactCount(sb: SupabaseClient, row: ContactCount):
 - 확장 없는 곳·휴대폰(AC-026.6): 명단 대신 연락 남은 건수만
 
 ### 5. 시험
-- `ContactScreen.test.tsx`(jsdom, 가짜 통로·Worker: AC-026.1·026.2·026.3·026.6), `rows/ContactRows.test.tsx`, `counts.test.ts`·`claimCounts.test.ts`(정수만·요청 몸통에 이름·전화 없음: AC-026.4), `OutsideCounts.test.tsx`, `page.test.tsx`, `jobs.test.ts`, `shell.test.tsx`(탭 순서), `guardrails.test.ts`(AC-026.5)
+- `ContactScreen.test.tsx`(jsdom, 가짜 통로·Worker: AC-026.1·026.2·026.3·026.6), `rows/ContactRows.test.tsx`, `counts.test.ts`·`claimCounts.test.ts`(정수만·요청 몸통에 이름·전화 없음, '오늘'·'다음 주'를 골라도·한 탭만 보고 있어도 지난 날짜와 다른 명단의 남은 수가 건수에 들어감: AC-026.4), `OutsideCounts.test.tsx`, `page.test.tsx`, `jobs.test.ts`, `shell.test.tsx`(탭 순서), `guardrails.test.ts`(AC-026.5)
 
 ## TDD 순서
 
