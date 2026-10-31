@@ -8,7 +8,7 @@ import { ui } from '@/components/ui/classes'
 import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
-import { ADMIN_ITEM, MENU } from './menu'
+import { ADMIN_ITEM, MENU, currentMenuLabel } from './menu'
 import { TabBar } from './TabBar'
 
 // 앱 틀 (REQ-008, design.md '앱 틀', UI_GUIDE '앱 화면' 앱 틀·탭·폰).
@@ -26,8 +26,10 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-const LABELS = ['대시보드', '통계', 'AI 리포트', '매출', '재고', '급여', '일일마감·보고', '월간 PDF', '설정']
-const NOT_READY = LABELS.filter((l) => l !== '대시보드')
+// 청구는 매출 바로 뒤(청구 사전점검 목업 '탭 자리', AC-006.4). 환자 연락은 TASK-26이 더한다
+const LABELS = ['대시보드', '통계', 'AI 리포트', '매출', '청구', '재고', '급여', '일일마감·보고', '월간 PDF', '설정']
+const READY = ['대시보드', '청구']
+const NOT_READY = LABELS.filter((l) => !READY.includes(l))
 const EMAIL = 'manager@example.com'
 const HOSPITAL = '가나 정형외과의원'
 
@@ -54,11 +56,25 @@ const nav = () => screen.getByRole('navigation', { name: '메뉴' })
 // 탭 줄의 항목(링크·준비 중 단추)을 화면 순서대로
 const tabItems = () => Array.from(nav().querySelectorAll<HTMLElement>('a, button'))
 const tab = (name: string) => within(nav()).getByText(name, { selector: 'span[data-label]' }).parentElement as HTMLElement
+const tipOfTab = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-describedby') as string) as HTMLElement
 
 describe('menu', () => {
-  it('AC-008.1: 시안 A 순서 — 대시보드만 화면이 있고 나머지는 아직 없다(href null)', () => {
+  it('AC-008.1·AC-006.4: 시안 A 순서에 청구(매출 뒤) — 대시보드·청구만 화면이 있고 나머지는 아직 없다(href null)', () => {
     expect(MENU.map((m) => m.label)).toEqual(LABELS)
-    expect(MENU.filter((m) => m.href !== null)).toEqual([{ label: '대시보드', href: '/dashboard' }])
+    expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
+      { label: '대시보드', href: '/dashboard' },
+      { label: '청구', href: '/claim' },
+    ])
+  })
+
+  it('AC-006.4: 지금 탭 — /claim과 /claim/*은 청구, 설치·연결 확인(/claim/setup)은 목업처럼 설정 자리', () => {
+    expect(currentMenuLabel('/dashboard')).toBe('대시보드')
+    expect(currentMenuLabel('/claim')).toBe('청구')
+    expect(currentMenuLabel('/claim/close')).toBe('청구')
+    expect(currentMenuLabel('/claim/setup')).toBe('설정')
+    expect(currentMenuLabel('/claim/setup/x')).toBe('설정')
+    expect(currentMenuLabel('/claimed')).toBeNull()
+    expect(currentMenuLabel('/admin')).toBeNull()
   })
 
   it('AC-008.2: 관리자 탭은 /admin', () => {
@@ -67,12 +83,15 @@ describe('menu', () => {
 })
 
 describe('TabBar', () => {
-  it('AC-008.1: nav "메뉴" 안에 시안 A 순서대로, 대시보드만 링크이고 지금 화면이라 aria-current="page"', () => {
+  it('AC-008.1·AC-006.4: nav "메뉴" 안에 시안 A 순서대로, 대시보드·청구만 링크이고 대시보드가 지금 화면이라 aria-current="page"', () => {
     render(<TabBar isAdmin={false} />)
     expect(nav().tagName).toBe('NAV')
     expect(tabItems().map((el) => el.textContent)).toEqual(LABELS)
     const links = within(nav()).getAllByRole('link')
-    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([['대시보드', '/dashboard']])
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['대시보드', '/dashboard'],
+      ['청구', '/claim'],
+    ])
     expect(links[0].getAttribute('aria-current')).toBe('page')
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
   })
@@ -105,6 +124,30 @@ describe('TabBar', () => {
     render(<TabBar isAdmin={false} />)
     expect(within(nav()).queryByText('관리자')).toBeNull()
     expect(nav().querySelectorAll('[aria-hidden="true"].w-px')).toHaveLength(0)
+  })
+
+  it.each(['/claim', '/claim/close'])('AC-006.4: %s에서는 [청구] /claim 링크가 지금 탭(aria-current="page")이고 하나뿐이다', (path) => {
+    pathname.mockReturnValue(path)
+    render(<TabBar isAdmin />)
+    const claim = within(nav()).getByRole('link', { name: '청구' })
+    expect(claim.getAttribute('href')).toBe('/claim')
+    expect(claim.getAttribute('aria-current')).toBe('page')
+    hasAll(claim, 'text-accent font-bold after:bg-accent')
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
+  })
+
+  it('AC-006.4: /claim/setup에서는 목업처럼 [설정] 자리가 지금 탭이다 — 설정 화면이 아직 없어 링크가 아니고 표시만(준비 중), 청구는 지금 탭이 아니다', () => {
+    pathname.mockReturnValue('/claim/setup')
+    render(<TabBar isAdmin={false} />)
+    const settings = tab('설정')
+    expect(settings.tagName).toBe('BUTTON')
+    expect(settings.getAttribute('aria-disabled')).toBe('true')
+    expect(settings.getAttribute('aria-current')).toBe('page')
+    hasAll(settings, 'text-accent font-bold after:bg-accent')
+    hasNone(settings, 'text-ink-2 font-medium')
+    expect(tipOfTab(settings).textContent).toBe('준비 중')
+    expect(within(nav()).getByRole('link', { name: '청구' }).hasAttribute('aria-current')).toBe(false)
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
   })
 
   it('AC-008.1·AC-008.2: /admin에서는 [관리자]가 지금 탭이고 대시보드는 아니다', () => {

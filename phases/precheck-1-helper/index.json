@@ -41,7 +41,8 @@
     {
       "step": 6,
       "name": "setup-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "TASK-6 설치·연결 확인: /claim/setup(SetupScreen, clinicName=me.hospital.name; 5단계 확장→도우미→연결→비트 자료 읽기→요양기관기호; hello마다 bit.check 자동, bit.register 뒤 다시 확인; busy=화면6 카드; '비트 설치 위치' 줄은 bit.check가 경로를 안 줘서 뺌). components/claim/useBridge({state, hello, helloError, helperUpdateAvailable, call, stream, onProgress, retry}; retry는 ready면 같은 포트, 아니면 새 connectScreenBridge; helloError=상태가 connecting인 채 hello 실패 → 3단계 ✗+[다시 확인]). maskInstitution. setup/links.ts(HELPER_RELEASES_URL, EXTENSION_STORE_URL=null). menu.ts 청구 /claim(매출 뒤), /claim/setup은 설정 탭이 현재. errors.ts에 E-BIT-*·E-STORE-FAILED/BROKEN·isErrorCode; 문구가 설치 화면용('아래 1번에서…')이라 TASK-13은 다시 쓰거나 맥락을 더할 것. /claim은 자리만 있는 ClaimEntry(TASK-13·19가 바꿈). [메모: 확장이 protocol 불일치를 E-BRIDGE-REJECTED로 거절 → update-extension으로 보내는 게 맞음(TASK-4 몫); 붙은 상태에서 다시 확인 hello 거절 시 ready로 남음]"
     }
   ]
 }
