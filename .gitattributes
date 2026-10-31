@@ -1,0 +1,2 @@
+# 병렬 워크트리 브랜치의 TDD 기록을 합칠 때 줄 단위로 모두 남기려고 union 합치기를 쓴다
+specs/*/tdd-log.jsonl merge=union
