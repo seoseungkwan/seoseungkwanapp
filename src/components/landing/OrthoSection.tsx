@@ -1,80 +1,131 @@
 import base from './base.module.css'
 import styles from './OrthoSection.module.css'
 
-// 카드 4장: 제목·설명 + 숫자 조각(기간 · "예시" · 두 줄). 조각 값은 승인 시안 그대로인 예시다
-const TILES: { title: string; desc: string; period: string; rows: [label: string, value: string][] }[] = [
+// 비교표 한 열: 이름 · 보는 숫자 · 기준 · 예시 값 쌍(승인 시안 그대로인 예시).
+// PC 표(열 4개)와 휴대폰 표(줄 4개)가 이 배열 하나에서 나온다(design.md '정형외과 표' — 표는 CSS로 뒤집을 수 없다)
+const ORTHO: { name: string; sees: string; basis: string; pairs: [label: string, value: string][] }[] = [
   {
-    title: '주사',
-    desc: '주사 치료 수와 F/U',
-    period: '이번 달',
-    rows: [
+    name: '주사',
+    sees: '주사 치료 수와 F/U',
+    basis: '이번 달',
+    pairs: [
       ['주사 치료', '142건'],
       ['F/U', '37건'],
     ],
   },
   {
-    title: '물리치료',
-    desc: '물리치료 내원 환자 수',
-    period: '오늘',
-    rows: [
+    name: '물리치료',
+    sees: '물리치료 내원 환자 수',
+    basis: '오늘',
+    pairs: [
       ['오전', '21명'],
       ['오후', '17명'],
     ],
   },
   {
-    title: '비급여',
-    desc: '비급여 치료 내역',
-    period: '이번 달',
-    rows: [
+    name: '비급여',
+    sees: '비급여 치료 내역',
+    basis: '이번 달',
+    pairs: [
       ['도수치료', '86건'],
       ['체외충격파', '31건'],
     ],
   },
   {
-    title: '월말 보고',
-    desc: '한 장으로 받는 월간 보고',
-    period: '10월',
-    rows: [
+    name: '월말 보고',
+    sees: '한 장으로 받는 월간 보고',
+    basis: '10월',
+    pairs: [
       ['보고서', 'PDF 1장'],
       ['AI 분석', '포함'],
     ],
   },
 ]
 
-// 정형외과·통증 의원 섹션(#ortho) (specs/landing-v2 AC-108.3): 제목 → 카드 4장(글 | 숫자 조각).
-// 카드 모양은 base .card·.group이 정하고, .orthoCard는 안쪽 배치만 정한다
+// 값 쌍: 이름 | 값 양 끝 한 줄
+function Pairs({ pairs }: { pairs: [label: string, value: string][] }) {
+  return pairs.map(([label, value]) => (
+    <span key={label} className={styles.kv}>
+      <span>{label}</span>
+      <b className={styles.value}>{value}</b>
+    </span>
+  ))
+}
+
+// 정형외과·통증 의원 섹션(#ortho, 흰 바탕) (specs/b2b-redesign AC-209.2, 시안 screens.mjs landingPC·landingPhone #ortho).
+// 머리(h2 1~6칸 · 안내 7~11칸) → PC 비교표(768px 이상) · 휴대폰 표(768px 미만). 카드·그림이 없다
 export default function OrthoSection() {
   return (
     <section id="ortho" className={base.sec}>
-      <div className={`${base.wrap} ${base.stack}`}>
-        <div className={base.head}>
-          <h2 className={base.tH2}>정형외과·통증 의원을 위해 만들었습니다</h2>
-          <p className={base.tLead}>
+      <div className={base.wrap}>
+        <div className={`${base.grid} ${styles.head}`}>
+          <h2 className={`${base.tHeading} ${styles.title}`}>정형외과·통증 의원을 위해 만들었습니다</h2>
+          <p className={styles.lead}>
             척추·관절 환자 흐름, 도수·물리치료 처방, 치료사 생산성까지. 정형외과에서 매일 보는 숫자에 맞췄습니다.
           </p>
         </div>
-        <ul className={`${base.grid4} ${base.group}`}>
-          {TILES.map(({ title, desc, period, rows }) => (
-            <li key={title} className={`${base.card} ${styles.orthoCard}`}>
-              <div className={styles.text}>
-                <h3 className={base.tH3}>{title}</h3>
-                <p className={base.tBody}>{desc}</p>
-              </div>
-              <div aria-hidden="true" className={styles.snip}>
-                <div className={styles.snipHead}>
-                  <span>{period}</span>
-                  <span>예시</span>
-                </div>
-                {rows.map(([label, value]) => (
-                  <div key={label} className={styles.snipRow}>
-                    <span>{label}</span>
-                    <b>{value}</b>
-                  </div>
-                ))}
-              </div>
-            </li>
-          ))}
-        </ul>
+
+        <table className={`${styles.table} ${base.pcOnly}`}>
+          <thead>
+            <tr>
+              <td className={styles.corner} />
+              {ORTHO.map((col) => (
+                <th key={col.name} scope="col" className={styles.colHead}>
+                  {col.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row" className={styles.rowHead}>
+                보는 숫자
+              </th>
+              {ORTHO.map((col) => (
+                <td key={col.name} className={styles.cell}>
+                  {col.sees}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className={styles.rowHead}>
+                기준
+              </th>
+              {ORTHO.map((col) => (
+                <td key={col.name} className={styles.cell}>
+                  {col.basis}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className={styles.rowHead}>
+                예시
+              </th>
+              {ORTHO.map((col) => (
+                <td key={col.name} className={styles.cell}>
+                  <Pairs pairs={col.pairs} />
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+
+        <table className={`${styles.mobile} ${base.phoneOnly}`}>
+          <caption className={styles.caption}>예시 값</caption>
+          <tbody>
+            {ORTHO.map((col) => (
+              <tr key={col.name} className={styles.mRow}>
+                <th scope="row" className={styles.mRowHead}>
+                  {col.name}
+                  <span className={styles.mBasis}>{col.basis}</span>
+                </th>
+                <td className={styles.mCell}>
+                  <Pairs pairs={col.pairs} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   )

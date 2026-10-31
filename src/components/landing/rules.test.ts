@@ -10,7 +10,7 @@ const ROOT = process.cwd()
 const DIR = join(ROOT, 'src/components/landing')
 
 // AC-212.1 검사 목록: 새 규칙으로 고친 랜딩 모듈. TASK마다 늘고, TASK-14에서 랜딩 폴더 전체 읽기로 바꾼다
-const CHECKED = ['base.module.css', 'SiteHeader.module.css', 'SiteFooter.module.css', 'Hero.module.css']
+const CHECKED = ['base.module.css', 'SiteHeader.module.css', 'SiteFooter.module.css', 'Hero.module.css', 'AiSection.module.css', 'OrthoSection.module.css']
 
 // ---------- CSS 읽기 도우미 ----------
 
@@ -908,5 +908,251 @@ describe('AC-208.2: Hero.module.css — 칸·여백·제목 단계·장식 없�
         .map((d) => `${r.selectors.join(', ')} { ${d.prop}: ${d.value} }`),
     ])
     expect(deco).toEqual([])
+  })
+})
+
+// ---------- AC-209.1(CSS 부분): AiSection.module.css 값 ----------
+
+const aiSheet = () => parseCss(readLanding('AiSection.module.css'))
+const LINE = '1px solid var(--line)'
+
+describe('AC-209.1: AiSection.module.css — 칸·약속·리포트 패널·채팅 칸', () => {
+  it('AC-209.1: 1024px 이상 12칸(base .grid)에서 글(.text) 1~4칸 · 리포트(.report) 5~12칸이고, 미만은 칸 지정 없이 쌓이며(순서 바꾸기 없음) 사이가 띄워진다', () => {
+    const sheet = aiSheet()
+    expectAt('.grid', 1024, { 'grid-template-columns': 'repeat(12, minmax(0, 1fr))', 'column-gap': '24px' })
+    expect(valueOf(sheet, '.text', 'grid-column', 1024)).toBe('1 / 5')
+    expect(valueOf(sheet, '.report', 'grid-column', 1024)).toBe('5 / 13')
+    for (const name of ['.text', '.report']) expect(valueOf(sheet, name, 'min-width', 1024), `${name} min-width`).toBe('0')
+    for (const bp of [0, 768] as Bp[]) {
+      for (const name of ['.text', '.report']) expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
+      expect(px(valueOf(sheet, '.layout', 'row-gap', bp)), `.layout row-gap @${bp}`).toBeGreaterThan(0)
+    }
+    const reorder = sheet.rules.flatMap((r) => r.decls.filter((d) => /^(?:order|grid-row(?:-[\w-]+)?|grid-area)$/.test(d.prop)))
+    expect(reorder).toEqual([])
+  })
+
+  it('AC-209.1: 제목은 base .tHeading(heading-m → heading(768))이고, 안내(.lead)는 ink-2·위 12px다', () => {
+    const sheet = aiSheet()
+    expectAt('.tHeading', 0, { 'font-size': 'var(--fs-heading-m)', 'line-height': 'var(--lh-heading-m)' })
+    expectAt('.tHeading', 768, { 'font-size': 'var(--fs-heading)', 'line-height': 'var(--lh-heading)' })
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.lead', 'color', bp), `.lead color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.lead', 'margin-top', bp), `.lead margin-top @${bp}`).toBe('12px')
+    }
+  })
+
+  it('AC-209.1: 약속(768px 이상) — .points 위 1px line · .point마다 아래 1px line(위아래 12px), dt(.pointTitle) 600 · dd(.pointDesc) small muted', () => {
+    const sheet = aiSheet()
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.points', 'display', bp), `.points display @${bp}`).toBe('block')
+      expect(valueOf(sheet, '.points', 'border-top', bp), `.points border-top @${bp}`).toBe(LINE)
+      expect(valueOf(sheet, '.point', 'border-bottom', bp), `.point border-bottom @${bp}`).toBe(LINE)
+      expect(valueOf(sheet, '.point', 'padding-block', bp), `.point padding-block @${bp}`).toBe('12px')
+      expect(valueOf(sheet, '.pointTitle', 'font-weight', bp), `.pointTitle font-weight @${bp}`).toBe('600')
+      expect(valueOf(sheet, '.pointTitle', 'color', bp), `.pointTitle color @${bp}`).toBe('var(--ink)')
+      expect(valueOf(sheet, '.pointDesc', 'display', bp), `.pointDesc display @${bp}`).toBe('block')
+      expect(valueOf(sheet, '.pointDesc', 'font-size', bp), `.pointDesc font-size @${bp}`).toBe('var(--fs-small)')
+      expect(valueOf(sheet, '.pointDesc', 'line-height', bp), `.pointDesc line-height @${bp}`).toBe('var(--lh-small)')
+      expect(valueOf(sheet, '.pointDesc', 'color', bp), `.pointDesc color @${bp}`).toBe('var(--muted)')
+      expect(valueOf(sheet, '.point::before', 'display', bp), `.point::before display @${bp}`).toBe('none')
+    }
+    expect(valueOf(sheet, '.points', 'margin-top', 1024)).toBe('32px')
+  })
+
+  it('AC-209.1: 약속(768px 미만) — dd가 숨고(display: none) dt가 2칸(repeat(2, minmax(0, 1fr)))으로 놓이며, 줄마다 앞에 4×4 accent 점(::before)이 있고 줄 선이 없다', () => {
+    const sheet = aiSheet()
+    expect(valueOf(sheet, '.pointDesc', 'display', 0)).toBe('none')
+    expect(valueOf(sheet, '.points', 'display', 0)).toBe('grid')
+    expect(valueOf(sheet, '.points', 'grid-template-columns', 0)).toBe('repeat(2, minmax(0, 1fr))')
+    expect(valueOf(sheet, '.points', 'border-top', 0) ?? '0').toBe('0')
+    expect(valueOf(sheet, '.point', 'border-bottom', 0) ?? '0').toBe('0')
+    expect(valueOf(sheet, '.point', 'position', 0)).toBe('relative')
+    expect(px(valueOf(sheet, '.point', 'padding-left', 0)), '점 자리').toBeGreaterThanOrEqual(8)
+    for (const [prop, value] of Object.entries({
+      content: '""',
+      position: 'absolute',
+      width: '4px',
+      height: '4px',
+      background: 'var(--accent)',
+    })) {
+      expect(valueOf(sheet, '.point::before', prop, 0), `.point::before ${prop}`).toBe(value)
+    }
+  })
+
+  it('AC-209.1: 리포트 패널(.report)은 surface 바탕·1px line 테두리·4px(var(--r-control)) 모서리 하나이고, 머리(.reportHead)는 h3와 칩을 양 끝에 둔 한 줄이다', () => {
+    const sheet = aiSheet()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.report', 'background', bp), `.report background @${bp}`).toBe('var(--surface)')
+      expect(valueOf(sheet, '.report', 'border', bp), `.report border @${bp}`).toBe(LINE)
+      expect(valueOf(sheet, '.report', 'border-radius', bp), `.report border-radius @${bp}`).toBe('var(--r-control)')
+      expect(valueOf(sheet, '.reportHead', 'display', bp), `.reportHead display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.reportHead', 'align-items', bp), `.reportHead align-items @${bp}`).toBe('center')
+      expect(valueOf(sheet, '.reportHead', 'justify-content', bp), `.reportHead justify-content @${bp}`).toBe('space-between')
+    }
+  })
+
+  it('AC-209.1: 몸(.reportBody, 위 1px line)은 1024px 이상 minmax(0, 1fr) 300px 두 칸이고 채팅 칸(.chat)은 왼쪽 1px line, 미만은 한 칸이고 채팅 칸은 위 1px line이다', () => {
+    const sheet = aiSheet()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.reportBody', 'display', bp), `.reportBody display @${bp}`).toBe('grid')
+      expect(valueOf(sheet, '.reportBody', 'border-top', bp), `.reportBody border-top @${bp}`).toBe(LINE)
+    }
+    expect(valueOf(sheet, '.reportBody', 'grid-template-columns', 1024)).toBe('minmax(0, 1fr) 300px')
+    for (const bp of [0, 768] as Bp[]) {
+      expect(valueOf(sheet, '.reportBody', 'grid-template-columns', bp), `.reportBody 칸 @${bp}`).toBe('minmax(0, 1fr)')
+    }
+    expect(valueOf(sheet, '.chat', 'border-top', 768)).toBe(LINE)
+    expect(valueOf(sheet, '.chat', 'border-left', 768) ?? '0').toBe('0')
+    expect(valueOf(sheet, '.chat', 'border-top', 1024)).toBe('0')
+    expect(valueOf(sheet, '.chat', 'border-left', 1024)).toBe(LINE)
+  })
+
+  it('AC-209.1: 항목(.item)은 768px 이상 칩 | 글 두 칸(미만은 한 칸), 줄 사이 아래 1px line(마지막 줄 없음)이고, 칩(.tag)은 글자 폭만큼, 근거(.basis)는 muted다', () => {
+    const sheet = aiSheet()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.item', 'display', bp), `.item display @${bp}`).toBe('grid')
+      expect(valueOf(sheet, '.item', 'border-bottom', bp), `.item border-bottom @${bp}`).toBe(LINE)
+      expect(valueOf(sheet, '.item:last-child', 'border-bottom', bp), `.item:last-child @${bp}`).toBe('0')
+      expect(valueOf(sheet, '.tag', 'justify-self', bp), `.tag justify-self @${bp}`).toBe('start')
+      expect(valueOf(sheet, '.basis', 'color', bp), `.basis color @${bp}`).toBe('var(--muted)')
+      expect(valueOf(sheet, '.itemBody', 'min-width', bp), `.itemBody min-width @${bp}`).toBe('0')
+    }
+    expect(valueOf(sheet, '.item', 'grid-template-columns', 0)).toBe('minmax(0, 1fr)')
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.item', 'grid-template-columns', bp), `.item 칸 @${bp}`).toBe('76px minmax(0, 1fr)')
+    }
+  })
+
+  it('AC-209.1: 채팅 — 말풍선(.bubble)은 오른쪽·canvas·1px line·4px·small, 답 쓰는 중(.typing)은 muted, 물어보기 칸(.ask)은 40px·1px line-strong 테두리·4px, 보내기(.send)는 32px accent 바탕·surface 글자다', () => {
+    const sheet = aiSheet()
+    const want: Record<string, Record<string, string>> = {
+      '.chat': { display: 'flex', 'flex-direction': 'column' },
+      '.bubble': {
+        'align-self': 'flex-end',
+        background: 'var(--canvas)',
+        border: LINE,
+        'border-radius': 'var(--r-control)',
+        'font-size': 'var(--fs-small)',
+        'line-height': 'var(--lh-small)',
+      },
+      '.typing': { color: 'var(--muted)' },
+      '.ask': {
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'space-between',
+        height: '40px',
+        border: '1px solid var(--line-strong)',
+        'border-radius': 'var(--r-control)',
+        color: 'var(--muted)',
+      },
+      '.send': {
+        width: '32px',
+        height: '32px',
+        'border-radius': 'var(--r-control)',
+        background: 'var(--accent)',
+        color: 'var(--surface)',
+      },
+    }
+    for (const bp of [768, 1024] as Bp[]) {
+      for (const [selector, props] of Object.entries(want)) {
+        for (const [prop, value] of Object.entries(props)) {
+          expect(valueOf(sheet, selector, prop, bp), `${selector} ${prop} @${bp}`).toBe(value)
+        }
+      }
+    }
+  })
+})
+
+// ---------- AC-209.2(CSS 부분): OrthoSection.module.css 값 ----------
+
+const orthoSheet = () => parseCss(readLanding('OrthoSection.module.css'))
+
+describe('AC-209.2: OrthoSection.module.css — 머리 칸·PC 비교표·휴대폰 표', () => {
+  it('AC-209.2: 머리(.head)는 1024px 이상 h2(.title) 1~6칸 · 안내(.lead) 7~11칸, 아래 맞춤(align-items: end)이고 미만은 쌓인다(사이가 띄워짐)', () => {
+    const sheet = orthoSheet()
+    expect(valueOf(sheet, '.title', 'grid-column', 1024)).toBe('1 / 7')
+    expect(valueOf(sheet, '.lead', 'grid-column', 1024)).toBe('7 / 12')
+    expect(valueOf(sheet, '.head', 'align-items', 1024)).toBe('end')
+    for (const bp of [0, 768] as Bp[]) {
+      for (const name of ['.title', '.lead']) expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
+      expect(px(valueOf(sheet, '.head', 'row-gap', bp)), `.head row-gap @${bp}`).toBeGreaterThan(0)
+    }
+    for (const bp of BPS) expect(valueOf(sheet, '.lead', 'color', bp), `.lead color @${bp}`).toBe('var(--ink-2)')
+  })
+
+  it('AC-209.2: PC 표(.table)는 폭 100%·칸 붙임(border-collapse: collapse)·위 32px이고, 머리 칸(.colHead)은 subtitle 600, 머리 줄(.colHead·.corner)은 아래 1px ink 선이다', () => {
+    const sheet = orthoSheet()
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.table', 'width', bp), `.table width @${bp}`).toBe('100%')
+      expect(valueOf(sheet, '.table', 'border-collapse', bp), `.table border-collapse @${bp}`).toBe('collapse')
+      expect(valueOf(sheet, '.table', 'margin-top', bp), `.table margin-top @${bp}`).toBe('32px')
+      expect(valueOf(sheet, '.colHead', 'font-size', bp), `.colHead font-size @${bp}`).toBe('var(--fs-subtitle)')
+      expect(valueOf(sheet, '.colHead', 'line-height', bp), `.colHead line-height @${bp}`).toBe('var(--lh-subtitle)')
+      expect(valueOf(sheet, '.colHead', 'font-weight', bp), `.colHead font-weight @${bp}`).toBe('600')
+      for (const name of ['.colHead', '.corner']) {
+        expect(valueOf(sheet, name, 'border-bottom', bp), `${name} border-bottom @${bp}`).toBe('1px solid var(--ink)')
+      }
+    }
+  })
+
+  it('AC-209.2: 줄 머리(.rowHead)는 small 500 muted·120px이고, 칸(.rowHead·.cell)은 아래 1px line·위 맞춤이며 모듈 어디에도 세로 선·네 변 테두리가 없다', () => {
+    const sheet = orthoSheet()
+    for (const bp of [768, 1024] as Bp[]) {
+      for (const [prop, value] of Object.entries({
+        'font-size': 'var(--fs-small)',
+        'line-height': 'var(--lh-small)',
+        'font-weight': '500',
+        color: 'var(--muted)',
+        width: '120px',
+      })) {
+        expect(valueOf(sheet, '.rowHead', prop, bp), `.rowHead ${prop} @${bp}`).toBe(value)
+      }
+      for (const name of ['.rowHead', '.cell']) {
+        expect(valueOf(sheet, name, 'border-bottom', bp), `${name} border-bottom @${bp}`).toBe(LINE)
+        expect(valueOf(sheet, name, 'vertical-align', bp), `${name} vertical-align @${bp}`).toBe('top')
+        expect(valueOf(sheet, name, 'text-align', bp), `${name} text-align @${bp}`).toBe('left')
+      }
+    }
+    const sides = sheet.rules.flatMap((r) =>
+      r.decls
+        .filter((d) => /^border(?:-(?:left|right|inline(?:-start|-end)?))?(?:-width|-style|-color)?$/.test(d.prop) && d.value !== '0')
+        .map((d) => `${r.selectors.join(', ')} { ${d.prop}: ${d.value} }`),
+    )
+    expect(sides).toEqual([])
+  })
+
+  it('AC-209.2: 값 쌍(.kv)은 이름 | 값 양 끝 한 줄(ink-2)이고 값(.value)은 600 ink, 쌍 사이 4px다', () => {
+    const sheet = orthoSheet()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.kv', 'display', bp), `.kv display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.kv', 'justify-content', bp), `.kv justify-content @${bp}`).toBe('space-between')
+      expect(valueOf(sheet, '.kv', 'color', bp), `.kv color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.value', 'font-weight', bp), `.value font-weight @${bp}`).toBe('600')
+      expect(valueOf(sheet, '.value', 'color', bp), `.value color @${bp}`).toBe('var(--ink)')
+      expect(valueOf(sheet, '.kv + .kv', 'margin-top', bp), `.kv + .kv margin-top @${bp}`).toBe('4px')
+    }
+  })
+
+  it('AC-209.2: 휴대폰 표(.mobile) — caption(.caption)은 caption muted 왼쪽 맞춤, 줄 머리(.mRowHead)는 이름 600 ink · 아래 기준(.mBasis, 블록) caption muted, 칸은 아래 1px line, 첫 줄 위 1px ink 선이다', () => {
+    const sheet = orthoSheet()
+    const want: Record<string, Record<string, string>> = {
+      '.mobile': { width: '100%', 'border-collapse': 'collapse' },
+      '.caption': { 'font-size': 'var(--fs-caption)', 'line-height': 'var(--lh-caption)', color: 'var(--muted)', 'text-align': 'left' },
+      '.mRowHead': { 'font-weight': '600', color: 'var(--ink)', 'text-align': 'left', 'vertical-align': 'top', 'border-bottom': LINE },
+      '.mBasis': {
+        display: 'block',
+        'font-size': 'var(--fs-caption)',
+        'line-height': 'var(--lh-caption)',
+        'font-weight': '400',
+        color: 'var(--muted)',
+      },
+      '.mCell': { 'border-bottom': LINE, 'vertical-align': 'top' },
+      '.mRow:first-child > *': { 'border-top': '1px solid var(--ink)' },
+    }
+    for (const [selector, props] of Object.entries(want)) {
+      for (const [prop, value] of Object.entries(props)) {
+        expect(valueOf(sheet, selector, prop, 0), `${selector} ${prop}`).toBe(value)
+      }
+    }
   })
 })
