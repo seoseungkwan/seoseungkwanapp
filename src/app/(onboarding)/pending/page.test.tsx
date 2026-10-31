@@ -37,29 +37,33 @@ describe('/pending 화면', () => {
     expect(guard).toHaveBeenCalledExactlyOnceWith('/pending')
   })
 
-  it('AC-005.1: pending — 위쪽 띠(로고·[서비스 이름]·[로그아웃])와 본문에 승인 대기 카드', async () => {
+  it('AC-005.1·AC-216.1: pending — 위쪽 띠(로고·[로그아웃])와 본문에 승인 대기 카드(본문 [로그아웃] 없음)', async () => {
     render(await PendingPage())
     const banner = screen.getByRole('banner')
-    expect(banner.textContent).toBe('[서비스 이름]로그아웃')
+    expect(banner.textContent).toBe('로그아웃')
     expect(within(banner).getAllByRole('button').map((b) => b.textContent)).toEqual(['로그아웃'])
     expect(within(banner).queryAllByRole('link')).toHaveLength(0)
     const main = screen.getByRole('main')
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('신청을 확인하고 있습니다')
-    expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['상태 다시 확인', '로그아웃'])
+    // 본문 [로그아웃]은 없다(AC-216.1) → 페이지의 [로그아웃]은 위 띠 하나
+    expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['상태 다시 확인'])
+    expect(screen.getAllByRole('button', { name: '로그아웃' })).toHaveLength(1)
     // 보낸 신청 내용은 guard가 읽은 내 병원 줄
     const summary = within(main).getByRole('region', { name: '보낸 신청 내용' })
     expect(within(summary).getByText('가나 정형외과의원')).toBeTruthy()
     expect(within(summary).getByText('manager@example.com')).toBeTruthy()
   })
 
-  it('AC-005.3: rejected — 같은 띠 [로그아웃]과 거절 카드, [상태 다시 확인]은 없다', async () => {
+  it('AC-005.3·AC-216.2: rejected — 같은 띠 [로그아웃]과 거절 카드, [상태 다시 확인]·본문 [로그아웃]은 없다', async () => {
     guard.mockResolvedValue(me({ ...HOSPITAL, status: 'rejected' }))
     render(await PendingPage())
     const banner = screen.getByRole('banner')
-    expect(banner.textContent).toBe('[서비스 이름]로그아웃')
+    expect(banner.textContent).toBe('로그아웃')
     const main = screen.getByRole('main')
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('가입이 승인되지 않았습니다')
-    expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['다른 계정으로 로그인', '로그아웃'])
+    // 본문 [로그아웃]은 없다(AC-216.2) → 페이지의 [로그아웃]은 위 띠 하나
+    expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['다른 계정으로 로그인'])
+    expect(screen.getAllByRole('button', { name: '로그아웃' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '상태 다시 확인' })).toBeNull()
   })
 

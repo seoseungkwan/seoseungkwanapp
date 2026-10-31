@@ -3,8 +3,11 @@ import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ui } from '@/components/ui/classes'
+import { DashboardPreview } from '@/components/preview/DashboardPreview'
+import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
+import { isBorderBox, nestedBoxes } from '@/testing/boxes'
+import { LoginAside } from './LoginAside'
 import { LoginCard } from './LoginCard'
 
 // 실제 Supabase에 붙지 않는다. 로그인 요청이 어떤 값으로 나가는지만 본다
@@ -17,6 +20,13 @@ const GOOGLE = { name: '구글로 시작하기' }
 const GOOGLE_AGAIN = { name: '다시 구글로 시작하기' }
 const IN_APP_TITLE = '크롬·엣지에서 열어 주세요'
 const PRIVACY = '환자 개인정보는 병원 PC 밖으로 나가지 않습니다'
+const PRIVACY_MORE = '환자 파일은 이 브라우저 안에서만 읽고, 서버에는 집계 숫자만 저장합니다.'
+const LEAD = '구글 계정으로 로그인합니다. 처음이면 가입 신청으로 이어집니다.'
+const NOTE = '처음 가입하면 관리자가 승인한 뒤부터 쓸 수 있습니다.'
+const INTRO = '로그인하면 우리 의원의 오늘 숫자, AI 리포트, 급여와 보고를 한 곳에서 이어서 봅니다.'
+const CHIPS = ['환자 통계', 'AI 리포트', '급여·인센티브', '일일마감·보고']
+// 시안 parts.mjs의 방패 아이콘(Icon shield) 첫 path
+const SHIELD_D = 'M8 1.75 3 3.6v3.9c0 3 2.1 5.5 5 6.75 2.9-1.25 5-3.75 5-6.75V3.6L8 1.75z'
 
 const googleButton = (name = GOOGLE) => screen.getByRole<HTMLButtonElement>('button', name)
 const loginSection = () => screen.getByRole('region', { name: '로그인' })
@@ -25,8 +35,12 @@ const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCU
 
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
-// 요소가 그 묶음(ui.*)의 클래스를 모두 가진다
+// 요소가 그 묶음(ds.*)의 클래스를 모두 가진다
 const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
+const expectClasses = (el: Element | null | undefined, ...wanted: string[]) =>
+  expect(el ? classesOf(el) : []).toEqual(expect.arrayContaining(wanted))
+// 테두리·바탕 클래스(border·border-t·bg-* …, 화면 폭 접두사 포함)
+const frameClasses = (el: Element) => classesOf(el).filter((c) => /^(?:[\w-]+:)?(?:border(?:-|$)|bg-)/.test(c))
 const ARBITRARY_COLOR = /\[#|rgba?\(|hsla?\(|color-mix\(/
 const noArbitraryColor = () => {
   for (const el of document.querySelectorAll('[class]')) expect(el.getAttribute('class') ?? '').not.toMatch(ARBITRARY_COLOR)
@@ -44,21 +58,10 @@ afterEach(() => {
 })
 
 describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
-  it('AC-003.1: 왼쪽 소개 — SIGN IN · 제목 · 설명 · 칩 4개(환자 통계·AI 리포트·급여·인센티브·일일마감·보고)', () => {
-    render(<LoginCard failed={false} />)
-    expect(screen.getByText('SIGN IN')).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('통증 의원 관리자를 위한AI 업무 도구')
-    expect(screen.getByText('로그인하면 우리 의원의 오늘 숫자, AI 리포트, 급여와 보고를 한 곳에서 이어서 봅니다.')).toBeTruthy()
-    const chips = ['환자 통계', 'AI 리포트', '급여·인센티브', '일일마감·보고'].map((t) => screen.getByText(t))
-    for (let i = 1; i < chips.length; i++) expect(isBefore(chips[i - 1], chips[i])).toBe(true)
-    // 소개가 로그인 카드보다 앞(왼쪽)
-    expect(isBefore(screen.getByText('SIGN IN'), loginSection())).toBe(true)
-  })
-
   it('AC-003.1: 로그인 카드 — 제목 "로그인" · 설명 · [구글로 시작하기] · 개인정보 안내, 카드 밖 아래에 승인 안내', () => {
     render(<LoginCard failed={false} />)
     const section = loginSection()
-    const title = within(section).getByRole('heading', { level: 2, name: '로그인' })
+    const title = within(section).getByRole('heading', { level: 1, name: '로그인' })
     const lead = within(section).getByText('구글 계정으로 로그인합니다. 처음이면 가입 신청으로 이어집니다.')
     const button = within(section).getByRole('button', GOOGLE)
     const privacy = within(section).getByText(PRIVACY)
@@ -77,43 +80,115 @@ describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
     expect(button.querySelector('svg')?.closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
-  it('AC-003.1·AC-013.2·AC-013.3: 모양 — [구글로 시작하기]는 주 단추 전체 폭, 기능 칩 4개는 범주(중립) 칩, 카드는 ui.card, 임의 색 없음', () => {
+  it('AC-214.1: 상자(카드) 없이 이 순서 — h1 "로그인" → 설명 → [구글로 시작하기] → 안내 줄(방패·두 문장) → 승인 안내, 모두 <section aria-labelledby> 하나 안(테두리·바탕 없음)', () => {
+    const { container } = render(<LoginCard failed={false} />)
+    const section = loginSection()
+    expect(section.tagName).toBe('SECTION')
+    expect(container.querySelectorAll('section')).toHaveLength(1)
+    expect(frameClasses(section)).toEqual([])
+    const title = within(section).getByRole('heading', { level: 1, name: '로그인' })
+    expect(section.getAttribute('aria-labelledby')).toBe(title.id)
+    expect(container.querySelectorAll('h1, h2, h3')).toHaveLength(1)
+    const lead = within(section).getByText(LEAD)
+    expect(lead.tagName).toBe('P')
+    const button = within(section).getByRole('button', GOOGLE)
+    const shield = section.querySelector(`path[d="${SHIELD_D}"]`)?.closest('svg') as Element
+    expect(shield).not.toBeNull()
+    const order = [title, lead, button, shield, within(section).getByText(PRIVACY), within(section).getByText(PRIVACY_MORE), within(section).getByText(NOTE)]
+    for (let i = 1; i < order.length; i++) expect(isBefore(order[i - 1], order[i]), String(i)).toBe(true)
+    // 카드 상자가 없다: 그린 폼 안에 네 변 테두리 상자가 하나도 없다
+    expect([container, ...container.querySelectorAll('*')].filter(isBorderBox).map((el) => el.outerHTML.slice(0, 80))).toEqual([])
+  })
+
+  it('AC-214.1: "SIGN IN"·기능 칩 4개·두 줄 소개 제목·소개 문장이 없다(소개 문장은 LoginAside), 임의 색 없음', () => {
     render(<LoginCard failed={false} />)
-    const button = googleButton()
-    hasAll(button, ui.button.primary)
-    expect(classesOf(button)).toContain('w-full')
-    for (const label of ['환자 통계', 'AI 리포트', '급여·인센티브', '일일마감·보고']) {
-      const chip = screen.getByText(label)
-      hasAll(chip, ui.chip.neutral)
-      // 색 칩(완료·진행중·거절 바탕, 강조색)이 아니다
-      expect(classesOf(chip).filter((c) => c.endsWith('-soft') || c.includes('accent')), label).toEqual([])
-    }
-    const card = loginSection().firstElementChild as HTMLElement
-    hasAll(card, ui.card)
-    expect(card.contains(button)).toBe(true)
-    expect(card.contains(screen.getByText(PRIVACY))).toBe(true)
+    expect(screen.queryByText('SIGN IN')).toBeNull()
+    for (const chip of CHIPS) expect(screen.queryByText(chip), chip).toBeNull()
+    expect(document.body.textContent).not.toContain('통증 의원 관리자를 위한')
+    expect(document.body.textContent).not.toContain(INTRO)
+    expect(document.querySelector('br')).toBeNull()
     noArbitraryColor()
   })
 
-  it('AC-003.1·AC-013.3: 글자 — SIGN IN은 caption 600 muted, 제목 title 600, 설명 body ink-2, 개인정보 안내는 위 1px 선 + muted 방패 + table ink-2', () => {
+  it('AC-214.1: 글자 — h1은 heading-m → heading(768px 이상) 600 ink, 설명은 ink-2(위 8px), 승인 안내는 caption muted(위 16px)', () => {
     render(<LoginCard failed={false} />)
-    expect(classesOf(screen.getByText('SIGN IN'))).toEqual(expect.arrayContaining(['text-caption', 'font-semibold', 'text-muted']))
-    expect(classesOf(screen.getByRole('heading', { level: 1 }))).toEqual(expect.arrayContaining(['text-title', 'font-semibold']))
-    expect(classesOf(screen.getByRole('heading', { level: 2, name: '로그인' }))).toEqual(
-      expect.arrayContaining(['text-title-sm', 'font-semibold']),
-    )
-    expect(
-      classesOf(screen.getByText('로그인하면 우리 의원의 오늘 숫자, AI 리포트, 급여와 보고를 한 곳에서 이어서 봅니다.')),
-    ).toEqual(expect.arrayContaining(['text-body', 'text-ink-2']))
+    expectClasses(screen.getByRole('heading', { level: 1, name: '로그인' }), 'text-heading-m', 'md:text-heading', 'font-semibold', 'text-ink')
+    expectClasses(screen.getByText(LEAD), 'text-ink-2', 'mt-2')
+    expectClasses(screen.getByText(NOTE), 'text-caption', 'text-muted', 'mt-4')
+  })
+
+  it.each([
+    ['처음', false, GOOGLE],
+    ['다시 시작(failed)', true, GOOGLE_AGAIN],
+  ] as const)('AC-214.1: %s — 구글 단추는 ds.button.googleLarge 전체 폭(위 24px)이고 안에 GoogleMark 18(aria-hidden, 흰 사각형 없이) + 글자', (_name, failed, name) => {
+    render(<LoginCard failed={failed} />)
+    const button = googleButton(name)
+    hasAll(button, ds.button.googleLarge)
+    expectClasses(button, 'w-full', 'mt-6')
+    const [mark, label] = Array.from(button.children)
+    // 구글 G는 단추 바로 안(감싸는 흰 사각형 없음)
+    expect(mark?.tagName.toLowerCase()).toBe('svg')
+    expect(mark?.getAttribute('viewBox')).toBe('0 0 48 48')
+    expect(mark?.getAttribute('width')).toBe('18')
+    expect(mark?.getAttribute('height')).toBe('18')
+    expect(mark?.getAttribute('aria-hidden')).toBe('true')
+    expect(label?.textContent).toBe(name.name)
+    expect(button.children).toHaveLength(2)
+    expect(button.querySelector('.bg-surface')).toBeNull()
+  })
+
+  it('AC-214.1: 안내 줄 — 위 24px·위 1px line, 방패 16px(muted) + "환자 개인정보…"(small 600) + "환자 파일은…"(small muted)', () => {
+    render(<LoginCard failed={false} />)
     const privacy = screen.getByText(PRIVACY)
-    expect(classesOf(privacy)).toEqual(expect.arrayContaining(['text-table', 'text-ink-2']))
-    const box = privacy.closest('.border-t') as HTMLElement
-    expect(box).not.toBeNull()
-    expect(classesOf(box)).toContain('border-line')
-    expect(classesOf(box.querySelector('svg') as Element)).toContain('text-muted')
-    expect(classesOf(screen.getByText('처음 가입하면 관리자가 승인한 뒤부터 쓸 수 있습니다.'))).toEqual(
-      expect.arrayContaining(['text-caption', 'text-muted']),
-    )
+    expectClasses(privacy, 'text-small', 'font-semibold')
+    expectClasses(screen.getByText(PRIVACY_MORE), 'text-small', 'text-muted')
+    const row = privacy.closest('.border-t') as HTMLElement
+    expect(row).not.toBeNull()
+    expectClasses(row, 'mt-6', 'border-t', 'border-line', 'pt-6')
+    const shield = row.querySelector('svg') as Element
+    expect(shield.querySelector(`path[d="${SHIELD_D}"]`)).not.toBeNull()
+    expect(shield.getAttribute('width')).toBe('16')
+    expect(shield.getAttribute('aria-hidden')).toBe('true')
+    expectClasses(shield, 'text-muted')
+    expect(row.contains(screen.getByText(PRIVACY_MORE))).toBe(true)
+  })
+})
+
+// 상자 겹침(AC-204.7): 세 상태 모두 상자 안에 상자가 없다
+describe('AC-204.7: 로그인 폼 — 상자 안 상자 없음', () => {
+  it('AC-204.7: 일반 상태', () => {
+    const { container } = render(<LoginCard failed={false} />)
+    expect(screen.getByRole('button', GOOGLE)).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-204.7: 앱 안 브라우저 상태(안내 상자 + 읽기 전용 주소 칸)', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(KAKAO)
+    const { container } = render(<LoginCard failed={false} />)
+    expect(screen.getByText(IN_APP_TITLE)).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-204.7: failed 상태(오류 카드 + [다시 구글로 시작하기])', () => {
+    const { container } = render(<LoginCard failed />)
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+describe('AC-214.3: LoginAside — 소개 문장 → 미리보기', () => {
+  it('AC-214.3: "로그인하면 …"(small ink-2, 최대 480px) → <DashboardPreview /> 순서이고 사이 16px', () => {
+    const { container } = render(<LoginAside />)
+    const root = container.firstElementChild as HTMLElement
+    expectClasses(root, 'flex', 'flex-col', 'gap-4')
+    expect(root.children).toHaveLength(2)
+    const [intro, preview] = Array.from(root.children)
+    expect(intro?.tagName).toBe('P')
+    expect(intro?.textContent).toBe(INTRO)
+    expectClasses(intro, 'text-small', 'text-ink-2', 'max-w-120')
+    const alone = render(<DashboardPreview />).container.firstElementChild
+    expect(alone).not.toBeNull()
+    expect(preview?.outerHTML).toBe(alone?.outerHTML)
   })
 })
 
@@ -271,15 +346,18 @@ describe('LoginCard: 앱 안 브라우저(카카오톡·네이버·인스타그�
     expect(document.body.textContent).not.toContain('denied')
   })
 
-  it('AC-003.2·AC-013.3: 앱 안 안내는 canvas 상자(1px 선·6px) + 읽기 전용 주소 칸(전체 선택) + [주소 복사] 보조 단추', () => {
+  it('AC-214.2: 앱 안 안내 상자는 canvas 바탕·4px이고 테두리가 없다 — 안의 읽기 전용 주소 칸(ds.readonly, 전체 선택)이 테두리를 가진다 + [주소 복사] 보조 단추', () => {
     render(<LoginCard failed={false} />)
     const address = screen.getByText(`${window.location.origin}/login`)
-    hasAll(address, ui.readonly)
+    hasAll(address, ds.readonly)
     expect(classesOf(address)).toContain('select-all')
-    hasAll(screen.getByRole('button', { name: '주소 복사' }), ui.button.secondary)
+    expect(classesOf(address)).toContain('border')
+    hasAll(screen.getByRole('button', { name: '주소 복사' }), ds.button.secondary)
     const box = address.parentElement as HTMLElement
-    expect(classesOf(box)).toEqual(expect.arrayContaining(['bg-canvas', 'border', 'border-line', 'rounded-card']))
+    expectClasses(box, 'bg-canvas', 'rounded-control')
+    expect(frameClasses(box)).toEqual(['bg-canvas'])
     expect(box.contains(screen.getByText(IN_APP_TITLE))).toBe(true)
+    expect(box.contains(screen.getByRole('button', { name: '주소 복사' }))).toBe(true)
     noArbitraryColor()
   })
 

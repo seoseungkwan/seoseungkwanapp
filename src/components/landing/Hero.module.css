@@ -1,87 +1,106 @@
-/* 히어로(#top) 배치 (specs/landing-v2 AC-107.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .hero CSS 그대로다.
-   글자 단계·단추는 base.module.css 클래스를 쓰고, 여기서는 여백과 칸만 정한다. 배경 장식은 없다.
-   휴대폰·768은 한 줄로 쌓고, 1024부터 12칸: 글(1~6칸) | 안내·단추(8~12칸). 그 아래 앱 화면 미리보기(.shot) */
+/* 히어로(#top) 배치 (specs/b2b-redesign REQ-208 AC-208.1·AC-208.2). 값은 승인 시안 docs/mockups/b2b-redesign/style.css의
+   .l-hero·.hero-txt·.promises 그대로이고, 시안의 11px 같은 값은 간격 단계로 맞췄다. 색·글자는 globals.css 토큰만 쓴다.
+   글자 단계·단추·칸(.grid)·숨김 도우미는 base.module.css 클래스이고, 여기서는 여백·칸 자리·선만 정한다. 배경 장식은 없다.
+   1024px 미만은 글 → 미리보기로 쌓이고, 1024px부터 12칸에서 글 1~5칸 · 미리보기 6~12칸(세로 가운데) */
 .hero {
-  padding-block: 32px 56px;
-  scroll-margin-top: 96px; /* 휴대폰은 메뉴가 두 줄이라 더 띄운다 */
+  padding-block: 32px 48px;
+  scroll-margin-top: 72px; /* .sec와 같다: 로고 링크(#top)로 옮겨도 메뉴에 가리지 않는다 */
 }
-.grid {
-  display: grid;
-  gap: 16px;
+.layout {
+  row-gap: 16px;
 }
 .text {
-  display: grid;
-  gap: 12px;
-  align-content: end;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 .kicker {
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--ink-2);
 }
-.side {
-  display: grid;
-  gap: 24px;
-  align-content: end;
+/* 안내: 휴대폰은 body, 768px부터 lead */
+.lead {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--ink-2);
+  text-wrap: pretty;
 }
 .actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
-.privacy {
+/* 휴대폰은 [AI 분석 보기]가 숨어 [구글로 시작하기] 하나가 전체 폭이다. 폭만 정하고 크기·색은 base 단추가 정한다 */
+.start {
+  width: 100%;
+}
+/* 약속(768px 이상): 위아래 1px 선으로 나뉜 줄 3개 */
+.promises {
+  border-top: 1px solid var(--line);
+}
+.promise {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.icon {
+  color: var(--muted);
+}
+.zero {
+  font-weight: 600;
+  color: var(--ink);
+}
+/* 휴대폰 한 줄: 방패 14px + 글 */
+.phoneLine {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--ink-2);
-}
-.privacy svg {
-  color: var(--ink-2);
+  color: var(--muted);
 }
 .shot {
-  margin-top: 32px;
+  min-width: 0;
 }
 
 /* ---------- 768px부터 ---------- */
 @media (min-width: 768px) {
   .hero {
-    padding-block: 64px 80px;
-    scroll-margin-top: 64px;
+    padding-block: 48px 64px;
+    scroll-margin-top: 80px;
   }
-  .grid {
+  .layout {
+    row-gap: 48px;
+  }
+  .text {
     gap: 20px;
-    max-width: 680px;
   }
-  .side {
-    gap: 28px;
+  .lead {
+    font-size: var(--fs-lead);
+    line-height: var(--lh-lead);
+    margin-top: -4px; /* 제목과 안내 사이는 16px */
   }
-  .shot {
-    margin-top: 48px;
+  .start {
+    width: auto;
+  }
+  .promises {
+    margin-top: 12px; /* 단추 줄과 약속 사이는 32px */
   }
 }
 
 /* ---------- 1024px부터 (12칸) ---------- */
 @media (min-width: 1024px) {
   .hero {
-    padding-block: 88px 96px;
+    padding-block: 64px 96px;
   }
-  .grid {
-    max-width: none;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    column-gap: 24px;
-    align-items: end;
+  .layout {
+    align-items: center;
   }
   .text {
-    grid-column: 1 / span 6;
-    gap: 16px;
-  }
-  .side {
-    grid-column: 8 / span 5;
+    grid-column: 1 / 6;
   }
   .shot {
-    margin-top: 64px;
+    grid-column: 6 / 13;
   }
 }

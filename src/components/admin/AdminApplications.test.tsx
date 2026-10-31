@@ -3,9 +3,10 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event'
 import { Component, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import { AdminError } from '@/lib/auth/admin'
 import { errorInfo } from '@/lib/errors'
+import { nestedBoxes } from '@/testing/boxes'
 import { AdminApplications } from './AdminApplications'
 
 // 관리자 · 가입 신청 목록 (REQ-007, design.md '관리자', UI_GUIDE '앱 화면' 화면 안 탭·표·칩·확인 창·폰).
@@ -74,7 +75,7 @@ afterEach(() => {
 })
 
 describe('AdminApplications: 처음 그리기', () => {
-  it('AC-007.1: 제목·안내는 목업 그대로, 탭 줄(대기·승인·거절)마다 줄 수 칩, 처음 탭은 대기', async () => {
+  it('AC-007.1: 제목·안내는 목업 그대로, 탭 줄(대기·승인·거절)마다 줄 수(글자), 처음 탭은 대기', async () => {
     await renderLoaded()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 신청')
     expect(screen.getByText(INTRO)).toBeTruthy()
@@ -362,7 +363,7 @@ describe('AdminApplications: 되돌리기·승인 줄', () => {
     const cell = actionCell(rowOf('마바 정형외과의원'))
     expect(within(cell).queryAllByRole('button')).toEqual([])
     const chip = within(cell).getByText('승인됨')
-    hasAll(chip, ui.chip.done)
+    hasAll(chip, ds.chip.positive)
     expect(chip.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
   })
 
@@ -392,7 +393,7 @@ describe('AdminApplications: 빈 탭', () => {
     // 제목과 설명은 한 문장으로 이어지지 않게 따로 줄(블록)로 — 목업처럼 <p> 둘
     expect([...cells[0].querySelectorAll('p')].map((el) => el.textContent)).toEqual([title, body])
     expect([...cells[0].childNodes].every((n) => n.nodeType !== Node.TEXT_NODE)).toBe(true)
-    hasAll(cells[0], ui.table.emptyRow)
+    hasAll(cells[0], ds.table.emptyRow)
     expect(within(table()).queryAllByRole('button')).toEqual([])
   })
 })
@@ -451,53 +452,93 @@ describe('AdminApplications: 폰(768px 미만)', () => {
     expect(thead).not.toBeNull()
     hasAll(thead as Element, 'max-md:hidden')
     hasAll(table(), 'max-md:block')
-    hasAll(table().querySelector('tbody') as Element, 'max-md:flex max-md:flex-col max-md:gap-3')
-    hasAll(table().parentElement as Element, `${ui.table.wrap} max-md:overflow-visible`)
+    const tbody = table().querySelector('tbody') as Element
+    hasAll(tbody, 'max-md:flex max-md:flex-col')
+    // 줄 사이는 띄우지 않고 1px 선으로 나눈다(AC-220.2)
+    expect(classesOf(tbody).filter((t) => /^max-md:gap/.test(t))).toEqual([])
+    hasAll(table().parentElement as Element, `${ds.table.wrap} max-md:overflow-visible`)
   })
 
-  it('AC-007.7: 줄마다 카드처럼(흰 바탕·1px 선·6px) 병원 이름·신청자·이메일·연락처·신청일 / 상태 칩 / 단추 순서로 쌓는다', async () => {
+  it('AC-220.2: 표는 본문 좌우 끝까지 닿는 띠(위아래 1px line), 줄은 상자 없이 줄 사이 1px line·안쪽 12px 16px', async () => {
+    await renderLoaded()
+    // 띠: 본문 좌우 여백(16px)만큼 밖으로 → 화면 끝까지. 위아래 선은 표가 준다(PC와 같다)
+    hasAll(table().parentElement as Element, 'max-md:-mx-4')
+    hasAll(table(), 'border-y border-line bg-surface')
+    const rows = bodyRows()
+    for (const tr of rows) {
+      hasAll(tr, 'max-md:grid max-md:border-b max-md:border-line max-md:last:border-b-0 max-md:px-4 max-md:py-3')
+      // 옛 카드 줄(네 변 선·모서리·흰 바탕) 없음
+      hasNone(tr, 'max-md:border max-md:rounded-card max-md:rounded-control max-md:bg-surface max-md:p-4 max-md:gap-1.5')
+      for (const c of within(tr).getAllByRole('cell')) hasAll(c, 'max-md:h-auto max-md:border-b-0 max-md:p-0')
+    }
+  })
+
+  it('AC-220.2: 줄 안 순서 — 병원 이름(600, 말줄임) + 오른쪽 신청일(caption muted) → 신청자 · 이메일(small ink-2) → 연락처(small muted) + 오른쪽 단추', async () => {
     await renderLoaded()
     const tr = rowOf('가나 정형외과의원')
-    hasAll(tr, 'max-md:flex max-md:flex-col max-md:rounded-card max-md:border max-md:border-line max-md:bg-surface max-md:p-4')
     const [date, clinic, applicant, email, phone, action] = within(tr).getAllByRole('cell')
-    // DOM 순서는 PC 칸 순서(신청일 먼저) → 폰은 order로 신청일을 연락처 뒤, 동작 칸을 맨 끝으로
-    hasAll(date, 'max-md:order-1')
-    hasAll(action, 'max-md:order-2')
-    for (const c of [clinic, applicant, email, phone]) expect(classesOf(c).some((t) => t.startsWith('max-md:order-'))).toBe(false)
-    hasAll(clinic, 'max-md:text-body max-md:font-semibold')
-    for (const c of [date, clinic, applicant, email, phone, action]) hasAll(c, 'max-md:whitespace-normal max-md:border-b-0')
-    hasAll(email, 'max-md:break-all') // 긴 이메일도 가로 스크롤 없이
-    // 칸 이름은 폰에서만 값 앞에 보인다(PC는 표 머리)
-    expect([date, applicant, email, phone].map((c) => c.getAttribute('data-label'))).toEqual(['신청일', '신청자', '이메일', '연락처'])
-    for (const c of [date, applicant, email, phone]) hasAll(c, 'max-md:before:content-[attr(data-label)] max-md:before:text-muted')
+    // DOM은 PC 칸 순서(신청일 먼저). 폰은 세 줄 격자에 놓는다
+    hasAll(clinic, 'max-md:row-start-1 max-md:col-start-1 max-md:col-end-3 truncate text-body font-semibold')
+    hasAll(date, 'max-md:row-start-1 max-md:col-start-3 max-md:justify-self-end max-md:text-caption')
+    hasAll(date.firstElementChild as Element, 'text-muted tabular-nums')
+    hasAll(applicant, 'max-md:row-start-2 max-md:col-start-1 max-md:text-ink-2')
+    // 긴 이름(DB는 30자까지)도 줄을 넓히지 않는다: 신청자·이메일은 휴대폰에서 줄바꿈하고, 첫 칸은 줄 폭의 반까지만 자란다
+    // → 신청일·단추 칸(셋째 칸)이 늘 화면 안에 남는다
+    for (const c of [applicant, email]) hasAll(c, 'max-md:whitespace-normal max-md:break-all')
+    hasAll(tr, 'max-md:grid-cols-[fit-content(50%)_1fr_auto]')
+    expect(classesOf(tr).filter((t) => t.startsWith('max-md:grid-cols-'))).toEqual(['max-md:grid-cols-[fit-content(50%)_1fr_auto]'])
+    hasAll(email, 'max-md:row-start-2 max-md:col-start-2 max-md:col-end-4 max-md:break-all max-md:whitespace-normal')
+    hasAll(email, "max-md:before:content-['·']") // 신청자 · 이메일
+    hasAll(phone, 'max-md:row-start-3 max-md:col-start-1 max-md:col-end-3 max-md:text-muted')
+    hasAll(action, 'max-md:row-start-3 max-md:col-start-3 max-md:justify-self-end')
+    // 칸 이름(data-label)은 보이지 않는다
+    for (const c of [date, applicant, email, phone]) {
+      expect(c.getAttribute('data-label')).toBeNull()
+      hasNone(c, 'max-md:before:content-[attr(data-label)]')
+    }
   })
 
-  it('AC-007.7: 대기·거절 줄은 폰에서 상태 칩(대기·거절됨)을 보이고, PC에서는 숨긴다(탭이 상태다)', async () => {
+  it('AC-220.2: 빈 연락처는 지금처럼 "—"(시안의 "연락처 없음"은 쓰지 않는다)', async () => {
+    await renderLoaded()
+    expect(within(rowOf('다라 통증의학과의원')).getAllByRole('cell')[4].textContent).toBe('—')
+    expect(screen.queryByText('연락처 없음')).toBeNull()
+  })
+
+  it('AC-220.1·AC-220.2: 줄에 상태 칩(대기·거절됨)이 없다(탭이 상태다). 승인 줄의 "승인됨" 완료 칩은 PC·폰 모두 그대로', async () => {
     const user = await renderLoaded()
-    const waiting = within(actionCell(rowOf('가나 정형외과의원'))).getByText('대기')
-    hasAll(waiting, `${ui.chip.waiting} md:hidden`)
+    const chipKeys = Object.values(ds.chip)
+    const chipsIn = (el: Element) => Array.from(el.querySelectorAll('span')).filter((s) => chipKeys.some((c) => tokens(c).every((t) => classesOf(s).includes(t))))
+    expect(chipsIn(table())).toEqual([])
+    expect(within(table()).queryAllByText('대기')).toEqual([])
     await user.click(tabNamed('거절'))
-    const rejected = within(actionCell(rowOf('사아 의원'))).getByText('거절됨')
-    hasAll(rejected, `${ui.chip.rejected} md:hidden`)
+    expect(chipsIn(table())).toEqual([])
+    expect(within(table()).queryAllByText('거절됨')).toEqual([])
     await user.click(tabNamed('승인'))
     const done = within(actionCell(rowOf('마바 정형외과의원'))).getByText('승인됨')
-    hasNone(done, 'md:hidden') // 승인됨은 PC에서도 동작 칸에 보인다
+    expect(chipsIn(table())).toEqual([done])
+    hasNone(done, 'md:hidden max-md:hidden hidden')
   })
 
-  it('AC-007.7·AC-013.4: 동작 단추는 폰에서 전체 폭으로 나란히, 높이 44px(max-md:h-11)', async () => {
+  it('AC-007.7·AC-013.4: 동작 단추는 폰에서 오른쪽에 나란히, 높이 44px(max-md:h-11)', async () => {
     const user = await renderLoaded()
     const action = actionCell(rowOf('가나 정형외과의원'))
-    hasAll(action, 'max-md:flex max-md:flex-col max-md:gap-3')
-    for (const b of within(action).getAllByRole('button')) hasAll(b, 'max-md:h-11 max-md:flex-1')
-    hasAll(within(action).getByRole('button', { name: '승인' }).parentElement as Element, 'flex gap-2')
+    for (const b of within(action).getAllByRole('button')) {
+      hasAll(b, 'max-md:h-11')
+      hasNone(b, 'max-md:flex-1')
+    }
+    hasAll(within(action).getByRole('button', { name: '승인' }).parentElement as Element, 'flex justify-end gap-2')
     await user.click(tabNamed('거절'))
-    hasAll(within(rowOf('사아 의원')).getByRole('button', { name: '되돌리기' }), 'max-md:h-11 max-md:flex-1')
+    const restore = within(rowOf('사아 의원')).getByRole('button', { name: '되돌리기' })
+    hasAll(restore, 'max-md:h-11')
+    hasNone(restore, 'max-md:flex-1')
+    hasAll(restore.parentElement as Element, 'flex justify-end gap-2')
   })
 
-  it('AC-007.7·AC-013.4: 화면 안 탭은 폰에서 높이 44px, 제목은 title-sm', async () => {
+  it('AC-007.7·AC-013.4: 화면 안 탭은 폰에서 높이 44px, 제목은 title', async () => {
     await renderLoaded()
     for (const t of within(tablist()).getAllByRole('tab')) hasAll(t, 'max-md:h-11')
-    hasAll(screen.getByRole('heading', { level: 1 }), 'text-title max-md:text-title-sm font-semibold text-ink')
+    hasAll(screen.getByRole('heading', { level: 1 }), 'text-title font-semibold text-ink')
+    hasNone(screen.getByRole('heading', { level: 1 }), 'max-md:text-title-sm')
   })
 
   it('AC-007.7·AC-013.4: 확인 창 단추는 폰에서 나란히 반씩(44px)', async () => {
@@ -508,41 +549,99 @@ describe('AdminApplications: 폰(768px 미만)', () => {
 })
 
 describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
-  it('AC-007.1·AC-013.3: 화면 안 탭 — 같은 밑줄 모양(40px·body), 지금 탭 accent 700 + 3px 밑줄, 나머지 ink-2 500, 개수는 범주 칩', async () => {
+  it('AC-220.1: h1 "가입 신청"(title 600) → 안내(지금 문구, ink-2, 위 4px) → 화면 안 탭(위 16px) → 표(위 16px)', async () => {
+    const { container } = render(<AdminApplications />)
+    await screen.findByRole('tablist', { name: '신청 상태' })
+    const h1 = screen.getByRole('heading', { level: 1 })
+    hasAll(h1, 'text-title font-semibold text-ink')
+    const intro = screen.getByText(INTRO)
+    expect(intro.tagName).toBe('P')
+    hasAll(intro, 'text-body text-ink-2')
+    hasAll(h1.parentElement as Element, 'flex flex-col gap-1')
+    expect(intro.parentElement).toBe(h1.parentElement)
+    hasAll(container.firstElementChild as Element, 'flex flex-col gap-4')
+    expect(tablist().parentElement).toBe(container.firstElementChild)
+    expect(screen.getByRole('tabpanel').parentElement).toBe(container.firstElementChild)
+  })
+
+  it('AC-220.1: 화면 안 탭 — 40px·body·아래 1px line, 지금 탭 ink 600 + 아래 2px accent 밑줄, 나머지 ink-2 500, 개수는 글자(muted 500, 칩 아님)', async () => {
     await renderLoaded()
     hasAll(tablist(), 'flex border-b border-line')
     const current = tabNamed('대기')
-    hasAll(current, 'h-10 text-body font-bold text-accent after:absolute after:bottom-0 after:h-0.75 after:bg-accent')
+    hasAll(current, 'h-10 text-body font-semibold text-ink after:absolute after:h-0.5 after:bg-accent')
+    hasNone(current, 'text-accent font-bold after:h-0.75')
     hasAll(current, 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent')
     for (const idle of [tabNamed('승인'), tabNamed('거절')]) {
       hasAll(idle, 'h-10 text-body font-medium text-ink-2 hover:text-ink')
-      hasNone(idle, 'text-accent font-bold after:bg-accent')
+      hasNone(idle, 'text-accent font-semibold font-bold after:bg-accent')
     }
-    for (const t of within(tablist()).getAllByRole('tab')) hasAll(t.querySelector('span:last-child') as Element, ui.chip.neutral)
+    for (const t of within(tablist()).getAllByRole('tab')) {
+      const count = t.querySelector('span:last-child') as Element
+      expect(count.textContent).toMatch(/^\d+$/)
+      hasAll(count, 'text-muted font-medium tabular-nums')
+      for (const chip of Object.values(ds.chip)) expect(tokens(chip).every((c) => classesOf(count).includes(c))).toBe(false)
+      hasNone(count, 'border rounded-control rounded-chip h-5 h-5.5')
+      // 굵기가 바뀌어도 폭이 흔들리지 않게 잡는 글자도 600(700 없음)
+      hasAll(t.querySelector('span:first-child') as Element, 'after:font-semibold')
+      hasNone(t.querySelector('span:first-child') as Element, 'after:font-bold')
+    }
   })
 
-  it('AC-013.3: 표는 ui.table(머리 th·칸 td, 보조 칸은 ink-2), 표는 패널(흰 바탕·1px 선·6px) 안에 있다', async () => {
+  it('AC-220.1: 표는 ds.table(머리 th·칸 td), 패널 틀 없이 본문 위에 바로 — surface·위아래 1px line·모서리 없음, 몸 줄 56px, 머리 small 500 muted', async () => {
     await renderLoaded()
-    hasAll(table(), ui.table.table)
-    for (const th of within(table()).getAllByRole('columnheader')) hasAll(th, ui.table.th)
+    hasAll(table(), `${ds.table.table} border-y border-line bg-surface`)
+    expect(classesOf(table()).filter((t) => /(?:^|:)rounded/.test(t))).toEqual([])
+    for (const th of within(table()).getAllByRole('columnheader')) hasAll(th, ds.table.th)
     const [date, clinic, applicant, email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
-    for (const c of [date, email, phone]) hasAll(c, ui.table.tdSub)
-    for (const c of [clinic, applicant, action]) hasAll(c, ui.table.td)
-    hasAll(rowOf('가나 정형외과의원'), ui.table.row)
-    hasAll(screen.getByRole('tabpanel'), ui.panel)
+    for (const c of [date, email, phone]) hasAll(c, ds.table.tdSub)
+    for (const c of [clinic, applicant, action]) hasAll(c, ds.table.td)
+    hasAll(rowOf('가나 정형외과의원'), `${ds.table.row} md:h-14`)
+    // 패널 틀(흰 상자·선·안쪽 여백)이 없다: 탭 패널과 표 감싸개에 테두리·바탕·안쪽 여백이 없다
+    for (const el of [screen.getByRole('tabpanel'), table().parentElement as Element]) {
+      expect(classesOf(el).filter((t) => /(?:^|:)(?:border|rounded|bg-|p[xytblr]?-|shadow)/.test(t))).toEqual([])
+    }
   })
 
-  it('AC-007.1·AC-013.3: PC 표는 칸 폭을 정해 둔다(table-fixed) — 승인으로 줄이 바뀌거나 탭이 비어도 칸 자리가 움직이지 않는다', async () => {
+  it('AC-220.1: 칸 — 신청일(muted 고정폭) · 병원 이름(600) · 신청자 · 이메일(ink-2) · 연락처(ink-2 고정폭) · 동작(오른쪽)', async () => {
+    const user = await renderLoaded()
+    const [date, clinic, , email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
+    hasAll(date.firstElementChild as Element, 'text-muted tabular-nums')
+    expect(date.firstElementChild?.textContent).toBe('2026-10-28')
+    hasAll(clinic, 'font-semibold')
+    hasAll(email, 'text-ink-2')
+    hasAll(phone, 'text-ink-2 tabular-nums')
+    hasAll(within(table()).getAllByRole('columnheader')[5], 'md:text-right')
+    hasAll(within(action).getByRole('button', { name: '승인' }).parentElement as Element, 'flex justify-end')
+    await user.click(tabNamed('승인'))
+    hasAll(within(actionCell(rowOf('마바 정형외과의원'))).getByText('승인됨').parentElement as Element, 'flex justify-end')
+  })
+
+  it('AC-220.1: 표 아래 "대기 중인 신청 N건" 줄은 두지 않는다(개수는 탭에 있다)', async () => {
+    await renderLoaded()
+    expect(document.body.textContent).not.toMatch(/대기 중인 신청 \d+건/)
+    expect(screen.getByRole('tabpanel').lastElementChild).toBe(table().parentElement)
+  })
+
+  it('AC-007.1·AC-220.1: PC 표는 칸 폭을 정해 둔다(table-fixed) — 승인으로 줄이 바뀌거나 탭이 비어도 칸 자리가 움직이지 않는다', async () => {
     const user = await renderLoaded()
     const widths = () =>
       within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /^(max-|md:)?w-/.test(t)))
-    // 신청일·신청자·연락처·동작은 정한 폭, 병원 이름·이메일은 남은 폭을 반씩
-    const FIXED = [['w-28'], [], ['w-28'], [], ['w-32'], ['w-36']]
-    hasAll(table(), 'md:table-fixed md:min-w-250')
+    // 신청일·신청자 120px, 연락처·동작 150px, 병원 이름·이메일은 남은 폭을 반씩
+    const FIXED = [['w-30'], [], ['w-30'], [], ['w-37.5'], ['w-37.5']]
+    hasAll(table(), 'md:table-fixed')
     expect(widths()).toEqual(FIXED)
+    // AC-222.1(TASK-24): 768~1023px(본문 720~975px)에서도 모든 칸·단추가 옆으로 밀지 않고 보인다 —
+    // 표에 최소 폭이 없고, 정한 칸은 글자 폭에 맞춰 줄인다(신청일 116 · 신청자 80 · 연락처 136 · 동작 140)
+    expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual([])
+    const tabletWidths = within(table())
+      .getAllByRole('columnheader')
+      .map((th) => classesOf(th).filter((t) => /^max-lg:w-/.test(t)))
+    expect(tabletWidths).toEqual([['max-lg:w-29'], [], ['max-lg:w-20'], [], ['max-lg:w-34'], ['max-lg:w-35']])
     // 정한 폭이 없는 두 칸은 PC에서 넘치면 말줄임(옆 칸을 덮지 않는다). 폰은 줄바꿈 그대로
     const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
-    for (const c of [cells[1], cells[2], cells[3]]) hasAll(c, 'md:truncate')
+    for (const c of [cells[1], cells[2], cells[3]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
+    // 768~1023px(글 칸이 좁다)에서는 말줄임 대신 줄바꿈 — 터치·키보드로도 전체 병원 이름·신청자·이메일을 보고 [승인]을 누른다(1024px 이상은 말줄임 그대로)
+    for (const c of [cells[1], cells[2], cells[3]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
     // 말줄임으로 잘려도 전체 값은 마우스를 올리면 보인다(title)
     expect([cells[1], cells[2], cells[3]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
     // 빈 탭에서도 머리 폭은 같다
@@ -553,37 +652,55 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     hasAll(table(), 'md:table-fixed')
   })
 
-  it('AC-013.3: 표 안 단추 — [승인] 주(small), [거절]·[되돌리기] 보조(small)', async () => {
+  it('AC-220.1: 표 안 단추 — [승인] 강조 테두리(ds.button.accentOutlineSmall), [거절]·[되돌리기] 보조(ds.button.secondarySmall)', async () => {
     const user = await renderLoaded()
     const row = rowOf('가나 정형외과의원')
-    hasAll(within(row).getByRole('button', { name: '승인' }), ui.button.primarySmall)
-    hasAll(within(row).getByRole('button', { name: '거절' }), ui.button.secondarySmall)
+    hasAll(within(row).getByRole('button', { name: '승인' }), ds.button.accentOutlineSmall)
+    hasAll(within(row).getByRole('button', { name: '거절' }), ds.button.secondarySmall)
     await user.click(tabNamed('거절'))
-    hasAll(within(rowOf('사아 의원')).getByRole('button', { name: '되돌리기' }), ui.button.secondarySmall)
+    hasAll(within(rowOf('사아 의원')).getByRole('button', { name: '되돌리기' }), ds.button.secondarySmall)
   })
 
-  it('AC-013.3: 완료 줄은 table·ok 글자 + 체크 아이콘(꾸밈)', async () => {
+  it('AC-013.3: 완료 줄은 small·positive 글자 + 체크 아이콘(꾸밈)', async () => {
     const user = await renderLoaded()
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
-    hasAll(status(), 'flex items-center text-table text-ok')
+    hasAll(status(), 'flex items-center text-small text-positive')
     expect(status().querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('AC-013.3: 확인 창 — 떠 있는 층(ui.layer, shadow-float)·폭 400px·안쪽 24px, 뒤 가림막 ink 36%, [취소] 보조·[거절] 위험, 오른쪽 끝', async () => {
+  it('AC-013.3: 확인 창 — 떠 있는 층(ds.layer, shadow-float)·폭 400px·안쪽 24px, 뒤 가림막 ink 36%, [취소] 보조·[거절] 위험, 오른쪽 끝', async () => {
     const user = await renderLoaded()
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
     const d = dialog()
-    hasAll(d, `${ui.layer} w-full max-w-100 p-6`)
+    hasAll(d, `${ds.layer} w-full max-w-100 p-6`)
     hasAll(d.parentElement as Element, 'fixed inset-0 bg-ink/36 flex items-center justify-center')
     hasAll(within(d).getByRole('heading', { name: '이 신청을 거절할까요?' }), 'text-lead font-semibold text-ink')
     hasAll(within(d).getByText(CONFIRM_BODY), 'text-body text-ink-2')
     const [cancel, confirm] = within(d).getAllByRole('button')
-    hasAll(cancel, ui.button.secondary)
-    hasAll(confirm, ui.button.danger)
+    hasAll(cancel, ds.button.secondary)
+    hasAll(confirm, ds.button.danger)
     hasAll(cancel.parentElement as Element, 'flex justify-end gap-2')
   })
 
-  it('AC-013.3: 그림자는 확인 창 하나에만, accent는 지금 탭(글자·밑줄)과 초점 고리에만', async () => {
+  it('AC-220.3: 거절 확인 창 — ds.layer(8px·그림자)·폭 400px·안쪽 24px(폭마다 같음), 뒤 가림막 ink 36%, [취소] ds.button.secondary · [거절] ds.button.danger(폰 나란히 반씩 44px)', async () => {
+    const user = await renderLoaded()
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
+    const d = dialog()
+    hasAll(d, 'rounded-float shadow-float border border-line bg-surface w-full max-w-100 p-6')
+    expect(classesOf(d).filter((t) => /^(?:md|max-md|lg|max-lg):p[xytblr]?-/.test(t))).toEqual([])
+    hasAll(d.parentElement as Element, 'bg-ink/36')
+    const [cancel, confirm] = within(d).getAllByRole('button')
+    expect([cancel.textContent, confirm.textContent]).toEqual(['취소', '거절'])
+    hasAll(cancel, `${ds.button.secondary} max-md:flex-1`)
+    hasAll(confirm, `${ds.button.danger} max-md:flex-1`)
+    // 신청 내용 줄은 상자 안 상자가 되지 않게 테두리 없이 canvas 바탕만
+    const summary = within(d).getByText('가나 정형외과의원').parentElement as Element
+    hasAll(summary, 'bg-canvas')
+    expect(classesOf(summary).filter((t) => /(?:^|:)border(?:$|-)/.test(t))).toEqual([])
+    hasAll(within(d).getByText('홍길동 · manager@example.com'), 'text-small text-ink-2')
+  })
+
+  it('AC-013.3·AC-220.1: 그림자는 확인 창 하나에만, accent는 지금 탭 밑줄·[승인] 테두리와 초점 고리에만', async () => {
     const user = await renderLoaded()
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
     const all = Array.from(document.body.querySelectorAll('*'))
@@ -591,7 +708,21 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     expect(withShadow).toEqual([dialog()])
     const isFocus = (t: string) => t.split(':').some((v) => v === 'focus-visible' || v === 'focus' || v === 'focus-within')
     const withAccent = all.filter((el) => classesOf(el).some((t) => !isFocus(t) && /accent/.test(t)))
-    expect(withAccent).toEqual([tabNamed('대기')])
+    const approves = within(table()).getAllByRole('button', { name: '승인' })
+    expect(approves).toHaveLength(2)
+    expect(withAccent).toEqual([tabNamed('대기'), ...approves])
+  })
+
+  it('AC-204.7: 상자 안 상자가 없다 — 세 탭(대기·승인·거절)과 확인 창', async () => {
+    const user = await renderLoaded()
+    for (const label of ['대기', '승인', '거절'] as const) {
+      await user.click(tabNamed(label))
+      expect(nestedBoxes(document.body), label).toEqual([])
+    }
+    await user.click(tabNamed('대기'))
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
+    expect(dialog()).toBeTruthy()
+    expect(nestedBoxes(document.body), '확인 창').toEqual([])
   })
 })
 

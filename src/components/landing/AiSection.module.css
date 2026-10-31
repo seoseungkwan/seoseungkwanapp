@@ -1,139 +1,203 @@
-/* AI 섹션(#ai) (specs/landing-v2 AC-108.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .rep · .chat 그대로다.
-   섹션 틀·제목·칩·약속 목록은 base.module.css가 정하고, 여기서는 리포트 패널만 그린다.
-   휴대폰 값을 먼저 쓰고 768px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
+/* AI 섹션(#ai) (specs/b2b-redesign AC-209.1, 시안 docs/mockups/b2b-redesign/style.css의 .report · .r-items · .chat · .plist · .mini).
+   섹션 틀·12칸·제목·칩은 base.module.css가 정하고, 여기서는 칸 자리·약속 목록·리포트 패널만 그린다.
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)는 리포트 패널 하나다. 말풍선은 <p>, 물어보기 칸은 aria-hidden 그림이라 상자가 아니다 */
 
-/* ---------- 리포트 패널 ---------- */
-.rep {
+/* ---------- 칸: 1024px 미만은 글 → 리포트로 쌓인다 ---------- */
+.layout {
+  row-gap: 24px;
+}
+.text,
+.report {
+  min-width: 0;
+}
+.lead {
+  margin-top: 12px;
+  color: var(--ink-2);
+}
+
+/* ---------- 약속: 휴대폰은 제목만 2칸(앞에 4×4 accent 점), 768부터 위아래 1px 선으로 나뉜 목록 ---------- */
+.points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+.point {
+  position: relative;
+  padding-left: 12px;
+}
+.point::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+}
+.pointTitle {
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.pointDesc {
+  display: none;
+}
+
+/* ---------- 리포트 패널: 머리(제목 + 칩) · 몸(항목 | 채팅) ---------- */
+.report {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  min-width: 0;
-  overflow: hidden;
+  border-radius: var(--r-control);
 }
-.repHead {
+.reportHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
+  gap: 12px;
+  padding: 12px 16px 0;
 }
-/* 휴대폰은 항목 위·채팅 아래 한 칸, 768부터 7 : 5 두 칸 */
-.repBody {
+.reportBody {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
-/* ---------- 항목 3줄: 칩 | 글, 그 아래 근거 ---------- */
-.repItems {
-  padding: 0 16px;
+/* 항목: 휴대폰은 칩 위 · 글 아래 한 칸, 768부터 칩(76px) | 글 두 칸 */
+.items {
+  padding: 4px 16px;
 }
-.repItem {
+.item {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  column-gap: 10px;
-  row-gap: 2px;
-  padding-block: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding-block: 12px;
   border-bottom: 1px solid var(--line);
 }
-.repItem:last-child {
+.item:last-child {
   border-bottom: 0;
 }
-/* 칩이 72px 칸을 꽉 채우지 않고 글자 폭만큼만 */
-.repTag {
+/* 칩이 칸을 꽉 채우지 않고 글자 폭만큼만 */
+.tag {
   justify-self: start;
 }
-.repText {
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--ink);
-  text-wrap: pretty;
+.itemBody {
+  min-width: 0;
 }
-.repBasis {
-  grid-column: 2;
-  font-size: 13px;
-  line-height: 20px;
+.basis {
   color: var(--muted);
 }
 
-/* ---------- 채팅 칸(그림일 뿐 아무것도 받지 않는다) ---------- */
+/* 채팅 칸(768px 미만은 .pcOnly로 숨음): 그림일 뿐 아무것도 받지 않는다. 1024 미만은 항목 아래(위 1px 선) */
 .chat {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
   border-top: 1px solid var(--line);
-  background: var(--surface);
 }
-.question {
+.bubble {
   align-self: flex-end;
-  max-width: 85%;
+  padding: 8px 12px;
   background: var(--canvas);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--ink);
+  border-radius: var(--r-control);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
 }
-/* 답을 쓰는 중: 움직이지 않는 점 3개 */
 .typing {
-  align-self: flex-start;
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  color: var(--muted);
 }
-.typing i {
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--field);
-}
-.typing i:nth-child(2) {
-  background: var(--muted);
-}
+/* 입력란 그림(aria-hidden): 글 · 보내기 표시 */
 .ask {
-  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   height: 40px;
-  padding: 0 5px 0 12px;
-  border: 1px solid var(--field);
-  border-radius: 6px;
-  font-size: 14px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
   color: var(--muted);
 }
+.askText {
+  min-width: 0;
+}
 .send {
-  width: 30px;
-  height: 30px;
-  border-radius: 4px;
-  background: var(--ink);
-  color: var(--surface);
   display: grid;
   place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-control);
+  background: var(--accent);
+  color: var(--surface);
 }
 
-/* ---------- 768px부터: 항목 | 채팅 두 칸, 채팅은 왼쪽 선 ---------- */
+/* ---------- 768px부터 ---------- */
 @media (min-width: 768px) {
-  .repHead {
-    padding: 16px 20px;
+  .layout {
+    row-gap: 32px;
   }
-  .repBody {
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  .points {
+    display: block;
+    margin-top: 32px;
+    border-top: 1px solid var(--line);
   }
-  .repItems {
-    padding: 0 20px;
+  .point {
+    padding-block: 12px;
+    padding-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .point::before {
+    display: none;
+  }
+  .pointTitle {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .pointDesc {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--muted);
+  }
+  .reportHead {
+    padding: 16px 20px 0;
+  }
+  .reportBody {
+    margin-top: 16px;
+  }
+  .items {
+    padding: 4px 20px;
+  }
+  .item {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+    padding-block: 16px;
+  }
+}
+
+/* ---------- 1024px부터: 글 1~4칸 · 리포트 5~12칸, 몸은 항목 | 채팅(300px) ---------- */
+@media (min-width: 1024px) {
+  .text {
+    grid-column: 1 / 5;
+  }
+  .report {
+    grid-column: 5 / 13;
+  }
+  .reportBody {
+    grid-template-columns: minmax(0, 1fr) 300px;
   }
   .chat {
-    padding: 20px;
     border-top: 0;
     border-left: 1px solid var(--line);
   }

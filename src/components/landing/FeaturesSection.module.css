@@ -1,273 +1,159 @@
-/* 기능 섹션(#features) (specs/landing-v2 AC-109.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의
-   .feat-big · .fcard · .drop · .mini · .rates · .groups · .tbl · .feat-small 그대로다.
-   제목·칩·작은 카드 모양은 base가 정하고, 여기서는 기능 카드 배치와 미리보기만 그린다(design.md 'CSS 적용 순서').
-   휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
+/* 기능 섹션(#features) (specs/b2b-redesign AC-210.1, 시안 docs/mockups/b2b-redesign/style.css의 [id=features] · .panel · .tbl · .flist).
+   섹션 틀·12칸·글자 단계·칩은 base.module.css가 정하고, 여기서는 위 선·칸 자리·급여 패널·기능 목록만 그린다.
+   base 클래스(.sec·.wrap·.grid)의 속성은 덮어쓰지 않는다(CSS 순서와 상관없이 같은 결과).
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)는 급여 패널(.panel) 하나다. 표 칸과 목록 줄은 위·아래 1px 선만 쓴다 */
 
-/* ---------- 기능 카드 2개: 휴대폰은 글 위 · 미리보기 아래 ---------- */
-.featBig {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
-.fcard {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.fcardText {
-  padding: 16px;
-  display: grid;
-  gap: 10px;
-  align-content: start;
-}
-.fcardChips {
-  margin-top: 4px;
-}
-.fcardShot {
-  flex: 1;
+/* ---------- 내용 위 1px 선: .wrap 안 첫 조각이라 선은 내용 폭이다.
+   섹션 위 여백(base .sec 48 → 64 → 96)만큼 위로 올려 섹션 맨 위에 붙이고, 같은 만큼 아래를 띄운다 ---------- */
+.inner::before {
+  content: "";
+  display: block;
   border-top: 1px solid var(--line);
-  background: var(--canvas);
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  min-width: 0;
+  margin-block: -48px 48px;
 }
 
-/* 파일 놓는 칸: 그림일 뿐 파일을 받지 않는다 */
-.drop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 48px;
-  border: 1px dashed var(--field);
-  border-radius: 6px;
-  background: var(--surface);
-  font-size: 14px;
+/* ---------- 제목 · 칸: 1024px 미만은 급여 덩어리 → 목록으로 쌓인다(휴대폰은 급여 덩어리가 숨는다) ---------- */
+.title {
+  max-width: 560px;
+}
+.layout {
+  margin-top: 16px;
+  row-gap: 32px;
+}
+
+/* ---------- 급여 덩어리(768px 이상) ---------- */
+.kicker {
+  font-weight: 600;
+  color: var(--accent);
+}
+.payTitle {
+  margin-top: 8px;
+}
+.payLead {
+  margin-top: 8px;
   color: var(--ink-2);
 }
-
-/* ---------- 작은 패널(통계 · 급여 공통) ---------- */
-.mini {
+.panel {
+  margin-top: 24px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  min-width: 0;
-  overflow: hidden;
+  border-radius: var(--r-control);
 }
-.miniHead {
+.panelHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  height: 44px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
+  gap: 12px;
+  padding: 16px 20px 0;
 }
-.miniTitle {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 600;
-}
-
-/* 통계 패널: 휴대폰은 비율 4칸 줄 아래에 처방 그룹 */
-.miniBody {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
-.rates {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-bottom: 1px solid var(--line);
-}
-.rate {
-  padding: 10px 4px 10px 10px;
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.rate + .rate {
-  border-left: 1px solid var(--line);
-  padding-left: 8px;
-}
-.rate dt {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.rate dd {
-  font-size: 16px;
-  line-height: 22px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-/* 처방 그룹: 이름 | 막대 | 환자 수. 막대 폭은 TSX의 inline style(%)이 정한다 */
-.groups {
-  padding: 10px 12px 12px;
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-.groupsTitle {
-  font-size: 12px;
-  line-height: 16px;
+.sample {
   color: var(--muted);
 }
-.grp {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 40px;
-  gap: 8px;
-  align-items: center;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--ink-2);
-}
-.track {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--canvas);
-  overflow: hidden;
-}
-.fill {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--accent-tint);
-}
-/* .fill 뒤에 둬서 같은 구체성일 때 이긴다 */
-.fillFirst {
-  background: var(--accent);
-}
-.grp b {
-  text-align: right;
-  font-weight: 600;
-  color: var(--ink);
-}
 
-/* 급여표: 줄바꿈 없이 13px. 좁으면 감싸개 안에서만 옆으로 민다 */
-.tblWrap {
-  overflow-x: auto;
-}
-.tbl {
+/* 급여표: small 글자, 칸 아래 1px 선(마지막 몸 줄 없음), 바닥 줄 위 1px line-strong. 세로 선이 없다 */
+.table {
   width: 100%;
+  margin-top: 12px;
   border-collapse: collapse;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
 }
-.tbl th {
-  height: 34px;
-  padding: 0 6px;
+.head {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
   text-align: left;
   font-weight: 500;
-  color: var(--ink-2);
-  background: var(--canvas);
-  border-bottom: 1px solid var(--line);
+  color: var(--muted);
   white-space: nowrap;
 }
-.tbl td {
-  height: 36px;
-  padding: 0 6px;
+.cell {
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
   color: var(--ink);
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
 }
-.tbl tr:last-child td {
+.row:last-child .cell {
   border-bottom: 0;
 }
-.tbl th:first-child,
-.tbl td:first-child {
-  padding-left: 12px;
+/* 첫 칸·끝 칸은 패널 머리와 같은 좌우 20px */
+.head:first-child,
+.cell:first-child {
+  padding-left: 20px;
 }
-.tbl th:last-child,
-.tbl td:last-child {
-  padding-right: 12px;
+.head:last-child,
+.cell:last-child {
+  padding-right: 20px;
 }
-.tbl .right {
+.amount {
   text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.tbl .sub {
-  color: var(--ink-2);
+.sum {
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 0;
+  font-weight: 600;
 }
 
-/* ---------- 작은 카드 3개: 카드 모양은 base .card·.group(휴대폰은 한 묶음)이 정한다 ---------- */
-.smallCard {
+/* ---------- 기능 목록: 줄마다 번호 | 글(h3 + 설명) 두 칸, 줄 사이 1px 선 ---------- */
+.item {
   display: grid;
-  gap: 6px;
-  align-content: start;
+  grid-template-columns: 32px minmax(0, 1fr);
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
 }
-.smallHead {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.item:first-child {
+  border-top: 1px solid var(--line);
 }
-.smallHead svg {
+/* 번호는 small 600 accent. 줄 높이는 h3(subtitle)와 같게 해 첫 줄에 맞춘다 */
+.num {
+  font-size: var(--fs-small);
+  line-height: var(--lh-subtitle);
+  font-weight: 600;
+  color: var(--accent);
+}
+.itemTitle,
+.desc,
+.short {
+  grid-column: 2;
+}
+.desc {
+  margin-top: 4px;
   color: var(--ink-2);
 }
+/* 휴대폰 짧은 설명 */
+.short {
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--muted);
+}
 
-/* ---------- 768px부터: 글 | 미리보기 두 칸 ---------- */
+/* ---------- 768px부터 ---------- */
 @media (min-width: 768px) {
-  .fcard {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  .inner::before {
+    margin-block: -64px 64px;
   }
-  .fcardText {
-    padding: 24px;
+  .layout {
+    margin-top: 32px;
   }
-  .fcardShot {
-    border-top: 0;
-    border-left: 1px solid var(--line);
-    padding: 20px;
-    align-content: center;
+  .item {
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding-block: 20px;
   }
 }
 
-/* ---------- 1024px부터: 5 : 7, 통계 패널은 비율 2×2 | 처방 그룹 ---------- */
+/* ---------- 1024px부터: 급여 1~6칸 · 목록 8~12칸 ---------- */
 @media (min-width: 1024px) {
-  .featBig {
-    gap: 16px;
+  .inner::before {
+    margin-block: -96px 96px;
   }
-  .fcard {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  .pay {
+    grid-column: 1 / 7;
+    min-width: 0;
   }
-  .fcardText {
-    padding: 32px;
-    align-content: center;
-  }
-  .fcardShot {
-    padding: 32px;
-  }
-  .miniBody {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .rates {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-bottom: 0;
-    border-right: 1px solid var(--line);
-  }
-  .rate,
-  .rate + .rate {
-    padding: 12px 16px;
-    border-left: 0;
-  }
-  .rate:nth-child(odd) {
-    border-right: 1px solid var(--line);
-  }
-  .rate:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-  .rate dd {
-    font-size: 18px;
-    line-height: 24px;
-  }
-  .groups {
-    padding: 12px 16px;
-    align-content: center;
+  .list {
+    grid-column: 8 / 13;
+    min-width: 0;
   }
 }

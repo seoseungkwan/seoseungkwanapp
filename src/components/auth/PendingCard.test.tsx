@@ -2,8 +2,10 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
+import { isBorderBox, nestedBoxes } from '@/testing/boxes'
 import { HeaderSignOut, PendingCard, type PendingHospital } from './PendingCard'
+import { Stepper } from './Stepper'
 
 // 실제 Supabase·Next 라우터에 붙지 않는다. [상태 다시 확인] → router.refresh(), 로그아웃 → signOut() 뒤 /login만 본다
 const { signOut, router } = vi.hoisted(() => ({
@@ -34,8 +36,12 @@ const REJECTED: PendingHospital = {
 }
 
 const PENDING_LEAD = '관리자가 승인하면 대시보드를 쓸 수 있습니다. 승인된 뒤에는 이 화면을 새로 고치거나 다시 로그인해 주세요.'
+// AC-216.2 문구(문의 이메일 빈칸 없음)
 const REJECTED_LEAD =
-  '궁금한 점은 [이메일 주소]로 문의해 주세요. 관리자가 다시 검토해 승인하면 이 계정으로 이어서 쓸 수 있습니다.'
+  '궁금한 점은 신청을 검토한 관리자에게 문의해 주세요. 관리자가 다시 검토해 승인하면 이 계정으로 이어서 쓸 수 있습니다.'
+// 시안 parts.mjs의 시계·X 아이콘(Icon clock·x) path
+const CLOCK_D = 'M8 4.75V8l2.25 1.5'
+const X_D = 'm4.75 4.75 6.5 6.5m0-6.5-6.5 6.5'
 
 const summary = () => screen.getByRole('region', { name: '보낸 신청 내용' })
 // 보낸 신청 내용 표의 [이름, 값] 줄들(화면 순서). 값은 이름 바로 다음 dd
@@ -45,23 +51,31 @@ const rowsOf = (section: HTMLElement) =>
     return [dt.textContent, dd?.tagName === 'DD' ? dd.textContent : null]
   })
 const valueOf = (label: string) => rowsOf(summary()).find(([name]) => name === label)?.[1]
+const ddOf = (label: string) => [...summary().querySelectorAll('dt')].find((dt) => dt.textContent === label)?.nextElementSibling as Element
 const refresh = () => screen.getByRole<HTMLButtonElement>('button', { name: '상태 다시 확인' })
+const steps = () => screen.getByRole('list', { name: '가입 단계' })
+// 상태 줄 = 상태 칩을 담은 <p>
+const statusLine = (chip: string) => screen.getByText(chip).parentElement as HTMLElement
 // a가 문서에서 b보다 앞에 있다
 const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+const expectOrder = (order: Node[]) => {
+  for (let i = 1; i < order.length; i++) expect(isBefore(order[i - 1], order[i]), String(i)).toBe(true)
+}
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
-// 요소가 그 묶음(ui.*)의 클래스를 모두 가진다
+// 요소가 그 묶음(ds.*)의 클래스를 모두 가진다
 const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
+const expectClasses = (el: Element | null | undefined, ...wanted: string[]) =>
+  expect(el ? classesOf(el) : []).toEqual(expect.arrayContaining(wanted))
+// 테두리·바탕 클래스(border·border-t·bg-* …, 화면 폭 접두사 포함)
+const frameClasses = (el: Element) => classesOf(el).filter((c) => /^(?:[\w-]+:)?(?:border(?:-|$)|bg-)/.test(c))
 const noArbitraryColor = () => {
   for (const el of document.querySelectorAll('[class]')) {
     expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
   }
 }
-// 제목 옆 상태 그림(제목 묶음 바로 앞의 svg)
-const stateIcon = () => {
-  const head = screen.getByRole('heading', { level: 1 }).parentElement?.parentElement as HTMLElement
-  return head.querySelector(':scope > svg') as SVGElement
-}
+// 네 변 테두리 상자(카드) 목록
+const borderBoxes = (root: Element) => [root, ...root.querySelectorAll('*')].filter(isBorderBox).map((el) => el.outerHTML.slice(0, 80))
 
 // jsdom의 location.assign은 바꿔 끼울 수 없다 → location을 통째로 가짜로
 const assign = vi.fn()
@@ -80,11 +94,25 @@ afterEach(() => {
 })
 
 describe('PendingCard: 승인 대기(목업 Pending)', () => {
-  it('AC-005.1: 가입 단계 칩 3개 — 구글 로그인(끝남) · 가입 신청(끝남) · 03 관리자 승인(지금)', () => {
+  it('AC-005.1·AC-216.1: 가입 단계 — 가입 신청과 같은 단계 표시(구글 로그인·가입 신청 끝남, 3 관리자 승인 지금)', () => {
     render(<PendingCard hospital={PENDING} />)
-    const steps = within(screen.getByRole('list', { name: '가입 단계' })).getAllByRole('listitem')
-    expect(steps.map((li) => li.textContent)).toEqual(['구글 로그인', '가입 신청', '03관리자 승인'])
-    expect(steps.map((li) => li.getAttribute('aria-current'))).toEqual([null, null, 'step'])
+    const list = steps()
+    expect(list.tagName).toBe('OL')
+    const items = within(list).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    expect(items.map((li) => li.getAttribute('aria-current'))).toEqual([null, null, 'step'])
+    // 끝난 단계는 화면 읽기 "끝남"(AC-215.1), 지금 단계는 번호 3(옛 "03" 아님)
+    for (const [i, name] of ['구글 로그인', '가입 신청'].entries()) {
+      expect(items[i].textContent, name).toContain(name)
+      expect(items[i].textContent, name).toContain('끝남')
+    }
+    expect(items[2].textContent).toContain('관리자 승인')
+    expect(items[2].textContent).toContain('3')
+    expect(items[2].textContent).not.toContain('03')
+    expect(items[2].textContent).not.toContain('끝남')
+    // 가입 신청 화면과 같은 부품(Stepper current 3)을 그대로 쓴다
+    const { container } = render(<Stepper current={3} />)
+    expect(list.outerHTML).toBe(container.querySelector('ol')?.outerHTML)
   })
 
   it('AC-005.1: 제목 "신청을 확인하고 있습니다"와 안내 문장', () => {
@@ -138,20 +166,13 @@ describe('PendingCard: 승인 대기(목업 Pending)', () => {
     expect(document.querySelector('img')).toBeNull()
   })
 
-  it('AC-005.1: 목업 순서 — 단계 · 제목 · 보낸 신청 내용 · [상태 다시 확인] · [로그아웃](모두 단추, 링크 아님)', () => {
+  it('AC-005.1·AC-216.1: 목업 순서 — 단계 · 상태 줄 · 제목 · 보낸 신청 내용 · [상태 다시 확인](단추 하나, 링크 아님)', () => {
     render(<PendingCard hospital={PENDING} />)
     const buttons = screen.getAllByRole<HTMLButtonElement>('button')
-    expect(buttons.map((b) => b.textContent)).toEqual(['상태 다시 확인', '로그아웃'])
-    expect(buttons.map((b) => b.type)).toEqual(['button', 'button'])
+    expect(buttons.map((b) => b.textContent)).toEqual(['상태 다시 확인'])
+    expect(buttons.map((b) => b.type)).toEqual(['button'])
     expect(screen.queryAllByRole('link')).toHaveLength(0)
-    const order = [
-      screen.getByRole('list', { name: '가입 단계' }),
-      screen.getByRole('heading', { level: 1 }),
-      summary(),
-      buttons[0],
-      buttons[1],
-    ]
-    for (let i = 1; i < order.length; i++) expect(isBefore(order[i - 1], order[i]), String(i)).toBe(true)
+    expectOrder([steps(), statusLine('승인 대기'), screen.getByRole('heading', { level: 1 }), summary(), buttons[0]])
   })
 
   it('AC-005.1: 오류 문구·오류 카드가 없다', () => {
@@ -177,23 +198,15 @@ describe('PendingCard: 승인 대기(목업 Pending)', () => {
     await user.click(refresh())
     expect(router.refresh).toHaveBeenCalledTimes(2)
   })
-
-  it('AC-005.1: 본문 [로그아웃]은 signOut() 뒤 /login을 새로 연다', async () => {
-    const user = userEvent.setup()
-    render(<PendingCard hospital={PENDING} />)
-    await user.click(screen.getByRole('button', { name: '로그아웃' }))
-    expect(signOut).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
-    expect(router.refresh).not.toHaveBeenCalled()
-  })
 })
 
 describe('PendingCard: 거절됨(목업 Rejected)', () => {
-  it('AC-005.3: 제목 "가입이 승인되지 않았습니다"와 문의 안내([이메일 주소] 빈칸 그대로)', () => {
+  it('AC-005.3·AC-216.2: 제목 "가입이 승인되지 않았습니다"와 문의 안내(관리자에게 문의, [이메일 주소] 빈칸 없음)', () => {
     render(<PendingCard hospital={REJECTED} />)
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입이 승인되지 않았습니다')
-    const lead = screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === REJECTED_LEAD)
-    expect(within(lead).getByText('[이메일 주소]')).toBeTruthy()
+    const lead = screen.getByText(REJECTED_LEAD)
+    expect(lead.tagName).toBe('P')
+    expect(document.body.textContent).not.toContain('[이메일 주소]')
   })
 
   it('AC-005.3: 보낸 신청 내용은 목업 그대로 신청일 · 병원 이름 · 구글 계정', () => {
@@ -206,17 +219,17 @@ describe('PendingCard: 거절됨(목업 Rejected)', () => {
     ])
   })
 
-  it('AC-005.3: [다른 계정으로 로그인] · [로그아웃]만 있고 [상태 다시 확인]·가입 단계 칩은 없다', () => {
+  it('AC-005.3·AC-216.2: [다른 계정으로 로그인]만 있고 [상태 다시 확인]·가입 단계는 없다 — 상태 줄 · 제목 · 보낸 신청 내용 · 단추 순서', () => {
     render(<PendingCard hospital={REJECTED} />)
     const buttons = screen.getAllByRole<HTMLButtonElement>('button')
-    expect(buttons.map((b) => b.textContent)).toEqual(['다른 계정으로 로그인', '로그아웃'])
-    expect(buttons.map((b) => b.type)).toEqual(['button', 'button'])
+    expect(buttons.map((b) => b.textContent)).toEqual(['다른 계정으로 로그인'])
+    expect(buttons.map((b) => b.type)).toEqual(['button'])
     expect(screen.queryByRole('button', { name: '상태 다시 확인' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '로그아웃' })).toBeNull()
     expect(screen.queryByRole('list', { name: '가입 단계' })).toBeNull()
     expect(screen.queryAllByRole('link')).toHaveLength(0)
     expect(screen.queryByRole('alert')).toBeNull()
-    const order = [screen.getByRole('heading', { level: 1 }), summary(), buttons[0], buttons[1]]
-    for (let i = 1; i < order.length; i++) expect(isBefore(order[i - 1], order[i]), String(i)).toBe(true)
+    expectOrder([statusLine('승인되지 않음'), screen.getByRole('heading', { level: 1 }), summary(), buttons[0]])
   })
 
   it('AC-005.3: 받은 값은 글자로만 그린다(HTML로 해석하지 않는다)', () => {
@@ -230,14 +243,6 @@ describe('PendingCard: 거절됨(목업 Rejected)', () => {
     const user = userEvent.setup()
     render(<PendingCard hospital={REJECTED} />)
     await user.click(screen.getByRole('button', { name: '다른 계정으로 로그인' }))
-    expect(signOut).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
-  })
-
-  it('AC-005.3: 본문 [로그아웃]도 signOut() 뒤 /login을 새로 연다', async () => {
-    const user = userEvent.setup()
-    render(<PendingCard hospital={REJECTED} />)
-    await user.click(screen.getByRole('button', { name: '로그아웃' }))
     expect(signOut).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
   })
@@ -255,55 +260,119 @@ describe('HeaderSignOut: 머리띠 [로그아웃](목업 Pending·Rejected)', ()
   })
 })
 
-describe('PendingCard: 모양', () => {
-  it('AC-005.1·AC-013.3: 단계 표시 색 — 끝난 단계 ok 체크 + ink-2, 지금 단계(03) ink 600', () => {
-    render(<PendingCard hospital={PENDING} />)
-    const [login, signup, approval] = within(screen.getByRole('list', { name: '가입 단계' })).getAllByRole('listitem')
-    for (const done of [login, signup]) {
-      expect(classesOf(done)).toContain('text-ink-2')
-      expect(classesOf(done.querySelector('svg') as Element)).toContain('text-ok')
-    }
-    expect(classesOf(approval)).toEqual(expect.arrayContaining(['text-ink', 'font-semibold']))
-  })
-
-  it('AC-005.1·AC-013.2·AC-013.3: 대기 — 20px 선 아이콘 ink-2(색 원 바탕 없음), 신청 내용 카드 ui.card, [상태 다시 확인] 주 단추, 본문 [로그아웃] 글자 단추, 임의 색 없음', () => {
-    render(<PendingCard hospital={PENDING} />)
-    const icon = stateIcon()
+describe('PendingCard: 모양 (b2b-redesign REQ-216)', () => {
+  it('AC-216.1: 상태 줄(위 24px) — ds.chip.warning(시계 12px) "승인 대기" + "<신청일> 신청"(small muted, 한국 날짜)', () => {
+    render(<PendingCard hospital={{ ...PENDING, createdAt: '2026-10-27T15:30:00+00:00' }} />)
+    const line = statusLine('승인 대기')
+    expect(line.tagName).toBe('P')
+    expectClasses(line, 'mt-6', 'flex', 'items-center', 'gap-2')
+    const [chip, date] = Array.from(line.children)
+    hasAll(chip, ds.chip.warning)
+    expect(chip.textContent).toBe('승인 대기')
+    const icon = chip.querySelector('svg') as Element
+    expect(icon.querySelector(`path[d="${CLOCK_D}"]`)).not.toBeNull()
+    expect(icon.getAttribute('width')).toBe('12')
     expect(icon.getAttribute('aria-hidden')).toBe('true')
-    expect(icon.getAttribute('width')).toBe('20')
-    expect(classesOf(icon)).toContain('text-ink-2')
-    expect(classesOf(icon).filter((c) => c.startsWith('bg-'))).toEqual([])
-    hasAll(summary(), ui.card)
-    hasAll(refresh(), ui.button.primary)
-    hasAll(screen.getByRole('button', { name: '로그아웃' }), ui.textButton)
-    noArbitraryColor()
+    expect(date.textContent).toBe('2026-10-28 신청')
+    expectClasses(date, 'text-small', 'text-muted')
+    expect(line.children).toHaveLength(2)
   })
 
-  it('AC-005.3·AC-013.2·AC-013.3: 거절 — 20px 선 아이콘 danger, 신청 내용 카드 ui.card, [다른 계정으로 로그인] 보조 단추, 임의 색 없음', () => {
-    render(<PendingCard hospital={REJECTED} />)
-    const icon = stateIcon()
-    expect(icon.getAttribute('width')).toBe('20')
-    expect(classesOf(icon)).toContain('text-danger')
-    expect(classesOf(icon).filter((c) => c.startsWith('bg-'))).toEqual([])
-    hasAll(summary(), ui.card)
-    hasAll(screen.getByRole('button', { name: '다른 계정으로 로그인' }), ui.button.secondary)
-    hasAll(screen.getByRole('button', { name: '로그아웃' }), ui.textButton)
-    noArbitraryColor()
+  it('AC-216.1: 제목·안내 — 상태 줄 바로 뒤 h1(위 8px, heading-m → heading 600 ink) → 안내 <p>(ink-2, 위 8px). 제목 옆 상태 그림이 없다', () => {
+    render(<PendingCard hospital={PENDING} />)
+    const title = screen.getByRole('heading', { level: 1 })
+    expect(title.previousElementSibling).toBe(statusLine('승인 대기'))
+    expectClasses(title, 'mt-2', 'text-heading-m', 'md:text-heading', 'font-semibold', 'text-ink')
+    const lead = screen.getByText(PENDING_LEAD)
+    expect(lead.tagName).toBe('P')
+    expect(title.nextElementSibling).toBe(lead)
+    expectClasses(lead, 'mt-2', 'text-body', 'text-ink-2')
+    expect(document.querySelector('svg[width="20"]')).toBeNull()
   })
 
-  it('AC-005.1·AC-013.3: 신청 내용은 기록 목록 — 칸 이름 96px table muted, 값 table ink, 줄마다 1px 선', () => {
+  it('AC-216.1: 보낸 신청 내용 — <section aria-labelledby>(테두리·바탕 없음) 안 h2(small 600 muted, 위 32px) → <dl>(위 8px, 위 1px line)', () => {
+    render(<PendingCard hospital={PENDING} />)
+    const section = summary()
+    expect(section.tagName).toBe('SECTION')
+    expect(frameClasses(section)).toEqual([])
+    const h2 = within(section).getByRole('heading', { level: 2 })
+    expect(section.getAttribute('aria-labelledby')).toBe(h2.id)
+    expectClasses(h2, 'mt-8', 'text-small', 'font-semibold', 'text-muted')
+    const list = section.querySelector('dl') as HTMLElement
+    expect(h2.nextElementSibling).toBe(list)
+    expectClasses(list, 'mt-2', 'border-t', 'border-line')
+  })
+
+  it('AC-216.1: 신청 내용 줄 — 96px dt(small muted) + dd(body ink), 줄 아래 1px line, 44px 이상(위아래 12px). 병원 이름 600', () => {
     render(<PendingCard hospital={PENDING} />)
     const list = summary().querySelector('dl') as HTMLElement
-    expect(classesOf(list)).toContain('text-table')
-    for (const dt of list.querySelectorAll('dt')) {
-      expect(classesOf(dt)).toEqual(expect.arrayContaining(['w-24', 'text-muted']))
-      expect(classesOf(dt.nextElementSibling as Element)).toContain('text-ink')
-      expect(classesOf(dt.parentElement as Element)).toEqual(expect.arrayContaining(['border-t', 'border-line']))
+    const dts = list.querySelectorAll('dt')
+    expect(dts).toHaveLength(5)
+    for (const dt of dts) {
+      const row = dt.parentElement as Element
+      expect(row.parentElement).toBe(list)
+      expectClasses(row, 'border-b', 'border-line', 'py-3', 'min-h-11')
+      expectClasses(dt, 'w-24', 'shrink-0', 'text-small', 'text-muted')
+      expectClasses(dt.nextElementSibling, 'text-body', 'text-ink')
     }
+    expectClasses(ddOf('병원 이름'), 'font-semibold')
+    expectClasses(ddOf('구글 계정'), 'wrap-anywhere')
   })
 
-  it('AC-005.1·AC-005.3·AC-013.3: 머리띠 [로그아웃]은 글자 단추', () => {
+  it('AC-216.1: [상태 다시 확인]은 ds.button.primaryLarge(위 24px, 768px 미만 전체 폭), 머리띠 [로그아웃]은 ds.button.ghostSmall', () => {
+    render(<PendingCard hospital={PENDING} />)
+    hasAll(refresh(), ds.button.primaryLarge)
+    expectClasses(refresh(), 'mt-6', 'max-md:w-full')
+    expect(classesOf(refresh())).not.toContain('w-full')
+    cleanup()
     render(<HeaderSignOut />)
-    hasAll(screen.getByRole('button', { name: '로그아웃' }), ui.textButton)
+    hasAll(screen.getByRole('button', { name: '로그아웃' }), ds.button.ghostSmall)
+  })
+
+  it('AC-216.2: 거절 상태 줄 — ds.chip.negative(× 12px) "승인되지 않음" + "<신청일> 신청", 제목·안내는 대기와 같은 모양', () => {
+    render(<PendingCard hospital={REJECTED} />)
+    const line = statusLine('승인되지 않음')
+    expect(line.tagName).toBe('P')
+    expectClasses(line, 'mt-6', 'flex', 'items-center', 'gap-2')
+    const [chip, date] = Array.from(line.children)
+    hasAll(chip, ds.chip.negative)
+    expect(chip.textContent).toBe('승인되지 않음')
+    const icon = chip.querySelector('svg') as Element
+    expect(icon.querySelector(`path[d="${X_D}"]`)).not.toBeNull()
+    expect(icon.getAttribute('width')).toBe('12')
+    expect(date.textContent).toBe('2026-10-22 신청')
+    expectClasses(date, 'text-small', 'text-muted')
+    const title = screen.getByRole('heading', { level: 1 })
+    expect(title.previousElementSibling).toBe(line)
+    expectClasses(title, 'mt-2', 'text-heading-m', 'md:text-heading', 'font-semibold', 'text-ink')
+    expectClasses(screen.getByText(REJECTED_LEAD), 'mt-2', 'text-body', 'text-ink-2')
+  })
+
+  it('AC-216.2: 거절 — 보낸 신청 내용 h2 → dl(3줄, 대기와 같은 모양), [다른 계정으로 로그인]은 ds.button.primaryLarge(위 24px, 768px 미만 전체 폭)', () => {
+    render(<PendingCard hospital={REJECTED} />)
+    const section = summary()
+    expect(section.tagName).toBe('SECTION')
+    expect(frameClasses(section)).toEqual([])
+    const h2 = within(section).getByRole('heading', { level: 2 })
+    expectClasses(h2, 'mt-8', 'text-small', 'font-semibold', 'text-muted')
+    expectClasses(section.querySelector('dl'), 'mt-2', 'border-t', 'border-line')
+    for (const dt of section.querySelectorAll('dt')) {
+      expectClasses(dt.parentElement, 'border-b', 'border-line', 'py-3', 'min-h-11')
+      expectClasses(dt, 'w-24', 'text-small', 'text-muted')
+    }
+    expectClasses(ddOf('병원 이름'), 'font-semibold')
+    const button = screen.getByRole('button', { name: '다른 계정으로 로그인' })
+    hasAll(button, ds.button.primaryLarge)
+    expectClasses(button, 'mt-6', 'max-md:w-full')
+  })
+
+  it.each([
+    ['대기', PENDING],
+    ['거절', REJECTED],
+  ] as const)('AC-216.1·AC-216.2·AC-204.7: %s — 카드 상자가 없고 상자 안 상자도 없다, 임의 색 없음', (_name, hospital) => {
+    const { container } = render(<PendingCard hospital={hospital} />)
+    expect(borderBoxes(container)).toEqual([])
+    expect(nestedBoxes(container)).toEqual([])
+    noArbitraryColor()
   })
 })

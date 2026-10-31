@@ -92,9 +92,9 @@ describe('AC-103.1: LogoMark 마크업', () => {
 
 describe('AC-103.2: 로고는 LogoMark 한 곳에서', () => {
   const USERS = [
-    { file: 'src/components/shell/AppShell.tsx', size: 26 },
-    { file: 'src/components/auth/AuthFrame.tsx', size: 26 },
-    { file: 'src/components/landing/SiteHeader.tsx', size: 22 },
+    { file: 'src/components/shell/AppShell.tsx', size: 24 },
+    { file: 'src/components/auth/AuthFrame.tsx', size: 28 },
+    { file: 'src/components/landing/SiteHeader.tsx', size: 24 },
   ]
 
   it('AC-103.2: 십자 path 글자(M13.5 8h3)는 시험 밖 src/에서 src/components/common/LogoMark.tsx에만 있다', () => {
@@ -107,7 +107,7 @@ describe('AC-103.2: 로고는 LogoMark 한 곳에서', () => {
     }
   })
 
-  it('AC-103.2: AppShell(26)·AuthFrame(26)·SiteHeader(22)는 LogoMark로 그리고, 세 파일에 #14C8BA·#6D5DF5(대소문자 무시)와 직접 그린 svg가 없다', () => {
+  it('AC-103.2: AppShell(24)·AuthFrame(28)·SiteHeader(24)는 LogoMark로 그리고, 세 파일에 #14C8BA·#6D5DF5(대소문자 무시)와 직접 그린 svg가 없다', () => {
     for (const { file, size } of USERS) {
       const src = read(file)
       expect(src, file).toMatch(/^import \{ LogoMark \} from '@\/components\/common\/LogoMark'$/m)
@@ -122,15 +122,15 @@ describe('AC-103.2: 로고는 LogoMark 한 곳에서', () => {
     const screens = [
       {
         name: 'AppShell',
-        size: 26,
+        size: 24,
         html: renderToStaticMarkup(
           <AppShell hospitalName="병원" email="a@b.c" isAdmin={false}>
             본문
           </AppShell>,
         ),
       },
-      { name: 'AuthFrame', size: 26, html: renderToStaticMarkup(<AuthFrame>본문</AuthFrame>) },
-      { name: 'SiteHeader', size: 22, html: renderToStaticMarkup(<SiteHeader />) },
+      { name: 'AuthFrame', size: 28, html: renderToStaticMarkup(<AuthFrame>본문</AuthFrame>) },
+      { name: 'SiteHeader', size: 24, html: renderToStaticMarkup(<SiteHeader />) },
     ]
     for (const { name, size, html } of screens) {
       const logos = logosIn(html)

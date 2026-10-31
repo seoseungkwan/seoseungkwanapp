@@ -1,59 +1,121 @@
-/* 정형외과·통증 의원 섹션(#ortho) (specs/landing-v2 AC-108.4). 값은 승인 시안 docs/mockups/landing-v2/index.html의 .ortho .card · .snip 그대로다.
-   카드 테두리·바탕·안쪽은 base .card·.group이 정하고, 여기서는 카드 안 배치와 숫자 조각만 그린다(design.md 'CSS 적용 순서').
-   휴대폰 값을 먼저 쓰고 768px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
+/* 정형외과·통증 의원 섹션(#ortho) (specs/b2b-redesign AC-209.2, 시안 docs/mockups/b2b-redesign/style.css의 .head-split · .cmp · .kv · .cmp.ph).
+   섹션 틀·12칸·제목 단계는 base.module.css가 정하고, 여기서는 머리 칸 자리와 두 표만 그린다.
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   PC 표(.pcOnly)와 휴대폰 표(.phoneOnly)는 칸 아래 1px 선만 쓴다. 세로 선·바깥 테두리가 없다(상자가 아니다) */
 
-/* 휴대폰: 글 | 조각 두 칸 */
-.orthoCard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 136px;
-  gap: 16px;
-  align-items: start;
+/* ---------- 머리: 1024px 미만은 제목 → 안내로 쌓인다 ---------- */
+.head {
+  row-gap: 12px;
 }
-.text {
-  display: grid;
-  gap: 4px;
-  align-content: start;
-}
-
-/* ---------- 숫자 조각(예시) ---------- */
-.snip {
-  background: var(--canvas);
-  border-radius: 4px;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 16px;
-}
-.snipHead {
-  display: flex;
-  justify-content: space-between;
-  color: var(--muted);
-  padding-bottom: 6px;
-}
-.snipRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  padding-block: 6px;
-  border-top: 1px solid var(--line);
+.lead {
   color: var(--ink-2);
-  white-space: nowrap;
 }
-.snipRow b {
-  font-size: 13px;
+
+/* ---------- 값 쌍(두 표가 같이 쓴다): 이름 | 값 ---------- */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-2);
+}
+.kv + .kv {
+  margin-top: 4px;
+}
+.value {
   font-weight: 600;
   color: var(--ink);
 }
 
-/* ---------- 768px부터: 한 칸, 조각이 위로 ---------- */
-@media (min-width: 768px) {
-  .orthoCard {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
-    gap: 20px;
+/* ---------- PC 비교표(768px 이상): 열 = 주사·물리치료·비급여·월말 보고, 줄 = 보는 숫자·기준·예시 ---------- */
+.table {
+  width: 100%;
+  margin-top: 32px;
+  border-collapse: collapse;
+}
+.corner,
+.colHead,
+.rowHead,
+.cell {
+  padding: 12px 16px;
+  text-align: left;
+  vertical-align: top;
+}
+.corner,
+.colHead {
+  border-bottom: 1px solid var(--ink);
+}
+.colHead {
+  font-size: var(--fs-subtitle);
+  line-height: var(--lh-subtitle);
+  font-weight: 600;
+}
+.rowHead {
+  width: 120px;
+  padding-left: 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  font-weight: 500;
+  color: var(--muted);
+}
+.corner {
+  padding-left: 0;
+}
+.cell {
+  border-bottom: 1px solid var(--line);
+}
+.cell .kv {
+  max-width: 200px;
+}
+
+/* ---------- 휴대폰 표(768px 미만): 줄 = 이름(아래 기준) | 값 쌍 ---------- */
+.mobile {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+}
+.caption {
+  padding-bottom: 8px;
+  text-align: left;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--muted);
+}
+.mRowHead,
+.mCell {
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.mRowHead {
+  width: 104px;
+  padding: 12px 12px 12px 0;
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mBasis {
+  display: block;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: 400;
+  color: var(--muted);
+}
+.mCell {
+  padding: 12px 0;
+}
+.mRow:first-child > * {
+  border-top: 1px solid var(--ink);
+}
+
+/* ---------- 1024px부터: 제목 1~6칸 · 안내 7~11칸, 아래 맞춤 ---------- */
+@media (min-width: 1024px) {
+  .head {
+    align-items: end;
   }
-  .snip {
-    order: -1;
-    padding: 10px 12px;
+  .title {
+    grid-column: 1 / 7;
+  }
+  .lead {
+    grid-column: 7 / 12;
   }
 }
