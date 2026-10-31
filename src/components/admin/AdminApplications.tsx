@@ -2,52 +2,56 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import { listApplications, setHospitalStatus, type Application } from '@/lib/auth/admin'
 import { appliedOn, countByTab, doneMessage, EMPTY, phoneText, rowsOf, TABS, withStatus, type Tab } from './applications'
 
-// 관리자 · 가입 신청 목록 (REQ-007, design.md '관리자', UI_GUIDE '앱 화면' 화면 안 탭·표·칩·확인 창·폰). 문구·순서는 목업 Admin.dc.html.
+// 관리자 · 가입 신청 목록 (REQ-007, b2b-redesign REQ-220, docs/UI_GUIDE.md '관리자'). 문구는 목업 Admin.dc.html, 모양은 b2b-redesign 시안.
 // 목록은 브라우저가 읽는다(RLS: 관리자는 모든 병원). 상태는 DB 함수 set_hospital_status로만 바꾸고, 성공한 뒤에만 화면 줄을 옮긴다.
 // 앱 틀(위쪽 띠·탭 띠·<main>)은 (app)/layout의 AppShell이 준다
 
 const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있습니다. 거절한 신청은 거절 탭에서 되돌릴 수 있습니다.'
 const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없습니다. 거절 탭에서 언제든 되돌릴 수 있습니다.'
 
-// 화면 안 탭: 앱 탭 띠와 같은 밑줄 모양, 높이 40px·body(폰 44px). 키보드 초점은 탭 안쪽 2px accent 고리
+// 화면 안 탭: 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 첫 탭은 왼쪽 12px을 당겨 글자를 제목 끝에 맞춘다.
+// 키보드 초점은 탭 안쪽 2px accent 고리
 const tabBase =
-  'relative inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-chip px-3 text-body focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
+  'relative inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body first:-ml-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 const tabIdle = `${tabBase} font-medium text-ink-2 hover:text-ink`
-// 지금: accent 700 + 아래 3px accent 밑줄(좌우 10px 안쪽, 위 모서리 2px)
-const tabCurrent = `${tabBase} font-bold text-accent after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.75 after:rounded-t-xs after:bg-accent`
+// 지금: ink 600 + 아래 2px accent 밑줄(글자 폭, 탭 줄 선 위에 겹침)
+const tabCurrent = `${tabBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
 
-// 폰(768px 미만): 표 머리를 숨기고 줄마다 카드처럼 쌓는다(UI_GUIDE '표'·'폰'). 패널 틀은 벗기고 줄이 카드가 된다
-const panelClass = `${ui.panel} max-md:border-0 max-md:bg-transparent max-md:p-0`
-const rowClass = `${ui.table.row} max-md:flex max-md:flex-col max-md:gap-1.5 max-md:rounded-card max-md:border max-md:border-line max-md:bg-surface max-md:p-4`
-// 폰 칸: 줄바꿈 허용, 칸 선·여백 없음(ui 칸의 첫 칸 왼쪽 8px도 지운다)
-const cellPhone = 'max-md:h-auto max-md:whitespace-normal max-md:border-b-0 max-md:p-0 max-md:first:pl-0'
-// 폰에서만 값 앞에 칸 이름(data-label, PC는 표 머리가 대신한다). 이름 칸 56px·muted
-const labeled = `${cellPhone} max-md:flex max-md:gap-3 max-md:before:w-14 max-md:before:shrink-0 max-md:before:text-muted max-md:before:content-[attr(data-label)]`
-// DOM은 PC 칸 순서(신청일 먼저). 폰은 병원 이름·신청자·이메일·연락처·신청일 / 상태 칩·단추 순서
+// 표는 패널 틀 없이 본문 위에 바로 둔다: surface 띠 + 위아래 1px line(모서리 없음). PC 몸 줄 56px·body 글자.
+// 휴대폰(768px 미만): 표 머리를 숨기고 줄마다 세 줄 격자로 쌓는다. 띠는 본문 좌우 여백(16px)만큼 밖으로 나가 화면 끝까지 닿고,
+// 줄 사이는 1px line(마지막 줄 없음), 줄 안쪽 12px 16px
+const rowClass = `${ds.table.row} md:h-14 max-md:grid max-md:grid-cols-[fit-content(50%)_1fr_auto] max-md:items-center max-md:gap-y-0.5 max-md:border-b max-md:border-line max-md:px-4 max-md:py-3 max-md:last:border-b-0`
+// 휴대폰 칸: 높이·칸 선·여백을 지운다(ds 칸의 첫 칸 왼쪽·끝 칸 오른쪽 20px도)
+const cellPhone = 'max-md:h-auto max-md:border-b-0 max-md:p-0 max-md:first:pl-0 max-md:last:pr-0'
+// DOM은 PC 칸 순서(신청일 먼저). 휴대폰 격자(칸 3개: 신청자 글자 폭(줄 폭의 반까지) · 남은 폭 · 글자 폭).
+// 긴 이름(DB는 30자까지)은 첫 칸 안에서 줄바꿈한다 → 셋째 칸(신청일·단추)은 늘 화면 안에 남는다:
+//   1줄 병원 이름(600, 말줄임) · 오른쪽 신청일(caption muted)
+//   2줄 신청자 · 이메일(small ink-2)
+//   3줄 연락처(small muted) · 오른쪽 동작 단추(44px)
 const cell = {
-  date: `${ui.table.tdSub} ${labeled} max-md:order-1`,
-  clinic: `${ui.table.td} ${cellPhone} font-medium md:truncate max-md:text-body max-md:font-semibold`,
-  applicant: `${ui.table.td} ${labeled} md:truncate`,
-  email: `${ui.table.tdSub} ${labeled} md:truncate max-md:break-all`,
-  phone: `${ui.table.tdSub} ${labeled}`,
-  action: `${ui.table.td} ${cellPhone} max-md:order-2 max-md:mt-2 max-md:flex max-md:flex-col max-md:gap-3`,
+  date: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-3 max-md:row-start-1 max-md:ml-3 max-md:justify-self-end max-md:text-caption`,
+  clinic: `${ds.table.td} ${cellPhone} truncate text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
+  applicant: `${ds.table.td} ${cellPhone} md:truncate md:text-body max-md:col-start-1 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
+  email: `${ds.table.tdSub} ${cellPhone} md:truncate md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:before:px-1 max-md:before:content-['·']`,
+  phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-3 max-md:mt-1.5 max-md:text-muted`,
+  action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-3 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
 // 빈 탭 안내: 제목과 설명을 따로 줄로(목업 <p> 둘). 두 줄이라 위아래 여백을 둔다
-const emptyClass = `${ui.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:rounded-card max-md:border max-md:bg-surface max-md:px-4 max-md:py-3`
+const emptyClass = `${ds.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:px-4`
 // PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
-// 신청일·신청자·연락처·동작은 정한 폭, 병원 이름·이메일은 남은 폭을 반씩. 글 칸(병원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
-// 표는 최소 1000px — 더 좁으면 표만 옆으로 밀린다
+// 신청일·신청자 120px, 연락처·동작 150px, 병원 이름·이메일은 남은 폭을 반씩. 글 칸(병원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
+// 표는 최소 1000px — 더 좁으면 표만 옆으로 밀린다. 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
 const COLUMNS = [
-  { label: '신청일', width: 'w-28' },
+  { label: '신청일', width: 'w-30' },
   { label: '병원 이름', width: '' },
-  { label: '신청자', width: 'w-28' },
+  { label: '신청자', width: 'w-30' },
   { label: '이메일', width: '' },
-  { label: '연락처', width: 'w-32' },
-  { label: '동작', width: 'w-36' },
+  { label: '연락처', width: 'w-37.5' },
+  { label: '동작', width: 'w-37.5 md:text-right' },
 ] as const
 
 function CheckIcon({ size }: { size: number }) {
@@ -67,7 +71,7 @@ function RestoreIcon() {
   )
 }
 
-// 거절 확인 창: 처음 초점 [취소], Esc = 취소, Tab은 창 안 두 단추 사이만 돈다. 떠 있는 층(ui.layer) + 가림막 ink 36%
+// 거절 확인 창: 처음 초점 [취소], Esc = 취소, Tab은 창 안 두 단추 사이만 돈다. 떠 있는 층(ds.layer, 8px·그림자)·폭 400px·안쪽 24px + 가림막 ink 36%
 function RejectDialog({ row, onCancel, onConfirm }: { row: Application; onCancel: () => void; onConfirm: () => void }) {
   const titleId = useId()
   const bodyId = useId()
@@ -109,23 +113,24 @@ function RejectDialog({ row, onCancel, onConfirm }: { row: Application; onCancel
         aria-describedby={bodyId}
         tabIndex={-1}
         onKeyDown={trapTab}
-        className={`${ui.layer} flex w-full max-w-100 flex-col gap-4 p-6 outline-hidden max-md:p-5`}
+        className={`${ds.layer} flex w-full max-w-100 flex-col gap-4 p-6 outline-hidden`}
       >
         <h2 id={titleId} className="text-lead font-semibold text-ink">
           이 신청을 거절할까요?
         </h2>
-        <div className="flex flex-col gap-0.5 rounded-card border border-line bg-canvas px-3 py-2.5">
+        {/* 신청 내용: 창(상자) 안이라 테두리 없이 canvas 바탕만(상자 안 상자 금지) */}
+        <div className="flex flex-col gap-0.5 rounded-control bg-canvas px-3 py-2">
           <span className="text-body font-semibold text-ink">{row.name}</span>
-          <span className="break-all text-table text-ink-2">{`${row.applicantName} · ${row.email}`}</span>
+          <span className="break-all text-small text-ink-2">{`${row.applicantName} · ${row.email}`}</span>
         </div>
         <p id={bodyId} className="text-body text-ink-2">
           {CONFIRM_BODY}
         </p>
         <div className="flex justify-end gap-2">
-          <button ref={cancelRef} type="button" onClick={onCancel} className={`${ui.button.secondary} max-md:flex-1`}>
+          <button ref={cancelRef} type="button" onClick={onCancel} className={`${ds.button.secondary} max-md:flex-1`}>
             취소
           </button>
-          <button ref={confirmRef} type="button" onClick={onConfirm} className={`${ui.button.danger} max-md:flex-1`}>
+          <button ref={confirmRef} type="button" onClick={onConfirm} className={`${ds.button.danger} max-md:flex-1`}>
             거절
           </button>
         </div>
@@ -230,14 +235,14 @@ export function AdminApplications() {
 
   return (
     <div aria-busy={rows === null} className="flex flex-col gap-4 max-md:gap-3">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-title font-semibold text-ink max-md:text-title-sm">가입 신청</h1>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-title font-semibold text-ink">가입 신청</h1>
         <p className="text-body text-ink-2">{INTRO}</p>
       </div>
 
       {counts !== null && (
         <>
-          <div role="tablist" aria-label="신청 상태" onKeyDown={onTabKeyDown} className="flex gap-1 border-b border-line">
+          <div role="tablist" aria-label="신청 상태" onKeyDown={onTabKeyDown} className="flex border-b border-line">
             {TABS.map((t) => {
               const on = t.key === tab
               return (
@@ -255,14 +260,15 @@ export function AdminApplications() {
                   onClick={() => select(t.key)}
                   className={on ? tabCurrent : tabIdle}
                 >
-                  {/* 굵기가 바뀌어도 탭 폭이 흔들리지 않게 굵은 글자 폭을 보이지 않는 ::after로 미리 잡는다 */}
+                  {/* 굵기가 바뀌어도 탭 폭이 흔들리지 않게 지금 탭(600) 글자 폭을 보이지 않는 ::after로 미리 잡는다 */}
                   <span
                     data-label={t.label}
-                    className="inline-flex flex-col items-center after:invisible after:h-0 after:overflow-hidden after:font-bold after:content-[attr(data-label)]"
+                    className="inline-flex flex-col items-center after:invisible after:h-0 after:overflow-hidden after:font-semibold after:content-[attr(data-label)]"
                   >
                     {t.label}
                   </span>{' '}
-                  <span className={ui.chip.neutral}>{counts[t.key]}</span>
+                  {/* 개수는 칩이 아니라 글자(muted 500) */}
+                  <span className="font-medium tabular-nums text-muted">{counts[t.key]}</span>
                 </button>
               )
             })}
@@ -270,7 +276,7 @@ export function AdminApplications() {
 
           {/* 완료 줄과 오류 카드는 같은 자리(탭 줄과 표 사이). 완료 줄 자리(role=status)는 늘 두고 글만 바꾼다 —
               새로 붙은 알림 자리는 화면 읽기가 놓칠 수 있다. 비면(:empty) 화면 밖으로 빼 자리를 차지하지 않는다(sr-only) */}
-          <p role="status" className="flex items-center gap-2 text-table text-ok empty:sr-only">
+          <p role="status" className="flex items-center gap-2 text-small text-positive empty:sr-only">
             {message !== '' && (
               <>
                 <CheckIcon size={16} />
@@ -280,19 +286,22 @@ export function AdminApplications() {
           </p>
           {failed && <ErrorCard code="E-ADMIN-FAILED" />}
 
-          <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)} className={panelClass}>
-            <div className={`${ui.table.wrap} max-md:overflow-visible`}>
-              <table aria-label={`${label} 신청`} className={`${ui.table.table} md:table-fixed md:min-w-250 max-md:block`}>
+          <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
+            <div className={`${ds.table.wrap} max-md:-mx-4 max-md:overflow-visible`}>
+              <table
+                aria-label={`${label} 신청`}
+                className={`${ds.table.table} border-y border-line bg-surface md:table-fixed md:min-w-250 max-md:block`}
+              >
                 <thead className="max-md:hidden">
                   <tr>
                     {COLUMNS.map((c) => (
-                      <th key={c.label} scope="col" className={`${ui.table.th} ${c.width}`}>
+                      <th key={c.label} scope="col" className={`${ds.table.th} ${c.width}`}>
                         {c.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="max-md:flex max-md:flex-col max-md:gap-3">
+                <tbody className="max-md:flex max-md:flex-col">
                   {list.length === 0 ? (
                     <tr>
                       <td colSpan={COLUMNS.length} className={emptyClass}>
@@ -303,68 +312,60 @@ export function AdminApplications() {
                   ) : (
                     list.map((row) => (
                       <tr key={row.id} className={rowClass}>
-                        <td data-label="신청일" className={cell.date}>
-                          {appliedOn(row.createdAt)}
+                        <td className={cell.date}>
+                          <span className="tabular-nums text-muted">{appliedOn(row.createdAt)}</span>
                         </td>
                         <td className={cell.clinic} title={row.name}>
                           {row.name}
                         </td>
-                        <td data-label="신청자" className={cell.applicant} title={row.applicantName}>
+                        <td className={cell.applicant} title={row.applicantName}>
                           {row.applicantName}
                         </td>
-                        <td data-label="이메일" className={cell.email} title={row.email}>
+                        <td className={cell.email} title={row.email}>
                           {row.email}
                         </td>
-                        <td data-label="연락처" className={cell.phone}>
+                        <td className={cell.phone}>
                           {phoneText(row.phone)}
                         </td>
                         <td className={cell.action}>
-                          {row.status === 'approved' ? (
-                            // 승인 줄은 동작 단추 없이 완료 칩만(PC·폰 모두)
-                            <span className={`${ui.chip.done} gap-1 self-start`}>
-                              <CheckIcon size={12} />
-                              승인됨
-                            </span>
-                          ) : (
-                            <>
-                              {/* 폰에서만 상태 칩(PC는 탭이 상태를 보인다) */}
-                              <span className={`${row.status === 'pending' ? ui.chip.waiting : ui.chip.rejected} self-start md:hidden`}>
-                                {row.status === 'pending' ? '대기' : '거절됨'}
+                          {/* 줄의 상태 칩은 없다(탭이 상태다). 승인 줄은 단추 대신 "승인됨" 완료 칩 */}
+                          <div className="flex justify-end gap-2">
+                            {row.status === 'approved' ? (
+                              <span className={ds.chip.positive}>
+                                <CheckIcon size={12} />
+                                승인됨
                               </span>
-                              <div className="flex gap-2">
-                                {row.status === 'pending' ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      disabled={busy}
-                                      onClick={(e) => void change(row, 'approved', e.currentTarget)}
-                                      className={`${ui.button.primarySmall} max-md:flex-1`}
-                                    >
-                                      승인
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={busy}
-                                      onClick={(e) => askReject(row, e.currentTarget)}
-                                      className={`${ui.button.secondarySmall} max-md:flex-1`}
-                                    >
-                                      거절
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={(e) => void change(row, 'pending', e.currentTarget)}
-                                    className={`${ui.button.secondarySmall} max-md:flex-1`}
-                                  >
-                                    <RestoreIcon />
-                                    되돌리기
-                                  </button>
-                                )}
-                              </div>
-                            </>
-                          )}
+                            ) : row.status === 'pending' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={(e) => void change(row, 'approved', e.currentTarget)}
+                                  className={ds.button.accentOutlineSmall}
+                                >
+                                  승인
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={(e) => askReject(row, e.currentTarget)}
+                                  className={ds.button.secondarySmall}
+                                >
+                                  거절
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={(e) => void change(row, 'pending', e.currentTarget)}
+                                className={ds.button.secondarySmall}
+                              >
+                                <RestoreIcon />
+                                되돌리기
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
