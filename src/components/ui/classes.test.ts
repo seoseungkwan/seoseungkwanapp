@@ -1,7 +1,20 @@
+// @vitest-environment jsdom
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { createElement as h, type ComponentType } from 'react'
 import ts from 'typescript'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AdminApplications } from '@/components/admin/AdminApplications'
+import { AuthFrame } from '@/components/auth/AuthFrame'
+import { LoginAside } from '@/components/auth/LoginAside'
+import { LoginCard } from '@/components/auth/LoginCard'
+import { HeaderSignOut, PendingCard, type PendingHospital } from '@/components/auth/PendingCard'
+import { SignupForm } from '@/components/auth/SignupForm'
+import { AppShell } from '@/components/shell/AppShell'
+import PageError from '@/app/error'
+import { isBorderBox, nestedBoxes } from '@/testing/boxes'
 import { ds, ui } from './classes'
 
 // 앱 화면 공통 모양 (REQ-013, docs/UI_GUIDE.md '앱 화면', specs/auth/design.md '모양 시험은 클래스로').
@@ -11,178 +24,15 @@ const ROOT = process.cwd()
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 const has = (classes: string, ...wanted: string[]) => wanted.every((t) => tokens(classes).includes(t))
 
-// ui의 모든 끝 값: ['button.primary', '…클래스…']
+// 묶음의 모든 끝 값: ['button.primary', '…클래스…']
 function leaves(value: unknown, path = ''): Array<[string, string]> {
   if (typeof value === 'string') return [[path, value]]
   return Object.entries(value as Record<string, unknown>).flatMap(([key, v]) => leaves(v, path ? `${path}.${key}` : key))
 }
-const ALL = leaves(ui)
 
-// 'max-md:hover:bg-ink' → 변형 ['max-md', 'hover'], 유틸리티 'bg-ink'
-const split = (token: string) => {
-  const parts = token.split(':')
-  return { variants: parts.slice(0, -1), utility: parts[parts.length - 1] }
-}
 const FOCUS = new Set(['focus', 'focus-visible', 'focus-within'])
-const isFocusToken = (token: string) => split(token).variants.some((v) => FOCUS.has(v))
 
 type Named = Array<[string, string]>
-const BUTTONS: Named = Object.entries(ui.button)
-const CHIPS: Named = Object.entries(ui.chip)
-const named = (prefix: string, entries: Named): Named => entries.map(([name, value]) => [`${prefix}.${name}`, value])
-
-describe('AC-013.3: 모서리 — 카드·패널·단추·입력란은 6px(rounded-card), 칩·체크 상자는 4px(rounded-chip)', () => {
-  it.each<[string, string]>([
-    ['card', ui.card],
-    ['panel', ui.panel],
-    ['input', ui.input],
-    ['readonly', ui.readonly],
-    ['layer', ui.layer],
-    ...named('button', BUTTONS),
-  ])('AC-013.3: %s는 rounded-card', (_name, value) => {
-    expect(has(value, 'rounded-card')).toBe(true)
-    expect(has(value, 'rounded-chip')).toBe(false)
-  })
-
-  it.each<[string, string]>([['checkbox', ui.checkbox], ...named('chip', CHIPS)])(
-    'AC-013.3: %s는 rounded-chip',
-    (_name, value) => {
-      expect(has(value, 'rounded-chip')).toBe(true)
-      expect(has(value, 'rounded-card')).toBe(false)
-    },
-  )
-
-  it('AC-013.3: 모서리는 두 가지뿐(999px·20px 같은 랜딩 모양 없음)', () => {
-    for (const [path, value] of ALL) {
-      for (const token of tokens(value)) {
-        const { utility } = split(token)
-        if (utility.startsWith('rounded')) expect(['rounded-card', 'rounded-chip'], `${path}: ${token}`).toContain(utility)
-      }
-    }
-  })
-})
-
-describe('AC-013.3: 그림자 — 떠 있는 층(layer)에만 shadow-float', () => {
-  it('AC-013.3: layer는 shadow-float 하나', () => {
-    const shadows = tokens(ui.layer).filter((t) => split(t).utility.startsWith('shadow'))
-    expect(shadows).toEqual(['shadow-float'])
-  })
-
-  it('AC-013.3: 카드·패널·단추·입력란·칩·표에는 그림자가 없다', () => {
-    for (const [path, value] of ALL) {
-      if (path === 'layer') continue
-      const shadows = tokens(value).filter((t) => split(t).utility.startsWith('shadow'))
-      expect(shadows, path).toEqual([])
-    }
-  })
-})
-
-describe('AC-013.3: 강조색(accent)은 초점 고리·글자 단추·체크한 체크 상자·진행중 칩에만', () => {
-  it('AC-013.3: 초점 고리는 2px accent, 2px 띄움', () => {
-    expect(has(ui.focusRing, 'focus-visible:outline-2', 'focus-visible:outline-offset-2', 'focus-visible:outline-accent')).toBe(true)
-  })
-
-  it('AC-013.3: 글자 단추·링크는 accent 글자, 바탕 없음', () => {
-    expect(has(ui.textButton, 'text-accent')).toBe(true)
-    expect(tokens(ui.textButton).filter((t) => split(t).utility.startsWith('bg-'))).toEqual([])
-  })
-
-  it('AC-013.3: 체크 상자는 체크했을 때만 accent 바탕(+ 흰 체크)', () => {
-    expect(has(ui.checkbox, 'checked:bg-accent', 'checked:border-accent')).toBe(true)
-    for (const token of tokens(ui.checkbox).filter((t) => t.includes('accent'))) {
-      const { variants } = split(token)
-      expect(variants.includes('checked') || isFocusToken(token), token).toBe(true)
-    }
-    expect(has(ui.checkboxMark, 'text-surface', 'peer-checked:block', 'hidden')).toBe(true)
-    expect(has(ui.checkbox, 'peer')).toBe(true)
-  })
-
-  it('AC-013.3: 진행중 칩은 accent / accent-soft', () => {
-    expect(has(ui.chip.progress, 'text-accent', 'bg-accent-soft')).toBe(true)
-  })
-
-  it('AC-013.3: 그 밖(주·보조·위험 단추, 다른 칩, 카드·패널, 입력란 바탕·테두리, 표)에는 초점 표시 말고는 accent가 없다', () => {
-    const allowed = new Set(['textButton', 'checkbox', 'chip.progress', 'focusRing'])
-    for (const [path, value] of ALL) {
-      if (allowed.has(path)) continue
-      const accents = tokens(value).filter((t) => t.includes('accent') && !isFocusToken(t))
-      expect(accents, path).toEqual([])
-    }
-  })
-
-  it('AC-013.3: 단추·체크 상자·글자 단추는 같은 초점 고리를 쓴다', () => {
-    const interactive: Named = [...BUTTONS, ['textButton', ui.textButton], ['checkbox', ui.checkbox]]
-    for (const [path, value] of interactive) {
-      expect(has(value, ...tokens(ui.focusRing)), path).toBe(true)
-    }
-  })
-
-  it('AC-013.3: 입력란 초점은 테두리 accent + 1px accent 고리, 오류는 테두리 danger', () => {
-    expect(has(ui.input, 'focus-visible:border-accent', 'focus-visible:ring-1', 'focus-visible:ring-accent')).toBe(true)
-    expect(has(ui.input, 'border', 'border-muted/55', 'bg-surface', 'aria-invalid:border-danger')).toBe(true)
-    expect(has(ui.fieldError, 'text-caption', 'font-medium', 'text-danger')).toBe(true)
-  })
-})
-
-describe('AC-013.3: 단추·칩 색 (UI_GUIDE 단추·칩 표)', () => {
-  it('AC-013.3: 주 단추는 ink 바탕·흰 글자, 보조 단추는 surface·1px line·ink, 위험 단추는 보조 모양 + danger 글자', () => {
-    for (const value of [ui.button.primary, ui.button.primarySmall]) {
-      expect(has(value, 'bg-ink', 'text-surface', 'border-transparent')).toBe(true)
-    }
-    for (const value of [ui.button.secondary, ui.button.secondarySmall]) {
-      expect(has(value, 'bg-surface', 'border', 'border-line', 'text-ink')).toBe(true)
-    }
-    for (const value of [ui.button.danger, ui.button.dangerSmall]) {
-      expect(has(value, 'bg-surface', 'border', 'border-line', 'text-danger')).toBe(true)
-    }
-  })
-
-  it('AC-013.3: 완료 ok/ok-soft, 대기 muted/canvas/line, 거절 danger/danger-soft, 범주 ink-2/surface/line', () => {
-    expect(has(ui.chip.done, 'text-ok', 'bg-ok-soft')).toBe(true)
-    expect(has(ui.chip.waiting, 'text-muted', 'bg-canvas', 'border-line')).toBe(true)
-    expect(has(ui.chip.rejected, 'text-danger', 'bg-danger-soft')).toBe(true)
-    expect(has(ui.chip.neutral, 'text-ink-2', 'bg-surface', 'border-line')).toBe(true)
-    expect(has(ui.chip.sample, 'text-muted', 'bg-surface', 'border-line')).toBe(true)
-  })
-
-  it('AC-013.3: 칩은 모두 높이 22px·좌우 7px·caption 500·1px 테두리', () => {
-    for (const [name, value] of CHIPS) {
-      expect(has(value, 'h-5.5', 'px-1.75', 'text-caption', 'font-medium', 'border'), name).toBe(true)
-    }
-  })
-
-  it('AC-013.3: 카드·패널은 흰 바탕 + 1px line', () => {
-    for (const value of [ui.card, ui.panel, ui.layer]) expect(has(value, 'bg-surface', 'border', 'border-line')).toBe(true)
-  })
-
-  it('AC-013.3: 단추 묶음은 flex 크기(flex-·grow·shrink·basis)를 정하지 않는다 — 놓는 자리(flex-[1_1_160px]·max-md:flex-1)가 정해도 같은 속성 클래스가 둘 겹치지 않는다', () => {
-    const FLEX_SIZE = /^(flex-(?!col|row|wrap|nowrap)|grow|shrink|basis-)/
-    for (const [name, value] of BUTTONS) {
-      expect(tokens(value).filter((t) => FLEX_SIZE.test(split(t).utility)), name).toEqual([])
-    }
-  })
-})
-
-describe('AC-013.4: 폰(768px 미만) 누름 영역 44px·입력란 16px', () => {
-  // Tailwind 간격 1 = 4px → 11 = 44px. max-md: = 768px 미만
-  const tall = (value: string) => has(value, 'max-md:h-11') || has(value, 'max-md:min-h-11')
-
-  it.each<[string, string]>([
-    ...named('button', BUTTONS),
-    ['textButton', ui.textButton],
-    ['input', ui.input],
-    ['readonly', ui.readonly],
-  ])('AC-013.4: %s는 폰에서 44px 이상', (_name, value) => {
-    expect(tall(value)).toBe(true)
-  })
-
-  it('AC-013.4: 입력란·읽기 전용 칸 글자는 폰에서 16px(text-lead, 아이폰 확대 방지)', () => {
-    expect(has(ui.input, 'max-md:text-lead')).toBe(true)
-    expect(has(ui.readonly, 'max-md:text-lead')).toBe(true)
-    const globals = readFileSync(join(ROOT, 'src/app/globals.css'), 'utf8')
-    expect(globals).toMatch(/--fs-lead:\s*16px;/)
-  })
-})
 
 // 앱 화면 소스: 컴포넌트 폴더 + src/app의 로그인·가입·승인 대기·오류·앱 페이지. 시험 파일은 뺀다. 나중 TASK의 파일도 저절로 들어온다
 const APP_DIRS = [
@@ -269,7 +119,7 @@ describe('AC-013.2: 앱 화면 소스 — CSS Module·임의 색·Tailwind 기�
   })
 })
 
-// ── 새 묶음 ds (b2b-redesign REQ-204, design.md '공통 모양 옮기기', UI_GUIDE '공통 모양'). 위의 옛 ui 시험(AC-013.*)은 그대로 두고 TASK-23에서 ui와 함께 지운다.
+// ── 새 묶음 ds (b2b-redesign REQ-204, design.md '공통 모양 옮기기', UI_GUIDE '공통 모양'). 옛 ui 모양 시험(AC-013.3·AC-013.4)은 TASK-23에서 지웠다 — ui에는 대시보드 빈 자리가 쓰는 세 키만 남는다(AC-221.1).
 // 키 목록은 시험이 정한다(구현에서 읽지 않는다) → ds가 없거나 키가 빠지면 그 키의 시험이 빈 글자로 실패한다
 const DS_KEYS = [
   'focusRing',
@@ -665,9 +515,19 @@ describe('AC-204.5: ds.panel·layer — 패널은 선, 그림자는 떠 있는 �
   })
 })
 
-// ── AC-204.6 규칙 시험. 검사 대상 = ds의 클래스 글자 + 아래 목록(파일·폴더, 시험 제외). TASK마다 고친 화면을 더하고 TASK-23에서 앱 화면 전체로 바꾼다.
-// 옛 ui 묶음은 지울 때까지 빼고 본다(classes.ts 파일 글자가 아니라 ds 값을 본다)
-// 앱 틀 네 파일 (b2b-redesign TASK-20, REQ-218). menu.ts는 클래스가 없어 넣지 않는다
+// ── AC-204.6 규칙 시험. 검사 대상 = ds의 클래스 글자 + 앱 화면 폴더 전체(위 APP_DIRS·APP_FILES, 시험 제외).
+// TASK마다 고친 화면을 목록에 더하다가 TASK-23에서 폴더 전체로 바꿨다(AC-221.2). 대시보드 두 폴더는 이 명세가 고치지 않아 끝까지 빼고 본다.
+// classes.ts는 파일 글자를 보되, 대시보드 빈 자리가 쓰는 옛 ui 세 키의 값은 뺀다(AC-204.6·AC-221.1)
+const DASHBOARD_DIRS = ['src/components/dashboard', 'src/app/(app)/dashboard']
+const inDashboard = (file: string) => DASHBOARD_DIRS.some((dir) => file === dir || file.startsWith(`${dir}/`))
+const CLASSES_FILE = 'src/components/ui/classes.ts'
+// 대시보드 빈 자리가 쓰는 옛 ui 세 키와 그 값(한 글자도 바꾸지 않는다, AC-221.1)
+const KEPT_UI: Record<string, string> = {
+  card: 'rounded-card border border-line bg-surface p-6 max-md:px-4 max-md:py-5',
+  panel: 'flex min-w-0 flex-col gap-3 rounded-card border border-line bg-surface px-4.5 pt-4.5 pb-4',
+  panelTitle: 'text-panel font-semibold text-ink',
+}
+// 앱 틀 네 파일 (b2b-redesign TASK-20, REQ-218). menu.ts는 클래스가 없다
 const SHELL_FILES = ['src/components/shell/AppShell.tsx', 'src/components/shell/TabBar.tsx', 'src/components/shell/AccountMenu.tsx', 'src/components/shell/KstClock.tsx']
 // 로그인 화면 세 파일 (b2b-redesign TASK-16, REQ-214)
 const LOGIN_FILES = ['src/components/auth/LoginCard.tsx', 'src/components/auth/LoginAside.tsx', 'src/components/common/GoogleMark.tsx']
@@ -677,15 +537,18 @@ const PENDING_FILES = ['src/components/auth/PendingCard.tsx']
 const SIGNUP_FILES = ['src/components/auth/SignupForm.tsx', 'src/components/auth/Stepper.tsx']
 // 오류 카드·오류 화면 (b2b-redesign TASK-19, REQ-217)
 const ERROR_FILES = ['src/components/common/ErrorCard.tsx', 'src/app/error.tsx']
-const RULE_TARGETS = ['src/components/common/Icon.tsx', 'src/components/charts', 'src/components/preview', 'src/components/auth/AuthFrame.tsx', 'src/components/admin/AdminApplications.tsx', ...SHELL_FILES, ...LOGIN_FILES, ...PENDING_FILES, ...SIGNUP_FILES, ...ERROR_FILES]
+// 검사 대상: 앱 화면 폴더·파일 전체에서 대시보드 두 폴더를 뺀 것
+const RULE_TARGETS = [...APP_DIRS.filter((dir) => !inDashboard(dir)), ...APP_FILES]
 
 const ruleFiles = () =>
   RULE_TARGETS.flatMap((target) => (existsSync(join(ROOT, target)) && statSync(join(ROOT, target)).isDirectory() ? walk(target) : [target])).filter(
-    (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f),
+    (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !inDashboard(f),
   )
 
 // 소스의 문자열 조각(따옴표·템플릿 글자·JSX 속성 값). 주석과 JSX 본문 글자는 들지 않는다
-const stringPieces = (file: string) => piecesOf(readFileSync(join(ROOT, file), 'utf8'), file)
+const KEPT_UI_VALUES = new Set(Object.values(KEPT_UI))
+const stringPieces = (file: string) =>
+  piecesOf(readFileSync(join(ROOT, file), 'utf8'), file).filter((piece) => !(file === CLASSES_FILE && KEPT_UI_VALUES.has(piece)))
 function piecesOf(text: string, file: string): string[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
   const pieces: string[] = []
@@ -925,5 +788,209 @@ describe('AC-204.6: 오류 카드·오류 화면(ErrorCard·error.tsx)이 AC-204
   it('AC-204.6·AC-217.1·AC-217.2: AC-204.6 검사 목록 파일에 오류 카드·오류 화면 두 파일이 있고 모두 실제 파일이다', () => {
     expect(ruleFiles()).toEqual(expect.arrayContaining(ERROR_FILES))
     for (const file of ERROR_FILES) expect(existsSync(join(ROOT, file)), file).toBe(true)
+  })
+})
+
+// ── AC-221.1: 옛 이름 정리 — ui는 대시보드 빈 자리가 쓰는 세 키만, ui 참조는 classes.ts와 대시보드 두 폴더에만, ds에 쓰지 않는 키가 없다
+// 시험 파일 밖 src/의 .ts·.tsx 전부
+const srcSources = () => walk('src').filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+// ds 키 하나를 그대로 부르는가(ds.button.primary는 ds.button.primaryLarge와 다르다)
+const callsKey = (text: string, key: string) => new RegExp(`(?<![\\w.$])ds\\.${key.replace(/\./g, '\\.')}(?![\\w$])`).test(text)
+// 다른 ds 키 안에 들어 있어 따로 부르지 않는 키: 초점 고리(단추·글자 단추·체크 상자가 같이 쓴다, AC-204.1)
+const INSIDE_OTHER_KEYS = ['focusRing']
+// REQ-204(AC-204.1·AC-204.4·AC-204.5)가 정한 키지만 대시보드 본문을 이 명세에서 뺀 뒤(2026-10-31, design.md '대시보드 본문 빼기') 쓰는 화면이 없는 키.
+// 차트 부품처럼 다음 대시보드 명세가 쓴다 — 그때 이 목록을 비운다
+const NEXT_DASHBOARD_KEYS = ['button.primarySmall', 'panel', 'panelHead', 'panelTitle', 'panelBody', 'count', 'table.tdNum', 'table.check']
+
+describe('AC-221.1: 옛 모양 묶음 ui는 대시보드 빈 자리가 쓰는 세 키만 남는다', () => {
+  it('AC-221.1: ui의 키는 card·panel·panelTitle 셋뿐이고 값은 한 글자도 바뀌지 않았다', () => {
+    expect(leaves(ui)).toEqual(Object.entries(KEPT_UI))
+  })
+
+  it('AC-221.1: ui. 참조와 ui 불러오기는 시험 파일 밖 src/에서 classes.ts와 대시보드 두 폴더에만 있다', () => {
+    const files = srcSources()
+    expect(files).toEqual(expect.arrayContaining([CLASSES_FILE, 'src/components/dashboard/DashboardEmpty.tsx', 'src/components/shell/AppShell.tsx']))
+    const usesUi = (file: string) => {
+      const text = code(file)
+      return /(?<![\w.$])ui\.[A-Za-z]/.test(text) || /import\s*(?:type\s*)?\{[^}]*\bui\b[^}]*\}\s*from\s*['"][^'"]*classes['"]/.test(text)
+    }
+    expect(files.filter(usesUi).filter((f) => f !== CLASSES_FILE && !inDashboard(f))).toEqual([])
+    // 대시보드 빈 자리는 아직 ui를 쓴다(그래서 세 키가 남는다)
+    expect(usesUi('src/components/dashboard/DashboardEmpty.tsx')).toBe(true)
+  })
+
+  it('AC-221.1: 대시보드 두 폴더 밖의 앱 화면·차트·미리보기는 classes에서 ds만 불러온다', () => {
+    const imports = srcSources()
+      .filter((f) => f !== CLASSES_FILE && !inDashboard(f))
+      .flatMap((f) => [...code(f).matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"][^'"]*\/ui\/classes['"]/g)].map((m) => [f, m[1].split(',').map((n) => n.trim()).filter(Boolean)] as const))
+    expect(imports.length).toBeGreaterThan(0)
+    for (const [file, names] of imports) expect(names, file).toEqual(['ds'])
+  })
+
+  it('AC-221.1: ds의 키는 모두 어느 화면이 쓴다(다른 키 안에 든 초점 고리와 다음 대시보드 명세가 쓸 키는 빼고)', () => {
+    const texts = srcSources()
+      .filter((f) => f !== CLASSES_FILE)
+      .map((f) => code(f))
+    const unused = DS_KEYS.filter((key) => !texts.some((text) => callsKey(text, key)))
+    const allowed = new Set([...INSIDE_OTHER_KEYS, ...NEXT_DASHBOARD_KEYS])
+    expect(unused.filter((key) => !allowed.has(key))).toEqual([])
+    // 예외 목록은 ds에 있는 키다(지운 키를 적어 두지 않는다)
+    for (const key of allowed) expect(DS_KEYS as readonly string[], key).toContain(key)
+    // 초점 고리는 쓰는 단추 묶음 안에 들어 있다
+    for (const key of INSIDE_OTHER_KEYS) {
+      const users = DS_KEYS.filter((other) => other !== key && !unused.includes(other) && has(dsAt(other), ...tokens(dsAt(key))))
+      expect(users.length, key).toBeGreaterThan(0)
+    }
+  })
+
+  it('AC-221.1: 키 부르기 검사는 키 이름 전체만 잡는다', () => {
+    expect(callsKey('className={ds.button.primaryLarge}', 'button.primary')).toBe(false)
+    expect(callsKey('className={ds.button.primary}', 'button.primary')).toBe(true)
+    expect(callsKey('`${ds.table.td} x`', 'table.td')).toBe(true)
+    expect(callsKey('`${ds.table.tdSub}`', 'table.td')).toBe(false)
+    expect(callsKey('cls.ds.panel', 'panel')).toBe(false)
+  })
+})
+
+describe('AC-221.2: 규칙 시험은 검사 목록 없이 앱 화면 전체를 본다', () => {
+  it('AC-221.2: AC-204.6 검사 파일은 앱 화면 폴더 전체(+ charts·preview, error.tsx)이고 대시보드 두 폴더만 빠진다', () => {
+    expect([...ruleFiles()].sort()).toEqual(sources().filter((f) => !inDashboard(f)).sort())
+    expect(ruleFiles()).toEqual(
+      expect.arrayContaining([
+        'src/components/auth/SignOutButton.tsx',
+        'src/components/shell/IdleLogout.tsx',
+        'src/components/shell/menu.ts',
+        'src/components/common/LogoMark.tsx',
+        'src/components/admin/applications.ts',
+        CLASSES_FILE,
+        'src/app/login/page.tsx',
+        'src/app/(onboarding)/signup/page.tsx',
+        'src/app/(onboarding)/pending/page.tsx',
+        'src/app/(app)/layout.tsx',
+        'src/app/(app)/admin/page.tsx',
+        'src/app/error.tsx',
+      ]),
+    )
+    expect(ruleFiles().filter(inDashboard)).toEqual([])
+    // AC-013.2(옛 앱 화면 색 검사)는 대시보드 두 폴더도 계속 본다
+    expect(sources().some(inDashboard)).toBe(true)
+  })
+
+  it('AC-221.2: classes.ts는 파일 글자를 보되 남는 ui 세 키의 값만 뺀다', () => {
+    const pieces = stringPieces(CLASSES_FILE)
+    for (const value of Object.values(KEPT_UI)) expect(pieces).not.toContain(value)
+    expect(pieces.join(' ')).toContain('rounded-control')
+  })
+})
+
+// ── AC-221.2·AC-204.7: 상자 겹침 — REQ-213~REQ-218·REQ-220 화면 전부(대시보드 본문은 이 명세가 고치지 않아 들지 않는다).
+// 화면마다의 시험은 본문만 그린다. 여기서는 페이지처럼 틀(AuthFrame·AppShell) 안에 넣어 틀과 본문 사이의 겹침까지 본다.
+// 실제 Supabase·Next 라우터에 붙지 않는다
+const { insert, order, rpc, router } = vi.hoisted(() => ({
+  insert: vi.fn(),
+  order: vi.fn(),
+  rpc: vi.fn(),
+  router: { replace: vi.fn(), push: vi.fn(), refresh: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn() },
+}))
+vi.mock('@/lib/supabase/browser', () => ({
+  supabaseBrowser: () => ({
+    from: () => ({ insert, select: () => ({ order }) }),
+    rpc,
+    auth: { signOut: vi.fn(), signInWithOAuth: vi.fn() },
+  }),
+}))
+vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin' }))
+
+const EMAIL = 'manager@example.com'
+const HOSPITAL = '가나 정형외과의원'
+const KAKAO =
+  'Mozilla/5.0 (Linux; Android 13; SM-S918N Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36;KAKAOTALK 2410420'
+const PENDING: PendingHospital = { id: 'h1', name: HOSPITAL, applicantName: '홍길동', phone: '01000001234', email: EMAIL, status: 'pending', createdAt: '2026-10-28T01:23:45+00:00' }
+const REJECTED: PendingHospital = { ...PENDING, id: 'h4', status: 'rejected' }
+const DB_ROWS = [
+  { id: 'r1', name: HOSPITAL, applicant_name: '홍길동', phone: '01000001234', email: EMAIL, status: 'pending', created_at: '2026-10-28T01:00:00+00:00' },
+  { id: 'r4', name: '사아 의원', applicant_name: '박민수', phone: null, email: 'minsu@example.com', status: 'rejected', created_at: '2026-10-22T03:00:00+00:00' },
+  { id: 'r3', name: '마바 정형외과의원', applicant_name: '이영희', phone: '0212345678', email: 'younghee@example.com', status: 'approved', created_at: '2026-10-20T03:00:00+00:00' },
+]
+type NextErrorProps = { error: Error & { digest?: string }; reset: () => void }
+
+// 페이지 파일(login·signup·pending/page.tsx, error.tsx)과 같은 틀 짜임
+const loginPage = (failed: boolean) => h(AuthFrame, { aside: h(LoginAside), children: h(LoginCard, { failed }) })
+const signupPage = () => h(AuthFrame, { children: h(SignupForm, { email: EMAIL }) })
+const pendingPage = (hospital: PendingHospital) => h(AuthFrame, { headerEnd: h(HeaderSignOut), children: h(PendingCard, { hospital }) })
+const errorPage = () => h(PageError as ComponentType<NextErrorProps>, { error: new Error('x'), reset: () => {} })
+// (app)/layout.tsx + admin/page.tsx: 앱 틀 안의 관리자 화면
+const adminPage = () => h(AppShell, { hospitalName: HOSPITAL, email: EMAIL, isAdmin: true, children: h(AdminApplications) })
+const noNested = (label: string) => expect(nestedBoxes(document.body), label).toEqual([])
+
+describe('AC-221.2·AC-204.7: 틀째 그린 앱 화면 전부에 상자 안 상자가 없다', () => {
+  beforeEach(() => {
+    insert.mockReset()
+    insert.mockResolvedValue({ data: null, error: null, status: 201 })
+    order.mockReset()
+    order.mockResolvedValue({ data: DB_ROWS, error: null, status: 200 })
+    rpc.mockReset()
+    rpc.mockResolvedValue({ data: null, error: null, status: 204 })
+  })
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it.each<[string, () => ReturnType<typeof h>]>([
+    ['REQ-213·REQ-214 로그인(일반)', () => loginPage(false)],
+    ['REQ-214 로그인(오류)', () => loginPage(true)],
+    ['REQ-213·REQ-215 가입 신청(처음)', signupPage],
+    ['REQ-216 승인 대기', () => pendingPage(PENDING)],
+    ['REQ-216 거절', () => pendingPage(REJECTED)],
+    ['REQ-217 오류 화면', errorPage],
+  ])('AC-204.7: %s', (label, page) => {
+    render(page())
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    noNested(label)
+  })
+
+  it('AC-204.7: REQ-214 로그인(앱 안 브라우저 — 안내 + 읽기 전용 주소 칸)', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(KAKAO)
+    render(loginPage(false))
+    await screen.findByText('크롬·엣지에서 열어 주세요')
+    noNested('앱 안 브라우저')
+  })
+
+  it('AC-204.7: REQ-215 가입 신청(틀린 칸 문구 · 저장 실패 오류 카드)', async () => {
+    const user = userEvent.setup()
+    render(signupPage())
+    await user.click(screen.getByRole('button', { name: '가입 신청' }))
+    await screen.findByText('병원 이름을 적어 주세요.')
+    noNested('틀린 칸')
+    insert.mockResolvedValue({ data: null, error: { code: '23514', message: 'x' }, status: 400 })
+    await user.type(screen.getByRole('textbox', { name: '병원 이름 필수' }), HOSPITAL)
+    await user.type(screen.getByRole('textbox', { name: '신청자 이름 필수' }), '홍길동')
+    await user.click(screen.getByRole('checkbox', { name: /동의합니다/ }))
+    await user.click(screen.getByRole('button', { name: '가입 신청' }))
+    await screen.findByRole('alert')
+    noNested('저장 실패')
+  })
+
+  it('AC-204.7: REQ-218·REQ-220 앱 틀 + 관리자(세 탭·확인 창·계정 메뉴)', async () => {
+    const user = userEvent.setup()
+    render(adminPage())
+    await screen.findByRole('tablist', { name: '신청 상태' })
+    const tab = (label: string) => screen.getByRole('tab', { name: new RegExp(`^${label} \\d+$`) })
+    for (const label of ['대기', '승인', '거절']) {
+      await user.click(tab(label))
+      noNested(`관리자 ${label} 탭`)
+    }
+    await user.click(screen.getByRole('button', { name: new RegExp(EMAIL) }))
+    expect(screen.getByRole('menu', { name: '계정' })).toBeTruthy()
+    noNested('계정 메뉴')
+    await user.keyboard('{Escape}')
+    await user.click(tab('대기'))
+    const row = screen.getByRole('cell', { name: HOSPITAL }).closest('tr') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: '거절' }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    noNested('확인 창')
+    // 빈 검사가 아니다: 확인 창은 테두리 상자다
+    expect(Array.from(document.body.querySelectorAll('*')).some(isBorderBox)).toBe(true)
   })
 })

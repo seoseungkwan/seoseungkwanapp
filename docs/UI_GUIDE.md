@@ -35,7 +35,7 @@
 | `[서비스 이름]`·`[금액]` 같은 빈칸 글자 | 자연스러운 문구로 바꿨다(아래 '문구') |
 
 ## 토큰 (`src/app/globals.css` `:root`)
-- 값은 layer 밖 `:root` 한 곳에 CSS 변수로 둔다(ADR-019). 16진수·`rgb(`·`color-mix(`는 이 블록 밖에 없다(로고·구글 마크 빼고. 옮기는 동안은 구글 마크가 든 `LoginCard.tsx`도 예외)
+- 값은 layer 밖 `:root` 한 곳에 CSS 변수로 둔다(ADR-019). 16진수·`rgb(`·`color-mix(`는 이 블록 밖에 없다(로고·구글 마크 빼고)
 - 앱(Tailwind v4)은 `@theme inline`이 이 변수를 `var()`로만 가리킨다. Tailwind 기본 색·모서리·그림자·글자 크기는 `initial`로 지워서 토큰 이름만 클래스가 된다(`text-ink`·`bg-canvas`·`rounded-control`·`shadow-float`·`text-small`). 흰 글자는 `text-surface`
 - 랜딩(CSS Modules)은 같은 변수를 `var(--ink)`처럼 바로 쓴다
 
@@ -79,9 +79,13 @@
 - 글자 색 ink·ink-2·muted·accent·negative·warning은 4.5:1 이상이다. positive는 옅은 바탕 위에서 4.58:1로 겨우 넘는다 → 칩 글자는 500 이상
 - `chart-3`(재진 막대)·`chart-prev`·`faint`(준비 중 탭)는 3:1이 안 된다. 차트 값은 늘 글자와 화면 읽기 표로도 주고, 준비 중 탭은 누를 수 없는 단추라 WCAG 1.4.3 예외다
 
-### 옮기는 동안 남는 옛 이름
-- 화면을 다 옮길 때까지 옛 Tailwind 이름(`text-table`·`text-tab`·`text-panel`·`text-logo`·`text-title-sm`·`text-kpi`·`text-kpi-sm`·`rounded-card`·`rounded-chip`·`*-ok`·`*-danger`·`*-warn`)과 랜딩 옛 변수(`--ok`·`--danger`·`--accent-tint`·`--field`·`--content-max`)가 새 토큰을 가리키는 별칭으로 남는다(표: `specs/b2b-redesign/design.md` '옛 이름 별칭')
-- 옛 모양 묶음 `ui`(`classes.ts`)도 같다. 새 코드는 새 토큰과 `ds`만 쓴다. 별칭과 `ui`는 마지막 정리 TASK(TASK-23)에서 지운다
+### 대시보드 빈 자리가 쓰는 옛 이름
+- 옮기는 동안 둔 옛 이름은 정리 TASK(TASK-23)에서 지웠다. 새 코드는 새 토큰과 `ds`만 쓴다
+- 예외는 `/dashboard` 빈 자리(`src/components/dashboard/`·`src/app/(app)/dashboard/`, 이 명세에서 고치지 않음)가 아직 쓰는 것뿐이다. 다음 대시보드 명세에서 지운다
+  - `@theme` 별칭 넷: `rounded-card`(`--r-control`) · `text-table`(small) · `text-panel`(subtitle) · `text-title-sm`(title). 값은 새 토큰을 가리킨다
+  - 옛 모양 묶음 `ui`(`classes.ts`)의 세 키 `card`·`panel`·`panelTitle`(값 그대로)
+- 랜딩 옛 변수(`--ok`·`--danger`·`--accent-tint`·`--field`·`--content-max`)와 나머지 옛 Tailwind 이름(`text-tab`·`text-logo`·`text-kpi*`·`rounded-chip`·`*-ok`·`*-danger`·`*-warn`)은 없다
+- 규칙 시험(클래스 규칙·상자 겹침·옛 이름 검사)은 대시보드 두 폴더를 빼고 앱 화면 전체를 본다. 16진수 색·굵기 검사는 두 폴더도 본다
 
 ## 글자 (Pretendard 하나)
 - 글꼴: Pretendard 1.3.9 정적 subset 세 굵기 400·500·600. `next/font/local`로 우리 쪽에서 낸다(`src/app/fonts/`, 사용 허락 파일 `OFL.txt` 함께) **(사용자, 2026-10-30)**
@@ -163,7 +167,7 @@
 
 - 모두 `rounded-control`, 줄바꿈 없음, 그림자 없음
 - 초점: 2px `accent` 고리, 2px 띄움. 모든 조작 요소가 같다
-- 막힘: 40% 흐림 + `not-allowed` 커서. 대시보드의 아직 없는 기능 단추는 `disabled`라 누를 수 없고 Tab 순서에도 들지 않는다. 앱 탭의 준비 중 탭은 지금처럼 툴팁을 보이는 단추다
+- 막힘: 40% 흐림 + `not-allowed` 커서. 대시보드의 아직 없는 기능 단추는 다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로다. 앱 탭의 준비 중 탭은 지금처럼 툴팁을 보이는 단추다
 - 쓰는 곳 예: 관리자 [승인] 강조 테두리 작은 · [거절]·[되돌리기] 보조 작은 / 승인 대기 위 줄 [로그아웃] 글자만 작은 / [가입 신청]·[상태 다시 확인] 주 큰 / 오류 화면 [다시 시도] 주 · [로그아웃] 보조 / 확인 창 [취소] 보조 · [거절] 위험
 
 ### 칩
@@ -200,6 +204,7 @@
   - `ds.panelHead`: 좌우 20px, 위 16px(휴대폰 16·12). 제목 `ds.panelTitle` subtitle 600 ink, 보조 글 small muted
   - `ds.panelBody`: 좌우 20px, 위 16px, 아래 20px(휴대폰 16·8·16)
 - `ds.layer`(떠 있는 층: 계정 메뉴·확인 창): `surface`, 1px line, `rounded-float`, `shadow-float`
+- 패널 묶음(`panel`·`panelHead`·`panelTitle`·`panelBody`·`count`)과 표의 `tdNum`·`check`, `button.primarySmall`은 지금 쓰는 화면이 없다. 차트 부품처럼 다음 대시보드 명세가 쓴다
 - 카드 모양은 없다. 인증 화면·랜딩 목록은 상자 없이 선과 여백으로 나눈다
 
 ### 상자 안 상자 금지
@@ -262,12 +267,7 @@
 
 ## 빈 상태
 - 실제 화면은 자료가 없으면 조용한 빈 상태다. 예시 숫자·차트·"예시" 칩으로 빈칸을 채우지 않는다. 그림·큰 아이콘을 쓰지 않는다
-- 대시보드(`/dashboard`, 자료 없음):
-  - h1 "대시보드"(title 600)
-  - 도구 줄: 일·주·월 나눔 단추(`role="group"`, 모두 `disabled`) · "기간 없음"(달력 아이콘, 작은 보조 단추, `disabled`) · 오른쪽 [파일 올리기](neutral 칩 "준비 중", `disabled`, 768px 미만 숨김). 768px 미만은 아래에 "올린 자료 없음"
-  - KPI 줄: 패널 하나 안에 `KpiStat` 4개(환자 수 · 신환 · 재진 · 신환율), 모두 "–" + "자료 없음"
-  - 빈 패널(768px 이상 높이 380px): 꾸밈 가로 선 4개 위 가운데에 안내 "아직 볼 숫자가 없습니다"(subtitle) · 설명(ink-2) · "파일 올리기는 준비 중입니다."(small muted)
-  - 보이는 글자에 숫자가 없고, svg는 아이콘뿐이며, 누를 수 있는 것이 없다
+- 대시보드(`/dashboard`): 다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로다(제목 "오늘 + 날짜"와 준비 중 상자, 새 앱 틀 안)
 - 관리자 빈 탭: 표 머리를 두고 한 줄 안내(지금 문구)
 
 ## 앱 틀 (붙는 띠 + 탭)
@@ -277,7 +277,7 @@
   - 오른쪽: 한국 시각(`KstClock`, small muted, 768px 미만 숨김) · 계정 단추. 사이 16px
   - `[서비스 이름]`과 세로 구분선이 없다. 서비스 이름이 정해질 때까지 로고 옆에는 병원 이름만 둔다
 - **계정 단추**: 작은 보조 단추(32px) 모양에 사람 아이콘 16 + 이메일 + 아래 화살표. 메뉴는 `ds.layer`, 폭 240px. 768px 미만은 44×44 아이콘 단추(테두리 없음, `aria-label`에 이메일)
-- **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이라 첫 탭 글자가 로고 왼쪽 끝과 맞는다
+- **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
   - 순서: 대시보드 · 통계 · AI 리포트 · 매출 · 재고 · 급여 · 일일마감·보고 · 월간 PDF · 설정 | 관리자(세로 구분선 뒤, 관리자만). 순서·링크·지금 탭 판단은 그대로다
   - 1024px 미만에서는 띠 안에서 옆으로 밀린다(얇은 스크롤바)
 
@@ -354,7 +354,7 @@
 - 랜딩 위쪽 메뉴는 한 줄(로고 · 단추)이고 nav를 숨긴다. 메뉴 서랍·햄버거 단추가 없다
 - 앱 위쪽 띠는 48px(로고 + 병원 이름, 시각 숨김, 계정은 44×44 아이콘 단추)다. 탭 줄은 옆으로 밀린다. 본문 좌우 16px·위 16px
 - 휴대폰 전용 문구는 `.phoneOnly`, PC 전용은 `.pcOnly`로 둔다(랜딩 기능 목록 짧은 설명, 정형외과 휴대폰 표)
-- 휴대폰에서 빠지는 것(예): 히어로 [AI 분석 보기]·약속 목록(한 줄 문구로 바뀜), AI 채팅 칸·셋째 근거·약속 설명, 급여 패널, 개인정보 흐름 설명·약속, 시작 단계 설명, 대시보드 [파일 올리기], 미리보기 5·6번째 탭·Sparkline
+- 휴대폰에서 빠지는 것(예): 히어로 [AI 분석 보기]·약속 목록(한 줄 문구로 바뀜), AI 채팅 칸·셋째 근거·약속 설명, 급여 패널, 개인정보 흐름 설명·약속, 시작 단계 설명, 미리보기 5·6번째 탭·Sparkline. 대시보드는 다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로다
 - 확인 창 단추는 나란히 반씩 44px다
 - 랜딩 390px 전체 높이는 5화면(4,220px) 이하다
 

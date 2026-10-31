@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { ui } from '@/components/ui/classes'
 
 // 앱 화면 토큰과 Tailwind 설정 (REQ-013, ADR-015·ADR-019, specs/b2b-redesign REQ-202, docs/UI_GUIDE.md '앱 화면', specs/auth/design.md 'Tailwind는 Preflight 없이')
 const ROOT = process.cwd()
@@ -194,34 +195,16 @@ const TOKENS: Record<string, string> = {
   '--font-ui': FONT_UI,
 }
 
-// 옛 이름 별칭(TASK-23에서 지움). 랜딩 CSS Module이 쓰는 옛 :root 이름 → 새 토큰
-const LANDING_ALIASES: Record<string, string> = {
-  '--ok': 'var(--positive)',
-  '--ok-soft': 'var(--positive-soft)',
-  '--danger': 'var(--negative)',
-  '--danger-soft': 'var(--negative-soft)',
-  '--accent-tint': 'var(--chart-2)',
-  '--field': 'var(--faint)',
-  '--content-max': 'var(--w-landing)',
-  '--font-sans': 'var(--font-ui)',
-}
-// 옛 Tailwind 이름 → 가리키는 새 토큰(색·모서리는 토큰 이름, 글자는 단계 이름)
-const OLD_COLORS: Record<string, string> = {
-  ok: 'positive',
-  'ok-soft': 'positive-soft',
-  danger: 'negative',
-  'danger-soft': 'negative-soft',
-  warn: 'warning',
-}
-const OLD_RADII: Record<string, string> = { card: 'r-control', chip: 'r-control' }
+// 옛 이름 별칭. TASK-23에서 지웠다 — 랜딩 CSS Module이 쓰던 옛 :root 이름은 남지 않는다(b2b-redesign REQ-221 AC-221.1)
+const LANDING_ALIASES: Record<string, string> = {}
+// 옛 Tailwind 이름 → 가리키는 새 토큰(색·모서리는 토큰 이름, 글자는 단계 이름).
+// 남는 것은 대시보드 빈 자리(src/components/dashboard)가 아직 쓰는 넷뿐이다 — 다음 대시보드 명세에서 지운다(design.md '대시보드 본문 빼기')
+const OLD_COLORS: Record<string, string> = {}
+const OLD_RADII: Record<string, string> = { card: 'r-control' }
 const OLD_TEXT: Record<string, string> = {
   table: 'small',
-  tab: 'body',
   panel: 'subtitle',
-  logo: 'subtitle',
   'title-sm': 'title',
-  'kpi-sm': 'metric',
-  kpi: 'metric',
 }
 
 // 16진수만 대문자로(글꼴 이름 같은 글자는 그대로 비교한다)
@@ -338,7 +321,7 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
     }
   })
 
-  it('AC-202.2: 색은 :root 색 토큰 전부(차트·항목 색 포함)를 같은 이름으로 가리키고, 옛 별칭 ok·ok-soft·danger·danger-soft·warn은 표의 새 색을 가리킨다', () => {
+  it('AC-202.2: 색은 :root 색 토큰 전부(차트·항목 색 포함)를 같은 이름으로 가리키고, 옛 색 별칭(ok·danger·warn)은 남지 않는다', () => {
     const colors = themeDecls().filter(([name]) => name.startsWith('--color-') && name !== '--color-*')
     const names = colors.map(([name]) => name)
     expect(names.length, '같은 색 이름을 두 번 선언했다').toBe(new Set(names).size)
@@ -348,7 +331,7 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
     })
   })
 
-  it('AC-202.2: 모서리는 control·float(+ 옛 card·chip은 control), 그림자는 float 하나다', () => {
+  it('AC-202.2: 모서리는 control·float(+ 대시보드 빈 자리가 쓰는 옛 card는 control), 그림자는 float 하나다', () => {
     const decls = themeDecls()
     const radii = decls.filter(([name]) => name.startsWith('--radius-') && name !== '--radius-*')
     expect(Object.fromEntries(radii)).toEqual({
@@ -384,7 +367,6 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
       ...steps.map((s) => `text-${s}`),
       ...olds.map((s) => `text-${s}`),
       'bg-ink',
-      'text-ok',
       'bg-chart-3',
       'rounded-control',
       'rounded-float',
@@ -410,7 +392,6 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
       else expect(rule, name).not.toContain('letter-spacing')
     }
     expect(utility(css, '.bg-ink')).toContain('background-color: var(--ink)')
-    expect(utility(css, '.text-ok')).toContain('color: var(--positive)')
     expect(utility(css, '.bg-chart-3')).toContain('background-color: var(--chart-3)')
     expect(utility(css, '.rounded-control')).toContain('border-radius: var(--r-control)')
     expect(utility(css, '.rounded-float')).toContain('border-radius: var(--r-float)')
@@ -534,6 +515,124 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
   it('AC-202.3: rgb(·hsl(·color-mix(는 globals.css :root 토큰 블록 밖 어디에도 없다', () => {
     const found = colorSources().flatMap((rel) => (colorText(rel).match(COLOR_FN) ?? []).map((fn) => `${rel}: ${fn}`))
     expect(found).toEqual([])
+  })
+})
+
+// ---------- AC-221.1: 옛 이름 정리 (b2b-redesign REQ-221, design.md '옛 이름 별칭'·'대시보드 본문 빼기') ----------
+
+// 대시보드 두 폴더는 이 명세가 고치지 않는다 → 옛 이름 검사에서 뺀다(다음 대시보드 명세 몫). 16진수 색 검사(AC-202.3)는 두 폴더도 본다
+const DASHBOARD_DIRS = ['src/components/dashboard/', 'src/app/(app)/dashboard/']
+const inDashboard = (rel: string) => DASHBOARD_DIRS.some((dir) => rel.startsWith(dir))
+// 옛 Tailwind 이름: 글자·모서리 별칭과 옛 상태 색(ok·danger·warn)을 쓰는 색 유틸리티(변형 접두사가 붙어도).
+// 앞 글자가 낱말·-이면 잡지 않는다(@theme의 --text-table 같은 선언, text-warning 같은 새 이름)
+const OLD_CLASS =
+  /(?<![\w-])(?:text-(?:table|tab|panel|logo|title-sm|kpi-sm|kpi)|rounded-(?:card|chip)|(?:bg|text|border(?:-[trblxyse])?|outline|ring(?:-offset)?|fill|stroke|divide|decoration|accent|caret|shadow|placeholder|from|via|to)-(?:ok-soft|ok|danger-soft|danger|warn))(?:\/\d+)?(?![\w-])/g
+// 옛 랜딩 :root 변수를 쓰는 곳
+const OLD_VAR = /var\(\s*--(?:ok-soft|ok|danger-soft|danger|accent-tint|field|content-max|font-sans)\s*\)/g
+// 대시보드 빈 자리가 쓰는 ui 세 키의 값(classes.ts 안 글자)은 이 검사에서 뺀다
+const KEPT_UI_VALUES = [ui.card, ui.panel, ui.panelTitle]
+// 검사할 글자: globals.css는 @theme 블록(별칭 선언 자체는 아래 시험이 본다)을, classes.ts는 남는 ui 세 키 값을 뺀 나머지
+function oldNameText(rel: string): string {
+  let text = read(rel)
+  if (rel === 'src/app/globals.css') text = removeBlocks(text, /@theme\b[^{;]*\{/)
+  if (rel === 'src/components/ui/classes.ts') for (const value of KEPT_UI_VALUES) text = text.split(`'${value}'`).join("''")
+  return text
+}
+const oldNames = (text: string) => [...(text.match(OLD_CLASS) ?? []), ...(text.match(OLD_VAR) ?? [])]
+
+// @theme에서 지운 옛 별칭과 남는 넷(줄 높이 포함, 값 그대로)
+const GONE_THEME = [
+  '--color-ok',
+  '--color-ok-soft',
+  '--color-danger',
+  '--color-danger-soft',
+  '--color-warn',
+  '--radius-chip',
+  '--text-tab',
+  '--text-tab--line-height',
+  '--text-logo',
+  '--text-logo--line-height',
+  '--text-kpi-sm',
+  '--text-kpi-sm--line-height',
+  '--text-kpi-sm--letter-spacing',
+  '--text-kpi',
+  '--text-kpi--line-height',
+  '--text-kpi--letter-spacing',
+]
+const KEPT_THEME: Record<string, string> = {
+  '--radius-card': 'var(--r-control)',
+  '--text-table': 'var(--fs-small)',
+  '--text-table--line-height': 'var(--lh-small)',
+  '--text-panel': 'var(--fs-subtitle)',
+  '--text-panel--line-height': 'var(--lh-subtitle)',
+  '--text-title-sm': 'var(--fs-title)',
+  '--text-title-sm--line-height': 'var(--lh-title)',
+}
+const GONE_ROOT = ['--ok', '--ok-soft', '--danger', '--danger-soft', '--accent-tint', '--field', '--content-max', '--font-sans']
+
+describe('AC-221.1: 옮기는 동안 둔 옛 이름이 없다(대시보드 두 폴더 빼고)', () => {
+  it('AC-221.1: 검사 규칙 자체가 잡아야 할 것을 잡고, 새 이름·@theme 선언은 잡지 않는다', () => {
+    for (const bad of [
+      'text-table',
+      'text-tab',
+      'text-panel',
+      'text-logo',
+      'text-title-sm',
+      'max-md:text-title-sm',
+      'text-kpi',
+      'text-kpi-sm',
+      'rounded-card',
+      'rounded-chip',
+      'text-ok',
+      'bg-ok-soft',
+      'bg-danger-soft',
+      'aria-invalid:border-danger',
+      'border-danger/50',
+      'text-warn',
+      'const c = `h-8 ${x} text-table`',
+      'color: var(--danger);',
+      'max-width: var( --content-max );',
+      'font-family: var(--font-sans);',
+    ]) {
+      expect(oldNames(bad), bad).not.toEqual([])
+    }
+    for (const ok of [
+      '--text-table: var(--fs-small);',
+      '--radius-card: var(--r-control);',
+      'text-small',
+      'text-title',
+      'text-warning',
+      'bg-warning-soft',
+      'text-negative',
+      'bg-positive-soft',
+      'rounded-control',
+      'tabular-nums',
+      'border-line',
+      'color: var(--negative);',
+      'font-family: var(--font-ui);',
+      'var(--fs-lead)',
+    ]) {
+      expect(oldNames(ok), ok).toEqual([])
+    }
+  })
+
+  it('AC-221.1: 시험 파일 밖 src/(대시보드 두 폴더 빼고)에 옛 Tailwind 이름·옛 랜딩 변수가 없다 — 남는 ui 세 키 값과 @theme 선언은 뺀다', () => {
+    const files = colorSources().filter((rel) => !inDashboard(rel))
+    expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/ui/classes.ts', 'src/components/landing/base.module.css', 'src/components/shell/AppShell.tsx']))
+    expect(files.filter(inDashboard)).toEqual([])
+    const found = files.flatMap((rel) => oldNames(oldNameText(rel)).map((name) => `${rel}: ${name}`))
+    expect(found).toEqual([])
+  })
+
+  it('AC-221.1: @theme의 옛 별칭은 대시보드 빈 자리가 쓰는 넷(--radius-card·--text-table·--text-panel·--text-title-sm, 글자 셋은 줄 높이까지)만 남고 값은 그대로다', () => {
+    const decls = Object.fromEntries(themeDecls())
+    expect(GONE_THEME.filter((name) => name in decls)).toEqual([])
+    expect(Object.fromEntries(Object.keys(KEPT_THEME).map((name) => [name, decls[name]]))).toEqual(KEPT_THEME)
+  })
+
+  it('AC-221.1: :root에 옛 랜딩 별칭(--ok·--ok-soft·--danger·--danger-soft·--accent-tint·--field·--content-max·--font-sans)이 없다', () => {
+    const names = declarations(rootBodies().join('\n')).map(([name]) => name)
+    expect(GONE_ROOT.filter((name) => names.includes(name))).toEqual([])
   })
 })
 

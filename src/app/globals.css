@@ -84,30 +84,14 @@
 
   --font-sans: var(--font-ui);
 
-  /* 옛 이름 별칭 — 아직 안 고친 화면이 깨지지 않게 새 토큰을 가리킨다. TASK-23에서 지운다 (b2b-redesign design.md '옛 이름 별칭') */
-  --color-ok: var(--positive);
-  --color-ok-soft: var(--positive-soft);
-  --color-danger: var(--negative);
-  --color-danger-soft: var(--negative-soft);
-  --color-warn: var(--warning);
+  /* 옛 이름 별칭 넷 — 대시보드 빈 자리가 쓴다 — 다음 대시보드 명세에서 지움 (b2b-redesign design.md '대시보드 본문 빼기') */
   --radius-card: var(--r-control);
-  --radius-chip: var(--r-control);
   --text-table: var(--fs-small);
   --text-table--line-height: var(--lh-small);
-  --text-tab: var(--fs-body);
-  --text-tab--line-height: var(--lh-body);
   --text-panel: var(--fs-subtitle);
   --text-panel--line-height: var(--lh-subtitle);
-  --text-logo: var(--fs-subtitle);
-  --text-logo--line-height: var(--lh-subtitle);
   --text-title-sm: var(--fs-title);
   --text-title-sm--line-height: var(--lh-title);
-  --text-kpi-sm: var(--fs-metric);
-  --text-kpi-sm--line-height: var(--lh-metric);
-  --text-kpi-sm--letter-spacing: var(--ls-heading);
-  --text-kpi: var(--fs-metric);
-  --text-kpi--line-height: var(--lh-metric);
-  --text-kpi--letter-spacing: var(--ls-heading);
 }
 
 /* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
@@ -217,16 +201,6 @@
 
   /* 글꼴 */
   --font-ui: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
-
-  /* 옛 랜딩 이름 별칭 — 랜딩 CSS Module이 아직 쓴다. 값은 토큰의 var()뿐이고 TASK-23에서 지운다 */
-  --ok: var(--positive);
-  --ok-soft: var(--positive-soft);
-  --danger: var(--negative);
-  --danger-soft: var(--negative-soft);
-  --accent-tint: var(--chart-2);
-  --field: var(--faint);
-  --content-max: var(--w-landing);
-  --font-sans: var(--font-ui);
 }
 
 body {

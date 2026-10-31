@@ -159,8 +159,8 @@ const rootVars = (() => {
 })()
 // 색 토큰: 값이 16진수인 변수(차트·항목 색 포함)
 const COLOR_TOKENS = new Set([...rootVars].filter(([, v]) => /^#[0-9a-f]{3,8}$/i.test(v)).map(([k]) => k))
-// 옛 이름 별칭: 값이 var() 하나뿐인 변수(--ok·--danger·--content-max …, TASK-23에서 지움). 고친 모듈은 쓰지 않는다
-const ALIASES = new Set([...rootVars].filter(([, v]) => /^var\(--[\w-]+\)$/.test(v)).map(([k]) => k))
+// 옛 이름 별칭: TASK-23이 globals.css :root에서 지운 옛 랜딩 변수(b2b-redesign AC-221.1). 모듈이 쓰면 '옛 별칭'으로 잡는다
+const ALIASES = new Set(['ok', 'ok-soft', 'danger', 'danger-soft', 'accent-tint', 'field', 'content-max', 'font-sans'])
 
 // ---------- AC-212.1 규칙 ----------
 
@@ -331,7 +331,8 @@ describe('AC-212.1: 검사 목록의 랜딩 모듈은 토큰·간격 단계·글
       expect.arrayContaining(['canvas', 'surface', 'line', 'ink', 'ink-2', 'accent', 'positive-soft', 'warning', 'chart-3', 'cat-5']),
     )
     expect(COLOR_TOKENS.has('fs-body') || COLOR_TOKENS.has('ok'), '색 토큰에 글자·별칭 변수가 섞이지 않는다').toBe(false)
-    expect([...ALIASES]).toEqual(expect.arrayContaining(['ok', 'danger', 'content-max', 'accent-tint']))
+    // 옛 별칭은 globals.css :root에 더는 없다(TASK-23에서 지움)
+    expect([...ALIASES].filter((name) => rootVars.has(name)), ':root에 남은 옛 별칭').toEqual([])
     expect(rootVars.get('fs-body')).toBe('14px')
   })
 

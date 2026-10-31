@@ -53,6 +53,22 @@ describe('AC-113.2: 옛 주석이 지금 동작과 맞다', () => {
     for (const size of used) expect(list, size).toContain(`(${size})`)
   })
 
+  // b2b-redesign TASK-23: 옮기기가 끝나 목록과 쓰는 크기가 같은 집합이다(옛 크기 22·20·26이 남지 않는다)
+  it('AC-221.3: LogoMark.tsx 주석의 "쓰는 곳:" 크기 목록은 src/에서 쓰는 크기 집합과 같고, 자리마다 지금 크기를 적는다', () => {
+    const lists = commentLines(read('src/components/common/LogoMark.tsx')).filter((line) => line.includes('쓰는 곳:'))
+    expect(lists).toHaveLength(1)
+    const [list = ''] = lists
+    const listed = new Set([...list.matchAll(/\((\d+)\)/g)].map((m) => m[1]))
+    const used = new Set(tsxFiles().flatMap((rel) => [...read(rel).matchAll(/<LogoMark size=\{(\d+)\}/g)].map((m) => m[1])))
+    expect(used.size).toBeGreaterThan(0)
+    expect([...listed].sort()).toEqual([...used].sort())
+    for (const place of ['랜딩 메뉴(24)', '바닥글(18)', '미리보기(18)', '앱 틀(24)', '인증 틀(28)']) expect(list, place).toContain(place)
+    expect(list).toContain('로그인 좁은 화면은 같은 28을 클래스로 24로 줄인다')
+    expect(list).not.toContain('옛')
+    // 로그인 좁은 화면(1024px 미만)은 인증 틀의 28을 클래스로 24(size-6)로 줄인다
+    expect(read('src/components/auth/AuthFrame.tsx')).toMatch(/<LogoMark size=\{28\}[^>]*max-lg:size-6/)
+  })
+
   it.each([...FRAMES, 'src/middleware.ts', 'src/components/shell/TabBar.tsx'])('AC-113.2: %s 주석에 색 값(#xxxxxx)이 없다', (file) => {
     expect(commentLines(read(file)).filter((line) => /#[0-9a-f]{3,8}\b/i.test(line)), file).toEqual([])
   })

@@ -129,3 +129,69 @@ describe('AC-203.2: layout.tsx는 next/font/local로 Pretendard를 낸다', () =
     expect(oldFontOffenders(files)).toEqual(['src/app/a.tsx', 'src/app/b.tsx', 'src/app/c.css', 'src/components/landing/D.module.css'])
   })
 })
+
+// ---------- AC-203.3: 굵기는 400·500·600만 (글꼴 파일이 세 굵기뿐 — 다른 굵기는 가짜 굵게가 된다) ----------
+// 대시보드 두 폴더도 본다(지금 font-semibold뿐이라 그대로 통과한다, b2b-redesign design.md '대시보드 본문 빼기')
+
+// Tailwind 굵기 클래스 가운데 400·500·600 밖의 것(변형 접두사가 붙어도). 앞 글자가 낱말·-이면 잡지 않는다
+const BAD_WEIGHT_CLASS = /(?<![\w-])font-(?:extrabold|bold|black|extralight|light|thin)(?![\w-])/g
+const WEIGHTS_OK = new Set(['400', '500', '600'])
+const withoutCssComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+// CSS의 font-weight 값과 font 줄임 속성 안의 굵기 낱말(숫자 100~900·bold·bolder·lighter)
+function cssWeights(css: string): string[] {
+  const text = withoutCssComments(css)
+  const weights = [...text.matchAll(/(?<![\w-])font-weight\s*:\s*([^;}]+)/g)].map((m) => m[1].trim())
+  const shorthand = [...text.matchAll(/(?<![\w-])font\s*:\s*([^;}]+)/g)].flatMap((m) => m[1].match(/(?<![\w.-])(?:[1-9]00|bold|bolder|lighter)(?![\w.-])/g) ?? [])
+  return [...weights, ...shorthand]
+}
+const badWeightsIn = (rel: string, text: string): string[] =>
+  rel.endsWith('.css')
+    ? cssWeights(text).filter((w) => !WEIGHTS_OK.has(w)).map((w) => `${rel}: font-weight ${w}`)
+    : (text.match(BAD_WEIGHT_CLASS) ?? []).map((cls) => `${rel}: ${cls}`)
+
+// 선택자가 정확히 sel인 규칙의 몸통(주석 뺀 CSS, 맨 바깥과 @layer 안 모두)
+const ruleBodies = (css: string, sel: string) =>
+  [...withoutCssComments(css).matchAll(/(?:^|[}{;\s])([^{};]+)\{([^{}]*)\}/g)].filter(([, s]) => s.trim() === sel).map(([, , body]) => body)
+
+describe('AC-203.3: 굵기는 400·500·600만, 숫자는 고정폭', () => {
+  it('AC-203.3: 검사 규칙 자체가 잡아야 할 것을 잡는다', () => {
+    const bad: Array<[string, string]> = [
+      ['src/a.tsx', '<b className="font-bold">x</b>'],
+      ['src/b.ts', "const x = 'md:font-extrabold text-ink'"],
+      ['src/c.tsx', '<p className="font-black" />'],
+      ['src/d.tsx', '<p className="hover:font-light" />'],
+      ['src/e.ts', "const y = 'font-extralight font-thin'"],
+      ['src/f.module.css', '.x { font-weight: 700; }'],
+      ['src/g.module.css', '.x { font-weight: bold }'],
+      ['src/h.module.css', '.x { font-weight: 300; }'],
+      ['src/i.css', '.x { font: 700 16px/24px var(--font-ui); }'],
+    ]
+    for (const [rel, text] of bad) expect(badWeightsIn(rel, text), rel).not.toEqual([])
+    const ok: Array<[string, string]> = [
+      ['src/a.tsx', '<b className="font-semibold font-medium font-normal font-sans">x</b>'],
+      ['src/b.ts', "const x = '--font-bold-ish tabular-nums'"],
+      ['src/f.module.css', '.x { font-weight: 600; } .y { font-weight: 400 } /* font-weight: 700 */'],
+      ['src/i.css', '.app-ui :where(button) { font: inherit; }'],
+    ]
+    for (const [rel, text] of ok) expect(badWeightsIn(rel, text), rel).toEqual([])
+  })
+
+  it('AC-203.3: 시험 파일 밖 src/(대시보드 두 폴더 포함)의 TSX·TS에 font-bold·font-extrabold·font-black·font-light·font-extralight·font-thin이 없고, CSS의 font-weight는 400·500·600뿐이다', () => {
+    const files = sourceFiles()
+    expect(files).toEqual(
+      expect.arrayContaining(['src/app/globals.css', 'src/components/landing/base.module.css', 'src/components/dashboard/DashboardEmpty.tsx', 'src/components/ui/classes.ts']),
+    )
+    expect(files.flatMap((rel) => badWeightsIn(rel, read(rel)))).toEqual([])
+    // 빈 검사가 아니다: 랜딩 CSS에 굵기 선언이 있다
+    expect(cssWeights(read('src/components/landing/base.module.css')).length).toBeGreaterThan(0)
+  })
+
+  it('AC-203.3: .app-ui(globals.css)와 랜딩 뿌리 .root(base.module.css)는 font-variant-numeric: tabular-nums다', () => {
+    const appUi = ruleBodies(read('src/app/globals.css'), '.app-ui')
+    expect(appUi.length, '.app-ui 규칙이 없다').toBeGreaterThan(0)
+    expect(appUi.some((body) => /font-variant-numeric:\s*tabular-nums/.test(body))).toBe(true)
+    const root = ruleBodies(read('src/components/landing/base.module.css'), '.root')
+    expect(root.length, '.root 규칙이 없다').toBeGreaterThan(0)
+    expect(root.some((body) => /font-variant-numeric:\s*tabular-nums/.test(body))).toBe(true)
+  })
+})
