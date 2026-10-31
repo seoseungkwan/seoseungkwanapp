@@ -1,6 +1,6 @@
 /* 앱 화면: Tailwind CSS v4 (ADR-015, docs/UI_GUIDE.md '앱 화면'). theme·utilities만 불러온다.
    Preflight(기본 초기화)는 넣지 않는다 — 랜딩 CSS가 브라우저 기본값에 기대고 있다. 앱 초기화는 아래 @layer base의 .app-ui 안에만 둔다.
-   layer 밖 CSS(아래 랜딩 변수·body, 랜딩 CSS Module)는 Tailwind보다 늘 이긴다.
+   layer 밖 CSS(아래 토큰 블록·body, 랜딩 CSS Module)는 Tailwind보다 늘 이긴다.
    랜딩 a는 @layer base 안에 둬서 앱 <a>의 Tailwind 글자색이 이긴다 */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
@@ -9,59 +9,105 @@
 @source not "../**/*.test.ts";
 @source not "../**/*.test.tsx";
 
-/* 앱 토큰. 값은 docs/UI_GUIDE.md '앱 화면' 표 그대로. 기본 색 팔레트는 지워 토큰 색만 클래스가 된다(흰 글자는 text-surface) */
-@theme {
-  --color-*: initial;
-  --color-ink: #111827;
-  --color-ink-2: #374151;
-  --color-muted: #6b7280;
-  --color-line: #e5e7eb;
-  --color-canvas: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-accent: #2563eb;
-  --color-accent-soft: #eaf1fe;
-  --color-ok: #166534;
-  --color-ok-soft: #e7f6ec;
-  --color-danger: #c2410c;
-  --color-danger-soft: #fff1e8;
-  --color-warn: #b45309;
-
-  --radius-card: 6px;
-  --radius-chip: 4px;
-
-  /* 떠 있는 층(계정 메뉴·툴팁·확인 창)에만. ink 6%·10% */
-  --shadow-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
-}
-
-/* 글자 크기·글꼴: 클래스에 값을 바로 쓴다(inline). 이름이 layer 밖 :root 변수(아래 글꼴 --font-sans)와 겹칠 수 있다.
-   var()로 두면 그쪽 값이 이겨 클래스 값이 무효가 될 수 있다 */
+/* Tailwind 이름 → 아래 토큰 블록의 변수 (ADR-019, specs/b2b-redesign REQ-202).
+   inline이라 클래스에 var(토큰)이 바로 들어간다(text-ink 는 color: var(--ink)). 여기에는 값을 쓰지 않는다.
+   기본 팔레트·모서리·그림자·글자 크기는 initial로 지워 토큰 이름만 클래스가 된다(흰 글자는 text-surface).
+   간격(--spacing)과 화면 폭(md·lg)은 Tailwind 기본 그대로다 */
 @theme inline {
-  --text-caption: 12px;
-  --text-caption--line-height: 16px;
-  --text-table: 13px;
-  --text-table--line-height: 20px;
-  --text-body: 14px;
-  --text-body--line-height: 22px;
-  --text-tab: 15px;
-  --text-tab--line-height: 20px;
-  --text-lead: 16px;
-  --text-lead--line-height: 24px;
-  --text-panel: 18px;
-  --text-panel--line-height: 26px;
-  --text-logo: 19px;
-  --text-logo--line-height: 24px;
-  --text-title-sm: 20px;
-  --text-title-sm--line-height: 28px;
-  --text-title: 25px;
-  --text-title--line-height: 32px;
-  --text-title--letter-spacing: -0.01em;
-  --text-kpi-sm: 28px;
-  --text-kpi-sm--line-height: 34px;
-  --text-kpi: 34px;
-  --text-kpi--line-height: 40px;
-  --text-kpi--letter-spacing: -0.01em;
+  --color-*: initial;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-faint: var(--faint);
+  --color-muted: var(--muted);
+  --color-ink-2: var(--ink-2);
+  --color-ink: var(--ink);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-prev: var(--chart-prev);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
 
-  --font-sans: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --radius-*: initial;
+  --radius-control: var(--r-control);
+  --radius-float: var(--r-float);
+
+  /* 떠 있는 층(계정 메뉴·툴팁·확인 창)에만 */
+  --shadow-*: initial;
+  --shadow-float: var(--elev-float);
+
+  /* 글자 11단계. 768px 미만은 -m 단계, 이상은 PC 단계 */
+  --text-*: initial;
+  --text-caption: var(--fs-caption);
+  --text-caption--line-height: var(--lh-caption);
+  --text-small: var(--fs-small);
+  --text-small--line-height: var(--lh-small);
+  --text-body: var(--fs-body);
+  --text-body--line-height: var(--lh-body);
+  --text-lead: var(--fs-lead);
+  --text-lead--line-height: var(--lh-lead);
+  --text-subtitle: var(--fs-subtitle);
+  --text-subtitle--line-height: var(--lh-subtitle);
+  --text-title: var(--fs-title);
+  --text-title--line-height: var(--lh-title);
+  --text-heading-m: var(--fs-heading-m);
+  --text-heading-m--line-height: var(--lh-heading-m);
+  --text-heading-m--letter-spacing: var(--ls-heading);
+  --text-heading: var(--fs-heading);
+  --text-heading--line-height: var(--lh-heading);
+  --text-heading--letter-spacing: var(--ls-heading);
+  --text-metric: var(--fs-metric);
+  --text-metric--line-height: var(--lh-metric);
+  --text-metric--letter-spacing: var(--ls-heading);
+  --text-display-m: var(--fs-display-m);
+  --text-display-m--line-height: var(--lh-display-m);
+  --text-display-m--letter-spacing: var(--ls-display);
+  --text-display: var(--fs-display);
+  --text-display--line-height: var(--lh-display);
+  --text-display--letter-spacing: var(--ls-display);
+
+  --font-sans: var(--font-ui);
+
+  /* 옛 이름 별칭 — 아직 안 고친 화면이 깨지지 않게 새 토큰을 가리킨다. TASK-23에서 지운다 (b2b-redesign design.md '옛 이름 별칭') */
+  --color-ok: var(--positive);
+  --color-ok-soft: var(--positive-soft);
+  --color-danger: var(--negative);
+  --color-danger-soft: var(--negative-soft);
+  --color-warn: var(--warning);
+  --radius-card: var(--r-control);
+  --radius-chip: var(--r-control);
+  --text-table: var(--fs-small);
+  --text-table--line-height: var(--lh-small);
+  --text-tab: var(--fs-body);
+  --text-tab--line-height: var(--lh-body);
+  --text-panel: var(--fs-subtitle);
+  --text-panel--line-height: var(--lh-subtitle);
+  --text-logo: var(--fs-subtitle);
+  --text-logo--line-height: var(--lh-subtitle);
+  --text-title-sm: var(--fs-title);
+  --text-title-sm--line-height: var(--lh-title);
+  --text-kpi-sm: var(--fs-metric);
+  --text-kpi-sm--line-height: var(--lh-metric);
+  --text-kpi-sm--letter-spacing: var(--ls-heading);
+  --text-kpi: var(--fs-metric);
+  --text-kpi--line-height: var(--lh-metric);
+  --text-kpi--letter-spacing: var(--ls-heading);
 }
 
 /* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
@@ -91,41 +137,103 @@
   }
 }
 
-/* 랜딩 변수 (landing-v2, docs/UI_GUIDE.md 랜딩). 값은 승인 시안 docs/mockups/landing-v2 그대로.
-   색 12개는 위 @theme의 같은 이름 --color-* 값과 같다(theme.test.ts가 묶는다). 이름은 Tailwind 테마 이름 공간과 겹치지 않는다.
-   글꼴: layout.tsx의 next/font/local이 --font-pretendard(Pretendard)를 넣고 여기서 --font-sans로 잇는다 */
+/* 디자인 토큰 한 곳 (ADR-019, specs/b2b-redesign REQ-202 AC-202.1). 값은 승인 시안 docs/mockups/b2b-redesign 그대로.
+   앱은 위 @theme inline이, 랜딩 CSS Module은 이 변수를 바로 쓴다. 16진수 색은 이 블록 밖에 두지 않는다.
+   이름은 Tailwind 이름 공간(--color-*·--text-*·--radius-*·--shadow-*) 밖이라 위에서 자기 자신을 가리키지 않는다.
+   글꼴: layout.tsx의 next/font/local이 --font-pretendard(Pretendard)를 넣고 여기서 --font-ui로 잇는다 */
 :root {
-  /* 색 */
-  --ink: #111827;
+  /* 바탕·선·글자 */
+  --canvas: #F7F8FA;
+  --surface: #FFFFFF;
+  --line: #E5E7EB;
+  --line-strong: #D1D5DB;
+  --faint: #9CA3AF;
+  --muted: #6B7280;
   --ink-2: #374151;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --canvas: #f7f8fa;
-  --surface: #ffffff;
-  --accent: #2563eb;
-  --accent-soft: #eaf1fe;
-  --ok: #166534;
-  --ok-soft: #e7f6ec;
-  --danger: #c2410c;
-  --danger-soft: #fff1e8;
+  --ink: #111827;
 
-  /* 섞은 색: 차트 막대(--accent-tint), 점선·테두리·점(--field) */
-  --accent-tint: color-mix(in srgb, #2563eb 32%, #ffffff);
-  --field: color-mix(in srgb, #6b7280 55%, #ffffff);
+  /* 강조 */
+  --accent: #2563EB;
+  --accent-strong: #1D4ED8;
+  --accent-soft: #EAF1FE;
+
+  /* 상태 */
+  --positive: #15803D;
+  --positive-soft: #ECF7EF;
+  --negative: #C2410C;
+  --negative-soft: #FDF0EA;
+  --warning: #B45309;
+  --warning-soft: #FDF4E3;
+
+  /* 차트: 크기(파랑 줄)·지난 기간·항목 구분 */
+  --chart-1: #DBE7FD;
+  --chart-2: #B4CDFA;
+  --chart-3: #8DB0F4;
+  --chart-4: #2563EB;
+  --chart-5: #1D4ED8;
+  --chart-prev: #9CA3AF;
+  --cat-1: #2563EB;
+  --cat-2: #0F766E;
+  --cat-3: #B45309;
+  --cat-4: #6D28D9;
+  --cat-5: #6B7280;
+
+  /* 글자 크기/줄 높이·자간 */
+  --fs-caption: 12px;
+  --lh-caption: 16px;
+  --fs-small: 13px;
+  --lh-small: 20px;
+  --fs-body: 14px;
+  --lh-body: 22px;
+  --fs-lead: 16px;
+  --lh-lead: 24px;
+  --fs-subtitle: 16px;
+  --lh-subtitle: 24px;
+  --fs-title: 20px;
+  --lh-title: 28px;
+  --fs-heading-m: 24px;
+  --lh-heading-m: 32px;
+  --fs-heading: 28px;
+  --lh-heading: 36px;
+  --fs-metric: 28px;
+  --lh-metric: 36px;
+  --fs-display-m: 32px;
+  --lh-display-m: 40px;
+  --fs-display: 48px;
+  --lh-display: 56px;
+  --ls-heading: -0.01em;
+  --ls-display: -0.02em;
+
+  /* 모서리·그림자(ink 6%·10%) */
+  --r-control: 4px;
+  --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
 
   /* 틀 */
-  --content-max: 1200px;
+  --w-landing: 1200px;
+  --w-app: 1280px;
   --gutter: 24px;
+  --gutter-m: 16px;
 
   /* 글꼴 */
-  --font-sans: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --font-ui: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+
+  /* 옛 랜딩 이름 별칭 — 랜딩 CSS Module이 아직 쓴다. 값은 토큰의 var()뿐이고 TASK-23에서 지운다 */
+  --ok: var(--positive);
+  --ok-soft: var(--positive-soft);
+  --danger: var(--negative);
+  --danger-soft: var(--negative-soft);
+  --accent-tint: var(--chart-2);
+  --field: var(--faint);
+  --content-max: var(--w-landing);
+  --font-sans: var(--font-ui);
 }
 
 body {
   margin: 0;
   background: var(--surface);
   color: var(--ink);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-ui);
   word-break: keep-all;
   overflow-x: clip; /* 넓은 표·미리보기가 옆으로 삐져나가도 가로 스크롤이 생기지 않게. clip은 sticky 메뉴를 깨지 않는다 */
 }

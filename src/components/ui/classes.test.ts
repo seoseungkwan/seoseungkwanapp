@@ -179,7 +179,7 @@ describe('AC-013.4: 폰(768px 미만) 누름 영역 44px·입력란 16px', () =>
     expect(has(ui.input, 'max-md:text-lead')).toBe(true)
     expect(has(ui.readonly, 'max-md:text-lead')).toBe(true)
     const globals = readFileSync(join(ROOT, 'src/app/globals.css'), 'utf8')
-    expect(globals).toMatch(/--text-lead:\s*16px;/)
+    expect(globals).toMatch(/--fs-lead:\s*16px;/)
   })
 })
 
