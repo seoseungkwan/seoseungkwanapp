@@ -1,59 +1,74 @@
-/* 랜딩 공통 모양 (specs/landing-v2 REQ-105, design.md 'base.module.css 클래스')
-   값은 승인 시안 docs/mockups/landing-v2/index.html의 .lp 공통 CSS 그대로다.
-   휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media).
-   섹션 모듈은 여기 클래스와 같은 속성을 덮어쓰지 않고 배치(grid·order·폭)만 더한다(design.md 'CSS 적용 순서'). */
+/* 랜딩 공통 모양 (specs/b2b-redesign REQ-212 AC-212.2, design.md '랜딩 (CSS Modules)', docs/UI_GUIDE.md '랜딩 짜임').
+   값은 globals.css :root 토큰을 var()로만 쓴다. 규칙(토큰·간격 단계·글자 단계·모서리·굵기·장식 없음)은 rules.test.ts가 본다.
+   휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   요소 초기화는 @layer base 안에 둔다. layer 밖 CSS는 Tailwind 클래스보다 늘 이기므로, 랜딩에 놓인 Tailwind 부품
+   (미리보기·차트)의 mt-1 같은 클래스가 초기화에 지지 않게 한다. 클래스 규칙(.wrap·.grid·.sec·글자 단계·단추·칩·숨김 도우미)은 layer 밖이다.
+   아직 안 고친 섹션이 쓰는 옛 이름(.tH2·.card·.group·.chipOk …)은 이름만 두고 새 규칙 값을 준다. 쓰지 않게 된 이름은 TASK-14에서 지운다 */
 
-/* ---------- 뿌리: 초기화와 기본 글자. page.tsx의 감싸개 하나에만 붙여 앱 화면에 새지 않게 한다 ---------- */
+/* ---------- 요소 초기화 (page.tsx의 .root 감싸개 안에만) ---------- */
+@layer base {
+  .root *,
+  .root *::before,
+  .root *::after {
+    box-sizing: border-box;
+  }
+  .root :where(h1, h2, h3, p, ol, ul, dl, dd, figure) {
+    margin: 0;
+    padding: 0;
+  }
+  .root :where(ol, ul) {
+    list-style: none;
+  }
+  /* globals.css @layer base의 a { color: accent }보다 구체성이 높아 이긴다 */
+  .root :where(a) {
+    color: inherit;
+    text-decoration: none;
+  }
+  .root :where(a):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--r-control);
+  }
+  .root :where(svg) {
+    display: block;
+    flex: none;
+  }
+}
+
+/* ---------- 뿌리: 기본 글자 ---------- */
 .root {
   background: var(--surface);
   color: var(--ink);
-  font-size: 14px;
-  line-height: 22px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   font-variant-numeric: tabular-nums;
   word-break: keep-all;
   overflow-wrap: break-word;
   text-align: left;
 }
-.root *,
-.root *::before,
-.root *::after {
-  box-sizing: border-box;
-}
-.root :where(h1, h2, h3, p, ol, ul, dl, dd, figure) {
-  margin: 0;
-  padding: 0;
-}
-.root :where(ol, ul) {
-  list-style: none;
-}
-/* layer 밖이라 globals.css @layer base의 a { color: accent }를 이긴다. :where라 단추 클래스보다는 약하다 */
-.root :where(a) {
-  color: inherit;
-  text-decoration: none;
-}
-.root a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-.root svg {
-  display: block;
-  flex: none;
-}
 .nowrap {
   white-space: nowrap;
 }
 
-/* ---------- 틀 · 섹션 리듬 ---------- */
+/* ---------- 틀 · 칸 · 섹션 리듬 ---------- */
+/* 내용 1200 + 좌우 24. 휴대폰 좌우는 16 */
 .wrap {
-  max-width: 1248px; /* 내용 1200 + 좌우 24 */
+  max-width: calc(var(--w-landing) + 2 * var(--gutter));
   margin-inline: auto;
-  padding-inline: 16px;
+  padding-inline: var(--gutter-m);
 }
+/* 1024px부터 12칸(칸 사이 24). 그 아래는 한 칸으로 쌓이고, 섹션 모듈이 order·줄 간격을 정한다 */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+/* 섹션 위아래 48 → 64 → 96. scroll-margin-top 72 → 80은 메뉴(56 → 64px)에 제목이 가리지 않게 한다(AC-207.2) */
 .sec {
-  padding-block: 56px;
-  scroll-margin-top: 96px; /* 휴대폰은 메뉴가 두 줄이라 더 띄운다 */
+  padding-block: 48px;
+  scroll-margin-top: 72px;
 }
+/* canvas 띠(#ai·#privacy). 이름은 그대로 둔다 */
 .secCanvas {
   background: var(--canvas);
 }
@@ -67,144 +82,163 @@
   max-width: 760px;
 }
 
-/* ---------- 글자 단계 (한 벌) ---------- */
-/* 본문 글(.tLead·.tBody·.tSmall)은 text-wrap: pretty로 마지막 줄에 낱말 하나만 남지 않게 한다(TASK-11 화면 확인) */
+/* ---------- 글자 단계 (UI_GUIDE '글자'). 768px 미만은 -m 단계 ---------- */
 .tDisplay {
-  font-size: 34px;
-  line-height: 42px;
+  font-size: var(--fs-display-m);
+  line-height: var(--lh-display-m);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--ls-display);
   text-wrap: balance;
 }
+.tHeading,
 .tH2 {
-  font-size: 24px;
-  line-height: 32px;
+  font-size: var(--fs-heading-m);
+  line-height: var(--lh-heading-m);
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: var(--ls-heading);
   text-wrap: balance;
 }
+.tTitle,
 .tH3l {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
   font-weight: 600;
-  letter-spacing: -0.01em;
 }
+.tSubtitle,
 .tH3 {
-  font-size: 17px;
-  line-height: 24px;
+  font-size: var(--fs-subtitle);
+  line-height: var(--lh-subtitle);
   font-weight: 600;
 }
+/* 본문 글은 text-wrap: pretty로 마지막 줄에 낱말 하나만 남지 않게 한다 */
 .tLead {
-  font-size: 16px;
-  line-height: 26px;
+  font-size: var(--fs-lead);
+  line-height: var(--lh-lead);
   color: var(--ink-2);
   max-width: 640px;
   text-wrap: pretty;
 }
 .tBody {
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--ink-2);
   text-wrap: pretty;
 }
 .tSmall {
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
   text-wrap: pretty;
 }
 .tLabel {
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
   font-weight: 500;
   color: var(--muted);
 }
+.tCaption {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
 
-/* ---------- 단추 ---------- */
+/* ---------- 단추: 앱 ds.button과 같은 크기·색 (UI_GUIDE '단추') ---------- */
+/* 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자·움직임 없음 */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 6px;
   border: 1px solid transparent;
+  border-radius: var(--r-control);
   font-weight: 500;
   white-space: nowrap;
-  transition: background-color .15s ease;
+  cursor: pointer;
+}
+/* 작은 32 · 기본 36 · 큰 44(600). 휴대폰 메뉴 단추(32px + 누름 영역 44px)는 SiteHeader가 맡는다 */
+.btnSm {
+  height: 32px;
+  padding-inline: 12px;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
 }
 .btnMd {
   height: 36px;
-  padding: 0 14px;
-  font-size: 14px;
+  padding-inline: 16px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 .btnLg {
   height: 44px;
-  padding: 0 20px;
-  font-size: 15px;
+  padding-inline: 20px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
 }
 .btnPrimary {
-  background: var(--ink);
+  background: var(--accent);
+  border-color: transparent;
   color: var(--surface);
 }
 .btnPrimary:hover {
-  background: var(--ink-2);
+  background: var(--accent-strong);
 }
 .btnSecondary {
   background: var(--surface);
-  border-color: var(--line);
+  border-color: var(--line-strong);
   color: var(--ink);
 }
 .btnSecondary:hover {
   background: var(--canvas);
 }
 
-/* ---------- 칩 ---------- */
+/* ---------- 칩: 앱 ds.chip과 같은 값 (UI_GUIDE '칩') ---------- */
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
+/* 20px · 좌우 6px · caption 500 · 4px · 1px 테두리(없으면 투명) · 아이콘(12px)과 글자 사이 4px */
 .chip {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 4px;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 4px;
+  height: 20px;
+  padding-inline: 6px;
   border: 1px solid transparent;
-  font-size: 12px;
-  line-height: 16px;
+  border-radius: var(--r-control);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   font-weight: 500;
   white-space: nowrap;
 }
-.chipNeutral {
-  color: var(--ink-2);
-  background: var(--surface);
-  border-color: var(--line);
-}
-.chipSample {
-  color: var(--muted);
-  background: var(--surface);
-  border-color: var(--line);
-}
-.chipOk {
-  color: var(--ok);
-  background: var(--ok-soft);
-}
-.chipAttn {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
+/* 준비 중·추정·예시 (옛 이름 chipSample·chipWait) */
+.chipNeutral,
+.chipSample,
 .chipWait {
-  color: var(--muted);
   background: var(--canvas);
   border-color: var(--line);
+  color: var(--ink-2);
+}
+/* 늘었어요·확정됨 (옛 이름 chipOk) */
+.chipPositive,
+.chipOk {
+  background: var(--positive-soft);
+  border-color: transparent;
+  color: var(--positive);
+}
+/* 살펴볼 것 (옛 이름 chipAttn) */
+.chipWarning,
+.chipAttn {
+  background: var(--warning-soft);
+  border-color: transparent;
+  color: var(--warning);
 }
 
-/* ---------- 카드(테두리 상자) · 항목(위 선 한 줄) · 칸 ---------- */
+/* ---------- 옛 묶음: 카드(테두리 상자) · 항목(위 선 한 줄) · 칸. 섹션을 고치면 쓰지 않는다(TASK-14에서 지움) ---------- */
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-control);
   padding: 16px;
   min-width: 0;
 }
@@ -227,13 +261,12 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 20px 24px;
 }
-
 /* 묶음: 휴대폰에서는 테두리 하나 안에 카드들이 위 1px 선으로 나뉜다. 칸 규칙(gap 12px) 뒤에 둬서 gap 0이 이긴다 */
 .group {
   gap: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-control);
 }
 .group > .card {
   border: 0;
@@ -244,44 +277,51 @@
   border-top: 1px solid var(--line);
 }
 
-/* ---------- 768px부터 (태블릿: 2줄) ---------- */
+/* ---------- 숨김 도우미 ---------- */
+/* 화면 읽기 전용 글자(로고 링크 "맨 위로" 등) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* display: none이라 화면 읽기에서도 빠진다 → 휴대폰·PC 문구를 따로 두어도 두 번 읽히지 않는다. !important는 이 둘에만 쓴다 */
+@media (max-width: 767.98px) {
+  .pcOnly {
+    display: none !important;
+  }
+}
+
+/* ---------- 768px부터 ---------- */
 @media (min-width: 768px) {
+  .phoneOnly {
+    display: none !important;
+  }
   .wrap {
-    padding-inline: 24px;
+    padding-inline: var(--gutter);
   }
   .sec {
-    padding-block: 80px;
-    scroll-margin-top: 64px;
+    padding-block: 64px;
+    scroll-margin-top: 80px;
   }
   .stack {
-    gap: 40px;
+    gap: 48px;
   }
   .head {
     gap: 16px;
   }
   .tDisplay {
-    font-size: 44px;
-    line-height: 52px;
+    font-size: var(--fs-display);
+    line-height: var(--lh-display);
   }
+  .tHeading,
   .tH2 {
-    font-size: 28px;
-    line-height: 36px;
-  }
-  .tH3l {
-    font-size: 22px;
-    line-height: 30px;
-  }
-  .tH3 {
-    font-size: 18px;
-    line-height: 26px;
-  }
-  .tLead {
-    font-size: 18px;
-    line-height: 28px;
-  }
-  .tBody {
-    font-size: 15px;
-    line-height: 24px;
+    font-size: var(--fs-heading);
+    line-height: var(--lh-heading);
   }
   .card {
     padding: 24px;
@@ -310,7 +350,7 @@
   }
   .group > .card {
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--r-control);
     background: var(--surface);
   }
   .group > .card + .card {
@@ -318,21 +358,14 @@
   }
 }
 
-/* ---------- 1024px부터 (PC: 12칸) ---------- */
+/* ---------- 1024px부터 (12칸) ---------- */
 @media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+  }
   .sec {
     padding-block: 96px;
-  }
-  .stack {
-    gap: 48px;
-  }
-  .tDisplay {
-    font-size: 56px;
-    line-height: 64px;
-  }
-  .tH2 {
-    font-size: 32px;
-    line-height: 40px;
   }
   .grid4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
