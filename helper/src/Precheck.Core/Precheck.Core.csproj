@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 플랫폼과 상관없는 도우미 부분. 이 서버(리눅스)에서도 dotnet test로 시험한다 (ADR-016) -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Precheck.Core</RootNamespace>
+    <AssemblyName>Precheck.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 명령 표 원본 하나: 확장·웹·도우미가 같은 파일을 읽는다 (design.md 4-3) -->
+    <EmbeddedResource Include="../../../src/lib/bridge/commands.json" LogicalName="commands.json" />
+  </ItemGroup>
+</Project>

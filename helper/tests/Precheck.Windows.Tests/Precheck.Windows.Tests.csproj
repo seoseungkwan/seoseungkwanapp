@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 윈도우 부분 시험(net48). Actions 윈도우(windows-latest)에서만 돈다: DPAPI 왕복·가짜 폴더로 비트 찾기·접속 글자 굳히기.
+       실제 비트(DLL·DB·로그인 창)와 확인 창은 의원 PC 시험으로 남긴다. 시험 파일 이름은 *.test.cs -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Precheck.Windows.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Security" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Precheck.Core/Precheck.Core.csproj" />
+    <ProjectReference Include="../../src/Precheck.Windows/Precheck.Windows.csproj" />
+  </ItemGroup>
+</Project>

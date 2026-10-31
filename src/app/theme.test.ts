@@ -1,9 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { ui } from '@/components/ui/classes'
 
-// 앱 화면 토큰과 Tailwind 설정 (REQ-013, ADR-015, docs/UI_GUIDE.md '앱 화면', specs/auth/design.md 'Tailwind는 Preflight 없이')
+// 앱 화면 토큰과 Tailwind 설정 (REQ-013, ADR-015·ADR-019, specs/b2b-redesign REQ-202, docs/UI_GUIDE.md '앱 화면', specs/auth/design.md 'Tailwind는 Preflight 없이')
 const ROOT = process.cwd()
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8')
 // 따옴표 안의 "/*"(예: @source not "../**/*.test.ts")는 주석이 아니다 → 따옴표 글은 그대로 두고 주석만 지운다
@@ -95,57 +96,164 @@ function layerBodies(css: string, name: string): string[] {
   return out
 }
 
-// 랜딩이 쓰는 요소 규칙 중 앱 요소에도 닿는 것. @layer base에 두어 앱의 Tailwind 클래스(utilities)가 이기게 한다
+// 랜딩이 쓰는 요소 규칙 중 앱 요소에도 닿는 것. @layer base에 두어 앱의 Tailwind 클래스(utilities)가 이기게 한다 (AC-102.3: a 하나)
 const LANDING_BASE: Record<string, RegExp> = {
-  a: /color:\s*var\(--teal-text\)/,
-  'a:hover': /color:\s*#055f59/,
+  a: /^\s*color:\s*var\(--accent\)\s*;?\s*$/,
 }
 
-// @theme·@theme inline 블록의 선언 전부(파일 순서대로)
-const theme = () => {
-  const css = globals()
-  const bodies: string[] = []
-  const head = /@theme(\s+inline)?\s*\{/g
-  for (let m = head.exec(css); m !== null; m = head.exec(css)) {
-    const body = blockBody(css.slice(m.index), /@theme(\s+inline)?\s*\{/)
-    if (body !== null) bodies.push(body)
+// head로 시작하는 블록을 모두 지운다(중괄호 짝을 맞춘다)
+function removeBlocks(css: string, head: RegExp): string {
+  let rest = css
+  for (;;) {
+    const match = head.exec(rest)
+    if (match === null) return rest
+    const open = rest.indexOf('{', match.index + match[0].length - 1)
+    let depth = 0
+    let end = rest.length
+    for (let i = open; i < rest.length; i++) {
+      if (rest[i] === '{') depth++
+      if (rest[i] === '}' && --depth === 0) {
+        end = i + 1
+        break
+      }
+    }
+    rest = rest.slice(0, match.index) + rest.slice(end)
   }
-  expect(bodies.length, '@theme 블록이 없다').toBeGreaterThan(0)
-  return bodies.flatMap(declarations)
 }
 
-const COLORS: Record<string, string> = {
-  '--color-ink': '#111827',
-  '--color-ink-2': '#374151',
-  '--color-muted': '#6B7280',
-  '--color-line': '#E5E7EB',
-  '--color-canvas': '#F7F8FA',
-  '--color-surface': '#FFFFFF',
-  '--color-accent': '#2563EB',
-  '--color-accent-soft': '#EAF1FE',
-  '--color-ok': '#166534',
-  '--color-ok-soft': '#E7F6EC',
-  '--color-danger': '#C2410C',
-  '--color-danger-soft': '#FFF1E8',
-  '--color-warn': '#B45309',
+
+// ---------- 토큰 표 (specs/b2b-redesign REQ-202 AC-202.1, design.md '토큰 블록'·'옛 이름 별칭') ----------
+
+// 색 토큰: 이름(-- 뒤) → 값. 16진수는 대소문자를 보지 않는다
+const COLOR_TOKENS: Record<string, string> = {
+  canvas: '#F7F8FA',
+  surface: '#FFFFFF',
+  line: '#E5E7EB',
+  'line-strong': '#D1D5DB',
+  faint: '#9CA3AF',
+  muted: '#6B7280',
+  'ink-2': '#374151',
+  ink: '#111827',
+  accent: '#2563EB',
+  'accent-strong': '#1D4ED8',
+  'accent-soft': '#EAF1FE',
+  positive: '#15803D',
+  'positive-soft': '#ECF7EF',
+  negative: '#C2410C',
+  'negative-soft': '#FDF0EA',
+  warning: '#B45309',
+  'warning-soft': '#FDF4E3',
+  'chart-1': '#DBE7FD',
+  'chart-2': '#B4CDFA',
+  'chart-3': '#8DB0F4',
+  'chart-4': '#2563EB',
+  'chart-5': '#1D4ED8',
+  'chart-prev': '#9CA3AF',
+  'cat-1': '#2563EB',
+  'cat-2': '#0F766E',
+  'cat-3': '#B45309',
+  'cat-4': '#6D28D9',
+  'cat-5': '#6B7280',
 }
 
-// UI_GUIDE '글자' 표: 크기/줄 높이(px)
-const TEXT: Record<string, [number, number]> = {
-  caption: [12, 16],
-  table: [13, 20],
-  body: [14, 22],
-  tab: [15, 20],
-  lead: [16, 24],
-  panel: [18, 26],
-  logo: [19, 24],
-  'title-sm': [20, 28],
-  title: [25, 32],
-  'kpi-sm': [28, 34],
-  kpi: [34, 40],
+// 글자 11단계: [크기 px, 줄 높이 px, 자간 토큰(--ls-heading·--ls-display) 또는 없음]
+const TYPE: Record<string, [number, number, 'heading' | 'display' | null]> = {
+  caption: [12, 16, null],
+  small: [13, 20, null],
+  body: [14, 22, null],
+  lead: [16, 24, null],
+  subtitle: [16, 24, null],
+  title: [20, 28, null],
+  'heading-m': [24, 32, 'heading'],
+  heading: [28, 36, 'heading'],
+  metric: [28, 36, 'heading'],
+  'display-m': [32, 40, 'display'],
+  display: [48, 56, 'display'],
 }
 
-const FONT_SANS = 'var(--font-plex), system-ui, sans-serif'
+const ELEV_FLOAT = '0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1)'
+const FONT_UI = "var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif"
+
+// :root 토큰 전부: 변수 이름 → 값
+const TOKENS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(COLOR_TOKENS).map(([name, value]) => [`--${name}`, value])),
+  ...Object.fromEntries(
+    Object.entries(TYPE).flatMap(([step, [size, lineHeight]]) => [
+      [`--fs-${step}`, `${size}px`],
+      [`--lh-${step}`, `${lineHeight}px`],
+    ]),
+  ),
+  '--ls-heading': '-0.01em',
+  '--ls-display': '-0.02em',
+  '--r-control': '4px',
+  '--r-float': '8px',
+  '--elev-float': ELEV_FLOAT,
+  '--w-landing': '1200px',
+  '--w-app': '1280px',
+  '--gutter': '24px',
+  '--gutter-m': '16px',
+  '--font-ui': FONT_UI,
+}
+
+// 옛 이름 별칭. TASK-23에서 지웠다 — 랜딩 CSS Module이 쓰던 옛 :root 이름은 남지 않는다(b2b-redesign REQ-221 AC-221.1)
+const LANDING_ALIASES: Record<string, string> = {}
+// 옛 Tailwind 이름 → 가리키는 새 토큰(색·모서리는 토큰 이름, 글자는 단계 이름).
+// 남는 것은 대시보드 빈 자리(src/components/dashboard)가 아직 쓰는 넷뿐이다 — 다음 대시보드 명세에서 지운다(design.md '대시보드 본문 빼기')
+const OLD_COLORS: Record<string, string> = {}
+const OLD_RADII: Record<string, string> = { card: 'r-control' }
+const OLD_TEXT: Record<string, string> = {
+  table: 'small',
+  panel: 'subtitle',
+  'title-sm': 'title',
+}
+
+// 16진수만 대문자로(글꼴 이름 같은 글자는 그대로 비교한다)
+const upperHex = (value: string) => value.replace(/#[0-9a-f]{3,8}\b/gi, (hex) => hex.toUpperCase())
+const normalized = (entries: Array<[string, string]> | Record<string, string>) =>
+  Object.fromEntries((Array.isArray(entries) ? entries : Object.entries(entries)).map(([name, value]) => [name, upperHex(value)]))
+
+// 글자 단계 하나의 @theme 선언: 크기·줄 높이(+ 자간)
+const textTheme = (name: string, step: string): Array<[string, string]> => {
+  const [, , spacing] = TYPE[step]
+  return [
+    [`--text-${name}`, `var(--fs-${step})`],
+    [`--text-${name}--line-height`, `var(--lh-${step})`],
+    ...(spacing ? ([[`--text-${name}--letter-spacing`, `var(--ls-${spacing})`]] as Array<[string, string]>) : []),
+  ]
+}
+
+// layer 밖 :root 규칙들의 몸통
+const rootBodies = () =>
+  rules(outsideLayers(globals()))
+    .filter(([s]) => s === ':root')
+    .map(([, body]) => body)
+
+// @theme 블록들: [머리('@theme inline' 등), 몸통]
+function themeBlocks(): Array<[string, string]> {
+  const css = globals()
+  const out: Array<[string, string]> = []
+  const head = /@theme\b[^{;]*\{/g
+  for (let m = head.exec(css); m !== null; m = head.exec(css)) {
+    const body = blockBody(css.slice(m.index), /@theme\b[^{;]*\{/)
+    if (body !== null) out.push([m[0].slice(0, -1).trim().replace(/\s+/g, ' '), body])
+  }
+  return out
+}
+const themeDecls = () => themeBlocks().flatMap(([, body]) => declarations(body))
+
+// globals.css를 실제 Tailwind(postcss)로 돌린다. extra는 inline으로 더 만들 클래스
+async function tailwindCss(extra: string[] = []): Promise<string> {
+  const { default: postcss } = await import('postcss')
+  const { default: tailwind } = await import('@tailwindcss/postcss')
+  const source = extra.length > 0 ? `${read('src/app/globals.css')}\n@source inline("${extra.join(' ')}");\n` : read('src/app/globals.css')
+  const result = await postcss([tailwind({ base: ROOT, optimize: false })]).process(source, {
+    from: join(ROOT, 'src/app/globals.css'),
+  })
+  return result.css
+}
+// 만든 CSS에서 클래스 하나의 규칙 몸통(공백을 하나로). 없으면 null
+const utility = (css: string, selector: string) =>
+  css.replace(/\s+/g, ' ').match(new RegExp(`(?:^|[\\s}])${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`))?.[1] ?? null
 
 describe('AC-013.1: Tailwind 불러오기 (Preflight 없음)', () => {
   it('AC-013.1: globals.css 맨 앞은 layer 순서 선언이고, Tailwind는 theme·utilities만 layer로 불러온다', () => {
@@ -169,8 +277,8 @@ describe('AC-013.1: Tailwind 불러오기 (Preflight 없음)', () => {
       from: join(ROOT, 'src/app/globals.css'),
     })
     const out = result.css
-    // 앱 화면이 쓰는 클래스는 그대로 만든다
-    for (const cls of ['.max-md\\:hidden', '.lg\\:max-w-60', '.md\\:table-fixed', '.empty\\:sr-only', '.flex-\\[1_1_160px\\]', '.bg-ink', '.shadow-float']) {
+    // 앱 화면이 쓰는 클래스는 그대로 만든다(개편 뒤에도 남는 것만 고른다, b2b-redesign design.md)
+    for (const cls of ['.max-md\\:hidden', '.flex-\\[1_1_160px\\]', '.shadow-float']) {
       expect(out, cls).toContain(cls)
     }
     // 시험 글자(hasNone의 'overflow-hidden')·문서·시안(rounded-2xl·text-4xl)에만 있는 클래스는 만들지 않는다
@@ -185,59 +293,116 @@ describe('AC-013.1: Tailwind 불러오기 (Preflight 없음)', () => {
   })
 })
 
-describe('AC-013.1: @theme 토큰', () => {
-  it('AC-013.1: 기본 색을 지운 뒤(--color-*: initial) 색 토큰 13개만 둔다', () => {
-    const decls = theme()
-    const colors = decls.filter(([name]) => name.startsWith('--color-'))
-    expect(colors[0], '기본 색 지우기가 첫 색 선언이 아니다').toEqual(['--color-*', 'initial'])
-    const tokens = Object.fromEntries(colors.slice(1).map(([name, value]) => [name, value.toUpperCase()]))
-    expect(tokens).toEqual(COLORS)
-  })
-
-  it('AC-013.1: 모서리는 card 6px·chip 4px 두 가지다', () => {
-    const radii = theme().filter(([name]) => name.startsWith('--radius-'))
-    expect(Object.fromEntries(radii)).toEqual({ '--radius-card': '6px', '--radius-chip': '4px' })
-  })
-
-  it('AC-013.1: 글자 크기 토큰 11개와 줄 높이(title·kpi는 자간 -0.01em)', () => {
-    const decls = Object.fromEntries(theme().filter(([name]) => name.startsWith('--text-')))
-    const sizes = Object.keys(decls).filter((name) => !name.includes('--', 2))
-    expect(sizes.sort()).toEqual(Object.keys(TEXT).map((t) => `--text-${t}`).sort())
-    for (const [token, [size, lineHeight]] of Object.entries(TEXT)) {
-      expect(decls[`--text-${token}`], token).toBe(`${size}px`)
-      expect(decls[`--text-${token}--line-height`], `${token} 줄 높이`).toBe(`${lineHeight}px`)
+describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => {
+  it('AC-202.2: @theme 블록은 @theme inline 하나이고, 값은 var(--토큰)과 기본값 지우기(initial) 네 줄뿐이다 — 16진수·px·em을 직접 쓰지 않는다', () => {
+    const blocks = themeBlocks()
+    expect(blocks.map(([head]) => head)).toEqual(['@theme inline'])
+    const [, body] = blocks[0]
+    expect(body, '@theme inline 안에 16진수·px·em 값이 있다').not.toMatch(/#[0-9a-f]{3,8}\b|\d(px|r?em)\b/i)
+    const decls = declarations(body)
+    for (const [name, value] of decls) {
+      if (name.endsWith('-*')) expect(value, name).toBe('initial')
+      else expect(value, name).toMatch(/^var\(--[\w-]+\)$/)
     }
-    expect(decls['--text-title--letter-spacing']).toBe('-0.01em')
-    expect(decls['--text-kpi--letter-spacing']).toBe('-0.01em')
+    // 가리키는 변수는 모두 :root 토큰이다(별칭을 다시 가리키지 않는다)
+    for (const [name, value] of decls.filter(([n]) => !n.endsWith('-*'))) {
+      expect(Object.keys(TOKENS), `${name}: ${value}`).toContain(value.slice(4, -1))
+    }
   })
 
-  it('AC-013.1: 그림자는 float 하나(0 1px 2px + 0 6px 16px, ink 6%·10%)', () => {
-    const shadows = theme().filter(([name]) => name.startsWith('--shadow-'))
-    expect(shadows.map(([name]) => name)).toEqual(['--shadow-float'])
-    expect(shadows[0][1]).toBe('0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1)')
+  it('AC-202.2: --color-*·--radius-*·--shadow-*·--text-*: initial 네 줄이 있고, 각 이름 공간의 다른 선언보다 앞에 있다', () => {
+    const decls = themeDecls()
+    const wipes = decls.filter(([name]) => name.endsWith('-*')).map(([name]) => name)
+    expect(wipes.sort()).toEqual(['--color-*', '--radius-*', '--shadow-*', '--text-*'])
+    for (const wipe of wipes) {
+      const prefix = wipe.slice(0, -1)
+      const first = decls.findIndex(([name]) => name.startsWith(prefix))
+      expect(decls[first][0], `${wipe}가 ${prefix} 선언보다 뒤에 있다`).toBe(wipe)
+    }
   })
 
-  it('AC-013.1: 글꼴 sans는 next/font의 IBM Plex Sans KR(--font-plex)', () => {
-    expect(Object.fromEntries(theme())['--font-sans']).toBe(FONT_SANS)
-  })
-
-  it('AC-013.1: 글자 크기·글꼴 클래스는 값을 바로 쓴다 — 랜딩 변수 --text-body(글자 색)와 이름이 겹쳐도 크기가 깨지지 않는다', async () => {
-    // globals.css를 실제 Tailwind로 돌려 클래스를 만든다. var(--text-body)로 두면 layer 밖 랜딩 :root의 색 값이 이겨 크기가 무효가 된다
-    const { default: postcss } = await import('postcss')
-    const { default: tailwind } = await import('@tailwindcss/postcss')
-    const classes = [...Object.keys(TEXT).map((t) => `text-${t}`), 'font-sans'].join(' ')
-    const source = `${read('src/app/globals.css')}\n@source inline("${classes}");\n`
-    const result = await postcss([tailwind({ base: join(ROOT, 'src/app'), optimize: false })]).process(source, {
-      from: join(ROOT, 'src/app/globals.css'),
+  it('AC-202.2: 색은 :root 색 토큰 전부(차트·항목 색 포함)를 같은 이름으로 가리키고, 옛 색 별칭(ok·danger·warn)은 남지 않는다', () => {
+    const colors = themeDecls().filter(([name]) => name.startsWith('--color-') && name !== '--color-*')
+    const names = colors.map(([name]) => name)
+    expect(names.length, '같은 색 이름을 두 번 선언했다').toBe(new Set(names).size)
+    expect(Object.fromEntries(colors)).toEqual({
+      ...Object.fromEntries(Object.keys(COLOR_TOKENS).map((name) => [`--color-${name}`, `var(--${name})`])),
+      ...Object.fromEntries(Object.entries(OLD_COLORS).map(([old, token]) => [`--color-${old}`, `var(--${token})`])),
     })
-    const out = result.css.replace(/\s+/g, ' ')
-    for (const [token, [size, lineHeight]] of Object.entries(TEXT)) {
-      const rule = out.match(new RegExp(`\\.text-${token} \\{([^}]*)\\}`))?.[1] ?? ''
-      expect(rule, token).toContain(`font-size: ${size}px`)
-      expect(rule, token).toContain(`${lineHeight}px`)
-      expect(rule, token).not.toContain('var(--text-')
+  })
+
+  it('AC-202.2: 모서리는 control·float(+ 대시보드 빈 자리가 쓰는 옛 card는 control), 그림자는 float 하나다', () => {
+    const decls = themeDecls()
+    const radii = decls.filter(([name]) => name.startsWith('--radius-') && name !== '--radius-*')
+    expect(Object.fromEntries(radii)).toEqual({
+      '--radius-control': 'var(--r-control)',
+      '--radius-float': 'var(--r-float)',
+      ...Object.fromEntries(Object.entries(OLD_RADII).map(([old, token]) => [`--radius-${old}`, `var(--${token})`])),
+    })
+    const shadows = decls.filter(([name]) => name.startsWith('--shadow-') && name !== '--shadow-*')
+    expect(shadows).toEqual([['--shadow-float', 'var(--elev-float)']])
+  })
+
+  it('AC-202.2: 글자는 11단계(크기·줄 높이, heading·heading-m·metric은 --ls-heading, display·display-m은 --ls-display)이고, 옛 별칭은 표의 단계를 그대로 가리킨다', () => {
+    const texts = themeDecls().filter(([name]) => name.startsWith('--text-') && name !== '--text-*')
+    const names = texts.map(([name]) => name)
+    expect(names.length, '같은 글자 이름을 두 번 선언했다').toBe(new Set(names).size)
+    expect(Object.fromEntries(texts)).toEqual(
+      Object.fromEntries([
+        ...Object.keys(TYPE).flatMap((step) => textTheme(step, step)),
+        ...Object.entries(OLD_TEXT).flatMap(([old, step]) => textTheme(old, step)),
+      ]),
+    )
+  })
+
+  it('AC-202.2: 글꼴은 --font-sans: var(--font-ui) 하나다', () => {
+    const fonts = themeDecls().filter(([name]) => name.startsWith('--font-'))
+    expect(fonts).toEqual([['--font-sans', 'var(--font-ui)']])
+  })
+
+  it('AC-202.2: 실제 Tailwind로 돌리면 토큰 클래스는 var(토큰)을 쓰고, 지운 기본 이름(text-sm·rounded-lg·shadow-md·bg-blue-500)은 만들어지지 않는다', async () => {
+    const steps = Object.keys(TYPE)
+    const olds = Object.keys(OLD_TEXT)
+    const css = await tailwindCss([
+      ...steps.map((s) => `text-${s}`),
+      ...olds.map((s) => `text-${s}`),
+      'bg-ink',
+      'bg-chart-3',
+      'rounded-control',
+      'rounded-float',
+      'rounded-card',
+      'shadow-float',
+      'font-sans',
+      'text-sm',
+      'rounded-lg',
+      'shadow-md',
+      'bg-blue-500',
+    ])
+    const small = utility(css, '.text-small')
+    expect(small, '.text-small이 없다').not.toBeNull()
+    expect(small).toContain('font-size: var(--fs-small)')
+    expect(small).toMatch(/line-height: [^;]*var\(--lh-small\)/)
+    for (const [name, step] of [...steps.map((s) => [s, s]), ...Object.entries(OLD_TEXT)]) {
+      const rule = utility(css, `.text-${name}`)
+      expect(rule, `.text-${name}가 없다`).not.toBeNull()
+      expect(rule, name).toContain(`font-size: var(--fs-${step})`)
+      expect(rule, name).toMatch(new RegExp(`line-height: [^;]*var\\(--lh-${step}\\)`))
+      const spacing = TYPE[step][2]
+      if (spacing) expect(rule, name).toMatch(new RegExp(`letter-spacing: [^;]*var\\(--ls-${spacing}\\)`))
+      else expect(rule, name).not.toContain('letter-spacing')
     }
-    expect(out.match(/\.font-sans \{([^}]*)\}/)?.[1]).toContain(`font-family: ${FONT_SANS}`)
+    expect(utility(css, '.bg-ink')).toContain('background-color: var(--ink)')
+    expect(utility(css, '.bg-chart-3')).toContain('background-color: var(--chart-3)')
+    expect(utility(css, '.rounded-control')).toContain('border-radius: var(--r-control)')
+    expect(utility(css, '.rounded-float')).toContain('border-radius: var(--r-float)')
+    expect(utility(css, '.rounded-card')).toContain('border-radius: var(--r-control)')
+    expect(utility(css, '.shadow-float')).toContain('--tw-shadow: var(--elev-float)')
+    expect(utility(css, '.font-sans')).toContain('font-family: var(--font-ui)')
+    for (const gone of ['.text-sm', '.rounded-lg', '.shadow-md', '.bg-blue-500']) expect(utility(css, gone), gone).toBeNull()
+    // .app-ui 초기화가 쓰는 --color-canvas·--color-ink는 theme 층에 만들어져 토큰을 가리킨다(화면 바탕이 비지 않는다)
+    const flat = css.replace(/\s+/g, ' ')
+    expect(flat).toContain('--color-canvas: var(--canvas);')
+    expect(flat).toContain('--color-ink: var(--ink);')
   }, 30_000)
 })
 
@@ -276,55 +441,253 @@ describe('AC-013.1: 앱 초기화는 .app-ui 안에만', () => {
   })
 })
 
-describe('AC-013.1: 랜딩은 그대로', () => {
-  it('AC-013.1: 랜딩 변수·body·모션 줄이기 블록이 layer 밖에 그대로 있다', () => {
-    const outside = outsideLayers(globals())
-    const landingRoot = blockBody(outside, /:root\s*\{(?=[^}]*--bg-page)/)
-    expect(landingRoot, '랜딩 :root 변수 블록이 없다').not.toBeNull()
-    const vars = Object.fromEntries(declarations(landingRoot!))
-    expect(vars).toMatchObject({
-      '--bg-page': '#ffffff',
-      '--text-strong': '#0b1530',
-      '--teal-text': '#077a73',
-      '--warn-text': '#c2410c',
-      '--content-max': '1200px',
-      '--gutter': '24px',
-    })
-    const body = blockBody(outside, /(^|\})\s*body\s*\{/)
-    expect(body).toMatch(/font-family:\s*var\(--font-sans\), system-ui, sans-serif/)
-    expect(body).toMatch(/word-break:\s*keep-all/)
-    expect(body).toMatch(/overflow-x:\s*clip/)
-    expect(outside).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/)
+describe('AC-202.1: 토큰 값은 layer 밖 :root 한 곳', () => {
+  it('AC-202.1: layer 밖 :root는 하나이고, 변수 선언만 있다', () => {
+    const bodies = rootBodies()
+    expect(bodies.length, 'layer 밖 :root는 하나다').toBe(1)
+    const statements = bodies[0].split(';').map((d) => d.trim()).filter(Boolean)
+    expect(statements.filter((d) => !d.startsWith('--')), ':root에 변수 말고 다른 선언이 있다').toEqual([])
+    // layer 안이나 다른 곳에 :root를 또 두지 않는다
+    expect([...globals().matchAll(/:root\b/g)].length, 'globals.css의 :root 개수').toBe(1)
   })
 
-  it('AC-013.1: 앱 요소에도 닿는 랜딩 요소 규칙(a·a:hover)은 값 그대로 @layer base 안에 있다(앱 <a>의 Tailwind 글자색 클래스가 이긴다)', () => {
-    // layer 밖에 남는 것은 변수(:root)·body 자신·모션 줄이기뿐. 요소·전체 선택자가 layer 밖에 있으면 utilities를 이긴다
-    const outsideSelectors = rules(outsideLayers(globals())).map(([s]) => s.replace(/\s+/g, ' '))
-    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)'])
-    expect(outsideSelectors.filter((s) => !allowed.has(s))).toEqual([])
-    const baseRules = layerBodies(globals(), 'base').flatMap(rules)
-    for (const [selector, value] of Object.entries(LANDING_BASE)) {
-      const rule = baseRules.find(([s]) => s === selector)
-      expect(rule, `${selector} 규칙이 @layer base에 없다`).toBeDefined()
-      expect(rule![1], selector).toMatch(value)
+  it('AC-202.1: :root에 토큰 표의 이름·값이 한 번씩 있고, 그 밖에는 design.md 랜딩 별칭만 있다(16진수는 대소문자 무시)', () => {
+    const decls = declarations(rootBodies().join('\n'))
+    const names = decls.map(([name]) => name)
+    expect(names.length, '같은 변수를 두 번 선언했다').toBe(new Set(names).size)
+    expect(normalized(decls)).toEqual(normalized({ ...TOKENS, ...LANDING_ALIASES }))
+  })
+
+  it('AC-202.1: 랜딩 별칭 값은 :root 토큰 하나를 가리키는 var()뿐이다(16진수·섞은 색·숫자 값 없음)', () => {
+    const root = Object.fromEntries(declarations(rootBodies().join('\n')))
+    for (const name of Object.keys(LANDING_ALIASES)) {
+      expect(Object.keys(TOKENS), `${name}는 토큰 이름과 겹치면 안 된다`).not.toContain(name)
+      const value = root[name]
+      expect(value, `:root에 ${name}가 없다`).toBeDefined()
+      expect(value, name).toMatch(/^var\(--[\w-]+\)$/)
+      expect(Object.keys(TOKENS), `${name}: ${value}`).toContain(value.slice(4, -1))
+    }
+  })
+})
+
+// ---------- AC-202.3: 색 글자가 있는 곳 ----------
+
+// 16진수 색(# + 3·4·6·8자리)과 함수 색. '#top'·'#features' 같은 링크 조각은 잡지 않는다
+const HEX = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi
+const COLOR_FN = /\b(?:rgba?|hsla?|color-mix)\(/gi
+// 16진수 색을 둘 수 있는 파일: 로고 두 색, 구글 상표 네 색
+const HEX_FILES = ['src/components/common/LogoMark.tsx', 'src/components/common/GoogleMark.tsx']
+
+// 시험 파일 밖 src/의 *.css·*.ts·*.tsx(상대 경로)
+function colorSources(dir = 'src'): string[] {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+    const rel = `${dir}/${entry.name}`
+    if (entry.isDirectory()) return colorSources(rel)
+    return /\.(css|tsx?)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [rel] : []
+  })
+}
+// 파일 글자(주석 포함). globals.css는 layer 밖 :root 토큰 블록을 뺀 나머지
+const colorText = (rel: string) => (rel === 'src/app/globals.css' ? removeBlocks(read(rel), /(^|\n)\s*:root\s*\{/) : read(rel))
+
+describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만', () => {
+  it('AC-202.3: 검사 규칙 자체가 잡아야 할 것을 잡는다', () => {
+    for (const bad of ['#fff', '#2563EB', '#2563eb80', 'color: #F7F8FA;', 'fill="#EA4335"']) expect(bad.match(HEX), bad).not.toBeNull()
+    for (const ok of ['href="#top"', 'href="#features"', 'href="#ai"', 'href="#how"', 'var(--ink)']) expect(ok.match(HEX), ok).toBeNull()
+    for (const bad of ['rgb(17 24 39)', 'rgba(0,0,0,.1)', 'hsl(0 0% 0%)', 'color-mix(in srgb, red, blue)']) {
+      expect(bad.match(COLOR_FN), bad).not.toBeNull()
+    }
+    expect('var(--accent)'.match(COLOR_FN)).toBeNull()
+    // globals.css에서 토큰 블록을 빼도 나머지는 남는다(빈 검사가 아니다)
+    const rest = colorText('src/app/globals.css')
+    expect(rest).toContain('@theme inline')
+    expect(rest).not.toMatch(/(^|\n)\s*:root\s*\{/)
+    expect(read('src/app/globals.css').match(HEX)?.length ?? 0, '토큰 블록에 16진수 색이 있다').toBeGreaterThan(20)
+  })
+
+  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark에만 있다', () => {
+    const files = colorSources()
+    expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/common/LogoMark.tsx', 'src/components/landing/base.module.css']))
+    const allowed = new Set(HEX_FILES)
+    const found = files.filter((rel) => !allowed.has(rel)).flatMap((rel) => (colorText(rel).match(HEX) ?? []).map((hex) => `${rel}: ${hex}`))
+    expect(found).toEqual([])
+  })
+
+  it('AC-202.3: rgb(·hsl(·color-mix(는 globals.css :root 토큰 블록 밖 어디에도 없다', () => {
+    const found = colorSources().flatMap((rel) => (colorText(rel).match(COLOR_FN) ?? []).map((fn) => `${rel}: ${fn}`))
+    expect(found).toEqual([])
+  })
+})
+
+// ---------- AC-221.1: 옛 이름 정리 (b2b-redesign REQ-221, design.md '옛 이름 별칭'·'대시보드 본문 빼기') ----------
+
+// 대시보드 두 폴더는 이 명세가 고치지 않는다 → 옛 이름 검사에서 뺀다(다음 대시보드 명세 몫). 16진수 색 검사(AC-202.3)는 두 폴더도 본다
+const DASHBOARD_DIRS = ['src/components/dashboard/', 'src/app/(app)/dashboard/']
+const inDashboard = (rel: string) => DASHBOARD_DIRS.some((dir) => rel.startsWith(dir))
+// 옛 Tailwind 이름: 글자·모서리 별칭과 옛 상태 색(ok·danger·warn)을 쓰는 색 유틸리티(변형 접두사가 붙어도).
+// 앞 글자가 낱말·-이면 잡지 않는다(@theme의 --text-table 같은 선언, text-warning 같은 새 이름)
+const OLD_CLASS =
+  /(?<![\w-])(?:text-(?:table|tab|panel|logo|title-sm|kpi-sm|kpi)|rounded-(?:card|chip)|(?:bg|text|border(?:-[trblxyse])?|outline|ring(?:-offset)?|fill|stroke|divide|decoration|accent|caret|shadow|placeholder|from|via|to)-(?:ok-soft|ok|danger-soft|danger|warn))(?:\/\d+)?(?![\w-])/g
+// 옛 랜딩 :root 변수를 쓰는 곳
+const OLD_VAR = /var\(\s*--(?:ok-soft|ok|danger-soft|danger|accent-tint|field|content-max|font-sans)\s*\)/g
+// 대시보드 빈 자리가 쓰는 ui 세 키의 값(classes.ts 안 글자)은 이 검사에서 뺀다
+const KEPT_UI_VALUES = [ui.card, ui.panel, ui.panelTitle]
+// 검사할 글자: globals.css는 @theme 블록(별칭 선언 자체는 아래 시험이 본다)을, classes.ts는 남는 ui 세 키 값을 뺀 나머지
+function oldNameText(rel: string): string {
+  let text = read(rel)
+  if (rel === 'src/app/globals.css') text = removeBlocks(text, /@theme\b[^{;]*\{/)
+  if (rel === 'src/components/ui/classes.ts') for (const value of KEPT_UI_VALUES) text = text.split(`'${value}'`).join("''")
+  return text
+}
+const oldNames = (text: string) => [...(text.match(OLD_CLASS) ?? []), ...(text.match(OLD_VAR) ?? [])]
+
+// @theme에서 지운 옛 별칭과 남는 넷(줄 높이 포함, 값 그대로)
+const GONE_THEME = [
+  '--color-ok',
+  '--color-ok-soft',
+  '--color-danger',
+  '--color-danger-soft',
+  '--color-warn',
+  '--radius-chip',
+  '--text-tab',
+  '--text-tab--line-height',
+  '--text-logo',
+  '--text-logo--line-height',
+  '--text-kpi-sm',
+  '--text-kpi-sm--line-height',
+  '--text-kpi-sm--letter-spacing',
+  '--text-kpi',
+  '--text-kpi--line-height',
+  '--text-kpi--letter-spacing',
+]
+const KEPT_THEME: Record<string, string> = {
+  '--radius-card': 'var(--r-control)',
+  '--text-table': 'var(--fs-small)',
+  '--text-table--line-height': 'var(--lh-small)',
+  '--text-panel': 'var(--fs-subtitle)',
+  '--text-panel--line-height': 'var(--lh-subtitle)',
+  '--text-title-sm': 'var(--fs-title)',
+  '--text-title-sm--line-height': 'var(--lh-title)',
+}
+const GONE_ROOT = ['--ok', '--ok-soft', '--danger', '--danger-soft', '--accent-tint', '--field', '--content-max', '--font-sans']
+
+describe('AC-221.1: 옮기는 동안 둔 옛 이름이 없다(대시보드 두 폴더 빼고)', () => {
+  it('AC-221.1: 검사 규칙 자체가 잡아야 할 것을 잡고, 새 이름·@theme 선언은 잡지 않는다', () => {
+    for (const bad of [
+      'text-table',
+      'text-tab',
+      'text-panel',
+      'text-logo',
+      'text-title-sm',
+      'max-md:text-title-sm',
+      'text-kpi',
+      'text-kpi-sm',
+      'rounded-card',
+      'rounded-chip',
+      'text-ok',
+      'bg-ok-soft',
+      'bg-danger-soft',
+      'aria-invalid:border-danger',
+      'border-danger/50',
+      'text-warn',
+      'const c = `h-8 ${x} text-table`',
+      'color: var(--danger);',
+      'max-width: var( --content-max );',
+      'font-family: var(--font-sans);',
+    ]) {
+      expect(oldNames(bad), bad).not.toEqual([])
+    }
+    for (const ok of [
+      '--text-table: var(--fs-small);',
+      '--radius-card: var(--r-control);',
+      'text-small',
+      'text-title',
+      'text-warning',
+      'bg-warning-soft',
+      'text-negative',
+      'bg-positive-soft',
+      'rounded-control',
+      'tabular-nums',
+      'border-line',
+      'color: var(--negative);',
+      'font-family: var(--font-ui);',
+      'var(--fs-lead)',
+    ]) {
+      expect(oldNames(ok), ok).toEqual([])
     }
   })
 
-  it('AC-013.1: :root가 next/font 변수를 --font-sans·--font-num으로 잇는다(랜딩 CSS Module이 그대로 쓴다)', () => {
-    const vars = Object.fromEntries(
-      rules(outsideLayers(globals()))
-        .filter(([s]) => s === ':root')
-        .flatMap(([, body]) => declarations(body)),
-    )
-    expect(vars['--font-sans']).toBe(FONT_SANS)
-    expect(vars['--font-num']).toMatch(/^var\(--font-grotesk\)/)
+  it('AC-221.1: 시험 파일 밖 src/(대시보드 두 폴더 빼고)에 옛 Tailwind 이름·옛 랜딩 변수가 없다 — 남는 ui 세 키 값과 @theme 선언은 뺀다', () => {
+    const files = colorSources().filter((rel) => !inDashboard(rel))
+    expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/ui/classes.ts', 'src/components/landing/base.module.css', 'src/components/shell/AppShell.tsx']))
+    expect(files.filter(inDashboard)).toEqual([])
+    const found = files.flatMap((rel) => oldNames(oldNameText(rel)).map((name) => `${rel}: ${name}`))
+    expect(found).toEqual([])
   })
 
-  it('AC-013.1: layout.tsx의 next/font 변수는 --font-plex·--font-grotesk다(Tailwind --font-sans와 겹치지 않게)', () => {
-    const layout = read('src/app/layout.tsx')
-    expect(layout).toMatch(/IBM_Plex_Sans_KR\(\{[\s\S]*?variable:\s*'--font-plex'/)
-    expect(layout).toMatch(/Space_Grotesk\(\{[\s\S]*?variable:\s*'--font-grotesk'/)
-    expect(layout).not.toMatch(/variable:\s*'--font-(sans|num)'/)
+  it('AC-221.1: @theme의 옛 별칭은 대시보드 빈 자리가 쓰는 넷(--radius-card·--text-table·--text-panel·--text-title-sm, 글자 셋은 줄 높이까지)만 남고 값은 그대로다', () => {
+    const decls = Object.fromEntries(themeDecls())
+    expect(GONE_THEME.filter((name) => name in decls)).toEqual([])
+    expect(Object.fromEntries(Object.keys(KEPT_THEME).map((name) => [name, decls[name]]))).toEqual(KEPT_THEME)
+  })
+
+  it('AC-221.1: :root에 옛 랜딩 별칭(--ok·--ok-soft·--danger·--danger-soft·--accent-tint·--field·--content-max·--font-sans)이 없다', () => {
+    const names = declarations(rootBodies().join('\n')).map(([name]) => name)
+    expect(GONE_ROOT.filter((name) => names.includes(name))).toEqual([])
+  })
+})
+
+// ---------- AC-202.4: 장식 없음 · body ----------
+
+// 모든 선언 '속성: 값;'(주석 뺀 globals.css)
+const allDeclarations = (css: string) =>
+  [...css.matchAll(/([\w-]+)\s*:\s*([^;{}]+);/g)].map((m) => [m[1], m[2].trim().replace(/\s+/g, ' ')] as [string, string])
+
+describe('AC-202.4: globals.css에 장식이 없고 body는 토큰 글꼴', () => {
+  it('AC-202.4: 그라데이션(gradient()·backdrop-filter·blur(가 없다', () => {
+    const css = globals()
+    expect(css).not.toMatch(/gradient\(/i)
+    expect(css).not.toMatch(/backdrop-filter/i)
+    expect(css).not.toMatch(/blur\(/i)
+  })
+
+  it('AC-202.4: 그림자 값은 --elev-float 하나뿐이다(box-shadow·text-shadow·drop-shadow 선언 없음)', () => {
+    const css = globals()
+    expect(css).not.toMatch(/(box|text)-shadow\s*:/i)
+    expect(css).not.toMatch(/drop-shadow/i)
+    const shadowLike = allDeclarations(css).filter(([, value]) => /\d(px)?\s+-?\d+px\s+-?\d+px/.test(value) || /rgba?\(/.test(value))
+    expect(shadowLike).toEqual([['--elev-float', ELEV_FLOAT]])
+  })
+
+  it('AC-202.4: body는 하나이고 바탕 surface·글자 ink·글꼴 var(--font-ui)·keep-all·가로 넘침 clip이다', () => {
+    const bodies = rules(outsideLayers(globals())).filter(([s]) => s === 'body')
+    expect(bodies.length, 'body 규칙은 하나다').toBe(1)
+    const body = bodies[0][1]
+    expect(body).toMatch(/(^|[;\s])background:\s*var\(--surface\)\s*;/)
+    expect(body).toMatch(/(^|[;\s])color:\s*var\(--ink\)\s*;/)
+    expect(body).toMatch(/font-family:\s*var\(--font-ui\)\s*;/)
+    expect(body).toMatch(/word-break:\s*keep-all\s*;/)
+    expect(body).toMatch(/overflow-x:\s*clip\s*;/)
+  })
+
+  it('AC-202.4: layer 밖 선택자는 :root·body·모션 줄이기 블록뿐이고, 모션 줄이기는 모든 animation·transition을 끈다', () => {
+    const outside = outsideLayers(globals())
+    const selectors = rules(outside).map(([s]) => s.replace(/\s+/g, ' '))
+    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)'])
+    expect(selectors.filter((s) => !allowed.has(s))).toEqual([])
+    const motion = rules(outside).find(([s]) => /prefers-reduced-motion/.test(s))?.[1] ?? ''
+    expect(motion).toMatch(/\*\s*,\s*\*::before\s*,\s*\*::after\s*\{/)
+    expect(motion).toMatch(/animation:\s*none\s*!important/)
+    expect(motion).toMatch(/transition:\s*none\s*!important/)
+  })
+})
+
+describe('AC-102.3: @layer base의 랜딩 링크 색', () => {
+  it('AC-102.3: @layer base의 랜딩 요소 규칙은 a { color: var(--accent) } 하나뿐이고 a:hover 규칙이 없다(.app-ui 초기화는 AC-013.1 시험이 본다)', () => {
+    const baseRules = layerBodies(globals(), 'base').flatMap(rules)
+    const landing = baseRules.filter(([s]) => !splitSelectors(s).every((part) => /^\.app-ui(?![\w-])/.test(part)))
+    expect(landing.map(([s]) => s.replace(/\s+/g, ' '))).toEqual(['a'])
+    expect(landing[0][1]).toMatch(LANDING_BASE.a)
+    expect(globals()).not.toMatch(/(^|[^\w-])a:hover/)
   })
 })
 

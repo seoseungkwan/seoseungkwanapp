@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "청구 사전점검 연결",
+  "version": "0.1.0",
+  "description": "병원 업무 사이트의 청구 사전점검 화면과 이 PC의 도우미를 이어 줍니다. 자료를 저장하지 않습니다.",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://seoseungkwanapp.vercel.app/*"
+    ]
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsde3indftzSwo5qkcGVOYFfINl0XQ1CGelIRN3hwIcGPWlEo5OkOJvcIqkAb9N/dY9ZmGCeCfDtt4vvkJmauaVWM1d5JYPcimVa8GArJCCF4qnMORIr4Z9pdwLUgd4iNcyruxVTfuTKrDDPmiIe20aU7fFVb2cxqNyUKwA8OTdo/RjSaG89S6++JGLukHBzmiibv4dXqbk4KRuD7BEjGetKvoKrLx3nE6uy6fOz5R91K4iOLN8jwNZZ0N6epjpPSAzqKYT5Lxa6jKwwCJU2TIvPbKHa63Si9Gq/AwGBp9ANLiU+XtJqZUM3L7wgsGq/msTm2iGhnD16L/3K8KpSzEwIDAQAB"
+}

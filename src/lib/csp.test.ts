@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import nextConfig from '../../next.config'
+import { EXTENSION_ID } from './bridge/extensionId'
 import { buildCsp } from './csp'
 
 // 'connect-src x y; ...' → { 'connect-src': ['x', 'y'], ... }
@@ -153,5 +154,38 @@ describe('next.config headers()', () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', SUPABASE)
     const h = await headers()
     expect(h['Content-Security-Policy']).toBe(buildCsp(true, SUPABASE))
+  })
+})
+
+// 청구 사전점검 전(TASK-4 전) 값을 글자 그대로 적어 둔다. 네이티브 메시징은 connect-src와 상관없다(ADR-020)
+const PROD_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+  "font-src 'self'; media-src 'self'; connect-src 'self' https://abcd.supabase.co; worker-src 'self' blob:; " +
+  "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+const DEV_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+  "font-src 'self'; media-src 'self'; connect-src 'self' https://abcd.supabase.co ws:; worker-src 'self' blob:; " +
+  "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+
+describe('AC-004.8 CSP는 청구 사전점검 전과 글자까지 같다', () => {
+  it('AC-004.8 운영 값', () => {
+    expect(buildCsp(false, SUPABASE)).toBe(PROD_CSP)
+  })
+
+  it('AC-004.8 개발 값', () => {
+    expect(buildCsp(true, SUPABASE)).toBe(DEV_CSP)
+  })
+
+  it("AC-004.8 Supabase 주소가 없을 때는 connect-src가 'self'뿐인 것 말고 같다", () => {
+    expect(buildCsp(false, '')).toBe(PROD_CSP.replace(" connect-src 'self' https://abcd.supabase.co;", " connect-src 'self';"))
+    expect(buildCsp(true, '')).toBe(DEV_CSP.replace(" connect-src 'self' https://abcd.supabase.co ws:;", " connect-src 'self' ws:;"))
+  })
+
+  it.each([false, true])('AC-004.8 chrome-extension:·확장 ID가 없다(개발=%s)', (isDev) => {
+    for (const csp of [buildCsp(isDev, SUPABASE), buildCsp(isDev, '')]) {
+      expect(csp).not.toContain('chrome-extension')
+      expect(EXTENSION_ID).toMatch(/^[a-p]{32}$/)
+      expect(csp).not.toContain(EXTENSION_ID)
+    }
   })
 })

@@ -1,20 +1,17 @@
 import type { Metadata } from 'next'
-import { IBM_Plex_Sans_KR, Space_Grotesk } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 
-// 본문·제목은 IBM Plex Sans KR, 숫자·영문 소제목은 Space Grotesk (docs/UI_GUIDE.md). next/font가 빌드 때 받아 우리 쪽에서 낸다
-// 변수 이름은 --font-plex·--font-grotesk. Tailwind 테마 변수 --font-sans와 겹치지 않게 하고, globals.css의 :root가 --font-sans·--font-num으로 잇는다
-const sans = IBM_Plex_Sans_KR({
-  weight: ['400', '500', '600', '700'],
-  subsets: ['latin'],
+// 글꼴은 Pretendard 하나 (ADR-019, specs/b2b-redesign REQ-203). pretendard@1.3.9 정적 subset 세 굵기를 고치지 않고 우리 쪽에서 낸다(src/app/fonts/, OFL.txt)
+// 변수 이름은 --font-pretendard. Tailwind 테마 변수 --font-sans와 겹치지 않게 하고, globals.css가 --font-sans로 잇는다
+const pretendard = localFont({
+  src: [
+    { path: './fonts/Pretendard-Regular.subset.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/Pretendard-Medium.subset.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/Pretendard-SemiBold.subset.woff2', weight: '600', style: 'normal' },
+  ],
   display: 'swap',
-  variable: '--font-plex',
-})
-const num = Space_Grotesk({
-  weight: ['500', '600', '700'],
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-grotesk',
+  variable: '--font-pretendard',
 })
 
 export const metadata: Metadata = {
@@ -27,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ko" className={`${sans.variable} ${num.variable}`}>
+    <html lang="ko" className={pretendard.variable}>
       <body>{children}</body>
     </html>
   )

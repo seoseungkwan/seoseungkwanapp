@@ -1,0 +1,32 @@
+{
+  "phases": [
+    {
+      "dir": "precheck-1-helper",
+      "status": "pending"
+    },
+    {
+      "dir": "precheck-2-rules",
+      "status": "pending"
+    },
+    {
+      "dir": "precheck-3-memo",
+      "status": "pending"
+    },
+    {
+      "dir": "precheck-4-sam",
+      "status": "pending"
+    },
+    {
+      "dir": "precheck-5-contact",
+      "status": "pending"
+    },
+    {
+      "dir": "precheck-6-stats",
+      "status": "pending"
+    },
+    {
+      "dir": "precheck-7-backup",
+      "status": "pending"
+    }
+  ]
+}

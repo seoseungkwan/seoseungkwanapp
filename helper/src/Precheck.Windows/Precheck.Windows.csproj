@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 윈도우에서만 도는 얇은 부분(.NET Framework 4.8): 레지스트리·파일·비트 DLL·SqlConnection·DPAPI·WinForms 창.
+       규칙은 Precheck.Core에 있고, 여기는 값을 모아 Core에 넘기기만 한다 (ADR-016, design.md 3절).
+       비트 DLL(BITDataBaseCommon·BITUserLogIn)은 참조하지 않고 의원 PC의 C:\DrBIT50\EXE에서 실행할 때 불러온다(design.md 14절) -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>Precheck.Windows</RootNamespace>
+    <AssemblyName>Precheck.Windows</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 리눅스·Actions에서 net48을 빌드하려고(빌드에만 쓰고 결과물에는 들어가지 않는다) -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 윈도우 기본 탑재 .NET Framework 어셈블리: SqlClient(System.Data)·DPAPI(System.Security)·확인 창(WinForms) -->
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Precheck.Core/Precheck.Core.csproj" />
+  </ItemGroup>
+</Project>

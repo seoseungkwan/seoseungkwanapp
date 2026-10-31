@@ -1,163 +1,122 @@
-import Image from 'next/image'
+import { formatCount } from '@/components/charts/format'
+import { Icon } from '@/components/common/Icon'
+import base from './base.module.css'
 import styles from './FeaturesSection.module.css'
-import { LANDING_IMAGES } from './images'
 
-const STATS = LANDING_IMAGES.featureStats
-const PAYROLL = LANDING_IMAGES.featurePayroll
+// 급여 패널 예시 줄(승인 시안 그대로인 예시, 원 단위 정수). 바닥 줄 합계는 줄 합계의 합이다(plan.md §5)
+const PAYROLL = [
+  { name: '직원 1', job: '물리치료사', incentive: 420_000, total: 3_120_000 },
+  { name: '직원 2', job: '도수치료사', incentive: 680_000, total: 3_480_000 },
+  { name: '직원 3', job: '간호조무사', incentive: 120_000, total: 2_510_000 },
+  { name: '직원 4', job: '방사선사', incentive: 150_000, total: 2_890_000 },
+]
+const PAYROLL_SUM = PAYROLL.reduce((sum, row) => sum + row.total, 0)
+const won = (n: number) => `${formatCount(n)}원`
 
-// 급여표 예시. 이름·금액은 [ ] 빈칸
-const STAFF = [
-  { name: '[직원 A]', job: '물리치료사' },
-  { name: '[직원 B]', job: '도수치료사' },
-  { name: '[직원 C]', job: '간호조무사' },
-  { name: '[직원 D]', job: '방사선사' },
+// 기능 목록 다섯 줄. pc는 768px 이상 긴 설명(지금 문구), phone은 768px 미만 짧은 설명(시안 휴대폰 문구).
+// 02 급여·인센티브는 768px 이상에서 왼쪽 급여 덩어리가 대신하므로 휴대폰에만 보인다(pc 없음)
+const FEATURES: { num: string; title: string; pc?: string; phone: string }[] = [
+  {
+    num: '01',
+    title: '환자 통계',
+    pc: 'EMR에서 내려받은 통계 파일을 올리면 신환율·재진율, 7일·14일 재방문, 처방 그룹별 환자 수가 바로 계산됩니다.',
+    phone: '통계 파일을 올리면 신환율·재진율, 재방문이 바로 계산됩니다.',
+  },
+  { num: '02', title: '급여·인센티브', phone: '월 실적만 넣으면 급여 계산이 끝납니다.' },
+  {
+    num: '03',
+    title: '매출·재고',
+    pc: '매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.',
+    phone: '재고가 떨어지면 발주 알림을 띄웁니다.',
+  },
+  {
+    num: '04',
+    title: '일일마감·보고',
+    pc: '일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.',
+    phone: '정해진 양식에 맞춰 빠르게 씁니다.',
+  },
+  {
+    num: '05',
+    title: '원장님 월간 보고',
+    pc: '월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.',
+    phone: '한 장에 모아 PDF로 저장합니다.',
+  },
 ]
 
-// 기능 섹션(#features): 01 환자 통계 · 02 급여·인센티브 · 작은 기능 카드 3개
+// 기능 섹션(#features, 흰 바탕·내용 위 1px 선) (specs/b2b-redesign AC-210.1, 시안 screens.mjs landingPC·landingPhone #features).
+// 1024px 이상 12칸에서 급여 덩어리 1~6칸 · 기능 목록 7칸 비우고 8~12칸, 미만은 쌓인다. 급여 덩어리는 768px 이상만이다.
+// 상자는 급여 패널 하나다. 표는 읽히고(aria-hidden 없음) 아무것도 받지 않는다
 export default function FeaturesSection() {
   return (
-    <section id="features" className={styles.section}>
-      <div className={styles.inner}>
-        <div className={styles.head}>
-          <span className={styles.eyebrow}>FEATURES</span>
-          <h2 className={styles.title}>
-            매일 하던 일,
-            <br />
-            이제 숫자가 알아서 움직입니다
-          </h2>
-        </div>
-
-        <div className={styles.row}>
-          <div className={styles.text}>
-            <span className={`${styles.step} ${styles.stepTeal}`}>01 · 환자 통계</span>
-            <h3 className={styles.featureTitle}>
-              파일을 끌어다 놓으면,
-              <br />
-              숫자가 살아납니다
-            </h3>
-            <p className={styles.desc}>
-              EMR에서 내려받은 통계 파일을 올리면 신환율·재진율, 7일·14일 재방문, 처방 그룹별 환자 수가 바로
-              계산됩니다.
+    <section id="features" className={base.sec}>
+      <div className={`${base.wrap} ${styles.inner}`}>
+        <h2 className={`${base.tHeading} ${styles.title}`}>매일 하던 일, 이제 숫자가 알아서 움직입니다</h2>
+        <div className={`${base.grid} ${styles.layout}`}>
+          <div className={`${styles.pay} ${base.pcOnly}`}>
+            <p className={`${base.tSmall} ${styles.kicker}`}>02 · 급여·인센티브</p>
+            <h3 className={`${base.tTitle} ${styles.payTitle}`}>월 실적만 넣으면 급여 계산이 끝납니다</h3>
+            <p className={styles.payLead}>
+              직원별 인센티브 규칙을 한 번 정해 두면, 월 실적으로 급여를 계산하고 확정합니다. 세무사 전달표와 인건비율·치료사 생산성도 함께 나옵니다.
             </p>
-            <div className={styles.chips}>
-              <span className={`${styles.chip} ${styles.chipTeal}`}>신환율·재진율</span>
-              <span className={`${styles.chip} ${styles.chipTeal}`}>7·14일 재방문</span>
-              <span className={`${styles.chip} ${styles.chipTeal}`}>처방 그룹</span>
-            </div>
-          </div>
-          <div className={`${styles.visual} ${styles.visualStats}`}>
-            <Image
-              src={STATS.src}
-              alt={STATS.alt}
-              width={STATS.width}
-              height={STATS.height}
-              unoptimized
-              className={styles.img}
-            />
-            <div aria-hidden="true" className={styles.bars}>
-              {Array.from({ length: 8 }, (_, i) => (
-                <div key={i} className={styles.bar} />
-              ))}
-            </div>
-            <div className={styles.drop}>
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M4 2h7l4 4v10H4z" stroke="#077A73" strokeWidth="1.6" strokeLinejoin="round" />
-                <path d="M11 2v4h4" stroke="#077A73" strokeWidth="1.6" />
-              </svg>
-              통계 파일을 여기에 놓기
-            </div>
-          </div>
-        </div>
-
-        <div className={`${styles.row} ${styles.rowReverse}`}>
-          <div className={styles.text}>
-            <span className={`${styles.step} ${styles.stepAmber}`}>02 · 급여·인센티브</span>
-            <h3 className={styles.featureTitle}>
-              월 실적만 넣으면
-              <br />
-              급여 계산이 끝납니다
-            </h3>
-            <p className={styles.desc}>
-              직원별 인센티브 규칙을 한 번 정해 두면, 월 실적으로 급여를 계산하고 확정합니다. 세무사 전달표와
-              인건비율·치료사 생산성도 함께 나옵니다.
-            </p>
-            <div className={styles.chips}>
-              <span className={`${styles.chip} ${styles.chipAmber}`}>인센티브 규칙</span>
-              <span className={`${styles.chip} ${styles.chipAmber}`}>확정하면 잠금</span>
-              <span className={`${styles.chip} ${styles.chipAmber}`}>세무사 전달표</span>
-            </div>
-          </div>
-          <div className={`${styles.visual} ${styles.visualPayroll}`}>
-            <Image
-              src={PAYROLL.src}
-              alt={PAYROLL.alt}
-              width={PAYROLL.width}
-              height={PAYROLL.height}
-              unoptimized
-              className={styles.img}
-            />
-            <div className={styles.table}>
-              <div className={`${styles.tr} ${styles.th}`}>
-                <span>직원</span>
-                <span>직종</span>
-                <span className={styles.right}>인센티브</span>
-                <span className={styles.right}>합계</span>
+            <div className={styles.panel}>
+              <div className={styles.panelHead}>
+                <p className={base.tSubtitle}>
+                  10월 급여 <span className={`${base.tSmall} ${styles.sample}`}>예시</span>
+                </p>
+                <span className={`${base.chip} ${base.chipPositive}`}>
+                  <Icon name="check" size={12} />
+                  10월 확정됨
+                </span>
               </div>
-              {STAFF.map((s) => (
-                <div key={s.name} className={styles.tr}>
-                  <span>{s.name}</span>
-                  <span className={styles.job}>{s.job}</span>
-                  <span className={`${styles.right} ${styles.incentive}`}>[금액]</span>
-                  <span className={styles.right}>[금액]</span>
-                </div>
-              ))}
-              <div aria-hidden="true" className={styles.scan} />
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col" className={styles.head}>
+                      직원
+                    </th>
+                    <th scope="col" className={styles.head}>
+                      직종
+                    </th>
+                    <th scope="col" className={`${styles.head} ${styles.amount}`}>
+                      인센티브
+                    </th>
+                    <th scope="col" className={`${styles.head} ${styles.amount}`}>
+                      합계
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PAYROLL.map((row) => (
+                    <tr key={row.name} className={styles.row}>
+                      <td className={styles.cell}>{row.name}</td>
+                      <td className={styles.cell}>{row.job}</td>
+                      <td className={`${styles.cell} ${styles.amount}`}>{won(row.incentive)}</td>
+                      <td className={`${styles.cell} ${styles.amount}`}>{won(row.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} className={`${styles.cell} ${styles.sum}`}>
+                      합계 {PAYROLL.length}명
+                    </td>
+                    <td className={`${styles.cell} ${styles.sum} ${styles.amount}`}>{won(PAYROLL_SUM)}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
-            <span className={styles.done}>
-              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path
-                  d="M2.5 7.5l3 3 6-7"
-                  stroke="#077A73"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              10월 확정됨
-            </span>
           </div>
-        </div>
 
-        <div className={styles.cards}>
-          <div className={`${styles.card} ${styles.cardAmber}`}>
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <path d="M5 26V14M12 26V8M19 26V16M26 26V5" stroke="#F59E0B" strokeWidth="2.6" strokeLinecap="round" />
-            </svg>
-            <h3 className={styles.cardTitle}>매출·재고</h3>
-            <p className={styles.cardDesc}>매출 흐름을 보고, 재고가 떨어지면 대시보드에 발주 알림을 띄웁니다.</p>
-          </div>
-          <div className={`${styles.card} ${styles.cardPink}`}>
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect x="6" y="4" width="20" height="24" rx="3" stroke="#E11D74" strokeWidth="2.4" />
-              <path d="M11 12h10M11 17h10M11 22h6" stroke="#E11D74" strokeWidth="2.4" strokeLinecap="round" />
-            </svg>
-            <h3 className={styles.cardTitle}>일일마감·보고</h3>
-            <p className={styles.cardDesc}>일일마감, 일일보고, 월말보고를 정해진 양식에 맞춰 빠르게 씁니다.</p>
-          </div>
-          <div className={`${styles.card} ${styles.cardBlue}`}>
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <path d="M8 4h11l6 6v18H8z" stroke="#2556D6" strokeWidth="2.4" strokeLinejoin="round" />
-              <path
-                d="M12 22l3-4 3 2 4-6"
-                stroke="#2556D6"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <h3 className={styles.cardTitle}>원장님 월간 보고</h3>
-            <p className={styles.cardDesc}>월말보고·통계 그래프·AI 분석을 한 장에 모아 PDF로 저장합니다.</p>
-          </div>
+          <ol className={styles.list}>
+            {FEATURES.map((item) => (
+              <li key={item.num} className={item.pc ? styles.item : `${styles.item} ${base.phoneOnly}`}>
+                <span className={styles.num}>{item.num}</span>
+                <h3 className={`${base.tSubtitle} ${styles.itemTitle}`}>{item.title}</h3>
+                {item.pc && <p className={`${styles.desc} ${base.pcOnly}`}>{item.pc}</p>}
+                <p className={`${styles.short} ${base.phoneOnly}`}>{item.phone}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </section>

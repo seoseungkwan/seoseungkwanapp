@@ -1,0 +1,15 @@
+<Project>
+  <!-- 도우미 전체가 같이 쓰는 설정. 도우미 버전(Version)은 이 한 곳에서만 정한다 (AC-001.4, AC-002.5) -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>Seoseungkwan Precheck Helper</Product>
+    <Company>Seoseungkwan</Company>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- 버전 글자에 git 커밋을 붙이지 않는다(hello의 helperVersion = Version 그대로) -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <!-- NuGet 판은 각 csproj에 정확한 버전으로만 적는다(범위·* 없음, design.md 14절) -->
+</Project>

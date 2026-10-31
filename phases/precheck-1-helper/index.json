@@ -1,0 +1,48 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-1-helper",
+  "steps": [
+    {
+      "step": 0,
+      "name": "helper-skeleton",
+      "status": "completed",
+      "summary": "helper/ C# 뼈대(Precheck.sln·Core netstandard2.0·Helper net48·Core.Tests net10.0;net48, 버전은 Directory.Build.props 한 곳)와 Protocol(Framing·Envelope·CommandTable/FieldSpec·Chunker·OriginGuard·Dispatcher(환자 명령은 NoResultSink로 result 금지, store.save만 예외)·Hello·MessageLoop·LogLine). commands.json에 명령 12개 args 모양과 개발용 extensionId/extensionKey. 처리기는 HelperException(code)로 실패, 환자 답은 Chunker.Send. 감싸개는 runDotnet('<이름공간>'), .NET 10 SDK는 ~/.dotnet"
+    },
+    {
+      "step": 1,
+      "name": "helper-build",
+      "status": "completed",
+      "summary": "helper.yml(push: helper/**·extension/**·src/lib/bridge/commands.json·자기 파일일 때 모든 브랜치, 태그 helper-v*, 수동 실행 / contents: read, release 일만 write / windows-latest에서 dotnet test→build→Directory.Build.props Version으로 dist/precheck-helper-<Version>.zip (app\\에 exe·config·dll, 루트에 helper/install/*), artifact precheck-helper, 태그≠Version이면 실패). helper/install/: install.cmd→install.ps1 (PrecheckHelper 끄기→app\\만 %LOCALAPPDATA%\\Seoseungkwan\\PrecheckHelper\\에 덮어쓰기, data\\·logs\\ 보존→com.seoseungkwan.precheck.json→HKCU 키), uninstall.ps1은 data\\를 물은 뒤에만 지움, .ps1은 UTF-8 BOM. exe 이름은 csproj AssemblyName PrecheckHelper.exe. extension 일은 TASK-3이 같은 workflow에 더함. [Actions 실제 실행 확인 남음]"
+    },
+    {
+      "step": 2,
+      "name": "extension",
+      "status": "completed",
+      "summary": "extension/: manifest.json(MV3 0.1.0 '청구 사전점검 연결', permissions [nativeMessaging], externally_connectable 우리 origin 하나, key=commands.json extensionKey, background service_worker background.js type module), tsconfig.json(src→dist). relay.ts: isOurOrigin(===)·checkRequest(v===protocol, id ^[A-Za-z0-9-]{1,64}$, 키 4개, cmd는 표의 own key, 아니면 E-BRIDGE-REJECTED, id 모르면 '')·withExtensionInfo(hello result data에 extensionVersion·extensionProtocol — TASK-4는 이 이름을 쓴다). background.ts startBackground(chrome, manifest): origin 먼저, 웹 연결 하나(BUSY), 첫 정상 메시지 때 connectNative, 답 그대로 전달, 도우미 끊기면 기다리던 id마다 E-HELPER-MISSING 후 다음 메시지에 다시 켬, bit.input 중 웹 끊기면 end·error·30분까지 붙잡음. npm run ext:build = tsc + manifest 복사 + commands.json→dist/commands.js. ESLint extension/src/** 저장소·storage·console·네트워크 금지. helper.yml extension 일 → precheck-extension-<version>.zip, release needs [helper, extension]. @types/chrome 0.3.7. [웹스토어가 manifest key를 거부하거나 새 ID를 주면 commands.json 갱신 필요]"
+    },
+    {
+      "step": 3,
+      "name": "bridge-client",
+      "status": "completed",
+      "summary": "TASK-4 통로: types/bridge.ts(Bridge·BridgeState·ChunkSink·HelloResult{state,helperVersion?,extensionVersion?,helperUpdateAvailable}·ChromeRuntimeLike·ArgsOf/ResultOf, bit.check steps find→db→registration), lib/bridge protocol.ts(PROTOCOL·명령 목록·readReply·checkResult·BridgeError{code})·extensionId.ts(EXTENSION_ID 하나)·versions.ts(MIN/LATEST_HELPER·MIN_EXTENSION 0.1.0, WEB_VERSIONS, LATEST_HELPER=Directory.Build.props 시험)·handshake.ts(checkVersions 확장 먼저)·client.ts connectBridge(명령은 hello 뒤 ready에서만, 아니면 상태 번호로 거절; hello는 끊긴 뒤 E-BRIDGE-DISCONNECTED로 거절 → useBridge는 새 connectScreenBridge로 다시; 조각 seq·count 검사; sink.abort는 조각 받는 요청(환자 stream·bit.input)만, store.save는 sent{ok:false}로 앎)·workerSink.ts connectScreenBridge({runtime,worker?})(bridge-port·chunk/end/abort·send→sent{ticket,ok,id?,count?|code}, worker 없으면 버림, send 없음); ESLint: lib/precheck·lib/bridge 구역, bridge는 window·self·globalThis·frames·document·eval·Function·Reflect·defaultView·postMessage·BroadcastChannel·parent·top·opener 금지, connect/sendMessage는 그 자리에서 EXTENSION_ID로 부를 때만(값 꺼내기·구조 분해·'connect' 글자 금지, typeof만 됨), client.ts는 bridge 밖 import 금지(뒤 설정에 CLIENT_IMPORT·CLIENT_IMPORT_SYNTAX를 다시 넣을 것); 연결 오류 번호 10개 errors.ts에 추가."
+    },
+    {
+      "step": 4,
+      "name": "bit-connect",
+      "status": "completed",
+      "summary": "helper/ Core에 Bit/(BitInstallRules·WinPath·NativeEnvironmentFile·PrivateServer·Sql 4개 원본 상수+매개변수 표·ReadOnlyGuard·HospitalCheck·IBitDb/IBitSession·BitCheck(steps find→db→registration)·BitCommands·BitServices)와 Registration/(HospitalRegistration·RegistrationFile 머리 PRECHECK-STORE-1+IProtector·RegistrationStore data\\registration.dat(.bak)·RegisterPrompt·RegisterFlow·HospitalGate), Precheck.Windows(net48: InstallationLocator·NativeEnvironmentGuard·ReadOnlyConnection/VendorRuntime(비트 DLL 리플렉션)·SqlBitDb(되돌리는 트랜잭션)·VendorLogin·DpapiProtector·ConfirmWindow+Sta, 기본 단추 [취소]), Commands/HelperServices·RequireHospital. 뒤 TASK 읽기 명령은 `using var h = RequireHospital.Open(services)` 다음 `ReadOnlyGuard.Query(h.Db, Sql.X, args, timeout)`로 읽고, 새 SQL은 Sql.cs 상수+매개변수 표+original-sql 사본으로 더한다. [남은 것: Helper.csproj에 Windows ProjectReference·PlatformTarget x86, 병원 이름은 사이트 이름으로(사용자 결정) — Step 5 helper-fixups(TASK-33); 의원 PC·Actions 확인]"
+    },
+    {
+      "step": 5,
+      "name": "helper-fixups",
+      "status": "completed",
+      "summary": "TASK-33 도우미 마무리: Precheck.Helper.csproj에 Precheck.Windows 참조·PlatformTarget x86(출력 bin/Release/net48 그대로, exe CLR 32BITREQUIRED). 병원 이름 제거: HospitalRegistration(institutionCode, scope, installPath, server, database, profileId), registration.dat JSON 칸 version·profileId·institutionCode·scope·installPath·server·database뿐(다른 칸이 있으면 깨짐), 확인 창 첫 값 줄 '기관기호 1234****', bit.check 답 {steps, registered, institutionCode?}, 웹 ResultOf<'bit.check'>도 같고 hospitalName이 오면 E-BRIDGE-BAD-REPLY → 화면의 병원 이름은 사이트 값(me.hospital.name). 깨진 등록 파일(AC-005.12): Load 파일 없음→null, 깨짐+맞는 .bak→되살림(깨진 파일은 .broken-<UTC>로), 아니면 E-STORE-BROKEN(HospitalGate는 그 번호로 멈춤, RegisterFlow는 처음 등록처럼, Save는 깨진 dat·bak을 먼저 비켜 둠). runDotnet.ts buildDotnet(같은 잠금). SqlBitDb.cs 읽기 전용 글자 시험(Commit·CreateCommand·SqlDataAdapter 금지, SqlCommand는 모두 트랜잭션과 함께). [Actions·의원 PC 확인 남음]"
+    },
+    {
+      "step": 6,
+      "name": "setup-screen",
+      "status": "completed",
+      "summary": "TASK-6 설치·연결 확인: /claim/setup(SetupScreen, clinicName=me.hospital.name; 5단계 확장→도우미→연결→비트 자료 읽기→요양기관기호; hello마다 bit.check 자동, bit.register 뒤 다시 확인; busy=화면6 카드; '비트 설치 위치' 줄은 bit.check가 경로를 안 줘서 뺌). components/claim/useBridge({state, hello, helloError, helperUpdateAvailable, call, stream, onProgress, retry}; retry는 ready면 같은 포트, 아니면 새 connectScreenBridge; helloError=상태가 connecting인 채 hello 실패 → 3단계 ✗+[다시 확인]). maskInstitution. setup/links.ts(HELPER_RELEASES_URL, EXTENSION_STORE_URL=null). menu.ts 청구 /claim(매출 뒤), /claim/setup은 설정 탭이 현재. errors.ts에 E-BIT-*·E-STORE-FAILED/BROKEN·isErrorCode; 문구가 설치 화면용('아래 1번에서…')이라 TASK-13은 다시 쓰거나 맥락을 더할 것. /claim은 자리만 있는 ClaimEntry(TASK-13·19가 바꿈). [메모: 확장이 protocol 불일치를 E-BRIDGE-REJECTED로 거절 → update-extension으로 보내는 게 맞음(TASK-4 몫); 붙은 상태에서 다시 확인 hello 거절 시 ready로 남음]"
+    }
+  ]
+}

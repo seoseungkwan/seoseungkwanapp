@@ -1,97 +1,95 @@
-/* 시작 3단계 섹션(#how). 값은 docs/mockups/landing/landing-mockup.dc.html #how 그대로. 03의 보라는 UI_GUIDE에서 허용 */
-.section {
-  padding: 96px var(--gutter);
-  background: var(--bg-how);
-}
+/* 시작 3단계(#how) (specs/b2b-redesign AC-211.1, 시안 docs/mockups/b2b-redesign/style.css의 .steps · .sn).
+   섹션 틀·12칸·제목·단추·숨김 도우미는 base.module.css가 정하고, 여기서는 칸 자리·휴대폰 순서·단계 줄·번호만 그린다.
+   base 클래스의 속성은 덮어쓰지 않는다(단추 .start는 자리·순서만 정한다 → CSS 순서와 상관없이 같은 결과).
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)가 없다. 단계 줄은 위·아래 1px 선만 쓴다 */
 
-.inner {
-  max-width: var(--content-max);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 44px;
+/* ---------- 칸: DOM은 글 → 단추 → 단계. 768px 미만은 단추가 단계 뒤로 가고(order) 전체 폭이다 ---------- */
+.layout {
+  row-gap: 16px;
 }
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.eyebrow {
-  font-family: var(--font-num), sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  color: var(--teal-text);
-  font-weight: 700;
-}
-
-.title {
-  margin: 0;
-  font-size: clamp(32px, 3.8vw, 48px);
-  line-height: 1.2;
-  font-weight: 700;
-}
-
-/* 흐르는 연결선 */
-.line {
-  height: 3px;
-  border-radius: 2px;
-  background-image: linear-gradient(90deg, rgba(20, 200, 186, 0) 0, #14c8ba 50px, rgba(109, 93, 245, 0) 100px);
-  background-size: 200px 3px;
-  background-color: rgba(11, 21, 48, 0.06);
-  animation: flow 2.4s linear infinite;
-}
-
-.steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-
-.step {
-  flex: 1 1 300px;
+.text {
   min-width: 0;
-  padding: 28px;
-  border-radius: 20px;
-  border: 1px solid var(--border-card);
-  box-shadow: 0 10px 30px rgba(11, 21, 48, 0.05);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+}
+.lead {
+  margin-top: 12px;
+  color: var(--ink-2);
+}
+.start {
+  order: 1;
+  justify-self: stretch;
+  margin-top: 8px; /* 단계와 단추 사이는 24px */
+}
+.steps {
+  min-width: 0;
 }
 
-.stepTeal { background: var(--teal-soft); }
-.stepCoral { background: var(--coral-soft); }
-.stepViolet { background: var(--violet-soft); }
-
+/* ---------- 단계 줄: 번호 | 글(h3 + 설명) 두 칸, 줄 사이 1px 선. 휴대폰은 제목만 보여 번호와 가운데 맞춤 ---------- */
+.step {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.step:first-child {
+  border-top: 1px solid var(--line);
+}
+/* 번호 1·2·3: 24px 칸, accent-soft 바탕 · accent-strong 600 */
 .num {
-  font-family: var(--font-num), sans-serif;
-  font-size: 40px;
-  font-weight: 700;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-control);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  font-weight: 600;
+}
+.stepTitle,
+.desc {
+  grid-column: 2;
+}
+.desc {
+  margin-top: 4px;
+  color: var(--ink-2);
 }
 
-.numTeal { color: var(--teal-text); }
-.numCoral { color: var(--coral-text-large); } /* 40px 굵은 글자라 #E5533D (UI_GUIDE) */
-.numViolet { color: var(--violet-text); }
-
-.stepTitle {
-  margin: 0;
-  font-size: 21px;
-  font-weight: 700;
+/* ---------- 768px부터: 단추가 안내 아래(내용 폭), 단계 줄 위아래 20px ---------- */
+@media (min-width: 768px) {
+  .layout {
+    row-gap: 24px;
+  }
+  .start {
+    order: 0;
+    justify-self: start;
+    margin-top: 0;
+  }
+  .step {
+    align-items: start;
+    padding-block: 20px;
+  }
 }
 
-.stepDesc {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.65;
-  color: var(--text-body);
-}
-
-@keyframes flow {
-  from { background-position: 0 0; }
-  to { background-position: 200px 0; }
+/* ---------- 1024px부터 (12칸): 글·단추 1~5칸 두 줄 · 단계 7~12칸이 두 줄에 걸친다.
+   위 줄은 글 높이, 단계가 더 길어 남는 높이는 아래 줄(1fr)이 받아 단추가 글 바로 아래에 붙는다 ---------- */
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-rows: auto 1fr;
+  }
+  .text {
+    grid-column: 1 / 6;
+    grid-row: 1;
+  }
+  .start {
+    grid-column: 1 / 6;
+    grid-row: 2;
+    align-self: start;
+  }
+  .steps {
+    grid-column: 7 / 13;
+    grid-row: 1 / 3;
+  }
 }

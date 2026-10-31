@@ -2,9 +2,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
+import { nestedBoxes } from '@/testing/boxes'
 import { SignupForm } from './SignupForm'
+import { Stepper } from './Stepper'
 
 // 실제 Supabase에 붙지 않는다. 진짜 validateSignup·submitSignup을 거쳐 hospitals에 어떤 값이 몇 번 나가는지만 본다
 const { from, insert, signOut, router } = vi.hoisted(() => {
@@ -59,8 +61,21 @@ const errorOf = (el: HTMLElement) => {
 
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
-// 요소가 그 묶음(ui.*)의 클래스를 모두 가진다
+// 요소가 그 묶음(ds.*)의 클래스를 모두 가진다
 const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
+const expectClasses = (el: Element | null | undefined, ...wanted: string[]) =>
+  expect(el ? classesOf(el) : []).toEqual(expect.arrayContaining(wanted))
+// 테두리·바탕 클래스(border·border-t·bg-* …, 화면 폭 접두사 포함)
+const frameClasses = (el: Element) => classesOf(el).filter((c) => /^(?:[\w-]+:)?(?:border(?:-|$)|bg-|shadow(?:-|$))/.test(c))
+// 시안 parts.mjs의 자물쇠 아이콘(Icon lock) 첫 모양
+const LOCK_RECT = 'rect[x="3.25"][y="7"][width="9.5"][height="7"]'
+const LEAD = '처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인합니다.'
+const steps = () => screen.getByRole('list', { name: '가입 단계' })
+const labelFor = (text: string) => {
+  const label = [...document.querySelectorAll('label')].find((l) => l.textContent === text)
+  if (label === undefined) throw new Error(`라벨 없음: ${text}`)
+  return label
+}
 const noArbitraryColor = () => {
   for (const el of document.querySelectorAll('[class]')) {
     expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
@@ -93,15 +108,26 @@ afterEach(() => {
 })
 
 describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
-  it('AC-004.2: 가입 단계 칩 3개 — 구글 로그인(끝남) · 02 가입 신청(지금) · 03 관리자 승인', () => {
+  it('AC-215.1: 단계는 <Stepper current={2} /> 그대로 — 1 구글 로그인(끝남 체크) · 2 가입 신청(지금) · 3 관리자 승인', () => {
     render(<SignupForm email={EMAIL} />)
-    const steps = screen.getByRole('list', { name: '가입 단계' })
-    expect(steps.tagName).toBe('OL')
-    const items = within(steps).getAllByRole('listitem')
-    expect(items.map((li) => li.textContent)).toEqual(['구글 로그인', '02가입 신청', '03관리자 승인'])
+    const ol = steps()
+    expect(ol.tagName).toBe('OL')
+    const items = within(ol).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    // 칸 번호는 1·2·3(옛 "02"·"03" 아님)이고 끝난 1은 번호 대신 체크
+    const squares = items.map((li) => li.querySelector(':scope > [aria-hidden="true"]:not(.h-px)'))
+    expect(squares.map((s) => s?.textContent)).toEqual(['', '2', '3'])
+    expect(squares[0]?.querySelector('svg')).not.toBeNull()
+    expect(within(items[0]).getByText('끝남')).toBeTruthy()
     expect(items.map((li) => li.getAttribute('aria-current'))).toEqual([null, 'step', null])
-    // 끝난 단계의 체크 그림은 읽지 않는다
-    expect(items[0].querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    for (const [li, label] of items.map((li, i) => [li, ['구글 로그인', '가입 신청', '관리자 승인'][i]] as const)) {
+      expect(within(li).getByText(label)).toBeTruthy()
+    }
+    const html = ol.outerHTML
+    cleanup()
+    const alone = render(<Stepper current={2} />).container.firstElementChild
+    expect(alone).not.toBeNull()
+    expect(html).toBe(alone?.outerHTML)
   })
 
   it('AC-004.2: 제목 "가입 신청"과 안내 문장', () => {
@@ -145,7 +171,7 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     const input = emailInput()
     expect(input.value).toBe(long)
     const box = input.parentElement as HTMLElement
-    hasAll(box, ui.readonly)
+    hasAll(box, ds.readonly)
     // 보이는 글자는 줄을 바꾸는 글자. 화면 읽기는 입력란 하나만 읽는다(같은 주소를 두 번 읽지 않게 숨김)
     const shown = within(box).getByText(long)
     expect(shown.tagName).toBe('SPAN')
@@ -189,39 +215,158 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     for (const message of Object.values(MESSAGES)) expect(screen.queryByText(message)).toBeNull()
   })
 
-  it('AC-004.2·AC-013.3: 단계 표시 색 — 끝난 단계 ok 체크 + ink-2, 지금 단계 ink 600, 다음 단계 muted', () => {
+  it('AC-215.1: 단계 색 — 끝난 1 accent-soft 칸·accent 체크·ink-2, 지금 2 accent 칸·흰 번호·ink 600, 다음 3 line-strong 테두리·muted', () => {
     render(<SignupForm email={EMAIL} />)
-    const [done, current, next] = within(screen.getByRole('list', { name: '가입 단계' })).getAllByRole('listitem')
-    expect(classesOf(done)).toContain('text-ink-2')
-    expect(classesOf(done.querySelector('svg') as Element)).toContain('text-ok')
-    expect(classesOf(current)).toEqual(expect.arrayContaining(['text-ink', 'font-semibold']))
-    expect(classesOf(next)).toContain('text-muted')
-    expect(classesOf(screen.getByRole('list', { name: '가입 단계' }))).toContain('list-none')
+    const [done, current, next] = within(steps()).getAllByRole('listitem')
+    const square = (li: Element) => li.querySelector(':scope > [aria-hidden="true"]:not(.h-px)') as Element
+    expectClasses(done, 'text-ink-2')
+    expectClasses(square(done), 'bg-accent-soft', 'text-accent')
+    expectClasses(current, 'text-ink', 'font-semibold')
+    expectClasses(square(current), 'bg-accent', 'text-surface')
+    expectClasses(next, 'text-muted')
+    expectClasses(square(next), 'border-line-strong', 'text-muted')
+    expectClasses(steps(), 'mt-6', 'text-small')
   })
 
-  it('AC-004.2·AC-013.2·AC-013.3: 모양 — 카드 ui.card, 입력란 ui.input, 구글 계정 읽기 전용 칸, 체크 상자 ui.checkbox, [가입 신청] 주 단추 전체 폭, [다른 계정으로 로그인] 글자 단추, 임의 색 없음', () => {
+  it('AC-215.1: 이 순서 — 단계 → h1 → 안내 → 폼 → [다른 계정으로 로그인]이 한 뿌리에 바로 있고, 카드 상자가 없다(뿌리·폼에 테두리·바탕·그림자 없음)', () => {
+    const { container } = render(<SignupForm email={EMAIL} />)
+    const root = container.firstElementChild as HTMLElement
+    const title = screen.getByRole('heading', { level: 1, name: '가입 신청' })
+    const lead = screen.getByText(LEAD)
+    expect(Array.from(root.children)).toEqual([steps(), title, lead, form(), otherAccount()])
+    expect(lead.tagName).toBe('P')
+    expect(container.querySelectorAll('h1, h2, h3')).toHaveLength(1)
+    expect(frameClasses(root)).toEqual([])
+    expect(frameClasses(form())).toEqual([])
+    // 480 칸은 AuthFrame이 정한다(폼이 따로 폭을 정하지 않는다)
+    expect(classesOf(root).filter((c) => /^max-w-/.test(c))).toEqual([])
+    // 네 변 테두리 상자는 구글 계정 읽기 전용 칸 하나뿐이다(오류 카드·입력란·체크 상자는 상자가 아니다)
+    const boxes = [root, ...root.querySelectorAll('div, section, article, ul, ol, li, dl, table, aside, form')].filter((el) =>
+      classesOf(el).includes('border'),
+    )
+    expect(boxes).toEqual([emailInput().parentElement])
+  })
+
+  it('AC-215.1: 간격 — 단계 위 24px, h1 위 24px, 안내 위 8px, 폼 위 24px·칸 사이 20px, [다른 계정으로 로그인] 위 16px', () => {
     render(<SignupForm email={EMAIL} />)
-    hasAll(form(), ui.card)
-    for (const el of [nameInput(), applicantInput(), phoneInput()]) hasAll(el, ui.input)
-    hasAll(emailInput().parentElement as HTMLElement, ui.readonly)
-    expect(emailInput().parentElement?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true') // 자물쇠
-    hasAll(consent(), ui.checkbox)
+    expectClasses(steps(), 'mt-6')
+    expectClasses(screen.getByRole('heading', { level: 1 }), 'mt-6')
+    expectClasses(screen.getByText(LEAD), 'mt-2')
+    expectClasses(form(), 'mt-6', 'flex', 'flex-col', 'gap-5')
+    expectClasses(otherAccount(), 'mt-4')
+  })
+
+  it('AC-215.1: 글자 — h1 "가입 신청"은 heading-m → heading(768px 이상) 600 ink, 안내는 body ink-2', () => {
+    render(<SignupForm email={EMAIL} />)
+    expectClasses(screen.getByRole('heading', { level: 1 }), 'text-heading-m', 'md:text-heading', 'font-semibold', 'text-ink')
+    expectClasses(screen.getByText(LEAD), 'text-body', 'text-ink-2')
+  })
+
+  it('AC-215.1: 칸 이름 줄 — 이름(ds.label: small 600) + 필수·선택(ds.labelHint: caption muted), 칸 묶음은 ds.field', () => {
+    render(<SignupForm email={EMAIL} />)
+    for (const [text, hint] of [
+      ['구글 계정', null],
+      ['병원 이름 필수', '필수'],
+      ['신청자 이름 필수', '필수'],
+      ['연락처 선택', '선택'],
+    ] as const) {
+      const label = labelFor(text)
+      hasAll(label, ds.label)
+      expectClasses(label, 'text-small', 'font-semibold')
+      hasAll(label.parentElement as HTMLElement, ds.field)
+      const tag = label.querySelector('span')
+      if (hint === null) {
+        expect(tag, text).toBeNull()
+      } else {
+        expect(tag?.textContent).toBe(hint)
+        hasAll(tag as HTMLElement, ds.labelHint)
+      }
+    }
+    // 동의 끝의 "필수"도 caption muted
+    const consentTag = within(consent().closest('label') as HTMLElement).getByText('필수')
+    hasAll(consentTag, ds.labelHint)
+  })
+
+  it('AC-215.1: 도움말 — 구글 계정 "로그인한 계정이라 바꿀 수 없습니다." · 연락처 "승인 관련해 연락이 필요할 때만 씁니다."는 ds.help이고 칸 바로 아래에서 칸이 가리킨다', () => {
+    render(<SignupForm email={EMAIL} />)
+    for (const [input, text] of [
+      [emailInput(), '로그인한 계정이라 바꿀 수 없습니다.'],
+      [phoneInput(), '승인 관련해 연락이 필요할 때만 씁니다.'],
+    ] as const) {
+      const help = screen.getByText(text)
+      expect(help.tagName).toBe('P')
+      hasAll(help, ds.help)
+      expect(descriptionsOf(input)).toContain(text)
+      expect(isBefore(input, help)).toBe(true)
+    }
+    // 다른 칸에는 도움말이 없다
+    expect(document.querySelectorAll('form p')).toHaveLength(2)
+  })
+
+  it('AC-215.1: 구글 계정 칸 — ds.readonly 안에 자물쇠 14px(aria-hidden) + 이메일', () => {
+    render(<SignupForm email={EMAIL} />)
+    const box = emailInput().parentElement as HTMLElement
+    hasAll(box, ds.readonly)
+    const lock = box.querySelector('svg') as SVGElement
+    expect(lock.querySelector(LOCK_RECT)).not.toBeNull()
+    expect(lock.getAttribute('width')).toBe('14')
+    expect(lock.getAttribute('height')).toBe('14')
+    expect(lock.getAttribute('aria-hidden')).toBe('true')
+    expect(within(box).getByText(EMAIL)).toBeTruthy()
+    expect(isBefore(lock, within(box).getByText(EMAIL))).toBe(true)
+  })
+
+  it('AC-215.1: 모양 — 입력란 ds.input, 체크 상자 ds.checkbox(+ ds.checkboxMark), [가입 신청] ds.button.primaryLarge 전체 폭, 임의 색 없음', () => {
+    render(<SignupForm email={EMAIL} />)
+    for (const el of [nameInput(), applicantInput(), phoneInput()]) hasAll(el, ds.input)
+    hasAll(consent(), ds.checkbox)
+    hasAll(consent().parentElement as HTMLElement, ds.checkboxWrap)
     // 흰 체크 그림은 체크 상자 바로 뒤(peer-checked로 보인다), 읽지 않는다
     const mark = consent().nextElementSibling as Element
-    hasAll(mark, ui.checkboxMark)
+    hasAll(mark, ds.checkboxMark)
     expect(mark.getAttribute('aria-hidden')).toBe('true')
-    hasAll(submit(), ui.button.primary)
+    hasAll(submit(), ds.button.primaryLarge)
     expect(classesOf(submit())).toContain('w-full')
-    hasAll(otherAccount(), ui.textButton)
-    for (const text of ['구글 계정', '병원 이름 필수', '신청자 이름 필수', '연락처 선택']) {
-      const label = [...document.querySelectorAll('label')].find((l) => l.textContent === text) as HTMLElement
-      hasAll(label, ui.label)
-    }
-    // 필수·선택 표시는 caption muted
-    for (const tag of screen.getAllByText(/^(필수|선택)$/)) {
-      expect(classesOf(tag)).toEqual(expect.arrayContaining(['text-caption', 'text-muted']))
-    }
     noArbitraryColor()
+  })
+
+  it('AC-215.1: [다른 계정으로 로그인]은 폼 밖 아래(위 16px), 왼쪽 정렬 글자 단추(ds.textButton: accent·body 500) — 가운데·전체 폭이 아니다', () => {
+    render(<SignupForm email={EMAIL} />)
+    const button = otherAccount()
+    expect(form().contains(button)).toBe(false)
+    expect(isBefore(form(), button)).toBe(true)
+    hasAll(button, ds.textButton)
+    expectClasses(button, 'text-accent', 'text-body', 'font-medium', 'mt-4', 'self-start')
+    expect(classesOf(button)).not.toContain('self-center')
+    expect(classesOf(button)).not.toContain('w-full')
+    expect(classesOf(button).filter((c) => /^(?:mx-auto|text-center|justify-center)$/.test(c))).toEqual([])
+  })
+})
+
+// 상자 겹침(AC-204.7): 처음·틀린 칸·저장 실패 모두 상자 안에 상자가 없다
+describe('AC-204.7: 가입 신청 — 상자 안 상자 없음', () => {
+  it('AC-204.7·AC-215.1: 처음 상태', () => {
+    const { container } = render(<SignupForm email={EMAIL} />)
+    expect(submit()).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-204.7·AC-215.1: 틀린 칸 문구가 보이는 상태', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<SignupForm email={EMAIL} />)
+    await user.click(submit())
+    expect(screen.getByText(MESSAGES.nameEmpty)).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-204.7·AC-215.1: 저장 실패(오류 카드) 상태', async () => {
+    insert.mockResolvedValue({ data: null, error: { code: '23514', message: RAW }, status: 400 })
+    const user = userEvent.setup()
+    const { container } = render(<SignupForm email={EMAIL} />)
+    await fillValid(user)
+    await user.click(submit())
+    await screen.findByRole('alert')
+    expect(nestedBoxes(container)).toEqual([])
   })
 })
 
@@ -253,16 +398,18 @@ describe('SignupForm: 값 검사', () => {
     expect(document.activeElement).toBe(nameInput()) // 첫 틀린 칸으로
   })
 
-  it('AC-004.1·AC-013.3: 틀린 칸은 aria-invalid(테두리 danger)이고 칸 아래 문구는 ui.fieldError', async () => {
+  it('AC-004.1·AC-215.1: 틀린 칸은 aria-invalid(ds.input·ds.checkbox의 aria-invalid:border-negative)이고 칸 아래 문구는 ds.fieldError', async () => {
     const user = userEvent.setup()
     render(<SignupForm email={EMAIL} />)
     await user.click(submit())
     for (const el of [nameInput(), applicantInput(), consent()]) {
       expect(el.getAttribute('aria-invalid')).toBe('true')
-      hasAll(errorOf(el) as HTMLElement, ui.fieldError)
+      hasAll(errorOf(el) as HTMLElement, ds.fieldError)
     }
-    expect(tokens(ui.input)).toContain('aria-invalid:border-danger')
-    expect(tokens(ui.checkbox)).toContain('aria-invalid:border-danger')
+    for (const el of [nameInput(), applicantInput()]) hasAll(el, ds.input)
+    hasAll(consent(), ds.checkbox)
+    expect(tokens(ds.input)).toContain('aria-invalid:border-negative')
+    expect(tokens(ds.checkbox)).toContain('aria-invalid:border-negative')
     noArbitraryColor()
   })
 

@@ -1,0 +1,259 @@
+<title>로고 십자 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one white sheet per shape (A–D); inside, one row per colour (①–③) showing the
+   mark at real size in the landing header, the app header and the browser tab.
+   Light only, matching the approved landing-v2 mockup: every colour is set explicitly. */
+:root {
+  --ink: #111827;
+  --ink-2: #374151;
+  --muted: #6B7280;
+  --line: #E5E7EB;
+  --canvas: #F7F8FA;
+  --surface: #FFFFFF;
+  --accent: #2563EB;
+  --accent-soft: #EAF1FE;
+  --warn: #B45309;
+  --old-teal: #14C8BA;
+  --old-violet: #6D5DF5;
+  --font: "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color-scheme: light;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 22px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+* { box-sizing: border-box; }
+svg { display: block; flex: none; }
+
+.page { max-width: 1200px; margin: 0 auto; display: grid; gap: 16px; }
+.stack { display: grid; gap: 16px; min-width: 0; }
+
+/* 마크 색 */
+.c1 { color: var(--ink); }
+.c2 { color: var(--accent); }
+.tl { color: var(--old-teal); }
+.vi { color: var(--old-violet); }
+
+/* ---------- 머리말 ---------- */
+.intro { display: grid; gap: 10px; padding-block: 4px 8px; }
+.kicker { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
+h1 { margin: 0; font-size: 26px; line-height: 34px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+.lead { margin: 0; font-size: 15px; line-height: 24px; color: var(--ink-2); max-width: 66ch; }
+.lead b { font-weight: 600; color: var(--ink); }
+.now { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.notes { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.notes li { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.notes li svg { margin-top: 3px; }
+.notes .w svg { color: var(--warn); }
+.notes .i svg { color: var(--muted); }
+
+/* ---------- 흰 상자 ---------- */
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+.sub { margin: 0; font-size: 14px; line-height: 22px; color: var(--ink-2); max-width: 60ch; }
+
+/* ---------- 한눈에 보기 ---------- */
+.matrix { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.matrix th, .matrix td { border-top: 1px solid var(--line); padding: 12px 8px; text-align: left; vertical-align: middle; }
+.matrix thead th { border-top: 0; padding-top: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.matrix thead th span { display: block; font-weight: 400; color: var(--muted); }
+.matrix .shape-col { width: 30%; }
+.matrix tbody th { font-size: 14px; font-weight: 600; }
+.matrix tbody th span { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+.cell { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cell .marks { display: flex; align-items: center; gap: 10px; }
+.code { font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.cell .code { font-size: 15px; }
+
+/* ---------- 모양별 상자 ---------- */
+.shape-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.shape-head .txt { display: grid; gap: 4px; min-width: 0; flex: 1 1 320px; }
+.big { display: flex; gap: 20px; align-items: center; }
+.big figure { margin: 0; display: grid; justify-items: center; gap: 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.colhead { display: none; }
+.rows { display: grid; }
+.row {
+  display: grid; gap: 10px 16px; padding-block: 16px; border-top: 1px solid var(--line);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "code" "lp" "app" "fav";
+}
+.row:last-child { padding-bottom: 0; }
+.row > * { min-width: 0; }
+.r-code { grid-area: code; display: flex; align-items: baseline; gap: 8px; }
+.r-code .code { font-size: 18px; line-height: 26px; }
+.r-code small { font-size: 13px; color: var(--muted); }
+.slot { display: grid; gap: 6px; }
+.slot-lp { grid-area: lp; }
+.slot-app { grid-area: app; }
+.slot-fav { grid-area: fav; }
+.cap { font-size: 12px; line-height: 18px; color: var(--muted); }
+
+/* 첫 화면 위쪽 메뉴 (시안 landing-v2 그대로) */
+.lp { container-type: inline-size; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden; }
+.lp-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "logo cta" "nav nav"; align-items: center; column-gap: 12px; padding-inline: 16px; }
+.logo { grid-area: logo; display: inline-flex; align-items: center; gap: 8px; height: 48px; font-size: 16px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.lp-nav { grid-area: nav; display: flex; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 2px; border-top: 1px solid var(--line); }
+.lp-nav::-webkit-scrollbar { display: none; }
+.lp-nav span { flex: none; display: flex; align-items: center; height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.btn { grid-area: cta; display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; border-radius: 6px; background: var(--ink); color: var(--surface); font-size: 14px; font-weight: 500; white-space: nowrap; }
+@container (min-width: 600px) {
+  .lp-in { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "logo nav cta"; column-gap: 12px; height: 64px; }
+  .logo { height: 64px; font-size: 17px; }
+  .lp-nav { margin: 0; padding: 0; border-top: 0; overflow: hidden; }
+  .lp-nav span { height: 64px; padding: 0 8px; }
+}
+
+/* 프로그램 위쪽 */
+.app-top { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.app-logo { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; white-space: nowrap; min-width: 0; }
+.app-acct { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; color: var(--ink-2); flex: none; }
+
+/* 브라우저 탭 */
+.fav { display: flex; align-items: flex-end; gap: 16px; }
+.tabbar { flex: 1 1 auto; min-width: 0; max-width: 220px; height: 40px; padding: 6px 6px 0; background: var(--line); border-radius: 6px 6px 0 0; display: flex; align-items: flex-end; }
+.tab { width: 100%; height: 34px; background: var(--surface); border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; }
+.tab .t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tab .x { color: var(--muted); font-size: 13px; }
+.tile { display: grid; justify-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tile .box { width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+
+@media (min-width: 640px) {
+  .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "code code" "lp lp" "app fav"; }
+}
+@media (min-width: 1180px) {
+  .colhead {
+    display: grid; grid-template-columns: 56px minmax(0, 1fr) 248px 190px; gap: 16px;
+    padding-bottom: 8px; font-size: 12px; line-height: 18px; color: var(--muted);
+  }
+  .row { grid-template-columns: 56px minmax(0, 1fr) 248px 190px; grid-template-areas: "code lp app fav"; align-items: center; padding-block: 12px; }
+  .r-code { flex-direction: column; gap: 0; }
+  .slot .cap { display: none; }
+}
+</style>
+
+<main class="page">
+  <header class="intro">
+    <p class="kicker">로고 모양 고르기</p>
+    <h1>십자 로고 시안 12개</h1>
+    <p class="lead">모양 4가지(A~D)에 색 3가지(①~③)를 입혔습니다. 모두 실제 크기로 첫 화면 메뉴, 프로그램 위쪽, 브라우저 탭에 넣어 보았습니다. <b>마음에 드는 번호 하나만 알려 주세요.</b> 예: C②</p>
+    <span class="now">지금 로고 <span id="current"></span> 막대 세 개 모양</span>
+    <ul class="notes">
+      <li class="w"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1.8l6.6 11.7H1.4z" stroke-linejoin="round"/><path d="M8 6.4v3.2M8 11.6v.1"/></svg>빨간 십자는 넣지 않았습니다. 흰 바탕의 빨간 십자(적십자 표장)는 법으로 사용이 제한됩니다.</li>
+      <li class="i"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.4"/><path d="M8 7.2v4M8 4.9v.1"/></svg>③은 예전 로고 색입니다. 새 화면은 검정·회색·파랑만 쓰기 때문에 ③을 고르면 로고만 다른 색이 됩니다.</li>
+    </ul>
+  </header>
+
+  <section class="sheet" aria-labelledby="ov-h">
+    <h2 id="ov-h">한눈에 보기</h2>
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th class="shape-col" scope="col">모양</th>
+          <th scope="col">① 검정<span>지금 정해진 방식</span></th>
+          <th scope="col">② 파랑<span>새 화면의 강조색</span></th>
+          <th scope="col">③ 청록+보라<span>예전 로고 색</span></th>
+        </tr>
+      </thead>
+      <tbody id="matrix-body"></tbody>
+    </table>
+  </section>
+
+  <div id="shapes" class="stack"></div>
+</main>
+
+<script>
+(function () {
+  // 30×30 마크. 색은 currentColor(부모 글자색)를 따른다.
+  var SHAPE = {
+    A: '<path d="M11 11V7a4 4 0 0 1 8 0v4h4a4 4 0 0 1 0 8h-4v4a4 4 0 0 1-8 0v-4H7a4 4 0 0 1 0-8z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>',
+    B: '<path d="M11 2h8v9h9v8h-9v9h-8v-9H2v-8h9z" fill="currentColor"/>',
+    C: '<rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="currentColor"/>',
+    D: '<path fill-rule="evenodd" d="M12.5 3h5A1.5 1.5 0 0 1 19 4.5V11h6.5a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H19v6.5a1.5 1.5 0 0 1-1.5 1.5h-5a1.5 1.5 0 0 1-1.5-1.5V19H4.5A1.5 1.5 0 0 1 3 17.5v-5A1.5 1.5 0 0 1 4.5 11H11V4.5A1.5 1.5 0 0 1 12.5 3zM11.6 15.5h1.8V18h-1.8zM14.1 14h1.8v4h-1.8zM16.6 12h1.8v6h-1.8z" fill="currentColor"/>'
+  };
+  // ③ 예전 두 색: 청록이 대부분, 보라가 한 부분 (예전 로고는 아래 막대가 보라였다)
+  var DUO = {
+    A: '<g class="tl">' + SHAPE.A + '</g><g class="vi"><path d="M19 19v4a4 4 0 0 1-8 0v-4" fill="none" stroke="currentColor" stroke-width="2.4"/></g>',
+    B: '<g class="tl">' + SHAPE.B + '</g><g class="vi"><path d="M11 19h8v9h-8z" fill="currentColor"/></g>',
+    C: '<g class="tl"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="currentColor" stroke-width="2.4"/></g><g class="vi"><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="currentColor"/></g>',
+    D: '<g class="tl"><path d="M12.5 3h5A1.5 1.5 0 0 1 19 4.5V11h6.5a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H19v6.5a1.5 1.5 0 0 1-1.5 1.5h-5a1.5 1.5 0 0 1-1.5-1.5V19H4.5A1.5 1.5 0 0 1 3 17.5v-5A1.5 1.5 0 0 1 4.5 11H11V4.5A1.5 1.5 0 0 1 12.5 3z" fill="currentColor"/></g><g class="vi"><path d="M11.6 15.5h1.8V18h-1.8zM14.1 14h1.8v4h-1.8zM16.6 12h1.8v6h-1.8z" fill="currentColor"/></g>'
+  };
+  var CURRENT = '<g fill="none" stroke="currentColor" stroke-width="2.4"><rect x="9" y="3" width="12" height="6" rx="3"/><rect x="11" y="12" width="12" height="6" rx="3"/><rect x="8" y="21" width="12" height="6" rx="3"/></g>';
+
+  var INFO = {
+    A: { name: '선 십자', desc: '지금 로고처럼 선으로 그린 십자입니다. 팔 끝이 둥급니다. 가볍고 부드러운 느낌입니다.' },
+    B: { name: '꽉 찬 십자', desc: '속이 꽉 찬 십자입니다. 팔 끝이 각져 있습니다. 가장 단순해서 아주 작아도 또렷합니다.' },
+    C: { name: '네모 속 십자', desc: '둥근 네모 테두리 안에 속이 찬 십자를 넣었습니다. 휴대폰 앱 아이콘처럼 단정하게 보입니다.' },
+    D: { name: '그래프 십자', desc: '속이 찬 십자 가운데에 점점 높아지는 막대 세 개를 비웠습니다. 숫자를 보는 도구라는 느낌을 살짝 줍니다.' }
+  };
+  var TONE = [
+    null,
+    { mark: '①', label: '검정' },
+    { mark: '②', label: '파랑' },
+    { mark: '③', label: '청록+보라' }
+  ];
+
+  function mark(shape, tone, size) {
+    var body = tone === 3 ? DUO[shape] : SHAPE[shape];
+    var cls = tone === 1 ? ' class="c1"' : tone === 2 ? ' class="c2"' : '';
+    return '<svg aria-hidden="true"' + cls + ' width="' + size + '" height="' + size + '" viewBox="0 0 30 30">' + body + '</svg>';
+  }
+
+  document.getElementById('current').innerHTML =
+    '<svg aria-hidden="true" class="c1" width="22" height="22" viewBox="0 0 30 30">' + CURRENT + '</svg>';
+
+  var shapes = ['A', 'B', 'C', 'D'];
+
+  // 한눈에 보기
+  var mx = '';
+  shapes.forEach(function (s) {
+    mx += '<tr><th scope="row">' + s + '<span>' + INFO[s].name + '</span></th>';
+    for (var t = 1; t <= 3; t++) {
+      mx += '<td><div class="cell"><div class="marks">' + mark(s, t, 32) + mark(s, t, 16) + '</div><span class="code">' + s + TONE[t].mark + '</span></div></td>';
+    }
+    mx += '</tr>';
+  });
+  document.getElementById('matrix-body').innerHTML = mx;
+
+  // 모양별 상자
+  var out = '';
+  shapes.forEach(function (s) {
+    out += '<section class="sheet" id="shape-' + s.toLowerCase() + '" aria-labelledby="h-' + s + '">';
+    out += '<div class="shape-head"><div class="txt"><h2 id="h-' + s + '">' + s + ' · ' + INFO[s].name + '</h2><p class="sub">' + INFO[s].desc + '</p></div>';
+    out += '<div class="big">';
+    for (var t = 1; t <= 3; t++) out += '<figure>' + mark(s, t, 56) + '<figcaption>' + s + TONE[t].mark + '</figcaption></figure>';
+    out += '</div></div>';
+    out += '<div class="rows"><div class="colhead" aria-hidden="true"><span>번호</span><span>첫 화면 위쪽 메뉴 · 로고 22px</span><span>프로그램 위쪽 · 로고 26px</span><span>브라우저 탭 · 16px, 32px</span></div>';
+    for (var t2 = 1; t2 <= 3; t2++) {
+      out += '<div class="row">';
+      out += '<div class="r-code"><span class="code">' + s + TONE[t2].mark + '</span><small>' + TONE[t2].label + '</small></div>';
+      out += '<div class="slot slot-lp"><span class="cap">첫 화면 위쪽 메뉴 · 로고 22px</span><div class="lp"><div class="lp-in">'
+        + '<span class="logo">' + mark(s, t2, 22) + '<span>[서비스 이름]</span></span>'
+        + '<span class="lp-nav"><span>AI 분석</span><span>기능</span><span>개인정보 보호</span><span>시작 방법</span></span>'
+        + '<span class="btn">구글로 시작하기</span></div></div></div>';
+      out += '<div class="slot slot-app"><span class="cap">프로그램 위쪽 · 로고 26px</span><div class="app-top"><span class="app-logo">' + mark(s, t2, 26) + '[서비스 이름]</span>'
+        + '<span class="app-acct"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span></div></div>';
+      out += '<div class="slot slot-fav"><span class="cap">브라우저 탭 · 16px, 32px</span><div class="fav">'
+        + '<div class="tabbar"><div class="tab">' + mark(s, t2, 16) + '<span class="t">[서비스 이름]</span><span class="x" aria-hidden="true">×</span></div></div>'
+        + '<div class="tile"><div class="box">' + mark(s, t2, 32) + '</div>32px</div></div></div>';
+      out += '</div>';
+    }
+    out += '</div></section>';
+  });
+  document.getElementById('shapes').innerHTML = out;
+})();
+</script>
