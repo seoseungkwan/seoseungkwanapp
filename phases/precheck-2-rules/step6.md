@@ -33,7 +33,7 @@
 - `/src/components/common/ErrorCard.tsx`, `/src/components/ui/classes.ts`
 - `/eslint.config.mjs`, `/src/guardrails.test.ts`
 - 이전 step에서 만든 파일:
-  - `src/components/claim/useBridge.ts`, `src/app/(app)/claim/page.tsx`(자리만 있음), `src/components/claim/setup/*` (Phase 1 Step 5)
+  - `src/components/claim/useBridge.ts`, `src/app/(app)/claim/page.tsx`(자리만 있음), `src/components/claim/setup/*` (Phase 1 Step 6)
   - `src/workers/precheck.worker.ts`, `src/workers/precheck/jobs.ts`·`assemble.ts`·`tables.ts` (Step 0·2~4)
   - `src/lib/precheck/rules/*`, `src/lib/precheck/dx/*` (Step 3·4)
   - `src/lib/storage/claimSettings.ts`, `src/lib/precheck/settingsChanged.ts` (Step 5)

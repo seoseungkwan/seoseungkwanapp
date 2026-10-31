@@ -93,6 +93,7 @@
 - **크롬 확장**(`extension/`, Manifest V3, 크롬 웹스토어 **비공개(unlisted)**): 우리 사이트 origin에서 온 메시지만 받아(`externally_connectable`) 도우미에 넘긴다. 권한은 `nativeMessaging` 하나다
 - **도우미**(`helper/`, C#/.NET Framework 4.8, 윈도우): 크롬이 필요할 때 켜는 네이티브 메시징 프로그램이다. 하는 일은 비트 DB 읽기(읽기 전용), 요양기관기호 확인, 비트 자동 입력(FlaUI), PC 확인 창, 작업 중 내용 저장(윈도우 계정 암호화 DPAPI)이다. 양지바른 `vendor/drbit_export`·`vendor/secure_bridge`의 C# 코드를 옮긴다
 - .NET Framework 4.8을 고른 까닭: 원본이 비트 한 달 자료를 비트 통계 화면 DLL(.NET Framework)을 그대로 불러 읽는다(`NativeReportAdapter`). 같은 방식으로 옮기려면 같은 런타임이 안전하다. 윈도우 10·11에 기본으로 있어 런타임을 따로 깔지 않는다. 플랫폼과 상관없는 부분(메시지 틀·명령 표·저장 형식·입력 규칙)은 netstandard2.0 라이브러리로 떼어 이 서버(리눅스)에서 .NET 10 SDK로 시험한다
+- 도우미 exe는 32비트(x86, csproj `PlatformTarget`)로 빌드한다. 비트 DLL이 32비트다(원본 `tools/build_stats.ps1`의 `/platform:x86`). AnyCPU면 64비트 윈도우에서 64비트로 돌아 비트 DLL을 불러오지 못한다 (2026-10-30, `specs/precheck` TASK-33)
 - 도우미는 GitHub Actions 윈도우 빌드로 만든다. 서명하지 않으므로 처음 실행할 때 윈도우 경고가 뜬다. 윈도우 전용 부분(비트 DLL·FlaUI·DPAPI·확인 창)은 Actions 윈도우에서 시험하고 의원 PC에서 확인한다
 - 입력은 묶음마다 PC 확인 창에서 [확인]을 눌러야 시작한다. 비트 화면이 바뀐 것이 보이면 입력을 멈춘다
 **버린 대안**:

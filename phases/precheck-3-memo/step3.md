@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-017에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-017.1**: `bit.input {items: [{visitKey, chart, name, date, memo}]}` → 등록 병원 확인 → 비트 화면 지문 확인 → 묶음 검사(500명 이하, 차트번호 `^[0-9]{1,20}$`, 이름 1~100자, 날짜 모양, 메모 1~32,000자, 같은 진료 두 번 없음). 하나라도 틀리면 아무것도 입력하지 않고 오류
-- **AC-017.2**: 검사를 통과한 묶음은 입력 전에 도우미가 묶음에서 직접 만든 글("10/27~10/29, 32명 입력할까요?"와 병원 이름)의 PC 확인 창. [확인]을 눌러야 시작, [취소]·창 닫기·5분 지남이면 하나도 입력하지 않고 `cancelled`
+- **AC-017.2**: 검사를 통과한 묶음은 입력 전에 도우미가 묶음에서 직접 만든 글("10/27~10/29, 32명 입력할까요?"와 등록한 기관기호, 뒤 4자리 가림)의 PC 확인 창. [확인]을 눌러야 시작, [취소]·창 닫기·5분 지남이면 하나도 입력하지 않고 `cancelled`
 - **AC-017.3**: 사람 하나는 원본 `UChartAutomation`·`autoOne` 순서: 내원내역에서 차트번호로 열기 → 이름·차트번호·내원일 검사 → 바로 앞에서 비트 메모 다시 읽기(같으면 완료, 다르면 건너뜀 '이미 있음', 덮어쓰지 않음) → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지
 - **AC-017.4**: 비트 화면 지문(`BITDoctorOrder.exe` 프로세스 규칙, '외래진료실' 창의 `txtChtNum`·`lbPatName`·`txtBilCmt`·`btnBilCmtModify`, '내원내역' 창의 `cbSch`·`txtSch`·`btnSch`·`ctgMain`이 정확히 하나씩)이 하나라도 없거나 여럿이면 입력을 시작하지 않거나 그 사람에서 멈추고 `E-BIT-UI-CHANGED`와 칸 ID 목록. 짐작해서 누르지 않는다
 - **AC-017.5**: 저장 안 한 처방 창(원본 '저장되지않은처방')·원본 fatal 문구·3번 잇따른 실패·진행 창 [멈추기]면 그 자리에서 멈추고(멈추기는 지금 사람까지) 남은 사람을 '확인 필요: 미처리'. 저장 안 한 처방 창은 누르지 않는다(`E-BIT-UNSAVED-RX`)
@@ -59,7 +59,7 @@
 
 ## 승인된 목업 (도우미 창)
 
-- PC 확인 창·진행 창 모양은 목업 화면 5 '도우미 PC 확인 창'(창 제목 '청구메모 도우미', "비트에 청구메모를 입력할까요?", 기간 · N명, 병원(기관기호), 빼는 환자 수, 주의, [확인]·[취소] / 진행 N/M명, [멈추기])을 따른다
+- PC 확인 창·진행 창 모양은 목업 화면 5 '도우미 PC 확인 창'(창 제목 '청구메모 도우미', "비트에 청구메모를 입력할까요?", 기간 · N명, 등록한 기관기호(뒤 4자리 가림. 병원 이름 없음 — 도우미는 병원 이름을 갖지 않으므로 목업의 병원 이름 자리는 비워 둔다), 빼는 환자 수, 주의, [확인]·[취소] / 진행 N/M명, [멈추기])을 따른다
 - 목업: https://claude.ai/artifact/499cp2Sodph7jYJ4gX4exj (화면 5, `id="v-confirm"`). 이 서버 사본: `/tmp/claude-1000/-home-developer/48cae04e-0cd2-4603-a1ad-b361628f7242/scratchpad/mockup/index.html`. 사본이 없으면 `read_artifact`(slug `499cp2Sodph7jYJ4gX4exj`)
 - 목업 숫자·병원 이름·기관기호는 예시다
 
@@ -105,7 +105,7 @@ public interface IChartUi {                       // 비트 화면 흉내 가능
 }
 public static class UiFingerprint { public static readonly string[] Outpatient = { "txtChtNum", "lbPatName", "txtBilCmt", "btnBilCmtModify" }; public static readonly string[] Visits = { "cbSch", "txtSch", "btnSch", "ctgMain" }; }
 public static class BatchCheck { public static void Validate(IReadOnlyList<InputItem> items); }  // 원본 validate_request 규칙 + AC-017.1
-public static class InputPrompt { public static string Build(IReadOnlyList<InputItem> items, Registration reg, int excluded); } // "10/27~10/29, 32명 입력할까요?" + 병원
+public static class InputPrompt { public static string Build(IReadOnlyList<InputItem> items, Registration reg, int excluded); } // "10/27~10/29, 32명 입력할까요?" + 등록한 기관기호(뒤 4자리 가림). 병원 이름 없음
 public sealed class InputRunner {                 // 원본 autoOne 고리를 도우미로
   public InputRunner(IChartUi ui, IConfirm confirm, IProgress progress, Journal journal, Func<bool> stopRequested);
   public InputOutcome Run(IReadOnlyList<InputItem> items);   // cancelled | finished | stopped(code)
@@ -187,7 +187,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - 확인 창 [확인] 전에 비트 화면에 무엇이든 쓰거나 누르지 마라. 이유: 사람이 PC에서 확인해야만 입력된다(AC-017.2, ADR-016)
-- 확인 창 글에 웹이 보낸 글(안내문·병원 이름 등)을 쓰지 마라. 이유: 도우미가 묶음과 등록 정보에서 직접 만든다. 웹이 잘못되어도 속지 않게(AC-017.2)
+- 확인 창 글에 웹이 보낸 글(안내문·병원 이름 등)을 쓰지 마라(도우미는 병원 이름을 갖지 않는다). 이유: 도우미가 묶음과 등록 정보에서 직접 만든다. 웹이 잘못되어도 속지 않게(AC-017.2)
 - 비트에 다른 메모가 있으면 덮어쓰지 마라. 이유: 덮어쓰기는 범위 밖이다(requirements '범위 밖'). 늘 '건너뜀: 이미 있음'
 - 칸을 못 찾을 때 비슷한 칸·좌표·순서로 짐작해 누르지 마라. 이유: 비트가 바뀌면 다른 환자·다른 칸에 쓸 수 있다. 바로 멈추고 `E-BIT-UI-CHANGED`(AC-017.4)
 - 저장 안 한 처방 창의 단추를 누르지 마라. 이유: 진료 중인 처방이 사라지거나 저장될 수 있다(AC-017.5)

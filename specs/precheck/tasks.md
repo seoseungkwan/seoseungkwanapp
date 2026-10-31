@@ -1,7 +1,7 @@
 # 작업 분할: 청구 사전점검 (양지바른 사전점검 가져오기)
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`(plan.md §6), `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
-> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 = `docs/precheck/plan.md` §6 Phase 1~7의 Step 순서다. 이 순서대로 한다.
+> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 = `docs/precheck/plan.md` §6 Phase 1~7의 Step 순서다. 이 순서대로 한다. 예외 하나: TASK-33(REQ-005 후속, TASK-5를 만들며 찾은 빈틈)은 Phase 1 Step 5 `helper-fixups`로 TASK-5 뒤·TASK-6 앞에 한다. 그래서 TASK-6은 Phase 1 Step 6이다(plan.md §6에는 아직 Step 5로 적혀 있다).
 > 승인은 이 명세 하나로 한 번만 받는다(사용자: "단계마다 sdd 승인받는거 빼줘"). Phase가 끝날 때마다 `verify`·화면 캡처·쉬운 말 보고·의원 PC 시험 목록(plan.md §6).
 > Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장과 `commands.json`에는 운영 주소 하나만 있어, 새 화면이 운영에 배포돼야 의원 PC에서 시험할 수 있다. design.md 12절).
 > 화면 TASK(6·12·13·18·19·22·25·26·31·32)는 Phase 0 목업(승인본)이 있어야 시작한다(CLAUDE.md: 화면은 목업 승인 뒤).
@@ -52,8 +52,19 @@
 - TDD: required
 - 윈도우 전용 시험(`Precheck.Windows.Tests/Connect`)은 Actions에서 돈다. 의원 PC 시험: 설치 → 연결 확인 → 비트 읽기 → 기관기호 확인
 
+## TASK-33: 도우미 마무리 · 병원 이름 빼기 · 32비트 빌드 · 읽기 전용 확인
+- Step: Phase 1 · Step 5 · `helper-fixups` (TASK-5 뒤·TASK-6 앞, 머리말의 예외)
+- AC: AC-005.8~AC-005.12. 바뀐 AC-005.5·AC-005.7(병원 이름 뺌)과 AC-005.12(깨진 등록 파일)에 맞게 TASK-4·TASK-5 시험의 기대값도 고친다(줄 목록은 step 파일)
+- REQ: REQ-005
+- Files: helper/src/Precheck.Helper/Precheck.Helper.csproj, helper/src/Precheck.Core/Registration/*, helper/src/Precheck.Core/Bit/BitCheck.cs, helper/src/Precheck.Core/Bit/BitErrors.cs, helper/tests/Precheck.Core.Tests/Registration/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/Precheck.Windows.Tests/Connect/DpapiProtector.test.cs, helper/tests/runDotnet.ts, helper/tests/helper-fixups.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts, src/types/bridge.ts, src/lib/bridge/protocol.ts, src/lib/bridge/client.test.ts
+- Tests: helper/tests/helper-fixups.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- 병원 이름(사용자 결정 2026-10-30 "사이트 이름 쓰기"): 도우미는 병원 이름을 저장·반환하지 않는다. 지금 `RegisterFlow.cs`가 범위 값(`DepHspNum`)을 이름 자리에 넣는 것을 없앤다. 웹은 `bit.check`의 `hospitalName`을 받지 않는다. 화면의 병원 이름은 TASK-6이 사이트 값으로 보인다
+- `helper/tests/runDotnet.ts`는 `dotnet build`도 같은 잠금으로 부르게 넓힐 때만 고친다(감싸개가 `dotnet test`와 같은 obj/를 쓰므로)
+- 의원 PC 시험(Phase 1 목록에 더함): 도우미 exe가 32비트로 도는지(작업 관리자 '플랫폼'), 연결 확인의 DB 읽기 단계가 `E-BIT-DB-FAILED`면 비트 `BITDataBaseCommon`이 추상(abstract) 클래스라 리플렉션으로 만들지 못한 것인지 먼저 본다(design.md 16절), 확인 창에 병원 이름 없이 가린 기관기호·범위가 보이는지
+
 ## TASK-6: 설치·연결 확인 화면
-- Step: Phase 1 · Step 5 · `setup-screen`
+- Step: Phase 1 · Step 6 · `setup-screen` (TASK-33이 Step 5로 들어가 하나 밀림)
 - AC: AC-006.1~AC-006.6
 - REQ: REQ-006
 - Files: src/app/(app)/claim/setup/page.tsx, src/app/(app)/claim/setup/page.test.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/components/claim/setup/*, src/components/claim/useBridge.ts, src/components/claim/useBridge.test.ts, src/components/claim/maskInstitution.ts, src/components/claim/maskInstitution.test.ts, src/components/shell/menu.ts, src/components/shell/TabBar.tsx, src/components/shell/shell.test.tsx, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts

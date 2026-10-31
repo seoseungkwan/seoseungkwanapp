@@ -36,7 +36,7 @@
   - `src/workers/precheck.worker.ts`의 `ruleList` 메시지 (Step 2: 규칙 목록을 Worker로 받는다)
   - `src/lib/precheck/rules/*`(`RuleSettings` 모양) (Step 3)
   - `src/lib/precheck/dx/*`(`DxLink`) (Step 4)
-  - `src/app/(app)/claim/setup/page.tsx`, `src/components/claim/setup/*` (Phase 1 Step 5: 안쪽 탭 '비트 연결')
+  - `src/app/(app)/claim/setup/page.tsx`, `src/components/claim/setup/*` (Phase 1 Step 6: 안쪽 탭 '비트 연결')
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 

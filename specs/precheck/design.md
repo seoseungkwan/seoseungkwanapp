@@ -147,7 +147,7 @@ type Reply =
 | cmd | 하는 일 | 답 | 환자 자료 | PC 확인 창 |
 |---|---|---|---|---|
 | `hello` | 버전 | result `{ helperVersion, protocol }` | 아니오 | — |
-| `bit.check` | 비트 찾기 → DB 읽기 → 등록한 병원인지 | result `{ steps: [{ name, ok, code? }], registered, hospitalName?, institutionCode? }` | 아니오 | — |
+| `bit.check` | 비트 찾기 → DB 읽기 → 등록한 병원인지 | result `{ steps: [{ name, ok, code? }], registered, institutionCode? }` (병원 이름 없음, 9-1) | 아니오 | — |
 | `bit.register` | 처음 등록: 비트 로그인 창 → 범위·기관기호 확인 → 저장 | result `{ registered }` | 아니오 | 예 |
 | `claim.dates` | 기간의 날짜별 외래 진료 수·비트 메모 있는 수 | result `{ days: [{ date, visits, memoInBit }] }` | 아니오(숫자) | — |
 | `claim.month` | 기간의 증상·상병·소모 표 + 12개월 이력 + 상병 추세 + 처방 목록 | chunk … end | 예 | — |
@@ -244,7 +244,7 @@ type Finding = { visitKey: string; ruleId: string; grade: '확인필요' | '알�
 ## 7. 화면 (내용만, 배치는 목업 승인본)
 | 화면 | 보이는 것 | 단추 | 상태 |
 |---|---|---|---|
-| 설치·연결 확인 `/claim/setup` | 확장·도우미·비트·기관기호 단계별 ✓/✗와 오류 번호 | [연결 확인] · [처음 등록] · [다시 등록](병원이 다를 때) · 확장 설치 링크 · 도우미 내려받기 안내 | 확장 없음 · 도우미 없음 · 업데이트 필요 · 새 도우미 있음 · 연결됨 · 다른 창에서 작업 중 |
+| 설치·연결 확인 `/claim/setup` | 확장·도우미·비트·기관기호 단계별 ✓/✗와 오류 번호 · '이 PC'(병원 이름은 사이트의 로그인한 병원 이름, 기관기호는 가림) | [연결 확인] · [처음 등록] · [다시 등록](병원이 다를 때) · 확장 설치 링크 · 도우미 내려받기 안내 | 확장 없음 · 도우미 없음 · 업데이트 필요 · 새 도우미 있음 · 연결됨 · 다른 창에서 작업 중 |
 | 청구 `/claim` | 날짜 목록(6-4) · 기간 · 환자별 경고(확인 필요·알림·참고)와 고시 근거 · 추천 상병 · 메모 초안 | [자료 불러오기] · [엑셀 내려받기](규칙별·환자별) · [비트에 입력] · [다시 하기] · [다시 점검] | 불러오는 중 · 일부만 옴(멈춤) · 설정 바뀜 · 입력 중(진행 숫자) · 결과(완료·확인 필요·건너뜀+이유) |
 | 월말 마감 `/claim/close` | 달 고르기 · 미완료 · 빠진 것 · 확인 표시 남은 것 · SAM 파일 이름·받은 시각 | [청구 파일 불러오기] · 줄마다 청구 화면으로 가기 | 파일 없음 · 대조 끝 |
 | 환자 연락 `/contact` | F/U 명단 · 정기 주사 명단(이름·전화·다음 날짜·내용·지남/남은 날) · 연락 표시 | [문구 복사] · [연락함] 표시 · 기간 고르기 | 대상 없음 · 불러오는 중 |
@@ -326,10 +326,11 @@ create table public.contact_counts (
 ### 9-1. 처음 등록과 매번 확인 (TASK-5)
 - 비트 찾기: 원본 `InstallationLocator.FindCandidates`·`NormalizeAndValidate`·`NativeEnvironmentGuard.Validate`(지원 위치는 원본처럼 `C:\DrBIT50`)
 - 접속: 원본 `ReadOnlyConnection`처럼 비트 DLL(`BITDataBaseCommon`)의 접속 정보를 쓰고, `ConnectTimeout=10`, 서버 이름은 `CheckPrivateServer`(내 PC·사설 IP만). 읽기는 정해 둔 매개변수 SELECT만, 끝내지 않는 트랜잭션 안에서(원본 그대로)
-- 처음 등록(`bit.register`): 비트 로그인 창(원본 `BITUserLogIn` `bitDisplayDialog`) → 그 사용자의 병원 범위(`ValidateScope`) → 기관기호(`VerifyInstitutionNumber`, 8자리) → **PC 확인 창** "이 병원으로 등록할까요? ○○의원 · 기관기호 1234****" → [확인]이면 등록 파일(DPAPI)에 저장
+- 처음 등록(`bit.register`): 비트 로그인 창(원본 `BITUserLogIn` `bitDisplayDialog`) → 그 사용자의 병원 범위(`ValidateScope`) → 기관기호(`VerifyInstitutionNumber`, 8자리) → **PC 확인 창** "이 병원으로 등록할까요? 기관기호 1234**** · 비트 병원 범위·설치 위치·DB" → [확인]이면 등록 파일(DPAPI)에 저장(기관기호·범위·설치 위치·서버·DB 이름·프로필 ID)
 - 다시 등록: 이미 등록돼 있어도 같은 길로 다시 등록할 수 있다(설치 화면의 [다시 등록], `E-BIT-HOSPITAL-MISMATCH`일 때). 확인 창에 전 등록 값과 새 값을 함께 보인다. 기관기호가 같으면 프로필 ID를 그대로 두어 작업 저장을 이어 읽고, 다르면 새 ID라 전 병원의 작업 파일은 읽지 않는다(9-3, AC-005.5)
 - 매번: 모든 읽기·입력 명령 전에 등록 파일과 비트 DB의 기관기호·범위·설치 위치·서버·DB 이름을 비교한다(원본 `VerifyCurrentInstitution`). 다르면 `E-BIT-HOSPITAL-MISMATCH`로 멈춘다
 - 기관기호는 서버에 올리지 않는다(2026-10-28 사용자: 요양기관번호는 받지 않는다). 화면에는 뒤 4자리를 가려 보인다 **(Claude 판단)**
+- **병원 이름은 도우미가 갖지 않는다** (사용자 결정 2026-10-30 "사이트 이름 쓰기"): 원본 비트 읽기에는 병원 이름을 읽는 SQL이 없고, 양지바른은 자기 프로필 파일에서 가져왔다. 그래서 도우미는 병원 이름을 저장하지도 돌려주지도 않는다(`bit.check`에 `hospitalName` 없음). 확인 창은 비트에서 읽은 값(가린 기관기호·범위 등)만 보인다. 설치 화면은 앱이 이미 가진 로그인한 사용자의 병원 이름(`(app)/layout.tsx`가 앱 틀에 넘기는 `me.hospital.name`과 같은 값)을 가린 기관기호 옆에 보인다 (TASK-33·TASK-6)
 
 ### 9-2. 읽기 (TASK-8·16·20·23·27)
 - 한 달 자료: `VendorGridExport`가 원본 `NativeReportAdapter`처럼 비트 통계 화면(83 증상·83D 상병·47 소모)을 숨겨서 열고 날짜를 넣어 표를 읽는다. 표 칸 이름은 비트 화면의 것을 그대로 쓰고, `GridRows`가 원본 `medicore/claim_import.py`·`mx999 build/parseRx`가 읽는 칸만 남긴다
@@ -344,13 +345,14 @@ create table public.contact_counts (
 - 파일: `registration.dat`(등록 병원) · `work-YYYY-MM.dat`(그 진료 달의 고친 메모·완료 표시·입력 기록) · `contact.dat`(연락 표시) · `settings.dat`(서버 설정 사본. 서버가 잠깐 안 될 때 '마지막으로 받은 설정'으로 쓴다, PRD 8)
 - 암호화: DPAPI `CurrentUser` + 고정 entropy, 머리 `PRECHECK-STORE-1\n`. 쓰기는 임시 파일 → 바꿔치기(`File.Replace`, `.bak` 하나 둠)
 - 깨진 파일: `E-STORE-BROKEN`. `.bak`이 있으면 그것으로, 없으면 "새로 시작" 안내(비트 비교가 두 번 입력을 막는다)
+- `registration.dat`도 같은 규칙이다(TASK-33): 파일이 없을 때만 '등록 없음'(`E-BIT-NOT-REGISTERED`). 깨졌으면 깨진 파일은 이름을 바꿔 두고 `.bak`이 맞으면 그것으로 `registration.dat`를 되살려 쓴다. `.bak`도 없거나 깨졌으면 `E-STORE-BROKEN`이고, 설치 화면의 [처음 등록]으로 새로 시작한다(새 프로필 ID). 그때 저장 전에 깨진 `registration.dat`·`.bak`은 이름을 바꿔 둔다(지우지 않음)
 - 13개월 지난 `work-*.dat`는 지운다 **(Claude 판단, 필요한 것만 남김)**
 - 저장 파일의 병원이 등록 병원과 다르면 읽지 않는다
 
 ### 9-4. 자동 입력 (TASK-17)
 - 순서(묶음 하나):
   1. 등록 병원 확인(9-1) → 비트 화면 지문 확인(`UiFingerprint`) → 묶음 검사(500명 이하, 날짜·차트번호 모양, 원본 `validate_request` 규칙)
-  2. **PC 확인 창**: 도우미가 묶음에서 직접 만든 글 "10/27~10/29, 32명 입력할까요? ○○의원" + [확인]·[취소]. 5분 안에 답이 없으면 취소. 웹이 보낸 글은 보이지 않는다
+  2. **PC 확인 창**: 도우미가 묶음에서 직접 만든 글 "10/27~10/29, 32명 입력할까요? · 기관기호 1234****"(등록한 기관기호, 뒤 4자리 가림. 병원 이름 없음, 9-1) + [확인]·[취소]. 5분 안에 답이 없으면 취소. 웹이 보낸 글은 보이지 않는다
   3. 사람마다(원본 `autoOne` + `UChartAutomation`): 내원내역에서 차트번호로 열기 → 이름·차트번호·날짜 검사 → **비트에 이미 메모가 있으면** 같으면 '완료(이미 입력됨)', 다르면 '건너뜀: 이미 있음'(덮어쓰지 않는다) → 쓰기(`EM_REPLACESEL`, 안 되면 `ValuePattern`) → 다시 읽어 같은지 → 저장 단추 → 다시 읽어 같은지
   4. 사람마다 기록(`Journal`): 쓰기 전 `writing`, 확인 뒤 `done`/`skipped`/`check`. 진행은 숫자만 웹에 보낸다
 - 멈춤: 비트 화면 지문이 다름(칸 ID가 없거나 여러 개, `E-BIT-UI-CHANGED` + 칸 ID 목록) · 저장 안 한 처방 창(`E-BIT-UNSAVED-RX`, 누르지 않는다) · 원본 fatal 문구(창을 찾지 못·최소화·가려져 등) · 3번 잇따라 실패(`E-INPUT-STOPPED`) · 진행 창의 [멈추기](지금 사람까지 하고 멈춤)
@@ -392,6 +394,7 @@ create table public.contact_counts (
 - 언제: `helper/**`·`extension/**`·`src/lib/bridge/commands.json`·이 파일이 바뀐 push, 손으로 실행(`workflow_dispatch`), 태그 `helper-v*`
 - 권한: 기본 `contents: read`. 태그 때 릴리스 일만 `contents: write`. 비밀값을 쓰지 않는다
 - `helper` 일(windows-latest): checkout → setup-dotnet(10.x, net48 참조 어셈블리 포함) → `dotnet test helper/Precheck.sln`(Core net48·net10.0 + Windows) → `dotnet build -c Release` → `precheck-helper-<버전>.zip`(exe·DLL·`install/*`) → artifact
+- 도우미 exe(`Precheck.Helper.csproj`)는 `Precheck.Windows`를 참조하고 `<PlatformTarget>x86</PlatformTarget>`(32비트)로 빌드한다. 비트 DLL이 32비트다(원본 `tools/build_stats.ps1` `/platform:x86`). AnyCPU net48 exe는 64비트 윈도우에서 64비트로 돌아 그 DLL을 불러오지 못한다. `Platform`이 아니라 `PlatformTarget`을 써서 출력은 `bin/Release/net48` 그대로다(위 zip 단계가 읽는 자리) (TASK-33)
 - `extension` 일(ubuntu-latest): `npm ci` → `npm run ext:build` → `precheck-extension-<버전>.zip` → artifact
 - `release` 일(태그 때만): 두 zip으로 GitHub 릴리스를 만든다. 업데이트 안내 링크가 이 릴리스 쪽을 가리킨다
 - action은 버전을 고정한다(`actions/checkout@v4` 등). 서명하지 않는다 → 처음 실행 때 SmartScreen 경고가 뜬다(설치 안내에 "추가 정보 → 실행" 그림)
@@ -447,6 +450,7 @@ create table public.contact_counts (
 
 ## 16. 위험
 - **비트 통계 화면 DLL 불러 쓰기**: 원본 방식이 비트 업데이트에 약하다. Phase 1 `bit-connect`에서 의원 PC로 먼저 확인한다
+- **비트 접속 DLL을 리플렉션으로 만들기**: 원본은 `BITDataBaseCommon`을 물려받아 썼고, 도우미는 비트 DLL 없이 빌드하려고 실행할 때 리플렉션으로 만든다. 그 클래스가 추상(abstract)이면 만들 수 없어 `bit.check` DB 읽기 단계가 `E-BIT-DB-FAILED`가 된다. Phase 1 의원 PC 연결 확인에서 이 번호가 나오면 이 경우인지 먼저 본다(TASK-33 의원 PC 시험 목록)
 - **FlaUI net48**: FlaUI 4.0.0을 net48로 쓰는 빌드를 Phase 1 첫 Actions 빌드에서 확인한다. 안 되면 사용자에게 알린다(런타임을 바꾸는 큰 결정)
 - **자동 입력**: 가장 큰 작업이다. Phase 3 전에 시험용 환자 한 명으로 짧게 해 본다(plan.md §7)
 - **웹스토어 심사**: 며칠 걸린다. Phase 1 시작 때 사용자가 신청한다. 그 전에는 '압축 풀린 확장 불러오기'로 시험한다(manifest `key`로 같은 ID)

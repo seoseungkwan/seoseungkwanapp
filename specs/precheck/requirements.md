@@ -1,7 +1,7 @@
 # 요구사항: 청구 사전점검 (양지바른 사전점검 가져오기)
 
 > 기능 ID: `precheck` · 형식: 요구사항은 `### REQ-001: 제목`, 수용 기준은 `- AC-001.1: Given/When/Then`.
-> 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다. REQ 번호 = TASK 번호 = `docs/precheck/plan.md` §6의 Phase 1~7 Step 순서다.
+> 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다. REQ 번호 = TASK 번호 = `docs/precheck/plan.md` §6의 Phase 1~7 Step 순서다. 예외 하나: REQ-005의 후속 TASK-33은 Phase 1 Step 5 `helper-fixups`로 TASK-5 뒤·TASK-6 앞에 하고, 그래서 REQ-006은 Phase 1 Step 6이다(plan.md §6에는 아직 없다).
 
 ## 배경 / 목표
 - 무엇을·왜: `docs/precheck/PRD.md`. 어떻게·순서: `docs/precheck/plan.md`. 결정 기록: ADR-016~019
@@ -57,22 +57,27 @@
 - AC-004.10: Given `bit.input` 요청에 온 `progress`, When 받으면, Then 칸이 `{v, id, type, done, total}`뿐이고 `done`·`total`이 `0 ≤ done ≤ total ≤ 500`인 정수일 때만 `onProgress({id, done, total})`로 알린다. 다른 칸·숫자 아닌 값·범위 밖이거나 `bit.input`이 아닌 요청에 오면 `E-BRIDGE-BAD-REPLY`로 그 요청을 끝내고 `sink.abort(id, code)`
 - AC-004.11: Given 화면이 쓰는 입구 `connectScreenBridge({runtime, worker})`(`src/lib/bridge/workerSink.ts`), When 환자 자료 조각이 오거나 Worker가 보낼 글자를 넘기면, Then 조각·`end`·`abort`와 보낼 글자는 `workerSink`가 만든 전용 `MessageChannel` 포트로만 Worker와 오간다. 화면이 받는 것(`ScreenBridge`의 약속 값·`onState`·`onProgress`)은 상태·숫자·상태 명령의 검사한 답(AC-004.6)·진행 숫자·`{id, count}`·오류 번호뿐이고, `ScreenBridge`에는 `send`가 없다. `src/lib/bridge/client.ts`는 `src/lib/bridge/**` 밖에서 import할 수 없다(ESLint, guardrails 시험). 시험: 가짜 조각과 보낼 글자 속 '가상환자01'이 화면 쪽 콜백·약속 값 어디에도 없다
 
-### REQ-005: 비트 연결·기관기호 (Phase 1 · Step 4 · bit-connect)
+### REQ-005: 비트 연결·기관기호 (Phase 1 · Step 4 · bit-connect, 후속 Step 5 · helper-fixups)
 - AC-005.1: Given 가짜 설치 후보(앱 폴더·레지스트리 값·기본 폴더)와 가짜 파일 모양, When 비트를 찾으면, Then 원본 `InstallationLocator`·`NativeEnvironmentGuard`와 같은 규칙으로 고른다: UNC·상대 경로 거절, `ini\BITSTATISTICS.Xml`·`EXE\BITDataBaseCommon.dll`·`EXE\BITStatistics.exe`가 모두 있는 곳, 환경 파일의 `Path`·`Bin`과 일치, 지원 위치 `C:\DrBIT50`. 못 찾으면 `E-BIT-NOT-FOUND`
 - AC-005.2: Given DB 서버 이름, When 접속 전에 검사하면, Then 원본 `CheckPrivateServer`처럼 `.`·`(local)`·`localhost`·이 PC 이름·사설 IPv4(`tcp:` 앞붙임 허용)만 되고 그 밖은 `E-BIT-DB-FAILED`. 접속은 `ConnectTimeout=10`이다
 - AC-005.3: Given 도우미가 돌리려는 SQL, When `ReadOnlyGuard`를 거치면, Then `Sql.cs`에 정해 둔 상수만 매개변수와 함께 돌고, 끝내지 않는(되돌리는) 트랜잭션 안에서 읽는다(원본 그대로). 정해 둔 것 밖의 SQL 글자는 돌리지 않는다
 - AC-005.4: Given 병원 범위·기관기호 줄, When 원본 `ValidateScope`·`ValidateInstitutionNumbers`로 검사하면, Then 범위가 정확히 하나이고 모든 기관기호가 8자리 숫자이며 등록한 것과 같을 때만 통과한다(원본 시험 사례를 옮긴다)
-- AC-005.5: Given 처음 등록(`bit.register`), When 비트 로그인을 마치고 PC 확인 창에서 [확인]을 누르면, Then 병원 이름·기관기호·범위·설치 위치·서버·DB 이름을 `registration.dat`(DPAPI)에 저장하고 `{registered: true}`. [취소]·창 닫기면 저장하지 않는다. 확인 창의 글은 도우미가 비트에서 읽은 값으로만 만든다. 이미 등록돼 있어도(`E-BIT-HOSPITAL-MISMATCH` 뒤 등) 같은 길로 다시 등록할 수 있다: 확인 창에 전 등록 값과 새 값을 함께 보이고 [확인]이면 바꿔 쓴다. 기관기호가 같으면 전 등록의 프로필 ID를 그대로 둔다(작업 저장을 이어 읽게, AC-015.4)
+- AC-005.5: Given 처음 등록(`bit.register`), When 비트 로그인을 마치고 PC 확인 창에서 [확인]을 누르면, Then 기관기호·범위·설치 위치·서버·DB 이름과 프로필 ID를 `registration.dat`(DPAPI)에 저장하고 `{registered: true}`. 병원 이름은 저장하지 않는다(비트에서 병원 이름을 읽는 원본 SQL이 없다. 화면은 사이트의 병원 이름을 쓴다). [취소]·창 닫기면 저장하지 않는다. 확인 창의 글은 도우미가 비트에서 읽은 값(기관기호는 뒤 4자리 가림)으로만 만든다. 이미 등록돼 있어도(`E-BIT-HOSPITAL-MISMATCH` 뒤 등) 같은 길로 다시 등록할 수 있다: 확인 창에 전 등록 값과 새 값을 함께 보이고 [확인]이면 바꿔 쓴다. 기관기호가 같으면 전 등록의 프로필 ID를 그대로 둔다(작업 저장을 이어 읽게, AC-015.4)
 - AC-005.6: Given 등록된 도우미, When 읽기·입력 명령을 받으면, Then 먼저 원본 `VerifyCurrentInstitution`처럼 오늘 날짜로 기관기호·범위를 다시 확인하고, 등록이 없으면 `E-BIT-NOT-REGISTERED`, 다르면 `E-BIT-HOSPITAL-MISMATCH`로 그 명령을 하지 않는다
-- AC-005.7: Given `bit.check`, When 부르면, Then 단계별 결과 `steps`(비트 찾기·DB 읽기·등록 확인)를 `{name, ok, code?}`로 돌려주고, 등록됐으면 병원 이름과 기관기호를 함께 준다. 실패한 단계 뒤는 `ok: false`·`code: 'E-…'`로 채운다
+- AC-005.7: Given `bit.check`, When 부르면, Then 단계별 결과 `steps`(비트 찾기·DB 읽기·등록 확인)를 `{name, ok, code?}`로 돌려주고, 등록됐으면 기관기호를 함께 준다(병원 이름은 주지 않는다). 실패한 단계 뒤는 `ok: false`·`code: 'E-…'`로 채운다
+- AC-005.8: Given `helper/src/Precheck.Helper/Precheck.Helper.csproj`, When 읽고 이 서버에서 `dotnet build helper/src/Precheck.Helper/Precheck.Helper.csproj -c Release`를 돌리면, Then csproj에 `<ProjectReference Include="../Precheck.Windows/Precheck.Windows.csproj" />`와 `<PlatformTarget>x86</PlatformTarget>`이 있고 `<Platform>`·`<Platforms>` 칸은 없다. 빌드가 통과해 `helper/src/Precheck.Helper/bin/Release/net48/`(helper.yml이 zip을 만들 때 읽는 자리 그대로)에 `PrecheckHelper.exe`·`Precheck.Windows.dll`·`Precheck.Core.dll`이 생기고, exe의 CLR 머리 Flags에 32비트 전용(`32BITREQUIRED`)이 켜져 있다. 까닭: 비트 DLL이 32비트다(원본 `tools/build_stats.ps1`의 `/platform:x86`). AnyCPU net48 exe는 64비트 윈도우에서 64비트로 돌아 그 DLL을 불러오지 못한다
+- AC-005.9: Given 비트에서 읽은 등록 값, When 도우미가 `registration.dat`를 쓰거나 `bit.check` 답·PC 확인 창 글을 만들면, Then 병원 이름이 어디에도 없다: `registration.dat` JSON 칸은 `version`·`profileId`·`institutionCode`·`scope`·`installPath`·`server`·`database`뿐이고, `bit.check` result 칸은 `steps`·`registered`·`institutionCode`(`registered: true`일 때만)뿐이다. 확인 창 글은 비트에서 읽은 등록 값(기관기호 뒤 4자리 가림·비트 병원 범위·설치 위치·서버·DB 이름)으로만 만들고, 다시 등록이면 전 값과 새 값을 함께 보인다. 범위 값 등 다른 값을 병원 이름 자리에 넣지 않는다
+- AC-005.10: Given 웹 통로가 받은 `bit.check` 답, When `hospitalName` 칸이 있으면(값이 무엇이든), Then 모르는 칸이므로 `E-BRIDGE-BAD-REPLY`다. `ResultOf<'bit.check'>` 타입은 `{steps, registered, institutionCode?}`이고 `hospitalName`이 없다. 설치 화면의 병원 이름은 사이트가 가진 로그인한 사용자의 병원 이름이다(REQ-006)
+- AC-005.11: Given `helper/src/Precheck.Windows/SqlBitDb.cs` 글자, When 시험이 읽으면(이 서버에서, 윈도우 없이), Then `Commit` 부름이 없고, `new SqlCommand(`는 모두 그 세션의 트랜잭션을 인자로 받아 만든다. 예외는 트랜잭션을 열기 전에 격리 수준만 보는 `Sql.SnapshotStateSql` 한 곳(원본 그대로)이고, 그것도 `ReadOnlyGuard.Require`를 먼저 지난다
+- AC-005.12: Given `registration.dat`, When 도우미가 등록을 읽으면(`bit.check`·`bit.register`·읽기·입력 명령 전 확인), Then design.md 9-3의 깨진 파일 규칙을 따른다: 파일이 없으면 등록 없음(`E-BIT-NOT-REGISTERED`)이다. 있는데 깨졌으면(머리 다름·크기 넘음·풀기 실패·JSON·칸 틀림) `.bak`이 같은 검사를 통과할 때는 깨진 파일을 지우지 않고 이름을 바꿔 두고 `.bak` 내용으로 `registration.dat`를 되살려 그 값을 쓴다(그 뒤 확인은 AC-005.6 그대로). `.bak`도 없거나 깨졌으면 `E-STORE-BROKEN`이다(파일은 그대로 둔다): `bit.check`는 `registered: false`이고 `registration` 단계가(앞 단계가 통과했으면) `ok: false`·`code: 'E-STORE-BROKEN'`, 읽기·입력 명령은 그 번호로 하지 않는다. 이때 `bit.register`는 처음 등록처럼(전 값 없이, 새 프로필 ID) 새로 등록할 수 있다. [확인]으로 저장할 때 깨진 `registration.dat`와 깨진 `.bak`은 먼저 지우지 않고 이름을 바꿔 둔 뒤 새 `registration.dat`를 쓴다(깨진 파일이 새 `.bak`이 되거나 덮여 사라지지 않게)
 
-### REQ-006: 설치·연결 확인 화면 (Phase 1 · Step 5 · setup-screen)
+### REQ-006: 설치·연결 확인 화면 (Phase 1 · Step 6 · setup-screen)
 - AC-006.1: Given `/claim/setup`, When 통로 상태가 `no-extension`·`no-helper`·`update-helper`·`update-extension`·`busy`이면, Then 목업 승인본의 상태별 안내를 보인다: 확장 설치 링크, 도우미 zip 받는 곳과 설치 순서(경고 창 넘기는 법 포함), "도우미를 업데이트하세요", "확장을 업데이트하세요", "다른 창에서 작업 중"
-- AC-006.2: Given 상태 `ready`, When [연결 확인]을 누르면, Then `bit.check`를 부르고 단계마다 ✓/✗와 오류 번호를 보인다. 등록이 없으면 [처음 등록]이, `E-BIT-HOSPITAL-MISMATCH`면 [다시 등록]이 보이고, 누르면 `bit.register`(PC 확인 창, AC-005.5)를 부른 뒤 다시 확인한다. 누른 동안 단추를 막는다
+- AC-006.2: Given 상태 `ready`, When [연결 확인]을 누르면, Then `bit.check`를 부르고 단계마다 ✓/✗와 오류 번호를 보인다. 등록이 없으면(`registered: false`. 등록 파일이 깨져 `E-STORE-BROKEN`일 때도) [처음 등록]이, `E-BIT-HOSPITAL-MISMATCH`면 [다시 등록]이 보이고, 누르면 `bit.register`(PC 확인 창, AC-005.5)를 부른 뒤 다시 확인한다. 누른 동안 단추를 막는다
 - AC-006.3: Given `helperUpdateAvailable`, When 화면을 그리면, Then "새 도우미가 있어요" 한 줄과 받는 곳 링크를 보이고 나머지는 그대로 쓸 수 있다
-- AC-006.4: Given 탭 줄, When 승인된 사용자가 보면, Then 목업 승인본 위치에 [청구] 탭이 `/claim` 링크로 있다(`aria-current` 포함). 기관기호는 뒤 4자리를 가려 보인다
+- AC-006.4: Given 탭 줄, When 승인된 사용자가 보면, Then 목업 승인본 위치에 [청구] 탭이 `/claim` 링크로 있다(`aria-current` 포함). 기관기호는 뒤 4자리를 가려 보이고, 그 옆 병원 이름은 도우미 답이 아니라 앱이 가진 로그인한 사용자의 병원 이름(사이트에 등록한 이름)이다
 - AC-006.5: Given 휴대폰이나 확장 없는 브라우저, When `/claim/setup`을 열면, Then "비트 PC의 크롬에서 엽니다" 안내와 밖에서 보는 건수(`/claim`)로 가는 링크를 보인다
-- AC-006.6: Given 새 오류 번호(design.md 4-5 중 연결·도우미·비트 접속 것), When `errorInfo(code)`, Then '무엇이·어떻게 고치나' 문구가 `lib/errors.ts`에서 나온다. 화면에는 원래 오류 내용이 보이지 않는다
+- AC-006.6: Given 새 오류 번호(design.md 4-5 중 연결·도우미·비트 접속 것과 `bit.check` 등록 단계가 줄 수 있는 `E-STORE-FAILED`·`E-STORE-BROKEN`), When `errorInfo(code)`, Then '무엇이·어떻게 고치나' 문구가 `lib/errors.ts`에서 나온다. 화면에는 원래 오류 내용이 보이지 않는다
 
 ### REQ-007: 규칙표·약·상병 표 (Phase 2 · Step 0 · rule-data)
 - AC-007.1: Given `src/lib/precheck/data/rules.json`, When 읽으면, Then 원본 `tools/precheck_rules.json`(2a1069b)과 같은 `version`·`code_groups`(76)·`drug_classes`(27)·`regions`(16키)와 규칙 262개가 있다. 규칙마다 원본의 16칸(`id`·`domain`·`title`·`type`·`params`·`grade`·`message`·`basis`·`confidence`·`data_needed`·`automatable`·`stage`·`enabled_default`·`effective_from`·`effective_to`·`notes`)이 같고, `id`가 겹치지 않으며, `grade`는 `확인필요`·`알림`·`참고` 중 하나, `basis`마다 `doc`·`number`가 있다
@@ -152,7 +157,7 @@
 
 ### REQ-017: 비트 자동 입력 (Phase 3 · Step 3 · bit-input)
 - AC-017.1: Given `bit.input {items: [{visitKey, chart, name, date, memo}]}`, When 받으면, Then 등록 병원 확인 → 비트 화면 지문 확인 → 묶음 검사(500명 이하, 차트번호 `^[0-9]{1,20}$`, 이름 1~100자, 날짜 모양, 메모 1~32,000자, 같은 진료 두 번 없음)를 거친다. 하나라도 틀리면 아무것도 입력하지 않고 오류를 돌려준다
-- AC-017.2: Given 검사를 통과한 묶음, When 입력 전에, Then 도우미가 묶음에서 직접 만든 글("10/27~10/29, 32명 입력할까요?"와 병원 이름)의 PC 확인 창을 띄운다. [확인]을 눌러야 시작하고, [취소]·창 닫기·5분 지남이면 하나도 입력하지 않고 `cancelled`로 끝난다
+- AC-017.2: Given 검사를 통과한 묶음, When 입력 전에, Then 도우미가 묶음에서 직접 만든 글("10/27~10/29, 32명 입력할까요?"와 등록한 기관기호, 뒤 4자리 가림)의 PC 확인 창을 띄운다. [확인]을 눌러야 시작하고, [취소]·창 닫기·5분 지남이면 하나도 입력하지 않고 `cancelled`로 끝난다
 - AC-017.3: Given 사람 하나, When 입력하면, Then 원본 `UChartAutomation`·`autoOne` 순서를 따른다: 내원내역에서 차트번호로 열기 → 이름·차트번호·내원일 검사 → 바로 앞에서 비트 메모 다시 읽기(같으면 완료, 다르면 건너뜀 '이미 있음', 덮어쓰지 않음) → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지
 - AC-017.4: Given 비트 화면 지문(`BITDoctorOrder.exe` 프로세스 규칙, '외래진료실' 창의 `txtChtNum`·`lbPatName`·`txtBilCmt`·`btnBilCmtModify`, '내원내역' 창의 `cbSch`·`txtSch`·`btnSch`·`ctgMain`이 정확히 하나씩), When 하나라도 없거나 여럿이면, Then 입력을 시작하지 않거나 그 사람에서 멈추고 `E-BIT-UI-CHANGED`와 칸 ID 목록을 돌려준다. 짐작해서 누르지 않는다
 - AC-017.5: Given 저장 안 한 처방 창(원본 '저장되지않은처방')·원본 fatal 문구·3번 잇따른 실패·진행 창 [멈추기], When 생기면, Then 그 자리에서 멈추고(멈추기는 지금 사람까지) 남은 사람을 '확인 필요: 미처리'로 둔다. 저장 안 한 처방 창은 누르지 않는다(`E-BIT-UNSAVED-RX`)
