@@ -26,8 +26,9 @@
     - 앱 틀(REQ-218)과 차트 부품(REQ-205)·미리보기(REQ-206)는 그대로 둔다. 차트 부품은 다음 대시보드 명세가 다시 쓴다.
   - 랜딩 `base.module.css`의 `.btnSm`은 랜딩 TSX에서 쓰는 곳이 없어도 남긴다(AC-212.4 예외).
   - 앱 탭 줄의 첫 탭 맞춤은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 한다(TASK-20에서 만든 대로, AC-218.2·design.md).
+- 만든 대로 글 맞춤(2026-10-31, 승인 뒤 명세 고침): 동작·시험 기대는 바뀌지 않는다. 아래 문구 줄에서 지운 REQ-219의 "새 빈 상태 문구"를 뺐고, AC-212.2의 글자 단계 목록에서 TASK-14가 지운 `.tLead`를 뺐고, AC-221.1에 TASK-23이 남긴 `ds` 키 예외와 함께 지운 `:root`의 `--font-sans`를 적었다(design.md '만든 대로 글 맞춤'). 이와 달리 AC-220.1의 관리자 표(768~1023px 칸 폭·줄바꿈, 표 최소 폭 없음)는 TASK-24가 화면을 고친 것을 적은 것이고, 관리자 시험 기대 하나가 함께 바뀌었다(tasks.md TASK-24).
 - 기준 시안: `docs/mockups/b2b-redesign/`(게시본 https://claude.ai/artifact/574fyw1mAQmqBw4jWjhr6f, 2026-10-30 사용자가 "진행해"로 승인). 화면 마크업·CSS 값은 시안의 `screens.mjs`·`parts.mjs`·`style.css`를 따른다. 시안과 이 명세가 다르면 이 명세가 이긴다(design.md '시안과 다른 점').
-- 문구는 지금 컴포넌트 문구를 그대로 쓴다. 바뀌는 문구는 이 명세 AC에 적힌 것(빈칸 바꾸기, 줄바꿈 태그 빼기, 사라지는 영역의 문구, 새 빈 상태 문구)뿐이다.
+- 문구는 지금 컴포넌트 문구를 그대로 쓴다. 바뀌는 문구는 이 명세 AC에 적힌 것(빈칸 바꾸기, 줄바꿈 태그 빼기, 사라지는 영역의 문구, 차트 부품 `KpiStat`의 빈 값 문구 "자료 없음"(AC-205.3))뿐이다.
 - 이 명세가 대체하는 옛 기준. 옛 명세 파일(`specs/landing/`·`specs/auth/`·`specs/landing-v2/`)은 고치지 않는다(승인 기록이 깨지지 않게). 대신 UI_GUIDE·ADR-019에 "b2b-redesign이 대체"라고 적는다.
   - landing-v2: REQ-102·REQ-105~REQ-113의 모양 값 전부(CSS 값, 섹션 짜임, 약속 띠, 히어로 미리보기), 시안 `docs/mockups/landing-v2/`의 모양
   - landing: AC-001.1(섹션 8개·약속 띠·`#start`), AC-001.3(h1 줄바꿈), AC-002.1의 "시작하기 섹션" 위치, AC-003.1~AC-004.2(히어로 숫자 2.6초 순환), AC-005.1 중 사라지는 문구, AC-005.2(빈칸)
@@ -262,7 +263,7 @@
   - `.root`: surface 바탕·ink 글자·`var(--font-ui)`·body 14/22·고정폭 숫자·`word-break: keep-all`.
   - `.wrap`: 최대 폭 `calc(var(--w-landing) + 2 * var(--gutter))`·가운데·좌우 `var(--gutter-m)` → `var(--gutter)`(768). `.grid`: 1024px 이상 12칸·칸 사이 24px.
   - `.sec`: 위아래 48px → 64px(768) → 96px(1024). `.secCanvas`(띠): canvas 바탕. 이름은 지금 그대로 둔다.
-  - 글자 단계 클래스(`.tDisplay`·`.tHeading`·`.tTitle`·`.tSubtitle`·`.tLead`·`.tSmall`·`.tCaption` 가운데 랜딩이 쓰는 것)는 토큰 크기·줄 높이다. `.tDisplay`는 display-m → display(768), `.tHeading`은 heading-m → heading(768).
+  - 글자 단계 클래스(`.tDisplay`·`.tHeading`·`.tTitle`·`.tSubtitle`·`.tSmall`·`.tCaption`)는 토큰 크기·줄 높이다. `.tLead`는 랜딩이 쓰지 않아 TASK-14에서 지웠다(AC-212.4: 정의한 클래스는 모두 쓴다). `.tDisplay`는 display-m → display(768), `.tHeading`은 heading-m → heading(768).
   - 단추(`.btn`+`.btnSm`·`.btnMd`·`.btnLg`, `.btnPrimary`·`.btnSecondary`)와 칩(`.chip`+`.chipNeutral`·`.chipPositive`·`.chipWarning`)은 앱 공통 모양(REQ-204)의 같은 종류와 같은 토큰 값이다(높이·여백·모서리·색).
   - 숨김 도우미 `.pcOnly`(768px 미만 숨김)·`.phoneOnly`(768px 이상 숨김)·`.srOnly`가 있다.
 - AC-212.3: Given `/` 페이지 마크업, When 상자(REQ-204 AC-204.7과 같은 규칙. 랜딩 모듈에서 네 변 테두리를 주는 클래스도 상자다)를 보면, Then 상자 안에 상자가 없고, 섹션마다 맨 바깥 상자는 하나 이하다.
@@ -340,7 +341,10 @@
 - AC-220.1: Given `AdminApplications`(PC), When 그리면, Then 아래와 같다.
   - h1 "가입 신청"(title) → 안내 `<p>`(지금 문구, ink-2, 위 4px).
   - 화면 안 탭(위 16px, 40px, 아래 1px line): 대기·승인·거절 + 개수(글자만, muted 500, 칩 아님). 지금 탭은 ink 600 + 아래 2px accent 밑줄, 나머지 ink-2 500.
-  - 표: 패널 틀 없이 본문 위에 바로(surface 바탕·위아래 1px line·모서리 없음·위 16px). 칸 신청일(120px, muted 고정폭) · 병원 이름(600) · 신청자(120px) · 이메일(ink-2) · 연락처(150px, ink-2 고정폭) · 동작(150px, 오른쪽). 몸 줄 56px, 머리 small 500 muted.
+  - 표: 패널 틀 없이 본문 위에 바로(surface 바탕·위아래 1px line·모서리 없음·위 16px). 칸 신청일(muted 고정폭) · 병원 이름(600) · 신청자 · 이메일(ink-2) · 연락처(ink-2 고정폭) · 동작(오른쪽). 몸 줄 56px(`md:h-14`, 예시 자료는 768~1023px에서도 56px), 머리 small 500 muted.
+    - 칸 폭은 정해 둔다(`table-fixed`). 표에는 최소 폭이 없어 옆으로 밀리지 않는다. 1024px 이상은 신청일·신청자 120px, 연락처·동작 150px이다. 1024px 미만(머리가 보이는 768~1023px)은 신청일 116 · 신청자 80 · 연락처 136 · 동작 140px로 줄인다(`max-lg:w-29`·`max-lg:w-20`·`max-lg:w-34`·`max-lg:w-35`). 병원 이름·이메일은 남은 폭을 반씩 쓴다.
+    - 글 칸(병원 이름·신청자·이메일): 1024px 이상은 넘치면 말줄임("…")이고 `title`에 전체 값이 있다. 768~1023px은 말줄임 대신 줄바꿈한다(`md:max-lg:whitespace-normal md:max-lg:break-all`). 768px 미만 줄의 병원 이름은 말줄임 그대로다(AC-220.2).
+    - (2026-10-31 TASK-24에서 고침: 전에는 칸 폭이 모든 폭에서 120·150px이고 표가 최소 1000px이라, 768~1023px에서는 표를 옆으로 밀어야 [승인]·[거절]이 보였고 글 칸은 말줄임이었다. tasks.md TASK-24.)
   - 동작 칸: 대기 줄 [승인] `ds.button.accentOutlineSmall` · [거절] `ds.button.secondarySmall`, 거절 줄 [되돌리기] `ds.button.secondarySmall`, 승인 줄 "승인됨" 완료 칩 `ds.chip.positive`(지금처럼 단추 대신). 줄의 상태를 따로 알리는 상태 칩(지금 휴대폰의 대기·거절됨)은 없다(탭이 상태다).
   - 표 아래 "대기 중인 신청 N건"(small muted)은 시안에 있지만 두지 않는다(개수는 탭에 있다).
   - 완료 줄·오류 카드 자리(탭 줄과 표 사이)·빈 탭 줄은 그대로다.
@@ -352,8 +356,9 @@
 ### REQ-221: 옛 이름 정리
 - AC-221.1: Given 시험 파일 밖 `src/`(대시보드 두 폴더 `src/components/dashboard/`·`src/app/(app)/dashboard/`는 빼고), When 읽으면, Then 옮기는 동안 둔 옛 이름이 없다.
   - Tailwind 클래스 `text-table`·`text-tab`·`text-panel`·`text-logo`·`text-title-sm`·`text-kpi`·`text-kpi-sm`·`rounded-card`·`rounded-chip`·`*-ok`·`*-ok-soft`·`*-danger`·`*-danger-soft`·`*-warn`이 없다. 남기는 `ui` 세 키의 값(`classes.ts`) 안의 `rounded-card`·`text-panel`은 이 검사에서 뺀다.
-  - `globals.css`에 옛 별칭(`@theme`의 옛 이름, `:root`의 `--ok`·`--ok-soft`·`--danger`·`--danger-soft`·`--accent-tint`·`--field`·`--content-max`)이 없다. 예외는 대시보드 빈 자리가 아직 쓰는 `@theme` 별칭 넷이다: `--radius-card`·`--text-table`·`--text-panel`·`--text-title-sm`(글자 셋은 `--line-height`까지). 값은 지금 그대로다(`var(--r-control)`·small·subtitle·title 토큰).
+  - `globals.css`에 옛 별칭(`@theme`의 옛 이름, `:root`의 `--ok`·`--ok-soft`·`--danger`·`--danger-soft`·`--accent-tint`·`--field`·`--content-max`·`--font-sans`)이 없다(`@theme`의 `--font-sans: var(--font-ui)`는 새 토큰이라 남는다). 예외는 대시보드 빈 자리가 아직 쓰는 `@theme` 별칭 넷이다: `--radius-card`·`--text-table`·`--text-panel`·`--text-title-sm`(글자 셋은 `--line-height`까지). 값은 지금 그대로다(`var(--r-control)`·small·subtitle·title 토큰).
   - 옛 모양 묶음 `ui`(`classes.ts`의 `export const ui`)에는 대시보드 빈 자리가 쓰는 세 키 `card`·`panel`·`panelTitle`만 남고, 값은 한 글자도 바뀌지 않는다. `ui`를 보는 옛 시험(TASK-23 '고치는 옛 시험'에 적은 `classes.test.ts`의 옛 `ui` 모양·휴대폰 목록 시험)이 없다. `ui.` 참조는 `classes.ts`와 대시보드 두 폴더에만 있다. 대시보드 두 폴더 밖의 앱 화면·차트·미리보기는 모두 `ds`만 쓴다. `ds`에 어느 화면도 쓰지 않는 키가 없다.
+    - 예외(TASK-23에서 만든 대로, `classes.test.ts`에 목록으로 적는다): 다음 대시보드 명세가 쓸 키 `NEXT_DASHBOARD_KEYS` = `button.primarySmall`·`panel`·`panelHead`·`panelTitle`·`panelBody`·`count`·`table.tdNum`·`table.check`(REQ-204가 정했지만 대시보드 본문을 뺀 뒤 쓰는 화면이 없다), 다른 키 안에 들어 있어 따로 부르지 않는 키 `INSIDE_OTHER_KEYS` = `focusRing`(단추·글자 단추·체크 상자가 같이 쓴다). 예외 목록의 키는 모두 `ds`에 있다. 다음 대시보드 명세가 `NEXT_DASHBOARD_KEYS`를 비운다.
 - AC-221.2: Given 규칙 시험, When 돌리면, Then 검사 목록 없이 전체를 본다: AC-204.6은 앱 화면 폴더 전체(대시보드 두 폴더 빼고) + `components/charts`·`components/preview`, AC-204.7은 REQ-213~REQ-218·REQ-220의 모든 화면(대시보드 본문 없음), AC-212.1은 랜딩 폴더 전체.
   - 대시보드 두 폴더를 빼는 것은 이 AC의 두 검사(REQ-204의 클래스 규칙·상자 겹침)와 AC-221.1뿐이다. 16진수 색 검사(REQ-202)·굵기 검사(REQ-203)·그대로 두는 옛 앱 화면 색 검사(`classes.test.ts`, auth 명세)는 그 두 폴더도 보고, 지금 파일 그대로 통과한다.
 - AC-221.3: Given `src/components/common/LogoMark.tsx` 주석과 `src/comments.test.ts`, When 읽으면, Then 쓰는 곳 크기 목록이 지금과 같다(랜딩 메뉴 24·바닥글 18·미리보기 18·앱 틀 24·인증 틀 28, 로그인 좁은 화면은 같은 28을 클래스로 24로 줄임).
