@@ -1,10 +1,11 @@
 # 요구사항: 청구 사전점검 (양지바른 사전점검 가져오기)
 
 > 기능 ID: `precheck` · 형식: 요구사항은 `### REQ-001: 제목`, 수용 기준은 `- AC-001.1: Given/When/Then`.
-> 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다. REQ 번호 = TASK 번호 = `docs/precheck/plan.md` §6의 Phase 1~7 Step 순서다. 예외 하나: REQ-005의 후속 TASK-33은 Phase 1 Step 5 `helper-fixups`로 TASK-5 뒤·TASK-6 앞에 하고, 그래서 REQ-006은 Phase 1 Step 6이다(plan.md §6에는 아직 없다).
+> 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다. REQ 번호 = TASK 번호 = `docs/precheck/plan.md` §6의 Phase 1~7 Step 순서다. 예외 둘: ① REQ-005의 후속 TASK-33은 Phase 1 Step 5 `helper-fixups`로 TASK-5 뒤·TASK-6 앞에 하고, 그래서 REQ-006은 Phase 1 Step 6이다(plan.md §6에는 아직 없다). ② REQ-034(TASK-34, b2b 개편 합치기 맞춤)는 plan.md §6의 Step이 아니고 Phase 1 끝·Phase 2 앞에 한다. REQ-033은 없다(TASK-33은 REQ-005 몫).
 
 ## 배경 / 목표
-- 무엇을·왜: `docs/precheck/PRD.md`. 어떻게·순서: `docs/precheck/plan.md`. 결정 기록: ADR-016~019
+- 무엇을·왜: `docs/precheck/PRD.md`. 어떻게·순서: `docs/precheck/plan.md`. 결정 기록: ADR-016·ADR-020~022 (b2b 개편 합치기 뒤 번호. 청구의 옛 ADR-017·018·019가 ADR-020·021·022가 된다. b2b가 ADR-017~019를 먼저 썼다, REQ-034)
+- 2026-10-31: 앱 전체 B2B 디자인 개편(`specs/b2b-redesign`)이 이 기능(PR #7)보다 먼저 main에 들어갔다(합치기 커밋 `359a4a4`, PR #11. main에는 auth-live PR #9·landing-v2 PR #10도 있다). 그래서 `origin/main`을 이 브랜치에 합치고 청구 화면·설정·문서를 b2b 규칙에 맞춘다(REQ-034). 기능·동작·자료 길은 바뀌지 않는다. 탭 순서·이름은 지금 그대로다(탭 다시 짜기는 따로 `tab-frame` 명세가 한다)
 - 2026-10-30 사용자 결정(다시 묻지 않는다)
   - **혼자 돈다**: 우리 크롬 확장(웹스토어 비공개)과 크롬이 켜는 윈도우 도우미(C#/.NET). 열린 포트·로컬 네트워크 허용 창·토큰이 없다. 양지바른은 켜지도 설치하지도 않고 설정도 맞추지 않는다
   - **환자 자료는 PC에만**: 확장 → 통로 코드 → Worker, 화면은 메모리에만. 고치던 메모·완료 표시는 도우미가 그 PC에 암호화해 둔다. 두 번 입력은 비트에 이미 있는 메모와 비교해 막는다. 12개월 이력·F/U 명단은 그때그때 비트에서 계산한다
@@ -13,7 +14,7 @@
   - 총괄 한 사람이 쓴다. 청구메모는 며칠에 한 번 묶어서 하고, 화면은 아직 입력 안 된 날짜를 먼저 보인다. 규칙은 우리 앱에서만 고친다. 통계는 도우미가 자료를 주고 지금 파일 올리기는 예비로 남긴다
   - 입력은 묶음마다 PC 확인 창의 [확인]을 거친다. 비트 화면이 바뀐 것이 보이면 입력을 멈춘다
 - Claude 판단으로 넣는 것: 통로 코드 울타리와 시험, CSP는 바꾸지 않고 확장 ID는 코드 상수 하나, 청구 화면에 오류 수집 도구 없음, 멈춘 뒤 다시 열면 비트와 비교해 이어서, 일부만 온 자료면 멈춤, 달을 넘기는 묶음 허용, 진료 없는 날 숨김, 창 하나만, "설정이 바뀌었어요" 띠, 웹·확장·도우미 버전 맞추기, 1MB씩 나눠 보내기, 규칙·약 표는 그때 불러오기, 골든 테스트, GitHub Actions 윈도우 빌드(서명 없음)
-- 화면 AC는 내용(보이는 것·단추·상태)만 정한다. 배치·문구는 **Phase 0 목업(승인본)**을, 모양은 `docs/UI_GUIDE.md` '앱 화면'을 따른다
+- 화면 AC는 내용(보이는 것·단추·상태)만 정한다. 배치·문구는 **Phase 0 목업(승인본)**을, 모양은 `docs/UI_GUIDE.md`(b2b 개편 뒤: '공통 모양'(`components/ui/classes.ts`의 `ds`)·'앱 틀'·'관리자')를 따른다
 - 원본: GitHub `seoseungkwan/shared` main `YangjiBareun_사전점검/` 커밋 `2a1069b`. 옮기는 파일과 함수 이름은 design.md 2절
 
 ## 요구사항
@@ -264,6 +265,13 @@
 - AC-032.3: Given 백업 파일, When 내용을 보면, Then 설정 표 칸만 있고 환자 정보·건수·기관기호가 없다
 - AC-032.4: Given 읽기 실패, When 누르면, Then 파일을 만들지 않고 `E-BACKUP-FAILED`를 보인다
 
+### REQ-034: b2b 개편 합치기 맞춤 (Phase 1 끝 · b2b-merge, plan.md §6 밖)
+- AC-034.1: Given `origin/main`(b2b 개편 포함)을 합친 뒤의 `TabBar`, When 어느 화면에서 그리면, Then 탭 모양은 b2b AC-218.2와 같고(44px·좌우 12px·body, 기본 ink-2 500 → 올림 ink, 준비 중 faint, 지금 탭 ink 600 + 아래 2px accent 밑줄 `after:inset-x-3 after:h-0.5`, 툴팁 `rounded-float`·`shadow-float`) 지금 탭 판단은 청구 그대로다(`menu.ts`의 `currentMenuLabel`: `/claim`·`/claim/close`는 [청구], `/claim/setup`은 [설정] 자리, [관리자]는 `isUnder`). 지금 화면이 속한 준비 중 탭(`/claim/setup`의 [설정])은 누를 수 없는 단추(`aria-disabled`·'준비 중' 툴팁) 그대로이면서 `aria-current="page"`와 지금 탭 모양(`text-ink font-semibold after:bg-accent`)을 갖고, `text-faint`·`text-ink-2`·`font-medium`이 없다. 탭 순서·이름은 지금 청구 그대로다(청구는 매출 뒤). `TabBar.tsx`에 "teal" 글자가 없다(b2b `src/comments.test.ts`). 시험: `shell.test.tsx`의 청구 AC-006.4 `it`들은 모양 기대값을 b2b 지금 탭 클래스로 고치고 이름에 AC-034.1을 더한다(그 밖의 본문은 그대로). main 쪽이 갈라진 뒤 고치거나 더한 `it`은 고치지 않고 통과한다(TASK-34 금지사항)
+- AC-034.2: Given `/claim/setup`의 설정 안 메뉴(nav "설정 안 메뉴"), When 그리면, Then b2b 관리자 화면 안 탭(AC-220.1, `AdminApplications`)과 같은 모양이다: 줄 아래 1px line, 항목 40px(768px 미만 44px)·좌우 12px·body·`rounded-control`, 첫 항목은 왼쪽으로 12px 당김(`first:-ml-3`), 기본 ink-2 500(올림 ink), 지금 [비트 연결](`aria-current="page"`)은 ink 600 + 아래 2px accent 밑줄(`after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`), 키보드 초점은 안쪽 2px accent 고리. 설정 화면이 아직 없으면 [청구·연락]은 링크가 아니고(`aria-disabled`) 기본 모양(올림 변화 없음)에 `ds.chip.neutral` "준비 중"이 붙는다. `font-bold`·`text-accent`·3px 밑줄(`after:h-0.75`)이 없다. 시험: `SetupScreen.test.tsx`
+- AC-034.3: Given 시험 파일 밖 `src/components/claim/**`(설치 화면 `SetupScreen`·`SetupAlert`·`StepGuide`·`ClaimEntry`), When 읽으면, Then b2b 옛 이름 규칙(AC-221.1)과 굵기 규칙(AC-203.3)을 지킨다: `components/ui/classes`에서 `ds`만 불러오고 `ui.`가 없다. 옛 Tailwind 이름(`rounded-card`·`rounded-chip`·`text-table`·`text-tab`·`text-panel`·`text-title-sm`·`*-danger`·`*-danger-soft`·`*-ok`·`*-ok-soft`·`*-warn`)이 없고 굵기는 400·500·600뿐이다(`font-bold`·`font-extrabold`·`font-black`·`font-light` 등 없음). 옮기는 짝은 design.md 18-3 표 하나다. 문구·동작은 그대로다. 시험: `src/b2b-merge.test.ts`(청구 폴더만 본다). 같은 규칙을 `src/` 전체에서 보는 b2b `src/app/theme.test.ts`·`src/components/ui/classes.test.ts`·`src/app/fonts.test.ts`도 한 글자도 고치지 않고 통과한다(대시보드 두 폴더 예외도 그대로)
+- AC-034.4: Given 합친 뒤 `docs/ADR.md`, When 제목 줄(`### ADR-NNN:`)을 읽으면, Then 번호가 한 번씩이고 오름차순이다. ADR-016은 청구(크롬 확장 + 도우미), ADR-017~019는 main이 가져온 b2b 쪽 것(E2E·랜딩 개편·디자인 토큰) 그대로, 청구의 옛 ADR-017·018·019는 ADR-020·021·022다(제목·본문 그대로, 본문 안 번호 인용만 새 번호). `docs/ADR.md` 맨 위 안내 줄의 청구 범위는 "ADR-016·020~022는 2026-10-30 청구 사전점검"이고, '철학'의 §10 줄("사용자가 다시 꺼낸 것만 넣는다")은 ADR-022를 가리킨다(ADR-019가 아니다). 청구만 쓰는 파일(`eslint.config.mjs`·`src/lib/bridge/extensionId.ts`·`src/lib/csp.test.ts`·`phases/precheck-*/*.md`)에는 ADR-017·018·019 인용이 없다. 섞인 문서(`CLAUDE.md`·`docs/ARCHITECTURE.md`·`plan.md`)에서 ADR-017·018·019를 가리키는 줄에는 청구 낱말(청구·도우미·비트·`lib/bridge`)이 없다(그 줄은 b2b 쪽 인용이다). 범위·나열 글(`ADR-016~019`·`ADR-017·018`)은 펼쳐서 본다. 시험: `src/b2b-merge.test.ts`
+- AC-034.5: Given 합친 뒤 설정 파일, When 읽고 돌리면, Then 두 쪽이 다 산다: `package.json` scripts에 main 쪽 `e2e`·`e2e:env`와 청구 `ext:build`가 값 그대로 있고(패키지·버전은 두 쪽 그대로, 새 패키지 없음), `vitest.config.ts`의 `include`는 두 쪽 합(`src/**/*.test.{ts,tsx}`·`fixtures/**/*.test.ts`·`supabase/**/*.test.ts`·`e2e/**/*.test.ts`·`helper/tests/*.test.ts`·`extension/**/*.test.ts`)이며 `e2e/**/*.spec.ts`는 잡지 않는다. `CLAUDE.md` 기술 줄에 b2b 스타일링 줄(토큰은 `globals.css` `:root` 한 곳·Pretendard, ADR-019)과 청구 줄(ADR-016)이 둘 다 있다. 시험: `src/b2b-merge.test.ts`, 그리고 main 쪽 `e2e/config.test.ts`와 청구 `extension/src/manifest.test.ts`(AC-003.8 `npm run ext:build`)가 고치지 않고 통과한다
+
 ## 범위 밖
 - 팀장 도구(아침 브리핑·법정 점검·교육·재고·유효기간·근무·연차·일일 마감·목표·치료 회차), 구매·운영, 지식·안내(고시 검색·원무 안내·정책 소식), 원장님 잠금, 원격 PC 목록, 자리 비움 잠금 (PRD 5, 사용자)
 - 비상용 화면·오프라인 길: 인터넷이나 서버가 멈추면 기다린다 (사용자)
@@ -272,3 +280,6 @@
 - 통계 기본 화면(신환·재진 수, 7·14일 재방문 등의 화면)은 통계 명세가 따로 만든다. 이 명세는 추가분만
 - 백업 되살리기 화면(SQL로만), 백업에 다른 기능 표 넣기
 - Phase 0 Step 2·3(목업·Step 파일)은 이 명세 밖이다(문서 작업)
+- 탭 순서·이름 다시 짜기(따로 `tab-frame` 명세). REQ-034는 b2b 모양만 입히고 순서·이름·링크는 그대로 둔다
+- 청구 화면 폴더를 b2b 모양 규칙 시험(`classes.test.ts`의 AC-204.6 간격·모서리 검사 목록, AC-204.7 상자 안 상자)에 넣기: 청구 화면을 다시 디자인할 때 한다(사용자 2026-10-31 "청구 화면은 나중에 다시 디자인"). 옛 이름·`ds`만·굵기 검사(AC-221.1·AC-203.3)는 `src/` 전체를 보므로 지금도 걸린다
+- TASK-34로 합친 뒤 main에 더 들어오는 것과의 충돌: 그때 따로 명세를 고친다

@@ -1,10 +1,10 @@
 # 작업 분할: 청구 사전점검 (양지바른 사전점검 가져오기)
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`(plan.md §6), `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
-> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 = `docs/precheck/plan.md` §6 Phase 1~7의 Step 순서다. 이 순서대로 한다. 예외 하나: TASK-33(REQ-005 후속, TASK-5를 만들며 찾은 빈틈)은 Phase 1 Step 5 `helper-fixups`로 TASK-5 뒤·TASK-6 앞에 한다. 그래서 TASK-6은 Phase 1 Step 6이다(plan.md §6에는 아직 Step 5로 적혀 있다).
+> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 = `docs/precheck/plan.md` §6 Phase 1~7의 Step 순서다. 이 순서대로 한다. 예외 둘: ① TASK-33(REQ-005 후속, TASK-5를 만들며 찾은 빈틈)은 Phase 1 Step 5 `helper-fixups`로 TASK-5 뒤·TASK-6 앞에 한다. 그래서 TASK-6은 Phase 1 Step 6이다(plan.md §6에는 아직 Step 5로 적혀 있다). ② TASK-34(REQ-034, b2b 개편 합치기 맞춤)는 plan.md §6 밖이고 Phase 1 끝·Phase 2(TASK-7) 앞에 한다. TASK-34는 여러 층을 함께 고친다(합치기 한 번에 함께 풀어야 하는 파일들이라 나누지 않는다). REQ-033은 없다.
 > 승인은 이 명세 하나로 한 번만 받는다(사용자: "단계마다 sdd 승인받는거 빼줘"). Phase가 끝날 때마다 `verify`·화면 캡처·쉬운 말 보고·의원 PC 시험 목록(plan.md §6).
 > Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장과 `commands.json`에는 운영 주소 하나만 있어, 새 화면이 운영에 배포돼야 의원 PC에서 시험할 수 있다. design.md 12절).
-> 화면 TASK(6·12·13·18·19·22·25·26·31·32)는 Phase 0 목업(승인본)이 있어야 시작한다(CLAUDE.md: 화면은 목업 승인 뒤).
+> 화면 TASK(6·12·13·18·19·22·25·26·31·32)는 Phase 0 목업(승인본)이 있어야 시작한다(CLAUDE.md: 화면은 목업 승인 뒤). TASK-34 뒤의 화면 TASK는 b2b 공통 모양 `ds`와 토큰만 쓴다(옛 `ui`·옛 Tailwind 별칭·`font-bold` 없음, design.md 18-3).
 > 도우미 C# 시험 파일 이름은 `*.test.cs`다(하네스가 시험 파일로 알아보게). 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(design.md 11절).
 > 원본 경로는 `YANGJI_SRC`(저장소 밖, `seoseungkwan/shared@2a1069b`)로만 받는다. 원본 파일은 커밋하지 않는다.
 
@@ -70,6 +70,20 @@
 - Files: src/app/(app)/claim/setup/page.tsx, src/app/(app)/claim/setup/page.test.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/components/claim/setup/*, src/components/claim/useBridge.ts, src/components/claim/useBridge.test.ts, src/components/claim/maskInstitution.ts, src/components/claim/maskInstitution.test.ts, src/components/shell/menu.ts, src/components/shell/TabBar.tsx, src/components/shell/shell.test.tsx, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
 - Tests: src/app/(app)/claim/setup/page.test.tsx, src/app/(app)/claim/page.test.tsx, src/components/claim/setup/SetupScreen.test.tsx, src/components/claim/useBridge.test.ts, src/components/claim/maskInstitution.test.ts, src/components/shell/shell.test.tsx, src/lib/errors.test.ts
 - TDD: required
+
+## TASK-34: b2b 합치기 맞춤
+- Step: Phase 1 끝 · `b2b-merge` (plan.md §6 밖, 머리말의 예외 ②. TASK-6 뒤·TASK-7 앞)
+- AC: AC-034.1~AC-034.5
+- REQ: REQ-034
+- Files: vitest.config.ts, package.json, package-lock.json, CLAUDE.md, docs/ADR.md, docs/ARCHITECTURE.md, docs/UI_GUIDE.md, plan.md, phases/precheck-*/*.md, eslint.config.mjs, src/lib/bridge/extensionId.ts, src/lib/csp.test.ts, src/components/shell/TabBar.tsx, src/components/shell/shell.test.tsx, src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/SetupAlert.tsx, src/components/claim/setup/StepGuide.tsx, src/components/claim/setup/ClaimEntry.tsx, src/components/claim/setup/SetupScreen.test.tsx, src/b2b-merge.test.ts
+- Tests: src/components/shell/shell.test.tsx, src/components/claim/setup/SetupScreen.test.tsx, src/b2b-merge.test.ts, extension/src/manifest.test.ts
+- TDD: required
+- 하는 일: `git merge origin/main`(b2b 개편 `359a4a4` 포함, design.md 18절). 이것은 main을 이 브랜치로 들여오는 로컬 합치기이고 PR 합치기(머리말: 사용자 지시 때만)가 아니다. 충돌 다섯 파일(`vitest.config.ts`·`package.json`·`TabBar.tsx`·`CLAUDE.md`·`docs/ADR.md`)을 18-1대로 풀고, 청구 ADR 번호를 18-2대로 바꾸고, 청구 설치 화면 네 파일과 탭 줄의 클래스를 18-3 표대로 옮긴다. 문구·동작·배치는 그대로
+- 순서(design.md 18-4, 한 번에 끝낸다): 합치기 → 시험 먼저(`b2b-merge.test.ts` 새로, `SetupScreen.test.tsx`에 AC-034.2, `shell.test.tsx` AC-006.4 기대값·이름에 AC-034.1) → TDD 예외 파일 `vitest.config.ts`·`package.json`(+ `npm install`)을 RED 없이 먼저 푼다 → **RED**(`tdd-run TASK-34 --expect red`: 설정이 읽혀 시험이 돌고 `b2b-merge`의 AC-034.3·`SetupScreen`이 제 이유로 실패. 설정을 못 읽어 0개가 돈 실행은 RED로 치지 않는다) → `TabBar.tsx`를 main 쪽 파일로 두고 shell의 AC-006.4·AC-034.1이 제 이유로 실패하는 것을 본 뒤 청구 판단을 얹는다 → 청구 설치 화면·ADR 번호·`UI_GUIDE.md` → **GREEN**(`tdd-run TASK-34 --expect green`) → **합치기 커밋** → **`verify`**. `verify`는 승인 범위 검사를 `git status`로 하므로 커밋 전에는 main이 가져온 파일이 범위 밖으로 보여 실패한다. 그래서 커밋 뒤에 돌린다. 실패하면 고침 커밋을 더한다
+- b2b 가드 시험은 Tests에 넣지 않는다(넣으면 승인 범위에 들어가 고칠 수 있게 된다): `src/app/theme.test.ts`·`src/components/ui/classes.test.ts`·`src/app/fonts.test.ts`·`src/comments.test.ts`·`e2e/config.test.ts`는 고치지 않고, RED·GREEN 때 `npx vitest run <파일>`로 실패·통과를 보고, 마지막에 `verify`의 `npm test` 전체가 돌린다(AC-034.3·AC-034.5). `extension/src/manifest.test.ts`는 청구 것이지만 돌리기만 한다. `shell.test.tsx`는 청구 AC-006.4 `it`의 모양 기대값과 이름만, `csp.test.ts`는 주석의 ADR 번호만 고친다
+- `.harness/active`는 main 값이 들어와도 그대로 둔다(브랜치 이름이 활성 기능을 정한다)
+- 금지사항(검토 항목): main 쪽 시험은 고치지 않는다 — `src/app/theme.test.ts`·`src/components/ui/classes.test.ts`·`src/app/fonts.test.ts`·`src/comments.test.ts`·`e2e/config.test.ts`, 그리고 `src/components/shell/shell.test.tsx`에서 main 쪽이 갈라진 뒤(`git merge-base HEAD^1 HEAD^2`) 고치거나 더한 `it`. 리뷰가 합치기 커밋에서 `git diff HEAD^2 -- <그 파일들>`로 본다: 다섯 파일은 비어 있고, `shell.test.tsx`에는 청구 몫만 있다 — 청구 TASK-6이 이미 고친 것(AC-008.1 `it` 둘의 이름·본문에 청구를 더함, `LABELS`·`READY`·`NOT_READY`)과 청구 AC-006.4 `it`(모양 기대값·이름의 AC-034.1)
+- 끝 조건: 합치기 커밋 뒤 `python3 ~/.claude/harness/bin/verify`(`npm test` 전체·`npm run lint` 경고 0·`npm run build`)가 통과한다(AC 시험이 아니다). 화면 사진(`dev-browser`, 390·1440)으로 `/claim/setup`의 탭 줄([설정] 지금 탭)·설정 안 메뉴·단계 칩을 b2b 관리자 화면과 견주어 보고에 붙인다. 의원 PC 시험은 없다(모양만 바뀜)
 
 ## TASK-7: 규칙표 · 약 · 상병 표
 - Step: Phase 2 · Step 0 · `rule-data`

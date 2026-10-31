@@ -1,8 +1,8 @@
 # 설계: 청구 사전점검 (양지바른 사전점검 가져오기)
 
-> 근거: `requirements.md`, `docs/precheck/PRD.md`(무엇을·왜), `docs/precheck/plan.md`(어떻게·순서), 루트 `plan.md` §0·§4·§5·§10, ADR-003·004·005·016·017·018·019.
+> 근거: `requirements.md`, `docs/precheck/PRD.md`(무엇을·왜), `docs/precheck/plan.md`(어떻게·순서), 루트 `plan.md` §0·§4·§5·§10, ADR-003·004·005·016·020·021·022(b2b 개편 합치기 뒤 번호, 옛 017·018·019. 18-2).
 > 옮기는 원본: GitHub `seoseungkwan/shared` main `YangjiBareun_사전점검/` 커밋 `2a1069b`(README 1.24.5). 아래에서 "원본"이라 부른다. 원본에 실제 환자 정보는 없다.
-> 화면 문구·배치는 Phase 0 목업(승인본, Phase 0 Step 2 `mockups`). 모양 규칙은 `docs/UI_GUIDE.md` '앱 화면'. 이 문서는 화면의 내용(무엇이 보이고 어떤 단추가 있나)만 정한다.
+> 화면 문구·배치는 Phase 0 목업(승인본, Phase 0 Step 2 `mockups`). 모양 규칙은 `docs/UI_GUIDE.md`(b2b 개편 뒤 '공통 모양'·'앱 틀'·'관리자', 18절). 이 문서는 화면의 내용(무엇이 보이고 어떤 단추가 있나)만 정한다.
 > 표시: **(사용자)** 사용자가 정함 / **(Claude 판단)** 고쳐도 됨 / **(Claude 제안)** 사용자가 아직 안 봄
 
 ## 1. 한눈에
@@ -25,8 +25,8 @@
                                              └─ 심평원 청구 파일 읽기(C:\HIRA\DDMD\sam\in\backup)
 ```
 
-- 환자 자료는 도우미 → 확장 → 통로 → Worker로만 다닌다. 화면에는 Worker가 만든 보기 모양만 간다. 서버에는 건수와 설정만 간다 (ADR-017·018)
-- 서버 경로는 늘리지 않는다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·018)
+- 환자 자료는 도우미 → 확장 → 통로 → Worker로만 다닌다. 화면에는 Worker가 만든 보기 모양만 간다. 서버에는 건수와 설정만 간다 (ADR-020·021)
+- 서버 경로는 늘리지 않는다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·021)
 - 비트 PC가 아닌 곳(집·휴대폰·확장 없는 브라우저)에서는 청구 탭이 "밖에서 보는 건수"만 보인다
 
 ## 2. 원본에서 옮기는 것 (조사 결과)
@@ -252,6 +252,8 @@ type Finding = { visitKey: string; ruleId: string; grade: '확인필요' | '알�
 | 설정 `/settings` | 점검 규칙(켜기·끄기·등급·근거) · 병원 문구 · 상병 연결표 · 문자 문구 | [저장] · [기본값으로] · [백업 내려받기] | 저장 실패(값 유지 + [다시 저장]) |
 | 밖에서 보는 건수 (`/claim`, 확장 없는 곳) | 날짜별 메모 남은 수 · 월말 마감 남은 일 · 연락 남은 건수, 각각 마지막으로 바뀐 시각 | 없음(보기만) | 아직 올린 건수 없음 |
 
+- 모양은 b2b 개편 규칙(`ds`·토큰·앱 틀)을 따른다. 탭 줄·설정 안 메뉴·칩을 옮기는 법은 18-3
+
 ## 8. DB 표 · RLS · 제약
 
 ### 8-1. 설정 (`20261030000000_precheck_settings.sql`, TASK-12)
@@ -460,7 +462,74 @@ create table public.contact_counts (
 - **정기 주사 36개월 읽기**: 원본은 36개월 기록을 쓴다. 비트 통계 화면으로 36개월을 읽으면 오래 걸릴 수 있다. Phase 5 Step 0에서 시간을 재고, 너무 길면 달마다 나눠 읽는다(조각마다 실패하면 전체를 멈추는 규칙은 같다)
 - **30분 자동 로그아웃**: 청구 작업 중 로그아웃되면 메모리 자료가 사라진다. 고친 메모는 도우미에 있어 다시 불러오면 이어진다(PRD 8)
 - **입력 중 도우미가 끝남**: 크롬이 연결을 닫은 뒤 도우미 프로세스를 강제로 끝낼 수도 있다(윈도우). 그래도 쓰기 전 `writing` 기록과 이어서 하기(비트 메모와 비교, AC-017.7)가 두 번 입력·덮어쓰기를 막는다. Phase 3 의원 PC 시험에서 입력 중 크롬을 닫아 도우미가 지금 사람까지 마치고 끝나는지 본다
+- **b2b 합치기 중 사후 점검**: 합치기 커밋 전에는 main이 가져온 파일이 모두 '바뀐 파일'로 보여, 하네스 사후 점검(`verify`·Stop의 승인 범위 검사)이 범위 밖 변경이라 한다. 그래서 TASK-34는 합치기 → 시험 먼저 → RED → 충돌 풀기 → GREEN(`tdd-run`) → 합치기 커밋 → `verify` 순서로 한 번에 끝낸다(18-4)
 
 ## 17. 사용자에게 물은 것 (답 받음)
 1. **통계 탭 순서**: Phase 6(통계 추가분)을 할 때 통계 기본 화면이 아직 없으면, 통계 탭을 추가분만으로 먼저 열어도 되나요? 아니면 통계 화면 명세를 먼저 할까요? (Claude 기본: 추가분만 먼저) → **Claude 판단으로 추가분만 먼저 연다**
 2. **화면의 환자 이름·전화**: 청구·연락 화면에 이름·전화번호를 그대로 보여도 되나요? (그 PC 화면에만 보이고 서버에는 안 갑니다. Claude 기본: 그대로) → **사용자 결정(2026-10-30): 그대로 보인다**. 화면 목업도 같은 날 승인
+
+## 18. b2b 개편 합치기 맞춤 (TASK-34, REQ-034)
+- **왜**: 앱 전체 B2B 디자인 개편(`specs/b2b-redesign`)이 이 기능(PR #7)보다 먼저 main에 들어갔다(합치기 커밋 `359a4a4`, PR #11). 개편은 토큰(`globals.css` `:root` 한 곳)·글꼴(Pretendard, 400·500·600)·공통 모양(`components/ui/classes.ts`의 `ds`)·앱 틀을 바꾸고, 옛 이름(`ui` 대부분, 옛 Tailwind 별칭, 700 굵기)을 지워 가드 시험으로 막는다. 그래서 이 브랜치에 `origin/main`을 합치고 청구 쪽을 맞춘다 **(Claude 판단)**. 기능·동작·자료 길·문구·배치(목업 승인본)는 바뀌지 않는다. 바뀌는 것은 클래스·ADR 번호·설정 파일 합치기뿐이다
+- **합칠 것**: `origin/main`(합칠 때의 끝. b2b 개편 `359a4a4`와 auth-live PR #9·landing-v2 PR #10이 들어 있다). 합친 뒤 main에 더 들어오는 것은 이 TASK 밖이다
+- **때**: Phase 1 끝·Phase 2(TASK-7) 앞. 뒤의 화면 TASK(12·13·18·19·22·25·26·31·32)는 처음부터 `ds`와 b2b 토큰만 쓴다
+
+### 18-1. 충돌 풀기
+`git merge-tree --write-tree origin/main feat-precheck`(2026-10-31, main `359a4a4`)로 미리 본 충돌은 다섯 파일이다.
+
+| 파일 | 푸는 법 |
+|---|---|
+| `vitest.config.ts` | TDD 예외 파일(하네스 `*.config.*`)이라 RED 없이 맨 먼저 푼다(충돌 표시가 남으면 시험이 설정을 못 읽어 하나도 돌지 않는다). `include`는 두 쪽 합(AC-034.5), 위 주석도 두 쪽 것을 합친다(e2e `*.spec.ts`는 잡지 않는다는 줄 포함) |
+| `package.json` | TDD 예외 파일. scripts에 main 쪽 `e2e`·`e2e:env`와 청구 `ext:build`를 둘 다 둔다. 나머지는 자동 합침 그대로. 그 뒤 `npm install`로 `package-lock.json`을 맞추고(새 패키지 없음) `npm ci`가 되는지 본다 |
+| `src/components/shell/TabBar.tsx` | RED 뒤에 푼다. main 쪽(b2b) 파일을 바탕으로 청구 판단만 얹는다: `menu.ts`의 `currentMenuLabel`·`isUnder`, `TabLink`는 `current`를 받는다, `NotReadyTab`은 `current`이면 `tabCurrent` + `aria-current="page"`(단추·`aria-disabled`·툴팁 그대로). b2b의 파일 안 `isCurrent`는 지운다. 주석에 "teal"을 쓰지 않는다 |
+| `CLAUDE.md` | 문서. 기술 줄은 b2b 스타일링 줄 + 청구 줄(ADR-016). CRITICAL 두 줄의 청구 ADR 인용은 새 번호(ADR-021·ADR-020) |
+| `docs/ADR.md` | 문서. 번호 순서: …015 · 016(청구) · 017~019(b2b 쪽) · 020~022(청구, 옛 017~019). ADR-015의 '상태' 줄은 main 쪽 것을 쓴다 |
+
+- 자동으로 합쳐지는 `shell.test.tsx`·`docs/ARCHITECTURE.md`·`plan.md`·`.gitignore`·`package-lock.json`도 열어 본다. `.harness/active`는 main 값이 들어오지만 활성 기능은 브랜치 이름(`feat-precheck`)이 정하므로 그대로 둔다
+
+### 18-2. ADR 번호
+- 옛 → 새: ADR-017 → **ADR-020**(통로 코드도 환자 자료 구역) · ADR-018 → **ADR-021**(서버 자료는 건수·설정 표뿐) · ADR-019 → **ADR-022**(plan.md §10 다시 꺼냄). ADR-016은 그대로
+- 고치는 곳:
+  - `docs/ADR.md`: 제목과 본문 안 인용, 그리고 청구가 더한 두 줄 — 맨 위 안내 "(ADR-016~019는 2026-10-30 청구 사전점검)" → "(ADR-016·020~022는 …)", '철학'의 §10 줄 "(ADR-019)" → "(ADR-022)"
+  - `CLAUDE.md`·`docs/ARCHITECTURE.md`·`plan.md`: 청구 줄만
+  - `eslint.config.mjs`·`src/lib/bridge/extensionId.ts`·`src/lib/csp.test.ts`: 주석
+  - `phases/precheck-*/*.md`, 이 명세(이미 고침)
+  - 범위 글도 고친다: `ADR-016~019` → `ADR-016·020~022`, `ADR-016~018` → `ADR-016·020·021`, `ADR-017·018` → `ADR-020·021`
+- b2b 쪽 인용(ADR-017 E2E · ADR-018 랜딩·로고 · ADR-019 토큰·글꼴, ADR-015 '상태' 줄 포함)은 그대로 둔다
+
+### 18-3. 화면 모양 옮기기 (클래스만)
+- **탭 줄**: b2b AC-218.2 클래스 그대로. 지금 탭 판단만 청구 것(18-1). 지금 화면이 속한 준비 중 탭(`/claim/setup`의 [설정])은 지금 탭 모양(ink 600 + 2px accent 밑줄)이고 faint가 아니다
+- **설정 안 메뉴**(`SetupScreen.tsx`의 `SettingsSubnav`): 관리자 화면 안 탭(`AdminApplications.tsx`)의 클래스를 쓴다. 기본 `relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body first:-ml-3` + 초점 고리(`focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`) + `max-md:h-11`, 기본 `font-medium text-ink-2 hover:text-ink`, 지금 `font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`. 관리자 쪽의 `cursor-pointer`는 그 탭이 `<button>`이라 있는 것이다. 설정 안 메뉴의 [비트 연결]·[청구·연락] 링크는 `<a>`라 손 모양이 기본이어서 넣지 않고(앱 탭 줄 링크와 같다), 준비 중 [청구·연락](`<span>`)은 누를 수 없어 넣지 않는다. 페이지 이동 링크라 `tablist`가 아니고 `aria-current`를 쓴다. 준비 중 [청구·연락]은 기본 모양(올림 없음) + `ds.chip.neutral` "준비 중"
+- **`ui` → `ds`** (한 표, AC-034.3):
+
+| 옛 | 새 |
+|---|---|
+| `ui.button.primary`·`primarySmall`·`secondary`·`secondarySmall` | `ds.button.`의 같은 이름 |
+| `ui.textButton` · `ui.help` · `ui.count` | `ds.textButton` · `ds.help` · `ds.count` |
+| `ui.chip.done`(완료·준비됨) | `ds.chip.positive` |
+| `ui.chip.progress`(확인 중) | `ds.chip.accent` |
+| `ui.chip.waiting`(대기·준비 중) | `ds.chip.neutral` |
+| `ui.chip.rejected`(실패·업데이트 필요) | `ds.chip.negative` |
+| `ui.panel` + `ui.panelHead` + `ui.panelTitle` | `ds.panel` + `ds.panelHead` + `ds.panelTitle`, 몸은 `ds.panelBody`(옛 panel의 안쪽 여백·세로 사이를 머리·몸이 맡는다) |
+| `ui.card`(안내 상자) | `ds.panel` + 안쪽 `p-6`(768px 미만 `p-4`) |
+
+- **옛 Tailwind 이름**: `rounded-card`·`rounded-chip` → `rounded-control` · `text-table` → `text-small` · `text-tab` → `text-body` · `text-panel` → `text-subtitle` · `text-title-sm` → `text-title`(b2b에서 같은 크기) · `text-danger`·`bg-danger-soft`·`border-danger` → `text-negative`·`bg-negative-soft`·`border-negative` · `font-bold` → `font-semibold`
+- `docs/UI_GUIDE.md`(main 판)에 청구 몫만 더한다: 앱 틀 탭 순서에 [청구](매출 뒤), 탭 상태 표에 "지금 화면이 속한 준비 중 탭 = 지금 모양", 칩 표 '쓰는 곳'에 설치·연결 확인 단계 칩, 패널 묶음 줄에 "청구 설치 화면이 쓴다"
+- 청구 화면 폴더는 b2b 모양 규칙 시험(AC-204.6 간격·모서리 검사 목록, AC-204.7 상자 안 상자)에 넣지 않는다. 청구 화면은 나중에 다시 디자인한다(사용자 2026-10-31). 그때 넣는다. 그래서 `classes.test.ts`는 고치지 않는다
+
+### 18-4. 시험과 순서
+- **`src/b2b-merge.test.ts`**(새, 청구 몫. 파일을 글자로 읽는다):
+  - AC-034.3: `src/components/claim/**`(시험 밖 `.ts`·`.tsx`)에서 `ui.` 참조·`ui` 불러오기가 없고 classes에서 `ds`만 불러온다. 옛 Tailwind 이름(b2b `theme.test.ts`의 옛 이름 정규식과 같은 목록)·400·500·600 밖 굵기 클래스가 없다. 빈 검사가 아니다(네 파일이 목록에 있다)
+  - AC-034.4: `docs/ADR.md` 제목 번호가 한 번씩·오름차순이고 016·017~019·020~022의 제목 짝이 맞다. 맨 위 안내 줄과 '철학' §10 줄(18-2). 청구만 쓰는 파일과 섞인 문서 검사(범위 글 펼침)
+  - AC-034.5: `package.json` scripts 세 개, `vitest.config.ts` `include` 집합과 `e2e/**/*.spec.ts` 안 잡힘, `CLAUDE.md` 두 줄
+- **`SetupScreen.test.tsx`**: AC-034.2 시험을 더한다. **`shell.test.tsx`**: 청구 AC-006.4 `it`의 모양 기대값을 `text-accent font-bold` → `text-ink font-semibold after:bg-accent`로(지금 준비 중 탭에 `text-faint`·`text-ink-2`·`font-medium` 없음), 이름에 AC-034.1을 더한다. **`src/lib/csp.test.ts`**: 주석의 ADR 번호만
+- **고치지 않는 시험**(TASK-34 금지사항, 리뷰가 `git diff HEAD^2 -- <파일>`로 본다): main 쪽 b2b 가드 시험과 `shell.test.tsx`에서 main 쪽이 고치거나 더한 `it`. 자세한 것은 tasks.md TASK-34
+- **b2b 가드 시험은 TASK-34의 Tests에 넣지 않는다**(Tests에 넣으면 승인 범위에 들어가 고칠 수 있게 된다): `src/app/theme.test.ts`·`src/components/ui/classes.test.ts`·`src/app/fonts.test.ts`·`src/comments.test.ts`·`e2e/config.test.ts`는 `npx vitest run <파일>`로 실패·통과를 보고, 끝에 `verify`의 `npm test` 전체가 돌린다
+- **순서**(한 번에 끝낸다, 16절 위험):
+  1. `git merge origin/main` → 충돌 다섯 파일
+  2. 시험 먼저: `src/b2b-merge.test.ts`를 만들고, `SetupScreen.test.tsx`에 AC-034.2 시험을, `shell.test.tsx`의 AC-006.4 기대값·이름을 고친다(시험 파일은 RED 없이 고칠 수 있다)
+  3. TDD 예외 파일 `vitest.config.ts`·`package.json`(+ `npm install`)을 푼다. 문서 `CLAUDE.md`·`docs/ADR.md`의 충돌도 이때 풀어도 된다(ADR 번호 바꾸기는 5단계)
+  4. **RED**: `tdd-run TASK-34 --expect red`. 설정이 읽혀 시험이 실제로 돌아야 한다(설정을 못 읽어 0개가 돈 실행은 RED가 아니다). 뜻 있는 RED는 `b2b-merge.test.ts`다: AC-034.3(청구 폴더에 옛 `ui`·옛 이름·`font-bold`가 남음)과 AC-034.4(ADR 번호를 아직 안 바꿈)가 기대값에서 실패한다. `SetupScreen.test.tsx`는 이때 옛 `ui.chip`이 없어 그리기부터 깨진다. 이것은 RED 근거로 치지 않고 같은 실행의 참고일 뿐이다(옛 `ui`를 되살리려면 TASK-34 범위 밖인 `classes.ts`를 고쳐야 해서 그 길은 쓰지 않는다). AC-034.2가 기대값에서 실패하는 것은 5단계에서 본다. `shell.test.tsx`도 이때 `TabBar.tsx`의 충돌 표시로 깨지므로 RED 뒤 `TabBar.tsx`를 main 쪽 파일로 먼저 두고 다시 돌려 AC-006.4·AC-034.1이 기대값(`/claim/setup`에서 [설정]이 지금 탭이 아님)에서 실패하는 것을 본 뒤 청구 판단을 얹는다. b2b 가드 시험(theme·classes·fonts)도 `npx vitest run`으로 제 이유로 실패하는 것을 본다
+  5. 구현: `TabBar.tsx`, 청구 설치 화면 네 파일(18-3 표), ADR 번호(18-2), `UI_GUIDE.md`. `SetupScreen.tsx`는 `ui` → `ds`를 먼저 바꾸되 설정 안 메뉴 클래스는 옛 것(`font-bold text-accent`·3px 밑줄)으로 남긴 채 `SetupScreen.test.tsx`를 돌려 AC-034.2가 기대값에서 실패하는 것을 본 뒤 설정 안 메뉴를 바꾼다
+  6. **GREEN**: `tdd-run TASK-34 --expect green`, b2b 가드 시험 `npx vitest run`
+  7. **합치기 커밋**(conventional commits, `chore(precheck): b2b 개편 합치기 맞춤`)
+  8. **`verify`**(`npm test` 전체·lint 경고 0·build). 커밋 뒤라 main이 가져온 파일이 바뀐 파일로 보이지 않는다. 실패하면 고침 커밋을 더한다(합치기 커밋을 고쳐 쓰지 않는다). `verify` 통과가 TASK-34의 끝 조건이다(AC 시험이 아니다)
