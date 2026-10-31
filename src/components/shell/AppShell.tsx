@@ -7,7 +7,8 @@ import { TabBar } from './TabBar'
 // 앱 화면 틀 (REQ-008, b2b-redesign AC-218.1, UI_GUIDE '앱 화면' 앱 틀·폰). 앱 초기화 범위(.app-ui)·canvas 바탕.
 // 위에 붙는 묶음 하나(sticky·top 0·z 10)에 위쪽 띠와 탭 줄이 함께 있다. 그 아래 본문.
 // 위쪽 띠(흰·56px, 폰 48px): 로고·병원 이름 | 한국 시각·계정 단추. [서비스 이름]과 세로 구분선은 두지 않는다(사용자 결정 2026-10-30).
-// 안쪽 감싸개 셋(띠·탭 줄·본문)은 같은 1280 폭·가운데·좌우 24px(폰 16px). 폰은 서랍 없음
+// 안쪽 감싸개 셋(띠·탭 줄·본문)은 같은 1280 폭·가운데·좌우 24px(폰 16px). 폰은 서랍 없음.
+// 관리자 여부는 계정 메뉴([가입 승인])에만 넘긴다(탭 줄에는 관리자 탭이 없다, tab-frame REQ-303·304)
 export function AppShell({
   hospitalName,
   email,
@@ -36,9 +37,10 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <TabBar isAdmin={isAdmin} />
+        <TabBar />
       </div>
-      <main className="flex-1">
+      {/* 페이지 뿌리가 data-page-surface를 달면(대시보드) 본문 전체가 흰 종이 한 장(surface), 아니면 앱 틀 바탕(canvas) 그대로 (AC-303.6) */}
+      <main className="flex-1 has-[[data-page-surface]]:bg-surface">
         <div className="mx-auto w-full max-w-7xl px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8">{children}</div>
       </main>
     </div>
