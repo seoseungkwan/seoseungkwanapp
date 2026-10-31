@@ -58,20 +58,38 @@ describe('ErrorCard', () => {
     expect(svg?.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('AC-012.2·AC-013.2·AC-013.3: 오류 카드 모양 — danger-soft 바탕·6px 모서리, 무엇이 danger 600, 어떻게 ink-2, 오류 번호 caption muted, 임의 색 없음', () => {
+  // b2b-redesign REQ-217 AC-217.1, UI_GUIDE '오류 카드·확인 창'
+  it('AC-217.1: 오류 카드 모양 — negative-soft 바탕·rounded-control·테두리 없음·안쪽 12px 16px, 아이콘 16(negative), 무엇이 small 600 negative, 어떻게 small ink-2, 오류 번호 caption muted 고정폭, 임의 색 없음', () => {
     render(<ErrorCard code="E-SIGNUP-FAILED" />)
     const card = screen.getByRole('alert')
     const info = errorInfo('E-SIGNUP-FAILED')
-    const classes = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
-    expect(classes(card)).toEqual(expect.arrayContaining(['bg-danger-soft', 'rounded-card']))
-    expect(classes(card).some((c) => c.startsWith('shadow'))).toBe(false)
-    expect(classes(within(card).getByText(info.what))).toEqual(expect.arrayContaining(['text-danger', 'font-semibold', 'text-body']))
-    expect(classes(within(card).getByText(info.fix))).toEqual(expect.arrayContaining(['text-ink-2', 'text-table']))
-    expect(classes(within(card).getByText('오류 번호 E-SIGNUP-FAILED'))).toEqual(
-      expect.arrayContaining(['text-muted', 'text-caption']),
-    )
-    expect(classes(card.querySelector('svg') as Element)).toContain('text-danger')
+    const classes = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+    // 글자 크기 클래스는 줄마다 하나(옛 크기가 겹쳐 남지 않게)
+    const sizes = (el: Element) =>
+      classes(el).filter((c) => /^text-(?:caption|small|body|lead|subtitle|title|heading-m|heading|metric|display-m|display|table)$/.test(c))
+
+    expect(classes(card)).toEqual(expect.arrayContaining(['bg-negative-soft', 'rounded-control', 'px-4', 'py-3']))
+    expect(classes(card).filter((c) => /^(?:[\w-]+:)?(?:border|shadow|ring|outline)(?:-|$)/.test(c))).toEqual([])
+
+    const svg = card.querySelector('svg') as Element
+    expect(svg.getAttribute('width')).toBe('16')
+    expect(svg.getAttribute('height')).toBe('16')
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expect(classes(svg)).toContain('text-negative')
+
+    const what = within(card).getByText(info.what)
+    const fix = within(card).getByText(info.fix)
+    const number = within(card).getByText('오류 번호 E-SIGNUP-FAILED')
+    expect(classes(what)).toEqual(expect.arrayContaining(['font-semibold', 'text-negative']))
+    expect(sizes(what)).toEqual(['text-small'])
+    expect(classes(fix)).toContain('text-ink-2')
+    expect(sizes(fix)).toEqual(['text-small'])
+    expect(classes(number)).toEqual(expect.arrayContaining(['text-muted', 'tabular-nums']))
+    expect(sizes(number)).toEqual(['text-caption'])
+
+    // 옛 별칭(danger·rounded-card·rounded-chip·text-table — TASK-23에서 지운다)을 쓰지 않는다
     for (const el of [card, ...card.querySelectorAll('[class]')]) {
+      expect(classes(el).filter((c) => /(?:^|-)danger(?:-|$)|^rounded-(?:card|chip)$|^text-table$/.test(c))).toEqual([])
       expect(el.getAttribute('class') ?? '').not.toMatch(/\[#|rgba?\(|hsla?\(|color-mix\(/)
     }
   })

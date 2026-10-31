@@ -675,7 +675,9 @@ const LOGIN_FILES = ['src/components/auth/LoginCard.tsx', 'src/components/auth/L
 const PENDING_FILES = ['src/components/auth/PendingCard.tsx']
 // 가입 신청 두 파일 (b2b-redesign TASK-17, REQ-215)
 const SIGNUP_FILES = ['src/components/auth/SignupForm.tsx', 'src/components/auth/Stepper.tsx']
-const RULE_TARGETS = ['src/components/common/Icon.tsx', 'src/components/charts', 'src/components/preview', 'src/components/auth/AuthFrame.tsx', 'src/components/admin/AdminApplications.tsx', ...SHELL_FILES, ...LOGIN_FILES, ...PENDING_FILES, ...SIGNUP_FILES]
+// 오류 카드·오류 화면 (b2b-redesign TASK-19, REQ-217)
+const ERROR_FILES = ['src/components/common/ErrorCard.tsx', 'src/app/error.tsx']
+const RULE_TARGETS = ['src/components/common/Icon.tsx', 'src/components/charts', 'src/components/preview', 'src/components/auth/AuthFrame.tsx', 'src/components/admin/AdminApplications.tsx', ...SHELL_FILES, ...LOGIN_FILES, ...PENDING_FILES, ...SIGNUP_FILES, ...ERROR_FILES]
 
 const ruleFiles = () =>
   RULE_TARGETS.flatMap((target) => (existsSync(join(ROOT, target)) && statSync(join(ROOT, target)).isDirectory() ? walk(target) : [target])).filter(
@@ -916,5 +918,12 @@ describe('AC-204.6: 가입 신청 화면(SignupForm·Stepper)이 AC-204.6 검사
   it('AC-204.6·AC-215.1: AC-204.6 검사 목록 파일에 가입 신청 두 파일이 있고 모두 실제 파일이다', () => {
     expect(ruleFiles()).toEqual(expect.arrayContaining(SIGNUP_FILES))
     for (const file of SIGNUP_FILES) expect(existsSync(join(ROOT, file)), file).toBe(true)
+  })
+})
+
+describe('AC-204.6: 오류 카드·오류 화면(ErrorCard·error.tsx)이 AC-204.6 검사 목록에 든다 (b2b-redesign TASK-19)', () => {
+  it('AC-204.6·AC-217.1·AC-217.2: AC-204.6 검사 목록 파일에 오류 카드·오류 화면 두 파일이 있고 모두 실제 파일이다', () => {
+    expect(ruleFiles()).toEqual(expect.arrayContaining(ERROR_FILES))
+    for (const file of ERROR_FILES) expect(existsSync(join(ROOT, file)), file).toBe(true)
   })
 })

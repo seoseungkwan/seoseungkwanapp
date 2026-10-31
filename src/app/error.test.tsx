@@ -3,8 +3,9 @@ import { createElement, type ComponentType } from 'react'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
+import { nestedBoxes } from '@/testing/boxes'
 import PageError from './error'
 
 // [로그아웃](AC-003.7)은 실제 Supabase에 붙지 않는다. signOut을 부르는지와 그 뒤 어디로 가는지만 본다
@@ -113,13 +114,13 @@ describe('app/error.tsx: [로그아웃] (오류가 이어져도 화면에 갇히
     expect(document.body.textContent).not.toContain('network')
   })
 
-  it('AC-003.7·AC-013.3: [다시 시도]는 주 단추(ui.button.primary), [로그아웃]은 보조 단추(ui.button.secondary)', () => {
+  it('AC-003.7·AC-217.2: [다시 시도]는 주 단추(ds.button.primary), [로그아웃]은 보조 단추(ds.button.secondary)', () => {
     page()
     expect(classesOf(screen.getByRole('button', { name: '다시 시도' }))).toEqual(
-      expect.arrayContaining(tokens(ui.button.primary)),
+      expect.arrayContaining(tokens(ds.button.primary)),
     )
     expect(classesOf(screen.getByRole('button', { name: '로그아웃' }))).toEqual(
-      expect.arrayContaining(tokens(ui.button.secondary)),
+      expect.arrayContaining(tokens(ds.button.secondary)),
     )
   })
 
@@ -141,11 +142,52 @@ describe('app/error.tsx: [로그아웃] (오류가 이어져도 화면에 갇히
     }
   })
 
-  it('AC-013.2: 화면 뿌리는 앱 초기화 범위(.app-ui), 가운데 한 칸은 최대 400px', () => {
+})
+
+// b2b-redesign REQ-217 AC-217.2: 한 칸 AuthFrame(480 칸, 위 줄 로고) 본문에 오류 카드 → 단추 줄
+describe('app/error.tsx: AuthFrame 안 오류 카드 + 단추 줄 (AC-217.2)', () => {
+  it('AC-217.2: .app-ui 뿌리(surface) 안 가운데 480 칸 — 위 줄(header)은 로고 하나뿐이고 [로그아웃]·글자가 없다', () => {
+    const { container } = page()
+    const root = container.firstElementChild
+    expect(classesOf(root as Element)).toEqual(expect.arrayContaining(['app-ui', 'bg-surface']))
+    const header = screen.getByRole('banner')
+    const main = screen.getByRole('main')
+    expect(header.parentElement).toBe(main.parentElement)
+    expect(main.parentElement?.parentElement).toBe(root)
+    expect(classesOf(main.parentElement as HTMLElement)).toEqual(expect.arrayContaining(['mx-auto', 'w-full', 'max-w-120']))
+    expect(header.querySelectorAll('svg[viewBox="0 0 30 30"]')).toHaveLength(1)
+    expect(document.querySelectorAll('svg[viewBox="0 0 30 30"]')).toHaveLength(1)
+    expect(header.textContent).toBe('')
+    expect(within(header).queryAllByRole('button')).toHaveLength(0)
+    // 옛 400 칸·화면 가운데 맞춤 틀은 없다
+    for (const el of document.querySelectorAll('[class]')) expect(classesOf(el)).not.toContain('max-w-100')
+  })
+
+  it('AC-217.2: 본문(main)은 오류 카드 → 단추 줄 순서이고, 오류 카드(위 줄 아래 24px)·단추 줄 모두 위 24px', () => {
     page()
     const main = screen.getByRole('main')
-    expect(classesOf(main)).toContain('app-ui')
-    const column = screen.getByRole('alert').parentElement as HTMLElement
-    expect(classesOf(column)).toEqual(expect.arrayContaining(['max-w-100', 'w-full']))
+    const card = screen.getByRole('alert')
+    const row = screen.getByRole('button', { name: '다시 시도' }).parentElement as HTMLElement
+    expect(main.children).toHaveLength(2)
+    // 첫 칸이 오류 카드를 담고 위 24px(가입 신청·승인 대기의 단계 줄, 거절의 상태 줄과 같은 시작 높이)
+    const first = main.children[0] as HTMLElement
+    expect(first.contains(card)).toBe(true)
+    expect(classesOf(first)).toContain('mt-6')
+    expect(main.children[1]).toBe(row)
+    expect(classesOf(row)).toContain('mt-6')
+  })
+
+  it('AC-217.2: 글자는 오류 카드 글·[다시 시도]·[로그아웃] 그대로이고 이동 링크가 없다', () => {
+    const { container } = page()
+    const info = errorInfo('E-PAGE-FAILED')
+    expect(container.textContent).toBe(`${info.what}${info.fix}오류 번호 E-PAGE-FAILED다시 시도로그아웃`)
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+  })
+
+  it('AC-204.7·AC-217.2: 오류 화면에 상자 안 상자가 없다', () => {
+    const { container } = page()
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
   })
 })
