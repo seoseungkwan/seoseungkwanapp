@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ds } from '@/components/ui/classes'
 
@@ -9,17 +9,10 @@ import { ds } from '@/components/ui/classes'
 const ROOT = process.cwd()
 const DIR = join(ROOT, 'src/components/landing')
 
-// AC-212.1 검사 목록: 새 규칙으로 고친 랜딩 모듈. TASK마다 늘고, TASK-14에서 랜딩 폴더 전체 읽기로 바꾼다
-const CHECKED = [
-  'base.module.css',
-  'SiteHeader.module.css',
-  'SiteFooter.module.css',
-  'Hero.module.css',
-  'AiSection.module.css',
-  'OrthoSection.module.css',
-  'FeaturesSection.module.css',
-  'PrivacySection.module.css',
-]
+// AC-212.1 검사 목록: 랜딩 폴더의 *.module.css 전체(목록 없이 폴더를 읽는다). TASK-14에서 고친 파일 목록 대신 폴더 읽기로 바꿨다
+const CHECKED = readdirSync(DIR)
+  .filter((name) => name.endsWith('.module.css'))
+  .sort()
 
 // ---------- CSS 읽기 도우미 ----------
 
@@ -314,8 +307,21 @@ function violations(css: string): string[] {
 }
 
 describe('AC-212.1: 검사 목록의 랜딩 모듈은 토큰·간격 단계·글자 단계·모서리·굵기 규칙만 쓰고 장식이 없다', () => {
-  it('AC-212.1: 검사 목록은 base.module.css에서 시작하고, 파일마다 실제 규칙이 있다(빈 검사가 아니다)', () => {
-    expect(CHECKED).toContain('base.module.css')
+  it('AC-212.1: 검사 목록은 랜딩 폴더의 *.module.css 전체이고(빼 두는 파일 없음), 파일마다 실제 규칙이 있다(빈 검사가 아니다)', () => {
+    expect(CHECKED).toEqual(
+      expect.arrayContaining([
+        'base.module.css',
+        'SiteHeader.module.css',
+        'SiteFooter.module.css',
+        'Hero.module.css',
+        'AiSection.module.css',
+        'OrthoSection.module.css',
+        'FeaturesSection.module.css',
+        'PrivacySection.module.css',
+        'HowSection.module.css',
+      ]),
+    )
+    expect(readdirSync(DIR).filter((name) => name.endsWith('.css') && !CHECKED.includes(name)), '검사 밖 CSS 파일').toEqual([])
     for (const name of CHECKED) {
       expect(existsSync(join(DIR, name)), name).toBe(true)
       expect(parseCss(readLanding(name)).rules.length, name).toBeGreaterThan(0)
@@ -601,10 +607,15 @@ describe('AC-212.2: base.module.css — 요소 초기화는 @layer base 안, 틀
     ['.tHeading', 'heading-m', 'heading', { 'font-weight': '600', 'letter-spacing': 'var(--ls-heading)' }],
     ['.tTitle', 'title', 'title', { 'font-weight': '600' }],
     ['.tSubtitle', 'subtitle', 'subtitle', { 'font-weight': '600' }],
-    ['.tLead', 'lead', 'lead', {}],
     ['.tSmall', 'small', 'small', {}],
     ['.tCaption', 'caption', 'caption', {}],
   ]
+  // .tLead는 랜딩이 쓰지 않아 TASK-14에서 지웠다(AC-212.4: 정의한 클래스는 모두 쓴다). 쓰게 되면 표에 lead → lead로 되돌린다
+  it('AC-212.2: base.module.css의 글자 단계 클래스(.t로 시작)는 이 표의 것뿐이다(옛 이름 .tH2·.tH3·.tH3l·.tBody·.tLabel 없음)', () => {
+    const typeClasses = [...new Set(base().rules.flatMap((r) => r.selectors.flatMap((s) => [...s.matchAll(/\.(t[A-Z]\w*)/g)].map((m) => `.${m[1]}`))))]
+    expect(typeClasses.sort()).toEqual(TYPE.map(([selector]) => selector).sort())
+  })
+
   it.each(TYPE)('AC-212.2: 글자 단계 %s는 %s → %s(768) 토큰 크기·줄 높이다', (selector, phone, pc, fixed) => {
     expectAt(selector, 0, { 'font-size': `var(--fs-${phone})`, 'line-height': `var(--lh-${phone})`, ...fixed })
     for (const bp of [768, 1024] as Bp[]) {
@@ -667,6 +678,63 @@ describe('AC-212.2: base.module.css — 요소 초기화는 @layer base 안, 틀
     expectAt('.srOnly', 0, { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', 'white-space': 'nowrap' })
     const clip = valueOf(sheet, '.srOnly', 'clip-path', 0) ?? valueOf(sheet, '.srOnly', 'clip', 0)
     expect(clip, '.srOnly clip-path(또는 clip)').toMatch(/^(inset\(50%\)|rect\(0,? 0,? 0,? 0\))$/)
+  })
+})
+
+// ---------- AC-212.4(CSS 부분): base.module.css에 정의한 클래스는 모두 랜딩 TSX에서 쓴다 ----------
+
+// 랜딩 TSX(시험 제외): 랜딩 폴더의 *.tsx와 랜딩 페이지 src/app/page.tsx(.root 감싸개). 주석과 import 줄은 빼고 읽는다
+const LANDING_TSX = [
+  ...readdirSync(DIR)
+    .filter((name) => name.endsWith('.tsx') && !/\.test\.tsx$/.test(name))
+    .map((name) => join(DIR, name)),
+  join(ROOT, 'src/app/page.tsx'),
+].map((path) => ({ name: relative(ROOT, path), body: readFileSync(path, 'utf8') }))
+const codeOf = (tsx: string) =>
+  tsx
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1')
+    .replace(/^import\b[^\n]*$/gm, '')
+const usedBase = () => new Set(LANDING_TSX.flatMap((f) => [...codeOf(f.body).matchAll(/\bbase\.([a-zA-Z]\w*)/g)].map((m) => m[1])))
+// base.module.css 선택자에 나오는 클래스 이름 전부
+const definedBase = () => [
+  ...new Set(base().rules.flatMap((r) => r.selectors.flatMap((s) => [...s.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1])))),
+]
+// 쓰는 곳이 없어도 남기는 클래스(requirements AC-212.4 예외 하나): 32px 단추 크기의 기준값. AC-212.2가 ds.button.primarySmall과,
+// AC-207.2가 메뉴 단추의 휴대폰 크기(.inner .start)와 견준다
+const UNUSED_OK = ['btnSm']
+
+describe('AC-212.4: base.module.css에 정의한 클래스는 모두 랜딩 TSX 어딘가에서 쓴다(예외 .btnSm 하나)', () => {
+  it('AC-212.4: base.module.css를 부르는 랜딩 TSX는 모두 base라는 이름으로 부른다(쓰임 찾기가 헛돌지 않는다)', () => {
+    const importers = LANDING_TSX.filter((f) => /base\.module\.css['"]/.test(f.body))
+    expect(importers.map((f) => f.name)).toEqual(expect.arrayContaining(['src/app/page.tsx', 'src/components/landing/HowSection.tsx']))
+    expect(importers.length).toBeGreaterThan(8)
+    for (const f of importers) {
+      expect(f.body, f.name).toMatch(/^import base from '(?:\.\/|@\/components\/landing\/)base\.module\.css'$/m)
+    }
+    expect(usedBase().has('root'), 'page.tsx의 base.root').toBe(true)
+  })
+
+  it('AC-212.4: 정의한 클래스 가운데 랜딩 TSX가 쓰지 않는 것은 .btnSm(예외)뿐이다 — 옛 이름(.card·.group·.grid3·.grid4·.items·.itemsFour·.item·.chipOk·.chipAttn·.chipWait·.chipSample·.nowrap·.stack·.head·.tH2·.tH3·.tLead·.tBody …)이 지워졌다', () => {
+    const used = usedBase()
+    const defined = definedBase()
+    expect(defined.length, '정의한 클래스를 실제로 읽었다').toBeGreaterThan(20)
+    expect(defined.filter((name) => !used.has(name)).sort()).toEqual(UNUSED_OK)
+  })
+
+  it('AC-212.4: 랜딩 TSX가 쓰는 base 클래스는 모두 base.module.css에 정의돼 있다', () => {
+    const defined = new Set(definedBase())
+    expect([...usedBase()].filter((name) => !defined.has(name)).sort()).toEqual([])
+  })
+
+  it('AC-212.4: 쓰임 찾기는 주석·import 줄을 빼고 base.이름만 센다', () => {
+    const sample = [
+      "import base from './base.module.css'",
+      '// base.card는 옛 이름이다',
+      '/* base.group */',
+      'const a = <div className={`${base.wrap} ${base.grid}`}>{x}</div> // base.stack',
+    ].join('\n')
+    expect([...codeOf(sample).matchAll(/\bbase\.([a-zA-Z]\w*)/g)].map((m) => m[1])).toEqual(['wrap', 'grid'])
   })
 })
 
@@ -1418,5 +1486,116 @@ describe('AC-210.2: PrivacySection.module.css — 윗부분·0건·흐름 상자
         }
       }
     }
+  })
+})
+
+// ---------- AC-211.1(CSS 부분): HowSection.module.css 값 ----------
+
+const howSheet = () => parseCss(readLanding('HowSection.module.css'))
+const howSelectorsWith = (props: RegExp) =>
+  [...new Set(howSheet().rules.filter((r) => r.decls.some((d) => props.test(d.prop))).flatMap((r) => r.selectors))].sort()
+
+describe('AC-211.1: HowSection.module.css — 칸·휴대폰 순서·단계 줄·번호', () => {
+  it('AC-211.1: 1024px 이상 12칸(base .grid)에서 글(.text)·단추(.start)는 1~5칸 두 줄, 단계(.steps)는 7~12칸이고 두 줄에 걸친다(위 줄은 글 높이, 남는 높이는 아래 줄)', () => {
+    const sheet = howSheet()
+    expectAt('.grid', 1024, { 'grid-template-columns': 'repeat(12, minmax(0, 1fr))', 'column-gap': '24px' })
+    expect(valueOf(sheet, '.text', 'grid-column', 1024)).toBe('1 / 6')
+    expect(valueOf(sheet, '.text', 'grid-row', 1024)).toBe('1')
+    expect(valueOf(sheet, '.start', 'grid-column', 1024)).toBe('1 / 6')
+    expect(valueOf(sheet, '.start', 'grid-row', 1024)).toBe('2')
+    expect(valueOf(sheet, '.start', 'align-self', 1024)).toBe('start')
+    expect(valueOf(sheet, '.steps', 'grid-column', 1024)).toBe('7 / 13')
+    expect(valueOf(sheet, '.steps', 'grid-row', 1024)).toBe('1 / 3')
+    expect(valueOf(sheet, '.layout', 'grid-template-rows', 1024)).toBe('auto 1fr')
+    for (const name of ['.text', '.steps']) expect(valueOf(sheet, name, 'min-width', 1024), `${name} min-width`).toBe('0')
+  })
+
+  it('AC-211.1: 1024px 미만은 칸 지정 없이 쌓이고 사이가 띄워진다. 768px 미만만 단추(.start)가 단계 뒤로 가고(order) 전체 폭이다', () => {
+    const sheet = howSheet()
+    for (const bp of [0, 768] as Bp[]) {
+      for (const name of ['.text', '.start', '.steps']) {
+        expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
+        expect(valueOf(sheet, name, 'grid-row', bp), `${name} grid-row @${bp}`).toBeUndefined()
+      }
+      expect(valueOf(sheet, '.layout', 'grid-template-rows', bp), `.layout grid-template-rows @${bp}`).toBeUndefined()
+    }
+    for (const bp of BPS) expect(px(valueOf(sheet, '.layout', 'row-gap', bp)), `.layout row-gap @${bp}`).toBeGreaterThan(0)
+    // 같은 DOM(글 → 단추 → 단계)에서 휴대폰만 단추를 단계 뒤로 옮긴다: h2 → 안내 → 단계 → 단추(design.md '#how의 단추')
+    expect(howSelectorsWith(/^order$/)).toEqual(['.start'])
+    expect(Number(valueOf(sheet, '.start', 'order', 0))).toBeGreaterThan(0)
+    for (const bp of [768, 1024] as Bp[]) expect(valueOf(sheet, '.start', 'order', bp), `.start order @${bp}`).toBe('0')
+    expect(valueOf(sheet, '.start', 'justify-self', 0)).toBe('stretch')
+    for (const bp of [768, 1024] as Bp[]) expect(valueOf(sheet, '.start', 'justify-self', bp), `.start justify-self @${bp}`).toBe('start')
+  })
+
+  it('AC-211.1: 단추 자리(.start)는 자리·순서만 정하고 크기·색은 base .btnLg(44px)·.btnPrimary 그대로다(CSS 파일 순서에 기대지 않는다)', () => {
+    const props = howSheet().rules.filter((r) => r.selectors.includes('.start')).flatMap((r) => r.decls.map((d) => d.prop))
+    expect(props.length).toBeGreaterThan(0)
+    for (const prop of props) expect(prop).toMatch(/^(?:order|justify-self|align-self|grid-column|grid-row|margin-top)$/)
+    for (const bp of BPS) expect(landingValues(base(), ['.btn', '.btnLg'], ['height'], bp).height, `.btnLg @${bp}`).toBe('44px')
+  })
+
+  it('AC-211.1: 안내(.lead)는 ink-2·위 12px이고, h2 크기는 base .tHeading(heading-m → heading(768))이 정한다', () => {
+    const sheet = howSheet()
+    expect(valueOf(sheet, '.lead', 'color', 0)).toBe('var(--ink-2)')
+    expect(valueOf(sheet, '.lead', 'margin-top', 0)).toBe('12px')
+    expectAt('.tHeading', 0, { 'font-size': 'var(--fs-heading-m)', 'line-height': 'var(--lh-heading-m)' })
+    expectAt('.tHeading', 768, { 'font-size': 'var(--fs-heading)', 'line-height': 'var(--lh-heading)' })
+    expect(howSelectorsWith(/^(?:font-size|line-height|letter-spacing|font)$/), '글자 크기는 번호(.num)만 정한다').toEqual(['.num'])
+  })
+
+  it('AC-211.1: 단계 줄(.step)은 위아래 1px line으로 나뉘고(첫 줄 위 선), 번호 | 글 두 칸(40px)이며 위아래 12px → 20px(768)다', () => {
+    const sheet = howSheet()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.step', 'display', bp), `.step display @${bp}`).toBe('grid')
+      expect(valueOf(sheet, '.step', 'grid-template-columns', bp), `.step 칸 @${bp}`).toBe('40px minmax(0, 1fr)')
+      expect(valueOf(sheet, '.step', 'border-bottom', bp), `.step border-bottom @${bp}`).toBe(LINE)
+      expect(valueOf(sheet, '.step:first-child', 'border-top', bp), `.step:first-child border-top @${bp}`).toBe(LINE)
+    }
+    expect(valueOf(sheet, '.step', 'padding-block', 0)).toBe('12px')
+    expect(valueOf(sheet, '.step', 'align-items', 0), '휴대폰은 제목만 보여 번호와 가운데 맞춤').toBe('center')
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.step', 'padding-block', bp), `.step padding-block @${bp}`).toBe('20px')
+      expect(valueOf(sheet, '.step', 'align-items', bp), `.step align-items @${bp}`).toBe('start')
+    }
+  })
+
+  it('AC-211.1: 번호(.num)는 24px 칸·accent-soft 바탕·accent-strong 600(small)·4px 모서리이고 글자는 가운데다', () => {
+    const sheet = howSheet()
+    for (const bp of BPS) {
+      for (const [prop, value] of Object.entries({
+        display: 'grid',
+        'place-items': 'center',
+        width: '24px',
+        height: '24px',
+        background: 'var(--accent-soft)',
+        color: 'var(--accent-strong)',
+        'font-size': 'var(--fs-small)',
+        'line-height': 'var(--lh-small)',
+        'font-weight': '600',
+        'border-radius': 'var(--r-control)',
+      })) {
+        expect(valueOf(sheet, '.num', prop, bp), `.num ${prop} @${bp}`).toBe(value)
+      }
+    }
+  })
+
+  it('AC-211.1: h3(.stepTitle)·설명(.desc)은 둘째 칸이고, 설명은 ink-2·위 4px다(768px 미만 숨김은 base .pcOnly)', () => {
+    const sheet = howSheet()
+    for (const bp of BPS) {
+      for (const name of ['.stepTitle', '.desc']) expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBe('2')
+      expect(valueOf(sheet, '.desc', 'color', bp), `.desc color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.desc', 'margin-top', bp), `.desc margin-top @${bp}`).toBe('4px')
+    }
+    expect(howSelectorsWith(/^display$/), '숨김은 base .pcOnly가 맡는다').toEqual(['.num', '.step'])
+  })
+
+  it('AC-211.1: 상자·장식이 없다 — 네 변 테두리·세로 선·::before/::after·겹쳐 놓기가 없고 바탕은 번호(.num)에만 있다', () => {
+    const sheet = howSheet()
+    expect(sheet.rules.length).toBeGreaterThan(0)
+    expect(sideBorders(sheet)).toEqual([])
+    expect(sheet.rules.flatMap((r) => r.selectors).filter((sel) => /::?(?:before|after)\b/.test(sel))).toEqual([])
+    expect(howSelectorsWith(/^(?:position|transform|opacity|content|clip-path|mask(?:-[\w-]+)?)$/)).toEqual([])
+    expect(howSelectorsWith(/^background(?:-[\w-]+)?$/)).toEqual(['.num'])
   })
 })

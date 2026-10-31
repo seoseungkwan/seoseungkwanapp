@@ -3,7 +3,7 @@
    휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
    요소 초기화는 @layer base 안에 둔다. layer 밖 CSS는 Tailwind 클래스보다 늘 이기므로, 랜딩에 놓인 Tailwind 부품
    (미리보기·차트)의 mt-1 같은 클래스가 초기화에 지지 않게 한다. 클래스 규칙(.wrap·.grid·.sec·글자 단계·단추·칩·숨김 도우미)은 layer 밖이다.
-   아직 안 고친 섹션이 쓰는 옛 이름(.tH2·.card·.group·.chipOk …)은 이름만 두고 새 규칙 값을 준다. 쓰지 않게 된 이름은 TASK-14에서 지운다 */
+   여기 정의한 클래스는 모두 랜딩 TSX가 쓴다(AC-212.4). 예외는 .btnSm 하나다: 쓰는 곳이 없어도 32px 단추 크기의 기준값으로 남긴다 */
 
 /* ---------- 요소 초기화 (page.tsx의 .root 감싸개 안에만) ---------- */
 @layer base {
@@ -47,9 +47,6 @@
   overflow-wrap: break-word;
   text-align: left;
 }
-.nowrap {
-  white-space: nowrap;
-}
 
 /* ---------- 틀 · 칸 · 섹션 리듬 ---------- */
 /* 내용 1200 + 좌우 24. 휴대폰 좌우는 16 */
@@ -72,15 +69,6 @@
 .secCanvas {
   background: var(--canvas);
 }
-.stack {
-  display: grid;
-  gap: 32px;
-}
-.head {
-  display: grid;
-  gap: 12px;
-  max-width: 760px;
-}
 
 /* ---------- 글자 단계 (UI_GUIDE '글자'). 768px 미만은 -m 단계 ---------- */
 .tDisplay {
@@ -90,50 +78,28 @@
   letter-spacing: var(--ls-display);
   text-wrap: balance;
 }
-.tHeading,
-.tH2 {
+.tHeading {
   font-size: var(--fs-heading-m);
   line-height: var(--lh-heading-m);
   font-weight: 600;
   letter-spacing: var(--ls-heading);
   text-wrap: balance;
 }
-.tTitle,
-.tH3l {
+.tTitle {
   font-size: var(--fs-title);
   line-height: var(--lh-title);
   font-weight: 600;
 }
-.tSubtitle,
-.tH3 {
+.tSubtitle {
   font-size: var(--fs-subtitle);
   line-height: var(--lh-subtitle);
   font-weight: 600;
 }
-/* 본문 글은 text-wrap: pretty로 마지막 줄에 낱말 하나만 남지 않게 한다 */
-.tLead {
-  font-size: var(--fs-lead);
-  line-height: var(--lh-lead);
-  color: var(--ink-2);
-  max-width: 640px;
-  text-wrap: pretty;
-}
-.tBody {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  color: var(--ink-2);
-  text-wrap: pretty;
-}
+/* 작은 글은 text-wrap: pretty로 마지막 줄에 낱말 하나만 남지 않게 한다 */
 .tSmall {
   font-size: var(--fs-small);
   line-height: var(--lh-small);
   text-wrap: pretty;
-}
-.tLabel {
-  font-size: var(--fs-small);
-  line-height: var(--lh-small);
-  font-weight: 500;
-  color: var(--muted);
 }
 .tCaption {
   font-size: var(--fs-caption);
@@ -211,70 +177,23 @@
   font-weight: 500;
   white-space: nowrap;
 }
-/* 준비 중·추정·예시 (옛 이름 chipSample·chipWait) */
-.chipNeutral,
-.chipSample,
-.chipWait {
+/* 준비 중·추정·예시 */
+.chipNeutral {
   background: var(--canvas);
   border-color: var(--line);
   color: var(--ink-2);
 }
-/* 늘었어요·확정됨 (옛 이름 chipOk) */
-.chipPositive,
-.chipOk {
+/* 늘었어요·확정됨 */
+.chipPositive {
   background: var(--positive-soft);
   border-color: transparent;
   color: var(--positive);
 }
-/* 살펴볼 것 (옛 이름 chipAttn) */
-.chipWarning,
-.chipAttn {
+/* 살펴볼 것 */
+.chipWarning {
   background: var(--warning-soft);
   border-color: transparent;
   color: var(--warning);
-}
-
-/* ---------- 옛 묶음: 카드(테두리 상자) · 항목(위 선 한 줄) · 칸. 섹션을 고치면 쓰지 않는다(TASK-14에서 지움) ---------- */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  padding: 16px;
-  min-width: 0;
-}
-.item {
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  min-width: 0;
-}
-.grid4,
-.grid3 {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
-.items {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px 24px;
-}
-/* 묶음: 휴대폰에서는 테두리 하나 안에 카드들이 위 1px 선으로 나뉜다. 칸 규칙(gap 12px) 뒤에 둬서 gap 0이 이긴다 */
-.group {
-  gap: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-}
-.group > .card {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-.group > .card + .card {
-  border-top: 1px solid var(--line);
 }
 
 /* ---------- 숨김 도우미 ---------- */
@@ -308,53 +227,13 @@
     padding-block: 64px;
     scroll-margin-top: 80px;
   }
-  .stack {
-    gap: 48px;
-  }
-  .head {
-    gap: 16px;
-  }
   .tDisplay {
     font-size: var(--fs-display);
     line-height: var(--lh-display);
   }
-  .tHeading,
-  .tH2 {
+  .tHeading {
     font-size: var(--fs-heading);
     line-height: var(--lh-heading);
-  }
-  .card {
-    padding: 24px;
-  }
-  .item {
-    padding-top: 20px;
-    gap: 8px;
-  }
-  /* 묶음(.group)과 함께 달면 이 gap 16px이 휴대폰의 gap 0을 이긴다(파일에서 뒤에 온다) */
-  .grid4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-  }
-  .grid3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
-  }
-  .items {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 32px 24px;
-  }
-  .group {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-  }
-  .group > .card {
-    border: 1px solid var(--line);
-    border-radius: var(--r-control);
-    background: var(--surface);
-  }
-  .group > .card + .card {
-    border-top: 1px solid var(--line);
   }
 }
 
@@ -366,12 +245,5 @@
   }
   .sec {
     padding-block: 96px;
-  }
-  .grid4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  /* .items와 함께 단다. 768 규칙(.items 2칸) 뒤에 와서 이긴다 */
-  .itemsFour {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

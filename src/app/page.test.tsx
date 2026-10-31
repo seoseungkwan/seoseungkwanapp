@@ -1,9 +1,20 @@
+// @vitest-environment jsdom
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { LogoMark } from '@/components/common/LogoMark'
+import aiStyles from '@/components/landing/AiSection.module.css'
+import base from '@/components/landing/base.module.css'
+import featStyles from '@/components/landing/FeaturesSection.module.css'
+import heroStyles from '@/components/landing/Hero.module.css'
+import howStyles from '@/components/landing/HowSection.module.css'
+import orthoStyles from '@/components/landing/OrthoSection.module.css'
+import privStyles from '@/components/landing/PrivacySection.module.css'
+import footStyles from '@/components/landing/SiteFooter.module.css'
+import headStyles from '@/components/landing/SiteHeader.module.css'
 import { DashboardPreview } from '@/components/preview/DashboardPreview'
+import { BOX_TAGS, isBorderBox, nestedBoxes } from '@/testing/boxes'
 import Home from './page'
 
 const html = renderToStaticMarkup(<Home />)
@@ -27,9 +38,18 @@ const ROOT = process.cwd()
 // 히어로(section#top부터 #ai 앞까지)의 마크업
 const HERO = html.match(/<section\b[^>]*id="top"[\s\S]*?(?=<section\b[^>]*id="ai")/)?.[0] ?? ''
 
-describe('AC-001.1: 섹션 순서', () => {
-  it('AC-001.1: header → #top → #ai → #ortho → #features → #privacy → #how → #start → footer (약속 띠 없음)', () => {
+// 서버 마크업을 jsdom에 넣은 페이지(상자 검사·섹션 찾기용)
+const doc = (() => {
+  const host = document.createElement('div')
+  host.innerHTML = html
+  return host
+})()
+const mainSections = () => Array.from(doc.querySelectorAll('main > section'))
+
+describe('AC-211.2: 페이지 짜임', () => {
+  it('AC-211.2: .root 감싸개 하나 안에 header → main(#top · #ai · #ortho · #features · #privacy · #how) → footer 순서다(약속 띠·#start 없음)', () => {
     expect(html, '약속 띠는 히어로 안 약속 목록이 됐다').not.toMatch(/aria-label="핵심 약속"/)
+    expect(html, '시작하기 섹션은 #how에 합쳤다').not.toMatch(/\bid="start"/)
     const marks = [
       /<header\b/,
       /<section\b[^>]*id="top"/,
@@ -38,23 +58,167 @@ describe('AC-001.1: 섹션 순서', () => {
       /<section\b[^>]*id="features"/,
       /<section\b[^>]*id="privacy"/,
       /<section\b[^>]*id="how"/,
-      /<section\b[^>]*id="start"/,
       /<footer\b/,
     ]
     const positions = marks.map((re) => html.search(re))
     for (const [i, pos] of positions.entries()) expect(pos, String(marks[i])).toBeGreaterThanOrEqual(0)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
+    expect(mainSections().map((s) => s.id)).toEqual(['top', 'ai', 'ortho', 'features', 'privacy', 'how'])
+    const root = doc.firstElementChild!
+    expect(doc.children).toHaveLength(1)
+    expect(root.getAttribute('class')).toBe(base.root)
+    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['header', 'main', 'footer'])
   })
 
-  it('AC-001.1: 섹션은 main 하나 안에 있고, 메뉴 띠는 main 앞·푸터는 main 뒤에 있다', () => {
+  it('AC-211.2: 섹션 6개는 main 하나 안에 있고, 메뉴 띠는 main 앞·푸터는 main 뒤에 있다', () => {
     expect(html.match(/<main\b/g)).toHaveLength(1)
     const main = html.match(/<main\b[^>]*>([\s\S]*)<\/main>/)
     expect(main).not.toBeNull()
-    expect(main![1].match(/<section\b/g)).toHaveLength(7)
+    expect(main![1].match(/<section\b/g)).toHaveLength(6)
+    expect(html.match(/<section\b/g)).toHaveLength(6)
     expect(html.search(/<header\b/)).toBeLessThan(html.search(/<main\b/))
     expect(html.search(/<footer\b/)).toBeGreaterThan(html.search(/<\/main>/))
     expect(html.match(/<header\b/g)).toHaveLength(1)
     expect(html.match(/<footer\b/g)).toHaveLength(1)
+  })
+
+  it('AC-211.2: canvas 띠(.secCanvas)는 #ai·#privacy 두 섹션뿐이다(#how는 흰 바탕)', () => {
+    const banded = Array.from(doc.querySelectorAll('*'))
+      .filter((el) => (el.getAttribute('class') ?? '').split(/\s+/).includes(base.secCanvas))
+      .map((el) => `${el.tagName.toLowerCase()}#${el.id}`)
+    expect(banded).toEqual(['section#ai', 'section#privacy'])
+  })
+
+  it('AC-211.2: [구글로 시작하기]는 메뉴·히어로·#how에 하나씩 3개이고 모두 href="/login"에 글자만 있다. [AI 분석 보기]는 하나이고 #ai로 간다', () => {
+    const starts = Array.from(doc.querySelectorAll('a')).filter((a) => (a.textContent ?? '').trim() === '구글로 시작하기')
+    expect(starts).toHaveLength(3)
+    for (const a of starts) {
+      expect(a.getAttribute('href')).toBe('/login')
+      expect(a.children, '안에 글자만 있다').toHaveLength(0)
+    }
+    const placeOf = (a: Element) => {
+      const part = a.closest('header, section')
+      return part ? `${part.tagName.toLowerCase()}${part.id ? `#${part.id}` : ''}` : '(밖)'
+    }
+    expect(starts.map(placeOf)).toEqual(['header', 'section#top', 'section#how'])
+    expect(links.filter((l) => l.text === 'AI 분석 보기')).toEqual([{ href: '#ai', text: 'AI 분석 보기' }])
+  })
+
+  it('AC-211.2: 메뉴의 # 링크는 모두 페이지의 id를 가리키고 id는 겹치지 않는다', () => {
+    const navLinks = Array.from(doc.querySelectorAll('nav[aria-label="주요 메뉴"] a')).map((a) => a.getAttribute('href') ?? '')
+    expect(navLinks).toEqual(['#ai', '#features', '#privacy', '#how'])
+    for (const href of links.filter((l) => l.href.startsWith('#')).map((l) => l.href)) expect(ids, href).toContain(href.slice(1))
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('AC-211.2: StartSection.tsx·StartSection.module.css가 없다', () => {
+    for (const name of ['StartSection.tsx', 'StartSection.module.css']) {
+      expect(existsSync(join(ROOT, 'src/components/landing', name)), name).toBe(false)
+    }
+    expect(readFileSync(join(ROOT, 'src/app/page.tsx'), 'utf8')).not.toMatch(/StartSection/)
+  })
+})
+
+// ---------- AC-211.3: 빈칸이 없다 ----------
+
+describe('AC-211.3: 페이지 글자에 빈칸이 없다', () => {
+  it('AC-211.3: 보이는 글자에 [ … ] 꼴 빈칸이 없고 "서비스 이름"·"이메일 주소"·"[금액]"·"[직원"·"[지난달]"·"[이번 달]"이 없다', () => {
+    const visible = doc.textContent ?? ''
+    expect(visible.length).toBeGreaterThan(500)
+    expect(visible).not.toMatch(/\[[^\]]*\]/)
+    for (const blank of ['서비스 이름', '이메일 주소', '[금액]', '[직원', '[지난달]', '[이번 달]']) {
+      expect(visible, blank).not.toContain(blank)
+      expect(html, blank).not.toContain(blank)
+    }
+  })
+
+  it('AC-211.3: "예시" 표시가 미리보기("예시 숫자")·AI 리포트("방금 생성 · 예시")·비교표("예시" 줄·"예시 값")·급여 패널("예시")에 있다', () => {
+    const section = (id: string) => doc.querySelector(`section#${id}`)!
+    const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
+    expect(text(section('top'))).toContain('예시 숫자')
+    expect(text(section('ai'))).toContain('방금 생성 · 예시')
+    const ortho = section('ortho')
+    expect(Array.from(ortho.querySelectorAll('tbody th')).map(text), '비교표 "예시" 줄').toContain('예시')
+    expect(Array.from(ortho.querySelectorAll('caption')).map(text), '휴대폰 표 "예시 값"').toContain('예시 값')
+    const panels = Array.from(section('features').querySelectorAll('p')).filter((p) => text(p).startsWith('10월 급여'))
+    expect(panels.map(text), '급여 패널 머리').toEqual(['10월 급여 예시'])
+  })
+
+  it('AC-211.3: "Powered by AI"·그라데이션 글자가 없다', () => {
+    expect(html).not.toMatch(/powered\s*by\s*ai/i)
+    expect(html).not.toMatch(/gradient\(|background-clip:\s*text/i)
+  })
+})
+
+// ---------- AC-212.3: 상자 안 상자가 없고 섹션마다 맨 바깥 상자는 하나 이하 ----------
+
+// 랜딩 모듈(폴더 전체)과 그 CSS: 네 변 테두리(border: 1px …)를 주는 클래스는 해시 이름으로 바꿔 상자 판단에 더한다(design.md '상자 겹침 시험 도우미')
+const LANDING_MODULES: Record<string, Record<string, string>> = {
+  'base.module.css': base,
+  'SiteHeader.module.css': headStyles,
+  'Hero.module.css': heroStyles,
+  'AiSection.module.css': aiStyles,
+  'OrthoSection.module.css': orthoStyles,
+  'FeaturesSection.module.css': featStyles,
+  'PrivacySection.module.css': privStyles,
+  'HowSection.module.css': howStyles,
+  'SiteFooter.module.css': footStyles,
+}
+// 규칙 { … } 하나마다 선택자 끝 클래스(.a > .b:hover → b)를 모은다. @media 안 규칙도 본다
+function fourSideBorderClasses(css: string): string[] {
+  const names: string[] = []
+  for (const [, head, body] of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/(?:^|[;\s])border\s*:\s*1px\b/.test(body)) continue
+    for (const selector of head.split(',')) {
+      const last = /\.([a-zA-Z][\w-]*)[^.\s>+~]*$/.exec(selector.trim())
+      if (last) names.push(last[1])
+    }
+  }
+  return [...new Set(names)]
+}
+const LANDING_CSS_DIR = join(ROOT, 'src/components/landing')
+const moduleBoxClasses = new Set(
+  Object.entries(LANDING_MODULES).flatMap(([file, mod]) =>
+    fourSideBorderClasses(readFileSync(join(LANDING_CSS_DIR, file), 'utf8')).map((name) => mod[name]),
+  ),
+)
+const isLandingBox = (el: Element) =>
+  isBorderBox(el) ||
+  (BOX_TAGS.has(el.tagName.toLowerCase()) && (el.getAttribute('class') ?? '').split(/\s+/).some((c) => moduleBoxClasses.has(c)))
+// aria-hidden 밖 상자 가운데 바깥에 다른 상자가 없는 것
+function outerBoxes(root: Element): Element[] {
+  const found: Element[] = []
+  const visit = (el: Element) => {
+    if (el.getAttribute('aria-hidden') === 'true') return
+    if (isLandingBox(el)) {
+      found.push(el)
+      return
+    }
+    for (const child of Array.from(el.children)) visit(child)
+  }
+  visit(root)
+  return found
+}
+
+describe('AC-212.3: 페이지 전체 상자 검사', () => {
+  it('AC-212.3: 상자 판단에 랜딩 폴더의 모든 모듈을 넣었고, 네 변 테두리 클래스(리포트·급여 패널·흐름)를 찾는다', () => {
+    const files = readdirSync(LANDING_CSS_DIR).filter((name) => name.endsWith('.module.css'))
+    expect(Object.keys(LANDING_MODULES).sort()).toEqual(files.sort())
+    expect(fourSideBorderClasses('.a { border: 1px solid var(--line); } @media (min-width: 768px) { .b > .c:hover { border: 1px solid var(--line); } } .d { border-top: 1px solid var(--line); }')).toEqual(['a', 'c'])
+    for (const name of [aiStyles.report, featStyles.panel, privStyles.flow]) expect(moduleBoxClasses.has(name), name).toBe(true)
+  })
+
+  it('AC-212.3: 페이지 어디에도 상자 안 상자가 없다(nestedBoxes, aria-hidden 안은 건너뜀)', () => {
+    expect(nestedBoxes(doc, isLandingBox)).toEqual([])
+  })
+
+  it('AC-212.3: 섹션마다 맨 바깥 상자는 하나 이하다(미리보기·AI 리포트·급여 패널·개인정보 흐름 각 하나)', () => {
+    const counts = Object.fromEntries(mainSections().map((s) => [s.id, outerBoxes(s).length]))
+    for (const [id, count] of Object.entries(counts)) expect(count, `#${id}`).toBeLessThanOrEqual(1)
+    // 검사가 헛돌지 않는다: 미리보기(Tailwind border)와 모듈 상자를 실제로 찾는다
+    expect(counts).toEqual({ top: 1, ai: 1, ortho: 0, features: 1, privacy: 1, how: 0 })
+    expect(outerBoxes(doc.querySelector('header')!), '메뉴 띠').toEqual([])
+    expect(outerBoxes(doc.querySelector('footer')!), '바닥글').toEqual([])
   })
 })
 
@@ -103,14 +267,14 @@ describe('AC-001.3: 제목', () => {
 })
 
 describe('AC-002.1: [구글로 시작하기]', () => {
-  it('AC-002.1: 메뉴·히어로·시작하기 섹션에 하나씩 모두 3개, 셋 다 href="/login"', () => {
+  it('AC-002.1: 메뉴·히어로·#how에 하나씩 모두 3개, 셋 다 href="/login"', () => {
     const starts = links.filter((l) => l.text === '구글로 시작하기')
     expect(starts).toHaveLength(3)
     for (const s of starts) expect(s.href).toBe('/login')
     const header = html.match(/<header\b[\s\S]*?<\/header>/)![0]
     const hero = HERO
-    const start = html.match(/<section\b[^>]*id="start"[\s\S]*?<\/section>/)![0]
-    for (const part of [header, hero, start]) expect(part).toMatch(/<a\b[^>]*href="\/login"[^>]*>구글로 시작하기<\/a>/)
+    const how = html.match(/<section\b[^>]*id="how"[\s\S]*?<\/section>/)![0]
+    for (const part of [header, hero, how]) expect(part).toMatch(/<a\b[^>]*href="\/login"[^>]*>구글로 시작하기<\/a>/)
   })
 })
 
@@ -233,7 +397,7 @@ const withoutLogos = html.replace(LOGO_SVG, '')
 describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
   it('AC-105.8: 랜딩 폴더의 *.tsx(시험 제외)에 색 글자(# + 16진수)가 없다', () => {
     expect(landingTsx.map((f) => f.name)).toEqual(
-      expect.arrayContaining(['PrivacySection.tsx', 'HowSection.tsx', 'StartSection.tsx', 'SiteFooter.tsx']),
+      expect.arrayContaining(['PrivacySection.tsx', 'HowSection.tsx', 'SiteFooter.tsx']),
     )
     for (const { name, body } of landingTsx) expect(body, name).not.toMatch(HEX_COLOR)
   })

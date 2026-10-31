@@ -8,10 +8,9 @@ import OrthoSection from '@/components/landing/OrthoSection'
 import PrivacySection from '@/components/landing/PrivacySection'
 import SiteFooter from '@/components/landing/SiteFooter'
 import SiteHeader from '@/components/landing/SiteHeader'
-import StartSection from '@/components/landing/StartSection'
 
-// 랜딩(/): 승인된 시안(docs/mockups/landing-v2/index.html) 순서로 섹션을 놓기만 한다.
-// 메뉴 띠·푸터는 main 밖에 둬서 banner·contentinfo 영역으로 읽히게 한다.
+// 랜딩(/): 승인된 시안(docs/mockups/b2b-redesign/screens.mjs) 순서로 섹션 6개를 놓기만 한다(specs/b2b-redesign AC-211.2).
+// 옛 시작하기 섹션(#start)은 #how에 합쳤다. 메뉴 띠·푸터는 main 밖에 둬서 banner·contentinfo 영역으로 읽히게 한다.
 // 뿌리 감싸개(base.root) 하나가 랜딩 초기화·기본 글자를 맡는다. 앱 화면에는 새지 않는다(specs/landing-v2 AC-105.1)
 export default function Home() {
   return (
@@ -24,7 +23,6 @@ export default function Home() {
         <FeaturesSection />
         <PrivacySection />
         <HowSection />
-        <StartSection />
       </main>
       <SiteFooter />
     </div>

@@ -11,14 +11,11 @@ import PrivacySection from './PrivacySection'
 import privStyles from './PrivacySection.module.css'
 import SiteFooter from './SiteFooter'
 import footStyles from './SiteFooter.module.css'
-import StartSection from './StartSection'
-import startStyles from './StartSection.module.css'
 
 const privacy = renderToStaticMarkup(<PrivacySection />)
 const how = renderToStaticMarkup(<HowSection />)
-const start = renderToStaticMarkup(<StartSection />)
 const footer = renderToStaticMarkup(<SiteFooter />)
-const all = privacy + how + start + footer
+const all = privacy + how + footer
 
 // 태그를 빈칸으로 바꾸고 빈칸을 하나로 모은 글자 (React가 바꾼 &#x27; 같은 글자는 되돌린다)
 const ENTITIES: Record<string, string> = { '&#x27;': "'", '&quot;': '"', '&lt;': '<', '&gt;': '>', '&amp;': '&' }
@@ -33,10 +30,9 @@ const linksOf = (html: string) =>
   [...html.matchAll(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => ({ href: m[1], text: textOf(m[2]) }))
 
 describe('AC-001.1: 섹션과 푸터', () => {
-  it('AC-001.1: section#privacy · section#how · section#start · footer다', () => {
+  it('AC-001.1: section#privacy · section#how · footer다', () => {
     expect(privacy).toMatch(/^<section\b[^>]*id="privacy"/)
     expect(how).toMatch(/^<section\b[^>]*id="how"/)
-    expect(start).toMatch(/^<section\b[^>]*id="start"/)
     expect(footer).toMatch(/^<footer\b/)
   })
 })
@@ -62,25 +58,28 @@ describe('AC-005.1: 개인정보 문구', () => {
 })
 
 describe('AC-002.1: [구글로 시작하기]', () => {
-  it('AC-002.1: 시작하기 섹션에 하나 있고 /login으로 간다(목업의 #top 아님)', () => {
-    expect(linksOf(start)).toEqual([{ href: '/login', text: '구글로 시작하기' }])
+  it('AC-002.1: #how에 하나 있고 /login으로 간다', () => {
+    expect(linksOf(how)).toEqual([{ href: '/login', text: '구글로 시작하기' }])
   })
 
-  it('AC-002.1: 시작 3단계의 "구글로 시작하기"는 링크가 아닌 단계 제목이다', () => {
-    expect(linksOf(how)).toEqual([])
-    expect(how).toMatch(/<h3\b[^>]*>구글로 시작하기<\/h3>/)
+  it('AC-002.1: #how의 링크는 [구글로 시작하기](/login) 하나이고, 단계 h3 "구글로 시작하기"는 링크가 아니다', () => {
+    expect(linksOf(how)).toEqual([{ href: '/login', text: '구글로 시작하기' }])
+    const h3 = [...how.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/g)].map((m) => m[1])
+    expect(h3, '단계 h3 글자에 태그가 없다(링크가 아니다)').toContain('구글로 시작하기')
+    expect(how).not.toMatch(/<a\b[^>]*>[^<]*<h3\b/)
+    expect(how).not.toMatch(/<h3\b[^>]*><a\b/)
     expect(linksOf(privacy + footer)).toEqual([])
   })
 })
 
 describe('AC-001.1: 시작 3단계', () => {
-  it('AC-001.1: 시작 3단계는 ol 안의 01·02·03이다', () => {
+  it('AC-001.1: 시작 3단계는 ol 안의 1·2·3이다', () => {
     const items = [...how.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textOf(m[1]))
     expect(how).toMatch(/<ol\b/)
     expect(items).toHaveLength(3)
-    expect(items[0]).toMatch(/^01 구글로 시작하기/)
-    expect(items[1]).toMatch(/^02 가입 신청/)
-    expect(items[2]).toMatch(/^03 승인 후 바로 사용/)
+    expect(items[0]).toMatch(/^1 구글로 시작하기/)
+    expect(items[1]).toMatch(/^2 가입 신청/)
+    expect(items[2]).toMatch(/^3 승인 후 바로 사용/)
   })
 })
 
@@ -98,7 +97,7 @@ describe('AC-008.1: svg는 꾸밈', () => {
   })
 })
 
-// ---------- 개인정보 · 시작 3단계 · 시작하기 · 푸터의 짜임 (specs/landing-v2 REQ-110, 시안 #privacy · #how · #start · footer) ----------
+// ---------- 개인정보 · 시작 3단계 · 푸터의 짜임 (specs/b2b-redesign AC-210.2 · AC-211.1 · AC-207.3, 시안 #privacy · #how · footer) ----------
 
 // 여는 태그의 class 목록
 const classesOf = (openTag: string | undefined) =>
@@ -287,33 +286,48 @@ describe('AC-210.2: 개인정보 섹션의 짜임', () => {
   })
 })
 
-// section#how(.sec.secCanvas) > .wrap.stack > .head(h2) + ol.steps(li.item × 3)
+// ---------- 시작 3단계의 짜임 (specs/b2b-redesign AC-211.1, 시안 screens.mjs landingPC·landingPhone #how) ----------
+
+// section#how(.sec, 흰 바탕) > .wrap > .grid.layout 안이 글(.text: h2 + 안내 p) → [구글로 시작하기](a.start) → 단계 ol(.steps).
+// 휴대폰에서 단추가 단계 뒤로 가는 것은 같은 DOM에서 CSS order로 한다(design.md '#how의 단추')
 const HOW_SHAPE =
-  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([^<]*)<\/h2><\/div>(<ol\b[^>]*>)([\s\S]*?)<\/ol><\/div><\/section>$/
-// 단계 하나: li > 번호 span + h3 + p
+  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([^<]*)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<a\b[^>]*>)([^<]*)<\/a>(<ol\b[^>]*>)([\s\S]*?)<\/ol><\/div><\/div><\/section>$/
+// 단계 하나: li > 번호 span + h3 + p (사이 감싸개 없음)
 const STEP_ITEM = /(<li\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<h3\b[^>]*>)([^<]*)<\/h3>(<p\b[^>]*>)([^<]*)<\/p><\/li>/g
 
-describe('AC-110.3: 시작 3단계의 짜임', () => {
+describe('AC-211.1: 시작 3단계의 짜임', () => {
   const parts = how.match(HOW_SHAPE)
-  const [, section, wrap, head, h2, h2In, ol, olIn] = parts ?? []
+  const [, section, wrap, grid, text, h2, h2In, lead, leadIn, a, aIn, ol, olIn] = parts ?? []
   const steps = [...(olIn ?? '').matchAll(STEP_ITEM)]
 
-  it('AC-110.3: section#how(.sec·.secCanvas) > .wrap.stack 안에 h2 하나(.head) + <ol class="steps">뿐이다(흐르는 선 없음)', () => {
-    expect(parts, 'section > .wrap > .head(h2) + ol').not.toBeNull()
+  it('AC-211.1: section#how(.sec, 흰 바탕 — canvas 띠 아님) > .wrap > .grid(.layout) 안이 글(.text: h2 + 안내 p) → [구글로 시작하기] → 단계 ol 순서다', () => {
+    expect(parts, 'section > .wrap > .grid(.text(h2 + p) + a + ol)').not.toBeNull()
     expect(section).toMatch(/\bid="how"/)
-    expect(classesOf(section)).toEqual(expect.arrayContaining([base.sec, base.secCanvas]))
-    expect(classesOf(wrap)).toEqual(expect.arrayContaining([base.wrap, base.stack]))
-    expect(classesOf(head)).toEqual([base.head])
-    expect(classesOf(h2)).toEqual([base.tH2])
-    expect(h2In).toBe('시작은 3단계면 충분합니다')
+    expect(classesOf(section)).toEqual([base.sec])
+    expect(classesOf(wrap)).toEqual([base.wrap])
+    expect(classesOf(grid)).toEqual(expect.arrayContaining([base.grid, howStyles.layout]))
+    expect(classesOf(text)).toEqual([howStyles.text])
     expect(classesOf(ol)).toEqual([howStyles.steps])
     expect(how.match(/<h2\b/g)).toHaveLength(1)
   })
 
-  it('AC-110.3: <ol> 안은 <li class="item"> 3개이고 각각 번호 span(.stepNum, 한 가지 색) + h3 .tH3 + p .tBody다', () => {
+  it('AC-211.1: h2는 .tHeading "시작은 3단계면 충분합니다"(태그 없음), 안내 p(.lead)는 "처음이면 가입 신청 후 관리자 승인을 받습니다."다', () => {
+    expect(classesOf(h2)).toEqual([base.tHeading])
+    expect(h2In).toBe('시작은 3단계면 충분합니다')
+    expect(classesOf(lead)).toEqual([howStyles.lead])
+    expect(leadIn).toBe('처음이면 가입 신청 후 관리자 승인을 받습니다.')
+  })
+
+  it('AC-211.1: [구글로 시작하기]는 /login으로 가는 주 단추(.btn·.btnLg 44px·.btnPrimary) 글자뿐이고, 자리 클래스(.start)가 휴대폰 순서·폭을 정한다', () => {
+    expect(a).toMatch(/\bhref="\/login"/)
+    expect(classesOf(a)).toEqual([base.btn, base.btnLg, base.btnPrimary, howStyles.start])
+    expect(aIn).toBe('구글로 시작하기')
+  })
+
+  it('AC-211.1: 단계 ol 안은 li(.step) 3개 — 번호 span(.num) "1"·"2"·"3" + h3(.tSubtitle .stepTitle) + p(.desc, 768px 미만 숨김 .pcOnly)이고 지금 단계 문구다', () => {
     expect(steps).toHaveLength(3)
     expect((olIn ?? '').replace(STEP_ITEM, ''), 'li 밖의 다른 원소가 없다').toBe('')
-    expect(steps.map((m) => m[3])).toEqual(['01', '02', '03'])
+    expect(steps.map((m) => m[3])).toEqual(['1', '2', '3'])
     expect(steps.map((m) => m[5])).toEqual(['구글로 시작하기', '가입 신청', '승인 후 바로 사용'])
     expect(steps.map((m) => m[7])).toEqual([
       '쓰던 구글 계정으로 로그인합니다. 새 비밀번호를 만들 필요가 없습니다.',
@@ -321,66 +335,29 @@ describe('AC-110.3: 시작 3단계의 짜임', () => {
       '관리자가 승인하면 대시보드가 열립니다.',
     ])
     for (const [, li, num, , h3, , p] of steps) {
-      expect(classesOf(li)).toEqual([base.item])
-      expect(classesOf(num)).toEqual([howStyles.stepNum])
-      expect(classesOf(h3)).toEqual([base.tH3])
-      expect(classesOf(p)).toEqual([base.tBody])
+      expect(classesOf(li)).toEqual([howStyles.step])
+      expect(classesOf(num)).toEqual([howStyles.num])
+      expect(classesOf(h3)).toEqual([base.tSubtitle, howStyles.stepTitle])
+      expect(classesOf(p)).toEqual([howStyles.desc, base.pcOnly])
     }
   })
 
-  it('AC-110.3: "HOW IT STARTS"·svg·aria-hidden 장식·inline style이 없다', () => {
-    expect(textOf(how)).not.toMatch(/HOW IT STARTS/i)
+  it('AC-211.1: 영문 대문자 소제목·svg·aria-hidden 장식·inline style·줄바꿈 태그·옛 클래스(.stack·.head·.item·.tH2·.tH3·.tBody·.secCanvas)가 없다', () => {
     expect(textOf(how), '영문 대문자 소제목이 없다').not.toMatch(/[A-Z]{3,}/)
     expect(how).not.toMatch(/<svg\b/)
     expect(how).not.toMatch(/aria-hidden/)
     expect(how).not.toMatch(/\bstyle="/)
+    expect(how).not.toMatch(/<br\b/)
+    const allClasses = [...how.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
+    for (const old of [base.stack, base.head, base.item, base.tH2, base.tH3, base.tBody, base.secCanvas]) {
+      expect(allClasses).not.toContain(old)
+    }
   })
 
-  it('AC-110.3: 시작 3단계에 붙은 클래스가 모두 base.module.css·HowSection.module.css에 정의돼 있다', () => {
+  it('AC-211.1: 시작 3단계에 붙은 클래스가 모두 base.module.css·HowSection.module.css에 정의돼 있다', () => {
     const { checked, missing } = classCheck(how, [
       [base.wrap, 'base.module.css'],
       [howStyles.steps, 'HowSection.module.css'],
-    ])
-    expect(checked, '본 클래스 수').toBeGreaterThan(0)
-    expect(missing).toEqual([])
-  })
-})
-
-// section#start(.sec) > .wrap > .start(.text(h2 + p) + a)
-const START_SHAPE =
-  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([\s\S]*?)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<a\b[^>]*>)([^<]*)<\/a><\/div><\/div><\/section>$/
-
-describe('AC-110.4: 시작하기 섹션의 짜임', () => {
-  const parts = start.match(START_SHAPE)
-  const [, section, wrap, grid, text, h2, h2In, lead, leadIn, a, aIn] = parts ?? []
-
-  it('AC-110.4: section#start(.sec, 흰 바탕) > .wrap > .start 안이 글 덩어리(.text) → 단추 순서다(원형 빛 없음)', () => {
-    expect(parts, 'section > .wrap > .start(.text(h2 + p) + a)').not.toBeNull()
-    expect(section).toMatch(/\bid="start"/)
-    expect(classesOf(section)).toEqual([base.sec])
-    expect(classesOf(wrap)).toEqual([base.wrap])
-    expect(classesOf(grid)).toEqual([startStyles.start])
-    expect(classesOf(text)).toEqual([startStyles.text])
-    expect(start).not.toMatch(/aria-hidden/)
-  })
-
-  it('AC-110.4: h2는 .tH2 "우리 의원도<br/>숫자로 운영해 보세요", 안내 글은 .tLead다', () => {
-    expect(classesOf(h2)).toEqual([base.tH2])
-    expect(h2In).toBe('우리 의원도<br/>숫자로 운영해 보세요')
-    expect(classesOf(lead)).toEqual([base.tLead])
-    expect(leadIn).toBe('처음이면 가입 신청 후 관리자 승인을 받습니다.')
-  })
-
-  it('AC-110.4: [구글로 시작하기]는 /login으로 가는 .btn·.btnLg·.btnPrimary 글자 단추다', () => {
-    expect(a).toMatch(/\bhref="\/login"/)
-    expect(classesOf(a)).toEqual([base.btn, base.btnLg, base.btnPrimary])
-    expect(aIn).toBe('구글로 시작하기')
-  })
-
-  it('AC-110.4: 시작하기 섹션에 붙은 클래스가 모두 base.module.css·StartSection.module.css에 정의돼 있다', () => {
-    const { checked, missing } = classCheck(start, [
-      [base.wrap, 'base.module.css'],
-      [startStyles.start, 'StartSection.module.css'],
     ])
     expect(checked, '본 클래스 수').toBeGreaterThan(0)
     expect(missing).toEqual([])
@@ -455,8 +432,8 @@ describe('AC-207.3: 바닥글의 짜임', () => {
   })
 })
 
-describe('AC-110.1 · AC-110.3 · AC-110.4 · AC-110.5: 아무것도 받지 않는다', () => {
-  it('AC-110.1 · AC-110.3 · AC-110.4 · AC-110.5: 네 부분에 받는 칸·누르는 칸·초점 받는 원소가 없다', () => {
+describe('AC-210.2 · AC-211.1 · AC-207.3: 아무것도 받지 않는다', () => {
+  it('AC-210.2 · AC-211.1 · AC-207.3: 세 부분에 받는 칸·누르는 칸·초점 받는 원소가 없다', () => {
     expect(all).not.toMatch(/<(form|input|textarea|button|select|label|details|summary|dialog)\b/)
     expect(all).not.toMatch(/contenteditable|tabindex|role="button"|\bon[a-z]+=/i)
   })
