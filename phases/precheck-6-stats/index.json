@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-6-stats",
+  "steps": [
+    {
+      "step": 0,
+      "name": "helper-stats-read",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "rx-trend",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "revisit-30",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "report-text",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "stats-screen",
+      "status": "pending"
+    }
+  ]
+}

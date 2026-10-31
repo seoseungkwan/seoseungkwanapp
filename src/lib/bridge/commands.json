@@ -1,0 +1,119 @@
+{
+  "protocol": 1,
+  "hostName": "com.seoseungkwan.precheck",
+  "origin": "https://seoseungkwanapp.vercel.app",
+  "extensionId": "cmnefbmfclmjkfbnjnbfnlndlpjnihka",
+  "extensionKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsde3indftzSwo5qkcGVOYFfINl0XQ1CGelIRN3hwIcGPWlEo5OkOJvcIqkAb9N/dY9ZmGCeCfDtt4vvkJmauaVWM1d5JYPcimVa8GArJCCF4qnMORIr4Z9pdwLUgd4iNcyruxVTfuTKrDDPmiIe20aU7fFVb2cxqNyUKwA8OTdo/RjSaG89S6++JGLukHBzmiibv4dXqbk4KRuD7BEjGetKvoKrLx3nE6uy6fOz5R91K4iOLN8jwNZZ0N6epjpPSAzqKYT5Lxa6jKwwCJU2TIvPbKHa63Si9Gq/AwGBp9ANLiU+XtJqZUM3L7wgsGq/msTm2iGhnD16L/3K8KpSzEwIDAQAB",
+  "commands": {
+    "hello": {
+      "patient": false,
+      "args": {}
+    },
+    "bit.check": {
+      "patient": false,
+      "args": {}
+    },
+    "bit.register": {
+      "patient": false,
+      "confirm": true,
+      "args": {}
+    },
+    "claim.dates": {
+      "patient": false,
+      "maxDays": 400,
+      "args": {
+        "from": { "type": "date" },
+        "to": { "type": "date" }
+      }
+    },
+    "claim.month": {
+      "patient": true,
+      "maxDays": 35,
+      "args": {
+        "from": { "type": "date" },
+        "to": { "type": "date" }
+      }
+    },
+    "claim.memos": {
+      "patient": true,
+      "maxDays": 400,
+      "args": {
+        "from": { "type": "date" },
+        "to": { "type": "date" }
+      }
+    },
+    "store.load": {
+      "patient": true,
+      "args": {
+        "months": { "type": "array", "optional": true, "min": 1, "max": 24, "items": { "type": "month" } },
+        "settings": { "type": "bool", "optional": true },
+        "contact": { "type": "bool", "optional": true }
+      }
+    },
+    "store.save": {
+      "patient": true,
+      "send": true,
+      "args": {
+        "payload": {
+          "type": "payload",
+          "fields": {
+            "month": { "type": "month", "optional": true },
+            "drafts": { "type": "json", "of": "object", "optional": true },
+            "done": { "type": "json", "of": "object", "optional": true },
+            "journal": { "type": "json", "of": "object", "optional": true },
+            "contact": { "type": "json", "of": "object", "optional": true },
+            "settings": { "type": "json", "of": "object", "optional": true }
+          }
+        }
+      }
+    },
+    "bit.input": {
+      "patient": true,
+      "send": true,
+      "confirm": true,
+      "args": {
+        "payload": {
+          "type": "payload",
+          "fields": {
+            "items": {
+              "type": "array",
+              "min": 1,
+              "max": 500,
+              "items": {
+                "type": "object",
+                "fields": {
+                  "visitKey": { "type": "string", "min": 1, "max": 64 },
+                  "chart": { "type": "string", "min": 1, "max": 20, "pattern": "^[0-9]{1,20}$" },
+                  "name": { "type": "string", "min": 1, "max": 100 },
+                  "date": { "type": "date" },
+                  "memo": { "type": "string", "min": 1, "max": 32000 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sam.latest": {
+      "patient": true,
+      "args": {}
+    },
+    "contact.targets": {
+      "patient": true,
+      "maxDays": 1100,
+      "args": {
+        "kind": { "type": "enum", "values": ["followup", "injection"] },
+        "from": { "type": "date" },
+        "to": { "type": "date" }
+      }
+    },
+    "stats.rows": {
+      "patient": true,
+      "maxDays": 800,
+      "args": {
+        "from": { "type": "date" },
+        "to": { "type": "date" }
+      }
+    }
+  }
+}

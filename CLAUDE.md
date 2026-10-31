@@ -10,10 +10,11 @@
 - 파일 읽기: SheetJS `xlsx` 0.20.3 (CDN 패키지)
 - Supabase(서울, 무료 플랜) · 구글 OAuth · Vercel · Claude API — 패키지는 쓰는 기능에서 넣는다
 - 스타일링: 앱 화면은 Tailwind CSS v4(`@theme inline`은 토큰을 `var()`로만 가리킴, 반복 모양은 `components/ui/classes.ts`), 랜딩은 CSS Modules(`*.module.css`). 토큰은 `src/app/globals.css` `:root` 한 곳(ADR-019). 글꼴은 `next/font/local`의 Pretendard (ADR-014·ADR-015·ADR-019)
+- 청구 사전점검(ADR-016): 크롬 확장 Manifest V3(`extension/`, 웹스토어 비공개 등록, 권한은 `nativeMessaging`만) · 네이티브 메시징 도우미 C#/.NET Framework 4.8(`helper/`, 윈도우 기본 탑재. 비트의 .NET Framework DLL을 그대로 불러 쓰려고. FlaUI·DPAPI). 도우미는 GitHub Actions 윈도우 빌드(`.github/workflows/helper.yml`, 서명 없음)로 만든다. 플랫폼과 상관없는 부분(`Precheck.Core`, netstandard2.0)은 이 서버에서 .NET 10 SDK로 시험한다(`dotnet test`, vitest 감싸개 `helper/tests/*.dotnet.test.ts`로 부름)
 
 ## 아키텍처 규칙
-- CRITICAL: 환자 개인정보는 의원 PC 밖으로 나가지 않는다. 환자 파일은 브라우저 Web Worker 안에서만 읽고 계산한다. 서버·Claude API에는 집계 숫자만 간다. 읽는 칸·차트번호·파일 이름 규칙은 `plan.md §4`
-- CRITICAL: `lib/parsers`·`lib/analytics`·`lib/payload`·`workers`는 환자 자료 구역이다. 네트워크·console·브라우저 저장소·React/Next/supabase/auth import를 쓰지 않는다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 규칙을 풀지 않는다
+- CRITICAL: 환자 개인정보는 의원 PC 밖으로 나가지 않는다. 환자 파일은 브라우저 Web Worker 안에서만 읽고 계산한다. 비트 자료는 도우미 → 확장 → `lib/bridge` → Worker로만 오고, 고치던 메모·완료 표시는 도우미가 그 PC에 암호화해 둔다. 서버·Claude API에는 집계 숫자만 간다(청구는 건수 표의 숫자와 설정만, ADR-021). 읽는 칸·차트번호·파일 이름 규칙은 `plan.md §4`
+- CRITICAL: `lib/parsers`·`lib/analytics`·`lib/payload`·`lib/precheck`·`lib/bridge`·`workers`는 환자 자료 구역이다. 네트워크·console·브라우저 저장소·React/Next/supabase/auth import를 쓰지 않는다. `lib/bridge`(비트 자료 통로)는 정해 둔 확장 ID 상수로만 확장과 말하고, 받은 조각을 바로 Worker로 넘긴다. 환자 줄을 그리는 `components/claim/rows`·`components/contact/rows`도 네트워크·저장소·console·supabase를 못 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 규칙을 풀지 않는다 (ADR-020)
 - CRITICAL: 서버 코드는 `app/api/ai/` 하나뿐이다. 나머지는 브라우저 + Supabase RLS. 예외는 인증뿐이다: 로그인 콜백·middleware·페이지 guard(`*.server.ts`)는 세션과 내 병원·관리자 줄만 읽고 쓰지 않는다 (ADR-004)
 - CRITICAL: AI 경로는 브라우저가 보낸 숫자를 쓰지 않는다. 서버가 DB에서 읽어 `validate.ts`로 검사한 집계만 보낸다. 답은 글자로만 그린다(HTML 금지) (`plan.md §6-2`)
 - 날짜 계산은 `lib/analytics/dates.ts` 한 곳(한국 날짜). 오류 문구는 `lib/errors.ts` 한 곳('무엇이 · 어떻게 고치나 · 번호')

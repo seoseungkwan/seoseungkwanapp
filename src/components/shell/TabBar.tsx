@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState } from 'react'
-import { ADMIN_ITEM, MENU } from './menu'
+import { ADMIN_ITEM, MENU, currentMenuLabel, isUnder } from './menu'
 
 // 탭 줄 (AC-008.1·008.2·008.5·008.7, b2b-redesign AC-218.2, UI_GUIDE '앱 화면' 탭·폰). 44px·흰 바탕·아래 1px 선.
 // 위쪽 띠와 함께 AppShell의 붙는 묶음 안에 있다(이 nav 자신은 붙지 않는다).
@@ -20,8 +20,6 @@ const tabNotReady = `${tabBase} font-medium text-faint`
 // 지금: ink 600 + 아래 2px accent 밑줄(좌우 12px 안쪽 = 글자 폭)
 const tabCurrent = `${tabBase} font-semibold text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-accent`
 
-const isCurrent = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`)
-
 // 굵기가 바뀌어도 탭 폭이 흔들리지 않게, 지금 탭 굵기(600) 글자 폭을 보이지 않는 ::after로 미리 잡는다
 function TabLabel({ label }: { label: string }) {
   return (
@@ -34,8 +32,7 @@ function TabLabel({ label }: { label: string }) {
   )
 }
 
-function TabLink({ label, href, pathname }: { label: string; href: string; pathname: string }) {
-  const current = isCurrent(pathname, href)
+function TabLink({ label, href, current }: { label: string; href: string; current: boolean }) {
   return (
     <Link href={href} aria-current={current ? 'page' : undefined} className={current ? tabCurrent : tabIdle}>
       <TabLabel label={label} />
@@ -46,8 +43,9 @@ function TabLink({ label, href, pathname }: { label: string; href: string; pathn
 // 아직 없는 화면: 링크가 아니고 눌러도 아무 일이 없다. 크기·글자는 기본 탭과 같고 글자만 faint, 올림·초점에 '준비 중' 툴팁(AC-008.5·AC-218.2).
 // 툴팁 글은 aria-describedby로 늘 읽힌다(숨겨져 있어도). WCAG 1.4.13: Esc로 닫히고, 마우스를 툴팁 위로 옮겨도 남는다
 // (툴팁은 탭 안 38px에서 시작해 탭과 사이 틈이 없고, 탭을 감싼 덩이 안에 있어 마우스를 받는다).
-// 툴팁(28px)은 탭(44px) 아래로 22px만 내려와 본문 위 여백(24px) 안에 머문다 → 페이지 제목을 덮지 않는다
-function NotReadyTab({ label }: { label: string }) {
+// 툴팁(28px)은 탭(44px) 아래로 22px만 내려와 본문 위 여백(24px) 안에 머문다 → 페이지 제목을 덮지 않는다.
+// current: 이 탭 자리에 속한 다른 화면을 보는 중(청구 목업: /claim/setup은 설정 탭 안). 누를 수 없는 단추·툴팁은 그대로이고 지금 탭 모양만 보인다(AC-006.4·AC-034.1)
+function NotReadyTab({ label, current }: { label: string; current: boolean }) {
   const tipId = useId()
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -77,7 +75,13 @@ function NotReadyTab({ label }: { label: string }) {
       }}
       onBlur={() => setFocused(false)}
     >
-      <button type="button" aria-disabled="true" aria-describedby={tipId} className={tabNotReady}>
+      <button
+        type="button"
+        aria-disabled="true"
+        aria-describedby={tipId}
+        aria-current={current ? 'page' : undefined}
+        className={current ? tabCurrent : tabNotReady}
+      >
         <TabLabel label={label} />
       </button>
       {/* 1024px 미만은 띠 안 스크롤이라 띠 밖으로 나갈 수 없어 늘 숨긴다 */}
@@ -95,6 +99,8 @@ function NotReadyTab({ label }: { label: string }) {
 export function TabBar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname()
   const navRef = useRef<HTMLElement>(null)
+  // 지금 탭: 탭의 href·owns 중 가장 길게 맞는 자리(menu.ts, /claim/setup은 청구가 아니라 설정 자리)
+  const current = currentMenuLabel(pathname)
 
   // 좁은 폭에서 지금 탭이 밀려 안 보이면 보이게 옮긴다(AC-008.7). 탭 띠가 넘칠 때만, 띠의 scrollLeft만 바꾼다
   // (scrollIntoView는 창까지 밀 수 있다 — 1024px 이상은 띠가 넘치지 않아 아무것도 하지 않는다)
@@ -119,15 +125,15 @@ export function TabBar({ isAdmin }: { isAdmin: boolean }) {
       <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl [&>:first-child]:-ml-3">
         {MENU.map((item) =>
           item.href === null ? (
-            <NotReadyTab key={item.label} label={item.label} />
+            <NotReadyTab key={item.label} label={item.label} current={current === item.label} />
           ) : (
-            <TabLink key={item.label} label={item.label} href={item.href} pathname={pathname} />
+            <TabLink key={item.label} label={item.label} href={item.href} current={current === item.label} />
           ),
         )}
         {isAdmin && (
           <>
             <span aria-hidden="true" className="mx-2 h-4 w-px shrink-0 self-center bg-line" />
-            <TabLink label={ADMIN_ITEM.label} href={ADMIN_ITEM.href} pathname={pathname} />
+            <TabLink label={ADMIN_ITEM.label} href={ADMIN_ITEM.href} current={isUnder(pathname, ADMIN_ITEM.href)} />
           </>
         )}
       </div>

@@ -10,6 +10,7 @@
     "test": "vitest run",
     "e2e": "tsx e2e/preflight.ts && next build && playwright test",
     "e2e:env": "tsx e2e/setup-env.ts",
+    "ext:build": "node -e \"require('fs').rmSync('extension/dist',{recursive:true,force:true})\" && tsc -p extension/tsconfig.json && node -e \"const fs=require('fs'),d='extension/dist/';fs.copyFileSync('extension/manifest.json',d+'manifest.json');fs.writeFileSync(d+'commands.js','export default '+fs.readFileSync('src/lib/bridge/commands.json','utf8').trim()+'\\n');const r=d+'relay.js',s=fs.readFileSync(r,'utf8'),t=s.replace('../../src/lib/bridge/commands.json','./commands.js');if(t===s)throw new Error('relay.js에서 commands.json import를 찾지 못했다');fs.writeFileSync(r,t)\"",
     "fixtures": "tsx fixtures/make-fake-fixtures.ts"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
+    "@types/chrome": "0.3.7",
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",

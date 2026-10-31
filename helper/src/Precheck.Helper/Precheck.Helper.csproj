@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 크롬이 켜는 네이티브 메시징 도우미(윈도우, .NET Framework 4.8). 표준 입출력 고리만 두고 일은 Core가 한다 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>Precheck.Helper</RootNamespace>
+    <AssemblyName>PrecheckHelper</AssemblyName>
+    <!-- 비트 DLL이 32비트라(원본 tools/build_stats.ps1의 /platform:x86) exe도 32비트로 돈다(CLR 머리 32BITREQUIRED, AC-005.8).
+         Platform·Platforms·OutputPath는 쓰지 않는다: 출력이 bin/x86/...로 옮겨 helper.yml의 zip 자리(bin/Release/net48)와 어긋난다 -->
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 리눅스·Actions에서 net48을 빌드하려고(빌드에만 쓰고 결과물에는 들어가지 않는다) -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Precheck.Core/Precheck.Core.csproj" />
+    <ProjectReference Include="../Precheck.Windows/Precheck.Windows.csproj" />
+  </ItemGroup>
+</Project>

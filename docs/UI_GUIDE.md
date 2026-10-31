@@ -175,10 +175,10 @@
 
 | 종류 | 바탕 / 테두리 / 글자 | 쓰는 곳 |
 |------|------|------|
-| `neutral` | `canvas` / `line` / `ink-2` | 준비 중, 추정, 방금 생성 · 예시 |
-| `accent` | `accent-soft` / 투명 / `accent-strong` | 미리보기 "예시 숫자" |
-| `positive` | `positive-soft` / 투명 / `positive` | 승인됨, 10월 확정됨, 늘었어요 |
-| `negative` | `negative-soft` / 투명 / `negative` | 승인되지 않음 |
+| `neutral` | `canvas` / `line` / `ink-2` | 준비 중, 추정, 방금 생성 · 예시, 설치·연결 확인 단계 "대기" |
+| `accent` | `accent-soft` / 투명 / `accent-strong` | 미리보기 "예시 숫자", 설치·연결 확인 단계 "확인 중" |
+| `positive` | `positive-soft` / 투명 / `positive` | 승인됨, 10월 확정됨, 늘었어요, 설치·연결 확인 단계 "완료"·"준비됨" |
+| `negative` | `negative-soft` / 투명 / `negative` | 승인되지 않음, 설치·연결 확인 단계 ✗(버전 안 맞음 등)·"업데이트 필요" |
 | `warning` | `warning-soft` / 투명 / `warning` | 승인 대기, 살펴볼 것 |
 
 - 관리자 표 줄에는 상태 칩을 두지 않는다(탭이 상태다). 승인 줄의 "승인됨" 완료 칩만 둔다
@@ -204,7 +204,8 @@
   - `ds.panelHead`: 좌우 20px, 위 16px(휴대폰 16·12). 제목 `ds.panelTitle` subtitle 600 ink, 보조 글 small muted
   - `ds.panelBody`: 좌우 20px, 위 16px, 아래 20px(휴대폰 16·8·16)
 - `ds.layer`(떠 있는 층: 계정 메뉴·확인 창): `surface`, 1px line, `rounded-float`, `shadow-float`
-- 패널 묶음(`panel`·`panelHead`·`panelTitle`·`panelBody`·`count`)과 표의 `tdNum`·`check`, `button.primarySmall`은 지금 쓰는 화면이 없다. 차트 부품처럼 다음 대시보드 명세가 쓴다
+- 패널 묶음(`panel`·`panelHead`·`panelTitle`·`panelBody`·`count`)과 표의 `tdNum`·`check`, `button.primarySmall`은 대시보드에서 아직 쓰지 않는다. 차트 부품처럼 다음 대시보드 명세가 쓴다
+  - 청구 설치 화면(`/claim/setup`의 준비 순서·이 PC·이렇게 지켜요)이 패널 묶음과 `button.primarySmall`을 쓴다(`specs/precheck` REQ-034)
 - 카드 모양은 없다. 인증 화면·랜딩 목록은 상자 없이 선과 여백으로 나눈다
 
 ### 상자 안 상자 금지
@@ -278,7 +279,8 @@
   - `[서비스 이름]`과 세로 구분선이 없다. 서비스 이름이 정해질 때까지 로고 옆에는 병원 이름만 둔다
 - **계정 단추**: 작은 보조 단추(32px) 모양에 사람 아이콘 16 + 이메일 + 아래 화살표. 메뉴는 `ds.layer`, 폭 240px. 768px 미만은 44×44 아이콘 단추(테두리 없음, `aria-label`에 이메일)
 - **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
-  - 순서: 대시보드 · 통계 · AI 리포트 · 매출 · 재고 · 급여 · 일일마감·보고 · 월간 PDF · 설정 | 관리자(세로 구분선 뒤, 관리자만). 순서·링크·지금 탭 판단은 그대로다
+  - 순서: 대시보드 · 통계 · AI 리포트 · 매출 · 청구 · 재고 · 급여 · 일일마감·보고 · 월간 PDF · 설정 | 관리자(세로 구분선 뒤, 관리자만). 순서·링크·지금 탭 판단은 그대로다
+  - [청구]는 매출 뒤다(청구 사전점검 목업 '탭 자리', `specs/precheck` AC-006.4). 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: `/claim`·`/claim/close`는 [청구], 설치·연결 확인 `/claim/setup`은 [설정] 자리
   - 1024px 미만에서는 띠 안에서 옆으로 밀린다(얇은 스크롤바)
 
 | 탭 상태 | 모양 |
@@ -287,6 +289,7 @@
 | 올림 | 글자 `ink` |
 | 지금(`aria-current="page"`) | `ink` 600 + 아래 2px `accent` 밑줄(좌우 12px 안쪽) |
 | 준비 중 | `faint` 글자, 같은 크기, 누를 수 없는 단추. 올리거나 초점이 오면 툴팁 "준비 중"(ink 바탕, surface 글자 caption 500, 좌우 8px·위아래 6px, `rounded-float`, `shadow-float`, 1024px 이상) |
+| 지금 화면이 속한 준비 중 탭(`/claim/setup`의 [설정]) | 지금 모양(`ink` 600 + 아래 2px `accent` 밑줄, `aria-current="page"`)이고 `faint`가 아니다. 누를 수 없는 단추·"준비 중" 툴팁은 그대로 |
 
 - **본문**(`<main>`): `canvas` 바탕, 1280 감싸개, 좌우 24·위 24·아래 48(768px 미만 16·16·32)
 

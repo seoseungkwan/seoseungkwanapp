@@ -1,0 +1,26 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "precheck-5-contact",
+  "steps": [
+    {
+      "step": 0,
+      "name": "followup-read",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "followup-logic",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "message-templates",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "contact-screen",
+      "status": "pending"
+    }
+  ]
+}
