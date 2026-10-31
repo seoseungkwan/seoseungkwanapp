@@ -20,7 +20,7 @@ const STORAGE = ['indexedDB', 'localStorage', 'sessionStorage']
 // 동적 import()용. 아래 no-restricted-imports group과 같은 목록이다
 const BLOCKED_IMPORT = /^(react|react-dom|next)(\/|$)|^@supabase\/|(^|\/)(services|supabase|auth)(\/|$)/
 const STORAGE_IMPORT = /(^|\/)storage(\/|$)/
-// 통로 코드(lib/bridge, ADR-017·AC-004.1): 창 사이 통신 금지, 확장에는 extensionId.ts의 EXTENSION_ID로만 말한다
+// 통로 코드(lib/bridge, ADR-020·AC-004.1): 창 사이 통신 금지, 확장에는 extensionId.ts의 EXTENSION_ID로만 말한다
 const WINDOW_MESSAGE = '통로 코드는 창 사이 통신(postMessage·BroadcastChannel·parent·top·opener)을 쓸 수 없다'
 const WINDOW_OBJECT_MESSAGE =
   '통로 코드는 창·문서 객체(window·self·globalThis·frames·document)와 eval·Function·Reflect를 쓸 수 없다(창 사이 통신·규칙 우회를 막는다)'

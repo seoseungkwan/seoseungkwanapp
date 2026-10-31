@@ -1,282 +1,159 @@
-/* 기능 섹션(#features). 값은 docs/mockups/landing/landing-mockup.dc.html #features 그대로. 호박 글자는 #A84B08(--amber-text) */
-.section {
-  padding: 96px var(--gutter) 48px;
+/* 기능 섹션(#features) (specs/b2b-redesign AC-210.1, 시안 docs/mockups/b2b-redesign/style.css의 [id=features] · .panel · .tbl · .flist).
+   섹션 틀·12칸·글자 단계·칩은 base.module.css가 정하고, 여기서는 위 선·칸 자리·급여 패널·기능 목록만 그린다.
+   base 클래스(.sec·.wrap·.grid)의 속성은 덮어쓰지 않는다(CSS 순서와 상관없이 같은 결과).
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)는 급여 패널(.panel) 하나다. 표 칸과 목록 줄은 위·아래 1px 선만 쓴다 */
+
+/* ---------- 내용 위 1px 선: .wrap 안 첫 조각이라 선은 내용 폭이다.
+   섹션 위 여백(base .sec 48 → 64 → 96)만큼 위로 올려 섹션 맨 위에 붙이고, 같은 만큼 아래를 띄운다 ---------- */
+.inner::before {
+  content: "";
+  display: block;
+  border-top: 1px solid var(--line);
+  margin-block: -48px 48px;
 }
 
-.inner {
-  max-width: var(--content-max);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 96px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 720px;
-}
-
-.eyebrow {
-  font-family: var(--font-num), sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  color: var(--teal-text);
-  font-weight: 700;
-}
-
+/* ---------- 제목 · 칸: 1024px 미만은 급여 덩어리 → 목록으로 쌓인다(휴대폰은 급여 덩어리가 숨는다) ---------- */
 .title {
-  margin: 0;
-  font-size: clamp(32px, 3.8vw, 48px);
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  max-width: 560px;
+}
+.layout {
+  margin-top: 16px;
+  row-gap: 32px;
 }
 
-/* 기능 행: 두 칸, 좁으면 아래로 쌓인다 */
-.row {
+/* ---------- 급여 덩어리(768px 이상) ---------- */
+.kicker {
+  font-weight: 600;
+  color: var(--accent);
+}
+.payTitle {
+  margin-top: 8px;
+}
+.payLead {
+  margin-top: 8px;
+  color: var(--ink-2);
+}
+.panel {
+  margin-top: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+}
+.panelHead {
   display: flex;
-  flex-wrap: wrap;
-  gap: 56px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 0;
+}
+.sample {
+  color: var(--muted);
 }
 
-.rowReverse {
-  flex-wrap: wrap-reverse;
-  flex-direction: row-reverse;
+/* 급여표: small 글자, 칸 아래 1px 선(마지막 몸 줄 없음), 바닥 줄 위 1px line-strong. 세로 선이 없다 */
+.table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
 }
-
-.text {
-  flex: 1 1 420px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+.head {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
 }
-
-.step {
-  font-family: var(--font-num), sans-serif;
-  font-size: 15px;
-  font-weight: 700;
+.cell {
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
 }
-
-.stepTeal { color: var(--teal-text); }
-.stepAmber { color: var(--amber-text); }
-
-.featureTitle {
-  margin: 0;
-  font-size: 32px;
-  line-height: 1.3;
-  font-weight: 700;
+.row:last-child .cell {
+  border-bottom: 0;
 }
-
-.desc {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.7;
-  color: var(--text-body);
+/* 첫 칸·끝 칸은 패널 머리와 같은 좌우 20px */
+.head:first-child,
+.cell:first-child {
+  padding-left: 20px;
 }
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.head:last-child,
+.cell:last-child {
+  padding-right: 20px;
 }
-
-.chip {
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 14px;
+.amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sum {
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 0;
   font-weight: 600;
 }
 
-.chipTeal { background: var(--teal-soft); color: var(--teal-text); }
-.chipAmber { background: var(--amber-soft); color: var(--amber-text); }
-
-.visual {
-  flex: 1 1 480px;
-  min-width: 0;
-  position: relative;
-  border-radius: 22px;
-  border: 1px solid var(--border-card);
-  background: var(--bg-soft);
-  overflow: hidden;
+/* ---------- 기능 목록: 줄마다 번호 | 글(h3 + 설명) 두 칸, 줄 사이 1px 선 ---------- */
+.item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.item:first-child {
+  border-top: 1px solid var(--line);
+}
+/* 번호는 small 600 accent. 줄 높이는 h3(subtitle)와 같게 해 첫 줄에 맞춘다 */
+.num {
+  font-size: var(--fs-small);
+  line-height: var(--lh-subtitle);
+  font-weight: 600;
+  color: var(--accent);
+}
+.itemTitle,
+.desc,
+.short {
+  grid-column: 2;
+}
+.desc {
+  margin-top: 4px;
+  color: var(--ink-2);
+}
+/* 휴대폰 짧은 설명 */
+.short {
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--muted);
 }
 
-.visualStats { aspect-ratio: 16 / 10; }
-.visualPayroll { aspect-ratio: 16 / 11; }
-
-.img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+/* ---------- 768px부터 ---------- */
+@media (min-width: 768px) {
+  .inner::before {
+    margin-block: -64px 64px;
+  }
+  .layout {
+    margin-top: 32px;
+  }
+  .item {
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding-block: 20px;
+  }
 }
 
-/* 통계 그림 위 막대: 3초마다 출렁인다. 보라 막대 일부는 UI_GUIDE에서 허용 */
-.bars {
-  position: absolute;
-  right: 5%;
-  bottom: 7%;
-  width: 44%;
-  height: 42%;
-  padding: 14px 14px 0;
-  box-sizing: border-box;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 12px 30px rgba(11, 21, 48, 0.15);
-  display: flex;
-  align-items: flex-end;
-  gap: 4%;
-}
-
-.bar {
-  flex: 1;
-  border-radius: 6px 6px 0 0;
-  transform-origin: bottom;
-  animation: bar 3s ease-in-out infinite;
-}
-
-.bar:nth-child(1) { height: 42%; background: rgba(20, 200, 186, 0.45); animation-delay: 0s; }
-.bar:nth-child(2) { height: 60%; background: rgba(20, 200, 186, 0.55); animation-delay: 0.2s; }
-.bar:nth-child(3) { height: 50%; background: rgba(20, 200, 186, 0.45); animation-delay: 0.4s; }
-.bar:nth-child(4) { height: 78%; background: rgba(109, 93, 245, 0.65); animation-delay: 0.6s; }
-.bar:nth-child(5) { height: 66%; background: rgba(20, 200, 186, 0.55); animation-delay: 0.8s; }
-.bar:nth-child(6) { height: 88%; background: rgba(20, 200, 186, 0.75); animation-delay: 1s; }
-.bar:nth-child(7) { height: 72%; background: rgba(109, 93, 245, 0.65); animation-delay: 1.2s; }
-.bar:nth-child(8) { height: 96%; background: var(--teal-fill); animation-delay: 1.4s; }
-
-/* 파일 놓는 칸 모양: 그림일 뿐 파일을 받지 않는다. 누를 수 있어 보이지 않게 cursor 기본값 */
-.drop {
-  position: absolute;
-  left: 6%;
-  top: 9%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1.5px dashed rgba(7, 122, 115, 0.5);
-  background: #ffffff;
-  font-size: 14px;
-  color: var(--text-strong);
-  cursor: default;
-}
-
-/* 급여표 */
-.table {
-  position: absolute;
-  left: 34%;
-  right: 4%;
-  top: 7%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 12px;
-  border: 1px solid var(--border-card);
-  background: #ffffff;
-  box-shadow: 0 14px 34px rgba(11, 21, 48, 0.18);
-  overflow: hidden;
-  font-size: 13px;
-}
-
-.tr {
-  display: flex;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(11, 21, 48, 0.06);
-}
-
-.th {
-  border-top: 0;
-  background: var(--bg-soft);
-  color: var(--text-muted);
-}
-
-.tr > span {
-  flex: 2;
-}
-
-.right {
-  text-align: right;
-}
-
-.job {
-  color: var(--text-body);
-}
-
-.incentive {
-  color: var(--teal-text);
-}
-
-/* 급여표 위를 지나가는 스캔 띠 (3.5초) */
-.scan {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 30%;
-  background: linear-gradient(180deg, rgba(20, 200, 186, 0), rgba(20, 200, 186, 0.14), rgba(20, 200, 186, 0));
-  animation: scan 3.5s linear infinite;
-}
-
-.done {
-  position: absolute;
-  left: 7%;
-  bottom: 7%;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--teal-soft);
-  color: var(--teal-text);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-/* 작은 기능 카드 3개: 카드마다 다른 색 */
-.cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-}
-
-.card {
-  flex: 1 1 300px;
-  min-width: 0;
-  padding: 28px;
-  border-radius: 20px;
-  border: 1px solid var(--border-card);
-  box-shadow: 0 10px 30px rgba(11, 21, 48, 0.05);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.cardAmber { background: var(--amber-card); }
-.cardPink { background: var(--pink-card); }
-.cardBlue { background: var(--blue-soft); }
-
-.cardTitle {
-  margin: 0;
-  font-size: 21px;
-  font-weight: 700;
-}
-
-.cardDesc {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.65;
-  color: var(--text-body);
-}
-
-@keyframes bar {
-  0%, 100% { transform: scaleY(0.5); }
-  50% { transform: scaleY(1); }
-}
-
-@keyframes scan {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(400%); }
+/* ---------- 1024px부터: 급여 1~6칸 · 목록 8~12칸 ---------- */
+@media (min-width: 1024px) {
+  .inner::before {
+    margin-block: -96px 96px;
+  }
+  .pay {
+    grid-column: 1 / 7;
+    min-width: 0;
+  }
+  .list {
+    grid-column: 8 / 13;
+    min-width: 0;
+  }
 }

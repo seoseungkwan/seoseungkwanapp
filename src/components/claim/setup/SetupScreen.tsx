@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
 import { MENU } from '@/components/shell/menu'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { ResultOf } from '@/types/bridge'
 import { maskInstitution } from '../maskInstitution'
@@ -25,18 +25,22 @@ const NOT_CHECKED: Checked = { result: null, error: null, at: null }
 
 const codeOf = (e: unknown) => (e instanceof BridgeError ? e.code : 'E-BRIDGE-REJECTED')
 
-// 안쪽 메뉴(관리자 화면 안 탭과 같은 밑줄 모양: 40px·body, 지금은 accent 700 + 3px 밑줄)
+// 안쪽 메뉴: b2b 관리자 화면 안 탭(AdminApplications)과 같은 모양(AC-034.2). 40px(폰 44px)·좌우 12px·body, 줄 아래 1px line.
+// 첫 항목은 왼쪽 12px을 당겨 글자를 제목 끝에 맞춘다. 키보드 초점은 안쪽 2px accent 고리.
+// 페이지 이동 링크라 tablist가 아니고 aria-current를 쓴다. 링크(a)는 손 모양이 기본이라 cursor-pointer를 넣지 않는다
 const subBase =
-  'relative inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-chip px-3 text-body no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
+  'relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body no-underline first:-ml-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
+// 기본: ink-2 500, 올림 ink
 const subIdle = `${subBase} font-medium text-ink-2 hover:text-ink`
-const subCurrent = `${subBase} font-bold text-accent after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.75 after:rounded-t-xs after:bg-accent`
+// 지금: ink 600 + 아래 2px accent 밑줄(글자 폭, 줄 선 위에 겹침)
+const subCurrent = `${subBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
 // 아직 없는 화면: 기본 모양 그대로, 올림 변화 없음(링크가 아니다)
 const subNotReady = `${subBase} font-medium text-ink-2`
 // [청구·연락]은 설정 탭이 가리키는 화면(menu.ts). 아직 없으면(null) 링크가 아니고 '준비 중'
 const SETTINGS_HREF = MENU.find((m) => m.label === '설정')?.href ?? null
 
-// 한 줄 상자(목업 '.okline'): surface·1px 선·6px·안쪽 12px 16px
-const line = 'flex flex-wrap items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3'
+// 한 줄 상자(목업 '.okline'): surface·1px 선·4px(rounded-control)·안쪽 12px 16px
+const line = 'flex flex-wrap items-center gap-2.5 rounded-control border border-line bg-surface px-4 py-3'
 
 /** 값 없음: "—"(muted), 화면 읽기는 "값 없음" */
 const Empty = () => (
@@ -50,7 +54,7 @@ const Empty = () => (
 
 function SettingsSubnav() {
   return (
-    <nav aria-label="설정 안 메뉴" className="flex gap-1 border-b border-line">
+    <nav aria-label="설정 안 메뉴" className="flex border-b border-line">
       {SETTINGS_HREF ? (
         <Link href={SETTINGS_HREF} className={subIdle}>
           청구·연락
@@ -58,7 +62,7 @@ function SettingsSubnav() {
       ) : (
         <span aria-disabled="true" className={subNotReady}>
           청구·연락
-          <span className={ui.chip.waiting}>준비 중</span>
+          <span className={ds.chip.neutral}>준비 중</span>
         </span>
       )}
       <Link href="/claim/setup" aria-current="page" className={subCurrent}>
@@ -74,18 +78,18 @@ function StepRow({ no, step, guide }: { no: number; step: StepView; guide: React
     <li className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3.5 gap-y-1 border-b border-line py-3.5 last:border-b-0">
       <span
         aria-hidden="true"
-        className="inline-grid size-6 place-items-center rounded-chip border border-line bg-canvas text-caption font-semibold text-ink-2"
+        className="inline-grid size-6 place-items-center rounded-control border border-line bg-canvas text-caption font-semibold text-ink-2"
       >
         {no}
       </span>
       <div className="min-w-0">
         <h3 className={`text-body font-semibold ${wait ? 'text-muted' : 'text-ink'}`}>{step.title}</h3>
-        <p className={`text-table ${wait ? 'text-muted' : 'text-ink-2'}`}>{step.desc}</p>
+        <p className={`text-small ${wait ? 'text-muted' : 'text-ink-2'}`}>{step.desc}</p>
       </div>
-      <div className="flex flex-col items-end gap-1 text-right text-table text-ink-2">
+      <div className="flex flex-col items-end gap-1 text-right text-small text-ink-2">
         {step.status === 'ok' && (
           <>
-            <span className={ui.chip.done}>
+            <span className={ds.chip.positive}>
               <span aria-hidden="true">✓&nbsp;</span>완료
             </span>
             {step.note && <span>{step.note}</span>}
@@ -93,7 +97,7 @@ function StepRow({ no, step, guide }: { no: number; step: StepView; guide: React
         )}
         {step.status === 'bad' && (
           <>
-            <span className={ui.chip.rejected}>
+            <span className={ds.chip.negative}>
               <span aria-hidden="true">✗&nbsp;</span>
               {step.chip}
             </span>
@@ -102,11 +106,11 @@ function StepRow({ no, step, guide }: { no: number; step: StepView; guide: React
         )}
         {step.status === 'wait' && (
           <>
-            <span className={ui.chip.waiting}>대기</span>
-            <span className={ui.help}>앞 단계를 먼저 해 주세요</span>
+            <span className={ds.chip.neutral}>대기</span>
+            <span className={ds.help}>앞 단계를 먼저 해 주세요</span>
           </>
         )}
-        {step.status === 'checking' && <span className={ui.chip.progress}>확인 중</span>}
+        {step.status === 'checking' && <span className={ds.chip.accent}>확인 중</span>}
       </div>
       {guide}
     </li>
@@ -182,7 +186,7 @@ export function SetupScreen({
   const problem = registerError ?? steps.find((s) => s.status === 'bad')?.code ?? null
   const institution = state === 'ready' ? checked.result?.institutionCode : undefined
 
-  const title = <h1 className="text-title font-semibold text-ink max-md:text-title-sm">설정</h1>
+  const title = <h1 className="text-title font-semibold text-ink">설정</h1>
 
   // 다른 창에서 작업 중: 목업 화면 6처럼 가운데 카드 하나(이 창은 확장과 이야기할 수 없다)
   if (state === 'busy') {
@@ -194,7 +198,7 @@ export function SetupScreen({
           onRetry={recheck}
           disabled={disabled}
           outside={
-            <Link href="/claim" className={`${ui.button.secondary} no-underline`}>
+            <Link href="/claim" className={`${ds.button.secondary} no-underline`}>
               건수만 보기
             </Link>
           }
@@ -210,11 +214,11 @@ export function SetupScreen({
 
       {allOk && checked.at && (
         <div className={line}>
-          <span className={ui.chip.done}>준비됨</span>
+          <span className={ds.chip.positive}>준비됨</span>
           <span className="text-body text-ink">이 PC에서 청구 화면을 쓸 수 있어요.</span>
           <span className="ml-auto flex flex-wrap items-center gap-2">
-            <span className={ui.count}>마지막 확인 {checkedAtText(checked.at)}</span>
-            <Link href="/claim" className={`${ui.button.primarySmall} no-underline`}>
+            <span className={ds.count}>마지막 확인 {checkedAtText(checked.at)}</span>
+            <Link href="/claim" className={`${ds.button.primarySmall} no-underline`}>
               청구로 가기
             </Link>
           </span>
@@ -225,8 +229,8 @@ export function SetupScreen({
       {/* 확장 없는 브라우저·휴대폰일 수 있다: 밖에서 보는 건수로 (AC-006.5) */}
       {state === 'no-extension' && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className={ui.help}>이 화면은 비트 PC의 크롬에서 엽니다. 집 PC나 휴대폰이라면</span>
-          <Link href="/claim" className={`${ui.textButton} no-underline`}>
+          <span className={ds.help}>이 화면은 비트 PC의 크롬에서 엽니다. 집 PC나 휴대폰이라면</span>
+          <Link href="/claim" className={`${ds.textButton} no-underline`}>
             건수만 보기
           </Link>
         </div>
@@ -236,12 +240,12 @@ export function SetupScreen({
       {helperUpdateAvailable && (
         <div className={line}>
           <span className="text-body text-ink">새 도우미가 있어요.</span>
-          <span className={ui.help}>지금 도우미로도 그대로 쓸 수 있어요.</span>
+          <span className={ds.help}>지금 도우미로도 그대로 쓸 수 있어요.</span>
           <a
             href={HELPER_RELEASES_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className={`${ui.textButton} ml-auto no-underline`}
+            className={`${ds.textButton} ml-auto no-underline`}
           >
             새 도우미 내려받기
           </a>
@@ -249,75 +253,81 @@ export function SetupScreen({
       )}
 
       <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] max-md:gap-3">
-        <section aria-labelledby={stepsTitleId} className={ui.panel}>
-          <div className={ui.panelHead}>
-            <h2 id={stepsTitleId} className={ui.panelTitle}>
+        <section aria-labelledby={stepsTitleId} className={ds.panel}>
+          <div className={ds.panelHead}>
+            <h2 id={stepsTitleId} className={ds.panelTitle}>
               준비 순서
             </h2>
-            <span className={ui.count}>5단계</span>
+            <span className={ds.count}>5단계</span>
           </div>
-          <ol aria-labelledby={stepsTitleId} className="flex list-none flex-col">
-            {steps.map((step, i) => (
-              <StepRow
-                key={step.key}
-                no={i + 1}
-                step={step}
-                guide={
-                  step.status === 'bad' && step.guide ? (
-                    <StepGuide
-                      kind={step.guide}
-                      code={step.code}
-                      hello={hello}
-                      storeUrl={extensionStoreUrl}
-                      disabled={disabled}
-                      onRetry={recheck}
-                      onRegister={() => void register()}
-                    />
-                  ) : null
-                }
-              />
-            ))}
-          </ol>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
-            <button type="button" className={ui.button.primary} onClick={recheck} disabled={disabled}>
-              연결 다시 확인
-            </button>
-            <span className={ui.help}>누르면 1번부터 5번까지 다시 확인해요.</span>
+          <div className={`${ds.panelBody} flex flex-col gap-3`}>
+            <ol aria-labelledby={stepsTitleId} className="flex list-none flex-col">
+              {steps.map((step, i) => (
+                <StepRow
+                  key={step.key}
+                  no={i + 1}
+                  step={step}
+                  guide={
+                    step.status === 'bad' && step.guide ? (
+                      <StepGuide
+                        kind={step.guide}
+                        code={step.code}
+                        hello={hello}
+                        storeUrl={extensionStoreUrl}
+                        disabled={disabled}
+                        onRetry={recheck}
+                        onRegister={() => void register()}
+                      />
+                    ) : null
+                  }
+                />
+              ))}
+            </ol>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
+              <button type="button" className={ds.button.primary} onClick={recheck} disabled={disabled}>
+                연결 다시 확인
+              </button>
+              <span className={ds.help}>누르면 1번부터 5번까지 다시 확인해요.</span>
+            </div>
           </div>
         </section>
 
         <div className="flex min-w-0 flex-col gap-4 max-md:gap-3">
-          <section aria-labelledby={pcTitleId} className={ui.panel}>
-            <div className={ui.panelHead}>
-              <h2 id={pcTitleId} className={ui.panelTitle}>
+          <section aria-labelledby={pcTitleId} className={ds.panel}>
+            <div className={ds.panelHead}>
+              <h2 id={pcTitleId} className={ds.panelTitle}>
                 이 PC
               </h2>
             </div>
-            <dl className="grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-1 text-table">
-              <dt className="text-muted">크롬 확장</dt>
-              <dd className="text-ink">{hello?.extensionVersion ?? <Empty />}</dd>
-              <dt className="text-muted">도우미</dt>
-              <dd className="flex flex-wrap items-center gap-2 text-ink">
-                {hello?.helperVersion ?? <Empty />}
-                {state === 'update-helper' && <span className={ui.chip.rejected}>업데이트 필요</span>}
-              </dd>
-              <dt className="text-muted">요양기관기호</dt>
-              <dd className="text-ink">{institution ? `${maskInstitution(institution)} · ${clinicName}` : <Empty />}</dd>
-              <dt className="text-muted">마지막 확인</dt>
-              <dd className="text-ink">{checked.at ? checkedAtText(checked.at) : <Empty />}</dd>
-            </dl>
+            <div className={ds.panelBody}>
+              <dl className="grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-1 text-small">
+                <dt className="text-muted">크롬 확장</dt>
+                <dd className="text-ink">{hello?.extensionVersion ?? <Empty />}</dd>
+                <dt className="text-muted">도우미</dt>
+                <dd className="flex flex-wrap items-center gap-2 text-ink">
+                  {hello?.helperVersion ?? <Empty />}
+                  {state === 'update-helper' && <span className={ds.chip.negative}>업데이트 필요</span>}
+                </dd>
+                <dt className="text-muted">요양기관기호</dt>
+                <dd className="text-ink">{institution ? `${maskInstitution(institution)} · ${clinicName}` : <Empty />}</dd>
+                <dt className="text-muted">마지막 확인</dt>
+                <dd className="text-ink">{checked.at ? checkedAtText(checked.at) : <Empty />}</dd>
+              </dl>
+            </div>
           </section>
-          <section aria-labelledby={keepTitleId} className={ui.panel}>
-            <div className={ui.panelHead}>
-              <h2 id={keepTitleId} className={ui.panelTitle}>
+          <section aria-labelledby={keepTitleId} className={ds.panel}>
+            <div className={ds.panelHead}>
+              <h2 id={keepTitleId} className={ds.panelTitle}>
                 이렇게 지켜요
               </h2>
             </div>
-            <ul className="grid list-disc gap-1 pl-4.5 text-table text-ink-2">
-              <li>환자 자료는 이 PC 밖으로 나가지 않아요. 서버에는 건수와 설정만 가요.</li>
-              <li>비트는 읽기만 해요. 메모를 넣을 때만 이 PC에 확인 창이 뜨고, 거기서 [확인]을 눌러야 들어가요.</li>
-              <li>확장과 도우미는 이 비트 PC 한 대에만 설치해요.</li>
-            </ul>
+            <div className={ds.panelBody}>
+              <ul className="grid list-disc gap-1 pl-4.5 text-small text-ink-2">
+                <li>환자 자료는 이 PC 밖으로 나가지 않아요. 서버에는 건수와 설정만 가요.</li>
+                <li>비트는 읽기만 해요. 메모를 넣을 때만 이 PC에 확인 창이 뜨고, 거기서 [확인]을 눌러야 들어가요.</li>
+                <li>확장과 도우미는 이 비트 PC 한 대에만 설치해요.</li>
+              </ul>
+            </div>
           </section>
         </div>
       </div>

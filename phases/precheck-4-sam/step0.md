@@ -19,7 +19,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-020
 - `/specs/precheck/design.md` — 2절 표(SAM 읽기 원본), 4-3절(`sam.latest`), 9-5절(SAM: 늘 등록 기관기호로 거른다)

@@ -1,0 +1,90 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { Icon, ICON_NAMES, type IconName } from './Icon'
+
+// 16px 선 아이콘 (b2b-redesign REQ-204 TASK-4, UI_GUIDE '아이콘·로고'). 그림은 승인 시안 docs/mockups/b2b-redesign/parts.mjs의 I 그대로다.
+// 소스 규칙(간격·색·모서리)은 classes.test.ts의 AC-204.6 검사 목록이 Icon.tsx를 읽어 본다
+const ROOT = process.cwd()
+
+const NAMES = [
+  'shield',
+  'lock',
+  'clock',
+  'cal',
+  'upload',
+  'user',
+  'chev',
+  'check',
+  'x',
+  'arrow',
+  'arrowDown',
+  'monitor',
+  'server',
+  'sigma',
+  'doc',
+  'stop',
+] as const
+
+// 시안의 I: { 이름: 안쪽 svg 글자 }
+const PARTS = readFileSync(join(ROOT, 'docs/mockups/b2b-redesign/parts.mjs'), 'utf8')
+const I_BLOCK = PARTS.slice(PARTS.indexOf('const I = {'), PARTS.indexOf('\n}', PARTS.indexOf('const I = {')))
+const MOCK: Record<string, string> = Object.fromEntries([...I_BLOCK.matchAll(/^\s+(\w+): '([^']*)',$/gm)].map((m) => [m[1], m[2]]))
+
+const draw = (name: IconName, props: { size?: number; className?: string } = {}) => renderToStaticMarkup(<Icon name={name} {...props} />)
+const attrsOf = (tag: string) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]))
+const openTag = (html: string) => html.match(/^<svg\b[^>]*>/)?.[0] ?? ''
+const innerOf = (html: string) => (html.endsWith('</svg>') ? html.slice(openTag(html).length, -'</svg>'.length) : '')
+// 안쪽 원소 [태그, 속성]. React는 <path …></path>, 시안은 <path …/>로 적어서 여는 태그만 본다
+const elementsOf = (inner: string) => [...inner.matchAll(/<(\w+)\b([^>]*?)\/?>/g)].map((m) => [m[1], attrsOf(m[2] ?? '')])
+
+const SVG_ATTRS = {
+  'aria-hidden': 'true',
+  viewBox: '0 0 16 16',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': '1.5',
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+}
+
+describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
+  it('AC-204.6: 시안 I에서 읽은 그림이 16개 이름을 모두 갖는다(시험 준비 확인)', () => {
+    for (const name of NAMES) expect(MOCK[name], name).toBeTruthy()
+  })
+
+  it('AC-204.6: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop)뿐이다', () => {
+    expect([...ICON_NAMES]).toEqual([...NAMES])
+  })
+
+  it.each(NAMES)('AC-204.6: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
+    const html = draw(name)
+    expect(attrsOf(openTag(html))).toEqual({ ...SVG_ATTRS, width: '16', height: '16' })
+    expect(html.endsWith('</svg>')).toBe(true)
+  })
+
+  it.each(NAMES)('AC-204.6: %s의 안쪽 그림은 시안 I와 같고, 안쪽 원소에 색·style이 없다', (name) => {
+    const inner = innerOf(draw(name))
+    expect(elementsOf(inner), name).toEqual(elementsOf(MOCK[name] ?? ''))
+    expect(elementsOf(inner).length, name).toBeGreaterThan(0)
+    expect(inner, name).not.toMatch(/\b(?:fill|stroke|style|class)=/)
+    expect(inner.replace(/<[^>]*>/g, ''), `${name} 글자`).toBe('')
+  })
+
+  it.each([12, 14, 16])('AC-204.6: size=%i가 너비·높이가 되고 viewBox·선 굵기는 그대로다', (size) => {
+    const attrs = attrsOf(openTag(draw('shield', { size })))
+    expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
+  })
+
+  it('AC-204.6: className을 주면 svg에 붙고, 안 주면 class가 없다', () => {
+    expect(attrsOf(openTag(draw('clock', { size: 12, className: 'shrink-0 text-muted' })))).toMatchObject({ class: 'shrink-0 text-muted' })
+    expect(attrsOf(openTag(draw('clock')))).not.toHaveProperty('class')
+  })
+
+  it('AC-204.6: Icon.tsx는 서버에서 그대로 그린다(use client·React 훅이 없다)', () => {
+    const src = readFileSync(join(ROOT, 'src/components/common/Icon.tsx'), 'utf8')
+    expect(src).not.toMatch(/['"]use client['"]/)
+    expect(src).not.toMatch(/\buse(?:State|Effect|Ref|Memo|Callback|LayoutEffect|Id)\b/)
+  })
+})

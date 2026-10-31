@@ -26,7 +26,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-004
 - `/specs/precheck/design.md` — 4절(메시지 약속, 4-4 버전, 4-5 오류 번호), 5절(환자 자료 길과 울타리), 6-1절(`client.ts`·`workerSink.ts` 시그니처, Worker 포트 메시지), 6-2절(Worker가 받는 일), 15절(환자 자료 답은 늘 조각)
@@ -71,10 +71,10 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 자료 구역 울타리**: `src/lib/bridge`·`src/lib/precheck`·`src/workers`(그리고 기존 `lib/parsers`·`lib/analytics`·`lib/payload`)에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-017)
-- **통로 코드**: `src/lib/bridge`는 확장에 `chrome.runtime.connect(EXTENSION_ID)`로만 말한다. 환자 자료 답 조각은 `JSON.parse` 없이 바로 Worker(sink)로 넘긴다. `window.postMessage`·`BroadcastChannel`·`parent`·`top`·`opener`를 쓰지 않는다 (ADR-017, design.md 5절)
+- **환자 자료 구역 울타리**: `src/lib/bridge`·`src/lib/precheck`·`src/workers`(그리고 기존 `lib/parsers`·`lib/analytics`·`lib/payload`)에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-020)
+- **통로 코드**: `src/lib/bridge`는 확장에 `chrome.runtime.connect(EXTENSION_ID)`로만 말한다. 환자 자료 답 조각은 `JSON.parse` 없이 바로 Worker(sink)로 넘긴다. `window.postMessage`·`BroadcastChannel`·`parent`·`top`·`opener`를 쓰지 않는다 (ADR-020, design.md 5절)
 - **오류 문구 한 곳**: 오류 안내는 `src/lib/errors.ts`('무엇이 · 어떻게 고치나 · 번호'), 번호 타입은 `src/types/errors.ts`. 새 번호는 design.md 4-5 목록에서 고른다. 화면에 원래 오류 내용(예외 메시지·스택·도우미가 준 글)을 보이지 않는다 (CLAUDE.md)
-- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·018)
+- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·021)
 
 ## 작업
 
@@ -163,7 +163,7 @@ python3 ~/.claude/harness/bin/verify
 - 통로 코드에서 조각을 `JSON.parse`하거나 내용을 들여다보지 마라. 이유: 통로가 환자 자료를 풀 일이 아예 없게 하는 것이 설계다(AC-004.5, design.md 15절)
 - 화면에 조각이나 보낼 글자를 넘기는 콜백·반환 값을 만들지 마라. 이유: 화면 코드(`components/claim`)는 환자 자료 구역 울타리 밖이다(AC-004.11)
 - `EXTENSION_ID`를 두 군데 이상에 적거나 바깥에서 받게 하지 마라. 이유: 확장 ID는 `commands.json` → `extensionId.ts` 상수 하나다. 다른 값으로 말을 걸 길을 남기지 않는다(AC-004.1)
-- `src/lib/csp.ts`와 CSP 값을 바꾸지 마라. 이유: 네이티브 메시징은 `connect-src`와 상관없다. CSP는 이 기능 전과 글자까지 같아야 한다(AC-004.8, ADR-017)
+- `src/lib/csp.ts`와 CSP 값을 바꾸지 마라. 이유: 네이티브 메시징은 `connect-src`와 상관없다. CSP는 이 기능 전과 글자까지 같아야 한다(AC-004.8, ADR-020)
 - 울타리 시험을 '경고'로 낮추거나 `eslint-disable` 주석으로 피하지 마라. 이유: 울타리가 환자 개인정보를 지키는 장치다(CLAUDE.md CRITICAL)
 - 기존 테스트를 깨뜨리지 마라. 이유: 기존 환자 자료 구역 시험(`lib/parsers` 등)과 문구 시험이 계속 통과해야 한다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다

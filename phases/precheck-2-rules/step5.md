@@ -22,7 +22,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-012
 - `/specs/precheck/design.md` — 8-1절(설정 표 SQL), 8-3절(권한), 6-5절(설정이 바뀌었을 때), 7절 표 '설정', 15절(설정 표 모양·상병 연결표)
@@ -99,10 +99,10 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **RLS와 권한**: 새 표는 RLS를 켜고, `anon`·`authenticated` 권한을 먼저 모두 회수(`revoke all`)한 뒤 design.md 8-3의 것만 준다. `hospital_id`는 DB 기본값(`public.my_hospital_id()`)으로만 들어가고 사용자가 넣거나 바꿀 수 없다. 승인 안 된 병원은 아무 줄도 못 본다. PGlite 시험으로 증명한다 (CLAUDE.md 보안 규칙, design.md 8절)
-- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·018)
+- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·021)
 - **비밀값**: 키·토큰 값을 코드·시험 이름·로그·출력에 남기지 않는다. `NEXT_PUBLIC_*`에 비밀값을 넣지 않는다. service role 키를 두지 않는다 (CLAUDE.md 보안 규칙)
 - **오류 문구 한 곳**: 오류 안내는 `src/lib/errors.ts`('무엇이 · 어떻게 고치나 · 번호'), 번호 타입은 `src/types/errors.ts`. 새 번호는 design.md 4-5 목록에서 고른다. 화면에 원래 오류 내용(예외 메시지·스택·도우미가 준 글)을 보이지 않는다 (CLAUDE.md)
-- **환자 자료 구역 울타리**: `src/lib/bridge`·`src/lib/precheck`·`src/workers`(그리고 기존 `lib/parsers`·`lib/analytics`·`lib/payload`)에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-017)
+- **환자 자료 구역 울타리**: `src/lib/bridge`·`src/lib/precheck`·`src/workers`(그리고 기존 `lib/parsers`·`lib/analytics`·`lib/payload`)에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-020)
 
 ## 작업
 
@@ -182,7 +182,7 @@ python3 ~/.claude/harness/bin/verify
 
 - `hospital_id`를 화면·저장 코드에서 보내지 마라. 이유: `hospital_id`는 DB 기본값으로만 들어간다. 보내면 거부되고, 남의 병원으로 쓸 길을 여는 것이다(AC-012.3)
 - 권한 회수(`revoke all`) 전에 `grant`하거나, `grant all`을 쓰지 마라. 이유: Supabase는 새 표에 모든 권한을 기본으로 준다. 먼저 회수하지 않으면 칸 단위 제한이 무의미하다(CLAUDE.md)
-- service role 키나 서버 경로로 설정을 쓰지 마라. 이유: 브라우저 + RLS만 쓴다. 새 서버 경로 없음(ADR-004·018)
+- service role 키나 서버 경로로 설정을 쓰지 마라. 이유: 브라우저 + RLS만 쓴다. 새 서버 경로 없음(ADR-004·021)
 - 규칙 목록을 얻으려고 `rules.json`을 화면에서 import하지 마라. 이유: 표는 Worker의 `tables.ts`만 부른다(AC-007.4). `ruleList` 메시지를 쓴다
 - `supabase/migrations/20261028000000_auth.sql`(기존)을 고치지 마라. 이유: 이미 운영 DB에 붙여 넣은 파일이다. 새 파일로만 더한다
 - 기존 테스트를 깨뜨리지 마라. 이유: `supabase/rls.test.ts`·`shell.test.tsx`가 계속 통과해야 한다

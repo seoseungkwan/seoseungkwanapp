@@ -20,7 +20,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-002
 - `/specs/precheck/design.md` — 12절(GitHub Actions 윈도우 빌드), 9-3절(작업 저장 폴더 `data\`), 13절(운영·업데이트), 16절(위험: FlaUI net48)

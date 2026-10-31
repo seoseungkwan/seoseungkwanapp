@@ -24,7 +24,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-003
 - `/specs/precheck/design.md` — 3절(`extension/` 폴더), 4-1~4-3절(메시지·명령 표), 5절(울타리), 12절(`extension` 일), 14절(`@types/chrome`), 15절(창 하나), 16절(압축 풀린 확장 시험)
@@ -156,7 +156,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - `permissions`에 `nativeMessaging` 말고 다른 권한(`storage`·`tabs`·`<all_urls>` 등)을 넣지 마라. 이유: AC-003.1. 권한이 늘면 웹스토어 심사와 보안 범위가 커진다(ADR-016)
-- 확장에서 답을 저장·기록·변환하지 마라(`chrome.storage`·console 포함). 이유: 환자 자료가 확장 안에 남거나 로그로 샌다(AC-003.4, ADR-017)
+- 확장에서 답을 저장·기록·변환하지 마라(`chrome.storage`·console 포함). 이유: 환자 자료가 확장 안에 남거나 로그로 샌다(AC-003.4, ADR-020)
 - origin 검사 전에 `connectNative`를 부르지 마라. 이유: 남의 사이트가 연결만 해도 도우미가 켜진다(AC-003.2)
 - `externally_connectable.matches`에 `*.vercel.app`·`http://localhost` 같은 넓은 주소를 넣지 마라. 이유: 다른 사이트가 확장에 말할 수 있게 된다(AC-003.1)
 - 새 번들러·빌드 도구 패키지를 넣지 마라. 이유: design.md 14절: 웹 쪽 새 패키지는 `@types/chrome` 하나다

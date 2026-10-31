@@ -18,7 +18,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-023
 - `/specs/precheck/design.md` — 2절 표(F/U 목록·정기 주사 명단 원본), 4-3절(`contact.targets`), 9-2절(읽기·일부만 오면 멈춤), 16절(정기 주사 36개월 읽기 시간)

@@ -1,245 +1,166 @@
-/* 개인정보 섹션(#privacy). 값은 docs/mockups/landing/landing-mockup.dc.html #privacy 그대로. 청록으로 통일, 보라는 AI로 가는 연결선·"집계만"만 */
-.section {
-  padding: 112px var(--gutter);
-  background: var(--bg-soft);
-  border-top: 1px solid rgba(11, 21, 48, 0.07);
-  border-bottom: 1px solid rgba(11, 21, 48, 0.07);
-}
+/* 개인정보 섹션(#privacy, canvas 띠) (specs/b2b-redesign AC-210.2, 시안 docs/mockups/b2b-redesign/style.css의 .zero · .flow · .node · .edge · .stopline · .plist.two).
+   섹션 틀·12칸·글자 단계는 base.module.css가 정하고, 여기서는 칸 자리·0건·흐름 상자·연결·약속만 그린다.
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)는 흐름(.flow) 하나다. 칸·연결에는 테두리가 없다(두 겹 상자 없음) */
 
-.inner {
-  max-width: var(--content-max);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 56px;
-}
-
+/* ---------- 윗부분: 1024px 미만은 글 → 0건으로 쌓인다 ---------- */
 .top {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 40px;
-  align-items: flex-end;
-  justify-content: space-between;
+  row-gap: 16px;
 }
-
-.head {
-  flex: 1 1 560px;
+.text {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
 }
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-num), sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  color: var(--teal-text);
-  font-weight: 700;
-}
-
-.title {
-  margin: 0;
-  font-size: clamp(34px, 4.2vw, 54px);
-  line-height: 1.18;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.titleAccent {
-  color: var(--teal-text);
-}
-
 .lead {
-  margin: 0;
-  font-size: 19px;
-  line-height: 1.7;
-  color: var(--text-body);
+  max-width: 640px;
+  margin-top: 12px;
+  color: var(--ink-2);
 }
 
-/* 큰 숫자 카드: 0건 */
-.zeroCard {
-  flex: 0 1 300px;
-  min-width: 0;
-  padding: 24px 28px;
-  border-radius: 24px;
-  background: #ffffff;
-  border: 1.5px solid rgba(7, 122, 115, 0.3);
-  box-shadow: 0 20px 50px rgba(7, 122, 115, 0.12);
-}
-
+/* 0건: 휴대폰은 숫자와 설명이 한 줄(글자 아래선 맞춤), 768px부터 왼쪽 1px 선 + 위아래로 쌓기 */
 .zero {
-  font-family: var(--font-num), sans-serif;
-  font-size: 88px;
-  line-height: 1;
-  font-weight: 700;
-  color: var(--teal-text);
-}
-
-.zeroUnit {
-  font-size: 64px;
-  font-weight: 700;
-}
-
-.zeroCaption {
-  margin-top: 10px;
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 600;
-}
-
-/* 흐름 그림: 병원 PC → 서버 → AI */
-.flow {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.node {
-  min-width: 0;
-  padding: 24px;
-  border-radius: 20px;
-  background: #ffffff;
-  display: flex;
-  flex-direction: column;
+  align-items: baseline;
   gap: 12px;
 }
-
-.nodePc {
-  flex: 1 1 280px;
-  border: 2px solid var(--teal-fill);
+.zeroNum {
+  color: var(--ink);
+}
+.unit {
+  margin-left: 4px;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.zeroCaption {
+  color: var(--muted);
 }
 
-.nodeServer {
-  flex: 1 1 240px;
-  border: 1px solid rgba(11, 21, 48, 0.1);
+/* ---------- 흐름 상자: 1024px 미만은 칸 → 연결 → 칸 … 세로 ---------- */
+.flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
 }
-
-.nodeAi {
-  flex: 1 1 240px;
-  border: 1px solid rgba(109, 93, 245, 0.3);
-}
-
-.nodeHead {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.center {
-  justify-content: center;
-}
-
-.nodeTitle {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 700;
-}
-
-.nodeDesc {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-body);
-}
-
-.stop {
+.node {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--warn-soft);
-}
-
-.stopTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--warn-text);
-}
-
-.stopItems {
-  font-size: 14px;
-  color: var(--text-strong);
-}
-
-/* 연결선: 흐르는 띠 */
-.link {
-  flex: 0 1 140px;
-  min-width: 120px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.linkTeal { color: var(--teal-text); }
-.linkViolet { color: var(--violet-text); }
-
-.line {
-  width: 100%;
-  height: 3px;
-  border-radius: 2px;
-  background-size: 120px 3px;
-  animation: flow 1.6s linear infinite;
-}
-
-.lineTeal {
-  background-image: linear-gradient(90deg, rgba(20, 200, 186, 0) 0, #14c8ba 40px, rgba(20, 200, 186, 0) 80px);
-  background-color: rgba(20, 200, 186, 0.18);
-}
-
-.lineViolet {
-  background-image: linear-gradient(90deg, rgba(109, 93, 245, 0) 0, #6d5df5 40px, rgba(109, 93, 245, 0) 80px);
-  background-color: rgba(109, 93, 245, 0.18);
-  animation-delay: 0.4s;
-}
-
-/* 약속 카드 4개 */
-.rules {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.rule {
-  flex: 1 1 340px;
+  gap: 4px;
   min-width: 0;
-  padding: 22px 24px;
-  border-radius: 18px;
-  background: #ffffff;
+  padding: 12px 16px;
+}
+/* 이름 h3: 16px 아이콘(muted) + 글자 한 줄 */
+.nodeTitle {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+}
+.nodeIcon {
+  color: var(--muted);
+}
+.nodeDesc {
+  color: var(--ink-2);
+}
+/* 멈춤 줄: 아이콘 14px | 글. 아이콘은 첫 줄("여기서 멈춤") 가운데, 항목은 그 아래 둘째 칸 */
+.stop {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: center;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--negative);
+}
+.stopTitle {
+  font-weight: 600;
+}
+.stopItems {
+  grid-column: 2;
 }
 
+/* 연결: 아래쪽 화살표(가로 화살표를 90도 돌림) → 글자 한 줄. 화살표 왼쪽 끝은 칸 아이콘과 같다(좌우 여백 = 칸 좌우 여백) */
+.edge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding-inline: 16px;
+  color: var(--muted);
+}
+.edgeLabel {
+  white-space: nowrap;
+}
+.edgeArrow {
+  order: -1;
+  transform: rotate(90deg);
+}
+
+/* ---------- 약속(768px 이상): 2칸, 칸마다 위 1px 선 ---------- */
+.rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  margin-top: 32px;
+}
+.rule {
+  padding-block: 16px;
+  border-top: 1px solid var(--line);
+}
 .ruleTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
 }
-
 .ruleDesc {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--text-body);
-  word-break: keep-all;
-  text-wrap: balance;
+  margin-top: 2px;
+  color: var(--ink-2);
 }
 
-@keyframes flow {
-  from { background-position: 0 0; }
-  to { background-position: 200px 0; }
+/* ---------- 768px부터 ---------- */
+@media (min-width: 768px) {
+  .top {
+    row-gap: 24px;
+  }
+  .zero {
+    display: block;
+    padding-left: 24px;
+    border-left: 1px solid var(--line);
+  }
+  .flow {
+    margin-top: 32px;
+  }
+  .node {
+    gap: 8px;
+    padding: 20px;
+  }
+  .edge {
+    padding-inline: 20px;
+  }
+}
+
+/* ---------- 1024px부터: 윗부분 글 1~8칸 · 0건 10~12칸, 흐름은 칸 · 104px 연결 · 칸 · 104px 연결 · 칸 가로 ---------- */
+@media (min-width: 1024px) {
+  .text {
+    grid-column: 1 / 9;
+  }
+  .zero {
+    grid-column: 10 / 13;
+    align-self: end;
+  }
+  .flow {
+    grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1fr) 104px minmax(0, 1fr);
+  }
+  /* 글자 위 · 가로 화살표 아래 */
+  .edge {
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    height: auto;
+    padding-inline: 0;
+  }
+  .edgeArrow {
+    order: 0;
+    transform: none;
+  }
 }

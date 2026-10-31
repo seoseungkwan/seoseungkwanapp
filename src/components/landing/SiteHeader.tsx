@@ -1,3 +1,5 @@
+import { LogoMark } from '@/components/common/LogoMark'
+import base from './base.module.css'
 import styles from './SiteHeader.module.css'
 import { START_HREF } from './links'
 
@@ -8,18 +10,16 @@ const NAV = [
   { href: '#how', label: '시작 방법' },
 ] as const
 
-// 위쪽 메뉴 띠: 로고 · 섹션 링크 4개 · [구글로 시작하기]. 화면 위에 붙어 따라온다
+// 위쪽 메뉴 (specs/b2b-redesign REQ-207 AC-207.1, 시안 docs/mockups/b2b-redesign/screens.mjs .l-hdr):
+// 로고 링크(보이는 글자 없이 화면 읽기 "맨 위로") · 섹션 링크 4개 · [구글로 시작하기]. 모든 폭에서 한 줄이고 화면 위에 붙어 따라온다.
+// 섹션 링크는 768px부터 보인다. 여닫는 단추는 없다
 export default function SiteHeader() {
   return (
     <header className={styles.header}>
-      <div className={styles.inner}>
+      <div className={`${base.wrap} ${styles.inner}`}>
         <a href="#top" className={styles.logo}>
-          <svg aria-hidden="true" width="30" height="30" viewBox="0 0 30 30" fill="none">
-            <rect x="9" y="3" width="12" height="6" rx="3" stroke="#14C8BA" strokeWidth="2.2" />
-            <rect x="11" y="12" width="12" height="6" rx="3" stroke="#14C8BA" strokeWidth="2.2" />
-            <rect x="8" y="21" width="12" height="6" rx="3" stroke="#6D5DF5" strokeWidth="2.2" />
-          </svg>
-          <span>[서비스 이름]</span>
+          <LogoMark size={24} />
+          <span className={base.srOnly}>맨 위로</span>
         </a>
         <nav aria-label="주요 메뉴" className={styles.nav}>
           {NAV.map((item) => (
@@ -28,7 +28,7 @@ export default function SiteHeader() {
             </a>
           ))}
         </nav>
-        <a href={START_HREF} className={styles.start}>
+        <a href={START_HREF} className={`${base.btn} ${base.btnMd} ${base.btnPrimary} ${styles.start}`}>
           구글로 시작하기
         </a>
       </div>

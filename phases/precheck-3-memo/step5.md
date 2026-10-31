@@ -21,7 +21,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-019
 - `/specs/precheck/design.md` — 8-2절(건수 표 SQL), 8-3절(권한), 7절 표 '밖에서 보는 건수', 15절(건수 올리기 실패)
@@ -84,10 +84,10 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **서버에는 건수와 설정만**: 건수 표 칸은 `uuid`(병원)·`date`·`integer`·`timestamptz`뿐이고, DB 제약이 0~100,000 정수만 받는다. 이름·차트번호·메모 글·경고 내용을 서버에 보내지 않는다 (ADR-018)
+- **서버에는 건수와 설정만**: 건수 표 칸은 `uuid`(병원)·`date`·`integer`·`timestamptz`뿐이고, DB 제약이 0~100,000 정수만 받는다. 이름·차트번호·메모 글·경고 내용을 서버에 보내지 않는다 (ADR-021)
 - **RLS와 권한**: 새 표는 RLS를 켜고, `anon`·`authenticated` 권한을 먼저 모두 회수(`revoke all`)한 뒤 design.md 8-3의 것만 준다. `hospital_id`는 DB 기본값(`public.my_hospital_id()`)으로만 들어가고 사용자가 넣거나 바꿀 수 없다. 승인 안 된 병원은 아무 줄도 못 본다. PGlite 시험으로 증명한다 (CLAUDE.md 보안 규칙, design.md 8절)
-- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·018)
-- **환자 자료 구역 울타리**: `src/lib/bridge`·`src/lib/precheck`·`src/workers`(그리고 기존 `lib/parsers`·`lib/analytics`·`lib/payload`)에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-017)
+- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·021)
+- **환자 자료 구역 울타리**: `src/lib/bridge`·`src/lib/precheck`·`src/workers`(그리고 기존 `lib/parsers`·`lib/analytics`·`lib/payload`)에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-020)
 - **오류 문구 한 곳**: 오류 안내는 `src/lib/errors.ts`('무엇이 · 어떻게 고치나 · 번호'), 번호 타입은 `src/types/errors.ts`. 새 번호는 design.md 4-5 목록에서 고른다. 화면에 원래 오류 내용(예외 메시지·스택·도우미가 준 글)을 보이지 않는다 (CLAUDE.md)
 
 ## 작업
@@ -159,9 +159,9 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 건수 표에 `text`·`varchar`·`jsonb` 칸이나 '메모'·'비고' 같은 글자 칸을 만들지 마라. 이유: 글자 칸이 없으면 실수로도 환자 정보가 서버에 갈 수 없다(AC-019.1, ADR-018)
+- 건수 표에 `text`·`varchar`·`jsonb` 칸이나 '메모'·'비고' 같은 글자 칸을 만들지 마라. 이유: 글자 칸이 없으면 실수로도 환자 정보가 서버에 갈 수 없다(AC-019.1, ADR-021)
 - 정해 둔 5칸 밖의 값을 upsert에 실어 보내지 마라. 이유: Worker 보기 모양에서 이름·차트번호가 섞여 나갈 수 있다(AC-019.3·019.6)
-- 새 서버 경로·Edge Function으로 건수를 받지 마라. 이유: 브라우저 + RLS만(ADR-004·018)
+- 새 서버 경로·Edge Function으로 건수를 받지 마라. 이유: 브라우저 + RLS만(ADR-004·021)
 - 기존 마이그레이션 파일을 고치지 마라. 이유: 운영 DB에 이미 붙여 넣은 파일이다. 새 파일로만 더한다
 - 화면을 목업과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로(CLAUDE.md CRITICAL)
 - 기존 테스트를 깨뜨리지 마라. 이유: 설정 RLS 시험과 청구 화면 시험이 계속 통과해야 한다

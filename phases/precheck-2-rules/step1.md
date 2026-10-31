@@ -20,7 +20,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-008
 - `/specs/precheck/design.md` — 2절 표(한 달 자료·12개월 이력·이미 있는 메모·상병 추세·처방 목록 원본), 4-3절(`claim.month`·`claim.dates`), 9-2절(읽기), 10절(SQL 비교), 16절(통계 화면 DLL 위험)

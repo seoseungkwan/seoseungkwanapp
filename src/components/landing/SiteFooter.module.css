@@ -1,17 +1,20 @@
-/* 푸터. 값은 docs/mockups/landing/landing-mockup.dc.html footer 그대로 */
+/* 바닥글 (specs/b2b-redesign REQ-207 AC-207.3). 값은 승인 시안 docs/mockups/b2b-redesign/style.css의 .l-foot 그대로다.
+   위 1px 선 · 위아래 24px, 폭마다 바뀌지 않는다. 틀 폭·좌우 여백은 base .wrap이, 글자 크기는 base .tCaption이 정한다 */
 .footer {
-  border-top: 1px solid rgba(11, 21, 48, 0.07);
-  background: #ffffff;
+  border-top: 1px solid var(--line);
+  padding-block: 24px;
 }
-
+/* 왼쪽 로고 + 소개 | 오른쪽 ©. 아주 좁으면 ©가 다음 줄로 간다 */
 .inner {
-  max-width: var(--content-max);
-  margin: 0 auto;
-  padding: 28px var(--gutter);
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 32px;
+  align-items: center;
   justify-content: space-between;
-  font-size: 14px;
-  color: var(--text-muted);
+  gap: 8px 16px;
+  color: var(--muted);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import type { BridgeState } from '@/types/bridge'
 import { useBridge } from '../useBridge'
 import { BusyCard } from './SetupAlert'
@@ -15,7 +15,9 @@ import { BusyCard } from './SetupAlert'
 
 const TO_SETUP: ReadonlySet<BridgeState> = new Set(['no-helper', 'update-helper', 'update-extension', 'disconnected'])
 
-const titleClass = 'text-title font-semibold text-ink max-md:text-title-sm'
+const titleClass = 'text-title font-semibold text-ink'
+// 안내 상자: ds.panel + 안쪽 24px(768px 미만 16px)
+const box = `${ds.panel} p-6 max-md:p-4`
 
 /** 밖에서 보는 건수 자리(목업 화면 11): 건수는 아직 없다(TASK-19) */
 function OutsideCounts() {
@@ -23,19 +25,19 @@ function OutsideCounts() {
     <div className="flex flex-col gap-4 max-md:gap-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className={titleClass}>청구</h1>
-        <span className="text-table text-muted">비트 PC가 아닌 곳에서 보는 화면이에요</span>
+        <span className="text-small text-muted">비트 PC가 아닌 곳에서 보는 화면이에요</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3">
-        <span className="text-table text-ink-2">청구 점검은 비트 PC의 크롬에서 엽니다.</span>
-        <span className={`${ui.help} ml-auto`}>환자 정보와 삭감 경고는 비트 PC에서만 볼 수 있어요.</span>
+      <div className="flex flex-wrap items-center gap-2.5 rounded-control border border-line bg-surface px-4 py-3">
+        <span className="text-small text-ink-2">청구 점검은 비트 PC의 크롬에서 엽니다.</span>
+        <span className={`${ds.help} ml-auto`}>환자 정보와 삭감 경고는 비트 PC에서만 볼 수 있어요.</span>
       </div>
-      <section aria-label="밖에서 보는 건수" className={`${ui.card} flex flex-col gap-1`}>
-        <h2 className={ui.panelTitle}>밖에서 보는 건수</h2>
-        <p className="text-table text-muted">아직 올린 건수가 없어요.</p>
+      <section aria-label="밖에서 보는 건수" className={`${box} flex flex-col gap-1`}>
+        <h2 className={ds.panelTitle}>밖에서 보는 건수</h2>
+        <p className="text-small text-muted">아직 올린 건수가 없어요.</p>
       </section>
       <div className="flex flex-wrap items-center gap-2">
-        <span className={ui.help}>이 PC가 비트 PC라면</span>
-        <Link href="/claim/setup" className={`${ui.textButton} no-underline`}>
+        <span className={ds.help}>이 PC가 비트 PC라면</span>
+        <Link href="/claim/setup" className={`${ds.textButton} no-underline`}>
           설치·연결 확인
         </Link>
       </div>
@@ -63,17 +65,17 @@ export function ClaimEntry() {
         <BusyCard
           onRetry={retry}
           outside={
-            <button type="button" className={ui.button.secondary} onClick={() => setOutside(true)}>
+            <button type="button" className={ds.button.secondary} onClick={() => setOutside(true)}>
               건수만 보기
             </button>
           }
         />
       )}
       {state === 'ready' && (
-        <section aria-label="청구 점검" className={`${ui.card} flex flex-col items-start gap-1`}>
-          <h2 className={ui.panelTitle}>청구 점검 화면은 준비 중입니다</h2>
-          <p className="text-table text-muted">이 PC는 비트와 연결됐어요.</p>
-          <Link href="/claim/setup" className={`${ui.textButton} no-underline`}>
+        <section aria-label="청구 점검" className={`${box} flex flex-col items-start gap-1`}>
+          <h2 className={ds.panelTitle}>청구 점검 화면은 준비 중입니다</h2>
+          <p className="text-small text-muted">이 PC는 비트와 연결됐어요.</p>
+          <Link href="/claim/setup" className={`${ds.textButton} no-underline`}>
             설치·연결 확인
           </Link>
         </section>

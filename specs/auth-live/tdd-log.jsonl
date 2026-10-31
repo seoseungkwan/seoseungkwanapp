@@ -1,0 +1,71 @@
+{"ts": "2026-10-29T07:34:14Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "e2e/lib/env.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:34:37Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "e2e/lib/env.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:34:38Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "vitest.config.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:34:39Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "vitest.config.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:34:46Z", "task": "TASK-2", "reqs": ["REQ-002"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-29T07:35:19Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "e2e/lib/env.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:35:30Z", "task": "TASK-2", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": ".env.example", "source": "post-hook"}
+{"ts": "2026-10-29T07:35:53Z", "task": "TASK-2", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "e2e/lib/env.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:35:54Z", "task": "TASK-2", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "e2e/lib/env.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:36:04Z", "task": "TASK-2", "reqs": ["REQ-002"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-29T07:39:19Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T07:41:41Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T07:42:08Z", "task": "TASK-3", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/config.test.ts'", "tests": ["e2e/config.test.ts"], "trigger": "e2e/config.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:42:14Z", "task": "TASK-3", "reqs": ["REQ-001", "REQ-002"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/config.test.ts'", "tests": ["e2e/config.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-29T07:43:04Z", "task": "TASK-3", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/config.test.ts'", "tests": ["e2e/config.test.ts"], "trigger": "e2e/config.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:43:06Z", "task": "TASK-3", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/config.test.ts'", "tests": ["e2e/config.test.ts"], "trigger": "playwright.config.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:43:07Z", "task": "TASK-3", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/config.test.ts'", "tests": ["e2e/config.test.ts"], "trigger": "e2e/preflight.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:43:22Z", "task": "TASK-3", "reqs": ["REQ-001", "REQ-002"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/config.test.ts'", "tests": ["e2e/config.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-29T07:48:37Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T07:50:42Z", "task": "TASK-6", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "trigger": "supabase/setup-sql.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T07:50:59Z", "task": "TASK-6", "reqs": ["REQ-004"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-29T07:51:31Z", "task": "TASK-6", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "trigger": "supabase/e2e-accounts.sql", "source": "post-hook"}
+{"ts": "2026-10-29T07:51:38Z", "task": "TASK-6", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "trigger": "supabase/first-admin.sql", "source": "post-hook"}
+{"ts": "2026-10-29T07:51:59Z", "task": "TASK-6", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "trigger": "supabase/e2e-accounts.sql", "source": "post-hook"}
+{"ts": "2026-10-29T07:52:25Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T07:52:47Z", "task": "TASK-6", "reqs": ["REQ-004"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-29T07:54:38Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T07:56:58Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T07:59:17Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:00:06Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:00:18Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:00:20Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-29T08:00:34Z", "task": "TASK-6", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "trigger": "supabase/setup-sql.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:00:42Z", "task": "TASK-6", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/setup-sql.test.ts'", "tests": ["supabase/setup-sql.test.ts"], "trigger": "supabase/first-admin.sql", "source": "post-hook"}
+{"ts": "2026-10-29T08:02:23Z", "task": "TASK-5", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:02:32Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:02:40Z", "task": "TASK-5", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/setup-env.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:04:40Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:05:07Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-29T08:07:11Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:09:39Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:12:57Z", "task": "TASK-4", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "trigger": "e2e/lib/session.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:13:07Z", "task": "TASK-4", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "trigger": "e2e/lib/session.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:13:09Z", "task": "TASK-4", "reqs": ["REQ-003"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-29T08:13:37Z", "task": "TASK-4", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "trigger": "e2e/lib/session.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:14:24Z", "task": "TASK-4", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "trigger": "e2e/support.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:14:36Z", "task": "TASK-4", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "trigger": "e2e/support.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:15:04Z", "task": "TASK-4", "reqs": ["REQ-003"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/session.test.ts'", "tests": ["e2e/lib/session.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-29T08:17:18Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:17:32Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:17:34Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:17:36Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:17:38Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:17:40Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:17:49Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-29T08:18:14Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:18:15Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:18:17Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:18:28Z", "task": "TASK-5", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:18:30Z", "task": "TASK-5", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/lib/envFile.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:18:43Z", "task": "TASK-5", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "trigger": "e2e/setup-env.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:19:16Z", "task": "TASK-5", "reqs": ["REQ-005"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/envFile.test.ts'", "tests": ["e2e/lib/envFile.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-29T08:19:41Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:21:37Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:23:44Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:25:53Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-29T08:48:27Z", "task": "TASK-10", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/vercel-config.test.ts'", "tests": ["src/vercel-config.test.ts"], "trigger": "src/vercel-config.test.ts", "source": "post-hook"}
+{"ts": "2026-10-29T08:51:01Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:53:26Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-29T08:55:39Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-31T06:48:21Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}

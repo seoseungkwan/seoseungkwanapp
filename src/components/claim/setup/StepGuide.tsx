@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
-import { ui } from '@/components/ui/classes'
+import { ds } from '@/components/ui/classes'
 import { MIN_EXTENSION, MIN_HELPER } from '@/lib/bridge/versions'
 import { errorInfo, isErrorCode } from '@/lib/errors'
 import type { HelloResult } from '@/types/bridge'
 import { HELPER_RELEASES_URL } from './links'
 import type { StepGuideKind } from './steps'
 
-// 안 된 단계 아래 안내 상자(목업 화면 1 '.guide': danger-soft·6px·안쪽 12px 14px, 굵은 첫 줄 danger, 순서 글 table ink-2, 단추 줄).
+// 안 된 단계 아래 안내 상자(목업 화면 1 '.guide': negative-soft·4px·안쪽 12px 14px, 굵은 첫 줄 negative, 순서 글 small ink-2, 단추 줄).
 // 굵은 첫 줄은 그 번호의 errors.ts '무엇이'다. 순서 글은 설치·등록 방법(목업 문구, 도우미 zip 설치는 helper/install/README.md 순서)이다
 
 type GuideProps = {
@@ -26,7 +26,7 @@ function OutLink({ href, primary = true, children }: { href: string; primary?: b
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={`${primary ? ui.button.primarySmall : ui.button.secondarySmall} no-underline`}
+      className={`${primary ? ds.button.primarySmall : ds.button.secondarySmall} no-underline`}
     >
       {children}
     </a>
@@ -38,7 +38,7 @@ const V = ({ children }: { children: ReactNode }) => <b className="font-semibold
 
 function Steps({ items }: { items: ReactNode[] }) {
   return (
-    <ol className="grid list-decimal gap-0.5 pl-4.5 text-table text-ink-2">
+    <ol className="grid list-decimal gap-0.5 pl-4.5 text-small text-ink-2">
       {items.map((item, i) => (
         <li key={i}>{item}</li>
       ))}
@@ -48,12 +48,12 @@ function Steps({ items }: { items: ReactNode[] }) {
 
 export function StepGuide({ kind, code, hello, storeUrl, disabled, onRetry, onRegister }: GuideProps) {
   const retry = (
-    <button type="button" className={ui.button.secondarySmall} onClick={onRetry} disabled={disabled}>
+    <button type="button" className={ds.button.secondarySmall} onClick={onRetry} disabled={disabled}>
       다시 확인
     </button>
   )
   const register = (label: '처음 등록' | '다시 등록') => (
-    <button type="button" className={ui.button.primarySmall} onClick={onRegister} disabled={disabled}>
+    <button type="button" className={ds.button.primarySmall} onClick={onRegister} disabled={disabled}>
       {label}
     </button>
   )
@@ -159,8 +159,8 @@ export function StepGuide({ kind, code, hello, storeUrl, disabled, onRetry, onRe
 
   const what = code && isErrorCode(code) ? errorInfo(code).what : null
   return (
-    <div className="col-start-2 col-end-4 mt-2 grid gap-2 rounded-card bg-danger-soft px-3.5 py-3 max-md:col-start-1">
-      {what && <p className="text-body font-semibold text-danger">{what}</p>}
+    <div className="col-start-2 col-end-4 mt-2 grid gap-2 rounded-control bg-negative-soft px-3.5 py-3 max-md:col-start-1">
+      {what && <p className="text-body font-semibold text-negative">{what}</p>}
       {items.length > 0 && <Steps items={items} />}
       <div className="flex flex-wrap items-center gap-2">{actions}</div>
     </div>

@@ -25,7 +25,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-017
 - `/specs/precheck/design.md` — 9-4절(자동 입력 전체), 4-3절(`bit.input`: progress … chunk … end, 확인 창), 15절(묶음 고리를 도우미로·덮어쓰기 없음·500명·5분), 16절(자동 입력 위험)

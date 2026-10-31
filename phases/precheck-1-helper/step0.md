@@ -21,7 +21,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-001
 - `/specs/precheck/design.md` — 3절(`helper/` 폴더), 4절(메시지 약속 4-1~4-5), 11절(시험 방법), 14절(새 패키지·도구)

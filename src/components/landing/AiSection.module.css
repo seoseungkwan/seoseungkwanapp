@@ -1,342 +1,204 @@
-/* AI 섹션(#ai). 값은 docs/mockups/landing/landing-mockup.dc.html #ai 그대로. 보라는 AI 영역이라 여기서 쓴다(UI_GUIDE) */
-.section {
-  position: relative;
-  padding: 112px var(--gutter);
-  background: var(--bg-ai);
-  overflow: hidden;
+/* AI 섹션(#ai) (specs/b2b-redesign AC-209.1, 시안 docs/mockups/b2b-redesign/style.css의 .report · .r-items · .chat · .plist · .mini).
+   섹션 틀·12칸·제목·칩은 base.module.css가 정하고, 여기서는 칸 자리·약속 목록·리포트 패널만 그린다.
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)는 리포트 패널 하나다. 말풍선은 <p>, 물어보기 칸은 aria-hidden 그림이라 상자가 아니다 */
+
+/* ---------- 칸: 1024px 미만은 글 → 리포트로 쌓인다 ---------- */
+.layout {
+  row-gap: 24px;
 }
-
-/* 연한 원형 빛: 히어로·AI·시작하기 섹션에만 (UI_GUIDE) */
-.glow {
-  position: absolute;
-  width: 700px;
-  height: 700px;
-  right: -200px;
-  top: -200px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(109, 93, 245, 0.16), rgba(109, 93, 245, 0) 68%);
-}
-
-.inner {
-  position: relative;
-  max-width: var(--content-max);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 56px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 760px;
-}
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-num), sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.14em;
-  color: var(--violet-text);
-  font-weight: 700;
-}
-
-.sparkle {
-  animation: sparkle 2.4s ease-in-out infinite;
-}
-
-.title {
-  margin: 0;
-  font-size: clamp(34px, 4.2vw, 54px);
-  line-height: 1.18;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.titleAccent {
-  color: var(--violet-text);
-}
-
-.lead {
-  margin: 0;
-  font-size: 19px;
-  line-height: 1.7;
-  color: var(--text-body);
-}
-
-.body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 48px;
-  align-items: flex-start;
-}
-
-/* 왼쪽: 약속 목록 */
-.points {
-  flex: 1 1 360px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.point {
-  display: flex;
-  gap: 14px;
-  padding: 18px 20px;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid rgba(109, 93, 245, 0.18);
-}
-
-.pointSafe {
-  background: var(--teal-soft);
-  border-color: rgba(7, 122, 115, 0.25);
-}
-
-.num {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  font-family: var(--font-num), sans-serif;
-  font-weight: 700;
-}
-
-.numTeal { background: var(--teal-soft); color: var(--teal-text); }
-.numAmber { background: var(--amber-soft); color: var(--amber-text); }
-.numPink { background: var(--pink-soft); color: var(--pink-text); }
-.numSafe { background: #ffffff; }
-
-.pointText {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.pointTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.pointDesc {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-body);
-}
-
-/* 오른쪽: AI 리포트 카드 */
+.text,
 .report {
-  flex: 1 1 520px;
   min-width: 0;
-  border-radius: 24px;
-  background: #ffffff;
-  border: 1.5px solid rgba(109, 93, 245, 0.35);
-  box-shadow: 0 30px 70px rgba(109, 93, 245, 0.18);
-  overflow: hidden;
+}
+.lead {
+  margin-top: 12px;
+  color: var(--ink-2);
 }
 
+/* ---------- 약속: 휴대폰은 제목만 2칸(앞에 4×4 accent 점), 768부터 위아래 1px 선으로 나뉜 목록 ---------- */
+.points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+.point {
+  position: relative;
+  padding-left: 12px;
+}
+.point::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+}
+.pointTitle {
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.pointDesc {
+  display: none;
+}
+
+/* ---------- 리포트 패널: 머리(제목 + 칩) · 몸(항목 | 채팅) ---------- */
+.report {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+}
 .reportHead {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 18px 22px;
-  border-bottom: 1px solid rgba(11, 21, 48, 0.07);
-}
-
-.reportTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.example {
-  margin-left: auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--violet-soft);
-  color: var(--violet-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.shimmer {
-  height: 3px;
-  background-image: linear-gradient(90deg, rgba(109, 93, 245, 0), #6d5df5, rgba(20, 200, 186, 0));
-  background-size: 300px 3px;
-  background-repeat: no-repeat;
-  animation: shimmer 2.2s linear infinite;
-}
-
-.items {
-  display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   gap: 12px;
-  padding: 20px 22px;
+  padding: 12px 16px 0;
+}
+.reportBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
+/* 항목: 휴대폰은 칩 위 · 글 아래 한 칸, 768부터 칩(76px) | 글 두 칸 */
+.items {
+  padding: 4px 16px;
+}
 .item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--bg-soft);
-  animation: rise 10s ease-out infinite both;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
 }
-
-.item:nth-child(2) { animation-delay: 0.7s; }
-.item:nth-child(3) { animation-delay: 1.4s; }
-
-.itemLine {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.item:last-child {
+  border-bottom: 0;
 }
-
+/* 칩이 칸을 꽉 채우지 않고 글자 폭만큼만 */
 .tag {
-  flex: none;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 700;
+  justify-self: start;
 }
-
-.tagUp { background: var(--teal-soft); color: var(--teal-text); }
-.tagWarn { background: var(--warn-soft); color: var(--warn-text); }
-.tagGuess { background: var(--violet-soft); color: var(--violet-text); }
-
-.itemText {
-  font-size: 15px;
-  font-weight: 600;
+.itemBody {
+  min-width: 0;
 }
-
 .basis {
-  align-self: flex-start;
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(11, 21, 48, 0.12);
-  color: var(--text-muted);
-  font-size: 13px;
+  color: var(--muted);
 }
 
-/* 채팅 예시: 그림처럼 보이기만 하고 아무것도 받지 않는다(button·input 아님). 누를 수 있어 보이지 않게 cursor 기본값 */
+/* 채팅 칸(768px 미만은 .pcOnly로 숨음): 그림일 뿐 아무것도 받지 않는다. 1024 미만은 항목 아래(위 1px 선) */
 .chat {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 12px;
-  padding: 18px 22px 22px;
-  border-top: 1px solid rgba(11, 21, 48, 0.07);
-  background: #fbfaff;
-  cursor: default;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
 }
-
-.question {
+.bubble {
   align-self: flex-end;
-  max-width: 75%;
-  padding: 10px 14px;
-  border-radius: 14px 14px 4px 14px;
-  background: var(--text-strong);
-  color: #ffffff;
-  font-size: 15px;
+  padding: 8px 12px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
 }
-
 .typing {
-  align-self: flex-start;
-  display: flex;
-  gap: 6px;
-  padding: 12px 16px;
-  border-radius: 14px;
-  background: var(--violet-soft);
+  color: var(--muted);
 }
-
-.typingDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--violet-fill);
-  animation: dot 1.4s ease-in-out infinite;
-}
-
-.typingDot:nth-child(2) { animation-delay: 0.2s; }
-.typingDot:nth-child(3) { animation-delay: 0.4s; }
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(109, 93, 245, 0.35);
-  background: #ffffff;
-  color: var(--violet-text);
-  font-size: 14px;
-  box-sizing: border-box;
-}
-
+/* 입력란 그림(aria-hidden): 글 · 보내기 표시 */
 .ask {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  align-items: center;
+  height: 40px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--muted);
 }
-
-.askBox {
-  flex: 1;
+.askText {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  min-height: 46px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(11, 21, 48, 0.15);
-  background: #ffffff;
-  font-size: 15px;
-  color: var(--text-muted);
-  box-sizing: border-box;
 }
-
 .send {
-  flex: none;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--violet-fill);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-control);
+  background: var(--accent);
+  color: var(--surface);
 }
 
-@keyframes sparkle {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.18) rotate(12deg); }
+/* ---------- 768px부터 ---------- */
+@media (min-width: 768px) {
+  .layout {
+    row-gap: 32px;
+  }
+  .points {
+    display: block;
+    margin-top: 32px;
+    border-top: 1px solid var(--line);
+  }
+  .point {
+    padding-block: 12px;
+    padding-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .point::before {
+    display: none;
+  }
+  .pointTitle {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .pointDesc {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--muted);
+  }
+  .reportHead {
+    padding: 16px 20px 0;
+  }
+  .reportBody {
+    margin-top: 16px;
+  }
+  .items {
+    padding: 4px 20px;
+  }
+  .item {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+    padding-block: 16px;
+  }
 }
 
-@keyframes shimmer {
-  from { background-position: -300px 0; }
-  to { background-position: 300px 0; }
-}
-
-@keyframes rise {
-  0% { opacity: 0; transform: translateY(10px); }
-  8%, 92% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(0); }
-}
-
-@keyframes dot {
-  0%, 80%, 100% { opacity: 0.25; }
-  40% { opacity: 1; }
+/* ---------- 1024px부터: 글 1~4칸 · 리포트 5~12칸, 몸은 항목 | 채팅(300px) ---------- */
+@media (min-width: 1024px) {
+  .text {
+    grid-column: 1 / 5;
+  }
+  .report {
+    grid-column: 5 / 13;
+  }
+  .reportBody {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+  .chat {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
 }

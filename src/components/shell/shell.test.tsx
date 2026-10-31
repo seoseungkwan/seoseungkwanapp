@@ -2,16 +2,17 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { hydrateRoot, type Root } from 'react-dom/client'
-import { renderToString } from 'react-dom/server'
+import { renderToStaticMarkup, renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ui } from '@/components/ui/classes'
+import { Icon, type IconName } from '@/components/common/Icon'
+import { ds } from '@/components/ui/classes'
 import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
 import { ADMIN_ITEM, MENU, currentMenuLabel } from './menu'
 import { TabBar } from './TabBar'
 
-// 앱 틀 (REQ-008, design.md '앱 틀', UI_GUIDE '앱 화면' 앱 틀·탭·폰).
+// 앱 틀 (REQ-008, b2b-redesign REQ-218, design.md '앱 틀·대시보드·관리자', UI_GUIDE '앱 화면' 앱 틀·탭·폰).
 // jsdom은 CSS를 계산하지 않는다 → 동작·역할은 Testing Library로, 모양은 정해 둔 클래스가 있는지로 본다(보이는 모양은 TASK-18 스크린샷)
 
 const { signOut, pathname } = vi.hoisted(() => ({ signOut: vi.fn(), pathname: vi.fn(() => '/dashboard') }))
@@ -19,6 +20,8 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { sig
 vi.mock('next/navigation', () => ({ usePathname: pathname }))
 
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
+// 공통 아이콘 그림(svg 안쪽 글자)
+const iconInner = (name: IconName) => renderToStaticMarkup(<Icon name={name} />).replace(/^<svg\b[^>]*>|<\/svg>$/g, '')
 const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
 // 요소가 그 클래스를 모두 가진다
 const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
@@ -126,25 +129,25 @@ describe('TabBar', () => {
     expect(nav().querySelectorAll('[aria-hidden="true"].w-px')).toHaveLength(0)
   })
 
-  it.each(['/claim', '/claim/close'])('AC-006.4: %s에서는 [청구] /claim 링크가 지금 탭(aria-current="page")이고 하나뿐이다', (path) => {
+  it.each(['/claim', '/claim/close'])('AC-006.4·AC-034.1: %s에서는 [청구] /claim 링크가 지금 탭(aria-current="page")이고 하나뿐이다', (path) => {
     pathname.mockReturnValue(path)
     render(<TabBar isAdmin />)
     const claim = within(nav()).getByRole('link', { name: '청구' })
     expect(claim.getAttribute('href')).toBe('/claim')
     expect(claim.getAttribute('aria-current')).toBe('page')
-    hasAll(claim, 'text-accent font-bold after:bg-accent')
+    hasAll(claim, 'text-ink font-semibold after:bg-accent')
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
   })
 
-  it('AC-006.4: /claim/setup에서는 목업처럼 [설정] 자리가 지금 탭이다 — 설정 화면이 아직 없어 링크가 아니고 표시만(준비 중), 청구는 지금 탭이 아니다', () => {
+  it('AC-006.4·AC-034.1: /claim/setup에서는 목업처럼 [설정] 자리가 지금 탭이다 — 설정 화면이 아직 없어 링크가 아니고 표시만(준비 중), 청구는 지금 탭이 아니다', () => {
     pathname.mockReturnValue('/claim/setup')
     render(<TabBar isAdmin={false} />)
     const settings = tab('설정')
     expect(settings.tagName).toBe('BUTTON')
     expect(settings.getAttribute('aria-disabled')).toBe('true')
     expect(settings.getAttribute('aria-current')).toBe('page')
-    hasAll(settings, 'text-accent font-bold after:bg-accent')
-    hasNone(settings, 'text-ink-2 font-medium')
+    hasAll(settings, 'text-ink font-semibold after:bg-accent')
+    hasNone(settings, 'text-faint text-ink-2 font-medium')
     expect(tipOfTab(settings).textContent).toBe('준비 중')
     expect(within(nav()).getByRole('link', { name: '청구' }).hasAttribute('aria-current')).toBe(false)
     expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
@@ -180,12 +183,13 @@ describe('TabBar', () => {
     return classes.includes('lg:block')
   }
 
-  it('AC-008.5: 툴팁은 평소 숨고, 1024px 이상에서 올림·초점에 보인다(ink 바탕·흰 caption 500·4px·shadow-float)', async () => {
+  it('AC-008.5·AC-218.2: 툴팁은 평소 숨고, 1024px 이상에서 올림·초점에 보인다(ink 바탕·흰 caption 500·좌우 8px·위아래 6px·8px·shadow-float)', async () => {
     const user = userEvent.setup()
     render(<TabBar isAdmin={false} />)
     const button = tab('통계')
     const tip = tipOf(button)
-    hasAll(tip, 'absolute bg-ink text-surface text-caption font-medium rounded-chip px-2 py-1 shadow-float whitespace-nowrap')
+    hasAll(tip, 'absolute bg-ink text-surface text-caption font-medium rounded-float px-2 py-1.5 shadow-float whitespace-nowrap')
+    hasNone(tip, 'rounded-chip py-1')
     hasNone(tip, 'max-lg:block md:block block')
     expect(tipShown(button)).toBe(false)
     // 올림·초점을 받는 덩이는 단추와 툴팁을 함께 감싼다
@@ -239,11 +243,11 @@ describe('TabBar', () => {
     expect(tipShown(button)).toBe(true)
   })
 
-  it('AC-008.5: 툴팁은 탭 띠 아래 페이지 제목을 덮지 않는다 — 탭(50px) 안 40px에서 시작해 띠 밑으로 조금만 내려온다', () => {
+  it('AC-008.5·AC-218.2: 툴팁은 탭 띠 아래 페이지 제목을 덮지 않는다 — 탭(44px) 안 38px에서 시작해(틈 없음) 띠 밑으로 22px만 내려와 본문 위 여백(24px) 안에 머문다', () => {
     render(<TabBar isAdmin={false} />)
     const tip = tipOf(tab('통계'))
-    hasAll(tip, 'top-10 left-1/2 -translate-x-1/2')
-    hasNone(tip, 'top-full mt-1')
+    hasAll(tip, 'top-9.5 left-1/2 -translate-x-1/2')
+    hasNone(tip, 'top-10 top-full mt-1')
   })
 
   it('AC-008.5: 준비 중 탭을 눌러도 주소가 바뀌지 않는다', async () => {
@@ -254,37 +258,53 @@ describe('TabBar', () => {
     expect(window.location.href).toBe(before)
   })
 
-  it('AC-008.5: 준비 중 탭의 모양은 다른 탭과 같다(같은 크기·글자·색)', () => {
-    pathname.mockReturnValue('/admin')
+  // 탭 글자색 클래스(기본 ink-2 → 올림 ink, 준비 중 faint). 나머지(크기·글자·초점)는 모든 탭이 같다
+  const TAB_COLORS = ['text-ink-2', 'hover:text-ink', 'text-faint']
+  const withoutColor = (el: Element) => classesOf(el).filter((c) => !TAB_COLORS.includes(c))
+
+  it('AC-008.5·AC-218.2: 준비 중 탭은 다른 탭과 같은 크기·글자이고 색만 faint(올림에도 그대로)', () => {
+    pathname.mockReturnValue('/dashboard')
     render(<TabBar isAdmin />)
-    const link = within(nav()).getByRole('link', { name: '대시보드' }) // 지금 탭이 아닌 링크
-    expect(classesOf(tab('통계'))).toEqual(classesOf(link))
+    const link = within(nav()).getByRole('link', { name: '관리자' }) // 지금 탭이 아닌 링크
+    for (const label of NOT_READY) {
+      const item = tab(label)
+      expect(withoutColor(item), label).toEqual(withoutColor(link))
+      hasAll(item, 'text-faint')
+      hasNone(item, 'text-ink-2 hover:text-ink')
+    }
+    hasAll(link, 'text-ink-2 hover:text-ink')
+    hasNone(link, 'text-faint')
   })
 
-  it('AC-008.1·AC-013.3: 탭 모양 — 50px·좌우 20px·tab 500 ink-2, 올림 ink, 키보드 초점은 탭 안쪽 2px accent 고리', () => {
-    render(<TabBar isAdmin={false} />)
-    const item = tab('통계')
-    hasAll(item, 'h-12.5 px-5 text-tab font-medium text-ink-2 hover:text-ink whitespace-nowrap')
-    hasAll(item, 'rounded-chip focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent')
-    hasNone(item, 'text-accent font-bold')
+  it('AC-218.2: 탭 모양 — 44px·좌우 12px·body 500 ink-2, 올림 ink, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리)', () => {
+    pathname.mockReturnValue('/dashboard')
+    render(<TabBar isAdmin />)
+    const idle = within(nav()).getByRole('link', { name: '관리자' })
+    hasAll(idle, 'h-11 px-3 text-body font-medium text-ink-2 hover:text-ink whitespace-nowrap')
+    for (const item of [idle, tab('통계')]) {
+      hasAll(item, 'h-11 px-3 text-body font-medium')
+      hasAll(item, 'rounded-control focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent')
+      hasNone(item, 'h-12.5 px-5 text-tab rounded-chip text-accent font-bold font-semibold')
+    }
   })
 
-  it('AC-008.1·AC-013.3: 지금 탭은 accent 700 + 아래 3px accent 밑줄(좌우 10px 안쪽, 위 모서리 2px), 밑줄 장식 없음', () => {
+  it('AC-218.2: 지금 탭은 ink 600 + 아래 2px accent 밑줄(좌우 12px 안쪽, 모서리 없음), 밑줄 장식 없음', () => {
     render(<TabBar isAdmin={false} />)
     const current = within(nav()).getByRole('link', { name: '대시보드' })
-    hasAll(current, 'text-accent font-bold')
-    hasAll(current, 'relative after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.75 after:rounded-t-xs after:bg-accent')
-    hasNone(current, 'text-ink-2 font-medium hover:text-ink')
+    hasAll(current, 'h-11 px-3 text-body text-ink font-semibold')
+    hasAll(current, 'relative after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-accent')
+    hasNone(current, 'text-accent font-bold font-medium text-ink-2 hover:text-ink after:inset-x-2.5 after:h-0.75 after:rounded-t-xs')
     // 랜딩 a 규칙(teal 글자·브라우저 밑줄)이 앱 탭에 닿지 않게 글자색과 no-underline을 직접 준다
     hasAll(current, 'no-underline')
   })
 
-  it('AC-008.1: 굵기가 바뀌어도 탭 폭이 흔들리지 않게 굵은 글자 폭을 미리 잡는다', () => {
+  it('AC-008.1·AC-218.2: 굵기가 바뀌어도 탭 폭이 흔들리지 않게 지금 탭 굵기(600) 글자 폭을 미리 잡는다', () => {
     render(<TabBar isAdmin={false} />)
     for (const label of LABELS) {
       const span = within(nav()).getByText(label, { selector: 'span[data-label]' })
       expect(span.getAttribute('data-label')).toBe(label)
-      hasAll(span, 'after:invisible after:h-0 after:overflow-hidden after:font-bold after:content-[attr(data-label)]')
+      hasAll(span, 'after:invisible after:h-0 after:overflow-hidden after:font-semibold after:content-[attr(data-label)]')
+      hasNone(span, 'after:font-bold')
     }
   })
 
@@ -298,9 +318,32 @@ describe('TabBar', () => {
     for (const item of tabItems()) hasAll(item, 'whitespace-nowrap shrink-0')
   })
 
-  it('AC-008.7·AC-013.4: 폰 탭은 46px(44px 이상)·좌우 14px·body', () => {
+  it('AC-008.7·AC-218.2: 탭은 모든 폭에서 44px·좌우 12px·body다(폰만 다른 크기가 없다)', () => {
     render(<TabBar isAdmin />)
-    for (const item of tabItems()) hasAll(item, 'max-md:h-11.5 max-md:px-3.5 max-md:text-body')
+    for (const item of tabItems()) {
+      hasAll(item, 'h-11 px-3 text-body')
+      expect(classesOf(item).filter((c) => /^max-md:(?:h|px|text)-/.test(c)), item.textContent ?? '').toEqual([])
+    }
+  })
+
+  it('AC-218.2: 탭 줄 — nav 첫 자식 줄 하나에 1280 폭·좌우 24px(폰 16px), 첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다', () => {
+    render(<TabBar isAdmin />)
+    expect(nav().children).toHaveLength(1)
+    const row = nav().firstElementChild as HTMLElement
+    hasAll(row, 'flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl')
+    hasAll(row, '[&>:first-child]:-ml-3')
+    // 탭 사이 틈이 없다(탭 좌우 12px가 사이를 만든다)
+    expect(classesOf(row).filter((c) => /(?:^|:)gap-/.test(c))).toEqual([])
+    // 줄 안에 감싸개를 따로 두지 않는다 — 탭(또는 준비 중 탭 덩이)이 줄의 바로 아래 자식이다
+    expect(row.firstElementChild).toBe(within(nav()).getByRole('link', { name: '대시보드' }))
+    expect(tab('통계').parentElement?.parentElement).toBe(row)
+  })
+
+  it('AC-218.2: 관리자 구분선은 가운데 16px 세로선, 좌우 8px', () => {
+    render(<TabBar isAdmin />)
+    const sep = within(nav()).getByRole('link', { name: '관리자' }).previousElementSibling as HTMLElement
+    hasAll(sep, 'w-px h-4 bg-line self-center shrink-0 mx-2')
+    hasNone(sep, '-mx-1.5')
   })
 
   // jsdom은 배치를 계산하지 않는다 → 탭 띠(390px)와 지금 탭의 자리를 정해 준다. 지금 탭은 띠 안에서 900~980px(밀기 전)
@@ -383,7 +426,7 @@ describe('AccountMenu', () => {
     render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin />)
     await user.click(button())
     const chip = screen.getByText('관리자 계정')
-    hasAll(chip, ui.chip.neutral)
+    hasAll(chip, ds.chip.neutral)
   })
 
   it('AC-008.3: Esc로 닫히고 초점이 계정 단추로 돌아온다', async () => {
@@ -431,19 +474,28 @@ describe('AccountMenu', () => {
     expect(signOut).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-008.3·AC-013.3: 계정 단추 38px·1px line·6px·body 500, 올림 canvas. 메뉴는 떠 있는 층(ui.layer, shadow-float)·폭 240px', async () => {
+  it('AC-218.3: 계정 단추는 ds.button.secondarySmall(32px) 모양에 사람 아이콘 16 + 이메일 + 아래 화살표. 메뉴는 ds.layer(8px·그림자)·폭 240px', async () => {
     const user = userEvent.setup()
     render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin={false} />)
-    hasAll(button(), 'h-9.5 border border-line rounded-card bg-surface text-body font-medium text-ink hover:bg-canvas')
-    hasAll(button(), ui.focusRing)
-    hasNone(button(), 'shadow-float')
+    hasAll(button(), ds.button.secondarySmall)
+    hasNone(button(), 'h-9.5 rounded-card border-line text-body shadow-float')
+    // 단추 안: 공통 아이콘(Icon) 사람 16 · 이메일 · 아래 화살표(chev) 차례
+    const [person, mail, chev] = Array.from(button().children)
+    expect(button().children).toHaveLength(3)
+    for (const [svg, name] of [[person, 'user'], [chev, 'chev']] as const) {
+      expect(svg?.tagName.toLowerCase(), name).toBe('svg')
+      expect([svg?.getAttribute('width'), svg?.getAttribute('height'), svg?.getAttribute('viewBox')], name).toEqual(['16', '16', '0 0 16 16'])
+      expect(svg?.innerHTML, name).toBe(iconInner(name))
+    }
+    expect(mail?.textContent).toBe(EMAIL)
     await user.click(button())
     const layer = screen.getByRole('menu').parentElement as HTMLElement
-    hasAll(layer, ui.layer)
+    hasAll(layer, ds.layer)
     hasAll(layer, 'absolute w-60 p-1')
+    hasNone(layer, 'rounded-card')
     const head = document.getElementById(screen.getByRole('menu').getAttribute('aria-describedby') as string) as HTMLElement
     expect(layer.contains(head)).toBe(true)
-    hasAll(within(head).getByText(EMAIL), 'text-table font-medium text-ink')
+    hasAll(within(head).getByText(EMAIL), 'text-small font-medium text-ink')
     hasAll(within(head).getByText(HOSPITAL), 'text-caption text-muted')
     hasAll(screen.getByRole('menu'), 'border-t border-line')
     hasAll(screen.getByRole('menuitem'), 'h-9 w-full text-body text-ink hover:bg-canvas')
@@ -516,9 +568,10 @@ describe('KstClock', () => {
     container.remove()
   })
 
-  it('AC-008.6·AC-008.7: table 글자 muted, 폰(768px 미만)에서만 숨긴다', () => {
+  it('AC-008.6·AC-008.7·AC-218.1: small 글자 muted, 폰(768px 미만)에서만 숨긴다', () => {
     render(<KstClock />)
-    hasAll(screen.getByText(/\(KST\)$/), 'text-table text-muted whitespace-nowrap max-md:hidden')
+    hasAll(screen.getByText(/\(KST\)$/), 'text-small text-muted whitespace-nowrap max-md:hidden')
+    hasNone(screen.getByText(/\(KST\)$/), 'text-table')
     hasNone(screen.getByText(/\(KST\)$/), 'max-lg:hidden')
   })
 })
@@ -531,28 +584,35 @@ describe('AppShell', () => {
       </AppShell>,
     )
 
-  it('AC-008.3: 위쪽 띠 왼쪽 로고·[서비스 이름]·구분선·병원 이름, 오른쪽 한국 시각·계정 단추(이메일)', () => {
+  // 안쪽 감싸개 셋(띠·탭 줄·본문)의 1280 폭·좌우 여백
+  const wrapper = 'max-w-7xl px-6 max-md:px-4'
+  const stickyGroup = () => screen.getByRole('banner').parentElement as HTMLElement
+
+  it('AC-008.3·AC-218.1: 위쪽 띠 왼쪽 로고(24)·병원 이름, 오른쪽 한국 시각·계정 단추(이메일). [서비스 이름]과 세로 구분선이 없다', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-29T00:42:30Z'))
     shell()
     const banner = screen.getByRole('banner')
-    expect(banner.textContent).toBe(`[서비스 이름]${HOSPITAL}2026년 10월 29일 (목) 09:42 (KST)${EMAIL}`)
+    expect(banner.textContent).toBe(`${HOSPITAL}2026년 10월 29일 (목) 09:42 (KST)${EMAIL}`)
     const logo = banner.querySelector('svg') as SVGElement
     expect(logo.getAttribute('aria-hidden')).toBe('true')
-    expect(logo.getAttribute('width')).toBe('26')
-    const sep = banner.querySelector('span[aria-hidden="true"]') as HTMLElement
-    hasAll(sep, 'w-px h-5.5 bg-line')
+    expect(logo.getAttribute('viewBox')).toBe('0 0 30 30')
+    expect([logo.getAttribute('width'), logo.getAttribute('height')]).toEqual(['24', '24'])
+    expect(within(banner).queryByText('[서비스 이름]')).toBeNull()
+    expect(banner.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(0)
+    expect(banner.querySelectorAll('.w-px')).toHaveLength(0)
     expect(within(banner).getByRole('button', { name: new RegExp(EMAIL) }).getAttribute('aria-haspopup')).toBe('menu')
     // 띠에는 메뉴 탭이 없다(탭은 띠 아래 nav)
     expect(within(banner).queryByRole('navigation')).toBeNull()
   })
 
-  it('AC-008.1: 띠 → 탭 줄(nav "메뉴") → 본문(main) 순서, 본문에 페이지를 그린다', () => {
+  it('AC-008.1·AC-218.1: 띠와 탭 줄(nav "메뉴")이 붙는 묶음 하나의 두 자식이고, 그 묶음 다음이 본문(main)이다. 본문에 페이지를 그린다', () => {
     shell()
     const banner = screen.getByRole('banner')
     const main = screen.getByRole('main')
-    expect(banner.nextElementSibling).toBe(nav())
-    expect(nav().nextElementSibling).toBe(main)
+    const group = stickyGroup()
+    expect(Array.from(group.children)).toEqual([banner, nav()])
+    expect(group.nextElementSibling).toBe(main)
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('본문 제목')
     expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
   })
@@ -562,22 +622,51 @@ describe('AppShell', () => {
     expect(within(nav()).getByRole('link', { name: '관리자' }).getAttribute('href')).toBe('/admin')
   })
 
-  it('AC-008.1·AC-013.1: 앱 뿌리 .app-ui·canvas 바탕, 띠는 흰 바탕·64px·좌우 24px·아래 1px 선이고 위에 붙어 따라온다', () => {
+  it('AC-218.1: 앱 뿌리 .app-ui·canvas 바탕. 위에 붙는 묶음(sticky·top 0·z 10)이 띠와 탭 줄을 함께 붙인다 — 띠·탭 줄 자신은 붙지 않는다', () => {
     const { container } = shell()
     const root = container.firstElementChild as HTMLElement
     hasAll(root, 'app-ui bg-canvas text-ink min-h-dvh')
-    const banner = screen.getByRole('banner')
-    hasAll(banner, 'sticky top-0 bg-surface border-b border-line')
-    hasAll(banner.firstElementChild as HTMLElement, 'h-16 px-6')
-    // 탭 띠는 붙지 않고 본문과 함께 올라간다
+    const group = stickyGroup()
+    expect(group.parentElement).toBe(root)
+    expect(group.tagName).toBe('DIV')
+    hasAll(group, 'sticky top-0 z-10')
+    hasNone(screen.getByRole('banner'), 'sticky top-0 z-10')
     hasNone(nav(), 'sticky')
   })
 
-  it('AC-008.3·AC-013.3: [서비스 이름] logo 600, 병원 이름 lead 500(넘치면 말줄임)', () => {
+  it('AC-218.1: 띠는 surface·아래 1px line·56px(폰 48px), 안쪽 감싸개는 1280·가운데·좌우 24px(폰 16px), 오른쪽 시각·계정 단추 사이 16px', () => {
     shell()
     const banner = screen.getByRole('banner')
-    hasAll(within(banner).getByText('[서비스 이름]'), 'text-logo font-semibold text-ink')
-    hasAll(within(banner).getByText(HOSPITAL), 'text-lead font-medium text-ink truncate')
+    hasAll(banner, 'bg-surface border-b border-line')
+    expect(banner.children).toHaveLength(1)
+    const inner = banner.firstElementChild as HTMLElement
+    hasAll(inner, `mx-auto w-full ${wrapper} h-14 max-md:h-12 flex items-center justify-between`)
+    hasNone(inner, 'h-16 gap-5')
+    const end = within(banner).getByText(/\(KST\)$/).parentElement as HTMLElement
+    expect(end.contains(within(banner).getByRole('button', { name: new RegExp(EMAIL) }))).toBe(true)
+    hasAll(end, 'flex items-center gap-4 shrink-0')
+    hasNone(end, 'gap-6')
+  })
+
+  it('AC-218.1: 1280 감싸개 셋 — 띠 안쪽·탭 줄·본문 안쪽이 같은 최대 폭(max-w-7xl)·좌우 24px(폰 16px)이고 가운데에 놓인다', () => {
+    shell()
+    const headerInner = screen.getByRole('banner').firstElementChild as HTMLElement
+    const tabRow = nav().firstElementChild as HTMLElement
+    const mainInner = screen.getByRole('main').firstElementChild as HTMLElement
+    for (const el of [headerInner, mainInner]) hasAll(el, `mx-auto w-full ${wrapper}`)
+    // 탭 줄은 1024px 미만에서 옆으로 밀리므로(w-max) 가운데 놓기·1280 폭 맞춤은 1024px 이상에서만. 좌우 여백은 같다
+    hasAll(tabRow, 'px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl')
+  })
+
+  it('AC-218.1: 병원 이름은 subtitle 600(넘치면 말줄임), 로고 옆 12px(폰 8px)', () => {
+    shell()
+    const banner = screen.getByRole('banner')
+    const name = within(banner).getByText(HOSPITAL)
+    hasAll(name, 'text-subtitle font-semibold text-ink truncate')
+    hasNone(name, 'text-lead font-medium')
+    const start = name.parentElement as HTMLElement
+    expect(start.contains(banner.querySelector('svg'))).toBe(true)
+    hasAll(start, 'flex items-center gap-3 max-md:gap-2 min-w-0')
   })
 
   it('AC-008.3: 768~1023px 띠에서도 병원 이름 자리가 남는다 — 계정 단추 이메일은 1024px 미만에서 128px(넘치면 말줄임), 병원 이름은 80px 아래로 줄지 않고 말줄임', () => {
@@ -589,22 +678,24 @@ describe('AppShell', () => {
     expect(within(banner).getByRole('button', { name: new RegExp(EMAIL) }).getAttribute('aria-label')?.startsWith(EMAIL)).toBe(true)
   })
 
-  it('AC-008.1: 본문은 좌우 24px·위 24px·아래 28px', () => {
+  it('AC-218.1: 본문(main) 안쪽 감싸개는 좌우 24px·위 24px·아래 48px(폰 좌우 16·위 16·아래 32)', () => {
     shell()
-    hasAll(screen.getByRole('main'), 'px-6 pt-6 pb-7')
+    const main = screen.getByRole('main')
+    expect(main.children).toHaveLength(1)
+    const inner = main.firstElementChild as HTMLElement
+    hasAll(inner, 'px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8')
+    expect(within(inner).getByRole('heading', { level: 1 }).textContent).toBe('본문 제목')
+    hasNone(main, 'px-6 pt-6 pb-7')
   })
 
-  it('AC-008.7: 폰 — 띠 48px·좌우 16px, 로고·병원 이름(body 600)·계정 단추만 보이고 [서비스 이름]·구분선·시각은 숨긴다. 본문 좌우·위 16px', () => {
+  it('AC-008.7·AC-218.1: 폰 — 띠 48px·좌우 16px, 로고·병원 이름(body 600)·계정 단추만 보이고 시각은 숨긴다', () => {
     shell()
     const banner = screen.getByRole('banner')
     hasAll(banner.firstElementChild as HTMLElement, 'max-md:h-12 max-md:px-4')
-    hasAll(within(banner).getByText('[서비스 이름]'), 'max-md:hidden')
-    hasAll(banner.querySelector('span[aria-hidden="true"]') as HTMLElement, 'max-md:hidden')
     hasAll(within(banner).getByText(/\(KST\)$/), 'max-md:hidden')
-    hasAll(within(banner).getByText(HOSPITAL), 'max-md:text-body max-md:font-semibold')
+    hasAll(within(banner).getByText(HOSPITAL), 'max-md:text-body font-semibold')
     hasNone(within(banner).getByText(HOSPITAL), 'max-md:hidden')
     hasNone(banner.querySelector('svg') as SVGElement, 'max-md:hidden')
-    hasAll(screen.getByRole('main'), 'max-md:px-4 max-md:pt-4')
     expect(screen.queryByRole('button', { name: /메뉴 열기/ })).toBeNull()
   })
 })

@@ -31,7 +31,7 @@ TASK-5를 만들며 찾은 빈틈 둘과 리뷰에서 나온 것 셋이다.
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-016·017
+- `/docs/ADR.md` — 특히 ADR-016·020
 - `/specs/precheck/requirements.md` — REQ-005 (AC-005.5·005.7 바뀐 문장, AC-005.8~005.12)
 - `/specs/precheck/design.md` — 4-3절(`bit.check` 답), 9-1절(병원 이름은 도우미가 갖지 않는다), 9-3절(깨진 파일·`registration.dat`), 12절(x86 빌드), 16절(비트 접속 DLL 위험)
 - `/specs/precheck/tasks.md` — TASK-33 (수정 범위·메모)
@@ -82,7 +82,7 @@ TASK-5를 만들며 찾은 빈틈 둘과 리뷰에서 나온 것 셋이다.
 - **PC 확인 창**: 글은 도우미가 비트에서 읽은 값으로만 만든다. 웹이 보낸 글이나 지어낸 값(범위 값을 이름이라고 쓰기 등)을 보이지 않는다. 기관기호는 뒤 4자리를 가린다 (AC-005.5·005.9)
 - **C# 나누기**: 규칙(등록 파일 모양·깨진 파일 규칙·확인 창 글·`bit.check` 답)은 `Precheck.Core`(netstandard2.0)에 두고 이 서버에서 `dotnet test -f net10.0`으로 시험한다. NuGet 판은 정확한 버전으로 고정한다. 비트 DLL은 함께 싣지 않는다 (ADR-016, design.md 14절)
 - **도우미 기록**: 표준 출력에는 메시지 틀만, 진단 기록에는 시각·명령 이름·오류 번호만. 기관기호·범위·경로를 기록·예외 메시지·창 제목에 넣지 않는다 (AC-001.6)
-- **환자 자료 구역**: `src/lib/bridge/**`는 환자 자료 구역 울타리 안이다. `protocol.ts`를 고칠 때 새 import·네트워크·console을 더하지 않는다 (ADR-017, `src/guardrails.test.ts`)
+- **환자 자료 구역**: `src/lib/bridge/**`는 환자 자료 구역 울타리 안이다. `protocol.ts`를 고칠 때 새 import·네트워크·console을 더하지 않는다 (ADR-020, `src/guardrails.test.ts`)
 - **가짜 자료만**: 시험의 병원 값은 지어낸 것(기관기호 `12345678` 등)만 쓴다. 실제 기관기호·병원 이름을 커밋하지 않는다 (CLAUDE.md)
 
 ## 작업

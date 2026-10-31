@@ -28,10 +28,10 @@ describe('/signup 화면', () => {
     expect(guard).toHaveBeenCalledExactlyOnceWith('/signup')
   })
 
-  it('AC-004.2: 위쪽 띠(로고·[서비스 이름]만)와 본문 안에 가입 신청 폼, 구글 계정 칸에는 로그인한 이메일을 읽기 전용으로', async () => {
+  it('AC-004.2: 위쪽 띠(로고만)와 본문 안에 가입 신청 폼, 구글 계정 칸에는 로그인한 이메일을 읽기 전용으로', async () => {
     render(await SignupPage())
     const banner = screen.getByRole('banner')
-    expect(banner.textContent).toBe('[서비스 이름]')
+    expect(banner.textContent).toBe('')
     // 목업 가입 신청 머리띠에는 단추·링크가 없다([다른 계정으로 로그인]은 폼 아래)
     expect(within(banner).queryAllByRole('button')).toHaveLength(0)
     expect(within(banner).queryAllByRole('link')).toHaveLength(0)

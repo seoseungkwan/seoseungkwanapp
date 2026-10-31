@@ -44,6 +44,10 @@ desktop.ini
 # Test and build outputs
 coverage/
 .vercel/
+# Playwright 산출물(실패 때 화면 글자 요약이 남을 수 있다) — 커밋하지 않는다
+test-results/
+playwright-report/
+blob-report/
 
 # phase execution outputs
 phases/**/phase*-output.json

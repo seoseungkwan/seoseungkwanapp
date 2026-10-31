@@ -24,7 +24,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-005
 - `/specs/precheck/design.md` — 2절 표(비트 설치 찾기·접속·기관기호 원본), 3절(`Bit/`·`Registration/`·`Precheck.Windows`), 9-1절(처음 등록과 매번 확인), 9-3절(등록 파일 위치·암호화), 16절(비트 DLL 위험)

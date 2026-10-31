@@ -157,7 +157,7 @@ describe('next.config headers()', () => {
   })
 })
 
-// 청구 사전점검 전(TASK-4 전) 값을 글자 그대로 적어 둔다. 네이티브 메시징은 connect-src와 상관없다(ADR-017)
+// 청구 사전점검 전(TASK-4 전) 값을 글자 그대로 적어 둔다. 네이티브 메시징은 connect-src와 상관없다(ADR-020)
 const PROD_CSP =
   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
   "font-src 'self'; media-src 'self'; connect-src 'self' https://abcd.supabase.co; worker-src 'self' blob:; " +

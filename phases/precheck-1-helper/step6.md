@@ -21,7 +21,7 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — 특히 ADR-003·004·016·017·018·019
+- `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-006
 - `/specs/precheck/design.md` — 4-3절(`bit.check` 답, 병원 이름 없음), 4-4절(버전 맞추기), 4-5절(오류 번호), 7절 표 '설치·연결 확인', 9-1절(기관기호 가림·병원 이름은 사이트 값), 9-3절(등록 파일이 깨졌을 때), 12절(설치 안내), 13절(업데이트 안내)
@@ -83,10 +83,10 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 줄 화면 울타리**: `src/components/claim/rows/**`·`src/components/contact/rows/**`는 JSX는 되지만 네트워크·console·브라우저 저장소·supabase·`lib/storage`·`lib/auth` import를 못 쓴다. 줄은 props로만 받는다. `components/claim/**`·`components/contact/**`·`app/(app)/claim/**`·`app/(app)/contact/**`는 오류 수집 패키지(`@sentry/*`·`@vercel/analytics`·`@vercel/speed-insights`)를 import하지 않는다 (ADR-017)
-- **브라우저 저장소 안 씀**: 고친 메모·완료 표시·입력 기록·연락 표시·설정 사본은 도우미 작업 저장(`store.save`)에만 둔다. `localStorage`·`sessionStorage`·`indexedDB`에 두지 않는다 (ADR-017)
+- **환자 줄 화면 울타리**: `src/components/claim/rows/**`·`src/components/contact/rows/**`는 JSX는 되지만 네트워크·console·브라우저 저장소·supabase·`lib/storage`·`lib/auth` import를 못 쓴다. 줄은 props로만 받는다. `components/claim/**`·`components/contact/**`·`app/(app)/claim/**`·`app/(app)/contact/**`는 오류 수집 패키지(`@sentry/*`·`@vercel/analytics`·`@vercel/speed-insights`)를 import하지 않는다 (ADR-020)
+- **브라우저 저장소 안 씀**: 고친 메모·완료 표시·입력 기록·연락 표시·설정 사본은 도우미 작업 저장(`store.save`)에만 둔다. `localStorage`·`sessionStorage`·`indexedDB`에 두지 않는다 (ADR-020)
 - **오류 문구 한 곳**: 오류 안내는 `src/lib/errors.ts`('무엇이 · 어떻게 고치나 · 번호'), 번호 타입은 `src/types/errors.ts`. 새 번호는 design.md 4-5 목록에서 고른다. 화면에 원래 오류 내용(예외 메시지·스택·도우미가 준 글)을 보이지 않는다 (CLAUDE.md)
-- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·018)
+- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 새로 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 설정·건수는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다 (ADR-004·021)
 - **주소에 환자 값 없음**: 차트번호·이름·메모·전화를 주소(URL)·쿼리·화면 제목·`history.state` 밖 어디에도 넣지 않는다. 주소는 서버 로그와 브라우저 기록에 남는다. 화면 사이에는 날짜와 메모리 안 key만 넘긴다
 
 ## 작업
@@ -162,7 +162,7 @@ python3 ~/.claude/harness/bin/verify
 
 - 기관기호를 가리지 않은 채 화면·주소·제목에 보이지 마라. 이유: 기관기호는 서버에 올리지 않고 화면에는 뒤 4자리를 가린다(design.md 9-1, AC-006.4)
 - 오류 객체의 `message`나 도우미가 준 글을 화면에 그대로 보이지 마라. 이유: 오류 카드는 번호와 `errors.ts` 문구만(AC-006.6, CLAUDE.md)
-- 연결 상태·버전을 `localStorage` 등에 기억하지 마라. 이유: 청구 쪽은 브라우저 저장소를 쓰지 않는다(ADR-017). 열 때마다 `hello`로 확인한다
+- 연결 상태·버전을 `localStorage` 등에 기억하지 마라. 이유: 청구 쪽은 브라우저 저장소를 쓰지 않는다(ADR-020). 열 때마다 `hello`로 확인한다
 - 화면을 목업과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로만 만든다(CLAUDE.md CRITICAL). 목업에 없는 것이 꼭 필요하면 summary에 적는다
 - 기존 테스트를 깨뜨리지 마라. 이유: `shell.test.tsx`의 기존 탭 시험(순서·관리자 탭)이 새 탭과 함께 계속 맞아야 한다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
