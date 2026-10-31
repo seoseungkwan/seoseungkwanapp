@@ -3,10 +3,21 @@ import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
+import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
+import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
+import { dashboardSummarySource, type SummarySource } from '@/components/dashboard/summary/source'
+import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
 
+// 자료 읽는 자리(dashboardSummarySource)만 감싼다(AC-307.6). 기본은 진짜(지금은 늘 자료 없음)이고 isConnected는 진짜다.
+// 연결 뒤 짜임 시험만 한 번 그릴 때 시험 안 가짜 자료를 돌려준다 — 앱 코드에 시험용 길을 만들지 않는다
+vi.mock('@/components/dashboard/summary/source', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/dashboard/summary/source')>()
+  return { ...real, dashboardSummarySource: vi.fn(real.dashboardSummarySource) }
+})
+
 // /dashboard 페이지 (tab-frame REQ-306, design.md '대시보드 짜임'·'대시보드 페이지 조립'). 문지기와 앱 틀(위쪽 띠·탭·<main>)은 (app)/layout이 준다(layout.test.tsx).
-// 여기서는 오늘 한국 날짜로 연결 전 대시보드(DashboardHome)를 그리는지만 본다. 데이터는 읽지 않는다(분석·보고 문장 끼우기는 TASK-9)
+// 여기서는 오늘 한국 날짜로 대시보드(DashboardHome)를 그리는지, 자료 읽는 자리(dashboardSummarySource) 하나로 연결 전·뒤 분석·보고 문장을 끼우는지 본다(AC-307.5·307.6)
 
 const SOURCE = readFileSync(fileURLToPath(new URL('./page.tsx', import.meta.url)), 'utf8')
 // 날짜 줄 글자: 그린 마크업의 첫 <p>(브리핑 왼쪽 칸 맨 위)
@@ -48,8 +59,12 @@ describe('/dashboard 화면', () => {
     expect(dynamic).toBe('force-dynamic')
   })
 
-  it('AC-306.2: 화면은 연결 전 대시보드 — <DashboardHome today="2026-10-29" report={null} /> 그대로다', () => {
-    expect(renderAt('2026-10-29T00:42:00Z')).toBe(renderToStaticMarkup(<DashboardHome today="2026-10-29" report={null} />))
+  it('AC-306.2: 화면은 연결 전 대시보드 — <DashboardHome today="2026-10-29" report={null} analysis={<DashboardAnalysis today="2026-10-29" source={{ kind: "none" }} />} /> 그대로다', () => {
+    expect(renderAt('2026-10-29T00:42:00Z')).toBe(
+      renderToStaticMarkup(
+        <DashboardHome today="2026-10-29" report={null} analysis={<DashboardAnalysis today="2026-10-29" source={{ kind: 'none' }} />} />,
+      ),
+    )
   })
 
   it('AC-306.8: 앱 틀을 한 번 더 그리지 않는다 — 위쪽 띠·탭·<main>·.app-ui는 (app)/layout 몫', () => {
@@ -60,5 +75,224 @@ describe('/dashboard 화면', () => {
   it('AC-306.8: 숫자·자료를 읽지 않는다 — Supabase·문지기·fetch를 쓰지 않는다(대시보드 내용은 별도 명세)', () => {
     expect(SOURCE).not.toMatch(/@\/lib\/supabase|guard\.server|hospital\.server|\bfetch\(|'use client'/)
     expect(SOURCE).toMatch(/from '@\/lib\/analytics\/dates'/) // 날짜는 dates.ts 한 곳
+  })
+})
+
+// ── 대시보드 조립 (tab-frame REQ-307 AC-307.5·AC-307.6, design.md '대시보드 페이지 조립') ──
+// 페이지가 자료 읽는 자리 하나로 연결 전·뒤를 정하고, 브리핑(DashboardHome)에 분석(DashboardAnalysis)·보고 문장(ReportBlock)을 끼운다.
+// 이 파일은 node 환경이라 그린 마크업 글자로 본다(짜임·모양은 각 부품 시험이 본다)
+
+const TODAY = '2026-10-31' // 토요일 · 그 달 마지막 날
+const AT_TODAY = '2026-10-31T01:00:00Z' // 한국 10월 31일 오전 10시
+
+// 그린 마크업 → 보이는 글자. 태그는 빈칸, React가 글자 사이에 넣는 <!-- -->는 지우고, 이스케이프 글자를 되돌린다
+const plain = (html: string) =>
+  html
+    .replace(/<!-- -->/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+const h1Texts = (html: string) => [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => plain(m[1]!))
+// 글자가 꼭 같은 그 태그 하나의 자리(마크업 안 위치)
+const placeOf = (html: string, tag: string, text: string) => {
+  const found = [...html.matchAll(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, 'g'))].filter((m) => plain(m[1]!) === text)
+  expect(found, `<${tag}> ${text}`).toHaveLength(1)
+  return found[0]!.index
+}
+// 글자가 꼭 같은 링크 하나의 주소
+const hrefOf = (html: string, text: string) => {
+  const found = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].filter((m) => plain(m[2]!) === text)
+  expect(found, `<a> ${text}`).toHaveLength(1)
+  return /\bhref="([^"]*)"/.exec(found[0]![1]!)?.[1]
+}
+const expectAscending = (places: Array<[string, number]>) => {
+  for (let i = 1; i < places.length; i += 1) {
+    expect(places[i]![1], `${places[i - 1]![0]} → ${places[i]![0]}`).toBeGreaterThan(places[i - 1]![1])
+  }
+}
+const countOf = (text: string, part: string) => text.split(part).length - 1
+
+describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.mocked(dashboardSummarySource).mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-307.5: 페이지는 자료 읽는 자리를 한 번 읽고, 지금은 자료가 없다(연결 전)', () => {
+    renderAt(AT_TODAY)
+    expect(dashboardSummarySource).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(dashboardSummarySource).mock.results[0]?.value).toEqual({ kind: 'none' })
+  })
+
+  it('AC-307.5: 위에서부터 날짜 줄 → 큰 문장 h1 → 연결 순서 → 지금 바로 쓸 수 있어요 → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
+    const html = renderAt(AT_TODAY)
+    expect(dateLineText(html)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    expectAscending([
+      ['날짜 줄', html.indexOf('<p')],
+      ['큰 문장 h1', placeOf(html, 'h1', '비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다')],
+      ['연결 순서', placeOf(html, 'h2', '연결 순서')],
+      ['지금 바로 쓸 수 있어요', placeOf(html, 'h2', '지금 바로 쓸 수 있어요')],
+      ['오늘 하루 분석', placeOf(html, 'h2', '오늘 하루 분석')],
+      ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
+      ['기능 목차', placeOf(html, 'h2', '기능 목차')],
+    ])
+  })
+
+  it('AC-307.5: h1은 큰 문장 하나다', () => {
+    expect(h1Texts(renderAt(AT_TODAY))).toEqual(['비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다'])
+  })
+
+  it('AC-307.5: 분석 칸은 모두 연결 전 빈 상태다 — 숫자 칸 넷 "연결하면 보여요", 연결 전 칩, 빈 그래프 틀(차트 부품 없음)', () => {
+    const html = renderAt(AT_TODAY)
+    const text = plain(html)
+    expect(countOf(text, '연결하면 보여요')).toBe(4)
+    expect(text).toContain('비트 PC 연결 전')
+    expect(text).toContain('연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.')
+    expect(text).toContain('비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다')
+    // 연결 뒤에만 나오는 것: 보고 문장 · 연결 뒤 빈 값 글자 · 차트 부품(쌓은 막대의 화면 읽기 표)
+    expect(text).not.toContain('원장님 보고 문장 ')
+    expect(text).not.toContain('자료 없음')
+    expect(html).not.toMatch(/<table\b/)
+  })
+
+  it('AC-307.5: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · 기능 수 글 둘 · 날짜 눈금 · 재방문 줄 이름 셋 · 처방 상위 설명 · 빈 줄 번호)를 빼면 숫자가 없다', () => {
+    let html = renderAt(AT_TODAY)
+    // 번호 줄(연결 순서 두 벌 · 처방 상위 빈 줄): 줄 맨 앞 번호 칸의 1~5만 뺀다
+    const lists = [...html.matchAll(/<ol\b[^>]*>[\s\S]*?<\/ol>/g)].map((m) => m[0])
+    expect(lists).toHaveLength(3)
+    for (const list of lists) {
+      const numbers = [...list.matchAll(/<li\b[^>]*><span\b[^>]*>(\d+)<\/span>/g)].map((m) => m[1])
+      expect(numbers).toEqual(['1', '2', '3', '4', '5'])
+      html = html.replace(list, list.replace(/(<li\b[^>]*><span\b[^>]*>)\d+(<\/span>)/g, '$1$2'))
+    }
+    const fixed = [
+      '10월 31일 토요일',
+      '10월 1일 – 10월 30일', // 기간 글자(처음 30일, 어제까지)
+      '최근 7일',
+      '최근 30일',
+      '최근 90일',
+      '5단계',
+      '기능 12개 가운데 2개예요. 다른 하나는 위의 비트 PC 연결이에요.',
+      '12개 가운데 2개를 지금 쓸 수 있어요',
+      // 환자 수 추이 빈 틀의 날짜 눈금(30일: 기간 첫날부터 7일마다)
+      '10.1',
+      '10.8',
+      '10.15',
+      '10.22',
+      '10.29',
+      '7일 안에 다시 옴',
+      '14일 안에 다시 옴',
+      '30일 안에 다시 옴',
+      '많이 낸 처방 5가지가 차례로 적힙니다',
+    ].sort((a, b) => b.length - a.length)
+    let text = plain(html)
+    for (const s of fixed) {
+      expect(text, s).toContain(s)
+      text = text.split(s).join(' ')
+    }
+    expect(text).not.toMatch(/\d/)
+  })
+})
+
+describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결 뒤) (AC-307.6)', () => {
+  // 가짜 DayPayload는 이 시험 파일 안에서만 만든다(AC-312.3). 오늘(토) 끝남 13명 · 지난주 토요일 끝남 10명 · 어제 덜 끝남
+  const day = (ymd: string, newPatients: number, returning: number, partial = false): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: ymd,
+    partial,
+    totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
+    rx: [],
+    groups: [],
+    revisit: { cohort: newPatients, within7: 0, within14: 0 },
+  })
+  const DAYS: DayPayload[] = [day(TODAY, 4, 9), day('2026-10-30', 3, 7, true), day('2026-10-24', 2, 8)]
+  const SOURCE_DATA: SummarySource = { kind: 'data', days: DAYS }
+  // 자료 읽는 자리가 이번 한 번만 가짜 자료를 준다
+  const renderConnected = () => {
+    vi.mocked(dashboardSummarySource).mockReturnValueOnce(SOURCE_DATA)
+    return renderAt(AT_TODAY)
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-307.6: 화면 = <DashboardHome report={<ReportBlock … />} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', () => {
+    expect(renderConnected()).toBe(
+      renderToStaticMarkup(
+        <DashboardHome
+          today={TODAY}
+          report={<ReportBlock today={TODAY} days={DAYS} />}
+          analysis={<DashboardAnalysis today={TODAY} source={SOURCE_DATA} />}
+        />,
+      ),
+    )
+  })
+
+  it('AC-307.6: 위에서부터 날짜 줄 → 원장님 보고 문장 · [복사] → h1 첫 문장 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
+    const html = renderConnected()
+    expect(dateLineText(html)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    expectAscending([
+      ['날짜 줄', html.indexOf('<p')],
+      ['원장님 보고 문장', placeOf(html, 'p', '원장님 보고 문장')],
+      ['복사', placeOf(html, 'button', '복사')],
+      ['h1 첫 문장', placeOf(html, 'h1', '오늘 환자 13명이 왔습니다.')],
+      ['나머지 문장', placeOf(html, 'p', '신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')],
+      ['지금 바로 쓸 수 있어요', placeOf(html, 'h2', '지금 바로 쓸 수 있어요')],
+      ['사전점검', placeOf(html, 'p', '삭감 예방 사전점검')],
+      ['사전점검 열기', placeOf(html, 'a', '사전점검 열기')],
+      ['비트 PC 연결 다시 확인', placeOf(html, 'a', '비트 PC 연결 다시 확인')],
+      ['오늘 하루 분석', placeOf(html, 'h2', '오늘 하루 분석')],
+      ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
+      ['기능 목차', placeOf(html, 'h2', '기능 목차')],
+    ])
+    expect(hrefOf(html, '사전점검 열기')).toBe('/claim')
+    expect(hrefOf(html, '비트 PC 연결 다시 확인')).toBe('/claim/setup')
+  })
+
+  it('AC-307.6: h1은 보고 문장의 첫 문장 하나다', () => {
+    expect(h1Texts(renderConnected())).toEqual(['오늘 환자 13명이 왔습니다.'])
+  })
+
+  it('AC-307.6: 연결 전 부품이 없다 — 큰 문장 · 주 단추 · 연결 순서 · 폰 아래 단추 · 전체 폭 지금 바로 줄 · 연결 전 빈 상태', () => {
+    const html = renderConnected()
+    const text = plain(html)
+    for (const gone of [
+      '비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다',
+      '비트 PC 연결 시작',
+      '연결 순서',
+      '크롬 확장 프로그램 설치',
+      '기능 12개 가운데 2개예요',
+      '연결하면 보여요',
+      '비트 PC 연결 전',
+    ]) {
+      expect(text, gone).not.toContain(gone)
+    }
+    expect(html).not.toContain('dashboard-connect-start') // 주 단추 자리(폰 아래 단추가 지켜보는 id)
+    expect(html).not.toMatch(/\bsticky\b/) // 폰 아래 단추
+    expect(countOf(text, '지금 바로 쓸 수 있어요')).toBe(1) // 오른쪽 칸 묶음 하나뿐
+  })
+
+  it('AC-307.6: 오늘 하루 분석은 가짜 자료의 숫자다 — 오늘 환자 수 13 · 신환 4 · 재진 9 · 지난주 토요일보다', () => {
+    const text = plain(renderConnected())
+    expect(text).toContain('오늘 환자 수 13 명')
+    expect(text).toContain('신환 4 명')
+    expect(text).toContain('재진 9 명')
+    expect(text).toContain('지난주 같은 요일보다')
+    expect(text).toContain('지난주 토요일')
   })
 })

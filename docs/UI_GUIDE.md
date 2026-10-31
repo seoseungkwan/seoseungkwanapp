@@ -2,6 +2,7 @@
 
 > **기준(2026-10-30 사용자 승인)**: B2B 디자인 개편 시안 `docs/mockups/b2b-redesign/`(게시본 https://claude.ai/artifact/574fyw1mAQmqBw4jWjhr6f, 사용자가 "진행해"로 승인), 명세 `specs/b2b-redesign/`, 결정 ADR-019.
 > 움직임 규칙은 2026-10-31 사용자 결정으로 '짧은 반응 허용'(tab-frame)
+> 탭·대시보드·준비 중 화면은 tab-frame이 대체한다(`specs/tab-frame/`, 2026-10-31 사용자가 1안 오늘 브리핑을 고름). 기준 시안 `docs/mockups/dashboard-home/`(시안 `index.html` + 모양 값 메모 `notes.md`)
 > 랜딩과 앱 화면(로그인·가입 신청·승인 대기·거절·오류·앱 틀·대시보드·관리자)은 이 문서 **한 벌**의 규칙을 같이 쓴다. 값은 `src/app/globals.css`의 `:root` 한 곳에 있다.
 > **landing-v2·auth의 모양 값은 기록으로만 남는다**: `specs/landing-v2/`·`docs/mockups/landing-v2/`(ADR-018의 색·글꼴·랜딩 짜임·미리보기), `specs/auth/`·`docs/mockups/auth/`·`docs/mockups/app-redesign/`(높이·색·모서리·굵기), 첫 랜딩 `specs/landing/`·`docs/mockups/landing/`. 동작과 문구는 그대로 유효하다(바뀐 문구는 아래 '문구').
 > 예외로 대체된 옛 기준이 있다: 히어로 숫자 순환(옛 landing AC-003.1~AC-004.2), 승인 대기·거절 본문의 [로그아웃](옛 auth AC-005.1·AC-005.3) 등. 전체 목록은 `specs/b2b-redesign/requirements.md` '배경 / 목표'의 "이 명세가 대체하는 옛 기준"이다.
@@ -47,7 +48,7 @@
 | `surface` | `#FFFFFF` | 랜딩 페이지, 위쪽 띠·탭 줄, 인증 화면, 패널, 입력, 떠 있는 층, 주 단추 글자 |
 | `line` | `#E5E7EB` | 1px 나눔 선, 패널·층 테두리, 표 줄, 차트 눈금선 |
 | `line-strong` | `#D1D5DB` | 보조 단추·입력·체크 상자 테두리, 차트 0 선, 순위 막대의 '그 밖', 단계 연결선 |
-| `faint` | `#9CA3AF` | 준비 중 탭, 값 없음 "–", 지난 기간 눈금, 미리보기의 지금 아닌 탭 |
+| `faint` | `#9CA3AF` | 값 없음 "–", 지난 기간 눈금, 미리보기의 지금 아닌 탭, 대시보드 기능 목차의 "준비 중" 상태 글자, 날짜 줄 덧말 앞 "·" |
 | `muted` | `#6B7280` | 보조 글, 단위, 표 머리, KPI 이름, 필수·선택 표시, 도움말, 차트 눈금 글자, 아이콘 |
 | `ink-2` | `#374151` | 본문·안내 글, 탭 글자, 글자만 단추, 범례 |
 | `ink` | `#111827` | 제목, 값, 표 값, 지금 탭 글자, 툴팁 바탕, 확인 창 뒤 가림막(36%) |
@@ -78,15 +79,16 @@
 
 ### 대비 (흰 바탕)
 - 글자 색 ink·ink-2·muted·accent·negative·warning은 4.5:1 이상이다. positive는 옅은 바탕 위에서 4.58:1로 겨우 넘는다 → 칩 글자는 500 이상
-- `chart-3`(재진 막대)·`chart-prev`·`faint`(준비 중 탭)는 3:1이 안 된다. 차트 값은 늘 글자와 화면 읽기 표로도 주고, 준비 중 탭은 누를 수 없는 단추라 WCAG 1.4.3 예외다
+- `chart-3`(재진 막대)·`chart-prev`·`faint`는 3:1이 안 된다. 차트 값은 늘 글자와 화면 읽기 표로도 준다. 탭은 준비 중이어도 기본 모양(`ink-2`)이라 탭 글자에 `faint`를 쓰지 않는다
+  - 대시보드 기능 목차 칸의 "준비 중" 상태 글자는 시안대로 `faint`다. 누를 수 있는 칸(링크) 안이지만 같은 칸에 이름(`ink-2`)과 설명(`muted`)이 있고 상태는 덧붙은 표시라 정보가 색에만 기대지 않는다(준비 중인지는 그 주소의 준비 중 화면도 알린다, `specs/tab-frame/design.md` '준비 중 탭도 보통 탭 모양')
 
 ### 대시보드 빈 자리가 쓰는 옛 이름
 - 옮기는 동안 둔 옛 이름은 정리 TASK(TASK-23)에서 지웠다. 새 코드는 새 토큰과 `ds`만 쓴다
-- 예외는 `/dashboard` 빈 자리(`src/components/dashboard/`·`src/app/(app)/dashboard/`, 이 명세에서 고치지 않음)가 아직 쓰는 것뿐이다. 다음 대시보드 명세에서 지운다
+- 예외는 옛 빈 자리 `src/components/dashboard/DashboardEmpty.tsx`(tab-frame부터 그리지 않지만 남겨 둠)가 아직 쓰는 것뿐이다. 그 파일을 지울 때 함께 지운다
   - `@theme` 별칭 넷: `rounded-card`(`--r-control`) · `text-table`(small) · `text-panel`(subtitle) · `text-title-sm`(title). 값은 새 토큰을 가리킨다
   - 옛 모양 묶음 `ui`(`classes.ts`)의 세 키 `card`·`panel`·`panelTitle`(값 그대로)
 - 랜딩 옛 변수(`--ok`·`--danger`·`--accent-tint`·`--field`·`--content-max`)와 나머지 옛 Tailwind 이름(`text-tab`·`text-logo`·`text-kpi*`·`rounded-chip`·`*-ok`·`*-danger`·`*-warn`)은 없다
-- 규칙 시험(클래스 규칙·상자 겹침·옛 이름 검사)은 대시보드 두 폴더를 빼고 앱 화면 전체를 본다. 16진수 색·굵기 검사는 두 폴더도 본다
+- 규칙 시험(클래스 규칙·상자 겹침·옛 이름 검사)은 `DashboardEmpty.tsx` 한 파일만 빼고 앱 화면 전체를 본다(대시보드 두 폴더의 새 파일은 저절로 든다, tab-frame AC-313.3). 16진수 색·굵기 검사는 그 파일도 본다
 
 ## 글자 (Pretendard 하나)
 - 글꼴: Pretendard 1.3.9 정적 subset 세 굵기 400·500·600. `next/font/local`로 우리 쪽에서 낸다(`src/app/fonts/`, 사용 허락 파일 `OFL.txt` 함께) **(사용자, 2026-10-30)**
@@ -120,13 +122,14 @@
   - 랜딩 CSS는 이 밖에 `scroll-margin-top`의 72·80과 `%`·`auto`·`var(--gutter*)`만 쓴다
 - 대괄호 임의 값(`gap-[10px]`)과 단계 밖 값(`p-2.5`)은 쓰지 않는다. 시안의 9·10·11·14px은 가까운 단계나 고정 높이로 바꿨다
 - 높이(단추 32·36·44px, 표 줄 44px 등)는 간격이 아니라 조작 요소 크기다
-- 자주 쓰는 자리: 앱 본문 좌우 24(휴대폰 16), 대시보드 덩어리 사이 16, 패널 안쪽 좌우 20, 폼 칸 사이 20, 랜딩 섹션 위아래 48 → 64 → 96
+- 자주 쓰는 자리: 앱 본문 좌우 24(휴대폰 16), 대시보드 덩어리 사이 48(휴대폰 32, 선 하나로 나눔), 패널 안쪽 좌우 20, 폼 칸 사이 20, 랜딩 섹션 위아래 48 → 64 → 96
 
 ## 모서리·선·그림자
 - 모서리는 두 가지다
   - `rounded-control`(`--r-control` 4px): 단추·입력·체크 상자·칩·패널·오류 카드·미리보기 상자
   - `rounded-float`(`--r-float` 8px): 떠 있는 층(계정 메뉴·확인 창)·툴팁
   - 그 밖은 `rounded-none`이다
+  - 모서리 안 넘침 자르기는 `overflow-clip`으로 한다. `overflow-hidden` 클래스는 쓰지 않는다: 시험 파일이 '없어야 할 클래스'로 그 글자를 쓰고(Tailwind는 시험 파일을 읽지 않는다) `src/app/theme.test.ts`가 그 클래스가 CSS에 만들어지지 않는 것을 본다. 화면 소스에 쓰면 그 클래스가 만들어져 시험이 깨진다(`overflow-clip`은 같은 자르기이고 스크롤 상자를 만들지 않는다)
 - 선: 1px `line`이 기본이고, 조작 요소 테두리는 1px `line-strong`이다
   - 굵은 선은 지금 탭 밑줄(2px `accent`) 하나다(앱 탭·관리자 화면 안 탭·미리보기 탭)
   - 진한 선은 랜딩 비교표 머리 아래와 휴대폰 표 첫 줄 위의 1px `ink`뿐이다
@@ -138,7 +141,7 @@
   - 랜딩 CSS: `@media (min-width: 768px)`·`(min-width: 1024px)`, 숨김 도우미만 `(max-width: 767.98px)`
 - 1024px 이상은 12칸이다(칸 사이 24px). 768px 미만은 한 줄이다
   - 랜딩 768~1023px: 두 칸 배치는 위아래로 쌓고, 목록 두 칸(개인정보 약속)은 두 칸 그대로 둔다
-  - 앱 화면은 주로 768px에서 휴대폰/PC 모양이 바뀐다. 탭 줄 밀기·로그인 두 칸·탭 툴팁은 1024px 기준이다
+  - 앱 화면은 주로 768px에서 휴대폰/PC 모양이 바뀐다. 탭 줄 밀기·로그인 두 칸은 1024px 기준이다
 - 랜딩 내용 폭: 1200px(`--w-landing`) + 좌우 24px(`--gutter`, 768px 미만 16px `--gutter-m`)
 - 앱 내용 폭: 1280px(`--w-app`, `max-w-7xl`) + 좌우 24px(768px 미만 16px). 위쪽 띠·탭 줄·본문이 같은 감싸개 폭이라 왼쪽 끝이 맞는다
 - 인증 화면: 480px 한 칸. 로그인은 1024px 이상에서 두 칸(왼쪽 400px 칸)이다
@@ -168,7 +171,7 @@
 
 - 모두 `rounded-control`, 줄바꿈 없음, 그림자 없음
 - 초점: 2px `accent` 고리, 2px 띄움. 모든 조작 요소가 같다
-- 막힘: 40% 흐림 + `not-allowed` 커서. 대시보드의 아직 없는 기능 단추는 다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로다. 앱 탭의 준비 중 탭은 지금처럼 툴팁을 보이는 단추다
+- 막힘: 40% 흐림 + `not-allowed` 커서. 대시보드에는 아직 없는 기능의 막힌 단추가 없다 — 기능 목차 칸과 탭은 모두 링크이고, 화면이 없는 기능은 그 주소의 준비 중 화면으로 간다. 대시보드에서 막히는 것은 연결 뒤 오늘 자료가 없을 때의 [복사] 하나다(`aria-disabled` + 툴팁 "문장이 생기면 복사할 수 있어요"). 탭 줄에는 막힌 탭·툴팁이 없다
 - 쓰는 곳 예: 관리자 [승인] 강조 테두리 작은 · [거절]·[되돌리기] 보조 작은 / 승인 대기 위 줄 [로그아웃] 글자만 작은 / [가입 신청]·[상태 다시 확인] 주 큰 / 오류 화면 [다시 시도] 주 · [로그아웃] 보조 / 확인 창 [취소] 보조 · [거절] 위험
 - 반응: 올림 색 바뀜과 누름 1px은 '움직임 › 짧은 반응 허용'을 따른다(`transition`, 150ms) (지금은 tab-frame 화면 — 탭·계정 메뉴·대시보드 — 만 화면 파일에서 `ds` 뒤에 붙인다. `ds` 자체에 넣는 것은 다음 명세)
 
@@ -206,7 +209,7 @@
   - `ds.panelHead`: 좌우 20px, 위 16px(휴대폰 16·12). 제목 `ds.panelTitle` subtitle 600 ink, 보조 글 small muted
   - `ds.panelBody`: 좌우 20px, 위 16px, 아래 20px(휴대폰 16·8·16)
 - `ds.layer`(떠 있는 층: 계정 메뉴·확인 창): `surface`, 1px line, `rounded-float`, `shadow-float`
-- 패널 묶음(`panel`·`panelHead`·`panelTitle`·`panelBody`·`count`)과 표의 `tdNum`·`check`, `button.primarySmall`은 대시보드에서 아직 쓰지 않는다. 차트 부품처럼 다음 대시보드 명세가 쓴다
+- 대시보드(1안 오늘 브리핑)는 패널 상자 없이 흰 바탕 위에서 선으로 나눈다(아래 '대시보드'). 패널 묶음(`panel`·`panelHead`·`panelTitle`·`panelBody`·`count`)과 표의 `tdNum`·`check`, `button.primarySmall`은 대시보드에서 쓰지 않는다. `ds.panel` 틀은 준비 중 화면의 바깥 상자 하나가 쓴다(아래 '빈 상태')
   - 청구 설치 화면(`/claim/setup`의 준비 순서·이 PC·이렇게 지켜요)이 패널 묶음과 `button.primarySmall`을 쓴다(`specs/precheck` REQ-034)
 - 카드 모양은 없다. 인증 화면·랜딩 목록은 상자 없이 선과 여백으로 나눈다
 
@@ -270,7 +273,9 @@
 
 ## 빈 상태
 - 실제 화면은 자료가 없으면 조용한 빈 상태다. 예시 숫자·차트·"예시" 칩으로 빈칸을 채우지 않는다. 그림·큰 아이콘을 쓰지 않는다
-- 대시보드(`/dashboard`): 다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로다(제목 "오늘 + 날짜"와 준비 중 상자, 새 앱 틀 안)
+- 대시보드(`/dashboard`): 자료가 없으면(지금은 늘 그렇다) '연결 전' 모양이다. 큰 문장 자리는 연결 안내, 숫자 칸은 "–" + "연결하면 보여요", 그래프는 빈 틀이다. 문구는 메모 `docs/mockups/dashboard-home/notes.md` §4 그대로다(아래 '대시보드')
+- 준비 중 화면(화면이 아직 없는 기능 주소 10개, `components/common/NotReadyScreen.tsx`): h1 기능 이름 → 패널 하나(`ds.panel` 틀) 가운데에 `neutral` 칩 "준비 중" → "준비 중인 기능입니다"(subtitle 600) → 기능 소개(body `ink-2`) → 만들 것 목록(small muted) → [대시보드로 돌아가기](보조 단추 + 왼쪽을 보는 화살표). 기능별 문구는 `components/common/notReadyFeatures.ts` 한 곳이다
+- 꾸밈 예외(고른 시안 그대로): 위 "그림을 쓰지 않는다"의 예외는 둘뿐이다. 준비 중 화면 패널 안의 글자 없는 1px 가로선(넷, 마지막만 `line-strong`)과 대시보드 연결 전 그래프 빈 틀(가로 눈금선·빈 막대 칸·빈 줄). 둘 다 `aria-hidden="true"`이고 숫자·값이 없다(빈 틀의 날짜 눈금은 통계가 아니라 둔다)
 - 관리자 빈 탭: 표 머리를 두고 한 줄 안내(지금 문구)
 
 ## 앱 틀 (붙는 띠 + 탭)
@@ -280,20 +285,38 @@
   - 오른쪽: 한국 시각(`KstClock`, small muted, 768px 미만 숨김) · 계정 단추. 사이 16px
   - `[서비스 이름]`과 세로 구분선이 없다. 서비스 이름이 정해질 때까지 로고 옆에는 병원 이름만 둔다
 - **계정 단추**: 작은 보조 단추(32px) 모양에 사람 아이콘 16 + 이메일 + 아래 화살표. 메뉴는 `ds.layer`, 폭 240px. 768px 미만은 44×44 아이콘 단추(테두리 없음, `aria-label`에 이메일)
+  - 메뉴 항목: 관리자만 첫 항목 [가입 승인](`/admin`, 꾸밈 `userCheck` 16 `ink-2`) → [로그아웃]. 관리자 화면은 탭이 아니라 이 항목으로 간다
+  - 열면 첫 항목에 초점, ↓↑로 항목 사이를 돈다(끝에서 처음으로). Esc·Tab·바깥 누름은 닫는다. 메뉴 층은 나타날 때만 움직인다('움직임')
 - **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
-  - 순서: 대시보드 · 통계 · AI 리포트 · 매출 · 청구 · 재고 · 급여 · 일일마감·보고 · 월간 PDF · 설정 | 관리자(세로 구분선 뒤, 관리자만). 순서·링크·지금 탭 판단은 그대로다
-  - [청구]는 매출 뒤다(청구 사전점검 목업 '탭 자리', `specs/precheck` AC-006.4). 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: `/claim`·`/claim/close`는 [청구], 설치·연결 확인 `/claim/setup`은 [설정] 자리
+  - 순서와 주소(13개, `components/shell/menu.ts`의 `MENU`): 대시보드 `/dashboard` · 통계 `/stats` · 청구 `/claim` · 고시·공지 `/notices` · 환자 `/patients` · 매출 `/revenue` · AI 리포트 `/ai-report` · 서식 `/forms` · 직원 `/staff` · 업무일지 `/worklog` · 재고 `/inventory` · 주소록 `/contacts` · 설정 `/claim/setup`(비트 PC 연결 화면). 관리자 탭과 세로 구분선이 없다(관리자 화면은 계정 메뉴 [가입 승인])
+  - 화면이 아직 없는 10개(통계, 고시·공지, 환자, 매출, AI 리포트, 서식, 직원, 업무일지, 재고, 주소록)는 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
+  - 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: 탭 주소 가운데 가장 길게 맞는 것이 이긴다. `/claim`·`/claim/…`은 [청구], 설치·연결 확인 `/claim/setup`은 [설정](`/claim`보다 길게 맞는다). `/admin`에서는 지금 탭이 없다
   - 1024px 미만에서는 띠 안에서 옆으로 밀린다(얇은 스크롤바)
 
 | 탭 상태 | 모양 |
 |------|------|
 | 기본 | 좌우 12px, body 500, `ink-2` |
-| 올림 | 글자 `ink` |
+| 올림 | 글자 `ink`(색 150ms, '움직임') |
 | 지금(`aria-current="page"`) | `ink` 600 + 아래 2px `accent` 밑줄(좌우 12px 안쪽) |
-| 준비 중 | `faint` 글자, 같은 크기, 누를 수 없는 단추. 올리거나 초점이 오면 툴팁 "준비 중"(ink 바탕, surface 글자 caption 500, 좌우 8px·위아래 6px, `rounded-float`, `shadow-float`, 1024px 이상) |
-| 지금 화면이 속한 준비 중 탭(`/claim/setup`의 [설정]) | 지금 모양(`ink` 600 + 아래 2px `accent` 밑줄, `aria-current="page"`)이고 `faint`가 아니다. 누를 수 없는 단추·"준비 중" 툴팁은 그대로 |
+
+- 모든 탭은 링크(`next/link`)다. 준비 중 탭도 기본 모양이다(흐린 글자·누를 수 없는 단추·"준비 중" 툴팁이 없다). 준비 중인지는 대시보드 기능 목차의 상태 글자와 준비 중 화면이 알린다
 
 - **본문**(`<main>`): `canvas` 바탕, 1280 감싸개, 좌우 24·위 24·아래 48(768px 미만 16·16·32)
+  - 페이지 뿌리가 `data-page-surface`를 달면(대시보드) 본문 전체가 흰 종이 한 장(`surface`)이 된다(`main`의 `has-[[data-page-surface]]:bg-surface`). 다른 페이지는 `canvas` 그대로다
+
+## 대시보드 (`/dashboard`, 1안 오늘 브리핑)
+- 기준: 시안 `docs/mockups/dashboard-home/index.html`. 모양 값(토큰·클래스·글자 단계·간격·칸·문구)은 메모 `docs/mockups/dashboard-home/notes.md`가 기준이다. 짜임·동작은 `specs/tab-frame/design.md` '대시보드 짜임'·'오늘 하루 분석 · 기간별 흐름 · 보고 문장'
+- 본문 바탕은 흰색(`surface`) 한 장이다(위 '앱 틀' 본문). 패널 상자 없이 덩어리 사이를 위 48px + 1px `line-strong` + 20px(휴대폰 32 + 선 + 16)로 나눈다. 섹션 머리는 h2 title 600 + 옆 보조 글(small muted)
+- 위에서부터:
+  1. **브리핑**: 날짜 줄 → 연결 전이면 큰 문장(h1) · 안내 · [비트 PC 연결 시작](주 큰 단추, 화면의 주 단추) · 안심 줄, 오른쪽 칸에 연결 순서 5단계(칩·지금 단계 강조 없음). 연결 뒤면 원장님 보고 문장(h1 = 첫 문장) + [복사], 오른쪽 칸에 '지금 바로 쓸 수 있어요'(사전점검 · [비트 PC 연결 다시 확인])
+  2. **지금 바로 쓸 수 있어요** 한 줄(연결 전만): 삭감 예방 사전점검 + [사전점검 열기]
+  3. **오늘 하루 분석**: 숫자 4칸(오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다)
+  4. **기간별 흐름**: 기간 단추(최근 7·30·90일, 처음 30일, 어제까지) + 그래프 넷(환자 수 추이 · 신환 재방문율 · 요일별 환자 수 · 처방 상위)
+  5. **기능 목차**: 탭 12개(대시보드 뺌). 칸 하나 = 링크 하나(테두리 상자 없이 위 1px `line`), 상태 "사용 가능"(`accent` + 화살표) / "준비 중"(`faint`)
+  6. 휴대폰 아래 단추(연결 전, 768px 미만만): 위 주 단추가 화면 밖으로 나가면 아래에 붙는 [비트 PC 연결 시작]
+- 연결 전·연결 뒤는 자료 읽는 자리(`components/dashboard/summary/source.ts`) 하나로 정한다. 지금은 늘 자료 없음이라 연결 전 모양이다. 대시보드는 확장·도우미 연결 상태를 판정하지 않는다
+- 칸: 1024px 이상 12칸(브리핑 왼쪽 1~7 · 오른쪽 9~12), 768~1023px 왼쪽 전체 폭(글 최대 32em) 아래에 오른쪽 칸, 768px 미만 한 줄로 쌓는다. h1은 늘 하나다
+- 숫자는 받은 자료에서만 나온다. 자료가 없는 칸은 '빈 상태'대로다(지어낸 숫자 없음)
 
 ## 인증 화면
 - `AuthFrame` 하나가 틀이다. 어느 모양이든 `<main>`이 하나, `LogoMark`가 하나다
@@ -361,12 +384,12 @@
 - 랜딩 위쪽 메뉴는 한 줄(로고 · 단추)이고 nav를 숨긴다. 메뉴 서랍·햄버거 단추가 없다
 - 앱 위쪽 띠는 48px(로고 + 병원 이름, 시각 숨김, 계정은 44×44 아이콘 단추)다. 탭 줄은 옆으로 밀린다. 본문 좌우 16px·위 16px
 - 휴대폰 전용 문구는 `.phoneOnly`, PC 전용은 `.pcOnly`로 둔다(랜딩 기능 목록 짧은 설명, 정형외과 휴대폰 표)
-- 휴대폰에서 빠지는 것(예): 히어로 [AI 분석 보기]·약속 목록(한 줄 문구로 바뀜), AI 채팅 칸·셋째 근거·약속 설명, 급여 패널, 개인정보 흐름 설명·약속, 시작 단계 설명, 미리보기 5·6번째 탭·Sparkline. 대시보드는 다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로다
+- 휴대폰에서 빠지는 것(예): 히어로 [AI 분석 보기]·약속 목록(한 줄 문구로 바뀜), AI 채팅 칸·셋째 근거·약속 설명, 급여 패널, 개인정보 흐름 설명·약속, 시작 단계 설명, 미리보기 5·6번째 탭·Sparkline. 대시보드 휴대폰 모양(접는 연결 순서·아래 단추·숫자 칸 2×2)은 메모 `docs/mockups/dashboard-home/notes.md`를 따른다
 - 확인 창 단추는 나란히 반씩 44px다
 - 랜딩 390px 전체 높이는 5화면(4,220px) 이하다
 
 ## 아이콘·로고
-- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop)
+- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 18개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck)
   - viewBox `0 0 16 16`, `fill="none"`, `stroke="currentColor"`, 선 1.5, `aria-hidden="true"`. 크기는 `size`(12·14·16)
   - 꼭 필요한 곳에만 쓴다. 아이콘만 있는 단추에는 `aria-label`을 준다
 - **구글 G**: `src/components/common/GoogleMark.tsx`(48×48 viewBox, 상표 네 색). 구글 상표 색은 이 파일에만 있다
