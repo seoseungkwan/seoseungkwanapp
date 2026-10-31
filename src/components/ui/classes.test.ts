@@ -516,10 +516,11 @@ describe('AC-204.5: ds.panel·layer — 패널은 선, 그림자는 떠 있는 �
 })
 
 // ── AC-204.6 규칙 시험. 검사 대상 = ds의 클래스 글자 + 앱 화면 폴더 전체(위 APP_DIRS·APP_FILES, 시험 제외).
-// TASK마다 고친 화면을 목록에 더하다가 TASK-23에서 폴더 전체로 바꿨다(AC-221.2). 대시보드 두 폴더는 이 명세가 고치지 않아 끝까지 빼고 본다.
+// TASK마다 고친 화면을 목록에 더하다가 TASK-23에서 폴더 전체로 바꿨다(AC-221.2). 빠지는 것은 옛 빈 자리 한 파일(DashboardEmpty.tsx)뿐이다 —
+// 대시보드 두 폴더에 새로 생기는 파일은 저절로 검사에 든다(tab-frame AC-313.3).
 // classes.ts는 파일 글자를 보되, 대시보드 빈 자리가 쓰는 옛 ui 세 키의 값은 뺀다(AC-204.6·AC-221.1)
-const DASHBOARD_DIRS = ['src/components/dashboard', 'src/app/(app)/dashboard']
-const inDashboard = (file: string) => DASHBOARD_DIRS.some((dir) => file === dir || file.startsWith(`${dir}/`))
+const OLD_DASHBOARD_FILE = 'src/components/dashboard/DashboardEmpty.tsx'
+const isOldDashboard = (file: string) => file === OLD_DASHBOARD_FILE
 const CLASSES_FILE = 'src/components/ui/classes.ts'
 // 대시보드 빈 자리가 쓰는 옛 ui 세 키와 그 값(한 글자도 바꾸지 않는다, AC-221.1)
 const KEPT_UI: Record<string, string> = {
@@ -537,12 +538,12 @@ const PENDING_FILES = ['src/components/auth/PendingCard.tsx']
 const SIGNUP_FILES = ['src/components/auth/SignupForm.tsx', 'src/components/auth/Stepper.tsx']
 // 오류 카드·오류 화면 (b2b-redesign TASK-19, REQ-217)
 const ERROR_FILES = ['src/components/common/ErrorCard.tsx', 'src/app/error.tsx']
-// 검사 대상: 앱 화면 폴더·파일 전체에서 대시보드 두 폴더를 뺀 것
-const RULE_TARGETS = [...APP_DIRS.filter((dir) => !inDashboard(dir)), ...APP_FILES]
+// 검사 대상: 앱 화면 폴더·파일 전체. 옛 빈 자리 한 파일은 ruleFiles가 뺀다
+const RULE_TARGETS = [...APP_DIRS, ...APP_FILES]
 
 const ruleFiles = () =>
   RULE_TARGETS.flatMap((target) => (existsSync(join(ROOT, target)) && statSync(join(ROOT, target)).isDirectory() ? walk(target) : [target])).filter(
-    (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !inDashboard(f),
+    (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !isOldDashboard(f),
   )
 
 // 소스의 문자열 조각(따옴표·템플릿 글자·JSX 속성 값). 주석과 JSX 본문 글자는 들지 않는다
@@ -592,6 +593,8 @@ function ruleBreaks(token: string): string[] {
   if (/^(?:inset-|drop-)?shadow(?:-|$)/.test(bare) && bare !== 'shadow-float') breaks.push('그림자 토큰 밖')
   if (/^text-/.test(bare) && !TEXT_OK.has(bare.slice('text-'.length).replace(/\/\d+$/, ''))) breaks.push('글자 크기 11단계·토큰 색 밖')
   if (DECORATION.test(bare)) breaks.push('그라데이션·흐림·움직임')
+  // 짧은 반응(AC-313.2): 맨 transition(150ms 기본)과 duration-200(휴대폰 아래 단추)만. 옮김·돌림·투명도와 변형(active:·starting:…)은 막지 않는다
+  if (/^transition-/.test(bare) || (/^duration-/.test(bare) && bare !== 'duration-200') || /^(?:delay|ease)-/.test(bare)) breaks.push('짧은 반응 밖')
   for (const v of variants) {
     if ((/^(?:max-|min-)?(?:sm|md|lg|\d*xl)$/.test(v) && !SCREEN_OK.has(v)) || /^(?:min|max)-\[/.test(v)) breaks.push(`화면 폭 접두사 ${v}:`)
   }
@@ -717,6 +720,39 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
   })
 })
 
+// ── AC-313.2 짧은 반응 (tab-frame, docs/UI_GUIDE.md '움직임'): 맨 transition(150ms 기본)·duration-200(휴대폰 아래 단추)과 작은 옮김·돌림·투명도만.
+// ds 키 전부와 검사 목록 파일이 이 규칙을 지키는지는 위 it.each(DS_KEYS)·검사 목록 시험이 그대로 본다
+describe('AC-313.2: 규칙 — 짧은 반응 밖의 움직임(transition-*·duration-*·delay-*·ease-*·animate-*)을 잡는다', () => {
+  it.each([
+    'transition-all',
+    'transition-colors',
+    'transition-transform',
+    'duration-150',
+    'duration-300',
+    'delay-75',
+    'ease-in-out',
+    'ease-[cubic-bezier(0,0,1,1)]',
+    'motion-safe:animate-pulse',
+    'hover:transition-all',
+  ])('AC-313.2: 짧은 반응 밖의 움직임 클래스 %s를 잡는다', (bad) => {
+    expect(ruleBreaks(bad).length, bad).toBeGreaterThan(0)
+  })
+
+  it.each([
+    'transition',
+    'duration-200',
+    'active:translate-y-px',
+    'not-disabled:active:translate-y-px',
+    'group-hover:translate-x-0.5',
+    'starting:opacity-0',
+    'starting:-translate-y-1',
+    'group-open:rotate-180',
+    'translate-y-full',
+  ])('AC-313.2: 짧은 반응 클래스 %s는 통과한다', (ok) => {
+    expect(ruleBreaks(ok), ok).toEqual([])
+  })
+})
+
 describe('AC-205.8: 차트 부품 폴더가 AC-013.2 검사(APP_DIRS)와 AC-204.6 검사 목록에 든다', () => {
   const CHART_FILES = ['src/components/charts/format.ts', 'src/components/charts/Sparkline.tsx', 'src/components/charts/KpiStat.tsx']
 
@@ -791,7 +827,7 @@ describe('AC-204.6: 오류 카드·오류 화면(ErrorCard·error.tsx)이 AC-204
   })
 })
 
-// ── AC-221.1: 옛 이름 정리 — ui는 대시보드 빈 자리가 쓰는 세 키만, ui 참조는 classes.ts와 대시보드 두 폴더에만, ds에 쓰지 않는 키가 없다
+// ── AC-221.1: 옛 이름 정리 — ui는 대시보드 빈 자리가 쓰는 세 키만, ui 참조는 classes.ts와 DashboardEmpty.tsx에만(AC-313.3), ds에 쓰지 않는 키가 없다
 // 시험 파일 밖 src/의 .ts·.tsx 전부
 const srcSources = () => walk('src').filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
 // ds 키 하나를 그대로 부르는가(ds.button.primary는 ds.button.primaryLarge와 다르다)
@@ -807,21 +843,21 @@ describe('AC-221.1: 옛 모양 묶음 ui는 대시보드 빈 자리가 쓰는 �
     expect(leaves(ui)).toEqual(Object.entries(KEPT_UI))
   })
 
-  it('AC-221.1: ui. 참조와 ui 불러오기는 시험 파일 밖 src/에서 classes.ts와 대시보드 두 폴더에만 있다', () => {
+  it('AC-221.1·AC-313.3: ui. 참조와 ui 불러오기는 시험 파일 밖 src/에서 classes.ts와 DashboardEmpty.tsx에만 있다', () => {
     const files = srcSources()
-    expect(files).toEqual(expect.arrayContaining([CLASSES_FILE, 'src/components/dashboard/DashboardEmpty.tsx', 'src/components/shell/AppShell.tsx']))
+    expect(files).toEqual(expect.arrayContaining([CLASSES_FILE, OLD_DASHBOARD_FILE, 'src/components/shell/AppShell.tsx']))
     const usesUi = (file: string) => {
       const text = code(file)
       return /(?<![\w.$])ui\.[A-Za-z]/.test(text) || /import\s*(?:type\s*)?\{[^}]*\bui\b[^}]*\}\s*from\s*['"][^'"]*classes['"]/.test(text)
     }
-    expect(files.filter(usesUi).filter((f) => f !== CLASSES_FILE && !inDashboard(f))).toEqual([])
+    expect(files.filter(usesUi).filter((f) => f !== CLASSES_FILE && f !== OLD_DASHBOARD_FILE)).toEqual([])
     // 대시보드 빈 자리는 아직 ui를 쓴다(그래서 세 키가 남는다)
     expect(usesUi('src/components/dashboard/DashboardEmpty.tsx')).toBe(true)
   })
 
-  it('AC-221.1: 대시보드 두 폴더 밖의 앱 화면·차트·미리보기는 classes에서 ds만 불러온다', () => {
+  it('AC-221.1: DashboardEmpty.tsx 밖의 앱 화면·차트·미리보기는 classes에서 ds만 불러온다', () => {
     const imports = srcSources()
-      .filter((f) => f !== CLASSES_FILE && !inDashboard(f))
+      .filter((f) => f !== CLASSES_FILE && f !== OLD_DASHBOARD_FILE)
       .flatMap((f) => [...code(f).matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"][^'"]*\/ui\/classes['"]/g)].map((m) => [f, m[1].split(',').map((n) => n.trim()).filter(Boolean)] as const))
     expect(imports.length).toBeGreaterThan(0)
     for (const [file, names] of imports) expect(names, file).toEqual(['ds'])
@@ -853,8 +889,8 @@ describe('AC-221.1: 옛 모양 묶음 ui는 대시보드 빈 자리가 쓰는 �
 })
 
 describe('AC-221.2: 규칙 시험은 검사 목록 없이 앱 화면 전체를 본다', () => {
-  it('AC-221.2: AC-204.6 검사 파일은 앱 화면 폴더 전체(+ charts·preview, error.tsx)이고 대시보드 두 폴더만 빠진다', () => {
-    expect([...ruleFiles()].sort()).toEqual(sources().filter((f) => !inDashboard(f)).sort())
+  it('AC-221.2·AC-313.3: AC-204.6 검사 파일은 앱 화면 폴더 전체(+ charts·preview, error.tsx)이고 옛 빈 자리 DashboardEmpty.tsx만 빠진다', () => {
+    expect([...ruleFiles()].sort()).toEqual(sources().filter((f) => f !== OLD_DASHBOARD_FILE).sort())
     expect(ruleFiles()).toEqual(
       expect.arrayContaining([
         'src/components/auth/SignOutButton.tsx',
@@ -869,17 +905,46 @@ describe('AC-221.2: 규칙 시험은 검사 목록 없이 앱 화면 전체를 �
         'src/app/(app)/layout.tsx',
         'src/app/(app)/admin/page.tsx',
         'src/app/error.tsx',
+        'src/components/dashboard/todayTitle.ts',
+        'src/app/(app)/dashboard/page.tsx',
       ]),
     )
-    expect(ruleFiles().filter(inDashboard)).toEqual([])
-    // AC-013.2(옛 앱 화면 색 검사)는 대시보드 두 폴더도 계속 본다
-    expect(sources().some(inDashboard)).toBe(true)
+    expect(ruleFiles().filter(isOldDashboard)).toEqual([])
+    // AC-013.2(옛 앱 화면 색 검사)는 DashboardEmpty.tsx도 계속 본다
+    expect(sources()).toContain(OLD_DASHBOARD_FILE)
   })
 
   it('AC-221.2: classes.ts는 파일 글자를 보되 남는 ui 세 키의 값만 뺀다', () => {
     const pieces = stringPieces(CLASSES_FILE)
     for (const value of Object.values(KEPT_UI)) expect(pieces).not.toContain(value)
     expect(pieces.join(' ')).toContain('rounded-control')
+  })
+})
+
+// ── AC-313.3: 대시보드 두 폴더는 옛 빈 자리 한 파일만 빼고 규칙 검사(간격·글자·모서리·장식·움직임)와 ui 금지 검사를 받는다.
+// 병렬 갈래(briefing·summary)가 새 파일을 만들자마자 규칙을 받는지는 빠짐 판정 함수에 이름만 만든 파일을 넣어 본다
+describe('AC-313.3: 대시보드 두 폴더의 시험 밖 파일은 DashboardEmpty.tsx 하나만 검사에서 빠진다', () => {
+  it('AC-313.3: 검사 목록에 todayTitle.ts와 dashboard/page.tsx가 들고 DashboardEmpty.tsx만 빠진다', () => {
+    const files = ruleFiles()
+    expect(files).toEqual(expect.arrayContaining(['src/components/dashboard/todayTitle.ts', 'src/app/(app)/dashboard/page.tsx']))
+    const dashboardSources = sources().filter((f) => f.startsWith('src/components/dashboard/') || f.startsWith('src/app/(app)/dashboard/'))
+    expect(dashboardSources.filter((f) => !files.includes(f))).toEqual([OLD_DASHBOARD_FILE])
+  })
+
+  it.each([
+    'src/components/dashboard/briefing/X.tsx',
+    'src/components/dashboard/summary/X.ts',
+    'src/components/dashboard/X.tsx',
+    'src/app/(app)/dashboard/X.tsx',
+    'src/components/dashboard/todayTitle.ts',
+    'src/app/(app)/dashboard/page.tsx',
+    'src/components/dashboard',
+  ])('AC-313.3: 빠짐 판정은 대시보드 폴더의 %s를 빼지 않는다', (file) => {
+    expect(isOldDashboard(file), file).toBe(false)
+  })
+
+  it('AC-313.3: 빠짐 판정은 옛 빈 자리 DashboardEmpty.tsx만 뺀다', () => {
+    expect(isOldDashboard(OLD_DASHBOARD_FILE)).toBe(true)
   })
 })
 
