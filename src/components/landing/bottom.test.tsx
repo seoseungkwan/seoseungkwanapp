@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { LogoMark } from '@/components/common/LogoMark'
 import base from './base.module.css'
 import HowSection from './HowSection'
 import howStyles from './HowSection.module.css'
@@ -73,14 +74,6 @@ describe('AC-002.1: [구글로 시작하기]', () => {
     expect(linksOf(how)).toEqual([])
     expect(how).toMatch(/<h3\b[^>]*>구글로 시작하기<\/h3>/)
     expect(linksOf(privacy + footer)).toEqual([])
-  })
-})
-
-describe('AC-005.2: 빈칸', () => {
-  it('AC-005.2: 푸터의 서비스 이름은 [서비스 이름], 문의 메일은 [이메일 주소]', () => {
-    const text = textOf(footer)
-    expect(text).toContain('[서비스 이름]')
-    expect(text).toContain('문의 [이메일 주소]')
   })
 })
 
@@ -404,30 +397,65 @@ describe('AC-110.4: 시작하기 섹션의 짜임', () => {
   })
 })
 
-// footer > .wrap.inner > span 이름 + .right(span 문의 · span ©)
+// footer > .wrap.inner > .brand(LogoMark 18 + p 소개) + p ©
 const FOOTER_SHAPE =
-  /^(<footer\b[^>]*>)(<div\b[^>]*>)<span>([^<]*)<\/span>(<span\b[^>]*>)<span>([^<]*)<\/span><span>([^<]*)<\/span><\/span><\/div><\/footer>$/
+  /^(<footer\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<svg\b[^>]*>[\s\S]*?<\/svg>)(<p\b[^>]*>)([^<]*)<\/p><\/div>(<p\b[^>]*>)([^<]*)<\/p><\/div><\/footer>$/
 
-describe('AC-110.5: 푸터의 짜임', () => {
+// 모듈 CSS의 맨 위(@media 밖) 규칙에서 선택자 하나의 선언 { 속성: 값 }. 같은 속성은 뒤에 온 것이 이긴다
+function topLevelDecls(css: string, selector: string): Record<string, string> {
+  const flat = css.replace(/@[^{]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '')
+  const out: Record<string, string> = {}
+  for (const [, head, body] of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!head.split(',').map((s) => s.trim()).includes(selector)) continue
+    for (const decl of body.split(';')) {
+      const colon = decl.indexOf(':')
+      if (colon > 0) out[decl.slice(0, colon).trim()] = decl.slice(colon + 1).trim().replace(/\s+/g, ' ')
+    }
+  }
+  return out
+}
+
+describe('AC-207.3: 바닥글의 짜임', () => {
   const parts = footer.match(FOOTER_SHAPE)
-  const [, foot, inner, name, right, contact, copy] = parts ?? []
+  const [, foot, inner, brand, logo, introTag, intro, copyTag, copy] = parts ?? []
 
-  it('AC-110.5: footer > .wrap.inner 안이 왼쪽 [서비스 이름] + 오른쪽 묶음(.right: "문의 [이메일 주소]" · "© 2026")이다', () => {
-    expect(parts, 'footer > .wrap.inner > span + .right(span · span)').not.toBeNull()
+  it('AC-207.3: footer > .wrap 안이 왼쪽 LogoMark 18 + "통증 의원 관리자를 위한 AI 업무 도구" · 오른쪽 "© 2026"이고 두 글은 .tCaption이다', () => {
+    expect(parts, 'footer > .wrap.inner > .brand(svg + p) + p').not.toBeNull()
     expect(classesOf(foot)).toEqual([footStyles.footer])
     expect(classesOf(inner)).toEqual(expect.arrayContaining([base.wrap, footStyles.inner]))
-    expect(name).toBe('[서비스 이름]')
-    expect(classesOf(right)).toEqual([footStyles.right])
-    expect(contact).toBe('문의 [이메일 주소]')
+    expect(classesOf(brand)).toEqual([footStyles.brand])
+    expect(logo).toBe(renderToStaticMarkup(<LogoMark size={18} />))
+    expect(intro).toBe('통증 의원 관리자를 위한 AI 업무 도구')
     expect(copy).toBe('© 2026')
+    for (const tag of [introTag, copyTag]) expect(classesOf(tag)).toEqual([base.tCaption])
   })
 
-  it('AC-110.5: 푸터에 링크·svg·inline style이 없다', () => {
-    expect(footer).not.toMatch(/<(a|svg)\b/)
+  it('AC-207.3: 바닥글에 링크·[서비스 이름]·[이메일 주소]·inline style이 없고 svg는 로고 하나다', () => {
+    expect(footer).not.toMatch(/<a\b/)
+    expect(footer.match(/<svg\b/g) ?? []).toHaveLength(1)
     expect(footer).not.toMatch(/\bstyle="/)
+    for (const blank of ['[서비스 이름]', '[이메일 주소]', '문의']) expect(textOf(footer)).not.toContain(blank)
   })
 
-  it('AC-110.5: 푸터에 붙은 클래스가 모두 base.module.css·SiteFooter.module.css에 정의돼 있다', () => {
+  it('AC-207.3: 바닥글 CSS — footer는 위 1px line·위아래 24px이고, 글자는 muted, .tCaption은 caption 토큰이다', () => {
+    const css = cssOf('SiteFooter.module.css')
+    expect(topLevelDecls(css, '.footer')).toMatchObject({ 'border-top': '1px solid var(--line)', 'padding-block': '24px' })
+    expect(topLevelDecls(css, '.inner')).toMatchObject({ color: 'var(--muted)' })
+    expect(topLevelDecls(cssOf('base.module.css'), '.tCaption')).toMatchObject({
+      'font-size': 'var(--fs-caption)',
+      'line-height': 'var(--lh-caption)',
+    })
+    // 바닥글은 폭마다 바뀌지 않는다(@media 없음) → 위의 맨 위 규칙 값이 모든 폭의 값이다
+    expect(css).not.toMatch(/@media/)
+  })
+
+  it('AC-207.3: 바닥글 CSS 읽기 도우미가 @media 안 규칙을 빼고 맨 위 규칙만 읽는다', () => {
+    const sample = '.a, .b { color: var(--ink); padding: 0 } @media (min-width: 768px) { .a { color: var(--muted) } } .a { padding: 4px }'
+    expect(topLevelDecls(sample, '.a')).toEqual({ color: 'var(--ink)', padding: '4px' })
+    expect(topLevelDecls(sample, '.c')).toEqual({})
+  })
+
+  it('AC-207.3: 바닥글에 붙은 클래스가 모두 base.module.css·SiteFooter.module.css에 정의돼 있다', () => {
     const { checked, missing } = classCheck(footer, [
       [base.wrap, 'base.module.css'],
       [footStyles.footer, 'SiteFooter.module.css'],

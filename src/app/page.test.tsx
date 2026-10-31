@@ -65,7 +65,7 @@ describe('AC-105.1: 랜딩 뿌리 감싸개', () => {
     expect(className.split(/\s+/)).toHaveLength(1)
     expect(className).toMatch(/root/)
     expect(inner).toMatch(/^<header\b[\s\S]*<\/header><main\b[\s\S]*<\/main><footer\b[\s\S]*<\/footer>$/)
-    // 그 클래스는 base.module.css의 .root다(CSS 쪽 값은 styles.test.ts가 본다)
+    // 그 클래스는 base.module.css의 .root다(CSS 쪽 값은 src/components/landing/rules.test.ts의 AC-212.2가 본다)
     const page = readFileSync(join(ROOT, 'src/app/page.tsx'), 'utf8')
     expect(page).toMatch(/^import base from '@\/components\/landing\/base\.module\.css'$/m)
     expect(page).toMatch(/<div className=\{base\.root\}>/)
@@ -152,14 +152,6 @@ describe('AC-114.1: "F/U 기록" → "F/U"', () => {
 })
 
 describe('AC-005.2: 빈칸과 예시 표시', () => {
-  it('AC-005.2: [서비스 이름]은 메뉴 로고와 푸터에, 문의 메일은 [이메일 주소]', () => {
-    const header = html.match(/<header\b[\s\S]*?<\/header>/)![0]
-    const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)![0]
-    expect(textOf(header)).toContain('[서비스 이름]')
-    expect(textOf(footer)).toContain('[서비스 이름]')
-    expect(textOf(footer)).toContain('문의 [이메일 주소]')
-  })
-
   it('AC-005.2: 예시 숫자 영역에 "숫자는 예시"(히어로)·"방금 생성 · 예시"(AI 리포트) 표시가 있다', () => {
     const hero = html.match(/<section\b[^>]*id="top"[\s\S]*?(?=<section\b[^>]*aria-label="핵심 약속")/)![0]
     const ai = html.match(/<section\b[^>]*id="ai"[\s\S]*?(?=<section\b[^>]*id="ortho")/)![0]
@@ -241,8 +233,8 @@ const landingTsx = readdirSync(LANDING_DIR)
   .map((name) => ({ name, body: readFileSync(join(LANDING_DIR, name), 'utf8') }))
 // '#' + 16진수 3·4·6·8자리 색 글자 (#features·#ai 같은 # 링크는 뒤에 글자가 이어져 걸리지 않는다)
 const HEX_COLOR = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/i
-// 로고 마크 출력(고정 두 색)을 뺀 페이지 마크업. 메뉴(22)와 히어로 미리보기(20)에 하나씩 있다
-const LOGOS = [renderToStaticMarkup(<LogoMark size={22} />), renderToStaticMarkup(<LogoMark size={20} />)]
+// 로고 마크 출력(고정 두 색)을 뺀 페이지 마크업. 메뉴(24)·히어로 미리보기(20)·바닥글(18)에 하나씩 있다
+const LOGOS = [24, 20, 18].map((size) => renderToStaticMarkup(<LogoMark size={size} />))
 const withoutLogos = LOGOS.reduce((markup, logo) => markup.split(logo).join(''), html)
 
 describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
@@ -253,7 +245,7 @@ describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
     for (const { name, body } of landingTsx) expect(body, name).not.toMatch(HEX_COLOR)
   })
 
-  it('AC-105.8: 로고는 <LogoMark />를 부르기만 한다(메뉴 22 · 미리보기 20), 그 밖의 페이지 마크업에는 색 글자가 없다', () => {
+  it('AC-105.8: 로고는 <LogoMark />를 부르기만 한다(메뉴 24 · 미리보기 20 · 바닥글 18), 그 밖의 페이지 마크업에는 색 글자가 없다', () => {
     for (const logo of LOGOS) expect(html.split(logo).length - 1, logo).toBe(1)
     for (const { name, body } of landingTsx) {
       expect(body, `${name}: 로고 십자 경로를 따로 그리지 않는다`).not.toContain('M13.5 8h3a1')

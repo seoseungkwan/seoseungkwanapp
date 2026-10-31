@@ -10,7 +10,7 @@ const ROOT = process.cwd()
 const DIR = join(ROOT, 'src/components/landing')
 
 // AC-212.1 검사 목록: 새 규칙으로 고친 랜딩 모듈. TASK마다 늘고, TASK-14에서 랜딩 폴더 전체 읽기로 바꾼다
-const CHECKED = ['base.module.css']
+const CHECKED = ['base.module.css', 'SiteHeader.module.css', 'SiteFooter.module.css']
 
 // ---------- CSS 읽기 도우미 ----------
 
@@ -658,5 +658,144 @@ describe('AC-212.2: base.module.css — 요소 초기화는 @layer base 안, 틀
     expectAt('.srOnly', 0, { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', 'white-space': 'nowrap' })
     const clip = valueOf(sheet, '.srOnly', 'clip-path', 0) ?? valueOf(sheet, '.srOnly', 'clip', 0)
     expect(clip, '.srOnly clip-path(또는 clip)').toMatch(/^(inset\(50%\)|rect\(0,? 0,? 0,? 0\))$/)
+  })
+})
+
+// ---------- AC-207.2: SiteHeader.module.css 값 ----------
+
+const header = () => parseCss(readLanding('SiteHeader.module.css'))
+// 휴대폰에서 [구글로 시작하기](.btn·.btnMd·.btnPrimary·.start)를 32px로 줄이는 규칙. 클래스 둘이라 base의 클래스 하나짜리
+// .btnMd를 CSS 파일 순서와 상관없이 이긴다
+const START_SIZE = '.inner .start'
+const px = (value: string | undefined) => Number(/^(-?\d+)px$/.exec(value ?? '')?.[1] ?? NaN)
+const BPS: Bp[] = [0, 768, 1024]
+
+describe('AC-207.2: SiteHeader.module.css — 위쪽 메뉴는 모든 폭에서 한 줄이다', () => {
+  it('AC-207.2: 메뉴는 위에 붙어 따라오고(sticky, top 0) surface 바탕·아래 1px line이며 높이는 56px → 64px(768)이다', () => {
+    const sheet = header()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.header', 'position', bp), `.header position @${bp}`).toBe('sticky')
+      expect(valueOf(sheet, '.header', 'top', bp), `.header top @${bp}`).toBe('0')
+      expect(valueOf(sheet, '.header', 'background', bp), `.header background @${bp}`).toBe('var(--surface)')
+      expect(valueOf(sheet, '.header', 'border-bottom', bp), `.header border-bottom @${bp}`).toBe('1px solid var(--line)')
+    }
+    expect(valueOf(sheet, '.header', 'height', 0)).toBe('56px')
+    expect(valueOf(sheet, '.header', 'height', 768)).toBe('64px')
+    expect(valueOf(sheet, '.header', 'height', 1024)).toBe('64px')
+  })
+
+  it('AC-207.2: 한 줄 — .inner는 세로 가운데 맞춘 flex 한 줄(메뉴 높이를 채움)이고, 어느 폭에도 줄바꿈·두 줄 칸·옆으로 넘기기가 없다', () => {
+    const sheet = header()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.inner', 'display', bp), `.inner display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.inner', 'align-items', bp), `.inner align-items @${bp}`).toBe('center')
+      expect(valueOf(sheet, '.inner', 'height', bp), `.inner height @${bp}`).toBe('100%')
+    }
+    const multiLine = sheet.rules.flatMap((r) =>
+      r.decls
+        .filter(
+          (d) =>
+            (d.prop === 'flex-wrap' && d.value !== 'nowrap') ||
+            (d.prop === 'flex-flow' && /\bwrap\b/.test(d.value)) ||
+            /^grid-template(?:-areas|-rows)?$/.test(d.prop) ||
+            /^overflow(?:-x)?$/.test(d.prop),
+        )
+        .map((d) => `${r.selectors.join(', ')} { ${d.prop}: ${d.value} }`),
+    )
+    expect(multiLine).toEqual([])
+  })
+
+  it('AC-207.2: nav는 768px 미만에서 숨고(display: none), 이상에서 보이며 링크 사이 24px, 링크는 body 500 ink-2·줄바꿈 없음이다', () => {
+    const sheet = header()
+    expect(valueOf(sheet, '.nav', 'display', 0)).toBe('none')
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.nav', 'display', bp), `.nav display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.nav', 'gap', bp) ?? valueOf(sheet, '.nav', 'column-gap', bp), `.nav gap @${bp}`).toBe('24px')
+      for (const [prop, value] of Object.entries({
+        'font-size': 'var(--fs-body)',
+        'line-height': 'var(--lh-body)',
+        'font-weight': '500',
+        color: 'var(--ink-2)',
+        'white-space': 'nowrap',
+      })) {
+        expect(valueOf(sheet, '.navLink', prop, bp), `.navLink ${prop} @${bp}`).toBe(value)
+      }
+    }
+  })
+
+  it('AC-207.2: [구글로 시작하기](.btn·.btnMd·.btnPrimary)는 768px 미만 32px(.btnSm 크기) → 이상 36px(.btnMd 크기)이고, 크기는 .inner .start(클래스 둘)가 정해 CSS 파일 순서에 기대지 않는다', () => {
+    const sheet = base()
+    const hd = header()
+    // 그 폭에서 이기는 값: .inner .start가 정한 값, 없으면 base .btn + .btnMd
+    const effective = (bp: Bp) => ({
+      ...landingValues(sheet, ['.btn', '.btnMd'], SIZE_KEYS, bp),
+      ...Object.fromEntries(
+        SIZE_KEYS.map((k) => [k, valueOf(hd, START_SIZE, k, bp)] as const).filter(([, v]) => v !== undefined),
+      ),
+    })
+    expect(effective(0), '@0').toEqual(landingValues(sheet, ['.btn', '.btnSm'], SIZE_KEYS, 0))
+    expect(effective(0).height).toBe('32px')
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(effective(bp), `@${bp}`).toEqual(landingValues(sheet, ['.btn', '.btnMd'], SIZE_KEYS, bp))
+      expect(effective(bp).height, `@${bp}`).toBe('36px')
+    }
+    // .inner .start는 크기만 정한다(색·모양은 base .btnPrimary·.btn 그대로)
+    const sizeRules = hd.rules.filter((r) => r.selectors.includes(START_SIZE))
+    expect(sizeRules.length, `${START_SIZE} 규칙`).toBeGreaterThan(0)
+    expect(sizeRules.flatMap((r) => r.decls.map((d) => d.prop)).filter((p) => !SIZE_KEYS.includes(p))).toEqual([])
+    // 클래스 하나짜리 .start(base와 같은 구체성)는 base 단추가 정한 속성을 다시 정하지 않는다 → 파일 순서가 바뀌어도 값이 같다
+    const baseProps = new Set(
+      sheet.rules
+        .filter((r) => r.selectors.some((s) => ['.btn', '.btnMd', '.btnPrimary', '.btnPrimary:hover'].includes(s)))
+        .flatMap((r) => r.decls.map((d) => d.prop)),
+    )
+    const overlap = hd.rules
+      .filter((r) => r.selectors.includes('.start'))
+      .flatMap((r) => r.decls.map((d) => d.prop))
+      .filter((p) => baseProps.has(p))
+    expect(overlap).toEqual([])
+  })
+
+  it('AC-207.2: 휴대폰 [구글로 시작하기]의 누름 영역(.start::after)은 44px 이상이다', () => {
+    const sheet = header()
+    expect(valueOf(sheet, '.start', 'position', 0)).toBe('relative')
+    expect(valueOf(sheet, '.start::after', 'content', 0)).toBe('""')
+    expect(valueOf(sheet, '.start::after', 'position', 0)).toBe('absolute')
+    const inset = words(valueOf(sheet, '.start::after', 'inset', 0) ?? '')
+    expect(inset.length, '.start::after inset').toBeGreaterThan(0)
+    // inset은 테두리 안쪽(padding box)에서 잰다: 단추 높이 - 위아래 테두리 1px×2 + 위아래 늘린 만큼
+    const height = px(valueOf(sheet, START_SIZE, 'height', 0))
+    const border = px(landingValues(base(), ['.btn'], ['border-width'], 0)['border-width'])
+    const hit = height - 2 * border - 2 * px(inset[0])
+    expect(hit, `누름 영역 높이(단추 ${height}px, inset ${inset.join(' ')})`).toBeGreaterThanOrEqual(44)
+  })
+
+  it('AC-207.2: 로고 링크의 누름 영역은 높이·너비 모두 44px 이상이고(LogoMark 24 + 좌우 여백), 로고 그림은 본문 왼쪽 끝에 맞는다', () => {
+    const sheet = header()
+    for (const bp of BPS) {
+      expect(px(valueOf(sheet, '.logo', 'height', bp)), `.logo height @${bp}`).toBeGreaterThanOrEqual(44)
+      const pad = words(valueOf(sheet, '.logo', 'padding-inline', bp) ?? '0px').map(px)
+      const [start, end = start] = pad
+      expect(24 + start + end, `.logo 너비 @${bp}`).toBeGreaterThanOrEqual(44)
+      expect(valueOf(sheet, '.logo', 'margin-inline-start', bp), `.logo margin-inline-start @${bp}`).toBe(`-${start}px`)
+    }
+  })
+
+  it('AC-207.2: 로고 링크의 초점 고리는 안쪽(outline-offset: -2px)이다', () => {
+    const sheet = header()
+    const focus = sheet.rules.filter((r) => r.at.length === 0 && r.selectors.some((s) => /(?:^|\s)\.logo:focus-visible$/.test(s)))
+    expect(focus.length, '.logo:focus-visible 규칙').toBeGreaterThan(0)
+    expect(focus.flatMap((r) => r.decls).filter((d) => d.prop === 'outline-offset').map((d) => d.value)).toEqual(['-2px'])
+  })
+
+  it('AC-207.2: 섹션(.sec)의 scroll-margin-top은 72px → 80px(768)라 메뉴 링크로 옮겨도 제목이 메뉴(56 → 64px)에 가리지 않는다', () => {
+    expectAt('.sec', 0, { 'scroll-margin-top': '72px' })
+    expectAt('.sec', 768, { 'scroll-margin-top': '80px' })
+    expectAt('.sec', 1024, { 'scroll-margin-top': '80px' })
+    const sheet = header()
+    for (const bp of BPS) {
+      const gap = px(valueOf(base(), '.sec', 'scroll-margin-top', bp)) - px(valueOf(sheet, '.header', 'height', bp))
+      expect(gap, `@${bp} 섹션 위 여유`).toBeGreaterThanOrEqual(16)
+    }
   })
 })

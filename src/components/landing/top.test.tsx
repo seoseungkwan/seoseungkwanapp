@@ -11,6 +11,7 @@ import { START_HREF } from './links'
 import PromiseBand from './PromiseBand'
 import bandStyles from './PromiseBand.module.css'
 import SiteHeader from './SiteHeader'
+import headerStyles from './SiteHeader.module.css'
 
 const header = renderToStaticMarkup(<SiteHeader />)
 const hero = renderToStaticMarkup(<Hero />)
@@ -35,7 +36,7 @@ describe('AC-001.2: 위쪽 메뉴', () => {
   })
 
   it('AC-001.2: 로고는 #top(히어로)으로 가고, 히어로 섹션 id가 top이다', () => {
-    const logo = linksOf(header).find((l) => l.text.includes('[서비스 이름]'))
+    const logo = linksOf(header).find((l) => l.text === '맨 위로')
     expect(logo?.href).toBe('#top')
     expect(hero).toMatch(/<section\b[^>]*id="top"/)
   })
@@ -46,8 +47,8 @@ const classesOf = (openTag: string) => (/\bclass="([^"]*)"/.exec(openTag)?.[1] ?
 // Vitest의 CSS Module은 없는 이름에도 클래스를 돌려준다 → 붙인 클래스가 base.module.css에 정의돼 있는지 짝으로 본다(design.md)
 const baseCss = readFileSync(join(process.cwd(), 'src/components/landing/base.module.css'), 'utf8')
 
-describe('AC-106.1: 위쪽 메뉴의 짜임', () => {
-  it('AC-106.1: header 안은 .wrap 틀 하나에 로고 링크 · 주요 메뉴 nav · [구글로 시작하기]가 이 순서로 있다', () => {
+describe('AC-207.1: 위쪽 메뉴의 짜임', () => {
+  it('AC-207.1: header > .wrap 안이 로고 링크(#top) · 주요 메뉴 nav · [구글로 시작하기](/login) 이 순서다', () => {
     const parts = header.match(
       /^<header\b[^>]*>(<div\b[^>]*>)(<a\b[^>]*href="#top"[^>]*>[\s\S]*?<\/a>)(<nav\b[^>]*aria-label="주요 메뉴"[^>]*>[\s\S]*?<\/nav>)(<a\b[^>]*href="\/login"[^>]*>[\s\S]*?<\/a>)<\/div><\/header>$/,
     )
@@ -56,17 +57,18 @@ describe('AC-106.1: 위쪽 메뉴의 짜임', () => {
     expect(baseCss).toMatch(/^\.wrap\s*\{/m)
   })
 
-  it('AC-106.1: 로고 링크 안은 LogoMark 22와 [서비스 이름]뿐이다', () => {
+  it('AC-207.1: 로고 링크 안은 LogoMark 24와 화면 읽기 전용(.srOnly) "맨 위로"뿐이고 보이는 글자가 없다', () => {
     const logo = header.match(/<a\b[^>]*href="#top"[^>]*>([\s\S]*?)<\/a>/)
     expect(logo).not.toBeNull()
-    expect(logo![1]).toBe(`${renderToStaticMarkup(<LogoMark size={22} />)}<span>[서비스 이름]</span>`)
+    expect(logo![1]).toBe(`${renderToStaticMarkup(<LogoMark size={24} />)}<span class="${base.srOnly}">맨 위로</span>`)
+    expect(baseCss, 'base.module.css .srOnly').toMatch(/^\.srOnly\s*\{/m)
   })
 
-  it('AC-106.1: header 안의 svg는 로고 하나다', () => {
+  it('AC-207.1: header 안의 svg는 로고 하나다', () => {
     expect(header.match(/<svg\b/g) ?? []).toHaveLength(1)
   })
 
-  it('AC-106.1: [구글로 시작하기]는 .btn·.btnMd·.btnPrimary 클래스이고 안에 글자만 있다', () => {
+  it('AC-207.1: [구글로 시작하기]는 주 단추(.btn·.btnMd·.btnPrimary)이고 안에 글자만 있다', () => {
     const cta = header.match(/(<a\b[^>]*href="\/login"[^>]*>)([\s\S]*?)<\/a>/)
     expect(cta).not.toBeNull()
     const classes = classesOf(cta![1])
@@ -77,9 +79,15 @@ describe('AC-106.1: 위쪽 메뉴의 짜임', () => {
     expect(cta![2]).toBe('구글로 시작하기')
   })
 
-  it('AC-106.1: 메뉴를 여닫는 단추가 없다 — header에 button·input·tabindex가 없다', () => {
+  it('AC-207.1: [서비스 이름]·button·input·tabindex가 없다(메뉴를 여닫는 단추 없음)', () => {
+    expect(textOf(header)).not.toContain('[서비스 이름]')
     expect(header).not.toMatch(/<(button|input|select|textarea|form|label)\b/)
     expect(header).not.toMatch(/tabindex/i)
+  })
+
+  it('AC-207.1: 메뉴에 붙은 클래스가 모두 base.module.css·SiteHeader.module.css에 정의돼 있다', () => {
+    expect(headerCss.trim().length).toBeGreaterThan(0)
+    expect(checkClasses(header, HEADER_MODULES).problems).toEqual([])
   })
 })
 
@@ -111,7 +119,12 @@ function checkClasses(html: string, modules: Modules): { checked: Record<string,
 }
 const heroCss = cssOf('Hero.module.css')
 const bandCss = cssOf('PromiseBand.module.css')
+const headerCss = cssOf('SiteHeader.module.css')
 // 견본 클래스 하나로 모듈 파일의 해시를 알린다
+const HEADER_MODULES: Modules = [
+  [base.wrap, 'base.module.css'],
+  [headerStyles.header, 'SiteHeader.module.css'],
+]
 const HERO_MODULES: Modules = [
   [base.wrap, 'base.module.css'],
   [heroStyles.hero, 'Hero.module.css'],
@@ -243,6 +256,7 @@ describe('AC-107.5: 약속 띠의 짜임', () => {
 
 describe('AC-113.4: 클래스 확인 도우미가 헛돌며 통과하지 않는다', () => {
   it.each([
+    ['위쪽 메뉴', () => header, HEADER_MODULES],
     ['히어로', () => heroOwn, HERO_MODULES],
     ['약속 띠', () => band, BAND_MODULES],
   ] as Array<[string, () => string, Modules]>)(
@@ -329,10 +343,6 @@ describe('AC-005.1: 정한 문구', () => {
 })
 
 describe('AC-005.2: 빈칸과 예시 표시', () => {
-  it('AC-005.2: 메뉴 로고의 서비스 이름은 [서비스 이름]이다', () => {
-    expect(textOf(header)).toContain('[서비스 이름]')
-  })
-
   it('AC-005.2: 히어로 오른쪽은 HeroChart이고 "숫자는 예시" 칩이 있다', () => {
     const text = textOf(hero)
     expect(text).toContain('숫자는 예시')
