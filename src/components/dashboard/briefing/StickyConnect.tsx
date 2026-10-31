@@ -32,7 +32,7 @@ export function StickyConnect({ targetId }: { targetId: string }) {
       <Link
         href="/claim/setup"
         tabIndex={shown ? undefined : -1}
-        className={`${ds.button.primaryLarge} group w-full transition not-disabled:active:translate-y-px`}
+        className={`${ds.button.primaryLarge} group w-full no-underline transition not-disabled:active:translate-y-px`}
       >
         비트 PC 연결 시작
         <Icon name="arrow" size={16} className="transition group-hover:translate-x-0.5" />

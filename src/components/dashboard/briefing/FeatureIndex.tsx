@@ -8,7 +8,7 @@ import { ARROW_MOVE, PRESS, SECTION, SECTION_HEAD, SECTION_TITLE } from './layou
 // 1줄 이름(사용 가능 ink · 준비 중 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명. 1024px 이상 3열 · 768~1023px 2열 · 폰 1열(칸 높이 56 이상).
 // "준비 중" 상태 글자는 시안대로 faint다 — 같은 칸에 이름·설명이 있고 상태는 덧붙은 표시라 정보가 색에만 기대지 않는다(design.md '준비 중 탭도 보통 탭 모양')
 const INDEX_TITLE_ID = 'dashboard-feature-index-title'
-const CELL = `group block border-t border-line pt-3 pb-4 max-md:min-h-14 max-md:py-3 ${PRESS} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`
+const CELL = `group block border-t border-line pt-3 pb-4 no-underline max-md:min-h-14 max-md:py-3 ${PRESS} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`
 
 // 머리 옆 글의 수는 목차 자료에서 센다(칸 수 · 사용 가능 수)
 const total = DASHBOARD_FEATURES.length

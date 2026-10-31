@@ -17,12 +17,12 @@ const DESC_SUB = '청구 점검은 비트 PC의 크롬에서 엽니다.'
 const total = DASHBOARD_FEATURES.length
 const ready = DASHBOARD_FEATURES.filter((f) => f.ready).length
 
-// [사전점검 열기]: 보조 단추 + 오른쪽 꾸밈 화살표 16. 폰은 전체 폭(44px)
+// [사전점검 열기]: 보조 단추 + 오른쪽 꾸밈 화살표 16(ink-2, 시안 .btn-sec .ic). 폰은 전체 폭(44px). 브라우저 기본 밑줄이 닿지 않게 no-underline
 function OpenPrecheck() {
   return (
-    <Link href="/claim" className={`${ds.button.secondary} group ${PRESS} max-md:w-full`}>
+    <Link href="/claim" className={`${ds.button.secondary} group no-underline ${PRESS} max-md:w-full`}>
       사전점검 열기
-      <Icon name="arrow" size={16} className={ARROW_MOVE} />
+      <Icon name="arrow" size={16} className={`${ARROW_MOVE} text-ink-2`} />
     </Link>
   )
 }

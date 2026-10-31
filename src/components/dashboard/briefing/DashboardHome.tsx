@@ -60,7 +60,7 @@ function BigSentence() {
         올라옵니다.
       </p>
       <div className="mt-6 max-md:mt-5">
-        <Link id={CONNECT_ID} href="/claim/setup" className={`${ds.button.primaryLarge} group ${PRESS} max-md:w-full`}>
+        <Link id={CONNECT_ID} href="/claim/setup" className={`${ds.button.primaryLarge} group no-underline ${PRESS} max-md:w-full`}>
           비트 PC 연결 시작
           <Icon name="arrow" size={16} className={ARROW_MOVE} />
         </Link>
