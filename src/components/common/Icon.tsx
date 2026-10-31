@@ -21,6 +21,9 @@ export const ICON_NAMES = [
   'sigma',
   'doc',
   'stop',
+  // tab-frame REQ-315: 그림은 시안 docs/mockups/dashboard-home/index.html의 [복사]·[가입 승인] 단추 그대로다
+  'copy',
+  'userCheck',
 ] as const
 
 export type IconName = (typeof ICON_NAMES)[number]
@@ -86,6 +89,19 @@ const SHAPES: Record<IconName, ReactNode> = {
     <>
       <circle cx="8" cy="8" r="6" />
       <path d="m3.9 3.9 8.2 8.2" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="5.25" y="5.25" width="8" height="8" rx="1" />
+      <path d="M10.75 5.25V3.75a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1.5" />
+    </>
+  ),
+  userCheck: (
+    <>
+      <circle cx="6.5" cy="5.25" r="2.5" />
+      <path d="M1.75 13.5c.5-2.4 2.4-3.75 4.75-3.75 1.15 0 2.2.3 3.05.9" />
+      <path d="m10 12 1.6 1.6 3-3.35" />
     </>
   ),
 }
