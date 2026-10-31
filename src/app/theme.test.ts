@@ -496,8 +496,6 @@ const HEX = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi
 const COLOR_FN = /\b(?:rgba?|hsla?|color-mix)\(/gi
 // 16진수 색을 둘 수 있는 파일: 로고 두 색, 구글 상표 네 색
 const HEX_FILES = ['src/components/common/LogoMark.tsx', 'src/components/common/GoogleMark.tsx']
-// 옮기는 동안만: 구글 마크가 아직 LoginCard 안에 있다. TASK-16에서 GoogleMark.tsx로 옮기며 이 예외를 지운다
-const HEX_MOVING = ['src/components/auth/LoginCard.tsx']
 
 // 시험 파일 밖 src/의 *.css·*.ts·*.tsx(상대 경로)
 function colorSources(dir = 'src'): string[] {
@@ -525,10 +523,10 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
     expect(read('src/app/globals.css').match(HEX)?.length ?? 0, '토큰 블록에 16진수 색이 있다').toBeGreaterThan(20)
   })
 
-  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark에만 있다(옮기는 동안 LoginCard 예외)', () => {
+  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark에만 있다', () => {
     const files = colorSources()
     expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/common/LogoMark.tsx', 'src/components/landing/base.module.css']))
-    const allowed = new Set([...HEX_FILES, ...HEX_MOVING])
+    const allowed = new Set(HEX_FILES)
     const found = files.filter((rel) => !allowed.has(rel)).flatMap((rel) => (colorText(rel).match(HEX) ?? []).map((hex) => `${rel}: ${hex}`))
     expect(found).toEqual([])
   })

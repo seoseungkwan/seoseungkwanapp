@@ -669,7 +669,9 @@ describe('AC-204.5: ds.panel·layer — 패널은 선, 그림자는 떠 있는 �
 // 옛 ui 묶음은 지울 때까지 빼고 본다(classes.ts 파일 글자가 아니라 ds 값을 본다)
 // 앱 틀 네 파일 (b2b-redesign TASK-20, REQ-218). menu.ts는 클래스가 없어 넣지 않는다
 const SHELL_FILES = ['src/components/shell/AppShell.tsx', 'src/components/shell/TabBar.tsx', 'src/components/shell/AccountMenu.tsx', 'src/components/shell/KstClock.tsx']
-const RULE_TARGETS = ['src/components/common/Icon.tsx', 'src/components/charts', 'src/components/preview', 'src/components/auth/AuthFrame.tsx', 'src/components/admin/AdminApplications.tsx', ...SHELL_FILES]
+// 로그인 화면 세 파일 (b2b-redesign TASK-16, REQ-214)
+const LOGIN_FILES = ['src/components/auth/LoginCard.tsx', 'src/components/auth/LoginAside.tsx', 'src/components/common/GoogleMark.tsx']
+const RULE_TARGETS = ['src/components/common/Icon.tsx', 'src/components/charts', 'src/components/preview', 'src/components/auth/AuthFrame.tsx', 'src/components/admin/AdminApplications.tsx', ...SHELL_FILES, ...LOGIN_FILES]
 
 const ruleFiles = () =>
   RULE_TARGETS.flatMap((target) => (existsSync(join(ROOT, target)) && statSync(join(ROOT, target)).isDirectory() ? walk(target) : [target])).filter(
@@ -889,5 +891,12 @@ describe('AC-204.6: 관리자 가입 신청 화면(AdminApplications)이 AC-204.
 describe('AC-204.6: 앱 틀(AppShell·TabBar·AccountMenu·KstClock)이 AC-204.6 검사 목록에 든다 (b2b-redesign TASK-20)', () => {
   it('AC-204.6·AC-218.1: AC-204.6 검사 목록 파일에 앱 틀 네 파일이 있다', () => {
     expect(ruleFiles()).toEqual(expect.arrayContaining(SHELL_FILES))
+  })
+})
+
+describe('AC-204.6: 로그인 화면(LoginCard·LoginAside·GoogleMark)이 AC-204.6 검사 목록에 든다 (b2b-redesign TASK-16)', () => {
+  it('AC-204.6: AC-204.6 검사 목록 파일에 로그인 화면 세 파일이 있고 모두 실제 파일이다', () => {
+    expect(ruleFiles()).toEqual(expect.arrayContaining(LOGIN_FILES))
+    for (const file of LOGIN_FILES) expect(existsSync(join(ROOT, file)), file).toBe(true)
   })
 })
