@@ -32,11 +32,14 @@ const cellPhone = 'max-md:h-auto max-md:border-b-0 max-md:p-0 max-md:first:pl-0 
 //   1줄 병원 이름(600, 말줄임) · 오른쪽 신청일(caption muted)
 //   2줄 신청자 · 이메일(small ink-2)
 //   3줄 연락처(small muted) · 오른쪽 동작 단추(44px)
+// 768~1023px(태블릿)은 글 칸(병원 이름·신청자·이메일)이 좁아 말줄임 대신 줄바꿈한다 — title은 마우스로만 보이니 터치·키보드로도
+// 전체 값을 보고 [승인]을 누르게(1024px 이상은 말줄임 그대로, 휴대폰 병원 이름도 말줄임 그대로)
+const wrapTablet = 'md:max-lg:whitespace-normal md:max-lg:break-all'
 const cell = {
   date: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-3 max-md:row-start-1 max-md:ml-3 max-md:justify-self-end max-md:text-caption`,
-  clinic: `${ds.table.td} ${cellPhone} truncate text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
-  applicant: `${ds.table.td} ${cellPhone} md:truncate md:text-body max-md:col-start-1 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
-  email: `${ds.table.tdSub} ${cellPhone} md:truncate md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:before:px-1 max-md:before:content-['·']`,
+  clinic: `${ds.table.td} ${cellPhone} truncate ${wrapTablet} text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
+  applicant: `${ds.table.td} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-1 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
+  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:before:px-1 max-md:before:content-['·']`,
   phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-3 max-md:mt-1.5 max-md:text-muted`,
   action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-3 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
@@ -44,14 +47,15 @@ const cell = {
 const emptyClass = `${ds.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:px-4`
 // PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
 // 신청일·신청자 120px, 연락처·동작 150px, 병원 이름·이메일은 남은 폭을 반씩. 글 칸(병원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
-// 표는 최소 1000px — 더 좁으면 표만 옆으로 밀린다. 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
+// 표에는 최소 폭이 없다: 768~1023px(본문 720~975px)에서는 정한 칸을 글자 폭에 맞춰 줄여(신청일 116 · 신청자 80 · 연락처 136 · 동작 140)
+// 옆으로 밀지 않고도 모든 칸과 [승인]·[거절]이 보인다. 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
 const COLUMNS = [
-  { label: '신청일', width: 'w-30' },
+  { label: '신청일', width: 'w-30 max-lg:w-29' },
   { label: '병원 이름', width: '' },
-  { label: '신청자', width: 'w-30' },
+  { label: '신청자', width: 'w-30 max-lg:w-20' },
   { label: '이메일', width: '' },
-  { label: '연락처', width: 'w-37.5' },
-  { label: '동작', width: 'w-37.5 md:text-right' },
+  { label: '연락처', width: 'w-37.5 max-lg:w-34' },
+  { label: '동작', width: 'w-37.5 max-lg:w-35 md:text-right' },
 ] as const
 
 function CheckIcon({ size }: { size: number }) {
@@ -290,7 +294,7 @@ export function AdminApplications() {
             <div className={`${ds.table.wrap} max-md:-mx-4 max-md:overflow-visible`}>
               <table
                 aria-label={`${label} 신청`}
-                className={`${ds.table.table} border-y border-line bg-surface md:table-fixed md:min-w-250 max-md:block`}
+                className={`${ds.table.table} border-y border-line bg-surface md:table-fixed max-md:block`}
               >
                 <thead className="max-md:hidden">
                   <tr>

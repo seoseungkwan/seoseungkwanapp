@@ -628,11 +628,20 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
       within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /^(max-|md:)?w-/.test(t)))
     // 신청일·신청자 120px, 연락처·동작 150px, 병원 이름·이메일은 남은 폭을 반씩
     const FIXED = [['w-30'], [], ['w-30'], [], ['w-37.5'], ['w-37.5']]
-    hasAll(table(), 'md:table-fixed md:min-w-250')
+    hasAll(table(), 'md:table-fixed')
     expect(widths()).toEqual(FIXED)
+    // AC-222.1(TASK-24): 768~1023px(본문 720~975px)에서도 모든 칸·단추가 옆으로 밀지 않고 보인다 —
+    // 표에 최소 폭이 없고, 정한 칸은 글자 폭에 맞춰 줄인다(신청일 116 · 신청자 80 · 연락처 136 · 동작 140)
+    expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual([])
+    const tabletWidths = within(table())
+      .getAllByRole('columnheader')
+      .map((th) => classesOf(th).filter((t) => /^max-lg:w-/.test(t)))
+    expect(tabletWidths).toEqual([['max-lg:w-29'], [], ['max-lg:w-20'], [], ['max-lg:w-34'], ['max-lg:w-35']])
     // 정한 폭이 없는 두 칸은 PC에서 넘치면 말줄임(옆 칸을 덮지 않는다). 폰은 줄바꿈 그대로
     const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     for (const c of [cells[1], cells[2], cells[3]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
+    // 768~1023px(글 칸이 좁다)에서는 말줄임 대신 줄바꿈 — 터치·키보드로도 전체 병원 이름·신청자·이메일을 보고 [승인]을 누른다(1024px 이상은 말줄임 그대로)
+    for (const c of [cells[1], cells[2], cells[3]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
     // 말줄임으로 잘려도 전체 값은 마우스를 올리면 보인다(title)
     expect([cells[1], cells[2], cells[3]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
     // 빈 탭에서도 머리 폭은 같다

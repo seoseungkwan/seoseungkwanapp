@@ -39,6 +39,7 @@
 .pointTitle {
   font-size: var(--fs-small);
   line-height: var(--lh-small);
+  font-weight: 600;
   color: var(--ink-2);
 }
 .pointDesc {
