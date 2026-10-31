@@ -224,7 +224,7 @@
 - **서버에서 그대로 그린다.** `'use client'`·React 훅·타이머·`animate-*`·`transition*`이 없다. 움직이지 않는다
 - **막대는 HTML이다.** `div`/`span`에 % 높이·폭(inline style)을 주고, 눈금 글자·값 글자는 HTML 글자로 쓴다. 그래서 칸 폭이 바뀌어도 글자는 늘 12px이다
   - inline style은 % 값(0~100, 소수 둘째 자리)뿐이다: 쌓은 막대 `height`·`bottom`, 순위 막대 `width`, 줄 안 막대 `width`·`left`
-  - SVG는 Sparkline, 빗금(패턴 id `<chartId>-hatch`), 화살표, 범례 표시에만 쓴다
+  - SVG는 Sparkline, 빗금(패턴·id 없이 `<path stroke="currentColor">` 하나, 4px 간격), 화살표, 범례 표시에만 쓴다
 - **색은 토큰 클래스로만 준다**(`fill-accent`·`stroke-accent`·`bg-chart-3`·`bg-line-strong`·`bg-faint` …). svg의 `fill`·`stroke` 속성 값은 `currentColor`·`none`뿐이다
   - 신환 `accent`, 재진 `chart-3`, 지난 기간 `faint`, '그 밖'·'주소 없음' `line-strong`
   - Sparkline: 면 `accent-soft` → 선 `accent` 1.5 → 끝점(`accent`, 테두리 `surface`)

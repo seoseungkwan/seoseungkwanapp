@@ -117,7 +117,7 @@
   - `StackedBarChart.test.tsx`: AC-205.4. 시험 안 예시 8주로 본다.
     - 눈금 줄 수·글자
     - 막대 높이 %(합계/800)·계열 순서(첫 계열 위)
-    - 집계 중 막대 빗금·패턴 id `<chartId>-hatch`, 두 차트 id가 겹치지 않음
+    - 집계 중 막대 빗금: 막대 안 `<svg aria-hidden>`의 `<path stroke="currentColor">`, `<pattern>`·`url(#`·`id` 없음(한 쪽에 차트가 둘이어도 겹칠 id가 없다), 마지막 선이 k = 440(폭 40·높이 400을 덮음), svg에 style 없음
     - `partial` 글자 "일부 기간"
     - 마지막 완료 칸 굵게
     - `note`·`compact`에서 빠지는 것

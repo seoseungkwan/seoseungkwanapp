@@ -141,7 +141,7 @@
   - 눈금(`niceScale`): 간격 = 최대 합계/4 이상인 가장 작은 {1, 2, 2.5, 5}×10ⁿ(1 이상), 최대 = 간격×4다(714 → 간격 200, 최대 800). 기본은 0·200·400·600·800 다섯 줄, `compact`는 그 가운데 0·400·800 세 줄. 합계가 모두 0이면 0 한 줄이다.
   - 그림(`aria-hidden="true"`): 가로 눈금선만 있고(맨 아래 0 선은 line-strong, 나머지 line), 세로 선·바깥 테두리가 없다. 위 왼쪽에 단위 "(명)", 왼쪽에 눈금 글자, 막대 아래 기간 글자가 있고 모두 caption muted·고정폭 숫자다.
   - 막대: `complete`는 계열을 쌓는다. 첫 계열이 맨 위이고 계열 사이는 2px 띄운다. 높이는 합계/최대 %다(`style="height:N%"`). 막대 폭은 칸의 반, 최대 40px(`compact` 20px)이다.
-  - `in-progress`·`partial` 칸은 한 막대로 그리고 빗금(accent 1px 선, 4px 간격 45°, 패턴 id `<chartId>-hatch`)과 1px accent 테두리를 쓴다. 기본 크기에서는 값 위에 "집계 중"(in-progress) 또는 "일부 기간"(partial)이 붙는다.
+  - `in-progress`·`partial` 칸은 한 막대로 그리고 빗금(accent 1px 선, 4px 간격 45°. 막대를 꽉 채운 viewBox 없는 `<svg aria-hidden>` 안의 `<path stroke="currentColor">` 하나로 그리고 svg 밖은 잘린다. 선은 `M0 k L k 0`을 k = 4, 8, …, 440까지 이어 폭 40px·높이 400px 막대까지 빈틈없이 덮는다(그림 칸 높이는 400px을 넘지 않는다). svg 크기는 클래스(`absolute inset-0 size-full`)로 주고 style을 쓰지 않는다. `<pattern>`·`url(#…)`·`id`를 쓰지 않는다 — AC-205.8의 `currentColor`·`none` 규칙)과 1px accent 테두리를 쓴다. 기본 크기에서는 값 위에 "집계 중"(in-progress) 또는 "일부 기간"(partial)이 붙는다.
   - 막대 위에 합계 글자(caption ink-2, 고정폭)가 있다. 마지막 `complete` 칸만 600 ink다. 기본 크기에서 `note`가 있으면 기간 글자 아래 한 줄 더 나온다(muted).
   - 화면 읽기용 표(`sr-only`): caption "<제목> (<단위>)", 머리 "기간 · <계열 이름들> · 합계 · 상태", 줄마다 `rangeLabel` · 계열 값 · 합계 · "완료"/"집계 중"/"일부 기간".
   - inline style은 `height`·`bottom`의 % 값(0~100, `Number(v.toFixed(2))`)뿐이다.
@@ -165,7 +165,7 @@
   - 위 줄(44px·아래 1px line): `LogoMark` 18 + "예시정형외과의원"(small 600) · 오른쪽 `ds.chip.accent` "예시 숫자".
   - 탭 줄(36px·아래 1px line, small 500, 사이 20px): `<span>` 6개. 첫째만 ink 600 + 아래 2px accent, 나머지 faint. 5·6번째는 768px 미만에서 숨는다.
   - KPI 줄(아래 1px line): `KpiStat size="sm"` 4개(`sparkOnPhone={false}`). 768px 이상 4칸, 미만 2×2. 칸 사이는 왼쪽 1px line(2×2의 아래 줄은 위 1px line).
-  - 차트(좌우 16px·위 12px·아래 16px): 제목 "주별 환자 수"(small 600) + 오른쪽 `ChartLegend`(신환 · 재진 · 집계 중) → `StackedBarChart compact`(chartId `preview-weekly`, 제목 "주별 환자 수 (예시)").
+  - 차트(좌우 16px·위 12px·아래 16px): 제목 "주별 환자 수"(small 600) + 오른쪽 `ChartLegend`(신환 · 재진 · 집계 중) → `StackedBarChart compact`(제목 "주별 환자 수 (예시)").
 - AC-206.3: Given 미리보기 마크업, When 보면, Then `a`·`button`·`input`·`select`·`textarea`·`label`·`form`·`header`·`nav`·`main`·`section`·`footer`·`tabindex`가 없다. `'use client'`·타이머가 없다. 숫자는 위 줄의 "예시 숫자" 칩과 함께 보인다. 랜딩 히어로와 로그인 오른쪽이 이 한 컴포넌트를 같이 쓴다.
 
 ### REQ-207: 랜딩 위쪽 메뉴·바닥글

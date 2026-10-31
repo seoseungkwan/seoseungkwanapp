@@ -146,7 +146,7 @@ export function KpiStat(p: KpiStatProps): JSX.Element
 
 export type BarSeries = { name: string; tone: 'accent' | 'chart-3' }        // 첫 계열이 맨 위·범례 첫째
 export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string }
-export function StackedBarChart(p: { chartId: string; title: string; unit: string; series: BarSeries[]; buckets: BarBucket[]; compact?: boolean }): JSX.Element
+export function StackedBarChart(p: { title: string; unit: string; series: BarSeries[]; buckets: BarBucket[]; compact?: boolean }): JSX.Element
 
 export type LegendItem = { label: string; mark: 'accent' | 'chart-3' | 'hatch' | 'prev' }
 export function ChartLegend(p: { items: LegendItem[] }): JSX.Element
@@ -159,7 +159,7 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
 
 - **HTML 막대.** 쌓은 막대·순위 막대·줄 안 막대는 `div`/`span` + % 높이·폭(inline style)으로 그린다. 눈금 글자·값 글자는 HTML 글자다.
   - 이유: 시안처럼 viewBox SVG로 그리면 칸 폭이 바뀔 때 글자까지 줄고 는다(1024px 폭 히어로에서 12px → 약 9.6px). HTML이면 글자는 늘 12px이고 막대만 늘어난다. 서버에서 그대로 그리고 크기를 재는 클라이언트 코드가 없다.
-  - SVG는 Sparkline(고정 88×28·56×22), 빗금(막대 안에 꽉 채운 `<svg>` + `<pattern id="<chartId>-hatch">`, userSpaceOnUse라 빗금 간격이 늘 4px), 화살표·범례 표시에만 쓴다.
+  - SVG는 Sparkline(고정 88×28·56×22), 빗금(막대 안에 꽉 채운 viewBox 없는 `<svg>` + 45° 선을 4px 간격으로 이은 `<path stroke="currentColor">` 하나. viewBox가 없어 1단위 = 1px이라 빗금 간격이 늘 4px이고, svg 밖은 잘린다. `<pattern>`·`fill="url(#…)"`은 AC-205.8 규칙(fill·stroke는 currentColor·none뿐)에 걸려 쓰지 않는다), 화살표·범례 표시에만 쓴다.
 - **접근성.** 그림은 모두 `aria-hidden="true"`. 쌓은 막대는 `sr-only` 표가 숫자를 준다. KpiStat·RankedBars는 보이는 글자가 곧 정보다. 증감 방향은 화면 읽기 글자("늘어남"·"줄어듦")로도 준다.
 - **색.** `fill-accent`·`stroke-accent`·`bg-chart-3`·`bg-line-strong`·`bg-faint` 같은 토큰 클래스만 쓴다. 차트 색 토큰은 `@theme` 색에 들어 있어 클래스가 된다.
 - **자료 모양.** 부품은 `@/types/analysis`의 `Delta`·`BucketState`를 그대로 받는다. 다음 대시보드 명세에서 `Summary.series.week`(`BucketRef`)를 `BarBucket`으로 옮기는 일은 이름 바꾸기뿐이다(totals.newPatients·returning → values, range → rangeLabel).

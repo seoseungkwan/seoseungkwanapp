@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "b2b-redesign",
-  "approved_at": "2026-10-31T00:59:26Z",
+  "approved_at": "2026-10-31T02:07:58Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "689a3a2e069449341c5c6155c8947e13064eaef1166b73702ce55024eeafd704",
+  "spec_sha256": "1de1c9a4cc7f04d24829b5d1f121e55c4a13a0ab1135619346033f224a6ba715",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
