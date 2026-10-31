@@ -192,6 +192,7 @@ const APP_DIRS = [
   'src/components/dashboard',
   'src/components/admin',
   'src/components/ui',
+  'src/components/charts', // b2b-redesign TASK-5 (AC-205.8)
   'src/app/login',
   'src/app/(onboarding)',
   'src/app/(app)',
@@ -665,7 +666,7 @@ describe('AC-204.5: ds.panel·layer — 패널은 선, 그림자는 떠 있는 �
 
 // ── AC-204.6 규칙 시험. 검사 대상 = ds의 클래스 글자 + 아래 목록(파일·폴더, 시험 제외). TASK마다 고친 화면을 더하고 TASK-23에서 앱 화면 전체로 바꾼다.
 // 옛 ui 묶음은 지울 때까지 빼고 본다(classes.ts 파일 글자가 아니라 ds 값을 본다)
-const RULE_TARGETS = ['src/components/common/Icon.tsx']
+const RULE_TARGETS = ['src/components/common/Icon.tsx', 'src/components/charts']
 
 const ruleFiles = () =>
   RULE_TARGETS.flatMap((target) => (existsSync(join(ROOT, target)) && statSync(join(ROOT, target)).isDirectory() ? walk(target) : [target])).filter(
@@ -839,5 +840,19 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
     expect(pieces('// p-2.5 rounded-lg\nexport const A = () => <p>text-sm 글자</p>')).toEqual([])
     expect(pieces('export const A = () => <p className="p-2.5">x</p>')).toEqual(['p-2.5 (간격 단계 밖)'])
     expect(pieces('const x = 1\nexport const c = `rounded-lg ${x} sm:flex`')).toEqual(['rounded-lg (모서리 토큰 밖)', 'sm:flex (화면 폭 접두사 sm:)'])
+  })
+})
+
+describe('AC-205.8: 차트 부품 폴더가 AC-013.2 검사(APP_DIRS)와 AC-204.6 검사 목록에 든다', () => {
+  const CHART_FILES = ['src/components/charts/format.ts', 'src/components/charts/Sparkline.tsx', 'src/components/charts/KpiStat.tsx']
+
+  it('AC-205.8: AC-013.2 검사 파일에 차트 부품이 있다(시험 파일은 빠진다)', () => {
+    expect(sources()).toEqual(expect.arrayContaining(CHART_FILES))
+    expect(sources().filter((f) => f.startsWith('src/components/charts/') && /\.test\.tsx?$/.test(f))).toEqual([])
+  })
+
+  it('AC-205.8: AC-204.6 검사 목록 파일에 차트 부품이 있다(시험 파일은 빠진다)', () => {
+    expect(ruleFiles()).toEqual(expect.arrayContaining(CHART_FILES))
+    expect(ruleFiles().filter((f) => /\.test\.tsx?$/.test(f))).toEqual([])
   })
 })
