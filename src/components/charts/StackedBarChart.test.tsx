@@ -433,3 +433,79 @@ describe('AC-205.4: StackedBarChart 합계가 모두 0인 차트', () => {
     ])
   })
 })
+
+// ── StackedBarChart 촘촘한 막대 dense (tab-frame REQ-314 AC-314.2, design.md '차트 부품').
+// 칸이 많은 그림(예: 90일)에서 막대 위 합계·상태 글자를 뺀다. 아래 날짜 글자 고르기는 부르는 쪽이 label로 한다(빈 label = 빈칸).
+// 옵션을 주지 않으면 마크업이 REQ-314 전과 한 글자도 같다
+
+const sha256 = async (text: string) => (await import('node:crypto')).createHash('sha256').update(text).digest('hex')
+// REQ-314 전 마크업의 sha256(BUCKETS 기본 · compact)
+const BEFORE_REQ_314 = {
+  md: 'd6d72732841dc07a6bad0bd93d754c501380b1f689e7f70060abf7e323fe87df',
+  sm: 'd58044063fdca2a15500c558558be14cc8b1eb7d91ca2afd1272f1445c8a39c6',
+}
+// 막대 위 글자 덩어리(합계·상태): 막대 바로 안의 absolute bottom-full
+const aboveBar = (bar: Element) => Array.from(bar.children).filter((el) => classesOf(el).includes('bottom-full'))
+// 일곱째 칸은 일부 기간, 마지막 칸은 집계 중 — 상태 글자 둘이 다 나오는 자료
+const MIXED = BUCKETS.map((b, i) => (i === 6 ? { ...b, state: 'partial' as const } : b))
+const MIXED_STATE = WEEKS.map((_, i) => (i === 7 ? '집계 중' : i === 6 ? '일부 기간' : '완료'))
+
+describe('AC-314.2: StackedBarChart dense — 막대 위 합계·상태 글자 없음, 화면 읽기 표는 그대로', () => {
+  it('AC-314.2: dense면 막대 위 합계·상태 글자가 없다 — 막대 안에 글자가 없고 굵은 합계도 없다', () => {
+    const figure = figureOf(chart({ buckets: MIXED, dense: true }).root)
+    const list = bars(figure)
+    expect(list).toHaveLength(8)
+    for (const bar of list) {
+      expect(aboveBar(bar)).toEqual([])
+      expect(bar.querySelector('span')).toBeNull()
+      expect(textOf(bar)).toBe('')
+    }
+    for (const gone of ['집계 중', '일부 기간', ...TOTALS.map(String)]) expect(leafByText(figure, gone), gone).toHaveLength(0)
+    expect(all(figure).filter((el) => classesOf(el).includes('font-semibold'))).toHaveLength(0)
+  })
+
+  it('AC-314.2: dense는 막대 위 글자만 뺀다 — 그림이 기본 그림에서 그 글자 덩어리를 지운 것과 같다(기본·compact)', () => {
+    for (const compact of [false, true]) {
+      const base = figureOf(chart({ buckets: MIXED, compact }).root)
+      for (const bar of bars(base)) {
+        const above = aboveBar(bar)
+        expect(above).toHaveLength(1)
+        above[0]!.remove()
+      }
+      expect(figureOf(chart({ buckets: MIXED, compact, dense: true }).root).outerHTML, `compact=${compact}`).toBe(base.outerHTML)
+    }
+  })
+
+  it('AC-314.2: dense여도 화면 읽기 표는 모든 칸의 기간·계열 값·합계·상태를 준다 — 표가 기본과 같다', () => {
+    const table = tableOf(chart({ buckets: MIXED, dense: true }).root)
+    expectClasses(table, 'sr-only')
+    expect(textOf(table.querySelector('caption'))).toBe('주별 환자 수 (명)')
+    expect(Array.from(table.querySelectorAll('thead th')).map(textOf)).toEqual(['기간', '신환', '재진', '합계', '상태'])
+    expect(rows(table)).toEqual(WEEKS.map(([, range, n, r], i) => [range, String(n), String(r), String(n + r), MIXED_STATE[i]]))
+    expect(table.outerHTML).toBe(tableOf(chart({ buckets: MIXED }).root).outerHTML)
+  })
+
+  it('AC-314.2: label이 빈 칸은 아래 날짜 글자가 빈칸이다 — 칸 수·막대·표 줄은 그대로', () => {
+    // 칸이 많을 때 부르는 쪽이 몇 칸에만 날짜를 준다(여기서는 첫째·다섯째 칸)
+    const shown = new Set([0, 4])
+    const buckets = BUCKETS.map((b, i) => (shown.has(i) ? b : { ...b, label: '' }))
+    const { root } = chart({ buckets, dense: true })
+    const figure = figureOf(root)
+    const labelRow = figure.lastElementChild! // 그림의 마지막 줄 = 기간 글자 줄
+    const cells = Array.from(labelRow.children)
+    expect(cells).toHaveLength(8)
+    expect(cells.map((cell) => textOf(cell.firstElementChild))).toEqual(BUCKETS.map((b, i) => (shown.has(i) ? b.label : '')))
+    expect(leaves(figure).filter((el) => LABELS.includes(textOf(el))).map(textOf)).toEqual(['9.7', '10.5'])
+    expect(bars(figure)).toHaveLength(8)
+    expect(rows(tableOf(root)).map((row) => row[0])).toEqual(WEEKS.map(([, range]) => range))
+  })
+
+  it('AC-314.2: dense를 주지 않거나 false면 막대마다 위 글자가 있고 마크업이 REQ-314 전과 한 글자도 같다(sha256)', async () => {
+    for (const compact of [false, true]) {
+      expect(chart({ compact, dense: false }).html, `compact=${compact}`).toBe(chart({ compact }).html)
+      for (const bar of bars(figureOf(chart({ compact }).root))) expect(aboveBar(bar)).toHaveLength(1)
+    }
+    expect(await sha256(chart().html)).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(chart({ compact: true }).html)).toBe(BEFORE_REQ_314.sm)
+  })
+})

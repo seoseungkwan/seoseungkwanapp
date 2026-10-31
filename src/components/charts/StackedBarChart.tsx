@@ -11,7 +11,8 @@ import { niceScale } from './scale'
 export type BarSeries = { name: string; tone: 'accent' | 'chart-3' } // 첫 계열이 맨 위·범례 첫째
 export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string }
 
-type Props = { title: string; unit: string; series: BarSeries[]; buckets: BarBucket[]; compact?: boolean }
+// dense: 칸이 많은 그림용. 막대 위 합계·상태 글자를 그리지 않는다(화면 읽기 표는 그대로, tab-frame REQ-314). 아래 날짜 글자는 부르는 쪽이 label로 고른다(빈 label = 빈칸)
+type Props = { title: string; unit: string; series: BarSeries[]; buckets: BarBucket[]; compact?: boolean; dense?: boolean }
 
 const TONE: Record<BarSeries['tone'], string> = { accent: 'bg-accent', 'chart-3': 'bg-chart-3' }
 const STATE_TEXT: Record<BucketState, string> = { complete: '완료', 'in-progress': '집계 중', partial: '일부 기간' }
@@ -34,7 +35,7 @@ const HATCH = Array.from({ length: HATCH_REACH / HATCH_GAP }, (_, i) => HATCH_GA
 const tickText = (t: number) => (Number.isInteger(t) ? formatCount(t) : String(t))
 const at = (v: number, max: number) => `${percentOf(v, max)}%`
 
-export function StackedBarChart({ title, unit, series, buckets, compact = false }: Props) {
+export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false }: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
   const scale = niceScale(Math.max(0, ...totals))
@@ -76,6 +77,7 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false 
                     max={scale.max}
                     width={size.bar}
                     compact={compact}
+                    dense={dense}
                     strong={i === lastComplete}
                   />
                 </div>
@@ -132,12 +134,13 @@ type BarProps = {
   max: number
   width: string
   compact: boolean
+  dense: boolean // 막대 위 글자 없음
   strong: boolean // 마지막 complete 칸: 합계 600 ink
 }
 
 // 칸 하나의 막대(폭은 칸의 반, 최대 40px·compact 20px). 합계 글자는 막대 바로 위에 띄운다(기본 크기의 집계 중·일부 기간은 그 위에 상태 글자)
-function Bar({ bucket, series, total, max, width, compact, strong }: BarProps) {
-  const label = (
+function Bar({ bucket, series, total, max, width, compact, dense, strong }: BarProps) {
+  const label = dense ? null : (
     <span className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2 flex-col items-center whitespace-nowrap text-caption">
       {!compact && bucket.state !== 'complete' && <span className="text-muted">{STATE_TEXT[bucket.state]}</span>}
       <span className={strong ? 'font-semibold text-ink' : 'text-ink-2'}>{formatCount(total)}</span>

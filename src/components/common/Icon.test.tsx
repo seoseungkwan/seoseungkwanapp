@@ -32,6 +32,12 @@ const PARTS = readFileSync(join(ROOT, 'docs/mockups/b2b-redesign/parts.mjs'), 'u
 const I_BLOCK = PARTS.slice(PARTS.indexOf('const I = {'), PARTS.indexOf('\n}', PARTS.indexOf('const I = {')))
 const MOCK: Record<string, string> = Object.fromEntries([...I_BLOCK.matchAll(/^\s+(\w+): '([^']*)',$/gm)].map((m) => [m[1], m[2]]))
 
+// tab-frame REQ-315: 새 두 이름은 대시보드 시안의 [복사]·[가입 승인] 단추 svg에서 읽는다(단추 글자 바로 앞의 svg)
+const NEW_NAMES = ['copy', 'userCheck'] as const
+const HOME = readFileSync(join(ROOT, 'docs/mockups/dashboard-home/index.html'), 'utf8')
+const svgBefore = (label: string) => HOME.match(new RegExp(`(<svg\\b[^>]*>)((?:(?!</svg>).)*)</svg><span>${label}</span></button>`, 's'))
+const HOME_SVG = { copy: svgBefore('복사'), userCheck: svgBefore('가입 승인') }
+
 const draw = (name: IconName, props: { size?: number; className?: string } = {}) => renderToStaticMarkup(<Icon name={name} {...props} />)
 const attrsOf = (tag: string) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]))
 const openTag = (html: string) => html.match(/^<svg\b[^>]*>/)?.[0] ?? ''
@@ -54,8 +60,8 @@ describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
     for (const name of NAMES) expect(MOCK[name], name).toBeTruthy()
   })
 
-  it('AC-204.6: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop)뿐이다', () => {
-    expect([...ICON_NAMES]).toEqual([...NAMES])
+  it('AC-204.6·AC-315.1: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck를 더한 18개뿐이다', () => {
+    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES])
   })
 
   it.each(NAMES)('AC-204.6: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
@@ -87,4 +93,36 @@ describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
     expect(src).not.toMatch(/['"]use client['"]/)
     expect(src).not.toMatch(/\buse(?:State|Effect|Ref|Memo|Callback|LayoutEffect|Id)\b/)
   })
+})
+
+describe('AC-315.1 아이콘 둘 copy·userCheck (tab-frame REQ-315, 시안 dashboard-home의 [복사]·[가입 승인])', () => {
+  it('AC-315.1: 시안에서 [복사]·[가입 승인] 단추의 svg를 읽었다(시험 준비 확인)', () => {
+    for (const name of NEW_NAMES) expect(HOME_SVG[name]?.[2], name).toBeTruthy()
+  })
+
+  it('AC-315.1: 시안의 두 svg도 viewBox 0 0 16 16·선 1.5·currentColor·aria-hidden이다(시안이 같은 규칙으로 그렸다)', () => {
+    for (const name of NEW_NAMES) expect(attrsOf(HOME_SVG[name]?.[1] ?? ''), name).toMatchObject(SVG_ATTRS)
+  })
+
+  it.each(NEW_NAMES)('AC-315.1: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
+    const html = draw(name)
+    expect(attrsOf(openTag(html))).toEqual({ ...SVG_ATTRS, width: '16', height: '16' })
+    expect(html.endsWith('</svg>')).toBe(true)
+  })
+
+  it.each(NEW_NAMES)('AC-315.1: %s의 안쪽 그림은 시안 단추의 svg 안쪽과 같고, 안쪽 원소에 색·style이 없다', (name) => {
+    const inner = innerOf(draw(name))
+    expect(elementsOf(inner), name).toEqual(elementsOf(HOME_SVG[name]?.[2] ?? ''))
+    expect(elementsOf(inner).length, name).toBeGreaterThan(0)
+    expect(inner, name).not.toMatch(/\b(?:fill|stroke|style|class)=/)
+    expect(inner.replace(/<[^>]*>/g, ''), `${name} 글자`).toBe('')
+  })
+
+  it.each(NEW_NAMES.flatMap((name) => [12, 14, 16].map((size) => [name, size] as const)))(
+    'AC-315.1: %s에 size=%i를 주면 너비·높이가 되고 viewBox·선 굵기는 그대로다',
+    (name, size) => {
+      const attrs = attrsOf(openTag(draw(name, { size })))
+      expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
+    },
+  )
 })
