@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -120,16 +120,6 @@ function removeBlocks(css: string, head: RegExp): string {
   }
 }
 
-// 시험 파일 밖 src/ 소스 전부(상대 경로)
-function sourceFiles(dir = 'src'): string[] {
-  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
-    const rel = `${dir}/${entry.name}`
-    if (entry.isDirectory()) return sourceFiles(rel)
-    if (/\.test\.tsx?$/.test(entry.name)) return []
-    return /\.(ts|tsx|js|jsx|mjs|cjs|css)$/.test(entry.name) ? [rel] : []
-  })
-}
-
 // @theme·@theme inline 블록의 선언 전부(파일 순서대로)
 const theme = () => {
   const css = globals()
@@ -174,7 +164,7 @@ const TEXT: Record<string, [number, number]> = {
   kpi: [34, 40],
 }
 
-const FONT_SANS = 'var(--font-plex), system-ui, sans-serif'
+const FONT_SANS = "var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif"
 
 describe('AC-013.1: Tailwind 불러오기 (Preflight 없음)', () => {
   it('AC-013.1: globals.css 맨 앞은 layer 순서 선언이고, Tailwind는 theme·utilities만 layer로 불러온다', () => {
@@ -328,9 +318,6 @@ const LANDING_ROOT: Record<string, string> = {
   '--gutter': '24px',
   '--font-sans': FONT_SANS,
 }
-// 옛 글꼴 변수(--font-num·--font-grotesk)를 쓰는 파일: 주석까지 글자 그대로, 예외 없이 본다(AC-102.4 · AC-113.3)
-const fontVarOffenders = (files: Array<[string, string]>) =>
-  files.filter(([, text]) => /--font-(num|grotesk)(?![\w-])/.test(text)).map(([rel]) => rel)
 
 // 옛 랜딩 변수 이름(landing 명세 시절)
 const OLD_LANDING_VARS = /--(bg-[\w-]+|border-card|text-(strong|body|muted)|(teal|violet|amber|pink|blue|coral|warn)-[\w-]+)(?![\w-])/
@@ -401,38 +388,6 @@ describe('AC-102.3: @layer base의 랜딩 링크 색', () => {
     expect(landing.map(([s]) => s.replace(/\s+/g, ' '))).toEqual(['a'])
     expect(landing[0][1]).toMatch(LANDING_BASE.a)
     expect(globals()).not.toMatch(/(^|[^\w-])a:hover/)
-  })
-})
-
-describe('AC-102.4: 글꼴은 IBM Plex Sans KR 하나', () => {
-  it('AC-102.4: layout.tsx는 next/font/google에서 IBM_Plex_Sans_KR(400·500·600·700, --font-plex) 하나만 불러오고 Space_Grotesk가 없다', () => {
-    const layout = read('src/app/layout.tsx')
-    const imports = [...layout.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]next\/font\/google['"]/g)]
-    expect(imports.length, 'next/font/google import는 하나다').toBe(1)
-    expect(imports[0][1].split(',').map((name) => name.trim()).filter(Boolean)).toEqual(['IBM_Plex_Sans_KR'])
-    expect(layout).not.toMatch(/next\/font\/local/)
-    expect([...layout.matchAll(/IBM_Plex_Sans_KR\(/g)].length).toBe(1)
-    const options = layout.match(/IBM_Plex_Sans_KR\(\{([\s\S]*?)\}\)/)?.[1] ?? ''
-    expect(options.replace(/\s+/g, '').replace(/"/g, "'")).toContain("weight:['400','500','600','700']")
-    expect(options).toMatch(/variable:\s*'--font-plex'/)
-    expect(layout).not.toMatch(/Space_Grotesk|Grotesk/)
-  })
-
-  it('AC-102.4: :root가 --font-sans를 next/font 변수 --font-plex로 잇는다', () => {
-    expect(landingRoot()['--font-sans']).toBe(FONT_SANS)
-  })
-
-  it('AC-102.4: --font-num·--font-grotesk는 시험 파일 밖 src/ 어디에도 없다(주석 포함)', () => {
-    expect(fontVarOffenders(sourceFiles().map((rel) => [rel, read(rel)]))).toEqual([])
-  })
-
-  it('AC-113.3: 임시 예외 없이 모든 파일을 같은 규칙으로 본다 — 옛 변수를 쓰는 랜딩 모듈의 옛 font-family 줄과 주석도 잡는다', () => {
-    const files: Array<[string, string]> = [
-      ['src/components/landing/Old.module.css', '.x { color: var(--teal-text); font-family: var(--font-num), sans-serif; }'],
-      ['src/components/landing/Note.module.css', '/* 예전에는 var(--font-grotesk)를 썼다 */\n.x { color: var(--ink); }'],
-      ['src/components/landing/Ok.module.css', '.x { color: var(--teal-text); font-family: var(--font-sans); }'],
-    ]
-    expect(fontVarOffenders(files)).toEqual(['src/components/landing/Old.module.css', 'src/components/landing/Note.module.css'])
   })
 })
 

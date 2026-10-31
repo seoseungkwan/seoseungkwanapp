@@ -61,7 +61,7 @@
   --text-kpi--line-height: 40px;
   --text-kpi--letter-spacing: -0.01em;
 
-  --font-sans: var(--font-plex), system-ui, sans-serif;
+  --font-sans: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 
 /* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
@@ -93,7 +93,7 @@
 
 /* 랜딩 변수 (landing-v2, docs/UI_GUIDE.md 랜딩). 값은 승인 시안 docs/mockups/landing-v2 그대로.
    색 12개는 위 @theme의 같은 이름 --color-* 값과 같다(theme.test.ts가 묶는다). 이름은 Tailwind 테마 이름 공간과 겹치지 않는다.
-   글꼴: layout.tsx의 next/font가 --font-plex(IBM Plex Sans KR)를 넣고 여기서 --font-sans로 잇는다 */
+   글꼴: layout.tsx의 next/font/local이 --font-pretendard(Pretendard)를 넣고 여기서 --font-sans로 잇는다 */
 :root {
   /* 색 */
   --ink: #111827;
@@ -118,7 +118,7 @@
   --gutter: 24px;
 
   /* 글꼴 */
-  --font-sans: var(--font-plex), system-ui, sans-serif;
+  --font-sans: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 
 body {
