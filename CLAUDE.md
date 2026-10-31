@@ -9,7 +9,7 @@
 - 시험: Vitest 4 (node 환경, `TZ=Asia/Seoul`). E2E 도구: `@playwright/test` 1.64.1 (`npm run e2e`, `npm test`와 따로, ADR-017)
 - 파일 읽기: SheetJS `xlsx` 0.20.3 (CDN 패키지)
 - Supabase(서울, 무료 플랜) · 구글 OAuth · Vercel · Claude API — 패키지는 쓰는 기능에서 넣는다
-- 스타일링: 앱 화면은 Tailwind CSS v4(토큰은 `src/app/globals.css`의 `@theme`, 반복 모양은 `components/ui/classes.ts`), 랜딩은 CSS Modules(`*.module.css`) + globals.css 변수. 글꼴은 `next/font` (ADR-014·ADR-015)
+- 스타일링: 앱 화면은 Tailwind CSS v4(`@theme inline`은 토큰을 `var()`로만 가리킴, 반복 모양은 `components/ui/classes.ts`), 랜딩은 CSS Modules(`*.module.css`). 토큰은 `src/app/globals.css` `:root` 한 곳(ADR-019). 글꼴은 `next/font/local`의 Pretendard (ADR-014·ADR-015·ADR-019)
 
 ## 아키텍처 규칙
 - CRITICAL: 환자 개인정보는 의원 PC 밖으로 나가지 않는다. 환자 파일은 브라우저 Web Worker 안에서만 읽고 계산한다. 서버·Claude API에는 집계 숫자만 간다. 읽는 칸·차트번호·파일 이름 규칙은 `plan.md §4`

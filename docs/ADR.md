@@ -82,6 +82,7 @@
 
 ### ADR-014: 스타일링은 CSS Modules
 **상태**: 앱 화면은 ADR-015가 대체한다(2026-10-29). 랜딩은 이 결정 그대로다. 2026-10-30 개편(ADR-018) 뒤에도 랜딩은 CSS Modules이고, 변수 값만 앱 토큰과 같아졌다. 글꼴은 IBM Plex Sans KR 하나다
+**상태**(2026-10-30): 토큰·글꼴은 ADR-019 / specs/b2b-redesign이 대체한다(토큰은 `globals.css` `:root` 한 곳, 글꼴은 `next/font/local`의 Pretendard). 랜딩이 CSS Modules인 것은 그대로다
 **결정**: 화면마다 `*.module.css`를 두고, 색·글꼴 값은 `src/app/globals.css` 변수 한 곳에 둔다. 글꼴은 `next/font/google`로 빌드 때 받아 우리 쪽에서 낸다 (2026-10-28 사용자 결정)
 **이유**: Next 기본 기능이라 새 패키지가 없다. 승인된 목업의 inline 값을 그대로 옮기기 쉽다. 글꼴을 우리 쪽에서 내면 CSP에 Google을 열지 않아도 된다
 **트레이드오프**: 유틸리티 클래스(Tailwind)보다 화면을 새로 만들 때 손이 더 간다. 애니메이션 keyframes는 CSS Module마다 따로 둔다(이름이 모듈 안으로 갇힌다)
@@ -91,6 +92,7 @@
 **이유**: 사용자 결정 2026-10-29: 앱 리디자인. 앱이 "AI가 만든 SaaS 템플릿"처럼 보인다며 상용 B2B 수준(토스의 정돈, Linear의 디테일, ERP의 밀도)을 요구했고, 시안 A 배치와 블루 팔레트를 승인하면서 Tailwind를 골랐다. 토큰을 클래스 이름으로 강제하면 화면마다 값이 흩어지지 않는다. 빌드 때 정적 CSS 파일로 나오므로 CSP는 바꾸지 않는다
 **트레이드오프**: 개발 패키지 3개가 는다. 스타일링 방식이 둘(랜딩 CSS Modules, 앱 Tailwind)이다. `postcss.config.mjs`가 Next 기본 PostCSS 설정을 대신하므로 랜딩 빌드 결과가 바뀌지 않는지 확인해야 한다. Preflight 없이 쓰므로 앱 화면은 초기화를 `.app-ui` 범위 안에서 직접 준다. 클래스 문자열이 길어진다 → 반복되는 모양은 `src/components/ui/classes.ts`에 모은다
 **상태**: E2E는 ADR-017이 바꾼다(2026-10-29). 화면 스크린샷 확인은 이 결정 그대로 `dev-browser`다
+**상태**(2026-10-30): 토큰·글꼴 줄은 ADR-019 / specs/b2b-redesign이 대체한다(토큰 값은 `:root` 한 곳, `@theme inline`은 `var()`로만 가리킴, 글꼴은 Pretendard). Tailwind v4·Preflight 없음·`.app-ui` 범위·`classes.ts`는 그대로다
 
 ### ADR-017: E2E는 `@playwright/test` + 실제 Supabase 시험 계정 (ADR-015의 "`@playwright/test`는 넣지 않는다"를 E2E에서 바꿈)
 **결정**: E2E는 `@playwright/test` 1.64.1(개발 패키지, 버전 고정, 파일럿과 같은 판)로 `npm run e2e`에서 돌린다. `npm test`(Vitest)와 따로다. 실제 Supabase에 시험 계정 4개(관리자·승인됨·승인 대기·신청 전)를 둔다. 로그인은 시험 코드가 비밀번호로 세션을 받아 `@supabase/ssr`가 만든 세션 쿠키를 그대로 브라우저에 넣는다(앱 코드에는 시험용 길이 없다). trace·영상·스크린샷·HAR은 끄고 보고는 글자(`list`)로만 본다. 비밀번호 로그인 때문에 Supabase Email 제공자를 켠다(새 가입 켬·Confirm email 켬·익명 끔). 앱 화면은 ADR-006대로 구글뿐이다. 승인·거절·되돌리기처럼 상태를 바꾸는 동작은 E2E에서 끝까지 하지 않는다. 구글 로그인은 사용자가 폰으로 운영 주소에서 손으로 확인한다. 화면 스크린샷 확인은 그대로 `dev-browser`다 (specs/auth-live/design.md)
@@ -98,6 +100,7 @@
 **트레이드오프**: 개발 패키지가 하나 는다. 실제 네트워크·시험 계정이 있어야 돌아 verify 관문 밖이다 → Phase 끝에 Claude가 돌려 보고한다. 운영 DB에 시험 계정 4개(관리자 하나)가 산다 → 비밀번호 16자 이상, `.env.local`에만. Email 제공자가 켜져 있어 누구나 API로 이메일 가입을 시도할 수 있다 → 낯선 주소는 확인 메일을 끝내지 못하고, 끝내도 승인 전에는 승인 대기 화면이며 RLS로 막힌다. 시작 전 검사가 이 설정을 매번 본다. 승인 성공은 PGlite RLS 시험·화면 시험·폰 확인이 맡는다. 실패는 사진 없이 글자 메시지로만 본다
 
 ### ADR-018: 랜딩 개편 — 제품 화면 미리보기, 앱 토큰, 강조색 하나 (ADR-012를 대체, ADR-014는 그대로)
+**상태**(2026-10-30): 색·글꼴·랜딩 짜임·미리보기는 b2b-redesign·ADR-019가 대체한다. 그림 없음·로고 C③은 그대로다
 **결정**: 2026-10-30 사용자가 승인한 시안 `docs/mockups/landing-v2/index.html`(로고는 `logo-options.html`의 C③)대로 랜딩 모양을 다시 만든다(명세 `specs/landing-v2/`). 기능·동작·문구는 바꾸지 않는다.
 - **그림**: 일러스트·사진 6장을 모두 뺀다. 그 자리에 앱 화면(시안 A + 블루)을 줄여 다시 그린 미리보기를 `div`·`span`·`table`로 그린다. 미리보기 숫자에는 "예시"를 붙인다
 - **색**: 앱 토큰과 같은 중립 회색에 강조색 파랑(`#2563EB`) 하나만 쓴다. 쓰는 곳은 링크·차트·미리보기 지금 탭·▲·초점 고리뿐이다. 섹션마다 바꾸던 포인트 색·그라데이션·그림자·blur·장식 애니메이션은 없앤다
@@ -117,3 +120,8 @@
 - 미리보기는 실제 앱 화면의 복제본이다 → 앱 탭·KPI 모양이 크게 바뀌면 랜딩도 따로 고쳐야 한다
 - `color-mix()`를 쓴다(Chrome 111·Safari 16.2 이상)
 - 그림 생성에 쓴 크레딧은 결과물로 남지 않는다(기록만 남는다)
+
+### ADR-019: 디자인 토큰 한 곳 + Pretendard (ADR-014·015·018의 토큰·글꼴 줄을 바꿈)
+**결정**: 토큰 값(색·차트 색·글자 크기/줄 높이/자간·모서리·그림자·틀 폭·글꼴 묶음)은 `src/app/globals.css`의 layer 밖 `:root` 한 곳에 CSS 변수로 둔다. 앱(Tailwind v4)은 `@theme inline`에서 이 변수를 `var()`로만 가리키고(기본 팔레트·모서리·그림자·글자 크기는 `initial`로 지움), 랜딩(CSS Modules)은 같은 변수를 바로 쓴다. 차트·미리보기 부품(`components/charts`·`components/preview`)은 앱 쪽 Tailwind로 만들고 랜딩이 그대로 놓는다. 랜딩 요소 초기화는 `@layer base` 안에 둔다. 글꼴은 Pretendard 1.3.9 정적 subset 세 굵기(400·500·600)를 `next/font/local`로 우리 쪽에서 낸다(`src/app/fonts/`, `OFL.txt` 함께). IBM Plex Sans KR을 뺀다.
+**이유**: 사용자 결정 2026-10-30(한 벌의 디자인 규칙, Pretendard). 값이 한 곳이면 랜딩과 앱이 어긋날 수 없다(지금은 `@theme`과 랜딩 `:root`에 두 번 있어 시험으로 묶었다). 정적 subset은 글꼴 저자가 낸 파일 그대로라 OFL의 Reserved Font Name 조건(고친 글꼴은 다른 이름을 써야 함)에 걸리지 않는다. 가변 글꼴 전체(2.0MB)보다 작고, `next/font/local`은 unicode-range 조각(dynamic subset)을 받지 못한다. CSP는 그대로 `font-src 'self'`다.
+**트레이드오프**: 글꼴 세 파일 합 804,172바이트(약 785KB)를 첫 방문에 받는다(캐시 뒤에는 없음). `next/font`가 모든 페이지에서 세 파일을 미리 받는다(preload) — 사용자 결정의 글꼴이라 받아들인다. Plex(구글이 나눈 조각)보다 첫 방문이 무겁다 → 810,000바이트 상한을 시험으로 묶는다. subset 밖의 드문 한글 음절은 맑은 고딕·Apple SD Gothic Neo로 보인다. 옮기는 동안 옛 Tailwind 이름 별칭이 잠시 남는다. 스타일링 방식은 여전히 둘(랜딩 CSS Modules, 앱 Tailwind)이지만 같은 토큰을 쓰고 규칙 시험이 둘 다 본다.
