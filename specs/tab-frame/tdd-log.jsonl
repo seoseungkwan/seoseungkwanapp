@@ -1,2 +1,6 @@
 {"ts": "2026-10-31T12:31:05Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
 {"ts": "2026-10-31T12:34:21Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "stop"}
+{"ts": "2026-10-31T12:38:26Z", "task": "TASK-3", "reqs": ["REQ-314"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/components/charts/KpiStat.test.tsx' 'src/components/charts/StackedBarChart.test.tsx'", "tests": ["src/components/charts/KpiStat.test.tsx", "src/components/charts/StackedBarChart.test.tsx"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-10-31T12:38:59Z", "task": "TASK-3", "reqs": ["REQ-314"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/components/charts/KpiStat.test.tsx' 'src/components/charts/StackedBarChart.test.tsx'", "tests": ["src/components/charts/KpiStat.test.tsx", "src/components/charts/StackedBarChart.test.tsx"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-10-31T12:45:22Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-10-31T12:49:54Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "verify"}
