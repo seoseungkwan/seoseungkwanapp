@@ -52,7 +52,6 @@ public class RegisterFlowTests
         Assert.NotNull(saved);
         Assert.Equal(Synthetic.Institution, saved!.InstitutionCode);
         Assert.Equal(Synthetic.Scope, saved.Scope);
-        Assert.Equal(Synthetic.Scope, saved.HospitalName);
         Assert.Equal(Synthetic.Root, saved.InstallPath);
         Assert.Equal(Synthetic.Server, saved.Server);
         Assert.Equal(Synthetic.Database, saved.Database);
@@ -196,5 +195,64 @@ public class RegisterFlowTests
         Assert.Equal("E-HELPER-BAD-MESSAGE", ErrorCode(reply));
         Assert.Empty(rig.Confirm.Shown);
         Assert.Empty(rig.Login.Calls);
+    }
+
+    [Fact(DisplayName = "AC-005.9 저장한 등록에 병원 이름 칸이 없고, 확인 창 글에 범위 값이 이름 자리로 나오지 않는다")]
+    public void SavedRegistrationHasNoName()
+    {
+        using var rig = new Rig();
+        Assert.True(Registered(Handle(rig)));
+
+        Assert.Null(typeof(HospitalRegistration).GetProperty("HospitalName"));
+        var raw = System.IO.File.ReadAllBytes(rig.Store.FilePath);
+        var json = Encoding.UTF8.GetString(rig.Protector.Unprotect(raw.Skip(RegistrationFile.Header.Length).ToArray()));
+        Assert.DoesNotContain("hospitalName", json);
+        Assert.Equal(1, json.Split(new[] { Synthetic.Scope }, StringSplitOptions.None).Length - 1);
+
+        var text = Assert.Single(rig.Confirm.Shown).Text;
+        Assert.Contains("\r\n\r\n기관기호 1234****\r\n비트 병원 범위: " + Synthetic.Scope + "\r\n", text);
+        Assert.Equal(1, text.Split(new[] { Synthetic.Scope }, StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact(DisplayName = "AC-005.12 깨진 registration.dat·깨진 .bak이면 처음 등록처럼(전 값 없이, 새 프로필 ID) 등록하고 깨진 두 파일은 이름을 바꿔 남긴다")]
+    public void BrokenPreviousRegistersFresh()
+    {
+        using var rig = new Rig();
+        System.IO.Directory.CreateDirectory(rig.Folder);
+        var dat = System.IO.Path.Combine(rig.Folder, "registration.dat");
+        System.IO.File.WriteAllBytes(dat, Encoding.ASCII.GetBytes("broken-dat"));
+        System.IO.File.WriteAllBytes(dat + ".bak", Encoding.ASCII.GetBytes("broken-bak"));
+        Assert.Equal("E-STORE-BROKEN", Assert.Throws<BitException>(() => rig.Store.Load()).Code);
+
+        Assert.True(Registered(Handle(rig)));
+
+        var saved = rig.Store.Load()!;
+        Assert.Equal(Synthetic.Institution, saved.InstitutionCode);
+        Assert.Equal(rig.IssuedIds.Single(), saved.ProfileId);
+        var text = Assert.Single(rig.Confirm.Shown).Text;
+        Assert.StartsWith("이 병원으로 등록할까요?", text);
+        Assert.Equal(RegisterPrompt.Build(saved), text);
+
+        var names = System.IO.Directory.GetFiles(rig.Folder).Select(f => System.IO.Path.GetFileName(f)!).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(3, names.Length);
+        Assert.Equal("registration.dat", names[0]);
+        Assert.StartsWith("registration.dat.bak.broken-", names[1]);
+        Assert.StartsWith("registration.dat.broken-", names[2]);
+        Assert.Equal("broken-bak", System.IO.File.ReadAllText(System.IO.Path.Combine(rig.Folder, names[1])));
+        Assert.Equal("broken-dat", System.IO.File.ReadAllText(System.IO.Path.Combine(rig.Folder, names[2])));
+    }
+
+    [Fact(DisplayName = "AC-005.12 깨진 registration.dat에서 [취소]면 아무 파일도 바꾸지 않는다")]
+    public void BrokenPreviousCancelKeepsFiles()
+    {
+        using var rig = new Rig();
+        rig.Confirm.Answer = false;
+        System.IO.Directory.CreateDirectory(rig.Folder);
+        System.IO.File.WriteAllBytes(rig.Store.FilePath, Encoding.ASCII.GetBytes("broken-dat"));
+
+        Assert.False(Registered(Handle(rig)));
+        Assert.StartsWith("이 병원으로 등록할까요?", Assert.Single(rig.Confirm.Shown).Text);
+        Assert.Equal(new[] { "registration.dat" }, System.IO.Directory.GetFiles(rig.Folder).Select(System.IO.Path.GetFileName));
+        Assert.Equal("broken-dat", System.IO.File.ReadAllText(rig.Store.FilePath));
     }
 }

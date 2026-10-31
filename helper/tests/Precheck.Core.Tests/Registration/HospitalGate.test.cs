@@ -8,6 +8,7 @@ namespace Precheck.Core.Tests.Registration;
 /// <summary>
 /// AC-005.6 등록 확인 관문: 뒤 TASK의 모든 읽기·입력 명령이 처음에 부른다(Commands/RequireHospital).
 /// 등록이 없으면 E-BIT-NOT-REGISTERED, 다르면 E-BIT-HOSPITAL-MISMATCH로 그 명령을 하지 않는다.
+/// 등록 파일이 깨지고 .bak도 못 쓰면 E-STORE-BROKEN으로 하지 않는다(AC-005.12).
 /// </summary>
 public class HospitalGateTests
 {
@@ -76,5 +77,38 @@ public class HospitalGateTests
             rig.Connector.FailCode = BitErrors.DbFailed;
             Assert.Equal("E-BIT-DB-FAILED", Assert.Throws<BitException>(() => HospitalGate.Open(rig.Services)).Code);
         }
+    }
+
+    [Fact(DisplayName = "AC-005.12 registration.dat가 깨지고 .bak이 없으면 비트를 찾거나 열지 않고 E-STORE-BROKEN으로 명령을 하지 않는다")]
+    public void BrokenWithoutBackupStops()
+    {
+        using var rig = new Rig();
+        System.IO.Directory.CreateDirectory(rig.Folder);
+        System.IO.File.WriteAllBytes(rig.Store.FilePath, System.Text.Encoding.ASCII.GetBytes("garbage"));
+
+        var error = Assert.Throws<BitException>(() => HospitalGate.Open(rig.Services));
+        Assert.Equal("E-STORE-BROKEN", error.Code);
+        Assert.Equal(0, rig.Locator.Calls);
+        Assert.Empty(rig.Connector.Opened);
+        Assert.Equal("garbage", System.IO.File.ReadAllText(rig.Store.FilePath));
+    }
+
+    [Fact(DisplayName = "AC-005.12 registration.dat가 깨지고 .bak이 맞으면 되살린 값으로 확인하고 연다")]
+    public void BrokenWithGoodBackupOpensRestored()
+    {
+        // .bak = 지금 비트와 같은 등록, registration.dat = 다른 서버로 바꿔 쓴 뒤 깨짐
+        using var rig = new Rig().Registered().Registered(Synthetic.Registration(server: "192.168.0.10"));
+        System.IO.File.WriteAllBytes(rig.Store.FilePath, System.Text.Encoding.ASCII.GetBytes("garbage"));
+
+        using (var hospital = HospitalGate.Open(rig.Services))
+        {
+            Assert.Same(rig.Session, hospital.Db);
+            Assert.Equal(Synthetic.Institution, hospital.Registration.InstitutionCode);
+            Assert.Equal(Synthetic.Server, hospital.Registration.Server);
+            Assert.Equal(Synthetic.ProfileId, hospital.Registration.ProfileId);
+        }
+        Assert.Equal(new[] { Synthetic.Root }, rig.Connector.Opened);
+        Assert.Equal(Synthetic.Server, rig.Store.Load()!.Server);
+        Assert.Single(System.IO.Directory.GetFiles(rig.Folder, "registration.dat.broken-*"));
     }
 }

@@ -27,14 +27,13 @@ public sealed class BitCheckStep
     public string? Code { get; }
 }
 
-/// <summary>bit.check 답 {steps, registered, hospitalName?, institutionCode?} (design.md 4-3).</summary>
+/// <summary>bit.check 답 {steps, registered, institutionCode?} (design.md 4-3). 병원 이름은 주지 않는다(AC-005.9).</summary>
 public sealed class BitCheckResult
 {
     public BitCheckResult(IReadOnlyList<BitCheckStep> steps, HospitalRegistration? registration)
     {
         Steps = steps;
         Registered = registration != null;
-        HospitalName = registration?.HospitalName;
         InstitutionCode = registration?.InstitutionCode;
     }
 
@@ -45,10 +44,6 @@ public sealed class BitCheckResult
     [JsonPropertyName("registered")]
     public bool Registered { get; }
 
-    [JsonPropertyName("hospitalName")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? HospitalName { get; }
-
     /// <summary>등록한 기관기호 8자리. 웹 화면이 뒤 4자리를 가리고, 서버에 올리지 않는다.</summary>
     [JsonPropertyName("institutionCode")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -57,7 +52,8 @@ public sealed class BitCheckResult
 
 /// <summary>
 /// bit.check(AC-005.7): find(비트 찾기) → db(DB 열고 병원 범위 읽기) → registration(등록 병원인지, AC-005.6과 같은 확인).
-/// 실패한 단계부터 뒤는 모두 ok:false와 그 번호. 등록 파일이 있으면 병원 이름·기관기호를 함께 준다.
+/// 실패한 단계부터 뒤는 모두 ok:false와 그 번호. 등록 파일이 있으면 기관기호를 함께 준다.
+/// 등록 파일이 깨지고 .bak도 못 쓰면 registered:false, registration 단계는 E-STORE-BROKEN(AC-005.12).
 /// </summary>
 public static class BitCheck
 {

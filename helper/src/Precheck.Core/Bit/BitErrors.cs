@@ -22,6 +22,9 @@ public static class BitErrors
 
     /// <summary>이 PC의 저장 폴더에 읽고 쓰지 못했다(파일 잠김·권한).</summary>
     public const string StoreFailed = "E-STORE-FAILED";
+
+    /// <summary>저장 파일(registration.dat)이 깨졌고 .bak도 없거나 깨졌다. 설치 화면의 [처음 등록]으로 새로 시작한다(AC-005.12, design.md 9-3).</summary>
+    public const string StoreBroken = "E-STORE-BROKEN";
 }
 
 /// <summary>비트 연결·등록에서 막힌 것. 메시지에는 번호만 들어간다(병원 값·환자 글자를 싣지 않는다, AC-001.6).</summary>

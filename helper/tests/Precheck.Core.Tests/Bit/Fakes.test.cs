@@ -29,9 +29,8 @@ internal static class Synthetic
 
     public static HospitalRegistration Registration(
         string? institution = null, string? scope = null, string? install = null,
-        string? server = null, string? database = null, string? profileId = null, string? name = null) =>
+        string? server = null, string? database = null, string? profileId = null) =>
         new HospitalRegistration(
-            hospitalName: name ?? (scope ?? Scope),
             institutionCode: institution ?? Institution,
             scope: scope ?? Scope,
             installPath: install ?? Root,

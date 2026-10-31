@@ -10,7 +10,7 @@ namespace Precheck.Core.Tests.Registration;
 
 /// <summary>
 /// AC-005.5 registration.dat: 머리 PRECHECK-STORE-1\n + 암호화(DPAPI, 여기서는 가짜 IProtector).
-/// 병원 이름·기관기호·범위·설치 위치·서버·DB 이름·프로필 ID를 담는다. 깨진 파일은 등록 없음으로 본다.
+/// 기관기호·범위·설치 위치·서버·DB 이름·프로필 ID를 담는다(병원 이름은 없다, AC-005.9). 깨진 파일 규칙은 AC-005.12.
 /// </summary>
 public class RegistrationFileTests
 {
@@ -22,26 +22,24 @@ public class RegistrationFileTests
     [Fact(DisplayName = "AC-005.5 등록 파일은 머리 PRECHECK-STORE-1\\n 뒤에 암호화한 내용만 둔다(평문이 보이지 않음)")]
     public void WritesHeaderAndCipher()
     {
-        var registration = Synthetic.Registration(name: "가상의원");
+        var registration = Synthetic.Registration();
         var data = RegistrationFile.Write(registration, Protector);
 
         var header = Encoding.ASCII.GetBytes("PRECHECK-STORE-1\n");
         Assert.Equal(header, data.Take(header.Length).ToArray());
         Assert.Equal("PRECHECK-STORE-1\n", RegistrationFile.Header);
-        Assert.False(Contains(data, Encoding.UTF8.GetBytes("가상의원")));
         Assert.False(Contains(data, Encoding.UTF8.GetBytes(Synthetic.Institution)));
         Assert.False(Contains(data, Encoding.UTF8.GetBytes(Synthetic.Scope)));
     }
 
-    [Fact(DisplayName = "AC-005.5 등록 파일 왕복: 병원 이름·기관기호·범위·설치 위치·서버·DB 이름·프로필 ID가 그대로")]
+    [Fact(DisplayName = "AC-005.5 등록 파일 왕복: 기관기호·범위·설치 위치·서버·DB 이름·프로필 ID가 그대로")]
     public void RoundTrip()
     {
-        var registration = Synthetic.Registration(name: "가상의원");
+        var registration = Synthetic.Registration();
         var read = RegistrationFile.Read(RegistrationFile.Write(registration, Protector), Protector);
 
         Assert.NotNull(read);
-        Assert.Equal("가상의원", read!.HospitalName);
-        Assert.Equal(Synthetic.Institution, read.InstitutionCode);
+        Assert.Equal(Synthetic.Institution, read!.InstitutionCode);
         Assert.Equal(Synthetic.Scope, read.Scope);
         Assert.Equal(Synthetic.Root, read.InstallPath);
         Assert.Equal(Synthetic.Server, read.Server);
@@ -86,7 +84,6 @@ public class RegistrationFileTests
             Synthetic.Registration(server: ""),
             Synthetic.Registration(database: ""),
             Synthetic.Registration(install: ""),
-            Synthetic.Registration(name: ""),
             Synthetic.Registration(profileId: "XYZ"),
         })
         {
@@ -98,7 +95,7 @@ public class RegistrationFileTests
 
     // ---- 저장 폴더(%LOCALAPPDATA%\Seoseungkwan\PrecheckHelper\data\registration.dat) --------------------
 
-    [Fact(DisplayName = "AC-005.5 저장은 data 폴더의 registration.dat 하나, 바꿔 쓰면 .bak 하나를 남긴다")]
+    [Fact(DisplayName = "AC-005.5 AC-005.12 저장은 data 폴더의 registration.dat 하나, 바꿔 쓰면 .bak 하나를 남기고, 깨지면 .bak으로 되살린다")]
     public void StoreSavesAndReplaces()
     {
         using var folder = new TempFolder();
@@ -113,7 +110,34 @@ public class RegistrationFileTests
         Assert.Equal(new[] { "registration.dat", "registration.dat.bak" }, Directory.GetFiles(folder.Path).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
         Assert.Equal(Synthetic.OtherInstitution, store.Load()!.InstitutionCode);
 
+        // AC-005.12 깨진 registration.dat + 맞는 .bak → .bak 값(Synthetic.Institution)을 되살리고 깨진 파일은 이름이 바뀌어 남는다
         File.WriteAllBytes(Path.Combine(folder.Path, "registration.dat"), Encoding.ASCII.GetBytes("garbage"));
-        Assert.Null(store.Load());
+        Assert.Equal(Synthetic.Institution, store.Load()!.InstitutionCode);
+        var broken = Assert.Single(Directory.GetFiles(folder.Path, "registration.dat.broken-*"));
+        Assert.Equal("garbage", File.ReadAllText(broken));
+        Assert.Equal(Synthetic.Institution, store.Load()!.InstitutionCode);
+    }
+
+    [Fact(DisplayName = "AC-005.9 registration.dat JSON 칸은 version·profileId·institutionCode·scope·installPath·server·database뿐(병원 이름 없음)")]
+    public void JsonFieldsHaveNoHospitalName()
+    {
+        var data = RegistrationFile.Write(Synthetic.Registration(), Protector);
+        var json = Protector.Unprotect(data.Skip(RegistrationFile.Header.Length).ToArray());
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+
+        Assert.Equal(
+            new[] { "version", "profileId", "institutionCode", "scope", "installPath", "server", "database" },
+            document.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.DoesNotContain("hospitalName", Encoding.UTF8.GetString(json));
+        Assert.Null(typeof(HospitalRegistration).GetProperty("HospitalName"));
+    }
+
+    [Fact(DisplayName = "AC-005.9 읽을 때도 칸 목록 그대로: hospitalName 등 모르는 칸이 있으면 깨진 파일(null)")]
+    public void UnknownFieldIsBroken()
+    {
+        var json = Encoding.UTF8.GetString(Protector.Unprotect(RegistrationFile.Write(Synthetic.Registration(), Protector).Skip(17).ToArray()));
+        Assert.NotNull(RegistrationFile.Read(Wrap(json), Protector));
+        Assert.Null(RegistrationFile.Read(Wrap(json.Replace("\"scope\":", "\"hospitalName\":\"SYNTHETIC\",\"scope\":")), Protector));
+        Assert.Null(RegistrationFile.Read(Wrap(json.Replace("\"scope\":", "\"extra\":1,\"scope\":")), Protector));
     }
 }

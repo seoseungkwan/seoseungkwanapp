@@ -11,6 +11,7 @@ namespace Precheck.Core.Registration;
 /// <summary>
 /// registration.dat 모양(design.md 9-3): 머리 `PRECHECK-STORE-1\n` + 암호화(DPAPI CurrentUser + 고정 entropy)한 JSON.
 /// 원본 security-profile.dat·statistics-binding.dat(머리 + DPAPI + JSON)과 같은 틀이다. 평문은 쓰고 나서 지운다.
+/// JSON 칸은 Fields 그대로다(병원 이름 없음, AC-005.9). 읽을 때도 그 밖의 칸이 있으면 깨진 파일로 본다.
 /// </summary>
 public static class RegistrationFile
 {
@@ -22,6 +23,9 @@ public static class RegistrationFile
 
     /// <summary>등록 JSON 모양 번호.</summary>
     public const int Version = 1;
+
+    /// <summary>등록 JSON 칸(쓰는 차례). 이 밖의 칸은 없다(AC-005.9).</summary>
+    public static readonly string[] Fields = { "version", "profileId", "institutionCode", "scope", "installPath", "server", "database" };
 
     private static readonly byte[] HeaderBytes = Encoding.ASCII.GetBytes(Header);
 
@@ -47,7 +51,7 @@ public static class RegistrationFile
         return output;
     }
 
-    /// <summary>등록 파일을 푼다. 머리·크기·암호·JSON·칸 중 하나라도 틀리면 null(등록 없음으로 본다, 원본 registration_required).</summary>
+    /// <summary>등록 파일을 푼다. 머리·크기·암호·JSON·칸 중 하나라도 틀리면 null(깨진 파일, RegistrationStore가 AC-005.12 규칙으로 다룬다).</summary>
     public static HospitalRegistration? Read(byte[] data, IProtector protector)
     {
         if (protector == null) throw new ArgumentNullException(nameof(protector));
@@ -83,7 +87,6 @@ public static class RegistrationFile
             writer.WriteStartObject();
             writer.WriteNumber("version", Version);
             writer.WriteString("profileId", registration.ProfileId);
-            writer.WriteString("hospitalName", registration.HospitalName);
             writer.WriteString("institutionCode", registration.InstitutionCode);
             writer.WriteString("scope", registration.Scope);
             writer.WriteString("installPath", registration.InstallPath);
@@ -101,11 +104,13 @@ public static class RegistrationFile
             using var document = JsonDocument.Parse(clear);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return null;
+            var names = root.EnumerateObject().Select(property => property.Name).ToList();
+            if (names.Count != Fields.Length || names.Distinct(StringComparer.Ordinal).Count() != names.Count ||
+                !names.All(name => Fields.Contains(name, StringComparer.Ordinal))) return null;
             if (!root.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number ||
                 !version.TryGetInt32(out var number) || number != Version) return null;
 
             var registration = new HospitalRegistration(
-                hospitalName: Text(root, "hospitalName"),
                 institutionCode: Text(root, "institutionCode"),
                 scope: Text(root, "scope"),
                 installPath: Text(root, "installPath"),

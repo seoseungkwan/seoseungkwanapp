@@ -47,7 +47,7 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
     expectAc('AC-005.4')
   })
 
-  it('AC-005.5 bit.register: 비트 로그인 → PC 확인 창 [확인]일 때만 registration.dat 저장·{registered: true}, 다시 등록은 전·새 값을 함께 보이고 같은 기관기호면 프로필 ID 유지', () => {
+  it('AC-005.5 bit.register: 비트 로그인 → PC 확인 창 [확인]일 때만 registration.dat 저장(병원 이름은 저장하지 않음)·{registered: true}, 다시 등록은 전·새 값을 함께 보이고 같은 기관기호면 프로필 ID 유지', () => {
     expectAc('AC-005.5')
   })
 
@@ -55,7 +55,7 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
     expectAc('AC-005.6')
   })
 
-  it('AC-005.7 bit.check: steps find·db·registration을 {name, ok, code?}로, 실패한 단계 뒤는 ok:false·그 번호, 등록됐으면 병원 이름·기관기호', () => {
+  it('AC-005.7 bit.check: steps find·db·registration을 {name, ok, code?}로, 실패한 단계 뒤는 ok:false·그 번호, 등록됐으면 기관기호만(병원 이름은 주지 않음)', () => {
     expectAc('AC-005.7')
   })
 })

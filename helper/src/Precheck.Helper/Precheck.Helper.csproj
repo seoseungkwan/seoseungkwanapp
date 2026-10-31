@@ -5,6 +5,9 @@
     <TargetFramework>net48</TargetFramework>
     <RootNamespace>Precheck.Helper</RootNamespace>
     <AssemblyName>PrecheckHelper</AssemblyName>
+    <!-- 비트 DLL이 32비트라(원본 tools/build_stats.ps1의 /platform:x86) exe도 32비트로 돈다(CLR 머리 32BITREQUIRED, AC-005.8).
+         Platform·Platforms·OutputPath는 쓰지 않는다: 출력이 bin/x86/...로 옮겨 helper.yml의 zip 자리(bin/Release/net48)와 어긋난다 -->
+    <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,5 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../Precheck.Core/Precheck.Core.csproj" />
+    <ProjectReference Include="../Precheck.Windows/Precheck.Windows.csproj" />
   </ItemGroup>
 </Project>

@@ -5,7 +5,8 @@ namespace Precheck.Core.Registration;
 
 /// <summary>
 /// 처음 등록·다시 등록 PC 확인 창의 글(AC-005.5, design.md 9-1). 도우미가 비트에서 읽은 등록 값으로만 만든다
-/// (bit.register는 웹에서 받는 칸이 없다). 기관기호는 뒤 4자리를 가린다.
+/// (bit.register는 웹에서 받는 칸이 없다). 기관기호는 뒤 4자리를 가린다. 병원 이름 줄은 없다(AC-005.9):
+/// 첫 값 줄은 가린 기관기호, 그 뒤 범위·설치 위치·DB. 범위 값을 이름 자리에 넣지 않는다.
 /// </summary>
 public static class RegisterPrompt
 {
@@ -47,7 +48,7 @@ public static class RegisterPrompt
 
     private static void AppendHospital(StringBuilder text, HospitalRegistration registration, string indent)
     {
-        text.Append(indent).Append(registration.HospitalName).Append(" · 기관기호 ").Append(MaskInstitution(registration.InstitutionCode)).Append(NewLine);
+        text.Append(indent).Append("기관기호 ").Append(MaskInstitution(registration.InstitutionCode)).Append(NewLine);
         text.Append(indent).Append("비트 병원 범위: ").Append(registration.Scope).Append(NewLine);
         text.Append(indent).Append("비트 설치 위치: ").Append(registration.InstallPath).Append(NewLine);
         text.Append(indent).Append("비트 DB: ").Append(registration.Server).Append(" / ").Append(registration.Database).Append(NewLine);

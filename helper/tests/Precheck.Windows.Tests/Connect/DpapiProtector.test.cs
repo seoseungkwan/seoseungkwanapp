@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Precheck.Core.Bit;
 using Precheck.Core.Registration;
 using Precheck.Windows;
 using Xunit;
@@ -13,7 +14,7 @@ namespace Precheck.Windows.Tests.Connect;
 public class DpapiProtectorTests
 {
     private static HospitalRegistration Synthetic() =>
-        new HospitalRegistration("SYNTHETIC", "12345678", "SYNTHETIC", @"C:\DrBIT50", @".\SQLEXPRESS", "DRBIT", "0123456789abcdef0123456789abcdef");
+        new HospitalRegistration("12345678", "SYNTHETIC", @"C:\DrBIT50", @".\SQLEXPRESS", "DRBIT", "0123456789abcdef0123456789abcdef");
 
     [Fact(DisplayName = "AC-005.5 DPAPI 왕복: 같은 entropy로만 풀리고, 다른 entropy·깨진 글자는 CryptographicException")]
     public void RoundTrip()
@@ -31,7 +32,7 @@ public class DpapiProtectorTests
         Assert.Throws<CryptographicException>(() => protector.Unprotect(broken));
     }
 
-    [Fact(DisplayName = "AC-005.5 등록 파일을 DPAPI로 저장하고 다시 읽는다(머리 PRECHECK-STORE-1, 평문 없음)")]
+    [Fact(DisplayName = "AC-005.5 AC-005.12 등록 파일을 DPAPI로 저장하고 다시 읽는다(머리 PRECHECK-STORE-1, 평문 없음), 다른 entropy면 E-STORE-BROKEN")]
     public void RegistrationStoreWithDpapi()
     {
         var folder = Path.Combine(Path.GetTempPath(), "precheck-dpapi-" + Guid.NewGuid().ToString("N"));
@@ -48,8 +49,10 @@ public class DpapiProtectorTests
             Assert.NotNull(read);
             Assert.Equal("12345678", read!.InstitutionCode);
 
-            // 다른 entropy(다른 프로그램)로는 풀리지 않아 등록 없음
-            Assert.Null(new RegistrationStore(folder, new DpapiProtector(Encoding.UTF8.GetBytes("other"))).Load());
+            // AC-005.12 다른 entropy(다른 프로그램)로는 풀리지 않고 .bak도 없으면 깨진 등록 파일(E-STORE-BROKEN), 파일은 그대로 둔다
+            var broken = Assert.Throws<BitException>(() => new RegistrationStore(folder, new DpapiProtector(Encoding.UTF8.GetBytes("other"))).Load());
+            Assert.Equal(BitErrors.StoreBroken, broken.Code);
+            Assert.Equal(raw, File.ReadAllBytes(Path.Combine(folder, "registration.dat")));
         }
         finally
         {

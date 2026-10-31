@@ -72,10 +72,6 @@ const VERSION = /^\d{1,9}\.\d{1,9}\.\d{1,9}$/
 const isVersion = (x: unknown): x is string => typeof x === 'string' && VERSION.test(x)
 const SHA256 = /^[0-9a-f]{64}$/
 const INSTITUTION = /^\d{8}$/
-// 병원 이름: 1~100자, 줄바꿈·제어 문자(U+0000~U+001F, U+007F) 없음
-const isPlainChar = (ch: string) => ch.charCodeAt(0) >= 0x20 && ch.charCodeAt(0) !== 0x7f
-const isHospitalName = (x: unknown) =>
-  typeof x === 'string' && x.length >= 1 && x.length <= 100 && [...x].every(isPlainChar)
 
 const REPLY_KEYS = {
   result: ['data'],
@@ -121,9 +117,9 @@ export function checkHello(data: unknown): HelloData | null {
   return ok ? (data as HelloData) : null
 }
 
+/** bit.check 답: {steps, registered, institutionCode?}. 병원 이름은 도우미가 주지 않는다(hospitalName은 모르는 칸, AC-005.10) */
 function isBitCheck(d: Rec): boolean {
-  if (!exactKeys(d, ['steps', 'registered'], ['hospitalName', 'institutionCode']) || !isBool(d.registered)) return false
-  if (d.hospitalName !== undefined && !isHospitalName(d.hospitalName)) return false
+  if (!exactKeys(d, ['steps', 'registered'], ['institutionCode']) || !isBool(d.registered)) return false
   if (d.institutionCode !== undefined && !(typeof d.institutionCode === 'string' && INSTITUTION.test(d.institutionCode))) return false
   const steps = d.steps
   return (

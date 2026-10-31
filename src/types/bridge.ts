@@ -33,7 +33,8 @@ export type BitCheckStep = { name: BitCheckStepName; ok: boolean; code?: string 
 export type DayCount = { date: string; visits: number; memoInBit: number }
 
 export type ResultMap = {
-  'bit.check': { steps: BitCheckStep[]; registered: boolean; hospitalName?: string; institutionCode?: string }
+  // 병원 이름은 없다: 화면은 사이트가 가진 병원 이름을 쓴다 (AC-005.10)
+  'bit.check': { steps: BitCheckStep[]; registered: boolean; institutionCode?: string }
   'bit.register': { registered: boolean }
   'claim.dates': { days: DayCount[] }
 }

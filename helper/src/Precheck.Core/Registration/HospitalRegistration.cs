@@ -6,6 +6,7 @@ namespace Precheck.Core.Registration;
 
 /// <summary>
 /// 이 PC에 등록한 병원(registration.dat, AC-005.5). 값은 모두 도우미가 비트에서 읽은 것이다.
+/// 병원 이름은 없다(AC-005.9): 원본 비트 읽기에 병원 이름 SQL이 없고, 화면은 사이트가 가진 병원 이름을 쓴다.
 /// ProfileId는 등록할 때 만든 무작위 32자리 16진수: 작업 저장 파일이 같은 병원 것인지 이것으로 본다(TASK-15, AC-015.4).
 /// </summary>
 public sealed class HospitalRegistration
@@ -16,9 +17,8 @@ public sealed class HospitalRegistration
     private static readonly Regex InstitutionShape = new Regex(@"^[0-9]{8}\z", RegexOptions.CultureInvariant);
     private static readonly Regex ProfileShape = new Regex(@"^[0-9a-f]{32}\z", RegexOptions.CultureInvariant);
 
-    public HospitalRegistration(string hospitalName, string institutionCode, string scope, string installPath, string server, string database, string profileId)
+    public HospitalRegistration(string institutionCode, string scope, string installPath, string server, string database, string profileId)
     {
-        HospitalName = hospitalName ?? "";
         InstitutionCode = institutionCode ?? "";
         Scope = scope ?? "";
         InstallPath = installPath ?? "";
@@ -26,9 +26,6 @@ public sealed class HospitalRegistration
         Database = database ?? "";
         ProfileId = profileId ?? "";
     }
-
-    /// <summary>확인 창·설치 화면에 보이는 병원 이름.</summary>
-    public string HospitalName { get; }
 
     /// <summary>요양기관기호(8자리 숫자). 서버에 올리지 않는다. 화면·확인 창은 뒤 4자리를 가린다.</summary>
     public string InstitutionCode { get; }
@@ -49,7 +46,7 @@ public sealed class HospitalRegistration
 
     /// <summary>모든 칸이 차 있고(공백만 아님, 길이 안), 기관기호 8자리 숫자, 프로필 ID 32자리 16진수.</summary>
     public bool IsValid =>
-        new[] { HospitalName, Scope, InstallPath, Server, Database }.All(Filled) &&
+        new[] { Scope, InstallPath, Server, Database }.All(Filled) &&
         InstitutionShape.IsMatch(InstitutionCode) && ProfileShape.IsMatch(ProfileId);
 
     private static bool Filled(string value) =>

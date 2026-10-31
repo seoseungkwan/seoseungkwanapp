@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { BridgeState, ChromeRuntimeLike, ChunkSink, PortLike } from '@/types/bridge'
+import type { BridgeState, ChromeRuntimeLike, ChunkSink, PortLike, ResultOf } from '@/types/bridge'
 import { connectBridge } from './client'
 import { EXTENSION_ID } from './extensionId'
 import { BridgeError } from './protocol'
@@ -330,7 +330,6 @@ describe('AC-004.6 숫자·상태 명령의 답 모양 검사', () => {
       { name: 'registration', ok: true },
     ],
     registered: true,
-    hospitalName: '가짜정형외과의원',
     institutionCode: '12345678',
   }
   const CHECK_FAILED = {
@@ -375,8 +374,6 @@ describe('AC-004.6 숫자·상태 명령의 답 모양 검사', () => {
     ['bit.check', { ...CHECK, registered: 'yes' }],
     ['bit.check', { ...CHECK, institutionCode: '1234567' }],
     ['bit.check', { ...CHECK, institutionCode: 12345678 }],
-    ['bit.check', { ...CHECK, hospitalName: '' }],
-    ['bit.check', { ...CHECK, hospitalName: 'x'.repeat(101) }],
     ['bit.check', { ...CHECK, steps: [{ name: 'other', ok: true }] }],
     ['bit.check', { ...CHECK, steps: CHECK.steps.slice(0, 2) }],
     ['bit.check', { ...CHECK, steps: [CHECK.steps[1], CHECK.steps[0], CHECK.steps[2]] }],
@@ -392,6 +389,29 @@ describe('AC-004.6 숫자·상태 명령의 답 모양 검사', () => {
     expect(await rejectCode(p)).toBe('E-BRIDGE-BAD-REPLY')
     // 숫자 명령은 sink를 쓰지 않는다
     expect(t.calls).toEqual([])
+  })
+
+  it.each([
+    ['가짜정형외과의원'],
+    [''],
+    ['x'.repeat(101)],
+    [null],
+    [12345678],
+  ] as const)('AC-005.10 bit.check 답에 hospitalName(%j)이 있으면 값과 상관없이 E-BRIDGE-BAD-REPLY', async (hospitalName) => {
+    const { p, t } = await callWith('bit.check', { ...CHECK, hospitalName })
+    expect(await rejectCode(p)).toBe('E-BRIDGE-BAD-REPLY')
+    expect(t.calls).toEqual([])
+  })
+
+  it('AC-005.10 등록 안 된 bit.check 답에 hospitalName이 있어도 E-BRIDGE-BAD-REPLY', async () => {
+    const { p } = await callWith('bit.check', { ...CHECK_FAILED, hospitalName: '가짜정형외과의원' })
+    expect(await rejectCode(p)).toBe('E-BRIDGE-BAD-REPLY')
+  })
+
+  it('AC-005.10 ResultOf<bit.check> 타입은 {steps, registered, institutionCode?}이고 hospitalName이 없다', () => {
+    // 타입 검사(tsc·next build)에서 확인한다
+    expectTypeOf<keyof ResultOf<'bit.check'>>().toEqualTypeOf<'steps' | 'registered' | 'institutionCode'>()
+    expectTypeOf<ResultOf<'bit.check'>['institutionCode']>().toEqualTypeOf<string | undefined>()
   })
 
   it('AC-004.6 result 봉투에 모르는 칸이 있으면 E-BRIDGE-BAD-REPLY', async () => {

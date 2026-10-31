@@ -35,7 +35,8 @@
     {
       "step": 5,
       "name": "helper-fixups",
-      "status": "pending"
+      "status": "completed",
+      "summary": "TASK-33 도우미 마무리: Precheck.Helper.csproj에 Precheck.Windows 참조·PlatformTarget x86(출력 bin/Release/net48 그대로, exe CLR 32BITREQUIRED). 병원 이름 제거: HospitalRegistration(institutionCode, scope, installPath, server, database, profileId), registration.dat JSON 칸 version·profileId·institutionCode·scope·installPath·server·database뿐(다른 칸이 있으면 깨짐), 확인 창 첫 값 줄 '기관기호 1234****', bit.check 답 {steps, registered, institutionCode?}, 웹 ResultOf<'bit.check'>도 같고 hospitalName이 오면 E-BRIDGE-BAD-REPLY → 화면의 병원 이름은 사이트 값(me.hospital.name). 깨진 등록 파일(AC-005.12): Load 파일 없음→null, 깨짐+맞는 .bak→되살림(깨진 파일은 .broken-<UTC>로), 아니면 E-STORE-BROKEN(HospitalGate는 그 번호로 멈춤, RegisterFlow는 처음 등록처럼, Save는 깨진 dat·bak을 먼저 비켜 둠). runDotnet.ts buildDotnet(같은 잠금). SqlBitDb.cs 읽기 전용 글자 시험(Commit·CreateCommand·SqlDataAdapter 금지, SqlCommand는 모두 트랜잭션과 함께). [Actions·의원 PC 확인 남음]"
     },
     {
       "step": 6,
