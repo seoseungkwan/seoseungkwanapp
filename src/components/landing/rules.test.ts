@@ -10,7 +10,7 @@ const ROOT = process.cwd()
 const DIR = join(ROOT, 'src/components/landing')
 
 // AC-212.1 검사 목록: 새 규칙으로 고친 랜딩 모듈. TASK마다 늘고, TASK-14에서 랜딩 폴더 전체 읽기로 바꾼다
-const CHECKED = ['base.module.css', 'SiteHeader.module.css', 'SiteFooter.module.css']
+const CHECKED = ['base.module.css', 'SiteHeader.module.css', 'SiteFooter.module.css', 'Hero.module.css']
 
 // ---------- CSS 읽기 도우미 ----------
 
@@ -797,5 +797,116 @@ describe('AC-207.2: SiteHeader.module.css — 위쪽 메뉴는 모든 폭에서 
       const gap = px(valueOf(base(), '.sec', 'scroll-margin-top', bp)) - px(valueOf(sheet, '.header', 'height', bp))
       expect(gap, `@${bp} 섹션 위 여유`).toBeGreaterThanOrEqual(16)
     }
+  })
+})
+
+// ---------- AC-208.1(CSS 부분)·AC-208.2: Hero.module.css 값 ----------
+
+const heroSheet = () => parseCss(readLanding('Hero.module.css'))
+// Hero.module.css에서 그 속성을 정한 선택자들
+const heroSelectorsWith = (props: RegExp) =>
+  [...new Set(heroSheet().rules.filter((r) => r.decls.some((d) => props.test(d.prop))).flatMap((r) => r.selectors))].sort()
+
+describe('AC-208.1: Hero.module.css — 글 덩어리·단추·약속·휴대폰 한 줄의 글자와 선', () => {
+  it('AC-208.1: 소개 줄(.tSmall + .kicker)은 small 600 ink-2, 제목(.tDisplay)은 text-wrap: balance, 안내(.lead)는 ink-2이고 body → lead(768)다', () => {
+    const sheet = heroSheet()
+    expectAt('.tSmall', 0, { 'font-size': 'var(--fs-small)', 'line-height': 'var(--lh-small)' })
+    expectAt('.tDisplay', 0, { 'text-wrap': 'balance' })
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.kicker', 'font-weight', bp), `.kicker font-weight @${bp}`).toBe('600')
+      expect(valueOf(sheet, '.kicker', 'color', bp), `.kicker color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.lead', 'color', bp), `.lead color @${bp}`).toBe('var(--ink-2)')
+    }
+    expect(valueOf(sheet, '.lead', 'font-size', 0)).toBe('var(--fs-body)')
+    expect(valueOf(sheet, '.lead', 'line-height', 0)).toBe('var(--lh-body)')
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.lead', 'font-size', bp), `.lead font-size @${bp}`).toBe('var(--fs-lead)')
+      expect(valueOf(sheet, '.lead', 'line-height', bp), `.lead line-height @${bp}`).toBe('var(--lh-lead)')
+    }
+  })
+
+  it('AC-208.1: [구글로 시작하기](.start)는 768px 미만 전체 폭 → 이상 내용 폭이고, 크기·색은 base .btnLg(44px)·.btnPrimary 그대로다', () => {
+    const sheet = heroSheet()
+    expect(valueOf(sheet, '.start', 'width', 0)).toBe('100%')
+    for (const bp of [768, 1024] as Bp[]) expect(valueOf(sheet, '.start', 'width', bp), `.start width @${bp}`).toBe('auto')
+    // .start는 폭만 정한다 → base 단추와 겹치는 속성이 없어 CSS 파일 순서에 기대지 않는다
+    const props = sheet.rules.filter((r) => r.selectors.includes('.start')).flatMap((r) => r.decls.map((d) => d.prop))
+    expect([...new Set(props)]).toEqual(['width'])
+    for (const bp of BPS) expect(landingValues(base(), ['.btn', '.btnLg'], ['height'], bp).height, `.btnLg @${bp}`).toBe('44px')
+  })
+
+  it('AC-208.1: 약속 — ul(.promises) 위 1px line, li(.promise)마다 아래 1px line으로 나뉘고 ink-2 글자, 아이콘(.icon)은 muted, "0건"(.zero)은 600 ink다', () => {
+    const sheet = heroSheet()
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.promises', 'border-top', bp), `.promises border-top @${bp}`).toBe('1px solid var(--line)')
+      expect(valueOf(sheet, '.promise', 'border-bottom', bp), `.promise border-bottom @${bp}`).toBe('1px solid var(--line)')
+      expect(valueOf(sheet, '.promise', 'display', bp), `.promise display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.promise', 'align-items', bp), `.promise align-items @${bp}`).toBe('center')
+      expect(valueOf(sheet, '.promise', 'color', bp), `.promise color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.icon', 'color', bp), `.icon color @${bp}`).toBe('var(--muted)')
+      expect(valueOf(sheet, '.zero', 'font-weight', bp), `.zero font-weight @${bp}`).toBe('600')
+      expect(valueOf(sheet, '.zero', 'color', bp), `.zero color @${bp}`).toBe('var(--ink)')
+    }
+  })
+
+  it('AC-208.1: 휴대폰 한 줄(.phoneLine)은 muted 글자이고 방패와 글이 가로 한 줄(세로 가운데, 사이 8px)이다', () => {
+    const sheet = heroSheet()
+    expect(valueOf(sheet, '.phoneLine', 'color', 0)).toBe('var(--muted)')
+    expect(valueOf(sheet, '.phoneLine', 'display', 0)).toBe('flex')
+    expect(valueOf(sheet, '.phoneLine', 'align-items', 0)).toBe('center')
+    expect(valueOf(sheet, '.phoneLine', 'gap', 0)).toBe('8px')
+  })
+})
+
+describe('AC-208.2: Hero.module.css — 칸·여백·제목 단계·장식 없음', () => {
+  it('AC-208.2: 1024px 이상 12칸(base .grid)에서 글 1~5칸(.text) · 미리보기 6~12칸(.shot)이고 세로 가운데 맞춤이다', () => {
+    const sheet = heroSheet()
+    expectAt('.grid', 1024, { 'grid-template-columns': 'repeat(12, minmax(0, 1fr))', 'column-gap': '24px' })
+    expect(valueOf(sheet, '.text', 'grid-column', 1024)).toBe('1 / 6')
+    expect(valueOf(sheet, '.shot', 'grid-column', 1024)).toBe('6 / 13')
+    expect(valueOf(sheet, '.layout', 'align-items', 1024)).toBe('center')
+    for (const name of ['.text', '.shot']) expect(valueOf(sheet, name, 'min-width', 1024), `${name} min-width`).toBe('0')
+  })
+
+  it('AC-208.2: 1024px 미만은 위아래로 쌓인다(글 → 미리보기) — 칸 지정이 없고, 어느 폭에도 순서 바꾸기가 없으며 둘 사이가 띄워진다', () => {
+    const sheet = heroSheet()
+    for (const bp of [0, 768] as Bp[]) {
+      for (const name of ['.text', '.shot']) expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
+      expect(px(valueOf(sheet, '.layout', 'row-gap', bp)), `.layout row-gap @${bp}`).toBeGreaterThan(0)
+    }
+    expect(heroSelectorsWith(/^(?:order|grid-row(?:-[\w-]+)?|grid-area|grid-template(?:-areas|-rows)?|flex-direction)$/)).toEqual(['.text'])
+    expect(valueOf(sheet, '.text', 'flex-direction', 0), '글 덩어리 안은 위에서 아래로').toBe('column')
+  })
+
+  it('AC-208.2: 위아래 여백 32/48 → 48/64(768) → 64/96(1024)이고, 로고 링크(#top)로 옮겨도 메뉴에 가리지 않게 scroll-margin-top은 .sec와 같다', () => {
+    const sheet = heroSheet()
+    expect(valueOf(sheet, '.hero', 'padding-block', 0)).toBe('32px 48px')
+    expect(valueOf(sheet, '.hero', 'padding-block', 768)).toBe('48px 64px')
+    expect(valueOf(sheet, '.hero', 'padding-block', 1024)).toBe('64px 96px')
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.hero', 'scroll-margin-top', bp), `.hero scroll-margin-top @${bp}`).toBe(valueOf(base(), '.sec', 'scroll-margin-top', bp))
+    }
+  })
+
+  it('AC-208.2: 제목은 display-m(768px 미만) → display(base .tDisplay)이고, Hero.module.css는 글자 크기를 안내(.lead) 말고 정하지 않는다', () => {
+    expectAt('.tDisplay', 0, { 'font-size': 'var(--fs-display-m)', 'line-height': 'var(--lh-display-m)' })
+    expectAt('.tDisplay', 768, { 'font-size': 'var(--fs-display)', 'line-height': 'var(--lh-display)' })
+    expect(heroSelectorsWith(/^(?:font-size|line-height|letter-spacing|font)$/)).toEqual(['.lead'])
+  })
+
+  it('AC-208.2: 장식(격자·원형 빛·반짝이)이 없다 — 바탕·그림·::before/::after·겹쳐 놓기·투명도·mask가 없다', () => {
+    const sheet = heroSheet()
+    expect(sheet.rules.length).toBeGreaterThan(0)
+    const deco = sheet.rules.flatMap((r) => [
+      ...r.selectors.filter((sel) => /::?(?:before|after)\b/.test(sel)).map((sel) => `${sel} (꾸밈 조각)`),
+      ...r.decls
+        .filter(
+          (d) =>
+            /^(?:background(?:-[\w-]+)?|mask(?:-[\w-]+)?|opacity|content|clip-path|transform)$/.test(d.prop) ||
+            (d.prop === 'position' && /^(?:absolute|fixed)$/.test(d.value)),
+        )
+        .map((d) => `${r.selectors.join(', ')} { ${d.prop}: ${d.value} }`),
+    ])
+    expect(deco).toEqual([])
   })
 })

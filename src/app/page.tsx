@@ -6,7 +6,6 @@ import Hero from '@/components/landing/Hero'
 import HowSection from '@/components/landing/HowSection'
 import OrthoSection from '@/components/landing/OrthoSection'
 import PrivacySection from '@/components/landing/PrivacySection'
-import PromiseBand from '@/components/landing/PromiseBand'
 import SiteFooter from '@/components/landing/SiteFooter'
 import SiteHeader from '@/components/landing/SiteHeader'
 import StartSection from '@/components/landing/StartSection'
@@ -20,7 +19,6 @@ export default function Home() {
       <SiteHeader />
       <main>
         <Hero />
-        <PromiseBand />
         <AiSection />
         <OrthoSection />
         <FeaturesSection />

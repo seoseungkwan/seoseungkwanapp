@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { LogoMark } from '@/components/common/LogoMark'
 import base from '@/components/landing/base.module.css'
+import { DashboardPreview } from '@/components/preview/DashboardPreview'
 import Home from './page'
 
 const html = renderToStaticMarkup(<Home />)
@@ -24,13 +25,15 @@ const links = [...html.matchAll(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g
 }))
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])
 const ROOT = process.cwd()
+// 히어로(section#top부터 #ai 앞까지)의 마크업
+const HERO = html.match(/<section\b[^>]*id="top"[\s\S]*?(?=<section\b[^>]*id="ai")/)?.[0] ?? ''
 
 describe('AC-001.1: 섹션 순서', () => {
-  it('AC-001.1: header → #top → 핵심 약속 → #ai → #ortho → #features → #privacy → #how → #start → footer', () => {
+  it('AC-001.1: header → #top → #ai → #ortho → #features → #privacy → #how → #start → footer (약속 띠 없음)', () => {
+    expect(html, '약속 띠는 히어로 안 약속 목록이 됐다').not.toMatch(/aria-label="핵심 약속"/)
     const marks = [
       /<header\b/,
       /<section\b[^>]*id="top"/,
-      /<section\b[^>]*aria-label="핵심 약속"/,
       /<section\b[^>]*id="ai"/,
       /<section\b[^>]*id="ortho"/,
       /<section\b[^>]*id="features"/,
@@ -48,7 +51,7 @@ describe('AC-001.1: 섹션 순서', () => {
     expect(html.match(/<main\b/g)).toHaveLength(1)
     const main = html.match(/<main\b[^>]*>([\s\S]*)<\/main>/)
     expect(main).not.toBeNull()
-    expect(main![1].match(/<section\b/g)).toHaveLength(8)
+    expect(main![1].match(/<section\b/g)).toHaveLength(7)
     expect(html.search(/<header\b/)).toBeLessThan(html.search(/<main\b/))
     expect(html.search(/<footer\b/)).toBeGreaterThan(html.search(/<\/main>/))
     expect(html.match(/<header\b/g)).toHaveLength(1)
@@ -96,6 +99,7 @@ describe('AC-001.3: 제목', () => {
     const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1s).toHaveLength(1)
     expect(textOf(h1s[0][1])).toBe('숫자로 보는 우리 의원')
+    expect(h1s[0][1], '태그 없는 글자').toBe('숫자로 보는 우리 의원')
   })
 })
 
@@ -105,7 +109,7 @@ describe('AC-002.1: [구글로 시작하기]', () => {
     expect(starts).toHaveLength(3)
     for (const s of starts) expect(s.href).toBe('/login')
     const header = html.match(/<header\b[\s\S]*?<\/header>/)![0]
-    const hero = html.match(/<section\b[^>]*id="top"[\s\S]*?(?=<section\b[^>]*aria-label="핵심 약속")/)![0]
+    const hero = HERO
     const start = html.match(/<section\b[^>]*id="start"[\s\S]*?<\/section>/)![0]
     for (const part of [header, hero, start]) expect(part).toMatch(/<a\b[^>]*href="\/login"[^>]*>구글로 시작하기<\/a>/)
   })
@@ -152,10 +156,9 @@ describe('AC-114.1: "F/U 기록" → "F/U"', () => {
 })
 
 describe('AC-005.2: 빈칸과 예시 표시', () => {
-  it('AC-005.2: 예시 숫자 영역에 "숫자는 예시"(히어로)·"방금 생성 · 예시"(AI 리포트) 표시가 있다', () => {
-    const hero = html.match(/<section\b[^>]*id="top"[\s\S]*?(?=<section\b[^>]*aria-label="핵심 약속")/)![0]
+  it('AC-005.2: 예시 숫자 영역에 "예시 숫자"(히어로)·"방금 생성 · 예시"(AI 리포트) 표시가 있다', () => {
     const ai = html.match(/<section\b[^>]*id="ai"[\s\S]*?(?=<section\b[^>]*id="ortho")/)![0]
-    expect(textOf(hero)).toContain('숫자는 예시')
+    expect(textOf(HERO)).toContain('예시 숫자')
     expect(textOf(ai)).toContain('방금 생성 · 예시')
   })
 })
@@ -217,7 +220,7 @@ describe('AC-110.6: 회색 바탕 섹션', () => {
       id: /\sid="([^"]+)"/.exec(m[0])?.[1] ?? m[0],
       classes: (/\bclass="([^"]*)"/.exec(m[0])?.[1] ?? '').split(/\s+/),
     }))
-    expect(sections).toHaveLength(8)
+    expect(sections).toHaveLength(7)
     expect(sections.filter((s) => s.classes.includes(base.secCanvas)).map((s) => s.id)).toEqual(['ai', 'features', 'how'])
     // 섹션 밖(메뉴·푸터·미리보기 안)에도 붙지 않는다
     const all = [...html.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
@@ -231,22 +234,36 @@ const LANDING_DIR = join(ROOT, 'src/components/landing')
 const landingTsx = readdirSync(LANDING_DIR)
   .filter((name) => name.endsWith('.tsx') && !/\.test\.tsx$/.test(name))
   .map((name) => ({ name, body: readFileSync(join(LANDING_DIR, name), 'utf8') }))
+// AC-212.4 inline style 검사에서 잠시 빼 두는 아직 안 고친 섹션(TASK-13에서 다시 쓴다)
+const STYLE_PENDING = ['FeaturesSection.tsx']
 // '#' + 16진수 3·4·6·8자리 색 글자 (#features·#ai 같은 # 링크는 뒤에 글자가 이어져 걸리지 않는다)
 const HEX_COLOR = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/i
-// 로고 마크 출력(고정 두 색)을 뺀 페이지 마크업. 메뉴(24)·히어로 미리보기(20)·바닥글(18)에 하나씩 있다
-const LOGOS = [24, 20, 18].map((size) => renderToStaticMarkup(<LogoMark size={size} />))
-const withoutLogos = LOGOS.reduce((markup, logo) => markup.split(logo).join(''), html)
+// 로고 마크 svg(고정 두 색). 크기·class는 여는 태그에만 있으므로 그 뒤 그림이 LogoMark와 같은 svg를 찾는다.
+// 메뉴(24)·히어로 미리보기(18, components/preview가 부름)·바닥글(18)에 하나씩 있다
+const LOGO_BODY = renderToStaticMarkup(<LogoMark size={1} />).replace(/^<svg\b[^>]*>/, '')
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const LOGO_SVG = new RegExp(`<svg\\b[^>]*>${escapeRe(LOGO_BODY)}`, 'g')
+const logoSizes = (markup: string) => [...markup.matchAll(LOGO_SVG)].map((m) => Number(/\swidth="(\d+)"/.exec(m[0])?.[1]))
+// 로고 마크 출력을 뺀 페이지 마크업
+const withoutLogos = html.replace(LOGO_SVG, '')
 
 describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
   it('AC-105.8: 랜딩 폴더의 *.tsx(시험 제외)에 색 글자(# + 16진수)가 없다', () => {
     expect(landingTsx.map((f) => f.name)).toEqual(
-      expect.arrayContaining(['PrivacySection.tsx', 'HowSection.tsx', 'StartSection.tsx', 'SiteFooter.tsx', 'HeroChart.tsx']),
+      expect.arrayContaining(['PrivacySection.tsx', 'HowSection.tsx', 'StartSection.tsx', 'SiteFooter.tsx']),
     )
     for (const { name, body } of landingTsx) expect(body, name).not.toMatch(HEX_COLOR)
   })
 
-  it('AC-105.8: 로고는 <LogoMark />를 부르기만 한다(메뉴 24 · 미리보기 20 · 바닥글 18), 그 밖의 페이지 마크업에는 색 글자가 없다', () => {
-    for (const logo of LOGOS) expect(html.split(logo).length - 1, logo).toBe(1)
+  it('AC-105.8: 로고는 <LogoMark />를 부르기만 한다(메뉴 24 한 번 · 18은 바닥글·미리보기에 두 번, 미리보기는 components/preview 소스), 그 밖의 페이지 마크업에는 색 글자가 없다', () => {
+    // 페이지 순서: 메뉴 → 히어로 미리보기 → 바닥글
+    expect(logoSizes(html)).toEqual([24, 18, 18])
+    expect(logoSizes(HERO), '히어로의 로고는 미리보기 안 하나').toEqual([18])
+    expect(logoSizes(renderToStaticMarkup(<DashboardPreview />))).toEqual([18])
+    // 랜딩 TSX가 부르는 크기는 메뉴 24·바닥글 18뿐이다. 미리보기의 18은 components/preview/DashboardPreview.tsx가 부른다
+    const calls = landingTsx.flatMap((f) => [...f.body.matchAll(/<LogoMark\b[^>]*?\bsize=\{(\d+)\}/g)].map((m) => `${f.name} ${m[1]}`))
+    expect(calls.sort()).toEqual(['SiteFooter.tsx 18', 'SiteHeader.tsx 24'])
+    expect(readFileSync(join(ROOT, 'src/components/preview/DashboardPreview.tsx'), 'utf8')).toMatch(/<LogoMark\b[^>]*?\bsize=\{18\}/)
     for (const { name, body } of landingTsx) {
       expect(body, `${name}: 로고 십자 경로를 따로 그리지 않는다`).not.toContain('M13.5 8h3a1')
       if (/<LogoMark\b/.test(body)) expect(body, name).toMatch(/^import \{ LogoMark \} from '@\/components\/common\/LogoMark'$/m)
@@ -260,13 +277,44 @@ describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
     for (const paint of paints) expect(paint).toMatch(/^(fill|stroke)="(currentColor|none)"$/)
   })
 
-  it('AC-105.8: inline style은 % 값의 높이·폭·위치 하나씩뿐이다(히어로 막대 높이 6 · 신환율·처방 그룹 막대 폭 5 · 눈금선 위치 4)', () => {
-    const styles = [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1])
-    for (const style of styles) expect(style).toMatch(/^(height|width|bottom):\d+(\.\d+)?%$/)
-    const count = (prop: string) => styles.filter((s) => s.startsWith(`${prop}:`)).length
-    expect({ height: count('height'), width: count('width'), bottom: count('bottom') }).toEqual({ height: 6, width: 5, bottom: 4 })
-    // style을 쓰는 랜딩 TSX는 미리보기 둘뿐이다
+  it('AC-212.4: 랜딩 TSX(시험 제외)에 inline style이 없다(아직 안 고친 FeaturesSection.tsx는 TASK-13까지 남는다). 미리보기·차트의 % 값은 components/charts 안에 있다', () => {
     const withStyle = landingTsx.filter((f) => /\bstyle=\{/.test(f.body)).map((f) => f.name)
-    expect(withStyle.sort()).toEqual(['FeaturesSection.tsx', 'HeroChart.tsx'])
+    expect(withStyle.filter((name) => !STYLE_PENDING.includes(name))).toEqual([])
+    // 히어로의 inline style은 모두 미리보기(차트 부품) 안에서 온다
+    const preview = renderToStaticMarkup(<DashboardPreview />)
+    expect(HERO).toContain(preview)
+    expect(HERO.replace(preview, '')).not.toMatch(/\sstyle="/)
+    // 페이지에 남는 inline style은 % 값의 높이·폭·위치 하나씩뿐이다
+    for (const style of [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1])) {
+      expect(style).toMatch(/^(height|width|bottom|left):\d+(\.\d+)?%$/)
+    }
+  })
+})
+
+// ---------- AC-208.3: 숫자 순환이 없다 ----------
+
+describe('AC-208.3: 히어로 숫자 순환이 없다', () => {
+  it('AC-208.3: heroFrames·HeroChart·PromiseBand 파일(시험·CSS 포함)이 없다', () => {
+    for (const name of [
+      'heroFrames.ts',
+      'heroFrames.test.ts',
+      'HeroChart.tsx',
+      'HeroChart.module.css',
+      'HeroChart.test.tsx',
+      'PromiseBand.tsx',
+      'PromiseBand.module.css',
+    ]) {
+      expect(existsSync(join(LANDING_DIR, name)), name).toBe(false)
+    }
+  })
+
+  it("AC-208.3: 시험 파일 밖 src/components/landing/에 'use client'·useEffect·useState·setInterval·setTimeout·requestAnimationFrame이 없다", () => {
+    const sources = readdirSync(LANDING_DIR).filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
+    expect(sources).toEqual(expect.arrayContaining(['Hero.tsx', 'SiteHeader.tsx', 'links.ts']))
+    for (const name of sources) {
+      expect(readFileSync(join(LANDING_DIR, name), 'utf8'), name).not.toMatch(
+        /['"]use client['"]|\b(?:useEffect|useState|setInterval|setTimeout|requestAnimationFrame)\b/,
+      )
+    }
   })
 })
