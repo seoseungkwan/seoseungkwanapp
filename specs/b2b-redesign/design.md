@@ -2,11 +2,11 @@
 
 ## 개요
 
-**기준 시안.** 승인 시안 `docs/mockups/b2b-redesign/`(게시본 https://claude.ai/artifact/574fyw1mAQmqBw4jWjhr6f). 화면마다 `screens.mjs`의 함수(예: `landingPC`·`dashboardPC({ empty: true })`)와 `style.css`의 같은 이름 규칙을 읽어 옮긴다. 시안의 번호 핀(`.pin`)과 "지금/개편 후" 비교 칸은 설명용이라 옮기지 않는다.
+**기준 시안.** 승인 시안 `docs/mockups/b2b-redesign/`(게시본 https://claude.ai/artifact/574fyw1mAQmqBw4jWjhr6f). 화면마다 `screens.mjs`의 함수(예: `landingPC`·`loginPC`)와 `style.css`의 같은 이름 규칙을 읽어 옮긴다. 시안의 번호 핀(`.pin`)과 "지금/개편 후" 비교 칸은 설명용이라 옮기지 않는다. 대시보드 본문(`dashboardPC`·`dashboardPhone`)도 옮기지 않는다(2026-10-31 결정, 아래 '대시보드 본문 빼기').
 
 **순서.** 바닥부터 올린다.
 1. 토큰 한 곳(`globals.css`) + 글꼴(Pretendard) + 앱 공통 모양(`ui/classes.ts`의 새 묶음 `ds`·아이콘) + 차트 부품.
-2. 그 위에 화면을 하나씩 다시 입힌다: 랜딩 → 인증 화면 → 앱 틀·대시보드 → 관리자.
+2. 그 위에 화면을 하나씩 다시 입힌다: 랜딩 → 인증 화면 → 앱 틀 → 관리자. 대시보드 본문은 다음 명세다.
 3. 옛 이름을 지우고, 세 폭 사진으로 확인한다.
 
 옛 Tailwind 이름은 1단계에서 새 토큰을 가리키는 **별칭**으로 남긴다. 그래서 아직 안 고친 화면도 깨지지 않고, 시험이 TASK마다 RED → GREEN으로 간다. 별칭은 마지막에 지운다(TASK-23).
@@ -31,9 +31,9 @@ src/app/
   error.tsx            # <AuthFrame> 안 오류 카드 + 단추 줄
   login/page.tsx       # <AuthFrame aside={<LoginAside/>}><LoginCard/></AuthFrame>
   (onboarding)/signup/page.tsx · pending/page.tsx   # AuthFrame(그대로) — props만
-  (app)/dashboard/page.tsx  # <DashboardView />
+  (app)/dashboard/page.tsx  # 그대로(이 명세에서 고치지 않음 — '대시보드 본문 빼기')
 src/components/
-  ui/classes.ts        # 새 묶음 ds.*(REQ-204) + 옛 묶음 ui.*(한 글자도 안 바꾸고 두었다가 TASK-23에서 지움)
+  ui/classes.ts        # 새 묶음 ds.*(REQ-204) + 옛 묶음 ui.*(한 글자도 안 바꾸고 두었다가 TASK-23에서 지움. 대시보드가 쓰는 card·panel·panelTitle만 남김)
   common/Icon.tsx      # 16px 선 아이콘(시안 parts.mjs의 I) — aria-hidden, currentColor
   common/GoogleMark.tsx# 구글 G(상표 색은 여기에만)
   common/LogoMark.tsx  # 그대로(주석의 쓰는 곳 크기만 고침)
@@ -47,7 +47,7 @@ src/components/
     (지움) PromiseBand · HeroChart · heroFrames · StartSection · styles.test.ts
   auth/  AuthFrame(열 | 두 칸) · LoginCard · LoginAside(새) · Stepper(새) · SignupForm · PendingCard(+HeaderSignOut) · SignOutButton(그대로)
   shell/ AppShell · TabBar · AccountMenu · KstClock (모양만)
-  dashboard/ DashboardView(새, DashboardEmpty 대체) · (지움) DashboardEmpty · todayTitle
+  dashboard/ 그대로(DashboardEmpty · todayTitle, 이 명세에서 고치지 않음 — '대시보드 본문 빼기')
   admin/ AdminApplications (모양만)
 src/testing/boxes.ts   # 시험 도우미: 상자 안 상자 찾기(AC-204.7·AC-212.3)
 ```
@@ -80,7 +80,7 @@ src/testing/boxes.ts   # 시험 도우미: 상자 안 상자 찾기(AC-204.7·AC
 - `ui` 묶음의 값을 그 자리에서 바꾸면 Phase 1에서 아직 안 고친 화면의 시험이 깨진다. 예를 들어 주 단추가 accent가 되면 관리자 시험의 "accent는 지금 탭에만"이 깨진다. 대시보드 시험의 `rounded-card` 개수, 가입 시험의 `aria-invalid:border-danger`도 깨진다.
 - 그래서 TASK-4는 같은 파일에 새 묶음 `export const ds`를 더하기만 한다. `ui`는 한 글자도 바꾸지 않는다.
 - 화면 TASK는 그 화면 컴포넌트와 그 화면 시험에서 `ui.*` 참조를 아래 표의 `ds.*`로 바꾼다. 이 바꾸기는 "고치는 옛 시험"의 한 항목으로 적는다. 시험의 `ui.X` → `ds.Y` 참조 바꾸기는 기대값 바꾸기가 아니다. 그 밖의 기대값이 바뀌는 시험은 이름을 따로 적는다.
-- TASK-23에서 `ui`와 그 옛 시험(`classes.test.ts`의 AC-013.3 묶음·AC-013.4의 `ui` 목록)을 지운다.
+- TASK-23에서 `ui`와 그 옛 시험(`classes.test.ts`의 AC-013.3 묶음·AC-013.4의 `ui` 목록)을 지운다. 다만 대시보드 빈 자리가 쓰는 세 키 `card`·`panel`·`panelTitle`은 값 그대로 남긴다('대시보드 본문 빼기').
 - 마지막 이름은 `ds`다. 파일 이름은 그대로 `classes.ts`다.
 
 | 옛 `ui` | 새 `ds` |
@@ -113,6 +113,8 @@ src/testing/boxes.ts   # 시험 도우미: 상자 안 상자 찾기(AC-204.7·AC
 | 랜딩 `--field` | `var(--faint)` | 점선·점 |
 | 랜딩 `--content-max` | `var(--w-landing)` | `.wrap` |
 | 랜딩 `--font-sans` | `var(--font-ui)` | 옛 body |
+
+TASK-23은 이 표의 별칭을 지우되, 대시보드 빈 자리가 아직 쓰는 `@theme` 별칭 넷 `--radius-card`(`rounded-card`)·`--text-table`·`--text-panel`·`--text-title-sm`(줄 높이 포함)은 값 그대로 남긴다('대시보드 본문 빼기').
 
 같은 이름이 남는 것(`text-caption`·`text-body`·`text-lead`·`text-title`, 색 `ink`·`line`·`accent` …)은 별칭이 아니라 새 토큰 그대로다. `text-title`은 25/32에서 20/28로 바뀐다.
 
@@ -179,6 +181,7 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
   - 요소 초기화(`.root :where(h1, h2, h3, p, ol, ul, dl, dd, figure)`·`.root a`·`.root *`의 box-sizing)는 `@layer base { }` 안에 둔다. layer 밖 CSS는 Tailwind 클래스보다 늘 이기기 때문이다. 미리보기(Tailwind)의 `mt-1` 같은 클래스가 랜딩 초기화에 지지 않게 한다.
   - 클래스 규칙(`.wrap`·`.grid`·`.sec`·글자 단계·단추·칩·숨김 도우미)은 layer 밖에 둔다.
   - 섹션 모듈은 `.shot` 같은 자리 클래스만 미리보기 바깥에 주고, 미리보기 안쪽 요소를 고르지 않는다.
+  - 단추 크기 `.btnSm`(32)·`.btnMd`(36)·`.btnLg`(44)는 앱 `ds.button`의 Small·기본·Large 한 벌과 같은 값이다. `.btnSm`만 랜딩 TSX에서 쓰지 않는다: 휴대폰 메뉴 단추는 `.btnMd`에 `SiteHeader.module.css`의 `.inner .start`(768px 미만 32px·좌우 12px·small, 768px 이상은 `.btnMd` 값으로 되돌림)를 얹어 만든다. 그래도 지우지 않는다 — 32px 크기의 기준값이고, `rules.test.ts`가 `ds.button.primarySmall`(AC-212.2)·`.inner .start`의 휴대폰 크기(AC-207.2)와 견준다. AC-212.4("정의한 클래스는 모두 쓴다")의 유일한 예외다.
 - 숨김 도우미: `.pcOnly`(767.98px 이하에서 `display: none !important`), `.phoneOnly`(768px 이상에서 숨김), `.srOnly`. `display: none`이라 화면 읽기에서도 빠진다. 그래서 휴대폰·PC에 다른 문구(기능 목록 짧은 설명, 정형외과 휴대폰 표)를 두어도 두 번 읽히지 않는다.
 - 정형외과 표: `ORTHO` 배열 하나(이름·보는 숫자·기준·예시 값 쌍)에서 PC 표(`.pcOnly`)와 휴대폰 표(`.phoneOnly`)를 그린다. 표를 CSS로 뒤집을 수 없어서다.
 - `#how`의 단추: 휴대폰에서 단계 뒤로 가야 한다. 같은 DOM에서 grid `order`로 옮긴다.
@@ -195,11 +198,12 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
 - 앱 안 브라우저 안내 상자는 테두리를 뺀다(canvas 바탕만). 안의 읽기 전용 칸이 테두리를 가져서 상자 안 상자가 되기 때문이다(AC-204.7).
 - 승인 대기·거절: 본문 [로그아웃]을 뺀다(사용자 승인). 위 줄 `HeaderSignOut`은 글자만 단추(ghost)다.
 
-### 앱 틀·대시보드·관리자
+### 앱 틀·관리자
 
-- `AppShell`: `<div class="sticky top-0 z-10">` 안에 `<header>`와 `<TabBar>`. 안쪽 감싸개 셋(띠·탭·본문)은 같은 `mx-auto w-full max-w-7xl px-6 max-md:px-4`다. 첫 탭은 `md:-ml-3`으로 글자를 로고 끝에 맞춘다.
+- `AppShell`: `<div class="sticky top-0 z-10">` 안에 `<header>`와 `<TabBar>`. 띠와 본문의 안쪽 감싸개는 같은 `mx-auto w-full max-w-7xl px-6 max-md:px-4`다. 탭 줄은 감싸개를 따로 두지 않고 nav의 첫 자식 줄 하나가 `flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl`이다(1024px 미만은 띠 안에서 옆으로 밀리고, 이상은 띠와 같은 1280 폭·좌우 24px).
+- 첫 탭 맞춤(TASK-20에서 만든 대로): 탭마다 클래스를 붙이지 않고, 탭 줄 한 곳에 `[&>:first-child]:-ml-3`을 둔다. 줄의 첫 자식인 [대시보드] 탭을 모든 폭(`md:` 같은 폭 접두사 없음)에서 왼쪽으로 12px 당기면 탭의 왼쪽 안쪽 여백 12px가 지워져, 글자가 줄의 안쪽 끝(좌우 24px, 768px 미만 16px) = 로고 왼쪽 끝에 놓인다. 휴대폰 줄도 글자가 16px에 놓여 시안과 같다. 시험: `shell.test.tsx` 'AC-218.2: 탭 줄 — nav 첫 자식 줄 하나에 …'.
 - `TabBar`: 준비 중 탭은 faint 글자. 툴팁·밀기·지금 탭 판단 코드는 그대로이고 클래스만 바뀐다.
-- `DashboardView`: 도구 줄 · KPI 줄(KpiStat value null) · 빈 패널. 막힌 단추는 `disabled`라 누를 수 없고 Tab 순서에도 들지 않는다. 숫자·차트·예시가 없다.
+- 대시보드 본문: 이 명세에서 고치지 않는다(아래 '대시보드 본문 빼기'). `/dashboard`는 새 앱 틀 안에 지금의 `DashboardEmpty`를 그린다.
 - `AdminApplications`: 패널 틀(흰 상자·안쪽 여백)을 빼고 표를 본문 위에 바로 둔다(위아래 1px 선). 상태 칩을 뺀다. 휴대폰 줄은 지금처럼 같은 표의 줄을 CSS로 세로로 쌓는다.
 
 ## 데이터 흐름
@@ -215,6 +219,11 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
 4. 빈칸 → 자연스러운 문구. `[서비스 이름]`은 숨김(로고 옆 병원 이름만).
 5. 로고 C③ 유지(유일한 예외 색).
 6. 승인 대기·거절 [로그아웃] 하나.
+
+**사용자 결정(2026-10-31, 승인 뒤 명세 고침)**
+7. 대시보드 본문(옛 REQ-219·TASK-21)을 이 명세에서 뺀다. 대시보드는 다음에 따로 명세를 써서 계획한다. 1번의 "실제 대시보드는 빈 상태"는 새 빈 상태가 아니라 지금의 빈 자리로 남는다는 뜻이 된다.
+8. 랜딩 `.btnSm`은 쓰는 곳이 없어도 남긴다(AC-212.4 예외, 위 '랜딩').
+9. 첫 탭 맞춤은 탭 줄 한 곳의 `[&>:first-child]:-ml-3`, 모든 폭(위 '앱 틀·관리자').
 
 **Claude 판단**
 
@@ -234,12 +243,20 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
 - **간격 단계.** 사용자 표 9단계(4·8·12·16·24·32·48·64·96)에 패널 안쪽 20, 칩·툴팁 안쪽 2·6을 더한다. 시안의 9·10·11·14px은 가까운 단계나 고정 높이(줄 44px 등)로 바꾼다.
 - **단추.** 주 단추가 ink에서 accent(파랑)로 바뀐다(시안). 화면마다 주 단추는 하나만 둔다.
 - **휴대폰 누름 영역.** 단추·탭·입력은 휴대폰에서 44px이다(지금 규칙 유지). 시안 휴대폰 관리자 단추(36px)는 44px로 둔다. 랜딩 휴대폰 메뉴 단추는 32px 모양에 44px 누름 영역(`::after`)이다.
-- **대시보드 제목.** 시안대로 "대시보드"이고 날짜는 위쪽 띠의 한국 시각이 보인다. `todayTitle.ts`는 쓰는 곳이 없어지므로 지운다. 동작이 아니라 제목 글자 모양이다.
+- **대시보드 본문 빼기 (2026-10-31).** 사용자 결정 7.
+  - 고치지 않는 곳: `src/components/dashboard/*`(`DashboardEmpty.tsx`·`DashboardEmpty.test.tsx`·`todayTitle.ts`·`todayTitle.test.ts`)와 `src/app/(app)/dashboard/*`(`page.tsx`·`page.test.tsx`). 어느 TASK의 Files에도 없다. 제목은 지금처럼 "오늘 + 한국 날짜"이고 `todayTitle.ts`는 남는다.
+  - 그 파일들이 쓰는 옛 이름(grep으로 확인):
+    - `ui` 키: `ui.card`·`ui.panelTitle`(`DashboardEmpty.tsx`), `ui.panel`(`DashboardEmpty.test.tsx`의 "패널 모양이 없다" 시험). 시험은 `ui.card` 클래스를 그대로 갖는지, `rounded-card`가 한 번 나오는지도 본다.
+    - Tailwind 별칭: 소스에 바로 `max-md:text-title-sm`(제목)·`text-table`(안내 줄). 키 값을 거쳐 `rounded-card`(`ui.card`·`ui.panel`)·`text-panel`(`ui.panelTitle`).
+  - 그래서 TASK-23은 `ui`의 세 키와 `@theme` 별칭 넷(`--radius-card`·`--text-table`·`--text-panel`·`--text-title-sm`, 줄 높이 포함)을 값 그대로 남기고, AC-204.6·AC-204.7·AC-221.1 검사에서 두 폴더(와 남는 `ui` 세 키 값)를 뺀다. 나머지 옛 키·별칭은 계획대로 지운다. 다음 대시보드 명세가 이 넷과 세 키를 지운다.
+  - AC-202.3·AC-203.3·옛 AC-013.2 검사는 두 폴더도 본다. 지금 파일은 16진수 색이 없고 굵기는 `font-semibold`뿐이라 그대로 통과한다.
+  - 사용자에게 보이는 것: `/dashboard`는 새 앱 틀(붙는 띠 + 탭) 안에 옛 빈 자리가 남는다. 별칭이 새 토큰을 가리키므로 글꼴(Pretendard)·색·모서리(4px)·글자 크기(제목 25/32 → 20/28)는 새 값으로 보이지만 배치·문구는 옛것이다.
+  - 다시 쓰려고 만든 차트 부품(`components/charts`)과 미리보기는 그대로 둔다. 다음 대시보드 명세가 차트 부품을 쓴다.
 - **옛 시험 다루기.** 각 TASK의 "고치는 옛 시험"에 이름을 적고 그것만 지우거나 기대값을 고친다.
   - 동작 시험(클릭·초점·보내기·이동)은 기대값을 고치지 않는다(AC-201.3).
   - 모양·문구가 바뀐 시험은 새 AC 이름의 시험으로 바꾼다. 옛 이름 시험에서 문구 한 줄만 바뀌면 그 줄만 고친다.
   - 통째로 사라지는 화면 조각(약속 띠·히어로 순환·시작하기 섹션·작은 카드·통계 미리보기)의 시험은 파일·describe째 지운다.
-- **검사 목록을 점점 넓힌다.** AC-204.6·AC-204.7·AC-212.1의 검사 목록은 TASK마다 그 TASK가 고친 파일·화면을 더한다. 랜딩은 TASK-14, 앱은 TASK-23에서 전체로 바꾼다. 아직 안 고친 화면 때문에 시험이 계속 실패하지 않게 해서, TASK마다 RED → GREEN을 볼 수 있게 한다(landing-v2와 같은 방식).
+- **검사 목록을 점점 넓힌다.** AC-204.6·AC-204.7·AC-212.1의 검사 목록은 TASK마다 그 TASK가 고친 파일·화면을 더한다. 랜딩은 TASK-14, 앱은 TASK-23에서 전체로 바꾼다(앱은 대시보드 두 폴더 빼고, '대시보드 본문 빼기'). 아직 안 고친 화면 때문에 시험이 계속 실패하지 않게 해서, TASK마다 RED → GREEN을 볼 수 있게 한다(landing-v2와 같은 방식).
 - **상자 겹침 시험 도우미.** `src/testing/boxes.ts`의 `nestedBoxes(root: Element, isBox: (el: Element) => boolean): string[]`.
   - jsdom에서 그린 마크업을 훑어, 상자 안에 든 상자의 경로를 돌려준다. `aria-hidden` 안쪽은 건너뛴다.
   - `isBox` 기본값은 클래스 목록에 `border` 낱말이 있는 블록 요소다.
@@ -252,10 +269,11 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
 - 로그인 왼쪽 400 열은 가운데(시안은 왼쪽 120px). 1024px 폭에서도 들어가게.
 - 관리자 표 아래 "대기 중인 신청 N건" 줄은 두지 않는다(탭 개수와 겹침).
 - 승인 대기 `dl` 줄 위아래 10 → 12px. 히어로 위 여백 80 → 64px(1024 이상).
-- 개인정보 흐름의 멈춤 줄은 PC·휴대폰 모두 지금 문구 그대로("환자 이름 · 주민번호 · 차트번호 · 파일 이름", 시안은 빈칸 없는 가운뎃점·휴대폰 짧은 문구). 대시보드 빈 안내 첫 문장은 휴대폰에서도 PC 문구 그대로.
+- 개인정보 흐름의 멈춤 줄은 PC·휴대폰 모두 지금 문구 그대로("환자 이름 · 주민번호 · 차트번호 · 파일 이름", 시안은 빈칸 없는 가운뎃점·휴대폰 짧은 문구).
 - 768~1023px(시안에 없는 폭): 랜딩 두 칸 배치는 쌓이고, 목록 두 칸(개인정보 약속)은 두 칸 그대로다.
 - 앱 탭 띠는 지금 코드처럼 1024px 미만에서 옆으로 밀린다.
 - 인증 화면 좁은 폭의 본문 위 여백은 32px(간격 단계).
+- 대시보드 본문(`dashboardPC`·`dashboardPhone`)은 옮기지 않는다. `/dashboard`는 새 앱 틀 안에 옛 빈 자리다(2026-10-31, 다음 대시보드 명세).
 
 ## 위험 / 미해결 질문
 - **Tailwind `@theme inline` + `var()` + `--text-*: initial`.** 4.3.3에서 기대대로 클래스가 나오는지 TASK-3에서 `npm run build` 뒤 만든 CSS(`.next/static/css`)로 확인한다(`text-small`에 `font-size: var(--fs-small)`, `text-sm`이 없음). 안 되면 `--text-*: initial` 대신 쓰는 기본 이름만 하나씩 지우고, 그 결정을 TASK-3 보고에 적는다.
@@ -264,5 +282,6 @@ export function InlineBar(p: { current: number; previous: number | null; max: nu
 - **subset 밖 글자.** 병원 이름에 드문 음절이 있으면 그 글자만 시스템 글꼴로 보인다.
 - **색 대비.** 재진 막대(chart-3)·지난 기간(chart-prev)·준비 중 탭(faint)은 흰 바탕 대비 3:1이 안 된다. 차트 값은 늘 글자와 `sr-only` 표로도 주고, 준비 중 탭은 누를 수 없는 단추라 WCAG 1.4.3 예외다. 늘어남 초록(#15803D)은 옅은 바탕 위 4.58:1로 겨우 넘는다 → 칩 글자는 500 이상.
 - **중간 단계의 섞인 모양.** Phase 1 뒤에는 새 토큰 값(4px 모서리, 파랑 주 단추)과 옛 배치가 섞여 보인다. Phase 사진은 중간 상태다. 운영 배포는 Phase 6 확인 뒤 사용자가 OK할 때만 한다.
+- **이 명세 끝에도 남는 섞인 화면 하나.** `/dashboard` 본문은 다음 대시보드 명세까지 옛 배치 + 새 토큰 값이다(제목 "오늘 + 날짜", 준비 중 상자). TASK-24 사진 보고에 이 점을 적고, 시안과 다른 본문은 고치지 않는다. 남긴 별칭 넷·`ui` 세 키 때문에 옛 이름이 완전히 없어지지는 않는다 — 검사가 두 폴더만 빼므로 다른 화면에 옛 이름이 다시 들어오면 막힌다.
 - **시험 대량 교체.** 옛 시험을 지우며 동작 확인을 함께 잃을 수 있다. TASK마다 "고치는 옛 시험" 목록 밖은 손대지 않고, 리뷰어가 `git diff`로 목록과 맞는지 본다(AC-201.3).
 - **휴대폰·PC 두 벌 문구.** 정형외과 표·기능 짧은 설명은 마크업에 두 번 있다(하나는 `display: none`). 글자 수를 세는 시험은 이 점을 알고 쓴다.

@@ -13,31 +13,40 @@
   5. PC와 휴대폰 모두 맞춘다.
   6. **기능·API·자료 처리 로직은 바꾸지 않는다(UI/UX만).**
 - 사용자 결정(2026-10-30):
-  - **대시보드는 이번에 디자인만 한다.** 다시 쓰는 차트 부품을 `src/components/charts`에 만들고 예시 자료로 시험한다. 랜딩 첫 화면은 그 부품으로 그린 미리보기를 "예시" 표시와 함께 보여 준다. 실제 `/dashboard`는 새 틀과 조용한 빈 상태만 보이고, 지어낸 숫자를 쓰지 않는다. 파일 올리기 연결은 다음 명세다.
+  - **대시보드는 이번에 디자인만 한다.** 다시 쓰는 차트 부품을 `src/components/charts`에 만들고 예시 자료로 시험한다. 랜딩 첫 화면은 그 부품으로 그린 미리보기를 "예시" 표시와 함께 보여 준다. 실제 `/dashboard`는 지어낸 숫자를 쓰지 않는다. 파일 올리기 연결은 다음 명세다. (본문의 새 빈 상태는 아래 2026-10-31 결정으로 이 명세에서 뺐다.)
   - **위쪽 가로 탭을 그대로 쓴다.** 탭 줄은 위쪽 띠와 함께 화면 위에 붙어 따라온다.
   - **글꼴은 Pretendard**(`next/font/local`, OFL 사용 허락 파일 함께 커밋). IBM Plex Sans KR은 뺀다. 숫자는 자릿수를 맞춘다.
   - **빈칸은 자연스러운 문구로**: `[금액]` → 예시 금액 + "예시" 표시, `[직원 A]` → "직원 1", `[지난달]`·`[이번 달]` → "9월"·"10월", `[서비스 이름]` → 숨긴다(이름이 정해질 때까지 로고 옆에는 병원 이름만), `[이메일 주소]` → 뺀다.
   - **로고는 C③ 그대로**(테두리 `#14C8BA`, 십자 `#6D5DF5`). 강조색 하나 규칙의 유일한 예외다.
   - 승인 대기·거절 화면의 [로그아웃]은 위쪽 줄 하나만 둔다(시안대로 승인).
+- 사용자 결정(2026-10-31, 승인 뒤 명세 고침):
+  - **대시보드 본문은 이 명세에서 뺀다.** 대시보드는 다음에 따로 명세를 써서 계획한다. 그래서 옛 REQ-219(대시보드 틀·빈 상태)와 TASK-21을 지웠다. 번호는 비워 두고 다시 쓰지 않는다. 뒤 번호(REQ-220~222, TASK-22~24)도 당기지 않는다(시험 이름·TDD 기록·커밋이 지금 번호를 쓴다).
+    - `src/components/dashboard/*`와 `src/app/(app)/dashboard/*`는 이 명세에서 고치지 않는다. `/dashboard`는 새 앱 틀(REQ-218) 안에 지금의 빈 자리("오늘 + 날짜" 제목과 준비 중 상자, auth AC-009.1·AC-009.2)를 그대로 그린다. 바뀌는 것은 옛 이름 별칭을 거쳐 들어오는 새 토큰 값(글꼴·색·모서리·글자 크기)뿐이다.
+    - 그 두 폴더가 아직 쓰는 옛 `ui` 키와 옛 Tailwind 별칭은 TASK-23에서 남기고, 규칙 전체 검사에서 두 폴더를 뺀다(REQ-221).
+    - 앱 틀(REQ-218)과 차트 부품(REQ-205)·미리보기(REQ-206)는 그대로 둔다. 차트 부품은 다음 대시보드 명세가 다시 쓴다.
+  - 랜딩 `base.module.css`의 `.btnSm`은 랜딩 TSX에서 쓰는 곳이 없어도 남긴다(AC-212.4 예외).
+  - 앱 탭 줄의 첫 탭 맞춤은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 한다(TASK-20에서 만든 대로, AC-218.2·design.md).
 - 기준 시안: `docs/mockups/b2b-redesign/`(게시본 https://claude.ai/artifact/574fyw1mAQmqBw4jWjhr6f, 2026-10-30 사용자가 "진행해"로 승인). 화면 마크업·CSS 값은 시안의 `screens.mjs`·`parts.mjs`·`style.css`를 따른다. 시안과 이 명세가 다르면 이 명세가 이긴다(design.md '시안과 다른 점').
 - 문구는 지금 컴포넌트 문구를 그대로 쓴다. 바뀌는 문구는 이 명세 AC에 적힌 것(빈칸 바꾸기, 줄바꿈 태그 빼기, 사라지는 영역의 문구, 새 빈 상태 문구)뿐이다.
 - 이 명세가 대체하는 옛 기준. 옛 명세 파일(`specs/landing/`·`specs/auth/`·`specs/landing-v2/`)은 고치지 않는다(승인 기록이 깨지지 않게). 대신 UI_GUIDE·ADR-019에 "b2b-redesign이 대체"라고 적는다.
   - landing-v2: REQ-102·REQ-105~REQ-113의 모양 값 전부(CSS 값, 섹션 짜임, 약속 띠, 히어로 미리보기), 시안 `docs/mockups/landing-v2/`의 모양
   - landing: AC-001.1(섹션 8개·약속 띠·`#start`), AC-001.3(h1 줄바꿈), AC-002.1의 "시작하기 섹션" 위치, AC-003.1~AC-004.2(히어로 숫자 2.6초 순환), AC-005.1 중 사라지는 문구, AC-005.2(빈칸)
-  - auth: AC-003.1의 로그인 소개(SIGN IN·칩·두 줄 제목·카드), AC-005.1·AC-005.3의 본문 [로그아웃]과 문의 빈칸, AC-008.x·AC-013.x의 모양 값(높이·색·모서리·굵기), AC-009.1·AC-009.2(대시보드 제목 "오늘 + 날짜"와 준비 중 상자)
-  - 그대로 유효한 것: landing-v2의 AC-103(로고 모양·색, 크기만 바뀜)·AC-104(그림 없음)·AC-114(F/U 문구), landing의 AC-007.1(랜딩은 아무것도 받지 않음)·AC-008.1(svg는 꾸밈), 모든 동작 AC
+  - auth: AC-003.1의 로그인 소개(SIGN IN·칩·두 줄 제목·카드), AC-005.1·AC-005.3의 본문 [로그아웃]과 문의 빈칸, AC-008.x·AC-013.x의 모양 값(높이·색·모서리·굵기. 대시보드 빈 자리는 빼고)
+  - 그대로 유효한 것: landing-v2의 AC-103(로고 모양·색, 크기만 바뀜)·AC-104(그림 없음)·AC-114(F/U 문구), landing의 AC-007.1(랜딩은 아무것도 받지 않음)·AC-008.1(svg는 꾸밈), auth의 AC-009.1·AC-009.2(대시보드 제목 "오늘 + 날짜"와 준비 중 상자, 그 시험이 보는 클래스 — 다음 대시보드 명세가 바꿀 때까지), 모든 동작 AC
 
 ## 요구사항
 
 ### REQ-201: 바뀌지 않는 것 (기능·자료·패키지)
 - AC-201.1: Given 이 기능의 커밋, When 기준 커밋 `6becd49`(feat-landing-v2 끝)과 `git diff --name-only 6becd49 -- <경로>`로 비교하면, Then 아래 경로에 바뀐 파일이 없다.
   - `src/app/api/` · `src/app/auth/` · `src/lib/` · `src/workers/` · `src/types/` · `src/middleware.ts` · `supabase/`
+  - 대시보드 두 폴더 `src/components/dashboard/` · `src/app/(app)/dashboard/`(2026-10-31 결정, 다음 대시보드 명세 몫)
   - `package.json` · `package-lock.json`(새 npm 패키지 없음) · `eslint.config.mjs` · `postcss.config.mjs` · `next.config.ts` · `vercel.json`
   - 페이지 파일(`src/app/**/page.tsx`·`layout.tsx`)은 그리는 JSX(틀 컴포넌트와 그 props)와 그에 필요한 import만 바뀐다. `guardPage` 호출·`redirect`·`export const dynamic` 줄은 그대로다. 예외: 뿌리 `src/app/layout.tsx`는 글꼴 불러오기 코드도 바뀐다(REQ-203).
 - AC-201.2: Given 아래 시험 파일, When 전체 시험을 돌리면, Then 한 글자도 고치지 않고 통과한다.
   - `src/lib/**` · `src/workers/**` · `src/app/auth/**` · `supabase/**` · `fixtures/**` · `e2e/**`
   - `src/middleware.test.ts` · `src/guardrails.test.ts` · `src/vercel-config.test.ts` · `src/app/globals.test.ts`
   - `src/app/(app)/layout.test.tsx` · `src/app/(app)/admin/page.test.tsx`
+  - `src/components/dashboard/**` · `src/app/(app)/dashboard/**`(`DashboardEmpty.test.tsx`·`todayTitle.test.ts`·`page.test.tsx`)
   - `src/components/admin/applications.test.ts` · `src/components/auth/SignOutButton.test.tsx` · `src/components/shell/IdleLogout.test.tsx` · `src/components/shell/kstNow.test.ts`
 - AC-201.3: Given 이 명세가 고치는 시험 파일, When 바뀐 줄을 보면, Then 지우거나 기대값을 고친 시험은 그 TASK의 "고치는 옛 시험" 목록에 이름이 있는 것뿐이다. 파일 맨 위 그리기 준비(import·그려 둔 변수·짜임 정규식)와 `ui.*` → `ds.*` 참조 바꾸기도 그 목록의 한 항목으로 적는다. 나머지 시험은 이름·본문이 그대로이고 통과한다. 아래 동작 시험은 기대값을 바꾸지 않는다.
   - 로그인: 구글 시작·두 번 막기·뒤로 가기로 다시 풀기·오류 카드·앱 안 브라우저 안내·주소 복사
@@ -88,7 +97,7 @@
   - `.app-ui`와 랜딩 뿌리(`base.module.css`의 `.root`)는 `font-variant-numeric: tabular-nums`다.
 
 ### REQ-204: 앱 공통 모양 (`components/ui/classes.ts`의 새 묶음 `ds`)
-- 새 모양은 같은 파일에 새 이름 `ds`로 둔다. 지금의 `ui` 묶음은 한 글자도 바꾸지 않고 두었다가, 화면마다 그 화면 TASK에서 `ui.*`를 `ds.*`로 바꾸고, TASK-23에서 `ui`를 지운다(design.md '공통 모양 옮기기'). 그래서 Phase 1이 아직 안 고친 화면의 시험을 깨지 않는다.
+- 새 모양은 같은 파일에 새 이름 `ds`로 둔다. 지금의 `ui` 묶음은 한 글자도 바꾸지 않고 두었다가, 화면마다 그 화면 TASK에서 `ui.*`를 `ds.*`로 바꾸고, TASK-23에서 `ui`를 지운다. 다만 이 명세가 고치지 않는 대시보드 빈 자리가 쓰는 세 키(`card`·`panel`·`panelTitle`)는 남긴다(design.md '공통 모양 옮기기'·'대시보드 본문 빼기'). 그래서 Phase 1이 아직 안 고친 화면의 시험을 깨지 않는다.
 - AC-204.1: Given `ds.button`, When 클래스를 읽으면, Then 아래와 같다.
   - 크기: 기본 36px·좌우 16px·body / `…Small` 32px·좌우 12px·small / `…Large` 44px·좌우 20px·body 600. 휴대폰(768px 미만)에서는 모두 44px(`max-md:h-11`).
   - 종류:
@@ -110,13 +119,13 @@
 - AC-204.5: Given 패널·층, When 읽으면, Then 아래와 같다.
   - `ds.panel`: surface·1px line·`rounded-control`·그림자 없음. `ds.panelHead`: 좌우 20px·위 16px(휴대폰 16·12), 제목 `ds.panelTitle` subtitle 600 ink, 보조 글 small muted. `ds.panelBody`: 좌우 20px·위 16px·아래 20px(휴대폰 16·8·16).
   - `ds.layer`(떠 있는 층: 계정 메뉴·확인 창): surface·1px line·`rounded-float`·`shadow-float`. 그림자는 층과 툴팁에만 있다.
-- AC-204.6: Given `ds`의 클래스 글자와 검사 목록의 앱 화면 소스(TASK마다 늘고 TASK-23에서 앱 화면 폴더 전체 + `components/charts`·`components/preview`. 옛 `ui` 묶음은 지울 때까지 빼고 본다), When 클래스 글자를 보면, Then 아래와 같다.
+- AC-204.6: Given `ds`의 클래스 글자와 검사 목록의 앱 화면 소스(TASK마다 늘고 TASK-23에서 앱 화면 폴더 전체 + `components/charts`·`components/preview`. 대시보드 두 폴더 `src/components/dashboard`·`src/app/(app)/dashboard`는 끝까지 빼고 본다. 옛 `ui` 묶음은 지울 때까지, TASK-23 뒤에 남는 세 키도 빼고 본다), When 클래스 글자를 보면, Then 아래와 같다.
   - 여백·간격 클래스(`p`·`px`·`py`·`pt`·`pr`·`pb`·`pl`·`m*`·`gap*`·`space-*`)의 값은 단계 `0`·`0.5`·`1`·`1.5`·`2`·`3`·`4`·`5`·`6`·`8`·`12`·`16`·`24`(= 0·2·4·6·8·12·16·20·24·32·48·64·96px)와 `px`뿐이다. 대괄호 임의 값이 없다.
   - 모서리는 `rounded-control`·`rounded-float`·`rounded-none`, 그림자는 `shadow-float`, 글자 크기는 토큰 11단계뿐이다.
   - 그라데이션(`bg-linear-*`·`bg-radial-*`·`bg-conic-*`·`bg-gradient-*`·`from-*`·`via-*`·`to-*`)·`backdrop-*`·`blur*`·`animate-*`가 없다. 화면 폭 접두사는 `md:`·`lg:`·`max-md:`·`max-lg:`뿐이다.
   - 넘침 자르기는 `overflow-clip`이다. 접두사 없는 `overflow-hidden` 클래스는 쓰지 않는다(`theme.test.ts`가 "시험 글자에만 있는 클래스는 만들지 않는다"를 이 이름으로 본다). `after:overflow-hidden`처럼 변형이 붙은 것은 된다(TabBar·관리자가 씀).
   - CSS Module import·임의 색·Tailwind 기본 색 이름이 없다(지금 검사 그대로).
-- AC-204.7: Given 앱 화면을 그린 마크업, When 상자(`aria-hidden` 밖의 `div`·`section`·`article`·`ul`·`ol`·`li`·`dl`·`table`·`aside`·`form` 가운데 클래스 목록에 네 변 테두리 `border` 낱말이 있는 것. 입력란·단추·칩처럼 조작 요소 그림이고 `aria-hidden`인 것은 들지 않는다)를 보면, Then 상자 안에 상자가 없다. 검사 화면은 TASK마다 늘어 TASK-23에서 로그인(일반·앱 안 브라우저·오류)·가입 신청·승인 대기·거절·오류 화면·대시보드·관리자(세 탭·확인 창)가 모두 들어간다.
+- AC-204.7: Given 앱 화면을 그린 마크업, When 상자(`aria-hidden` 밖의 `div`·`section`·`article`·`ul`·`ol`·`li`·`dl`·`table`·`aside`·`form` 가운데 클래스 목록에 네 변 테두리 `border` 낱말이 있는 것. 입력란·단추·칩처럼 조작 요소 그림이고 `aria-hidden`인 것은 들지 않는다)를 보면, Then 상자 안에 상자가 없다. 검사 화면은 TASK마다 늘어 TASK-23에서 로그인(일반·앱 안 브라우저·오류)·가입 신청·승인 대기·거절·오류 화면·관리자(세 탭·확인 창)가 모두 들어간다. 대시보드 본문은 이 명세가 고치지 않으므로 들지 않는다.
 
 ### REQ-205: 차트 부품 (`components/charts`)
 - AC-205.1: Given `format.ts`, When 부르면, Then 아래와 같다(버림은 부동소수 오차를 막으려고 아주 작은 값을 더한 뒤 자른다. 반올림하지 않는다).
@@ -258,6 +267,8 @@
   - 숨김 도우미 `.pcOnly`(768px 미만 숨김)·`.phoneOnly`(768px 이상 숨김)·`.srOnly`가 있다.
 - AC-212.3: Given `/` 페이지 마크업, When 상자(REQ-204 AC-204.7과 같은 규칙. 랜딩 모듈에서 네 변 테두리를 주는 클래스도 상자다)를 보면, Then 상자 안에 상자가 없고, 섹션마다 맨 바깥 상자는 하나 이하다.
 - AC-212.4: Given 랜딩 TSX(시험 제외), When 읽으면, Then 색 글자(`#` + 16진수)가 없고, `LogoMark`는 메뉴 24·바닥글 18로만 부르며, inline style이 없다(미리보기·차트의 % 값은 `components/charts` 안에 있다). `base.module.css`에 정의한 클래스는 모두 랜딩 TSX 어딘가에서 쓴다.
+  - 예외는 `.btnSm`(32px·좌우 12px·small) 하나다. 랜딩에 그 크기 단추를 클래스로 쓰는 곳이 없다: 메뉴 [구글로 시작하기]는 `.btn`·`.btnMd`·`.btnPrimary`이고, 768px 미만에서만 `SiteHeader.module.css`의 `.inner .start`(클래스 둘이라 CSS 파일 순서와 상관없이 `.btnMd`를 이김)가 높이 32px·좌우 12px·small로 줄인다(누름 영역은 `.start::after` 위아래 8px로 44px 이상). 히어로·`#how` 단추는 `.btnLg`다.
+  - `.btnSm`은 단추 크기 한 벌의 기준값으로 남는다. AC-212.2 시험이 `ds.button.primarySmall`과 같은 값인지, 메뉴 단추 시험(REQ-207)이 `.inner .start`의 768px 미만 크기와 같은지 본다.
 
 ### REQ-213: 인증 화면 틀 (`AuthFrame`)
 - AC-213.1: Given `<AuthFrame>`(aside 없음: 가입 신청·승인 대기·거절·오류 화면), When 그리면, Then `.app-ui` 뿌리(surface 바탕) 안에 480px 한 칸(가운데, 768px 미만 좌우 16px)이 있다.
@@ -317,27 +328,13 @@
     - `[서비스 이름]`과 세로 구분선이 없다.
   - `<main>`: 감싸개 `max-w-7xl`·가운데·좌우 24px·위 24px·아래 48px(768px 미만 좌우 16·위 16·아래 32).
 - AC-218.2: Given `TabBar`, When 그리면, Then 아래와 같다.
-  - 탭 줄 44px·surface·아래 1px line. 안쪽 줄은 지금처럼 nav의 첫 자식 하나(`flex w-max min-w-full items-stretch`)이고, 감싸개를 따로 더하지 않는다. 그 줄에 `px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl`을 더해 1024px 이상에서 위쪽 띠와 같은 폭·여백이 된다. 첫 탭 글자가 로고 왼쪽 끝과 맞는다.
+  - 탭 줄 44px·surface·아래 1px line. 안쪽 줄은 지금처럼 nav의 첫 자식 하나(`flex w-max min-w-full items-stretch`)이고, 감싸개를 따로 더하지 않는다. 그 줄에 `px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl`을 더해 1024px 이상에서 위쪽 띠와 같은 폭·여백이 된다. 첫 탭 글자가 로고 왼쪽 끝과 맞는다(같은 줄의 `[&>:first-child]:-ml-3`, 모든 폭).
   - 탭: 좌우 12px·body 500·ink-2 → 올림 ink. 지금 탭은 ink 600 + 아래 2px accent 밑줄(좌우 12px 안쪽). 준비 중 탭은 faint 글자(같은 크기, 누를 수 없는 단추 그대로).
   - 툴팁 "준비 중": ink 바탕·surface 글자 caption 500·좌우 8px·위아래 6px·`rounded-float`·`shadow-float`, 탭 아래 붙어 나온다(1024px 이상).
   - 관리자: 지금과 같은 세로 구분선(`w-px h-4 bg-line`, 가운데) 뒤 [관리자].
   - 1024px 미만: 지금처럼 띠 안에서 옆으로 밀린다(얇은 스크롤바). 탭 높이는 모든 폭에서 44px.
   - 탭 순서·링크·지금 탭 판단은 그대로다.
 - AC-218.3: Given `AccountMenu`, When 그리면, Then 계정 단추는 `ds.button.secondarySmall`(32px) 모양에 사람 아이콘 16 + 이메일 + 아래 화살표다. 메뉴는 `ds.layer`(8px·그림자)·폭 240px다. 768px 미만은 44×44 아이콘 단추(테두리 없음, aria-label에 이메일)다. 여닫기·초점·[로그아웃] 동작은 그대로다.
-
-### REQ-219: 대시보드 틀·빈 상태 (지어낸 숫자 없음)
-- AC-219.1: Given `/dashboard`(자료 없음), When 그리면, Then 본문이 이 순서다.
-  - h1 "대시보드"(title 600). "예시" 칩이 없다.
-  - 도구 줄(위 16px): 왼쪽 일·주·월 나눔 단추 묶음(`role="group"` `aria-label="기간 단위"`, 단추 3개 모두 `disabled`, 32px(768px 미만 44px), 1px line-strong, 4px) · 기간 단추 "기간 없음"(달력 14px, `ds.button.secondarySmall`, `disabled`). 오른쪽 [파일 올리기](올리기 14px + `ds.chip.neutral` "준비 중", `disabled`, 768px 미만 숨김).
-  - 768px 미만: 도구 줄 아래 "올린 자료 없음"(small muted).
-  - KPI 줄(위 16px): 패널 하나 안에 `KpiStat` 4개(환자 수 명 · 신환 명 · 재진 명 · 신환율 %) 모두 값 null → "–" + "자료 없음". 768px 이상 4칸, 미만 2×2.
-  - 빈 패널(위 16px, 768px 이상 높이 380px): aria-hidden 가로 선 4개(맨 아래 line-strong) 위에 안내(가운데, surface 바탕, 최대 520px): "아직 볼 숫자가 없습니다"(subtitle) · "EMR에서 내려받은 통계 파일을 올리면 이곳에 환자 수, 신환·재진, 재방문율이 그려집니다."(ink-2) · "파일 올리기는 준비 중입니다."(small muted) + 768px 이상에서만 " 준비되면 오른쪽 위 [파일 올리기]로 올립니다."
-- AC-219.2: Given 대시보드 마크업, When 보면, Then 지어낸 숫자가 없다.
-  - `DashboardView` 마크업의 보이는 글자에 숫자(0~9)가 없다(KPI는 "–"). 위쪽 띠의 한국 시각은 앱 틀 몫이라 여기에 들지 않는다.
-  - `svg`는 아이콘(달력·올리기·화살표)뿐이다. 차트·Sparkline·"예시"가 없다.
-  - 페이지는 Supabase·문지기·`fetch`·Worker를 부르지 않는다. 앱 틀을 한 번 더 그리지 않는다.
-  - 누를 수 있는 것(막히지 않은 `button`·`a`·`input`)이 없다.
-- AC-219.3: Given `src/app/(app)/dashboard/page.tsx`, When 읽으면, Then `<DashboardView />` 하나를 돌려준다. "오늘 + 날짜" 제목이 없고 `todayTitle.ts`(와 시험)는 지운다. `export const dynamic = 'force-dynamic'`은 그대로다.
 
 ### REQ-220: 관리자
 - AC-220.1: Given `AdminApplications`(PC), When 그리면, Then 아래와 같다.
@@ -353,27 +350,30 @@
 - AC-220.3: Given 거절 확인 창, When 열면, Then `ds.layer`(8px·그림자)·폭 400px·안쪽 24px, 뒤 가림막 ink 36%, [취소] `ds.button.secondary` · [거절] `ds.button.danger`(768px 미만 나란히 반씩 44px)다. 문구·초점 동작은 그대로다.
 
 ### REQ-221: 옛 이름 정리
-- AC-221.1: Given 시험 파일 밖 `src/`, When 읽으면, Then 옮기는 동안 둔 옛 이름이 없다.
-  - Tailwind 클래스 `text-table`·`text-tab`·`text-panel`·`text-logo`·`text-title-sm`·`text-kpi`·`text-kpi-sm`·`rounded-card`·`rounded-chip`·`*-ok`·`*-ok-soft`·`*-danger`·`*-danger-soft`·`*-warn`이 없다.
-  - `globals.css`에 옛 별칭(`@theme`의 옛 이름, `:root`의 `--ok`·`--ok-soft`·`--danger`·`--danger-soft`·`--accent-tint`·`--field`·`--content-max`)이 없다.
-  - 옛 모양 묶음 `ui`(`classes.ts`의 `export const ui`)와 그것을 보는 옛 시험이 없다. 앱 화면·차트·미리보기는 모두 `ds`만 쓴다. `ds`에 어느 화면도 쓰지 않는 키가 없다.
-- AC-221.2: Given 규칙 시험, When 돌리면, Then 검사 목록 없이 전체를 본다: AC-204.6은 앱 화면 폴더 전체 + `components/charts`·`components/preview`, AC-204.7은 REQ-213~REQ-220의 모든 화면, AC-212.1은 랜딩 폴더 전체.
+- AC-221.1: Given 시험 파일 밖 `src/`(대시보드 두 폴더 `src/components/dashboard/`·`src/app/(app)/dashboard/`는 빼고), When 읽으면, Then 옮기는 동안 둔 옛 이름이 없다.
+  - Tailwind 클래스 `text-table`·`text-tab`·`text-panel`·`text-logo`·`text-title-sm`·`text-kpi`·`text-kpi-sm`·`rounded-card`·`rounded-chip`·`*-ok`·`*-ok-soft`·`*-danger`·`*-danger-soft`·`*-warn`이 없다. 남기는 `ui` 세 키의 값(`classes.ts`) 안의 `rounded-card`·`text-panel`은 이 검사에서 뺀다.
+  - `globals.css`에 옛 별칭(`@theme`의 옛 이름, `:root`의 `--ok`·`--ok-soft`·`--danger`·`--danger-soft`·`--accent-tint`·`--field`·`--content-max`)이 없다. 예외는 대시보드 빈 자리가 아직 쓰는 `@theme` 별칭 넷이다: `--radius-card`·`--text-table`·`--text-panel`·`--text-title-sm`(글자 셋은 `--line-height`까지). 값은 지금 그대로다(`var(--r-control)`·small·subtitle·title 토큰).
+  - 옛 모양 묶음 `ui`(`classes.ts`의 `export const ui`)에는 대시보드 빈 자리가 쓰는 세 키 `card`·`panel`·`panelTitle`만 남고, 값은 한 글자도 바뀌지 않는다. `ui`를 보는 옛 시험(TASK-23 '고치는 옛 시험'에 적은 `classes.test.ts`의 옛 `ui` 모양·휴대폰 목록 시험)이 없다. `ui.` 참조는 `classes.ts`와 대시보드 두 폴더에만 있다. 대시보드 두 폴더 밖의 앱 화면·차트·미리보기는 모두 `ds`만 쓴다. `ds`에 어느 화면도 쓰지 않는 키가 없다.
+- AC-221.2: Given 규칙 시험, When 돌리면, Then 검사 목록 없이 전체를 본다: AC-204.6은 앱 화면 폴더 전체(대시보드 두 폴더 빼고) + `components/charts`·`components/preview`, AC-204.7은 REQ-213~REQ-218·REQ-220의 모든 화면(대시보드 본문 없음), AC-212.1은 랜딩 폴더 전체.
+  - 대시보드 두 폴더를 빼는 것은 이 AC의 두 검사(REQ-204의 클래스 규칙·상자 겹침)와 AC-221.1뿐이다. 16진수 색 검사(REQ-202)·굵기 검사(REQ-203)·그대로 두는 옛 앱 화면 색 검사(`classes.test.ts`, auth 명세)는 그 두 폴더도 보고, 지금 파일 그대로 통과한다.
 - AC-221.3: Given `src/components/common/LogoMark.tsx` 주석과 `src/comments.test.ts`, When 읽으면, Then 쓰는 곳 크기 목록이 지금과 같다(랜딩 메뉴 24·바닥글 18·미리보기 18·앱 틀 24·인증 틀 28, 로그인 좁은 화면은 같은 28을 클래스로 24로 줄임).
 
 ### REQ-222: 세 폭 화면 확인
 - AC-222.1: Given 127.0.0.1 개발 서버(가짜 Supabase `docs/mockups/b2b-redesign/tools/stub.mjs`, 가짜 세션 쿠키, 모션 줄이기), When 아래 화면을 390×844·768×1024·1440×900에서 열면, Then 모든 화면·폭에서 아래가 맞다.
-  - 화면: `/` · `/login` · `/login?error=1` · `/signup`(신청 전) · `/pending`(대기·거절) · `/dashboard` · `/admin`.
+  - 화면: `/` · `/login` · `/login?error=1` · `/signup`(신청 전) · `/pending`(대기·거절) · `/dashboard` · `/admin`. `/dashboard`는 앱 틀(위쪽 띠·탭 줄)을 보려고 연다. 본문은 이 명세가 고치지 않은 빈 자리("오늘 + 날짜" 제목·준비 중 상자)이고 새 대시보드 본문을 기대하지 않는다.
   - 가로 스크롤이 없다(`document.documentElement.scrollWidth`가 창 폭과 같다).
   - 글자의 계산된 `font-family` 첫 글꼴이 Pretendard(next/font 이름)이고 `document.fonts.check('600 16px <그 이름>')`이 참이다.
   - 화면을 600px 내린 뒤에도 랜딩 위쪽 메뉴, 앱의 위쪽 띠 + 탭 줄이 맨 위(top 0)에 붙어 있다.
   - 랜딩 390의 전체 높이는 5화면(4,220px) 이하다.
   - 차트 눈금 글자의 계산된 크기는 12px이다.
 - AC-222.2: Given 세 폭 사진, When 승인 시안(게시본, 같은 폭)과 나란히 보면, Then 섹션 순서·칸 수·상자 모양·색·글자 단계·정렬 선이 같고 겹침·잘림이 없다. 다른 곳은 그 화면 파일 안에서 고치고 보고에 적는다.
+  - `/dashboard`는 앱 틀만 시안과 견준다. 본문이 시안의 대시보드 본문(`dashboardPC`·`dashboardPhone`)과 다른 것은 고치지 않고 보고에 "다음 대시보드 명세"로 적는다. 본문에도 겹침·잘림·가로 넘침은 없어야 한다.
 - AC-222.3: Given 확인이 끝나면, When 포트를 보면(`ss -ltnp`), Then 띄운 서버·가짜 Supabase·브라우저가 모두 멈춰 있다. 사진·기록에 진짜 쿠키·토큰이 없다(실제 계정으로 로그인하지 않는다). 스크립트와 사진은 scratchpad에만 둔다.
 
 ## 범위 밖
 - 기능·동작·API·서버 경로·인증·승인 로직·Supabase 표와 RLS·middleware·`lib/analytics` 계산
 - 대시보드에 실제 숫자 연결(파일 올리기, Worker 결과 그리기), 재방문 선 그래프·처방 표·늘고 준 처방·동네 패널의 실제 화면, 차트 툴팁(마우스 올림 상자). 다음 대시보드 명세에서 한다
+- 대시보드 본문 다시 디자인(제목 "대시보드"·도구 줄·KPI 줄·빈 상태, `DashboardView`, `DashboardEmpty`·`todayTitle` 지우기). 옛 REQ-219·TASK-21이었고 2026-10-31 사용자 결정으로 다음 대시보드 명세로 옮겼다. 이 명세는 `src/components/dashboard/*`·`src/app/(app)/dashboard/*`를 고치지 않는다
 - 서비스 이름·문의 메일 정하기, 다크 모드
 - 새 npm 패키지(차트·UI 라이브러리), Playwright E2E 시험 추가
 - 옛 명세(`specs/landing/`·`specs/auth/`·`specs/landing-v2/`)와 옛 시안 폴더 고치기

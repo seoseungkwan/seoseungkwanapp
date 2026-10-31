@@ -9,15 +9,18 @@
 > - 시험부터 고치고 RED를 본다(`tdd-run TASK-n --expect red`). 시험 이름에 새 AC ID를 넣는다.
 > - "고치는 옛 시험"에 적힌 시험만 지우거나 기대값을 고친다. 목록 밖 시험은 이름·본문을 그대로 두고 통과해야 한다(AC-201.3). 목록 밖 시험을 고쳐야 할 것 같으면 멈추고 보고한다.
 > - 시험 파일 맨 위의 그리기 준비(import·그려 둔 변수·짜임 정규식)를 바꾸는 일과, 시험의 `ui.*` 참조를 `ds.*`로 바꾸는 일(design.md '공통 모양 옮기기' 표)은 그 TASK "고치는 옛 시험"의 한 항목이다. 참조만 바꾼 시험은 기대값을 바꾼 것으로 치지 않는다.
-> - 앱 화면 TASK(15~22)는 그 화면 컴포넌트의 `ui.*`를 `ds.*`로 바꾼다. `ui` 묶음 자체는 TASK-23 전까지 고치지 않는다.
+> - 앱 화면 TASK(15~20·22)는 그 화면 컴포넌트의 `ui.*`를 `ds.*`로 바꾼다. `ui` 묶음 자체는 TASK-23 전까지 고치지 않는다.
+> - 대시보드 두 폴더(`src/components/dashboard/*`·`src/app/(app)/dashboard/*`)는 어느 TASK도 고치지 않는다(2026-10-31 사용자 결정, design.md '대시보드 본문 빼기'). 그 시험은 그대로 통과해야 한다.
 > - 고친 화면의 파일은 `ui/classes.test.ts`의 검사 목록(AC-204.6)과 상자 겹침 검사(AC-204.7, 앱 화면) 또는 `landing/rules.test.ts`의 검사 목록(AC-212.1)에 더한다.
 > - `src/comments.test.ts`(landing-v2 AC-113.2)가 그대로 통과해야 한다. AppShell·AuthFrame 주석에 "한 색"·"글자색 ink를 따"·"자리표시"를 쓰지 않고, 로고 주석은 "LogoMark 고정 두 색(C③)"을 말한다. 주석에 색 값을 쓰지 않는다.
 > - 끝 조건: `npm test`·`npm run lint`(경고 0)·`npm run build` 통과.
 >
-> **할 순서**: Phase 1(TASK-1~7) → Phase 2(TASK-8~14) → Phase 3(TASK-15~19) → Phase 4(TASK-20~21) → Phase 5(TASK-22) → Phase 6(TASK-23~24).
+> **할 순서**: Phase 1(TASK-1~7) → Phase 2(TASK-8~14) → Phase 3(TASK-15~19) → Phase 4(TASK-20) → Phase 5(TASK-22) → Phase 6(TASK-23~24).
 > 각 Phase 끝에 오케스트레이터가 `python3 ~/.claude/harness/bin/verify`를 돌리고, 바뀐 화면을 1440·390에서 찍어 사용자에게 보인다(TASK가 아님).
 > - 찍는 법은 TASK-24와 같다(가짜 Supabase `docs/mockups/b2b-redesign/tools/stub.mjs`, 스크립트·사진은 scratchpad).
-> - Phase 1~5 사진은 중간 상태다. 아직 안 고친 화면은 새 토큰 값과 옛 배치가 섞여 보인다(design.md 위험).
+> - Phase 1~5 사진은 중간 상태다. 아직 안 고친 화면은 새 토큰 값과 옛 배치가 섞여 보인다(design.md 위험). `/dashboard` 본문은 Phase 6 뒤에도 그렇다.
+>
+> **2026-10-31 명세 고침(승인 뒤)**: TASK-21(대시보드 틀·빈 상태)을 뺐다. 대시보드는 다음 명세에서 따로 계획한다. 번호 TASK-21·REQ-219는 비워 두고 뒤 번호는 당기지 않는다. 함께 고친 곳: TASK-14(`.btnSm` 예외, AC-212.4), TASK-23(대시보드가 쓰는 옛 이름 남기기·검사에서 빼기), TASK-24(Files·대시보드 사진 기대).
 
 ## Phase 1 — 디자인 기초: 토큰·글꼴·공통 모양·차트 부품
 
@@ -262,11 +265,11 @@
   - 새 시험:
     - `bottom.test.tsx`: AC-211.1.
     - `page.test.tsx`: AC-211.2·AC-211.3, AC-212.3(페이지 전체 상자 겹침·섹션당 상자 하나 이하), AC-212.4.
-    - `rules.test.ts`: `CHECKED`를 랜딩 폴더 전체 읽기로 바꾼다(AC-212.1). `base.module.css`의 모든 클래스가 쓰이는지 본다(AC-212.4).
+    - `rules.test.ts`: `CHECKED`를 랜딩 폴더 전체 읽기로 바꾼다(AC-212.1). `base.module.css`의 모든 클래스가 쓰이는지 본다(AC-212.4). 예외 목록은 `.btnSm` 하나다(AC-212.2·AC-207.2 시험의 32px 기준값, requirements AC-212.4).
   - 구현:
     - `HowSection`을 다시 쓴다(시작하기 단추를 합침).
     - `page.tsx`에서 `StartSection`을 빼고 그 두 파일을 지운다.
-    - `base.module.css`에서 쓰지 않는 옛 클래스를 지운다.
+    - `base.module.css`에서 쓰지 않는 옛 클래스를 지운다. `.btnSm`은 쓰는 곳이 없어도 남긴다(AC-212.4 예외).
   - 고치는 옛 시험:
     - `bottom.test.tsx`
       - 'AC-001.1: section#privacy · section#how · section#start · footer다' → `#start` 없이.
@@ -380,7 +383,9 @@
   - [다시 시도]·[로그아웃]·오류 내용 숨김·단추 줄(`flex-wrap`·`gap-2`·`flex-[1_1_160px]`) 시험은 그대로 통과해야 한다.
   - 오류 카드를 쓰는 로그인·가입·관리자 시험도 고치지 않고 통과해야 한다.
 
-## Phase 4 — 앱 틀·대시보드
+## Phase 4 — 앱 틀
+
+> TASK-21(대시보드 틀·빈 상태)은 2026-10-31 사용자 결정으로 뺐다(위 '명세 고침'). Phase 4는 TASK-20 하나다.
 
 ## TASK-20: 앱 틀 (AppShell·TabBar·AccountMenu·KstClock)
 - REQ: REQ-218
@@ -410,23 +415,6 @@
     - `LogoMark.test.tsx` 'AC-103.2: AppShell(26)·AuthFrame(26)·SiteHeader(22)는…'·'AC-103.2: 그린 화면마다 로고 svg…가 하나이고…' → AppShell 기대 크기만 24.
     - 나머지 시험의 `ui.*` → `ds.*` 참조(예: 계정 메뉴 `ui.layer`).
   - 메뉴(menu)·탭 링크·관리자 탭·툴팁 Esc/올림/누름·'AC-008.7: 1024px 미만에서는 띠 안에서 옆으로 밀린다'·계정 메뉴 여닫기·[로그아웃]·한국 시각 시험과 `(app)/layout.test.tsx`는 그대로 통과해야 한다.
-
-## TASK-21: 대시보드 틀·빈 상태 (DashboardView)
-- REQ: REQ-219
-- Files: src/components/dashboard/DashboardView.tsx, src/components/dashboard/DashboardView.test.tsx, src/components/dashboard/DashboardEmpty.tsx, src/components/dashboard/DashboardEmpty.test.tsx, src/components/dashboard/todayTitle.ts, src/components/dashboard/todayTitle.test.ts, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/ui/classes.test.ts
-- Tests: src/components/dashboard/DashboardView.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/ui/classes.test.ts
-- TDD: required — 먼저 `DashboardView.test.tsx`를 쓰고 RED를 본다.
-  - AC-219.1·AC-219.2: 순서·막힌 단추 `disabled`·KPI "–"·빈 안내 문구·숫자 없음·누를 것 없음·상자 겹침.
-  - `page.test.tsx`: AC-219.3.
-  - 검사 목록에 `DashboardView.tsx`를 더한다.
-  - 구현: `DashboardView`는 `KpiStat`(value null)·`Icon`·`ds.*`로 그린다(`ui.*`는 쓰지 않는다). `page.tsx`는 `<DashboardView />`를 돌려준다(`dynamic` 줄 그대로).
-  - 고치는 옛 시험:
-    - `DashboardEmpty.test.tsx`(옛 AC-009.1·009.2 모양 시험)와 `todayTitle.test.ts`: 파일째 지운다(사용자 승인 시안의 제목 "대시보드", design.md). `DashboardEmpty.tsx`·`todayTitle.ts`도 지운다.
-    - `dashboard/page.test.tsx`
-      - 'AC-009.1: 제목은 …'·'AC-009.1: 한국 자정 경계 …' → 지운다.
-      - 'AC-009.1: 날짜는 요청 때 계산한다 — force-dynamic' → 'AC-219.3: force-dynamic 그대로'.
-      - 'AC-009.2: 화면은 빈 자리(제목 + 안내 상자 하나) 그대로다…' → `DashboardView` 하나.
-      - 'AC-009.2: 앱 틀을 한 번 더 그리지 않는다'·'AC-009.2: 숫자·자료를 읽지 않는다'는 그대로다.
 
 ## Phase 5 — 관리자
 
@@ -462,22 +450,27 @@
 - Files: src/app/globals.css, src/app/theme.test.ts, src/app/fonts.test.ts, src/components/ui/classes.ts, src/components/ui/classes.test.ts, src/components/common/LogoMark.tsx, src/comments.test.ts, docs/UI_GUIDE.md
 - Tests: src/app/theme.test.ts, src/app/fonts.test.ts, src/components/ui/classes.test.ts, src/comments.test.ts
 - TDD: required — 시험부터 고치고 RED를 본다.
+  - **대시보드 두 폴더는 고치지 않고 남긴다**(2026-10-31, design.md '대시보드 본문 빼기'). `src/components/dashboard/*`·`src/app/(app)/dashboard/*`의 시험(`DashboardEmpty.test.tsx`·`todayTitle.test.ts`·`page.test.tsx`)이 한 글자도 고치지 않고 통과해야 한다. 그래서 아래를 지우지 않는다.
+    - `ui`의 세 키 `card`·`panel`·`panelTitle`(값 그대로). `DashboardEmpty.tsx`가 `ui.card`·`ui.panelTitle`을, 그 시험이 `ui.panel`·`ui.card`·`ui.panelTitle`과 `rounded-card` 개수를 본다.
+    - `globals.css` `@theme`의 별칭 넷: `--radius-card`, `--text-table`·`--text-panel`·`--text-title-sm`(각 `--line-height` 포함). 소스가 바로 `max-md:text-title-sm`·`text-table`을 쓰고, 세 키가 `rounded-card`·`text-panel`을 쓴다.
   - 새 시험:
-    - `theme.test.ts`: AC-221.1(옛 클래스 이름이 `src/`에 없음, `@theme`·`:root` 옛 별칭 없음).
-    - `fonts.test.ts`: AC-203.3(굵기 400·500·600만, `tabular-nums`).
-    - `classes.test.ts`: AC-221.1(`export const ui` 없음, `src/`에 `ui.` 참조 없음, 쓰지 않는 `ds` 키 없음), AC-221.2(검사 목록을 폴더 전체로, 상자 겹침은 REQ-213~220 화면 전부).
+    - `theme.test.ts`: AC-221.1(옛 클래스 이름이 `src/`에 없음 — 대시보드 두 폴더와 남는 `ui` 세 키 값은 빼고 본다, `@theme`·`:root` 옛 별칭은 위 넷만 남음).
+    - `fonts.test.ts`: AC-203.3(굵기 400·500·600만, `tabular-nums`). 대시보드 두 폴더도 본다(지금 `font-semibold`뿐이라 통과).
+    - `classes.test.ts`: AC-221.1(`export const ui`의 키가 `card`·`panel`·`panelTitle` 셋뿐, `ui.` 참조는 `classes.ts`와 대시보드 두 폴더에만, 쓰지 않는 `ds` 키 없음), AC-221.2(AC-204.6 검사 목록을 폴더 전체로 — 대시보드 두 폴더와 남는 `ui` 세 키 값은 빼고, 상자 겹침은 REQ-213~218·220 화면 전부 — 대시보드 없음).
     - `comments.test.ts`: AC-221.3(쓰는 크기 집합과 주석 목록이 같다).
   - 구현:
-    - `globals.css`에서 별칭을 지운다.
-    - `classes.ts`에서 옛 `ui` 묶음과 `ds`의 쓰지 않는 키를 지운다.
+    - `globals.css`에서 별칭을 지운다. 위 넷은 남기고 주석을 "대시보드 빈 자리가 쓴다 — 다음 대시보드 명세에서 지움"으로 바꾼다.
+    - `classes.ts`에서 옛 `ui`의 세 키 밖 키와 `ds`의 쓰지 않는 키를 지운다. 세 키 값은 바꾸지 않는다.
     - `LogoMark.tsx` 주석에서 옛 크기를 지운다(코드 그대로).
-    - UI_GUIDE를 구현과 다시 맞춘다.
-  - 고치는 옛 시험(`classes.test.ts`): 옛 `ui`를 보는 describe 'AC-013.3'(모서리·그림자·강조색·단추·칩 색)과 'AC-013.4'의 `ui` 목록 시험 → 지운다(같은 내용은 `ds`의 AC-204.1~AC-204.5가 맡음). 'AC-013.2'는 그대로다.
-  - 지우는 별칭이나 `ui`를 아직 쓰는 화면이 있으면 고치지 말고 멈춰 보고한다(그 화면 TASK가 덜 된 것이다).
+    - UI_GUIDE를 구현과 다시 맞춘다. 대시보드 빈 상태 설명(`## 빈 상태`의 `/dashboard` 줄들, 막힘 줄의 대시보드 단추, 휴대폰에서 빠지는 것의 대시보드 [파일 올리기])은 "다음 대시보드 명세에서 정한다. 지금 `/dashboard`는 옛 빈 자리 그대로"로 바꾼다.
+  - 고치는 옛 시험
+    - `classes.test.ts`: 옛 `ui`를 보는 describe 'AC-013.3'(모서리·그림자·강조색·단추·칩 색)과 'AC-013.4'의 `ui` 목록 시험 → 지운다(같은 내용은 `ds`의 AC-204.1~AC-204.5가 맡음). 파일 맨 위 `ui`로 만든 변수(`ALL`·`BUTTONS`·`CHIPS`)도 함께 지운다(그리기 준비). 'AC-013.2'는 그대로다(대시보드 두 폴더도 계속 본다).
+    - `theme.test.ts`: TASK-3이 넣은 AC-202.1·AC-202.2 시험이 보는 옛 별칭 표(파일 맨 위 `LANDING_ALIASES`·`OLD_COLORS`·`OLD_RADII`·`OLD_TEXT`)를 남는 넷(`OLD_RADII`의 `card`, `OLD_TEXT`의 `table`·`panel`·`title-sm`)만 두게 줄인다(`LANDING_ALIASES`·`OLD_COLORS`는 빈다, 그리기 준비). 이름에 지운 별칭이 적힌 시험('… 옛 별칭 ok·ok-soft·danger·danger-soft·warn은 …'·'… 옛 card·chip은 control …')은 이름만 남는 별칭에 맞추고, 'AC-202.2: 실제 Tailwind로 돌리면 …'에서 지운 별칭 `text-ok`(클래스 목록과 `.text-ok` 기대 줄)를 뺀다. `rounded-card`·남는 글자 별칭 기대는 그대로다. 나머지 기대는 그대로다.
+  - 대시보드 두 폴더 밖에서 지우는 별칭이나 `ui`를 아직 쓰는 화면이 있으면 고치지 말고 멈춰 보고한다(그 화면 TASK가 덜 된 것이다).
 
 ## TASK-24: 세 폭 화면 확인과 고치기
 - REQ: REQ-222, REQ-201
-- Files: src/components/landing/*.module.css, src/components/landing/*.tsx, src/components/auth/*.tsx, src/components/common/*.tsx, src/components/shell/*.tsx, src/components/dashboard/*.tsx, src/components/admin/AdminApplications.tsx, src/components/charts/*.tsx, src/components/preview/*.tsx, src/components/ui/classes.ts, src/app/globals.css
+- Files: src/components/landing/*.module.css, src/components/landing/*.tsx, src/components/auth/*.tsx, src/components/common/*.tsx, src/components/shell/*.tsx, src/components/admin/AdminApplications.tsx, src/components/charts/*.tsx, src/components/preview/*.tsx, src/components/ui/classes.ts, src/app/globals.css
 - TDD: exempt — 화면 측정 작업이라 먼저 쓸 실패 시험이 없다. 새 로직을 만들지 않고 클래스·CSS 값만 맞춘다.
   - **서버.**
     - 저장소를 scratchpad로 `git archive`해서 `next dev -H 127.0.0.1`로 띄운다(`devIndicators` 끔).
@@ -487,10 +480,11 @@
     - `@playwright/test` 크로미움, 모션 줄이기, `trace` 끔.
     - AC-222.1의 화면 8개를 390×844·768×1024·1440×900에서 전체·첫 화면으로 찍는다.
     - 같은 폭의 시안(게시본, 1440·390)과 나란히 놓는다.
+    - `/dashboard`는 앱 틀(위쪽 띠·탭 줄)만 시안과 견준다. 본문은 이 명세가 고치지 않은 옛 빈 자리("오늘 + 날짜" 제목·준비 중 상자)이고, 시안의 대시보드 본문과 다른 것은 고치지 않고 보고에 "다음 대시보드 명세"로 적는다(AC-222.2). 대시보드 두 폴더는 Files에 없다.
   - **측정(AC-222.1).** 가로 넘침, 글꼴 이름·`document.fonts.check`, 600px 내린 뒤 붙는 띠의 top, 랜딩 390 높이, 차트 눈금 글자 크기. 랜딩 메뉴 링크 4개를 눌러 섹션 제목이 메뉴에 가리지 않는지도 본다.
   - **고치기.** 어긋난 곳은 그 화면 파일 안에서 클래스·CSS 값만 고치고 `verify`를 다시 돌린다.
     - 시험 기대값을 바꿔야 하는 수정이면 고치지 말고 멈춰 보고한다.
     - 고친 점은 보고에 적는다.
-  - **범위 확인(AC-201.1).** `git diff --name-only 6becd49 -- src/app/api src/app/auth src/lib src/workers src/types src/middleware.ts supabase package.json package-lock.json eslint.config.mjs postcss.config.mjs next.config.ts vercel.json`이 비어 있는지 본다.
+  - **범위 확인(AC-201.1).** `git diff --name-only 6becd49 -- src/app/api src/app/auth src/lib src/workers src/types src/middleware.ts supabase src/components/dashboard 'src/app/(app)/dashboard' package.json package-lock.json eslint.config.mjs postcss.config.mjs next.config.ts vercel.json`이 비어 있는지 본다.
   - **정리(AC-222.3).** 서버·가짜 Supabase·브라우저를 모두 멈추고 `ss -ltnp`로 확인한다. 사진·스크립트는 scratchpad에만 둔다.
   - **끝 조건.** 세 폭 사진을 사용자에게 보이고, 운영 배포 여부를 묻는다(배포는 사용자 OK 뒤 따로).
