@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { Icon } from '@/components/common/Icon'
 import { LogoMark } from '@/components/common/LogoMark'
 import base from './base.module.css'
 import HowSection from './HowSection'
@@ -27,10 +28,6 @@ const textOf = (html: string) =>
     .replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
     .replace(/\s+/g, ' ')
     .trim()
-// 태그를 빈칸 없이 지운 글자 (&#x27; 같은 글자는 textOf처럼 되돌린다). 빈칸을 모으지 않는다
-// → <span> 앞뒤 띄어쓰기가 사라지거나 늘면 걸린다(AC-112.2)
-const plainOf = (html: string) =>
-  html.replace(/<[^>]+>/g, '').replace(/&#x27;|&quot;|&lt;|&gt;|&amp;/g, (e) => ENTITIES[e])
 // <a> 링크 목록: href와 글자
 const linksOf = (html: string) =>
   [...html.matchAll(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => ({ href: m[1], text: textOf(m[2]) }))
@@ -49,7 +46,6 @@ describe('AC-005.1: 개인정보 문구', () => {
     const h2 = privacy.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/)
     expect(h2).not.toBeNull()
     expect(textOf(h2![1])).toBe('환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다')
-    expect(h2![1]).toMatch(/^환자 개인정보는<br\/>/)
   })
 
   it('AC-005.1: 큰 숫자 "0"과 단위 "건"', () => {
@@ -125,175 +121,169 @@ function classCheck(html: string, modules: Array<[sample: string, file: string]>
   return { checked, missing }
 }
 
-// section#privacy > .wrap.stack > .top(.head(h2 · p) + .card.zero(p 0건 · p 설명)) + .flow + ul(약속 4개)
-const PRIV_SHAPE =
-  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([\s\S]*?)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<div\b[^>]*>)(<p\b[^>]*>)([\s\S]*?)<\/p>(<p\b[^>]*>)([\s\S]*?)<\/p><\/div><\/div>(<div\b[^>]*>)([\s\S]*)<\/div>(<ul\b[^>]*>)([\s\S]*?)<\/ul><\/div><\/section>$/
-// 흐름 카드: .node > .nodeHead(svg + h3) + p (+ 첫 카드만 .stop(제목 span(svg + 글) + 항목 span))
-const NODE_SRC =
-  '<div\\b[^>]*><div\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg><h3\\b[^>]*>[^<]*</h3></div><p\\b[^>]*>[^<]*</p>' +
-  '(?:<div\\b[^>]*><span\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg>[^<]*</span><span\\b[^>]*>[^<]*</span></div>)?</div>'
-// 연결: .link(aria-hidden) > 화살표 선 span + 칩 span
-const LINK_SRC = '<div\\b[^>]*><span\\b[^>]*></span><span\\b[^>]*>[^<]*</span></div>'
-const FLOW_SHAPE = new RegExp(`^(${NODE_SRC})(${LINK_SRC})(${NODE_SRC})(${LINK_SRC})(${NODE_SRC})$`)
-const NODE_PARTS = new RegExp(
-  '^(<div\\b[^>]*>)(<div\\b[^>]*>)(<svg\\b[^>]*>)[\\s\\S]*?</svg>(<h3\\b[^>]*>)([^<]*)</h3></div>(<p\\b[^>]*>)([^<]*)</p>' +
-    '(?:(<div\\b[^>]*>)(<span\\b[^>]*>)(<svg\\b[^>]*>)[\\s\\S]*?</svg>([^<]*)</span>(<span\\b[^>]*>)([^<]*)</span></div>)?</div>$',
-)
-const LINK_PARTS = /^(<div\b[^>]*>)(<span\b[^>]*>)<\/span>(<span\b[^>]*>)([^<]*)<\/span><\/div>$/
-// 약속 하나: <li>(h3 + p). p 안에는 줄바꿈을 막는 <span> 하나까지만 받는다(<br> 등 다른 태그는 없다).
-// <span>은 약속 3에만 있고 나머지 세 <p>는 태그 없는 글자뿐이다(AC-112.2에서 따로 본다)
-const LIST_ITEM =
-  /(<li\b[^>]*>)(<h3\b[^>]*>)([^<]*)<\/h3>(<p\b[^>]*>)([^<]*(?:<span\b[^>]*>[^<]*<\/span>[^<]*)?)<\/p><\/li>/g
+// ---------- 개인정보 섹션의 짜임 (specs/b2b-redesign AC-210.2, 시안 screens.mjs landingPC·landingPhone #privacy) ----------
 
-describe('AC-110.1: 개인정보 섹션의 짜임', () => {
+// 여는 태그 하나: 태그 이름 · aria-hidden · class 목록 (middle.test.tsx와 같은 방식)
+const openTags = (html: string) =>
+  [...html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/g)].map((m) => ({
+    tag: m[1],
+    hidden: /\baria-hidden="true"/.test(m[2]),
+    classes: classesOf(m[0]),
+  }))
+// 모듈 CSS에서 네 변 테두리(border: 1px …)를 주는 클래스 이름
+const fourSideBorderClasses = (css: string) =>
+  [...css.matchAll(/\.(\w+)\s*\{[^{}]*?(?:^|[;{\s])border\s*:\s*1px\b/gm)].map((m) => m[1])
+// 상자가 될 수 있는 태그(src/testing/boxes.ts BOX_TAGS와 같다)
+const BOX_TAGS = new Set(['div', 'section', 'article', 'ul', 'ol', 'li', 'dl', 'table', 'aside', 'form'])
+
+// section#privacy(canvas 띠) > .wrap > .grid.top(.text(h2 + p) + .zero(p 0건 + p 설명)) + .flow + dl(약속 4개)
+const PRIV_SHAPE =
+  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([^<]*)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<div\b[^>]*>)(<p\b[^>]*>)([\s\S]*?)<\/p>(<p\b[^>]*>)([^<]*)<\/p><\/div><\/div>(<div\b[^>]*>)([\s\S]*)<\/div>(<dl\b[^>]*>)([\s\S]*?)<\/dl><\/div><\/section>$/
+// 흐름 칸: .node > h3(svg + 글) + 설명 p (+ 첫 칸만 멈춤 줄 p(svg + b + span))
+const NODE_SRC =
+  '<div\\b[^>]*><h3\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg>[^<]*</h3><p\\b[^>]*>[^<]*</p>' +
+  '(?:<p\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg><b\\b[^>]*>[^<]*</b><span\\b[^>]*>[^<]*</span></p>)?</div>'
+// 연결: .edge(aria-hidden) > 글 span + 화살표 svg
+const EDGE_SRC = '<div\\b[^>]*><span\\b[^>]*>[^<]*</span><svg\\b[^>]*>[\\s\\S]*?</svg></div>'
+const FLOW_SHAPE = new RegExp(`^(${NODE_SRC})(${EDGE_SRC})(${NODE_SRC})(${EDGE_SRC})(${NODE_SRC})$`)
+const NODE_PARTS = new RegExp(
+  '^(<div\\b[^>]*>)(<h3\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)([^<]*)</h3>(<p\\b[^>]*>)([^<]*)</p>' +
+    '(?:(<p\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)(<b\\b[^>]*>)([^<]*)</b>(<span\\b[^>]*>)([^<]*)</span></p>)?</div>$',
+)
+const EDGE_PARTS = /^(<div\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<svg\b[^>]*>[\s\S]*?<\/svg>)<\/div>$/
+// 약속 하나: div(dt + dd), 안에 태그 없음
+const RULE = /(<div\b[^>]*>)(<dt\b[^>]*>)([^<]*)<\/dt>(<dd\b[^>]*>)([^<]*)<\/dd><\/div>/g
+
+describe('AC-210.2: 개인정보 섹션의 짜임', () => {
   const parts = privacy.match(PRIV_SHAPE)
-  const [, section, wrap, top, head, h2, h2In, lead, leadIn, zero, zeroNum, zeroNumIn, zeroCap, zeroCapIn, flow, flowIn, list, listIn] =
+  const [, section, wrap, top, text, h2, h2In, lead, leadIn, zero, zeroNum, zeroNumIn, zeroCap, zeroCapIn, flow, flowIn, dl, dlIn] =
     parts ?? []
   const flowParts = (flowIn ?? '').match(FLOW_SHAPE)
-  const [, node1, link1, node2, link2, node3] = flowParts ?? []
+  const [, node1, edge1, node2, edge2, node3] = flowParts ?? []
   const nodes = [node1, node2, node3].map((n) => (n ?? '').match(NODE_PARTS))
-  const links = [link1, link2].map((l) => (l ?? '').match(LINK_PARTS))
-  const rules = [...(listIn ?? '').matchAll(LIST_ITEM)]
+  const edges = [edge1, edge2].map((e) => (e ?? '').match(EDGE_PARTS))
+  const rules = [...(dlIn ?? '').matchAll(RULE)]
 
-  it('AC-110.1: section#privacy(.sec, 흰 바탕) > .wrap.stack 안이 윗부분(제목 덩어리 + 0건 카드) → 흐름 → 약속 목록 순서다', () => {
-    expect(parts, 'section > .wrap > .top(.head + .zero) + .flow + ul').not.toBeNull()
+  it('AC-210.2: section#privacy(.sec·.secCanvas 띠) > .wrap 안이 윗부분(.grid .top: .text(h2 + p) + .zero) → 흐름(.flow) → 약속 dl(.rules·.pcOnly) 순서다', () => {
+    expect(parts, 'section > .wrap > .top(.text + .zero) + .flow + dl').not.toBeNull()
     expect(section).toMatch(/\bid="privacy"/)
-    expect(classesOf(section)).toEqual([base.sec])
-    expect(classesOf(wrap)).toEqual(expect.arrayContaining([base.wrap, base.stack]))
-    expect(classesOf(top)).toEqual([privStyles.top])
-    expect(classesOf(head)).toEqual([base.head])
-    expect(classesOf(flow)).toEqual([privStyles.flow])
+    expect(classesOf(section)).toEqual(expect.arrayContaining([base.sec, base.secCanvas]))
+    expect(classesOf(wrap)).toEqual([base.wrap])
+    expect(classesOf(top)).toEqual(expect.arrayContaining([base.grid, privStyles.top]))
+    expect(classesOf(text)).toContain(privStyles.text)
+    expect(classesOf(zero)).toContain(privStyles.zero)
+    expect(classesOf(flow)).toContain(privStyles.flow)
+    expect(classesOf(dl), '약속은 768px 이상만').toEqual(expect.arrayContaining([privStyles.rules, base.pcOnly]))
   })
 
-  it('AC-110.1: h2는 .tH2이고 "환자 개인정보는<br/>절대 병원 PC 밖으로 나가지 않습니다"뿐이다(강조 span 없음), 안내 글은 .tLead다', () => {
-    expect(classesOf(h2)).toEqual([base.tH2])
-    expect(h2In).toBe('환자 개인정보는<br/>절대 병원 PC 밖으로 나가지 않습니다')
-    expect(classesOf(lead)).toEqual([base.tLead])
-    expect(textOf(leadIn ?? '')).toBe('환자 이름·주민번호·차트번호는 서버에도, AI에도 가지 않습니다. 처음부터 그렇게 설계했습니다.')
+  it('AC-210.2: h2는 .tHeading "환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다"(태그 없음)이고 안내 p(.lead)는 지금 문구다', () => {
+    expect(classesOf(h2)).toContain(base.tHeading)
+    expect(h2In).toBe('환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다')
+    expect(classesOf(lead)).toContain(privStyles.lead)
+    expect(leadIn).toBe('환자 이름·주민번호·차트번호는 서버에도, AI에도 가지 않습니다. 처음부터 그렇게 설계했습니다.')
   })
 
-  it('AC-110.1: 0건 카드는 .card.zero 안의 <p>0<span>건</span></p> + "서버와 AI로 보내는<br/>환자 개인정보"다', () => {
-    expect(classesOf(zero)).toEqual(expect.arrayContaining([base.card, privStyles.zero]))
-    expect(classesOf(zeroNum)).toEqual([privStyles.zeroNum])
-    expect(zeroNumIn).toBe('0<span>건</span>')
-    expect(classesOf(zeroCap)).toEqual([privStyles.zeroCaption])
-    expect(zeroCapIn).toBe('서버와 AI로 보내는<br/>환자 개인정보')
+  it('AC-210.2: 0건 덩어리는 <p class="tDisplay zeroNum">0<span class="unit">건</span></p> + "서버와 AI로 보내는 환자 개인정보"(.tSmall .zeroCaption, 태그 없음)다', () => {
+    expect(classesOf(zeroNum)).toEqual(expect.arrayContaining([base.tDisplay, privStyles.zeroNum]))
+    expect(zeroNumIn).toBe(`0<span class="${privStyles.unit}">건</span>`)
+    expect(classesOf(zeroCap)).toEqual(expect.arrayContaining([base.tSmall, privStyles.zeroCaption]))
+    expect(zeroCapIn).toBe('서버와 AI로 보내는 환자 개인정보')
   })
 
-  it('AC-110.1: 흐름은 카드 3개(병원 PC · 브라우저 → 서버 → AI 분석) 사이에 연결 2개가 끼인 순서다', () => {
-    expect(flowParts, '.node · .link · .node · .link · .node').not.toBeNull()
-    for (const [i, n] of nodes.entries()) expect(n, `카드 ${i + 1}`).not.toBeNull()
-    expect(nodes.map((n) => n?.[5])).toEqual(['병원 PC · 브라우저', '서버', 'AI 분석'])
-    expect(nodes.map((n) => n?.[7])).toEqual([
+  it('AC-210.2: 흐름은 칸 3개(병원 PC · 브라우저 → 서버 → AI 분석) 사이에 연결 2개가 끼인 순서이고, 칸 h3(.tSubtitle .nodeTitle)는 16px 아이콘(.nodeIcon) + 이름, 설명 p(.nodeDesc·.pcOnly)는 지금 문구다', () => {
+    expect(flowParts, '.node · .edge · .node · .edge · .node').not.toBeNull()
+    for (const [i, n] of nodes.entries()) expect(n, `칸 ${i + 1}`).not.toBeNull()
+    expect(nodes.map((n) => n?.[4])).toEqual(['병원 PC · 브라우저', '서버', 'AI 분석'])
+    expect(nodes.map((n) => n?.[6])).toEqual([
       '환자 파일을 여기서만 열고 계산합니다.',
       '통계·매출 합계만 저장합니다. 원본 파일은 올라가지 않습니다.',
       '서버가 꺼낸 합계 숫자로만 리포트를 씁니다.',
     ])
-    for (const n of nodes) {
-      const [, card, , , h3, , p] = n ?? []
-      expect(classesOf(card)).toEqual([privStyles.node])
-      expect(classesOf(h3)).toEqual([base.tH3])
-      expect(classesOf(p)).toEqual([base.tBody])
-    }
+    const icons = ['monitor', 'server', 'doc'] as const
+    nodes.forEach((n, i) => {
+      const [, node, h3, svg, , desc] = n ?? []
+      expect(classesOf(node)).toContain(privStyles.node)
+      expect(classesOf(h3)).toEqual(expect.arrayContaining([base.tSubtitle, privStyles.nodeTitle]))
+      expect(svg).toBe(renderToStaticMarkup(<Icon name={icons[i]} className={privStyles.nodeIcon} />))
+      expect(classesOf(desc)).toEqual(expect.arrayContaining([privStyles.nodeDesc, base.pcOnly]))
+    })
   })
 
-  it('AC-110.1: 흐름 카드의 h3 머리는 가운데 정렬 클래스 없이 .nodeHead 하나이고, 20px currentColor 아이콘이 앞에 붙는다', () => {
-    for (const n of nodes) {
-      const [, , nodeHead, svg] = n ?? []
-      expect(classesOf(nodeHead)).toEqual([privStyles.nodeHead])
-      expect(svg).toMatch(/\baria-hidden="true"/)
-      expect(svg).toMatch(/\bwidth="20"/)
-      expect(svg).toMatch(/\bheight="20"/)
-      expect(svg).toMatch(/\bstroke="currentColor"/)
-    }
-  })
-
-  it('AC-110.1: 첫 카드에만 "여기서 멈춤" 상자(.stop > .stopTitle(svg + 글) + .stopItems)가 있다', () => {
-    const [, , , , , , , , stop, stopTitle, stopSvg, stopText, stopItems, stopItemsIn] = nodes[0] ?? []
-    expect(classesOf(stop)).toEqual([privStyles.stop])
-    expect(classesOf(stopTitle)).toEqual([privStyles.stopTitle])
-    expect(stopSvg).toMatch(/\baria-hidden="true"/)
-    expect(stopSvg).toMatch(/\bstroke="currentColor"/)
-    expect(stopText).toBe('여기서 멈춤')
-    expect(classesOf(stopItems)).toEqual([privStyles.stopItems])
+  it('AC-210.2: 첫 칸에만 멈춤 줄 p(.stop)가 있다 — 멈춤 아이콘 14px(색은 줄 글자색) + "여기서 멈춤"(b .stopTitle) + "환자 이름 · 주민번호 · 차트번호 · 파일 이름"(.stopItems)', () => {
+    const [, , , , , , , stop, stopSvg, stopTitle, stopTitleIn, stopItems, stopItemsIn] = nodes[0] ?? []
+    expect(classesOf(stop)).toContain(privStyles.stop)
+    expect(stopSvg).toBe(renderToStaticMarkup(<Icon name="stop" size={14} />))
+    expect(classesOf(stopTitle)).toContain(privStyles.stopTitle)
+    expect(stopTitleIn).toBe('여기서 멈춤')
+    expect(classesOf(stopItems)).toContain(privStyles.stopItems)
     expect(stopItemsIn).toBe('환자 이름 · 주민번호 · 차트번호 · 파일 이름')
-    expect(nodes[1]?.[8], '서버 카드에는 멈춤 상자가 없다').toBeUndefined()
-    expect(nodes[2]?.[8], 'AI 분석 카드에는 멈춤 상자가 없다').toBeUndefined()
+    expect(nodes[1]?.[7], '서버 칸에는 멈춤 줄이 없다').toBeUndefined()
+    expect(nodes[2]?.[7], 'AI 분석 칸에는 멈춤 줄이 없다').toBeUndefined()
   })
 
-  it('AC-110.1: 연결 2개는 aria-hidden .link > 화살표 선 .linkLine + .chip·.chipNeutral("합계 숫자만" / "집계만")이다', () => {
-    for (const [i, l] of links.entries()) expect(l, `연결 ${i + 1}`).not.toBeNull()
-    expect(links.map((l) => l?.[4])).toEqual(['합계 숫자만', '집계만'])
-    for (const l of links) {
-      const [, link, line, chip] = l ?? []
-      expect(link).toMatch(/\baria-hidden="true"/)
-      expect(classesOf(link)).toEqual([privStyles.link])
-      expect(classesOf(line)).toEqual([privStyles.linkLine])
-      expect(classesOf(chip)).toEqual(expect.arrayContaining([base.chip, base.chipNeutral, privStyles.linkChip]))
+  it('AC-210.2: 연결 2개는 aria-hidden .edge > 글(.tCaption .edgeLabel) "합계 숫자만" / "집계만" + 화살표 svg(.edgeArrow) 하나다', () => {
+    for (const [i, e] of edges.entries()) expect(e, `연결 ${i + 1}`).not.toBeNull()
+    expect(edges.map((e) => e?.[3])).toEqual(['합계 숫자만', '집계만'])
+    for (const e of edges) {
+      const [, edge, label, , svg] = e ?? []
+      expect(edge).toMatch(/\baria-hidden="true"/)
+      expect(classesOf(edge)).toContain(privStyles.edge)
+      expect(classesOf(label)).toEqual(expect.arrayContaining([base.tCaption, privStyles.edgeLabel]))
+      expect(svg).toBe(renderToStaticMarkup(<Icon name="arrow" className={privStyles.edgeArrow} />))
     }
   })
 
-  it('AC-110.1: 약속은 <ul class="items itemsFour"> 안의 <li class="item"> 4개(h3 .tH3 + p .tBody)이고 약속 2 설명에 <br>가 없다', () => {
-    expect(classesOf(list)).toEqual(expect.arrayContaining([base.items, base.itemsFour]))
+  it('AC-210.2: 약속 <dl>은 div(.rule) 4개 — dt(.ruleTitle) + dd(.ruleDesc)이고 지금 문구다(줄바꿈 태그·nowrap span 없음)', () => {
     expect(rules).toHaveLength(4)
-    expect((listIn ?? '').replace(LIST_ITEM, ''), 'li 밖의 다른 원소가 없다').toBe('')
-    expect(rules.map((m) => textOf(m[3]))).toEqual([
+    expect((dlIn ?? '').replace(RULE, ''), 'div(dt + dd) 밖의 다른 원소가 없다').toBe('')
+    expect(rules.map((m) => m[3])).toEqual([
       '필요한 칸만 읽습니다',
       '주민번호가 보이면 멈춥니다',
       'AI에는 합계 숫자만',
       '승인한 사람만, 공용 PC도 안심',
     ])
-    expect(rules.map((m) => plainOf(m[5]))).toEqual([
+    expect(rules.map((m) => textOf(m[5]))).toEqual([
       '계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.',
       "'-' 없이 붙여 쓴 13자리까지 잡아서, 섞여 있으면 계산하지 않고 알려 줍니다.",
       '통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.',
       '구글 로그인 뒤 관리자가 승인한 계정만 들어옵니다. 30분 동안 움직임이 없으면 자동으로 로그아웃합니다.',
     ])
-    for (const [, li, h3, , p] of rules) {
-      expect(classesOf(li)).toEqual([base.item])
-      expect(classesOf(h3)).toEqual([base.tH3])
-      expect(classesOf(p)).toEqual([base.tBody])
+    for (const [, row, dt, , dd] of rules) {
+      expect(classesOf(row)).toContain(privStyles.rule)
+      expect(classesOf(dt)).toContain(privStyles.ruleTitle)
+      expect(classesOf(dd)).toContain(privStyles.ruleDesc)
     }
   })
 
-  it('AC-110.1: "PRIVACY FIRST"·방패 아이콘·색 글자·inline style이 없고 svg는 흐름 아이콘 3개 + 멈춤 아이콘 1개다', () => {
+  it('AC-210.2: "PRIVACY FIRST"·방패·줄바꿈 태그·nowrap span·옛 카드·색 글자·inline style이 없고 svg는 칸 아이콘 3 + 멈춤 1 + 화살표 2개다', () => {
     expect(textOf(privacy)).not.toMatch(/PRIVACY FIRST/i)
     expect(textOf(privacy), '영문 대문자 소제목이 없다').not.toMatch(/[A-Z]{3,}/)
     expect(privacy).not.toContain('M11 2l7 3v5')
-    expect(privacy.match(/<svg\b/g) ?? []).toHaveLength(4)
+    expect(privacy).not.toMatch(/<(br|ul|li|article|figure)\b/)
+    const allClasses = [...privacy.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
+    for (const old of [base.card, base.nowrap, base.items, base.item, base.itemsFour, base.tH2, base.tH3, base.tLead, base.tBody, base.stack, base.head, base.chip]) {
+      expect(allClasses).not.toContain(old)
+    }
+    expect(privacy.match(/<svg\b/g) ?? []).toHaveLength(6)
     expect(privacy).not.toMatch(/="#[0-9a-f]{3,8}"/i)
     expect(privacy).not.toMatch(/\bstyle="/)
   })
 
-  it('AC-110.1: 개인정보 섹션에 붙은 클래스가 모두 base.module.css·PrivacySection.module.css에 정의돼 있다', () => {
+  it('AC-210.2: 상자는 흐름 하나다(두 겹 상자 없음) — 네 변 테두리 클래스는 .flow 하나이고 마크업에서 div 하나에만 붙는다', () => {
+    expect(fourSideBorderClasses(cssOf('PrivacySection.module.css'))).toEqual(['flow'])
+    const bordered = openTags(privacy).filter((t) => t.classes.includes(privStyles.flow))
+    expect(bordered.map((t) => `${t.tag}${t.hidden ? '[aria-hidden]' : ''}`)).toEqual(['div'])
+    const baseBoxes = openTags(privacy).filter((t) => BOX_TAGS.has(t.tag) && t.classes.includes(base.card))
+    expect(baseBoxes).toEqual([])
+  })
+
+  it('AC-210.2: 개인정보 섹션에 붙은 클래스가 모두 base.module.css·PrivacySection.module.css에 정의돼 있다', () => {
     const { checked, missing } = classCheck(privacy, [
       [base.wrap, 'base.module.css'],
       [privStyles.flow, 'PrivacySection.module.css'],
     ])
     expect(checked, '본 클래스 수').toBeGreaterThan(0)
     expect(missing).toEqual([])
-  })
-})
-
-describe('AC-112.2: 약속 3 "이름·개인별" 줄바꿈 막기', () => {
-  const listIn = privacy.match(PRIV_SHAPE)?.[17] ?? ''
-  const descs = [...listIn.matchAll(LIST_ITEM)].map((m) => m[5])
-
-  it('AC-112.2: 약속 3 설명 <p>는 "이름·개인별"만 base.nowrap <span> 하나에 넣고, 앞뒤 띄어쓰기는 그대로다', () => {
-    expect(descs).toHaveLength(4)
-    expect(descs[2]).toBe(
-      `통계·매출 합계와 인건비 총액만 보냅니다. 직원 <span class="${base.nowrap}">이름·개인별</span> 급여도 보내지 않습니다.`,
-    )
-    expect(plainOf(descs[2] ?? '')).toBe('통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.')
-  })
-
-  it('AC-112.2: 다른 약속 세 개(1·2·4)의 설명 <p>에는 태그가 없다(약속 2에 <br> 없음, AC-110.1)', () => {
-    expect(descs).toHaveLength(4)
-    for (const i of [0, 1, 3]) expect(descs[i], `약속 ${i + 1}`).not.toMatch(/</)
-  })
-
-  it('AC-112.2: base.module.css에 .nowrap { white-space: nowrap }이 정의돼 있다(CSS Module은 없는 이름에도 값을 준다)', () => {
-    expect(cssOf('base.module.css')).toMatch(/(?:^|\})\s*\.nowrap\s*\{\s*white-space:\s*nowrap\s*;?\s*\}/)
   })
 })
 

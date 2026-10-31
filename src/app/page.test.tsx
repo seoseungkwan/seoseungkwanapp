@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { LogoMark } from '@/components/common/LogoMark'
-import base from '@/components/landing/base.module.css'
 import { DashboardPreview } from '@/components/preview/DashboardPreview'
 import Home from './page'
 
@@ -214,28 +213,12 @@ describe('AC-008.1: 접근성', () => {
   })
 })
 
-describe('AC-110.6: 회색 바탕 섹션', () => {
-  it('AC-110.6: .secCanvas는 #ai · #features · #how 세 섹션에만 있다', () => {
-    const sections = [...html.matchAll(/<section\b[^>]*>/g)].map((m) => ({
-      id: /\sid="([^"]+)"/.exec(m[0])?.[1] ?? m[0],
-      classes: (/\bclass="([^"]*)"/.exec(m[0])?.[1] ?? '').split(/\s+/),
-    }))
-    expect(sections).toHaveLength(7)
-    expect(sections.filter((s) => s.classes.includes(base.secCanvas)).map((s) => s.id)).toEqual(['ai', 'features', 'how'])
-    // 섹션 밖(메뉴·푸터·미리보기 안)에도 붙지 않는다
-    const all = [...html.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
-    expect(all.filter((c) => c === base.secCanvas)).toHaveLength(3)
-  })
-})
-
 // ---------- AC-105.8: 랜딩 TSX의 색 글자·inline style 범위 ----------
 
 const LANDING_DIR = join(ROOT, 'src/components/landing')
 const landingTsx = readdirSync(LANDING_DIR)
   .filter((name) => name.endsWith('.tsx') && !/\.test\.tsx$/.test(name))
   .map((name) => ({ name, body: readFileSync(join(LANDING_DIR, name), 'utf8') }))
-// AC-212.4 inline style 검사에서 잠시 빼 두는 아직 안 고친 섹션(TASK-13에서 다시 쓴다)
-const STYLE_PENDING = ['FeaturesSection.tsx']
 // '#' + 16진수 3·4·6·8자리 색 글자 (#features·#ai 같은 # 링크는 뒤에 글자가 이어져 걸리지 않는다)
 const HEX_COLOR = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/i
 // 로고 마크 svg(고정 두 색). 크기·class는 여는 태그에만 있으므로 그 뒤 그림이 LogoMark와 같은 svg를 찾는다.
@@ -277,9 +260,10 @@ describe('AC-105.8: 랜딩 TSX의 색과 inline style', () => {
     for (const paint of paints) expect(paint).toMatch(/^(fill|stroke)="(currentColor|none)"$/)
   })
 
-  it('AC-212.4: 랜딩 TSX(시험 제외)에 inline style이 없다(아직 안 고친 FeaturesSection.tsx는 TASK-13까지 남는다). 미리보기·차트의 % 값은 components/charts 안에 있다', () => {
+  it('AC-212.4: 랜딩 TSX(시험 제외)에 inline style이 하나도 없다(빼 두는 파일 없음). 미리보기·차트의 % 값은 components/charts 안에 있다', () => {
+    expect(landingTsx.length, '랜딩 TSX를 실제로 읽었다').toBeGreaterThan(5)
     const withStyle = landingTsx.filter((f) => /\bstyle=\{/.test(f.body)).map((f) => f.name)
-    expect(withStyle.filter((name) => !STYLE_PENDING.includes(name))).toEqual([])
+    expect(withStyle).toEqual([])
     // 히어로의 inline style은 모두 미리보기(차트 부품) 안에서 온다
     const preview = renderToStaticMarkup(<DashboardPreview />)
     expect(HERO).toContain(preview)

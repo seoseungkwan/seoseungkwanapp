@@ -1,178 +1,166 @@
-/* 개인정보 섹션(#privacy) (specs/landing-v2 AC-110.2). 값은 승인 시안 docs/mockups/landing-v2/index.html의
-   .priv-top · .zero · .flow · .node · .stop · .link 그대로다. 섹션 틀·제목·칩·카드·약속 목록은 base.module.css가 정한다.
-   휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다(시안의 @container lp → 같은 숫자의 @media). */
+/* 개인정보 섹션(#privacy, canvas 띠) (specs/b2b-redesign AC-210.2, 시안 docs/mockups/b2b-redesign/style.css의 .zero · .flow · .node · .edge · .stopline · .plist.two).
+   섹션 틀·12칸·글자 단계는 base.module.css가 정하고, 여기서는 칸 자리·0건·흐름 상자·연결·약속만 그린다.
+   값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
+   상자(네 변 테두리)는 흐름(.flow) 하나다. 칸·연결에는 테두리가 없다(두 겹 상자 없음) */
 
-/* ---------- 윗부분: 제목 덩어리 + 0건 카드 ---------- */
+/* ---------- 윗부분: 1024px 미만은 글 → 0건으로 쌓인다 ---------- */
 .top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
+  row-gap: 16px;
 }
-/* base .card와 함께 단다. 휴대폰·768은 숫자 | 설명 옆으로, 1024부터 위아래 */
+.text {
+  min-width: 0;
+}
+.lead {
+  max-width: 640px;
+  margin-top: 12px;
+  color: var(--ink-2);
+}
+
+/* 0건: 휴대폰은 숫자와 설명이 한 줄(글자 아래선 맞춤), 768px부터 왼쪽 1px 선 + 위아래로 쌓기 */
 .zero {
   display: flex;
-  align-items: center;
-  gap: 20px;
+  align-items: baseline;
+  gap: 12px;
 }
 .zeroNum {
-  font-size: 48px;
-  line-height: 52px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
   color: var(--ink);
-  white-space: nowrap;
 }
-.zeroNum span {
-  font-size: 22px;
-  font-weight: 500;
-  margin-left: 2px;
+.unit {
+  margin-left: 4px;
+  font-size: var(--fs-title);
+  font-weight: 600;
   letter-spacing: 0;
+  color: var(--ink-2);
 }
 .zeroCaption {
-  font-size: 15px;
-  line-height: 22px;
-  color: var(--ink-2);
-  padding-left: 20px;
-  border-left: 1px solid var(--line);
+  color: var(--muted);
 }
 
-/* ---------- 흐름: 병원 PC → 서버 → AI. 1024 미만은 세로로 쌓고 연결은 아래 화살표 ---------- */
+/* ---------- 흐름 상자: 1024px 미만은 칸 → 연결 → 칸 … 세로 ---------- */
 .flow {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-}
-.node {
+  margin-top: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 16px;
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  min-width: 0;
+  border-radius: var(--r-control);
 }
-/* 아이콘 + h3, 왼쪽 정렬 */
-.nodeHead {
+.node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+/* 이름 h3: 16px 아이콘(muted) + 글자 한 줄 */
+.nodeTitle {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.nodeHead svg {
+.nodeIcon {
+  color: var(--muted);
+}
+.nodeDesc {
   color: var(--ink-2);
 }
-/* "여기서 멈춤" 상자: 상태색(danger)은 랜딩에서 여기와 base 칩에만 쓴다 */
+/* 멈춤 줄: 아이콘 14px | 글. 아이콘은 첫 줄("여기서 멈춤") 가운데, 항목은 그 아래 둘째 칸 */
 .stop {
-  margin-top: 6px;
-  background: var(--danger-soft);
-  border-radius: 4px;
-  padding: 10px 12px;
   display: grid;
-  gap: 2px;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: center;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  color: var(--negative);
 }
 .stopTitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 20px;
   font-weight: 600;
-  color: var(--danger);
 }
 .stopItems {
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--ink-2);
+  grid-column: 2;
 }
-/* 연결: 세로 선(1px ink-2) + 아래 삼각형, 옆에 칩 */
-.link {
-  position: relative;
+
+/* 연결: 아래쪽 화살표(가로 화살표를 90도 돌림) → 글자 한 줄. 화살표 왼쪽 끝은 칸 아이콘과 같다(좌우 여백 = 칸 좌우 여백) */
+.edge {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 44px;
-  padding-left: 25px;
+  gap: 8px;
+  height: 28px;
+  padding-inline: 16px;
+  color: var(--muted);
 }
-.linkLine {
-  position: relative;
-  width: 1px;
-  align-self: stretch;
-  background: var(--ink-2);
-  margin-block: 4px 9px;
+.edgeLabel {
+  white-space: nowrap;
 }
-.linkLine::after {
-  content: "";
-  position: absolute;
-  left: -4px;
-  bottom: -6px;
-  border-left: 4.5px solid transparent;
-  border-right: 4.5px solid transparent;
-  border-top: 7px solid var(--ink-2);
+.edgeArrow {
+  order: -1;
+  transform: rotate(90deg);
+}
+
+/* ---------- 약속(768px 이상): 2칸, 칸마다 위 1px 선 ---------- */
+.rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  margin-top: 32px;
+}
+.rule {
+  padding-block: 16px;
+  border-top: 1px solid var(--line);
+}
+.ruleTitle {
+  font-weight: 600;
+}
+.ruleDesc {
+  margin-top: 2px;
+  color: var(--ink-2);
 }
 
 /* ---------- 768px부터 ---------- */
 @media (min-width: 768px) {
-  .node {
-    padding: 20px 24px;
+  .top {
+    row-gap: 24px;
   }
-  .link {
-    padding-left: 33px;
+  .zero {
+    display: block;
+    padding-left: 24px;
+    border-left: 1px solid var(--line);
+  }
+  .flow {
+    margin-top: 32px;
+  }
+  .node {
+    gap: 8px;
+    padding: 20px;
+  }
+  .edge {
+    padding-inline: 20px;
   }
 }
 
-/* ---------- 1024px부터: 윗부분 두 칸, 흐름은 가로(카드 | 112px 연결 | 카드 | 112px 연결 | 카드) ---------- */
+/* ---------- 1024px부터: 윗부분 글 1~8칸 · 0건 10~12칸, 흐름은 칸 · 104px 연결 · 칸 · 104px 연결 · 칸 가로 ---------- */
 @media (min-width: 1024px) {
-  .top {
-    grid-template-columns: minmax(0, 1fr) 360px;
-    column-gap: 48px;
-    align-items: end;
+  .text {
+    grid-column: 1 / 9;
   }
   .zero {
-    display: grid;
-    gap: 4px;
-    justify-items: start;
-  }
-  .zeroNum {
-    font-size: 56px;
-    line-height: 64px;
-  }
-  .zeroNum span {
-    font-size: 24px;
-  }
-  .zeroCaption {
-    padding-left: 0;
-    border-left: 0;
+    grid-column: 10 / 13;
+    align-self: end;
   }
   .flow {
-    grid-template-columns: minmax(0, 1fr) 112px minmax(0, 1fr) 112px minmax(0, 1fr);
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1fr) 104px minmax(0, 1fr);
   }
-  .node {
-    padding: 24px;
-  }
-  /* 가로 화살표: 칩이 선 위에 온다 */
-  .link {
+  /* 글자 위 · 가로 화살표 아래 */
+  .edge {
     flex-direction: column;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
     height: auto;
-    padding: 0 12px;
+    padding-inline: 0;
   }
-  .linkLine {
-    width: 100%;
-    height: 1px;
-    align-self: auto;
-    margin: 0 6px 0 0;
-  }
-  .linkLine::after {
-    left: auto;
-    right: -6px;
-    bottom: -4px;
-    border: 0;
-    border-top: 4.5px solid transparent;
-    border-bottom: 4.5px solid transparent;
-    border-left: 7px solid var(--ink-2);
-  }
-  .linkChip {
-    order: -1;
+  .edgeArrow {
+    order: 0;
+    transform: none;
   }
 }
