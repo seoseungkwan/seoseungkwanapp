@@ -42,13 +42,14 @@ describe('AC-113.2: 옛 주석이 지금 동작과 맞다', () => {
     expect(read('src/components/shell/TabBar.tsx')).not.toMatch(/teal/i)
   })
 
-  it('AC-113.2: LogoMark.tsx 주석의 쓰는 곳 크기 목록에 히어로 미리보기(20)가 있고, src/에서 쓰는 크기가 모두 들어 있다', () => {
-    const lists = commentLines(read('src/components/common/LogoMark.tsx')).filter((line) => line.includes('(22)'))
+  // b2b-redesign TASK-8: 느슨한 꼴(새 크기와 옮기는 동안 남는 옛 크기가 섞인다). 쓰는 크기와 목록이 같은 집합인지는 TASK-23(AC-221.3)에서 본다
+  it('AC-113.2: LogoMark.tsx 주석의 "쓰는 곳:" 크기 목록에 미리보기(18)가 있고, src/에서 쓰는 크기가 모두 들어 있다', () => {
+    const lists = commentLines(read('src/components/common/LogoMark.tsx')).filter((line) => line.includes('쓰는 곳:'))
     expect(lists).toHaveLength(1)
     const [list = ''] = lists
-    expect(list).toMatch(/히어로 미리보기\(20\)/)
+    expect(list).toMatch(/미리보기\(18\)/)
     const used = new Set(tsxFiles().flatMap((rel) => [...read(rel).matchAll(/<LogoMark size=\{(\d+)\}/g)].map((m) => m[1])))
-    expect([...used].sort()).toEqual(['20', '22', '26'])
+    expect(used.size).toBeGreaterThan(0)
     for (const size of used) expect(list, size).toContain(`(${size})`)
   })
 
