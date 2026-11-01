@@ -112,6 +112,59 @@ describe('systemPrompt', () => {
     expect(PROMPT_VERSION.length).toBeGreaterThan(0)
     expect(text).not.toContain(PROMPT_VERSION)
   })
+
+  // 2026-11-01 고친 점: 자료에 있는 이름 안의 숫자(답 검사 parseAiReport 숫자 규칙 1과 같은 뜻)
+  const promptLines = () => systemPrompt().split(/\r?\n/)
+  const nameRuleIndex = (lines: string[]) =>
+    lines.findIndex((line) => line.includes('자료에 있는 이름') && line.includes('글자 그대로'))
+
+  it('AC-508.4 자료에 있는 이름은 숫자가 있어도 글자 그대로 쓰게 한다', () => {
+    const lines = promptLines()
+    const index = nameRuleIndex(lines)
+    expect(index).toBeGreaterThanOrEqual(0)
+    const rule = lines[index]
+    for (const word of ['처방명', '그룹명', '동네 이름', '숫자']) expect(rule).toContain(word)
+    // 이름을 줄이거나 띄어 쓰지 않는다(검사는 글자 그대로 찾기만 허용한다)
+    expect(rule).toContain('줄이거나 띄어 쓰지 않습니다')
+  })
+
+  it('AC-508.4 숫자로만 된 이름과 그 밖의 숫자는 쓰지 않게 한다', () => {
+    const lines = promptLines()
+    const index = nameRuleIndex(lines)
+    expect(index).toBeGreaterThanOrEqual(0)
+    const near = lines.slice(Math.max(0, index - 1), index + 2).join('\n')
+    expect(near).toContain('숫자로만 된 이름')
+    // 쉼표·마침표를 넘지 않는다: 뒷말 '그 밖의 숫자는 쓰지 않습니다'에 잘못 걸리지 않게
+    expect(near).toMatch(/숫자로만 된 이름[^,.]*쓰지 않/)
+    expect(near).toContain('그 밖의 숫자는 쓰지 않습니다')
+  })
+
+  it('AC-508.4 숫자와 기호로만 된 이름도 쓰지 않게 한다(답 검사 AC-507.7과 같은 뜻)', () => {
+    const lines = promptLines()
+    const index = nameRuleIndex(lines)
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(lines[index]).toContain('숫자와 기호로만')
+    expect(lines[index]).toMatch(/숫자와 기호로만 된 이름[^,.]*쓰지 않/)
+  })
+
+  it('AC-508.4 숫자 금지 줄은 그대로 있고 이름 줄은 그 아래 [숫자 규칙] 안의 예외다', () => {
+    const text = systemPrompt()
+    expect(text).toContain('숫자를 쓰지 않습니다')
+    const lines = promptLines()
+    const ban = lines.findIndex((line) => line.includes('요약과 카드 문장에는 숫자를 쓰지 않습니다'))
+    const header = lines.indexOf('[숫자 규칙]')
+    const index = nameRuleIndex(lines)
+    expect(header).toBeGreaterThanOrEqual(0)
+    expect(ban).toBeGreaterThan(header)
+    expect(index).toBeGreaterThan(ban)
+    // 이름 줄과 숫자 금지 줄 사이에 다른 묶음 머리([…])가 끼지 않는다
+    expect(lines.slice(header + 1, index).some((line) => line.startsWith('['))).toBe(false)
+  })
+
+  it("AC-508.4 지시문 판은 'ai-report-2'이고 지시문 글자에 들어가지 않는다", () => {
+    expect(PROMPT_VERSION).toBe('ai-report-2')
+    expect(systemPrompt()).not.toContain(PROMPT_VERSION)
+  })
 })
 
 describe('userMessage', () => {
