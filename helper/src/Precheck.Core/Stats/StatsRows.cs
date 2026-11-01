@@ -138,11 +138,15 @@ public sealed class StatsRowsResult
 /// HistoryGuard(1이면 E-STATS-HISTORY) → 진료 줄 → 접수 줄(둘 다 MaxRows를 넘으면 E-STATS-TOO-BIG) → 기간 합계 → 날짜별 → 처방 이름.
 /// SQL은 StatsSql 상수만 ReadOnlyGuard로 돌린다. 하나라도 막히면 BitException(번호만)으로 멈춘다: 반쪽 자료를 돌려주지 않는다.
 /// 값 모양이 틀리면(숫자가 아님·칸이 모자람) E-BIT-READ-FAILED다. 이름·전화·주민번호·주소는 SQL도 읽지 않는다.
+/// 처방코드가 비었거나(NULL·공백뿐) 40자를 넘는 진료 줄은 답의 rows·codes에 넣지 않는다(AC-503.1). 줄 수 한도는 건너뛰기 전 줄 수로 본다.
 /// </summary>
 public static class StatsRows
 {
     /// <summary>진료 줄·접수 줄 각각의 한도(design.md '줄 수·크기': 700,000줄 ≈ 28MB → 조각 약 30개).</summary>
     public const int MaxRows = 700_000;
+
+    /// <summary>처방코드 길이 한도. Worker MAX_CODE(src/workers/stats/helperData.ts)와 같다.</summary>
+    private const int MaxCodeLength = 40;
 
     /// <param name="from">기간 첫날 YYYY-MM-DD(명령 표가 검사한 값)</param>
     /// <param name="to">기간 끝날 YYYY-MM-DD(그날 포함)</param>
@@ -177,7 +181,8 @@ public static class StatsRows
         var rows = new List<StatsVisitRow>(visitRows.Count);
         foreach (var row in visitRows)
         {
-            rows.Add(new StatsVisitRow(Text(Cell(row, 0)), Text(Cell(row, 1)), Text(Cell(row, 2)), FirstDay(Cell(row, 3))));
+            var visit = new StatsVisitRow(Text(Cell(row, 0)), Text(Cell(row, 1)), Text(Cell(row, 2)), FirstDay(Cell(row, 3)));
+            if (IsUsableCode(visit.Code)) rows.Add(visit);
         }
 
         var patientRows = ReadOnlyGuard.Query(db, StatsSql.PatientDaysSql, visitArgs, StatsSql.DataTimeout);
@@ -200,6 +205,8 @@ public static class StatsRows
         var catalog = ReadOnlyGuard.Query(db, StatsSql.CodeNamesSql, codeArgs, StatsSql.DataTimeout);
         return new StatsRowsResult(summary, days, patientDays, CodeNames(catalog, rows), rows);
     }
+
+    private static bool IsUsableCode(string? code) => !string.IsNullOrWhiteSpace(code) && code!.Length <= MaxCodeLength;
 
     /// <summary>첫 내원일 칸: 앞뒤 공백을 없앤 글자, 없거나 비면 null.</summary>
     private static string? FirstDay(object? value)
