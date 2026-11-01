@@ -58,7 +58,8 @@ public class CommandTableTests
     public void TableHasTwelveCommands()
     {
         var patient = new[] { "claim.month", "claim.memos", "store.load", "store.save", "bit.input", "sam.latest", "contact.targets", "stats.rows" };
-        var notPatient = new[] { "hello", "bit.check", "bit.register", "claim.dates" };
+        var notPatient = new[] { "hello", "bit.check", "bit.register", "claim.dates",
+            "revenue.days" };
 
         Assert.Equal(patient.Concat(notPatient).OrderBy(n => n, StringComparer.Ordinal),
             Table.Names.OrderBy(n => n, StringComparer.Ordinal));

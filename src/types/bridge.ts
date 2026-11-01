@@ -1,8 +1,10 @@
 // 웹 ↔ 확장 ↔ 도우미 메시지 모양(design.md 4-2·6-1, REQ-004). 명령 이름은 src/lib/bridge/commands.json과 같다
 // (protocol.test.ts가 맞춰 본다)
+import type { RevenueDaysResult } from './revenue'
 
 /** 숫자·상태 명령: 답은 result 하나(모양을 검사해 돌려준다, AC-004.6). hello는 Bridge.hello()로만 부른다 */
 export type SmallCommand = 'bit.check' | 'bit.register' | 'claim.dates'
+  | 'revenue.days'
 /** 환자 자료 명령: 답은 늘 chunk … end(통로는 풀지 않는다, AC-004.5) */
 export type PatientCommand = 'claim.month' | 'claim.memos' | 'store.load' | 'sam.latest' | 'contact.targets' | 'stats.rows'
 /** 보내는 명령: Worker가 만든 JSON 글자를 args.payload에 그대로(AC-004.9) */
@@ -24,6 +26,7 @@ export type ArgsMap = {
   'sam.latest': Empty
   'contact.targets': Period & { kind: 'followup' | 'injection' }
   'stats.rows': Period
+  'revenue.days': Period
 }
 export type ArgsOf<C extends keyof ArgsMap> = ArgsMap[C]
 
@@ -37,6 +40,7 @@ export type ResultMap = {
   'bit.check': { steps: BitCheckStep[]; registered: boolean; institutionCode?: string }
   'bit.register': { registered: boolean }
   'claim.dates': { days: DayCount[] }
+  'revenue.days': RevenueDaysResult
 }
 export type ResultOf<C extends SmallCommand> = ResultMap[C]
 

@@ -114,6 +114,14 @@
         "from": { "type": "date" },
         "to": { "type": "date" }
       }
+    },
+    "revenue.days": {
+      "patient": false,
+      "maxDays": 31,
+      "args": {
+        "from": { "type": "date" },
+        "to": { "type": "date" }
+      }
     }
   }
 }
