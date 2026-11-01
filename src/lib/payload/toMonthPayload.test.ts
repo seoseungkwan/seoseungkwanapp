@@ -105,7 +105,7 @@ describe('AC-008.1 9/1~10/24 파일(오늘 10/25) → 9월 완전·10월 일부,
       totals: { patients: 30, newPatients: 0, returning: 30, unknown: 0 },
       rx: [{ code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 30, newPatients: 0, returning: 30, followup: [30, 0, 0, 0] }],
       groups: [],
-      revisit: { cohort: 0, within7: 0, within14: 0 }, // 신환이 없다. 10/14까지 덮였고 끝나 집계 중이 아니다
+      revisit: { cohort: 0, within7: 0, within14: 0, within30: null, after30: null }, // 신환이 없다. 7·14일 창은 10/14까지 덮였고 끝났다. 30일 창(10/30까지)은 10/24까지만 덮여 집계 중이다
       regions: [{ name: '서울특별시 강남구 역삼동', patients: 30 }],
     })
     expect(october.totals).toEqual({ patients: 24, newPatients: 0, returning: 24, unknown: 0 })
@@ -164,7 +164,7 @@ describe('AC-008.1 정해진 열쇠만 — 환자 번호·차트번호·파일 �
       expect(sorted(p.totals)).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
       expect(p.rx).toHaveLength(3)
       for (const x of p.rx) expect(sorted(x)).toEqual(['code', 'followup', 'name', 'newPatients', 'patients', 'returning', 'type'])
-      expect(sorted(p.revisit)).toEqual(['cohort', 'within14', 'within7'])
+      expect(sorted(p.revisit)).toEqual(['after30', 'cohort', 'within14', 'within30', 'within7'])
       expect(p.regions).toHaveLength(2)
       for (const x of p.regions) expect(sorted(x)).toEqual(['name', 'patients'])
     }
@@ -284,14 +284,14 @@ describe('AC-008.1 v2: 처방 재진 · 그룹 · 재방문', () => {
     for (const text of ['도수치료', 'C-0001', 'chartNo', 'patientIds', 'codes']) expect(json).not.toContain(text)
   })
 
-  // 9/2 신환이 9/9(7일째)에 다시 왔다. 9월 칸의 7일 창은 9/1~10/7, 14일 창은 9/1~10/14
+  // 9/2 신환이 9/9(7일째)에 다시 왔다. 9월 칸의 7일 창은 9/1~10/7, 14일 창은 9/1~10/14, 30일 창은 9/1~10/30
   const revisitRows = () => [row({ patient: 1, date: '2026-09-02', firstVisit: true }), row({ patient: 1, date: '2026-09-09' })]
 
   it.each<[string, DateRange, MonthPayload['revisit']]>([
-    ['두 창이 다 덮임', r('2026-09-01', '2026-10-24'), { cohort: 1, within7: 1, within14: 1 }],
-    ['14일 창이 덜 덮임', r('2026-09-01', '2026-10-10'), { cohort: 1, within7: 1, within14: null }],
-    ['9월만 덮임(달은 완전, 창은 덜 덮임)', SEPTEMBER, { cohort: 1, within7: null, within14: null }],
-  ])('재방문: %s → %j', (_, covered, expected) => {
+    ['7·14일 창만 다 덮임', r('2026-09-01', '2026-10-24'), { cohort: 1, within7: 1, within14: 1, within30: null, after30: null }],
+    ['14일 창이 덜 덮임', r('2026-09-01', '2026-10-10'), { cohort: 1, within7: 1, within14: null, within30: null, after30: null }],
+    ['9월만 덮임(달은 완전, 창은 덜 덮임)', SEPTEMBER, { cohort: 1, within7: null, within14: null, within30: null, after30: null }],
+  ])('AC-502.1 재방문: %s → %j', (_, covered, expected) => {
     const [september] = toMonthPayload(analyze(revisitRows(), [covered]))!
     expect(september.partial).toBe(false)
     expect(september.revisit).toEqual(expected)
@@ -301,6 +301,36 @@ describe('AC-008.1 v2: 처방 재진 · 그룹 · 재방문', () => {
     const rows = [row({ patient: 1, date: '2026-10-02', firstVisit: true }), row({ patient: 1, date: '2026-10-05' })]
     const [october] = toMonthPayload(analyze(rows, [r('2026-10-01', '2026-10-24')]))!
     expect(october.partial).toBe(true)
-    expect(october.revisit).toEqual({ cohort: 1, within7: null, within14: null })
+    expect(october.revisit).toEqual({ cohort: 1, within7: null, within14: null, within30: null, after30: null })
+  })
+
+  // 9/3 신환이 9/25(22일째)에, 9/4 신환이 10/20(46일째)에 다시 왔다. 9/5 신환은 오지 않았다
+  const longRevisitRows = () => [
+    row({ patient: 1, date: '2026-09-03', firstVisit: true }),
+    row({ patient: 1, date: '2026-09-25' }),
+    row({ patient: 2, date: '2026-09-04', firstVisit: true }),
+    row({ patient: 2, date: '2026-10-20' }),
+    row({ patient: 3, date: '2026-09-05', firstVisit: true }),
+  ]
+  const AFTER_WINDOW = r('2026-09-01', '2026-11-15')
+
+  it('AC-502.1 30일 창이 다 덮이고 끝나면 숫자다. schemaVersion은 2 그대로', () => {
+    const september = toMonthPayload(analyze(longRevisitRows(), [AFTER_WINDOW], '2026-11-16'))!.find((p) => p.month === '2026-09')!
+    expect(september.revisit).toEqual({ cohort: 3, within7: 0, within14: 0, within30: 1, after30: 1 })
+    expect(september.schemaVersion).toBe(2)
+  })
+
+  it.each<[string, DateRange, string, boolean]>([
+    ['30일 창이 다 덮임', AFTER_WINDOW, '2026-11-16', true],
+    ['30일 창이 하루 덜 덮임', r('2026-09-01', '2026-10-29'), '2026-11-16', false],
+    ['30일 창의 끝날이 오늘', AFTER_WINDOW, '2026-10-30', false],
+    ['30일 창의 끝날이 어제', AFTER_WINDOW, '2026-10-31', true],
+  ])("AC-502.1 '집계 중'은 요약의 판정 그대로: %s", (_, covered, today, counted) => {
+    const result = analyze(longRevisitRows(), [covered], today)
+    const summary = result.summary.series.month.find((ref) => ref.key === '2026-09')!.revisit
+    const september = toMonthPayload(result)!.find((p) => p.month === '2026-09')!
+    expect(summary.within30 !== null).toBe(counted)
+    expect(september.revisit.within30).toBe(summary.within30)
+    expect(september.revisit.after30).toBe(summary.after30)
   })
 })

@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "payload-revisit30",
-      "status": "pending"
+      "status": "completed",
+      "summary": "types/payload.ts RevisitPayload에 선택 칸 within30?·after30?(number|null). toMonthPayload의 revisitPayload가 요약 값을 그대로 쓰고 toDayPayloads는 같은 함수를 써서 고칠 곳 없음. validate.ts는 두 칸이 없으면 null로 읽어 돌려주고, 7≤14≤30≤집단≤칸 신환, 30+after30≤집단, null은 앞에서 뒤로 번짐, 그 밖 열쇠는 null. schemaVersion 2 그대로. payload 밖 시험은 고치지 않음."
     },
     {
       "step": 2,

@@ -3,7 +3,7 @@ import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { eachDay } from '@/lib/analytics/dates'
 import type { ConsumptionRow } from '@/types/consumption'
-import type { DayPayload, MonthPayload } from '@/types/payload'
+import type { DayPayload, MonthPayload, RevisitPayload } from '@/types/payload'
 import { toDayPayloads } from './toDayPayloads'
 import { toMonthPayload } from './toMonthPayload'
 import { validateDayPayload, validateMonthPayload } from './validate'
@@ -26,7 +26,7 @@ function good(): MonthPayload {
       { code: 'AA154', name: '0.9% 가짜식염수 1000mL', type: '행위', patients: 2, newPatients: 0, returning: 2, followup: [2, 0, 0, 0] },
     ],
     groups: [{ id: 'g-manual', patients: 4, newPatients: 1, returning: 3, followup: [2, 1, 1, 0] }],
-    revisit: { cohort: 3, within7: 1, within14: 2 },
+    revisit: { cohort: 3, within7: 1, within14: 2, within30: 2, after30: 1 },
     regions: [
       { name: '서울특별시 강남구 역삼1동', patients: 5 },
       { name: '주소 없음', patients: 7 },
@@ -89,7 +89,7 @@ describe('AC-008.4 맞는 값은 새 객체로 그대로 돌려준다', () => {
       totals: { patients: 0, newPatients: 0, returning: 0, unknown: 0 },
       rx: [],
       groups: [],
-      revisit: { cohort: 0, within7: 0, within14: 0 },
+      revisit: { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 },
       regions: [],
     }
     expect(validateMonthPayload(payload)).toEqual(payload)
@@ -225,9 +225,9 @@ describe('AC-008.4 v2 달 숫자: 처방 재진 · 그룹 · 재방문', () => {
     ['그룹 id uuid', ['groups', 0, 'id'], '0b9f4d6e-3c2a-4e8b-9a1f-2d7c5e6b8a90'],
     ['그룹 id 64자', ['groups', 0, 'id'], 'g'.repeat(64)],
     ['처방 신환 + 재진 = 환자', ['rx', 0, 'returning'], 7],
-    ['재방문 7일·14일 집계 중', ['revisit'], { cohort: 3, within7: null, within14: null }],
-    ['재방문 14일만 집계 중', ['revisit'], { cohort: 3, within7: 1, within14: null }],
-    ['집단 = 그 달 신환, 모두 재방문', ['revisit'], { cohort: 3, within7: 3, within14: 3 }],
+    ['재방문 모두 집계 중', ['revisit'], { cohort: 3, within7: null, within14: null, within30: null, after30: null }],
+    ['재방문 7일만 숫자', ['revisit'], { cohort: 3, within7: 1, within14: null, within30: null, after30: null }],
+    ['집단 = 그 달 신환, 모두 재방문', ['revisit'], { cohort: 3, within7: 3, within14: 3, within30: 3, after30: 0 }],
   ])('경계: %s → 통과', (_, path, value) => {
     const payload = edited(path, value)
     expect(validateMonthPayload(payload)).toEqual(payload)
@@ -306,7 +306,7 @@ function goodDay(): DayPayload {
       { code: 'AA154', name: '', type: '', patients: 2, newPatients: 0, returning: 2 },
     ],
     groups: [{ id: 'g-manual', patients: 4, newPatients: 1, returning: 3 }],
-    revisit: { cohort: 3, within7: 2, within14: null },
+    revisit: { cohort: 3, within7: 2, within14: null, within30: null, after30: null },
   }
 }
 
@@ -334,7 +334,7 @@ describe('AC-008.4 일 숫자 검사', () => {
   it.each<[string, (string | number)[], unknown]>([
     ['일부인 날', ['partial'], true],
     ['처방·그룹이 없는 날', ['rx'], []],
-    ['재방문 모두 집계 중', ['revisit'], { cohort: 3, within7: null, within14: null }],
+    ['재방문 모두 집계 중', ['revisit'], { cohort: 3, within7: null, within14: null, within30: null, after30: null }],
   ])('경계: %s → 통과', (_, path, value) => {
     const payload = editedDay(path, value)
     expect(validateDayPayload(payload)).toEqual(payload)
@@ -372,6 +372,138 @@ describe('AC-008.4 일 숫자 검사', () => {
     ['처방 5,001개', ['rx'], Array.from({ length: 5_001 }, (_, i) => ({ code: `X${i}`, name: '', type: '', patients: 1, newPatients: 0, returning: 1 }))],
   ])('%s → null', (_, path, value) => {
     expect(validateDayPayload(editedDay(path, value))).toBeNull()
+  })
+})
+
+// 달·일 검사는 재방문 규칙이 같다. good()·goodDay() 모두 그 칸 신환이 3명이다
+const revisitChecks: [string, (revisit: unknown) => unknown][] = [
+  ['달', (revisit) => validateMonthPayload({ ...good(), revisit })?.revisit ?? null],
+  ['일', (revisit) => validateDayPayload({ ...goodDay(), revisit })?.revisit ?? null],
+]
+
+describe.each(revisitChecks)('AC-502.2 재방문 검사(%s)', (_, revisitAfterCheck) => {
+  it.each<[string, object, object]>([
+    ['두 칸 없음 → null로 읽힘', { cohort: 3, within7: 1, within14: 2 }, { within30: null, after30: null }],
+    ['두 칸 없고 14일 집계 중', { cohort: 3, within7: 1, within14: null }, { within30: null, after30: null }],
+    ['두 칸 없고 모두 집계 중', { cohort: 3, within7: null, within14: null }, { within30: null, after30: null }],
+    ['두 칸이 undefined면 없는 것과 같다(JSON에 남지 않는 값)', { cohort: 3, within7: 1, within14: 2, within30: undefined, after30: undefined }, { within30: null, after30: null }],
+    ['after30만 없음 → null로 읽힘', { cohort: 3, within7: 1, within14: 2, within30: 2 }, { within30: 2, after30: null }],
+    ['within30만 없고 after30은 null', { cohort: 3, within7: 1, within14: 2, after30: null }, { within30: null, after30: null }],
+    ['30일 집계 중', { cohort: 3, within7: 1, within14: 2, within30: null, after30: null }, { within30: null, after30: null }],
+    ['30일 숫자, after30 null(뒤만 null)', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: null }, { within30: 2, after30: null }],
+    ['30일 + after30 = 집단', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: 1 }, { within30: 2, after30: 1 }],
+    ['7일 = 14일 = 30일 = 집단', { cohort: 3, within7: 3, within14: 3, within30: 3, after30: 0 }, { within30: 3, after30: 0 }],
+    ['창 안에 아무도 안 오고 모두 after30', { cohort: 3, within7: 0, within14: 0, within30: 0, after30: 3 }, { within30: 0, after30: 3 }],
+  ])('경계: %s → 통과', (_, input, readAs) => {
+    const { cohort, within7, within14 } = input as { cohort: number; within7: number | null; within14: number | null }
+    expect(revisitAfterCheck(input)).toStrictEqual({ cohort, within7, within14, ...readAs })
+  })
+
+  it.each<[string, object]>([
+    // 여분 열쇠
+    ['열쇠 밖 칸(30일 비율)', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: 1, rate30: 0.6 }],
+    ['열쇠 밖 칸(60일)', { cohort: 3, within7: 1, within14: 2, within60: 2 }],
+    ['열쇠 밖 칸(차트번호)', { cohort: 3, within7: 1, within14: 2, chartNo: 'C-0001' }],
+    // 꼭 있어야 하는 열쇠
+    ['집단 없음', { within7: 1, within14: 2, within30: 2, after30: 1 }],
+    ['7일 없음', { cohort: 3, within14: 2, within30: 2, after30: 1 }],
+    ['14일 없음', { cohort: 3, within7: 1, within30: 2, after30: 1 }],
+    // 순서
+    ['14일 > 30일', { cohort: 3, within7: 1, within14: 2, within30: 1, after30: 0 }],
+    ['7일 > 30일', { cohort: 3, within7: 2, within14: 2, within30: 1, after30: 0 }],
+    ['30일 > 집단', { cohort: 3, within7: 1, within14: 2, within30: 4, after30: null }],
+    ['14일 > 집단(30일 집계 중)', { cohort: 3, within7: 1, within14: 4, within30: null, after30: null }],
+    ['14일 > 집단(두 칸 없음)', { cohort: 3, within7: 1, within14: 4 }],
+    ['집단 > 그 칸 신환(두 칸 있어도)', { cohort: 4, within7: 1, within14: 2, within30: 2, after30: 1 }],
+    // 합
+    ['30일 + after30 > 집단', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: 2 }],
+    ['after30 혼자 집단을 넘음', { cohort: 3, within7: 0, within14: 0, within30: 0, after30: 4 }],
+    // null 번짐
+    ['7일 null인데 14일 숫자', { cohort: 3, within7: null, within14: 2, within30: null, after30: null }],
+    ['7일 null인데 30일 숫자', { cohort: 3, within7: null, within14: null, within30: 2, after30: null }],
+    ['7일 null인데 after30 숫자', { cohort: 3, within7: null, within14: null, within30: null, after30: 1 }],
+    ['14일 null인데 30일 숫자', { cohort: 3, within7: 1, within14: null, within30: 2, after30: null }],
+    ['14일 null인데 after30 숫자', { cohort: 3, within7: 1, within14: null, within30: null, after30: 1 }],
+    ['30일 null인데 after30 숫자', { cohort: 3, within7: 1, within14: 2, within30: null, after30: 1 }],
+    ['30일 없는데 after30 숫자', { cohort: 3, within7: 1, within14: 2, after30: 1 }],
+    // 값 모양
+    ['30일 글자', { cohort: 3, within7: 1, within14: 2, within30: '2', after30: 0 }],
+    ['30일 소수', { cohort: 3, within7: 1, within14: 2, within30: 2.5, after30: 0 }],
+    ['30일 음수', { cohort: 3, within7: 0, within14: 0, within30: -1, after30: 0 }],
+    ['30일 불리언', { cohort: 3, within7: 1, within14: 2, within30: true, after30: 0 }],
+    ['after30 글자', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: '1' }],
+    ['after30 소수', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: 0.5 }],
+    ['after30 음수', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: -1 }],
+    ['after30 객체', { cohort: 3, within7: 1, within14: 2, within30: 2, after30: {} }],
+  ])('%s → null', (_, input) => {
+    expect(revisitAfterCheck(input)).toBeNull()
+  })
+})
+
+describe('AC-502.2 돌려주는 것은 새 객체다', () => {
+  it('두 칸 없는 값을 넣어도 넣은 값은 그대로이고, 돌려받은 것에는 두 칸이 있다', () => {
+    const input = { ...good(), revisit: { cohort: 3, within7: 1, within14: 2 } }
+    const output = validateMonthPayload(input)!
+    expect(output.revisit).not.toBe(input.revisit)
+    expect(Object.keys(output.revisit).sort()).toEqual(['after30', 'cohort', 'within14', 'within30', 'within7'])
+    expect(Object.keys(input.revisit).sort()).toEqual(['cohort', 'within14', 'within7'])
+  })
+})
+
+describe('AC-502.3 두 칸이 없는 지금 가짜 자료는 타입도 검사도 고치지 않고 통과한다', () => {
+  // 타입을 일부러 적었다: tsc가 두 칸이 '선택'임을 함께 증명한다(payload 밖 시험·feat-ai-report의 가짜 자료와 같은 모양)
+  const oldRevisit: RevisitPayload = { cohort: 3, within7: 1, within14: 2 }
+  const readAs = { cohort: 3, within7: 1, within14: 2, within30: null, after30: null }
+
+  it('달 숫자', () => {
+    const old: MonthPayload = { ...good(), revisit: oldRevisit }
+    expect(validateMonthPayload(old)).toStrictEqual({ ...old, revisit: readAs })
+  })
+
+  it('일 숫자', () => {
+    const old: DayPayload = { ...goodDay(), revisit: oldRevisit }
+    expect(validateDayPayload(old)).toStrictEqual({ ...old, revisit: readAs })
+  })
+})
+
+describe('AC-502.1·AC-502.2 toMonthPayload·toDayPayloads가 만든 30일 숫자는 저장했다 읽어도 그대로다', () => {
+  // 9/3 신환이 9/25(22일째)에, 9/4 신환이 10/20(46일째)에 다시 왔다. 9/5 신환은 오지 않았다. 9월 칸의 30일 창은 9/1~10/30
+  const line = (patient: number, date: string, firstVisit: boolean): ConsumptionRow => ({
+    rxCode: 'D1001',
+    rxName: '가짜정 10mg',
+    rxType: '약품',
+    date,
+    firstVisit,
+    outpatient: true,
+    patient,
+    region: null,
+  })
+  const lines = [
+    line(1, '2026-09-03', true),
+    line(1, '2026-09-25', false),
+    line(2, '2026-09-04', true),
+    line(2, '2026-10-20', false),
+    line(3, '2026-09-05', true),
+  ]
+  const aggregates = aggregate(lines)
+  const result = {
+    quality: 'valid' as const,
+    skippedInvalidRows: 0,
+    unknownVisitRows: 0,
+    aggregates,
+    summary: buildSummary({ aggregates, covered: [{ from: '2026-09-01', to: '2026-11-15' }], quality: 'valid', today: '2026-11-16' }),
+  }
+
+  it('달 숫자', () => {
+    const payload = toMonthPayload(result)!.find((p) => p.month === '2026-09')!
+    expect(payload.revisit).toEqual({ cohort: 3, within7: 0, within14: 0, within30: 1, after30: 1 })
+    expect(validateMonthPayload(JSON.parse(JSON.stringify(payload)))).toStrictEqual(payload)
+  })
+
+  it('일 숫자', () => {
+    const payload = toDayPayloads(result)!.find((p) => p.day === '2026-09-04')!
+    expect(payload.revisit).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 1 })
+    expect(validateDayPayload(JSON.parse(JSON.stringify(payload)))).toStrictEqual(payload)
   })
 })
 
