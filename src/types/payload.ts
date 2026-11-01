@@ -3,8 +3,15 @@ import type { FollowUp, Totals } from './analysis'
 // 병원 계정(서버)에 저장하는 모양 — 달마다·날마다 합계만. lib/payload/validate.ts가 기준이다(정해진 열쇠 밖은 거부).
 // 환자 번호·차트번호·파일 이름은 없다. 비율은 저장하지 않는다(읽을 때 나눈다 — 합과 어긋나지 않게)
 
-// 재방문 원래 숫자. withinN null = '집계 중'(요약의 RevisitView와 같은 판정)
-export type RevisitPayload = { cohort: number; within7: number | null; within14: number | null }
+// 재방문 원래 숫자. withinN·after30 null = '집계 중'(요약의 RevisitView와 같은 판정)
+// within30·after30은 stats 명세가 더함(선택 칸, 저장한 줄이 아직 없어 버전을 올리지 않음). 없으면 null로 읽는다
+export type RevisitPayload = {
+  cohort: number
+  within7: number | null
+  within14: number | null
+  within30?: number | null
+  after30?: number | null
+}
 
 export type MonthPayload = {
   schemaVersion: 2

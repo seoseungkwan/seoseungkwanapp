@@ -16,6 +16,8 @@ export function revisitPayload(bucket: BucketStats, ref: BucketRef | undefined):
     cohort: bucket.revisit.cohort,
     within7: ref?.revisit.within7 ?? null,
     within14: ref?.revisit.within14 ?? null,
+    within30: ref?.revisit.within30 ?? null,
+    after30: ref?.revisit.after30 ?? null,
   }
 }
 

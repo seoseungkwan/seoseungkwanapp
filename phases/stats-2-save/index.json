@@ -1,0 +1,23 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "stats-2-save",
+  "steps": [
+    {
+      "step": 0,
+      "name": "stats-tables",
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000200_stats.sql: public.my_hospital_id()(C1 글자 그대로)·stats_months·stats_days·stats_coverage·트리거 stats_keep_complete. hospital_id는 DB 기본값이고 어느 권한에도 없다, delete 없음, stats_coverage는 넣기만, payload 묶음은 (...) is true, 기간은 800일 이하. src/types/db.ts에 StatsSourceColumn·StatsMonthRow·StatsDayRow·StatsCoverageRow. docs/ARCHITECTURE.md 표·흐름 줄. 다음 step이 알 것: 완전한 줄에 덜 덮인 줄을 보내면 오류 없이 옛 줄이 남고 영향 줄은 1이다(트리거, 그때 잘못된 payload도 검사 전에 버려진다). 그래서 saved를 '실제로 바뀐 줄 수'로 읽지 않는다. stats_coverage의 800일 검사는 source='file'에도 걸린다. 실제 Supabase에는 아직 붙이지 않았다(Phase 2 끝에 사용자에게 SQL 편집기 순서를 드리고 허락을 받는다)."
+    },
+    {
+      "step": 1,
+      "name": "stats-storage",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "rx-trend",
+      "status": "completed",
+      "summary": "src/lib/analytics/rxTrend.ts: buildTrend(days, covered, {from,to,bucket,codes})→{points: TrendPoint[], totals: Map(코드→count)}, comparisonRange·comparisonLabel, trendChange. types/analysis.ts에 TrendBucket·TrendComparison·TrendPoint. 명세와 다른 점: trendChange는 design에 없는 함수다(compareNumbers는 이전이 음수여도 pct를 내서 원본 '음수 기준 증감률 미산출'에 맞추려고 감쌈, knownDiffs에 적음). 건수는 음수가 없어 TASK-11은 compareNumbers를 그대로 쓴다. TASK-11이 지킬 것: (1) buildTrend는 원본 TrendMath.Validate처럼 codes가 0개이거나 200개를 넘으면 RangeError다. rxList는 자료의 코드를 대소문자 구분 없이 먼저 합친 뒤 200개씩 나눠 부르고, 처방 줄이 없는 기간은 부르기 전에 막아 null을 돌려준다. (2) totals는 count만 담으므로 newCount·returningCount는 점을 더한다. (3) TrendPoint에 이름이 없으므로 '가장 최근 날의 이름'은 days에서 찾는다. (4) covered(AC-511.8)에 isCovered를 쓰지 않는다(칸 전체가 들어가야 참이라 일부만 덮인 칸이 false가 된다). 겹침을 따로 본다. TASK-13이 지킬 것: 90일 보기의 주 칸은 이번·비교 칸 수가 다를 수 있다(90이 7로 나뉘지 않음). rxDetail은 두 배열을 그대로 주고, RxTrendSection이 짝 없는 차례를 comparison: null(막대 없음, 표 '–')로 바꾼다. 남는 비교 칸은 그리지 않는다. TASK-14가 지킬 것: buildTrend의 RangeError .message를 화면에 그대로 보이지 않는다(오류 글은 lib/errors)."
+    }
+  ]
+}

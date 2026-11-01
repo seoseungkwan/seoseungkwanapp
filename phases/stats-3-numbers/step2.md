@@ -1,0 +1,146 @@
+# Step 2: stats-view
+
+> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.8
+> Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 2 — `specs/stats/tasks.md`
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-11 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 옮겨 옴: precheck REQ-029 (precheck 029.2 첫 재방문까지 날수) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+
+## 이 step이 맞출 수용 기준 (AC)
+
+전체 문장은 `/specs/stats/requirements.md`의 REQ-511(통계 화면 숫자 (`components/stats/view.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+
+- **AC-511.1**: Given 오늘과 기간(`'7d' | '30d' | '90d' | '12m'`, 처음 `'30d'`), When `statsRange`, Then 일 기간은 어제까지 N일(대시보드 `periodRange` 그대로), `'12m'`은 이번 달을 넣은 12달이다. 비교 기간은 일 기간이면 바로 앞 같은 일수(`PreviousEqualDays`), `'12m'`이면 작년 같은 12달(`PreviousYear`)이다. 불러올 범위는 비교 기간 첫날이 든 달의 1일 ~ 오늘이고 800일 이하다. `finishedCohort`도 같이 준다: `'30d'`는 오늘 − 60 ~ 오늘 − 31(`'30d'`의 비교 기간과 같은 범위라 불러올 범위와 읽기는 그대로다), 다른 기간은 null이다
+- **AC-511.2**: Given 저장 모양과 기간, When 기간 요약을 만들면, Then 네 칸이다: 평균 환자 수(일 기간은 자료 있는 끝난 날 평균, `'12m'`은 자료 있는 **끝난 달**(`partial: false`) 평균, 소수점 아래는 버림), 신환(합), 재진(합), 비교 기간보다(평균의 `compareNumbers` 증감). 덜 끝난 칸(이번 달 같은 `partial: true` 달·날)은 평균과 증감에서 빼고, 비교 기간에서도 그 칸과 짝인 칸(작년 같은 달)을 뺀다 — 엔진이 '집계 중' 칸을 견주지 않는 것(stats-core 007.1 '완전한 칸끼리만 증감')과 같은 규칙이다. 신환·재진 합에는 덜 끝난 칸도 넣고 '일부 기간' 표시를 붙인다. 자료 없는 날·달은 0으로 치지 않고, 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다. `'12m'`에 덜 끝난 달만 자료가 있고 끝난 달이 없으면 평균 칸은 "자료 없음", 넷째 칸은 "비교할 자료가 없어요"이고, 신환·재진 합은 그대로 '일부 기간' 표시와 함께 보인다. 일 기간에 끝난 날이 없을 때도 같다. 시험: 11월 15일의 12개월 보기 — 덜 끝난 11월과 작년 11월을 빼고 견주어 그 달 때문에 ▼가 나오지 않는다. 시험: 덜 끝난 달만 자료가 있는 12개월 보기 — 평균 칸 "자료 없음", 넷째 칸 "비교할 자료가 없어요", 신환·재진 합은 '일부 기간'과 함께 보인다. 시험: 끝난 날이 없는 일 기간 — 평균 칸 "자료 없음"
+- **AC-511.3**: Given 저장 모양(과 덮은 기간), When 환자 수 추이를 만들면, Then 일 기간은 자료 있는 날마다 신환·재진 칸(대시보드 `trendBuckets` 그대로), `'12m'`은 달 숫자(`MonthPayload.totals`)마다 칸이고, 덜 끝난 칸은 '일부 기간'이다
+- **AC-511.4**: Given 저장 모양, When 재방문율을 만들면, Then 7·14·30일 = 그 값이 null이 아닌 칸들의 재방문 합 ÷ 그 칸들의 집단 합이다. 모두 null이면 '집계 중', 분모가 0이면 '자료 없음'이다. 비율 칸은 비율과 함께 `within`(다시 온 신환 합)·`cohort`(센 신환 합)·`excluded`(값이 null이라 뺀 칸이 있는지)를 싣는다. 첫 재방문까지 날수는 30일 값이 숫자인 칸들로 원본 `CohortMonthResult`의 네 칸 "7일 안"(within7) · "8~14일"(within14 − within7) · "15~30일"(within30 − within14) · "30일 넘어 다시 옴"(after30)과, 그 밖 "아직 다시 안 옴"(cohort − within30 − after30, 원본 `SingleVisitNewPatients`)이고 다섯의 합 = 그 칸들의 집단 합이다. "30일 넘어 다시 옴"은 불러온 자료 끝날까지 본 수라고 안내 글이 붙는다. 원본 `CohortTests.cs`의 사례(신환율·기존환자율·신환 재방문율의 분모 구별, 분모 0이면 미산출, 재방문 칸 합, 덜 끝난 달)를 옮겨 통과한다. `'30d'`에서만(최근 30일의 날은 모두 온 지 30일이 안 되어 늘 '집계 중'이므로) 30일 줄과 첫 재방문까지 날수는 `finishedCohort`(온 뒤 30일이 지난 가장 최근 신환)의 날들로 센다. 세는 규칙은 위와 같고(값이 null이 아닌 날들의 합 ÷ 그 날들의 집단 합, 모두 null이면 '집계 중', 분모가 0이거나 줄이 없으면 '자료 없음'), 보여 주는 날짜는 그 범위에서 30일 값이 숫자인 첫날과 끝날이다(마지막 불러오기가 며칠 전이면 가장 새로운 날들이 아직 null이라, 범위 끝을 그대로 적으면 실제보다 넓어 보인다). `'30d'`의 7·14일 줄은 고른 기간 그대로다. `'7d'`·`'90d'`·`'12m'`은 바뀌지 않는다. 시험: 오늘이 11월 13일인 `'30d'` — 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 보인다. 시험: 가장 새로운 날들이 null — 날짜가 숫자인 날까지로 줄어든다. 시험: 7·14일 줄은 여전히 고른 기간을 쓴다. 시험: 비율 칸 — 7·14·30일 모두 `within`·`cohort`가 비율을 낸 두 합과 같고, null인 칸을 뺐으면 `excluded`가 참이다
+- **AC-511.5**: Given 저장 모양, When 요일별 환자 수를 만들면, Then 대시보드 `weekdayBuckets` 규칙 그대로다(`'12m'`도 기간 안 일 숫자로)
+- **AC-511.6**: Given 저장 모양, When 처방 목록을 만들면, Then 기간 건수가 큰 5개(같으면 코드 순)이고 처방마다 이름(가장 최근 날의 이름)·기간 건수·비교 기간 건수·증감·신환 건수·재진 건수가 있다. `'12m'`의 증감은 끝난 달끼리만 견준다(AC-511.2와 같은 규칙, stats-core 007.1): 이번 기간의 달과 그 짝(작년 같은 달) 가운데 어느 한쪽이라도 `buildTrend` 달 점에서 `partial`이면 그 달을 양쪽에서 뺀다. 기간 건수(`count`)·신환 건수(`newCount`)·재진 건수(`returningCount`)는 덜 끝난 달을 넣고 '일부 기간' 표시를 붙인다(AC-511.2의 신환·재진 합과 같다). `comparable: { current, previous }`가 끝난 달끼리의 합이고, 증감 = `compareNumbers(comparable.current, comparable.previous)`, 비교 기간 건수 = `comparable.previous`다. 끝난 달이 하나도 남지 않으면 `comparable`은 null이고 증감은 `{ kind: 'unavailable' }`("비교할 수 없음")이다. 순위는 그대로 `count`로 정한다. `'7d'`·`'30d'`·`'90d'`는 같은 규칙을 날 단위로 쓴다(AC-511.8의 표시 칸과 상관없이 늘 날마다): 이번 기간의 날과 비교 기간의 같은 차례 날(`PreviousEqualDays`)을 짝 짓고, 어느 한쪽이라도 `buildTrend` 날 점에서 `partial`이면(덮은 기간 밖의 날은 이미 그렇다) 그 짝을 양쪽에서 뺀다. 덮은 기간 안의 휴진일은 0으로 남는다. `comparable`은 남은 짝의 합이고, 남은 짝이 없을 때만 null이며 증감은 `{ kind: 'unavailable' }`("비교할 수 없음")이다. `count`·`newCount`·`returningCount`는 그대로 기간 합이고 `partial` 표시는 `'12m'`에서만 붙는다(일 기간에는 '일부 기간'이 없다). 시험: 11월 15일의 12개월 보기 — 11월과 작년 11월을 둘 다 빼서 가짜 ▼가 없다. 시험: 덜 끝난 달만 자료가 있음 — "비교할 수 없음". 시험: 일 기간에서 비교 기간이 덮은 기간 밖 — 모든 줄이 "새로 생김"이 아니라 "비교할 수 없음"이다. 시험: 비교 기간이 반만 덮임 — 덮인 짝만 견준다. 시험: 이번 기간 끝이 덮은 기간 밖(어제가 안 덮임) — 그 날과 짝을 빼고 나머지로 보통 증감이다. 시험: 두 기간이 모두 온전히 덮임 — 보통 증감이다
+- **AC-511.7**: Given `components/stats/view.ts` 소스, When 보면, Then 순수 함수(React·Supabase·`fetch`·브라우저 저장소 없음)이고 날짜는 `lib/analytics/dates.ts`, 증감은 `compareNumbers`, 대시보드 `components/dashboard/summary/view.ts`의 함수는 불러 쓰기만 한다
+- **AC-511.8**: Given 처방 하나, When `rxDetail`로 그 처방의 칸별 건수를 만들면, Then 칸은 기간에 따라 정해진다: 최근 7일·30일 = 일, 최근 90일 = 주(월~일), 최근 12개월 = 달. `buildTrend`(덮은 기간 포함)의 점을 그대로 쓰고 비교 기간 점도 같은 칸으로 준다. 점마다 `covered`를 더한다(그 칸의 날이 하나라도 덮은 기간 안에 있으면 true, 하나도 없으면 false). 시험: 비교 기간이 덮은 기간 밖인 칸 — `covered: false`. 시험: 칸의 일부 날만 덮임 — `covered: true`
+
+## 읽어야 할 파일
+
+먼저 아래 파일들을 읽고 프로젝트의 아키텍처와 설계 의도를 파악하라:
+
+- `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
+- `/docs/ARCHITECTURE.md`
+- `/specs/stats/requirements.md` — REQ-511
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-11, '데이터 흐름'(기간)
+- `/specs/stats/tasks.md` — TASK-11 (수정 범위·메모)
+- `/docs/mockups/stats/notes.md` — '신환 재방문율'·'처방 추세' (보기 모양이 담아야 할 숫자. 화면은 TASK-13 몫이고 이 파일은 고치지 않는다)
+- `/src/components/dashboard/summary/view.ts` (`periodRange`·`trendBuckets`·`revisitView`·`weekdayBuckets`·`topRx` — 불러 쓰기만)
+- `/src/components/charts/StackedBarChart.tsx`(`BarBucket`)·`RankedBars.tsx`(`RankedItem`)·`format.ts`
+- `/src/lib/analytics/rxTrend.ts` (TASK-8), `/src/lib/analytics/history.ts`, `/src/lib/analytics/dates.ts`, `/src/lib/analytics/compare.ts`
+- `/src/types/payload.ts`
+- 이전 step에서 만든 파일: TASK-2(`within30`·`after30`), TASK-7(`readCoverage`의 모양), TASK-8(`buildTrend`·`comparisonRange`)
+
+이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
+
+## 원본 (양지바른, 읽기만)
+
+- GitHub: 저장소 `seoseungkwan/shared`, 커밋 `2a1069b`, 폴더 `YangjiBareun_사전점검/`
+- 이 서버의 사본(나중에 지워질 수 있음): `/tmp/claude-1000/-home-developer/4601ab55-16fe-474f-813a-c7a0d544b749/scratchpad/yangji/repo/YangjiBareun_사전점검/`
+  - 얕은 clone(HEAD `c66488e`)이다. `2a1069b`와 `c66488e` 사이에 이 폴더 안 파일은 바뀌지 않았다. 그대로 써도 된다
+- 사본이 없으면 저장소 밖 임시 폴더에 받는다: `git clone https://github.com/seoseungkwan/shared.git <임시폴더>/shared && git -C <임시폴더>/shared checkout 2a1069b` → `export YANGJI_SRC=<임시폴더>/shared/YangjiBareun_사전점검`. 받을 수 없으면 `blocked`(사유: 원본 저장소 접근 필요)로 멈춘다
+- 원본 시험(`tests/*.py`·`*Tests.cs`)은 모두 가짜 자료다. 사례를 시험 씨앗으로 옮겨도 된다
+
+- 이 step에서 볼 원본(폴더 `YangjiBareun_사전점검/` 기준):
+  - `vendor/drbit_export/CohortContracts.cs` (`CohortRate`·`CohortMonthResult`의 비율과 재방문 칸 `ReturnWithin7Days`·`Return8To14Days`·`Return15To30Days`·`ReturnAfter30Days`·`SingleVisitNewPatients`)
+  - `vendor/drbit_export/CohortTests.cs` (옮길 사례)
+
+## 수정 범위 (tasks.md TASK-11)
+
+이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
+
+- Files:
+  - `src/components/stats/view.ts`
+  - `src/components/stats/view.test.ts`
+- Tests:
+  - `src/components/stats/view.test.ts`
+- TDD: required
+
+## 꼭 지킬 규칙 (CRITICAL)
+
+- **날짜는 한 곳**: 날짜 계산은 `src/lib/analytics/dates.ts`(한국 날짜, `YYYY-MM-DD`). 시험은 `TZ=Asia/Seoul`에서 돈다 (CLAUDE.md)
+- **원본은 저장소 밖**: 원본 경로는 `YANGJI_SRC` 환경 변수나 스크립트 인자로만 받는다. 원본 파일 통째를 저장소에 복사·커밋하지 않는다. 커밋하는 것은 옮긴 코드, 원본 SQL 문장 사본(`original-sql/*.sql`), 골든 결과뿐이다 (specs/stats/tasks.md 머리말)
+
+## 작업
+
+### 1. 코드 (`src/components/stats/view.ts`, 순수 — React·Supabase·`fetch`·브라우저 저장소 없음)
+- design.md TASK-11 시그니처. 모든 함수는 저장 모양과 함께 덮은 기간(`readCoverage`가 준 합친 범위 목록)을 받는다. AC-511.1~511.6·511.8의 셈을 그대로:
+  - `statsRange`: 일 기간 = 대시보드 `periodRange(today, N)`, `'12m'` = 이번 달 포함 12달, 비교 = `comparisonRange(…, 'PreviousEqualDays' | 'PreviousYear')`, 불러올 범위 = 비교 첫날이 든 달 1일 ~ 오늘(800일 이하를 시험), `finishedCohort` = `'30d'`만 오늘 − 60 ~ 오늘 − 31, 나머지 null
+  - 기간 요약 네 칸(평균·증감은 끝난 칸만 — `'12m'`에서 덜 끝난 이번 달(`partial: true`)은 평균·증감에서 빼고 비교 기간의 짝(작년 같은 달)도 뺀다, 엔진의 '집계 중' 칸 빼기와 같은 규칙. 신환·재진 합에는 넣고 '일부 기간' 표시), 환자 수 추이(일: `trendBuckets` 재사용 / 달: `MonthPayload.totals`), 재방문율 7·14·30 + 첫 재방문까지 날수 다섯 칸(원본 네 칸 7일 안·8~14일·15~30일·30일 넘어 다시 옴 + 아직 다시 안 옴, 합 = 집단 합), 요일별(`weekdayBuckets` 재사용), 처방 목록 상위 5 + `rxDetail`(`buildTrend`, 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달, 비교 기간도 같은 칸 — AC-511.8)
+  - 기간 요약에 끝난 칸이 없을 때(AC-511.2): `'12m'`에 덜 끝난 달만 있거나 일 기간에 끝난 날이 없으면 평균 칸 "자료 없음", 넷째 칸 "비교할 자료가 없어요", 신환·재진 합은 '일부 기간'과 함께
+  - 재방문 비율 칸(AC-511.4): `d7`·`d14`·`d30`은 design.md의 `StatsRateCell`이다. kind 이름은 대시보드 `RateCell`과 같고 `'rate'`에 `within`·`cohort`·`excluded`를 싣는다
+  - `'30d'`의 재방문(S6, AC-511.4): 30일 줄과 첫 재방문은 `finishedCohort`의 날들로 세고, `d30Cohort`·`FirstRevisit`의 `from`·`to`는 그 안에서 30일 값이 숫자인 첫날·끝날이다. 7·14일 줄은 고른 기간 그대로. `load`와 읽기는 바꾸지 않는다
+  - `'12m'`의 처방 증감(S7, AC-511.6): 짝 지은 두 달 가운데 하나라도 `buildTrend` 달 점에서 `partial`이면 양쪽에서 빼고 남은 달의 합이 `comparable`이다. `delta = compareNumbers(comparable.current, comparable.previous)`, 남은 달이 없으면 `comparable: null`·`delta: { kind: 'unavailable' }`(`compareNumbers(0, 0)`은 '변화 없음'이 되므로 부르지 않는다). `count`·`newCount`·`returningCount`는 덜 끝난 달을 넣고 `partial: true`. 순위는 `count`
+  - 일 기간의 처방 증감(AC-511.6): 표시 칸(AC-511.8)과 상관없이 늘 `buildTrend`의 날 점으로 센다. 이번 기간의 날과 비교 기간의 같은 차례 날(`PreviousEqualDays`)을 짝 짓고, 어느 한쪽이라도 `partial`이면 그 짝을 양쪽에서 뺀다. 덮은 기간 안의 휴진일은 0으로 남는다. `comparable`은 남은 짝의 합이고, 남은 짝이 없을 때만 `comparable: null`·`delta: { kind: 'unavailable' }`이다. 덮이지 않은 비교 날을 0으로 치면 `compareNumbers`가 `new`를 내어 모든 줄이 "새로 생김"이 된다. `count`·`newCount`·`returningCount`는 그대로 기간 합(`buildTrend` 합계라 [자세히] 합과 같다)이고 일 기간의 `partial`은 false다
+  - `rxDetail`의 점(AC-511.8): `TrendPoint`에 `covered`를 더한 `RxDetailPoint`다. `covered`는 view.ts에서 덮은 기간으로 정하고, TASK-8의 `TrendPoint`와 `buildTrend`는 고치지 않는다
+- 자료 없는 날·달은 0으로 치지 않는다. 평균은 버림
+
+### 2. 시험 (`view.test.ts`)
+- AC마다 가짜 저장 모양(시험 안에서 만듦)으로. AC-511.4는 원본 `CohortTests.cs`의 사례(신환율·기존환자율·신환 재방문율의 분모 구별, 분모 0이면 미산출, 재방문 칸 합 = 재방문 신환, 덜 끝난 달)를 옮긴다(원본 시험 이름을 시험 이름에). 원본에서 옮기지 않는 것(완전 관찰 수 `FullyObserved*`, 치료 묶음 `Treatments`, 엑셀·HTML)은 시험 머리 `knownDiffs`에 이유와 함께. AC-511.8: 기간마다 `rxDetail`의 칸 크기
+- AC-511.2: 11월 15일의 12개월 보기 사례 — 덜 끝난 11월(적은 숫자)과 작년 11월을 빼고 견주어 ▼(가짜 감소)가 나오지 않음, 비교 기간 자료 없음 → "비교할 자료가 없어요", 덜 끝난 달만 자료가 있음 → 평균 칸 "자료 없음"·넷째 칸 "비교할 자료가 없어요"·신환·재진 합은 '일부 기간'과 함께, 끝난 날이 없는 일 기간 → 평균 칸 "자료 없음"
+- AC-511.1: 오늘 11월 13일 `'30d'`의 `finishedCohort` = 9월 14일 ~ 10월 13일(`previous`와 같음), 다른 기간은 null
+- AC-511.4: 오늘 11월 13일 `'30d'` → 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 준다, 가장 새로운 날들이 null → 날짜가 숫자인 날까지로 줄어든다, 7·14일 줄은 고른 기간을 쓴다, 모두 null → '집계 중', 분모 0·줄 없음 → '자료 없음', 비율 칸의 `within`·`cohort`가 비율을 낸 두 합과 같음, null인 칸을 뺐으면 `excluded: true`
+- AC-511.6: 11월 15일의 12개월 보기 → 11월과 작년 11월을 둘 다 빼서 가짜 ▼가 없음, 덜 끝난 달만 자료가 있음 → "비교할 수 없음"(`{ kind: 'unavailable' }`), 순위는 덜 끝난 달을 넣은 `count`로 정함, 일 기간에서 비교 기간이 덮은 기간 밖 → 모든 줄이 "새로 생김"이 아니라 "비교할 수 없음", 비교 기간이 반만 덮임 → 덮인 짝만 견줌, 이번 기간 끝이 덮은 기간 밖(어제가 안 덮임) → 그 날과 짝을 빼고 나머지로 보통 증감, 두 기간이 모두 온전히 덮임 → 보통 증감
+- AC-511.8: 비교 기간이 덮은 기간 밖인 칸 → `covered: false`, 칸의 일부 날만 덮임 → `covered: true`
+- AC-511.7: 소스 글자에 `react`·`supabase`·`fetch`·`localStorage`가 없고 대시보드 `view.ts`를 불러온다
+
+## TASK-8에서 넘어온 규칙 (2026-11-01 리뷰)
+
+- `buildTrend`는 원본 `TrendMath.Validate`처럼 `codes`가 0개이거나 200개를 넘으면 `RangeError`다. `rxList`는 자료의 코드를 **대소문자 구분 없이 먼저 합친 뒤** 200개씩 나눠 부른다(`AB1`과 `ab1`이 다른 묶음에 들어가면 두 줄 모두 합친 건수를 갖는다). 처방 줄이 없는 기간은 부르기 전에 막는다. 시험: 코드 201개 자료에서 예외 없이 상위 5개가 나온다, 대소문자만 다른 코드가 묶음 경계에 걸려도 한 줄이다
+- `totals`는 `count`만 담는다. `newCount`·`returningCount`는 점을 더해 낸다
+- `TrendPoint`에 이름이 없다. '가장 최근 날의 이름'은 `days`에서 찾는다
+- `covered`(AC-511.8)에 `isCovered`를 쓰지 않는다(칸 전체가 들어가야 참이라 일부만 덮인 칸이 false가 된다). 겹침을 따로 본다
+- `rxDetail`은 `buildTrend` 점을 그대로 준다. 90일 보기는 이번·비교 칸 수가 다를 수 있지만 여기서 채우거나 자르지 않는다(TASK-13이 맡는다)
+- 증감은 `compareNumbers`를 그대로 쓴다. `trendChange`는 쓰지 않아도 된다(건수는 음수가 없다)
+
+## TDD 순서
+
+1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
+2. `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
+3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green` 으로 통과(GREEN)를 기록한다
+4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
+
+## Acceptance Criteria
+
+```bash
+npx vitest run src/components/stats/view.test.ts src/components/dashboard/summary/view.test.ts
+python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green
+npm run lint && npm test && npm run build
+python3 ~/.claude/harness/bin/verify
+```
+
+- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.8이 이 TASK의 시험과 이어져 보여야 한다
+
+## 검증 절차
+
+1. 위 AC 커맨드를 실행한다.
+2. 아키텍처 체크리스트를 확인한다:
+   - ARCHITECTURE.md 디렉토리 구조를 따르는가?
+   - ADR 기술 스택을 벗어나지 않았는가(새 패키지 없음)?
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가?
+3. 결과에 따라 `phases/stats-3-numbers/index.json`의 해당 step을 업데이트한다:
+   - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
+   - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`
+   - 사용자 개입 필요 (원본 접근, 목업 승인, 외부 인증, 수동 설정 등) → `"status": "blocked"`, `"blocked_reason": "구체적 사유"` 후 즉시 중단
+
+- `index.json`은 `python3`로 JSON을 읽고 써서 고친다(이 파일은 TASK 수정 범위 밖이라 편집 도구는 훅이 막을 수 있다). 다른 칸과 다른 step은 건드리지 않는다
+- `summary`는 다음 step 프롬프트에 그대로 전달된다. 만든 파일, 정한 이름·모양, 다음 step이 알아야 할 결정을 한 줄에 담는다
+
+## 금지사항
+
+- 대시보드 `view.ts`를 고치지 마라. 이유: 이 step 범위 밖이고, 대시보드의 30일 줄은 TASK-16 몫이다(불러 쓰기만)
+- 덮은 기간 밖의 날을 0으로 채워 평균·비율·증감을 만들지 마라. 이유: 지어낸 숫자가 된다(UI_GUIDE '빈 상태')
+- 첫 재방문 칸의 뜻을 바꾸지 마라('30일 넘어 다시 옴'은 31일째 이후 처음 다시 온 수). 이유: 원본 칸 그대로가 AC다(AC-511.4)
+- 화면 컴포넌트(`*.tsx`)를 만들지 마라. 이유: 화면은 목업 승인 뒤 TASK-13·14다
+- 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
+- `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
+- `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다
+- 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다
+- 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
+- 새 npm·NuGet 패키지를 넣지 마라. 이유: `package.json`·csproj가 수정 범위 밖이고 ADR 기술 스택 밖이다
+- `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
+- `.harness/*`·`CLAUDE.md`·`plan.md`를 고치지 마라 · `docs/*`. 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다

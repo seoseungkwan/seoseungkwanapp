@@ -50,7 +50,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 ## 데이터 흐름
 ```
 [통계] 파일 끌어다 놓기 → Worker: parse → aggregate → compare → 화면
-       화면 → toMonthPayload·toDayPayloads → validate → (예정) lib/storage → months·days
+       화면 → toMonthPayload·toDayPayloads + 덮은 기간 → validate → lib/storage/stats.ts → stats_months·stats_days·stats_coverage
 [매출] (예정) 폴더 연결(읽기 전용) 또는 끌어다 놓기 → Worker → 집계 → sales_days
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
@@ -73,7 +73,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 |---|---|
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
-| `months` · `days` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용) |
+| `stats_months` · `stats_days` · `stats_coverage` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용. 칸: `month` 또는 `day`·`partial`·`source`·`payload`·`updated_at`, 완전한 줄은 덜 덮인 줄로 안 바뀌는 트리거) · 불러온 기간 한 줄씩(칸: `from_day`·`to_day`·`source`·`created_at`, 넣기만) |
 | `rx_groups` | 그룹 이름·코드 목록·즐겨찾기 |
 | `sales_days` | 일 매출 집계. 칸: 미정 — 매출 파일 예시(§12)를 보고 정함 |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |

@@ -25,7 +25,7 @@ const RETURNING = 1
 const NEW = 2
 
 // 신환 재방문 창: 첫 신환일 다음 날부터 이 날수째까지(양 끝 포함)
-const REVISIT_DAYS = [7, 14] as const
+const REVISIT_DAYS = [7, 14, 30] as const
 const NO_GROUPS: readonly number[] = []
 
 type Regions = Map<number, Set<number>> // 지역 번호 → 환자
@@ -115,7 +115,7 @@ function bucketIn(buckets: Map<string, BucketAcc>, key: string, rangeOf: (key: s
       rx: new Map(),
       groups: new Map(),
       regions: new Map(),
-      revisit: { cohort: 0, within7: 0, within14: 0 },
+      revisit: { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 },
     }
     buckets.set(key, bucket)
   }
@@ -202,14 +202,18 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     }
   }
 
-  // 신환 재방문: 첫 신환일이 든 일·주·월 칸에 더한다. 다른 날(다음 날부터 N일째까지)의 외래 줄만 재방문이다
+  // 신환 재방문: 첫 신환일이 든 일·주·월 칸에 더한다. 다른 날(다음 날부터 N일째까지)의 외래 줄만 재방문이다.
+  // 다음 날 이후 외래 줄은 있는데 30일 안에는 없으면 첫 재방문이 31일째 이후다(after30)
   for (const [patient, first] of firstNew) {
     const later = [...(visitDays.get(patient) ?? [])].map((date) => diffDays(first, date)).filter((gap) => gap >= 1)
-    const [within7, within14] = REVISIT_DAYS.map((limit) => later.some((gap) => gap <= limit))
+    const [within7, within14, within30] = REVISIT_DAYS.map((limit) => later.some((gap) => gap <= limit))
+    const after30 = !within30 && later.length > 0
     for (const bucket of bucketsOfDate.get(first) ?? []) {
       bucket.revisit.cohort++
       if (within7) bucket.revisit.within7++
       if (within14) bucket.revisit.within14++
+      if (within30) bucket.revisit.within30++
+      if (after30) bucket.revisit.after30++
     }
   }
 

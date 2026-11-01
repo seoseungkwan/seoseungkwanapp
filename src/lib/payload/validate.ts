@@ -30,15 +30,17 @@ const DAY_RX_KEYS = ['code', 'name', 'type', 'patients', 'newPatients', 'returni
 const MONTH_GROUP_KEYS = ['id', 'patients', 'newPatients', 'returning', 'followup']
 const DAY_GROUP_KEYS = ['id', 'patients', 'newPatients', 'returning']
 const REVISIT_KEYS = ['cohort', 'within7', 'within14']
+const REVISIT_OPTIONAL_KEYS = ['within30', 'after30'] // 없으면 null로 읽는다
 const REGION_KEYS = ['name', 'patients']
 
 type Fields = Record<string, unknown>
 
-// 정해진 열쇠가 빠짐없이, 그것만 있는 객체(배열·null 아님)
-function exactly(value: unknown, keys: readonly string[]): Fields | null {
+// 정해진 열쇠(keys)가 빠짐없이, 그것만 있는 객체(배열·null 아님). optional 열쇠는 있어도 되고 없어도 된다
+function exactly(value: unknown, keys: readonly string[], optional: readonly string[] = []): Fields | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const own = Object.keys(value)
-  return own.length === keys.length && own.every((key) => keys.includes(key)) ? (value as Fields) : null
+  const complete = keys.every((key) => own.includes(key))
+  return complete && own.every((key) => keys.includes(key) || optional.includes(key)) ? (value as Fields) : null
 }
 
 const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0
@@ -127,16 +129,21 @@ function monthGroupOf(value: unknown): MonthPayload['groups'][number] | null {
 
 const isCountOrPending = (value: unknown): value is number | null => value === null || isCount(value)
 
-// 7일 ≤ 14일 ≤ 집단 ≤ 그 칸 신환. 7일이 집계 중(null)이면 14일도 집계 중
+// 7일 ≤ 14일 ≤ 30일 ≤ 집단 ≤ 그 칸 신환, 30일 + after30 ≤ 집단.
+// 집계 중(null)은 앞에서 뒤로 번진다: 7일 → 14일 → 30일 → after30. 돌려주는 객체에는 다섯 칸이 늘 있다
 function revisitOf(value: unknown, newPatients: number): RevisitPayload | null {
-  const o = exactly(value, REVISIT_KEYS)
+  const o = exactly(value, REVISIT_KEYS, REVISIT_OPTIONAL_KEYS)
   if (o === null) return null
-  const { cohort, within7, within14 } = o
+  const { cohort, within7, within14, within30 = null, after30 = null } = o
   if (!isCount(cohort) || !isCountOrPending(within7) || !isCountOrPending(within14)) return null
+  if (!isCountOrPending(within30) || !isCountOrPending(after30)) return null
   if (cohort > newPatients) return null
-  if (within7 === null) return within14 === null ? { cohort, within7, within14 } : null
-  if (within7 > cohort || (within14 !== null && (within7 > within14 || within14 > cohort))) return null
-  return { cohort, within7, within14 }
+  if ((within7 === null && within14 !== null) || (within14 === null && within30 !== null) || (within30 === null && after30 !== null)) return null
+  // 뒤 칸이 집계 중이면 집단과 견준다. 숫자인 칸끼리만 이어지므로 이웃만 보면 된다
+  if (within7 !== null && within7 > (within14 ?? cohort)) return null
+  if (within14 !== null && within14 > (within30 ?? cohort)) return null
+  if (within30 !== null && within30 + (after30 ?? 0) > cohort) return null
+  return { cohort, within7, within14, within30, after30 }
 }
 
 function regionOf(value: unknown): MonthPayload['regions'][number] | null {

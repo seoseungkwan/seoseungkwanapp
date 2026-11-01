@@ -34,6 +34,8 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-STATS-HISTORY',
+  'E-STATS-TOO-BIG',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -260,5 +262,21 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+describe('REQ-505 통계 오류 번호(도우미가 stats.rows를 거절할 때)', () => {
+  it('E-STATS-HISTORY는 신환을 정할 수 없다고 알리고 파일 올리기로 안내한다', () => {
+    expect(errorInfo('E-STATS-HISTORY')).toEqual({
+      what: '비트에 옛 자료가 따로 있어 신환을 정할 수 없어요',
+      fix: '파일 올리기로 통계를 넣어 주세요',
+    })
+  })
+
+  it('E-STATS-TOO-BIG은 기간을 줄여 다시 불러오라고 안내한다', () => {
+    expect(errorInfo('E-STATS-TOO-BIG')).toEqual({
+      what: '고른 기간의 진료 기록이 너무 많아요',
+      fix: '기간을 줄여 다시 불러오세요',
+    })
   })
 })

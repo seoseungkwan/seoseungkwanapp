@@ -1,0 +1,36 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "stats-1-data",
+  "steps": [
+    {
+      "step": 0,
+      "name": "revisit-30",
+      "status": "completed",
+      "summary": "src/types/analysis.ts RevisitCounts에 within30·after30, RevisitView에 within30·after30·rate30(after30은 30일이 숫자일 때만 숫자). aggregate.ts는 REVISIT_DAYS에 30을 더하고 after30 = 30일 안에 없고 다음 날 이후 외래 줄이 있음. compare.ts revisitView는 ready(30)이 within30·after30·rate30을 함께 정한다. 저장 모양은 아직 그대로(TASK-2 몫), analyzeFiles.test.ts는 고칠 곳이 없어 그대로."
+    },
+    {
+      "step": 1,
+      "name": "payload-revisit30",
+      "status": "completed",
+      "summary": "types/payload.ts RevisitPayload에 선택 칸 within30?·after30?(number|null). toMonthPayload의 revisitPayload가 요약 값을 그대로 쓰고 toDayPayloads는 같은 함수를 써서 고칠 곳 없음. validate.ts는 두 칸이 없으면 null로 읽어 돌려주고, 7≤14≤30≤집단≤칸 신환, 30+after30≤집단, null은 앞에서 뒤로 번짐, 그 밖 열쇠는 null. schemaVersion 2 그대로. payload 밖 시험은 고치지 않음."
+    },
+    {
+      "step": 2,
+      "name": "helper-stats-rows",
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Stats/{StatsSql,StatsErrors,StatsRows,StatsPayload,StatsCommands}.cs: StatsSql(VisitRowsSql·VisitSummarySql·VisitDaysSql·CodeNamesSql·HistoryGuardSql, DataTimeout 150s, IsAllowed/ParametersOf/All; 사본 Stats/original-sql/*.sql 5개), Sql.cs 두 줄이 StatsSql도 봄(Sql.All 그대로), StatsRows.Read(db, scope, 'YYYY-MM-DD', 'YYYY-MM-DD')→StatsRowsResult{Summary(6칸 long), Days[StatsDay], Codes[StatsCode(code,name)], Rows[StatsVisitRow(chart,day,code,firstDay?)]}, MaxRows 700000, StatsPayload.Build(from,to,rows,StatsReportResult?)는 design JSON(report는 아직 {daily:[],monthly:[]}; StatsReportResult는 TASK-4가 채울 빈 자리 클래스), StatsCommands.RowsName 'stats.rows'(HospitalGate.Open→Read→Build→세션 닫고 Chunker.Send). 결정: Program.cs는 using 없이 이름공간까지 적은 한 줄 'Precheck.Core.Stats.StatsCommands.Register(dispatcher, HelperServices.Create());'(명세 글자는 'StatsCommands.Register…'인데 using 줄이 따로 필요해 한 줄로 유지), CodeNamesSql 매개변수는 원본 LoadCodesForRange대로 @to=마지막 날(Char 8, 다음 날 아님), codes 열쇠는 진료 줄의 코드 글자(대소문자 무시로 처방 목록과 맞춤, 목록에 없는 코드는 codes에서 빠짐), 첫 내원일 빈 글자→null, 값 모양 틀림→E-BIT-READ-FAILED, 날짜 오류→E-HELPER-BAD-MESSAGE. C# 시험 Precheck.Core.Tests.Stats 20개 + 감싸개 helper/tests/stats-rows.dotnet.test.ts. 전체 npm test는 서버 부하로 시간 시험 2개(fixtures 10초 훅·aggregate 1초)만 실패(이 step 파일 아님)"
+    },
+    {
+      "step": 3,
+      "name": "helper-stats-report",
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Stats/StatsReport.cs: Read(db, scope, to)가 네 벌(일일 to·to−1, 월말 to가 든 달·앞 달)을 원본 OperationalReportData.Load 순서·판정대로 만든다. StatsSql에 보고 SQL 8개 더함(사본 original-sql/report-*.sql, @daily는 Treatments에만 Char(1)). 벌 하나의 판정 실패는 {ok:false, reason}, SQL 실패는 전체 error. StatsPayload가 design JSON report를 씀. step과 다른 점: 금액은 Math.Floor 대신 Math.Truncate(0 이상이면 같고, 음수도 원 미만을 버리려고. CLAUDE.md 금액 규칙). 시험 AC-503.2 '; 없음·표 4개' 검사는 TASK-3 SQL 5개에 그대로, 보고 SQL은 새 AC-504.4 시험이 원본의 ; 3개·주석 1개만 허용. 음수 금액은 원본처럼 그대로 보낸다 — 웹 쪽 AC-505.2는 0 이상만 받아 전체 불러오기가 실패한다(사용자 결정 대기). 월말 '오늘까지' 안내는 원본 글이고 to가 오늘일 때만 맞다(화면은 늘 오늘을 보냄)."
+    },
+    {
+      "step": 4,
+      "name": "stats-worker",
+      "status": "completed",
+      "summary": "src/workers/stats/assemble.ts(createAssembler: seq·조각 수·UTF-8 바이트·SHA-256), helperData.ts(parseStatsRows·toConsumptionRows, VisitRow 타입은 여기, TASK-9가 맞출 것), jobs.ts(loadJob), stats.worker.ts, statsClient.ts(createStatsWorker·requestLoad, 120초), types/stats.ts·types/clinicReport.ts(ClinicReportNumbers), 오류 E-STATS-HISTORY·E-STATS-TOO-BIG. step과 다른 점: Worker 답에 streamId가 더 있다(시간 초과 뒤 늦은 답을 버리려고, Worker를 끝내지 않으므로. TASK-9 답도 싣는다). 검사는 AC-505.2 외에 기간 밖 줄, noFirst보다 많은 첫 내원 null 환자, design과 다른 보고 period도 거부(도우미 코드와 맞음을 리뷰가 확인). AC-505.3 비교는 동네만 빼는데, 도우미 길의 저장 rx[].type은 ''이고 파일 길은 실제 값이다(design 지시, 화면이 쓰지 않음). 2026-11-01 변경: 보고 금액 6칸은 음수도 받고 절댓값 10^14까지(건수는 0 이상 그대로). 남은 일: 처방코드 빈 줄은 전체 거부라 의원 PC에서 확인."
+    }
+  ]
+}

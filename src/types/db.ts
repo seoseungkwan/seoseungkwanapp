@@ -19,3 +19,32 @@ export type AdminRow = {
   user_id: string
   created_at: string
 }
+
+// 통계 숫자 저장 표. 기준은 supabase/migrations/20261101000200_stats.sql
+export type StatsSourceColumn = 'bit' | 'file'
+
+export type StatsMonthRow = {
+  hospital_id: string
+  month: string // 'YYYY-MM'
+  partial: boolean
+  source: StatsSourceColumn
+  payload: unknown // 읽은 뒤 validateMonthPayload로 검사한다
+  updated_at: string
+}
+
+export type StatsDayRow = {
+  hospital_id: string
+  day: string // 'YYYY-MM-DD'
+  partial: boolean
+  source: StatsSourceColumn
+  payload: unknown // 읽은 뒤 validateDayPayload로 검사한다
+  updated_at: string
+}
+
+export type StatsCoverageRow = {
+  hospital_id: string
+  from_day: string // 'YYYY-MM-DD'
+  to_day: string // 'YYYY-MM-DD'
+  source: StatsSourceColumn
+  created_at: string
+}

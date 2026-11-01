@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "stats-4-screen",
+  "steps": [
+    {
+      "step": 0,
+      "name": "stats-sections",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "stats-screen",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "stats-tab",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "dashboard-source",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "stats-e2e",
+      "status": "pending"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "stats-3-numbers",
+  "steps": [
+    {
+      "step": 0,
+      "name": "rx-visit-split",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "report-text",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "stats-view",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "stats-mockup",
+      "status": "completed",
+      "summary": "docs/mockups/stats/ 클릭 목업 승인됨(2026-11-01, https://claude.ai/artifact/2QDUMeBQ54C1stC9fBLoH6). 문구는 시안이 이긴다: 연결 안내 단추 [비트 PC 연결]. 처방 증감 비교 없음 글자는 formatDelta의 \"비교할 수 없음\"을 쓴다. 칸 이름은 TASK-11 view.ts와 대조할 것 2026-11-01 변경분(30일 줄 caption, 일부 기간, 비교할 수 없음)도 사용자 OK(\"시안좋아\", notes.md 둘째 줄). 지금 커밋의 index.html이 승인본이다."
+    }
+  ]
+}
