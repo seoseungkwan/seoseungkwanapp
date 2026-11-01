@@ -5,8 +5,8 @@
     {
       "step": 0,
       "name": "revenue-tables",
-      "status": "pending",
-      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patients_to_date·perPatient를 빼고 건당 진료비로 바꾼다. 이전 요약은 git 기록에 있다"
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000400_revenue.sql + supabase/revenue.rls.test.ts: 표 sales_days(17칸, 보내는 칸 15, patients_to_date 없음)·sales_codes·rx_groups, save_rx_groups(jsonb). 실제 Supabase 붙여 넣기 사용자 OK 필요. design 6절 SQL과 다른 점: save_rx_groups가 codes 배열이 아니면 거부(빠지면 처방 목록이 조용히 지워지던 빈틈), rx_group_codes_ok는 authenticated만 실행, touch_updated_at 기본 권한은 C1 글자를 건드리지 않고 따로 회수, 쓰지 않는 n 뺌. 합칠 때: 사전점검 갈래도 touch_updated_at을 만들어 나중에 붙인 쪽 정의가 남는다(트리거는 어느 쪽이든 돈다). TDD 기록: 실패 근거는 15:21:30Z RED뿐(앞의 RED 둘은 근거 아님), 구현 뒤에 옛 migration으로 돌려 확인했다"
     },
     {
       "step": 1,

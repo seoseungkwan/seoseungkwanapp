@@ -28,7 +28,6 @@ create table public.sales_days (
   visits integer check (visits between 0 and 100000),
   new_patients integer check (new_patients between 0 and 100000),
   return_visits integer check (return_visits between 0 and 100000),
-  patients_to_date integer check (patients_to_date between 0 and 1000000),
   total bigint check (total >= 0),
   insurer bigint check (insurer >= 0),
   noncovered bigint check (noncovered >= 0),
@@ -112,9 +111,9 @@ alter table public.rx_groups enable row level security;
 revoke all on table public.sales_days, public.sales_codes, public.rx_groups from anon, authenticated;
 
 grant select, delete on table public.sales_days to authenticated;
--- 칸 단위: day~split_unconfirmed 열여섯 칸. upsert가 충돌 칸도 SET하므로 day 포함. hospital_id·fetched_at은 없다
-grant insert (day, visits, new_patients, return_visits, patients_to_date, total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in, unconfirmed, split_unconfirmed),
-      update (day, visits, new_patients, return_visits, patients_to_date, total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in, unconfirmed, split_unconfirmed)
+-- 칸 단위: day~split_unconfirmed 열다섯 칸. upsert가 충돌 칸도 SET하므로 day 포함. hospital_id·fetched_at은 없다
+grant insert (day, visits, new_patients, return_visits, total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in, unconfirmed, split_unconfirmed),
+      update (day, visits, new_patients, return_visits, total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in, unconfirmed, split_unconfirmed)
   on table public.sales_days to authenticated;
 
 -- 고치기가 없다: 달을 다시 저장할 때는 지우고 넣는다

@@ -60,7 +60,7 @@ const snake = (keys: readonly string[]) => keys.map((k) => k.replace(/[A-Z]/g, (
 const MONEY_COLUMNS = snake(REVENUE_MONEY_KEYS)
 const SPLIT_COLUMNS = snake(REVENUE_SPLIT_KEYS)
 const KEPT_COLUMNS = snake(REVENUE_KEPT_KEYS)
-const COUNT_COLUMNS = ['visits', 'new_patients', 'return_visits', 'patients_to_date']
+const COUNT_COLUMNS = ['visits', 'new_patients', 'return_visits']
 
 const COLUMNS = {
   sales_days: [
@@ -69,7 +69,6 @@ const COLUMNS = {
     'visits',
     'new_patients',
     'return_visits',
-    'patients_to_date',
     'total',
     'insurer',
     'noncovered',
@@ -90,7 +89,7 @@ type Table = keyof typeof COLUMNS
 const TABLES = Object.keys(COLUMNS) as Table[]
 
 // 사용자가 보낼 수 있는 칸(그 밖은 칸 권한이 없다)
-// sales_days는 day~split_unconfirmed 열여섯 칸(upsert가 충돌 칸 day도 SET한다)
+// sales_days는 day~split_unconfirmed 열다섯 칸(upsert가 충돌 칸 day도 SET한다)
 const DAY_SENT = COLUMNS.sales_days.filter((c) => c !== 'hospital_id' && c !== 'fetched_at')
 const CODE_SENT = ['month', 'code', 'name', 'count', 'amount']
 const GROUP_SENT = ['name', 'codes', 'sort_order']
@@ -103,7 +102,7 @@ const DAY = '2026-10-01'
 const OTHER_DAY = '2026-10-02'
 const MONTH = '2026-10-01'
 const OTHER_MONTH = '2026-09-01'
-const COUNTS = { visits: 3, new_patients: 1, return_visits: 2, patients_to_date: 3 }
+const COUNTS = { visits: 3, new_patients: 1, return_visits: 2 }
 const MONEY = {
   total: 100_000,
   insurer: 40_000,
@@ -574,7 +573,6 @@ describe('AC-004.3 sales_days 숫자 칸 제약', SLOW, () => {
     ['visits', 100_000],
     ['new_patients', 100_000],
     ['return_visits', 100_000],
-    ['patients_to_date', 1_000_000],
   ])('AC-004.3 %s: 윗 한도(%i)까지 되고 넘으면 거부된다', async (column, limit) => {
     await expect(insert('sales_days', { ...NORMAL_DAY, [column]: limit + 1 })).rejects.toThrow(CHECK)
     await insert('sales_days', { ...NORMAL_DAY, [column]: limit })
