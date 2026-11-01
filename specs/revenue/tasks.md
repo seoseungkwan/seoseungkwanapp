@@ -106,9 +106,10 @@
 - Step: Phase 3 · Step 3 · `tab-ready`
 - AC: AC-010.1~AC-010.4
 - REQ: REQ-010
-- Files: src/app/(app)/revenue/page.tsx, src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/UI_GUIDE.md, docs/ARCHITECTURE.md, plan.md, docs/tab-frame/plan.md, src/lib/backup/tables.ts, src/lib/backup/tables.test.ts
-- Tests: src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
+- Files: src/app/(app)/revenue/page.tsx, src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/UI_GUIDE.md, docs/ARCHITECTURE.md, plan.md, docs/tab-frame/plan.md, src/lib/backup/tables.ts, src/lib/backup/tables.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx
+- Tests: src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx
 - TDD: required
+- 메모: 매출이 `connect-first`가 되면 고정 숫자를 적은 시험이 깨진다: 대시보드 시험 둘(`DashboardHome.test.tsx`·`(app)/dashboard/page.test.tsx`)의 "12개 가운데 1개는 지금, 1개는 연결하면 쓸 수 있어요"와 '연결 먼저'·'준비 중'·'사용 가능' 수, `(app)/tabFrame.test.tsx`의 `[12, 1, 1]`. 이 수는 모두 `DASHBOARD_FEATURES`에서 센다('사용 가능' = `ready` 수 + `connect-first` 수). 어떤 새 고정 숫자도 적지 않는다("2"·"3"·`[12, 1, 2]` 모두): 통계·환자·업무일지도 같은 칸을 바꾸므로 합치면 수가 또 바뀐다(갈래 규칙 C5)
 
 ## TASK-11: E2E
 - Step: Phase 3 · Step 4 · `revenue-e2e`

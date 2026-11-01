@@ -62,6 +62,8 @@
   - `docs/tab-frame/plan.md`
   - `src/lib/backup/tables.ts`
   - `src/lib/backup/tables.test.ts`
+  - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
 - Tests:
   - `src/app/(app)/revenue/page.test.tsx`
   - `src/components/common/notReadyFeatures.test.ts`
@@ -70,6 +72,8 @@
   - `src/app/(app)/notReadyPages.test.tsx`
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
+  - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -77,7 +81,7 @@
 - **시안 승인본**: 배치·문구는 `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 승인 기록 `docs/mockups/revenue/README.md`: 2026-11-01 "이대로 만들기" + 승인 뒤 바뀐 곳의 OK)의 글자 그대로다 (CLAUDE.md: 화면은 목업 승인 뒤)
 - **모양 규칙**: `docs/UI_GUIDE.md` — 토큰 클래스와 `ds`(`components/ui/classes.ts`)만, 16진수·대괄호 임의 값·`font-bold`·`animate-*`·그라데이션·그림자 카드·상자 안 상자 없음. 말끝은 "~요". 숫자는 지어내지 않는다(자료 없으면 "–"와 "자료 없음")
 - **그래프**: HTML 막대(% 높이·폭 inline style만), 가로 눈금선만, 그림은 `aria-hidden`, 숫자는 화면 읽기 표(`sr-only`)로도. 증감은 화살표와 글자("늘어남"·"줄어듦")를 같이. `components/charts/*`는 고치지 않고 불러 쓰기만
-- **줄만 고친다**: 다른 탭 명세도 같은 파일의 자기 줄을 고친다. 매출 줄과 "준비 중 n개" 숫자만 바꾸고 다른 탭 줄은 건드리지 않는다(design.md 11절)
+- **줄만 고친다**: 다른 탭 명세도 같은 파일의 자기 줄을 고친다. 매출 줄만 바꾸고("준비 중 n개" 같은 숫자는 새로 적지 않고 목록에서 센다) 다른 탭 줄은 건드리지 않는다(design.md 11절)
 
 ## 작업
 
@@ -90,6 +94,7 @@
 - `menu.ts`: 매출 `ready: true`(그리고 `href`를 다른 준비된 탭과 같은 방식으로)
 - `features.ts`: 매출 `status`를 청구와 같은 `'connect-first'`로, `desc`의 넷째를 '건당 진료비'로
 - 시험의 기대값을 목록에 맞춘다. 탭 수·준비 중 수를 고정 숫자로 적지 않고 `MENU`·`NOT_READY_FEATURES`에서 센다(갈래 규칙 C5, 다른 갈래도 같은 시험의 자기 줄을 고친다). 고친 기대값마다 AC-010.1을 이름에 넣는다
+- 고정 숫자를 적은 시험(`DashboardHome.test.tsx`의 `INDEX_SIDE`와 '준비 중'·'연결 먼저'·'사용 가능' 수, `(app)/dashboard/page.test.tsx`의 `INDEX_SIDE`, `(app)/tabFrame.test.tsx`의 `[12, 1, 1]`): 모두 `DASHBOARD_FEATURES`에서 세어 만든다. 연결 뒤 '사용 가능' = `ready` 수 + `connect-first` 수. 어떤 새 고정 숫자도 적지 않는다("2"·"3"·`[12, 1, 2]` 모두). 통계·환자·업무일지도 같은 칸을 바꾸므로 합치면 수가 또 바뀐다
 
 ### 3. 문서
 - `plan.md` §2-4: "의원 PC 비트 폴더의 파일을 읽는다 …" 줄들 뒤에 `(2026-11-01 바뀜: 매출은 비트 PC 도우미의 `revenue.days`로 읽어 `sales_days`·`sales_codes`에 집계만 저장한다. 폴더 연결·파일 끌어다 놓기는 하지 않는다 — specs/revenue)` 한 줄(AC-010.3). §5 DB 표의 `sales_days` 줄도 "칸은 specs/revenue design.md 6절"로
