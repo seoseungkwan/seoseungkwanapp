@@ -30,7 +30,7 @@
       "step": 4,
       "name": "stats-worker",
       "status": "completed",
-      "summary": "src/workers/stats/assemble.ts(createAssembler: seq·조각 수·UTF-8 바이트·SHA-256), helperData.ts(parseStatsRows·toConsumptionRows, VisitRow 타입은 여기, TASK-9가 맞출 것), jobs.ts(loadJob), stats.worker.ts, statsClient.ts(createStatsWorker·requestLoad, 120초), types/stats.ts·types/clinicReport.ts(ClinicReportNumbers), 오류 E-STATS-HISTORY·E-STATS-TOO-BIG. step과 다른 점: Worker 답에 streamId가 더 있다(시간 초과 뒤 늦은 답을 버리려고, Worker를 끝내지 않으므로. TASK-9 답도 싣는다). 검사는 AC-505.2 외에 기간 밖 줄, noFirst보다 많은 첫 내원 null 환자, design과 다른 보고 period도 거부(도우미 코드와 맞음을 리뷰가 확인). AC-505.3 비교는 동네만 빼는데, 도우미 길의 저장 rx[].type은 ''이고 파일 길은 실제 값이다(design 지시, 화면이 쓰지 않음). 남은 일: 보고 음수 금액은 AC-505.2대로 전체 E-BRIDGE-BAD-REPLY(사용자 결정 대기), 처방코드 빈 줄도 전체 거부라 의원 PC에서 확인."
+      "summary": "src/workers/stats/assemble.ts(createAssembler: seq·조각 수·UTF-8 바이트·SHA-256), helperData.ts(parseStatsRows·toConsumptionRows, VisitRow 타입은 여기, TASK-9가 맞출 것), jobs.ts(loadJob), stats.worker.ts, statsClient.ts(createStatsWorker·requestLoad, 120초), types/stats.ts·types/clinicReport.ts(ClinicReportNumbers), 오류 E-STATS-HISTORY·E-STATS-TOO-BIG. step과 다른 점: Worker 답에 streamId가 더 있다(시간 초과 뒤 늦은 답을 버리려고, Worker를 끝내지 않으므로. TASK-9 답도 싣는다). 검사는 AC-505.2 외에 기간 밖 줄, noFirst보다 많은 첫 내원 null 환자, design과 다른 보고 period도 거부(도우미 코드와 맞음을 리뷰가 확인). AC-505.3 비교는 동네만 빼는데, 도우미 길의 저장 rx[].type은 ''이고 파일 길은 실제 값이다(design 지시, 화면이 쓰지 않음). 2026-11-01 변경: 보고 금액 6칸은 음수도 받고 절댓값 10^14까지(건수는 0 이상 그대로). 남은 일: 처방코드 빈 줄은 전체 거부라 의원 PC에서 확인."
     }
   ]
 }

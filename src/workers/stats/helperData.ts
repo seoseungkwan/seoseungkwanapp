@@ -8,11 +8,10 @@ import { StatsDataError } from './assemble'
 
 export const MAX_STATS_ROWS = 700_000
 const MAX_CODE = 40
+const MAX_AMOUNT = 10 ** 14 // 절댓값 한도. 음수도 받는다(원본 medicore/reports.py _amount)
 
-const REPORT_NUMBERS = [
-  'totalVisits',
-  'newPatients',
-  'returnPatients',
+const REPORT_COUNTS = ['totalVisits', 'newPatients', 'returnPatients'] as const
+const REPORT_AMOUNTS = [
   'totalAmount',
   'insurerAmount',
   'noncoveredAmount',
@@ -46,6 +45,7 @@ function bad(): never {
 type Fields = Record<string, unknown>
 export const isRecord = (x: unknown): x is Fields => typeof x === 'object' && x !== null && !Array.isArray(x)
 const isCount = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) >= 0
+const isAmount = (x: unknown): x is number => Number.isSafeInteger(x) && Math.abs(x as number) <= MAX_AMOUNT
 const isCode = (x: unknown): x is string => typeof x === 'string' && x.length >= 1 && x.length <= MAX_CODE
 
 function hasExactly(o: Fields, keys: readonly string[], optional: readonly string[] = []): boolean {
@@ -87,8 +87,9 @@ function isReportSet(x: unknown, period: string): boolean {
   if (x.ok !== true) return false
   const { treatments, laCodes, notes, financeUnconfirmed, financeUnconfirmedReason } = x
   return (
-    hasExactly(x, ['ok', 'period', ...REPORT_NUMBERS, 'treatments', 'laCodes', 'financeUnconfirmed', 'notes'], ['financeUnconfirmedReason']) &&
-    REPORT_NUMBERS.every((key) => isCount(x[key])) &&
+    hasExactly(x, ['ok', 'period', ...REPORT_COUNTS, ...REPORT_AMOUNTS, 'treatments', 'laCodes', 'financeUnconfirmed', 'notes'], ['financeUnconfirmedReason']) &&
+    REPORT_COUNTS.every((key) => isCount(x[key])) &&
+    REPORT_AMOUNTS.every((key) => isAmount(x[key])) &&
     isRecord(treatments) &&
     hasExactly(treatments, TREATMENTS) &&
     TREATMENTS.every((key) => isCount(treatments[key])) &&

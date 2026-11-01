@@ -18,6 +18,7 @@ const TO = '2026-11-01'
 const REQ = { from: FROM, to: TO }
 const BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
 const SLOW = { timeout: 60_000 }
+const AMOUNT_LIMIT = 10 ** 14
 const FAKE_DIR = fileURLToPath(new URL('../../../fixtures/fake-bit/', import.meta.url))
 
 // 가짜 차트번호(9로 시작하는 6자리). 소스에 통째로 쓰지 않고 이어 만든다
@@ -163,7 +164,8 @@ describe('AC-505.2 parseStatsRows: 정해 둔 모양만 받는다', () => {
     ['월말 둘째 기간이 앞 달이 아님', ['report', 'monthly', 1, 'period'], '2026-09'],
     ['벌 열쇠가 더 있음', ['report', 'daily', 0, 'extra'], 1],
     ['벌 숫자 칸이 없음', ['report', 'daily', 0, 'cashAmount'], DROP],
-    ['금액이 음수', ['report', 'daily', 0, 'totalAmount'], -1],
+    ['금액이 10^14를 넘음', ['report', 'daily', 0, 'totalAmount'], AMOUNT_LIMIT + 1],
+    ['금액이 -10^14 아래', ['report', 'daily', 0, 'totalAmount'], -(AMOUNT_LIMIT + 1)],
     ['금액이 소수', ['report', 'monthly', 0, 'cardAmount'], 0.5],
     ['재진이 음수', ['report', 'monthly', 1, 'returnPatients'], -1],
     ['치료 열쇠가 없음', ['report', 'daily', 0, 'treatments', 'cryo'], DROP],
@@ -224,6 +226,42 @@ describe('AC-505.2 parseStatsRows: 정해 둔 모양만 받는다', () => {
     expect(error).toBeInstanceOf(StatsDataError)
     expect((error as Error).message).toBe(BAD_REPLY)
     expect(String((error as Error).stack)).not.toContain(chart(7))
+  })
+})
+
+describe('AC-505.2 금액 6칸은 음수도 되고 절댓값 10^14까지, 건수는 0 이상', () => {
+  const AMOUNTS = ['totalAmount', 'insurerAmount', 'noncoveredAmount', 'cashAmount', 'cardAmount', 'transferAmount'] as const
+
+  it('음수 금액이 든 벌은 받아들이고 값은 그대로다. 진료 줄과 다른 벌도 그대로다', () => {
+    const draft = good()
+    AMOUNTS.forEach((field, i) => {
+      draft.report.daily[0][field] = -(i + 1) * 1_000
+    })
+    const data = parseStatsRows(JSON.stringify(draft), REQ)
+    expect(AMOUNTS.map((field) => (data.report.daily[0] as unknown as Record<string, number>)[field])).toEqual([
+      -1_000, -2_000, -3_000, -4_000, -5_000, -6_000,
+    ])
+    expect(data.report.daily[0]).toEqual(draft.report.daily[0])
+    expect(data.rows).toEqual(good().rows)
+    expect(data.report.daily[1]).toEqual(good().report.daily[1])
+    expect(data.report.monthly).toEqual(good().report.monthly)
+  })
+
+  it.each(AMOUNTS)('%s: 정확히 +10^14와 -10^14는 받는다', (field) => {
+    for (const value of [AMOUNT_LIMIT, -AMOUNT_LIMIT]) {
+      const data = parseStatsRows(changed(['report', 'monthly', 1, field], value), REQ)
+      expect((data.report.monthly[1] as unknown as Record<string, number>)[field]).toBe(value)
+    }
+  })
+
+  it.each(AMOUNTS)('%s: 10^14를 넘거나 정수가 아니면 거절한다', (field) => {
+    for (const value of [AMOUNT_LIMIT + 1, -(AMOUNT_LIMIT + 1), -0.5, '-1', null]) {
+      expect(codeOf(() => parseStatsRows(changed(['report', 'daily', 1, field], value), REQ))).toBe(BAD_REPLY)
+    }
+  })
+
+  it.each(['totalVisits', 'newPatients', 'returnPatients'])('%s: 건수는 음수면 거절한다', (field) => {
+    expect(codeOf(() => parseStatsRows(changed(['report', 'daily', 0, field], -1), REQ))).toBe(BAD_REPLY)
   })
 })
 
