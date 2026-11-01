@@ -11,6 +11,9 @@
   <ItemGroup>
     <!-- 리눅스·Actions에서 net48을 빌드하려고(빌드에만 쓰고 결과물에는 들어가지 않는다) -->
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- 비트 화면 자동 입력(TASK-17). 원본과 같은 판. 원본은 net6.0-windows 빌드를, 우리는 같은 패키지의 net48 빌드를 쓴다 -->
+    <PackageReference Include="FlaUI.Core" Version="4.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="4.0.0" />
   </ItemGroup>
 
   <ItemGroup>

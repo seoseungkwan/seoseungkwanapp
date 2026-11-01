@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Precheck.Core.Bit;
+using Precheck.Core.Input;
 using Precheck.Core.Protocol;
 using Precheck.Helper.Commands;
 
@@ -31,7 +32,10 @@ internal static class Program
             BitCommands.Register(dispatcher, HelperServices.Create());
             HelperStore.Register(dispatcher);
 
-            using var input = Console.OpenStandardInput();
+            // 표준 입력은 따로 읽는다: 긴 명령 중에도 닫힘을 알아챈다(AC-017.9). 메시지는 지금처럼 하나씩 처리한다
+            var signal = new HostSignal();
+            using var stdin = Console.OpenStandardInput();
+            using var input = new StdinPump(stdin, signal);
             using var output = Console.OpenStandardOutput();
             return MessageLoop.Run(args, input, output, table, dispatcher, log.Write);
         }
