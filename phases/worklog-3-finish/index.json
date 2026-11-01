@@ -5,12 +5,14 @@
     {
       "step": 0,
       "name": "print",
-      "status": "pending"
+      "status": "completed",
+      "summary": "인쇄 CSS는 sheet.module.css 맨 끝(폰 규칙보다 뒤), .sheet .flag로 세기 맞춤, AppShell print: 세 곳, globals.css 안 고침. TASK-13에서 확인: 빌드한 CSS에 @page가 남아 A4로 인쇄되는지. 의원 PC에서 칸을 누른 채 Ctrl+P 했을 때 초록 테두리가 찍히면 :focus에 box-shadow none을 더함."
     },
     {
       "step": 1,
       "name": "tab-hookup",
-      "status": "pending"
+      "status": "completed",
+      "summary": "/worklog 진짜 화면 연결, 메뉴·기능 목차·준비 중 목록에서 업무일지 옮김. 시험의 개수는 목록에서 셈(dashboard/page.test.tsx 포함). 문서 손 숫자와 폴더 줄 '(예정)' 고침, 표·흐름 줄 '(예정)'은 TASK-13."
     },
     {
       "step": 2,

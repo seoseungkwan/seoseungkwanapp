@@ -49,7 +49,7 @@ const plain = (html: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(청구 connect-first · 설정 ready)
+// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(청구 connect-first · 업무일지·설정 ready)
 const READY = DASHBOARD_FEATURES.filter((f) => f.status !== 'soon')
 const NOT_READY = DASHBOARD_FEATURES.filter((f) => f.status === 'soon')
 
@@ -143,18 +143,17 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3: 사용 가능 칸(/claim·/claim/setup)의 페이지는 NotReadyScreen을 쓰지 않는 기존 화면이다', () => {
-    expect(READY.map((f) => f.href)).toEqual(['/claim', '/claim/setup'])
-    for (const feature of READY) {
-      const source = read(pageFile(feature.href))
-      expect(source, feature.href).not.toMatch(/NotReadyScreen|notReadyFeatures/)
-      expect(source, feature.href).toMatch(/from '@\/components\/claim\/setup\//) // 청구 사전점검 화면(ClaimEntry · SetupScreen)
-    }
+  it('AC-307.3·AC-012.4: 사용 가능 칸의 페이지는 NotReadyScreen을 쓰지 않는다. 칸 목록은 MENU의 ready 탭(대시보드 뺌)과 같고 /worklog가 들어 있다', () => {
+    expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
+    expect(READY.map((f) => f.href)).toContain('/worklog')
+    for (const feature of READY) expect(read(pageFile(feature.href)), feature.href).not.toMatch(/NotReadyScreen|notReadyFeatures/)
+    // 청구 사전점검 화면(ClaimEntry · SetupScreen)
+    for (const href of ['/claim', '/claim/setup']) expect(read(pageFile(href)), href).toMatch(/from '@\/components\/claim\/setup\//)
   })
 
-  it('AC-307.4: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같다', () => {
+  it('AC-307.4·AC-012.4: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같고 업무일지는 없다', () => {
     const fromNotReady = NOT_READY_FEATURES.map((f) => [f.name, f.path])
-    expect(fromNotReady).toHaveLength(10)
+    expect(fromNotReady).not.toContainEqual(['업무일지', '/worklog'])
     expect(NOT_READY.map((f) => [f.name, f.href])).toEqual(fromNotReady)
     expect(MENU.filter((m) => m.href === null && m.label !== '설정').map((m) => [m.label, m.path])).toEqual(fromNotReady)
   })
@@ -174,11 +173,12 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7·AC-414.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수(12) · 지금 쓸 수 있는 칸 수(1) · 연결하면 쓸 수 있는 칸 수(1)', () => {
+  it('AC-307.7·AC-414.5·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수', () => {
     const total = DASHBOARD_FEATURES.length
     const now = DASHBOARD_FEATURES.filter((f) => f.status === 'ready').length
     const afterConnect = DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first').length
-    expect([total, now, afterConnect]).toEqual([12, 1, 1])
+    expect(total).toBe(MENU.length - 1) // 대시보드를 뺀 탭 수
+    expect(now + afterConnect).toBe(READY.length)
     const text = plain(renderToStaticMarkup(<DashboardPage />))
     expect([.../(\d+)개 가운데 (\d+)개는 지금, (\d+)개는 연결하면 쓸 수 있어요/.exec(text)!.slice(1)].map(Number)).toEqual([total, now, afterConnect])
     // 옛 기능 수 글 둘은 없다
