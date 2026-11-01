@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "contact-store",
-      "status": "pending"
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Contact/(ContactStore·IWorkLock·NamedWorkLock·ContactCommands.RegisterStore), helper/src/Precheck.Helper/Commands/ContactHelperServices.cs(CreateStore·CreateWorkLock), Program.cs 등록. TASK-9는 Program.cs의 services 변수로 ContactCommands.RegisterTargets를 더하고 부품은 ContactHelperServices에 추가. E-BRIDGE-BUSY는 ContactCommands 안 상수. E-STORE-BROKEN 뒤 다음 읽기는 {}라 화면(TASK-10~14)이 store.load를 자동 재시도하면 빈 상태로 조용히 시작되니 재시도 금지. errors.ts의 E-STORE-BROKEN·E-BRIDGE-BUSY 문구는 청구 화면 기준이라 환자 탭에는 맞지 않음(화면 TASK에서 처리). 검증: tdd-run TASK-8 GREEN·harness-reviewer PASS까지. npm lint/test·verify·Registration/Protocol 필터는 아직 안 돌림, Windows Actions도 아직. 3단계 끝 의원 PC 확인에 30MB 가까운 저장을 넣을 것(32비트 프로세스)."
     },
     {
       "step": 1,
