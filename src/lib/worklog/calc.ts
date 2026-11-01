@@ -1,10 +1,8 @@
-import { WORKLOG_COUNT_KEYS, type WorklogDay, type WorklogNumberKey, type WorklogTotals } from '@/types/worklog'
+import { WORKLOG_COUNT_KEYS, type WorklogNumberKey, type WorklogNumbers, type WorklogTotals } from '@/types/worklog'
 
-// 업무일지 합계와 칸 글자. 합계는 저장하지 않고 그릴 때 계산한다.
+// 업무일지 합계와 숫자의 칸 글자. 합계는 저장하지 않고 그릴 때 계산한다.
+// 칸 글자를 읽지 않는다: 읽은 숫자(cellText.readDayNumbers)만 받는다(방향은 cellText → calc).
 // 금액은 원 단위 정수이고 나눗셈이 없어 버림·반올림이 필요 없다
-
-const COUNT_DIGITS = 5
-const WON_DIGITS = 12
 
 // 엑셀 E15. 총진료비·조합청구액·미수발생·미수입금은 수납액이 아니다
 const RECEIVED_KEYS: readonly WorklogNumberKey[] = ['cashIn', 'cardIn', 'transferIn', 'localCurrencyIn']
@@ -12,27 +10,13 @@ const SPENT_KEYS: readonly WorklogNumberKey[] = ['spendCash', 'spendCard', 'spen
 
 const COMMAS = new Intl.NumberFormat('ko-KR')
 
-const sum = (day: WorklogDay, keys: readonly WorklogNumberKey[]) =>
-  keys.reduce((total, key) => total + (day[key] ?? 0), 0)
+const sum = (numbers: WorklogNumbers, keys: readonly WorklogNumberKey[]) =>
+  keys.reduce((total, key) => total + (numbers[key] ?? 0), 0)
 
-export function worklogTotals(day: WorklogDay): WorklogTotals {
-  const received = sum(day, RECEIVED_KEYS)
-  const spent = sum(day, SPENT_KEYS)
-  return { visits: sum(day, WORKLOG_COUNT_KEYS), received, spent, net: received - spent } // visits는 엑셀 D6, net은 E23(음수 그대로)
-}
-
-// 숫자가 아닌 글자를 버리고 앞의 0을 지운 뒤 앞에서 maxDigits자리까지. 숫자가 없으면 null, '000'은 0
-function parseDigits(text: string, maxDigits: number): number | null {
-  const digits = text.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, maxDigits)
-  return digits === '' ? null : Number(digits)
-}
-
-export function parseCount(text: string): number | null {
-  return parseDigits(text, COUNT_DIGITS)
-}
-
-export function parseWon(text: string): number | null {
-  return parseDigits(text, WON_DIGITS)
+export function worklogTotals(numbers: WorklogNumbers): WorklogTotals {
+  const received = sum(numbers, RECEIVED_KEYS)
+  const spent = sum(numbers, SPENT_KEYS)
+  return { visits: sum(numbers, WORKLOG_COUNT_KEYS), received, spent, net: received - spent } // visits는 엑셀 D6, net은 E23(음수 그대로)
 }
 
 // 엑셀 서식 #,###"원": 입력 칸은 없거나 0이면 빈 글자, 초점이 있는 동안은 원을 뺀다

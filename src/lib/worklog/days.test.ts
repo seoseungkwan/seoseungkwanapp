@@ -53,6 +53,22 @@ describe('nextDay', () => {
   it('AC-002.8: 오늘보다 뒤인 날의 다음 날도 없다', () => {
     expect(nextDay('2026-10-29', TODAY)).toBeNull()
   })
+
+  it('AC-002.8: 일요일을 건너뛰지 않는다(토요일의 다음 날은 일요일, 월요일의 전날도 일요일)', () => {
+    expect(sheetDateText('2026-10-31')).toBe('2026/10/31 토')
+    expect(nextDay('2026-10-31', '2026-11-02')).toBe('2026-11-01')
+    expect(sheetDateText('2026-11-01')).toBe('2026/11/01 일')
+    expect(nextDay('2026-11-01', '2026-11-02')).toBe('2026-11-02')
+    expect(previousDay('2026-11-02')).toBe('2026-11-01')
+    expect(previousDay('2026-11-01')).toBe('2026-10-31')
+  })
+
+  it('AC-002.8: 휴일을 건너뛰지 않는다(신정·성탄절)', () => {
+    expect(nextDay('2025-12-31', '2026-01-02')).toBe('2026-01-01')
+    expect(previousDay('2026-01-02')).toBe('2026-01-01')
+    expect(nextDay('2026-12-24', '2026-12-26')).toBe('2026-12-25')
+    expect(previousDay('2026-12-26')).toBe('2026-12-25')
+  })
 })
 
 describe('clampToToday', () => {

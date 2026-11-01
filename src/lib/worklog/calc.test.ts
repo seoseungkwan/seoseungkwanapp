@@ -1,21 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CELL_MAX,
   emptyWorklogDay,
   MEMO_MAX,
+  NAME_MAX,
   NOTE_MAX,
+  WORKLOG_CELL_KEYS,
   WORKLOG_COLUMNS,
   WORKLOG_COUNT_KEYS,
+  WORKLOG_DEFAULT_NAMES,
   WORKLOG_LABELS,
+  WORKLOG_NAME_KEYS,
+  WORKLOG_NAME_OF,
   WORKLOG_NOTE_KEYS,
+  WORKLOG_SUM_KEYS,
   WORKLOG_WON_KEYS,
-  type WorklogDay,
   type WorklogNumberKey,
+  type WorklogNumbers,
   type WorklogTotals,
 } from '@/types/worklog'
-import { countText, parseCount, parseWon, visitsText, wonAutoText, wonInputText, worklogTotals } from './calc'
+import * as calc from './calc'
+import { countText, visitsText, wonAutoText, wonInputText, worklogTotals } from './calc'
 
-// 합계·칸 글자 (REQ-002). 숫자는 모두 둥근 가짜 숫자다
-const dayWith = (values: Partial<WorklogDay>): WorklogDay => ({ ...emptyWorklogDay(), ...values })
+// 합계·칸 글자 (REQ-002). 숫자는 모두 둥근 가짜 숫자다. 합계의 입력은 칸 글자에서 읽은 숫자다
+const NUMBER_KEYS: readonly WorklogNumberKey[] = [...WORKLOG_COUNT_KEYS, ...WORKLOG_WON_KEYS]
+const numbersWith = (values: Partial<WorklogNumbers>): WorklogNumbers => ({
+  ...(Object.fromEntries(NUMBER_KEYS.map((key) => [key, null])) as WorklogNumbers),
+  ...values,
+})
 const NOTHING: WorklogTotals = { visits: 0, received: 0, spent: 0, net: 0 }
 
 describe('worklogTotals', () => {
@@ -24,31 +36,31 @@ describe('worklogTotals', () => {
     ['newPatients', { visits: 1000 }],
     ['returnPatients', { visits: 1000 }],
   ])('AC-002.1: 환자 합계에 들어가는 칸 %s', (key, expected) => {
-    expect(worklogTotals(dayWith({ [key]: 1000 }))).toEqual({ ...NOTHING, ...expected })
+    expect(worklogTotals(numbersWith({ [key]: 1000 }))).toEqual({ ...NOTHING, ...expected })
   })
 
-  it('AC-002.1: 환자 합계는 신환 + 재진이고 빈 칸은 0이다', () => {
-    expect(worklogTotals(dayWith({ newPatients: 10, returnPatients: 20 })).visits).toBe(30)
-    expect(worklogTotals(dayWith({ newPatients: 10, returnPatients: null })).visits).toBe(10)
-    expect(worklogTotals(dayWith({ newPatients: null, returnPatients: 20 })).visits).toBe(20)
+  it('AC-002.1: 환자 합계는 신환 + 재진이고 없는 칸은 0이다', () => {
+    expect(worklogTotals(numbersWith({ newPatients: 10, returnPatients: 20 })).visits).toBe(30)
+    expect(worklogTotals(numbersWith({ newPatients: 10, returnPatients: null })).visits).toBe(10)
+    expect(worklogTotals(numbersWith({ newPatients: null, returnPatients: 20 })).visits).toBe(20)
   })
 
   it.each<WorklogNumberKey>(['cashIn', 'cardIn', 'transferIn', 'localCurrencyIn'])(
     'AC-002.2: 수납액에 들어가는 칸 %s',
     (key) => {
-      expect(worklogTotals(dayWith({ [key]: 1000 }))).toEqual({ ...NOTHING, received: 1000, net: 1000 })
+      expect(worklogTotals(numbersWith({ [key]: 1000 }))).toEqual({ ...NOTHING, received: 1000, net: 1000 })
     },
   )
 
   it.each<WorklogNumberKey>(['totalFee', 'claimAmount', 'unpaidNew', 'unpaidPaid'])(
     'AC-002.2: 수납액에 더하지 않는 칸 %s',
     (key) => {
-      expect(worklogTotals(dayWith({ [key]: 1000 }))).toEqual(NOTHING)
+      expect(worklogTotals(numbersWith({ [key]: 1000 }))).toEqual(NOTHING)
     },
   )
 
   it('AC-002.2: 수납액은 현금·카드·계좌·지역화폐만 더한다', () => {
-    const day = dayWith({
+    const numbers = numbersWith({
       cashIn: 100_000,
       cardIn: 200_000,
       transferIn: 300_000,
@@ -58,85 +70,56 @@ describe('worklogTotals', () => {
       unpaidNew: 7_000_000,
       unpaidPaid: 6_000_000,
     })
-    expect(worklogTotals(day).received).toBe(1_000_000)
+    expect(worklogTotals(numbers).received).toBe(1_000_000)
   })
 
   it.each<WorklogNumberKey>(['spendCash', 'spendCard', 'spendRefund', 'spendFree'])(
     'AC-002.3: 총지불액에 들어가는 칸 %s',
     (key) => {
-      expect(worklogTotals(dayWith({ [key]: 1000 }))).toEqual({ ...NOTHING, spent: 1000, net: -1000 })
+      expect(worklogTotals(numbersWith({ [key]: 1000 }))).toEqual({ ...NOTHING, spent: 1000, net: -1000 })
     },
   )
 
   it('AC-002.3: 총지불액은 지출 현금·카드·환불·free의 합이다', () => {
-    const day = dayWith({ spendCash: 10_000, spendCard: 20_000, spendRefund: 30_000, spendFree: 40_000 })
-    expect(worklogTotals(day).spent).toBe(100_000)
+    const numbers = numbersWith({ spendCash: 10_000, spendCard: 20_000, spendRefund: 30_000, spendFree: 40_000 })
+    expect(worklogTotals(numbers).spent).toBe(100_000)
+  })
+
+  it('AC-002.1·AC-002.2·AC-002.3: 합계를 움직이는 칸은 WORKLOG_SUM_KEYS 열 칸뿐이다', () => {
+    for (const key of NUMBER_KEYS) {
+      const totals = worklogTotals(numbersWith({ [key]: 1000 }))
+      if (WORKLOG_SUM_KEYS.includes(key)) expect(totals, key).not.toEqual(NOTHING)
+      else expect(totals, key).toEqual(NOTHING)
+    }
   })
 
   it('AC-002.4: 합계는 수납액 − 총지불액이다', () => {
-    const day = dayWith({ cashIn: 300_000, cardIn: 200_000, spendCash: 100_000, spendRefund: 50_000 })
-    expect(worklogTotals(day)).toEqual({ visits: 0, received: 500_000, spent: 150_000, net: 350_000 })
+    const numbers = numbersWith({ cashIn: 300_000, cardIn: 200_000, spendCash: 100_000, spendRefund: 50_000 })
+    expect(worklogTotals(numbers)).toEqual({ visits: 0, received: 500_000, spent: 150_000, net: 350_000 })
   })
 
   it('AC-002.4: 합계가 음수면 음수 그대로다', () => {
-    const day = dayWith({ cashIn: 10_000, spendCash: 22_000 })
-    expect(worklogTotals(day).net).toBe(-12_000)
+    const numbers = numbersWith({ cashIn: 10_000, spendCash: 22_000 })
+    expect(worklogTotals(numbers).net).toBe(-12_000)
   })
 
-  it('AC-002.4: 빈 날은 합계 넷이 모두 0이다', () => {
-    expect(worklogTotals(emptyWorklogDay())).toEqual(NOTHING)
+  it('AC-002.4: 모든 칸이 없는 날은 합계 넷이 모두 0이다', () => {
+    expect(worklogTotals(numbersWith({}))).toEqual(NOTHING)
   })
 
   it('AC-002.4: 칸마다 가장 큰 값을 넣어도 값이 정수 그대로다', () => {
     const most = 999_999_999_999
     const { received, spent, net } = worklogTotals(
-      dayWith({ cashIn: most, cardIn: most, transferIn: most, localCurrencyIn: most, spendCash: 1 }),
+      numbersWith({ cashIn: most, cardIn: most, transferIn: most, localCurrencyIn: most, spendCash: 1 }),
     )
     expect(received).toBe(3_999_999_999_996)
     expect(spent).toBe(1)
     expect(net).toBe(3_999_999_999_995)
     expect(Number.isInteger(net)).toBe(true)
   })
-})
 
-describe('parseWon·parseCount', () => {
-  it('AC-002.5: 쉼표·원·빈칸·붙임표를 버린다', () => {
-    expect(parseWon('1,234,500원')).toBe(1_234_500)
-    expect(parseWon('1 000')).toBe(1000)
-    expect(parseWon('-500')).toBe(500)
-    expect(parseCount('8,6명')).toBe(86)
-    expect(parseCount('-5')).toBe(5)
-  })
-
-  it('AC-002.5: 앞의 0을 지운다', () => {
-    expect(parseWon('00012')).toBe(12)
-    expect(parseCount('00012')).toBe(12)
-  })
-
-  it('AC-002.5: 0만 친 값은 빈 값이 아니라 0이다', () => {
-    expect(parseWon('0')).toBe(0)
-    expect(parseWon('000')).toBe(0)
-    expect(parseCount('0')).toBe(0)
-  })
-
-  it.each(['', '   ', 'abc', '원', ',-'])('AC-002.5: 숫자가 없는 글자 "%s"는 빈 값이다', (text) => {
-    expect(parseWon(text)).toBeNull()
-    expect(parseCount(text)).toBeNull()
-  })
-
-  it('AC-002.5: 금액은 앞 12자리까지만 받는다', () => {
-    expect(parseWon('123456789012')).toBe(123_456_789_012)
-    expect(parseWon('1234567890123')).toBe(123_456_789_012)
-  })
-
-  it('AC-002.5: 인원은 앞 5자리까지만 받는다', () => {
-    expect(parseCount('12345')).toBe(12_345)
-    expect(parseCount('123456')).toBe(12_345)
-  })
-
-  it('AC-002.5: 자리 수는 앞의 0을 지운 뒤에 센다', () => {
-    expect(parseWon('0001234567890123')).toBe(123_456_789_012)
-    expect(parseCount('00123456')).toBe(12_345)
+  it('calc는 읽은 숫자로 합계만 내고 칸 글자를 읽지 않는다(읽기는 cellText)', () => {
+    expect(Object.keys(calc).sort()).toEqual(['countText', 'visitsText', 'wonAutoText', 'wonInputText', 'worklogTotals'])
   })
 })
 
@@ -177,7 +160,7 @@ describe('칸 글자', () => {
 
   it('AC-002.6: 환자 합계 칸은 0도 "0"이다', () => {
     expect(visitsText(0)).toBe('0')
-    expect(visitsText(worklogTotals(emptyWorklogDay()).visits)).toBe('0')
+    expect(visitsText(worklogTotals(numbersWith({})).visits)).toBe('0')
   })
 
   it('AC-002.6: 환자 합계 칸도 숫자만 보이고 쉼표도 원도 없다', () => {
@@ -187,10 +170,8 @@ describe('칸 글자', () => {
 })
 
 describe('자료 모양', () => {
-  const ALL_KEYS = [...WORKLOG_COUNT_KEYS, ...WORKLOG_WON_KEYS, ...WORKLOG_NOTE_KEYS]
-
-  it('칸 열쇠는 엑셀 줄 순서로 19개다', () => {
-    expect(ALL_KEYS).toEqual([
+  it('칸 열쇠는 엑셀 줄 순서로 32개다(숫자 14 · 비고 5 · 업무사항 · 항목 이름 12)', () => {
+    expect(WORKLOG_CELL_KEYS).toEqual([
       'newPatients',
       'returnPatients',
       'totalFee',
@@ -210,6 +191,45 @@ describe('자료 모양', () => {
       'noteRefund',
       'noteFree',
       'noteTotal',
+      'memo',
+      'nameTotalFee',
+      'nameClaimAmount',
+      'nameCashIn',
+      'nameCardIn',
+      'nameTransferIn',
+      'nameLocalCurrencyIn',
+      'nameUnpaidNew',
+      'nameUnpaidPaid',
+      'nameSpendCash',
+      'nameSpendCard',
+      'nameSpendRefund',
+      'nameSpendFree',
+    ])
+    expect(WORKLOG_CELL_KEYS).toHaveLength(32)
+  })
+
+  it('칸 묶음은 칸 열쇠 목록과 순서까지 맞는다', () => {
+    expect(WORKLOG_CELL_KEYS).toEqual([
+      ...WORKLOG_COUNT_KEYS,
+      ...WORKLOG_WON_KEYS,
+      ...WORKLOG_NOTE_KEYS,
+      'memo',
+      ...WORKLOG_NAME_KEYS,
+    ])
+  })
+
+  it('실제로 합계에 들어가는 열 칸은 신환·재진·수납 넷·지출 넷이다', () => {
+    expect(WORKLOG_SUM_KEYS).toEqual([
+      'newPatients',
+      'returnPatients',
+      'cashIn',
+      'cardIn',
+      'transferIn',
+      'localCurrencyIn',
+      'spendCash',
+      'spendCard',
+      'spendRefund',
+      'spendFree',
     ])
   })
 
@@ -234,10 +254,23 @@ describe('자료 모양', () => {
       noteRefund: 'note_refund',
       noteFree: 'note_free',
       noteTotal: 'note_total',
+      memo: 'memo',
+      nameTotalFee: 'name_total_fee',
+      nameClaimAmount: 'name_claim_amount',
+      nameCashIn: 'name_cash_in',
+      nameCardIn: 'name_card_in',
+      nameTransferIn: 'name_transfer_in',
+      nameLocalCurrencyIn: 'name_local_currency_in',
+      nameUnpaidNew: 'name_unpaid_new',
+      nameUnpaidPaid: 'name_unpaid_paid',
+      nameSpendCash: 'name_spend_cash',
+      nameSpendCard: 'name_spend_card',
+      nameSpendRefund: 'name_spend_refund',
+      nameSpendFree: 'name_spend_free',
     })
   })
 
-  it('칸 이름은 시안의 aria-label과 같다', () => {
+  it('칸 이름은 design.md 5절 표와 같다(항목 이름 칸은 <기본 이름> 항목 이름)', () => {
     expect(WORKLOG_LABELS).toEqual({
       newPatients: '신환',
       returnPatients: '재진',
@@ -258,23 +291,72 @@ describe('자료 모양', () => {
       noteRefund: '환불 비고',
       noteFree: '지출 free 비고',
       noteTotal: '총 지불액 비고',
+      memo: '업무사항',
+      nameTotalFee: '총진료비 항목 이름',
+      nameClaimAmount: '조합청구액 항목 이름',
+      nameCashIn: '현금수납 항목 이름',
+      nameCardIn: '카드수납 항목 이름',
+      nameTransferIn: '계좌이체 항목 이름',
+      nameLocalCurrencyIn: '지역화폐 항목 이름',
+      nameUnpaidNew: '미수발생 항목 이름',
+      nameUnpaidPaid: '미수입금 항목 이름',
+      nameSpendCash: '현금 항목 이름',
+      nameSpendCard: '카드 항목 이름',
+      nameSpendRefund: '환불 항목 이름',
+      nameSpendFree: 'free 항목 이름',
     })
   })
 
-  it('빈 하루는 숫자 null·비고 빈 글자이고, 업무사항과 합계 칸이 없다', () => {
+  it('항목 이름의 기본값은 엑셀 글자다', () => {
+    expect(WORKLOG_DEFAULT_NAMES).toEqual({
+      nameTotalFee: '총진료비',
+      nameClaimAmount: '조합청구액',
+      nameCashIn: '현금수납',
+      nameCardIn: '카드수납',
+      nameTransferIn: '계좌이체',
+      nameLocalCurrencyIn: '지역화폐',
+      nameUnpaidNew: '미수발생',
+      nameUnpaidPaid: '미수입금',
+      nameSpendCash: '현금',
+      nameSpendCard: '카드',
+      nameSpendRefund: '환불',
+      nameSpendFree: 'free',
+    })
+  })
+
+  it('금액 칸마다 항목 이름 칸이 하나 있고, 항목 이름 순서는 금액 칸 순서다', () => {
+    expect(WORKLOG_NAME_OF).toEqual({
+      totalFee: 'nameTotalFee',
+      claimAmount: 'nameClaimAmount',
+      cashIn: 'nameCashIn',
+      cardIn: 'nameCardIn',
+      transferIn: 'nameTransferIn',
+      localCurrencyIn: 'nameLocalCurrencyIn',
+      unpaidNew: 'nameUnpaidNew',
+      unpaidPaid: 'nameUnpaidPaid',
+      spendCash: 'nameSpendCash',
+      spendCard: 'nameSpendCard',
+      spendRefund: 'nameSpendRefund',
+      spendFree: 'nameSpendFree',
+    })
+    expect(WORKLOG_WON_KEYS.map((key) => WORKLOG_NAME_OF[key])).toEqual(WORKLOG_NAME_KEYS)
+  })
+
+  it('빈 하루는 32칸 모두 빈 글자이고, 합계 칸이 없다', () => {
     const day = emptyWorklogDay()
-    expect(Object.keys(day).sort()).toEqual([...ALL_KEYS].sort())
-    for (const key of [...WORKLOG_COUNT_KEYS, ...WORKLOG_WON_KEYS]) expect(day[key]).toBeNull()
-    for (const key of WORKLOG_NOTE_KEYS) expect(day[key]).toBe('')
+    expect(Object.keys(day).sort()).toEqual([...WORKLOG_CELL_KEYS].sort())
+    for (const key of WORKLOG_CELL_KEYS) expect(day[key], key).toBe('')
   })
 
   it('빈 하루는 부를 때마다 새 값이다', () => {
     const first = emptyWorklogDay()
-    first.cashIn = 1000
-    expect(emptyWorklogDay().cashIn).toBeNull()
+    first.cashIn = '1,000'
+    expect(emptyWorklogDay().cashIn).toBe('')
   })
 
-  it('비고는 100자, 업무사항은 2,000자까지다', () => {
+  it('글자 한도는 숫자 칸 50 · 항목 이름 20 · 비고 100 · 업무사항 2,000이다', () => {
+    expect(CELL_MAX).toBe(50)
+    expect(NAME_MAX).toBe(20)
     expect(NOTE_MAX).toBe(100)
     expect(MEMO_MAX).toBe(2000)
   })

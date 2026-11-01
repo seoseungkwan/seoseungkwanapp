@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "calc-format",
-      "status": "pending"
+      "status": "completed",
+      "summary": "칸이 모두 글자(WorklogDay)·항목 이름 12칸·memo 더함. calc는 읽은 숫자로 합계만(parseCount·parseWon 삭제). notes는 privacyProblem으로 막는 모양을 넓힘"
     },
     {
       "step": 2,
