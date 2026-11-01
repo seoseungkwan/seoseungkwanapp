@@ -20,7 +20,8 @@
     {
       "step": 3,
       "name": "stats-mockup",
-      "status": "pending"
+      "status": "blocked",
+      "blocked_reason": "목업 승인 대기 — https://claude.ai/artifact/Aty8eb58WBogd3mJKac5y6"
     }
   ]
 }
