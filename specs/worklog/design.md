@@ -376,7 +376,7 @@ type Props = {
 type Props = {
   ymd: string; today: string
   onDate(ymd: string): void
-  status: ToolbarStatus      // 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed'
+  status: ToolbarStatus      // 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed' | 'view-only'
   savedAt: Date | null
   blockedYmd: string | null  // 막힌 칸이 있는 날. 지금 보는 날과 다르면 그 날짜 글자를 보인다
   onRetrySave(): void; onReload(): void; onPrint(): void
@@ -414,6 +414,7 @@ export function startWorklogSession(): () => void                       // befor
   - 실패는 조용히 넘긴다. 오류 카드·상태 글이 바뀌지 않고 값을 그대로 두며 다음 때 다시 한다. 처음 읽기 실패만 `load-failed` 카드다
 - **앱 안 이동**(Next 링크로 다른 탭, 화면이 내려감): 내려갈 때 `flush()`만 부르고 `dispose()`는 부르지 않는다 → 저장·다시 하기가 모듈에서 이어진다. `beforeunload`는 브라우저를 떠날 때만 울리므로 앱 안 이동은 이 길로 지킨다(AC-010.11)
 - **보기만은 터치 기기로 정한다**: `matchMedia('(hover: none) and (pointer: coarse)')`가 참이면 `readOnly`이고 `autosave.change`를 부르지 않는다. 값(업무사항·고친 항목 이름 포함)은 그대로 보인다. 화면 폭(768px 미만)은 배치만 바꾼다 — 반쪽 창·150% 확대한 의원 PC도 그대로 고친다(AC-010.10) **(Claude 판단)**
+- **터치 기기의 상태 글**(AC-010.17, 사용자 2026-11-01): 터치 기기에서 "아직 적지 않음"에 해당하면 `WorklogScreen`이 툴바에 `view-only` 상태를 넘기고 툴바는 "휴대폰에서는 보기만 할 수 있어요"를 그린다. 나머지 상태의 우선순위와 글은 그대로다
 - `beforeunload`(모듈이 한 번 건다): `hasUnsaved()`면 `preventDefault()`(+ `returnValue = ''`). `visibilitychange` hidden → `flush()`. `online` → `autosave.online()`
 - **로그아웃**: `supabaseBrowser().auth.onAuthStateChange`의 `SIGNED_OUT`(30분 자동 로그아웃의 `signOut()` 포함) → 떠나기 확인을 떼고, `dispose()`, 화면 값을 지우고 요청 번호를 올린다(그 뒤 온 읽기 응답은 버린다). 그래야 `IdleLogout`의 `window.location.assign('/login')`이 떠나기 확인에 막혀 공용 PC 화면에 일지가 남는 일이 없다(AC-010.12)
 - [인쇄] → `flush()` → `window.print()`

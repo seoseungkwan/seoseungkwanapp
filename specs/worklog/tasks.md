@@ -82,10 +82,10 @@
 
 ## TASK-10: 업무일지 화면
 - Step: Phase 2 · Step 4 · `screen`
-- AC: AC-010.1~AC-010.16
+- AC: AC-010.1~AC-010.17
 - REQ: REQ-010
-- Files: src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/worklogSession.ts, src/components/worklog/worklogSession.test.ts
-- Tests: src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/worklogSession.test.ts
+- Files: src/components/worklog/WorklogToolbar.tsx, src/components/worklog/WorklogToolbar.test.tsx, src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/worklogSession.ts, src/components/worklog/worklogSession.test.ts
+- Tests: src/components/worklog/WorklogToolbar.test.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/worklogSession.test.ts
 - TDD: required — `lib/storage/worklogDays`·`lib/supabase/browser`는 `vi.mock`, 시간은 가짜 타이머, `matchMedia`(터치 기기 `(hover: none) and (pointer: coarse)`)는 시험이 만든다(design.md 11-3절). 자동 저장 제어는 화면 밖 `worklogSession.ts`에 한 벌 — 화면이 내려가면 `flush()`만 하고 저장은 이어진다("앱 안 이동 = 바로 저장" 시험). 다시 읽기(돌아올 때·다시 보일 때·60초)와 저장 안 된 칸·초점 칸 빼고 반영, 실패는 조용히 넘김을 시험한다. 로그아웃(`SIGNED_OUT`)이면 떠나기 확인을 떼고 화면 값을 지운다. 페이지에는 아직 붙이지 않는다(TASK-12). 캡처용 임시 페이지를 만들지 않는다 — Phase 2 끝 화면 확인은 시험 그림(그린 마크업)으로 하고, 실제 화면 캡처는 TASK-12 뒤에 한다
 
 ## TASK-11: 인쇄
