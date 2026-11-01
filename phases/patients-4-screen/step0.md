@@ -10,7 +10,7 @@
 
 - **AC-610.1**: `/patients`가 환자 탭. 탭 [환자]는 `href: '/patients'`·`ready: true`, 준비 중 목록·대시보드 목차의 '준비 중'에서 빠짐(목차 `connect-first`). 탭 이름 "환자"
 - **AC-610.2**: 도구 단추 줄 [F/U 명단]·[정기 주사 문자 명단]·[문자 문구], 고른 것에 `aria-current`, 주소 `?tool=followup|recall|messages`, 없거나 모르면 F/U
-- **AC-610.3**: 확장 없는 브라우저·휴대폰: 명단 도구 자리에 남은 건수(두 수·바뀐 시각)만, 줄 없으면 "자료 없음" + "비트 PC에서 환자 탭을 열면 건수가 생겨요". 문자 문구 도구는 그대로
+- **AC-610.3**: 확장 없는 브라우저·휴대폰: 명단 도구 자리에 남은 건수(두 수·바뀐 시각)만, 줄 없으면 "자료 없음" + "비트 PC에서 환자 탭을 열면 건수가 생겨요". 읽기 실패(`E-PATIENTS-COUNTS-READ`)는 '자료 없음'과 다르게 오류 카드 + [다시 불러오기]. 문자 문구 도구는 그대로
 - **AC-610.4**: 확장은 있는데 도우미 없음·업데이트·끊김: 비트 PC 연결 안내 + [비트 PC 연결](`/claim/setup`). busy: 안내 + [건수만 보기]
 - **AC-610.5**: 주소·화면 제목·탭 이름에 이름·전화·차트번호 없음(주소에는 도구 이름만)
 
@@ -54,8 +54,8 @@
   - `src/components/patients/CountsOnly.test.tsx`
   - `src/components/patients/tools.ts`
   - `src/components/patients/tools.test.ts`
-  - `src/components/common/ToolRow.tsx`
-  - `src/components/common/ToolRow.test.tsx`
+  - `src/components/patients/ToolRow.tsx`
+  - `src/components/patients/ToolRow.test.tsx`
   - `src/components/common/notReadyFeatures.ts`
   - `src/components/common/notReadyFeatures.test.ts`
   - `src/components/shell/menu.ts`
@@ -74,7 +74,7 @@
   - `src/components/patients/usePatientsWorker.test.ts`
   - `src/components/patients/CountsOnly.test.tsx`
   - `src/components/patients/tools.test.ts`
-  - `src/components/common/ToolRow.test.tsx`
+  - `src/components/patients/ToolRow.test.tsx`
   - `src/components/common/notReadyFeatures.test.ts`
   - `src/components/shell/shell.test.tsx`
   - `src/components/dashboard/briefing/features.test.ts`
@@ -108,10 +108,10 @@
 export type PatientsTool = 'followup' | 'recall' | 'messages'
 export const PATIENTS_TOOLS: readonly { id: PatientsTool; label: 'F/U 명단' | '정기 주사 문자 명단' | '문자 문구' }[]
 export function toolFrom(param: string | string[] | undefined): PatientsTool   // 모르는 값 → 'followup'
-// src/components/common/ToolRow.tsx — 다른 탭도 쓰는 도구 단추 줄(링크 목록, 고른 것에 aria-current="page")
+// src/components/patients/ToolRow.tsx — 도구 단추 줄(링크 목록, 고른 것에 aria-current="page"). 기능 폴더에 둔다(규칙 C6, 나중에 공용으로 모을 수 있게 props는 일반 모양)
 export function ToolRow<T extends string>(props: { label: string /* nav 이름 */; items: readonly { id: T; label: string; href: string }[]; current: T }): JSX.Element
 ```
-- `ToolRow`가 main에 이미 있으면(다른 탭 명세가 먼저 만듦) 새로 만들지 말고 그것을 쓴다. 그때 `ToolRow.tsx`·시험은 고치지 않는다
+- `src/components/common/`에 새 파일을 만들지 않는다(병렬 브랜치와 같은 이름이 부딪히지 않게, 규칙 C6)
 - `page.tsx`(서버 컴포넌트): `metadata.title = '환자'`, `searchParams.tool` → `toolFrom` → `<PatientsEntry tool={…} />`. 주소에는 `?tool=`만
 
 ### 3. 입구 (`PatientsEntry.tsx`, 클라이언트, AC-610.3·610.4)
@@ -123,7 +123,7 @@ export function ToolRow<T extends string>(props: { label: string /* nav 이름 *
 - Worker는 `usePatientsWorker`가 `new Worker(new URL('@/workers/patients.worker.ts', import.meta.url))`로 한 번 만들고 화면을 떠나면 끝낸다
 
 ### 4. 건수만 (`CountsOnly.tsx`)
-- `readContactCount(createClient())` → F/U 남은 수·정기 주사 남은 수·마지막 바뀐 시각(한국 시각). `null`이면 숫자 없이 "자료 없음" + "비트 PC에서 환자 탭을 열면 건수가 생겨요". 읽기 실패 → `E-COUNTS-FAILED` 작은 오류 줄 + [다시 읽기]
+- `readContactCount(createClient())` → F/U 남은 수·정기 주사 남은 수·마지막 바뀐 시각(한국 시각). `null`(줄 없음)이면 숫자 없이 "자료 없음" + "비트 PC에서 환자 탭을 열면 건수가 생겨요". 읽기 실패(`E-PATIENTS-COUNTS-READ`를 던짐)는 '자료 없음'과 다르게 `ErrorCard` + [다시 불러오기](숫자도 '자료 없음'도 보이지 않는다)
 
 ### 5. 화면 틀 (`PatientsScreen.tsx`·`usePatientsWorker.ts`)
 - `usePatientsWorker(bridge)`: 들어오면 `store.load {contact: true}` → Worker `stored` → `plan` → F/U 조각을 차례로 `stream('contact.targets', {kind: 'followup', from, to})` → `piece` → 정기 주사 조각 → `build` → `views`. 진행은 `{done, total}`. 실패하면 거기서 멈추고 오류 번호 + [다시 불러오기]
@@ -134,7 +134,7 @@ export function ToolRow<T extends string>(props: { label: string /* nav 이름 *
 
 ### 7. 시험 (jsdom, 가짜 통로·가짜 Worker·가짜 Supabase)
 - `page.test.tsx`: 탭 이름, `?tool=` 세 값·모르는 값, 주소에 도구 이름만(AC-610.1·610.2·610.5)
-- `PatientsEntry.test.tsx`: 상태마다 그려지는 것(AC-610.3·610.4), `ToolRow.test.tsx`, `tools.test.ts`, `CountsOnly.test.tsx`(줄 있음·없음·실패), `usePatientsWorker.test.ts`(부르는 순서·진행·실패 멈춤), `PatientsScreen.test.tsx`
+- `PatientsEntry.test.tsx`: 상태마다 그려지는 것(AC-610.3·610.4), `ToolRow.test.tsx`, `tools.test.ts`, `CountsOnly.test.tsx`(줄 있음·줄 없음 → 자료 없음·읽기 실패 → 오류 카드이고 '자료 없음' 글이 없음·다시 불러오기), `usePatientsWorker.test.ts`(부르는 순서·진행·실패 멈춤), `PatientsScreen.test.tsx`
 - 기존 시험(shell·features·notReady·tabFrame·titles·notFound)이 새 상태로 통과
 
 ## TDD 순서
@@ -147,7 +147,7 @@ export function ToolRow<T extends string>(props: { label: string /* nav 이름 *
 ## Acceptance Criteria
 
 ```bash
-npx vitest run "src/app/(app)/patients/page.test.tsx" src/components/patients src/components/common/ToolRow.test.tsx   # AC-610.1~AC-610.5
+npx vitest run "src/app/(app)/patients/page.test.tsx" src/components/patients src/components/patients/ToolRow.test.tsx   # AC-610.1~AC-610.5
 npx vitest run src/components/common/notReadyFeatures.test.ts src/components/shell/shell.test.tsx src/components/dashboard/briefing/features.test.ts "src/app/(app)/notReadyPages.test.tsx" "src/app/(app)/tabFrame.test.tsx" src/app/titles.test.tsx src/app/notFound.test.tsx
 python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green
 npm run lint && npm test && npm run build

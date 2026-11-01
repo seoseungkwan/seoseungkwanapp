@@ -11,7 +11,7 @@
 - **AC-614.1**: 두 명단을 다 불러온 뒤에만 `contactCounts`를 upsert. 한 명단만이면 안 올림
 - **AC-614.2**: 연락 표시로 건수가 바뀌면 다시 올림. 지난번과 같으면 안 보냄
 - **AC-614.3**: 요청 몸통은 정수 두 칸뿐(이름·전화·차트번호·날짜 글자 없음)
-- **AC-614.4**: 실패 → 명단 그대로 + `E-COUNTS-FAILED` 작은 오류 줄 + [다시 올리기]
+- **AC-614.4**: 실패 → 명단 그대로 + `E-PATIENTS-COUNTS-SAVE` 작은 오류 줄 + [다시 올리기]
 
 ## 승인된 목업 (화면 step)
 
@@ -58,7 +58,7 @@
 ```ts
 export function useCountsUpload(sb: SupabaseClient, counts: ContactCount | null /* 두 명단이 다 왔을 때만 값 */): { error: string | null; retry(): void }
 ```
-- `counts`가 `null`이면 아무것도 안 한다. 값이 지난번 올린 값과 같으면 안 보낸다. 실패 → `error = 'E-COUNTS-FAILED'`, `retry`로 같은 값 다시
+- `counts`가 `null`이면 아무것도 안 한다. 값이 지난번 올린 값과 같으면 안 보낸다. 실패 → `error = 'E-PATIENTS-COUNTS-SAVE'`, `retry`로 같은 값 다시
 
 ### 2. `PatientsScreen.tsx`
 - `usePatientsWorker`의 `views.counts`(F/U·정기 주사 보기 모양이 둘 다 있을 때만)와 `marked.counts`를 `useCountsUpload`에 넘긴다. 실패 줄 + [다시 올리기]는 도구 줄 아래 작은 줄(명단은 그대로)
@@ -116,5 +116,4 @@ python3 ~/.claude/harness/bin/verify
 
 ## 참고
 
-- Phase 4 마지막 step이다. 메인 세션이 Phase 끝에 할 일: `verify` → 화면 캡처(PC·휴대폰, 도구 셋, 연결 안 됨·건수만) → 쉬운 말 보고 → 의원 PC 시험 목록(F/U·정기 주사 명단을 양지바른과 비교, 연락함이 다시 열어도 남는지, 휴대폰 건수가 바뀌는지)
-- 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)·Supabase에 표 붙이기는 사용자가 그때마다 지시할 때만 한다
+- 다음 step(TASK-15 `privacy-e2e`)이 Phase 4의 마지막이다. Phase 끝 할 일은 그 step 파일에 있다

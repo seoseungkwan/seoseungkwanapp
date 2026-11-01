@@ -29,7 +29,7 @@
 - `/specs/patients/requirements.md` — REQ-612
 - `/specs/patients/design.md` — '계산 모양'(`RecallRow`·`RecallCoverage`), 'Worker 메시지 약속', '결정과 트레이드오프'(쌓기·처음 읽는 기간)
 - `/specs/patients/tasks.md` — TASK-12
-- 이전 step에서 만든 파일: `src/components/patients/FollowupTool.tsx`·`rows/FollowupRows.tsx`·`periods.ts`(같은 방식으로), `src/components/common/CopyButton.tsx`, `src/components/patients/PatientsScreen.tsx`·`usePatientsWorker.ts`, `src/workers/patients/jobs.ts`(`filterRecall`)
+- 이전 step에서 만든 파일: `src/components/patients/FollowupTool.tsx`·`rows/FollowupRows.tsx`·`periods.ts`(같은 방식으로), `src/components/patients/CopyButton.tsx`, `src/components/patients/PatientsScreen.tsx`·`usePatientsWorker.ts`, `src/workers/patients/jobs.ts`(`filterRecall`)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 

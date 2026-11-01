@@ -32,7 +32,7 @@
 - `/specs/patients/tasks.md` — TASK-11
 - `/docs/UI_GUIDE.md` '표'·'단추'·'입력'·'빈 상태'·'휴대폰'
 - `/src/components/auth/CopyStatus.tsx`(`useCopy` — 복사 결과 줄 방식)
-- 이전 step에서 만든 파일: `src/components/patients/PatientsScreen.tsx`·`usePatientsWorker.ts`, `src/workers/patients/jobs.ts`(`filterFollowup` 결과 모양), `src/lib/messages/fill.ts`·`defaults.ts`, `src/lib/storage/messageTemplates.ts`(`readTemplates`)
+- 이전 step에서 만든 파일: `src/components/patients/PatientsScreen.tsx`·`usePatientsWorker.ts`, `src/workers/patients/jobs.ts`(`filterFollowup` 결과 모양), `src/lib/patientMessages/fill.ts`·`defaults.ts`, `src/lib/storage/messageTemplates.ts`(`readTemplates`)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -49,14 +49,14 @@
   - `src/components/patients/periods.test.ts`
   - `src/components/patients/PatientsScreen.tsx`
   - `src/components/patients/PatientsScreen.test.tsx`
-  - `src/components/common/CopyButton.tsx`
-  - `src/components/common/CopyButton.test.tsx`
+  - `src/components/patients/CopyButton.tsx`
+  - `src/components/patients/CopyButton.test.tsx`
 - Tests:
   - `src/components/patients/FollowupTool.test.tsx`
   - `src/components/patients/rows/FollowupRows.test.tsx`
   - `src/components/patients/periods.test.ts`
   - `src/components/patients/PatientsScreen.test.tsx`
-  - `src/components/common/CopyButton.test.tsx`
+  - `src/components/patients/CopyButton.test.tsx`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -77,15 +77,15 @@ export type PeriodPreset = 'tomorrow' | 'thisWeek' | 'nextWeek' | 'custom'
 export function presetRange(p: Exclude<PeriodPreset, 'custom'>, today: string): { from: string; to: string }   // 주는 월~일(dates.ts weekStartOf)
 ```
 
-### 2. 복사 단추 (`components/common/CopyButton.tsx`)
+### 2. 복사 단추 (`components/patients/CopyButton.tsx`)
 ```ts
 export function CopyButton(props: { text: string | (() => string); label: string; disabled?: boolean }): JSX.Element   // navigator.clipboard.writeText → "복사했어요" / 실패 "복사하지 못했어요. …"(role="status")
 ```
-- main에 이미 있으면(다른 명세가 먼저 만듦) 그것을 쓰고 고치지 않는다. 결과 줄 방식은 `useCopy`와 같다
+- 기능 폴더(`components/patients/`)에 둔다(규칙 C6). 결과 줄 방식은 `useCopy`와 같다
 
 ### 3. F/U 도구 (`FollowupTool.tsx`)
 - `PatientsScreen`이 넘기는 Worker 연결로 `filter`를 보내 거른 줄·날짜 미정 줄·복사 글을 받는다(화면은 거르지 않는다). 고르기: 기간(처음 `tomorrow`), 조건부 포함(처음 끔), 지난 예정 포함(처음 끔), 구분(전체·주사·F/U)
-- [명단 복사]: 날짜 머리 줄 켜기·끄기 → `copy.list`/`copy.listWithDate`. [문구 복사]: 주사 안내·진료 안내 중 고르기 → `readTemplates`(없으면 `DEFAULT_TEMPLATES`)의 그 종류 첫 문구를 `fillTemplate(body, 기간 시작일)`로
+- [명단 복사]: 날짜 머리 줄 켜기·끄기 → `copy.list`/`copy.listWithDate`. [문구 복사]: 주사 안내·진료 안내 중 고르기 → `readTemplates`(읽기는 됐고 줄이 없을 때만 `DEFAULT_TEMPLATES`)의 그 종류 첫 문구를 `fillTemplate(body, 기간 시작일)`로. 문구 읽기가 실패하면(`E-PATIENTS-TEMPLATES-READ`) [문구 복사] 자리에 오류 번호와 [다시 불러오기]만, 기본 문구로 대신하지 않는다
 - [연락함]: `mark` 보냄 → `marked`의 `ok`로 줄을 바꾸거나 오류 줄. 누르는 동안 그 단추만 막힘
 - 빈 상태·불러오는 중·실패는 목업 문구. 실패 오류 카드는 `errorInfo(code)`(모르는 번호면 번호만)
 
@@ -109,7 +109,7 @@ export function CopyButton(props: { text: string | (() => string); label: string
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/patients src/components/common/CopyButton.test.tsx   # AC-611.1~AC-611.5
+npx vitest run src/components/patients src/components/patients/CopyButton.test.tsx   # AC-611.1~AC-611.5
 npx vitest run src/guardrails.test.ts
 python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green
 npm run lint && npm test && npm run build

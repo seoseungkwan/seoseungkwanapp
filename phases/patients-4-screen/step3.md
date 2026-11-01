@@ -1,6 +1,6 @@
 # Step 3: messages-screen
 
-> **TASK-13** 문자 문구 화면 · **REQ-613** · AC-613.1 ~ AC-613.5
+> **TASK-13** 문자 문구 화면 · **REQ-613** · AC-613.1 ~ AC-613.6
 > Phase 4 `patients-4-screen`(환자 화면) · Step 3 — 명세 `specs/patients/`
 > 명세 `specs/patients/`는 승인됐다. 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -11,8 +11,9 @@
 - **AC-613.1**: 주사 안내·진료 안내 목록(저장 줄 없으면 기본 문구), 내원 날짜(처음 내일), 채운 글 미리 보기
 - **AC-613.2**: 더하기·고치기·지우기·위·아래 → [저장] → `saveTemplates`. 이름 1~30·내용 1~2000 화면 검사
 - **AC-613.3**: [문구 복사] → 채운 글 클립보드 + "복사했어요", 막히면 글을 골라 둔 채 안내. 보내기 없음
-- **AC-613.4**: 저장 실패 → 값 그대로 + `E-SETTINGS-FAILED` 오류 카드 + [다시 저장]
+- **AC-613.4**: 저장 실패 → 값 그대로 + `E-PATIENTS-TEMPLATES-SAVE` 오류 카드 + [다시 저장]
 - **AC-613.5**: 휴대폰·확장 없는 곳에서도 같은 화면
+- **AC-613.6**: 문구 읽기 실패(`E-PATIENTS-TEMPLATES-READ`) → 오류 카드 + [다시 불러오기]만, 목록·고치기·[저장]·[문구 복사]는 읽기가 될 때까지 없음(기본 문구를 `before = []`로 저장해 서버 줄이 겹치는 일을 막음)
 
 ## 승인된 목업 (화면 step)
 
@@ -32,7 +33,7 @@
 - `/specs/patients/tasks.md` — TASK-13
 - `/docs/UI_GUIDE.md` '입력'·'오류 카드·확인 창'
 - `/src/components/common/ErrorCard.tsx`
-- 이전 step에서 만든 파일: `src/lib/messages/fill.ts`·`defaults.ts`, `src/lib/storage/messageTemplates.ts`(`readTemplates`·`saveTemplates`·`checkTemplate`), `src/components/common/CopyButton.tsx`, `src/components/patients/PatientsEntry.tsx`·`PatientsScreen.tsx`
+- 이전 step에서 만든 파일: `src/lib/patientMessages/fill.ts`·`defaults.ts`, `src/lib/storage/messageTemplates.ts`(`readTemplates`·`saveTemplates`·`checkTemplate`), `src/components/patients/CopyButton.tsx`, `src/components/patients/PatientsEntry.tsx`·`PatientsScreen.tsx`
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -73,10 +74,11 @@
 export function useTemplates(sb: SupabaseClient): {
   state: 'loading' | 'ready' | 'load-failed'
   saved: MessageTemplate[]                 // 서버에 있는 것
-  draft: TemplateDraft[]                   // 화면에서 고치는 것(처음: saved, 없으면 DEFAULT_TEMPLATES)
+  draft: TemplateDraft[]                   // 화면에서 고치는 것(처음: saved, 읽기가 됐고 줄이 없을 때만 DEFAULT_TEMPLATES). load-failed이면 []
   usingDefaults: boolean
   edit(i: number, patch: Partial<TemplateDraft>): void; add(kind: TemplateKind): void; remove(i: number): void; move(i: number, dir: -1 | 1): void
-  save(): Promise<void>                    // checkTemplate 통과해야 보냄. 실패 → saveError = 'E-SETTINGS-FAILED', draft 그대로
+  save(): Promise<void>                    // state가 'ready'일 때만(읽기 실패 뒤에는 아무것도 보내지 않는다). checkTemplate 통과해야 보냄. 실패 → saveError = 'E-PATIENTS-TEMPLATES-SAVE', draft 그대로
+  loadError: string | null; reload(): void  // 읽기 실패 → loadError = 'E-PATIENTS-TEMPLATES-READ'
   saveError: string | null; invalid: { index: number; field: 'name' | 'body' }[]
 }
 ```
@@ -84,14 +86,15 @@ export function useTemplates(sb: SupabaseClient): {
 ### 2. 화면 (`MessagesTool.tsx`)
 - 목록(종류 칩·이름·내용 입력), [문구 더하기](종류 고르기), 지우기, 위·아래, [저장](바뀐 것이 있을 때만), 내원 날짜(처음 `defaultSendDate(today)`), 미리 보기(`fillTemplate`), [문구 복사](`CopyButton`)
 - 기본 문구를 쓰는 중이면 원본 안내(`DEFAULT_TEMPLATE_NOTE`, "사용 전 병원명·연락처·진료시간을 수정하세요")와 `[*1*]`·`[*2*]` 설명(받는 분 이름·부위)
-- 이름 1~30자·내용 1~2000자 검사 결과를 칸 옆 글자로. 저장 실패 → `ErrorCard`(E-SETTINGS-FAILED) + [다시 저장]
+- 이름 1~30자·내용 1~2000자 검사 결과를 칸 옆 글자로. 저장 실패 → `ErrorCard`(E-PATIENTS-TEMPLATES-SAVE) + [다시 저장]
+- 읽기 실패(`load-failed`, AC-613.6) → `ErrorCard`(E-PATIENTS-TEMPLATES-READ) + [다시 불러오기]만. 목록·고치기·[저장]·[문구 복사]·미리 보기를 그리지 않는다. 기본 문구는 읽기가 되고 줄이 0개일 때만 쓴다
 
 ### 3. 자리 넣기
 - `PatientsScreen.tsx`: 도구 자리 `messages`에 `MessagesTool`
 - `PatientsEntry.tsx`: 확장 없는 곳·휴대폰·연결 안 됨·busy에서도 `messages` 도구는 `MessagesTool`(AC-613.5)
 
 ### 4. 시험 (jsdom, 가짜 Supabase)
-- `useTemplates.test.ts`(기본값·더하기·지우기·순서·검사·저장 실패 값 유지), `MessagesTool.test.tsx`(AC-613.1~613.4: 미리 보기 날짜 줄, 복사 됨·막힘), `PatientsEntry.test.tsx`(AC-613.5: 상태마다 문자 문구 도구가 열림), `PatientsScreen.test.tsx`
+- `useTemplates.test.ts`(기본값은 읽기 성공 + 0줄일 때만·읽기 실패면 draft 없음이고 save가 아무것도 안 보냄·다시 불러오기·더하기·지우기·순서·검사·저장 실패 값 유지), `MessagesTool.test.tsx`(AC-613.1~613.4·613.6: 미리 보기 날짜 줄, 복사 됨·막힘, 읽기 실패 → 오류 카드만이고 [저장]·[문구 복사]가 없음), `PatientsEntry.test.tsx`(AC-613.5: 상태마다 문자 문구 도구가 열림), `PatientsScreen.test.tsx`
 
 ## TDD 순서
 
@@ -110,7 +113,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status patients`에서 AC-613.1 ~ AC-613.5가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status patients`에서 AC-613.1 ~ AC-613.6가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

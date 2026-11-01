@@ -10,8 +10,8 @@
 
 - **AC-607.1**: auth migration 다음에 실행하면 `message_templates`(kind injection·followup, 이름 1~30, 내용 1~2000, sort_order 0~99)와 `contact_counts`(병원마다 한 줄, 정수 둘 0~100000, 바뀐 시각, 글자·jsonb 칸 없음)가 생기고 `hospital_id`는 `my_hospital_id()` 기본값으로만
 - **AC-607.2**: anon·다른 병원·승인 안 된 병원·`hospital_id` 직접 넣기·범위 밖 값은 모두 거부. 승인된 내 병원은 내 줄만 읽고 쓴다(`message_templates`는 지우기도)
-- **AC-607.3**: 기본 권한 회수 → `authenticated`에 칸 단위 insert·update(id·hospital_id·updated_at 제외)·select(·delete). 함수는 security definer·search_path ''·public·anon 실행 회수
-- **AC-607.4**: 두 번 실행해도, 함수가 이미 있어도 깨지지 않는다
+- **AC-607.3**: 기본 권한 회수 → `authenticated`에 칸 단위 insert·update(id·hospital_id·updated_at 제외)·select(·delete). `my_hospital_id()`는 security definer·search_path ''·public·anon 실행 회수(C1), `touch_updated_at()`는 definer 없음
+- **AC-607.4**: 두 번 실행해도, 다른 브랜치 migration이 같은 함수(C1 글)를 먼저 만든 뒤에도 깨지지 않고 함수 몸통이 같다
 
 ## 읽어야 할 파일
 
@@ -34,7 +34,7 @@
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `supabase/migrations/20261101000000_patients.sql`
+  - `supabase/migrations/20261101000300_patients.sql`
   - `supabase/patients.rls.test.ts`
 - Tests:
   - `supabase/patients.rls.test.ts`
@@ -48,16 +48,16 @@
 
 ## 작업
 
-### 1. migration (`supabase/migrations/20261101000000_patients.sql`)
+### 1. migration (`supabase/migrations/20261101000300_patients.sql`)
 - design.md '서버 표'의 SQL을 그대로 쓰고 아래를 채운다
-  - `my_hospital_id()`·`touch_updated_at()`: `create or replace`. `revoke execute … from public, anon` → `grant execute … to authenticated`
+  - 함수는 cross-branch 규칙 C1의 글을 **한 글자도 바꾸지 않고** 쓴다(design.md '서버 표'의 첫 네 줄 + `touch_updated_at` 한 줄). `my_hospital_id()`만 `security definer`이고 `revoke execute … from public, anon` → `grant execute … to authenticated`. `touch_updated_at()`는 definer가 없다
   - 표: `create table if not exists`. `alter table … enable row level security` → `revoke all on table … from anon, authenticated`
   - `message_templates`: `grant select, delete` + `grant insert (kind, name, body, sort_order)` + `grant update (kind, name, body, sort_order)` to authenticated
   - `contact_counts`: `grant select` + `grant insert (followup_left, injection_left)` + `grant update (followup_left, injection_left)` to authenticated
   - 정책(표마다 `drop policy if exists` 뒤 `create policy`): select·insert·update(·delete) 모두 `hospital_id = (select public.my_hospital_id())`(insert는 `with check`, update는 `using`과 `with check`)
   - 트리거: `drop trigger if exists … ; create trigger … before update … execute function public.touch_updated_at()`
   - `hospitals`의 승인 상태 칸 이름·값은 auth migration에서 확인해 맞춘다(design.md는 `owner_id`·`status = 'approved'`로 적었다)
-- 맨 위 주석: 무엇을 만드는지, 운영자가 SQL 편집기에 붙인다, 같은 함수를 precheck 설정 표 파일이 함께 쓴다(그래서 `create or replace`)
+- 맨 위 주석: 무엇을 만드는지, 운영자가 SQL 편집기에 붙인다, 같은 함수를 업무일지·통계·매출·precheck migration이 함께 쓴다(C1, 그래서 `create or replace`이고 글이 같다). 파일 이름은 `20261101000300_patients.sql`(C2)
 
 ### 2. 시험 (`supabase/patients.rls.test.ts`, PGlite)
 - `rls.test.ts`의 Supabase 흉내를 이 파일에 그대로 옮겨 쓴다(`rls.test.ts`는 고치지 않는다). auth migration → 이 migration 순서로 실행
@@ -65,7 +65,7 @@
 - AC-607.2: anon은 select·insert 모두 거부, 승인된 A는 자기 줄만, B는 A 줄을 못 봄·못 고침·못 지움, 승인 안 된 C는 아무 줄도 못 씀, `hospital_id`를 넣는 insert는 권한 오류
 - `contact_counts` upsert: supabase-js `upsert(…, { onConflict: 'hospital_id' })`가 만드는 모양(`insert into public.contact_counts (followup_left, injection_left) values (…) on conflict (hospital_id) do update set followup_left = excluded.followup_left, injection_left = excluded.injection_left`)이 승인된 병원에서 되고 두 번째에 값만 바뀐다. `updated_at`이 바뀐다
 - AC-607.3: `has_table_privilege`·`has_column_privilege`·`has_function_privilege`로 권한을 본다
-- AC-607.4: 이 migration을 두 번 실행해도 오류가 없다
+- AC-607.4: 이 migration을 두 번 실행해도 오류가 없다. 다른 브랜치 흉내: C1 글 그대로의 두 함수를 먼저 만들어 둔 DB에서 실행해도 오류가 없고 `pg_get_functiondef`가 같다. `my_hospital_id`가 definer이고 `touch_updated_at`은 definer가 아님을 `pg_proc.prosecdef`로 본다
 
 ## TDD 순서
 

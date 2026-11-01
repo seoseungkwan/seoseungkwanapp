@@ -43,15 +43,15 @@
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/lib/messages/fill.ts`
-  - `src/lib/messages/fill.test.ts`
-  - `src/lib/messages/defaults.ts`
-  - `src/lib/messages/defaults.test.ts`
+  - `src/lib/patientMessages/fill.ts`
+  - `src/lib/patientMessages/fill.test.ts`
+  - `src/lib/patientMessages/defaults.ts`
+  - `src/lib/patientMessages/defaults.test.ts`
   - `scripts/patients/golden/*`
   - `fixtures/patients/golden/messages-*.json`
 - Tests:
-  - `src/lib/messages/fill.test.ts`
-  - `src/lib/messages/defaults.test.ts`
+  - `src/lib/patientMessages/fill.test.ts`
+  - `src/lib/patientMessages/defaults.test.ts`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -69,12 +69,12 @@
 
 ### 2. 코드
 ```ts
-// src/lib/messages/fill.ts — 환자 정보 없음(구역 밖). 날짜는 dates.ts
+// src/lib/patientMessages/fill.ts — 환자 정보 없음(구역 밖). 날짜는 dates.ts
 export const DATE_LINE: RegExp                                       // 원본 그대로
 export function dateLine(date: string /* YYYY-MM-DD */): string     // "* M월 D일 X요일 *"
 export function fillTemplate(body: string, date: string): string   // 원본 withDate: 줄마다 <<DATE>>가 있거나 DATE_LINE이면 그 줄 전체를 dateLine으로
 export function defaultSendDate(today: string): string             // 내일
-// src/lib/messages/defaults.ts
+// src/lib/patientMessages/defaults.ts
 export type TemplateKind = 'injection' | 'followup'
 export const DEFAULT_TEMPLATES: readonly { kind: TemplateKind; name: string; body: string; sort_order: number }[]   // jusa → injection(0), jinryo → followup(1)
 ```
@@ -93,7 +93,7 @@ export const DEFAULT_TEMPLATES: readonly { kind: TemplateKind; name: string; bod
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/messages/fill.test.ts src/lib/messages/defaults.test.ts   # AC-608.1~AC-608.3
+npx vitest run src/lib/patientMessages/fill.test.ts src/lib/patientMessages/defaults.test.ts   # AC-608.1~AC-608.3
 python3 ~/.claude/harness/bin/tdd-run TASK-6 --expect green
 npm run lint && npm test
 python3 ~/.claude/harness/bin/verify

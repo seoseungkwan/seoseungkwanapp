@@ -8,7 +8,7 @@
 ## 배경 / 목표
 - 탭 줄의 [환자](`/patients`)는 지금 '준비 중' 화면이다(tab-frame). 사용자가 정한 탭 내용(2026-10-31·11-01): **F/U 명단**, **정기 주사 문자 명단**, **문자 문구**(고치고 복사만 한다. 앱은 문자를 보내지 않는다).
 - 도구가 여러 개인 탭이라 맨 위에 그 탭의 도구 단추 줄을 둔다(`docs/tab-frame/plan.md` §1).
-- 환자 이름·전화번호·차트번호·증상 글은 비트 PC 밖으로 나가지 않는다. 도우미 → 확장 → 통로(`lib/bridge`) → Worker → 화면 메모리로만 오고, 서버·브라우저 저장소·주소·로그에 남지 않는다. 연락 표시와 정기 주사 기록은 도우미가 그 PC에 암호화해 둔다(ADR-020). 서버에는 남은 건수 정수 둘과 문자 문구(환자 정보 아님)만 간다(ADR-021).
+- 환자 이름·전화번호·차트번호·증상 글은 비트 PC 밖으로 나가지 않는다. 도우미 → 확장 → 통로(`lib/bridge`) → Worker → 화면 메모리로만 오고, 서버·브라우저 저장소·주소·로그에 남지 않는다. 연락 표시와 정기 주사 기록은 도우미가 그 PC에 암호화해 둔다(ADR-020과 이 명세가 더하는 ADR-020 보충). 서버에는 남은 건수 정수 둘과 문자 문구(환자 정보 아님)만 간다(ADR-021).
 - 휴대폰·확장 없는 브라우저에서는 명단 대신 남은 건수만 보인다. 문자 문구는 환자 정보가 없어 어디서나 고칠 수 있다.
 - 계산은 원본 양지바른(`seoseungkwan/shared@2a1069b`, `YangjiBareun_사전점검/`)과 같아야 한다. 같은 가짜 자료를 넣어 결과를 견주는 골든 시험으로 증명한다.
 - 자료가 없으면 지어낸 숫자 없이 "자료 없음"을 보인다.
@@ -45,7 +45,8 @@
 - AC-604.3: Given 모든 조각이 온 `contact.targets` 답과 `store.load` 답, When 보기 모양을 만들면, Then `FollowupView`(이름·전화·마지막 진료·다음 날짜·구분·근거·연락함)와 `RecallView`(종류·이름·전화·마지막 주사·다음 예정일·상태·근거·연락함, 쌓인 기록 안내)를 화면에 보낸다. 조각 하나라도 실패하면 보기 모양 없이 오류 번호만 보낸다
 - AC-604.4: Given 줄 하나의 [연락함], When 화면이 Worker에 표시를 시키면, Then Worker가 `store.save {contact}` 글자를 만들어 통로 포트로 보내고, 됨이면 그 줄을 연락함으로 바꾼 보기 모양과 건수를, 실패면 바꾸지 않고 오류 번호만 화면에 보낸다. 화면으로 가는 메시지에는 보낼 글자가 없다
 - AC-604.5: Given 두 보기 모양, When `contactCounts(view, today)`, Then `{followup_left, injection_left}` 0 이상 정수 둘을 낸다: F/U는 '예정'(조건부 아님)이고 다음 내원일이 내일인 사람 중 연락함이 아닌 수, 정기 주사는 다음 예정일이 오늘까지 온(지난 것 포함) 사람 중 연락함이 아닌 수. 화면에서 고른 기간·도구와 상관없이 센다
-- AC-604.6: Given 쌓인 기록·연락 표시, When 저장 글자를 만들면, Then `{v: 1, marks, recall}` 모양이고 180일 지난 연락 표시는 뺀다
+- AC-604.6: Given 쌓인 기록·연락 표시, When 저장 글자를 만들면, Then `{v: 1, marks, recall}` 모양이다. 연락 표시는 지금 보기 모양에 그 줄 열쇠가 있으면 날짜와 상관없이 남기고, 열쇠가 보기 모양에 없거나(다시 진료·주사해 열쇠가 바뀜) 열쇠의 날짜가 읽는 범위(F/U 최근 120일, 정기 주사 36개월) 밖인 표시만 뺀다. 보기 모양을 만들지 못한 종류의 표시는 건드리지 않는다
+- AC-604.7: Given 연락함으로 표시한 뒤 다시 오지 않은 정기 주사 환자(예정일이 1년 넘게 지남), When 다음에 탭을 열어 보기 모양과 건수를 만들면, Then 그 줄은 여전히 연락함이고 `injection_left`에 다시 들어가지 않는다
 
 ### REQ-605: 도우미 — F/U · 정기 주사 대상 읽기 (`contact.targets`)
 - 옮겨 옴: precheck REQ-023 (AC-023.1~AC-023.3)
@@ -59,15 +60,15 @@
 - AC-606.1: Given `store.save {payload: {contact}}`, When 처리하면, Then 등록 병원을 확인하고 `contact`를 DPAPI로 암호화해 `contact.dat`(머리 `PRECHECK-STORE-1`, 임시 파일 → 바꿔치기, `.bak` 하나)에 등록 프로필 ID와 함께 쓰고 `{saved: true}`를 돌려준다
 - AC-606.2: Given `store.load {contact: true}`, When 처리하면, Then `contact.dat`의 `contact`를 `chunk`…`end`로 보낸다. 파일이 없거나 다른 등록 프로필의 파일이면 `{}`를 보낸다
 - AC-606.3: Given 깨진 `contact.dat`, When 읽으면, Then `.bak`이 맞으면 그것을 쓰고, 아니면 `E-STORE-BROKEN`이다(깨진 파일은 이름만 바꿔 남긴다). 쓰기 실패는 `E-STORE-FAILED`다
-- AC-606.4: Given `months`·`drafts`·`done`·`journal`·`settings` 칸(청구 작업 저장, precheck TASK-15 몫), When `store.load`·`store.save`에 오면, Then `E-HELPER-BAD-MESSAGE`로 거절한다. `contact`가 32MB를 넘어도 거절한다
+- AC-606.4: Given `contact` 밖의 칸(명령 표의 `store.save` payload `month`·`drafts`·`done`·`journal`·`settings`, `store.load`의 `months`·`settings` — 청구 작업 저장, precheck TASK-15 몫), When `store.load`·`store.save`에 오면, Then `contact` 밖의 칸은 무엇이든 `E-HELPER-BAD-MESSAGE`로 거절한다. `contact`가 32MB를 넘어도 거절한다
 - AC-606.5: Given 다른 도우미 프로세스가 작업 뮤텍스(`Local\SeoseungkwanPrecheckHelper.Work`)를 쥐고 있음, When `store.save`, Then 5초 기다려도 못 잡으면 `E-BRIDGE-BUSY`다
 
 ### REQ-607: 서버 표 — 문자 문구 · 연락 남은 건수
 - 옮겨 옴: precheck design.md 8-1(`message_templates`) · 8-2(`contact_counts`)
 - AC-607.1: Given migration 파일, When PGlite에 auth migration 다음으로 실행하면, Then `message_templates`(kind `injection`·`followup`, 이름 1~30자, 내용 1~2000자, `sort_order` 0~99)와 `contact_counts`(병원마다 한 줄, `followup_left`·`injection_left` 0~100000 정수, 바뀐 시각. 글자·jsonb 칸 없음)가 생기고 `hospital_id`는 DB 기본값(`my_hospital_id()`)으로만 들어간다
 - AC-607.2: Given RLS, When anon·다른 병원·승인 안 된 병원·`hospital_id`를 직접 넣는 요청·범위 밖 값이 오면, Then 모두 거부된다. 승인된 내 병원은 내 줄만 읽고 쓴다(`message_templates`는 지우기도)
-- AC-607.3: Given 권한, When migration을 보면, Then 표마다 기본 권한을 먼저 회수하고 `authenticated`에 칸 단위 `insert`·`update`(`id`·`hospital_id`·`updated_at` 제외)와 `select`(`message_templates`는 `delete`도)만 준다. 함수는 `security definer`·`search_path = ''`이고 `public`·`anon`에서 실행 권한을 회수한다
-- AC-607.4: Given 같은 migration, When 두 번 실행하거나 함수(`my_hospital_id`·`touch_updated_at`)가 이미 있을 때 실행하면, Then 깨지지 않는다(나중에 붙일 precheck 설정 표 파일과 함수를 함께 쓴다)
+- AC-607.3: Given 권한, When migration을 보면, Then 표마다 기본 권한을 먼저 회수하고 `authenticated`에 칸 단위 `insert`·`update`(`id`·`hospital_id`·`updated_at` 제외)와 `select`(`message_templates`는 `delete`도)만 준다. `my_hospital_id()`는 `security definer`·`search_path = ''`이고 `public`·`anon`에서 실행 권한을 회수한다(cross-branch 규칙 C1 글 그대로). `touch_updated_at()`는 definer 없이 `search_path = ''`다
+- AC-607.4: Given 같은 migration, When 두 번 실행하거나 다른 브랜치 migration이 같은 함수(`my_hospital_id`·`touch_updated_at`, C1 글)를 먼저 만든 뒤 실행하면, Then 깨지지 않고 함수 몸통이 같다(업무일지·통계·매출·precheck 설정 표 파일과 함수를 함께 쓴다)
 
 ### REQ-608: 문자 문구 채우기 · 기본 문구
 - 옮겨 옴: precheck REQ-025 (AC-025.1)
@@ -77,17 +78,17 @@
 
 ### REQ-609: 문자 문구 · 남은 건수 저장 (브라우저 → Supabase)
 - 옮겨 옴: precheck REQ-025 (AC-025.2의 저장·AC-025.4) · precheck REQ-026 (AC-026.4의 올리기)
-- AC-609.1: Given 내 병원, When `readTemplates(sb)`, Then `sort_order` 순서의 문구 줄을 돌려주고, 줄이 없으면 `[]`를 돌려준다
-- AC-609.2: Given 전과 후 목록, When `saveTemplates(sb, before, after)`, Then 더한 줄은 insert, 바뀐 줄은 update, 빠진 줄은 delete, 순서는 `sort_order`로 보낸다. 보내는 몸통에 `hospital_id`·`updated_at`(insert에는 `id`도)이 없다. 하나라도 실패하면 `E-SETTINGS-FAILED`를 던진다
-- AC-609.3: Given 건수, When `checkContactCount(row)`·`upsertContactCount(sb, row)`, Then 0~100000 정수 두 칸(`followup_left`·`injection_left`)만 통과하고(다른 칸·글자·음수·소수는 거절), 보내는 몸통은 그 두 칸뿐이다. 실패면 `E-COUNTS-FAILED`를 던진다
-- AC-609.4: Given 내 병원, When `readContactCount(sb)`, Then `{followup_left, injection_left, updated_at}` 또는 줄이 없으면 `null`을 돌려준다
-- AC-609.5: Given `lib/errors.ts`, When 오류 번호를 찾으면, Then `E-SETTINGS-FAILED`·`E-COUNTS-FAILED`·`E-PATIENTS-SOURCE`·`E-BIT-EXPORT-FAILED`의 '무엇이 · 어떻게 고치나' 문구가 있다
+- AC-609.1: Given 내 병원, When `readTemplates(sb)`, Then `sort_order` 순서의 문구 줄을 돌려주고, 줄이 없으면 `[]`를 돌려준다. 읽기가 실패하면(표 없음·권한·네트워크) `[]`로 바꾸지 않고 `E-PATIENTS-TEMPLATES-READ`를 던진다
+- AC-609.2: Given 전과 후 목록, When `saveTemplates(sb, before, after)`, Then 더한 줄은 insert, 바뀐 줄은 update, 빠진 줄은 delete, 순서는 `sort_order`로 보낸다. 보내는 몸통에 `hospital_id`·`updated_at`(insert에는 `id`도)이 없다. 하나라도 실패하면 `E-PATIENTS-TEMPLATES-SAVE`를 던진다
+- AC-609.3: Given 건수, When `checkContactCount(row)`·`upsertContactCount(sb, row)`, Then 0~100000 정수 두 칸(`followup_left`·`injection_left`)만 통과하고(다른 칸·글자·음수·소수는 거절), 보내는 몸통은 그 두 칸뿐이다. 실패면 `E-PATIENTS-COUNTS-SAVE`를 던진다
+- AC-609.4: Given 내 병원, When `readContactCount(sb)`, Then `{followup_left, injection_left, updated_at}` 또는 줄이 없으면 `null`을 돌려준다. 읽기가 실패하면 `null`로 바꾸지 않고 `E-PATIENTS-COUNTS-READ`를 던진다
+- AC-609.5: Given `lib/errors.ts`, When 오류 번호를 찾으면, Then `E-PATIENTS-TEMPLATES-READ`·`E-PATIENTS-TEMPLATES-SAVE`·`E-PATIENTS-COUNTS-READ`·`E-PATIENTS-COUNTS-SAVE`·`E-PATIENTS-SOURCE`의 '무엇이 · 어떻게 고치나' 문구가 있다. 다른 브랜치 몫 번호(`E-SETTINGS-FAILED`·`E-COUNTS-FAILED`·`E-BIT-EXPORT-FAILED` 등)는 더하지 않는다(규칙 C3)
 
 ### REQ-610: 환자 탭 입구 · 도구 단추 줄 · 휴대폰은 건수만
 - 옮겨 옴: precheck REQ-026 (AC-026.5의 탭 부분 · AC-026.6)
 - AC-610.1: Given `/patients`, When 열면, Then 준비 중 화면 대신 환자 탭이 열린다. 탭 줄 [환자]는 화면이 있는 탭(`href: '/patients'`, `ready: true`)이고, 준비 중 목록(`NOT_READY_FEATURES`)과 대시보드 기능 목차의 '준비 중'에서 빠진다(목차 상태는 청구처럼 `connect-first`). 브라우저 탭 이름은 "환자"다
 - AC-610.2: Given 환자 탭, When 그리면, Then 맨 위 도구 단추 줄에 [F/U 명단] · [정기 주사 문자 명단] · [문자 문구]가 있고 고른 도구에 `aria-current`가 붙는다. 고른 도구는 주소 `?tool=followup|recall|messages`로 남고, 없거나 모르는 값이면 F/U 명단이다
-- AC-610.3: Given 확장이 없는 브라우저나 휴대폰, When F/U·정기 주사 도구를 열면, Then 명단 대신 연락 남은 건수(`contact_counts`의 두 수와 마지막 바뀐 시각)만 보인다. 줄이 없으면 숫자 없이 "자료 없음"과 "비트 PC에서 환자 탭을 열면 건수가 생겨요"를 보인다. 문자 문구 도구는 그대로 쓸 수 있다
+- AC-610.3: Given 확장이 없는 브라우저나 휴대폰, When F/U·정기 주사 도구를 열면, Then 명단 대신 연락 남은 건수(`contact_counts`의 두 수와 마지막 바뀐 시각)만 보인다. 줄이 없으면 숫자 없이 "자료 없음"과 "비트 PC에서 환자 탭을 열면 건수가 생겨요"를 보인다. 건수를 읽지 못하면(`E-PATIENTS-COUNTS-READ`) '자료 없음'이 아니라 오류 카드와 [다시 불러오기]를 보인다. 문자 문구 도구는 그대로 쓸 수 있다
 - AC-610.4: Given 확장은 있는데 도우미 없음·업데이트 필요·끊김, When 명단 도구를 열면, Then 명단 대신 비트 PC 연결 안내와 [비트 PC 연결](`/claim/setup`)을 보인다. 다른 창에서 작업 중(`busy`)이면 그 안내와 [건수만 보기]를 보인다
 - AC-610.5: Given 명단을 보이는 동안, When 주소·화면 제목·브라우저 탭 이름을 보면, Then 이름·전화·차트번호가 없다(주소에는 도구 이름만)
 
@@ -96,7 +97,7 @@
 - AC-611.1: Given 연결된 비트 PC, When F/U 명단 도구를 열면, Then `contact.targets(followup)` 조각을 차례로 불러(진행 "n/전체") 목업 승인본처럼 F/U 명단을 보인다: 이름·전화·마지막 진료·다음 날짜(요일)·구분(주사·F/U)·근거 문구·연락함. 기간(처음 '내일', 이번 주·다음 주·직접), 조건부 포함, 지난 예정 포함, 구분을 고를 수 있고 날짜 미정 명단은 따로 보인다
 - AC-611.2: Given 대상 없음·불러오는 중·실패, When 그리면, Then 빈 상태 문구 · 불러오는 중 · 오류 번호와 [다시 불러오기]를 보인다(지어낸 줄 없음)
 - AC-611.3: Given 줄 하나, When [연락함]을 누르면, Then REQ-604 흐름으로 저장하고 됨이면 그 줄이 '연락함'으로, 실패면 그대로 두고 오류 번호 줄을 보인다. 브라우저 저장소는 쓰지 않는다
-- AC-611.4: Given 고른 명단, When [명단 복사](날짜 머리 줄 선택)·[문구 복사](주사 안내·진료 안내)를 누르면, Then `pasteRows` 글이나 고른 날짜로 채운 문구를 클립보드에 넣고 "복사했어요"를 보인다. 문자를 보내지 않는다
+- AC-611.4: Given 고른 명단, When [명단 복사](날짜 머리 줄 선택)·[문구 복사](주사 안내·진료 안내)를 누르면, Then `pasteRows` 글이나 고른 날짜로 채운 문구를 클립보드에 넣고 "복사했어요"를 보인다. 문구를 읽지 못했으면(`E-PATIENTS-TEMPLATES-READ`) [문구 복사] 자리에 오류 번호와 [다시 불러오기]를 보이고 기본 문구로 대신하지 않는다. 문자를 보내지 않는다
 - AC-611.5: Given 환자 줄, When 그리면, Then `components/patients/rows`의 부품이 props로만 그린다
 
 ### REQ-612: 정기 주사 문자 명단 화면
@@ -108,10 +109,11 @@
 
 ### REQ-613: 문자 문구 화면
 - 옮겨 옴: precheck REQ-025 (AC-025.2~AC-025.4)
-- AC-613.1: Given 문자 문구 도구, When 열면, Then 주사 안내·진료 안내 문구 목록(저장한 줄이 없으면 `DEFAULT_TEMPLATES`), 내원 날짜 고르기(처음 내일), 채운 글 미리 보기를 보인다
+- AC-613.1: Given 문자 문구 도구, When 열면, Then 주사 안내·진료 안내 문구 목록(읽기가 됐고 저장한 줄이 없을 때만 `DEFAULT_TEMPLATES`), 내원 날짜 고르기(처음 내일), 채운 글 미리 보기를 보인다
+- AC-613.6: Given 문구 읽기 실패(`E-PATIENTS-TEMPLATES-READ`), When 그리면, Then 오류 카드와 [다시 불러오기]만 보이고 목록·고치기·[저장]·[문구 복사]는 읽기가 될 때까지 없다(기본 문구를 `before = []`로 저장해 서버 줄이 겹치는 일을 막는다)
 - AC-613.2: Given 문구, When 더하기·고치기·지우기·순서 바꾸기(위·아래) 뒤 [저장]을 누르면, Then `saveTemplates`로 저장한다. 이름 1~30자·내용 1~2000자는 저장 전에 화면에서도 검사한다
 - AC-613.3: Given [문구 복사], When 누르면, Then 고른 날짜로 채운 글을 클립보드에 넣고 "복사했어요"를 보인다. 복사가 막히면 글을 골라 둔 채 "복사하지 못했어요"와 안내를 보인다. 문자 보내기 기능은 없다
-- AC-613.4: Given 저장 실패, When 생기면, Then 고친 값을 그대로 두고 `E-SETTINGS-FAILED` 오류 카드와 [다시 저장]을 보인다
+- AC-613.4: Given 저장 실패, When 생기면, Then 고친 값을 그대로 두고 `E-PATIENTS-TEMPLATES-SAVE` 오류 카드와 [다시 저장]을 보인다
 - AC-613.5: Given 휴대폰·확장 없는 브라우저, When 문자 문구 도구를 열면, Then PC와 같은 화면이 열린다(환자 정보가 없다)
 
 ### REQ-614: 연락 남은 건수 올리기
@@ -119,7 +121,13 @@
 - AC-614.1: Given 연결된 비트 PC의 환자 탭, When 두 명단(F/U·정기 주사)을 모두 불러오면, Then 그때 `contactCounts`를 `upsertContactCount`로 올린다. 한 명단만 불러왔으면 올리지 않는다(다른 칸을 0으로 덮지 않게)
 - AC-614.2: Given 연락 표시가 바뀌어 건수가 바뀜, When 저장되면, Then 다시 올린다. 지난번에 올린 값과 같으면 보내지 않는다
 - AC-614.3: Given 올리는 요청, When 몸통을 보면, Then 정수 두 칸뿐이고 이름·전화·차트번호·날짜 글자가 없다(시험이 가짜 Supabase 요청 몸통을 본다)
-- AC-614.4: Given 올리기 실패, When 생기면, Then 명단은 그대로 쓰고 `E-COUNTS-FAILED` 작은 오류 줄과 [다시 올리기]를 보인다
+- AC-614.4: Given 올리기 실패, When 생기면, Then 명단은 그대로 쓰고 `E-PATIENTS-COUNTS-SAVE` 작은 오류 줄과 [다시 올리기]를 보인다
+
+### REQ-615: 개인정보 E2E (실제 Supabase, 사용자가 SQL을 붙인 뒤)
+- 새로 (cross-branch 규칙 C7)
+- AC-615.1: Given 시험 계정으로 로그인하고 가짜 확장·도우미(시험 코드가 `chrome.runtime`을 흉내 내 가짜 명단 조각을 줌)를 넣은 브라우저, When `/patients`에서 두 명단을 불러오고 [연락함]을 누르고 문자 문구를 저장하면, Then 브라우저에서 나간 모든 요청(주소·쿼리·몸통)에 가짜 차트번호·이름·전화·주민번호 모양·파일 이름이 없다
+- AC-615.2: Given 같은 시험 뒤, When `message_templates`·`contact_counts`의 내 줄을 다시 읽으면, Then 저장된 값에 가짜 차트번호·이름·전화·주민번호 모양·파일 이름이 없고 `contact_counts`는 정수 둘과 시각뿐이다
+- AC-615.3: Given 시험 산출물, When 끝나면, Then trace·스크린샷·네트워크 기록에 쿠키·토큰이 없다(`trace: 'off'`)
 
 ## 범위 밖
 - 문자 자동 발송·문자 프로그램 연결(복사만 한다)

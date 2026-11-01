@@ -26,6 +26,11 @@
       "step": 4,
       "name": "counts-upload",
       "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "privacy-e2e",
+      "status": "pending"
     }
   ]
 }

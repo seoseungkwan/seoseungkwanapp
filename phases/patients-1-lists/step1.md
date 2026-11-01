@@ -85,7 +85,7 @@
   - `fixtures/patients/golden/followup-parse.json`(parseFU·aragan·visitKind·extractTx·extractSite)
   - `fixtures/patients/golden/followup-schedule.json`(prepareSchedule → scheduleRows(조건부·지난 예정 네 조합)·undecidedRows·pasteRows(날짜 머리 줄 있음·없음, 기간 있음·없음), 원본이 던지는 사례는 `{ "throws": true }`)
   - `fixtures/patients/golden/followup-phones.json`(preparePhones·phoneTokens)
-  - `fixtures/patients/golden/phone-columns.json`(칸 이름 목록마다 `phoneColumn` 결과. TASK-8의 C# `IsPhoneColumn`이 같은 파일로 견준다)
+  - `fixtures/patients/golden/phone-columns.json`(칸 이름 목록마다 `phoneColumn` 결과. TASK-9의 C# `IsPhoneColumn`이 같은 파일로 견준다)
 - 원본이 '오늘'을 쓰는 곳은 고정 날짜를 넣는다(`baseDate`는 자료의 마지막 진료일). 원본 `Date`는 `YYYY-MM-DD`로 적는다
 
 ### 3. 코드 (`src/lib/patients/followup.ts`)
