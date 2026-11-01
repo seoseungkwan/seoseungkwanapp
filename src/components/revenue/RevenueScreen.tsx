@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useBridge } from '@/components/claim/useBridge'
 import { addMonths, monthOf, todayInKorea } from '@/lib/analytics/dates'
 import { firstMonth } from '@/lib/revenue/summary'
@@ -10,6 +10,8 @@ import { createRxGroupStore } from '@/lib/storage/rxGroups'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { BridgeState } from '@/types/bridge'
 import type { RxGroup } from '@/types/rxGroups'
+import { GroupEditor } from './groups/GroupEditor'
+import { knownCodes } from './groups/known'
 import { PageTitle } from './RevenueParts'
 import { RevenuePerVisit } from './RevenuePerVisit'
 import { RevenueSplit } from './RevenueSplit'
@@ -23,6 +25,7 @@ import { buildRevenueView, type FailedNotice, type PeriodView, type RevenueBlock
 // 연결된 PC: 저장된 줄 읽기 → 빠진 달 가져오기(planFetch) → 다시 읽기. 그동안은 첫 그림부터 '가져오는 중'이다(읽기 전에 "기록이 없어요"라고 말하지 않는다).
 // 통로를 부르는 것은 상태가 ready일 때뿐이다: 연결 중에도 E-BRIDGE-REJECTED가 와서 옛 확장으로 잘못 알게 된다.
 // 비트 PC인데 "연결되어 있지 않아요"라고 말하지 않는 두 경우: 이 화면의 가져오기가 도중에 끊겼을 때(오류 카드), 다른 창이 통로를 쓰는 중일 때(E-BRIDGE-BUSY)
+// 묶음 고치기(TASK-14)는 view.ts의 보기 상태가 아니라 이 화면의 상태(editing)다. 통로 상태와 상관없이 그 화면을 그대로 둔다(고치던 것을 잃지 않게, 서버 표만 쓴다)
 
 const TITLE = '매출'
 const MONTHS_SHOWN = 13
@@ -49,6 +52,28 @@ async function readGroups(): Promise<Groups> {
   }
 }
 
+/**
+ * save_rx_groups는 없는 id면 실패해서, 고치는 동안 다른 곳에서 지운 묶음이 있으면 [다시 저장]도 영영 실패한다.
+ * 실패한 호출은 한 트랜잭션이라 아무것도 바꾸지 않았으므로, 그런 줄만 id를 비워(새 줄로) 한 번 더 보낸다. 고친 것은 그대로 저장된다.
+ * 다시 읽지 못했거나 그런 줄이 없으면 까닭이 다른 것이라 처음 오류를 그대로 던진다.
+ * 읽은 줄이 있는데 겹치는 id가 하나도 없으면 다른 탭에서 계정이 바뀌었을 수 있다. 다시 보내면 그 계정의 묶음을 모두 지우게 되므로(save_rx_groups 끝의 delete) 던진다.
+ * 읽은 줄이 하나도 없으면 모두 지워진 것이고 지울 것도 없으니 다시 보낸다
+ */
+async function saveGroups(after: RxGroup[]): Promise<RxGroup[]> {
+  const store = createRxGroupStore(supabaseBrowser())
+  try {
+    return await store.saveGroups(after)
+  } catch (error) {
+    const live = await store.listGroups().catch(() => null)
+    if (live === null) throw error
+    const ids = new Set(live.map((row) => row.id))
+    const gone = (row: RxGroup) => row.id !== null && !ids.has(row.id)
+    if (!after.some(gone)) throw error
+    if (live.length > 0 && !after.some((row) => row.id !== null && ids.has(row.id))) throw error
+    return store.saveGroups(after.map((row) => (gone(row) ? { ...row, id: null } : row)))
+  }
+}
+
 function bridgeKind(state: BridgeState): RevenueViewInput['bridge'] {
   if (state === 'ready') return 'ready'
   return state === 'update-helper' ? 'helper-old' : 'none'
@@ -62,14 +87,14 @@ function syncOf(result: SyncResult, keep: Failed): RevenueSync {
   return { ...IDLE, failed: [...keep, ...result.failed] }
 }
 
-type BlocksProps = { blocks: RevenueBlocks; onRetryGroups(): void; retryingGroups: boolean }
+type BlocksProps = { blocks: RevenueBlocks; onRetryGroups(): void; retryingGroups: boolean; onEditGroups(): void; editGroupsRef: RefObject<HTMLButtonElement | null> }
 
-function Blocks({ blocks, onRetryGroups, retryingGroups }: BlocksProps) {
+function Blocks({ blocks, onRetryGroups, retryingGroups, onEditGroups, editGroupsRef }: BlocksProps) {
   return (
     <>
       <RevenueTrend view={blocks.trend} />
       <RevenueSplit view={blocks.split} />
-      <RevenueTreatments view={blocks.treatments} onRetry={onRetryGroups} retrying={retryingGroups} />
+      <RevenueTreatments view={blocks.treatments} onRetry={onRetryGroups} retrying={retryingGroups} onEdit={onEditGroups} editRef={editGroupsRef} />
       <RevenuePerVisit view={blocks.perVisit} />
     </>
   )
@@ -84,6 +109,8 @@ export function RevenueScreen() {
   const [saved, setSaved] = useState<Saved | null>(null)
   const [groups, setGroups] = useState<Groups | null>(null)
   const [groupsBusy, setGroupsBusy] = useState(false)
+  /** 고치기 시작할 때 읽은 묶음. null이면 편집 중이 아니다 */
+  const [editing, setEditing] = useState<RxGroup[] | null>(null)
   const [sync, setSync] = useState<RevenueSync>(IDLE)
   const [attempt, setAttempt] = useState(0)
   /** 저절로 가져오기가 끝난 차례(run). 다르면 아직 가져오는 중이다 */
@@ -96,6 +123,9 @@ export function RevenueScreen() {
   const [fetchOpen, setFetchOpen] = useState(false)
   /** 지금 차례. 지난 차례의 답은 버린다 */
   const generation = useRef(0)
+  const editGroupsRef = useRef<HTMLButtonElement>(null)
+  /** 편집 화면을 보여 준 적이 있고 아직 돌아오지 않았다. 처음 그릴 때는 초점을 옮기지 않으려고 둔다 */
+  const leftForEditor = useRef(false)
 
   const connected = bridgeState === 'ready'
   const run = `${bridgeState}:${attempt}`
@@ -132,6 +162,16 @@ export function RevenueScreen() {
     },
     [call, today, oldest, latest],
   )
+
+  // 창 전체가 밀리는 화면이라 편집 화면이 내려가도 스크롤이 제자리다. 돌아오면 초점으로 [묶음 고치기]가 있는 덩어리까지 데려간다(AC-014.5의 다시 그린 숫자가 화면 밖이지 않게)
+  useEffect(() => {
+    if (editing !== null) {
+      leftForEditor.current = true
+    } else if (leftForEditor.current) {
+      leftForEditor.current = false
+      editGroupsRef.current?.focus()
+    }
+  }, [editing])
 
   useEffect(() => {
     generation.current += 1
@@ -186,13 +226,36 @@ export function RevenueScreen() {
     } else setAttempt((n) => n + 1)
   }
 
-  function reloadGroups() {
+  function refreshGroups(andThen?: (next: Groups) => void) {
     if (groupsBusy) return
     setGroupsBusy(true)
     void readGroups().then((next) => {
       setGroups(next)
       setGroupsBusy(false)
+      andThen?.(next)
     })
+  }
+
+  // 늘 새로 읽어서 연다. 화면을 연 뒤 다른 곳에서 고친 묶음을 옛 모양 그대로 들고 시작하지 않는다.
+  // 고치는 동안 지워진 묶음은 saveGroups가 되살리고, 그때 다시 읽기까지 실패해 카드가 남으면 [취소] 뒤 다시 열면 여기서 풀린다
+  function openEditor() {
+    refreshGroups((next) => {
+      if (next !== 'load-failed') setEditing(next)
+    })
+  }
+
+  function finishEditing(savedGroups: RxGroup[]) {
+    setEditing(null)
+    setGroups(savedGroups)
+    // 저장은 끝났고 답이 곧 저장된 줄이다. 다시 읽기가 실패해도 "불러오지 못했어요"라고 하지 않는다
+    void readGroups().then((next) => {
+      if (next !== 'load-failed') setGroups(next)
+    })
+  }
+
+  // 통로 상태를 보기 전에 먼저 본다: 아래의 어떤 갈래로 가도 편집 화면이 내려가면 고친 것이 사라진다
+  if (editing !== null) {
+    return <GroupEditor groups={editing} known={knownCodes(saved?.codes ?? [], month)} month={month} save={saveGroups} onCancel={() => setEditing(null)} onSaved={finishEditing} />
   }
 
   // 연결 확인 중: 무엇도 단정하지 않는다
@@ -235,7 +298,7 @@ export function RevenueScreen() {
       {failed && failedItems.some((item) => item.code !== SAVE_FAILED) && <FailedBanner failed={failed} onRetry={() => refetch(failed.list)} />}
     </>
   )
-  const groupProps = { onRetryGroups: reloadGroups, retryingGroups: groupsBusy }
+  const groupProps = { onRetryGroups: () => refreshGroups(), retryingGroups: groupsBusy, onEditGroups: openEditor, editGroupsRef }
 
   switch (view.state) {
     case 'connect-needed':

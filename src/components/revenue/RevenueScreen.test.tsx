@@ -3,12 +3,13 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eachDay, monthOf } from '@/lib/analytics/dates'
+import { RxGroupStoreError } from '@/lib/storage/rxGroups'
 import type { BridgeState } from '@/types/bridge'
 import type { RevenueCodeRow, RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import { RevenueScreen } from './RevenueScreen'
 
-// 매출 화면 (TASK-9, REQ-009 · AC-009.1~AC-009.4). 가짜 useBridge·가짜 store를 넣는다. 자료는 모두 가짜 숫자다. 오늘은 2026-11-01(날짜만 멈춘다)
+// 매출 화면 (TASK-9·TASK-14, REQ-009 · AC-009.1~AC-009.4 · REQ-014 · AC-014.1·014.3·014.5·014.6). 가짜 useBridge·가짜 store를 넣는다. 자료는 모두 가짜 숫자다. 오늘은 2026-11-01(날짜만 멈춘다)
 
 const fake = vi.hoisted(() => ({
   bridge: null as unknown,
@@ -19,7 +20,10 @@ const fake = vi.hoisted(() => ({
 
 vi.mock('@/components/claim/useBridge', () => ({ useBridge: (...args: unknown[]) => fake.useBridge(...args) }))
 vi.mock('@/lib/storage/revenue', () => ({ createRevenueStore: () => fake.store }))
-vi.mock('@/lib/storage/rxGroups', () => ({ createRxGroupStore: () => fake.groups }))
+vi.mock('@/lib/storage/rxGroups', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/rxGroups')>()), // 편집 화면이 RxGroupStoreError를 알아본다
+  createRxGroupStore: () => fake.groups,
+}))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({}) }))
 
 const FETCHED_AT = '2026-10-31T22:10:00Z' // 한국 시각 11월 1일 07:10
@@ -847,5 +851,475 @@ describe('AC-009.4 상태', () => {
     setup({ rows: ALL_SAVED })
     render(<RevenueScreen />)
     expect(await screen.findByText('제안 묶음 · 아직 저장 안 함')).toBeTruthy()
+  })
+})
+
+describe('AC-014 [묶음 고치기] → 편집 화면', () => {
+  const EDITOR = { level: 1, name: /^치료 묶음 고치기/ } as const
+  const CHIP = '제안 묶음 · 아직 저장 안 함'
+  const LOAD_FAILED = '치료 묶음을 불러오지 못했어요'
+  const SAVE_FAILED = 'E-REVENUE-GROUP-SAVE-FAILED'
+  const G1: RxGroup = { id: 'g1', name: '가짜 묶음', codes: [], sortOrder: 0 }
+  const G2: RxGroup = { id: 'g2', name: '다른 곳에서 지울 묶음', codes: [], sortOrder: 1 }
+
+  const editButton = () => screen.findByRole<HTMLButtonElement>('button', { name: '묶음 고치기' })
+  const nameField = (index = 0) => screen.getAllByRole<HTMLInputElement>('textbox', { name: '묶음 이름' })[index]!
+  const firstButton = (name: string) => screen.getAllByRole('button', { name })[0]!
+  const moveSelect = (code: string) => within(screen.getByText(code).closest('li')!).getByRole('combobox', { name: '옮길 묶음' })
+  const backOnScreen = () => screen.findByRole('heading', { level: 2, name: '치료별 매출' })
+
+  async function open(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await editButton())
+    return screen.findByRole('heading', EDITOR)
+  }
+
+  /** DB처럼 움직이는 묶음 저장소: 없는 id면 'not my group'으로 실패한다(save_rx_groups) */
+  function fakeServer(groupStore: ReturnType<typeof setup>['groupStore'], first: RxGroup[]) {
+    const server = { rows: first }
+    groupStore.listGroups.mockImplementation(async () => server.rows)
+    groupStore.saveGroups.mockImplementation(async (after: RxGroup[]) => {
+      const ids = new Set(server.rows.map((row) => row.id))
+      if (after.some((row) => row.id !== null && !ids.has(row.id))) throw new RxGroupStoreError(SAVE_FAILED)
+      server.rows = after.map((row, index) => ({ ...row, id: row.id ?? `new-${index}` }))
+      return server.rows
+    })
+    return server
+  }
+
+  it('AC-014.1 [묶음 고치기]는 매출 탭 안에서 편집 화면을 열고 네 덩어리를 대신한다. [취소]는 고친 것을 버리고 아무것도 보내지 않는다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1] })
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    expect(screen.queryByRole('heading', { level: 2, name: '매출 추이' })).toBeNull()
+
+    await user.clear(nameField())
+    await user.type(nameField(), '버릴 이름')
+    await user.click(firstButton('취소'))
+    expect(await backOnScreen()).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: '매출 추이' })).toBeTruthy()
+    expect(groupStore.saveGroups).not.toHaveBeenCalled()
+
+    await open(user)
+    expect(nameField().value).toBe('가짜 묶음')
+  })
+
+  it('AC-014.1 머리의 [묶음 고치기]는 보조 작은 단추이고 저장된 숫자만 있어도 눌린다', async () => {
+    setup({ state: 'no-helper', rows: ALL_SAVED, groups: [G1] })
+    render(<RevenueScreen />)
+    const edit = await editButton()
+    expect(edit.disabled).toBe(false)
+    expect(edit.getAttribute('aria-disabled')).toBeNull()
+    expect(edit.className).toContain('max-md:h-11')
+    expect(edit.closest('section')?.querySelector('h2')?.textContent).toBe('치료별 매출')
+  })
+
+  it('AC-014.2 편집 화면의 처방 목록에 _REST가 없고, 금액은 고른 달 것이다', async () => {
+    const { store } = setup({ rows: ALL_SAVED, groups: [{ ...G1, codes: ['MANUAL1'] }] })
+    const load = store.loadRevenue.getMockImplementation()!
+    store.loadRevenue.mockImplementation(async () => {
+      const rows = await load()
+      return { ...rows, codes: [...rows.codes, { month: '2026-09', code: '_REST', name: null, count: 3, amount: 900_000 }, { month: '2026-09', code: 'HP01', name: '가짜 핫팩', count: 1, amount: 100_000 }] }
+    })
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await editButton()
+    await user.click(screen.getByRole('button', { name: '지난달' }))
+    await open(user)
+    expect(screen.queryByText('_REST')).toBeNull()
+    expect(screen.getByRole('heading', { level: 2, name: '그 밖 처방 1개' })).toBeTruthy()
+    expect(screen.getByText('9월 30만 원')).toBeTruthy()
+  })
+
+  it('AC-014.3 저장된 묶음이 없으면 치료별 매출과 편집 화면 모두 제안 표시이고, 다섯 개로 채우며 저절로 저장하지 않는다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED })
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    expect(await screen.findByText(CHIP)).toBeTruthy()
+    await open(user)
+    expect(screen.getByText(CHIP)).toBeTruthy()
+    expect(screen.getAllByRole('textbox', { name: '묶음 이름' })).toHaveLength(5)
+    expect(groupStore.saveGroups).not.toHaveBeenCalled()
+  })
+
+  it('AC-014.3 묶음 읽기가 실패하면 안내·[다시 불러오기]가 있고 제안 칩이 없으며 [묶음 고치기]는 눌리지 않는다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED })
+    groupStore.listGroups.mockRejectedValueOnce(coded('E-REVENUE-GROUP-LOAD-FAILED'))
+    groupStore.listGroups.mockResolvedValue([{ ...G1, codes: ['MANUAL1'] }]) // 금액이 있어야 치료별 매출에 줄이 나온다
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    expect((await screen.findByRole('alert')).textContent).toContain(LOAD_FAILED)
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(screen.queryByText(CHIP)).toBeNull()
+
+    const edit = await editButton()
+    expect(edit.disabled).toBe(true)
+    expect(edit.getAttribute('aria-disabled')).toBe('true')
+    const reads = groupStore.listGroups.mock.calls.length
+    await user.click(edit)
+    expect(screen.queryByRole('heading', EDITOR)).toBeNull()
+    expect(groupStore.listGroups).toHaveBeenCalledTimes(reads)
+
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    await screen.findByText('가짜 묶음')
+    expect((await editButton()).disabled).toBe(false)
+    await open(user)
+    expect(nameField().value).toBe('가짜 묶음')
+  })
+
+  it('AC-014.3 열 때 묶음을 다시 읽다 실패하면 편집을 열지 않고 제안으로 바꾸지 않는다. 기다리는 동안 [묶음 고치기]는 aria-busy이고 다시 눌러도 한 번 읽는다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1] })
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    const edit = await editButton()
+    const reads = groupStore.listGroups.mock.calls.length
+    let fail: (error: Error) => void = () => {}
+    groupStore.listGroups.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+    await user.click(edit)
+    await user.click(edit)
+    expect(edit.getAttribute('aria-busy')).toBe('true')
+    expect(groupStore.listGroups).toHaveBeenCalledTimes(reads + 1)
+
+    await act(async () => fail(coded('E-REVENUE-GROUP-LOAD-FAILED')))
+    expect((await screen.findByRole('alert')).textContent).toContain(LOAD_FAILED)
+    expect(screen.queryByRole('heading', EDITOR)).toBeNull()
+    expect(screen.queryByText(CHIP)).toBeNull()
+    expect((await editButton()).disabled).toBe(true)
+  })
+
+  it('AC-014.5 [저장]이 되면 돌아와 listGroups를 다시 읽고 치료별 매출을 저장한 묶음으로 그린다. 비트에서 다시 가져오지는 않는다', async () => {
+    const { groupStore, bridge } = setup({ rows: ALL_SAVED, groups: [G1] })
+    fakeServer(groupStore, [G1])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.selectOptions(moveSelect('MANUAL1'), '가짜 묶음')
+    await user.clear(nameField())
+    await user.type(nameField(), '새 이름')
+    const reads = groupStore.listGroups.mock.calls.length
+    const fetches = bridge.call.mock.calls.length
+    await user.click(firstButton('저장'))
+
+    const heading = await backOnScreen()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+    expect(groupStore.saveGroups).toHaveBeenCalledWith([{ id: 'g1', name: '새 이름', codes: ['MANUAL1'], sortOrder: 0 }])
+    await waitFor(() => expect(groupStore.listGroups).toHaveBeenCalledTimes(reads + 1))
+    await settle()
+    expect(bridge.call.mock.calls.length).toBe(fetches)
+    const block = heading.closest('section')!
+    const items = within(block).getAllByRole('listitem')
+    expect(items).toHaveLength(1)
+    expect(items[0]!.textContent).toContain('새 이름')
+    expect(screen.getByText(/내가 만든 묶음/)).toBeTruthy()
+  })
+
+  it('AC-014.5 제안을 저장하면 제안 표시가 없어진다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED })
+    fakeServer(groupStore, [])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+    await waitFor(() => expect(screen.queryByText(CHIP)).toBeNull())
+    expect(screen.getByText(/내가 만든 묶음/)).toBeTruthy()
+  })
+
+  it('AC-014.5 저장은 됐는데 다시 읽기가 실패하면 저장한 묶음을 그대로 그린다("불러오지 못했어요"라고 하지 않는다)', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [{ ...G1, codes: ['MANUAL1'] }] })
+    groupStore.saveGroups.mockImplementation(async (after: RxGroup[]) => after)
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField())
+    await user.type(nameField(), '새 이름')
+    const reads = groupStore.listGroups.mock.calls.length
+    groupStore.listGroups.mockRejectedValue(coded('E-REVENUE-GROUP-LOAD-FAILED'))
+    await user.click(firstButton('저장'))
+
+    expect(await screen.findByText('새 이름')).toBeTruthy()
+    await waitFor(() => expect(groupStore.listGroups).toHaveBeenCalledTimes(reads + 1))
+    await settle()
+    expect(screen.getByText('새 이름')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect((await editButton()).disabled).toBe(false)
+  })
+
+  it('AC-014.5 저장이 실패하면 오류 카드·[다시 저장]이고 고친 것은 그대로이며, 다시 저장이 되면 돌아간다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1] })
+    groupStore.saveGroups.mockRejectedValueOnce(new RxGroupStoreError(SAVE_FAILED))
+    groupStore.saveGroups.mockImplementation(async (after: RxGroup[]) => after)
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField())
+    await user.type(nameField(), '고친 이름')
+    await user.click(firstButton('저장'))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('치료 묶음을 저장하지 못했어요')
+    expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
+    expect(nameField().value).toBe('고친 이름')
+
+    await user.click(screen.getByRole('button', { name: '다시 저장' }))
+    expect(await backOnScreen()).toBeTruthy()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(2)
+    expect(await screen.findByText(/내가 만든 묶음/)).toBeTruthy()
+  })
+
+  it('AC-014.5 편집 중에 다른 곳에서 지운 묶음: 고친 것을 새 줄(id 없음)로 되살려 저장하고 오류 카드가 없다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.selectOptions(moveSelect('MANUAL1'), G2.name)
+    await user.clear(nameField(1))
+    await user.type(nameField(1), '고친 이름')
+
+    server.rows = [G1] // 폰에서 지웠다
+    await user.click(firstButton('저장'))
+    const heading = await backOnScreen()
+
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(2)
+    expect(groupStore.saveGroups.mock.lastCall![0]).toEqual([G1, { id: null, name: '고친 이름', codes: ['MANUAL1'], sortOrder: 1 }])
+    expect(server.rows.map((row) => row.name)).toEqual([G1.name, '고친 이름'])
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(within(heading.closest('section')!).getByText('고친 이름')).toBeTruthy()
+  })
+
+  it('AC-014.5 편집 중에 묶음이 모두 다른 곳에서 지워졌으면(다시 읽은 줄이 없으면) 모두 새 줄로 되살려 저장한다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField(1))
+    await user.type(nameField(1), '고친 이름')
+
+    server.rows = []
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(2)
+    expect(groupStore.saveGroups.mock.lastCall![0]).toEqual([
+      { ...G1, id: null },
+      { ...G2, id: null, name: '고친 이름' },
+    ])
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-014.5 편집 중에 다른 계정으로 바뀌었으면(다시 읽은 줄과 겹치는 id가 없으면) 다시 보내지 않는다: 그 계정의 묶음은 그대로이고 오류 카드이며 고친 것은 그대로다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField(1))
+    await user.type(nameField(1), '고친 이름')
+
+    const others: RxGroup[] = [
+      { id: 'other-1', name: '다른 계정 묶음 1', codes: ['MANUAL1'], sortOrder: 0 },
+      { id: 'other-2', name: '다른 계정 묶음 2', codes: [], sortOrder: 1 },
+    ]
+    server.rows = others // 다른 탭에서 다른 승인 계정으로 로그인했다
+    await user.click(firstButton('저장'))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('치료 묶음을 저장하지 못했어요')
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+    expect(server.rows).toEqual(others)
+    expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
+    expect(nameField(1).value).toBe('고친 이름')
+  })
+
+  it('AC-014.5 지운 묶음을 확인하는 다시 읽기가 실패하면 오류 카드·[다시 저장]이고 고친 것은 그대로다. 읽을 수 있게 되면 [다시 저장]이 된다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField(1))
+    await user.type(nameField(1), '고친 이름')
+
+    server.rows = [G1]
+    groupStore.listGroups.mockRejectedValueOnce(coded('E-REVENUE-GROUP-LOAD-FAILED'))
+    await user.click(firstButton('저장'))
+    expect((await screen.findByRole('alert')).textContent).toContain('치료 묶음을 저장하지 못했어요')
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
+    expect(nameField(1).value).toBe('고친 이름')
+
+    await user.click(screen.getByRole('button', { name: '다시 저장' }))
+    await backOnScreen()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(3)
+    expect(groupStore.saveGroups.mock.lastCall![0][1]).toEqual({ ...G2, id: null, name: '고친 이름' })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-014.5 다시 읽기가 실패해 카드가 남아도 [취소] 뒤 다시 열면 새로 읽은 목록이라 지워진 묶음 없이 저장된다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    expect(screen.getAllByRole('textbox', { name: '묶음 이름' })).toHaveLength(2)
+
+    server.rows = [G1] // 폰에서 지웠다
+    groupStore.listGroups.mockRejectedValueOnce(coded('E-REVENUE-GROUP-LOAD-FAILED'))
+    await user.click(firstButton('저장'))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
+
+    await user.click(firstButton('취소'))
+    await backOnScreen()
+    await open(user)
+    expect(screen.getAllByRole('textbox', { name: '묶음 이름' }).map((field) => (field as HTMLInputElement).value)).toEqual(['가짜 묶음'])
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(2)
+    expect(groupStore.saveGroups.mock.lastCall![0]).toEqual([G1])
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-014.5 되살려 보낸 저장도 실패하면 오류 카드이고 고친 것은 그대로다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField(1))
+    await user.type(nameField(1), '고친 이름')
+
+    server.rows = [G1]
+    groupStore.saveGroups.mockRejectedValue(new RxGroupStoreError(SAVE_FAILED))
+    await user.click(firstButton('저장'))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(2)
+    expect(nameField(1).value).toBe('고친 이름')
+  })
+
+  it('AC-014.5 화면을 연 뒤 다른 곳에서 지운 묶음: 편집은 늘 새로 읽어 열어서 첫 저장부터 된다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1, G2] })
+    const server = fakeServer(groupStore, [G1, G2])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await editButton()
+    server.rows = [G1]
+    await open(user)
+    expect(screen.getAllByRole('textbox', { name: '묶음 이름' })).toHaveLength(1)
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-014.5 화면을 연 뒤 다른 곳에서 처음 저장한 묶음: 제안(새 줄)으로 잘못 열지 않는다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED })
+    const server = fakeServer(groupStore, [])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await screen.findByText(CHIP)
+    server.rows = [G1]
+    await open(user)
+    expect(screen.queryByText(CHIP)).toBeNull()
+    expect(nameField().value).toBe('가짜 묶음')
+  })
+
+  it('AC-014.3 묶음을 모두 지우고 저장하면 빈 목록을 보내고, 저장된 묶음이 없으니 제안 표시로 돌아간다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1] })
+    fakeServer(groupStore, [G1])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.click(screen.getByRole('button', { name: '묶음 지우기' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '지우기' }))
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+    expect(groupStore.saveGroups).toHaveBeenCalledWith([])
+    expect(await screen.findByText(CHIP)).toBeTruthy()
+  })
+
+  it('AC-014.1 열면 초점이 제목 줄로 간다: 세 번째 덩어리에서 눌러도 제목과 [취소]·[저장]이 화면에 들어온다', async () => {
+    setup({ rows: ALL_SAVED, groups: [G1] })
+    render(<RevenueScreen />)
+    const heading = await open(userEvent.setup())
+    expect(document.activeElement).toBe(heading.parentElement)
+  })
+
+  it('AC-014.1 [취소]로 돌아오면 초점이 [묶음 고치기]로 간다: 그 덩어리가 화면에 들어오고 붙어 있는 띠에 가리지 않는다', async () => {
+    setup({ rows: ALL_SAVED, groups: [G1] })
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.click(firstButton('취소'))
+    await backOnScreen()
+    const edit = await editButton()
+    expect(document.activeElement).toBe(edit)
+    expect(edit.className.split(/\s+/)).toEqual(expect.arrayContaining(['scroll-mt-25.5', 'max-md:scroll-mt-23.5']))
+  })
+
+  it('AC-014.5 [저장]으로 돌아와도 초점이 [묶음 고치기]로 간다: 다시 그린 치료별 매출이 화면에 들어온다', async () => {
+    const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1] })
+    fakeServer(groupStore, [G1])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+    expect(document.activeElement).toBe(await editButton())
+  })
+
+  it('AC-014.1 돌아올 때 말고는 초점을 옮기지 않는다: 처음 그릴 때·달을 바꿀 때·돌아온 뒤 통로 상태가 바뀔 때', async () => {
+    const { bridge } = setup({ state: 'no-helper', rows: ALL_SAVED, groups: [G1] })
+    const { rerender } = render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await editButton()
+    await settle()
+    expect(document.activeElement).toBe(document.body)
+
+    const previous = screen.getByRole('button', { name: '지난달' })
+    await user.click(previous)
+    await settle()
+    expect(document.activeElement).toBe(previous)
+
+    await open(user)
+    await user.click(firstButton('취소'))
+    await backOnScreen()
+    const next = screen.getByRole('button', { name: '지난달' })
+    next.focus()
+    bridge.state = 'disconnected'
+    rerender(<RevenueScreen />)
+    await settle()
+    expect(document.activeElement).toBe(next)
+  })
+
+  it('AC-014.6 연결 안 된 PC에서도 고치고 저장한다: 통로를 부르지 않는다', async () => {
+    const { groupStore, bridge } = setup({ state: 'no-helper', rows: ALL_SAVED, groups: [G1] })
+    fakeServer(groupStore, [G1])
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.selectOptions(moveSelect('MANUAL1'), '가짜 묶음')
+    await user.click(firstButton('저장'))
+    await backOnScreen()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+    expect(bridge.call).not.toHaveBeenCalled()
+  })
+
+  it('AC-014.6 고치는 동안 통로 상태가 바뀌거나 묶음 다시 읽기가 실패해도 편집 화면과 고친 것이 그대로다', async () => {
+    const { groupStore, bridge } = setup({ rows: ALL_SAVED, groups: [G1] })
+    const { rerender } = render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField())
+    await user.type(nameField(), '고치는 중')
+
+    groupStore.listGroups.mockRejectedValue(coded('E-REVENUE-GROUP-LOAD-FAILED'))
+    for (const state of ['connecting', 'disconnected', 'no-helper', 'busy', 'ready'] as BridgeState[]) {
+      bridge.state = state
+      rerender(<RevenueScreen />)
+      await settle()
+      expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
+      expect(nameField().value).toBe('고치는 중')
+    }
   })
 })
