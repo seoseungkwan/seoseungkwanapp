@@ -18,7 +18,7 @@ type Rec = Record<string, unknown>
 
 const RESULT_KEYS = ['days', 'codes'] as const satisfies readonly (keyof RevenueDaysResult)[]
 const MONEY_KEYS: readonly string[] = REVENUE_MONEY_KEYS
-/** 금액이 아닌 숫자 칸(건수·환자 수) */
+/** 금액이 아닌 숫자 칸(건수) */
 const COUNT_KEYS: readonly string[] = REVENUE_DAY_KEYS.filter(
   (k) => k !== 'date' && k !== 'unconfirmed' && k !== 'splitUnconfirmed' && !MONEY_KEYS.includes(k),
 )

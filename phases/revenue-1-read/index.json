@@ -11,8 +11,8 @@
     {
       "step": 1,
       "name": "bridge-contract",
-      "status": "pending",
-      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patientsToDate·DistinctPatients를 뺀다. 이전 요약은 git 기록에 있다"
+      "status": "completed",
+      "summary": "src/types/revenue.ts: 칸 15개(patientsToDate 없음, unconfirmed 뒤에 splitUnconfirmed), REVENUE_DAY_KEYS 15개, REVENUE_SPLIT_KEYS(insurer·copay·noncovered·otherTotal)·REVENUE_KEPT_KEYS(total·cash·card·transfer·receivableIn). isRevenueDays는 세 모양만 받음: 둘 다 거짓이면 아홉 칸 숫자, unconfirmed면 아홉 칸 null, splitUnconfirmed면 나눔 네 칸 null·남는 다섯 칸 숫자. 둘 다 참·옛 모양·patientsToDate가 남은 답은 E-BRIDGE-BAD-REPLY"
     },
     {
       "step": 2,

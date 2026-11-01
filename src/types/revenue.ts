@@ -7,8 +7,6 @@ export type RevenueDayRow = {
   visits: number | null
   newPatients: number | null
   returnVisits: number | null
-  /** from부터 그날까지 다녀간 서로 다른 환자 수(도우미가 비트 DB 안에서 센다) */
-  patientsToDate: number | null
   total: number | null
   insurer: number | null
   noncovered: number | null
@@ -32,7 +30,6 @@ export const REVENUE_DAY_KEYS = [
   'visits',
   'newPatients',
   'returnVisits',
-  'patientsToDate',
   'total',
   'insurer',
   'noncovered',

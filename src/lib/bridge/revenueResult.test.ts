@@ -17,7 +17,6 @@ const DAY_KEYS = [
   'visits',
   'newPatients',
   'returnVisits',
-  'patientsToDate',
   'total',
   'insurer',
   'noncovered',
@@ -30,7 +29,7 @@ const DAY_KEYS = [
   'unconfirmed',
   'splitUnconfirmed',
 ] as const
-const COUNT_KEYS = ['visits', 'newPatients', 'returnVisits', 'patientsToDate'] as const
+const COUNT_KEYS = ['visits', 'newPatients', 'returnVisits'] as const
 const MONEY_KEYS = ['total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn'] as const
 const NUMBER_KEYS = [...COUNT_KEYS, ...MONEY_KEYS] as const
 /** 나눔 네 칸: splitUnconfirmed면 이 넷만 null */
@@ -48,7 +47,6 @@ function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
     visits: 42,
     newPatients: 5,
     returnVisits: 37,
-    patientsToDate: 40,
     total: 1_234_560,
     insurer: 800_100,
     noncovered: 210_000,
@@ -108,7 +106,6 @@ function good(): RevenueDaysResult {
         visits: 0,
         newPatients: 0,
         returnVisits: 0,
-        patientsToDate: 40,
         total: 0,
         insurer: 0,
         noncovered: 0,
@@ -120,7 +117,7 @@ function good(): RevenueDaysResult {
         receivableIn: 0,
       }),
       // 차트번호 없는 내원·옛 자료 때문에 건수를 정할 수 없는 날
-      day('2026-10-04', { visits: null, newPatients: null, returnVisits: null, patientsToDate: null }),
+      day('2026-10-04', { visits: null, newPatients: null, returnVisits: null }),
       // 나눔만 세지 않은 날
       splitDay('2026-10-05'),
     ],
@@ -215,6 +212,12 @@ describe('AC-002.2·AC-002.3 days 줄', () => {
     expect(check(withDay(0, { ...day('2026-10-01'), [key]: key === 'chart' ? FAKE_CHART : FAKE_NAME }))).toBe(false)
   })
 
+  it.each([40, 0, null])('AC-002.2·AC-002.3 없어진 칸 patientsToDate가 %j로 남아 있으면 정해 둔 칸 밖이라 통과하지 않는다', (value) => {
+    expect(check(withDay(0, { ...day('2026-10-01'), patientsToDate: value }))).toBe(false)
+    expect(check(withDay(1, { ...unconfirmedDay('2026-10-02'), patientsToDate: value }))).toBe(false)
+    expect(check(withDay(4, { ...splitDay('2026-10-05'), patientsToDate: value }))).toBe(false)
+  })
+
   it.each(DAY_KEYS)('AC-002.2 날 줄에 %s 칸이 빠지면 통과하지 않는다', (key) => {
     expect(check(withDay(0, without(day('2026-10-01'), key)))).toBe(false)
   })
@@ -239,7 +242,7 @@ describe('AC-002.2·AC-002.3 days 줄', () => {
   })
 
   it('AC-002.2 unconfirmed: true여도 건수 칸은 숫자일 수 있다(금액만 null)', () => {
-    expect(check(withDay(1, { ...unconfirmedDay('2026-10-02'), visits: 30, patientsToDate: 41 }))).toBe(true)
+    expect(check(withDay(1, { ...unconfirmedDay('2026-10-02'), visits: 30 }))).toBe(true)
   })
 
   it.each(['2026-02-30', '2026-13-01', '20261001', '2026-10-1', '2026/10/01', '', 20261001, null])(
@@ -354,8 +357,8 @@ describe('AC-002.2·AC-002.3 splitUnconfirmed(2026-11-01 더함, "나눔만 비�
   })
 
   it('AC-002.2 나눔만 빈 날의 건수 칸은 숫자도 null도 통과한다', () => {
-    expect(checkRow(splitDay(D, { visits: 30, patientsToDate: 41 }))).toBe(true)
-    expect(checkRow(splitDay(D, { visits: null, newPatients: null, returnVisits: null, patientsToDate: null }))).toBe(true)
+    expect(checkRow(splitDay(D, { visits: 30 }))).toBe(true)
+    expect(checkRow(splitDay(D, { visits: null, newPatients: null, returnVisits: null }))).toBe(true)
   })
 
   it.each(SHAPES)('AC-002.2 splitUnconfirmed가 빠진 옛 모양(%s)은 통과하지 않는다', (_label, row) => {

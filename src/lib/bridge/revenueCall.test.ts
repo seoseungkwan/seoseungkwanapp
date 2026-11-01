@@ -61,9 +61,9 @@ const noSplit = { ...money, insurer: null, noncovered: null, copay: null, otherT
 
 const ANSWER: RevenueDaysResult = {
   days: [
-    { date: '2026-10-01', visits: 42, newPatients: 5, returnVisits: 37, patientsToDate: 40, ...money, unconfirmed: false, splitUnconfirmed: false },
-    { date: '2026-10-02', visits: 38, newPatients: 2, returnVisits: 36, patientsToDate: 61, ...noMoney, unconfirmed: true, splitUnconfirmed: false },
-    { date: '2026-10-03', visits: 30, newPatients: 1, returnVisits: 29, patientsToDate: 70, ...noSplit, unconfirmed: false, splitUnconfirmed: true },
+    { date: '2026-10-01', visits: 42, newPatients: 5, returnVisits: 37, ...money, unconfirmed: false, splitUnconfirmed: false },
+    { date: '2026-10-02', visits: 38, newPatients: 2, returnVisits: 36, ...noMoney, unconfirmed: true, splitUnconfirmed: false },
+    { date: '2026-10-03', visits: 30, newPatients: 1, returnVisits: 29, ...noSplit, unconfirmed: false, splitUnconfirmed: true },
   ],
   codes: [
     { code: 'MM001', name: '도수치료(가짜)', count: 12, amount: 960_000 },
@@ -189,6 +189,14 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
       delete copy.splitUnconfirmed
       return copy
     })
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-002.2·AC-002.3 없어진 칸 patientsToDate가 남아 있는 옛 모양 답도 E-BRIDGE-BAD-REPLY다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    const days = ANSWER.days.map((row) => ({ ...row, patientsToDate: 40 }))
     t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days } })
     await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
   })
