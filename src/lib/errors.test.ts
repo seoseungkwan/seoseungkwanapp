@@ -34,6 +34,10 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-AI-BUSY',
+  'E-AI-LIMIT',
+  'E-AI-FAILED',
+  'E-AI-NO-DATA',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -260,5 +264,33 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+// AI 리포트(spec ai-report design.md '오류 문구')
+const AI_CODES = ['E-AI-BUSY', 'E-AI-LIMIT', 'E-AI-FAILED', 'E-AI-NO-DATA'] as const
+
+describe('AC-502.1·AC-502.2 AI 오류 번호 문구', () => {
+  it('AC-502.1 AI 오류 넷은 what·fix가 있고 "병원"·"니다."가 없다', () => {
+    for (const code of AI_CODES) {
+      const info = errorInfo(code)
+      expect(info, code).toBeDefined()
+      expect(info.what.trim(), code).not.toBe('')
+      expect(info.fix.trim(), code).not.toBe('')
+      for (const text of [info.what, info.fix]) {
+        expect(text, code).not.toContain('병원')
+        expect(text, code).not.toMatch(/니다\.(\s|$)/)
+      }
+    }
+  })
+
+  it('AC-502.2 BUSY는 잠시 뒤 다시, LIMIT는 이번 달 AI 한도, FAILED는 [다시 분석], NO-DATA는 그 달 통계를 먼저 넣으라고 한다', () => {
+    expect(errorInfo('E-AI-BUSY').fix).toContain('뒤')
+    expect(errorInfo('E-AI-BUSY').fix).toContain('[다시 분석]')
+    expect(errorInfo('E-AI-LIMIT').what).toContain('이번 달')
+    expect(errorInfo('E-AI-LIMIT').what).toContain('한도')
+    expect(errorInfo('E-AI-FAILED').fix).toContain('[다시 분석]')
+    expect(errorInfo('E-AI-NO-DATA').fix).toContain('통계')
+    expect(errorInfo('E-AI-NO-DATA').fix).toContain('먼저')
   })
 })

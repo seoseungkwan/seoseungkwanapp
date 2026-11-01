@@ -1,0 +1,24 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-1-base",
+  "steps": [
+    {
+      "step": 0,
+      "name": "docs-config",
+      "status": "completed",
+      "summary": "TASK-1 끝: docs/ADR.md에 ADR-024 'AI 월간 리포트는 달마다 저장하고, 근거 숫자는 앱이 채운다 (모델 Claude Opus 5.5)' (ai_reports 병원·달마다 하나·다시 분석하면 덮어씀, 지문 SHA-256 소문자 16진수 64자, AI는 지표 ID만·문장에 숫자 없음, claude-opus-5-5 + fallbacks:\"default\", loadReportMonths는 통계 명세 전까지 늘 '자료 없음'·가짜 숫자는 fixtures/fake-ai/·시험·ai:try에만, 쓰기는 save_ai_report·add_ai_usage 둘뿐·service role 없음) + ADR-007 끝 '**상태**(2026-11-01): 모델·저장: ADR-024'; docs/ARCHITECTURE.md AI 흐름(답 검사→ai_reports 저장→ai_usage)·DB 표 ai_reports·상태 관리 'AI 리포트는 달마다 저장(ADR-024), 채팅·월간 PDF는 저장하지 않는다'; plan.md §2-3 모델 Claude Opus 5.5 (사용자, 2026-11-01)·리포트 달마다 저장 (사용자)·근거 숫자는 앱이 채움+원인 추측은 '추정' (사용자, 2026-11-01), §5 DB 표 ai_reports; .env.example 첫 줄 '공개 열쇠 둘(Supabase)과 서버 전용 AI 열쇠 하나 — service role 키는 두지 않는다' + 맨 아래 ANTHROPIC_API_KEY= (서버 전용, NEXT_PUBLIC_ 금지, npm run ai:key); .gitignore .ai-try/; e2e/lib/env.test.ts AC-002.5 기대치 [...E2E_ENV_NAMES,'ANTHROPIC_API_KEY'] (env.ts 그대로). AC 명령 모두 통과, lint 통과, npm test 실패 41개(기준선 46 이하, .NET·윈도우·시간 초과 쪽, 문서 시험 통과)."
+    },
+    {
+      "step": 1,
+      "name": "error-codes",
+      "status": "completed",
+      "summary": "TASK-2 끝: src/types/errors.ts ErrorCode 끝에 주석 'AI 리포트(spec ai-report design.md '오류 문구')' + 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'; src/lib/errors.ts ERRORS 끝에 네 항목(문구는 design.md 표와 글자 하나까지 같음, errorInfo·isErrorCode 그대로 — 다음 TASK-5의 AiErrorCode는 이 네 글자에 맞추고 문구는 errorInfo로만 꺼낸다); src/lib/errors.test.ts ALL_CODES에 넷 추가 + AI_CODES + 'AC-502.1·AC-502.2 AI 오류 번호 문구' describe(AC-502.1 what·fix 비지 않음·'병원' 없음·/니다\\.(\\s|$)/ 없음, AC-502.2 낱말 검사). RED(errorInfo가 undefined) → GREEN 기록, sdd status AC-502.1·502.2 TASK-2:GREEN, lint·build 통과, npm test 실패 40개(기준선 46 이하, .NET·윈도우 경로·시간 초과 쪽, errors 시험 88개 모두 통과)."
+    },
+    {
+      "step": 2,
+      "name": "input-types",
+      "status": "completed",
+      "summary": "TASK-5 끝: src/types/aiReport.ts에 design.md '타입' 그대로(MetricKind·ReportMetric{id,label,kind,values{selected,prev,lastYear}}·ReportInput{month,partial,prevMonth,lastYearMonth,hasPrev,hasLastYear,metrics} 열쇠 순서 고정·CardTag·AiCard·AiReportRaw·ReportCard·SavedReport·AiUsage·AiErrorCode = TASK-2 ErrorCode 넷, 시험에서 expectTypeOf toExtend<ErrorCode>로 확인); src/lib/ai/input.ts(순수 함수, import는 lib/analytics/dates addMonths와 타입만) export UNNAMED_GROUP='이름 없는 그룹'·TOP_RX=30·TOP_REGIONS=20·type ValidReportMonths{selected,prev|null,lastYear|null,groupNames}·buildReportInput(months): ReportInput·async reportFingerprint(input)=JSON.stringify→TextEncoder→globalThis.crypto.subtle SHA-256 소문자 16진수 64자; 지표 ID 차례 total.patients·total.newPatients·total.returning(count) → revisit.within7·revisit.within14(rate=withinN/cohort, null·cohort 0이면 null) → group:<id>.patients|.newPatients|.returning(세 달 id 합집합 a<b 순, 이름 \"처방 그룹 '<이름>' 환자|신환|재진\", 이름 없거나 빈 글자·prototype 열쇠면 이름 없는 그룹) → rx:<code>(고른 달 patients 큰 순·같으면 코드 a<b, 상위 30, \"처방 '<고른 달 이름>' 환자\") → region:<이름>(같은 규칙 상위 20, \"동네 '<이름>' 환자\"); 달이 없으면 null·있는 달에 없는 항목은 0; src/lib/ai/input.test.ts 18개(AC-505.1~505.5, 정해 둔 지문 값 b0f04865… 포함). RED(./input 없음) → GREEN 기록, sdd status AC-505.1~505.5 TASK-5:GREEN, lint 경고 0·build 통과·tsc 오류 0, npm test 실패 40개(기준선 46 이하, .NET·윈도우 경로·npm spawn·시간 초과 쪽, 새 시험 모두 통과). 명세 메모: 처방 이름이 빈 글자면(검사가 허용) 라벨이 \"처방 '' 환자\"가 된다 — 명세대로 두었다."
+    }
+  ]
+}
