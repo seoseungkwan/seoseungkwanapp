@@ -15,7 +15,9 @@ export type DaySplit = { covered: number; insurer: number; selfPay: number; nonc
 
 /**
  * total = unconfirmed 아닌 날 전부(나눔을 못 한 날 포함). covered~splitTotal = 나눔이 있는 날만, 그 날들의 total 합이 0이면 null.
- * uncheckedDays = unconfirmed인 날만. days = unconfirmed 아닌 날 수(쉬는 날·나눔을 못 한 날 포함).
+ * visits = 아는 접수 건수 전부(null인 날만 건너뜀, unconfirmed인 날도 든다), 아는 날이 하나도 없으면 null(진짜 0건과 다르다).
+ * perVisitTotal·perVisitCount = 짝이 맞는 날(unconfirmed 아니고 visits가 null 아닌 날)의 total 합·visits 합.
+ * uncheckedDays = unconfirmed인 날만. noVisitDays = unconfirmed 아니고 visits가 null인 날. days = unconfirmed 아닌 날 수(쉬는 날·나눔을 못 한 날 포함).
  * null = 자료 없음(줄이 없거나, 모두 0이고 확인 필요한 날도 나눔을 못 한 날도 없음)
  */
 export type PeriodSum = {
@@ -26,10 +28,12 @@ export type PeriodSum = {
   noncovered: number | null
   other: number | null
   splitTotal: number | null
-  visits: number
-  patients: number | null
+  visits: number | null
+  perVisitTotal: number
+  perVisitCount: number
   uncheckedDays: string[]
   noSplitDays: string[]
+  noVisitDays: string[]
   days: number
 } | null
 
@@ -42,8 +46,7 @@ export type MonthPoint = {
   noncovered: number | null
   other: number | null
   visits: number | null
-  patients: number | null
-  perPatient: number | null
+  perVisit: number | null
 }
 
 export function splitDay(row: RevenueDayRow): DaySplit {
@@ -59,12 +62,6 @@ export function splitDay(row: RevenueDayRow): DaySplit {
 // 내원을 셀 수 없는 날(null)은 0이 아니다
 const isAllZero = (row: RevenueDayRow) => row.visits === 0 && REVENUE_MONEY_KEYS.every((key) => row[key] === 0)
 
-// 서로 다른 환자 수는 날마다 더할 수 없다(같은 환자가 두 번 세어진다). patientsToDate는 1일부터의 누적이라 마지막 날 값이 기간의 값이다
-function patientsIn(inRange: RevenueDayRow[], range: DateRange): number | null {
-  if (range.from !== `${monthOf(range.from)}-01`) return null
-  return inRange.find((row) => row.date === range.to)?.patientsToDate ?? null
-}
-
 export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
   const inRange = rows
     .filter((row) => compareYmd(row.date, range.from) >= 0 && compareYmd(row.date, range.to) <= 0)
@@ -72,18 +69,28 @@ export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
 
   const uncheckedDays: string[] = []
   const noSplitDays: string[] = []
+  const noVisitDays: string[] = []
   const split = { covered: 0, insurer: 0, selfPay: 0, noncovered: 0, other: 0, splitTotal: 0 }
   let total = 0
-  let visits = 0
+  let visits: number | null = null
+  let perVisitTotal = 0
+  let perVisitCount = 0
   let days = 0
   for (const row of inRange) {
-    visits += row.visits ?? 0 // 확인 필요한 날의 내원도 센다: 빠지는 것은 금액뿐이다
+    if (row.visits !== null) visits = (visits ?? 0) + row.visits // 확인 필요한 날의 내원도 이 합에는 센다. perVisitCount에서는 금액과 함께 빠진다
     if (row.unconfirmed) {
       uncheckedDays.push(row.date)
       continue
     }
     days += 1
     total += row.total ?? 0
+    // 건수를 모르는 날의 금액만 남기면 분모가 모자라 건당 진료비가 부푼다. 금액과 건수를 함께 뺀다
+    if (row.visits === null) {
+      noVisitDays.push(row.date)
+    } else {
+      perVisitTotal += row.total ?? 0
+      perVisitCount += row.visits
+    }
     const day = splitDay(row)
     if (day === null) {
       noSplitDays.push(row.date)
@@ -99,7 +106,7 @@ export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
 
   if (uncheckedDays.length === 0 && noSplitDays.length === 0 && inRange.every(isAllZero)) return null
   // 나눔이 있는 날이 쉬는 날뿐이어도 null이다. 날마다 비는 달에도 일요일이 있어 0원·빈 막대가 되지 않게
-  return { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, patients: patientsIn(inRange, range), uncheckedDays, noSplitDays, days }
+  return { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, perVisitTotal, perVisitCount, uncheckedDays, noSplitDays, noVisitDays, days }
 }
 
 const yesterdayOf = (today: string) => addDays(today, -1)
@@ -148,7 +155,7 @@ export function monthSeries(rows: RevenueDayRow[], lastMonth: string, today: str
     const partial = compareYmd(monthRange(month).to, yesterdayOf(today)) > 0
     const sum = sumPeriod(rows, elapsedRange(month, today))
     if (sum === null) {
-      return { month, partial, total: null, covered: null, noncovered: null, other: null, visits: null, patients: null, perPatient: null }
+      return { month, partial, total: null, covered: null, noncovered: null, other: null, visits: null, perVisit: null }
     }
     return {
       month,
@@ -158,14 +165,13 @@ export function monthSeries(rows: RevenueDayRow[], lastMonth: string, today: str
       noncovered: sum.noncovered,
       other: sum.other,
       visits: sum.visits,
-      patients: sum.patients,
-      perPatient: perPatient(sum)?.value ?? null,
+      perVisit: perVisit(sum),
     }
   })
 }
 
-/** 분자에 나눔을 못 한 날도 든다. lowered = 확인 필요한 날의 금액이 빠져 실제보다 낮을 수 있음 */
-export function perPatient(sum: PeriodSum): { value: number; lowered: boolean } | null {
-  if (sum === null || sum.patients === null || sum.patients === 0) return null
-  return { value: Math.floor(sum.total / sum.patients), lowered: sum.uncheckedDays.length > 0 }
+/** 건당 진료비: 짝이 맞는 날의 total 합 ÷ visits 합, 원 미만 버림. 나눔을 못 한 날도 보통 날처럼 든다 */
+export function perVisit(sum: PeriodSum): number | null {
+  if (sum === null || sum.perVisitCount === 0) return null
+  return Math.floor(sum.perVisitTotal / sum.perVisitCount)
 }

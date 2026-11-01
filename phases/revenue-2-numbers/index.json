@@ -11,8 +11,8 @@
     {
       "step": 1,
       "name": "revenue-summary",
-      "status": "pending",
-      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patients_to_date·perPatient를 빼고 건당 진료비로 바꾼다. 이전 요약은 git 기록에 있다"
+      "status": "completed",
+      "summary": "src/lib/revenue/summary.ts: splitDay·sumPeriod·periodsFor·firstMonth·compare·monthSeries·perVisit. 건당 진료비 = 짝이 맞는 날(unconfirmed 아니고 visits가 null 아닌 날)의 total 합 ÷ 그 날들의 visits 합, 원 미만 버림. PeriodSum에 perVisitTotal·perVisitCount·noVisitDays, visits는 number|null(아는 날이 없으면 null). MonthPoint는 {month, partial, total, covered, noncovered, other, visits, perVisit}, 자료 없는 달은 숫자 칸 모두 null. visits null이고 금액이 모두 0인 날은 자료로 본다. TASK-8 주의: 모든 날이 unconfirmed인 달은 total 0이라 compare가 −100을 낸다. 접수 건수 칸은 visits, '매출 ÷ 접수 n건'의 n은 perVisitCount"
     },
     {
       "step": 2,
