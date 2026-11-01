@@ -93,3 +93,25 @@ describe('/claim 자리', () => {
     expect(screen.getByRole('heading', { level: 1, name: '청구' })).toBeTruthy()
   })
 })
+
+// ui-90 TASK-5: 청구 폴더가 규칙 시험에 들며 단계 밖 간격만 가까운 단계로 고친다(보이는 모양은 그대로). 문구·짜임은 TASK-10이 바꾼다.
+// 모양은 정해 둔 클래스가 있는지로 본다(jsdom은 CSS를 계산하지 않는다)
+const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+
+describe('AC-408.2 /claim 자리 간격은 가까운 단계', () => {
+  it('AC-408.2: 다른 창 카드는 위 64px(옛 72px에 가까운 단계, 폰 16px)·폭 520px·안쪽 24px(폰 16px) 그대로', () => {
+    withState('busy')
+    render(<ClaimPage />)
+    const card = screen.getByRole('alert')
+    expect(classesOf(card)).toEqual(expect.arrayContaining(['mt-16', 'w-130', 'max-w-full', 'self-center', 'p-6', 'max-md:mt-4', 'max-md:p-4']))
+    expect(classesOf(card)).not.toContain('mt-18')
+  })
+
+  it('AC-408.2: 밖에서 보는 건수의 안내 줄은 사이 8px(옛 10px에 가까운 단계)', () => {
+    withState('no-extension')
+    render(<ClaimPage />)
+    const line = screen.getByText('청구 점검은 비트 PC의 크롬에서 엽니다.').parentElement as HTMLElement
+    expect(classesOf(line)).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'items-center', 'gap-2', 'rounded-control', 'border', 'border-line', 'bg-surface', 'px-4', 'py-3']))
+    expect(classesOf(line)).not.toContain('gap-2.5')
+  })
+})

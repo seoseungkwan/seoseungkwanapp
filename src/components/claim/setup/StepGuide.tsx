@@ -6,7 +6,7 @@ import type { HelloResult } from '@/types/bridge'
 import { HELPER_RELEASES_URL } from './links'
 import type { StepGuideKind } from './steps'
 
-// 안 된 단계 아래 안내 상자(목업 화면 1 '.guide': negative-soft·4px·안쪽 12px 14px, 굵은 첫 줄 negative, 순서 글 small ink-2, 단추 줄).
+// 안 된 단계 아래 안내 상자(목업 화면 1 '.guide': negative-soft·4px·안쪽 12px 16px, 굵은 첫 줄 negative, 순서 글 small ink-2, 단추 줄).
 // 굵은 첫 줄은 그 번호의 errors.ts '무엇이'다. 순서 글은 설치·등록 방법(목업 문구, 도우미 zip 설치는 helper/install/README.md 순서)이다
 
 type GuideProps = {
@@ -38,7 +38,7 @@ const V = ({ children }: { children: ReactNode }) => <b className="font-semibold
 
 function Steps({ items }: { items: ReactNode[] }) {
   return (
-    <ol className="grid list-decimal gap-0.5 pl-4.5 text-small text-ink-2">
+    <ol className="grid list-decimal gap-0.5 pl-5 text-small text-ink-2">
       {items.map((item, i) => (
         <li key={i}>{item}</li>
       ))}
@@ -159,7 +159,7 @@ export function StepGuide({ kind, code, hello, storeUrl, disabled, onRetry, onRe
 
   const what = code && isErrorCode(code) ? errorInfo(code).what : null
   return (
-    <div className="col-start-2 col-end-4 mt-2 grid gap-2 rounded-control bg-negative-soft px-3.5 py-3 max-md:col-start-1">
+    <div className="col-start-2 col-end-4 mt-2 grid gap-2 rounded-control bg-negative-soft px-4 py-3 max-md:col-start-1">
       {what && <p className="text-body font-semibold text-negative">{what}</p>}
       {items.length > 0 && <Steps items={items} />}
       <div className="flex flex-wrap items-center gap-2">{actions}</div>

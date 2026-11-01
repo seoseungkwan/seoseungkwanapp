@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react'
+import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { errorInfo, isErrorCode } from '@/lib/errors'
 
@@ -12,23 +13,9 @@ import { errorInfo, isErrorCode } from '@/lib/errors'
 export function SetupAlert({ code, onRetry, disabled }: { code: string; onRetry(): void; disabled: boolean }) {
   const info = isErrorCode(code) ? errorInfo(code) : null
   return (
-    <div role="alert" className="flex items-start gap-2.5 rounded-control bg-negative-soft px-4 py-3 max-md:flex-wrap">
-      <svg
-        aria-hidden="true"
-        className="mt-0.75 shrink-0 text-negative"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7.5v5.5" />
-        <path d="M12 16.5h.01" />
-      </svg>
+    <div role="alert" className="flex items-start gap-2 rounded-control bg-negative-soft px-4 py-3 max-md:flex-wrap">
+      {/* 공용 아이콘 stop 16. 첫 줄(body 22px 줄높이)에 맞춰 위 2px */}
+      <Icon name="stop" className="mt-0.5 shrink-0 text-negative" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {info && <p className="text-body font-semibold text-negative">{info.what}</p>}
         {info && <p className="text-small text-ink-2">{info.fix}</p>}
@@ -44,7 +31,7 @@ export function SetupAlert({ code, onRetry, disabled }: { code: string; onRetry(
 }
 
 /**
- * 다른 창에서 작업 중(목업 화면 6 '다른 창에서 열려 있음'): 가운데 카드 하나(ds.panel, 안쪽 24px·폰 16px). 폭 520px·위 72px, 제목 title 600.
+ * 다른 창에서 작업 중(목업 화면 6 '다른 창에서 열려 있음'): 가운데 카드 하나(ds.panel, 안쪽 24px·폰 16px). 폭 520px·위 64px, 제목 title 600.
  * outside = [건수만 보기](설치 화면은 /claim 링크, 청구 화면은 그 자리에서 건수 보기로)
  */
 export function BusyCard({ onRetry, disabled = false, outside }: { onRetry(): void; disabled?: boolean; outside: ReactNode }) {
@@ -54,7 +41,7 @@ export function BusyCard({ onRetry, disabled = false, outside }: { onRetry(): vo
     <section
       role="alert"
       aria-labelledby={titleId}
-      className={`${ds.panel} mt-18 grid w-130 max-w-full gap-3 self-center p-6 max-md:mt-4 max-md:p-4`}
+      className={`${ds.panel} mt-16 grid w-130 max-w-full gap-3 self-center p-6 max-md:mt-4 max-md:p-4`}
     >
       <h2 id={titleId} className="text-title font-semibold text-ink">
         {info.what}

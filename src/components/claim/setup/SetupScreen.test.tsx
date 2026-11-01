@@ -154,6 +154,23 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
+// 공용 Icon 그림(common/Icon.tsx SHAPES). 청구 화면은 직접 그린 svg·✓·✗ 글자 대신 이 아이콘을 쓴다 (ui-90 AC-408.2)
+const CHECK_D = 'm3.5 8.25 2.9 2.9 6.1-6.65'
+const X_D = 'm4.75 4.75 6.5 6.5m0-6.5-6.5 6.5'
+const STOP_D = 'm3.9 3.9 8.2 8.2'
+// 단계 칩의 표시: 됨은 positive 칩 안 Icon check 12, 안 됨은 negative 칩 안 Icon x 12(꾸밈). ✓·✗ 글자는 없다
+const MARK = { check: { d: CHECK_D, chip: ds.chip.positive }, x: { d: X_D, chip: ds.chip.negative } } as const
+function expectMark(li: HTMLElement, mark: keyof typeof MARK, label = '') {
+  const { d, chip } = MARK[mark]
+  const svg = li.querySelector(`path[d="${d}"]`)?.closest('svg')
+  expect(svg, `${label} Icon ${mark}`).toBeTruthy()
+  expect(svg?.getAttribute('aria-hidden'), label).toBe('true')
+  expect(svg?.getAttribute('viewBox'), label).toBe('0 0 16 16')
+  expect([svg?.getAttribute('width'), svg?.getAttribute('height')], label).toEqual(['12', '12'])
+  expect(svg?.parentElement?.getAttribute('class'), label).toBe(chip)
+  expect(li.textContent, label).not.toMatch(/[✓✗]/)
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -229,12 +246,12 @@ describe('AC-034.2 설정 안 메뉴 모양', () => {
 })
 
 describe('AC-006.1 상태별 안내', () => {
-  it('AC-006.1: 확장 없음 — 오류 카드(errors.ts 문구·번호), 1번에 ✗와 설치 순서·[다시 확인], 뒤 단계는 대기', async () => {
+  it('AC-006.1: 확장 없음 — 오류 카드(errors.ts 문구·번호), 1번에 Icon x와 설치 순서·[다시 확인], 뒤 단계는 대기', async () => {
     vi.stubGlobal('chrome', undefined)
     renderSetup()
     await waitFor(() => expectInfo(alertCard(), 'E-EXT-MISSING'))
     const first = row('크롬 확장 프로그램 설치')
-    expect(first.textContent).toContain('✗')
+    expectMark(first, 'x')
     expect(first.textContent).toContain('없음')
     expect(first.textContent).toContain('오류 번호 E-EXT-MISSING')
     expect(within(first).getByRole('button', { name: '다시 확인' })).toBeTruthy()
@@ -277,13 +294,13 @@ describe('AC-006.1 상태별 안내', () => {
     expect(first.textContent).toContain('[Chrome에 추가]를 누르세요.')
   })
 
-  it('AC-006.1: 도우미 없음 — 1번 ✓, 2번 ✗와 도우미 zip 받는 곳·설치 순서(경고 창 넘기는 법 포함)', async () => {
+  it('AC-006.1: 도우미 없음 — 1번 Icon check, 2번 Icon x와 도우미 zip 받는 곳·설치 순서(경고 창 넘기는 법 포함)', async () => {
     fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
     renderSetup()
     await waitFor(() => expectInfo(alertCard(), 'E-HELPER-MISSING'))
-    expect(row('크롬 확장 프로그램 설치').textContent).toContain('✓')
+    expectMark(row('크롬 확장 프로그램 설치'), 'check')
     const second = row('도우미 설치')
-    expect(second.textContent).toContain('✗')
+    expectMark(second, 'x')
     expect(second.textContent).toContain('오류 번호 E-HELPER-MISSING')
     const get = within(second).getByRole('link', { name: '도우미 내려받기' })
     expect(get.getAttribute('href')).toBe(HELPER_RELEASES_URL)
@@ -308,7 +325,7 @@ describe('AC-006.1 상태별 안내', () => {
     expect(pcValue('도우미').textContent).toContain('업데이트 필요')
   })
 
-  it('AC-006.1: 확장이 낮음 — "확장을 업데이트하세요", 1번 ✗ 버전 안 맞음', async () => {
+  it('AC-006.1: 확장이 낮음 — "확장을 업데이트하세요", 1번 Icon x 버전 안 맞음', async () => {
     fakeExtension({ hello: helloWith({ extensionVersion: '0.0.9' }) })
     renderSetup()
     await waitFor(() => expectInfo(alertCard(), 'E-EXT-OLD'))
@@ -333,14 +350,14 @@ describe('AC-006.1 상태별 안내', () => {
     await waitFor(() => expect(fake.ports).toHaveLength(2))
   })
 
-  it('AC-006.1·AC-006.2: 연결이 끊기면 3번 연결에 ✗ E-BRIDGE-DISCONNECTED, [다시 확인]은 새로 붙어 처음부터 확인한다', async () => {
+  it('AC-006.1·AC-006.2: 연결이 끊기면 3번 연결에 Icon x E-BRIDGE-DISCONNECTED, [다시 확인]은 새로 붙어 처음부터 확인한다', async () => {
     const fake = fakeExtension({ hello: HELLO, check: ['hold', ALL_OK] })
     renderSetup()
     await waitFor(() => expect(fake.count('bit.check')).toBe(1))
     fake.drop()
     await waitFor(() => expectInfo(alertCard(), 'E-BRIDGE-DISCONNECTED'))
     const link = row('연결')
-    expect(link.textContent).toContain('✗')
+    expectMark(link, 'x')
     expect(link.textContent).toContain('오류 번호 E-BRIDGE-DISCONNECTED')
     expect(row('비트 자료 읽기').textContent).toContain('대기')
     await userEvent.setup().click(within(alertCard()).getByRole('button', { name: '다시 확인' }))
@@ -354,14 +371,14 @@ describe('AC-006.1·AC-006.6 hello가 상태를 바꾸지 않고 실패할 때',
   it.each([
     ['모르는 칸이 붙은 hello 답(옛 확장·새 도우미)', helloWith({ extra: 'x' }), 'E-BRIDGE-BAD-REPLY'],
     ['E-HELPER-MISSING 말고 다른 오류 답', { type: 'error', code: 'E-HELPER-BAD-MESSAGE' }, 'E-HELPER-BAD-MESSAGE'],
-  ] as const)('AC-006.1·AC-006.6: %s → 3번 연결에 ✗와 %s, 위 카드, [다시 확인]·[연결 다시 확인]을 누를 수 있고 다시 붙는다', async (_n, reply, code) => {
+  ] as const)('AC-006.1·AC-006.6: %s → 3번 연결에 Icon x와 %s, 위 카드, [다시 확인]·[연결 다시 확인]을 누를 수 있고 다시 붙는다', async (_n, reply, code) => {
     const script: Script = { hello: reply }
     const fake = fakeExtension(script)
     renderSetup()
     await waitFor(() => expectInfo(alertCard(), code))
-    for (const title of STEP_TITLES.slice(0, 2)) expect(row(title).textContent, title).toContain('✓')
+    for (const title of STEP_TITLES.slice(0, 2)) expectMark(row(title), 'check', title)
     const link = row('연결')
-    expect(link.textContent).toContain('✗')
+    expectMark(link, 'x')
     expect(link.textContent).toContain(`오류 번호 ${code}`)
     expect(row('비트 자료 읽기').textContent).toContain('대기')
     expect(row('요양기관기호 확인').textContent).toContain('대기')
@@ -379,13 +396,13 @@ describe('AC-006.1·AC-006.6 hello가 상태를 바꾸지 않고 실패할 때',
 })
 
 describe('AC-006.2 연결 확인 (bit.check)', () => {
-  it('AC-006.2: ready가 되면 bit.check를 불러 5단계 모두 ✓, "준비됨"·마지막 확인 시각·[청구로 가기] /claim', async () => {
+  it('AC-006.2: ready가 되면 bit.check를 불러 5단계 모두 Icon check, "준비됨"·마지막 확인 시각·[청구로 가기] /claim', async () => {
     const fake = fakeExtension({ hello: HELLO })
     renderSetup()
     await screen.findByText('준비됨')
     expect(fake.sent).toEqual(['hello', 'bit.check'])
     for (const li of rows()) {
-      expect(li.textContent).toContain('✓')
+      expectMark(li, 'check')
       expect(li.textContent).toContain('완료')
       expect(li.textContent).not.toContain('오류 번호')
     }
@@ -412,22 +429,22 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
     expect(row('비트 자료 읽기').textContent).toContain('확인 중')
     fake.release()
     await waitFor(() => expect(button('연결 다시 확인').disabled).toBe(false))
-    expect(row('요양기관기호 확인').textContent).toContain('✓')
+    expectMark(row('요양기관기호 확인'), 'check')
   })
 
   it.each([
     ['비트를 찾지 못함', check('E-BIT-NOT-FOUND', 'E-BIT-NOT-FOUND', 'E-BIT-NOT-FOUND'), 'E-BIT-NOT-FOUND'],
     ['DB에 붙지 못함', check(true, 'E-BIT-DB-FAILED', 'E-BIT-DB-FAILED'), 'E-BIT-DB-FAILED'],
     ['DB 읽기 실패', check(true, 'E-BIT-READ-FAILED', 'E-BIT-READ-FAILED'), 'E-BIT-READ-FAILED'],
-  ] as const)('AC-006.2: %s → 4번 비트 자료 읽기에 ✗와 오류 번호, 5번은 대기, 위 카드는 errors.ts 문구', async (_n, reply, code) => {
+  ] as const)('AC-006.2: %s → 4번 비트 자료 읽기에 Icon x와 오류 번호, 5번은 대기, 위 카드는 errors.ts 문구', async (_n, reply, code) => {
     fakeExtension({ hello: HELLO, check: [reply] })
     renderSetup()
     await waitFor(() => expectInfo(alertCard(), code))
     const bit = row('비트 자료 읽기')
-    expect(bit.textContent).toContain('✗')
+    expectMark(bit, 'x')
     expect(bit.textContent).toContain(`오류 번호 ${code}`)
     expect(within(bit).getByRole('button', { name: '다시 확인' })).toBeTruthy()
-    for (const title of STEP_TITLES.slice(0, 3)) expect(row(title).textContent, title).toContain('✓')
+    for (const title of STEP_TITLES.slice(0, 3)) expectMark(row(title), 'check', title)
     expect(row('요양기관기호 확인').textContent).toContain('대기')
     expect(screen.queryByRole('button', { name: '처음 등록' })).toBeNull()
     expect(screen.queryByText('준비됨')).toBeNull()
@@ -436,12 +453,12 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
   it.each([
     ['등록 없음(E-BIT-NOT-REGISTERED)', NOT_REGISTERED, 'E-BIT-NOT-REGISTERED'],
     ['등록 파일이 깨짐(E-STORE-BROKEN)', STORE_BROKEN, 'E-STORE-BROKEN'],
-  ] as const)('AC-006.2·AC-005.5: %s → 5번에 ✗와 [처음 등록], 누르면 bit.register(PC 확인 창) 뒤 다시 확인, 누른 동안 막힘', async (_n, reply, code) => {
+  ] as const)('AC-006.2·AC-005.5: %s → 5번에 Icon x와 [처음 등록], 누르면 bit.register(PC 확인 창) 뒤 다시 확인, 누른 동안 막힘', async (_n, reply, code) => {
     const fake = fakeExtension({ hello: HELLO, check: [reply, ALL_OK], register: ['hold', { type: 'result', data: { registered: true } }] })
     renderSetup()
     await waitFor(() => expectInfo(alertCard(), code))
     const hospital = row('요양기관기호 확인')
-    expect(hospital.textContent).toContain('✗')
+    expectMark(hospital, 'x')
     expect(hospital.textContent).toContain(`오류 번호 ${code}`)
     expect(screen.queryByRole('button', { name: '다시 등록' })).toBeNull()
 
@@ -456,7 +473,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
     await screen.findByText('준비됨')
     expect(fake.sent).toEqual(['hello', 'bit.check', 'bit.register', 'bit.check'])
     expect(screen.queryByRole('button', { name: '처음 등록' })).toBeNull()
-    expect(row('요양기관기호 확인').textContent).toContain('✓')
+    expectMark(row('요양기관기호 확인'), 'check')
   })
 
   it('AC-006.2·AC-005.5: 병원이 다름(E-BIT-HOSPITAL-MISMATCH) → [다시 등록]([처음 등록] 아님), 누르면 bit.register(PC 확인 창) 뒤 다시 확인', async () => {
@@ -506,7 +523,7 @@ describe('AC-006.3 새 도우미', () => {
     expect(screen.getByText('새 도우미가 있어요.')).toBeTruthy()
     expect(screen.getByRole('link', { name: '새 도우미 내려받기' }).getAttribute('href')).toBe(HELPER_RELEASES_URL)
     expect(screen.getByRole('link', { name: '청구로 가기' })).toBeTruthy()
-    for (const li of rows()) expect(li.textContent).toContain('✓')
+    for (const li of rows()) expectMark(li, 'check')
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -587,5 +604,60 @@ describe('AC-006.6 오류 문구는 errors.ts에서, 원래 오류 내용은 안
     await waitFor(() => expect(row('비트 자료 읽기').textContent).toContain('오류 번호 E-BIT-SOMETHING-NEW'))
     const lines = Array.from(alertCard().querySelectorAll('p')).map((p) => p.textContent)
     expect(lines).toEqual(['오류 번호 E-BIT-SOMETHING-NEW'])
+  })
+})
+
+// ui-90 TASK-5: 청구 폴더가 규칙 시험에 들며 규칙 밖 값만 고친다 — 간격은 가까운 단계로, 그림은 공용 Icon으로. 문구·짜임은 그대로(TASK-9가 바꾼다)
+describe('AC-408.2 그림은 공용 Icon, 간격은 가까운 단계 (보이는 모양은 그대로)', () => {
+  it('AC-408.2: 위 오류 상자의 아이콘은 Icon stop 16(negative·꾸밈, 첫 줄에 맞춰 위 2px) 하나이고 직접 그린 그림이 아니다, 상자 안 사이는 8px', async () => {
+    vi.stubGlobal('chrome', undefined)
+    renderSetup()
+    await waitFor(() => expectInfo(alertCard(), 'E-EXT-MISSING'))
+    const svgs = alertCard().querySelectorAll('svg')
+    expect(svgs).toHaveLength(1)
+    const stop = svgs[0]
+    expect(stop.querySelector(`path[d="${STOP_D}"]`)).not.toBeNull()
+    expect(stop.getAttribute('viewBox')).toBe('0 0 16 16')
+    expect([stop.getAttribute('width'), stop.getAttribute('height')]).toEqual(['16', '16'])
+    expect(stop.getAttribute('aria-hidden')).toBe('true')
+    hasAll(stop, 'mt-0.5 shrink-0 text-negative')
+    hasNone(stop, 'mt-0.75')
+    hasAll(alertCard(), 'flex items-start gap-2 rounded-control bg-negative-soft px-4 py-3 max-md:flex-wrap')
+    hasNone(alertCard(), 'gap-2.5')
+  })
+
+  it('AC-408.2: 단계 줄은 칸 사이 12px·위아래 16px, 안 된 단계 안내 상자는 안쪽 16px 12px, 순서 목록은 왼쪽 20px', async () => {
+    vi.stubGlobal('chrome', undefined)
+    renderSetup({ extensionStoreUrl: null })
+    const first = await waitFor(() => {
+      const li = row('크롬 확장 프로그램 설치')
+      expect(li.textContent).toContain('없음')
+      return li
+    })
+    for (const li of rows()) {
+      hasAll(li, 'grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 border-b border-line py-4 last:border-b-0')
+      hasNone(li, 'gap-x-3.5 py-3.5')
+    }
+    const guide = within(first).getByRole('link', { name: '확장 내려받기' }).closest('.bg-negative-soft') as HTMLElement
+    expect(first.contains(guide)).toBe(true)
+    hasAll(guide, 'col-start-2 col-end-4 mt-2 grid gap-2 rounded-control bg-negative-soft px-4 py-3 max-md:col-start-1')
+    hasNone(guide, 'px-3.5')
+    const steps = within(guide).getByRole('list')
+    hasAll(steps, 'grid list-decimal gap-0.5 pl-5 text-small text-ink-2')
+    hasNone(steps, 'pl-4.5')
+  })
+
+  it('AC-408.2: "준비됨" 줄·새 도우미 줄은 사이 8px, \'이렇게 지켜요\' 목록은 왼쪽 20px', async () => {
+    fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) })
+    renderSetup()
+    const ready = (await screen.findByText('준비됨')).parentElement as HTMLElement
+    const update = screen.getByText('새 도우미가 있어요.').parentElement as HTMLElement
+    for (const line of [ready, update]) {
+      hasAll(line, 'flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface px-4 py-3')
+      hasNone(line, 'gap-2.5')
+    }
+    const keep = screen.getByText('환자 자료는 이 PC 밖으로 나가지 않아요. 서버에는 건수와 설정만 가요.').closest('ul') as HTMLElement
+    hasAll(keep, 'grid list-disc gap-1 pl-5 text-small text-ink-2')
+    hasNone(keep, 'pl-4.5')
   })
 })

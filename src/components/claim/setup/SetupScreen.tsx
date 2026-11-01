@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { Icon } from '@/components/common/Icon'
 import { MENU } from '@/components/shell/menu'
 import { ds } from '@/components/ui/classes'
 import { BridgeError } from '@/lib/bridge/protocol'
@@ -15,7 +16,7 @@ import { StepGuide } from './StepGuide'
 import { setupSteps, type StepView } from './steps'
 
 // 설치·연결 확인 (REQ-006, 목업 화면 1 '설치·연결 확인'). 목업은 이 화면을 설정 탭 안 [비트 연결]에 그렸다 → 제목 '설정'과 안쪽 메뉴.
-// 열면 hello로 버전을 맞추고, 붙으면(ready) bit.check를 불러 5단계를 ✓/✗·오류 번호로 보인다. 등록이 없으면 [처음 등록], 병원이 다르면 [다시 등록]
+// 열면 hello로 버전을 맞추고, 붙으면(ready) bit.check를 불러 5단계를 됨·안 됨 칩(Icon check·x)과 오류 번호로 보인다. 등록이 없으면 [처음 등록], 병원이 다르면 [다시 등록]
 // → bit.register(PC 확인 창) 뒤 다시 확인한다. 누르는 동안 단추를 막는다. 오류 문구는 errors.ts에서만, 원래 오류 내용은 그리지 않는다(AC-006.6).
 // 기관기호는 뒤 4자리를 가리고, 옆 병원 이름은 사이트가 가진 로그인한 병원 이름(clinicName)이다(도우미는 병원 이름을 주지 않는다, AC-006.4).
 // 연결 상태·결과는 화면 메모리에만 둔다(브라우저 저장소 없음)
@@ -40,7 +41,7 @@ const subNotReady = `${subBase} font-medium text-ink-2`
 const SETTINGS_HREF = MENU.find((m) => m.label === '설정')?.href ?? null
 
 // 한 줄 상자(목업 '.okline'): surface·1px 선·4px(rounded-control)·안쪽 12px 16px
-const line = 'flex flex-wrap items-center gap-2.5 rounded-control border border-line bg-surface px-4 py-3'
+const line = 'flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface px-4 py-3'
 
 /** 값 없음: "—"(muted), 화면 읽기는 "값 없음" */
 const Empty = () => (
@@ -75,7 +76,7 @@ function SettingsSubnav() {
 function StepRow({ no, step, guide }: { no: number; step: StepView; guide: ReactNode }) {
   const wait = step.status === 'wait'
   return (
-    <li className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3.5 gap-y-1 border-b border-line py-3.5 last:border-b-0">
+    <li className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 border-b border-line py-4 last:border-b-0">
       <span
         aria-hidden="true"
         className="inline-grid size-6 place-items-center rounded-control border border-line bg-canvas text-caption font-semibold text-ink-2"
@@ -90,7 +91,8 @@ function StepRow({ no, step, guide }: { no: number; step: StepView; guide: React
         {step.status === 'ok' && (
           <>
             <span className={ds.chip.positive}>
-              <span aria-hidden="true">✓&nbsp;</span>완료
+              <Icon name="check" size={12} />
+              완료
             </span>
             {step.note && <span>{step.note}</span>}
           </>
@@ -98,7 +100,7 @@ function StepRow({ no, step, guide }: { no: number; step: StepView; guide: React
         {step.status === 'bad' && (
           <>
             <span className={ds.chip.negative}>
-              <span aria-hidden="true">✗&nbsp;</span>
+              <Icon name="x" size={12} />
               {step.chip}
             </span>
             {step.code && <span className="text-caption text-muted">오류 번호 {step.code}</span>}
@@ -322,7 +324,7 @@ export function SetupScreen({
               </h2>
             </div>
             <div className={ds.panelBody}>
-              <ul className="grid list-disc gap-1 pl-4.5 text-small text-ink-2">
+              <ul className="grid list-disc gap-1 pl-5 text-small text-ink-2">
                 <li>환자 자료는 이 PC 밖으로 나가지 않아요. 서버에는 건수와 설정만 가요.</li>
                 <li>비트는 읽기만 해요. 메모를 넣을 때만 이 PC에 확인 창이 뜨고, 거기서 [확인]을 눌러야 들어가요.</li>
                 <li>확장과 도우미는 이 비트 PC 한 대에만 설치해요.</li>

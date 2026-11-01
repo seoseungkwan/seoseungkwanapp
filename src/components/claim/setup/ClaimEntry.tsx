@@ -27,7 +27,7 @@ function OutsideCounts() {
         <h1 className={titleClass}>청구</h1>
         <span className="text-small text-muted">비트 PC가 아닌 곳에서 보는 화면이에요</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2.5 rounded-control border border-line bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface px-4 py-3">
         <span className="text-small text-ink-2">청구 점검은 비트 PC의 크롬에서 엽니다.</span>
         <span className={`${ds.help} ml-auto`}>환자 정보와 삭감 경고는 비트 PC에서만 볼 수 있어요.</span>
       </div>

@@ -44,6 +44,7 @@ const APP_DIRS = [
   'src/components/ui',
   'src/components/charts', // b2b-redesign TASK-5 (AC-205.8)
   'src/components/preview', // b2b-redesign TASK-8 (REQ-206)
+  'src/components/claim', // ui-90 TASK-5 (AC-408.1)
   'src/app/login',
   'src/app/(onboarding)',
   'src/app/(app)',
@@ -888,6 +889,68 @@ describe('AC-204.6: 오류 카드·오류 화면(ErrorCard·error.tsx)이 AC-204
   it('AC-204.6·AC-217.1·AC-217.2: AC-204.6 검사 목록 파일에 오류 카드·오류 화면 두 파일이 있고 모두 실제 파일이다', () => {
     expect(ruleFiles()).toEqual(expect.arrayContaining(ERROR_FILES))
     for (const file of ERROR_FILES) expect(existsSync(join(ROOT, file)), file).toBe(true)
+  })
+})
+
+// ── ui-90 REQ-408: 청구 폴더(components/claim)도 앱 화면 규칙 시험에 든다(TASK-5).
+// 시험 파일 밖 청구 소스 전부가 AC-013.2·AC-204.6 검사 목록에 들고 간격·글자·모서리·장식·움직임·ui 금지 규칙을 지킨다.
+// 그림은 직접 그린 svg와 ✓·✗ 글자 대신 공용 Icon(stop·check·x)이다(AC-408.2). 그려진 아이콘 모양은 SetupScreen.test가 본다
+const CLAIM_DIR = 'src/components/claim'
+const claimSources = () => walk(CLAIM_DIR).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+// 청구 화면 네 파일(설치·연결 확인 · 오류 상자 · 안내 상자 · /claim 자리)
+const CLAIM_SCREENS = ['SetupScreen.tsx', 'SetupAlert.tsx', 'StepGuide.tsx', 'ClaimEntry.tsx'].map((f) => `${CLAIM_DIR}/setup/${f}`)
+// 직접 그린 svg 태그와 ✓·✗ 글자(주석까지 본다)
+const DRAWN_MARK = /<svg\b|[✓✗]/
+
+describe('AC-408.1: 청구 폴더(components/claim)가 앱 화면 규칙 시험에 든다', () => {
+  it('AC-408.1: 앱 화면 폴더 목록(APP_DIRS)과 AC-204.6 검사 대상에 src/components/claim이 있다', () => {
+    expect(APP_DIRS).toContain(CLAIM_DIR)
+    expect(RULE_TARGETS).toContain(CLAIM_DIR)
+  })
+
+  it('AC-408.1: 시험 파일 밖 청구 소스가 모두 AC-013.2·AC-204.6 검사 목록에 있다(화면 네 파일이 있어 빈 검사가 아니고, 시험 파일은 빠진다)', () => {
+    const files = claimSources()
+    expect(files).toEqual(expect.arrayContaining(CLAIM_SCREENS))
+    expect(sources()).toEqual(expect.arrayContaining(files))
+    expect(ruleFiles()).toEqual(expect.arrayContaining(files))
+    expect([...sources(), ...ruleFiles()].filter((f) => f.startsWith(`${CLAIM_DIR}/`) && /\.test\.tsx?$/.test(f))).toEqual([])
+  })
+
+  it('AC-408.1: 청구 소스의 클래스 글자가 간격 단계·글자 11단계·토큰 모서리·장식 없음·짧은 반응 규칙을 지킨다', () => {
+    for (const file of claimSources()) expect(stringPieces(file).flatMap(breaksIn), file).toEqual([])
+  })
+
+  it('AC-408.1: 청구 소스에 CSS Module·임의 색·Tailwind 기본 색이 없고, ui를 쓰지 않으며 classes에서 ds만 불러온다', () => {
+    const imports: string[][] = []
+    for (const file of claimSources()) {
+      const text = code(file)
+      expect(text, file).not.toMatch(/\.module\.css['"]/)
+      expect(text, file).not.toMatch(ARBITRARY_COLOR)
+      expect(text, file).not.toMatch(PALETTE)
+      expect(text, file).not.toMatch(/(?<![\w.$])ui\.[A-Za-z]/)
+      for (const m of text.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"][^'"]*\/ui\/classes['"]/g)) {
+        imports.push(m[1].split(',').map((n) => n.trim()).filter(Boolean))
+      }
+    }
+    expect(imports.length).toBeGreaterThan(0)
+    for (const names of imports) expect(names).toEqual(['ds'])
+  })
+})
+
+describe('AC-408.2: 청구 소스는 직접 그린 svg와 ✓·✗ 글자 대신 Icon(stop·check·x)을 쓴다', () => {
+  it('AC-408.2: 시험 파일 밖 청구 소스에 <svg와 "✓"·"✗" 글자가 없다', () => {
+    const files = claimSources()
+    expect(files).toEqual(expect.arrayContaining(CLAIM_SCREENS))
+    for (const file of files) expect(readFileSync(join(ROOT, file), 'utf8'), file).not.toMatch(DRAWN_MARK)
+  })
+
+  it('AC-408.2: 검사 규칙 자체가 잡아야 할 것을 잡는다', () => {
+    for (const bad of ['<svg aria-hidden="true">', '<svg\n  width="16"', '<span aria-hidden="true">✓&nbsp;</span>완료', '✗&nbsp;없음', '// 5단계를 ✓/✗로']) {
+      expect(bad).toMatch(DRAWN_MARK)
+    }
+    for (const ok of ['<Icon name="check" size={12} />', '<Icon name="x" size={12} />', "querySelector('svg')", '<svgPath />', '완료']) {
+      expect(ok).not.toMatch(DRAWN_MARK)
+    }
   })
 })
 
