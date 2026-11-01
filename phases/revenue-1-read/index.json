@@ -10,7 +10,8 @@
     {
       "step": 1,
       "name": "bridge-contract",
-      "status": "pending"
+      "status": "completed",
+      "summary": "commands.json에 revenue.days(patient false, maxDays 31). src/types/revenue.ts의 RevenueDayRow·REVENUE_DAY_KEYS·REVENUE_MONEY_KEYS에 copay·otherTotal을 noncovered 뒤에 더함(금액 아홉 칸). isRevenueDays가 칸 이름·정수·unconfirmed와 아홉 칸 짝·날짜 이어짐을 본다. 옛 모양 답은 E-BRIDGE-BAD-REPLY"
     },
     {
       "step": 2,

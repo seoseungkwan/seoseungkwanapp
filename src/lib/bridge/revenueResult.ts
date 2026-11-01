@@ -1,5 +1,5 @@
 // revenue.days 답 검사(spec revenue design.md 5-2, AC-002.2·AC-002.3) [환자 자료 구역]. 칸 이름·종류·짝(unconfirmed와
-// 금액 일곱 칸)·날짜 이어짐을 정확히 본다. 정해 둔 칸 밖의 칸(차트번호·이름 등)이 하나라도 있으면 거부해 화면에 닿지 않게 한다
+// 금액 아홉 칸)·날짜 이어짐을 정확히 본다. 정해 둔 칸 밖의 칸(차트번호·이름 등)이 하나라도 있으면 거부해 화면에 닿지 않게 한다
 import { addDays, isYmd } from '@/lib/analytics/dates'
 import {
   REVENUE_CODE_KEYS,
@@ -45,7 +45,7 @@ function isDayRow(d: unknown): d is Rec & { date: string } {
   if (!isRecord(d) || !exactKeys(d, REVENUE_DAY_KEYS)) return false
   if (typeof d.date !== 'string' || !isYmd(d.date) || typeof d.unconfirmed !== 'boolean') return false
   if (!COUNT_KEYS.every((k) => d[k] === null || isCount(d[k]))) return false
-  // unconfirmed면 금액 일곱 칸이 모두 null, 아니면 모두 숫자(sales_days 제약 AC-004.3과 같은 짝)
+  // unconfirmed면 금액 아홉 칸이 모두 null, 아니면 모두 숫자(sales_days 제약 AC-004.3과 같은 짝)
   return MONEY_KEYS.every((k) => (d.unconfirmed ? d[k] === null : isCount(d[k])))
 }
 

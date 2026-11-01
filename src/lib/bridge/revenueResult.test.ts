@@ -1,7 +1,7 @@
 // revenue.days 답 검사(TASK-2, REQ-002 · AC-002.2·AC-002.3). 숫자는 모두 가짜다. 환자 칸(차트번호·이름)이 섞인 답은 막혀야 한다
 import { describe, expect, it } from 'vitest'
 import { addDays } from '@/lib/analytics/dates'
-import type { RevenueCodeRow, RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
+import { REVENUE_DAY_KEYS, REVENUE_MONEY_KEYS, type RevenueCodeRow, type RevenueDayRow, type RevenueDaysResult } from '@/types/revenue'
 import { checkResult } from './protocol'
 
 const DAY_KEYS = [
@@ -13,6 +13,8 @@ const DAY_KEYS = [
   'total',
   'insurer',
   'noncovered',
+  'copay',
+  'otherTotal',
   'cash',
   'card',
   'transfer',
@@ -20,7 +22,7 @@ const DAY_KEYS = [
   'unconfirmed',
 ] as const
 const COUNT_KEYS = ['visits', 'newPatients', 'returnVisits', 'patientsToDate'] as const
-const MONEY_KEYS = ['total', 'insurer', 'noncovered', 'cash', 'card', 'transfer', 'receivableIn'] as const
+const MONEY_KEYS = ['total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn'] as const
 const NUMBER_KEYS = [...COUNT_KEYS, ...MONEY_KEYS] as const
 const CODE_KEYS = ['code', 'name', 'count', 'amount'] as const
 
@@ -37,6 +39,8 @@ function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
     total: 1_234_560,
     insurer: 800_100,
     noncovered: 210_000,
+    copay: 200_000,
+    otherTotal: 24_460,
     cash: 52_000,
     card: 301_500,
     transfer: 20_000,
@@ -46,12 +50,14 @@ function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
   }
 }
 
-/** 환불·예치금이 있어 금액을 세지 않은 날: 금액 일곱 칸 null */
+/** 금액을 세지 않은 날(세 검사·금액 맞춤 검사·음수): 금액 아홉 칸 null */
 function unconfirmedDay(date: string): RevenueDayRow {
   return day(date, {
     total: null,
     insurer: null,
     noncovered: null,
+    copay: null,
+    otherTotal: null,
     cash: null,
     card: null,
     transfer: null,
@@ -87,6 +93,8 @@ function good(): RevenueDaysResult {
         total: 0,
         insurer: 0,
         noncovered: 0,
+        copay: 0,
+        otherTotal: 0,
         cash: 0,
         card: 0,
         transfer: 0,
@@ -238,6 +246,50 @@ describe('AC-002.2·AC-002.3 days 줄', () => {
 
   it.each([[null], ['x'], [3], [[]]])('AC-002.2 날 줄이 객체가 아니면(%j) 통과하지 않는다', (row) => {
     expect(check({ days: [row], codes: [] })).toBe(false)
+  })
+})
+
+describe('AC-002.2·AC-002.3 copay·otherTotal(2026-11-01 더함)과 금액 아홉 칸 짝', () => {
+  it('AC-002.2 칸 목록 상수는 design.md 5-2와 같다(copay·otherTotal은 noncovered 바로 뒤, 금액은 아홉 칸)', () => {
+    expect([...REVENUE_DAY_KEYS]).toEqual([...DAY_KEYS])
+    expect([...REVENUE_MONEY_KEYS]).toEqual([...MONEY_KEYS])
+    expect(REVENUE_MONEY_KEYS).toHaveLength(9)
+  })
+
+  it('AC-002.2 두 칸이 함께 빠진 옛 모양의 날 줄은 통과하지 않는다', () => {
+    const row = without(without(day('2026-10-01'), 'copay'), 'otherTotal')
+    expect(check({ days: [row], codes: [] })).toBe(false)
+  })
+
+  it('AC-002.2 두 칸이 함께 빠진 옛 모양의 확인 필요한 날(일곱 칸만 null)도 통과하지 않는다', () => {
+    const row = without(without(unconfirmedDay('2026-10-02'), 'copay'), 'otherTotal')
+    expect(check({ days: [row], codes: [] })).toBe(false)
+  })
+
+  it.each([
+    ['copay', 'unconfirmed: false', 'day'],
+    ['otherTotal', 'unconfirmed: false', 'day'],
+    ['copay', 'unconfirmed: true', 'unconfirmedDay'],
+    ['otherTotal', 'unconfirmed: true', 'unconfirmedDay'],
+  ])('AC-002.3 %s가 음수면 %s인 날이어도 통과하지 않는다', (key, _label, kind) => {
+    const row = kind === 'day' ? day('2026-10-01') : unconfirmedDay('2026-10-02')
+    expect(check(withDay(kind === 'day' ? 0 : 1, { ...row, [key]: -1 }))).toBe(false)
+  })
+
+  it('AC-002.2 unconfirmed: true인데 일곱 칸만 null이고 copay·otherTotal에 숫자가 있으면 통과하지 않는다', () => {
+    expect(check(withDay(1, { ...unconfirmedDay('2026-10-02'), copay: 1_000, otherTotal: 0 }))).toBe(false)
+  })
+
+  it('AC-002.2 unconfirmed: true인데 copay·otherTotal만 null이고 일곱 칸에 숫자가 있으면 통과하지 않는다', () => {
+    expect(check(withDay(0, { ...day('2026-10-01'), copay: null, otherTotal: null, unconfirmed: true }))).toBe(false)
+  })
+
+  it('AC-002.2 unconfirmed: false인데 copay·otherTotal만 null이면 통과하지 않는다', () => {
+    expect(check(withDay(0, { ...day('2026-10-01'), copay: null, otherTotal: null }))).toBe(false)
+  })
+
+  it('AC-002.2 unconfirmed: false인데 아홉 칸이 모두 null이면 통과하지 않는다', () => {
+    expect(check(withDay(1, { ...unconfirmedDay('2026-10-02'), unconfirmed: false }))).toBe(false)
   })
 })
 

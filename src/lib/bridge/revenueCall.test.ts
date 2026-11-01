@@ -1,7 +1,7 @@
 // 명령 표의 revenue.days와 화면 통로로 부르기(TASK-2, REQ-002 · AC-002.1·AC-002.4). Worker 없이 숫자 명령으로 온다. 자료는 모두 가짜다
 import { describe, expect, it } from 'vitest'
 import type { ChromeRuntimeLike, PatientCommand, PortLike } from '@/types/bridge'
-import type { RevenueDaysResult } from '@/types/revenue'
+import type { RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
 import commands from './commands.json'
 import { isPatient, isSmallCommand, PATIENT_COMMANDS, PROTOCOL, SEND_COMMANDS, SMALL_COMMANDS } from './protocol'
 import { LATEST_HELPER, MIN_EXTENSION } from './versions'
@@ -33,8 +33,28 @@ const FAKE_CHART = '900001'
 const FAKE_NAME = '가상환자01'
 const PERIOD = { from: '2026-10-01', to: '2026-10-02' }
 
-const money = { total: 1_234_560, insurer: 800_100, noncovered: 210_000, cash: 52_000, card: 301_500, transfer: 20_000, receivableIn: 3_000 }
-const noMoney = { total: null, insurer: null, noncovered: null, cash: null, card: null, transfer: null, receivableIn: null }
+const money = {
+  total: 1_234_560,
+  insurer: 800_100,
+  noncovered: 210_000,
+  copay: 200_000,
+  otherTotal: 24_460,
+  cash: 52_000,
+  card: 301_500,
+  transfer: 20_000,
+  receivableIn: 3_000,
+}
+const noMoney = {
+  total: null,
+  insurer: null,
+  noncovered: null,
+  copay: null,
+  otherTotal: null,
+  cash: null,
+  card: null,
+  transfer: null,
+  receivableIn: null,
+}
 
 const ANSWER: RevenueDaysResult = {
   days: [
@@ -45,6 +65,14 @@ const ANSWER: RevenueDaysResult = {
     { code: 'MM001', name: '도수치료(가짜)', count: 12, amount: 960_000 },
     { code: '_REST', name: null, count: 3, amount: null },
   ],
+}
+
+/** copay·otherTotal이 없던 옛 모양의 날 줄 */
+function oldShape(row: RevenueDayRow): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...row }
+  delete copy.copay
+  delete copy.otherTotal
+  return copy
 }
 
 function setup() {
@@ -139,6 +167,13 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
     const p = t.track(t.screen.call('revenue.days', PERIOD))
     const bad = { ...ANSWER, days: [{ ...ANSWER.days[0], total: '1234560' }, ANSWER.days[1]] }
     t.port.reply({ v: 1, id: 'req-2', type: 'result', data: bad })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-002.4 copay·otherTotal이 빠진 옛 모양 답도 E-BRIDGE-BAD-REPLY다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days: ANSWER.days.map(oldShape) } })
     await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
   })
 

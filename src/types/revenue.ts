@@ -12,11 +12,15 @@ export type RevenueDayRow = {
   total: number | null
   insurer: number | null
   noncovered: number | null
+  /** 급여 본인부담금(요양비용총액 = insurer + copay) */
+  copay: number | null
+  /** 기타 = total − (insurer + copay) − noncovered. 나머지라서 총액에 섞인 다른 금액도 여기에 든다 */
+  otherTotal: number | null
   cash: number | null
   card: number | null
   transfer: number | null
   receivableIn: number | null
-  /** 환불·변경수납·예치금·수납 연결 중복이 있어 금액을 세지 않은 날 */
+  /** 금액을 세지 않은 날: ① 환불·변경수납·예치금·수납 연결 중복(세 검사) ② insurer + copay ≠ 요양비용총액(금액 맞춤 검사) ③ 금액 아홉 칸 가운데 음수. 까닭은 답에 없다 */
   unconfirmed: boolean
 }
 
@@ -30,6 +34,8 @@ export const REVENUE_DAY_KEYS = [
   'total',
   'insurer',
   'noncovered',
+  'copay',
+  'otherTotal',
   'cash',
   'card',
   'transfer',
@@ -37,11 +43,13 @@ export const REVENUE_DAY_KEYS = [
   'unconfirmed',
 ] as const satisfies readonly (keyof RevenueDayRow)[]
 
-/** 금액 일곱 칸. unconfirmed면 모두 null, 아니면 모두 숫자 */
+/** 금액 아홉 칸. unconfirmed면 모두 null, 아니면 모두 숫자 */
 export const REVENUE_MONEY_KEYS = [
   'total',
   'insurer',
   'noncovered',
+  'copay',
+  'otherTotal',
   'cash',
   'card',
   'transfer',
