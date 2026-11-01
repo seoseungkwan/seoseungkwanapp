@@ -1,6 +1,6 @@
 # Step 3: patients-worker
 
-> **TASK-4** Worker — 조각 모으기 · 읽을 조각 · 보기 모양 · 연락 표시 · 건수 · **REQ-604** · AC-604.1 ~ AC-604.7
+> **TASK-4** Worker — 조각 모으기 · 읽을 조각 · 보기 모양 · 연락 표시 · 건수 · **REQ-604** · AC-604.1 ~ AC-604.8
 > Phase 1 `patients-1-lists`(명단 계산 (웹, 골든)) · Step 3 — 명세 `specs/patients/`
 > 명세 `specs/patients/`는 승인됐다. 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -10,11 +10,12 @@
 
 - **AC-604.1**: chunk…end를 모아 조각 수·바이트·SHA-256이 맞을 때만 JSON으로. 다르면 `E-BRIDGE-BAD-REPLY`, abort면 받은 번호. 반쪽 자료 안 씀
 - **AC-604.2**: `readPlan`: F/U 최근 120일 → 31일 이하 조각(오래된 것부터), 정기 주사 → 마지막 읽은 달 1일 ~ 오늘(처음이면 가장 긴 간격 + 1개월 전 달 1일부터) 달 조각
-- **AC-604.3**: 모든 조각 + store.load 답 → `FollowupView`·`RecallView`. 조각 하나라도 실패하면 보기 모양 없이 오류 번호만
+- **AC-604.3**: 종류마다 따로: F/U 조각이 다 오면 `FollowupView`, 정기 주사 조각이 다 오고 store.load가 됐으면 `RecallView`. 한 종류가 실패·시간 초과면 그 종류만 `null` + 그 종류 번호, 다른 종류는 그대로
 - **AC-604.4**: [연락함] → Worker가 `store.save {contact}` 글자를 통로 포트로, 됨이면 바뀐 보기 모양·건수, 실패면 그대로 + 오류 번호. 화면 메시지에 보낼 글자 없음
-- **AC-604.5**: `contactCounts`: F/U = 예정이고 다음 내원일이 내일인데 연락함 아님, 정기 주사 = 예정일이 오늘까지(지난 것 포함)인데 연락함 아님. 0 이상 정수 둘
-- **AC-604.6**: 저장 글자 `{contact: {v: 1, marks, recall}}`. 연락 표시는 지금 보기 모양에 열쇠가 있으면 날짜와 상관없이 남기고, 열쇠가 없거나 열쇠 날짜가 읽는 범위(F/U 120일·정기 주사 36개월) 밖인 것만 뺌. 보기 모양을 못 만든 종류는 건드리지 않음
+- **AC-604.5**: `contactCounts`: F/U = 예정이고 다음 내원일이 내일인데 연락함 아님, 정기 주사 = 예정일이 오늘까지(지난 것 포함)인데 연락함 아님. 0 이상 정수 둘. 보기 모양 하나라도 없거나 연락 표시를 못 불러왔으면 `null`
+- **AC-604.6**: 저장 글자 `{contact: {v: 1, marks, recall}}`. 보기 모양이 있는 종류마다 그 보기 모양에 열쇠가 있는 표시만 남김(날짜는 안 봄), 보기 모양 없는 종류의 표시는 그대로(정기 주사 합쳐 저장해도 내일 F/U 연락함은 남음). 30MB 넘으면 증상 글을 자르지 않고 가장 오래된 정기 주사 기록부터 빼고 `from`을 늦춤
 - **AC-604.7**: 연락함 뒤 다시 오지 않은 정기 주사 환자(예정일 1년 넘게 지남)는 다음에 열어도 연락함이고 `injection_left`에 다시 안 들어감
+- **AC-604.8**: `stored`가 성공하기 전·실패한 뒤에는 [연락함]·기록 합치기에서 `store.save`를 보내지 않고 오류 번호만(PC 저장을 덮어쓰지 않음). F/U는 연락 표시 없이(`marksLoaded: false`), 건수 `null`, 정기 주사 보기 모양 `null`
 
 ## 읽어야 할 파일
 
@@ -99,8 +100,9 @@ export function filterRecall(view: RecallView, f: RecallFilters, today: string):
 export function markKey(row: { kind: 'f' | 'r'; … }): string                 // design.md 줄 열쇠
 export function setMark(store: ContactStoreData, key: string, on: boolean, today: string): ContactStoreData
 export function pruneMarks(marks: ContactStoreData['marks'], views: { followup: FollowupView | null; recall: RecallView | null }, today: string): ContactStoreData['marks']
-    // 그 종류 보기 모양이 있으면: 열쇠가 보기 모양에 있으면 남김(날짜와 상관없음), 없거나 열쇠 날짜가 F/U 120일·정기 주사 36개월 밖이면 뺌. 보기 모양이 null인 종류는 그대로
-export function storePayload(store: ContactStoreData): string   // JSON.stringify({ contact: store }) — pruneMarks를 거친 store만
+    // 보기 모양이 있는 종류(열쇠 머리 'f|'·'r|')는 그 보기 모양의 줄 열쇠에 있는 표시만 남김(날짜는 보지 않는다). 보기 모양이 null인 종류의 표시는 그대로
+export const MAX_STORE_BYTES = 30 * 1024 * 1024                  // 도우미 ContactStore.MaxContactBytes(32MB) 아래
+export function storePayload(store: ContactStoreData): { payload: string; dropped: number }   // JSON.stringify({ contact: store }) — pruneMarks를 거친 store만. UTF-8이 MAX_STORE_BYTES를 넘으면 가장 오래된 recall 기록부터 빼고 recall.from을 남은 첫 기록 날짜로(증상 글은 자르지 않는다)
 export function contactCounts(fu: FollowupView, rc: RecallView, today: string): ContactCount
 ```
 - 조각 여러 개는 표 머리 줄을 한 번만 두고 이어 붙여 `prepareSchedule`·`preparePhones`·`prepareRx`에 넣는다
@@ -111,15 +113,17 @@ export function contactCounts(fu: FollowupView, rc: RecallView, today: string): 
 export function createHandler(deps: { post(message: unknown): void }): { onScreen(message: unknown): void; onPort(message: unknown): void; setPort(port: { postMessage(m: unknown): void }): void }
 ```
 - `patients.worker.ts`: `self.onmessage`에서 `{type: 'bridge-port'}`면 `event.ports[0]`을 `setPort`하고 그 포트의 `onmessage`를 `onPort`에 잇는다. 나머지는 `onScreen`
-- 정기 주사 조각을 합쳐 기록이 바뀌면 `views`를 보내기 전에 `store.save`를 보낸다. 저장이 실패해도 명단은 보이고 `code`를 함께 보낸다
+- 종류마다 따로(AC-604.3): F/U 조각이 하나라도 실패하면 `followup: null`·`codes.followup`, 정기 주사 조각이나 `store.load`가 실패하면 `recall: null`·`codes.recall`. 다른 종류는 그대로 보낸다
+- 정기 주사 조각을 합쳐 기록이 바뀌면 `views`를 보내기 전에 `store.save`를 보낸다(`stored`가 성공했을 때만). 저장이 실패해도 명단은 보이고 `codes.store`를 함께 보낸다
+- 저장 상태(AC-604.8): `'unknown' | 'loaded' | 'failed'`. 처음과 `{type: 'reload'}` 뒤는 `'unknown'`, `stored` 성공이면 `'loaded'`. `'loaded'`가 아니면 어떤 경우에도 `store.save`를 보내지 않고 `mark`에는 `{ok: false, code: 'E-STORE-FAILED'(또는 store.load가 준 번호)}`만 돌려준다
 - 화면으로 가는 메시지에 `payload`·조각 글자가 없다(시험이 메시지 키를 본다)
-- 연락 표시를 저장할 때는 늘 `pruneMarks` → `storePayload` 순서. 날짜만 보고(예: 180일) 표시를 지우지 않는다(연락한 환자가 '미연락'으로 돌아온다)
+- 연락 표시를 저장할 때는 늘 `pruneMarks` → `storePayload` 순서. 날짜로 표시를 지우지 않는다(연락한 환자가 '미연락'으로 돌아온다)
 
 ### 5. 시험 (가짜 조각: `fixtures/patients/fake/targets-*.json`, `store-*.json`)
 - `assemble.test.ts`(AC-604.1): 맞음·조각 빠짐·순서 바뀜·바이트 다름·SHA 다름·abort·end 전에 take
 - `plan.test.ts`(AC-604.2): 오늘이 월말·월초·윤년, 처음·이어 읽기
-- `jobs.test.ts`(AC-604.3·604.5·604.6·604.7): 보기 모양, 건수 정의(기간·도구와 상관없음, 조건부 제외, 내일만, 지난 정기 주사 포함), 연락 표시 정리(보기 모양에 있으면 1년 지나도 남음·열쇠가 바뀐 표시는 빠짐·범위 밖 날짜는 빠짐·정기 주사 보기 모양이 없으면 정기 주사 표시는 그대로), **연락함 뒤 다시 오지 않은 정기 주사 환자가 다음 열기에도 연락함이고 `injection_left`에 안 들어가는 사례**(AC-604.7)
-- `handler.test.ts`(AC-604.3·604.4): 가짜 포트·가짜 post로 전체 흐름(plan → piece × n → stored → build → mark → sent ok/실패), 조각 하나 실패 → 보기 모양 없음
+- `jobs.test.ts`(AC-604.3·604.5·604.6·604.7): 보기 모양, 건수 정의(기간·도구와 상관없음, 조건부 제외, 내일만, 지난 정기 주사 포함), 연락 표시 정리(보기 모양에 있으면 1년 지나도 남음·열쇠가 바뀐 표시는 빠짐·정기 주사 보기 모양이 없으면 정기 주사 표시는 그대로·**정기 주사 기록을 합쳐 저장해도 내일 오실 F/U 줄의 연락함 표시가 남음**), **연락함 뒤 다시 오지 않은 정기 주사 환자가 다음 열기에도 연락함이고 `injection_left`에 안 들어가는 사례**(AC-604.7), 크기: 30MB를 넘는 가짜 기록(긴 증상 글 × 많은 건) → 오래된 기록부터 빠지고 증상 글은 그대로·`from`이 늦춰짐, 건수 `null` 조건(AC-604.5)
+- `handler.test.ts`(AC-604.3·604.4·604.8): 가짜 포트·가짜 post로 전체 흐름(plan → piece × n → stored → build → mark → sent ok/실패), F/U 조각 하나 실패 → F/U만 `null`이고 정기 주사는 보임(반대도), `store.load` 실패 → 정기 주사 `null`·F/U는 `marksLoaded: false`·건수 `null`·[연락함]에 `store.save` 없음, **다시 불러오는 중(`reload` 뒤 새 `stored` 전)과 다시 불러오기가 실패한 뒤 옛 줄로 [연락함]을 눌러도 포트에 `send`가 하나도 없음**(PC 저장을 덮어쓰지 않음)
 
 ## TDD 순서
 
@@ -131,7 +135,7 @@ export function createHandler(deps: { post(message: unknown): void }): { onScree
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/workers/patients/assemble.test.ts src/workers/patients/plan.test.ts src/workers/patients/jobs.test.ts src/workers/patients/handler.test.ts fixtures/patients/make-fake-patients.test.ts   # AC-604.1~AC-604.6
+npx vitest run src/workers/patients/assemble.test.ts src/workers/patients/plan.test.ts src/workers/patients/jobs.test.ts src/workers/patients/handler.test.ts fixtures/patients/make-fake-patients.test.ts   # AC-604.1~AC-604.8
 npx vitest run src/lib/patients   # 앞 step 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-4 --expect green
 npm run lint && npm test && npm run build
@@ -139,7 +143,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status patients`에서 AC-604.1 ~ AC-604.7가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status patients`에서 AC-604.1 ~ AC-604.8가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

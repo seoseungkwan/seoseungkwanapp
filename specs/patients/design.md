@@ -79,14 +79,16 @@ fixtures/patients/            가짜 자료 생성기·가짜 조각·골든 결
 
 ### `contact` 안쪽 모양 (Worker가 만들고 읽는다, 도우미는 풀어 보지 않고 객체인지·크기만 본다)
 ```ts
-type ContactStoreData = {
+type ContactStoreData = {   // 저장 글자는 30MB 아래(아래 '크기')
   v: 1
   marks: Record<string /* 줄 열쇠 */, string /* 연락한 날 YYYY-MM-DD */>   // 정리 규칙은 아래
   recall: { from: string | null; readThrough: string | null /* 마지막으로 읽은 날 */; records: RecallRecord[] }
 }
 type RecallRecord = { chart: string; name: string; date: string; codes: string[]; text: string; phone: string }  // 원본 ingest 모양 그대로
 ```
-- 연락 표시 정리(AC-604.6·604.7): 저장할 때 그 종류의 보기 모양을 만들었으면, 지금 보기 모양에 열쇠가 있는 표시는 **날짜와 상관없이** 남기고(연락한 뒤 다시 오지 않은 정기 주사 환자가 '미연락'으로 돌아와 `injection_left`에 다시 들어가지 않게), 열쇠가 보기 모양에 없거나 열쇠의 날짜가 읽는 범위(F/U 최근 120일, 정기 주사 기록 36개월) 밖인 표시만 뺀다. 보기 모양을 못 만든 종류(읽기 실패)의 표시는 건드리지 않는다. 날짜만으로(예: 180일) 지우지 않는다
+- 연락 표시 정리(AC-604.6·604.7): 저장할 때 **보기 모양이 있는 종류마다 그 보기 모양에 열쇠가 있는 표시만 남긴다**(날짜는 보지 않는다). 그래서 연락한 뒤 다시 오지 않은 정기 주사 환자는 줄이 남아 있는 동안 계속 연락함이고(`injection_left`에 다시 안 들어감), 다시 진료·주사해 열쇠가 바뀐 표시는 빠진다. 보기 모양이 없는 종류(읽기 실패)의 표시는 그대로 둔다 — 예: 정기 주사 기록을 합쳐 저장할 때 내일 오실 F/U 줄의 연락함 표시는 F/U 보기 모양에 있으니 남는다
+- 크기(AC-604.6): `storePayload`는 UTF-8 30MB(`MAX_STORE_BYTES`, 도우미 `ContactStore.MaxContactBytes` 32MB 아래)를 넘으면 증상 글을 자르지 않고(원본 판정이 바뀐다) 가장 오래된 정기 주사 기록부터 빼고 `recall.from`을 그만큼 늦춘다. 원본 한도(50,000건, 증상 1,000자·이름 100자·전화 60자)로 보통은 10MB 안팎이다
+- PC 저장 덮어쓰기 막기(AC-604.8): `stored`가 성공하기 전(처음·다시 불러오는 중)이나 실패한 뒤에는 Worker가 `store.save`를 보내지 않는다. [연락함]은 `{ok: false, code}`만 돌려주고, 정기 주사 보기 모양은 `null`(기록을 모르면 합칠 수 없다), F/U 보기 모양은 연락 표시 없이(`marksLoaded: false`), 건수는 `null`
 - 줄 열쇠: F/U `f|<내원번호>|<차트번호>|<다음 날짜>`, 정기 주사 `r|<규칙 id>|<차트번호>|<다음 예정일>`. 새로 진료하거나 주사하면 열쇠가 바뀌어 표시가 저절로 풀린다. 열쇠는 메모리·`contact.dat`에만 있고 주소·서버로 가지 않는다
 
 ### 계산 모양 (`src/types/patients.ts`)
@@ -106,10 +108,10 @@ export type ContactCount = { followup_left: number; injection_left: number }
 - 화면 → Worker
   - `{type: 'plan', today}` → `{type: 'plan', followup: Range[], recall: Range[] | null /* store.load 전이면 null */}`
   - `{type: 'piece', id, kind, from, to}`(화면이 `stream('contact.targets', …)`이 끝난 뒤 그 `id`를 알림) → `{type: 'piece', id, ok, code?}`
-  - `{type: 'stored', id}`(`stream('store.load', {contact: true})`의 `id`) → `{type: 'stored', ok, code?, recall: Range[]}`
-  - `{type: 'build', today}` → `{type: 'views', followup: FollowupView | null, recall: RecallView | null, counts: ContactCount | null, code?}` (정기 주사 조각을 합치면 Worker가 `store.save`로 기록을 저장한 뒤 보낸다)
+  - `{type: 'stored', id}`(`stream('store.load', {contact: true})`의 `id`) → `{type: 'stored', ok, code?, recall: Range[]}`. 다시 불러오기를 시작하면(`{type: 'reload'}`) Worker는 저장 상태를 '모름'으로 돌리고 새 `stored`가 성공할 때까지 `store.save`를 막는다(AC-604.8)
+  - `{type: 'build', today}` → `{type: 'views', followup: FollowupView | null, recall: RecallView | null, counts: ContactCount | null, codes: { followup?: string; recall?: string; store?: string }}` — 종류마다 따로: 한 종류가 실패하면 그 종류만 `null` + 그 종류 번호, 다른 종류는 그대로(AC-604.3). 정기 주사 조각을 합치면 Worker가 (`stored`가 성공했을 때만) `store.save`로 기록을 저장한 뒤 보낸다. 저장 실패는 `codes.store`
   - `{type: 'filter', tool, filters}` → `{type: 'filtered', tool, rows, copy: {list: string, phones?: string, missingPhones?: number}}`
-  - `{type: 'mark', key, on, today}` → `{type: 'marked', key, ok, code?, counts}` + 바뀐 `views`
+  - `{type: 'mark', key, on, today}` → `{type: 'marked', key, ok, code?, counts}` + 바뀐 `views`. `stored`가 성공하지 않았으면 `store.save` 없이 `{ok: false, code}`
 - 화면은 조각·보낼 글자를 받지 않는다(AC-604.4). Worker 밖으로 나가는 환자 자료는 보기 모양과 복사 글뿐이다
 
 ### 서버 표 (`supabase/migrations/20261101000300_patients.sql`, TASK-5)
@@ -148,7 +150,7 @@ create table if not exists public.contact_counts (
 | 정기 주사 문자 명단 | 기간(오늘~30일 뒤) · 지난 예정 포함 · 명단(종류·이름·전화·마지막 주사·다음 예정일·상태·근거·연락함) · 쌓인 기록 안내 · [명단 복사] · [번호 복사] · [문구 복사] | 정기 주사 남은 수 + 바뀐 시각 | 같음 + 처음 읽기 달 진행 |
 | 문자 문구 | 문구 목록(주사 안내·진료 안내) · 내원 날짜(처음 내일) · 미리 보기 · 더하기·고치기·지우기·위·아래 · [저장] · [문구 복사] | 같음 | 저장 실패(값 유지 + [다시 저장]) |
 - 연결 안 됨(도우미 없음·업데이트·끊김): 명단 도구 자리에 비트 PC 연결 안내 + [비트 PC 연결](`/claim/setup`). 다른 창에서 작업 중: 안내 + [건수만 보기]
-- 탭에 들어오면(연결된 PC) 두 명단을 차례로 불러 둔다(F/U 먼저). 도구를 바꿔도 다시 읽지 않는다. 건수는 둘 다 온 뒤 올린다(AC-614.1)
+- 탭에 들어오면(연결된 PC) 두 명단을 차례로 불러 둔다(F/U 먼저). 도구를 바꿔도 다시 읽지 않는다. 한 종류가 실패하면 그 도구만 오류 번호 + [다시 불러오기]이고 다른 도구는 그대로 쓴다. 건수는 둘 다 되고 연락 표시를 불러왔을 때만 올린다(AC-614.1)
 - 모양은 `docs/UI_GUIDE.md`·`components/ui/classes.ts`의 `ds`와 토큰만(새 색·크기 없음). 도구 단추 줄 모양은 목업 승인 뒤 UI_GUIDE에 한 절로 적는다(TASK-10)
 - **목업**: 이 탭의 클릭 목업(PC·휴대폰, 도구 셋, 상태)을 Phase 4 전에 사용자에게 승인받는다. 옛 precheck 목업(https://claude.ai/artifact/499cp2Sodph7jYJ4gX4exj 화면 8 '환자 연락'·화면 11)은 탭 틀·ui-90 개편 전 것이라 내용 참고만이다. 승인본은 `docs/mockups/patients/`에 둔다
 

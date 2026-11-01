@@ -48,7 +48,7 @@
 
 ## TASK-4: Worker — 조각 모으기 · 읽을 조각 · 보기 모양 · 연락 표시 · 건수
 - Step: Phase 1 · Step 3 · `patients-worker`
-- AC: AC-604.1~AC-604.7
+- AC: AC-604.1~AC-604.8
 - REQ: REQ-604
 - Files: src/workers/patients.worker.ts, src/workers/patients/assemble.ts, src/workers/patients/assemble.test.ts, src/workers/patients/plan.ts, src/workers/patients/plan.test.ts, src/workers/patients/jobs.ts, src/workers/patients/jobs.test.ts, src/workers/patients/handler.ts, src/workers/patients/handler.test.ts, src/types/patients.ts, fixtures/patients/fake/*, fixtures/patients/make-fake-patients.ts, fixtures/patients/make-fake-patients.test.ts
 - Tests: src/workers/patients/assemble.test.ts, src/workers/patients/plan.test.ts, src/workers/patients/jobs.test.ts, src/workers/patients/handler.test.ts, fixtures/patients/make-fake-patients.test.ts
@@ -151,4 +151,4 @@
 - TDD: exempt — Playwright E2E(`npm run e2e`)는 실제 Supabase와 시험 계정이 있어야 돌고 vitest 하네스(`tdd-run`)로 RED/GREEN을 남길 수 없다(ADR-017). 사용자가 TASK-5 SQL을 붙인 뒤 `npm run e2e -- e2e/patients-privacy.spec.ts`로 확인한다
 - 가짜 확장: 시험 코드(`page.addInitScript`)가 `chrome.runtime.connect`를 흉내 내 `hello`·`store.load`·`contact.targets`·`store.save`에 `fixtures/patients/fake/`의 가짜 조각으로 답한다. 앱 코드에 시험용 길을 만들지 않는다(CLAUDE.md)
 - 지켜볼 것: `page.on('request')`로 나간 모든 요청의 주소·쿼리·몸통, 끝난 뒤 시험 계정으로 `message_templates`·`contact_counts` 내 줄을 다시 읽기. 금지 글(가짜 차트번호·이름·전화·주민번호 모양·파일 이름)은 `forbidden.ts` 한 곳. `trace: 'off'`, 산출물에 쿠키·토큰 없음
-- 시험이 만든 줄은 끝날 때 지운다(`message_templates`는 시험 전 줄을 기억해 되돌린다)
+- 시험이 바꾼 `message_templates`는 시험 전 줄을 기억해 되돌린다. `contact_counts`에는 delete 권한이 없다(AC-607.3) — 시험 계정의 건수 줄(가짜 자료의 정수 둘)은 그대로 남는다. 이 시험을 위해 delete 권한을 더하지 않는다

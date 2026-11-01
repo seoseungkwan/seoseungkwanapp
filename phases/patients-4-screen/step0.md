@@ -126,7 +126,7 @@ export function ToolRow<T extends string>(props: { label: string /* nav 이름 *
 - `readContactCount(createClient())` → F/U 남은 수·정기 주사 남은 수·마지막 바뀐 시각(한국 시각). `null`(줄 없음)이면 숫자 없이 "자료 없음" + "비트 PC에서 환자 탭을 열면 건수가 생겨요". 읽기 실패(`E-PATIENTS-COUNTS-READ`를 던짐)는 '자료 없음'과 다르게 `ErrorCard` + [다시 불러오기](숫자도 '자료 없음'도 보이지 않는다)
 
 ### 5. 화면 틀 (`PatientsScreen.tsx`·`usePatientsWorker.ts`)
-- `usePatientsWorker(bridge)`: 들어오면 `store.load {contact: true}` → Worker `stored` → `plan` → F/U 조각을 차례로 `stream('contact.targets', {kind: 'followup', from, to})` → `piece` → 정기 주사 조각 → `build` → `views`. 진행은 `{done, total}`. 실패하면 거기서 멈추고 오류 번호 + [다시 불러오기]
+- `usePatientsWorker(bridge)`: 들어오면 `store.load {contact: true}` → Worker `stored` → `plan` → F/U 조각을 차례로 `stream('contact.targets', {kind: 'followup', from, to})` → `piece` → 정기 주사 조각 → `build` → `views`. 진행은 `{done, total}`. 종류마다 따로(AC-604.3): F/U 조각이 실패하면 F/U 읽기만 멈추고 정기 주사는 계속 읽는다(반대도). `views.codes`의 종류별 번호로 그 도구에만 오류 번호 + [다시 불러오기]를 보이고 다른 도구는 그대로 쓴다. `store.load`가 실패하면 정기 주사 도구는 오류, F/U는 연락 표시 없이 보이고 [연락함]은 막힌다(AC-604.8). [다시 불러오기]는 Worker에 `{type: 'reload'}`를 먼저 보낸다
 - 이 step의 `PatientsScreen`은 불러오는 중(진행 "n/전체")·오류·도구 자리만 그린다. 도구 몸통은 TASK-11~13이 그 자리에 넣는다(이 step에서 가짜 도구 몸통을 만들지 않는다)
 
 ### 6. UI_GUIDE (`docs/UI_GUIDE.md`)
@@ -134,7 +134,7 @@ export function ToolRow<T extends string>(props: { label: string /* nav 이름 *
 
 ### 7. 시험 (jsdom, 가짜 통로·가짜 Worker·가짜 Supabase)
 - `page.test.tsx`: 탭 이름, `?tool=` 세 값·모르는 값, 주소에 도구 이름만(AC-610.1·610.2·610.5)
-- `PatientsEntry.test.tsx`: 상태마다 그려지는 것(AC-610.3·610.4), `ToolRow.test.tsx`, `tools.test.ts`, `CountsOnly.test.tsx`(줄 있음·줄 없음 → 자료 없음·읽기 실패 → 오류 카드이고 '자료 없음' 글이 없음·다시 불러오기), `usePatientsWorker.test.ts`(부르는 순서·진행·실패 멈춤), `PatientsScreen.test.tsx`
+- `PatientsEntry.test.tsx`: 상태마다 그려지는 것(AC-610.3·610.4), `ToolRow.test.tsx`, `tools.test.ts`, `CountsOnly.test.tsx`(줄 있음·줄 없음 → 자료 없음·읽기 실패 → 오류 카드이고 '자료 없음' 글이 없음·다시 불러오기), `usePatientsWorker.test.ts`(부르는 순서·진행, F/U 실패 때 정기 주사는 계속 읽힘·반대도, 종류별 오류 번호, [다시 불러오기]가 `reload`를 먼저 보냄), `PatientsScreen.test.tsx`
 - 기존 시험(shell·features·notReady·tabFrame·titles·notFound)이 새 상태로 통과
 
 ## TDD 순서

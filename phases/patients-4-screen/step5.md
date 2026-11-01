@@ -65,6 +65,7 @@
 - `page.on('request')`로 모든 요청의 주소·쿼리·몸통을 모아 `findForbidden`이 빈 목록(AC-615.1)
 - 끝난 뒤 시험 계정 세션으로 `message_templates`·`contact_counts` 내 줄을 읽어 금지 글 없음, `contact_counts` 칸이 `followup_left`·`injection_left`(정수)·`updated_at`·`hospital_id`뿐(AC-615.2)
 - 시험이 바꾼 문구는 처음 값으로 되돌리고, 시험 산출물 폴더에 쿠키·토큰 글자가 없는지 본다(AC-615.3)
+- `contact_counts`에는 delete 권한이 없다(AC-607.3). 시험 계정의 건수 줄(가짜 자료의 정수 둘)은 남는다. 이 시험을 위해 delete 권한을 더하지 않는다
 
 ## TDD
 

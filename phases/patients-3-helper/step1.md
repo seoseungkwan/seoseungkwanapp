@@ -15,7 +15,7 @@
 
 ## 시작 전 확인 (선행 작업)
 
-이 step은 청구 사전점검 TASK-9(비트 통계 화면 표 읽기)이 main에 합쳐진 뒤에만 한다. 아래가 모두 있어야 한다:
+이 step은 청구 사전점검 precheck TASK-8(비트 통계 화면 표 읽기)이 main에 합쳐진 뒤에만 한다. 먼저 메인 세션이 main을 이 브랜치에 합친다(`git fetch origin && git merge origin/main`, 이 step 안에서는 하지 않는다). 그 뒤 아래가 모두 있어야 한다:
 
 ```bash
 ls helper/src/Precheck.Core/Bit/GridReader.cs helper/src/Precheck.Core/Bit/GridRows.cs helper/src/Precheck.Windows/VendorGridExport.cs
