@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "ai-report",
-  "approved_at": "2026-11-01T09:27:48Z",
+  "approved_at": "2026-11-01T13:41:37Z",
   "approved_via": "user-prompt",
-  "session_id": "96e6b051-b5fe-4121-9ad9-63489a29e39c",
-  "spec_sha256": "98654094921e1ff4d6f0b09e63d1a6844087a895f660db733c3447eb64fda9b6",
+  "session_id": "fc9cd109-0e00-4626-a358-8c5ea4394126",
+  "spec_sha256": "f3f5d6b61c091b5b32cc60c7827b460c6d213dd2898bcb27e529648f9cb6d0ba",
   "scope": [
     ".env.example",
     ".gitignore",
@@ -33,6 +33,7 @@
     "src/app/api/ai/report/route.ts",
     "src/app/api/ai/store.test.ts",
     "src/app/api/ai/store.ts",
+    "src/b2b-merge.test.ts",
     "src/lib/ai/basis.test.ts",
     "src/lib/ai/basis.ts",
     "src/lib/ai/boundary.test.ts",

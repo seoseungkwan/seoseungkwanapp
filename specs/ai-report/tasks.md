@@ -155,10 +155,10 @@
 
 ## TASK-15: 리포트 뽑아 보기 명령
 - REQ: REQ-514
-- Files: package.json, vitest.config.ts, src/lib/ai/markdown.ts, src/lib/ai/markdown.test.ts, scripts/aiTry.ts, scripts/aiTry.test.ts, scripts/ai-try.ts
+- Files: package.json, vitest.config.ts, src/lib/ai/markdown.ts, src/lib/ai/markdown.test.ts, scripts/aiTry.ts, scripts/aiTry.test.ts, scripts/ai-try.ts, src/b2b-merge.test.ts
 - Tests: src/lib/ai/markdown.test.ts, scripts/aiTry.test.ts
 - TDD: required
-- `vitest.config.ts`는 `include`에 `'scripts/**/*.test.ts'` 한 줄만 더한다. `ai-try.ts`(이어 붙이기)는 시험하지 않는다 — 끝에 사용자가 `npm run ai:try`를 직접 쳐서 본다(진짜 Claude, 1회 약 150~200원).
+- `vitest.config.ts`는 `include`에 `'scripts/**/*.test.ts'` 한 줄만 더한다. 이 목록을 그대로 못 박아 둔 `src/b2b-merge.test.ts`(AC-034.5, 다른 기능의 시험)의 기대 목록에도 같은 한 줄만 더한다 — 빠뜨리면 그 시험이 깨진다. `ai-try.ts`(이어 붙이기)는 시험하지 않는다 — 끝에 사용자가 `npm run ai:try`를 직접 쳐서 본다(진짜 Claude, 1회 약 150~200원).
 
 ## TASK-16: 열쇠 넣기 명령
 - REQ: REQ-515
