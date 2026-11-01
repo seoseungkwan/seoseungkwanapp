@@ -66,7 +66,7 @@ function fakeSink() {
 }
 
 const SHA = 'a'.repeat(64)
-const HELLO_DATA = { helperVersion: '0.1.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO_DATA = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const PATIENT_JSON_PART1 = '{"visits":[{"chart":"000123","name":"가상'
 const PATIENT_JSON_PART2 = '환자01","memo":"가짜 메모"}]}'
 
@@ -152,14 +152,14 @@ describe('AC-004.3 연결과 상태', () => {
     expect(await rejectCode(t.bridge.call('bit.check', {}))).toBe('E-BRIDGE-BUSY')
   })
 
-  it('AC-004.3 hello가 맞으면 ready이고 버전을 돌려준다', async () => {
+  it('AC-004.3·AC-012.1 hello가 맞으면 ready이고 버전을 돌려준다(도우미가 새 판이면 새 도우미 알림 없음)', async () => {
     const t = setup()
     const hello = t.bridge.hello()
     expect(t.port.last()).toEqual({ v: 1, id: 'req-1', cmd: 'hello', args: {} })
     t.port.reply({ v: 1, id: 'req-1', type: 'result', data: HELLO_DATA })
     await expect(hello).resolves.toEqual({
       state: 'ready',
-      helperVersion: '0.1.0',
+      helperVersion: '0.2.0',
       extensionVersion: '0.1.0',
       helperUpdateAvailable: false,
     })

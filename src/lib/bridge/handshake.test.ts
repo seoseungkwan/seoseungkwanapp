@@ -69,9 +69,9 @@ describe('AC-004.4 checkVersions', () => {
 })
 
 describe('AC-004.4 웹 versions.ts 값', () => {
-  it('AC-004.4 지금 값은 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  it('AC-004.4·AC-012.1 LATEST_HELPER는 새 판 0.2.0, MIN_HELPER·MIN_EXTENSION은 0.1.0 그대로이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.1.0')
-    expect(LATEST_HELPER).toBe('0.1.0')
+    expect(LATEST_HELPER).toBe('0.2.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -85,6 +85,11 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   it('AC-004.4 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
     const props = readFileSync(new URL('../../../helper/Directory.Build.props', import.meta.url), 'utf8')
     expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
+  })
+
+  it('AC-012.2 확장 manifest의 version은 새 판 0.2.0이다', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../../../extension/manifest.json', import.meta.url), 'utf8'))
+    expect(manifest.version).toBe('0.2.0')
   })
 
   it('AC-004.4 지금 확장(manifest)·도우미는 웹 기준으로 ok다', () => {

@@ -20,7 +20,8 @@
     {
       "step": 3,
       "name": "version-bump",
-      "status": "pending"
+      "status": "completed",
+      "summary": "도우미 판·LATEST_HELPER·확장 판을 0.2.0으로 올림. MIN_HELPER·MIN_EXTENSION은 0.1.0 그대로. handshake.test.ts에 AC-012.1·012.2 시험. 릴리스 태그·웹스토어 올리기는 하지 않음. origin/main은 도우미 0.1.1이므로 합칠 때 0.2.0으로 맞춘다"
     }
   ]
 }
