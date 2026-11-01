@@ -230,16 +230,7 @@ SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
        (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),
        (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)";
 
-    // ---- 새 문장 4개(design.md 4-2) ------------------------------------------------------------------
-
-    /// <summary>서로 다른 환자 수와 차트번호 없는 내원 수. 조건은 원본 Patients의 PeriodVisits와 같다(차트번호는 DB 밖으로 나오지 않는다).</summary>
-    public const string DistinctPatients = @"SELECT COUNT(DISTINCT NULLIF(RTRIM(c.OcmChtNum),'')) AS Patients,
-       SUM(CASE WHEN NULLIF(RTRIM(c.OcmChtNum),'') IS NULL THEN CONVERT(bigint,1) ELSE CONVERT(bigint,0) END) AS MissingCharts
-FROM dbo.OcmInf c
-WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O'
-   AND c.OcmComStt IN ('WN','HN','TN','PN') AND c.OcmRsuYon<>'O'
-   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
-               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)";
+    // ---- 새 문장 3개(design.md 4-2) ------------------------------------------------------------------
 
     /// <summary>기간의 처방 코드별 줄 수·금액·빠진 값 수·이름. 금액 식은 원본 TrendDataSource와 같고, 내원 상태 목록은 원본 LaCodes와 같다.</summary>
     public const string CodeAmounts = @"WITH Codes AS (
@@ -368,7 +359,6 @@ SELECT SUM(OrpInsAmt),SUM(OrpInsOwn) FROM NativeRows";
         [FinanceNormal] = new[] { Day, NextDay, Hospital },
         [FinanceReceivable] = new[] { Day, NextDay, Hospital },
         [Patients] = new[] { From, To, Hospital },
-        [DistinctPatients] = new[] { From, To, Hospital },
         [CodeAmounts] = new[] { From, To, Hospital },
         [FinanceNormalExtra] = new[] { Day, NextDay, Hospital },
         [FinanceReceivableExtra] = new[] { Day, NextDay, Hospital },

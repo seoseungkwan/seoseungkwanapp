@@ -12,7 +12,7 @@ namespace Precheck.Core.Tests.Revenue;
 
 /// <summary>
 /// AC-003.1 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고, Extra 둘은 원본과 정해 둔 줄만 다르다.
-/// AC-003.8 ReadOnlyGuard는 매출 문장 11개를 정해 둔 매개변수와 함께만 통과시킨다. 기존 Sql 상수·시험은 그대로.
+/// AC-003.8 ReadOnlyGuard는 매출 문장 10개를 정해 둔 매개변수와 함께만 통과시킨다. 기존 Sql 상수·시험은 그대로.
 /// </summary>
 public class RevenueSqlTests
 {
@@ -32,8 +32,8 @@ public class RevenueSqlTests
         ["patients.sql"] = RevenueSql.Patients,
     };
 
-    private static readonly string[] Eleven = Originals.Values
-        .Concat(new[] { RevenueSql.DistinctPatients, RevenueSql.CodeAmounts, RevenueSql.FinanceNormalExtra, RevenueSql.FinanceReceivableExtra })
+    private static readonly string[] Ten = Originals.Values
+        .Concat(new[] { RevenueSql.CodeAmounts, RevenueSql.FinanceNormalExtra, RevenueSql.FinanceReceivableExtra })
         .ToArray();
 
     private static string OriginalDirectory()
@@ -102,18 +102,37 @@ public class RevenueSqlTests
         Assert.Equal(expected, Squash(RevenueSql.FinanceReceivableExtra));
     }
 
-    [Fact(DisplayName = "AC-003.4 DistinctPatients는 원본 Patients의 PeriodVisits와 같은 조건으로 COUNT(DISTINCT)만 낸다")]
-    public void DistinctPatientsUsesPeriodVisitsCondition()
+    /// <summary>
+    /// 문장 글자만 본다. 상태 코드의 뜻은 저장소에 적혀 있지 않아 접수취소가 빠진다는 증명이 아니다(증명은 의원 PC 확인표 ②, design.md 2절 5).
+    /// 입원 쪽 줄(FirstVisits)에 VC·CN·CR이 있으므로 문장 전체가 아니라 PeriodVisits 안만 본다.
+    /// </summary>
+    [Fact(DisplayName = "AC-003.4 RevenueSql.Patients의 PeriodVisits에 세 조건이 있고, 허용 목록은 WN·HN·TN·PN뿐이라 VC·CN·CR이 없다")]
+    public void PeriodVisitsPinsThreeConditions()
     {
-        var patients = NoSpace(ReadOriginal("patients.sql"));
-        var start = patients.IndexOf("FROMdbo.OcmInfc", StringComparison.Ordinal);
-        var end = patients.IndexOf("),Patients", StringComparison.Ordinal);
-        Assert.True(start >= 0 && end > start);
+        var sql = Squash(RevenueSql.Patients);
+        const string Open = "WITH PeriodVisits AS (";
+        var end = sql.IndexOf("), Patients AS (", StringComparison.Ordinal);
+        Assert.StartsWith(Open, sql, StringComparison.Ordinal);
+        Assert.True(end > Open.Length);
+        var periodVisits = sql.Substring(Open.Length, end - Open.Length);
 
-        var condition = patients.Substring(start, end - start);
-        var distinct = NoSpace(RevenueSql.DistinctPatients);
-        Assert.EndsWith(condition, distinct, StringComparison.Ordinal);
-        Assert.StartsWith("SELECTCOUNT(DISTINCTNULLIF(RTRIM(c.OcmChtNum),''))ASPatients,", distinct, StringComparison.Ordinal);
+        Assert.Contains("c.OcmPatTyp='O'", periodVisits, StringComparison.Ordinal);
+        Assert.Contains("c.OcmComStt IN ('WN','HN','TN','PN')", periodVisits, StringComparison.Ordinal);
+        Assert.Contains("c.OcmRsuYon<>'O'", periodVisits, StringComparison.Ordinal);
+
+        var allowed = Assert.Single(Regex.Matches(periodVisits, @"OcmComStt\s+(?:NOT\s+)?IN\s*\(([^)]*)\)").Cast<Match>()).Groups[1].Value;
+        Assert.Equal(new[] { "'WN'", "'HN'", "'TN'", "'PN'" }, allowed.Split(','));
+        foreach (var excluded in new[] { "VC", "CN", "CR" }) Assert.DoesNotContain(excluded, periodVisits, StringComparison.Ordinal);
+
+        // 시험이 빈 곳을 보지 않는지: 입원 쪽 줄의 글자는 문장 전체에는 그대로 있다
+        Assert.Contains("OcmComStt NOT IN ('VC','CN','CR')", sql, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-003.4 RevenueSql.Patients의 첫째 칸은 PeriodVisits 줄 수다(DISTINCT 없음, 같은 사람의 여러 접수는 여러 건)")]
+    public void FirstColumnCountsPeriodVisitRows()
+    {
+        var sql = Squash(RevenueSql.Patients);
+        Assert.Contains(") SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits), (SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from),", sql, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "AC-003.5 CodeAmounts는 원본 TrendDataSource 금액 식(일수 × 수량 × 단가, MissingValues)과 SeeMst 이름을 쓴다")]
@@ -129,8 +148,6 @@ public class RevenueSqlTests
     [Fact(DisplayName = "AC-003.7 새 문장은 차트번호 칸을 답으로 내지 않는다(합계·건수·처방 코드뿐)")]
     public void NewStatementsDoNotSelectCharts()
     {
-        var distinctColumns = NoSpace(RevenueSql.DistinctPatients.Substring(0, RevenueSql.DistinctPatients.IndexOf("FROM dbo.OcmInf", StringComparison.Ordinal)));
-        Assert.Equal(2, Regex.Matches(distinctColumns, @"AS(Patients|MissingCharts)").Count);
         Assert.DoesNotContain("Cht", NoSpace(RevenueSql.CodeAmounts), StringComparison.Ordinal);
         Assert.EndsWith(ExtraEnd, Squash(RevenueSql.FinanceNormalExtra), StringComparison.Ordinal);
         Assert.EndsWith(ExtraEnd, Squash(RevenueSql.FinanceReceivableExtra), StringComparison.Ordinal);
@@ -138,13 +155,13 @@ public class RevenueSqlTests
 
     // ---- AC-003.8 허용 목록 -------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.8 매출 문장은 11개이고 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
+    [Fact(DisplayName = "AC-003.8 매출 문장은 10개이고 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_", RegexOptions.IgnoreCase);
-        Assert.Equal(11, Eleven.Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(Eleven.OrderBy(sql => sql, StringComparer.Ordinal), RevenueSql.Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
-        foreach (var sql in Eleven)
+        Assert.Equal(10, Ten.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(Ten.OrderBy(sql => sql, StringComparer.Ordinal), RevenueSql.Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
+        foreach (var sql in Ten)
         {
             Assert.True(sql.StartsWith("SELECT ", StringComparison.Ordinal) || sql.StartsWith("WITH ", StringComparison.Ordinal));
             Assert.DoesNotContain(";", sql, StringComparison.Ordinal);
@@ -165,7 +182,7 @@ public class RevenueSqlTests
             ["@to"] = "Char:12",
             ["@hospital"] = "VarChar:32",
         };
-        foreach (var sql in Eleven)
+        foreach (var sql in Ten)
         {
             var named = Regex.Matches(sql, @"@\w+").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(name => name, StringComparer.Ordinal);
             var declared = RevenueSql.Parameters[sql];
@@ -178,7 +195,7 @@ public class RevenueSqlTests
     [Fact(DisplayName = "AC-003.8 ReadOnlyGuard는 매출 문장을 정해 둔 매개변수와 함께 통과시키고 표를 돌려준다")]
     public void GuardPassesRevenueStatements()
     {
-        foreach (var sql in Eleven)
+        foreach (var sql in Ten)
         {
             Assert.True(Sql.IsAllowed(sql));
             ReadOnlyGuard.Require(sql);
@@ -191,7 +208,7 @@ public class RevenueSqlTests
     {
         yield return new object?[] { RevenueSql.Patients + " " };
         yield return new object?[] { RevenueSql.CodeAmounts + "; DELETE FROM dbo.OdrInf" };
-        yield return new object?[] { RevenueSql.DistinctPatients.ToLowerInvariant() };
+        yield return new object?[] { RevenueSql.Patients.ToLowerInvariant() };
         yield return new object?[] { RevenueSql.CodeAmounts.Replace("@hospital", "'SYNTHETIC'") };
     }
 
@@ -205,7 +222,7 @@ public class RevenueSqlTests
     [Fact(DisplayName = "AC-003.8 매개변수가 빠지거나·더해지거나·글자가 아니거나·길면 막는다")]
     public void GuardRefusesBadArguments()
     {
-        foreach (var sql in Eleven.Where(sql => RevenueSql.Parameters[sql].Length > 0))
+        foreach (var sql in Ten.Where(sql => RevenueSql.Parameters[sql].Length > 0))
         {
             var missing = ValidArgs(sql);
             missing.Remove(missing.Keys.First());

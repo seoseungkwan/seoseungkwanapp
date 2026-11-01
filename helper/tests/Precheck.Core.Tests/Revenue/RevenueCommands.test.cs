@@ -18,7 +18,7 @@ public class RevenueCommandsTests
 
     private static readonly string[] DayKeys =
     {
-        "date", "visits", "newPatients", "returnVisits", "patientsToDate",
+        "date", "visits", "newPatients", "returnVisits",
         "total", "insurer", "noncovered", "copay", "otherTotal", "cash", "card", "transfer", "receivableIn",
         "unconfirmed", "splitUnconfirmed",
     };
@@ -133,7 +133,7 @@ public class RevenueCommandsTests
         Assert.Empty(rig.Connector.Opened);
     }
 
-    [Fact(DisplayName = "AC-003.7 답의 칸은 AC-002.2와 같다: {days, codes}, 날 줄 16칸, 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
+    [Fact(DisplayName = "AC-003.7 답의 칸은 AC-002.2와 같다: {days, codes}, 날 줄 15칸, 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
     public void ReplyHasExactFields()
     {
         using var rig = Ready();
@@ -192,7 +192,6 @@ public class RevenueCommandsTests
         using var rig = Ready();
         // 뒤쪽 칸에 환자 글자가 섞여 와도 읽는 칸만 본다
         RevenueFake.Row(rig.Session, RevenueSql.Patients, 10L, 3L, 0L, 0L, 0L, Fake.Chart, Fake.Name);
-        RevenueFake.Row(rig.Session, RevenueSql.DistinctPatients, 8L, 0L, Fake.Chart);
         RevenueFake.Row(rig.Session, RevenueSql.FinanceNormal, 1000000m, 300000m, 400000m, 200000m, 300000m, 100000m, Fake.Chart);
         RevenueFake.Row(rig.Session, RevenueSql.FinanceReceivableExtra, 15000m, 5000m, Fake.Name);
         var outcome = Handle(rig);

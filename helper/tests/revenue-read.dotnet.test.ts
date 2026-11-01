@@ -26,7 +26,7 @@ function expectAc(ac: string) {
 }
 
 describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () => {
-  it('AC-003.1 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 9개·걸린 날 3~5개, 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
+  it('AC-003.1 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 8개·걸린 날 2~4개, 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
     expectAc('AC-003.1')
   })
 
@@ -38,7 +38,7 @@ describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () 
     expectAc('AC-003.3')
   })
 
-  it('AC-003.4 DistinctPatients @from은 기간 첫날, 차트번호 없는 내원이 있으면 patientsToDate null', () => {
+  it('AC-003.4 visits는 Patients 첫째 칸(PeriodVisits 줄 수), 문장 글자의 PeriodVisits에 세 조건이 있고 허용 목록에 VC·CN·CR이 없다(접수취소가 빠진다는 증명은 아니다)', () => {
     expectAc('AC-003.4')
   })
 
@@ -54,7 +54,7 @@ describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () 
     expectAc('AC-003.7')
   })
 
-  it('AC-003.8 ReadOnlyGuard는 매출 문장 11개를 정해 둔 매개변수와 함께만 통과, 읽기 문장 하나, 기존 Sql 상수는 그대로', () => {
+  it('AC-003.8 ReadOnlyGuard는 매출 문장 10개를 정해 둔 매개변수와 함께만 통과, 읽기 문장 하나, 기존 Sql 상수는 그대로', () => {
     expectAc('AC-003.8')
   })
 })

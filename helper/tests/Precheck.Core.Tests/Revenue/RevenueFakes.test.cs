@@ -32,8 +32,8 @@ internal static class RevenueFake
         RevenueSql.FinanceReceivableExtra,
     };
 
-    /// <summary>세 검사를 지난 날에 돌리는 문장 9개.</summary>
-    public static readonly string[] NineStatements = Checks.Concat(MoneyStatements).Concat(new[] { RevenueSql.Patients, RevenueSql.DistinctPatients }).ToArray();
+    /// <summary>세 검사를 지난 날에 돌리는 문장 8개.</summary>
+    public static readonly string[] EightStatements = Checks.Concat(MoneyStatements).Concat(new[] { RevenueSql.Patients }).ToArray();
 
     /// <summary>검사 모두 0, 기본 금액·건수, 처방 없음.</summary>
     public static T Quiet<T>(T db) where T : FakeDb
@@ -45,7 +45,6 @@ internal static class RevenueFake
         Row(db, RevenueSql.FinanceNormalExtra, NormalExtra);
         Row(db, RevenueSql.FinanceReceivableExtra, ReceivableExtra);
         Row(db, RevenueSql.Patients, 10L, 3L, 0L, 0L, 0L);
-        Row(db, RevenueSql.DistinctPatients, 8L, 0L);
         db.Answer(RevenueSql.CodeAmounts, _ => new object?[0][]);
         return db;
     }

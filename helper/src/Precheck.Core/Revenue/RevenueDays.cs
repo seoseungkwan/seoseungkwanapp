@@ -24,9 +24,6 @@ public sealed class RevenueDay
     [JsonPropertyName("returnVisits")]
     public long? ReturnVisits { get; set; }
 
-    [JsonPropertyName("patientsToDate")]
-    public long? PatientsToDate { get; set; }
-
     [JsonPropertyName("total")]
     public long? Total { get; set; }
 
@@ -140,12 +137,12 @@ public static class RevenueDays
         var days = new List<RevenueDay>();
         for (var day = first; day <= last; day = day.AddDays(1))
         {
-            days.Add(ReadDay(db, hospitalScope, first, day, historyKnown));
+            days.Add(ReadDay(db, hospitalScope, day, historyKnown));
         }
         return new RevenueResult(days, ReadCodes(db, hospitalScope, first, last));
     }
 
-    private static RevenueDay ReadDay(IBitDb db, string scope, DateTime first, DateTime day, bool historyKnown)
+    private static RevenueDay ReadDay(IBitDb db, string scope, DateTime day, bool historyKnown)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -158,11 +155,6 @@ public static class RevenueDays
         var row = new RevenueDay { Date = day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
         ReadMoney(db, values, row);
         ReadVisits(db, values, historyKnown, row);
-
-        // 환자 수만 기간 첫날부터 센다(AC-003.4)
-        values["@from"] = Key(first) + Midnight;
-        var patients = Row(db, RevenueSql.DistinctPatients, values, 2);
-        row.PatientsToDate = Number(patients[1]) == 0 ? Number(patients[0]) : (long?)null;
         return row;
     }
 

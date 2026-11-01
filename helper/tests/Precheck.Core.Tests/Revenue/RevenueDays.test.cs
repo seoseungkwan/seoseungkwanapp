@@ -61,8 +61,8 @@ public class RevenueDaysTests
 
     // ---- AC-003.1 어떤 문장을 언제 돌리는가 -------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.1 3일 기간이면 줄 3개, HistoryGuard 한 번, 날마다 문장 9개를 그날 기간으로, 마지막에 CodeAmounts 한 번")]
-    public void RunsNineStatementsEachDay()
+    [Fact(DisplayName = "AC-003.1 3일 기간이면 줄 3개, HistoryGuard 한 번, 날마다 문장 8개를 그날 기간으로, 마지막에 CodeAmounts 한 번")]
+    public void RunsEightStatementsEachDay()
     {
         var db = RevenueFake.Quiet(new FakeDb());
         var result = Read(db, First, Last);
@@ -71,20 +71,20 @@ public class RevenueDaysTests
         Assert.Equal(RevenueSql.HistoryGuard, db.Calls[0].Sql);
         Assert.Empty(db.Calls[0].Args);
         Assert.Equal(RevenueSql.CodeAmounts, db.Calls[db.Calls.Count - 1].Sql);
-        Assert.Equal(1 + 3 * 9 + 1, db.Calls.Count);
+        Assert.Equal(1 + 3 * 8 + 1, db.Calls.Count);
 
         var days = new[] { ("20261030", "20261031"), ("20261031", "20261101"), ("20261101", "20261102") };
         foreach (var (day, next) in days)
         {
             var calls = RevenueFake.CallsOn(db, next);
-            Assert.Equal(Sorted(RevenueFake.NineStatements), Sorted(calls.Select(call => call.Sql)));
+            Assert.Equal(Sorted(RevenueFake.EightStatements), Sorted(calls.Select(call => call.Sql)));
             foreach (var call in calls)
             {
                 var expected = new Dictionary<string, string>
                 {
                     ["@day"] = day,
                     ["@nextDay"] = next,
-                    ["@from"] = (call.Sql == RevenueSql.DistinctPatients ? "20261030" : day) + "0000",
+                    ["@from"] = day + "0000",
                     ["@to"] = next + "0000",
                     ["@hospital"] = Synthetic.Scope,
                 };
@@ -103,10 +103,10 @@ public class RevenueDaysTests
         Assert.All(db.Calls, call => Assert.Equal(TimeSpan.FromSeconds(90), call.Timeout));
     }
 
-    [Theory(DisplayName = "AC-003.1 검사에 걸린 날은 남은 검사·금액 문장을 돌리지 않는다(3개·4개·5개)")]
-    [InlineData(0, 3)]
-    [InlineData(1, 4)]
-    [InlineData(2, 5)]
+    [Theory(DisplayName = "AC-003.1 검사에 걸린 날은 남은 검사·금액 문장을 돌리지 않는다(2개·3개·4개)")]
+    [InlineData(0, 2)]
+    [InlineData(1, 3)]
+    [InlineData(2, 4)]
     public void StopsAtFirstFailedCheck(int check, int statements)
     {
         var db = RevenueFake.Quiet(new FakeDb());
@@ -116,10 +116,10 @@ public class RevenueDaysTests
         var caught = RevenueFake.CallsOn(db, "20261101").Select(call => call.Sql).ToArray();
         Assert.Equal(statements, caught.Length);
         Assert.Equal(
-            Sorted(RevenueFake.Checks.Take(check + 1).Concat(new[] { RevenueSql.Patients, RevenueSql.DistinctPatients })),
+            Sorted(RevenueFake.Checks.Take(check + 1).Concat(new[] { RevenueSql.Patients })),
             Sorted(caught));
-        Assert.Equal(9, RevenueFake.CallsOn(db, "20261031").Count);
-        Assert.Equal(9, RevenueFake.CallsOn(db, "20261102").Count);
+        Assert.Equal(8, RevenueFake.CallsOn(db, "20261031").Count);
+        Assert.Equal(8, RevenueFake.CallsOn(db, "20261102").Count);
     }
 
     // ---- AC-003.2 금액 ------------------------------------------------------------------------------
@@ -204,9 +204,8 @@ public class RevenueDaysTests
         Assert.Equal(1050000L, days[0].Total);
         Assert.Equal(1050000L, days[2].Total);
 
-        // 환자 수·건수는 금액과 상관없이 남는다
+        // 건수는 금액과 상관없이 남는다
         Assert.Equal(10L, days[1].Visits);
-        Assert.Equal(8L, days[1].PatientsToDate);
     }
 
     [Fact(DisplayName = "AC-003.2 insurer + copay ≠ 요양비용총액이면 그날만 splitUnconfirmed, 나눔 네 칸만 null, total·cash·card·transfer·receivableIn은 그대로(맞춰 고치지 않음)")]
@@ -402,32 +401,21 @@ public class RevenueDaysTests
         Assert.Single(db.Calls, call => call.Sql == RevenueSql.HistoryGuard);
     }
 
-    // ---- AC-003.4 환자 수 --------------------------------------------------------------------------
+    // ---- AC-003.4 내원 건수 ------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.4 patientsToDate는 from부터 그날까지: 둘째 날 DistinctPatients의 @from은 첫날, @to는 그다음 날")]
-    public void PatientsToDateRunsFromPeriodStart()
+    [Fact(DisplayName = "AC-003.4 visits는 Patients 첫째 칸이고, 그날 기간의 @from·@to로 읽는다")]
+    public void VisitsIsFirstCellOfThatDay()
     {
         var db = RevenueFake.Quiet(new FakeDb());
-        db.Answer(RevenueSql.DistinctPatients, args => new[] { new object?[] { (string)args["@to"]! == "202611010000" ? 15L : 8L, 0L } });
+        db.Answer(RevenueSql.Patients, args => new[] { new object?[] { (string)args["@from"]! == "202610310000" ? 15L : 8L, 3L, 0L, 0L, 0L } });
         var days = Read(db, First, Last).Days;
 
-        Assert.Equal(new long?[] { 8L, 15L, 8L }, days.Select(day => day.PatientsToDate));
-        var second = Assert.Single(RevenueFake.CallsOn(db, "20261101"), call => call.Sql == RevenueSql.DistinctPatients);
-        Assert.Equal("202610300000", second.Args["@from"]);
+        Assert.Equal(new long?[] { 8L, 15L, 8L }, days.Select(day => day.Visits));
+        var second = Assert.Single(RevenueFake.CallsOn(db, "20261101"), call => call.Sql == RevenueSql.Patients);
+        Assert.Equal("202610310000", second.Args["@from"]);
         Assert.Equal("202611010000", second.Args["@to"]);
         Assert.Equal(Synthetic.Scope, second.Args["@hospital"]);
         Assert.Equal(3, second.Args.Count);
-    }
-
-    [Fact(DisplayName = "AC-003.4 차트번호 없는 내원이 있으면 patientsToDate null, 내원 없는 날(NULL)은 0")]
-    public void MissingChartsNullPatientsToDate()
-    {
-        var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.Row(db, RevenueSql.DistinctPatients, 8L, 1L);
-        Assert.Null(OneDay(db).PatientsToDate);
-
-        RevenueFake.Row(db, RevenueSql.DistinctPatients, 0L, null);
-        Assert.Equal(0L, OneDay(db).PatientsToDate);
     }
 
     // ---- AC-003.5 처방 코드 ------------------------------------------------------------------------
