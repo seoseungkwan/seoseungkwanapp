@@ -10,7 +10,7 @@
 
 - **AC-009.1**: [전날]·날짜 고르기(최대 = 오늘)·[다음 날], 오늘이 아닐 때만 [오늘로]. 오늘이면 [다음 날] 못 누름. 미래·날짜 아닌 고르기 무시
 - **AC-009.2**: 상태 글 — "불러오는 중이에요" · "적으면 바로 저장돼요" · "저장하는 중이에요" · "저장했어요 · 14:05" · "인터넷이 끊겼어요. 다시 연결되면 저장해요", `role="status"`
-- **AC-009.3**: 오류 카드 넷 — `E-WORKLOG-SAVE-FAILED` + [다시 저장] · `E-WORKLOG-NOTE-PRIVATE` · `E-WORKLOG-MEMO-FAILED` · `E-WORKLOG-LOAD-FAILED` + [다시 불러오기]. 문구는 `lib/errors.ts`
+- **AC-009.3**: 오류 카드 셋 — `E-WORKLOG-SAVE-FAILED` + [다시 저장] · `E-WORKLOG-NOTE-PRIVATE`(막힌 칸 전체, 다른 날이면 "막힌 칸은 2026/10/30 금에 있어요") · `E-WORKLOG-LOAD-FAILED` + [다시 불러오기]. 문구는 `lib/errors.ts`
 - **AC-009.4**: [인쇄](보조 단추), [저장] 없음, 폰 44px 이상
 
 ## 읽어야 할 파일
@@ -50,25 +50,25 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - 오류 문구는 `lib/errors.ts` 한 곳(CLAUDE.md). 카드는 `ErrorCard`만 쓰고 원래 오류 내용을 그리지 않는다
-- `lib/errors.ts`·`types/errors.ts`는 사전점검 갈래와 겹친다: **파일 끝에 더하기만** 한다(주석 한 줄 `// 업무일지(specs/worklog)` + 넷)
+- `lib/errors.ts`·`types/errors.ts`는 사전점검 갈래와 겹친다: **파일 끝에 더하기만** 한다(주석 한 줄 `// 업무일지(specs/worklog)` + 셋)
 - 문구 말끝은 "~요"(UI_GUIDE '문구'). design.md 11-2절 표 글자 그대로
 - 날짜 줄 밖은 앱 규칙(`ds`·토큰·Pretendard)이다. 엑셀 서식을 쓰지 않는다
 
 ## 작업
 
 ```tsx
-export type ToolbarStatus = 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'memo-failed' | 'load-failed'
+export type ToolbarStatus = 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed'
 export function WorklogToolbar(props: {
-  ymd: string; today: string; status: ToolbarStatus; savedAt: Date | null
+  ymd: string; today: string; status: ToolbarStatus; savedAt: Date | null; blockedYmd: string | null
   onDate(ymd: string): void; onRetrySave(): void; onReload(): void; onPrint(): void
 }): JSX.Element
 ```
 - PC 한 줄(왼쪽 날짜 묶음 / 오른쪽 상태 글 · [인쇄]), 768px 미만 두 줄(design.md 11-2절). 폭은 양식과 같은 737px 가운데(`max-w`는 토큰·간격 단계로. 대괄호 값 금지 → 양식과 같은 폭 감싸개는 TASK-10이 정한다. 여기서는 `w-full`)
 - [전날]·[다음 날]은 화살표 아이콘(`Icon chev` 돌림) + 글자, `aria-label`은 "전날"·"다음 날"
 - 날짜 칸 `<input type="date" aria-label="날짜 고르기" max={today} value={ymd}>`. 바뀌면 `clampToToday`가 같은 날이면 `onDate`, 다르면(미래·빈 값) 무시
-- 오류 카드: 상태가 실패 넷이면 줄 아래 전체 폭에 `ErrorCard` + 그 밑에 단추(`ds.button.secondary`)
-- `errors.ts`·`types/errors.ts` 끝에 `E-WORKLOG-SAVE-FAILED`·`E-WORKLOG-LOAD-FAILED`·`E-WORKLOG-MEMO-FAILED`·`E-WORKLOG-NOTE-PRIVATE`. `errors.test.ts`에 `AC-009.3` 시험 하나(넷의 문구가 design.md 표 그대로, "~요"로 끝남)
-- 시험: 각 상태 글, [오늘로] 있고 없음, [다음 날] `disabled`, 날짜 칸 `max`, 미래 고르기 무시, 실패 넷의 카드 번호와 단추, [저장] 단추 없음(`queryByRole('button', { name: /저장$/ })`는 [다시 저장]만), 단추·입력의 `ds` 클래스(44px `h-11`)
+- 오류 카드: 상태가 실패 셋이면 줄 아래 전체 폭에 `ErrorCard` + 그 밑에 단추(`ds.button.secondary`). `blocked`이고 `blockedYmd`가 있으며 지금 날과 다르면 카드 아래 small `ink-2` 글자 "막힌 칸은 {sheetDateText(blockedYmd)}에 있어요"
+- `errors.ts`·`types/errors.ts` 끝에 `E-WORKLOG-SAVE-FAILED`·`E-WORKLOG-LOAD-FAILED`·`E-WORKLOG-NOTE-PRIVATE`. `errors.test.ts`에 `AC-009.3` 시험 하나(셋의 문구가 design.md 표 그대로, "~요"로 끝남, `E-WORKLOG-NOTE-PRIVATE`에 "비고"가 없음)
+- 시험: 각 상태 글, [오늘로] 있고 없음, [다음 날] `disabled`, 날짜 칸 `max`, 미래 고르기 무시, 실패 셋의 카드 번호와 단추, 막힌 칸이 다른 날일 때만 날짜 글자, [저장] 단추 없음(`queryByRole('button', { name: /저장$/ })`는 [다시 저장]만), 단추·입력의 `ds` 클래스(44px `h-11`)
 
 ## TDD 순서
 
@@ -96,7 +96,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-2-screen/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

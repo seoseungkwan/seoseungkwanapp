@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-012에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-012.1**: `/worklog` = 업무일지 화면(준비 중 아님). 병원 id = `currentMe()`의 승인된 병원 줄, 오늘 = 요청 때 한국 날짜. metadata 제목 "업무일지"
+- **AC-012.1**: `/worklog` = 업무일지 화면(준비 중 아님). 오늘 = 요청 때 한국 날짜. metadata 제목 "업무일지"
 - **AC-012.2**: 탭 목록 업무일지 `href: '/worklog'`·`ready: true`, [전체 메뉴] 판에 "준비 중" 칩 없음
 - **AC-012.3**: 대시보드 기능 목차 업무일지 `ready`
 - **AC-012.4**: 준비 중 목록에 `/worklog` 없음, 탭 틀 통합 시험·준비 중 페이지 시험·탭 이름 시험이 바뀐 목록으로 통과
@@ -65,7 +65,7 @@
 
 - 네 곳(`menu.ts`·`features.ts`·`notReadyFeatures.ts`·`page.tsx`)을 **같은 step에서** 바꾼다. 한쪽만 바꾸면 `tabFrame.test.tsx`가 깨진다(tab-frame 규칙)
 - 이 네 파일과 시험은 통계·매출·환자 갈래도 자기 한 줄씩 바꾼다: **업무일지 줄만** 고친다. 다른 탭의 줄·순서는 그대로
-- 페이지는 서버 컴포넌트다. 병원 id는 `currentMe()`(요청 안 캐시)로만 얻는다. 쿼리·주소의 값을 믿지 않는다
+- 페이지는 서버 컴포넌트다. 병원 id를 넘기지 않는다(저장은 RLS·DB 기본값이 내 병원으로 한다). 승인 확인은 `(app)/layout`이 한다
 
 ## 작업
 
@@ -73,11 +73,8 @@
 ```tsx
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: '업무일지' }
-export default async function WorklogPage() {
-  const me = await currentMe()
-  // (app)/layout이 승인된 병원 줄을 보장한다 — 없으면 던져 오류 화면
-  if (me.hospital?.status !== 'approved') throw new Error('승인된 병원 줄이 없어요')
-  return <WorklogScreen hospitalId={me.hospital.id} initialToday={todayInKorea()} />
+export default function WorklogPage() {
+  return <WorklogScreen initialToday={todayInKorea()} />
 }
 ```
 
@@ -87,7 +84,7 @@ export default async function WorklogPage() {
 - `notReadyFeatures.ts`: `NotReadyPath`와 `NOT_READY_FEATURES`에서 `/worklog` 빼기
 
 ### 3. 시험
-- `page.test.tsx`(새, jsdom): `guardPage` mock(승인 병원 `h1`) → 그린 결과가 `WorklogScreen`(mock)에 `hospitalId: 'h1'`·`initialToday: todayInKorea()`를 넘김, metadata `'업무일지'`, 준비 중 글자("준비 중이에요") 없음. 승인 아님이면 던짐
+- `page.test.tsx`(새, jsdom): 그린 결과가 `WorklogScreen`(mock)에 `initialToday: todayInKorea()`를 넘김, `hospitalId`를 넘기지 않음, metadata `'업무일지'`, 준비 중 글자("준비 중이에요") 없음
 - 기존 시험은 업무일지 기대만 바꾼다: `notReadyPages.test.tsx`(업무일지 줄 빼기), `titles.test.tsx`(준비 중 목록에서 빼고 `{ path: '/worklog', title: '업무일지', load }` 한 줄), `notReadyFeatures.test.ts`(목록 개수·업무일지 줄), `features.test.ts`(업무일지 `ready`), `shell.test.tsx`(업무일지 `ready`·칩 기대가 있으면), `tabFrame.test.tsx`(ready/soon 나눔이 업무일지를 셈하면), `DashboardHome.test.tsx`(`INDEX_SIDE` "12개 가운데 1개는 지금 …"·준비 중 10개·사용 가능 2개 기대 — `FeatureIndex.tsx`가 목록에서 세므로 코드는 그대로이고, 시험의 손 숫자를 `DASHBOARD_FEATURES.filter(…).length`로 바꾼다. 다른 갈래가 탭을 채워도 그대로 통과해야 한다). 이 TASK가 고치는 시험에서는 개수를 늘 목록에서 센다(`toHaveLength(10)` 같은 손 숫자를 새로 쓰지 않는다). `shell.test.tsx`의 "준비 중 주소 /worklog" 탭 띠 밀기 시험은 경로만 쓰므로 그대로 둔다(겹침 줄이기, design.md 14절)
 
 ### 4. 끝나고 화면 확인 (Phase 3 화면 캡처)
@@ -118,7 +115,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-3-finish/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

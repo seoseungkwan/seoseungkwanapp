@@ -9,7 +9,7 @@
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-018에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-018.1**: 0110 migration 적용 뒤, 시험 코드가 승인 계정 클라이언트(RLS 아래)로 시험 날짜 줄에 `bit_fields`를 넣고 → 화면(비트 PC 없음)에서 다른 칸을 고쳐 자동 저장 → 다시 읽으면 고친 값 저장 + `bit_fields` 그대로, 화면에 표시 보임
-- **AC-018.2**: 모든 요청의 주소·본문과 다시 읽은 줄에 가짜 환자 이름·차트번호·전화·주민번호·업무사항 표식이 없음(C7)
+- **AC-018.2**: 칸에 막는 모양을 적음 → 모든 요청의 주소·본문과 다시 읽은 줄에 그 값이 없음(C7)
 
 ## 읽어야 할 파일
 
@@ -40,15 +40,15 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **먼저 확인**: 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase SQL 편집기에 붙여 넣었는가? 아니면 바로 `blocked`(사유: "worklog_bit_fields migration 적용 필요 — 사용자 OK"). Claude가 붙여 넣지 않는다
-- 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['표식', '전화']` → `expect(hits).toEqual([])`, cross-branch C11)
+- 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['업무사항-전화']` → `expect(hits).toEqual([])`, cross-branch C11)
 - 시험 산출물에 쿠키·토큰·이메일을 남기지 않는다(`trace: 'off'`). 요청 본문은 메모리에서 검사만 한다
 - 시험 계정(가짜 병원)·시험 날짜 2020-01-02만 쓴다
 
 ## 작업
 
 - `import { test, expect } from './support'`
-- 순서: `accounts.client('approved')`로 2020-01-02 줄 upsert(`work_date`·`cash_in: 100000`·`bit_fields: ['cash_in']`) → `signIn` → `page.on('request')`로 **모든 요청** 주소·본문 모음 → `/worklog` → 날짜 2020-01-02 → 현금수납 칸에 비트 표시가 보임 → 지출 현금 칸에 5000 → "저장했어요" → 다시 읽어 `spend_cash = 5000`·`bit_fields = ['cash_in']`(AC-018.1) → 업무사항 칸에 가짜 글자(`'가상환자01'`·`'900001'`·`'010-0000-0001'`·`'900101-1234567'`·표식)를 넣고 저장 상태 확인 → 모은 요청과 다시 읽은 줄에 가짜 글자 없음(AC-018.2)
-- 끝(`afterAll`): 그 날 줄을 빈 값·`bit_fields: []`로 되돌리고 업무사항 칸을 비운다
+- 순서: `accounts.client('approved')`로 2020-01-02 줄 upsert(`work_date`·`cash_in: '100000'`·`bit_fields: ['cash_in']`) → `signIn` → `page.on('request')`로 **모든 요청** 주소·본문 모음 → `/worklog` → 날짜 2020-01-02 → 현금수납 칸에 비트 표시가 보임 → 지출 현금 칸에 5000 → "저장했어요" → 다시 읽어 `spend_cash = '5000'`·`bit_fields = ['cash_in']`(AC-018.1) → 업무사항 칸에 막는 모양(`'010-0000-0001'`·`'900101-1234567'`)을 넣고 빨강·오류 카드 확인 → 모은 요청과 다시 읽은 줄에 그 값 없음(AC-018.2). 저장 요청 본문에 `bit_fields`가 없는지도 본다(바뀌지 않았으니 안 보낸다)
+- 끝(`afterAll`): 그 날 줄의 값 칸을 null, `bit_fields: []`로 되돌린다
 - 확인: `npm run e2e`
 
 
@@ -69,7 +69,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-5-bitcheck/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

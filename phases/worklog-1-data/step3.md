@@ -1,21 +1,27 @@
 # Step 3: db-table
 
-> **TASK-4** 서버 표 `worklog_days` · **REQ-004** · AC-004.1 ~ AC-004.8
+> **TASK-4** 서버 표 `worklog_days` · **REQ-004** · AC-004.1 ~ AC-004.9
 > Phase 1 `worklog-1-data` · Step 3 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
+
+## 이미 된 일 (2026-11-01 명세 변경)
+
+- **이미 커밋됨(c5c4c12). 같은 파일(`20261101000100_worklog.sql`·`worklog.rls.test.ts`)을 고친다. 시험을 먼저 바꿔 RED를 확인한다.** migration은 실제 Supabase에 아직 안 붙였으므로 새 migration을 더하지 않는다
+- 바뀌는 것: 숫자 칸 14개 `integer`/`bigint` → 글자, `memo`와 항목 이름 12칸(`name_*`) 추가, 칸 권한 목록, 머리 주석의 "업무사항 칸은 없다(그 PC 브라우저에만 둔다)"·"공용 함수 둘". **`touch_updated_at()`을 지운다**: 그 함수를 만드는 `create or replace function public.touch_updated_at()` 줄과 `revoke` 줄, `updated_at` 칸, `worklog_days_updated_at` 방아쇠, 시험의 그 부분과 머리 주석의 `updated_at` 문장
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-004에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-004.1**: 표 칸이 정해 둔 목록과 정확히 같다(`hospital_id` 기본값 `my_hospital_id()`·`work_date` 기본 열쇠, 인원 2·수입 8·지출 4·비고 5, `updated_at`). 업무사항 칸 없음
+- **AC-004.1**: 표 칸이 정해 둔 목록과 정확히 같다(`hospital_id` 기본값 `my_hospital_id()`·`work_date` 기본 열쇠, 인원 2·수입 8·지출 4(모두 글자), 비고 5, `memo`, 항목 이름 12). 합계 칸·저장 시각 칸 없음
 - **AC-004.2**: anon은 읽기·쓰기 모두 거부
-- **AC-004.3**: 승인된 병원 사용자는 `hospital_id` 없이 넣기·읽기·`insert … on conflict (hospital_id, work_date) do update`(보낸 칸만 SET) 고치기 됨. `hospital_id`는 내 병원으로 채워짐
+- **AC-004.3**: 승인된 병원 사용자는 `hospital_id` 없이 넣기·읽기·`insert … on conflict (hospital_id, work_date) do update`(보낸 칸만 SET) 고치기 됨. `hospital_id`는 내 병원으로 채워짐. `authenticated`의 넣기·고치기 칸 권한 = `work_date` + 값 32칸 정확히(`hospital_id` 없음), 칸마다 그 칸만 보낸 upsert 됨
 - **AC-004.4**: 다른 병원 줄은 안 보이고 안 바뀜. `hospital_id`를 직접 넣기·바꾸기는 권한 없어 거부
 - **AC-004.5**: 승인 대기·거절 병원 사용자는 아무 줄도 못 보고 못 씀
-- **AC-004.6**: 음수·인원 99,999 초과·금액 999,999,999,999 초과·빈 글자 비고·101자 비고 거부, null은 됨
-- **AC-004.7**: 지우기·`updated_at` 직접 넣기 거부, 고치면 `updated_at`이 바뀜(공용 `touch_updated_at()`), 방아쇠 함수 직접 실행 권한 없음
-- **AC-004.8**: 공용 함수 둘이 이미 있어도(다른 갈래가 먼저) 이 migration이 실패하지 않고 위 시험이 그대로 통과
+- **AC-004.6**: 빈 글자·숫자 칸 51자·비고 101자·`memo` 2,001자·항목 이름 21자 거부, null은 됨, '12,000 별도'·'-5,000'은 됨
+- **AC-004.7**: 지우기 거부. 저장 시각 칸·방아쇠 없음(사용자 결정 5). 지금 파일의 `updated_at`·`touch_updated_at()`·방아쇠와 그 시험을 뺀다
+- **AC-004.8**: 공용 함수 `my_hospital_id()`가 이미 있어도(다른 갈래가 먼저) 이 migration이 실패하지 않고 위 시험이 그대로 통과
+- **AC-004.9**: 칸 하나만 보낸 upsert를 다른 칸으로 두 번 → 두 칸 다 남고 보내지 않은 칸은 그대로. 같은 칸이면 나중 값. 줄 없는 날에 칸 하나만 보내도 줄이 생김
 
 ## 읽어야 할 파일
 
@@ -49,8 +55,8 @@
 
 - **DB 표는 RLS를 켜고, 먼저 `anon`·`authenticated` 권한을 모두 거둔 뒤 필요한 것만 준다**(CLAUDE.md 보안 규칙). 사용자가 자기 병원 밖 줄을 보거나 쓸 수 없다는 것을 시험으로 증명한다
 - **실제 Supabase에 이 SQL을 실행하지 않는다.** 붙여 넣기는 사용자 OK 뒤 운영자가 SQL 편집기에서 한다(design.md 8절). 이 step은 파일과 PGlite 시험만
-- 표에 업무사항(글 칸)을 두지 않는다. 비고 다섯 칸만 글자다
-- 공용 함수 `my_hospital_id()`·`touch_updated_at()`는 **cross-branch C1 글자 그대로** 쓴다(`create or replace`, 한 글자도 바꾸지 않는다 — 통계·환자·매출·사전점검이 같은 글자를 쓴다). 그 밖의 `security definer` 함수·service role은 쓰지 않는다
+- 업무사항은 `memo` 칸(사용자 결정 1). 합계 칸은 두지 않는다. 숫자 칸은 글자 칸이고 DB는 길이만 본다(사용자 결정 2)
+- 공용 함수 `my_hospital_id()`는 **cross-branch C1 글자 그대로** 쓴다(`create or replace`, 한 글자도 바꾸지 않는다 — 통계·환자·매출·사전점검이 같은 글자를 쓴다). 그 밖의 `security definer` 함수·service role은 쓰지 않는다
 - 브라우저가 `hospital_id`를 보내지 못하게 한다: 그 칸에는 insert·update 권한이 없고 기본값으로만 채워진다
 
 ## 작업
@@ -63,22 +69,20 @@ create or replace function public.my_hospital_id() returns uuid language sql sta
   as $$ select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved' $$;
 revoke execute on function public.my_hospital_id() from public, anon;
 grant execute on function public.my_hospital_id() to authenticated;
-create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
-revoke execute on function public.touch_updated_at() from public, anon, authenticated;
 ```
-- 표: `hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade`, 칸 19개는 `WORKLOG_COLUMNS` 순서와 이름 그대로. 인원 `integer check (… between 0 and 99999)`, 금액 `bigint check (… between 0 and 999999999999)`, 비고 `text check (char_length(…) between 1 and 100)`
-- `enable row level security` → `revoke all … from anon, authenticated` → `grant select` · `grant insert (work_date, <19칸>)` · `grant update (work_date, <19칸>)` to authenticated. `hospital_id`·delete·`updated_at`에는 권한 없음
+- 표: `hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade`, 값 32칸은 `WORKLOG_COLUMNS` 순서와 이름 그대로. 숫자 칸 14개 `text check (char_length(…) between 1 and 50)`, 비고 `text check (char_length(…) between 1 and 100)`, `memo text check (char_length(memo) between 1 and 2000)`, 항목 이름 12칸 `text check (char_length(…) between 1 and 20)`
+- `enable row level security` → `revoke all … from anon, authenticated` → `grant select` · `grant insert (work_date, <값 32칸>)` · `grant update (work_date, <값 32칸>)` to authenticated. `hospital_id`·delete에는 권한 없음
 - 정책 셋: select `using`, insert `with check`, update `using` + `with check` — 모두 `hospital_id = (select public.my_hospital_id())`
-- `create trigger worklog_days_updated_at before update … execute function public.touch_updated_at()`
 
 ### 2. `supabase/worklog.rls.test.ts`
 - `rls.test.ts`의 `SUPABASE_MOCK`·사용자 바꾸기 방식을 이 파일 안에 그대로 옮긴다(그 파일은 고치지 않는다). auth migration을 먼저, 이 migration을 다음에 실행
 - 준비: 병원 A(승인)·B(승인)·C(대기)·D(거절) 줄을 운영자로 넣는다
-- AC-004.1: `information_schema.columns`의 칸 이름·종류 목록이 정해 둔 목록과 같다. `memo`·`work_note`·`업무` 같은 칸이 없다. `hospital_id` 기본값 글자에 `my_hospital_id()`
-- AC-004.3: A 사용자로 `hospital_id` 없이 insert → select(`hospital_id` = A) → 같은 날로 `insert … on conflict (hospital_id, work_date) do update set <보낸 칸 = excluded>`(PostgREST upsert와 같은 모양, `hospital_id`는 SET에 없다)
+- AC-004.1: `information_schema.columns`의 칸 이름·종류 목록이 정해 둔 목록과 같다(숫자 칸·`memo`·항목 이름 모두 `text`). 합계 칸이 없다. `hospital_id` 기본값 글자에 `my_hospital_id()`
+- AC-004.3: A 사용자로 `hospital_id` 없이 insert → select(`hospital_id` = A) → 같은 날로 `insert … on conflict (hospital_id, work_date) do update set <보낸 칸 = excluded>`(PostgREST upsert와 같은 모양, `work_date`는 SET에 있고 `hospital_id`는 없다). 권한: 운영자로 `information_schema.column_privileges`에서 `grantee = 'authenticated'`의 `INSERT`·`UPDATE` 칸 목록을 읽어 각각 `work_date` + `WORKLOG_COLUMNS` 32칸과 정확히 견준다(더 있거나 빠지면 실패). 칸마다: 값 32칸을 하나씩 돌며 그 칸만 보낸 upsert가 되는지 본다(권한 목록과 표가 어긋나면 잡힌다)
 - AC-004.4: A가 `hospital_id = B`로 insert → `42501`, `update … set hospital_id = B` → `42501`, B 줄은 select 0줄·update 0줄
-- AC-004.5·004.6·004.7: 거부는 오류 코드(`42501` 권한·RLS, `23514` check)로 본다. 방아쇠 함수를 A가 직접 `select public.touch_updated_at()` → 거부
-- AC-004.8: 새 PGlite에서 C1 공용 함수 둘을 먼저 만든 뒤(다른 갈래 흉내) 이 migration을 실행 → 오류 없음, AC-004.3 한 번 더
+- AC-004.5·004.6·004.7: 거부는 오류 코드(`42501` 권한·RLS, `23514` check)로 본다.
+- AC-004.9: A 사용자로 `(work_date, cash_in)`만 upsert → `(work_date, card_in)`만 upsert → 두 칸 다 있고 `memo`는 null. 같은 칸을 두 번 → 나중 값. 항목 이름·`memo`도 칸 하나만 보내 본다
+- AC-004.8: 새 PGlite에서 C1 공용 함수 `my_hospital_id()`를 먼저 만든 뒤(다른 갈래 흉내) 이 migration을 실행 → 오류 없음, AC-004.3 한 번 더
 - PGlite 첫 실행이 느리니 시험 시간 제한을 넉넉히(`rls.test.ts`의 `SLOW`)
 
 ## TDD 순서
@@ -91,15 +95,14 @@ revoke execute on function public.touch_updated_at() from public, anon, authenti
 ## Acceptance Criteria
 
 ```bash
-npx vitest run supabase/worklog.rls.test.ts   # AC-004.1~AC-004.7
+npx vitest run supabase/worklog.rls.test.ts   # AC-004.1~AC-004.9
 npx vitest run supabase/rls.test.ts           # auth migration 시험 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-4 --expect green
-npm run lint && npm test
-python3 ~/.claude/harness/bin/verify
+npm run lint   # 전체 시험·verify는 TASK-5까지 끝난 뒤
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-004.1 ~ AC-004.8가 이 TASK의 시험과 이어져 보여야 한다
+- 위 커맨드가 모두 에러 없이 끝나야 한다. Phase 1 전체 확인(`npm test`·`verify`)은 TASK-5 뒤에 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-004.1 ~ AC-004.9가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -107,7 +110,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-1-data/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

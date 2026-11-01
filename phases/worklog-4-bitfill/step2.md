@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-016에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-016.1**: 하루 읽기·저장이 `bitFields`를 같이 다룸, 목록 밖 이름 버림, 업무사항 여전히 없음
+- **AC-016.1**: 하루 읽기가 `bitFields`를 같이 읽음, 목록 밖 이름 버림. 저장은 `bitFields`를 받으면 `bit_fields`를 함께 보냄
 - **AC-016.2**: `bitFields`를 받지 않은 저장은 `bit_fields` 칸을 보내지 않음(`[]`으로 덮어 지우지 않음)
 
 ## 읽어야 할 파일
@@ -47,15 +47,15 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- 보내는 칸은 고른 목록만: `work_date`·19칸(20개), `bitFields`를 주면 + `bit_fields`(21개). `hospital_id`·업무사항은 없음
+- 보내는 칸은 고른 목록만: `work_date` + 받은 바뀐 칸(막는 모양 뺌), `bitFields`를 주면 + `bit_fields`. `hospital_id`는 없음
 - **`bitFields`를 안 주면 `bit_fields`를 보내지 않는다** — 빈 목록 `[]`을 보내면 저장된 표시가 지워진다(AC-016.2)
 - `bitFields`는 열쇠 이름(`cashIn`) ↔ DB 칸 이름(`cash_in`)으로 바꾸고, 채울 수 있는 칸 밖 이름은 버린다
 - **합치기·배포 관문**: 이 step 뒤로 읽기·쓰기가 `bit_fields`를 쓴다. 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣기 전에는 Phase 4를 main에 합치거나 배포하지 않는다(tasks.md 머리말). summary에 이 관문을 적는다
 
 ## 작업
 
-- `loadWorklogDay(client, ymd)` → `{ day, bitFields } | null`(옛 줄·칸 없음 → `bitFields: []`), `saveWorklogDay(client, ymd, day, bitFields?)`. 화면 쪽 호출(`WorklogScreen.tsx`가 `useWorklogDay`에 넘기는 `load`, `useWorklogDay`가 받는 모양 `{ day, bitFields } | null`)도 이 step에서 맞춘다 — 빌드·화면 시험이 깨지지 않게. `WorklogScreen.test.tsx`는 mock이 돌려주는 모양만 `{ day, bitFields: [] }`로 바꾸고 기대값은 그대로(TASK-10 시험이 `loadWorklogDay`를 mock한다). 비트 표시·채우기는 TASK-17
-- 시험: `bitFields` 없이 저장 → 보내는 칸 20개·`bit_fields` 열쇠 없음, `bitFields` 주고 저장 → 21개, 목록 밖 이름 버림, `bit_fields` 없는 옛 줄 → `[]`, 업무사항 없음 그대로
+- `loadWorklogDay(client, ymd)` → `{ day, bitFields } | null`(옛 줄·칸 없음 → `bitFields: []`), `saveWorklogDay(client, ymd, changes, bitFields?)`. 바뀐 칸이 없어도 `bitFields`를 주면 그것만 보낸다. 화면 쪽 호출(`WorklogScreen.tsx`가 `useWorklogDay`에 넘기는 `load`, `useWorklogDay`가 받는 모양 `{ day, bitFields } | null`)도 이 step에서 맞춘다 — 빌드·화면 시험이 깨지지 않게. `WorklogScreen.test.tsx`는 mock이 돌려주는 모양만 `{ day, bitFields: [] }`로 바꾸고 기대값은 그대로(TASK-10 시험이 `loadWorklogDay`를 mock한다). 비트 표시·채우기는 TASK-17
+- 시험: `bitFields` 없이 저장 → `work_date` + 받은 칸뿐·`bit_fields` 열쇠 없음, `bitFields` 주고 저장 → `bit_fields`가 더해짐, 바뀐 칸 없이 `bitFields`만 → `work_date` + `bit_fields`, 둘 다 없음 → 호출 0번, 목록 밖 이름 버림, `bit_fields` 없는 옛 줄 → `[]`
 
 ## TDD 순서
 
@@ -83,7 +83,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-4-bitfill/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

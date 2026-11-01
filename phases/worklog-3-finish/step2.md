@@ -1,6 +1,6 @@
 # Step 2: e2e
 
-> **TASK-13** 실제 Supabase 확인 E2E · **REQ-013** · AC-013.1 ~ AC-013.4
+> **TASK-13** 실제 Supabase 확인 E2E · **REQ-013** · AC-013.1 ~ AC-013.5
 > Phase 3 `worklog-3-finish` · Step 2 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -8,10 +8,11 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-013에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-013.1**: 승인 시험 계정 → 시험 날짜 2020-01-02 → 숫자·비고·업무사항 → "저장했어요" → 새로 고침 → **날짜를 다시 2020-01-02로 고름**(날짜는 주소에 없다) → 숫자·비고·자동 칸·업무사항 그대로
-- **AC-013.2**: **모든 요청**(Supabase·같은 origin Next/Vercel 모두)의 주소와 본문, 다시 읽은 그 날 `worklog_days` 줄 어디에도 업무사항의 가짜 표식·가짜 환자 이름·차트번호·전화·주민번호 모양 글자가 없음(cross-branch C7)
-- **AC-013.3**: 새 브라우저(다른 PC) → 숫자 보임, 업무사항 빈 칸
-- **AC-013.4**: A4 PDF 인쇄 → 한 쪽(`/\/Type\s*\/Page(?!s)/g`로 셈)
+- **AC-013.1**: 승인 시험 계정 → 시험 날짜 2020-01-02 → 숫자 칸(숫자만·'가상 200,000 별도'·'2건 30,000'·'별도 보고')·항목 이름·비고·업무사항 → "저장했어요" → 새로 고침 → **날짜를 다시 2020-01-02로 고름**(날짜는 주소에 없다) → 적은 값·항목 이름·업무사항·자동 칸 그대로, '2건 30,000' 칸에만 "합계에서 빠졌어요"
+- **AC-013.2**: 숫자 칸 글자·비고·업무사항·항목 이름에 막는 모양 → **모든 요청**(Supabase·같은 origin Next/Vercel 모두)의 주소와 본문, 다시 읽은 그 날 `worklog_days` 줄 어디에도 그 값이 없음, 그 칸은 빨강, 함께 고친 다른 칸은 저장됨(cross-branch C7)
+- **AC-013.3**: 새 브라우저(다른 PC) → 숫자 칸·글자 칸·항목 이름·업무사항이 모두 같게 보임
+- **AC-013.4**: A4 PDF 인쇄(업무사항 보임) → 한 쪽(`/\/Type\s*\/Page(?!s)/g`로 셈)
+- **AC-013.5**: 두 브라우저가 같은 날을 열어 둠 → 서로 다른 칸을 고쳐 각각 "저장했어요" → 다시 읽은 줄에 두 칸 다, 한쪽이 날짜를 옮겼다 돌아오면 다른 쪽 값이 보임
 
 ## 읽어야 할 파일
 
@@ -43,28 +44,34 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **먼저 확인**: 사용자가 TASK-4 migration(`supabase/migrations/20261101000100_worklog.sql`)을 실제 Supabase SQL 편집기에 붙여 넣었는가? 아니면 바로 `blocked`(사유: "worklog_days migration 적용 필요 — 사용자 OK")로 멈춘다. Claude가 붙여 넣지 않는다
-- 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['표식', '전화']` → `expect(hits).toEqual([])`, cross-branch C11)
+- 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['업무사항-전화']` → `expect(hits).toEqual([])`, cross-branch C11)
 - 시험 산출물(trace·영상·스크린샷·네트워크 로그)에 쿠키·토큰·이메일을 남기지 않는다(CLAUDE.md, `trace: 'off'`). 요청 본문은 메모리에서 검사만 하고 파일로 쓰지 않는다
 - 시험 계정은 가짜 병원이다. 실제 의원 계정으로 돌리지 않는다. 시험 날짜는 늘 2020-01-02(실제 날짜를 더럽히지 않는다)
 
 ## 작업
 
 - `import { test, expect } from './support'`
-- 가짜 글자(업무사항 칸에 모두 넣는다): `MEMO_MARK = 'E2E-업무사항-표식'`, 이름 `'가상환자01'`, 차트번호 `'900001'`, 전화 `'010-0000-0001'`, 주민번호 모양 `'900101-1234567'`. 숫자는 둥근 가짜 값(현금수납 100000 등). 비고에는 보통 글자(`'가상 택배비'`)만
-- 순서: `signIn` → `page.on('request', r => 모음.push({ url: r.url(), body: r.postData() ?? '' }))`(**origin을 거르지 않는다** — Supabase·같은 origin `/_next`·RSC 요청 모두) → `/worklog` → 날짜 고르기 칸에 `2020-01-02` → 칸 입력 → `getByRole('status')`가 "저장했어요" → `page.reload()` → **날짜 칸에 다시 `2020-01-02`** → 값 확인(AC-013.1) → 모은 요청마다 `decodeURIComponent(url)`·본문에 가짜 글자 다섯이 없음 + `accounts.client('approved')`로 그 날 줄을 다시 읽어 모든 칸 값에 없음(AC-013.2) → `browser.newContext()` + `signIn` → 같은 날 → 숫자 보임·업무사항 칸 빈(AC-013.3) → `page.emulateMedia({ media: 'print' })` + `page.pdf({ format: 'A4', printBackground: true })` → `pdf.toString('latin1').match(/\/Type\s*\/Page(?!s)/g)?.length === 1`(AC-013.4)
-- 끝(`afterAll`): 그 날 칸을 모두 비워 저장(지우기 권한 없음). 업무사항 칸도 비운다(이 브라우저 저장소)
+- **저장되는 값**(둥근 가짜 값·"가상" 글자): 신환 `3`, 현금수납 `100000`, 카드수납 `가상 200,000 별도`, 계좌이체 `2건 30,000`, 지출 현금 `5000`, 지출 환불 `별도 보고`, 지역화폐 항목 이름 `가상 항목`, 비고 `가상 택배비`, 업무사항 `E2E-가상 메모`
+- **막는 모양**(칸마다 하나, 이름표 → 값): `업무사항-전화` → `010-0000-0001`, `비고-주민번호` → `900101 1234567`, `숫자칸-전화` → `0200000001 별도`, `항목이름-전화` → `(02)000-0001`
+- 순서:
+  1. `signIn` → `page.on('request', r => 모음.push({ url: r.url(), body: r.postData() ?? '' }))`(**origin을 거르지 않는다** — Supabase·같은 origin `/_next`·RSC 요청 모두) → `/worklog` → 날짜 고르기 칸에 `2020-01-02` → 저장되는 값 입력 → `getByRole('status')`가 "저장했어요" → `page.reload()` → **날짜 칸에 다시 `2020-01-02`** → 값·항목 이름·업무사항 확인, 수납액 "300,000원"·총지불액 "5,000원"·합계 "295,000원", "합계에서 빠졌어요" 한 개(AC-013.1)
+  2. `browser.newContext()` + `signIn` → 같은 날 → 위 칸이 모두 같음(AC-013.3)
+  3. 두 브라우저를 같은 날에 열어 둔 채 첫째는 지출 카드 `1000`, 둘째는 지출 free `2000` → 각각 "저장했어요" → `accounts.client('approved')`로 다시 읽어 `spend_card`·`spend_free` 둘 다 있음 → 첫째가 날짜를 옮겼다 돌아오면 지출 free가 보임(AC-013.5)
+  4. `page.emulateMedia({ media: 'print' })` + `page.pdf({ format: 'A4', printBackground: true })` → `pdf.toString('latin1').match(/\/Type\s*\/Page(?!s)/g)?.length === 1`(AC-013.4), 끝나면 `emulateMedia({ media: 'screen' })`
+  5. 막는 모양 넷 + 지출 현금에 보통 값 `7000` → 넷은 `aria-invalid`, 오류 카드 `E-WORKLOG-NOTE-PRIVATE`, 다시 읽은 줄의 `spend_cash`가 `7000`(저장됨). 모은 요청마다 `decodeURIComponent(url)`·본문에 막는 모양 넷이 없음 + 다시 읽은 줄의 모든 칸 값에 없음. 걸린 것은 이름표만 담아 `expect(hits).toEqual([])`(AC-013.2). 업무사항 표식이 서버에 없는지는 보지 않는다(업무사항은 서버에 있는 것이 맞다)
+- 끝(`afterAll`): `accounts.client('approved')`로 그 날 값 32칸을 모두 null로 둔다(지우기 권한 없음)
 - 확인: `npm run e2e`(`.env.local`의 E2E 값 필요, 없으면 preflight가 멈춘다 → `blocked`)
 
 ## Acceptance Criteria
 
 ```bash
-npm run e2e   # AC-013.1~AC-013.4 (실제 Supabase + 시험 계정, migration 적용 뒤)
+npm run e2e   # AC-013.1~AC-013.5 (실제 Supabase + 시험 계정, migration 적용 뒤)
 npm run lint && npm test
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-013.1 ~ AC-013.4가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-013.1 ~ AC-013.5가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -72,7 +79,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-3-finish/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

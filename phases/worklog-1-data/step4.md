@@ -1,17 +1,23 @@
 # Step 4: day-storage
 
-> **TASK-5** 하루 읽기·저장 · **REQ-005** · AC-005.1 ~ AC-005.4
+> **TASK-5** 하루 읽기·저장 · **REQ-005** · AC-005.1 ~ AC-005.5
 > Phase 1 `worklog-1-data` · Step 4 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-5 하나만 한다. 다른 TASK의 일은 하지 않는다.
+
+## 이미 된 일 (2026-11-01 명세 변경)
+
+- **작업 폴더에 커밋 안 된 `src/lib/storage/worklogDays.ts`·시험이 있다(줄 전체 upsert, 옛 모양). 기존 파일을 고친다. 시험을 먼저 바꿔 RED를 확인한다.**
+- 바뀌는 것: 하루 전체 → 바뀐 칸만 받기, 칸 19개 → 32칸(글자), `private` 오류 없앰(막힌 칸은 빼고 보냄)
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-005에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-005.1**: 정한 칸만 골라 그 날짜 줄을 읽고(병원은 RLS가 거름) 화면 모양으로. 줄이 없으면 null
-- **AC-005.2**: 저장 = `upsert(row, { onConflict: 'hospital_id,work_date' })` 한 번. `row` 열쇠는 `work_date` + 19칸뿐(`hospital_id`는 보내지 않음 — DB 기본값), 빈 비고 → null, 업무사항 없음(받은 객체에 다른 열쇠가 섞여도 무시)
-- **AC-005.3**: 비고 개인정보 모양 → 네트워크 없이 `private` 오류(칸 이름)
-- **AC-005.4**: 오프라인·status 0 → `offline`, 그 밖 → `failed`. 오류에 Supabase 문구·값 없음
+- **AC-005.1**: 정한 칸(값 32칸)만 골라 그 날짜 줄을 읽고(병원은 RLS가 거름) 화면 모양(모두 글자, null → '')으로. 줄이 없으면 null
+- **AC-005.2**: 저장 = `upsert(row, { onConflict: 'hospital_id,work_date' })` 한 번. `row` 열쇠는 `work_date` + 받은 바뀐 칸뿐(`hospital_id`는 보내지 않음 — DB 기본값), 빈 칸 → null, 정한 칸 밖 열쇠 무시, 바뀐 칸이 없으면 네트워크 없음
+- **AC-005.3**: 개인정보 모양인 칸은 빼고 나머지만 보냄. 남는 칸이 없으면 네트워크 없음
+- **AC-005.4**: 오프라인·status 0 → `offline`, 그 밖 → `failed`. 오류에 종류만, Supabase 문구·값 없음
+- **AC-005.5**: AI 경로 소스(`src/app/api/ai`·`src/lib/ai`, 있으면)에 `worklog_days`·`worklogDays`가 없음
 
 ## 읽어야 할 파일
 
@@ -24,7 +30,7 @@
 - `/specs/worklog/design.md` — 9절(읽기·저장), 5절(칸 표), 8절(권한 — upsert가 쓰는 칸)
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
-- `/src/types/worklog.ts`·`/src/lib/worklog/notes.ts` (Step 1)
+- `/src/types/worklog.ts`·`/src/lib/worklog/notes.ts` (Step 1)·`/src/lib/worklog/cellText.ts` (Step 2, `cellSaveText`)
 - `/supabase/migrations/20261101000100_worklog.sql` (Step 3)
 - `/src/lib/supabase/browser.ts` — 브라우저 클라이언트(이 파일은 클라이언트를 인자로 받는다)
 - `/node_modules/@supabase/postgrest-js/dist/index.mjs` 420~460줄 — 연결 실패 때 `status: 0` 응답
@@ -44,26 +50,27 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- 서버로 보내는 값은 정해 둔 모양만(CLAUDE.md 보안 규칙): `row`는 열쇠 목록을 **골라서** 만든다(`{ ...day }` 펼치기 금지). 업무사항은 받는 타입(`WorklogDay`)에도 없다
+- 서버로 보내는 값은 정해 둔 모양만(CLAUDE.md 보안 규칙): `row`는 `WORKLOG_CELL_KEYS` 안의 열쇠를 **골라서** 만든다(`{ ...changes }` 펼치기 금지)
+- **바뀐 칸만 보낸다**(사용자 결정 4): 받은 칸 말고 다른 칸을 채워 보내지 않는다. 안 받은 칸을 null로 보내면 다른 PC가 고친 칸이 지워진다
+- **막는 모양은 서버로 가지 않는다**: 자동 저장이 이미 빼고 주지만 이 함수가 마지막 문이다
 - 오류 내용(Supabase `message`·`details`·`hint`)을 오류 객체·화면·`console`에 넣지 않는다(CLAUDE.md '오류 내용은 화면·응답에 그대로 보이지 않는다')
 - 클라이언트는 인자로 받는다(`Pick<SupabaseClient, 'from'>`). 이 파일 안에서 `supabaseBrowser()`를 부르지 않는다(시험에서 가짜를 넣으려고)
 
 ## 작업
 
 ```ts
-export type WorklogErrorKind = 'offline' | 'failed' | 'private'
+export type WorklogErrorKind = 'offline' | 'failed'
 export class WorklogStorageError extends Error {
   readonly kind: WorklogErrorKind
-  readonly field?: WorklogNoteKey   // private일 때 막힌 비고 칸
-  constructor(kind: WorklogErrorKind, field?: WorklogNoteKey)   // message는 고정 글자(예: 'worklog save offline'), Supabase 문구 없음
+  constructor(kind: WorklogErrorKind)   // message는 고정 글자(예: 'worklog storage offline'), Supabase 문구 없음
 }
 export async function loadWorklogDay(client: Pick<SupabaseClient, 'from'>, ymd: string): Promise<WorklogDay | null>
-export async function saveWorklogDay(client: Pick<SupabaseClient, 'from'>, ymd: string, day: WorklogDay): Promise<void>
+export async function saveWorklogDay(client: Pick<SupabaseClient, 'from'>, ymd: string, changes: WorklogChanges): Promise<void>
 ```
-- 읽기: `.from('worklog_days').select('<19칸 쉼표>').eq('work_date', ymd).maybeSingle()`(내 병원은 RLS가 거른다) → DB 칸 → 열쇠(`WORKLOG_COLUMNS` 거꾸로), null 비고 → ''
-- 저장 순서: ① 비고 다섯 칸 `notePrivacyProblem` → 걸린 첫 칸으로 `private` ② `globalThis.navigator?.onLine === false` → `offline` ③ upsert ④ `error`가 있으면 `status === 0`이면 `offline`, 아니면 `failed`
-- 비고는 앞뒤 빈칸을 그대로 두고 빈 글자(`''`)만 null로 보낸다. 100자 넘는 비고는 화면 `maxLength`가 먼저 막는다. 여기서는 자르지 않고 그대로 보낸다(DB 제약이 거부 → `failed`). 몰래 잘라 저장하지 않으려고
-- 시험: 가짜 클라이언트가 받은 표 이름·select 글자·`eq('work_date', …)` 하나(`hospital_id` 거르기·보내기 없음)·upsert `row`의 열쇠 목록(정확히 20개)·`onConflict`를 기록한다. `row`에 `memo`가 없음을 `day`에 `memo` 열쇠를 억지로 섞어(`as unknown as WorklogDay`) 넣어도 본다. 오류 객체의 `message`에 가짜 Supabase 문구('secret detail')가 없음을 본다
+- 읽기: `.from('worklog_days').select('<값 32칸 쉼표>').eq('work_date', ymd).maybeSingle()`(내 병원은 RLS가 거른다) → DB 칸 → 열쇠(`WORKLOG_COLUMNS` 거꾸로), null → ''
+- 저장 순서: ① `WORKLOG_CELL_KEYS` 안의 열쇠만 고른다 ② `blockedCellKeys`에 걸린 칸을 뺀다 ③ 남은 칸이 없으면 끝(네트워크 없음) ④ `globalThis.navigator?.onLine === false` → `offline` ⑤ upsert ⑥ `error`가 있으면 `status === 0`이면 `offline`, 아니면 `failed`
+- 값은 `cellSaveText(key, text)`이고 빈 글자는 null이다. 긴 글자는 화면 `maxLength`가 먼저 막는다. 여기서는 자르지 않고 그대로 보낸다(DB 제약이 거부 → `failed`). 몰래 잘라 저장하지 않으려고
+- 시험: 가짜 클라이언트가 받은 표 이름·select 글자(32칸)·`eq('work_date', …)` 하나(`hospital_id` 거르기·보내기 없음)·upsert `row`의 열쇠 목록·`onConflict`를 기록한다. 칸 하나만 주면 `row`는 정확히 `work_date` + 그 칸(`AC-005.2`), 빈 값 → null, '12,000 별도 ' → '12,000 별도', 다른 열쇠를 억지로 섞어도(`as unknown as WorklogChanges`) 안 감, 빈 값 객체 → `upsert` 호출 0번, 막는 모양 칸 + 보통 칸 → 보통 칸만, 막는 모양 칸만 → 호출 0번(오프라인이어도 `offline`을 던지지 않음). 오류 객체의 `message`에 가짜 Supabase 문구('secret detail')가 없음을 본다. AC-005.5는 그 폴더가 있으면 소스 글자를 읽어 본다(지금은 폴더가 없어도 통과, 다른 갈래가 들어오면 그때 본다)
 
 ## TDD 순서
 
@@ -75,14 +82,14 @@ export async function saveWorklogDay(client: Pick<SupabaseClient, 'from'>, ymd: 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/storage/worklogDays.test.ts   # AC-005.1~AC-005.4
+npx vitest run src/lib/storage/worklogDays.test.ts   # AC-005.1~AC-005.5
 python3 ~/.claude/harness/bin/tdd-run TASK-5 --expect green
 npm run lint && npm test
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-005.1 ~ AC-005.4가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-005.1 ~ AC-005.5가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -90,7 +97,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-1-data/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

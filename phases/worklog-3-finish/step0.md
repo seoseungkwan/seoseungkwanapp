@@ -10,7 +10,7 @@
 
 - **AC-011.1**: 인쇄 CSS — A4 세로·여백 12mm, 양식 폭 100% + 엑셀 pt(제목 32·칸 13·날짜 14·업무사항 11·지출 비고 10pt, 줄 높이 39.75·18·33.75·21·30·15pt), `print-color-adjust: exact`, 흐린 안내 글 안 찍힘
 - **AC-011.2**: 줄 높이 23줄 합(634.5pt) ≤ A4 인쇄 높이(297mm − 24mm ≈ 773.9pt) → 한 장
-- **AC-011.3**: 양식(결재 칸 포함)만 찍힘 — 앱 위쪽 묶음·건너뛰기 링크·날짜 줄·저장 상태·[인쇄] 숨김, 본문 여백 없음
+- **AC-011.3**: 양식(결재 칸 포함)만 찍힘 — 앱 위쪽 묶음·건너뛰기 링크·날짜 줄·저장 상태·[인쇄] 숨김, 본문 여백 없음. 업무사항·고친 항목 이름은 찍히고, "합계에서 빠졌어요"·막힌 칸 빨강은 안 찍힘
 
 ## 읽어야 할 파일
 
@@ -57,7 +57,7 @@
 ## 작업
 
 ### 1. `sheet.module.css` `@media print`
-- 시안 블록을 옮긴다: `@page { size: A4 portrait; margin: 12mm; }`, `.paper { padding: 0; border: 0; }`, `.sheet { width: 100%; --c: 13pt; --c11: 11pt; --c10: 10pt; --c14: 14pt; --t: 32pt; --h1: 39.75pt; --h2: 18pt; --h3: 33.75pt; --h28: 21pt; --h40: 30pt; --h20: 15pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }`, `.memo textarea::placeholder { color: transparent; }`
+- 시안 블록을 옮긴다: `@page { size: A4 portrait; margin: 12mm; }`, `.paper { padding: 0; border: 0; }`, `.sheet { width: 100%; --c: 13pt; --c11: 11pt; --c10: 10pt; --c14: 14pt; --t: 32pt; --h1: 39.75pt; --h2: 18pt; --h3: 33.75pt; --h28: 21pt; --h40: 30pt; --h20: 15pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }`, `.memo textarea::placeholder { color: transparent; }`, `.flag { display: none; }`, `.blocked`의 빨강 지우기(인쇄는 엑셀 모양만)
 - 줄 높이는 변수로만 둔다(시험이 변수 값을 읽어 더한다)
 
 ### 2. 숨기기
@@ -65,7 +65,7 @@
 - `WorklogToolbar.tsx`: 맨 바깥 `print:hidden`(오류 카드 포함)
 
 ### 3. 시험
-- `sheet.print.test.ts`(node): CSS 글자에서 `@media print` 블록을 찾아 `@page` A4·12mm(또는 globals.css의 블록), pt 변수 값, `print-color-adjust: exact`, placeholder 투명을 본다(AC-011.1). 줄 높이 23줄(1:h1, 2:h2, 3:h3, 4~6:h28, 7~16:h40, 17~18:h20, 19~23:h40)의 pt 합 = 634.5 ≤ (297 − 24) × 72 / 25.4(AC-011.2)
+- `sheet.print.test.ts`(node): CSS 글자에서 `@media print` 블록을 찾아 `@page` A4·12mm(또는 globals.css의 블록), pt 변수 값, `print-color-adjust: exact`, placeholder 투명을 보고(AC-011.1), `.flag` 숨김·`.blocked` 빨강 지움을 본다(AC-011.3). 줄 높이 23줄(1:h1, 2:h2, 3:h3, 4~6:h28, 7~16:h40, 17~18:h20, 19~23:h40)의 pt 합 = 634.5 ≤ (297 − 24) × 72 / 25.4(AC-011.2)
 - `shell.test.tsx`: `AC-011.3` 시험 하나 — 건너뛰기 링크·위쪽 묶음에 `print:hidden`, 본문 감싸개에 `print:p-0`
 - `WorklogToolbar.test.tsx`: 맨 바깥에 `print:hidden`
 
@@ -95,7 +95,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-3-finish/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

@@ -1,23 +1,29 @@
 # Step 1: calc-format
 
-> **TASK-2** 합계·칸 글자·날짜 규칙 · **REQ-002** · AC-002.1 ~ AC-002.10
+> **TASK-2** 합계·칸 글자·날짜 규칙 · **REQ-002** · AC-002.1 ~ AC-002.4, AC-002.6 ~ AC-002.10
 > Phase 1 `worklog-1-data` · Step 1 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-2 하나만 한다. 다른 TASK의 일은 하지 않는다.
+
+## 이미 된 일 (2026-11-01 명세 변경)
+
+- **이미 커밋됨(16ef2ce). 기존 파일을 고친다. 시험을 먼저 바꿔 RED를 확인한다.** 새로 만들지 않는다
+- 바뀌는 것: 칸이 모두 글자가 된다(`WorklogDay`), 항목 이름 12칸·`memo`가 더해진다, `calc`는 읽은 숫자(`WorklogNumbers`)로 합계만 내고 `parseCount`·`parseWon`을 지운다, `notes`는 막는 모양을 넓히고 이름이 `privacyProblem`이 된다
+- `calc.test.ts`의 `parseCount`·`parseWon` 시험은 지운다(명세가 그 AC를 REQ-003으로 옮겼다. TASK-3이 같은 뜻을 다시 시험한다). 그 AC 번호는 더 쓰지 않는다
+- 이 step 뒤로 커밋 안 된 `src/lib/storage/worklogDays.ts`·`memoStore.ts`는 타입이 어긋날 수 있다. TASK-3·5가 고친다. 이 TASK의 시험만 본다
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-002에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-002.1**: 환자 합계 = 신환 + 재진(빈 칸 0, 엑셀 `D6`)
+- **AC-002.1**: 환자 합계 = 신환 + 재진의 읽은 숫자(없으면 0, 엑셀 `D6`)
 - **AC-002.2**: 수납액 = 현금수납 + 카드수납 + 계좌이체 + 지역화폐만(`E15`). 총진료비·조합청구액·미수발생·미수입금 제외
 - **AC-002.3**: 총지불액 = 지출 현금 + 카드 + 환불 + free(`E22`)
 - **AC-002.4**: 합계 = 수납액 − 총지불액, 음수 그대로(`E23`), 정수
-- **AC-002.5**: 숫자 읽기 — 숫자 아닌 글자 버림, 앞 0 지움, 빈 글자 null, 인원 앞 5자리·금액 앞 12자리
-- **AC-002.6**: 글자 — 입력 칸 ''/'1,234,500원', 초점 중 '1,234,500', 자동 칸 0 → '원', 음수 '-12,000원', 인원 '86', 환자 합계 0 → '0'
+- **AC-002.6**: 숫자 → 글자 — 입력 칸 ''/'1,234,500원', 초점 중 '1,234,500', 자동 칸 0 → '원', 음수 '-12,000원', 인원 '86', 환자 합계 0 → '0'
 - **AC-002.7**: '2026-10-28' → '2026/10/28 수'
-- **AC-002.8**: 전날·다음 날(오늘이면 null)·날짜 모양 아님/미래 → 오늘
+- **AC-002.8**: 전날·다음 날(오늘이면 null)·날짜 모양 아님/미래 → 오늘. 일요일·휴일도 건너뛰지 않는다
 - **AC-002.9**: 자정 넘김 — 옛 오늘을 보고 있었으면 새 오늘, 아니면 그대로
-- **AC-002.10**: 비고 개인정보 모양(전화·붙임표 주민번호·붙여 쓴 13자리 주민번호·메일) 검사. '1234567'·'12,000'·보통 글자는 문제 아님
+- **AC-002.10**: 칸 글자 개인정보 모양(전화 `010-0000-1234`·`01000001234`·`010-00001234`·`0200001234`·`(02)000-1234`·`+82 10-0000-1234`, 주민번호 `900101-1234567`·`900101 1234567`·붙여 쓴 13자리, 메일) 검사. '1234567'·'12,000'·'2건 12,000'·'00012'·보통 글자는 문제 아님
 
 ## 읽어야 할 파일
 
@@ -57,45 +63,38 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - 날짜 계산은 `lib/analytics/dates.ts` 한 곳만 쓴다(CLAUDE.md). `Date`로 날짜를 더하거나 빼지 않는다. 시험은 `TZ=Asia/Seoul`(vitest 설정)
-- 금액은 원 단위 정수다. 소수·반올림이 없다(나눗셈이 없다)
+- 합계는 원 단위 정수다. 소수·반올림이 없다(나눗셈이 없다). 칸은 글자지만 합계는 읽은 숫자로만 낸다
 - 이 파일들은 순수 TS다: React·supabase·`fetch`·브라우저 저장소·`console`을 쓰지 않는다
-- 업무사항(memo)은 `WorklogDay`에 넣지 않는다. 서버로 가는 모양과 따로다(design.md 5절)
+- 업무사항(`memo`)·항목 이름도 `WorklogDay`의 글자 칸이다. 합계 계산에는 들어가지 않는다(design.md 5절)
 
 ## 작업
 
-### 1. `src/types/worklog.ts`
-design.md 5절 그대로: `WorklogCountKey`·`WorklogWonKey`·`WorklogNumberKey`·`WorklogNoteKey`·`WorklogDay`·`WorklogTotals`, 상수 `WORKLOG_COUNT_KEYS`·`WORKLOG_WON_KEYS`·`WORKLOG_NOTE_KEYS`·`WORKLOG_COLUMNS`(열쇠 → DB 칸, 19개)·`WORKLOG_LABELS`(열쇠 → 시안 `aria-label`)·`NOTE_MAX = 100`·`MEMO_MAX = 2000`, `emptyWorklogDay()`.
-- 순서는 엑셀 줄 순서(신환·재진·총진료비 … 지출 free / 비고는 현금·카드·환불·free·총지불액)
+### 1. `src/types/worklog.ts` (고침)
+design.md 5절 그대로: `WorklogCountKey`·`WorklogWonKey`·`WorklogNumberKey`·`WorklogNoteKey`·`WorklogNameKey`·`WorklogCellKey`·`WorklogDay`(모두 글자, 빈 칸 `''`)·`WorklogChanges`·`WorklogNumbers`·`WorklogTotals`, 상수 `WORKLOG_COUNT_KEYS`·`WORKLOG_WON_KEYS`·`WORKLOG_NOTE_KEYS`·`WORKLOG_NAME_KEYS`·`WORKLOG_CELL_KEYS`(32칸)·`WORKLOG_SUM_KEYS`(열 칸)·`WORKLOG_COLUMNS`(열쇠 → DB 칸, 32개)·`WORKLOG_LABELS`(열쇠 → `aria-label`)·`WORKLOG_NAME_OF`(금액 칸 → 항목 이름 칸)·`WORKLOG_DEFAULT_NAMES`(엑셀 글자)·`CELL_MAX = 50`·`NAME_MAX = 20`·`NOTE_MAX = 100`·`MEMO_MAX = 2000`, `emptyWorklogDay()`(모든 칸 `''`).
+- 순서는 엑셀 줄 순서(신환·재진·총진료비 … 지출 free / 비고는 현금·카드·환불·free·총지불액 / 업무사항 / 항목 이름은 금액 칸 순서)
 
-### 2. `src/lib/worklog/calc.ts`
+### 2. `src/lib/worklog/calc.ts` (고침)
 ```ts
-export function worklogTotals(day: WorklogDay): WorklogTotals
-export function parseCount(text: string): number | null
-export function parseWon(text: string): number | null
+export function worklogTotals(numbers: WorklogNumbers): WorklogTotals   // 칸 글자를 읽지 않는다. 읽은 숫자(cellText.readDayNumbers, TASK-3)만 받는다
 export function wonInputText(n: number | null, focused: boolean): string
 export function wonAutoText(n: number): string
 export function countText(n: number | null): string
+export function visitsText(n: number): string
 ```
+- `parseCount`·`parseWon`을 지운다. `calc`는 `cellText`를 부르지 않는다(방향은 `cellText` → `calc`)
 - 쉼표는 `Intl.NumberFormat('ko-KR')`. 음수 자동 칸은 '-' + 절댓값 쉼표 + '원'
-- 시험: 엑셀 계산식 넷을 칸마다 따로(더하면 안 되는 칸에 값을 넣어도 수납액이 그대로인지), 빈 날(모두 null) → 0·0·0·0, 음수 합계, 읽기('1,234,500원' → 1234500, '00012' → 12, '' → null, 'abc' → null, 13자리 → 앞 12자리, 인원 6자리 → 앞 5자리, '-500' → 500)
+- 시험: 엑셀 계산식 넷을 칸마다 따로(더하면 안 되는 칸에 값을 넣어도 수납액이 그대로인지), 빈 날(모두 null) → 0·0·0·0, 음수 합계. `WORKLOG_SUM_KEYS`의 칸만 합계를 움직이는지 칸마다 본다
 
-### 3. `src/lib/worklog/days.ts`
-```ts
-export function previousDay(ymd: string): string
-export function nextDay(ymd: string, today: string): string | null
-export function clampToToday(input: string, today: string): string
-export function dayAfterRollover(selected: string, oldToday: string, newToday: string): string
-export function sheetDateText(ymd: string): string   // '2026/10/28 수'
-export function savedTimeText(at: Date): string      // '14:05' Asia/Seoul, 자정은 '00:00'
-```
-- 시험: 달·해 넘김(2026-01-01의 전날 2025-12-31), 윤년, 오늘의 다음 날 null, 미래·'2026-13-01'·'' → 오늘, 요일 일곱 개, `savedTimeText`는 UTC 15:05 → '00:05'
+### 3. `src/lib/worklog/days.ts` (그대로)
+- 코드는 그대로다. 시험에 일요일·휴일을 건너뛰지 않는지(토요일의 다음 날은 일요일) 하나를 더한다(`AC-002.8`)
 
-### 4. `src/lib/worklog/notes.ts`
+### 4. `src/lib/worklog/notes.ts` (고침)
 ```ts
-export function notePrivacyProblem(text: string): boolean
+export function privacyProblem(text: string): boolean
+export function blockedCellKeys(cells: WorklogChanges): WorklogCellKey[]   // 값이 개인정보 모양인 칸. 모든 입력 칸
 ```
-- `lib/payload/validate.ts`의 `PHONE`·`NATIONAL_ID`·`JOINED_NATIONAL_ID`·`MAIL`과 같은 정규식을 이 파일에 옮겨 쓰고 출처를 주석으로 적는다
-- 시험: '010-0000-1234'·'01000001234'·'900101-1234567'·'9001011234567'·'a@b.co' → 참 / '1234567'·'12,000'·'택배비'·'' → 거짓
+- design.md 6절의 정규식(`lib/payload/validate.ts`를 옮겨 업무일지에 한해 넓힌 것)을 이 파일에 쓰고 출처·넓힌 까닭을 주석으로 적는다. `notePrivacyProblem` 이름은 없앤다
+- 시험: 위 AC-002.10 모양 모두 → 참 / '1234567'·'12,000'·'2건 12,000'·'00012'·'12,000 별도'·'택배비'·'' → 거짓. `blockedCellKeys`는 숫자 칸·비고·업무사항·항목 이름 어디에 있어도 그 칸을 돌려주고, 값이 없는 칸은 돌려주지 않는다
 
 ## TDD 순서
 
@@ -107,14 +106,13 @@ export function notePrivacyProblem(text: string): boolean
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/worklog/calc.test.ts src/lib/worklog/days.test.ts src/lib/worklog/notes.test.ts   # AC-002.1~AC-002.10
+npx vitest run src/lib/worklog/calc.test.ts src/lib/worklog/days.test.ts src/lib/worklog/notes.test.ts   # AC-002.1~AC-002.4, AC-002.6~AC-002.10
 python3 ~/.claude/harness/bin/tdd-run TASK-2 --expect green
-npm run lint && npm test
-python3 ~/.claude/harness/bin/verify
+npm run lint   # 전체 시험·verify는 TASK-5까지 끝난 뒤(옛 저장 파일 타입이 잠시 어긋난다)
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-002.1 ~ AC-002.10가 이 TASK의 시험과 이어져 보여야 한다
+- 위 커맨드가 모두 에러 없이 끝나야 한다. Phase 1 전체 확인(`npm test`·`verify`)은 TASK-5 뒤에 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-002.1 ~ AC-002.4, AC-002.6 ~ AC-002.10이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -122,7 +120,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-1-data/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`
@@ -133,7 +131,7 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- `lib/payload/validate.ts`를 고치거나 불러오지 마라. 이유: 환자 자료 구역 파일이고 상수를 내보내지 않는다. 정규식만 옮겨 쓴다
+- `lib/payload/validate.ts`를 고치거나 불러오지 마라. 이유: 환자 자료 구역 파일이고 상수를 내보내지 않는다. 넓힌 모양은 업무일지에만 쓴다(그 파일은 처방코드 같은 숫자를 잘못 거르지 않아야 한다)
 - 합계를 저장할 값으로 만들지 마라(`WorklogDay`에 합계 칸 없음). 이유: 저장은 원래 숫자만, 합계는 그릴 때 계산한다(design.md 1절)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다

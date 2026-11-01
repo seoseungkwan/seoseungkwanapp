@@ -11,7 +11,7 @@
 - **AC-007.1**: `globals.css` `:root`에 `--xl-ink: #000000`·`--xl-lav: #CCCCFF`·`--xl-gray: #D9D9D9`·`--xl-focus: #107C41` 한 번씩, 토큰 시험 표에 있음, `@theme inline`은 안 가리킴
 - **AC-007.2**: `font-weight: 700`은 `src/components/worklog/sheet.module.css`에서만 통과, 다른 파일은 그대로 잡힘
 - **AC-007.3**: `src/components/worklog`가 앱 화면 검사 폴더에 듦. 앱 화면 폴더의 `*.module.css`는 `sheet.module.css` 하나, 불러오는 파일은 `WorklogSheet.tsx` 하나뿐
-- **AC-007.4**: `sheet.module.css`에 16진수·`rgb(`·`url(`·`@font-face` 없음, 색은 `var(--xl-*)`·`var(--surface)`·`var(--muted)`만, 글꼴은 시스템 이름만
+- **AC-007.4**: `sheet.module.css`에 16진수·`rgb(`·`url(`·`@font-face` 없음, 색은 `var(--xl-*)`·`var(--surface)`·`var(--muted)`·`var(--negative)`·`var(--negative-soft)`만(빨강 둘은 막힌 칸·"합계에서 빠졌어요" 전용), 글꼴은 시스템 이름만
 
 ## 읽어야 할 파일
 
@@ -64,11 +64,11 @@
 - `theme.test.ts`: `WORKLOG_SHEET_TOKENS = { '--xl-ink': '#000000', '--xl-lav': '#CCCCFF', '--xl-gray': '#D9D9D9', '--xl-focus': '#107C41' }`를 b2b-redesign 202.1 기대(`{ ...TOKENS, ...LANDING_ALIASES }`)에 더하고, b2b-redesign 202.2(`@theme inline`) 쪽은 이 넷을 가리키지 않는다는 시험 하나(`AC-007.1`)
 - `fonts.test.ts`: 굵기 예외 상수 `SHEET_WEIGHT_EXCEPTION = 'src/components/worklog/sheet.module.css'`. 그 파일의 700만 빼고, 같은 글자가 다른 경로에 있으면 잡히는지 보는 시험(`AC-007.2`). 300·900은 그 파일에서도 잡힌다
 - `classes.test.ts`: `APP_DIRS`에 `'src/components/worklog', // worklog TASK-7 (AC-007.3)`. auth 013.2 두 시험(CSS Module 금지)에 예외 상수(`WORKLOG_SHEET_CSS`·`WORKLOG_SHEET_IMPORTER = 'src/components/worklog/WorklogSheet.tsx'`): 앱 화면 폴더의 module.css 목록 = `[WORKLOG_SHEET_CSS]`, module.css를 불러오는 소스 ⊆ `[WORKLOG_SHEET_IMPORTER]`
-- `sheet.style.test.ts`(새, node): AC-007.4 — 파일 글자 검사(주석 뺀 CSS): 16진수·`rgb(`·`hsl(`·`url(`·`@font-face`·`@import` 없음, `var(--xl-lav)`·`var(--xl-gray)`·`var(--xl-ink)` 있음, `font-family` 값의 글꼴 이름 ⊆ `{Gulim, 굴림, Malgun Gothic, 맑은 고딕, Apple SD Gothic Neo, sans-serif}`
+- `sheet.style.test.ts`(새, node): AC-007.4 — 파일 글자 검사(주석 뺀 CSS): 16진수·`rgb(`·`hsl(`·`url(`·`@font-face`·`@import` 없음, `var(--xl-lav)`·`var(--xl-gray)`·`var(--xl-ink)` 있음, `var(--…)` 이름이 허용 목록(`--xl-*`·`--surface`·`--muted`·`--negative`·`--negative-soft` + 시안의 크기 변수) 안, `font-family` 값의 글꼴 이름 ⊆ `{Gulim, 굴림, Malgun Gothic, 맑은 고딕, Apple SD Gothic Neo, sans-serif}`
 
 ### 2. 구현(GREEN)
 - `globals.css` `:root` **끝**에 넷(주석 한 줄: "업무일지 양식 칸 전용 — UI_GUIDE '업무일지 양식'")
-- `sheet.module.css`: 시안 `.paper`·`.sheet`·`.sheet td`… 화면 규칙과 `@container`(폰 크기 변수) 부분을 옮긴다. 클래스 이름: `paper`·`sheet`·`title`·`lav`·`gray`·`date`·`small`·`memo`·`in`·`L`·`R`·`B`·`r1`·`r2`·`r3`·`r28`·`r20`. 색 `--xl-paper` 대신 `var(--surface)`, 흐린 안내 글 `#8A8A8A` 대신 `var(--muted)`, 초점 `#107C41` 대신 `var(--xl-focus)`. 폰 크기는 `@container` 대신 `@media (max-width: 767px)`(앱 틀에는 컨테이너가 없다). 시안 `.sheets`(날짜 시트 탭 줄)·`.month`·`.btn`·`.pv`(미리보기)·`.toast`는 옮기지 않는다. 인쇄(`@media print`)는 TASK-11
+- `sheet.module.css`: 시안 `.paper`·`.sheet`·`.sheet td`… 화면 규칙과 `@container`(폰 크기 변수) 부분을 옮긴다. 클래스 이름: `paper`·`sheet`·`title`·`lav`·`gray`·`date`·`small`·`memo`·`in`·`L`·`R`·`B`·`r1`·`r2`·`r3`·`r28`·`r20`. 색 `--xl-paper` 대신 `var(--surface)`, 흐린 안내 글 `#8A8A8A` 대신 `var(--muted)`, 초점 `#107C41` 대신 `var(--xl-focus)`. 폰 크기는 `@container` 대신 `@media (max-width: 767px)`(앱 틀에는 컨테이너가 없다). 시안 `.sheets`(날짜 시트 탭 줄)·`.month`·`.btn`·`.pv`(미리보기)·`.toast`는 옮기지 않는다. 인쇄(`@media print`)는 TASK-11, 막힌 칸·합계 제외 표시 클래스(`blocked`·`flag`)는 TASK-8
 
 ## TDD 순서
 
@@ -95,7 +95,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-2-screen/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`

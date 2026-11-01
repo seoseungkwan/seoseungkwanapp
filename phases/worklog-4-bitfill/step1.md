@@ -47,7 +47,7 @@
 ## 작업
 
 - design.md 20-4절 SQL. `check` 목록은 열 칸(`new_patients`·`return_patients`·`total_fee`·`claim_amount`·`cash_in`·`card_in`·`transfer_in`·`local_currency_in`·`unpaid_new`·`unpaid_paid`) — 지금 채우지 않는 미수발생·지역화폐도 나중 계약을 위해 받는다
-- 시험: auth → worklog → 이 파일 차례로 실행. 기본값 `{}`, 목록 밖 이름(`'memo'`·`'spend_cash'`) 거부, 승인 사용자 upsert 됨, `bit_fields`를 SET에 넣지 않은 upsert는 저장된 `bit_fields`를 바꾸지 않음, 다른 병원·anon 거부 그대로
+- 시험: auth → worklog → 이 파일 차례로 실행. 기본값 `{}`, 목록 밖 이름(`'memo'`·`'spend_cash'`·`'name_cash_in'`) 거부, 승인 사용자 upsert 됨, `bit_fields`를 SET에 넣지 않은 upsert는 저장된 `bit_fields`를 바꾸지 않음, 다른 병원·anon 거부 그대로
 
 ## TDD 순서
 
@@ -74,7 +74,7 @@ python3 ~/.claude/harness/bin/verify
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
-   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보·업무사항은 서버로 가지 않는다, RLS, 비밀값)
+   - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (환자 개인정보는 서버로 가지 않는다 — 업무사항은 사용자 결정으로 서버에 두되 AI로 보내지 않고, 막는 모양은 저장하지 않는다. RLS, 비밀값)
 3. 결과에 따라 `phases/worklog-4-bitfill/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 5회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`
@@ -85,7 +85,7 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- `spend_*`·비고·업무사항 이름을 `check` 목록에 넣지 마라. 이유: 지출·업무사항은 손으로만(사용자)
+- `spend_*`·비고·업무사항·항목 이름 칸을 `check` 목록에 넣지 마라. 이유: 지출·업무사항은 손으로만(사용자), 항목 이름은 비트와 상관없다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
