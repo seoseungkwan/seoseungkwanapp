@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "revenue",
-  "approved_at": "2026-11-01T09:38:46Z",
+  "approved_at": "2026-11-01T10:41:29Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "1b2a3baf109170626a10e2253808bafba55a1e433e190511c5bd5e65b9a99b97",
+  "spec_sha256": "3c7d52275db8413a0d62cea51360f20fc21ae9cd2dcad569189e818d40f6fab1",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/UI_GUIDE.md",

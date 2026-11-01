@@ -8,12 +8,12 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-005에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-005.1**: `splitDay(row)`: 급여 = `insurer + copay`(요양비용총액), 공단부담 = `insurer`, 본인부담 = `copay`(= 급여 − 공단부담), 비급여 = `noncovered`, 기타 = `otherTotal`(100/100미만총액 + 전액본인부담). 급여 + 비급여 + 기타 ≠ `total`이거나 어느 칸이든 음수면 그날은 확인 필요(`null`), 고쳐 맞추지 않음(도우미가 만든 줄은 `otherTotal`이 나머지라 합 검사에 걸리지 않는다. 시험은 손으로 만든 줄로 한다)
-- **AC-005.2**: `sumPeriod(rows, range)`: 확인된 날의 여섯 금액(총액 = 매출·급여·공단부담·본인부담·비급여·기타, 급여 + 비급여 + 기타 = 총액) 합·확인 필요한 날 목록·내원 합·환자 수(1일 시작 기간이면 마지막 날 `patientsToDate`, 아니면 `null`). 줄이 없거나 모두 0이고 확인 필요한 날도 없으면 `null`
+- **AC-005.1**: `splitDay(row)`: `unconfirmed`이거나 `splitUnconfirmed`인 날은 `null`. 나눔이 있는 날은 급여 = `insurer + copay`(요양비용총액), 공단부담 = `insurer`, 본인부담 = `copay`(= 급여 − 공단부담), 비급여 = `noncovered`, 기타 = `otherTotal`(100/100미만총액 + 전액본인부담). 나눔이 있는 날에 급여 + 비급여 + 기타 ≠ `total`이거나 어느 칸이든 음수면 `null`이고 그날은 나눔을 못 한 날로 셈, 고쳐 맞추지 않음(도우미가 만든 줄은 `otherTotal`이 나머지라 합 검사에 걸리지 않는다. 시험은 손으로 만든 줄로 한다)
+- **AC-005.2**: `sumPeriod(rows, range)`: `unconfirmed`가 아닌 날의 총액(= 매출, 나눔을 못 한 날 포함)과, 나눔이 있는 날만 더한 급여·공단부담·본인부담·비급여·기타·`splitTotal`(급여 + 비급여 + 기타 = `splitTotal`, 나눔을 못 한 날이 있으면 총액보다 작고 맞춰 고치지 않음, 나눔이 있는 날의 `total` 합이 0이면(그런 날이 없거나 쉬는 날뿐) 이 여섯 칸 `null`)·확인 필요한 날 목록(`unconfirmed`만)·나눔을 못 한 날 목록(`noSplitDays`)·내원 합·`days`(`unconfirmed`가 아닌 날 수, 쉬는 날·나눔을 못 한 날 포함)·환자 수(1일 시작 기간이면 마지막 날 `patientsToDate`, 아니면 `null`). 줄이 없거나 모두 0이고 확인 필요한 날도 나눔을 못 한 날도 없으면 `null`
 - **AC-005.3**: `periodsFor(month, today)`: 고른 기간(1일~말일과 어제 가운데 이른 날)·지난달 같은 기간(짧으면 말일)·작년 같은 때(2월 29일 → 28일). `firstMonth(today)` = 어제가 속한 달. 날짜는 `lib/analytics/dates.ts`만
 - **AC-005.4**: `compare(now, before)`: 비율 소수 첫째 자리 버림, 방향 up·down·same, before가 null·0이면 `null`("비교할 수 없음")
-- **AC-005.5**: `monthSeries(rows, lastMonth, today)`: 13달(오래된 달부터) 총액·급여·비급여·기타·내원·환자 수·1인당, 자료 없는 달 `null`, 끝나지 않은 달 `partial: true`
-- **AC-005.6**: `perPatient(sum)`: 확인된 날의 총액 합 ÷ 기간 환자 수, `Math.floor`. 환자 수 `null`·0이면 `null`. 확인 필요한 날이 있으면 `lowered: true`
+- **AC-005.5**: `monthSeries(rows, lastMonth, today)`: 13달(오래된 달부터) 총액·급여·비급여·기타(나눔이 있는 날만, 그 날들의 `total` 합이 0인 달은 `null`)·내원·환자 수·1인당, 자료 없는 달 `null`, 끝나지 않은 달 `partial: true`
+- **AC-005.6**: `perPatient(sum)`: `unconfirmed`가 아닌 날의 총액 합(나눔을 못 한 날 포함) ÷ 기간 환자 수, `Math.floor`. 환자 수 `null`·0이면 `null`. 확인 필요한 날이 있으면 `lowered: true`, 나눔을 못 한 날만 있으면 아님
 
 ## 읽어야 할 파일
 
@@ -59,13 +59,13 @@
 
 ### 1. `src/lib/revenue/summary.ts`
 - 모양은 design.md 7절. 타입(`DaySplit`·`PeriodSum`·`MonthPoint`)은 이 파일에서 export한다
-- `sumPeriod`: `range` 밖의 줄은 무시. 확인 필요(`unconfirmed` 또는 `splitDay`가 `null`)인 날은 금액 합에서 빼고 `uncheckedDays`에 날짜를 넣는다. `visits`가 `null`인 날은 내원 합에서 빠진다. 환자 수는 `range.from`이 그 달 1일일 때만 `range.to` 줄의 `patientsToDate`(그 줄이 없거나 `null`이면 `null`). 서로 다른 환자 수를 날마다 더하지 않는다(같은 환자가 두 번 세어진다)
+- `sumPeriod`: `range` 밖의 줄은 무시. `unconfirmed`인 날은 금액 합에서 빼고 `uncheckedDays`에 날짜를 넣는다. 그 밖의 날은 `total`을 총액에 더한다. `splitDay`가 `null`인 날은 나눔 합에서 빼고 `noSplitDays`에 넣는다(`uncheckedDays`에 넣지 않는다). 쉬는 날(아홉 칸 0, 두 표시 거짓)은 나눔이 있는 날로 세어지므로, 나눔 여섯 칸을 `null`로 두는 조건은 나눔이 있는 날의 `total` 합이 0인 것이다. `days`는 `unconfirmed`가 아닌 줄 수다(쉬는 날·나눔을 못 한 날 포함). `visits`가 `null`인 날은 내원 합에서 빠진다. 환자 수는 `range.from`이 그 달 1일일 때만 `range.to` 줄의 `patientsToDate`(그 줄이 없거나 `null`이면 `null`). 서로 다른 환자 수를 날마다 더하지 않는다(같은 환자가 두 번 세어진다)
 - `periodsFor`: 고른 달이 이번 달이면 끝 = 어제, 지난 달이면 끝 = 말일. 고른 달이 아직 1일도 지나지 않았으면(오늘이 1일) 그 달은 고를 수 없다 — `firstMonth`가 지난달을 준다
 - `compare`: `rate = (now − before) / before × 100`을 소수 첫째 자리 버림(음수도 0 쪽으로 버림). 같으면 `same`
 - `monthSeries`: `lastMonth`부터 거꾸로 13달, 반환은 오래된 달부터. 달마다 `sumPeriod`(그 달 1일~min(말일, 어제))
 
 ### 2. 시험 (`summary.test.ts`, 가짜 숫자)
-- 급여 = 공단 + 본인부담, 기타 = `otherTotal`, 급여 + 비급여 + 기타 ≠ 총액 → `null`, 어느 칸이든 음수 → `null`(AC-005.1) · 기타 합이 들어 있음 · 확인 필요한 날 빠짐·목록, 빈 기간 `null`, 모두 0이면 `null`, 원 합이 그대로, 환자 수 = 마지막 날 `patientsToDate`, 1일 시작이 아니면 `null`(AC-005.2) · 3월 31일 → 2월 28일, 윤년 2월 29일 → 작년 28일, 오늘이 1일이면 `firstMonth`는 지난달, 이번 달은 어제까지(AC-005.3) · +4.08% → 4.0, −2.15% → −2.1, before 0·null → `null`(AC-005.4) · 13달 순서·자료 없는 달 `null`·진행 중 `partial`(AC-005.5) · 162,480,350 ÷ 1,872명 → 86,795, 환자 0·`null` → `null`, 확인 필요한 날 있음 → `lowered`(AC-005.6)
+- 급여 = 공단 + 본인부담, 기타 = `otherTotal`, 급여 + 비급여 + 기타 ≠ 총액 → `null`, 어느 칸이든 음수 → `null`, `unconfirmed`·`splitUnconfirmed`인 날 → `null`(AC-005.1) · 기타 합이 들어 있음 · 확인 필요한 날 빠짐·목록, 나눔을 못 한 날은 총액에 들어가고 나눔 합과 `splitTotal`에서 빠지며 `noSplitDays`에 있고 `uncheckedDays`에 없음·`splitTotal < 총액`, 모든 날이 나눔을 못 한 날이면 나눔 칸 `null`이고 총액은 있음, 일요일 0원 줄 하나 + 나머지 모두 `splitUnconfirmed` → 나눔 여섯 칸 `null`(0이 아님)·총액은 있음·`noSplitDays`에 일요일 없음, 31일 기간에 `unconfirmed` 2일과 쉬는 날·나눔을 못 한 날이 섞이면 `days` 29, 빈 기간 `null`, 모두 0이면 `null`, 원 합이 그대로, 환자 수 = 마지막 날 `patientsToDate`, 1일 시작이 아니면 `null`(AC-005.2) · 3월 31일 → 2월 28일, 윤년 2월 29일 → 작년 28일, 오늘이 1일이면 `firstMonth`는 지난달, 이번 달은 어제까지(AC-005.3) · +4.08% → 4.0, −2.15% → −2.1, before 0·null → `null`(AC-005.4) · 13달 순서·자료 없는 달 `null`·진행 중 `partial`·쉬는 날 말고 모두 나눔을 못 한 달의 급여·비급여·기타 `null`(AC-005.5) · 162,480,350 ÷ 1,872명 → 86,795, 환자 0·`null` → `null`, 확인 필요한 날 있음 → `lowered`, 나눔을 못 한 날은 분자에 들어가고 `lowered`가 아님(AC-005.6)
 - `TZ=Asia/Seoul`(vitest 설정)에서 돈다. 오늘은 인자로만 받는다(시계를 읽지 않는다)
 
 ## TDD 순서

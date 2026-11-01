@@ -131,6 +131,9 @@ OTHER = [3_702_100, 3_840_220, 3_655_010, 3_480_300, 3_402_660, 3_940_080, 3_980
          4_088_740, 3_993_060, 3_902_610, 4_206_300]
 COV = [t - n - o for t, n, o in zip(TOTAL, NONCOV, OTHER)]   # 급여 = 요양비용총액 = 공단부담 + 급여 본인부담
 SELF = COV[SEL] - INSURER     # 급여 본인부담 = 급여 − 공단부담
+# 나눔을 못 한 날이 있는 달의 예시(2026-11-01 사용자 "나눔만 비워"): 그날들이 표·막대·몫에서 빠지는 금액
+NS_COV, NS_NON, NS_OTH, NS_INS = 2_940_300, 2_187_600, 135_200, 2_216_900
+NS_NOTE = '<b>2일(10월 5일·19일)</b>은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.'
 
 EX = '<span class="chip chip-a">예시 숫자</span>'
 
@@ -198,7 +201,7 @@ def period_row(kind):
 def trend(kind):
     ph = kind == 'ph'
     d1 = delta(TOTAL[SEL], TOTAL[PREV]); d2 = delta(TOTAL[SEL], TOTAL[LY])
-    avg = TOTAL[SEL] // 31
+    avg = TOTAL[SEL] // (31 - 2)   # 하루 평균 = 매출 ÷ 확인 필요가 아닌 날 수(31일 가운데 2일이 확인 필요)
     k = (f'<div class="kpi"><p class="kpi-n">10월 매출</p><p class="kpi-v ink">{man(TOTAL[SEL])}</p><p class="kpi-s">하루 평균 {man(avg)}</p></div>'
          + dkpi('9월보다', d1, '9월 ' + man(TOTAL[PREV]))
          + dkpi('작년 10월보다', d2, '2025년 10월 ' + man(TOTAL[LY]))
@@ -214,33 +217,51 @@ def trend(kind):
             f'<div class="kpis">{k}</div>'
             f'<div class="cbox"><div class="c-h"><h3 class="c-t">달마다 매출 · 최근 13달</h3>{lg}</div>{chart}{srt}</div></section>')
 
-def split(kind):
+def split(kind, nosplit=False):
     ph = kind == 'ph'
-    cov, non, oth, tot = COV[SEL], NONCOV[SEL], OTHER[SEL], TOTAL[SEL]
+    cov, non, oth, ins = COV[SEL], NONCOV[SEL], OTHER[SEL], INSURER
+    if nosplit:   # 표·세 겹 막대·몫은 나눔이 있는 날만 더한다. 합계가 매출보다 작아도 맞춰 고치지 않는다
+        cov, non, oth, ins = cov - NS_COV, non - NS_NON, oth - NS_OTH, ins - NS_INS
+    tot = cov + non + oth
     dc = delta(COV[SEL], COV[PREV]); dn = delta(NONCOV[SEL], NONCOV[PREV]); do = delta(OTHER[SEL], OTHER[PREV])
     def dcell(d):
+        if nosplit:
+            return '–'
         arr = ic('up', 12) if d[0] == 'up' else ic('down', 12) if d[0] == 'dn' else ''
         return f'<span class="dl {d[0]}">{arr}{d[1]}<span class="sr">{d[2]}</span></span>'
     tb = ('<table class="tb"><thead><tr><th>나눔</th><th class="n">10월</th><th class="n">몫</th><th class="n">9월보다</th></tr></thead><tbody>'
           f'<tr class="em"><td>급여</td><td class="n">{man(cov)}</td><td class="n">{share(cov, tot)}</td><td class="n">{dcell(dc)}</td></tr>'
-          f'<tr class="in"><td>공단부담</td><td class="n">{man(INSURER)}</td><td class="n">{share(INSURER, tot)}</td><td class="n muted">–</td></tr>'
-          f'<tr class="in"><td>본인부담</td><td class="n">{man(SELF)}</td><td class="n">{share(SELF, tot)}</td><td class="n muted">–</td></tr>'
+          f'<tr class="in"><td>공단부담</td><td class="n">{man(ins)}</td><td class="n">{share(ins, tot)}</td><td class="n muted">–</td></tr>'
+          f'<tr class="in"><td>본인부담</td><td class="n">{man(cov - ins)}</td><td class="n">{share(cov - ins, tot)}</td><td class="n muted">–</td></tr>'
           f'<tr class="em"><td>비급여</td><td class="n">{man(non)}</td><td class="n">{share(non, tot)}</td><td class="n">{dcell(dn)}</td></tr>'
           f'<tr class="em"><td>기타</td><td class="n">{man(oth)}</td><td class="n">{share(oth, tot)}</td><td class="n">{dcell(do)}</td></tr>'
-          f'<tr class="sum"><td>합계 · 매출</td><td class="n">{man(tot)}</td><td class="n">100%</td><td class="n">{dcell(delta(TOTAL[SEL], TOTAL[PREV]))}</td></tr>'
+          f'<tr class="sum"><td>{"합계" if nosplit else "합계 · 매출"}</td><td class="n">{man(tot)}</td><td class="n">100%</td><td class="n">{dcell(delta(TOTAL[SEL], TOTAL[PREV]))}</td></tr>'
           '</tbody></table>')
     vals = [t // 10_000 for t in TOTAL]
-    stack = [(c // 10_000, n // 10_000, o // 10_000) for c, n, o in zip(COV, NONCOV, OTHER)]   # 아래부터 급여 · 비급여 · 기타
+    covs, nons, oths = list(COV), list(NONCOV), list(OTHER)
+    covs[SEL], nons[SEL], oths[SEL] = cov, non, oth
+    stack = [(c // 10_000, n // 10_000, o // 10_000) for c, n, o in zip(covs, nons, oths)]   # 아래부터 급여 · 비급여 · 기타
     cols = [('b-cov', 'b-non', 'b-oth2')] * len(vals)
     chart = bars(vals, cols, LABELS, YEARS, show_vals='none', ph=ph, stack=stack, h=(140 if ph else 180))
     lg = legend([('b-oth2', '기타'), ('b-non', '비급여'), ('b-cov', '급여')])
-    srt = sr_table('달마다 급여·비급여·기타 (원)', ['달', '급여', '비급여', '기타'], [(m, won(c), won(n), won(o)) for m, c, n, o in zip(MONTHS, COV, NONCOV, OTHER)])
+    srt = sr_table('달마다 급여·비급여·기타 (원)', ['달', '급여', '비급여', '기타'], [(m, won(c), won(n), won(o)) for m, c, n, o in zip(MONTHS, covs, nons, oths)])
     note = ('<p class="d-note">매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, '
-            '기타는 100/100 미만 항목과 전액 본인부담 금액이에요. 셋을 더하면 매출이에요.</p>')
+            '기타는 100/100 미만 항목과 전액 본인부담 금액이에요. '
+            + ('이 달은 나눔을 못 한 날이 빠져서 셋을 더해도 매출보다 작아요. 막대도 나눔이 있는 날만 더해요.</p>' if nosplit else '셋을 더하면 매출이에요.</p>'))
+    ban = f'<div class="ban" role="note"><p>{NS_NOTE}</p></div>' if nosplit else ''
     left = f'<div class="sp-l">{tb}{note}</div>'
     right = f'<div class="sp-r"><div class="c-h"><h3 class="c-t">달마다 급여·비급여·기타</h3>{lg}</div>{chart}{srt}</div>'
     return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">급여·비급여·기타</h2>'
-            f'<span class="dsec-s">10월 비급여 몫 {share(non, tot)} · 기타 몫 {share(oth, tot)}</span></div><div class="split">{left}{right}</div></section>')
+            f'<span class="dsec-s">10월 비급여 몫 {share(non, tot)} · 기타 몫 {share(oth, tot)}</span></div>{ban}<div class="split">{left}{right}</div></section>')
+
+def split_none(kind):   # 쉬는 날 말고는 모두 나눔을 못 한 달(splitTotal null): 지어낸 숫자·빈 그래프 틀 없이 "–"와 "자료 없음"
+    rows = ''.join(f'<tr class="{c}"><td>{n}</td><td class="n muted">–</td><td class="n muted">–</td><td class="n muted">–</td></tr>'
+                   for c, n in [('em', '급여'), ('in', '공단부담'), ('in', '본인부담'), ('em', '비급여'), ('em', '기타'), ('sum', '합계')])
+    tb = ('<table class="tb"><thead><tr><th>나눔</th><th class="n">10월</th><th class="n">몫</th><th class="n">9월보다</th></tr></thead>'
+          f'<tbody>{rows}</tbody></table>')
+    return ('<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">급여·비급여·기타</h2><span class="dsec-s">자료 없음</span></div>'
+            '<div class="ban" role="note"><p><b>27일(10월 1일–3일·5일–10일·12일–17일·19일–24일·26일–31일)</b>은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.</p></div>'
+            f'<div class="split"><div class="sp-l">{tb}<p class="d-note">자료 없음. 이 달은 쉬는 날 말고는 모두 나눔을 못 해서 숫자를 지어 넣지 않았어요. 위 매출 추이와 아래 1인당 평균은 그대로 볼 수 있어요.</p></div></div></section>')
 
 def treat(kind):
     allsum = sum(a for _, a, _ in TREAT) + TREAT_OTHER
@@ -569,16 +590,24 @@ row_main = ('<div class="row">'
             + frame('pc', shell('pc', revenue_body('pc')), 1440, 860, True, cap='<b>PC</b> · 예시 숫자 · 아래로 밀어 보세요',
                     title='매출 · 예시정형외과의원', label='매출 · PC')
             + '</div>')
+row_split = ('<div class="row">'
+             + frame('ph', shell('ph', split('ph', nosplit=True)), 390, 760, True, cap='<b>나눔을 못 한 날이 있는 달</b> · 폰 · 예시 숫자', label='나눔을 못 한 날 · 폰')
+             + frame('pc', shell('pc', split('pc', nosplit=True)), 1440, 860, True, cap='<b>나눔을 못 한 날이 있는 달</b> · PC · 예시 숫자 · 합계가 매출보다 작아요',
+                     label='나눔을 못 한 날 · PC')
+             + '</div><div class="row">'
+             + frame('full', shell('pc', split_none('pc')), 1440, 740, False, cap='<b>쉬는 날 말고는 모두 나눔을 못 한 달</b> · 매출 합계는 그대로예요', size='full', label='나눔이 없는 달')
+             + '</div>')
 S.append('<section class="sec" id="main-view"><p class="sec-k">1 · 자료가 있을 때 · 바뀐 곳을 확인해 주세요</p><h2>매출 한 쪽: 추이 · 급여·비급여·기타 · 치료별 · 1인당 평균</h2>'
          '<p class="sec-p">통계처럼 도구 단추 줄 없이 그래프가 위에서 아래로 이어지는 한 쪽이에요. 맨 위에서 달을 고르면 네 덩어리가 모두 그 달로 바뀌어요. '
          '처음에는 어제가 속한 달을 보여 드려요(오늘은 11월 1일이라 10월). '
-         '승인 뒤 바뀐 곳은 \'급여·비급여·기타\' 덩어리와 \'확인 필요한 날\' 글자예요.</p>' + row_main +
+         '승인 뒤 바뀐 곳은 \'급여·비급여·기타\' 덩어리와 \'확인 필요한 날\' 글자, 나눔을 못 한 날 안내예요.</p>' + row_main + row_split +
          '<div class="notes"><div class="nb"><h3>이렇게 읽어요</h3><ul>'
-         '<li><span><b>매출 추이</b>: 고른 달의 매출과, 지난달 같은 기간·작년 같은 달 같은 기간과 견준 늘고 준 비율이에요. 막대는 최근 13달이고 작년 같은 달은 회색이에요.</span></li>'
+         '<li><span><b>매출 추이</b>: 고른 달의 매출과, 지난달 같은 기간·작년 같은 달 같은 기간과 견준 늘고 준 비율이에요. 막대는 최근 13달이고 작년 같은 달은 회색이에요. 하루 평균은 확인 필요한 날을 뺀 날 수로 나눠요.</span></li>'
          '<li><span><b>급여·비급여·기타</b>: 매출(총진료비)을 셋으로 나눠요 — 급여(요양비용총액 = 공단부담 + 본인부담), 비급여, 기타(100/100 미만 항목 + 전액 본인부담). 셋을 더하면 매출이에요. 오른쪽은 13달 세 겹 쌓은 막대예요(2026-11-01 바뀜).</span></li>'
          '<li><span><b>치료별 매출</b>: 도수치료·체외충격파·C-arm 주사·초음파·냉동치료 다섯 가지와 그 밖 처방이에요. 처방 금액으로 세서 매출 합계와 조금 달라요.</span></li>'
          '<li><span><b>환자 1인당 평균 진료비</b>: 매출을 그 기간에 다녀간 환자 수로 나눈 값이에요. 같은 환자가 여러 번 와도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고, 이름·차트번호 없이 숫자만 가져와요.</span></li>'
-         '<li><span><b>확인 필요한 날</b>: 환불·예치금이 있거나 금액이 서로 맞지 않는 날은 금액을 자동으로 세지 않고 날짜만 알려 드려요. 그날 금액은 합계에 넣지 않아요(2026-11-01 글자 바뀜).</span></li>'
+         '<li><span><b>확인 필요한 날</b>: 환불·예치금이 있는 날은 금액을 자동으로 세지 않고 날짜만 알려 드려요. 그날 금액은 합계에 넣지 않아요(2026-11-01 글자 바뀜).</span></li>'
+         '<li><span><b>나눔을 못 한 날</b>: 급여·비급여·기타만 맞지 않는 날이에요. 그날 금액은 매출 합계·추이·1인당 평균에 그대로 들어가고, 급여·비급여·기타에서만 빠져요. 그래서 이 덩어리의 합계가 매출보다 작을 수 있어요. 잘못된 것이 아니에요(2026-11-01 더함).</span></li>'
          '<li><span>금액은 원 단위로 저장하고, 화면의 큰 숫자는 만 원 아래를 버려서 보여요(반올림 안 함). 비율은 소수 첫째 자리까지 버려요.</span></li>'
          '<li><span>PC에서는 [다시 가져오기]로 비트에서 새로 읽어요. 폰은 비트에 닿을 수 없어서, 의원 PC가 마지막으로 가져온 숫자를 보여요.</span></li>'
          '</ul></div></div></section>')
@@ -649,8 +678,10 @@ decide = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k"
           '<li><div><p class="q">매출은 총진료비, 급여·비급여는 셋으로(급여·비급여·기타)</p>'
           '<p class="a">비트 외래환자경영통계와 같은 식이에요: 총진료비 = 요양비용총액(급여) + 비급여 + 100/100 미만 + 전액 본인부담. 기타 = 100/100 미만 + 전액 본인부담.</p></div></li>'
           '<li><div><p class="q">환불·예치금이 있는 날: 합계에서 빼고 날짜만 알림</p>'
-          '<p class="a">지금 일일 보고처럼 그날 금액은 비워 두고 "확인 필요한 날"로 알려 드려요. 금액이 서로 맞지 않는 날도 똑같이 해요. 이런 날은 매출뿐 아니라 업무일지 자동 채우기에서도 금액이 비어서 직접 적어요. 이런 날이 많으면 직접 입력 칸을 다시 의논해요.</p></div></li></ol>'
-          '<p class="reply">승인 뒤 바뀐 곳만 확인해 주세요: 1번의 \'급여·비급여·기타\' 덩어리(표·세 겹 막대·안내 글)와 \'확인 필요한 날\' 칸의 글자, 같은 말로 바뀐 매출 추이 설명과 연결 전 화면의 소개 줄이에요. \'확인 필요한 날\'에는 매출뿐 아니라 업무일지 자동 채우기에서도 금액이 비어서, 그날 금액은 직접 적게 돼요. 이렇게 답해 주시면 돼요: <b>매출 바뀐 곳 좋아요</b> (바꿀 것이 있으면 함께 말씀해 주세요)</p></div></section>')
+          '<p class="a">지금 일일 보고처럼 그날 금액은 비워 두고 "확인 필요한 날"로 알려 드려요. 이런 날은 매출뿐 아니라 업무일지 자동 채우기에서도 금액이 모두 비어서 직접 적어요. 이런 날이 많으면 직접 입력 칸을 다시 의논해요.</p></div></li>'
+          '<li><div><p class="q">급여·비급여·기타만 맞지 않는 날: 나눔만 비워요</p>'
+          '<p class="a">그날 총진료비와 받은 돈은 그대로 두고 매출 합계·추이·1인당 평균에도 넣어요. 급여·비급여·기타 표에서만 빠지고 날 수와 날짜를 알려 드려요. 업무일지 자동 채우기에서는 공단 칸만 비어요.</p></div></li></ol>'
+          '<p class="reply">승인 뒤 바뀐 곳만 확인해 주세요: 1번의 \'급여·비급여·기타\' 덩어리(표·세 겹 막대·안내 글)와 \'확인 필요한 날\' 칸의 글자, 같은 말로 바뀐 매출 추이 설명과 연결 전 화면의 소개 줄, 나눔을 못 한 날 안내예요. 나눔을 못 한 날이 있는 달은 급여·비급여·기타의 합계가 매출보다 작아요. \'확인 필요한 날\'에는 매출과 업무일지 자동 채우기의 금액이 모두 비어서 직접 적어요. 나눔을 못 한 날에는 매출 합계와 업무일지의 총진료비·수납은 그대로이고 업무일지의 공단 칸만 비어요. 이렇게 답해 주시면 돼요: <b>매출 바뀐 곳 좋아요</b> (바꿀 것이 있으면 함께 말씀해 주세요)</p></div></section>')
 
 NAV = [('main-view', '자료가 있을 때 (바뀐 곳 확인)'), ('states', '상황마다'), ('groups', '묶음 고치기'), ('decide', '정한 것')]
 nav = ''.join(f'<a href="#{i}"{" class=dec" if i == "decide" else ""}>{n}</a>' for i, n in NAV)

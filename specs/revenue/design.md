@@ -2,8 +2,9 @@
 
 > 시안 `docs/mockups/revenue/index.html`(만드는 코드 `gen.py`, 숫자는 모두 예시)은 **2026-11-01 사용자 승인**("이대로 만들기")이다. 승인과 OK 기록은 `docs/mockups/revenue/README.md`에 둔다.
 > 시안 3절 **'치료 묶음 고치기'와 묶음 50개 한도도 2026-11-01 사용자 승인**("묶음 화면 좋아요", "적당해 50개면")이다. TASK-14를 막는 것이 없다.
-> **승인 뒤 바뀐 곳은 OK 전**: 시안 1절의 '급여·비급여·기타' 덩어리와 '확인 필요한 날' 글자(2026-11-01 명세 변경으로 다시 그림). TASK-8·TASK-9는 README의 그 줄이 OK가 된 뒤에만 시작한다.
-> **명세 변경 2026-11-01(사용자)**: 매출 = 총진료비, 급여·비급여 보기는 급여·비급여·기타 셋. 식은 비트 외래환자경영통계 화면(사용자 캡처)으로 확인했다(2절). 계약(5절)에 `copay`·`otherTotal`을 더했다. **바뀌지 않는 것은 기존 칸 이름뿐이다**: 금액 칸은 아홉이 되고, 새 검사에 걸린 날은 업무일지가 채우는 `cash`·`card`·`transfer`·`receivableIn`도 `null`이 된다(5-2). 업무일지 명세 후속은 11절.
+> **승인 뒤 바뀐 곳은 OK 전**: 시안 1절의 '급여·비급여·기타' 덩어리와 '확인 필요한 날' 글자(2026-11-01 명세 변경으로 다시 그림), 나눔을 못 한 날 안내. TASK-8·TASK-9는 README의 그 줄이 OK가 된 뒤에만 시작한다.
+> **명세 변경 2026-11-01(사용자)**: 매출 = 총진료비, 급여·비급여 보기는 급여·비급여·기타 셋. 식은 비트 외래환자경영통계 화면(사용자 캡처)으로 확인했다(2절). 계약(5절)에 `copay`·`otherTotal`을 더했다. 기존 칸 이름은 그대로다. 업무일지 명세 후속은 11절.
+> **명세 변경 2026-11-01(사용자 "나눔만 비워")**: 나눔이 맞지 않아도 그날 전체를 비우지 않는다. 금액 맞춤 검사나 나눔 네 칸의 음수에 걸린 날은 `splitUnconfirmed`(네 칸만 `null`)이고, `unconfirmed`(아홉 칸 `null`)는 세 검사와 남는 다섯 칸의 음수에만 쓴다(5-2, 10절). 도우미 0.2.0을 아직 내지 않아 판은 더 올리지 않는다.
 > 따르는 문서: `CLAUDE.md` · `plan.md` §2-4·§4·§5 · `docs/ARCHITECTURE.md` · ADR-004·008·016·020·021 · `docs/tab-frame/plan.md` · `docs/UI_GUIDE.md` · `specs/precheck/design.md`(도우미·통로·표 규칙)
 
 ## 1. 개요
@@ -36,7 +37,7 @@
 
 **확인 못 한 것 → TASK-1 의원 PC 확인표** (Claude는 의원 PC와 총괄 계정의 저장된 줄을 볼 수 없다. 총괄이 화면을 보고 적는다)
 1. **총진료비의 짜임(확인함, 2026-11-01)**: 확인표 '먼저 할 것' ① = 아니오(총진료비 ≠ 공단 + 본인 + 비급여). 사용자가 보낸 비트 외래환자경영통계 화면(숫자 맞춰 봄)의 식: **총진료비 = 요양비용총액 + 비급여 + 100/100미만총액 + 전액본인부담**, **요양비용총액 = 조합청구액(공단) + 급여본인부담금**, 수납액 = 현금 + 카드 + 계좌 + 미수입금. 그래서 매출 = 총진료비, 급여 = 요양비용총액, 기타 = 100/100미만총액 + 전액본인부담(사용자 결정)
-2. **요양비용총액·급여 본인부담 읽기**: 원본 `FinanceNormal`의 `NativeRows`가 `OrpInsAmt`·`OrpInsOwn`을 고르지만 더하지 않는다. 이름과 자리로 보아 요양비용총액·급여본인부담금으로 보고(확인 못 함), 같은 수납 줄에서 더한다(새 문장 `FinanceNormalExtra`·`FinanceReceivableExtra`). **100/100미만총액·전액본인부담 칸은 원본 SQL에 없다** → `otherTotal`(기타)은 총진료비에서 급여(`insurer + copay`)와 비급여를 뺀 나머지로 낸다(4-2). 남는 금액으로 셈하므로 **총액 가운데 `insurer + copay`·`noncovered`에 잡히지 않은 금액은 무엇이든 '확인 필요' 없이 기타로 들어간다**(매출 `total`은 그대로다). 예: `insurer` 300,000 + `copay` 150,000 = `OrpInsAmt` 450,000, `noncovered` 400,000, `total` 1,000,000인데 진짜 기타가 100,000이고 다른 금액 50,000이 총액에 섞여 있으면 `otherTotal`은 150,000이고 어떤 검사에도 걸리지 않는다. 검사 둘이 잡는 것은 다른 일이다: ① `insurer + copay = 요양비용총액`이 아니면 그날 '확인 필요'(두 칸의 뜻이 틀린 경우) ② 어느 칸이든 음수면 '확인 필요'. 웹의 합 검사(AC-005.1)는 도우미가 만든 줄에서 걸리지 않는다(`otherTotal`이 나머지라서). **기타가 맞는지 보는 것은 Phase 3 뒤 확인표 '매출 탭에서 볼 것' ⑤뿐이다**: 급여·비급여·기타가 비트 화면과 같은지 확인 필요한 날이 없는 달로, 만 원 자리까지 같음/다름으로 본다. 다르면 칸을 찾는 명세 변경을 한다(저장된 날을 다시 읽는 일을 포함, AC-007.1). **⑤의 한계**: 만 원 아래 차이는 보지 못하고, 본 달에 없던 금액은 말해 주지 못한다. **화면에 보이는 건강생활유지비(아래 3)가 이 식에 들어가는지도 확인하지 못했다**(지어 정하지 않는다). ⑤의 건강생활유지비 줄이 '아니오'(본 달에 0원)이면 ⑤는 건강생활유지비에 대해 아무것도 말해 주지 못한다. '예'여도 금액이 만 원보다 작으면 드러나지 않는다
+2. **요양비용총액·급여 본인부담 읽기**: 원본 `FinanceNormal`의 `NativeRows`가 `OrpInsAmt`·`OrpInsOwn`을 고르지만 더하지 않는다. 이름과 자리로 보아 요양비용총액·급여본인부담금으로 보고(확인 못 함), 같은 수납 줄에서 더한다(새 문장 `FinanceNormalExtra`·`FinanceReceivableExtra`). **100/100미만총액·전액본인부담 칸은 원본 SQL에 없다** → `otherTotal`(기타)은 총진료비에서 급여(`insurer + copay`)와 비급여를 뺀 나머지로 낸다(4-2). 남는 금액으로 셈하므로 **총액 가운데 `insurer + copay`·`noncovered`에 잡히지 않은 금액은 무엇이든 아무 표시 없이 기타로 들어간다**(매출 `total`은 그대로다). 예: `insurer` 300,000 + `copay` 150,000 = `OrpInsAmt` 450,000, `noncovered` 400,000, `total` 1,000,000인데 진짜 기타가 100,000이고 다른 금액 50,000이 총액에 섞여 있으면 `otherTotal`은 150,000이고 어떤 검사에도 걸리지 않는다. 검사 둘이 잡는 것은 다른 일이다: ① `insurer + copay = 요양비용총액`이 아니면 그날 나눔만 비운다(`splitUnconfirmed`, 두 칸의 뜻이 틀린 경우) ② 나눔 네 칸 가운데 음수면 나눔만 비우고, `total`·`cash`·`card`·`transfer`·`receivableIn` 가운데 음수면 '확인 필요'(`unconfirmed`). 웹의 합 검사(AC-005.1)는 도우미가 만든 줄에서 걸리지 않는다(`otherTotal`이 나머지라서). **기타가 맞는지 보는 것은 Phase 3 뒤 확인표 '매출 탭에서 볼 것' ⑤뿐이다**: 급여·비급여·기타가 비트 화면과 같은지 확인 필요한 날도 나눔을 못 한 날도 없는 달로, 만 원 자리까지 같음/다름으로 본다. 다르면 칸을 찾는 명세 변경을 한다(저장된 날을 다시 읽는 일을 포함, AC-007.1). **⑤의 한계**: 만 원 아래 차이는 보지 못하고, 본 달에 없던 금액은 말해 주지 못한다. **화면에 보이는 건강생활유지비(아래 3)가 이 식에 들어가는지도 확인하지 못했다**(지어 정하지 않는다). ⑤의 건강생활유지비 줄이 '아니오'(본 달에 0원)이면 ⑤는 건강생활유지비에 대해 아무것도 말해 주지 못한다. '예'여도 금액이 만 원보다 작으면 드러나지 않는다
 3. **미수발생·지역화폐**: 외래환자경영통계 화면에 **미수발생은 보인다**(건강생활유지비·100/100미만본인부담금·100/100미만청구액도 보인다). **지역화폐는 화면에 없다**. 미수발생을 읽는 칸은 원본 코드에 없으므로 칸이 확인될 때까지 계약(5절)에 넣지 않는다(늘 `null`인 칸을 두지 않는다). 확인표 '먼저 할 것' ③은 그대로 둔다
 4. 치료 코드 다섯 가지가 이 의원 비트 코드와 같은가('먼저 할 것' ②, 처음 보이는 제안 묶음에만 쓰여 만드는 일을 막지 않는다, 14절). 금액·환자 수가 비트와 같은가, 처음 읽는 시간, '확인 필요' 날이 얼마나 자주 나오는가는 Phase 3 뒤 매출 탭에서 본다('매출 탭에서 볼 것' ①~④). 수납 나눔·신환·재진 맞추기는 이 기능에서 그리지 않으므로 업무일지 4단계 확인표가 한다
 
@@ -51,7 +52,7 @@
 [폰·연결 안 된 PC] loadRevenue → 같은 계산 → 화면(가져오기 없음)
 [업무일지 탭] sales_days에서 그날 줄을 읽거나, 비트 PC에서 bridge.call('revenue.days', {from: d, to: d}) (5-4)
 ```
-- 서버로 가는 것: 날짜·건수·정수 금액·확인 필요 여부, 달·처방 코드·건수·금액. 서버 경로·AI로는 보내지 않는다(범위 밖)
+- 서버로 가는 것: 날짜·건수·정수 금액·확인 필요·나눔 못 함 여부, 달·처방 코드·건수·금액. 서버 경로·AI로는 보내지 않는다(범위 밖)
 
 ## 4. 도우미 (C#, `helper/`)
 ### 4-1. 파일
@@ -76,7 +77,7 @@ public sealed class RevenueDay {
   public string Date;
   public long? Visits, NewPatients, ReturnVisits, PatientsToDate;
   public long? Total, Insurer, Noncovered, Copay, OtherTotal, Cash, Card, Transfer, ReceivableIn;
-  public bool Unconfirmed;
+  public bool Unconfirmed, SplitUnconfirmed;
 }
 public sealed class RevenueCode { public string Code; public string Name; public long Count; public long? Amount; }   // Name은 없으면 null(AC-002.2)
 public sealed class RevenueResult { public IReadOnlyList<RevenueDay> Days; public IReadOnlyList<RevenueCode> Codes; }
@@ -93,7 +94,7 @@ public static class RevenueCommands {
 - 원본 문장 글자: 원본 사본과 비교할 때 공백·끝 `;`·`--`로 시작하는 줄만 다를 수 있다. `Sql.cs` 시험 규칙(`;`·`--`·`/*` 없음, 쓰기 낱말 없음)을 매출 문장에도 같은 시험으로 건다. 원본 다섯 문장이 `WITH`로 시작하므로 매출 시험은 `SELECT` 또는 `WITH`로 시작하는 것을 받는다
 - 금액: 원본 `decimal`을 원 미만 버림으로 `long`(`decimal.Truncate`). DB `NULL`은 0(원본 `Amount()`와 같음)
 - `FinanceNormalExtra`·`FinanceReceivableExtra`(새 문장, 2026-11-01): 원본 `FinanceNormal`·`FinanceReceivable`과 같은 줄을 고르고 마지막 줄만 `SELECT SUM(OrpInsAmt),SUM(OrpInsOwn) FROM NativeRows`로 바꾼다. `FinanceReceivableExtra`는 `NativeRows`의 칸 목록에 `p.OrpInsAmt,p.OrpInsOwn`을 더한다(`FinanceNormal`의 `NativeRows`에는 이미 있다). 매개변수는 원본과 같다(`@day`·`@nextDay`·`@hospital`). 세 검사를 지난 날에만 돌린다(원본이 `FinanceNormal`·`FinanceReceivable`을 돌리는 조건과 같다)
-- 하루 계산(2026-11-01): 요양비용총액 = 두 Extra 답 첫째 칸 합, `copay` = 둘째 칸 합(원 미만 버림). **`insurer + copay = 요양비용총액` 비교는 원 미만을 버리기 전 `decimal` 값으로 한다**(1000.5 + 499.5와 1500은 같다. 버린 뒤 1000 + 499로 비교하면 거짓 '확인 필요'가 된다). 어긋나면 `unconfirmed`(금액 아홉 칸 `null`). `otherTotal`은 버린 뒤의 정수로 `total` − (`insurer` + `copay`) − `noncovered`다(요양비용총액을 빼면 위 예에서 급여 + 비급여 + 기타가 `total`보다 1 작아져 웹의 `splitDay`가 거짓 '확인 필요'를 낸다). 음수는 버린 뒤의 아홉 칸으로 보고, 하나라도 있으면 `unconfirmed`. `insurer + copay`와 요양비용총액이 어긋나면 '확인 필요'가 되지만, 총액에 섞였을 뿐 이 칸들과 상관없는 금액은 '확인 필요' 없이 기타로 들어간다(`total`은 그대로). 그것을 잡는 것은 의원 PC 확인표 ⑤뿐이다. 건강생활유지비가 이 식에 들어가는지는 **확인 못 함**이고 지어 정하지 않는다. 본 달에 건강생활유지비가 0원이면 ⑤도 그것에 대해 아무것도 말해 주지 못한다(2절 2)
+- 하루 계산(2026-11-01): 요양비용총액 = 두 Extra 답 첫째 칸 합, `copay` = 둘째 칸 합(원 미만 버림). **`insurer + copay = 요양비용총액` 비교는 원 미만을 버리기 전 `decimal` 값으로 한다**(1000.5 + 499.5와 1500은 같다. 버린 뒤 1000 + 499로 비교하면 거짓으로 나눔이 빈다). 어긋나면 `splitUnconfirmed`(나눔 네 칸 `insurer`·`noncovered`·`copay`·`otherTotal`만 `null`, `total`·`cash`·`card`·`transfer`·`receivableIn`은 그대로). `otherTotal`은 버린 뒤의 정수로 `total` − (`insurer` + `copay`) − `noncovered`다(요양비용총액을 빼면 위 예에서 급여 + 비급여 + 기타가 `total`보다 1 작아져 웹의 `splitDay`가 거짓으로 나눔을 못 한 날을 낸다). 음수는 버린 뒤의 칸으로 본다: `total`·`cash`·`card`·`transfer`·`receivableIn` 가운데 있으면 `unconfirmed`(금액 아홉 칸 `null`, 이쪽을 먼저 본다), 나눔 네 칸 가운데 있으면 `splitUnconfirmed`. 두 표시는 함께 참이 되지 않는다. `insurer + copay`와 요양비용총액이 어긋나면 나눔이 비지만, 총액에 섞였을 뿐 이 칸들과 상관없는 금액은 아무 표시 없이 기타로 들어간다(`total`은 그대로). 그것을 잡는 것은 의원 PC 확인표 ⑤뿐이다. 건강생활유지비가 이 식에 들어가는지는 **확인 못 함**이고 지어 정하지 않는다. 본 달에 건강생활유지비가 0원이면 ⑤도 그것에 대해 아무것도 말해 주지 못한다(2절 2)
 - `DistinctPatients`(새 문장, 원본 `Patients`의 `PeriodVisits` 조건 그대로):
 ```sql
 SELECT COUNT(DISTINCT NULLIF(RTRIM(c.OcmChtNum),'')) AS Patients,
@@ -126,7 +127,7 @@ FROM Codes c
 ```
   (내원 상태 목록은 원본 `LaCodes`·월간 `Treatments`와 같다. `MissingValues`가 0이 아니면 그 코드의 `amount`는 `null`. `Name`은 앞뒤 공백을 빼고 줄바꿈·제어 문자를 빈칸 하나로 바꾼 뒤 100자까지, 비면 `null`. 처방 이름은 처방 목록의 글자라 환자 자료가 아니다)
 - 코드 줄 정리(C#, 한 달이 코드 때문에 실패하지 않게): ① 앞뒤 공백을 뺀 뒤 같은 코드가 된 줄은 하나로 합친다(건수·금액 더함, 금액 하나라도 `null`이면 `null`) ② AC-002.2 글자 모양이 아닌 코드와 금액 순 999번째 뒤 코드(금액 `null`은 맨 뒤)는 이름 없는 한 줄 `_REST`로 합친다(같은 합치기 규칙) → 코드는 늘 1,000개 이하·중복 없음·모양 맞음
-- 기간이 31일을 넘거나 `to < from`이면 명령 표가 먼저 막고(`maxDays`), `Read`도 한 번 더 막는다(`E-HELPER-BAD-MESSAGE`)
+- 기간이 31일을 넘거나 `to < from`이면 명령 표가 먼저 막고(`maxDays`), `Read`도 한 번 더 막는다(`E-HELPER-BAD-MESSAGE`). `to`가 `9999-12-31`이면 명령 표는 지나지만 다음 날을 셀 수 없으므로 `Read`가 첫머리에서 같은 번호로 막는다(도우미가 멈추지 않게)
 - 오류: 관문 오류(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`·`E-BIT-DB-FAILED`)는 그대로, 읽기 실패·시간 초과는 `E-BIT-READ-FAILED`. 일부만 보내지 않는다. 코드 모양·개수로는 실패하지 않는다(위 코드 줄 정리)
 
 ## 5. 계약: 명령 `revenue.days` (매출·업무일지가 같이 쓴다)
@@ -148,20 +149,21 @@ FROM Codes c
 | `returnVisits` | 재진 = `visits − newPatients` | 접수일 | 원본 식 | 위와 같음 |
 | `patientsToDate` | `from`부터 그날까지 다녀간 서로 다른 환자 수(한 명은 한 번) | 접수일 | `DistinctPatients` | 차트번호 없는 내원이 있음 |
 | `total` | 총진료비 | 회계일(`OrpAccDte`) | `FinanceNormal`+`FinanceReceivable` 1 | `unconfirmed` |
-| `insurer` | 조합청구액(공단부담) | 회계일 | 둘의 2 | `unconfirmed` |
-| `noncovered` | 비급여 | 회계일 | 둘의 3 | `unconfirmed` |
-| `copay` | 급여 본인부담금(요양비용총액 = `insurer + copay`) (2026-11-01 더함) | 회계일 | `FinanceNormalExtra`+`FinanceReceivableExtra` 2(`OrpInsOwn` 합) | `unconfirmed` |
-| `otherTotal` | 기타 = 100/100미만총액 + 전액본인부담 = `total` − (`insurer` + `copay`) − `noncovered`, 나머지라서 총액에 섞인 다른 금액도 여기에 든다(2절 2) (2026-11-01 더함) | 회계일 | 위 칸들로 계산(위 두 문장 1 `OrpInsAmt` 합은 `unconfirmed` 검사에만 쓴다) | `unconfirmed` |
+| `insurer` | 조합청구액(공단부담) | 회계일 | 둘의 2 | `unconfirmed`·`splitUnconfirmed` |
+| `noncovered` | 비급여 | 회계일 | 둘의 3 | `unconfirmed`·`splitUnconfirmed` |
+| `copay` | 급여 본인부담금(요양비용총액 = `insurer + copay`) (2026-11-01 더함) | 회계일 | `FinanceNormalExtra`+`FinanceReceivableExtra` 2(`OrpInsOwn` 합) | `unconfirmed`·`splitUnconfirmed` |
+| `otherTotal` | 기타 = 100/100미만총액 + 전액본인부담 = `total` − (`insurer` + `copay`) − `noncovered`, 나머지라서 총액에 섞인 다른 금액도 여기에 든다(2절 2) (2026-11-01 더함) | 회계일 | 위 칸들로 계산(위 두 문장 1 `OrpInsAmt` 합은 금액 맞춤 검사에만 쓴다) | `unconfirmed`·`splitUnconfirmed` |
 | `cash` | 현금 수납(정상수납, 환불 뺌) | 회계일 | `FinanceNormal` 4 | `unconfirmed` |
 | `card` | 카드 수납(정상수납) | 회계일 | `FinanceNormal` 5 | `unconfirmed` |
 | `transfer` | 계좌이체 수납(정상수납, 원본 `OrcChkAmt`) | 회계일 | `FinanceNormal` 6 | `unconfirmed` |
 | `receivableIn` | 미수입금(지난 미수를 그날 받은 돈, 현금+카드+계좌) | 회계일 | `FinanceReceivable` 4+5+6 | `unconfirmed` |
-| `unconfirmed` | 금액을 세지 않은 날: ① 환불·변경수납·예치금·수납 연결 중복(세 검사) ② `insurer + copay ≠ 요양비용총액`(금액 맞춤 검사, 2026-11-01 더함) ③ 금액 아홉 칸 가운데 음수. 까닭은 답에 없다 | 회계일 | 세 검사 · `FinanceNormalExtra`+`FinanceReceivableExtra` · 계산한 칸 | — (늘 참·거짓) |
+| `unconfirmed` | 그날 금액을 셀 수 없음, 아홉 칸 모두 `null`: ① 환불·변경수납·예치금·수납 연결 중복(세 검사) ② `total`·`cash`·`card`·`transfer`·`receivableIn` 가운데 음수. 까닭은 답에 없다 | 회계일 | 세 검사 · 계산한 칸 | — (늘 참·거짓) |
+| `splitUnconfirmed` | 나눔만 셀 수 없음, `insurer`·`noncovered`·`copay`·`otherTotal`만 `null`이고 `total`·`cash`·`card`·`transfer`·`receivableIn`은 있음: ① `insurer + copay ≠ 요양비용총액`(금액 맞춤 검사) ② 그 네 칸 가운데 음수. `unconfirmed`와 함께 참이 되지 않는다. 까닭은 답에 없다 (2026-11-01 더함, "나눔만 비워") | 회계일 | `FinanceNormalExtra`+`FinanceReceivableExtra` · 계산한 칸 | — (늘 참·거짓) |
 
-- 매출 = `total`(총진료비) = `insurer + copay`(급여) + `noncovered` + `otherTotal`. 그날 받은 돈(입금액) = `cash + card + transfer + receivableIn`. 미수발생·지역화폐는 이번 계약에 없다(2절 3)
+- 매출 = `total`(총진료비) = `insurer + copay`(급여) + `noncovered` + `otherTotal`(나눔이 있는 날). 그날 받은 돈(입금액) = `cash + card + transfer + receivableIn`. `splitUnconfirmed`인 날에도 `total`과 입금액은 있다(매출 탭은 수납 나눔을 그리지 않고, 입금액은 업무일지가 쓴다). 미수발생·지역화폐는 이번 계약에 없다(2절 3)
 - `codes`: 기간 전체의 처방 코드별 `{ code, name, count, amount }`. `name` = 비트 처방 목록의 이름(1~100자, 없으면 `null`, `_REST`는 `null`). `count` = 유효 처방 줄 수, `amount` = 처방 금액(일수 × 수량 × 단가, 원 미만 버림, **처방일 기준**, 수납액 아님), 값 빠짐이면 `null`. `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, 1,000개 이하·중복 없음. 예약 코드 `_REST` = 모양이 맞지 않거나 1,000개를 넘쳐 합친 나머지(이름 없는 '그 밖')
-- 웹의 검사(`isRevenueDays`)가 칸 이름·종류·짝(`unconfirmed`와 금액 아홉 칸)·날짜 이어짐을 정확히 본다(AC-002.2). 칸을 더하거나 바꾸면 이 표·`src/types/revenue.ts`·검사·도우미·`sales_days`를 함께 바꾸는 명세 변경이다
-- **금액 맞춤 검사가 두 탭에 미치는 일(2026-11-01)**: 이 검사나 음수에 걸린 날은 세 검사에 걸린 날과 똑같이 금액 아홉 칸이 모두 `null`이다. 곧 업무일지가 쓰는 `total`·`insurer`·`cash`·`card`·`transfer`·`receivableIn`도 `null`이다. 이 검사는 확인하지 못한 가정(`OrpInsAmt` = 요양비용총액, 2절 2)에 기댄다. **가정이 틀리면 매출·업무일지 두 탭의 금액이 날마다 빈칸이 된다**(내원·신환·재진 수는 남는다). 이것을 잡아내는 것이 Phase 3 뒤 의원 PC 확인표 '매출 탭에서 볼 것' ⑤다(13절). 이 검사를 지났다고 기타가 맞는 것은 아니다: 총액에 섞인 다른 금액은 '확인 필요' 없이 기타로 들어간다(2절 2)
+- 웹의 검사(`isRevenueDays`)가 칸 이름·종류·짝(`unconfirmed`와 금액 아홉 칸, `splitUnconfirmed`와 나눔 네 칸, 둘이 함께 참이 아님)·날짜 이어짐을 정확히 본다(AC-002.2). 칸을 더하거나 바꾸면 이 표·`src/types/revenue.ts`·검사·도우미·`sales_days`를 함께 바꾸는 명세 변경이다
+- **금액 맞춤 검사가 두 탭에 미치는 일(2026-11-01, "나눔만 비워")**: 이 검사나 나눔 네 칸의 음수에 걸린 날은 그 네 칸만 `null`이다. `total`·`cash`·`card`·`transfer`·`receivableIn`은 원본 프로그램의 문장에서 오고 확인하지 못한 가정(`OrpInsAmt` = 요양비용총액, 2절 2)에 기대지 않으므로 남는다. 업무일지 자동 채우기는 이런 날에도 총진료비와 받은 돈을 받고 공단 칸(`insurer`)만 빈다. **가정이 틀리면 매출 탭의 나눔이 날마다 비고 업무일지의 공단 칸도 같이 비지만, 나머지(매출 합계·추이·1인당 평균, 업무일지의 총진료비·수납·건수)는 그대로 돈다.** 이것을 잡아내는 것이 Phase 3 뒤 의원 PC 확인표 '매출 탭에서 볼 것' ⑤다(본 달이 '없음'으로 나온다, 13절). 이 검사를 지났다고 기타가 맞는 것은 아니다: 총액에 섞인 다른 금액은 아무 표시 없이 기타로 들어간다(2절 2)
 
 ### 5-3. 파일
 - `src/lib/bridge/commands.json`: `"revenue.days": { "patient": false, "maxDays": 31, "args": { "from": { "type": "date" }, "to": { "type": "date" } } }`. `protocol`은 1 그대로
@@ -175,7 +177,7 @@ FROM Codes c
 ### 5-4. 업무일지가 쓰는 법
 - 저장된 숫자: `sales_days`(6절)에서 `day = 그날`인 내 병원 줄을 읽는다(RLS). 매출 탭이 의원 PC에서 한 번 가져온 날만 있다
 - 바로 읽기: 비트 PC에서 `call('revenue.days', {from: d, to: d})`. 이때 `patientsToDate`는 그날 하루의 환자 수다
-- `unconfirmed`인 날은 금액 아홉 칸이 `null`이다(환불 등 세 검사뿐 아니라 금액 맞춤 검사에 걸린 날도, 5-2) → 업무일지는 그날 금액을 직접 입력받는다. `null`인 건수 칸도 같다
+- `unconfirmed`인 날은 금액 아홉 칸이 `null`이다(세 검사나 남는 다섯 칸의 음수, 5-2) → 업무일지는 그날 금액을 직접 입력받는다. `splitUnconfirmed`인 날은 업무일지가 쓰는 칸 가운데 `insurer`(공단)만 `null`이다 → 그 칸만 직접 입력받는다. `null`인 건수 칸도 같다
 - 업무일지가 `sales_days`에 쓰고 싶으면 `lib/storage/revenue.ts`의 `saveMonth`(그 달 1일부터)를 쓴다. 하루만 따로 쓰는 길은 만들지 않는다(`patientsToDate`가 1일부터 센 값이어야 해서)
 
 ## 6. DB 표 (`supabase/migrations/20261101000400_revenue.sql`, TASK-4)
@@ -206,10 +208,12 @@ create table public.sales_days (
   transfer bigint check (transfer >= 0),
   receivable_in bigint check (receivable_in >= 0),
   unconfirmed boolean not null,
+  split_unconfirmed boolean not null,
   fetched_at timestamptz not null default now(),
   primary key (hospital_id, day),
-  check ((unconfirmed and num_nulls(total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in) = 9)
-      or (not unconfirmed and num_nonnulls(total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in) = 9)));
+  check ((unconfirmed and not split_unconfirmed and num_nulls(total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in) = 9)
+      or (split_unconfirmed and not unconfirmed and num_nulls(insurer, noncovered, copay, other_total) = 4 and num_nonnulls(total, cash, card, transfer, receivable_in) = 5)
+      or (not unconfirmed and not split_unconfirmed and num_nonnulls(total, insurer, noncovered, copay, other_total, cash, card, transfer, receivable_in) = 9)));
 create table public.sales_codes (
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
   month date not null check (extract(day from month) = 1 and month >= date '2000-01-01'),
@@ -262,7 +266,7 @@ end $$;
 revoke all on function public.save_rx_groups(jsonb) from public, anon;
 grant execute on function public.save_rx_groups(jsonb) to authenticated;
 ```
-- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열다섯 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete` · `save_rx_groups(jsonb)` 실행은 `authenticated`만. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
+- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`split_unconfirmed` 열여섯 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete` · `save_rx_groups(jsonb)` 실행은 `authenticated`만. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
 - 정책: 읽기·넣기·고치기(·지우기) 모두 `hospital_id = (select public.my_hospital_id())`(using·with check). 승인 안 된 병원은 `my_hospital_id()`가 `null`이라 아무 줄도 못 본다
 - `save_rx_groups`는 저장을 한 트랜잭션으로 묶으려는 것뿐이다(서버 경로가 아니라 DB 함수, `set_hospital_status`와 같은 길). 호출한 사람 권한이라 RLS·칸 권한이 그대로 걸린다
 - 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). `rx_groups`: `codes` 안 `null` 칸 거부, 이름에 제어 문자·숫자 6개 이상 이어짐 거부, `save_rx_groups` — `null`·배열 아님·51개 거부, 다섯 개 가운데 하나가 제약에 걸리면 표 그대로, 이름 맞바꾸기와 'A 지우고 새 A 넣기'는 순서와 상관없이 됨, 남긴 묶음과 같은 이름의 새 묶음은 오류이고 표 그대로, 남의 `id`는 오류이고 남의 줄 그대로. 이름 울타리 경계: 숫자 5개 이어짐은 되고 6개는 거부. 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
@@ -271,9 +275,9 @@ grant execute on function public.save_rx_groups(jsonb) to authenticated;
 ## 7. 계산 (`src/lib/revenue/*`, 순수 함수, 네트워크·저장소·React 없음)
 ```ts
 // summary.ts (TASK-5)
-export type DaySplit = { covered: number; insurer: number; selfPay: number; noncovered: number; other: number; total: number } | null   // covered = insurer + copay, selfPay = copay, other = otherTotal, null = 확인 필요(covered + noncovered + other ≠ total 또는 음수)
+export type DaySplit = { covered: number; insurer: number; selfPay: number; noncovered: number; other: number; total: number } | null   // covered = insurer + copay, selfPay = copay, other = otherTotal, null = 나눔 없음(unconfirmed·splitUnconfirmed, 또는 covered + noncovered + other ≠ total·음수)
 export function splitDay(row: RevenueDayRow): DaySplit
-export type PeriodSum = { total; covered; insurer; selfPay; noncovered; other; visits: number; patients: number | null; uncheckedDays: string[]; days: number } | null
+export type PeriodSum = { total; covered; insurer; selfPay; noncovered; other; splitTotal; visits: number; patients: number | null; uncheckedDays: string[]; noSplitDays: string[]; days: number } | null   // total = unconfirmed 아닌 날 전부, covered~splitTotal = 나눔이 있는 날만(그 날들의 total 합이 0이면 null), uncheckedDays = unconfirmed인 날만, days = unconfirmed 아닌 날 수(쉬는 날·나눔을 못 한 날 포함, 하루 평균 = total ÷ days)
 export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum   // patients = 1일 시작 기간이면 마지막 날 patientsToDate
 export function periodsFor(month: string, today: string): { current: DateRange; lastMonth: DateRange; lastYear: DateRange }
 export function firstMonth(today: string): string                       // 어제가 속한 달
@@ -297,6 +301,7 @@ export type SyncResult = { stopped: string | null; failed: { month: string; code
 export function syncRevenue(deps: { call: (args: { from: string; to: string }) => Promise<RevenueDaysResult>; store: RevenueStore; today: string;
   months?: string[]; onProgress?: (p: { done: number; total: number; month: string }) => void }): Promise<SyncResult>
 ```
+- 나눔을 못 한 날(`splitUnconfirmed`, 또는 합 검사에 걸린 줄): `total`은 매출·추이·1인당 평균에 들어가고 `covered`~`other`·`splitTotal`에서만 빠진다(`noSplitDays`). `splitTotal`이 `total`보다 작아도 맞춰 고치지 않는다(AC-005.2). 쉬는 날은 아홉 칸이 0이고 두 표시가 거짓이라 나눔이 있는 날로 세어진다. 그래서 나눔 칸이 `null`이 되는 조건은 '그런 날이 없다'가 아니라 '그 날들의 `total` 합이 0'이다(날마다 비는 달에도 일요일이 있어 0원·0÷0·빈 막대가 되지 않게)
 - 환자 1인당 평균의 기간은 늘 그 달 1일부터다(고른 기간·지난달 같은 기간·작년 같은 때·13달 모두 1일 시작). 그래서 `patientsToDate` 한 칸으로 어느 기간이든 환자 수를 안다
 - 날짜는 `lib/analytics/dates.ts`(`todayInKorea`·`addDays`·`addMonths`·`monthOf`·`monthRange`·`eachDay`)만 쓴다
 - 금액은 원 정수를 더하기만 한다. 나눗셈(1인당)은 `Math.floor`, 비율은 소수 첫째 자리 버림(`components/charts/format.ts`와 같은 규칙, 아주 작은 값을 더한 뒤 자름)
@@ -310,7 +315,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
   loadRevenue(fromMonth: string, toMonth: string): Promise<{ days: RevenueDayRow[]; codes: (RevenueCodeRow & { month: string })[]; fetchedAt: string | null }>
 }
 ```
-- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열다섯 개만, camelCase → snake_case). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단)
+- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열여섯 개만, camelCase → snake_case). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단)
 - `E-REVENUE-SAVE-FAILED`(plan.md §8의 저장 실패 번호를 기능 이름으로, 갈래 규칙 C3)를 `src/lib/errors.ts`·`src/types/errors.ts`에 더한다: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
 
 ### 8-2. 묶음 저장 (`src/lib/storage/rxGroups.ts`, TASK-13)
@@ -326,7 +331,7 @@ export function createRxGroupStore(client: SupabaseClient): {
 
 ## 9. 화면 (`src/components/revenue/*`, TASK-8~10·14)
 - `view.ts`(TASK-8, 순수): `buildRevenueView({ days, codes, fetchedAt, month, today, bridge: 'ready' | 'none' | 'helper-old', sync })` → 상태(AC-008.2)와 네 덩어리 글자·막대 %. `money.ts`: `formatManWon(n)`("1억 6,248만 원", 만 원 아래 버림)·`formatWon(n)`("86,795원")
-- 급여·비급여·기타 덩어리는 **셋**으로 나눈다(2026-11-01 사용자): 급여(요양비용총액 = 공단부담 + 본인부담) · 비급여 · 기타(100/100미만총액 + 전액본인부담). 표는 급여(아래에 공단부담·본인부담) · 비급여 · 기타 · 합계(= 매출 = 총진료비), 13달 쌓은 막대는 세 겹(급여 `chart-3` · 비급여 `accent` · 기타 `line-strong`). 이 덩어리와 '확인 필요한 날' 글자는 승인 뒤 바뀌어 OK 전이다(`docs/mockups/revenue/README.md`, TASK-8·9는 그 뒤에)
+- 급여·비급여·기타 덩어리는 **셋**으로 나눈다(2026-11-01 사용자): 급여(요양비용총액 = 공단부담 + 본인부담) · 비급여 · 기타(100/100미만총액 + 전액본인부담). 표는 급여(아래에 공단부담·본인부담) · 비급여 · 기타 · 합계(= 매출 = 총진료비), 13달 쌓은 막대는 세 겹(급여 `chart-3` · 비급여 `accent` · 기타 `line-strong`). **나눔을 못 한 날이 있으면**(AC-008.6) 표·막대·몫은 나눔이 있는 날만 더하고(몫은 `splitTotal` 대비), 까닭 없는 안내 "n일(날짜)은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요"를 덩어리 머리 아래에 보인다. 합계 줄 이름은 '합계', '지난달보다'는 "–"다. 막대는 세 겹 그대로이고 매출 막대와 같은 눈금(13달 `total`의 최대)이라 그 달은 매출 막대보다 낮다(바로 위 매출 추이에 진짜 매출이 있다). 고른 달의 `splitTotal`이 `null`이면 표는 "–"·"자료 없음"이고 13달 쌓은 막대 그림 전체를 그리지 않는다. 날짜를 보이는 까닭은 확인표 '본 달'이 손으로 더할 때 그 날을 빼야 해서고, 이어진 날은 묶는다("10월 1일–3일·5일–10일"). 이 덩어리와 '확인 필요한 날' 글자는 승인 뒤 바뀌어 OK 전이다(`docs/mockups/revenue/README.md`, TASK-8·9는 그 뒤에)
 - 환자 1인당 평균 덩어리(승인 시안): KPI 넷 = 고른 달 1인당 평균("매출 ÷ 환자 n명") · 지난달보다 · 작년 같은 달보다 · 고른 달 환자 수("내원은 n번") + 13달 막대 + 안내 "같은 환자가 한 달에 여러 번 와도 한 명으로 세요 … 확인 필요한 날이 있으면 … 조금 낮게 보일 수 있어요"
 - `RevenueScreen.tsx`(`'use client'`, TASK-9): `useBridge()`(`components/claim/useBridge`, Worker 없이) → 상태 `ready`면 `syncRevenue` → `loadRevenue` → `buildRevenueView`. 달 고르기 상태만 화면에 둔다
 - 그림 부품(TASK-9): `MonthBars.tsx`(13달 막대: 고른 달 `accent`, 작년 같은 달 `bg-faint`, 다른 달 `chart-2`, 쌓은 막대는 세 겹으로 급여 `chart-3`·비급여 `accent`·기타 `line-strong`), `TreatmentBars.tsx`(순위 막대: 금액·몫·건수, '그 밖' `line-strong`), 덩어리 네 개와 상태 화면. `components/charts/*`는 고치지 않고 맞는 것(`KpiStat`·`ChartLegend`·`niceScale`·`format`)만 불러 쓴다
@@ -346,7 +351,8 @@ export function createRxGroupStore(client: SupabaseClient): {
 - **확인 필요한 날은 금액을 빼고 날짜만 알린다**(원본과 같음, 사용자 결정). 1인당 평균은 분모(환자 수)에 그날 환자가 들어 있어 조금 낮을 수 있어 `lowered`로 알린다
 - **치료 묶음은 총괄이 만든다**(2026-11-01 사용자). 묶음은 `rx_groups`(이름·코드 목록)이고 매출 숫자는 코드별로 저장하므로, 묶음을 바꿔도 비트에서 다시 읽지 않고 바로 다시 센다. 한 처방은 한 묶음에만 든다(매출을 두 번 세지 않게). plan.md §7은 통계용으로 한 코드가 여러 그룹에 들어가도 된다고 했으므로, 표는 막지 않고(코드 배열) 매출 계산이 '순서상 첫 묶음'으로 한 번만 센다. 원본 다섯 규칙은 처음 제안에만 쓴다
 - **표 두 개, `hospital_id`는 DB가 채운다**: 같은 효과면 코드 대신 DB 제약(plan.md §0). `my_hospital_id()`는 precheck와 같은 정의라 어느 쪽이 먼저 들어가도 된다
-- **매출 = 총진료비, 급여·비급여·기타 셋**(2026-11-01 사용자): 셋을 더하면 매출이다. 기타의 두 부분(100/100미만총액·전액본인부담)은 읽는 칸을 몰라 한 칸(`otherTotal`)으로 두고, 화면과 같은지는 Phase 3 뒤 확인표 ⑤로 본다
+- **매출 = 총진료비, 급여·비급여·기타 셋**(2026-11-01 사용자): 셋을 더하면 매출이다(나눔을 못 한 날이 있는 기간은 그만큼 작다, AC-008.6). 기타의 두 부분(100/100미만총액·전액본인부담)은 읽는 칸을 몰라 한 칸(`otherTotal`)으로 두고, 화면과 같은지는 Phase 3 뒤 확인표 ⑤로 본다
+- **나눔만 비운다**(2026-11-01 사용자 "나눔만 비워"): 금액 맞춤 검사는 확인하지 못한 `OrpInsAmt` 가정에 기대는데, `total`과 받은 돈은 그 가정과 상관없는 원본 문장에서 온다. 가정이 틀렸다고 이 값들까지 지우지 않는다. 대신 급여·비급여·기타 덩어리의 합이 매출보다 작을 수 있다. 빠진 금액을 어느 칸에 넣으면 지어낸 숫자가 되므로 안내로 알린다(AC-008.6)
 - **업무일지와 한 계약**: 수납 나눔·신환·재진은 같은 날 같은 문장에서 이미 나오는 값이라 덧붙이는 비용이 거의 없다(`Patients`·`FinanceNormal`·`FinanceReceivable`의 남은 칸). 두 번째 읽기를 두면 숫자가 서로 어긋날 수 있다
 
 ## 11. 다른 작업과 겹치는 파일
@@ -373,17 +379,18 @@ export function createRxGroupStore(client: SupabaseClient): {
 | `src/lib/backup/tables.ts` · 그 시험 | 그 파일이 있으면 `sales_days`·`sales_codes`·`rx_groups`를 더한다(TASK-10, `rx_groups`는 총괄이 손으로 만든 유일한 자료라 꼭). 없으면 ARCHITECTURE.md에 메모 | precheck TASK-32가 만든다 → 나중에 합쳐지는 쪽이 표 셋을 목록에 넣는다 |
 | `e2e/revenue.spec.ts` · `e2e/lib/revenueFakeBridge.ts` | 새 파일(기능 이름, C6) | 다른 갈래의 E2E와 이름이 겹치지 않는다 |
 
-**후속(이 갈래에서 고치지 않는다)**: feat-worklog의 `specs/worklog/design.md`·`requirements.md`는 바뀌기 전 계약을 말한다. `design.md` 421줄의 '금액 일곱 칸'은 이제 아홉 칸이고 `null`이 되는 까닭에 금액 맞춤 검사가 빠져 있으며(5-2), 441줄의 '업무일지에 칸이 없어 쓰지 않는' 칸 목록에 `copay`·`otherTotal`이 없다. 465줄의 안내 "이 날은 환불·예치금이 있어 비트 금액을 확인해야 해요"는 계약이 알 수 없는 까닭을 말한다(까닭 칸이 없고 환불이 아닌 날도 있다). `requirements.md` 18줄('환불·예치금 있는 날은 금액 확인 필요')과 162줄 AC-019.1('환불 없는 날 둘')도 같다: 이제 환불이 없어도 금액이 빈칸인 날이 있다. 칸 맞춤 표(`total`·`insurer`·`cash`·`card`·`transfer`·`receivableIn`)는 이름이 같아 그대로다. 업무일지 갈래가 이 계약에 기대기 전에(갈래 규칙 C4) 그쪽 명세를 고친다.
+**후속(이 갈래에서 고치지 않는다)**: 업무일지 명세(feat-worklog, 그쪽 창에서 고치는 중)가 맞춰야 할 사실: ① 금액 칸은 아홉이다. 일곱이 아니다(`copay`·`otherTotal`은 업무일지가 쓰지 않는다) ② 날 칸에 `splitUnconfirmed`가 더해졌다(이 칸도 쓰지 않아도 되지만, 답 검사는 칸이 정확해야 통과한다) ③ `unconfirmed`인 날은 아홉 칸 모두 `null`이라 그날 금액을 직접 적는다. 까닭은 계약에 없으므로 '환불·예치금이 있어'라고 말할 수 없다(음수로도 걸린다) ④ `splitUnconfirmed`인 날은 `total`·`cash`·`card`·`transfer`·`receivableIn`이 있고, 업무일지 칸 가운데 공단(`insurer`)만 빈다 ⑤ `OrpInsAmt` 가정이 틀리면 공단 칸이 날마다 비지만 나머지는 그대로 돈다(5-2) ⑥ 환불이 없어도 공단 칸이 빌 수 있으므로 '환불 없는 날'을 기준으로 한 확인 사례는 그대로 맞지 않는다. 칸 맞춤 표(`total`·`insurer`·`cash`·`card`·`transfer`·`receivableIn`)의 이름은 그대로다. 업무일지 갈래가 이 계약에 기대기 전에(갈래 규칙 C4) 그쪽 명세를 고친다.
 
 ## 12. 사용자 결정 (2026-11-01, 다시 묻지 않는다)
 1. **1인당 평균 진료비** — 환자 한 명마다(매출 ÷ 서로 다른 환자 수, 같은 환자 여러 번은 한 명). 환자 수는 도우미가 비트 DB 안에서 센다
 2. **치료 묶음** — 총괄이 직접 만든다("처방묶는건 내가 골라서 묶게해"): 이름 짓기·처방 고르기·이름 바꾸기·지우기·옮기기, 묶음 없는 처방은 '그 밖 처방'. 처음에는 원본 일일 보고의 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료)를 고칠 수 있는 제안으로. 묶음 고치기 화면은 시안 3절 그대로 만든다(2026-11-01 OK "묶음 화면 좋아요", 묶음 50개 "적당해 50개면")
-3. **환불·예치금이 있는 날** — 그날 금액을 합계에서 빼고 "확인 필요한 날 n일"과 날짜만 알림. 금액 맞춤 검사에 걸린 날도 같다(까닭은 보이지 않는다, AC-008.3). Phase 3 뒤 확인표 '매출 탭에서 볼 것' ④에서 이런 날이 아주 많으면 직접 입력 칸을 다시 의논한다
+3. **환불·예치금이 있는 날** — 그날 금액을 합계에서 빼고 "확인 필요한 날 n일"과 날짜만 알림. 까닭은 보이지 않는다(AC-008.3). 금액 맞춤 검사에 걸린 날은 여기 들어가지 않는다(아래 6). Phase 3 뒤 확인표 '매출 탭에서 볼 것' ④에서 이런 날이 아주 많으면 직접 입력 칸을 다시 의논한다
 4. **업무일지와 같은 읽기** — `revenue.days`가 수납 나눔·신환·재진도 돌려준다(5절)
-5. **매출 = 총진료비, 급여·비급여 보기는 급여·비급여·기타 셋**(2026-11-01) — 기타 = 100/100미만총액 + 전액본인부담. 계약에 `copay`·`otherTotal`을 더했다. 업무일지가 쓰는 기존 칸은 **이름만** 그대로이고, 금액 맞춤 검사에 걸린 날은 값이 `null`이다(5-2)
+5. **매출 = 총진료비, 급여·비급여 보기는 급여·비급여·기타 셋**(2026-11-01) — 기타 = 100/100미만총액 + 전액본인부담. 계약에 `copay`·`otherTotal`을 더했다. 업무일지가 쓰는 기존 칸 이름은 그대로다
+6. **나눔만 비운다**(2026-11-01, "나눔만 비워") — 금액 맞춤 검사나 나눔 네 칸의 음수에 걸린 날은 그 네 칸만 비운다(`splitUnconfirmed`). 매출 합계·추이·1인당 평균·입금액에는 그날이 들어가고, 급여·비급여·기타 덩어리에서만 빠지며 안내로 알린다. 업무일지에서는 공단 칸만 빈다
 
 ## 13. 위험 / 미해결
-- **요양비용총액·급여 본인부담 칸의 뜻**(2절 2) — `OrpInsAmt`·`OrpInsOwn`이 그 뜻이 아니면 `insurer + copay ≠ 요양비용총액` 검사로 날마다 '확인 필요'가 되어 **매출·업무일지 두 탭의 금액(수납 나눔 포함)이 날마다 빈칸이 된다**(5-2). 반대로 총액에 섞인 다른 금액은 '확인 필요' 없이 기타로 들어가 매출 합계만 보아서는 모른다(2절 2). 건강생활유지비가 이 식에 들어가는지도 확인 못 했다. 이것들을 보는 것은 Phase 3 뒤 확인표 ⑤뿐이고 한계가 있다(만 원 아래, 건강생활유지비가 0원인 달, 2절 2). 결정 시점: Phase 3 의원 PC 확인 뒤(다르면 칸을 찾는 명세 변경. 저장된 날은 다시 읽히지 않으므로 그 변경에 13달 모두 다시 읽기를 넣는다, AC-007.1). 확인표 ① 답은 받았다(아니오, 2026-11-01)
+- **요양비용총액·급여 본인부담 칸의 뜻**(2절 2) — `OrpInsAmt`·`OrpInsOwn`이 그 뜻이 아니면 `insurer + copay ≠ 요양비용총액` 검사로 **매출 탭의 나눔이 날마다 비고 업무일지의 공단 칸도 같이 빈다. 나머지(매출 합계·추이·1인당 평균, 업무일지의 총진료비·수납)는 그대로 돈다**(5-2). 반대로 총액에 섞인 다른 금액은 아무 표시 없이 기타로 들어가 매출 합계만 보아서는 모른다(2절 2). 건강생활유지비가 이 식에 들어가는지도 확인 못 했다. 이것들을 보는 것은 Phase 3 뒤 확인표 ⑤뿐이고 한계가 있다(만 원 아래, 건강생활유지비가 0원인 달, 2절 2). 결정 시점: Phase 3 의원 PC 확인 뒤(다르면 칸을 찾는 명세 변경. 저장된 날은 다시 읽히지 않으므로 그 변경에 13달 모두 다시 읽기를 넣는다, AC-007.1). 확인표 ① 답은 받았다(아니오, 2026-11-01)
 - **미수발생·지역화폐**(2절 3) — 읽는 곳을 모른다. 업무일지는 그때까지 직접 입력
 - **처음 읽는 시간** — 13달 약 3,590문장(10절). Phase 3 뒤 매출 탭에서 재 본다(확인표 '매출 탭에서 볼 것' ③). 너무 길면 그때 하루씩 묶는 SQL로 바꾸는 명세 변경을 한다(결정 시점: Phase 3 의원 PC 확인 뒤)
 - **옛 확장·옛 도우미**: 새 명령을 모르는 확장은 `E-BRIDGE-REJECTED`, 도우미는 `E-HELPER-UNKNOWN-COMMAND`를 준다 → 매출 탭만 '새 버전' 상태, 청구는 그대로 쓴다(TASK-12는 `MIN_*`을 올리지 않는다)
@@ -397,4 +404,4 @@ export function createRxGroupStore(client: SupabaseClient): {
 - 확인표 '먼저 할 것' ①은 답을 받았다(아니오, 2026-11-01). TASK-5를 막는 것은 ①뿐이라 이제 막는 것이 없다. ②·③(비트 화면만, 5~10분)은 의원 PC에서 시간 될 때 적고 어떤 TASK도 막지 않는다: ②는 처음 보이는 제안 묶음에만 쓰이고 편집 화면에서 고칠 수 있다(AC-006.3). ③은 나중에 업무일지 자동 채우기에만 쓰인다(그때까지 직접 입력)
 - Phase 1 뒤: 합치기·배포·도우미 릴리스·웹스토어 올리기를 그때 지시 → 의원 PC에 새 도우미 깔기·확장 새 버전
 - TASK-4 뒤: 실제 Supabase SQL 편집기에 migration 붙여 넣기 OK
-- Phase 3 뒤: 의원 PC 매출 탭에서 확인표 '매출 탭에서 볼 것' ①~⑤(⑤ = 급여·비급여·기타가 외래환자경영통계와 같음/다름, ①·⑤는 확인 필요한 날이 없는 달로 만 원 자리까지)
+- Phase 3 뒤: 의원 PC 매출 탭에서 확인표 '매출 탭에서 볼 것' ①~⑤(⑤ = 급여·비급여·기타가 외래환자경영통계와 같음/다름, ①·⑤는 확인 필요한 날도 나눔을 못 한 날도 없는 달로 만 원 자리까지)

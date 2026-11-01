@@ -9,7 +9,7 @@
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-007에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-007.1**: `planFetch(today, savedDays)`: 어제가 속한 달부터 거꾸로 13달 가운데 와야 할 날이 하나라도 없는 달을 **최근 달부터**, 달마다 1일 ~ 와야 할 마지막 날(31일 이하). 다 저장된 달은 빼기
-- **AC-007.2**: `saveMonth(month, result)`: 답 첫 날이 그 달 1일인지 확인(아니면 `E-REVENUE-SAVE-FAILED`) → 그 달 `sales_codes` 지우기 → 넣기(`month`·`code`·`name`·`count`·`amount`) → **마지막에** `sales_days` upsert(`hospital_id`+`day`, 열다섯 칸). 보내는 칸은 정해 둔 것뿐. 실패하면 `E-REVENUE-SAVE-FAILED`
+- **AC-007.2**: `saveMonth(month, result)`: 답 첫 날이 그 달 1일인지 확인(아니면 `E-REVENUE-SAVE-FAILED`) → 그 달 `sales_codes` 지우기 → 넣기(`month`·`code`·`name`·`count`·`amount`) → **마지막에** `sales_days` upsert(`hospital_id`+`day`, 열여섯 칸). 보내는 칸은 정해 둔 것뿐. 실패하면 `E-REVENUE-SAVE-FAILED`
 - **AC-007.3**: `syncRevenue`: 달마다 가져오기 → 저장, `onProgress`. 그 달의 읽기·검사·저장 오류(`E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`)는 `failed`에 넣고 계속, 그 밖의 번호는 `stopped`로 멈춤. `months`면 그 달만. `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED` → `extensionOld`
 - **AC-007.4**: `loadRevenue(fromMonth, toMonth)`: 그 달들의 날 줄·코드 줄(이름 포함)과 가장 늦은 `fetched_at`
 - **AC-007.5**: `E-REVENUE-SAVE-FAILED`의 '무엇이 · 어떻게 고치나' 문구가 `lib/errors.ts`에
@@ -70,7 +70,7 @@
 ### 2. `src/lib/storage/revenue.ts`
 - `createRevenueStore(client)` → `{ saveMonth, loadRevenue }`(design.md 8절). `client`는 인자로 받는다(시험은 가짜 클라이언트로 부른 표 이름·칸·순서를 기록)
 - `saveMonth`: 답 첫 날이 그 달 1일이 아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`(`patientsToDate`가 1일부터 센 값이어야 한다). 순서는 ① 그 달 `sales_codes` 지우기 ② 코드 줄 넣기(`month` = `YYYY-MM-01`, `code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert `{ onConflict: 'hospital_id,day' }`(camelCase → snake_case, 칸 목록은 `REVENUE_DAY_KEYS`에서). 코드 쪽이 실패하면 날 줄이 없어 그 달을 다시 가져온다. 오류가 하나라도 있으면 `E-REVENUE-SAVE-FAILED`를 던진다(Supabase 오류 내용은 버린다)
-- `loadRevenue`: `sales_days`(`day` 범위)·`sales_codes`(`month` 범위)를 읽고 `fetched_at` 가장 늦은 값. 칸을 고른다(`sales_days` 열다섯 칸 + `fetched_at`, snake_case → camelCase로 돌려 `RevenueDayRow`)
+- `loadRevenue`: `sales_days`(`day` 범위)·`sales_codes`(`month` 범위)를 읽고 `fetched_at` 가장 늦은 값. 칸을 고른다(`sales_days` 열여섯 칸 + `fetched_at`, snake_case → camelCase로 돌려 `RevenueDayRow`)
 
 ### 3. 오류 문구
 - `E-REVENUE-SAVE-FAILED`: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"(design.md 8절)

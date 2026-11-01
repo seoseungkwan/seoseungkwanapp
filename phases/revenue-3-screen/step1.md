@@ -73,9 +73,10 @@
 - 덩어리: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`. 그림: `MonthBars.tsx`(13달 막대·쌓은 막대, 고른 달 `accent`·작년 같은 달 `bg-faint`·다른 달 `chart-2`, 급여 `chart-3`·비급여 `accent`·기타 `bg-line-strong`), `TreatmentBars.tsx`. 상태: `RevenueStates.tsx`(연결 필요·가져오는 중·자료 없음·도우미 옛것·확장 옛것·저장 실패·가져오지 못한 달). 이름은 바꿔도 되지만 폴더 밖으로 나가지 않는다
 - 그림 부품은 훅·`'use client'`가 없는 순수 부품이다(UI_GUIDE '차트')
 - 폰(768 미만): KPI 2×2, 막대 날짜 글자 하나 걸러, 순위 막대는 이름·값 한 줄 + 막대 아래 줄, 급여 표의 '지난달보다' 칸 숨김(시안)
+- `RevenueSplit.tsx`: 나눔을 못 한 날이 있으면 시안대로 덩어리 머리 아래에 안내 줄을 보인다(글자는 `view.ts`에서, AC-008.6). 덩어리 합계가 매출보다 작아도 화면에서 맞추지 않는다
 
 ### 2. 시험
-- `parts.test.tsx`: 보기 모양을 넣어 그린 마크업에 시안 글자·막대 % style·`aria-hidden`·`sr-only` 표·화살표와 "늘어남" 글자가 있다(AC-009.1·009.5)
+- `parts.test.tsx`: 보기 모양을 넣어 그린 마크업에 시안 글자·막대 % style·`aria-hidden`·`sr-only` 표·화살표와 "늘어남" 글자가 있다, 나눔을 못 한 날이 있는 보기 모양이면 안내 글자와 '합계' 줄이 있다(AC-009.1·009.5)
 - `RevenueScreen.test.tsx`: 가짜 `useBridge`·가짜 store로 — 연결 `ready` → 가져오기 → 진행 글자 → 숫자(AC-009.2), 확장 없음 + 줄 있음 → [다시 가져오기] 없음·"의원 PC에서" 글자(AC-009.3), 줄 없음 → '비트 PC 연결 필요'와 `/claim/setup` 링크(AC-009.3), 옛 도우미·옛 확장(`E-BRIDGE-REJECTED`) → 각 '새 버전' 상태(일반 오류 카드·[다시 확인]이 아님), 저장 실패 [다시 저장], 가져오지 못한 달 글자(AC-009.4)
 - 기존 화면 규칙 시험(`classes.test.ts`·`rules.test.ts`·상자 겹침)이 새 파일을 자동으로 보고 통과해야 한다(AC-009.5)
 - `AC-009.5` 이름을 단 시험: 폰 단추·달 고르기 단추에 44px 누름 클래스(`h-11`·`min-h-11` 또는 `ds`의 폰 크기), 배치가 `md:`(768)에서 바뀌는 클래스, `sm:`·`xl:` 없음. 390·768·1440 가로 스크롤은 E2E(AC-011.1)와 Phase 끝 화면 캡처(메인 세션)에서 본다

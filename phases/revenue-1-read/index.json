@@ -5,20 +5,17 @@
     {
       "step": 0,
       "name": "pc-check",
-      "status": "completed",
-      "summary": "docs/revenue/pc-check.md에 '매출 탭에서 볼 것' ⑤와 본 달 고르는 규칙(만 원 자리까지 견줌)을 더함. ① 답 아니오는 적혀 있음. '먼저 할 것' ②·③과 '매출 탭에서 볼 것' 표는 총괄이 의원 PC에서 적을 칸으로 남음(어떤 TASK도 막지 않음). ③은 매출 탭을 처음 열 때만 잴 수 있음"
+      "status": "pending"
     },
     {
       "step": 1,
       "name": "bridge-contract",
-      "status": "completed",
-      "summary": "commands.json에 revenue.days(patient false, maxDays 31). src/types/revenue.ts의 RevenueDayRow·REVENUE_DAY_KEYS·REVENUE_MONEY_KEYS에 copay·otherTotal을 noncovered 뒤에 더함(금액 아홉 칸). isRevenueDays가 칸 이름·정수·unconfirmed와 아홉 칸 짝·날짜 이어짐을 본다. 옛 모양 답은 E-BRIDGE-BAD-REPLY"
+      "status": "pending"
     },
     {
       "step": 2,
       "name": "helper-revenue-read",
-      "status": "completed",
-      "summary": "helper/src/Precheck.Core/Revenue/{RevenueSql,RevenueDays,RevenueCommands}.cs와 Bit/Sql.cs·Program.cs 등록(더하기만). 문장 11개, 금액 아홉 칸. 명세에 없이 더한 것 셋(명세와 다른 점으로 적음): 코드 금액이 음수이거나 JS 안전 정수를 넘으면 amount null(한 달 전체가 웹 검사에 걸리지 않게), newPatients > visits면 내원 세 칸 null(원본이 멈추는 조건), 하루 금액이 안전 정수를 넘으면 E-BIT-READ-FAILED"
+      "status": "pending"
     },
     {
       "step": 3,
