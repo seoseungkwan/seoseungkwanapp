@@ -1,51 +1,98 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { Icon } from './Icon'
 import type { NotReadyFeature } from './notReadyFeatures'
 
-// 준비 중 화면 (tab-frame REQ-305, design.md '준비 중 화면', 시안 docs/mockups/dashboard-home/index.html 화면 5 + notes.md §3 '준비 중 화면').
-// 아직 없는 기능의 주소(/stats 등)마다 같은 모양: h1 기능 이름 → 바깥 상자 하나(ds.panel) 안에 꾸밈 선 + 가운데 글 묶음.
+// 준비 중 화면 (ui-90 REQ-415, design.md '준비 중 (TASK-12)', UI_GUIDE '빈 상태', 시안 docs/mockups/ui-90/app/gen.py nr_body · CSS .nr*·.dots·.mw*).
+// 아직 없는 기능의 주소(/stats 등 10개)와 청구 연결됨(TASK-10, action·meanwhile로)이 같이 쓴다. 바깥 상자·꾸밈 선·고정 높이가 없다(흰 바탕 한 장 위).
 // 서버에서 그대로 그린다. 자료를 읽지 않는다. 앱 틀은 (app)/layout의 AppShell이 준다.
-// 768px 이상(768~1023px 포함): 상자 높이 420px(h-105), 글 묶음 가운데(안쪽 위아래 20·좌우 24).
-// 768px 미만: 높이는 글에 맞고 상자 위아래 48 + 글 묶음 위아래 12(좌우 16) = 글까지 60px(시안 40 + 20과 같은 거리, 간격 단계 값만 쓴다 — design.md '시안과 다른 점').
-// 넘침 자르기 클래스를 쓰지 않는다 → 꾸밈 선은 상자 안쪽 여백(inset) 안에만 둔다
+//   왼쪽 칸: "준비 중" 칩 → h1 title → 소개 → 돌아가기 자리(action, 없으면 [대시보드로 돌아가기])
+//   오른쪽 칸: h2 "만들 것" → 점 목록
+//   그 아래 전체 폭(위 1px line): h2 "그동안 쓸 수 있어요" → [비트 PC 연결] · [청구] (meanwhile={false}면 없다)
+// 칸: 1024px 이상 12칸(왼쪽 1~6 · 오른쪽 8~12), 1024px 미만은 쌓는다(만들 것 · 그동안 위에 1px line). 글자 단계는 768px에서 바뀐다.
+// 시안 단계 밖 값은 가까운 단계로 옮겼다(design.md '시안과 다른 점' 2): 덩어리 사이 40 → 48(폰 28 → 32, 대시보드 덩어리 사이와 같다),
+// 만들 것 사이 10 → 8, 15px 글자 → body(14)·소개는 lead(16), 그동안 링크 사이 40 → 32 · 링크와 설명 사이 10 → 8
 
-// 꾸밈 선 넷(1px, 마지막만 line-strong). 글자 없는 그림이라 aria-hidden
-const GHOST_LINES = ['bg-line', 'bg-line', 'bg-line', 'bg-line-strong']
+export type NotReadyScreenProps = {
+  /** 그릴 글: h1(title) · 소개(intro) · 만들 것(items, 받은 순서). 탭 10개는 notReadyFeature(주소)를 그대로 준다 */
+  feature: Pick<NotReadyFeature, 'title' | 'intro' | 'items'>
+  /** 돌아가기 자리에 둘 것(단추·링크 하나). 없으면 [대시보드로 돌아가기]. 모양(ds.button…·폰 전체 폭)은 주는 쪽이 정한다 */
+  action?: ReactNode
+  /** 기본 true: 아래에 "그동안 쓸 수 있어요"([비트 PC 연결] · [청구]). 청구 연결됨처럼 이미 그 화면이면 false */
+  meanwhile?: boolean
+}
 
-export function NotReadyScreen({ feature }: { feature: NotReadyFeature }) {
+// 덩어리 나눔(1024px 미만): 위 32 + 1px line + 20
+const STACK_SPLIT = 'mt-8 border-t border-line pt-5'
+// 칸 머리(h2): small 600 muted
+const COLUMN_TITLE = 'text-small font-semibold text-muted'
+
+// 그동안 쓸 수 있는 화면 둘(시안 글자 그대로): 주소 · 링크 글 · 설명
+const MEANWHILE = [
+  { href: '/claim/setup', label: '비트 PC 연결', desc: '청구 점검을 쓰려면 먼저 해요' },
+  { href: '/claim', label: '청구', desc: '삭감 예방 사전점검' },
+] as const
+
+// [대시보드로 돌아가기]: 보조 단추 + 왼쪽을 보는 화살표(오른쪽 화살표를 돌림, ink-2). 폰은 전체 폭(44px)
+function BackToDashboard() {
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-title font-semibold text-ink">{feature.name}</h1>
-      <div className={`${ds.panel} relative flex items-center justify-center px-4 py-12 md:h-105 md:py-0`}>
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-6 right-4 bottom-6 left-4 flex flex-col justify-between md:top-16 md:right-10 md:bottom-16 md:left-18"
-        >
-          {GHOST_LINES.map((tone, i) => (
-            <span key={i} className={`block h-px ${tone}`} />
-          ))}
-        </div>
-        {/* 글 묶음: surface 바탕으로 뒤의 꾸밈 선을 가린다(선보다 뒤에 적어 위에 그린다) */}
-        <div className="relative flex max-w-115 flex-col items-center gap-2 bg-surface px-4 py-3 text-center md:px-6 md:py-5">
-          <span className={ds.chip.neutral}>준비 중</span>
-          <h2 className="mt-1 text-subtitle font-semibold text-ink">준비 중인 기능입니다</h2>
-          <p className="text-body text-ink-2">{feature.intro}</p>
-          <ul className="mt-1 list-none text-small text-muted">
-            {feature.items.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-          <Link
-            href="/dashboard"
-            className={`${ds.button.secondary} mt-3 no-underline transition not-disabled:active:translate-y-px`}
-          >
-            {/* 오른쪽 화살표를 돌려 왼쪽(돌아가기)을 가리킨다 */}
-            <Icon name="arrow" className="rotate-180 text-ink-2" />
-            <span>대시보드로 돌아가기</span>
-          </Link>
-        </div>
+    <Link href="/dashboard" className={`${ds.button.secondary} no-underline max-md:w-full`}>
+      <Icon name="arrow" size={16} className="rotate-180 text-ink-2" />
+      대시보드로 돌아가기
+    </Link>
+  )
+}
+
+// 그동안 쓸 수 있어요: 링크(글자 단추 + 오른쪽 화살표, 올림에 밑줄·화살표 오른쪽 2px) 옆에 설명(small muted).
+// 768px 미만은 한 줄씩 쌓고 설명이 링크 아래(링크 44px 아래 빈 곳을 8 당긴다), 768px 이상은 옆으로 놓는다
+function Meanwhile() {
+  return (
+    <div className={`${STACK_SPLIT} lg:col-span-12 lg:mt-12`}>
+      <h2 className={COLUMN_TITLE}>그동안 쓸 수 있어요</h2>
+      <ul className="mt-1 flex flex-col md:flex-row md:flex-wrap md:gap-x-8">
+        {MEANWHILE.map(({ href, label, desc }) => (
+          <li key={href} className="flex flex-col items-start pt-0.5 pb-2 md:flex-row md:flex-wrap md:items-center md:gap-x-2 md:p-0">
+            <Link
+              href={href}
+              className={`${ds.textButton} group underline decoration-transparent not-disabled:not-aria-disabled:hover:decoration-current`}
+            >
+              {label}
+              <Icon name="arrow" size={16} className="transition group-hover:translate-x-0.5" />
+            </Link>
+            <span className="text-small text-muted max-md:-mt-2">{desc}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export function NotReadyScreen({ feature, action, meanwhile = true }: NotReadyScreenProps) {
+  return (
+    // 본문 위 여백: 앱 틀 안쪽 위 24에 더해 16(폰 4)
+    <div className="pt-1 md:pt-4 lg:grid lg:grid-cols-12 lg:gap-x-6">
+      <div className="lg:col-span-6">
+        <span className={ds.chip.neutral}>준비 중</span>
+        <h1 className="mt-3 text-heading-m font-semibold text-balance text-ink md:text-heading">{feature.title}</h1>
+        {/* 최대 폭: 시안 30em × 16px = 480px */}
+        <p className="mt-3 max-w-120 text-lead text-ink-2">{feature.intro}</p>
+        <div className="mt-6">{action ?? <BackToDashboard />}</div>
       </div>
+      {/* 1024px 이상: 위 32로 머리를 h1 높이에 맞춘다(칩 20 + 12) */}
+      <div className={`${STACK_SPLIT} lg:col-span-5 lg:col-start-8 lg:mt-0 lg:border-t-0 lg:pt-8`}>
+        <h2 className={COLUMN_TITLE}>만들 것</h2>
+        <ul className="mt-3 flex flex-col gap-2">
+          {feature.items.map((item) => (
+            // 꾸밈 점 6px accent: 첫 줄(22px) 가운데에 오게 위 8, 글은 점 왼쪽 끝에서 22px(시안 14px 칸 + 8)
+            <li key={item} className="flex gap-4 text-body text-ink">
+              <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 bg-accent" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {meanwhile ? <Meanwhile /> : null}
     </div>
   )
 }

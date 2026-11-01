@@ -129,12 +129,17 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
   })
 
   it.each(NOT_READY.map((f) => [f.name, f.href]))(
-    'AC-307.3: 준비 중 칸 %s(%s)의 페이지 = 같은 이름의 준비 중 자료로 그린 NotReadyScreen',
+    'AC-307.3·AC-415.5: 준비 중 칸 %s(%s)의 페이지 = 같은 이름의 준비 중 자료로 그린 NotReadyScreen — h1은 그 자료의 title("…준비 중이에요")',
     async (name, href) => {
       const feature = NOT_READY_FEATURES.find((f) => f.name === name)
       expect(feature, name).toBeDefined()
       const Page = await loadPage(href)
-      expect(renderToStaticMarkup(<Page />)).toBe(renderToStaticMarkup(<NotReadyScreen feature={feature!} />))
+      const html = renderToStaticMarkup(<Page />)
+      expect(html).toBe(renderToStaticMarkup(<NotReadyScreen feature={feature!} />))
+      // 같은 화면 견주기의 기대 글자(ui-90): h1 = title, 옛 안내 "준비 중인 기능입니다"는 없다
+      expect([...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => plain(m[1]!))).toEqual([feature!.title])
+      expect(feature!.title).toMatch(new RegExp(`^${name}[은는] 준비 중이에요$`))
+      expect(plain(html)).not.toContain('준비 중인 기능입니다')
     },
   )
 

@@ -17,24 +17,24 @@ import StaffPage from './staff/page'
 import StatsPage from './stats/page'
 import WorklogPage from './worklog/page'
 
-// 준비 중 주소 10개의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
+// 준비 중 주소 10개의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, ui-90 AC-415.5, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
 // 페이지는 (app) 묶음 안이라 앱 틀과 승인 검사((app)/layout)를 저절로 받는다. 문지기 규칙은 바꾸지 않는다
 
 const ROOT = process.cwd()
 const APP_GROUP = 'src/app/(app)'
 
-// 주소 · 표의 이름 · 페이지 (탭 순서)
-const PAGES: Array<{ path: NotReadyPath; name: string; Page: ComponentType }> = [
-  { path: '/stats', name: '통계', Page: StatsPage },
-  { path: '/notices', name: '고시·공지', Page: NoticesPage },
-  { path: '/patients', name: '환자', Page: PatientsPage },
-  { path: '/revenue', name: '매출', Page: RevenuePage },
-  { path: '/ai-report', name: 'AI 리포트', Page: AiReportPage },
-  { path: '/forms', name: '서식', Page: FormsPage },
-  { path: '/staff', name: '직원', Page: StaffPage },
-  { path: '/worklog', name: '업무일지', Page: WorklogPage },
-  { path: '/inventory', name: '재고', Page: InventoryPage },
-  { path: '/contacts', name: '주소록', Page: ContactsPage },
+// 주소 · 표의 이름 · h1(title) · 페이지 (탭 순서)
+const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = [
+  { path: '/stats', name: '통계', title: '통계는 준비 중이에요', Page: StatsPage },
+  { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
+  { path: '/patients', name: '환자', title: '환자는 준비 중이에요', Page: PatientsPage },
+  { path: '/revenue', name: '매출', title: '매출은 준비 중이에요', Page: RevenuePage },
+  { path: '/ai-report', name: 'AI 리포트', title: 'AI 리포트는 준비 중이에요', Page: AiReportPage },
+  { path: '/forms', name: '서식', title: '서식은 준비 중이에요', Page: FormsPage },
+  { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
+  { path: '/worklog', name: '업무일지', title: '업무일지는 준비 중이에요', Page: WorklogPage },
+  { path: '/inventory', name: '재고', title: '재고는 준비 중이에요', Page: InventoryPage },
+  { path: '/contacts', name: '주소록', title: '주소록은 준비 중이에요', Page: ContactsPage },
 ]
 
 const pageFile = (path: string) => `${APP_GROUP}${path}/page.tsx`
@@ -46,8 +46,17 @@ describe('AC-305.5: 준비 중 주소 10개의 페이지 = notReadyFeature(주�
     expect(renderToStaticMarkup(<Page />)).toBe(renderToStaticMarkup(<NotReadyScreen feature={notReadyFeature(path)} />))
   })
 
-  it.each(PAGES)('AC-305.5: $path 페이지의 h1은 하나이고 표의 이름 "$name"이다', ({ Page, name }) => {
-    expect(h1Texts(renderToStaticMarkup(<Page />))).toEqual([name])
+  it.each(PAGES)('AC-415.5: $path 페이지의 h1은 하나이고 그 항목의 title "$title"이다(이름 "$name"만이 아니다)', ({ path, Page, name, title }) => {
+    expect(h1Texts(renderToStaticMarkup(<Page />))).toEqual([title])
+    expect(notReadyFeature(path).title).toBe(title)
+    expect(title).not.toBe(name)
+  })
+
+  it.each(PAGES)('AC-415.5: $path 페이지는 "그동안 쓸 수 있어요"와 [대시보드로 돌아가기]를 그린다', ({ Page }) => {
+    const html = renderToStaticMarkup(<Page />)
+    expect(html).toContain('그동안 쓸 수 있어요')
+    expect(html).toContain('대시보드로 돌아가기')
+    expect(html).not.toContain('준비 중인 기능입니다')
   })
 
   it.each(PAGES)('AC-305.5: $path 페이지 소스는 자기 주소의 준비 중 자료만 꺼내 넘긴다(한 줄 페이지)', ({ path }) => {
