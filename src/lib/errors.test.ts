@@ -34,6 +34,11 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-PATIENTS-TEMPLATES-READ',
+  'E-PATIENTS-TEMPLATES-SAVE',
+  'E-PATIENTS-COUNTS-READ',
+  'E-PATIENTS-COUNTS-SAVE',
+  'E-PATIENTS-SOURCE',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -261,4 +266,64 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
   })
+})
+
+// 환자 탭(spec patients REQ-609)이 더한 번호
+const PATIENTS_CODES = [
+  'E-PATIENTS-TEMPLATES-READ',
+  'E-PATIENTS-TEMPLATES-SAVE',
+  'E-PATIENTS-COUNTS-READ',
+  'E-PATIENTS-COUNTS-SAVE',
+  'E-PATIENTS-SOURCE',
+] as const satisfies readonly ErrorCode[]
+
+describe('AC-609.5 환자 탭 오류 번호 문구', () => {
+  it.each(PATIENTS_CODES)('AC-609.5: %s는 lib/errors.ts에 무엇이·어떻게 고치나가 있다', (code) => {
+    expect(Object.keys(ERRORS)).toContain(code)
+    const info = errorInfo(code)
+    expect(info.what.trim()).not.toBe('')
+    expect(info.fix.trim()).not.toBe('')
+  })
+
+  it('AC-609.5: E-PATIENTS-TEMPLATES-READ는 [다시 불러오기]와 문의를 안내한다', () => {
+    expect(errorInfo('E-PATIENTS-TEMPLATES-READ')).toEqual({
+      what: '문자 문구를 불러오지 못했어요',
+      fix: '잠시 뒤 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-TEMPLATES-SAVE는 고친 글이 그대로 있고 [다시 저장]을 누르라고 한다', () => {
+    expect(errorInfo('E-PATIENTS-TEMPLATES-SAVE')).toEqual({
+      what: '문자 문구를 저장하지 못했어요',
+      fix: '고친 글은 그대로 있어요. 잠시 뒤 [다시 저장]을 눌러 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-COUNTS-READ는 [다시 불러오기]를 안내한다', () => {
+    expect(errorInfo('E-PATIENTS-COUNTS-READ')).toEqual({
+      what: '남은 건수를 불러오지 못했어요',
+      fix: '잠시 뒤 [다시 불러오기]를 눌러 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-COUNTS-SAVE는 명단을 그대로 쓸 수 있고 [다시 올리기]를 누르라고 한다', () => {
+    expect(errorInfo('E-PATIENTS-COUNTS-SAVE')).toEqual({
+      what: '남은 건수를 올리지 못했어요',
+      fix: '명단은 그대로 쓸 수 있어요. [다시 올리기]를 눌러 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-SOURCE는 비트 칸 설정 확인과 [다시 불러오기]·문의를 안내한다', () => {
+    expect(errorInfo('E-PATIENTS-SOURCE')).toEqual({
+      what: '비트에서 읽은 명단 자료에 맞지 않는 줄이 있어요',
+      fix: '비트 통계 화면의 칸 설정을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it.each(['E-SETTINGS-FAILED', 'E-COUNTS-FAILED', 'E-BIT-EXPORT-FAILED'])(
+    'AC-609.5: 다른 브랜치 몫 번호 %s는 더하지 않는다(규칙 C3)',
+    (code) => {
+      expect(isErrorCode(code)).toBe(false)
+    },
+  )
 })

@@ -127,6 +127,27 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '[처음 등록]을 눌러 새로 시작해 주세요. 깨진 파일은 지우지 않고 남겨 둬요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요.',
   },
+  // 환자 탭(spec patients REQ-609)
+  'E-PATIENTS-TEMPLATES-READ': {
+    what: '문자 문구를 불러오지 못했어요',
+    fix: '잠시 뒤 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-PATIENTS-TEMPLATES-SAVE': {
+    what: '문자 문구를 저장하지 못했어요',
+    fix: '고친 글은 그대로 있어요. 잠시 뒤 [다시 저장]을 눌러 주세요.',
+  },
+  'E-PATIENTS-COUNTS-READ': {
+    what: '남은 건수를 불러오지 못했어요',
+    fix: '잠시 뒤 [다시 불러오기]를 눌러 주세요.',
+  },
+  'E-PATIENTS-COUNTS-SAVE': {
+    what: '남은 건수를 올리지 못했어요',
+    fix: '명단은 그대로 쓸 수 있어요. [다시 올리기]를 눌러 주세요.',
+  },
+  'E-PATIENTS-SOURCE': {
+    what: '비트에서 읽은 명단 자료에 맞지 않는 줄이 있어요',
+    fix: '비트 통계 화면의 칸 설정을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {
