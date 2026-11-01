@@ -2,7 +2,7 @@
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다. TASK 번호 = REQ 번호 = Phase·Step 순서다.
-> Phase 다섯: `worklog-1-data`(TASK-1~5) → `worklog-2-screen`(TASK-6~10) → `worklog-3-finish`(TASK-11~13) → `worklog-4-bitfill`(TASK-14~17, 비트에서 채우기) → `worklog-5-bitcheck`(TASK-18~19, 실제 Supabase·의원 PC 확인). Phase 4는 매출 갈래의 `revenue.days`가 main에 들어온 뒤에만 시작한다(기다림 조건은 TASK-14·17 같은 글자). **Phase 4는 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣기 전에는 main에 합치거나 배포하지 않는다**(TASK-16 뒤 읽기·쓰기가 모두 `bit_fields`를 쓴다). 붙여 넣은 뒤 TASK-18로 실제 Supabase를 확인하고, 사용자 지시로 배포한 뒤 TASK-19로 의원 PC에서 칸을 견준다.
+> Phase 다섯: `worklog-1-data`(TASK-1~5) → `worklog-2-screen`(TASK-6~10) → `worklog-3-finish`(TASK-11~13) → `worklog-4-bitfill`(TASK-14~17, 비트에서 채우기) → `worklog-5-bitcheck`(TASK-18~19, 실제 Supabase·의원 PC 확인). Phase 4는 매출 갈래의 `revenue.days`가 main에 들어온 뒤에만 시작한다(기다림 조건은 TASK-14·17 같은 글자). **Phase 4는 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣기 전에는 main에 합치거나 배포하지 않는다**(TASK-16 뒤 읽기·쓰기가 모두 `bit_fields`를 쓴다). 붙여 넣은 뒤 TASK-18로 실제 Supabase를 확인한다 — **TASK-18 통과 전에는 4단계를 합치거나 배포하지 않는다**. 그 뒤 사용자 지시로 배포한 뒤 TASK-19로 의원 PC에서 칸을 견준다.
 > 화면 TASK(8·9·10·11·12)는 승인된 시안 `docs/mockups/worklog/index.html`과 design.md '목업과 다른 점'을 따른다.
 > **실제 Supabase에 migration을 붙여 넣는 일은 사용자 OK가 필요하다**(TASK-4는 파일과 PGlite 시험만). TASK-13(E2E)은 그 뒤에만 돈다.
 
@@ -108,7 +108,7 @@
 - REQ: REQ-013
 - Files: e2e/worklog.spec.ts
 - Tests: e2e/worklog.spec.ts
-- TDD: exempt — 시험만 더한다. 대상 코드는 TASK-2~12가 단위 시험으로 이미 만들었으므로 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음). **기다림: 사용자가 TASK-4 migration을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 시험 날짜 2020-01-02(새로 고친 뒤 다시 고름), **모든 요청의 주소·본문**과 다시 읽은 줄에 가짜 표식·이름·차트번호·전화·주민번호가 없음, PDF 쪽 수는 `/\/Type\s*\/Page(?!s)/`, 끝에 빈 값 저장(design.md 15절, C7). 확인: `npm run e2e`
+- TDD: exempt — 시험만 더한다. 대상 코드는 TASK-2~12가 단위 시험으로 이미 만들었으므로 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음). **기다림: 사용자가 TASK-4 migration을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 시험 날짜 2020-01-02(새로 고친 뒤 다시 고름), **모든 요청의 주소·본문**과 다시 읽은 줄에 가짜 표식·이름·차트번호·전화·주민번호가 없음, PDF 쪽 수는 `/\/Type\s*\/Page(?!s)/`, 끝에 빈 값 저장(design.md 15절, C7). 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['표식', '전화']` → `expect(hits).toEqual([])`, cross-branch C11). 확인: `npm run e2e`
 
 ## TASK-14: 비트 숫자 맞추기 규칙
 - Step: Phase 4 · Step 0 · `bit-contract`
@@ -130,16 +130,16 @@
 - Step: Phase 4 · Step 2 · `bit-storage`
 - AC: AC-016.1~AC-016.2
 - REQ: REQ-016
-- Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts, src/types/worklog.ts
-- Tests: src/lib/storage/worklogDays.test.ts
-- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). `saveWorklogDay(client, ymd, day, bitFields?)`: **`bitFields`를 안 주면 `bit_fields` 칸을 보내지 않는다**(`[]`을 보내지 않는다, AC-016.2). TASK-5 시험의 "보내는 칸 20개"(`work_date` + 19)는 그대로이고, `bitFields`를 주면 21개다. 업무사항이 없다는 시험은 그대로. 이 TASK부터 읽기 칸에 `bit_fields`가 들어가므로 0110 migration을 붙여 넣기 전에는 합치거나 배포하지 않는다(머리말 관문)
+- Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts, src/types/worklog.ts, src/components/worklog/WorklogScreen.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx
+- Tests: src/lib/storage/worklogDays.test.ts, src/components/worklog/useWorklogDay.test.tsx
+- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). `saveWorklogDay(client, ymd, day, bitFields?)`: **`bitFields`를 안 주면 `bit_fields` 칸을 보내지 않는다**(`[]`을 보내지 않는다, AC-016.2). TASK-5 시험의 "보내는 칸 20개"(`work_date` + 19)는 그대로이고, `bitFields`를 주면 21개다. 업무사항이 없다는 시험은 그대로. `loadWorklogDay`가 `{ day, bitFields } | null`을 돌려주게 바뀌므로 그것을 받는 화면 쪽(`WorklogScreen.tsx`의 `load`, `useWorklogDay`)도 이 TASK에서 같이 맞춘다(빌드가 깨지지 않게, 비트 표시·채우기는 TASK-17). 이 TASK부터 읽기 칸에 `bit_fields`가 들어가므로 0110 migration을 붙여 넣기 전에는 합치거나 배포하지 않는다(머리말 관문)
 
 ## TASK-17: 화면에서 비트로 채우기
 - Step: Phase 4 · Step 3 · `bit-screen`
 - AC: AC-017.1~AC-017.7
 - REQ: REQ-017
-- Files: src/components/worklog/useBitFill.ts, src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/WorklogSheet.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/sheet.module.css, src/components/worklog/BitNotice.tsx, src/components/worklog/BitNotice.test.tsx, src/lib/worklog/autosave.ts, src/lib/worklog/autosave.test.ts, src/components/worklog/worklogSession.ts, src/components/worklog/worklogSession.test.ts, docs/mockups/worklog/bitfill.html
-- Tests: src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/BitNotice.test.tsx, src/lib/worklog/autosave.test.ts, src/components/worklog/worklogSession.test.ts
+- Files: src/components/worklog/useBitFill.ts, src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/WorklogSheet.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/sheet.module.css, src/components/worklog/BitNotice.tsx, src/components/worklog/BitNotice.test.tsx, src/lib/worklog/autosave.ts, src/lib/worklog/autosave.test.ts, src/components/worklog/worklogSession.ts, src/components/worklog/worklogSession.test.ts, docs/mockups/worklog/bitfill.html
+- Tests: src/components/worklog/useBitFill.test.tsx, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/BitNotice.test.tsx, src/lib/worklog/autosave.test.ts, src/components/worklog/worklogSession.test.ts
 - TDD: required — **기다림(Phase 4 공통)**: `origin/main`의 `src/lib/bridge/commands.json`에 `"revenue.days"`가 있고 그 main이 이 브랜치에 합쳐져 있다. 아니면 `blocked`(사유: "매출 갈래 revenue.days가 main에 들어와 이 브랜치에 합쳐져야 함"). **먼저 시안**: 비트 표시·'다름' 목록·안내 한 줄을 `docs/mockups/worklog/bitfill.html`(예시 숫자)로 만들어 사용자 OK를 받는다. OK 전에는 `blocked`(CLAUDE.md 화면 규칙). 자동 저장 길이 `bitFields`를 나른다: `change(ymd, day, bitFields?)`·`pendingDay(ymd)` → `{ day, bitFields? }`·`worklogSession`의 `save`(design.md 20-4절) — 비트를 읽지 않는 화면·앱 안 이동 뒤 저장이 표시를 지우지 않는지 시험한다(AC-017.7). `useBridge`·`revenue.days`는 `vi.mock`. 화면에 오는 값이 숫자뿐인지, 저장 호출에 업무사항·환자 글자가 없는지 시험한다(design.md 20-1·20-5절)
 
 ## TASK-18: 실제 Supabase 비트 칸 확인
@@ -148,7 +148,7 @@
 - REQ: REQ-018
 - Files: e2e/worklog-bit.spec.ts
 - Tests: e2e/worklog-bit.spec.ts
-- TDD: exempt — 시험만 더한다(대상 코드는 TASK-15~17). 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(커밋하지 않음). **기다림: 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 비트 PC가 없는 시험 기계라 `revenue.days`는 부르지 않는다: `accounts.client('approved')`(RLS 아래)로 시험 날짜(2020-01-02) 줄에 `bit_fields`를 넣음 → 화면에서 비트 표시가 보이는지 → 비트 칸 밖 칸(예: 지출 현금)을 고쳐 "저장했어요" → 다시 읽어 `bit_fields`가 그대로인지(AC-017.7을 실제 DB로), 모든 요청의 주소·본문과 다시 읽은 줄에 가짜 환자 글자·업무사항 표식이 없는지(C7). 끝에 빈 값·빈 표시로 되돌린다. 확인: `npm run e2e`
+- TDD: exempt — 시험만 더한다(대상 코드는 TASK-15~17). 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(커밋하지 않음). **기다림: 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 비트 PC가 없는 시험 기계라 `revenue.days`는 부르지 않는다: `accounts.client('approved')`(RLS 아래)로 시험 날짜(2020-01-02) 줄에 `bit_fields`를 넣음 → 화면에서 비트 표시가 보이는지 → 비트 칸 밖 칸(예: 지출 현금)을 고쳐 "저장했어요" → 다시 읽어 `bit_fields`가 그대로인지(AC-017.7을 실제 DB로), 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['표식', '전화']` → `expect(hits).toEqual([])`, cross-branch C11), 모든 요청의 주소·본문과 다시 읽은 줄에 가짜 환자 글자·업무사항 표식이 없는지(C7). 끝에 빈 값·빈 표시로 되돌린다. 확인: `npm run e2e`
 
 ## TASK-19: 의원 PC 확인
 - Step: Phase 5 · Step 1 · `clinic-check`

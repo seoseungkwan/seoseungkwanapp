@@ -23,7 +23,6 @@
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
 - `/supabase/migrations/20261101000100_worklog.sql`·`/supabase/worklog.rls.test.ts` (Phase 1)
-- `/docs/worklog/bit-check.md` (Step 1 결과)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 

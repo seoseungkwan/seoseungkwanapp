@@ -27,7 +27,7 @@
 - `/docs/UI_GUIDE.md` — '업무일지 양식(엑셀 예외)'(Phase 1 Step 0), '공통 모양'(`ds`)·'오류 카드'·'휴대폰'·'문구'(말끝 "~요")
 - `/src/components/ui/classes.ts` — `ds.button.secondary`·`ds.input`
 - `/src/components/common/ErrorCard.tsx`·`Icon.tsx`
-- `/src/lib/errors.ts`·`/src/types/errors.ts`·`/src/lib/errors.test.ts` — 번호 더하는 법(AC-003.4 "모든 번호" 시험)
+- `/src/lib/errors.ts`·`/src/types/errors.ts`·`/src/lib/errors.test.ts` — 번호 더하는 법(stats-core 003.4 "모든 번호" 시험)
 - `/src/lib/worklog/days.ts` — `previousDay`·`nextDay`·`clampToToday`·`savedTimeText`
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.

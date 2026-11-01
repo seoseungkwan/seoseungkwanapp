@@ -40,6 +40,7 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **먼저 확인**: 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase SQL 편집기에 붙여 넣었는가? 아니면 바로 `blocked`(사유: "worklog_bit_fields migration 적용 필요 — 사용자 OK"). Claude가 붙여 넣지 않는다
+- 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['표식', '전화']` → `expect(hits).toEqual([])`, cross-branch C11)
 - 시험 산출물에 쿠키·토큰·이메일을 남기지 않는다(`trace: 'off'`). 요청 본문은 메모리에서 검사만 한다
 - 시험 계정(가짜 병원)·시험 날짜 2020-01-02만 쓴다
 

@@ -1,7 +1,7 @@
 # 요구사항: 업무일지
 
 > 기능 ID: `worklog` · 주소 `/worklog` · 탭 이름 **업무일지** · 형식: 요구사항은 `### REQ-001: 제목`, 수용 기준은 `- AC-001.1: Given/When/Then`.
-> 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다. REQ 번호 = TASK 번호다. 문서 TASK(TASK-1)와 E2E TASK(TASK-13)는 시험 대신 리뷰·실제 Supabase 확인으로 본다(tasks.md).
+> 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다. REQ 번호 = TASK 번호다. 문서 TASK(TASK-1)·E2E TASK(TASK-13·TASK-18)·의원 PC 확인 TASK(TASK-19)는 단위 시험 대신 리뷰·실제 Supabase 확인·사용자 확인으로 본다(tasks.md).
 
 ## 배경 / 목표
 - 의원이 날마다 쓰는 엑셀 업무일지(하루 한 시트, 인쇄 범위 A1:I23)를 웹으로 옮긴다. `plan.md` §2-7(일일마감)의 첫 양식이다. 탭 틀은 이미 있다(`specs/tab-frame`, 지금 `/worklog`는 '준비 중' 화면)

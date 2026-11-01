@@ -354,7 +354,7 @@ export function startWorklogSession(): () => void                       // befor
 ## 15. E2E (TASK-13, `e2e/worklog.spec.ts`)
 
 - 승인 계정(`accounts.signIn(context, 'approved')`)으로 `/worklog` → 날짜 칸으로 **시험 날짜 2020-01-02**(지난 날, 실제 오늘 일지를 더럽히지 않음) → 숫자 몇 칸·비고·업무사항(가짜 표식 + 가짜 환자 이름 "가상환자01"·차트번호 "900001"·전화 "010-0000-0001"·주민번호 모양 "900101-1234567") → "저장했어요" 기다림 → 새로 고침 → **날짜를 다시 2020-01-02로 고름**(날짜는 주소에 없고 화면은 오늘로 열린다) → 값 확인
-- `page.on('request')`로 **모든 요청**(Supabase·같은 origin Next/Vercel·그 밖)의 주소와 본문을 모아 위 가짜 글자가 하나도 없는지 본다(cross-branch C7). `accounts.client('approved')`로 그 날 줄을 다시 읽어 모든 칸에 없는지 본다
+- `page.on('request')`로 **모든 요청**(Supabase·같은 origin Next/Vercel·그 밖)의 주소와 본문을 모아 위 가짜 글자가 하나도 없는지 본다(cross-branch C7). `accounts.client('approved')`로 그 날 줄을 다시 읽어 모든 칸에 없는지 본다. 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['표식', '전화']` → `expect(hits).toEqual([])`, cross-branch C11)
 - 새 `browser.newContext()`(다른 PC 흉내)로 같은 날 → 숫자는 보이고 업무사항은 빈 칸
 - `page.emulateMedia({ media: 'print' })` + `page.pdf({ format: 'A4', printBackground: true })` → 쪽 수 1(`/\/Type\s*\/Page(?!s)/g`로 센다 — `/Pages`를 세지 않게)
 - 끝에 그 날 값을 빈 칸으로 저장해 둔다(지우기 권한이 없다). 시험 계정은 가짜 병원이다
@@ -386,7 +386,7 @@ export function startWorklogSession(): () => void                       // befor
 
 | 파일 | 고치는 것 | TASK | 같이 고치는 갈래 |
 |---|---|---|---|
-| `supabase/migrations/` + 공용 함수 `my_hospital_id()`·`touch_updated_at()` | 새 파일 `20261101000100_worklog.sql`(·Phase 4 `…0110_worklog_bit_fields.sql`), 공용 함수는 C1 글자 그대로 | 4·16 | 통계·환자·매출·사전점검 |
+| `supabase/migrations/` + 공용 함수 `my_hospital_id()`·`touch_updated_at()` | 새 파일 `20261101000100_worklog.sql`(·Phase 4 `…0110_worklog_bit_fields.sql`), 공용 함수는 C1 글자 그대로 | 4·15 | 통계·환자·매출·사전점검 |
 | `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | 끝에 `E-WORKLOG-*` 넷(C3, 다른 갈래 번호와 겹치지 않음) | 9 | 사전점검·통계·환자·매출 |
 | `docs/ADR.md` | 끝에 업무일지 ADR 하나. 번호는 그때 마지막 번호 + 1(합칠 때 다시 매김, 시험은 번호를 보지 않는다) | 1 | 모두 |
 | `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` · `plan.md` | 줄·절 더하기, '하지 마라' 세 줄 꼬리표, plan.md §5 꼬리표 한 줄 | 1 | 모두 |
@@ -457,12 +457,12 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 - 저장해 두는 까닭: 폰·다른 PC에서도 어느 칸이 비트에서 왔는지 보이고, 다시 열어도 '비트 칸은 따라가고 적은 칸은 지킨다'가 이어진다 **(Claude 판단)**
 - **자동 저장 길 전체가 `bitFields`를 나른다**(TASK-16·17): `loadWorklogDay` → `{ day, bitFields }`, `saveWorklogDay(client, ymd, day, bitFields?)`, 자동 저장 `change(ymd, day, bitFields?)`·`pendingDay(ymd)` → `{ day, bitFields? }`, `worklogSession`의 `save`도 같은 모양. **`bitFields`를 받지 않은 저장은 `bit_fields` 칸을 보내지 않는다**(빈 목록 `[]`을 보내 저장된 표시를 지우지 않게) — 비트를 읽지 않는 화면(폰·연결 안 된 PC)·앱 안 이동 뒤 저장이 표시를 지우지 않는다
 - 목록 밖 이름은 버린다(열쇠 이름 ↔ DB 칸 이름)
-- **합치기·배포 관문**: TASK-16 뒤로 읽기·쓰기가 `bit_fields`를 쓴다 → `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣기 전(사용자 OK)에는 Phase 4를 main에 합치거나 배포하지 않는다. 붙여 넣은 뒤 실제 Supabase 확인(TASK-18)을 한다
+- **합치기·배포 관문**: TASK-16 뒤로 읽기·쓰기가 `bit_fields`를 쓴다 → `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣기 전(사용자 OK)에는 Phase 4를 main에 합치거나 배포하지 않는다. 붙여 넣은 뒤 실제 Supabase 확인(TASK-18)을 하고, **TASK-18 통과 전에는 4단계를 합치거나 배포하지 않는다**
 
 ### 20-5. 화면 (TASK-17)
 - 비트 칸: 칸 모서리 작은 표시(엑셀 메모 표시처럼, `--xl-focus` 색) + 양식 아래 한 줄 "표시한 칸은 비트에서 불러온 숫자예요". 인쇄에서는 숨긴다
 - 다른 칸: 양식 아래 목록 "현금수납 · 적은 값 120,000원 · 비트 125,000원 [비트 숫자로 바꾸기]"(`ds.button.secondarySmall`)
-- 안내 한 줄(날짜 줄 아래, 오류 카드 아님): 연결 안 됨 "비트 PC가 연결되지 않아 직접 적어요" · 확장/도우미 없음·옛 판 "비트 PC 연결을 마치면 숫자를 저절로 채워요"(`/claim/setup` 글자 링크) · 읽기 실패 "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요" · 확인 필요 날 "이 날은 환불·예치금이 있어 비트 금액을 확인해야 해요. 금액은 직접 적어 주세요"
+- 안내 한 줄(날짜 줄 아래, 오류 카드 아님): 연결 안 됨 "비트 PC가 연결되지 않아 직접 적어요" · 확장/도우미 없음·옛 판 "비트 PC 연결을 마치면 숫자를 저절로 채워요"(`/claim/setup` 글자 링크)(통로 오류 `E-BRIDGE-REJECTED`·`E-HELPER-UNKNOWN-COMMAND`도 이 '확장/도우미 새 버전' 상태로 본다 — 매출 설계 5절과 같음, '읽기 실패'가 아니다) · 읽기 실패 "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요" · 확인 필요 날 "이 날은 환불·예치금이 있어 비트 금액을 확인해야 해요. 금액은 직접 적어 주세요"
 - 다시 읽기: 그날을 열 때, 날짜를 옮길 때, 오늘이면 화면이 보이는 동안 10분마다. 터치 기기(보기만, `readOnly` — 11-3절과 같은 판정)에서는 읽지 않는다
 - **화면 시안이 먼저다**: 이 표시·목록·안내는 승인된 시안 v2에 없다 → TASK-17 전에 시안을 더해(예시 숫자) 사용자 OK를 받는다(CLAUDE.md 화면 규칙)
 
@@ -473,7 +473,7 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 - 20-2절과 다르면 명세를 고친다(채우는 칸 목록). 미수발생·지역화폐가 비트에 있거나 수납 나눔·신환·재진 기준이 다르면 매출 갈래에 계약 변경을 알린다
 
 ### 20-7. 더하는 위험
-- 엑셀 업무일지 숫자가 진료일 기준이었다면 수납일 기준인 비트 금액과 날마다 조금 다를 수 있다. 신환·재진은 접수일 기준이라 엑셀과 같을 가능성이 높다 → TASK-15가 확인한다
+- 엑셀 업무일지 숫자가 진료일 기준이었다면 수납일 기준인 비트 금액과 날마다 조금 다를 수 있다. 신환·재진은 접수일 기준이라 엑셀과 같을 가능성이 높다 → TASK-19가 확인한다
 - 오늘은 진료 중 숫자가 늘어난다: 비트 칸은 10분마다 따라가고, 사람이 고친 칸은 '다름'으로만 알린다
 - `bit_fields` 칸이 실제 Supabase에 없는데 Phase 4가 배포되면 읽기·쓰기가 모두 실패한다 → 20-4절 관문
 

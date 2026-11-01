@@ -35,8 +35,12 @@
   - `src/lib/storage/worklogDays.ts`
   - `src/lib/storage/worklogDays.test.ts`
   - `src/types/worklog.ts`
+  - `src/components/worklog/WorklogScreen.tsx`
+  - `src/components/worklog/useWorklogDay.ts`
+  - `src/components/worklog/useWorklogDay.test.tsx`
 - Tests:
   - `src/lib/storage/worklogDays.test.ts`
+  - `src/components/worklog/useWorklogDay.test.tsx`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -48,7 +52,7 @@
 
 ## 작업
 
-- `loadWorklogDay(client, ymd)` → `{ day, bitFields } | null`(옛 줄·칸 없음 → `bitFields: []`), `saveWorklogDay(client, ymd, day, bitFields?)`. 화면 쪽 호출은 TASK-18이 맞춘다 — 이 step에서 깨지는 화면 시험이 있으면 옛 호출 모양(`bitFields` 없음)을 그대로 받게 해 깨지지 않게 한다
+- `loadWorklogDay(client, ymd)` → `{ day, bitFields } | null`(옛 줄·칸 없음 → `bitFields: []`), `saveWorklogDay(client, ymd, day, bitFields?)`. 화면 쪽 호출(`WorklogScreen.tsx`가 `useWorklogDay`에 넘기는 `load`, `useWorklogDay`가 받는 모양 `{ day, bitFields } | null`)도 이 step에서 맞춘다 — 빌드·화면 시험이 깨지지 않게. 비트 표시·채우기는 TASK-17
 - 시험: `bitFields` 없이 저장 → 보내는 칸 20개·`bit_fields` 열쇠 없음, `bitFields` 주고 저장 → 21개, 목록 밖 이름 버림, `bit_fields` 없는 옛 줄 → `[]`, 업무사항 없음 그대로
 
 ## TDD 순서
@@ -61,7 +65,7 @@
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/storage/worklogDays.test.ts   # AC-016.1~AC-016.2
+npx vitest run src/lib/storage/worklogDays.test.ts src/components/worklog/useWorklogDay.test.tsx   # AC-016.1~AC-016.2
 npx vitest run src/components/worklog   # 화면 시험 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-16 --expect green
 npm run lint && npm test

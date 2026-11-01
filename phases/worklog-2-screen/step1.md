@@ -26,9 +26,9 @@
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
 - `/docs/UI_GUIDE.md` — '업무일지 양식(엑셀 예외)'(Phase 1 Step 0), '공통 모양'(`ds`)·'오류 카드'·'휴대폰'·'문구'(말끝 "~요")
 - `/src/app/globals.css` — `:root` 토큰 블록
-- `/src/app/theme.test.ts` — AC-202.1(토큰 표 `TOKENS`·`LANDING_ALIASES`)·AC-202.2(`@theme inline`)·AC-202.3(16진수 자리)
-- `/src/app/fonts.test.ts` — AC-203.3 `badWeightsIn`
-- `/src/components/ui/classes.test.ts` — `APP_DIRS`·AC-013.2(CSS Module 금지)·AC-204.6(클래스 규칙)
+- `/src/app/theme.test.ts` — b2b-redesign 202.1(토큰 표 `TOKENS`·`LANDING_ALIASES`)·b2b-redesign 202.2(`@theme inline`)·b2b-redesign 202.3(16진수 자리)
+- `/src/app/fonts.test.ts` — b2b-redesign 203.3 `badWeightsIn`
+- `/src/components/ui/classes.test.ts` — `APP_DIRS`·auth 013.2(CSS Module 금지)·b2b-redesign 204.6(클래스 규칙)
 - 시안 `/docs/mockups/worklog/index.html` — `.paper`·`.sheet` CSS(화면 부분)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
@@ -54,16 +54,16 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - 규칙은 **예외 한 파일**만 연다. 예외 목록은 상수 하나(파일 경로)로 두고, 같은 규칙이 다른 파일에서 그대로 잡히는지 시험으로 함께 본다(불러오기 줄 `LoadBar.tsx` 예외와 같은 방식)
-- 16진수 색은 `globals.css` `:root` 토큰 블록에만 둔다(AC-202.3). `sheet.module.css`는 `var()`만
+- 16진수 색은 `globals.css` `:root` 토큰 블록에만 둔다(b2b-redesign 202.3). `sheet.module.css`는 `var()`만
 - 시안의 구글 글꼴(`Nanum Gothic`·`IBM Plex`)·`<link>`를 옮기지 않는다(CSP·UI_GUIDE)
 - 기존 시험의 다른 기대값을 바꾸지 않는다. 더하기만 한다(다른 갈래와 겹치는 파일, design.md 18절)
 
 ## 작업
 
 ### 1. 먼저 시험(RED)
-- `theme.test.ts`: `WORKLOG_SHEET_TOKENS = { '--xl-ink': '#000000', '--xl-lav': '#CCCCFF', '--xl-gray': '#D9D9D9', '--xl-focus': '#107C41' }`를 AC-202.1 기대(`{ ...TOKENS, ...LANDING_ALIASES }`)에 더하고, AC-202.2(`@theme inline`) 쪽은 이 넷을 가리키지 않는다는 시험 하나(`AC-007.1`)
+- `theme.test.ts`: `WORKLOG_SHEET_TOKENS = { '--xl-ink': '#000000', '--xl-lav': '#CCCCFF', '--xl-gray': '#D9D9D9', '--xl-focus': '#107C41' }`를 b2b-redesign 202.1 기대(`{ ...TOKENS, ...LANDING_ALIASES }`)에 더하고, b2b-redesign 202.2(`@theme inline`) 쪽은 이 넷을 가리키지 않는다는 시험 하나(`AC-007.1`)
 - `fonts.test.ts`: 굵기 예외 상수 `SHEET_WEIGHT_EXCEPTION = 'src/components/worklog/sheet.module.css'`. 그 파일의 700만 빼고, 같은 글자가 다른 경로에 있으면 잡히는지 보는 시험(`AC-007.2`). 300·900은 그 파일에서도 잡힌다
-- `classes.test.ts`: `APP_DIRS`에 `'src/components/worklog', // worklog TASK-7 (AC-007.3)`. AC-013.2 두 시험에 예외 상수(`WORKLOG_SHEET_CSS`·`WORKLOG_SHEET_IMPORTER = 'src/components/worklog/WorklogSheet.tsx'`): 앱 화면 폴더의 module.css 목록 = `[WORKLOG_SHEET_CSS]`, module.css를 불러오는 소스 ⊆ `[WORKLOG_SHEET_IMPORTER]`
+- `classes.test.ts`: `APP_DIRS`에 `'src/components/worklog', // worklog TASK-7 (AC-007.3)`. auth 013.2 두 시험(CSS Module 금지)에 예외 상수(`WORKLOG_SHEET_CSS`·`WORKLOG_SHEET_IMPORTER = 'src/components/worklog/WorklogSheet.tsx'`): 앱 화면 폴더의 module.css 목록 = `[WORKLOG_SHEET_CSS]`, module.css를 불러오는 소스 ⊆ `[WORKLOG_SHEET_IMPORTER]`
 - `sheet.style.test.ts`(새, node): AC-007.4 — 파일 글자 검사(주석 뺀 CSS): 16진수·`rgb(`·`hsl(`·`url(`·`@font-face`·`@import` 없음, `var(--xl-lav)`·`var(--xl-gray)`·`var(--xl-ink)` 있음, `font-family` 값의 글꼴 이름 ⊆ `{Gulim, 굴림, Malgun Gothic, 맑은 고딕, Apple SD Gothic Neo, sans-serif}`
 
 ### 2. 구현(GREEN)

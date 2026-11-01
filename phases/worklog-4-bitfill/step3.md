@@ -30,7 +30,7 @@
 - `/src/components/claim/useBridge.ts` — 상태 이름(ready·no-extension·helper-old 등)
 - 매출 갈래 화면이 `revenue.days`를 부르는 법(`src/components/revenue/*`, main)
 - `/src/components/worklog/*`·`/src/lib/worklog/autosave.ts` (Phase 2·3)
-- `/src/lib/worklog/bitFill.ts`·`/src/lib/storage/worklogDays.ts` (Step 0·3)
+- `/src/lib/worklog/bitFill.ts`·`/src/lib/storage/worklogDays.ts` (Step 0·2)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -44,6 +44,7 @@
   - `src/components/worklog/WorklogScreen.tsx`
   - `src/components/worklog/WorklogScreen.test.tsx`
   - `src/components/worklog/useWorklogDay.ts`
+  - `src/components/worklog/useWorklogDay.test.tsx`
   - `src/components/worklog/WorklogSheet.tsx`
   - `src/components/worklog/WorklogSheet.test.tsx`
   - `src/components/worklog/sheet.module.css`
@@ -56,6 +57,7 @@
   - `docs/mockups/worklog/bitfill.html`
 - Tests:
   - `src/components/worklog/useBitFill.test.tsx`
+  - `src/components/worklog/useWorklogDay.test.tsx`
   - `src/components/worklog/WorklogScreen.test.tsx`
   - `src/components/worklog/WorklogSheet.test.tsx`
   - `src/components/worklog/BitNotice.test.tsx`
@@ -75,12 +77,12 @@
 
 ## 작업
 
-- `useBitFill({ ymd, today, readOnly })` → `{ status: 'off' | 'reading' | 'ready' | 'unconfirmed' | 'failed' | 'not-connected' | 'setup-needed'; values: BitValues }`. `readOnly`(터치 기기 — 11-3절과 같은 판정)면 읽지 않는다. 오늘이면 10분 타이머(보일 때만). `bridge.call('revenue.days', { from: ymd, to: ymd })` → `bitValuesFrom(days[0])`
+- `useBitFill({ ymd, today, readOnly })` → `{ status: 'off' | 'reading' | 'ready' | 'unconfirmed' | 'failed' | 'not-connected' | 'setup-needed'; values: BitValues }`. `readOnly`(터치 기기 — 11-3절과 같은 판정)면 읽지 않는다. 통로 오류 `E-BRIDGE-REJECTED`·`E-HELPER-UNKNOWN-COMMAND`는 `setup-needed`('확장/도우미 새 버전' 안내, 매출 설계 5절과 같음)로, 그 밖의 읽기 오류만 `failed`로 오늘이면 10분 타이머(보일 때만). `bridge.call('revenue.days', { from: ymd, to: ymd })` → `bitValuesFrom(days[0])`
 - 자동 저장 길에 `bitFields`(design.md 20-4절): `autosave.change(ymd, day, bitFields?)`·`pendingDay(ymd)` → `{ day, bitFields? } | null`·`worklogSession`의 `save = (ymd, day, bitFields) => saveWorklogDay(supabaseBrowser(), ymd, day, bitFields)`. 화면은 그 날의 `bitFields`를 알면(읽은 줄·맞춘 결과) 늘 같이 넘기고, 모르면 넘기지 않는다
 - 화면: 읽은 값이 오면 `mergeBit` → 바뀌었으면 화면 값·`bitFields`를 바꾸고 `autosave.change`. 사람이 숫자 칸을 고치면 그 칸을 `bitFields`에서 뺀다
 - `WorklogSheet`: `bitFields` prop → 그 칸에 표시 클래스(`sheet.module.css`, 인쇄에서 숨김). `BitNotice`: 안내 한 줄 + '다름' 목록 + 표시 설명 줄(`print:hidden`)
 - 안내 문구는 design.md 20-5절 그대로(말끝 "~요")
-- 시험: AC-017.1~018.6, 그리고 **AC-017.7**(표시가 저장된 날을 터치 기기·연결 안 됨 화면에서 고침 → 저장 인자에 그 날 `bitFields`가 그대로 / 앱 안 이동(`unmount`) 뒤 `flush` 저장도 `bitFields`를 나름 / `bitFields`를 모르는 저장은 `bit_fields`를 보내지 않음)
+- 시험: AC-017.1~017.6, 그리고 **AC-017.7**(표시가 저장된 날을 터치 기기·연결 안 됨 화면에서 고침 → 저장 인자에 그 날 `bitFields`가 그대로 / 앱 안 이동(`unmount`) 뒤 `flush` 저장도 `bitFields`를 나름 / `bitFields`를 모르는 저장은 `bit_fields`를 보내지 않음)
 
 ## TDD 순서
 
