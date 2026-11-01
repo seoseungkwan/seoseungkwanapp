@@ -645,6 +645,15 @@ function ruleBreaks(token: string): string[] {
   return breaks
 }
 const breaksIn = (classes: string) => tokens(classes).flatMap((t) => ruleBreaks(t).map((why) => `${t} (${why})`))
+// 규칙 예외(ui-90 AC-405.3, UI_GUIDE '움직임 › 불러오기 줄'): 불러오기 줄 한 파일의 700ms·감속 곡선 두 클래스뿐이다. 다른 파일의 같은 클래스는 그대로 잡는다
+const LOAD_BAR_FILE = 'src/components/shell/LoadBar.tsx'
+const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR_FILE]: ['duration-700', 'ease-out'] }
+const fileBreaksIn = (file: string, classes: string) =>
+  breaksIn(
+    tokens(classes)
+      .filter((t) => !(RULE_EXCEPTIONS[file] ?? []).includes(t))
+      .join(' '),
+  )
 
 describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글자 11단계·장식 없음·화면 폭 접두사·overflow-clip', () => {
   it('AC-204.6: 검사 대상이 비어 있지 않다(ds 키 전부 + 목록 파일이 있다)', () => {
@@ -657,9 +666,12 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
     expect(breaksIn(dsAt(key)), key).toEqual([])
   })
 
-  it('AC-204.6: 검사 목록 파일의 클래스 글자가 규칙을 지킨다', () => {
+  it('AC-204.6·AC-405.3: 검사 목록 파일의 클래스 글자가 규칙을 지킨다(불러오기 줄 한 파일의 두 클래스만 예외)', () => {
     for (const file of ruleFiles()) {
-      expect(stringPieces(file).flatMap(breaksIn), file).toEqual([])
+      expect(
+        stringPieces(file).flatMap((piece) => fileBreaksIn(file, piece)),
+        file,
+      ).toEqual([])
     }
   })
 
@@ -793,6 +805,47 @@ describe('AC-313.2: 규칙 — 짧은 반응 밖의 움직임(transition-*·dura
     'translate-y-full',
   ])('AC-313.2: 짧은 반응 클래스 %s는 통과한다', (ok) => {
     expect(ruleBreaks(ok), ok).toEqual([])
+  })
+})
+
+// ── ui-90 AC-405.3 불러오기 줄 예외: 700ms·감속 곡선은 LoadBar.tsx 한 파일에서만 통과한다(UI_GUIDE '움직임 › 불러오기 줄')
+describe('AC-405.3: 규칙 — 불러오기 줄 예외는 LoadBar.tsx 한 파일 × duration-700·ease-out 두 클래스뿐이다', () => {
+  it('AC-405.3: 예외 목록은 파일 하나(LoadBar.tsx) × 클래스 둘이고, 그 파일이 있고 검사 목록에 든다', () => {
+    expect(RULE_EXCEPTIONS).toEqual({ 'src/components/shell/LoadBar.tsx': ['duration-700', 'ease-out'] })
+    expect(existsSync(join(ROOT, LOAD_BAR_FILE))).toBe(true)
+    expect(ruleFiles()).toContain(LOAD_BAR_FILE)
+  })
+
+  it('AC-405.3: LoadBar.tsx는 예외 두 클래스를 실제로 쓴다(쓰지 않는 예외를 남기지 않는다)', () => {
+    const used = stringPieces(LOAD_BAR_FILE).flatMap(tokens)
+    for (const cls of RULE_EXCEPTIONS[LOAD_BAR_FILE] ?? []) expect(used, cls).toContain(cls)
+  })
+
+  it('AC-405.3: 두 클래스는 규칙 자체로는 여전히 짧은 반응 밖이다', () => {
+    for (const cls of ['duration-700', 'ease-out']) expect(ruleBreaks(cls), cls).toContain('짧은 반응 밖')
+  })
+
+  it.each(['src/components/shell/TabBar.tsx', 'src/components/shell/AllMenu.tsx', 'src/components/ui/classes.ts', 'src/components/claim/x.tsx'])(
+    'AC-405.3: 다른 파일(%s)의 duration-700·ease-out은 그대로 잡는다',
+    (file) => {
+      expect(fileBreaksIn(file, 'transition duration-700 ease-out')).toEqual(['duration-700 (짧은 반응 밖)', 'ease-out (짧은 반응 밖)'])
+    },
+  )
+
+  it('AC-405.3: LoadBar.tsx에서도 예외 두 클래스 밖의 움직임(다른 시간·곡선·delay·변형 앞말 붙은 것)은 잡는다', () => {
+    expect(fileBreaksIn(LOAD_BAR_FILE, 'transition duration-700 ease-out')).toEqual([])
+    for (const bad of ['duration-300', 'duration-1000', 'ease-in', 'ease-in-out', 'delay-150', 'transition-all', 'hover:duration-700', 'motion-safe:ease-out', 'animate-pulse']) {
+      expect(fileBreaksIn(LOAD_BAR_FILE, bad).length, bad).toBeGreaterThan(0)
+    }
+  })
+
+  it('AC-405.3: 검사 목록 파일 가운데 duration-700·ease-out을 쓰는 곳은 LoadBar.tsx뿐이다', () => {
+    const users = ruleFiles().filter((file) =>
+      stringPieces(file)
+        .flatMap(tokens)
+        .some((t) => t === 'duration-700' || t === 'ease-out'),
+    )
+    expect(users).toEqual([LOAD_BAR_FILE])
   })
 })
 

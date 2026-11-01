@@ -38,6 +38,11 @@ const HOME = readFileSync(join(ROOT, 'docs/mockups/dashboard-home/index.html'), 
 const svgBefore = (label: string) => HOME.match(new RegExp(`(<svg\\b[^>]*>)((?:(?!</svg>).)*)</svg><span>${label}</span></button>`, 's'))
 const HOME_SVG = { copy: svgBefore('복사'), userCheck: svgBefore('가입 승인') }
 
+// ui-90 REQ-416(AC-416.7): logout은 시안 docs/mockups/ui-90/app/gen.py의 ICONS['logout'] 그대로다(계정 메뉴 [로그아웃])
+const UI90 = readFileSync(join(ROOT, 'docs/mockups/ui-90/app/gen.py'), 'utf8')
+const UI90_LOGOUT = UI90.match(/^ 'logout': '([^']*)',$/m)?.[1] ?? ''
+const UI90_SVG_TAG = UI90.match(/def ic\([^)]*\):[\s\S]*?return f'(<svg\b[^>]*>)/)?.[1] ?? ''
+
 const draw = (name: IconName, props: { size?: number; className?: string } = {}) => renderToStaticMarkup(<Icon name={name} {...props} />)
 const attrsOf = (tag: string) => Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]))
 const openTag = (html: string) => html.match(/^<svg\b[^>]*>/)?.[0] ?? ''
@@ -60,8 +65,9 @@ describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
     for (const name of NAMES) expect(MOCK[name], name).toBeTruthy()
   })
 
-  it('AC-204.6·AC-315.1: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck를 더한 18개뿐이다', () => {
-    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES])
+  it('AC-204.6·AC-315.1·AC-416.7: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout을 더한 19개뿐이다', () => {
+    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout'])
+    expect(ICON_NAMES).toHaveLength(19)
   })
 
   it.each(NAMES)('AC-204.6: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
@@ -125,4 +131,42 @@ describe('AC-315.1 아이콘 둘 copy·userCheck (tab-frame REQ-315, 시안 dash
       expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
     },
   )
+})
+
+describe('AC-416.7 아이콘 logout (ui-90 REQ-416, 시안 docs/mockups/ui-90/app/gen.py의 ICONS)', () => {
+  it('AC-416.7: 시안에서 ICONS의 logout 그림과 ic()의 svg 태그를 읽었다(시험 준비 확인)', () => {
+    expect(elementsOf(UI90_LOGOUT).length).toBeGreaterThan(0)
+    expect(UI90_SVG_TAG).toMatch(/^<svg\b/)
+  })
+
+  it('AC-416.7: 시안의 ic()도 viewBox 0 0 16 16·선 1.5·currentColor·aria-hidden이다(시안이 같은 규칙으로 그렸다)', () => {
+    expect(attrsOf(UI90_SVG_TAG)).toMatchObject(SVG_ATTRS)
+  })
+
+  it('AC-416.7: logout은 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', () => {
+    const html = draw('logout')
+    expect(attrsOf(openTag(html))).toEqual({ ...SVG_ATTRS, width: '16', height: '16' })
+    expect(html.endsWith('</svg>')).toBe(true)
+  })
+
+  it('AC-416.7: logout의 안쪽 그림은 시안 ICONS["logout"]과 같고, 안쪽 원소에 색·style이 없다', () => {
+    const inner = innerOf(draw('logout'))
+    expect(elementsOf(inner)).toEqual(elementsOf(UI90_LOGOUT))
+    expect(elementsOf(inner)).toHaveLength(2)
+    expect(inner).not.toMatch(/\b(?:fill|stroke|style|class)=/)
+    expect(inner.replace(/<[^>]*>/g, ''), 'logout 글자').toBe('')
+  })
+
+  it.each([12, 14, 16])('AC-416.7: logout에 size=%i를 주면 너비·높이가 되고 viewBox·선 굵기는 그대로다', (size) => {
+    const attrs = attrsOf(openTag(draw('logout', { size })))
+    expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
+  })
+
+  it('AC-416.7: Icon.tsx 머리 주석이 그림 출처 셋(b2b-redesign·dashboard-home·ui-90 시안)을 적는다', () => {
+    const src = readFileSync(join(ROOT, 'src/components/common/Icon.tsx'), 'utf8')
+    const head = src.slice(0, src.indexOf('export const ICON_NAMES'))
+    for (const source of ['docs/mockups/b2b-redesign/parts.mjs', 'docs/mockups/dashboard-home/index.html', 'docs/mockups/ui-90/app/gen.py']) {
+      expect(head, source).toContain(source)
+    }
+  })
 })
