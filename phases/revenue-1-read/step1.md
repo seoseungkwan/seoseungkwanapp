@@ -3,6 +3,7 @@
 > **TASK-2** 명령 표 `revenue.days` · 답 검사 · **REQ-002** · AC-002.1 ~ AC-002.4
 > Phase 1 `revenue-1-read` · Step 1 — `specs/revenue/tasks.md`
 > 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-2 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> **다시 열림(2026-11-01)**: 아래 파일은 8f1f13b에서 이미 만들었다. 새로 만들지 말고, `src/types/revenue.ts`의 `RevenueDayRow`·`REVENUE_DAY_KEYS`·`REVENUE_MONEY_KEYS`에 `copay`·`otherTotal`을 `noncovered` 뒤에 더하고, 검사의 `unconfirmed` 짝을 금액 아홉 칸으로 넓히고, 시험에 두 칸 빠짐·음수·짝 어긋남 사례를 더한다. 주석도 고친다: `src/types/revenue.ts` 19줄의 `unconfirmed` 주석(환불 종류만 말한다 → design.md 5-2의 뜻: 세 검사, 금액 맞춤 검사, 음수), `src/types/revenue.ts` 40줄과 `src/lib/bridge/revenueResult.ts` 2·48줄의 '일곱' → '아홉'. 이미 맞는 곳(명령 표·`bridge.ts`·`protocol.ts`)은 고치지 않는다. 시험 먼저·RED 기록 순서는 그대로다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 

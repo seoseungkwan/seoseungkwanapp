@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-005에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-005.1**: `splitDay(row)`: 급여 = `insurer + copay`(요양비용총액), 공단부담 = `insurer`, 본인부담 = `copay`(= 급여 − 공단부담), 비급여 = `noncovered`, 기타 = `otherTotal`(100/100미만총액 + 전액본인부담). 급여 + 비급여 + 기타 ≠ `total`이거나 어느 칸이든 음수면 그날은 확인 필요(`null`), 고쳐 맞추지 않음
+- **AC-005.1**: `splitDay(row)`: 급여 = `insurer + copay`(요양비용총액), 공단부담 = `insurer`, 본인부담 = `copay`(= 급여 − 공단부담), 비급여 = `noncovered`, 기타 = `otherTotal`(100/100미만총액 + 전액본인부담). 급여 + 비급여 + 기타 ≠ `total`이거나 어느 칸이든 음수면 그날은 확인 필요(`null`), 고쳐 맞추지 않음(도우미가 만든 줄은 `otherTotal`이 나머지라 합 검사에 걸리지 않는다. 시험은 손으로 만든 줄로 한다)
 - **AC-005.2**: `sumPeriod(rows, range)`: 확인된 날의 여섯 금액(총액 = 매출·급여·공단부담·본인부담·비급여·기타, 급여 + 비급여 + 기타 = 총액) 합·확인 필요한 날 목록·내원 합·환자 수(1일 시작 기간이면 마지막 날 `patientsToDate`, 아니면 `null`). 줄이 없거나 모두 0이고 확인 필요한 날도 없으면 `null`
 - **AC-005.3**: `periodsFor(month, today)`: 고른 기간(1일~말일과 어제 가운데 이른 날)·지난달 같은 기간(짧으면 말일)·작년 같은 때(2월 29일 → 28일). `firstMonth(today)` = 어제가 속한 달. 날짜는 `lib/analytics/dates.ts`만
 - **AC-005.4**: `compare(now, before)`: 비율 소수 첫째 자리 버림, 방향 up·down·same, before가 null·0이면 `null`("비교할 수 없음")
@@ -25,10 +25,10 @@
 - `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
-- `/specs/revenue/design.md` — 7절(모양), 10절·12절(환자 한 명 기준 1인당, 확인 필요 결정), 2절 1(총진료비에 비급여가 들어 있는가)
+- `/specs/revenue/design.md` — 7절(모양), 10절·12절(환자 한 명 기준 1인당, 확인 필요 결정), 2절 1(총진료비의 짜임, 확인함)
 - `/src/lib/analytics/dates.ts`(쓸 함수: `todayInKorea`·`addDays`·`addMonths`·`monthOf`·`monthRange`·`eachDay`·`compareYmd`)
 - `/src/components/charts/format.ts`(`formatRate`의 버림 방식 — 같은 방식으로 비율을 자른다)
-- `/docs/revenue/pc-check.md` ① 결과(총괄이 알려 준 답. 메인 세션이 이 step 프롬프트나 summary에 적어 준다)
+- `/docs/revenue/pc-check.md` ① 결과(답 = 아니오, 문서에 적혀 있다. AC-005.1은 이 답에 맞춰 정했다)
 - 이전 step에서 만든 파일:
   - `src/types/revenue.ts` (`RevenueDayRow`, Phase 1 Step 1)
 
@@ -70,7 +70,7 @@
 
 ## TDD 순서
 
-1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-005.1 급여는 총진료비에서 비급여를 뺀 값 …', …)`
+1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-005.1 급여는 공단부담과 본인부담을 더한 값 …', …)`
 2. `python3 ~/.claude/harness/bin/tdd-run TASK-5 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일과 시험 파일은 RED 전에도 고칠 수 있다
 3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-5 --expect green` 으로 통과(GREEN)를 기록한다
 4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
@@ -106,7 +106,7 @@ python3 ~/.claude/harness/bin/verify
 - `Math.round`·`toFixed`로 금액·비율을 반올림하지 마라. 이유: 원 미만·소수는 버린다(CLAUDE.md, ADR-008)
 - 자료 없는 달·기간을 0으로 채우지 마라. 이유: 없는 것과 0은 다르다. 화면은 "자료 없음"을 보여야 한다(AC-005.2·005.5)
 - 함수 안에서 `new Date()`로 오늘을 읽지 마라. 이유: 시험이 날짜를 정할 수 있어야 하고, 한국 날짜는 `dates.ts` 한 곳이다
-- TASK-1 ① 답 없이 급여 식을 정하지 마라. 이유: 총진료비에 비급여가 들어 있는지는 코드로 확인하지 못했다(design.md 2절)
+- 급여를 `total − noncovered`로 셈하거나 기타를 급여에 섞지 마라. 이유: 확인표 ① 답은 '아니오'였고, 확인된 식은 총진료비 = 요양비용총액(`insurer + copay`) + 비급여 + 기타(`otherTotal`)다(design.md 2절 1, AC-005.1)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다

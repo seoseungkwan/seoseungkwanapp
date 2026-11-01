@@ -70,7 +70,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **시안 승인본**: 배치·문구는 `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 2026-11-01 사용자 승인 "이대로 만들기")의 글자 그대로다 (CLAUDE.md: 화면은 목업 승인 뒤)
+- **시안 승인본**: 배치·문구는 `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 승인 기록 `docs/mockups/revenue/README.md`: 2026-11-01 "이대로 만들기" + 승인 뒤 바뀐 곳의 OK)의 글자 그대로다 (CLAUDE.md: 화면은 목업 승인 뒤)
 - **모양 규칙**: `docs/UI_GUIDE.md` — 토큰 클래스와 `ds`(`components/ui/classes.ts`)만, 16진수·대괄호 임의 값·`font-bold`·`animate-*`·그라데이션·그림자 카드·상자 안 상자 없음. 말끝은 "~요". 숫자는 지어내지 않는다(자료 없으면 "–"와 "자료 없음")
 - **그래프**: HTML 막대(% 높이·폭 inline style만), 가로 눈금선만, 그림은 `aria-hidden`, 숫자는 화면 읽기 표(`sr-only`)로도. 증감은 화살표와 글자("늘어남"·"줄어듦")를 같이. `components/charts/*`는 고치지 않고 불러 쓰기만
 - **줄만 고친다**: 다른 탭 명세도 같은 파일의 자기 줄을 고친다. 매출 줄과 "준비 중 n개" 숫자만 바꾸고 다른 탭 줄은 건드리지 않는다(design.md 11절)
