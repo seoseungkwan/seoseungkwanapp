@@ -44,7 +44,8 @@ export function LoginCard({ failed }: { failed: boolean }) {
     try {
       const { error } = await supabaseBrowser().auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+        // 공용 PC: 크롬에 남은 구글 계정으로 바로 들어가지 않게 계정 선택 화면을 늘 묻는다(REQ-404)
+        options: { redirectTo: `${window.location.origin}/auth/callback`, queryParams: { prompt: 'select_account' } },
       })
       if (!error) return // 구글로 넘어간다
     } catch {

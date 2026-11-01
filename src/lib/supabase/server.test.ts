@@ -78,6 +78,22 @@ describe('supabaseServer()', () => {
     expect(store.set).toHaveBeenCalled()
   })
 
+  // 쿠키를 쓰는 곳은 로그인 콜백뿐이다 — https 콜백이면 세션 쿠키에 Secure를 붙인다
+  it('AC-405.1: supabaseServer({ secure: true })면 cookieOptions.secure가 true', async () => {
+    await supabaseServer({ secure: true })
+    const calls = createServerClient.mock.calls as unknown as [string, string, { cookieOptions?: unknown }][]
+    expect(calls[0][2].cookieOptions).toEqual({ secure: true })
+  })
+
+  it.each([
+    ['인자를 주지 않음', () => supabaseServer()],
+    ['secure: false를 줌', () => supabaseServer({ secure: false })],
+  ])('AC-405.1: %s → cookieOptions.secure가 false(개발 localhost·E2E http, Server Component)', async (_label, make) => {
+    await make()
+    const calls = createServerClient.mock.calls as unknown as [string, string, { cookieOptions?: unknown }][]
+    expect(calls[0][2].cookieOptions).toEqual({ secure: false })
+  })
+
   it('AC-001.1: 열쇠가 없으면 만들지 않고 이유를 던진다', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', '')
     await expect(supabaseServer()).rejects.toThrow(/NEXT_PUBLIC_SUPABASE_URL/)

@@ -6,7 +6,7 @@ import { test as base, expect, type BrowserContext } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { APP_HOST } from './config'
 import { readE2eEnv, startProblemMessage, type E2eEnv, type Role } from './lib/env'
-import { accountProblem, passwordSession, toBrowserCookies, type AccountState, type CookieToSet } from './lib/session'
+import { accountProblem, passwordSession, signInCookies, type AccountState, type CookieToSet } from './lib/session'
 
 export type Accounts = {
   // 처음이면 로그인 + 계정 상태 확인(다르면 던짐). 캐시한 세션 쿠키를 context에 넣는다
@@ -104,7 +104,8 @@ export const test = base.extend<object, { accounts: Accounts }>({
       const accounts: Accounts = {
         async signIn(context, role) {
           const { cookies } = await session(role)
-          await context.addCookies(toBrowserCookies(cookies, APP_HOST, Math.floor(Date.now() / 1000)))
+          // 세션 쿠키 + 움직임 쿠키(app-active). 움직임 쿠키가 없으면 middleware가 로그인을 끊는다(ADR-023)
+          await context.addCookies(signInCookies(cookies, APP_HOST, Math.floor(Date.now() / 1000)))
         },
         async client(role) {
           return (await session(role)).client

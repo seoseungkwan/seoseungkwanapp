@@ -14,8 +14,11 @@ const LISTEN = { capture: true, passive: true }
 const ACTIVITY = 'activity'
 
 // 마지막 움직임에서 timeoutMs가 지나면 onIdle을 한 번 부르고 스스로 멈춘다. 돌려받은 함수 = 정리(여러 번 불러도 된다)
-export function startIdleLogout(opts: { timeoutMs: number; onIdle: () => void } & IdleDeps): () => void {
-  const { timeoutMs, onIdle, target, doc, channel } = opts
+// onActive: 이 탭의 움직임을 받아들였을 때만 부른다(움직임 쿠키 다시 쓰기, AC-401.8). 다른 탭 소식·로그아웃하는 움직임·멈춘 뒤에는 부르지 않는다
+export function startIdleLogout(
+  opts: { timeoutMs: number; onIdle: () => void; onActive?: () => void } & IdleDeps,
+): () => void {
+  const { timeoutMs, onIdle, onActive, target, doc, channel } = opts
   let last = Date.now()
   let timer = setTimeout(idle, timeoutMs)
   let stopped = false
@@ -39,7 +42,9 @@ export function startIdleLogout(opts: { timeoutMs: number; onIdle: () => void } 
   }
 
   function local() {
-    if (seen()) channel?.postMessage(ACTIVITY)
+    if (!seen()) return
+    channel?.postMessage(ACTIVITY)
+    onActive?.()
   }
 
   function stop() {

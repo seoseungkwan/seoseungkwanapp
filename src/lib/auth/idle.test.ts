@@ -237,3 +237,100 @@ describe('startIdleLogout', () => {
     expect(tab.channel.close).toHaveBeenCalledTimes(1)
   })
 })
+
+// 움직임 쿠키(auth-hardening): 이 탭의 움직임이 받아들여졌을 때만 onActive로 알린다 → IdleLogout이 app-active를 다시 쓴다
+describe('startIdleLogout: onActive(이 탭이 움직임)', () => {
+  it.each([
+    ['누름', 'target', 'pointerdown'],
+    ['키', 'target', 'keydown'],
+    ['스크롤', 'target', 'scroll'],
+    ['화면 보이기 바뀜', 'doc', 'visibilitychange'],
+  ] as const)('AC-401.8: 이 탭의 %s(%s %s)마다 onActive를 한 번 부른다', (_label, where, type) => {
+    const onActive = vi.fn()
+    const tab = fakeTab()
+    startIdleLogout({ timeoutMs: TIMEOUT, onIdle: vi.fn(), onActive, ...tab })
+    expect(onActive).not.toHaveBeenCalled() // 시작만으로는 부르지 않는다
+    vi.advanceTimersByTime(MIN)
+    fire(tab[where], type)
+    expect(onActive).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(10 * MIN)
+    fire(tab[where], type)
+    expect(onActive).toHaveBeenCalledTimes(2) // 몇 번 쓸지(60초 간격)는 부르는 쪽(IdleLogout)이 정한다
+  })
+
+  it('AC-401.8: 다른 탭의 움직임 소식으로는 onActive를 부르지 않는다(시간은 다시 센다 — 그 탭이 쿠키를 쓴다)', () => {
+    const open = channelBus()
+    const tab = { ...fakeTab(), channel: open() }
+    const otherTab = open()
+    const onActive = vi.fn()
+    const onIdle = vi.fn()
+    startIdleLogout({ timeoutMs: TIMEOUT, onIdle, onActive, ...tab })
+    vi.advanceTimersByTime(20 * MIN)
+    otherTab.postMessage('activity')
+    expect(onActive).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(TIMEOUT - 1)
+    expect(onIdle).not.toHaveBeenCalled() // 소식은 그대로 움직임으로 셌다
+    expect(onActive).not.toHaveBeenCalled()
+  })
+
+  it('AC-401.8: 목록에 없는 이벤트(마우스 움직임 등)로는 onActive를 부르지 않는다', () => {
+    const onActive = vi.fn()
+    const tab = fakeTab()
+    startIdleLogout({ timeoutMs: TIMEOUT, onIdle: vi.fn(), onActive, ...tab })
+    fire(tab.target, 'mousemove')
+    fire(tab.target, 'focus')
+    expect(onActive).not.toHaveBeenCalled()
+  })
+
+  it('AC-401.8: 잠자기 뒤 30분이 넘게 지나 첫 움직임으로 로그아웃할 때는 onActive를 부르지 않는다(그 뒤에도)', () => {
+    const onActive = vi.fn()
+    const onIdle = vi.fn()
+    const tab = fakeTab()
+    startIdleLogout({ timeoutMs: TIMEOUT, onIdle, onActive, ...tab })
+    vi.setSystemTime(Date.now() + TIMEOUT + MIN) // 시계만 가고 타이머는 아직 안 돌았다
+    fire(tab.doc, 'visibilitychange')
+    expect(onIdle).toHaveBeenCalledTimes(1)
+    fire(tab.target, 'keydown')
+    expect(onActive).not.toHaveBeenCalled()
+  })
+
+  it('AC-401.8: 30분이 차 로그아웃(onIdle)한 뒤에는 움직여도 onActive를 부르지 않는다', () => {
+    const onActive = vi.fn()
+    const tab = fakeTab()
+    startIdleLogout({ timeoutMs: TIMEOUT, onIdle: vi.fn(), onActive, ...tab })
+    vi.advanceTimersByTime(TIMEOUT)
+    fire(tab.target, 'pointerdown')
+    fire(tab.doc, 'visibilitychange')
+    expect(onActive).not.toHaveBeenCalled()
+  })
+
+  it('AC-401.8: 정리(멈춤)한 뒤에는 움직여도 onActive를 부르지 않는다', () => {
+    const onActive = vi.fn()
+    const tab = fakeTab()
+    const stop = startIdleLogout({ timeoutMs: TIMEOUT, onIdle: vi.fn(), onActive, ...tab })
+    fire(tab.target, 'keydown')
+    expect(onActive).toHaveBeenCalledTimes(1)
+    stop()
+    fire(tab.target, 'keydown')
+    fire(tab.target, 'scroll')
+    fire(tab.doc, 'visibilitychange')
+    expect(onActive).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-401.8: onActive와 함께 이 탭의 움직임은 지금처럼 다른 탭에 알리고 시간을 다시 센다', () => {
+    const open = channelBus()
+    const tab = { ...fakeTab(), channel: open() }
+    open()
+    const onActive = vi.fn()
+    const onIdle = vi.fn()
+    startIdleLogout({ timeoutMs: TIMEOUT, onIdle, onActive, ...tab })
+    vi.advanceTimersByTime(20 * MIN)
+    fire(tab.target, 'keydown')
+    expect(onActive).toHaveBeenCalledTimes(1)
+    expect(tab.channel.postMessage).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(TIMEOUT - 1)
+    expect(onIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(onIdle).toHaveBeenCalledTimes(1)
+  })
+})

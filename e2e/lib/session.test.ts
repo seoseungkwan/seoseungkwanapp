@@ -1,14 +1,18 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { inspect } from 'node:util'
 import { createServerClient } from '@supabase/ssr'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ACTIVE_COOKIE, ACTIVE_MAX_AGE_SEC, activeCookieOptions } from '../../src/lib/auth/activity'
 import { ROLES, type E2eEnv, type Role } from './env'
 import {
   EXPECTED_STATE,
   accountProblem,
+  activeBrowserCookie,
   authCookiePattern,
   passwordSession,
+  signInCookies,
   toBrowserCookies,
   type AccountState,
   type CookieToSet,
@@ -287,6 +291,81 @@ describe('toBrowserCookies (AC-003.2)', () => {
   })
 })
 
+// 움직임 쿠키(auth-hardening ADR-023): 로그인했는데 app-active가 없으면 middleware가 로그인을 끊는다 → 시험 로그인도 넣는다.
+// session.ts는 앱 코드를 부르지 않고 값을 직접 둔다. 시험 파일은 src/를 불러도 되니 여기서 앱 값과 같은지 본다
+describe('activeBrowserCookie (AC-406.1)', () => {
+  const NOW = 1_800_000_000
+
+  it('AC-406.1: app-active=1을 http://127.0.0.1에서 앱이 쓸 모양(path /·Lax·httpOnly 아님·secure 아님·31분)으로 돌려준다', () => {
+    expect(activeBrowserCookie('127.0.0.1', NOW)).toEqual({
+      name: 'app-active',
+      value: '1',
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
+      expires: NOW + 1860,
+    })
+  })
+
+  it('AC-406.1: domain은 받은 호스트, expires는 받은 시각 + 1860초(부를 때마다 새로 센다)', () => {
+    expect(activeBrowserCookie('localhost', 1000)).toMatchObject({ domain: 'localhost', expires: 2860 })
+    expect(activeBrowserCookie('127.0.0.1', NOW + 60)).toMatchObject({ domain: '127.0.0.1', expires: NOW + 60 + 1860 })
+  })
+
+  it('AC-406.1: 이름·초는 앱(src/lib/auth/activity)의 ACTIVE_COOKIE·ACTIVE_MAX_AGE_SEC와 같고, 옵션은 http에서 앱이 쓰는 activeCookieOptions(false)와 같다', () => {
+    const cookie = activeBrowserCookie('127.0.0.1', NOW)
+    expect(cookie.name).toBe(ACTIVE_COOKIE)
+    expect(cookie.expires - NOW).toBe(ACTIVE_MAX_AGE_SEC)
+    const app = activeCookieOptions(false)
+    expect({ path: cookie.path, httpOnly: cookie.httpOnly, secure: cookie.secure, sameSite: cookie.sameSite.toLowerCase() }).toEqual({
+      path: app.path,
+      httpOnly: app.httpOnly,
+      secure: app.secure,
+      sameSite: app.sameSite,
+    })
+  })
+
+  it('AC-406.1: session.ts는 그 값을 앱 코드에서 불러오지 않고 직접 둔다(src/ import 없음)', () => {
+    const source = readFileSync(new URL('./session.ts', import.meta.url), 'utf8')
+    const imports = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1])
+    expect(imports.filter((path) => path.includes('src/') || path.startsWith('@/') || path.includes('activity'))).toEqual([])
+    expect(source).toContain("'app-active'")
+    expect(source).toMatch(/\b1860\b/)
+  })
+})
+
+describe('signInCookies (AC-406.2)', () => {
+  const NOW = 1_800_000_000
+
+  it('AC-406.2: 라이브러리가 준 세션 쿠키(.0·.1 조각)를 toBrowserCookies로 옮긴 것 전부(순서 그대로) + 움직임 쿠키 하나', async () => {
+    const result = await passwordSession({ env: ENV, role: 'admin', fetch: signInOk(fakeJwt(LONG)).fetch })
+    const cookies = signInCookies(result.cookies, '127.0.0.1', NOW)
+    expect(cookies).toEqual([...toBrowserCookies(result.cookies, '127.0.0.1', NOW), activeBrowserCookie('127.0.0.1', NOW)])
+    expect(cookies.map((c) => c.name)).toEqual([`${COOKIE}.0`, `${COOKIE}.1`, 'app-active'])
+  })
+
+  it('AC-406.2: 지우기 표시(빈 값)는 toBrowserCookies처럼 버리고, 움직임 쿠키는 늘 하나(받은 쿠키가 없어도)', () => {
+    const cookies: CookieToSet[] = [
+      { name: `${COOKIE}.1`, value: '', options: { path: '/', maxAge: 0 } },
+      { name: COOKIE, value: 'base64-aaa', options: { path: '/', sameSite: 'lax', httpOnly: false, maxAge: 100 } },
+    ]
+    expect(signInCookies(cookies, 'localhost', NOW)).toEqual([
+      ...toBrowserCookies(cookies, 'localhost', NOW),
+      activeBrowserCookie('localhost', NOW),
+    ])
+    expect(signInCookies(cookies, 'localhost', NOW).filter((c) => c.name === 'app-active')).toHaveLength(1)
+    expect(signInCookies([], 'localhost', NOW)).toEqual([activeBrowserCookie('localhost', NOW)])
+  })
+
+  it('AC-406.2: support.ts의 signIn은 signInCookies의 결과를 넣는다(toBrowserCookies를 직접 부르지 않는다)', () => {
+    const source = readFileSync(new URL('../support.ts', import.meta.url), 'utf8')
+    expect(source).toMatch(/addCookies\(\s*signInCookies\(/)
+    expect(source).not.toMatch(/toBrowserCookies\(/)
+  })
+})
+
 describe('passwordSession 실패 (AC-003.3)', () => {
   const SECRETS = [ENV.accounts.admin.email, ENV.accounts.admin.password, REFRESH_TOKEN, fakeJwt(), USER_ID]
 
@@ -402,7 +481,7 @@ describe('accountProblem (AC-003.4)', () => {
 })
 
 describe('앱 코드에 시험용 로그인 길 없음 (AC-003.5)', () => {
-  const SRC = new URL('../../src', import.meta.url).pathname
+  const SRC = fileURLToPath(new URL('../../src', import.meta.url)) // .pathname은 윈도우에서 /C:/…가 된다
 
   function filesUnder(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {

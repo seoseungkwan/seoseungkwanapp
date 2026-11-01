@@ -202,8 +202,25 @@ describe('LoginCard: 구글 로그인 시작', () => {
     expect(signInWithOAuth).toHaveBeenCalledTimes(1)
     expect(signInWithOAuth).toHaveBeenCalledWith({
       provider: 'google',
-      options: { redirectTo: 'https://example.test/auth/callback' },
+      options: { redirectTo: 'https://example.test/auth/callback', queryParams: { prompt: 'select_account' } },
     })
+  })
+
+  it.each([
+    ['처음', false, GOOGLE],
+    ['다시 시작(failed)', true, GOOGLE_AGAIN],
+  ] as const)('AC-404.1: %s — 누르면 구글 계정 선택 화면을 늘 묻는다(queryParams.prompt = select_account, 그 밖의 인자 없음)', async (_name, failed, name) => {
+    vi.stubGlobal('location', { origin: 'https://clinic.example', href: 'https://clinic.example/login' })
+    const user = userEvent.setup()
+    render(<LoginCard failed={failed} />)
+    await user.click(googleButton(name))
+    expect(signInWithOAuth).toHaveBeenCalledTimes(1)
+    expect(signInWithOAuth.mock.calls[0]).toEqual([
+      {
+        provider: 'google',
+        options: { redirectTo: 'https://clinic.example/auth/callback', queryParams: { prompt: 'select_account' } },
+      },
+    ])
   })
 
   it('AC-003.1: 구글로 넘어가는 동안 단추를 막아 두 번 보내지 않는다', async () => {

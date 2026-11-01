@@ -31,9 +31,9 @@
 - AC-402.1: Given `/signup`·`/pending`(가입 신청·승인 대기) 묶음 `(onboarding)`, When 레이아웃을 그리면, Then `IdleLogout`이 한 번 들어 있고 children을 그대로 그린다
 
 ### REQ-403: 로그아웃은 실패해도 흔적을 남기지 않고 다른 탭도 함께 나간다 (W4·W7)
-- AC-403.1: Given [로그아웃]이나 자동 로그아웃, When `signOutAndLeave()`를 부르면, Then `signOut()`(기본 global)을 한 번 부르고 그것이 끝난 뒤에, 결과가 성공·오류·던짐 어느 것이든 `document.cookie`에 있는 세션 쿠키(`sb-<ref>-auth-token`, 조각)와 `app-active`를 Max-Age 0으로 지우고 `/login`을 새로 연다. 다른 쿠키는 남긴다. 오류 내용은 보이지 않는다. `signOut`이 끝나기 전에는(5초까지 — 아래 5초 기준) 지우지도 이동하지도 않는다. 이미 나가는 중에 다시 부르면 아무것도 하지 않는다(두 번 눌러도 `signOut` 한 번)
+- AC-403.1: Given [로그아웃]이나 자동 로그아웃, When `signOutAndLeave()`를 부르면, Then `signOut()`(기본 global)을 한 번 부르고 그것이 끝난 뒤에, 결과가 성공·오류·던짐 어느 것이든 `document.cookie`에 있는 세션 쿠키(`sb-<ref>-auth-token`, 조각)와 `app-active`를 Max-Age 0으로 지우고 `/login`을 새로 연다. 다른 쿠키는 남긴다. 오류 내용은 보이지 않는다. `signOut`이 끝나기 전에는(5초까지 — 아래 5초 기준) 지우지도 이동하지도 않는다. `signOut`을 기다리는 동안 다시 부르면 아무것도 하지 않는다(두 번 눌러도 `signOut` 한 번). `/login`으로 보낸 뒤에는 '나가는 중'을 푼다(뒤로 가기로 되살아난 화면·한 문서에서 여러 번 부르는 시험에서도 다시 로그아웃할 수 있게)
 - AC-403.2: Given `signOutAndLeave()`, When 부르면, Then `/login`으로 가기 전에 같은 브라우저의 다른 탭에 `signout` 소식을 보낸다(BroadcastChannel `auth-signout`). BroadcastChannel이 없는 브라우저에서도 로그아웃은 된다
-- AC-403.3: Given 로그인한 화면(`IdleLogout`이 있는 탭), When 다른 탭에서 `signout` 소식을 받으면, Then `signOut`을 다시 부르지 않고 `/login`을 새로 연다. 다른 글자의 소식은 무시한다. 이 탭이 이미 `signOutAndLeave()`로 나가는 중이면(같은 탭의 다른 채널 객체도 소식을 받는다) 무시한다
+- AC-403.3: Given 로그인한 화면(`IdleLogout`이 있는 탭), When 다른 탭에서 `signout` 소식을 받으면, Then `signOut`을 다시 부르지 않고 `/login`을 새로 연다. 다른 글자의 소식은 무시한다. 이 탭이 `signOutAndLeave()`로 `signOut`을 기다리는 중이면 무시한다(그 탭은 스스로 `/login`으로 간다). 보낸 탭 자신도 같은 이름의 다른 채널 객체로 소식을 받을 수 있는데, 그때는 `/login`으로 한 번 더 가는 것뿐이라 막지 않는다
 - AC-403.4: Given `SignOutButton`과 `IdleLogout`, When 로그아웃하면, Then 둘 다 같은 `signOutAndLeave()`를 쓴다
 - AC-403.5: Given `signOut()`이 5초 안에 끝나지 않음(인터넷이 반쯤 끊김 등), When `signOutAndLeave()`를 부르면, Then 5초 뒤 기다리지 않고 쿠키 지우기·다른 탭 알림·`/login` 이동을 한다
 

@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "auth-hardening",
-  "approved_at": "2026-11-01T04:56:08Z",
+  "approved_at": "2026-11-01T05:35:03Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "af6a2a125a60508c5583c7db039e01d7c4c9665be161b70535165c86f3d34b8d",
+  "spec_sha256": "ee8ef0ac77712aa7e2eed8993d233cb8efa36367c2fb8781e6ff11d85834f663",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",

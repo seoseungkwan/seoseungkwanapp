@@ -55,6 +55,31 @@ export function toBrowserCookies(cookies: CookieToSet[], host: string, nowSec: n
     }))
 }
 
+// 움직임 쿠키(ADR-023): 로그인했는데 이것이 없으면 middleware가 로그인을 끊는다 → 시험 로그인도 세션 쿠키와 함께 넣는다.
+// 값은 앱(src/lib/auth/activity.ts)의 ACTIVE_COOKIE·ACTIVE_MAX_AGE_SEC와 같다 — 앱 코드를 부르지 않고 직접 둔다(AC-003.1).
+// 같은지는 session.test.ts가 본다(AC-406.1)
+const ACTIVE_COOKIE = 'app-active'
+const ACTIVE_MAX_AGE_SEC = 1860
+
+// 앱이 http://127.0.0.1에서 쓸 때와 같은 모양(Path /·Lax·httpOnly 아님·secure 아님), 지금부터 31분
+export function activeBrowserCookie(host: string, nowSec: number): BrowserCookie {
+  return {
+    name: ACTIVE_COOKIE,
+    value: '1',
+    domain: host,
+    path: '/',
+    httpOnly: false,
+    secure: false,
+    sameSite: 'Lax',
+    expires: nowSec + ACTIVE_MAX_AGE_SEC,
+  }
+}
+
+// 시험 로그인 때 브라우저에 넣을 쿠키 전부: 세션 쿠키 + 움직임 쿠키 하나(e2e/support.ts signIn이 쓴다)
+export function signInCookies(cookies: CookieToSet[], host: string, nowSec: number): BrowserCookie[] {
+  return [...toBrowserCookies(cookies, host, nowSec), activeBrowserCookie(host, nowSec)]
+}
+
 // Supabase 오류 코드는 invalid_credentials처럼 정해 둔 이름이다. 그 모양이 아니면 담지 않는다
 const SAFE_CODE = /^[a-z0-9_]{1,64}$/
 

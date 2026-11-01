@@ -117,6 +117,30 @@ describe('middleware', () => {
     expect(response.headers.get('Cache-Control')).toBeNull()
   })
 
+  it.each(['/dashboard', '/admin', '/signup', '/pending', '/settings'])(
+    'AC-401.6 움직임 쿠키가 없어 updateSession이 로그인을 끊으면 %s → /login, 지우기 쿠키와 캐시 금지가 그대로 실린다',
+    async (path) => {
+      // updateSession이 세션 쿠키(조각 포함)를 Max-Age 0으로 지우고 no-store를 붙인 응답과 null을 돌려줬다고 친다(ADR-023)
+      updateSession.mockImplementation(async (req: NextRequest) => {
+        const response = NextResponse.next({ request: req })
+        for (const name of [`${COOKIE}.0`, `${COOKIE}.1`]) response.cookies.set(name, '', { path: '/', maxAge: 0 })
+        response.headers.set('Cache-Control', 'private, no-store')
+        return { response, userId: null }
+      })
+      const response = await middleware(request(path))
+      expect(response.status).toBe(307)
+      expect(response.headers.get('location')).toBe(`${ORIGIN}/login`)
+      for (const name of [`${COOKIE}.0`, `${COOKIE}.1`]) {
+        expect(response.cookies.get(name)).toMatchObject({ value: '', path: '/', maxAge: 0 })
+      }
+      const setCookie = response.headers.getSetCookie()
+      expect(setCookie).toHaveLength(2)
+      for (const line of setCookie) expect(line).toContain('Max-Age=0')
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+      expect(response.headers.get('x-middleware-next')).toBeNull()
+    },
+  )
+
   it('AC-002.1 redirect는 같은 origin의 고정 경로뿐(돌아갈 주소 쿼리를 붙이지도 따르지도 않는다)', async () => {
     session(null)
     const response = await middleware(request('/dashboard?next=https://evil.example&redirect=//evil.example'))

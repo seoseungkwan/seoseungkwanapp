@@ -62,9 +62,11 @@ export async function supabaseServer({ secure = false }: { secure?: boolean } = 
 export const SIGNOUT_CHANNEL = 'auth-signout'
 export const SIGNOUT_MESSAGE = 'signout'
 export const SIGNOUT_WAIT_MS = 5_000
-export function isLeaving(): boolean // 이 탭이 signOutAndLeave()를 시작했는가
+export function isLeaving(): boolean // 이 탭이 signOutAndLeave()로 signOut을 기다리는 중인가
 export async function signOutAndLeave(): Promise<void>
 // 0. 이미 leaving이면 아무것도 하지 않고 돌아간다(단추를 두 번 눌러도 signOut 한 번). 아니면 leaving = true
+//    4단계(/login으로 보냄) 뒤에 leaving = false — 실제 브라우저는 곧 페이지를 떠나지만, 뒤로 가기로 되살아난 화면(bfcache)과
+//    location.assign을 가짜로 바꾼 시험(한 파일에서 여러 번 로그아웃)에서는 같은 모듈이 남기 때문
 // 1. await Promise.race([supabaseBrowser().auth.signOut() (던짐은 삼킴), SIGNOUT_WAIT_MS 타이머]) — 기본 global. 돌려준 오류도 보지 않는다.
 //    signOut이 먼저 끝나면 타이머를 지운다(clearTimeout — 남은 타이머가 다른 시험의 타이머 개수 검사를 흔들지 않게)
 // 2. cookieNames(document.cookie)에서 isSessionCookie(name) 또는 ACTIVE_COOKIE인 것을 document.cookie = expireCookieString(name, secure)로 지운다
@@ -73,7 +75,7 @@ export async function signOutAndLeave(): Promise<void>
 ```
 - `SignOutButton.tsx`·`IdleLogout.tsx`에 있던 같은 이름의 함수 둘을 이것 하나로 바꾼다
 - 시험의 몫: signOut 기다림·오류·던짐·5초·순서("끝난 뒤에야 지우고 /login")는 `leave.test.ts`(AC-403.1·403.2·403.5)가 본다. 두 컴포넌트 시험은 `leave.ts`를 가짜로 바꿔 "`signOutAndLeave`를 부른다"만 본다. 그래서 두 시험 파일의 옛 시험에서 `signOut`·`assign`을 보는 곳(불리지 않았음을 보는 곳 포함)은 모두 가짜 `signOutAndLeave`를 보도록 바꾸고, `IdleLogout.test.tsx`의 채널 고르기는 이름으로 바꾼다. 번호·뜻은 그대로, 이름의 'signOut' 말만 맞춘다(tasks.md 머리말의 예외 규칙)
-- 같은 탭 안에서도 BroadcastChannel은 같은 이름의 다른 채널 객체에 소식을 전한다 → 보낸 탭의 `IdleLogout`도 `signout`을 받는다. 그때는 `isLeaving()`이 참이라 무시한다(AC-403.3)
+- 같은 탭 안에서도 BroadcastChannel은 같은 이름의 다른 채널 객체에 소식을 전한다 → 보낸 탭의 `IdleLogout`도 `signout`을 받을 수 있다. 소식이 닿는 때는 `leaving`을 푼 뒤일 수 있어 `/login`으로 한 번 더 갈 수 있지만 같은 주소라 해가 없다. `isLeaving()`은 signOut을 기다리는 동안 다른 탭의 소식이 와도 이 탭의 흐름(쿠키 지우기)을 끊지 않게 한다(AC-403.3)
 
 ### `src/lib/auth/idle.ts` `startIdleLogout(opts)` (바꿈)
 - `opts.onActive?: () => void`를 더한다. **이 탭의** 움직임(`local()`)이 받아들여졌을 때만 부른다. 다른 탭 소식(channel)·잠자기 뒤 로그아웃·멈춘 뒤에는 부르지 않는다. 나머지 동작은 그대로

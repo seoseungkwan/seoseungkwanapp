@@ -94,3 +94,61 @@ describe('GET /auth/callback', () => {
     expect(await response.text()).not.toContain('flow')
   })
 })
+
+describe('GET /auth/callback 움직임 쿠키·캐시 금지·Secure (ADR-023)', () => {
+  // 실패하는 길 — code 없음·교환 오류·던짐·클라이언트를 못 만듦
+  const failures: [string, string, () => void][] = [
+    ['code 없음', '', () => {}],
+    ['교환 오류', '?code=abc', () => exchangeCodeForSession.mockResolvedValue({ data: { session: null, user: null }, error: new Error(SECRET) })],
+    ['교환이 던짐', '?code=abc', () => exchangeCodeForSession.mockRejectedValue(new Error(SECRET))],
+    ['클라이언트를 못 만듦', '?code=abc', () => supabaseServer.mockRejectedValueOnce(new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요'))],
+  ]
+
+  it('AC-401.7: 코드 교환이 성공하면 /dashboard 응답에 app-active=1을 31분으로 쓴다', async () => {
+    const response = await call('?code=abc')
+    expect(response.headers.get('location')).toBe(`${ORIGIN}/dashboard`)
+    expect(response.cookies.get('app-active')).toMatchObject({
+      value: '1',
+      maxAge: 1860,
+      path: '/',
+      sameSite: 'lax',
+      httpOnly: false,
+    })
+  })
+
+  it.each(failures)('AC-401.7: 실패(%s)하면 app-active를 쓰지 않는다', async (_label, query, arrange) => {
+    arrange()
+    const response = await call(query)
+    expect(response.headers.get('location')).toBe(`${ORIGIN}/login?error=1`)
+    expect(response.cookies.get('app-active')).toBeUndefined()
+    expect(response.headers.getSetCookie()).toEqual([])
+  })
+
+  it('AC-405.3: 성공(/dashboard) 응답에 Cache-Control: private, no-store', async () => {
+    const response = await call('?code=abc')
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  })
+
+  it.each(failures)('AC-405.3: 실패(%s, /login?error=1) 응답에도 Cache-Control: private, no-store', async (_label, query, arrange) => {
+    arrange()
+    const response = await call(query)
+    expect(response.headers.get('location')).toBe(`${ORIGIN}/login?error=1`)
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  })
+
+  it('AC-405.1: https 콜백이면 supabaseServer({ secure: true })로 만들고 app-active도 Secure', async () => {
+    const response = await GET(new NextRequest('https://app.example.com/auth/callback?code=abc'))
+    expect(supabaseServer).toHaveBeenCalledWith({ secure: true })
+    expect(response.headers.get('location')).toBe('https://app.example.com/dashboard')
+    expect(response.cookies.get('app-active')?.secure).toBe(true)
+  })
+
+  it.each(['http://localhost:3000', 'http://127.0.0.1:3100'])(
+    'AC-405.1: http 콜백(%s)이면 supabaseServer({ secure: false })이고 app-active에 Secure가 없다',
+    async (origin) => {
+      const response = await GET(new NextRequest(`${origin}/auth/callback?code=abc`))
+      expect(supabaseServer).toHaveBeenCalledWith({ secure: false })
+      expect(response.cookies.get('app-active')?.secure).toBe(false)
+    },
+  )
+})
