@@ -95,3 +95,4 @@
 {"ts": "2026-11-01T12:21:15Z", "task": "TASK-4", "reqs": ["REQ-004"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/revenue.rls.test.ts' 'supabase/rls.test.ts'", "tests": ["supabase/revenue.rls.test.ts", "supabase/rls.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-11-01T12:22:48Z", "task": "TASK-4", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/revenue.rls.test.ts'", "tests": ["supabase/revenue.rls.test.ts"], "trigger": "supabase/revenue.rls.test.ts", "source": "post-hook"}
 {"ts": "2026-11-01T12:24:19Z", "task": "TASK-4", "reqs": ["REQ-004"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'supabase/revenue.rls.test.ts' 'supabase/rls.test.ts'", "tests": ["supabase/revenue.rls.test.ts", "supabase/rls.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-11-01T12:43:41Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
