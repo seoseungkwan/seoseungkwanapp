@@ -127,6 +127,15 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '[처음 등록]을 눌러 새로 시작해 주세요. 깨진 파일은 지우지 않고 남겨 둬요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요.',
   },
+  // 통계 도우미 자료(stats.rows, spec stats)
+  'E-STATS-HISTORY': {
+    what: '비트에 옛 자료가 따로 있어 신환을 정할 수 없어요',
+    fix: '파일 올리기로 통계를 넣어 주세요',
+  },
+  'E-STATS-TOO-BIG': {
+    what: '고른 기간의 진료 기록이 너무 많아요',
+    fix: '기간을 줄여 다시 불러오세요',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {
