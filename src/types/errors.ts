@@ -8,5 +8,7 @@ export type ErrorCode =
   // 비트 접속·등록(bit.check 단계와 등록 단계, 설치·연결 확인 화면 TASK-6)
   | 'E-BIT-NOT-FOUND' | 'E-BIT-DB-FAILED' | 'E-BIT-READ-FAILED' | 'E-BIT-NOT-REGISTERED' | 'E-BIT-HOSPITAL-MISMATCH'
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
+  // 매출 탭 저장(spec revenue design.md 8절)
+  | 'E-REVENUE-SAVE-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }

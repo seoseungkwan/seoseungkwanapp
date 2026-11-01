@@ -34,6 +34,7 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-REVENUE-SAVE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -260,5 +261,15 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+// spec revenue REQ-007
+describe('AC-007.5 매출 저장 실패 문구', () => {
+  it('AC-007.5: E-REVENUE-SAVE-FAILED는 lib/errors.ts에 무엇이·어떻게 고치나가 있다(design.md 8절 문구 그대로)', () => {
+    expect(ERRORS['E-REVENUE-SAVE-FAILED']).toEqual({
+      what: '매출 숫자를 저장하지 못했어요',
+      fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+    })
   })
 })

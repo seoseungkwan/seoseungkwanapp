@@ -127,6 +127,11 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '[처음 등록]을 눌러 새로 시작해 주세요. 깨진 파일은 지우지 않고 남겨 둬요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요.',
   },
+  // 매출 탭 저장(spec revenue design.md 8절)
+  'E-REVENUE-SAVE-FAILED': {
+    what: '매출 숫자를 저장하지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {
