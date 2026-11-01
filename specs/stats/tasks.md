@@ -1,7 +1,7 @@
 # 작업 분할: 통계 탭 (비트 PC 자료 읽기 · 저장 · 통계 화면)
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
-> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 − 500이다. 이 순서대로 한다. 한 TASK = 한 step(`phases/stats-<n>-<slug>/stepM.md`).
+> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 − 500이다. 이 순서대로 한다. 2026-11-01 다시 여는 차례: TASK-1·3·7은 같은 작업 폴더에서 동시에, TASK-5는 TASK-1·7 뒤(`src/lib/errors.test.ts`가 TASK-7의 시험이고 TASK-5가 이 파일을 RED로 만들기 때문이다. TASK-3과는 동시에 돌아도 된다). 동시에 도는 동안 각 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 이 넷이 끝나기 전에는 TASK-9 이후를 시작하지 않는다. `index.json`이 completed이므로 코디네이터가 직접 부르고 끝나면 각 `summary`를 고친다. 한 TASK = 한 step(`phases/stats-<n>-<slug>/stepM.md`).
 > 승인은 이 명세 하나로 한 번 받는다. Phase가 끝날 때마다 `verify`·쉬운 말 보고(화면 Phase는 PC·휴대폰 화면 캡처). 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)·실제 Supabase에 SQL 붙이기는 사용자가 그때마다 말할 때만 한다.
 > 화면 TASK(13~16)는 TASK-12의 목업을 사용자가 승인한 뒤에만 시작한다(CLAUDE.md). 화면은 b2b 공통 모양 `ds`와 토큰만 쓴다.
 > 도우미 C# 시험 파일 이름은 `*.test.cs`이고, 하네스 TDD 기록은 vitest 감싸개 `helper/tests/*.dotnet.test.ts`(`runDotnet('<시험 이름공간>')`)로 남긴다(청구와 같은 방식).
@@ -11,12 +11,13 @@
 
 ## TASK-1: 신환 30일 재방문 세기
 - Step: Phase 1 · Step 0 · `revisit-30`
-- AC: AC-501.1~AC-501.5
+- AC: AC-501.1~AC-501.6
 - REQ: REQ-501
-- Files: src/lib/analytics/aggregate.ts, src/lib/analytics/aggregate.test.ts, src/lib/analytics/compare.ts, src/lib/analytics/compare.test.ts, src/types/analysis.ts, src/workers/analyzeFiles.test.ts
-- Tests: src/lib/analytics/aggregate.test.ts, src/lib/analytics/compare.test.ts, src/workers/analyzeFiles.test.ts
+- Files: src/lib/analytics/aggregate.ts, src/lib/analytics/aggregate.test.ts, src/lib/analytics/compare.ts, src/lib/analytics/compare.test.ts, src/types/analysis.ts, src/workers/analyzeFiles.test.ts, src/workers/runAnalysis.test.ts, src/lib/payload/toMonthPayload.test.ts, src/lib/payload/toDayPayloads.test.ts, src/lib/payload/validate.test.ts
+- Tests: src/lib/analytics/aggregate.test.ts, src/lib/analytics/compare.test.ts, src/workers/analyzeFiles.test.ts, src/workers/runAnalysis.test.ts, src/lib/payload/toMonthPayload.test.ts, src/lib/payload/toDayPayloads.test.ts, src/lib/payload/validate.test.ts
 - TDD: required
 - `analyzeFiles.test.ts`는 기대값에 `within30`·`rate30`이 필요할 때만 그 칸을 더한다
+- TASK-1은 이미 커밋되었다. 2026-11-01 접수 기준 변경(AC-501.6, AC-501.4의 예외)으로 다시 연다: `aggregate`의 셋째 인자 `patientDays`와 주·달 `totals`의 합을 이 TASK의 Files 안에서 뒤따라 고친다(`phases/stats-1-data/step0.md` 뒤따라 고치기 절). 더한 시험 파일 넷(`runAnalysis.test.ts`·`toMonthPayload.test.ts`·`toDayPayloads.test.ts`·`validate.test.ts`)은 옛 주·달 `totals`를 못 박은 곳이 있을 때 그 이유로만 고친다
 
 ## TASK-2: 저장 모양에 30일 재방문 더하기
 - Step: Phase 1 · Step 1 · `payload-revisit30`
@@ -29,13 +30,14 @@
 
 ## TASK-3: 도우미 통계 줄 읽기 (`stats.rows`)
 - Step: Phase 1 · Step 2 · `helper-stats-rows`
-- AC: AC-503.1~AC-503.4
+- AC: AC-503.1~AC-503.5
 - REQ: REQ-503
 - Files: helper/src/Precheck.Core/Stats/*, helper/src/Precheck.Core/Bit/Sql.cs, helper/src/Precheck.Helper/Program.cs, helper/tests/Precheck.Core.Tests/Stats/*, helper/tests/Precheck.Core.Tests/Stats/original-sql/*, helper/tests/stats-rows.dotnet.test.ts
 - Tests: helper/tests/stats-rows.dotnet.test.ts
 - TDD: required
 - `Sql.cs`는 `IsAllowed`·`ParametersOf`가 `StatsSql`도 보게 하는 두 줄만 고친다. `Sql.All`·청구 SQL 상수·`ReadOnlyGuard.cs`·`SqlBitDb.cs`·`Commands/*`는 고치지 않는다
 - 의원 PC 시험은 화면이 생기는 Phase 4 끝에 함께 한다(새 도우미 zip이 필요하다. 도우미 빌드는 지금 Actions 그대로)
+- TASK-3은 이미 커밋되었다. 2026-11-01 접수 기준 변경(AC-503.1·503.2·503.3 바뀜, AC-503.5 새로)으로 다시 연다: `StatsSql.PatientDaysSql`, 답 `v` 2와 `patientDays`를 이 TASK의 Files 안(`helper/src/Precheck.Core/Stats/*`·`helper/tests/Precheck.Core.Tests/Stats/*`)에서 뒤따라 고친다. `Sql.cs`·`Program.cs`는 더 고치지 않는다(`phases/stats-1-data/step2.md` 뒤따라 고치기 절)
 
 ## TASK-4: 도우미 보고 숫자 읽기
 - Step: Phase 1 · Step 3 · `helper-stats-report`
@@ -47,7 +49,7 @@
 
 ## TASK-5: 통계 Worker (도우미 자료 → 저장 모양)
 - Step: Phase 1 · Step 4 · `stats-worker`
-- AC: AC-505.1~AC-505.7
+- AC: AC-505.1~AC-505.8
 - REQ: REQ-505
 - Files: src/workers/stats.worker.ts, src/workers/stats/assemble.ts, src/workers/stats/assemble.test.ts, src/workers/stats/helperData.ts, src/workers/stats/helperData.test.ts, src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/types/stats.ts, src/types/clinicReport.ts, src/types/errors.ts, src/lib/errors.ts, src/lib/errors.test.ts
 - Tests: src/workers/stats/assemble.test.ts, src/workers/stats/helperData.test.ts, src/workers/stats/jobs.test.ts, src/workers/statsClient.test.ts, src/lib/errors.test.ts
@@ -55,6 +57,7 @@
 - `src/types/clinicReport.ts`는 보고 숫자 모양(`ClinicReportNumbers`)만 이 TASK에서 만든다. 글 만들기는 TASK-10. `src/types/report.ts`·`ReportNumbers`·`src/lib/report/*`는 `feat-ai-report` 몫이라 쓰지 않는다(C6)
 - 오류 번호 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`을 `types/errors.ts`·`lib/errors.ts` 끝에 더한다
 - TASK-5는 이미 커밋되었다. 2026-11-01에 바뀐 AC-505.2(금액 6칸 음수 가능)는 이 TASK의 지금 Files 안(`helperData.ts`·`helperData.test.ts`)에서 뒤따라 고친다
+- 2026-11-01 접수 기준 변경(AC-505.2·505.3·505.4·505.5 바뀜, AC-505.8 새로)으로 다시 연다: `v` 2·`patientDays` 검사, 오류 번호 `E-STATS-CHANGED`, `toPatientDays`, `loadJob`이 접수 줄을 넘기는 일을 이 TASK의 Files 안(`helperData.ts`·`helperData.test.ts`·`jobs.ts`·`jobs.test.ts`·`src/types/stats.ts`·`src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts`)에서 뒤따라 고친다. TASK-1·7 뒤에 한다(위 머리말 '2026-11-01 다시 여는 차례', `phases/stats-1-data/step4.md` 뒤따라 고치기 절)
 
 ## Phase 2 · 저장과 처방 추세 (`phases/stats-2-save`)
 
@@ -77,6 +80,7 @@
 - Tests: src/lib/storage/stats.test.ts, src/guardrails.test.ts, src/lib/errors.test.ts
 - TDD: required
 - 오류 번호 `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`를 더한다(앞말 `E-STATS-`, cross-branch C3). 시험은 가짜 Supabase 클라이언트로(실제 Supabase에 붙지 않는다)
+- TASK-7은 이미 커밋되었다. 2026-11-01 사용자 결정 "남기고 안내 붙이기"·"새로 다시 덮어써"(AC-507.1·507.2 바뀜)로 다시 연다: `readDays`가 `fromFile`도 돌려주고, `saveStats`가 파일의 덜 덮인 달 줄을 보내지 않게 이 TASK의 Files 안(`stats.ts`·`stats.test.ts`)에서 뒤따라 고친다. 오류 번호 파일은 이번에 고치지 않는다(TASK-5가 `E-STATS-CHANGED`를 더하는 파일이다)(`phases/stats-2-save/step1.md` 뒤따라 고치기 절)
 
 ## TASK-8: 처방 추세
 - Step: Phase 2 · Step 2 · `rx-trend`
@@ -112,6 +116,7 @@
 - Files: src/components/stats/view.ts, src/components/stats/view.test.ts
 - Tests: src/components/stats/view.test.ts
 - TDD: required
+- `'12m'`의 달 칸은 일 숫자의 합이다(AC-511.2·511.3, 2026-11-01). 달 줄(`MonthPayload`)을 읽지 않는다. `rxTrend.ts`는 고치지 않는다(`phases/stats-3-numbers/step2.md` 2026-11-01 절)
 
 ## TASK-12: 통계 화면 클릭 목업 (사용자 승인)
 - Step: Phase 3 · Step 3 · `stats-mockup`
@@ -142,6 +147,7 @@
 - Tests: src/components/stats/StatsScreen.test.tsx, src/components/stats/SourcePicker.test.tsx, src/components/stats/useStatsData.test.ts, src/components/stats/useStatsWorker.test.ts
 - TDD: required
 - 시험은 jsdom, 가짜 Worker·가짜 통로(`chrome.runtime`)·가짜 저장(`lib/storage/stats` mock — `readCoverage` 포함). `useBridge`(`components/claim/useBridge.ts`)는 불러 쓰기만 한다
+- AC-514.7의 파일 안내 문장은 사용자가 승인했고 목업에 없다(AC-513.1의 예외, 목업을 다시 돌리지 않는다). AC-514.3·514.4는 저장에 성공하면 다시 읽어 그린다. 화면은 `readDays`·`readCoverage`만 쓴다(AC-514.1)(`phases/stats-4-screen/step1.md` 뒤따라 고치기 절)
 
 ## TASK-15: 통계 탭을 진짜 화면으로
 - Step: Phase 4 · Step 2 · `stats-tab`
@@ -168,4 +174,4 @@
 - Files: e2e/stats-privacy.spec.ts
 - Tests: e2e/stats-privacy.spec.ts
 - TDD: exempt — 시험만 더한다. 대상 코드(저장·화면·대시보드 읽기)는 TASK-7·14·16에서 단위 시험을 통과했으므로 구현할 것이 없어 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음, auth-live TASK-7~9와 같은 방식). 기다림: 사용자가 TASK-6 SQL을 실제 Supabase에 붙임 + 시험 계정(`.env.local`). 확인: `npm run e2e`
-- Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처 → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간)
+- Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처 → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간, 둘 다 숫자를 보이는 날의 내원·신환·재진이 매출 탭·업무일지와 같은지(차트번호 없는 접수·중복 내원·첫 내원 못 찾은 환자가 불러오는 기간 어디에든 있으면 통계는 그 불러오기를 통째로 저장하지 않고, 매출·업무일지는 그날만 비운다), 취소된 접수가 있는 날을 비트와 비교, 첫 접수가 취소된 환자의 첫 내원일)

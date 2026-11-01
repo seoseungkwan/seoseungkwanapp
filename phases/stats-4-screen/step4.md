@@ -9,7 +9,7 @@
 전체 문장은 `/specs/stats/requirements.md`의 REQ-517(개인정보 E2E (실제 Supabase, 사용자가 SQL을 붙인 뒤))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-517.1**: Given 시험 계정(승인됨)으로 연 `/stats`와 가짜 비트 파일(`fixtures/fake-bit/`), When 파일을 넣어 저장하면, Then 브라우저가 보낸 모든 요청(주소·본문, 그리고 `authorization`·`apikey`·`cookie`를 뺀 머리)에 그 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없다. 시험은 인증 머리·쿠키·apikey 값을 모으지 않고, 걸리면 어떤 종류가 어디에서 걸렸는지(`{ kind, where }`, 값 없음)만 보인다(`expect(hits).toEqual([])`)
-- **AC-517.2**: Given 같은 시험 뒤, When 시험 계정으로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽으면, Then 저장된 값에도 AC-517.1의 값이 하나도 없고 줄 모양이 `validateMonthPayload`·`validateDayPayload`를 지난다
+- **AC-517.2**: Given 같은 시험 뒤, When 시험 계정으로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽으면, Then 저장된 값에도 AC-517.1의 값이 하나도 없고 줄 모양이 `validateMonthPayload`·`validateDayPayload`를 지난다. 넣는 가짜 파일은 달 전체가 든 파일(`fixtures/fake-bit/fake-2026-08.csv` 같은)이고, 달 줄이 하나 이상 저장됐는지도 본다(달 줄 검사가 빈 채로 통과하지 않게)
 - **AC-517.3**: Given `/dashboard`, When 그 계정으로 열면, Then 방금 저장한 숫자가 보이고(연결 뒤 짜임) 요청에 같은 금지 값이 없다. 시험은 `npm run e2e`에서만 돌고(`npm test` 밖), 시험 계정 병원의 통계 줄만 쓴다
 
 ## 읽어야 할 파일
@@ -57,7 +57,7 @@
 ### 1. 시험 (`e2e/stats-privacy.spec.ts`, Playwright)
 - 승인된 시험 계정으로(`e2e/support.ts`의 쿠키 넣기) `/stats` → 가짜 비트 파일을 넣고 저장될 때까지 기다린다
 - AC-517.1: `page.on('request')`로 요청마다 주소·본문(`postData`)과 머리 가운데 `authorization`·`apikey`·`cookie`(대소문자 무시)를 **뺀** 것만 모은다(인증 값은 처음부터 모으지 않는다, cross-branch C11). 가짜 파일에서 꺼낸 차트번호·이름 칸 값·전화 모양·주민번호 모양(자리표시 `XXXXXX-XXXXXXX` 포함)·파일 이름을 찾고, 걸리면 `{ kind: 'chart' | 'name' | 'phone' | 'rrn' | 'fileName', where: 'url' | 'body' | 'header:<이름>' }`만 `hits`에 넣는다(값을 넣지 않는다). `expect(hits).toEqual([])` — 실패해도 값·토큰이 출력되지 않는다
-- AC-517.2: 같은 방식(`hits`에 종류·표 이름만)으로, 시험 계정 세션의 supabase-js로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽어 같은 값이 없고, 달·일 줄이 `validateMonthPayload`·`validateDayPayload`를 지남을 본다
+- AC-517.2: 같은 방식(`hits`에 종류·표 이름만)으로, 시험 계정 세션의 supabase-js로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽어 같은 값이 없고, 달·일 줄이 `validateMonthPayload`·`validateDayPayload`를 지남을 본다. 넣는 가짜 파일은 달 전체가 든 파일(`fixtures/fake-bit/fake-2026-08.csv` 같은)이고, 달 줄이 하나 이상 저장됐는지도 본다(파일의 덜 덮인 달 줄은 저장하지 않으므로(AC-507.1), 달 줄 검사가 빈 채로 통과하지 않게)
 - AC-517.3: `/dashboard`를 열어 방금 저장한 숫자가 연결 뒤 짜임으로 보이고 요청에 금지 값이 없음을 본다
 - 시험 계정 병원의 통계 줄만 쓴다(다른 줄을 지우거나 고치지 않는다). 산출물에 쿠키·토큰을 남기지 않는다(`trace: 'off'`)
 
@@ -88,6 +88,10 @@ npm run lint && npm test && npm run build   # npm test는 e2e를 돌리지 않�
 
 - `index.json`은 `python3`로 JSON을 읽고 써서 고친다(이 파일은 TASK 수정 범위 밖이라 편집 도구는 훅이 막을 수 있다). 다른 칸과 다른 step은 건드리지 않는다
 - `summary`는 다음 step 프롬프트에 그대로 전달된다. 만든 파일, 정한 이름·모양, 다음 step이 알아야 할 결정을 한 줄에 담는다
+
+## 명세 리뷰에서 넘어온 고르기 (2026-11-01)
+
+- AC-517.2의 달 전체가 든 가짜 파일은 `fixtures/fake-bit/fake-utf8.csv`를 쓴다(기간 9월 1일~10월 24일, 9월 달 줄이 저장된다). `fake-2026-08.csv`는 대시보드 기본 30일에 들지 않고 12월 6일이 지나면 읽기 범위에서도 빠져 AC-517.3이 깨진다. 날짜가 고정된 파일이라 이 파일도 언젠가 범위를 벗어난다. 그때는 파일을 고른다
 
 ## 금지사항
 

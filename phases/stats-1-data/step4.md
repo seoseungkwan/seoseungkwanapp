@@ -1,6 +1,6 @@
 # Step 4: stats-worker
 
-> **TASK-5** 통계 Worker (도우미 자료 → 저장 모양) · **REQ-505** · AC-505.1 ~ AC-505.7
+> **TASK-5** 통계 Worker (도우미 자료 → 저장 모양) · **REQ-505** · AC-505.1 ~ AC-505.8
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 4 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-5 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-027 (precheck 027.2) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -10,12 +10,13 @@
 전체 문장은 `/specs/stats/requirements.md`의 REQ-505(통계 Worker (도우미 자료 → 저장 모양))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-505.1**: Given 통로가 Worker 포트로 넘긴 `chunk`들과 `end {count, bytes, sha256}`, When 모으면, Then `seq`가 0부터 빠짐없이 이어지고 조각 수·UTF-8 바이트 수·SHA-256이 모두 맞을 때만 JSON 하나로 푼다. 하나라도 다르면 버리고 `E-BRIDGE-BAD-REPLY`, `abort`면 버리고 받은 번호다
-- **AC-505.2**: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 건수(총환·신환·재진·치료 다섯·LA 건수)는 0 이상 정수, 금액 6칸(`totalAmount`·`insurerAmount`·`noncoveredAmount`·`cashAmount`·`cardAmount`·`transferAmount`)은 정수이고 절댓값이 10^14 이하(음수 가능, 원본 `medicore/reports.py` `_amount`))일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`다. 시험: 음수 금액이 든 벌은 받아들이고 진료 줄과 다른 벌은 그대로다. 시험: 음수 건수는 거부한다. 시험: 절댓값이 10^14를 넘는 금액은 거부한다
-- **AC-505.3**: Given 같은 가짜 자료를 파일 길(`fixtures/fake-bit/` → `parseBit`)과 도우미 JSON 길로 넣음, When 도우미 길이 진료 줄을 `ConsumptionRow`(첫 내원일 = 진료일이면 신환, 외래, 동네 없음, 차트번호는 메모리 번호 `PatientIds`)로 바꿔 지금 `aggregate`에 넣으면, Then 동네(지역)를 뺀 결과가 파일 길과 깊은 비교로 같다. 파일 올리기 길(`parseBit`·`aggregate`·`analyzeFiles`·`runAnalysis`·`analyze.worker.ts`)은 고치지 않는다
-- **AC-505.4**: Given 검사한 도우미 자료, When `load` 일을 하면, Then Worker가 `buildSummary`(덮은 기간 = `[from, min(to, 오늘)]`) → `toMonthPayload`·`toDayPayloads`를 만들어 화면에는 달·일 저장 모양, 저장할 덮은 기간, 기간 합계의 확인 건수(차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자), 보고 숫자 네 벌만 보낸다. 저장할 덮은 기간은 `[from, min(to, 끝난 마지막 날)]`이고 끝난 마지막 날은 "오늘 진료 끝"을 켰으면 오늘, 아니면 어제다(끝나지 않은 오늘을 덮은 날로 저장하면 다음 날 그날이 휴진 0으로 읽힌다). 그 범위가 비면(`from` > 끝난 마지막 날) 덮은 기간은 null이고 덮은 기간 줄을 저장하지 않는다. 시험: 오늘 아침 진료 전에 불러옴(오늘 줄 없음, 오늘 진료 끝 꺼짐) → 저장할 덮은 기간 끝 = 어제. 확인 건수가 하나라도 0이 아니면 품질 incomplete이고 저장 모양은 null이다. 저장 모양의 동네는 비운다(`regions: []`)
-- **AC-505.5**: Given 화면에 보내는 모든 메시지, When 열쇠와 값을 훑으면, Then 차트번호·환자 번호·진료 줄이 없다(숫자·처방코드·처방 이름·날짜만). 진료 줄은 Worker 메모리에만 남고(처방별 신환·재진 계산용), 새로 불러오면 바뀐다
+- **AC-505.2**: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(`v` 2, 진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 처방코드 1~40자, 줄 수 700,000 이하, 접수 줄 `patientDays` = 4칸 배열 — 차트번호는 빈칸이 아닌 글자, 진료일은 기간 안의 맞는 날짜, 접수 건수는 1 이상 정수, 첫 내원일은 글자 또는 null이고 첫 내원일 ≤ 진료일, 줄 수 700,000 이하, 환자·날마다 한 줄, 한 환자의 첫 내원일은 배열마다 하나, 첫 내원일이 null인 환자 수는 두 배열의 환자를 모두 세어 `noFirst` 이하, 기간이 요청과 같음, 보고 벌의 건수(총환·신환·재진·치료 다섯·LA 건수)는 0 이상 정수, 금액 6칸(`totalAmount`·`insurerAmount`·`noncoveredAmount`·`cashAmount`·`cardAmount`·`transferAmount`)은 정수이고 절댓값이 10^14 이하(음수 가능, 원본 `medicore/reports.py` `_amount`))일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`다. 모양은 맞는데 `rows`와 `patientDays`가 서로 어긋나면(`rows`에 나온 환자·날이 `patientDays`에 없음, 한 환자의 첫 내원일이 두 배열에서 다름) 불러오는 사이에 접수가 바뀐 것이므로 `E-STATS-CHANGED`("불러오는 사이에 접수가 바뀌었어요 · 다시 불러와 주세요 · 계속되면 오류 번호와 함께 문의해 주세요")다. 시험: 음수 금액이 든 벌은 받아들이고 진료 줄과 다른 벌은 그대로다. 시험: 음수 건수는 거부한다. 시험: 절댓값이 10^14를 넘는 금액은 거부한다. 시험: `v`가 1이면 거부한다. 시험: 접수 줄의 칸 수·접수 건수 0·같은 환자·날 두 줄, 한 배열 안에서 한 환자의 첫 내원일이 둘인 경우는 각각 `E-BRIDGE-BAD-REPLY`다. 시험: `patientDays`에 없는 `rows`의 환자·날, 두 배열에서 다른 첫 내원일은 각각 `E-STATS-CHANGED`이고 `E-BRIDGE-BAD-REPLY`가 아니다. 시험: 처방 없는 접수(`patientDays`에만 있는 환자·날)는 받아들인다
+- **AC-505.3**: Given 같은 가짜 자료를 파일 길(`fixtures/fake-bit/` → `parseBit`)과 도우미 JSON 길로 넣음(도우미 JSON은 환자·날마다 접수 한 건이고 처방 없는 접수가 없다), When 도우미 길이 진료 줄을 `ConsumptionRow`(첫 내원일 = 진료일이면 신환, 외래, 동네 없음, 차트번호는 메모리 번호 `PatientIds`)로, 접수 줄을 `PatientDay`로 바꿔 `aggregate`에 넣으면, Then 동네(지역)를 뺀 결과가 일·주·월 모두 파일 길과 깊은 비교로 같다. 파일 올리기 길(`parseBit`·`analyzeFiles`·`runAnalysis`·`analyze.worker.ts`)은 고치지 않는다(`aggregate`는 AC-501.6의 주·달 `totals`만 두 길에 함께 바뀐다)
+- **AC-505.4**: Given 검사한 도우미 자료, When `load` 일을 하면, Then Worker가 `aggregate(진료 줄, [], toPatientDays(data, ids))`(`ids`는 진료 줄과 같은 `PatientIds`, `firstVisit` = 첫 내원일이 진료일과 같음) → `buildSummary`(덮은 기간 = `[from, min(to, 오늘)]`) → `toMonthPayload`·`toDayPayloads`를 만들어 화면에는 달·일 저장 모양, 저장할 덮은 기간, 기간 합계의 확인 건수(차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자), 보고 숫자 네 벌만 보낸다. 저장할 덮은 기간은 `[from, min(to, 끝난 마지막 날)]`이고 끝난 마지막 날은 "오늘 진료 끝"을 켰으면 오늘, 아니면 어제다(끝나지 않은 오늘을 덮은 날로 저장하면 다음 날 그날이 휴진 0으로 읽힌다). 그 범위가 비면(`from` > 끝난 마지막 날) 덮은 기간은 null이고 덮은 기간 줄을 저장하지 않는다. 시험: 오늘 아침 진료 전에 불러옴(오늘 줄 없음, 오늘 진료 끝 꺼짐) → 저장할 덮은 기간 끝 = 어제. 확인 건수가 하나라도 0이 아니면 품질 incomplete이고 저장 모양은 null이다. 저장 모양의 동네는 비운다(`regions: []`)
+- **AC-505.5**: Given 화면에 보내는 모든 메시지, When 열쇠와 값을 훑으면, Then 차트번호·환자 번호·진료 줄·접수 줄이 없다(숫자·처방코드·처방 이름·날짜만). 진료 줄은 Worker 메모리에만 남고(처방별 신환·재진 계산용), 새로 불러오면 바뀐다. 접수 줄은 `load` 안에서 세는 데만 쓰고 메모리에 남기지 않는다
 - **AC-505.6**: Given "오늘 진료 끝" 표시를 켜고 불러옴, When 요약하면, Then 오늘을 끝난 날로 본다(요약에 넘기는 오늘 = 내일) → 오늘 일 숫자가 `partial: false`다. 끄면 지금처럼 오늘은 `partial: true`다
 - **AC-505.7**: Given 화면 쪽 입구(`src/workers/statsClient.ts`), When 일을 시키면, Then Worker에는 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id만 가고, 정해 둔 시간(120초)이 넘으면 `E-ANALYZE-TIMEOUT`, Worker 오류는 `E-ANALYZE-FAILED`이며 예외 내용을 옮기지 않는다
+- **AC-505.8**: Given 도우미 자료, When `load` 일을 하면, Then 같은 환자·같은 날 내원 번호가 다른 접수 둘(`patientDays` 건수 2, `summary.duplicate` 0)은 품질 `valid`이고 그날 `totals.patients`에 2로 든다. 처방 없는 접수만 있는 날은 `rx: []`인 `DayPayload`로 저장 모양에 들고 `validateDayPayload`를 지난다(`validate.ts`·`toDayPayloads`·`toMonthPayload`는 고치지 않는다). 취소된 접수는 `patientDays`에 없으므로 숫자에 들지 않는다. `summary.duplicate`가 0이 아니면(같은 내원 번호가 두 번) 지금처럼 incomplete다. 시험: 위 넷을 `loadJob`으로 본다
 
 ## 읽어야 할 파일
 
@@ -123,6 +124,34 @@ export function requestLoad(worker: WorkerLike, req: { streamId: string; from: s
 ### 7. 시험
 - `assemble.test.ts`(AC-505.1), `helperData.test.ts`(AC-505.2·505.3: `fixtures/fake-bit/`의 가짜 파일 → `parseBit` → `aggregate`와, 같은 가짜 줄로 만든 도우미 JSON → `toConsumptionRows` → `aggregate`가 동네 칸을 빼고 깊은 비교로 같다. AC-505.2: 음수 금액이 든 벌은 받아들이고 진료 줄과 다른 벌은 그대로, 음수 건수 거부, 절댓값이 10^14를 넘는 금액 거부), `jobs.test.ts`(AC-505.4·505.5·505.6: 확인 건수 → incomplete, `regions: []`, 오늘 진료 끝, 화면에 가는 값을 모두 훑어 가짜 차트번호 글자가 없음), `statsClient.test.ts`(AC-505.7), `errors.test.ts`(새 번호 문구가 빈 글자가 아님)
 
+## 2026-11-01 접수 기준 변경 (뒤따라 고치기)
+
+> 사용자 결정(`specs/stats/requirements.md` 배경 '환자 수의 뜻'·'파일 길'). 이 TASK는 이미 커밋되었고 이 변경으로 다시 연다. TASK-1·7 뒤에 한다(`src/lib/errors.test.ts`가 TASK-7의 시험이고 이 TASK가 이 파일을 RED로 만들기 때문이다. TASK-3과는 동시에 돌아도 된다). 차례는 `specs/stats/tasks.md` 머리말 '2026-11-01 다시 여는 차례'를 따른다. 동시에 도는 동안 이 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 그래서 이번에는 아래 'Acceptance Criteria'의 `npm run lint && npm test && npm run build`·`verify`와 '검증 절차'의 `index.json` 고치기를 하지 않는다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 파일 올리기 길과 `aggregate.ts`는 이 TASK에서 고치지 않는다(`aggregate`는 TASK-1 몫이다).
+
+### 새 AC
+- **AC-505.8**: Given 도우미 자료, When `load` 일을 하면, Then 같은 환자·같은 날 내원 번호가 다른 접수 둘(`patientDays` 건수 2, `summary.duplicate` 0)은 품질 `valid`이고 그날 `totals.patients`에 2로 든다. 처방 없는 접수만 있는 날은 `rx: []`인 `DayPayload`로 저장 모양에 들고 `validateDayPayload`를 지난다(`validate.ts`·`toDayPayloads`·`toMonthPayload`는 고치지 않는다). 취소된 접수는 `patientDays`에 없으므로 숫자에 들지 않는다. `summary.duplicate`가 0이 아니면(같은 내원 번호가 두 번) 지금처럼 incomplete다. 시험: 위 넷을 `loadJob`으로 본다
+
+AC-505.2·505.3·505.4·505.5는 위 AC 목록대로 바뀌었다.
+
+### 고칠 것
+- `src/workers/stats/helperData.ts`
+  - `StatsRowsData`: `v: 2`, `patientDays: [chart: string, day: string, receptions: number, first: string | null][]`. `TOP_KEYS`에 `patientDays`
+  - `parseStatsRows`: `v`가 2가 아니면 `E-BRIDGE-BAD-REPLY`. AC-505.2의 접수 줄 규칙을 검사한다. 첫 내원일은 배열마다 지도를 두어, 한 배열 안에서 한 환자의 첫 내원일이 둘이면 `E-BRIDGE-BAD-REPLY`다. 각 배열의 모양 검사를 끝낸 뒤 두 배열을 대조한다: `rows`의 환자·날이 `patientDays`에 없거나 한 환자의 첫 내원일이 두 배열에서 다르면 `StatsDataError('E-STATS-CHANGED')`다(모양이 틀린 답이 '접수가 바뀌었어요'로 보이지 않게 이 순서를 지킨다). `withoutFirst`는 대조를 지난 뒤 두 배열의 환자를 모두 세어 `noFirst`와 견주고, 넘으면 `E-BRIDGE-BAD-REPLY`다. 차트번호 열쇠는 지금처럼 `trim`한 글자다. `days`와는 대조하지 않는다
+  - `toPatientDays(data, ids): PatientDay[]`: `patient` = `ids.idOf(차트번호)`, `date` = 진료일(`YYYY-MM-DD`), `receptions` = 접수 건수, `firstVisit` = 첫 내원일이 진료일과 같음
+- `src/types/errors.ts`·`src/lib/errors.ts`: 통계 오류 번호 곁에 `E-STATS-CHANGED`를 더한다. 무엇이 "불러오는 사이에 접수가 바뀌었어요" · 어떻게 "다시 불러와 주세요. 계속되면 오류 번호와 함께 문의해 주세요."(다른 오류와 같은 꼴이다. AC-505.2의 ·는 칸 나눔이다). Worker가 정하는 번호이고 도우미는 보내지 않는다. `E-BRIDGE-BAD-REPLY`의 문구는 도우미를 업데이트하라는 말이라 이 경우에 맞지 않는다
+- `src/workers/stats/jobs.ts`: `aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))`(진료 줄과 같은 `ids`). 접수 줄은 `memory`에 넣지 않는다. 나머지는 그대로다
+- `src/types/stats.ts`: 화면이 받는 모양은 바뀌지 않는다. 주석에 고칠 말이 있을 때만 고친다
+- 고치지 않는다: `validate.ts`·`toDayPayloads`·`toMonthPayload`, `aggregate.ts`, 파서, `runAnalysis.ts`
+
+### 시험
+- `helperData.test.ts`
+  - AC-505.2: `v` 1 거부, 접수 줄 칸 수·접수 건수 0·같은 환자·날 두 줄·한 배열 안의 첫 내원일 둘 각각 `E-BRIDGE-BAD-REPLY`, 기간 밖 날짜 거부, 700,001줄 거부, 처방 없는 접수(`patientDays`에만 있는 환자·날) 받아들임. `patientDays`에 없는 `rows`의 환자·날과 두 배열에서 다른 첫 내원일은 각각 `E-STATS-CHANGED`이고 `E-BRIDGE-BAD-REPLY`가 아니다
+  - AC-505.3: `sameLinesBothWays`가 만드는 도우미 JSON을 `v: 2`로 하고 환자·날마다 건수 1인 `patientDays`를 더한다. `aggregate(toConsumptionRows(…), [], toPatientDays(…))`와 파일 길이 동네를 빼고 일·주·월 모두 같아야 한다. 2026-11-01 일회용 시제품에서 이 비교가 통과했다
+- `jobs.test.ts`: 가짜 JSON(`helperJson`)을 `v: 2`와 `patientDays`로 고치고 AC-505.8의 넷, AC-505.4(주·달 `totals`가 일 칸의 합), AC-505.5(화면 메시지에 접수 줄·차트번호가 없고 `memory`에도 접수 줄이 없음)를 본다
+- `jobs.test.ts`: 두 배열이 어긋난 답으로 `load`를 하면 화면에 `{ type: 'failed', code: 'E-STATS-CHANGED' }`가 간다
+- `src/lib/errors.test.ts`: 번호 목록에 `E-STATS-CHANGED`를 더하고 `errorInfo`의 무엇·어떻게 글자를 본다
+- 일 칸·주·달 숫자를 옛 진료 줄 기준으로 못 박은 기대값은 이 이유로만 고친다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -142,7 +171,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-505.1 ~ AC-505.7이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-505.1 ~ AC-505.8이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

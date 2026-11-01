@@ -1,6 +1,6 @@
 # Step 2: helper-stats-rows
 
-> **TASK-3** 도우미 통계 줄 읽기 (`stats.rows`) · **REQ-503** · AC-503.1 ~ AC-503.4
+> **TASK-3** 도우미 통계 줄 읽기 (`stats.rows`) · **REQ-503** · AC-503.1 ~ AC-503.5
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 2 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-3 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-027 (precheck 027.1·027.3·027.4) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -9,10 +9,11 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-503(도우미 통계 줄 읽기 (`stats.rows`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-503.1**: Given 등록한 병원과 기간 `{from, to}`(함께 세어 800일 이하, 명령 표 그대로), When 도우미가 `stats.rows`를 처리하면, Then 먼저 등록 확인(Core `HospitalGate.Open` — 도우미 `RequireHospital`이 감싸는 같은 관문)을 하고, 원본 `RxVisitSplit`의 외래 내원 조건으로 읽은 진료 줄 `[차트번호, 진료일, 처방코드, 첫 내원일]`(처방 코드 거르기 없음), 기간 합계(내원·실환자·신환·차트번호 없는 내원·중복 내원·첫 내원을 못 찾은 환자, 원본 `SummarySql`), 날짜별 합계(내원·실환자·신환, 원본 `DaysSql`), 진료 줄에 나온 처방코드의 이름(원본 `TrendDataSource` 처방 목록 SQL)을 JSON 하나로 만든 뒤 `chunk … end`로 보낸다. 이름·전화·주민번호·주소 칸은 읽지도 보내지도 않는다
-- **AC-503.2**: Given `StatsSql`의 SQL 상수, When 원본 사본(`helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql`)과 견주면, Then 공백만 다르다. 진료 줄 SQL 하나만 원본 `RowsSql`에서 처방 코드 거르기 한 덩어리(`AND (UPPER(RTRIM(o.OdrCod)) IN (@c0, …, @c99) OR (@eswt=1 AND …))`)를 뺀 것이고, 시험은 사본에서 그 덩어리를 뺀 글과 견준다. 모두 매개변수를 받는 SELECT이고 `ReadOnlyGuard`를 지난다. 지금 `Sql.All`(청구 SQL 목록)은 그대로다
-- **AC-503.3**: Given 과거 이관 자료가 따로 있음(원본 `HistoryGuard`가 1), 진료 줄이 700,000줄을 넘음, SQL 하나라도 실패, When `stats.rows`를 처리하면, Then 반쪽 자료를 보내지 않고 각각 `error` `E-STATS-HISTORY` · `E-STATS-TOO-BIG` · `E-BIT-READ-FAILED`만 보낸다. 등록 확인에 걸리면 지금 번호(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`)다
+- **AC-503.1**: Given 등록한 병원과 기간 `{from, to}`(함께 세어 800일 이하, 명령 표 그대로), When 도우미가 `stats.rows`를 처리하면, Then 먼저 등록 확인(Core `HospitalGate.Open` — 도우미 `RequireHospital`이 감싸는 같은 관문)을 하고, 원본 `RxVisitSplit`의 외래 내원 조건으로 읽은 진료 줄 `[차트번호, 진료일, 처방코드, 첫 내원일]`(처방 코드 거르기 없음), 기간 합계(내원·실환자·신환·차트번호 없는 내원·중복 내원·첫 내원을 못 찾은 환자, 원본 `SummarySql`), 날짜별 합계(내원·실환자·신환, 원본 `DaysSql`), 환자·날마다 한 줄인 접수 줄 `patientDays` `[차트번호, 진료일, 접수 건수, 첫 내원일|null]`(`PatientDaysSql`, AC-503.5), 진료 줄에 나온 처방코드의 이름(원본 `TrendDataSource` 처방 목록 SQL)을 JSON 하나(`v` 2)로 만든 뒤 `chunk … end`로 보낸다. 이름·전화·주민번호·주소 칸은 읽지도 보내지도 않는다
+- **AC-503.2**: Given `StatsSql`의 SQL 상수, When 원본 사본(`helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql`)과 견주면, Then 공백만 다르다. 진료 줄 SQL 하나만 원본 `RowsSql`에서 처방 코드 거르기 한 덩어리(`AND (UPPER(RTRIM(o.OdrCod)) IN (@c0, …, @c99) OR (@eswt=1 AND …))`)를 뺀 것이고, 시험은 사본에서 그 덩어리를 뺀 글과 견준다. `PatientDaysSql`은 원본에 없는 새 문장이라 사본 대조는 그 `Visits` 부분에만 한다(AC-503.5). 모두 매개변수를 받는 SELECT이고 `ReadOnlyGuard`를 지난다. 지금 `Sql.All`(청구 SQL 목록)은 그대로다
+- **AC-503.3**: Given 과거 이관 자료가 따로 있음(원본 `HistoryGuard`가 1), 진료 줄이나 접수 줄(`patientDays`)이 700,000줄을 넘음, SQL 하나라도 실패, When `stats.rows`를 처리하면, Then 반쪽 자료를 보내지 않고 각각 `error` `E-STATS-HISTORY` · `E-STATS-TOO-BIG` · `E-BIT-READ-FAILED`만 보낸다. 등록 확인에 걸리면 지금 번호(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`)다
 - **AC-503.4**: Given 도우미 진단 기록, When `stats.rows`를 처리하면, Then 시각·명령 이름·오류 번호만 남고 차트번호·처방코드·숫자는 남지 않는다
+- **AC-503.5**: Given `StatsSql.PatientDaysSql`, When 보면, Then 다른 문장과 같은 `Visits` 글(`PeriodVisits`·`Patients`·`FirstVisits`) 뒤에 `SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay`이고, 처방 표 `OdrInf`를 잇지 않으며, 매개변수를 받는 SELECT로 `ReadOnlyGuard`를 지나고, `VisitRowsSql` 바로 다음에 돈다. `stats.rows` 답의 `v`는 2이고 `patientDays`는 `days` 바로 뒤에 있다. 시험: 문장에 `OdrInf`가 없다. 시험: 앞부분이 원본 사본의 `Visits` 부분과 공백만 다르다. 시험: 읽는 차례가 `VisitRowsSql` 바로 다음이다. 시험: 700,001줄 → `E-STATS-TOO-BIG`이고 반쪽 자료가 없다. 시험: JSON의 `v`가 2이고 열쇠 차례에서 `patientDays`가 `days` 바로 뒤다
 
 ## 읽어야 할 파일
 
@@ -108,6 +109,37 @@ public static class StatsCommands { public const string RowsName = "stats.rows";
 - AC-503.3: `HistoryGuard` 1 → `error` `E-STATS-HISTORY`만, 줄 700,001 → `E-STATS-TOO-BIG`만, 셋째 SQL에서 예외 → `E-BIT-READ-FAILED`만(어느 경우도 `chunk` 없음)
 - AC-503.4: 기록에 가짜 차트번호·코드·숫자 글자가 없음
 
+## 2026-11-01 접수 기준 변경 (뒤따라 고치기)
+
+> 사용자 결정(`specs/stats/requirements.md` 배경 '환자 수의 뜻'·'파일 길'). 이 TASK는 이미 커밋되었고 이 변경으로 다시 연다. 차례는 `specs/stats/tasks.md` 머리말 '2026-11-01 다시 여는 차례'를 따른다(TASK-1·7과 동시에 해도 되고, 답 모양은 이 명세가 정하므로 TASK-5가 이 TASK를 기다리지 않는다). 동시에 도는 동안 이 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 그래서 이번에는 아래 'Acceptance Criteria'의 `npm run lint && npm test && npm run build`·`verify`와 '검증 절차'의 `index.json` 고치기를 하지 않는다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 원본 SQL 문장을 고치지 않는다는 규칙은 그대로다(새 문장은 더하기다).
+
+### 새 AC
+- **AC-503.5**: Given `StatsSql.PatientDaysSql`, When 보면, Then 다른 문장과 같은 `Visits` 글(`PeriodVisits`·`Patients`·`FirstVisits`) 뒤에 `SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay`이고, 처방 표 `OdrInf`를 잇지 않으며, 매개변수를 받는 SELECT로 `ReadOnlyGuard`를 지나고, `VisitRowsSql` 바로 다음에 돈다. `stats.rows` 답의 `v`는 2이고 `patientDays`는 `days` 바로 뒤에 있다. 시험: 문장에 `OdrInf`가 없다. 시험: 앞부분이 원본 사본의 `Visits` 부분과 공백만 다르다. 시험: 읽는 차례가 `VisitRowsSql` 바로 다음이다. 시험: 700,001줄 → `E-STATS-TOO-BIG`이고 반쪽 자료가 없다. 시험: JSON의 `v`가 2이고 열쇠 차례에서 `patientDays`가 `days` 바로 뒤다
+
+AC-503.1·503.2·503.3은 위 AC 목록대로 바뀌었다(답의 `v` 2와 `patientDays`, 사본 대조는 새 문장의 `Visits` 부분에만, 접수 줄도 700,000줄 한도).
+
+### 고칠 것
+- `Stats/StatsSql.cs`: `Visits` 상수 뒤에 AC-503.5의 SELECT를 이은 `PatientDaysSql`을 더하고 매개변수 표(`VisitParams`)와 `All`에 넣는다. `Visits` 글을 고치지 않는다. `Bit/Sql.cs` 두 줄·`Sql.All`은 더 고치지 않는다
+- `Stats/StatsRows.cs`: `VisitRowsSql` 바로 다음에 `PatientDaysSql`을 돌린다(시간 제한 150초). 줄 수가 `MaxRows`를 넘으면 `BitException(StatsErrors.TooBig)`이다. 첫 내원일이 빈 글자면 null이다. `StatsRowsResult`에 접수 줄 목록을 더한다
+- `Stats/StatsPayload.cs`: `Version` = 2, `days` 바로 뒤에 `patientDays` `[차트번호, 진료일, 접수 건수, 첫 내원일|null]`. 머리 주석도 고친다
+- 차트번호는 `rows`처럼 진단 기록·예외 글에 쓰지 않는다(AC-503.4)
+
+### 시험
+- `StatsSql.test.cs`: AC-503.5(문장에 `OdrInf` 없음, 앞부분이 사본 `rx-visit-split-visits-rows.sql`의 `Visits` 부분과 공백만 다름, `ReadOnlyGuard.Require` 통과, 매개변수 표 `@from`·`@to` Char(12)·`@hospital` VarChar(32))
+- `StatsRows.test.cs`: 가짜 DB에 새 문장의 답을 더하고 AC-503.5(읽는 차례가 `VisitRowsSql` 바로 다음, 700,001줄 → `E-STATS-TOO-BIG`만, JSON 열쇠 차례 `v`·`from`·`to`·`summary`·`days`·`patientDays`·`codes`·`rows`·`report`, `v` 2)를 본다. 첫 내원일 null과 처방 없는 접수 줄도 본다. 읽는 차례·열쇠·`v`를 못 박은 지금 시험은 이 이유로만 고친다
+- `helper/tests/stats-rows.dotnet.test.ts`: `it('AC-503.5 …', () => { expectAc('AC-503.5') })`를 더한다. 감싸개는 `Passed AC-503.5` 글자로 찾으므로 C# 시험 이름은 `AC-503.5 `로 시작한다. 이 `it`이 없으면 C# 시험이 돌아도 AC-503.5가 TDD 기록과 이어지지 않는다
+
+### 일회용 확인 (커밋하지 않는다)
+새 문장은 원본에 없어 가짜 `IBitDb`로는 SQL 자체를 돌려 볼 수 없다. 원본의 sqlite 시험 틀(원본 폴더의 `tests/test_rx_visit_split_sql.py`, 위 '원본' 절의 사본 또는 `YANGJI_SRC`)을 저장소 밖 임시 폴더에 일회용으로 복사해 새 문장을 가짜 자료에 한 번 돌린다:
+- 두 번 접수: 같은 환자·같은 날 내원 번호가 다른 접수 둘 → 한 줄, 건수 2
+- 취소된 접수: 같은 날 정상 접수 하나와 취소 접수 하나(원본 시험 84번째 줄처럼 `status="CN"`) → 건수 1. 취소 접수만 있는 환자는 줄이 없다
+- 첫 접수 취소: 앞날 취소 접수, 뒷날 정상 접수 → 뒷날 한 줄, 첫 내원일 = 뒷날
+- 처방 없는 접수: `order` 없는 접수 → 줄이 있다
+- 앞날 입원, 뒷날 외래 → 뒷날 한 줄, 첫 내원일 = 앞날
+- 차트번호 없는 접수 → 줄 없음
+
+이 복사본은 커밋하지 않는다. 여섯 경우의 결과를 step `summary`와 메인 세션 보고에 적는다. 기대와 다르면 고치지 말고 `blocked`로 멈추고 어떻게 달랐는지 적는다.
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -132,7 +164,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-503.1 ~ AC-503.4이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-503.1 ~ AC-503.5이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

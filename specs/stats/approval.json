@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "stats",
-  "approved_at": "2026-11-01T11:13:32Z",
+  "approved_at": "2026-11-01T14:16:23Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "98431051e4fc12b60c02ab9133be92b41b032b083f10b29bea70cdd01aedffc0",
+  "spec_sha256": "0e15e11a2332094a428f9ee723fc6f5de1917fd5c3b220ec7c3a1af759ef45ed",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/mockups/stats/app.js",
@@ -98,6 +98,7 @@
     "src/types/payload.ts",
     "src/types/stats.ts",
     "src/workers/analyzeFiles.test.ts",
+    "src/workers/runAnalysis.test.ts",
     "src/workers/stats.worker.ts",
     "src/workers/stats/assemble.test.ts",
     "src/workers/stats/assemble.ts",

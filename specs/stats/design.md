@@ -4,7 +4,8 @@
 - 숫자는 한 길로 만든다: 자료(도우미 줄 또는 파일) → Worker 안 `aggregate` → `buildSummary` → 저장 모양(`MonthPayload`·`DayPayload`, stats-core v2 + 선택 칸 `within30`·`after30`) + 덮은 기간 → 서버 `stats_months`·`stats_days`·`stats_coverage` 표. 화면(통계 탭·대시보드)은 **저장 모양만** 그린다. 그래서 PC와 휴대폰, 통계 탭과 대시보드의 숫자가 같다
 - 저장 모양으로 만들 수 없는 두 가지(처방별 신환·재진 = 기간 안 서로 다른 환자 수, 원장님 보고 문장 = 금액)는 비트 PC에서 불러온 직후 Worker 메모리·화면 상태에만 있다. 휴대폰에서는 "비트 PC에서 불러오면 보여요"
 - 도우미는 main에 있는 1단계 부품(메시지 틀·등록 확인 `HospitalGate`(Core, 도우미 `RequireHospital`이 감싸는 관문)·읽기 전용 `IBitDb`·`ReadOnlyGuard`·`Chunker`)만 쓰고, 비트 통계 화면 표(47) 대신 **원본 양지바른의 통계 SQL**(`RxVisitSplit`·`TrendDataSource` 처방 목록·`OperationalReportSql`)로 읽는다. 원본의 통계 기능(추세·코호트·처방별 신환·일일보고)도 모두 SQL로 읽었다. 화면 표 읽기(`VendorGridExport`)는 청구 2단계 몫이라 기다리지 않는다
-- 파일 올리기(stats-core)는 고치지 않고 예비로 쓴다. 30일 재방문만 세기·요약·저장 모양에 더한다
+- 파일 올리기(stats-core)는 예비로 쓴다. 파서·`analyzeFiles`·`runAnalysis`는 고치지 않고, 30일 재방문을 세기·요약·저장 모양에 더하고 주·달 `totals`를 일 칸의 합으로 바꾼다(AC-501.6)
+- 환자 수는 접수 기준이다(requirements.md 배경 '환자 수의 뜻', 2026-11-01 사용자 결정). 도우미 길은 접수 줄(`patientDays`)로 세고, 파일 길은 줄 표시로 센 일 칸을 그대로 둔다. 화면은 저장된 `totals`만 읽으므로 따라온다
 
 ## 구성 요소 / 인터페이스
 
@@ -18,6 +19,19 @@ export type RevisitView = { cohort: number; within7: number | null; within14: nu
   after30: number | null; rate7: number | null; rate14: number | null; rate30: number | null }
 ```
 - `aggregate.ts`: 지금 7·14일을 세는 같은 고리에서 `diffDays(f, v) ≤ 30`을 더 본다. 첫 재방문(가장 이른 v > f)이 31일째 이후면 `after30`(원본 `ReturnAfter30Days`, 불러온 자료 끝날까지 본 수). `compare.ts`: 지금 `revisitView`의 N일 판정(`bucketState({from: 칸 첫날, to: addDays(칸 끝날, N)}) === 'complete'`)에 30을 더한다
+- **환자 수는 접수 기준(AC-501.6, 2026-11-01)**:
+```ts
+// types/analysis.ts (더하기만)
+export type PatientDay = { patient: number; date: string; receptions: number; firstVisit: boolean }
+// lib/analytics/aggregate.ts
+export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] = [], patientDays?: readonly PatientDay[]): Aggregates
+```
+  - 두 길 모두: 주·달 `totals` = 그 주·달 일 칸 네 칸(`patients`·`newPatients`·`returning`·`unknown`)의 합. 옛 '서로 다른 환자 수'를 못 박은 시험은 이 이유로만 바뀐다
+  - 셋째 인자 없음(파일 길): 일 칸은 지금 그대로(줄 표시로 센 그날 환자)
+  - 셋째 인자 있음(도우미 길): 모든 날짜에 처방 줄이 없어도 일·주·월 칸이 생긴다. 일 칸 `totals` = `{ patients: receptions 합, newPatients: firstVisit이 참인 줄 수, returning: patients − newPatients, unknown: 0 }`. 재방문을 세는 외래 날(`visitDays`)과 첫 신환일도 접수 줄을 본다. 그래서 처방 없는 재방문도 재방문이고 처방 없는 첫 내원 환자도 집단에 든다
+  - 두 길 모두 `rx[]`·`groups[]`·동네는 그대로다. 접수 줄은 칸의 `visit`에 쓰지 않는다
+  - 저장 모양 검사는 고치지 않아도 맞는다: `patients = 신환 + 재진 + 알 수 없음`은 합해도 그대로이고, `cohort ≤ 칸 신환`도 그대로다(도우미 길은 한 환자의 첫 내원일이 하나라 `cohort` = 칸 신환이고, 파일 길의 주·달 칸 신환은 합이라 서로 다른 신환 수보다 작아지지 않는다). `rx: []`도 지금 검사를 지난다
+  - 화면과 대시보드는 저장된 `totals`만 읽는다. 그래서 기간 요약 평균, 환자 수 추이, 요일별, 대시보드 "오늘 환자 n명"은 코드를 고치지 않아도 접수 기준을 따라온다. `AC-511.2`·`AC-511.3`·`AC-511.5`·REQ-516은 '서로 다른 환자'라고 적지 않았다. TASK-11·TASK-16은 이 숫자를 다시 계산하지 않는다
 
 #### TASK-2 저장 모양 (`lib/payload`, `types/payload.ts`)
 ```ts
@@ -43,20 +57,31 @@ public static class StatsCommands       // Register(Dispatcher, BitServices): "s
 |---|---|---|
 | `VisitRowsSql` | `RxVisitSplit.Visits + RowsSql`에서 처방 코드 거르기 한 덩어리만 뺌 | `@from`·`@to` Char(12) `yyyyMMdd0000`, `@hospital` VarChar(32) |
 | `VisitSummarySql` · `VisitDaysSql` | `RxVisitSplit.SummarySql` · `DaysSql` 그대로 | 같음 |
+| `PatientDaysSql` (2026-11-01) | **원본에 없는 새 문장**. `RxVisitSplit.Visits` 글 그대로 + 아래 SELECT. 사본 대조는 `Visits` 부분에만 한다(AC-503.2·AC-503.5) | 같음 |
 | `CodeNamesSql` | `TrendDataSource.LoadCodes`의 SQL(선택 코드 없음 `codeFilter = ""`) | `@from`·`@to`·`@priorFrom`·`@priorTo` Char(8). 앞 둘 = 기간, 뒤 둘 = 같은 값 |
 | `HistoryGuardSql` · `UnsupportedFinanceSql` · `PatientsSql` · `TreatmentsSql` · `LaCodesSql` · `FinanceNormalSql` · `FinanceReceivableSql` · `FinanceMultiplicitySql` · `ReceivableMultiplicitySql` | `OperationalReportSql` 그대로 | `@day`·`@nextDay` Char(8), `@from`·`@to` Char(12), `@hospital` VarChar(32), `@daily` **Char(1)** |
 
+- `PatientDaysSql`(접수 줄, 환자·날마다 한 줄). 처방 표를 잇지 않으므로 처방 없는 접수도 나오고, `Visits`의 조건(`OcmComStt IN ('WN','HN','TN','PN')`·`OcmRsuYon<>'O'`)을 지나지 못한 접수는 나오지 않는다:
+```sql
+-- StatsSql.Visits 뒤에 잇는다
+SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay
+FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId
+WHERE v.PatientId IS NOT NULL
+GROUP BY v.PatientId,v.VisitDay,f.FirstDtm
+ORDER BY v.PatientId,v.VisitDay
+```
 - 관문: `Sql.cs`의 `IsAllowed`·`ParametersOf` 두 줄이 `StatsSql`에 없으면 거절하던 것을 `StatsSql`도 본다(아래 '다른 작업과 겹치는 파일'). `Sql.All`은 청구 목록 그대로라 청구 시험(`ReadOnlyGuard.test.cs`의 사본 대조)이 바뀌지 않는다
 - 시간 제한: 원본처럼 자료 SQL 150초, 메타(`HistoryGuard`) 15초. 넘으면 `E-BIT-READ-FAILED`
-- 읽는 순서: `HospitalGate.Open(services)` → `HistoryGuard`(1이면 `E-STATS-HISTORY`) → 진료 줄(700,000줄 넘으면 `E-STATS-TOO-BIG`) → 기간 합계 → 날짜별 → 처방 이름(진료 줄에 나온 코드만 남김) → 보고 네 벌(TASK-4) → JSON → `Chunker.Send(sink, request.Id, json)`(안에서 `Split`으로 나눠 보냄). 하나라도 예외면 `error`만(반쪽 없음, 청구 design.md 9-2와 같은 규칙)
+- 읽는 순서: `HospitalGate.Open(services)` → `HistoryGuard`(1이면 `E-STATS-HISTORY`) → 진료 줄(700,000줄 넘으면 `E-STATS-TOO-BIG`) → 접수 줄(`PatientDaysSql`, 700,000줄 넘으면 `E-STATS-TOO-BIG`) → 기간 합계 → 날짜별 → 처방 이름(진료 줄에 나온 코드만 남김) → 보고 네 벌(TASK-4) → JSON → `Chunker.Send(sink, request.Id, json)`(안에서 `Split`으로 나눠 보냄). 하나라도 예외면 `error`만(반쪽 없음, 청구 design.md 9-2와 같은 규칙)
 - `Program.cs`: 지금 `BitCommands.Register(dispatcher, HelperServices.Create());` 다음에 `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄만 더한다(지금 `services` 변수가 없다. 지금 줄을 고치지 않는 가장 작은 더하기. `HelperServices.Create()`는 만들기만 하고 비트를 건드리지 않아 두 번 불러도 된다)
 
 #### 도우미 → Worker JSON (`stats.rows` 답, 조각을 모은 글자)
 ```jsonc
 {
-  "v": 1, "from": "2026-09-01", "to": "2026-11-01",
+  "v": 2, "from": "2026-09-01", "to": "2026-11-01",
   "summary": { "visits": 0, "patients": 0, "newPatients": 0, "noChart": 0, "duplicate": 0, "noFirst": 0 },
-  "days":   [["20260901", 0, 0, 0]],                 // [날짜, 내원, 실환자, 신환]
+  "days":   [["20260901", 0, 0, 0]],                 // [날짜, 내원, 실환자, 신환] (RxVisitSplit 메모리용)
+  "patientDays": [["9xxxxx", "20260901", 2, "20260115"]], // [차트번호, 진료일, 접수 건수, 첫 내원일(없으면 null)], 환자·날마다 한 줄
   "codes":  [["MM042", "처방 이름"]],                  // 진료 줄에 나온 코드만
   "rows":   [["9xxxxx", "20260901", "MM042", "20260115"]], // [차트번호, 진료일, 처방코드, 첫 내원일(없으면 null)]
   "report": {
@@ -71,6 +96,7 @@ public static class StatsCommands       // Register(Dispatcher, BitServices): "s
 }
 ```
 - 줄은 배열(객체보다 작다, 700,000줄 ≈ 28MB → 조각 약 30개). 이름·전화·주민번호·주소는 원본 SQL도 읽지 않는다
+- `patientDays`의 차트번호는 `rows`처럼 Worker 밖으로 나가지 않는다. `days`는 `RxVisitSplit` 메모리용으로 그대로 두고 `patientDays`와 대조하지 않는다(문장이 몇 초 간격으로 돌아 진료 시간에 강하게 대조하면 불러오기가 들쭉날쭉 실패한다)
 - 보고 벌의 건수는 0 이상이고, 금액 6칸은 음수일 수 있다(절댓값 10^14 이하, AC-505.2, '결정과 트레이드오프')
 
 #### TASK-5 통계 Worker (`src/workers/stats*`, 환자 자료 구역)
@@ -78,8 +104,9 @@ public static class StatsCommands       // Register(Dispatcher, BitServices): "s
 // src/workers/stats/assemble.ts — 통로 포트의 조각 모으기 (통계 몫. 다른 브랜치가 쓰리라 기대하지 않는다)
 export function createAssembler(): { chunk(id, seq, data): void; end(id, count, bytes, sha256): Promise<string /* JSON 글자 */>; abort(id, code): void }
 // src/workers/stats/helperData.ts — 검사와 변환
-export function parseStatsRows(text: string, req: { from: string; to: string }): StatsRowsData   // 모양이 틀리면 throw StatsDataError('E-BRIDGE-BAD-REPLY')
+export function parseStatsRows(text: string, req: { from: string; to: string }): StatsRowsData   // 모양이 틀리면 throw StatsDataError('E-BRIDGE-BAD-REPLY'), rows와 patientDays가 어긋나면 throw StatsDataError('E-STATS-CHANGED')
 export function toConsumptionRows(data: StatsRowsData, ids: PatientIds): ConsumptionRow[]       // firstVisit = (f === d), outpatient true, region null, rxType ''
+export function toPatientDays(data: StatsRowsData, ids: PatientIds): PatientDay[]               // firstVisit = (f === d). ids는 진료 줄과 같은 PatientIds
 // src/workers/stats/jobs.ts — 순수 함수(시험은 바로 부른다)
 export function loadJob(text: string, opts: { from; to; today; closeToday: boolean }): { view: StatsLoaded; memory: StatsMemory }
 // src/workers/stats.worker.ts — 받기: bridge-port / load / split(TASK-9). 보내기: loaded / split-result / failed
@@ -100,8 +127,10 @@ export type StatsLoaded = {
   report: { daily: ClinicReportNumbers[]; monthly: ClinicReportNumbers[] }   // types/clinicReport.ts (C6: report.ts는 feat-ai-report 몫)
 }
 ```
-- 흐름: 화면이 `stream('stats.rows')`를 부르면 조각은 통로 → Worker 포트로 바로 간다(`workerSink`). `stream`이 `{id, count}`로 끝나면 화면이 Worker에 `load {streamId: id, …}`를 보낸다. Worker는 그 id의 글자를 꺼내 검사 → `ConsumptionRow` → `aggregate`(그룹 없음) → `buildSummary`(`covered = [{from, to: min(to, today)}]`, `quality` = 확인 건수가 모두 0이면 valid, `today` = closeToday면 내일) → `AnalysisResult` → 저장 모양(동네 비움) → 화면
-- 진료 줄(`{ p: 메모리 번호, d, c, f }[]`)·기간 합계·날짜별 합계·처방 이름은 Worker의 `memory`에 둔다. 다음 `load`가 덮어쓴다
+- 흐름: 화면이 `stream('stats.rows')`를 부르면 조각은 통로 → Worker 포트로 바로 간다(`workerSink`). `stream`이 `{id, count}`로 끝나면 화면이 Worker에 `load {streamId: id, …}`를 보낸다. Worker는 그 id의 글자를 꺼내 검사 → `ConsumptionRow`·`PatientDay` → `aggregate(rows, [], patientDays)`(그룹 없음) → `buildSummary`(`covered = [{from, to: min(to, today)}]`, `quality` = 확인 건수가 모두 0이면 valid, `today` = closeToday면 내일) → `AnalysisResult` → 저장 모양(동네 비움) → 화면
+- 진료 줄(`{ p: 메모리 번호, d, c, f }[]`)·기간 합계·날짜별 합계·처방 이름은 Worker의 `memory`에 둔다. 다음 `load`가 덮어쓴다. 접수 줄은 `load` 안에서 세는 데만 쓰고 `memory`에 두지 않는다
+- 검사 더하기(AC-505.2): `v` 2, 접수 줄 4칸(차트번호 빈칸 아닌 글자, 기간 안의 맞는 날짜, 건수는 1 이상 정수, 첫 내원일은 글자 또는 null이고 ≤ 진료일), 700,000줄 이하, 환자·날마다 한 줄, 한 환자의 첫 내원일은 배열마다 하나. 아니면 `E-BRIDGE-BAD-REPLY`. 모양이 맞은 뒤 두 배열을 대조한다: `rows`의 환자·날이 `patientDays`에 없거나 한 환자의 첫 내원일이 두 배열에서 다르면 `E-STATS-CHANGED`(Worker가 정하는 번호이고 도우미는 보내지 않는다). `withoutFirst`는 두 배열의 환자를 모두 센다
+- 처방 없는 접수만 있는 날은 `rx: []`인 `DayPayload`로 저장한다. `validate.ts`·`toDayPayloads`·`toMonthPayload`는 고치지 않는다(AC-505.8)
 
 ### Phase 2 · 저장과 처방 추세 (TASK-6·7·8)
 
@@ -149,10 +178,12 @@ create table public.stats_coverage (           -- 불러온(덮은) 기간 한 �
 export type StatsSource = 'bit' | 'file'
 export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange | null; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>   // 실패 throw StorageError('E-STATS-SAVE-FAILED')
 export async function readCoverage(range: DateRange, deps?): Promise<DateRange[]>          // 겹치는 덮은 기간을 mergeRanges로 합침
-export async function readDays(range: DateRange, deps?): Promise<{ rows: DayPayload[]; dropped: number; latest: { at: string; source: StatsSource } | null }>
+export async function readDays(range: DateRange, deps?): Promise<{ rows: DayPayload[]; dropped: number; latest: { at: string; source: StatsSource } | null; fromFile: boolean }>   // fromFile = 남긴 줄 가운데 source가 'file'인 줄이 있음
 export async function readMonths(range: { from: string /* YYYY-MM */; to: string }, deps?): Promise<{ rows: MonthPayload[]; dropped: number; latest: … }>
 ```
 - 클라이언트는 `lib/supabase/browser.ts`의 `supabaseBrowser()`. upsert는 `onConflict: 'hospital_id,day'`(`hospital_id`는 DB 기본값). 한 번에 200줄씩 나눠 보내고, 다 되면 `stats_coverage`에 덮은 기간 한 줄
+- 파일의 덜 덮인 달 줄(AC-507.1): `source`가 'file'이고 `partial: true`인 달 줄은 보내지 않고 그 달의 일 줄은 보낸다. 덮은 기간을 읽지 않는다. 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다. 'bit'의 덜 덮인 달 줄은 지금처럼 보내고 덜 덮인 'bit' 줄을 바꾼다. 트리거는 커밋한 그대로다. `saved`는 보낸 줄 수다
+- `readMonths`는 이미 만든 그대로 둔다. 읽는 곳은 `feat-ai-report`이고 통계 화면은 쓰지 않는다
 - ESLint에 `src/lib/storage/stats.ts` 블록을 더한다(통계 파일만 — 다른 브랜치가 `src/lib/storage/`에 둘 파일에는 규칙을 씌우지 않는다. 파일럿에서 미뤄 둔 블록, stats-core design.md '울타리'): `lib/parsers`·`lib/bridge`·`workers`·`lib/analytics`(`dates`·`coverage` 밖) import 금지, `console`·브라우저 저장소 금지
 
 #### TASK-8 처방 추세 (`src/lib/analytics/rxTrend.ts`)
@@ -201,8 +232,8 @@ export function formatClinicReport(input: { mode: 'daily' | 'monthly'; numbers: 
 export type StatsPeriod = '7d' | '30d' | '90d' | '12m'
 export const DEFAULT_STATS_PERIOD: StatsPeriod = '30d'
 export function statsRange(today: string, period: StatsPeriod): { current: Range; previous: Range; finishedCohort: Range | null; load: { from; to }; grain: 'day' | 'month'; label: string }   // finishedCohort: '30d' = 오늘 − 60 ~ 오늘 − 31(previous와 같은 범위), 나머지 null
-export function summaryCells(input: { days; months; range }): SummaryCell[]           // 네 칸
-export function patientTrend(input): BarBucket[] | null                                 // 일: dashboard trendBuckets 재사용, 12m: 달
+export function summaryCells(input: { days; covered; range }): SummaryCell[]          // 네 칸
+export function patientTrend(input): BarBucket[] | null                                 // 일: dashboard trendBuckets 재사용, 12m: 달 칸(그 달 일 숫자의 합)
 export type StatsRateCell = { kind: 'rate'; value: number; within: number; cohort: number; excluded: boolean } | { kind: 'in-progress' } | { kind: 'none' }   // kind 이름은 대시보드 RateCell과 같다. value 0~1, within·cohort = caption과 [자세히] 표의 숫자, excluded = 값이 null이라 뺀 칸이 있음(목업 "…빼고 셌어요")
 export function revisitRates(input): { d7: StatsRateCell; d14: StatsRateCell; d30: StatsRateCell; d30Cohort: { from: string; to: string } | null; firstRevisit: FirstRevisit | null }   // 7일 안·8~14일·15~30일·30일 넘어 다시 옴·아직 다시 안 옴
 // d30Cohort: '30d'에서 30일 줄이 비율일 때 센 첫날·끝날(30일 값이 숫자인 날만), 그 밖은 null. FirstRevisit은 센 칸의 첫날·끝날 from·to를 함께 싣는다(기준 줄 날짜)
@@ -216,6 +247,9 @@ export type RxDetailPoint = TrendPoint & { covered: boolean }                   
 export function rxDetail(input, code): { current: RxDetailPoint[]; previous: RxDetailPoint[] }   // buildTrend. 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
 // 모든 셈은 덮은 기간(readCoverage)을 같이 받는다
 ```
+- 환자 수·신환·재진은 저장된 `totals` 그대로 쓴다. 접수 기준(AC-501.6)을 여기서 다시 계산하지 않는다(TASK-1 '환자 수는 접수 기준')
+- `'12m'`의 달 칸(AC-511.2·AC-511.3): 통계 화면은 달 줄을 읽지 않는다. 칸의 `totals`는 그 달 `DayPayload.totals`의 합이고 일 줄이 하나라도 있는 달만 칸이 있다. 칸의 `partial`은 `buildTrend` 달 점의 `partial`을 그대로 쓴다(달이 끝나지 않았거나 덮이지 않은 날이 있거나 덜 끝난 일 줄이 있다, AC-508.1). `buildTrend`는 코드가 0개면 `RangeError`이므로 판정만 읽을 때는 코드 하나를 넘긴다(처방 없는 접수만 있는 기간에도 칸이 나와야 한다). `rxTrend.ts`는 고치지 않는다. 합에는 그 달의 일 줄을 모두 넣는다(덮이지 않은 날의 줄도 실제 숫자이고 칸에 '일부 기간'이 붙는다). `buildTrend`의 건수는 그 날을 더하지 않으므로 그 달의 처방 건수와 단위뿐 아니라 날도 다를 수 있다
+- `revisitRates`의 `'12m'`(AC-511.4): 달 줄이 아니라 일 줄을 읽되 달 단위로 뺀다. 일 줄을 달로 묶어, 그 달의 어느 날이든 N일 값이 null이면 그 달 전체를 N일 셈(분자·분모)에서 뺀다. 첫 재방문까지 날수도 N = 30으로 같다. 옛 달 줄의 동작과 같고 승인된 목업 문구("온 뒤 {N}일이 안 된 달의 신환은 빼고 셌어요", "(온 뒤 30일이 지난 달만)")가 참이 되므로 문구를 바꾸지 않고 AC-513.1의 예외도 늘리지 않는다. 일 기간은 지금처럼 날 단위다
 
 #### TASK-12 클릭 목업 (`docs/mockups/stats/`)
 - `index.html`: **클릭 목업**(CLAUDE.md). ui-90 시안 도구 `docs/mockups/ui-90/app/`(`gen.py`·css·`app.js`)와 같은 방식으로, 기간 단추·[자세히]·보고 고르기·[복사]·[비트에서 불러오기]·화면 상태 고르기가 실제로 눌려 바뀐다. 예시 숫자 + `notes.md`(화면별 문구·상태·배치·모양 값). 온라인 artifact로 올려 사용자에게 링크를 준다. 승인되면 `notes.md` 맨 위에 날짜·링크를 적는다
@@ -232,16 +266,19 @@ export function rxDetail(input, code): { current: RxDetailPoint[]; previous: RxD
 #### TASK-14 화면 (`src/components/stats/StatsScreen.tsx` 등, `'use client'`)
 ```ts
 export function StatsScreen(props: { hospitalName: string; today: string }): JSX.Element
-// useStatsData(period) — readDays·readMonths, 기간 바꿈마다 그 기간 + 비교 기간만 읽음
+// useStatsData(period) — readDays·readCoverage, 기간 바꿈마다 그 기간 + 비교 기간만 읽음(readMonths를 쓰지 않는다. fromFile은 readDays에서)
 // useStatsWorker() — createStatsWorker 하나(화면을 떠나면 terminate), useBridge({ worker })
 ```
-- 상태: `period`, 저장 숫자(읽은 것 + 방금 만든 것), 불러오기 진행·오류, 보고 숫자·처방별 결과(메모리), "오늘 진료 끝" 체크
-- 파일 길: `runAnalysis(files)` → `toMonthPayload`·`toDayPayloads` + 덮은 기간 하나(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하) → `saveStats(source 'file')`. `saveStats`는 덮은 기간 하나(`DateRange | null`)만 받는다
+- 상태: `period`, 저장 숫자(표에서 읽은 것. 방금 만든 숫자를 합쳐 보이는 것은 저장 실패 때만이다), 불러오기 진행·오류, 보고 숫자·처방별 결과(메모리), "오늘 진료 끝" 체크
+- 파일 안내(AC-514.7): 그 기간을 그리려고 읽은 줄(고른 기간과 비교 기간)의 `fromFile`이 하나라도 참이거나 저장하지 못한 방금 만든 파일 숫자를 보이는 동안이면 출처 줄 옆에 승인된 문장을 글자 그대로 보인다. `latest.source`만 보면 최근 비트 줄과 옛 파일 줄이 섞인 기간을 놓친다. 이 문장은 사용자가 승인했고 목업에 없다(AC-513.1의 예외, 목업을 다시 돌리지 않는다)
+- 파일 길: `runAnalysis(files)` → `toMonthPayload`·`toDayPayloads` + 덮은 기간 하나(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하) → `saveStats(source 'file')`. `saveStats`는 덮은 기간 하나(`DateRange | null`)만 받는다. 저장에 성공하면 표에서 다시 읽어 그린다: 트리거(완전 → 덜)가 옛 줄을 남겼을 수 있어 방금 만든 파일 숫자를 저장된 줄 위에 합치면 다시 열었을 때와 숫자가 달라진다(AC-514.4). 저장에 실패하면 방금 만든 숫자를 그대로 둔다(AC-514.6)
+- 비트 길: `saveStats(source 'bit')`에 성공해도 표에서 다시 읽어 그린다(AC-514.3). 다시 읽어야 `fromFile`이 새로 정해져 파일 안내가 "자료: 비트 PC" 옆에 남지 않는다
 
 #### TASK-15 탭 연결
 - `menu.ts`(통계 `href: '/stats'`, `ready: true`), `briefing/features.ts`(통계 `connect-first`), `notReadyFeatures.ts`(통계 빼기), `src/app/(app)/stats/page.tsx`(`StatsScreen`, `currentMe()`의 병원 이름, `dynamic = 'force-dynamic'`), 이 넷을 맞추는 시험들
 
 #### TASK-16 대시보드 읽기
+- 대시보드의 "오늘 환자 n명"·신환·재진은 저장된 `totals` 그대로다. 접수 기준(AC-501.6)을 여기서 다시 계산하지 않는다(TASK-1 '환자 수는 접수 기준')
 - `components/dashboard/summary/LiveDashboard.tsx`(`'use client'`, 새 파일): `readDays([today − 97, today])` → `SummarySource` → 지금 `DashboardHome`(report·analysis 자리)을 그린다. `dashboard/page.tsx`는 이것 하나를 놓는다. `source.ts`는 `toSummarySource(result)`(읽은 결과 → none/data, 순수)로 바뀐다
 - `view.ts` `revisitView(days, range, period?)`는 `{ d7; d14; d30: RateCell; d30Cohort: { from; to; within; cohort } | null }`을 돌려준다. `rateOf`에 `within30`을 더한다(`within30`은 선택 칸이라 빠진 칸은 null로 친다 — `undefined !== null`로 세어지지 않게). `RateCell`은 고치지 않는다(통계 view가 대시보드 함수를 불러 쓴다, AC-511.7)
 - `period`가 30이면 30일 줄만 `addDays(range.from, −30)` ~ `addDays(range.from, −1)`(= 오늘 − 60 ~ 오늘 − 31)의 날로 센다. 비율이면 `d30Cohort`에 그 범위에서 30일 값이 숫자인 첫날·끝날과 `within`·`cohort` 합을 싣고, 그 밖은 null이다. `period`를 주지 않거나 7·90이면 30일 줄도 고른 기간 그대로다. 그래서 지금 시험은 부르는 모양을 고치지 않고 기대값에 30일 칸만 더한다(AC-516.4)
@@ -258,19 +295,19 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 [비트 PC] 화면 [비트에서 불러오기]
    → useBridge.stream('stats.rows', {from, to})            (통로는 조각을 풀지 않고 Worker 포트로)
    → 도우미: HospitalGate.Open → StatsSql 읽기(읽기 전용) → JSON → Chunker → chunk…end
-   → Worker: 모으기·sha256 → 검사 → ConsumptionRow(메모리 번호) → aggregate → buildSummary → 저장 모양
+   → Worker: 모으기·sha256 → 검사 → ConsumptionRow·PatientDay(메모리 번호) → aggregate → buildSummary → 저장 모양
       └ 메모리: 진료 줄 {p,d,c,f} · 기간·날짜 합계 · 처방 이름        (split 일이 쓴다)
    → 화면 ← {저장 모양, 확인 건수, 보고 숫자 네 벌}               (차트번호·진료 줄 없음)
    → saveStats(source 'bit', 덮은 기간) → Supabase stats_months·stats_days·stats_coverage (RLS, 숫자만)
-   → 화면 = 저장 모양으로 그림 + 처방별 신환·재진(Worker split) + 보고 문장(formatClinicReport, 화면에서)
-[파일]   끌어다 놓기 → runAnalysis(지금 그대로) → toMonthPayload·toDayPayloads + 덮은 기간 → saveStats(source 'file') → 같은 그림
-[휴대폰·다른 PC] /stats·/dashboard → readDays·readMonths·readCoverage → 같은 그림 (처방별 신환·재진·보고 문장은 "비트 PC에서 불러오면 보여요")
+   → 화면 = 표에서 다시 읽은 저장 모양으로 그림(저장 실패 때만 방금 만든 숫자) + 처방별 신환·재진(Worker split) + 보고 문장(formatClinicReport, 화면에서)
+[파일]   끌어다 놓기 → runAnalysis(지금 그대로) → toMonthPayload·toDayPayloads + 덮은 기간 → saveStats(source 'file', 덜 덮인 달 줄은 보내지 않는다) → 다시 읽어 같은 그림 + 파일 안내 문장
+[휴대폰·다른 PC] /stats·/dashboard → readDays·readCoverage → 같은 그림 (처방별 신환·재진·보고 문장은 "비트 PC에서 불러오면 보여요")
 ```
 - 서버로 가는 것: 달·일 저장 모양(합계·처방코드·처방 이름·처방별 환자·신환·재진 수, 재방문 수), 덮은 기간(날짜 둘), 출처('bit'|'file')뿐. 차트번호·진료 줄·금액·보고 글·파일 이름은 가지 않는다
 - 기간: 일 기간 = 어제까지 N일(대시보드와 같다), 12개월 = 이번 달 포함 12달. 비교 = 바로 앞 같은 일수 / 작년 같은 12달. 불러올 범위 = 비교 기간 첫날이 든 달 1일 ~ 오늘(달 경계에서 시작해 이미 완전한 달이 덜 덮인 달로 바뀌지 않게, 트리거도 한 번 더 막는다)
 
 ## 결정과 트레이드오프
-- **도우미는 원본 SQL로 읽는다(화면 표 47이 아니라)**: 청구 2단계의 `VendorGridExport`를 기다리지 않고 main의 1단계 부품만 쓴다. 원본 통계 기능도 SQL이었다. 대가: 신환 기준이 파일과 다를 수 있다 — 도우미는 '비트에 남은 그 환자의 첫 유효 내원일'(원본 일일보고와 같은 기준), 파일은 '초재진구분' 칸. 같은 가짜 자료로는 두 길이 같음을 시험한다(AC-505.3). 실제 숫자 차이는 의원 PC 시험에서 지난달을 비교해 본다. 화면 출처 줄(AC-514.7)로 어느 길 숫자인지 보인다
+- **도우미는 원본 SQL로 읽는다(화면 표 47이 아니라)**: 청구 2단계의 `VendorGridExport`를 기다리지 않고 main의 1단계 부품만 쓴다. 원본 통계 기능도 SQL이었다. 대가: 신환 기준이 파일과 다를 수 있다 — 도우미는 '비트에 남은 그 환자의 첫 유효 내원일'(원본 일일보고와 같은 기준), 파일은 '초재진구분' 칸. 환자·날마다 접수 한 건이고 처방 없는 접수가 없는 같은 가짜 자료로는 두 길이 같음을 시험한다(AC-505.3). 실제 숫자 차이는 의원 PC 시험에서 지난달을 비교해 본다. 화면 출처 줄(AC-514.7)로 어느 길 숫자인지 보인다
 - **진료 줄 SQL은 원본에서 처방 코드 거르기만 뺐다**: 원본은 고른 코드(최대 100개)만 읽었지만, 통계는 모든 처방이 필요하다. 다른 줄은 원본 그대로이고 시험이 그 한 덩어리만 다른지 본다
 - **`@daily`를 Char(1)로**: 관문(`ReadOnlyGuard`)·`SqlBitDb`는 글자 매개변수만 안다. SQL Server는 `@daily=1`에서 '1'을 숫자로 바꿔 비교한다. 의원 PC 시험에서 일일·월말 숫자를 원본과 견준다
 - **화면은 저장 모양만 그린다**: PC·휴대폰·대시보드 숫자가 같다. 대가: 주 단위·임의 기간의 '서로 다른 환자 수'는 저장 모양으로 못 만든다 → 처방 추세는 '건'(그날 그 처방 환자 수의 합), 처방별 신환·재진(명)은 비트 PC에서 불러온 직후만
@@ -278,7 +315,11 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - **첫 재방문까지 날수는 원본 칸 그대로**: 7일 안·8~14일·15~30일·30일 넘어 다시 옴(원본 `ReturnAfter30Days`) + 아직 다시 안 옴(원본 `SingleVisitNewPatients`). '30일 넘어 다시 옴'(`after30`)은 불러온 자료 끝날까지 본 수라 다시 불러오면 늘 수 있다(원본 `ThroughAsOf`와 같은 뜻) — 화면에 그렇다고 적는다
 - **덮은 기간을 따로 저장한다(`stats_coverage`)**: `toDayPayloads`는 진료가 있는 날만 만든다. 그래서 줄이 없는 날이 휴진인지 아직 안 불러온 날인지 저장 모양만으로는 모른다. 불러올 때마다 덮은 기간 한 줄을 넣고, 읽을 때 합친다: 덮은 기간 안의 줄 없는 날 = 휴진 = 0, 밖 = 미덮임(일부 기간). 넣기만 하는 표라 길게 쌓여도 작다
 - **보고 숫자는 저장하지 않는다**: 금액은 서버에 두지 않고(통계 표는 숫자만이지만 매출 표는 매출 명세가 정한다), 휴대폰 복사는 범위 밖(사용자에게 물을 것 1)
-- **`schemaVersion`은 2 그대로**: 저장 표가 이 명세에서 처음 생긴다. 옛 v2 줄이 없으니 버전 올림과 옛 줄 읽기가 필요 없다
+- **`schemaVersion`은 2 그대로**: 저장 표가 이 명세에서 처음 생긴다. 옛 v2 줄이 없으니 버전 올림과 옛 줄 읽기가 필요 없다. 접수 기준 변경(2026-11-01)도 실제 DB에 저장한 줄이 아직 없고 열쇠가 그대로이며 `totals`의 뜻만 바뀐다
+- **환자 수는 새 문장 하나로 읽는다, `days`가 아니라(2026-11-01 사용자 결정)**: 매출 `revenue.days`의 `visits`처럼 접수 건수로 센다. `days`는 날짜별 합계뿐이라 재방문(환자별 줄이 필요)을 셀 수 없고, 신환·재진을 `days`에서 따로 읽으면 몇 초 간격의 두 문장이 서로 어긋날 수 있다. 문장 하나는 자기와 어긋날 수 없다. 그래서 환자·날마다 접수 건수와 첫 내원일을 함께 주는 `PatientDaysSql` 하나로 읽는다. 진료 줄과 접수 줄이 몇 초 사이에 어긋나는 경우는 `E-STATS-CHANGED`로 멈춘다(위험)
+- **주·달 `totals`는 일 칸의 합, 두 길 모두(2026-11-01 사용자 결정)**: "한달내 같은사람이 5명 오면 5번온걸로 카운트". stats-core AC-006.1의 `totals` 몫을 AC-501.6이 대신한다. 처방 추세·처방별 숫자는 `rx[]`·`RxVisitSplit`·`buildTrend` 그대로라, 건수의 단위가 `totals`와 달라도 그대로 둔다
+- **파일 길은 남기고 안내를 붙인다(2026-11-01 사용자 결정 "남기고 안내 붙이기")**: 파일은 처방 한 줄씩이고 내원 번호가 없어 처방 없는 접수와 같은 날 두 번째 접수를 볼 수 없다. 그래서 일 칸은 지금 그대로 두고, 읽은 줄에 파일 줄이 있으면 화면에 안내 문장을 보인다(AC-514.7). `latest.source`로는 섞인 기간을 알 수 없어 `readDays`가 `fromFile`을 준다(AC-507.2)
+- **가장 최근 불러오기가 덮어쓴다, 화면은 달 줄을 읽지 않는다(2026-11-01 사용자 결정 "새로 다시 덮어써 오전에한번 오후에 한번할수있으니깨")**: 오전과 오후에 한 번씩 불러올 수 있으므로 출처와 상관없이 가장 최근 불러오기가 그 불러오기가 덮은 날을 바꾼다. 그래서 오후 파일이 오전 비트 숫자를 낮출 수 있고, 위 안내가 그것을 알린다. 트리거는 커밋한 그대로다(완전 → 덜만 막는다). 일 줄은 보낸 날만 바뀌어 안전하다. 달 줄은 한 번 불러온 것만 담아서, 달의 일부만 덮는 파일이면 앞선 숫자를 잃고 나눠 넣은 파일이 합쳐지지 않는다. 그런데 주·달 `totals`는 정의상 일 칸의 합이고(AC-501.6) 12개월 보기는 이미 두 기간의 일 줄을 모두 읽는다(AC-511.5·AC-511.6). 그래서 통계 화면의 달 칸을 일 줄의 합으로 만들면(AC-511.2·AC-511.3) 달 줄이 필요 없고, 나눠 넣은 파일도 합쳐진 덮은 기간으로 맞게 더해진다. 파일의 덜 덮인 달 줄은 저장하지 않는다(AC-507.1): 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다
 - **완전한 줄은 덜 덮인 줄로 안 바뀐다(트리거)**: 짧은 파일을 넣어도 이미 완전한 달이 망가지지 않는다(코드보다 DB 제약, plan.md §0)
 - **`hospital_id`는 DB 기본값**: 브라우저가 병원 id를 보낼 길이 없다(권한 열에서 뺌). RLS가 한 번 더 막는다
 - **도우미 자료는 동네를 비운다**: 원본 SQL은 주소를 읽지 않는다. 동네 보기는 범위 밖
@@ -297,7 +338,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 | 파일 | 통계가 하는 일 | 같이 고치는 브랜치 |
 |---|---|---|
 | `supabase/migrations/20261101000200_stats.sql` + `public.my_hospital_id()` | 새 파일. 함수는 C1 글자 그대로(`create or replace`) | 함수: worklog·patients·revenue·precheck(그쪽이 나중에 `create or replace`로) |
-| `src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts` | 끝에 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`(TASK-5), `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`(TASK-7) | 전부(번호는 브랜치마다 앞말이 달라 겹치지 않는다, C3) |
+| `src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts` | 끝에 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`·`E-STATS-CHANGED`(TASK-5), `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`(TASK-7) | 전부(번호는 브랜치마다 앞말이 달라 겹치지 않는다, C3) |
 | `eslint.config.mjs`·`src/guardrails.test.ts` | `src/lib/storage/stats.ts` 블록 하나 (TASK-7). 합칠 자리: 다른 브랜치가 `src/lib/storage/**` 넓은 블록을 더하면 이 파일도 그 규칙을 받는다 — 합칠 때 두 블록이 서로 막지 않는지 본다 | precheck·patients·worklog(각자 블록. revenue는 고치지 않음) |
 | `src/types/db.ts` | 통계 표 줄 모양 셋을 끝에 더함 (TASK-6) | precheck(청구 설정·건수 표), 표를 만드는 다른 브랜치 |
 | `src/app/titles.test.tsx` | `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 (TASK-15) | 탭을 채우는 브랜치 모두 |
@@ -311,7 +352,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 | stats-core·tab-frame 파일(이미 main) | `lib/analytics/aggregate.ts`·`compare.ts`·`types/analysis.ts`(TASK-1), `lib/payload/*`·`types/payload.ts`(TASK-2, 검사는 선택 칸만 더해 남의 가짜 자료가 그대로 통과), `components/dashboard/summary/*`·`dashboard/page.tsx`(TASK-16. `revisitView` 30일 줄은 더하기만이고 feat-revenue·feat-patients·feat-worklog·feat-precheck·feat-ai-report에 이 폴더를 고치는 계획·변경이 없어 C4·C5·C6·C8 그대로) | ai-report(저장 모양 가짜 자료를 씀) |
 | `src/components/charts/StackedBarChart.tsx`·`StackedBarChart.test.tsx` | `BarBucket`의 선택 값 `comparison` 하나와 그 시험 (TASK-13). 주지 않으면 지금 그대로 | 없음(위 다섯 브랜치에 이 부품을 고치는 계획·변경이 없고, revenue는 Tests에 charts 시험을 적었을 뿐이다. 더하기만이고 남의 가짜 자료가 바뀌지 않아 C4·C5·C6·C8 그대로) |
 | `phases/index.json` | 통계 Phase 넷을 끝에 더함 | 전부 |
-- `feat-ai-report`가 알아야 할 것: 통계 달 숫자 표 이름은 `stats_months`(plan.md의 `months`가 아님)·일 숫자는 `stats_days`다. ai-report design.md의 'DB months' 읽기는 `stats_months`를 읽어야 한다. `revisit`의 `within30`·`after30`은 선택 칸이다
+- `feat-ai-report`가 알아야 할 것: 통계 달 숫자 표 이름은 `stats_months`(plan.md의 `months`가 아님)·일 숫자는 `stats_days`다. ai-report design.md의 'DB months' 읽기는 `stats_months`를 읽어야 한다. `revisit`의 `within30`·`after30`은 선택 칸이다. `feat-ai-report`의 외래도 접수 기준으로 한다(2026-11-01 사용자 결정 "접수 기준으로 통일"). 그 갈래의 문구 네 곳은 그 갈래에서 고친다. 이 명세는 바뀌지 않는다. 파일로만 채운 달은 달 전체가 든 파일이 아니면 줄이 없다.
 - 고치지 않음: `src/workers/precheck/*`, `helper/src/Precheck.Helper/Commands/*`, `helper/src/Precheck.Windows/*`, `src/types/precheck.ts`, `src/lib/bridge/*`, `src/types/report.ts`·`src/lib/report/*`(ai-report 몫)
 
 ## 사전점검 명세가 할 일 (이 명세는 고치지 않는다)
@@ -329,10 +370,18 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 
 ## 위험 / 미해결 질문
 - **실제 비트 DB에서의 SQL**: 리눅스에서는 가짜 `IBitDb`로만 시험한다. 진료 줄 SQL(원본에서 한 덩어리 뺌)과 `@daily` Char(1)은 의원 PC 시험에서 확인한다: 지난달 숫자를 양지바른 결과·비트 통계와 비교, 800일 읽기 시간 재기
-- **줄 수·크기**: 800일 모든 처방 줄이 700,000줄을 넘을 수 있다. 넘으면 `E-STATS-TOO-BIG`("기간을 줄여 다시")이고, 12개월 보기는 그때 불러올 범위를 줄인다(그 결정은 의원 PC 시험 뒤)
-- **12개월 일 숫자 읽기**: 12개월 보기의 요일별은 일 숫자 365줄을 읽는다(처방 목록 때문에 줄마다 수 KB, 합 수 MB). 휴대폰에서 느리면 그때 요일별만 최근 90일로 줄인다
+- **접수 줄 SQL은 의원 PC에서 확인한다(2026-11-01)**: `PatientDaysSql`은 원본에 없는 문장이라 리눅스에서는 가짜 `IBitDb`와 일회용 sqlite로만 돌린다. 의원 PC 시험에서 본다: ① 둘 다 숫자를 보이는 날의 내원·신환·재진이 매출 탭·업무일지와 같다 ② 취소된 접수가 있는 날을 비트와 비교한다(원본 시험 `tests/test_rx_visit_split_sql.py:84`는 상태 `CN`을 취소로 다루지만 코드의 뜻을 정한 문서는 없으므로 뜻을 단정하지 않고 숫자로 비교한다) ③ 첫 접수가 취소된 환자의 첫 내원일이 처음 취소되지 않은 접수 날이다
+- **통계와 매출·업무일지가 숫자를 비우는 범위가 다르다**: 둘 다 숫자를 보이는 날이면 같다. 차트번호 없는 접수·중복 내원·첫 내원 못 찾은 환자가 불러오는 기간 어디에든 있으면 통계는 그 불러오기를 통째로 저장하지 않고, 매출·업무일지는 그날만 비운다
+- **불러오는 도중의 접수·취소**: 접수 줄 문장은 진료 줄 다음에 돌아, 불러오는 중에 생긴 새 접수는 진료 줄이 접수 줄 없이 남지 않는다. 그 몇 초 사이에 취소가 있으면 `rows`의 환자·날이 `patientDays`에 없거나 첫 내원일이 달라 `E-STATS-CHANGED`("불러오는 사이에 접수가 바뀌었어요 · 다시 불러와 주세요 · 계속되면 오류 번호와 함께 문의해 주세요")로 멈춘다. `E-BRIDGE-BAD-REPLY`의 문구는 도우미를 업데이트하라는 말이라 이 경우에 맞지 않는다. 다시 불러오면 된다. `days`와 `patientDays`는 일부러 대조하지 않는다
+- **줄 수·크기**: 800일 모든 처방 줄이 700,000줄을 넘을 수 있다. 넘으면 `E-STATS-TOO-BIG`("기간을 줄여 다시")이고, 12개월 보기는 그때 불러올 범위를 줄인다(그 결정은 의원 PC 시험 뒤). 접수 줄도 700,000줄까지이고 문장이 하나 늘어 읽기 시간과 답 크기가 는다. 800일 읽기 시간 재기에 함께 든다
+- **12개월 일 숫자 읽기**: 12개월 보기는 고른 기간과 비교 기간의 일 숫자를 모두 읽는다(최대 약 730줄, 처방 목록 때문에 줄마다 수 KB, 합 수 MB). 달 칸·요일별·처방 목록이 모두 일 숫자를 쓰므로 요일별만 줄여서는 읽는 양이 줄지 않는다. 휴대폰에서 느리면 그때 다시 정한다
 - **실제 Supabase 표**: TASK-6 SQL을 사용자가 붙이기 전에는 저장·읽기가 실패한다(화면은 오류 카드). 붙일 때 허락을 받는다
 - **대시보드 첫 그림**: 대시보드가 브라우저에서 읽으므로 읽는 동안 잠깐 연결 전 모양이 보일 수 있다. TASK-16에서 읽는 동안은 분석 자리에 "불러오는 중"을 둔다
 - **덮은 기간이 낡을 수 있음**: 비트에서 진료 기록이 지워진 날은 그 뒤 다시 불러와도 옛 일 숫자 줄이 남는다(지우기 없음). 드물다고 보고 의원 PC 시험에서 본다
 - **신환 기준 차이**: 위 '결정'. 파일과 도우미를 번갈아 쓰면 같은 날 숫자가 조금 바뀔 수 있다(가장 최근 저장이 이긴다, 완전한 줄끼리)
+- 오전에 '오늘 진료 끝'을 켜고 불러온 뒤 오후에 끄고 불러오면 오늘 일 줄은 트리거가 지켜 오전 숫자로 남는다. 같은 날 진료 끝을 켜고 다시 불러오거나 다음 날 불러오면 풀린다.
+- 파일로만 채운 달은 그 달 전체가 든 파일을 한 번에 넣거나 비트로 불러올 때까지 달 줄이 없을 수 있다. 통계 화면은 일 숫자를 더하므로 맞고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다.
+- 한 번에 넣은 파일 사이가 끊기면 앞 구간은 덮은 기간에 남지 않아 그 달은 '일부 기간'으로 남는다. 그 달 전체를 넣거나 비트로 다시 불러오면 맞는다.
+- **파일 줄 숫자는 비트보다 적을 수 있다**: 처방 없는 접수와 같은 날 두 번째 접수가 빠진다. 오전에 비트로 불러온 날을 오후에 파일로 넣으면 숫자가 내려갈 수 있다. 안내 문장(AC-514.7)으로 알린다. 처방 없는 접수만 있는 날은 파일 길에서 줄이 없어, 덮은 기간 안이면 휴진 0으로 읽힌다
+- **대시보드에는 파일 안내가 없다**: 대시보드에는 출처 줄이 없어 안내 문장을 붙이지 않는다
 - **원본 사본 접근**: 골든·SQL 사본을 만들 때 원본(`seoseungkwan/shared@2a1069b`)이 필요하다. 없으면 그 step은 `blocked`
