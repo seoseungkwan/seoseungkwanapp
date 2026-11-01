@@ -10,7 +10,8 @@
     {
       "step": 1,
       "name": "revenue-summary",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/revenue/summary.ts: splitDay·sumPeriod·periodsFor·firstMonth·compare·monthSeries·perPatient. sumPeriod는 total(매출)과 splitTotal(나눔 합), uncheckedDays·noSplitDays를 따로 낸다. MonthPoint는 명세에 없어 납작하게 정함: {month, partial, total, covered, noncovered, other, visits, patients, perPatient}, 자료 없는 달은 숫자 칸 모두 null. visits null이고 금액이 모두 0인 날은 자료로 본다. TASK-8 주의: 모든 날이 unconfirmed인 달은 total 0이라 compare가 −100을 낸다"
     },
     {
       "step": 2,
