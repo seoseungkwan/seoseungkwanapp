@@ -124,7 +124,7 @@
 
 ## TASK-13: 통계 그래프 섹션
 - Step: Phase 4 · Step 0 · `stats-sections`
-- AC: AC-513.1~AC-513.9
+- AC: AC-513.1~AC-513.11
 - REQ: REQ-513
 - Files: src/components/stats/sections/*, src/components/ui/classes.test.ts
 - Tests: src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/PatientTrendSection.test.tsx, src/components/stats/sections/RevisitSection.test.tsx, src/components/stats/sections/RxTrendSection.test.tsx, src/components/stats/sections/RxSplitSection.test.tsx, src/components/stats/sections/ReportSection.test.tsx, src/components/stats/sections/WeekdaySection.test.tsx, src/components/stats/sections/DetailToggle.test.tsx, src/components/stats/sections/CopyButton.test.tsx, src/components/ui/classes.test.ts

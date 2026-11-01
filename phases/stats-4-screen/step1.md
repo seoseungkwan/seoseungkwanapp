@@ -85,7 +85,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - 연결 상태(`useBridge`)별: `ready` → [비트에서 불러오기] + "오늘 진료 끝" 체크(AC-514.3·514.8), `no-extension` → "비트 PC의 크롬에서 불러올 수 있어요"(AC-514.5), `no-helper`·`update-*` → 안내 + [설치·연결 확인](`/claim/setup`). 언제나 파일 끌어다 놓기·[파일 고르기](AC-514.4) → `runAnalysis` → `toMonthPayload`·`toDayPayloads` + 덮은 기간(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하 — 파일 길에는 "오늘 진료 끝"이 없다) → `saveStats({ …, source: 'file' })`
 
 ### 3. 훅 (`useStatsData.ts`, `useStatsWorker.ts`)
-- `useStatsData(period)`: `readDays`·`readMonths`·`readCoverage`, 기간 바꿈마다 그 기간만, 방금 만든 저장 모양을 합쳐 보이기, `saveStats`와 [다시 저장](같은 값)
+- `useStatsData(period)`: `readDays`·`readMonths`·`readCoverage`, 기간 바꿈마다 그 기간 + 비교 기간만, 방금 만든 저장 모양을 합쳐 보이기, `saveStats`와 [다시 저장](같은 값)
 - `useStatsWorker()`: `createStatsWorker()` 하나(화면을 떠나면 `terminate`), `useBridge({ worker })`, 불러오기 = `stream('stats.rows', range.load)` → `requestLoad({ streamId: id, … })` → `saveStats({ …, covered: view.covered /* 끝 = 오늘 진료 끝 ? 오늘 : 어제, Worker가 정함 */, source: 'bit' })`, 기간 바꿈 → `requestSplit`. 보고 문장은 `formatClinicReport(…, today)`로 화면에서 만든다
 
 ### 4. 시험 (jsdom, 가짜 Worker·가짜 `chrome.runtime`·`vi.mock('@/lib/storage/stats')`)

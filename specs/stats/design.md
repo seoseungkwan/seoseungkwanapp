@@ -199,13 +199,20 @@ export function formatClinicReport(input: { mode: 'daily' | 'monthly'; numbers: 
 ```ts
 export type StatsPeriod = '7d' | '30d' | '90d' | '12m'
 export const DEFAULT_STATS_PERIOD: StatsPeriod = '30d'
-export function statsRange(today: string, period: StatsPeriod): { current: Range; previous: Range; load: { from; to }; grain: 'day' | 'month'; label: string }
+export function statsRange(today: string, period: StatsPeriod): { current: Range; previous: Range; finishedCohort: Range | null; load: { from; to }; grain: 'day' | 'month'; label: string }   // finishedCohort: '30d' = 오늘 − 60 ~ 오늘 − 31(previous와 같은 범위), 나머지 null
 export function summaryCells(input: { days; months; range }): SummaryCell[]           // 네 칸
 export function patientTrend(input): BarBucket[] | null                                 // 일: dashboard trendBuckets 재사용, 12m: 달
-export function revisitRates(input): { d7: RateCell; d14: RateCell; d30: RateCell; firstRevisit: FirstRevisit | null }   // 7일 안·8~14일·15~30일·30일 넘어 다시 옴·아직 다시 안 옴
+export type StatsRateCell = { kind: 'rate'; value: number; within: number; cohort: number; excluded: boolean } | { kind: 'in-progress' } | { kind: 'none' }   // kind 이름은 대시보드 RateCell과 같다. value 0~1, within·cohort = caption과 [자세히] 표의 숫자, excluded = 값이 null이라 뺀 칸이 있음(목업 "…빼고 셌어요")
+export function revisitRates(input): { d7: StatsRateCell; d14: StatsRateCell; d30: StatsRateCell; d30Cohort: { from: string; to: string } | null; firstRevisit: FirstRevisit | null }   // 7일 안·8~14일·15~30일·30일 넘어 다시 옴·아직 다시 안 옴
+// d30Cohort: '30d'에서 30일 줄이 비율일 때 센 첫날·끝날(30일 값이 숫자인 날만), 그 밖은 null. FirstRevisit은 센 칸의 첫날·끝날 from·to를 함께 싣는다(기준 줄 날짜)
 export function weekdayBars(days, range): BarBucket[] | null                            // dashboard weekdayBuckets 재사용
-export function rxList(input): RxTrendRow[] | null                                      // 상위 5개 + 비교·신환/재진
-export function rxDetail(input, code): { current: TrendPoint[]; previous: TrendPoint[] }   // buildTrend. 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
+export function rxList(input): RxTrendRow[] | null                                      // 상위 5개(순위는 count) + 비교·신환/재진
+export type RxTrendRow = { code: string; name: string; count: number; newCount: number; returningCount: number
+  partial: boolean                                          // '12m'에서 count·newCount·returningCount에 덜 끝난 달이 들면 true('일부 기간' 표시)
+  comparable: { current: number; previous: number } | null  // '12m' = 끝난 달끼리의 합(null = 끝난 달 없음). 일 기간 = 날 짝(PreviousEqualDays)에서 어느 한쪽이 partial인 짝을 뺀 합(null = 남은 짝 없음, 표시 칸과 상관없이 늘 날 단위). 비교 기간 건수·막대·비교 눈금의 기준(null이면 막대는 count, 눈금 없음)
+  delta: Delta }                                            // compareNumbers(comparable.current, comparable.previous). comparable이 null이면 { kind: 'unavailable' }
+export type RxDetailPoint = TrendPoint & { covered: boolean }                            // covered = 그 칸의 날이 하나라도 덮은 기간 안에 있음. false인 비교 칸은 "0건"이 아니라 "–"
+export function rxDetail(input, code): { current: RxDetailPoint[]; previous: RxDetailPoint[] }   // buildTrend. 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
 // 모든 셈은 덮은 기간(readCoverage)을 같이 받는다
 ```
 
@@ -273,6 +280,9 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - **복사 단추·조각 모으기는 통계 폴더에 따로**: `components/stats/sections/CopyButton.tsx`, `workers/stats/assemble.ts`. 청구(`components/common/CopyButton.tsx`·`workers/precheck/assemble.ts`)와 이름이 겹치지 않고, 서로 불러 쓰리라 기대하지 않는다(C4·C6)
 - **도우미 SQL은 `StatsSql` 하나**: 보고 금액 SQL(`OperationalReportSql`)도 통계가 자기 사본으로 둔다. 매출 브랜치(`RevenueSql`)와 같은 원본을 옮기더라도 서로 기대지 않는다(C4)
 - **오류 번호는 `E-STATS-*`**: plan.md §8의 `E-SAVE-FAILED` 대신 `E-STATS-SAVE-FAILED`(다른 브랜치와 같은 번호를 더하지 않게, C3)
+- **최근 30일의 30일 줄은 끝난 신환으로 센다(S6, 2026-11-01 사용자 결정)**: 최근 30일의 날은 모두 온 지 30일이 안 되어 30일 줄과 첫 재방문 칸이 늘 '집계 중'이었다. `'30d'`만 온 뒤 30일이 지난 가장 최근 신환(오늘 − 60 ~ 오늘 − 31, `previous`와 같은 범위라 읽기는 그대로)을 세고 그 날짜를 적는다. 대가: 7·14일 줄과 세는 날짜가 다르다
+- **12개월 처방 증감은 끝난 달끼리(S7, 2026-11-01 사용자 결정)**: 덜 끝난 이번 달과 작년 같은 달 한 달을 견주면 가짜 ▼가 나온다. 어느 한쪽이라도 `partial`인 달은 양쪽에서 뺀다(AC-511.2와 같은 규칙). 건수·신환·재진에는 그 달을 넣고 '일부 기간'을 붙이며, 막대·비교 눈금은 `comparable`로 그려 증감과 기준을 맞춘다
+- **일 기간 처방 증감은 날 짝으로 뺀다**: 기간 전체가 덮였을 때만 견주면 불러온 다음 날부터 모든 줄이 "비교할 수 없음"이 된다('오늘 진료 끝'을 켜지 않으면 덮은 기간은 불러온 날 전날에 끝나고 기간은 어제까지다). 그래서 S7과 같은 규칙으로 `partial`인 날과 그 짝만 양쪽에서 뺀다. 대가: 짝을 뺀 날이 있으면 줄의 건수 글자는 기간 합인데 막대·증감은 그보다 적은 날로 세고, 일 기간에는 그 표시가 없다. 남은 짝이 아주 적으면 요일이 어긋난 날끼리 견주어 증감이 크게 나올 수 있다(드물다, 최소 짝 수는 두지 않았다)
 
 ## 다른 작업과 겹치는 파일
 > 같은 main(95cfa53)에서 갈라진 브랜치: `feat-precheck`(청구), `feat-ai-report`, `feat-worklog`, `feat-patients`, `feat-revenue`. 모두 더하기만 하고 아래가 합치는 자리다(cross-branch C8)
