@@ -1,0 +1,343 @@
+/* 업무일지 양식 (worklog REQ-007, design.md 12절, docs/UI_GUIDE.md '업무일지 양식'). 엑셀 서식 예외는 이 한 파일이다.
+   값은 승인 시안 docs/mockups/worklog 의 화면 규칙 그대로다. 색은 :root 토큰만, 글꼴은 시스템 이름만 쓴다.
+   인쇄는 파일 맨 끝 @media print다 */
+
+/* 바깥 종이. 1px line 테두리는 이 파일의 허용 색(AC-007.4) 밖이라 양식 칸 쪽 Tailwind 클래스(border border-line)가 붙인다 */
+.paper {
+  background: var(--surface);
+  padding: 24px;
+  overflow-x: auto;
+}
+
+/* 크기 변수: 엑셀 값(인쇄 pt)을 화면 px로 옮긴 시안 값 */
+.sheet {
+  --c: 17px;
+  --c11: 15px;
+  --c10: 13px;
+  --c14: 19px;
+  --t: 43px;
+  --h1: 53px;
+  --h2: 24px;
+  --h3: 45px;
+  --h28: 28px;
+  --h40: 40px;
+  --h20: 20px;
+  width: 689px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: "Gulim", "굴림", "Apple SD Gothic Neo", sans-serif;
+  font-weight: 700;
+  font-size: var(--c);
+  line-height: 1.25;
+  color: var(--xl-ink);
+  text-align: center;
+}
+
+.sheet td,
+.sheet th {
+  border: 1px solid var(--xl-ink);
+  padding: 0;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.sheet tr {
+  height: var(--h40);
+}
+
+.sheet .r1 {
+  height: var(--h1);
+}
+
+.sheet .r2 {
+  height: var(--h2);
+}
+
+.sheet .r3 {
+  height: var(--h3);
+}
+
+.sheet .r28 {
+  height: var(--h28);
+}
+
+.sheet .r20 {
+  height: var(--h20);
+}
+
+.sheet .title {
+  font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+  font-weight: 400;
+  font-size: var(--t);
+  letter-spacing: 0.35em;
+  padding-left: 0.35em;
+  white-space: nowrap;
+}
+
+.sheet .lav {
+  background: var(--xl-lav);
+}
+
+.sheet .gray {
+  background: var(--xl-gray);
+}
+
+.sheet .date {
+  font-size: var(--c14);
+}
+
+.sheet .small {
+  font-size: var(--c10);
+}
+
+/* 바깥 굵은 선(엑셀 medium) */
+.sheet tr:first-child > * {
+  border-top-width: 2px;
+}
+
+.sheet .L {
+  border-left-width: 2px;
+}
+
+.sheet .R {
+  border-right-width: 2px;
+}
+
+.sheet .B {
+  border-bottom-width: 2px;
+}
+
+/* 긴 글자: 한 줄을 지키고 칸이 늘지 않는다. 초점이 없으면 끝이 "…", 초점이 있으면 밀어 본다 */
+.sheet input,
+.sheet textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  text-align: center;
+  font-family: "Gulim", "굴림", "Apple SD Gothic Neo", sans-serif;
+  font-weight: 700;
+  font-size: inherit;
+  color: var(--xl-ink);
+  padding: 0 4px;
+  outline: none;
+}
+
+.sheet input {
+  text-overflow: ellipsis;
+}
+
+.sheet input:focus {
+  text-overflow: clip;
+}
+
+.sheet td.in {
+  position: relative;
+}
+
+.sheet td.in input {
+  position: absolute;
+  inset: 0;
+}
+
+.sheet input:focus,
+.sheet textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--xl-focus);
+}
+
+.sheet .memo {
+  font-size: var(--c11);
+}
+
+.sheet .memo textarea {
+  resize: none;
+  height: calc(var(--h28) * 3);
+  padding: 6px;
+  line-height: 1.35;
+}
+
+.sheet .memo textarea::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* 빨간 막힌 칸: 모든 입력 칸이 같다. 초점이 있어도 옅은 빨강 바탕은 남는다 */
+.sheet td.blocked > input,
+.sheet td.blocked > textarea {
+  background: var(--negative-soft);
+  box-shadow: inset 0 0 0 2px var(--negative);
+}
+
+.sheet td.blocked > input:focus,
+.sheet td.blocked > textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--xl-focus);
+}
+
+/* "합계에서 빠졌어요": 칸 안에 겹쳐 둔다. 줄 높이에 영향이 없다 */
+.sheet .flag {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  white-space: nowrap;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--negative);
+  pointer-events: none;
+}
+
+/* 수입 금액 칸(폭이 넉넉하다): 오른쪽 끝. 친 글자는 다른 줄과 같은 가운데 자리에 그대로 있다 */
+.sheet td.wide .flag {
+  top: 0;
+  bottom: 0;
+  right: 6px;
+  font-size: 12px;
+}
+
+.sheet td.wide.flagged > input {
+  padding: 0 108px;
+}
+
+/* 지출 금액 칸·신환·재진 칸(폭이 좁다): 글자 아래. 친 글자가 칸 폭을 다 쓴다 */
+.sheet td.mid .flag,
+.sheet td.cnt .flag {
+  left: 0;
+  right: 0;
+  justify-content: center;
+}
+
+.sheet td.mid .flag {
+  bottom: 4px;
+  font-size: 11px;
+}
+
+.sheet td.mid.flagged > input {
+  padding: 0 4px 13px;
+}
+
+/* 신환·재진 칸(폭 73, 높이 28)은 표시 전체가 들어가지 않는다: 앞말은 눈에서만 빼고(읽어 주기·마우스 올리기에는 남는다) "빠졌어요"만 보인다 */
+.sheet td.cnt .flag {
+  bottom: 1px;
+  font-size: 10px;
+}
+
+.sheet td.cnt .flagHead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.sheet td.cnt.flagged > input {
+  padding: 0 2px 11px;
+}
+
+/* 768px 미만: 양식을 화면 폭에 맞춘다(시안 값 그대로) */
+@media (max-width: 767px) {
+  .paper {
+    padding: 8px;
+  }
+
+  .sheet {
+    width: 100%;
+    --c: 11px;
+    --c11: 10px;
+    --c10: 9px;
+    --c14: 12px;
+    --t: 24px;
+    --h1: 38px;
+    --h2: 18px;
+    --h3: 30px;
+    --h28: 22px;
+    --h40: 30px;
+    --h20: 15px;
+  }
+
+  .sheet td.wide .flag {
+    right: 3px;
+    font-size: 9px;
+  }
+
+  .sheet td.wide.flagged > input {
+    padding: 0 80px 0 2px;
+  }
+
+  .sheet td.mid .flag {
+    bottom: 2px;
+    font-size: 9px;
+  }
+
+  .sheet td.mid.flagged > input {
+    padding: 0 2px 10px;
+  }
+
+  .sheet td.cnt .flag {
+    bottom: 1px;
+    font-size: 8px;
+  }
+
+  .sheet td.cnt.flagged > input {
+    padding: 0 1px 8px;
+  }
+}
+
+/* 인쇄 (worklog REQ-011, design.md 13절): 값은 승인 시안의 @media print 그대로다. 줄 높이는 변수로만 둔다(시험이 읽어 더한다).
+   A4 세로 인쇄 폭(186mm ≈ 703px)은 767px보다 좁아 위 폰 규칙도 함께 걸린다 → 같은 세기의 선택자로 파일 맨 끝에 둬서 이긴다.
+   .paper의 border: 0은 layer 밖 CSS라 Tailwind border(layer utilities)를 이긴다 */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .paper {
+    padding: 0;
+    border: 0;
+    overflow: visible;
+  }
+
+  .sheet {
+    width: 100%;
+    --c: 13pt;
+    --c11: 11pt;
+    --c10: 10pt;
+    --c14: 14pt;
+    --t: 32pt;
+    --h1: 39.75pt;
+    --h2: 18pt;
+    --h3: 33.75pt;
+    --h28: 21pt;
+    --h40: 30pt;
+    --h20: 15pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .sheet .memo textarea {
+    overflow: hidden;
+  }
+
+  .sheet .memo textarea::placeholder {
+    color: transparent;
+  }
+
+  /* 인쇄는 엑셀 모양만: "합계에서 빠졌어요"와 그 자리, 막힌 칸 빨강을 지운다 */
+  .sheet .flag {
+    display: none;
+  }
+
+  .sheet td.wide.flagged > input,
+  .sheet td.mid.flagged > input,
+  .sheet td.cnt.flagged > input {
+    padding: 0 4px;
+  }
+
+  .sheet td.blocked > input,
+  .sheet td.blocked > textarea {
+    background: transparent;
+    box-shadow: none;
+  }
+}

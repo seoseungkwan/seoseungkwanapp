@@ -197,6 +197,13 @@ const TOKENS: Record<string, string> = {
 
 // 옛 이름 별칭. TASK-23에서 지웠다 — 랜딩 CSS Module이 쓰던 옛 :root 이름은 남지 않는다(b2b-redesign REQ-221 AC-221.1)
 const LANDING_ALIASES: Record<string, string> = {}
+// 업무일지 양식 칸 전용 색 넷(worklog AC-007.1, design.md 12절). @theme inline은 가리키지 않는다 — Tailwind 색 이름이 생기면 엑셀 색이 다른 화면으로 번진다
+const WORKLOG_SHEET_TOKENS: Record<string, string> = {
+  '--xl-ink': '#000000',
+  '--xl-lav': '#CCCCFF',
+  '--xl-gray': '#D9D9D9',
+  '--xl-focus': '#107C41',
+}
 // 옛 Tailwind 이름 → 가리키는 새 토큰(색·모서리는 토큰 이름, 글자는 단계 이름).
 // 남는 것은 대시보드 빈 자리(src/components/dashboard)가 아직 쓰는 넷뿐이다 — 다음 대시보드 명세에서 지운다(design.md '대시보드 본문 빼기')
 const OLD_COLORS: Record<string, string> = {}
@@ -451,11 +458,11 @@ describe('AC-202.1: 토큰 값은 layer 밖 :root 한 곳', () => {
     expect([...globals().matchAll(/:root\b/g)].length, 'globals.css의 :root 개수').toBe(1)
   })
 
-  it('AC-202.1: :root에 토큰 표의 이름·값이 한 번씩 있고, 그 밖에는 design.md 랜딩 별칭만 있다(16진수는 대소문자 무시)', () => {
+  it('AC-202.1·AC-007.1: :root에 토큰 표의 이름·값이 한 번씩 있고, 그 밖에는 design.md 랜딩 별칭과 업무일지 양식 색 넷만 있다(16진수는 대소문자 무시)', () => {
     const decls = declarations(rootBodies().join('\n'))
     const names = decls.map(([name]) => name)
     expect(names.length, '같은 변수를 두 번 선언했다').toBe(new Set(names).size)
-    expect(normalized(decls)).toEqual(normalized({ ...TOKENS, ...LANDING_ALIASES }))
+    expect(normalized(decls)).toEqual(normalized({ ...TOKENS, ...LANDING_ALIASES, ...WORKLOG_SHEET_TOKENS }))
   })
 
   it('AC-202.1: 랜딩 별칭 값은 :root 토큰 하나를 가리키는 var()뿐이다(16진수·섞은 색·숫자 값 없음)', () => {
@@ -468,6 +475,34 @@ describe('AC-202.1: 토큰 값은 layer 밖 :root 한 곳', () => {
       expect(Object.keys(TOKENS), `${name}: ${value}`).toContain(value.slice(4, -1))
     }
   })
+})
+
+// ---------- worklog AC-007.1: 업무일지 양식 색 넷 (design.md 12절) ----------
+
+describe('AC-007.1: 업무일지 양식 색 넷은 :root에만 있고 Tailwind 색 이름이 되지 않는다', () => {
+  it('AC-007.1: :root에 넷이 값까지 그대로 한 번씩 있다', () => {
+    const decls = declarations(rootBodies().join('\n'))
+    for (const [name, value] of Object.entries(WORKLOG_SHEET_TOKENS)) {
+      expect(decls.filter(([n]) => n === name).map(([, v]) => upperHex(v)), name).toEqual([upperHex(value)])
+    }
+  })
+
+  it('AC-007.1: @theme inline은 넷을 가리키지 않는다(--xl- 글자가 없다)', () => {
+    const themeText = themeBlocks().map(([, body]) => body).join('\n')
+    expect(themeText.length, '빈 검사가 아니다').toBeGreaterThan(0)
+    expect(themeText).not.toContain('xl-ink')
+    expect(themeText).not.toContain('xl-lav')
+    expect(themeText).not.toContain('xl-gray')
+    expect(themeText).not.toContain('xl-focus')
+  })
+
+  it('AC-007.1: 실제 Tailwind로 돌려도 넷의 색 클래스(bg-xl-lav 같은)는 만들어지지 않는다', async () => {
+    const classes = ['bg-xl-ink', 'bg-xl-lav', 'bg-xl-gray', 'bg-xl-focus', 'text-xl-ink', 'border-xl-ink', 'outline-xl-focus']
+    const css = await tailwindCss(classes)
+    for (const name of classes) expect(utility(css, `.${name}`), name).toBeNull()
+    // 빈 검사가 아니다: 토큰 색 클래스는 같은 방식으로 만들어진다
+    expect(utility(await tailwindCss(['bg-ink']), '.bg-ink')).not.toBeNull()
+  }, 30_000)
 })
 
 // ---------- AC-202.3: 색 글자가 있는 곳 ----------

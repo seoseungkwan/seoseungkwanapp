@@ -1,0 +1,26 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-4-bitfill",
+  "steps": [
+    {
+      "step": 0,
+      "name": "bit-contract",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "bit-column",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "bit-storage",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "bit-screen",
+      "status": "pending"
+    }
+  ]
+}

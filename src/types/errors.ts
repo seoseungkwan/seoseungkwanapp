@@ -10,5 +10,7 @@ export type ErrorCode =
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
   // AI 리포트(spec ai-report design.md '오류 문구')
   | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
+  // 업무일지(specs/worklog)
+  | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
 
 export type ErrorInfo = { what: string; fix: string }

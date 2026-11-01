@@ -55,6 +55,26 @@
     {
       "dir": "ai-report-5-commands",
       "status": "completed"
+    },
+    {
+      "dir": "worklog-1-data",
+      "status": "pending"
+    },
+    {
+      "dir": "worklog-2-screen",
+      "status": "pending"
+    },
+    {
+      "dir": "worklog-3-finish",
+      "status": "pending"
+    },
+    {
+      "dir": "worklog-4-bitfill",
+      "status": "pending"
+    },
+    {
+      "dir": "worklog-5-bitcheck",
+      "status": "pending"
     }
   ]
 }
