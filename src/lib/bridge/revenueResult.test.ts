@@ -1,7 +1,15 @@
 // revenue.days 답 검사(TASK-2, REQ-002 · AC-002.2·AC-002.3). 숫자는 모두 가짜다. 환자 칸(차트번호·이름)이 섞인 답은 막혀야 한다
 import { describe, expect, it } from 'vitest'
 import { addDays } from '@/lib/analytics/dates'
-import { REVENUE_DAY_KEYS, REVENUE_MONEY_KEYS, type RevenueCodeRow, type RevenueDayRow, type RevenueDaysResult } from '@/types/revenue'
+import {
+  REVENUE_DAY_KEYS,
+  REVENUE_KEPT_KEYS,
+  REVENUE_MONEY_KEYS,
+  REVENUE_SPLIT_KEYS,
+  type RevenueCodeRow,
+  type RevenueDayRow,
+  type RevenueDaysResult,
+} from '@/types/revenue'
 import { checkResult } from './protocol'
 
 const DAY_KEYS = [
@@ -20,10 +28,15 @@ const DAY_KEYS = [
   'transfer',
   'receivableIn',
   'unconfirmed',
+  'splitUnconfirmed',
 ] as const
 const COUNT_KEYS = ['visits', 'newPatients', 'returnVisits', 'patientsToDate'] as const
 const MONEY_KEYS = ['total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn'] as const
 const NUMBER_KEYS = [...COUNT_KEYS, ...MONEY_KEYS] as const
+/** 나눔 네 칸: splitUnconfirmed면 이 넷만 null */
+const SPLIT_KEYS = ['insurer', 'noncovered', 'copay', 'otherTotal'] as const
+/** 남는 다섯 칸: splitUnconfirmed여도 숫자 */
+const KEPT_KEYS = ['total', 'cash', 'card', 'transfer', 'receivableIn'] as const
 const CODE_KEYS = ['code', 'name', 'count', 'amount'] as const
 
 const FAKE_CHART = '900001'
@@ -46,11 +59,12 @@ function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
     transfer: 20_000,
     receivableIn: 3_000,
     unconfirmed: false,
+    splitUnconfirmed: false,
     ...over,
   }
 }
 
-/** 금액을 세지 않은 날(세 검사·금액 맞춤 검사·음수): 금액 아홉 칸 null */
+/** 금액을 세지 않은 날(세 검사·남는 다섯 칸의 음수): 금액 아홉 칸 null */
 function unconfirmedDay(date: string): RevenueDayRow {
   return day(date, {
     total: null,
@@ -64,6 +78,11 @@ function unconfirmedDay(date: string): RevenueDayRow {
     receivableIn: null,
     unconfirmed: true,
   })
+}
+
+/** 나눔만 세지 않은 날(금액 맞춤 검사·나눔 네 칸의 음수): 나눔 네 칸만 null, 남는 다섯 칸은 숫자 */
+function splitDay(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
+  return day(date, { insurer: null, noncovered: null, copay: null, otherTotal: null, splitUnconfirmed: true, ...over })
 }
 
 /** from부터 n일, 하루도 빠짐없이 */
@@ -102,6 +121,8 @@ function good(): RevenueDaysResult {
       }),
       // 차트번호 없는 내원·옛 자료 때문에 건수를 정할 수 없는 날
       day('2026-10-04', { visits: null, newPatients: null, returnVisits: null, patientsToDate: null }),
+      // 나눔만 세지 않은 날
+      splitDay('2026-10-05'),
     ],
     codes: [
       code('MM001'),
@@ -130,7 +151,7 @@ function without<T extends Record<string, unknown>>(row: T, key: string): Record
 }
 
 describe('AC-002.2 맞는 답은 통과한다', () => {
-  it('AC-002.2 days·codes 두 칸, 확인 필요한 날(금액 null)·0인 날·건수 null인 날·_REST·이름 null·금액 null이 있는 답', () => {
+  it('AC-002.2 days·codes 두 칸, 확인 필요한 날(금액 null)·나눔만 빈 날·0인 날·건수 null인 날·_REST·이름 null·금액 null이 있는 답', () => {
     expect(check(good())).toBe(true)
   })
 
@@ -290,6 +311,120 @@ describe('AC-002.2·AC-002.3 copay·otherTotal(2026-11-01 더함)과 금액 아�
 
   it('AC-002.2 unconfirmed: false인데 아홉 칸이 모두 null이면 통과하지 않는다', () => {
     expect(check(withDay(1, { ...unconfirmedDay('2026-10-02'), unconfirmed: false }))).toBe(false)
+  })
+})
+
+describe('AC-002.2·AC-002.3 splitUnconfirmed(2026-11-01 더함, "나눔만 비워")와 두 표시의 짝', () => {
+  const D = '2026-10-01'
+  // 줄 하나뿐인 답으로 본다. 아래 거부 사례는 통과하는 세 모양('맞는 줄' 시험)에서 짝 하나만 어긋나게 고친 것이라, 거부되면 그 짝 때문이다
+  const checkRow = (row: unknown) => check({ days: [row], codes: [] })
+  const SHAPES: [string, RevenueDayRow][] = [
+    ['금액 아홉 칸이 다 있는 날', day(D)],
+    ['확인 필요한 날', unconfirmedDay(D)],
+    ['나눔만 빈 날', splitDay(D)],
+  ]
+  const cross = (keys: readonly string[], values: readonly unknown[]): [string, unknown][] =>
+    keys.flatMap((k) => values.map((v): [string, unknown] => [k, v]))
+  /** null이어야 하는 칸에 오면 거부되는 값(숫자 0·없는 값 undefined 포함) */
+  const NOT_NULL = [0, 1_000, '1000', '', -1, 1.5, false, undefined, {}]
+  const NOT_COUNT = ['1000', 1000.5, -1, Number.NaN, Infinity, 2 ** 53, true, {}, undefined]
+  const NOT_BOOLEAN = ['false', 'true', '', 0, 1, null, undefined, {}]
+
+  it('AC-002.2 칸 목록 상수: splitUnconfirmed는 unconfirmed 바로 뒤, 나눔 네 칸 + 남는 다섯 칸 = 금액 아홉 칸', () => {
+    expect([...REVENUE_DAY_KEYS]).toEqual([...DAY_KEYS])
+    expect([...REVENUE_SPLIT_KEYS]).toEqual([...SPLIT_KEYS])
+    expect([...REVENUE_KEPT_KEYS]).toEqual([...KEPT_KEYS])
+    expect([...REVENUE_SPLIT_KEYS, ...REVENUE_KEPT_KEYS].sort()).toEqual([...REVENUE_MONEY_KEYS].sort())
+  })
+
+  it.each(SHAPES)('AC-002.2 맞는 줄(%s)은 통과한다', (_label, row) => {
+    expect(checkRow(row)).toBe(true)
+  })
+
+  it('AC-002.2 세 모양이 섞여 날짜로 이어진 답은 통과한다', () => {
+    expect(check({ days: [day(D), splitDay('2026-10-02'), unconfirmedDay('2026-10-03'), splitDay('2026-10-04')], codes: [] })).toBe(true)
+  })
+
+  it('AC-002.2 나눔만 빈 날의 남는 다섯 칸은 0이어도 숫자라 통과한다', () => {
+    expect(checkRow(splitDay(D, { total: 0, cash: 0, card: 0, transfer: 0, receivableIn: 0 }))).toBe(true)
+  })
+
+  it('AC-002.2 둘 다 거짓인 날의 나눔 네 칸은 0이어도 숫자라 통과한다', () => {
+    expect(checkRow(day(D, { insurer: 0, noncovered: 0, copay: 0, otherTotal: 0 }))).toBe(true)
+  })
+
+  it('AC-002.2 나눔만 빈 날의 건수 칸은 숫자도 null도 통과한다', () => {
+    expect(checkRow(splitDay(D, { visits: 30, patientsToDate: 41 }))).toBe(true)
+    expect(checkRow(splitDay(D, { visits: null, newPatients: null, returnVisits: null, patientsToDate: null }))).toBe(true)
+  })
+
+  it.each(SHAPES)('AC-002.2 splitUnconfirmed가 빠진 옛 모양(%s)은 통과하지 않는다', (_label, row) => {
+    expect(checkRow(without(row, 'splitUnconfirmed'))).toBe(false)
+  })
+
+  // 참·거짓처럼 읽히는 값(0·1·null)이 그 값대로 맞는 모양에 있어도 막혀야 한다
+  describe.each(SHAPES)('AC-002.2 표시 칸이 참·거짓이 아닌 값: %s', (_label, row) => {
+    it.each(NOT_BOOLEAN)('AC-002.2 splitUnconfirmed가 %j면 통과하지 않는다', (value) => {
+      expect(checkRow({ ...row, splitUnconfirmed: value })).toBe(false)
+    })
+
+    it.each(NOT_BOOLEAN)('AC-002.2 unconfirmed가 %j면 통과하지 않는다', (value) => {
+      expect(checkRow({ ...row, unconfirmed: value })).toBe(false)
+    })
+  })
+
+  it.each(SHAPES)('AC-002.2 두 표시가 둘 다 참이면 %s의 금액 모양이어도 통과하지 않는다', (_label, row) => {
+    expect(checkRow({ ...row, unconfirmed: true, splitUnconfirmed: true })).toBe(false)
+  })
+
+  it.each(cross(SPLIT_KEYS, NOT_NULL))('AC-002.2 splitUnconfirmed: true인데 나눔 칸 %s가 null이 아니고 %j면 통과하지 않는다', (key, value) => {
+    expect(checkRow({ ...splitDay(D), [key]: value })).toBe(false)
+  })
+
+  it('AC-002.2 splitUnconfirmed: true인데 나눔 네 칸이 모두 숫자면 통과하지 않는다', () => {
+    expect(checkRow({ ...day(D), splitUnconfirmed: true })).toBe(false)
+  })
+
+  it.each(KEPT_KEYS)('AC-002.2 splitUnconfirmed: true인데 남는 칸 %s가 null이면 통과하지 않는다', (key) => {
+    expect(checkRow({ ...splitDay(D), [key]: null })).toBe(false)
+  })
+
+  it.each(cross(KEPT_KEYS, NOT_COUNT))('AC-002.3 splitUnconfirmed: true인데 남는 칸 %s가 숫자가 아니고 %j면 통과하지 않는다', (key, value) => {
+    expect(checkRow({ ...splitDay(D), [key]: value })).toBe(false)
+  })
+
+  it('AC-002.2 splitUnconfirmed: true인데 아홉 칸이 모두 null이면 통과하지 않는다(확인 필요한 날의 모양)', () => {
+    expect(checkRow({ ...unconfirmedDay(D), unconfirmed: false, splitUnconfirmed: true })).toBe(false)
+  })
+
+  it('AC-002.2 둘 다 거짓인데 나눔 네 칸이 null이면 통과하지 않는다(표시 없는 나눔만 빈 날)', () => {
+    expect(checkRow({ ...splitDay(D), splitUnconfirmed: false })).toBe(false)
+  })
+
+  it('AC-002.2 둘 다 거짓인데 남는 다섯 칸만 null이면 통과하지 않는다', () => {
+    expect(checkRow(day(D, { total: null, cash: null, card: null, transfer: null, receivableIn: null }))).toBe(false)
+  })
+
+  it.each(cross(MONEY_KEYS, NOT_NULL))('AC-002.2 unconfirmed: true인데 금액 칸 %s가 null이 아니고 %j면 통과하지 않는다', (key, value) => {
+    expect(checkRow({ ...unconfirmedDay(D), [key]: value })).toBe(false)
+  })
+
+  it('AC-002.2 unconfirmed: true인데 나눔 네 칸만 null이고 남는 다섯 칸이 숫자면 통과하지 않는다(나눔만 빈 날의 모양)', () => {
+    expect(checkRow({ ...splitDay(D), unconfirmed: true, splitUnconfirmed: false })).toBe(false)
+  })
+
+  it('AC-002.2 unconfirmed: true인데 남는 다섯 칸만 null이고 나눔 네 칸이 숫자면 통과하지 않는다', () => {
+    expect(checkRow(day(D, { total: null, cash: null, card: null, transfer: null, receivableIn: null, unconfirmed: true }))).toBe(false)
+  })
+
+  describe.each(SHAPES)('AC-002.3 어느 모양이든 건수 칸·칸 이름은 똑같이 본다: %s', (_label, row) => {
+    it.each(cross(COUNT_KEYS, ['3', 1.5, -1]))('AC-002.3 건수 칸 %s가 %j면 통과하지 않는다', (key, value) => {
+      expect(checkRow({ ...row, [key]: value })).toBe(false)
+    })
+
+    it.each(['chart', 'name'])('AC-002.3 정해 둔 칸 밖의 칸(%s)이 있으면 통과하지 않는다', (key) => {
+      expect(checkRow({ ...row, [key]: key === 'chart' ? FAKE_CHART : FAKE_NAME })).toBe(false)
+    })
   })
 })
 

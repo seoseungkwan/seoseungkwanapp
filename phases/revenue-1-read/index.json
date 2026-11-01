@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "bridge-contract",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/types/revenue.ts: 칸 16개, unconfirmed 뒤에 splitUnconfirmed, REVENUE_SPLIT_KEYS(insurer·copay·noncovered·otherTotal)·REVENUE_KEPT_KEYS(total·cash·card·transfer·receivableIn) 더함. isRevenueDays는 세 모양만 받음: 둘 다 거짓이면 아홉 칸 숫자, unconfirmed면 아홉 칸 null, splitUnconfirmed면 나눔 네 칸 null·남는 다섯 칸 숫자. 둘 다 참·옛 모양은 E-BRIDGE-BAD-REPLY"
     },
     {
       "step": 2,

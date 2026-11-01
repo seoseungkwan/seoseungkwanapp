@@ -20,8 +20,10 @@ export type RevenueDayRow = {
   card: number | null
   transfer: number | null
   receivableIn: number | null
-  /** 금액을 세지 않은 날: ① 환불·변경수납·예치금·수납 연결 중복(세 검사) ② insurer + copay ≠ 요양비용총액(금액 맞춤 검사) ③ 금액 아홉 칸 가운데 음수. 까닭은 답에 없다 */
+  /** 그날 금액을 셀 수 없음, 금액 아홉 칸 모두 null: ① 환불·변경수납·예치금·수납 연결 중복(세 검사) ② total·cash·card·transfer·receivableIn 가운데 음수. 까닭은 답에 없다 */
   unconfirmed: boolean
+  /** 나눔만 셀 수 없음, insurer·noncovered·copay·otherTotal만 null이고 남는 다섯 칸은 숫자: ① insurer + copay ≠ 요양비용총액(금액 맞춤 검사) ② 그 네 칸 가운데 음수. unconfirmed와 함께 참이 되지 않는다. 까닭은 답에 없다 */
+  splitUnconfirmed: boolean
 }
 
 /** 날 줄의 칸(정확히 이것뿐) */
@@ -41,9 +43,10 @@ export const REVENUE_DAY_KEYS = [
   'transfer',
   'receivableIn',
   'unconfirmed',
+  'splitUnconfirmed',
 ] as const satisfies readonly (keyof RevenueDayRow)[]
 
-/** 금액 아홉 칸. unconfirmed면 모두 null, 아니면 모두 숫자 */
+/** 금액 아홉 칸. unconfirmed면 모두 null, splitUnconfirmed면 REVENUE_SPLIT_KEYS 넷만 null, 둘 다 거짓이면 모두 숫자 */
 export const REVENUE_MONEY_KEYS = [
   'total',
   'insurer',
@@ -55,6 +58,12 @@ export const REVENUE_MONEY_KEYS = [
   'transfer',
   'receivableIn',
 ] as const satisfies readonly (keyof RevenueDayRow)[]
+
+/** 나눔 네 칸. splitUnconfirmed면 이 넷만 null */
+export const REVENUE_SPLIT_KEYS = ['insurer', 'noncovered', 'copay', 'otherTotal'] as const satisfies readonly (keyof RevenueDayRow)[]
+
+/** 남는 다섯 칸. splitUnconfirmed여도 숫자 */
+export const REVENUE_KEPT_KEYS = ['total', 'cash', 'card', 'transfer', 'receivableIn'] as const satisfies readonly (keyof RevenueDayRow)[]
 
 /** 기간 전체의 처방 코드 한 줄. amount는 처방일 기준 금액(수납액 아님), 값 빠짐이면 null */
 export type RevenueCodeRow = { code: string; name: string | null; count: number; amount: number | null }

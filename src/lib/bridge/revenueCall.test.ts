@@ -31,7 +31,7 @@ class FakePort implements PortLike {
 const HELLO_DATA = { helperVersion: LATEST_HELPER, protocol: PROTOCOL, extensionVersion: MIN_EXTENSION, extensionProtocol: PROTOCOL }
 const FAKE_CHART = '900001'
 const FAKE_NAME = '가상환자01'
-const PERIOD = { from: '2026-10-01', to: '2026-10-02' }
+const PERIOD = { from: '2026-10-01', to: '2026-10-03' }
 
 const money = {
   total: 1_234_560,
@@ -56,10 +56,14 @@ const noMoney = {
   receivableIn: null,
 }
 
+/** 나눔 네 칸만 빈 날의 금액(남는 다섯 칸은 숫자) */
+const noSplit = { ...money, insurer: null, noncovered: null, copay: null, otherTotal: null }
+
 const ANSWER: RevenueDaysResult = {
   days: [
-    { date: '2026-10-01', visits: 42, newPatients: 5, returnVisits: 37, patientsToDate: 40, ...money, unconfirmed: false },
-    { date: '2026-10-02', visits: 38, newPatients: 2, returnVisits: 36, patientsToDate: 61, ...noMoney, unconfirmed: true },
+    { date: '2026-10-01', visits: 42, newPatients: 5, returnVisits: 37, patientsToDate: 40, ...money, unconfirmed: false, splitUnconfirmed: false },
+    { date: '2026-10-02', visits: 38, newPatients: 2, returnVisits: 36, patientsToDate: 61, ...noMoney, unconfirmed: true, splitUnconfirmed: false },
+    { date: '2026-10-03', visits: 30, newPatients: 1, returnVisits: 29, patientsToDate: 70, ...noSplit, unconfirmed: false, splitUnconfirmed: true },
   ],
   codes: [
     { code: 'MM001', name: '도수치료(가짜)', count: 12, amount: 960_000 },
@@ -141,7 +145,7 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
     const t = await ready()
     const p = t.track(t.screen.call('revenue.days', PERIOD))
     expect(t.port.sent).toHaveLength(2)
-    expect(t.port.sent[1]).toEqual({ v: 1, id: 'req-2', cmd: 'revenue.days', args: { from: '2026-10-01', to: '2026-10-02' } })
+    expect(t.port.sent[1]).toEqual({ v: 1, id: 'req-2', cmd: 'revenue.days', args: { from: '2026-10-01', to: '2026-10-03' } })
     t.port.reply({ v: 1, id: 'req-2', type: 'result', data: ANSWER })
     await expect(p).resolves.toEqual(ANSWER)
     // 답을 받은 뒤 더 보내지 않는다
@@ -153,7 +157,7 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
     const p = t.track(t.screen.call('revenue.days', PERIOD))
     const leaked = {
       ...ANSWER,
-      days: [{ ...ANSWER.days[0], chart: FAKE_CHART, name: FAKE_NAME }, ANSWER.days[1]],
+      days: [{ ...ANSWER.days[0], chart: FAKE_CHART, name: FAKE_NAME }, ...ANSWER.days.slice(1)],
     }
     t.port.reply({ v: 1, id: 'req-2', type: 'result', data: leaked })
     await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
@@ -165,7 +169,7 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
   it('AC-002.4 금액이 글자인 답도 E-BRIDGE-BAD-REPLY다', async () => {
     const t = await ready()
     const p = t.track(t.screen.call('revenue.days', PERIOD))
-    const bad = { ...ANSWER, days: [{ ...ANSWER.days[0], total: '1234560' }, ANSWER.days[1]] }
+    const bad = { ...ANSWER, days: [{ ...ANSWER.days[0], total: '1234560' }, ...ANSWER.days.slice(1)] }
     t.port.reply({ v: 1, id: 'req-2', type: 'result', data: bad })
     await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
   })
@@ -174,6 +178,34 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
     const t = await ready()
     const p = t.track(t.screen.call('revenue.days', PERIOD))
     t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days: ANSWER.days.map(oldShape) } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-002.4 splitUnconfirmed가 빠진 옛 모양 답도 E-BRIDGE-BAD-REPLY다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    const days = ANSWER.days.slice(0, 2).map((row) => {
+      const copy: Record<string, unknown> = { ...row }
+      delete copy.splitUnconfirmed
+      return copy
+    })
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-002.4 두 표시가 둘 다 참인 답도 E-BRIDGE-BAD-REPLY다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    const both = { ...ANSWER.days[2], unconfirmed: true }
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days: [both] } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-002.4 표시 없이 나눔 칸이 빈 답도 E-BRIDGE-BAD-REPLY다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    const unmarked = { ...ANSWER.days[2], splitUnconfirmed: false }
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, days: [unmarked] } })
     await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
   })
 
