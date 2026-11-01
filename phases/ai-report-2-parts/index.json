@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-2-parts",
+  "steps": [
+    {
+      "step": 0,
+      "name": "fake-months",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "db-rls",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "basis-line",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "prompt-text",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "cost-calc",
+      "status": "pending"
+    }
+  ]
+}

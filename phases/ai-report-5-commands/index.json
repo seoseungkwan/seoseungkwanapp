@@ -1,0 +1,16 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-5-commands",
+  "steps": [
+    {
+      "step": 0,
+      "name": "ai-try",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "ai-key",
+      "status": "pending"
+    }
+  ]
+}

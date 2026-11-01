@@ -27,6 +27,26 @@
     {
       "dir": "precheck-7-backup",
       "status": "pending"
+    },
+    {
+      "dir": "ai-report-1-base",
+      "status": "pending"
+    },
+    {
+      "dir": "ai-report-2-parts",
+      "status": "pending"
+    },
+    {
+      "dir": "ai-report-3-server-parts",
+      "status": "pending"
+    },
+    {
+      "dir": "ai-report-4-flow",
+      "status": "pending"
+    },
+    {
+      "dir": "ai-report-5-commands",
+      "status": "pending"
     }
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-3-server-parts",
+  "steps": [
+    {
+      "step": 0,
+      "name": "output-check",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "claude-call",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "report-store",
+      "status": "pending"
+    }
+  ]
+}

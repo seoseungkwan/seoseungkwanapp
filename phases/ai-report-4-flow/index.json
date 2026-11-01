@@ -1,0 +1,21 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-4-flow",
+  "steps": [
+    {
+      "step": 0,
+      "name": "generate-flow",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "report-route",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "boundary-test",
+      "status": "pending"
+    }
+  ]
+}

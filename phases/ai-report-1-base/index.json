@@ -1,0 +1,21 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-1-base",
+  "steps": [
+    {
+      "step": 0,
+      "name": "docs-config",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "error-codes",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "input-types",
+      "status": "pending"
+    }
+  ]
+}
