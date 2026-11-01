@@ -252,7 +252,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 - 그림 부품(TASK-9): `MonthBars.tsx`(13달 막대: 고른 달 `accent`, 작년 같은 달 `bg-faint`, 다른 달 `chart-2`, 쌓은 막대는 급여 `chart-3`·비급여 `accent`), `TreatmentBars.tsx`(순위 막대: 금액·몫·건수, '그 밖' `line-strong`), 덩어리 네 개와 상태 화면. `components/charts/*`는 고치지 않고 맞는 것(`KpiStat`·`ChartLegend`·`niceScale`·`format`)만 불러 쓴다
 - `src/app/(app)/revenue/page.tsx`(TASK-10): 준비 중 화면 → `<RevenueScreen />`. 같은 TASK에서 준비 중 목록·탭 자료·문서 줄을 고친다(ARCHITECTURE.md '기능 명세가 진짜 화면으로 바꿀 때')
 - 처음 고르는 달: 어제가 속한 달(1일에는 지난달). 달 고르기는 최근 13달 안에서만 움직인다(그 밖은 저장된 숫자가 없다)
-- 가져오기: 연결된 PC에서 열 때 한 번 저절로(빠진 달만, 최근 달부터), [다시 가져오기]는 고른 달(가져오지 못한 달이 있으면 그 달들). 가져오는 동안 진행 줄(정적인 막대, 움직임 없음). 가져오지 못한 달이 있으면 "n달을 가져오지 못했어요"와 [다시 가져오기]
+- 가져오기: 연결된 PC에서 열 때 한 번 저절로(빠진 달만, 최근 달부터). 제목 줄의 [다시 가져오기]는 고른 달만 다시 읽는다. 가져오지 못한 달이 있으면 알림 줄 "n달을 가져오지 못했어요"와 그 줄의 [다시 가져오기](가져오지 못한 달들만). 가져오는 동안 진행 줄(정적인 막대, 움직임 없음)
 - 상태 `extension-old`: `helper-old`와 같은 모양, 문구 "매출을 읽으려면 확장 프로그램을 새 버전으로 바꿔야 해요" + [설정에서 확인](`/claim/setup`). 승인 시안에 같은 모양으로 더했다(2026-11-01 명세 검토)
 - 부품 이름: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`·`MonthBars.tsx`·`TreatmentBars.tsx`·`RevenueStates.tsx`
 - 매출 탭은 수납 나눔(현금·카드·계좌·미수입금)·신환·재진을 그리지 않는다(업무일지 몫)

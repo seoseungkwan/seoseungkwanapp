@@ -24,7 +24,7 @@
 - Files: src/lib/bridge/commands.json, src/types/bridge.ts, src/types/revenue.ts, src/lib/bridge/protocol.ts, src/lib/bridge/revenueResult.ts, src/lib/bridge/revenueResult.test.ts, src/lib/bridge/revenueCall.test.ts, helper/tests/Precheck.Core.Tests/Protocol/CommandTable.test.cs
 - Tests: src/lib/bridge/revenueResult.test.ts, src/lib/bridge/revenueCall.test.ts, src/lib/bridge/protocol.test.ts, helper/tests/protocol.dotnet.test.ts
 - TDD: required
-- 메모: `protocol.test.ts`·`client.test.ts`는 고치지 않는다(명령 표에서 목록을 읽으므로 그대로 통과해야 한다)
+- 메모: 이 TASK에서는 `protocol.test.ts`·`client.test.ts`를 고치지 않는다(명령 표에서 목록을 읽으므로 그대로 통과해야 한다). `client.test.ts`의 도우미 판은 TASK-12가 고친다
 
 ## TASK-3: 도우미 매출 읽기
 - Step: Phase 1 · Step 2 · `helper-revenue-read`
@@ -107,7 +107,7 @@
 - Step: Phase 1 · Step 3 · `version-bump`
 - AC: AC-012.1~AC-012.2
 - REQ: REQ-012
-- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, extension/manifest.json
-- Tests: src/lib/bridge/handshake.test.ts, extension/src/manifest.test.ts, helper/tests/protocol.dotnet.test.ts, helper/tests/build.test.ts
+- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, extension/manifest.json
+- Tests: src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, extension/src/manifest.test.ts, helper/tests/protocol.dotnet.test.ts, helper/tests/build.test.ts
 - TDD: required
 - 메모: 도우미 릴리스 태그(`helper-v*`)·웹스토어 올리기는 하지 않는다(사용자가 그때 말할 때만). `MIN_HELPER`·`MIN_EXTENSION`은 그대로

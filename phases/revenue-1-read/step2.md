@@ -58,9 +58,9 @@
 
 - **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
 - **금액**: 원 단위 정수. 반올림하지 않고 원 미만은 버린다. 합계는 항목 금액의 합 (CLAUDE.md, ADR-008). 비율은 소수 첫째 자리 버림
-- **비트는 읽기만**: `ReadOnlyGuard`를 지난 정해 둔 읽기 문장 상수만 매개변수로 돌리고, 되돌리는 트랜잭션 안에서 읽는다(`SqlBitDb`). SQL 글자를 이어 붙이지 않는다. 처리기 맨 처음에 등록 확인 관문(`HospitalGate.Open`)을 지난다 (precheck AC-005.3·005.6)
+- **비트는 읽기만**: `ReadOnlyGuard`를 지난 정해 둔 읽기 문장 상수만 매개변수로 돌리고, 되돌리는 트랜잭션 안에서 읽는다(`SqlBitDb`). SQL 글자를 이어 붙이지 않는다. 처리기 맨 처음에 등록 확인 관문(`HospitalGate.Open`)을 지난다 (precheck 005.3·005.6)
 - **C# 나누기**: 플랫폼과 상관없는 것은 `Precheck.Core`(netstandard2.0)에 두고 이 서버에서 `dotnet test -f net10.0`으로 시험한다. 윈도우 전용 코드는 이 step에서 만들지 않는다
-- **도우미 기록**: 표준 출력에는 메시지 틀만, 진단 기록에는 시각·명령 이름·오류 번호만 (precheck AC-001.6)
+- **도우미 기록**: 표준 출력에는 메시지 틀만, 진단 기록에는 시각·명령 이름·오류 번호만 (precheck 001.6)
 - **원본은 저장소 밖**: 원본 파일을 저장소에 복사하지 않는다. 커밋하는 것은 옮긴 코드와 SQL 사본(`original-sql/*.sql`)뿐이다
 - **겹치는 파일은 더하기만**: `Sql.cs`는 `IsAllowed`·`ParametersOf`가 `RevenueSql.Parameters`도 보게 하는 몇 줄만. `Sql.All`·`Allowed`·기존 상수를 바꾸지 않는다(기존 시험 `ReadOnlyGuard.test.cs`가 `Sql.All` = 원본 4개를 본다). `Program.cs`는 처리기 등록 한 줄과 `HelperServices.Create()`를 변수로 받는 것만
 

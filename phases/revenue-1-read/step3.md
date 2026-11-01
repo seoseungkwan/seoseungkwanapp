@@ -38,9 +38,11 @@
   - `helper/Directory.Build.props`
   - `src/lib/bridge/versions.ts`
   - `src/lib/bridge/handshake.test.ts`
+  - `src/lib/bridge/client.test.ts`
   - `extension/manifest.json`
 - Tests:
   - `src/lib/bridge/handshake.test.ts`
+  - `src/lib/bridge/client.test.ts`
   - `extension/src/manifest.test.ts`
   - `helper/tests/protocol.dotnet.test.ts`
   - `helper/tests/build.test.ts`
@@ -62,6 +64,9 @@
 - `helper/Directory.Build.props` `<Version>` → 새 판
 - `src/lib/bridge/versions.ts` `LATEST_HELPER` → 같은 새 판(`MIN_*`은 그대로)
 - `extension/manifest.json` `"version"` → 새 판(확장과 도우미가 같은 판일 필요는 없지만 이번에는 같게 둔다)
+
+- `src/lib/bridge/client.test.ts`: 진짜 `WEB_VERSIONS`를 쓰는 hello 시험(`HELLO_DATA`, 'hello가 맞으면 ready이고 버전을 돌려준다')은 도우미 `'0.1.0'`이 `helperUpdateAvailable: false`라고 기대한다(`client.ts`가 `LATEST_HELPER`와 견준다). `HELLO_DATA`의 `helperVersion`과 기대값의 `helperVersion`을 새 판으로 올리고, 고친 시험 이름에 AC-012.1을 붙인다. 이 줄이 RED의 한 부분이다(판을 올리기 전에는 기대값과 실제가 어긋남)
+- 그 밖의 시험이 판 때문에 깨지면(진짜 `LATEST_HELPER`를 쓰면서 `'0.1.0'`을 기대하는 것) 고치지 말고 `blocked`(사유: 어느 파일·어느 시험)로 멈춘다(수정 범위 밖)
 
 ### 3. 확인
 - `extension/src/manifest.test.ts`(모양)·`helper/tests/build.test.ts`(zip 이름)·`helper/tests/protocol.dotnet.test.ts`(hello의 `helperVersion` = `Version`)가 그대로 통과
