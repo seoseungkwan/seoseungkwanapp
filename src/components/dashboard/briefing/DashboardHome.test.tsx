@@ -178,10 +178,10 @@ describe('DashboardHome: 연결 전 큰 문장 (AC-306.2·AC-414.1)', () => {
     expect(left.contains(mainLink())).toBe(true)
   })
 
-  it('AC-306.2: [비트 PC 연결 시작]은 /claim/setup 링크, ds.button.primaryLarge + 오른쪽 꾸밈 arrow 16, 폰 전체 폭', () => {
+  it('AC-306.2·AC-603.1: [비트 PC 연결 시작]은 /claim/setup?next=dashboard 링크, ds.button.primaryLarge + 오른쪽 꾸밈 arrow 16, 폰 전체 폭', () => {
     renderBefore()
     const link = mainLink()
-    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.getAttribute('href')).toBe('/claim/setup?next=dashboard')
     expect(textOf(link)).toBe('비트 PC 연결 시작')
     hasAll(link, `${ds.button.primaryLarge} group max-md:w-full`)
     expect(link.id).toBe('dashboard-connect-start') // 휴대폰 아래 단추가 이 id로 지켜본다

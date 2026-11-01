@@ -26,17 +26,37 @@ function importsOf(file: string): Array<{ from: string; typeOnly: boolean }> {
     .statements.filter(ts.isImportDeclaration)
     .map((node) => ({ from: (node.moduleSpecifier as ts.StringLiteral).text, typeOnly: node.importClause?.isTypeOnly ?? false }))
 }
-// 내보낸 함수의 첫 인자 타입 글자의 칸 이름
-function propNames(file: string, name: string): string[] | null {
+// 내보낸 함수의 첫 인자 타입의 칸들(글자로 쓴 타입 또는 같은 파일의 type 별칭). 칸 타입을 글자로 못 읽으면 type이 null이라 아래 검사에 걸린다
+type Prop = { name: string; optional: boolean; type: string | null }
+function propsOf(file: string, name: string): Prop[] | null {
   const sf = sourceFile(file)
   for (const node of sf.statements) {
     if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
-      const type = node.parameters[0]?.type
-      if (type && ts.isTypeLiteralNode(type)) return type.members.map((m) => m.name?.getText(sf) ?? '')
+      const param = node.parameters[0]?.type
+      const alias = param && ts.isTypeReferenceNode(param) ? param.typeName.getText(sf) : null
+      const type = alias === null ? param : sf.statements.find((s): s is ts.TypeAliasDeclaration => ts.isTypeAliasDeclaration(s) && s.name.text === alias)?.type
+      if (type && ts.isTypeLiteralNode(type)) {
+        return type.members.map((m) => ({
+          name: m.name?.getText(sf) ?? '',
+          optional: m.questionToken !== undefined,
+          type: ts.isPropertySignature(m) ? (m.type?.getText(sf) ?? null) : null,
+        }))
+      }
     }
   }
   return null
 }
+// 필수 칸은 (이름, 타입) 그대로이고, 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐이다. 자료(숫자·배열·SummarySource)가 선택 칸으로 들어오는 길이 없다
+const SCREEN_VALUE = /^(?:string|boolean|null)(?: \| (?:string|boolean|null))*$/
+function expectShape(props: Prop[] | null, required: Array<[string, string]>) {
+  expect(props, '칸을 읽지 못했다').not.toBeNull()
+  expect(props!.filter((p) => !p.optional).map((p) => [p.name, p.type])).toEqual(required)
+  for (const p of props!.filter((prop) => prop.optional)) expect(p.type, p.name).toMatch(SCREEN_VALUE)
+}
+// 타입으로도 같은 것을 본다(tsc)
+type RequiredKeys<T> = { [K in keyof T]-?: Record<never, never> extends Pick<T, K> ? never : K }[keyof T]
+type OptionalValues<T> = Exclude<{ [K in Exclude<keyof T, RequiredKeys<T>>]: T[K] }[Exclude<keyof T, RequiredKeys<T>>], undefined>
+type OnlyScreenValues<T> = [OptionalValues<T>] extends [string | boolean | null] ? true : false
 
 const fakeDay = (day: string): DayPayload => ({
   schemaVersion: 2,
@@ -83,11 +103,40 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     expectTypeOf<Extract<SummarySource, { kind: 'data' }>['days']>().toEqualTypeOf<readonly DayPayload[]>()
   })
 
-  it('AC-312.2: DashboardAnalysis는 오늘 날짜와 SummarySource만, ReportBlock은 오늘 날짜와 days만 받는다', () => {
-    expect(propNames('DashboardAnalysis.tsx', 'DashboardAnalysis')).toEqual(['today', 'source'])
-    expect(propNames('ReportBlock.tsx', 'ReportBlock')).toEqual(['today', 'days'])
-    expectTypeOf<Parameters<typeof DashboardAnalysis>[0]>().toEqualTypeOf<{ today: string; source: SummarySource }>()
-    expectTypeOf<Parameters<typeof ReportBlock>[0]>().toEqualTypeOf<{ today: string; days: readonly DayPayload[] }>()
+  it('AC-312.2: DashboardAnalysis의 필수 칸은 정확히 today·source이고, 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐이다', () => {
+    expectShape(propsOf('DashboardAnalysis.tsx', 'DashboardAnalysis'), [
+      ['today', 'string'],
+      ['source', 'SummarySource'],
+    ])
+    type Props = Parameters<typeof DashboardAnalysis>[0]
+    expectTypeOf<RequiredKeys<Props>>().toEqualTypeOf<'today' | 'source'>()
+    expectTypeOf<Pick<Props, 'today' | 'source'>>().toEqualTypeOf<{ today: string; source: SummarySource }>()
+    expectTypeOf<OnlyScreenValues<Props>>().toEqualTypeOf<true>()
+  })
+
+  it('AC-312.2: ReportBlock의 필수 칸은 정확히 today·days이고, 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐이다', () => {
+    expectShape(propsOf('ReportBlock.tsx', 'ReportBlock'), [
+      ['today', 'string'],
+      ['days', 'readonly DayPayload[]'],
+    ])
+    type Props = Parameters<typeof ReportBlock>[0]
+    expectTypeOf<RequiredKeys<Props>>().toEqualTypeOf<'today' | 'days'>()
+    expectTypeOf<Pick<Props, 'today' | 'days'>>().toEqualTypeOf<{ today: string; days: readonly DayPayload[] }>()
+    expectTypeOf<OnlyScreenValues<Props>>().toEqualTypeOf<true>()
+  })
+
+  it('AC-312.2: 모양 검사 자체가 잡아야 할 것을 잡는다', () => {
+    for (const ok of ['string', 'boolean', 'string | null']) expect(ok, ok).toMatch(SCREEN_VALUE)
+    for (const bad of ['number', 'string | number', 'readonly DayPayload[]', 'SummarySource', 'ReactNode', 'any', 'unknown']) expect(bad, bad).not.toMatch(SCREEN_VALUE)
+    const req = (name: string, type: string): Prop => ({ name, optional: false, type })
+    const opt = (name: string, type: string | null): Prop => ({ name, optional: true, type })
+    const today: Array<[string, string]> = [['today', 'string']]
+    expectShape([req('today', 'string'), opt('note', 'string | null')], today)
+    expect(() => expectShape(null, today), '칸을 못 읽음').toThrow()
+    expect(() => expectShape([req('today', 'string'), req('extra', 'string')], today), '필수 칸이 늘어남').toThrow()
+    expect(() => expectShape([opt('today', 'string')], today), '필수 칸이 선택이 됨').toThrow()
+    expect(() => expectShape([req('today', 'string'), opt('days', 'readonly DayPayload[]')], today), '선택 칸으로 자료가 들어옴').toThrow()
+    expect(() => expectShape([req('today', 'string'), opt('onDone', null)], today), '타입을 못 읽는 칸').toThrow()
   })
 })
 

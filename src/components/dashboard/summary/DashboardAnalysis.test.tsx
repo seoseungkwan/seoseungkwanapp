@@ -226,6 +226,84 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
   })
 })
 
+// 비트 읽기 상태 글 (bit-dashboard design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py today_sec·flow_empty). 주지 않으면 위 연결 전 글 그대로다
+describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
+  const READ_NOTE = '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.'
+  const READ_GAINS_TITLE = '읽기가 끝나면 생기는 것 4가지'
+  const READ_GAINS_NOTE = '읽기가 끝나면 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
+  const READ_REVISIT = '처음 온 환자가 7·14일 안에 다시 온 비율이에요.'
+
+  it('AC-601.2: emptyChip·emptyText·emptyNote가 칩·숫자 칸 넷·안내 줄을 바꾸고 모양은 그대로다', () => {
+    render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽는 중" emptyText="읽는 중" emptyNote={READ_NOTE} />)
+    const section = region('오늘 하루 분석')
+    hasAll(within(section).getByText('읽는 중', { selector: 'span.' + ds.chip.neutral.split(' ')[0] }), ds.chip.neutral)
+    const labels = ['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다']
+    kpiCells().forEach((cell, i) => {
+      expect(cell.innerHTML).toBe(markupOf(<KpiStat label={labels[i]!} value={null} format="count" unit="명" emptyText="읽는 중" />))
+    })
+    hasAll(within(section).getByText(READ_NOTE), `mt-3 ${NOTE}`)
+    expect(within(section).queryByText('비트 PC 연결 전')).toBeNull()
+    expect(within(section).queryByText(TODAY_NOTE)).toBeNull()
+  })
+
+  it('AC-601.4·AC-601.7: emptyNote가 null이면 안내 줄이 없다', () => {
+    render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽지 못함" emptyText="읽지 못했어요" emptyNote={null} />)
+    const section = region('오늘 하루 분석')
+    expect(within(section).getByText('읽지 못함')).toBeTruthy()
+    expect(within(section).getAllByText('읽지 못했어요')).toHaveLength(4)
+    expect(section.querySelector('.max-w-130')).toBeNull()
+  })
+
+  it('AC-601.2: gainsTitle·gainsNote·gainsRevisitDesc가 목록 제목·안내 줄·재방문율 설명을 바꾸고, 나머지 줄은 그대로다', () => {
+    render(<DashboardAnalysis today={TODAY} source={NONE} gainsTitle={READ_GAINS_TITLE} gainsNote={READ_GAINS_NOTE} gainsRevisitDesc={READ_REVISIT} />)
+    const section = region('기간별 흐름')
+    expect(within(section).getByText(READ_GAINS_TITLE)).toBeTruthy()
+    expect(within(section).getByText(READ_GAINS_NOTE)).toBeTruthy()
+    expect(within(section).getByRole('list', { name: READ_GAINS_TITLE })).toBeTruthy()
+    expect(within(section).queryByText(GAINS_TITLE)).toBeNull()
+    expect(within(section).queryByText(GAINS_NOTE)).toBeNull()
+    const expected = GAINS.map(([name, desc]) => [name, name === '신환 재방문율' ? READ_REVISIT : desc])
+    const shown = within(section).getAllByRole('listitem').map((li) => {
+      const [, title, desc] = Array.from(li.children)
+      return [title!.textContent, desc!.textContent]
+    })
+    expect(shown).toEqual(expected)
+  })
+
+  it('AC-601.11: emptyCharts면 읽었는데 자료가 없는 것이다 — 목록 대신 빈 그래프 틀 넷("자료 없음"), 숫자 칸은 emptyText', () => {
+    render(<DashboardAnalysis today={TODAY} source={data([])} emptyChip="자료 없음" emptyText="자료 없음" emptyNote={null} emptyCharts />)
+    const flow = region('기간별 흐름')
+    expect(within(flow).queryByText(GAINS_TITLE)).toBeNull()
+    for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) expect(chart(name)).toBeTruthy()
+    expect(within(chart('환자 수 추이')).getByText('자료 없음')).toBeTruthy()
+    expect(within(chart('요일별 환자 수')).getByText('자료 없음')).toBeTruthy()
+    expect(within(chart('처방 상위')).getByText('자료 없음')).toBeTruthy()
+    expect(flow.querySelector('table')).toBeNull()
+    const section = region('오늘 하루 분석')
+    expect(within(section).getAllByText('자료 없음')).toHaveLength(5) // 칩 + 칸 넷
+    expect(within(section).queryByText(TODAY_NOTE)).toBeNull()
+  })
+
+  it('AC-601.1: 숫자가 있으면 이 글들을 쓰지 않는다', () => {
+    render(
+      <DashboardAnalysis
+        today={TODAY}
+        source={data(FULL_DAYS)}
+        emptyChip="읽는 중"
+        emptyText="읽는 중"
+        emptyNote={READ_NOTE}
+        gainsTitle={READ_GAINS_TITLE}
+        gainsNote={READ_GAINS_NOTE}
+        gainsRevisitDesc={READ_REVISIT}
+      />,
+    )
+    expect(screen.queryByText('읽는 중')).toBeNull()
+    expect(screen.queryByText(READ_NOTE)).toBeNull()
+    expect(screen.queryByText(READ_GAINS_TITLE)).toBeNull()
+    expect(chart('환자 수 추이')).toBeTruthy()
+  })
+})
+
 describe('기간별 흐름 — 머리 줄과 기간 단추', () => {
   it('AC-311.3: h2 · 기간 글자 · 기간 단추 묶음(group "기간") 최근 7일 · 30일 · 90일, 처음은 30일만 눌림', () => {
     draw(NONE)

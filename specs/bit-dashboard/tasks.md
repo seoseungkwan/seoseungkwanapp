@@ -24,8 +24,8 @@
 
 ## TASK-4: 대시보드 화면
 - REQ: REQ-601, REQ-603
-- Files: src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/live/ReadStatus.tsx, src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/briefing/DashboardHome.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/dashboard/briefing/StickyConnect.tsx, src/components/dashboard/briefing/StickyConnect.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx
-- Tests: src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/dashboard/briefing/StickyConnect.test.tsx, src/app/(app)/dashboard/page.test.tsx
+- Files: src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/live/ReadStatus.tsx, src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/briefing/DashboardHome.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/dashboard/briefing/StickyConnect.tsx, src/components/dashboard/briefing/StickyConnect.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/dashboard/summary/source.test.ts, src/app/globals.css, src/app/globals.test.ts, src/app/theme.test.ts, src/components/ui/classes.test.ts
+- Tests: src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/dashboard/briefing/StickyConnect.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/dashboard/summary/source.test.ts, src/app/globals.test.ts
 - TDD: required
 
 ## TASK-5: 연결 끝나면 대시보드로
@@ -36,8 +36,8 @@
 
 ## TASK-6: 날짜 고르기
 - REQ: REQ-605
-- Files: src/components/dashboard/live/DateControl.tsx, src/components/dashboard/live/DateControl.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/live/ReadStatus.tsx, src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/ReportBlock.tsx, src/components/dashboard/summary/ReportBlock.test.tsx, src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/briefing/DashboardHome.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx
-- Tests: src/components/dashboard/live/DateControl.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/ReportBlock.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- Files: src/components/dashboard/live/DateControl.tsx, src/components/dashboard/live/DateControl.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/live/ReadStatus.tsx, src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/ReportBlock.tsx, src/components/dashboard/summary/ReportBlock.test.tsx, src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/briefing/DashboardHome.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/dashboard/summary/source.test.ts
+- Tests: src/components/dashboard/live/DateControl.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/ReportBlock.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/source.test.ts
 - TDD: required
 
 ## TASK-7: 접수 기준 확인 (통계 쪽 수정이 들어와야 끝난다)

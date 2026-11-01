@@ -157,6 +157,19 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(hrefOf(html, '비트 PC 연결부터')).toBe('/claim/setup')
   })
 
+  it('AC-603.1: [비트 PC 연결 시작](위 단추·휴대폰 아래 단추) 두 곳의 주소는 /claim/setup?next=dashboard다', () => {
+    const html = renderAt(AT_TODAY)
+    const starts = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].filter((m) => plain(m[2]!) === '비트 PC 연결 시작')
+    expect(starts).toHaveLength(2)
+    for (const m of starts) expect(/\bhref="([^"]*)"/.exec(m[1]!)?.[1]).toBe('/claim/setup?next=dashboard')
+  })
+
+  it('AC-601.1: 페이지는 오늘과 자료 읽는 자리의 값을 BitDashboard에 넘기고, 비트 읽기는 그 화면이 맡는다', () => {
+    expect(SOURCE).toMatch(/<BitDashboard\b/)
+    expect(SOURCE).toMatch(/initial=\{dashboardSummarySource\(\)\}/)
+    expect(SOURCE).not.toMatch(/readBitDays|chrome/)
+  })
+
   it('AC-307.5·AC-414.7: h1은 큰 문장 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" 하나다', () => {
     expect(h1Texts(renderAt(AT_TODAY))).toEqual([H1])
   })

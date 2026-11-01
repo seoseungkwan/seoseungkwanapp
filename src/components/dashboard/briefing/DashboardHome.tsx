@@ -10,7 +10,7 @@ import { ReadyNowRow, ReadyNowSide } from './ReadyNow'
 import { StickyConnect } from './StickyConnect'
 
 // 대시보드 짜임 — 1안 오늘 브리핑 (tab-frame REQ-306·REQ-316, ui-90 REQ-414, design.md '대시보드 (TASK-11)', 시안 docs/mockups/ui-90/app/gen.py dash_body).
-// 서버 컴포넌트. 자료를 읽지 않고 연결 상태도 판정하지 않는다: report 하나로 모양을 안다(report != null이면 연결 뒤).
+// 훅이 없는 부품이다(BitDashboard 안에서 그려진다). 자료를 읽지 않고 연결 상태도 판정하지 않는다: report 하나로 모양을 안다(report != null이면 연결 뒤).
 //   report null·undefined = 연결 전: 큰 문장 · 연결 순서 · "연결하면 바로 쓸 수 있어요" 한 줄 · 휴대폰 아래 단추
 //   report 있음 = 연결 뒤: 큰 문장 자리에 report를 그대로(h1은 report 안), 오른쪽 칸에 지금 바로 묶음
 // analysis(오늘 하루 분석 + 기간별 흐름)는 갈래 라 몫이라 무엇이 오는지 모르고 받은 그대로 둔다. 무엇을 넘길지는 페이지 조립(TASK-9)이 정한다.
@@ -59,7 +59,7 @@ function BigSentence() {
         아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 자리에 오늘의 보고 문장이 올라와요.
       </p>
       <div className="mt-6 max-md:mt-5">
-        <Link id={CONNECT_ID} href="/claim/setup" className={`${ds.button.primaryLarge} group no-underline ${PRESS} max-md:w-full`}>
+        <Link id={CONNECT_ID} href="/claim/setup?next=dashboard" className={`${ds.button.primaryLarge} group no-underline ${PRESS} max-md:w-full`}>
           비트 PC 연결 시작
           <Icon name="arrow" size={16} className={ARROW_MOVE} />
         </Link>

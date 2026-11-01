@@ -669,15 +669,27 @@ describe('AC-202.4: globals.css에 장식이 없고 body는 토큰 글꼴', () =
     expect(body).toMatch(/overflow-x:\s*clip\s*;/)
   })
 
-  it('AC-202.4: layer 밖 선택자는 :root·body·모션 줄이기 블록뿐이고, 모션 줄이기는 모든 animation·transition을 끈다', () => {
+  // 비트 읽는 표시 둘(bit-dashboard AC-601.17, UI_GUIDE '움직임 › 비트 읽는 표시'). 이름 하나까지 이 목록뿐이다. 값은 globals.test.ts가 본다
+  const BIT_READ_RULES = ['.bit-read-bar', '.bit-read-bar::after', '@keyframes bit-read-bar', '.bit-read-spin', '@keyframes bit-read-spin']
+
+  it('AC-202.4·AC-601.17: layer 밖 선택자는 :root·body·모션 줄이기 블록과 비트 읽는 표시 둘(과 그 @keyframes)뿐이고, 모션 줄이기는 모든 animation·transition을 끈다', () => {
     const outside = outsideLayers(globals())
     const selectors = rules(outside).map(([s]) => s.replace(/\s+/g, ' '))
-    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)'])
+    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)', ...BIT_READ_RULES])
     expect(selectors.filter((s) => !allowed.has(s))).toEqual([])
+    expect(selectors.filter((s) => BIT_READ_RULES.includes(s))).toEqual(BIT_READ_RULES)
     const motion = rules(outside).find(([s]) => /prefers-reduced-motion/.test(s))?.[1] ?? ''
     expect(motion).toMatch(/\*\s*,\s*\*::before\s*,\s*\*::after\s*\{/)
     expect(motion).toMatch(/animation:\s*none\s*!important/)
     expect(motion).toMatch(/transition:\s*none\s*!important/)
+    // 모션 줄이기 블록도 전체 끄기와 멈춘 막대 모양뿐이다
+    expect(rules(motion).map(([s]) => s.replace(/\s+/g, ' '))).toEqual(['*, *::before, *::after', '.bit-read-bar::after'])
+  })
+
+  it('AC-202.4·AC-601.17: 다른 이름의 @keyframes·.bit-read-* 규칙이 layer 안에 숨어 있지 않다', () => {
+    const css = globals()
+    const inLayers = (['theme', 'base', 'components', 'utilities'] as const).flatMap((name) => layerBodies(css, name)).join('\n')
+    expect(inLayers).not.toMatch(/@keyframes|\banimation\b|bit-read/)
   })
 })
 

@@ -31,7 +31,7 @@
 | 700 굵기(`font-bold` 등)와 300 이하 굵기 | 글꼴 파일이 400·500·600뿐이라 다른 굵기는 가짜 굵게가 된다 |
 | 지어낸 숫자(예시 표시 없는 숫자), 실제 화면의 예시 숫자 | 믿고 쓰는 데이터 서비스여야 한다. 예시는 랜딩·로그인 미리보기에서만 "예시" 표시와 함께 쓴다 |
 | 일러스트·사진·영상, 이모지, 반짝이(✦) 아이콘, "Powered by AI" | 그림 대신 제품 화면을 보여 준다 |
-| 장식 애니메이션, 숫자 순환, `animate-*`·`@keyframes`, '짧은 반응 허용' 밖의 전환 효과 | 움직이는 것은 앱·랜딩·인증 화면 조작 요소의 짧은 반응과 탭 줄의 불러오기 줄 하나뿐이다(아래 '움직임') |
+| 장식 애니메이션, 숫자 순환, `animate-*`, `globals.css`의 비트 읽는 표시 둘 밖의 `@keyframes`, '짧은 반응 허용' 밖의 전환 효과 | 움직이는 것은 앱·랜딩·인증 화면 조작 요소의 짧은 반응과 탭 줄의 불러오기 줄, 대시보드의 비트 읽는 표시 둘(`.bit-read-bar`·`.bit-read-spin`)뿐이다(아래 '움직임') |
 | 토큰 밖의 색과 값: Tailwind 기본 색(`bg-blue-500`), 대괄호 임의 값(`bg-[#…]`·`p-[10px]`), 화면 소스의 16진수·`rgb(`·`hsl(`·`color-mix(` | 값은 `:root` 한 곳이다. 16진수 색은 `:root`·`LogoMark.tsx`·`GoogleMark.tsx`에만 있다 |
 | 제목 반쪽만 색칠, 섹션마다 다른 포인트 색 | 강조색은 하나다 |
 | 영문 소제목(SIGN IN·AI ANALYSIS·PRIVACY FIRST 등) | 한국어 페이지다. 대신 넣는 것은 없다 |
@@ -448,8 +448,8 @@
 - 제목과 랜딩 약속 문구에 줄바꿈 태그를 넣지 않는다
 
 ## 움직임
-- 장식으로 움직이는 것이 없다. 히어로 숫자 순환·장식 애니메이션·`animate-*`·`@keyframes`가 없다
-- 모션 줄이기 전역 규칙(`globals.css`)은 그대로 둔다. 아래 짧은 반응도 이 규칙이 모두 끈다
+- 장식으로 움직이는 것이 없다. 히어로 숫자 순환·장식 애니메이션·`animate-*`가 없고, `@keyframes`는 아래 '비트 읽는 표시' 둘 밖에 없다
+- 모션 줄이기 전역 규칙(`globals.css`)은 그대로 둔다. 아래 짧은 반응과 비트 읽는 표시도 이 규칙이 모두 끈다
 
 ### 짧은 반응 허용 (대시보드 1안부터, 사용자 2026-10-31 · 랜딩·인증까지 넓힘, 총괄 ui-90)
 - 조작 요소만 누름과 올림에 짧게 반응한다
@@ -458,8 +458,8 @@
 - 바뀌어도 되는 것: 색(`color`·`background-color`·`border-color`·`text-decoration-color`), 투명도(`opacity`), 작은 옮김(`translate`·`rotate`)
   - 옮김 크기: 누름 아래로 1px(`active:translate-y-px`), 단추 안 화살표 오른쪽 2px(`group-hover:translate-x-0.5`), 접는 칸 꺾쇠 180°, 떠 있는 층이 나타날 때 위 4px(툴팁 아래 2px)에서 제자리
   - 바뀌면 안 되는 것: 크기·높이·폭·여백·글자 크기·그림자 크기. 내용이 펼쳐질 때 높이를 움직이지 않는다
-- 시간: 150ms(Tailwind `transition` 기본값 `--default-transition-duration`, 곡선 기본값). 휴대폰 아래 단추가 올라올 때만 200ms(`duration-200`). 120~200ms 밖은 쓰지 않는다(아래 불러오기 줄 하나만 예외)
-- 클래스: `transition`(기본 속성 목록)과 `duration-200`, 나타남은 `starting:` 변형. `transition-all`·`delay-*`·`ease-*` 임의 곡선·`animate-*`는 쓰지 않는다
+- 시간: 150ms(Tailwind `transition` 기본값 `--default-transition-duration`, 곡선 기본값). 휴대폰 아래 단추가 올라올 때만 200ms(`duration-200`). 120~200ms 밖은 쓰지 않는다(아래 불러오기 줄과 비트 읽는 표시만 예외)
+- 클래스: `transition`(기본 속성 목록)과 `duration-200`, 나타남은 `starting:` 변형. `transition-all`·`delay-*`·`ease-*` 임의 곡선·`animate-*`는 쓰지 않는다(비트 읽는 표시도 `animate-*`를 쓰지 않는다)
 - 떠 있는 층(계정 메뉴·툴팁·[전체 메뉴] 판)은 나타날 때만 움직이고 닫힐 때는 바로 사라진다
 - 그래프(`components/charts`)와 미리보기(`components/preview`)는 움직이지 않는다
 
@@ -468,3 +468,10 @@
 - 이 700ms·감속 곡선은 `src/components/shell/LoadBar.tsx` 한 파일에서만 규칙 시험의 예외다. 다른 곳의 같은 클래스는 그대로 잡는다
 - 모션 줄이기 기기에서는 전역 규칙으로 움직이지 않는다(그 자리에 서 있다가 사라진다)
 - 모션 줄이기(`prefers-reduced-motion: reduce`)를 켠 기기에서는 모두 바로 바뀐다(전역 규칙)
+
+### 비트 읽는 표시 (예외 둘, 사용자 2026-11-01, bit-dashboard AC-601.17)
+- 비트 읽기가 3분까지 걸려 멈춘 것처럼 보이므로 대시보드의 이 두 표시만 계속 움직인다. 다른 곳에 쓰지 않는다
+- `.bit-read-bar`: 저장 숫자 없이 처음 읽는 중의 막대. 4px `line` 띠 안에서 32% 폭 `accent` 조각이 왼쪽에서 오른쪽으로 1.6초마다 흐른다(왕복 없음, `ease-in-out`). 값이 없는 막대라 진행률을 보이지 않는다
+- `.bit-read-spin`: [다시 읽는 중] 단추 안, 글자 앞의 12px 도는 고리(`aria-hidden`). 800ms에 한 바퀴(`linear`). 도는 원이라 모서리는 이 표시에서만 50%다
+- 값은 시안 `docs/mockups/bit-dashboard/css_extra.css`를 따른다. `@keyframes`는 `globals.css`의 이 두 표시에만 쓰고, 클래스는 `ReadStatus.tsx` 한 파일에서만 쓴다. Tailwind `animate-*` 금지는 그대로다(규칙 시험: `globals.test.ts`, `theme.test.ts` AC-202.4, `ui/classes.test.ts`)
+- 모션 줄이기 기기에서는 전역 규칙으로 움직이지 않는다. 막대는 `accent` 40%의 전체 폭 띠로 서고(진행률로 읽히지 않게), 도는 고리는 그 자리에 멈춘다

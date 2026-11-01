@@ -220,6 +220,52 @@ body {
   }
 }
 
+/* 비트 읽는 표시 둘 (bit-dashboard AC-601.17, 사용자 결정 2026-11-01, docs/UI_GUIDE.md 움직임 › 비트 읽는 표시).
+   읽기가 3분까지 걸려 멈춘 것처럼 보이므로 이 둘만 @keyframes를 쓴다. 값은 시안 docs/mockups/bit-dashboard/css_extra.css 그대로다.
+   클래스 값이 아니라 이 CSS에 둔 까닭: Tailwind animate-* 금지는 그대로다 */
+.bit-read-bar {
+  position: relative;
+  height: 4px;
+  overflow: clip;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.bit-read-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 32%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: bit-read-bar 1.6s ease-in-out infinite;
+}
+
+@keyframes bit-read-bar {
+  0% {
+    left: -32%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.bit-read-spin {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: bit-read-spin 800ms linear infinite;
+}
+
+@keyframes bit-read-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* 모션 줄이기: 모든 움직임을 끈다. 멈춘 화면도 그대로 읽힌다(히어로 차트는 틱 0) */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -227,5 +273,12 @@ body {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+
+  /* 멈춘 막대가 32% 진행률로 읽히지 않게 전체 폭 옅은 띠로 세운다(시안 값) */
+  .bit-read-bar::after {
+    left: 0;
+    width: 100%;
+    opacity: .4;
   }
 }

@@ -97,6 +97,13 @@ def left_reread_fail(ph):
     return date_ctl() + report(ph) + read_line(ph, READ_AT, 'none') + box
 
 
+def left_reread_unreadable(ph):
+    # AC-601.16: 오류가 아니라 안내라 번호가 없고, 빨간 오류 상자를 쓰지 않는다
+    note = (f'<div class="rl-n" role="status"><p>이 PC에서 비트를 읽을 수 없어요. 연결을 확인해 주세요.</p>'
+            f'{btn("연결 확인", "setup-ok", "sec", ph)}</div>')
+    return date_ctl() + report(ph) + read_line(ph) + note
+
+
 def left_fail(ph):
     blk = ph
     return (date_line() + '<h1 class="d-h1">비트 자료를 읽지 못했어요</h1>'
@@ -347,6 +354,8 @@ def state_body(state, kind):
         return brief(ph, left_rereading(ph)) + today_sec('data') + flow_data() + idx_connected()
     if state == 'reread-fail':
         return brief(ph, left_reread_fail(ph)) + today_sec('data') + flow_data() + idx_connected()
+    if state == 'reread-unreadable':
+        return brief(ph, left_reread_unreadable(ph)) + today_sec('data') + flow_data() + idx_connected()
     if state == 'first-fail':
         return brief(ph, left_fail(ph)) + today_sec('fail') + flow_empty('fail') + idx_connected()
     if state == 'busy':
@@ -354,7 +363,7 @@ def state_body(state, kind):
     raise ValueError(state)
 
 
-STATES = ['before', 'setup-ok', 'reading', 'data', 'data2', 'rereading', 'reread-fail', 'first-fail', 'busy', 'update']
+STATES = ['before', 'setup-ok', 'reading', 'data', 'data2', 'rereading', 'reread-fail', 'reread-unreadable', 'first-fail', 'busy', 'update']
 TAB_OF = {'setup-ok': '설정', 'update': '설정'}
 
 screens = {}
@@ -374,6 +383,7 @@ STRIP = [
     ('data', '숫자 나옴', '맨 위 날짜 줄에서 다른 날을 골라 보세요. 그 날의 보고 문장과 숫자로 바뀌어요. 그림 속 숫자는 모두 가짜예요.'),
     ('rereading', '다시 읽는 중', '이전 숫자를 둔 채 읽고, 그동안 단추는 막혀요.'),
     ('reread-fail', '다시 읽기 실패', '이전 숫자와 읽은 시각은 그대로 두고 그 아래에 오류를 보여요.'),
+    ('reread-unreadable', '다시 읽기: 이 PC에서 못 읽음', '비트가 없는 PC에서 [다시 읽기]를 누른 경우예요. 숫자는 그대로 두고 연결을 확인하라고 안내해요. 오류가 아니라 번호는 없어요.'),
     ('first-fail', '처음 읽기 실패', '숫자를 지어내지 않고 오류 문구와 번호만 보여요.'),
     ('busy', '다른 창이 사용 중', '한 번에 한 창만 비트를 읽어요.'),
 ]

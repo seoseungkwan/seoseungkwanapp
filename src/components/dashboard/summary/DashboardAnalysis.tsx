@@ -87,7 +87,33 @@ const GAIN_CELL =
 const GAIN_NUMBER =
   'grid size-5 shrink-0 place-items-center rounded-control border border-line-strong text-caption font-semibold text-muted'
 
-export function DashboardAnalysis({ today, source }: { today: string; source: SummarySource }) {
+// 숫자가 없을 때의 글(bit-dashboard design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py today_sec·flow_empty). 주지 않으면 연결 전 글이고, 숫자가 있으면 쓰지 않는다
+export type DashboardAnalysisProps = {
+  today: string
+  source: SummarySource
+  emptyChip?: string
+  emptyText?: string
+  /** 숫자 줄 아래 안내 줄. null이면 없다 */
+  emptyNote?: string | null
+  gainsTitle?: string
+  gainsNote?: string
+  /** '신환 재방문율' 줄 설명 */
+  gainsRevisitDesc?: string
+  /** 읽었는데 자료가 없을 때: 목록 대신 빈 그래프 틀을 그린다 */
+  emptyCharts?: boolean
+}
+
+export function DashboardAnalysis({
+  today,
+  source,
+  emptyChip = '비트 PC 연결 전',
+  emptyText = NOT_CONNECTED,
+  emptyNote = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.',
+  gainsTitle = `연결하면 생기는 것 ${GAINS.length}가지`,
+  gainsNote = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.',
+  gainsRevisitDesc,
+  emptyCharts = false,
+}: DashboardAnalysisProps) {
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   const todayId = useId()
   const flowId = useId()
@@ -102,10 +128,10 @@ export function DashboardAnalysis({ today, source }: { today: string; source: Su
           <h2 id={todayId} className={SECTION_TITLE}>
             오늘 하루 분석
           </h2>
-          {days === null && <span className={ds.chip.neutral}>비트 PC 연결 전</span>}
+          {days === null && <span className={ds.chip.neutral}>{emptyChip}</span>}
         </div>
-        <TodayNumbers view={days === null ? null : todayView(today, days)} />
-        {days === null && <p className={`mt-3 ${NOTE}`}>연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.</p>}
+        <TodayNumbers view={days === null ? null : todayView(today, days)} emptyText={emptyText} />
+        {days === null && emptyNote !== null && <p className={`mt-3 ${NOTE}`}>{emptyNote}</p>}
       </section>
 
       <section aria-labelledby={flowId} className={SECTION}>
@@ -129,29 +155,35 @@ export function DashboardAnalysis({ today, source }: { today: string; source: Su
           </div>
         </div>
 
-        {days === null ? <Gains id={gainsId} /> : <FlowCharts days={days} range={range} period={period} />}
+        {days === null && !emptyCharts ? (
+          <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />
+        ) : (
+          <FlowCharts days={days ?? []} range={range} period={period} />
+        )}
       </section>
     </>
   )
 }
 
 // 연결 전 기간별 흐름: "연결하면 생기는 것 4가지"(subtitle 600) → 순서 목록(번호 1~4 · 이름 · 설명) → 안내 줄. 그래프 틀·차트 부품을 그리지 않는다
-function Gains({ id }: { id: string }) {
+function Gains({ id, title, note, revisitDesc }: { id: string; title: string; note: string; revisitDesc?: string }) {
   return (
     <>
       <p id={id} className="text-subtitle font-semibold text-ink">
-        연결하면 생기는 것 {GAINS.length}가지
+        {title}
       </p>
       <ol aria-labelledby={id} className={GAIN_LIST}>
         {GAINS.map((gain, i) => (
           <li key={gain.name} className={GAIN_CELL}>
             <span className={GAIN_NUMBER}>{i + 1}</span>
             <p className="text-body font-semibold text-ink">{gain.name}</p>
-            <p className="col-span-2 mt-1 text-small text-ink-2 max-md:col-span-1 max-md:col-start-2 max-md:mt-0.5">{gain.desc}</p>
+            <p className="col-span-2 mt-1 text-small text-ink-2 max-md:col-span-1 max-md:col-start-2 max-md:mt-0.5">
+              {gain.name === '신환 재방문율' && revisitDesc ? revisitDesc : gain.desc}
+            </p>
           </li>
         ))}
       </ol>
-      <p className={`mt-3 ${NOTE}`}>연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.</p>
+      <p className={`mt-3 ${NOTE}`}>{note}</p>
     </>
   )
 }
@@ -188,17 +220,17 @@ function TrendBody({ days, range, period }: { days: readonly DayPayload[]; range
   )
 }
 
-// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 연결 전
-function TodayNumbers({ view }: { view: TodayView | null }) {
+// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText)
+function TodayNumbers({ view, emptyText }: { view: TodayView | null; emptyText: string }) {
   const counts = view?.counts ?? null
   const values = counts === null ? [null, null, null] : [counts.patients, counts.newPatients, counts.returning]
-  const emptyText = view === null ? NOT_CONNECTED : undefined // 연결 뒤 빈 값은 KpiStat 기본 '자료 없음'
 
   return (
     <div className="grid grid-cols-4 border-b border-line max-md:grid-cols-2">
       {KPI_LABELS.map((label, i) => (
         <div key={label} className={KPI_CELLS[i]}>
-          <KpiStat label={label} value={values[i] ?? null} format="count" unit="명" emptyText={emptyText} />
+          {/* 연결 뒤 빈 값은 KpiStat 기본 '자료 없음' */}
+          <KpiStat label={label} value={values[i] ?? null} format="count" unit="명" emptyText={view === null ? emptyText : undefined} />
         </div>
       ))}
       <div className={KPI_CELLS[3]}>
@@ -210,7 +242,7 @@ function TodayNumbers({ view }: { view: TodayView | null }) {
             value={null}
             format="count"
             unit="명"
-            emptyText={view === null ? NOT_CONNECTED : view.compare.kind === 'wait' ? '오늘 진료가 끝나면 비교해요' : '지난주 자료가 없어요'}
+            emptyText={view === null ? emptyText : view.compare.kind === 'wait' ? '오늘 진료가 끝나면 비교해요' : '지난주 자료가 없어요'}
           />
         )}
       </div>
