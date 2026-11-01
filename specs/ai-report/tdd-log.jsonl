@@ -1,1 +1,7 @@
 {"ts": "2026-11-01T06:14:54Z", "task": "TASK-1", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'e2e/lib/env.test.ts'", "tests": ["e2e/lib/env.test.ts"], "trigger": "e2e/lib/env.test.ts", "source": "post-hook"}
+{"ts": "2026-11-01T06:21:21Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/errors.test.ts'", "tests": ["src/lib/errors.test.ts"], "trigger": "src/lib/errors.test.ts", "source": "post-hook"}
+{"ts": "2026-11-01T06:21:23Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/errors.test.ts'", "tests": ["src/lib/errors.test.ts"], "trigger": "src/lib/errors.test.ts", "source": "post-hook"}
+{"ts": "2026-11-01T06:21:47Z", "task": "TASK-2", "reqs": ["REQ-502"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/errors.test.ts'", "tests": ["src/lib/errors.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-11-01T06:21:59Z", "task": "TASK-2", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/errors.test.ts'", "tests": ["src/lib/errors.test.ts"], "trigger": "src/types/errors.ts", "source": "post-hook"}
+{"ts": "2026-11-01T06:22:01Z", "task": "TASK-2", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/errors.test.ts'", "tests": ["src/lib/errors.test.ts"], "trigger": "src/lib/errors.ts", "source": "post-hook"}
+{"ts": "2026-11-01T06:22:20Z", "task": "TASK-2", "reqs": ["REQ-502"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/errors.test.ts'", "tests": ["src/lib/errors.test.ts"], "expect": "green", "source": "tdd-run"}

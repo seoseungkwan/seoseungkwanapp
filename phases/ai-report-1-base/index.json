@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "error-codes",
-      "status": "pending"
+      "status": "completed",
+      "summary": "TASK-2 끝: src/types/errors.ts ErrorCode 끝에 주석 'AI 리포트(spec ai-report design.md '오류 문구')' + 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'; src/lib/errors.ts ERRORS 끝에 네 항목(문구는 design.md 표와 글자 하나까지 같음, errorInfo·isErrorCode 그대로 — 다음 TASK-5의 AiErrorCode는 이 네 글자에 맞추고 문구는 errorInfo로만 꺼낸다); src/lib/errors.test.ts ALL_CODES에 넷 추가 + AI_CODES + 'AC-502.1·AC-502.2 AI 오류 번호 문구' describe(AC-502.1 what·fix 비지 않음·'병원' 없음·/니다\\.(\\s|$)/ 없음, AC-502.2 낱말 검사). RED(errorInfo가 undefined) → GREEN 기록, sdd status AC-502.1·502.2 TASK-2:GREEN, lint·build 통과, npm test 실패 40개(기준선 46 이하, .NET·윈도우 경로·시간 초과 쪽, errors 시험 88개 모두 통과)."
     },
     {
       "step": 2,

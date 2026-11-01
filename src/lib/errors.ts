@@ -127,6 +127,23 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '[처음 등록]을 눌러 새로 시작해 주세요. 깨진 파일은 지우지 않고 남겨 둬요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요.',
   },
+  // AI 리포트(spec ai-report design.md '오류 문구'). 서버 경로·ai:try는 번호만 주고 문구는 여기서 꺼낸다
+  'E-AI-BUSY': {
+    what: 'AI가 지금 바빠서 답하지 못했어요',
+    fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.',
+  },
+  'E-AI-LIMIT': {
+    what: '이번 달 AI 사용 한도에 닿았어요',
+    fix: 'Anthropic 콘솔에서 한 달 한도를 늘리거나 다음 달에 다시 해 주세요.',
+  },
+  'E-AI-FAILED': {
+    what: 'AI 리포트를 만들지 못했어요',
+    fix: '[다시 분석]을 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-AI-NO-DATA': {
+    what: '이 달 통계가 아직 없어요',
+    fix: '통계 탭에서 그 달 비트 자료를 먼저 넣어 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {
