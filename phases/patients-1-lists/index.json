@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "recall-logic",
-      "status": "pending"
+      "status": "completed",
+      "summary": "dates.ts에 addMonthsToDay(말일 맞춤, 음수 가능, 9999년을 넘으면 던짐) 하나 더함. src/lib/patients/recall.ts(RECALL_DEFAULTS·KEEP_MONTHS·MAX_RECORDS·roundTest·prepareRx·validateHistory·ingestRecall·recallCompute·recallSelect·recallStatus·recallCoverage·recallCopyLines·recallPhones), types/patients.ts에 RecallRecord·RecallHistory, fixtures/patients/fake/recall-cases.json, scripts/patients/golden/recall.mjs → golden/recall-{ingest,compute,coverage,copy}.json. 명세와 다른 점: 새 이유 번호를 더하지 않음 — validateHistory의 전체 모양 오류는 기존 이유 row-unreadable로 던짐(goldenFollowup.test.ts의 이유 표가 빠짐없는 표이고 TASK-3 범위 밖). 연도가 잘못된 날짜는 날짜 없음(knownDiffs). readThrough 등 차이는 knownDiffs. TASK-4에 전달: prepareRx·prepareSchedule은 null 줄이면 번호 없는 TypeError를 던지므로 handler가 잡아 오류 번호로 바꾼다"
     },
     {
       "step": 3,

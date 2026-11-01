@@ -50,6 +50,13 @@ export type PatientsSourceReason =
   | 'phone-column-duplicate'
   | 'phone-conflict'
 
+// ── 정기 주사 계산(lib/patients/recall.ts, 원본 revisit_source_boot.js 옮김) ─────────────
+
+// 쌓인 기록 하나: 원본 ingest 모양 그대로
+export type RecallRecord = { chart: string; name: string; date: string; codes: string[]; text: string; phone: string }
+// readThrough(마지막으로 읽은 날)만 원본에 없다
+export type RecallHistory = { from: string | null; readThrough: string | null; records: RecallRecord[] }
+
 // ── 보기 모양(Worker → 화면, design.md '계산 모양') ───────────────────────────────
 
 export type FollowupRow = {

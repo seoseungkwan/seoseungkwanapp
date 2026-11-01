@@ -107,6 +107,17 @@ export function addMonths(month: string, n: number): string {
   return `${pad(year, 4)}-${pad(index - year * 12 + 1)}`
 }
 
+// 그 달 1일에 n달을 더하고 날은 min(원래 날, 그 달 말일). 1/31 + 1 → 2/28(윤년 2/29), n은 음수도.
+// 없는 날이거나 네 자리 해를 벗어나면 addMonths처럼 던진다
+export function addMonthsToDay(ymd: string, n: number): string {
+  dayOf(ymd)
+  const month = addMonths(ymd.slice(0, 7), n)
+  const lastDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate()
+  const day = `${month}-${pad(Math.min(Number(ymd.slice(8, 10)), lastDay))}`
+  if (!isYmd(day)) throw new RangeError(`날짜가 너무 멀어요: ${ymd} ${n}`)
+  return day
+}
+
 // 1일 ~ 말일
 export function monthRange(month: string): DateRange {
   return { from: `${month}-01`, to: addDays(`${addMonths(month, 1)}-01`, -1) }

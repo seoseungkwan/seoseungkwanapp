@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 // 환자 탭(F/U 명단) 계산·골든 시험용 **가짜** 자료 생성기. 실제 환자 자료는 한 글자도 쓰지 않는다.
 // 이름 '가상환자NN', 차트번호 9로 시작하는 6자리, 전화 010-0000-NNNN, 내원번호 V+숫자.
 // `npx tsx fixtures/patients/make-fake-patients.ts` → fixtures/patients/fake/*.json. 씨앗이 고정이라 늘 같은 파일이 나온다.
-// 원본 결과(골든, fixtures/patients/golden)는 scripts/patients/golden/revisit.mjs가 이 파일들을 원본에 넣어 만든다.
+// 원본 결과(골든, fixtures/patients/golden)는 scripts/patients/golden/revisit.mjs·recall.mjs가 이 파일들을 원본에 넣어 만든다.
 // 이 파일을 바꾸면 골든도 다시 만든다(골든 머리의 sha256이 달라져 골든 시험이 알린다).
 
 export type ParseCase = { id: string; visitDate: string; lines: string[] }
@@ -13,10 +13,51 @@ export type RowsCase = { id: string; rows: unknown[][]; allowMissing?: boolean }
 export type FollowupCasesFile = { note: string; parse: ParseCase[]; written: WrittenCase[] }
 export type ChartRowsFile = { note: string; dateCells: unknown[]; cases: RowsCase[] }
 export type RxRowsFile = { note: string; tokens: string[]; columns: string[]; cases: RowsCase[] }
+export type RecallRecordCase = { chart: string; name: string; date: string; codes: string[]; text: string; phone: string }
+export type RecallRuleCase = { id: string; enabled: boolean; label: string; codes: string[]; round: string; months: number }
+export type RecallHistoryCase = { from: string | null; readThrough: string | null; records: RecallRecordCase[] }
+export type RecallIngestCase = {
+  id: string
+  today: string
+  codes: string[]
+  from: string
+  to: string
+  history: RecallHistoryCase
+  chart: unknown[][] | null // null이면 내원 없음
+  rx: unknown[][] | null // null이면 처방·전화 없음
+}
+// 50,000건 넘는 사례는 파일이 커지지 않게 만드는 법만 적는다(recallBulkRecords). 건수는 원본 한도 그대로다
+export type RecallBulkCase = {
+  start: string
+  span: number
+  firstChart: number
+  counts: { atLimit: number; overLimit: number }
+  today: string
+  codes: string[]
+  from: string
+  to: string
+  chart: unknown[][]
+  rx: unknown[][]
+}
+export type RecallCasesFile = {
+  note: string
+  round: { round: string; text: string }[]
+  addMonths: { date: string; months: number }[]
+  rx: RowsCase[]
+  validate: { id: string; value: unknown }[]
+  ingest: RecallIngestCase[]
+  bulk: RecallBulkCase
+  compute: { id: string; rules: RecallRuleCase[] | null; records: RecallRecordCase[] }[] // rules가 null이면 원본 DEFAULTS
+  select: { from: string | null; to: string | null; overdue: boolean; today: string }[] // compute의 main으로 고른다
+  status: string[] // compute의 main을 이 오늘들로 본다
+  coverage: { id: string; today: string; rules: RecallRuleCase[] | null; history: { from: string | null; records: RecallRecordCase[] } }[]
+  copy: { id: string; records: RecallRecordCase[]; rx: unknown[][] | null }[]
+}
 export type FakePatients = {
   'followup-cases.json': FollowupCasesFile
   'chart-rows.json': ChartRowsFile
   'rx-rows.json': RxRowsFile
+  'recall-cases.json': RecallCasesFile
 }
 
 export const FAKE_PATIENTS_SEED = 20261101
@@ -802,6 +843,700 @@ const COLUMNS = [
   '',
 ]
 
+// ── 정기 주사 사례(recall-cases.json). 난수를 쓰지 않아 앞 파일들의 결과를 바꾸지 않는다 ──────────
+
+const H83 = ['내원번호', '차트번호', '환자명', '증상', '기록날짜']
+const H47 = ['처방코드', '처방명칭', '차트번호', '급여구분', '처방일자', '휴대폰']
+const visit = (no: number, i: number, ymd: string, symptom: string): unknown[] => [`V${no}`, fakeChart(i), fakeName(i), symptom, compact(ymd)]
+const given = (code: string, i: number, ymd: string, phone = ''): unknown[] => [code, '가짜 약', fakeChart(i), '급여', compact(ymd), phone]
+const rec = (i: number, date: string, codes: string[], text: string, phone = ''): RecallRecordCase => ({
+  chart: fakeChart(i),
+  name: fakeName(i),
+  date,
+  codes,
+  text,
+  phone,
+})
+const CARTILAGE = 'A49'
+const VITAMIN_D = 'A32'
+const OTHER = 'A15'
+const ALL_CODES = [CARTILAGE, VITAMIN_D]
+const cart = (i: number, date: string, text: string, phone = '') => rec(i, date, [CARTILAGE], text, phone)
+const vitd = (i: number, date: string, phone = '') => rec(i, date, [VITAMIN_D], '비타민D', phone)
+const RULE_CARTILAGE: RecallRuleCase = { id: 'cartilage', enabled: true, label: '연골주사', codes: [CARTILAGE], round: '3차', months: 6 }
+const RULE_VITAMIN_D: RecallRuleCase = { id: 'vitamin-d', enabled: true, label: '비타민D', codes: [VITAMIN_D], round: '', months: 3 }
+
+const ROUND_CASES: readonly (readonly [string, string])[] = [
+  ['3차', '아라간 3차'],
+  ['3차', '아라간 3 차'],
+  ['3차', '아라간 3  차'],
+  ['3차', '아라간3차'],
+  ['3차', '3차'],
+  ['3차', '아라간 13차'],
+  ['3차', '아라간 23차'],
+  ['3차', '아라간 33차'],
+  ['3차', '아라간 03차'],
+  ['3차', '아라간 1차'],
+  ['3차', '아라간 13차 / 3차'],
+  ['3차', ''],
+  ['3 차', '아라간 3차'],
+  ['12차', '아라간 12차'],
+  ['12차', '아라간 112차'],
+  ['12차', '아라간 2차'],
+  ['123차', '아라간 123차'],
+  ['123차', '아라간 3차'],
+  ['', '아무 글'],
+  ['', ''],
+  ['무릎', '오른쪽 무릎 주사'],
+  ['무릎', '어깨 주사'],
+  ['ARAGAN', 'aragan 주사'],
+  ['aragan', 'ARAGAN 주사'],
+  ['(', '주사 (왼쪽)'],
+  ['3차 ', '아라간 3차'],
+]
+
+const ADD_MONTHS_CASES: readonly (readonly [string, number])[] = [
+  ['2026-01-31', 1],
+  ['2028-01-31', 1],
+  ['2100-01-31', 1],
+  ['2000-01-31', 1],
+  ['2026-03-31', -1],
+  ['2026-12-15', 1],
+  ['2026-11-30', 3],
+  ['2026-01-15', -1],
+  ['2026-01-31', -2],
+  ['2026-08-31', 6],
+  ['2026-08-29', 6],
+  ['2026-08-28', 6],
+  ['2026-07-31', 3],
+  ['2026-04-15', 6],
+  ['2024-02-29', 12],
+  ['2024-02-29', -12],
+  ['2024-02-29', 48],
+  ['2026-11-01', -36],
+  ['2026-05-31', -36],
+  ['2024-02-29', -36],
+  ['2026-10-31', 0],
+  ['2026-10-16', -6],
+  ['2026-08-31', -6],
+  ['2026-08-31', -3],
+  ['9999-11-30', 1],
+  ['9999-12-31', 0],
+  ['1000-02-28', -1],
+]
+
+const RX_DATE_ROWS: unknown[][] = [
+  ['A49', '가짜 약', '900001', '급여', '20261007', ''],
+  ['A32', '가짜 약', '900002', '급여', 20261008, ''],
+  ['A49', '가짜 약', '900003', '급여', '2026-10-09', ''],
+  ['A49', '가짜 약', '900004', '급여', '2026.10.9', ''],
+  ['A49', '가짜 약', '900005', '급여', '2026/10/9 09:30', ''],
+  ['A49', '가짜 약', '900006', '급여', '202610091230', ''],
+  ['A49', '가짜 약', '900007', '급여', serialOf('2026-10-10'), ''],
+  ['A49', '가짜 약', '900008', '급여', serialOf('2026-10-10') + 0.5, ''],
+  ['A49', '가짜 약', '900009', '급여', '20261345', ''],
+  ['A49', '가짜 약', '900010', '급여', '202610092500', ''],
+  ['A49', '가짜 약', '900011', '급여', '어제', ''],
+  ['A49', '가짜 약', '900012', '급여', '', ''],
+  ['A49', '가짜 약', '900013', '급여', null, ''],
+  ['A49', '가짜 약', '900014', '급여', '00991231', ''],
+  ['A49', '가짜 약', '900015', '급여', '99991231', ''],
+]
+
+const RX_CASES: readonly RowsCase[] = [
+  {
+    id: 'main',
+    rows: [
+      H47,
+      given('a49', 1, '2026-10-07', fakePhone(1)),
+      given('A15', 1, '2026-10-07'),
+      given('A49', 1, '2026-10-07'),
+      given(' A32 ', 2, '2026-10-08'),
+      given('A32', 1, '2026-10-08'),
+    ],
+  },
+  { id: 'header-late', rows: [['조회 조건'], [], ['가짜 표'], H47, given('A49', 1, '2026-10-07')] },
+  { id: 'date-forms', rows: [H47, ...RX_DATE_ROWS] },
+  {
+    id: 'chart-forms',
+    rows: [
+      H47,
+      ['A49', '가짜 약', 900001, '급여', '20261007', ''],
+      ['A49', '가짜 약', '900002.0', '급여', '20261007', ''],
+      ['A49', '가짜 약', '900003.00', '급여', '20261007', ''],
+      ['A49', '가짜 약', '0900004', '급여', '20261007', ''],
+      ['A32', '가짜 약', ' 900004 ', '급여', '20261007', ''],
+      ['A49', '가짜 약', '000', '급여', '20261007', ''],
+      ['A49', '가짜 약', '0', '급여', '20261007', ''],
+      ['A49', '가짜 약', '', '급여', '20261007', ''],
+      ['A49', '가짜 약', null, '급여', '20261007', ''],
+    ],
+  },
+  {
+    id: 'blank-code',
+    rows: [H47, ['', '가짜 약', '900001', '급여', '20261007', ''], [null, '가짜 약', '900002', '급여', '20261007', ''], ['   ', '가짜 약', '900003', '급여', '20261007', ''], [4900, '가짜 약', '900004', '급여', '20261007', '']],
+  },
+  { id: 'header-spaces', rows: [['처 방 코 드', '처방명칭', '차 트 번 호', '급여구분', '처방 일자'], ['A49', '가짜 약', '900001', '급여', '20261007']] },
+  { id: 'only-header', rows: [H47] },
+  { id: 'err-empty', rows: [] },
+  { id: 'err-no-code-column', rows: [['처방명칭', '차트번호', '처방일자'], ['가짜 약', '900001', '20261007']] },
+  { id: 'err-no-date-column', rows: [['처방코드', '차트번호'], ['A49', '900001']] },
+  { id: 'err-duplicate-chart-column', rows: [['처방코드', '차트번호', '차트번호(옛)', '처방일자'], ['A49', '900001', '900001', '20261007']] },
+  { id: 'err-header-after-20-lines', rows: [...Array.from({ length: 20 }, () => ['가짜 머리 줄']), H47, given('A49', 1, '2026-10-07')] },
+]
+
+const okRecord = (over: Partial<Record<keyof RecallRecordCase, unknown>> = {}) => ({ ...cart(1, '2026-04-15', '아라간 3차', fakePhone(1)), ...over })
+const history = (records: unknown[], from: unknown = '2026-01-01', extra: Record<string, unknown> = {}) => ({ from, records, ...extra })
+
+const VALIDATE_CASES: readonly { id: string; value: unknown }[] = [
+  { id: 'ok-empty', value: { from: null, records: [] } },
+  { id: 'ok-from', value: history([okRecord()]) },
+  { id: 'ok-read-through', value: history([okRecord()], '2026-01-01', { readThrough: '2026-10-31' }) },
+  { id: 'ok-read-through-null', value: history([], '2026-01-01', { readThrough: null }) },
+  { id: 'ok-read-through-broken', value: history([], '2026-01-01', { readThrough: '2026-02-30' }) },
+  { id: 'ok-read-through-not-text', value: history([], '2026-01-01', { readThrough: 20261031 }) },
+  { id: 'ok-read-through-year-0999', value: history([], '2026-01-01', { readThrough: '0999-12-31' }) },
+  { id: 'ok-from-year-1000', value: history([], '1000-01-01') },
+  { id: 'ok-extra-fields-dropped', value: history([{ ...okRecord(), extra: 'x', visitNo: 'V1' }], '2026-01-01', { extra: 'y' }) },
+  { id: 'ok-field-limits', value: history([okRecord({ name: '가'.repeat(100), text: '가'.repeat(1000), phone: '-'.repeat(60), chart: '9'.repeat(30) })]) },
+  { id: 'ok-code-limits', value: history([okRecord({ codes: Array.from({ length: 20 }, (_, i) => `A${i}`) }), okRecord({ codes: ['A'.repeat(20)] }), okRecord({ codes: ['A_1-B'] })]) },
+  { id: 'ok-empty-text-phone', value: history([okRecord({ text: '', phone: '' })]) },
+  { id: 'ok-chart-constructor', value: history([okRecord({ chart: 'constructor' })]) },
+  { id: 'ok-date-year-1000', value: history([okRecord({ date: '1000-01-01' })]) },
+  { id: 'ok-date-year-9999', value: history([okRecord({ date: '9999-12-31' })]) },
+  {
+    id: 'ok-bad-records-dropped',
+    value: history([
+      okRecord(),
+      null,
+      'x',
+      7,
+      [],
+      {},
+      okRecord({ chart: '../x' }),
+      okRecord({ chart: '' }),
+      okRecord({ chart: 'a'.repeat(31) }),
+      okRecord({ chart: 900001 }),
+      okRecord({ chart: '__proto__' }),
+      okRecord({ name: '' }),
+      okRecord({ name: '가'.repeat(101) }),
+      okRecord({ name: 1 }),
+      okRecord({ date: '2026-02-30' }),
+      okRecord({ date: '2026-4-15' }),
+      okRecord({ date: '10000-01-01' }),
+      okRecord({ date: '0999-12-31' }),
+      okRecord({ date: '0099-12-31' }),
+      okRecord({ date: ['2026-04-15'] }),
+      okRecord({ date: 20260415 }),
+      okRecord({ date: null }),
+      okRecord({ codes: [] }),
+      okRecord({ codes: 'A49' }),
+      okRecord({ codes: Array.from({ length: 21 }, (_, i) => `A${i}`) }),
+      okRecord({ codes: ['a49'] }),
+      okRecord({ codes: ['A 49'] }),
+      okRecord({ codes: [49] }),
+      okRecord({ codes: ['A'.repeat(21)] }),
+      okRecord({ text: '가'.repeat(1001) }),
+      okRecord({ text: null }),
+      okRecord({ phone: '-'.repeat(61) }),
+      okRecord({ phone: null }),
+    ]),
+  },
+  { id: 'err-null', value: null },
+  { id: 'err-text', value: '기록' },
+  { id: 'err-number', value: 7 },
+  { id: 'err-array', value: [] },
+  { id: 'err-no-records', value: { from: null } },
+  { id: 'err-records-not-list', value: { from: null, records: {} } },
+  { id: 'err-from-missing', value: { records: [] } },
+  { id: 'err-from-empty', value: { from: '', records: [] } },
+  { id: 'err-from-broken', value: { from: '2026-02-30', records: [] } },
+  { id: 'err-from-not-text', value: { from: 20260101, records: [] } },
+  { id: 'err-from-short', value: { from: '2026-1-1', records: [] } },
+  { id: 'err-from-year-0999', value: { from: '0999-12-31', records: [] } },
+  { id: 'err-from-year-10000', value: { from: '10000-01-01', records: [] } },
+]
+
+const EMPTY_HISTORY: RecallHistoryCase = { from: null, readThrough: null, records: [] }
+const ingestOf = (id: string, today: string, from: string, to: string, hist: RecallHistoryCase, chart: unknown[][] | null, rx: unknown[][] | null, codes = ALL_CODES): RecallIngestCase => ({
+  id,
+  today,
+  codes,
+  from,
+  to,
+  history: hist,
+  chart,
+  rx,
+})
+
+const INGEST_CASES: readonly RecallIngestCase[] = [
+  // 코드가 처방된 내원만, 그날 증상·전화와 함께. 코드는 대문자로, 여러 줄은 ' / '로
+  ingestOf(
+    'first-read',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [
+      H83,
+      visit(1, 1, '2026-04-15', '무릎'),
+      visit(1, 1, '2026-04-15', '아라간 3차'),
+      visit(2, 2, '2026-04-16', 'MBB'),
+      visit(3, 3, '2026-04-20', '비타민D'),
+      visit(4, 4, '2026-04-20', '아라간 1차 · 비타민D'),
+      visit(5, 5, '2026-04-21', '아라간 2차'),
+      visit(6, 6, '2026-04-22', '처방 없는 내원'),
+      [`V7`, fakeChart(7), fakeName(7), '', compact('2026-04-23')],
+    ],
+    [
+      H47,
+      given(CARTILAGE, 1, '2026-04-15', fakePhone(1)),
+      given(OTHER, 1, '2026-04-15', fakePhone(1)),
+      given(OTHER, 2, '2026-04-16'),
+      given(VITAMIN_D, 3, '2026-04-20'),
+      given(CARTILAGE, 4, '2026-04-20', fakePhone(4)),
+      given(VITAMIN_D, 4, '2026-04-20', fakePhone(4)),
+      given('a49', 5, '2026-04-21'),
+      given(VITAMIN_D, 7, '2026-04-23'),
+    ],
+  ),
+  // 같은 차트의 다른 날에 처방된 코드는 이 내원의 코드가 아니다
+  ingestOf(
+    'code-on-other-day',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [H83, visit(1, 1, '2026-04-15', '아라간 3차')],
+    [H47, given(CARTILAGE, 1, '2026-04-14')],
+  ),
+  // 차트번호 표기: 앞자리 0·.0이 달라도 같은 사람
+  ingestOf(
+    'chart-forms',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [
+      H83,
+      ['V1', `0${fakeChart(1)}`, fakeName(1), '아라간 3차', '20260415'],
+      ['V2', fakeChart(2), fakeName(2), '아라간 3차', '20260415'],
+      ['V3', `${fakeChart(3)}.0`, fakeName(3), '아라간 3차', '20260415'],
+      ['V4', Number(fakeChart(4)), fakeName(4), '아라간 3차', '20260415'],
+    ],
+    [
+      H47,
+      [CARTILAGE, '가짜 약', fakeChart(1), '급여', '20260415', fakePhone(1)],
+      [CARTILAGE, '가짜 약', `0${fakeChart(2)}`, '급여', '20260415', fakePhone(2)],
+      [CARTILAGE, '가짜 약', fakeChart(3), '급여', '20260415', fakePhone(3)],
+      [CARTILAGE, '가짜 약', `${fakeChart(4)}.0`, '급여', '20260415', fakePhone(4)],
+    ],
+  ),
+  // 같은 기간을 다시 읽으면 양 끝을 포함해 그 기간의 예전 기록이 새것으로 바뀐다(사라진 줄은 지워진다). 하루 밖은 그대로
+  ingestOf(
+    'reread-period',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    {
+      from: '2026-01-01',
+      readThrough: '2026-05-31',
+      records: [cart(1, '2026-03-31', '하루 앞'), cart(2, '2026-04-01', '옛 첫날'), cart(3, '2026-04-15', '옛 글'), vitd(4, '2026-04-30'), vitd(5, '2026-05-01')],
+    },
+    [H83, visit(3, 3, '2026-04-15', '아라간 3차 고침'), visit(6, 6, '2026-04-20', '비타민D')],
+    [H47, given(CARTILAGE, 3, '2026-04-15'), given(VITAMIN_D, 6, '2026-04-20')],
+  ),
+  ingestOf(
+    'reread-no-visits',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    { from: '2026-01-01', readThrough: '2026-04-30', records: [cart(1, '2026-03-31', '하루 앞'), cart(2, '2026-04-15', '지워질 글'), vitd(5, '2026-05-01')] },
+    null,
+    null,
+  ),
+  // 전화가 바뀌면 새 내원만 새 번호. 쌓인 기록은 그때 번호 그대로
+  ingestOf(
+    'phone-changed',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    { from: '2026-03-01', readThrough: '2026-03-31', records: [vitd(1, '2026-03-10', fakePhone(100))] },
+    [H83, visit(1, 1, '2026-04-10', '비타민D')],
+    [H47, given(VITAMIN_D, 1, '2026-04-10', fakePhone(101))],
+  ),
+  // 36개월: 그 날은 남고 하루 앞은 지운다. from도 그 날로 당긴다
+  ingestOf(
+    'keep-limit',
+    '2026-10-17',
+    '2026-10-17',
+    '2026-10-17',
+    { from: '2023-01-01', readThrough: '2026-10-16', records: [cart(1, '2023-10-16', '하루 앞'), cart(2, '2023-10-17', '그 날'), cart(3, '2023-10-18', '하루 뒤')] },
+    null,
+    null,
+  ),
+  ingestOf(
+    'keep-limit-month-end',
+    '2026-05-31',
+    '2026-05-01',
+    '2026-05-31',
+    { from: '2023-05-31', readThrough: null, records: [cart(1, '2023-05-30', '하루 앞'), cart(2, '2023-05-31', '그 날')] },
+    null,
+    null,
+  ),
+  ingestOf(
+    'keep-limit-leap-day',
+    '2024-02-29',
+    '2024-02-01',
+    '2024-02-29',
+    { from: '2021-03-01', readThrough: null, records: [cart(1, '2021-02-27', '하루 앞'), cart(2, '2021-02-28', '그 날')] },
+    null,
+    null,
+  ),
+  // from: 더 이른 쪽, 없으면 읽은 시작, 36개월 앞이면 그 날
+  ingestOf('from-keeps-earlier', '2026-10-16', '2026-03-01', '2026-03-31', { from: '2026-01-01', readThrough: '2026-02-28', records: [] }, null, null),
+  ingestOf('from-moves-earlier', '2026-10-16', '2026-01-01', '2026-01-31', { from: '2026-03-01', readThrough: '2026-03-31', records: [] }, null, null),
+  ingestOf('from-same', '2026-10-16', '2026-03-01', '2026-03-31', { from: '2026-03-01', readThrough: '2026-03-31', records: [] }, null, null),
+  ingestOf(
+    'from-before-limit',
+    '2026-10-16',
+    '2020-01-01',
+    '2020-01-31',
+    EMPTY_HISTORY,
+    [H83, visit(1, 1, '2020-01-15', '비타민D'), visit(2, 2, '2023-10-16', '비타민D')],
+    [H47, given(VITAMIN_D, 1, '2020-01-15'), given(VITAMIN_D, 2, '2023-10-16')],
+  ),
+  ingestOf('from-at-limit', '2026-10-16', '2023-10-16', '2023-10-31', EMPTY_HISTORY, null, null),
+  // 같은 날: 차트번호 숫자 순서, 같은 사람이면 쌓인 것 먼저
+  ingestOf(
+    'equal-date-order',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    { from: '2026-04-01', readThrough: '2026-05-31', records: [vitd(7, '2026-05-01'), vitd(20, '2026-05-01')] },
+    [
+      H83,
+      visit(1, 7, '2026-05-01', '새 글'),
+      visit(2, 8, '2026-05-01', '새 글'),
+      ['V3', `0${fakeChart(30)}`, fakeName(30), '새 글', '20260501'],
+      visit(4, 8, '2026-05-01', '같은 날 둘째 내원'),
+    ],
+    [H47, given(VITAMIN_D, 7, '2026-05-01'), given(VITAMIN_D, 8, '2026-05-01'), given(VITAMIN_D, 30, '2026-05-01')],
+  ),
+  // 읽은 기간 밖의 내원도 처방이 있으면 쌓는다(원본 그대로)
+  ingestOf(
+    'visit-outside-period',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [H83, visit(1, 1, '2026-06-01', '비타민D')],
+    [H47, given(VITAMIN_D, 1, '2026-06-01')],
+  ),
+  // 차트번호 모양이 안 맞으면 쌓지 않는다. constructor는 전화 표에 번호가 없으면 빈칸이다
+  ingestOf(
+    'odd-chart',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [
+      H83,
+      ['V1', 'constructor', fakeName(1), '비타민D', '20260415'],
+      ['V2', 'toString', fakeName(2), '비타민D', '20260415'],
+      ['V3', '9000 03', fakeName(3), '비타민D', '20260415'],
+      ['V4', '9000.04', fakeName(4), '비타민D', '20260415'],
+      ['V5', '900-005', fakeName(5), '비타민D', '20260415'],
+    ],
+    [
+      H47,
+      [VITAMIN_D, '가짜 약', 'constructor', '급여', '20260415', ''],
+      [VITAMIN_D, '가짜 약', 'toString', '급여', '20260415', fakePhone(2)],
+      [VITAMIN_D, '가짜 약', '9000 03', '급여', '20260415', ''],
+      [VITAMIN_D, '가짜 약', '9000.04', '급여', '20260415', ''],
+      [VITAMIN_D, '가짜 약', '900-005', '급여', '20260415', ''],
+    ],
+  ),
+  // 이름 100자·증상 1,000자에서 자른다. 증상 앞뒤 빈칸은 뗀다
+  ingestOf(
+    'long-fields',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [H83, ['V1', fakeChart(1), `${fakeName(1)}${'가'.repeat(100)}`, `  ${'증'.repeat(600)}  `, '20260415'], ['V1', fakeChart(1), `${fakeName(1)}${'가'.repeat(100)}`, '상'.repeat(600), '20260415']],
+    [H47, given(VITAMIN_D, 1, '2026-04-15')],
+  ),
+  // 0099년 칸은 1999년 내원이다(내원 쪽과 처방 쪽 열쇠가 달라진다). 0100년은 36개월 앞이라 지운다. 9999년은 먼 뒤라 남는다
+  ingestOf(
+    'odd-years',
+    '2001-01-01',
+    '1999-01-01',
+    '2000-12-31',
+    EMPTY_HISTORY,
+    [
+      H83,
+      visit(1, 1, '1999-12-31', '처방 칸이 00991231'),
+      ['V2', fakeChart(2), fakeName(2), '내원 칸이 00991231', '00991231'],
+      ['V3', fakeChart(3), fakeName(3), '내원 칸이 01000101', '01000101'],
+      ['V4', fakeChart(4), fakeName(4), '내원 칸이 99991231', '99991231'],
+    ],
+    [
+      H47,
+      [VITAMIN_D, '가짜 약', fakeChart(1), '급여', '00991231', ''],
+      [VITAMIN_D, '가짜 약', fakeChart(2), '급여', '19991231', ''],
+      [VITAMIN_D, '가짜 약', fakeChart(3), '급여', '01000101', ''],
+      [VITAMIN_D, '가짜 약', fakeChart(4), '급여', '99991231', ''],
+    ],
+  ),
+  // 넘겨받은 코드만. 꺼 둔 규칙 코드도 같이 오면 쌓는다
+  ingestOf(
+    'codes-arg',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [H83, visit(1, 1, '2026-04-15', '주사'), visit(2, 2, '2026-04-15', '주사'), visit(3, 3, '2026-04-15', '주사')],
+    [H47, given(CARTILAGE, 1, '2026-04-15'), given('B7', 2, '2026-04-15'), given(VITAMIN_D, 3, '2026-04-15')],
+    ['a49', ' B7'],
+  ),
+  ingestOf('no-codes', '2026-10-16', '2026-04-01', '2026-04-30', EMPTY_HISTORY, [H83, visit(1, 1, '2026-04-15', '주사')], [H47, given(CARTILAGE, 1, '2026-04-15')], []),
+  // 전화 칸이 없는 47 표(전화 없이 처방만)
+  ingestOf(
+    'no-phone-column',
+    '2026-10-16',
+    '2026-04-01',
+    '2026-04-30',
+    EMPTY_HISTORY,
+    [H83, visit(1, 1, '2026-04-15', '비타민D')],
+    [['처방코드', '차트번호', '처방일자'], [VITAMIN_D, fakeChart(1), '20260415']],
+  ),
+]
+
+const RECALL_BULK: RecallBulkCase = {
+  start: '2025-01-01',
+  span: 365,
+  firstChart: 900000,
+  counts: { atLimit: 50_000, overLimit: 50_001 },
+  today: '2026-11-01',
+  codes: ALL_CODES,
+  from: '2026-10-01',
+  to: '2026-10-31',
+  chart: [H83, visit(1, 1, '2026-10-05', '비타민D')],
+  rx: [H47, given(VITAMIN_D, 1, '2026-10-05')],
+}
+
+// 50,000건 넘는 기록을 그때그때 만든다(파일에 다 적지 않는다). scripts/patients/golden/recall.mjs에도 같은 계산이 있다(sha256으로 같은지 본다)
+export function recallBulkRecords(recipe: Pick<RecallBulkCase, 'start' | 'span' | 'firstChart'>, count: number): RecallRecordCase[] {
+  const records: RecallRecordCase[] = []
+  for (let i = 0; i < count; i++) {
+    records.push({
+      chart: String(recipe.firstChart + i),
+      name: fakeName(i % 100),
+      date: plus(recipe.start, i % recipe.span),
+      codes: [VITAMIN_D],
+      text: '비타민D',
+      phone: fakePhone(i % 10_000),
+    })
+  }
+  return records
+}
+
+// 경계와 같은 값을 짚는 명단. 예정일이 같으면 종류(비타민D 먼저) → 차트번호 숫자 순서
+const MAIN_RECORDS: readonly RecallRecordCase[] = [
+  // 1·2·3차 → 3차 뒤 6개월. 근거는 3차가 든 줄
+  cart(1, '2026-04-01', '아라간 1차'),
+  cart(1, '2026-04-08', '아라간 2차'),
+  cart(1, '2026-04-15', '무릎 / 아라간 3차', fakePhone(1)),
+  // 3차 뒤 새로 1차를 시작하면 빠진다
+  cart(2, '2026-03-01', '아라간 3차'),
+  cart(2, '2026-09-01', '아라간 1차'),
+  // 13차·23차는 3차가 아니다
+  cart(3, '2026-05-01', '아라간 13차'),
+  cart(4, '2026-05-02', '아라간 23차'),
+  // 비타민D 여러 번: 마지막만
+  vitd(5, '2026-01-10'),
+  vitd(5, '2026-04-10'),
+  vitd(5, '2026-07-10', fakePhone(5)),
+  // 두 코드 같은 날: 규칙마다 한 줄
+  rec(6, '2026-08-31', [VITAMIN_D, CARTILAGE], '아라간 3차 · 비타민D'),
+  // 1/31 +6개월, 8/29·30 +6개월(2월 말일에 맞춤)
+  cart(7, '2026-01-31', '아라간 3차'),
+  cart(8, '2026-08-30', '아라간 3차'),
+  cart(9, '2026-08-29', '아라간 3차'),
+  // 11/30 +3개월 = 2/28: 종류가 앞선다
+  vitd(10, '2026-11-30'),
+  // 예정일 같음(10/15): 종류 순서
+  vitd(11, '2026-07-15'),
+  // 3 차·붙여 쓰기·맨 앞, 3차가 든 줄이 둘이면 첫 줄
+  cart(12, '2026-06-01', '아라간 3 차'),
+  cart(13, '2026-06-02', '아라간3차'),
+  cart(14, '2026-06-03', '3차 / 아라간 3차 끝'),
+  // 앞자리 0만 다른 차트는 한 사람: 마지막 기록의 차트번호로
+  { ...cart(15, '2026-02-01', '아라간 3차'), chart: `0${fakeChart(15)}` },
+  cart(15, '2026-03-01', '아라간 1차'),
+  cart(16, '2026-02-01', '아라간 1차'),
+  { ...cart(16, '2026-03-01', '아라간 3차'), chart: `0${fakeChart(16)}` },
+  // 같은 날 두 기록: 뒤에 온 것이 마지막
+  cart(17, '2026-06-05', '아라간 3차'),
+  cart(17, '2026-06-05', '아라간 1차'),
+  cart(18, '2026-06-06', '아라간 1차'),
+  cart(18, '2026-06-06', '아라간 3차'),
+  // 넣은 순서가 날짜 순서가 아니어도 날짜로 본다
+  cart(19, '2026-06-20', '아라간 3차'),
+  cart(19, '2026-06-07', '아라간 1차'),
+  // 다른 코드 기록은 보지 않는다
+  rec(20, '2026-06-08', [OTHER], '아라간 3차'),
+  cart(21, '2026-06-09', '아라간 3차'),
+  rec(21, '2026-07-01', [OTHER], '아라간 1차'),
+  // 예정일 같음: 차트번호 숫자 순서(글자 순서면 09…가 앞선다)
+  vitd(4, '2026-09-20'),
+  { ...vitd(30, '2026-09-20'), chart: `0${fakeChart(30)}` },
+  vitd(31, '2026-09-20'),
+  // 오늘(2026-10-15) 앞뒤 하루
+  vitd(32, '2026-07-14'),
+  vitd(33, '2026-07-16'),
+  // 고르는 기간 경계
+  vitd(34, '2026-07-31'),
+  vitd(35, '2026-08-01'),
+  vitd(36, '2026-08-30'),
+  vitd(37, '2026-08-31'),
+]
+
+const FAR_RECORDS: readonly RecallRecordCase[] = [
+  cart(41, '9999-12-31', '아라간 3차'),
+  cart(42, '9999-07-01', '아라간 3차'),
+  cart(43, '9999-06-30', '아라간 3차'),
+  vitd(44, '9999-10-01'),
+  vitd(45, '9999-09-30'),
+  // 먼 날 앞의 3차로 돌아가지 않는다(마지막만 본다)
+  cart(46, '2026-04-15', '아라간 3차'),
+  cart(46, '9999-12-31', '아라간 3차'),
+  // 먼 날이 1차면 원본도 빠진다
+  cart(47, '2026-04-15', '아라간 3차'),
+  cart(47, '9999-12-31', '아라간 1차'),
+  cart(48, '2026-04-15', '아라간 3차'),
+]
+
+const BAD_DATE_RECORDS: readonly RecallRecordCase[] = [
+  cart(51, '2026-04-15', '아라간 3차'),
+  cart(52, '글자', '아라간 3차'),
+  cart(53, '2026-02-30', '아라간 3차'),
+  cart(54, '0999-12-31', '아라간 3차'),
+  cart(55, '10000-01-01', '아라간 3차'),
+  cart(56, '', '아라간 3차'),
+  vitd(57, '2026-07-10'),
+]
+
+const SELECT_CASES: RecallCasesFile['select'] = [
+  { from: '2026-10-15', to: '2026-10-31', overdue: false, today: '2026-10-15' },
+  { from: '2026-10-15', to: '2026-10-31', overdue: true, today: '2026-10-15' },
+  { from: null, to: null, overdue: false, today: '2026-10-15' },
+  { from: null, to: null, overdue: true, today: '2026-10-15' },
+  // 시작이 오늘 뒤면 오늘~시작 사이는 빠지고 오늘 앞만 지난 예정이다(오늘은 지난 예정이 아니다)
+  { from: '2026-11-01', to: '2026-11-30', overdue: true, today: '2026-10-15' },
+  { from: '2026-11-01', to: '2026-11-30', overdue: false, today: '2026-10-15' },
+  // 끝은 지난 예정에도 걸린다
+  { from: '2026-10-15', to: '2026-10-10', overdue: true, today: '2026-10-15' },
+  { from: null, to: '2026-10-15', overdue: false, today: '2026-10-15' },
+  { from: '2026-10-15', to: null, overdue: false, today: '2026-10-15' },
+  { from: '2026-10-15', to: null, overdue: true, today: '2026-10-15' },
+  // 시작 = 끝
+  { from: '2026-10-15', to: '2026-10-15', overdue: false, today: '2026-10-16' },
+  // 오늘이 달라지면 지난 예정이 달라진다
+  { from: '2026-12-01', to: null, overdue: true, today: '2026-10-16' },
+]
+
+const STATUS_DAYS = ['2026-10-14', '2026-10-15', '2026-10-16', '2027-03-01', '2024-02-29']
+
+const COVERAGE_CASES: RecallCasesFile['coverage'] = [
+  { id: 'empty', today: '2026-10-16', rules: null, history: { from: null, records: [] } },
+  { id: 'at-six-months', today: '2026-10-16', rules: null, history: { from: '2026-04-16', records: [] } },
+  { id: 'after-six-months', today: '2026-10-16', rules: null, history: { from: '2026-04-17', records: [cart(1, '2026-04-17', '아라간 3차')] } },
+  { id: 'at-three-months', today: '2026-10-16', rules: null, history: { from: '2026-07-16', records: [] } },
+  { id: 'after-three-months', today: '2026-10-16', rules: null, history: { from: '2026-07-17', records: [vitd(1, '2026-08-01'), vitd(2, '2026-08-02')] } },
+  { id: 'old-enough', today: '2026-10-16', rules: null, history: { from: '2023-10-16', records: [] } },
+  { id: 'month-end-at-six', today: '2026-08-31', rules: null, history: { from: '2026-02-28', records: [] } },
+  { id: 'month-end-after-six', today: '2026-08-31', rules: null, history: { from: '2026-03-01', records: [] } },
+  { id: 'month-end-at-three', today: '2026-08-31', rules: null, history: { from: '2026-05-31', records: [] } },
+  { id: 'month-end-after-three', today: '2026-08-31', rules: null, history: { from: '2026-06-01', records: [] } },
+  { id: 'rule-off', today: '2026-10-16', rules: [{ ...RULE_CARTILAGE, enabled: false }, RULE_VITAMIN_D], history: { from: null, records: [] } },
+  { id: 'all-off', today: '2026-10-16', rules: [{ ...RULE_CARTILAGE, enabled: false }, { ...RULE_VITAMIN_D, enabled: false }], history: { from: null, records: [] } },
+  { id: 'rule-order', today: '2026-10-16', rules: [RULE_VITAMIN_D, RULE_CARTILAGE], history: { from: '2026-10-16', records: [] } },
+  { id: 'from-broken', today: '2026-10-16', rules: null, history: { from: '2026-02-30', records: [] } },
+]
+
+const COPY_PHONES: unknown[][] = [
+  H47,
+  given(VITAMIN_D, 1, '2026-07-10', fakePhone(901)), // 쌓인 번호보다 지금 번호
+  [VITAMIN_D, '가짜 약', fakeChart(3), '급여', '20260710', ''],
+  [VITAMIN_D, '가짜 약', fakeChart(20), '급여', '20260710', fakePhone(920)], // 앞자리 0 뗀 값으로 찾는다
+]
+
+const COPY_RECORDS: readonly RecallRecordCase[] = [
+  vitd(1, '2026-07-10', fakePhone(1)),
+  vitd(2, '2026-07-11', fakePhone(2)),
+  vitd(3, '2026-07-12'),
+  vitd(4, '2026-07-13', `${fakePhone(4)} / ${fakePhone(40)}`),
+  vitd(5, '2026-07-14', fakePhone(2)),
+  vitd(6, '2026-07-15', '01000000002'),
+  vitd(7, '2026-07-16', '+82-10-0000-0007'),
+  vitd(8, '2026-07-17', `${fakePhone(8)},${fakePhone(80)}`),
+  vitd(9, '2026-07-18', `${fakePhone(9)};${fakePhone(90)}`),
+  vitd(10, '2026-07-19', `${fakePhone(10)} · ${fakePhone(100)}`),
+  vitd(11, '2026-07-20', `${fakePhone(11)}  ${fakePhone(110)}`),
+  vitd(12, '2026-07-21', ' / '),
+  vitd(13, '2026-07-22', '번호 없음'),
+  vitd(14, '2026-07-22', '010 0000 0014'), // 빈칸 하나는 번호 안이다(둘부터 구분)
+  { ...vitd(20, '2026-07-23'), chart: `0${fakeChart(20)}` },
+  // 두 규칙에 든 사람: 줄은 둘, 번호는 하나. 번호 없는 사람은 줄마다 센다
+  rec(21, '2026-07-24', [VITAMIN_D, CARTILAGE], '아라간 3차 · 비타민D', fakePhone(21)),
+  rec(22, '2026-07-25', [VITAMIN_D, CARTILAGE], '아라간 3차 · 비타민D'),
+]
+
+const COPY_CASES: RecallCasesFile['copy'] = [
+  { id: 'phones-loaded', records: [...COPY_RECORDS], rx: COPY_PHONES },
+  { id: 'phones-not-loaded', records: [...COPY_RECORDS], rx: null },
+  { id: 'phone-column-missing', records: [...COPY_RECORDS], rx: [['처방코드', '차트번호', '처방일자'], [VITAMIN_D, fakeChart(1), '20260710']] },
+  { id: 'chart-constructor', records: [{ ...vitd(1, '2026-07-10'), chart: 'constructor' }, { ...vitd(2, '2026-07-11', fakePhone(2)), chart: 'toString' }], rx: COPY_PHONES },
+  { id: 'all-missing', records: [vitd(1, '2026-07-10'), vitd(2, '2026-07-11', '번호 없음')], rx: null },
+  { id: 'empty', records: [], rx: null },
+]
+
+function recallCases(): RecallCasesFile {
+  return {
+    note: NOTE,
+    round: ROUND_CASES.map(([round, text]) => ({ round, text })),
+    addMonths: ADD_MONTHS_CASES.map(([date, months]) => ({ date, months })),
+    rx: [...RX_CASES],
+    validate: [...VALIDATE_CASES],
+    ingest: [...INGEST_CASES],
+    bulk: RECALL_BULK,
+    compute: [
+      { id: 'main', rules: null, records: [...MAIN_RECORDS] },
+      { id: 'cartilage-off', rules: [{ ...RULE_CARTILAGE, enabled: false }, RULE_VITAMIN_D], records: [...MAIN_RECORDS] },
+      { id: 'vitamin-d-off', rules: [RULE_CARTILAGE, { ...RULE_VITAMIN_D, enabled: false }], records: [...MAIN_RECORDS] },
+      { id: 'all-off', rules: [{ ...RULE_CARTILAGE, enabled: false }, { ...RULE_VITAMIN_D, enabled: false }], records: [...MAIN_RECORDS] },
+      { id: 'no-rules', rules: [], records: [...MAIN_RECORDS] },
+      { id: 'no-records', rules: null, records: [] },
+      // 글자 조건: 포함으로 보고, 줄에 없으면 전체 글이 근거다
+      {
+        id: 'text-round',
+        rules: [{ id: 'knee', enabled: true, label: '무릎', codes: [CARTILAGE, VITAMIN_D], round: '무릎 / 아라간', months: 1 }],
+        records: [cart(1, '2026-01-31', '왼쪽 무릎 / 아라간 3차'), vitd(2, '2026-02-01'), cart(3, '2026-03-01', '아라간 / 무릎')],
+      },
+      { id: 'far-dates', rules: null, records: [...FAR_RECORDS] },
+      { id: 'bad-dates', rules: null, records: [...BAD_DATE_RECORDS] },
+      // 이상한 날짜 기록이 마지막이어도 조건에 안 맞으면 원본도 멈추지 않는다
+      { id: 'bad-date-not-matching', rules: null, records: [cart(61, '2026-04-15', '아라간 3차'), cart(61, '글자', '아라간 1차'), cart(62, '2026-04-16', '아라간 3차')] },
+    ],
+    select: SELECT_CASES,
+    status: STATUS_DAYS,
+    coverage: COVERAGE_CASES,
+    copy: COPY_CASES,
+  }
+}
+
 // ── 모으기·쓰기 ────────────────────────────────────────
 
 export function buildFakePatients(seed = FAKE_PATIENTS_SEED): FakePatients {
@@ -814,6 +1549,7 @@ export function buildFakePatients(seed = FAKE_PATIENTS_SEED): FakePatients {
     },
     'chart-rows.json': { note: NOTE, dateCells: dateCells(), cases: chartCases(rand) },
     'rx-rows.json': { note: NOTE, tokens: [...TOKENS], columns: [...COLUMNS], cases: rxCases(rand) },
+    'recall-cases.json': recallCases(),
   }
 }
 

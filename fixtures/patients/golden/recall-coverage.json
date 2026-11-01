@@ -1,0 +1,204 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/assets/revisit_schedule.html",
+  "entry": [
+    "recallCoverage"
+  ],
+  "inputs": [
+    {
+      "path": "fixtures/patients/fake/recall-cases.json",
+      "sha256": "31319aa78ac8a6bca9bf9a598ee9dfe0e8b7d806d2f1b1a722e22710d37b3808"
+    }
+  ],
+  "knownDiffs": [
+    {
+      "entry": "recallCoverage",
+      "field": "안내 글",
+      "reason": "원본은 안내 글을 돌려준다. 문구는 화면이 우리 말로 만들고 여기서는 판정(건수·시작 날짜·짧은 규칙)만 돌려준다"
+    }
+  ],
+  "cases": [
+    {
+      "id": "empty",
+      "result": {
+        "records": 0,
+        "from": null,
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          },
+          {
+            "label": "비타민D",
+            "months": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "at-six-months",
+      "result": {
+        "records": 0,
+        "from": "2026-04-16",
+        "short": []
+      }
+    },
+    {
+      "id": "after-six-months",
+      "result": {
+        "records": 1,
+        "from": "2026-04-17",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "at-three-months",
+      "result": {
+        "records": 0,
+        "from": "2026-07-16",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "after-three-months",
+      "result": {
+        "records": 2,
+        "from": "2026-07-17",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          },
+          {
+            "label": "비타민D",
+            "months": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "old-enough",
+      "result": {
+        "records": 0,
+        "from": "2023-10-16",
+        "short": []
+      }
+    },
+    {
+      "id": "month-end-at-six",
+      "result": {
+        "records": 0,
+        "from": "2026-02-28",
+        "short": []
+      }
+    },
+    {
+      "id": "month-end-after-six",
+      "result": {
+        "records": 0,
+        "from": "2026-03-01",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "month-end-at-three",
+      "result": {
+        "records": 0,
+        "from": "2026-05-31",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "month-end-after-three",
+      "result": {
+        "records": 0,
+        "from": "2026-06-01",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          },
+          {
+            "label": "비타민D",
+            "months": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "rule-off",
+      "result": {
+        "records": 0,
+        "from": null,
+        "short": [
+          {
+            "label": "비타민D",
+            "months": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "all-off",
+      "result": {
+        "records": 0,
+        "from": null,
+        "short": []
+      }
+    },
+    {
+      "id": "rule-order",
+      "result": {
+        "records": 0,
+        "from": "2026-10-16",
+        "short": [
+          {
+            "label": "비타민D",
+            "months": 3
+          },
+          {
+            "label": "연골주사",
+            "months": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "from-broken",
+      "result": {
+        "records": 0,
+        "from": "2026-02-30",
+        "short": [
+          {
+            "label": "연골주사",
+            "months": 6
+          },
+          {
+            "label": "비타민D",
+            "months": 3
+          }
+        ]
+      }
+    }
+  ]
+}

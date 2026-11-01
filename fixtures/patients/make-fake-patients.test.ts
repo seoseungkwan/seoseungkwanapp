@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { buildFakePatients, fakePatientsJson, type RowsCase } from './make-fake-patients'
+import { buildFakePatients, fakePatientsJson, recallBulkRecords, type RowsCase } from './make-fake-patients'
 
 // 환자 탭 가짜 자료(fixtures/patients/fake/*.json). 실제 환자 자료가 섞이지 않았는지 모양으로 본다.
 
@@ -80,6 +80,57 @@ describe('make-fake-patients', () => {
       }
     }
     rx.tokens.forEach((raw, index) => expect(notPhoneLike(raw), `번호 사례 ${index}`).toBe(true))
+  })
+
+  it('AC-603.2 정기 주사 쌓인 기록: 이름·차트번호·전화가 가짜 모양뿐이다', () => {
+    const { 'recall-cases.json': recall } = buildFakePatients()
+    const records = [
+      ...recall.ingest.flatMap((c) => c.history.records),
+      ...recall.compute.flatMap((c) => c.records),
+      ...recall.coverage.flatMap((c) => c.history.records),
+      ...recall.copy.flatMap((c) => c.records),
+    ]
+    expect(records.length).toBeGreaterThan(100)
+    const odd = new Set(['constructor', 'toString']) // 객체 원형 이름과 같은 차트번호 사례
+    records.forEach((r, index) => {
+      expect(FAKE_NAME.test(r.name), `기록 ${index} 이름`).toBe(true)
+      expect(FAKE_CHART.test(r.chart) || odd.has(r.chart), `기록 ${index} 차트번호`).toBe(true)
+      expect(notPhoneLike(r.phone), `기록 ${index} 전화`).toBe(true)
+    })
+  })
+
+  it('AC-603.2 정기 주사 83·47 표 줄: 이름은 가짜 모양으로 시작하고 차트번호는 가짜 모양이거나 짚어 둔 이상한 모양이다', () => {
+    const { 'recall-cases.json': recall } = buildFakePatients()
+    const tables = [
+      ...recall.ingest.flatMap((c) => [c.chart, c.rx]),
+      ...recall.copy.map((c) => c.rx),
+      ...recall.rx.map((c) => c.rows),
+      recall.bulk.chart,
+      recall.bulk.rx,
+    ].filter((rows): rows is unknown[][] => rows !== null)
+    const oddChart = new Set(['constructor', 'toString', '9000 03', '9000.04', '900-005', '000', '0'])
+    tables.forEach((rows, index) => {
+      for (const cell of columnCells(rows, (h) => h.includes('환자명'))) {
+        expect(isBlank(cell) || /^가상환자\d{2}/.test(String(cell)), `표 ${index} 이름`).toBe(true)
+      }
+      for (const cell of columnCells(rows, (h) => h.includes('차트번호'))) {
+        const text = String(cell ?? '').trim()
+        expect(isBlank(cell) || FAKE_CHART.test(text) || oddChart.has(text), `표 ${index} 차트번호`).toBe(true)
+      }
+      for (const cell of columnCells(rows, (h) => h === '휴대폰')) {
+        expect(notPhoneLike(String(cell ?? '')), `표 ${index} 전화`).toBe(true)
+      }
+    })
+  })
+
+  it('AC-603.2 50,001건 사례는 만드는 법만 적고, 만들면 실제 수만큼 가짜 모양이다', () => {
+    const { bulk } = buildFakePatients()['recall-cases.json']
+    expect(bulk.counts).toEqual({ atLimit: 50_000, overLimit: 50_001 })
+    expect(fakePatientsJson()['recall-cases.json'].length).toBeLessThan(1_000_000)
+    const records = recallBulkRecords(bulk, bulk.counts.overLimit)
+    expect(records).toHaveLength(50_001)
+    expect(new Set(records.map((r) => r.chart)).size).toBe(50_001)
+    expect(records.every((r) => FAKE_NAME.test(r.name) && FAKE_CHART.test(r.chart) && notPhoneLike(r.phone))).toBe(true)
   })
 
   it('AC-602.3·AC-602.4 어느 글자에도 진짜 같은 휴대폰 번호가 없다', () => {
