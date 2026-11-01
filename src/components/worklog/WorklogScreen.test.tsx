@@ -620,6 +620,17 @@ describe('AC-010.7 터치 기기는 보기만', () => {
     change.mockRestore()
   })
 
+  it('AC-010.17: 터치 기기는 빈 날이든 값이 있는 날이든 "휴대폰에서는 보기만 할 수 있어요"이고 "적으면 바로 저장돼요"가 없다', async () => {
+    media.touch = true
+    await open({})
+    expect(statusText()).toBe('휴대폰에서는 보기만 할 수 있어요')
+
+    load.mockResolvedValue(dayWith({ cashIn: '100000' }))
+    await settle(60_000)
+    expect(cell('현금수납').value).toBe('100,000원')
+    expect(statusText()).toBe('휴대폰에서는 보기만 할 수 있어요')
+  })
+
   it('AC-010.7: 터치 기기도 다시 읽기를 한다', async () => {
     media.touch = true
     await open({ memo: '가상 옛 글' })

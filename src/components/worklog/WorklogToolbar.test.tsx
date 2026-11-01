@@ -115,6 +115,7 @@ describe('AC-009.2 저장 상태 글', () => {
   it.each<[ToolbarStatus, Date | null, string]>([
     ['loading', null, '불러오는 중이에요'],
     ['empty', null, '적으면 바로 저장돼요'],
+    ['view-only', null, '휴대폰에서는 보기만 할 수 있어요'], // AC-010.17
     ['saving', null, '저장하는 중이에요'],
     ['saving', SAVED_AT, '저장하는 중이에요'],
     ['saved', SAVED_AT, '저장했어요 · 14:05'],

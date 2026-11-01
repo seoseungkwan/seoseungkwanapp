@@ -10,7 +10,7 @@ import type { ErrorCode } from '@/types/errors'
 // 업무일지 날짜 줄·저장 상태·오류 카드 (specs/worklog REQ-009, design.md 11-2절). 받은 상태를 그리기만 한다.
 // 양식 밖이라 앱 규칙(ds·토큰·Pretendard)이다. 자동 저장만 있어서 [저장] 단추가 없다. 폭은 감싸는 화면이 정한다
 
-export type ToolbarStatus = 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed'
+export type ToolbarStatus = 'loading' | 'empty' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked' | 'load-failed' | 'view-only'
 
 function statusText(status: ToolbarStatus, savedAt: Date | null): string {
   const time = savedAt ? savedTimeText(savedAt) : null
@@ -19,6 +19,8 @@ function statusText(status: ToolbarStatus, savedAt: Date | null): string {
       return '불러오는 중이에요'
     case 'empty':
       return '적으면 바로 저장돼요'
+    case 'view-only':
+      return '휴대폰에서는 보기만 할 수 있어요'
     case 'saving':
       return '저장하는 중이에요'
     case 'saved':

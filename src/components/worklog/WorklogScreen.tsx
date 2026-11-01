@@ -34,8 +34,8 @@ function subscribeTouch(listener: () => void) {
 const isTouchDevice = () => window.matchMedia(TOUCH_QUERY).matches
 const notTouchOnServer = () => false
 
-// 저장·불러오기 실패 > 끊김 > 저장 중 > 불러오는 중 > 막힌 칸 > 저장됨 > 아직 안 적음
-function toolbarStatus(save: SaveState, load: WorklogDayStatus): ToolbarStatus {
+// 저장·불러오기 실패 > 끊김 > 저장 중 > 불러오는 중 > 막힌 칸 > 저장됨 > 아직 안 적음(터치 기기는 보기만, AC-010.17)
+function toolbarStatus(save: SaveState, load: WorklogDayStatus, viewOnly: boolean): ToolbarStatus {
   if (save === 'failed') return 'failed'
   if (load === 'error') return 'load-failed'
   if (save === 'offline') return 'offline'
@@ -43,7 +43,7 @@ function toolbarStatus(save: SaveState, load: WorklogDayStatus): ToolbarStatus {
   if (load === 'loading') return 'loading'
   if (save === 'blocked') return 'blocked'
   if (save === 'saved') return 'saved'
-  return 'empty'
+  return viewOnly ? 'view-only' : 'empty'
 }
 
 export function WorklogScreen({ initialToday }: { initialToday: string }) {
@@ -154,7 +154,7 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
       <WorklogToolbar
         ymd={ymd}
         today={today}
-        status={toolbarStatus(snapshot.state, status)}
+        status={toolbarStatus(snapshot.state, status, viewOnly)}
         savedAt={snapshot.savedAt}
         blockedYmd={snapshot.blocked?.ymd ?? null}
         onDate={moveTo}
