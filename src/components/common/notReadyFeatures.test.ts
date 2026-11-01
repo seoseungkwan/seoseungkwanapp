@@ -7,7 +7,7 @@ import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notRea
 
 const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
-// 탭 순서(대시보드·청구·설정 빼고)
+// 탭 순서(화면이 있는 탭은 빼고). 수는 적지 않는다: 기능에 화면이 생기면 그 줄만 뺀다
 const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: string; items: string[] }> = [
   {
     path: '/stats',
@@ -29,13 +29,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     title: '환자는 준비 중이에요',
     intro: `다시 오실 환자와 문자 보낼 환자를 챙길 자리예요. ${SOON}`,
     items: ['다시 오실 환자 명단', '정기 주사 문자 명단', '문자 문구 복사'],
-  },
-  {
-    path: '/revenue',
-    name: '매출',
-    title: '매출은 준비 중이에요',
-    intro: `매출 흐름을 나눠 볼 자리예요. ${SOON}`,
-    items: ['매출 추이', '급여와 비급여', '치료별 매출', '한 사람당 평균 진료비'],
   },
   {
     path: '/ai-report',
@@ -81,9 +74,15 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
   },
 ]
 
-describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능 10개(탭 순서)', () => {
-  it('AC-305.4: 10개가 탭 순서대로 주소·이름이 표와 같다', () => {
+describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () => {
+  it('AC-305.4·AC-010.1: 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
+  })
+
+  it('AC-010.1: 매출은 준비 중 목록에 없다 — 주소·이름·옛 만들 것 글자 모두', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('매출')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('한 사람당 평균 진료비')
   })
 
   it('AC-305.4: 주소가 겹치지 않는다', () => {
@@ -129,7 +128,6 @@ describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 �
     '통계는 준비 중이에요',
     '고시·공지는 준비 중이에요',
     '환자는 준비 중이에요',
-    '매출은 준비 중이에요',
     'AI 리포트는 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
@@ -138,7 +136,7 @@ describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 �
     '주소록은 준비 중이에요',
   ]
 
-  it('AC-415.1: 항목마다 title이 있고 탭 순서대로 요구사항의 글자 그대로다', () => {
+  it('AC-415.1·AC-010.1: 항목마다 title이 있고 탭 순서대로 요구사항의 글자 그대로다', () => {
     expect(NOT_READY_FEATURES.map((f) => f.title)).toEqual(TITLES)
     expect(TABLE.map((row) => row.title)).toEqual(TITLES)
   })

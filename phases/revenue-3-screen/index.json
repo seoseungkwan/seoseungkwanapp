@@ -22,7 +22,8 @@
     {
       "step": 3,
       "name": "tab-ready",
-      "status": "pending"
+      "status": "completed",
+      "summary": "(app)/revenue/page.tsx → RevenueScreen, notReadyFeatures·menu·features에서 매출을 준비된 탭으로(connect-first, 넷째 설명 '건당 진료비'), 문서 넷(plan.md §2-4·§5, ARCHITECTURE, UI_GUIDE, tab-frame/plan). lib/backup/tables.ts가 이 갈래에 없어 AC-010.4는 ARCHITECTURE의 한 줄로 적음(청구 사전점검을 합칠 때 넣을 것). 고정 숫자 없앰(명세 458a2c8): DashboardHome·dashboard/page·tabFrame·shell·titles 시험의 수를 DASHBOARD_FEATURES·MENU·NOT_READY_FEATURES에서 셈. 합치면 숫자가 바뀌어도 시험을 안 고쳐도 됨. titles 시험은 표 경로를 MENU와 /admin에 맞춰 봄. 남긴 것(이번에 안 고침): 옛 주석 FeatureIndex.tsx:9·NotReadyScreen.tsx:8·18·ClaimEntry.tsx:26(Files 밖). requirements.md:95의 'Step 2'(tasks는 Step 3, 다음 명세 변경 때). plan.md:116·:101이 새 ARCHITECTURE와 어긋남. 랜딩 '매출·재고'의 '준비 중' 칩은 재고 때문에 그대로(승인된 문구)."
     },
     {
       "step": 4,

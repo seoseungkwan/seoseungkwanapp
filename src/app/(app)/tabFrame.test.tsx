@@ -8,13 +8,13 @@ import { GET as authCallback } from '@/app/auth/callback/route'
 import { setupSteps, type SetupInput } from '@/components/claim/setup/steps'
 import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
-import { DASHBOARD_FEATURES } from '@/components/dashboard/briefing/features'
+import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { AppShell } from '@/components/shell/AppShell'
 import { MENU } from '@/components/shell/menu'
 import { decideRoute } from '@/lib/auth/gate'
 import DashboardPage from './dashboard/page'
 
-// 탭 13개 틀 통합 시험 (tab-frame REQ-301·REQ-307·REQ-308, design.md '대시보드 페이지 조립'·'목차·준비 중 자료는 각 갈래 자기 파일').
+// 탭 틀 통합 시험 (tab-frame REQ-301·REQ-307·REQ-308, design.md '대시보드 페이지 조립'·'목차·준비 중 자료는 각 갈래 자기 파일').
 // 네 갈래(탭 줄 · 준비 중 화면 · 브리핑 · 분석)를 합친 코드를 가로질러 본다: 이름·주소·순서가 세 곳(menu.ts · briefing/features.ts ·
 // notReadyFeatures.ts)에서 같은지, 탭 주소마다 페이지가 있는지, 로그인하면 늘 대시보드가 첫 화면인지.
 // 기능에 진짜 화면이 생기면 세 곳과 그 주소의 page.tsx를 같은 TASK에서 고친다 — 한쪽만 바꾸면 이 시험이 깨진다(design.md '다음 명세가 탭을 채울 때')
@@ -49,9 +49,16 @@ const plain = (html: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(청구 connect-first · 설정 ready)
+// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(connect-first · ready). 수는 목록에서 센다(spec revenue AC-010.1, 다른 탭 명세도 같은 칸을 바꾼다)
 const READY = DASHBOARD_FEATURES.filter((f) => f.status !== 'soon')
 const NOT_READY = DASHBOARD_FEATURES.filter((f) => f.status === 'soon')
+const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
+// 쓰는 화면이 있는 칸의 주소 → 그 페이지가 불러오는 화면 폴더. 탭에 화면이 생기면 여기에 한 줄 더한다
+const SCREEN_DIR: Record<string, string> = {
+  '/claim': 'claim/setup',
+  '/claim/setup': 'claim/setup',
+  '/revenue': 'revenue',
+}
 
 describe('로그인하면 늘 대시보드가 첫 화면이다 (REQ-301)', () => {
   beforeEach(() => {
@@ -112,9 +119,9 @@ describe('로그인하면 늘 대시보드가 첫 화면이다 (REQ-301)', () =>
 })
 
 describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
-  it('AC-307.1: 목차 이름·순서 = MENU에서 대시보드를 뺀 탭 이름 12개', () => {
+  it('AC-307.1: 목차 이름·순서 = MENU에서 대시보드를 뺀 탭 이름', () => {
     expect(DASHBOARD_FEATURES.map((f) => f.name)).toEqual(MENU.filter((m) => m.label !== '대시보드').map((m) => m.label))
-    expect(DASHBOARD_FEATURES).toHaveLength(12)
+    expect(DASHBOARD_FEATURES).toHaveLength(MENU.length - 1)
   })
 
   it('AC-307.1: 목차 칸마다 href = 같은 이름 탭의 path', () => {
@@ -123,8 +130,8 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     }
   })
 
-  it('AC-307.2: MENU의 탭 주소 13개마다 src/app/(app)<주소>/page.tsx가 있다', () => {
-    expect(MENU).toHaveLength(13)
+  it('AC-307.2: MENU의 탭 주소마다 src/app/(app)<주소>/page.tsx가 있다', () => {
+    expect(MENU).toHaveLength(DASHBOARD_FEATURES.length + 1)
     for (const item of MENU) expect(existsSync(pageFile(item.path)), pageFile(item.path)).toBe(true)
   })
 
@@ -143,20 +150,38 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3: 사용 가능 칸(/claim·/claim/setup)의 페이지는 NotReadyScreen을 쓰지 않는 기존 화면이다', () => {
-    expect(READY.map((f) => f.href)).toEqual(['/claim', '/claim/setup'])
+  it('AC-307.3·AC-010.1: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같다', () => {
+    expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
+    expect(READY.map((f) => f.href)).toEqual(expect.arrayContaining(['/claim', '/revenue', '/claim/setup']))
     for (const feature of READY) {
       const source = read(pageFile(feature.href))
       expect(source, feature.href).not.toMatch(/NotReadyScreen|notReadyFeatures/)
-      expect(source, feature.href).toMatch(/from '@\/components\/claim\/setup\//) // 청구 사전점검 화면(ClaimEntry · SetupScreen)
+      expect(source, feature.href).toContain(`from '@/components/${SCREEN_DIR[feature.href]}/`)
     }
   })
 
-  it('AC-307.4: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같다', () => {
+  it('AC-307.4·AC-010.1: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같다', () => {
     const fromNotReady = NOT_READY_FEATURES.map((f) => [f.name, f.path])
-    expect(fromNotReady).toHaveLength(10)
+    expect(fromNotReady).toHaveLength(MENU.filter((m) => !m.ready).length)
     expect(NOT_READY.map((f) => [f.name, f.href])).toEqual(fromNotReady)
     expect(MENU.filter((m) => m.href === null && m.label !== '설정').map((m) => [m.label, m.path])).toEqual(fromNotReady)
+  })
+
+  it('AC-010.1: 매출 — 준비 중 목록에 없고, 탭은 ready·자기 화면 주소이며, 목차는 청구와 같은 connect-first에 넷째 설명이 건당 진료비다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
+    expect(MENU.find((m) => m.label === '매출')).toMatchObject({ path: '/revenue', href: '/revenue', ready: true })
+    const revenue = DASHBOARD_FEATURES.find((f) => f.name === '매출')
+    expect(revenue?.status).toBe('connect-first')
+    expect(revenue?.status).toBe(DASHBOARD_FEATURES.find((f) => f.name === '청구')?.status)
+    expect(revenue?.desc.split('·')[3]).toBe('건당 진료비')
+    expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
+  })
+
+  it('AC-010.1: [전체 메뉴]가 세는 준비 중 탭 수 = NOT_READY_FEATURES 수 = 목차의 준비 중 칸 수(매출이 빠진 수)', () => {
+    const notReadyTabs = MENU.filter((m) => !m.ready)
+    expect(notReadyTabs.map((m) => m.label as string)).not.toContain('매출')
+    expect(notReadyTabs).toHaveLength(NOT_READY_FEATURES.length)
+    expect(notReadyTabs).toHaveLength(featureCount('soon'))
   })
 
   // 설치·연결 확인 단계 이름은 입력과 상관없이 같다 → 아무 입력(연결 중)이나 준다
@@ -174,11 +199,14 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7·AC-414.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수(12) · 지금 쓸 수 있는 칸 수(1) · 연결하면 쓸 수 있는 칸 수(1)', () => {
+  it('AC-307.7·AC-414.5·AC-010.1: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
     const total = DASHBOARD_FEATURES.length
-    const now = DASHBOARD_FEATURES.filter((f) => f.status === 'ready').length
-    const afterConnect = DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first').length
-    expect([total, now, afterConnect]).toEqual([12, 1, 1])
+    const now = featureCount('ready')
+    const afterConnect = featureCount('connect-first')
+    // 세 상태를 더하면 전체이고, 전체는 대시보드를 뺀 탭 수, 지금·연결 뒤 쓰는 칸은 대시보드를 뺀 ready 탭이다
+    expect(now + afterConnect + featureCount('soon')).toBe(total)
+    expect(total).toBe(MENU.length - 1)
+    expect(now + afterConnect).toBe(MENU.filter((m) => m.ready && m.label !== '대시보드').length)
     const text = plain(renderToStaticMarkup(<DashboardPage />))
     expect([.../(\d+)개 가운데 (\d+)개는 지금, (\d+)개는 연결하면 쓸 수 있어요/.exec(text)!.slice(1)].map(Number)).toEqual([total, now, afterConnect])
     // 옛 기능 수 글 둘은 없다
