@@ -135,3 +135,26 @@ export type Summary = {
   month: GrainView
   series: Record<Grain, BucketRef[]> // 추세 그래프용, key 오름차순. 줄이 있거나 덮은 기간에 걸친 칸
 }
+
+// ── 처방 추세 (lib/analytics/rxTrend.ts가 만든다. 저장한 일 숫자로 그린다) ──
+
+export type TrendBucket = Grain
+
+// 원본 enum 이름 그대로
+export type TrendComparison = 'PreviousEqualDays' | 'PreviousYear' | 'PreviousMonth'
+
+// 처방 하나의 칸 하나. start·end는 기간 안으로 자른 날이고, partial이면 label 끝에 '(일부 기간)'이 붙는다.
+// count = 덮은 날들의 그 처방 환자 수 합(건). newCount + returningCount ≤ count(나머지는 알 수 없음).
+// 소모량·금액은 저장 모양에 없어 늘 null('자료 없음')
+export type TrendPoint = {
+  code: string
+  start: string
+  end: string
+  label: string
+  partial: boolean
+  count: number
+  newCount: number
+  returningCount: number
+  quantity: null
+  amount: null
+}

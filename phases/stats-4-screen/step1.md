@@ -91,6 +91,10 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 ### 4. 시험 (jsdom, 가짜 Worker·가짜 `chrome.runtime`·`vi.mock('@/lib/storage/stats')`)
 - AC마다: 첫 그림(읽는 중 → 섹션 / 없음 안내 / 읽기 실패 + [다시 읽기]), 기간 바꿈(눌림·다시 읽기·`requestSplit`), 비트 불러오기(막힘 → 저장 → 다시 그림, 화면이 받은 값에 가짜 차트번호 글자 없음), 파일 길(`runAnalysis` 가짜), 연결 상태별 안내, 저장 실패 + [다시 저장](같은 값), incomplete 안내, 출처 줄, "오늘 진료 끝"이 `closeToday`로 감, 저장소·주소에 아무것도 안 넣음(`localStorage`·`location.search` 그대로)
 
+## TASK-8에서 넘어온 규칙 (2026-11-01 리뷰)
+
+- `buildTrend`가 던지는 `RangeError`의 `.message`를 화면에 그대로 보이지 않는다. 화면 오류 글은 `lib/errors.ts` 한 곳이다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`

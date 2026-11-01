@@ -87,6 +87,15 @@
 - AC-511.8: 비교 기간이 덮은 기간 밖인 칸 → `covered: false`, 칸의 일부 날만 덮임 → `covered: true`
 - AC-511.7: 소스 글자에 `react`·`supabase`·`fetch`·`localStorage`가 없고 대시보드 `view.ts`를 불러온다
 
+## TASK-8에서 넘어온 규칙 (2026-11-01 리뷰)
+
+- `buildTrend`는 원본 `TrendMath.Validate`처럼 `codes`가 0개이거나 200개를 넘으면 `RangeError`다. `rxList`는 자료의 코드를 **대소문자 구분 없이 먼저 합친 뒤** 200개씩 나눠 부른다(`AB1`과 `ab1`이 다른 묶음에 들어가면 두 줄 모두 합친 건수를 갖는다). 처방 줄이 없는 기간은 부르기 전에 막는다. 시험: 코드 201개 자료에서 예외 없이 상위 5개가 나온다, 대소문자만 다른 코드가 묶음 경계에 걸려도 한 줄이다
+- `totals`는 `count`만 담는다. `newCount`·`returningCount`는 점을 더해 낸다
+- `TrendPoint`에 이름이 없다. '가장 최근 날의 이름'은 `days`에서 찾는다
+- `covered`(AC-511.8)에 `isCovered`를 쓰지 않는다(칸 전체가 들어가야 참이라 일부만 덮인 칸이 false가 된다). 겹침을 따로 본다
+- `rxDetail`은 `buildTrend` 점을 그대로 준다. 90일 보기는 이번·비교 칸 수가 다를 수 있지만 여기서 채우거나 자르지 않는다(TASK-13이 맡는다)
+- 증감은 `compareNumbers`를 그대로 쓴다. `trendChange`는 쓰지 않아도 된다(건수는 음수가 없다)
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
