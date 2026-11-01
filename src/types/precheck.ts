@@ -155,6 +155,29 @@ export type DxTrend = {
   suggestions: TrendSuggestion[]
 }
 
+// ── 추천 상병·상병 확인(TASK-11, lib/precheck/dx). 원본 new-medicore-dx-recommend ──────────
+
+/** 상병 연결표 한 줄(원본 snapshot.rules, 병원 설정 dx_links): 처방코드 · 상병코드 · 상병명 · 배제상병으로(1) · s 직접 추가 · t 연결표 · r 기록 규칙 */
+export type DxLink = [rx: string, dx: string, nm: string, ex: 0 | 1, src: 's' | 't' | 'r']
+/** 추천의 출처(원본 src): 고시 · 연결표 · 직접 추가 · 기록 규칙. 경향은 출처가 아니라 t로 보인다 */
+export type DxSource = 'gosi' | 'table' | 'staff' | 'record'
+/** 우리 병원 경향(원본 t): 함께 나온 내원 수 · 주·부·배제 · 이 처방 내원 중 비율 · 어느 처방에나 붙는 흔한 상병인가 */
+export type DxTrendUse = { n: number; m: number; s: number; x: number; share: number; common: boolean }
+/** 추천 한 줄(원본 recommend의 list 항목). src는 넣은 차례(원본은 Set), pos는 넣은 차례 번호, basis는 고시 근거 */
+export type DxRow = { dx: string; nm: string; src: DxSource[]; ex: boolean; basis: string; t: DxTrendUse | null; pos: number }
+/** 원본 recommend 결과: 이 처방의 경향 내원 수와 추천 목록 */
+export type DxRecommendation = { visits: number; list: DxRow[] }
+/** 상병 확인 경고 하나(원본 issues 항목): 규칙이 있는 급여 처방인데 맞는 상병이 없다. record면 기록 규칙뿐(평소와 다름) */
+export type DxIssue = { code: string; name: string; gosi: boolean; record: boolean; rec: DxRow[] }
+/** 진료 하나의 추천 상병·상병 확인 보기 모양. 보여 주기만 한다(진료 자료를 바꾸지 않는다) */
+export type VisitDxView = {
+  visitKey: string
+  missingDx: boolean
+  needsCheck: boolean
+  issues: DxIssue[]
+  recommendations: (DxRecommendation & { code: string; name: string })[]
+}
+
 export type ClaimMonth = {
   period: DateRange
   visits: Visit[] // 날짜 → 차트번호(숫자) 차례(원본 byVisitDate)

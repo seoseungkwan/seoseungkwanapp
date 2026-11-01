@@ -1,6 +1,7 @@
+import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { Outcome } from '@/types/parse'
-import type { ClaimMonth, PrecheckToScreen, RuleSummary, Tables } from '@/types/precheck'
+import type { ClaimMonth, DxLink, PrecheckToScreen, RuleSummary, Tables, VisitDxView } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
@@ -36,6 +37,12 @@ export function ruleList(tables: Tables): RuleSummary[] {
     basis,
     enabled_default,
   }))
+}
+
+/** 진료마다 추천 상병과 상병 확인 경고(TASK-11). 점검 결과 보기 모양에 규칙 결과와 함께 넣는다(jobs.check, TASK-10). 진료 자료를 바꾸지 않는다 */
+export function dxViews(month: ClaimMonth, links: readonly DxLink[]): VisitDxView[] {
+  const ctx = dxContext({ trend: month.dxTrend, links, visits: month.visits, hasDx: month.hasDx })
+  return month.visits.map((visit) => visitDxView(visit, ctx))
 }
 
 type Rec = Record<string, unknown>
