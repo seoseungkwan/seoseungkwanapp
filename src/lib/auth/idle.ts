@@ -13,12 +13,37 @@ const DOC_EVENT = 'visibilitychange'
 const LISTEN = { capture: true, passive: true }
 const ACTIVITY = 'activity'
 
-// 마지막 움직임에서 timeoutMs가 지나면 onIdle을 한 번 부르고 스스로 멈춘다. 돌려받은 함수 = 정리(여러 번 불러도 된다)
-export function startIdleLogout(opts: { timeoutMs: number; onIdle: () => void } & IdleDeps): () => void {
-  const { timeoutMs, onIdle, target, doc, channel } = opts
+export type IdleOptions = {
+  timeoutMs: number
+  onIdle: () => void
+  // 1분 전 안내(ui-90 AC-418.1). 마지막 움직임에서 timeoutMs − warnMs에 onWarn, 그 뒤 첫 움직임에 onActive. warnMs가 없으면 지금과 같다
+  warnMs?: number
+  onWarn?: () => void
+  onActive?: () => void
+}
+
+// 마지막 움직임에서 timeoutMs가 지나면 onIdle을 한 번 부르고 스스로 멈춘다. 돌려받은 함수 = 정리(여러 번 불러도 된다).
+// 타이머는 늘 하나다: 안내가 있으면 '안내 시각 → 남은 시간 뒤 로그아웃'으로 잇는다
+export function startIdleLogout(opts: IdleOptions & IdleDeps): () => void {
+  const { timeoutMs, onIdle, warnMs, onWarn, onActive, target, doc, channel } = opts
+  const warnAfter = warnMs !== undefined && warnMs > 0 && warnMs < timeoutMs ? timeoutMs - warnMs : undefined
   let last = Date.now()
-  let timer = setTimeout(idle, timeoutMs)
+  let warned = false
   let stopped = false
+  let timer = schedule()
+
+  function schedule() {
+    return warnAfter === undefined ? setTimeout(idle, timeoutMs) : setTimeout(warn, warnAfter)
+  }
+
+  // 잠자기 등으로 안내 시계가 밀려 이미 30분이 지났으면 안내 없이 로그아웃한다
+  function warn() {
+    const left = timeoutMs - (Date.now() - last)
+    if (left <= 0) return idle()
+    warned = true
+    timer = setTimeout(idle, left)
+    onWarn?.()
+  }
 
   function idle() {
     stop()
@@ -34,7 +59,11 @@ export function startIdleLogout(opts: { timeoutMs: number; onIdle: () => void } 
     }
     last = Date.now()
     clearTimeout(timer)
-    timer = setTimeout(idle, timeoutMs)
+    timer = schedule()
+    if (warned) {
+      warned = false
+      onActive?.()
+    }
     return true
   }
 
