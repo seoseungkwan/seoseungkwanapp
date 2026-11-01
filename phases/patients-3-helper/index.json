@@ -10,7 +10,8 @@
     {
       "step": 1,
       "name": "contact-read",
-      "status": "pending"
+      "status": "blocked",
+      "blocked_reason": "precheck TASK-8 필요: helper/src/Precheck.Core/Bit/GridReader.cs·GridRows.cs·helper/src/Precheck.Windows/VendorGridExport.cs가 origin/main에 없다(2026-11-01 확인, origin/main 1712082). 합쳐지면 이 step을 시작한다"
     }
   ]
 }
