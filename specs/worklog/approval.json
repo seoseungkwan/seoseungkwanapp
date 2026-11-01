@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "worklog",
-  "approved_at": "2026-11-01T10:47:02Z",
+  "approved_at": "2026-11-01T11:13:34Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "10f979c9dea0c9d19fcff1ad5043de3bc621e899ed6464e037d2e25feee19c95",
+  "spec_sha256": "831aabbffc24a2e403fd83963cacb929e60b586fc9582358ad6f8dd25c003479",
   "scope": [
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
