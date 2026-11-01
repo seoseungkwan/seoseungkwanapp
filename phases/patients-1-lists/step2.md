@@ -101,7 +101,7 @@ export type RecallItem = { ruleId: string; label: string; months: number; chart:
 export function recallCompute(records: RecallRecord[], rules: readonly RecallRule[]): RecallItem[]
 export function recallSelect(items: RecallItem[], from: string | null, to: string | null, overdue: boolean, today: string): RecallItem[]
 export function recallStatus(item: RecallItem, today: string): string
-export function recallCoverage(history: RecallHistory, rules: readonly RecallRule[], today: string): RecallCoverage
+export function recallCoverage(history: RecallHistory, rules: readonly RecallRule[], today: string): Omit<RecallCoverage, 'trimmed'>   // 판정만. trimmed(30MB 정리 수)는 Worker(TASK-4) handler가 채운다 — 이 파일은 모른다
 export function recallCopyLines(items: RecallItem[], phoneOf: (chart: string) => string): string
 export function recallPhones(items: RecallItem[], phoneOf: (chart: string) => string): { text: string; count: number; missing: number }
 ```

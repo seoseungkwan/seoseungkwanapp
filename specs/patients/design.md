@@ -97,8 +97,10 @@ export type FollowupRow = { key: string; chart: string; name: string; phone: str
 export type UndecidedRow = { key: string; chart: string; name: string; phone: string; lastVisit: string; nextLabel: string; evidence: string }
 export type FollowupView = { read: { from: string; to: string }; base: string /* 원본 baseDate */; rows: FollowupRow[]; undecided: UndecidedRow[]; phoneLoaded: boolean; marksLoaded: boolean /* store.load가 됐는가(AC-604.8) */ }
 export type RecallRow = { key: string; ruleId: string; label: string; months: number; chart: string; name: string; phone: string; last: string; due: string; status: string; evidence: string; contacted: boolean }
-export type RecallCoverage = { records: number; from: string | null; short: { label: string; months: number }[]; trimmed: number /* 30MB에 맞추려 이번에 뺀 오래된 기록 수(AC-604.6) */ }
+export type RecallCoverage = { records: number; from: string | null; short: { label: string; months: number }[]; trimmed: number /* handler가 채움: 30MB에 맞추려 이번에 뺀 오래된 기록 수(AC-604.6) */ }
 export type RecallView = { rows: RecallRow[]; coverage: RecallCoverage }
+// recallCoverage(TASK-3, lib/patients/recall.ts)는 판정만 돌려준다: Omit<RecallCoverage, 'trimmed'>. 30MB 정리는 Worker 일이라 recall.ts는 모른다.
+// trimmed는 handler(TASK-4)가 fitStore 결과로 채워 buildRecall(…, trimmed)에 넘긴다
 export type ContactCount = { followup_left: number; injection_left: number }
 ```
 - 화면 고르기(기간·조건부·지난 예정·구분)는 다시 읽지 않는다. 화면이 `filter` 메시지로 고른 값을 보내면 Worker가 `lib/patients`의 원본 옮김(`scheduleRows`·`passFilters`·`recallSelect`)으로 거른 줄과 그 줄의 복사 글을 돌려준다(원본과 같은 결과를 한 곳에서, 화면은 거르지 않는다)

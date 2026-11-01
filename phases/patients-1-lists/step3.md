@@ -11,9 +11,9 @@
 - **AC-604.1**: chunk…end를 모아 조각 수·바이트·SHA-256이 맞을 때만 JSON으로. 다르면 `E-BRIDGE-BAD-REPLY`, abort면 받은 번호. 반쪽 자료 안 씀
 - **AC-604.2**: `readPlan`: F/U 최근 120일 → 31일 이하 조각(오래된 것부터), 정기 주사 → 마지막 읽은 달 1일 ~ 오늘(처음이면 가장 긴 간격 + 1개월 전 달 1일부터) 달 조각
 - **AC-604.3**: 종류마다 따로: F/U 조각이 다 오면 `FollowupView`, 정기 주사 조각이 다 오고 store.load가 됐으면 `RecallView`. 한 종류가 실패·시간 초과면 그 종류만 `null` + 그 종류 번호, 다른 종류는 그대로
-- **AC-604.4**: [연락함] → Worker가 `store.save {contact}` 글자를 통로 포트로, 됨이면 바뀐 보기 모양·건수, 실패면 그대로 + 오류 번호. 잇따라 누르면 저장을 하나씩 차례로, 차례가 온 저장은 그때의 최신 표시로 글자를 만듦(답이 뒤바뀌어 와도 둘 다 남음). 화면 메시지에 보낼 글자 없음
+- **AC-604.4**: [연락함] → Worker가 `store.save {contact}` 글자를 통로 포트로, 됨이면 바뀐 보기 모양·건수, 실패면 그대로 + 오류 번호. 잇따라 누르면 저장을 하나씩 차례로, 차례가 온 저장은 그때의 최신 표시로 글자를 만듦(첫 답이 늦게 와도 두 번째 저장은 그 뒤에 나가고 둘 다 남음). 화면 메시지에 보낼 글자 없음
 - **AC-604.5**: `contactCounts`: F/U = 예정이고 다음 내원일이 내일인데 연락함 아님, 정기 주사 = 예정일이 오늘까지(지난 것 포함)인데 연락함 아님. 0 이상 정수 둘(늘). 보기 모양 하나라도 없거나 연락 표시를 못 불러왔으면 handler가 `contactCounts`를 부르지 않고 건수 `null`
-- **AC-604.6**: 저장 글자 `{contact: {v: 1, marks, recall}}`. 보기 모양이 있는 종류마다 그 보기 모양에 열쇠가 있는 표시만 남김(날짜는 안 봄), 보기 모양 없는 종류의 표시는 그대로(정기 주사 합쳐 저장해도 내일 F/U 연락함은 남음). 30MB 넘으면 증상 글을 자르지 않고 가장 오래된 정기 주사 기록부터 빼고 `from`을 늦춤
+- **AC-604.6**: 저장 글자 `{contact: {v: 1, marks, recall}}`. 보기 모양이 있는 종류마다 그 보기 모양에 열쇠가 있는 표시만 남김(날짜는 안 봄), 보기 모양 없는 종류의 표시는 그대로(정기 주사 합쳐 저장해도 내일 F/U 연락함은 남음). 30MB 넘으면 증상 글을 자르지 않고 가장 오래된 정기 주사 기록부터 빼고 `from`을 늦춤. 쌓인 기록 안내는 뺀 뒤 기록으로 만들고 뺀 수는 `coverage.trimmed`(handler가 채움)
 - **AC-604.7**: 연락함 뒤 다시 오지 않은 정기 주사 환자(예정일 1년 넘게 지남)는 다음에 열어도 연락함이고 `injection_left`에 다시 안 들어감
 - **AC-604.8**: `stored`가 성공하기 전·실패한 뒤에는 [연락함]·기록 합치기에서 `store.save`를 보내지 않고 오류 번호만(PC 저장을 덮어쓰지 않음). F/U는 연락 표시 없이(`marksLoaded: false`), 건수 `null`, 정기 주사 보기 모양 `null`
 
@@ -94,7 +94,7 @@ export function readTargets(json: unknown, expect: { kind: 'followup' | 'injecti
 export function readStore(json: unknown): ContactStoreData                    // {} → 빈 것. 모양이 틀리면 빈 것으로 시작하지 말고 'E-STORE-BROKEN'
 export function buildFollowup(pieces: { chart: string[][]; rx: string[][] }[], marks: ContactStoreData['marks'], today: string): FollowupView
 export function mergeRecall(history: RecallHistory, pieces: { range: Range; chart: string[][]; rx: string[][] }[], rules: readonly RecallRule[], today: string): RecallHistory
-export function buildRecall(history: RecallHistory, rules: readonly RecallRule[], marks: ContactStoreData['marks'], phones: Record<string, string>, today: string): RecallView
+export function buildRecall(history: RecallHistory, rules: readonly RecallRule[], marks: ContactStoreData['marks'], phones: Record<string, string>, today: string, trimmed: number): RecallView   // coverage = { ...recallCoverage(history, rules, today), trimmed } — trimmed는 handler가 fitStore 결과로 넘긴다
 export function filterFollowup(view: FollowupView, f: FollowupFilters): { rows: FollowupRow[]; undecided: UndecidedRow[]; copy: { list: string; listWithDate: string } }
 export function filterRecall(view: RecallView, f: RecallFilters, today: string): { rows: RecallRow[]; copy: { list: string; phones: string; missingPhones: number } }
 export function markKey(row: { kind: 'f' | 'r'; … }): string                 // design.md 줄 열쇠
@@ -108,7 +108,7 @@ export function contactCounts(fu: FollowupView, rc: RecallView, today: string): 
 ```
 - 조각 여러 개는 표 머리 줄을 한 번만 두고 이어 붙여 `prepareSchedule`·`preparePhones`·`prepareRx`에 넣는다
 - 정기 주사 전화(`phones`)는 F/U 조각의 47 표 전화가 먼저, 없으면 기록의 전화(원본 `phone()`)
-- `mergeRecall` 뒤에는 늘 `fitStore`를 먼저 거쳐 메모리 기록을 줄이고, `buildRecall`은 줄인 기록으로 만든다. `coverage.trimmed` = `fitStore`가 뺀 수(AC-604.6)
+- handler 순서: `mergeRecall` → `fitStore`(메모리 기록을 줄이고 뺀 수를 얻음) → `buildRecall(줄인 기록, …, trimmed)`. `coverage.trimmed`는 handler가 넘긴 그 수다(AC-604.6). `recallCoverage`(TASK-3)는 `Omit<RecallCoverage, 'trimmed'>`(판정만)를 돌려주므로 `trimmed`는 handler가 채운다. `recall.ts`는 고치지 않는다
 
 ### 4. 메시지 (`handler.ts`·`patients.worker.ts`, design.md 'Worker 메시지 약속')
 ```ts
@@ -126,7 +126,7 @@ export function createHandler(deps: { post(message: unknown): void }): { onScree
 - `assemble.test.ts`(AC-604.1): 맞음·조각 빠짐·순서 바뀜·바이트 다름·SHA 다름·abort·end 전에 take
 - `plan.test.ts`(AC-604.2): 오늘이 월말·월초·윤년, 처음·이어 읽기
 - `jobs.test.ts`(AC-604.3·604.5·604.6·604.7): 보기 모양, 건수 정의(기간·도구와 상관없음, 조건부 제외, 내일만, 지난 정기 주사 포함), 연락 표시 정리(보기 모양에 있으면 1년 지나도 남음·열쇠가 바뀐 표시는 빠짐·정기 주사 보기 모양이 없으면 정기 주사 표시는 그대로·**정기 주사 기록을 합쳐 저장해도 내일 오실 F/U 줄의 연락함 표시가 남음**), **연락함 뒤 다시 오지 않은 정기 주사 환자가 다음 열기에도 연락함이고 `injection_left`에 안 들어가는 사례**(AC-604.7), 크기: 30MB를 넘는 가짜 기록(긴 증상 글 × 많은 건) → `fitStore`가 오래된 기록부터 빼고 증상 글은 그대로·`from`이 늦춰짐·`trimmed` 수, `contactCounts`는 늘 정수 둘(AC-604.5)
-- `handler.test.ts`(AC-604.3·604.4·604.8): 가짜 포트·가짜 post로 전체 흐름(plan → piece × n → stored → build → mark → sent ok/실패), F/U 조각 하나 실패 → F/U만 `null`이고 정기 주사는 보임(반대도), `store.load` 실패 → 정기 주사 `null`·F/U는 `marksLoaded: false`·건수 `null`·[연락함]에 `store.save` 없음, **다시 불러오는 중(`reload` 뒤 새 `stored` 전)과 다시 불러오기가 실패한 뒤 옛 줄로 [연락함]을 눌러도 포트에 `send`가 하나도 없음**(PC 저장을 덮어쓰지 않음), 건수 `null`은 handler가 정함(보기 모양 하나 없음·연락 표시 못 불러옴, AC-604.5), **두 줄을 잇따라 [연락함] → `send`가 하나씩 차례로 나가고 두 번째 payload에 첫 표시도 들어 있음, 답을 뒤바꿔(늦게) 보내도 둘 다 남음, 첫 저장이 실패하면 첫 표시만 빠지고 두 번째는 남음**(AC-604.4), 30MB 넘는 기록을 합치면 `views.recall.coverage.trimmed` > 0이고 `coverage.records`가 줄인 뒤 수(AC-604.6)
+- `handler.test.ts`(AC-604.3·604.4·604.8): 가짜 포트·가짜 post로 전체 흐름(plan → piece × n → stored → build → mark → sent ok/실패), F/U 조각 하나 실패 → F/U만 `null`이고 정기 주사는 보임(반대도), `store.load` 실패 → 정기 주사 `null`·F/U는 `marksLoaded: false`·건수 `null`·[연락함]에 `store.save` 없음, **다시 불러오는 중(`reload` 뒤 새 `stored` 전)과 다시 불러오기가 실패한 뒤 옛 줄로 [연락함]을 눌러도 포트에 `send`가 하나도 없음**(PC 저장을 덮어쓰지 않음), 건수 `null`은 handler가 정함(보기 모양 하나 없음·연락 표시 못 불러옴, AC-604.5), **두 줄을 잇따라 [연락함] → `send`가 하나씩 차례로 나가고 두 번째 payload에 첫 표시도 들어 있음, 첫 답이 늦게 와도 두 번째 저장은 그 뒤에 나감(그 전에는 포트에 두 번째 `send`가 없음)·둘 다 남음, 첫 저장이 실패하면 첫 표시만 빠지고 두 번째는 남음**(AC-604.4), 30MB 넘는 기록을 합치면 `views.recall.coverage.trimmed` > 0이고 `coverage.records`가 줄인 뒤 수(AC-604.6)
 
 ## TDD 순서
 

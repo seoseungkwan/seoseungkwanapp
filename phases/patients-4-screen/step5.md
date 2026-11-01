@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/patients/requirements.md`의 REQ-615에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-615.1**: 시험 계정 + 가짜 확장·도우미로 `/patients`에서 두 명단 불러오기·[연락함]·문구 저장 → 나간 요청의 주소·쿼리·몸통에서 맞은 곳을 `{종류, 요청 경로}`로만 모아 `expect(hits).toEqual([])`. 헤더·쿠키 안 모음, `/auth/v1/` 몸통·`apikey`·`access_token` 값 건너뜀, 실패해도 값 출력 없음(C11)
+- **AC-615.1**: 시험 계정 + 가짜 확장·도우미로 `/patients`에서 두 명단 불러오기·[연락함]·문구 저장 → 나간 요청의 주소·쿼리·몸통에서 맞은 곳을 `{종류, 요청 경로}`로만 모아 `expect(hits).toEqual([])`. 헤더·쿠키 안 모음, `/auth/v1/` 몸통·`apikey`·`access_token` 값 건너뜀, 실패해도 값 출력 없음(C11). 경로는 `decodeURIComponent`, 쿼리 값은 `URLSearchParams`로 꺼내 맞춤(인코딩된 한글 가짜 이름 사례 포함)
 - **AC-615.2**: `message_templates`·`contact_counts` 내 줄을 다시 읽으면 금지 글 없음, `contact_counts`는 정수 둘과 시각뿐
 - **AC-615.3**: trace·스크린샷·네트워크 기록에 쿠키·토큰 없음(`trace: 'off'`)
 
@@ -63,7 +63,9 @@
 ### 3. 시험 (`e2e/patients-privacy.spec.ts`)
 - 시험 계정으로 들어가 `/patients` → 두 명단을 불러옴 → [연락함] 하나 → [문자 문구]에서 문구 하나 고쳐 저장 → 남은 건수 올리기가 끝날 때까지 기다림
 - `page.on('request')`로 요청마다 주소·쿼리·몸통만 검사해 `hits: { kind: ForbiddenKind; path: string /* 쿼리 뺀 경로 */ }[]`에 모으고 `expect(hits).toEqual([])`(AC-615.1, 규칙 C11)
-  - 요청 머리(헤더)·쿠키는 읽지도 모으지도 않는다. `/auth/v1/` 요청 몸통(refresh_token)은 건너뛰고, 쿼리의 `apikey`·`access_token` 값은 지운 뒤 검사한다
+  - 요청 머리(헤더)·쿠키는 읽지도 모으지도 않는다. `/auth/v1/` 요청 몸통(refresh_token)은 건너뛴다
+  - 주소는 날 글자로 맞추지 않는다: `new URL(request.url())`의 경로를 `decodeURIComponent`로 풀어 맞추고, 쿼리는 `URLSearchParams`로 값을 하나씩 꺼내 `apikey`·`access_token`을 뺀 뒤 값마다 맞춘다(한글 가짜 이름 '가상환자NN'이 퍼센트 인코딩돼도 잡게). 이 일은 `forbidden.ts`의 `requestHits(url: string, body: string | null): { kind: ForbiddenKind; path: string }[]` 한 곳
+  - spec 첫 시험(자기 점검): `requestHits('https://example.test/rest/v1/x?name=' + encodeURIComponent('가상환자01'), null)`이 `[{ kind: 'name', path: '/rest/v1/x' }]`이고, `apikey`·`access_token` 값만 다른 주소는 `[]`이다
   - 실패해도 모은 글·몸통·값을 출력하지 않는다(실패 글은 `hits`의 종류·경로뿐)
 - 끝난 뒤 시험 계정 세션으로 `message_templates`·`contact_counts` 내 줄을 읽어 금지 글 없음, `contact_counts` 칸이 `followup_left`·`injection_left`(정수)·`updated_at`·`hospital_id`뿐(AC-615.2)
 - 저장된 줄 검사도 `findForbidden`의 종류만 모아 `expect(hits).toEqual([])`(값을 출력하지 않는다)
