@@ -10,5 +10,7 @@ export type ErrorCode =
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
   // 통계 도우미 자료(stats.rows, spec stats)
   | 'E-STATS-HISTORY' | 'E-STATS-TOO-BIG'
+  // 통계 숫자 저장·읽기(lib/storage/stats.ts, spec stats)
+  | 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }

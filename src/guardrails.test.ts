@@ -524,3 +524,120 @@ describe('AC-004.11 client.ts는 src/lib/bridge 밖에서 import할 수 없다(�
     expect(await lint(code, 'src/lib/bridge/workerSink.ts')).toEqual([])
   })
 })
+
+describe('AC-507.3 통계 저장(src/lib/storage/stats.ts) 울타리', SLOW, () => {
+  const STATS = 'src/lib/storage/stats.ts'
+
+  it.each([
+    "import { parse } from '@/lib/parsers/bit'",
+    "import x from '@/lib/parsers'",
+    "import { parse } from '../parsers/bit'",
+    "import type { Row } from '@/lib/parsers/bit'",
+    "export { parse } from '@/lib/parsers/bit'",
+    "import { connectScreenBridge } from '@/lib/bridge/workerSink'",
+    "import { connectBridge } from '@/lib/bridge/client'",
+    "import x from '@/lib/bridge'",
+    "import { connectScreenBridge } from '../bridge/workerSink'",
+    "import { open } from '@/workers/statsClient'",
+    "import x from '@/workers'",
+    "import { open } from '../../workers/statsClient'",
+    "import x from '@/lib/analytics'",
+    "import { aggregate } from '@/lib/analytics/aggregate'",
+    "import { buildTrend } from '@/lib/analytics/rxTrend'",
+    "import { buildSummary } from '../analytics/compare'",
+    "import type { TrendPoint } from '@/lib/analytics/rxTrend'",
+    "export { aggregate } from '@/lib/analytics/aggregate'",
+    "import { aggregate } from '@/lib/analytics/dates/../aggregate'",
+  ])('%s → no-restricted-imports', async (code) => {
+    expect(await errorRules(code, STATS)).toContain('no-restricted-imports')
+  })
+
+  // no-restricted-imports는 동적 import()를 검사하지 않는다
+  it.each([
+    "import('@/lib/parsers/bit')",
+    "import('../parsers/bit')",
+    "import('@/lib/bridge/workerSink')",
+    "import('@/lib/bridge/client')",
+    "import('@/workers/statsClient')",
+    "import('@/lib/analytics')",
+    "import('@/lib/analytics/aggregate')",
+    "import('../analytics/compare')",
+  ])('await %s → no-restricted-syntax', async (expr) => {
+    expect(await errorRules(`export const load = async () => await ${expr}`, STATS)).toContain('no-restricted-syntax')
+  })
+
+  it.each(['import(name)', 'import(`@/lib/parsers/${name}`)', "import('@/lib/par' + 'sers/bit')"])(
+    '글자로 고정되지 않은 %s → no-restricted-syntax',
+    async (expr) => {
+      const code = `export const load = async (name: string) => await ${expr}`
+      expect(await errorRules(code, STATS)).toContain('no-restricted-syntax')
+    },
+  )
+
+  it.each([
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['window.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('k')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["self.sessionStorage.getItem('k')", 'no-restricted-properties'],
+    ["globalThis.indexedDB.open('k')", 'no-restricted-properties'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, STATS)).toContain(rule)
+  })
+
+  it('dates·coverage·검사·Supabase·오류 번호는 import할 수 있다', async () => {
+    const code = [
+      "import { isYmd } from '@/lib/analytics/dates'",
+      "import { mergeRanges } from '@/lib/analytics/coverage'",
+      "import { addDays } from '../analytics/dates'",
+      "import { isCovered } from '../analytics/coverage'",
+      "import { validateDayPayload } from '@/lib/payload/validate'",
+      "import { supabaseBrowser } from '@/lib/supabase/browser'",
+      "import type { SupabaseClient } from '@supabase/supabase-js'",
+      "import type { ErrorCode } from '@/types/errors'",
+      'export const used = [isYmd, mergeRanges, addDays, isCovered, validateDayPayload, supabaseBrowser]',
+      'export type Used = SupabaseClient | ErrorCode',
+    ].join('\n')
+    expect(await lint(code, STATS)).toEqual([])
+  })
+
+  it("import('@/lib/analytics/dates')처럼 글자로 고정한 늦은 불러오기는 된다", async () => {
+    const code = "export const load = async () => [await import('@/lib/analytics/dates'), await import('../analytics/coverage')]"
+    expect(await lint(code, STATS)).toEqual([])
+  })
+
+  it('안내는 무엇을 쓸 수 없는지 말한다', async () => {
+    const imports = (await lint("import { aggregate } from '@/lib/analytics/aggregate'", STATS)).map((m) => m.message).join('\n')
+    expect(imports).toContain('lib/analytics')
+    expect(imports).toContain('dates')
+    expect(imports).toContain('coverage')
+    const storage = (await lint("localStorage.setItem('k', 'v')", STATS)).map((m) => m.message).join('\n')
+    expect(storage).toContain('브라우저 저장소')
+  })
+
+  it.each([
+    "import { parse } from '@/lib/parsers/bit'\nexport const used = parse",
+    "import { aggregate } from '@/lib/analytics/aggregate'\nexport const used = aggregate",
+    'console.log(1)',
+    "localStorage.setItem('k', 'v')",
+  ])('통계 파일만: 같은 폴더의 다른 파일에는 규칙을 씌우지 않는다 — %s', async (code) => {
+    expect(await lint(code, 'src/lib/storage/other.ts')).toEqual([])
+  })
+
+  it.each([
+    'src/lib/parsers/probe.ts',
+    'src/lib/analytics/probe.ts',
+    'src/lib/payload/probe.ts',
+    'src/lib/precheck/probe.ts',
+    'src/lib/bridge/probe.ts',
+    'src/workers/probe.ts',
+  ])('환자 자료 구역 %s는 지금처럼 lib/storage를 import할 수 없다', async (filePath) => {
+    expect(await errorRules("import { saveStats } from '@/lib/storage/stats'", filePath)).toContain('no-restricted-imports')
+    expect(await errorRules("import { saveStats } from '../storage/stats'", filePath)).toContain('no-restricted-imports')
+    const dynamic = "export const load = async () => await import('@/lib/storage/stats')"
+    expect(await errorRules(dynamic, filePath)).toContain('no-restricted-syntax')
+  })
+})

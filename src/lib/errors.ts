@@ -136,6 +136,15 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '고른 기간의 진료 기록이 너무 많아요',
     fix: '기간을 줄여 다시 불러오세요',
   },
+  // 통계 숫자 저장·읽기(lib/storage/stats.ts, spec stats)
+  'E-STATS-SAVE-FAILED': {
+    what: '통계 숫자를 저장하지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+  },
+  'E-STATS-READ-FAILED': {
+    what: '저장된 통계를 읽지 못했어요',
+    fix: '잠시 뒤 [다시 읽기]를 눌러 주세요',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

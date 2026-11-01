@@ -95,6 +95,11 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 
 - `buildTrend`가 던지는 `RangeError`의 `.message`를 화면에 그대로 보이지 않는다. 화면 오류 글은 `lib/errors.ts` 한 곳이다
 
+## TASK-7에서 넘어온 규칙 (2026-11-01 리뷰)
+
+- `saveStats`는 덮은 기간이 양 끝을 합쳐 800일을 넘으면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다(`stats_coverage` 제약). 비트 길은 800일 이하라 걸리지 않는다. **파일 길**(AC-514.4)은 가장 최근 이어진 구간을 고른 뒤 `from = max(from, addDays(to, -799))`로 줄여 넘긴다. 달·일 숫자는 전부 저장한다. 잘린 옛날 날은 0이 아니라 '덮이지 않음'이 되고, 화면이 읽는 범위는 731일 이하라 보이는 숫자는 줄지 않는다. 그대로 두면 이런 파일은 [다시 저장]을 눌러도 끝없이 실패한다. 시험: 801일 파일이 저장되고 덮은 기간이 800일이다. 이 줄임은 step의 `summary`에도 적는다
+- `latest === null`은 '줄 없음'이 아니다(`updated_at`을 못 읽는 브라우저에서도 줄은 남는다). AC-514.1의 없음 안내는 `rows` 길이로 보고, `latest`가 null이면 출처 줄만 숨긴다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
