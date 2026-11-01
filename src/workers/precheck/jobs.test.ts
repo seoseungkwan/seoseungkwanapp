@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Outcome } from '@/types/parse'
-import type { PrecheckFromScreen, PrecheckToScreen, Tables } from '@/types/precheck'
-import { loadMonth, createPrecheckJobs, ruleList } from './jobs'
+import type { DxLink, PrecheckFromScreen, PrecheckToScreen, Tables } from '@/types/precheck'
+import { loadMonth, createPrecheckJobs, dxViews, ruleList } from './jobs'
 import { loadTables } from './tables'
 
 // Worker가 부르는 일(REQ-009). 통로 포트로 온 조각을 모아(assemble) 한 번만 풀고(loadMonth) 점검용 모양을 만든다.
@@ -435,5 +435,57 @@ describe('AC-012.6 설정 화면용 규칙 목록(환자 자료 아님)', () => 
     const failed = setup(async () => ({ ok: false, code: 'E-RULES-LOAD-FAILED' }))
     await failed.jobs.fromScreen({ type: 'ruleList' })
     expect(failed.posts).toEqual([{ type: 'ruleList', ok: false, code: 'E-RULES-LOAD-FAILED' }])
+  })
+})
+
+describe('AC-011 dxViews: 진료마다 추천 상병과 상병 확인 경고가 보기 모양에 들어간다', () => {
+  const dxMonth = () => {
+    const loaded = loadMonth(FAKE('claim-month-dx-check.json'))
+    if (!loaded.ok) throw new Error(loaded.code)
+    return loaded.value
+  }
+
+  it('AC-011.1: 진료 수만큼 보기 모양이 나오고 추천에 내원 수·상병 목록이 있다', () => {
+    const month = dxMonth()
+    const views = dxViews(month, [])
+    expect(views.map((v) => v.visitKey)).toEqual(month.visits.map((v) => v.key))
+    const first = views.find((v) => v.visitKey === 'd01')!
+    expect(first.recommendations.find((r) => r.code === 'A49')?.visits).toBe(200)
+    expect(first.recommendations.find((r) => r.code === 'A49')?.list.map((r) => r.dx).slice(0, 2)).toEqual(['M17', 'M750'])
+    expect(first.recommendations.find((r) => r.code === 'A49')?.list[0].nm).toBe('상병 M17') // 이름은 그 달 진료의 상병에서 찾는다
+  })
+
+  it('AC-011.2: 상병 확인 경고(issues·missingDx·needsCheck)가 들어간다. 추천은 진료 자료를 바꾸지 않는다', () => {
+    const month = dxMonth()
+    const before = structuredClone(month.visits)
+    const views = dxViews(month, [])
+    const of = (id: string) => views.find((v) => v.visitKey === id)!
+    expect(of('d01').issues.map((x) => x.code)).toEqual(['A49'])
+    expect(of('d01').needsCheck).toBe(true)
+    expect(of('d02').issues).toEqual([])
+    expect(of('d02').needsCheck).toBe(false)
+    expect(of('d16').missingDx).toBe(true)
+    expect(of('d16').needsCheck).toBe(true)
+    expect(month.visits).toEqual(before)
+  })
+
+  it('AC-011.3: 상병 연결표를 넘기면 추천과 경고에 섞인다', () => {
+    const links: DxLink[] = [['G6604', 'S6350', '연결 이름', 0, 't']]
+    const views = dxViews(dxMonth(), links)
+    const view = views.find((v) => v.visitKey === 'd08')!
+    expect(view.issues.map((x) => [x.code, x.gosi])).toEqual([['G6604', false]])
+    expect(view.recommendations.find((r) => r.code === 'G6604')?.list[0]).toMatchObject({ dx: 'S6350', src: ['table'] })
+  })
+
+  it('AC-011.4: 그 달에 상병 추세가 비어도 고시로 추천하고 오류를 내지 않는다', () => {
+    const month = { ...dxMonth(), dxTrend: { ...dxMonth().dxTrend, codes: new Map() } }
+    const view = dxViews(month, []).find((v) => v.visitKey === 'd01')!
+    expect(view.recommendations.find((r) => r.code === 'A49')).toMatchObject({ visits: 0 })
+    expect(view.issues.map((x) => x.rec.map((r) => r.dx))).toEqual([['M17', 'M750']])
+  })
+
+  it('AC-011.2: 상병 자료가 없는 달은 경고를 내지 않는다', () => {
+    const views = dxViews({ ...dxMonth(), hasDx: false }, [])
+    expect(views.every((v) => !v.needsCheck && !v.missingDx && v.issues.length === 0)).toBe(true)
   })
 })
