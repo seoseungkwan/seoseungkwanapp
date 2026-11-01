@@ -20,10 +20,14 @@ public class RevenueCommandsTests
     {
         "date", "visits", "newPatients", "returnVisits", "patientsToDate",
         "total", "insurer", "noncovered", "copay", "otherTotal", "cash", "card", "transfer", "receivableIn",
-        "unconfirmed",
+        "unconfirmed", "splitUnconfirmed",
     };
 
     private static readonly string[] MoneyKeys = { "total", "insurer", "noncovered", "copay", "otherTotal", "cash", "card", "transfer", "receivableIn" };
+
+    private static readonly string[] SplitKeys = { "insurer", "noncovered", "copay", "otherTotal" };
+
+    private static readonly string[] RemainingKeys = { "total", "cash", "card", "transfer", "receivableIn" };
 
     private sealed class Outcome
     {
@@ -105,6 +109,20 @@ public class RevenueCommandsTests
         Assert.Equal(1, rig.Session.Disposed);
     }
 
+    [Theory(DisplayName = "AC-003.6 to가 9999-12-31이면 명령 표를 지나도 도우미가 멈추지 않고 E-HELPER-BAD-MESSAGE 오류 답 하나, 매출 문장은 돌리지 않음")]
+    [InlineData("9999-12-31", "9999-12-31")]
+    [InlineData("9999-12-01", "9999-12-31")]
+    public void LastDateIsOneError(string from, string to)
+    {
+        using var rig = Ready();
+        var outcome = Handle(rig, from, to);
+
+        AssertOneError(outcome, "E-HELPER-BAD-MESSAGE");
+        Assert.DoesNotContain(rig.Session.Sqls, RevenueSql.Parameters.ContainsKey);
+        Assert.Equal(1, rig.Session.Disposed);
+        Assert.Equal(("revenue.days", (string?)"E-HELPER-BAD-MESSAGE"), Assert.Single(outcome.Log));
+    }
+
     [Fact(DisplayName = "AC-003.6 명령 표가 32일 기간을 먼저 막는다(E-HELPER-BAD-MESSAGE, 비트를 열지 않음)")]
     public void TableRefusesLongPeriod()
     {
@@ -115,7 +133,7 @@ public class RevenueCommandsTests
         Assert.Empty(rig.Connector.Opened);
     }
 
-    [Fact(DisplayName = "AC-003.7 답의 칸은 AC-002.2와 같다: {days, codes}, 날 줄 15칸, 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
+    [Fact(DisplayName = "AC-003.7 답의 칸은 AC-002.2와 같다: {days, codes}, 날 줄 16칸, 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
     public void ReplyHasExactFields()
     {
         using var rig = Ready();
@@ -135,7 +153,9 @@ public class RevenueCommandsTests
         Assert.Equal("2026-10-30", days[0].GetProperty("date").GetString());
         Assert.Equal(1050000, days[0].GetProperty("total").GetInt64());
         Assert.False(days[0].GetProperty("unconfirmed").GetBoolean());
+        Assert.False(days[0].GetProperty("splitUnconfirmed").GetBoolean());
         Assert.True(days[1].GetProperty("unconfirmed").GetBoolean());
+        Assert.False(days[1].GetProperty("splitUnconfirmed").GetBoolean());
         Assert.All(MoneyKeys, key => Assert.Equal(JsonValueKind.Null, days[1].GetProperty(key).ValueKind));
         Assert.Equal(10, days[1].GetProperty("visits").GetInt64());
 
@@ -147,6 +167,23 @@ public class RevenueCommandsTests
         Assert.Equal(12345, codes[0].GetProperty("amount").GetInt64());
         Assert.Equal(JsonValueKind.Null, codes[1].GetProperty("name").ValueKind);
         Assert.Equal(JsonValueKind.Null, codes[1].GetProperty("amount").ValueKind);
+    }
+
+    [Fact(DisplayName = "AC-003.7 splitUnconfirmed인 날의 답: 나눔 네 칸만 null, 남는 다섯 칸은 숫자, unconfirmed는 거짓")]
+    public void SplitDayReply()
+    {
+        using var rig = Ready();
+        RevenueFake.RowOn(rig.Session, RevenueSql.FinanceNormalExtra, "20261031", new object?[] { 450001m, 150000m }, RevenueFake.NormalExtra);
+        var reply = Assert.Single(Handle(rig).Sink.Replies);
+        var days = reply.GetProperty("data").GetProperty("days").EnumerateArray().ToArray();
+
+        Assert.All(days, day => Assert.Equal(DayKeys, Json.Keys(day)));
+        Assert.True(days[1].GetProperty("splitUnconfirmed").GetBoolean());
+        Assert.False(days[1].GetProperty("unconfirmed").GetBoolean());
+        Assert.All(SplitKeys, key => Assert.Equal(JsonValueKind.Null, days[1].GetProperty(key).ValueKind));
+        Assert.All(RemainingKeys, key => Assert.Equal(JsonValueKind.Number, days[1].GetProperty(key).ValueKind));
+        Assert.False(days[0].GetProperty("splitUnconfirmed").GetBoolean());
+        Assert.All(MoneyKeys, key => Assert.Equal(JsonValueKind.Number, days[0].GetProperty(key).ValueKind));
     }
 
     [Fact(DisplayName = "AC-003.7 가짜 DB가 준 가짜 차트번호·이름이 답·진단 기록 어디에도 없다")]

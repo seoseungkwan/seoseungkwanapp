@@ -31,7 +31,30 @@ public class RevenueDaysTests
     private static void AssertUnconfirmed(RevenueDay day)
     {
         Assert.True(day.Unconfirmed);
+        Assert.False(day.SplitUnconfirmed);
         Assert.All(Money(day), value => Assert.Null(value));
+    }
+
+    /// <summary>나눔 네 칸만 비고 남는 다섯 칸은 그대로다(기본 하루 금액, total만 다를 수 있다).</summary>
+    private static void AssertSplitUnconfirmed(RevenueDay day, long total = 1050000L)
+    {
+        Assert.True(day.SplitUnconfirmed);
+        Assert.False(day.Unconfirmed);
+        Assert.Null(day.Insurer);
+        Assert.Null(day.Noncovered);
+        Assert.Null(day.Copay);
+        Assert.Null(day.OtherTotal);
+        Assert.Equal(total, day.Total);
+        Assert.Equal(200000L, day.Cash);
+        Assert.Equal(300000L, day.Card);
+        Assert.Equal(100000L, day.Transfer);
+        Assert.Equal(24000L, day.ReceivableIn);
+    }
+
+    private static void AssertNoFlag(RevenueDay day)
+    {
+        Assert.False(day.Unconfirmed);
+        Assert.False(day.SplitUnconfirmed);
     }
 
     private static string[] Sorted(IEnumerable<string> sqls) => sqls.OrderBy(sql => sql, StringComparer.Ordinal).ToArray();
@@ -106,7 +129,7 @@ public class RevenueDaysTests
     {
         var day = OneDay(RevenueFake.Quiet(new FakeDb()));
 
-        Assert.False(day.Unconfirmed);
+        AssertNoFlag(day);
         Assert.Equal(1050000L, day.Total);
         Assert.Equal(310000L, day.Insurer);
         Assert.Equal(405000L, day.Noncovered);
@@ -128,7 +151,7 @@ public class RevenueDaysTests
         RevenueFake.Row(db, RevenueSql.FinanceReceivableExtra, null, null);
         var day = OneDay(db);
 
-        Assert.False(day.Unconfirmed);
+        AssertNoFlag(day);
         Assert.Equal(12345L, day.Total);
         Assert.Equal(100L, day.Cash);
         Assert.Equal(200L, day.Card);
@@ -151,7 +174,7 @@ public class RevenueDaysTests
         Assert.Equal(1L, day.ReceivableIn);
     }
 
-    [Fact(DisplayName = "AC-003.2 진료 없는 날(DB NULL)은 금액 아홉 칸이 0이고 unconfirmed가 아니다")]
+    [Fact(DisplayName = "AC-003.2 진료 없는 날(DB NULL)은 금액 아홉 칸이 0이고 두 표시 모두 거짓이다")]
     public void DbNullIsZero()
     {
         var db = RevenueFake.Quiet(new FakeDb());
@@ -161,11 +184,11 @@ public class RevenueDaysTests
         RevenueFake.Row(db, RevenueSql.FinanceReceivableExtra, null, null);
         var day = OneDay(db);
 
-        Assert.False(day.Unconfirmed);
+        AssertNoFlag(day);
         Assert.All(Money(day), value => Assert.Equal(0L, value));
     }
 
-    [Theory(DisplayName = "AC-003.2 세 검사 가운데 하나가 0이 아니면 그날만 unconfirmed, 금액 아홉 칸 null")]
+    [Theory(DisplayName = "AC-003.2 세 검사 가운데 하나가 0이 아니면 그날만 unconfirmed(splitUnconfirmed는 거짓), 금액 아홉 칸 null")]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
@@ -186,15 +209,17 @@ public class RevenueDaysTests
         Assert.Equal(8L, days[1].PatientsToDate);
     }
 
-    [Fact(DisplayName = "AC-003.2 insurer + copay ≠ 요양비용총액이면 unconfirmed, cash·card·transfer·receivableIn도 null(맞춰 고치지 않음)")]
-    public void MismatchMakesAllNineNull()
+    [Fact(DisplayName = "AC-003.2 insurer + copay ≠ 요양비용총액이면 그날만 splitUnconfirmed, 나눔 네 칸만 null, total·cash·card·transfer·receivableIn은 그대로(맞춰 고치지 않음)")]
+    public void MismatchBlanksOnlySplit()
     {
         var db = RevenueFake.Quiet(new FakeDb());
         RevenueFake.RowOn(db, RevenueSql.FinanceNormalExtra, "20261031", new object?[] { 450001m, 150000m }, RevenueFake.NormalExtra);
         var days = Read(db, First, Last).Days;
 
-        AssertUnconfirmed(days[1]);
-        Assert.False(days[0].Unconfirmed);
+        AssertSplitUnconfirmed(days[1]);
+        AssertNoFlag(days[0]);
+        AssertNoFlag(days[2]);
+        Assert.Equal(310000L, days[0].Insurer);
         Assert.Equal(200000L, days[0].Cash);
     }
 
@@ -208,11 +233,23 @@ public class RevenueDaysTests
         RevenueFake.Row(db, RevenueSql.FinanceReceivableExtra, null, null);
         var day = OneDay(db);
 
-        Assert.False(day.Unconfirmed);
+        AssertNoFlag(day);
         Assert.Equal(1000L, day.Insurer);
         Assert.Equal(499L, day.Copay);
         Assert.Equal(201L, day.OtherTotal);
         Assert.Equal(day.Total, day.Insurer + day.Copay + day.Noncovered + day.OtherTotal);
+    }
+
+    [Fact(DisplayName = "AC-003.2 버린 뒤에는 같아도 버리기 전에 다르면 나눔만 비운다: insurer 1000.4 + 본인부담 499.4 ≠ 요양비용총액 1499")]
+    public void SubWonMismatchBlanksOnlySplit()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, 2000m, 1000.4m, 300m, 200000m, 300000m, 100000m);
+        RevenueFake.Row(db, RevenueSql.FinanceNormalExtra, 1499m, 499.4m);
+        RevenueFake.Row(db, RevenueSql.FinanceReceivable, null, null, null, 7000m, 8000m, 9000m);
+        RevenueFake.Row(db, RevenueSql.FinanceReceivableExtra, null, null);
+
+        AssertSplitUnconfirmed(OneDay(db), total: 2000L);
     }
 
     [Fact(DisplayName = "AC-003.2 요양비용총액·본인부담은 두 Extra 답을 더해 맞춘다(한쪽만 보면 어긋난다)")]
@@ -220,38 +257,92 @@ public class RevenueDaysTests
     {
         var db = RevenueFake.Quiet(new FakeDb());
         RevenueFake.Row(db, RevenueSql.FinanceReceivableExtra, 0m, 0m);
-        Assert.True(OneDay(db).Unconfirmed);
+        AssertSplitUnconfirmed(OneDay(db));
     }
+
+    private static object?[] Negative(
+        string cell,
+        bool splitOnly,
+        object?[]? normal = null,
+        object?[]? receivable = null,
+        object?[]? normalExtra = null,
+        long total = 1050000L) =>
+        new object?[] { cell, splitOnly, total, normal ?? RevenueFake.Normal, receivable ?? RevenueFake.Receivable, normalExtra ?? RevenueFake.NormalExtra };
 
     public static IEnumerable<object?[]> NegativeCells()
     {
-        yield return new object?[] { "FinanceNormal 현금", RevenueSql.FinanceNormal, new object?[] { 1000000m, 300000m, 400000m, -1m, 300000m, 100000m } };
-        yield return new object?[] { "FinanceNormal 카드", RevenueSql.FinanceNormal, new object?[] { 1000000m, 300000m, 400000m, 200000m, -1m, 100000m } };
-        yield return new object?[] { "FinanceNormal 계좌", RevenueSql.FinanceNormal, new object?[] { 1000000m, 300000m, 400000m, 200000m, 300000m, -1m } };
-        yield return new object?[] { "미수입금 합", RevenueSql.FinanceReceivable, new object?[] { 50000m, 10000m, 5000m, -30000m, 8000m, 9000m } };
-        yield return new object?[] { "비급여", RevenueSql.FinanceNormal, new object?[] { 1000000m, 300000m, -6000m, 200000m, 300000m, 100000m } };
-        yield return new object?[] { "copay(칸 합은 맞음)", RevenueSql.FinanceNormalExtra, new object?[] { 290000m, -10000m } };
-        yield return new object?[] { "otherTotal(총액보다 급여가 큼)", RevenueSql.FinanceNormal, new object?[] { 1000m, 300000m, 400000m, 200000m, 300000m, 100000m } };
+        // 남는 다섯 칸: 금액 아홉 칸을 비운다. total이 음수면 나머지인 otherTotal도 음수지만 이쪽을 먼저 본다
+        yield return Negative("total", false, normal: new object?[] { -100000m, 300000m, 400000m, 200000m, 300000m, 100000m });
+        yield return Negative("cash", false, normal: new object?[] { 1000000m, 300000m, 400000m, -1m, 300000m, 100000m });
+        yield return Negative("card", false, normal: new object?[] { 1000000m, 300000m, 400000m, 200000m, -1m, 100000m });
+        yield return Negative("transfer", false, normal: new object?[] { 1000000m, 300000m, 400000m, 200000m, 300000m, -1m });
+        yield return Negative("receivableIn", false, receivable: new object?[] { 50000m, 10000m, 5000m, -30000m, 8000m, 9000m });
+
+        // 나눔 네 칸: 그 네 칸만 비운다
+        yield return Negative("insurer", true, normal: new object?[] { 1000000m, -320000m, 400000m, 200000m, 300000m, 100000m }, normalExtra: new object?[] { -170000m, 150000m });
+        yield return Negative("noncovered", true, normal: new object?[] { 1000000m, 300000m, -6000m, 200000m, 300000m, 100000m });
+        yield return Negative("copay", true, normalExtra: new object?[] { 290000m, -10000m });
+        yield return Negative("otherTotal(총액보다 급여가 큼)", true, normal: new object?[] { 1000m, 300000m, 400000m, 200000m, 300000m, 100000m }, total: 51000L);
     }
 
-    [Theory(DisplayName = "AC-003.2 음수가 하나라도 있으면 unconfirmed, 금액 아홉 칸 null")]
+    [Theory(DisplayName = "AC-003.2 음수 아홉 칸: total·cash·card·transfer·receivableIn → unconfirmed(아홉 칸 null), insurer·noncovered·copay·otherTotal → splitUnconfirmed(네 칸만 null)")]
     [MemberData(nameof(NegativeCells))]
-    public void NegativeMakesUnconfirmed(string what, string sql, object?[] cells)
+    public void NegativeSetsItsFlag(string cell, bool splitOnly, long total, object?[] normal, object?[] receivable, object?[] normalExtra)
+    {
+        Assert.NotEmpty(cell);
+
+        // 음수가 걸린 까닭이 되도록 금액 맞춤 검사는 지나는 답이다
+        decimal Cell(object?[] row, int index) => (decimal)row[index]!;
+        var insured = Cell(normalExtra, 0) + Cell(RevenueFake.ReceivableExtra, 0);
+        Assert.Equal(insured, Cell(normal, 1) + Cell(receivable, 1) + Cell(normalExtra, 1) + Cell(RevenueFake.ReceivableExtra, 1));
+
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, normal);
+        RevenueFake.Row(db, RevenueSql.FinanceReceivable, receivable);
+        RevenueFake.Row(db, RevenueSql.FinanceNormalExtra, normalExtra);
+        var day = OneDay(db);
+
+        if (splitOnly) AssertSplitUnconfirmed(day, total);
+        else AssertUnconfirmed(day);
+    }
+
+    public static IEnumerable<object?[]> BothFlagsWouldStand()
+    {
+        var negativeCash = new object?[] { 1000000m, 300000m, 400000m, -1m, 300000m, 100000m };
+        yield return new object?[] { "현금 음수 + 금액 어긋남", negativeCash, new object?[] { 450001m, 150000m } };
+        yield return new object?[] { "현금 음수 + 비급여 음수", new object?[] { 1000000m, 300000m, -6000m, -1m, 300000m, 100000m }, RevenueFake.NormalExtra };
+        yield return new object?[] { "총액 음수 + 금액 어긋남", new object?[] { -100000m, 300000m, 400000m, 200000m, 300000m, 100000m }, new object?[] { 450001m, 150000m } };
+    }
+
+    [Theory(DisplayName = "AC-003.2 남는 다섯 칸의 음수를 먼저 본다: 나눔 검사에도 걸리는 날은 unconfirmed이고 두 표시는 함께 참이 아니다")]
+    [MemberData(nameof(BothFlagsWouldStand))]
+    public void UnconfirmedWinsOverSplit(string what, object?[] normal, object?[] normalExtra)
     {
         Assert.NotEmpty(what);
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.Row(db, sql, cells);
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, normal);
+        RevenueFake.Row(db, RevenueSql.FinanceNormalExtra, normalExtra);
         AssertUnconfirmed(OneDay(db));
     }
 
-    [Fact(DisplayName = "AC-003.2 음수는 버린 뒤의 칸으로 본다: 현금 -0.5 → 0, unconfirmed가 아니다")]
+    [Fact(DisplayName = "AC-003.2 음수는 버린 뒤의 칸으로 본다: 현금 -0.5 → 0, 두 표시 모두 거짓")]
     public void SubWonNegativeIsZero()
     {
         var db = RevenueFake.Quiet(new FakeDb());
         RevenueFake.Row(db, RevenueSql.FinanceNormal, 1000000m, 300000m, 400000m, -0.5m, 300000m, 100000m);
         var day = OneDay(db);
-        Assert.False(day.Unconfirmed);
+        AssertNoFlag(day);
         Assert.Equal(0L, day.Cash);
+    }
+
+    [Fact(DisplayName = "AC-003.2 나눔 칸도 버린 뒤의 칸으로 본다: 비급여 -0.5 → 0, 두 표시 모두 거짓")]
+    public void SubWonNegativeSplitCellIsZero()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, 1000000m, 300000m, -5000.5m, 200000m, 300000m, 100000m);
+        var day = OneDay(db);
+        AssertNoFlag(day);
+        Assert.Equal(0L, day.Noncovered);
     }
 
     // ---- AC-003.3 내원·신환·재진 -------------------------------------------------------------------
@@ -555,6 +646,8 @@ public class RevenueDaysTests
         yield return new object?[] { "줄 둘", RevenueSql.FinanceReceivable, new[] { new object?[] { 1m, 1m, 1m, 1m, 1m, 1m }, new object?[] { 1m, 1m, 1m, 1m, 1m, 1m } } };
         yield return new object?[] { "숫자 아님", RevenueSql.FinanceNormal, new[] { new object?[] { "not a number", 2m, 3m, 4m, 5m, 6m } } };
         yield return new object?[] { "너무 큼", RevenueSql.FinanceNormal, new[] { new object?[] { 9007199254740992m, 2m, 3m, 4m, 5m, 6m } } };
+        yield return new object?[] { "나눔 칸 너무 큼(공단)", RevenueSql.FinanceNormal, new[] { new object?[] { 1m, 9007199254740992m, 3m, 4m, 5m, 6m } } };
+        yield return new object?[] { "나눔 칸 너무 큼(본인부담)", RevenueSql.FinanceNormalExtra, new[] { new object?[] { 1m, 9007199254740992m } } };
         yield return new object?[] { "건수 숫자 아님", RevenueSql.Patients, new[] { new object?[] { "x", 3L, 0L, 0L, 0L } } };
         yield return new object?[] { "코드 칸 모자람", RevenueSql.CodeAmounts, new[] { new object?[] { "C1", 1L } } };
     }
@@ -578,5 +671,24 @@ public class RevenueDaysTests
         Assert.Empty(db.Calls);
 
         Assert.Equal(31, Read(db, "2026-10-01", "2026-10-31").Days.Count);
+    }
+
+    [Theory(DisplayName = "AC-003.6 to가 9999-12-31이면 다음 날을 셀 수 없어 읽기 문장을 부르지 않고 E-HELPER-BAD-MESSAGE")]
+    [InlineData("9999-12-31", "9999-12-31")]
+    [InlineData("9999-12-01", "9999-12-31")]
+    public void LastDateNeverReachesDb(string from, string to)
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        Assert.Equal("E-HELPER-BAD-MESSAGE", Assert.ThrowsAny<HelperException>(() => Read(db, from, to)).Code);
+        Assert.Empty(db.Calls);
+    }
+
+    [Fact(DisplayName = "AC-003.6 to가 9999-12-30이면 다음 날을 셀 수 있으므로 막지 않는다")]
+    public void DayBeforeLastDateStillReads()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        Assert.Equal("9999-12-30", Assert.Single(Read(db, "9999-12-30", "9999-12-30").Days).Date);
+        var codes = Assert.Single(db.Calls, call => call.Sql == RevenueSql.CodeAmounts);
+        Assert.Equal("999912310000", codes.Args["@to"]);
     }
 }

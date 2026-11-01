@@ -30,7 +30,7 @@ describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () 
     expectAc('AC-003.1')
   })
 
-  it('AC-003.2 검사에 걸린 날·insurer + copay ≠ 요양비용총액(버리기 전 값)·음수는 unconfirmed와 금액 아홉 칸 null, 아니면 맞는 칸에서 원 미만 버림, otherTotal은 나머지', () => {
+  it('AC-003.2 세 검사·total·cash·card·transfer·receivableIn의 음수는 unconfirmed와 금액 아홉 칸 null, insurer + copay ≠ 요양비용총액(버리기 전 값)·나눔 네 칸의 음수는 splitUnconfirmed와 그 네 칸만 null, 아니면 맞는 칸에서 원 미만 버림, otherTotal은 나머지', () => {
     expectAc('AC-003.2')
   })
 
@@ -46,7 +46,7 @@ describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () 
     expectAc('AC-003.5')
   })
 
-  it('AC-003.6 읽기 실패·시간 초과·관문 실패면 일부만 보내지 않고 오류 하나', () => {
+  it('AC-003.6 읽기 실패·시간 초과·관문 실패면 일부만 보내지 않고 오류 하나, to가 9999-12-31이면 도우미가 멈추지 않고 E-HELPER-BAD-MESSAGE', () => {
     expectAc('AC-003.6')
   })
 

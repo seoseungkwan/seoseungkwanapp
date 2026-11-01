@@ -54,8 +54,13 @@ public sealed class RevenueDay
     [JsonPropertyName("receivableIn")]
     public long? ReceivableIn { get; set; }
 
+    /// <summary>금액 아홉 칸이 모두 null이다. SplitUnconfirmed와 함께 참이 되지 않는다.</summary>
     [JsonPropertyName("unconfirmed")]
     public bool Unconfirmed { get; set; }
+
+    /// <summary>나눔 네 칸(insurer·noncovered·copay·otherTotal)만 null이고 남는 다섯 칸은 숫자다.</summary>
+    [JsonPropertyName("splitUnconfirmed")]
+    public bool SplitUnconfirmed { get; set; }
 }
 
 /// <summary>기간 전체의 처방 코드 한 줄. Name은 없으면 null, Amount는 값 빠짐이면 null(AC-002.2).</summary>
@@ -118,7 +123,7 @@ public static class RevenueDays
 
     // 이름에 남기면 안 되는 글자: 웹 검사가 거부하는 줄바꿈·제어 문자(C0·DEL·C1·U+2028·U+2029)와 답을 만들지 못하게 하는 짝 없는 대리쌍
     private static readonly Regex NameJunk = new Regex(
-        @"(?:[\u0000-\u001F\u007F-\u009F  ]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF])+",
+        @"(?:[\u0000-\u001F\u007F-\u009F\u2028\u2029]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF])+",
         RegexOptions.CultureInvariant);
 
     public static RevenueResult Read(IBitDb db, string hospitalScope, DateTime from, DateTime to)
@@ -127,6 +132,9 @@ public static class RevenueDays
         var first = from.Date;
         var last = to.Date;
         if (last < first || (last - first).Days + 1 > MaxDays) throw new HelperException(ErrorCodes.BadMessage);
+
+        // 끝날의 다음 날을 문장 매개변수로 쓴다. 9999-12-31은 명령 표를 지나지만 다음 날을 셀 수 없다(AddDays가 던지면 도우미가 멈춘다)
+        if (last == DateTime.MaxValue.Date) throw new HelperException(ErrorCodes.BadMessage);
 
         var historyKnown = Number(Row(db, RevenueSql.HistoryGuard, NoValues, 1)[0]) == 0;
         var days = new List<RevenueDay>();
@@ -159,7 +167,9 @@ public static class RevenueDays
     }
 
     /// <summary>
-    /// 세 검사를 원본 순서대로 보고, 모두 지난 날만 금액을 읽는다(AC-003.1). 금액 아홉 칸은 모두 있거나 모두 null이다(AC-003.2).
+    /// 세 검사를 원본 순서대로 보고, 모두 지난 날만 금액을 읽는다(AC-003.1). 맞춰 고치지 않고 칸을 비운다. 두 표시는 함께 참이 되지 않는다(AC-003.2):
+    /// Unconfirmed(금액 아홉 칸 null) = 세 검사 또는 total·cash·card·transfer·receivableIn의 음수. 이쪽을 먼저 본다.
+    /// SplitUnconfirmed(나눔 네 칸만 null, 남는 다섯 칸은 그대로) = insurer + copay ≠ 요양비용총액 또는 insurer·noncovered·copay·otherTotal의 음수.
     /// otherTotal은 나머지라서 총액에 섞인 다른 금액도 여기에 든다. 그것을 잡는 것은 의원 PC 확인표 ⑤뿐이다(design.md 2절 2).
     /// </summary>
     private static void ReadMoney(IBitDb db, IReadOnlyDictionary<string, string> values, RevenueDay row)
@@ -192,24 +202,31 @@ public static class RevenueDays
         var transfer = Won(normal[5]);
         var receivableIn = Won(Add(Add(receivable[3], receivable[4]), receivable[5]));
 
-        // 원 미만을 버리기 전 값으로 비교한다(1000.5 + 499.5와 1500은 같다). 음수는 버린 뒤의 칸으로 본다
-        var sameInsured = Add(exactInsurer, exactCopay) == exactInsuredTotal;
-        var anyNegative = new[] { total, insurer, noncovered, copay, otherTotal, cash, card, transfer, receivableIn }.Any(value => value < 0);
-        if (!sameInsured || anyNegative)
+        // 음수는 버린 뒤의 칸으로 본다
+        if (new[] { total, cash, card, transfer, receivableIn }.Any(value => value < 0))
         {
             row.Unconfirmed = true;
             return;
         }
 
         row.Total = total;
-        row.Insurer = insurer;
-        row.Noncovered = noncovered;
-        row.Copay = copay;
-        row.OtherTotal = otherTotal;
         row.Cash = cash;
         row.Card = card;
         row.Transfer = transfer;
         row.ReceivableIn = receivableIn;
+
+        // 원 미만을 버리기 전 값으로 비교한다(1000.5 + 499.5와 1500은 같다)
+        var sameInsured = Add(exactInsurer, exactCopay) == exactInsuredTotal;
+        if (!sameInsured || new[] { insurer, noncovered, copay, otherTotal }.Any(value => value < 0))
+        {
+            row.SplitUnconfirmed = true;
+            return;
+        }
+
+        row.Insurer = insurer;
+        row.Noncovered = noncovered;
+        row.Copay = copay;
+        row.OtherTotal = otherTotal;
     }
 
     /// <summary>AC-003.3. 재진이 음수가 되면 원본은 멈춘다(invalid_aggregate). 여기서는 검사 칸과 같게 그날 셋 다 null로 둔다.</summary>
