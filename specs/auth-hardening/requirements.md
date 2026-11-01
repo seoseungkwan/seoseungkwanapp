@@ -31,9 +31,9 @@
 - AC-402.1: Given `/signup`·`/pending`(가입 신청·승인 대기) 묶음 `(onboarding)`, When 레이아웃을 그리면, Then `IdleLogout`이 한 번 들어 있고 children을 그대로 그린다
 
 ### REQ-403: 로그아웃은 실패해도 흔적을 남기지 않고 다른 탭도 함께 나간다 (W4·W7)
-- AC-403.1: Given [로그아웃]이나 자동 로그아웃, When `signOutAndLeave()`를 부르면, Then `signOut()`(기본 global)을 한 번 부르고 그것이 끝난 뒤에, 결과가 성공·오류·던짐 어느 것이든 `document.cookie`에 있는 세션 쿠키(`sb-<ref>-auth-token`, 조각)와 `app-active`를 Max-Age 0으로 지우고 `/login`을 새로 연다. 다른 쿠키는 남긴다. 오류 내용은 보이지 않는다. `signOut`이 끝나기 전에는 지우지도 이동하지도 않는다
+- AC-403.1: Given [로그아웃]이나 자동 로그아웃, When `signOutAndLeave()`를 부르면, Then `signOut()`(기본 global)을 한 번 부르고 그것이 끝난 뒤에, 결과가 성공·오류·던짐 어느 것이든 `document.cookie`에 있는 세션 쿠키(`sb-<ref>-auth-token`, 조각)와 `app-active`를 Max-Age 0으로 지우고 `/login`을 새로 연다. 다른 쿠키는 남긴다. 오류 내용은 보이지 않는다. `signOut`이 끝나기 전에는(5초까지 — 아래 5초 기준) 지우지도 이동하지도 않는다
 - AC-403.2: Given `signOutAndLeave()`, When 부르면, Then `/login`으로 가기 전에 같은 브라우저의 다른 탭에 `signout` 소식을 보낸다(BroadcastChannel `auth-signout`). BroadcastChannel이 없는 브라우저에서도 로그아웃은 된다
-- AC-403.3: Given 로그인한 화면(`IdleLogout`이 있는 탭), When 다른 탭에서 `signout` 소식을 받으면, Then `signOut`을 다시 부르지 않고 `/login`을 새로 연다. 다른 글자의 소식은 무시한다
+- AC-403.3: Given 로그인한 화면(`IdleLogout`이 있는 탭), When 다른 탭에서 `signout` 소식을 받으면, Then `signOut`을 다시 부르지 않고 `/login`을 새로 연다. 다른 글자의 소식은 무시한다. 이 탭이 이미 `signOutAndLeave()`로 나가는 중이면(같은 탭의 다른 채널 객체도 소식을 받는다) 무시한다
 - AC-403.4: Given `SignOutButton`과 `IdleLogout`, When 로그아웃하면, Then 둘 다 같은 `signOutAndLeave()`를 쓴다
 - AC-403.5: Given `signOut()`이 5초 안에 끝나지 않음(인터넷이 반쯤 끊김 등), When `signOutAndLeave()`를 부르면, Then 5초 뒤 기다리지 않고 쿠키 지우기·다른 탭 알림·`/login` 이동을 한다
 
@@ -46,8 +46,8 @@
 - AC-405.3: Given 로그인 콜백, When 성공(`/dashboard`)이든 실패(`/login?error=1`)든 응답하면, Then `Cache-Control: private, no-store`가 붙는다
 
 ### REQ-406: E2E 시험 로그인도 움직임 쿠키를 넣는다
-- AC-406.1: Given 시험 코드 로그인, When `activeBrowserCookie(host, nowSec)`를 부르면, Then `{ name: 'app-active', value: '1', domain: host, path: '/', httpOnly: false, secure: false, sameSite: 'Lax', expires: nowSec + 1860 }`을 돌려주고, 그 이름·초는 앱(`src/lib/auth/activity.ts`)의 `ACTIVE_COOKIE`·`ACTIVE_MAX_AGE_SEC`와 같다. `session.ts`는 지금처럼 앱 코드(`src/`)를 import하지 않는다(auth-live AC-003.1)
-- AC-406.2: Given 시험 코드가 모은 세션 쿠키, When `signInCookies(cookies, host, nowSec)`를 부르면, Then `toBrowserCookies(cookies, host, nowSec)`의 쿠키 전부 + `activeBrowserCookie(host, nowSec)` 하나를 돌려준다. `e2e/support.ts`의 `signIn`은 이 함수의 결과를 넣는다. 앱 코드에는 시험용 길을 더하지 않는다
+- AC-406.1: Given 시험 코드 로그인, When `activeBrowserCookie(host, nowSec)`를 부르면, Then `{ name: 'app-active', value: '1', domain: host, path: '/', httpOnly: false, secure: false, sameSite: 'Lax', expires: nowSec + 1860 }`을 돌려주고, 그 이름·초는 앱(`src/lib/auth/activity.ts`)의 `ACTIVE_COOKIE`·`ACTIVE_MAX_AGE_SEC`와 같다. `session.ts`는 지금처럼 앱 코드(`src/`)를 import하지 않는다(auth-live 명세의 'session.ts는 앱 코드를 부르지 않는다' 기준)
+- AC-406.2: Given 시험 코드가 모은 세션 쿠키, When `signInCookies(cookies, host, nowSec)`를 부르면, Then `toBrowserCookies(cookies, host, nowSec)`의 쿠키 전부 + `activeBrowserCookie(host, nowSec)` 하나를 돌려준다. `e2e/support.ts`의 `signIn`은 이 함수의 결과를 넣는다(`support.ts`가 `signInCookies(`를 부르고 `toBrowserCookies(`를 직접 부르지 않는다). 앱 코드에는 시험용 길을 더하지 않는다
 
 ## 범위 밖
 - W3 nonce 방식 CSP(`'unsafe-inline'` 빼기)·W5의 HSTS 헤더 — plan.md §6-1·CLAUDE.md 보안 규칙("CSP·보안 헤더는 파일럿 그대로")을 바꾸는 일이다. 사용자 결정 뒤 따로 한다

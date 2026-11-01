@@ -3,7 +3,8 @@
 > 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
 > 화면 모양은 바꾸지 않는다(새 글자·단추 없음). 화면을 바꿔야 하면 멈추고 목업부터 한다.
-> 고치는 시험 파일에 옛 명세의 시험(AC-001.x·AC-003.x 등)이 있다. 그 시험들은 이름·뜻을 바꾸지 않고, 새 시험은 AC-40x 번호로 더한다.
+> 고치는 시험 파일에 옛 명세의 시험(auth·auth-live 번호)이 있다. 그 시험들은 이름·뜻을 바꾸지 않고, 새 시험은 AC-40x 번호로 더한다.
+> **예외(로그아웃을 `signOutAndLeave` 한 곳으로 모으기 때문)**: `SignOutButton.test.tsx`의 옛 로그아웃 시험 4개(`signOut()`을 기다린 뒤·던져도·오류를 돌려줘도 /login, 글자를 바꿔도 같은 동작)와 `IdleLogout.test.tsx`의 옛 자동 로그아웃 시험(30분 뒤 로그아웃 3개, 다른 탭 움직임·BroadcastChannel 없음 때의 로그아웃)은 옛 번호를 그대로 둔 채 `signOut`·`assign` 대신 가짜 `signOutAndLeave`가 불리는지 보도록 바꾸고, 시험 이름의 'signOut()' 말을 'signOutAndLeave()'로 맞춘다. signOut 기다림·던짐·오류·순서는 `leave.test.ts`(AC-403.1·403.5)가 본다. 그 밖의 옛 시험(단추 모양, 그리기만 해서는 로그아웃하지 않음, 저장소를 쓰지 않음, 떠나면 풀림 등)은 그대로 통과해야 한다.
 > **할 순서**: TASK-1 → 2 → … → 13(번호 순). 끝에 `npm run lint`·`npm run build`·`npm test`(이 PC에서 원래 실패하던 40개 밖의 새 실패 없음)
 
 ## TASK-1: 움직임 쿠키·세션 쿠키 도우미 (순수)
@@ -46,7 +47,7 @@
 - REQ: REQ-403, REQ-405
 - Files: src/lib/auth/leave.ts, src/lib/auth/leave.test.ts, src/components/auth/SignOutButton.tsx, src/components/auth/SignOutButton.test.tsx
 - Tests: src/lib/auth/leave.test.ts, src/components/auth/SignOutButton.test.tsx
-- TDD: required — jsdom, `supabaseBrowser`는 가짜. AC-403.1: `signOut`이 성공·오류(`{ error }`)·던짐 셋 다 세션 쿠키(조각 포함)와 `app-active`가 `document.cookie`에서 사라지고 다른 쿠키는 남고 `/login`으로 감, 화면에 오류 내용 없음, `signOut`이 끝나기 전에는 쿠키를 지우지도 이동하지도 않음(지금 `IdleLogout.test.tsx`·`SignOutButton.test.tsx`의 순서 시험을 여기로 옮김). AC-403.2: `auth-signout` 채널에 `signout`을 보내고 닫음, BroadcastChannel이 없어도 로그아웃됨. AC-403.5: `signOut`이 끝나지 않으면 가짜 시계 5초 뒤 지우기·알림·이동, 5초 전에는 아무것도 안 함. AC-405.2: `location.protocol`이 `https:`면 지우기 글자에 `; Secure`, `http:`면 없음(`document.cookie` 쓰기를 엿봐서 확인). `SignOutButton`은 `leave.ts`를 가짜로 바꿔 눌렀을 때 `signOutAndLeave`를 한 번 부름(AC-403.4)
+- TDD: required — jsdom, `supabaseBrowser`는 가짜. AC-403.1: `signOut`이 성공·오류(`{ error }`)·던짐 셋 다 세션 쿠키(조각 포함)와 `app-active`가 `document.cookie`에서 사라지고 다른 쿠키는 남고 `/login`으로 감, 화면에 오류 내용 없음, `signOut`이 끝나기 전에는 쿠키를 지우지도 이동하지도 않음(두 컴포넌트 시험이 보던 순서를 여기서 본다). `isLeaving()`은 부르기 전 거짓, 부른 뒤 참. AC-403.2: `auth-signout` 채널에 `signout`을 보내고 닫음, BroadcastChannel이 없어도 로그아웃됨. AC-403.5: `signOut`이 끝나지 않으면 가짜 시계 5초 뒤 지우기·알림·이동, 5초 전에는 아무것도 안 함, signOut이 먼저 끝나면 남은 타이머가 없음. AC-405.2: `location.protocol`이 `https:`면 지우기 글자에 `; Secure`, `http:`면 없음(`document.cookie` 쓰기를 엿봐서 확인). `SignOutButton.test.tsx`(이 TASK는 이 시험 파일만 고친다): `leave.ts`를 가짜로 바꿔 눌렀을 때 `signOutAndLeave`를 한 번 부름(AC-403.4), 옛 로그아웃 시험 4개는 머리말의 예외대로 바꿈
 
 ## TASK-8: 자동 로그아웃 시계에 '이 탭이 움직임' 알림
 - REQ: REQ-401
@@ -58,7 +59,7 @@
 - REQ: REQ-401, REQ-403, REQ-405
 - Files: src/components/shell/IdleLogout.tsx, src/components/shell/IdleLogout.test.tsx
 - Tests: src/components/shell/IdleLogout.test.tsx
-- TDD: required — 가짜 시계·가짜 BroadcastChannel(지금 시험 방식), `leave.ts`는 가짜. AC-401.8: 움직이면 `document.cookie`에 `app-active`가 생김, 60초 안 두 번째 움직임은 다시 쓰지 않음(쿠키를 지워 두고 확인), 60초 뒤에는 다시 씀, 다른 탭 움직임 소식으로는 쓰지 않음. AC-405.2: 가짜 `location.protocol`이 `https:`면 쓴 글자에 `; Secure`, `http:`면 없음(`document.cookie` 쓰기를 엿봐서 확인). AC-403.4: 30분 뒤 `signOutAndLeave`를 한 번 부름. AC-403.3: `auth-signout` 채널의 `signout` → signOut을 부르지 않고 `/login`, 다른 글자는 무시. 떠나면 두 채널을 닫음
+- TDD: required — 가짜 시계·가짜 BroadcastChannel(지금 시험 방식), `leave.ts`(`signOutAndLeave`·`isLeaving`)는 가짜. 옛 자동 로그아웃 시험은 머리말의 예외대로 바꾼다. AC-401.8: 움직이면 `document.cookie`에 `app-active`가 생김, 60초 안 두 번째 움직임은 다시 쓰지 않음(쿠키를 지워 두고 확인), 60초 뒤에는 다시 씀, 다른 탭 움직임 소식으로는 쓰지 않음. AC-405.2: 가짜 `location.protocol`이 `https:`면 쓴 글자에 `; Secure`, `http:`면 없음(`document.cookie` 쓰기를 엿봐서 확인). AC-403.4: 30분 뒤 `signOutAndLeave`를 한 번 부름. AC-403.3: `auth-signout` 채널의 `signout` → signOut을 부르지 않고 `/login`, 다른 글자는 무시, `isLeaving()`이 참이면 무시. 떠나면 두 채널을 닫음
 
 ## TASK-10: 가입·대기 화면 묶음에 자동 로그아웃
 - REQ: REQ-402
@@ -76,7 +77,7 @@
 - REQ: REQ-406
 - Files: e2e/lib/session.ts, e2e/lib/session.test.ts, e2e/support.ts
 - Tests: e2e/lib/session.test.ts
-- TDD: required — 먼저 `session.test.ts`의 auth-live AC-003.5 시험이 쓰는 `src` 경로를 `fileURLToPath`로 고친다(윈도우에서 시험 파일이 돌게, 뜻은 그대로 — 고친 뒤 이 파일의 기존 시험이 모두 통과하는지 먼저 본다). 그다음 AC-406.1 시험(모양, 그리고 `src/lib/auth/activity`의 `ACTIVE_COOKIE`·`ACTIVE_MAX_AGE_SEC`와 같은 값) → RED → `activeBrowserCookie`. AC-406.2 시험(`signInCookies` = `toBrowserCookies` 결과 전부 + 움직임 쿠키 하나) → RED → `signInCookies`. 기존 auth-live AC-003.1 시험(session.ts는 `src/`를 import하지 않음)은 그대로 통과해야 한다. `support.ts` `signIn`은 `signInCookies`를 넣는다
+- TDD: required — 먼저 `session.test.ts`의 auth-live AC-003.5 시험이 쓰는 `src` 경로를 `fileURLToPath`로 고친다(윈도우에서 시험 파일이 돌게, 뜻은 그대로 — 고친 뒤 이 파일의 기존 시험이 모두 통과하는지 먼저 본다). 그다음 AC-406.1 시험(모양, 그리고 `src/lib/auth/activity`의 `ACTIVE_COOKIE`·`ACTIVE_MAX_AGE_SEC`와 같은 값) → RED → `activeBrowserCookie`. AC-406.2 시험(`signInCookies` = `toBrowserCookies` 결과 전부 + 움직임 쿠키 하나, 그리고 `support.ts` 글자를 읽어 `signInCookies(`를 부르고 `toBrowserCookies(`를 직접 부르지 않음) → RED → `signInCookies`·`support.ts`. 기존 auth-live AC-003.1 시험(session.ts는 `src/`를 import하지 않음)은 그대로 통과해야 한다. `support.ts` `signIn`은 `signInCookies`를 넣는다
 
 ## TASK-13: 문서 — ADR-023·ARCHITECTURE·CLAUDE.md·점검 보고서
 - REQ: REQ-401, REQ-402, REQ-403, REQ-404, REQ-405, REQ-406

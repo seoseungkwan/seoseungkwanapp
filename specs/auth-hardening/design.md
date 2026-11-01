@@ -62,13 +62,18 @@ export async function supabaseServer({ secure = false }: { secure?: boolean } = 
 export const SIGNOUT_CHANNEL = 'auth-signout'
 export const SIGNOUT_MESSAGE = 'signout'
 export const SIGNOUT_WAIT_MS = 5_000
+export function isLeaving(): boolean // 이 탭이 signOutAndLeave()를 시작했는가
 export async function signOutAndLeave(): Promise<void>
-// 1. await Promise.race([supabaseBrowser().auth.signOut() (던짐은 삼킴), SIGNOUT_WAIT_MS 타이머]) — 기본 global. 돌려준 오류도 보지 않는다
+// 0. leaving = true
+// 1. await Promise.race([supabaseBrowser().auth.signOut() (던짐은 삼킴), SIGNOUT_WAIT_MS 타이머]) — 기본 global. 돌려준 오류도 보지 않는다.
+//    signOut이 먼저 끝나면 타이머를 지운다(clearTimeout — 남은 타이머가 다른 시험의 타이머 개수 검사를 흔들지 않게)
 // 2. cookieNames(document.cookie)에서 isSessionCookie(name) 또는 ACTIVE_COOKIE인 것을 document.cookie = expireCookieString(name, secure)로 지운다
 // 3. BroadcastChannel이 있으면 new BroadcastChannel(SIGNOUT_CHANNEL)로 SIGNOUT_MESSAGE를 보내고 닫는다(try로 감싼다)
 // 4. window.location.assign('/login')
 ```
-- `SignOutButton.tsx`·`IdleLogout.tsx`에 있던 같은 이름의 함수 둘을 이것 하나로 바꾼다. 지금 두 컴포넌트 시험이 보던 "signOut이 끝난 뒤에야 /login" 순서 시험은 `leave.test.ts`로 옮긴다(AC-403.1). 두 컴포넌트 시험은 `leave.ts`를 가짜로 바꿔 '부른다'만 본다
+- `SignOutButton.tsx`·`IdleLogout.tsx`에 있던 같은 이름의 함수 둘을 이것 하나로 바꾼다
+- 시험의 몫: signOut 기다림·오류·던짐·5초·순서("끝난 뒤에야 지우고 /login")는 `leave.test.ts`(AC-403.1·403.2·403.5)가 본다. 두 컴포넌트 시험은 `leave.ts`를 가짜로 바꿔 "`signOutAndLeave`를 부른다"만 본다. 그래서 지금 `SignOutButton.test.tsx`의 옛 auth 로그아웃 시험 4개와 `IdleLogout.test.tsx`의 옛 자동 로그아웃 시험(30분 뒤 로그아웃·다른 탭 움직임)은 옛 번호를 그대로 둔 채 `signOut`·`assign` 대신 `signOutAndLeave` 호출을 보도록 바꾸고, 이름의 'signOut' 말도 맞춘다(tasks.md 머리말의 예외)
+- 같은 탭 안에서도 BroadcastChannel은 같은 이름의 다른 채널 객체에 소식을 전한다 → 보낸 탭의 `IdleLogout`도 `signout`을 받는다. 그때는 `isLeaving()`이 참이라 무시한다(AC-403.3)
 
 ### `src/lib/auth/idle.ts` `startIdleLogout(opts)` (바꿈)
 - `opts.onActive?: () => void`를 더한다. **이 탭의** 움직임(`local()`)이 받아들여졌을 때만 부른다. 다른 탭 소식(channel)·잠자기 뒤 로그아웃·멈춘 뒤에는 부르지 않는다. 나머지 동작은 그대로
@@ -76,7 +81,7 @@ export async function signOutAndLeave(): Promise<void>
 ### `src/components/shell/IdleLogout.tsx` (바꿈)
 - `onActive`: `shouldWrite(lastWrite, Date.now())`면 `document.cookie = activeCookieString(location.protocol === 'https:')`, `lastWrite = now`
 - `onIdle`: `signOutAndLeave()`
-- 두 번째 채널 `new BroadcastChannel(SIGNOUT_CHANNEL)`: `SIGNOUT_MESSAGE`를 받으면 `window.location.assign('/login')`(signOut은 다시 부르지 않는다 — 보낸 탭이 했다). 떠날 때 닫는다
+- 두 번째 채널 `new BroadcastChannel(SIGNOUT_CHANNEL)`: `SIGNOUT_MESSAGE`를 받고 `isLeaving()`이 거짓이면 `window.location.assign('/login')`(signOut은 다시 부르지 않는다 — 보낸 탭이 했다). 떠날 때 닫는다
 
 ### `src/app/(onboarding)/layout.tsx` (새 파일)
 ```tsx
