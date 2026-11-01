@@ -58,12 +58,23 @@ function dayPayload(day: string, partial: boolean, patients = 1): DayPayload {
 }
 
 type Payload = (key: string, partial: boolean, patients?: number) => Record<string, unknown>
-type Table = { name: string; key: string; first: string; second: string; payload: Payload }
+type Table = { name: string; key: string; first: string; second: string; payload: Payload; maxBytes: number }
 
-const MONTHS: Table = { name: 'public.stats_months', key: 'month', first: '2026-10', second: '2026-09', payload: monthPayload }
-const DAYS: Table = { name: 'public.stats_days', key: 'day', first: '2026-10-05', second: '2026-10-06', payload: dayPayload }
+const MONTHS: Table = { name: 'public.stats_months', key: 'month', first: '2026-10', second: '2026-09', payload: monthPayload, maxBytes: 1_048_576 }
+const DAYS: Table = { name: 'public.stats_days', key: 'day', first: '2026-10-05', second: '2026-10-06', payload: dayPayload, maxBytes: 65_536 }
 const TABLES = [MONTHS, DAYS]
 const COVERAGE = 'public.stats_coverage'
+const OLD_LIMIT = 65_536 // 달 줄 한도를 올리기 전 옛 한도. 날 줄은 지금도 이 한도다
+
+// 표가 재는 글자(jsonb::text)로 꼭 bytes바이트가 되는 payload. key 글자 수가 같으면 pad 길이도 같다
+async function payloadOfBytes(t: Table, bytes: number) {
+  const base = t.payload(t.first, false)
+  const [{ size }] = await rows(`select octet_length($1::jsonb::text)::int as size`, [JSON.stringify({ ...base, pad: '' })])
+  const fit = { ...base, pad: 'x'.repeat(bytes - (size as number)) }
+  const [{ exact }] = await rows(`select octet_length($1::jsonb::text)::int as exact`, [JSON.stringify(fit)])
+  expect(exact).toBe(bytes)
+  return fit
+}
 
 let db: PGlite
 let hospital: Record<string, string>
@@ -501,7 +512,7 @@ describe('AC-506.3 payload·출처·덮은 기간 제약', SLOW, () => {
     it(`AC-506.3 ${t.name}: 고칠 때도 같은 제약이고 줄은 그대로다`, async () => {
       await seed(t, A, t.first, true)
       await become(A)
-      const tooBig: [string, unknown] = ['65,536바이트 넘음', { ...t.payload(t.first, true), pad: 'x'.repeat(65_536) }]
+      const tooBig: [string, unknown] = [`${t.maxBytes}바이트 넘음`, { ...t.payload(t.first, true), pad: 'x'.repeat(t.maxBytes) }]
       const bad = [...badPayloads(t, t.first, true, t.second), ...missingKeys(t, t.first, true), tooBig]
       for (const [label, payload] of bad) {
         await expect(update(t, t.first, true, payload), label).rejects.toThrow(CHECK)
@@ -517,22 +528,29 @@ describe('AC-506.3 payload·출처·덮은 기간 제약', SLOW, () => {
       }
     })
 
-    it(`AC-506.3 ${t.name}: payload는 65,536바이트까지 된다(글자 수가 아니라 바이트)`, async () => {
-      const base = t.payload(t.first, false)
-      const [{ size }] = await rows(`select octet_length($1::jsonb::text)::int as size`, [JSON.stringify({ ...base, pad: '' })])
-      const fit = { ...base, pad: 'x'.repeat(65_536 - (size as number)) }
-      const [{ exact }] = await rows(`select octet_length($1::jsonb::text)::int as exact`, [JSON.stringify(fit)])
-      expect(exact).toBe(65_536)
+    it(`AC-506.3 ${t.name}: payload는 ${t.maxBytes.toLocaleString('en-US')}바이트까지 된다(글자 수가 아니라 바이트)`, async () => {
+      const fit = await payloadOfBytes(t, t.maxBytes)
 
       await become(A)
       await insert(t, t.first, false, fit)
       // first·second는 글자 수가 같아 1바이트만 넘는다
       await expect(insert(t, t.second, false, { ...t.payload(t.second, false), pad: `${fit.pad}x` })).rejects.toThrow(CHECK)
-      // 글자 수로는 3만 자라 재면 통과하지만 바이트로는 9만이다
-      await expect(insert(t, t.second, false, { ...t.payload(t.second, false), pad: '가'.repeat(30_000) })).rejects.toThrow(CHECK)
+      // 글자 수로는 한도의 절반이라 재면 통과하지만 바이트로는 한도의 1.5배다
+      await expect(insert(t, t.second, false, { ...t.payload(t.second, false), pad: '가'.repeat(t.maxBytes / 2) })).rejects.toThrow(CHECK)
       expect(await countAll(t.name)).toBe(1)
     })
   }
+
+  it('AC-506.3 옛 한도를 넘는 65,537바이트는 달 줄에는 들어가고 날 줄에는 거부된다', async () => {
+    const month = await payloadOfBytes(MONTHS, OLD_LIMIT + 1)
+    const day = await payloadOfBytes(DAYS, OLD_LIMIT + 1)
+
+    await become(A)
+    await insert(MONTHS, MONTHS.first, false, month)
+    await expect(insert(DAYS, DAYS.first, false, day)).rejects.toThrow(CHECK)
+    expect(await countAll(MONTHS.name)).toBe(1)
+    expect(await countAll(DAYS.name)).toBe(0)
+  })
 
   it("AC-506.3 stats_months: month는 'YYYY-MM' 모양만 된다", async () => {
     await become(A)

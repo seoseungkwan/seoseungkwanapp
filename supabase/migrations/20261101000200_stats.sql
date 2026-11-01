@@ -26,7 +26,8 @@ create table public.stats_months (
     and payload -> 'schemaVersion' = '2'::jsonb
     and payload -> 'month' = to_jsonb(month)
     and payload -> 'partial' = to_jsonb(partial)
-    and octet_length(payload::text) <= 65536
+    -- 달 줄은 그달 처방 전부와 동네가 들어 날 줄(65536)보다 크게 둔다. 처방 코드가 400개를 넘는 달에 막히지 않게 1MiB
+    and octet_length(payload::text) <= 1048576
   ) is true),
   updated_at timestamptz not null default now(),
   primary key (hospital_id, month)
