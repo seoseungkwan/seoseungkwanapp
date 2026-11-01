@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-3b-fixes",
+  "steps": [
+    {
+      "step": 0,
+      "name": "adr-fixes",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "rx-label-code",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "output-names-blank",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "prompt-names",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "claude-usage-time",
+      "status": "pending"
+    }
+  ]
+}

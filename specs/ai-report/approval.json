@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "ai-report",
-  "approved_at": "2026-11-01T06:13:45Z",
+  "approved_at": "2026-11-01T07:54:39Z",
   "approved_via": "user-prompt",
-  "session_id": "8257a552-50a8-4a8f-b94c-279d1ce6c4cf",
-  "spec_sha256": "711928c874631ef94f6a9c29618650b1a212f6059c14f17930c2e314b6cb999e",
+  "session_id": "96e6b051-b5fe-4121-9ad9-63489a29e39c",
+  "spec_sha256": "9d4272e35ca962429a173864e05ee39600894fe747f63d3c3aac03daed3b931f",
   "scope": [
     ".env.example",
     ".gitignore",
