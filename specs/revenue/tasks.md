@@ -4,6 +4,7 @@
 > 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호. 순서대로 한다.
 > Phase 1 `revenue-1-read`(TASK-1~3, 그리고 TASK-12 = Phase 1 Step 3 `version-bump`: 명세 검토에서 더한 TASK라 번호만 뒤에 있다. TASK-3 뒤·Phase 2 앞에 한다) · Phase 2 `revenue-2-numbers`(TASK-4~7, 그리고 TASK-13 = Step 4 `rx-group-store`) · Phase 3 `revenue-3-screen`(Step 0 TASK-8 · Step 1 TASK-9 · Step 2 TASK-14 `group-editor` · Step 3 TASK-10 · Step 4 TASK-11). TASK-13·14는 2026-11-01 사용자 결정("처방묶는건 내가 골라서 묶게해")으로 더해 번호만 뒤에 있다. step 파일은 `phases/revenue-<n>-<slug>/stepM.md`.
 > **TASK-14(묶음 고치기 화면)는 시안 3절 '치료 묶음 고치기'의 사용자 OK 뒤에만 시작한다.** 화면 TASK(8~11)의 기준 시안 `docs/mockups/revenue/index.html`은 2026-11-01 사용자 승인("이대로 만들기")이다. TASK-5는 확인표 '먼저 할 것' ①(총진료비에 비급여가 들어 있는가) 답을 받은 뒤 시작한다.
+> **2026-11-01 명세 변경(매출 = 총진료비, 급여·비급여·기타)**: 이미 끝난 TASK-1·TASK-2를 다시 연다. TASK-1은 확인표에 '매출 탭에서 볼 것' ⑤ 한 줄을 더하고, TASK-2는 계약에 `copay`·`otherTotal`을 더한다(금액 아홉 칸 짝). 두 TASK 모두 Files·Tests는 그대로다.
 > `revenue.days`는 업무일지 탭도 쓰는 계약이다(design.md 5절). 칸을 바꾸면 두 명세를 같이 고친다.
 > 갈래 규칙 C1~C9(worklog·stats·patients·revenue)를 따른다: migration 이름 `20261101000400_revenue.sql`, 새 오류 번호는 `E-REVENUE-*`, 탭·명령 수를 고정 숫자로 시험하지 않음, 겹치는 파일은 design.md 11절.
 > Phase가 끝날 때마다 `verify`·화면 캡처(Phase 3)·쉬운 말 보고. 합치기·운영 배포·도우미 릴리스 태그(`helper-v*`)·실제 Supabase에 SQL 붙여 넣기는 사용자가 그때마다 말할 때만 한다.
@@ -16,6 +17,7 @@
 - REQ: REQ-001
 - Files: docs/revenue/pc-check.md
 - TDD: exempt (문서 한 장. 확인은 총괄이 의원 PC에서 한다)
+- 다시 열림(2026-11-01): '매출 탭에서 볼 것' ⑤(급여·비급여·기타가 외래환자경영통계의 요양비용총액·비급여·(100/100미만총액 + 전액본인부담)과 같음/다름) 한 줄을 더한다. ① 답(아니오)은 이미 적혀 있다
 
 ## TASK-2: 명령 표 `revenue.days` · 답 검사
 - Step: Phase 1 · Step 1 · `bridge-contract`
@@ -25,6 +27,7 @@
 - Tests: src/lib/bridge/revenueResult.test.ts, src/lib/bridge/revenueCall.test.ts, src/lib/bridge/protocol.test.ts, helper/tests/protocol.dotnet.test.ts
 - TDD: required
 - 메모: 이 TASK에서는 `protocol.test.ts`·`client.test.ts`를 고치지 않는다(명령 표에서 목록을 읽으므로 그대로 통과해야 한다). `client.test.ts`의 도우미 판은 TASK-12가 고친다
+- 다시 열림(2026-11-01): `src/types/revenue.ts`의 날 칸·금액 칸 목록에 `copay`·`otherTotal`을 더하고(`noncovered` 뒤), 검사의 `unconfirmed` 짝을 금액 아홉 칸으로 넓힌다. 기존 칸 이름은 그대로(업무일지 맞춤이 바뀌지 않음). 시험에 두 칸 빠짐·음수·짝 어긋남 사례를 더한다
 
 ## TASK-3: 도우미 매출 읽기
 - Step: Phase 1 · Step 2 · `helper-revenue-read`
@@ -33,6 +36,7 @@
 - Files: helper/src/Precheck.Core/Revenue/*, helper/src/Precheck.Core/Bit/Sql.cs, helper/src/Precheck.Helper/Program.cs, helper/tests/Precheck.Core.Tests/Revenue/*, helper/tests/Precheck.Core.Tests/Revenue/original-sql/*, helper/tests/revenue-read.dotnet.test.ts
 - Tests: helper/tests/revenue-read.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts, helper/tests/protocol.dotnet.test.ts
 - TDD: required
+- 메모(2026-11-01): 원본 문장 7개 + 새 문장 4개(`DistinctPatients`·`CodeAmounts`·`FinanceNormalExtra`·`FinanceReceivableExtra`). `copay`·`otherTotal`과 `insurer + copay = 요양비용총액` 검사(design.md 4-2). 처방 이름에서 제어 문자(C0·DEL·C1·U+2028/2029)를 빼야 TASK-2의 검사를 지난다
 
 ## TASK-4: 매출 표 (migration)
 - Step: Phase 2 · Step 0 · `revenue-tables`
@@ -50,7 +54,7 @@
 - Files: src/lib/revenue/summary.ts, src/lib/revenue/summary.test.ts
 - Tests: src/lib/revenue/summary.test.ts
 - TDD: required
-- 먼저: 확인표 '먼저 할 것' ① 답이 '예'인지 확인한다. '아니오'면 시작하지 않고 명세 변경을 요청한다(`blocked`)
+- 먼저: 확인표 '먼저 할 것' ① 답은 '아니오'였고(2026-11-01) 그에 맞춰 AC-005.1을 바꿨다. 이 명세가 다시 승인된 뒤 시작한다
 
 ## TASK-6: 치료 묶음 계산·제안·고치기 함수
 - Step: Phase 2 · Step 2 · `treatment-groups`

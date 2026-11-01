@@ -9,7 +9,7 @@
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-002에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-002.1**: `commands.json`에 `revenue.days`(`patient: false`, `maxDays: 31`, `args {from: date, to: date}`). 웹 `SMALL_COMMANDS`와 도우미 명령 표 시험이 숫자 명령으로 안다(명령 수를 고정 숫자로 시험하지 않는다)
-- **AC-002.2**: `checkResult('revenue.days', data)`는 칸이 정확히 `days`·`codes`일 때만 통과. days 줄 = `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`(design.md 5절 표), 날짜 오름차순·하루도 빠짐없이·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, `unconfirmed: true`면 금액 일곱 칸(`total`~`receivableIn`) 모두 `null`, `false`면 모두 숫자. codes 줄 = `code`(`^[0-9A-Za-z가-힣_.\-]{1,30}$`)·`name`(1~100자, 줄바꿈·제어 문자 없음, 또는 `null`)·`count`(0 이상 정수)·`amount`(0 이상 안전한 정수 또는 `null`), 1,000개 이하·중복 없음. 어긋나면 `E-BRIDGE-BAD-REPLY`
+- **AC-002.2**: `checkResult('revenue.days', data)`는 칸이 정확히 `days`·`codes`일 때만 통과. days 줄 = `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`copay`·`otherTotal`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`(design.md 5절 표, `copay`·`otherTotal`은 2026-11-01 더함), 날짜 오름차순·하루도 빠짐없이·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, `unconfirmed: true`면 금액 아홉 칸(`total`~`receivableIn`) 모두 `null`, `false`면 모두 숫자. codes 줄 = `code`(`^[0-9A-Za-z가-힣_.\-]{1,30}$`)·`name`(1~100자, 줄바꿈·제어 문자 없음, 또는 `null`)·`count`(0 이상 정수)·`amount`(0 이상 안전한 정수 또는 `null`), 1,000개 이하·중복 없음. 어긋나면 `E-BRIDGE-BAD-REPLY`
 - **AC-002.3**: 정해 둔 칸 밖의 칸(`chart`·`name` 등)이 하나라도 있거나 금액이 글자·소수·음수면 통과하지 않는다
 - **AC-002.4**: `connectScreenBridge({runtime})`(Worker 없음)로 `call('revenue.days', {from, to})` → 봉투 하나를 보내고 검사한 답을 돌려준다. 조각을 받지 않는다
 
@@ -66,11 +66,11 @@
 // src/types/revenue.ts (새 파일)
 export type RevenueDayRow = {
   date: string; visits: number | null; newPatients: number | null; returnVisits: number | null; patientsToDate: number | null
-  total: number | null; insurer: number | null; noncovered: number | null; cash: number | null; card: number | null; transfer: number | null; receivableIn: number | null
+  total: number | null; insurer: number | null; noncovered: number | null; copay: number | null; otherTotal: number | null; cash: number | null; card: number | null; transfer: number | null; receivableIn: number | null
   unconfirmed: boolean
 }
-export const REVENUE_DAY_KEYS = ['date', 'visits', 'newPatients', 'returnVisits', 'patientsToDate', 'total', 'insurer', 'noncovered', 'cash', 'card', 'transfer', 'receivableIn', 'unconfirmed'] as const
-export const REVENUE_MONEY_KEYS = ['total', 'insurer', 'noncovered', 'cash', 'card', 'transfer', 'receivableIn'] as const   // unconfirmed면 모두 null
+export const REVENUE_DAY_KEYS = ['date', 'visits', 'newPatients', 'returnVisits', 'patientsToDate', 'total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn', 'unconfirmed'] as const
+export const REVENUE_MONEY_KEYS = ['total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn'] as const   // unconfirmed면 모두 null
 export type RevenueCodeRow = { code: string; name: string | null; count: number; amount: number | null }
 export type RevenueDaysResult = { days: RevenueDayRow[]; codes: RevenueCodeRow[] }
 export const REVENUE_CODE_SHAPE = /^[0-9A-Za-z가-힣_.\-]{1,30}$/
@@ -84,11 +84,11 @@ export const REVENUE_MAX_CODES = 1000
 // src/lib/bridge/revenueResult.ts (새 파일)
 export function isRevenueDays(data: unknown): data is RevenueDaysResult
 ```
-- 칸 이름은 정확히 같아야 한다(`protocol.ts`의 `exactKeys` 방식, 칸 목록은 `src/types/revenue.ts`의 상수 하나에서). 날짜는 `YYYY-MM-DD` 진짜 날짜·오름차순·하루씩 이어짐. 정수는 `Number.isSafeInteger` 이고 0 이상. `unconfirmed: true`면 금액 일곱 칸이 모두 `null`, `false`면 모두 숫자(AC-004.3과 같은 짝). 코드는 `REVENUE_CODE_SHAPE`, 중복 없음
+- 칸 이름은 정확히 같아야 한다(`protocol.ts`의 `exactKeys` 방식, 칸 목록은 `src/types/revenue.ts`의 상수 하나에서). 날짜는 `YYYY-MM-DD` 진짜 날짜·오름차순·하루씩 이어짐. 정수는 `Number.isSafeInteger` 이고 0 이상. `unconfirmed: true`면 금액 아홉 칸이 모두 `null`, `false`면 모두 숫자(AC-004.3과 같은 짝). 코드는 `REVENUE_CODE_SHAPE`, 중복 없음
 - `protocol.ts`: `checkResult` switch에 `case 'revenue.days': return isRevenueDays(data)`와 import 한 줄. 다른 줄은 그대로
 
 ### 4. 시험
-- `revenueResult.test.ts`: 맞는 답 통과, 칸 하나 더함(`chart`)·빠짐·소수·음수·글자 금액·`unconfirmed`와 금액 일곱 칸 짝 어긋남·날짜 뒤바뀜·중복·하루 건너뜀·32일·코드 모양·1,001개 거부(AC-002.2·002.3). 가짜 자료만
+- `revenueResult.test.ts`: 맞는 답 통과, 칸 하나 더함(`chart`)·빠짐·소수·음수·글자 금액·`unconfirmed`와 금액 아홉 칸 짝 어긋남·날짜 뒤바뀜·중복·하루 건너뜀·32일·코드 모양·1,001개 거부(AC-002.2·002.3). 가짜 자료만
 - `revenueCall.test.ts`: `client.test.ts`처럼 가짜 runtime으로 `connectScreenBridge({ runtime })`(worker 없음) → `hello` → `call('revenue.days', {from, to})`가 봉투 하나를 보내고 맞는 답이면 그 답, 칸이 섞인 답이면 `E-BRIDGE-BAD-REPLY`로 거부(AC-002.4). `SMALL_COMMANDS`에 `revenue.days`가 있고 `isPatient('revenue.days')`가 false(AC-002.1)
 - 도우미 쪽 명령 표 시험은 `helper/tests/protocol.dotnet.test.ts`가 돈다(AC-002.1)
 

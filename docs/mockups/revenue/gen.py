@@ -126,7 +126,10 @@ def share(a, t):
 def mlabel(m):
     return f'{int(m[5:])}월'
 
-COV = [t - n for t, n in zip(TOTAL, NONCOV)]
+# 기타 = 100/100미만총액 + 전액본인부담(2026-11-01 사용자: 매출 = 총진료비 = 급여 + 비급여 + 기타)
+OTHER = [3_702_100, 3_840_220, 3_655_010, 3_480_300, 3_402_660, 3_940_080, 3_980_190, 3_861_270, 3_970_150,
+         4_088_740, 3_993_060, 3_902_610, 4_206_300]
+COV = [t - n - o for t, n, o in zip(TOTAL, NONCOV, OTHER)]   # 급여 = 요양비용총액 = 공단부담 + 급여 본인부담
 SELF = COV[SEL] - INSURER     # 급여 본인부담 = 급여 − 공단부담
 
 EX = '<span class="chip chip-a">예시 숫자</span>'
@@ -147,10 +150,9 @@ def bars(values, colors, labels, years, top=20000, ticks=(0, 5000, 10000, 15000,
         grid += f'<div class="bc-g{z}" style="bottom:{b:.2f}%"><span>{t:,}</span></div>'
     cols = ''
     for i, v in enumerate(values):
-        if stack:
-            lo, hi = stack[i]
-            seg = (f'<i class="bar {colors[i][1]}" style="height:{hi / top * 100:.2f}%"></i>'
-                   f'<i class="bar {colors[i][0]}" style="height:{lo / top * 100:.2f}%"></i>')
+        if stack:   # 아래에서 위로 쌓을 칸들(stack[i])과 색(colors[i]), 그릴 때는 위 칸부터
+            seg = ''.join(f'<i class="bar {c}" style="height:{v / top * 100:.2f}%"></i>'
+                          for v, c in reversed(list(zip(stack[i], colors[i]))))
         else:
             seg = f'<i class="bar {colors[i]}" style="height:{v / top * 100:.2f}%"></i>'
         sv = (show_vals == 'all') or (show_vals == 'sel' and i in (SEL,))
@@ -208,14 +210,14 @@ def trend(kind):
     chart = bars(vals, cols, LABELS, YEARS, show_vals=('sel' if ph else 'all'), ph=ph, h=(160 if ph else 200))
     lg = legend([('b-sel', '고른 달'), ('b-prev', '작년 같은 달'), ('b-oth', '다른 달')])
     srt = sr_table('달마다 매출 (원)', ['달', '매출'], [(m, won(t)) for m, t in zip(MONTHS, TOTAL)])
-    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">매출 추이</h2><span class="dsec-s">지난달 · 작년 같은 때와 견줘요</span></div>'
+    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">매출 추이</h2><span class="dsec-s">매출 = 총진료비 · 지난달 · 작년 같은 때와 견줘요</span></div>'
             f'<div class="kpis">{k}</div>'
             f'<div class="cbox"><div class="c-h"><h3 class="c-t">달마다 매출 · 최근 13달</h3>{lg}</div>{chart}{srt}</div></section>')
 
 def split(kind):
     ph = kind == 'ph'
-    cov, non, tot = COV[SEL], NONCOV[SEL], TOTAL[SEL]
-    dc = delta(COV[SEL], COV[PREV]); dn = delta(NONCOV[SEL], NONCOV[PREV])
+    cov, non, oth, tot = COV[SEL], NONCOV[SEL], OTHER[SEL], TOTAL[SEL]
+    dc = delta(COV[SEL], COV[PREV]); dn = delta(NONCOV[SEL], NONCOV[PREV]); do = delta(OTHER[SEL], OTHER[PREV])
     def dcell(d):
         arr = ic('up', 12) if d[0] == 'up' else ic('down', 12) if d[0] == 'dn' else ''
         return f'<span class="dl {d[0]}">{arr}{d[1]}<span class="sr">{d[2]}</span></span>'
@@ -224,19 +226,21 @@ def split(kind):
           f'<tr class="in"><td>공단부담</td><td class="n">{man(INSURER)}</td><td class="n">{share(INSURER, tot)}</td><td class="n muted">–</td></tr>'
           f'<tr class="in"><td>본인부담</td><td class="n">{man(SELF)}</td><td class="n">{share(SELF, tot)}</td><td class="n muted">–</td></tr>'
           f'<tr class="em"><td>비급여</td><td class="n">{man(non)}</td><td class="n">{share(non, tot)}</td><td class="n">{dcell(dn)}</td></tr>'
-          f'<tr class="sum"><td>합계</td><td class="n">{man(tot)}</td><td class="n">100%</td><td class="n">{dcell(delta(TOTAL[SEL], TOTAL[PREV]))}</td></tr>'
+          f'<tr class="em"><td>기타</td><td class="n">{man(oth)}</td><td class="n">{share(oth, tot)}</td><td class="n">{dcell(do)}</td></tr>'
+          f'<tr class="sum"><td>합계 · 매출</td><td class="n">{man(tot)}</td><td class="n">100%</td><td class="n">{dcell(delta(TOTAL[SEL], TOTAL[PREV]))}</td></tr>'
           '</tbody></table>')
     vals = [t // 10_000 for t in TOTAL]
-    stack = [(c // 10_000, n // 10_000) for c, n in zip(COV, NONCOV)]
-    cols = [('b-cov', 'b-non')] * len(vals)
+    stack = [(c // 10_000, n // 10_000, o // 10_000) for c, n, o in zip(COV, NONCOV, OTHER)]   # 아래부터 급여 · 비급여 · 기타
+    cols = [('b-cov', 'b-non', 'b-oth2')] * len(vals)
     chart = bars(vals, cols, LABELS, YEARS, show_vals='none', ph=ph, stack=stack, h=(140 if ph else 180))
-    lg = legend([('b-non', '비급여'), ('b-cov', '급여')])
-    srt = sr_table('달마다 급여·비급여 (원)', ['달', '급여', '비급여'], [(m, won(c), won(n)) for m, c, n in zip(MONTHS, COV, NONCOV)])
-    note = '<p class="d-note">급여는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액이에요. 비급여는 환자가 모두 내요.</p>'
+    lg = legend([('b-oth2', '기타'), ('b-non', '비급여'), ('b-cov', '급여')])
+    srt = sr_table('달마다 급여·비급여·기타 (원)', ['달', '급여', '비급여', '기타'], [(m, won(c), won(n), won(o)) for m, c, n, o in zip(MONTHS, COV, NONCOV, OTHER)])
+    note = ('<p class="d-note">매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, '
+            '기타는 100/100 미만 항목과 전액 본인부담 금액이에요. 셋을 더하면 매출이에요.</p>')
     left = f'<div class="sp-l">{tb}{note}</div>'
-    right = f'<div class="sp-r"><div class="c-h"><h3 class="c-t">달마다 급여·비급여</h3>{lg}</div>{chart}{srt}</div>'
-    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">급여·비급여</h2>'
-            f'<span class="dsec-s">10월 비급여 몫 {share(non, tot)}</span></div><div class="split">{left}{right}</div></section>')
+    right = f'<div class="sp-r"><div class="c-h"><h3 class="c-t">달마다 급여·비급여·기타</h3>{lg}</div>{chart}{srt}</div>'
+    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">급여·비급여·기타</h2>'
+            f'<span class="dsec-s">10월 비급여 몫 {share(non, tot)} · 기타 몫 {share(oth, tot)}</span></div><div class="split">{left}{right}</div></section>')
 
 def treat(kind):
     allsum = sum(a for _, a, _ in TREAT) + TREAT_OTHER
@@ -276,7 +280,7 @@ def revenue_body(kind):
     return top_row(kind) + period_row(kind) + trend(kind) + split(kind) + treat(kind) + per_patient(kind) + safe()
 
 # ---------- 상황별 화면 ----------
-GAINS = [('매출 추이', '달마다 매출을 막대로, 지난달·작년 같은 때와 견줘요.'), ('급여·비급여', '공단부담·본인부담·비급여로 나눠 봐요.'),
+GAINS = [('매출 추이', '달마다 매출을 막대로, 지난달·작년 같은 때와 견줘요.'), ('급여·비급여·기타', '급여(공단부담·본인부담)·비급여·기타 셋으로 나눠 봐요.'),
          ('치료별 매출', '도수치료·체외충격파 같은 치료마다 금액과 건수예요.'), ('환자 1인당 평균 진료비', '매출을 다녀간 환자 수로 나눈 값이에요(한 명은 한 번).')]
 
 def gains(ph):
@@ -450,6 +454,7 @@ RV_CSS = r'''
 .b-oth { background: var(--chart-2); }
 .b-cov { background: var(--chart-3); }
 .b-non { background: var(--accent); }
+.b-oth2 { background: var(--line-strong); }
 .bc { margin-top: 12px; }
 .bc-u { font-size: 12px; line-height: 16px; color: var(--muted); }
 .bc-p { position: relative; margin: 8px 0 0 48px; }
@@ -569,7 +574,7 @@ S.append('<section class="sec" id="main-view"><p class="sec-k">1 · 자료가 �
          '처음에는 어제가 속한 달을 보여 드려요(오늘은 11월 1일이라 10월).</p>' + row_main +
          '<div class="notes"><div class="nb"><h3>이렇게 읽어요</h3><ul>'
          '<li><span><b>매출 추이</b>: 고른 달의 매출과, 지난달 같은 기간·작년 같은 달 같은 기간과 견준 늘고 준 비율이에요. 막대는 최근 13달이고 작년 같은 달은 회색이에요.</span></li>'
-         '<li><span><b>급여·비급여</b>: 급여(공단부담 + 본인부담)와 비급여를 나눠 금액과 몫(%)을 보여요. 오른쪽은 13달 쌓은 막대예요.</span></li>'
+         '<li><span><b>급여·비급여·기타</b>: 매출(총진료비)을 셋으로 나눠요 — 급여(요양비용총액 = 공단부담 + 본인부담), 비급여, 기타(100/100 미만 항목 + 전액 본인부담). 셋을 더하면 매출이에요. 오른쪽은 13달 세 겹 쌓은 막대예요(2026-11-01 바뀜).</span></li>'
          '<li><span><b>치료별 매출</b>: 도수치료·체외충격파·C-arm 주사·초음파·냉동치료 다섯 가지와 그 밖 처방이에요. 처방 금액으로 세서 매출 합계와 조금 달라요.</span></li>'
          '<li><span><b>환자 1인당 평균 진료비</b>: 매출을 그 기간에 다녀간 환자 수로 나눈 값이에요. 같은 환자가 여러 번 와도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고, 이름·차트번호 없이 숫자만 가져와요.</span></li>'
          '<li><span><b>확인 필요한 날</b>: 환불·예치금이 있는 날은 금액을 자동으로 세지 않고 날짜만 알려 드려요. 그날 금액은 합계에 넣지 않아요.</span></li>'
@@ -638,6 +643,8 @@ decide = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k"
           '<p class="a">매출 ÷ 그 기간에 다녀간 환자 수예요. 한 달에 여러 번 온 분도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고 숫자만 가져와요.</p></div></li>'
           '<li><div><p class="q">치료 묶음: 내가 골라서 묶어요</p>'
           '<p class="a">묶음 이름과 넣을 처방을 직접 정해요. 처음에는 일일 보고의 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료)를 고칠 수 있는 제안으로 채워 둬요.</p></div></li>'
+          '<li><div><p class="q">매출은 총진료비, 급여·비급여는 셋으로(급여·비급여·기타)</p>'
+          '<p class="a">비트 외래환자경영통계와 같은 식이에요: 총진료비 = 요양비용총액(급여) + 비급여 + 100/100 미만 + 전액 본인부담. 기타 = 100/100 미만 + 전액 본인부담.</p></div></li>'
           '<li><div><p class="q">환불·예치금이 있는 날: 합계에서 빼고 날짜만 알림</p>'
           '<p class="a">지금 일일 보고처럼 그날 금액은 비워 두고 "확인 필요한 날"로 알려 드려요. 이런 날이 많으면 직접 입력 칸을 다시 의논해요.</p></div></li></ol>'
           '<p class="reply">새로 그린 3번 \'치료 묶음 고치기\'만 확인해 주세요. 이렇게 답해 주시면 돼요: <b>묶음 화면 좋아요</b> (바꿀 것이 있으면 함께 말씀해 주세요)</p></div></section>')
