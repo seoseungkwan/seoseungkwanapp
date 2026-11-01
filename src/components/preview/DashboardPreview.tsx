@@ -14,7 +14,7 @@ import { SAMPLE_CLINIC, SAMPLE_KPIS, SAMPLE_SERIES, SAMPLE_TABS, SAMPLE_WEEKS } 
 // 탭: 모두 span. 아래 2px 자리를 늘 두고(글자 높이 맞춤) 줄의 1px 선 위에 겹친다. 첫째만 지금 탭
 const TAB = 'flex items-center whitespace-nowrap border-b-2 -mb-px'
 const tabClass = (i: number) =>
-  i === 0 ? `${TAB} border-accent font-semibold text-ink` : `${TAB} border-transparent text-faint${i >= 4 ? ' max-md:hidden' : ''}`
+  i === 0 ? `${TAB} border-accent font-semibold text-ink` : `${TAB} border-transparent text-muted${i >= 4 ? ' max-md:hidden' : ''}`
 
 // KPI 칸 사이 선: 768px 이상 한 줄 4칸은 왼쪽 선, 미만 2×2는 오른쪽 칸 왼쪽 선 + 아래 줄 위 선
 const KPI_LINE = ['', 'border-l', 'md:border-l max-md:border-t', 'border-l max-md:border-t']

@@ -88,12 +88,12 @@ describe('AC-206.2: 상자 하나 안에 위 줄 → 탭 줄 → KPI 줄 → 차
     expect(items.map(textOf)).toEqual(['대시보드', '통계', 'AI 리포트', '매출', '재고', '급여'])
   })
 
-  it('AC-206.2: 첫 탭만 ink 600 + 아래 2px accent, 나머지는 faint(밑줄 색 없음)', () => {
+  it('AC-206.2·AC-407.2: 첫 탭만 ink 600 + 아래 2px accent, 나머지는 muted(밑줄 색 없음)', () => {
     const [first, ...rest] = Array.from(parts().tabs.children)
     expectClasses(first, 'text-ink', 'font-semibold', 'border-b-2', 'border-accent')
     for (const tab of rest) {
-      expectClasses(tab, 'text-faint')
-      expectNoClasses(tab, 'text-ink', 'font-semibold', 'border-accent')
+      expectClasses(tab, 'text-muted')
+      expectNoClasses(tab, 'text-faint', 'text-ink', 'font-semibold', 'border-accent')
     }
   })
 

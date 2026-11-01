@@ -27,7 +27,7 @@ export type DashboardHomeProps = {
 // 휴대폰 아래 단추(StickyConnect)가 이 id로 위 주 단추를 지켜본다
 const CONNECT_ID = 'dashboard-connect-start'
 
-// 날짜 줄: small muted, 날짜만 600 ink. 그 달 마지막 날이면 "·"(faint, 좌우 8) + 덧말(줄이 넘치면 "·"와 덧말이 함께 내려간다).
+// 날짜 줄: small muted, 날짜만 600 ink. 그 달 마지막 날이면 "·"(muted, 좌우 8) + 덧말(줄이 넘치면 "·"와 덧말이 함께 내려간다).
 // 사이는 flex 간격이다. 빈칸 글자는 flex 안이라 그려지지 않고 화면 읽기·복사 글자만 띄운다
 function DateLine({ today }: { today: string }) {
   const { date, note } = dateLine(today)
@@ -38,7 +38,7 @@ function DateLine({ today }: { today: string }) {
         <>
           {' '}
           <span className="inline-flex gap-x-2">
-            <span className="text-faint">·</span>
+            <span className="text-muted">·</span>
             {' '}
             {note}
           </span>

@@ -297,7 +297,7 @@ function RevisitRow({ name, cell }: { name: string; cell: RateCell | null }) {
   )
 }
 
-const Dash = () => <span className="text-subtitle font-semibold text-faint">–</span>
+const Dash = () => <span className="text-subtitle font-semibold text-muted">–</span>
 
 // 전체 폭 8px 막대 칸(canvas + 1px line). 값(0~1)이 있으면 그 비율만큼 accent로 채운다. 꾸밈이다(값은 옆 글자)
 function RateBar({ value }: { value: number | null }) {
@@ -348,7 +348,7 @@ function RankBody({ items, connected }: { items: ReturnType<typeof topRx>; conne
           <li key={n} className="flex h-9 items-center gap-3 border-t border-line">
             <span className="w-5 text-caption font-semibold text-muted">{n}</span>
             <span className="min-w-0 flex-1" />
-            <span className="font-semibold text-faint">–</span>
+            <span className="font-semibold text-muted">–</span>
           </li>
         ))}
       </ol>

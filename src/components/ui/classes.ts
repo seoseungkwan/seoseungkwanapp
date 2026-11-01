@@ -6,12 +6,18 @@
 // 초점(키보드): 2px accent 고리, 2px 띄움. 모든 조작 요소 공통
 const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
-// 막힘(disabled·aria-disabled 준비 전): 40% 흐림 + not-allowed 커서. 올림·누름 변화는 각 묶음이 not-disabled:not-aria-disabled:로만 준다
+// 막힘(disabled·aria-disabled 준비 전): 40% 흐림 + not-allowed 커서. 올림 변화는 각 묶음이 not-disabled:not-aria-disabled:로만 준다
 const disabled =
   'disabled:cursor-not-allowed disabled:opacity-40 aria-disabled:cursor-not-allowed aria-disabled:opacity-40'
 
-// ── 옛 모양 묶음 ui: 대시보드 빈 자리(components/dashboard, 이 명세에서 고치지 않음)가 쓰는 세 키만 남긴다. 값은 한 글자도 바꾸지 않는다.
-// 값이 globals.css @theme의 옛 별칭(모서리 card·글자 panel)을 쓴다 — 다음 대시보드 명세에서 별칭과 함께 지운다 (b2b-redesign design.md '대시보드 본문 빼기')
+// 짧은 반응(ui-90 REQ-406, UI_GUIDE '단추'·'움직임'): 색 150ms(transition 기본값). 단추는 막히지도 기다리지도 않을 때만 누름 아래 1px
+const dsPress = 'transition not-disabled:not-aria-disabled:not-aria-busy:active:translate-y-px'
+// 기다림(누른 뒤 답을 기다리는 동안): disabled가 아니라 aria-busy="true" → 60% 흐림 + progress 커서(막힘 40%와 겹치지 않는다).
+// 기다리는 동안 다시 누름을 무시하는 것은 화면의 누름 처리 함수가 맡는다
+const dsBusy = 'aria-busy:cursor-progress aria-busy:opacity-60'
+
+// ── 옛 모양 묶음 ui: 옛 빈 자리 한 파일(components/dashboard/DashboardEmpty.tsx, 지금 그리는 화면 없음)이 쓰는 세 키만 남긴다. 값은 한 글자도 바꾸지 않는다.
+// 값이 globals.css @theme의 옛 별칭(모서리 card·글자 panel)을 쓴다 — 그 파일을 지우는 명세에서 별칭과 함께 지운다 (b2b-redesign design.md '대시보드 본문 빼기')
 export const ui = {
   // 빈 안내 상자: 흰 바탕·1px 선, 안쪽 24px(폰 20px 16px)
   card: 'rounded-card border border-line bg-surface p-6 max-md:px-4 max-md:py-5',
@@ -20,15 +26,15 @@ export const ui = {
   panelTitle: 'text-panel font-semibold text-ink',
 } as const
 
-// ── 공통 모양 ds (b2b-redesign REQ-204, design.md '공통 모양 옮기기', docs/UI_GUIDE.md '공통 모양'). 대시보드 두 폴더 밖의 앱 화면·차트·미리보기는 ds만 쓴다.
-// 토큰 클래스만 쓴다: 모서리 rounded-control(4px)·rounded-float(8px, 떠 있는 층), 그림자 shadow-float(층에만), 글자 11단계,
+// ── 공통 모양 ds (b2b-redesign REQ-204, design.md '공통 모양 옮기기', docs/UI_GUIDE.md '공통 모양'). 옛 빈 자리 한 파일 밖의 앱 화면(대시보드 두 폴더 포함)·차트·미리보기는 ds만 쓴다.
+// 토큰 클래스만 쓴다: 모서리 rounded-control(4px)·rounded-float(8px, 떠 있는 층), 그림자 shadow-float(층에만), 글자 11단계(글자색은 muted 이상, faint 글자 없음),
 // 간격은 단계 0·0.5·1·1.5·2·3·4·5·6·8·12·16·24와 px뿐이다(classes.test.ts AC-204.6 규칙 시험). 넘침 자르기는 overflow-clip.
-// 패널(panel·panelHead·panelTitle·panelBody·count)·표의 tdNum·check·primarySmall은 지금 쓰는 화면이 없다 — 다음 대시보드 명세가 쓴다(차트 부품과 같다)
+// 표의 tdNum·check는 아직 쓰는 화면이 없다 — 다음 대시보드 명세가 쓴다(차트 부품과 같다). button.ghost는 오류 화면 [로그아웃]이 쓴다(ui-90 TASK-8)
 
-// 단추 공통: 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자 없음.
+// 단추 공통: 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자 없음, 짧은 반응·기다림 모양.
 // 굵기·높이·좌우 여백은 크기·종류 묶음이 하나씩만 준다(같은 속성 클래스가 겹치지 않게). flex 크기는 놓는 자리가 정한다
-const dsButtonBase = `inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border ${focusRing} ${disabled}`
-// 기본 36px·좌우 16px·body 500 / 작은 32px·좌우 12px·small 500 / 큰 44px·좌우 20px·body 600. 휴대폰은 모두 44px
+const dsButtonBase = `inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border ${focusRing} ${disabled} ${dsPress} ${dsBusy}`
+// 기본 36px·좌우 16px·body 500 / 작은 32px·좌우 12px·small 500 / 큰 44px·좌우 20px·body 600 / 글자만 작은 32px·좌우 8px. 휴대폰은 모두 44px
 const dsSize = 'h-9 px-4 text-body font-medium max-md:h-11'
 const dsSizeSmall = 'h-8 px-3 text-small font-medium max-md:h-11'
 const dsSizeSmallBold = 'h-8 px-3 text-small font-semibold max-md:h-11'
@@ -58,12 +64,13 @@ export const ds = {
     secondarySmall: `${dsButtonBase} ${dsSizeSmall} ${dsSecondaryTone}`,
     danger: `${dsButtonBase} ${dsSize} ${dsDangerTone}`, // 확인 창 [거절]
     accentOutlineSmall: `${dsButtonBase} ${dsSizeSmallBold} ${dsAccentOutlineTone}`, // 관리자 [승인]
+    ghost: `${dsButtonBase} ${dsSize} ${dsGhostTone}`, // 글자만 기본 — 오류 화면 [로그아웃]
     ghostSmall: `${dsButtonBase} ${dsSizeGhost} ${dsGhostTone}`, // 승인 대기 위 줄 [로그아웃]
     googleLarge: `${dsButtonBase} ${dsSizeLarge} ${dsSecondaryTone}`, // [구글로 시작하기] — 안에 GoogleMark 18
   },
 
-  // 글자 단추·링크: 바탕 없음·accent·body 500 → 올림 밑줄(아래 3px). 휴대폰은 44px 높이
-  textButton: `inline-flex cursor-pointer items-center gap-1 rounded-control text-body font-medium text-accent underline-offset-3 not-disabled:not-aria-disabled:hover:underline ${focusRing} ${disabled} max-md:min-h-11`,
+  // 글자 단추·링크: 바탕 없음·accent·body 500 → 올림 밑줄(아래 3px), 색 150ms(transition). 휴대폰은 44px 높이
+  textButton: `inline-flex cursor-pointer items-center gap-1 rounded-control text-body font-medium text-accent underline-offset-3 transition not-disabled:not-aria-disabled:hover:underline ${focusRing} ${disabled} max-md:min-h-11`,
 
   // 칸 하나: 이름 → 입력(사이 6px). 이름 줄은 이름(label) + 필수·선택(labelHint)
   field: 'flex flex-col gap-1.5',

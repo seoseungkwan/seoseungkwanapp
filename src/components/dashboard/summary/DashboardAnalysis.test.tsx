@@ -308,18 +308,30 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
     expect(emptyTicks()).toEqual(['8.2', '8.23', '9.13', '10.4', '10.25'])
   })
 
-  it('AC-311.4: 신환 재방문율 — 줄 셋(7·14·30일 안에 다시 옴), 값 "–"(faint), 빈 막대 칸(canvas + 1px line, aria-hidden)', () => {
+  it('AC-311.4·AC-407.2: 신환 재방문율 — 줄 셋(7·14·30일 안에 다시 옴), 값 "–"(muted), 빈 막대 칸(canvas + 1px line, aria-hidden)', () => {
     draw(NONE)
     const group = chart('신환 재방문율')
     const names = ['7일 안에 다시 옴', '14일 안에 다시 옴', '30일 안에 다시 옴']
     for (const name of names) {
       const row = within(group).getByText(name).parentElement!
       hasAll(row, 'border-t border-line py-3')
-      hasAll(within(row).getByText('–'), 'text-faint')
+      hasAll(within(row).getByText('–'), 'text-muted')
       const bar = row.querySelector('[aria-hidden="true"]')!
       hasAll(bar, 'h-2 border border-line bg-canvas')
       expect(bar.children).toHaveLength(0)
     }
+  })
+
+  it.each([
+    ['연결 전', NONE, true],
+    ['연결 뒤 · 오늘 줄 없음', data([day('2026-10-30'), day('2026-10-24')]), true],
+    ['연결 뒤 · 자료 다 있음', data(FULL_DAYS), false],
+  ] as const)('AC-407.2: %s — 분석의 "–"(KPI·재방문율·처방 상위 빈 줄)는 모두 글자색 muted이고 faint 글자가 없다', (_, source, hasDash) => {
+    const { container } = draw(source)
+    const dashes = Array.from(container.querySelectorAll('*')).filter((el) => el.children.length === 0 && el.textContent === '–')
+    if (hasDash) expect(dashes.length).toBeGreaterThan(0)
+    for (const dash of dashes) hasAll(dash, 'text-muted')
+    expect(allClasses(container).filter((t) => /(?:^|:)text-faint(?:\/\d+)?$/.test(t))).toEqual([])
   })
 
   it('AC-311.4: 요일별 환자 수 — 빈 막대 칸 7개와 "월 화 수 목 금 토 일"(aria-hidden, 150px · 폰 110px)', () => {

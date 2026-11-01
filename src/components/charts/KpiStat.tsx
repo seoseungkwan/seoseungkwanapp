@@ -59,7 +59,7 @@ export function KpiStat({
       </div>
       {value === null ? (
         <>
-          <p className={`${valueClass} text-faint`}>–</p>
+          <p className={`${valueClass} text-muted`}>–</p>
           <p className="text-small text-muted">{emptyText}</p>
         </>
       ) : (

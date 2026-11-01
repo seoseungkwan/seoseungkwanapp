@@ -59,7 +59,7 @@ describe('ErrorCard', () => {
   })
 
   // b2b-redesign REQ-217 AC-217.1, UI_GUIDE '오류 카드·확인 창'
-  it('AC-217.1: 오류 카드 모양 — negative-soft 바탕·rounded-control·테두리 없음·안쪽 12px 16px, 아이콘 16(negative), 무엇이 small 600 negative, 어떻게 small ink-2, 오류 번호 caption muted 고정폭, 임의 색 없음', () => {
+  it('AC-217.1·AC-407.3: 오류 카드 모양 — negative-soft 바탕·rounded-control·테두리 없음·안쪽 12px 16px, 아이콘 16(negative), 무엇이 small 600 negative, 어떻게 small ink-2, 오류 번호 caption ink-2 고정폭, 임의 색 없음', () => {
     render(<ErrorCard code="E-SIGNUP-FAILED" />)
     const card = screen.getByRole('alert')
     const info = errorInfo('E-SIGNUP-FAILED')
@@ -84,7 +84,9 @@ describe('ErrorCard', () => {
     expect(sizes(what)).toEqual(['text-small'])
     expect(classes(fix)).toContain('text-ink-2')
     expect(sizes(fix)).toEqual(['text-small'])
-    expect(classes(number)).toEqual(expect.arrayContaining(['text-muted', 'tabular-nums']))
+    // ui-90 AC-407.3: negative-soft 위에서 muted는 4.5:1이 안 된다(4.33:1) → ink-2
+    expect(classes(number)).toEqual(expect.arrayContaining(['text-ink-2', 'tabular-nums']))
+    expect(classes(number).filter((c) => /^text-(?!caption$)/.test(c))).toEqual(['text-ink-2'])
     expect(sizes(number)).toEqual(['text-caption'])
 
     // 옛 별칭(danger·rounded-card·rounded-chip·text-table — TASK-23에서 지운다)을 쓰지 않는다

@@ -113,13 +113,14 @@ describe('DashboardHome: 날짜 줄 (AC-306.1)', () => {
     hasAll(date, 'font-semibold text-ink')
   })
 
-  it('AC-306.1: 그 달 마지막 날이면 뒤에 "·"(faint, 좌우 8px) + "이번 달 마지막 날"', () => {
+  it('AC-306.1·AC-407.2: 그 달 마지막 날이면 뒤에 "·"(muted, 좌우 8px) + "이번 달 마지막 날"', () => {
     renderBefore()
     const line = dateLineEl()
     expect(textOf(line)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
     hasAll(line, 'flex flex-wrap gap-x-2')
     const dot = byText(line, '·')
-    hasAll(dot, 'text-faint')
+    hasAll(dot, 'text-muted')
+    hasNone(dot, 'text-faint')
     // 왼쪽 8px = 줄의 사이, 오른쪽 8px = "·"와 덧말 묶음의 사이(넘치면 함께 내려간다)
     const note = dot.parentElement as HTMLElement
     expect(note.parentElement).toBe(line)
@@ -399,12 +400,14 @@ describe('DashboardHome: 단추 반응 (AC-306.7)', () => {
     hasAll(link, `${ds.textButton} ${REACT_PRESS} underline decoration-transparent not-disabled:not-aria-disabled:hover:decoration-current`)
   })
 
-  it('AC-306.7: 이 밖의 움직임이 없다 — 움직임 클래스는 정해 둔 짧은 반응뿐(animate-*·크기·높이·여백 바뀜 없음)', () => {
+  it('AC-306.7·AC-406.1: 이 밖의 움직임이 없다 — 움직임 클래스는 정해 둔 짧은 반응뿐(ds 단추 누름 포함, animate-*·크기·높이·여백 바뀜 없음)', () => {
     const ALLOWED = new Set([
       'transition',
       'not-disabled:active:translate-y-px',
       'group-hover:translate-x-0.5',
       'group-open:rotate-180',
+      // ds.button에서 온 누름(ui-90 AC-406.1): 막히지도 기다리지도 않을 때만 아래 1px
+      'not-disabled:not-aria-disabled:not-aria-busy:active:translate-y-px',
       // 휴대폰 아래 단추(StickyConnect): 아래에서 올라옴 200ms
       'duration-200',
       'translate-y-full',
@@ -631,7 +634,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4)', () => {
     }
   })
 
-  it('AC-316.4: 1줄 이름(subtitle 600, 사용 가능 ink · 준비 중 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted)', () => {
+  it('AC-316.4·AC-407.2: 1줄 이름(subtitle 600, 사용 가능 ink · 준비 중 ink-2, 올림 accent) + 오른쪽 상태("준비 중"은 caption 500 muted), 2줄 설명(small muted)', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -653,7 +656,8 @@ describe('DashboardHome: 기능 목차 (AC-316.4)', () => {
         hasAll(name, 'text-ink-2')
         hasNone(name, 'text-ink')
         expect(textOf(status)).toBe('준비 중')
-        hasAll(status, 'text-caption font-medium text-faint')
+        hasAll(status, 'text-caption font-medium text-muted')
+        hasNone(status, 'text-faint')
         expect(status.querySelector('svg')).toBeNull()
       }
       expect(textOf(desc)).toBe(feature.desc)

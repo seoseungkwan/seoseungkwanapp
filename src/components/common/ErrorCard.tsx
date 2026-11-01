@@ -2,7 +2,7 @@ import { errorInfo } from '@/lib/errors'
 import type { ErrorCode } from '@/types/errors'
 
 // 오류 카드: 무엇이 · 어떻게 고치나 · 오류 번호 (b2b-redesign REQ-217 AC-217.1, UI_GUIDE '오류 카드·확인 창').
-// negative-soft 바탕·4px 모서리·테두리 없음·안쪽 12px 16px. 아이콘 16(negative) + 글 세 줄(small 600 negative · small ink-2 · caption muted 고정폭).
+// negative-soft 바탕·4px 모서리·테두리 없음·안쪽 12px 16px. 아이콘 16(negative) + 글 세 줄(small 600 negative · small ink-2 · caption ink-2 고정폭 — negative-soft 위 muted는 4.5:1이 안 된다, ui-90 AC-407.3).
 // 안내 글은 lib/errors.ts에서만 가져온다. 받는 값은 번호 하나라 원래 오류 내용(메시지·스택)을 그릴 길이 없다.
 // 다시 시도 같은 단추는 카드 밖에 둔다
 export function ErrorCard({ code }: { code: ErrorCode }) {
@@ -30,7 +30,7 @@ export function ErrorCard({ code }: { code: ErrorCode }) {
         <p className="text-small font-semibold text-negative">{info.what}</p>
         <p className="text-small text-ink-2">{info.fix}</p>
         {/* 한 덩어리 글자로 둔다(오류 번호 줄을 그대로 찾고 읽게) */}
-        <p className="text-caption text-muted tabular-nums">오류 번호 {code}</p>
+        <p className="text-caption text-ink-2 tabular-nums">오류 번호 {code}</p>
       </div>
     </div>
   )
