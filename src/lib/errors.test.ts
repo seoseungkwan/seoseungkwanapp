@@ -35,6 +35,8 @@ const ALL_CODES = [
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
   'E-RULES-LOAD-FAILED',
+  'E-CLAIM-PARTIAL',
+  'E-BIT-EXPORT-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -275,6 +277,25 @@ describe('AC-007.5 점검 표 불러오기 오류 문구', () => {
     const info = errorInfo('E-RULES-LOAD-FAILED')
     expect(info.what).toContain('규칙표')
     expect(info.what).toContain('점검을 시작하지 않았어요')
+    expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
+// 한 달 자료(precheck TASK-9): 조각이 다 오지 않았거나 모양이 틀리면 Worker가 점검을 돌리지 않고 이 번호만 화면에 알린다
+describe('AC-009.2·AC-008.4 한 달 자료 멈춤 오류 문구', () => {
+  it('AC-009.2: E-CLAIM-PARTIAL은 자료가 다 오지 않아 점검을 멈췄다고 알리고 [다시 불러오기]로 다시 불러오라고 한다', () => {
+    expect(isErrorCode('E-CLAIM-PARTIAL')).toBe(true)
+    const info = errorInfo('E-CLAIM-PARTIAL')
+    expect(info.what).toBe('자료가 다 오지 않아 점검을 멈췄어요')
+    expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('다시 불러오세요')
+  })
+
+  it('AC-008.4: E-BIT-EXPORT-FAILED(도우미가 비트 통계 화면 표를 꺼내지 못함, design.md 4-5)는 무엇이·어떻게 고치나가 있다', () => {
+    expect(isErrorCode('E-BIT-EXPORT-FAILED')).toBe(true)
+    const info = errorInfo('E-BIT-EXPORT-FAILED')
+    expect(info.what).toContain('비트 통계 화면')
     expect(info.fix).toContain('[다시 불러오기]')
     expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
   })

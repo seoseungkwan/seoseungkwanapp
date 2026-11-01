@@ -10,5 +10,7 @@ export type ErrorCode =
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
   // 점검 표 불러오기(Worker의 import(), TASK-7)
   | 'E-RULES-LOAD-FAILED'
+  // 한 달 자료(claim.month): 도우미가 비트 통계 화면 표를 꺼내지 못함 · Worker가 조각·모양이 다 맞지 않아 멈춤(TASK-9)
+  | 'E-BIT-EXPORT-FAILED' | 'E-CLAIM-PARTIAL'
 
 export type ErrorInfo = { what: string; fix: string }
