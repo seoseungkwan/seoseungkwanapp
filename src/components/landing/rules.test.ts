@@ -747,6 +747,8 @@ describe('AC-421.1·AC-421.3: base.module.css — 건너뛰기 링크(.skip)와 
       'scroll-margin-top',
       'scroll-margin-top',
     ])
+    // 건너뛰기로 옮긴 초점(tabIndex -1)은 본문 둘레에 브라우저 기본 초점 고리를 그리지 않는다
+    for (const bp of BPS) expectAt('.main:focus', bp, { outline: 'none' })
   })
 
   it('AC-421.3: .nw는 줄바꿈 없음(white-space: nowrap) 하나만 정한다("원장님 보고까지"·"한 화면에서"·"병원 PC")', () => {

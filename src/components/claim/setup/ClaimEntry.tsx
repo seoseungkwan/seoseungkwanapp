@@ -11,7 +11,7 @@ import { useBridge } from '../useBridge'
 import { BusyCard } from './SetupAlert'
 
 // /claim 자리 (precheck REQ-006, ui-90 REQ-413, design.md '청구 (TASK-10)', 시안 docs/mockups/ui-90/app/gen.py claim_body·claim_ready_body·BUSY).
-// 점검 화면은 TASK-13, 다른 PC에서 보는 건수는 TASK-19가 채운다.
+// 점검 화면은 precheck TASK-13, 다른 PC에서 보는 건수는 precheck TASK-19가 채운다.
 // - 확장이 있는 PC 크롬인데 연결이 안 됐으면 비트 PC 연결(/claim/setup)이 먼저 나온다(목업 화면 1 "연결이 안 된 채로 청구 탭을 열면")
 // - 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요"(ClaimOffline)
 // - 연결됐으면 다른 준비 중 화면과 같은 모양(NotReadyScreen + [비트 PC 연결 다시 확인], "그동안 쓸 수 있어요" 없음)
@@ -94,7 +94,7 @@ export function ClaimEntry() {
     <div className="flex flex-col gap-4 max-md:gap-3">
       <h1 className={titleClass}>청구</h1>
       {state === 'busy' && countsOnly && (
-        // [건수만 보기] 뒤: 건수는 아직 준비 중(TASK-19). [다시 확인]은 다시 붙고 카드로 돌아간다
+        // [건수만 보기] 뒤: 건수는 아직 준비 중(precheck TASK-19). [다시 확인]은 다시 붙고 카드로 돌아간다
         <>
           <p className={chipLine}>
             <span>건수만 볼 수 있어요</span>

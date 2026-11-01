@@ -38,11 +38,14 @@ const cellPhone = 'max-md:h-auto max-md:border-b-0 max-md:p-0 max-md:first:pl-0 
 // 768~1023px(태블릿)은 글 칸(의원 이름·신청자·이메일)이 좁아 말줄임 대신 줄바꿈한다 — title은 마우스로만 보이니 터치·키보드로도
 // 전체 값을 보고 [승인]을 누르게(1024px 이상은 말줄임 그대로, 휴대폰 의원 이름도 말줄임 그대로)
 const wrapTablet = 'md:max-lg:whitespace-normal md:max-lg:break-all'
+// 이메일은 낱말 중간(barun@exampl / e.com)에서 자르지 않는다(ui-90 TASK-19 채점): "@" 바로 뒤에만 줄을 바꿀 자리(<wbr>)를 두고,
+// break-all 대신 overflow-wrap:anywhere — 도메인이 칸보다 길 때만 그 안에서 줄을 바꾼다. 1024px 이상은 말줄임 그대로
+const wrapEmail = 'md:max-lg:whitespace-normal wrap-anywhere'
 const cell = {
   date: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-3 max-md:row-start-1 max-md:ml-3 max-md:justify-self-end max-md:text-caption`,
   clinic: `${ds.table.td} ${cellPhone} truncate ${wrapTablet} text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
   applicant: `${ds.table.td} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-1 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
-  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:before:px-1 max-md:before:content-['·']`,
+  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapEmail} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:before:px-1 max-md:before:content-['·']`,
   phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-3 max-md:mt-1.5 max-md:text-muted`,
   action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-3 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
@@ -60,6 +63,20 @@ const COLUMNS = [
   { label: '연락처', width: 'w-37.5 max-lg:w-34' },
   { label: '동작', width: 'w-37.5 max-lg:w-35 md:text-right' },
 ] as const
+
+// 이메일 글자: "@" 바로 뒤에 줄을 바꿀 자리(<wbr>). 글자(textContent)·복사한 글자는 그대로다.
+// 크롬은 nowrap 안에서도 <wbr>에서 줄을 바꾼다 → 말줄임하는 1024px 이상에서는 <wbr>을 뺀다(lg:hidden)
+function EmailText({ email }: { email: string }) {
+  const at = email.indexOf('@')
+  if (at < 0) return email
+  return (
+    <>
+      {email.slice(0, at + 1)}
+      <wbr className="lg:hidden" />
+      {email.slice(at + 1)}
+    </>
+  )
+}
 
 function CheckIcon({ size }: { size: number }) {
   return (
@@ -335,7 +352,7 @@ export function AdminApplications() {
                           {row.applicantName}
                         </td>
                         <td className={cell.email} title={row.email}>
-                          {row.email}
+                          <EmailText email={row.email} />
                         </td>
                         <td className={cell.phone}>
                           {phoneText(row.phone)}

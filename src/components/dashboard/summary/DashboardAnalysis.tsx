@@ -50,12 +50,12 @@ const KPI_CELLS = [
   'min-w-0 border-l border-line py-4 px-5 max-md:border-t max-md:py-3 max-md:px-4',
 ] as const
 
-// 기간 단추 묶음(메모 §3 '기간 단추'). 단추 32px(폰 44px, 셋이 같은 폭), 눌린 것 accent-soft · accent-strong 600.
+// 기간 단추 묶음(메모 §3 '기간 단추'). 묶음 32px(테두리 포함), 폰은 단추마다 44px(누르기 쉬운 높이, ui-90 TASK-19)·셋이 같은 폭, 눌린 것 accent-soft · accent-strong 600.
 // 올림 바탕만 짧게 바뀌고(transition), 눌린 단추에는 transition이 없어 눌린 표시가 바로 바뀐다
 const PERIOD_GROUP =
   'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:order-3 max-md:grid max-md:w-full max-md:grid-cols-3'
 const PERIOD_BUTTON =
-  'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-10.5'
+  'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 const PERIOD_ON = 'bg-accent-soft font-semibold text-accent-strong'
 const PERIOD_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
 

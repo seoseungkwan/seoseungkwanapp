@@ -578,11 +578,11 @@ describe('짜임 — 폭별 칸 (AC-311.7)', () => {
     }
   })
 
-  it('AC-311.7: 기간 단추는 32px(폰 44px, 셋이 같은 폭으로 다음 줄 전체), 눌린 것은 accent-soft 바탕 accent-strong 600', () => {
+  it('AC-311.7: 기간 단추는 32px(폰은 단추마다 44px, 셋이 같은 폭으로 다음 줄 전체), 눌린 것은 accent-soft 바탕 accent-strong 600', () => {
     draw(NONE)
     const group = screen.getByRole('group', { name: '기간' })
     hasAll(group, 'inline-flex overflow-clip rounded-control border border-line-strong bg-surface max-md:order-3 max-md:grid max-md:w-full max-md:grid-cols-3')
-    for (const b of periodButtons()) hasAll(b, 'h-7.5 px-3 text-small max-md:h-10.5')
+    for (const b of periodButtons()) hasAll(b, 'h-7.5 px-3 text-small max-md:h-11')
     const [b7, b30, b90] = periodButtons()
     hasAll(b30!, 'bg-accent-soft text-accent-strong font-semibold')
     for (const b of [b7!, b90!]) {

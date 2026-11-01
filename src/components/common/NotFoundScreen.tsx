@@ -36,14 +36,15 @@ function InApp() {
       <h1 className="mt-3 text-title font-semibold text-ink">찾는 화면이 없어요</h1>
       <p className={LEAD}>주소가 바뀌었거나 잘못 적힌 것 같아요. 위 탭에서 가려는 화면을 고르거나 대시보드로 가 주세요.</p>
       <AddressLine className={`${ADDR} justify-center`} />
-      <Link href="/dashboard" className={`${ds.button.primaryLarge} mt-6 max-md:w-full`}>
+      <Link href="/dashboard" className={`${ds.button.primaryLarge} mt-6 no-underline max-md:w-full`}>
         대시보드로 가기
       </Link>
     </div>
   )
 }
 
-// 밖 단추: 휴대폰은 두 단추가 140px부터 나눠 늘어난다(시안 .col480.ph .btns .btn)
+// 밖 단추: 휴대폰은 두 단추가 140px부터 나눠 늘어난다(시안 .col480.ph .btns .btn).
+// 단추 모양 링크는 모두 no-underline을 직접 준다(앱 초기화가 링크 밑줄을 지우지 않는다, 시안에 밑줄 없음)
 const OUT_BUTTON = 'max-md:flex-[1_1_140px]'
 
 // 밖(시안 notFoundOut): 칩 줄(위 24) → h1(heading-m → 768px 이상 heading) → 안내 → 열려던 주소 → 단추 줄(위 24 · 사이 8)
@@ -57,11 +58,11 @@ function Outside() {
       <p className={LEAD}>주소가 바뀌었거나 잘못 적힌 것 같아요. 처음 화면에서 다시 시작해 주세요.</p>
       <AddressLine className={ADDR} />
       <div className="mt-6 flex flex-wrap gap-2">
-        <Link href="/" className={`${ds.button.primaryLarge} ${OUT_BUTTON}`}>
+        <Link href="/" className={`${ds.button.primaryLarge} ${OUT_BUTTON} no-underline`}>
           처음 화면으로
         </Link>
         {/* 보조 큰 단추: ds에 이름이 따로 없어 같은 값(보조 색 × 큰 크기)인 googleLarge 묶음을 쓴다 */}
-        <Link href="/login" className={`${ds.button.googleLarge} ${OUT_BUTTON}`}>
+        <Link href="/login" className={`${ds.button.googleLarge} ${OUT_BUTTON} no-underline`}>
           로그인
         </Link>
       </div>

@@ -9,7 +9,7 @@ const SKIP_LINK =
   'sr-only rounded-float border-line bg-surface text-body font-semibold text-ink no-underline shadow-float focus-visible:not-sr-only focus-visible:absolute focus-visible:top-1.5 focus-visible:left-2 focus-visible:z-12 focus-visible:inline-flex focus-visible:h-11 focus-visible:items-center focus-visible:border focus-visible:px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 // 앱 화면 틀 (REQ-008, b2b-redesign AC-218.1, UI_GUIDE '앱 화면' 앱 틀·폰). 앱 초기화 범위(.app-ui).
-// 바탕 A(ui-90 AC-404.1): 뿌리와 본문 모두 흰 바탕(surface) 한 장. 페이지가 바탕을 고르지 않는다(옛 data-page-surface 표시 없음).
+// 바탕 A(ui-90 AC-404.1): 뿌리와 본문 모두 흰 바탕(surface) 한 장이고, 어느 페이지에서나 같다.
 // 첫 조작 요소는 건너뛰기 링크(ui-90 AC-403.1) → 본문 main#main.
 // 위에 붙는 묶음 하나(sticky·top 0·z 10)에 위쪽 띠와 탭 줄이 함께 있다. 그 아래 본문.
 // 위쪽 띠(흰·56px, 폰 48px): 로고·병원 이름 | 한국 시각·계정 단추. [서비스 이름]과 세로 구분선은 두지 않는다(사용자 결정 2026-10-30).
@@ -50,8 +50,14 @@ export function AppShell({
         </header>
         <TabBar />
       </div>
-      {/* 건너뛰기 링크가 가리키는 본문. 초점을 받을 수 있게 tabIndex -1(Tab 차례에는 들지 않는다) */}
-      <main id="main" tabIndex={-1} className="flex-1 bg-surface">
+      {/* 건너뛰기 링크가 가리키는 본문. 초점을 받을 수 있게 tabIndex -1(Tab 차례에는 들지 않는다).
+          옮겨도 첫 줄이 붙는 묶음에 가리지 않게 scroll-margin = 묶음 높이: 띠 57(56 + 아래 선 1) + 탭 줄 45(44 + 아래 선 1) = 102px,
+          768px 미만은 띠 49(48 + 1) + 45 = 94px. 코드로 옮긴 초점이라 본문 둘레 초점 고리는 그리지 않는다(건너뛰기 링크 자신의 고리는 그대로) */}
+      <main
+        id="main"
+        tabIndex={-1}
+        className="flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:scroll-mt-23.5"
+      >
         <div className="mx-auto w-full max-w-7xl px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8">{children}</div>
       </main>
     </div>

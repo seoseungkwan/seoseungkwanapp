@@ -108,7 +108,7 @@ describe('AC-410.1: 앱 안 없는 주소 — 패널 하나 안에 칩 → h1 �
     const link = only(root, 'a')
     expect(link.getAttribute('href')).toBe('/dashboard')
     expect(textOf(link)).toBe('대시보드로 가기')
-    expectClasses(link, ds.button.primaryLarge, 'mt-6 max-md:w-full')
+    expectClasses(link, ds.button.primaryLarge, 'mt-6 no-underline max-md:w-full')
   })
 
   it('AC-410.1: 열려던 주소 줄은 이름표(small muted) + 경로이고 가운데로 모인다', () => {
@@ -165,8 +165,8 @@ describe('AC-410.2: 밖 없는 주소 — 칩 → h1 → 안내 → 열려던 �
     // 보조 큰 = 보조 색(line-strong 테두리 · surface · ink) + 큰 크기(44px · 좌우 20 · 600)
     expectClasses(login, 'h-11 px-5 font-semibold border-line-strong bg-surface text-ink')
     expect(classesOf(login)).not.toContain('bg-accent')
-    // 휴대폰은 두 단추가 140px부터 나눠 늘어난다(시안 .col480.ph .btns .btn)
-    for (const link of links) expectClasses(link, 'max-md:flex-[1_1_140px]')
+    // 휴대폰은 두 단추가 140px부터 나눠 늘어난다(시안 .col480.ph .btns .btn). 단추 모양 링크라 밑줄이 없다
+    for (const link of links) expectClasses(link, 'max-md:flex-[1_1_140px] no-underline')
   })
 
   it('AC-410.2: 열려던 주소 줄은 위 16, 이름표(small muted) + 경로다', () => {

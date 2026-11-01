@@ -126,7 +126,8 @@ describe('app/error.tsx: 오류 화면 짜임 (AC-411.1)', () => {
     expect(classesOf(retry())).toEqual(expect.arrayContaining(tokens(ds.button.primary)))
     expect(toDashboard().tagName).toBe('A')
     expect(toDashboard().getAttribute('href')).toBe('/dashboard')
-    expect(classesOf(toDashboard())).toEqual(expect.arrayContaining(tokens(ds.button.secondary)))
+    // 단추 모양 링크라 밑줄이 없다(시안 .btn)
+    expect(classesOf(toDashboard())).toEqual(expect.arrayContaining([...tokens(ds.button.secondary), 'no-underline']))
     expect(classesOf(signOutButton())).toEqual(expect.arrayContaining(tokens(ds.button.ghost)))
     // 위 줄(AuthFrame 머리)은 보지 않는다 → 본문 안 단추·링크만 센다
     expect(within(main()).getAllByRole('button').map((b) => b.textContent)).toEqual(['다시 시도', '로그아웃'])

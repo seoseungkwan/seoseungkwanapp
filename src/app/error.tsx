@@ -46,7 +46,7 @@ export default function PageError() {
         </button>
         {/* 새로 열기(<a>, design.md): 오류 난 화면 상태를 버리고 middleware·앱 틀이 처음부터 다시 읽는다 → Link(화면 안 이동)를 쓰지 않는다 */}
         {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- 일부러 새로 연다(위 주석) */}
-        <a href="/dashboard" className={`${ds.button.secondary} ${BUTTON_SIZE}`}>
+        <a href="/dashboard" className={`${ds.button.secondary} ${BUTTON_SIZE} no-underline`}>
           대시보드로
         </a>
         <SignOutButton className={`${ds.button.ghost} ${BUTTON_SIZE} md:flex-none`} />

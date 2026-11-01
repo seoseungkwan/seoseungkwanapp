@@ -194,6 +194,13 @@ describe('AC-004.3·AC-004.6·AC-004.7·AC-004.9 연결 오류 번호 문구', (
     expect(errorInfo('E-EXT-OLD').fix).toContain('확장')
   })
 
+  // ui-90 TASK-19: 확장 업데이트 안내는 화면에 없는 "1번" 단계를 가리키지 않고, 아래 단추로 새 확장을 받으라고 한다
+  it('AC-006.6·ui-90 TASK-19: E-EXT-OLD.fix는 새 확장 안내 문구 그대로다 — "1번"을 가리키지 않는다', () => {
+    const fix = errorInfo('E-EXT-OLD').fix
+    expect(fix).toBe('이 PC의 확장이 예전 버전이라 청구 화면을 쓸 수 없어요. 아래 단추로 새 확장을 받아 바꾼 뒤 [다시 확인]을 누르세요.')
+    expect(fix).not.toContain('1번')
+  })
+
   it('E-BRIDGE-BUSY는 다른 창에서 쓰고 있다고 알린다', () => {
     expect(errorInfo('E-BRIDGE-BUSY').what).toContain('다른 창')
   })

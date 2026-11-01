@@ -1230,6 +1230,8 @@ describe('AppShell', () => {
     expect(main.getAttribute('tabindex')).toBe('-1')
     expect(document.getElementById('main')).toBe(main)
     expect(document.querySelectorAll('#main')).toHaveLength(1)
+    // 옮겨도 첫 줄이 붙는 묶음(띠 + 탭 줄 = 102px, 768px 미만 94px)에 가리지 않고, 본문 둘레에 초점 고리를 그리지 않는다
+    hasAll(main, 'scroll-mt-25.5 max-md:scroll-mt-23.5 focus:outline-none')
   })
 
   it('AC-403.1: 평소에는 sr-only, 키보드 초점이면 보인다 — 왼쪽 위 띠 위, 44px, surface, 1px line, rounded-float, shadow-float, body 600, 2px accent 초점 고리', () => {

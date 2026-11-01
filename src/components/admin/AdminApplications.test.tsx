@@ -486,10 +486,11 @@ describe('AdminApplications: 폰(768px 미만)', () => {
     hasAll(applicant, 'max-md:row-start-2 max-md:col-start-1 max-md:text-ink-2')
     // 긴 이름(DB는 30자까지)도 줄을 넓히지 않는다: 신청자·이메일은 휴대폰에서 줄바꿈하고, 첫 칸은 줄 폭의 반까지만 자란다
     // → 신청일·단추 칸(셋째 칸)이 늘 화면 안에 남는다
-    for (const c of [applicant, email]) hasAll(c, 'max-md:whitespace-normal max-md:break-all')
+    hasAll(applicant, 'max-md:whitespace-normal max-md:break-all')
+    hasAll(email, 'max-md:whitespace-normal wrap-anywhere') // 이메일은 "@" 뒤에서만 줄바꿈(아래 TASK-19 시험)
     hasAll(tr, 'max-md:grid-cols-[fit-content(50%)_1fr_auto]')
     expect(classesOf(tr).filter((t) => t.startsWith('max-md:grid-cols-'))).toEqual(['max-md:grid-cols-[fit-content(50%)_1fr_auto]'])
-    hasAll(email, 'max-md:row-start-2 max-md:col-start-2 max-md:col-end-4 max-md:break-all max-md:whitespace-normal')
+    hasAll(email, 'max-md:row-start-2 max-md:col-start-2 max-md:col-end-4 max-md:whitespace-normal')
     hasAll(email, "max-md:before:content-['·']") // 신청자 · 이메일
     hasAll(phone, 'max-md:row-start-3 max-md:col-start-1 max-md:col-end-3 max-md:text-muted')
     hasAll(action, 'max-md:row-start-3 max-md:col-start-3 max-md:justify-self-end')
@@ -643,7 +644,8 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     for (const c of [cells[1], cells[2], cells[3]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
     // 768~1023px(글 칸이 좁다)에서는 말줄임 대신 줄바꿈 — 터치·키보드로도 전체 의원 이름·신청자·이메일을 보고 [승인]을 누른다(1024px 이상은 말줄임 그대로)
-    for (const c of [cells[1], cells[2], cells[3]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
+    for (const c of [cells[1], cells[2]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
+    hasAll(cells[3], 'md:max-lg:whitespace-normal wrap-anywhere') // 이메일은 "@" 뒤에서만(아래 TASK-19 시험)
     // 말줄임으로 잘려도 전체 값은 마우스를 올리면 보인다(title)
     expect([cells[1], cells[2], cells[3]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
     // 빈 탭에서도 머리 폭은 같다
@@ -652,6 +654,23 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     expect(bodyRows()).toHaveLength(1)
     expect(widths()).toEqual(FIXED)
     hasAll(table(), 'md:table-fixed')
+  })
+
+  // ui-90 TASK-19 채점: 768px 표가 이메일을 낱말 중간(barun@exampl / e.com)에서 잘랐다 → "@" 바로 뒤에만 줄을 바꿀 자리를 둔다
+  it('AC-220.1·ui-90 TASK-19: 이메일은 "@" 바로 뒤(<wbr>)에서만 줄을 바꾼다 — break-all 없음, 도메인이 칸보다 길 때만 그 안에서(wrap-anywhere)', async () => {
+    await renderLoaded()
+    const email = within(rowOf('가나 정형외과의원')).getAllByRole('cell')[3]
+    // 글자·title은 그대로, 줄 바꿀 자리는 "@" 뒤 하나뿐
+    expect(email.textContent).toBe('manager@example.com')
+    expect(email.getAttribute('title')).toBe('manager@example.com')
+    const nodes = Array.from(email.childNodes).map((n) => (n.nodeType === Node.TEXT_NODE ? n.textContent : (n as Element).tagName.toLowerCase()))
+    expect(nodes).toEqual(['manager@', 'wbr', 'example.com'])
+    expect(email.querySelectorAll('wbr')).toHaveLength(1)
+    // 크롬은 nowrap 안에서도 <wbr>에서 줄을 바꾼다 → 말줄임하는 1024px 이상에서는 뺀다(PC 표 모양 그대로)
+    hasAll(email.querySelector('wbr') as Element, 'lg:hidden')
+    // 어느 폭에서도 글자 중간을 마음대로 자르지 않는다(break-all 없음). 1024px 이상은 말줄임 그대로
+    expect(classesOf(email).filter((t) => /(?:^|:)break-all$/.test(t))).toEqual([])
+    hasAll(email, 'wrap-anywhere md:truncate md:max-lg:whitespace-normal max-md:whitespace-normal')
   })
 
   it('AC-220.1: 표 안 단추 — [승인] 강조 테두리(ds.button.accentOutlineSmall), [거절]·[되돌리기] 보조(ds.button.secondarySmall)', async () => {

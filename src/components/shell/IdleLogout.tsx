@@ -15,8 +15,9 @@ const PRESS_EVENTS = ['pointerdown', 'keydown'] as const
 const LISTEN = { capture: true, passive: true }
 
 // 안내 자리: 화면 아래에 붙는 떠 있는 층. 폰은 좌우·아래 12px, 768px 이상은 오른쪽 아래 24px·폭 360px.
-// 위쪽 띠(z-10)·확인 창(z-30)보다 위 — 곧 로그아웃한다는 글은 가려지지 않는다
-const NOTICE = `${ds.layer} fixed right-3 bottom-3 left-3 z-40 p-4 md:right-6 md:bottom-6 md:left-auto md:w-90`
+// 위쪽 띠(z-10)·확인 창(z-30)보다 위 — 곧 로그아웃한다는 글은 가려지지 않는다.
+// 앱 틀(.app-ui) 밖 형제라 자기 뿌리에 app-ui를 준다: 없으면 문단 기본 여백(1em)이 남고 단추가 브라우저 기본 글꼴로 그려진다(가늘어 보임)
+const NOTICE = `app-ui ${ds.layer} fixed right-3 bottom-3 left-3 z-40 p-4 md:right-6 md:bottom-6 md:left-auto md:w-90`
 
 type Notice = 'none' | 'warn' | 'extended'
 

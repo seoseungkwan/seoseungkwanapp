@@ -72,7 +72,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   },
   'E-EXT-OLD': {
     what: '확장을 업데이트하세요',
-    fix: '이 PC의 확장이 예전 버전이라 청구 화면을 쓸 수 없어요. 아래 1번에서 확장을 바꾼 뒤 [다시 확인]을 누르세요.',
+    fix: '이 PC의 확장이 예전 버전이라 청구 화면을 쓸 수 없어요. 아래 단추로 새 확장을 받아 바꾼 뒤 [다시 확인]을 누르세요.',
   },
   'E-BRIDGE-BUSY': {
     what: '청구 화면이 다른 창에서 열려 있어요',

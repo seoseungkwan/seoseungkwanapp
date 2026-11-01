@@ -194,6 +194,8 @@ describe('IdleLogout — 1분 전 안내', () => {
     tick(1)
     const alert = screen.getByRole('alert')
     expect(hasAll(alert, `${ds.layer} p-4`)).toBe(true)
+    // 앱 틀(.app-ui) 밖 형제라 자기 뿌리에 앱 초기화(app-ui)를 둔다 — 문단 기본 여백·단추 기본 글꼴이 남지 않는다
+    expect(hasAll(alert, 'app-ui')).toBe(true)
     expect(alert.textContent).toBe(`${TITLE}${BODY}계속 쓰기`)
 
     const [title, body] = Array.from(alert.querySelectorAll('p'))

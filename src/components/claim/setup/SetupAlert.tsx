@@ -29,7 +29,8 @@ export function SetupAlert({ code, actions }: { code: string; actions?: ReactNod
 }
 
 /**
- * 다른 창에서 작업 중(목업 화면 6 '다른 창에서 열려 있음'): 가운데 카드 하나(ds.panel, 안쪽 24px·폰 16px). 폭 520px·위 64px, 제목 title 600.
+ * 다른 창에서 작업 중(목업 화면 6 '다른 창에서 열려 있음'): 카드 하나(ds.panel, 안쪽 24px·폰 16px). 폭 520px, 제목 title 600.
+ * 다른 청구 화면처럼 왼쪽 정렬, 페이지 제목 아래 24px(부모 사이 16 + 8)·폰 20px(12 + 8).
  * outside = [건수만 보기](비트 PC 연결 화면은 /claim 링크, 청구 화면은 그 자리에서 건수 보기로)
  */
 export function BusyCard({ onRetry, disabled = false, outside }: { onRetry(): void; disabled?: boolean; outside: ReactNode }) {
@@ -39,7 +40,7 @@ export function BusyCard({ onRetry, disabled = false, outside }: { onRetry(): vo
     <section
       role="alert"
       aria-labelledby={titleId}
-      className={`${ds.panel} mt-16 grid w-130 max-w-full gap-3 self-center p-6 max-md:mt-4 max-md:p-4`}
+      className={`${ds.panel} mt-2 grid w-130 max-w-full gap-3 p-6 max-md:p-4`}
     >
       <h2 id={titleId} className="text-title font-semibold text-ink">
         {info.what}

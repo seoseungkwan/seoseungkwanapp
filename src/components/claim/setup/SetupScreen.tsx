@@ -216,7 +216,7 @@ export function SetupScreen({
   const actions = { storeUrl: extensionStoreUrl, disabled, onRetry: recheck, onRegister: () => void register() }
   const institution = state === 'ready' ? checked.result?.institutionCode : undefined
 
-  // 다른 창에서 작업 중: 목업 화면 6처럼 가운데 카드 하나(이 창은 확장과 이야기할 수 없다)
+  // 다른 창에서 작업 중: 목업 화면 6처럼 카드 하나, 제목 아래 왼쪽 정렬(이 창은 확장과 이야기할 수 없다)
   if (state === 'busy') {
     return (
       <div className="flex flex-col gap-4 max-md:gap-3">

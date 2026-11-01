@@ -163,12 +163,14 @@ describe('/claim 자리', () => {
 
 // ui-90 TASK-5: 청구 폴더가 규칙 시험에 들며 단계 밖 간격만 가까운 단계로 고친다(보이는 모양은 그대로). 문구·짜임은 TASK-10이 바꿨다.
 describe('AC-408.2 /claim 자리 간격은 가까운 단계', () => {
-  it('AC-408.2: 다른 창 카드는 위 64px(옛 72px에 가까운 단계, 폰 16px)·폭 520px·안쪽 24px(폰 16px) 그대로', () => {
+  it('AC-408.2: 다른 창 카드는 다른 상태처럼 왼쪽 정렬·제목 아래 24px(사이 16 + 8)·폭 520px·안쪽 24px(폰 16px)', () => {
     withState('busy')
     render(<ClaimPage />)
     const card = screen.getByRole('alert')
-    expect(classesOf(card)).toEqual(expect.arrayContaining(['mt-16', 'w-130', 'max-w-full', 'self-center', 'p-6', 'max-md:mt-4', 'max-md:p-4']))
-    expect(classesOf(card)).not.toContain('mt-18')
+    expect(classesOf(card)).toEqual(expect.arrayContaining(['mt-2', 'w-130', 'max-w-full', 'p-6', 'max-md:p-4']))
+    expect(classesOf(card)).not.toContain('self-center')
+    expect(classesOf(card)).not.toContain('mx-auto')
+    expect(classesOf(card)).not.toContain('mt-16')
   })
 
   it('AC-408.2·AC-413.1: 건수 줄은 위 32·선 아래 16, 사이 8 · 줄 사이 6(시안 6px 8px), 단계 밖 간격이 없다', () => {
