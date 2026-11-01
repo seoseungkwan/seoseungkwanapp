@@ -35,6 +35,8 @@ const ALL_CODES = [
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
   'E-REVENUE-SAVE-FAILED',
+  'E-REVENUE-GROUP-SAVE-FAILED',
+  'E-REVENUE-GROUP-LOAD-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -270,6 +272,23 @@ describe('AC-007.5 매출 저장 실패 문구', () => {
     expect(ERRORS['E-REVENUE-SAVE-FAILED']).toEqual({
       what: '매출 숫자를 저장하지 못했어요',
       fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+    })
+  })
+})
+
+// spec revenue REQ-013
+describe('AC-013.3 치료 묶음 저장·읽기 실패 문구', () => {
+  it('AC-013.3: E-REVENUE-GROUP-SAVE-FAILED는 무엇이·어떻게 고치나가 명세 문구 그대로다', () => {
+    expect(ERRORS['E-REVENUE-GROUP-SAVE-FAILED']).toEqual({
+      what: '치료 묶음을 저장하지 못했어요',
+      fix: '인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요',
+    })
+  })
+
+  it('AC-013.3: E-REVENUE-GROUP-LOAD-FAILED는 무엇이·어떻게 고치나가 명세 문구 그대로다', () => {
+    expect(ERRORS['E-REVENUE-GROUP-LOAD-FAILED']).toEqual({
+      what: '치료 묶음을 불러오지 못했어요',
+      fix: '[다시 불러오기]를 눌러 주세요',
     })
   })
 })

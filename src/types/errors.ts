@@ -10,5 +10,7 @@ export type ErrorCode =
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
   // 매출 탭 저장(spec revenue design.md 8절)
   | 'E-REVENUE-SAVE-FAILED'
+  // 치료 묶음 저장·읽기(spec revenue design.md 8-2절)
+  | 'E-REVENUE-GROUP-SAVE-FAILED' | 'E-REVENUE-GROUP-LOAD-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }

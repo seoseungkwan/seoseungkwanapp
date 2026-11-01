@@ -132,6 +132,15 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '매출 숫자를 저장하지 못했어요',
     fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
   },
+  // 치료 묶음 저장·읽기(spec revenue design.md 8-2절)
+  'E-REVENUE-GROUP-SAVE-FAILED': {
+    what: '치료 묶음을 저장하지 못했어요',
+    fix: '인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요',
+  },
+  'E-REVENUE-GROUP-LOAD-FAILED': {
+    what: '치료 묶음을 불러오지 못했어요',
+    fix: '[다시 불러오기]를 눌러 주세요',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

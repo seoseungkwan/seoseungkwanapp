@@ -28,7 +28,8 @@
     {
       "step": 4,
       "name": "rx-group-store",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/storage/rxGroups.ts: createRxGroupStore(client) → listGroups·saveGroups, 오류 클래스는 따로 RxGroupStoreError(통계가 다시 쓰므로 revenue를 import하지 않음, TASK-14는 이 클래스를 잡는다) + E-REVENUE-GROUP-SAVE-FAILED·LOAD-FAILED. 명세 글과 다른 점: id를 늘 보내고 새 묶음은 id:null(AC-013.2·step 작업 절을 따름, design 8-2는 '있을 때', step 규칙 줄은 '안 보냄'). TASK-14 주의: 다른 창에서 이미 지운 묶음의 id를 보내면 저장이 계속 실패하고 문구는 인터넷·이름 겹침만 말하므로 다시 불러오기 길을 생각한다"
     }
   ]
 }
