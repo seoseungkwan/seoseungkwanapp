@@ -57,7 +57,7 @@
 
 ### 1. `src/lib/storage/rxGroups.ts`
 - design.md 8-2절 모양. `listGroups`: `select('id,name,codes,sort_order')` → `order('sort_order')` → `RxGroup[]`(`sort_order` → `sortOrder`). Supabase 오류면 `E-REVENUE-GROUP-LOAD-FAILED`를 던진다(빈 목록으로 바꾸지 않는다 — 화면이 제안 묶음으로 잘못 바꾸지 않게)
-- `saveGroups(after)`: `client.rpc('save_rx_groups', { groups: after.map(g => ({ id: g.id, name: g.name, codes: g.codes, sort_order: g.sortOrder })) })` 한 번. 함수가 한 트랜잭션이라 도중 실패면 표는 그대로이고, id 없는 새 묶음은 같은 이름 줄을 고치므로 같은 목록으로 다시 불러도 결과가 같다(design.md 6절). 돌려받은 줄을 `RxGroup[]`로
+- `saveGroups(after)`: `client.rpc('save_rx_groups', { groups: after.map(g => ({ id: g.id, name: g.name, codes: g.codes, sort_order: g.sortOrder })) })` 한 번. 함수가 한 트랜잭션이라 도중 실패면 표는 그대로이고, 그래서 실패 뒤 같은 목록으로 다시 부르면 처음 저장과 같은 결과다(design.md 6절). 줄은 `id`로만 고르고 새 묶음은 넣기만 한다. 돌려받은 줄을 `RxGroup[]`로
 - Supabase 오류 내용은 버리고 번호만 던진다
 
 ### 2. 시험 (가짜 클라이언트)

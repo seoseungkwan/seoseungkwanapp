@@ -232,14 +232,11 @@ create function public.save_rx_groups(groups jsonb) returns setof public.rx_grou
 as $$
 declare g jsonb; keep uuid[] := '{}'; gid uuid; n int := 0;
 begin
-  if jsonb_typeof(groups) <> 'array' or jsonb_array_length(groups) > 50 then raise exception 'bad groups'; end if;
+  if groups is null or jsonb_typeof(groups) <> 'array' or jsonb_array_length(groups) > 50 then raise exception 'bad groups'; end if;   -- jsonb_typeof(null)은 null이라 따로 본다
   for g in select * from jsonb_array_elements(groups) loop
     n := n + 1;
     gid := nullif(g->>'id', '')::uuid;
-    if gid is null then   -- 새 묶음: 같은 이름의 내 묶음이 있으면 그것을 고친다(다시 저장해도 같은 결과)
-      select r.id into gid from public.rx_groups r where r.hospital_id = public.my_hospital_id() and r.name = g->>'name';
-    end if;
-    if gid is null then
+    if gid is null then   -- 새 묶음은 넣기만(이름으로 다른 줄을 고르지 않는다, 줄은 id로만 고른다)
       insert into public.rx_groups (name, codes, sort_order)
         values (g->>'name', array(select jsonb_array_elements_text(g->'codes')), (g->>'sort_order')::int) returning id into gid;
     else
@@ -258,7 +255,7 @@ grant execute on function public.save_rx_groups(jsonb) to authenticated;
 - 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete` · `save_rx_groups(jsonb)` 실행은 `authenticated`만. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
 - 정책: 읽기·넣기·고치기(·지우기) 모두 `hospital_id = (select public.my_hospital_id())`(using·with check). 승인 안 된 병원은 `my_hospital_id()`가 `null`이라 아무 줄도 못 본다
 - `save_rx_groups`는 저장을 한 트랜잭션으로 묶으려는 것뿐이다(서버 경로가 아니라 DB 함수, `set_hospital_status`와 같은 길). 호출한 사람 권한이라 RLS·칸 권한이 그대로 걸린다
-- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). `rx_groups`: `codes` 안 `null` 칸 거부, 이름에 제어 문자·숫자 6개 넘게 이어짐 거부, `save_rx_groups` — 다섯 개 가운데 하나가 제약에 걸리면 표 그대로·같은 목록 두 번이면 같은 결과·이름 맞바꾸기 됨·남의 `id`는 오류이고 남의 줄 그대로. 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
+- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). `rx_groups`: `codes` 안 `null` 칸 거부, 이름에 제어 문자·숫자 6개 이상 이어짐 거부, `save_rx_groups` — `null`·배열 아님·51개 거부, 다섯 개 가운데 하나가 제약에 걸리면 표 그대로, 이름 맞바꾸기와 'A 지우고 새 A 넣기'는 순서와 상관없이 됨, 남긴 묶음과 같은 이름의 새 묶음은 오류이고 표 그대로, 남의 `id`는 오류이고 남의 줄 그대로. 이름 울타리 경계: 숫자 5개 이어짐은 되고 6개는 거부. 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
 - **실제 Supabase에 붙여 넣는 것은 그때 사용자 OK를 받는다.** 운영자가 SQL 편집기에 붙여 넣는다(auth와 같은 방식). TASK-4가 끝나면 쉬운 말 안내만 하고 붙여 넣지 않는다. E2E(TASK-11)는 붙여 넣은 뒤에만 돈다
 
 ## 7. 계산 (`src/lib/revenue/*`, 순수 함수, 네트워크·저장소·React 없음)
@@ -279,7 +276,7 @@ export type RxGroup = { id: string | null; name: string; codes: string[]; sortOr
 export const SUGGESTED_GROUPS: readonly { name: string; match: (code: string) => boolean }[]   // 원본 다섯 규칙, 제안에만
 export function suggestGroups(knownCodes: string[]): (RxGroup & { suggested: true })[]
 export function groupTreatments(codes: RevenueCodeRow[], groups: RxGroup[]): { name: string; amount: number; count: number; missing: boolean; rest: boolean }[]
-export type GroupEditError = 'empty' | 'tooLong' | 'duplicate' | 'badChars' | 'digits' | 'tooMany'   // badChars = 제어 문자, digits = 숫자 6개 넘게 이어짐(DB CHECK와 같은 규칙)
+export type GroupEditError = 'empty' | 'tooLong' | 'duplicate' | 'badChars' | 'digits' | 'tooMany'   // badChars = 제어 문자, digits = 숫자 6개 이상 이어짐(DB CHECK와 같은 규칙)
 export function addGroup(groups: RxGroup[], name: string): RxGroup[] | GroupEditError
 export function renameGroup(groups: RxGroup[], index: number, name: string): RxGroup[] | GroupEditError
 export function deleteGroup(groups: RxGroup[], index: number): RxGroup[]
@@ -313,7 +310,7 @@ export function createRxGroupStore(client: SupabaseClient): {
   saveGroups(after: RxGroup[]): Promise<RxGroup[]>   // rpc('save_rx_groups') 한 번. 실패하면 E-REVENUE-GROUP-SAVE-FAILED(표는 그대로)
 }
 ```
-- 보내는 칸은 `id`(있을 때)·`name`·`codes`·`sort_order`뿐. 한꺼번에 저장하므로 도중 실패가 반쪽 저장을 남기지 않고, 같은 목록으로 [다시 저장]하면 처음과 같은 결과다(id 없는 새 묶음은 같은 이름의 줄을 고친다). 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
+- 보내는 칸은 `id`(있을 때)·`name`·`codes`·`sort_order`뿐. 한꺼번에 저장하므로 도중 실패가 반쪽 저장을 남기지 않고, 실패 뒤 같은 목록으로 [다시 저장]하면 처음 저장과 같은 결과다(실패한 호출은 아무것도 바꾸지 않았으므로). 줄은 `id`로만 고르고, 새 묶음은 넣기만 한다. 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
 - `E-REVENUE-GROUP-SAVE-FAILED`: 무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요"
 - `E-REVENUE-GROUP-LOAD-FAILED`: 무엇이 "치료 묶음을 불러오지 못했어요" · 어떻게 "[다시 불러오기]를 눌러 주세요"
 

@@ -11,7 +11,7 @@
 - **AC-006.1**: `groupTreatments(codes, groups)`: 코드마다 그 코드를 품은 첫 묶음(`sortOrder` 순)에 넣는다(한 번만 셈). 어느 묶음에도 없는 코드와 `_REST`는 '그 밖 처방'
 - **AC-006.2**: 묶음마다 금액·건수 합, 금액 큰 순(같으면 `sortOrder` 순), '그 밖 처방' 맨 뒤. `amount: null` 코드는 금액 합에서 빼고 `missing: true`. 금액·건수 모두 0인 묶음은 빼기, 코드가 없으면 빈 목록
 - **AC-006.3**: `suggestGroups(codes)`(저장된 묶음이 없을 때만): 원본 일일 보고 규칙으로 제안 다섯 개 — 도수치료(공백 뺀 코드 `도수`)·체외충격파(대문자로 `ESWT`를 품음)·C-arm 주사(`CARM1`)·초음파(`SONO1`)·냉동치료(`CRYO`), `suggested: true`. 규칙은 `treatments.ts`의 제안 표 하나에만
-- **AC-006.4**: `addGroup(groups, name)`·`renameGroup(groups, index, name)`·`deleteGroup(groups, index)`·`moveCode(groups, code, toIndex | null)`는 새 목록을 돌려준다(받은 목록 그대로). 이름 앞뒤 공백 빼고 1~30자·겹치지 않음·제어 문자 없음·숫자 6개 넘게 이어지지 않음(아니면 `empty`·`tooLong`·`duplicate`·`badChars`·`digits`), 묶음 50개까지(`tooMany`). 지우면 그 코드는 묶음 없음. `moveCode`는 다른 모든 묶음에서 빼고 고른 자리의 묶음에(`null`이면 그 밖)
+- **AC-006.4**: `addGroup(groups, name)`·`renameGroup(groups, index, name)`·`deleteGroup(groups, index)`·`moveCode(groups, code, toIndex | null)`는 새 목록을 돌려준다(받은 목록 그대로). 이름 앞뒤 공백 빼고 1~30자·겹치지 않음·제어 문자 없음·숫자 6개 이상 이어지지 않음(아니면 `empty`·`tooLong`·`duplicate`·`badChars`·`digits`), 묶음 50개까지(`tooMany`). 지우면 그 코드는 묶음 없음. `moveCode`는 다른 모든 묶음에서 빼고 고른 자리의 묶음에(`null`이면 그 밖)
 
 ## 읽어야 할 파일
 
@@ -64,10 +64,10 @@ export const RX_GROUP_CODES_MAX = 1000
 - 모양은 design.md 7절(`SUGGESTED_GROUPS`·`suggestGroups`·`groupTreatments`·`addGroup`·`renameGroup`·`deleteGroup`·`moveCode`)
 - 제안 규칙은 원본 `CASE` 그대로: `RTRIM(OdrCod)=N'도수'`(글자 그대로), `UPPER(RTRIM(..))` = `CARM1`·`SONO1`·`CRYO`, `CHARINDEX('ESWT', UPPER(..)) > 0`. 코드 하나는 첫째로 맞는 제안 하나에만. 제안의 `sortOrder`는 0~4, `id`는 `null`
 - `groupTreatments`: 묶음을 `sortOrder` 순으로 보고 코드는 처음 맞는 묶음 하나에만 센다(plan.md §7은 통계용으로 겹침을 허용하므로 표는 막지 않는다. 매출은 두 번 세지 않는다). 묶음에 적혀 있지만 이번 달 자료에 없는 코드는 건너뛴다
-- 고치기 함수: 이름 검사(앞뒤 공백 빼고 1~30자 `tooLong`/`empty`, 대소문자까지 같은 이름이면 `duplicate`, 제어 문자 `/[\u0000-\u001f\u007f]/`면 `badChars`, `/[0-9]{6,}/`면 `digits` — DB CHECK와 같은 규칙), 50개 넘으면 `tooMany`, 묶음당 코드 1,000개 넘으면 `moveCode`가 옮기지 않는다(목록 그대로). `sortOrder`는 목록 순서대로 0부터 다시 매긴다
+- 고치기 함수: 이름 검사(앞뒤 공백 빼고 1~30자 `tooLong`/`empty`, 대소문자까지 같은 이름이면 `duplicate`, 제어 문자 `/[\u0000-\u001f\u007f]/`면 `badChars`, `/[0-9]{6,}/`(6개 이상)면 `digits` — DB CHECK와 같은 규칙), 50개 넘으면 `tooMany`, 묶음당 코드 1,000개 넘으면 `moveCode`가 옮기지 않는다(목록 그대로). `sortOrder`는 목록 순서대로 0부터 다시 매긴다
 
 ### 3. 시험 (가짜 코드)
-- 첫 묶음 한 번만·그 밖·`_REST`(AC-006.1) · 정렬·같은 금액·`missing`·0 묶음 빼기·빈 목록(AC-006.2) · 제안 다섯 개와 이름·`eswt-2` → 체외충격파·`carm1` → C-arm 주사·`suggested`(AC-006.3) · 더하기·이름 바꾸기(빈 이름·31자·겹침·제어 문자·`900101-1234567`·`01012345678`은 거부, `12345`는 됨)·지우기 뒤 코드는 그 밖·`moveCode`가 다른 묶음에서 빼기·`null`·받은 목록 그대로(AC-006.4)
+- 첫 묶음 한 번만·그 밖·`_REST`(AC-006.1) · 정렬·같은 금액·`missing`·0 묶음 빼기·빈 목록(AC-006.2) · 제안 다섯 개와 이름·`eswt-2` → 체외충격파·`carm1` → C-arm 주사·`suggested`(AC-006.3) · 더하기·이름 바꾸기(빈 이름·31자·겹침·제어 문자·`900101-1234567`·`01012345678`은 거부, `12345`는 되고 `123456`은 거부 — 경계 시험)·지우기 뒤 코드는 그 밖·`moveCode`가 다른 묶음에서 빼기·`null`·받은 목록 그대로(AC-006.4)
 
 ## TDD 순서
 
