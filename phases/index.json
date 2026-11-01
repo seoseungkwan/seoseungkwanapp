@@ -27,6 +27,22 @@
     {
       "dir": "precheck-7-backup",
       "status": "pending"
+    },
+    {
+      "dir": "stats-1-data",
+      "status": "pending"
+    },
+    {
+      "dir": "stats-2-save",
+      "status": "pending"
+    },
+    {
+      "dir": "stats-3-numbers",
+      "status": "pending"
+    },
+    {
+      "dir": "stats-4-screen",
+      "status": "pending"
     }
   ]
 }

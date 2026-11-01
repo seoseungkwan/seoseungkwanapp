@@ -1,0 +1,26 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "stats-3-numbers",
+  "steps": [
+    {
+      "step": 0,
+      "name": "rx-trend",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "rx-visit-split",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "report-text",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "stats-view",
+      "status": "pending"
+    }
+  ]
+}

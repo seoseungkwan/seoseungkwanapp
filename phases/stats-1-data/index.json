@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "stats-1-data",
+  "steps": [
+    {
+      "step": 0,
+      "name": "revisit-30",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "payload-revisit30",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "helper-stats-rows",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "helper-stats-report",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "stats-worker",
+      "status": "pending"
+    }
+  ]
+}
