@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "pc-check",
-      "status": "pending"
+      "status": "completed",
+      "summary": "docs/revenue/pc-check.md에 '매출 탭에서 볼 것' ⑤와 본 달 고르는 규칙(만 원 자리까지 견줌)을 더함. ① 답 아니오는 적혀 있음. '먼저 할 것' ②·③과 '매출 탭에서 볼 것' 표는 총괄이 의원 PC에서 적을 칸으로 남음(어떤 TASK도 막지 않음). ③은 매출 탭을 처음 열 때만 잴 수 있음"
     },
     {
       "step": 1,
