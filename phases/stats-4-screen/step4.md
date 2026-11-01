@@ -1,17 +1,16 @@
-# Step 4: dashboard-source
+# Step 4: stats-e2e
 
-> **TASK-16** 대시보드가 저장된 통계 숫자를 읽음 · **REQ-516** · AC-516.1 ~ AC-516.4
+> **TASK-17** 개인정보 E2E (실제 Supabase) · **REQ-517** · AC-517.1 ~ AC-517.3
 > Phase 4 · 화면 `stats-4-screen` · Step 4 — `specs/stats/tasks.md`
-> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-16 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-17 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/stats/requirements.md`의 REQ-516(대시보드가 저장된 통계 숫자를 읽음)에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/stats/requirements.md`의 REQ-517(개인정보 E2E (실제 Supabase, 사용자가 SQL을 붙인 뒤))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-516.1**: Given `/dashboard`, When 그리면, Then 브라우저에서 저장된 일 숫자(오늘 − 97일 ~ 오늘)를 `readDays`로 읽어 `{ kind: 'data', days }`를 만든다. 읽기 전·줄 없음은 지금 연결 전 모양이고, 읽기 실패는 연결 전 모양 + 오류 카드 한 줄(`E-STATS-READ-FAILED`)이다. 서버 코드(`*.server.ts`·페이지)는 통계 표를 읽지 않는다
-- **AC-516.2**: Given 연결 뒤 가짜 자료, When 신환 재방문율을 그리면, Then 30일 줄도 7·14일과 같은 규칙(값이 null이 아닌 날들의 합 ÷ 집단 합, 모두 null이면 "집계 중", 분모 0이면 "자료 없음")이고 "30일 기록은 아직 모으지 않아요"가 없다
-- **AC-516.3**: Given 대시보드 브리핑 파일(`components/dashboard/briefing/*`), When 보면, Then 고치지 않았고 `'use client'`는 지금처럼 폰 아래 단추 파일 하나뿐이다. 읽기와 연결 전·뒤 고르기는 `components/dashboard/summary/`의 새 클라이언트 파일 하나가 한다
-- **AC-516.4**: Given 지금 대시보드 시험(브리핑·분석·보고 문장·페이지), When 돌리면, Then 30일 줄 기대값과 페이지가 읽기 자리를 부르는 방식만 고치고 나머지는 그대로 통과한다
+- **AC-517.1**: Given 시험 계정(승인됨)으로 연 `/stats`와 가짜 비트 파일(`fixtures/fake-bit/`), When 파일을 넣어 저장하면, Then 브라우저가 보낸 모든 요청(주소·머리·본문)에 그 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없다
+- **AC-517.2**: Given 같은 시험 뒤, When 시험 계정으로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽으면, Then 저장된 값에도 AC-517.1의 값이 하나도 없고 줄 모양이 `validateMonthPayload`·`validateDayPayload`를 지난다
+- **AC-517.3**: Given `/dashboard`, When 그 계정으로 열면, Then 방금 저장한 숫자가 보이고(연결 뒤 짜임) 요청에 같은 금지 값이 없다. 시험은 `npm run e2e`에서만 돌고(`npm test` 밖), 시험 계정 병원의 통계 줄만 쓴다
 
 ## 읽어야 할 파일
 
@@ -19,90 +18,61 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/specs/stats/requirements.md` — REQ-516
-- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-16, '위험'(대시보드 첫 그림)
-- `/specs/stats/tasks.md` — TASK-16 (수정 범위·메모)
-- `/specs/tab-frame/requirements.md` — REQ-307·311·312·317 (대시보드 분석·자료 읽는 자리)
-- `/specs/tab-frame/design.md` '다음 명세가 탭을 채울 때'
-- `/src/app/(app)/dashboard/page.tsx`·`page.test.tsx`
-- `/src/components/dashboard/summary/*` (`source.ts`·`view.ts`·`DashboardAnalysis.tsx`·`ReportBlock.tsx`)
-- `/src/components/dashboard/briefing/DashboardHome.tsx` (고치지 않음 — 받는 props만 본다)
-- `/src/lib/storage/stats.ts` (TASK-7)
-- 이전 step에서 만든 파일: TASK-7 (`readDays`), TASK-2 (`within30`)
+- `/specs/stats/requirements.md` — REQ-517
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-17, '데이터 흐름'(서버로 가는 것)
+- `/specs/stats/tasks.md` — TASK-17 (수정 범위·메모)
+- `/tmp/claude-1000/-home-developer/e95c76cc-42cc-429c-acc9-4833022da887/scratchpad/cross-branch-rules.md`가 있으면 C7
+- `/docs/ADR.md` — ADR-017(E2E: 실제 Supabase + 시험 계정, 쿠키 넣기 로그인, trace·영상·스크린샷 끔)
+- `/specs/auth-live/tasks.md` — TASK-7~9(E2E만 더하는 TASK의 본보기: TDD exempt, 일부러 틀린 기대값으로 실패 한 번)
+- `/e2e/support.ts`, `/e2e/requests.spec.ts`(보내는 요청 모으기 본보기), `/e2e/rls-live.spec.ts`(supabase-js로 다시 읽기 본보기), `/playwright.config.ts`, `/e2e/config.ts`
+- `/fixtures/fake-bit/` (넣을 가짜 파일 — 차트번호·이름 칸 값을 시험이 파일에서 꺼내 금지 목록으로 쓴다)
+- `/src/lib/payload/validate.ts`
+- 이전 step에서 만든 파일: TASK-14·15·16 (통계 화면·탭·대시보드 읽기), TASK-6 SQL이 실제 Supabase에 붙어 있어야 한다
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
-## 승인된 목업 (화면 step)
-
-- `docs/mockups/stats/index.html`·`notes.md` 승인본(TASK-12). `notes.md` 맨 위에 '승인:' 줄이 없으면 시작하지 말고 `blocked`(사유: 목업 승인 전)로 멈춘다
-- 명세의 화면 AC는 내용과 동작을 정하고, 배치·문구는 목업이 정한다
-
-## 수정 범위 (tasks.md TASK-16)
+## 수정 범위 (tasks.md TASK-17)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/components/dashboard/summary/LiveDashboard.tsx`
-  - `src/components/dashboard/summary/LiveDashboard.test.tsx`
-  - `src/components/dashboard/summary/source.ts`
-  - `src/components/dashboard/summary/source.test.ts`
-  - `src/components/dashboard/summary/view.ts`
-  - `src/components/dashboard/summary/view.test.ts`
-  - `src/components/dashboard/summary/DashboardAnalysis.tsx`
-  - `src/components/dashboard/summary/DashboardAnalysis.test.tsx`
-  - `src/app/(app)/dashboard/page.tsx`
-  - `src/app/(app)/dashboard/page.test.tsx`
-  - `src/app/(app)/tabFrame.test.tsx`
+  - `e2e/stats-privacy.spec.ts`
 - Tests:
-  - `src/components/dashboard/summary/LiveDashboard.test.tsx`
-  - `src/components/dashboard/summary/source.test.ts`
-  - `src/components/dashboard/summary/view.test.ts`
-  - `src/components/dashboard/summary/DashboardAnalysis.test.tsx`
-  - `src/app/(app)/dashboard/page.test.tsx`
-  - `src/app/(app)/tabFrame.test.tsx`
-- TDD: required
-- 메모: `components/dashboard/briefing/*`는 고치지 않는다(AC-516.3)
+  - `e2e/stats-privacy.spec.ts`
+- TDD: exempt — 시험만 더한다. 대상 코드(저장·화면·대시보드 읽기)는 TASK-7·14·16에서 단위 시험을 통과했으므로 구현할 것이 없어 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음, auth-live TASK-7~9와 같은 방식). 기다림: 사용자가 TASK-6 SQL을 실제 Supabase에 붙임 + 시험 계정(`.env.local`). 확인: `npm run e2e`
 - 메모: Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처 → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간)
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **화면은 승인된 목업대로**: 배치·문구·상태는 `docs/mockups/stats/` 승인본(`notes.md` 맨 위 승인 기록)을 따른다. 모양은 `components/ui/classes.ts`의 `ds`와 `globals.css` 토큰만(옛 `ui.`·옛 Tailwind 이름·`font-bold` 없음, 굵기 400·500·600). 좋고 나쁨은 색만 쓰지 않고 ▲▼·글자를 같이 쓴다. 그래프는 움직이지 않는다. 상자 안 상자 금지 (CLAUDE.md, docs/UI_GUIDE.md)
+- **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`), 덮은 기간(날짜 둘), 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
+- **비밀값**: Supabase 키·토큰을 코드·시험·출력에 쓰지 않는다. 시험은 가짜 클라이언트만 쓰고 실제 Supabase에 붙지 않는다 (CLAUDE.md)
+- **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 - **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 통계 숫자는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다. 페이지·`*.server.ts`는 통계 표를 읽지 않는다 (CLAUDE.md, ADR-004)
-- **브라우저 저장소·주소 안 씀**: 숫자·처방 이름·보고 글을 `localStorage`·`sessionStorage`·`indexedDB`·주소(URL·쿼리)·`history.state`에 넣지 않는다. 화면 상태와 Worker 메모리에만 둔다
 
 ## 작업
 
-### 1. 읽기 자리
-- `source.ts`: `dashboardSummarySource()` 대신 `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`(순수, 줄 없음·null → none). `isConnected`는 그대로
-- `LiveDashboard.tsx`(`'use client'`, 새 파일): `readDays({ from: addDays(today, −97), to: today })` → `toSummarySource` → `DashboardHome`(지금 props: `today`·`report`·`analysis`)을 그린다. 읽는 동안 분석 자리는 "불러오는 중", 실패는 연결 전 모양 + 오류 카드 한 줄(`E-STATS-READ-FAILED`)(AC-516.1)
-- `dashboard/page.tsx`: `LiveDashboard today={todayInKorea()}` 하나를 놓는다. 서버는 통계 표를 읽지 않는다
+### 0. 기다림
+- 사용자가 TASK-6 SQL(`supabase/migrations/20261101000200_stats.sql`)을 실제 Supabase SQL 편집기에 붙였고 `.env.local`에 시험 계정 값이 있어야 한다. 아니면 `blocked`(사유: "통계 표 SQL 붙이기·시험 계정 필요")로 멈춘다. Claude가 SQL을 붙이지 않는다
 
-### 2. 30일 줄 (`view.ts`·`DashboardAnalysis.tsx`)
-- `revisitView`에 `d30`(7·14일과 같은 규칙), `DashboardAnalysis`의 30일 줄이 그 값을 그린다. "30일 기록은 아직 모으지 않아요"를 없앤다(AC-516.2)
+### 1. 시험 (`e2e/stats-privacy.spec.ts`, Playwright)
+- 승인된 시험 계정으로(`e2e/support.ts`의 쿠키 넣기) `/stats` → 가짜 비트 파일을 넣고 저장될 때까지 기다린다
+- AC-517.1: `page.on('request')`로 모든 요청의 주소·머리·본문을 모아, 가짜 파일에서 꺼낸 차트번호·이름 칸 값·전화 모양·주민번호 모양·파일 이름이 하나도 없음을 본다(자리표시 `XXXXXX-XXXXXXX` 포함)
+- AC-517.2: 시험 계정 세션의 supabase-js로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽어 같은 값이 없고, 달·일 줄이 `validateMonthPayload`·`validateDayPayload`를 지남을 본다
+- AC-517.3: `/dashboard`를 열어 방금 저장한 숫자가 연결 뒤 짜임으로 보이고 요청에 금지 값이 없음을 본다
+- 시험 계정 병원의 통계 줄만 쓴다(다른 줄을 지우거나 고치지 않는다). 산출물에 쿠키·토큰을 남기지 않는다(`trace: 'off'`)
 
-### 3. 시험
-- `LiveDashboard.test.tsx`(가짜 `readDays`: 읽는 중·줄 없음·자료·실패), `source.test.ts`, `view.test.ts`·`DashboardAnalysis.test.tsx`(30일 줄 기대값만), `page.test.tsx`·`tabFrame.test.tsx`(페이지가 `LiveDashboard`를 놓음, 연결 전 모양 그대로)
-- AC-516.3: 브리핑 폴더의 `'use client'`가 하나뿐임(지금 `DashboardHome.test.tsx` 시험이 그대로 통과)
+## TDD
 
-## TDD 순서
-
-1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
-2. `python3 ~/.claude/harness/bin/tdd-run TASK-16 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
-3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-16 --expect green` 으로 통과(GREEN)를 기록한다
-4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
+- `TDD: exempt` — 시험만 더한다. 대상 코드(저장·화면·대시보드 읽기)는 TASK-7·14·16에서 단위 시험을 통과해 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음). `tdd-run`을 부르지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/dashboard "src/app/(app)/dashboard" "src/app/(app)/tabFrame.test.tsx"
-npx vitest run src/components/stats src/lib/storage
-python3 ~/.claude/harness/bin/tdd-run TASK-16 --expect green
-npm run lint && npm test && npm run build
-python3 ~/.claude/harness/bin/verify
+npm run e2e -- e2e/stats-privacy.spec.ts   # 사용자가 SQL을 붙인 뒤
+npm run lint && npm test && npm run build   # npm test는 e2e를 돌리지 않는다
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-516.1 ~ AC-516.4이 이 TASK의 시험과 이어져 보여야 한다
+- 위 커맨드가 모두 에러 없이 끝나야 한다.
 
 ## 검증 절차
 
@@ -121,10 +91,10 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- `components/dashboard/briefing/*`를 고치지 마라. 이유: AC-516.3, 브리핑은 서버에서 그리는 부품이다
-- 페이지·`*.server.ts`에서 통계 표를 읽지 마라. 이유: 서버 코드는 세션과 내 병원 줄만(CLAUDE.md, ADR-004)
-- 읽기 전·실패에 지어낸 숫자나 빈 그래프 틀을 보이지 마라. 이유: 연결 전 모양 그대로(UI_GUIDE '빈 상태')
-- 대시보드의 다른 문구·배치를 바꾸지 마라. 이유: 탭 틀·ui-90 시안이 정한 것이다
+- 실제 Supabase에 SQL을 붙이거나 표를 지우지 마라. 이유: DB 바꿈은 사용자가 허락하고 사용자가 한다
+- 시험 계정 값·쿠키·토큰을 출력·파일·커밋에 남기지 마라. 이유: CLAUDE.md 비밀값 규칙
+- 실제 환자 파일을 쓰지 마라. 이유: `fixtures/fake-bit/`의 가짜 파일만(CLAUDE.md)
+- 앱 코드에 시험용 로그인·우회 길을 만들지 마라. 이유: E2E 로그인은 시험 코드가 쿠키를 넣는다(CLAUDE.md)
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다

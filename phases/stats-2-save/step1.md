@@ -1,16 +1,16 @@
 # Step 1: stats-storage
 
 > **TASK-7** 통계 숫자 저장·읽기 · **REQ-507** · AC-507.1 ~ AC-507.3
-> Phase 2 · 저장 `stats-2-save` · Step 1 — `specs/stats/tasks.md`
+> Phase 2 · 저장과 처방 추세 `stats-2-save` · Step 1 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-7 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-507(통계 숫자 저장·읽기 (`lib/storage/stats.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-507.1**: Given 저장 모양(달·일)과 출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `months`·`days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고, 하나라도 걸리면 아무것도 보내지 않고 `E-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`뿐이다. 보내기가 실패해도 `E-SAVE-FAILED`다
-- **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. 읽기 실패는 `E-STATS-READ-FAILED`다
-- **AC-507.3**: Given `src/lib/storage/**`(시험 밖), When ESLint를 돌리면, Then `lib/parsers`·`lib/bridge`·`workers`를 import할 수 없고 `lib/analytics`는 `dates`만 된다. 환자 자료 구역은 지금처럼 `lib/storage`를 import할 수 없다. `console`·브라우저 저장소를 쓰지 않는다. 시험: `src/guardrails.test.ts`
+- **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고 그 뒤 `stats_coverage`에 덮은 기간 한 줄을 넣는다. 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다
+- **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`·`readCoverage({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. `readCoverage`는 그 기간과 겹치는 덮은 기간을 합쳐(`mergeRanges`) 돌려준다. 읽기 실패는 `E-STATS-READ-FAILED`다
+- **AC-507.3**: Given `src/lib/storage/**`(시험 밖), When ESLint를 돌리면, Then `lib/parsers`·`lib/bridge`·`workers`를 import할 수 없고 `lib/analytics`는 `dates`·`coverage`만 된다. 환자 자료 구역은 지금처럼 `lib/storage`를 import할 수 없다. `console`·브라우저 저장소를 쓰지 않는다. 시험: `src/guardrails.test.ts`
 
 ## 읽어야 할 파일
 
@@ -25,7 +25,7 @@
 - `/src/lib/payload/validate.ts`, `/src/types/payload.ts`, `/src/types/db.ts`(TASK-6의 `MonthRow`·`DayRow`)
 - `/eslint.config.mjs`, `/src/guardrails.test.ts` (구역 블록과 그 시험 방식)
 - `/src/types/errors.ts`, `/src/lib/errors.ts`
-- 이전 step에서 만든 파일: TASK-6 (`months`·`days` 표)
+- 이전 step에서 만든 파일: TASK-6 (`stats_months`·`stats_days`·`stats_coverage` 표)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -46,11 +46,11 @@
   - `src/guardrails.test.ts`
   - `src/lib/errors.test.ts`
 - TDD: required
-- 메모: 오류 번호 `E-SAVE-FAILED`(plan.md §8에 이미 있는 이름)·`E-STATS-READ-FAILED`를 더한다. 시험은 가짜 Supabase 클라이언트로(실제 Supabase에 붙지 않는다)
+- 메모: 오류 번호 `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`를 더한다(앞말 `E-STATS-`, cross-branch C3). 시험은 가짜 Supabase 클라이언트로(실제 Supabase에 붙지 않는다)
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`)과 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
+- **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`), 덮은 기간(날짜 둘), 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
 - **비밀값**: Supabase 키·토큰을 코드·시험·출력에 쓰지 않는다. 시험은 가짜 클라이언트만 쓰고 실제 Supabase에 붙지 않는다 (CLAUDE.md)
 - **브라우저 저장소·주소 안 씀**: 숫자·처방 이름·보고 글을 `localStorage`·`sessionStorage`·`indexedDB`·주소(URL·쿼리)·`history.state`에 넣지 않는다. 화면 상태와 Worker 메모리에만 둔다
 - **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 통계 숫자는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다. 페이지·`*.server.ts`는 통계 표를 읽지 않는다 (CLAUDE.md, ADR-004)
@@ -60,25 +60,26 @@
 ### 1. 저장·읽기 (`src/lib/storage/stats.ts`)
 ```ts
 export type StatsSource = 'bit' | 'file'
-export class StorageError extends Error { readonly code: 'E-SAVE-FAILED' | 'E-STATS-READ-FAILED' }
-export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>
+export class StorageError extends Error { readonly code: 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED' }
+export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>
+export async function readCoverage(range: { from: string; to: string }, deps?: …): Promise<DateRange[]>   // 겹치는 덮은 기간을 mergeRanges로 합침
 export async function readDays(range: { from: string; to: string }, deps?: …): Promise<{ rows: DayPayload[]; dropped: number; latest: { at: string; source: StatsSource } | null }>
 export async function readMonths(range: { from: string; to: string }, deps?: …): Promise<{ rows: MonthPayload[]; dropped: number; latest: … }>
 ```
-- 저장(AC-507.1): 모든 값을 먼저 검사 → 하나라도 null이면 아무것도 보내지 않고 `E-SAVE-FAILED`. 줄 = `{ month|day, partial, source, payload }`만. `upsert(rows, { onConflict: 'hospital_id,month' | 'hospital_id,day' })`, 200줄씩. 실패 응답도 `E-SAVE-FAILED`(응답 내용은 옮기지 않는다)
-- 읽기(AC-507.2): `.select('month|day, partial, source, payload, updated_at').gte().lte().order()` → 줄마다 검사, 걸린 줄은 빼고 수만 센다. 실패는 `E-STATS-READ-FAILED`
+- 저장(AC-507.1): 모든 값을 먼저 검사 → 하나라도 null이면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`. 줄 = `{ month|day, partial, source, payload }`만. `stats_months`·`stats_days`에 `upsert(rows, { onConflict: 'hospital_id,month' | 'hospital_id,day' })`, 200줄씩 → 다 되면 `stats_coverage`에 `{ from_day, to_day, source }` 한 줄. 실패 응답도 `E-STATS-SAVE-FAILED`(응답 내용은 옮기지 않는다)
+- 읽기(AC-507.2): `.select('month|day, partial, source, payload, updated_at').gte().lte().order()` → 줄마다 검사, 걸린 줄은 빼고 수만 센다. `readCoverage`는 겹치는 줄을 `mergeRanges`로 합친다. 실패는 `E-STATS-READ-FAILED`
 - `deps.client`는 시험용(가짜 클라이언트). 기본은 `supabaseBrowser()`
 
 ### 2. 울타리 (`eslint.config.mjs`, `src/guardrails.test.ts`)
-- `src/lib/storage/**` 블록(AC-507.3): `@/lib/parsers*`·`@/lib/bridge*`·`@/workers*` import 금지, `@/lib/analytics/*`는 `dates` 밖 금지, `console`·`localStorage`·`sessionStorage`·`indexedDB` 금지. 지금 환자 구역의 `lib/storage` import 금지는 그대로
+- `src/lib/storage/**` 블록(AC-507.3): `@/lib/parsers*`·`@/lib/bridge*`·`@/workers*` import 금지, `@/lib/analytics/*`는 `dates`·`coverage` 밖 금지, `console`·`localStorage`·`sessionStorage`·`indexedDB` 금지. 지금 환자 구역의 `lib/storage` import 금지는 그대로
 - `guardrails.test.ts`에 그 블록의 시험(막히는 코드·되는 코드)을 지금 시험과 같은 방식으로 더한다
 
-### 3. 오류 번호
-- `E-SAVE-FAILED`: "통계 숫자를 저장하지 못했어요" · "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
+### 3. 오류 번호 (앞말 `E-STATS-`, 다른 브랜치와 같은 번호를 더하지 않는다 — cross-branch C3)
+- `E-STATS-SAVE-FAILED`: "통계 숫자를 저장하지 못했어요" · "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
 - `E-STATS-READ-FAILED`: "저장된 통계를 읽지 못했어요" · "잠시 뒤 [다시 읽기]를 눌러 주세요"
 
 ### 4. 시험 (`src/lib/storage/stats.test.ts`)
-- 가짜 클라이언트가 받은 호출(표 이름·줄 칸·충돌 열쇠·나눔)과 결과. 검사 걸림 → 호출 0번. 읽기 → 검사 걸린 줄 빠짐·`dropped`·`latest`
+- 가짜 클라이언트가 받은 호출(표 이름 `stats_*`·줄 칸·충돌 열쇠·나눔·덮은 기간 줄)과 결과. 검사 걸림 → 호출 0번. 읽기 → 검사 걸린 줄 빠짐·`dropped`·`latest`
 
 ## TDD 순서
 
@@ -128,7 +129,3 @@ python3 ~/.claude/harness/bin/verify
 - 새 npm·NuGet 패키지를 넣지 마라. 이유: `package.json`·csproj가 수정 범위 밖이고 ADR 기술 스택 밖이다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
 - `.harness/*`·`CLAUDE.md`·`plan.md`를 고치지 마라 · `docs/*`. 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다
-
-## 참고
-
-- Phase 2 · 저장의 마지막 step이다. 메인 세션이 할 일: `verify` → 쉬운 말 보고 → 실제 Supabase에 SQL 붙이기 순서를 채팅으로 드리고 허락 받기(사용자가 붙인다)

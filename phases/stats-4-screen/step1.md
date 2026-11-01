@@ -1,23 +1,24 @@
-# Step 1: stats-sections
+# Step 1: stats-screen
 
-> **TASK-13** 통계 그래프 섹션 · **REQ-513** · AC-513.1 ~ AC-513.9
+> **TASK-14** 통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰) · **REQ-514** · AC-514.1 ~ AC-514.10
 > Phase 4 · 화면 `stats-4-screen` · Step 1 — `specs/stats/tasks.md`
-> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-031 (AC-031.3·031.4·031.5) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-14 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 옮겨 옴: precheck REQ-031 (AC-031.1·031.2) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/stats/requirements.md`의 REQ-513(통계 그래프 섹션 (`components/stats/sections/*`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/stats/requirements.md`의 REQ-514(통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-513.1**: Given 보기 모양(REQ-511·509·510), When 섹션을 그리면, Then 한 쪽에 이어서(도구 단추 줄 없음) 기간 요약 → 환자 수 추이 → 신환 재방문율(첫 재방문까지 날수 포함) → 처방 추세 → 처방별 신환·재진 → 원장님 보고 문장 → 요일별 환자 수 차례이고 섹션마다 h2다. 차례·문구·배치가 목업 승인본과 다르면 목업이 이긴다(그때 이 AC의 차례만 고친다)
-- **AC-513.2**: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE)
-- **AC-513.3**: Given 그래프마다 있는 [자세히] 단추(`aria-expanded`, `aria-controls`), When 누르면, Then 그 그래프 바로 아래에 숫자 표(머리 줄 + 날짜·달마다 값)가 열리고 다시 누르면 닫힌다. 주소(URL)는 바뀌지 않는다. 처방 추세에서 처방 줄을 누르면 그 처방의 칸별 건수·신환·재진 막대가 열린다
-- **AC-513.4**: Given 자료 없는 섹션, When 그리면, Then 그래프·빈 틀 없이 "자료 없음" + 한 줄 안내(목업 문구)다. 숫자를 지어내지 않는다
-- **AC-513.5**: Given 처방 추세, When 그리면, Then 금액·소모량 자리에 "금액·소모량은 매출 탭에서 볼 수 있어요"(목업 문구)를 보인다
-- **AC-513.6**: Given 원장님 보고 문장, When 그리면, Then 일일(오늘·어제)·월말(이번 달·지난달) 고르기 단추 묶음, 보고 글(글자로만, 줄바꿈 그대로), [복사], '확인 필요' 줄 표시(색과 함께 "확인 필요" 글자)가 있다. [복사]는 대시보드 [복사]와 같은 동작이다(`navigator.clipboard.writeText`, 2초 "복사했어요", 실패하면 직접 복사 안내, 폭 흔들림 없음). `ok: false` 벌은 "이 기간은 보고를 확정할 수 없어요" + 비트 원본 통계에서 확인하라는 안내다
-- **AC-513.7**: Given 처방별 신환·재진, When 그리면, Then 머리 글(`rxVisitHeadline`), 처방마다 신환·재진·합계 표(합계가 큰 차례 10개, [모두 보기]로 나머지), [표 복사](`formatRxVisitSplit` 글)가 있다
-- **AC-513.8**: Given 비트 PC에서 불러온 자료가 없음, When 처방별 신환·재진·원장님 보고 문장을 그리면, Then "비트 PC에서 불러오면 보여요" + 한 줄 이유(진료 줄·금액은 서버에 저장하지 않는다)다
-- **AC-513.9**: Given `components/stats/**`(시험 밖) 소스, When 보면, Then Supabase·`fetch`·브라우저 저장소·`lib/bridge`·`workers`를 쓰지 않고(섹션은 props만 받는다) `ds` 공통 모양과 토큰만 쓰며, 상자 안 상자가 없고 앱 화면 규칙 시험(`components/ui/classes.test.ts` 검사 목록에 `src/components/stats`를 더함)을 통과한다
+- **AC-514.1**: Given `/stats`를 엶, When 그리면, Then 고른 기간과 비교 기간의 저장된 숫자를 `readDays`·`readMonths`·`readCoverage`로 읽어 섹션을 그린다. 읽는 동안 섹션 자리는 "불러오는 중"이고, 저장된 숫자가 하나도 없으면 맨 위에 "아직 저장된 통계가 없어요" + 자료 고르기 안내다. 읽기 실패는 오류 카드(`E-STATS-READ-FAILED`) + [다시 읽기]다
+- **AC-514.2**: Given 기간 단추 묶음(`role="group"`, 이름 "기간": 최근 7일 · 최근 30일 · 최근 90일 · 최근 12개월, 처음 30일만 `aria-pressed="true"`), When 다른 단추를 누르면, Then 그 단추만 눌림이 되고 기간 글자와 섹션이 그 기간으로 바뀐다. 처방별 신환·재진은 Worker에 그 기간을 다시 계산시킨다(다시 불러오지 않는다)
+- **AC-514.3**: Given 비트 PC(`useBridge({ worker })` 상태 `ready`), When [비트에서 불러오기]를 누르면, Then 불러올 범위(AC-511.1)로 `stream('stats.rows', {from, to})` → Worker `load` → 저장 모양과 덮은 기간을 `saveStats(source 'bit')` → 새 숫자로 다시 그린다. 그동안 단추는 막히고 "불러오는 중"이다. 끝나면 처방별 신환·재진과 원장님 보고 문장이 생긴다. 화면은 조각·진료 줄을 받지 않는다(Worker만 통로에 넘긴다)
+- **AC-514.4**: Given 파일, When 끌어다 놓거나 [파일 고르기]로 넣으면, Then 지금 `runAnalysis` 길 그대로 분석해 `toMonthPayload`·`toDayPayloads`와 파일이 덮은 기간(성공한 파일들의 기간 줄·받아들인 줄 범위를 합친 것)을 `saveStats(source 'file')`로 저장하고 다시 그린다. 파일마다 실패는 오류 카드(번호)로 보인다. 파일 이름은 화면에만 보이고 어디로도 보내지 않는다
+- **AC-514.5**: Given 확장이 없는 브라우저·휴대폰(상태 `no-extension`), When 그리면, Then [비트에서 불러오기] 대신 "비트 PC의 크롬에서 불러올 수 있어요"와 파일 길이 보인다. 상태가 `no-helper`·`update-helper`·`update-extension`이면 그 안내와 [설치·연결 확인](`/claim/setup`) 링크다
+- **AC-514.6**: Given 저장 실패, When 그리면, Then 새 숫자는 화면에 그대로 두고 오류 카드 `E-STATS-SAVE-FAILED` + [다시 저장]이며, 누르면 같은 값을 다시 보낸다. 품질 incomplete면 저장하지 않고 "일부 기록을 확인하지 못해 저장하지 않았어요"와 확인 건수(차트번호 없는 내원 N건 등)를 보인다
+- **AC-514.7**: Given 저장된 숫자, When 그리면, Then 기간 머리에 출처 줄 "자료: 비트 PC · {월}월 {일}일 {시}:{분} 저장" 또는 "자료: 파일 · …"이 있다(가장 최근 `updated_at`·`source`)
+- **AC-514.8**: Given 비트 PC, When 그리면, Then [비트에서 불러오기] 옆에 체크 상자 "오늘 진료 끝"(처음 꺼짐)이 있고, 켜고 불러오면 AC-505.6대로 오늘 숫자를 끝난 날로 저장한다
+- **AC-514.9**: Given 화면 상태, When 보면, Then 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 있고 브라우저 저장소·주소(쿼리)·`history.state`에 넣지 않는다. 주소는 `/stats` 그대로다
+- **AC-514.10**: Given 390·768·1440px, When 그리면, Then 섹션이 겹치거나 잘리지 않고 가로로 밀리지 않으며, 768px 미만에서는 섹션이 세로로 쌓이고 기간 단추는 44px이다(목업 승인본 배치)
 
 ## 읽어야 할 파일
 
@@ -25,16 +26,16 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/specs/stats/requirements.md` — REQ-513
-- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-13, '결정과 트레이드오프'(복사 단추는 통계 폴더에)
-- `/specs/stats/tasks.md` — TASK-13 (수정 범위·메모)
-- `/docs/mockups/stats/notes.md` (승인본 — 맨 위 승인 줄이 없으면 시작하지 말고 `blocked`)
-- `/docs/UI_GUIDE.md` '차트'·'빈 상태'·'공통 모양'
-- `/src/components/ui/classes.ts`(`ds`), `/src/components/ui/classes.test.ts`(앱 화면 규칙 시험)
-- `/src/components/charts/*` (부품과 `format.ts`의 `formatDelta`·`formatCount`·`formatRate`)
-- `/src/components/dashboard/summary/DashboardAnalysis.tsx`·`ReportBlock.tsx` (같은 그래프·복사 동작의 본보기)
-- `/src/components/stats/view.ts` (TASK-11), `/src/lib/report/reportText.ts` (TASK-10), `/src/types/stats.ts`
-- 이전 step에서 만든 파일: TASK-12 (목업 승인본), TASK-11·10·9 (보기 모양)
+- `/specs/stats/requirements.md` — REQ-514
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-14, '데이터 흐름'
+- `/specs/stats/tasks.md` — TASK-14 (수정 범위·메모)
+- `/docs/mockups/stats/notes.md` (승인본)
+- `/src/components/claim/useBridge.ts` (불러 쓰기만), `/src/lib/bridge/workerSink.ts`, `/src/types/bridge.ts`
+- `/src/workers/statsClient.ts`·`/src/types/stats.ts` (TASK-5·9), `/src/workers/runAnalysis.ts` (파일 길)
+- `/src/lib/storage/stats.ts` (TASK-7), `/src/lib/payload/toMonthPayload.ts`·`toDayPayloads.ts`
+- `/src/components/stats/view.ts`·`sections/*` (TASK-11·13), `/src/lib/clinicReport/reportText.ts` (TASK-10)
+- `/src/components/common/ErrorCard.tsx`, `/src/components/claim/setup/ClaimEntry.tsx` (연결 상태별 안내 본보기)
+- 이전 step에서 만든 파일: TASK-13 (섹션), TASK-7 (저장·읽기), TASK-5·9 (Worker)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -43,65 +44,72 @@
 - `docs/mockups/stats/index.html`·`notes.md` 승인본(TASK-12). `notes.md` 맨 위에 '승인:' 줄이 없으면 시작하지 말고 `blocked`(사유: 목업 승인 전)로 멈춘다
 - 명세의 화면 AC는 내용과 동작을 정하고, 배치·문구는 목업이 정한다
 
-## 수정 범위 (tasks.md TASK-13)
+## 수정 범위 (tasks.md TASK-14)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/components/stats/sections/*`
-  - `src/components/ui/classes.test.ts`
+  - `src/components/stats/StatsScreen.tsx`
+  - `src/components/stats/StatsScreen.test.tsx`
+  - `src/components/stats/SourcePicker.tsx`
+  - `src/components/stats/SourcePicker.test.tsx`
+  - `src/components/stats/useStatsData.ts`
+  - `src/components/stats/useStatsData.test.ts`
+  - `src/components/stats/useStatsWorker.ts`
+  - `src/components/stats/useStatsWorker.test.ts`
 - Tests:
-  - `src/components/stats/sections/PeriodSummary.test.tsx`
-  - `src/components/stats/sections/PatientTrendSection.test.tsx`
-  - `src/components/stats/sections/RevisitSection.test.tsx`
-  - `src/components/stats/sections/RxTrendSection.test.tsx`
-  - `src/components/stats/sections/RxSplitSection.test.tsx`
-  - `src/components/stats/sections/ReportSection.test.tsx`
-  - `src/components/stats/sections/WeekdaySection.test.tsx`
-  - `src/components/stats/sections/DetailToggle.test.tsx`
-  - `src/components/stats/sections/CopyButton.test.tsx`
-  - `src/components/ui/classes.test.ts`
+  - `src/components/stats/StatsScreen.test.tsx`
+  - `src/components/stats/SourcePicker.test.tsx`
+  - `src/components/stats/useStatsData.test.ts`
+  - `src/components/stats/useStatsWorker.test.ts`
 - TDD: required
-- 메모: `classes.test.ts`는 `APP_DIRS`에 `'src/components/stats'` 한 줄만 더한다
+- 메모: 시험은 jsdom, 가짜 Worker·가짜 통로(`chrome.runtime`)·가짜 저장(`lib/storage/stats` mock — `readCoverage` 포함). `useBridge`(`components/claim/useBridge.ts`)는 불러 쓰기만 한다
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **화면은 승인된 목업대로**: 배치·문구·상태는 `docs/mockups/stats/` 승인본(`notes.md` 맨 위 승인 기록)을 따른다. 모양은 `components/ui/classes.ts`의 `ds`와 `globals.css` 토큰만(옛 `ui.`·옛 Tailwind 이름·`font-bold` 없음, 굵기 400·500·600). 좋고 나쁨은 색만 쓰지 않고 ▲▼·글자를 같이 쓴다. 그래프는 움직이지 않는다. 상자 안 상자 금지 (CLAUDE.md, docs/UI_GUIDE.md)
 - **브라우저 저장소·주소 안 씀**: 숫자·처방 이름·보고 글을 `localStorage`·`sessionStorage`·`indexedDB`·주소(URL·쿼리)·`history.state`에 넣지 않는다. 화면 상태와 Worker 메모리에만 둔다
-- **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
+- **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`), 덮은 기간(날짜 둘), 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
+- **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 통계 숫자는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다. 페이지·`*.server.ts`는 통계 표를 읽지 않는다 (CLAUDE.md, ADR-004)
+- **환자 자료 구역 울타리**: `src/lib/parsers`·`src/lib/analytics`·`src/lib/payload`·`src/lib/precheck`·`src/lib/bridge`·`src/workers`에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-020)
 
 ## 작업
 
-### 1. 섹션 (`src/components/stats/sections/*`)
-- `PeriodSummary`·`PatientTrendSection`·`RevisitSection`·`RxTrendSection`·`RxSplitSection`·`ReportSection`·`WeekdaySection` + `DetailToggle`·`CopyButton`. 모두 props(보기 모양)만 받는다. 자세히·복사·고르기 상태만 `'use client'`
-- AC-513.1~513.9를 승인본 배치·문구로. 차트는 `components/charts` 부품만, 증감은 `formatDelta`(▲▼ + 글자), 빈 상태는 그래프 없이 "자료 없음" + 한 줄
-- `CopyButton`: 대시보드 `ReportBlock`의 [복사] 동작(성공 2초 "복사했어요", `aria-live`, 실패 안내, 폭 흔들림 없음)을 옮긴다. 문구는 이 파일 안에(`lib/errors.ts`를 고치지 않는다)
+### 1. 화면 (`src/components/stats/StatsScreen.tsx`, `'use client'`)
+```ts
+export function StatsScreen(props: { hospitalName: string; today: string }): JSX.Element
+```
+- AC-514.1~514.10을 승인본대로: 저장된 숫자 읽기(기간 + 비교 기간) → 섹션, 기간 단추, 출처 줄, 저장 실패·incomplete 안내, 폭별 배치
 
-### 2. 규칙 시험 (`components/ui/classes.test.ts`)
-- `APP_DIRS`에 `'src/components/stats'` 한 줄(AC-513.9). 다른 줄은 고치지 않는다
+### 2. 자료 고르기 (`SourcePicker.tsx`)
+- 연결 상태(`useBridge`)별: `ready` → [비트에서 불러오기] + "오늘 진료 끝" 체크(AC-514.3·514.8), `no-extension` → "비트 PC의 크롬에서 불러올 수 있어요"(AC-514.5), `no-helper`·`update-*` → 안내 + [설치·연결 확인](`/claim/setup`). 언제나 파일 끌어다 놓기·[파일 고르기](AC-514.4) → `runAnalysis` → `toMonthPayload`·`toDayPayloads` + 덮은 기간(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간) → `saveStats({ …, source: 'file' })`
 
-### 3. 시험 (jsdom, Testing Library — 지금 시험과 같은 도구)
-- 섹션마다 AC ID 이름으로: 차례·h2, 자세히 열고 닫기(`aria-expanded`), 빈 상태, ▲▼ 글자, 처방 추세 금액 안내, 보고 고르기·확인 필요 표시·복사(가짜 `navigator.clipboard`), PC 전용 안내
+### 3. 훅 (`useStatsData.ts`, `useStatsWorker.ts`)
+- `useStatsData(period)`: `readDays`·`readMonths`·`readCoverage`, 기간 바꿈마다 그 기간만, 방금 만든 저장 모양을 합쳐 보이기, `saveStats`와 [다시 저장](같은 값)
+- `useStatsWorker()`: `createStatsWorker()` 하나(화면을 떠나면 `terminate`), `useBridge({ worker })`, 불러오기 = `stream('stats.rows', range.load)` → `requestLoad({ streamId: id, … })` → `saveStats({ …, covered: view.covered, source: 'bit' })`, 기간 바꿈 → `requestSplit`. 보고 문장은 `formatClinicReport(…, today)`로 화면에서 만든다
+
+### 4. 시험 (jsdom, 가짜 Worker·가짜 `chrome.runtime`·`vi.mock('@/lib/storage/stats')`)
+- AC마다: 첫 그림(읽는 중 → 섹션 / 없음 안내 / 읽기 실패 + [다시 읽기]), 기간 바꿈(눌림·다시 읽기·`requestSplit`), 비트 불러오기(막힘 → 저장 → 다시 그림, 화면이 받은 값에 가짜 차트번호 글자 없음), 파일 길(`runAnalysis` 가짜), 연결 상태별 안내, 저장 실패 + [다시 저장](같은 값), incomplete 안내, 출처 줄, "오늘 진료 끝"이 `closeToday`로 감, 저장소·주소에 아무것도 안 넣음(`localStorage`·`location.search` 그대로)
 
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
-2. `python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
-3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green` 으로 통과(GREEN)를 기록한다
+2. `python3 ~/.claude/harness/bin/tdd-run TASK-14 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
+3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-14 --expect green` 으로 통과(GREEN)를 기록한다
 4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/stats/sections src/components/ui/classes.test.ts
-npx vitest run src/components/charts src/components/dashboard   # 차트·대시보드 그대로
-python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green
+npx vitest run src/components/stats
+npx vitest run src/components/claim src/lib/bridge src/workers   # 통로·Worker 그대로
+python3 ~/.claude/harness/bin/tdd-run TASK-14 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-513.1 ~ AC-513.9이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-514.1 ~ AC-514.10이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -120,11 +128,11 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
+- 화면이 조각·진료 줄·보낼 글자를 받게 하지 마라(`lib/bridge/client`를 부르지 마라). 이유: 화면은 Worker만 통로에 넘긴다(청구 design.md 5절, AC-004.11)
+- `useBridge.ts`·`lib/bridge/*`·`workers/*`를 고치지 마라. 이유: 이 step 범위 밖이다(불러 쓰기만)
+- 파일 이름을 저장·전송·Worker 메시지에 넣지 마라. 이유: 환자 이름이 들어 있을 수 있다(stats-core AC-010.1)
+- 숫자를 브라우저 저장소·주소에 두지 마라. 이유: AC-514.9
 - 승인본과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로(CLAUDE.md)
-- 섹션에서 Supabase·`fetch`·`lib/bridge`·`workers`를 불러오지 마라. 이유: 섹션은 props만 그린다(AC-513.9)
-- 그래프 패키지(recharts·chart.js 등)를 넣지 마라. 이유: 차트 부품만 쓴다(UI_GUIDE, 새 패키지 없음)
-- `components/common/CopyButton.tsx`를 만들지 마라. 이유: 청구 5단계가 그 이름을 만든다(design.md '결정')
-- 보고 글을 HTML로 그리지 마라(`dangerouslySetInnerHTML`). 이유: 글자로만(ESLint `react/no-danger`)
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다

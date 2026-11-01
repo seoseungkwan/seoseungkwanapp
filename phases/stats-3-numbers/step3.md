@@ -1,21 +1,15 @@
-# Step 3: stats-view
+# Step 3: stats-mockup
 
-> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.7
-> Phase 3 · 숫자와 글 `stats-3-numbers` · Step 3 — `specs/stats/tasks.md`
-> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-11 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-029 (AC-029.2 첫 재방문까지 날수) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> **TASK-12** 통계 화면 클릭 목업 (사용자 승인) · **REQ-512** · AC-512.1 ~ AC-512.2
+> Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 3 — `specs/stats/tasks.md`
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-12 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/stats/requirements.md`의 REQ-511(통계 화면 숫자 (`components/stats/view.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/stats/requirements.md`의 REQ-512(통계 화면 목업 (문서))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-511.1**: Given 오늘과 기간(`'7d' | '30d' | '90d' | '12m'`, 처음 `'30d'`), When `statsRange`, Then 일 기간은 어제까지 N일(대시보드 `periodRange` 그대로), `'12m'`은 이번 달을 넣은 12달이다. 비교 기간은 일 기간이면 바로 앞 같은 일수(`PreviousEqualDays`), `'12m'`이면 작년 같은 12달(`PreviousYear`)이다. 불러올 범위는 비교 기간 첫날이 든 달의 1일 ~ 오늘이고 800일 이하다
-- **AC-511.2**: Given 저장 모양과 기간, When 기간 요약을 만들면, Then 네 칸이다: 평균 환자 수(일 기간은 자료 있는 날 평균, `'12m'`은 자료 있는 달 평균, 소수점 아래는 버림), 신환(합), 재진(합), 비교 기간보다(평균의 `compareNumbers` 증감). 자료 없는 날·달은 0으로 치지 않고, 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다
-- **AC-511.3**: Given 저장 모양, When 환자 수 추이를 만들면, Then 일 기간은 자료 있는 날마다 신환·재진 칸(대시보드 `trendBuckets` 그대로), `'12m'`은 달 숫자(`MonthPayload.totals`)마다 칸이고, 덜 끝난 칸은 '일부 기간'이다
-- **AC-511.4**: Given 저장 모양, When 재방문율을 만들면, Then 7·14·30일 = 그 값이 null이 아닌 칸들의 재방문 합 ÷ 그 칸들의 집단 합이다. 모두 null이면 '집계 중', 분모가 0이면 '자료 없음'이다. 첫 재방문까지 날수는 30일 값이 숫자인 칸들로 "7일 안"(within7) · "8~14일"(within14 − within7) · "15~30일"(within30 − within14) · "30일 안에 다시 안 옴"(cohort − within30)이고 넷의 합 = 그 칸들의 집단 합이다. 원본 `CohortTests.cs`의 비율 사례(분모 구별, 분모 0이면 미산출)를 옮겨 통과한다
-- **AC-511.5**: Given 저장 모양, When 요일별 환자 수를 만들면, Then 대시보드 `weekdayBuckets` 규칙 그대로다(`'12m'`도 기간 안 일 숫자로)
-- **AC-511.6**: Given 저장 모양, When 처방 목록을 만들면, Then 기간 건수가 큰 5개(같으면 코드 순)이고 처방마다 이름(가장 최근 날의 이름)·기간 건수·비교 기간 건수·증감·신환 건수·재진 건수가 있다
-- **AC-511.7**: Given `components/stats/view.ts` 소스, When 보면, Then 순수 함수(React·Supabase·`fetch`·브라우저 저장소 없음)이고 날짜는 `lib/analytics/dates.ts`, 증감은 `compareNumbers`, 대시보드 `components/dashboard/summary/view.ts`의 함수는 불러 쓰기만 한다
+- **AC-512.1**: Given 클릭 목업 `docs/mockups/stats/index.html`·`notes.md`(CLAUDE.md: 화면은 클릭 목업 승인 뒤), When 열어 누르면, Then 기간 단추·[자세히]·보고 고르기·[복사]·[비트에서 불러오기]·화면 상태 고르기가 실제로 눌려 화면이 바뀌고, 화면 1 PC 불러온 뒤 · 화면 2 PC 처음(저장된 숫자 없음) · 화면 3 휴대폰(저장된 숫자만) · 화면 4 그래프 자세히 열림 · 화면 5 불러오는 중·저장 실패·확인 필요가 있고, REQ-513·REQ-514의 섹션·문구·기간 단추·증감 ▲▼가 보인다. 숫자는 모두 예시이고 화면 위에 "예시 숫자" 표시가 있다. 모양은 `docs/UI_GUIDE.md`와 ui-90 시안(`docs/mockups/ui-90/app/`)의 토큰·글자 단계를 따른다
+- **AC-512.2**: Given 사용자 승인, When 기록하면, Then `notes.md` 맨 위에 승인 날짜·온라인 링크가 있다. 승인 전에는 TASK-13~16을 시작하지 않는다(CLAUDE.md: 화면은 목업 승인 뒤)
 
 ## 읽어야 할 파일
 
@@ -23,75 +17,69 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/specs/stats/requirements.md` — REQ-511
-- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-11, '데이터 흐름'(기간)
-- `/specs/stats/tasks.md` — TASK-11 (수정 범위·메모)
-- `/src/components/dashboard/summary/view.ts` (`periodRange`·`trendBuckets`·`revisitView`·`weekdayBuckets`·`topRx` — 불러 쓰기만)
-- `/src/components/charts/StackedBarChart.tsx`(`BarBucket`)·`RankedBars.tsx`(`RankedItem`)·`format.ts`
-- `/src/lib/analytics/rxTrend.ts` (TASK-8), `/src/lib/analytics/history.ts`, `/src/lib/analytics/dates.ts`, `/src/lib/analytics/compare.ts`
-- `/src/types/payload.ts`
-- 이전 step에서 만든 파일: TASK-2(`within30`), TASK-8(`buildTrend`·`comparisonRange`)
+- `/specs/stats/requirements.md` — REQ-512
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-12~14, '사용자에게 물을 것'
+- `/specs/stats/tasks.md` — TASK-12 (수정 범위·메모)
+- `/docs/UI_GUIDE.md` (토큰·글자 단계·차트·빈 상태·앱 틀)
+- `/docs/mockups/ui-90/app/gen.py`·`css_app.css`·`css_page.css`·`app.js` (앱 시안 만드는 도구 — 같은 방식으로)
+- `/docs/mockups/dashboard-home/notes.md` (대시보드 기간별 흐름·보고 문장 문구)
+- `/docs/mockups/tab-frame/index.html` (옛 시안의 통계 탭 내용, 참고만)
+- `/specs/stats/requirements.md` — REQ-511·513·514 (화면에 보일 것)
+- 사전점검 시안 화면 9 '통계 추가분'(`id="v-stats"`): https://claude.ai/artifact/499cp2Sodph7jYJ4gX4exj (참고만)
+- 이전 step에서 만든 파일: TASK-11 (화면 숫자 — 시안의 칸 이름과 맞춘다)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
-## 원본 (양지바른, 읽기만)
+## 승인된 목업
 
-- GitHub: 저장소 `seoseungkwan/shared`, 커밋 `2a1069b`, 폴더 `YangjiBareun_사전점검/`
-- 이 서버의 사본(나중에 지워질 수 있음): `/tmp/claude-1000/-home-developer/4601ab55-16fe-474f-813a-c7a0d544b749/scratchpad/yangji/repo/YangjiBareun_사전점검/`
-  - 얕은 clone(HEAD `c66488e`)이다. `2a1069b`와 `c66488e` 사이에 이 폴더 안 파일은 바뀌지 않았다. 그대로 써도 된다
-- 사본이 없으면 저장소 밖 임시 폴더에 받는다: `git clone https://github.com/seoseungkwan/shared.git <임시폴더>/shared && git -C <임시폴더>/shared checkout 2a1069b` → `export YANGJI_SRC=<임시폴더>/shared/YangjiBareun_사전점검`. 받을 수 없으면 `blocked`(사유: 원본 저장소 접근 필요)로 멈춘다
-- 원본 시험(`tests/*.py`·`*Tests.cs`)은 모두 가짜 자료다. 사례를 시험 씨앗으로 옮겨도 된다
+- 이 step이 목업을 만든다. 승인 전에는 TASK-13~16을 시작하지 않는다(CLAUDE.md: 화면은 목업 승인 뒤)
 
-- 이 step에서 볼 원본(폴더 `YangjiBareun_사전점검/` 기준):
-  - `vendor/drbit_export/CohortContracts.cs` (`CohortRate`·`CohortMonthResult`의 비율)
-  - `vendor/drbit_export/CohortTests.cs` (옮길 비율 사례)
-
-## 수정 범위 (tasks.md TASK-11)
+## 수정 범위 (tasks.md TASK-12)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/components/stats/view.ts`
-  - `src/components/stats/view.test.ts`
-- Tests:
-  - `src/components/stats/view.test.ts`
-- TDD: required
+  - `docs/mockups/stats/index.html`
+  - `docs/mockups/stats/notes.md`
+  - `docs/mockups/stats/gen.py`
+  - `docs/mockups/stats/app.js`
+- TDD: exempt — 클릭 목업(눌러 볼 수 있는 시안, CLAUDE.md)과 메모만 만든다. 앱 코드가 없다
+- 메모: 끝 조건: 온라인 시안 링크를 사용자에게 드리고 승인을 받는다. 승인 전에는 step을 `blocked`(사유: 목업 승인 대기)로 둔다. 승인 뒤 고칠 곳이 나오면 시안을 고치고 다시 묻는다. 승인본이 이 명세의 화면 AC와 다르면(차례·문구) AC-513.1의 '목업이 이긴다'를 따르고, 동작이 다르면 명세를 고쳐 다시 승인받는다
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **날짜는 한 곳**: 날짜 계산은 `src/lib/analytics/dates.ts`(한국 날짜, `YYYY-MM-DD`). 시험은 `TZ=Asia/Seoul`에서 돈다 (CLAUDE.md)
-- **원본은 저장소 밖**: 원본 경로는 `YANGJI_SRC` 환경 변수나 스크립트 인자로만 받는다. 원본 파일 통째를 저장소에 복사·커밋하지 않는다. 커밋하는 것은 옮긴 코드, 원본 SQL 문장 사본(`original-sql/*.sql`), 골든 결과뿐이다 (specs/stats/tasks.md 머리말)
+- **화면은 승인된 목업대로**: 배치·문구·상태는 `docs/mockups/stats/` 승인본(`notes.md` 맨 위 승인 기록)을 따른다. 모양은 `components/ui/classes.ts`의 `ds`와 `globals.css` 토큰만(옛 `ui.`·옛 Tailwind 이름·`font-bold` 없음, 굵기 400·500·600). 좋고 나쁨은 색만 쓰지 않고 ▲▼·글자를 같이 쓴다. 그래프는 움직이지 않는다. 상자 안 상자 금지 (CLAUDE.md, docs/UI_GUIDE.md)
+- **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 
 ## 작업
 
-### 1. 코드 (`src/components/stats/view.ts`, 순수 — React·Supabase·`fetch`·브라우저 저장소 없음)
-- design.md TASK-11 시그니처. AC-511.1~511.6의 셈을 그대로:
-  - `statsRange`: 일 기간 = 대시보드 `periodRange(today, N)`, `'12m'` = 이번 달 포함 12달, 비교 = `comparisonRange(…, 'PreviousEqualDays' | 'PreviousYear')`, 불러올 범위 = 비교 첫날이 든 달 1일 ~ 오늘(800일 이하를 시험)
-  - 기간 요약 네 칸, 환자 수 추이(일: `trendBuckets` 재사용 / 달: `MonthPayload.totals`), 재방문율 7·14·30 + 첫 재방문까지 날수 네 칸(합 = 집단 합), 요일별(`weekdayBuckets` 재사용), 처방 목록 상위 5 + `rxDetail`(`buildTrend`)
-- 자료 없는 날·달은 0으로 치지 않는다. 평균은 버림
+### 1. 클릭 목업 (`docs/mockups/stats/gen.py` → `index.html`, 움직임 `app.js`)
+- CLAUDE.md "화면은 클릭 목업을 사용자가 승인한 뒤에만 구현한다" — 그림 한 장이 아니라 **눌러 볼 수 있는** 시안이다. ui-90 시안 도구와 같은 방식(같은 css·글꼴·앱 틀, `app.js`처럼 작은 스크립트)으로 만들고, 기간 단추·[자세히] 열고 닫기·처방 줄 누르기·보고 고르기·[복사](시안에서는 "복사했어요" 표시만)·[비트에서 불러오기](불러오는 중 → 불러온 뒤)·"오늘 진료 끝"·화면 상태 고르기(아래 화면 1~5)가 실제로 눌려 바뀐다. 통계 탭 화면: 화면 1 PC 불러온 뒤 · 화면 2 PC 처음(저장된 숫자 없음) · 화면 3 휴대폰 390(저장된 숫자만, PC 전용 섹션은 "비트 PC에서 불러오면 보여요") · 화면 4 그래프 자세히 열림(환자 수 추이 숫자 표·처방 하나의 추세) · 화면 5 불러오는 중·저장 실패(`E-STATS-SAVE-FAILED` + [다시 저장])·확인 필요(일부 기록) (AC-512.1)
+- 섹션 차례(AC-513.1)·기간 단추(AC-514.2)·자료 고르기([비트에서 불러오기]·"오늘 진료 끝"·파일)·출처 줄(AC-514.7)·▲▼ 증감·보고 문장 고르기(일일 오늘·어제 / 월말 이번 달·지난달)·[복사]·'확인 필요' 표시
+- 숫자는 모두 예시이고 화면 위에 "예시 숫자" 띠(시안에만). 환자 이름·차트번호 모양을 쓰지 않는다
 
-### 2. 시험 (`view.test.ts`)
-- AC마다 가짜 저장 모양(시험 안에서 만듦)으로. AC-511.4는 원본 `CohortTests.cs`의 비율 사례(신환율·기존환자율·재방문율 분모 구별, 분모 0이면 미산출)를 옮긴다
-- AC-511.7: 소스 글자에 `react`·`supabase`·`fetch`·`localStorage`가 없고 대시보드 `view.ts`를 불러온다
+### 2. 메모 (`docs/mockups/stats/notes.md`)
+- 화면마다 문구·상태·배치(1440·1024·768·390)·모양 값(`ds` 키·토큰·글자 단계·간격), 빈 상태 문구, 자세히 단추 동작. 시안과 명세가 다르면 무엇이 이기는지(AC-513.1)
 
-## TDD 순서
+### 3. 승인 받기
+- 온라인 시안(artifact)으로 올려 링크를 summary에 적고 `blocked`(사유: "목업 승인 대기 — 링크")로 멈춘다. 메인 세션이 사용자에게 쉬운 말로 보이고 승인을 받는다
+- 승인되면(다음 실행) `notes.md` 맨 위에 "승인: 2026-MM-DD · 링크"를 적고 `completed`(AC-512.2). 고칠 곳이 나오면 시안·메모를 고치고 다시 `blocked`
 
-1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
-2. `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
-3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green` 으로 통과(GREEN)를 기록한다
-4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
+## TDD
+
+- `TDD: exempt` — 클릭 목업과 메모만 만든다. 앱 코드와 시험이 없다. `tdd-run`을 부르지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/stats/view.test.ts src/components/dashboard/summary/view.test.ts
-python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green
-npm run lint && npm test && npm run build
-python3 ~/.claude/harness/bin/verify
+test -f docs/mockups/stats/index.html && test -f docs/mockups/stats/notes.md
+grep -q '예시 숫자' docs/mockups/stats/index.html
+grep -q 'aria-pressed' docs/mockups/stats/index.html && grep -q 'aria-expanded' docs/mockups/stats/index.html   # 눌러 볼 수 있는 단추
+# dev-browser 등으로 열어 기간 단추·[자세히]·보고 고르기를 눌러 화면이 바뀌는지 한 번 본다(캡처는 summary에 경로만)
+grep -q '^승인:' docs/mockups/stats/notes.md   # 승인 뒤에만 통과
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.7이 이 TASK의 시험과 이어져 보여야 한다
+- 위 커맨드가 모두 에러 없이 끝나야 한다.
 
 ## 검증 절차
 
@@ -110,9 +98,10 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 대시보드 `view.ts`를 고치지 마라. 이유: 이 step 범위 밖이고, 대시보드의 30일 줄은 TASK-16 몫이다(불러 쓰기만)
-- 빠진 날을 0으로 채워 평균·비율·증감을 만들지 마라. 이유: 지어낸 숫자가 된다(UI_GUIDE '빈 상태')
-- 화면 컴포넌트(`*.tsx`)를 만들지 마라. 이유: 화면은 목업 승인 뒤 TASK-13·14다
+- 앱 코드(`src/`)를 만들거나 고치지 마라. 이유: 화면은 목업 승인 뒤에만 구현한다(CLAUDE.md)
+- 승인 없이 `notes.md`에 승인 줄을 쓰지 마라. 이유: 승인은 사용자만 한다
+- 시안에 실제 숫자·환자 이름·차트번호 모양을 넣지 마라. 이유: 예시 숫자만(CLAUDE.md 개인정보)
+- 명세의 동작(무엇이 어디서 오는지·저장 규칙)을 시안에서 바꾸지 마라. 이유: 동작이 달라지면 명세를 고쳐 다시 승인받아야 한다(TASK-12 끝 조건)
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다
@@ -120,8 +109,8 @@ python3 ~/.claude/harness/bin/verify
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
 - 새 npm·NuGet 패키지를 넣지 마라. 이유: `package.json`·csproj가 수정 범위 밖이고 ADR 기술 스택 밖이다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
-- `.harness/*`·`CLAUDE.md`·`plan.md`를 고치지 마라 · `docs/*`. 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다
+- `.harness/*`·`CLAUDE.md`·`plan.md`를 고치지 마라 (`docs/mockups/stats/`는 이 step 범위다). 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다
 
 ## 참고
 
-- Phase 3 · 숫자와 글의 마지막 step이다. 메인 세션이 할 일: `verify` → 쉬운 말 보고
+- Phase 3 · 숫자와 글, 화면 목업의 마지막 step이다. 메인 세션이 할 일: `verify` → 쉬운 말 보고

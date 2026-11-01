@@ -1,18 +1,22 @@
-# Step 2: report-text
+# Step 2: stats-view
 
-> **TASK-10** 원장님 보고 문장 (골든) · **REQ-510** · AC-510.1 ~ AC-510.4
-> Phase 3 · 숫자와 글 `stats-3-numbers` · Step 2 — `specs/stats/tasks.md`
-> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-10 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-030 — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.7
+> Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 2 — `specs/stats/tasks.md`
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-11 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 옮겨 옴: precheck REQ-029 (AC-029.2 첫 재방문까지 날수) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/stats/requirements.md`의 REQ-510(원장님 보고 문장 (`lib/report/reportText.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/stats/requirements.md`의 REQ-511(통계 화면 숫자 (`components/stats/view.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-510.1**: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 적지 않은 차이는 실패다
-- **AC-510.2**: Given 금액 확인 필요 벌, When 만들면, Then 원본처럼 금액 줄은 "확인 필요"이고 다른 숫자는 그대로이며, 돌려주는 `unconfirmedLines`에 그 줄 번호들이 있다
-- **AC-510.3**: Given 오늘보다 뒤 날짜·달, When 만들려 하면, Then 글을 만들지 않고 `{ error: 'future-date' }`다. `{ ok: false }` 벌이면 `{ error: 'unconfirmed', reason }`이다
-- **AC-510.4**: Given `src/types/report.ts`의 입력 모양, When 열쇠를 보면, Then 집계 숫자·기간·병원 이름뿐이다(`chart`·`name`·`rows`·`patient` 칸 없음). 시험이 열쇠 목록을 못 박는다
+- **AC-511.1**: Given 오늘과 기간(`'7d' | '30d' | '90d' | '12m'`, 처음 `'30d'`), When `statsRange`, Then 일 기간은 어제까지 N일(대시보드 `periodRange` 그대로), `'12m'`은 이번 달을 넣은 12달이다. 비교 기간은 일 기간이면 바로 앞 같은 일수(`PreviousEqualDays`), `'12m'`이면 작년 같은 12달(`PreviousYear`)이다. 불러올 범위는 비교 기간 첫날이 든 달의 1일 ~ 오늘이고 800일 이하다
+- **AC-511.2**: Given 저장 모양과 기간, When 기간 요약을 만들면, Then 네 칸이다: 평균 환자 수(일 기간은 자료 있는 날 평균, `'12m'`은 자료 있는 달 평균, 소수점 아래는 버림), 신환(합), 재진(합), 비교 기간보다(평균의 `compareNumbers` 증감). 자료 없는 날·달은 0으로 치지 않고, 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다
+- **AC-511.3**: Given 저장 모양(과 덮은 기간), When 환자 수 추이를 만들면, Then 일 기간은 자료 있는 날마다 신환·재진 칸(대시보드 `trendBuckets` 그대로), `'12m'`은 달 숫자(`MonthPayload.totals`)마다 칸이고, 덜 끝난 칸은 '일부 기간'이다
+- **AC-511.4**: Given 저장 모양, When 재방문율을 만들면, Then 7·14·30일 = 그 값이 null이 아닌 칸들의 재방문 합 ÷ 그 칸들의 집단 합이다. 모두 null이면 '집계 중', 분모가 0이면 '자료 없음'이다. 첫 재방문까지 날수는 30일 값이 숫자인 칸들로 원본 `CohortMonthResult`의 네 칸 "7일 안"(within7) · "8~14일"(within14 − within7) · "15~30일"(within30 − within14) · "30일 넘어 다시 옴"(after30)과, 그 밖 "아직 다시 안 옴"(cohort − within30 − after30, 원본 `SingleVisitNewPatients`)이고 다섯의 합 = 그 칸들의 집단 합이다. "30일 넘어 다시 옴"은 불러온 자료 끝날까지 본 수라고 안내 글이 붙는다. 원본 `CohortTests.cs`의 사례(신환율·기존환자율·신환 재방문율의 분모 구별, 분모 0이면 미산출, 재방문 칸 합, 덜 끝난 달)를 옮겨 통과한다
+- **AC-511.5**: Given 저장 모양, When 요일별 환자 수를 만들면, Then 대시보드 `weekdayBuckets` 규칙 그대로다(`'12m'`도 기간 안 일 숫자로)
+- **AC-511.6**: Given 저장 모양, When 처방 목록을 만들면, Then 기간 건수가 큰 5개(같으면 코드 순)이고 처방마다 이름(가장 최근 날의 이름)·기간 건수·비교 기간 건수·증감·신환 건수·재진 건수가 있다
+- **AC-511.8**: Given 처방 하나, When `rxDetail`로 그 처방의 칸별 건수를 만들면, Then 칸은 기간에 따라 정해진다: 최근 7일·30일 = 일, 최근 90일 = 주(월~일), 최근 12개월 = 달. `buildTrend`(덮은 기간 포함)의 점을 그대로 쓰고 비교 기간 점도 같은 칸으로 준다
+- **AC-511.7**: Given `components/stats/view.ts` 소스, When 보면, Then 순수 함수(React·Supabase·`fetch`·브라우저 저장소 없음)이고 날짜는 `lib/analytics/dates.ts`, 증감은 `compareNumbers`, 대시보드 `components/dashboard/summary/view.ts`의 함수는 불러 쓰기만 한다
 
 ## 읽어야 할 파일
 
@@ -20,13 +24,14 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/specs/stats/requirements.md` — REQ-510
-- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-10, '결정과 트레이드오프'(보고 숫자는 저장하지 않는다)
-- `/specs/stats/tasks.md` — TASK-10 (수정 범위·메모)
-- `/src/types/report.ts` (TASK-5의 `ReportNumbers`)
-- `/src/lib/analytics/dates.ts`(요일)
-- `/src/components/charts/format.ts` (숫자 글자 — 원본 글과 다르면 원본을 따른다)
-- 이전 step에서 만든 파일: TASK-5 (`ReportNumbers` 모양)
+- `/specs/stats/requirements.md` — REQ-511
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-11, '데이터 흐름'(기간)
+- `/specs/stats/tasks.md` — TASK-11 (수정 범위·메모)
+- `/src/components/dashboard/summary/view.ts` (`periodRange`·`trendBuckets`·`revisitView`·`weekdayBuckets`·`topRx` — 불러 쓰기만)
+- `/src/components/charts/StackedBarChart.tsx`(`BarBucket`)·`RankedBars.tsx`(`RankedItem`)·`format.ts`
+- `/src/lib/analytics/rxTrend.ts` (TASK-8), `/src/lib/analytics/history.ts`, `/src/lib/analytics/dates.ts`, `/src/lib/analytics/compare.ts`
+- `/src/types/payload.ts`
+- 이전 step에서 만든 파일: TASK-2(`within30`·`after30`), TASK-7(`readCoverage`의 모양), TASK-8(`buildTrend`·`comparisonRange`)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -39,65 +44,55 @@
 - 원본 시험(`tests/*.py`·`*Tests.cs`)은 모두 가짜 자료다. 사례를 시험 씨앗으로 옮겨도 된다
 
 - 이 step에서 볼 원본(폴더 `YangjiBareun_사전점검/` 기준):
-  - `medicore/reports.py` (`format_report`·`report_notes`·`validate_report`·`validate_period`·`_won`·`TREATMENTS`)
-  - `tests/test_reports*.py` 등 보고 시험(있으면 사례로)
-  - `vendor/drbit_export/OperationalReportData.cs` (`SetFinanceUnconfirmed` 사유 글)
+  - `vendor/drbit_export/CohortContracts.cs` (`CohortRate`·`CohortMonthResult`의 비율과 재방문 칸 `ReturnWithin7Days`·`Return8To14Days`·`Return15To30Days`·`ReturnAfter30Days`·`SingleVisitNewPatients`)
+  - `vendor/drbit_export/CohortTests.cs` (옮길 사례)
 
-## 수정 범위 (tasks.md TASK-10)
+## 수정 범위 (tasks.md TASK-11)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/lib/report/reportText.ts`
-  - `src/lib/report/reportText.test.ts`
-  - `src/types/report.ts`
-  - `scripts/stats/golden/reports.py`
-  - `fixtures/stats/golden/report-*.json`
+  - `src/components/stats/view.ts`
+  - `src/components/stats/view.test.ts`
 - Tests:
-  - `src/lib/report/reportText.test.ts`
+  - `src/components/stats/view.test.ts`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **골든 테스트**: 같은 가짜 입력을 원본(양지바른 `2a1069b`)과 우리 함수에 넣어 결과가 순서까지 같은지 깊은 비교한다. 원본 결과는 `scripts/stats/golden/`의 작은 실행 글로 한 번 만들어 `fixtures/stats/golden/<이름>.json`에 커밋한다. Python 원본은 `python3 -I`로 돌린다. 골든 파일 머리에 `{ "source": "seoseungkwan/shared@2a1069b", "file": …, "entry": …, "knownDiffs": [...] }`를 적는다. 일부러 다르게 한 것만 `knownDiffs`에 이유와 함께 적고, 적지 않은 차이는 실패다. 시험은 원본 없이 커밋한 골든 파일과 견주어 돈다(골든을 다시 만들 때만 `YANGJI_SRC`가 필요)
-- **금액**: 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 금액의 합 (CLAUDE.md, plan.md §5)
 - **날짜는 한 곳**: 날짜 계산은 `src/lib/analytics/dates.ts`(한국 날짜, `YYYY-MM-DD`). 시험은 `TZ=Asia/Seoul`에서 돈다 (CLAUDE.md)
-- **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 - **원본은 저장소 밖**: 원본 경로는 `YANGJI_SRC` 환경 변수나 스크립트 인자로만 받는다. 원본 파일 통째를 저장소에 복사·커밋하지 않는다. 커밋하는 것은 옮긴 코드, 원본 SQL 문장 사본(`original-sql/*.sql`), 골든 결과뿐이다 (specs/stats/tasks.md 머리말)
 
 ## 작업
 
-### 1. 코드 (`src/lib/report/reportText.ts`, 환자 구역 밖 — 숫자만 받는다)
-- design.md TASK-10 시그니처. 원본 `format_report`·`report_notes`의 줄을 그대로 옮긴다(제목 줄·띄어쓰기·치료 차례(일일·월말이 다름)·LA 줄·"신환 내원경로" 고정 줄·"고생하셨습니다 !!")
-- 금액·건당진료비: 원 미만 버림(`Math.floor`), 천 단위 쉼표 + "원"(AC-510.1 `knownDiffs`)
-- 확인 필요(AC-510.2): 원본처럼 금액 자리를 "확인 필요"로, 사유 줄, `unconfirmedLines` = 그 줄 번호(0부터)
-- 미래(AC-510.3): 일일은 그 날이 오늘보다 뒤, 월말은 그 달이 이번 달보다 뒤면 `{ error: 'future-date' }`. `ok: false` 벌은 `{ error: 'unconfirmed', reason }`
+### 1. 코드 (`src/components/stats/view.ts`, 순수 — React·Supabase·`fetch`·브라우저 저장소 없음)
+- design.md TASK-11 시그니처. 모든 함수는 저장 모양과 함께 덮은 기간(`readCoverage`가 준 합친 범위 목록)을 받는다. AC-511.1~511.6·511.8의 셈을 그대로:
+  - `statsRange`: 일 기간 = 대시보드 `periodRange(today, N)`, `'12m'` = 이번 달 포함 12달, 비교 = `comparisonRange(…, 'PreviousEqualDays' | 'PreviousYear')`, 불러올 범위 = 비교 첫날이 든 달 1일 ~ 오늘(800일 이하를 시험)
+  - 기간 요약 네 칸, 환자 수 추이(일: `trendBuckets` 재사용 / 달: `MonthPayload.totals`), 재방문율 7·14·30 + 첫 재방문까지 날수 다섯 칸(원본 네 칸 7일 안·8~14일·15~30일·30일 넘어 다시 옴 + 아직 다시 안 옴, 합 = 집단 합), 요일별(`weekdayBuckets` 재사용), 처방 목록 상위 5 + `rxDetail`(`buildTrend`, 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달, 비교 기간도 같은 칸 — AC-511.8)
+- 자료 없는 날·달은 0으로 치지 않는다. 평균은 버림
 
-### 2. 모양 (`src/types/report.ts`)
-- 입력 열쇠는 숫자·기간·병원 이름뿐. 시험이 `Object.keys`로 못 박는다(AC-510.4)
-
-### 3. 골든 (`scripts/stats/golden/reports.py` → `fixtures/stats/golden/report-*.json`)
-- 원본 `format_report`·`report_notes`를 `python3 -I`로: 일일 보통 날, 일일 확인 필요, 월말 LA 있음, 월말 LA 없음, 총환 0명. 입력은 원본 `validate_report`를 지나는 가짜 값(병원 이름 "가상의원", `profile_id`·`institution_code`는 가짜 모양)
-- `knownDiffs`: 원 미만 금액 버림(원본 `ROUND_HALF_UP`) — 골든 입력에 원 미만 금액 사례를 하나 넣어 차이가 그 줄뿐인지 시험이 본다
+### 2. 시험 (`view.test.ts`)
+- AC마다 가짜 저장 모양(시험 안에서 만듦)으로. AC-511.4는 원본 `CohortTests.cs`의 사례(신환율·기존환자율·신환 재방문율의 분모 구별, 분모 0이면 미산출, 재방문 칸 합 = 재방문 신환, 덜 끝난 달)를 옮긴다(원본 시험 이름을 시험 이름에). 원본에서 옮기지 않는 것(완전 관찰 수 `FullyObserved*`, 치료 묶음 `Treatments`, 엑셀·HTML)은 시험 머리 `knownDiffs`에 이유와 함께. AC-511.8: 기간마다 `rxDetail`의 칸 크기
+- AC-511.7: 소스 글자에 `react`·`supabase`·`fetch`·`localStorage`가 없고 대시보드 `view.ts`를 불러온다
 
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
-2. `python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
-3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green` 으로 통과(GREEN)를 기록한다
+2. `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
+3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green` 으로 통과(GREEN)를 기록한다
 4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/report/reportText.test.ts
-python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green
+npx vitest run src/components/stats/view.test.ts src/components/dashboard/summary/view.test.ts
+python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-510.1 ~ AC-510.4이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.7이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -116,10 +111,10 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 보고 입력에 차트번호·이름·환자 줄을 넣지 마라. 이유: 보고 문장은 복사해 밖(메신저 등)으로 나간다. 집계 숫자만(AC-510.4)
-- 확인 필요 날의 금액을 계산해 '맞춰' 보이지 마라. 이유: 틀린 금액이 보고되면 안 된다(AC-510.2)
-- 원본 문장 모양을 다듬지 마라(`knownDiffs` 밖). 이유: 골든과 같아야 한다(AC-510.1)
-- 금액을 반올림하지 마라. 이유: 원 미만은 버린다(CLAUDE.md)
+- 대시보드 `view.ts`를 고치지 마라. 이유: 이 step 범위 밖이고, 대시보드의 30일 줄은 TASK-16 몫이다(불러 쓰기만)
+- 덮은 기간 밖의 날을 0으로 채워 평균·비율·증감을 만들지 마라. 이유: 지어낸 숫자가 된다(UI_GUIDE '빈 상태')
+- 첫 재방문 칸의 뜻을 바꾸지 마라('30일 넘어 다시 옴'은 31일째 이후 처음 다시 온 수). 이유: 원본 칸 그대로가 AC다(AC-511.4)
+- 화면 컴포넌트(`*.tsx`)를 만들지 마라. 이유: 화면은 목업 승인 뒤 TASK-13·14다
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다

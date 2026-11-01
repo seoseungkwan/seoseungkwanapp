@@ -4,22 +4,22 @@
   "steps": [
     {
       "step": 0,
-      "name": "rx-trend",
-      "status": "pending"
-    },
-    {
-      "step": 1,
       "name": "rx-visit-split",
       "status": "pending"
     },
     {
-      "step": 2,
+      "step": 1,
       "name": "report-text",
       "status": "pending"
     },
     {
-      "step": 3,
+      "step": 2,
       "name": "stats-view",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "stats-mockup",
       "status": "pending"
     }
   ]

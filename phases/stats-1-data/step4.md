@@ -10,9 +10,9 @@
 전체 문장은 `/specs/stats/requirements.md`의 REQ-505(통계 Worker (도우미 자료 → 저장 모양))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-505.1**: Given 통로가 Worker 포트로 넘긴 `chunk`들과 `end {count, bytes, sha256}`, When 모으면, Then `seq`가 0부터 빠짐없이 이어지고 조각 수·UTF-8 바이트 수·SHA-256이 모두 맞을 때만 JSON 하나로 푼다. 하나라도 다르면 버리고 `E-BRIDGE-BAD-REPLY`, `abort`면 버리고 받은 번호다
-- **AC-505.2**: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 글자 4칸 배열, 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 숫자는 0 이상 정수)일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`
+- **AC-505.2**: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 숫자는 0 이상 정수)일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`
 - **AC-505.3**: Given 같은 가짜 자료를 파일 길(`fixtures/fake-bit/` → `parseBit`)과 도우미 JSON 길로 넣음, When 도우미 길이 진료 줄을 `ConsumptionRow`(첫 내원일 = 진료일이면 신환, 외래, 동네 없음, 차트번호는 메모리 번호 `PatientIds`)로 바꿔 지금 `aggregate`에 넣으면, Then 동네(지역)를 뺀 결과가 파일 길과 깊은 비교로 같다. 파일 올리기 길(`parseBit`·`aggregate`·`analyzeFiles`·`runAnalysis`·`analyze.worker.ts`)은 고치지 않는다
-- **AC-505.4**: Given 검사한 도우미 자료, When `load` 일을 하면, Then Worker가 `buildSummary`(덮은 기간 = `[from, min(to, 오늘)]`) → `toMonthPayload`·`toDayPayloads`를 만들어 화면에는 달·일 저장 모양, 기간 합계의 확인 건수(차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자), 보고 숫자 네 벌만 보낸다. 확인 건수가 하나라도 0이 아니면 품질 incomplete이고 저장 모양은 null이다. 저장 모양의 동네는 비운다(`regions: []`)
+- **AC-505.4**: Given 검사한 도우미 자료, When `load` 일을 하면, Then Worker가 `buildSummary`(덮은 기간 = `[from, min(to, 오늘)]`) → `toMonthPayload`·`toDayPayloads`를 만들어 화면에는 달·일 저장 모양, 덮은 기간, 기간 합계의 확인 건수(차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자), 보고 숫자 네 벌만 보낸다. 확인 건수가 하나라도 0이 아니면 품질 incomplete이고 저장 모양은 null이다. 저장 모양의 동네는 비운다(`regions: []`)
 - **AC-505.5**: Given 화면에 보내는 모든 메시지, When 열쇠와 값을 훑으면, Then 차트번호·환자 번호·진료 줄이 없다(숫자·처방코드·처방 이름·날짜만). 진료 줄은 Worker 메모리에만 남고(처방별 신환·재진 계산용), 새로 불러오면 바뀐다
 - **AC-505.6**: Given "오늘 진료 끝" 표시를 켜고 불러옴, When 요약하면, Then 오늘을 끝난 날로 본다(요약에 넘기는 오늘 = 내일) → 오늘 일 숫자가 `partial: false`다. 끄면 지금처럼 오늘은 `partial: true`다
 - **AC-505.7**: Given 화면 쪽 입구(`src/workers/statsClient.ts`), When 일을 시키면, Then Worker에는 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id만 가고, 정해 둔 시간(120초)이 넘으면 `E-ANALYZE-TIMEOUT`, Worker 오류는 `E-ANALYZE-FAILED`이며 예외 내용을 옮기지 않는다
@@ -52,7 +52,7 @@
   - `src/workers/statsClient.ts`
   - `src/workers/statsClient.test.ts`
   - `src/types/stats.ts`
-  - `src/types/report.ts`
+  - `src/types/clinicReport.ts`
   - `src/types/errors.ts`
   - `src/lib/errors.ts`
   - `src/lib/errors.test.ts`
@@ -63,20 +63,20 @@
   - `src/workers/statsClient.test.ts`
   - `src/lib/errors.test.ts`
 - TDD: required
-- 메모: `src/types/report.ts`는 보고 숫자 모양(`ReportNumbers`)만 이 TASK에서 만든다. 글 만들기는 TASK-10
+- 메모: `src/types/clinicReport.ts`는 보고 숫자 모양(`ClinicReportNumbers`)만 이 TASK에서 만든다. 글 만들기는 TASK-10. `src/types/report.ts`·`ReportNumbers`·`src/lib/report/*`는 `feat-ai-report` 몫이라 쓰지 않는다(C6)
 - 메모: 오류 번호 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`을 `types/errors.ts`·`lib/errors.ts` 끝에 더한다
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **환자 자료 구역 울타리**: `src/lib/parsers`·`src/lib/analytics`·`src/lib/payload`·`src/lib/precheck`·`src/lib/bridge`·`src/workers`에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-020)
 - **날짜는 한 곳**: 날짜 계산은 `src/lib/analytics/dates.ts`(한국 날짜, `YYYY-MM-DD`). 시험은 `TZ=Asia/Seoul`에서 돈다 (CLAUDE.md)
-- **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`)과 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
+- **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`), 덮은 기간(날짜 둘), 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
 - **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 
 ## 작업
 
-### 1. 모양 (`src/types/stats.ts`, `src/types/report.ts`)
-- design.md의 `StatsChecks`·`StatsLoaded`, 보고 숫자 `ReportNumbers`(design.md TASK-10 모양, 이 step은 타입만)
+### 1. 모양 (`src/types/stats.ts`, `src/types/clinicReport.ts`)
+- design.md의 `StatsChecks`·`StatsLoaded`(덮은 기간 `covered` 포함), 보고 숫자 `ClinicReportNumbers`(design.md TASK-10 모양, 이 step은 타입만). `src/types/report.ts`·`ReportNumbers`는 `feat-ai-report` 몫이라 쓰지 않는다(cross-branch C6)
 
 ### 2. 조각 모으기 (`src/workers/stats/assemble.ts`)
 ```ts
@@ -95,14 +95,14 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
 export function toConsumptionRows(data: StatsRowsData, ids: PatientIds): ConsumptionRow[]
 export function toVisitRows(data: StatsRowsData, ids: PatientIds): VisitRow[]   // { p, d: 'YYYY-MM-DD', c, f } — TASK-9가 쓴다
 ```
-- 검사(AC-505.2): 정해 둔 열쇠만, 줄 = 글자 4칸(첫 내원일만 null 가능), 날짜 `YYYYMMDD`이고 진짜 날짜, 첫 내원일 ≤ 진료일, 한 차트번호의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 ≤ 700,000, `from`·`to`가 요청과 같음, 보고 벌 숫자는 0 이상 안전한 정수. 아니면 `E-BRIDGE-BAD-REPLY`
+- 검사(AC-505.2): 정해 둔 열쇠만, 줄 = 4칸(앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null — null이면 그 환자는 신환이 아니고 `summary.noFirst`에 든다), 날짜 `YYYYMMDD`이고 진짜 날짜, 첫 내원일 ≤ 진료일, 한 차트번호의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 ≤ 700,000, `from`·`to`가 요청과 같음, 보고 벌 숫자는 0 이상 안전한 정수. 아니면 `E-BRIDGE-BAD-REPLY`
 - 바꾸기(AC-505.3): `rxCode` = 코드, `rxName` = `codes`의 이름(없으면 코드), `rxType` = '', `date` = 진료일, `firstVisit` = (첫 내원일 = 진료일), `outpatient` = true, `region` = null, `patient` = `ids.idOf(차트번호)`(지금 파서가 쓰는 메모리 번호 만들기를 그대로 쓴다)
 
 ### 4. 일 (`src/workers/stats/jobs.ts`, `src/workers/stats.worker.ts`)
 ```ts
 export function loadJob(text: string, opts: { from: string; to: string; today: string; closeToday: boolean }): { view: StatsLoaded; memory: StatsMemory }
 ```
-- `aggregate(rows)` → `buildSummary({ covered: [{ from, to: min(to, today) }], quality, today: closeToday ? addDays(today, 1) : today })` → `AnalysisResult` → `toMonthPayload`·`toDayPayloads` → 동네 비우기(`regions: []`) → `StatsLoaded`(AC-505.4·505.6). 확인 건수(`noChart`·`duplicate`·`noFirst`)가 하나라도 0이 아니면 `quality: 'incomplete'`, 저장 모양 null
+- `aggregate(rows)` → `buildSummary({ covered: [{ from, to: min(to, today) }], quality, today: closeToday ? addDays(today, 1) : today })` → `AnalysisResult` → `toMonthPayload`·`toDayPayloads` → 동네 비우기(`regions: []`) → `StatsLoaded`(덮은 기간 `covered` 포함, AC-505.4·505.6). 확인 건수(`noChart`·`duplicate`·`noFirst`)가 하나라도 0이 아니면 `quality: 'incomplete'`, 저장 모양 null
 - `memory`: 진료 줄(`VisitRow[]`)·기간 합계·날짜별 합계·처방 이름(Worker 안에만, AC-505.5)
 - Worker: `{type: 'bridge-port'}`로 받은 포트의 조각을 `createAssembler`에, 화면의 `{type: 'load', streamId, from, to, today, closeToday}` → `{type: 'loaded', view}` 또는 `{type: 'failed', code}`(예외 내용 없이 번호만). 마지막 `memory`를 들고 있는다
 

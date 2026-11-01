@@ -1,19 +1,18 @@
-# Step 0: rx-trend
+# Step 0: rx-visit-split
 
-> **TASK-8** 처방 추세 · **REQ-508** · AC-508.1 ~ AC-508.5
-> Phase 3 · 숫자와 글 `stats-3-numbers` · Step 0 — `specs/stats/tasks.md`
-> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-8 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-028 — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> **TASK-9** 처방별 신환·재진 (골든 + Worker `split` 일) · **REQ-509** · AC-509.1 ~ AC-509.4
+> Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 0 — `specs/stats/tasks.md`
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-9 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 옮겨 옴: precheck REQ-029 (AC-029.3·029.4) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/stats/requirements.md`의 REQ-508(처방 추세 (`lib/analytics/rxTrend.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/stats/requirements.md`의 REQ-509(처방별 신환·재진 (`lib/analytics/rxVisitSplit.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-508.1**: Given 일 저장 모양(`DayPayload[]`)과 `{from, to, bucket: 'day'|'week'|'month', codes}`, When `buildTrend`, Then 원본 `TrendMath.Build`처럼 처방마다 칸 점(시작·끝·이름·일부 기간 여부)과 건수(그 칸 날들의 그 처방 `patients` 합)를 낸다. 주는 월요일 ~ 일요일이고 기간 끝에 걸린 칸은 일부 기간이다. 일 숫자가 있는 날 그 처방이 없으면 0, 일 숫자가 없는 날은 더하지 않고 그 칸을 일부 기간으로 둔다(지어낸 0 없음). 원본 `TrendTests.cs`의 칸·경계 사례(부분 주와 월요일 경계, 서로 다른 달 칸 수, 빠진 날짜, 코드 나눔)를 옮겨 통과한다
-- **AC-508.2**: Given 비교(`PreviousEqualDays`·`PreviousMonth`·`PreviousYear`), When `comparisonRange`·`comparisonLabel`, Then 원본과 같은 기간·이름이다(원본 사례: 10월 1~7일 → 9월 24~30일, 윤년 2월 29일 사례와 '윤년' 안내)
-- **AC-508.3**: Given 신환·재진 나눔, When 추세를 나누면, Then 칸마다 신환 건수 = 그 처방 `newPatients` 합, 재진 건수 = `returning` 합이고(원본 '일별 외래 재진은 나머지' 사례), 신환 + 재진 ≤ 건수다
-- **AC-508.4**: Given 지금 자료(파일·저장 모양), When 추세를 만들면, Then 소모량·금액은 늘 null('자료 없음')이다. 원본 `TrendTests.cs`의 소모량·금액·단위 사례는 시험 파일 머리 `knownDiffs`에 이유("금액·소모량은 저장 모양에 없다 — 매출 탭 몫")와 함께 적는다
-- **AC-508.5**: Given 현재·비교 기간 합계, When 증감을 내면, Then 지금 앱의 `compareNumbers` 규칙을 쓰고, 원본 `TrendChange` 사례(이전 0 → 비율 없음·신규, 이전 음수 → 비율 없음, 100 → 75는 −25%)가 그 규칙으로 통과한다. 원본 `RateLabel` 글자 대신 앱의 증감 글자를 쓰는 것은 `knownDiffs`에 적는다
+- **AC-509.1**: Given Worker 메모리의 진료 줄(환자 번호·진료일·처방코드·첫 내원일)·기간 합계와 기간·코드 목록, When `rxVisitSplit`, Then 원본 `medicore/rx_visit_split.py`의 `summarize`처럼 처방마다 신환(첫 내원일 ≥ 기간 첫날)·재진 환자 수·합계와 기간 합계(내원·환자·신환·재진)를 낸다. 골든: 원본을 `python3 -I`로 같은 가짜 줄에 돌린 `fixtures/stats/golden/rx-visit-split-*.json`과 순서까지 같다
+- **AC-509.2**: Given 같은 입력과 날짜별 합계, When `rxVisitSplitDays`, Then `summarize_days`처럼 날마다 처방별 신환(첫 내원일 = 그날)·재진 수가 골든과 같다
+- **AC-509.3**: Given 결과와 병원 이름, When `formatRxVisitSplit`·`formatRxVisitSplitDays`·`rxVisitHeadline`, Then 원본 `format_text`·`format_days_text`·`headline`과 같은 글이다(골든)
+- **AC-509.4**: Given Worker의 `split` 일, When 화면이 기간을 주면, Then Worker는 메모리의 진료 줄로 그 기간의 처방별 결과(처방마다 수와 이름만, 합계가 큰 차례, 같으면 코드 순)와 글을 보낸다. 환자 번호가 없다. 불러온 자료가 없거나 기간이 불러온 범위 밖이면 `{ kind: 'none' }`이다
 
 ## 읽어야 할 파일
 
@@ -21,13 +20,12 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/specs/stats/requirements.md` — REQ-508
-- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-8, '결정과 트레이드오프'(처방 추세는 건수만)
-- `/specs/stats/tasks.md` — TASK-8 (수정 범위·메모)
-- `/src/lib/analytics/dates.ts` (`weekStartOf` 월요일·`monthRange`·`addMonths`)
-- `/src/lib/analytics/compare.ts` (`compareNumbers`)
-- `/src/types/payload.ts` (`DayPayload.rx`), `/src/types/analysis.ts`
-- 이전 step에서 만든 파일: TASK-2 (저장 모양)
+- `/specs/stats/requirements.md` — REQ-509
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-9, TASK-5(Worker `memory`)
+- `/specs/stats/tasks.md` — TASK-9 (수정 범위·메모)
+- `/src/workers/stats/jobs.ts`·`helperData.ts`(`toVisitRows`)·`/src/workers/stats.worker.ts`·`/src/workers/statsClient.ts`, `/src/types/stats.ts` (TASK-5)
+- `/src/lib/analytics/dates.ts`
+- 이전 step에서 만든 파일: TASK-5 (Worker `load`와 `memory`)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -40,58 +38,79 @@
 - 원본 시험(`tests/*.py`·`*Tests.cs`)은 모두 가짜 자료다. 사례를 시험 씨앗으로 옮겨도 된다
 
 - 이 step에서 볼 원본(폴더 `YangjiBareun_사전점검/` 기준):
-  - `vendor/drbit_export/TrendMath.cs` (`ComparisonLabel`·`ComparisonRange`·`Validate`·`Build`)
-  - `vendor/drbit_export/TrendContracts.cs` (`TrendBucket`·`TrendComparison`·`TrendPoint`·`TrendChange`)
-  - `vendor/drbit_export/TrendTests.cs` (옮길 사례·기대값)
+  - `medicore/rx_visit_split.py` (`summarize`·`summarize_days`·`format_text`·`format_days_text`·`headline`·`period_text`·`day_label`·`validate_split`)
+  - `tests/test_rx_visit_split.py`, `tests/test_rx_visit_split_sql.py` (사례)
+  - `vendor/drbit_export/RxVisitSplit.cs` (`MaximumDays` 365, 결과 칸)
 
-## 수정 범위 (tasks.md TASK-8)
+## 수정 범위 (tasks.md TASK-9)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/lib/analytics/rxTrend.ts`
-  - `src/lib/analytics/rxTrend.test.ts`
-  - `src/types/analysis.ts`
+  - `src/lib/analytics/rxVisitSplit.ts`
+  - `src/lib/analytics/rxVisitSplit.test.ts`
+  - `scripts/stats/golden/rx_visit_split.py`
+  - `fixtures/stats/golden/rx-visit-split-*.json`
+  - `src/workers/stats/jobs.ts`
+  - `src/workers/stats/jobs.test.ts`
+  - `src/workers/stats.worker.ts`
+  - `src/workers/statsClient.ts`
+  - `src/workers/statsClient.test.ts`
+  - `src/types/stats.ts`
 - Tests:
-  - `src/lib/analytics/rxTrend.test.ts`
+  - `src/lib/analytics/rxVisitSplit.test.ts`
+  - `src/workers/stats/jobs.test.ts`
+  - `src/workers/statsClient.test.ts`
 - TDD: required
+- 메모: Worker 쪽은 `split` 일을 붙이는 것만 한다(TASK-5의 `load`는 고치지 않는다)
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **환자 자료 구역 울타리**: `src/lib/parsers`·`src/lib/analytics`·`src/lib/payload`·`src/lib/precheck`·`src/lib/bridge`·`src/workers`에서는 네트워크(`fetch`·`XMLHttpRequest`·`WebSocket`·`EventSource`·`sendBeacon`), `console`, 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`), React·Next·supabase·`lib/auth`·`lib/storage` import, JSX를 쓰지 않는다. 동적 `import()`는 글자로 고정한 경로만. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 울타리를 풀거나 `eslint-disable`로 피하지 않는다 (CLAUDE.md, ADR-020)
+- **골든 테스트**: 같은 가짜 입력을 원본(양지바른 `2a1069b`)과 우리 함수에 넣어 결과가 순서까지 같은지 깊은 비교한다. 원본 결과는 `scripts/stats/golden/`의 작은 실행 글로 한 번 만들어 `fixtures/stats/golden/<이름>.json`에 커밋한다. Python 원본은 `python3 -I`로 돌린다. 골든 파일 머리에 `{ "source": "seoseungkwan/shared@2a1069b", "file": …, "entry": …, "knownDiffs": [...] }`를 적는다. 일부러 다르게 한 것만 `knownDiffs`에 이유와 함께 적고, 적지 않은 차이는 실패다. 시험은 원본 없이 커밋한 골든 파일과 견주어 돈다(골든을 다시 만들 때만 `YANGJI_SRC`가 필요)
 - **날짜는 한 곳**: 날짜 계산은 `src/lib/analytics/dates.ts`(한국 날짜, `YYYY-MM-DD`). 시험은 `TZ=Asia/Seoul`에서 돈다 (CLAUDE.md)
+- **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 - **원본은 저장소 밖**: 원본 경로는 `YANGJI_SRC` 환경 변수나 스크립트 인자로만 받는다. 원본 파일 통째를 저장소에 복사·커밋하지 않는다. 커밋하는 것은 옮긴 코드, 원본 SQL 문장 사본(`original-sql/*.sql`), 골든 결과뿐이다 (specs/stats/tasks.md 머리말)
 
 ## 작업
 
-### 1. 코드 (`src/lib/analytics/rxTrend.ts`, 환자 자료 구역)
-- design.md TASK-8 시그니처. 원본 C# 줄을 옮긴다: 비교 기간(`PreviousEqualDays` = 바로 앞 같은 일수, `PreviousMonth`, `PreviousYear` + 윤년 안내), 칸 나누기(일·주(월요일 시작)·월, 기간 끝에 걸린 칸은 `partial`), 코드마다 점
-- 자료: 칸 안 날마다 그날 `DayPayload`의 그 처방 `patients`(건)·`newPatients`·`returning`을 더한다. 그날 줄이 있는데 처방이 없으면 0, 그날 줄이 없으면 더하지 않고 그 칸 `partial = true`(AC-508.1)
-- `quantity`·`amount`는 늘 null(AC-508.4)
+### 1. 코드 (`src/lib/analytics/rxVisitSplit.ts`)
+- design.md TASK-9 시그니처. 원본 Python 줄을 옮긴다. 원본의 집합(`new`·`returning`)은 수로만 돌려준다. 병원 이름은 인자다. `eswt`는 원본의 기본(끔)과 같게만 둔다(범위 밖)
 
-### 2. 시험 (`rxTrend.test.ts`)
-- 시험 머리에 `knownDiffs` 목록(이유 포함): 소모량·금액·단위 사례(저장 모양에 없음, 매출 탭 몫), 원본 `RateLabel` 글자(앱 `compareNumbers`·`formatDelta`), 빠진 날짜 0 채움(원본은 읽은 기간 전체가 자료라 0, 우리는 일 숫자가 있는 날만 0)
-- 원본 `TrendTests.cs` 사례를 하나씩 옮긴다(이름에 AC ID와 원본 확인 글): 직전 동일일수 비교 범위·윤년·서로 다른 월 칸 수·부분 주와 월요일 경계·코드 분리(AC-508.1·508.2), 일별 외래 재진은 나머지(AC-508.3), 0 기준·음수 기준·감소율(AC-508.5)
+### 2. 골든 (`scripts/stats/golden/rx_visit_split.py`, `fixtures/stats/golden/`)
+- 작은 실행 글: `YANGJI_SRC`의 `medicore/rx_visit_split.py`를 `python3 -I`로 불러 가짜 입력(`fixtures/stats/golden/rx-visit-split-input.json`: 원본 `validate_split`을 지나는 모양, 차트번호 `9`로 시작하는 가짜, 처방 4~5개, 기간 첫날 전 신환·기간 안 신환·재진, 하루 여러 처방)에 돌려 `rx-visit-split-summary.json`·`rx-visit-split-days.json`·`rx-visit-split-text.json`(글 셋)을 쓴다. 머리 `{source, file, entry, knownDiffs}`
+- 시험은 커밋한 골든과 견준다(원본 없이 돈다)
+
+### 3. Worker `split` 일 (`jobs.ts`·`stats.worker.ts`·`statsClient.ts`·`types/stats.ts`)
+```ts
+export function splitJob(memory: StatsMemory | null, req: { from: string; to: string }): RxSplitView   // { kind: 'none' } | { kind: 'split'; split: RxSplit; days: RxSplitDay[]; text: string; headline: string }
+export function requestSplit(worker: WorkerLike, req: { from: string; to: string }, opts?): Promise<RxSplitView>
+```
+- 코드 목록 = 그 기간 진료 줄의 모든 처방코드, 줄은 합계가 큰 차례(같으면 코드 순)(AC-509.4). 불러온 자료가 없거나 기간이 불러온 범위 밖이면 `{ kind: 'none' }`
+- `load` 일(TASK-5)은 고치지 않는다
+
+### 4. 시험
+- `rxVisitSplit.test.ts`(AC-509.1~509.3 골든), `jobs.test.ts`(AC-509.4: 결과에 환자 번호 없음, 범위 밖 → none), `statsClient.test.ts`(`requestSplit` 시간 초과·실패 번호)
 
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
-2. `python3 ~/.claude/harness/bin/tdd-run TASK-8 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
-3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-8 --expect green` 으로 통과(GREEN)를 기록한다
+2. `python3 ~/.claude/harness/bin/tdd-run TASK-9 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
+3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-9 --expect green` 으로 통과(GREEN)를 기록한다
 4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/analytics/rxTrend.test.ts
-npx vitest run src/lib/analytics   # 지금 통계 그대로
-python3 ~/.claude/harness/bin/tdd-run TASK-8 --expect green
+npx vitest run src/lib/analytics/rxVisitSplit.test.ts src/workers/stats src/workers/statsClient.test.ts
+npx vitest run src/lib/analytics src/workers   # 지금 통계·Worker 그대로
+python3 ~/.claude/harness/bin/tdd-run TASK-9 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-508.1 ~ AC-508.5이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-509.1 ~ AC-509.4이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -110,10 +129,10 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 원본 시험 기대값을 우리 결과에 맞춰 바꾸지 마라. 이유: 원본 값 그대로가 AC다. 다르게 한 것은 `knownDiffs`에만
-- 일 숫자가 없는 날을 0으로 채우지 마라. 이유: 없는 것과 0은 다르다(AC-508.1, UI_GUIDE '빈 상태')
-- 소모량·금액을 0으로 채우지 마라. 이유: '자료 없음'은 null이다(AC-508.4)
-- 지금 `types/analysis.ts` 모양을 바꾸지 마라(더하기만). 이유: 지금 통계 코드와 시험이 그 모양을 쓴다
+- 원본 Python 글(문장·띄어쓰기·숫자 모양·`ljust` 폭)을 다듬지 마라. 이유: 골든과 같아야 한다(AC-509.3)
+- 골든 파일을 손으로 고치지 마라. 이유: 실행 글이 원본에서 만든 값이어야 한다
+- 환자 번호·진료 줄을 Worker 밖으로 보내지 마라. 이유: 화면에는 처방마다 수만(AC-509.4)
+- TASK-5의 `load` 일 동작을 바꾸지 마라. 이유: 저장 모양 시험이 그 동작에 기댄다
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다

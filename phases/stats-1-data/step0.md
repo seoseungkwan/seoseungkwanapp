@@ -1,6 +1,6 @@
 # Step 0: revisit-30
 
-> **TASK-1** 신환 30일 재방문 세기 · **REQ-501** · AC-501.1 ~ AC-501.4
+> **TASK-1** 신환 30일 재방문 세기 · **REQ-501** · AC-501.1 ~ AC-501.5
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 0 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-1 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-029 (AC-029.1) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -11,8 +11,9 @@
 
 - **AC-501.1**: Given 신환 줄, When `aggregate`로 세면, Then 칸(일·주·월)마다 `revisit.within30` = 첫 신환일 다음 날부터 30일째까지(양 끝 포함) 외래 줄(어떤 처방이든)이 있는 집단 환자 수다. 집단·첫 신환일·입원 줄·같은 날 다른 처방·다시 신환으로 찍힌 날의 규칙은 지금 7·14일(stats-core AC-006.4·006.5)과 같고, `within7 ≤ within14 ≤ within30 ≤ cohort`다
 - **AC-501.2**: Given 31일째에만 다시 온 신환과 30일째에 다시 온 신환, When 세면, Then 30일째는 30일 재방문이고 31일째는 아니다
-- **AC-501.3**: Given 칸 하나, When `buildSummary`로 요약하면, Then `RevisitView.within30`·`rate30`은 '칸 첫날 ~ 칸 끝날 + 30일'이 모두 덮였고 끝났을 때만 숫자이고, 아니면 null('집계 중')이다. 집단이 0명이면 `rate30`은 null이다. 30일이 숫자면 7·14일도 숫자다
-- **AC-501.4**: Given 지금 7·14일 시험(`aggregate.test.ts`·`compare.test.ts`·`analyzeFiles.test.ts`), When 돌리면, Then 기대값에 `within30`(·`rate30`) 칸만 더하고 나머지는 한 글자도 바꾸지 않은 채 통과한다
+- **AC-501.3**: Given 칸 하나, When `buildSummary`로 요약하면, Then `RevisitView.within30`·`rate30`·`after30`은 '칸 첫날 ~ 칸 끝날 + 30일'이 모두 덮였고 끝났을 때만 숫자이고, 아니면 null('집계 중')이다. 집단이 0명이면 `rate30`은 null이다. 30일이 숫자면 7·14일도 숫자다
+- **AC-501.4**: Given 지금 7·14일 시험(`aggregate.test.ts`·`compare.test.ts`·`analyzeFiles.test.ts`), When 돌리면, Then 기대값에 `within30`·`after30`(·`rate30`) 칸만 더하고 나머지는 한 글자도 바꾸지 않은 채 통과한다
+- **AC-501.5**: Given 30일 안에는 다시 오지 않고 31일째 이후에 처음 다시 온 신환, When 세면, Then `revisit.after30`에 센다(불러온 자료 끝날까지 본 수 — 원본 `CohortMonthResult.ReturnAfter30Days`와 같은 뜻). 한 환자는 within30과 after30 가운데 하나에만 들고 `within30 + after30 ≤ cohort`다
 
 ## 읽어야 할 파일
 
@@ -57,26 +58,27 @@
 
 ### 1. 모양 (`src/types/analysis.ts`, 더하기만)
 ```ts
-export type RevisitCounts = { cohort: number; within7: number; within14: number; within30: number }
+export type RevisitCounts = { cohort: number; within7: number; within14: number; within30: number; after30: number }
 export type RevisitView = {
   cohort: number
-  within7: number | null; within14: number | null; within30: number | null
+  within7: number | null; within14: number | null; within30: number | null; after30: number | null
   rate7: number | null; rate14: number | null; rate30: number | null
 }
 ```
 
 ### 2. 세기 (`aggregate.ts`)
 - 지금 7·14일을 세는 같은 고리(첫 신환일 f, 외래 방문 날 v)에서 `1 ≤ diffDays(f, v) ≤ 30`이면 `within30`을 더한다. 첫 신환일·입원 줄·같은 날·다시 신환으로 찍힌 날의 규칙은 지금 그대로다(stats-core design '재방문 세는 법')
-- 칸(일·주·월) 모두에 더한다. `within7 ≤ within14 ≤ within30 ≤ cohort`
+- 첫 재방문(가장 이른 v > f)이 31일째 이후면 `after30`을 더한다(원본 `ReturnAfter30Days`, 불러온 자료 끝날까지 본 수). 한 환자는 within30·after30 가운데 하나에만 든다(AC-501.5)
+- 칸(일·주·월) 모두에 더한다. `within7 ≤ within14 ≤ within30 ≤ cohort`, `within30 + after30 ≤ cohort`
 
 ### 3. 요약 (`compare.ts`)
-- 지금 N일 판정(`bucketState({ from: 칸 첫날, to: addDays(칸 끝날, N) }, merged, today) === 'complete'`)에 N = 30을 더한다. `rate30 = within30 / cohort`(집단 0이면 null, 집계 중이면 null)
+- 지금 N일 판정(`bucketState({ from: 칸 첫날, to: addDays(칸 끝날, N) }, merged, today) === 'complete'`)에 N = 30을 더한다. `rate30 = within30 / cohort`(집단 0이면 null, 집계 중이면 null). `after30`은 30일이 숫자일 때만 숫자, 아니면 null
 - 30일이 숫자면 7·14일도 숫자다(덮은 기간이 더 길다)
 
 ### 4. 시험
-- `aggregate.test.ts`: AC-501.1(30일째 = 재방문, 첫 신환일과 같은 날 다른 처방·입원 줄은 아님, 다시 신환으로 찍힌 날은 재방문), AC-501.2(31일째만 온 환자는 아님)
+- `aggregate.test.ts`: AC-501.1(30일째 = 재방문, 첫 신환일과 같은 날 다른 처방·입원 줄은 아님, 다시 신환으로 찍힌 날은 재방문), AC-501.2(31일째만 온 환자는 아님), AC-501.5(31일째 이후 처음 다시 온 환자 → after30, 30일 안에 온 환자는 after30에 없음)
 - `compare.test.ts`: AC-501.3(칸 끝 + 30일이 덮이지 않음 → null, 덮이고 지남 → 숫자, 집단 0 → rate30 null)
-- 지금 시험(AC-501.4): 기대값 객체에 `within30`(·`rate30`) 칸만 더한다. 다른 값은 바꾸지 않는다
+- 지금 시험(AC-501.4): 기대값 객체에 `within30`·`after30`(·`rate30`) 칸만 더한다. 다른 값은 바꾸지 않는다
 
 ## TDD 순서
 
@@ -96,7 +98,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-501.1 ~ AC-501.4이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-501.1 ~ AC-501.5이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

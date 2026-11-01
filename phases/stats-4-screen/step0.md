@@ -1,15 +1,23 @@
-# Step 0: stats-mockup
+# Step 0: stats-sections
 
-> **TASK-12** 통계 화면 목업 (사용자 승인) · **REQ-512** · AC-512.1 ~ AC-512.2
+> **TASK-13** 통계 그래프 섹션 · **REQ-513** · AC-513.1 ~ AC-513.9
 > Phase 4 · 화면 `stats-4-screen` · Step 0 — `specs/stats/tasks.md`
-> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-12 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 옮겨 옴: precheck REQ-031 (AC-031.3·031.4·031.5) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/stats/requirements.md`의 REQ-512(통계 화면 목업 (문서))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/stats/requirements.md`의 REQ-513(통계 그래프 섹션 (`components/stats/sections/*`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-512.1**: Given `docs/mockups/stats/index.html`·`notes.md`, When 열면, Then 화면 1 PC 불러온 뒤 · 화면 2 PC 처음(저장된 숫자 없음) · 화면 3 휴대폰(저장된 숫자만) · 화면 4 그래프 자세히 열림 · 화면 5 불러오는 중·저장 실패·확인 필요가 있고, REQ-513·REQ-514의 섹션·문구·기간 단추·증감 ▲▼가 보인다. 숫자는 모두 예시이고 화면 위에 "예시 숫자" 표시가 있다. 모양은 `docs/UI_GUIDE.md`와 ui-90 시안(`docs/mockups/ui-90/app/`)의 토큰·글자 단계를 따른다
-- **AC-512.2**: Given 사용자 승인, When 기록하면, Then `notes.md` 맨 위에 승인 날짜·온라인 링크가 있다. 승인 전에는 TASK-13~16을 시작하지 않는다(CLAUDE.md: 화면은 목업 승인 뒤)
+- **AC-513.1**: Given 보기 모양(REQ-511·509·510), When 섹션을 그리면, Then 한 쪽에 이어서(도구 단추 줄 없음) 기간 요약 → 환자 수 추이 → 신환 재방문율(첫 재방문까지 날수 포함) → 처방 추세 → 처방별 신환·재진 → 원장님 보고 문장 → 요일별 환자 수 차례이고 섹션마다 h2다. 차례·문구·배치가 목업 승인본과 다르면 목업이 이긴다(그때 이 AC의 차례만 고친다)
+- **AC-513.2**: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE)
+- **AC-513.3**: Given 그래프마다 있는 [자세히] 단추(`aria-expanded`, `aria-controls`), When 누르면, Then 그 그래프 바로 아래에 숫자 표(머리 줄 + 날짜·달마다 값)가 열리고 다시 누르면 닫힌다. 주소(URL)는 바뀌지 않는다. 처방 추세에서 처방 줄을 누르면 그 처방의 칸별 건수·신환·재진 막대가 열린다
+- **AC-513.4**: Given 자료 없는 섹션, When 그리면, Then 그래프·빈 틀 없이 "자료 없음" + 한 줄 안내(목업 문구)다. 숫자를 지어내지 않는다
+- **AC-513.5**: Given 처방 추세, When 그리면, Then 금액·소모량 자리에 "금액·소모량은 매출 탭에서 볼 수 있어요"(목업 문구)를 보인다
+- **AC-513.6**: Given 원장님 보고 문장, When 그리면, Then 일일(오늘·어제)·월말(이번 달·지난달) 고르기 단추 묶음, 보고 글(글자로만, 줄바꿈 그대로), [복사], '확인 필요' 줄 표시(색과 함께 "확인 필요" 글자)가 있다. [복사]는 대시보드 [복사]와 같은 동작이다(`navigator.clipboard.writeText`, 2초 "복사했어요", 실패하면 직접 복사 안내, 폭 흔들림 없음). `ok: false` 벌은 "이 기간은 보고를 확정할 수 없어요" + 비트 원본 통계에서 확인하라는 안내다
+- **AC-513.7**: Given 처방별 신환·재진, When 그리면, Then 머리 글(`rxVisitHeadline`), 처방마다 신환·재진·합계 표(합계가 큰 차례 10개, [모두 보기]로 나머지), [표 복사](`formatRxVisitSplit` 글)가 있다
+- **AC-513.8**: Given 비트 PC에서 불러온 자료가 없음, When 처방별 신환·재진·원장님 보고 문장을 그리면, Then "비트 PC에서 불러오면 보여요" + 한 줄 이유(진료 줄·금액은 서버에 저장하지 않는다)다
+- **AC-513.9**: Given `components/stats/**`(시험 밖) 소스, When 보면, Then Supabase·`fetch`·브라우저 저장소·`lib/bridge`·`workers`를 쓰지 않고(섹션은 props만 받는다) `ds` 공통 모양과 토큰만 쓰며, 상자 안 상자가 없고 앱 화면 규칙 시험(`components/ui/classes.test.ts` 검사 목록에 `src/components/stats`를 더함)을 통과한다
 
 ## 읽어야 할 파일
 
@@ -17,66 +25,83 @@
 
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
-- `/specs/stats/requirements.md` — REQ-512
-- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-12~14, '사용자에게 물을 것'
-- `/specs/stats/tasks.md` — TASK-12 (수정 범위·메모)
-- `/docs/UI_GUIDE.md` (토큰·글자 단계·차트·빈 상태·앱 틀)
-- `/docs/mockups/ui-90/app/gen.py`·`css_app.css`·`css_page.css`·`app.js` (앱 시안 만드는 도구 — 같은 방식으로)
-- `/docs/mockups/dashboard-home/notes.md` (대시보드 기간별 흐름·보고 문장 문구)
-- `/docs/mockups/tab-frame/index.html` (옛 시안의 통계 탭 내용, 참고만)
-- `/specs/stats/requirements.md` — REQ-511·513·514 (화면에 보일 것)
-- 사전점검 시안 화면 9 '통계 추가분'(`id="v-stats"`): https://claude.ai/artifact/499cp2Sodph7jYJ4gX4exj (참고만)
-- 이전 step에서 만든 파일: TASK-11 (화면 숫자 — 시안의 칸 이름과 맞춘다)
+- `/specs/stats/requirements.md` — REQ-513
+- `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-13, '결정과 트레이드오프'(복사 단추는 통계 폴더에)
+- `/specs/stats/tasks.md` — TASK-13 (수정 범위·메모)
+- `/docs/mockups/stats/notes.md` (승인본 — 맨 위 승인 줄이 없으면 시작하지 말고 `blocked`)
+- `/docs/UI_GUIDE.md` '차트'·'빈 상태'·'공통 모양'
+- `/src/components/ui/classes.ts`(`ds`), `/src/components/ui/classes.test.ts`(앱 화면 규칙 시험)
+- `/src/components/charts/*` (부품과 `format.ts`의 `formatDelta`·`formatCount`·`formatRate`)
+- `/src/components/dashboard/summary/DashboardAnalysis.tsx`·`ReportBlock.tsx` (같은 그래프·복사 동작의 본보기)
+- `/src/components/stats/view.ts` (TASK-11), `/src/lib/clinicReport/reportText.ts` (TASK-10), `/src/types/stats.ts`
+- 이전 step에서 만든 파일: TASK-12 (목업 승인본), TASK-11·10·9 (보기 모양)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
-## 승인된 목업
+## 승인된 목업 (화면 step)
 
-- 이 step이 목업을 만든다. 승인 전에는 TASK-13~16을 시작하지 않는다(CLAUDE.md: 화면은 목업 승인 뒤)
+- `docs/mockups/stats/index.html`·`notes.md` 승인본(TASK-12). `notes.md` 맨 위에 '승인:' 줄이 없으면 시작하지 말고 `blocked`(사유: 목업 승인 전)로 멈춘다
+- 명세의 화면 AC는 내용과 동작을 정하고, 배치·문구는 목업이 정한다
 
-## 수정 범위 (tasks.md TASK-12)
+## 수정 범위 (tasks.md TASK-13)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `docs/mockups/stats/index.html`
-  - `docs/mockups/stats/notes.md`
-  - `docs/mockups/stats/gen.py`
-- TDD: exempt — 정적 시안과 메모만 만든다. 앱 코드가 없다
-- 메모: 끝 조건: 온라인 시안 링크를 사용자에게 드리고 승인을 받는다. 승인 전에는 step을 `blocked`(사유: 목업 승인 대기)로 둔다. 승인 뒤 고칠 곳이 나오면 시안을 고치고 다시 묻는다. 승인본이 이 명세의 화면 AC와 다르면(차례·문구) AC-513.1의 '목업이 이긴다'를 따르고, 동작이 다르면 명세를 고쳐 다시 승인받는다
+  - `src/components/stats/sections/*`
+  - `src/components/ui/classes.test.ts`
+- Tests:
+  - `src/components/stats/sections/PeriodSummary.test.tsx`
+  - `src/components/stats/sections/PatientTrendSection.test.tsx`
+  - `src/components/stats/sections/RevisitSection.test.tsx`
+  - `src/components/stats/sections/RxTrendSection.test.tsx`
+  - `src/components/stats/sections/RxSplitSection.test.tsx`
+  - `src/components/stats/sections/ReportSection.test.tsx`
+  - `src/components/stats/sections/WeekdaySection.test.tsx`
+  - `src/components/stats/sections/DetailToggle.test.tsx`
+  - `src/components/stats/sections/CopyButton.test.tsx`
+  - `src/components/ui/classes.test.ts`
+- TDD: required
+- 메모: `classes.test.ts`는 `APP_DIRS`에 `'src/components/stats'` 한 줄만 더한다
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **화면은 승인된 목업대로**: 배치·문구·상태는 `docs/mockups/stats/` 승인본(`notes.md` 맨 위 승인 기록)을 따른다. 모양은 `components/ui/classes.ts`의 `ds`와 `globals.css` 토큰만(옛 `ui.`·옛 Tailwind 이름·`font-bold` 없음, 굵기 400·500·600). 좋고 나쁨은 색만 쓰지 않고 ▲▼·글자를 같이 쓴다. 그래프는 움직이지 않는다. 상자 안 상자 금지 (CLAUDE.md, docs/UI_GUIDE.md)
+- **브라우저 저장소·주소 안 씀**: 숫자·처방 이름·보고 글을 `localStorage`·`sessionStorage`·`indexedDB`·주소(URL·쿼리)·`history.state`에 넣지 않는다. 화면 상태와 Worker 메모리에만 둔다
 - **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 
 ## 작업
 
-### 1. 시안 (`docs/mockups/stats/gen.py` → `index.html`)
-- ui-90 시안 도구와 같은 방식(같은 css·글꼴·앱 틀)으로 통계 탭 화면을 만든다. 화면 1 PC 불러온 뒤 · 화면 2 PC 처음(저장된 숫자 없음) · 화면 3 휴대폰 390(저장된 숫자만, PC 전용 섹션은 "비트 PC에서 불러오면 보여요") · 화면 4 그래프 자세히 열림(환자 수 추이 숫자 표·처방 하나의 추세) · 화면 5 불러오는 중·저장 실패(`E-SAVE-FAILED` + [다시 저장])·확인 필요(일부 기록) (AC-512.1)
-- 섹션 차례(AC-513.1)·기간 단추(AC-514.2)·자료 고르기([비트에서 불러오기]·"오늘 진료 끝"·파일)·출처 줄(AC-514.7)·▲▼ 증감·보고 문장 고르기(일일 오늘·어제 / 월말 이번 달·지난달)·[복사]·'확인 필요' 표시
-- 숫자는 모두 예시이고 화면 위에 "예시 숫자" 띠(시안에만). 환자 이름·차트번호 모양을 쓰지 않는다
+### 1. 섹션 (`src/components/stats/sections/*`)
+- `PeriodSummary`·`PatientTrendSection`·`RevisitSection`·`RxTrendSection`·`RxSplitSection`·`ReportSection`·`WeekdaySection` + `DetailToggle`·`CopyButton`. 모두 props(보기 모양)만 받는다. 자세히·복사·고르기 상태만 `'use client'`
+- AC-513.1~513.9를 승인본 배치·문구로. 차트는 `components/charts` 부품만, 증감은 `formatDelta`(▲▼ + 글자), 빈 상태는 그래프 없이 "자료 없음" + 한 줄
+- `CopyButton`: 대시보드 `ReportBlock`의 [복사] 동작(성공 2초 "복사했어요", `aria-live`, 실패 안내, 폭 흔들림 없음)을 옮긴다. 문구는 이 파일 안에(`lib/errors.ts`를 고치지 않는다)
 
-### 2. 메모 (`docs/mockups/stats/notes.md`)
-- 화면마다 문구·상태·배치(1440·1024·768·390)·모양 값(`ds` 키·토큰·글자 단계·간격), 빈 상태 문구, 자세히 단추 동작. 시안과 명세가 다르면 무엇이 이기는지(AC-513.1)
+### 2. 규칙 시험 (`components/ui/classes.test.ts`)
+- `APP_DIRS`에 `'src/components/stats'` 한 줄(AC-513.9). 다른 줄은 고치지 않는다
 
-### 3. 승인 받기
-- 온라인 시안(artifact)으로 올려 링크를 summary에 적고 `blocked`(사유: "목업 승인 대기 — 링크")로 멈춘다. 메인 세션이 사용자에게 쉬운 말로 보이고 승인을 받는다
-- 승인되면(다음 실행) `notes.md` 맨 위에 "승인: 2026-MM-DD · 링크"를 적고 `completed`(AC-512.2). 고칠 곳이 나오면 시안·메모를 고치고 다시 `blocked`
+### 3. 시험 (jsdom, Testing Library — 지금 시험과 같은 도구)
+- 섹션마다 AC ID 이름으로: 차례·h2, 자세히 열고 닫기(`aria-expanded`), 빈 상태, ▲▼ 글자, 처방 추세 금액 안내, 보고 고르기·확인 필요 표시·복사(가짜 `navigator.clipboard`), PC 전용 안내
 
-## TDD
+## TDD 순서
 
-- `TDD: exempt` — 정적 시안과 메모만 만든다. 앱 코드와 시험이 없다. `tdd-run`을 부르지 않는다
+1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
+2. `python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일(`*.config.*`·`tsconfig*.json`·`package.json`·`.gitignore`)과 시험 파일은 RED 전에도 고칠 수 있다
+3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green` 으로 통과(GREEN)를 기록한다
+4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-test -f docs/mockups/stats/index.html && test -f docs/mockups/stats/notes.md
-grep -q '예시 숫자' docs/mockups/stats/index.html
-grep -q '^승인:' docs/mockups/stats/notes.md   # 승인 뒤에만 통과
+npx vitest run src/components/stats/sections src/components/ui/classes.test.ts
+npx vitest run src/components/charts src/components/dashboard   # 차트·대시보드 그대로
+python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green
+npm run lint && npm test && npm run build
+python3 ~/.claude/harness/bin/verify
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다.
+- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-513.1 ~ AC-513.9이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -95,10 +120,11 @@ grep -q '^승인:' docs/mockups/stats/notes.md   # 승인 뒤에만 통과
 
 ## 금지사항
 
-- 앱 코드(`src/`)를 만들거나 고치지 마라. 이유: 화면은 목업 승인 뒤에만 구현한다(CLAUDE.md)
-- 승인 없이 `notes.md`에 승인 줄을 쓰지 마라. 이유: 승인은 사용자만 한다
-- 시안에 실제 숫자·환자 이름·차트번호 모양을 넣지 마라. 이유: 예시 숫자만(CLAUDE.md 개인정보)
-- 명세의 동작(무엇이 어디서 오는지·저장 규칙)을 시안에서 바꾸지 마라. 이유: 동작이 달라지면 명세를 고쳐 다시 승인받아야 한다(TASK-12 끝 조건)
+- 승인본과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로(CLAUDE.md)
+- 섹션에서 Supabase·`fetch`·`lib/bridge`·`workers`를 불러오지 마라. 이유: 섹션은 props만 그린다(AC-513.9)
+- 그래프 패키지(recharts·chart.js 등)를 넣지 마라. 이유: 차트 부품만 쓴다(UI_GUIDE, 새 패키지 없음)
+- `components/common/CopyButton.tsx`를 만들지 마라. 이유: 청구 5단계가 그 이름을 만든다(design.md '결정')
+- 보고 글을 HTML로 그리지 마라(`dangerouslySetInnerHTML`). 이유: 글자로만(ESLint `react/no-danger`)
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - `specs/precheck/`·`phases/precheck-*`를 고치지 마라. 이유: 청구 브랜치가 그 파일을 가진다. 그쪽이 할 일은 `specs/stats/design.md` '사전점검 명세가 할 일'에 적혀 있다
@@ -106,4 +132,4 @@ grep -q '^승인:' docs/mockups/stats/notes.md   # 승인 뒤에만 통과
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
 - 새 npm·NuGet 패키지를 넣지 마라. 이유: `package.json`·csproj가 수정 범위 밖이고 ADR 기술 스택 밖이다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
-- `.harness/*`·`CLAUDE.md`·`plan.md`를 고치지 마라 (`docs/mockups/stats/`는 이 step 범위다). 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다
+- `.harness/*`·`CLAUDE.md`·`plan.md`를 고치지 마라 · `docs/*`. 이유: 이 step의 범위가 아니고, 규칙 문서는 사용자 승인으로만 바뀐다

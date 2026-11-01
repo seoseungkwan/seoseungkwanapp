@@ -11,6 +11,11 @@
       "step": 1,
       "name": "stats-storage",
       "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "rx-trend",
+      "status": "pending"
     }
   ]
 }
