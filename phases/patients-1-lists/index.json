@@ -23,7 +23,8 @@
     {
       "step": 3,
       "name": "patients-worker",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/workers/patients.worker.ts(handler를 잇기만), patients/assemble.ts(createAssembler: chunk·end·abort·take + discardUntaken), plan.ts(followupPlan·recallPlan), jobs.ts(readTargets·readStore·buildFollowup·mergeRecall·buildRecall·filterFollowup·filterRecall·markKey·setMark·pruneMarks·fitStore·storePayload·contactCounts), handler.ts(createHandler: onScreen·onPort·setPort, 저장 줄 세우기, 저장 상태 unknown·loaded·failed), types/patients.ts에 Worker 메시지 타입, fixtures/patients/fake/{targets-followup,targets-injection,store-first,store-marked}.json. TASK-10(usePatientsWorker)에 전달: reload는 새 스트림보다 먼저 보내고, 그 뒤 옛 id의 piece·stored는 Worker에 보내지 않는다(옛 흐름은 화면이 버린다). handler는 옛 흐름을 가려내지 못한다: reload가 지운 id의 piece가 다음 plan 뒤에 오면 그 종류가 E-BRIDGE-BAD-REPLY로 실패하고, 옛 stored면 저장 상태가 failed가 된다. 남은 틈(리뷰 참고): reload 뒤에 첫 조각이 온 옛 요청을 화면이 버리면 다음 reload나 탭을 닫을 때까지 푼 JSON이 Worker 메모리에 남는다(쌓이지 않고 밖으로 나가지 않음). sent에는 시간 제한이 없다(도우미가 끊기지 않고 멈추면 뒤따르는 [연락함]이 답을 못 받음, 포트가 바뀌거나 새로 고치면 풀림). 명세와 다른 점 없음"
     }
   ]
 }

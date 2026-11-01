@@ -35,6 +35,7 @@ function columnCells(rows: unknown[][], match: (header: string) => boolean): unk
   return rows.slice(head + 1).flatMap((row) => columns.map((index) => row[index]))
 }
 
+type RowsRecord = { chart: string; name: string; phone: string }
 const isBlank = (cell: unknown) => String(cell ?? '').trim() === ''
 const notPhoneLike = (text: string) => !/\d{3,}/.test(text.replace(FAKE_PHONE, ''))
 
@@ -131,6 +132,39 @@ describe('make-fake-patients', () => {
     expect(records).toHaveLength(50_001)
     expect(new Set(records.map((r) => r.chart)).size).toBe(50_001)
     expect(records.every((r) => FAKE_NAME.test(r.name) && FAKE_CHART.test(r.chart) && notPhoneLike(r.phone))).toBe(true)
+  })
+
+  it('AC-604.3 정기 주사·F/U 조각: 약속한 답 모양이고 이름·차트번호·전화가 가짜 모양뿐이다', () => {
+    const files = buildFakePatients()
+    const pieces = [...files['targets-followup.json'].pieces, ...files['targets-injection.json'].pieces]
+    expect(files['targets-followup.json'].pieces).toHaveLength(4)
+    expect(files['targets-injection.json'].pieces).toHaveLength(8)
+    pieces.forEach((piece, index) => {
+      expect(piece.v, `조각 ${index}`).toBe(1)
+      expect(piece.chart[0], `조각 ${index}`).toEqual(['내원번호', '차트번호', '환자명', '증상', '기록날짜'])
+      expect(piece.rx[0], `조각 ${index}`).toEqual(piece.kind === 'followup' ? ['차트번호', '휴대폰'] : ['처방코드', '차트번호', '처방일자', '휴대폰'])
+      for (const cell of columnCells(piece.chart, (h) => h === '환자명')) expect(FAKE_NAME.test(String(cell)), `조각 ${index} 이름`).toBe(true)
+      for (const table of [piece.chart, piece.rx]) {
+        for (const cell of columnCells(table, (h) => h === '차트번호')) expect(FAKE_CHART.test(String(cell)), `조각 ${index} 차트번호`).toBe(true)
+      }
+      for (const cell of columnCells(piece.chart, (h) => h === '내원번호')) expect(FAKE_VISIT.test(String(cell)), `조각 ${index} 내원번호`).toBe(true)
+      for (const cell of columnCells(piece.rx, (h) => h === '휴대폰')) expect(notPhoneLike(String(cell)), `조각 ${index} 전화`).toBe(true)
+    })
+  })
+
+  it('AC-604.6 저장 사례: 빈 것과 표시·기록이 든 것, 기록은 가짜 모양뿐이다', () => {
+    const files = buildFakePatients()
+    expect(files['store-first.json'].contact).toEqual({})
+    const marked = files['store-marked.json'].contact as { v: number; marks: Record<string, string>; recall: { records: RowsRecord[] } }
+    expect(marked.v).toBe(1)
+    expect(Object.keys(marked.marks).length).toBeGreaterThan(0)
+    expect(marked.recall.records.length).toBeGreaterThan(0)
+    marked.recall.records.forEach((r, index) => {
+      expect(FAKE_NAME.test(r.name), `기록 ${index} 이름`).toBe(true)
+      expect(FAKE_CHART.test(r.chart), `기록 ${index} 차트번호`).toBe(true)
+      expect(notPhoneLike(r.phone), `기록 ${index} 전화`).toBe(true)
+    })
+    Object.keys(marked.marks).forEach((key, index) => expect(/^[fr]\|[^|]+\|9\d{5}\|\d{4}-\d{2}-\d{2}$/.test(key), `표시 ${index}`).toBe(true))
   })
 
   it('AC-602.3·AC-602.4 어느 글자에도 진짜 같은 휴대폰 번호가 없다', () => {

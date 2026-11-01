@@ -113,3 +113,56 @@ export type RecallCoverage = {
 }
 export type RecallView = { rows: RecallRow[]; coverage: RecallCoverage }
 export type ContactCount = { followup_left: number; injection_left: number }
+
+// ── 연락 저장(contact.dat 안쪽, Worker가 만들고 읽는다. design.md 'contact 안쪽 모양') ─────
+
+export type ContactStoreData = {
+  v: 1
+  marks: Record<string /* 줄 열쇠 */, string /* 연락한 날 YYYY-MM-DD */>
+  recall: RecallHistory
+}
+
+// ── 화면 고르기(다시 읽지 않고 Worker가 거른다, AC-611.1·612.1) ─────────────────────
+
+export type FollowupFilters = { kind: '' | VisitKind; from?: string; to?: string; includeCond: boolean; includePast: boolean }
+export type RecallFilters = { from: string | null; to: string | null; overdue: boolean }
+
+// ── Worker 메시지(design.md 'Worker 메시지 약속'). 화면으로 가는 메시지에는 조각·보낼 글자가 없다 ─────
+
+export type PatientsRange = { from: string; to: string }
+export type TargetsKind = 'followup' | 'injection'
+export type ViewCodes = { followup?: string; recall?: string; store?: string }
+
+// 스트림이 거절되면 화면은 id를 모른다. 그때는 id 없이 받은 오류 번호(code)를 알린다
+export type PatientsScreenMessage =
+  | { type: 'plan'; today: string }
+  | { type: 'piece'; id?: string; kind: TargetsKind; from: string; to: string; code?: string }
+  | { type: 'stored'; id?: string; code?: string }
+  | { type: 'reload' }
+  | { type: 'build'; today: string }
+  | { type: 'filter'; tool: 'followup'; filters: FollowupFilters }
+  | { type: 'filter'; tool: 'recall'; filters: RecallFilters }
+  | { type: 'mark'; key: string; on: boolean; today: string }
+
+export type FilteredFollowup = {
+  type: 'filtered'
+  tool: 'followup'
+  rows: FollowupRow[]
+  undecided: UndecidedRow[]
+  copy: { list: string; listWithDate: string; phones?: undefined; missingPhones?: undefined }
+}
+export type FilteredRecall = {
+  type: 'filtered'
+  tool: 'recall'
+  rows: RecallRow[]
+  copy: { list: string; phones: string; missingPhones: number; listWithDate?: undefined }
+}
+
+export type PatientsWorkerMessage =
+  | { type: 'plan'; followup: PatientsRange[]; recall: PatientsRange[] | null; code?: string }
+  | { type: 'piece'; id: string | null; ok: boolean; code?: string }
+  | { type: 'stored'; ok: boolean; code?: string; recall: PatientsRange[] }
+  | { type: 'views'; followup: FollowupView | null; recall: RecallView | null; counts: ContactCount | null; codes: ViewCodes }
+  | FilteredFollowup
+  | FilteredRecall
+  | { type: 'marked'; key: string; ok: boolean; code?: string; counts: ContactCount | null }

@@ -53,11 +53,19 @@ export type RecallCasesFile = {
   coverage: { id: string; today: string; rules: RecallRuleCase[] | null; history: { from: string | null; records: RecallRecordCase[] } }[]
   copy: { id: string; records: RecallRecordCase[]; rx: unknown[][] | null }[]
 }
+// 도우미 contact.targets 답(design.md)과 store.load 답
+export type TargetsReply = { v: 1; kind: 'followup' | 'injection'; from: string; to: string; chart: string[][]; rx: string[][] }
+export type TargetsFile = { note: string; today: string; pieces: TargetsReply[] }
+export type StoreFile = { note: string; contact: unknown }
 export type FakePatients = {
   'followup-cases.json': FollowupCasesFile
   'chart-rows.json': ChartRowsFile
   'rx-rows.json': RxRowsFile
   'recall-cases.json': RecallCasesFile
+  'targets-followup.json': TargetsFile
+  'targets-injection.json': TargetsFile
+  'store-first.json': StoreFile
+  'store-marked.json': StoreFile
 }
 
 export const FAKE_PATIENTS_SEED = 20261101
@@ -1537,6 +1545,128 @@ function recallCases(): RecallCasesFile {
   }
 }
 
+// ── Worker 조각·저장 사례(targets-*.json, store-*.json, AC-604) ─────────────────
+
+// 오늘(2026-11-02, 월요일) 기준. F/U 120일 조각 넷과 처음 읽는 정기 주사 달 조각 여덟
+const PIECE_TODAY = '2026-11-02'
+const PIECE_H83 = ['내원번호', '차트번호', '환자명', '증상', '기록날짜']
+const PIECE_FU_RX = ['차트번호', '휴대폰']
+const PIECE_INJ_RX = ['처방코드', '차트번호', '처방일자', '휴대폰']
+
+// 번호 NN → 차트번호 9001NN·전화 010-0000-01NN·이름 가상환자NN
+const fuChart = (n: number) => String(900100 + n)
+const fuPhone = (n: number) => fakePhone(100 + n)
+const fuVisit = (visitNo: string, n: number, date: string, text: string) => [visitNo, fuChart(n), fakeName(n), text, date]
+const fuGiven = (n: number) => [fuChart(n), fuPhone(n)]
+
+function followupPieces(): TargetsReply[] {
+  const piece = (from: string, to: string, chart: string[][], rx: string[][]): TargetsReply => ({
+    v: 1,
+    kind: 'followup',
+    from,
+    to,
+    chart: [PIECE_H83, ...chart],
+    rx: [PIECE_FU_RX, ...rx],
+  })
+  return [
+    // 01은 뒤 조각에 새 내원이 있다(마지막 내원만 본다). 06은 지난 예정
+    piece(
+      '2026-07-06',
+      '2026-08-05',
+      [fuVisit('V0101', 1, '2026-07-10', '무릎 통증'), fuVisit('V0102', 6, '2026-07-10', '1주 뒤 f/u')],
+      [fuGiven(1), fuGiven(6)],
+    ),
+    // 날짜 미정
+    piece('2026-08-06', '2026-09-05', [fuVisit('V0201', 7, '2026-08-20', '추후 재내원')], [fuGiven(7)]),
+    // 그 기간에 자료가 없는 조각
+    piece('2026-09-06', '2026-10-06', [], []),
+    // 내일(01·02), 내일이지만 조건부(03), 오늘(04), 모레(08), 주사이고 전화 없음(05)
+    piece(
+      '2026-10-07',
+      PIECE_TODAY,
+      [
+        fuVisit('V0401', 1, '2026-10-27', '무릎 통증'),
+        fuVisit('V0401', 1, '2026-10-27', '1주 뒤 f/u'),
+        fuVisit('V0402', 2, PIECE_TODAY, '내일 재내원'),
+        fuVisit('V0403', 3, '2026-10-27', '아프면 1주 뒤 재내원'),
+        fuVisit('V0404', 4, '2026-10-26', '1주 뒤 f/u'),
+        fuVisit('V0405', 5, '2026-10-30', '어깨 통증'),
+        fuVisit('V0405', 5, '2026-10-30', '1주 뒤 주사'),
+        fuVisit('V0406', 8, '2026-10-28', '1주 뒤 f/u'),
+      ],
+      [fuGiven(1), fuGiven(2), fuGiven(3), fuGiven(4), fuGiven(8)],
+    ),
+  ]
+}
+
+// 정기 주사 줄 하나: 83 표 줄과 47 표 줄
+type Shot = { visitNo: string; chart: string; name: string; date: string; text: string; code: string; phone: string }
+const shot = (visitNo: string, chart: string, name: string, date: string, text: string, code: string, phone = ''): Shot => ({ visitNo, chart, name, date, text, code, phone })
+
+function injectionPieces(): TargetsReply[] {
+  const months: [string, string, Shot[]][] = [
+    [
+      '2026-04-01',
+      '2026-04-30',
+      [
+        shot('V1401', '900201', fakeName(21), '2026-04-18', '아라간 1차', CARTILAGE, fakePhone(201)),
+        shot('V1402', '900201', fakeName(21), '2026-04-25', '아라간 2차', CARTILAGE, fakePhone(201)),
+      ],
+    ],
+    // 3차 뒤 6개월 = 오늘
+    ['2026-05-01', '2026-05-31', [shot('V1501', '900201', fakeName(21), '2026-05-02', '아라간 3차', CARTILAGE, fakePhone(201))]],
+    // 3개월 지남. F/U 47 표에도 있는 사람(전화는 F/U 표가 먼저)
+    ['2026-06-01', '2026-06-30', [shot('V1601', '900101', fakeName(1), '2026-06-10', '비타민D', VITAMIN_D, fakePhone(9101))]],
+    // 지남, 전화 없음
+    ['2026-07-01', '2026-07-31', [shot('V1701', '900202', fakeName(22), '2026-07-01', '비타민D', VITAMIN_D)]],
+    // 예정일이 내일
+    ['2026-08-01', '2026-08-31', [shot('V1801', '900203', fakeName(23), '2026-08-03', '비타민D', VITAMIN_D, fakePhone(203))]],
+    ['2026-09-01', '2026-09-30', []],
+    // 예정일이 먼 줄, 다시 주사해 열쇠가 바뀌는 줄(store-marked.json의 900302)
+    [
+      '2026-10-01',
+      '2026-10-31',
+      [
+        shot('V2001', '900204', fakeName(24), '2026-10-05', '비타민D', VITAMIN_D, fakePhone(204)),
+        shot('V2002', '900302', fakeName(32), '2026-10-05', '비타민D', VITAMIN_D, fakePhone(302)),
+      ],
+    ],
+    ['2026-11-01', PIECE_TODAY, []],
+  ]
+  return months.map(([from, to, shots]) => ({
+    v: 1,
+    kind: 'injection',
+    from,
+    to,
+    chart: [PIECE_H83, ...shots.map((s) => [s.visitNo, s.chart, s.name, s.text, s.date])],
+    rx: [PIECE_INJ_RX, ...shots.map((s) => [s.code, s.chart, s.date, s.phone])],
+  }))
+}
+
+// 표시와 쌓인 기록이 든 저장: F/U 내일 줄 연락함·열쇠가 바뀐 F/U·1년 넘게 지난 정기 주사 연락함·다시 주사해 바뀔 정기 주사
+function markedStore() {
+  const vitamin = (chart: string, name: string, date: string, phone = ''): RecallRecordCase => ({ chart, name, date, codes: [VITAMIN_D], text: '비타민D', phone })
+  return {
+    v: 1,
+    marks: {
+      'f|V0401|900101|2026-11-03': '2026-11-01',
+      'f|V0000|900101|2026-10-01': '2026-09-30',
+      'r|vitamin-d|900301|2025-04-10': '2025-04-11',
+      'r|vitamin-d|900302|2026-01-01': '2025-12-31',
+    },
+    recall: {
+      from: '2025-01-01',
+      readThrough: '2026-10-15',
+      records: [
+        vitamin('900301', fakeName(31), '2025-01-10', fakePhone(301)),
+        vitamin('900302', fakeName(32), '2025-10-01', fakePhone(302)),
+        { chart: '900201', name: fakeName(21), date: '2026-05-02', codes: [CARTILAGE], text: '아라간 3차', phone: fakePhone(201) },
+        vitamin('900202', fakeName(22), '2026-07-01'),
+      ],
+    },
+  }
+}
+
 // ── 모으기·쓰기 ────────────────────────────────────────
 
 export function buildFakePatients(seed = FAKE_PATIENTS_SEED): FakePatients {
@@ -1550,6 +1680,10 @@ export function buildFakePatients(seed = FAKE_PATIENTS_SEED): FakePatients {
     'chart-rows.json': { note: NOTE, dateCells: dateCells(), cases: chartCases(rand) },
     'rx-rows.json': { note: NOTE, tokens: [...TOKENS], columns: [...COLUMNS], cases: rxCases(rand) },
     'recall-cases.json': recallCases(),
+    'targets-followup.json': { note: NOTE, today: PIECE_TODAY, pieces: followupPieces() },
+    'targets-injection.json': { note: NOTE, today: PIECE_TODAY, pieces: injectionPieces() },
+    'store-first.json': { note: NOTE, contact: {} },
+    'store-marked.json': { note: NOTE, contact: markedStore() },
   }
 }
 
