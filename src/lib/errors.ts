@@ -136,6 +136,11 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '고른 기간의 진료 기록이 너무 많아요',
     fix: '기간을 줄여 다시 불러오세요',
   },
+  // Worker가 정하는 번호다(도우미는 보내지 않는다). E-BRIDGE-BAD-REPLY는 도우미를 업데이트하라는 말이라 이 경우에 맞지 않는다
+  'E-STATS-CHANGED': {
+    what: '불러오는 사이에 접수가 바뀌었어요',
+    fix: '다시 불러와 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
   // 통계 숫자 저장·읽기(lib/storage/stats.ts, spec stats)
   'E-STATS-SAVE-FAILED': {
     what: '통계 숫자를 저장하지 못했어요',

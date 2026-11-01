@@ -36,6 +36,7 @@ const ALL_CODES = [
   'E-STORE-BROKEN',
   'E-STATS-HISTORY',
   'E-STATS-TOO-BIG',
+  'E-STATS-CHANGED',
   'E-STATS-SAVE-FAILED',
   'E-STATS-READ-FAILED',
 ] as const satisfies readonly ErrorCode[]
@@ -279,6 +280,13 @@ describe('REQ-505 통계 오류 번호(도우미가 stats.rows를 거절할 때)
     expect(errorInfo('E-STATS-TOO-BIG')).toEqual({
       what: '고른 기간의 진료 기록이 너무 많아요',
       fix: '기간을 줄여 다시 불러오세요',
+    })
+  })
+
+  it('AC-505.2: E-STATS-CHANGED는 불러오는 사이에 접수가 바뀌었다고 알리고 다시 불러오라고 안내한다', () => {
+    expect(errorInfo('E-STATS-CHANGED')).toEqual({
+      what: '불러오는 사이에 접수가 바뀌었어요',
+      fix: '다시 불러와 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
     })
   })
 })

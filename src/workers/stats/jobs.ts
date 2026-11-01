@@ -7,10 +7,10 @@ import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import type { AnalysisResult } from '@/types/analyze'
 import type { StatsChecks, StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
 import { createAssembler, StatsDataError } from './assemble'
-import { dashed, isRecord, parseStatsRows, toConsumptionRows, toVisitRows, type StatsSummary, type VisitRow } from './helperData'
+import { dashed, isRecord, parseStatsRows, toConsumptionRows, toPatientDays, toVisitRows, type StatsSummary, type VisitRow } from './helperData'
 
 // 통계 Worker의 일 [환자 자료 구역]. 시험은 이 함수들을 바로 부른다(stats.worker.ts는 포트와 잇기만 한다).
-// 화면에는 StatsLoaded(숫자·처방코드·처방 이름·날짜)만 가고, 진료 줄은 memory로 Worker 안에만 남는다
+// 화면에는 StatsLoaded(숫자·처방코드·처방 이름·날짜)만 가고, 진료 줄은 memory로 Worker 안에만 남는다. 접수 줄은 세는 데만 쓰고 남기지 않는다
 
 // 처방별 신환·재진(split 일)이 쓰는 값. Worker 밖으로 나가지 않는다. 다음 load가 덮어쓴다
 export type StatsMemory = {
@@ -30,7 +30,7 @@ export function loadJob(
   const { from, to, today, closeToday } = opts
   const data = parseStatsRows(text, { from, to })
   const ids = createPatientIds()
-  const aggregates = aggregate(toConsumptionRows(data, ids))
+  const aggregates = aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))
 
   const { noChart, duplicate, noFirst } = data.summary
   const checks: StatsChecks = { noChart, duplicate, noFirst }

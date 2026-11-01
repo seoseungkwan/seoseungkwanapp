@@ -13,7 +13,8 @@ const OPTS = { from: FROM, to: TODAY, today: TODAY, closeToday: false }
 
 // 가짜 차트번호(9로 시작하는 6자리). 소스에 통째로 쓰지 않고 이어 만든다
 const chart = (n: number) => '9' + String(n).padStart(5, '0')
-const CHARTS = [chart(1), chart(2), chart(3), chart(4), chart(5), chart(6)]
+const NO_RX_CHART = chart(7) // 처방 없는 접수만 있는 환자
+const CHARTS = [chart(1), chart(2), chart(3), chart(4), chart(5), chart(6), NO_RX_CHART]
 
 const okSet = (period: string) => ({
   ok: true,
@@ -49,9 +50,17 @@ const ROWS = [
   [CHARTS[5], '20261101', 'MM042', '20250101'],
 ]
 
+// 진료 줄이 있는 환자·날마다 접수 한 건(처방 없는 접수가 없는 답)
+function receptionsOf(rows: readonly string[][]): [string, string, number, string | null][] {
+  const lines = new Map<string, [string, string, number, string | null]>()
+  for (const [person, day, , first] of rows) lines.set(`${person}|${day}`, [person, day, 1, first])
+  return [...lines.values()]
+}
+
+// 접수 줄을 따로 주지 않으면 그 답의 진료 줄에 맞춘다
 const helperJson = (over: Record<string, unknown> = {}, to = TODAY) =>
   JSON.stringify({
-    v: 1,
+    v: 2,
     from: FROM,
     to,
     summary: { visits: 7, patients: 6, newPatients: 5, noChart: 0, duplicate: 0, noFirst: 0 },
@@ -59,6 +68,7 @@ const helperJson = (over: Record<string, unknown> = {}, to = TODAY) =>
       ['20260901', 2, 2, 2],
       ['20261101', 1, 1, 0],
     ],
+    patientDays: receptionsOf((over.rows as string[][] | undefined) ?? ROWS),
     codes: [
       ['MM042', '표층열치료'],
       ['B4001', '일반혈액검사'],
@@ -81,7 +91,7 @@ function textsIn(value: unknown): string[] {
   return []
 }
 
-const FORBIDDEN_KEYS = ['chart', 'chartNo', 'patient', 'patientId', 'p', 'rows', 'memory', 'visits']
+const FORBIDDEN_KEYS = ['chart', 'chartNo', 'patient', 'patientId', 'p', 'rows', 'memory', 'visits', 'patientDays', 'receptions']
 
 function expectNoPatientData(value: unknown) {
   const texts = textsIn(value)
@@ -198,7 +208,86 @@ describe('AC-505.4 loadJob: 도우미 자료 → 화면에 보낼 모양', () =>
   })
 
   it('모양이 틀린 자료는 그 번호로 던진다', () => {
-    expect(() => loadJob(helperJson({ v: 2 }), OPTS)).toThrowError('E-BRIDGE-BAD-REPLY')
+    expect(() => loadJob(helperJson({ v: 1 }), OPTS)).toThrowError('E-BRIDGE-BAD-REPLY')
+  })
+
+  it('두 배열이 어긋난 자료는 E-STATS-CHANGED로 던진다', () => {
+    expect(() => loadJob(helperJson({ patientDays: [] }), OPTS)).toThrowError('E-STATS-CHANGED')
+  })
+
+  it('달 totals는 일 칸의 합이다: 한 달에 두 번 온 환자는 2다', () => {
+    const rows = [
+      [CHARTS[0], '20260901', 'MM042', '20260901'],
+      [CHARTS[0], '20260902', 'MM042', '20260901'],
+      [CHARTS[1], '20260902', 'MM042', '20250101'],
+    ]
+    const { view } = loadJob(helperJson({ rows, days: [] }), OPTS)
+    expect(dayOf(view, '2026-09-01')?.totals).toEqual({ patients: 1, newPatients: 1, returning: 0, unknown: 0 })
+    expect(dayOf(view, '2026-09-02')?.totals).toEqual({ patients: 2, newPatients: 0, returning: 2, unknown: 0 })
+    expect(monthIn(view, '2026-09')?.totals).toEqual({ patients: 3, newPatients: 1, returning: 2, unknown: 0 })
+  })
+
+  it('진료 줄과 접수 줄은 같은 PatientIds로 센다: 신환의 처방 없는 재방문이 재방문이고 신환은 한 명이다', () => {
+    // 두 배열의 환자 순서가 달라도 같은 환자는 같은 번호라야 한다
+    const rows = [
+      [CHARTS[0], '20260901', 'MM042', '20260901'],
+      [CHARTS[1], '20260901', 'MM042', '20250101'],
+    ]
+    const patientDays = [
+      [CHARTS[1], '20260901', 1, '20250101'],
+      [CHARTS[0], '20260901', 1, '20260901'],
+      [CHARTS[0], '20260903', 1, '20260901'],
+    ]
+    const { view } = loadJob(helperJson({ rows, patientDays, days: [] }), OPTS)
+    const revisit = dayOf(view, '2026-09-01')?.revisit
+    expect(revisit?.cohort).toBe(1)
+    expect(revisit?.within7).toBe(1)
+  })
+})
+
+describe('AC-505.8 환자 수는 접수 기준이다', () => {
+  const twoReceptionsToday = () =>
+    receptionsOf(ROWS).map((line): [string, string, number, string | null] => (line[1] === '20261101' ? [line[0], line[1], 2, line[3]] : line))
+
+  it('같은 환자·같은 날 내원 번호가 다른 접수 둘(건수 2, duplicate 0)은 valid이고 그날 totals.patients에 2로 든다', () => {
+    const { view } = loadJob(helperJson({ patientDays: twoReceptionsToday() }), OPTS)
+    expect(view.quality).toBe('valid')
+    expect(view.checks.duplicate).toBe(0)
+    const today = dayOf(view, TODAY)
+    expect(today?.totals).toEqual({ patients: 2, newPatients: 0, returning: 2, unknown: 0 })
+    expect(monthIn(view, '2026-11')?.totals).toEqual({ patients: 2, newPatients: 0, returning: 2, unknown: 0 })
+    expect(today?.rx.map((x) => [x.code, x.patients])).toEqual([['MM042', 1]]) // 처방별은 그대로 환자 수다
+    expect(validateDayPayload(today)).toEqual(today)
+  })
+
+  it('처방 없는 접수만 있는 날은 rx: []인 DayPayload로 저장 모양에 들고 validateDayPayload를 지난다', () => {
+    const patientDays = [...receptionsOf(ROWS), [NO_RX_CHART, '20261006', 1, '20250101']]
+    const { view } = loadJob(helperJson({ patientDays }), OPTS)
+    expect(view.quality).toBe('valid')
+    const noRx = dayOf(view, '2026-10-06')
+    expect(noRx?.rx).toEqual([])
+    expect(noRx?.totals).toEqual({ patients: 1, newPatients: 0, returning: 1, unknown: 0 })
+    expect(validateDayPayload(noRx)).toEqual(noRx)
+    const october = monthIn(view, '2026-10')
+    expect(october?.totals.patients).toBe(2) // 10월 5일 처방 있는 접수 + 10월 6일 처방 없는 접수
+    expect(validateMonthPayload(october)).toEqual(october)
+  })
+
+  it('취소된 접수는 patientDays에 없으므로 숫자에 들지 않는다(날짜별 합계 days가 아직 세고 있어도)', () => {
+    const rows = ROWS.filter((row) => row[0] !== CHARTS[1] && row[0] !== CHARTS[5])
+    const { view } = loadJob(helperJson({ rows }), OPTS) // days에는 9월 1일 2명, 오늘 1명이 남아 있다
+    expect(view.quality).toBe('valid')
+    expect(dayOf(view, '2026-09-01')?.totals.patients).toBe(1)
+    expect(dayOf(view, TODAY)).toBeUndefined()
+  })
+
+  it('summary.duplicate가 0이 아니면(같은 내원 번호가 두 번) 지금처럼 incomplete이고 저장 모양은 null이다', () => {
+    const summary = { visits: 7, patients: 6, newPatients: 5, noChart: 0, duplicate: 1, noFirst: 0 }
+    const { view } = loadJob(helperJson({ summary, patientDays: twoReceptionsToday() }), OPTS)
+    expect(view.quality).toBe('incomplete')
+    expect(view.checks.duplicate).toBe(1)
+    expect(view.months).toBeNull()
+    expect(view.days).toBeNull()
   })
 })
 
@@ -220,6 +309,18 @@ describe('AC-505.5 화면에 가는 값에 환자 자료가 없다', () => {
     expect(memory.days[0]).toEqual({ date: '2026-09-01', visits: 2, patients: 2, newPatients: 2 })
     expect(memory.names.get('B4001')).toBe('일반혈액검사')
     expect(textsIn(memory.rows).some((text) => CHARTS.some((id) => text.includes(id)))).toBe(false)
+  })
+
+  it('접수 줄은 세는 데만 쓰고 화면에도 메모리에도 남지 않는다', () => {
+    const patientDays = [...receptionsOf(ROWS), [NO_RX_CHART, '20261006', 1, '20250101']]
+    const { view, memory } = loadJob(helperJson({ patientDays }), OPTS)
+    expectNoPatientData(view)
+    expect(Object.keys(memory).sort()).toEqual(['days', 'names', 'range', 'rows', 'summary'])
+    expect(keysIn(memory)).not.toContain('patientDays')
+    expect(keysIn(memory)).not.toContain('receptions')
+    // 처방 없는 접수는 진료 줄이 되지 않는다
+    expect(memory.rows).toHaveLength(ROWS.length)
+    expect(memory.rows.some((row) => row.d === '2026-10-06')).toBe(false)
   })
 })
 
@@ -305,9 +406,24 @@ describe('AC-505.1·AC-505.5 Worker 일: 포트의 조각 + 화면의 load', () 
 
   it('모양이 틀린 JSON이면 failed E-BRIDGE-BAD-REPLY', async () => {
     const { host, sent } = hostUnderTest()
-    bridgeMessages('s1', helperJson({ v: 2 })).forEach((m) => host.fromBridge(m))
+    bridgeMessages('s1', helperJson({ v: 1 })).forEach((m) => host.fromBridge(m))
     await host.load(loadRequest('s1'))
     expect(sent).toEqual([{ type: 'failed', streamId: 's1', code: 'E-BRIDGE-BAD-REPLY' }])
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['rows의 환자·날이 patientDays에 없음', { patientDays: receptionsOf(ROWS).slice(1) }],
+    [
+      '두 배열에서 첫 내원일이 다름',
+      { patientDays: receptionsOf(ROWS).map((line) => (line[0] === CHARTS[5] ? [line[0], line[1], line[2], '20240101'] : line)) },
+    ],
+  ])('AC-505.2: %s이면 화면에 failed E-STATS-CHANGED가 간다. 번호뿐이고 메모리를 남기지 않는다', async (_name, over) => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', helperJson(over)).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1'))
+    expect(sent).toEqual([{ type: 'failed', streamId: 's1', code: 'E-STATS-CHANGED' }])
+    expect(host.memory()).toBeNull()
+    expectNoPatientData(sent)
   })
 
   it('abort면 받은 번호로 failed(load가 앞이어도 뒤여도)', async () => {
@@ -350,7 +466,7 @@ describe('AC-505.1·AC-505.5 Worker 일: 포트의 조각 + 화면의 load', () 
     await host.load(loadRequest('s1'))
     expect(host.memory()?.rows).toHaveLength(ROWS.length)
 
-    bridgeMessages('s2', helperJson({ v: 2 })).forEach((m) => host.fromBridge(m))
+    bridgeMessages('s2', helperJson({ v: 1 })).forEach((m) => host.fromBridge(m))
     await host.load(loadRequest('s2'))
     expect(host.memory()?.rows).toHaveLength(ROWS.length)
 

@@ -2,7 +2,7 @@ import type { ClinicReportNumbers } from './clinicReport'
 import type { DateRange } from './dates'
 import type { DayPayload, MonthPayload } from './payload'
 
-// 화면 ↔ 통계 Worker가 주고받는 모양. 화면이 받는 값에는 차트번호·환자 번호·진료 줄이 없다(AC-505.5)
+// 화면 ↔ 통계 Worker가 주고받는 모양. 화면이 받는 값에는 차트번호·환자 번호·진료 줄·접수 줄이 없다(AC-505.5)
 
 // 기간 합계의 확인 건수: 차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자. 하나라도 0이 아니면 품질 incomplete
 export type StatsChecks = { noChart: number; duplicate: number; noFirst: number }

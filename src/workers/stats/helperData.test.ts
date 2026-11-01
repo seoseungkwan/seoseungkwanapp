@@ -11,18 +11,28 @@ import { readGrid } from '@/lib/parsers/common'
 import type { Aggregates } from '@/types/analysis'
 import type { Cell } from '@/types/parse'
 import { StatsDataError } from './assemble'
-import { MAX_STATS_ROWS, parseStatsRows, toConsumptionRows, toVisitRows } from './helperData'
+import { MAX_STATS_ROWS, parseStatsRows, toConsumptionRows, toPatientDays, toVisitRows } from './helperData'
 
 const FROM = '2026-09-01'
 const TO = '2026-11-01'
 const REQ = { from: FROM, to: TO }
 const BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
+const CHANGED = 'E-STATS-CHANGED'
 const SLOW = { timeout: 60_000 }
 const AMOUNT_LIMIT = 10 ** 14
 const FAKE_DIR = fileURLToPath(new URL('../../../fixtures/fake-bit/', import.meta.url))
 
 // 가짜 차트번호(9로 시작하는 6자리). 소스에 통째로 쓰지 않고 이어 만든다
 const chart = (n: number) => '9' + String(n).padStart(5, '0')
+
+type HelperRow = readonly [person: string, day: string, code: string, first: string | null]
+
+// 진료 줄이 있는 환자·날마다 접수 한 건(처방 없는 접수가 없는 답)
+function receptionsOf(rows: readonly HelperRow[]): [string, string, number, string | null][] {
+  const lines = new Map<string, [string, string, number, string | null]>()
+  for (const [person, day, , first] of rows) lines.set(`${person}|${day}`, [person, day, 1, first])
+  return [...lines.values()]
+}
 
 const okSet = (period: string) => ({
   ok: true,
@@ -48,13 +58,17 @@ const reportOf = (to: string) => ({
 })
 
 const good = () => ({
-  v: 1,
+  v: 2,
   from: FROM,
   to: TO,
   summary: { visits: 2, patients: 1, newPatients: 1, noChart: 0, duplicate: 0, noFirst: 0 },
   days: [
     ['20260901', 1, 1, 1],
     ['20260902', 1, 1, 0],
+  ],
+  patientDays: [
+    [chart(1), '20260901', 1, '20260901'],
+    [chart(1), '20260902', 1, '20260901'],
   ],
   codes: [['MM042', '표층열치료']],
   rows: [
@@ -108,15 +122,17 @@ describe('AC-505.2 parseStatsRows: 정해 둔 모양만 받는다', () => {
     ['진료 줄 없음', ['rows'], []],
     ['처방 이름에 빈 글자', ['codes', 0], ['MM042', '']],
   ])('받는다: %s', (name, path, value) => {
-    const draft = JSON.parse(changed(path, value)) as { summary: { noFirst: number } }
+    const draft = JSON.parse(changed(path, value)) as { summary: { noFirst: number }; rows: HelperRow[]; patientDays: unknown }
     if (name.includes('null')) draft.summary.noFirst = 1
+    draft.patientDays = receptionsOf(draft.rows) // 진료 줄을 바꾼 자리는 접수 줄도 같이 맞춘다(어긋남은 아래 E-STATS-CHANGED에서 본다)
     expect(() => parseStatsRows(JSON.stringify(draft), REQ)).not.toThrow()
   })
 
   it.each<[string, ReadonlyArray<string | number>, unknown]>([
     ['맨 위 열쇠가 더 있음', ['extra'], 1],
     ['맨 위 열쇠가 없음', ['days'], DROP],
-    ['버전이 다름', ['v'], 2],
+    ['버전이 1(옛 도우미)', ['v'], 1],
+    ['버전이 3', ['v'], 3],
     ['기간 시작이 요청과 다름', ['from'], '2026-09-02'],
     ['기간 끝이 요청과 다름', ['to'], '2026-10-31'],
     ['합계 열쇠가 더 있음', ['summary', 'extra'], 0],
@@ -154,7 +170,6 @@ describe('AC-505.2 parseStatsRows: 정해 둔 모양만 받는다', () => {
     ['첫 내원일이 진료일보다 뒤', ['rows', 0, 3], '20260902'],
     ['한 환자의 첫 내원일이 둘', ['rows', 1, 3], '20260815'],
     ['한 환자의 첫 내원일이 null과 날짜', ['rows', 1, 3], null],
-    ['첫 내원일 null인데 합계 noFirst가 0', ['rows'], [[chart(1), '20260901', 'MM042', null]]],
     ['보고 열쇠가 더 있음', ['report', 'extra'], []],
     ['일일이 한 벌', ['report', 'daily'], [okSet(TO)]],
     ['월말이 세 벌', ['report', 'monthly'], [okSet('2026-11'), okSet('2026-10'), okSet('2026-09')]],
@@ -229,6 +244,201 @@ describe('AC-505.2 parseStatsRows: 정해 둔 모양만 받는다', () => {
   })
 })
 
+describe('AC-505.2 접수 줄 patientDays의 모양', () => {
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['열쇠가 없음', ['patientDays'], DROP],
+    ['배열이 아님', ['patientDays'], {}],
+    ['null', ['patientDays'], null],
+    ['줄이 객체', ['patientDays', 0], { chart: chart(1) }],
+    ['줄이 3칸', ['patientDays', 0], [chart(1), '20260901', 1]],
+    ['줄이 5칸', ['patientDays', 0], [chart(1), '20260901', 1, '20260901', '가짜']],
+    ['차트번호가 숫자', ['patientDays', 0, 0], Number(chart(1))],
+    ['차트번호가 빔', ['patientDays', 0, 0], ''],
+    ['차트번호가 공백뿐', ['patientDays', 0, 0], '   '],
+    ['진료일 모양', ['patientDays', 0, 1], '2026-09-01'],
+    ['진료일이 없는 날', ['patientDays', 0, 1], '20260230'],
+    ['진료일이 null', ['patientDays', 0, 1], null],
+    ['진료일이 기간 앞', ['patientDays', 0, 1], '20260831'],
+    ['진료일이 기간 뒤', ['patientDays', 0, 1], '20261102'],
+    ['접수 건수 0', ['patientDays', 0, 2], 0],
+    ['접수 건수가 음수', ['patientDays', 0, 2], -1],
+    ['접수 건수가 소수', ['patientDays', 0, 2], 1.5],
+    ['접수 건수가 글자', ['patientDays', 0, 2], '1'],
+    ['접수 건수가 안전한 정수를 넘음', ['patientDays', 0, 2], Number.MAX_SAFE_INTEGER + 2],
+    ['첫 내원일이 숫자', ['patientDays', 0, 3], 20260901],
+    ['첫 내원일 모양', ['patientDays', 0, 3], '2026-09-01'],
+    ['첫 내원일이 없는 날', ['patientDays', 0, 3], '20260230'],
+    ['첫 내원일이 진료일보다 뒤', ['patientDays', 0, 3], '20260902'],
+    ['같은 환자·날 두 줄', ['patientDays', 1, 1], '20260901'],
+    ['앞뒤 공백만 다른 같은 환자·날 두 줄', ['patientDays', 1], [` ${chart(1)}`, '20260901', 1, '20260901']],
+    ['한 배열 안에서 한 환자의 첫 내원일이 둘', ['patientDays', 1, 3], '20260815'],
+    ['한 배열 안에서 한 환자의 첫 내원일이 null과 날짜', ['patientDays', 1, 3], null],
+  ])('E-BRIDGE-BAD-REPLY이고 E-STATS-CHANGED가 아니다: %s', (_name, path, value) => {
+    expect(codeOf(() => parseStatsRows(changed(path, value), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('줄 수는 700,000까지 받고 하나 넘으면 거절한다', SLOW, () => {
+    // 가짜 환자 100,000명(9로 시작하는 6자리) × 날 여덟, 환자·날마다 한 줄이라 줄 수 말고는 맞는 답이다
+    const text = (count: number) =>
+      JSON.stringify({
+        ...good(),
+        rows: [],
+        patientDays: Array.from({ length: count }, (_, i) => [chart(i % 100_000), `2026090${1 + Math.floor(i / 100_000)}`, 1, '20260901']),
+      })
+    expect(parseStatsRows(text(MAX_STATS_ROWS), REQ).patientDays).toHaveLength(MAX_STATS_ROWS)
+    expect(codeOf(() => parseStatsRows(text(MAX_STATS_ROWS + 1), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('처방 없는 접수(patientDays에만 있는 환자·날)는 받아들인다', () => {
+    const noRx = [
+      [chart(1), '20260905', 1, '20260901'], // 진료 줄이 있는 환자의 처방 없는 날
+      [chart(2), '20260903', 1, '20250101'], // 진료 줄이 아예 없는 환자
+    ]
+    const data = parseStatsRows(JSON.stringify({ ...good(), patientDays: [...good().patientDays, ...noRx] }), REQ)
+    expect(data.patientDays).toHaveLength(4)
+    expect(data.rows).toHaveLength(2)
+  })
+
+  it('같은 환자·날의 접수 여러 건은 한 줄의 건수로 받는다', () => {
+    const data = parseStatsRows(changed(['patientDays', 0, 2], 2), REQ)
+    expect(data.patientDays[0][2]).toBe(2)
+  })
+
+  it('차트번호 앞뒤 공백은 두 배열 사이에서도 같은 환자다', () => {
+    const data = parseStatsRows(changed(['patientDays', 0, 0], ` ${chart(1)} `), REQ)
+    expect(data.patientDays).toHaveLength(2)
+  })
+
+  it('days와는 대조하지 않는다: 날짜별 합계와 달라도 받는다', () => {
+    expect(() => parseStatsRows(changed(['days'], [['20260905', 9, 9, 9]]), REQ)).not.toThrow()
+    expect(() => parseStatsRows(changed(['days'], []), REQ)).not.toThrow()
+  })
+
+  // 첫 내원일이 더 이른 날이라 '첫 내원일 ≤ 진료일'로는 걸리지 않는다. 기간 첫날만 이 줄을 막는다
+  it.each<[string, Record<string, unknown>]>([
+    ['접수 줄', { rows: [], patientDays: [[chart(1), '20260831', 1, '20250101']] }],
+    ['진료 줄', { rows: [[chart(1), '20260831', 'MM042', '20250101']], patientDays: [] }],
+  ])('%s의 진료일이 기간 앞이면 첫 내원일이 더 일러도 E-BRIDGE-BAD-REPLY다', (_name, over) => {
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...good(), ...over }), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('차트번호 앞뒤 공백이 rows에만 있어도 두 배열 사이에서 같은 환자다', () => {
+    const rows = [
+      [` ${chart(1)} `, '20260901', 'MM042', '20260901'],
+      [chart(1), '20260902', 'MM042', '20260901'],
+    ]
+    const data = parseStatsRows(JSON.stringify({ ...good(), rows }), REQ)
+    expect(data.rows).toHaveLength(2)
+  })
+})
+
+describe('AC-505.2 두 배열이 어긋나면 E-STATS-CHANGED', () => {
+  const answer = (over: Record<string, unknown>) => JSON.stringify({ ...good(), ...over })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['rows의 환자가 patientDays에 없음', { patientDays: [[chart(2), '20260901', 1, '20260901']] }],
+    ['rows의 환자는 있는데 그날이 patientDays에 없음', { patientDays: [[chart(1), '20260901', 1, '20260901']] }],
+    ['patientDays가 비었음', { patientDays: [] }],
+    [
+      '두 배열에서 첫 내원일이 다름',
+      {
+        patientDays: [
+          [chart(1), '20260901', 1, '20250101'],
+          [chart(1), '20260902', 1, '20250101'],
+        ],
+      },
+    ],
+    [
+      '첫 내원일이 rows는 날짜, patientDays는 null',
+      {
+        summary: { ...good().summary, noFirst: 1 },
+        patientDays: [
+          [chart(1), '20260901', 1, null],
+          [chart(1), '20260902', 1, null],
+        ],
+      },
+    ],
+    [
+      '첫 내원일이 rows는 null, patientDays는 날짜',
+      {
+        summary: { ...good().summary, noFirst: 1 },
+        rows: [[chart(1), '20260901', 'MM042', null]],
+      },
+    ],
+  ])('%s: E-STATS-CHANGED이고 E-BRIDGE-BAD-REPLY가 아니다', (_name, over) => {
+    expect(codeOf(() => parseStatsRows(answer(over), REQ))).toBe(CHANGED)
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    [
+      '접수 줄 모양이 틀림',
+      {
+        patientDays: [
+          [chart(1), '20260901', 0, '20260901'],
+          [chart(2), '20260901', 1, '20260901'],
+        ],
+      },
+    ],
+    ['진료 줄 모양이 틀림', { rows: [[chart(1), '20260901', '', '20260901']], patientDays: [] }],
+    ['보고 모양이 틀림', { patientDays: [], report: { ...reportOf(TO), daily: [] } }],
+    ['합계 모양이 틀림', { patientDays: [], summary: { ...good().summary, noChart: -1 } }],
+  ])('어긋난 데다 %s이면 모양을 먼저 봐서 E-BRIDGE-BAD-REPLY다', (_name, over) => {
+    expect(codeOf(() => parseStatsRows(answer(over), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('대조를 먼저 본다: 어긋난 답은 noFirst를 넘어도 E-STATS-CHANGED다', () => {
+    // 첫 내원일 null인 환자가 하나인데 noFirst는 0이다. 이 답은 두 배열도 어긋난다
+    const text = answer({ rows: [[chart(1), '20260901', 'MM042', null]] })
+    expect(codeOf(() => parseStatsRows(text, REQ))).toBe(CHANGED)
+  })
+
+  it('오류에 자료가 섞이지 않는다', () => {
+    let error: unknown
+    try {
+      parseStatsRows(answer({ patientDays: [] }), REQ)
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(StatsDataError)
+    expect((error as Error).message).toBe(CHANGED)
+    expect(String((error as Error).stack)).not.toContain(chart(1))
+  })
+})
+
+describe('AC-505.2 첫 내원일 null인 환자 수는 두 배열의 환자를 모두 세어 noFirst 이하', () => {
+  const answer = (noFirst: number, rows: readonly HelperRow[], patientDays: readonly unknown[]) =>
+    JSON.stringify({ ...good(), summary: { ...good().summary, noFirst }, rows, patientDays })
+  const nullRow: HelperRow = [chart(1), '20260901', 'MM042', null]
+  const nullDay = [chart(1), '20260901', 1, null]
+
+  it('두 배열에 다 나온 환자는 한 명이다', () => {
+    expect(() => parseStatsRows(answer(1, [nullRow], [nullDay, [chart(1), '20260902', 1, null]]), REQ)).not.toThrow()
+    expect(codeOf(() => parseStatsRows(answer(0, [nullRow], [nullDay]), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('patientDays에만 있는 환자도 센다', () => {
+    const onlyDay = [chart(2), '20260903', 1, null]
+    expect(() => parseStatsRows(answer(1, [], [onlyDay]), REQ)).not.toThrow()
+    expect(codeOf(() => parseStatsRows(answer(0, [], [onlyDay]), REQ))).toBe(BAD_REPLY)
+    expect(() => parseStatsRows(answer(2, [nullRow], [nullDay, onlyDay]), REQ)).not.toThrow()
+    expect(codeOf(() => parseStatsRows(answer(1, [nullRow], [nullDay, onlyDay]), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('앞뒤 공백만 다른 환자는 한 명이다', () => {
+    const rows: HelperRow[] = [[` ${chart(1)} `, '20260901', 'MM042', null]]
+    const patientDays = [
+      [chart(1), '20260901', 1, null],
+      [` ${chart(1)}`, '20260902', 1, null],
+    ]
+    expect(() => parseStatsRows(answer(1, rows, patientDays), REQ)).not.toThrow()
+    expect(codeOf(() => parseStatsRows(answer(0, rows, patientDays), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('줄 없는 환자도 합계에 들므로 합계가 더 커도 받는다', () => {
+    expect(() => parseStatsRows(answer(5, [nullRow], [nullDay]), REQ)).not.toThrow()
+  })
+})
+
 describe('AC-505.2 금액 6칸은 음수도 되고 절댓값 10^14까지, 건수는 0 이상', () => {
   const AMOUNTS = ['totalAmount', 'insurerAmount', 'noncoveredAmount', 'cashAmount', 'cardAmount', 'transferAmount'] as const
 
@@ -266,18 +476,20 @@ describe('AC-505.2 금액 6칸은 음수도 되고 절댓값 10^14까지, 건수
 })
 
 describe('AC-505.3 toConsumptionRows: 도우미 줄 → ConsumptionRow', () => {
+  const twoPatientRows: HelperRow[] = [
+    [chart(1), '20260901', 'MM042', '20260901'],
+    [chart(1), '20260902', 'B4001', '20260901'],
+    [chart(2), '20260902', 'MM042', '20250101'],
+    [chart(3), '20260903', 'MM042', null],
+  ]
   const twoPatients = () =>
     parseStatsRows(
       JSON.stringify({
         ...good(),
         summary: { visits: 3, patients: 3, newPatients: 1, noChart: 0, duplicate: 0, noFirst: 1 },
         codes: [['MM042', '표층열치료']],
-        rows: [
-          [chart(1), '20260901', 'MM042', '20260901'],
-          [chart(1), '20260902', 'B4001', '20260901'],
-          [chart(2), '20260902', 'MM042', '20250101'],
-          [chart(3), '20260903', 'MM042', null],
-        ],
+        rows: twoPatientRows,
+        patientDays: receptionsOf(twoPatientRows),
       }),
       REQ,
     )
@@ -313,6 +525,72 @@ describe('AC-505.3 toConsumptionRows: 도우미 줄 → ConsumptionRow', () => {
     expect(rows[0]).toEqual({ p: patientOne, d: '2026-09-01', c: 'MM042', f: '2026-09-01' })
     expect(rows[3]).toEqual({ p: patientThree, d: '2026-09-03', c: 'MM042', f: '' })
     expect(JSON.stringify(rows)).not.toContain(chart(1))
+  })
+})
+
+describe('AC-505.3 toPatientDays: 접수 줄 → PatientDay', () => {
+  const lines = () =>
+    parseStatsRows(
+      JSON.stringify({
+        ...good(),
+        summary: { ...good().summary, noFirst: 1 },
+        rows: [[chart(1), '20260901', 'MM042', '20260901']],
+        patientDays: [
+          [chart(1), '20260901', 2, '20260901'],
+          [` ${chart(1)} `, '20260902', 1, '20260901'],
+          [chart(2), '20260902', 3, '20250101'],
+          [chart(3), '20260903', 1, null],
+        ],
+      }),
+      REQ,
+    )
+
+  it('환자는 PatientIds 번호, 날짜는 YYYY-MM-DD, 건수는 그대로, 첫 내원일 = 진료일이면 firstVisit, null이면 아니다', () => {
+    const ids = createPatientIds()
+    const [one, two, three] = [ids.idOf(chart(1)), ids.idOf(chart(2)), ids.idOf(chart(3))]
+    expect(toPatientDays(lines(), ids)).toEqual([
+      { patient: one, date: '2026-09-01', receptions: 2, firstVisit: true },
+      { patient: one, date: '2026-09-02', receptions: 1, firstVisit: false },
+      { patient: two, date: '2026-09-02', receptions: 3, firstVisit: false },
+      { patient: three, date: '2026-09-03', receptions: 1, firstVisit: false },
+    ])
+  })
+
+  it('진료 줄과 같은 ids를 넘기면 같은 환자는 같은 번호다', () => {
+    const ids = createPatientIds()
+    const data = lines()
+    expect(toPatientDays(data, ids)[0].patient).toBe(toConsumptionRows(data, ids)[0].patient)
+  })
+
+  it('바꾼 줄에 차트번호 글자가 없다', () => {
+    expect(JSON.stringify(toPatientDays(lines(), createPatientIds()))).not.toContain(chart(1))
+  })
+})
+
+describe('AC-505.4 접수 줄을 넘긴 aggregate의 주·달 totals는 일 칸의 합이다', () => {
+  it('한 주·한 달에 여러 번 온 환자는 그 횟수만큼 든다', () => {
+    const rows: HelperRow[] = [
+      [chart(1), '20260901', 'MM042', '20260901'],
+      [chart(1), '20260902', 'MM042', '20260901'],
+      [chart(2), '20260902', 'MM042', '20250101'],
+    ]
+    const data = parseStatsRows(
+      JSON.stringify({
+        ...good(),
+        rows,
+        patientDays: [
+          [chart(1), '20260901', 1, '20260901'],
+          [chart(1), '20260902', 2, '20260901'],
+          [chart(2), '20260902', 1, '20250101'],
+        ],
+      }),
+      REQ,
+    )
+    const ids = createPatientIds()
+    const { day, week, month } = aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))
+    expect(day.map((bucket) => bucket.totals.patients)).toEqual([1, 3])
+    expect(week.map((bucket) => bucket.totals)).toEqual([{ patients: 4, newPatients: 1, returning: 3, unknown: 0 }])
+    expect(month.map((bucket) => bucket.totals)).toEqual([{ patients: 4, newPatients: 1, returning: 3, unknown: 0 }])
   })
 })
 
@@ -375,11 +653,12 @@ function sameLinesBothWays() {
 
   const [from, to] = ['2026-09-01', '2026-10-24']
   const text = JSON.stringify({
-    v: 1,
+    v: 2,
     from,
     to,
     summary: { visits: rows.length, patients: firsts.size, newPatients: firsts.size, noChart: 0, duplicate: 0, noFirst: 0 },
     days: [],
+    patientDays: receptionsOf(rows), // 도우미 JSON은 환자·날마다 접수 한 건이고 처방 없는 접수가 없다
     codes: [...codes],
     rows,
     report: reportOf(to),
@@ -388,11 +667,13 @@ function sameLinesBothWays() {
 }
 
 describe('AC-505.3 파일 길과 도우미 길의 결과가 같다(동네 빼고)', () => {
-  it('fixtures/fake-bit 가짜 파일 → parseBit → aggregate = 같은 줄의 도우미 JSON → toConsumptionRows → aggregate', SLOW, () => {
+  it('fixtures/fake-bit 가짜 파일 → parseBit → aggregate = 같은 줄의 도우미 JSON → toConsumptionRows·toPatientDays → aggregate(일·주·월)', SLOW, () => {
     const { fileRows, text, range, lineCount } = sameLinesBothWays()
     expect(lineCount).toBeGreaterThan(2000) // 빈 비교로 통과하지 않게
     const fromFile = aggregate(fileRows)
-    const fromHelper = aggregate(toConsumptionRows(parseStatsRows(text, range), createPatientIds()))
+    const data = parseStatsRows(text, range)
+    const ids = createPatientIds()
+    const fromHelper = aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))
 
     expect(fromFile.day.length).toBeGreaterThan(30)
     expect(fromFile.month.reduce((sum, bucket) => sum + bucket.totals.newPatients, 0)).toBeGreaterThan(100)
