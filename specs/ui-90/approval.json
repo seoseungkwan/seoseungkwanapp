@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "ui-90",
-  "approved_at": "2026-10-31T23:44:53Z",
+  "approved_at": "2026-11-01T00:08:25Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "2eeab1292228602f0edb08df27e49a2ad1e7d57ce1c6bcf6b3968c1bf50943e0",
+  "spec_sha256": "2f2ed808aece6a6b0920e8d9019a7239f3a96e588efc4470f4246ac6864af38a",
   "scope": [
     "docs/UI_GUIDE.md",
     "docs/mockups/ui-90/app/*",

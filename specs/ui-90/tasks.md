@@ -36,11 +36,12 @@
 
 ## TASK-2: [①] 화면마다 브라우저 탭 이름
 - REQ: REQ-402
-- Files: src/app/layout.tsx, src/app/page.tsx, src/app/login/page.tsx, src/app/(onboarding)/signup/page.tsx, src/app/(onboarding)/pending/page.tsx, src/app/(onboarding)/pending/page.test.tsx, src/app/(app)/layout.tsx, src/app/(app)/layout.test.tsx, src/app/(app)/currentMe.server.ts, src/app/(app)/*/page.tsx, src/app/titles.test.tsx
-- Tests: src/app/titles.test.tsx, src/app/(app)/layout.test.tsx, src/app/(onboarding)/pending/page.test.tsx
+- Files: src/app/layout.tsx, src/app/page.tsx, src/app/login/page.tsx, src/app/(onboarding)/signup/page.tsx, src/app/(onboarding)/pending/page.tsx, src/app/(onboarding)/pending/page.test.tsx, src/app/(app)/layout.tsx, src/app/(app)/layout.test.tsx, src/app/(app)/currentMe.server.ts, src/app/(app)/*/page.tsx, src/app/titles.test.tsx, src/app/login/page.test.tsx
+- Tests: src/app/titles.test.tsx, src/app/(app)/layout.test.tsx, src/app/(onboarding)/pending/page.test.tsx, src/app/login/page.test.tsx
 - TDD: required
   - 새 시험 `titles.test.tsx`: AC-402.1(뿌리 template) · AC-402.2(입구 넷, `/pending` 두 상태는 guard 흉내) · AC-402.4(앱 페이지 14개 이름, 서로 다름). AC-402.3은 `layout.test.tsx`에서 `generateMetadata`와 레이아웃이 `currentMe`를 같이 쓰는지(guard 흉내 부른 경로 `'/dashboard'`).
-  - 페이지 파일에는 `metadata` 한 줄(또는 `generateMetadata`)만 더한다. 그리는 내용은 바꾸지 않는다.
+  - 페이지 파일에는 `metadata` 한 줄(또는 `generateMetadata`)만 더한다. 그리는 내용은 바꾸지 않는다. 예외는 `/pending` 하나: design.md대로 페이지와 `generateMetadata`가 계정 읽기 한 번을 같이 쓰도록 `pendingMe = cache(() => guardPage('/pending'))` 줄과, 그것을 거쳐 읽는 본문(작은 도우미 함수 포함)을 둔다.
+  - b2b-redesign AC-213.3(`src/app/login/page.test.tsx`)은 로그인·가입·대기 페이지 파일의 import 줄과 본문 글을 그대로 비교한다. 이 시험의 기대 글에 새 제목 줄(`metadata`/`generateMetadata`)과 그에 필요한 import(`Metadata` 타입, `cache`)만 더한다. 대기(PENDING) 파일만은 위 `pendingMe` cache 줄과 그것을 거쳐 읽는 본문도 기대 글에 넣는다 — 이때도 `guardPage('/pending')`, 대기 아닐 때의 `throw`, `dynamic`, AuthFrame `headerEnd`·`PendingCard` JSX는 그대로이고, 비교는 지금처럼 글자 그대로(exact)다. 그리는 내용과 AuthFrame props 검사는 그대로 둔다.
   - 준비 중 10개는 `const feature = notReadyFeature('<주소>')` 하나를 `metadata`와 화면이 같이 쓴다 — `notReadyPages.test.tsx`의 "부르기 한 번" 시험을 고치지 않고 통과한다.
 
 ## TASK-3: [①] 앱 틀 본문 — 건너뛰기 · 흰 바탕 · 불러오는 동안
