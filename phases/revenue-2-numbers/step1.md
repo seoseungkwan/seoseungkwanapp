@@ -22,7 +22,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 7절(모양), 10절·12절(환자 한 명 기준 1인당, 확인 필요 결정), 2절 1(총진료비에 비급여가 들어 있는가)

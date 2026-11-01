@@ -9,7 +9,7 @@
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-004에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-004.1**: `supabase/migrations/20261101000400_revenue.sql`을 PGlite에서 auth migration 뒤에 실행 → `sales_days`(`hospital_id`·`day`·`visits`·`new_patients`·`return_visits`·`patients_to_date`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivable_in`·`unconfirmed`·`fetched_at`)·`sales_codes`(`hospital_id`·`month`·`code`·`count`·`amount`·`fetched_at`), 기본 키, RLS 켜짐. 칸 목록은 정확히 이것뿐
-- **AC-004.2**: anon 거부. authenticated는 승인된 자기 병원 줄만: `sales_days` 읽기·넣기·고치기, `sales_codes` 읽기·넣기·지우기. 남의 병원 줄 안 보임, `hospital_id` 직접 넣기·바꾸기 거부, 승인 대기·거절은 아무것도 못 함
+- **AC-004.2**: anon 거부. authenticated는 승인된 자기 병원 줄만: `sales_days` 읽기·넣기·고치기·지우기, `sales_codes` 읽기·넣기·지우기. 남의 병원 줄 안 보임·안 지워짐, `hospital_id` 직접 넣기·바꾸기 거부, 승인 대기·거절은 아무것도 못 함
 - **AC-004.3**: DB 제약: 0 이상 정수, `unconfirmed`면 금액 일곱 칸 모두 null(아니면 모두 있음), `day` ≥ 2000-01-01, `month`는 1일, `code` 모양
 - **AC-004.4**: `hospital_id`를 빼고 넣으면 `public.my_hospital_id()`가 채우고, 고치면 `fetched_at`이 DB 시각으로 바뀐다. 다른 갈래가 같은 글자의 `my_hospital_id()`를 먼저 만든 DB에서도 migration이 오류 없이 된다
 
@@ -20,7 +20,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 6절(표 SQL·권한·정책), 11절(`my_hospital_id()` 겹침)
@@ -58,7 +58,7 @@
 
 ### 2. 시험 (`supabase/revenue.rls.test.ts`, PGlite)
 - `rls.test.ts`의 Supabase 흉내(`SUPABASE_MOCK`)와 사용자 바꾸기 방식을 이 파일 안에 그대로 둔다(그 파일은 고치지 않는다). auth migration → 이 migration 순서로 실행
-- 사례: 칸 목록이 정확함(`information_schema.columns`, AC-004.1·환자 칸 없음) · RLS 켜짐 · anon 읽기·쓰기 거부 · 승인된 A는 자기 줄만, B 줄 안 보임·못 씀 · 승인 대기·거절 사용자 거부 · `hospital_id` 직접 넣기·바꾸기 거부(칸 권한) · upsert(`on conflict (hospital_id, day) do update`)가 된다 · 금액 음수·소수·글자, `unconfirmed`와 금액 짝 어긋남, `month` 15일, 코드 모양 틀림 거부 · `hospital_id` 빼고 넣으면 내 병원 · 고치면 `fetched_at` 바뀜 · `sales_codes` 지우기는 내 줄만(AC-004.1~004.4) · 같은 `my_hospital_id()`를 미리 만든 DB(다른 갈래가 먼저 들어간 경우)에서 이 migration 실행 → 오류 없음(AC-004.4, 갈래 규칙 C1)
+- 사례: 칸 목록이 정확함(`information_schema.columns`, AC-004.1·환자 칸 없음) · RLS 켜짐 · anon 읽기·쓰기 거부 · 승인된 A는 자기 줄만, B 줄 안 보임·못 씀 · 승인 대기·거절 사용자 거부 · `hospital_id` 직접 넣기·바꾸기 거부(칸 권한) · upsert(`on conflict (hospital_id, day) do update`)가 된다 · 금액 음수·소수·글자, `unconfirmed`와 금액 짝 어긋남, `month` 15일, 코드 모양 틀림 거부 · `hospital_id` 빼고 넣으면 내 병원 · 고치면 `fetched_at` 바뀜 · `sales_days`·`sales_codes` 지우기는 내 줄만(B 줄은 그대로, E2E 정리에 쓴다)(AC-004.1~004.4) · 같은 `my_hospital_id()`를 미리 만든 DB(다른 갈래가 먼저 들어간 경우)에서 이 migration 실행 → 오류 없음(AC-004.4, 갈래 규칙 C1)
 - 기존 `supabase/rls.test.ts`도 그대로 통과해야 한다
 
 ## TDD 순서

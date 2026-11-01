@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-011에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-011.1**: 승인된 시험 계정·확장 없는 브라우저로 `/revenue` 390·1440 → 저장된 줄 없으면 '비트 PC 연결 필요', 가로 스크롤 없음
+- **AC-011.1**: 승인된 시험 계정·확장 없는 브라우저로 `/revenue` 390·768·1440 → 저장된 줄 없으면 '비트 PC 연결 필요', 가로 스크롤 없음(AC-009.5도 이름에). 시작 전에 시험 계정 매출 줄을 지운다(다시 돌려도 같다)
 - **AC-011.2**: 가짜 확장(시험 코드가 넣는 가짜 `chrome.runtime`, 가짜 숫자)으로 열기 → 숫자가 보이고, 가로챈 나간 요청은 `sales_days`·`sales_codes`뿐, 본문 칸은 정해 둔 것뿐, 차트번호·이름·전화번호·주민번호·파일 이름 모양 없음
 - **AC-011.3**: 같은 계정 390에서 다시 열기 → 저장된 숫자·"의원 PC에서 …에 가져온 숫자예요", [다시 가져오기] 없음
 - **AC-011.4**: 저장 뒤 같은 계정으로 `sales_days`·`sales_codes` 줄을 다시 읽기 → 칸 이름은 정해 둔 것뿐, 값에 차트번호·이름·전화번호·주민번호·파일 이름 모양 없음. 끝나면 시험 계정 매출 줄 지우기
@@ -20,7 +20,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 3절, 6절
@@ -60,7 +60,7 @@
 - `revenueFakeBridge.test.ts`(vitest): 만든 글자의 답이 `isRevenueDays`를 통과, 칸 이름이 정해 둔 것뿐
 
 ### 2. `e2e/revenue.spec.ts` (Playwright)
-- 확장 없음 390·1440: 줄 없음 → '비트 PC 연결 필요', `scrollWidth <= innerWidth`(AC-011.1)
+- 시작 전 정리: 시험 계정 세션으로 `sales_days`·`sales_codes`의 내 줄을 지운다(RLS의 지우기 권한, AC-004.2). 확장 없음 390·768·1440: 줄 없음 → '비트 PC 연결 필요', `scrollWidth <= innerWidth`(AC-011.1·AC-009.5)
 - 가짜 통로 1440: 가져오기 → 숫자 보임. `page.on('request')`로 나간 요청을 모두 가로채 Supabase 요청의 표 이름이 `sales_days`·`sales_codes`뿐이고 본문 칸이 정해 둔 것뿐인지, 본문에 차트번호 모양(6자리 이상 숫자만인 글자)·이름(`name`·`chart` 칸)·전화번호(`010-…`)·주민번호(6자리-7자리)·파일 이름(`.xls`·`.xlsx`·`.csv`) 모양이 없는지(AC-011.2)
 - 같은 계정 390 다시: 저장된 숫자 + "의원 PC에서" + [다시 가져오기] 없음(AC-011.3)
 - 저장된 줄 다시 읽기: 시험 계정 세션으로 `sales_days`·`sales_codes`를 select해 칸 이름과 값을 같은 금지 모양으로 검사(AC-011.4, 갈래 규칙 C7)

@@ -19,7 +19,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 7절(`treatments.ts` 모양), 12절 2(사용자에게 물을 것: 치료 묶음)

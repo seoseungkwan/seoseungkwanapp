@@ -1,6 +1,6 @@
 # Step 2: tab-ready
 
-> **TASK-10** 준비 중에서 빼기 · **REQ-010** · AC-010.1 ~ AC-010.2
+> **TASK-10** 준비 중에서 빼기 · **REQ-010** · AC-010.1 ~ AC-010.4
 > Phase 3 `revenue-3-screen` · Step 2 — `specs/revenue/tasks.md`
 > 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-10 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -8,8 +8,10 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-010에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-010.1**: `notReadyFeatures.ts`에 `/revenue` 없음, `menu.ts` 매출 `ready: true`, 대시보드 기능 목차의 매출이 청구와 같은 `connect-first`("연결 먼저"), [전체 메뉴] "준비 중" 수 하나 줄어듦. 탭 맞춤 시험이 확인
+- **AC-010.1**: `notReadyFeatures.ts`에 `/revenue` 없음, `menu.ts` 매출 `ready: true`, 대시보드 기능 목차의 매출이 청구와 같은 `connect-first`("연결 먼저"), [전체 메뉴] "준비 중" 수 하나 줄어듦. 탭 맞춤 시험이 확인하고 탭 수를 고정 숫자로 적지 않음
 - **AC-010.2**: `/revenue` 브라우저 탭 이름 "매출 · 의원 이름"
+- **AC-010.3**: `plan.md` §2-4·`docs/ARCHITECTURE.md`의 매출 줄이 '폴더 연결·파일'이 아니라 '비트 PC 도우미 읽기(`revenue.days`) → `sales_days`·`sales_codes`'(바뀐 날짜 표시)
+- **AC-010.4**: `src/lib/backup/tables.ts`가 이 갈래에 있으면 `sales_days`·`sales_codes`가 그 목록에(그 파일 시험), 없으면 ARCHITECTURE.md DB 표 절에 "백업 목록에 넣는다" 줄
 
 ## 읽어야 할 파일
 
@@ -18,7 +20,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 9절, 11절(겹치는 파일)
@@ -86,6 +88,8 @@
 - 시험의 기대값을 목록에 맞춘다. 탭 수·준비 중 수를 고정 숫자로 적지 않고 `MENU`·`NOT_READY_FEATURES`에서 센다(갈래 규칙 C5, 다른 갈래도 같은 시험의 자기 줄을 고친다). 고친 기대값마다 AC-010.1을 이름에 넣는다
 
 ### 3. 문서
+- `plan.md` §2-4: "의원 PC 비트 폴더의 파일을 읽는다 …" 줄들 뒤에 `(2026-11-01 바뀜: 매출은 비트 PC 도우미의 `revenue.days`로 읽어 `sales_days`·`sales_codes`에 집계만 저장한다. 폴더 연결·파일 끌어다 놓기는 하지 않는다 — specs/revenue)` 한 줄(AC-010.3). §5 DB 표의 `sales_days` 줄도 "칸은 specs/revenue design.md 6절"로
+- 백업 목록(AC-010.4): `src/lib/backup/tables.ts`가 있으면(청구 사전점검이 먼저 합쳐진 경우) 표 이름 둘을 목록에 더하고 그 시험(`tables.test.ts`)에 AC-010.4 줄을 더한다. 없으면 이 파일들을 만들지 말고 `docs/ARCHITECTURE.md` DB 표 절에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`를 넣는다" 줄만 쓴다
 - `docs/UI_GUIDE.md` '앱 틀'·'빈 상태'의 준비 중 목록에서 매출만 빼고("10개" 같은 숫자는 새로 적지 않는다, C5), `docs/ARCHITECTURE.md`의 준비 중 탭 줄에서 매출을 빼고 `components/revenue/`·`lib/revenue/`·`lib/storage/` 줄, DB 표의 `sales_days`(칸이 정해짐)·`sales_codes` 줄, 데이터 흐름 '[매출]' 줄(폴더 연결 → 도우미 읽기)
 
 ## TDD 순서
@@ -98,7 +102,7 @@
 ## Acceptance Criteria
 
 ```bash
-npx vitest run "src/app/(app)" src/components/common src/components/shell src/components/dashboard src/app/titles.test.tsx src/app/notFound.test.tsx   # AC-010.1·AC-010.2
+npx vitest run "src/app/(app)" src/components/common src/components/shell src/components/dashboard src/app/titles.test.tsx src/app/notFound.test.tsx   # AC-010.1~AC-010.4 (lib/backup이 있으면: npx vitest run src/lib/backup)
 python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green
 npm run lint && npm run build && npm test
 python3 ~/.claude/harness/bin/verify

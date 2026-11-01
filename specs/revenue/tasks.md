@@ -2,8 +2,8 @@
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호. 순서대로 한다.
-> Phase 1 `revenue-1-read`(TASK-1~3) · Phase 2 `revenue-2-numbers`(TASK-4~7) · Phase 3 `revenue-3-screen`(TASK-8~11). step 파일은 `phases/revenue-<n>-<slug>/stepM.md`.
-> 화면 TASK(8~11)의 기준 시안 `docs/mockups/revenue/index.html`은 2026-11-01 사용자 승인("이대로 만들기")이다. TASK-5는 TASK-1 ①(총진료비에 비급여가 들어 있는가) 답을 받은 뒤 시작한다.
+> Phase 1 `revenue-1-read`(TASK-1~3, 그리고 TASK-12 = Phase 1 Step 3 `version-bump`: 명세 검토에서 더한 TASK라 번호만 뒤에 있다. TASK-3 뒤·Phase 2 앞에 한다) · Phase 2 `revenue-2-numbers`(TASK-4~7) · Phase 3 `revenue-3-screen`(TASK-8~11). step 파일은 `phases/revenue-<n>-<slug>/stepM.md`.
+> 화면 TASK(8~11)의 기준 시안 `docs/mockups/revenue/index.html`은 2026-11-01 사용자 승인("이대로 만들기")이다. TASK-5는 확인표 '먼저 할 것' ①(총진료비에 비급여가 들어 있는가) 답을 받은 뒤 시작한다.
 > `revenue.days`는 업무일지 탭도 쓰는 계약이다(design.md 5절). 칸을 바꾸면 두 명세를 같이 고친다.
 > 갈래 규칙 C1~C9(worklog·stats·patients·revenue)를 따른다: migration 이름 `20261101000400_revenue.sql`, 새 오류 번호는 `E-REVENUE-*`, 탭·명령 수를 고정 숫자로 시험하지 않음, 겹치는 파일은 design.md 11절.
 > Phase가 끝날 때마다 `verify`·화면 캡처(Phase 3)·쉬운 말 보고. 합치기·운영 배포·도우미 릴리스 태그(`helper-v*`)·실제 Supabase에 SQL 붙여 넣기는 사용자가 그때마다 말할 때만 한다.
@@ -50,7 +50,7 @@
 - Files: src/lib/revenue/summary.ts, src/lib/revenue/summary.test.ts
 - Tests: src/lib/revenue/summary.test.ts
 - TDD: required
-- 먼저: TASK-1 ① 답이 '예'인지 확인한다. '아니오'면 시작하지 않고 명세 변경을 요청한다(`blocked`)
+- 먼저: 확인표 '먼저 할 것' ① 답이 '예'인지 확인한다. '아니오'면 시작하지 않고 명세 변경을 요청한다(`blocked`)
 
 ## TASK-6: 치료 묶음
 - Step: Phase 2 · Step 2 · `treatment-groups`
@@ -88,9 +88,9 @@
 
 ## TASK-10: 준비 중에서 빼기
 - Step: Phase 3 · Step 2 · `tab-ready`
-- AC: AC-010.1~AC-010.2
+- AC: AC-010.1~AC-010.4
 - REQ: REQ-010
-- Files: src/app/(app)/revenue/page.tsx, src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/UI_GUIDE.md, docs/ARCHITECTURE.md
+- Files: src/app/(app)/revenue/page.tsx, src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/UI_GUIDE.md, docs/ARCHITECTURE.md, plan.md, src/lib/backup/tables.ts, src/lib/backup/tables.test.ts
 - Tests: src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
 - TDD: required
 
@@ -102,3 +102,12 @@
 - Tests: e2e/lib/revenueFakeBridge.test.ts, e2e/revenue.spec.ts
 - TDD: required
 - 먼저: 실제 Supabase에 TASK-4 migration이 붙어 있고 `.env.local`에 E2E 값이 있어야 한다. 없으면 `blocked`(사유: 사용자 할 일)
+
+## TASK-12: 버전 올리기
+- Step: Phase 1 · Step 3 · `version-bump`
+- AC: AC-012.1~AC-012.2
+- REQ: REQ-012
+- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, extension/manifest.json
+- Tests: src/lib/bridge/handshake.test.ts, extension/src/manifest.test.ts, helper/tests/protocol.dotnet.test.ts, helper/tests/build.test.ts
+- TDD: required
+- 메모: 도우미 릴리스 태그(`helper-v*`)·웹스토어 올리기는 하지 않는다(사용자가 그때 말할 때만). `MIN_HELPER`·`MIN_EXTENSION`은 그대로

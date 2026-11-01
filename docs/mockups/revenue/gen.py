@@ -333,6 +333,18 @@ def helper_old(kind):
             f'<div class="nc-a"><a href="#" class="btn btn-pri">설정에서 새 도우미 받기{GO}</a></div>'
             '<p class="err">오류 번호 E-HELPER-UNKNOWN-COMMAND</p></div>')
 
+def ext_old(kind):
+    return ('<div class="rv-top"><h1 class="rv-h1">매출</h1></div>'
+            '<div class="nc"><h2 class="nc-h">매출을 읽으려면 확장 프로그램을 새 버전으로 바꿔야 해요</h2>'
+            '<p class="nc-p">지금 이 PC의 크롬 확장 프로그램은 매출 읽기를 아직 몰라요. 설정 탭에서 확장 프로그램 새 버전을 받으면 바로 읽어요. 청구 점검은 지금 그대로 쓸 수 있어요.</p>'
+            f'<div class="nc-a"><a href="#" class="btn btn-pri">설정에서 확인{GO}</a></div>'
+            '<p class="err">오류 번호 E-BRIDGE-REJECTED</p></div>')
+
+def failed_months():
+    return (top_row('pc') + period_row('pc') +
+            '<div class="ban" role="status"><p><b>2025년 11월·12월을 가져오지 못했어요.</b> 나머지 달은 그대로 볼 수 있어요.</p>'
+            '<button type="button" class="btn btn-sec btn-sm">다시 가져오기</button></div>' + trend('pc'))
+
 # ---------- 이 시안만의 CSS (토큰은 ui-90 css_page.css의 :root + 차트 토큰) ----------
 RV_CSS = r'''
 :root { --chart-1: #DBE7FD; --chart-2: #B4CDFA; --chart-3: #8DB0F4; --chart-4: #2563EB; --chart-5: #1D4ED8; --chart-prev: #9CA3AF; }
@@ -470,6 +482,9 @@ row_states2 = ('<div class="row">'
 row_states3 = ('<div class="row">'
                + frame('pc', shell('pc', empty_month('pc')), 1440, 520, False, cap='<b>자료 없음</b> · 비트에 기록이 없는 달을 골랐을 때', label='자료 없음')
                + frame('pc', shell('pc', helper_old('pc')), 1440, 520, False, cap='<b>도우미가 옛것일 때</b>', label='도우미 새로 깔기')
+               + '</div><div class="row">'
+               + frame('pc', shell('pc', ext_old('pc')), 1440, 520, False, cap='<b>확장 프로그램이 옛것일 때</b> · 명세 검토에서 더함', label='확장 새 버전')
+               + frame('pc', shell('pc', failed_months()), 1440, 620, True, cap='<b>몇 달을 가져오지 못했을 때</b> · 예시 숫자 · 명세 검토에서 더함', label='가져오지 못한 달')
                + '</div>')
 row_states4 = ('<div class="row">'
                + frame('full', shell('pc', saved_only()), 1440, 700, True, cap='<b>비트와 연결 안 된 PC</b> · 예시 숫자 · 저장된 숫자는 볼 수 있어요',
@@ -483,6 +498,8 @@ S.append('<section class="sec" id="states"><p class="sec-k">2 · 상황마다</p
          '<li><span><b>처음 가져오는 중</b>: 처음 한 번은 최근 13달을 한 달씩 읽어요. 몇 분 걸릴 수 있어요. 한 달을 읽을 때마다 바로 저장해서, 도중에 멈춰도 다음에 이어서 읽어요.</span></li>'
          '<li><span><b>자료 없음</b>: 고른 달에 비트 수납 기록이 없을 때예요. 숫자 자리는 "–"와 "자료 없음"이에요.</span></li>'
          '<li><span><b>도우미가 옛것일 때</b>: 매출 읽기는 새 도우미가 있어야 해요. 설정 탭에서 새로 받아 깔면 돼요.</span></li>'
+         '<li><span><b>확장 프로그램이 옛것일 때</b>: 같은 모양으로 "확장 프로그램을 새 버전으로" 알려 드려요. 청구 점검은 그대로 써요.</span></li>'
+         '<li><span><b>몇 달을 가져오지 못했을 때</b>: 최근 달부터 가져오고, 못 가져온 달은 건너뛰고 알려 드려요. [다시 가져오기]로 그 달만 다시 읽어요.</span></li>'
          '<li><span><b>비트와 연결 안 된 PC</b>(원장님 방 PC 등)와 <b>폰</b>은 의원 PC가 마지막으로 가져와 저장한 숫자를 보여요.</span></li>'
          '</ul></div></div></section>')
 

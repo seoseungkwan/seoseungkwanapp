@@ -12,7 +12,7 @@
 - **AC-003.2**: 세 검사 가운데 하나라도 0이 아니면 그날 금액 일곱 칸 `null`·`unconfirmed: true`. 아니면 `total`·`insurer`·`noncovered` = `FinanceNormal`+`FinanceReceivable`의 1·2·3째 칸 합, `cash`·`card`·`transfer` = `FinanceNormal` 4·5·6째, `receivableIn` = `FinanceReceivable` 4+5+6째(원 미만 버림, DB NULL은 0). 음수가 있으면 `unconfirmed: true`
 - **AC-003.3**: `Patients` 3~5째 칸이 모두 0이면 `visits` = 1째, `newPatients` = 2째, `returnVisits` = `visits − newPatients`, 아니면 셋 다 `null`. `HistoryGuard` ≠ 0이면 모든 날 `newPatients`·`returnVisits` `null`
 - **AC-003.4**: 날마다 `DistinctPatients`(`@from` = 명령의 `from` 0시, `@to` = 그다음 날 0시) → `patientsToDate` = `from`부터 그날까지 서로 다른 환자 수(비트 DB 안의 `COUNT(DISTINCT …)`). 차트번호 없는 내원이 있으면 `null`. 차트번호는 도우미 밖으로 안 나간다
-- **AC-003.5**: `RevenueSql.CodeAmounts` 하나로 코드마다 `count`(유효 처방 줄 수)·`amount`(일수 × 수량 × 단가, 원 미만 버림). 값이 빠진 줄이 있는 코드는 `amount: null`. 1,000개 넘음·모양 틀림은 `E-BIT-READ-FAILED`
+- **AC-003.5**: `RevenueSql.CodeAmounts` 하나로 코드마다 `count`(유효 처방 줄 수)·`amount`(일수 × 수량 × 단가, 원 미만 버림). 값이 빠진 줄이 있는 코드는 `amount: null`. 앞뒤 공백을 뺀 뒤 같아진 코드는 합치고, 모양이 틀린 코드와 금액 순 999번째 뒤 코드는 이름 없는 한 줄 `_REST`로 합친다(코드 때문에 한 달이 실패하지 않는다)
 - **AC-003.6**: 읽기 실패·시간 초과·관문 실패면 일부만 보내지 않고 오류 하나
 - **AC-003.7**: 답·진단 기록에 차트번호·이름·접수 번호가 없다(가짜 DB의 가짜 차트번호 글자가 어디에도 없음). 답의 칸은 AC-002.2와 같다
 - **AC-003.8**: `ReadOnlyGuard`는 매출 문장 9개(원본 7 + `DistinctPatients` + `CodeAmounts`)를 정해 둔 매개변수와 함께만 통과. 문장은 읽기 하나(`SELECT`/`WITH` 시작, `;`·주석·쓰기 낱말 없음). 기존 `Sql` 상수·시험은 그대로
@@ -24,7 +24,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 2절(원본 표), 4절 전부(파일·모양·`CodeAmounts` 문장·매개변수), 11절(`Sql.cs`·`Program.cs` 겹침)
@@ -82,7 +82,7 @@
 - 날마다(빠진 날 없이): 세 검사 → 0이 아니면 `unconfirmed`(금액 일곱 칸 `null`). 아니면 `FinanceNormal`·`FinanceReceivable` 답의 칸을 `decimal`로 더한 뒤 `decimal.Truncate` → `long`: 1·2·3째 = 두 문장 합(`total`·`insurer`·`noncovered`), `FinanceNormal` 4·5·6째 = `cash`·`card`·`transfer`, `FinanceReceivable` 4+5+6째 = `receivableIn`. 음수면 `unconfirmed`
 - 날마다 `Patients` → `visits`·`newPatients`·`returnVisits`(AC-003.3), `DistinctPatients`(`@from` = 명령의 `from`+"0000", `@to` = 그다음 날+"0000") → `patientsToDate`(AC-003.4)
 - 그날 쓰는 원본 매개변수: `@day`·`@nextDay`·`@from`(@day+"0000")·`@to`(@nextDay+"0000")·`@hospital`. `DistinctPatients`만 `@from`이 기간 첫날이다
-- 마지막에 `CodeAmounts` 한 번(`@from` = from+"0000", `@to` = (to+1일)+"0000"). 코드는 `Trim` 뒤 AC-002.2 모양, 1,000개 이하. 금액 버림, `MissingValues` > 0이면 `null`
+- 마지막에 `CodeAmounts` 한 번(`@from` = from+"0000", `@to` = (to+1일)+"0000"). 금액 버림, `MissingValues` > 0이면 `null`. 코드 줄 정리(design.md 4-2): ① `Trim` 뒤 같은 코드는 합침(건수·금액 더함, 하나라도 `null`이면 `null`) ② 모양이 틀린 코드와 금액 순 999번째 뒤(금액 `null`은 맨 뒤)는 `_REST` 한 줄로 합침 → 늘 1,000개 이하·중복 없음
 - 모든 읽기는 `ReadOnlyGuard.Query(db, sql, args, timeout)`로. 시간 제한은 원본 `CommandTimeout=90`과 같게
 - 하나라도 실패하면 예외 → 처리기가 오류 하나만 보낸다(AC-003.6). 날짜 형식은 `yyyy-MM-dd`, 문화권 고정(`CultureInfo.InvariantCulture`)
 
@@ -92,7 +92,7 @@
 
 ### 5. 시험 (`helper/tests/Precheck.Core.Tests/Revenue/*.test.cs`, 가짜 `IBitDb`)
 - 사본 비교(AC-003.1), 문장 규칙(읽기 하나·`SELECT`/`WITH` 시작·`;`·`--`·`/*`·쓰기 낱말 없음, 매개변수 표 = 문장 속 `@이름`, AC-003.8), `ReadOnlyGuard.Require`가 매출 문장 + 정해 둔 매개변수만 통과(AC-003.8)
-- 가짜 DB가 문장 글자로 답을 고른다: 3일 기간 → 줄 3개, 날마다 문장 7개가 그날 기간으로 불렸는지(AC-003.1), 검사 하나가 1이면 그날만 `unconfirmed`·금액 일곱 칸 `null`, 현금·카드·계좌·미수입금이 맞는 칸에서 오는지, 금액 `12345.67` → `12345`, 음수 → `unconfirmed`(AC-003.2), `Patients` 검사 칸 → 셋 다 `null`, `HistoryGuard` 1 → 신환·재진만 `null`(AC-003.3), 둘째 날 `DistinctPatients`의 `@from`이 첫날, 차트번호 없음 → `patientsToDate null`(AC-003.4), 코드 `MissingValues` → `amount null`, 1,001개·빈 모양 → `E-BIT-READ-FAILED`(AC-003.5), 둘째 날 읽기 실패 → 결과 없음 + 오류(AC-003.6), 가짜 차트번호 `900001`이 답 JSON·기록에 없음(AC-003.7)
+- 가짜 DB가 문장 글자로 답을 고른다: 3일 기간 → 줄 3개, 날마다 문장 7개가 그날 기간으로 불렸는지(AC-003.1), 검사 하나가 1이면 그날만 `unconfirmed`·금액 일곱 칸 `null`, 현금·카드·계좌·미수입금이 맞는 칸에서 오는지, 금액 `12345.67` → `12345`, 음수 → `unconfirmed`(AC-003.2), `Patients` 검사 칸 → 셋 다 `null`, `HistoryGuard` 1 → 신환·재진만 `null`(AC-003.3), 둘째 날 `DistinctPatients`의 `@from`이 첫날, 차트번호 없음 → `patientsToDate null`(AC-003.4), 코드 `MissingValues` → `amount null`, `도수`와 `도수 `(공백) → 한 줄로 합침, 모양 틀린 코드·1,001개 → `_REST` 한 줄과 1,000개 이하, 실패하지 않음(AC-003.5), 둘째 날 읽기 실패 → 결과 없음 + 오류(AC-003.6), 가짜 차트번호 `900001`이 답 JSON·기록에 없음(AC-003.7)
 - 처리기: 등록 안 됨 → `E-BIT-NOT-REGISTERED` 오류 답 하나(AC-003.6). 감싸개 `revenue-read.dotnet.test.ts`: `runDotnet('Precheck.Core.Tests.Revenue')`
 
 ## TDD 순서

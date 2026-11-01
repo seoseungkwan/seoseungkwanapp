@@ -9,7 +9,7 @@
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-008에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-008.1**: `buildRevenueView(input)`: 네 덩어리(매출 추이 · 급여·비급여 · 치료별 매출 · 환자 1인당 평균 진료비(환자 한 명 기준)) 글자와 막대 높이·폭(0~100 %, 소수 둘째 자리). 큰 금액은 "1억 6,248만 원"(만 원 아래 버림), 화면 읽기 표는 원 단위
-- **AC-008.2**: 상태: `connect-needed`·`fetching`(done/total)·`ready`·`empty`·`helper-old`·`saved-only`(마지막 가져온 시각)·`error`(번호)
+- **AC-008.2**: 상태: `connect-needed`·`fetching`(done/total)·`ready`(가져오지 못한 달 목록 포함)·`empty`·`helper-old`·`extension-old`·`saved-only`(마지막 가져온 시각)·`error`(번호)
 - **AC-008.3**: 확인 필요한 날이 있으면 "확인 필요한 날 n일"과 날짜, 합계에서 뺐고 1인당 평균이 낮게 보일 수 있다는 말. 없으면 "없음"
 - **AC-008.4**: 몫·증감 소수 첫째 자리 버림, 빼기 U+2212, 자료 없는 칸 "–"와 "자료 없음", 지어낸 숫자 없음
 - **AC-008.5**: 막대 눈금은 `components/charts/scale.ts`의 `niceScale`
@@ -21,7 +21,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 9절(화면), 7절(계산 함수)
@@ -70,7 +70,7 @@
 
 ### 2. `view.ts`
 - 입력: `{ days, codes, fetchedAt, month, today, bridge: 'ready' | 'none' | 'helper-old', sync: { state: 'idle' | 'running' | 'error'; done?; total?; code? } }`
-- 상태 고르기(AC-008.2): `helper-old` → `helper-old`; sync 실행 중 → `fetching`; sync 오류 → `error`; 연결 안 됨 + 저장된 줄 없음 → `connect-needed`; 연결 안 됨 + 줄 있음 → `saved-only`; 고른 달 `sumPeriod`가 `null` → `empty`; 그 밖 `ready`
+- 상태 고르기(AC-008.2): `helperOld` → `helper-old`; `extensionOld` → `extension-old`; sync 실행 중 → `fetching`; `stopped` 번호 → `error`; 연결 안 됨 + 저장된 줄 없음 → `connect-needed`; 연결 안 됨 + 줄 있음 → `saved-only`; 고른 달 `sumPeriod`가 `null` → `empty`; 그 밖 `ready`(`failed` 달이 있으면 "n달을 가져오지 못했어요" 글자 함께)
 - 덩어리 글자(시안 그대로): 매출 추이 KPI 넷(고른 달 매출·하루 평균 / 지난달보다 / 작년 같은 달보다 / 확인 필요한 날), 13달 막대(고른 달·작년 같은 달·다른 달 구분), 급여·비급여 표(급여·공단부담·본인부담·비급여·합계, 몫, 지난달보다)와 13달 쌓은 막대, 치료별 순위 막대(금액·몫·건수, '그 밖 처방'), 환자 1인당 평균 KPI 넷(1인당 평균 "매출 ÷ 환자 n명" / 지난달보다 / 작년 같은 달보다 / 환자 수 "내원은 n번")과 13달 막대, 안내(같은 환자 여러 번은 한 명, 확인 필요한 날이 있으면 낮게 보일 수 있음)
 - 막대 %: 값 / `niceScale(최대).max` × 100, 소수 둘째 자리 버림. 순위 막대 폭은 '그 밖' 아닌 최대 대비(UI_GUIDE '순위 막대')
 - 화면 읽기 표 자료(제목·머리·줄, 원 단위)

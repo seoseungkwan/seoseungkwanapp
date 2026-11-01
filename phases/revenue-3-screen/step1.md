@@ -11,8 +11,8 @@
 - **AC-009.1**: 한 쪽: 제목 줄(가져온 시각, 연결 때 [다시 가져오기]) → 달 고르기(‹ 달 ›) → 네 덩어리. 도구 단추 줄 없음
 - **AC-009.2**: 통로 `ready`면 열 때 `planFetch`대로 저절로 가져오며 진행("13달 가운데 n달"), 끝나면 다시 그림. [다시 가져오기]는 고른 달만
 - **AC-009.3**: 확장 없는 PC·폰은 저장된 숫자만, [다시 가져오기] 없음, "의원 PC에서 …에 가져온 숫자예요". 저장된 줄도 없으면 '비트 PC 연결 필요'([비트 PC 연결] → `/claim/setup`)
-- **AC-009.4**: `empty`·`helper-old`·`error` 시안대로, 저장 실패면 오류 카드 + [다시 저장]
-- **AC-009.5**: 토큰·`ds`만, HTML 막대 + `aria-hidden` + 화면 읽기 표, 390·768·1440 가로 스크롤 없음, 폰 누름 44px
+- **AC-009.4**: `empty`·`helper-old`·`extension-old`·`error` 시안대로(`extension-old`는 `helper-old` 모양에 "확장 프로그램을 새 버전으로" 문구). 저장 실패면 오류 카드 + [다시 저장], 가져오지 못한 달이 있으면 "n달을 가져오지 못했어요" + [다시 가져오기]
+- **AC-009.5**: 토큰·`ds`만, HTML 막대 + `aria-hidden` + 화면 읽기 표. 폰(768px 미만) 단추·달 고르기 누름 44px 이상, 768px부터 PC 배치(AC ID를 단 클래스 시험). 390·768·1440 가로 스크롤 없음은 E2E(AC-011.1)
 
 ## 읽어야 할 파일
 
@@ -21,7 +21,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 9절
@@ -69,15 +69,15 @@
 
 ### 1. 부품 (`src/components/revenue/`)
 - `RevenueScreen.tsx`(`'use client'`): `useBridge()` → 상태 `ready`면 처음 한 번 `syncRevenue`(call = `bridge.call('revenue.days', …)`, store = `createRevenueStore(browser client)`) → `loadRevenue(13달)` → `buildRevenueView` → 그리기. 고른 달은 `firstMonth(today)`에서 시작, 최근 13달 안에서만 ‹ ›
-- 덩어리: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerVisit.tsx`. 그림: `MonthBars.tsx`(13달 막대·쌓은 막대, 고른 달 `accent`·작년 같은 달 `bg-faint`·다른 달 `chart-2`, 급여 `chart-3`·비급여 `accent`), `TreatmentBars.tsx`. 상태: `RevenueStates.tsx`(연결 필요·가져오는 중·자료 없음·도우미 옛것·저장 실패). 이름은 바꿔도 되지만 폴더 밖으로 나가지 않는다
+- 덩어리: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`. 그림: `MonthBars.tsx`(13달 막대·쌓은 막대, 고른 달 `accent`·작년 같은 달 `bg-faint`·다른 달 `chart-2`, 급여 `chart-3`·비급여 `accent`), `TreatmentBars.tsx`. 상태: `RevenueStates.tsx`(연결 필요·가져오는 중·자료 없음·도우미 옛것·확장 옛것·저장 실패·가져오지 못한 달). 이름은 바꿔도 되지만 폴더 밖으로 나가지 않는다
 - 그림 부품은 훅·`'use client'`가 없는 순수 부품이다(UI_GUIDE '차트')
 - 폰(768 미만): KPI 2×2, 막대 날짜 글자 하나 걸러, 순위 막대는 이름·값 한 줄 + 막대 아래 줄, 급여 표의 '지난달보다' 칸 숨김(시안)
 
 ### 2. 시험
 - `parts.test.tsx`: 보기 모양을 넣어 그린 마크업에 시안 글자·막대 % style·`aria-hidden`·`sr-only` 표·화살표와 "늘어남" 글자가 있다(AC-009.1·009.5)
-- `RevenueScreen.test.tsx`: 가짜 `useBridge`·가짜 store로 — 연결 `ready` → 가져오기 → 진행 글자 → 숫자(AC-009.2), 확장 없음 + 줄 있음 → [다시 가져오기] 없음·"의원 PC에서" 글자(AC-009.3), 줄 없음 → '비트 PC 연결 필요'와 `/claim/setup` 링크(AC-009.3), 옛 도우미·저장 실패 [다시 저장](AC-009.4)
+- `RevenueScreen.test.tsx`: 가짜 `useBridge`·가짜 store로 — 연결 `ready` → 가져오기 → 진행 글자 → 숫자(AC-009.2), 확장 없음 + 줄 있음 → [다시 가져오기] 없음·"의원 PC에서" 글자(AC-009.3), 줄 없음 → '비트 PC 연결 필요'와 `/claim/setup` 링크(AC-009.3), 옛 도우미·옛 확장(`E-BRIDGE-REJECTED`) → 각 '새 버전' 상태(일반 오류 카드·[다시 확인]이 아님), 저장 실패 [다시 저장], 가져오지 못한 달 글자(AC-009.4)
 - 기존 화면 규칙 시험(`classes.test.ts`·`rules.test.ts`·상자 겹침)이 새 파일을 자동으로 보고 통과해야 한다(AC-009.5)
-- 390·768·1440 가로 스크롤 확인은 Phase 끝 화면 캡처(메인 세션)에서 한다
+- `AC-009.5` 이름을 단 시험: 폰 단추·달 고르기 단추에 44px 누름 클래스(`h-11`·`min-h-11` 또는 `ds`의 폰 크기), 배치가 `md:`(768)에서 바뀌는 클래스, `sm:`·`xl:` 없음. 390·768·1440 가로 스크롤은 E2E(AC-011.1)와 Phase 끝 화면 캡처(메인 세션)에서 본다
 
 ## TDD 순서
 

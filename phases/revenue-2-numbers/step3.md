@@ -8,9 +8,9 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-007에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-007.1**: `planFetch(today, savedDays)`: 어제가 속한 달부터 거꾸로 13달 가운데 와야 할 날이 하나라도 없는 달을 오래된 달부터, 달마다 1일 ~ 와야 할 마지막 날(31일 이하). 다 저장된 달은 빼기
-- **AC-007.2**: `saveMonth(month, result)`: 답 첫 날이 그 달 1일인지 확인(아니면 `E-REVENUE-SAVE-FAILED`) → `sales_days` upsert(`hospital_id`+`day`, 열세 칸) → 그 달 `sales_codes` 지우기 → 넣기. 보내는 칸은 정해 둔 것뿐. 실패하면 `E-REVENUE-SAVE-FAILED`
-- **AC-007.3**: `syncRevenue({call, store, today, months?, onProgress})`: 달마다 차례로 가져오기 → 저장, `onProgress({done, total, month})`. 실패하면 멈추고 번호, `months`면 그 달만, `E-HELPER-UNKNOWN-COMMAND` → `helperOld`
+- **AC-007.1**: `planFetch(today, savedDays)`: 어제가 속한 달부터 거꾸로 13달 가운데 와야 할 날이 하나라도 없는 달을 **최근 달부터**, 달마다 1일 ~ 와야 할 마지막 날(31일 이하). 다 저장된 달은 빼기
+- **AC-007.2**: `saveMonth(month, result)`: 답 첫 날이 그 달 1일인지 확인(아니면 `E-REVENUE-SAVE-FAILED`) → 그 달 `sales_codes` 지우기 → 넣기 → **마지막에** `sales_days` upsert(`hospital_id`+`day`, 열세 칸). 보내는 칸은 정해 둔 것뿐. 실패하면 `E-REVENUE-SAVE-FAILED`
+- **AC-007.3**: `syncRevenue`: 달마다 가져오기 → 저장, `onProgress`. 그 달의 읽기·검사·저장 오류(`E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`)는 `failed`에 넣고 계속, 그 밖의 번호는 `stopped`로 멈춤. `months`면 그 달만. `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED` → `extensionOld`
 - **AC-007.4**: `loadRevenue(fromMonth, toMonth)`: 그 달들의 날 줄·코드 줄과 가장 늦은 `fetched_at`
 - **AC-007.5**: `E-REVENUE-SAVE-FAILED`의 '무엇이 · 어떻게 고치나' 문구가 `lib/errors.ts`에
 
@@ -21,7 +21,7 @@
 - `/CLAUDE.md` (CRITICAL 규칙·기술 스택·명령어)
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·016·020·021
-- `/specs/revenue/requirements.md` — 맨 위 "시안 확인 전" 줄과 이 step의 REQ
+- `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
 - `/specs/revenue/design.md` — 3절(자료 길), 7절(`sync.ts` 모양), 8절(저장·`E-REVENUE-SAVE-FAILED` 문구), 11절(errors.ts 겹침)
@@ -63,22 +63,22 @@
 ## 작업
 
 ### 1. `src/lib/revenue/sync.ts`
-- `planFetch(today, savedDays)`: `firstMonth(today)`(summary.ts)부터 거꾸로 13달. 달마다 '와야 할 날' = `eachDay(1일 ~ min(말일, 어제))`. 하나라도 `savedDays`에 없으면 그 달 전체 기간을 넣는다(코드 합계가 달 전체여야 해서)
-- `syncRevenue`: `months`가 있으면 그 달들만(기간은 같은 규칙), 없으면 `planFetch`. 달마다 `call({from, to})` → `store.saveMonth(month, result)` → `onProgress`. 오류 번호는 `BridgeError`의 `code` 또는 `E-REVENUE-SAVE-FAILED`. `E-HELPER-UNKNOWN-COMMAND`면 `{ ok: false, code, helperOld: true }`
+- `planFetch(today, savedDays)`: `firstMonth(today)`(summary.ts)부터 거꾸로 13달, **최근 달부터** 돌려준다. 달마다 '와야 할 날' = `eachDay(1일 ~ min(말일, 어제))`. 하나라도 `savedDays`에 없으면 그 달 전체 기간을 넣는다(코드 합계가 달 전체여야 해서)
+- `syncRevenue`: `months`가 있으면 그 달들만(기간은 같은 규칙), 없으면 `planFetch`. 달마다 `call({from, to})` → `store.saveMonth(month, result)` → `onProgress`. 결과 `SyncResult = { stopped, failed, helperOld, extensionOld }`(design.md 7절): `E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`는 `failed`에 넣고 다음 달, 그 밖의 번호는 `stopped`에 넣고 멈춤. `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED`(옛 확장은 모르는 명령을 막는다) → `extensionOld`(둘 다 멈춤)
 - `call`은 화면이 넘긴다(시험에서는 가짜). 이 파일은 `lib/bridge`·supabase를 import하지 않는다
 
 ### 2. `src/lib/storage/revenue.ts`
 - `createRevenueStore(client)` → `{ saveMonth, loadRevenue }`(design.md 8절). `client`는 인자로 받는다(시험은 가짜 클라이언트로 부른 표 이름·칸·순서를 기록)
-- `saveMonth`: 답 첫 날이 그 달 1일이 아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`(`patientsToDate`가 1일부터 센 값이어야 한다). 줄 바꾸기 camelCase → snake_case(`date → day`, `newPatients → new_patients`, `receivableIn → receivable_in` …, 칸 목록은 `REVENUE_DAY_KEYS`에서), 코드 줄에 `month`(`YYYY-MM-01`). upsert `{ onConflict: 'hospital_id,day' }`. 오류가 하나라도 있으면 `E-REVENUE-SAVE-FAILED`를 던진다(Supabase 오류 내용은 버린다)
+- `saveMonth`: 답 첫 날이 그 달 1일이 아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`(`patientsToDate`가 1일부터 센 값이어야 한다). 순서는 ① 그 달 `sales_codes` 지우기 ② 코드 줄 넣기(`month` = `YYYY-MM-01`) ③ **마지막에** `sales_days` upsert `{ onConflict: 'hospital_id,day' }`(camelCase → snake_case, 칸 목록은 `REVENUE_DAY_KEYS`에서). 코드 쪽이 실패하면 날 줄이 없어 그 달을 다시 가져온다. 오류가 하나라도 있으면 `E-REVENUE-SAVE-FAILED`를 던진다(Supabase 오류 내용은 버린다)
 - `loadRevenue`: `sales_days`(`day` 범위)·`sales_codes`(`month` 범위)를 읽고 `fetched_at` 가장 늦은 값. 칸을 고른다(`sales_days` 열세 칸 + `fetched_at`, snake_case → camelCase로 돌려 `RevenueDayRow`)
 
 ### 3. 오류 문구
 - `E-REVENUE-SAVE-FAILED`: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"(design.md 8절)
 
 ### 4. 시험 (가짜 숫자·가짜 클라이언트)
-- 오늘 11월 1일 → 13달(2025-10 ~ 2026-10), 다 저장된 달 빠짐, 이번 달 진행 중이면 어제까지, 한 날만 빠져도 그 달 전체(AC-007.1)
-- 보낸 줄의 칸 이름이 정확히 정해 둔 것(`chart`·`name`·`hospital_id` 없음), 순서 upsert → delete → insert, 첫 날이 1일 아님 → 저장 없이 `E-REVENUE-SAVE-FAILED`, 실패 → `E-REVENUE-SAVE-FAILED`(AC-007.2)
-- 달 셋 가운데 둘째 실패 → 첫째만 저장·멈춤·번호, `onProgress` 순서, `months` 하나만, 옛 도우미 → `helperOld`(AC-007.3)
+- 오늘 11월 1일 → 13달(2026-10부터 2025-10까지 최근 달부터), 다 저장된 달 빠짐, 이번 달 진행 중이면 어제까지, 한 날만 빠져도 그 달 전체(AC-007.1)
+- 보낸 줄의 칸 이름이 정확히 정해 둔 것(`chart`·`name`·`hospital_id` 없음), 순서 delete → insert(코드) → upsert(날), 코드 넣기 실패 → 날 upsert 없음·`E-REVENUE-SAVE-FAILED`, 첫 날이 1일 아님 → 저장 없이 `E-REVENUE-SAVE-FAILED`(AC-007.2)
+- 달 셋 가운데 둘째가 `E-BIT-READ-FAILED` → 첫째·셋째 저장, `failed`에 둘째. 둘째가 `E-BRIDGE-DISCONNECTED` → 거기서 `stopped`. `onProgress` 순서, `months` 하나만, 옛 도우미 → `helperOld`, 옛 확장 `E-BRIDGE-REJECTED` → `extensionOld`(AC-007.3)
 - 읽기 범위·`fetchedAt`(AC-007.4) · `ERRORS['E-REVENUE-SAVE-FAILED']`(AC-007.5)
 
 ## TDD 순서

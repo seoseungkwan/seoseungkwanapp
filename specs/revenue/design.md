@@ -8,7 +8,7 @@
 - 이 명령은 업무일지 탭도 쓴다(하루 숫자 자동 채우기). 두 번째 읽기 명령을 만들지 않는다. 계약은 5절이다
 - 웹은 그 답을 모양 검사(정해 둔 칸·정수만) 뒤 Supabase 표 둘(`sales_days`·`sales_codes`)에 저장하고, 화면은 늘 저장된 숫자로 그린다. 그래서 폰·연결 안 된 PC도 의원 PC가 마지막으로 가져온 숫자를 본다
 - 계산(급여·비급여 나눔, 기간 합, 지난달·작년 비교, 13달, 환자 1인당 평균, 치료 묶음)은 브라우저의 순수 함수(`src/lib/revenue/*`)다. 서버 코드는 늘지 않는다(ADR-004)
-- Phase: 1 = 도우미 읽기와 명령 표(통로 연결) · 2 = 표·계산·저장 · 3 = 화면·준비 중 빼기·E2E. 첫 step은 의원 PC 확인표다(2절의 '확인 못 한 것')
+- Phase: 1 = 도우미 읽기·명령 표(통로 연결)·버전 올리기 · 2 = 표·계산·저장 · 3 = 화면·준비 중 빼기·E2E. 첫 step은 의원 PC 확인표다(2절의 '확인 못 한 것'). 확인표의 '먼저 할 것'은 앱 없이 비트 화면만 보고, '매출 탭에서 볼 것'은 Phase 3 뒤에 한다
 
 ### Worker를 쓰지 않는 까닭 (Claude 판단)
 - 사용자 요청 메모는 "도우미 읽기 + Worker 연결"이었다. 그러나 이 명령의 답에는 환자 줄이 아예 없다(날짜·정수 금액·건수·처방 코드뿐). 환자 자료 명령(`patient: true`, 조각 → Worker)이 아니라 숫자 명령(`patient: false`)이다
@@ -28,11 +28,11 @@
 | 치료 묶음 | `OperationalReportSql.Treatments` | `도수`·`CARM1`·`SONO1`·`CRYO`·`ESWT`가 든 코드 → manual·carm·sono·cryo·eswt (건수만, 금액 없음) |
 | 처방 금액 | `TrendDataSource` | `SUM(OdrDay × (OdrOutLab='S' ? OdrQty : OdrDtrQty) × OdrPrc)`, 조건 `OdrDelFlg='N' AND OdrCanYon='N' AND OdrOspTyp='I' AND OdrOutCod<>'99'` + 병원 범위. 원본 메모: "수납·환불 대장을 반영한 순수납액은 아닙니다" |
 
-**확인 못 한 것 → TASK-1 의원 PC 확인표**
-1. `OrpTotAmt`(총진료비)에 비급여가 들어 있는가. 기본값은 "들어 있다"(급여 = 총진료비 − 비급여, 본인부담 = 급여 − 공단부담)이고, 총괄이 비트 외래환자경영통계 화면에서 하루 숫자로 확인한다(코드 없이 5분). '아니오'면 AC-005.1을 고치는 명세 변경을 TASK-5 전에 한다
+**확인 못 한 것 → TASK-1 의원 PC 확인표** (Claude는 의원 PC와 총괄 계정의 저장된 줄을 볼 수 없다. 총괄이 화면을 보고 적는다)
+1. `OrpTotAmt`(총진료비)에 비급여가 들어 있는가. 기본값은 "들어 있다"(급여 = 총진료비 − 비급여, 본인부담 = 급여 − 공단부담)이고, 총괄이 비트 외래환자경영통계 화면에서 하루 숫자로 확인한다(확인표 '먼저 할 것' ①, 코드 없이 5분). '아니오'면 AC-005.1을 고치는 명세 변경을 TASK-5 전에 한다
 2. 본인부담 칸: 원본은 `OrpInsOwn`·`OrpTotOwn`을 읽어 두기만 하고 쓰지 않는다. 이 명세는 이 칸을 읽지 않고 1번 식으로 계산한다
-3. **미수발생·지역화폐**: 원본 코드에 읽는 곳이 없다. TASK-1 ⑥에서 비트 화면의 칸을 찾고, 명세 변경으로 계약(5절)에 칸을 더한다. 이번 계약에는 넣지 않는다(늘 `null`인 칸을 두지 않는다)
-4. 치료 코드 다섯 가지가 이 의원 비트 코드와 같은가, 한 달 읽는 시간, '확인 필요' 날이 얼마나 자주 나오는가
+3. **미수발생·지역화폐**: 원본 코드에 읽는 곳이 없다. 확인표 '먼저 할 것' ③에서 비트 화면의 칸을 찾고, 명세 변경으로 계약(5절)에 칸을 더한다. 이번 계약에는 넣지 않는다(늘 `null`인 칸을 두지 않는다)
+4. 치료 코드 다섯 가지가 이 의원 비트 코드와 같은가('먼저 할 것' ②). 금액·환자 수가 비트와 같은가, 처음 읽는 시간, '확인 필요' 날이 얼마나 자주 나오는가는 Phase 3 뒤 매출 탭에서 본다('매출 탭에서 볼 것' ①~④). 수납 나눔·신환·재진 맞추기는 이 기능에서 그리지 않으므로 업무일지 4단계 확인표가 한다
 
 ## 3. 자료 길
 ```
@@ -113,14 +113,16 @@ WHERE o.OdrDtm >= @from AND o.OdrDtm < @to AND RTRIM(o.OdrCod) <> ''
 GROUP BY RTRIM(o.OdrCod)
 ```
   (내원 상태 목록은 원본 `LaCodes`·월간 `Treatments`와 같다. `MissingValues`가 0이 아니면 그 코드의 `amount`는 `null`)
+- 코드 줄 정리(C#, 한 달이 코드 때문에 실패하지 않게): ① 앞뒤 공백을 뺀 뒤 같은 코드가 된 줄은 하나로 합친다(건수·금액 더함, 금액 하나라도 `null`이면 `null`) ② AC-002.2 글자 모양이 아닌 코드와 금액 순 999번째 뒤 코드(금액 `null`은 맨 뒤)는 이름 없는 한 줄 `_REST`로 합친다(같은 합치기 규칙) → 코드는 늘 1,000개 이하·중복 없음·모양 맞음
 - 기간이 31일을 넘거나 `to < from`이면 명령 표가 먼저 막고(`maxDays`), `Read`도 한 번 더 막는다(`E-HELPER-BAD-MESSAGE`)
-- 오류: 관문 오류(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`·`E-BIT-DB-FAILED`)는 그대로, 읽기 실패·시간 초과·코드 한도·코드 모양은 `E-BIT-READ-FAILED`. 일부만 보내지 않는다
+- 오류: 관문 오류(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`·`E-BIT-DB-FAILED`)는 그대로, 읽기 실패·시간 초과는 `E-BIT-READ-FAILED`. 일부만 보내지 않는다. 코드 모양·개수로는 실패하지 않는다(위 코드 줄 정리)
 
 ## 5. 계약: 명령 `revenue.days` (매출·업무일지가 같이 쓴다)
 ### 5-1. 부르기
 - 이름 `revenue.days`, 숫자 명령(`patient: false`, 답은 `result` 하나, 조각 없음, PC 확인 창 없음)
 - `args`: `{ from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }`, 두 날 모두 포함, `from ≤ to`, 31일 이하(`maxDays: 31`)
 - 화면은 `useBridge()`(Worker 없이)의 `call('revenue.days', {from, to})`로 부른다. 옛 도우미는 `E-HELPER-UNKNOWN-COMMAND`
+- 옛 확장(이 명령이 없는 `commands.json`으로 빌드된 확장)은 모르는 명령을 `E-BRIDGE-REJECTED`로 막는다(`extension/src/relay.ts` `checkRequest`). `hello`는 지나가고 `MIN_EXTENSION`도 그대로라, 통로가 `ready`인데 이 명령만 `E-BRIDGE-REJECTED`면 화면은 '확장 새 버전' 상태(`extension-old`)를 보인다(일반 오류 카드의 [다시 확인]으로 보내지 않는다)
 - worklog 갈래는 이 명령이 main에 들어간 뒤(worklog 4단계)에만 이 계약에 기대어 만든다(갈래 규칙 C4)
 
 ### 5-2. 답 `{ days: RevenueDayRow[], codes: RevenueCodeRow[] }`
@@ -143,7 +145,7 @@ GROUP BY RTRIM(o.OdrCod)
 | `unconfirmed` | 환불·변경수납·예치금·수납 연결 중복이 있어 금액을 세지 않은 날 | 회계일 | 세 검사 | — (늘 참·거짓) |
 
 - 그날 받은 돈(입금액) = `cash + card + transfer + receivableIn`. 미수발생·지역화폐는 이번 계약에 없다(2절 3)
-- `codes`: 기간 전체의 처방 코드별 `{ code, count, amount }`. `count` = 유효 처방 줄 수, `amount` = 처방 금액(일수 × 수량 × 단가, 원 미만 버림, **처방일 기준**, 수납액 아님), 값 빠짐이면 `null`. `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, 1,000개 이하
+- `codes`: 기간 전체의 처방 코드별 `{ code, count, amount }`. `count` = 유효 처방 줄 수, `amount` = 처방 금액(일수 × 수량 × 단가, 원 미만 버림, **처방일 기준**, 수납액 아님), 값 빠짐이면 `null`. `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, 1,000개 이하·중복 없음. 예약 코드 `_REST` = 모양이 맞지 않거나 1,000개를 넘쳐 합친 나머지(이름 없는 '그 밖')
 - 웹의 검사(`isRevenueDays`)가 칸 이름·종류·짝(`unconfirmed`와 금액 일곱 칸)·날짜 이어짐을 정확히 본다(AC-002.2). 칸을 더하거나 바꾸면 이 표·`src/types/revenue.ts`·검사·도우미·`sales_days`를 함께 바꾸는 명세 변경이다
 
 ### 5-3. 파일
@@ -201,7 +203,7 @@ create table public.sales_codes (
   primary key (hospital_id, month, code));
 create trigger sales_days_fetched_at before update on public.sales_days for each row execute function public.sales_touch_fetched_at();
 ```
-- 권한: 두 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함) · `sales_codes`에 `insert`(`month`·`code`·`count`·`amount`)·`delete`. `hospital_id`·`fetched_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
+- 권한: 두 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`count`·`amount`)·`delete`. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `hospital_id`·`fetched_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
 - 정책: 읽기·넣기·고치기(·지우기) 모두 `hospital_id = (select public.my_hospital_id())`(using·with check). 승인 안 된 병원은 `my_hospital_id()`가 `null`이라 아무 줄도 못 본다
 - 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). 다른 갈래가 같은 `my_hospital_id()`를 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1)
 - **실제 Supabase에 붙여 넣는 것은 그때 사용자 OK를 받는다.** 운영자가 SQL 편집기에 붙여 넣는다(auth와 같은 방식). TASK-4가 끝나면 쉬운 말 안내만 하고 붙여 넣지 않는다. E2E(TASK-11)는 붙여 넣은 뒤에만 돈다
@@ -223,13 +225,15 @@ export const TREATMENT_GROUPS: readonly { key: 'manual' | 'eswt' | 'carm' | 'son
 export function groupTreatments(codes: RevenueCodeRow[]): { key: string; name: string; amount: number; count: number; missing: boolean; rest: boolean }[]
 // sync.ts (TASK-7)
 export function planFetch(today: string, savedDays: ReadonlySet<string>): DateRange[]
+export type SyncResult = { stopped: string | null; failed: { month: string; code: string }[]; helperOld: boolean; extensionOld: boolean }
 export function syncRevenue(deps: { call: (args: { from: string; to: string }) => Promise<RevenueDaysResult>; store: RevenueStore; today: string;
-  months?: string[]; onProgress?: (p: { done: number; total: number; month: string }) => void }): Promise<{ ok: true } | { ok: false; code: string; helperOld: boolean }>
+  months?: string[]; onProgress?: (p: { done: number; total: number; month: string }) => void }): Promise<SyncResult>
 ```
 - 환자 1인당 평균의 기간은 늘 그 달 1일부터다(고른 기간·지난달 같은 기간·작년 같은 때·13달 모두 1일 시작). 그래서 `patientsToDate` 한 칸으로 어느 기간이든 환자 수를 안다
 - 날짜는 `lib/analytics/dates.ts`(`todayInKorea`·`addDays`·`addMonths`·`monthOf`·`monthRange`·`eachDay`)만 쓴다
 - 금액은 원 정수를 더하기만 한다. 나눗셈(1인당)은 `Math.floor`, 비율은 소수 첫째 자리 버림(`components/charts/format.ts`와 같은 규칙, 아주 작은 값을 더한 뒤 자름)
 - `sync.ts`의 `call`은 화면이 `bridge.call('revenue.days', …)`를 감싸 넘긴다. `store`는 `lib/storage/revenue.ts`의 `saveMonth`(시험에서는 가짜)
+- 달 하나의 실패: `E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`는 그 달만 `failed`에 넣고 다음 달로 간다. 그 밖의 번호(통로 끊김·도우미 없음·등록 안 됨·병원 다름 등)는 `stopped`에 넣고 멈춘다. `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED` → `extensionOld`(둘 다 멈춤). 최근 달부터 가져오므로 오래된 달이 실패해도 최근 숫자는 먼저 들어온다
 
 ## 8. 저장 (`src/lib/storage/revenue.ts`, TASK-7)
 ```ts
@@ -238,7 +242,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
   loadRevenue(fromMonth: string, toMonth: string): Promise<{ days: RevenueDayRow[]; codes: (RevenueCodeRow & { month: string })[]; fetchedAt: string | null }>
 }
 ```
-- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`) → ① `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열세 개만, camelCase → snake_case) ② `sales_codes`에서 그 달 줄 지우기 ③ 새 코드 줄 넣기(`month`·`code`·`count`·`amount`). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 지운 뒤 넣기가 실패하면 그 달 코드가 비지만 다음 [다시 가져오기]가 다시 채운다(묶음 처리 없이 단순하게, Claude 판단)
+- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열세 개만, camelCase → snake_case). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단)
 - `E-REVENUE-SAVE-FAILED`(plan.md §8의 저장 실패 번호를 기능 이름으로, 갈래 규칙 C3)를 `src/lib/errors.ts`·`src/types/errors.ts`에 더한다: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
 
 ## 9. 화면 (`src/components/revenue/*`, TASK-8~10)
@@ -248,11 +252,13 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 - 그림 부품(TASK-9): `MonthBars.tsx`(13달 막대: 고른 달 `accent`, 작년 같은 달 `bg-faint`, 다른 달 `chart-2`, 쌓은 막대는 급여 `chart-3`·비급여 `accent`), `TreatmentBars.tsx`(순위 막대: 금액·몫·건수, '그 밖' `line-strong`), 덩어리 네 개와 상태 화면. `components/charts/*`는 고치지 않고 맞는 것(`KpiStat`·`ChartLegend`·`niceScale`·`format`)만 불러 쓴다
 - `src/app/(app)/revenue/page.tsx`(TASK-10): 준비 중 화면 → `<RevenueScreen />`. 같은 TASK에서 준비 중 목록·탭 자료·문서 줄을 고친다(ARCHITECTURE.md '기능 명세가 진짜 화면으로 바꿀 때')
 - 처음 고르는 달: 어제가 속한 달(1일에는 지난달). 달 고르기는 최근 13달 안에서만 움직인다(그 밖은 저장된 숫자가 없다)
-- 가져오기: 연결된 PC에서 열 때 한 번 저절로(빠진 달만), [다시 가져오기]는 고른 달. 가져오는 동안 진행 줄(정적인 막대, 움직임 없음)
+- 가져오기: 연결된 PC에서 열 때 한 번 저절로(빠진 달만, 최근 달부터), [다시 가져오기]는 고른 달(가져오지 못한 달이 있으면 그 달들). 가져오는 동안 진행 줄(정적인 막대, 움직임 없음). 가져오지 못한 달이 있으면 "n달을 가져오지 못했어요"와 [다시 가져오기]
+- 상태 `extension-old`: `helper-old`와 같은 모양, 문구 "매출을 읽으려면 확장 프로그램을 새 버전으로 바꿔야 해요" + [설정에서 확인](`/claim/setup`). 승인 시안에 같은 모양으로 더했다(2026-11-01 명세 검토)
+- 부품 이름: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`·`MonthBars.tsx`·`TreatmentBars.tsx`·`RevenueStates.tsx`
 - 매출 탭은 수납 나눔(현금·카드·계좌·미수입금)·신환·재진을 그리지 않는다(업무일지 몫)
 
 ## 10. 결정과 트레이드오프
-- **날마다 원본 문장을 그대로 돌린다**(하루 7문장): 원본이 의원에서 이미 쓰는 하루 보고와 같은 숫자가 나온다. 하루씩 묶는 새 SQL(`GROUP BY` 날짜)은 빠르지만 원본과 달라져 검증이 어렵다. 처음 13달은 약 2,800문장이라 몇 분 걸릴 수 있다 → 한 달씩 저장해 이어 가기, 다음부터는 빠진 날만. 너무 느리면(TASK-1 ③) 그때 명세를 바꾼다
+- **날마다 원본 문장을 그대로 돌린다**(하루 7문장): 원본이 의원에서 이미 쓰는 하루 보고와 같은 숫자가 나온다. 하루씩 묶는 새 SQL(`GROUP BY` 날짜)은 빠르지만 원본과 달라져 검증이 어렵다. 처음 13달은 약 2,800문장이라 몇 분 걸릴 수 있다 → 한 달씩 저장해 이어 가기, 다음부터는 빠진 날만. 너무 느리면(Phase 3 뒤 확인표 '매출 탭에서 볼 것' ③) 그때 명세를 바꾼다
 - **환자 1인당 = 환자 한 명마다**(2026-11-01 사용자): 서로 다른 환자 수는 날마다 더할 수 없어서 `patientsToDate`(그 달 1일부터 그날까지 누적)로 받는다. 화면의 기간은 모두 1일에 시작하므로 이 한 칸으로 충분하다. 차트번호는 비트 DB 안에서만 센다
 - **처방 금액은 처방한 날 기준, 매출은 회계일 기준, 환자 수는 접수일 기준**: 치료별 금액 합이 매출 합과 다르다. 화면에 한 줄로 알린다(시안)
 - **확인 필요한 날은 금액을 빼고 날짜만 알린다**(원본과 같음, 사용자 결정). 1인당 평균은 분모(환자 수)에 그날 환자가 들어 있어 조금 낮을 수 있어 `lowered`로 알린다
@@ -265,7 +271,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 
 | 파일 | 이 명세가 하는 일 | 같은 파일을 고치는 갈래 · 합치는 법 |
 |---|---|---|
-| `supabase/migrations/20261101000400_revenue.sql` + `public.my_hospital_id()` | 새 파일(C2 이름). `my_hospital_id()`는 C1 글자 그대로 `create or replace`(TASK-4) | worklog `…000100`·`…000110`, stats `…000200`, patients `…000300`가 같은 함수를 같은 글자로 만든다. precheck TASK-12는 나중에 `create or replace`로 바꾼다. 함수가 이미 있어도 되는지 시험한다(AC-004.4). 트리거 함수는 기능 이름 `sales_touch_fetched_at()`이라 `touch_updated_at()`과 겹치지 않는다. 백업(precheck TASK-32 `lib/backup/tables.ts`)에 `sales_days`·`sales_codes`를 더해야 한다 |
+| `supabase/migrations/20261101000400_revenue.sql` + `public.my_hospital_id()` | 새 파일(C2 이름). `my_hospital_id()`는 C1 글자 그대로 `create or replace`(TASK-4) | worklog `…000100`·`…000110`, stats `…000200`, patients `…000300`가 같은 함수를 같은 글자로 만든다. precheck TASK-12는 나중에 `create or replace`로 바꾼다. 함수가 이미 있어도 되는지 시험한다(AC-004.4). 트리거 함수는 기능 이름 `sales_touch_fetched_at()`이라 `touch_updated_at()`과 겹치지 않는다. 백업 목록은 아래 `src/lib/backup/tables.ts` 줄 |
 | `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | `E-REVENUE-SAVE-FAILED` 한 항목 더함(TASK-7, C3) | worklog·stats·patients도 자기 이름 번호(`E-WORKLOG-*` 등)를 더한다 → 같은 번호는 없고 줄만 겹친다 |
 | `eslint.config.mjs` · `src/guardrails.test.ts` | 건드리지 않는다. `lib/revenue`·`lib/storage/revenue.ts`는 집계만 다뤄 환자 자료 구역이 아니다. `lib/bridge/revenueResult.ts`는 이미 있는 `lib/bridge` 울타리 안에 든다 | stats·patients·precheck가 울타리를 더할 수 있다 → 이 갈래는 합칠 것이 없다 |
 | `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` | 매출 줄만 고친다(TASK-10: 준비 중 목록에서 매출, `components/revenue/`·`lib/revenue/`·`lib/storage/`·DB 표 `sales_days`·`sales_codes`·데이터 흐름 '[매출]' 줄). 숫자("준비 중 n개")를 새로 적지 않는다(C5) | 네 갈래 모두 자기 탭 줄을 고친다 → 줄 단위로 합친다 |
@@ -278,24 +284,29 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 | `helper/tests/Precheck.Core.Tests/Protocol/CommandTable.test.cs` | 명령 목록에 `"revenue.days"` 한 줄(TASK-2) | 명령을 더하는 갈래마다 같은 목록에 한 줄 → 목록 줄끼리 합친다(시험 이름의 숫자는 고치지 않는다) |
 | `src/types/revenue.ts` · `sales_days` | 계약(5절)과 표(6절) | worklog 4단계가 `revenue.days`가 main에 들어간 뒤 읽어 쓴다(C4의 유일한 예외). 칸을 바꾸면 두 명세를 같이 고친다 |
 | `src/components/claim/useBridge.ts` | 불러 쓰기만(고치지 않음) | precheck |
+| `helper/Directory.Build.props` · `src/lib/bridge/versions.ts`(`LATEST_HELPER`) · `src/lib/bridge/handshake.test.ts` · `extension/manifest.json` | 다음 판으로 올림(TASK-12, 같은 커밋) | 도우미·확장을 바꾸는 갈래(stats·patients·precheck)도 판을 올린다 → 합칠 때 가장 높은 판 하나로 맞추고 `LATEST_HELPER` = `Version`을 다시 확인한다 |
+| `plan.md` §2-4 | 매출 읽는 길을 '도우미 읽기'로 고친 줄(TASK-10) | 다른 갈래가 자기 절을 고칠 수 있다 → 줄 단위로 합친다 |
+| `src/lib/backup/tables.ts` · 그 시험 | 그 파일이 있으면 `sales_days`·`sales_codes`를 더한다(TASK-10). 없으면 ARCHITECTURE.md에 메모 | precheck TASK-32가 만든다 → 나중에 합쳐지는 쪽이 매출 표 둘을 목록에 넣는다 |
 | `e2e/revenue.spec.ts` · `e2e/lib/revenueFakeBridge.ts` | 새 파일(기능 이름, C6) | 다른 갈래의 E2E와 이름이 겹치지 않는다 |
 
 ## 12. 사용자 결정 (2026-11-01, 다시 묻지 않는다)
 1. **1인당 평균 진료비** — 환자 한 명마다(매출 ÷ 서로 다른 환자 수, 같은 환자 여러 번은 한 명). 환자 수는 도우미가 비트 DB 안에서 센다
 2. **치료 묶음** — 원본 일일 보고와 같은 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료) + 그 밖 처방
-3. **환불·예치금이 있는 날** — 그날 금액을 합계에서 빼고 "확인 필요한 날 n일"과 날짜만 알림. TASK-1 ④에서 이런 날이 아주 많으면 직접 입력 칸을 다시 의논한다
+3. **환불·예치금이 있는 날** — 그날 금액을 합계에서 빼고 "확인 필요한 날 n일"과 날짜만 알림. Phase 3 뒤 확인표 '매출 탭에서 볼 것' ④에서 이런 날이 아주 많으면 직접 입력 칸을 다시 의논한다
 4. **업무일지와 같은 읽기** — `revenue.days`가 수납 나눔·신환·재진도 돌려준다(5절)
 
 ## 13. 위험 / 미해결
-- **총진료비에 비급여가 들어 있는지**(2절 1) — TASK-1 답 전에는 TASK-5를 시작하지 않는다
+- **총진료비에 비급여가 들어 있는지**(2절 1) — 확인표 '먼저 할 것' ① 답 전에는 TASK-5를 시작하지 않는다
 - **미수발생·지역화폐**(2절 3) — 읽는 곳을 모른다. 업무일지는 그때까지 직접 입력
-- **처음 읽는 시간** — 13달 약 2,800문장. 의원 PC에서 재 본다(TASK-1 ③). 너무 길면 하루씩 묶는 SQL로 바꾸는 명세 변경
-- **'확인 필요' 날이 많으면** 매출 합계가 크게 모자라 보이고 업무일지 직접 입력이 늘어난다 → TASK-1 ④ 뒤 12절 3을 다시 의논
-- **확장 다시 올리기·도우미 다시 깔기**: 명령 표가 바뀌어 확장 새 빌드(웹스토어 다시 올림)와 새 도우미 zip(`helper-v*` 릴리스)이 필요하다. 확장을 웹스토어에 처음 올리기 전에 TASK-2가 합쳐지면 한 번에 끝난다. 합치기·배포·릴리스 태그는 사용자가 그때마다 말할 때만 한다
+- **처음 읽는 시간** — 13달 약 2,800문장. Phase 3 뒤 매출 탭에서 재 본다(확인표 '매출 탭에서 볼 것' ③). 너무 길면 그때 하루씩 묶는 SQL로 바꾸는 명세 변경을 한다(결정 시점: Phase 3 의원 PC 확인 뒤)
+- **옛 확장·옛 도우미**: 새 명령을 모르는 확장은 `E-BRIDGE-REJECTED`, 도우미는 `E-HELPER-UNKNOWN-COMMAND`를 준다 → 매출 탭만 '새 버전' 상태, 청구는 그대로 쓴다(TASK-12는 `MIN_*`을 올리지 않는다)
+- **'확인 필요' 날이 많으면** 매출 합계가 크게 모자라 보이고 업무일지 직접 입력이 늘어난다 → Phase 3 뒤 확인표 '매출 탭에서 볼 것' ④ 다음에 12절 3을 다시 의논
+- **확장 다시 올리기·도우미 다시 깔기**: 명령 표가 바뀌어 TASK-12가 판을 올린다(`helper/Directory.Build.props`·`LATEST_HELPER`·`extension/manifest.json`). 새 확장은 웹스토어에 다시 올리고 새 도우미 zip은 `helper-v*` 릴리스로 낸다 — 합치기·배포·릴리스 태그·웹스토어 올리기는 사용자가 그때마다 말할 때만 한다. 확장을 웹스토어에 처음 올리기 전에 Phase 1이 합쳐지면 한 번에 끝난다
 - **Actions 비용**: `helper/**`·`commands.json`이 바뀐 push는 윈도우 빌드(`helper.yml`)를 돌린다(Actions 분)
 - **SQL 문장 시험 규칙**: 기존 `Sql.All` 시험은 `SELECT`로 시작하는 것만 받는다. 매출 문장은 `Sql.All`에 넣지 않고 따로 같은 규칙(+`WITH`)으로 시험한다(4-1)
 
 ## 14. 사용자 할 일 (그때 쉬운 말로 안내)
-- TASK-1 ①: 비트 외래환자경영통계에서 어제 숫자 네 개 확인(5분, Phase 2 전)
-- Phase 1 뒤: 합치기·배포·도우미 릴리스 지시 → 의원 PC에 새 도우미 깔기 → 확장 새 버전 웹스토어에 올리기 → TASK-1 ①~⑥ 확인
+- 확인표 '먼저 할 것' ①~③(비트 화면만, 5~10분): Phase 2 둘째 step(TASK-5) 전
+- Phase 1 뒤: 합치기·배포·도우미 릴리스·웹스토어 올리기를 그때 지시 → 의원 PC에 새 도우미 깔기·확장 새 버전
 - TASK-4 뒤: 실제 Supabase SQL 편집기에 migration 붙여 넣기 OK
+- Phase 3 뒤: 의원 PC 매출 탭에서 확인표 '매출 탭에서 볼 것' ①~④
