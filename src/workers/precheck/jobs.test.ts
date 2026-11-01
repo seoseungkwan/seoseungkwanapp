@@ -437,3 +437,41 @@ describe('AC-012.6 설정 화면용 규칙 목록(환자 자료 아님)', () => 
     expect(failed.posts).toEqual([{ type: 'ruleList', ok: false, code: 'E-RULES-LOAD-FAILED' }])
   })
 })
+
+describe('AC-010.1 jobs.check: 규칙 엔진 결과를 보기 모양으로', () => {
+  const tablesValue = async () => {
+    const loaded = await loadTables()
+    if (!loaded.ok) throw new Error(loaded.code)
+    return loaded.value
+  }
+  const NO_SETTINGS = { off: [], on: [], grade: {} }
+  const octMonth = () => {
+    const loaded = loadMonth(OCT)
+    if (!loaded.ok) throw new Error(loaded.code)
+    return loaded.value
+  }
+
+  it('AC-010.1: 진료마다 결과와 점검한 수, 규칙별 묶음, 합계를 돌려준다', async () => {
+    const { jobs } = setup()
+    const month = octMonth()
+    const view = jobs.check(month, await tablesValue(), NO_SETTINGS)
+    expect(view.visits.map((v) => v.key)).toEqual(month.visits.map((v) => v.key))
+    const v2 = view.visits.find((v) => v.key === 'v2')!
+    expect(v2).toMatchObject({ chart: '900002', date: '2026-10-05', name: '가상환자02', skippedNoHistory: 0, skippedNoDx: 0 })
+    expect(v2.checked).toBeGreaterThan(0)
+    const ij05 = v2.findings.find((f) => f.ruleId === 'IJ-05')!
+    expect(ij05).toMatchObject({ visitKey: 'v2', grade: '확인필요', detail: 'KK090 + A15' })
+    expect(ij05.basis.length).toBeGreaterThan(0)
+    const group = view.groups.find((g) => g.ruleId === 'IJ-05')!
+    expect(group).toMatchObject({ title: expect.any(String), domain: expect.any(String), grade: '확인필요' })
+    expect(group.visitKeys).toContain('v2')
+    expect(view.totals.hi).toBe(view.visits.flatMap((v) => v.findings).filter((f) => f.grade === '확인필요').length)
+  })
+
+  it('AC-010.1: 설정을 그대로 넘긴다(끈 규칙은 보기에도 없다)', async () => {
+    const { jobs } = setup()
+    const view = jobs.check(octMonth(), await tablesValue(), { off: ['IJ-05'], on: [], grade: {} })
+    expect(view.visits.flatMap((v) => v.findings).some((f) => f.ruleId === 'IJ-05')).toBe(false)
+    expect(view.groups.some((g) => g.ruleId === 'IJ-05')).toBe(false)
+  })
+})

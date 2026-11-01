@@ -1,0 +1,30 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-2027.json",
+  "settings": null,
+  "visits": [
+    {"id":"MN-04.hit-2027","hits":[{"id":"MN-04","grade":"확인필요","message":"도수치료가 회계연도 16회째이면 수술·골절 등 예외(연 24회)와 시스템 'Y' 선택을 확인하고, 25회째부터는 산정도 환자 징수도 할 수 없으니 빼세요.","detail":"16회째"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"MN-04.miss-2027-prev-year","hits":[],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "MN-04.hit-2027",
+      "MN-04.miss-2027-prev-year"
+    ],
+    "checked": 2,
+    "hi": 1,
+    "mid": 0,
+    "lo": 0,
+    "patients": 1,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"MN-04","grade":"확인필요","visits":["MN-04.hit-2027"]}
+    ],
+    "rows": [
+      ["MN-04.hit-2027","MN-04"]
+    ]
+  }
+}

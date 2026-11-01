@@ -154,6 +154,27 @@ describe('AC-009.3 원본 사례(v1~v18) → ClaimMonth', () => {
       { code: 'MM010', name: '표층열', qty: 1, benefit: true, pay: '급여' },
     ])
   })
+
+  it('AC-009.3: 그날 처방 목록은 47 표에서 (차트, 날짜)가 처음 나온 차례다(원본 Object.values(RXDATA)). 같은 날로 되돌아온 줄은 처음 자리의 목록에 붙는다', () => {
+    const month = shapeClaimMonth(
+      raw({
+        s83: [r83('a1', '900001', '가상환자01', 'S) knee pain', '20261001')],
+        s47: [
+          r47('MM010', '표층열', '900001', '20261001'),
+          r47('Q1', '가상주', '900002', '20261002'),
+          r47('Q1', '트리암주', '900001', '20261005'),
+          r47('KK090', '관절강내주사', '900001', '20261001'),
+          r47('MM020', '심층열', '900002', '20261002'),
+        ],
+      }),
+    )
+    expect(month.rxDayOrder.map((list) => list.map((line) => line.code))).toEqual([['MM010', 'KK090'], ['Q1', 'MM020'], ['Q1']])
+    // 복사가 아니라 차트번호·날짜로 찾는 목록과 같은 배열이다. 진료의 처방도 같은 배열을 가리킨다
+    expect(month.rxDayOrder[0]).toBe(month.rxByDay.get('900001')?.get('2026-10-01'))
+    expect(month.rxDayOrder[1]).toBe(month.rxByDay.get('900002')?.get('2026-10-02'))
+    expect(month.rxDayOrder[2]).toBe(month.rxByDay.get('900001')?.get('2026-10-05'))
+    expect(visit(month, 'a1').rx).toBe(month.rxDayOrder[0])
+  })
 })
 
 describe('AC-009.3 83 증상 줄 → 진료(원본 selectWorkbook·build·splitCell)', () => {

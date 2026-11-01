@@ -166,8 +166,9 @@ function quantity(value: string | undefined): number | null {
   return Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER ? n : null
 }
 
-function readRx(rows: GridRow[]): { byDay: RxByDay; lines: number } {
+function readRx(rows: GridRow[]): { byDay: RxByDay; order: RxLine[][]; lines: number } {
   const byDay: RxByDay = new Map()
+  const order: RxLine[][] = [] // 새 날 목록을 처음 나온 차례로(원본 Object.values(RXDATA)). byDay와 같은 배열이다
   let lines = 0
   for (const row of rows) {
     const chart = text(row['차트번호'])
@@ -184,13 +185,17 @@ function readRx(rows: GridRow[]): { byDay: RxByDay; lines: number } {
       pay,
     }
     const days = byDay.get(chart) ?? new Map<string, RxLine[]>()
-    const list = days.get(date) ?? []
+    let list = days.get(date)
+    if (!list) {
+      list = []
+      order.push(list)
+      days.set(date, list)
+    }
     list.push(line)
-    days.set(date, list)
     byDay.set(chart, days)
     lines++
   }
-  return { byDay, lines }
+  return { byDay, order, lines }
 }
 
 // ── 83D 상병 → 내원번호별 상병 (diagnoses parse) ─────────────────
@@ -362,5 +367,5 @@ export function shapeClaimMonth(raw: unknown): ClaimMonth {
       memosInBit: [...new Set((memos.get(draft.key) ?? []).filter((m) => m.chart === owner).map((m) => m.memo))],
     }
   })
-  return { period, visits, history, historyRange, rxByDay: rx.byDay, dxTrend, catalog, hasDx: s83d.length > 0 }
+  return { period, visits, history, historyRange, rxByDay: rx.byDay, rxDayOrder: rx.order, dxTrend, catalog, hasDx: s83d.length > 0 }
 }

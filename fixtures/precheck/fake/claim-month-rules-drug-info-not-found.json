@@ -1,0 +1,390 @@
+{
+  "version": 1,
+  "period": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+  },
+  "historyRange": {
+    "from": "2025-10-01",
+    "to": "2026-10-31"
+  },
+  "trendRange": {
+    "from": "2025-11-04",
+    "to": "2026-11-03"
+  },
+  "counts": {
+    "s83": 4,
+    "s83d": 3,
+    "s47": 6,
+    "history": 5
+  },
+  "s83": [
+    {
+      "내원번호": "other-patient-not-in-table",
+      "차트번호": "900001",
+      "환자명": "가상환자01",
+      "증상": "S) pain",
+      "기록날짜": "20261012"
+    },
+    {
+      "내원번호": "IJ-01.miss-asked-code-not-in-table",
+      "차트번호": "900002",
+      "환자명": "가상환자02",
+      "증상": "Rt knee",
+      "기록날짜": "20261012"
+    },
+    {
+      "내원번호": "IJ-01.miss-nine-digit-history-only-empty-answer",
+      "차트번호": "900003",
+      "환자명": "가상환자03",
+      "증상": "Rt knee",
+      "기록날짜": "20261012"
+    },
+    {
+      "내원번호": "【총계】",
+      "차트번호": "3건",
+      "환자명": "",
+      "증상": "",
+      "기록날짜": ""
+    }
+  ],
+  "s83d": [
+    {
+      "내원번호": "other-patient-not-in-table",
+      "차트번호": "900001",
+      "상병청구코드": "M5456",
+      "상병명칭": "상병 M5456",
+      "주상병여부": "주상병",
+      "산정특례기호": "",
+      "과목코드": "OS",
+      "진단일자": "20261012"
+    },
+    {
+      "내원번호": "IJ-01.miss-asked-code-not-in-table",
+      "차트번호": "900002",
+      "상병청구코드": "M1706",
+      "상병명칭": "상병 M1706",
+      "주상병여부": "주상병",
+      "산정특례기호": "",
+      "과목코드": "OS",
+      "진단일자": "20261012"
+    },
+    {
+      "내원번호": "IJ-01.miss-nine-digit-history-only-empty-answer",
+      "차트번호": "900003",
+      "상병청구코드": "M1706",
+      "상병명칭": "상병 M1706",
+      "주상병여부": "주상병",
+      "산정특례기호": "",
+      "과목코드": "OS",
+      "진단일자": "20261012"
+    }
+  ],
+  "s47": [
+    {
+      "처방코드": "999999999",
+      "처방명칭": "가상약",
+      "차트번호": "900001",
+      "처방일자": "20261012",
+      "급여구분": "급여",
+      "수량": "1"
+    },
+    {
+      "처방코드": "KK090",
+      "처방명칭": "KK090",
+      "차트번호": "900002",
+      "처방일자": "20261012",
+      "급여구분": "급여",
+      "수량": "1"
+    },
+    {
+      "처방코드": "A21",
+      "처방명칭": "트리암주",
+      "차트번호": "900002",
+      "처방일자": "20261012",
+      "급여구분": "급여",
+      "수량": "1"
+    },
+    {
+      "처방코드": "KK090",
+      "처방명칭": "KK090",
+      "차트번호": "900003",
+      "처방일자": "20261012",
+      "급여구분": "급여",
+      "수량": "1"
+    },
+    {
+      "처방코드": "A21",
+      "처방명칭": "트리암주",
+      "차트번호": "900003",
+      "처방일자": "20261012",
+      "급여구분": "급여",
+      "수량": "1"
+    },
+    {
+      "처방코드": "▶ 합계",
+      "처방명칭": "",
+      "차트번호": "",
+      "처방일자": "",
+      "급여구분": "",
+      "수량": ""
+    }
+  ],
+  "history": [
+    {
+      "v": "other-patient-not-in-table",
+      "p": "900001",
+      "d": "2026-10-12",
+      "c": [
+        "999999999"
+      ],
+      "m": ""
+    },
+    {
+      "v": "h-IJ-01.miss-asked-code-not-in-table-0",
+      "p": "900002",
+      "d": "2026-10-05",
+      "c": [
+        "KK090",
+        "999999999"
+      ],
+      "m": "Rt knee"
+    },
+    {
+      "v": "IJ-01.miss-asked-code-not-in-table",
+      "p": "900002",
+      "d": "2026-10-12",
+      "c": [
+        "KK090",
+        "A21"
+      ],
+      "m": ""
+    },
+    {
+      "v": "h-IJ-01.miss-nine-digit-history-only-empty-answer-0",
+      "p": "900003",
+      "d": "2026-10-05",
+      "c": [
+        "KK090",
+        "642306741"
+      ],
+      "m": "Rt knee"
+    },
+    {
+      "v": "IJ-01.miss-nine-digit-history-only-empty-answer",
+      "p": "900003",
+      "d": "2026-10-12",
+      "c": [
+        "KK090",
+        "A21"
+      ],
+      "m": ""
+    }
+  ],
+  "historyStats": {
+    "invalidRows": 0,
+    "invalidCodes": 0,
+    "truncated": 0
+  },
+  "dxTrend": {
+    "visits": 120,
+    "invalidRows": 0,
+    "truncated": 0,
+    "codes": [
+      {
+        "c": "KK090",
+        "n": 40,
+        "d": [
+          {
+            "c": "M1706",
+            "nm": "상병 M1706",
+            "m": 30,
+            "s": 6,
+            "x": 0,
+            "l": 420
+          },
+          {
+            "c": "M5456",
+            "nm": "상병 M5456",
+            "m": 2,
+            "s": 8,
+            "x": 0,
+            "l": 90
+          }
+        ]
+      },
+      {
+        "c": "LA358",
+        "n": 25,
+        "d": [
+          {
+            "c": "M5456",
+            "nm": "상병 M5456",
+            "m": 20,
+            "s": 3,
+            "x": 0,
+            "l": 380
+          }
+        ]
+      }
+    ],
+    "suggestions": [
+      {
+        "c": "KK090",
+        "n": 40,
+        "k": 900,
+        "miss": 4,
+        "g": [
+          {
+            "c": "M17",
+            "nm": "상병 M1706",
+            "k": 900,
+            "x": 0
+          }
+        ]
+      }
+    ]
+  },
+  "catalog": {
+    "codes": [
+      {
+        "code": "A15",
+        "name": "리도카인주",
+        "kind": "drug",
+        "active": true,
+        "standardCode": "A15"
+      },
+      {
+        "code": "A21",
+        "name": "트리암주",
+        "kind": "drug",
+        "active": true,
+        "standardCode": "A21"
+      },
+      {
+        "code": "A49",
+        "name": "아라간플러스주",
+        "kind": "drug",
+        "active": true,
+        "standardCode": "A49"
+      },
+      {
+        "code": "AA254",
+        "name": "재진",
+        "kind": "other",
+        "active": true,
+        "standardCode": "AA254"
+      },
+      {
+        "code": "G6502",
+        "name": "수지 2매",
+        "kind": "other",
+        "active": true,
+        "standardCode": "G6502"
+      },
+      {
+        "code": "KK061",
+        "name": "신경간내주사",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "KK061"
+      },
+      {
+        "code": "KK090",
+        "name": "관절강내주사",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "KK090"
+      },
+      {
+        "code": "KR006",
+        "name": "도수치료",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "KR006"
+      },
+      {
+        "code": "LA357",
+        "name": "척추부신경",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "LA357"
+      },
+      {
+        "code": "LA358",
+        "name": "후지내측지",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "LA358"
+      },
+      {
+        "code": "MM010",
+        "name": "표층열",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "MM010"
+      },
+      {
+        "code": "MM020",
+        "name": "심층열",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "MM020"
+      },
+      {
+        "code": "MM410",
+        "name": "수압팽창술",
+        "kind": "procedure",
+        "active": true,
+        "standardCode": "MM410"
+      },
+      {
+        "code": "X1",
+        "name": "가상진통정",
+        "kind": "drug",
+        "active": true,
+        "standardCode": "X1"
+      },
+      {
+        "code": "Y2",
+        "name": "가상소염캡슐",
+        "kind": "drug",
+        "active": true,
+        "standardCode": "Y2"
+      },
+      {
+        "code": "Z800",
+        "name": "가상약",
+        "kind": "other",
+        "active": true,
+        "standardCode": "642306741"
+      },
+      {
+        "code": "Z801",
+        "name": "가상약",
+        "kind": "other",
+        "active": true,
+        "standardCode": "645903001"
+      },
+      {
+        "code": "655601771",
+        "name": "가상약",
+        "kind": "other",
+        "active": true,
+        "standardCode": "KK020"
+      }
+    ],
+    "la": [
+      {
+        "code": "LA357",
+        "name": "척추부신경 차단술(가상 이름)",
+        "active": true
+      },
+      {
+        "code": "LA358",
+        "name": "후지내측지 신경 차단술(가상 이름)",
+        "active": true
+      }
+    ]
+  }
+}

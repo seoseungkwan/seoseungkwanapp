@@ -1,0 +1,54 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-table-order.json",
+  "settings": null,
+  "visits": [
+    {"id":"mix1-a-first","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix2-a-first","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix3-a-first","hits":[{"id":"PH-01","grade":"알림","message":"같은 날 물리치료 19종과 관절강내·신경간내·건초내 주사·신경차단술이 모두 급여로 청구됐으니 소정점수가 낮은 쪽을 U항(100/100)으로 옮기세요. (점수가 낮은 쪽을 U항(100/100)으로) · 청구 파일에서 U항 처리 확인","detail":"MM010 + KK090"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix3-a-same-day","hits":[{"id":"PH-01","grade":"알림","message":"같은 날 물리치료 19종과 관절강내·신경간내·건초내 주사·신경차단술이 모두 급여로 청구됐으니 소정점수가 낮은 쪽을 U항(100/100)으로 옮기세요. (점수가 낮은 쪽을 U항(100/100)으로) · 청구 파일에서 U항 처리 확인","detail":"MM010 + KK090"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix1-b","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix2-b","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix3-b","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix1-a-later","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"mix2-a-later","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.miss-history-name-table-order","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-history-name-table-order","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-history-name-day-list","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "mix1-a-first",
+      "mix2-a-first",
+      "mix3-a-first",
+      "mix3-a-same-day",
+      "mix1-b",
+      "mix2-b",
+      "mix3-b",
+      "mix1-a-later",
+      "mix2-a-later",
+      "IJ-01.miss-history-name-table-order",
+      "IJ-01.hit-history-name-table-order",
+      "IJ-01.hit-history-name-day-list"
+    ],
+    "checked": 12,
+    "hi": 2,
+    "mid": 2,
+    "lo": 0,
+    "patients": 2,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"IJ-01","grade":"확인필요","visits":["IJ-01.hit-history-name-table-order","IJ-01.hit-history-name-day-list"]},
+      {"rule":"PH-01","grade":"알림","visits":["mix3-a-first","mix3-a-same-day"]}
+    ],
+    "rows": [
+      ["mix3-a-first","PH-01"],
+      ["mix3-a-same-day","PH-01"],
+      ["IJ-01.hit-history-name-table-order","IJ-01"],
+      ["IJ-01.hit-history-name-day-list","IJ-01"]
+    ]
+  }
+}

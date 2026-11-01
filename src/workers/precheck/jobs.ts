@@ -1,6 +1,7 @@
+import { runRules } from '@/lib/precheck/rules/engine'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { Outcome } from '@/types/parse'
-import type { ClaimMonth, PrecheckToScreen, RuleSummary, Tables } from '@/types/precheck'
+import type { CheckView, ClaimMonth, PrecheckToScreen, RuleSettings, RuleSummary, Tables } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
@@ -36,6 +37,19 @@ export function ruleList(tables: Tables): RuleSummary[] {
     basis,
     enabled_default,
   }))
+}
+
+/** 규칙 엔진을 돌려 보기 모양으로 바꾼다(TASK-10). 화면으로 보내는 일은 TASK-13이 잇는다 */
+export function checkMonth(month: ClaimMonth, tables: Tables, settings: RuleSettings): CheckView {
+  const { perVisit, groups, totals } = runRules(month, tables, settings)
+  return {
+    visits: month.visits.map(({ key, chart, date, name }) => {
+      const { hits, skippedNoHistory, skippedNoDx, checked } = perVisit.get(key)!
+      return { key, chart, date, name, findings: hits, skippedNoHistory, skippedNoDx, checked }
+    }),
+    groups: groups.map(({ ruleId, rule, grade, visits }) => ({ ruleId, title: rule.title, domain: rule.domain, grade, visitKeys: visits.map((row) => row.visitKey) })),
+    totals,
+  }
 }
 
 type Rec = Record<string, unknown>
@@ -109,6 +123,8 @@ export function createPrecheckJobs(deps: {
     month(): ClaimMonth | null {
       return current
     },
+
+    check: checkMonth,
   }
 }
 
