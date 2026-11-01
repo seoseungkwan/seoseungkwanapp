@@ -12,6 +12,7 @@ namespace Precheck.Core.Tests.Stats;
 /// <summary>
 /// AC-503.2 통계 SQL(StatsSql)은 원본 문장 사본(original-sql/*.sql)과 공백만 다르다. 진료 줄 SQL만 원본 RowsSql에서
 /// 처방 코드 거르기 한 덩어리를 뺐다. 모두 매개변수를 받는 SELECT이고 ReadOnlyGuard를 지난다. 청구 Sql.All은 그대로다.
+/// AC-504.4 보고 SQL도 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로). @daily는 Char(1)로 관문을 지난다.
 /// </summary>
 public class StatsSqlTests
 {
@@ -24,6 +25,19 @@ public class StatsSqlTests
         ["report-history-guard.sql"] = StatsSql.HistoryGuardSql,
     };
 
+    /// <summary>원본 OperationalReportSql 사본 이름 → StatsSql 상수(TASK-4).</summary>
+    private static readonly Dictionary<string, string> ReportOriginals = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["report-unsupported-finance.sql"] = StatsSql.UnsupportedFinanceSql,
+        ["report-patients.sql"] = StatsSql.PatientsSql,
+        ["report-treatments.sql"] = StatsSql.TreatmentsSql,
+        ["report-la-codes.sql"] = StatsSql.LaCodesSql,
+        ["report-finance-normal.sql"] = StatsSql.FinanceNormalSql,
+        ["report-finance-receivable.sql"] = StatsSql.FinanceReceivableSql,
+        ["report-finance-multiplicity.sql"] = StatsSql.FinanceMultiplicitySql,
+        ["report-receivable-multiplicity.sql"] = StatsSql.ReceivableMultiplicitySql,
+    };
+
     private const string RowsOriginal = "rx-visit-split-visits-rows.sql";
 
     // 원본 RowsSql에서 빼는 한 덩어리의 처음과 끝(공백을 한 칸으로 줄인 글 기준)
@@ -34,6 +48,10 @@ public class StatsSqlTests
     {
         StatsSql.VisitRowsSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql, StatsSql.CodeNamesSql, StatsSql.HistoryGuardSql,
     };
+
+    // 원본 그대로라 남긴 글(AC-504.4 공백만 다름). 이 밖의 ;·주석은 어느 문장에도 없어야 한다
+    private static readonly string[] EndsWithSemicolon = { StatsSql.FinanceNormalSql, StatsSql.FinanceReceivableSql, StatsSql.ReceivableMultiplicitySql };
+    private const string KeptComment = "-- Equivalent to the original inner/outer grouped financial projection's -- keys. Original MAX date deliberately ranges beyond the selected period.";
 
     private static string OriginalDirectory()
     {
@@ -51,8 +69,26 @@ public class StatsSqlTests
 
     private static string NoSpace(string sql) => Regex.Replace(sql, @"\s+", "");
 
+    /// <summary>사본 글: 머리의 설명 주석 줄만 뺀다(원본 문장 안의 주석은 원본 글이라 남긴다).</summary>
     private static string ReadOriginal(string file) =>
-        string.Join("\n", File.ReadAllLines(Path.Combine(OriginalDirectory(), file)).Where(line => !line.TrimStart().StartsWith("--", StringComparison.Ordinal)));
+        string.Join("\n", File.ReadAllLines(Path.Combine(OriginalDirectory(), file)).SkipWhile(line => line.TrimStart().StartsWith("--", StringComparison.Ordinal)));
+
+    /// <summary>원본 그대로라 남긴 ; 와 주석만 정확히 뺀 글. 이 글에는 ;·주석이 하나도 없어야 한다.</summary>
+    private static string WithoutKeptOriginalText(string sql)
+    {
+        var text = Squash(sql);
+        if (sql == StatsSql.FinanceMultiplicitySql)
+        {
+            Assert.Equal(1, Count(text, KeptComment));
+            text = text.Replace(KeptComment, "");
+        }
+        if (EndsWithSemicolon.Contains(sql))
+        {
+            Assert.EndsWith(";", text);
+            text = text.Substring(0, text.Length - 1);
+        }
+        return text;
+    }
 
     private static int Count(string text, string part)
     {
@@ -74,7 +110,7 @@ public class StatsSqlTests
     public void ConstantsMatchOriginalCopies()
     {
         var files = Directory.GetFiles(OriginalDirectory(), "*.sql").Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
-        Assert.Equal(Originals.Keys.Append(RowsOriginal).OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
+        Assert.Equal(Originals.Keys.Concat(ReportOriginals.Keys).Append(RowsOriginal).OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
         foreach (var pair in Originals) Assert.Equal(Squash(ReadOriginal(pair.Key)), Squash(pair.Value));
     }
 
@@ -100,18 +136,81 @@ public class StatsSqlTests
     [Fact(DisplayName = "AC-503.2 통계 SQL은 모두 SELECT 하나뿐(; · 주석 · 쓰기·실행 낱말 없음)이고 환자 신상 표를 읽지 않는다")]
     public void StatementsAreSingleSelects()
     {
-        var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_", RegexOptions.IgnoreCase);
         var readable = new HashSet<string>(StringComparer.Ordinal) { "dbo.OcmInf", "dbo.OdrInf", "dbo.DepMst", "dbo.SeeMst" };
-        Assert.Equal(Constants.OrderBy(sql => sql, StringComparer.Ordinal), StatsSql.All.OrderBy(sql => sql, StringComparer.Ordinal));
-        foreach (var sql in StatsSql.All)
+        Assert.Equal(Constants.Concat(ReportOriginals.Values).OrderBy(sql => sql, StringComparer.Ordinal), StatsSql.All.OrderBy(sql => sql, StringComparer.Ordinal));
+        foreach (var sql in Constants)
         {
-            Assert.True(sql.StartsWith("SELECT ", StringComparison.Ordinal) || sql.StartsWith("WITH ", StringComparison.Ordinal), "SELECT 또는 WITH … SELECT");
-            Assert.DoesNotContain(";", sql);
-            Assert.DoesNotContain("--", sql);
-            Assert.DoesNotContain("/*", sql);
-            Assert.DoesNotMatch(forbidden, sql);
+            AssertSingleSelect(sql, sql);
             // 읽는 표는 내원·처방·진료과·처방 목록뿐(이름·전화·주민번호·주소가 있는 환자 표를 읽지 않는다)
             foreach (Match table in Regex.Matches(sql, @"dbo\.[A-Za-z]+")) Assert.Contains(table.Value, readable);
+        }
+    }
+
+    private static void AssertSingleSelect(string sql, string body)
+    {
+        var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_", RegexOptions.IgnoreCase);
+        Assert.True(sql.StartsWith("SELECT ", StringComparison.Ordinal) || sql.StartsWith("WITH ", StringComparison.Ordinal), "SELECT 또는 WITH … SELECT");
+        Assert.DoesNotContain(";", body);
+        Assert.DoesNotContain("--", body);
+        Assert.DoesNotContain("/*", body);
+        Assert.DoesNotMatch(forbidden, body);
+    }
+
+    [Fact(DisplayName = "AC-504.4 보고 SQL은 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로)")]
+    public void ReportConstantsMatchOriginalCopies()
+    {
+        foreach (var pair in ReportOriginals) Assert.Equal(Squash(ReadOriginal(pair.Key)), Squash(pair.Value));
+        // 원본 주석 줄은 뒤 줄을 먹지 않게 줄바꿈을 그대로 둔다
+        Assert.Contains("projection's\n", StatsSql.FinanceMultiplicitySql.Replace("\r\n", "\n"));
+        Assert.Contains("selected period.\n", StatsSql.FinanceMultiplicitySql.Replace("\r\n", "\n"));
+    }
+
+    [Fact(DisplayName = "AC-504.4 보고 SQL은 모두 SELECT 하나뿐이고(원본의 끝 ; 셋과 주석 하나 밖에는 없음) 합계만 내며 환자 표는 차트번호 연결에만 쓴다")]
+    public void ReportStatementsAreSingleSelects()
+    {
+        var readable = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "dbo.OcmInf", "dbo.OdrInf", "dbo.DepMst", "dbo.OrcInf", "dbo.OrpInf", "dbo.IrcInf",
+            "dbo.PbsInf", "dbo.InsMst", "dbo.DtlMst", "dbo.UidMst", "dbo.OdlInf", "dbo.PmdInf",
+        };
+        foreach (var sql in ReportOriginals.Values)
+        {
+            AssertSingleSelect(sql, WithoutKeptOriginalText(sql));
+            foreach (Match table in Regex.Matches(sql, @"dbo\.[A-Za-z]+")) Assert.Contains(table.Value, readable);
+            foreach (Match column in Regex.Matches(sql, @"\bPbs[A-Za-z]+")) Assert.Contains(column.Value, new[] { "PbsInf", "PbsChtNum" });
+        }
+    }
+
+    [Fact(DisplayName = "AC-504.4 보고 SQL 매개변수 표: @day·@nextDay Char(8), @from·@to Char(12), @hospital VarChar(32), @daily Char(1) 중 문장에 나오는 것만")]
+    public void ReportParameterTables()
+    {
+        string Shape(string sql) => string.Join(" ", StatsSql.ParametersOf(sql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")"));
+
+        Assert.Equal("@day:Char(8) @nextDay:Char(8) @from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(StatsSql.UnsupportedFinanceSql));
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(StatsSql.PatientsSql));
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32) @daily:Char(1)", Shape(StatsSql.TreatmentsSql));
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(StatsSql.LaCodesSql));
+        foreach (var sql in new[] { StatsSql.FinanceNormalSql, StatsSql.FinanceReceivableSql, StatsSql.FinanceMultiplicitySql, StatsSql.ReceivableMultiplicitySql })
+        {
+            Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(sql));
+        }
+    }
+
+    [Fact(DisplayName = "AC-504.4 @daily는 원본 Bit 대신 Char(1) '1'·'0'으로 관문을 지난다(참·거짓 값과 두 글자는 막는다)")]
+    public void DailyIsOneCharThroughTheGuard()
+    {
+        Dictionary<string, object?> Treatment(object? daily) =>
+            Args(("@from", "202611010000"), ("@to", "202611160000"), ("@hospital", "SYNTHETIC"), ("@daily", daily));
+
+        ReadOnlyGuard.Require(StatsSql.TreatmentsSql, Treatment("1"));
+        ReadOnlyGuard.Require(StatsSql.TreatmentsSql, Treatment("0"));
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.TreatmentsSql, Treatment(true))).Code);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.TreatmentsSql, Treatment("10"))).Code);
+        Assert.True(Sql.IsAllowed(StatsSql.TreatmentsSql));
+        foreach (var sql in ReportOriginals.Values)
+        {
+            Assert.True(Sql.IsAllowed(sql));
+            Assert.DoesNotContain(sql, Sql.All);
         }
     }
 

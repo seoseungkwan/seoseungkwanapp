@@ -23,7 +23,8 @@
     {
       "step": 3,
       "name": "helper-stats-report",
-      "status": "pending"
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Stats/StatsReport.cs: Read(db, scope, to)가 네 벌(일일 to·to−1, 월말 to가 든 달·앞 달)을 원본 OperationalReportData.Load 순서·판정대로 만든다. StatsSql에 보고 SQL 8개 더함(사본 original-sql/report-*.sql, @daily는 Treatments에만 Char(1)). 벌 하나의 판정 실패는 {ok:false, reason}, SQL 실패는 전체 error. StatsPayload가 design JSON report를 씀. step과 다른 점: 금액은 Math.Floor 대신 Math.Truncate(0 이상이면 같고, 음수도 원 미만을 버리려고. CLAUDE.md 금액 규칙). 시험 AC-503.2 '; 없음·표 4개' 검사는 TASK-3 SQL 5개에 그대로, 보고 SQL은 새 AC-504.4 시험이 원본의 ; 3개·주석 1개만 허용. 음수 금액은 원본처럼 그대로 보낸다 — 웹 쪽 AC-505.2는 0 이상만 받아 전체 불러오기가 실패한다(사용자 결정 대기). 월말 '오늘까지' 안내는 원본 글이고 to가 오늘일 때만 맞다(화면은 늘 오늘을 보냄)."
     },
     {
       "step": 4,

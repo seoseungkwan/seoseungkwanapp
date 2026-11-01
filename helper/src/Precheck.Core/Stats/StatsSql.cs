@@ -7,7 +7,7 @@ namespace Precheck.Core.Stats;
 /// <summary>
 /// 통계 탭이 비트 DB에 돌리는 SQL 전부(REQ-503, design.md 'TASK-3·4'). 문장은 원본 양지바른
 /// (seoseungkwan/shared@2a1069b YangjiBareun_사전점검/vendor/drbit_export/)에서 그대로 옮겼다. 공백만 다를 수 있고
-/// 사본은 helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql, 시험이 비교한다(AC-503.2).
+/// 사본은 helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql, 시험이 비교한다(AC-503.2·AC-504.4).
 /// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 목록도 보므로 ReadOnlyGuard를 지난다.
 /// 청구 목록 Sql.All에는 넣지 않는다.
 /// </summary>
@@ -81,6 +81,265 @@ ORDER BY SeeOdrCod,
     /// <summary>원본 OperationalReportSql.HistoryGuard: 과거 이관 자료(DRBITPACK_OLD·V_OcmInf·V_OdrInf)가 따로 있으면 1.</summary>
     public const string HistoryGuardSql = @"SELECT (CASE WHEN EXISTS(SELECT 1 FROM sys.databases WHERE name='DRBITPACK_OLD') OR EXISTS(SELECT 1 FROM sys.objects WHERE name IN ('V_OcmInf','V_OdrInf')) THEN 1 ELSE 0 END)";
 
+    /// <summary>원본 UnsupportedFinance: 그 기간에 환불·변경수납·예치금 자료가 몇 건인가(0이 아니면 금액 확인 필요).</summary>
+    public const string UnsupportedFinanceSql = @"SELECT SUM(q.n) FROM (
+ SELECT COUNT_BIG(*) n FROM dbo.OrcInf r
+ WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay
+   AND (r.OrcPatTyp='R' OR r.OrcCod IN ('TFC','TPR'))
+   AND EXISTS(SELECT 1 FROM dbo.OcmInf c JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod
+               WHERE c.OcmNum=r.OrcOcmNum AND d.DepHspNum=@hospital
+                 AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+ UNION ALL SELECT COUNT_BIG(*) FROM dbo.OrpInf p JOIN dbo.OcmInf c ON c.OcmNum=p.OrpOcmNum
+ WHERE p.OrpRcpStt<>'C' AND p.OrpAccDte>=@day AND p.OrpAccDte<@nextDay
+   AND c.OcmPatTyp='O' AND c.OcmRsuYon='Y' AND c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=p.OrpDepCod AND d.DepHspNum=@hospital
+               AND LEFT(p.OrpAccDte,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+ UNION ALL SELECT COUNT_BIG(*) FROM dbo.IrcInf
+ WHERE (IrcAccDte>=@day AND IrcAccDte<@nextDay)
+    OR (IrcRcpDtm>=@from AND IrcRcpDtm<@to)
+    OR (IrcRetDtm>=@from AND IrcRetDtm<@to)
+) q";
+
+    /// <summary>원본 Patients: 총환, 신환, 차트번호 없는 내원, 중복 내원, 첫 내원을 찾지 못한 환자.</summary>
+    public const string PatientsSql = @"WITH PeriodVisits AS (
+ SELECT c.OcmNum VisitId,NULLIF(RTRIM(c.OcmChtNum),'') PatientId
+ FROM dbo.OcmInf c
+ WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O'
+   AND c.OcmComStt IN ('WN','HN','TN','PN') AND c.OcmRsuYon<>'O'
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+), Patients AS (
+ SELECT DISTINCT PatientId FROM PeriodVisits WHERE PatientId IS NOT NULL
+), FirstVisits AS (
+ SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON NULLIF(RTRIM(c.OcmChtNum),'')=p.PatientId
+ WHERE c.OcmAcpDtm<@to AND c.OcmRsuYon<>'O'
+   AND ((c.OcmPatTyp='O' AND c.OcmComStt IN ('WN','HN','TN','PN'))
+     OR (c.OcmPatTyp='I' AND c.OcmComStt NOT IN ('VC','CN','CR')))
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+ GROUP BY p.PatientId
+)
+SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
+       (SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from),
+       (SELECT COUNT_BIG(*) FROM PeriodVisits WHERE PatientId IS NULL),
+       (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),
+       (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)";
+
+    /// <summary>원본 Treatments: 치료 이름(manual·eswt·carm·sono·cryo), 건수(일일은 환자 수, 월말은 처방행), 환자에 연결하지 못한 줄.</summary>
+    public const string TreatmentsSql = @"WITH CandidateOrders AS (
+ SELECT o.OdrOcmNum VisitId,
+ CASE WHEN RTRIM(o.OdrCod)=N'도수' THEN 'manual'
+      WHEN UPPER(RTRIM(o.OdrCod))='CARM1' THEN 'carm'
+      WHEN UPPER(RTRIM(o.OdrCod))='SONO1' THEN 'sono'
+      WHEN UPPER(RTRIM(o.OdrCod))='CRYO' THEN 'cryo'
+      WHEN CHARINDEX('ESWT',UPPER(RTRIM(o.OdrCod)))>0 THEN 'eswt' END Treatment
+ FROM dbo.OdrInf o
+ WHERE o.OdrDtm>=@from AND o.OdrDtm<@to AND o.OdrDelFlg='N' AND o.OdrCanYon='N'
+   AND o.OdrOspTyp='I' AND o.OdrOutCod<>'99'
+   AND (RTRIM(o.OdrCod)=N'도수' OR UPPER(RTRIM(o.OdrCod)) IN ('CARM1','SONO1','CRYO') OR CHARINDEX('ESWT',UPPER(RTRIM(o.OdrCod)))>0)
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=o.OdrDepCod AND d.DepHspNum=@hospital
+               AND LEFT(o.OdrDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+), VisitLinks AS (
+ SELECT c.OcmNum VisitId,COUNT_BIG(*) LinkRows,MIN(NULLIF(RTRIM(c.OcmChtNum),'')) PatientId
+ FROM dbo.OcmInf c
+ WHERE c.OcmPatTyp='O' AND c.OcmRsuYon<>'O' AND c.OcmAcpDtm<@to
+   AND ((@daily=1 AND c.OcmComStt IN ('WN','HN','TN','PN'))
+      OR (@daily=0 AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')))
+   AND EXISTS(SELECT 1 FROM CandidateOrders o WHERE o.VisitId=c.OcmNum)
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+ GROUP BY c.OcmNum
+)
+SELECT o.Treatment,CASE WHEN @daily=1 THEN CONVERT(bigint,COUNT(DISTINCT v.PatientId)) ELSE COUNT_BIG(*) END TreatmentCount,
+       SUM(CASE WHEN v.LinkRows<>1 OR v.PatientId IS NULL THEN CONVERT(bigint,1) ELSE 0 END) InvalidLinks
+FROM CandidateOrders o JOIN VisitLinks v ON v.VisitId=o.VisitId GROUP BY o.Treatment";
+
+    /// <summary>원본 LaCodes: LA로 시작하는 처방코드, 유효 처방행 수.</summary>
+    public const string LaCodesSql = @"SELECT UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) PrescriptionCount
+FROM dbo.OdrInf o
+WHERE o.OdrDtm>=@from AND o.OdrDtm<@to AND UPPER(RTRIM(o.OdrCod)) LIKE 'LA%'
+  AND o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOspTyp='I' AND o.OdrOutCod<>'99'
+  AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=o.OdrDepCod AND d.DepHspNum=@hospital
+              AND LEFT(o.OdrDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+  AND EXISTS(SELECT 1 FROM dbo.OcmInf c WHERE c.OcmNum=o.OdrOcmNum AND c.OcmPatTyp='O'
+              AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB') AND c.OcmRsuYon<>'O' AND c.OcmAcpDtm<@to
+              AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+                           AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte))
+GROUP BY UPPER(RTRIM(o.OdrCod)) ORDER BY Code";
+
+    /// <summary>원본 FinanceNormal(정상수납): 총진료비, 조합청구액, 비급여, 현금, 카드, 계좌이체. 끝의 ;까지 원본 그대로.</summary>
+    public const string FinanceNormalSql = @"WITH Seq AS (
+    SELECT OrpOcmNum,MAX(OrpRcpSeq) AS SeqRcp
+    FROM dbo.OrpInf
+    WHERE OrpRcpStt<>'C' AND OrpAccDte>=@day AND OrpAccDte<@nextDay
+    GROUP BY OrpOcmNum
+), Orp AS (
+    SELECT p.*
+    FROM dbo.OrpInf p JOIN Seq s ON s.OrpOcmNum=p.OrpOcmNum AND s.SeqRcp=p.OrpRcpSeq
+    WHERE NOT EXISTS(SELECT 1 FROM dbo.IrcInf i WHERE i.IrcOcmNum=p.OrpOcmNum AND i.IrcRcpTyp<>'T')
+), OrcMid AS (
+    SELECT o2.OrcChtNum,o2.OrcOcmNum,
+        (SELECT MAX(o1.OrcAccDte) FROM dbo.OrcInf o1
+         WHERE o1.OrcRcpNum=o2.OrcRcpNum AND o1.OrcCod=o2.OrcCod) AS ReceiptDay,
+        CASE o2.OrcCod WHEN 'RCV' THEN SUM(o2.OrcNewAmt) ELSE 0 END AS CashRcv,
+        CASE o2.OrcCod WHEN 'RCV' THEN SUM(o2.OrcCrdAmt) ELSE 0 END AS CardRcv,
+        CASE o2.OrcCod WHEN 'RCV' THEN SUM(o2.OrcChkAmt) ELSE 0 END AS CheckRcv,
+        CASE o2.OrcCod WHEN 'TFC' THEN SUM(o2.OrcNewAmt) ELSE 0 END AS CashTfc,
+        CASE o2.OrcCod WHEN 'TFC' THEN SUM(o2.OrcCrdAmt) ELSE 0 END AS CardTfc,
+        CASE o2.OrcCod WHEN 'TFC' THEN SUM(o2.OrcChkAmt) ELSE 0 END AS CheckTfc
+    FROM dbo.OrcInf o2
+    WHERE o2.OrcAccDte>=@day AND o2.OrcAccDte<@nextDay
+      AND NOT(o2.OrcCod='COR' OR o2.OrcCod='COD') AND o2.OrcPatTyp<>'R'
+    GROUP BY o2.OrcRcpNum,o2.OrcCod,o2.OrcChtNum,o2.OrcOcmNum,o2.OrcSeq,
+             o2.OrcAccDte,o2.OrcUidCod,o2.OrcPubYon,o2.OrcPatTyp
+), Orc AS (
+    SELECT OrcChtNum,OrcOcmNum,ReceiptDay,
+        SUM(CashRcv+CardRcv+CheckRcv) AS RcvAmt,
+        SUM(CashRcv-CashTfc) AS CashAmt,
+        SUM(CardRcv-CardTfc) AS CardAmt,
+        SUM(CheckRcv-CheckTfc) AS CheckAmt
+    FROM OrcMid GROUP BY OrcChtNum,OrcOcmNum,ReceiptDay
+), NativeRows AS (
+    SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpTotAmt,p.OrpCorAmt,p.OrpNonAmt,
+           p.OrpInsAmt,p.OrpInsOwn,p.OrpTotOwn,
+           r.RcvAmt,r.CashAmt,r.CardAmt,r.CheckAmt,ft.DtlCodNam AS DgsNfsNam
+    FROM Orp p
+    JOIN Orc r ON r.OrcChtNum=p.OrpChtNum AND r.OrcOcmNum=p.OrpOcmNum
+    JOIN dbo.PbsInf pb ON pb.PbsChtNum=p.OrpChtNum
+    JOIN dbo.OcmInf c ON c.OcmNum=p.OrpOcmNum
+    JOIN dbo.DepMst d ON d.DepCod=p.OrpDepCod
+    JOIN dbo.InsMst ins ON ins.InsCod=p.OrpInsCod AND ins.InsMdcTyp=d.DepMdcTyp AND ins.InsHspTyp=d.DepHspTyp
+    JOIN dbo.DtlMst ft ON ft.DtlCod=c.OcmDgsNfs AND ft.DtlTblCod='FTDNFS'
+    JOIN dbo.UidMst u ON u.UidCod=p.OrpDtrCod
+    WHERE d.DepHspNum=@hospital
+      AND c.OcmPatTyp='O' AND c.OcmRsuYon IN ('','N','O')
+      AND c.OcmComStt IN ('PN','TN','OE','VN','OB')
+      AND LEFT(p.OrpAccDte,8) BETWEEN d.DepAdpDte AND d.DepExpDte
+      AND LEFT(p.OrpAccDte,8) BETWEEN ins.InsAdpDte AND ins.InsExpDte
+      AND LEFT(p.OrpAccDte,8) BETWEEN u.UidAdpDte AND u.UidExpDte
+      AND c.OcmAcpDtm>=@day AND c.OcmAcpDtm<@nextDay
+)
+SELECT SUM(OrpTotAmt),SUM(OrpCorAmt),SUM(OrpNonAmt),SUM(CashAmt),SUM(CardAmt),SUM(CheckAmt) FROM NativeRows;";
+
+    /// <summary>원본 FinanceReceivable(미수입금): FinanceNormal과 같은 여섯 칸. 끝의 ;까지 원본 그대로.</summary>
+    public const string FinanceReceivableSql = @"WITH Seq AS (
+    SELECT OrpOcmNum,MAX(OrpRcpSeq) AS SeqRcp
+    FROM dbo.OrpInf
+    WHERE OrpRcpStt='C' AND OrpAccDte>=@day AND OrpAccDte<@nextDay
+    GROUP BY OrpOcmNum
+), Orp AS (
+    SELECT p.* FROM dbo.OrpInf p
+    JOIN Seq s ON s.OrpOcmNum=p.OrpOcmNum AND s.SeqRcp=p.OrpRcpSeq
+), Orc AS (
+    SELECT r.OrcChtNum,r.OrcOcmNum,r.OrcAccDte,
+           SUM(CASE WHEN r.OrcCod='COR'
+                    THEN r.OrcNewAmt+r.OrcCrdAmt+r.OrcChkAmt ELSE 0 END) AS AllCorAmt,
+           SUM(CASE WHEN r.OrcCod='COR' THEN r.OrcNewAmt ELSE 0 END) AS CorAmt,
+           SUM(CASE WHEN r.OrcCod='COR' THEN r.OrcCrdAmt ELSE 0 END) AS CorCrdAmt,
+           SUM(CASE WHEN r.OrcCod='COR' THEN r.OrcChkAmt ELSE 0 END) AS CorChkAmt
+    FROM dbo.OrcInf r
+    WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay
+      AND r.OrcCod IN ('COR','COD') AND r.OrcPatTyp<>'R'
+    GROUP BY r.OrcChtNum,r.OrcOcmNum,r.OrcAccDte
+), NativeRows AS (
+    SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpTotAmt,p.OrpCorAmt,p.OrpNonAmt,
+           r.AllCorAmt,r.CorAmt,r.CorCrdAmt,r.CorChkAmt,c.OcmAcpDtm
+    FROM Orp p
+    JOIN Orc r ON r.OrcChtNum=p.OrpChtNum AND r.OrcOcmNum=p.OrpOcmNum
+    JOIN dbo.PbsInf pb ON pb.PbsChtNum=p.OrpChtNum
+    JOIN dbo.OcmInf c ON c.OcmNum=p.OrpOcmNum
+    JOIN dbo.DepMst d ON d.DepCod=p.OrpDepCod
+    JOIN dbo.InsMst ins ON ins.InsCod=p.OrpInsCod
+                      AND ins.InsMdcTyp=d.DepMdcTyp AND ins.InsHspTyp=d.DepHspTyp
+    WHERE d.DepHspNum=@hospital AND c.OcmPatTyp='O'
+      AND c.OcmRsuYon IN ('','Y','N')
+      AND c.OcmComStt IN ('PN','TN','OE','VN','OB')
+      AND c.OcmAcpDtm BETWEEN d.DepAdpDte+'0000' AND d.DepExpDte+'2359'
+      AND c.OcmAcpDtm BETWEEN ins.InsAdpDte+'0000' AND ins.InsExpDte+'2359'
+)
+SELECT SUM(OrpTotAmt),SUM(OrpCorAmt),SUM(OrpNonAmt),SUM(CorAmt),SUM(CorCrdAmt),SUM(CorChkAmt) FROM NativeRows;";
+
+    /// <summary>원본 FinanceMultiplicity: 정상수납 연결 중복 건수. 안의 주석 두 줄도 원본 그대로(줄바꿈이 있어야 뒤 글을 먹지 않는다).</summary>
+    public const string FinanceMultiplicitySql = @"WITH Seq AS (
+    SELECT OrpOcmNum,MAX(OrpRcpSeq) AS SeqRcp
+    FROM dbo.OrpInf
+    WHERE OrpRcpStt<>'C' AND OrpAccDte>=@day AND OrpAccDte<@nextDay
+    GROUP BY OrpOcmNum
+), Orp AS (
+    SELECT p.* FROM dbo.OrpInf p
+    JOIN Seq s ON s.OrpOcmNum=p.OrpOcmNum AND s.SeqRcp=p.OrpRcpSeq
+    WHERE NOT EXISTS(SELECT 1 FROM dbo.IrcInf i
+                     WHERE i.IrcOcmNum=p.OrpOcmNum AND i.IrcRcpTyp<>'T')
+), Orc AS (
+    -- Equivalent to the original inner/outer grouped financial projection's
+    -- keys. Original MAX date deliberately ranges beyond the selected period.
+    SELECT DISTINCT r.OrcChtNum,r.OrcOcmNum,
+        (SELECT MAX(r1.OrcAccDte) FROM dbo.OrcInf r1
+         WHERE r1.OrcRcpNum=r.OrcRcpNum AND r1.OrcCod=r.OrcCod) AS ReceiptDay
+    FROM dbo.OrcInf r
+    WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay
+      AND NOT(r.OrcCod='COR' OR r.OrcCod='COD') AND r.OrcPatTyp<>'R'
+), NativeRows AS (
+    SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpRcpNum,p.OrpRcpSeq,p.OrpAccDte,
+           p.OrpInsCod,p.OrpInsSeq,p.OrpTotAmt,p.OrpCorAmt,p.OrpNonAmt,
+           c.OcmAcpDtm,r.ReceiptDay,ft.DtlCodNam AS DgsNfsNam
+    FROM Orp p
+    JOIN Orc r ON r.OrcChtNum=p.OrpChtNum AND r.OrcOcmNum=p.OrpOcmNum
+    JOIN dbo.PbsInf pb ON pb.PbsChtNum=p.OrpChtNum
+    JOIN dbo.OcmInf c ON c.OcmNum=p.OrpOcmNum
+    JOIN dbo.DepMst d ON d.DepCod=p.OrpDepCod
+    JOIN dbo.InsMst ins ON ins.InsCod=p.OrpInsCod
+                      AND ins.InsMdcTyp=d.DepMdcTyp AND ins.InsHspTyp=d.DepHspTyp
+    JOIN dbo.DtlMst ft ON ft.DtlCod=c.OcmDgsNfs AND ft.DtlTblCod='FTDNFS'
+    JOIN dbo.UidMst u ON u.UidCod=p.OrpDtrCod
+    WHERE d.DepHspNum=@hospital
+      AND c.OcmPatTyp='O' AND c.OcmRsuYon IN ('','N','O')
+      AND c.OcmComStt IN ('PN','TN','OE','VN','OB')
+      AND LEFT(p.OrpAccDte,8) BETWEEN d.DepAdpDte AND d.DepExpDte
+      AND LEFT(p.OrpAccDte,8) BETWEEN ins.InsAdpDte AND ins.InsExpDte
+      AND LEFT(p.OrpAccDte,8) BETWEEN u.UidAdpDte AND u.UidExpDte
+      AND c.OcmAcpDtm>=@day AND c.OcmAcpDtm<@nextDay
+)
+SELECT (SELECT COUNT_BIG(*)-COUNT(DISTINCT OrpOcmNum) FROM NativeRows)
+ +(SELECT COUNT_BIG(*) FROM NativeRows n WHERE
+    (SELECT COUNT_BIG(*) FROM (SELECT o.OdlRcpNum FROM dbo.OdlInf o WHERE o.OdlOcmNum=n.OrpOcmNum GROUP BY o.OdlRcpNum) q)>1
+    OR (SELECT COUNT_BIG(*) FROM dbo.PmdInf p WHERE p.PmdChtNum=n.OrpChtNum AND p.PmdInsCod=n.OrpInsCod AND p.PmdInsSeq=n.OrpInsSeq)>1)";
+
+    /// <summary>원본 ReceivableMultiplicity: 미수입금 연결 중복 건수. 끝의 ;까지 원본 그대로.</summary>
+    public const string ReceivableMultiplicitySql = @"WITH Seq AS (
+    SELECT OrpOcmNum,MAX(OrpRcpSeq) AS SeqRcp
+    FROM dbo.OrpInf
+    WHERE OrpRcpStt='C' AND OrpAccDte>=@day AND OrpAccDte<@nextDay
+    GROUP BY OrpOcmNum
+), Orp AS (
+    SELECT p.* FROM dbo.OrpInf p
+    JOIN Seq s ON s.OrpOcmNum=p.OrpOcmNum AND s.SeqRcp=p.OrpRcpSeq
+), Orc AS (
+    SELECT r.OrcChtNum,r.OrcOcmNum,r.OrcAccDte,
+           SUM(CASE WHEN r.OrcCod='COR'
+                    THEN r.OrcNewAmt+r.OrcCrdAmt+r.OrcChkAmt ELSE 0 END) AS AllCorAmt
+    FROM dbo.OrcInf r
+    WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay
+      AND r.OrcCod IN ('COR','COD') AND r.OrcPatTyp<>'R'
+    GROUP BY r.OrcChtNum,r.OrcOcmNum,r.OrcAccDte
+), NativeRows AS (
+    SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpTotAmt,p.OrpCorAmt,p.OrpNonAmt,
+           r.AllCorAmt,c.OcmAcpDtm
+    FROM Orp p
+    JOIN Orc r ON r.OrcChtNum=p.OrpChtNum AND r.OrcOcmNum=p.OrpOcmNum
+    JOIN dbo.PbsInf pb ON pb.PbsChtNum=p.OrpChtNum
+    JOIN dbo.OcmInf c ON c.OcmNum=p.OrpOcmNum
+    JOIN dbo.DepMst d ON d.DepCod=p.OrpDepCod
+    JOIN dbo.InsMst ins ON ins.InsCod=p.OrpInsCod
+                      AND ins.InsMdcTyp=d.DepMdcTyp AND ins.InsHspTyp=d.DepHspTyp
+    WHERE d.DepHspNum=@hospital AND c.OcmPatTyp='O'
+      AND c.OcmRsuYon IN ('','Y','N')
+      AND c.OcmComStt IN ('PN','TN','OE','VN','OB')
+      AND c.OcmAcpDtm BETWEEN d.DepAdpDte+'0000' AND d.DepExpDte+'2359'
+      AND c.OcmAcpDtm BETWEEN ins.InsAdpDte+'0000' AND ins.InsExpDte+'2359'
+)
+SELECT COUNT_BIG(*)-COUNT(DISTINCT OrpOcmNum) FROM NativeRows;";
+
     // 원본 RxVisitSplit.Command: @from·@to Char(12) yyyyMMdd0000(끝은 다음 날 0시), @hospital VarChar(32)
     private static readonly SqlParam[] VisitParams =
     {
@@ -98,6 +357,15 @@ ORDER BY SeeOdrCod,
         new SqlParam("@priorTo", SqlParamKind.Char, 8),
     };
 
+    // 원본 OperationalReportData.Command의 표. 원본은 문장마다 다 붙이지만 관문은 문장에 나오는 이름만 받아서 나눠 적는다.
+    // @daily만 원본 Bit 대신 Char(1) '1'·'0'이다(관문·SqlBitDb를 고치지 않으려고, design.md '결정과 트레이드오프')
+    private static readonly SqlParam ReportDay = new SqlParam("@day", SqlParamKind.Char, 8);
+    private static readonly SqlParam ReportNextDay = new SqlParam("@nextDay", SqlParamKind.Char, 8);
+    private static readonly SqlParam ReportFrom = new SqlParam("@from", SqlParamKind.Char, 12);
+    private static readonly SqlParam ReportTo = new SqlParam("@to", SqlParamKind.Char, 12);
+    private static readonly SqlParam ReportHospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
+    private static readonly SqlParam ReportDaily = new SqlParam("@daily", SqlParamKind.Char, 1);
+
     private static readonly Dictionary<string, SqlParam[]> Allowed = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
     {
         [VisitRowsSql] = VisitParams,
@@ -105,6 +373,14 @@ ORDER BY SeeOdrCod,
         [VisitDaysSql] = VisitParams,
         [CodeNamesSql] = CodeParams,
         [HistoryGuardSql] = new SqlParam[0],
+        [UnsupportedFinanceSql] = new[] { ReportDay, ReportNextDay, ReportFrom, ReportTo, ReportHospital },
+        [PatientsSql] = new[] { ReportFrom, ReportTo, ReportHospital },
+        [TreatmentsSql] = new[] { ReportFrom, ReportTo, ReportHospital, ReportDaily },
+        [LaCodesSql] = new[] { ReportFrom, ReportTo, ReportHospital },
+        [FinanceNormalSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+        [FinanceReceivableSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+        [FinanceMultiplicitySql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+        [ReceivableMultiplicitySql] = new[] { ReportDay, ReportNextDay, ReportHospital },
     };
 
     /// <summary>통계 SQL 목록(이 클래스의 SQL 상수 전부).</summary>

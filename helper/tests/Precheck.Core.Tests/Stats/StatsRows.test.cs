@@ -52,7 +52,28 @@ internal static class StatsFake
             new object?[] { "ZZ999", "안 쓴 처방", "", "20200101", "99991231", "1", "", false },
             new object?[] { "eswt1", "가짜 충격파", "", "20200101", "99991231", "1", "", false },
         });
+        AnswerReport(db);
         return rig;
+    }
+
+    /// <summary>문제없는 가짜 보고 숫자(모든 벌이 같다). 시험마다 필요한 SQL 답만 바꾼다.</summary>
+    public static void AnswerReport(FakeDb db)
+    {
+        db.Answer(StatsSql.UnsupportedFinanceSql, _ => new[] { new object?[] { 0L } });
+        db.Answer(StatsSql.PatientsSql, _ => new[] { new object?[] { 12L, 3L, 0L, 0L, 0L } });
+        db.Answer(StatsSql.TreatmentsSql, _ => new[]
+        {
+            new object?[] { "manual", 5L, 0L },
+            new object?[] { "eswt", 4L, 0L },
+            new object?[] { "carm", 3L, 0L },
+            new object?[] { "sono", 2L, 0L },
+            new object?[] { "cryo", 1L, 0L },
+        });
+        db.Answer(StatsSql.LaCodesSql, _ => new[] { new object?[] { "LA01 ", 2L }, new object?[] { "LA-B.2", 1L } });
+        db.Answer(StatsSql.FinanceMultiplicitySql, _ => new[] { new object?[] { 0L } });
+        db.Answer(StatsSql.ReceivableMultiplicitySql, _ => new[] { new object?[] { 0L } });
+        db.Answer(StatsSql.FinanceNormalSql, _ => new[] { new object?[] { 100000m, 60000m, 30000m, 10000m, 20000m, 5000m } });
+        db.Answer(StatsSql.FinanceReceivableSql, _ => new[] { new object?[] { 1000m, 600m, 300m, 100m, 200m, 50m } });
     }
 
     /// <summary>진료 줄 n개(모두 같은 가짜 값). 큰 자료 시험용.</summary>
@@ -78,7 +99,7 @@ public class StatsRowsTests
         return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
     }
 
-    private static ListSink Handle(Rig rig, string args, List<(string? Cmd, string? Code)>? log = null, string id = "s-1")
+    internal static ListSink Handle(Rig rig, string args, List<(string? Cmd, string? Code)>? log = null, string id = "s-1")
     {
         var dispatcher = new Dispatcher(Table, (cmd, code) => log?.Add((cmd, code)));
         StatsCommands.Register(dispatcher, rig.Services);
@@ -90,7 +111,7 @@ public class StatsRowsTests
     private const string September = "{\"from\":\"2026-09-01\",\"to\":\"2026-09-30\"}";
 
     /// <summary>chunk(seq 0부터) … end를 검사하고 모은 JSON 글자를 돌려준다.</summary>
-    private static string Assemble(ListSink sink, string id = "s-1")
+    internal static string Assemble(ListSink sink, string id = "s-1")
     {
         Assert.True(sink.Messages.Count >= 2, "chunk 하나 이상 + end");
         var data = new StringBuilder();
@@ -117,7 +138,7 @@ public class StatsRowsTests
         return data.ToString();
     }
 
-    private static void AssertOnlyError(ListSink sink, string code, string id = "s-1")
+    internal static void AssertOnlyError(ListSink sink, string code, string id = "s-1")
     {
         var reply = Assert.Single(sink.Replies);
         Assert.Equal(new[] { "v", "id", "type", "code" }, Json.Keys(reply));
@@ -182,8 +203,8 @@ public class StatsRowsTests
 
         var report = root.GetProperty("report");
         Assert.Equal(new[] { "daily", "monthly" }, Json.Keys(report));
-        Assert.Empty(report.GetProperty("daily").EnumerateArray());
-        Assert.Empty(report.GetProperty("monthly").EnumerateArray());
+        Assert.Equal(2, report.GetProperty("daily").GetArrayLength());
+        Assert.Equal(2, report.GetProperty("monthly").GetArrayLength());
 
         // 이름·전화 칸은 보내지 않는다(DB가 더 준 칸도 싣지 않음)
         Assert.DoesNotContain(Fake.Name, json);
@@ -197,11 +218,13 @@ public class StatsRowsTests
         using var rig = StatsFake.Clinic();
         Assemble(Handle(rig, "{\"from\":\"2026-09-01\",\"to\":\"2026-12-31\"}"));
 
+        // 보고 네 벌은 그다음에 읽는다(StatsReport.test.cs)
         Assert.Equal(new[]
         {
             Sql.ScopesSql, Sql.InstitutionSql,
             StatsSql.HistoryGuardSql, StatsSql.VisitRowsSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql, StatsSql.CodeNamesSql,
-        }, rig.Session.Sqls);
+            Sql.SnapshotStateSql,
+        }, rig.Session.Sqls.Take(8));
 
         var calls = rig.Session.Calls.Skip(2).ToArray();
         Assert.Empty(calls[0].Args);

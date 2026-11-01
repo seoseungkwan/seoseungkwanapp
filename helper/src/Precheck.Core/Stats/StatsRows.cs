@@ -90,7 +90,7 @@ public sealed class StatsVisitRow
     public string? FirstDay { get; }
 }
 
-/// <summary>stats.rows가 비트에서 읽은 것 전부(보고 숫자는 TASK-4).</summary>
+/// <summary>stats.rows가 비트에서 읽은 통계 줄 전부(보고 숫자는 StatsReport).</summary>
 public sealed class StatsRowsResult
 {
     public StatsRowsResult(StatsSummary summary, IReadOnlyList<StatsDay> days, IReadOnlyList<StatsCode> codes, IReadOnlyList<StatsVisitRow> rows)
@@ -199,13 +199,13 @@ public static class StatsRows
         return codes;
     }
 
-    private static DateTime Day(string text)
+    internal static DateTime Day(string text)
     {
         if (!FieldSpec.TryParseDate(text, out var day)) throw new HelperException(ErrorCodes.BadMessage);
         return day.Date;
     }
 
-    private static string Key(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+    internal static string Key(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 
     private static IReadOnlyList<object?> Single(IReadOnlyList<IReadOnlyList<object?>> rows)
     {
@@ -213,7 +213,7 @@ public static class StatsRows
         return rows[0];
     }
 
-    private static object? Cell(IReadOnlyList<object?> row, int index)
+    internal static object? Cell(IReadOnlyList<object?> row, int index)
     {
         if (row == null || index >= row.Count) throw new BitException(BitErrors.ReadFailed);
         return row[index];
@@ -222,7 +222,7 @@ public static class StatsRows
     private static string? Text(object? value) => value == null ? null : Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim();
 
     /// <summary>원본 Number: DB NULL은 0. 숫자로 읽을 수 없으면 E-BIT-READ-FAILED(값을 예외 글에 싣지 않는다).</summary>
-    private static long Number(object? value)
+    internal static long Number(object? value)
     {
         if (value == null) return 0;
         try
