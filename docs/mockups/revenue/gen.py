@@ -90,7 +90,6 @@ NONCOV = [60_102_400, 62_880_150, 59_204_300, 56_011_820, 55_120_440, 64_330_700
           67_903_150, 65_880_040, 63_801_770, 67_284_150]
 INSURER = 68_604_120          # 2026-10 공단부담
 VISITS = [2_780, 2_851, 2_744, 2_633, 2_571, 2_903, 2_925, 2_846, 2_902, 2_977, 2_901, 2_846, 2_904]
-PATIENTS = [1_771, 1_802, 1_745, 1_690, 1_655, 1_838, 1_851, 1_812, 1_840, 1_886, 1_843, 1_809, 1_872]   # 달마다 다녀간 환자 수(한 명은 한 번)
 TREAT = [('도수치료', 49_812_000, 1_245), ('체외충격파', 16_204_500, 540), ('C-arm 주사', 13_508_200, 410),
          ('초음파', 7_806_900, 981), ('냉동치료', 2_604_000, 320)]
 TREAT_OTHER = 64_115_730
@@ -261,7 +260,7 @@ def split_none(kind):   # 쉬는 날 말고는 모두 나눔을 못 한 달(spli
           f'<tbody>{rows}</tbody></table>')
     return ('<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">급여·비급여·기타</h2><span class="dsec-s">자료 없음</span></div>'
             '<div class="ban" role="note"><p><b>27일(10월 1일–3일·5일–10일·12일–17일·19일–24일·26일–31일)</b>은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.</p></div>'
-            f'<div class="split"><div class="sp-l">{tb}<p class="d-note">자료 없음. 이 달은 쉬는 날 말고는 모두 나눔을 못 해서 숫자를 지어 넣지 않았어요. 위 매출 추이와 아래 1인당 평균은 그대로 볼 수 있어요.</p></div></div></section>')
+            f'<div class="split"><div class="sp-l">{tb}<p class="d-note">자료 없음. 이 달은 쉬는 날 말고는 모두 나눔을 못 해서 숫자를 지어 넣지 않았어요. 위 매출 추이와 아래 건당 진료비는 그대로 볼 수 있어요.</p></div></div></section>')
 
 def treat(kind):
     allsum = sum(a for _, a, _ in TREAT) + TREAT_OTHER
@@ -277,32 +276,33 @@ def treat(kind):
             f'<ol class="rk">{rows}</ol>'
             '<p class="d-note">처방 금액(단가 × 수량 × 일수)으로 세요. 환불·할인이 빠지지 않아 위 매출 합계와 조금 달라요. 어느 묶음에도 넣지 않은 처방은 \'그 밖 처방\'으로 세요.</p></section>')
 
-def per_patient(kind):
+def per_visit(kind):
     ph = kind == 'ph'
-    avg = [t // n for t, n in zip(TOTAL, PATIENTS)]
+    avg = [t // n for t, n in zip(TOTAL, VISITS)]   # 원 아래 버림, 통계 탭 보고의 건당진료비와 같은 식
     d1 = delta(avg[SEL], avg[PREV]); d2 = delta(avg[SEL], avg[LY])
-    k = (f'<div class="kpi"><p class="kpi-n">10월 1인당 평균</p><p class="kpi-v ink">{avg[SEL]:,}원</p><p class="kpi-s">매출 ÷ 환자 {PATIENTS[SEL]:,}명</p></div>'
+    k = (f'<div class="kpi"><p class="kpi-n">10월 건당 진료비</p><p class="kpi-v ink">{avg[SEL]:,}원</p><p class="kpi-s">매출 ÷ 접수 {VISITS[SEL]:,}건</p></div>'
          + dkpi('9월보다', d1, '9월 ' + format(avg[PREV], ',') + '원')
          + dkpi('작년 10월보다', d2, '2025년 10월 ' + format(avg[LY], ',') + '원')
-         + f'<div class="kpi"><p class="kpi-n">10월 환자 수</p><p class="kpi-v ink">{PATIENTS[SEL]:,}명</p><p class="kpi-s">내원은 {VISITS[SEL]:,}번 · 9월 {PATIENTS[PREV]:,}명</p></div>')
+         + f'<div class="kpi"><p class="kpi-n">10월 접수 건수</p><p class="kpi-v ink">{VISITS[SEL]:,}건</p><p class="kpi-s">9월 {VISITS[PREV]:,}건</p></div>')
     vals = [a // 1000 for a in avg]
     cols = ['b-sel' if i == SEL else 'b-prev' if i == LY else 'b-oth' for i in range(len(vals))]
-    chart = bars(vals, cols, LABELS, YEARS, top=100, ticks=(0, 25, 50, 75, 100), unit='(천 원)', show_vals=('sel' if ph else 'all'), ph=ph,
+    chart = bars(vals, cols, LABELS, YEARS, top=80, ticks=(0, 20, 40, 60, 80), unit='(천 원)', show_vals=('sel' if ph else 'all'), ph=ph,
                  h=(120 if ph else 140))
-    srt = sr_table('달마다 환자 1인당 평균 진료비 (원)', ['달', '평균', '환자 수'], [(m, f'{a:,}원', f'{n:,}명') for m, a, n in zip(MONTHS, avg, PATIENTS)])
-    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">환자 1인당 평균 진료비</h2><span class="dsec-s">환자 한 명 기준 · 그 달에 낸 진료비의 평균</span></div>'
-            f'<div class="kpis">{k}</div><div class="cbox"><div class="c-h"><h3 class="c-t">달마다 1인당 평균 · 최근 13달</h3></div>{chart}{srt}</div>'
-            '<p class="d-note">매출을 그 기간에 다녀간 환자 수로 나눠요. 같은 환자가 한 달에 여러 번 와도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고 숫자만 가져와요. 확인 필요한 날이 있으면 그날 매출이 빠져 실제보다 조금 낮게 보일 수 있어요.</p></section>')
+    srt = sr_table('달마다 건당 진료비 (원)', ['달', '건당 진료비', '접수 건수'], [(m, f'{a:,}원', f'{n:,}건') for m, a, n in zip(MONTHS, avg, VISITS)])
+    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">건당 진료비</h2><span class="dsec-s">접수 한 건 기준 · 접수취소는 세지 않아요</span></div>'
+            f'<div class="kpis">{k}</div><div class="cbox"><div class="c-h"><h3 class="c-t">달마다 건당 진료비 · 최근 13달</h3></div>{chart}{srt}</div>'
+            '<p class="d-note">매출을 그 기간의 접수 건수로 나눠요. 같은 분이 한 달에 다섯 번 오면 다섯 건으로 세요. 통계 탭 보고의 건당진료비와 같은 식이고, 원 아래는 버려요. 확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요.</p>'
+            '<p class="d-note">접수 건수를 확인하지 못한 날이 있으면 이렇게 알려 드려요: "1일(10월 14일)은 접수 건수를 확인하지 못해 건당 진료비에서 빠졌어요. 매출 합계에는 들어 있어요." 그날 금액만 남으면 건당 진료비가 부풀어서, 금액과 건수를 함께 빼요.</p></section>')
 
 def safe():
     return (f'<p class="safe rv-safe">{ic("shield", 14)}<span>환자 이름·차트번호는 가져오지 않아요. 날짜별 합계 금액만 비트 PC에서 읽어 저장해요.</span></p>')
 
 def revenue_body(kind):
-    return top_row(kind) + period_row(kind) + trend(kind) + split(kind) + treat(kind) + per_patient(kind) + safe()
+    return top_row(kind) + period_row(kind) + trend(kind) + split(kind) + treat(kind) + per_visit(kind) + safe()
 
 # ---------- 상황별 화면 ----------
 GAINS = [('매출 추이', '달마다 매출을 막대로, 지난달·작년 같은 때와 견줘요.'), ('급여·비급여·기타', '급여(공단부담·본인부담)·비급여·기타 셋으로 나눠 봐요.'),
-         ('치료별 매출', '도수치료·체외충격파 같은 치료마다 금액과 건수예요.'), ('환자 1인당 평균 진료비', '매출을 다녀간 환자 수로 나눈 값이에요(한 명은 한 번).')]
+         ('치료별 매출', '도수치료·체외충격파 같은 치료마다 금액과 건수예요.'), ('건당 진료비', '매출을 접수 건수로 나눈 값이에요(다섯 번 오면 다섯 건).')]
 
 def gains(ph):
     gl = ''.join(f'<li><p class="gain-n"><span class="num">{i}</span>{n}</p><p class="gain-d">{d}</p></li>' for i, (n, d) in enumerate(GAINS, 1))
@@ -331,7 +331,7 @@ def empty_month(kind):
           f'<span class="cur">2024년 10월</span><button type="button" aria-label="다음 달">{ic("right")}</button></div>'
           '<span class="rv-note">10월 1일 – 31일 · 수납한 날 기준</span></div>')
     kp = ''.join(f'<div class="kpi"><p class="kpi-n">{n}</p><p class="kpi-v">–</p><p class="kpi-s">자료 없음</p></div>'
-                 for n in ['10월 매출', '9월보다', '작년 10월보다', '1인당 평균'])
+                 for n in ['10월 매출', '9월보다', '작년 10월보다', '건당 진료비'])
     return (f'<div class="rv-top"><h1 class="rv-h1">매출</h1></div>{st}'
             f'<section class="dsec"><div class="dsec-h"><h2 class="dsec-t">자료 없음</h2></div><div class="kpis">{kp}</div>'
             '<p class="d-note">이 달에는 비트에 수납 기록이 없어요. 그래프는 자료가 있는 달만 그려요. 숫자를 지어 넣지 않아요.</p></section>')
@@ -341,7 +341,7 @@ def phone_nodata():
             '<div class="nc"><h2 class="nc-h">아직 가져온 매출이 없어요</h2>'
             '<p class="nc-p">매출은 비트 PC에서만 가져올 수 있어요. 의원 PC에서 매출 탭을 한 번 열면 폰에서도 보여요.</p></div>'
             '<div class="kpis">' + ''.join(f'<div class="kpi"><p class="kpi-n">{n}</p><p class="kpi-v">–</p><p class="kpi-s">자료 없음</p></div>'
-                                          for n in ['이번 달 매출', '지난달보다', '작년보다', '1인당 평균']) + '</div>')
+                                          for n in ['이번 달 매출', '지난달보다', '작년보다', '건당 진료비']) + '</div>')
 
 def saved_only():
     return (top_row_saved() + period_row('pc') +
@@ -597,7 +597,7 @@ row_split = ('<div class="row">'
              + '</div><div class="row">'
              + frame('full', shell('pc', split_none('pc')), 1440, 740, False, cap='<b>쉬는 날 말고는 모두 나눔을 못 한 달</b> · 매출 합계는 그대로예요', size='full', label='나눔이 없는 달')
              + '</div>')
-S.append('<section class="sec" id="main-view"><p class="sec-k">1 · 자료가 있을 때 · 바뀐 곳을 확인해 주세요</p><h2>매출 한 쪽: 추이 · 급여·비급여·기타 · 치료별 · 1인당 평균</h2>'
+S.append('<section class="sec" id="main-view"><p class="sec-k">1 · 자료가 있을 때 · 바뀐 곳을 확인해 주세요</p><h2>매출 한 쪽: 추이 · 급여·비급여·기타 · 치료별 · 건당 진료비</h2>'
          '<p class="sec-p">통계처럼 도구 단추 줄 없이 그래프가 위에서 아래로 이어지는 한 쪽이에요. 맨 위에서 달을 고르면 네 덩어리가 모두 그 달로 바뀌어요. '
          '처음에는 어제가 속한 달을 보여 드려요(오늘은 11월 1일이라 10월). '
          '승인 뒤 바뀐 곳은 \'급여·비급여·기타\' 덩어리와 \'확인 필요한 날\' 글자, 나눔을 못 한 날 안내예요.</p>' + row_main + row_split +
@@ -605,9 +605,9 @@ S.append('<section class="sec" id="main-view"><p class="sec-k">1 · 자료가 �
          '<li><span><b>매출 추이</b>: 고른 달의 매출과, 지난달 같은 기간·작년 같은 달 같은 기간과 견준 늘고 준 비율이에요. 막대는 최근 13달이고 작년 같은 달은 회색이에요. 하루 평균은 확인 필요한 날을 뺀 날 수로 나눠요.</span></li>'
          '<li><span><b>급여·비급여·기타</b>: 매출(총진료비)을 셋으로 나눠요 — 급여(요양비용총액 = 공단부담 + 본인부담), 비급여, 기타(100/100 미만 항목 + 전액 본인부담). 셋을 더하면 매출이에요. 오른쪽은 13달 세 겹 쌓은 막대예요(2026-11-01 바뀜).</span></li>'
          '<li><span><b>치료별 매출</b>: 도수치료·체외충격파·C-arm 주사·초음파·냉동치료 다섯 가지와 그 밖 처방이에요. 처방 금액으로 세서 매출 합계와 조금 달라요.</span></li>'
-         '<li><span><b>환자 1인당 평균 진료비</b>: 매출을 그 기간에 다녀간 환자 수로 나눈 값이에요. 같은 환자가 여러 번 와도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고, 이름·차트번호 없이 숫자만 가져와요.</span></li>'
+         '<li><span><b>건당 진료비</b>: 매출을 그 기간의 접수 건수로 나눈 값이에요. 같은 분이 한 달에 다섯 번 오면 다섯 건으로 세요. 접수취소는 세지 않아요. 통계 탭 보고의 건당진료비와 같은 식이에요(2026-11-01 바뀜).</span></li>'
          '<li><span><b>확인 필요한 날</b>: 환불·예치금이 있는 날은 금액을 자동으로 세지 않고 날짜만 알려 드려요. 그날 금액은 합계에 넣지 않아요(2026-11-01 글자 바뀜).</span></li>'
-         '<li><span><b>나눔을 못 한 날</b>: 급여·비급여·기타만 맞지 않는 날이에요. 그날 금액은 매출 합계·추이·1인당 평균에 그대로 들어가고, 급여·비급여·기타에서만 빠져요. 그래서 이 덩어리의 합계가 매출보다 작을 수 있어요. 잘못된 것이 아니에요(2026-11-01 더함).</span></li>'
+         '<li><span><b>나눔을 못 한 날</b>: 급여·비급여·기타만 맞지 않는 날이에요. 그날 금액은 매출 합계·추이·건당 진료비에 그대로 들어가고, 급여·비급여·기타에서만 빠져요. 그래서 이 덩어리의 합계가 매출보다 작을 수 있어요. 잘못된 것이 아니에요(2026-11-01 더함).</span></li>'
          '<li><span>금액은 원 단위로 저장하고, 화면의 큰 숫자는 만 원 아래를 버려서 보여요(반올림 안 함). 비율은 소수 첫째 자리까지 버려요.</span></li>'
          '<li><span>PC에서는 [다시 가져오기]로 비트에서 새로 읽어요. 폰은 비트에 닿을 수 없어서, 의원 PC가 마지막으로 가져온 숫자를 보여요.</span></li>'
          '</ul></div></div></section>')
@@ -669,8 +669,8 @@ S.append('<section class="sec" id="groups"><p class="sec-k">3 · 2026년 11월 1
 
 decide = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k">정한 것 · 2026년 11월 1일</p><h2>시안 승인과 결정</h2><ol>'
           '<li><div><p class="q">시안: 이대로 만들어요</p><p class="a">이 그림대로 작업을 나눠 하나씩 만들어요.</p></div></li>'
-          '<li><div><p class="q">1인당 평균 진료비: 환자 한 명마다</p>'
-          '<p class="a">매출 ÷ 그 기간에 다녀간 환자 수예요. 한 달에 여러 번 온 분도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고 숫자만 가져와요.</p></div></li>'
+          '<li><div><p class="q">건당 진료비 하나로: 매출 ÷ 접수 건수</p>'
+          '<p class="a">같은 분이 한 달에 다섯 번 오면 다섯 건으로 세요. 접수취소는 세지 않아요. 통계 탭 보고의 건당진료비와 같은 식이에요(2026-11-01 바뀜).</p></div></li>'
           '<li><div><p class="q">치료 묶음: 내가 골라서 묶어요</p>'
           '<p class="a">묶음 이름과 넣을 처방을 직접 정해요. 처음에는 일일 보고의 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료)를 고칠 수 있는 제안으로 채워 둬요.</p></div></li>'
           '<li><div><p class="q">치료 묶음 고치기 화면: 좋아요</p>'
@@ -680,8 +680,8 @@ decide = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k"
           '<li><div><p class="q">환불·예치금이 있는 날: 합계에서 빼고 날짜만 알림</p>'
           '<p class="a">지금 일일 보고처럼 그날 금액은 비워 두고 "확인 필요한 날"로 알려 드려요. 이런 날은 매출뿐 아니라 업무일지 자동 채우기에서도 금액이 모두 비어서 직접 적어요. 이런 날이 많으면 직접 입력 칸을 다시 의논해요.</p></div></li>'
           '<li><div><p class="q">급여·비급여·기타만 맞지 않는 날: 나눔만 비워요</p>'
-          '<p class="a">그날 총진료비와 받은 돈은 그대로 두고 매출 합계·추이·1인당 평균에도 넣어요. 급여·비급여·기타 표에서만 빠지고 날 수와 날짜를 알려 드려요. 업무일지 자동 채우기에서는 공단 칸만 비어요.</p></div></li></ol>'
-          '<p class="reply">승인 뒤 바뀐 곳만 확인해 주세요: 1번의 \'급여·비급여·기타\' 덩어리(표·세 겹 막대·안내 글)와 \'확인 필요한 날\' 칸의 글자, 같은 말로 바뀐 매출 추이 설명과 연결 전 화면의 소개 줄, 나눔을 못 한 날 안내예요. 나눔을 못 한 날이 있는 달은 급여·비급여·기타의 합계가 매출보다 작아요. \'확인 필요한 날\'에는 매출과 업무일지 자동 채우기의 금액이 모두 비어서 직접 적어요. 나눔을 못 한 날에는 매출 합계와 업무일지의 총진료비·수납은 그대로이고 업무일지의 공단 칸만 비어요. 이렇게 답해 주시면 돼요: <b>매출 바뀐 곳 좋아요</b> (바꿀 것이 있으면 함께 말씀해 주세요)</p></div></section>')
+          '<p class="a">그날 총진료비와 받은 돈은 그대로 두고 매출 합계·추이·건당 진료비에도 넣어요. 급여·비급여·기타 표에서만 빠지고 날 수와 날짜를 알려 드려요. 업무일지 자동 채우기에서는 공단 칸만 비어요.</p></div></li></ol>'
+          '<p class="reply">이번에 바뀐 곳만 확인해 주세요: 1번 맨 아래의 \'건당 진료비\' 덩어리(숫자 칸 넷·13달 막대·안내 글)예요. 환자 1인당 평균을 없애고, 매출을 접수 건수로 나눈 숫자 하나로 바꿨어요. 이렇게 답해 주시면 돼요: <b>건당 진료비 좋아요</b> (바꿀 것이 있으면 함께 말씀해 주세요)</p></div></section>')
 
 NAV = [('main-view', '자료가 있을 때 (바뀐 곳 확인)'), ('states', '상황마다'), ('groups', '묶음 고치기'), ('decide', '정한 것')]
 nav = ''.join(f'<a href="#{i}"{" class=dec" if i == "decide" else ""}>{n}</a>' for i, n in NAV)
@@ -702,7 +702,7 @@ page = f'''<!DOCTYPE html>
 <body>
 <header class="wrap intro">
 <p class="eyebrow">매출 탭 · 승인된 시안 (2026년 11월 1일) · 바뀐 곳 확인 중</p>
-<h1>매출을 그래프 한 쪽으로: 추이, 급여·비급여·기타, 치료별, 1인당 평균</h1>
+<h1>매출을 그래프 한 쪽으로: 추이, 급여·비급여·기타, 치료별, 건당 진료비</h1>
 <p class="lead">비트 PC에서 날짜별 합계 금액만 읽어 와서 매출 탭을 채우는 모습이에요. 폰과 PC를 나란히 그렸고, 그림 속 숫자는 모두 예시예요. 2026년 11월 1일에 이대로 만들기로 정했어요. 그 뒤 바뀐 곳만 맨 아래에서 확인해 주세요.</p>
 </header>
 <nav class="secnav" aria-label="시안 목록"><div class="secnav-in">{nav}</div></nav>
