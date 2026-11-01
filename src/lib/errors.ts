@@ -127,6 +127,11 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '[처음 등록]을 눌러 새로 시작해 주세요. 깨진 파일은 지우지 않고 남겨 둬요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요.',
   },
+  // 점검 표(규칙·상병·약·처방코드)를 Worker가 불러오다 실패하거나 모양이 틀림(design.md 4-5, AC-007.5). 화면은 오류 카드와 [다시 불러오기](AC-013.5)
+  'E-RULES-LOAD-FAILED': {
+    what: '점검 규칙표를 불러오지 못해 점검을 시작하지 않았어요',
+    fix: '[다시 불러오기]를 눌러 주세요. 계속되면 화면을 새로 고친 뒤 다시 해 보고, 그래도 안 되면 오류 번호와 함께 문의해 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

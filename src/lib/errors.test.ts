@@ -34,6 +34,7 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-RULES-LOAD-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -260,5 +261,21 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+// 점검 표 불러오기(precheck TASK-7): Worker가 표 네 개를 import()로 불러오다 실패하거나 모양이 틀리면 점검을 시작하지 않는다
+describe('AC-007.5 점검 표 불러오기 오류 문구', () => {
+  it('AC-007.5: E-RULES-LOAD-FAILED는 lib/errors.ts에 무엇이·어떻게 고치나가 있다', () => {
+    expect(Object.keys(ERRORS)).toContain('E-RULES-LOAD-FAILED')
+    expect(isErrorCode('E-RULES-LOAD-FAILED')).toBe(true)
+  })
+
+  it('AC-007.5: 점검 규칙표를 불러오지 못해 점검을 시작하지 않았다고 알리고, 오류 카드의 [다시 불러오기]를 안내한다', () => {
+    const info = errorInfo('E-RULES-LOAD-FAILED')
+    expect(info.what).toContain('규칙표')
+    expect(info.what).toContain('점검을 시작하지 않았어요')
+    expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
   })
 })

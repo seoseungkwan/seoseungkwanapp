@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "rule-data",
-      "status": "pending"
+      "status": "completed",
+      "summary": "규칙표·상병 I·N·약·처방코드 사전 4개를 src/lib/precheck/data/*.json으로 옮김(원본 2a1069b, SHA-256 지문으로 같음 확인). loadTables()는 Promise<Outcome<Tables>> — 다음 단계는 ok를 먼저 보고 value를 꺼낸다. Tables 타입은 src/types/precheck.ts. 표는 복사하지 않고 그대로 주므로 엔진·상병 코드는 읽기만 한다. drugInfo 주성분명은 원본 lookup()처럼 200글자까지. 실패 E-RULES-LOAD-FAILED."
     },
     {
       "step": 1,
