@@ -37,5 +37,10 @@ export type SavedReport = {
 
 export type AiUsage = { inputTokens: number; outputTokens: number; model: string }
 
-// ErrorCode(types/errors.ts)의 AI 번호 넷. 문구는 lib/errors.ts errorInfo로만 꺼낸다
+// ErrorCode(types/errors.ts)의 AI 번호 가운데 리포트 만들기(POST)가 쓰는 넷(E-AI-READ는 읽기 전용이라 뺀다). 문구는 lib/errors.ts errorInfo로만 꺼낸다
 export type AiErrorCode = 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
+
+// 화면이 받는 모양(spec ai-report-screen design.md '타입'). 저장 지문은 화면에 보내지 않는다
+export type AiUsageView = { calls: number; tokens: number; costMicroUsd: number }
+export type ShownReport = Omit<SavedReport, 'inputHash'>
+export type ReportView = { report: ShownReport | null; stale: boolean; usage: AiUsageView }

@@ -144,6 +144,11 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '이 달 통계가 아직 없어요',
     fix: '통계 탭에서 그 달 비트 자료를 먼저 넣어 주세요.',
   },
+  // 저장한 리포트 읽기(spec ai-report-screen REQ-701)
+  'E-AI-READ': {
+    what: '저장한 AI 리포트를 읽지 못했어요',
+    fix: '[다시 읽기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

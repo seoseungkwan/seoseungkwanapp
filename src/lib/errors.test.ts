@@ -38,6 +38,7 @@ const ALL_CODES = [
   'E-AI-LIMIT',
   'E-AI-FAILED',
   'E-AI-NO-DATA',
+  'E-AI-READ',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -292,5 +293,23 @@ describe('AC-502.1·AC-502.2 AI 오류 번호 문구', () => {
     expect(errorInfo('E-AI-FAILED').fix).toContain('[다시 분석]')
     expect(errorInfo('E-AI-NO-DATA').fix).toContain('통계')
     expect(errorInfo('E-AI-NO-DATA').fix).toContain('먼저')
+  })
+})
+
+// AI 리포트 탭 화면(spec ai-report-screen REQ-701). POST가 쓰지 않아 AiErrorCode에는 없고 ErrorCode에만 있다
+describe('AC-701.1 저장한 리포트 읽기 오류 문구', () => {
+  it('AC-701.1: E-AI-READ는 명세의 글자 그대로다', () => {
+    expect(errorInfo('E-AI-READ')).toEqual({
+      what: '저장한 AI 리포트를 읽지 못했어요',
+      fix: '[다시 읽기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-701.1: E-AI-READ 문구에 "병원"이 없고 "니다."로 끝나는 문장이 없다', () => {
+    const info = errorInfo('E-AI-READ')
+    for (const text of [info.what, info.fix]) {
+      expect(text).not.toContain('병원')
+      expect(text).not.toMatch(/니다\./)
+    }
   })
 })
