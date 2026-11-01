@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "followup-logic",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/patients/followup.ts(parseFU·writtenDate·aragan·extractTx·extractSite·visitKind·dateKey·prepareSchedule·phoneColumn·phoneTokens·preparePhones·phoneOf·baseDate·scheduleRows·undecidedRows·passFilters·pasteRows), sourceError.ts(PatientsSourceError, code E-PATIENTS-SOURCE, 값 없는 고정 사유), types/patients.ts(F/U 줄 타입 + design 계산 모양), fixtures/patients/make-fake-patients.ts → fake/{followup-cases,chart-rows,rx-rows}.json, scripts/patients/golden/revisit.mjs → golden/followup-{parse,schedule,phones}.json·phone-columns.json(TASK-9 IsPhoneColumn도 이 파일로 견줌). 명세와 다른 점(knownDiffs에 적음): 연도가 4자리가 아니거나 NaN인 날짜는 날짜 없음으로 친다(원본은 11609-06-18 같은 값을 찍음, 우리 쪽은 지어낸 날짜를 보이지 않음), baseDate([])는 '', row.nmRecordedAt 안 씀. TASK-4에 전달: phoneOf에는 preparePhones가 만든 map(프로토타입 없음)을 넘긴다. 빈 {}를 넘기면 차트번호 'constructor'에서 함수가 돌아온다(원본도 같음)"
     },
     {
       "step": 2,
