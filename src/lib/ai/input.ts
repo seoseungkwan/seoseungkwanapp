@@ -83,10 +83,11 @@ export function buildReportInput(months: ValidReportMonths): ReportInput {
     }
   }
 
-  // 처방: 고른 달 상위 TOP_RX개, 이름은 고른 달 것
+  // 처방: 고른 달 상위 TOP_RX개, 이름은 고른 달 것. 그 이름이 빈 글자이거나 빈칸뿐이면 코드를 쓴다(이름이 있으면 자르지 않고 그대로)
   const findRx = lookup(all, (m) => m.rx, (r) => r.code)
   for (const r of topBy(selected.rx, (item) => item.code, TOP_RX)) {
-    metrics.push(metric(`rx:${r.code}`, `처방 '${r.name}' 환자`, 'count', all, (m) => findRx(m, r.code)?.patients ?? 0))
+    const name = r.name.trim() === '' ? r.code : r.name
+    metrics.push(metric(`rx:${r.code}`, `처방 '${name}' 환자`, 'count', all, (m) => findRx(m, r.code)?.patients ?? 0))
   }
 
   // 동네: 고른 달 상위 TOP_REGIONS개

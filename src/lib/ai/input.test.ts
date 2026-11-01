@@ -387,3 +387,57 @@ describe('AC-505.5 그룹 이름이 없으면 "이름 없는 그룹"', () => {
     expect(metricOf(input, 'group:g-empty.patients').label).toBe(`처방 그룹 '${UNNAMED_GROUP}' 환자`)
   })
 })
+
+describe('AC-505.6 처방 이름이 빈 글자이거나 빈칸뿐이면 지표 이름에 코드를 쓴다', () => {
+  // 고른 달: FAKE-A01은 이름이 있고, FAKE-X09는 이름만 바꿔 넣는다(검사는 빈 이름·빈칸뿐인 이름을 허용한다)
+  const withRxName = (name: string): MonthPayload =>
+    valid(month({ month: '2026-10', rx: [rx('FAKE-A01', '가짜 처방 가', 20), rx('FAKE-X09', name, 9)] }))
+
+  const only = (selectedMonth: MonthPayload, prevMonth: MonthPayload | null = null): ValidReportMonths => ({
+    selected: selectedMonth,
+    prev: prevMonth,
+    lastYear: null,
+    groupNames: {},
+  })
+
+  it('AC-505.6 고른 달 처방 이름이 빈 글자면 지표 이름에 코드를 쓴다', () => {
+    const input = buildReportInput(only(withRxName('')))
+    expect(metricOf(input, 'rx:FAKE-X09')).toEqual(count('rx:FAKE-X09', "처방 'FAKE-X09' 환자", 9, null, null))
+    expect(metricOf(input, 'rx:FAKE-A01').label).toBe("처방 '가짜 처방 가' 환자")
+  })
+
+  it('AC-505.6 이름이 빈칸뿐이어도 코드를 쓰고, 이름만 빈 글자·빈칸뿐으로 다른 두 자료의 입력과 지문이 같다', async () => {
+    const blank = buildReportInput(only(withRxName('   ')))
+    const empty = buildReportInput(only(withRxName('')))
+    expect(metricOf(blank, 'rx:FAKE-X09').label).toBe("처방 'FAKE-X09' 환자")
+    expect(blank).toEqual(empty)
+    expect(await reportFingerprint(blank)).toBe(await reportFingerprint(empty))
+  })
+
+  it('AC-505.6 이름이 있는 처방은 그대로(앞뒤 빈칸도 자르지 않는다). 고른 달 이름이 비면 지난달에 이름이 있어도 코드를 쓴다', () => {
+    const selectedMonth = valid(
+      month({
+        month: '2026-10',
+        rx: [rx('FAKE-A01', '가짜 처방 가', 20), rx('FAKE-X09', '', 9), rx('FAKE-S07', ' 가짜 처방 사 ', 5)],
+      }),
+    )
+    const prevMonth = valid(month({ month: '2026-09', rx: [rx('FAKE-X09', '가짜 옛 이름', 4)] }))
+    const input = buildReportInput(only(selectedMonth, prevMonth))
+    expect(input.metrics.filter((m) => m.id.startsWith('rx:'))).toEqual([
+      count('rx:FAKE-A01', "처방 '가짜 처방 가' 환자", 20, 0, null),
+      count('rx:FAKE-X09', "처방 'FAKE-X09' 환자", 9, 4, null),
+      count('rx:FAKE-S07', "처방 ' 가짜 처방 사 ' 환자", 5, 0, null),
+    ])
+  })
+
+  it('AC-505.6 고른 달 이름이 비면 작년 같은 달에 이름이 있어도 코드를 쓴다', () => {
+    const lastYearMonth = valid(month({ month: '2025-10', rx: [rx('FAKE-X09', '가짜 작년 이름', 3)] }))
+    const input = buildReportInput({ ...only(withRxName('')), lastYear: lastYearMonth })
+    expect(metricOf(input, 'rx:FAKE-X09')).toEqual(count('rx:FAKE-X09', "처방 'FAKE-X09' 환자", 9, null, 3))
+  })
+
+  it('AC-505.6 이름이 전각 빈칸과 탭뿐이어도 코드를 쓴다', () => {
+    const input = buildReportInput(only(withRxName('\u3000\t')))
+    expect(metricOf(input, 'rx:FAKE-X09').label).toBe("처방 'FAKE-X09' 환자")
+  })
+})
