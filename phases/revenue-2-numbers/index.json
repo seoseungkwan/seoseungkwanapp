@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "revenue-tables",
-      "status": "pending"
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000400_revenue.sql + supabase/revenue.rls.test.ts: 표 sales_days·sales_codes·rx_groups, save_rx_groups(jsonb). 실제 Supabase 붙여 넣기 사용자 OK 필요. design 6절 SQL과 다른 점: save_rx_groups가 codes 배열이 아니면 거부(빠지면 처방 목록이 조용히 지워지던 빈틈), rx_group_codes_ok는 authenticated만 실행, touch_updated_at 기본 권한은 C1 글자를 건드리지 않고 따로 회수, 쓰지 않는 n 뺌. 합칠 때: 사전점검 갈래도 touch_updated_at을 만들어 나중에 붙인 쪽 정의가 남는다(트리거는 어느 쪽이든 돈다)"
     },
     {
       "step": 1,
