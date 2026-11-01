@@ -3,7 +3,7 @@ import { DASHBOARD_FEATURES } from './features'
 
 // 기능 목차 자료 (tab-frame REQ-316 AC-316.3, design.md '대시보드 짜임', 메모 docs/mockups/dashboard-home/notes.md §6).
 // 이름·주소는 탭 목록(menu.ts)과 같아야 한다 — 그 맞춤은 합친 뒤 통합 시험(tabFrame.test.tsx, AC-307.1)이 본다.
-// 여기서는 메모 §6 표 그대로인지만 본다. 상태는 ui-90 AC-414.5(design.md '대시보드 (TASK-11)')의 셋: 청구 connect-first · 설정 ready · 나머지 soon.
+// 여기서는 메모 §6 표 그대로인지만 본다. 상태는 ui-90 AC-414.5(design.md '대시보드 (TASK-11)')의 셋: 청구·환자(patients AC-610.1) connect-first · 설정 ready · 나머지 soon.
 // 설정 설명은 시안(docs/mockups/ui-90/app/gen.py FEATS) 글자 그대로 "의원 문구"다
 
 // 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5
@@ -11,7 +11,7 @@ const TABLE = [
   { name: '통계', desc: '환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수', href: '/stats', status: 'soon' },
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
-  { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'soon' },
+  { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },
   { name: '매출', desc: '매출 추이·급여와 비급여·치료별 매출·한 사람당 평균 진료비', href: '/revenue', status: 'soon' },
   { name: 'AI 리포트', desc: '월간보고 발표 자료·주간 요약·분기와 연간 보고', href: '/ai-report', status: 'soon' },
   { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },
@@ -41,11 +41,15 @@ describe('DASHBOARD_FEATURES: 기능 목차 12개 (AC-316.3·AC-414.5)', () => {
     }
   })
 
-  it('AC-414.5: 상태는 셋 — 지금 쓸 수 있음(ready)은 설정 하나, 연결 먼저(connect-first)는 청구 하나, 나머지 열은 준비 중(soon)', () => {
+  it('AC-414.5·AC-610.1: 상태는 셋 — 지금 쓸 수 있음(ready)은 설정 하나, 연결 먼저(connect-first)는 청구·환자, 나머지는 준비 중(soon)', () => {
     expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready').map((f) => f.name)).toEqual(['설정'])
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first').map((f) => f.name)).toEqual(['청구'])
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'soon')).toHaveLength(10)
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first').map((f) => f.name)).toEqual(['청구', '환자'])
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'soon').map((f) => f.name)).toEqual(TABLE.filter((row) => row.status === 'soon').map((row) => row.name))
     for (const { name, status } of DASHBOARD_FEATURES) expect(['ready', 'connect-first', 'soon'], name).toContain(status)
+  })
+
+  it('AC-610.1: 환자 칸은 준비 중이 아니라 연결 먼저이고 주소는 /patients다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '환자')).toMatchObject({ href: '/patients', status: 'connect-first' })
   })
 
   it('AC-316.3: 이름과 주소는 겹치지 않고, 주소는 같은 origin 고정 경로다', () => {

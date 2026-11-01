@@ -1,0 +1,110 @@
+'use client'
+
+import { ErrorCard } from '@/components/common/ErrorCard'
+import { ds } from '@/components/ui/classes'
+import { isErrorCode } from '@/lib/errors'
+import type { PatientsTool } from './tools'
+import { usePatientsWorker, type PatientsBridge, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
+
+// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리만 그린다. 도구 몸통은 TASK-11~13이 자리(ToolSlot)에 넣는다.
+// 도구를 바꿔도 다시 읽지 않는다(이 컴포넌트는 도구가 바뀌어도 그대로 있고, 읽기는 usePatientsWorker 한 곳). 한 종류가 실패하면 그 도구만 오류다(AC-604.3).
+// 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다
+
+type ListTool = Exclude<PatientsTool, 'messages'>
+
+const LIST_HEAD: Record<ListTool, { title: string; desc: string }> = {
+  followup: { title: 'F/U 명단', desc: '다시 오시기로 한 날이 다가온 분이에요. 오시기 전날 문자로 알려 드려요.' },
+  recall: { title: '정기 주사 문자 명단', desc: '연골주사 · 비타민D 주사처럼 때마다 맞는 주사의 다음 날짜가 다가온 분이에요.' },
+}
+
+// 목업의 정기 주사 글 "처음 읽는 중…7개월치"는 쓰지 않는다: Worker 메시지로는 첫 읽기인지 알 수 없다(TASK-12 첫 읽기 진행 몫)
+const LIST_LOADING: Record<ListTool, { title: string; unit: string; note: string }> = {
+  followup: { title: '비트에서 F/U 명단을 읽는 중이에요', unit: '', note: '최근 120일을 네 번에 나눠 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' },
+  recall: { title: '정기 주사 기록을 읽는 중이에요', unit: ' 달', note: '다 읽을 때까지 이 창을 열어 두세요.' },
+}
+
+// 불러오는 중 줄: 위 1px line + 20(목업 .ld)
+const loadingBox = 'mt-4 border-t border-line pt-5'
+
+/** 도구 머리(목업 head) */
+export function ListHead({ tool }: { tool: ListTool }) {
+  const { title, desc } = LIST_HEAD[tool]
+  return (
+    <div>
+      <h2 className="text-subtitle font-semibold text-ink">{title}</h2>
+      <p className="mt-0.5 max-w-170 text-small text-muted">{desc}</p>
+    </div>
+  )
+}
+
+/** 도구 몸통 자리. TASK-11~13이 여기에 도구를 넣는다 */
+export function ToolSlot({ tool }: { tool: PatientsTool }) {
+  return <div data-tool-slot={tool} />
+}
+
+/** 통로를 잇는 동안(읽기 전). 비트를 읽는다고 말하지 않는다(휴대폰도 첫 화면에 이 글을 잠깐 본다) */
+export function ConnectingView({ tool }: { tool: ListTool }) {
+  return (
+    <>
+      <ListHead tool={tool} />
+      <div role="status" className={`${loadingBox} text-small text-muted`}>
+        비트 PC 연결을 확인하는 중이에요
+      </div>
+    </>
+  )
+}
+
+function LoadingView({ tool, progress }: { tool: ListTool; progress: ReadProgress }) {
+  const { title, unit, note } = LIST_LOADING[tool]
+  return (
+    <>
+      <ListHead tool={tool} />
+      <div role="status" className={loadingBox}>
+        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-subtitle font-semibold text-ink">
+          <span>{title}</span>
+          {/* 몇 번째를 읽는지(다 읽고 기다리는 동안 전체를 넘지 않는다). plan 전에는 전체를 모른다 */}
+          {progress.total > 0 && (
+            <span className="text-accent-strong">
+              {Math.min(progress.done + 1, progress.total)}/{progress.total}
+              {unit}
+            </span>
+          )}
+        </p>
+        <p className="mt-1 max-w-150 text-small text-muted">{note}</p>
+      </div>
+    </>
+  )
+}
+
+function ErrorView({ tool, code, onReload }: { tool: ListTool; code: string; onReload(): void }) {
+  return (
+    <>
+      <ListHead tool={tool} />
+      <div className="mt-4 max-w-180">
+        {/* 도우미가 새로 준 번호는 errors.ts에 글이 없다 → 번호만 */}
+        {isErrorCode(code) ? (
+          <ErrorCard code={code} />
+        ) : (
+          <p role="alert" className="rounded-control bg-negative-soft px-4 py-3 text-caption text-ink-2">
+            오류 번호 {code}
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button type="button" className={`${ds.button.secondary} max-md:w-full`} onClick={onReload}>
+            다시 불러오기
+          </button>
+          <span className="text-small text-muted">다른 도구는 그대로 쓸 수 있어요.</span>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; bridge: PatientsBridge; worker: PatientsWorkerHandle }) {
+  const load = usePatientsWorker(bridge, worker)
+  if (tool === 'messages') return <ToolSlot tool={tool} />
+  if (load.status === 'loading') return <LoadingView tool={tool} progress={load.progress[tool]} />
+  const code = load.views?.codes[tool]
+  if (code) return <ErrorView tool={tool} code={code} onReload={load.reload} />
+  return <ToolSlot tool={tool} />
+}

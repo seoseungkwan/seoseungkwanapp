@@ -70,7 +70,6 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
     [
       ['/stats', () => import('./(app)/stats/page')],
       ['/notices', () => import('./(app)/notices/page')],
-      ['/patients', () => import('./(app)/patients/page')],
       ['/revenue', () => import('./(app)/revenue/page')],
       ['/ai-report', () => import('./(app)/ai-report/page')],
       ['/forms', () => import('./(app)/forms/page')],
@@ -81,6 +80,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
     ] as const
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
+  { path: '/patients', title: '환자', load: () => import('./(app)/patients/page') }, // 화면이 있는 탭(patients AC-610.1)
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },
 ]
