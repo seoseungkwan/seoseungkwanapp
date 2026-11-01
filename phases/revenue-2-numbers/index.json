@@ -1,0 +1,26 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "revenue-2-numbers",
+  "steps": [
+    {
+      "step": 0,
+      "name": "revenue-tables",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "revenue-summary",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "treatment-groups",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "revenue-sync",
+      "status": "pending"
+    }
+  ]
+}

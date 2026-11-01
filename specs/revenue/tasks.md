@@ -1,0 +1,104 @@
+# 작업 분할: 매출 탭
+
+> 형식: `## TASK-n: 제목` 아래에 `- Step:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
+> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호. 순서대로 한다.
+> Phase 1 `revenue-1-read`(TASK-1~3) · Phase 2 `revenue-2-numbers`(TASK-4~7) · Phase 3 `revenue-3-screen`(TASK-8~11). step 파일은 `phases/revenue-<n>-<slug>/stepM.md`.
+> 화면 TASK(8~11)의 기준 시안 `docs/mockups/revenue/index.html`은 2026-11-01 사용자 승인("이대로 만들기")이다. TASK-5는 TASK-1 ①(총진료비에 비급여가 들어 있는가) 답을 받은 뒤 시작한다.
+> `revenue.days`는 업무일지 탭도 쓰는 계약이다(design.md 5절). 칸을 바꾸면 두 명세를 같이 고친다.
+> 갈래 규칙 C1~C9(worklog·stats·patients·revenue)를 따른다: migration 이름 `20261101000400_revenue.sql`, 새 오류 번호는 `E-REVENUE-*`, 탭·명령 수를 고정 숫자로 시험하지 않음, 겹치는 파일은 design.md 11절.
+> Phase가 끝날 때마다 `verify`·화면 캡처(Phase 3)·쉬운 말 보고. 합치기·운영 배포·도우미 릴리스 태그(`helper-v*`)·실제 Supabase에 SQL 붙여 넣기는 사용자가 그때마다 말할 때만 한다.
+> 도우미 C# 시험 파일 이름은 `*.test.cs`, 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(precheck와 같음).
+> 원본(양지바른) 경로는 저장소 밖이다. 원본 파일은 커밋하지 않고 SQL 사본만 넣는다(design.md 2절).
+
+## TASK-1: 의원 PC 확인표
+- Step: Phase 1 · Step 0 · `pc-check`
+- AC: AC-001.1~AC-001.3
+- REQ: REQ-001
+- Files: docs/revenue/pc-check.md
+- TDD: exempt (문서 한 장. 확인은 총괄이 의원 PC에서 한다)
+
+## TASK-2: 명령 표 `revenue.days` · 답 검사
+- Step: Phase 1 · Step 1 · `bridge-contract`
+- AC: AC-002.1~AC-002.4
+- REQ: REQ-002
+- Files: src/lib/bridge/commands.json, src/types/bridge.ts, src/types/revenue.ts, src/lib/bridge/protocol.ts, src/lib/bridge/revenueResult.ts, src/lib/bridge/revenueResult.test.ts, src/lib/bridge/revenueCall.test.ts, helper/tests/Precheck.Core.Tests/Protocol/CommandTable.test.cs
+- Tests: src/lib/bridge/revenueResult.test.ts, src/lib/bridge/revenueCall.test.ts, src/lib/bridge/protocol.test.ts, helper/tests/protocol.dotnet.test.ts
+- TDD: required
+- 메모: `protocol.test.ts`·`client.test.ts`는 고치지 않는다(명령 표에서 목록을 읽으므로 그대로 통과해야 한다)
+
+## TASK-3: 도우미 매출 읽기
+- Step: Phase 1 · Step 2 · `helper-revenue-read`
+- AC: AC-003.1~AC-003.8
+- REQ: REQ-003
+- Files: helper/src/Precheck.Core/Revenue/*, helper/src/Precheck.Core/Bit/Sql.cs, helper/src/Precheck.Helper/Program.cs, helper/tests/Precheck.Core.Tests/Revenue/*, helper/tests/Precheck.Core.Tests/Revenue/original-sql/*, helper/tests/revenue-read.dotnet.test.ts
+- Tests: helper/tests/revenue-read.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts, helper/tests/protocol.dotnet.test.ts
+- TDD: required
+
+## TASK-4: 매출 표 (migration)
+- Step: Phase 2 · Step 0 · `revenue-tables`
+- AC: AC-004.1~AC-004.4
+- REQ: REQ-004
+- Files: supabase/migrations/20261101000400_revenue.sql, supabase/revenue.rls.test.ts
+- Tests: supabase/revenue.rls.test.ts, supabase/rls.test.ts
+- TDD: required
+- 메모: 실제 Supabase에는 붙여 넣지 않는다. 끝나면 붙여 넣을지 사용자에게 묻는다(design.md 6절)
+
+## TASK-5: 금액 나눔·기간 합·비교
+- Step: Phase 2 · Step 1 · `revenue-summary`
+- AC: AC-005.1~AC-005.6
+- REQ: REQ-005
+- Files: src/lib/revenue/summary.ts, src/lib/revenue/summary.test.ts
+- Tests: src/lib/revenue/summary.test.ts
+- TDD: required
+- 먼저: TASK-1 ① 답이 '예'인지 확인한다. '아니오'면 시작하지 않고 명세 변경을 요청한다(`blocked`)
+
+## TASK-6: 치료 묶음
+- Step: Phase 2 · Step 2 · `treatment-groups`
+- AC: AC-006.1~AC-006.3
+- REQ: REQ-006
+- Files: src/lib/revenue/treatments.ts, src/lib/revenue/treatments.test.ts
+- Tests: src/lib/revenue/treatments.test.ts
+- TDD: required
+
+## TASK-7: 저장·가져오기
+- Step: Phase 2 · Step 3 · `revenue-sync`
+- AC: AC-007.1~AC-007.5
+- REQ: REQ-007
+- Files: src/lib/revenue/sync.ts, src/lib/revenue/sync.test.ts, src/lib/storage/revenue.ts, src/lib/storage/revenue.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts
+- Tests: src/lib/revenue/sync.test.ts, src/lib/storage/revenue.test.ts, src/lib/errors.test.ts
+- TDD: required
+
+## TASK-8: 화면 보기 모양
+- Step: Phase 3 · Step 0 · `revenue-view`
+- AC: AC-008.1~AC-008.5
+- REQ: REQ-008
+- Files: src/components/revenue/view.ts, src/components/revenue/view.test.ts, src/components/revenue/money.ts, src/components/revenue/money.test.ts
+- Tests: src/components/revenue/view.test.ts, src/components/revenue/money.test.ts
+- TDD: required
+- 문구는 승인 시안(2026-11-01) `docs/mockups/revenue/gen.py`의 글자 그대로
+
+## TASK-9: 매출 화면 부품
+- Step: Phase 3 · Step 1 · `revenue-screen`
+- AC: AC-009.1~AC-009.5
+- REQ: REQ-009
+- Files: src/components/revenue/*.tsx, src/components/revenue/RevenueScreen.test.tsx, src/components/revenue/parts.test.tsx
+- Tests: src/components/revenue/RevenueScreen.test.tsx, src/components/revenue/parts.test.tsx, src/components/ui/classes.test.ts, src/components/charts/rules.test.ts
+- TDD: required
+- 메모: `src/app/(app)/revenue/page.tsx`는 고치지 않는다(TASK-10이 준비 중 목록과 함께 바꾼다)
+
+## TASK-10: 준비 중에서 빼기
+- Step: Phase 3 · Step 2 · `tab-ready`
+- AC: AC-010.1~AC-010.2
+- REQ: REQ-010
+- Files: src/app/(app)/revenue/page.tsx, src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/UI_GUIDE.md, docs/ARCHITECTURE.md
+- Tests: src/app/(app)/revenue/page.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
+- TDD: required
+
+## TASK-11: E2E
+- Step: Phase 3 · Step 3 · `revenue-e2e`
+- AC: AC-011.1~AC-011.4
+- REQ: REQ-011
+- Files: e2e/revenue.spec.ts, e2e/lib/revenueFakeBridge.ts, e2e/lib/revenueFakeBridge.test.ts
+- Tests: e2e/lib/revenueFakeBridge.test.ts, e2e/revenue.spec.ts
+- TDD: required
+- 먼저: 실제 Supabase에 TASK-4 migration이 붙어 있고 `.env.local`에 E2E 값이 있어야 한다. 없으면 `blocked`(사유: 사용자 할 일)

@@ -27,6 +27,18 @@
     {
       "dir": "precheck-7-backup",
       "status": "pending"
+    },
+    {
+      "dir": "revenue-1-read",
+      "status": "pending"
+    },
+    {
+      "dir": "revenue-2-numbers",
+      "status": "pending"
+    },
+    {
+      "dir": "revenue-3-screen",
+      "status": "pending"
     }
   ]
 }
