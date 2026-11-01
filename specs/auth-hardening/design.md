@@ -64,7 +64,7 @@ export const SIGNOUT_MESSAGE = 'signout'
 export const SIGNOUT_WAIT_MS = 5_000
 export function isLeaving(): boolean // 이 탭이 signOutAndLeave()를 시작했는가
 export async function signOutAndLeave(): Promise<void>
-// 0. leaving = true
+// 0. 이미 leaving이면 아무것도 하지 않고 돌아간다(단추를 두 번 눌러도 signOut 한 번). 아니면 leaving = true
 // 1. await Promise.race([supabaseBrowser().auth.signOut() (던짐은 삼킴), SIGNOUT_WAIT_MS 타이머]) — 기본 global. 돌려준 오류도 보지 않는다.
 //    signOut이 먼저 끝나면 타이머를 지운다(clearTimeout — 남은 타이머가 다른 시험의 타이머 개수 검사를 흔들지 않게)
 // 2. cookieNames(document.cookie)에서 isSessionCookie(name) 또는 ACTIVE_COOKIE인 것을 document.cookie = expireCookieString(name, secure)로 지운다
@@ -72,7 +72,7 @@ export async function signOutAndLeave(): Promise<void>
 // 4. window.location.assign('/login')
 ```
 - `SignOutButton.tsx`·`IdleLogout.tsx`에 있던 같은 이름의 함수 둘을 이것 하나로 바꾼다
-- 시험의 몫: signOut 기다림·오류·던짐·5초·순서("끝난 뒤에야 지우고 /login")는 `leave.test.ts`(AC-403.1·403.2·403.5)가 본다. 두 컴포넌트 시험은 `leave.ts`를 가짜로 바꿔 "`signOutAndLeave`를 부른다"만 본다. 그래서 지금 `SignOutButton.test.tsx`의 옛 auth 로그아웃 시험 4개와 `IdleLogout.test.tsx`의 옛 자동 로그아웃 시험(30분 뒤 로그아웃·다른 탭 움직임)은 옛 번호를 그대로 둔 채 `signOut`·`assign` 대신 `signOutAndLeave` 호출을 보도록 바꾸고, 이름의 'signOut' 말도 맞춘다(tasks.md 머리말의 예외)
+- 시험의 몫: signOut 기다림·오류·던짐·5초·순서("끝난 뒤에야 지우고 /login")는 `leave.test.ts`(AC-403.1·403.2·403.5)가 본다. 두 컴포넌트 시험은 `leave.ts`를 가짜로 바꿔 "`signOutAndLeave`를 부른다"만 본다. 그래서 두 시험 파일의 옛 시험에서 `signOut`·`assign`을 보는 곳(불리지 않았음을 보는 곳 포함)은 모두 가짜 `signOutAndLeave`를 보도록 바꾸고, `IdleLogout.test.tsx`의 채널 고르기는 이름으로 바꾼다. 번호·뜻은 그대로, 이름의 'signOut' 말만 맞춘다(tasks.md 머리말의 예외 규칙)
 - 같은 탭 안에서도 BroadcastChannel은 같은 이름의 다른 채널 객체에 소식을 전한다 → 보낸 탭의 `IdleLogout`도 `signout`을 받는다. 그때는 `isLeaving()`이 참이라 무시한다(AC-403.3)
 
 ### `src/lib/auth/idle.ts` `startIdleLogout(opts)` (바꿈)
