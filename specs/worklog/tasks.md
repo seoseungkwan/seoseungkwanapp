@@ -10,9 +10,9 @@
 - Step: Phase 1 · Step 0 · `docs`
 - AC: AC-001.1~AC-001.3
 - REQ: REQ-001
-- Files: docs/ADR.md, docs/ARCHITECTURE.md, docs/UI_GUIDE.md
+- Files: docs/ADR.md, docs/ARCHITECTURE.md, docs/UI_GUIDE.md, plan.md
 - Tests: 없음(문서)
-- TDD: exempt — 문서만 고친다. ADR 끝에 업무일지 ADR 하나(번호 = 그때 마지막 번호 + 1, design.md 18절): 결정 셋(업무사항 이 PC localStorage만 · 자동 저장 · 양식 칸 엑셀 서식 예외)과 이유·트레이드오프. ARCHITECTURE는 디렉토리 줄 셋, DB 표 `daily_reports` 줄을 `worklog_days`로, 데이터 흐름 [업무일지] 한 줄, 상태 관리 예외 한 줄. UI_GUIDE는 '업무일지 양식(엑셀 예외)' 절(design.md 11-1·12·13절 요약)과 '하지 마라' 표 세 줄(두 번째 글꼴·700 굵기·토큰 밖 색)에 꼬리표, '상자 안 상자' 예외 한 줄(종이 안 엑셀 칸 선). 다른 문장은 바꾸지 않는다
+- TDD: exempt — 문서만 고친다. ADR 끝에 업무일지 ADR 하나(번호 = 그때 마지막 번호 + 1, design.md 18절): 결정 셋(업무사항 이 PC localStorage만 · 자동 저장 · 양식 칸 엑셀 서식 예외)과 이유·트레이드오프. ARCHITECTURE는 디렉토리 줄 셋, DB 표 `daily_reports` 줄을 `worklog_days`로, 데이터 흐름 [업무일지] 한 줄, 상태 관리 예외 한 줄. UI_GUIDE는 '업무일지 양식(엑셀 예외)' 절(design.md 11-1·12·13절 요약)과 '하지 마라' 표 세 줄(두 번째 글꼴·700 굵기·토큰 밖 색)에 꼬리표, '상자 안 상자' 예외 한 줄(종이 안 엑셀 칸 선). plan.md는 §5 '브라우저 저장소에는 폴더 핸들만'에 "(예외: 업무일지 업무사항, ADR-0NN)" 꼬리표 한 줄만. 다른 문장은 바꾸지 않는다
 
 ## TASK-2: 합계·칸 글자·날짜 규칙
 - Step: Phase 1 · Step 1 · `calc-format`
@@ -34,9 +34,9 @@
 - Step: Phase 1 · Step 3 · `db-table`
 - AC: AC-004.1~AC-004.7
 - REQ: REQ-004
-- Files: supabase/migrations/20261101000000_worklog.sql, supabase/worklog.rls.test.ts
+- Files: supabase/migrations/20261101000100_worklog.sql, supabase/worklog.rls.test.ts
 - Tests: supabase/worklog.rls.test.ts
-- TDD: required — PGlite에 `supabase/rls.test.ts`와 같은 Supabase 흉내 → auth migration → 이 migration(design.md 8절). 기존 auth migration과 `supabase/rls.test.ts`는 고치지 않는다. **실제 Supabase에 붙여 넣지 않는다**(사용자 OK 필요, Phase 2 끝에 안내)
+- TDD: required — PGlite에 `supabase/rls.test.ts`와 같은 Supabase 흉내 → auth migration → 이 migration(design.md 8절). 공용 함수 `my_hospital_id()`·`touch_updated_at()`는 cross-branch C1 글자 그대로(`create or replace`)이고, 그 둘이 이미 있을 때도 도는지 시험한다(AC-004.8). 기존 auth migration과 `supabase/rls.test.ts`는 고치지 않는다. **실제 Supabase에 붙여 넣지 않는다**(사용자 OK 필요, Phase 2 끝에 안내)
 
 ## TASK-5: 하루 읽기·저장
 - Step: Phase 1 · Step 4 · `day-storage`
@@ -44,11 +44,11 @@
 - REQ: REQ-005
 - Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts
 - Tests: src/lib/storage/worklogDays.test.ts
-- TDD: required — 가짜 Supabase 클라이언트(`from().select().eq().eq().maybeSingle()`·`from().upsert()` 흉내)로 시험한다(design.md 9절). 실제 Supabase에 붙지 않는다
+- TDD: required — 가짜 Supabase 클라이언트(`from().select().eq('work_date').maybeSingle()`·`from().upsert()` 흉내). `hospital_id`는 보내지도 거르지도 않는다(DB 기본값·RLS)로 시험한다(design.md 9절). 실제 Supabase에 붙지 않는다
 
 ## TASK-6: 자동 저장 제어
 - Step: Phase 2 · Step 0 · `autosave`
-- AC: AC-006.1~AC-006.9
+- AC: AC-006.1~AC-006.10
 - REQ: REQ-006
 - Files: src/lib/worklog/autosave.ts, src/lib/worklog/autosave.test.ts
 - Tests: src/lib/worklog/autosave.test.ts
@@ -80,11 +80,11 @@
 
 ## TASK-10: 업무일지 화면
 - Step: Phase 2 · Step 4 · `screen`
-- AC: AC-010.1~AC-010.9
+- AC: AC-010.1~AC-010.12
 - REQ: REQ-010
-- Files: src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx
-- Tests: src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.test.tsx
-- TDD: required — `lib/storage/worklogDays`·`lib/worklog/memoStore`·`lib/supabase/browser`는 `vi.mock`, 시간은 가짜 타이머, `matchMedia`는 시험이 만든다(design.md 11-3절). 페이지에는 아직 붙이지 않는다(TASK-12). 캡처용 임시 페이지를 만들지 않는다 — Phase 2 끝 화면 확인은 시험 그림(그린 마크업)으로 하고, 실제 화면 캡처는 TASK-12 뒤에 한다
+- Files: src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/worklogSession.ts, src/components/worklog/worklogSession.test.ts
+- Tests: src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/worklogSession.test.ts
+- TDD: required — `lib/storage/worklogDays`·`lib/worklog/memoStore`·`lib/supabase/browser`는 `vi.mock`, 시간은 가짜 타이머, `matchMedia`(터치 기기 `(hover: none) and (pointer: coarse)`)는 시험이 만든다(design.md 11-3절). 자동 저장 제어는 화면 밖 `worklogSession.ts`에 한 벌 — 화면이 내려가면 `flush()`만 하고 저장은 이어진다("앱 안 이동 = 바로 저장" 시험). 로그아웃(`SIGNED_OUT`)이면 떠나기 확인을 떼고 화면 값을 지운다. 페이지에는 아직 붙이지 않는다(TASK-12). 캡처용 임시 페이지를 만들지 않는다 — Phase 2 끝 화면 확인은 시험 그림(그린 마크업)으로 하고, 실제 화면 캡처는 TASK-12 뒤에 한다
 
 ## TASK-11: 인쇄
 - Step: Phase 3 · Step 0 · `print`
@@ -96,11 +96,11 @@
 
 ## TASK-12: 탭 연결
 - Step: Phase 3 · Step 1 · `tab-hookup`
-- AC: AC-012.1~AC-012.4
+- AC: AC-012.1~AC-012.5
 - REQ: REQ-012
-- Files: src/app/(app)/worklog/page.tsx, src/app/(app)/worklog/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
-- Tests: src/app/(app)/worklog/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
-- TDD: required — tab-frame design.md '다음 명세가 탭을 채울 때' 그대로 네 곳을 같은 TASK에서 바꾼다(design.md 14절). '지금 바로 쓸 수 있어요'(`ReadyNow.tsx`)는 청구만 말하고 칸 수를 세지 않으므로 고치지 않는다. 끝나면 dev-browser로 `/worklog` 1440·390 캡처(실제 Supabase에 표가 없으면 불러오기 실패 카드가 보이는 것이 맞다)
+- Files: src/app/(app)/worklog/page.tsx, src/app/(app)/worklog/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx
+- Tests: src/app/(app)/worklog/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx
+- TDD: required — tab-frame design.md '다음 명세가 탭을 채울 때' 그대로 네 곳을 같은 TASK에서 바꾼다(design.md 14절). 대시보드 기능 목차의 개수(`FeatureIndex.tsx`가 목록에서 셈)는 코드 그대로이고, `DashboardHome.test.tsx`의 손 숫자(`INDEX_SIDE`·준비 중·사용 가능 개수)를 목록에서 세는 기대로 바꾼다(AC-012.5, C5). '지금 바로 쓸 수 있어요'(`ReadyNow.tsx`)는 그대로. 끝나면 dev-browser로 `/worklog` 1440·390 캡처(실제 Supabase에 표가 없으면 불러오기 실패 카드가 보이는 것이 맞다)
 
 ## TASK-13: 실제 Supabase 확인 E2E
 - Step: Phase 3 · Step 2 · `e2e`
@@ -108,7 +108,7 @@
 - REQ: REQ-013
 - Files: e2e/worklog.spec.ts
 - Tests: e2e/worklog.spec.ts
-- TDD: exempt — 시험만 더한다. 대상 코드는 TASK-2~12가 단위 시험으로 이미 만들었으므로 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음). **기다림: 사용자가 TASK-4 migration을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 시험 날짜 2020-01-02, 끝에 빈 값 저장(design.md 15절). 확인: `npm run e2e`
+- TDD: exempt — 시험만 더한다. 대상 코드는 TASK-2~12가 단위 시험으로 이미 만들었으므로 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음). **기다림: 사용자가 TASK-4 migration을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 시험 날짜 2020-01-02(새로 고친 뒤 다시 고름), **모든 요청의 주소·본문**과 다시 읽은 줄에 가짜 표식·이름·차트번호·전화·주민번호가 없음, PDF 쪽 수는 `/\/Type\s*\/Page(?!s)/`, 끝에 빈 값 저장(design.md 15절, C7). 확인: `npm run e2e`
 
 ## TASK-14: 비트 숫자 맞추기 규칙
 - Step: Phase 4 · Step 0 · `bit-contract`
@@ -130,7 +130,7 @@
 - Step: Phase 4 · Step 2 · `bit-column`
 - AC: AC-016.1~AC-016.2
 - REQ: REQ-016
-- Files: supabase/migrations/20261101000100_worklog_bit.sql, supabase/worklog.rls.test.ts
+- Files: supabase/migrations/20261101000110_worklog_bit_fields.sql, supabase/worklog.rls.test.ts
 - Tests: supabase/worklog.rls.test.ts
 - TDD: required — 새 migration 하나(design.md 20-4절). PGlite 시험은 auth → TASK-4 → 이 파일 차례로 실행한다. TASK-4 migration 파일은 고치지 않는다. **실제 Supabase에 붙여 넣지 않는다**(사용자 OK)
 
@@ -140,7 +140,7 @@
 - REQ: REQ-017
 - Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts, src/types/worklog.ts
 - Tests: src/lib/storage/worklogDays.test.ts
-- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). TASK-5 시험의 "보내는 칸 21개" 기대는 22개(`bit_fields` 더함)로 바뀐다. 업무사항이 없다는 시험은 그대로
+- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). TASK-5 시험의 "보내는 칸 20개"(`work_date` + 19) 기대는 21개(`bit_fields` 더함)로 바뀐다. 업무사항이 없다는 시험은 그대로
 
 ## TASK-18: 화면에서 비트로 채우기
 - Step: Phase 4 · Step 4 · `bit-screen`

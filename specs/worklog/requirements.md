@@ -16,7 +16,8 @@
   - 처음부터 새로 쓴다. 지난 엑셀 날짜를 가져오지 않는다
 - 2026-11-01 사용자 결정 더함("비트 연결하는거 가능하면 불러와줘야해", "비트에서 불러와서 알아서 입력되게"): 비트 PC가 연결돼 있으면 비트 자료로 채울 수 있는 칸(환자현황 신환·재진, 수입 총진료비·조합청구액·현금수납·카드수납·계좌이체·미수발생·미수입금, 지역화폐는 비트에 있을 때만)을 **저절로** 채운다(단추 없음). 이미 적은 값은 몰래 덮어쓰지 않고 다르다고 보여 주며 한 번 눌러 [비트 숫자로 바꾸기]를 고를 수 있다. 칸은 계속 고칠 수 있고, 비트에서 온 칸은 표시한다. 연결 안 됨·도우미 옛 판·읽기 실패면 지금처럼 손으로 적고 쉬운 안내만 보인다. 지출·업무사항은 손으로만. 숫자만 오고 환자 줄은 도우미 밖으로 나오지 않는다(Phase 4)
   - 자료 길은 새로 만들지 않는다: 금액은 매출 갈래(`specs/revenue`)의 도우미 명령 `revenue.days`(양지바른 일일보고 기준: 외래환자경영통계, 수납일(회계일) 기준, 환불·예치금 있는 날은 '확인 필요')를 쓰고, 신환·재진은 그 명령에 없으므로 통계 갈래(`specs/stats`)의 길(`stats.rows` → Worker → 날짜별 저장 숫자)을 쓴다. Phase 4 첫 step은 그 명령이 main에 들어올 때까지 기다린다
-- Claude 판단(design.md에 근거): 휴대폰은 목업 v2의 폰 모양(같은 양식을 화면 폭에 맞춤)으로 **보기만** 한다(`plan.md` §1 "폰은 보기만"). 비고 칸에 전화번호·주민번호·메일 모양 글자가 있으면 서버로 보내지 않는다(CLAUDE.md 개인정보 규칙). 미래 날짜는 고를 수 없다
+- 2026-11-01 사용자 답: 휴대폰은 **보기만** 한다(목업 v2의 폰 모양, `plan.md` §1). 비고 칸은 서버에 저장한다(환자 이름을 적지 않는다).
+- Claude 판단(design.md에 근거): 비고 칸에 전화번호·주민번호·메일 모양 글자가 있으면 서버로 보내지 않는다(CLAUDE.md 개인정보 규칙). 미래 날짜는 고를 수 없다
 - 화면 AC는 내용(보이는 것·단추·상태)만 정한다. 배치·글자는 기준 시안과 design.md '목업과 다른 점'을, 양식 밖 모양은 `docs/UI_GUIDE.md`(`ds`·토큰·앱 틀)를 따른다
 
 ## 요구사항
@@ -46,17 +47,18 @@
 - AC-003.5: Given 저장소 파일 소스, When 읽어 보면, Then supabase·`fetch`·`@/lib/storage`·`sessionStorage`를 쓰지 않는다(업무사항이 서버로 갈 길이 없다)
 
 ### REQ-004: 서버 표 `worklog_days` (Phase 1 · Step 3 · db-table)
-- AC-004.1: Given migration `supabase/migrations/20261101000000_worklog.sql`, When 실행하면, Then 표 `worklog_days`의 칸은 정해 둔 목록과 정확히 같다: `hospital_id`·`work_date`(합쳐서 기본 열쇠), 인원 2칸, 수입 8칸, 지출 금액 4칸, 비고 5칸, `updated_at`. 업무사항 칸은 없다
+- AC-004.1: Given migration `supabase/migrations/20261101000100_worklog.sql`, When 실행하면, Then 표 `worklog_days`의 칸은 정해 둔 목록과 정확히 같다: `hospital_id`(기본값 `my_hospital_id()`)·`work_date`(합쳐서 기본 열쇠), 인원 2칸, 수입 8칸, 지출 금액 4칸, 비고 5칸, `updated_at`. 업무사항 칸은 없다
 - AC-004.2: Given RLS, When 로그인 안 한 사용자(anon)가 읽거나 쓰면, Then 모두 거부된다
-- AC-004.3: Given 승인된 병원 사용자, When 내 병원 줄을 넣고·읽고·`insert … on conflict (hospital_id, work_date) do update`로 고치면, Then 된다
-- AC-004.4: Given 다른 병원 줄, When 읽거나 그 병원 id로 넣거나 내 줄을 그 병원으로 옮기면, Then 보이지 않거나 거부된다
+- AC-004.3: Given 승인된 병원 사용자, When `hospital_id` 없이 내 줄을 넣고·읽고·`insert … on conflict (hospital_id, work_date) do update`(보낸 칸만 SET)로 고치면, Then 된다. `hospital_id`는 내 승인된 병원 id로 채워진다
+- AC-004.4: Given 다른 병원 줄, When 읽거나 고치려 하면, Then 보이지 않고 바뀌지 않는다. `hospital_id`를 직접 넣거나 바꾸려 하면 권한이 없어 거부된다
 - AC-004.5: Given 승인 대기·거절 병원 사용자, When 읽거나 쓰면, Then 아무 줄도 보이지 않고 쓰기는 거부된다
 - AC-004.6: Given 값 제약, When 음수·인원 99,999 초과·금액 999,999,999,999 초과·빈 글자 비고·100자 넘는 비고를 넣으면, Then 거부된다. 빈 칸(null)은 된다
-- AC-004.7: Given 권한, When 줄을 지우거나 `updated_at`을 직접 넣으려 하면, Then 거부된다. 줄을 고치면 `updated_at`이 새 시각으로 바뀐다
+- AC-004.7: Given 권한, When 줄을 지우거나 `updated_at`을 직접 넣으려 하면, Then 거부된다. 줄을 고치면 `updated_at`이 새 시각으로 바뀐다(공용 `touch_updated_at()` 방아쇠). 방아쇠 함수는 직접 실행 권한이 없다
+- AC-004.8: Given 다른 갈래가 공용 함수 `my_hospital_id()`·`touch_updated_at()`를 이미 만들어 둠, When 이 migration을 실행하면, Then 실패하지 않고(`create or replace`, 같은 글자) 위 시험이 그대로 통과한다
 
 ### REQ-005: 하루 읽기·저장 (Phase 1 · Step 4 · day-storage)
-- AC-005.1: Given 병원 id·날짜, When 하루를 읽으면, Then 정해 둔 칸만 골라 그 병원·그 날짜 줄을 읽고 화면 모양(camelCase)으로 바꾼다. 줄이 없으면 null이다
-- AC-005.2: Given 화면 값, When 하루를 저장하면, Then `onConflict: 'hospital_id,work_date'` upsert 한 번이고, 보내는 칸은 `hospital_id`·`work_date`와 서버 칸 19개뿐이다. 빈 비고는 null로 보낸다. 업무사항은 받는 모양에도 보내는 칸에도 없다
+- AC-005.1: Given 날짜, When 하루를 읽으면, Then 정해 둔 칸만 골라 그 날짜 줄을 읽고(병원은 RLS가 내 병원으로 거른다) 화면 모양(camelCase)으로 바꾼다. 줄이 없으면 null이다
+- AC-005.2: Given 화면 값, When 하루를 저장하면, Then `onConflict: 'hospital_id,work_date'` upsert 한 번이고, 보내는 칸은 `work_date`와 서버 칸 19개뿐이다(`hospital_id`는 보내지 않는다 — DB 기본값). 빈 비고는 null로 보낸다. 업무사항은 받는 모양에도 보내는 칸에도 없다
 - AC-005.3: Given 비고에 개인정보 모양(AC-002.10), When 저장하면, Then 네트워크를 부르지 않고 `private` 오류(어느 칸인지)를 낸다
 - AC-005.4: Given 브라우저가 오프라인이거나 응답 status가 0(연결 실패), When 읽거나 저장하면, Then `offline` 오류다. 그 밖의 오류는 `failed`다. 오류에는 종류와 칸 이름만 있고 Supabase 오류 문구·값은 담지 않는다
 
@@ -69,7 +71,8 @@
 - AC-006.6: Given `private` 오류, When 저장이 실패하면, Then `blocked`(칸 이름 포함)이고 그날 값이 다시 바뀔 때까지 다시 해 보지 않는다
 - AC-006.7: Given 기다리는 저장, When `flush()`를 부르면, Then 기다리지 않고 바로 저장을 시작한다
 - AC-006.8: Given 날짜 여러 개, When 상태를 보면, Then 날짜마다 따로 저장하고, 전체 상태는 가장 나쁜 것이다(`failed` > `blocked` > `offline` > `saving` > `saved` > `idle`). 저장 안 된 값이 하나라도 있으면 `hasUnsaved()`가 참이다
-- AC-006.9: Given `dispose()`, When 부르면, Then 남은 타이머가 모두 멈춘다
+- AC-006.9: Given `dispose()`, When 부르면, Then 남은 타이머가 모두 멈춘다(로그아웃 때만 부른다)
+- AC-006.10: Given 저장 안 된 날, When `pendingDay(ymd)`를 부르면, Then 아직 저장되지 않은 최신 값을 돌려준다(없으면 null). 화면이 다시 열릴 때 이 값을 쓴다
 
 ### REQ-007: 엑셀 서식 예외 규칙 (Phase 2 · Step 1 · sheet-style)
 - AC-007.1: Given `src/app/globals.css` `:root`, When 토큰을 보면, Then 엑셀 색 넷 `--xl-ink: #000000`·`--xl-lav: #CCCCFF`·`--xl-gray: #D9D9D9`·`--xl-focus: #107C41`이 한 번씩 있고, 토큰 시험 표에 들어 있다. `@theme inline`은 이 넷을 가리키지 않는다(Tailwind 색 클래스가 생기지 않는다)
@@ -80,7 +83,7 @@
 ### REQ-008: 엑셀 양식 칸 (Phase 2 · Step 2 · sheet)
 - AC-008.1: Given 양식, When 그리면, Then 엑셀 A1:I23과 같은 표다: 9칸(너비 14.5·10.6·10.6·10.6·8.4·5.8·12·11.8·15.7%), 23줄, 합친 칸 46개가 엑셀과 같은 자리이고, 칸 글자도 엑셀 그대로다("업무일지" 제목, 결재·담당·팀장·원장, 환자 현황·외래·신 환·재 진·합 계, 업무사항, 수입 여덟 줄과 수납액, 지출 항목·금액·비고, 현금(두 줄 높이)·카드·환불·free, 총 지 불 액, 합 계)
 - AC-008.2: Given 칸 색, When 그리면, Then 연보라는 날짜·결재 띠, 환자 합계 이름·값, 수납액 이름·값, 맨 아래 합계 값이고, 회색은 총진료비·조합청구액 줄과 총지불액 줄이다. 바깥 선은 굵다
-- AC-008.3: Given 입력 칸, When 그리면, Then 숫자 칸 14개(인원 2·수입 8·지출 4, `inputMode="numeric"`)·비고 칸 5개(100자까지)·업무사항 칸(2,000자까지)이 시안과 같은 이름(`aria-label`)으로 있다. 결재 칸·외래 줄 빈칸·자동 칸은 입력 칸이 아니다. [저장] 단추·날짜 시트 탭 줄은 없다
+- AC-008.3: Given 입력 칸, When 그리면, Then 숫자 칸 14개(인원 2·수입 8·지출 4, `inputMode="numeric"`)·비고 칸 5개(100자까지)·업무사항 칸(2,000자까지)이 시안과 같은 이름(`aria-label`)으로 있다. 업무사항·비고 칸은 맞춤법 검사(`spellCheck`)를 끈다. 결재 칸·외래 줄 빈칸·자동 칸은 입력 칸이 아니다. [저장] 단추·날짜 시트 탭 줄은 없다
 - AC-008.4: Given 값, When 그리면, Then 날짜 칸은 "2026/10/28 수" 모양이고, 자동 칸 넷(환자 합계·수납액·총지불액·합계)은 받은 값으로 계산한 글자다(AC-002.1~002.6)
 - AC-008.5: Given 숫자 칸에 글자를 침, When 바뀌면, Then 숫자로 읽은 값(AC-002.5)을 알리고, 초점이 나가면 엑셀 모양 글자로 보인다
 - AC-008.6: Given 보기만 모양, When 그리면, Then 모든 칸이 읽기 전용이고 업무사항 칸에는 받은 안내 글이 보인다
@@ -100,9 +103,12 @@
 - AC-010.4: Given 다른 날짜로 옮김, When 옮기면, Then 기다리던 저장을 바로 시작하고(옛 날짜 값은 잃지 않는다), 처음 여는 날은 읽고, 이 화면에서 이미 연 날은 화면에 둔 값을 쓴다. 늦게 온 옛 읽기 응답은 버린다
 - AC-010.5: Given 화면이 열린 채 한국 날짜가 바뀜(30초마다·화면이 다시 보일 때 확인), When 옛 오늘을 보고 있었으면, Then 새 날짜의 양식으로 바뀐다(양식 칸에 초점이 있으면 초점이 나간 뒤). 옛 날짜에 친 값은 옛 날짜로 저장된다. 지난 날을 보고 있었으면 그대로이고 날짜 고르기 최대만 바뀐다
 - AC-010.6: Given 저장 안 된 값, When 창을 닫거나 다른 주소로 가려 하면, Then 브라우저가 떠나기 확인을 묻는다(`beforeunload`). 화면이 가려지면(`visibilitychange` hidden) 기다리던 저장을 바로 시작한다. 인터넷이 다시 연결되면(`online`) 바로 저장한다
-- AC-010.7: Given 휴대폰 폭(768px 미만), When 그리면, Then 같은 양식을 화면 폭에 맞춰 보기만 하고(칸 읽기 전용, 저장 없음), 업무사항 칸에는 "업무사항은 의원 PC에서만 보여요"가 보인다
+- AC-010.7: Given 터치 기기(`(hover: none) and (pointer: coarse)`, 휴대폰), When 그리면, Then 같은 양식을 보기만 하고(칸 읽기 전용, 저장 없음), 업무사항 칸에는 "업무사항은 의원 PC에서만 보여요"가 보인다. 화면 폭(768px 미만)은 배치(양식 크기·날짜 줄 두 줄)만 바꾼다
+- AC-010.10: Given 좁은 PC 창(반쪽 창·150% 확대로 768px 미만, 마우스 있음), When 그리면, Then 칸을 고칠 수 있고 업무사항 칸도 그대로 쓸 수 있다
 - AC-010.8: Given 불러오기 실패, When 그리면, Then 칸은 읽기 전용으로 남고 [다시 불러오기]로 다시 읽는다
 - AC-010.9: Given [인쇄], When 누르면, Then 기다리던 저장을 시작하고 브라우저 인쇄(`window.print()`)를 연다
+- AC-010.11: Given 저장 안 된 값, When 앱 안 다른 탭으로 옮기면(화면이 내려감, 새로 고침 없음), Then 기다리던 저장을 바로 시작하고, 자동 저장 제어는 화면 밖(모듈 하나)에 남아 저장·다시 하기를 이어 간다. 업무일지로 돌아오면 저장 안 된 값과 상태가 그대로 보인다 — 앱 안 이동 = 바로 저장
+- AC-010.12: Given 로그아웃(30분 자동 로그아웃 포함, Supabase `SIGNED_OUT`), When 일어나면, Then 떠나기 확인을 걸지 않고(로그인 화면으로 가는 길을 막지 않는다) 화면에 띄운 업무일지 값(업무사항 포함)을 지우고 자동 저장 제어를 멈춘다. 이 PC 저장소에 둔 업무사항은 지우지 않는다
 
 ### REQ-011: 인쇄 (Phase 3 · Step 0 · print)
 - AC-011.1: Given 인쇄, When 인쇄 CSS를 보면, Then A4 세로·여백 12mm이고, 양식은 폭 100%에 엑셀 pt 값(제목 32pt, 칸 13pt, 날짜 14pt, 업무사항 11pt, 지출 비고 10pt, 줄 높이 39.75·18·33.75·21·30·15pt)이며, 색은 그대로 찍히고(`print-color-adjust: exact`) 흐린 안내 글은 찍히지 않는다
@@ -114,12 +120,13 @@
 - AC-012.2: Given 탭 목록, When 보면, Then 업무일지 탭의 `href`는 `/worklog`, `ready`는 참이고 [전체 메뉴] 판에 "준비 중" 칩이 없다
 - AC-012.3: Given 대시보드 기능 목차, When 보면, Then 업무일지 칸은 `ready`("사용 가능")다
 - AC-012.4: Given 준비 중 목록, When 보면, Then `/worklog`가 없고, 탭 틀 통합 시험·준비 중 페이지 시험·탭 이름 시험이 바뀐 목록으로 통과한다
+- AC-012.5: Given 대시보드 기능 목차 옆 글("… 가운데 n개는 지금 …")·준비 중 개수·사용 가능 개수, When 시험하면, Then 기대 숫자를 손으로 적지 않고 목록(`DASHBOARD_FEATURES`·`NOT_READY_FEATURES`)에서 센다(다른 갈래가 탭을 채워도 그대로 통과)
 
 ### REQ-013: 실제 Supabase 확인 E2E (Phase 3 · Step 2 · e2e)
-- AC-013.1: Given 승인된 시험 계정, When 시험 날짜(2020-01-02)를 열어 숫자·비고·업무사항을 적고 "저장했어요"를 본 뒤 새로 고치면, Then 숫자·비고·자동 칸이 그대로이고 업무사항도 그대로다(같은 브라우저)
-- AC-013.2: Given 그동안 브라우저가 Supabase로 보낸 요청, When 본문을 보면, Then 업무사항 글자가 어디에도 없고, 그 날 `worklog_days` 줄에도 없다
+- AC-013.1: Given 승인된 시험 계정, When 시험 날짜(2020-01-02)를 열어 숫자·비고·업무사항을 적고 "저장했어요"를 본 뒤 새로 고쳐 그 날짜를 다시 고르면(날짜는 주소에 없다), Then 숫자·비고·자동 칸이 그대로이고 업무사항도 그대로다(같은 브라우저)
+- AC-013.2: Given 그동안 브라우저가 보낸 **모든** 요청(Supabase·같은 origin Next/Vercel 모두), When 주소와 본문을 보면, Then 업무사항에 적은 가짜 표식·가짜 환자 이름·차트번호·전화번호·주민번호 모양 글자가 어디에도 없고, 다시 읽은 그 날 `worklog_days` 줄에도 없다
 - AC-013.3: Given 새 브라우저(다른 PC 흉내), When 같은 날을 열면, Then 숫자는 보이고 업무사항 칸은 비어 있다
-- AC-013.4: Given 그 날 화면, When A4로 PDF 인쇄하면, Then 한 쪽이다
+- AC-013.4: Given 그 날 화면, When A4로 PDF 인쇄하면, Then 한 쪽이다(쪽 수는 `/\/Type\s*\/Page(?!s)/`로 센다)
 
 ### REQ-014: 비트 숫자 맞추기 규칙 (Phase 4 · Step 0 · bit-contract)
 - AC-014.1: Given 매출 명령 `revenue.days`의 하루 줄, When 업무일지 칸 값으로 바꾸면, Then 총진료비·조합청구액·현금수납·카드수납·계좌이체·미수발생·미수입금(·지역화폐)이 design.md 20-2절 표대로 나온다. 그날이 '확인 필요'(`unconfirmed`)이거나 칸이 `null`이면 그 칸은 비트 값이 없다(지어내지 않는다)
@@ -135,7 +142,7 @@
 - AC-015.2: Given 확인 결과, When 기본 표(design.md 20-2절)와 다르면, Then 다음 step 전에 명세를 고쳐 다시 승인받는다(채우는 칸 목록이 바뀐다)
 
 ### REQ-016: 비트 칸 표시 저장 (Phase 4 · Step 2 · bit-column)
-- AC-016.1: Given migration `supabase/migrations/20261101000100_worklog_bit.sql`, When 실행하면, Then `worklog_days`에 `bit_fields text[] not null default '{}'`가 더해지고, 값은 채울 수 있는 칸 이름(design.md 20-2절의 DB 칸)의 부분 집합만 받는다
+- AC-016.1: Given migration `supabase/migrations/20261101000110_worklog_bit_fields.sql`, When 실행하면, Then `worklog_days`에 `bit_fields text[] not null default '{}'`가 더해지고, 값은 채울 수 있는 칸 이름(design.md 20-2절의 DB 칸)의 부분 집합만 받는다
 - AC-016.2: Given 승인된 병원 사용자, When upsert에 `bit_fields`를 넣으면, Then 된다. 다른 병원·anon 규칙은 REQ-004 그대로다
 
 ### REQ-017: 비트 칸 읽기·저장 (Phase 4 · Step 3 · bit-storage)

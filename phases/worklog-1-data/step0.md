@@ -36,6 +36,7 @@
   - `docs/ADR.md`
   - `docs/ARCHITECTURE.md`
   - `docs/UI_GUIDE.md`
+  - `plan.md`
 - Tests:
   - `없음(문서)`
 - TDD: exempt — 문서만 고친다
@@ -59,7 +60,10 @@
 - 데이터 흐름: `[업무일지] 칸 입력 → 자동 저장(800ms) → worklog_days(RLS) · 업무사항 → 이 PC localStorage만`
 - 상태 관리: "브라우저 저장소에는 폴더 핸들만 둔다" 아래에 "예외: 업무일지 업무사항(사용자 결정 2026-11-01, ADR-0NN)"
 
-### 3. `docs/UI_GUIDE.md`
+### 3. `plan.md`
+- §5 '`lib/folder/`: 폴더 연결 정보(폴더 핸들)만 브라우저 저장소에 둔다' 줄 끝에 "(예외: 업무일지 업무사항은 그 PC 브라우저에만, 사용자 결정 2026-11-01 · ADR-0NN)" 꼬리표 한 줄만. 다른 문장은 그대로(plan.md가 이기는 문서라 예외를 거기에도 적는다)
+
+### 4. `docs/UI_GUIDE.md`
 - 새 절 `## 업무일지 양식 (엑셀 예외)`: 예외 범위는 `WorklogSheet` 표 안만(날짜 줄·상태·오류 카드는 일반 규칙), 토큰 `--xl-ink`·`--xl-lav`·`--xl-gray`·`--xl-focus`, 글꼴 굴림·맑은 고딕(시스템 글꼴, 파일 없음), 굵기 700, 화면 px·인쇄 pt 값(design.md 2·13절), 인쇄 A4 한 장, 휴대폰은 같은 양식 보기만
 - '하지 마라' 표의 '두 번째 글꼴'·'700 굵기'·'토큰 밖의 색과 값' 줄 이유 칸 끝에 "(업무일지 양식 칸은 예외 — 아래 '업무일지 양식')"
 - '상자 안 상자 금지' 끝에 "업무일지 종이(`.paper`) 안 엑셀 표의 칸 선은 상자가 아니다(엑셀 칸 선)" 한 줄
@@ -68,7 +72,7 @@
 ## Acceptance Criteria
 
 ```bash
-git diff --stat -- docs/   # 세 파일만 바뀌었다
+git diff --stat -- docs/ plan.md   # 네 파일만 바뀌었다
 npm test                   # 문서만 바꿨으니 그대로 통과
 python3 ~/.claude/harness/bin/verify
 ```

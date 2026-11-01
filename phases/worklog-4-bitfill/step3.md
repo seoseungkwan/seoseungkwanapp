@@ -40,13 +40,13 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- 보내는 칸은 고른 목록만: `hospital_id`·`work_date`·19칸 + `bit_fields`(22개). 업무사항 없음
+- 보내는 칸은 고른 목록만: `work_date`·19칸 + `bit_fields`(21개, `hospital_id`는 보내지 않음). 업무사항 없음
 - `bitFields`는 열쇠 이름(`cashIn`) ↔ DB 칸 이름(`cash_in`)으로 바꾸고, 채울 수 있는 칸 밖 이름은 버린다
 
 ## 작업
 
-- `WorklogDay`는 그대로 두고 읽기 결과·저장 인자에 `bitFields: WorklogNumberKey[]`를 더한다(예: `loadWorklogDay` → `{ day, bitFields } | null`, `saveWorklogDay(…, day, bitFields)`). 호출하는 화면 코드는 TASK-18이 맞춘다 — 이 step에서 깨지는 화면 시험이 있으면 기본값 `[]`로 옛 호출을 받아 깨지지 않게 한다
-- 시험: 보내는 칸 22개, 목록 밖 이름 버림, `bit_fields` 없음(옛 줄) → `[]`, 업무사항 없음 그대로
+- `WorklogDay`는 그대로 두고 읽기 결과·저장 인자에 `bitFields: WorklogNumberKey[]`를 더한다(예: `loadWorklogDay(client, ymd)` → `{ day, bitFields } | null`, `saveWorklogDay(client, ymd, day, bitFields)`). 호출하는 화면 코드는 TASK-18이 맞춘다 — 이 step에서 깨지는 화면 시험이 있으면 기본값 `[]`로 옛 호출을 받아 깨지지 않게 한다
+- 시험: 보내는 칸 21개, 목록 밖 이름 버림, `bit_fields` 없음(옛 줄) → `[]`, 업무사항 없음 그대로
 
 ## TDD 순서
 

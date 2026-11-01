@@ -8,8 +8,8 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-005에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-005.1**: 정한 칸만 골라 그 병원·그 날짜 줄을 읽고 화면 모양으로. 줄이 없으면 null
-- **AC-005.2**: 저장 = `upsert(row, { onConflict: 'hospital_id,work_date' })` 한 번. `row` 열쇠는 `hospital_id`·`work_date` + 19칸뿐, 빈 비고 → null, 업무사항 없음(받은 객체에 다른 열쇠가 섞여도 무시)
+- **AC-005.1**: 정한 칸만 골라 그 날짜 줄을 읽고(병원은 RLS가 거름) 화면 모양으로. 줄이 없으면 null
+- **AC-005.2**: 저장 = `upsert(row, { onConflict: 'hospital_id,work_date' })` 한 번. `row` 열쇠는 `work_date` + 19칸뿐(`hospital_id`는 보내지 않음 — DB 기본값), 빈 비고 → null, 업무사항 없음(받은 객체에 다른 열쇠가 섞여도 무시)
 - **AC-005.3**: 비고 개인정보 모양 → 네트워크 없이 `private` 오류(칸 이름)
 - **AC-005.4**: 오프라인·status 0 → `offline`, 그 밖 → `failed`. 오류에 Supabase 문구·값 없음
 
@@ -25,7 +25,7 @@
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
 - `/src/types/worklog.ts`·`/src/lib/worklog/notes.ts` (Step 1)
-- `/supabase/migrations/20261101000000_worklog.sql` (Step 3)
+- `/supabase/migrations/20261101000100_worklog.sql` (Step 3)
 - `/src/lib/supabase/browser.ts` — 브라우저 클라이언트(이 파일은 클라이언트를 인자로 받는다)
 - `/node_modules/@supabase/postgrest-js/dist/index.mjs` 420~460줄 — 연결 실패 때 `status: 0` 응답
 
@@ -57,13 +57,13 @@ export class WorklogStorageError extends Error {
   readonly field?: WorklogNoteKey   // private일 때 막힌 비고 칸
   constructor(kind: WorklogErrorKind, field?: WorklogNoteKey)   // message는 고정 글자(예: 'worklog save offline'), Supabase 문구 없음
 }
-export async function loadWorklogDay(client: Pick<SupabaseClient, 'from'>, hospitalId: string, ymd: string): Promise<WorklogDay | null>
-export async function saveWorklogDay(client: Pick<SupabaseClient, 'from'>, hospitalId: string, ymd: string, day: WorklogDay): Promise<void>
+export async function loadWorklogDay(client: Pick<SupabaseClient, 'from'>, ymd: string): Promise<WorklogDay | null>
+export async function saveWorklogDay(client: Pick<SupabaseClient, 'from'>, ymd: string, day: WorklogDay): Promise<void>
 ```
-- 읽기: `.from('worklog_days').select('<19칸 쉼표>').eq('hospital_id', hospitalId).eq('work_date', ymd).maybeSingle()` → DB 칸 → 열쇠(`WORKLOG_COLUMNS` 거꾸로), null 비고 → ''
+- 읽기: `.from('worklog_days').select('<19칸 쉼표>').eq('work_date', ymd).maybeSingle()`(내 병원은 RLS가 거른다) → DB 칸 → 열쇠(`WORKLOG_COLUMNS` 거꾸로), null 비고 → ''
 - 저장 순서: ① 비고 다섯 칸 `notePrivacyProblem` → 걸린 첫 칸으로 `private` ② `globalThis.navigator?.onLine === false` → `offline` ③ upsert ④ `error`가 있으면 `status === 0`이면 `offline`, 아니면 `failed`
 - 비고는 앞뒤 빈칸을 그대로 두고 빈 글자(`''`)만 null로 보낸다. 100자 넘는 비고는 화면 `maxLength`가 먼저 막는다. 여기서는 자르지 않고 그대로 보낸다(DB 제약이 거부 → `failed`). 몰래 잘라 저장하지 않으려고
-- 시험: 가짜 클라이언트가 받은 표 이름·select 글자·eq 두 개·upsert `row`의 열쇠 목록(정확히 21개)·`onConflict`를 기록한다. `row`에 `memo`가 없음을 `day`에 `memo` 열쇠를 억지로 섞어(`as unknown as WorklogDay`) 넣어도 본다. 오류 객체의 `message`에 가짜 Supabase 문구('secret detail')가 없음을 본다
+- 시험: 가짜 클라이언트가 받은 표 이름·select 글자·`eq('work_date', …)` 하나(`hospital_id` 거르기·보내기 없음)·upsert `row`의 열쇠 목록(정확히 20개)·`onConflict`를 기록한다. `row`에 `memo`가 없음을 `day`에 `memo` 열쇠를 억지로 섞어(`as unknown as WorklogDay`) 넣어도 본다. 오류 객체의 `message`에 가짜 Supabase 문구('secret detail')가 없음을 본다
 
 ## TDD 순서
 

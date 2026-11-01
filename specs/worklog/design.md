@@ -6,9 +6,9 @@
 ## 1. 한눈에
 
 ```
-[화면 /worklog] page.tsx(서버) → currentMe()의 병원 id + todayInKorea()
+[화면 /worklog] page.tsx(서버) → currentMe()의 병원 id(업무사항 열쇠용) + todayInKorea()
    └ WorklogScreen(클라이언트) ── 날짜 줄·저장 상태(WorklogToolbar) + 엑셀 양식(WorklogSheet)
-        ├ 숫자·비고 → createAutosave(800ms 묶음) → saveWorklogDay → Supabase worklog_days (RLS)
+        ├ 숫자·비고 → 화면 밖 자동 저장 제어(worklogSession, 800ms 묶음) → saveWorklogDay → Supabase worklog_days (RLS, hospital_id = my_hospital_id())
         ├ 업무사항 → memoStore → 이 PC localStorage (서버로 가는 길 없음)
         └ 계산·글자 모양·날짜 이동 → lib/worklog (순수 함수)
 ```
@@ -51,7 +51,7 @@
 | [인쇄] → 목업 안 미리보기 창 | 브라우저 인쇄(`window.print()`)를 바로 연다. 미리보기는 브라우저 인쇄 창이 보여 준다 **(Claude 판단)** |
 | 업무사항 흐린 안내 "환자 이름·차트번호는 적지 않아요" | "이 PC에만 저장돼요"(업무사항은 서버로 안 가므로 사실대로) **(Claude 판단)** |
 | 목업의 옛 탭 줄·위쪽 띠 | 지금 앱 틀(`AppShell`, 탭 13개)을 그대로 쓴다 |
-| 폰 화면에서도 칸을 고칠 수 있음 | 폰은 같은 양식을 화면 폭에 맞춰 **보기만** 한다(`plan.md` §1) **(Claude 판단, 아래 '사용자에게 물을 것' 2)** |
+| 폰 화면에서도 칸을 고칠 수 있음 | 폰(터치 기기)은 같은 양식을 화면 폭에 맞춰 **보기만** 한다(`plan.md` §1) **(사용자 답 2026-11-01)**. 좁은 PC 창은 그대로 고칠 수 있다 |
 | 칸 초점 테두리 초록 `#107C41` | 그대로(`--xl-focus` 토큰) |
 | 목업 숫자(지어낸 예시) | 실제 화면은 서버 값만. 없는 날은 빈 양식 |
 
@@ -64,7 +64,7 @@
 | `src/lib/worklog/days.ts` | 날짜 이동·자정 넘김·날짜 칸 글자·저장 시각 글자 | 2 |
 | `src/lib/worklog/notes.ts` | 비고 개인정보 모양 검사 | 2 |
 | `src/lib/worklog/memoStore.ts` | 업무사항 이 PC 저장소(localStorage) | 3 |
-| `supabase/migrations/20261101000000_worklog.sql` | 표 `worklog_days`·RLS·권한·`updated_at` 방아쇠 | 4 |
+| `supabase/migrations/20261101000100_worklog.sql` | 표 `worklog_days`·RLS·권한·공용 함수(`my_hospital_id`·`touch_updated_at`) | 4 |
 | `src/lib/storage/worklogDays.ts` | 하루 읽기·저장(Supabase), 오류 종류 나누기 | 5 |
 | `src/lib/worklog/autosave.ts` | 자동 저장 제어(묶기·다시 시도·끊김·상태) | 6 |
 | `src/app/globals.css` · 규칙 시험 셋 | 엑셀 색 토큰 넷, 굵기·CSS Module 예외 | 7 |
@@ -72,6 +72,7 @@
 | `src/components/worklog/WorklogToolbar.tsx` | 날짜 줄·저장 상태·오류 카드·[인쇄] | 9 |
 | `src/components/worklog/WorklogScreen.tsx` | 화면 조립: 읽기·자동 저장·업무사항·자정·폰·떠나기 확인 | 10 |
 | `src/components/worklog/useWorklogDay.ts` | WorklogScreen의 날짜별 값·읽기 상태(화면에서 뗀 훅) | 10 |
+| `src/components/worklog/worklogSession.ts` | 화면 밖(모듈 하나)에 사는 자동 저장 제어·떠나기 확인·로그아웃 정리 | 10 |
 | `sheet.module.css` 인쇄 부분 · `AppShell.tsx` | 인쇄 CSS, 앱 틀 인쇄 숨김 | 11 |
 | `src/app/(app)/worklog/page.tsx` + 탭 목록 셋 | 진짜 화면 연결 | 12 |
 | `e2e/worklog.spec.ts` | 실제 Supabase 확인 | 13 |
@@ -161,11 +162,19 @@ export function writeMemo(hospitalId: string, ymd: string, text: string, storage
 - 암호화하지 않는다. 엑셀 파일을 그 PC에 두던 것과 같은 수준이다. 크롬 '인터넷 사용 기록 삭제(쿠키 및 사이트 데이터)'를 하면 사라진다 → '사용자에게 물을 것' 3
 - 업무사항은 [백업 내려받기](사전점검 TASK-32)에도 들어가지 않는다(서버 표가 아니다)
 
-## 8. DB 표 (`supabase/migrations/20261101000000_worklog.sql`, TASK-4)
+## 8. DB 표 (`supabase/migrations/20261101000100_worklog.sql`, TASK-4)
 
 ```sql
+-- 공용 함수 둘: 갈래마다 글자 그대로 같다(cross-branch C1, precheck design.md 8-1과 같은 본문). 어느 갈래가 먼저 들어가도 된다
+create or replace function public.my_hospital_id() returns uuid language sql stable security definer set search_path = ''
+  as $$ select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved' $$;
+revoke execute on function public.my_hospital_id() from public, anon;
+grant execute on function public.my_hospital_id() to authenticated;
+create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
+revoke execute on function public.touch_updated_at() from public, anon, authenticated;
+
 create table public.worklog_days (
-  hospital_id uuid not null references public.hospitals (id) on delete cascade,
+  hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
   work_date date not null,
   new_patients integer check (new_patients between 0 and 99999),
   return_patients integer check (return_patients between 0 and 99999),
@@ -180,19 +189,16 @@ create table public.worklog_days (
 alter table public.worklog_days enable row level security;
 revoke all on table public.worklog_days from anon, authenticated;
 grant select on table public.worklog_days to authenticated;
-grant insert (hospital_id, work_date, <값 19칸>) on table public.worklog_days to authenticated;
-grant update (hospital_id, work_date, <값 19칸>) on table public.worklog_days to authenticated;
--- 정책 셋(select · insert with check · update using + with check), 모두
---   hospital_id = (select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved')
-create function public.worklog_days_touch() returns trigger language plpgsql set search_path = ''
-  as $$ begin new.updated_at := now(); return new; end $$;
-create trigger worklog_days_touch before update on public.worklog_days for each row execute function public.worklog_days_touch();
+grant insert (work_date, <값 19칸>) on table public.worklog_days to authenticated;
+grant update (work_date, <값 19칸>) on table public.worklog_days to authenticated;
+-- 정책 셋(select · insert with check · update using + with check), 모두 hospital_id = (select public.my_hospital_id())
+create trigger worklog_days_updated_at before update on public.worklog_days for each row execute function public.touch_updated_at();
 ```
-- **병원 id는 브라우저가 보낸다**(page.tsx가 `currentMe()`로 받은 승인된 병원 id). 정책의 `with check`가 내 승인된 병원만 받는다. 사전점검 계획의 `my_hospital_id()` 기본값 함수를 쓰지 않는다: 그 함수는 사전점검 2단계 migration이 `create function`으로 만들 예정이라, 여기서 먼저 만들면 그쪽 붙여 넣기가 "이미 있음"으로 실패한다(합치는 순서와 상관없이 두 파일이 따로 돌게) **(Claude 판단)**
-- upsert(`insert … on conflict do update`)는 보낸 칸 모두를 `update set`에 쓴다(PostgREST). 그래서 `hospital_id`·`work_date`에도 update 권한을 준다. 다른 병원으로 옮기는 것은 `with check`가 막고, 같은 병원 안 날짜 옮기기는 앱이 하지 않는다
+- **병원 id는 DB 기본값 `my_hospital_id()`로만 채워진다**(cross-branch C1). 브라우저는 `hospital_id`를 보내지 않고 그 칸에는 넣기·고치기 권한이 없다. 승인 안 된 병원은 `my_hospital_id()`가 null이라 아무 줄도 못 보고 못 넣는다
+- upsert(`insert … on conflict (hospital_id, work_date) do update`)는 보낸 칸만 `update set`에 쓴다(PostgREST). 보낸 칸은 `work_date` + 19칸이라 `work_date`에도 update 권한을 준다(같은 병원 안 날짜 옮기기는 앱이 하지 않는다). 충돌 판정은 기본값으로 채운 `hospital_id`로 한다
 - 지우기 권한은 없다(화면에 지우기가 없다. 빈 칸으로 저장하면 된다). `updated_at`은 권한이 없어 방아쇠·기본값으로만 바뀐다
-- 방아쇠 함수는 방아쇠로만 불린다(직접 부르면 Postgres가 거부). `search_path = ''`
-- 시험: `supabase/worklog.rls.test.ts`(PGlite, `supabase/rls.test.ts`와 같은 Supabase 흉내 + auth migration을 먼저 실행)
+- 방아쇠 함수는 직접 실행 권한을 거둔다(방아쇠로 불릴 때는 권한을 보지 않는다 — 시험이 update 뒤 `updated_at`이 바뀌는지로 증명)
+- 시험: `supabase/worklog.rls.test.ts`(PGlite, `supabase/rls.test.ts`와 같은 Supabase 흉내 + auth migration을 먼저 실행). 공용 함수 둘이 **이미 있을 때**(다른 갈래가 먼저 들어감)도 이 migration이 실패하지 않는지 한 번 더 돈다
 - **실제 Supabase에 붙여 넣는 것은 사용자 OK가 필요하다.** TASK-4는 파일과 시험만 만든다. 운영자(사용자)가 SQL 편집기에 붙여 넣는 때는 Phase 2를 마친 뒤 화면을 실제로 볼 때다. Claude가 직접 실행하지 않는다
 
 ## 9. 하루 읽기·저장 (`src/lib/storage/worklogDays.ts`)
@@ -204,11 +210,11 @@ export class WorklogStorageError extends Error {
   readonly field?: WorklogNoteKey          // private일 때 막힌 비고 칸
 }
 type Client = Pick<SupabaseClient, 'from'>
-export async function loadWorklogDay(client: Client, hospitalId: string, ymd: string): Promise<WorklogDay | null>
-export async function saveWorklogDay(client: Client, hospitalId: string, ymd: string, day: WorklogDay): Promise<void>
+export async function loadWorklogDay(client: Client, ymd: string): Promise<WorklogDay | null>
+export async function saveWorklogDay(client: Client, ymd: string, day: WorklogDay): Promise<void>
 ```
-- 읽기: `from('worklog_days').select(<정한 칸 목록>).eq('hospital_id', id).eq('work_date', ymd).maybeSingle()` → 화면 모양. null 칸은 `null`/`''`
-- 저장: 먼저 비고 다섯 칸을 `notePrivacyProblem`으로 본다(걸리면 네트워크 없이 `private`). 그다음 `upsert(row, { onConflict: 'hospital_id,work_date' })`. `row`는 `hospital_id`·`work_date` + `WORKLOG_COLUMNS` 19칸뿐이고, 받은 객체의 다른 열쇠는 무시한다(업무사항이 섞여 와도 안 간다)
+- 읽기: `from('worklog_days').select(<정한 칸 목록>).eq('work_date', ymd).maybeSingle()`(내 병원 줄만 보이는 것은 RLS가 한다) → 화면 모양. null 칸은 `null`/`''`
+- 저장: 먼저 비고 다섯 칸을 `notePrivacyProblem`으로 본다(걸리면 네트워크 없이 `private`). 그다음 `upsert(row, { onConflict: 'hospital_id,work_date' })`. `row`는 `work_date` + `WORKLOG_COLUMNS` 19칸뿐이고(`hospital_id`는 보내지 않는다), 받은 객체의 다른 열쇠는 무시한다(업무사항이 섞여 와도 안 간다)
 - 오류 종류: `navigator.onLine === false`면 부르기 전에 `offline`. 응답 `status === 0`(postgrest-js가 연결 실패를 이렇게 돌려준다)이면 `offline`. 그 밖의 `error`는 `failed`. 오류 객체에 Supabase `message`·`details`를 넣지 않는다(CLAUDE.md '오류 내용은 화면에 그대로 보이지 않는다')
 
 ## 10. 자동 저장 (`src/lib/worklog/autosave.ts`)
@@ -235,9 +241,11 @@ export function createAutosave(options: AutosaveOptions): {
   online(): void
   hasUnsaved(): boolean
   snapshot(): AutosaveSnapshot
-  dispose(): void
+  pendingDay(ymd: string): WorklogDay | null   // 아직 저장 안 된 최신 값(AC-006.10)
+  dispose(): void                             // 로그아웃 때만
 }
 ```
+- 제어는 **화면 밖 모듈 하나**(`components/worklog/worklogSession.ts`)가 한 벌만 만든다. 화면이 내려가도(앱 안 다른 탭) 저장·다시 하기가 이어지고, 돌아오면 `pendingDay`로 저장 안 된 값을 다시 보인다(AC-010.11)
 
 | 날짜 하나의 상태 | 들어옴 | 다음 |
 |---|---|---|
@@ -272,6 +280,7 @@ type Props = {
 ```
 - 시안의 `<table class="sheet">`를 칸·글자·`aria-label`·합친 칸까지 그대로 옮긴다(2절 표). 클래스는 `sheet.module.css`의 이름(`sheet`·`lav`·`gray`·`date`·`small`·`memo`·`title`·`in`·`L`·`R`·`B`·`r1`·`r2`·`r3`·`r28`·`r20`)
 - 금액 칸의 초점 글자/떠남 글자는 칸이 스스로 정한다(초점 상태만 칸 안에 둔다). 값은 늘 props에서 온다
+- 비고는 100자(`NOTE_MAX`), 업무사항은 2,000자(`MEMO_MAX`)까지, 빈 업무사항 흐린 안내 "이 PC에만 저장돼요". 업무사항·비고는 `spellCheck={false}`(브라우저 맞춤법 검사가 글을 밖으로 보낼 수 있다)
 - 양식 안에 `ds` 단추·칩·앱 토큰 글자 모양을 넣지 않는다(엑셀 모양만)
 - 바깥 종이: 시안 `.paper`(흰 바탕·1px `line`·안쪽 24px, 폰 8px). `.paper`는 상자 하나이고 안의 `table`은 테두리를 가진 상자가 아니라 엑셀 칸 선이다 — UI_GUIDE '상자 안 상자'의 예외로 적는다(TASK-1)
 
@@ -297,19 +306,24 @@ type Props = {
 | `E-WORKLOG-MEMO-FAILED` | 업무사항을 이 PC에 저장하지 못했어요 | 적은 글은 화면에 남아 있어요. 다른 곳에 옮겨 두고, 크롬 설정에서 이 사이트의 데이터 저장을 허용해 주세요. |
 | `E-WORKLOG-NOTE-PRIVATE` | 비고에 전화번호나 주민번호 모양 글자가 있어 저장하지 않았어요 | 빨갛게 표시된 비고 칸에서 그 글자를 지우면 바로 저장돼요. 환자 정보는 이 PC에만 저장되는 업무사항 칸에 적어 주세요. |
 
-### 11-3. `WorklogScreen` + `useWorklogDay`
+### 11-3. `WorklogScreen` + `useWorklogDay` + `worklogSession`
 ```ts
 export function WorklogScreen(props: { hospitalId: string; initialToday: string }): JSX.Element  // 'use client'
+// worklogSession.ts — 모듈 하나에 한 벌(화면이 내려가도 남는다)
+export function worklogAutosave(): ReturnType<typeof createAutosave>   // 처음 부를 때 만든다. save = (ymd, day) => saveWorklogDay(supabaseBrowser(), ymd, day)
+export function startWorklogSession(): () => void                       // beforeunload·online·SIGNED_OUT 듣기(한 번만), 돌려준 함수는 시험용 정리
 ```
 - 처음: 고른 날 = 오늘 = `initialToday`. 30초마다와 `visibilitychange`(보임)마다 `todayInKorea()`를 다시 보고 `dayAfterRollover`로 옮긴다
-- 날짜별 화면 값: `Map<ymd, { load: 'loading' | 'ready' | 'error'; day: WorklogDay; memo: string }>`. 처음 여는 날만 읽는다. 읽기 응답은 요청 번호로 맞춰 늦게 온 옛 응답을 버린다
+- 날짜별 화면 값: `Map<ymd, { load: 'loading' | 'ready' | 'error'; day: WorklogDay; memo: string }>`. 처음 여는 날만 읽는다. 읽기 응답은 요청 번호로 맞춰 늦게 온 옛 응답을 버린다. 자동 저장 제어에 `pendingDay(ymd)`가 있으면 서버 값 대신 그 값을 쓴다(저장 안 된 값이 우선)
 - 읽는 중·읽기 실패면 양식은 `readOnly`(빈 양식이 서버 값을 덮어쓰지 않게)
 - 숫자·비고 바뀜 → 화면 값 바꾸고 `autosave.change(ymd, day)`. 업무사항 바뀜 → 화면 값 바꾸고 `writeMemo`(실패면 'memo-failed')
 - 날짜 옮김 → `autosave.flush()` 뒤 새 날 보이기. 옮긴 뒤에도 옛 날짜 저장은 계속된다(상태 글은 전체 상태)
-- 폰: `matchMedia('(max-width: 767px)')`가 참이면 `readOnly` + `memoNotice = '업무사항은 의원 PC에서만 보여요'`. 이때 `writeMemo`·`autosave.change`를 부르지 않는다
-- `beforeunload`: `autosave.hasUnsaved()`면 `preventDefault()`(+ `returnValue = ''`). `visibilitychange` hidden → `flush()`. `online` → `autosave.online()`
+- **앱 안 이동**(Next 링크로 다른 탭, 화면이 내려감): 내려갈 때 `flush()`만 부르고 `dispose()`는 부르지 않는다 → 저장·다시 하기가 모듈에서 이어진다. `beforeunload`는 브라우저를 떠날 때만 울리므로 앱 안 이동은 이 길로 지킨다(AC-010.11)
+- **보기만은 터치 기기로 정한다**: `matchMedia('(hover: none) and (pointer: coarse)')`가 참이면 `readOnly` + `memoNotice = '업무사항은 의원 PC에서만 보여요'`, 이때 `writeMemo`·`autosave.change`를 부르지 않는다. 화면 폭(768px 미만)은 배치만 바꾼다 — 반쪽 창·150% 확대한 의원 PC도 그대로 고친다(AC-010.10) **(Claude 판단)**
+- `beforeunload`(모듈이 한 번 건다): `hasUnsaved()`면 `preventDefault()`(+ `returnValue = ''`). `visibilitychange` hidden → `flush()`. `online` → `autosave.online()`
+- **로그아웃**: `supabaseBrowser().auth.onAuthStateChange`의 `SIGNED_OUT`(30분 자동 로그아웃의 `signOut()` 포함) → 떠나기 확인을 떼고, `dispose()`, 화면 값(업무사항 포함)을 지운다. 그래야 `IdleLogout`의 `window.location.assign('/login')`이 떠나기 확인에 막혀 공용 PC 화면에 일지가 남는 일이 없다. 이 PC 저장소의 업무사항은 지우지 않는다(AC-010.12)
 - [인쇄] → `flush()` → `window.print()`
-- Supabase 클라이언트는 `supabaseBrowser()`. 시험은 `vi.mock`으로 `lib/storage/worklogDays`·`memoStore`를 바꾼다
+- Supabase 클라이언트는 `supabaseBrowser()`. 시험은 `vi.mock`으로 `lib/storage/worklogDays`·`memoStore`·`lib/supabase/browser`를 바꾼다
 
 ## 12. 엑셀 서식 예외 (TASK-7)
 
@@ -334,15 +348,15 @@ export function WorklogScreen(props: { hospitalId: string; initialToday: string 
 - `dashboard/briefing/features.ts`: 업무일지 `status: 'ready'`(설명 글자는 그대로)
 - `notReadyFeatures.ts`: `/worklog` 항목과 `NotReadyPath`의 `'/worklog'` 빼기
 - `(app)/worklog/page.tsx`: `export const dynamic = 'force-dynamic'`, `metadata = { title: '업무일지' }`, `currentMe()`로 병원 id → `<WorklogScreen hospitalId initialToday={todayInKorea()} />`
-- 고칠 시험: `src/app/(app)/notReadyPages.test.tsx`(업무일지 줄 빼기), `src/app/titles.test.tsx`(업무일지를 준비 중 목록 밖 `{ path: '/worklog', title: '업무일지' }`로), `src/components/common/notReadyFeatures.test.ts`, `src/components/dashboard/briefing/features.test.ts`, `src/components/shell/shell.test.tsx`(준비 중 칩·ready 기대), `src/app/(app)/tabFrame.test.tsx`(ready·soon 칸을 나누는 기대가 있으면). 대시보드 '지금 바로 쓸 수 있어요'(`ReadyNow.tsx`)는 청구만 말하고 칸 수를 세지 않아 그대로다
+- 고칠 시험: `src/app/(app)/notReadyPages.test.tsx`(업무일지 줄 빼기), `src/app/titles.test.tsx`(업무일지를 준비 중 목록 밖 `{ path: '/worklog', title: '업무일지' }`로), `src/components/common/notReadyFeatures.test.ts`, `src/components/dashboard/briefing/features.test.ts`, `src/components/shell/shell.test.tsx`(준비 중 칩·ready 기대), `src/app/(app)/tabFrame.test.tsx`(ready·soon 칸을 나누는 기대가 있으면), `src/components/dashboard/briefing/DashboardHome.test.tsx`(기능 목차 옆 글 `INDEX_SIDE` "12개 가운데 1개는 지금 …"·준비 중 개수·사용 가능 개수 — `FeatureIndex.tsx`는 목록에서 세므로 코드는 그대로, 시험 기대만 바뀐다). 기대 숫자는 손으로 적지 않고 `DASHBOARD_FEATURES`에서 센다(cross-branch C5, AC-012.5). '지금 바로 쓸 수 있어요'(`ReadyNow.tsx`)는 청구만 말해 그대로다
 - `shell.test.tsx`의 "준비 중 주소 /worklog" 탭 띠 밀기 시험은 경로만 쓰므로 그대로 통과한다. 이름 글자만 '준비 중'이 틀리게 되므로, 그 시험을 고칠 일이 생기면 아직 준비 중인 `/inventory`로 바꾼다(이 TASK에서는 고치지 않아 겹침을 줄인다)
 
 ## 15. E2E (TASK-13, `e2e/worklog.spec.ts`)
 
-- 승인 계정(`accounts.signIn(context, 'approved')`)으로 `/worklog` → 날짜 칸으로 **시험 날짜 2020-01-02**(지난 날, 실제 오늘 일지를 더럽히지 않음) → 숫자 몇 칸·비고·업무사항("E2E 업무사항 표식" 같은 정해 둔 글자) → "저장했어요" 기다림 → 새로 고침 → 값 확인
-- `page.on('request')`로 Supabase origin에 간 요청 본문을 모아 표식 글자가 없는지 본다. `accounts.client('approved')`로 그 날 줄을 읽어 표식이 없는지 본다
+- 승인 계정(`accounts.signIn(context, 'approved')`)으로 `/worklog` → 날짜 칸으로 **시험 날짜 2020-01-02**(지난 날, 실제 오늘 일지를 더럽히지 않음) → 숫자 몇 칸·비고·업무사항(가짜 표식 + 가짜 환자 이름 "가상환자01"·차트번호 "900001"·전화 "010-0000-0001"·주민번호 모양 "900101-1234567") → "저장했어요" 기다림 → 새로 고침 → **날짜를 다시 2020-01-02로 고름**(날짜는 주소에 없고 화면은 오늘로 열린다) → 값 확인
+- `page.on('request')`로 **모든 요청**(Supabase·같은 origin Next/Vercel·그 밖)의 주소와 본문을 모아 위 가짜 글자가 하나도 없는지 본다(cross-branch C7). `accounts.client('approved')`로 그 날 줄을 다시 읽어 모든 칸에 없는지 본다
 - 새 `browser.newContext()`(다른 PC 흉내)로 같은 날 → 숫자는 보이고 업무사항은 빈 칸
-- `page.emulateMedia({ media: 'print' })` + `page.pdf({ format: 'A4', printBackground: true })` → 쪽 수 1
+- `page.emulateMedia({ media: 'print' })` + `page.pdf({ format: 'A4', printBackground: true })` → 쪽 수 1(`/\/Type\s*\/Page(?!s)/g`로 센다 — `/Pages`를 세지 않게)
 - 끝에 그 날 값을 빈 칸으로 저장해 둔다(지우기 권한이 없다). 시험 계정은 가짜 병원이다
 - 실제 Supabase에 migration이 들어가야 돈다 → 그 전에는 `blocked`
 
@@ -353,41 +367,46 @@ export function WorklogScreen(props: { hospitalId: string; initialToday: string 
 - **800ms 묶음 + 3번 다시**: 칠 때마다 요청하지 않으면서 "적으면 곧 저장됨"을 지킨다. 무료 Supabase 요청 수에도 부담이 없다
 - **업무사항 localStorage**: 가장 단순하고 동기라 빨리 읽힌다(하루 2,000자 × 수년도 5MB 안). IndexedDB·암호화는 쓰지 않는다
 - **폰 보기만**: 아이폰 입력 확대(16px 미만 글자) 문제와 엑셀 칸 크기를 함께 지키기 어렵다. `plan.md` §1과 같다
-- **병원 id를 브라우저가 보냄**: 공용 함수(`my_hospital_id`) 없이 이 migration 하나로 돈다. RLS `with check`가 같은 보장을 한다
+- **병원 id는 공용 `my_hospital_id()` 기본값**: 다른 갈래와 같은 글자(`create or replace`)라 어느 쪽이 먼저 들어가도 된다. 브라우저가 병원 id를 보내지 않으니 꾸밀 길이 없다
+- **자동 저장 제어를 화면 밖 모듈에**: 앱 안 이동에서 값을 잃지 않는다. 대신 로그아웃 때 정리를 꼭 해야 한다(11-3절)
+- **보기만 = 터치 기기**: 폭으로 정하면 반쪽 창·확대한 의원 PC가 막힌다. 터치 노트북(마우스 없음)은 보기만이 될 수 있다 — 의원 PC는 마우스를 쓴다
 
 ## 17. 위험
 
-- **비고에 환자 이름**: 엑셀 10월 시트의 환불 비고 몇 칸에 한글과 긴 숫자가 함께 있다(내용은 읽지 않았다). 환자 이름·차트번호라면 서버로 간다. 전화·주민번호 모양은 막지만 이름은 막을 수 없다 → '사용자에게 물을 것' 1
+- **비고에 환자 이름**: 사용자 답(2026-11-01) — 비고에는 환자 이름을 적지 않는다. 그래도 전화·주민번호·메일 모양은 막는다
 - **업무사항 사라짐**: 크롬 사이트 데이터 삭제·PC 교체·다른 크롬 프로필이면 없다. 화면 안내 "이 PC에만 저장돼요"로 알린다
 - **굴림이 없는 PC**: 맥·폰은 비슷한 고딕으로 보여 칸 글자가 넘칠 수 있다. 칸은 `overflow`를 숨기지 않고 줄바꿈 없이 둔다(엑셀과 같음). 의원 PC 기준으로 확인한다
 - **`@page`와 CSS Modules**: 거부되면 globals.css로 한 줄 옮긴다(13절)
 - **자정 넘김 중 입력**: 옛 오늘에 치던 값은 옛 날짜로 저장되고 화면만 새 날로 바뀐다. 입력 중(초점이 양식 안)이면 넘김을 초점이 나갈 때까지 미룬다
-- **세션 만료**: 30분 자동 로그아웃 전에 저장하지 못한 값은 떠나기 확인으로 알린다. 저장이 인증 오류로 실패하면 `failed` 카드다
+- **세션 만료**: 30분 자동 로그아웃(`SIGNED_OUT`)이면 저장 못 한 값은 버리고 화면을 지운다(공용 PC에 일지를 남기지 않는 쪽을 고름). 그 전에 저장이 인증 오류로 실패하면 `failed` 카드다
 
-## 18. 다른 작업과 겹치는 파일
+## 18. 다른 작업과 겹치는 파일 (cross-branch C8)
 
-같은 때 계획하는 통계·매출·환자 갈래, 사전점검 갈래와 같이 고칠 수 있는 파일이다. 모두 **더하기만** 하고 다른 줄은 바꾸지 않는다.
+같은 때 계획하는 통계·매출·환자 갈래, 사전점검·AI 리포트 갈래와 같이 고칠 수 있는 파일이다. 모두 **더하기만** 하고 다른 줄은 바꾸지 않는다.
 
-| 파일 | 고치는 것 | TASK |
-|---|---|---|
-| `docs/ADR.md` | 끝에 업무일지 ADR 하나. 번호는 그때 마지막 번호 + 1(다른 갈래와 겹치면 합칠 때 다시 매긴다. 시험은 번호를 보지 않는다) | 1 |
-| `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` | 줄 더하기·절 하나 더하기, '하지 마라' 세 줄 꼬리표 | 1 |
-| `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | 끝에 `E-WORKLOG-*` 넷(사전점검도 이 파일 끝에 번호를 더한다) | 9 |
-| `src/app/globals.css` | `:root` 끝에 `--xl-*` 넷(필요하면 인쇄 `@page` 한 블록) | 7·11 |
-| `src/app/theme.test.ts` · `src/app/fonts.test.ts` · `src/components/ui/classes.test.ts` | 예외 표 한 줄씩 | 7 |
-| `src/components/shell/AppShell.tsx` · `shell.test.tsx` | `print:hidden`·`print:p-0` 세 곳, 시험 하나 | 11 |
-| `src/components/shell/menu.ts` · `src/components/dashboard/briefing/features.ts` · `src/components/common/notReadyFeatures.ts` (+ 시험) | 업무일지 한 줄씩(다른 갈래도 자기 한 줄씩 바꾼다) | 12 |
-| `src/app/(app)/tabFrame.test.tsx` · `notReadyPages.test.tsx` · `src/app/titles.test.tsx` | 업무일지 줄 | 12 |
-| `supabase/migrations/` | 새 파일 하나(이름이 겹치지 않는다) | 4 |
+| 파일 | 고치는 것 | TASK | 같이 고치는 갈래 |
+|---|---|---|---|
+| `supabase/migrations/` + 공용 함수 `my_hospital_id()`·`touch_updated_at()` | 새 파일 `20261101000100_worklog.sql`(·Phase 4 `…0110_worklog_bit_fields.sql`), 공용 함수는 C1 글자 그대로 | 4·16 | 통계·환자·매출·사전점검 |
+| `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | 끝에 `E-WORKLOG-*` 넷(C3, 다른 갈래 번호와 겹치지 않음) | 9 | 사전점검·통계·환자·매출 |
+| `docs/ADR.md` | 끝에 업무일지 ADR 하나. 번호는 그때 마지막 번호 + 1(합칠 때 다시 매김, 시험은 번호를 보지 않는다) | 1 | 모두 |
+| `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` · `plan.md` | 줄·절 더하기, '하지 마라' 세 줄 꼬리표, plan.md §5 꼬리표 한 줄 | 1 | 모두 |
+| `src/app/globals.css` | `:root` 끝에 `--xl-*` 넷(필요하면 인쇄 `@page` 한 블록) | 7·11 | — |
+| `src/app/theme.test.ts` · `src/app/fonts.test.ts` · `src/components/ui/classes.test.ts` | 예외 표 한 줄씩(`APP_DIRS`에 한 줄) | 7 | 화면을 더하는 갈래(`APP_DIRS`) |
+| `src/components/shell/AppShell.tsx` · `shell.test.tsx` | `print:hidden`·`print:p-0` 세 곳, 시험 하나 | 11 | — |
+| `src/components/shell/menu.ts`(`MenuHref` 줄) · `src/components/dashboard/briefing/features.ts` · `src/components/common/notReadyFeatures.ts` (+ 시험) | 업무일지 한 줄씩 | 12 | 통계·환자·매출 |
+| `src/app/(app)/tabFrame.test.tsx` · `notReadyPages.test.tsx` · `src/app/titles.test.tsx` · `src/components/dashboard/briefing/DashboardHome.test.tsx` | 업무일지 줄, 목록에서 세는 기대 | 12 | 통계·환자·매출 |
+| `phases/index.json` · `.harness/active` | phase 줄 더하기 · 활성 기능 이름 | — | 모두 |
+| `eslint.config.mjs` · `src/guardrails.test.ts` · 도우미 `Sql.cs`·`Program.cs`·`commands.json` | **고치지 않는다**(Phase 4도 매출 명령을 불러 쓰기만) | — | 통계·환자·매출·사전점검 |
 
+- **합칠 때 숫자 다시 맞춤**: 준비 중 개수(`notReadyFeatures.test.ts`의 `toHaveLength(10)` 같은 기대), `MenuHref` 합집합, 대시보드 `INDEX_SIDE`·준비 중·사용 가능 개수, `phases/index.json` 줄 순서, `.harness/active`. 이 명세의 시험은 목록에서 세게 바꾸지만(C5) 다른 갈래 시험에 남은 손 숫자는 합칠 때 맞춘다
 - 사전점검 갈래가 막아 두라고 한 파일(`src/workers/precheck/jobs.ts`·`helper/…/Commands/*`·`SqlBitDb.cs`·`src/types/precheck.ts`)은 고치지 않는다. `src/lib/errors.ts`만 더하기로 고친다
 - [백업 내려받기](사전점검 TASK-32 `lib/backup/tables.ts`)가 생기면 `worklog_days`를 그 표 목록에 더해야 한다. 이 명세 밖이다(그 TASK가 들어간 뒤 한 줄)
 
-## 19. 사용자에게 물을 것 (기본값으로 계획함)
+## 19. 사용자에게 물을 것
 
-1. **비고 칸에 환자 이름이나 차트번호를 적으시나요?** (특히 환불 비고) — 기본: 비고는 사용자 결정대로 서버에 저장하고, 전화·주민번호 모양만 막는다. 적으신다면 환불 비고도 업무사항처럼 이 PC에만 두도록 바꾼다(칸 하나를 `WORKLOG_NOTE_KEYS`에서 이 PC 저장소로 옮기는 작은 명세 고침)
-2. **휴대폰에서도 고쳐야 하나요?** — 기본: 보기만(`plan.md` §1 "폰은 보기만"). 업무사항은 폰에 보이지 않는다
-3. **업무사항이 크롬 데이터 삭제나 PC 교체 때 사라져도 괜찮나요?** — 기본: 괜찮다(엑셀 파일을 PC에 두던 것과 같다, 백업 없음). 화면에 "이 PC에만 저장돼요"를 보인다
+1. ~~비고 칸에 환자 이름이나 차트번호를 적으시나요?~~ — **답함(2026-11-01)**: 적지 않는다. 비고는 서버에 저장한다(전화·주민번호 모양은 그래도 막는다)
+2. ~~휴대폰에서도 고쳐야 하나요?~~ — **답함(2026-11-01)**: 보기만. 업무사항은 폰에 보이지 않는다
+3. **업무사항이 크롬 데이터 삭제나 PC 교체 때 사라져도 괜찮나요?** — **Claude 판단 (기본값)**: 괜찮다고 보고 백업하지 않는다(엑셀 파일을 PC에 두던 것과 같다). 화면에 "이 PC에만 저장돼요"를 보인다
 
 ## 20. 비트에서 채우기 (Phase 4, 2026-11-01 사용자 결정 더함)
 
@@ -433,7 +452,7 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 - 비트 칸을 사람이 비우면 다음 비트 읽기에서 다시 채워진다(빈 칸 = 아직 안 적음). "0"을 뜻하면 0을 적는다 — 화면 안내에 쓰지 않고 위험에 적는다 **(Claude 판단)**
 
 ### 20-4. 비트 칸 표시 (`bit_fields`, TASK-16·17)
-- `alter table public.worklog_days add column bit_fields text[] not null default '{}' check (bit_fields <@ array['new_patients', 'return_patients', 'total_fee', 'claim_amount', 'cash_in', 'card_in', 'transfer_in', 'local_currency_in', 'unpaid_new', 'unpaid_paid']::text[])` + `grant insert (bit_fields), update (bit_fields) … to authenticated`. 새 migration 파일 하나(TASK-4 파일은 고치지 않는다). **실제 Supabase에 붙여 넣는 것은 사용자 OK**
+- `alter table public.worklog_days add column bit_fields text[] not null default '{}' check (bit_fields <@ array['new_patients', 'return_patients', 'total_fee', 'claim_amount', 'cash_in', 'card_in', 'transfer_in', 'local_currency_in', 'unpaid_new', 'unpaid_paid']::text[])` + `grant insert (bit_fields), update (bit_fields) on table public.worklog_days to authenticated`(정책은 그대로 `my_hospital_id()`). 새 migration 파일 하나(TASK-4 파일은 고치지 않는다). **실제 Supabase에 붙여 넣는 것은 사용자 OK**
 - 저장해 두는 까닭: 폰·다른 PC에서도 어느 칸이 비트에서 왔는지 보이고, 다시 열어도 '비트 칸은 따라가고 적은 칸은 지킨다'가 이어진다 **(Claude 판단)**
 - `loadWorklogDay`·`saveWorklogDay`가 `bitFields`(열쇠 이름 ↔ DB 칸 이름)를 같이 다룬다. 목록 밖 이름은 버린다
 
@@ -460,4 +479,4 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 |---|---|
 | `src/components/claim/useBridge.ts` · `src/lib/bridge/*` · `src/types/revenue.ts` · 통계 저장·불러오기 함수 | 불러 쓰기만(고치지 않음) |
 | `src/lib/storage/worklogDays.ts` · `src/types/worklog.ts` · `src/components/worklog/*` | 이 명세 파일(Phase 1~3에서 만든 것)에 `bitFields`·표시 더하기 |
-| `supabase/migrations/` | 새 파일 `20261101000100_worklog_bit.sql` |
+| `supabase/migrations/` | 새 파일 `20261101000110_worklog_bit_fields.sql`(C2) |

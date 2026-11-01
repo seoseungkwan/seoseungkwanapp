@@ -1,6 +1,6 @@
 # Step 4: screen
 
-> **TASK-10** 업무일지 화면 · **REQ-010** · AC-010.1 ~ AC-010.9
+> **TASK-10** 업무일지 화면 · **REQ-010** · AC-010.1 ~ AC-010.12
 > Phase 2 `worklog-2-screen` · Step 4 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-10 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -14,9 +14,12 @@
 - **AC-010.4**: 날짜 옮김 → 기다리던 저장 바로 시작, 처음 여는 날만 읽기, 늦은 옛 응답 버림
 - **AC-010.5**: 자정 넘김(30초마다·다시 보일 때) — 옛 오늘을 보고 있었으면 새 날 양식(양식에 초점 있으면 나간 뒤), 지난 날이면 그대로 + 최대만 바뀜
 - **AC-010.6**: 저장 안 된 값 → `beforeunload` 확인, `visibilitychange` hidden → 바로 저장, `online` → 바로 저장
-- **AC-010.7**: 768px 미만 → 보기만(저장 없음), 업무사항 칸 "업무사항은 의원 PC에서만 보여요"
+- **AC-010.7**: 터치 기기(`(hover: none) and (pointer: coarse)`) → 보기만(저장 없음), 업무사항 칸 "업무사항은 의원 PC에서만 보여요". 폭은 배치만
 - **AC-010.8**: 불러오기 실패 → 읽기 전용 + [다시 불러오기]
 - **AC-010.9**: [인쇄] → 기다리던 저장 시작 + `window.print()`
+- **AC-010.10**: 좁은 PC 창(768px 미만, 마우스) → 그대로 고칠 수 있고 업무사항도 씀
+- **AC-010.11**: 앱 안 이동(화면이 내려감) → 바로 저장 시작, 자동 저장 제어는 모듈에 남아 저장·다시 하기를 이어 감, 돌아오면 저장 안 된 값·상태 그대로 — "앱 안 이동 = 바로 저장"
+- **AC-010.12**: 로그아웃(`SIGNED_OUT`, 30분 자동 로그아웃 포함) → 떠나기 확인 안 걸림, 화면 값(업무사항 포함) 지움, 자동 저장 제어 멈춤. 이 PC 저장소의 업무사항은 그대로
 
 ## 읽어야 할 파일
 
@@ -46,9 +49,12 @@
   - `src/components/worklog/WorklogScreen.test.tsx`
   - `src/components/worklog/useWorklogDay.ts`
   - `src/components/worklog/useWorklogDay.test.tsx`
+  - `src/components/worklog/worklogSession.ts`
+  - `src/components/worklog/worklogSession.test.ts`
 - Tests:
   - `src/components/worklog/WorklogScreen.test.tsx`
   - `src/components/worklog/useWorklogDay.test.tsx`
+  - `src/components/worklog/worklogSession.test.ts`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -56,7 +62,9 @@
 - **업무사항은 서버로 가지 않는다**: `autosave.change`·`saveWorklogDay`에는 `WorklogDay`(서버 칸)만 넘긴다. 업무사항은 `writeMemo`만
 - **저장 안 된 값을 잃지 않는다**: 화면 값은 React 상태에 남고, 실패는 상태 글·오류 카드로 보이며, 떠날 때 확인을 묻는다
 - 불러오기 전·실패 때 칸을 열지 않는다(빈 양식이 서버 값을 덮어쓰지 않게)
-- 휴대폰은 보기만: 폰 폭에서는 `writeMemo`·`autosave.change`를 부르지 않는다
+- 휴대폰은 보기만: **터치 기기**(`(hover: none) and (pointer: coarse)`)에서는 `writeMemo`·`autosave.change`를 부르지 않는다. 화면 폭으로 보기만을 정하지 않는다(반쪽 창·확대한 의원 PC를 막는다)
+- 앱 안 이동에서 값을 잃지 않는다: 화면이 내려갈 때 `dispose()`하지 않고 `flush()`만. 자동 저장 제어는 모듈 한 벌이다
+- 로그아웃이면 공용 PC 화면에 일지를 남기지 않는다: 떠나기 확인을 떼고 화면 값을 지운다(`IdleLogout`의 `/login` 이동이 막히지 않게)
 - 오늘은 `todayInKorea()`(한국 날짜)로만 구한다
 
 ## 작업
@@ -64,19 +72,23 @@
 ```tsx
 'use client'
 export function WorklogScreen({ hospitalId, initialToday }: { hospitalId: string; initialToday: string }): JSX.Element
-// useWorklogDay.ts — 날짜별 화면 값·읽기 상태(요청 번호로 늦은 응답 버리기)
-export function useWorklogDay(hospitalId: string, ymd: string, load: typeof loadWorklogDay): {
+// worklogSession.ts — 모듈 한 벌(화면이 내려가도 남는다)
+export function worklogAutosave(): ReturnType<typeof createAutosave>   // 처음 부를 때 만든다. save = (ymd, day) => saveWorklogDay(supabaseBrowser(), ymd, day)
+export function startWorklogSession(): () => void                       // beforeunload·online·SIGNED_OUT 듣기를 한 번만 건다. 돌려준 함수는 시험 정리용
+export function onWorklogSignedOut(listener: () => void): () => void    // 화면이 값 지우기를 걸어 둔다
+// useWorklogDay.ts — 날짜별 화면 값·읽기 상태(요청 번호로 늦은 응답 버리기). pendingDay가 있으면 서버 값 대신 그것
+export function useWorklogDay(hospitalId: string, ymd: string, load: (ymd: string) => Promise<WorklogDay | null>): {
   status: 'loading' | 'ready' | 'error'; day: WorklogDay; memo: string; memoOk: boolean
   setNumber(k: WorklogNumberKey, v: number | null): WorklogDay; setNote(k: WorklogNoteKey, v: string): WorklogDay
-  setMemo(v: string): boolean; reload(): void
+  setMemo(v: string): boolean; reload(): void; clear(): void
 }
 ```
 - 조립: 감싸개 안에 `WorklogToolbar` → `WorklogSheet`(사이 12px `gap-3`). 감싸개 폭은 시안 `.work`의 737px(양식 689 + 종이 안쪽 24 × 2) 가운데 → `mx-auto w-full max-w-184.25`(Tailwind 4px 단위, 대괄호 값 금지 규칙 때문). 이 파일은 `sheet.module.css`를 불러오지 않는다(예외는 `WorklogSheet.tsx` 하나). 상태 글은 `autosave.snapshot()`·읽기 상태·업무사항 결과로 정한다(실패 넷 > 끊김 > 저장 중 > 불러오는 중 > 저장됨 > 아직 안 적음. 이 화면에서 아직 저장한 적이 없으면 '아직 안 적음' = "적으면 바로 저장돼요")
-- `createAutosave({ save: (ymd, day) => saveWorklogDay(supabaseBrowser(), hospitalId, ymd, day), onChange })`를 한 번 만들고 언마운트 때 `dispose()`
+- 자동 저장: 화면은 `worklogAutosave()`를 `subscribe`해 그리고, 내려갈 때(언마운트) **`flush()`만** 부르고 구독만 뗀다. `dispose()`는 로그아웃 때만(`worklogSession`)
 - 자정: `setInterval(30_000)` + `visibilitychange`(보임) → `todayInKorea()`가 바뀌면 `dayAfterRollover`. 양식 안에 초점이 있으면 `focusout` 뒤에 옮긴다
-- 폰: `matchMedia('(max-width: 767px)')` 구독. 참이면 `readOnly` + `memoNotice`
-- 이벤트: `beforeunload`(hasUnsaved면 `preventDefault()` + `returnValue = ''`), `visibilitychange` hidden → `flush()`, `online` → `online()`, 언마운트 때 모두 떼기
-- 시험(jsdom, `vi.mock('@/lib/storage/worklogDays')`·`vi.mock('@/lib/worklog/memoStore')`·`vi.mock('@/lib/supabase/browser')`, `vi.useFakeTimers()`, 가짜 `matchMedia`): 열 때 읽기 한 번과 잠김, 빈 날, 숫자 치면 자동 칸 + 800ms 뒤 저장 호출의 인자에 `memo` 열쇠 없음, 업무사항 치면 `writeMemo`만(저장 호출 0), 날짜 옮김 + 늦은 응답 버림, 자정 넘김 두 경우, `beforeunload` 기본 동작 막힘, 폰 보기만, 불러오기 실패 + 다시, [인쇄]가 `window.print` 부름
+- 보기만: `matchMedia('(hover: none) and (pointer: coarse)')` 구독. 참이면 `readOnly` + `memoNotice`. 폭(768px 미만)은 CSS 배치만
+- 이벤트(`worklogSession`이 한 번 건다): `beforeunload`(hasUnsaved면 `preventDefault()` + `returnValue = ''`), `online` → `online()`, `supabaseBrowser().auth.onAuthStateChange`의 `SIGNED_OUT` → `beforeunload` 떼기 → `dispose()` → 걸어 둔 화면 지우기(`clear()`). 화면의 `visibilitychange` hidden → `flush()`
+- 시험(jsdom, `vi.mock('@/lib/storage/worklogDays')`·`vi.mock('@/lib/worklog/memoStore')`·`vi.mock('@/lib/supabase/browser')`(가짜 `onAuthStateChange`), `vi.useFakeTimers()`, 가짜 `matchMedia`): 열 때 읽기 한 번과 잠김, 빈 날, 숫자 치면 자동 칸 + 800ms 뒤 저장 호출의 인자에 `memo` 열쇠 없음, 업무사항 치면 `writeMemo`만(저장 호출 0), 날짜 옮김 + 늦은 응답 버림, 자정 넘김 두 경우, `beforeunload` 기본 동작 막힘, 터치 기기 보기만, **좁은 창 + 마우스(폭 600·`hover: hover`)는 고칠 수 있음**, 불러오기 실패 + 다시, [인쇄]가 `window.print` 부름, **"AC-010.11: 앱 안 이동 = 바로 저장"**(치고 300ms 뒤 `unmount()` → 저장 호출이 바로 1번, 그 저장이 `failed`여도 2초 뒤 다시 → 다시 그리면 저장 안 된 값이 칸에 있음), **"AC-010.12: 로그아웃"**(`SIGNED_OUT` 흉내 → `beforeunload`가 기본 동작을 막지 않음, 칸·업무사항 칸이 비고, `writeMemo`로 지우지 않음)
 
 ## TDD 순서
 
@@ -88,7 +100,7 @@ export function useWorklogDay(hospitalId: string, ymd: string, load: typeof load
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/worklog/WorklogScreen.test.tsx src/components/worklog/useWorklogDay.test.tsx   # AC-010.1~AC-010.9
+npx vitest run src/components/worklog/WorklogScreen.test.tsx src/components/worklog/useWorklogDay.test.tsx src/components/worklog/worklogSession.test.ts   # AC-010.1~AC-010.12
 npx vitest run src/components/worklog   # 이 폴더 시험 모두
 python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green
 npm run lint && npm test
@@ -96,7 +108,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-010.1 ~ AC-010.9가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-010.1 ~ AC-010.12가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -118,6 +130,8 @@ python3 ~/.claude/harness/bin/verify
 - `src/app/(app)/worklog/page.tsx`를 고치지 마라. 이유: 탭 연결은 TASK-12에서 준비 중 목록과 함께 바꾼다(한쪽만 바꾸면 탭 틀 시험이 깨진다)
 - 저장 안 된 값을 localStorage·sessionStorage에 임시로 두지 마라. 이유: `plan.md` §10(입력값 임시 저장은 2차), design.md 10절
 - 화면 캡처용 임시 페이지·주소를 만들지 마라. 이유: 수정 범위 밖이다. 실제 화면 캡처는 TASK-12 뒤에 한다
+- 언마운트 때 자동 저장 제어를 `dispose()`하지 마라. 이유: 앱 안 이동에서 800ms 안에 친 값·끊김·실패 값이 조용히 사라진다(AC-010.11)
+- `IdleLogout.tsx`·`AccountMenu.tsx`를 고치지 마라. 이유: 수정 범위 밖이고 다른 화면과 겹친다. 로그아웃은 Supabase `SIGNED_OUT`을 들어 처리한다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다

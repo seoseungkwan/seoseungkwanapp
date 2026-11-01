@@ -1,6 +1,6 @@
 # Step 3: db-table
 
-> **TASK-4** 서버 표 `worklog_days` · **REQ-004** · AC-004.1 ~ AC-004.7
+> **TASK-4** 서버 표 `worklog_days` · **REQ-004** · AC-004.1 ~ AC-004.8
 > Phase 1 `worklog-1-data` · Step 3 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -8,13 +8,14 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-004에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-004.1**: 표 칸이 정해 둔 목록과 정확히 같다(`hospital_id`·`work_date` 기본 열쇠, 인원 2·수입 8·지출 4·비고 5, `updated_at`). 업무사항 칸 없음
+- **AC-004.1**: 표 칸이 정해 둔 목록과 정확히 같다(`hospital_id` 기본값 `my_hospital_id()`·`work_date` 기본 열쇠, 인원 2·수입 8·지출 4·비고 5, `updated_at`). 업무사항 칸 없음
 - **AC-004.2**: anon은 읽기·쓰기 모두 거부
-- **AC-004.3**: 승인된 병원 사용자는 내 줄 넣기·읽기·`insert … on conflict (hospital_id, work_date) do update` 고치기 됨
-- **AC-004.4**: 다른 병원 줄은 안 보이고, 그 병원 id로 넣기·내 줄을 그 병원으로 옮기기는 거부
+- **AC-004.3**: 승인된 병원 사용자는 `hospital_id` 없이 넣기·읽기·`insert … on conflict (hospital_id, work_date) do update`(보낸 칸만 SET) 고치기 됨. `hospital_id`는 내 병원으로 채워짐
+- **AC-004.4**: 다른 병원 줄은 안 보이고 안 바뀜. `hospital_id`를 직접 넣기·바꾸기는 권한 없어 거부
 - **AC-004.5**: 승인 대기·거절 병원 사용자는 아무 줄도 못 보고 못 씀
 - **AC-004.6**: 음수·인원 99,999 초과·금액 999,999,999,999 초과·빈 글자 비고·101자 비고 거부, null은 됨
-- **AC-004.7**: 지우기·`updated_at` 직접 넣기 거부, 고치면 `updated_at`이 바뀜
+- **AC-004.7**: 지우기·`updated_at` 직접 넣기 거부, 고치면 `updated_at`이 바뀜(공용 `touch_updated_at()`), 방아쇠 함수 직접 실행 권한 없음
+- **AC-004.8**: 공용 함수 둘이 이미 있어도(다른 갈래가 먼저) 이 migration이 실패하지 않고 위 시험이 그대로 통과
 
 ## 읽어야 할 파일
 
@@ -38,7 +39,7 @@
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `supabase/migrations/20261101000000_worklog.sql`
+  - `supabase/migrations/20261101000100_worklog.sql`
   - `supabase/worklog.rls.test.ts`
 - Tests:
   - `supabase/worklog.rls.test.ts`
@@ -49,23 +50,35 @@
 - **DB 표는 RLS를 켜고, 먼저 `anon`·`authenticated` 권한을 모두 거둔 뒤 필요한 것만 준다**(CLAUDE.md 보안 규칙). 사용자가 자기 병원 밖 줄을 보거나 쓸 수 없다는 것을 시험으로 증명한다
 - **실제 Supabase에 이 SQL을 실행하지 않는다.** 붙여 넣기는 사용자 OK 뒤 운영자가 SQL 편집기에서 한다(design.md 8절). 이 step은 파일과 PGlite 시험만
 - 표에 업무사항(글 칸)을 두지 않는다. 비고 다섯 칸만 글자다
-- `service role`·`security definer` 함수를 쓰지 않는다(방아쇠 함수는 `security invoker` 기본 + `search_path = ''`)
+- 공용 함수 `my_hospital_id()`·`touch_updated_at()`는 **cross-branch C1 글자 그대로** 쓴다(`create or replace`, 한 글자도 바꾸지 않는다 — 통계·환자·매출·사전점검이 같은 글자를 쓴다). 그 밖의 `security definer` 함수·service role은 쓰지 않는다
+- 브라우저가 `hospital_id`를 보내지 못하게 한다: 그 칸에는 insert·update 권한이 없고 기본값으로만 채워진다
 
 ## 작업
 
-### 1. `supabase/migrations/20261101000000_worklog.sql`
+### 1. `supabase/migrations/20261101000100_worklog.sql`
 design.md 8절 그대로. 머리 주석은 auth migration처럼(무엇·실행하는 법·권한 요약).
-- 칸 19개는 `WORKLOG_COLUMNS` 순서와 이름 그대로. 인원 `integer check (… between 0 and 99999)`, 금액 `bigint check (… between 0 and 999999999999)`, 비고 `text check (char_length(…) between 1 and 100)`
-- `enable row level security` → `revoke all … from anon, authenticated` → `grant select` · `grant insert (hospital_id, work_date, <19칸>)` · `grant update (hospital_id, work_date, <19칸>)` to authenticated. delete·`updated_at`에는 권한 없음
-- 정책 셋: select `using`, insert `with check`, update `using` + `with check` — 모두 `hospital_id = (select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved')`
-- `public.worklog_days_touch()` 방아쇠 함수 + `before update` 방아쇠
+- 맨 앞 공용 함수(C1 글자 그대로):
+```sql
+create or replace function public.my_hospital_id() returns uuid language sql stable security definer set search_path = ''
+  as $$ select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved' $$;
+revoke execute on function public.my_hospital_id() from public, anon;
+grant execute on function public.my_hospital_id() to authenticated;
+create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
+revoke execute on function public.touch_updated_at() from public, anon, authenticated;
+```
+- 표: `hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade`, 칸 19개는 `WORKLOG_COLUMNS` 순서와 이름 그대로. 인원 `integer check (… between 0 and 99999)`, 금액 `bigint check (… between 0 and 999999999999)`, 비고 `text check (char_length(…) between 1 and 100)`
+- `enable row level security` → `revoke all … from anon, authenticated` → `grant select` · `grant insert (work_date, <19칸>)` · `grant update (work_date, <19칸>)` to authenticated. `hospital_id`·delete·`updated_at`에는 권한 없음
+- 정책 셋: select `using`, insert `with check`, update `using` + `with check` — 모두 `hospital_id = (select public.my_hospital_id())`
+- `create trigger worklog_days_updated_at before update … execute function public.touch_updated_at()`
 
 ### 2. `supabase/worklog.rls.test.ts`
 - `rls.test.ts`의 `SUPABASE_MOCK`·사용자 바꾸기 방식을 이 파일 안에 그대로 옮긴다(그 파일은 고치지 않는다). auth migration을 먼저, 이 migration을 다음에 실행
 - 준비: 병원 A(승인)·B(승인)·C(대기)·D(거절) 줄을 운영자로 넣는다
-- AC-004.1: `information_schema.columns`의 칸 이름·종류 목록이 정해 둔 목록과 같다. `memo`·`work_note`·`업무` 같은 칸이 없다
-- AC-004.3: A 사용자로 insert → select → 같은 열쇠로 `insert … on conflict (hospital_id, work_date) do update set <보낸 칸 모두 excluded>`(PostgREST upsert와 같은 모양)
-- AC-004.4·004.5·004.6·004.7: 거부는 오류 코드(`42501` 권한·RLS, `23514` check)로 본다
+- AC-004.1: `information_schema.columns`의 칸 이름·종류 목록이 정해 둔 목록과 같다. `memo`·`work_note`·`업무` 같은 칸이 없다. `hospital_id` 기본값 글자에 `my_hospital_id()`
+- AC-004.3: A 사용자로 `hospital_id` 없이 insert → select(`hospital_id` = A) → 같은 날로 `insert … on conflict (hospital_id, work_date) do update set <보낸 칸 = excluded>`(PostgREST upsert와 같은 모양, `hospital_id`는 SET에 없다)
+- AC-004.4: A가 `hospital_id = B`로 insert → `42501`, `update … set hospital_id = B` → `42501`, B 줄은 select 0줄·update 0줄
+- AC-004.5·004.6·004.7: 거부는 오류 코드(`42501` 권한·RLS, `23514` check)로 본다. 방아쇠 함수를 A가 직접 `select public.touch_updated_at()` → 거부
+- AC-004.8: 새 PGlite에서 C1 공용 함수 둘을 먼저 만든 뒤(다른 갈래 흉내) 이 migration을 실행 → 오류 없음, AC-004.3 한 번 더
 - PGlite 첫 실행이 느리니 시험 시간 제한을 넉넉히(`rls.test.ts`의 `SLOW`)
 
 ## TDD 순서
@@ -86,7 +99,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-004.1 ~ AC-004.7가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-004.1 ~ AC-004.8가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -106,7 +119,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - `supabase/migrations/20261028000000_auth.sql`·`supabase/rls.test.ts`를 고치지 마라. 이유: 이미 운영에 들어간 migration이고 다른 갈래도 그대로 쓴다
-- `public.my_hospital_id()` 같은 공용 함수를 만들지 마라. 이유: 사전점검 2단계 migration이 같은 이름을 `create function`으로 만들 예정이라 붙여 넣기가 실패한다(design.md 8절)
+- 공용 함수 글자를 고치거나(이름·본문·권한 줄) `create function`(replace 없이)으로 쓰지 마라. 이유: 갈래마다 같은 글자여야 어느 순서로 붙여 넣어도 된다(cross-branch C1)
 - delete 권한·정책을 주지 마라. 이유: 화면에 지우기가 없고, 빈 칸 저장으로 충분하다(AC-004.7)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다

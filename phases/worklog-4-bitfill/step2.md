@@ -22,7 +22,7 @@
 - `/specs/worklog/design.md` — 20-4절, 8절
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
-- `/supabase/migrations/20261101000000_worklog.sql`·`/supabase/worklog.rls.test.ts` (Phase 1)
+- `/supabase/migrations/20261101000100_worklog.sql`·`/supabase/worklog.rls.test.ts` (Phase 1)
 - `/docs/worklog/bit-check.md` (Step 1 결과)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
@@ -32,7 +32,7 @@
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `supabase/migrations/20261101000100_worklog_bit.sql`
+  - `supabase/migrations/20261101000110_worklog_bit_fields.sql`
   - `supabase/worklog.rls.test.ts`
 - Tests:
   - `supabase/worklog.rls.test.ts`
@@ -41,7 +41,7 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **실제 Supabase에 실행하지 않는다**(사용자 OK). 파일과 PGlite 시험만
-- `alter table … add column`과 칸 권한(`insert`·`update`의 `bit_fields`)만 더한다. RLS 정책·다른 칸은 그대로
+- `alter table … add column`과 칸 권한(`insert`·`update`의 `bit_fields`)만 더한다. RLS 정책(`my_hospital_id()`)·다른 칸·공용 함수는 그대로(공용 함수를 다시 만들지 않는다)
 - TASK-4 migration 파일은 고치지 않는다(이미 붙여 넣었을 수 있다)
 
 ## 작업

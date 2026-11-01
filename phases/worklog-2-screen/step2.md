@@ -10,7 +10,7 @@
 
 - **AC-008.1**: 엑셀 A1:I23과 같은 표(9칸 너비, 23줄, 합친 칸 46개 자리, 칸 글자 그대로, 지출 넷째 줄 "free")
 - **AC-008.2**: 연보라(날짜·결재 띠, 환자 합계 이름·값, 수납액 이름·값, 맨 아래 합계 값)·회색(총진료비·조합청구액·총지불액 줄)·바깥 굵은 선
-- **AC-008.3**: 숫자 칸 14(`inputMode="numeric"`)·비고 5(100자)·업무사항(2,000자), 시안과 같은 `aria-label`. 결재·외래 빈칸·자동 칸은 입력 아님. [저장]·날짜 시트 탭 없음
+- **AC-008.3**: 숫자 칸 14(`inputMode="numeric"`)·비고 5(100자)·업무사항(2,000자), 업무사항·비고 `spellCheck={false}`, 시안과 같은 `aria-label`. 결재·외래 빈칸·자동 칸은 입력 아님. [저장]·날짜 시트 탭 없음
 - **AC-008.4**: 날짜 칸 "2026/10/28 수", 자동 칸 넷은 받은 값으로 계산
 - **AC-008.5**: 숫자 칸에 치면 읽은 값을 알림, 초점 나가면 엑셀 모양 글자
 - **AC-008.6**: 보기만 → 모든 칸 읽기 전용, 업무사항 칸에 안내 글
@@ -69,9 +69,9 @@ export function WorklogSheet(props: {
 ```
 - `<div className={s.paper}><table className={s.sheet} aria-label="업무일지">…</table></div>`. 23줄 `<tr>`(17·18행은 시안처럼 둘째 줄이 빈 `<tr className={s.r20} />`)
 - 숫자 칸: 칸 안 작은 부품(`NumberCell`)이 초점 여부만 들고 있다. 보이는 글자 = 초점이면 `wonInputText(v, true)`, 아니면 `wonInputText(v, false)`(인원은 `countText`). `onChange`에서 `parseWon`/`parseCount` → `onNumber`. 시안의 "치는 동안 쉼표 다시 넣기"도 같다
-- 비고: `maxLength={NOTE_MAX}`, 업무사항 `textarea maxLength={MEMO_MAX} placeholder="이 PC에만 저장돼요"`
+- 비고: `maxLength={NOTE_MAX}`, 업무사항 `textarea maxLength={MEMO_MAX} placeholder="이 PC에만 저장돼요"`. 업무사항·비고는 `spellCheck={false}`(AC-008.3, 브라우저 맞춤법 검사가 글을 밖으로 보낼 수 있다)
 - `readOnly`: 모든 `input`·`textarea`에 `readOnly`. `memoNotice`가 있으면 textarea 대신 그 글을 칸에 보인다(흐린 글)
-- 시험(jsdom + Testing Library): 줄 23개, 각 줄의 칸 수와 `colSpan`·`rowSpan`을 design.md 2절 표로 만든 기대 목록과 견준다(합친 칸 46), 칸 글자, 연보라·회색 클래스 자리(`s.lav`·`s.gray`), 입력 칸 20개와 이름, 자동 칸 글자(가짜 값 예: 현금 100,000 + 카드 200,000 + 총진료비 900,000 → 수납액 "300,000원"), 초점 들어감·나감 글자, `readOnly`·`memoNotice`, `aria-invalid`, `role="button"`·"저장"·시트 탭 글자가 없음
+- 시험(jsdom + Testing Library): 줄 23개, 각 줄의 칸 수와 `colSpan`·`rowSpan`을 design.md 2절 표로 만든 기대 목록과 견준다(합친 칸 46), 칸 글자, 연보라·회색 클래스 자리(`s.lav`·`s.gray`), 입력 칸 20개와 이름, 자동 칸 글자(가짜 값 예: 현금 100,000 + 카드 200,000 + 총진료비 900,000 → 수납액 "300,000원"), 초점 들어감·나감 글자, `readOnly`·`memoNotice`, `aria-invalid`, 업무사항·비고의 `spellcheck="false"`, `role="button"`·"저장"·시트 탭 글자가 없음
 
 ## TDD 순서
 

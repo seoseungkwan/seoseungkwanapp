@@ -1,6 +1,6 @@
 # Step 0: autosave
 
-> **TASK-6** 자동 저장 제어 · **REQ-006** · AC-006.1 ~ AC-006.9
+> **TASK-6** 자동 저장 제어 · **REQ-006** · AC-006.1 ~ AC-006.10
 > Phase 2 `worklog-2-screen` · Step 0 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-6 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -16,7 +16,8 @@
 - **AC-006.6**: `private` → `blocked`(칸 이름), 그날 값이 다시 바뀔 때까지 안 함
 - **AC-006.7**: `flush()` → 기다리지 않고 바로 시작
 - **AC-006.8**: 날짜마다 따로, 전체 상태 = 가장 나쁜 것(failed > blocked > offline > saving > saved > idle), `hasUnsaved()`
-- **AC-006.9**: `dispose()` → 타이머 모두 멈춤
+- **AC-006.9**: `dispose()` → 타이머 모두 멈춤(로그아웃 때만 부른다)
+- **AC-006.10**: `pendingDay(ymd)` → 아직 저장 안 된 최신 값(없으면 null)
 
 ## 읽어야 할 파일
 
@@ -59,8 +60,10 @@ design.md 10절의 `createAutosave(options)`를 만든다.
 - 저장: `dirty = false`로 표시하고 `save(ymd, latest)`. 끝나면 `dirty`면 바로 다시, 아니면 saved
 - 실패: `err instanceof WorklogStorageError`로 `kind`를 본다. 모르는 오류는 `failed`로 다룬다
 - `retryDelaysMs` 다 쓰면 failed(타이머 없음). `retry()`는 failed·offline·pending 날짜를 바로 저장
-- `onChange(snapshot)`: 전체 상태가 바뀔 때마다 부른다(화면이 그린다)
-- 시험(`vi.useFakeTimers()`): 묶기(700ms에 또 바뀌면 그 뒤 800ms), 저장 중 바뀜 → 두 번째 저장 값이 최신, 동시 저장 없음(가짜 `save`의 대기 약속으로 확인), 실패 세 번 뒤 멈춤과 그 사이 시각(2000·5000·15000), offline 15초 반복과 `online()`, blocked는 시간이 지나도 저장 안 함 → `change` 뒤 저장, 날짜 둘(하나 failed·하나 saved → 전체 failed), `dispose()` 뒤 타이머 0개(`vi.getTimerCount()`)
+- `onChange(snapshot)`: 전체 상태가 바뀔 때마다 부른다(화면이 그린다). 화면이 바뀌어도 이어 듣게 `subscribe(listener): () => void`도 둔다(여럿 가능)
+- `pendingDay(ymd)`: pending·saving·offline·failed·blocked인 날의 `latest`(saved·idle이면 null)
+- 이 제어는 화면 밖 모듈 한 벌로 쓰인다(TASK-10 `worklogSession.ts`) → 화면이 내려가도 살아 있어야 하므로 React 수명에 기대지 않는다
+- 시험(`vi.useFakeTimers()`): 묶기(700ms에 또 바뀌면 그 뒤 800ms), 저장 중 바뀜 → 두 번째 저장 값이 최신, 동시 저장 없음(가짜 `save`의 대기 약속으로 확인), 실패 세 번 뒤 멈춤과 그 사이 시각(2000·5000·15000), offline 15초 반복과 `online()`, blocked는 시간이 지나도 저장 안 함 → `change` 뒤 저장, 날짜 둘(하나 failed·하나 saved → 전체 failed), `dispose()` 뒤 타이머 0개(`vi.getTimerCount()`), `pendingDay`(저장 전 값 → 저장 뒤 null), `subscribe` 둘이 같은 상태를 받음
 
 ## TDD 순서
 
@@ -72,14 +75,14 @@ design.md 10절의 `createAutosave(options)`를 만든다.
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/worklog/autosave.test.ts   # AC-006.1~AC-006.9
+npx vitest run src/lib/worklog/autosave.test.ts   # AC-006.1~AC-006.10
 python3 ~/.claude/harness/bin/tdd-run TASK-6 --expect green
 npm run lint && npm test
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-006.1 ~ AC-006.9가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-006.1 ~ AC-006.10가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

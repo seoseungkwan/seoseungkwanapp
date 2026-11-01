@@ -1,6 +1,6 @@
 # Step 1: tab-hookup
 
-> **TASK-12** 탭 연결 · **REQ-012** · AC-012.1 ~ AC-012.4
+> **TASK-12** 탭 연결 · **REQ-012** · AC-012.1 ~ AC-012.5
 > Phase 3 `worklog-3-finish` · Step 1 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-12 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -12,6 +12,7 @@
 - **AC-012.2**: 탭 목록 업무일지 `href: '/worklog'`·`ready: true`, [전체 메뉴] 판에 "준비 중" 칩 없음
 - **AC-012.3**: 대시보드 기능 목차 업무일지 `ready`
 - **AC-012.4**: 준비 중 목록에 `/worklog` 없음, 탭 틀 통합 시험·준비 중 페이지 시험·탭 이름 시험이 바뀐 목록으로 통과
+- **AC-012.5**: 대시보드 기능 목차 옆 글·준비 중 개수·사용 가능 개수의 기대 숫자는 목록(`DASHBOARD_FEATURES`·`NOT_READY_FEATURES`)에서 센다(손 숫자 없음, cross-branch C5)
 
 ## 읽어야 할 파일
 
@@ -48,6 +49,7 @@
   - `src/app/(app)/notReadyPages.test.tsx`
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
+  - `src/components/dashboard/briefing/DashboardHome.test.tsx`
 - Tests:
   - `src/app/(app)/worklog/page.test.tsx`
   - `src/components/shell/shell.test.tsx`
@@ -56,6 +58,7 @@
   - `src/app/(app)/notReadyPages.test.tsx`
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
+  - `src/components/dashboard/briefing/DashboardHome.test.tsx`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -85,7 +88,7 @@ export default async function WorklogPage() {
 
 ### 3. 시험
 - `page.test.tsx`(새, jsdom): `guardPage` mock(승인 병원 `h1`) → 그린 결과가 `WorklogScreen`(mock)에 `hospitalId: 'h1'`·`initialToday: todayInKorea()`를 넘김, metadata `'업무일지'`, 준비 중 글자("준비 중이에요") 없음. 승인 아님이면 던짐
-- 기존 시험은 업무일지 기대만 바꾼다: `notReadyPages.test.tsx`(업무일지 줄 빼기), `titles.test.tsx`(준비 중 목록에서 빼고 `{ path: '/worklog', title: '업무일지', load }` 한 줄), `notReadyFeatures.test.ts`(목록 개수·업무일지 줄), `features.test.ts`(업무일지 `ready`), `shell.test.tsx`(업무일지 `ready`·칩 기대가 있으면), `tabFrame.test.tsx`(ready/soon 나눔이 업무일지를 셈하면). `shell.test.tsx`의 "준비 중 주소 /worklog" 탭 띠 밀기 시험은 경로만 쓰므로 그대로 둔다(겹침 줄이기, design.md 14절)
+- 기존 시험은 업무일지 기대만 바꾼다: `notReadyPages.test.tsx`(업무일지 줄 빼기), `titles.test.tsx`(준비 중 목록에서 빼고 `{ path: '/worklog', title: '업무일지', load }` 한 줄), `notReadyFeatures.test.ts`(목록 개수·업무일지 줄), `features.test.ts`(업무일지 `ready`), `shell.test.tsx`(업무일지 `ready`·칩 기대가 있으면), `tabFrame.test.tsx`(ready/soon 나눔이 업무일지를 셈하면), `DashboardHome.test.tsx`(`INDEX_SIDE` "12개 가운데 1개는 지금 …"·준비 중 10개·사용 가능 2개 기대 — `FeatureIndex.tsx`가 목록에서 세므로 코드는 그대로이고, 시험의 손 숫자를 `DASHBOARD_FEATURES.filter(…).length`로 바꾼다. 다른 갈래가 탭을 채워도 그대로 통과해야 한다). 이 TASK가 고치는 시험에서는 개수를 늘 목록에서 센다(`toHaveLength(10)` 같은 손 숫자를 새로 쓰지 않는다). `shell.test.tsx`의 "준비 중 주소 /worklog" 탭 띠 밀기 시험은 경로만 쓰므로 그대로 둔다(겹침 줄이기, design.md 14절)
 
 ### 4. 끝나고 화면 확인 (Phase 3 화면 캡처)
 - `npm run dev` → dev-browser로 `/worklog` 1440·390 캡처. 실제 Supabase에 표가 아직 없으면(사용자 OK 전) 불러오기 실패 카드가 보이는 것이 맞다. 캡처에 쿠키·토큰·이메일이 보이지 않게 한다
@@ -100,14 +103,14 @@ export default async function WorklogPage() {
 ## Acceptance Criteria
 
 ```bash
-npx vitest run 'src/app/(app)/worklog/page.test.tsx' src/components/shell/shell.test.tsx src/components/dashboard/briefing/features.test.ts src/components/common/notReadyFeatures.test.ts 'src/app/(app)/notReadyPages.test.tsx' 'src/app/(app)/tabFrame.test.tsx' src/app/titles.test.tsx src/app/notFound.test.tsx   # AC-012.1~AC-012.4
+npx vitest run 'src/app/(app)/worklog/page.test.tsx' src/components/shell/shell.test.tsx src/components/dashboard/briefing/features.test.ts src/components/common/notReadyFeatures.test.ts 'src/app/(app)/notReadyPages.test.tsx' 'src/app/(app)/tabFrame.test.tsx' src/app/titles.test.tsx src/app/notFound.test.tsx src/components/dashboard/briefing/DashboardHome.test.tsx   # AC-012.1~AC-012.5
 python3 ~/.claude/harness/bin/tdd-run TASK-12 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-012.1 ~ AC-012.4가 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status worklog`에서 AC-012.1 ~ AC-012.5가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
