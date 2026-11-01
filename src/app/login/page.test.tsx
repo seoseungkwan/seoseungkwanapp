@@ -13,20 +13,23 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { sig
 type SearchParams = Record<string, string | string[] | undefined>
 const pageWith = async (searchParams: SearchParams) => render(await LoginPage({ searchParams: Promise.resolve(searchParams) }))
 
-const INTRO = '로그인하면 우리 의원의 오늘 숫자, AI 리포트, 급여와 보고를 한 곳에서 이어서 봅니다.'
+// ui-90 시안 loginPC 소개 문장(AC-419.2)
+const INTRO = '로그인하면 청구 사전점검과 우리 의원의 오늘 숫자를 한곳에서 이어서 봐요.'
 // a가 문서에서 b보다 앞에 있다
 const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 
 afterEach(cleanup)
 
 describe('/login 화면', () => {
-  it('AC-003.1: 위쪽 띠(로고)와 본문(main) 틀 안에 로그인 폼, 옆 칸(aside "미리보기") 안에 소개 문장과 미리보기가 있다', async () => {
+  it('AC-003.1·AC-419.1·AC-419.2: 위쪽 띠(로고 링크)와 본문(main) 틀 안에 로그인 폼, 옆 칸(aside "미리보기") 안에 소개 문장과 미리보기가 있다', async () => {
     await pageWith({})
     const banner = screen.getByRole('banner')
     expect(banner.textContent).toBe('')
     expect(banner.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
-    // 목업 머리띠에는 메뉴·단추가 없다
-    expect(within(banner).queryAllByRole('link')).toHaveLength(0)
+    // 시안 머리띠에는 메뉴·단추가 없고 로고가 처음 화면 링크 하나다(AC-419.1)
+    expect(within(banner).getAllByRole('link').map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')])).toEqual([
+      ['처음 화면으로 가기', '/'],
+    ])
     expect(within(banner).queryAllByRole('button')).toHaveLength(0)
     const main = screen.getByRole('main')
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('로그인')
@@ -76,15 +79,27 @@ describe('/login 화면', () => {
   })
 })
 
+
+describe('AC-419.6: 로그인 화면 글자', () => {
+  it.each([
+    ['일반', {}],
+    ['콜백 실패(?error=1)', { error: '1' }],
+  ] as const)('AC-419.6: %s — 화면 전체에 "병원 이름"·"니다." 글자가 없다', async (_name, query) => {
+    await pageWith(query)
+    expect(document.body.textContent).toContain('구글 계정으로 로그인해요.')
+    expect(document.body.textContent).not.toContain('병원 이름')
+    expect(document.body.textContent).not.toContain('니다.')
+  })
+})
 // 승인 대기·거절 화면(목업 Pending·Rejected)은 머리띠 오른쪽 끝에 [로그아웃]을 둔다 → 틀이 그 자리를 마련한다
 describe('AuthFrame 머리띠 오른쪽 끝 자리(headerEnd)', () => {
   // 위 줄 = <header> 자신(b2b-redesign AC-213.1: 로고 · 끝 자리가 header 안에 바로 든다)
   const headerInner = () => screen.getByRole('banner')
   const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 
-  it('AC-003.6: headerEnd가 없으면 머리띠에 로고만 있다(빈 자리도 그리지 않는다)', () => {
+  it('AC-003.6·AC-419.1: headerEnd가 없으면 머리띠에 로고(링크)만 있다(빈 자리도 그리지 않는다)', () => {
     render(<AuthFrame>본문</AuthFrame>)
-    expect([...headerInner().children].map((el) => el.tagName.toLowerCase())).toEqual(['svg'])
+    expect([...headerInner().children].map((el) => el.tagName.toLowerCase())).toEqual(['a'])
     expect(screen.getByRole('banner').querySelector('.ml-auto')).toBeNull()
   })
 

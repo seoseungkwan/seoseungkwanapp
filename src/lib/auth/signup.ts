@@ -34,7 +34,8 @@ function checkPhone(raw: string): { value: string | null } | { error: string } {
 }
 
 export function validateSignup(i: SignupInput): { ok: true; value: SignupValue } | { ok: false; errors: SignupErrors } {
-  const name = checkName(i.name, NAME_MAX, '병원 이름')
+  // 칸 이름표는 화면 칸 이름과 같은 "의원 이름"(ui-90 AC-419.3). 검사 규칙·길이는 그대로다
+  const name = checkName(i.name, NAME_MAX, '의원 이름')
   const applicant = checkName(i.applicantName, APPLICANT_MAX, '신청자 이름')
   const phone = checkPhone(i.phone)
 

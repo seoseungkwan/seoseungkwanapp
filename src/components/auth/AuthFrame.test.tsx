@@ -6,8 +6,9 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AuthFrame } from './AuthFrame'
 
-// 인증 화면 틀 (b2b-redesign REQ-213 AC-213.1·AC-213.2, design.md '인증 화면', UI_GUIDE '인증 화면').
+// 인증 화면 틀 (b2b-redesign REQ-213 AC-213.1·AC-213.2, ui-90 REQ-419 AC-419.1, design.md '인증 화면', UI_GUIDE '인증 화면').
 // 짜임은 승인 시안 docs/mockups/b2b-redesign/screens.mjs의 col480(한 칸)·loginPC/loginPhone(두 칸)이다.
+// ui-90: 로고는 처음 화면 링크(시안 docs/mockups/ui-90/entry/screens.mjs logoLink) → 위 줄 바로 안은 <a>이고 그 안에 LogoMark
 // jsdom은 CSS를 풀지 않는다 → 짜임·클래스·글자를 본다(보이는 모양은 Phase 3 끝 사진)
 
 const ROOT = process.cwd()
@@ -22,6 +23,9 @@ const expectNoClass = (el: Element | null | undefined, pattern: RegExp) =>
 const tagsOf = (el: Element) => Array.from(el.children).map((child) => child.tagName.toLowerCase())
 // 그린 화면의 로고 svg(LogoMark는 viewBox 0 0 30 30)
 const logos = () => Array.from(document.querySelectorAll('svg[viewBox="0 0 30 30"]'))
+
+// 위 줄의 로고 링크(처음 화면으로)
+const logoLink = () => within(screen.getByRole('banner')).getByRole('link', { name: '처음 화면으로 가기' })
 
 const column = (headerEnd?: ReactNode) => render(<AuthFrame headerEnd={headerEnd}>본문</AuthFrame>)
 const split = () =>
@@ -44,13 +48,13 @@ describe('AC-213.1: 한 칸(aside 없음 — 가입 신청·승인 대기·거�
     expectClasses(col, 'mx-auto', 'w-full', 'max-w-120')
   })
 
-  it('AC-213.1: 맨 위 줄 <header>는 72px(768px 미만 56px)이고 왼쪽에 LogoMark 28 하나만, 띠 테두리·바탕·[서비스 이름]이 없다', () => {
+  it('AC-213.1·AC-419.1: 맨 위 줄 <header>는 72px(768px 미만 56px)이고 왼쪽에 로고 링크(안에 LogoMark 28) 하나만, 띠 테두리·바탕·[서비스 이름]이 없다', () => {
     column()
     const header = screen.getByRole('banner')
     expect(header.tagName).toBe('HEADER')
     expectClasses(header, 'flex', 'items-center', 'h-18', 'max-md:h-14')
     expectNoClass(header, /(^|:)(border|bg-)/)
-    expect(tagsOf(header)).toEqual(['svg'])
+    expect(tagsOf(header)).toEqual(['a'])
     expect(header.textContent).toBe('')
     const [logo] = logos()
     expect(header.contains(logo ?? null)).toBe(true)
@@ -59,22 +63,24 @@ describe('AC-213.1: 한 칸(aside 없음 — 가입 신청·승인 대기·거�
     expect(document.body.textContent).not.toContain('[서비스 이름]')
   })
 
-  it('AC-213.1: headerEnd를 주면 같은 줄 오른쪽 끝(ml-auto 자리)에 그린다', () => {
+  it('AC-213.1·AC-419.1: headerEnd를 주면 같은 줄 오른쪽 끝(ml-auto 자리)에 그린다', () => {
     column(<button type="button">로그아웃</button>)
     const header = screen.getByRole('banner')
     const slot = within(header).getByRole('button', { name: '로그아웃' }).parentElement as HTMLElement
-    expect(tagsOf(header)).toEqual(['svg', 'div'])
+    expect(tagsOf(header)).toEqual(['a', 'div'])
     expect(header.lastElementChild).toBe(slot)
     expectClasses(slot, 'ml-auto', 'flex', 'items-center')
     expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull()
   })
 
-  it('AC-213.1: 로고 왼쪽 끝과 본문 왼쪽 끝이 같다 — header와 main이 같은 480 칸의 형제이고 둘 다(로고도) 제 여백·들여쓰기가 없다', () => {
+  it('AC-213.1·AC-419.1: 로고 왼쪽 끝과 본문 왼쪽 끝이 같다 — header와 main이 같은 480 칸의 형제이고 둘 다(로고 링크·로고도) 제 여백·들여쓰기가 없다', () => {
     column()
     const header = screen.getByRole('banner')
     const main = screen.getByRole('main')
     expect(header.parentElement).toBe(main.parentElement)
-    for (const el of [header, main, logos()[0]]) {
+    // 로고는 링크 안 왼쪽 끝(가운데 맞춤이 아니다) → 44px 누름 영역이 오른쪽으로만 늘어난다
+    expectNoClass(logoLink(), /^(?:[\w-]+:)?justify-(?:center|end)$/)
+    for (const el of [header, main, logoLink(), logos()[0]]) {
       expectNoClass(el, /^(?:[\w-]+:)?-?(?:p|px|pl|ps|m|mx|ml|ms)-/)
     }
   })
@@ -147,12 +153,12 @@ describe('AC-213.2: 두 칸(aside — 로그인)', () => {
     expect(aside.textContent).not.toContain('로그인 폼')
   })
 
-  it('AC-213.2: 1024px 미만 위 줄은 56px이고 같은 LogoMark 28을 클래스로 24px로 줄인다 → 본문 위 32px', () => {
+  it('AC-213.2·AC-419.1: 1024px 미만 위 줄은 56px이고 같은 LogoMark 28을 클래스로 24px로 줄인다 → 본문 위 32px', () => {
     split()
     const { header, main } = parts()
     expectClasses(header, 'flex', 'items-center', 'max-lg:h-14')
     expectNoClass(header, /(^|:)(border|bg-)/)
-    expect(tagsOf(header)).toEqual(['svg'])
+    expect(tagsOf(header)).toEqual(['a'])
     const [logo] = logos()
     expect(logo?.getAttribute('width')).toBe('28')
     expectClasses(logo, 'max-lg:size-6')
@@ -184,5 +190,54 @@ describe('AC-213.1·AC-213.2: LogoMark는 소스에 하나(<header> 안)이고 �
     const found = logos()
     expect(found).toHaveLength(1)
     expect(screen.getByRole('banner').contains(found[0] ?? null)).toBe(true)
+  })
+})
+
+describe('AC-419.1: 로고는 처음 화면 링크다(한 칸·두 칸)', () => {
+  it.each([
+    ['한 칸', () => column()],
+    ['한 칸 + headerEnd', () => column(<button type="button">로그아웃</button>)],
+    ['두 칸', () => split()],
+  ])('AC-419.1: %s — <a href="/" aria-label="처음 화면으로 가기"> 하나가 로고(문서에 하나)를 담고, 글자는 없다', (_, draw) => {
+    draw()
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(1)
+    const link = logoLink()
+    expect(links[0]).toBe(link)
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe('/')
+    expect(link.getAttribute('aria-label')).toBe('처음 화면으로 가기')
+    expect(link.textContent).toBe('')
+    expect(link.parentElement).toBe(screen.getByRole('banner'))
+    const found = logos()
+    expect(found).toHaveLength(1)
+    expect(link.contains(found[0] ?? null)).toBe(true)
+    // 로고 그림은 읽지 않는다(이름은 링크의 aria-label 하나)
+    expect(found[0]?.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it.each([
+    ['한 칸', () => column()],
+    ['두 칸', () => split()],
+  ])('AC-419.1: %s — 누름 영역 44px 이상(높이 44·폭 44 이상), 안쪽 초점 고리(2px accent, -2px 띄움), 4px 모서리, 짧은 반응(색·투명도 150ms)', (_, draw) => {
+    draw()
+    const link = logoLink()
+    expectClasses(link, 'inline-flex', 'h-11', 'min-w-11', 'shrink-0', 'items-center', 'rounded-control')
+    expectClasses(link, 'focus-visible:outline-2', 'focus-visible:-outline-offset-2', 'focus-visible:outline-accent')
+    expect(classesOf(link)).not.toContain('focus-visible:outline-offset-2')
+    expectClasses(link, 'transition', 'hover:opacity-80')
+    // 크기·여백은 움직이지 않는다(투명도만)
+    expectNoClass(link, /^(?:[\w-]+:)*(?:scale|transition-|duration-|delay-|ease-)/)
+  })
+
+  it('AC-419.1: 소스에 로고 링크(next/link)가 하나이고 <header> 안에서 <LogoMark size={28}…>을 감싼다', () => {
+    const src = readFileSync(join(ROOT, SOURCE), 'utf8')
+    expect(src).toMatch(/^import Link from 'next\/link'$/m)
+    expect(src.match(/<Link\b/g) ?? []).toHaveLength(1)
+    expect(src.match(/<a\b/g) ?? []).toHaveLength(0)
+    const header = src.slice(src.indexOf('<header'), src.indexOf('</header>'))
+    const link = header.slice(header.indexOf('<Link'), header.indexOf('</Link>'))
+    expect(link).toMatch(/^<Link href="\/" aria-label="처음 화면으로 가기"/)
+    expect(link).toMatch(/<LogoMark size=\{28\}/)
   })
 })

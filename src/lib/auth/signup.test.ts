@@ -5,8 +5,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { validateSignup, type SignupInput, type SignupValue } from './signup'
 
 const MESSAGES = {
-  nameEmpty: '병원 이름을 적어 주세요.',
-  nameLong: '병원 이름은 50자까지 적을 수 있어요.',
+  // ui-90 AC-419.3: 칸 이름표는 "의원 이름"(옛 "병원 이름")
+  nameEmpty: '의원 이름을 적어 주세요.',
+  nameLong: '의원 이름은 50자까지 적을 수 있어요.',
   applicantEmpty: '신청자 이름을 적어 주세요.',
   applicantLong: '신청자 이름은 30자까지 적을 수 있어요.',
   phone: '연락처는 숫자 9~11자리로 적어 주세요.',
@@ -32,33 +33,33 @@ const EXT_B = '𠀀'
 const EMOJI = '👍'
 
 describe('validateSignup(): 가입 신청 값 검사', () => {
-  it('AC-004.1: 맞는 값이면 ok + DB에 넣을 값(병원 이름·신청자 이름·숫자만 남긴 연락처)', () => {
+  it('AC-004.1: 맞는 값이면 ok + DB에 넣을 값(의원 이름·신청자 이름·숫자만 남긴 연락처)', () => {
     expect(validateSignup(VALID)).toEqual({
       ok: true,
       value: { name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678' },
     })
   })
 
-  it('AC-004.1: 병원 이름은 앞뒤 공백을 뺀다(가운데 띄어쓰기는 둔다)', () => {
+  it('AC-004.1: 의원 이름은 앞뒤 공백을 뺀다(가운데 띄어쓰기는 둔다)', () => {
     expect(okValue(input({ name: '  가나 정형외과의원  ' })).name).toBe('가나 정형외과의원')
     expect(okValue(input({ name: '\t가나　정형외과\n' })).name).toBe('가나　정형외과')
     expect(okValue(input({ name: '　가나의원 ' })).name).toBe('가나의원')
   })
 
-  it('AC-004.1: 병원 이름이 비었거나 공백뿐이면 "병원 이름을 적어 주세요."', () => {
+  it('AC-004.1·AC-419.3: 의원 이름이 비었거나 공백뿐이면 "의원 이름을 적어 주세요."', () => {
     for (const name of ['', ' ', '   \t\n', '　']) {
       expect(errorsOf(input({ name })), JSON.stringify(name)).toEqual({ name: MESSAGES.nameEmpty })
     }
   })
 
-  it('AC-004.1: 병원 이름은 공백을 뺀 뒤 1~50자(50자 통과, 51자 막힘)', () => {
+  it('AC-004.1·AC-419.3: 의원 이름은 공백을 뺀 뒤 1~50자(50자 통과, 51자 막힘 → "의원 이름은 50자까지 적을 수 있어요.")', () => {
     expect(okValue(input({ name: '가' })).name).toBe('가')
     expect(okValue(input({ name: '가'.repeat(50) })).name).toBe('가'.repeat(50))
     expect(okValue(input({ name: `  ${'가'.repeat(50)}  ` })).name).toBe('가'.repeat(50))
     expect(errorsOf(input({ name: '가'.repeat(51) }))).toEqual({ name: MESSAGES.nameLong })
   })
 
-  it('AC-004.1: 병원 이름 글자 수는 코드포인트로 센다(두 칸 글자 50개 통과, 51개 막힘)', () => {
+  it('AC-004.1·AC-419.3: 의원 이름 글자 수는 코드포인트로 센다(두 칸 글자 50개 통과, 51개 막힘)', () => {
     expect(okValue(input({ name: EXT_B.repeat(50) })).name).toBe(EXT_B.repeat(50))
     expect(errorsOf(input({ name: EXT_B.repeat(51) }))).toEqual({ name: MESSAGES.nameLong })
   })
@@ -116,7 +117,7 @@ describe('validateSignup(): 가입 신청 값 검사', () => {
     expect(errorsOf(input({ agreed: false }))).toEqual({ agreed: MESSAGES.agreed })
   })
 
-  it('AC-004.1: 틀린 칸마다 그 칸의 문구를 돌려준다(맞는 칸은 없다)', () => {
+  it('AC-004.1·AC-419.3: 틀린 칸마다 그 칸의 문구를 돌려준다(맞는 칸은 없다)', () => {
     expect(errorsOf({ name: ' ', applicantName: '', phone: '123', agreed: false })).toEqual({
       name: MESSAGES.nameEmpty,
       applicantName: MESSAGES.applicantEmpty,
@@ -134,6 +135,19 @@ describe('validateSignup(): 가입 신청 값 검사', () => {
     const copy = { ...i }
     validateSignup(i)
     expect(i).toEqual(copy)
+  })
+
+  it('AC-419.3·AC-419.6: 칸 오류 글의 이름표는 "의원 이름"이고 어떤 문구에도 "병원 이름"·"니다."가 없다(신청자·연락처·동의 문구는 그대로)', () => {
+    const all = Object.values({
+      ...errorsOf({ name: '', applicantName: '', phone: '1', agreed: false }),
+      ...errorsOf(input({ name: '가'.repeat(51), applicantName: '가'.repeat(31) })),
+    })
+    expect(all).toEqual([MESSAGES.nameLong, MESSAGES.applicantLong, MESSAGES.phone, MESSAGES.agreed])
+    expect(errorsOf(input({ name: '' })).name).toBe('의원 이름을 적어 주세요.')
+    for (const message of [...all, MESSAGES.nameEmpty, MESSAGES.applicantEmpty]) {
+      expect(message).not.toContain('병원 이름')
+      expect(message).not.toContain('니다.')
+    }
   })
 })
 

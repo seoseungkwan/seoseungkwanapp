@@ -37,14 +37,16 @@ describe('/pending 화면', () => {
     expect(guard).toHaveBeenCalledExactlyOnceWith('/pending')
   })
 
-  it('AC-005.1·AC-216.1: pending — 위쪽 띠(로고·[로그아웃])와 본문에 승인 대기 카드(본문 [로그아웃] 없음)', async () => {
+  it('AC-005.1·AC-216.1·AC-419.1·AC-419.4: pending — 위쪽 띠(로고 링크·[로그아웃])와 본문에 승인 대기 카드(본문 [로그아웃] 없음)', async () => {
     render(await PendingPage())
     const banner = screen.getByRole('banner')
     expect(banner.textContent).toBe('로그아웃')
     expect(within(banner).getAllByRole('button').map((b) => b.textContent)).toEqual(['로그아웃'])
-    expect(within(banner).queryAllByRole('link')).toHaveLength(0)
+    expect(within(banner).getAllByRole('link').map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')])).toEqual([
+      ['처음 화면으로 가기', '/'],
+    ])
     const main = screen.getByRole('main')
-    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('신청을 확인하고 있습니다')
+    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('신청을 확인하고 있어요')
     // 본문 [로그아웃]은 없다(AC-216.1) → 페이지의 [로그아웃]은 위 띠 하나
     expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['상태 다시 확인'])
     expect(screen.getAllByRole('button', { name: '로그아웃' })).toHaveLength(1)
@@ -54,15 +56,15 @@ describe('/pending 화면', () => {
     expect(within(summary).getByText('manager@example.com')).toBeTruthy()
   })
 
-  it('AC-005.3·AC-216.2: rejected — 같은 띠 [로그아웃]과 거절 카드, [상태 다시 확인]·본문 [로그아웃]은 없다', async () => {
+  it('AC-005.3·AC-216.2·AC-419.5: rejected — 같은 띠 [로그아웃]과 거절 카드, [상태 다시 확인]·본문 [로그아웃]은 없다', async () => {
     guard.mockResolvedValue(me({ ...HOSPITAL, status: 'rejected' }))
     render(await PendingPage())
     const banner = screen.getByRole('banner')
     expect(banner.textContent).toBe('로그아웃')
     const main = screen.getByRole('main')
-    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('가입이 승인되지 않았습니다')
-    // 본문 [로그아웃]은 없다(AC-216.2) → 페이지의 [로그아웃]은 위 띠 하나
-    expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['다른 계정으로 로그인'])
+    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('가입이 승인되지 않았어요')
+    // 본문 [로그아웃]은 없다(AC-216.2) → 페이지의 [로그아웃]은 위 띠 하나. 본문 단추는 관리자 메일 [주소 복사]와 [다른 계정으로 로그인]
+    expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['주소 복사', '다른 계정으로 로그인'])
     expect(screen.getAllByRole('button', { name: '로그아웃' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '상태 다시 확인' })).toBeNull()
   })
@@ -107,5 +109,15 @@ describe('/pending 화면', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/(onboarding)/pending/page.tsx'), 'utf-8')
     expect(source).not.toMatch(/^\s*['"]use client['"]/m)
     expect(source).toContain("guardPage('/pending')")
+  })
+})
+
+describe('AC-419.6: 승인 대기·거절 화면 글자', () => {
+  it.each(['pending', 'rejected'] as const)('AC-419.6: %s — 화면 전체에 "병원 이름"·"니다." 글자가 없다', async (status) => {
+    guard.mockResolvedValue(me({ ...HOSPITAL, status }))
+    render(await PendingPage())
+    expect(within(screen.getByRole('main')).getByRole('region', { name: '보낸 신청 내용' }).textContent).toContain('의원 이름')
+    expect(document.body.textContent).not.toContain('병원 이름')
+    expect(document.body.textContent).not.toContain('니다.')
   })
 })
