@@ -116,11 +116,12 @@
 
 ## TASK-10: 점검 규칙 엔진 (골든)
 - Step: Phase 2 · Step 3 · `rule-engine`
-- AC: AC-010.1~AC-010.6
+- AC: AC-010.1~AC-010.7
 - REQ: REQ-010
 - Files: src/lib/precheck/rules/*, scripts/precheck/golden/*, fixtures/precheck/golden/rules-*.json, fixtures/precheck/golden/rules-coverage.json, fixtures/precheck/fake/*, fixtures/precheck/make-fake-claims.ts, fixtures/precheck/make-fake-claims.test.ts, src/lib/precheck/shape.ts, src/lib/precheck/shape.test.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts
 - Tests: src/lib/precheck/rules/engine.test.ts, src/lib/precheck/rules/golden.test.ts, src/lib/precheck/rules/coverage.test.ts, src/workers/precheck/jobs.test.ts
 - TDD: required
+- 사용자 할 일(의원 PC에서 양지바른과 나란히 비교하기 전): 양지바른에 '병원 업데이트'를 적용했는지, 병원 문구 설정 → 처방코드 맨 위 '약 이름으로 분류' 칸이나 코드별 확인을 고쳤는지 확인한다. 적용하지 않았다면 점검 결과 전반이, 칸이나 코드별 확인을 고쳤다면 약 관련 결과(연골주사 약이 가장 눈에 띈다)가 우리와 다르게 나올 수 있다(AC-010.7). 이 값은 그 PC에만 있어 서버에서 볼 수 없다
 
 ## TASK-11: 추천 상병 · 상병 확인 (골든)
 - Step: Phase 2 · Step 4 · `dx-check`

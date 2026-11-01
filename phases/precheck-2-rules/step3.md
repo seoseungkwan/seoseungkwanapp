@@ -1,6 +1,6 @@
 # Step 3: rule-engine
 
-> **TASK-10** 점검 규칙 엔진 (골든) · **REQ-010** · AC-010.1 ~ AC-010.6
+> **TASK-10** 점검 규칙 엔진 (골든) · **REQ-010** · AC-010.1 ~ AC-010.7
 > Phase 2 `precheck-2-rules` · Step 3 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-10 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -14,6 +14,7 @@
 - **AC-010.4**: 설정 `{off, on, grade}`(원본 저장 모양): 끈 규칙은 결과 없음, 켠 규칙은 `enabled_default`가 꺼져 있어도 돈다, 등급을 바꾼 규칙은 바뀐 등급으로 나오고 정렬도 따른다. `effective_from`·`effective_to` 밖 진료에는 돌지 않는다
 - **AC-010.5**: 이력이 필요한 규칙(`stage`에 `history`)은 늘 함께 오는 12개월 이력(AC-008.1)으로 센다. 이력이 없으면 AC-009.4가 먼저 멈추므로 원본의 '이력을 아직 안 받음' 길(`historyReady()` 거짓 → '이력 없어 건너뜀')은 옮기지 않고 `historyReady()`를 늘 참으로 둔다. 골든은 원본에 이력을 넣고 만들며 이력 건너뜀 수는 0
 - **AC-010.6**: 원본의 Python식 정규식(`(?i)` 등)과 `regions.*` 경로는 원본 JS와 같은 방법으로 바꿔 쓴다(골든으로 확인)
+- **AC-010.7**: 처방 목록이 있는 달의 사전 찾기는 원본 병원 모드 `cm`과 같다. 대소문자를 접어 찾는다. 분류 확인 대기 줄(`fresh`의 `pendingReview` 참: 종류 `drug`·`procedure`·`lab`·`unknown`과 이름 없는 줄. 이름 있는 `other`와 보험코드로 확인된 시술은 아니다)은 이름에 기본 약 이름 목록(`리도카인`, `트리암`·`덱사`, `아라간`·`히알`)이 들어 있으면 정해 둔 코드가 아니어도 그 역할로 점검하고 줄 이름(`n`)도 목록의 이름으로 바뀐다. 이름이 맞지 않는 줄은 역할이 없다. 골든은 원본의 실제 병원 모드 `cm`으로 만들고, 요구사항의 표본을 모두 넣는다. 이름 없는 줄은 코드 글자로 맞춰 보고, 둘 이상 걸리면 역할은 합치고 이름은 목록 차례의 첫 이름이다. 원본 읽기: `tools/claim_hospital_update_model.js`(`fresh`), `tools/claim_hospital_code_rules.js`, `tests/test_claim_hospital_code_rules.py` (2026-11-01 사용자 결정)
 
 ## 읽어야 할 파일
 

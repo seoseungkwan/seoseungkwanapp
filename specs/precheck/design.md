@@ -239,7 +239,7 @@ type RxLine = { code: string; name: string; qty: number | null /* 못 읽으면 
 type DxLine = { c: string; n: string; m: true | false | 'x' | null /* 주·부·제외·주상병 칸 없음 */; s: string /* 산정특례 */; d: string /* 과목 */; t: string /* 진단일 */ }
 type History = Map<string /* chart */, Map<string /* date */, { codes: string[]; memo: string }>>
 type RxByDay = Map<string /* chart */, Map<string /* date */, RxLine[]>>   // 원본 RXDATA. 증상이 없어 진료가 안 된 날의 처방도 남는다
-type ClaimMonth = { period: { from: string; to: string }; visits: Visit[]; history: History; historyRange: { from: string; to: string }; rxByDay: RxByDay; dxTrend: DxTrend; catalog: HospitalCatalog; hasDx: boolean /* 상병(83D) 줄이 있었나 */ }
+type ClaimMonth = { period: { from: string; to: string }; visits: Visit[]; history: History; historyRange: { from: string; to: string }; rxByDay: RxByDay; rxDayOrder: RxLine[][] /* 원본 RXDATA의 (차트, 날짜) 첫 등장 차례 */; dxTrend: DxTrend; catalog: HospitalCatalog; hasDx: boolean /* 상병(83D) 줄이 있었나 */ }
 type Finding = { visitKey: string; ruleId: string; grade: '확인필요' | '알림' | '참고'; message: string; detail: string; basis: Basis[] }
 ```
 - 위 모양은 TASK-9가 만든 실제 타입에 맞췄다. 칸의 뜻은 `src/types/precheck.ts` 주석이 정한다
@@ -395,6 +395,7 @@ create table public.contact_counts (
   - C# 원본만 있는 계산(`TrendMath`·`Cohort`)은 원본 시험(`TrendTests.cs`·`CohortTests.cs`)의 사례와 기대값을 그대로 옮긴다
   - 결과 파일 `fixtures/precheck/golden/<이름>.json` 머리에 `{ source: "seoseungkwan/shared@2a1069b", file, entry }`를 적는다
 - **가짜 자료** `fixtures/precheck/fake/`: 생성기 `fixtures/precheck/make-fake-claims.ts`(씨앗 고정, 같은 결과). 이름은 "가상환자NN", 차트번호는 `9`로 시작하는 6자리, 전화는 `010-0000-NNNN`. 원본 시험의 가짜 사례(`test_claim_precheck.py`의 v1~v18 등)를 옮기고, 규칙 종류 18가지마다 걸리는 사례·안 걸리는 사례를 더한다
+- **사전 찾기**: 처방 목록이 있으면 원본 병원 모드의 `cm`(`importedRow`·`namedDrugRoles`, 기본 약 이름 목록)을 그대로 돌려 골든을 만든다. 병원별 `TPL.drugNames`는 아직 없으므로 기본 목록만 쓴다(AC-010.7)
 - **비교**: 우리 함수 결과를 골든과 깊은 비교(순서까지). 일부러 다르게 한 것은 골든 파일의 `knownDiffs`에 이유와 함께 적는다(예: 약 규칙, 19-4). 적지 않은 차이는 실패다
 - **규칙 덮기**: 262개 규칙마다 골든에서 한 번 이상 걸리거나, 걸리게 할 수 없는 이유(예: `info_only`, 원본이 `manual`로 둠)를 `fixtures/precheck/golden/rules-coverage.json`에 적는다. 둘 다 없으면 시험이 실패한다
 - **SQL**: 도우미 `Sql.cs`의 원본 SQL 상수는 원본과 공백만 다르다(시험: 원본 SQL을 옮겨 둔 `helper/tests/Precheck.Core.Tests/Bit/original-sql/*.sql`과 비교)
