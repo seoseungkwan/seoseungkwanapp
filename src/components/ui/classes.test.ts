@@ -45,6 +45,7 @@ const APP_DIRS = [
   'src/components/charts', // b2b-redesign TASK-5 (AC-205.8)
   'src/components/preview', // b2b-redesign TASK-8 (REQ-206)
   'src/components/claim', // ui-90 TASK-5 (AC-408.1)
+  'src/components/revenue', // revenue TASK-9 (AC-009.5)
   'src/app/login',
   'src/app/(onboarding)',
   'src/app/(app)',

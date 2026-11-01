@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "revenue-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/components/revenue/*.tsx(RevenueScreen·RevenueParts·RevenueStates·덩어리 넷·MonthBars·TreatmentBars) + 시험. classes.test.ts의 APP_DIRS에 이 폴더 한 줄을 더함(목록에 없는 폴더는 규칙 시험이 안 봄). 시안에 없는 단추 이름: 다시 저장(AC-009.4)·다시 확인·다시 시도(E-PAGE-FAILED만). 오류 카드 글은 lib/errors.ts. 명세에 없어 정한 동작: 가져오는 도중 끊기거나 도우미가 끝나면 fetchOpen으로 가려 E-BRIDGE-DISCONNECTED 카드 + [다시 확인](연결한 적 없는 PC는 연결 필요 그대로). busy는 연결 안 됨이라고 하지 않고 E-BRIDGE-BUSY 카드 + [다시 확인], 저장된 숫자는 둔다. 저장 실패는 failed에 남아 카드와 [다시 저장]이 내용 위에 놓이고 [다시 저장]은 다시 읽어 저장한다. 남은 명세 빈틈(코드 안 고침): E-BRIDGE-BUSY 글 '청구 화면이 다른 창에서 열려 있어요'는 다른 창이 매출이면 틀림(lib/errors.ts:78, 청구 시안 화면 6에도 있어 사용자 OK 필요). 다 가져온 뒤 끊기면 저절로 다시 붙지 않고 '이 PC는 비트와 연결되어 있지 않아요'(768px 미만은 링크가 숨어 탭 이동·새로고침). update-extension의 '청구 점검은 지금 그대로…'(view.ts:478)는 틀린 말이지만 MIN_EXTENSION을 올려야 나옴. 실제 크롬에서 확인 못 함: 도우미가 없을 때 [다시 확인]을 누르면 확장이 옛 연결을 쥐고 있어 busy 카드가 한 번 보일 수 있음(의원 PC 확인 때 볼 것)."
     },
     {
       "step": 2,
