@@ -64,6 +64,34 @@ describe('privacyProblem', () => {
     expect(privacyProblem(text)).toBe(false)
   })
 
+  it.each(['02)000-1234', '010 - 0000 - 1234', '900101 - 1234567'])('AC-002.10: 손으로 적은 %s는 문제다', (text) => {
+    expect(privacyProblem(text)).toBe(true)
+  })
+
+  // 번호 글자: NFKC가 ①을 1로 바꿔 옆 번호에 붙이면 앞뒤 숫자 경계에 걸려 통과하므로 두 가지로 맞춰 본다
+  it.each(['①010-0000-1234', '010-0000-1234①', '①01000001234', '①900101-1234567'])(
+    'AC-002.10: 번호 글자가 옆에 붙은 %s는 문제다',
+    (text) => {
+      expect(privacyProblem(text)).toBe(true)
+    },
+  )
+
+  it.each(['⓪①⓪-⓪⓪⓪⓪-①②③④', '⁰¹⁰-⁰⁰⁰⁰-¹²³⁴', '0①0-0000-1234', '⑨⓪⓪①⓪①-①②③④⑤⑥⑦'])(
+    'AC-002.10: 번호 글자로 적은 %s는 문제다',
+    (text) => {
+      expect(privacyProblem(text)).toBe(true)
+    },
+  )
+
+  it.each(['010\n0000\n1234', '02\n300\n4000', '900101\n1234567'])('AC-002.10: 줄을 나눠 적은 숫자 %j는 문제가 아니다', (text) => {
+    expect(privacyProblem(text)).toBe(false)
+  })
+
+  it('AC-002.10: 번호 글자를 글머리로 쓴 보통 글자는 문제가 아니다', () => {
+    expect(privacyProblem('① 택배비 ② 5,000')).toBe(false)
+    expect(privacyProblem('①5,000')).toBe(false)
+  })
+
   it('AC-002.10: 금액이 받는 가장 긴 12자리 숫자는 문제가 아니다', () => {
     expect(privacyProblem('999999999999')).toBe(false)
   })
@@ -107,6 +135,45 @@ describe('privacyProblem', () => {
     expect(privacyProblem('010-0000-1234')).toBe(true)
     expect(privacyProblem('010-0000-1234')).toBe(true)
   })
+
+  // 전각 숫자·전각 붙임표·긴 줄표로 적어도 같은 모양으로 본다
+  it.each([
+    '０１０-００００-１２３４',
+    '９００１０１-１２３４５６７',
+    '010－0000－1234',
+    '010—0000—1234',
+    '010ㅡ0000ㅡ1234',
+    '０１０－００００－１２３４',
+    '９００１０１－１２３４５６７',
+    '０１０００００１２３４',
+    '９００１０１１２３４５６７',
+  ])('AC-002.10: 전각·긴 줄표로 적은 %s는 문제다', (text) => {
+    expect(privacyProblem(text)).toBe(true)
+  })
+
+  // 명세의 줄표 여덟 개를 하나씩 본다
+  it.each([
+    ['전각 붙임표', '－'],
+    ['긴 줄표', '—'],
+    ['중간 줄표', '–'],
+    ['가로 막대', '―'],
+    ['붙임표', '‐'],
+    ['줄바꿈 없는 붙임표', '‑'],
+    ['빼기표', '−'],
+    ['한글 으', 'ㅡ'],
+  ])('AC-002.10: %s로 나눈 전화번호·주민번호는 문제다', (_name, dash) => {
+    expect(privacyProblem(`010${dash}0000${dash}1234`)).toBe(true)
+    expect(privacyProblem(`900101${dash}1234567`)).toBe(true)
+  })
+
+  it('AC-002.10: 전각 금액은 막지 않는다', () => {
+    expect(privacyProblem('１２,０００')).toBe(false)
+  })
+
+  it('AC-002.10: 줄표로 적은 금액·날짜는 문제가 아니다', () => {
+    expect(privacyProblem('－12,000원')).toBe(false)
+    expect(privacyProblem('2026—10—28 환불')).toBe(false)
+  })
 })
 
 describe('blockedCellKeys', () => {
@@ -135,6 +202,12 @@ describe('blockedCellKeys', () => {
       nameSpendFree: '(02)000-1234',
     }
     expect(blockedCellKeys(cells)).toEqual(['cardIn', 'memo', 'nameSpendFree'])
+  })
+
+  it('AC-002.10: 전각으로 적어도 그 칸을 돌려주고 받은 글자는 바꾸지 않는다', () => {
+    const cells: WorklogChanges = { memo: '０１０-００００-１２３４', cashIn: '１２,０００' }
+    expect(blockedCellKeys(cells)).toEqual(['memo'])
+    expect(cells).toEqual({ memo: '０１０-００００-１２３４', cashIn: '１２,０００' })
   })
 
   it('AC-002.10: 값이 없는 칸은 돌려주지 않는다', () => {
