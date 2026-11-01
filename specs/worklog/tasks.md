@@ -130,9 +130,9 @@
 - Step: Phase 4 · Step 2 · `bit-storage`
 - AC: AC-016.1~AC-016.2
 - REQ: REQ-016
-- Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts, src/types/worklog.ts, src/components/worklog/WorklogScreen.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx
-- Tests: src/lib/storage/worklogDays.test.ts, src/components/worklog/useWorklogDay.test.tsx
-- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). `saveWorklogDay(client, ymd, day, bitFields?)`: **`bitFields`를 안 주면 `bit_fields` 칸을 보내지 않는다**(`[]`을 보내지 않는다, AC-016.2). TASK-5 시험의 "보내는 칸 20개"(`work_date` + 19)는 그대로이고, `bitFields`를 주면 21개다. 업무사항이 없다는 시험은 그대로. `loadWorklogDay`가 `{ day, bitFields } | null`을 돌려주게 바뀌므로 그것을 받는 화면 쪽(`WorklogScreen.tsx`의 `load`, `useWorklogDay`)도 이 TASK에서 같이 맞춘다(빌드가 깨지지 않게, 비트 표시·채우기는 TASK-17). 이 TASK부터 읽기 칸에 `bit_fields`가 들어가므로 0110 migration을 붙여 넣기 전에는 합치거나 배포하지 않는다(머리말 관문)
+- Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts, src/types/worklog.ts, src/components/worklog/WorklogScreen.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/WorklogScreen.test.tsx
+- Tests: src/lib/storage/worklogDays.test.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/WorklogScreen.test.tsx
+- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). `saveWorklogDay(client, ymd, day, bitFields?)`: **`bitFields`를 안 주면 `bit_fields` 칸을 보내지 않는다**(`[]`을 보내지 않는다, AC-016.2). TASK-5 시험의 "보내는 칸 20개"(`work_date` + 19)는 그대로이고, `bitFields`를 주면 21개다. 업무사항이 없다는 시험은 그대로. `loadWorklogDay`가 `{ day, bitFields } | null`을 돌려주게 바뀌므로 그것을 받는 화면 쪽(`WorklogScreen.tsx`의 `load`, `useWorklogDay`)도 이 TASK에서 같이 맞춘다(빌드가 깨지지 않게, 비트 표시·채우기는 TASK-17). `WorklogScreen.test.tsx`는 mock이 돌려주는 모양만 `{ day, bitFields: [] }`로 바꾸고 기대값은 그대로. 이 TASK부터 읽기 칸에 `bit_fields`가 들어가므로 0110 migration을 붙여 넣기 전에는 합치거나 배포하지 않는다(머리말 관문)
 
 ## TASK-17: 화면에서 비트로 채우기
 - Step: Phase 4 · Step 3 · `bit-screen`

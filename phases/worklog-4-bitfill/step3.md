@@ -77,7 +77,7 @@
 
 ## 작업
 
-- `useBitFill({ ymd, today, readOnly })` → `{ status: 'off' | 'reading' | 'ready' | 'unconfirmed' | 'failed' | 'not-connected' | 'setup-needed'; values: BitValues }`. `readOnly`(터치 기기 — 11-3절과 같은 판정)면 읽지 않는다. 통로 오류 `E-BRIDGE-REJECTED`·`E-HELPER-UNKNOWN-COMMAND`는 `setup-needed`('확장/도우미 새 버전' 안내, 매출 설계 5절과 같음)로, 그 밖의 읽기 오류만 `failed`로 오늘이면 10분 타이머(보일 때만). `bridge.call('revenue.days', { from: ymd, to: ymd })` → `bitValuesFrom(days[0])`
+- `useBitFill({ ymd, today, readOnly })` → `{ status: 'off' | 'reading' | 'ready' | 'unconfirmed' | 'failed' | 'not-connected' | 'setup-needed'; values: BitValues }`. `readOnly`(터치 기기 — 11-3절과 같은 판정)면 읽지 않는다. 통로 오류 `E-BRIDGE-REJECTED`·`E-HELPER-UNKNOWN-COMMAND`는 `setup-needed`('확장/도우미 새 버전' 안내, 매출 설계 5절과 같음)로, 그 밖의 읽기 오류만 `failed`로 간다. 오늘이면 10분 타이머(보일 때만). `bridge.call('revenue.days', { from: ymd, to: ymd })` → `bitValuesFrom(days[0])`
 - 자동 저장 길에 `bitFields`(design.md 20-4절): `autosave.change(ymd, day, bitFields?)`·`pendingDay(ymd)` → `{ day, bitFields? } | null`·`worklogSession`의 `save = (ymd, day, bitFields) => saveWorklogDay(supabaseBrowser(), ymd, day, bitFields)`. 화면은 그 날의 `bitFields`를 알면(읽은 줄·맞춘 결과) 늘 같이 넘기고, 모르면 넘기지 않는다
 - 화면: 읽은 값이 오면 `mergeBit` → 바뀌었으면 화면 값·`bitFields`를 바꾸고 `autosave.change`. 사람이 숫자 칸을 고치면 그 칸을 `bitFields`에서 뺀다
 - `WorklogSheet`: `bitFields` prop → 그 칸에 표시 클래스(`sheet.module.css`, 인쇄에서 숨김). `BitNotice`: 안내 한 줄 + '다름' 목록 + 표시 설명 줄(`print:hidden`)
