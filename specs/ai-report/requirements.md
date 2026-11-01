@@ -22,7 +22,7 @@
 - 이 명세가 바꾸는 옛 문서: `docs/ARCHITECTURE.md` '상태 관리'의 "월간 보고서는 저장하지 않는다"는 AI 리포트에서 바뀐다(월간 PDF 화면은 그대로 열 때마다 모은다). ADR-007의 "모델은 미정"은 Opus 5.5로 정해진다. TASK-1이 ADR-024으로 적는다.
 
 ## 고친 점 (2026-11-01, Phase 3 뒤 — 재승인 필요)
-- Phase 3(`ai-report-3-server-parts`)까지 만든 뒤 사용자 결정과 검토로 아래를 고친다. 고치는 일은 `phases/ai-report-3b-fixes`(TASK-1·5·7·8·10)가 한다. 각 TASK의 수정 범위(Files)는 그대로다.
+- Phase 3(`ai-report-3-server-parts`)까지 만든 뒤 사용자 결정과 검토로 아래를 고친다. 고치는 일은 1~8은 `phases/ai-report-3b-fixes`(TASK-1·5·7·8·10)가, 9~11은 `phases/ai-report-3c-fixes`(TASK-1·10)가 한다. 각 TASK의 수정 범위(Files)는 그대로다.
   1. 처방 이름이 비었거나 빈칸뿐이면 지표 이름에 처방 코드를 쓴다 **(사용자, 2026-11-01)** — AC-505.6 (TASK-5)
   2. 비용 기록은 청구된 모든 시도의 토큰을 더한다 **(사용자, 2026-11-01)** — AC-510.5 (TASK-10), AC-501.3 (TASK-1)
   3. 자료에 있는 이름 안의 숫자는 써도 된다 **(사용자, 2026-11-01)** — AC-507.6·AC-507.7 (TASK-7), AC-508.4 (TASK-8), AC-501.3 (TASK-1)
@@ -31,6 +31,9 @@
   6. REQ-508의 스키마 기준 문장에서 다른 AC 번호를 뺐다(`sdd status` 추적표에 엉뚱한 줄이 생기지 않게) (검토)
   7. 폭 없는 글자는 빈칸으로 본다, `__proto__` 열쇠가 든 답을 거부하는 시험 (검토) — AC-507.8·AC-507.9 (TASK-7)
   8. 조각 도중 거절 뒤 다른 모델이 이어 답하면, 마지막 `fallback` 블록 뒤의 글자만 쓴다 (검토) — AC-510.8 (TASK-10)
+  9. `plan.md` AI 분석 줄에 이름 안 숫자 예외(ADR-024)를 적는다. `plan.md`가 부딪힐 때 이기는 문서라, 빠져 있으면 사용자 결정과 어긋난다 (검토, 사용자 승인 2026-11-01) — AC-501.4 (TASK-1)
+  10. 같은 오류면 어떤 길로 오든 같은 문구를 보인다. 조각 도중 연결 끊김·끝맺지 않은 조각과 조각 도중 `timeout_error`는 `E-AI-BUSY`, 조각 도중 `billing_error`는 `E-AI-LIMIT`다. 설정·코드 잘못은 바쁘다고 말하지 않는다 (검토, 사용자 승인 2026-11-01) — AC-510.7·AC-510.9·AC-510.10 (TASK-10)
+  11. SDK 기본 로거가 조각·요청 글자를 찍지 않게 클라이언트에 `logLevel: 'off'`를 넣는다 (검토, 사용자 승인 2026-11-01) — AC-510.11 (TASK-10)
 
 ## 요구사항
 
@@ -38,6 +41,7 @@
 - AC-501.1: Given `docs/ADR.md`, When 읽으면, Then ADR-024이 있고 리포트 달마다 저장·덮어쓰기, 지문, 근거 숫자는 앱이 채움, 모델 `claude-opus-5-5`, 숫자 읽는 자리는 통계 명세 전까지 "자료 없음"을 적는다.
 - AC-501.2: Given `.env.example`, When 읽으면, Then `ANTHROPIC_API_KEY=` 줄(빈 값)과 "서버 전용, `NEXT_PUBLIC_` 금지" 설명이 있다. Given `.gitignore`, Then `.ai-try/`가 있다.
 - AC-501.3: Given `docs/ADR.md`의 ADR-024, When 읽으면, Then 비용 기록은 거절한 시도까지 청구된 모든 시도의 토큰(`usage.iterations`의 합)으로 센다는 줄과, AI 문장에 숫자를 쓰지 않되 자료에 있는 이름(글자와 숫자가 함께 든 이름)을 글자 그대로 쓴 숫자는 예외라는 줄이 있다.
+- AC-501.4: Given `plan.md` §2-3의 '리포트의 근거 숫자는 앱이 채운다' 줄, When 읽으면, Then AI 문장에 숫자를 쓰지 않는다는 뜻은 그대로이고, 같은 줄에 자료에 있는 이름(처방명·그룹명·동네 이름 가운데 글자와 숫자가 함께 든 것)을 글자 그대로 쓴 숫자는 예외이고 숫자로만 된 이름은 예외가 아니라는 말이 ADR-024과 같은 글자로 **(사용자, 2026-11-01)** 표시와 함께 있다.
 
 ### REQ-502: AI 오류 번호
 - AC-502.1: Given `errorInfo`, When `E-AI-BUSY`·`E-AI-LIMIT`·`E-AI-FAILED`·`E-AI-NO-DATA`를 찾으면, Then 넷 다 빈 글자가 아닌 what·fix가 있다. 네 문구에 "병원"이 없고 "니다."로 끝나는 문장이 없다(ui-90 문구 규칙).
@@ -99,8 +103,11 @@
 - AC-510.4: Given 열쇠 `ANTHROPIC_API_KEY`가 없음, When 부르면, Then SDK를 부르지 않고 `E-AI-FAILED`다.
 - AC-510.5: Given 답의 `usage.iterations`에 항목이 여럿(예: 거절한 시도 `message` + 대신 답한 시도 `fallback_message`), When 사용량을 돌려주면, Then 입력·출력 토큰은 모든 항목의 합이고 모델은 답의 `model`이다. `usage.iterations`가 없거나(null) 비면 맨 위 `usage` 값이다. 정상 답과 `refusal`·`max_tokens`로 끝난 답 모두 같다.
 - AC-510.6: Given `callClaude`, When SDK를 부르면, Then 요청 옵션에 끊기 신호(`signal`) 하나를 넣고, 그 신호는 부르기 시작부터 정해 둔 시간(`CALL_TIMEOUT_MS` = 100초) 뒤에 끊긴다. 신호가 끊겨 SDK가 던진 오류(`APIUserAbortError`)나 신호가 끊긴 뒤 온 어떤 오류든 `E-AI-BUSY`이고 사용량은 없다.
-- AC-510.7: Given 조각 받는 도중 온 오류(상태가 없는 `APIError`에 `type`이 있음), When 부르면, Then `type`이 `rate_limit_error`·`overloaded_error`·`api_error`면 `E-AI-BUSY`, 그 밖의 `type`(예: `invalid_request_error`·`authentication_error`)이면 `E-AI-FAILED`다.
+- AC-510.7: Given 조각 받는 도중 온 오류(상태가 없는 `APIError`에 `type`이 있음), When 부르면, Then `type`이 `rate_limit_error`·`overloaded_error`·`api_error`·`timeout_error`면 `E-AI-BUSY`, `billing_error`면 `E-AI-LIMIT`, 그 밖의 `type`(예: `invalid_request_error`·`authentication_error`·모르는 `type`)이면 `E-AI-FAILED`이고 사용량은 없다. 같은 오류가 HTTP 상태로 와도(504 `timeout_error`, 402 `billing_error`) 같은 번호다.
 - AC-510.8: Given 답의 `content`에 `fallback` 블록이 있음(조각 도중 거절한 모델의 덜 쓴 `text` → `fallback` 블록 → 대신 답한 모델의 `text`), When 글자를 돌려주면, Then 마지막 `fallback` 블록 뒤의 `text` 블록만 이어 붙인다(그 앞 글자는 버린다). `fallback` 블록이 없으면 모든 `text` 블록을 이어 붙인다. 사용량은 AC-510.5 그대로다.
+- AC-510.9: Given 조각 받는 도중 연결이 끊김(SDK가 `cause`에 `TypeError: terminated`를 담은 `AnthropicError`를 던짐), 또는 끝맺지 않고 닫힘(`message_stop` 없이 닫혀 SDK가 `stream ended without producing a Message with role=assistant`나 `request ended without sending any chunks`를 던짐), When 부르면, Then `E-AI-BUSY`이고 사용량은 없다. 끝까지 받은 답은 그대로 성공이다.
+- AC-510.10: Given SDK가 던진 `APIError` 아닌 `AnthropicError`인데 끊김·끝맺지 않음이 아님(예: 열쇠에 헤더에 못 쓰는 글자, `ANTHROPIC_BASE_URL`이 주소 모양이 아님, JSON으로 못 바꾸는 요청, 깨진 조각, 모양·순서가 틀린 조각, 몸통 없는 응답, `terminated`가 아닌 `TypeError`), When 부르면, Then `E-AI-FAILED`이고 사용량은 없으며 결과에 열쇠 글자가 없다(설정·코드 잘못을 바쁘다고 말하지 않는다).
+- AC-510.11: Given `callClaude`가 스스로 만든 SDK 클라이언트(`deps.client` 없음), When 깨진 조각이 오거나 `ANTHROPIC_LOG=debug`이거나 재시도되는 HTTP 오류가 오면, Then `console`의 어느 함수도 불리지 않는다(조각·요청 글자가 로그에 나오지 않는다). 클라이언트의 `timeout`·`maxRetries`는 그대로다.
 
 ### REQ-511: 리포트 만들기 흐름
 - AC-511.1: Given 고른 달 숫자가 없거나 검사(`validateMonthPayload`)를 못 넘음, When `generateReport`를 부르면, Then Claude를 부르지 않고 `E-AI-NO-DATA`다. 비교 달이 검사를 못 넘으면 그 달은 없는 달로 본다.

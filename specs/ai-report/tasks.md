@@ -10,14 +10,15 @@
 > - 시험부터 쓰고 RED를 본다(`python .claude/harness/bin/tdd-run TASK-n --expect red`). 새 시험 이름에 AC ID(AC-501.1 등)를 넣는다.
 > - 화면 코드(`src/app/(app)/**`·`src/components/**`)를 만들거나 고치지 않는다. `lib/payload`·`lib/analytics`·`lib/parsers`(환자 자료 구역)를 고치지 않는다(읽어서 쓰기만).
 > - 지어낸 숫자는 `fixtures/fake-ai/`와 시험 파일 안에만 둔다. 열쇠 값은 어디에도 쓰지 않는다(시험은 `sk-ant-fake…` 같은 가짜 글자).
-> - 진짜 Claude는 시험에서 부르지 않는다(가짜 클라이언트). 진짜 부름은 사용자가 `npm run ai:try`를 칠 때만.
+> - 진짜 Claude는 시험에서 부르지 않는다(가짜 클라이언트. TASK-10의 SDK 사실 시험은 진짜 SDK 클래스 + 가짜 `fetch`로, 네트워크가 없다). 진짜 부름은 사용자가 `npm run ai:try`를 칠 때만.
 > - 끝 조건: `npm test`·`npm run lint`(경고 0)·`npm run build` 통과. 이 PC의 기준선 실패(.NET 10 없음 등 46개, 2026-11-01)는 늘지 않아야 한다.
 >
-> **할 순서**: 6개 phase(`phases/ai-report-1-base` … `phases/ai-report-5-commands`, 3 다음에 고친 점 `ai-report-3b-fixes`)를 차례로 돈다. step 하나 = TASK 하나. 한 phase의 step이 모두 끝나야 다음 phase로 간다.
+> **할 순서**: 7개 phase(`phases/ai-report-1-base` … `phases/ai-report-5-commands`, 3 다음에 고친 점 `ai-report-3b-fixes`·`ai-report-3c-fixes`)를 차례로 돈다. step 하나 = TASK 하나. 한 phase의 step이 모두 끝나야 다음 phase로 간다.
 > 1. `ai-report-1-base`(차례로): TASK-1 → TASK-2 → TASK-5. 뒤의 모든 TASK가 TASK-5의 `src/types/aiReport.ts`를 쓰고, 그 `AiErrorCode`는 TASK-2가 더한 오류 번호에 맞춘다.
 > 2. `ai-report-2-parts`(병렬 가능): TASK-3 · TASK-4 · TASK-6 · TASK-8 · TASK-9. 다섯 모두 1의 타입(또는 기존 코드)만 쓰고 서로의 결과를 쓰지 않으며, 수정 범위가 겹치지 않는다.
 > 3. `ai-report-3-server-parts`(병렬 가능): TASK-7 · TASK-10 · TASK-11. TASK-7은 TASK-6의 근거 줄을, TASK-11은 TASK-4의 함수 이름·인자를 쓴다(둘 다 2에서 끝남). 셋은 서로의 결과를 쓰지 않고 파일이 겹치지 않는다(`package.json`·`package-lock.json`은 TASK-10만).
 > 3b. `ai-report-3b-fixes`(병렬 가능, 고친 명세 재승인 뒤): TASK-1 · TASK-5 · TASK-7 · TASK-8 · TASK-10의 '할 일(3b)'(requirements.md '고친 점'). 다섯은 서로의 결과를 쓰지 않고 수정 범위가 겹치지 않는다. `npm install`은 없다(`package.json`·`package-lock.json`을 고치지 않는다). TASK-7은 처방 지표 이름의 모양(`처방 '<이름>' 환자`)만 보고 그 안이 이름이든 코드든 같게 다루므로, TASK-5의 코드 대신 쓰기와 동시에 돌아도 된다.
+> 3c. `ai-report-3c-fixes`(차례로, 고친 명세 재승인 뒤, 3b 다음·4 앞): TASK-1 → TASK-10의 '할 일(3c)'(requirements.md '고친 점' 9~11). 둘은 서로의 결과를 쓰지 않고 수정 범위가 겹치지 않는다. `npm install`은 없다(`package.json`·`package-lock.json`을 고치지 않는다).
 > 4. `ai-report-4-flow`(차례로): TASK-12 → TASK-13 → TASK-14. 흐름(TASK-12)이 앞 부품을 모두 쓰고, 경로(TASK-13)가 흐름을 부르고, 울타리 시험(TASK-14)이 다 만든 `src/app/api/ai/`·`src/lib/ai/` 파일을 본다.
 > 5. `ai-report-5-commands`(차례로): TASK-15 → TASK-16. 둘 다 `package.json`을 고치고, TASK-16의 시험은 TASK-15가 `vitest.config.ts`에 더한 `scripts/**/*.test.ts`로 잡힌다.
 >
@@ -27,7 +28,7 @@
 - REQ: REQ-501
 - Files: docs/ADR.md, docs/ARCHITECTURE.md, plan.md, .env.example, .gitignore, e2e/lib/env.test.ts
 - TDD: exempt — 문서와 설정 글자만 고친다. 앱 코드가 없다. `e2e/lib/env.test.ts`는 `.env.example` 값 이름 기대치에 AI 열쇠 하나를 더할 뿐이다.
-- 확인: docs/ADR.md에 ADR-024, .env.example에 ANTHROPIC_API_KEY 줄, .gitignore에 .ai-try/ 줄이 있는지 찾아본다. 3b: ADR-024 안에 `usage.iterations`와 `자료에 있는 이름` 글자가 있는지 찾아본다(AC-501.3).
+- 확인: docs/ADR.md에 ADR-024, .env.example에 ANTHROPIC_API_KEY 줄, .gitignore에 .ai-try/ 줄이 있는지 찾아본다. 3b: ADR-024 안에 `usage.iterations`와 `자료에 있는 이름` 글자가 있는지 찾아본다(AC-501.3). 3c: `plan.md`의 '리포트의 근거 숫자는 앱이 채운다' 줄에 `자료에 있는 이름` 글자가 있는지 찾아본다(AC-501.4).
 - 할 일:
   - `docs/ADR.md`: ADR-024(requirements 배경 1·5·6·8과 design '결정과 트레이드오프' 요약). ADR-007 끝에 "모델·저장: ADR-024" 한 줄.
   - `docs/ARCHITECTURE.md`: DB 표에 `ai_reports`(달별 AI 리포트·지문) 줄, AI 흐름에 저장 단계, '상태 관리'의 월간 보고서 줄을 "AI 리포트는 달마다 저장(ADR-024), 채팅·월간 PDF는 저장하지 않는다"로.
@@ -40,6 +41,8 @@
   - ADR-024 **결정**의 '근거 숫자는 앱이 채운다' 줄 끝에 한 문장: AI 문장에는 숫자를 쓰지 않되, 자료에 있는 이름(처방명·그룹명·동네 이름 가운데 글자와 숫자가 함께 든 것)을 글자 그대로 쓴 숫자는 예외다. 숫자로만 된 이름은 예외가 아니다 **(사용자, 2026-11-01)**.
   - ADR-024 **결정**에 '비용' 줄 하나: 비용 기록은 거절하고 다른 모델이 대신 답한 경우 거절한 시도까지, 청구된 모든 시도의 토큰(`usage.iterations`의 합)으로 센다. 값은 마지막에 답한 모델 값(표에 없으면 표에서 가장 비싼 값) **(사용자, 2026-11-01)**.
   - 옛 문장은 지우지 않는다. 다른 ADR·문서는 고치지 않는다.
+- 할 일(3c, 2026-11-01 고친 점 9) — `plan.md`만, 그 한 줄만:
+  - `plan.md §2-3` '리포트의 근거 숫자는 앱이 채운다' 줄의 `ADR-024).` 뒤에 ADR-024과 같은 글자를 잇는다: 다만 자료에 있는 이름(처방명·그룹명·동네 이름 가운데 글자와 숫자가 함께 든 것)을 글자 그대로 쓴 숫자는 예외다. 숫자로만 된 이름은 예외가 아니다 **(사용자, 2026-11-01)**. 그 줄의 나머지 글자는 그대로 둔다.
 
 ## TASK-2: AI 오류 번호 넷
 - REQ: REQ-502
@@ -117,6 +120,10 @@
   - 조각 도중 오류(AC-510.7): 상태 없는 `APIError`의 `type`이 `rate_limit_error`·`overloaded_error`·`api_error`면 BUSY, 그 밖의 `type`이면 FAILED. 시험에 "그 밖의 type → FAILED"를 꼭 넣는다.
   - 대신 답한 글자만(AC-510.8): `content`에 `type: 'fallback'` 블록이 있으면 마지막 그 블록 뒤의 `text` 블록만 이어 붙인다. 없으면 지금처럼 모든 `text`. 가짜 답의 블록 타입에 `fallback`을 허용한다.
   - 시험 이름에 AC-510.5·AC-510.6·AC-510.7·AC-510.8. 끊기 시험은 `deps.timeoutMs`를 짧게(예: 20ms) 넣고 가짜 클라이언트가 신호가 끊길 때 `APIUserAbortError`로 실패하게 한다. 진짜 SDK·진짜 Claude는 부르지 않는다.
+- 할 일(3c, 2026-11-01 고친 점 10·11) — `src/app/api/ai/claude.ts`·`claude.test.ts`만. `npm install` 없음(`package.json`·`package-lock.json`은 고치지 않는다):
+  - 오류 나누기(AC-510.7·AC-510.9·AC-510.10, design '오류 나누기' 1~6): 신호·`APIUserAbortError`는 여전히 맨 앞이다. 상태 없는 `timeout_error` → BUSY, 상태 없는 `billing_error` → LIMIT. `APIError`가 아닌 `AnthropicError`는 `cause`가 `TypeError`이고 그 글자가 `terminated`이거나, `message`가 정해 둔 글자 둘 가운데 하나면 BUSY, 그 밖은 FAILED. "`APIError`가 아닌 `AnthropicError`면 BUSY" 같은 넓은 규칙은 쓰지 않는다(설정·코드 잘못을 바쁘다고 말한다).
+  - SDK 로그 끄기(AC-510.11): `new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1, logLevel: 'off' })`. 3b의 "클라이언트 설정은 그대로"를 이 칸 하나만 바꾼다.
+  - 시험: 지금 시험은 늘 `deps.client`를 넣어 `new Anthropic` 줄을 돌리지 않고, 클라이언트 설정을 고정하지도 않는다. 그래서 새 시험은 `deps.client` 없이 진짜 SDK 클래스 + 가짜 `fetch`(`vi.stubGlobal`)로 돌린다. 네트워크·진짜 Claude는 쓰지 않는다. 위 3b의 "진짜 SDK는 부르지 않는다"는 이 시험에 한해 바뀐다. `console`은 시험마다 새 객체로 바꾼다(SDK가 로거를 console 객체별로 캐시해 `vi.spyOn`은 놓친다).
 
 ## TASK-11: 저장 (숫자 읽는 자리·리포트 저장·사용량 기록)
 - REQ: REQ-511

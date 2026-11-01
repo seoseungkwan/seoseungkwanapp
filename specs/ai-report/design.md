@@ -141,7 +141,10 @@ export type ClaudeResult =
 export const CALL_TIMEOUT_MS = 100_000   // 부르기 전체 시간 한도(아래 '전체 시간 한도')
 export async function callClaude(req: { system: string; user: string; schema: object }, deps?: { client?: AnthropicLike; apiKey?: string; timeoutMs?: number }): Promise<ClaudeResult>
 ```
-- `new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1 })`. 열쇠는 `process.env.ANTHROPIC_API_KEY`만(없으면 `E-AI-FAILED`, SDK를 만들지 않는다).
+- `new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1, logLevel: 'off' })`. 열쇠는 `process.env.ANTHROPIC_API_KEY`만(없으면 `E-AI-FAILED`, SDK를 만들지 않는다).
+  - **SDK 로그 끄기** (검토, 사용자 승인 2026-11-01): AI 경로는 오류 번호·경로만 로그에 남긴다(CLAUDE.md, plan §8). 그런데 SDK 기본 로거(수준 `warn`)는 깨진 조각이 오면 `core/streaming.js`에서 조각 글자를 `console.error`로 찍고, `ANTHROPIC_LOG=debug`면 요청 글자까지 찍는다. `logLevel: 'off'`면 둘 다 나오지 않는다(SDK 1.3.0 소스·실행으로 확인): `client.js` 생성자가 `parseLogLevel(options.logLevel) ?? parseLogLevel(ANTHROPIC_LOG) ?? 'warn'` 차례로 정하므로 옵션이 환경 변수를 이기고, `internal/utils/log.js` `makeLogFn`은 `off`면 모든 함수를 빈 함수로 둔다. 조각을 읽는 쪽의 로거도 같은 클라이언트의 것이다(`fromSSEResponse(response, controller, client)` → `loggerFor(client)`).
+  - 이 옵션이 닿지 않는 곳: `resources/beta/messages/messages.js`의 `console.warn` 둘(없어질 모델·`thinking.type=enabled` 경고)과 `lib/beta-parser.js`의 `parsed` 경고. 이 부름에는 해당이 없고(`claude-opus-5-5`는 그 목록에 없고, `thinking`을 보내지 않고, `parsed`를 읽지 않는다) 자료 글자도 찍지 않는다.
+  - 값: `npm run ai:try`도 같은 클라이언트라 `ANTHROPIC_LOG=debug`로 들여다볼 수 없다. 로그 규칙을 지키는 값이다.
 - **전체 시간 한도** (검토, 2026-11-01): SDK `timeout`은 시도 한 번의 응답 머리(headers)를 기다리는 시간만 잰다 — SDK 1.3.0 `client.js` `fetchWithTimeout`이 타이머를 밑의 `fetch`에만 걸고(주석 "Arm the timeout around the underlying fetch only"), 조각 몸통을 받는 동안은 재지 않는다. `maxRetries: 1`이면 머리 기다림이 한 번 더 붙는다. 그래서 부를 때마다 `AbortSignal.timeout(deps?.timeoutMs ?? CALL_TIMEOUT_MS)` 신호를 만들어 `stream(params, { signal })`의 두 번째 인자(요청 옵션)로 넣는다.
   - 신호 하나가 재시도까지 덮는다(SDK 1.3.0 소스로 확인): `makeRequest`가 시도마다 `options.signal.aborted`를 보고 `APIUserAbortError`를 던지고, 재시도 사이 기다림 `retryRequest → sleep(ms, options.signal)`도 그 신호로 깨며, 재시도는 같은 `options`(같은 신호)로 다시 부른다. `BetaMessageStream`은 받은 신호를 자기 controller에 이어 조각 읽기(`for await`)도 끊고, 끊기면 `APIUserAbortError`로 끝난다.
   - `CALL_TIMEOUT_MS` = 100초: 경로 `maxDuration` 120초에서 로그인 확인·숫자 읽기·저장·사용량 기록·답 보내기 몫으로 20초를 남긴다. `deps.timeoutMs`는 시험이 짧게 넣는 칸이다.
@@ -155,13 +158,21 @@ export async function callClaude(req: { system: string; user: string; schema: ob
 - 사용량 **(사용자, 2026-11-01)**: `usage.iterations`가 비지 않은 배열이면 모든 항목의 `input_tokens`·`output_tokens` 합, 아니면(null·없음·빈 배열) 맨 위 `usage.input_tokens`·`output_tokens`. 모델은 답의 `model`(마지막에 답한 모델). 정상 답·`refusal`·`max_tokens` 모두 같은 규칙.
   - 까닭(claude-api skill `shared/model-migration.md` refusal 절 'Billing', SDK 1.3.0 `BetaIterationsUsage` 타입으로 확인): 서버 쪽 대신 답하기(`fallbacks`)를 쓰면 맨 위 `usage`는 돌려받은 답을 만든 시도 몫만 담고, 시도마다의 사용량은 `usage.iterations`에 있다 — 요청한 모델의 시도는 `type: 'message'`, 대신 답한 모델의 시도는 `type: 'fallback_message'`(둘 다 `input_tokens`·`output_tokens`·`model` 칸). 조각 도중 거절한 시도는 보통 값으로 청구된다. 출력 전에 거절한 시도는 거절 종류에 따라 청구되지 않을 수 있지만 더해 센다(적게 세지 않게).
   - 이 부름은 압축(compaction)·조언(advisor)을 쓰지 않아 그 항목은 나오지 않는다. 나오더라도 모두 더한다.
-- 오류 나누기(위에서부터 처음 맞는 것):
-  1. 우리 신호가 끊겼거나(`signal.aborted`) 오류가 `APIUserAbortError` → BUSY (전체 시간 한도. `APIUserAbortError`는 상태·`type`이 없는 `APIError`라 아래 4보다 먼저 본다)
+- 오류 나누기(위에서부터 처음 맞는 것). 같은 오류면 HTTP 상태로 오든 조각 도중 오든 같은 번호다 (검토, 사용자 승인 2026-11-01):
+  1. 우리 신호가 끊겼거나(`signal.aborted`) 오류가 `APIUserAbortError` → BUSY (전체 시간 한도. `APIUserAbortError`는 상태·`type`이 없는 `APIError`라 아래 4보다 먼저 본다. 신호가 끊긴 뒤 온 오류는 무엇이든 여기서 끝난다)
   2. `RateLimitError`(429)·`InternalServerError`(5xx·529)·`APIConnectionError`(그 아래 `APIConnectionTimeoutError`) → BUSY
   3. `APIError`이고 `status === 402` → LIMIT
-  4. `APIError`이고 `status`가 없음 = 조각 받는 도중 온 오류 (검토, 2026-11-01): SDK 1.3.0 `core/streaming.js`는 SSE `error` 이벤트를 `new APIError(undefined, body, undefined, headers, body.error.type)`로 던진다. `type`이 `rate_limit_error`·`overloaded_error`·`api_error` → BUSY, 그 밖의 `type`(`invalid_request_error` 등)·`type` 없음 → FAILED
-  5. 나머지 → FAILED
-- 시험은 가짜 클라이언트(`AnthropicLike` — `beta.messages.stream(params, options?: { signal?: AbortSignal })`만 있는 작은 모양, 진짜 SDK도 이 모양에 맞는다)를 넣는다. SDK를 진짜로 부르지 않는다.
+  4. `APIError`이고 `status`가 없음 = 조각 받는 도중 온 오류 (검토, 2026-11-01): SDK 1.3.0 `core/streaming.js`는 SSE `error` 이벤트를 `new APIError(undefined, body, undefined, headers, body.error.type)`로 던진다. `type`이 `rate_limit_error`·`overloaded_error`·`api_error`·`timeout_error` → BUSY, `billing_error` → LIMIT, 그 밖의 `type`(`invalid_request_error`·`authentication_error`·`permission_error`·`not_found_error`·모르는 `type`)·`type` 없음 → FAILED. HTTP 상태로 올 때와 같다: 504 `timeout_error`는 2, 402 `billing_error`는 3
+  5. `APIError`가 아닌 `AnthropicError`이고 아래 둘 중 하나 = 조각이 끊겼거나 끝맺지 않음 → BUSY, 사용량 없음:
+     - `err.cause instanceof TypeError && err.cause.message === 'terminated'` (연결 끊김)
+     - `err.message`가 정확히 `stream ended without producing a Message with role=assistant`(`message_start`는 왔는데 `message_stop` 없이 닫힘) 또는 `request ended without sending any chunks`(`message_start` 없이 닫힘)
+  6. 나머지 → FAILED (상태가 있는 그 밖의 `APIError`, 5에 맞지 않는 `AnthropicError`, SDK 밖의 오류)
+  - 5가 좁은 까닭(SDK 1.3.0 소스와 진짜 SDK 클래스 + 가짜 `fetch` 실행으로 확인): `lib/BetaMessageStream.js`의 `_handleError`는 부르기 안에서 난 모든 `Error`를 `new AnthropicError(error.message)`로 감싸고 `cause`에 원본을 넣는다. 그래서 "`APIError`가 아닌 `AnthropicError`면 BUSY"나 "`cause`가 `TypeError`면 BUSY"로 쓰면 진짜 잘못을 바쁘다고 말한다: 열쇠에 헤더에 못 쓰는 글자(한글·가운데 줄바꿈 → `TypeError`), `ANTHROPIC_BASE_URL`이 주소 모양이 아님(`TypeError: Invalid URL`), JSON으로 못 바꾸는 요청(`TypeError`), 모양이 틀린 조각(SDK 안의 `TypeError`). 깨진 조각(`SyntaxError`), 순서가 어긋난 조각(`Unexpected event order…`), 몸통 없는 응답(`Attempted to iterate over a response with no body`)도 FAILED로 둔다.
+  - `terminated`의 출처: Node 24.15에 든 undici 7.24의 `fetch`는 몸통을 읽는 도중 연결이 깨지면 원인과 상관없이 `new TypeError('terminated', { cause })`로 몸통을 끝낸다(소스로 확인). `finalMessage()`로는 언제나 감싼 모양으로 온다(`_run`이 실패를 모두 `_handleError`로 보낸다). `fetch()` 자체가 실패하면(머리를 받기 전) 글자가 `terminated`여도 SDK가 `APIConnectionError`로 바꿔 2에 걸린다. 그래서 감싸지 않은 `TypeError`는 보지 않는다.
+  - 이 부름에 닿지 않는 `AnthropicError`(소스로 확인): `Failed to parse structured output`(`output_config.format`에 `parse`가 없어 `maybeParseBetaMessage`가 파싱하지 않는다 — JSON이 잘린 `max_tokens` 답도 그대로 돌아온다), `Both output_format and output_config.format…`(`output_format`을 보내지 않는다), 열쇠 함수·프로필 오류(열쇠를 글자로 넘긴다), 브라우저 환경 오류(`new Anthropic`은 `try` 밖이고 서버에서만 돈다).
+  - 남는 한계: 주소 모양은 맞지만 틀린 `ANTHROPIC_BASE_URL`은 `fetch` 실패 → `APIConnectionError` → 2로 BUSY다. 진짜 연결 실패와 구별할 수 없다. 이 앱은 이 변수를 쓰지 않는다(`.env.example`에 없다).
+  - 사용량: 끊긴 부름은 SDK가 답을 돌려주지 않아 사용량을 모른다. 청구가 됐어도 기록되지 않는다(시간 한도로 끊긴 부름과 같다). 정확한 청구는 콘솔이 기준이다('결정과 트레이드오프' 사용량 기록).
+- 시험은 가짜 클라이언트(`AnthropicLike` — `beta.messages.stream(params, options?: { signal?: AbortSignal })`만 있는 작은 모양, 진짜 SDK도 이 모양에 맞는다)를 넣는다. 다만 SDK 안쪽 사실에 기대는 것(끊김·끝맺지 않음의 오류 모양과 글자, 생성자의 `logLevel`)은 `deps.client`를 넣지 않고 진짜 SDK 클래스 + 가짜 `fetch`(`vi.stubGlobal`)로 본다. 네트워크·진짜 Claude는 쓰지 않고 열쇠는 가짜다. SDK 판을 올려 글자가 바뀌면 이 시험이 잡는다.
 
 ## 저장 (`src/app/api/ai/store.ts`)
 
@@ -266,6 +277,7 @@ create table public.ai_usage (
 - **쓰기는 DB 함수로만**: 승인 확인을 DB가 한다. 다만 사용자 세션으로 쓰는 구조라, 마음먹은 사용자는 브라우저에서 같은 함수를 불러 자기 병원 리포트·사용량을 꾸밀 수 있다 — 자기 자료만이고, 화면은 글자로만 그리며(HTML 없음), 실제 비용 한도는 Anthropic 콘솔이 지킨다. service role 키를 두지 않는 규칙을 지키는 값이다.
 - **사용량 기록**: Claude가 사용량을 준 모든 부름. 토큰은 그 부름 안에서 청구된 모든 시도의 합(`usage.iterations`) **(사용자, 2026-11-01)**. 화면 표시용이고 정확한 청구는 콘솔이 기준이다.
 - **조각 받기 + 한 번에 답**: 서버 시간 초과는 피하고 화면은 단순하게.
+- **끊김은 SDK 글자로 알아본다** (검토, 사용자 승인 2026-11-01): SDK가 끊김·끝맺지 않음을 따로 나타내는 오류 종류를 주지 않아, `terminated`와 정해 둔 오류 글자 둘로 본다. 글자가 바뀌면 BUSY가 FAILED로 떨어진다 — 거짓으로 바쁘다고 하지 않는 쪽이고, 두 문구 모두 다시 누르라고 안내한다. SDK는 1.3.0으로 고정돼 있고, 진짜 SDK 클래스 시험이 글자를 지킨다.
 - **fallbacks: "default"**: 안전 분류기가 드물게 거절하면 서버가 다른 모델로 다시 돌린다. 그 모델 가격이 표에 없으면 비싸게 센다.
 - **입력 크기**: 처방 상위 30·동네 상위 20으로 줄인다(처방 5,000개를 다 보내지 않는다). 리포트에 필요한 큰 흐름은 남는다.
 
@@ -277,3 +289,4 @@ create table public.ai_usage (
 4. 윈도우 PC 줄바꿈: 이 PC의 git이 파일을 CRLF로 꺼내 "첫 줄" 시험(AC-513.2)이 흔들릴 수 있다. 시험은 `split(/\r?\n/)`로 본다.
 6. middleware: 로그인 안 한 `/api/ai/report` 요청을 middleware가 `/login`으로 돌려보낼 수 있다(화면은 401 대신 이동을 받는다). middleware는 이 명세 범위 밖 — 화면 명세에서 다룬다.
 5. 옆 갈래(ui-90)와 겹침: 이 명세는 `lib/errors.ts`·`types/errors.ts`·`package.json`·`.gitignore`·`.env.example`·문서 셋만 기존 파일을 고친다. 합칠 때 그 파일만 살핀다.
+7. 진짜 연결 끊김: `terminated` 모양은 undici 소스와 가짜 `fetch`로 확인했고, 진짜 소켓을 끊어 보지는 않았다(네트워크 없이 확인). 배포 환경의 Node 판에서 글자가 다르면 BUSY 대신 FAILED로 떨어진다(거짓 BUSY는 아니다).
