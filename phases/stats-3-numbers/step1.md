@@ -9,7 +9,7 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-510(원장님 보고 문장 (`lib/clinicReport/reportText.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-510.1**: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatClinicReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 적지 않은 차이는 실패다
+- **AC-510.1**: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatClinicReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 적지 않은 차이는 실패다. 음수 금액은 원본이 찍는 그대로 찍는다("-1,000원"). 골든에 음수 금액이 든 사례가 있고, 건당진료비까지 정확한 글은 그 골든이 정한다
 - **AC-510.2**: Given 금액 확인 필요 벌, When 만들면, Then 원본처럼 금액 줄은 "확인 필요"이고 다른 숫자는 그대로이며, 돌려주는 `unconfirmedLines`에 그 줄 번호들이 있다
 - **AC-510.3**: Given 오늘보다 뒤 날짜·달, When 만들려 하면, Then 글을 만들지 않고 `{ error: 'future-date' }`다. `{ ok: false }` 벌이면 `{ error: 'unconfirmed', reason }`이다
 - **AC-510.4**: Given `src/types/clinicReport.ts`의 입력 모양(`ClinicReportNumbers`), When 열쇠를 보면, Then 집계 숫자·기간·병원 이름뿐이다(`chart`·`name`·`rows`·`patient` 칸 없음). 시험이 열쇠 목록을 못 박는다
@@ -39,7 +39,7 @@
 - 원본 시험(`tests/*.py`·`*Tests.cs`)은 모두 가짜 자료다. 사례를 시험 씨앗으로 옮겨도 된다
 
 - 이 step에서 볼 원본(폴더 `YangjiBareun_사전점검/` 기준):
-  - `medicore/reports.py` (`format_report`·`report_notes`·`validate_report`·`validate_period`·`_won`·`TREATMENTS`)
+  - `medicore/reports.py` (`format_report`·`report_notes`·`validate_report`·`validate_period`·`_amount`·`_won`·`TREATMENTS`)
   - `tests/test_reports*.py` 등 보고 시험(있으면 사례로)
   - `vendor/drbit_export/OperationalReportData.cs` (`SetFinanceUnconfirmed` 사유 글)
 
@@ -70,7 +70,7 @@
 ### 1. 코드 (`src/lib/clinicReport/reportText.ts`, 환자 구역 밖 — 숫자만 받는다)
 - 함수 이름 `formatClinicReport`. `src/lib/report/*`·`src/types/report.ts`는 `feat-ai-report` 몫이라 쓰지 않는다(cross-branch C6)
 - design.md TASK-10 시그니처. 원본 `format_report`·`report_notes`의 줄을 그대로 옮긴다(제목 줄·띄어쓰기·치료 차례(일일·월말이 다름)·LA 줄·"신환 내원경로" 고정 줄·"고생하셨습니다 !!")
-- 금액·건당진료비: 원 미만 버림(`Math.floor`), 천 단위 쉼표 + "원"(AC-510.1 `knownDiffs`)
+- 금액·건당진료비: 원 미만 버림(`Math.trunc` — `Math.floor`는 음수를 0에서 멀어지게 한다, AC-504.4와 같다), 천 단위 쉼표 + "원"(AC-510.1 `knownDiffs`). 음수 금액은 원본처럼 "-1,000원"이다(AC-510.1)
 - 확인 필요(AC-510.2): 원본처럼 금액 자리를 "확인 필요"로, 사유 줄, `unconfirmedLines` = 그 줄 번호(0부터)
 - 미래(AC-510.3): 일일은 그 날이 오늘보다 뒤, 월말은 그 달이 이번 달보다 뒤면 `{ error: 'future-date' }`. `ok: false` 벌은 `{ error: 'unconfirmed', reason }`
 
@@ -78,7 +78,7 @@
 - 입력 열쇠는 숫자·기간·병원 이름뿐. 시험이 `Object.keys`로 못 박는다(AC-510.4)
 
 ### 3. 골든 (`scripts/stats/golden/reports.py` → `fixtures/stats/golden/report-*.json`)
-- 원본 `format_report`·`report_notes`를 `python3 -I`로: 일일 보통 날, 일일 확인 필요, 월말 LA 있음, 월말 LA 없음, 총환 0명. 입력은 원본 `validate_report`를 지나는 가짜 값(병원 이름 "가상의원", `profile_id`·`institution_code`는 가짜 모양)
+- 원본 `format_report`·`report_notes`를 `python3 -I`로: 일일 보통 날, 일일 확인 필요, 월말 LA 있음, 월말 LA 없음, 총환 0명, 음수 금액(건당진료비 글자까지 골든이 정한다). 입력은 원본 `validate_report`를 지나는 가짜 값(병원 이름 "가상의원", `profile_id`·`institution_code`는 가짜 모양)
 - `knownDiffs`: 원 미만 금액 버림(원본 `ROUND_HALF_UP`) — 골든 입력에 원 미만 금액 사례를 하나 넣어 차이가 그 줄뿐인지 시험이 본다
 
 ## TDD 순서

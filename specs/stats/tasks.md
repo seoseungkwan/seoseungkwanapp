@@ -54,6 +54,7 @@
 - TDD: required
 - `src/types/clinicReport.ts`는 보고 숫자 모양(`ClinicReportNumbers`)만 이 TASK에서 만든다. 글 만들기는 TASK-10. `src/types/report.ts`·`ReportNumbers`·`src/lib/report/*`는 `feat-ai-report` 몫이라 쓰지 않는다(C6)
 - 오류 번호 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`을 `types/errors.ts`·`lib/errors.ts` 끝에 더한다
+- TASK-5는 이미 커밋되었다. 2026-11-01에 바뀐 AC-505.2(금액 6칸 음수 가능)는 이 TASK의 지금 Files 안(`helperData.ts`·`helperData.test.ts`)에서 뒤따라 고친다
 
 ## Phase 2 · 저장과 처방 추세 (`phases/stats-2-save`)
 
@@ -119,6 +120,7 @@
 - Files: docs/mockups/stats/index.html, docs/mockups/stats/notes.md, docs/mockups/stats/gen.py, docs/mockups/stats/app.js
 - TDD: exempt — 클릭 목업(눌러 볼 수 있는 시안, CLAUDE.md)과 메모만 만든다. 앱 코드가 없다
 - 끝 조건: 온라인 시안 링크를 사용자에게 드리고 승인을 받는다. 승인 전에는 step을 `blocked`(사유: 목업 승인 대기)로 둔다. 승인 뒤 고칠 곳이 나오면 시안을 고치고 다시 묻는다. 승인본이 이 명세의 화면 AC와 다르면(차례·문구) AC-513.1의 '목업이 이긴다'를 따르고, 동작이 다르면 명세를 고쳐 다시 승인받는다
+- 2026-11-01 목업 변경(30일 caption, '일부 기간' 표시, "비교할 수 없음")은 사용자 OK가 있어야 TASK-13~16을 시작한다. TASK-11까지는 이 OK를 기다리지 않는다
 
 ## Phase 4 · 화면 (`phases/stats-4-screen`)
 
@@ -126,10 +128,11 @@
 - Step: Phase 4 · Step 0 · `stats-sections`
 - AC: AC-513.1~AC-513.11
 - REQ: REQ-513
-- Files: src/components/stats/sections/*, src/components/ui/classes.test.ts
-- Tests: src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/PatientTrendSection.test.tsx, src/components/stats/sections/RevisitSection.test.tsx, src/components/stats/sections/RxTrendSection.test.tsx, src/components/stats/sections/RxSplitSection.test.tsx, src/components/stats/sections/ReportSection.test.tsx, src/components/stats/sections/WeekdaySection.test.tsx, src/components/stats/sections/DetailToggle.test.tsx, src/components/stats/sections/CopyButton.test.tsx, src/components/ui/classes.test.ts
+- Files: src/components/stats/sections/*, src/components/ui/classes.test.ts, src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx
+- Tests: src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/PatientTrendSection.test.tsx, src/components/stats/sections/RevisitSection.test.tsx, src/components/stats/sections/RxTrendSection.test.tsx, src/components/stats/sections/RxSplitSection.test.tsx, src/components/stats/sections/ReportSection.test.tsx, src/components/stats/sections/WeekdaySection.test.tsx, src/components/stats/sections/DetailToggle.test.tsx, src/components/stats/sections/CopyButton.test.tsx, src/components/ui/classes.test.ts, src/components/charts/StackedBarChart.test.tsx
 - TDD: required
 - `classes.test.ts`는 `APP_DIRS`에 `'src/components/stats'` 한 줄만 더한다
+- `StackedBarChart`는 선택 값 `comparison` 하나만 더한다(AC-513.2). 지금 시험은 고치지 않는다
 
 ## TASK-14: 통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰)
 - Step: Phase 4 · Step 1 · `stats-screen`

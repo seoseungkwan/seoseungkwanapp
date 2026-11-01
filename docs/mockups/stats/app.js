@@ -120,7 +120,7 @@
             '<span class="rk-v"><b>' + x.v + '명</b><span>' + x.pct + '</span></span></li>';
         }).join('') + '</ul><p class="ch-n">' + esc(F.note) + '</p>';
       } else {
-        first = '<h3 class="h3">첫 재방문까지 날수</h3><p class="none"><b>집계 중</b> · ' + esc(R.firstMsg) + '</p>';
+        first = '<h3 class="h3">첫 재방문까지 날수</h3>' + (R.firstNone ? none(R.firstMsg) : '<p class="none"><b>집계 중</b> · ' + esc(R.firstMsg) + '</p>');
       }
       var trs = R.rows.map(function (r) { return [r.n, r.k === 'rate' ? r.num + '명' : '–', r.k === 'rate' ? r.den + '명' : '–', r.k === 'rate' ? '<b>' + r.v + '</b>' : (r.k === 'wip' ? '집계 중' : '자료 없음')]; });
       if (F) F.items.forEach(function (x) { trs.push(['첫 재방문 ' + x.n, x.v + '명', F.total + '명', x.pct]); });
@@ -130,16 +130,17 @@
     rx: function (P, uid) {
       var X = P.rx;
       if (!X) return head('처방 추세') + none('불러오면 많이 낸 처방 5가지와 그 흐름이 보여요.');
-      var hd = '<div class="rxh" aria-hidden="true"><span>처방</span><span class="n">' + esc(X.label) + '</span><span>' + esc(X.cmpName) + '보다</span><span>신환 · 재진</span><span></span></div>';
+      var wide = X.rows.some(function (r) { return r.partial; }) ? ' has-part' : '';
+      var hd = '<div class="rxh' + wide + '" aria-hidden="true"><span>처방</span><span class="n">' + esc(X.label) + '</span><span>' + esc(X.cmpName) + '보다</span><span>신환 · 재진</span><span></span></div>';
       var list = X.rows.map(function (r) {
         var id = uid + '-rx-' + r.code;
         return '<li><button type="button" class="rxr" data-act="rx" data-key="rx:' + r.code + '" aria-expanded="false" aria-controls="' + id + '">' +
           '<span class="rx-nm"><span class="rx-t">' + esc(r.name) + '</span><span class="ib" aria-hidden="true"><i style="width:' + r.w + '%"></i>' +
           (r.pw == null ? '' : '<b style="left:' + r.pw + '%"></b>') + '</span></span>' +
-          '<span class="rx-c">' + r.cnt + '</span><span class="rx-d">' + delta(r.d) + '</span><span class="rx-s">신환 ' + r.nw + ' · 재진 ' + r.rt + '</span>' + IC.chev + '</button>' +
+          '<span class="rx-c">' + r.cnt + (r.partial ? PART : '') + '</span><span class="rx-d">' + delta(r.d) + '</span><span class="rx-s">신환 ' + r.nw + ' · 재진 ' + r.rt + '</span>' + IC.chev + '</button>' +
           '<div class="rxd" id="' + id + '" hidden>' + rxDetail(r, X, uid) + '</div></li>';
       }).join('');
-      return head('처방 추세', '많이 낸 처방 5가지 · 건수') + hd + '<ul class="rxl">' + list + '</ul>' +
+      return head('처방 추세', '많이 낸 처방 5가지 · 건수') + hd + '<ul class="rxl' + wide + '">' + list + '</ul>' +
         '<p class="rx-note">줄을 누르면 그 처방의 ' + X.grainName + '별 건수와 신환·재진이 열려요. 막대 안 회색 눈금은 비교 기간 건수예요. 건 = 날마다 그 처방을 받은 환자 수를 더한 값이에요.</p>' +
         '<p class="rx-money">금액·소모량은 매출 탭에서 볼 수 있어요</p>';
     },

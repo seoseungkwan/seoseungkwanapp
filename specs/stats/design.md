@@ -71,6 +71,7 @@ public static class StatsCommands       // Register(Dispatcher, BitServices): "s
 }
 ```
 - 줄은 배열(객체보다 작다, 700,000줄 ≈ 28MB → 조각 약 30개). 이름·전화·주민번호·주소는 원본 SQL도 읽지 않는다
+- 보고 벌의 건수는 0 이상이고, 금액 6칸은 음수일 수 있다(절댓값 10^14 이하, AC-505.2, '결정과 트레이드오프')
 
 #### TASK-5 통계 Worker (`src/workers/stats*`, 환자 자료 구역)
 ```ts
@@ -192,8 +193,8 @@ export type ClinicReportNumbers = { ok: true; period: string; totalVisits; newPa
 export function formatClinicReport(input: { mode: 'daily' | 'monthly'; numbers: ClinicReportNumbers; hospitalName: string }, today: string):
   { text: string; notes: string[]; unconfirmedLines: number[] } | { error: 'future-date' } | { error: 'unconfirmed'; reason: string }
 ```
-- 원본 `format_report`·`report_notes`의 줄을 그대로 옮긴다(띄어쓰기·"고생하셨습니다 !!"까지). 골든: `scripts/stats/golden/reports.py` → `fixtures/stats/golden/report-*.json`(일일·월말·확인 필요·LA 없음·총환 0명 사례)
-- `knownDiffs`: 금액·건당진료비는 원 미만 버림(원본 `ROUND_HALF_UP`)
+- 원본 `format_report`·`report_notes`의 줄을 그대로 옮긴다(띄어쓰기·"고생하셨습니다 !!"까지). 골든: `scripts/stats/golden/reports.py` → `fixtures/stats/golden/report-*.json`(일일·월말·확인 필요·LA 없음·총환 0명·음수 금액 사례)
+- `knownDiffs`: 금액·건당진료비는 원 미만 버림(원본 `ROUND_HALF_UP`, 음수도 0 쪽으로 버린다). 음수 금액의 글은 골든이 정한다
 
 #### TASK-11 화면 숫자 (`src/components/stats/view.ts`, 순수)
 ```ts
@@ -226,6 +227,7 @@ export function rxDetail(input, code): { current: RxDetailPoint[]; previous: RxD
 #### TASK-13 섹션 (`src/components/stats/sections/*`)
 - `PeriodSummary`·`PatientTrendSection`·`RevisitSection`·`RxTrendSection`·`RxSplitSection`·`ReportSection`·`WeekdaySection`, 공용 `DetailToggle`(자세히 열기·닫기 + 숫자 표)·`CopyButton`(대시보드 `ReportBlock`의 복사 동작을 옮긴 통계 쪽 단추)
 - 모두 props만 받는다(서버 컴포넌트로 그릴 수 있는 것은 그렇게, 자세히·복사·고르기만 `'use client'`)
+- `StackedBarChart`(`components/charts/StackedBarChart.tsx`)에 선택 값 하나만 더한다(AC-513.2, 승인 시안 `notes.md`의 '칸마다 왼쪽 비교 기간 가는 막대'): `BarBucket`의 `comparison?: number | null`. 숫자가 있는 칸은 쌓은 막대 왼쪽에 가는 `bg-faint` 막대(시안 `.pv`)를 그리고, 눈금은 합계와 숫자인 `comparison` 가운데 가장 큰 값으로 정한다. `null`은 막대를 그리지 않는다. 숫자가 있는 칸이 하나도 없으면 그림·표가 지금과 한 글자도 다르지 않다. 숫자가 있는 칸이 있으면 화면 읽기 표에 "비교 기간" 칸 하나가 더 붙는다(그림은 꾸밈이고 숫자는 표가 주는 이 부품의 규칙, UI_GUIDE. `null`은 "–"). `RxTrendSection`이 처방 줄을 열 때 `rxDetail`의 같은 차례 `previous` 점의 `count`를 넣는다(`covered: false`이면 `null`)
 
 #### TASK-14 화면 (`src/components/stats/StatsScreen.tsx` 등, `'use client'`)
 ```ts
@@ -241,7 +243,11 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 
 #### TASK-16 대시보드 읽기
 - `components/dashboard/summary/LiveDashboard.tsx`(`'use client'`, 새 파일): `readDays([today − 97, today])` → `SummarySource` → 지금 `DashboardHome`(report·analysis 자리)을 그린다. `dashboard/page.tsx`는 이것 하나를 놓는다. `source.ts`는 `toSummarySource(result)`(읽은 결과 → none/data, 순수)로 바뀐다
-- `view.ts` `revisitView`에 `d30`, `DashboardAnalysis` 30일 줄이 진짜 값을 쓴다
+- `view.ts` `revisitView(days, range, period?)`는 `{ d7; d14; d30: RateCell; d30Cohort: { from; to; within; cohort } | null }`을 돌려준다. `rateOf`에 `within30`을 더한다(`within30`은 선택 칸이라 빠진 칸은 null로 친다 — `undefined !== null`로 세어지지 않게). `RateCell`은 고치지 않는다(통계 view가 대시보드 함수를 불러 쓴다, AC-511.7)
+- `period`가 30이면 30일 줄만 `addDays(range.from, −30)` ~ `addDays(range.from, −1)`(= 오늘 − 60 ~ 오늘 − 31)의 날로 센다. 비율이면 `d30Cohort`에 그 범위에서 30일 값이 숫자인 첫날·끝날과 `within`·`cohort` 합을 싣고, 그 밖은 null이다. `period`를 주지 않거나 7·90이면 30일 줄도 고른 기간 그대로다. 그래서 지금 시험은 부르는 모양을 고치지 않고 기대값에 30일 칸만 더한다(AC-516.4)
+- `DashboardAnalysis`는 `revisitView(days, range, period)`로 부르고 30일 줄을 7·14일과 같은 줄로 그린다. `d30Cohort`가 있으면 그 아래 AC-516.2의 caption({N} = `cohort`, {K} = `within`)을 붙인다. 글자는 `view.ts`에서 만든다(`longDate`·`formatCount`)
+- 대시보드 `view.ts`는 자기 안에서 끝낸다: 통계 view가 대시보드 view를 불러 쓰므로 `components/stats`를 불러오면 고리가 생긴다. 통계 `revisitRates`와 몇 줄이 겹치는 것은 받아들인다
+- 읽는 범위 `오늘 − 97 ~ 오늘`이 이미 오늘 − 60까지 덮으므로 읽기는 고치지 않는다
 
 #### TASK-17 개인정보 E2E (`e2e/stats-privacy.spec.ts`)
 - 사용자가 TASK-6 SQL을 실제 Supabase에 붙인 뒤에만 돈다(`npm run e2e`, 지금 `e2e/support.ts`의 쿠키 넣기 로그인, `trace: 'off'`). 시험 계정(승인됨)으로 `/stats` → 가짜 비트 파일 넣기 → 저장. `page.on('request')`로 모든 요청의 주소·본문과 인증 밖 머리(`authorization`·`apikey`·`cookie` 값은 모으지 않는다, C11)를 모아 가짜 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없는지(걸리면 `{ kind, where }`만 — 값을 출력하지 않는다), 그 뒤 시험 계정으로 세 표를 다시 읽어 같은 값이 없는지 본다(cross-branch C7). 시험 계정 병원의 통계 줄만 쓴다
@@ -283,6 +289,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - **최근 30일의 30일 줄은 끝난 신환으로 센다(S6, 2026-11-01 사용자 결정)**: 최근 30일의 날은 모두 온 지 30일이 안 되어 30일 줄과 첫 재방문 칸이 늘 '집계 중'이었다. `'30d'`만 온 뒤 30일이 지난 가장 최근 신환(오늘 − 60 ~ 오늘 − 31, `previous`와 같은 범위라 읽기는 그대로)을 세고 그 날짜를 적는다. 대가: 7·14일 줄과 세는 날짜가 다르다
 - **12개월 처방 증감은 끝난 달끼리(S7, 2026-11-01 사용자 결정)**: 덜 끝난 이번 달과 작년 같은 달 한 달을 견주면 가짜 ▼가 나온다. 어느 한쪽이라도 `partial`인 달은 양쪽에서 뺀다(AC-511.2와 같은 규칙). 건수·신환·재진에는 그 달을 넣고 '일부 기간'을 붙이며, 막대·비교 눈금은 `comparable`로 그려 증감과 기준을 맞춘다
 - **일 기간 처방 증감은 날 짝으로 뺀다**: 기간 전체가 덮였을 때만 견주면 불러온 다음 날부터 모든 줄이 "비교할 수 없음"이 된다('오늘 진료 끝'을 켜지 않으면 덮은 기간은 불러온 날 전날에 끝나고 기간은 어제까지다). 그래서 S7과 같은 규칙으로 `partial`인 날과 그 짝만 양쪽에서 뺀다. 대가: 짝을 뺀 날이 있으면 줄의 건수 글자는 기간 합인데 막대·증감은 그보다 적은 날로 세고, 일 기간에는 그 표시가 없다. 남은 짝이 아주 적으면 요일이 어긋난 날끼리 견주어 증감이 크게 나올 수 있다(드물다, 최소 짝 수는 두지 않았다)
+- **음수 금액은 원본처럼 보인다(2026-11-01 사용자 결정)**: 원본 `_amount`는 음수를 받고(절댓값 10^14까지) `_won`은 "-1,000원"으로 찍는다. 검사가 보고 숫자를 0 이상만 받으면 금액 한 칸 때문에 불러오기 전체가 `E-BRIDGE-BAD-REPLY`로 실패한다. 그래서 건수만 0 이상이고 금액 6칸은 음수를 받으며, 원 미만은 0 쪽으로 버린다(`Math.Truncate`, `Math.Floor`는 -0.5를 -1로 만든다). 대가: 보고 글에 음수 금액이 그대로 보인다
 
 ## 다른 작업과 겹치는 파일
 > 같은 main(95cfa53)에서 갈라진 브랜치: `feat-precheck`(청구), `feat-ai-report`, `feat-worklog`, `feat-patients`, `feat-revenue`. 모두 더하기만 하고 아래가 합치는 자리다(cross-branch C8)
@@ -301,7 +308,8 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 | `helper/src/Precheck.Core/Bit/Sql.cs` | `IsAllowed`·`ParametersOf`가 `StatsSql`도 보는 두 줄 (TASK-3) | precheck(청구 SQL), revenue(`RevenueSql`), patients(자기 SQL) |
 | `helper/src/Precheck.Helper/Program.cs` | `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄 (TASK-3) | precheck·revenue·patients |
 | `src/lib/bridge/commands.json` | 고치지 않는다(`stats.rows`가 이미 있다) | revenue·patients가 명령을 더할 수 있음 |
-| stats-core·tab-frame 파일(이미 main) | `lib/analytics/aggregate.ts`·`compare.ts`·`types/analysis.ts`(TASK-1), `lib/payload/*`·`types/payload.ts`(TASK-2, 검사는 선택 칸만 더해 남의 가짜 자료가 그대로 통과), `components/dashboard/summary/*`·`dashboard/page.tsx`(TASK-16) | ai-report(저장 모양 가짜 자료를 씀) |
+| stats-core·tab-frame 파일(이미 main) | `lib/analytics/aggregate.ts`·`compare.ts`·`types/analysis.ts`(TASK-1), `lib/payload/*`·`types/payload.ts`(TASK-2, 검사는 선택 칸만 더해 남의 가짜 자료가 그대로 통과), `components/dashboard/summary/*`·`dashboard/page.tsx`(TASK-16. `revisitView` 30일 줄은 더하기만이고 feat-revenue·feat-patients·feat-worklog·feat-precheck·feat-ai-report에 이 폴더를 고치는 계획·변경이 없어 C4·C5·C6·C8 그대로) | ai-report(저장 모양 가짜 자료를 씀) |
+| `src/components/charts/StackedBarChart.tsx`·`StackedBarChart.test.tsx` | `BarBucket`의 선택 값 `comparison` 하나와 그 시험 (TASK-13). 주지 않으면 지금 그대로 | 없음(위 다섯 브랜치에 이 부품을 고치는 계획·변경이 없고, revenue는 Tests에 charts 시험을 적었을 뿐이다. 더하기만이고 남의 가짜 자료가 바뀌지 않아 C4·C5·C6·C8 그대로) |
 | `phases/index.json` | 통계 Phase 넷을 끝에 더함 | 전부 |
 - `feat-ai-report`가 알아야 할 것: 통계 달 숫자 표 이름은 `stats_months`(plan.md의 `months`가 아님)·일 숫자는 `stats_days`다. ai-report design.md의 'DB months' 읽기는 `stats_months`를 읽어야 한다. `revisit`의 `within30`·`after30`은 선택 칸이다
 - 고치지 않음: `src/workers/precheck/*`, `helper/src/Precheck.Helper/Commands/*`, `helper/src/Precheck.Windows/*`, `src/types/precheck.ts`, `src/lib/bridge/*`, `src/types/report.ts`·`src/lib/report/*`(ai-report 몫)

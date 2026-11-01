@@ -10,7 +10,7 @@
 전체 문장은 `/specs/stats/requirements.md`의 REQ-505(통계 Worker (도우미 자료 → 저장 모양))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-505.1**: Given 통로가 Worker 포트로 넘긴 `chunk`들과 `end {count, bytes, sha256}`, When 모으면, Then `seq`가 0부터 빠짐없이 이어지고 조각 수·UTF-8 바이트 수·SHA-256이 모두 맞을 때만 JSON 하나로 푼다. 하나라도 다르면 버리고 `E-BRIDGE-BAD-REPLY`, `abort`면 버리고 받은 번호다
-- **AC-505.2**: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 숫자는 0 이상 정수)일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`
+- **AC-505.2**: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 건수(총환·신환·재진·치료 다섯·LA 건수)는 0 이상 정수, 금액 6칸(`totalAmount`·`insurerAmount`·`noncoveredAmount`·`cashAmount`·`cardAmount`·`transferAmount`)은 정수이고 절댓값이 10^14 이하(음수 가능, 원본 `medicore/reports.py` `_amount`))일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`다. 시험: 음수 금액이 든 벌은 받아들이고 진료 줄과 다른 벌은 그대로다. 시험: 음수 건수는 거부한다. 시험: 절댓값이 10^14를 넘는 금액은 거부한다
 - **AC-505.3**: Given 같은 가짜 자료를 파일 길(`fixtures/fake-bit/` → `parseBit`)과 도우미 JSON 길로 넣음, When 도우미 길이 진료 줄을 `ConsumptionRow`(첫 내원일 = 진료일이면 신환, 외래, 동네 없음, 차트번호는 메모리 번호 `PatientIds`)로 바꿔 지금 `aggregate`에 넣으면, Then 동네(지역)를 뺀 결과가 파일 길과 깊은 비교로 같다. 파일 올리기 길(`parseBit`·`aggregate`·`analyzeFiles`·`runAnalysis`·`analyze.worker.ts`)은 고치지 않는다
 - **AC-505.4**: Given 검사한 도우미 자료, When `load` 일을 하면, Then Worker가 `buildSummary`(덮은 기간 = `[from, min(to, 오늘)]`) → `toMonthPayload`·`toDayPayloads`를 만들어 화면에는 달·일 저장 모양, 저장할 덮은 기간, 기간 합계의 확인 건수(차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자), 보고 숫자 네 벌만 보낸다. 저장할 덮은 기간은 `[from, min(to, 끝난 마지막 날)]`이고 끝난 마지막 날은 "오늘 진료 끝"을 켰으면 오늘, 아니면 어제다(끝나지 않은 오늘을 덮은 날로 저장하면 다음 날 그날이 휴진 0으로 읽힌다). 그 범위가 비면(`from` > 끝난 마지막 날) 덮은 기간은 null이고 덮은 기간 줄을 저장하지 않는다. 시험: 오늘 아침 진료 전에 불러옴(오늘 줄 없음, 오늘 진료 끝 꺼짐) → 저장할 덮은 기간 끝 = 어제. 확인 건수가 하나라도 0이 아니면 품질 incomplete이고 저장 모양은 null이다. 저장 모양의 동네는 비운다(`regions: []`)
 - **AC-505.5**: Given 화면에 보내는 모든 메시지, When 열쇠와 값을 훑으면, Then 차트번호·환자 번호·진료 줄이 없다(숫자·처방코드·처방 이름·날짜만). 진료 줄은 Worker 메모리에만 남고(처방별 신환·재진 계산용), 새로 불러오면 바뀐다
@@ -95,7 +95,8 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
 export function toConsumptionRows(data: StatsRowsData, ids: PatientIds): ConsumptionRow[]
 export function toVisitRows(data: StatsRowsData, ids: PatientIds): VisitRow[]   // { p, d: 'YYYY-MM-DD', c, f } — TASK-9가 쓴다
 ```
-- 검사(AC-505.2): 정해 둔 열쇠만, 줄 = 4칸(앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null — null이면 그 환자는 신환이 아니고 `summary.noFirst`에 든다), 날짜 `YYYYMMDD`이고 진짜 날짜, 첫 내원일 ≤ 진료일, 한 차트번호의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 ≤ 700,000, `from`·`to`가 요청과 같음, 보고 벌 숫자는 0 이상 안전한 정수. 아니면 `E-BRIDGE-BAD-REPLY`
+- 검사(AC-505.2): 정해 둔 열쇠만, 줄 = 4칸(앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null — null이면 그 환자는 신환이 아니고 `summary.noFirst`에 든다), 날짜 `YYYYMMDD`이고 진짜 날짜, 첫 내원일 ≤ 진료일, 한 차트번호의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 ≤ 700,000, `from`·`to`가 요청과 같음, 보고 벌의 건수(총환·신환·재진·치료 다섯·LA 건수)는 0 이상 안전한 정수, 금액 6칸은 정수이고 절댓값 10^14 이하(음수 가능). 아니면 `E-BRIDGE-BAD-REPLY`
+- 2026-11-01 변경: 금액 6칸의 음수는 TASK-5 커밋 뒤에 정해졌다. `helperData.ts`·`helperData.test.ts`를 이 step의 수정 범위 안에서 뒤따라 고친다(tasks.md TASK-5 메모)
 - 바꾸기(AC-505.3): `rxCode` = 코드, `rxName` = `codes`의 이름(없으면 코드), `rxType` = '', `date` = 진료일, `firstVisit` = (첫 내원일 = 진료일), `outpatient` = true, `region` = null, `patient` = `ids.idOf(차트번호)`(지금 파서가 쓰는 메모리 번호 만들기를 그대로 쓴다)
 
 ### 4. 일 (`src/workers/stats/jobs.ts`, `src/workers/stats.worker.ts`)
@@ -120,7 +121,7 @@ export function requestLoad(worker: WorkerLike, req: { streamId: string; from: s
 - `E-STATS-TOO-BIG`: 무엇이 "고른 기간의 진료 기록이 너무 많아요" · 어떻게 "기간을 줄여 다시 불러오세요"
 
 ### 7. 시험
-- `assemble.test.ts`(AC-505.1), `helperData.test.ts`(AC-505.2·505.3: `fixtures/fake-bit/`의 가짜 파일 → `parseBit` → `aggregate`와, 같은 가짜 줄로 만든 도우미 JSON → `toConsumptionRows` → `aggregate`가 동네 칸을 빼고 깊은 비교로 같다), `jobs.test.ts`(AC-505.4·505.5·505.6: 확인 건수 → incomplete, `regions: []`, 오늘 진료 끝, 화면에 가는 값을 모두 훑어 가짜 차트번호 글자가 없음), `statsClient.test.ts`(AC-505.7), `errors.test.ts`(새 번호 문구가 빈 글자가 아님)
+- `assemble.test.ts`(AC-505.1), `helperData.test.ts`(AC-505.2·505.3: `fixtures/fake-bit/`의 가짜 파일 → `parseBit` → `aggregate`와, 같은 가짜 줄로 만든 도우미 JSON → `toConsumptionRows` → `aggregate`가 동네 칸을 빼고 깊은 비교로 같다. AC-505.2: 음수 금액이 든 벌은 받아들이고 진료 줄과 다른 벌은 그대로, 음수 건수 거부, 절댓값이 10^14를 넘는 금액 거부), `jobs.test.ts`(AC-505.4·505.5·505.6: 확인 건수 → incomplete, `regions: []`, 오늘 진료 끝, 화면에 가는 값을 모두 훑어 가짜 차트번호 글자가 없음), `statsClient.test.ts`(AC-505.7), `errors.test.ts`(새 번호 문구가 빈 글자가 아님)
 
 ## TDD 순서
 

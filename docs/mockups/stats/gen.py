@@ -151,7 +151,7 @@ def months_back(y, m, k):
 def compare(cur, prev, unit):
     """앱의 compareNumbers + formatDelta 글자 규칙을 흉내 낸다 (REQ-508.5)."""
     if prev is None:
-        return {'dir': 'none', 'text': '비교할 자료 없음', 'sr': ''}
+        return {'dir': 'none', 'text': '비교할 수 없음', 'sr': ''}
     if prev == 0:
         return {'dir': 'none', 'text': '새로 생김' if cur > 0 else '변화 없음', 'sr': ''}
     diff = cur - prev
@@ -291,6 +291,11 @@ def point(bk, a, b, code, ds):
     return n, r, part
 
 
+def covered(bk, a, b, ds):
+    """rxDetail covered: 그 칸의 날이 하나라도 덮은 기간 안에 있으면 참 (AC-511.8). 거짓인 비교 칸은 "–" (AC-513.11)"""
+    return any(a <= d <= b and ds['cover'] <= d <= TODAY for d in span(*bk))
+
+
 def blabel(bk, grain, i, nb):
     lo, hi = bk
     if grain == 'day':
@@ -315,7 +320,6 @@ def period_data(dsk, per):
         rng_txt, cmp_txt, rng_note = f'{md(cd[0])} – {md(cd[1])}', f'{md(pd[0])} – {md(pd[1])}', '어제까지'
     rows = [(d, days[d]) for d in span(*cd) if d in days]
     prows = [(d, days[d]) for d in span(*pd) if d in days]
-    prev_covered = pd[1] >= ds['cover']
     out = {'label': LABEL[per], 'cmpName': CMPNAME[per], 'range': rng_txt, 'cmp': cmp_txt, 'rangeNote': rng_note}
 
     # 1) 기간 요약 (AC-511.2)
@@ -365,20 +369,26 @@ def period_data(dsk, per):
         tr_desc, tr_note = '신환·재진, 하루씩', '휴진한 날은 칸이 없어요.'
     out['trend'] = {'desc': tr_desc, 'note': tr_note, 'first': '달' if per == '12m' else '날짜', 'bars': bars} if bars else None
 
-    # 3) 신환 재방문율 + 첫 재방문까지 날수 (AC-511.4)
+    # 3) 신환 재방문율 + 첫 재방문까지 날수 (AC-511.4 · AC-513.10)
+    def day_cells(rs):
+        acc = []
+        for d, v in rs:
+            x = {k: (v[k] if known(d, d, k, ds['cover']) and not v['part'] else None) for k in K}
+            x['a30'] = v['a30'] if x['w30'] is not None else None
+            acc.append(dict(first=d, last=d, c=v['c'], **x))
+        return acc
     if per == '12m':
         cells = [dict(first=v['first'], last=v['last'], c=v['c'], w7=v['w7'], w14=v['w14'], w30=v['w30'], a30=v['a30']) for _, v in cm]
     else:
-        cells = []
-        for d, v in rows:
-            x = {k: (v[k] if known(d, d, k, ds['cover']) and not v['part'] else None) for k in K}
-            x['a30'] = v['a30'] if x['w30'] is not None else None
-            cells.append(dict(first=d, last=d, c=v['c'], **x))
+        cells = day_cells(rows)
+    # 최근 30일만: 30일 줄과 첫 재방문까지 날수는 온 뒤 30일이 지난 가장 최근 신환(finishedCohort = 오늘 − 60 ~ 오늘 − 31, 비교 기간과 같은 범위)
+    cells30 = day_cells(prows) if per == '30d' else cells
     rv_rows = []
     for k, nm in (('w7', '7일 안에 다시 옴'), ('w14', '14일 안에 다시 옴'), ('w30', '30일 안에 다시 옴')):
-        cnt = [c for c in cells if c[k] is not None]
+        src = cells30 if k == 'w30' else cells
+        cnt = [c for c in src if c[k] is not None]
         den = sum(c['c'] for c in cnt)
-        if not cells:
+        if not src:
             rv_rows.append({'n': nm, 'k': 'none', 'sub': '자료 없음'})
         elif not cnt:
             hint = ' 최근 90일이나 최근 12개월에서 볼 수 있어요.' if k == 'w30' and per in ('7d', '30d') else ''
@@ -387,11 +397,13 @@ def period_data(dsk, per):
             rv_rows.append({'n': nm, 'k': 'none', 'sub': '자료 없음'})
         else:
             num = sum(c[k] for c in cnt)
-            excl = len(cnt) < len(cells)
+            excl = len(cnt) < len(src)
             unit = '달' if per == '12m' else '날'
-            rv_rows.append({'n': nm, 'k': 'rate', 'v': f'{trunc1(num / den * 100)}%', 'w': round(num / den * 100, 2), 'num': fc(num), 'den': fc(den),
-                            'sub': f'신환 {fc(den)}명 가운데 {fc(num)}명' + (f' · 온 뒤 {K[k]}일이 안 된 {unit}의 신환은 빼고 셌어요' if excl else '')})
-    c30 = [c for c in cells if c['w30'] is not None]
+            sub = f'신환 {fc(den)}명 가운데 {fc(num)}명' + (f' · 온 뒤 {K[k]}일이 안 된 {unit}의 신환은 빼고 셌어요' if excl else '')
+            if per == '30d' and k == 'w30':
+                sub = f"{md(cnt[0]['first'])} – {md(cnt[-1]['last'])}에 온 신환 {fc(den)}명 가운데 {fc(num)}명 · 온 뒤 30일이 지난 가장 최근 신환이에요"
+            rv_rows.append({'n': nm, 'k': 'rate', 'v': f'{trunc1(num / den * 100)}%', 'w': round(num / den * 100, 2), 'num': fc(num), 'den': fc(den), 'sub': sub})
+    c30 = [c for c in cells30 if c['w30'] is not None]
     first = None
     if c30:
         tot = sum(c['c'] for c in c30)
@@ -407,8 +419,10 @@ def period_data(dsk, per):
                  'note': f"'30일 넘어 다시 옴'은 불러온 자료 끝날({md(YDAY)})까지 본 수라, 다시 불러오면 늘 수 있어요."}
     out['rv'] = {'rows': rv_rows, 'first': first,
                  'firstMsg': '신환이 온 뒤 30일이 지나야 날수를 셀 수 있어요.' + (' 최근 90일이나 최근 12개월에서 볼 수 있어요.' if per in ('7d', '30d') else '')} if cells else None
+    if out['rv'] and not cells30:   # 최근 30일에서 그 날짜의 자료가 아예 없음: 집계 중이 아니라 자료 없음
+        out['rv'].update(firstNone=True, firstMsg='불러온 숫자에 이 기간 자료가 없어요.')
 
-    # 4) 처방 추세 (AC-511.6 · AC-511.8)
+    # 4) 처방 추세 (AC-511.6 · AC-511.8 · AC-513.11)
     def rx_sum(rs):
         acc = {}
         for _, v in rs:
@@ -417,28 +431,45 @@ def period_data(dsk, per):
                 x[0] += a
                 x[1] += b
         return acc
-    cur_acc, prev_acc = rx_sum(rows), rx_sum(prows)
+    cur_acc = rx_sum(rows)
     top = sorted(cur_acc, key=lambda c: (-sum(cur_acc[c]), c))[:5]
     grain = GRAIN[per]
     ba, bb = (dt.date(*cur[0], 1), month_end(*cur[-1])) if per == '12m' else cd
     pa, pb = pd
     cbk, pbk = buckets(ba, bb, grain), buckets(pa, pb, grain)
-    mx = max([sum(cur_acc[c]) for c in top] + [sum(prev_acc.get(c, [0, 0])) for c in top] + [1])
+
+    def comparable(code):
+        """끝난 칸끼리의 합: 어느 한쪽이라도 일부 기간인 짝(12개월 = 달, 일 기간 = 표시 칸과 상관없이 날)은 양쪽에서 뺀다. 남은 짝이 없으면 None"""
+        g = 'month' if per == '12m' else 'day'
+        now = then = kept = 0
+        for ck, pk in zip(buckets(ba, bb, g), buckets(pa, pb, g)):
+            cn, cr, c_part = point(ck, ba, bb, code, ds)
+            pn, pr, p_part = point(pk, pa, pb, code, ds)
+            if c_part or p_part:
+                continue
+            kept += 1
+            now += cn + cr
+            then += pn + pr
+        return (now, then) if kept else None
+    cmps = {c: comparable(c) for c in top}
+    bar_of = {c: cmps[c][0] if cmps[c] else sum(cur_acc[c]) for c in top}     # 막대 = 끝난 칸 합, 견줄 수 없으면 건수
+    mx = max(list(bar_of.values()) + [cmps[c][1] for c in top if cmps[c]] + [1])
     rx_rows = []
     for code in top:
         a, b = cur_acc[code]
-        pc = sum(prev_acc.get(code, [0, 0])) if prev_covered else None
+        pair = cmps[code]
         pts = []
         for i, bk in enumerate(cbk):
             n, r, part = point(bk, ba, bb, code, ds)
             pv = None
-            if i < len(pbk) and prev_covered:
+            if i < len(pbk) and covered(pbk[i], pa, pb, ds):
                 pn, pr, _ = point(pbk[i], pa, pb, code, ds)
                 pv = pn + pr
             lab, long_ = blabel(bk, grain, i, len(cbk))
             pts.append({'l': lab, 't': long_, 'n': n, 'r': r, 'p': part, 'pv': pv})
-        rx_rows.append({'code': code, 'name': RXNAME[code], 'cnt': f'{fc(a + b)}건', 'd': compare(a + b, pc, '건'),
-                        'nw': fc(a), 'rt': fc(b), 'w': round((a + b) / mx * 100, 2), 'pw': round((pc or 0) / mx * 100, 2) if pc is not None else None,
+        rx_rows.append({'code': code, 'name': RXNAME[code], 'cnt': f'{fc(a + b)}건', 'partial': per == '12m' and any(p['p'] for p in pts),
+                        'd': compare(*pair, '건') if pair else compare(a + b, None, '건'),
+                        'nw': fc(a), 'rt': fc(b), 'w': round(bar_of[code] / mx * 100, 2), 'pw': round(pair[1] / mx * 100, 2) if pair else None,
                         'pts': pts})
     notes = {'day': '하루씩 센 건수예요. 회색 막대는 비교 기간의 같은 차례 날이에요.',
              'week': '주는 월요일–일요일이에요. 기간 처음과 끝에 걸린 주는 일부 기간(빗금)이에요. 회색 막대는 비교 기간의 같은 차례 주예요.',
@@ -711,7 +742,8 @@ S.append(screen('s1', '화면 1', 'PC · 비트에서 불러온 뒤',
                           '<b>처방 추세의 줄</b>을 누르면 그 처방의 칸별 건수(신환·재진)가 열려요. 칸은 7·30일 = 하루, 90일 = 주, 12개월 = 달이에요.',
                           '<b>보고 고르기</b>(오늘·어제 일일보고, 이번 달·지난달 월말보고)를 눌러 보세요. 어제는 금액 줄이 "확인 필요"로 표시돼요. <b>[복사]</b>를 누르면 2초 동안 "복사했어요"가 보여요.',
                           '<b>[비트에서 불러오기]</b>를 누르면 단추가 막히고 "불러오는 중"이 보였다가, 새 저장 시각으로 바뀌어요. "오늘 진료 끝"을 켜고 누르면 오늘도 끝난 날로 저장했다고 나와요.',
-                          '최근 30일에서 "30일 안에 다시 옴"은 늘 <b>집계 중</b>이에요. 신환이 온 뒤 30일이 지나야 셀 수 있어서예요. 최근 90일·12개월에서는 숫자가 보여요.'])))
+                          '최근 30일의 "30일 안에 다시 옴"과 첫 재방문까지 날수는 <b>온 뒤 30일이 지난 가장 최근 신환</b>(9월 14일 – 10월 13일)으로 세고 그 날짜를 적어요. 7·14일 줄은 고른 기간 그대로예요. 최근 7일은 셋 다 <b>집계 중</b>이에요.',
+                          '<b>최근 12개월의 처방 줄</b>: 건수에는 11월까지 넣고 옆에 <b>일부 기간</b>을 붙여요. 증감과 막대·회색 눈금은 끝난 달끼리만 견줘요(11월과 작년 11월을 빼요).'])))
 
 # 화면 2 · PC 처음 (저장된 숫자 없음)
 w2 = pick('w2', '이 PC 상태', [('bit', '비트 PC 연결됨'), ('nohelper', '도우미가 없음')], 'bit')
@@ -757,14 +789,15 @@ S.append(screen('s5', '화면 5', '불러오는 중 · 저장 실패 · 확인 �
                           '<b>저장 실패</b>: 빨간 오류 카드(E-STATS-SAVE-FAILED)와 [다시 저장]이에요. 방금 불러온 숫자는 화면에 그대로 있어요. [다시 저장]을 누르면 같은 숫자를 다시 보내요.',
                           '<b>확인 필요</b>: 차트번호 없는 내원 같은 기록이 있으면 저장하지 않고 건수를 보여요. 어제 일일보고처럼 확정할 수 없는 보고는 "이 기간은 보고를 확정할 수 없어요"로 바뀌어요.',
                           '<b>읽기 실패</b>: 오류 카드(E-STATS-READ-FAILED)와 [다시 읽기]예요.',
-                          '<b>12개월 · 이번 달만</b>: 끝나지 않은 이번 달 숫자만 있으면 평균 칸은 "자료 없음"이에요(덜 끝난 달은 평균과 견주기에서 빼는 규칙). 신환·재진 합계에는 "일부 기간"이 붙어요.'])))
+                          '<b>12개월 · 이번 달만</b>: 끝나지 않은 이번 달 숫자만 있으면 평균 칸은 "자료 없음"이에요(덜 끝난 달은 평균과 견주기에서 빼는 규칙). 신환·재진 합계에는 "일부 기간"이 붙어요. 처방 줄은 회색 눈금 없이 막대만 있고 증감은 <b>비교할 수 없음</b>이에요.'])))
 
 DECIDE = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k">정해 주실 것</p><h2>이대로 만들어도 될까요?</h2><ol>'
           '<li><div><p class="q">처방별 신환·재진과 원장님 보고 문장은 비트 PC에서 불러온 화면에서만</p><p class="a">진료 줄과 금액은 서버에 저장하지 않아서, 휴대폰에서는 "비트 PC에서 불러오면 보여요"로 보여요.</p></div></li>'
           '<li><div><p class="q">처방 추세는 건수만</p><p class="a">처방별 금액·소모량은 매출 탭에서 보도록 "금액·소모량은 매출 탭에서 볼 수 있어요"라고 적어 둬요.</p></div></li>'
           '<li><div><p class="q">"오늘 진료 끝"은 직접 켜기</p><p class="a">켜고 불러오면 오늘 숫자를 끝난 날로 저장해요. 꺼 두면 어제까지만 끝난 날이에요.</p></div></li>'
           '<li><div><p class="q">보고 고르기 넷: 오늘·어제 일일보고, 이번 달·지난달 월말보고</p><p class="a">보고 글의 줄은 지금 쓰시는 일일·월말 보고 양식 그대로 옮겨요. 시안의 보고 글은 모양만 보여 드리는 예시예요.</p></div></li>'
-          '<li><div><p class="q">기간 단추 넷: 최근 7일 · 30일(처음) · 90일 · 12개월</p><p class="a">최근 30일에서는 "30일 안에 다시 옴"이 늘 "집계 중"이에요. 신환이 온 뒤 30일이 지나야 셀 수 있어서, 90일·12개월에서 보도록 안내해요.</p></div></li></ol>'
+          '<li><div><p class="q">기간 단추 넷: 최근 7일 · 30일(처음) · 90일 · 12개월</p><p class="a">최근 30일의 "30일 안에 다시 옴"은 온 뒤 30일이 지난 가장 최근 신환(9월 14일 – 10월 13일)으로 세어 그 날짜와 함께 보여 줘요. 최근 7일은 셋 다 "집계 중"이에요.</p></div></li>'
+          '<li><div><p class="q">최근 12개월의 처방 증감은 끝난 달끼리만</p><p class="a">11월과 작년 11월을 빼고 견줘요. 건수 글자에는 11월까지 넣고 옆에 "일부 기간"을 붙여요. 견줄 달이 없으면 "비교할 수 없음"이에요.</p></div></li></ol>'
           '<p class="reply">이렇게 답해 주시면 돼요: <b>통계 목업 좋아요</b> (고칠 곳이 있으면 화면 번호와 함께 말씀해 주세요)</p></div></section>')
 
 NAV = [('s1', '1 PC · 불러온 뒤'), ('s2', '2 PC · 처음'), ('s3', '3 휴대폰'), ('s4', '4 그래프 자세히'), ('s5', '5 불러오는 중·저장 실패·확인 필요')]
@@ -942,8 +975,10 @@ STATS_CSS = '''
 .rx-note { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
 .rx-money { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
 .is-mid .rxh, .is-mid .ui .rxr, .ui.is-mid .rxr { grid-template-columns: minmax(0, 1fr) 84px 176px 132px 16px; }
+.rxh.has-part, .ui .rxl.has-part .rxr { grid-template-columns: minmax(96px, 1fr) minmax(84px, 140px) 176px 132px 16px; }
+.ui .rxl.has-part .rx-c { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px 6px; }
 .is-ph .rxh { display: none; }
-.ui.is-ph .rxr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+.ui.is-ph .rxr, .ui.is-ph .rxl.has-part .rxr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
 .ui.is-ph .rx-s { text-align: right; }
 .ui.is-ph .rxr > .ic { display: none; }
 .is-ph .rxd { margin: 0 -16px; padding: 16px; }

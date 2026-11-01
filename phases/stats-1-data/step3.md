@@ -12,7 +12,7 @@
 - **AC-504.1**: Given `stats.rows`의 `to`, When 처리하면, Then 같은 JSON의 `report`에 원본 `OperationalReportData.Load` 순서대로 원본 `OperationalReportSql`(`HistoryGuard`·`UnsupportedFinance`·`Patients`·`Treatments`·`LaCodes`·`FinanceNormal`·`FinanceReceivable`·`FinanceMultiplicity`·`ReceivableMultiplicity`)을 돌린 숫자 네 벌이 있다: 일일 `to`·`to − 1일`, 월말 `to`가 든 달(1일 ~ `to`)·그 앞 달. 한 벌의 칸은 기간·총환·신환·재진·총진료비·조합청구액·비급여·현금·카드·계좌이체·치료 다섯(도수·충격파·씨암블락·쏘노·크라이오)·LA 코드 건수·금액 확인 필요 여부와 사유·원본 안내 글뿐이다
 - **AC-504.2**: Given 환불·변경수납·예치금 자료가 있는 기간(원본 `UnsupportedFinance` > 0)이나 금액 연결 중복, When 그 벌을 만들면, Then 원본 `SetFinanceUnconfirmed`처럼 '금액 확인 필요'(사유 포함)이고 총환·신환·치료·LA 숫자는 그대로다
 - **AC-504.3**: Given 원본 `Load`가 '보고를 확정할 수 없음'으로 멈추는 값(내원 누락·중복, 치료 연결 못 함, 재진이 음수), When 그 벌을 만들면, Then 그 벌만 `{ ok: false, reason }`(원본 이유 이름 그대로)이고 다른 벌과 진료 줄은 그대로 보낸다. SQL 실행 실패는 REQ-503(반쪽 자료 없음)대로 전체 `error`다
-- **AC-504.4**: Given 보고 SQL 상수, When 원본 사본과 견주면, Then 공백만 다르다. `@daily`는 원본 `Bit` 대신 `Char(1)` '1'·'0'으로 넘긴다(관문·`SqlBitDb`를 고치지 않으려고). 금액은 원 단위 정수로 보낸다(원 미만은 버림)
+- **AC-504.4**: Given 보고 SQL 상수, When 원본 사본과 견주면, Then 공백만 다르다. `@daily`는 원본 `Bit` 대신 `Char(1)` '1'·'0'으로 넘긴다(관문·`SqlBitDb`를 고치지 않으려고). 금액은 원 단위 정수로 보낸다(원 미만은 0 쪽으로 버린다. 음수도 같다: -129,629.535 → -129,629). 음수 금액은 원본처럼 그대로 보낸다
 
 ## 읽어야 할 파일
 
@@ -78,14 +78,14 @@ public static class StatsReport { public static StatsReportResult Read(IBitDb db
 // 네 벌: daily(to), daily(to − 1일), monthly(to가 든 달: 1일 ~ to 다음 날 0시), monthly(그 앞 달 전체)
 ```
 - 한 벌마다 원본 `OperationalReportData.Load`의 순서·판정을 줄 그대로 옮긴다(`VerifyIdentity`는 빼고 — 등록 확인은 `HospitalGate`가 이미 했다). 원본 `Fail(reason, …)` 자리는 그 벌만 `{ ok: false, period, reason }`(AC-504.3), 원본 `SetFinanceUnconfirmed` 자리는 `financeUnconfirmed: true` + 원본 사유 글(AC-504.2)
-- 금액은 원본 decimal → 원 미만 버림(`Math.Floor`) → `long`(AC-504.4). 건수는 `long`
+- 금액은 원본 decimal → 원 미만 버림(`Math.Truncate`) → `long`(AC-504.4). `Math.Floor`는 음수를 0에서 멀어지게 해서(-0.5 → -1) 쓰지 않는다. 음수 금액은 원본처럼 그대로 보낸다. 건수는 `long`
 - SQL 실행 예외는 그 벌이 아니라 명령 전체 `error`(AC-503.3과 같은 규칙)
 
 ### 3. JSON (`StatsPayload.Build`)
 - `report: { daily: [two], monthly: [two] }`, 한 벌의 열쇠는 design.md 그대로(camelCase). `notes`는 원본 결과의 안내 글
 
 ### 4. 시험 (감싸개 `helper/tests/stats-report.dotnet.test.ts`)
-- AC-504.4: 사본과 공백만 다름, `@daily` Char(1)이 관문을 지남
+- AC-504.4: 사본과 공백만 다름, `@daily` Char(1)이 관문을 지남, 음수 금액은 0 쪽으로 버리고 그대로 보냄(-129,629.535 → -129,629, -0.5 → 0)
 - AC-504.1: 가짜 DB로 일일·월말 네 벌의 기간 매개변수와 칸 목록
 - AC-504.2: `UnsupportedFinance` > 0 → 확인 필요 + 다른 숫자 그대로, 연결 중복(원본 Multiplicity 판정) → 확인 필요
 - AC-504.3: 원본 `Fail` 사례(내원 누락·중복, 치료 연결 못 함, 재진 음수) → 그 벌만 `ok: false`, 다른 벌·진료 줄은 그대로. 원 미만 금액(예: 129,629.535) → 129,629

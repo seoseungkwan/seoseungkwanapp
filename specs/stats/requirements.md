@@ -39,12 +39,12 @@
 - AC-504.1: Given `stats.rows`의 `to`, When 처리하면, Then 같은 JSON의 `report`에 원본 `OperationalReportData.Load` 순서대로 원본 `OperationalReportSql`(`HistoryGuard`·`UnsupportedFinance`·`Patients`·`Treatments`·`LaCodes`·`FinanceNormal`·`FinanceReceivable`·`FinanceMultiplicity`·`ReceivableMultiplicity`)을 돌린 숫자 네 벌이 있다: 일일 `to`·`to − 1일`, 월말 `to`가 든 달(1일 ~ `to`)·그 앞 달. 한 벌의 칸은 기간·총환·신환·재진·총진료비·조합청구액·비급여·현금·카드·계좌이체·치료 다섯(도수·충격파·씨암블락·쏘노·크라이오)·LA 코드 건수·금액 확인 필요 여부와 사유·원본 안내 글뿐이다
 - AC-504.2: Given 환불·변경수납·예치금 자료가 있는 기간(원본 `UnsupportedFinance` > 0)이나 금액 연결 중복, When 그 벌을 만들면, Then 원본 `SetFinanceUnconfirmed`처럼 '금액 확인 필요'(사유 포함)이고 총환·신환·치료·LA 숫자는 그대로다
 - AC-504.3: Given 원본 `Load`가 '보고를 확정할 수 없음'으로 멈추는 값(내원 누락·중복, 치료 연결 못 함, 재진이 음수), When 그 벌을 만들면, Then 그 벌만 `{ ok: false, reason }`(원본 이유 이름 그대로)이고 다른 벌과 진료 줄은 그대로 보낸다. SQL 실행 실패는 REQ-503(반쪽 자료 없음)대로 전체 `error`다
-- AC-504.4: Given 보고 SQL 상수, When 원본 사본과 견주면, Then 공백만 다르다. `@daily`는 원본 `Bit` 대신 `Char(1)` '1'·'0'으로 넘긴다(관문·`SqlBitDb`를 고치지 않으려고). 금액은 원 단위 정수로 보낸다(원 미만은 버림)
+- AC-504.4: Given 보고 SQL 상수, When 원본 사본과 견주면, Then 공백만 다르다. `@daily`는 원본 `Bit` 대신 `Char(1)` '1'·'0'으로 넘긴다(관문·`SqlBitDb`를 고치지 않으려고). 금액은 원 단위 정수로 보낸다(원 미만은 0 쪽으로 버린다. 음수도 같다: -129,629.535 → -129,629). 음수 금액은 원본처럼 그대로 보낸다
 
 ### REQ-505: 통계 Worker (도우미 자료 → 저장 모양)
 - 옮겨 옴: precheck REQ-027 (precheck 027.2)
 - AC-505.1: Given 통로가 Worker 포트로 넘긴 `chunk`들과 `end {count, bytes, sha256}`, When 모으면, Then `seq`가 0부터 빠짐없이 이어지고 조각 수·UTF-8 바이트 수·SHA-256이 모두 맞을 때만 JSON 하나로 푼다. 하나라도 다르면 버리고 `E-BRIDGE-BAD-REPLY`, `abort`면 버리고 받은 번호다
-- AC-505.2: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 숫자는 0 이상 정수)일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`
+- AC-505.2: Given 푼 JSON, When 검사하면, Then 정해 둔 열쇠·모양(진료 줄 = 4칸 배열 — 앞 셋은 글자, 넷째 첫 내원일은 글자 또는 null(null이면 그 환자는 신환이 아니고 기간 합계의 `noFirst`에 든다), 날짜 `YYYYMMDD`, 첫 내원일 ≤ 진료일, 한 환자의 첫 내원일은 하나, 처방코드 1~40자, 줄 수 700,000 이하, 기간이 요청과 같음, 보고 벌의 건수(총환·신환·재진·치료 다섯·LA 건수)는 0 이상 정수, 금액 6칸(`totalAmount`·`insurerAmount`·`noncoveredAmount`·`cashAmount`·`cardAmount`·`transferAmount`)은 정수이고 절댓값이 10^14 이하(음수 가능, 원본 `medicore/reports.py` `_amount`))일 때만 받는다. 아니면 `E-BRIDGE-BAD-REPLY`다. 시험: 음수 금액이 든 벌은 받아들이고 진료 줄과 다른 벌은 그대로다. 시험: 음수 건수는 거부한다. 시험: 절댓값이 10^14를 넘는 금액은 거부한다
 - AC-505.3: Given 같은 가짜 자료를 파일 길(`fixtures/fake-bit/` → `parseBit`)과 도우미 JSON 길로 넣음, When 도우미 길이 진료 줄을 `ConsumptionRow`(첫 내원일 = 진료일이면 신환, 외래, 동네 없음, 차트번호는 메모리 번호 `PatientIds`)로 바꿔 지금 `aggregate`에 넣으면, Then 동네(지역)를 뺀 결과가 파일 길과 깊은 비교로 같다. 파일 올리기 길(`parseBit`·`aggregate`·`analyzeFiles`·`runAnalysis`·`analyze.worker.ts`)은 고치지 않는다
 - AC-505.4: Given 검사한 도우미 자료, When `load` 일을 하면, Then Worker가 `buildSummary`(덮은 기간 = `[from, min(to, 오늘)]`) → `toMonthPayload`·`toDayPayloads`를 만들어 화면에는 달·일 저장 모양, 저장할 덮은 기간, 기간 합계의 확인 건수(차트번호 없는 내원·중복 내원·첫 내원 못 찾은 환자), 보고 숫자 네 벌만 보낸다. 저장할 덮은 기간은 `[from, min(to, 끝난 마지막 날)]`이고 끝난 마지막 날은 "오늘 진료 끝"을 켰으면 오늘, 아니면 어제다(끝나지 않은 오늘을 덮은 날로 저장하면 다음 날 그날이 휴진 0으로 읽힌다). 그 범위가 비면(`from` > 끝난 마지막 날) 덮은 기간은 null이고 덮은 기간 줄을 저장하지 않는다. 시험: 오늘 아침 진료 전에 불러옴(오늘 줄 없음, 오늘 진료 끝 꺼짐) → 저장할 덮은 기간 끝 = 어제. 확인 건수가 하나라도 0이 아니면 품질 incomplete이고 저장 모양은 null이다. 저장 모양의 동네는 비운다(`regions: []`)
 - AC-505.5: Given 화면에 보내는 모든 메시지, When 열쇠와 값을 훑으면, Then 차트번호·환자 번호·진료 줄이 없다(숫자·처방코드·처방 이름·날짜만). 진료 줄은 Worker 메모리에만 남고(처방별 신환·재진 계산용), 새로 불러오면 바뀐다
@@ -80,7 +80,7 @@
 
 ### REQ-510: 원장님 보고 문장 (`lib/clinicReport/reportText.ts`)
 - 옮겨 옴: precheck REQ-030
-- AC-510.1: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatClinicReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 적지 않은 차이는 실패다
+- AC-510.1: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatClinicReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 적지 않은 차이는 실패다. 음수 금액은 원본이 찍는 그대로 찍는다("-1,000원"). 골든에 음수 금액이 든 사례가 있고, 건당진료비까지 정확한 글은 그 골든이 정한다
 - AC-510.2: Given 금액 확인 필요 벌, When 만들면, Then 원본처럼 금액 줄은 "확인 필요"이고 다른 숫자는 그대로이며, 돌려주는 `unconfirmedLines`에 그 줄 번호들이 있다
 - AC-510.3: Given 오늘보다 뒤 날짜·달, When 만들려 하면, Then 글을 만들지 않고 `{ error: 'future-date' }`다. `{ ok: false }` 벌이면 `{ error: 'unconfirmed', reason }`이다
 - AC-510.4: Given `src/types/clinicReport.ts`의 입력 모양(`ClinicReportNumbers`), When 열쇠를 보면, Then 집계 숫자·기간·병원 이름뿐이다(`chart`·`name`·`rows`·`patient` 칸 없음). 시험이 열쇠 목록을 못 박는다
@@ -103,7 +103,7 @@
 ### REQ-513: 통계 그래프 섹션 (`components/stats/sections/*`)
 - 옮겨 옴: precheck REQ-031 (precheck 031.3·031.4·031.5)
 - AC-513.1: Given 보기 모양(REQ-511·509·510), When 섹션을 그리면, Then 한 쪽에 이어서(도구 단추 줄 없음) 기간 요약 → 환자 수 추이 → 신환 재방문율(첫 재방문까지 날수 포함) → 처방 추세 → 처방별 신환·재진 → 원장님 보고 문장 → 요일별 환자 수 차례이고 섹션마다 h2다. 차례·문구·배치가 목업 승인본과 다르면 목업이 이긴다(그때 이 AC의 차례만 고친다). 예외: 최근 30일 보기의 30일 줄과 첫 재방문까지 날수(S6), 12개월 처방 증감(S7)은 2026-11-01 사용자 결정으로 목업이 아니라 이 명세를 따른다
-- AC-513.2: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE)
+- AC-513.2: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE). `StackedBarChart`에는 칸마다 줄 수 있는 선택 값 `comparison?: number | null` 하나만 `BarBucket`에 더한다: 쌓은 막대 왼쪽에 가는 `faint` 막대로 그리고, 값을 줄 때만 눈금 계산에 넣는다. 어느 칸에도 값이 없으면 그림·표·지금 시험은 지금 그대로다. `null`은 막대를 그리지 않는다(예: 덮이지 않은 비교 칸, AC-511.8). 움직임 규칙과 `rules.test.ts`는 그대로 지킨다. 시험: `comparison`을 주면 가는 막대가 보이고 눈금이 그 값을 넣어 정해진다. 시험: 주지 않으면 지금과 결과가 같다(지금 시험을 고치지 않고 통과)
 - AC-513.3: Given 그래프마다 있는 [자세히] 단추(`aria-expanded`, `aria-controls`), When 누르면, Then 그 그래프 바로 아래에 숫자 표(머리 줄 + 날짜·달마다 값)가 열리고 다시 누르면 닫힌다. 주소(URL)는 바뀌지 않는다. 처방 추세에서 처방 줄을 누르면 그 처방의 칸별 건수·신환·재진 막대가 열린다
 - AC-513.4: Given 자료 없는 섹션, When 그리면, Then 그래프·빈 틀 없이 "자료 없음" + 한 줄 안내(목업 문구)다. 숫자를 지어내지 않는다
 - AC-513.5: Given 처방 추세, When 그리면, Then 금액·소모량 자리에 "금액·소모량은 매출 탭에서 볼 수 있어요"(목업 문구)를 보인다
@@ -136,7 +136,7 @@
 
 ### REQ-516: 대시보드가 저장된 통계 숫자를 읽음
 - AC-516.1: Given `/dashboard`, When 그리면, Then 브라우저에서 저장된 일 숫자(오늘 − 97일 ~ 오늘)를 `readDays`로 읽어 `{ kind: 'data', days }`를 만든다. 읽기 전·줄 없음은 지금 연결 전 모양이고, 읽기 실패는 연결 전 모양 + 오류 카드 한 줄(`E-STATS-READ-FAILED`)이다. 서버 코드(`*.server.ts`·페이지)는 통계 표를 읽지 않는다
-- AC-516.2: Given 연결 뒤 가짜 자료, When 신환 재방문율을 그리면, Then 30일 줄도 7·14일과 같은 규칙(값이 null이 아닌 날들의 합 ÷ 집단 합, 모두 null이면 "집계 중", 분모 0이면 "자료 없음")이고 "30일 기록은 아직 모으지 않아요"가 없다
+- AC-516.2: Given 연결 뒤 가짜 자료, When 신환 재방문율을 그리면, Then 30일 줄도 7·14일과 같은 규칙(값이 null이 아닌 날들의 합 ÷ 집단 합, 모두 null이면 "집계 중", 분모 0이면 "자료 없음")이고 "30일 기록은 아직 모으지 않아요"가 없다. 대시보드의 30일 기간에서는 30일 줄이 오늘 − 60 ~ 오늘 − 31을 AC-511.4와 같은 규칙으로 세어(S6, 2026-11-01 사용자 결정 — 같은 이름의 줄이 통계 탭과 다르게 움직이지 않게. 모두 null이면 "집계 중", 분모가 0이거나 줄이 없으면 "자료 없음") 비율을 보이고 caption은 "{시작} – {끝}에 온 신환 {N}명 가운데 {K}명 · 온 뒤 30일이 지난 가장 최근 신환이에요"다. 날짜는 그 범위에서 30일 값이 숫자인 첫날과 끝날이다. 7·14일 줄은 고른 기간 그대로이고, 7일·90일 기간은 바뀌지 않는다. 시험: 오늘이 11월 13일인 30일 기간 — 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 보인다. 시험: 가장 새로운 날들이 null — 날짜가 숫자인 날까지로 줄어든다. 시험: 7일 기간 — 30일 줄이 "집계 중"이다
 - AC-516.3: Given 대시보드 브리핑 파일(`components/dashboard/briefing/*`), When 보면, Then 고치지 않았고 `'use client'`는 지금처럼 폰 아래 단추 파일 하나뿐이다. 읽기와 연결 전·뒤 고르기는 `components/dashboard/summary/`의 새 클라이언트 파일 하나가 한다
 - AC-516.4: Given 지금 대시보드 시험(브리핑·분석·보고 문장·페이지), When 돌리면, Then 30일 줄 기대값과 페이지가 읽기 자리를 부르는 방식만 고치고 나머지는 그대로 통과한다
 

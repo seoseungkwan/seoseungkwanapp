@@ -10,7 +10,7 @@
 전체 문장은 `/specs/stats/requirements.md`의 REQ-513(통계 그래프 섹션 (`components/stats/sections/*`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-513.1**: Given 보기 모양(REQ-511·509·510), When 섹션을 그리면, Then 한 쪽에 이어서(도구 단추 줄 없음) 기간 요약 → 환자 수 추이 → 신환 재방문율(첫 재방문까지 날수 포함) → 처방 추세 → 처방별 신환·재진 → 원장님 보고 문장 → 요일별 환자 수 차례이고 섹션마다 h2다. 차례·문구·배치가 목업 승인본과 다르면 목업이 이긴다(그때 이 AC의 차례만 고친다). 예외: 최근 30일 보기의 30일 줄과 첫 재방문까지 날수(S6), 12개월 처방 증감(S7)은 2026-11-01 사용자 결정으로 목업이 아니라 이 명세를 따른다
-- **AC-513.2**: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE)
+- **AC-513.2**: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE). `StackedBarChart`에는 칸마다 줄 수 있는 선택 값 `comparison?: number | null` 하나만 `BarBucket`에 더한다: 쌓은 막대 왼쪽에 가는 `faint` 막대로 그리고, 값을 줄 때만 눈금 계산에 넣는다. 어느 칸에도 값이 없으면 그림·표·지금 시험은 지금 그대로다. `null`은 막대를 그리지 않는다(예: 덮이지 않은 비교 칸, AC-511.8). 움직임 규칙과 `rules.test.ts`는 그대로 지킨다. 시험: `comparison`을 주면 가는 막대가 보이고 눈금이 그 값을 넣어 정해진다. 시험: 주지 않으면 지금과 결과가 같다(지금 시험을 고치지 않고 통과)
 - **AC-513.3**: Given 그래프마다 있는 [자세히] 단추(`aria-expanded`, `aria-controls`), When 누르면, Then 그 그래프 바로 아래에 숫자 표(머리 줄 + 날짜·달마다 값)가 열리고 다시 누르면 닫힌다. 주소(URL)는 바뀌지 않는다. 처방 추세에서 처방 줄을 누르면 그 처방의 칸별 건수·신환·재진 막대가 열린다
 - **AC-513.4**: Given 자료 없는 섹션, When 그리면, Then 그래프·빈 틀 없이 "자료 없음" + 한 줄 안내(목업 문구)다. 숫자를 지어내지 않는다
 - **AC-513.5**: Given 처방 추세, When 그리면, Then 금액·소모량 자리에 "금액·소모량은 매출 탭에서 볼 수 있어요"(목업 문구)를 보인다
@@ -45,6 +45,7 @@
 - `docs/mockups/stats/index.html`·`notes.md` 승인본(TASK-12). `notes.md` 맨 위에 '승인:' 줄이 없으면 시작하지 말고 `blocked`(사유: 목업 승인 전)로 멈춘다
 - 명세의 화면 AC는 내용과 동작을 정하고, 배치·문구는 목업이 정한다
 - 예외(AC-513.1): 최근 30일 보기의 30일 줄과 첫 재방문까지 날수(S6), 12개월 처방 증감(S7)은 2026-11-01 사용자 결정으로 승인본이 아니라 명세를 따른다. 처방 줄에 비교가 없을 때의 글자는 AC-513.11을 따른다. `notes.md`의 해당 두 줄에도 적혀 있다. 승인본 파일(`index.html`)은 고치지 않는다
+- 2026-11-01 목업 변경(30일 caption, '일부 기간' 표시, "비교할 수 없음")에 사용자 OK가 있어야 시작한다. OK가 없으면 `blocked`(사유: 목업 변경 OK 대기)로 멈춘다(tasks.md TASK-12 메모)
 
 ## 수정 범위 (tasks.md TASK-13)
 
@@ -53,6 +54,8 @@
 - Files:
   - `src/components/stats/sections/*`
   - `src/components/ui/classes.test.ts`
+  - `src/components/charts/StackedBarChart.tsx`
+  - `src/components/charts/StackedBarChart.test.tsx`
 - Tests:
   - `src/components/stats/sections/PeriodSummary.test.tsx`
   - `src/components/stats/sections/PatientTrendSection.test.tsx`
@@ -64,8 +67,9 @@
   - `src/components/stats/sections/DetailToggle.test.tsx`
   - `src/components/stats/sections/CopyButton.test.tsx`
   - `src/components/ui/classes.test.ts`
+  - `src/components/charts/StackedBarChart.test.tsx`
 - TDD: required
-- 메모: `classes.test.ts`는 `APP_DIRS`에 `'src/components/stats'` 한 줄만 더한다
+- 메모: `classes.test.ts`는 `APP_DIRS`에 `'src/components/stats'` 한 줄만 더한다. `StackedBarChart`는 선택 값 `comparison` 하나만 더한다(AC-513.2). 지금 시험은 고치지 않는다
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
@@ -79,16 +83,21 @@
 - `PeriodSummary`·`PatientTrendSection`·`RevisitSection`·`RxTrendSection`·`RxSplitSection`·`ReportSection`·`WeekdaySection` + `DetailToggle`·`CopyButton`. 모두 props(보기 모양)만 받는다. 자세히·복사·고르기 상태만 `'use client'`
 - AC-513.1~513.11을 승인본 배치·문구로(예외는 위 '승인된 목업'). 차트는 `components/charts` 부품만, 증감은 `formatDelta`(▲▼ + 글자), 빈 상태는 그래프 없이 "자료 없음" + 한 줄
 - `RevisitSection`(S6, AC-513.10): 날짜는 `revisitRates`의 `d30Cohort`와 `firstRevisit`의 `from`·`to`를 그대로 쓰고, 7·14·30일 줄의 caption 숫자와 [자세히] 표는 비율 칸의 `within`·`cohort`를 쓴다(줄의 "…빼고 셌어요"는 `excluded`가 참일 때만. 단 `'30d'`의 30일 줄은 AC-513.10이 caption을 정하므로 이 말을 붙이지 않는다). `'30d'`의 30일 줄이 비율이 아니면 지금 목업의 "집계 중"·"자료 없음" 그대로다
-- `RxTrendSection`(S7, AC-513.11): 줄의 막대와 비교 눈금은 `comparable.current`·`comparable.previous`로 그린다(`InlineBar`). 증감과 기준을 맞추려는 것이다. `max`는 목록에서 그리는 값(막대·눈금) 가운데 가장 큰 값이다. 글자 건수는 `count`이고 `partial`이면 그 옆에 '일부 기간'을 붙인다. `comparable`이 null이면 `InlineBar`에 `current={count}`·`previous={null}`을 넘겨 막대는 그리고 눈금은 없앤다(목업 `gen.py`의 `pw: None` 줄과 같다). 증감은 `formatDelta`의 "비교할 수 없음"이다. [자세히] 표의 비교 칸은 `rxDetail` 점이 `covered: false`이면 "–"다(목업 `app.js`의 `p.pv == null`과 같다)
+- `RxTrendSection`(S7, AC-513.11): 줄의 막대와 비교 눈금은 `comparable.current`·`comparable.previous`로 그린다(`InlineBar`). 증감과 기준을 맞추려는 것이다. `max`는 목록에서 그리는 값(막대·눈금) 가운데 가장 큰 값이다. 글자 건수는 `count`이고 `partial`이면 그 옆에 '일부 기간'을 붙인다. `comparable`이 null이면 `InlineBar`에 `current={count}`·`previous={null}`을 넘겨 막대는 그리고 눈금은 없앤다(목업 `gen.py`의 `pw: None` 줄과 같다). 증감은 `formatDelta`의 "비교할 수 없음"이다. [자세히] 표의 비교 칸은 `rxDetail` 점이 `covered: false`이면 "–"다(목업 `app.js`의 `p.pv == null`과 같다). 처방 줄을 열면 막대에 `rxDetail`의 같은 차례 `previous` 점의 `count`를 `comparison`으로 넘긴다(`covered: false`이면 `null`)
 - `CopyButton`: 대시보드 `ReportBlock`의 [복사] 동작(성공 2초 "복사했어요", `aria-live`, 실패 안내, 폭 흔들림 없음)을 옮긴다. 문구는 이 파일 안에(`lib/errors.ts`를 고치지 않는다)
 
-### 2. 규칙 시험 (`components/ui/classes.test.ts`)
+### 2. 차트 부품 (`src/components/charts/StackedBarChart.tsx`, AC-513.2)
+- `BarBucket`에 선택 값 `comparison?: number | null` 하나만 더한다. 숫자가 있는 칸은 쌓은 막대 왼쪽에 가는 `bg-faint` 막대(목업 `gen.py`의 `.pv`)를 그리고, 눈금은 합계와 숫자인 `comparison` 가운데 가장 큰 값으로 정한다. `null`은 막대를 그리지 않는다
+- 숫자가 있는 칸이 하나도 없으면 그림·표가 지금과 한 글자도 다르지 않다. 숫자가 있는 칸이 있으면 화면 읽기 표에 "비교 기간" 칸 하나가 더 붙는다(`null`은 "–", design.md TASK-13)
+
+### 3. 규칙 시험 (`components/ui/classes.test.ts`)
 - `APP_DIRS`에 `'src/components/stats'` 한 줄(AC-513.9). 다른 줄은 고치지 않는다
 
-### 3. 시험 (jsdom, Testing Library — 지금 시험과 같은 도구)
+### 4. 시험 (jsdom, Testing Library — 지금 시험과 같은 도구)
+- AC-513.2(`src/components/charts/StackedBarChart.test.tsx`, 지금 시험은 고치지 않고 더한다): `comparison`을 주면 가는 막대가 보이고 눈금이 그 값을 넣어 정해짐, `null`인 칸은 막대 없음, 화면 읽기 표에 "비교 기간" 칸이 붙음, 주지 않으면 지금과 결과가 같음. `rules.test.ts`는 고치지 않고 통과
 - 섹션마다 AC ID 이름으로: 차례·h2, 자세히 열고 닫기(`aria-expanded`), 빈 상태, ▲▼ 글자, 처방 추세 금액 안내, 보고 고르기·확인 필요 표시·복사(가짜 `navigator.clipboard`), PC 전용 안내
 - AC-513.10: `'30d'`의 30일 줄이 "집계 중" 대신 비율과 날짜 caption을 보임({N}·{K}는 `cohort`·`within`), 첫 재방문 기준 줄이 같은 날짜를 씀, `'7d'`는 셋 다 집계 중
-- AC-513.11(`RxTrendSection.test.tsx`): 막대·눈금 위치가 `comparable`에서 나오고 건수 글자는 `count`임, `partial` 줄에 '일부 기간'이 보임, `comparable`이 null이면 눈금 없음·막대는 `count`·증감은 "비교할 수 없음"(일 기간과 12개월 둘 다), `covered: false`인 비교 칸은 [자세히] 표에 "–"이고 "0건"이 없음
+- AC-513.11(`RxTrendSection.test.tsx`): 막대·눈금 위치가 `comparable`에서 나오고 건수 글자는 `count`임, `partial` 줄에 '일부 기간'이 보임, `comparable`이 null이면 눈금 없음·막대는 `count`·증감은 "비교할 수 없음"(일 기간과 12개월 둘 다), `covered: false`인 비교 칸은 [자세히] 표에 "–"이고 "0건"이 없음, 처방 줄을 열면 같은 차례 `previous.count`가 `comparison` 막대로 그려지고 `covered: false` 칸은 막대가 없음
 
 ## TDD 순서
 
@@ -101,7 +110,7 @@
 
 ```bash
 npx vitest run src/components/stats/sections src/components/ui/classes.test.ts
-npx vitest run src/components/charts src/components/dashboard   # 차트·대시보드 그대로
+npx vitest run src/components/charts src/components/dashboard   # 차트의 지금 시험은 고치지 않고 통과, 대시보드 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify
@@ -130,6 +139,7 @@ python3 ~/.claude/harness/bin/verify
 - 승인본과 다른 배치·문구로 새로 짓지 마라(예외는 AC-513.1의 최근 30일 보기 30일 줄·첫 재방문까지 날수와 12개월 처방 증감, AC-513.11의 "비교할 수 없음" 글자뿐). 이유: 화면은 승인된 목업대로(CLAUDE.md)
 - 섹션(`components/stats/sections/**`)에서 Supabase·`fetch`·`lib/bridge`·`workers`를 불러오지 마라. 이유: 섹션은 props만 그린다(AC-513.9 — 화면 조립 파일 `StatsScreen.tsx`·`use*.ts`는 TASK-14 몫이고 이 AC 밖이다)
 - 그래프 패키지(recharts·chart.js 등)를 넣지 마라. 이유: 차트 부품만 쓴다(UI_GUIDE, 새 패키지 없음)
+- 차트 부품에 `comparison` 밖의 설정을 더하거나 다른 차트 부품을 고치지 마라. 이유: 대시보드가 같은 부품을 쓰고, 주지 않으면 지금 그대로여야 한다(AC-513.2)
 - `components/common/CopyButton.tsx`를 만들지 마라. 이유: 청구 5단계가 그 이름을 만든다(design.md '결정')
 - 보고 글을 HTML로 그리지 마라(`dangerouslySetInnerHTML`). 이유: 글자로만(ESLint `react/no-danger`)
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)
