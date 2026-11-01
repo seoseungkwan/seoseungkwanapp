@@ -16,6 +16,9 @@
 .is-ph .dp-b { width: 44px; height: 44px; }
 .ui .dp-b:hover:not([disabled]) { background: var(--canvas); }
 .ui .dp-b[disabled] { color: var(--line-strong); cursor: default; }
+.dp-n { display: inline-flex; gap: 8px; padding-left: 8px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.dp-n[hidden] { display: none; }
+.is-ph .dp-n { padding-left: 12px; }
 .dp-prev { transform: rotate(90deg); }
 .dp-next { transform: rotate(-90deg); }
 .dp-l { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-control); font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); cursor: pointer; transition: background-color 150ms; }

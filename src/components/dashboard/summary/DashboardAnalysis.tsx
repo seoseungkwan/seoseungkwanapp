@@ -12,6 +12,7 @@ import type { DayPayload } from '@/types/payload'
 import { isConnected, type SummarySource } from './source'
 import {
   DEFAULT_PERIOD,
+  longDate,
   PERIODS,
   periodRange,
   revisitView,
@@ -40,6 +41,7 @@ const NOTE = 'text-small text-muted max-w-130'
 const NOT_CONNECTED = '연결하면 보여요'
 
 const KPI_LABELS = ['오늘 환자 수', '신환', '재진'] as const
+const PAST_KPI_LABELS = ['환자 수', '신환', '재진'] as const
 const LAST_WEEK_LABEL = '지난주 같은 요일보다'
 // 숫자 칸 넷: 위아래 16·좌우 20, 첫 칸 왼쪽 0, 칸 사이 1px line 세로선.
 // 768px 미만 2칸 × 2줄: 12·16, 왼쪽 칸 왼쪽 0, 둘째 줄 위 1px line(셋째 칸은 세로선 없음)
@@ -91,6 +93,8 @@ const GAIN_NUMBER =
 export type DashboardAnalysisProps = {
   today: string
   source: SummarySource
+  /** 고른 날(bit-dashboard AC-605.3). 없으면 오늘이다. 하루 줄만 바꾸고 기간별 흐름은 today로만 계산한다(AC-605.6) */
+  day?: string
   emptyChip?: string
   emptyText?: string
   /** 숫자 줄 아래 안내 줄. null이면 없다 */
@@ -106,6 +110,7 @@ export type DashboardAnalysisProps = {
 export function DashboardAnalysis({
   today,
   source,
+  day = today,
   emptyChip = '비트 PC 연결 전',
   emptyText = NOT_CONNECTED,
   emptyNote = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.',
@@ -120,17 +125,18 @@ export function DashboardAnalysis({
   const gainsId = useId()
   const days = isConnected(source) ? source.days : null
   const range = periodRange(today, period)
+  const past = day !== today
 
   return (
     <>
       <section aria-labelledby={todayId} className={SECTION}>
         <div className={SECTION_HEAD}>
           <h2 id={todayId} className={SECTION_TITLE}>
-            오늘 하루 분석
+            {past ? `${longDate(day)} 하루 분석` : '오늘 하루 분석'}
           </h2>
           {days === null && <span className={ds.chip.neutral}>{emptyChip}</span>}
         </div>
-        <TodayNumbers view={days === null ? null : todayView(today, days)} emptyText={emptyText} />
+        <TodayNumbers view={days === null ? null : todayView(day, days)} emptyText={emptyText} past={past} />
         {days === null && emptyNote !== null && <p className={`mt-3 ${NOTE}`}>{emptyNote}</p>}
       </section>
 
@@ -220,14 +226,15 @@ function TrendBody({ days, range, period }: { days: readonly DayPayload[]; range
   )
 }
 
-// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText)
-function TodayNumbers({ view, emptyText }: { view: TodayView | null; emptyText: string }) {
+// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText).
+// past = 지난 날짜(AC-605.3·AC-605.4): 첫 칸 이름이 "환자 수"이고, 그 날은 끝나기를 기다릴 날이 아니라 비교할 수 없으면 "자료 없음"이다
+function TodayNumbers({ view, emptyText, past }: { view: TodayView | null; emptyText: string; past: boolean }) {
   const counts = view?.counts ?? null
   const values = counts === null ? [null, null, null] : [counts.patients, counts.newPatients, counts.returning]
 
   return (
     <div className="grid grid-cols-4 border-b border-line max-md:grid-cols-2">
-      {KPI_LABELS.map((label, i) => (
+      {(past ? PAST_KPI_LABELS : KPI_LABELS).map((label, i) => (
         <div key={label} className={KPI_CELLS[i]}>
           {/* 연결 뒤 빈 값은 KpiStat 기본 '자료 없음' */}
           <KpiStat label={label} value={values[i] ?? null} format="count" unit="명" emptyText={view === null ? emptyText : undefined} />
@@ -242,7 +249,7 @@ function TodayNumbers({ view, emptyText }: { view: TodayView | null; emptyText: 
             value={null}
             format="count"
             unit="명"
-            emptyText={view === null ? emptyText : view.compare.kind === 'wait' ? '오늘 진료가 끝나면 비교해요' : '지난주 자료가 없어요'}
+            emptyText={view === null ? emptyText : view.compare.kind === 'no-last-week' ? '지난주 자료가 없어요' : past ? NO_DATA : '오늘 진료가 끝나면 비교해요'}
           />
         )}
       </div>
@@ -251,7 +258,8 @@ function TodayNumbers({ view, emptyText }: { view: TodayView | null; emptyText: 
 }
 
 // 넷째 칸의 값이 증감일 때. KpiStat의 값은 숫자 하나라 증감을 값으로 쓸 수 없어 같은 글자 단계로 따로 둔다:
-// 이름(small muted) → 값 줄(metric 600: 화살표 꾸밈 + 화면 읽기 글자 + 증감 글자) → "지난주 {요일}요일"(small muted)
+// 이름(small muted) → 값 줄(600: 화살표 꾸밈 + 화면 읽기 글자 + 증감 글자) → "지난주 {요일}요일"(small muted).
+// 값 줄은 PC 20/36, 폰 16/32다(bit-dashboard design.md '### 날짜 고르기', 시안 .kpi-v.sm). metric(28)이면 좁은 폭에서 세 줄로 꺾이고, 글자 토큰의 줄 높이는 28·24라 줄 높이를 따로 준다
 const DELTA_ARROW = { up: 'M4 1.2 7.4 6.8H.6z', down: 'M4 6.8 7.4 1.2H.6z' } as const
 const DELTA_TONE = { up: 'text-positive', down: 'text-negative', flat: 'text-muted', none: 'text-muted' } as const
 
@@ -263,7 +271,7 @@ function DeltaStat({ delta, weekday }: { delta: Delta; weekday: string }) {
       <div className="flex h-7 items-start">
         <span className="text-small text-muted">{LAST_WEEK_LABEL}</span>
       </div>
-      <p className={`mt-1 flex flex-wrap items-center gap-x-1 text-metric font-semibold tabular-nums ${DELTA_TONE[view.dir]}`}>
+      <p className={`mt-1 flex flex-wrap items-center gap-x-1 text-title leading-9 font-semibold tabular-nums max-md:text-subtitle max-md:leading-8 ${DELTA_TONE[view.dir]}`}>
         {arrow && (
           <svg aria-hidden="true" width="12" height="12" viewBox="0 0 8 8" className="shrink-0">
             <path d={arrow} fill="currentColor" />

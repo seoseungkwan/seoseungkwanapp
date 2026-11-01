@@ -32,7 +32,8 @@ def date_line():
     return f'<p class="date">{TODAY_LONG}</p>'
 
 
-def date_ctl():
+def date_ctl(month_end=False):
+    note = '<span class="dp-n"><span>·</span>이번 달 마지막 날</span>' if month_end else ''
     prev_ic = ic('chev', 16, 'dp-prev')
     next_ic = ic('chev', 16, 'dp-next')
     return ('<div class="dp" role="group" aria-label="날짜 고르기">'
@@ -40,7 +41,7 @@ def date_ctl():
             f'<label class="dp-l"><span class="dp-t">{TODAY_LONG}</span>{ic("chev", 14)}'
             '<input class="dp-i" type="date" aria-label="날짜 고르기" min="2026-07-25" max="2026-11-02" value="2026-11-02"></label>'
             f'<button type="button" class="dp-b" data-day="next" aria-label="다음 날" disabled>{next_ic}</button>'
-            '<button type="button" class="btn btn-sec btn-sm dp-today" data-day="today" hidden>오늘로</button></div>')
+            '<button type="button" class="btn btn-sec btn-sm dp-today" data-day="today" hidden>오늘로</button>' + note + '</div>')
 
 
 def safe(text=SAFE):
@@ -76,8 +77,8 @@ def read_line(ph, label=READ_AT, state='idle'):
     return f'<div class="rl"><p class="rl-t">{ic("clock", 14)}<span>{label}</span></p>{b}</div>'
 
 
-def left_data(ph, read_at=READ_AT):
-    return date_ctl() + report(ph) + read_line(ph, read_at)
+def left_data(ph, read_at=READ_AT, month_end=False):
+    return date_ctl(month_end) + report(ph) + read_line(ph, read_at)
 
 
 def left_rereading(ph):
@@ -350,6 +351,8 @@ def state_body(state, kind):
         return brief(ph, left_data(ph)) + today_sec('data') + flow_data() + idx_connected()
     if state == 'data2':
         return brief(ph, left_data(ph, READ_AT_NEW)) + today_sec('data') + flow_data() + idx_connected()
+    if state == 'month-end':
+        return brief(ph, left_data(ph, READ_AT, True)) + today_sec('data') + flow_data() + idx_connected()
     if state == 'rereading':
         return brief(ph, left_rereading(ph)) + today_sec('data') + flow_data() + idx_connected()
     if state == 'reread-fail':
@@ -363,7 +366,7 @@ def state_body(state, kind):
     raise ValueError(state)
 
 
-STATES = ['before', 'setup-ok', 'reading', 'data', 'data2', 'rereading', 'reread-fail', 'reread-unreadable', 'first-fail', 'busy', 'update']
+STATES = ['before', 'setup-ok', 'reading', 'data', 'data2', 'month-end', 'rereading', 'reread-fail', 'reread-unreadable', 'first-fail', 'busy', 'update']
 TAB_OF = {'setup-ok': '설정', 'update': '설정'}
 
 screens = {}
@@ -381,6 +384,7 @@ STRIP = [
     ('setup-ok', '연결 끝', '5단계가 모두 되면 누르지 않아도 대시보드로 돌아가요.'),
     ('reading', '읽는 중', '숫자 칸에 지어낸 값 없이 "읽는 중"만 나와요.'),
     ('data', '숫자 나옴', '맨 위 날짜 줄에서 다른 날을 골라 보세요. 그 날의 보고 문장과 숫자로 바뀌어요. 그림 속 숫자는 모두 가짜예요.'),
+    ('month-end', '월말', '오늘이 그 달 마지막 날이면 날짜 옆에 덧말이 붙어요. 다른 날을 고르면 사라져요. 시안의 오늘은 11월 2일이라 이 그림에서만 날짜 글자를 11월 30일로 보여 줘요.'),
     ('rereading', '다시 읽는 중', '이전 숫자를 둔 채 읽고, 그동안 단추는 막혀요.'),
     ('reread-fail', '다시 읽기 실패', '이전 숫자와 읽은 시각은 그대로 두고 그 아래에 오류를 보여요.'),
     ('reread-unreadable', '다시 읽기: 이 PC에서 못 읽음', '비트가 없는 PC에서 [다시 읽기]를 누른 경우예요. 숫자는 그대로 두고 연결을 확인하라고 안내해요. 오류가 아니라 번호는 없어요.'),
@@ -479,7 +483,9 @@ JS = '''
     document.querySelectorAll('.stage').forEach(function (st) {
       var ctl = st.querySelector('.dp');
       if (!ctl) return;
-      ctl.querySelector('.dp-t').textContent = md(selected) + ' ' + wd(selected) + '요일';
+      var monthEnd = ctl.querySelector('.dp-n');
+      if (monthEnd) monthEnd.hidden = !isToday;
+      ctl.querySelector('.dp-t').textContent = monthEnd && isToday ? '11월 30일 월요일' : md(selected) + ' ' + wd(selected) + '요일';
       ctl.querySelector('.dp-i').value = selected;
       ctl.querySelector('[data-day=prev]').disabled = selected <= MIN;
       ctl.querySelector('[data-day=next]').disabled = selected >= TODAY;

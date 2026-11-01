@@ -9,12 +9,13 @@ import type { ChromeRuntimeLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
 import { createStatsWorker } from '@/workers/statsClient'
+import { DateControl, inDateRange } from './DateControl'
 import { BIT_IN_USE, ReadFailed, ReadingBlock, ReadLine, RereadAlert, UnreadableNote } from './ReadStatus'
 import { readBitDays, type ReadResult } from './readBitDays'
 
 // 비트에서 읽어 대시보드를 그리는 화면 (bit-dashboard REQ-601, design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py state_body).
 // 서버가 그린 첫 모양은 initial 그대로이고, 효과 안에서 chrome.runtime이 있을 때만 읽는다. 화면 상태에는 일 숫자만 담고 서버로 아무것도 보내지 않는다(AC-601.9).
-// 다음 작업이 이어 붙일 자리: 고른 날 상태는 여기 한 곳에 둔다(design.md '### 날짜 고르기')
+// 고른 날은 여기 상태 하나다(design.md '### 날짜 고르기'). 주소·저장소에 두지 않아 새로 열면 오늘이고, 이미 읽은 숫자로 그려 비트를 다시 읽지 않는다(AC-605.6)
 
 type Status =
   | { kind: 'idle' } // 숫자 없음, 읽지도 않음: 연결 전 모양
@@ -70,7 +71,10 @@ function emptyLook(status: Status): EmptyLook {
 export function BitDashboard({ today, initial }: { today: string; initial: SummarySource }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   const [attempt, setAttempt] = useState(0)
+  const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
+  // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5)
+  const selected = picked !== null && inDateRange(picked, today) ? picked : today
 
   useEffect(() => {
     // 저절로 읽은 답은 조용히 둔다(열 때·날짜가 바뀔 때, AC-601.13·AC-601.16)
@@ -96,6 +100,7 @@ export function BitDashboard({ today, initial }: { today: string; initial: Summa
   return (
     <DashboardHome
       today={today}
+      dateLine={status.kind === 'data' ? <DateControl today={today} selected={selected} onChange={(day) => setPicked(day === today ? null : day)} /> : undefined}
       report={
         status.kind === 'idle' ? null : status.kind === 'reading' ? (
           <ReadingBlock />
@@ -103,14 +108,15 @@ export function BitDashboard({ today, initial }: { today: string; initial: Summa
           <ReadFailed code={status.code} onRetry={readAgain} />
         ) : (
           <>
-            <ReportBlock today={today} days={status.days} />
+            {/* key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다 */}
+            <ReportBlock key={selected} today={today} days={status.days} selected={selected} />
             <ReadLine readAt={status.readAt} reading={status.reading} failed={status.code !== null} onReread={readAgain} />
             {status.code !== null && <RereadAlert code={status.code} readAt={status.readAt} hasNumbers={status.days.length > 0} onRetry={readAgain} />}
             {status.unreadable && <UnreadableNote />}
           </>
         )
       }
-      analysis={<DashboardAnalysis today={today} source={source} {...emptyLook(status)} />}
+      analysis={<DashboardAnalysis today={today} day={selected} source={source} {...emptyLook(status)} />}
     />
   )
 }

@@ -125,6 +125,11 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     expectTypeOf<OnlyScreenValues<Props>>().toEqualTypeOf<true>()
   })
 
+  it('AC-605.1: 고른 날은 선택 글자 칸 하나다(ReportBlock selected, DashboardAnalysis day). 없으면 지금처럼 오늘이다', () => {
+    expect(propsOf('ReportBlock.tsx', 'ReportBlock')).toContainEqual({ name: 'selected', optional: true, type: 'string' })
+    expect(propsOf('DashboardAnalysis.tsx', 'DashboardAnalysis')).toContainEqual({ name: 'day', optional: true, type: 'string' })
+  })
+
   it('AC-312.2: 모양 검사 자체가 잡아야 할 것을 잡는다', () => {
     for (const ok of ['string', 'boolean', 'string | null']) expect(ok, ok).toMatch(SCREEN_VALUE)
     for (const bad of ['number', 'string | number', 'readonly DayPayload[]', 'SummarySource', 'ReactNode', 'any', 'unknown']) expect(bad, bad).not.toMatch(SCREEN_VALUE)

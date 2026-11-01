@@ -290,3 +290,68 @@ describe('소스 (AC-317.4)', () => {
     expect(block).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|indexedDB|document\.cookie|supabase/)
   })
 })
+
+// 날짜 고르기 (bit-dashboard REQ-605, design.md '### 날짜 고르기', 시안 docs/mockups/bit-dashboard/gen.py applyDay)
+describe('고른 날 (selected)', () => {
+  const LATER = '2026-11-02' // 지난 토요일(2026-10-31)을 고를 수 있는 오늘
+  const PAST_FULL = '10월 31일 환자 13명이 왔습니다. 신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.'
+  const NO_DATA_FIRST = '이 날은 진료 자료가 없어요'
+  const NO_DATA_REST = '진료가 없었거나 비트에 접수 기록이 없는 날이에요.'
+  const pick = (selected: string | undefined, days: readonly DayPayload[] = DAYS, today = LATER) => render(<ReportBlock today={today} days={days} selected={selected} />)
+
+  it('AC-605.2: 지난 날짜를 고르면 "{월}월 {일}일 환자 N명이 왔습니다."로 시작하고, 블록 안에 "오늘" 글자가 없다', () => {
+    const { container } = pick(TODAY)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('10월 31일 환자 13명이 왔습니다.')
+    expect(screen.getByText('신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')).toBeTruthy()
+    expect(container.textContent).not.toContain('오늘')
+  })
+
+  it('AC-605.2: [복사]는 고른 날의 문장을 복사한다', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    setClipboard({ writeText })
+    pick(TODAY)
+    await act(async () => {
+      fireEvent.click(copyButton())
+    })
+    expect(writeText.mock.calls).toEqual([[PAST_FULL]])
+  })
+
+  it('AC-605.4: 자료가 없는 지난 날짜면 AC-605.4 문구이고 [복사]가 막힌다(누르면 아무 일도 없다)', () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    setClipboard({ writeText })
+    const { container } = pick('2026-10-29')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(NO_DATA_FIRST)
+    expect(screen.getByText(NO_DATA_REST)).toBeTruthy()
+    expect(copyButton().getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(copyButton())
+    expect(writeText).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('오늘')
+  })
+
+  it('AC-605.4: 그 날은 앞으로도 문장이 생기지 않으므로 "문장이 생기면" 툴팁을 달지 않는다(시안은 단추만 막는다)', () => {
+    pick('2026-10-29')
+    expect(screen.queryByRole('tooltip', { hidden: true })).toBeNull()
+    expect(copyButton().getAttribute('aria-describedby')).toBeNull()
+  })
+
+  it('AC-605.4: 오늘 자료가 아직 없을 때는 고른 날이 오늘이어도 지금 문구 그대로다', () => {
+    pick(LATER)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(screen.getByText('오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.')).toBeTruthy()
+    expect(screen.getByRole('tooltip', { hidden: true }).textContent).toBe('문장이 생기면 복사할 수 있어요')
+  })
+
+  it('AC-605.2: selected가 없거나 오늘이면 지금처럼 오늘 문장이다', () => {
+    const none = pick(undefined, DAYS, TODAY)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('오늘 환자 13명이 왔습니다.')
+    const html = none.container.innerHTML.replace(/_r_\w*_|:r\w*:|«r\w*»/g, '')
+    none.unmount()
+    const same = pick(TODAY, DAYS, TODAY)
+    expect(same.container.innerHTML.replace(/_r_\w*_|:r\w*:|«r\w*»/g, '')).toBe(html)
+  })
+
+  it('AC-605.2: 저장 숫자에 덜 끝난 표시가 남은 지난 날도 "오늘 지금까지"라고 하지 않는다', () => {
+    pick(TODAY, [day(TODAY, { partial: true })])
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('10월 31일 환자 10명이 왔습니다.')
+  })
+})

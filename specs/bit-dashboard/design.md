@@ -49,8 +49,10 @@ export function DateControl(props: { today: string; selected: string; onChange(d
 // src/components/dashboard/summary/view.ts
 export function reportSentence(view: TodayView, dayLabel?: string): { first: string; rest: string; full: string } | null // dayLabel = '10월 31일'
 ```
-- 고른 날은 `BitDashboard`의 상태 하나다(주소·저장소에 두지 않는다). 처음은 `today`이고 다시 읽기로 바뀌지 않는다. 새로 열면 오늘이다.
+- 고른 날은 `BitDashboard`의 상태 하나다(주소·저장소에 두지 않는다). 처음은 `today`이고 다시 읽기로 바뀌지 않는다. 새로 열면 오늘이다. 고른 적이 없으면 오늘을 따라가고, 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5).
 - `DateControl`: [이전 날] · 날짜 글자 위에 투명하게 겹친 `<input type="date" min max>` · [다음 날] · 오늘이 아닐 때 [오늘로]. 범위는 `addDays(today, -LOOKBACK_DAYS)` ~ `today`. 날짜 계산은 `lib/analytics/dates.ts`만 쓴다. 폰 폭에서 단추는 44px이다.
+- 월말 덧말(AC-605.8): `DateControl`이 `selected === today`일 때 `briefing/dateLine.ts`의 `dateLine(today).note`를 [다음 날] 뒤에 그린다. 글자 모양은 `DashboardHome`의 날짜 줄과 같고(small muted, "·" 좌우 8px), 줄이 넘치면 "·"와 덧말이 함께 내려간다. 시안 `.dp-n`을 따른다.
+- 넷째 칸의 증감·"변화 없음" 값은 시안 `.kpi-v.sm`대로 `text-metric`보다 작게 그린다(PC 20/36, 폰 16/32). 그대로 두면 좁은 폭에서 세모·"12명"·"(+21.8%)"가 세 줄로 꺾인다. 값이 없을 때의 글과 앞의 세 칸은 그대로다.
 - 지난 날짜도 `todayView(selected, days)`를 그대로 쓴다. `partial: false`라 저절로 끝난 날이 되고 7일 전과 견준다. 문장의 "오늘"만 `dayLabel`로 바꾼다.
 - `ReportBlock`에 선택 prop `selected`를, `DashboardAnalysis`에 `day`를 더한다. 없으면 지금처럼 오늘이다. 자료 없는 지난 날짜는 AC-605.4 문구이고, 오늘 자료가 아직 없을 때는 지금 문구 그대로다.
 - 기간별 흐름은 `today`로만 계산해 고른 날과 상관없다. 날짜를 바꿔도 비트를 다시 읽지 않는다.
@@ -89,7 +91,7 @@ Worker: 합치기·해시 → 검사 → aggregate → buildSummary → 저장 �
 - `gainsRevisitDesc`의 글은 통계 AC-516.2가 합쳐져 30일 줄에 값이 생기면 다시 정한다.
 - **기간은 100일.** 화면의 가장 긴 기간이 90일이고 그 앞뒤 비교(지난주 같은 요일)가 그 안에 든다. 날짜 고르기도 이 안에서만 한다.
 - **날짜를 고르면 하루 줄만 바꾼다.** 이미 읽은 `DayPayload[]`로 그리므로 다시 읽지 않는다. 기간별 흐름까지 고른 날 기준으로 옮기면 "최근 N일"의 뜻이 흐려져 그대로 둔다.
-- 옛 시험을 바꾸는 곳: `MIN_HELPER`·`LATEST_HELPER`를 못 박은 `handshake.test.ts`, `[비트 PC 연결 시작]` 주소를 본 `DashboardHome.test.tsx`·`StickyConnect.test.tsx`·`page.test.tsx`, 도우미 버전 글자를 적어 둔 `client.test.ts`·`workerSink.test.ts`·`useBridge.test.ts`·`SetupScreen.test.tsx`. 이 요구사항 때문에 값만 바꾼다. 시험을 약하게 만들지 않는다. `source.test.ts` AC-312.2는 값이 아니라 모양을 바꾼다: 필수 props가 정확히 `today`·`source`(`ReportBlock`은 `today`·`days`)이고 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐임을 본다(탭 틀 AC-312.2 "오늘 날짜와 이 값만"을 이 기능이 덮어쓴다). `BitDashboard.test.tsx`의 `animate-` 금지는 `.bit-read-*` 두 표시를 뺀 나머지에 대해 유지한다. `MIN_HELPER`와 `LATEST_HELPER`가 같아져 실제 값으로는 "새 도우미가 있어요"가 나올 수 없으므로, 그 안내를 보는 시험은 시험 안에서 `versions`를 바꿔 계속 확인한다.
+- 옛 시험을 바꾸는 곳: `DashboardAnalysis.test.tsx` AC-311.2는 넷째 칸 값의 `text-metric`을 위의 작은 글자로 바꾼다(`specs/tab-frame/design.md`의 넷째 칸 크기를 이 기능이 덮어쓴다). `page.test.tsx` AC-307.6의 저장 숫자 화면은 날짜 글자 대신 날짜 고르기를 기대한다(AC-605.1). `MIN_HELPER`·`LATEST_HELPER`를 못 박은 `handshake.test.ts`, `[비트 PC 연결 시작]` 주소를 본 `DashboardHome.test.tsx`·`StickyConnect.test.tsx`·`page.test.tsx`, 도우미 버전 글자를 적어 둔 `client.test.ts`·`workerSink.test.ts`·`useBridge.test.ts`·`SetupScreen.test.tsx`. 이 요구사항 때문에 값만 바꾼다. 시험을 약하게 만들지 않는다. `source.test.ts` AC-312.2는 값이 아니라 모양을 바꾼다: 필수 props가 정확히 `today`·`source`(`ReportBlock`은 `today`·`days`)이고 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐임을 본다(탭 틀 AC-312.2 "오늘 날짜와 이 값만"을 이 기능이 덮어쓴다). `BitDashboard.test.tsx`의 `animate-` 금지는 `.bit-read-*` 두 표시를 뺀 나머지에 대해 유지한다. `MIN_HELPER`와 `LATEST_HELPER`가 같아져 실제 값으로는 "새 도우미가 있어요"가 나올 수 없으므로, 그 안내를 보는 시험은 시험 안에서 `versions`를 바꿔 계속 확인한다.
 
 ## 위험 / 미해결 질문
 - **접수취소가 실제로 빠지는지는 의원 PC에서만 확인된다(AC-602.3).** 외래 접수는 `OcmComStt IN ('WN','HN','TN','PN')`만 세므로 다른 상태는 빠진다. 입원 쪽에서 빼는 `VC`·`CN`·`CR`도 이 목록에 없다. 원본 저장소 `seoseungkwan/shared@2a1069b`도 같다. `test_rx_visit_split_sql.py`는 상태 `CN` 내원을 "취소 내원은 세지 않음"으로 시험하고, `OperationalReportData.cs`는 총환을 "취소·제외 기록을 뺀 외래 내원 건수"라고 적었다. 다만 진짜 의원 자료에서 취소가 늘 이 값으로 남는지는 적힌 곳이 없다. 시험(TASK-7)은 이 조건 글이 `PeriodVisits`에 남아 있는지만 본다. 취소 건이 있는 날을 비트 화면과 견주어 끝낸다.

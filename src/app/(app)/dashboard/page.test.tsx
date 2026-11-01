@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
+import { DateControl } from '@/components/dashboard/live/DateControl'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import { dashboardSummarySource, type SummarySource } from '@/components/dashboard/summary/source'
@@ -254,11 +255,12 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     vi.useRealTimers()
   })
 
-  it('AC-307.6: 화면 = <DashboardHome report={<ReportBlock … />} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', () => {
+  it('AC-307.6·AC-605.1: 화면 = <DashboardHome dateLine={<DateControl … />} report={<ReportBlock … />} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', () => {
     expect(renderConnected()).toBe(
       renderToStaticMarkup(
         <DashboardHome
           today={TODAY}
+          dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
           report={<ReportBlock today={TODAY} days={DAYS} />}
           analysis={<DashboardAnalysis today={TODAY} source={SOURCE_DATA} />}
         />,
@@ -266,11 +268,13 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     )
   })
 
-  it('AC-307.6: 위에서부터 날짜 줄 → 원장님 보고 문장 · [복사] → h1 첫 문장 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
+  it('AC-307.6·AC-605.1: 위에서부터 날짜 고르기(오늘) → 원장님 보고 문장 · [복사] → h1 첫 문장 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
     const html = renderConnected()
-    expect(dateLineText(html)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    const dateControl = html.indexOf('role="group" aria-label="날짜 고르기"')
+    expect(dateControl).toBeGreaterThanOrEqual(0)
+    expect(html).toContain(`value="${TODAY}"`)
     expectAscending([
-      ['날짜 줄', html.indexOf('<p')],
+      ['날짜 고르기', dateControl],
       ['원장님 보고 문장', placeOf(html, 'p', '원장님 보고 문장')],
       ['복사', placeOf(html, 'button', '복사')],
       ['h1 첫 문장', placeOf(html, 'h1', '오늘 환자 13명이 왔습니다.')],
@@ -285,6 +289,13 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     ])
     expect(hrefOf(html, '사전점검 열기')).toBe('/claim')
     expect(hrefOf(html, '비트 PC 연결 다시 확인')).toBe('/claim/setup')
+  })
+
+  it('AC-605.8: 오늘이 10월 31일인 저장 숫자 화면에서도 날짜 고르기 옆에 "·"과 "이번 달 마지막 날"이 붙는다', () => {
+    const html = renderConnected()
+    const dateControl = /<div role="group" aria-label="날짜 고르기"[\s\S]*?<\/div>/.exec(html)?.[0] ?? ''
+    expect(plain(dateControl)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    expect(html.match(/이번 달 마지막 날/g)).toHaveLength(1)
   })
 
   it('AC-307.6: h1은 보고 문장의 첫 문장 하나다', () => {

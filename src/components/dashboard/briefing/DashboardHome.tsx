@@ -22,6 +22,8 @@ export type DashboardHomeProps = {
   report: ReactNode | null
   /** 오늘 하루 분석 + 기간별 흐름(갈래 라) */
   analysis?: ReactNode
+  /** 주면 날짜 글자 대신 그린다(숫자를 읽은 뒤의 날짜 고르기, bit-dashboard AC-605.1) */
+  dateLine?: ReactNode
 }
 
 // 휴대폰 아래 단추(StickyConnect)가 이 id로 위 주 단추를 지켜본다
@@ -73,7 +75,7 @@ function BigSentence() {
   )
 }
 
-export function DashboardHome({ today, report, analysis }: DashboardHomeProps) {
+export function DashboardHome({ today, report, analysis, dateLine: dateControl }: DashboardHomeProps) {
   // undefined도 연결 전이다(tab-frame 남은 일)
   const connected = report != null
   return (
@@ -82,7 +84,7 @@ export function DashboardHome({ today, report, analysis }: DashboardHomeProps) {
       {/* 브리핑: 1024px 이상 12칸(왼쪽 1~7 · 오른쪽 9~12, 위 4). 768~1023px 왼쪽 전체 폭(글 최대 32em) 아래 오른쪽 위 32. 폰은 쌓는다 */}
       <section aria-label="오늘 브리핑" className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6">
         <div className="md:max-lg:max-w-128 lg:col-span-7">
-          <DateLine today={today} />
+          {dateControl ?? <DateLine today={today} />}
           {connected ? report : <BigSentence />}
         </div>
         {connected ? (

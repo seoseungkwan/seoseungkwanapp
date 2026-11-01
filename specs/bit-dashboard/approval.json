@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "bit-dashboard",
-  "approved_at": "2026-11-01T14:06:46Z",
+  "approved_at": "2026-11-01T21:27:17Z",
   "approved_via": "user-prompt",
   "session_id": "29f5f2d1-4083-41a2-9d6d-b31c7f58fa04",
-  "spec_sha256": "aefab8237b9934ff2a2227d3cb801afa1aba60274901bf35a16fa477b6bf62ca",
+  "spec_sha256": "3378b7d50f3dc7fe7b3936b2ce0c87d76015da0544fe74735bf7710a1b6dc1ab",
   "scope": [
     "helper/Directory.Build.props",
     "helper/tests/build.test.ts",

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -19,6 +19,7 @@ import type { DayPayload } from '@/types/payload'
 import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
 import { createStatsWorker } from '@/workers/statsClient'
 import { BitDashboard } from './BitDashboard'
+import { DateControl } from './DateControl'
 import { readBitDays, type ReadResult, type StatsWorkerLike } from './readBitDays'
 
 // 대시보드가 저절로 채워지는 화면 (bit-dashboard REQ-601, design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py).
@@ -157,6 +158,7 @@ describe('서버가 그린 첫 모양', () => {
       renderToStaticMarkup(
         <DashboardHome
           today={TODAY}
+          dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
           report={<ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />}
           analysis={<DashboardAnalysis today={TODAY} source={SAVED} />}
         />,
@@ -929,6 +931,380 @@ describe('모양 규칙', () => {
 })
 
 // ── 끝까지 잇기: 진짜 readBitDays + 가짜 확장 + 가짜 통계 Worker ──
+// ── 날짜 고르기 (REQ-605, design.md '### 날짜 고르기', 시안 gen.py date_ctl·applyDay) ──
+const WEEK_DAYS = [day(TODAY, 9, 55, true), day('2026-10-26', 7, 60), day('2026-10-19', 5, 50), day('2026-10-25', 1, 2)]
+const PAST_H1 = '10월 26일 환자 67명이 왔습니다.'
+const PAST_REST = '신환 7명, 재진 60명입니다. 지난주 월요일보다 12명 많습니다.'
+const PAST_FULL = `${PAST_H1} ${PAST_REST}`
+const TODAY_TEXT = '11월 2일 월요일'
+const dateGroup = () => screen.getByRole('group', { name: '날짜 고르기' })
+const noDateGroup = () => expect(screen.queryByRole('group', { name: '날짜 고르기' })).toBeNull()
+const dateInput = () => within(dateGroup()).getByLabelText('날짜 고르기') as HTMLInputElement
+const pickDay = (value: string) => fireEvent.change(dateInput(), { target: { value } })
+const setClipboard = (value: { writeText: (text: string) => Promise<void> } | undefined) => Object.defineProperty(navigator, 'clipboard', { value, configurable: true })
+const readDays = async (list: readonly DayPayload[] = WEEK_DAYS) => {
+  onBitPc()
+  const view = draw()
+  await answer(days(list))
+  return view
+}
+
+describe('AC-605.1·AC-605.7: 날짜 줄', () => {
+  const expectDateControl = () => {
+    expect(within(dateGroup()).getByRole('button', { name: '이전 날' })).toBeTruthy()
+    expect(within(dateGroup()).getByRole('button', { name: '다음 날' })).toBeTruthy()
+    expect(dateInput().value).toBe(TODAY)
+    expect(within(dateGroup()).getByText(TODAY_TEXT)).toBeTruthy()
+    noButton('오늘로')
+  }
+
+  it('AC-605.1: 숫자를 읽으면 날짜 줄이 날짜 고르기이고 처음 고른 날은 오늘이다. 큰 문장보다 앞에 있다', async () => {
+    await readDays()
+    expectDateControl()
+    expectOrder(dateGroup(), h1())
+    expect(screen.getAllByText(TODAY_TEXT)).toHaveLength(1)
+  })
+
+  it('AC-605.1: 다시 읽는 중에도 날짜 고르기가 있다', async () => {
+    onBitPc()
+    draw(SAVED)
+    expect(button('다시 읽는 중')).toBeTruthy()
+    expectDateControl()
+  })
+
+  it('AC-605.1: 다시 읽기 실패에도 날짜 고르기가 있다', async () => {
+    onBitPc()
+    draw(SAVED)
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expectDateControl()
+  })
+
+  it('AC-605.1: 비트 PC가 아니라 저장 숫자만 그려도 날짜 고르기가 있다', () => {
+    notBitPc()
+    draw(SAVED)
+    expectDateControl()
+  })
+
+  it('AC-605.1: 읽었는데 일 숫자가 빈 배열이어도 읽은 화면이라 날짜 고르기가 있고, 지난 날짜는 AC-605.4 문구다', async () => {
+    await readDays([])
+    expectDateControl()
+    pickDay('2026-10-26')
+    expect(h1().textContent).toBe('이 날은 진료 자료가 없어요')
+    expect(kpiCellsOf('10월 26일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+  })
+
+  it.each<[string, () => Promise<unknown> | void, string]>([
+    ['연결 전', () => { notBitPc(); draw() }, CONNECT_H1],
+    ['저장 숫자 없이 처음 읽는 중', () => { onBitPc(); draw() }, READ_H1],
+    [
+      '처음 읽기 실패',
+      async () => {
+        onBitPc()
+        draw()
+        await answer(failed('E-BIT-READ-FAILED'))
+      },
+      errorInfo('E-BIT-READ-FAILED').what,
+    ],
+    [
+      '다른 창 사용 중',
+      async () => {
+        onBitPc()
+        draw()
+        await answer(failed('E-BIT-IN-USE'))
+      },
+      errorInfo('E-BIT-IN-USE').what,
+    ],
+  ])('AC-605.7: %s — 날짜 줄은 오늘 글자뿐이고 날짜 고르기가 없다', async (_, arrange, heading) => {
+    await arrange()
+    expect(h1().textContent).toBe(heading)
+    noDateGroup()
+    noButton('이전 날')
+    noButton('다음 날')
+    noButton('오늘로')
+    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect(screen.getByText(TODAY_TEXT)).toBeTruthy()
+  })
+})
+
+const kpiCellsOf = (title: string) => Array.from(region(title).children[1]!.children)
+
+describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
+  afterEach(() => setClipboard(undefined))
+
+  it('AC-605.2·AC-605.3: 지난 날짜를 고르면 보고 문장과 하루 줄이 그날로 바뀌고, 날짜 줄·[오늘로]도 따라온다', async () => {
+    await readDays()
+    pickDay('2026-10-26')
+
+    expect(h1().textContent).toBe(PAST_H1)
+    expect(screen.getByText(PAST_REST)).toBeTruthy()
+    expect(within(dateGroup()).getByText('10월 26일 월요일')).toBeTruthy()
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(button('오늘로')).toBeTruthy()
+
+    const cells = kpiCellsOf('10월 26일 하루 분석')
+    expect(cells.slice(0, 3).map((cell) => cell.textContent)).toEqual(['환자 수67명', '신환7명', '재진60명'])
+    expect(cells[3]!.textContent).toContain('12명 (+21.8%)')
+    expect(cells[3]!.textContent).toContain('지난주 월요일')
+  })
+
+  it('AC-605.3: 7일 전 자료가 없는 날은 넷째 칸이 "지난주 자료가 없어요"이고 문장에 비교가 없다', async () => {
+    await readDays()
+    pickDay('2026-10-25')
+    expect(h1().textContent).toBe('10월 25일 환자 3명이 왔습니다.')
+    expect(screen.getByText('신환 1명, 재진 2명입니다.')).toBeTruthy()
+    expect(within(kpiCellsOf('10월 25일 하루 분석')[3] as HTMLElement).getByText('지난주 자료가 없어요')).toBeTruthy()
+  })
+
+  it('AC-605.2: [복사]는 고른 날의 문장을 복사한다', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    setClipboard({ writeText })
+    await readDays()
+    pickDay('2026-10-26')
+    await act(async () => {
+      fireEvent.click(button('복사'))
+    })
+    expect(writeText.mock.calls).toEqual([[PAST_FULL]])
+  })
+
+  it('AC-605.2: 복사한 뒤 날짜를 바꾸면 "복사했어요"가 다른 날 문장에 남지 않는다', async () => {
+    setClipboard({ writeText: vi.fn(() => Promise.resolve()) })
+    await readDays()
+    pickDay('2026-10-26')
+    await act(async () => {
+      fireEvent.click(button('복사'))
+    })
+    expect(button('복사했어요')).toBeTruthy()
+    pickDay('2026-10-25')
+    expect(button('복사')).toBeTruthy()
+    noButton('복사했어요')
+  })
+
+  it('AC-605.4: 자료가 없는 지난 날짜(휴진일 등)면 문구와 "자료 없음"이 나오고 [복사]가 막힌다', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    setClipboard({ writeText })
+    await readDays()
+    pickDay('2026-10-18')
+
+    expect(h1().textContent).toBe('이 날은 진료 자료가 없어요')
+    expect(screen.getByText('진료가 없었거나 비트에 접수 기록이 없는 날이에요.')).toBeTruthy()
+    expect(kpiCellsOf('10월 18일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+    const copy = button('복사')
+    expect(copy.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(copy)
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('AC-605.1: [오늘로]를 누르면 오늘로 돌아오고 [오늘로]가 사라진다', async () => {
+    await readDays()
+    pickDay('2026-10-26')
+    fireEvent.click(button('오늘로'))
+    expectNumbersShown(64, 9, 55)
+    expect(dateInput().value).toBe(TODAY)
+    noButton('오늘로')
+  })
+
+  it('AC-605.5: [이전 날]·[다음 날]로 옮기고, 오늘에서는 [다음 날]이 막힌다', async () => {
+    await readDays()
+    expect((button('다음 날') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(button('이전 날'))
+    expect(dateInput().value).toBe('2026-11-01')
+    expect((button('다음 날') as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(button('다음 날'))
+    expect(dateInput().value).toBe(TODAY)
+  })
+
+  it('AC-605.5: 범위 밖 날짜를 넣으면 고른 날이 바뀌지 않는다', async () => {
+    await readDays()
+    pickDay('2026-10-26')
+    pickDay('2026-07-24')
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(h1().textContent).toBe(PAST_H1)
+    pickDay('2026-11-03')
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(h1().textContent).toBe(PAST_H1)
+  })
+})
+
+describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
+  it('AC-605.6: 날짜를 바꿔도 stats.rows를 다시 부르지 않고 읽은 시각도 그대로다', async () => {
+    await readDays()
+    expect(reads).toHaveLength(1)
+    pickDay('2026-10-26')
+    fireEvent.click(button('이전 날'))
+    fireEvent.click(button('오늘로'))
+    expect(reads).toHaveLength(1)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+  })
+
+  it('AC-605.6: 기간별 흐름은 글자·고른 기간 모두 그대로다', async () => {
+    await readDays()
+    fireEvent.click(within(flow()).getByRole('button', { name: '최근 7일' }))
+    const before = flow().textContent
+    pickDay('2026-10-18')
+    expect(flow().textContent).toBe(before)
+    expect(within(flow()).getByRole('button', { name: '최근 7일' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('AC-605.6: [다시 읽기] 동안과 그 뒤에도 고른 날이 유지되고, 새 숫자로 그린다', async () => {
+    await readDays()
+    pickDay('2026-10-26')
+    fireEvent.click(button('다시 읽기'))
+    expect(reads).toHaveLength(2)
+    expect(button('다시 읽는 중')).toBeTruthy()
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(h1().textContent).toBe(PAST_H1)
+
+    await answer(days([day(TODAY, 10, 60, true), day('2026-10-26', 8, 60), day('2026-10-19', 5, 50)]))
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(h1().textContent).toBe('10월 26일 환자 68명이 왔습니다.')
+    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+  })
+
+  it('AC-605.6: 다시 읽기가 실패해도 고른 날이 유지된다', async () => {
+    await readDays()
+    pickDay('2026-10-26')
+    fireEvent.click(button('다시 읽기'))
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(h1().textContent).toBe(PAST_H1)
+  })
+
+  it('AC-605.6: 대시보드를 새로 열면 오늘이다(주소·저장소에 두지 않는다)', async () => {
+    const first = await readDays()
+    pickDay('2026-10-26')
+    const search = window.location.search
+    first.unmount()
+    expect(window.location.search).toBe(search)
+    expect(window.localStorage.length + window.sessionStorage.length).toBe(0)
+
+    draw()
+    await answer(days(WEEK_DAYS))
+    expect(dateInput().value).toBe(TODAY)
+    noButton('오늘로')
+    expectNumbersShown(64, 9, 55)
+  })
+
+  it('AC-605.1: 고르지 않았으면 화면을 연 채 날짜가 바뀌어도 오늘을 따라가고, 고른 날은 그대로 둔다', async () => {
+    const view = await readDays()
+    view.rerender(<BitDashboard today="2026-11-03" initial={NONE} />)
+    expect(dateInput().value).toBe('2026-11-03')
+    noButton('오늘로')
+
+    pickDay('2026-10-26')
+    view.rerender(<BitDashboard today="2026-11-04" initial={NONE} />)
+    expect(dateInput().value).toBe('2026-10-26')
+    expect(button('오늘로')).toBeTruthy()
+  })
+})
+
+describe('AC-605.5: 화면을 연 채 날이 지나 고른 날이 범위 밖이 되면', () => {
+  const nextDayButton = () => button('다음 날') as HTMLButtonElement
+  const openOn = (today: string) => <BitDashboard today={today} initial={NONE} />
+
+  it('AC-605.5: 오늘로 돌아간다 — 날짜 칸·[오늘로]·[다음 날]·보고 문장·하루 줄이 모두 새 오늘이다', async () => {
+    const view = await readDays()
+    pickDay('2026-07-25') // 100일 전
+    expect(button('오늘로')).toBeTruthy()
+
+    view.rerender(openOn('2026-11-05')) // 사흘 지나 범위가 2026-07-28부터다
+
+    expect(dateInput().value).toBe('2026-11-05')
+    expect(within(dateGroup()).getByText('11월 5일 목요일')).toBeTruthy()
+    noButton('오늘로')
+    expect(nextDayButton().disabled).toBe(true)
+    expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(todaySection()).toBeTruthy()
+  })
+
+  it('AC-605.5: 범위 끝에 걸린 날은 그대로 두고, 하루 더 지나 밖으로 나가면 오늘로 돌아간다', async () => {
+    const view = await readDays()
+    pickDay('2026-07-28')
+
+    view.rerender(openOn('2026-11-05')) // 2026-07-28은 이제 딱 100일 전이다
+    expect(dateInput().value).toBe('2026-07-28')
+    expect((button('이전 날') as HTMLButtonElement).disabled).toBe(true)
+    expect(nextDayButton().disabled).toBe(false)
+
+    view.rerender(openOn('2026-11-06'))
+    expect(dateInput().value).toBe('2026-11-06')
+    noButton('오늘로')
+  })
+
+  it('AC-605.5: 돌아간 뒤에도 단추가 움직인다 — [이전 날]은 새 오늘의 하루 앞이다', async () => {
+    const view = await readDays()
+    pickDay('2026-07-25')
+    view.rerender(openOn('2026-11-05'))
+
+    fireEvent.click(button('이전 날'))
+    expect(dateInput().value).toBe('2026-11-04')
+    fireEvent.click(button('오늘로'))
+    expect(dateInput().value).toBe('2026-11-05')
+  })
+
+  it.each<[string, () => void]>([
+    ['[오늘로]를 누름', () => fireEvent.click(button('오늘로'))],
+    ['날짜 칸에 오늘을 넣음', () => pickDay(TODAY)],
+    ['[다음 날]로 오늘에 옴', () => fireEvent.click(button('다음 날'))],
+  ])('AC-605.1: 오늘을 다시 고른 뒤 날짜가 바뀌면 오늘을 따라간다 — %s', async (_, chooseToday) => {
+    const view = await readDays()
+    pickDay('2026-11-01')
+    chooseToday()
+    expect(dateInput().value).toBe(TODAY)
+
+    view.rerender(openOn('2026-11-03'))
+
+    expect(dateInput().value).toBe('2026-11-03')
+    noButton('오늘로')
+  })
+})
+
+describe('AC-605.8: 월말 덧말', () => {
+  const MONTH_END = '2026-10-31'
+  const MONTH_END_DAYS = [day(MONTH_END, 2, 3, true), day('2026-10-30', 1, 1)]
+  const openMonthEnd = (initial: SummarySource = NONE) => render(<BitDashboard today={MONTH_END} initial={initial} />)
+  const note = () => within(dateGroup()).queryByText('이번 달 마지막 날')
+
+  it('AC-605.8: 오늘이 그 달 마지막 날이면 읽은 뒤 날짜 고르기 옆에 붙고, 다른 날을 고르면 사라졌다가 오늘로 오면 다시 붙는다', async () => {
+    onBitPc()
+    openMonthEnd()
+    await answer(days(MONTH_END_DAYS))
+    expect(note()!.textContent).toBe('· 이번 달 마지막 날')
+    expect(screen.getAllByText('이번 달 마지막 날')).toHaveLength(1)
+
+    fireEvent.click(button('이전 날'))
+    expect(note()).toBeNull()
+    expect(screen.queryByText('이번 달 마지막 날')).toBeNull()
+
+    fireEvent.click(button('오늘로'))
+    expect(note()).not.toBeNull()
+  })
+
+  it('AC-605.8: 다시 읽는 중·다시 읽기 실패에도 붙는다', async () => {
+    onBitPc()
+    openMonthEnd({ kind: 'data', days: MONTH_END_DAYS })
+    expect(button('다시 읽는 중')).toBeTruthy()
+    expect(note()).not.toBeNull()
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(note()).not.toBeNull()
+  })
+
+  it('AC-605.8: 월말이 아니면 없다', async () => {
+    await readDays()
+    expect(note()).toBeNull()
+  })
+
+  it('AC-605.7: 처음 읽는 중에는 날짜 고르기 없이 날짜 글자 줄의 덧말 그대로다', () => {
+    onBitPc()
+    openMonthEnd()
+    noDateGroup()
+    expect(screen.getByText('이번 달 마지막 날', { exact: false }).closest('p')!.textContent).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+  })
+})
+
 describe('끝까지 잇기 (진짜 readBitDays)', () => {
   type Command = 'hello' | 'bit.check' | 'stats.rows'
   type Answer = 'silent' | ((id: string) => unknown[])
