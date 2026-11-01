@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "rx-visit-split",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/analytics/rxVisitSplit.ts: 원본 medicore/rx_visit_split.py를 옮긴 rxVisitSplit·rxVisitSplitDays·formatRxVisitSplit·formatRxVisitSplitDays·rxVisitHeadline. 골든 fixtures/stats/golden/rx-visit-split-*.json은 scripts/stats/golden/rx_visit_split.py가 원본(2a1069b)으로 가짜 줄에 돌려 만든다. Worker: splitJob(memory,{from,to}), stats.worker.ts의 split, statsClient.requestSplit(requestLoad와 답 나누기를 같이 쓴다. load 동작은 그대로). 머리 글 합계는 고른 기간의 days 합이고 patients = visits(접수 기준, AC-509.4), 처방 줄은 서로 다른 환자 수다. 미완성 불러오기에도 숫자를 낸다(승인 시안, 사용자 선택). memory.summary는 저장만 하고 합계에 쓰지 않는다. 원본의 '고른 처방 중 하나라도' 줄은 splitJob에서 뺀다. 다음 step이 알 것: [표 복사]는 formatRxVisitSplit(hospitalName, view.split)이고 view.text가 아니다(Worker에 병원 이름이 없어 첫 줄이 빈 줄이다). '12m' 기간의 to는 달 말일이라 range.load.to로 잘라 부른다. view.days[].patients는 하루 서로 다른 환자 수(AC-509.2)이고 화면에 쓰지 않는다."
     },
     {
       "step": 1,

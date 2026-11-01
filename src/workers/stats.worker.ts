@@ -20,5 +20,7 @@ scope.onmessage = (event) => {
     port.onmessage = (portEvent) => host.fromBridge(portEvent.data)
   } else if (message.type === 'load') {
     void host.load(message)
+  } else if (message.type === 'split') {
+    host.split(message)
   }
 }

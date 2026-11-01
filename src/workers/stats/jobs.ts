@@ -1,11 +1,20 @@
 import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
-import { addDays, compareYmd } from '@/lib/analytics/dates'
+import { addDays, compareYmd, isYmd } from '@/lib/analytics/dates'
+import {
+  ANY_CODE,
+  formatRxVisitSplit,
+  rxVisitHeadline,
+  rxVisitSplit,
+  rxVisitSplitDays,
+  type RxSplitDayTotals,
+  type RxSplitTotals,
+} from '@/lib/analytics/rxVisitSplit'
 import { createPatientIds } from '@/lib/parsers/bit'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import type { AnalysisResult } from '@/types/analyze'
-import type { StatsChecks, StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
+import type { RxSplitLine, RxSplitView, StatsChecks, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
 import { createAssembler, StatsDataError } from './assemble'
 import { dashed, isRecord, parseStatsRows, toConsumptionRows, toPatientDays, toVisitRows, type StatsSummary, type VisitRow } from './helperData'
 
@@ -16,7 +25,7 @@ import { dashed, isRecord, parseStatsRows, toConsumptionRows, toPatientDays, toV
 export type StatsMemory = {
   range: { from: string; to: string }
   rows: VisitRow[]
-  summary: StatsSummary
+  summary: StatsSummary // 불러온 범위 전체의 도우미 합계. 머리 글은 이것이 아니라 days의 합이다
   days: { date: string; visits: number; patients: number; newPatients: number }[]
   names: ReadonlyMap<string, string>
 }
@@ -76,6 +85,46 @@ export function loadJob(
   return { view, memory }
 }
 
+// 머리 글의 기간 합계 = 고른 기간 날 숫자의 합(불러온 범위 전체든 일부든, 미완성 불러오기든, AC-509.4).
+// 환자 수는 접수 건수라 내원과 같고, 재진은 rxVisitSplit이 환자 − 신환으로 낸다. 처방 줄만 서로 다른 환자 수다
+function periodTotals(days: readonly RxSplitDayTotals[]): RxSplitTotals {
+  let visits = 0
+  let newPatients = 0
+  for (const day of days) {
+    visits += day.visits
+    newPatients += day.newPatients
+  }
+  return { visits, patients: visits, newPatients }
+}
+
+const isPrescription = (line: RxSplitLine) => line.code !== ANY_CODE
+const biggestFirst = (a: RxSplitLine, b: RxSplitLine) => b.total - a.total || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+
+// 화면이 기간을 주면 메모리의 진료 줄로 처방별 결과를 낸다. 결과에는 처방마다 수와 이름만 있다(AC-509.4)
+export function splitJob(memory: StatsMemory | null, { from, to }: { from: string; to: string }): RxSplitView {
+  if (memory === null || !isYmd(from) || !isYmd(to)) return { kind: 'none' }
+  if (compareYmd(from, to) > 0 || compareYmd(from, memory.range.from) < 0 || compareYmd(to, memory.range.to) > 0) return { kind: 'none' }
+
+  const within = (day: string) => compareYmd(day, from) >= 0 && compareYmd(day, to) <= 0
+  const rows = memory.rows.filter((row) => within(row.d))
+  const days = memory.days.filter((day) => within(day.date))
+  const range = { from, to }
+  const whole = rxVisitSplit(rows, periodTotals(days), [...new Set(rows.map((row) => row.c))], range, memory.names)
+  // 원본의 '고른 처방 중 하나라도' 줄은 뺀다: 코드 목록이 그 기간 처방 전부라 고른 것이 없고, 줄은 합계가 큰 차례여야 한다
+  const lines = whole.lines.filter(isPrescription).sort(biggestFirst)
+  const split = { ...whole, lines }
+  return {
+    kind: 'split',
+    split,
+    days: rxVisitSplitDays(rows, days, lines.map((line) => line.code), memory.names).map((day) => ({
+      ...day,
+      lines: day.lines.filter(isPrescription),
+    })),
+    text: formatRxVisitSplit('', split), // Worker에는 병원 이름이 가지 않는다(AC-505.7)
+    headline: rxVisitHeadline(split),
+  }
+}
+
 type PendingText = { promise: Promise<string>; resolve(text: string | Promise<string>): void; reject(reason: unknown): void }
 
 function pendingText(): PendingText {
@@ -93,6 +142,7 @@ function pendingText(): PendingText {
 export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
   fromBridge(message: unknown): void
   load(request: StatsLoadRequest): Promise<void>
+  split(request: StatsSplitRequest): void
   memory(): StatsMemory | null
 } {
   const assembler = createAssembler()
@@ -138,6 +188,17 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
         reply = { type: 'failed', streamId, code: e instanceof StatsDataError ? e.code : 'E-ANALYZE-FAILED' }
       }
       texts.clear() // 다 쓴 글자와 버려진 답을 들고 있지 않는다
+      send(reply)
+    },
+
+    split(request) {
+      let reply: StatsWorkerMessage
+      try {
+        reply = { type: 'split-result', streamId: request.streamId, view: splitJob(memory, request) }
+      } catch {
+        // 예외 메시지·스택에는 자료 조각이 섞일 수 있어 번호만 보낸다
+        reply = { type: 'failed', streamId: request.streamId, code: 'E-ANALYZE-FAILED' }
+      }
       send(reply)
     },
 

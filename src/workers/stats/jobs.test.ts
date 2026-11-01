@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, monthOf } from '@/lib/analytics/dates'
 import { validateDayPayload, validateMonthPayload } from '@/lib/payload/validate'
-import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
-import { createStatsHost, loadJob } from './jobs'
+import type { RxSplitView, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
+import { createStatsHost, loadJob, splitJob } from './jobs'
 
 const TODAY = '2026-11-01'
 const YESTERDAY = '2026-10-31'
@@ -518,5 +518,297 @@ describe('AC-505.5 stats.worker.ts: 실제 포트(MessageChannel)로 이어 본�
       channel.port1.close()
       channel.port2.close()
     }
+  })
+})
+
+// 기간 합계에는 visits 칸이 있다(화면에 가는 수). 나머지는 AC-505.5 그대로 없어야 한다
+const SPLIT_FORBIDDEN_KEYS = FORBIDDEN_KEYS.filter((key) => key !== 'visits')
+function expectNoPatientInSplit(value: unknown) {
+  const texts = textsIn(value)
+  for (const id of CHARTS) expect(texts.some((text) => text.includes(id))).toBe(false)
+  for (const key of SPLIT_FORBIDDEN_KEYS) expect(keysIn(value)).not.toContain(key)
+}
+
+const SPLIT_DAYS = [
+  ['20260901', 2, 2, 2],
+  ['20260902', 2, 2, 2],
+  ['20260903', 1, 1, 1],
+  ['20261005', 1, 1, 0],
+  ['20261101', 1, 1, 0],
+]
+const memoryOf = (over: Record<string, unknown> = {}) => loadJob(helperJson({ days: SPLIT_DAYS, ...over }), OPTS).memory
+const WHOLE = { from: FROM, to: TODAY }
+
+function splitIn(view: RxSplitView) {
+  if (view.kind !== 'split') throw new Error('결과가 없다')
+  return view
+}
+
+describe('AC-509.4 splitJob: 메모리의 진료 줄 → 처방별 결과', () => {
+  it('불러온 자료가 없으면 none', () => {
+    expect(splitJob(null, WHOLE)).toEqual({ kind: 'none' })
+  })
+
+  it.each([
+    ['첫날이 범위 앞', { from: '2026-08-31', to: TODAY }],
+    ['끝날이 범위 뒤', { from: FROM, to: '2026-11-02' }],
+    ['둘 다 범위 밖', { from: '2026-01-01', to: '2026-01-31' }],
+    ['첫날이 끝날 뒤', { from: '2026-10-05', to: '2026-10-01' }],
+    ['없는 날', { from: '2026-09-31', to: '2026-10-01' }],
+  ])('기간이 불러온 범위 밖이면 none: %s', (_name, range) => {
+    expect(splitJob(memoryOf(), range)).toEqual({ kind: 'none' })
+  })
+
+  it('불러온 기간 전체: 기간 합계는 날짜별 합계(환자 = 접수 건수), 줄은 합계가 큰 차례이고 처방 이름이 붙는다', () => {
+    const view = splitIn(splitJob(memoryOf(), WHOLE))
+    expect(view.split).toEqual({
+      from: FROM,
+      to: TODAY,
+      visits: 7,
+      patients: 7,
+      newPatients: 5,
+      returning: 2,
+      invalidCodes: 0,
+      lines: [
+        { code: 'MM042', label: '표층열치료', newPatients: 4, returning: 1, total: 5 },
+        { code: 'B4001', label: '일반혈액검사', newPatients: 1, returning: 0, total: 1 },
+      ],
+    })
+    expect(view.headline).toBe('2026-09-01 ~ 2026-11-01 (62일) · 외래 환자 7명 (신환 5명 · 재진 2명) · 내원 7건')
+  })
+
+  it('기간 전체의 합계도 날짜별 합계다: 도우미 기간 합계를 쓰지 않는다', () => {
+    const summary = { visits: 12, patients: 9, newPatients: 5, noChart: 0, duplicate: 0, noFirst: 0 }
+    expect(splitIn(splitJob(memoryOf({ summary }), WHOLE)).split).toMatchObject({ visits: 7, patients: 7, newPatients: 5, returning: 2 })
+  })
+
+  const WHOLE_AND_PART = [
+    ['불러온 범위 전체', WHOLE],
+    ['불러온 범위 일부', { from: '2026-09-01', to: '2026-09-30' }],
+  ] as const
+
+  it.each(WHOLE_AND_PART)('AC-509.4 처방 없는 접수만 있는 재진 환자도 머리 글에 든다: %s', (_name, range) => {
+    const rows = [[chart(1), '20260902', 'MM042', '20250101']]
+    const patientDays = [...receptionsOf(rows), [NO_RX_CHART, '20260902', 1, '20240101']]
+    const summary = { visits: 2, patients: 2, newPatients: 0, noChart: 0, duplicate: 0, noFirst: 0 }
+    const days = [['20260902', 2, 2, 0]]
+    const { split, headline } = splitIn(splitJob(memoryOf({ rows, patientDays, summary, days }), range))
+    expect(split).toMatchObject({ visits: 2, patients: 2, newPatients: 0, returning: 2 })
+    expect(split.lines).toEqual([{ code: 'MM042', label: '표층열치료', newPatients: 0, returning: 1, total: 1 }])
+    expect(headline).toContain('외래 환자 2명 (신환 0명 · 재진 2명) · 내원 2건')
+  })
+
+  it.each(WHOLE_AND_PART)('AC-509.4 같은 사람이 다섯 번 오면 머리 글 5, 처방 줄 1: %s', (_name, range) => {
+    const visitDays = ['20260901', '20260908', '20260915', '20260922', '20260929']
+    const rows = visitDays.map((day) => [chart(1), day, 'MM042', '20260901'])
+    const days = visitDays.map((day, i) => [day, 1, 1, i === 0 ? 1 : 0])
+    const summary = { visits: 5, patients: 1, newPatients: 1, noChart: 0, duplicate: 0, noFirst: 0 }
+    const { split, headline } = splitIn(splitJob(memoryOf({ rows, summary, days }), range))
+    expect(split).toMatchObject({ visits: 5, patients: 5, newPatients: 1, returning: 4 })
+    expect(split.lines).toEqual([{ code: 'MM042', label: '표층열치료', newPatients: 1, returning: 0, total: 1 }])
+    expect(headline).toContain('외래 환자 5명 (신환 1명 · 재진 4명) · 내원 5건')
+  })
+
+  it.each(['noChart', 'duplicate', 'noFirst'])('AC-509.4 미완성 불러오기(%s)에도 같은 규칙으로 숫자를 낸다', (key) => {
+    const summary = { visits: 9, patients: 8, newPatients: 5, noChart: 0, duplicate: 0, noFirst: 0, [key]: 1 }
+    expect(splitIn(splitJob(memoryOf({ summary }), WHOLE)).split).toMatchObject({ visits: 7, patients: 7, newPatients: 5, returning: 2 })
+  })
+
+  it('합계가 같으면 코드 순이다. 이름이 없거나 빈 글자면 코드를 이름으로 쓴다', () => {
+    const rows = [
+      [chart(1), '20260901', 'ZZ100', '20260901'],
+      [chart(2), '20260901', 'AA200', '20260901'],
+      [chart(3), '20260902', 'MM300', '20250101'],
+      [chart(4), '20260902', 'MM300', '20250101'],
+    ]
+    const codes = [
+      ['MM300', '가짜처방'],
+      ['ZZ100', ''],
+    ]
+    const { split } = splitIn(splitJob(memoryOf({ rows, codes }), WHOLE))
+    expect(split.lines.map((line) => [line.code, line.label, line.total])).toEqual([
+      ['MM300', '가짜처방', 2],
+      ['AA200', 'AA200', 1],
+      ['ZZ100', 'ZZ100', 1],
+    ])
+  })
+
+  it('코드 목록은 그 기간 진료 줄의 모든 처방코드다: 기간 밖에만 있는 코드는 줄이 없다', () => {
+    const { split } = splitIn(splitJob(memoryOf(), { from: '2026-10-01', to: TODAY }))
+    expect(split.lines).toEqual([{ code: 'MM042', label: '표층열치료', newPatients: 0, returning: 2, total: 2 }])
+  })
+
+  it('고른 처방이 없으니 원본의 "하나라도" 줄을 넣지 않는다: 모든 줄이 처방이고 글에도 없다', () => {
+    const view = splitIn(splitJob(memoryOf(), WHOLE))
+    expect(view.split.lines.every((line) => line.code !== '')).toBe(true)
+    for (const day of view.days) expect(day.lines.every((line) => line.code !== '')).toBe(true)
+    expect(view.text).not.toContain('하나라도')
+  })
+
+  it('불러온 기간의 일부: 신환은 그 기간 첫날로 다시 나누고 합계는 그 기간 날 숫자로 낸다', () => {
+    const view = splitIn(splitJob(memoryOf(), { from: '2026-09-02', to: '2026-10-05' }))
+    expect(view.split).toEqual({
+      from: '2026-09-02',
+      to: '2026-10-05',
+      visits: 4,
+      patients: 4,
+      newPatients: 3,
+      returning: 1,
+      invalidCodes: 0,
+      lines: [
+        { code: 'MM042', label: '표층열치료', newPatients: 2, returning: 1, total: 3 },
+        { code: 'B4001', label: '일반혈액검사', newPatients: 1, returning: 0, total: 1 },
+      ],
+    })
+    expect(view.headline).toBe('2026-09-02 ~ 2026-10-05 (34일) · 외래 환자 4명 (신환 3명 · 재진 1명) · 내원 4건')
+  })
+
+  it('불러온 기간의 일부: 처방 없는 접수도 그날 숫자로 들어 재진은 환자 − 신환이다', () => {
+    const days = [['20260903', 3, 3, 2]]
+    const { split } = splitIn(splitJob(memoryOf({ days }), { from: '2026-09-03', to: '2026-09-03' }))
+    expect(split).toMatchObject({ visits: 3, patients: 3, newPatients: 2, returning: 1 })
+    expect(split.lines).toEqual([{ code: 'MM042', label: '표층열치료', newPatients: 1, returning: 0, total: 1 }])
+  })
+
+  it('불러온 기간의 일부: 처방받은 환자가 없는 날이면 줄 없이 0이고 none이 아니다', () => {
+    const view = splitIn(splitJob(memoryOf(), { from: '2026-09-15', to: '2026-09-15' }))
+    expect(view.split).toMatchObject({ visits: 0, patients: 0, newPatients: 0, returning: 0, lines: [] })
+    expect(view.days).toEqual([])
+    expect(view.headline).toBe('2026-09-15 (화) · 외래 환자 0명 (신환 0명 · 재진 0명) · 내원 0건')
+  })
+
+  it('첫 내원을 못 찾은 환자는 신환이 아니다', () => {
+    const rows = [[chart(1), '20260901', 'MM042', null]]
+    const summary = { visits: 1, patients: 1, newPatients: 0, noChart: 0, duplicate: 0, noFirst: 1 }
+    const { split } = splitIn(splitJob(memoryOf({ rows, summary }), WHOLE))
+    expect(split.lines).toEqual([{ code: 'MM042', label: '표층열치료', newPatients: 0, returning: 1, total: 1 }])
+  })
+
+  it('날짜별: 그 기간 날만, 줄 차례는 기간과 같고 그날 첫 내원이 신환이다', () => {
+    const { days } = splitIn(splitJob(memoryOf(), { from: '2026-09-02', to: '2026-10-05' }))
+    expect(days.map((day) => day.date)).toEqual(['2026-09-02', '2026-09-03', '2026-10-05'])
+    expect(days[0]).toEqual({
+      date: '2026-09-02',
+      visits: 2,
+      patients: 2,
+      newPatients: 2,
+      returning: 0,
+      lines: [
+        { code: 'MM042', label: '표층열치료', newPatients: 1, returning: 0, total: 1 },
+        { code: 'B4001', label: '일반혈액검사', newPatients: 1, returning: 0, total: 1 },
+      ],
+    })
+    expect(days[2].lines).toEqual([
+      { code: 'MM042', label: '표층열치료', newPatients: 0, returning: 1, total: 1 },
+      { code: 'B4001', label: '일반혈액검사', newPatients: 0, returning: 0, total: 0 },
+    ])
+  })
+
+  it('글: Worker는 병원 이름을 받지 않아 첫 줄이 비어 있다. 나머지는 원본 글 모양이다', () => {
+    const view = splitIn(splitJob(memoryOf(), WHOLE))
+    expect(view.text).toBe(
+      [
+        '',
+        '처방별 신환·재진',
+        '2026-09-01 ~ 2026-11-01 (62일) · 외래 환자 7명 (신환 5명 · 재진 2명) · 내원 7건',
+        '',
+        '처방       신환   재진   합계',
+        '표층열치료      4명    1명    5명',
+        '일반혈액검사     1명    0명    1명',
+      ].join('\n'),
+    )
+  })
+
+  it('결과에 환자 번호·진료 줄이 없다: 처방마다 수와 이름뿐이다', () => {
+    const view = splitIn(splitJob(memoryOf(), WHOLE))
+    expect(Object.keys(view).sort()).toEqual(['days', 'headline', 'kind', 'split', 'text'])
+    expect(Object.keys(view.split).sort()).toEqual(['from', 'invalidCodes', 'lines', 'newPatients', 'patients', 'returning', 'to', 'visits'])
+    for (const line of [...view.split.lines, ...view.days.flatMap((day) => day.lines)]) {
+      expect(Object.keys(line).sort()).toEqual(['code', 'label', 'newPatients', 'returning', 'total'])
+    }
+    expectNoPatientInSplit(view)
+  })
+})
+
+describe('AC-509.4 Worker 일: split', () => {
+  const splitRequest = (streamId: string, range = WHOLE): StatsSplitRequest => ({ type: 'split', streamId, ...range })
+
+  async function loaded(id: string, over: Record<string, unknown> = {}) {
+    const hosted = hostUnderTest()
+    bridgeMessages(id, helperJson({ days: SPLIT_DAYS, ...over })).forEach((m) => hosted.host.fromBridge(m))
+    await hosted.host.load(loadRequest(id))
+    hosted.sent.length = 0
+    return hosted
+  }
+
+  it('불러오기 전이면 none을 받은 번호로 돌려준다', () => {
+    const { host, sent } = hostUnderTest()
+    host.split(splitRequest('q1'))
+    expect(sent).toEqual([{ type: 'split-result', streamId: 'q1', view: { kind: 'none' } }])
+  })
+
+  it('불러온 뒤면 결과를 보낸다. 환자 번호·진료 줄이 없다', async () => {
+    const { host, sent } = await loaded('s1')
+    host.split(splitRequest('q1'))
+    expect(sent).toHaveLength(1)
+    const [reply] = sent
+    expect(reply.type === 'split-result' && reply.streamId).toBe('q1')
+    expect(reply.type === 'split-result' && reply.view.kind).toBe('split')
+    expectNoPatientInSplit(sent)
+  })
+
+  it('다음 load가 메모리를 덮어쓴다', async () => {
+    const { host, sent } = await loaded('s1')
+    bridgeMessages('s2', helperJson({ days: SPLIT_DAYS, rows: ROWS.slice(0, 1), codes: [['MM042', '표층열치료']] })).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s2'))
+    sent.length = 0
+    host.split(splitRequest('q1'))
+    const [reply] = sent
+    if (reply.type !== 'split-result') throw new Error('split-result가 아니다')
+    expect(splitIn(reply.view).split.lines).toEqual([{ code: 'MM042', label: '표층열치료', newPatients: 1, returning: 0, total: 1 }])
+  })
+
+  it('split은 메모리를 바꾸지 않는다: 같은 기간을 또 물어도 같다', async () => {
+    const { host, sent } = await loaded('s1')
+    host.split(splitRequest('q1', { from: '2026-09-02', to: '2026-10-05' }))
+    host.split(splitRequest('q2', WHOLE))
+    host.split(splitRequest('q3', { from: '2026-09-02', to: '2026-10-05' }))
+    const views = sent.map((m) => (m.type === 'split-result' ? m.view : null))
+    expect(views[2]).toEqual(views[0])
+    expect(views[1]).not.toEqual(views[0])
+  })
+
+  it('계산이 터져도 번호만 보낸다', () => {
+    const { host, sent } = hostUnderTest()
+    const leak = `차트 ${chart(1)}`
+    const broken = {
+      type: 'split',
+      streamId: 'q1',
+      to: TODAY,
+      get from(): string {
+        throw new Error(leak)
+      },
+    } as StatsSplitRequest
+    host.split(broken)
+    expect(sent).toEqual([{ type: 'failed', streamId: 'q1', code: 'E-ANALYZE-FAILED' }])
+  })
+})
+
+describe('AC-509.4 stats.worker.ts: split을 일에 잇는다', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  it('화면의 split → split-result', SLOW, async () => {
+    const posted: StatsWorkerMessage[] = []
+    const scope = {
+      onmessage: null as ((event: { data: unknown; ports: readonly MessagePort[] }) => void) | null,
+      postMessage: (message: StatsWorkerMessage) => posted.push(message),
+    }
+    vi.stubGlobal('self', scope)
+    await import('../stats.worker')
+    scope.onmessage?.({ data: { type: 'split', streamId: 'q1', ...WHOLE }, ports: [] })
+    expect(posted).toEqual([{ type: 'split-result', streamId: 'q1', view: { kind: 'none' } }])
   })
 })

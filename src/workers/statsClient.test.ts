@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { StatsLoaded, StatsWorkerMessage } from '@/types/stats'
+import type { RxSplitView, StatsLoaded, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
 import { AnalyzeError } from './runAnalysis'
-import { createStatsWorker, requestLoad, STATS_TIMEOUT_MS, type WorkerLike } from './statsClient'
+import { createStatsWorker, requestLoad, requestSplit, STATS_TIMEOUT_MS, type WorkerLike } from './statsClient'
 
 const REQ = { streamId: 'stream-1', from: '2026-09-01', to: '2026-11-01', today: '2026-11-01', closeToday: true }
 const VIEW: StatsLoaded = {
@@ -168,5 +168,176 @@ describe('AC-505.7 statsClient — 가짜 Worker', () => {
     expect(made).toHaveLength(1)
     expect(String(made[0].url)).toMatch(/\/stats\.worker\.ts$/)
     expect(made[0].options).toEqual({ type: 'module' })
+  })
+})
+
+const RANGE = { from: '2026-10-01', to: '2026-10-31' }
+const SPLIT_VIEW: RxSplitView = {
+  kind: 'split',
+  split: {
+    from: RANGE.from,
+    to: RANGE.to,
+    visits: 2,
+    patients: 2,
+    newPatients: 1,
+    returning: 1,
+    invalidCodes: 0,
+    lines: [{ code: 'MM042', label: '표층열치료', newPatients: 1, returning: 1, total: 2 }],
+  },
+  days: [],
+  text: '가짜 글',
+  headline: '가짜 머리',
+}
+
+// requestSplit이 정한 번호. 답은 이 번호로 돌아와야 받는다
+const splitIdOf = (fake: ReturnType<typeof fakeWorker>, index = fake.sent.length - 1) => (fake.sent[index] as StatsSplitRequest).streamId
+
+describe('AC-509.4 requestSplit — 가짜 Worker', () => {
+  it('Worker에는 기간과 일 번호만 간다(다른 칸을 넘겨도)', () => {
+    const fake = fakeWorker()
+    void requestSplit(fake.like, { ...RANGE, rows: [['가짜']], hospitalName: '가짜의원' } as typeof RANGE)
+    const streamId = splitIdOf(fake)
+    expect(streamId).not.toBe('')
+    expect(fake.sent).toEqual([{ type: 'split', streamId, ...RANGE }])
+    fake.reply({ type: 'split-result', streamId, view: { kind: 'none' } })
+  })
+
+  it('부를 때마다 번호가 다르다', () => {
+    const fake = fakeWorker()
+    void requestSplit(fake.like, RANGE)
+    void requestSplit(fake.like, RANGE)
+    expect(splitIdOf(fake, 0)).not.toBe(splitIdOf(fake, 1))
+    fake.reply({ type: 'split-result', streamId: splitIdOf(fake, 0), view: { kind: 'none' } })
+    fake.reply({ type: 'split-result', streamId: splitIdOf(fake, 1), view: { kind: 'none' } })
+  })
+
+  it.each([
+    ['결과', SPLIT_VIEW],
+    ['none', { kind: 'none' } as RxSplitView],
+  ])('split-result(%s) → 받은 모양으로 resolve, 듣기를 떼고 Worker는 끝내지 않는다', async (_name, view) => {
+    const fake = fakeWorker()
+    const running = requestSplit(fake.like, RANGE)
+    fake.reply({ type: 'split-result', streamId: splitIdOf(fake), view })
+    await expect(running).resolves.toEqual(view)
+    expect(fake.worker.terminate).not.toHaveBeenCalled()
+    expect(fake.worker.onmessage).toBeNull()
+    expect(fake.worker.onerror).toBeNull()
+    expect(fake.worker.onmessageerror).toBeNull()
+  })
+
+  it('정해 둔 시간은 120초다: 그 전에는 기다리고, 넘으면 E-ANALYZE-TIMEOUT', async () => {
+    vi.useFakeTimers()
+    const fake = fakeWorker()
+    const failure = failureOf(requestSplit(fake.like, RANGE))
+    let settled = false
+    void failure.then(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(STATS_TIMEOUT_MS - 1)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect((await failure).code).toBe('E-ANALYZE-TIMEOUT')
+    expect(fake.worker.onmessage).toBeNull()
+  })
+
+  it('timeoutMs를 받는다', async () => {
+    vi.useFakeTimers()
+    const failure = failureOf(requestSplit(fakeWorker().like, RANGE, { timeoutMs: 50 }))
+    await vi.advanceTimersByTimeAsync(50)
+    expect((await failure).code).toBe('E-ANALYZE-TIMEOUT')
+  })
+
+  it('failed의 번호를 그대로 reject, 표에 없는 글자는 옮기지 않고 E-ANALYZE-FAILED', async () => {
+    const fake = fakeWorker()
+    const known = failureOf(requestSplit(fake.like, RANGE))
+    fake.reply({ type: 'failed', streamId: splitIdOf(fake), code: 'E-BRIDGE-BAD-REPLY' })
+    expect((await known).code).toBe('E-BRIDGE-BAD-REPLY')
+
+    const leak = `차트 ${'9'}${'00001'}`
+    const unknown = failureOf(requestSplit(fake.like, RANGE))
+    fake.reply({ type: 'failed', streamId: splitIdOf(fake), code: leak })
+    const error = await unknown
+    expect(error.code).toBe('E-ANALYZE-FAILED')
+    expect(error.message).not.toContain(leak)
+  })
+
+  it('Worker 오류·못 푼 답·보내기 실패 → E-ANALYZE-FAILED, 내용을 옮기지 않는다', async () => {
+    vi.useFakeTimers()
+    const fake = fakeWorker()
+    const crashed = failureOf(requestSplit(fake.like, RANGE))
+    const preventDefault = vi.fn()
+    fake.worker.onerror?.({ preventDefault, message: `차트 ${'9'}${'00001'}` } as unknown as Event)
+    expect((await crashed).message).toBe('E-ANALYZE-FAILED')
+    expect(preventDefault).toHaveBeenCalled()
+
+    const garbled = failureOf(requestSplit(fake.like, RANGE))
+    fake.worker.onmessageerror?.({} as MessageEvent)
+    expect((await garbled).code).toBe('E-ANALYZE-FAILED')
+
+    fake.worker.postMessage.mockImplementation(() => {
+      throw new Error(`차트 ${'9'}${'00001'}`)
+    })
+    const error = await failureOf(requestSplit(fake.like, RANGE))
+    expect(error.message).toBe('E-ANALYZE-FAILED')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('시간이 지나 포기한 앞 일의 늦은 답을 다음 일의 답으로 받지 않는다', async () => {
+    vi.useFakeTimers()
+    const fake = fakeWorker()
+    const first = failureOf(requestSplit(fake.like, RANGE, { timeoutMs: 50 }))
+    const firstId = splitIdOf(fake)
+    await vi.advanceTimersByTimeAsync(50)
+    await first
+
+    const next = requestSplit(fake.like, RANGE)
+    fake.reply({ type: 'split-result', streamId: firstId, view: { kind: 'none' } })
+    fake.reply({ type: 'failed', streamId: firstId, code: 'E-BRIDGE-BAD-REPLY' })
+    fake.reply({ type: 'split-result', streamId: splitIdOf(fake), view: SPLIT_VIEW })
+    await expect(next).resolves.toEqual(SPLIT_VIEW)
+  })
+
+  // 한 Worker를 불러오기와 기간 바꿈이 같이 쓴다. 듣는 자리가 하나라 겹치면 먼저 부른 일의 답이 사라지면 안 된다
+  it('기간을 빨리 두 번 바꿔도 둘 다 제 답을 받는다', async () => {
+    const fake = fakeWorker()
+    const first = requestSplit(fake.like, RANGE)
+    const firstId = splitIdOf(fake)
+    const second = requestSplit(fake.like, RANGE)
+    fake.reply({ type: 'split-result', streamId: firstId, view: { kind: 'none' } })
+    fake.reply({ type: 'split-result', streamId: splitIdOf(fake), view: SPLIT_VIEW })
+    await expect(first).resolves.toEqual({ kind: 'none' })
+    await expect(second).resolves.toEqual(SPLIT_VIEW)
+    expect(fake.worker.onmessage).toBeNull()
+  })
+
+  it('불러오는 동안 기간을 바꿔도 불러오기 답을 잃지 않는다', async () => {
+    const fake = fakeWorker()
+    const loading = requestLoad(fake.like, REQ)
+    const splitting = requestSplit(fake.like, RANGE)
+    fake.reply({ type: 'split-result', streamId: splitIdOf(fake), view: { kind: 'none' } })
+    await expect(splitting).resolves.toEqual({ kind: 'none' })
+    expect(fake.worker.onmessage).not.toBeNull()
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+    await expect(loading).resolves.toEqual(VIEW)
+    expect(fake.worker.onmessage).toBeNull()
+  })
+
+  it('앞 일이 시간 초과로 끝나도 도는 일의 듣기를 떼지 않는다', async () => {
+    vi.useFakeTimers()
+    const fake = fakeWorker()
+    const stale = failureOf(requestSplit(fake.like, RANGE, { timeoutMs: 50 }))
+    const running = requestLoad(fake.like, REQ)
+    await vi.advanceTimersByTimeAsync(50)
+    expect((await stale).code).toBe('E-ANALYZE-TIMEOUT')
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+    await expect(running).resolves.toEqual(VIEW)
+  })
+
+  it('Worker 오류는 도는 일 모두를 끝낸다', async () => {
+    const fake = fakeWorker()
+    const loading = failureOf(requestLoad(fake.like, REQ))
+    const splitting = failureOf(requestSplit(fake.like, RANGE))
+    fake.worker.onerror?.({ preventDefault: vi.fn() } as unknown as Event)
+    expect((await loading).code).toBe('E-ANALYZE-FAILED')
+    expect((await splitting).code).toBe('E-ANALYZE-FAILED')
+    expect(fake.worker.onmessage).toBeNull()
   })
 })
