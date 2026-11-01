@@ -118,8 +118,55 @@ describe('AC-012.1 인증 오류 문구', () => {
     expect(info.fix).toContain('[다시 시도]')
   })
 
-  it.each(AUTH_CODES)('AC-012.1: %s 문구는 오류 번호와 함께 문의하라고 한다', (code) => {
-    expect(errorInfo(code).fix).toContain('오류 번호와 함께 문의해 주세요')
+  // ui-90 AC-409.1: E-PAGE-FAILED는 오류 화면이 관리자 메일을 함께 보여서 "관리자에게 메일로"로 바뀌었다
+  it.each(AUTH_CODES.filter((code) => code !== 'E-PAGE-FAILED'))(
+    'AC-012.1·AC-409.1: %s 문구는 오류 번호와 함께 문의하라고 한다',
+    (code) => {
+      expect(errorInfo(code).fix).toContain('오류 번호와 함께 문의해 주세요')
+    },
+  )
+
+  it('AC-012.1·AC-409.1: E-PAGE-FAILED 문구는 오류 번호를 관리자에게 메일로 알리라고 한다', () => {
+    expect(errorInfo('E-PAGE-FAILED').fix).toContain('오류 번호를 관리자에게 메일로 알려 주세요')
+  })
+})
+
+// ui-90 REQ-409: 시안(docs/mockups/ui-90) 문구로 바꾼 네 항목과 모든 문구의 말끝·낱말
+describe('AC-409.1 공용 오류 문구', () => {
+  it('AC-409.1: E-PAGE-FAILED.fix는 [다시 시도] 뒤 오류 번호를 관리자에게 메일로 알리라고 한다', () => {
+    expect(errorInfo('E-PAGE-FAILED')).toEqual({
+      what: '화면을 열지 못했어요',
+      fix: '잠시 뒤 [다시 시도]를 눌러 주세요. 계속되면 아래 오류 번호를 관리자에게 메일로 알려 주세요.',
+    })
+  })
+
+  it('AC-409.1: E-BIT-NOT-REGISTERED.what은 "이 PC에 등록한 의원이 없어요"다', () => {
+    expect(errorInfo('E-BIT-NOT-REGISTERED').what).toBe('이 PC에 등록한 의원이 없어요')
+  })
+
+  it('AC-409.1: E-BIT-HOSPITAL-MISMATCH는 시안의 의원 다름 상자 문구 그대로다', () => {
+    expect(errorInfo('E-BIT-HOSPITAL-MISMATCH')).toEqual({
+      what: '이 PC의 비트가 등록한 의원과 달라요',
+      fix: '우리 의원 비트가 맞으면 [다시 등록]을 눌러요. 이 PC에 뜨는 확인 창에서 전에 등록한 값과 새 값을 보고 [확인]을 눌러요.',
+    })
+  })
+
+  it('AC-409.1: E-BRIDGE-REJECTED.fix는 비트 PC 연결 화면의 [다시 확인]을 가리킨다', () => {
+    expect(errorInfo('E-BRIDGE-REJECTED').fix).toBe(
+      '비트 PC 연결 화면에서 [다시 확인]을 누른 뒤 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    )
+  })
+
+  it.each(ALL_CODES)('AC-409.1: %s의 what·fix에 "병원"·"설치·연결 확인"이 없고 "니다."로 끝나는 문장이 없다', (code) => {
+    const info = errorInfo(code)
+    for (const [part, text] of [
+      ['what', info.what],
+      ['fix', info.fix],
+    ] as const) {
+      expect(text, `${code}.${part}`).not.toContain('병원')
+      expect(text, `${code}.${part}`).not.toContain('설치·연결 확인')
+      expect(text, `${code}.${part}`).not.toMatch(/니다\./)
+    }
   })
 })
 
@@ -147,12 +194,19 @@ describe('AC-004.3·AC-004.6·AC-004.7·AC-004.9 연결 오류 번호 문구', (
     expect(errorInfo('E-EXT-OLD').fix).toContain('확장')
   })
 
+  // ui-90 TASK-19: 확장 업데이트 안내는 화면에 없는 "1번" 단계를 가리키지 않고, 아래 단추로 새 확장을 받으라고 한다
+  it('AC-006.6·ui-90 TASK-19: E-EXT-OLD.fix는 새 확장 안내 문구 그대로다 — "1번"을 가리키지 않는다', () => {
+    const fix = errorInfo('E-EXT-OLD').fix
+    expect(fix).toBe('이 PC의 확장이 예전 버전이라 청구 화면을 쓸 수 없어요. 아래 단추로 새 확장을 받아 바꾼 뒤 [다시 확인]을 누르세요.')
+    expect(fix).not.toContain('1번')
+  })
+
   it('E-BRIDGE-BUSY는 다른 창에서 쓰고 있다고 알린다', () => {
     expect(errorInfo('E-BRIDGE-BUSY').what).toContain('다른 창')
   })
 })
 
-// 설치·연결 확인 화면(TASK-6)이 더한 번호: bit.check 단계(find·db·registration)와 등록 단계가 줄 수 있는 것
+// 비트 PC 연결 화면(precheck TASK-6)이 더한 번호: bit.check 단계(find·db·registration)와 등록 단계가 줄 수 있는 것
 const BIT_CODES = [
   'E-BIT-NOT-FOUND',
   'E-BIT-DB-FAILED',

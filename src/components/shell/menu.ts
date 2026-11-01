@@ -41,25 +41,28 @@ export type MenuItem = {
   href: MenuHref | null
   /** 이 탭 자리에 속하는 다른 화면 경로(지금은 쓰는 항목 없음. 설정이 /settings를 가지면 /claim/setup을 여기에 둔다) */
   owns?: readonly string[]
+  /** 지금 쓸 수 있는 화면이 있다(대시보드·청구·설정). false면 그 주소는 '준비 중' 화면이고 [전체 메뉴] 판에 "준비 중" 칩이 붙는다(ui-90 AC-416.4).
+   *  false인 주소들은 common/notReadyFeatures.ts의 NOT_READY_FEATURES와 같다(시험이 견준다) */
+  ready: boolean
 }
 
 export const MENU: readonly MenuItem[] = [
-  { label: '대시보드', path: '/dashboard', href: '/dashboard' },
-  { label: '통계', path: '/stats', href: null },
-  { label: '청구', path: '/claim', href: '/claim' },
-  { label: '고시·공지', path: '/notices', href: null },
-  { label: '환자', path: '/patients', href: null },
-  { label: '매출', path: '/revenue', href: null },
-  { label: 'AI 리포트', path: '/ai-report', href: null },
-  { label: '서식', path: '/forms', href: null },
-  { label: '직원', path: '/staff', href: null },
-  { label: '업무일지', path: '/worklog', href: null },
-  { label: '재고', path: '/inventory', href: null },
-  { label: '주소록', path: '/contacts', href: null },
+  { label: '대시보드', path: '/dashboard', href: '/dashboard', ready: true },
+  { label: '통계', path: '/stats', href: null, ready: false },
+  { label: '청구', path: '/claim', href: '/claim', ready: true },
+  { label: '고시·공지', path: '/notices', href: null, ready: false },
+  { label: '환자', path: '/patients', href: null, ready: false },
+  { label: '매출', path: '/revenue', href: null, ready: false },
+  { label: 'AI 리포트', path: '/ai-report', href: null, ready: false },
+  { label: '서식', path: '/forms', href: null, ready: false },
+  { label: '직원', path: '/staff', href: null, ready: false },
+  { label: '업무일지', path: '/worklog', href: null, ready: false },
+  { label: '재고', path: '/inventory', href: null, ready: false },
+  { label: '주소록', path: '/contacts', href: null, ready: false },
   // 설정 href는 null이어야 한다: 설치·연결 확인 화면(SetupScreen)이 이 값으로 [청구·연락] 링크를 정한다.
   // '/claim/setup'을 넣으면 [청구·연락]이 지금 보고 있는 화면 자신을 가리키는 링크가 된다(design.md '설정 탭은 /claim/setup으로 간다').
   // 설정 화면(/settings)이 생기면 path·href를 '/settings'로, owns를 ['/claim/setup']으로 바꾼다
-  { label: '설정', path: '/claim/setup', href: null },
+  { label: '설정', path: '/claim/setup', href: null, ready: true },
 ]
 
 // 관리자만, 계정 메뉴 첫 항목(REQ-304)

@@ -38,10 +38,10 @@ describe('AC-001.1: 섹션과 푸터', () => {
 })
 
 describe('AC-005.1: 개인정보 문구', () => {
-  it('AC-005.1: 개인정보 섹션 제목은 "환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다"', () => {
+  it('AC-005.1·AC-421.7: 개인정보 섹션 제목은 "환자 개인정보는 절대 병원 PC 밖으로 나가지 않아요"(시안 PRIV_H2)', () => {
     const h2 = privacy.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/)
     expect(h2).not.toBeNull()
-    expect(textOf(h2![1])).toBe('환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다')
+    expect(h2![1].replace(/<[^>]+>/g, '')).toBe('환자 개인정보는 절대 병원 PC 밖으로 나가지 않아요')
   })
 
   it('AC-005.1: 큰 숫자 "0"과 단위 "건"', () => {
@@ -49,11 +49,17 @@ describe('AC-005.1: 개인정보 문구', () => {
     expect(textOf(privacy)).toContain('서버와 AI로 보내는 환자 개인정보')
   })
 
-  it('AC-005.1: 흐름 카드 제목 "병원 PC · 브라우저"와 멈추는 항목', () => {
+  it('AC-005.1·AC-421.7: 흐름 카드 제목 "병원 PC · 브라우저"와 멈추는 항목(PC·휴대폰 글은 시안 그대로)', () => {
     const text = textOf(privacy)
     expect(text).toContain('병원 PC · 브라우저')
     expect(text).toContain('여기서 멈춤')
-    expect(text).toContain('환자 이름 · 주민번호 · 차트번호 · 파일 이름')
+    expect(text).toContain('환자 이름·주민번호·차트번호·파일 이름')
+    expect(text).toContain('환자 이름 · 주민번호 · 차트번호는 여기서 멈춤')
+  })
+
+  it('AC-421.9: 개인정보·시작 3단계·바닥글 글자에 "니다."로 끝나는 문장이 없고 "병원 PC"는 그대로다', () => {
+    expect(textOf(all)).not.toMatch(/니다\./)
+    expect(textOf(privacy)).toContain('병원 PC')
   })
 })
 
@@ -137,18 +143,23 @@ const BOX_TAGS = new Set(['div', 'section', 'article', 'ul', 'ol', 'li', 'dl', '
 
 // section#privacy(canvas 띠) > .wrap > .grid.top(.text(h2 + p) + .zero(p 0건 + p 설명)) + .flow + dl(약속 4개)
 const PRIV_SHAPE =
-  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)([^<]*)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<div\b[^>]*>)(<p\b[^>]*>)([\s\S]*?)<\/p>(<p\b[^>]*>)([^<]*)<\/p><\/div><\/div>(<div\b[^>]*>)([\s\S]*)<\/div>(<dl\b[^>]*>)([\s\S]*?)<\/dl><\/div><\/section>$/
-// 흐름 칸: .node > h3(svg + 글) + 설명 p (+ 첫 칸만 멈춤 줄 p(svg + b + span))
+  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<h2\b[^>]*>)((?:[^<]|<span\b[^>]*>[^<]*<\/span>)*)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<div\b[^>]*>)(<p\b[^>]*>)([\s\S]*?)<\/p>(<p\b[^>]*>)([^<]*)<\/p><\/div><\/div>(<div\b[^>]*>)([\s\S]*)<\/div>(<dl\b[^>]*>)([\s\S]*?)<\/dl><\/div><\/section>$/
+// 흐름 칸: .node > h3(svg + 이름 span(.nw span 0~1)) + 설명 p (+ 첫 칸만 멈춤 줄 p 둘: PC(svg + b + span) · 휴대폰(svg + span))
+const TITLE_SRC = '<span>(?:[^<]|<span\\b[^>]*>[^<]*</span>)*</span>'
 const NODE_SRC =
-  '<div\\b[^>]*><h3\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg>[^<]*</h3><p\\b[^>]*>[^<]*</p>' +
-  '(?:<p\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg><b\\b[^>]*>[^<]*</b><span\\b[^>]*>[^<]*</span></p>)?</div>'
+  `<div\\b[^>]*><h3\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg>${TITLE_SRC}</h3><p\\b[^>]*>[^<]*</p>` +
+  '(?:<p\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg><b\\b[^>]*>[^<]*</b><span\\b[^>]*>[^<]*</span></p>' +
+  '<p\\b[^>]*><svg\\b[^>]*>[\\s\\S]*?</svg><span\\b[^>]*>[^<]*</span></p>)?</div>'
 // 연결: .edge(aria-hidden) > 글 span + 화살표 svg
 const EDGE_SRC = '<div\\b[^>]*><span\\b[^>]*>[^<]*</span><svg\\b[^>]*>[\\s\\S]*?</svg></div>'
 const FLOW_SHAPE = new RegExp(`^(${NODE_SRC})(${EDGE_SRC})(${NODE_SRC})(${EDGE_SRC})(${NODE_SRC})$`)
 const NODE_PARTS = new RegExp(
-  '^(<div\\b[^>]*>)(<h3\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)([^<]*)</h3>(<p\\b[^>]*>)([^<]*)</p>' +
-    '(?:(<p\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)(<b\\b[^>]*>)([^<]*)</b>(<span\\b[^>]*>)([^<]*)</span></p>)?</div>$',
+  '^(<div\\b[^>]*>)(<h3\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)<span>((?:[^<]|<span\\b[^>]*>[^<]*</span>)*)</span></h3>(<p\\b[^>]*>)([^<]*)</p>' +
+    '(?:(<p\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)(<b\\b[^>]*>)([^<]*)</b>(<span\\b[^>]*>)([^<]*)</span></p>' +
+    '(<p\\b[^>]*>)(<svg\\b[^>]*>[\\s\\S]*?</svg>)(<span\\b[^>]*>)([^<]*)</span></p>)?</div>$',
 )
+// 태그만 뺀 글자(빈칸을 넣지 않는다)
+const plain = (html: string | undefined) => (html ?? '').replace(/<[^>]+>/g, '')
 const EDGE_PARTS = /^(<div\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<svg\b[^>]*>[\s\S]*?<\/svg>)<\/div>$/
 // 약속 하나: div(dt + dd), 안에 태그 없음
 const RULE = /(<div\b[^>]*>)(<dt\b[^>]*>)([^<]*)<\/dt>(<dd\b[^>]*>)([^<]*)<\/dd><\/div>/g
@@ -175,11 +186,12 @@ describe('AC-210.2: 개인정보 섹션의 짜임', () => {
     expect(classesOf(dl), '약속은 768px 이상만').toEqual(expect.arrayContaining([privStyles.rules, base.pcOnly]))
   })
 
-  it('AC-210.2: h2는 .tHeading "환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다"(태그 없음)이고 안내 p(.lead)는 지금 문구다', () => {
-    expect(classesOf(h2)).toContain(base.tHeading)
-    expect(h2In).toBe('환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다')
-    expect(classesOf(lead)).toContain(privStyles.lead)
-    expect(leadIn).toBe('환자 이름·주민번호·차트번호는 서버에도, AI에도 가지 않습니다. 처음부터 그렇게 설계했습니다.')
+  it('AC-210.2·AC-421.7: h2는 .tHeading 시안 PRIV_H2("병원 PC"만 .nw span)이고 안내 p(.tLead .lead)는 시안 문구다', () => {
+    expect(classesOf(h2)).toEqual([base.tHeading])
+    expect(plain(h2In)).toBe('환자 개인정보는 절대 병원 PC 밖으로 나가지 않아요')
+    expect(h2In).toBe(`환자 개인정보는 절대 <span class="${base.nw}">병원 PC</span> 밖으로 나가지 않아요`)
+    expect(classesOf(lead)).toEqual([base.tLead, privStyles.lead])
+    expect(leadIn).toBe('환자 이름·주민번호·차트번호는 서버에도, AI에도 가지 않아요. 처음부터 그렇게 설계했어요.')
   })
 
   it('AC-210.2: 0건 덩어리는 <p class="tDisplay zeroNum">0<span class="unit">건</span></p> + "서버와 AI로 보내는 환자 개인정보"(.tSmall .zeroCaption, 태그 없음)다', () => {
@@ -189,14 +201,15 @@ describe('AC-210.2: 개인정보 섹션의 짜임', () => {
     expect(zeroCapIn).toBe('서버와 AI로 보내는 환자 개인정보')
   })
 
-  it('AC-210.2: 흐름은 칸 3개(병원 PC · 브라우저 → 서버 → AI 분석) 사이에 연결 2개가 끼인 순서이고, 칸 h3(.tSubtitle .nodeTitle)는 16px 아이콘(.nodeIcon) + 이름, 설명 p(.nodeDesc·.pcOnly)는 지금 문구다', () => {
+  it('AC-210.2·AC-421.7: 흐름은 칸 3개(병원 PC · 브라우저 → 서버 → AI 분석) 사이에 연결 2개가 끼인 순서이고, 칸 h3(.tSubtitle .nodeTitle)는 16px 아이콘(.nodeIcon) + 이름 span, 설명 p(.nodeDesc·.pcOnly)는 시안 문구다', () => {
     expect(flowParts, '.node · .edge · .node · .edge · .node').not.toBeNull()
     for (const [i, n] of nodes.entries()) expect(n, `칸 ${i + 1}`).not.toBeNull()
-    expect(nodes.map((n) => n?.[4])).toEqual(['병원 PC · 브라우저', '서버', 'AI 분석'])
+    expect(nodes.map((n) => plain(n?.[4]))).toEqual(['병원 PC · 브라우저', '서버', 'AI 분석'])
+    expect(nodes[0]?.[4], '"병원 PC"는 줄바꿈 막는 span').toBe(`<span class="${base.nw}">병원 PC</span> · 브라우저`)
     expect(nodes.map((n) => n?.[6])).toEqual([
-      '환자 파일을 여기서만 열고 계산합니다.',
-      '통계·매출 합계만 저장합니다. 원본 파일은 올라가지 않습니다.',
-      '서버가 꺼낸 합계 숫자로만 리포트를 씁니다.',
+      '환자 파일을 여기서만 열고 계산해요.',
+      '통계·매출 합계만 저장해요. 원본 파일은 올라가지 않아요.',
+      '서버가 꺼낸 합계 숫자로만 리포트를 써요.',
     ])
     const icons = ['monitor', 'server', 'doc'] as const
     nodes.forEach((n, i) => {
@@ -208,14 +221,18 @@ describe('AC-210.2: 개인정보 섹션의 짜임', () => {
     })
   })
 
-  it('AC-210.2: 첫 칸에만 멈춤 줄 p(.stop)가 있다 — 멈춤 아이콘 14px(색은 줄 글자색) + "여기서 멈춤"(b .stopTitle) + "환자 이름 · 주민번호 · 차트번호 · 파일 이름"(.stopItems)', () => {
-    const [, , , , , , , stop, stopSvg, stopTitle, stopTitleIn, stopItems, stopItemsIn] = nodes[0] ?? []
-    expect(classesOf(stop)).toContain(privStyles.stop)
+  it('AC-210.2·AC-421.7: 첫 칸에만 멈춤 줄이 있다 — PC(.stop·.pcOnly): 멈춤 아이콘 14px + "여기서 멈춤"(b .stopTitle) + "환자 이름·주민번호·차트번호·파일 이름"(.stopItems) / 휴대폰(.stop·.phoneOnly): 아이콘 + "환자 이름 · 주민번호 · 차트번호는 여기서 멈춤"', () => {
+    const [, , , , , , , stop, stopSvg, stopTitle, stopTitleIn, stopItems, stopItemsIn, phoneStop, phoneSvg, phoneItems, phoneItemsIn] = nodes[0] ?? []
+    expect(classesOf(stop)).toEqual([privStyles.stop, base.pcOnly])
     expect(stopSvg).toBe(renderToStaticMarkup(<Icon name="stop" size={14} />))
-    expect(classesOf(stopTitle)).toContain(privStyles.stopTitle)
+    expect(classesOf(stopTitle)).toEqual([privStyles.stopTitle])
     expect(stopTitleIn).toBe('여기서 멈춤')
-    expect(classesOf(stopItems)).toContain(privStyles.stopItems)
-    expect(stopItemsIn).toBe('환자 이름 · 주민번호 · 차트번호 · 파일 이름')
+    expect(classesOf(stopItems)).toEqual([privStyles.stopItems])
+    expect(stopItemsIn).toBe('환자 이름·주민번호·차트번호·파일 이름')
+    expect(classesOf(phoneStop)).toEqual([privStyles.stop, base.phoneOnly])
+    expect(phoneSvg).toBe(renderToStaticMarkup(<Icon name="stop" size={14} />))
+    expect(classesOf(phoneItems)).toEqual([privStyles.stopItems])
+    expect(phoneItemsIn).toBe('환자 이름 · 주민번호 · 차트번호는 여기서 멈춤')
     expect(nodes[1]?.[7], '서버 칸에는 멈춤 줄이 없다').toBeUndefined()
     expect(nodes[2]?.[7], 'AI 분석 칸에는 멈춤 줄이 없다').toBeUndefined()
   })
@@ -232,20 +249,20 @@ describe('AC-210.2: 개인정보 섹션의 짜임', () => {
     }
   })
 
-  it('AC-210.2: 약속 <dl>은 div(.rule) 4개 — dt(.ruleTitle) + dd(.ruleDesc)이고 지금 문구다(줄바꿈 태그·nowrap span 없음)', () => {
+  it('AC-210.2·AC-421.7: 약속 <dl>은 div(.rule) 4개 — dt(.ruleTitle) + dd(.ruleDesc)이고 시안 PRIV_RULES 그대로다(줄바꿈 태그·span 없음)', () => {
     expect(rules).toHaveLength(4)
     expect((dlIn ?? '').replace(RULE, ''), 'div(dt + dd) 밖의 다른 원소가 없다').toBe('')
     expect(rules.map((m) => m[3])).toEqual([
-      '필요한 칸만 읽습니다',
-      '주민번호가 보이면 멈춥니다',
+      '필요한 칸만 읽어요',
+      '주민번호가 보이면 멈춰요',
       'AI에는 합계 숫자만',
       '승인한 사람만, 공용 PC도 안심',
     ])
     expect(rules.map((m) => textOf(m[5]))).toEqual([
-      '계산에 쓰는 칸을 정해 두고 그 칸만 읽습니다. 차트번호는 계산하는 동안 메모리 안에서만 씁니다.',
-      "'-' 없이 붙여 쓴 13자리까지 잡아서, 섞여 있으면 계산하지 않고 알려 줍니다.",
-      '통계·매출 합계와 인건비 총액만 보냅니다. 직원 이름·개인별 급여도 보내지 않습니다.',
-      '구글 로그인 뒤 관리자가 승인한 계정만 들어옵니다. 30분 동안 움직임이 없으면 자동으로 로그아웃합니다.',
+      '계산에 쓰는 칸을 정해 두고 그 칸만 읽어요. 차트번호는 계산하는 동안 메모리 안에서만 써요.',
+      "'-' 없이 붙여 쓴 13자리까지 잡아서, 섞여 있으면 계산하지 않고 알려 줘요.",
+      '통계·매출 합계와 인건비 총액만 보내요. 직원 이름·개인별 급여도 보내지 않아요.',
+      '구글 로그인 뒤 관리자가 승인한 계정만 들어와요. 30분 동안 움직임이 없으면 자동으로 로그아웃해요.',
     ])
     for (const [, row, dt, , dd] of rules) {
       expect(classesOf(row)).toContain(privStyles.rule)
@@ -254,16 +271,17 @@ describe('AC-210.2: 개인정보 섹션의 짜임', () => {
     }
   })
 
-  it('AC-210.2: "PRIVACY FIRST"·방패·줄바꿈 태그·nowrap span·옛 카드·색 글자·inline style이 없고 svg는 칸 아이콘 3 + 멈춤 1 + 화살표 2개다', () => {
+  it('AC-210.2: "PRIVACY FIRST"·방패·줄바꿈 태그·옛 카드·색 글자·inline style이 없고 svg는 칸 아이콘 3 + 멈춤 2(PC·휴대폰) + 화살표 2개다', () => {
     expect(textOf(privacy)).not.toMatch(/PRIVACY FIRST/i)
     expect(textOf(privacy), '영문 대문자 소제목이 없다').not.toMatch(/[A-Z]{3,}/)
     expect(privacy).not.toContain('M11 2l7 3v5')
     expect(privacy).not.toMatch(/<(br|ul|li|article|figure)\b/)
     const allClasses = [...privacy.matchAll(/\bclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
-    for (const old of [base.card, base.nowrap, base.items, base.item, base.itemsFour, base.tH2, base.tH3, base.tLead, base.tBody, base.stack, base.head, base.chip]) {
+    // .tLead는 ui-90에서 안내 글자 단계로 되돌렸다(AC-421.8) → 옛 이름 목록에서 뺀다
+    for (const old of [base.card, base.nowrap, base.items, base.item, base.itemsFour, base.tH2, base.tH3, base.tBody, base.stack, base.head, base.chip]) {
       expect(allClasses).not.toContain(old)
     }
-    expect(privacy.match(/<svg\b/g) ?? []).toHaveLength(6)
+    expect(privacy.match(/<svg\b/g) ?? []).toHaveLength(7)
     expect(privacy).not.toMatch(/="#[0-9a-f]{3,8}"/i)
     expect(privacy).not.toMatch(/\bstyle="/)
   })
@@ -311,11 +329,11 @@ describe('AC-211.1: 시작 3단계의 짜임', () => {
     expect(how.match(/<h2\b/g)).toHaveLength(1)
   })
 
-  it('AC-211.1: h2는 .tHeading "시작은 3단계면 충분합니다"(태그 없음), 안내 p(.lead)는 "처음이면 가입 신청 후 관리자 승인을 받습니다."다', () => {
+  it('AC-211.1·AC-421.7: h2는 .tHeading "시작은 3단계면 충분해요"(태그 없음), 안내 p(.tLead .lead)는 "처음이면 가입 신청 후 관리자 승인을 받아요."다', () => {
     expect(classesOf(h2)).toEqual([base.tHeading])
-    expect(h2In).toBe('시작은 3단계면 충분합니다')
-    expect(classesOf(lead)).toEqual([howStyles.lead])
-    expect(leadIn).toBe('처음이면 가입 신청 후 관리자 승인을 받습니다.')
+    expect(h2In).toBe('시작은 3단계면 충분해요')
+    expect(classesOf(lead)).toEqual([base.tLead, howStyles.lead])
+    expect(leadIn).toBe('처음이면 가입 신청 후 관리자 승인을 받아요.')
   })
 
   it('AC-211.1: [구글로 시작하기]는 /login으로 가는 주 단추(.btn·.btnLg 44px·.btnPrimary) 글자뿐이고, 자리 클래스(.start)가 휴대폰 순서·폭을 정한다', () => {
@@ -324,15 +342,15 @@ describe('AC-211.1: 시작 3단계의 짜임', () => {
     expect(aIn).toBe('구글로 시작하기')
   })
 
-  it('AC-211.1: 단계 ol 안은 li(.step) 3개 — 번호 span(.num) "1"·"2"·"3" + h3(.tSubtitle .stepTitle) + p(.desc, 768px 미만 숨김 .pcOnly)이고 지금 단계 문구다', () => {
+  it('AC-211.1·AC-421.7: 단계 ol 안은 li(.step) 3개 — 번호 span(.num) "1"·"2"·"3" + h3(.tSubtitle .stepTitle) + p(.desc, 768px 미만 숨김 .pcOnly)이고 시안 STEPS 그대로다', () => {
     expect(steps).toHaveLength(3)
     expect((olIn ?? '').replace(STEP_ITEM, ''), 'li 밖의 다른 원소가 없다').toBe('')
     expect(steps.map((m) => m[3])).toEqual(['1', '2', '3'])
     expect(steps.map((m) => m[5])).toEqual(['구글로 시작하기', '가입 신청', '승인 후 바로 사용'])
     expect(steps.map((m) => m[7])).toEqual([
-      '쓰던 구글 계정으로 로그인합니다. 새 비밀번호를 만들 필요가 없습니다.',
-      '처음 한 번만 의원 이름을 적어 신청합니다.',
-      '관리자가 승인하면 대시보드가 열립니다.',
+      '쓰던 구글 계정으로 로그인해요. 새 비밀번호를 만들 필요가 없어요.',
+      '처음 한 번만 의원 이름을 적어 신청해요.',
+      '관리자가 승인하면 대시보드가 열려요.',
     ])
     for (const [, li, num, , h3, , p] of steps) {
       expect(classesOf(li)).toEqual([howStyles.step])

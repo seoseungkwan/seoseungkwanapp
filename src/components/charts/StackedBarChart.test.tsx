@@ -509,3 +509,40 @@ describe('AC-314.2: StackedBarChart dense — 막대 위 합계·상태 글자 �
     expect(await sha256(chart({ compact: true }).html)).toBe(BEFORE_REQ_314.sm)
   })
 })
+
+// ---------- ui-90 AC-421.2: thinLabels — 768px 미만에서 날짜 글자를 하나 걸러 보인다 ----------
+
+// 아래 날짜 글자 줄(그림의 마지막 줄)의 칸마다 첫 글자 p
+const dateLabels = (figure: Element) => Array.from(figure.lastElementChild!.children).map((cell) => cell.firstElementChild!)
+
+describe('AC-421.2: StackedBarChart thinLabels — 768px 미만은 날짜 글자가 하나 걸러 보이고, 주지 않으면 지금 그림 그대로', () => {
+  it('AC-421.2: thinLabels면 둘째·넷째·…(0부터 홀수 번째) 날짜 글자만 max-md:invisible이고, 글자·칸 수는 그대로다(시안 skip: 9.7 · 9.21 · 10.5 · 10.19만 보임)', () => {
+    for (const compact of [false, true]) {
+      const labels = dateLabels(figureOf(chart({ compact, thinLabels: true }).root))
+      expect(labels, `compact=${compact}`).toHaveLength(8)
+      expect(labels.map(textOf)).toEqual(LABELS)
+      expect(labels.map((p) => classesOf(p).includes('max-md:invisible')), `compact=${compact}`).toEqual(LABELS.map((_, i) => i % 2 === 1))
+      const shown = labels.filter((p) => !classesOf(p).includes('max-md:invisible')).map(textOf)
+      expect(shown).toEqual(['9.7', '9.21', '10.5', '10.19'])
+      // 768px 이상에서는 모두 보인다(숨김은 max-md: 하나뿐)
+      for (const p of labels) expect(classesOf(p).filter((c) => /(^|:)(hidden|invisible|sr-only)$/.test(c) && c !== 'max-md:invisible')).toEqual([])
+    }
+  })
+
+  it('AC-421.2: thinLabels는 날짜 글자의 클래스 하나만 더한다 — 그 클래스를 빼면 기본 그림과 한 글자도 같고, 화면 읽기 표는 그대로다', () => {
+    for (const compact of [false, true]) {
+      const thin = chart({ compact, thinLabels: true })
+      expect(thin.html.replace(/ max-md:invisible/g, ''), `compact=${compact}`).toBe(chart({ compact }).html)
+      expect(tableOf(thin.root).outerHTML).toBe(tableOf(chart({ compact }).root).outerHTML)
+    }
+  })
+
+  it('AC-421.2: thinLabels를 주지 않거나 false면 숨는 날짜 글자가 없고 마크업이 지금과 같다(sha256)', async () => {
+    for (const compact of [false, true]) {
+      expect(chart({ compact, thinLabels: false }).html, `compact=${compact}`).toBe(chart({ compact }).html)
+      expect(chart({ compact }).html).not.toContain('invisible')
+    }
+    expect(await sha256(chart().html)).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(chart({ compact: true }).html)).toBe(BEFORE_REQ_314.sm)
+  })
+})

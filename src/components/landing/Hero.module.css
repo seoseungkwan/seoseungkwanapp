@@ -15,16 +15,14 @@
   gap: 16px;
   min-width: 0;
 }
+/* 소개 줄: 크기는 .root의 body(14/22) 그대로 600 (specs/ui-90 AC-421.8) */
 .kicker {
   font-weight: 600;
   color: var(--ink-2);
 }
-/* 안내: 휴대폰은 body, 768px부터 lead */
+/* 안내: 크기는 base .tLead(모든 폭 lead 16/24, AC-421.8). 여기서는 색만 */
 .lead {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
   color: var(--ink-2);
-  text-wrap: pretty;
 }
 .actions {
   display: flex;
@@ -77,8 +75,6 @@
     gap: 20px;
   }
   .lead {
-    font-size: var(--fs-lead);
-    line-height: var(--lh-lead);
     margin-top: -4px; /* 제목과 안내 사이는 16px */
   }
   .start {

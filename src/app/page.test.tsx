@@ -47,7 +47,7 @@ const doc = (() => {
 const mainSections = () => Array.from(doc.querySelectorAll('main > section'))
 
 describe('AC-211.2: 페이지 짜임', () => {
-  it('AC-211.2: .root 감싸개 하나 안에 header → main(#top · #ai · #ortho · #features · #privacy · #how) → footer 순서다(약속 띠·#start 없음)', () => {
+  it('AC-211.2·AC-421.1: .root 감싸개 하나 안에 건너뛰기 링크 → header → main(#top · #ai · #ortho · #features · #privacy · #how) → footer 순서다(약속 띠·#start 없음)', () => {
     expect(html, '약속 띠는 히어로 안 약속 목록이 됐다').not.toMatch(/aria-label="핵심 약속"/)
     expect(html, '시작하기 섹션은 #how에 합쳤다').not.toMatch(/\bid="start"/)
     const marks = [
@@ -67,7 +67,7 @@ describe('AC-211.2: 페이지 짜임', () => {
     const root = doc.firstElementChild!
     expect(doc.children).toHaveLength(1)
     expect(root.getAttribute('class')).toBe(base.root)
-    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['header', 'main', 'footer'])
+    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['a', 'header', 'main', 'footer'])
   })
 
   it('AC-211.2: 섹션 6개는 main 하나 안에 있고, 메뉴 띠는 main 앞·푸터는 main 뒤에 있다', () => {
@@ -132,16 +132,18 @@ describe('AC-211.3: 페이지 글자에 빈칸이 없다', () => {
     }
   })
 
-  it('AC-211.3: "예시" 표시가 미리보기("예시 숫자")·AI 리포트("방금 생성 · 예시")·비교표("예시" 줄·"예시 값")·급여 패널("예시")에 있다', () => {
+  it('AC-211.3·AC-421.4·AC-421.6: "예시" 표시가 미리보기("예시 숫자")·AI 리포트("예시" 칩)·비교표("예시" 줄·"예시 값")·사전점검 패널("예시")에 있다', () => {
     const section = (id: string) => doc.querySelector(`section#${id}`)!
     const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
     expect(text(section('top'))).toContain('예시 숫자')
-    expect(text(section('ai'))).toContain('방금 생성 · 예시')
+    expect(Array.from(section('ai').querySelectorAll('span')).map(text), 'AI 리포트 "예시" 칩').toContain('예시')
+    expect(text(section('ai'))).not.toContain('방금 생성')
     const ortho = section('ortho')
     expect(Array.from(ortho.querySelectorAll('tbody th')).map(text), '비교표 "예시" 줄').toContain('예시')
     expect(Array.from(ortho.querySelectorAll('caption')).map(text), '휴대폰 표 "예시 값"').toContain('예시 값')
-    const panels = Array.from(section('features').querySelectorAll('p')).filter((p) => text(p).startsWith('10월 급여'))
-    expect(panels.map(text), '급여 패널 머리').toEqual(['10월 급여 예시'])
+    const panels = Array.from(section('features').querySelectorAll('p')).filter((p) => text(p).startsWith('10월 28일 사전점검'))
+    expect(panels.map(text), '사전점검 패널 머리').toEqual(['10월 28일 사전점검 예시'])
+    expect(text(section('features'))).not.toContain('10월 급여')
   })
 
   it('AC-211.3: "Powered by AI"·그라데이션 글자가 없다', () => {
@@ -201,7 +203,7 @@ function outerBoxes(root: Element): Element[] {
 }
 
 describe('AC-212.3: 페이지 전체 상자 검사', () => {
-  it('AC-212.3: 상자 판단에 랜딩 폴더의 모든 모듈을 넣었고, 네 변 테두리 클래스(리포트·급여 패널·흐름)를 찾는다', () => {
+  it('AC-212.3: 상자 판단에 랜딩 폴더의 모든 모듈을 넣었고, 네 변 테두리 클래스(리포트·사전점검 패널·흐름)를 찾는다', () => {
     const files = readdirSync(LANDING_CSS_DIR).filter((name) => name.endsWith('.module.css'))
     expect(Object.keys(LANDING_MODULES).sort()).toEqual(files.sort())
     expect(fourSideBorderClasses('.a { border: 1px solid var(--line); } @media (min-width: 768px) { .b > .c:hover { border: 1px solid var(--line); } } .d { border-top: 1px solid var(--line); }')).toEqual(['a', 'c'])
@@ -212,7 +214,7 @@ describe('AC-212.3: 페이지 전체 상자 검사', () => {
     expect(nestedBoxes(doc, isLandingBox)).toEqual([])
   })
 
-  it('AC-212.3: 섹션마다 맨 바깥 상자는 하나 이하다(미리보기·AI 리포트·급여 패널·개인정보 흐름 각 하나)', () => {
+  it('AC-212.3: 섹션마다 맨 바깥 상자는 하나 이하다(미리보기·AI 리포트·사전점검 패널·개인정보 흐름 각 하나)', () => {
     const counts = Object.fromEntries(mainSections().map((s) => [s.id, outerBoxes(s).length]))
     for (const [id, count] of Object.entries(counts)) expect(count, `#${id}`).toBeLessThanOrEqual(1)
     // 검사가 헛돌지 않는다: 미리보기(Tailwind border)와 모듈 상자를 실제로 찾는다
@@ -223,18 +225,89 @@ describe('AC-212.3: 페이지 전체 상자 검사', () => {
 })
 
 describe('AC-105.1: 랜딩 뿌리 감싸개', () => {
-  it('AC-105.1: base.module.css의 .root 클래스 <div> 하나가 header·main·footer를 감싼다', () => {
-    // 페이지 전체가 <div class="…">header main footer</div> 하나다
+  it('AC-105.1·AC-421.1: base.module.css의 .root 클래스 <div> 하나가 건너뛰기 링크·header·main·footer를 감싼다', () => {
+    // 페이지 전체가 <div class="…">건너뛰기 a · header · main · footer</div> 하나다
     const wrapper = html.match(/^<div class="([^"]+)">([\s\S]*)<\/div>$/)
     expect(wrapper, '맨 바깥 <div>').not.toBeNull()
     const [, className, inner] = wrapper!
     expect(className.split(/\s+/)).toHaveLength(1)
     expect(className).toMatch(/root/)
-    expect(inner).toMatch(/^<header\b[\s\S]*<\/header><main\b[\s\S]*<\/main><footer\b[\s\S]*<\/footer>$/)
+    expect(inner).toMatch(/^<a\b[^>]*>본문으로 건너뛰기<\/a><header\b[\s\S]*<\/header><main\b[\s\S]*<\/main><footer\b[\s\S]*<\/footer>$/)
     // 그 클래스는 base.module.css의 .root다(CSS 쪽 값은 src/components/landing/rules.test.ts의 AC-212.2가 본다)
     const page = readFileSync(join(ROOT, 'src/app/page.tsx'), 'utf8')
     expect(page).toMatch(/^import base from '@\/components\/landing\/base\.module\.css'$/m)
     expect(page).toMatch(/<div className=\{base\.root\}>/)
+  })
+})
+
+describe('AC-421.1: 본문으로 건너뛰기', () => {
+  // 문서 순서로 초점을 받는 요소(링크·단추·받는 칸·tabindex 0 이상)
+  const focusables = () =>
+    Array.from(doc.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')).filter(
+      (el) => el.getAttribute('tabindex') === null || Number(el.getAttribute('tabindex')) >= 0,
+    )
+
+  it('AC-421.1: 첫 조작 요소가 <a href="#main">본문으로 건너뛰기</a>(base .skip, 안에 글자만)이고 메뉴 띠 앞에 있다', () => {
+    const [first] = focusables()
+    expect(first?.tagName).toBe('A')
+    expect(first?.getAttribute('href')).toBe('#main')
+    expect((first?.textContent ?? '').trim()).toBe('본문으로 건너뛰기')
+    expect(first?.children, '안에 글자만 있다').toHaveLength(0)
+    expect(first?.getAttribute('class')).toBe(base.skip)
+    expect(first?.nextElementSibling?.tagName).toBe('HEADER')
+    expect(Array.from(doc.querySelectorAll('a')).filter((a) => (a.textContent ?? '').trim() === '본문으로 건너뛰기')).toHaveLength(1)
+  })
+
+  it('AC-421.1: 본문은 <main id="main"> 하나이고 섹션 6개를 감싼다 — 건너뛰기 링크가 가리키는 곳이 있다', () => {
+    const mains = Array.from(doc.querySelectorAll('main'))
+    expect(mains).toHaveLength(1)
+    expect(mains[0]!.id).toBe('main')
+    expect(mains[0]!.getAttribute('class'), '건너뛰기로 옮겨도 메뉴에 가리지 않는 자리(base .main)').toBe(base.main)
+    // 앱 틀과 같이 초점을 받을 수 있게 tabindex -1(Tab 차례에는 들지 않는다)
+    expect(mains[0]!.getAttribute('tabindex')).toBe('-1')
+    expect(ids.filter((id) => id === 'main')).toHaveLength(1)
+    expect(Array.from(mains[0]!.children).map((el) => el.id)).toEqual(['top', 'ai', 'ortho', 'features', 'privacy', 'how'])
+  })
+
+  it('AC-421.1: page.tsx가 건너뛰기 링크를 SiteHeader 앞에 두고, 랜딩 CSS 모듈(base.skip)로 꾸민다', () => {
+    const page = readFileSync(join(ROOT, 'src/app/page.tsx'), 'utf8')
+    expect(page).toMatch(/<a href="#main" className=\{base\.skip\}>\s*본문으로 건너뛰기\s*<\/a>\s*<SiteHeader \/>/)
+    expect(page).toMatch(/<main id="main" tabIndex=\{-1\} className=\{base\.main\}>/)
+  })
+})
+
+// 시안 소스(docs/mockups/ui-90/entry/screens.mjs)를 그대로 불러온다(경로를 글자로 만들어 타입 검사가 시안 JS를 따라가지 않게 한다)
+const mockupLanding = async () => {
+  const { pathToFileURL } = await import('node:url')
+  const mod = (await import(/* @vite-ignore */ pathToFileURL(join(ROOT, 'docs/mockups/ui-90/entry/screens.mjs')).href)) as {
+    landingPC: () => string
+    landingPhone: () => string
+  }
+  const host = document.createElement('div')
+  host.innerHTML = mod.landingPC() + mod.landingPhone()
+  return (host.textContent ?? '').replace(/\s+/g, ' ')
+}
+// 페이지의 글자 조각(글자 마디 하나씩). 미리보기(자기 시험이 따로 본다)와 로고 링크의 화면 읽기 글자 "맨 위로"는 뺀다
+const pagePieces = () => {
+  const preview = doc.querySelector(`section#top .${heroStyles.shot}`)
+  const pieces: string[] = []
+  const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const piece = (node.textContent ?? '').replace(/\s+/g, ' ').trim()
+    if (!piece || preview?.contains(node)) continue
+    if ((node.parentElement?.getAttribute('class') ?? '').split(/\s+/).includes(base.srOnly)) continue
+    pieces.push(piece)
+  }
+  return pieces
+}
+
+describe('AC-421.3~AC-421.7: 랜딩 글자는 시안 소스 글자 그대로다', () => {
+  it('AC-421.3~AC-421.7: 페이지의 글자 조각은 모두 시안 landingPC·landingPhone 글자 안에 있다(nw() 감싸개·태그 빼고, 미리보기·"맨 위로" 빼고)', async () => {
+    const mock = await mockupLanding()
+    expect(mock).toContain('매일 하던 일을 한곳에 모아요')
+    const pieces = pagePieces()
+    expect(pieces.length, '읽은 조각 수').toBeGreaterThan(80)
+    expect(pieces.filter((piece) => !mock.includes(piece))).toEqual([])
   })
 })
 
@@ -288,10 +361,10 @@ describe('AC-005.1: 정한 문구', () => {
   it('AC-005.1: 사용자가 정한 문구가 그대로 있다', () => {
     for (const line of [
       '통증 의원 관리자를 위한 AI 업무 도구',
-      '환자 개인정보는 병원 PC 밖으로 나가지 않습니다',
-      '환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다',
+      '환자 개인정보는 병원 PC 밖으로 나가지 않아요',
+      '환자 개인정보는 절대 병원 PC 밖으로 나가지 않아요',
       'EMR',
-      '주사 치료 수와 F/U',
+      '주사 치료 수와 재방문',
       '물리치료 내원 환자 수',
       '비급여 치료 내역',
       '한 장으로 받는 월간 보고',
@@ -302,27 +375,35 @@ describe('AC-005.1: 정한 문구', () => {
 
   it('AC-005.1: 개인정보 섹션 제목과 큰 숫자 "0"·단위 "건"', () => {
     const privacy = html.match(/<section\b[^>]*id="privacy"[\s\S]*?<\/section>/)![0]
-    expect(textOf(privacy.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/)![1])).toBe(
-      '환자 개인정보는 절대 병원 PC 밖으로 나가지 않습니다',
+    expect(privacy.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/)![1].replace(/<[^>]+>/g, '')).toBe(
+      '환자 개인정보는 절대 병원 PC 밖으로 나가지 않아요',
     )
     expect(privacy).toMatch(/>0<span\b[^>]*>건<\/span>/)
   })
 })
 
-// 2026-10-30 사용자 결정 "F/U 기록을 그냥 F/U로 바꾸자" (specs/landing-v2 REQ-114)
-describe('AC-114.1: "F/U 기록" → "F/U"', () => {
-  it('AC-114.1: 페이지 글자와 마크업 어디에도 "F/U 기록"이 없고, "주사 치료 수와 F/U"는 있다', () => {
-    expect(text).not.toContain('F/U 기록')
-    expect(html).not.toContain('F/U 기록')
-    expect(text).toContain('주사 치료 수와 F/U')
+// "F/U" 대신 "재방문"(ui-90 총괄 결정, UI_GUIDE '문구'). landing-v2 AC-114.1("F/U 기록" → "F/U")을 대신한다
+describe('AC-421.5·AC-421.9: "F/U" → "재방문", 말끝 "~요"', () => {
+  it('AC-114.1·AC-421.5: 페이지 글자와 마크업 어디에도 "F/U"(옛 "F/U 기록" 포함)가 없고, "주사 치료 수와 재방문"은 있다', () => {
+    expect(text).not.toContain('F/U')
+    expect(html).not.toContain('F/U')
+    expect(text).toContain('주사 치료 수와 재방문')
+  })
+
+  it('AC-421.9: 페이지 글자에 "니다."로 끝나는 문장이 없고, 승인된 "병원 PC"는 그대로 있다', () => {
+    const visible = doc.textContent ?? ''
+    expect(visible.length).toBeGreaterThan(500)
+    expect(visible.match(/[^\s.]*니다\./g) ?? []).toEqual([])
+    expect(text).toContain('병원 PC')
+    expect(text).not.toMatch(/우리 병원|병원 이름/)
   })
 })
 
 describe('AC-005.2: 빈칸과 예시 표시', () => {
-  it('AC-005.2: 예시 숫자 영역에 "예시 숫자"(히어로)·"방금 생성 · 예시"(AI 리포트) 표시가 있다', () => {
+  it('AC-005.2·AC-421.4: 예시 숫자 영역에 "예시 숫자"(히어로)·"예시"(AI 리포트 칩) 표시가 있다', () => {
     const ai = html.match(/<section\b[^>]*id="ai"[\s\S]*?(?=<section\b[^>]*id="ortho")/)![0]
     expect(textOf(HERO)).toContain('예시 숫자')
-    expect(textOf(ai)).toContain('방금 생성 · 예시')
+    expect(ai).toMatch(/<span\b[^>]*>예시<\/span>/)
   })
 })
 

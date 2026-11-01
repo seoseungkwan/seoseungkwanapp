@@ -19,11 +19,13 @@ const KAKAO =
 const GOOGLE = { name: '구글로 시작하기' }
 const GOOGLE_AGAIN = { name: '다시 구글로 시작하기' }
 const IN_APP_TITLE = '크롬·엣지에서 열어 주세요'
-const PRIVACY = '환자 개인정보는 병원 PC 밖으로 나가지 않습니다'
-const PRIVACY_MORE = '환자 파일은 이 브라우저 안에서만 읽고, 서버에는 집계 숫자만 저장합니다.'
-const LEAD = '구글 계정으로 로그인합니다. 처음이면 가입 신청으로 이어집니다.'
-const NOTE = '처음 가입하면 관리자가 승인한 뒤부터 쓸 수 있습니다.'
-const INTRO = '로그인하면 우리 의원의 오늘 숫자, AI 리포트, 급여와 보고를 한 곳에서 이어서 봅니다.'
+// 문구는 ui-90 시안 docs/mockups/ui-90/entry/screens.mjs loginForm·loginPC 글자 그대로(AC-419.2)
+const PRIVACY = '환자 개인정보는 병원 PC 밖으로 나가지 않아요'
+const PRIVACY_MORE = '환자 파일은 이 브라우저 안에서만 읽고, 서버에는 집계 숫자만 저장해요.'
+const LEAD = '구글 계정으로 로그인해요. 처음이면 가입 신청으로 이어져요.'
+const NOTE = '처음 가입하면 관리자가 승인한 뒤부터 쓸 수 있어요.'
+const INTRO = '로그인하면 청구 사전점검과 우리 의원의 오늘 숫자를 한곳에서 이어서 봐요.'
+const GOING = '구글로 넘어가는 중…'
 const CHIPS = ['환자 통계', 'AI 리포트', '급여·인센티브', '일일마감·보고']
 // 시안 parts.mjs의 방패 아이콘(Icon shield) 첫 path
 const SHIELD_D = 'M8 1.75 3 3.6v3.9c0 3 2.1 5.5 5 6.75 2.9-1.25 5-3.75 5-6.75V3.6L8 1.75z'
@@ -58,15 +60,15 @@ afterEach(() => {
 })
 
 describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
-  it('AC-003.1: 로그인 카드 — 제목 "로그인" · 설명 · [구글로 시작하기] · 개인정보 안내, 카드 밖 아래에 승인 안내', () => {
+  it('AC-003.1·AC-419.2: 로그인 카드 — 제목 "로그인" · 설명 · [구글로 시작하기] · 개인정보 안내, 카드 밖 아래에 승인 안내', () => {
     render(<LoginCard failed={false} />)
     const section = loginSection()
     const title = within(section).getByRole('heading', { level: 1, name: '로그인' })
-    const lead = within(section).getByText('구글 계정으로 로그인합니다. 처음이면 가입 신청으로 이어집니다.')
+    const lead = within(section).getByText(LEAD)
     const button = within(section).getByRole('button', GOOGLE)
     const privacy = within(section).getByText(PRIVACY)
-    const privacyMore = within(section).getByText('환자 파일은 이 브라우저 안에서만 읽고, 서버에는 집계 숫자만 저장합니다.')
-    const note = within(section).getByText('처음 가입하면 관리자가 승인한 뒤부터 쓸 수 있습니다.')
+    const privacyMore = within(section).getByText(PRIVACY_MORE)
+    const note = within(section).getByText(NOTE)
     const order = [title, lead, button, privacy, privacyMore, note]
     for (let i = 1; i < order.length; i++) expect(isBefore(order[i - 1], order[i])).toBe(true)
     expect(screen.queryByRole('alert')).toBeNull()
@@ -80,7 +82,7 @@ describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
     expect(button.querySelector('svg')?.closest('[aria-hidden="true"]')).not.toBeNull()
   })
 
-  it('AC-214.1: 상자(카드) 없이 이 순서 — h1 "로그인" → 설명 → [구글로 시작하기] → 안내 줄(방패·두 문장) → 승인 안내, 모두 <section aria-labelledby> 하나 안(테두리·바탕 없음)', () => {
+  it('AC-214.1·AC-419.2: 상자(카드) 없이 이 순서 — h1 "로그인" → 설명 → [구글로 시작하기] → 안내 줄(방패·두 문장) → 승인 안내, 모두 <section aria-labelledby> 하나 안(테두리·바탕 없음)', () => {
     const { container } = render(<LoginCard failed={false} />)
     const section = loginSection()
     expect(section.tagName).toBe('SECTION')
@@ -110,11 +112,12 @@ describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
     noArbitraryColor()
   })
 
-  it('AC-214.1: 글자 — h1은 heading-m → heading(768px 이상) 600 ink, 설명은 ink-2(위 8px), 승인 안내는 caption muted(위 16px)', () => {
+  it('AC-214.1·AC-419.2: 글자 — h1은 heading-m → heading(768px 이상) 600 ink, 설명은 ink-2(위 8px), 승인 안내는 small(13px) muted(위 16px)', () => {
     render(<LoginCard failed={false} />)
     expectClasses(screen.getByRole('heading', { level: 1, name: '로그인' }), 'text-heading-m', 'md:text-heading', 'font-semibold', 'text-ink')
     expectClasses(screen.getByText(LEAD), 'text-ink-2', 'mt-2')
-    expectClasses(screen.getByText(NOTE), 'text-caption', 'text-muted', 'mt-4')
+    expectClasses(screen.getByText(NOTE), 'text-small', 'text-muted', 'mt-4')
+    expect(classesOf(screen.getByText(NOTE))).not.toContain('text-caption')
   })
 
   it.each([
@@ -137,7 +140,7 @@ describe('LoginCard: 목업 로그인(Main.dc.html)', () => {
     expect(button.querySelector('.bg-surface')).toBeNull()
   })
 
-  it('AC-214.1: 안내 줄 — 위 24px·위 1px line, 방패 16px(muted) + "환자 개인정보…"(small 600) + "환자 파일은…"(small muted)', () => {
+  it('AC-214.1·AC-419.2: 안내 줄 — 위 24px·위 1px line, 방패 16px(muted) + "환자 개인정보…"(small 600) + "환자 파일은…"(small muted)', () => {
     render(<LoginCard failed={false} />)
     const privacy = screen.getByText(PRIVACY)
     expectClasses(privacy, 'text-small', 'font-semibold')
@@ -177,7 +180,7 @@ describe('AC-204.7: 로그인 폼 — 상자 안 상자 없음', () => {
 })
 
 describe('AC-214.3: LoginAside — 소개 문장 → 미리보기', () => {
-  it('AC-214.3: "로그인하면 …"(small ink-2, 최대 480px) → <DashboardPreview /> 순서이고 사이 16px', () => {
+  it('AC-214.3·AC-419.2: "로그인하면 …"(small ink-2, 최대 480px) → <DashboardPreview /> 순서이고 사이 16px', () => {
     const { container } = render(<LoginAside />)
     const root = container.firstElementChild as HTMLElement
     expectClasses(root, 'flex', 'flex-col', 'gap-4')
@@ -206,26 +209,59 @@ describe('LoginCard: 구글 로그인 시작', () => {
     })
   })
 
-  it('AC-003.1: 구글로 넘어가는 동안 단추를 막아 두 번 보내지 않는다', async () => {
+  it('AC-003.1·AC-419.2: 구글로 넘어가는 동안 단추는 기다림(aria-busy, "구글로 넘어가는 중…")이고 다시 눌러도 두 번 보내지 않는다', async () => {
     signInWithOAuth.mockReturnValue(new Promise(() => {})) // 구글로 넘어가면 이 페이지는 끝난다
     const user = userEvent.setup()
     render(<LoginCard failed={false} />)
-    await user.click(googleButton())
-    expect(googleButton().disabled).toBe(true)
-    await user.click(googleButton())
+    const button = googleButton()
+    await user.click(button)
+    expect(button.getAttribute('aria-busy')).toBe('true')
+    expect(googleButton({ name: GOING })).toBe(button)
+    expect(screen.queryByRole('button', GOOGLE)).toBeNull()
+    // 막힘(disabled)이 아니다 — 기다림 모양(60%·progress)은 ds가 aria-busy로 준다
+    expect(button.disabled).toBe(false)
+    await user.click(button)
+    await user.dblClick(button)
     expect(signInWithOAuth).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-003.1: 구글 화면에서 [뒤로]로 돌아오면(뒤로 가기 캐시, pageshow persisted) 단추를 다시 푼다', async () => {
+  it('AC-419.2: 다시 그리기 전에 같은 틱에 두 번 눌러도 한 번만 부른다', () => {
+    signInWithOAuth.mockReturnValue(new Promise(() => {}))
+    render(<LoginCard failed={false} />)
+    const button = googleButton()
+    act(() => {
+      button.click()
+      button.click()
+    })
+    expect(signInWithOAuth).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-419.2: 기다리는 동안에도 모양은 ds.button.googleLarge 그대로이고 구글 G가 남는다(글자만 바뀐다)', async () => {
+    signInWithOAuth.mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    render(<LoginCard failed />)
+    await user.click(googleButton(GOOGLE_AGAIN))
+    const button = googleButton({ name: GOING })
+    hasAll(button, ds.button.googleLarge)
+    expect(tokens(ds.button.googleLarge)).toEqual(expect.arrayContaining(['aria-busy:opacity-60', 'aria-busy:cursor-progress']))
+    const [mark, label] = Array.from(button.children)
+    expect(mark?.getAttribute('viewBox')).toBe('0 0 48 48')
+    expect(label?.textContent).toBe(GOING)
+  })
+
+  it('AC-003.1·AC-419.2: 구글 화면에서 [뒤로]로 돌아오면(뒤로 가기 캐시, pageshow persisted) 기다림을 풀고 다시 누를 수 있다', async () => {
     signInWithOAuth.mockReturnValue(new Promise(() => {}))
     const user = userEvent.setup()
     render(<LoginCard failed={false} />)
     await user.click(googleButton())
-    expect(googleButton().disabled).toBe(true)
+    expect(googleButton({ name: GOING }).getAttribute('aria-busy')).toBe('true')
     act(() => {
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
     })
     expect(googleButton().disabled).toBe(false)
+    expect(googleButton().getAttribute('aria-busy')).toBeNull()
+    await user.click(googleButton())
+    expect(signInWithOAuth).toHaveBeenCalledTimes(2)
   })
 
   it('AC-003.1: 화면이 사라지면 pageshow 듣기를 멈춘다', () => {
@@ -256,11 +292,12 @@ describe('LoginCard: 구글 로그인 시작', () => {
     expect(within(alert).getByText(info.fix)).toBeTruthy()
     expect(within(alert).getByText('오류 번호 E-AUTH-START')).toBeTruthy()
     expect(googleButton(GOOGLE_AGAIN).disabled).toBe(false)
+    expect(googleButton(GOOGLE_AGAIN).getAttribute('aria-busy')).toBeNull()
     // 오류 내용은 화면에 없다
     expect(document.body.textContent).not.toMatch(/provider is not enabled|SUPABASE/)
   })
 
-  it('AC-003.5: 오류 카드는 로그인 카드 안, 설명과 구글 단추 사이(목업 로그인 실패)', async () => {
+  it('AC-003.5·AC-419.2: 오류 카드는 로그인 카드 안, 설명과 구글 단추 사이(목업 로그인 실패)', async () => {
     signInWithOAuth.mockResolvedValue({ data: { provider: 'google', url: null }, error: new Error('x') })
     const user = userEvent.setup()
     render(<LoginCard failed={false} />)
@@ -268,7 +305,7 @@ describe('LoginCard: 구글 로그인 시작', () => {
     const alert = await screen.findByRole('alert')
     const section = loginSection()
     expect(section.contains(alert)).toBe(true)
-    const lead = within(section).getByText('구글 계정으로 로그인합니다. 처음이면 가입 신청으로 이어집니다.')
+    const lead = within(section).getByText(LEAD)
     expect(isBefore(lead, alert)).toBe(true)
     expect(isBefore(alert, googleButton(GOOGLE_AGAIN))).toBe(true)
   })
@@ -375,6 +412,48 @@ describe('LoginCard: 앱 안 브라우저(카카오톡·네이버·인스타그�
     render(<LoginCard failed />)
     expect(within(screen.getByRole('alert')).getByText('오류 번호 E-AUTH-CALLBACK')).toBeTruthy()
     expect(screen.getByText(IN_APP_TITLE)).toBeTruthy()
+  })
+})
+
+describe('AC-419.2·AC-419.6: 로그인 문구는 시안 글자 그대로', () => {
+  it('AC-419.2: 로그인 폼의 글은 이 순서로 이것뿐이다(h1 · 설명 · 개인정보 두 문장 · 승인 안내)', () => {
+    render(<LoginCard failed={false} />)
+    const section = loginSection()
+    expect(within(section).getByRole('heading', { level: 1 }).textContent).toBe('로그인')
+    expect([...section.querySelectorAll('p')].map((p) => p.textContent)).toEqual([LEAD, PRIVACY, PRIVACY_MORE, NOTE])
+    expect(googleButton().textContent).toBe('구글로 시작하기')
+  })
+
+  it('AC-419.2: 옆 칸 소개 문장은 시안 loginPC 글자 그대로다', () => {
+    render(<LoginAside />)
+    expect(screen.getByText(INTRO).tagName).toBe('P')
+  })
+
+  it.each([
+    ['일반', false, undefined],
+    ['콜백 실패', true, undefined],
+    ['앱 안 브라우저', false, KAKAO],
+  ] as const)('AC-419.6: %s — 로그인 폼·옆 칸에 "병원 이름"·"니다." 글자가 없다', (_name, failed, agent) => {
+    if (agent !== undefined) vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(agent)
+    const { container } = render(
+      <>
+        <LoginCard failed={failed} />
+        <LoginAside />
+      </>,
+    )
+    const text = container.textContent ?? ''
+    expect(text).toContain(PRIVACY)
+    expect(text).not.toContain('병원 이름')
+    expect(text).not.toContain('니다.')
+  })
+
+  it('AC-419.6: 시작이 실패한 뒤(E-AUTH-START 카드)에도 "니다."가 없다', async () => {
+    signInWithOAuth.mockResolvedValue({ data: { provider: 'google', url: null }, error: new Error('x') })
+    const user = userEvent.setup()
+    const { container } = render(<LoginCard failed={false} />)
+    await user.click(googleButton())
+    await screen.findByRole('alert')
+    expect(container.textContent).not.toContain('니다.')
   })
 })
 

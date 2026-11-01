@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { Icon } from '@/components/common/Icon'
 import { MENU } from '@/components/shell/menu'
 import { ds } from '@/components/ui/classes'
 import { BridgeError } from '@/lib/bridge/protocol'
@@ -11,13 +12,15 @@ import { useBridge } from '../useBridge'
 import { checkedAtText } from './checkedAt'
 import { EXTENSION_STORE_URL, HELPER_RELEASES_URL } from './links'
 import { BusyCard, SetupAlert } from './SetupAlert'
-import { StepGuide } from './StepGuide'
-import { setupSteps, type StepView } from './steps'
+import { ProblemActions, StepGuide } from './StepGuide'
+import { isRealProblem, setupSteps, type StepView } from './steps'
 
-// 설치·연결 확인 (REQ-006, 목업 화면 1 '설치·연결 확인'). 목업은 이 화면을 설정 탭 안 [비트 연결]에 그렸다 → 제목 '설정'과 안쪽 메뉴.
-// 열면 hello로 버전을 맞추고, 붙으면(ready) bit.check를 불러 5단계를 ✓/✗·오류 번호로 보인다. 등록이 없으면 [처음 등록], 병원이 다르면 [다시 등록]
-// → bit.register(PC 확인 창) 뒤 다시 확인한다. 누르는 동안 단추를 막는다. 오류 문구는 errors.ts에서만, 원래 오류 내용은 그리지 않는다(AC-006.6).
-// 기관기호는 뒤 4자리를 가리고, 옆 병원 이름은 사이트가 가진 로그인한 병원 이름(clinicName)이다(도우미는 병원 이름을 주지 않는다, AC-006.4).
+// 비트 PC 연결 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body). 설정 탭 안 [비트 PC 연결] → 제목 '설정'과 안쪽 메뉴.
+// 열면 hello로 버전을 맞추고, 붙으면(ready) bit.check를 불러 5단계를 칩으로 보인다(칩 표는 steps.ts). 빨강은 진짜 문제(버전 안 맞음·의원 다름)에만:
+// 그때만 안쪽 메뉴 아래 오류 상자 하나에 문구·오류 번호·단추를 모은다. 처음 상태와 다시 확인으로 풀리는 실패·등록 없음은 그 단계 줄의 "할 차례" 안내다.
+// 등록이 없으면 [처음 등록], 의원이 다르면 [다시 등록] → bit.register(PC 확인 창) 뒤 다시 확인한다. 누르는 동안 단추를 막는다.
+// 오류 문구는 errors.ts에서만, 원래 오류 내용은 그리지 않는다(AC-006.6).
+// 기관기호는 뒤 4자리를 가리고, 옆 의원 이름은 사이트가 가진 로그인한 의원 이름(clinicName)이다(도우미는 의원 이름을 주지 않는다, AC-006.4).
 // 연결 상태·결과는 화면 메모리에만 둔다(브라우저 저장소 없음)
 
 type Checked = { result: ResultOf<'bit.check'> | null; error: string | null; at: Date | null }
@@ -40,17 +43,7 @@ const subNotReady = `${subBase} font-medium text-ink-2`
 const SETTINGS_HREF = MENU.find((m) => m.label === '설정')?.href ?? null
 
 // 한 줄 상자(목업 '.okline'): surface·1px 선·4px(rounded-control)·안쪽 12px 16px
-const line = 'flex flex-wrap items-center gap-2.5 rounded-control border border-line bg-surface px-4 py-3'
-
-/** 값 없음: "—"(muted), 화면 읽기는 "값 없음" */
-const Empty = () => (
-  <>
-    <span aria-hidden="true" className="text-muted">
-      —
-    </span>
-    <span className="sr-only">값 없음</span>
-  </>
-)
+const line = 'flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface px-4 py-3'
 
 function SettingsSubnav() {
   return (
@@ -66,62 +59,93 @@ function SettingsSubnav() {
         </span>
       )}
       <Link href="/claim/setup" aria-current="page" className={subCurrent}>
-        비트 연결
+        비트 PC 연결
       </Link>
     </nav>
   )
 }
 
-function StepRow({ no, step, guide }: { no: number; step: StepView; guide: ReactNode }) {
-  const wait = step.status === 'wait'
+/** 제목 '설정' → 안쪽 메뉴(사이 12px) */
+function Head() {
   return (
-    <li className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3.5 gap-y-1 border-b border-line py-3.5 last:border-b-0">
+    <div className="flex flex-col gap-3">
+      <h1 className="text-title font-semibold text-ink">설정</h1>
+      <SettingsSubnav />
+    </div>
+  )
+}
+
+/** 확장이 없을 때 맨 위 안내(시안 '.st-note'): accent-soft·4px·안쪽 12px 16px, Icon monitor(accent-strong) + 두 줄. 아래 제목까지 20px */
+function PcNote() {
+  return (
+    <div className="mb-1 flex gap-2 rounded-control bg-accent-soft px-4 py-3 text-ink">
+      <Icon name="monitor" className="mt-0.5 shrink-0 text-accent-strong" />
+      <div className="min-w-0">
+        <p className="text-body font-semibold">이 화면은 비트 PC의 크롬에서 열어요.</p>
+        <p className="mt-0.5 text-small text-ink-2">비트 PC는 비트가 깔린 의원 PC예요. 집 PC나 휴대폰에서는 연결하지 않아도 돼요.</p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 단계 줄(시안 '.step'): 768px 이상은 [번호 28 | 이름·설명 | 칩] 세 칸, 미만은 [번호 | 이름 → 칩 → 설명] 두 칸(칩이 이름 바로 아래).
+ * 읽는 차례는 늘 이름 → 칩 → 설명이고, 칸 자리만 바꾼다. 설명은 body ink-2, 대기 단계 이름은 ink-2. 안내(guide)는 아래 넷째 줄(768px 이상 셋째 줄)
+ */
+function StepRow({ no, step, guide }: { no: number; step: StepView; guide: ReactNode }) {
+  const { chip } = step
+  return (
+    <li className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3 border-b border-line py-4 last:border-b-0 last:pb-1 md:grid-cols-[28px_minmax(0,1fr)_auto]">
       <span
         aria-hidden="true"
-        className="inline-grid size-6 place-items-center rounded-control border border-line bg-canvas text-caption font-semibold text-ink-2"
+        className="col-start-1 row-start-1 mt-px inline-grid size-5 place-items-center self-start rounded-control border border-line-strong text-caption font-semibold text-muted"
       >
         {no}
       </span>
-      <div className="min-w-0">
-        <h3 className={`text-body font-semibold ${wait ? 'text-muted' : 'text-ink'}`}>{step.title}</h3>
-        <p className={`text-small ${wait ? 'text-muted' : 'text-ink-2'}`}>{step.desc}</p>
+      <h3 className={`col-start-2 row-start-1 text-body font-semibold ${step.status === 'wait' ? 'text-ink-2' : 'text-ink'}`}>
+        {step.title}
+      </h3>
+      <div className="col-start-2 row-start-2 mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-small text-ink-2 md:col-start-3 md:row-span-2 md:row-start-1 md:mt-0 md:flex-col md:items-end md:text-right">
+        <span className={ds.chip[chip.tone]}>
+          {chip.icon && <Icon name={chip.icon} size={12} />}
+          {chip.text}
+        </span>
+        {step.status === 'ok' && step.note && <span>{step.note}</span>}
       </div>
-      <div className="flex flex-col items-end gap-1 text-right text-small text-ink-2">
-        {step.status === 'ok' && (
-          <>
-            <span className={ds.chip.positive}>
-              <span aria-hidden="true">✓&nbsp;</span>완료
-            </span>
-            {step.note && <span>{step.note}</span>}
-          </>
-        )}
-        {step.status === 'bad' && (
-          <>
-            <span className={ds.chip.negative}>
-              <span aria-hidden="true">✗&nbsp;</span>
-              {step.chip}
-            </span>
-            {step.code && <span className="text-caption text-muted">오류 번호 {step.code}</span>}
-          </>
-        )}
-        {step.status === 'wait' && (
-          <>
-            <span className={ds.chip.neutral}>대기</span>
-            <span className={ds.help}>앞 단계를 먼저 해 주세요</span>
-          </>
-        )}
-        {step.status === 'checking' && <span className={ds.chip.accent}>확인 중</span>}
-      </div>
+      <p className="col-start-2 row-start-3 mt-0.5 text-body text-ink-2 md:row-start-2">{step.desc}</p>
       {guide}
     </li>
   )
+}
+
+// '이 PC' 값(ui-90 design.md '이 PC 값'): 모름·없음 "아직 없어요", 됨 Icon check "맞아요"(positive 500), 문제 Icon x(negative 500)
+const NONE = '아직 없어요'
+const dd = 'flex min-w-0 flex-wrap items-center gap-1'
+const Plain = ({ children }: { children: ReactNode }) => <dd className={`${dd} text-ink-2`}>{children}</dd>
+const Good = ({ children }: { children: ReactNode }) => (
+  <dd className={`${dd} font-medium text-positive`}>
+    <Icon name="check" size={12} />
+    {children}
+  </dd>
+)
+const Bad = ({ children }: { children: ReactNode }) => (
+  <dd className={`${dd} font-medium text-negative`}>
+    <Icon name="x" size={12} />
+    {children}
+  </dd>
+)
+/** 확장·도우미 줄: 그 단계가 됐으면 맞아요, 버전이 안 맞으면 버전이 안 맞아요 */
+function VersionValue({ step }: { step: StepView }) {
+  if (step.status === 'ok') return <Good>맞아요</Good>
+  if (isRealProblem(step)) return <Bad>버전이 안 맞아요</Bad>
+  return <Plain>{NONE}</Plain>
 }
 
 export function SetupScreen({
   clinicName,
   extensionStoreUrl = EXTENSION_STORE_URL,
 }: {
-  /** 사이트에 등록한 로그인한 사용자의 병원 이름(me.hospital.name) */
+  /** 사이트에 등록한 로그인한 사용자의 의원 이름(me.hospital.name) */
   clinicName: string
   /** 확장 설치 주소(웹스토어 등록 전이면 null → 압축 풀린 확장 불러오기 안내) */
   extensionStoreUrl?: string | null
@@ -129,7 +153,7 @@ export function SetupScreen({
   const { state, hello, helloError, helperUpdateAvailable, call, retry } = useBridge()
   const [checked, setChecked] = useState<Checked>(NOT_CHECKED)
   const [working, setWorking] = useState<'check' | 'register' | null>(null)
-  /** bit.register가 오류 번호로 끝났다(위 카드에 보인다) */
+  /** bit.register가 오류 번호로 끝났다(위 오류 상자에 보인다) */
   const [registerError, setRegisterError] = useState<string | null>(null)
   const stepsTitleId = useId()
   const pcTitleId = useId()
@@ -183,17 +207,20 @@ export function SetupScreen({
     checking: working === 'check',
   })
   const allOk = steps.every((s) => s.status === 'ok')
-  const problem = registerError ?? steps.find((s) => s.status === 'bad')?.code ?? null
+  const [extension, helper, , , hospital] = steps
+  // 위 오류 상자: 진짜 문제 하나(그 단추를 상자로 옮긴다) 또는 방금 누른 등록이 실패한 오류.
+  // 등록 오류는 5단계가 아직 등록을 기다릴 때만 보인다 — 그사이 연결이 끊기면(앞 단계가 할 차례) 그 단계 안내가 번호를 한 번만 보인다(빨강 아님)
+  const problem = steps.find(isRealProblem)
+  const awaitingRegister = hospital.guide === 'register' || hospital.guide === 'reregister'
+  const alertCode = (awaitingRegister ? registerError : null) ?? problem?.code ?? null
+  const actions = { storeUrl: extensionStoreUrl, disabled, onRetry: recheck, onRegister: () => void register() }
   const institution = state === 'ready' ? checked.result?.institutionCode : undefined
 
-  const title = <h1 className="text-title font-semibold text-ink">설정</h1>
-
-  // 다른 창에서 작업 중: 목업 화면 6처럼 가운데 카드 하나(이 창은 확장과 이야기할 수 없다)
+  // 다른 창에서 작업 중: 목업 화면 6처럼 카드 하나, 제목 아래 왼쪽 정렬(이 창은 확장과 이야기할 수 없다)
   if (state === 'busy') {
     return (
       <div className="flex flex-col gap-4 max-md:gap-3">
-        {title}
-        <SettingsSubnav />
+        <Head />
         <BusyCard
           onRetry={recheck}
           disabled={disabled}
@@ -209,8 +236,15 @@ export function SetupScreen({
 
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
-      {title}
-      <SettingsSubnav />
+      {state === 'no-extension' && <PcNote />}
+      <Head />
+
+      {alertCode && (
+        <SetupAlert
+          code={alertCode}
+          actions={problem ? <ProblemActions kind={problem.guide} {...actions} /> : undefined}
+        />
+      )}
 
       {allOk && checked.at && (
         <div className={line}>
@@ -222,17 +256,6 @@ export function SetupScreen({
               청구로 가기
             </Link>
           </span>
-        </div>
-      )}
-      {!allOk && problem && <SetupAlert code={problem} onRetry={recheck} disabled={disabled} />}
-
-      {/* 확장 없는 브라우저·휴대폰일 수 있다: 밖에서 보는 건수로 (AC-006.5) */}
-      {state === 'no-extension' && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={ds.help}>이 화면은 비트 PC의 크롬에서 엽니다. 집 PC나 휴대폰이라면</span>
-          <Link href="/claim" className={`${ds.textButton} no-underline`}>
-            건수만 보기
-          </Link>
         </div>
       )}
 
@@ -252,7 +275,8 @@ export function SetupScreen({
         </div>
       )}
 
-      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] max-md:gap-3">
+      {/* 1024px 미만은 한 칸(minmax(0,1fr) — 줄바꿈 안 되는 칩이 칸을 밀어 넘치지 않게), 이상은 오른쪽 380px */}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] max-md:gap-3">
         <section aria-labelledby={stepsTitleId} className={ds.panel}>
           <div className={ds.panelHead}>
             <h2 id={stepsTitleId} className={ds.panelTitle}>
@@ -260,7 +284,7 @@ export function SetupScreen({
             </h2>
             <span className={ds.count}>5단계</span>
           </div>
-          <div className={`${ds.panelBody} flex flex-col gap-3`}>
+          <div className={ds.panelBody}>
             <ol aria-labelledby={stepsTitleId} className="flex list-none flex-col">
               {steps.map((step, i) => (
                 <StepRow
@@ -268,27 +292,13 @@ export function SetupScreen({
                   no={i + 1}
                   step={step}
                   guide={
-                    step.status === 'bad' && step.guide ? (
-                      <StepGuide
-                        kind={step.guide}
-                        code={step.code}
-                        hello={hello}
-                        storeUrl={extensionStoreUrl}
-                        disabled={disabled}
-                        onRetry={recheck}
-                        onRegister={() => void register()}
-                      />
+                    step.status === 'bad' && step.guide && !isRealProblem(step) ? (
+                      <StepGuide kind={step.guide} code={step.code} {...actions} />
                     ) : null
                   }
                 />
               ))}
             </ol>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
-              <button type="button" className={ds.button.primary} onClick={recheck} disabled={disabled}>
-                연결 다시 확인
-              </button>
-              <span className={ds.help}>누르면 1번부터 5번까지 다시 확인해요.</span>
-            </div>
           </div>
         </section>
 
@@ -300,18 +310,21 @@ export function SetupScreen({
               </h2>
             </div>
             <div className={ds.panelBody}>
-              <dl className="grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-1 text-small">
-                <dt className="text-muted">크롬 확장</dt>
-                <dd className="text-ink">{hello?.extensionVersion ?? <Empty />}</dd>
+              <dl className="grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-2 text-small">
+                <dt className="text-muted">크롬 확장 프로그램</dt>
+                <VersionValue step={extension} />
                 <dt className="text-muted">도우미</dt>
-                <dd className="flex flex-wrap items-center gap-2 text-ink">
-                  {hello?.helperVersion ?? <Empty />}
-                  {state === 'update-helper' && <span className={ds.chip.negative}>업데이트 필요</span>}
-                </dd>
+                <VersionValue step={helper} />
                 <dt className="text-muted">요양기관기호</dt>
-                <dd className="text-ink">{institution ? `${maskInstitution(institution)} · ${clinicName}` : <Empty />}</dd>
+                {hospital.status === 'ok' && institution ? (
+                  <Plain>{`${maskInstitution(institution)} · ${clinicName}`}</Plain>
+                ) : isRealProblem(hospital) ? (
+                  <Bad>등록한 번호와 달라요</Bad>
+                ) : (
+                  <Plain>{NONE}</Plain>
+                )}
                 <dt className="text-muted">마지막 확인</dt>
-                <dd className="text-ink">{checked.at ? checkedAtText(checked.at) : <Empty />}</dd>
+                <Plain>{checked.at ? checkedAtText(checked.at) : NONE}</Plain>
               </dl>
             </div>
           </section>
@@ -322,10 +335,10 @@ export function SetupScreen({
               </h2>
             </div>
             <div className={ds.panelBody}>
-              <ul className="grid list-disc gap-1 pl-4.5 text-small text-ink-2">
-                <li>환자 자료는 이 PC 밖으로 나가지 않아요. 서버에는 건수와 설정만 가요.</li>
+              <ul className="grid list-disc gap-2 pl-5 text-body text-ink-2 marker:text-muted">
+                <li>환자 자료는 이 PC 밖으로 나가지 않아요. 우리 사이트에는 건수와 설정만 가요.</li>
                 <li>비트는 읽기만 해요. 메모를 넣을 때만 이 PC에 확인 창이 뜨고, 거기서 [확인]을 눌러야 들어가요.</li>
-                <li>확장과 도우미는 이 비트 PC 한 대에만 설치해요.</li>
+                <li>확장 프로그램과 도우미는 이 비트 PC 한 대에만 설치해요.</li>
               </ul>
             </div>
           </section>

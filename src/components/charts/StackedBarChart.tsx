@@ -12,7 +12,17 @@ export type BarSeries = { name: string; tone: 'accent' | 'chart-3' } // 첫 계�
 export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string }
 
 // dense: 칸이 많은 그림용. 막대 위 합계·상태 글자를 그리지 않는다(화면 읽기 표는 그대로, tab-frame REQ-314). 아래 날짜 글자는 부르는 쪽이 label로 고른다(빈 label = 빈칸)
-type Props = { title: string; unit: string; series: BarSeries[]; buckets: BarBucket[]; compact?: boolean; dense?: boolean }
+// thinLabels: 768px 미만에서 날짜 글자를 하나 걸러 보인다(0부터 홀수 번째 칸 글자만 max-md:invisible, 자리는 그대로. ui-90 AC-421.2).
+// 주지 않으면 지금 그림과 한 글자도 다르지 않다
+type Props = {
+  title: string
+  unit: string
+  series: BarSeries[]
+  buckets: BarBucket[]
+  compact?: boolean
+  dense?: boolean
+  thinLabels?: boolean
+}
 
 const TONE: Record<BarSeries['tone'], string> = { accent: 'bg-accent', 'chart-3': 'bg-chart-3' }
 const STATE_TEXT: Record<BucketState, string> = { complete: '완료', 'in-progress': '집계 중', partial: '일부 기간' }
@@ -35,7 +45,7 @@ const HATCH = Array.from({ length: HATCH_REACH / HATCH_GAP }, (_, i) => HATCH_GA
 const tickText = (t: number) => (Number.isInteger(t) ? formatCount(t) : String(t))
 const at = (v: number, max: number) => `${percentOf(v, max)}%`
 
-export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false }: Props) {
+export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false, thinLabels = false }: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
   const scale = niceScale(Math.max(0, ...totals))
@@ -86,9 +96,9 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
           </div>
         </div>
         <div className={`flex ${size.labels}`}>
-          {buckets.map((bucket) => (
+          {buckets.map((bucket, i) => (
             <div key={bucket.key} className="min-w-0 flex-1 text-center text-caption text-muted">
-              <p className="mt-2">{bucket.label}</p>
+              <p className={thinLabels && i % 2 === 1 ? 'mt-2 max-md:invisible' : 'mt-2'}>{bucket.label}</p>
               {!compact && bucket.note && <p>{bucket.note}</p>}
             </div>
           ))}

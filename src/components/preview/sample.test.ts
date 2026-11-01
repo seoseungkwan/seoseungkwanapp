@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { formatCount, formatDelta, formatRate } from '@/components/charts/format'
-import { SAMPLE_CLINIC, SAMPLE_KPIS, SAMPLE_SERIES, SAMPLE_TABS, SAMPLE_WEEKS } from './sample'
+import { MENU } from '@/components/shell/menu'
+import { PREVIEW_TABS, SAMPLE_CLINIC, SAMPLE_KPIS, SAMPLE_SERIES, SAMPLE_WEEKS } from './sample'
 
 // 미리보기 예시 자료 (b2b-redesign REQ-206 AC-206.1, design.md '미리보기', UI_GUIDE '미리보기').
 // 값은 승인 시안 docs/mockups/b2b-redesign/parts.mjs의 WEEKS 8주다. 이 시험 안에 그대로 적고, 시안 파일과도 하나하나 맞춰 본다.
@@ -138,13 +139,25 @@ describe('AC-206.1: KPI 4개 — 마지막 완료 주(10.19)와 그 전 주(10.1
   })
 })
 
-describe('AC-206.1: 병원 이름·탭 (예시)', () => {
+describe('AC-206.1·AC-421.2: 병원 이름·탭 (예시)', () => {
   it('AC-206.1: 병원 이름은 "예시정형외과의원"이다', () => {
     expect(SAMPLE_CLINIC).toBe('예시정형외과의원')
   })
 
-  it('AC-206.1: 탭 6개는 대시보드 · 통계 · AI 리포트 · 매출 · 재고 · 급여다', () => {
-    expect([...SAMPLE_TABS]).toEqual(['대시보드', '통계', 'AI 리포트', '매출', '재고', '급여'])
+  it('AC-421.2: 탭은 실제 앱 탭 13개 — PREVIEW_TABS가 MENU의 이름·순서와 같다(급여·일일마감 같은 없는 탭 없음)', () => {
+    expect(PREVIEW_TABS).toHaveLength(13)
+    expect([...PREVIEW_TABS]).toEqual(MENU.map((item) => item.label))
+    expect([...PREVIEW_TABS]).toEqual(['대시보드', '통계', '청구', '고시·공지', '환자', '매출', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정'])
+    expect(PREVIEW_TABS).not.toContain('급여')
+    expect(readFileSync(join(ROOT, 'src/components/preview/sample.ts'), 'utf8'), '옛 탭 6개 목록은 없다').not.toMatch(/SAMPLE_TABS/)
+  })
+
+  it('AC-421.2: 미리보기 소스는 components/shell을 불러오지 않는다(탭 이름은 시험이 MENU와 견준다)', () => {
+    for (const file of ['src/components/preview/sample.ts', 'src/components/preview/DashboardPreview.tsx']) {
+      const imports = [...readFileSync(join(ROOT, file), 'utf8').matchAll(/^import\s[^'"]*['"]([^'"]+)['"]/gm)].map((m) => m[1])
+      expect(imports.length, file).toBeGreaterThan(0)
+      for (const from of imports) expect(from, file).not.toMatch(/(?:^@\/components\/shell|\/shell)(?:\/|$)/)
+    }
   })
 
   it('AC-206.1: 실제 자료를 읽지 않는다 — sample.ts는 타입만 불러온다(import type)', () => {

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
@@ -10,6 +11,9 @@ import { todayInKorea } from '@/lib/analytics/dates'
 
 // 날짜 줄의 "오늘"은 요청 때의 한국 날짜다 → 빌드 때 미리 그리지 않는다
 export const dynamic = 'force-dynamic'
+
+// 브라우저 탭 이름 (ui-90 AC-402.4)
+export const metadata: Metadata = { title: '대시보드' }
 
 export default function DashboardPage() {
   const today = todayInKorea()

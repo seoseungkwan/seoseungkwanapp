@@ -257,7 +257,7 @@ describe('AC-205.3: KpiStat 증감 줄 — 화살표(늘어남·줄어듦만) + 
 })
 
 describe('AC-205.3: KpiStat 값 없음·Sparkline 없음·휴대폰', () => {
-  it('AC-205.3: 값이 null이면 "–"(faint)와 "자료 없음"(small muted)만 있고 Sparkline·증감 줄이 없다', () => {
+  it('AC-205.3·AC-407.2: 값이 null이면 "–"(muted)와 "자료 없음"(small muted)만 있고 Sparkline·증감 줄이 없다', () => {
     const stat = kpi({ value: null })
     expect(stat.querySelector('svg')).toBeNull()
     expect(stat.querySelector('.sr-only')).toBeNull()
@@ -265,16 +265,18 @@ describe('AC-205.3: KpiStat 값 없음·Sparkline 없음·휴대폰', () => {
     const [top, dash, none] = Array.from(stat.children)
     expect(textOf(top)).toBe('환자 수')
     expect(textOf(dash)).toBe('–')
-    expectClasses(dash, 'text-metric', 'text-faint')
+    expectClasses(dash, 'text-metric', 'text-muted')
+    expect(classesOf(dash)).not.toContain('text-faint')
     expect(textOf(none)).toBe('자료 없음')
     expectClasses(none, 'text-small', 'text-muted')
     expect(Array.from(stat.children).map(textOf)).toEqual(['환자 수', '–', '자료 없음'])
     expect(stat.textContent).not.toMatch(/[0-9]/)
   })
 
-  it('AC-205.3: size="sm"의 값 없음은 heading-m "–"', () => {
+  it('AC-205.3·AC-407.2: size="sm"의 값 없음은 heading-m "–"(muted)', () => {
     const [, dash] = Array.from(kpi({ value: null, size: 'sm' }).children)
-    expectClasses(dash, 'text-heading-m', 'text-faint')
+    expectClasses(dash, 'text-heading-m', 'text-muted')
+    expect(classesOf(dash)).not.toContain('text-faint')
   })
 
   it('AC-205.3: spark가 없거나(null·생략) 2개 미만이면 이름만 있다', () => {
@@ -333,11 +335,11 @@ const BEFORE_REQ_314 = {
 }
 
 describe('AC-314.1: KpiStat emptyText — 값이 null일 때 "–" 아래 글', () => {
-  it('AC-314.1: emptyText를 주면 "–" 아래 글이 그 글(small muted)이고 "자료 없음"이 없다', () => {
+  it('AC-314.1·AC-407.2: emptyText를 주면 "–"(muted) 아래 글이 그 글(small muted)이고 "자료 없음"이 없다', () => {
     const stat = kpi({ value: null, emptyText: EMPTY_TEXT })
     expect(Array.from(stat.children).map(textOf)).toEqual(['환자 수', '–', EMPTY_TEXT])
     const [, dash, note] = Array.from(stat.children)
-    expectClasses(dash, 'text-metric', 'text-faint')
+    expectClasses(dash, 'text-metric', 'text-muted')
     expectClasses(note, 'text-small', 'text-muted')
     expect(stat.textContent).not.toContain('자료 없음')
     expect(stat.querySelector('svg')).toBeNull()
@@ -363,9 +365,19 @@ describe('AC-314.1: KpiStat emptyText — 값이 null일 때 "–" 아래 글', 
     }
   })
 
-  it('AC-314.1: emptyText를 주지 않은 마크업은 REQ-314 전과 한 글자도 같다(sha256)', async () => {
+  // ui-90 AC-407.2가 빈 값 "–"의 글자색 하나(faint → muted)를 바꿨다 → 그 한 클래스만 되돌리면 REQ-314 전 마크업과 한 글자도 같다
+  const DASH_NOW = 'text-muted">–<'
+  const DASH_BEFORE = 'text-faint">–<'
+  it('AC-314.1·AC-407.2: emptyText를 주지 않은 마크업은 REQ-314 전과 한 글자도 같다(sha256, 빈 값은 "–" 글자색 faint → muted 하나만 다르다)', async () => {
     expect(await sha256(markup())).toBe(BEFORE_REQ_314.base)
-    expect(await sha256(markup({ value: null }))).toBe(BEFORE_REQ_314.empty)
-    expect(await sha256(markup({ value: null, size: 'sm' }))).toBe(BEFORE_REQ_314.emptySmall)
+    for (const [props, before] of [
+      [{ value: null }, BEFORE_REQ_314.empty],
+      [{ value: null, size: 'sm' as const }, BEFORE_REQ_314.emptySmall],
+    ] as const) {
+      const now = markup(props)
+      expect(now.split(DASH_NOW)).toHaveLength(2)
+      expect(now).not.toContain('text-faint')
+      expect(await sha256(now.replace(DASH_NOW, DASH_BEFORE))).toBe(before)
+    }
   })
 })

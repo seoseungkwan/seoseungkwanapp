@@ -200,8 +200,21 @@ const SPACING = new Set([0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64, 96])
 const SCROLL_EXTRA = new Set([72, 80])
 const RADIUS_PROP = /^border(?:-[\w-]+)?-radius$/
 const RADIUS_OK = new Set(['0', 'var(--r-control)', 'var(--r-float)'])
-const BANNED_PROP =
-  /^(?:-webkit-)?(?:box-shadow|backdrop-filter|filter|animation(?:-[\w-]+)?|transition(?:-[\w-]+)?)$/
+const BANNED_PROP = /^(?:-webkit-)?(?:box-shadow|backdrop-filter|filter|animation(?:-[\w-]+)?)$/
+// 전환(transition*)은 허용 목록(파일 × 선택자 × 값)에만 있다 (ui-90 REQ-420, UI_GUIDE '랜딩 짜임'·'움직임').
+// 맨 위 규칙(@규칙 밖)의 선택자 하나, `transition` 줄임 속성, 정확히 이 값뿐이다. 낱 속성(transition-delay 등)은 늘 잡는다
+const TRANSITION_PROP = /^(?:-webkit-)?transition(?:-[\w-]+)?$/
+const BTN_TRANSITION = 'background-color 150ms, border-color 150ms, color 150ms, opacity 150ms, transform 150ms'
+const LINK_TRANSITION = 'color 150ms, opacity 150ms'
+const TRANSITIONS: Record<string, Record<string, string>> = {
+  'base.module.css': { '.btn': BTN_TRANSITION },
+  'SiteHeader.module.css': { '.navLink': LINK_TRANSITION, '.logo': LINK_TRANSITION },
+}
+const transitionOk = (file: string, rule: Rule, prop: string, value: string) =>
+  prop === 'transition' &&
+  rule.at.length === 0 &&
+  rule.selectors.length === 1 &&
+  TRANSITIONS[file]?.[rule.selectors[0]] === value
 const LAYER = '@layer base'
 const MIN_768 = '@media (min-width: 768px)'
 const MIN_1024 = '@media (min-width: 1024px)'
@@ -226,8 +239,8 @@ function spacingOk(token: string, prop: string): boolean {
   return SPACING.has(n) || (prop.startsWith('scroll-margin') && SCROLL_EXTRA.has(n))
 }
 
-// 모듈 글자 하나가 어긴 규칙(없으면 빈 배열)
-function violations(css: string): string[] {
+// 모듈 글자 하나가 어긴 규칙(없으면 빈 배열). file은 전환 허용 목록을 고르는 파일 이름이다(없으면 허용 목록 없음)
+function violations(css: string, file = ''): string[] {
   const sheet = parseCss(css)
   const found = [...sheet.problems]
   const localVars = new Set(sheet.rules.flatMap((r) => r.decls.filter((d) => d.prop.startsWith('--')).map((d) => d.prop.slice(2))))
@@ -257,6 +270,7 @@ function violations(css: string): string[] {
 
       // 금지 장식
       if (BANNED_PROP.test(prop)) found.push(`장식 ${decl}`)
+      if (TRANSITION_PROP.test(prop) && !transitionOk(file, rule, prop, value)) found.push(`허용 목록 밖 전환 ${decl}`)
       if (/gradient\(/i.test(bare)) found.push(`그라데이션 ${decl}`)
 
       // 색: 토큰 var()·transparent·currentColor·inherit뿐
@@ -337,7 +351,7 @@ describe('AC-212.1: 검사 목록의 랜딩 모듈은 토큰·간격 단계·글
   })
 
   it('AC-212.1: 검사 목록의 모든 모듈이 규칙을 지킨다', () => {
-    for (const name of CHECKED) expect(violations(readLanding(name)), name).toEqual([])
+    for (const name of CHECKED) expect(violations(readLanding(name), name), name).toEqual([])
   })
 
   // 검사가 헛돌지 않는지: 어긴 예는 잡고, 지킨 예는 통과시킨다
@@ -383,8 +397,6 @@ describe('AC-212.1: 검사 목록의 랜딩 모듈은 토큰·간격 단계·글
     ['.a { backdrop-filter: blur(4px); }', '장식'],
     ['.a { -webkit-backdrop-filter: blur(4px); }', '장식'],
     ['.a { animation: spin 1s; }', '장식'],
-    ['.a { transition: background-color .15s ease; }', '장식'],
-    ['.a { transition-duration: .2s; }', '장식'],
     ['.a { background: linear-gradient(var(--ink), var(--surface)); }', '그라데이션'],
     ['.a { background-image: radial-gradient(var(--accent), transparent); }', '그라데이션'],
     ['@keyframes spin { to { opacity: 1; } }', '@규칙 @keyframes'],
@@ -610,8 +622,9 @@ describe('AC-212.2: base.module.css — 요소 초기화는 @layer base 안, 틀
     ['.tSubtitle', 'subtitle', 'subtitle', { 'font-weight': '600' }],
     ['.tSmall', 'small', 'small', {}],
     ['.tCaption', 'caption', 'caption', {}],
+    // 히어로·섹션 안내(ui-90 AC-421.8: 768px 미만도 lead 16). TASK-14에서 지웠다가 ui-90 TASK-18이 되돌렸다
+    ['.tLead', 'lead', 'lead', {}],
   ]
-  // .tLead는 랜딩이 쓰지 않아 TASK-14에서 지웠다(AC-212.4: 정의한 클래스는 모두 쓴다). 쓰게 되면 표에 lead → lead로 되돌린다
   it('AC-212.2: base.module.css의 글자 단계 클래스(.t로 시작)는 이 표의 것뿐이다(옛 이름 .tH2·.tH3·.tH3l·.tBody·.tLabel 없음)', () => {
     const typeClasses = [...new Set(base().rules.flatMap((r) => r.selectors.flatMap((s) => [...s.matchAll(/\.(t[A-Z]\w*)/g)].map((m) => `.${m[1]}`))))]
     expect(typeClasses.sort()).toEqual(TYPE.map(([selector]) => selector).sort())
@@ -658,6 +671,8 @@ describe('AC-212.2: base.module.css — 요소 초기화는 @layer base 안, 틀
 
   const CHIPS: Array<[string, keyof typeof ds.chip]> = [
     ['.chipNeutral', 'neutral'],
+    // 사전점검 예시 패널 "알림"(ui-90 AC-421.6, 시안 chip-accent)
+    ['.chipAccent', 'accent'],
     ['.chipPositive', 'positive'],
     ['.chipWarning', 'warning'],
   ]
@@ -679,6 +694,67 @@ describe('AC-212.2: base.module.css — 요소 초기화는 @layer base 안, 틀
     expectAt('.srOnly', 0, { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', 'white-space': 'nowrap' })
     const clip = valueOf(sheet, '.srOnly', 'clip-path', 0) ?? valueOf(sheet, '.srOnly', 'clip', 0)
     expect(clip, '.srOnly clip-path(또는 clip)').toMatch(/^(inset\(50%\)|rect\(0,? 0,? 0,? 0\))$/)
+  })
+})
+
+// ---------- ui-90 AC-421.1·AC-421.3: 건너뛰기 링크 · 줄바꿈 막기 (base.module.css) ----------
+
+describe('AC-421.1·AC-421.3: base.module.css — 건너뛰기 링크(.skip)와 줄바꿈 막기(.nw)', () => {
+  it('AC-421.1: .skip은 평소 화면 위 밖에 있고(위로 옮김) 키보드 초점(:focus-visible)일 때만 제자리에 보인다', () => {
+    for (const bp of BPS) {
+      expectAt('.skip', bp, { position: 'absolute', transform: 'translateY(-64px)' })
+      expectAt('.skip:focus-visible', bp, { transform: 'none' })
+    }
+    // 옮긴 뒤 아래 끝(위 + 높이 + 초점 고리 4px - 64)이 화면 위(0) 밖이다
+    const sheet = base()
+    const bottom = px(valueOf(sheet, '.skip', 'top', 0)) + px(valueOf(sheet, '.skip', 'min-height', 0)) + 4 - 64
+    expect(bottom, '숨은 자리의 아래 끝').toBeLessThan(0)
+    // 초점이면 보이는 규칙은 :focus-visible 하나뿐이다(마우스 초점·올림에는 바뀌지 않는다)
+    const shown = sheet.rules.filter((r) => r.selectors.some((sel) => sel.startsWith('.skip:'))).flatMap((r) => r.selectors)
+    expect(shown).toEqual(['.skip:focus-visible'])
+  })
+
+  it('AC-421.1: .skip은 메뉴 띠(z-index 20) 위에 뜨는 ink 바탕·surface 글자 단추 모양(시안 entry .skip)이고 누름 영역은 44px 이상(min-height), 움직임(transition)이 없다', () => {
+    expect(valueOf(base(), '.skip', 'height', 0), '고정 높이 없이 min-height로').toBeUndefined()
+    expectAt('.skip', 0, {
+      top: '8px',
+      left: '16px',
+      display: 'inline-flex',
+      'align-items': 'center',
+      'min-height': '44px',
+      'padding-inline': '16px',
+      'border-radius': 'var(--r-control)',
+      background: 'var(--ink)',
+      color: 'var(--surface)',
+      'font-weight': '500',
+      'white-space': 'nowrap',
+    })
+    const z = Number(valueOf(base(), '.skip', 'z-index', 0))
+    const headerZ = Number(valueOf(header(), '.header', 'z-index', 0))
+    expect(z, '.skip z-index').toBeGreaterThan(headerZ)
+    const moves = base().rules.filter((r) => r.selectors.some((sel) => sel.startsWith('.skip')) && r.decls.some((d) => TRANSITION_PROP.test(d.prop)))
+    expect(moves).toEqual([])
+  })
+
+  it('AC-421.1: 본문(.main)은 scroll-margin-top 72px → 80px(768)이라 건너뛰기 링크로 옮겨도 첫 글이 붙는 메뉴(56 → 64px)에 가리지 않는다', () => {
+    expectAt('.main', 0, { 'scroll-margin-top': '72px' })
+    for (const bp of [768, 1024] as Bp[]) expectAt('.main', bp, { 'scroll-margin-top': '80px' })
+    for (const bp of BPS) {
+      const gap = px(valueOf(base(), '.main', 'scroll-margin-top', bp)) - px(valueOf(header(), '.header', 'height', bp))
+      expect(gap, `@${bp} 본문 위 여유`).toBeGreaterThanOrEqual(16)
+    }
+    expect(base().rules.filter((r) => r.selectors.includes('.main')).flatMap((r) => r.decls.map((d) => d.prop))).toEqual([
+      'scroll-margin-top',
+      'scroll-margin-top',
+    ])
+    // 건너뛰기로 옮긴 초점(tabIndex -1)은 본문 둘레에 브라우저 기본 초점 고리를 그리지 않는다
+    for (const bp of BPS) expectAt('.main:focus', bp, { outline: 'none' })
+  })
+
+  it('AC-421.3: .nw는 줄바꿈 없음(white-space: nowrap) 하나만 정한다("원장님 보고까지"·"한 화면에서"·"병원 PC")', () => {
+    const rules = base().rules.filter((r) => r.selectors.includes('.nw'))
+    expect(rules.flatMap((r) => r.decls)).toEqual([{ prop: 'white-space', value: 'nowrap', important: false }])
+    expect(rules.every((r) => r.at.length === 0)).toBe(true)
   })
 })
 
@@ -886,20 +962,17 @@ const heroSelectorsWith = (props: RegExp) =>
   [...new Set(heroSheet().rules.filter((r) => r.decls.some((d) => props.test(d.prop))).flatMap((r) => r.selectors))].sort()
 
 describe('AC-208.1: Hero.module.css — 글 덩어리·단추·약속·휴대폰 한 줄의 글자와 선', () => {
-  it('AC-208.1: 소개 줄(.tSmall + .kicker)은 small 600 ink-2, 제목(.tDisplay)은 text-wrap: balance, 안내(.lead)는 ink-2이고 body → lead(768)다', () => {
+  it('AC-208.1·AC-421.8: 소개 줄(.kicker)은 600 ink-2이고 크기는 .root의 body(14/22) 그대로, 제목(.tDisplay)은 text-wrap: balance, 안내(.lead)는 ink-2이고 크기는 base .tLead(모든 폭 lead 16/24)다', () => {
     const sheet = heroSheet()
-    expectAt('.tSmall', 0, { 'font-size': 'var(--fs-small)', 'line-height': 'var(--lh-small)' })
+    expectAt('.root', 0, { 'font-size': 'var(--fs-body)', 'line-height': 'var(--lh-body)' })
     expectAt('.tDisplay', 0, { 'text-wrap': 'balance' })
     for (const bp of BPS) {
       expect(valueOf(sheet, '.kicker', 'font-weight', bp), `.kicker font-weight @${bp}`).toBe('600')
       expect(valueOf(sheet, '.kicker', 'color', bp), `.kicker color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.kicker', 'font-size', bp), `.kicker font-size @${bp}`).toBeUndefined()
       expect(valueOf(sheet, '.lead', 'color', bp), `.lead color @${bp}`).toBe('var(--ink-2)')
-    }
-    expect(valueOf(sheet, '.lead', 'font-size', 0)).toBe('var(--fs-body)')
-    expect(valueOf(sheet, '.lead', 'line-height', 0)).toBe('var(--lh-body)')
-    for (const bp of [768, 1024] as Bp[]) {
-      expect(valueOf(sheet, '.lead', 'font-size', bp), `.lead font-size @${bp}`).toBe('var(--fs-lead)')
-      expect(valueOf(sheet, '.lead', 'line-height', bp), `.lead line-height @${bp}`).toBe('var(--lh-lead)')
+      expect(valueOf(sheet, '.lead', 'font-size', bp), `.lead font-size @${bp}`).toBeUndefined()
+      expectAt('.tLead', bp, { 'font-size': 'var(--fs-lead)', 'line-height': 'var(--lh-lead)' })
     }
   })
 
@@ -966,10 +1039,10 @@ describe('AC-208.2: Hero.module.css — 칸·여백·제목 단계·장식 없�
     }
   })
 
-  it('AC-208.2: 제목은 display-m(768px 미만) → display(base .tDisplay)이고, Hero.module.css는 글자 크기를 안내(.lead) 말고 정하지 않는다', () => {
+  it('AC-208.2·AC-421.8: 제목은 display-m(768px 미만) → display(base .tDisplay)이고, Hero.module.css는 글자 크기를 정하지 않는다(안내는 base .tLead)', () => {
     expectAt('.tDisplay', 0, { 'font-size': 'var(--fs-display-m)', 'line-height': 'var(--lh-display-m)' })
     expectAt('.tDisplay', 768, { 'font-size': 'var(--fs-display)', 'line-height': 'var(--lh-display)' })
-    expect(heroSelectorsWith(/^(?:font-size|line-height|letter-spacing|font)$/)).toEqual(['.lead'])
+    expect(heroSelectorsWith(/^(?:font-size|line-height|letter-spacing|font)$/)).toEqual([])
   })
 
   it('AC-208.2: 장식(격자·원형 빛·반짝이)이 없다 — 바탕·그림·::before/::after·겹쳐 놓기·투명도·mask가 없다', () => {
@@ -994,28 +1067,57 @@ describe('AC-208.2: Hero.module.css — 칸·여백·제목 단계·장식 없�
 const aiSheet = () => parseCss(readLanding('AiSection.module.css'))
 const LINE = '1px solid var(--line)'
 
-describe('AC-209.1: AiSection.module.css — 칸·약속·리포트 패널·채팅 칸', () => {
-  it('AC-209.1: 1024px 이상 12칸(base .grid)에서 글(.text) 1~4칸 · 리포트(.report) 5~12칸이고, 미만은 칸 지정 없이 쌓이며(순서 바꾸기 없음) 사이가 띄워진다', () => {
+describe('AC-209.1·AC-421.4: AiSection.module.css — 칸·머리 칩 줄·약속·리포트 패널(채팅 칸 없음, 위 맞춤)', () => {
+  it('AC-421.4: 1024px 이상 12칸에서 글(.text) 1~4칸 위 줄 · 약속(.points) 1~4칸 아래 줄 · 리포트(.report) 5~12칸 두 줄이고, 위 줄은 글 높이·남는 높이는 아래 줄(auto 1fr)이다', () => {
     const sheet = aiSheet()
     expectAt('.grid', 1024, { 'grid-template-columns': 'repeat(12, minmax(0, 1fr))', 'column-gap': '24px' })
     expect(valueOf(sheet, '.text', 'grid-column', 1024)).toBe('1 / 5')
+    expect(valueOf(sheet, '.text', 'grid-row', 1024)).toBe('1')
+    expect(valueOf(sheet, '.points', 'grid-column', 1024)).toBe('1 / 5')
+    expect(valueOf(sheet, '.points', 'grid-row', 1024)).toBe('2')
     expect(valueOf(sheet, '.report', 'grid-column', 1024)).toBe('5 / 13')
-    for (const name of ['.text', '.report']) expect(valueOf(sheet, name, 'min-width', 1024), `${name} min-width`).toBe('0')
-    for (const bp of [0, 768] as Bp[]) {
-      for (const name of ['.text', '.report']) expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
-      expect(px(valueOf(sheet, '.layout', 'row-gap', bp)), `.layout row-gap @${bp}`).toBeGreaterThan(0)
+    expect(valueOf(sheet, '.report', 'grid-row', 1024)).toBe('1 / 3')
+    expect(valueOf(sheet, '.layout', 'grid-template-rows', 1024)).toBe('auto 1fr')
+    for (const name of ['.text', '.points', '.report']) expect(valueOf(sheet, name, 'min-width', 1024), `${name} min-width`).toBe('0')
+  })
+
+  it('AC-421.4: 리포트 패널은 위에 맞춰 내용 높이만큼이다 — 칸이 늘어나도 패널 아래 빈 공간이 없다(.layout align-items: start · .report align-self: start)', () => {
+    const sheet = aiSheet()
+    for (const bp of BPS) expect(valueOf(sheet, '.report', 'align-self', bp), `.report align-self @${bp}`).toBe('start')
+    expect(valueOf(sheet, '.layout', 'align-items', 1024)).toBe('start')
+    for (const bp of BPS) {
+      for (const prop of ['height', 'min-height']) expect(valueOf(sheet, '.report', prop, bp), `.report ${prop} @${bp}`).toBeUndefined()
     }
-    const reorder = sheet.rules.flatMap((r) => r.decls.filter((d) => /^(?:order|grid-row(?:-[\w-]+)?|grid-area)$/.test(d.prop)))
+  })
+
+  it('AC-421.4: 1024px 미만은 칸 지정 없이 글 → 리포트 → 약속으로 쌓이고(같은 DOM 차례, 순서 바꾸기 없음) 사이는 16px → 32px(768)이다', () => {
+    const sheet = aiSheet()
+    for (const bp of [0, 768] as Bp[]) {
+      for (const name of ['.text', '.points', '.report']) {
+        expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
+        expect(valueOf(sheet, name, 'grid-row', bp), `${name} grid-row @${bp}`).toBeUndefined()
+      }
+    }
+    expect(valueOf(sheet, '.layout', 'row-gap', 0)).toBe('16px')
+    expect(valueOf(sheet, '.layout', 'row-gap', 768)).toBe('32px')
+    expect(valueOf(sheet, '.layout', 'row-gap', 1024), '1024px: 글과 약속 사이 32px(시안 mt32)').toBe('32px')
+    const reorder = sheet.rules.flatMap((r) => r.decls.filter((d) => /^(?:order|grid-area)$/.test(d.prop)))
     expect(reorder).toEqual([])
   })
 
-  it('AC-209.1: 제목은 base .tHeading(heading-m → heading(768))이고, 안내(.lead)는 ink-2·위 12px다', () => {
+  it('AC-421.4: 머리 줄(.kick)은 칩과 "AI 리포트 탭"(.tab muted)이 가로 한 줄(사이 8px)이고, 제목(.title)은 위 8px, 안내(.lead)는 ink-2·위 12px다', () => {
     const sheet = aiSheet()
     expectAt('.tHeading', 0, { 'font-size': 'var(--fs-heading-m)', 'line-height': 'var(--lh-heading-m)' })
     expectAt('.tHeading', 768, { 'font-size': 'var(--fs-heading)', 'line-height': 'var(--lh-heading)' })
     for (const bp of BPS) {
+      expect(valueOf(sheet, '.kick', 'display', bp), `.kick display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.kick', 'align-items', bp), `.kick align-items @${bp}`).toBe('center')
+      expect(valueOf(sheet, '.kick', 'gap', bp), `.kick gap @${bp}`).toBe('8px')
+      expect(valueOf(sheet, '.tab', 'color', bp), `.tab color @${bp}`).toBe('var(--muted)')
+      expect(valueOf(sheet, '.title', 'margin-top', bp), `.title margin-top @${bp}`).toBe('8px')
       expect(valueOf(sheet, '.lead', 'color', bp), `.lead color @${bp}`).toBe('var(--ink-2)')
       expect(valueOf(sheet, '.lead', 'margin-top', bp), `.lead margin-top @${bp}`).toBe('12px')
+      expect(valueOf(sheet, '.lead', 'font-size', bp), `.lead 크기는 base .tLead @${bp}`).toBeUndefined()
     }
   })
 
@@ -1034,7 +1136,6 @@ describe('AC-209.1: AiSection.module.css — 칸·약속·리포트 패널·채�
       expect(valueOf(sheet, '.pointDesc', 'color', bp), `.pointDesc color @${bp}`).toBe('var(--muted)')
       expect(valueOf(sheet, '.point::before', 'display', bp), `.point::before display @${bp}`).toBe('none')
     }
-    expect(valueOf(sheet, '.points', 'margin-top', 1024)).toBe('32px')
   })
 
   it('AC-209.1: 약속(768px 미만) — dd가 숨고(display: none) dt가 2칸(repeat(2, minmax(0, 1fr)))으로 놓이며, 줄마다 앞에 4×4 accent 점(::before)이 있고 줄 선이 없다', () => {
@@ -1067,22 +1168,21 @@ describe('AC-209.1: AiSection.module.css — 칸·약속·리포트 패널·채�
       expect(valueOf(sheet, '.reportHead', 'align-items', bp), `.reportHead align-items @${bp}`).toBe('center')
       expect(valueOf(sheet, '.reportHead', 'justify-content', bp), `.reportHead justify-content @${bp}`).toBe('space-between')
     }
+    expect(valueOf(sheet, '.reportHead', 'padding', 0)).toBe('12px 16px 0')
+    expect(valueOf(sheet, '.reportHead', 'padding', 768)).toBe('16px 20px 0')
   })
 
-  it('AC-209.1: 몸(.reportBody, 위 1px line)은 1024px 이상 minmax(0, 1fr) 300px 두 칸이고 채팅 칸(.chat)은 왼쪽 1px line, 미만은 한 칸이고 채팅 칸은 위 1px line이다', () => {
+  it('AC-421.4: 항목 목록(.items)은 머리 아래 12px → 16px(768)·위 1px line·좌우 16px → 20px이고, 채팅 칸·몸 두 칸(.reportBody·.chat·.bubble·.ask·.send)이 없다', () => {
     const sheet = aiSheet()
-    for (const bp of BPS) {
-      expect(valueOf(sheet, '.reportBody', 'display', bp), `.reportBody display @${bp}`).toBe('grid')
-      expect(valueOf(sheet, '.reportBody', 'border-top', bp), `.reportBody border-top @${bp}`).toBe(LINE)
+    for (const bp of BPS) expect(valueOf(sheet, '.items', 'border-top', bp), `.items border-top @${bp}`).toBe(LINE)
+    expect(valueOf(sheet, '.items', 'margin-top', 0)).toBe('12px')
+    expect(valueOf(sheet, '.items', 'padding', 0)).toBe('4px 16px')
+    for (const bp of [768, 1024] as Bp[]) {
+      expect(valueOf(sheet, '.items', 'margin-top', bp), `.items margin-top @${bp}`).toBe('16px')
+      expect(valueOf(sheet, '.items', 'padding', bp), `.items padding @${bp}`).toBe('4px 20px')
     }
-    expect(valueOf(sheet, '.reportBody', 'grid-template-columns', 1024)).toBe('minmax(0, 1fr) 300px')
-    for (const bp of [0, 768] as Bp[]) {
-      expect(valueOf(sheet, '.reportBody', 'grid-template-columns', bp), `.reportBody 칸 @${bp}`).toBe('minmax(0, 1fr)')
-    }
-    expect(valueOf(sheet, '.chat', 'border-top', 768)).toBe(LINE)
-    expect(valueOf(sheet, '.chat', 'border-left', 768) ?? '0').toBe('0')
-    expect(valueOf(sheet, '.chat', 'border-top', 1024)).toBe('0')
-    expect(valueOf(sheet, '.chat', 'border-left', 1024)).toBe(LINE)
+    const gone = sheet.rules.flatMap((r) => r.selectors).filter((sel) => /\.(?:reportBody|chat|bubble|typing|ask|askText|send)\b/.test(sel))
+    expect(gone).toEqual([])
   })
 
   it('AC-209.1: 항목(.item)은 768px 이상 칩 | 글 두 칸(미만은 한 칸), 줄 사이 아래 1px line(마지막 줄 없음)이고, 칩(.tag)은 글자 폭만큼, 근거(.basis)는 muted다', () => {
@@ -1098,45 +1198,6 @@ describe('AC-209.1: AiSection.module.css — 칸·약속·리포트 패널·채�
     expect(valueOf(sheet, '.item', 'grid-template-columns', 0)).toBe('minmax(0, 1fr)')
     for (const bp of [768, 1024] as Bp[]) {
       expect(valueOf(sheet, '.item', 'grid-template-columns', bp), `.item 칸 @${bp}`).toBe('76px minmax(0, 1fr)')
-    }
-  })
-
-  it('AC-209.1: 채팅 — 말풍선(.bubble)은 오른쪽·canvas·1px line·4px·small, 답 쓰는 중(.typing)은 muted, 물어보기 칸(.ask)은 40px·1px line-strong 테두리·4px, 보내기(.send)는 32px accent 바탕·surface 글자다', () => {
-    const sheet = aiSheet()
-    const want: Record<string, Record<string, string>> = {
-      '.chat': { display: 'flex', 'flex-direction': 'column' },
-      '.bubble': {
-        'align-self': 'flex-end',
-        background: 'var(--canvas)',
-        border: LINE,
-        'border-radius': 'var(--r-control)',
-        'font-size': 'var(--fs-small)',
-        'line-height': 'var(--lh-small)',
-      },
-      '.typing': { color: 'var(--muted)' },
-      '.ask': {
-        display: 'flex',
-        'align-items': 'center',
-        'justify-content': 'space-between',
-        height: '40px',
-        border: '1px solid var(--line-strong)',
-        'border-radius': 'var(--r-control)',
-        color: 'var(--muted)',
-      },
-      '.send': {
-        width: '32px',
-        height: '32px',
-        'border-radius': 'var(--r-control)',
-        background: 'var(--accent)',
-        color: 'var(--surface)',
-      },
-    }
-    for (const bp of [768, 1024] as Bp[]) {
-      for (const [selector, props] of Object.entries(want)) {
-        for (const [prop, value] of Object.entries(props)) {
-          expect(valueOf(sheet, selector, prop, bp), `${selector} ${prop} @${bp}`).toBe(value)
-        }
-      }
     }
   })
 })
@@ -1246,10 +1307,10 @@ const sideBorders = (sheet: Sheet) =>
       .map((d) => `${r.selectors.join(', ')} { ${d.prop}: ${d.value} }`),
   )
 
-describe('AC-210.1: FeaturesSection.module.css — 위 선·칸·급여 패널·기능 목록', () => {
-  it('AC-210.1: .wrap 위 1px line(.inner::before)은 섹션 위 여백(base .sec padding-block)만큼 위로 올라가 섹션 맨 위에 붙고, 같은 만큼 아래를 띄운다(모든 폭, 선은 내용 폭)', () => {
+describe('AC-210.1·AC-421.6: FeaturesSection.module.css — 위 선·칸·사전점검 덩어리·패널·기능 목록', () => {
+  it('AC-210.1·AC-421.6: 768px 이상은 .wrap 위 1px line(.inner::before)이 섹션 위 여백(base .sec padding-block)만큼 위로 올라가 섹션 맨 위에 붙고, 같은 만큼 아래를 띄운다(선은 내용 폭)', () => {
     const sheet = featSheet()
-    for (const bp of BPS) {
+    for (const bp of [768, 1024] as Bp[]) {
       const pad = words(valueOf(base(), '.sec', 'padding-block', bp) ?? '')[0]
       expect(px(pad), `.sec padding-block @${bp}`).toBeGreaterThan(0)
       expect(valueOf(sheet, '.inner::before', 'content', bp), `content @${bp}`).toBe('""')
@@ -1261,33 +1322,53 @@ describe('AC-210.1: FeaturesSection.module.css — 위 선·칸·급여 패널·
     expect(sheet.rules.filter((r) => r.selectors.some((s) => /^\.(?:sec|wrap|grid)$/.test(s)))).toEqual([])
   })
 
-  it('AC-210.1: 제목(.title)은 최대 560px이고, 칸(.layout)은 제목 아래 16px → 32px(768)이며 1024px 이상 급여(.pay) 1~6칸 · 목록(.list) 8~12칸, 미만은 쌓인다(사이가 띄워짐)', () => {
+  it('AC-421.6: 768px 미만은 위 선이 없고 섹션 위 여백만큼 위로 올라가(빈 .inner::before) 정형외과 표와 기능 제목 사이가 정형외과 섹션 아래 여백(48px) 하나다(시안 landingPhone mt48)', () => {
     const sheet = featSheet()
-    for (const bp of BPS) expect(valueOf(sheet, '.title', 'max-width', bp), `.title max-width @${bp}`).toBe('560px')
+    const pad = words(valueOf(base(), '.sec', 'padding-block', 0) ?? '')[0]
+    expect(pad).toBe('48px')
+    expect(valueOf(sheet, '.inner::before', 'content', 0)).toBe('""')
+    expect(valueOf(sheet, '.inner::before', 'display', 0)).toBe('block')
+    expect(valueOf(sheet, '.inner::before', 'border-top', 0), '휴대폰에는 위 선이 없다').toBeUndefined()
+    expect(valueOf(sheet, '.inner::before', 'margin-block', 0)).toBe(`-${pad} 0`)
+  })
+
+  it('AC-421.6: 제목(.title)은 최대 560px, 안내(.lead)는 ink-2·위 12px·최대 640px이고, 칸(.layout)은 안내 아래 16px → 32px(768)이며 1024px 이상 사전점검(.pre) 1~6칸 · 목록(.list) 8~12칸, 미만은 쌓인다', () => {
+    const sheet = featSheet()
+    for (const bp of BPS) {
+      expect(valueOf(sheet, '.title', 'max-width', bp), `.title max-width @${bp}`).toBe('560px')
+      expect(valueOf(sheet, '.lead', 'max-width', bp), `.lead max-width @${bp}`).toBe('640px')
+      expect(valueOf(sheet, '.lead', 'margin-top', bp), `.lead margin-top @${bp}`).toBe('12px')
+      expect(valueOf(sheet, '.lead', 'color', bp), `.lead color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.lead', 'font-size', bp), `.lead 크기는 base .tLead @${bp}`).toBeUndefined()
+    }
     expect(valueOf(sheet, '.layout', 'margin-top', 0)).toBe('16px')
     for (const bp of [768, 1024] as Bp[]) expect(valueOf(sheet, '.layout', 'margin-top', bp), `.layout margin-top @${bp}`).toBe('32px')
     expect(px(valueOf(sheet, '.layout', 'row-gap', 768)), '.layout row-gap @768').toBeGreaterThan(0)
-    expect(valueOf(sheet, '.pay', 'grid-column', 1024)).toBe('1 / 7')
+    expect(valueOf(sheet, '.pre', 'grid-column', 1024)).toBe('1 / 7')
     expect(valueOf(sheet, '.list', 'grid-column', 1024)).toBe('8 / 13')
-    for (const name of ['.pay', '.list']) {
+    for (const name of ['.pre', '.list']) {
       expect(valueOf(sheet, name, 'min-width', 1024), `${name} min-width`).toBe('0')
       for (const bp of [0, 768] as Bp[]) expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBeUndefined()
     }
   })
 
-  it('AC-210.1: 급여 덩어리 — 소개(.kicker)는 600 accent, h3(.payTitle)는 위 8px, 설명(.payLead)은 ink-2·위 8px, 패널(.panel)은 위 24px다', () => {
+  it('AC-421.6: 사전점검 덩어리 — 소개 줄(.kicker)은 글과 칩이 가로(넘치면 줄바꿈, 사이 8px), 글(.kickerText)은 600 accent, h3(.preTitle)는 위 8px, 설명(.preLead)은 ink-2·위 8px, 패널(.panel)은 위 24px다', () => {
     const sheet = featSheet()
     for (const bp of [768, 1024] as Bp[]) {
-      expect(valueOf(sheet, '.kicker', 'font-weight', bp), `.kicker font-weight @${bp}`).toBe('600')
-      expect(valueOf(sheet, '.kicker', 'color', bp), `.kicker color @${bp}`).toBe('var(--accent)')
-      expect(valueOf(sheet, '.payTitle', 'margin-top', bp), `.payTitle margin-top @${bp}`).toBe('8px')
-      expect(valueOf(sheet, '.payLead', 'color', bp), `.payLead color @${bp}`).toBe('var(--ink-2)')
-      expect(valueOf(sheet, '.payLead', 'margin-top', bp), `.payLead margin-top @${bp}`).toBe('8px')
+      expect(valueOf(sheet, '.kicker', 'display', bp), `.kicker display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.kicker', 'flex-wrap', bp), `.kicker flex-wrap @${bp}`).toBe('wrap')
+      expect(valueOf(sheet, '.kicker', 'align-items', bp), `.kicker align-items @${bp}`).toBe('center')
+      expect(valueOf(sheet, '.kicker', 'gap', bp), `.kicker gap @${bp}`).toBe('8px')
+      expect(valueOf(sheet, '.kickerText', 'font-weight', bp), `.kickerText font-weight @${bp}`).toBe('600')
+      expect(valueOf(sheet, '.kickerText', 'color', bp), `.kickerText color @${bp}`).toBe('var(--accent)')
+      expect(valueOf(sheet, '.preTitle', 'margin-top', bp), `.preTitle margin-top @${bp}`).toBe('8px')
+      expect(valueOf(sheet, '.preLead', 'color', bp), `.preLead color @${bp}`).toBe('var(--ink-2)')
+      expect(valueOf(sheet, '.preLead', 'margin-top', bp), `.preLead margin-top @${bp}`).toBe('8px')
       expect(valueOf(sheet, '.panel', 'margin-top', bp), `.panel margin-top @${bp}`).toBe('24px')
     }
   })
 
-  it('AC-210.1: 패널(.panel)은 surface·1px line·4px 상자 하나이고, 머리(.panelHead)는 제목과 칩을 양 끝에 둔 한 줄, "예시"(.sample)는 muted다', () => {
+  it('AC-421.6: 패널(.panel)은 surface·1px line·4px 상자 하나이고, 머리(.panelHead)는 제목과 "환자 32명 점검"(.count muted)을 양 끝에 둔 한 줄, "예시"(.sample)는 muted다', () => {
     const sheet = featSheet()
     for (const bp of [768, 1024] as Bp[]) {
       expect(valueOf(sheet, '.panel', 'background', bp), `.panel background @${bp}`).toBe('var(--surface)')
@@ -1296,24 +1377,28 @@ describe('AC-210.1: FeaturesSection.module.css — 위 선·칸·급여 패널·
       expect(valueOf(sheet, '.panelHead', 'display', bp), `.panelHead display @${bp}`).toBe('flex')
       expect(valueOf(sheet, '.panelHead', 'align-items', bp), `.panelHead align-items @${bp}`).toBe('center')
       expect(valueOf(sheet, '.panelHead', 'justify-content', bp), `.panelHead justify-content @${bp}`).toBe('space-between')
+      expect(valueOf(sheet, '.panelHead', 'padding', bp), `.panelHead padding @${bp}`).toBe('16px 20px 0')
       expect(valueOf(sheet, '.sample', 'color', bp), `.sample color @${bp}`).toBe('var(--muted)')
+      expect(valueOf(sheet, '.count', 'color', bp), `.count color @${bp}`).toBe('var(--muted)')
+      expect(valueOf(sheet, '.count', 'font-variant-numeric', bp), `.count 고정폭 @${bp}`).toBe('tabular-nums')
     }
   })
 
-  it('AC-210.1: 급여표(.table)는 폭 100%·칸 붙임·small 글자이고, 칸(.head·.cell) 아래 1px line(마지막 줄 없음), 금액(.amount)은 오른쪽 맞춤·고정폭, 바닥 줄(.sum)은 600·위 1px line-strong이며 세로 선이 없다', () => {
+  it('AC-421.6: 점검 표(.table)는 폭 100%·칸 붙임·small 글자·위 12px이고, 칸(.head·.cell)은 아래 1px line(마지막 줄 없음)·위 맞춤, 환자 칸(.patient)은 줄바꿈 없는 ink-2, 근거(.basis)는 아래 줄 muted이며 세로 선이 없다', () => {
     const sheet = featSheet()
     const want: Record<string, Record<string, string>> = {
       '.table': {
         width: '100%',
+        'margin-top': '12px',
         'border-collapse': 'collapse',
         'font-size': 'var(--fs-small)',
         'line-height': 'var(--lh-small)',
       },
-      '.head': { 'border-bottom': LINE, 'text-align': 'left', 'font-weight': '500', color: 'var(--muted)' },
-      '.cell': { 'border-bottom': LINE },
+      '.head': { 'border-bottom': LINE, 'text-align': 'left', 'font-weight': '500', color: 'var(--muted)', 'white-space': 'nowrap' },
+      '.cell': { 'border-bottom': LINE, 'vertical-align': 'top', color: 'var(--ink)' },
       '.row:last-child .cell': { 'border-bottom': '0' },
-      '.amount': { 'text-align': 'right', 'font-variant-numeric': 'tabular-nums' },
-      '.sum': { 'font-weight': '600', 'border-top': '1px solid var(--line-strong)' },
+      '.patient': { 'white-space': 'nowrap', color: 'var(--ink-2)' },
+      '.basis': { display: 'block', color: 'var(--muted)' },
     }
     for (const bp of [768, 1024] as Bp[]) {
       for (const [selector, props] of Object.entries(want)) {
@@ -1321,16 +1406,20 @@ describe('AC-210.1: FeaturesSection.module.css — 위 선·칸·급여 패널·
           expect(valueOf(sheet, selector, prop, bp), `${selector} ${prop} @${bp}`).toBe(value)
         }
       }
+      // 첫 칸·끝 칸은 패널 머리와 같은 좌우 20px
+      for (const sel of ['.head:first-child', '.cell:first-child']) expect(valueOf(sheet, sel, 'padding-left', bp), `${sel} @${bp}`).toBe('20px')
+      for (const sel of ['.head:last-child', '.cell:last-child']) expect(valueOf(sheet, sel, 'padding-right', bp), `${sel} @${bp}`).toBe('20px')
     }
     expect(sideBorders(sheet).filter((d) => !d.startsWith('.panel {'))).toEqual([])
+    // 급여표 모양(금액 칸·바닥 합계 줄)이 없다
+    expect(sheet.rules.flatMap((r) => r.selectors).filter((sel) => /\.(?:amount|sum|pay|payTitle|payLead)\b/.test(sel))).toEqual([])
   })
 
-  it('AC-210.1: 기능 목록 — 줄(.item)은 아래 1px line·첫 줄 위 1px line, 번호(.num) | 글 두 칸(32px → 40px(768))이고 위아래 12px → 20px(768)이다', () => {
+  it('AC-210.1: 기능 목록 — 줄(.item)은 아래 1px line, 번호(.num) | 글 두 칸(32px → 40px(768))이고 위아래 12px → 20px(768)이다', () => {
     const sheet = featSheet()
     for (const bp of BPS) {
       expect(valueOf(sheet, '.item', 'display', bp), `.item display @${bp}`).toBe('grid')
       expect(valueOf(sheet, '.item', 'border-bottom', bp), `.item border-bottom @${bp}`).toBe(LINE)
-      expect(valueOf(sheet, '.item:first-child', 'border-top', bp), `.item:first-child border-top @${bp}`).toBe(LINE)
     }
     expect(valueOf(sheet, '.item', 'grid-template-columns', 0)).toBe('32px minmax(0, 1fr)')
     expect(valueOf(sheet, '.item', 'padding-block', 0)).toBe('12px')
@@ -1340,7 +1429,14 @@ describe('AC-210.1: FeaturesSection.module.css — 위 선·칸·급여 패널·
     }
   })
 
-  it('AC-210.1: 번호(.num)는 small 600 accent, h3(.itemTitle)·설명(.desc·.short)은 둘째 칸이고, 긴 설명은 ink-2·위 4px, 짧은 설명은 small muted다', () => {
+  it('AC-421.6: 목록 맨 위 1px line은 목록(.list)이 그린다 — 768px 이상 첫 보이는 줄(02, 01은 .phoneOnly로 숨음)·휴대폰 첫 줄(01) 위에 늘 선이 있고, 숨는 줄에 기대는 첫 줄 선(.item:first-child)이 없다', () => {
+    const sheet = featSheet()
+    for (const bp of BPS) expect(valueOf(sheet, '.list', 'border-top', bp), `.list border-top @${bp}`).toBe(LINE)
+    const itemTop = sheet.rules.filter((r) => r.selectors.some((sel) => sel.startsWith('.item')) && r.decls.some((d) => /^border-(?:top|block)/.test(d.prop)))
+    expect(itemTop.flatMap((r) => r.selectors)).toEqual([])
+  })
+
+  it('AC-210.1·AC-421.6·AC-421.8: 번호(.num)는 small 600 accent, h3(.itemTitle)는 이름과 칩 한 줄(넘치면 줄바꿈, 사이 8px), 설명(.desc·.short)은 둘째 칸 ink-2 body(14)다', () => {
     const sheet = featSheet()
     for (const bp of BPS) {
       expect(valueOf(sheet, '.num', 'font-size', bp), `.num font-size @${bp}`).toBe('var(--fs-small)')
@@ -1349,14 +1445,20 @@ describe('AC-210.1: FeaturesSection.module.css — 위 선·칸·급여 패널·
       for (const name of ['.itemTitle', '.desc', '.short']) {
         expect(valueOf(sheet, name, 'grid-column', bp), `${name} grid-column @${bp}`).toBe('2')
       }
+      expect(valueOf(sheet, '.itemTitle', 'display', bp), `.itemTitle display @${bp}`).toBe('flex')
+      expect(valueOf(sheet, '.itemTitle', 'flex-wrap', bp), `.itemTitle flex-wrap @${bp}`).toBe('wrap')
+      expect(valueOf(sheet, '.itemTitle', 'align-items', bp), `.itemTitle align-items @${bp}`).toBe('center')
+      expect(valueOf(sheet, '.itemTitle', 'gap', bp), `.itemTitle gap @${bp}`).toBe('8px')
+      // 설명 글자 크기는 .root의 body(14/22) 그대로다(시안 13 → 14)
+      for (const name of ['.desc', '.short']) {
+        expect(valueOf(sheet, name, 'font-size', bp), `${name} font-size @${bp}`).toBeUndefined()
+        expect(valueOf(sheet, name, 'line-height', bp), `${name} line-height @${bp}`).toBeUndefined()
+        expect(valueOf(sheet, name, 'color', bp), `${name} color @${bp}`).toBe('var(--ink-2)')
+      }
     }
-    for (const bp of [768, 1024] as Bp[]) {
-      expect(valueOf(sheet, '.desc', 'color', bp), `.desc color @${bp}`).toBe('var(--ink-2)')
-      expect(valueOf(sheet, '.desc', 'margin-top', bp), `.desc margin-top @${bp}`).toBe('4px')
-    }
-    expect(valueOf(sheet, '.short', 'font-size', 0)).toBe('var(--fs-small)')
-    expect(valueOf(sheet, '.short', 'line-height', 0)).toBe('var(--lh-small)')
-    expect(valueOf(sheet, '.short', 'color', 0)).toBe('var(--muted)')
+    expectAt('.root', 0, { 'font-size': 'var(--fs-body)', 'line-height': 'var(--lh-body)' })
+    expect(valueOf(sheet, '.desc', 'margin-top', 768)).toBe('4px')
+    expect(valueOf(sheet, '.short', 'margin-top', 0)).toBe('2px')
   })
 })
 
@@ -1598,5 +1700,140 @@ describe('AC-211.1: HowSection.module.css — 칸·휴대폰 순서·단계 줄�
     expect(sheet.rules.flatMap((r) => r.selectors).filter((sel) => /::?(?:before|after)\b/.test(sel))).toEqual([])
     expect(howSelectorsWith(/^(?:position|transform|opacity|content|clip-path|mask(?:-[\w-]+)?)$/)).toEqual([])
     expect(howSelectorsWith(/^background(?:-[\w-]+)?$/)).toEqual(['.num'])
+  })
+})
+
+// ---------- REQ-420: 랜딩 누름 반응 (specs/ui-90 AC-420.1~420.3, UI_GUIDE '랜딩 짜임'·'움직임') ----------
+// 옛 "랜딩은 움직이지 않는다"(b2b-redesign AC-212.1 장식 금지의 transition, tab-frame AC-313.4 "랜딩 규칙 시험 고치지 않음")를 대체한다.
+// 전환은 위 TRANSITIONS 허용 목록(파일 × 선택자 × 값)에만 있고, 나머지 금지(animation·@keyframes 등)는 그대로다
+
+// 랜딩 모듈 전체에서 transition*을 쓰는 곳: 파일 · @규칙 · 선택자 · 속성 · 값
+const transitionsIn = (name: string) =>
+  parseCss(readLanding(name)).rules.flatMap((r) =>
+    r.decls
+      .filter((d) => TRANSITION_PROP.test(d.prop))
+      .map((d) => ({ file: name, at: r.at.join(' '), selector: r.selectors.join(', '), prop: d.prop, value: d.value })),
+  )
+
+describe('AC-420.1: 랜딩 단추·메뉴 링크·로고 링크는 150ms로 짧게 반응하고 단추는 누르면 1px 내려간다', () => {
+  it('AC-420.1: .btn은 모든 폭에서 transition: background-color·border-color·color·opacity·transform 150ms다', () => {
+    for (const bp of BPS) {
+      expect(valueOf(base(), '.btn', 'transition', bp), `.btn transition @${bp}`).toBe(BTN_TRANSITION)
+    }
+  })
+
+  it('AC-420.1: 누름 .btn:active:not(:disabled)은 transform: translateY(1px)이고, 누름 규칙에 다른 값은 없다', () => {
+    const press = base().rules.filter((r) => r.selectors.includes('.btn:active:not(:disabled)'))
+    expect(press.map((r) => ({ at: r.at.join(' '), decls: r.decls.map((d) => `${d.prop}: ${d.value}`) }))).toEqual([
+      { at: '', decls: ['transform: translateY(1px)'] },
+    ])
+  })
+
+  it('AC-420.1: 올림 바탕은 주 단추(.btnPrimary:hover) accent-strong · 보조 단추(.btnSecondary:hover) canvas다', () => {
+    for (const bp of BPS) {
+      expect(valueOf(base(), '.btnPrimary:hover', 'background', bp), `.btnPrimary:hover @${bp}`).toBe('var(--accent-strong)')
+      expect(valueOf(base(), '.btnSecondary:hover', 'background', bp), `.btnSecondary:hover @${bp}`).toBe('var(--canvas)')
+    }
+  })
+
+  it('AC-420.1: 메뉴 링크(.navLink)·로고 링크(.logo)는 모든 폭에서 transition: color 150ms, opacity 150ms이고 누름에 움직이지 않는다', () => {
+    const sheet = header()
+    for (const bp of BPS) {
+      for (const name of ['.navLink', '.logo']) {
+        expect(valueOf(sheet, name, 'transition', bp), `${name} transition @${bp}`).toBe(LINK_TRANSITION)
+      }
+    }
+    const moves = sheet.rules.filter(
+      (r) => r.selectors.some((s) => /^\.(?:navLink|logo)\b/.test(s)) && r.decls.some((d) => /^(?:transform|translate)$/.test(d.prop)),
+    )
+    expect(moves.map((r) => r.selectors.join(', ')), '메뉴·로고 링크의 옮김').toEqual([])
+  })
+
+  it('AC-420.1: 랜딩 모듈에서 전환을 쓰는 곳은 .btn(base) · .navLink · .logo(SiteHeader) 셋뿐이다', () => {
+    expect(CHECKED.flatMap(transitionsIn)).toEqual([
+      { file: 'SiteHeader.module.css', at: '', selector: '.logo', prop: 'transition', value: LINK_TRANSITION },
+      { file: 'SiteHeader.module.css', at: '', selector: '.navLink', prop: 'transition', value: LINK_TRANSITION },
+      { file: 'base.module.css', at: '', selector: '.btn', prop: 'transition', value: BTN_TRANSITION },
+    ])
+  })
+})
+
+describe('AC-420.2: 랜딩 규칙 시험은 전환 허용 목록(선택자 × 값)만 통과시키고 나머지 움직임은 잡는다', () => {
+  // [파일, CSS]: 허용 목록 그대로(빈칸·줄바꿈 차이는 같은 값으로 본다)
+  const ALLOWED: Array<[string, string]> = [
+    ['base.module.css', `.btn { transition: ${BTN_TRANSITION}; }`],
+    ['base.module.css', '.btn{transition:background-color 150ms,border-color 150ms,color 150ms,opacity 150ms,transform 150ms}'],
+    ['base.module.css', `.btn { display: inline-flex; transition: ${BTN_TRANSITION}; } .btn:active:not(:disabled) { transform: translateY(1px); }`],
+    ['SiteHeader.module.css', `.navLink { color: var(--ink-2); transition: ${LINK_TRANSITION}; }`],
+    ['SiteHeader.module.css', `.logo {\n  transition: color 150ms,\n    opacity 150ms;\n}`],
+  ]
+  it.each(ALLOWED)('AC-420.2: 허용 목록 %s %s 는 통과한다', (file, css) => {
+    expect(violations(css, file)).toEqual([])
+  })
+
+  // [파일, CSS, 잡는 이유]
+  const CAUGHT: Array<[string, string, string]> = [
+    // b2b-redesign AC-212.1 '장식' 예시에서 옮김: 허용 목록 밖 선택자·값
+    ['', '.a { transition: background-color .15s ease; }', '허용 목록 밖 전환'],
+    ['', '.a { transition-duration: .2s; }', '허용 목록 밖 전환'],
+    // transition: all
+    ['base.module.css', '.btn { transition: all 150ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', '.btn { transition: all; }', '허용 목록 밖 전환'],
+    // 150ms 밖 시간·곡선·지연이 섞인 값
+    ['base.module.css', '.btn { transition: color .3s; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.navLink { transition: color .3s; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.navLink { transition: color 200ms, opacity 200ms; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.logo { transition: color 150ms ease-in, opacity 150ms; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.logo { transition: color 150ms 50ms, opacity 150ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', '.btn { transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, transform 0.15s; }', '허용 목록 밖 전환'],
+    // 로고 링크는 색·투명도만(옮김 전환 없음)
+    ['SiteHeader.module.css', `.logo { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    // transition-delay 등 낱 속성은 허용 선택자에서도 잡는다
+    ['base.module.css', '.btn { transition-delay: 50ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', `.btn { transition: ${BTN_TRANSITION}; transition-delay: 0ms; }`, '허용 목록 밖 전환'],
+    ['base.module.css', '.btn { transition-property: transform; transition-duration: 150ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', `.btn { -webkit-transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    // 그 밖 선택자(같은 파일·다른 파일·여럿 묶음·올림·@규칙 안)
+    ['base.module.css', `.btnPrimary { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `.btn:hover { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `.btn, .chip { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `.navLink { transition: ${LINK_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['Hero.module.css', `.btn { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', `.start { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', `.navLink:hover { transition: ${LINK_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `@media (min-width: 768px) { .btn { transition: ${BTN_TRANSITION}; } }`, '허용 목록 밖 전환'],
+    ['base.module.css', `@layer base { .btn { transition: ${BTN_TRANSITION}; } }`, '허용 목록 밖 전환'],
+    // animation·@keyframes는 허용 선택자에서도 그대로 금지
+    ['base.module.css', '.btn { animation: press 150ms; }', '장식'],
+    ['base.module.css', '.btn:active:not(:disabled) { animation-name: press; }', '장식'],
+    ['base.module.css', '@keyframes press { to { transform: translateY(1px); } }', '@규칙 @keyframes'],
+  ]
+  it.each(CAUGHT)('AC-420.2: %s %s 를 잡는다(%s)', (file, css, why) => {
+    const found = violations(css, file)
+    expect(found.some((v) => v.includes(why)), `${file} ${css} → ${JSON.stringify(found)}`).toBe(true)
+  })
+
+  it('AC-420.2: 모션 줄이기(prefers-reduced-motion: reduce)에서는 globals.css 전역 규칙이 랜딩 전환까지 모두 끈다(전역 규칙은 그대로)', () => {
+    const sheet = parseCss(readFileSync(join(ROOT, 'src/app/globals.css'), 'utf8'))
+    const reduce = sheet.rules.filter((r) => r.at.length === 1 && r.at[0] === '@media (prefers-reduced-motion: reduce)')
+    const all = reduce.find((r) => ['*', '*::before', '*::after'].every((s) => r.selectors.includes(s)))
+    expect(all, '전체 선택자(*, *::before, *::after) 규칙').toBeDefined()
+    expect(all!.decls.filter((d) => d.prop === 'transition')).toEqual([{ prop: 'transition', value: 'none', important: true }])
+    // 랜딩 전환은 !important가 아니라 전역 규칙이 이긴다
+    expect(CHECKED.flatMap((name) => parseCss(readLanding(name)).rules.flatMap((r) => r.decls)).filter((d) => TRANSITION_PROP.test(d.prop) && d.important)).toEqual([])
+  })
+})
+
+describe('AC-420.3: 랜딩 TSX에는 클라이언트 코드·타이머·스크립트 움직임이 없다(지금 그대로)', () => {
+  it("AC-420.3: 랜딩 TSX(랜딩 폴더 *.tsx·src/app/page.tsx)에 'use client'·상태/효과 훅·타이머·animate()·<script>가 없다", () => {
+    expect(LANDING_TSX.map((f) => f.name)).toEqual(
+      expect.arrayContaining(['src/app/page.tsx', 'src/components/landing/SiteHeader.tsx', 'src/components/landing/Hero.tsx']),
+    )
+    for (const f of LANDING_TSX) {
+      expect(f.body, f.name).not.toMatch(/['"]use client['"]/)
+      expect(codeOf(f.body), f.name).not.toMatch(
+        /\b(?:useState|useEffect|useLayoutEffect|useReducer|setTimeout|setInterval|requestAnimationFrame)\b|\.animate\(|<script\b/,
+      )
+    }
   })
 })

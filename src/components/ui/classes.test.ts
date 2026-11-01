@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createElement as h, type ComponentType } from 'react'
 import ts from 'typescript'
@@ -44,6 +44,7 @@ const APP_DIRS = [
   'src/components/ui',
   'src/components/charts', // b2b-redesign TASK-5 (AC-205.8)
   'src/components/preview', // b2b-redesign TASK-8 (REQ-206)
+  'src/components/claim', // ui-90 TASK-5 (AC-408.1)
   'src/app/login',
   'src/app/(onboarding)',
   'src/app/(app)',
@@ -130,6 +131,7 @@ const DS_KEYS = [
   'button.secondarySmall',
   'button.danger',
   'button.accentOutlineSmall',
+  'button.ghost',
   'button.ghostSmall',
   'button.googleLarge',
   'textButton',
@@ -228,6 +230,7 @@ describe('AC-204.1: ds.button — 크기·종류·공통 모양', () => {
     'button.primarySmall': { h: 'h-8', px: 'px-3', text: 'text-small', weight: 'font-medium' },
     'button.secondarySmall': { h: 'h-8', px: 'px-3', text: 'text-small', weight: 'font-medium' },
     'button.accentOutlineSmall': { h: 'h-8', px: 'px-3', text: 'text-small', weight: 'font-semibold' },
+    'button.ghost': { h: 'h-9', px: 'px-4', text: 'text-body', weight: 'font-medium' }, // ui-90 AC-406.2 글자만 기본
     'button.ghostSmall': { h: 'h-8', px: 'px-2', text: 'text-small', weight: 'font-medium' },
     'button.primaryLarge': { h: 'h-11', px: 'px-5', text: 'text-body', weight: 'font-semibold' },
     'button.googleLarge': { h: 'h-11', px: 'px-5', text: 'text-body', weight: 'font-semibold' },
@@ -238,7 +241,7 @@ describe('AC-204.1: ds.button — 크기·종류·공통 모양', () => {
   })
 
   it.each(Object.entries(SIZE))(
-    'AC-204.1: %s는 높이·좌우 여백·글자·굵기가 표대로이고 같은 속성 클래스가 겹치지 않는다(기본 36·16·body 500 / Small 32·12·small / Large 44·20·body 600 / 강조 테두리 600 / 글자만 좌우 8)',
+    'AC-204.1·AC-406.2: %s는 높이·좌우 여백·글자·굵기가 표대로이고 같은 속성 클래스가 겹치지 않는다(기본 36·16·body 500 / Small 32·12·small / Large 44·20·body 600 / 강조 테두리 600 / 글자만 작은 좌우 8 / 글자만 기본 36·16)',
     (key, want) => {
       const value = dsAt(key)
       expect(has(value, want.h, want.px, want.text, want.weight), key).toBe(true)
@@ -275,6 +278,13 @@ describe('AC-204.1: ds.button — 크기·종류·공통 모양', () => {
   it('AC-204.1: 글자만(ghostSmall)은 투명 테두리·ink-2·좌우 8px·바탕 없음 → 올림 canvas', () => {
     const value = dsAt('button.ghostSmall')
     expect(has(value, 'border', 'border-transparent', 'text-ink-2', 'px-2')).toBe(true)
+    expect(baseTokens(value).filter((t) => t.startsWith('bg-'))).toEqual([])
+    expect(withVariant(value, 'hover', 'bg-canvas')).toBe(true)
+  })
+
+  it('AC-406.2: 글자만 기본(ghost)은 ghostSmall과 같은 색 — 투명 테두리·ink-2·바탕 없음 → 올림 canvas, 기본 크기(36px·좌우 16px·body 500)', () => {
+    const value = dsAt('button.ghost')
+    expect(has(value, 'border', 'border-transparent', 'text-ink-2', 'h-9', 'px-4', 'text-body', 'font-medium', 'max-md:h-11')).toBe(true)
     expect(baseTokens(value).filter((t) => t.startsWith('bg-'))).toEqual([])
     expect(withVariant(value, 'hover', 'bg-canvas')).toBe(true)
   })
@@ -336,6 +346,37 @@ describe('AC-204.1: ds.button — 크기·종류·공통 모양', () => {
     expect(has(dsAt('input'), 'aria-invalid:border-negative')).toBe(true)
     expect(has(dsAt('checkbox'), 'aria-invalid:border-negative')).toBe(true)
     for (const [path, value] of DS_ALL()) expect(value, path).not.toMatch(/border-danger/)
+  })
+})
+
+// ── AC-406.1·AC-406.2 (ui-90 REQ-406, design.md '`ds` 반응 · 기다림 · 대비', UI_GUIDE '단추'): 짧은 반응과 기다림 모양이 ds 안에 있다.
+// 화면 파일이 따로 붙이지 않아도 모든 단추가 같은 반응을 갖는다. 규칙(AC-204.6·AC-313.2)은 위 it.each(DS_KEYS)가 그대로 본다
+const PRESS_DOWN = 'not-disabled:not-aria-disabled:not-aria-busy:active:translate-y-px'
+const BUSY = ['aria-busy:cursor-progress', 'aria-busy:opacity-60']
+
+describe('AC-406.1·AC-406.2: ds 단추 — 짧은 반응(transition·누름 1px)과 기다림(aria-busy 60%·progress 커서)', () => {
+  it.each(DS_BUTTONS)('AC-406.1: %s는 transition(150ms 기본)과 막히지도 기다리지도 않을 때만 누름 아래 1px이다', (key) => {
+    const value = dsAt(key)
+    expect(has(value, 'transition', PRESS_DOWN), key).toBe(true)
+    // 누름 옮김은 이 한 클래스뿐이다(막힘·기다림 조건 없는 active:가 없다)
+    expect(tokens(value).filter((t) => parseClass(t).variants.includes('active')), key).toEqual([PRESS_DOWN])
+    // 150ms 기본값을 그대로 쓴다(transition-*·duration-*·ease-*·delay-* 없음)
+    expect(tokens(value).filter((t) => /^(?:transition-|duration-|ease-|delay-)/.test(parseClass(t).utility)), key).toEqual([])
+  })
+
+  it('AC-406.1: 글자 단추 ds.textButton도 transition(150ms 기본)이 있다', () => {
+    expect(has(dsAt('textButton'), 'transition')).toBe(true)
+    expect(tokens(dsAt('textButton')).filter((t) => /^(?:transition-|duration-|ease-|delay-)/.test(parseClass(t).utility))).toEqual([])
+  })
+
+  it.each(DS_BUTTONS)('AC-406.2: %s는 기다릴 때(aria-busy="true") 60% 흐림 + progress 커서다(막힘 40%와 다른 값)', (key) => {
+    const value = dsAt(key)
+    expect(has(value, ...BUSY), key).toBe(true)
+    expect(has(value, 'disabled:opacity-40', 'aria-disabled:opacity-40'), key).toBe(true)
+  })
+
+  it('AC-406.1·AC-406.2: 새 반응·기다림 클래스는 AC-204.6·AC-313.2 규칙을 그대로 통과한다', () => {
+    for (const ok of ['transition', PRESS_DOWN, ...BUSY]) expect(ruleBreaks(ok), ok).toEqual([])
   })
 })
 
@@ -592,6 +633,8 @@ function ruleBreaks(token: string): string[] {
   if (/^rounded(?:-|$)/.test(bare) && !RADIUS_OK.has(bare)) breaks.push('모서리 토큰 밖')
   if (/^(?:inset-|drop-)?shadow(?:-|$)/.test(bare) && bare !== 'shadow-float') breaks.push('그림자 토큰 밖')
   if (/^text-/.test(bare) && !TEXT_OK.has(bare.slice('text-'.length).replace(/\/\d+$/, ''))) breaks.push('글자 크기 11단계·토큰 색 밖')
+  // 대비(AC-407.1): 글자는 muted 이상. faint는 차트 표시(bg-faint)에만 쓴다
+  if (/^text-faint(?:\/\d+)?$/.test(bare)) breaks.push('대비 — 글자는 muted 이상')
   if (DECORATION.test(bare)) breaks.push('그라데이션·흐림·움직임')
   // 짧은 반응(AC-313.2): 맨 transition(150ms 기본)과 duration-200(휴대폰 아래 단추)만. 옮김·돌림·투명도와 변형(active:·starting:…)은 막지 않는다
   if (/^transition-/.test(bare) || (/^duration-/.test(bare) && bare !== 'duration-200') || /^(?:delay|ease)-/.test(bare)) breaks.push('짧은 반응 밖')
@@ -602,6 +645,15 @@ function ruleBreaks(token: string): string[] {
   return breaks
 }
 const breaksIn = (classes: string) => tokens(classes).flatMap((t) => ruleBreaks(t).map((why) => `${t} (${why})`))
+// 규칙 예외(ui-90 AC-405.3, UI_GUIDE '움직임 › 불러오기 줄'): 불러오기 줄 한 파일의 700ms·감속 곡선 두 클래스뿐이다. 다른 파일의 같은 클래스는 그대로 잡는다
+const LOAD_BAR_FILE = 'src/components/shell/LoadBar.tsx'
+const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR_FILE]: ['duration-700', 'ease-out'] }
+const fileBreaksIn = (file: string, classes: string) =>
+  breaksIn(
+    tokens(classes)
+      .filter((t) => !(RULE_EXCEPTIONS[file] ?? []).includes(t))
+      .join(' '),
+  )
 
 describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글자 11단계·장식 없음·화면 폭 접두사·overflow-clip', () => {
   it('AC-204.6: 검사 대상이 비어 있지 않다(ds 키 전부 + 목록 파일이 있다)', () => {
@@ -614,9 +666,12 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
     expect(breaksIn(dsAt(key)), key).toEqual([])
   })
 
-  it('AC-204.6: 검사 목록 파일의 클래스 글자가 규칙을 지킨다', () => {
+  it('AC-204.6·AC-405.3: 검사 목록 파일의 클래스 글자가 규칙을 지킨다(불러오기 줄 한 파일의 두 클래스만 예외)', () => {
     for (const file of ruleFiles()) {
-      expect(stringPieces(file).flatMap(breaksIn), file).toEqual([])
+      expect(
+        stringPieces(file).flatMap((piece) => fileBreaksIn(file, piece)),
+        file,
+      ).toEqual([])
     }
   })
 
@@ -753,6 +808,69 @@ describe('AC-313.2: 규칙 — 짧은 반응 밖의 움직임(transition-*·dura
   })
 })
 
+// ── ui-90 AC-405.3 불러오기 줄 예외: 700ms·감속 곡선은 LoadBar.tsx 한 파일에서만 통과한다(UI_GUIDE '움직임 › 불러오기 줄')
+describe('AC-405.3: 규칙 — 불러오기 줄 예외는 LoadBar.tsx 한 파일 × duration-700·ease-out 두 클래스뿐이다', () => {
+  it('AC-405.3: 예외 목록은 파일 하나(LoadBar.tsx) × 클래스 둘이고, 그 파일이 있고 검사 목록에 든다', () => {
+    expect(RULE_EXCEPTIONS).toEqual({ 'src/components/shell/LoadBar.tsx': ['duration-700', 'ease-out'] })
+    expect(existsSync(join(ROOT, LOAD_BAR_FILE))).toBe(true)
+    expect(ruleFiles()).toContain(LOAD_BAR_FILE)
+  })
+
+  it('AC-405.3: LoadBar.tsx는 예외 두 클래스를 실제로 쓴다(쓰지 않는 예외를 남기지 않는다)', () => {
+    const used = stringPieces(LOAD_BAR_FILE).flatMap(tokens)
+    for (const cls of RULE_EXCEPTIONS[LOAD_BAR_FILE] ?? []) expect(used, cls).toContain(cls)
+  })
+
+  it('AC-405.3: 두 클래스는 규칙 자체로는 여전히 짧은 반응 밖이다', () => {
+    for (const cls of ['duration-700', 'ease-out']) expect(ruleBreaks(cls), cls).toContain('짧은 반응 밖')
+  })
+
+  it.each(['src/components/shell/TabBar.tsx', 'src/components/shell/AllMenu.tsx', 'src/components/ui/classes.ts', 'src/components/claim/x.tsx'])(
+    'AC-405.3: 다른 파일(%s)의 duration-700·ease-out은 그대로 잡는다',
+    (file) => {
+      expect(fileBreaksIn(file, 'transition duration-700 ease-out')).toEqual(['duration-700 (짧은 반응 밖)', 'ease-out (짧은 반응 밖)'])
+    },
+  )
+
+  it('AC-405.3: LoadBar.tsx에서도 예외 두 클래스 밖의 움직임(다른 시간·곡선·delay·변형 앞말 붙은 것)은 잡는다', () => {
+    expect(fileBreaksIn(LOAD_BAR_FILE, 'transition duration-700 ease-out')).toEqual([])
+    for (const bad of ['duration-300', 'duration-1000', 'ease-in', 'ease-in-out', 'delay-150', 'transition-all', 'hover:duration-700', 'motion-safe:ease-out', 'animate-pulse']) {
+      expect(fileBreaksIn(LOAD_BAR_FILE, bad).length, bad).toBeGreaterThan(0)
+    }
+  })
+
+  it('AC-405.3: 검사 목록 파일 가운데 duration-700·ease-out을 쓰는 곳은 LoadBar.tsx뿐이다', () => {
+    const users = ruleFiles().filter((file) =>
+      stringPieces(file)
+        .flatMap(tokens)
+        .some((t) => t === 'duration-700' || t === 'ease-out'),
+    )
+    expect(users).toEqual([LOAD_BAR_FILE])
+  })
+})
+
+// ── AC-407.1 대비 (ui-90 REQ-407, UI_GUIDE '대비'): 글자색 text-faint를 규칙 시험이 잡는다. 차트 표시 bg-faint는 그대로 된다
+describe('AC-407.1: 규칙 — 글자색 text-faint(변형 앞말 포함)를 잡고 bg-faint는 통과한다', () => {
+  it.each(['text-faint', 'hover:text-faint', 'max-md:text-faint', 'group-hover:text-faint', 'not-disabled:hover:text-faint', 'text-faint/60', '!text-faint'])(
+    'AC-407.1: 글자색 %s를 대비 규칙으로 잡는다',
+    (bad) => {
+      expect(ruleBreaks(bad), bad).toContain('대비 — 글자는 muted 이상')
+    },
+  )
+
+  it.each(['bg-faint', 'max-md:bg-faint', 'text-muted', 'hover:text-muted', 'text-ink-2'])('AC-407.1: %s는 그냥 둔다', (ok) => {
+    expect(ruleBreaks(ok), ok).toEqual([])
+  })
+
+  it('AC-407.1: ds와 검사 목록 파일 전체에 글자색 text-faint가 없다', () => {
+    const faintText = (classes: string) => tokens(classes).filter((t) => /^text-faint(?:\/\d+)?$/.test(parseClass(t).utility))
+    for (const [path, value] of DS_ALL()) expect(faintText(value), path).toEqual([])
+    const files = ruleFiles()
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) expect(stringPieces(file).flatMap(faintText), file).toEqual([])
+  })
+})
+
 describe('AC-205.8: 차트 부품 폴더가 AC-013.2 검사(APP_DIRS)와 AC-204.6 검사 목록에 든다', () => {
   const CHART_FILES = ['src/components/charts/format.ts', 'src/components/charts/Sparkline.tsx', 'src/components/charts/KpiStat.tsx']
 
@@ -827,6 +945,68 @@ describe('AC-204.6: 오류 카드·오류 화면(ErrorCard·error.tsx)이 AC-204
   })
 })
 
+// ── ui-90 REQ-408: 청구 폴더(components/claim)도 앱 화면 규칙 시험에 든다(TASK-5).
+// 시험 파일 밖 청구 소스 전부가 AC-013.2·AC-204.6 검사 목록에 들고 간격·글자·모서리·장식·움직임·ui 금지 규칙을 지킨다.
+// 그림은 직접 그린 svg와 ✓·✗ 글자 대신 공용 Icon(stop·check·x)이다(AC-408.2). 그려진 아이콘 모양은 SetupScreen.test가 본다
+const CLAIM_DIR = 'src/components/claim'
+const claimSources = () => walk(CLAIM_DIR).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+// 청구 화면 네 파일(설치·연결 확인 · 오류 상자 · 안내 상자 · /claim 자리)
+const CLAIM_SCREENS = ['SetupScreen.tsx', 'SetupAlert.tsx', 'StepGuide.tsx', 'ClaimEntry.tsx'].map((f) => `${CLAIM_DIR}/setup/${f}`)
+// 직접 그린 svg 태그와 ✓·✗ 글자(주석까지 본다)
+const DRAWN_MARK = /<svg\b|[✓✗]/
+
+describe('AC-408.1: 청구 폴더(components/claim)가 앱 화면 규칙 시험에 든다', () => {
+  it('AC-408.1: 앱 화면 폴더 목록(APP_DIRS)과 AC-204.6 검사 대상에 src/components/claim이 있다', () => {
+    expect(APP_DIRS).toContain(CLAIM_DIR)
+    expect(RULE_TARGETS).toContain(CLAIM_DIR)
+  })
+
+  it('AC-408.1: 시험 파일 밖 청구 소스가 모두 AC-013.2·AC-204.6 검사 목록에 있다(화면 네 파일이 있어 빈 검사가 아니고, 시험 파일은 빠진다)', () => {
+    const files = claimSources()
+    expect(files).toEqual(expect.arrayContaining(CLAIM_SCREENS))
+    expect(sources()).toEqual(expect.arrayContaining(files))
+    expect(ruleFiles()).toEqual(expect.arrayContaining(files))
+    expect([...sources(), ...ruleFiles()].filter((f) => f.startsWith(`${CLAIM_DIR}/`) && /\.test\.tsx?$/.test(f))).toEqual([])
+  })
+
+  it('AC-408.1: 청구 소스의 클래스 글자가 간격 단계·글자 11단계·토큰 모서리·장식 없음·짧은 반응 규칙을 지킨다', () => {
+    for (const file of claimSources()) expect(stringPieces(file).flatMap(breaksIn), file).toEqual([])
+  })
+
+  it('AC-408.1: 청구 소스에 CSS Module·임의 색·Tailwind 기본 색이 없고, ui를 쓰지 않으며 classes에서 ds만 불러온다', () => {
+    const imports: string[][] = []
+    for (const file of claimSources()) {
+      const text = code(file)
+      expect(text, file).not.toMatch(/\.module\.css['"]/)
+      expect(text, file).not.toMatch(ARBITRARY_COLOR)
+      expect(text, file).not.toMatch(PALETTE)
+      expect(text, file).not.toMatch(/(?<![\w.$])ui\.[A-Za-z]/)
+      for (const m of text.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"][^'"]*\/ui\/classes['"]/g)) {
+        imports.push(m[1].split(',').map((n) => n.trim()).filter(Boolean))
+      }
+    }
+    expect(imports.length).toBeGreaterThan(0)
+    for (const names of imports) expect(names).toEqual(['ds'])
+  })
+})
+
+describe('AC-408.2: 청구 소스는 직접 그린 svg와 ✓·✗ 글자 대신 Icon(stop·check·x)을 쓴다', () => {
+  it('AC-408.2: 시험 파일 밖 청구 소스에 <svg와 "✓"·"✗" 글자가 없다', () => {
+    const files = claimSources()
+    expect(files).toEqual(expect.arrayContaining(CLAIM_SCREENS))
+    for (const file of files) expect(readFileSync(join(ROOT, file), 'utf8'), file).not.toMatch(DRAWN_MARK)
+  })
+
+  it('AC-408.2: 검사 규칙 자체가 잡아야 할 것을 잡는다', () => {
+    for (const bad of ['<svg aria-hidden="true">', '<svg\n  width="16"', '<span aria-hidden="true">✓&nbsp;</span>완료', '✗&nbsp;없음', '// 5단계를 ✓/✗로']) {
+      expect(bad).toMatch(DRAWN_MARK)
+    }
+    for (const ok of ['<Icon name="check" size={12} />', '<Icon name="x" size={12} />', "querySelector('svg')", '<svgPath />', '완료']) {
+      expect(ok).not.toMatch(DRAWN_MARK)
+    }
+  })
+})
+
 // ── AC-221.1: 옛 이름 정리 — ui는 대시보드 빈 자리가 쓰는 세 키만, ui 참조는 classes.ts와 DashboardEmpty.tsx에만(AC-313.3), ds에 쓰지 않는 키가 없다
 // 시험 파일 밖 src/의 .ts·.tsx 전부
 const srcSources = () => walk('src').filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
@@ -836,7 +1016,8 @@ const callsKey = (text: string, key: string) => new RegExp(`(?<![\\w.$])ds\\.${k
 const INSIDE_OTHER_KEYS = ['focusRing']
 // REQ-204(AC-204.1·AC-204.4·AC-204.5)가 정한 키지만 대시보드 본문을 이 명세에서 뺀 뒤(2026-10-31, design.md '대시보드 본문 빼기') 쓰는 화면이 없는 키.
 // 차트 부품처럼 다음 대시보드 명세가 쓴다 — 그때 이 목록을 비운다
-const NEXT_DASHBOARD_KEYS = ['button.primarySmall', 'panel', 'panelHead', 'panelTitle', 'panelBody', 'count', 'table.tdNum', 'table.check']
+// ui-90: button.ghost(AC-406.2)는 ② TASK-8 오류 화면 [로그아웃]이 쓰기 전까지 쓰는 화면이 없다(목록에 있어도 쓰면 실패하지 않는다)
+const NEXT_DASHBOARD_KEYS = ['button.primarySmall', 'panel', 'panelHead', 'panelTitle', 'panelBody', 'count', 'table.tdNum', 'table.check', 'button.ghost']
 
 describe('AC-221.1: 옛 모양 묶음 ui는 대시보드 빈 자리가 쓰는 세 키만 남는다', () => {
   it('AC-221.1: ui의 키는 card·panel·panelTitle 셋뿐이고 값은 한 글자도 바뀌지 않았다', () => {
@@ -1022,16 +1203,18 @@ describe('AC-221.2·AC-204.7: 틀째 그린 앱 화면 전부에 상자 안 상�
     noNested('앱 안 브라우저')
   })
 
+  // 칸은 이름 끝("…이름 필수")·역할로만 고른다 — 칸 순서·칸 이름 앞말·틀린 칸 문구·동의 문구에 기대지 않는다(ui-90 TASK-16이 그 문구를 바꾼다)
   it('AC-204.7: REQ-215 가입 신청(틀린 칸 문구 · 저장 실패 오류 카드)', async () => {
     const user = userEvent.setup()
     render(signupPage())
     await user.click(screen.getByRole('button', { name: '가입 신청' }))
-    await screen.findByText('병원 이름을 적어 주세요.')
+    await waitFor(() => expect(document.querySelector('[aria-invalid="true"]')).not.toBeNull())
     noNested('틀린 칸')
     insert.mockResolvedValue({ data: null, error: { code: '23514', message: 'x' }, status: 400 })
-    await user.type(screen.getByRole('textbox', { name: '병원 이름 필수' }), HOSPITAL)
-    await user.type(screen.getByRole('textbox', { name: '신청자 이름 필수' }), '홍길동')
-    await user.click(screen.getByRole('checkbox', { name: /동의합니다/ }))
+    const nameFields = screen.getAllByRole('textbox', { name: /이름\s*필수$/ })
+    expect(nameFields).toHaveLength(2) // 의원 이름 · 신청자 이름
+    for (const [i, field] of nameFields.entries()) await user.type(field, i === 0 ? HOSPITAL : '홍길동')
+    await user.click(screen.getByRole('checkbox'))
     await user.click(screen.getByRole('button', { name: '가입 신청' }))
     await screen.findByRole('alert')
     noNested('저장 실패')

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { AdminApplications } from '@/components/admin/AdminApplications'
 import { guardPage } from '@/lib/auth/guard.server'
 
@@ -7,6 +8,9 @@ import { guardPage } from '@/lib/auth/guard.server'
 
 // 요청의 로그인 세션으로만 그릴 수 있다 → 빌드 때 미리 그리지 않는다
 export const dynamic = 'force-dynamic'
+
+// 브라우저 탭 이름 (ui-90 AC-402.4)
+export const metadata: Metadata = { title: '가입 승인' }
 
 export default async function AdminPage() {
   await guardPage('/admin')

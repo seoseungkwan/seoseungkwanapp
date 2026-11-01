@@ -23,20 +23,26 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }))
 
 const EMAIL = 'manager@example.com'
 const MESSAGES = {
-  nameEmpty: '병원 이름을 적어 주세요.',
+  nameEmpty: '의원 이름을 적어 주세요.', // ui-90 AC-419.3: 이름표 "의원 이름"
   applicantEmpty: '신청자 이름을 적어 주세요.',
   phone: '연락처는 숫자 9~11자리로 적어 주세요.',
   agreed: '가입 신청을 보내려면 동의에 체크해 주세요.',
 }
-const CONSENT = '가입 확인을 위해 이메일·이름·연락처를 저장하는 데 동의합니다. 필수'
+// 문구는 ui-90 시안 docs/mockups/ui-90/entry/screens.mjs signupBody 글자 그대로(AC-419.3)
+const CONSENT = '가입 확인을 위해 이메일·이름·연락처를 저장하는 데 동의해요. 필수'
+const EMAIL_HELP = '로그인한 계정이라 바꿀 수 없어요.'
+const PHONE_HELP = '승인 관련해 연락이 필요할 때만 써요.'
+const SENDING = '보내는 중…'
 const RAW = 'new row violates check constraint "hospitals_phone_check" secret-detail'
 
 const emailInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '구글 계정' })
-const nameInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '병원 이름 필수' })
+const nameInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '의원 이름 필수' })
 const applicantInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '신청자 이름 필수' })
 const phoneInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '연락처 선택' })
 const consent = () => screen.getByRole<HTMLInputElement>('checkbox', { name: CONSENT })
 const submit = () => screen.getByRole<HTMLButtonElement>('button', { name: '가입 신청' })
+// 보내는 동안의 [가입 신청](글자가 "보내는 중…"으로 바뀐다)
+const sending = () => screen.getByRole<HTMLButtonElement>('button', { name: SENDING })
 const otherAccount = () => screen.getByRole<HTMLButtonElement>('button', { name: '다른 계정으로 로그인' })
 const form = () => {
   const el = document.querySelector('form')
@@ -69,7 +75,7 @@ const expectClasses = (el: Element | null | undefined, ...wanted: string[]) =>
 const frameClasses = (el: Element) => classesOf(el).filter((c) => /^(?:[\w-]+:)?(?:border(?:-|$)|bg-|shadow(?:-|$))/.test(c))
 // 시안 parts.mjs의 자물쇠 아이콘(Icon lock) 첫 모양
 const LOCK_RECT = 'rect[x="3.25"][y="7"][width="9.5"][height="7"]'
-const LEAD = '처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인합니다.'
+const LEAD = '처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인해요.'
 const steps = () => screen.getByRole('list', { name: '가입 단계' })
 const labelFor = (text: string) => {
   const label = [...document.querySelectorAll('label')].find((l) => l.textContent === text)
@@ -130,17 +136,17 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(html).toBe(alone?.outerHTML)
   })
 
-  it('AC-004.2: 제목 "가입 신청"과 안내 문장', () => {
+  it('AC-004.2·AC-419.3: 제목 "가입 신청"과 안내 문장', () => {
     render(<SignupForm email={EMAIL} />)
     const title = screen.getByRole('heading', { level: 1 })
     expect(title.textContent).toBe('가입 신청')
-    const lead = screen.getByText('처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인합니다.')
+    const lead = screen.getByText(LEAD)
     expect(isBefore(screen.getByRole('list', { name: '가입 단계' }), title)).toBe(true)
     expect(isBefore(title, lead)).toBe(true)
     expect(isBefore(lead, form())).toBe(true)
   })
 
-  it('AC-004.2: 목업 순서 — 구글 계정 · 병원 이름 · 신청자 이름 · 연락처 · 동의 · [가입 신청], 폼 밖 아래에 [다른 계정으로 로그인]', () => {
+  it('AC-004.2·AC-419.3: 목업 순서 — 구글 계정 · 의원 이름 · 신청자 이름 · 연락처 · 동의 · [가입 신청], 폼 밖 아래에 [다른 계정으로 로그인]', () => {
     render(<SignupForm email={EMAIL} />)
     const inForm = [emailInput(), nameInput(), applicantInput(), phoneInput(), consent(), submit()]
     for (const el of inForm) expect(form().contains(el)).toBe(true)
@@ -153,14 +159,14 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(within(form()).getAllByRole('button')).toHaveLength(1)
   })
 
-  it('AC-004.2: 구글 계정 칸은 로그인한 이메일을 바꿀 수 없게 보인다', async () => {
+  it('AC-004.2·AC-419.3: 구글 계정 칸은 로그인한 이메일을 바꿀 수 없게 보인다', async () => {
     const user = userEvent.setup()
     render(<SignupForm email={EMAIL} />)
     const email = emailInput()
     expect(email.value).toBe(EMAIL)
     expect(email.type).toBe('email')
     expect(email.readOnly).toBe(true)
-    expect(descriptionsOf(email)).toContain('로그인한 계정이라 바꿀 수 없습니다.')
+    expect(descriptionsOf(email)).toContain(EMAIL_HELP)
     await user.type(email, 'x')
     expect(email.value).toBe(EMAIL)
   })
@@ -182,7 +188,7 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(classesOf(box)).toContain('focus-within:border-accent')
   })
 
-  it('AC-004.2: 필수·선택 표시와 자리표시 글자는 목업 그대로', () => {
+  it('AC-004.2·AC-419.3: 필수·선택 표시와 자리표시 글자는 목업 그대로', () => {
     render(<SignupForm email={EMAIL} />)
     expect(nameInput().required).toBe(true)
     expect(nameInput().type).toBe('text')
@@ -193,7 +199,7 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(phoneInput().required).toBe(false)
     expect(phoneInput().type).toBe('tel')
     expect(phoneInput().placeholder).toBe('010-0000-0000')
-    expect(descriptionsOf(phoneInput())).toContain('승인 관련해 연락이 필요할 때만 씁니다.')
+    expect(descriptionsOf(phoneInput())).toContain(PHONE_HELP)
     expect(consent().required).toBe(true)
     expect(consent().checked).toBe(false)
     for (const el of [nameInput(), applicantInput(), phoneInput()]) expect(el.value).toBe('')
@@ -262,11 +268,11 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expectClasses(screen.getByText(LEAD), 'text-body', 'text-ink-2')
   })
 
-  it('AC-215.1: 칸 이름 줄 — 이름(ds.label: small 600) + 필수·선택(ds.labelHint: caption muted), 칸 묶음은 ds.field', () => {
+  it('AC-215.1·AC-419.3: 칸 이름 줄 — 이름(ds.label: small 600) + 필수·선택(ds.labelHint: caption muted), 칸 묶음은 ds.field', () => {
     render(<SignupForm email={EMAIL} />)
     for (const [text, hint] of [
       ['구글 계정', null],
-      ['병원 이름 필수', '필수'],
+      ['의원 이름 필수', '필수'],
       ['신청자 이름 필수', '필수'],
       ['연락처 선택', '선택'],
     ] as const) {
@@ -287,11 +293,11 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     hasAll(consentTag, ds.labelHint)
   })
 
-  it('AC-215.1: 도움말 — 구글 계정 "로그인한 계정이라 바꿀 수 없습니다." · 연락처 "승인 관련해 연락이 필요할 때만 씁니다."는 ds.help이고 칸 바로 아래에서 칸이 가리킨다', () => {
+  it('AC-215.1·AC-419.3: 도움말 — 구글 계정 "로그인한 계정이라 바꿀 수 없어요." · 연락처 "승인 관련해 연락이 필요할 때만 써요."는 ds.help이고 칸 바로 아래에서 칸이 가리킨다', () => {
     render(<SignupForm email={EMAIL} />)
     for (const [input, text] of [
-      [emailInput(), '로그인한 계정이라 바꿀 수 없습니다.'],
-      [phoneInput(), '승인 관련해 연락이 필요할 때만 씁니다.'],
+      [emailInput(), EMAIL_HELP],
+      [phoneInput(), PHONE_HELP],
     ] as const) {
       const help = screen.getByText(text)
       expect(help.tagName).toBe('P')
@@ -340,6 +346,50 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(classesOf(button)).not.toContain('self-center')
     expect(classesOf(button)).not.toContain('w-full')
     expect(classesOf(button).filter((c) => /^(?:mx-auto|text-center|justify-center)$/.test(c))).toEqual([])
+  })
+})
+
+describe('AC-419.3·AC-419.6: 가입 신청 문구는 시안 글자 그대로', () => {
+  it('AC-419.3: 칸 이름 "의원 이름"(예: 가나 정형외과의원), 안내·도움말·동의 문구, 단추 글자가 시안 signupBody와 같다', () => {
+    render(<SignupForm email={EMAIL} />)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 신청')
+    expect(screen.getByText(LEAD).tagName).toBe('P')
+    expect([...document.querySelectorAll('label')].map((l) => l.textContent)).toEqual([
+      '구글 계정',
+      '의원 이름 필수',
+      '신청자 이름 필수',
+      '연락처 선택',
+      CONSENT,
+    ])
+    expect(nameInput().placeholder).toBe('예: 가나 정형외과의원')
+    expect([...form().querySelectorAll('p')].map((p) => p.textContent)).toEqual([EMAIL_HELP, PHONE_HELP])
+    expect(submit().textContent).toBe('가입 신청')
+    expect(otherAccount().textContent).toBe('다른 계정으로 로그인')
+  })
+
+  it('AC-419.3: 의원 이름을 비우면 칸 아래 오류 글의 이름표도 "의원 이름"이다', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await user.click(submit())
+    expect(errorOf(nameInput())?.textContent).toBe('의원 이름을 적어 주세요.')
+  })
+
+  it('AC-419.6: 처음·틀린 칸·저장 실패 어느 상태에도 "병원 이름"·"니다." 글자가 없다', async () => {
+    insert.mockResolvedValue({ data: null, error: { code: '23514', message: RAW }, status: 400 })
+    const user = userEvent.setup()
+    const { container } = render(<SignupForm email={EMAIL} />)
+    const check = (state: string) => {
+      expect(container.textContent, state).not.toContain('병원 이름')
+      expect(container.textContent, state).not.toContain('니다.')
+    }
+    check('처음')
+    await user.click(submit())
+    expect(screen.getByText(MESSAGES.nameEmpty)).toBeTruthy()
+    check('틀린 칸')
+    await fillValid(user)
+    await user.click(submit())
+    await screen.findByRole('alert')
+    check('저장 실패')
   })
 })
 
@@ -460,25 +510,53 @@ describe('SignupForm: 보내기', () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/pending'))
   })
 
-  it('AC-004.3: 보내는 동안 두 번 눌러도(두 번 클릭·연달은 submit) 한 번만 보내고, 단추는 눌리지 않는다', async () => {
+  it('AC-004.3·AC-419.3: 보내는 동안 [가입 신청]은 기다림(aria-busy, "보내는 중…")이고 두 번 눌러도(두 번 클릭·연달은 submit) 한 번만 보낸다', async () => {
     let finish: (value: { data: null; error: null }) => void = () => {}
     insert.mockReturnValue(new Promise((resolve) => (finish = resolve)))
     const user = userEvent.setup()
     render(<SignupForm email={EMAIL} />)
     await fillValid(user)
-    await user.dblClick(submit())
-    // 단추가 막히기 전에 같은 틱에 두 번 들어와도 한 번만
+    const button = submit()
+    await user.dblClick(button)
+    // 같은 틱에 두 번 들어와도 한 번만
     fireEvent.submit(form())
     fireEvent.submit(form())
     expect(insert).toHaveBeenCalledTimes(1)
-    expect(submit().disabled).toBe(true)
+    expect(sending()).toBe(button)
+    expect(button.getAttribute('aria-busy')).toBe('true')
+    expect(button.disabled).toBe(false) // 막힘(40%)이 아니라 기다림(60%) 모양
+    await user.click(button)
+    expect(insert).toHaveBeenCalledTimes(1)
     expect(router.replace).not.toHaveBeenCalled() // 저장이 끝나기 전에는 넘어가지 않는다
     finish({ data: null, error: null })
     await waitFor(() => expect(router.replace).toHaveBeenCalledExactlyOnceWith('/pending'))
-    // 넘어가는 동안 다시 보내지 않는다
+    // 넘어가는 동안 다시 보내지 않고 기다림도 풀지 않는다
     fireEvent.submit(form())
     expect(insert).toHaveBeenCalledTimes(1)
-    expect(submit().disabled).toBe(true)
+    expect(sending().getAttribute('aria-busy')).toBe('true')
+  })
+
+  it('AC-419.3: 보내는 동안에도 모양은 ds.button.primaryLarge 전체 폭 그대로이고 글자만 "보내는 중…"이다', async () => {
+    insert.mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await fillValid(user)
+    await user.click(submit())
+    const button = sending()
+    expect(button.textContent).toBe(SENDING)
+    expect(button.type).toBe('submit')
+    hasAll(button, ds.button.primaryLarge)
+    expect(classesOf(button)).toContain('w-full')
+    expect(tokens(ds.button.primaryLarge)).toEqual(expect.arrayContaining(['aria-busy:opacity-60', 'aria-busy:cursor-progress']))
+    expect(screen.queryByRole('button', { name: '가입 신청' })).toBeNull()
+  })
+
+  it('AC-419.3: 틀린 칸이 있으면 기다림 없이 [가입 신청] 그대로다(보내지 않았다)', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await user.click(submit())
+    expect(submit().getAttribute('aria-busy')).toBeNull()
+    expect(screen.queryByRole('button', { name: SENDING })).toBeNull()
   })
 
   it('AC-004.3: 이미 신청한 계정(23505)이어도 오류 카드 없이 /pending으로 바꾼다', async () => {
@@ -518,6 +596,7 @@ describe('SignupForm: 저장 실패', () => {
     expect(document.body.textContent).not.toContain('23514')
     expect(router.replace).not.toHaveBeenCalled()
     expect(submit().disabled).toBe(false) // 다시 누를 수 있다
+    expect(submit().getAttribute('aria-busy')).toBeNull()
   })
 
   it('AC-004.4: 요청이 던져도 같은 카드', async () => {

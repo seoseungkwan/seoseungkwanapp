@@ -14,8 +14,9 @@ const pretendard = localFont({
   variable: '--font-pretendard',
 })
 
+// 브라우저 탭 이름 (ui-90 REQ-402): 화면마다 "<화면 이름> · 병원 업무 도구". 앱 화면은 (app)/layout이 뒤를 의원 이름으로 바꾼다
 export const metadata: Metadata = {
-  title: '병원 업무 도구',
+  title: { template: '%s · 병원 업무 도구', default: '병원 업무 도구' },
 }
 
 export default function RootLayout({
