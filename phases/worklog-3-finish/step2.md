@@ -35,6 +35,8 @@
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
+> 사용자 결정(2026-11-01): 자동 시험은 시험 계정 값이 들어올 때까지 미룬다(design.md 15절). 그때 이 step을 그대로 한다. 지금은 `docs/ARCHITECTURE.md` 꼬리표를 고치고 손 확인 목록을 검토 요청 글에 적는다. 이 step의 상태는 `blocked`(시험 계정 값 기다림)로 두고 `completed`로 닫지 않는다. AC-013은 자동 시험을 쓰기 전까지 `sdd status`에서 "없음"으로 남는다.
+
 - Files:
   - `e2e/worklog.spec.ts`
   - `docs/ARCHITECTURE.md` (업무일지 흐름 줄·`worklog_days` 표 줄의 '(예정)' 빼기만)
