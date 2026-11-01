@@ -33,33 +33,51 @@ async function attempt(run: () => Promise<boolean>): Promise<boolean> {
   }
 }
 
-export async function generateReport(month: string, deps: GenerateDeps): Promise<GenerateResult> {
-  // 1. 숫자 읽기와 검사 — Claude를 부르기 전 단계에서 던지면 부르지 않고 FAILED
-  // 받은 자료의 month가 요청한 달·한 달 전·12달 전과 맞는 것만 쓴다(안 맞는 비교 달은 없는 달)
+// 세 달 읽기 → 검사 → 입력 → 지문. 리포트 만들기와 숫자 바뀜 비교가 함께 쓴다(따로 만들면 지문이 어긋난다, spec ai-report-screen design.md).
+// 받은 자료의 month가 요청한 달·한 달 전·12달 전과 맞는 것만 쓴다(안 맞는 비교 달은 없는 달). 고른 달을 못 쓰면 null, 던지는 것은 부르는 쪽이 받는다
+async function currentInput(month: string, loadMonths: GenerateDeps['loadMonths']) {
   const checked = (value: unknown, expected: string) => {
     const payload = validateMonthPayload(value)
     return payload !== null && payload.month === expected ? payload : null
   }
-  let input
-  let inputHash: string
+  const months = await loadMonths(month)
+  const selected = checked(months.selected, month)
+  if (selected === null) return null
+  const input = buildReportInput({
+    selected,
+    prev: checked(months.prev, addMonths(month, -1)),
+    lastYear: checked(months.lastYear, addMonths(month, -12)),
+    groupNames: months.groupNames,
+  })
+  return { input, inputHash: await reportFingerprint(input) }
+}
+
+// 저장한 리포트의 숫자가 지금 숫자와 다른지 본다(REQ-705). 모르면 false — "바뀌었어요"라고 하지 않고 리포트 보기를 막지 않는다
+export async function isReportStale(
+  month: string,
+  savedHash: string,
+  loadMonths: (month: string) => Promise<ReportMonths>,
+): Promise<boolean> {
+  try {
+    const current = await currentInput(month, loadMonths)
+    return current !== null && current.inputHash !== savedHash
+  } catch {
+    return false
+  }
+}
+
+export async function generateReport(month: string, deps: GenerateDeps): Promise<GenerateResult> {
+  // 1~3. 숫자 읽기와 검사 → 입력 → 지시문 → Claude. Claude를 부르기 전 단계에서 던지면 부르지 않고 FAILED
+  let current
   let res
   try {
-    const months = await deps.loadMonths(month)
-    const selected = checked(months.selected, month)
-    if (selected === null) return { ok: false, code: 'E-AI-NO-DATA' }
-
-    // 2~3. 입력 → 지시문 → Claude
-    input = buildReportInput({
-      selected,
-      prev: checked(months.prev, addMonths(month, -1)),
-      lastYear: checked(months.lastYear, addMonths(month, -12)),
-      groupNames: months.groupNames,
-    })
-    inputHash = await reportFingerprint(input)
-    res = await deps.callClaude({ system: systemPrompt(), user: userMessage(input), schema: reportJsonSchema() })
+    current = await currentInput(month, (m) => deps.loadMonths(m))
+    if (current === null) return { ok: false, code: 'E-AI-NO-DATA' }
+    res = await deps.callClaude({ system: systemPrompt(), user: userMessage(current.input), schema: reportJsonSchema() })
   } catch {
     return FAILED
   }
+  const { input, inputHash } = current
 
   // 4. Claude 오류: 사용량이 있으면 기록(실패하면 FAILED), 없으면 기록 없이 그 번호
   if (!res.ok) {
