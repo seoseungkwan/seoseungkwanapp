@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/patients/requirements.md`의 REQ-615에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-615.1**: 시험 계정 + 가짜 확장·도우미로 `/patients`에서 두 명단 불러오기·[연락함]·문구 저장 → 나간 모든 요청(주소·쿼리·몸통)에 가짜 차트번호·이름·전화·주민번호 모양·파일 이름 없음
+- **AC-615.1**: 시험 계정 + 가짜 확장·도우미로 `/patients`에서 두 명단 불러오기·[연락함]·문구 저장 → 나간 요청의 주소·쿼리·몸통에서 맞은 곳을 `{종류, 요청 경로}`로만 모아 `expect(hits).toEqual([])`. 헤더·쿠키 안 모음, `/auth/v1/` 몸통·`apikey`·`access_token` 값 건너뜀, 실패해도 값 출력 없음(C11)
 - **AC-615.2**: `message_templates`·`contact_counts` 내 줄을 다시 읽으면 금지 글 없음, `contact_counts`는 정수 둘과 시각뿐
 - **AC-615.3**: trace·스크린샷·네트워크 기록에 쿠키·토큰 없음(`trace: 'off'`)
 
@@ -55,15 +55,18 @@
 ## 작업
 
 ### 1. 금지 글 (`e2e/patients/forbidden.ts`)
-- `fixtures/patients/fake/`에서 가짜 차트번호·이름·전화·내원번호를 모으고, 주민번호 모양 정규식과 비트 파일 이름 모양(`.xlsx`·`.xls`·`.csv`·`.GHP`·`.CAR`)을 더한 목록 하나. `findForbidden(text: string): string[]`
+- `fixtures/patients/fake/`에서 가짜 차트번호·이름·전화·내원번호를 모으고, 주민번호 모양 정규식과 비트 파일 이름 모양(`.xlsx`·`.xls`·`.csv`·`.GHP`·`.CAR`)을 더한 목록 하나. `findForbidden(text: string): ForbiddenKind[]` — 맞은 **종류 이름만**(`'chart' | 'name' | 'phone' | 'rrn' | 'filename'`) 돌려주고 맞은 값은 돌려주지 않는다
 
 ### 2. 가짜 확장 (`e2e/patients/fakeExtension.ts`)
 - `installFakeExtension(page, fixtures)`: `page.addInitScript`로 `chrome.runtime.connect(id)`를 흉내 낸다. `hello`(지금 `versions.ts`가 받는 판)·`store.load`·`contact.targets`(가짜 조각을 실제 규칙처럼 `chunk`…`end {count, bytes, sha256}`로)·`store.save`(`{saved: true}`)에 답한다
 
 ### 3. 시험 (`e2e/patients-privacy.spec.ts`)
 - 시험 계정으로 들어가 `/patients` → 두 명단을 불러옴 → [연락함] 하나 → [문자 문구]에서 문구 하나 고쳐 저장 → 남은 건수 올리기가 끝날 때까지 기다림
-- `page.on('request')`로 모든 요청의 주소·쿼리·몸통을 모아 `findForbidden`이 빈 목록(AC-615.1)
+- `page.on('request')`로 요청마다 주소·쿼리·몸통만 검사해 `hits: { kind: ForbiddenKind; path: string /* 쿼리 뺀 경로 */ }[]`에 모으고 `expect(hits).toEqual([])`(AC-615.1, 규칙 C11)
+  - 요청 머리(헤더)·쿠키는 읽지도 모으지도 않는다. `/auth/v1/` 요청 몸통(refresh_token)은 건너뛰고, 쿼리의 `apikey`·`access_token` 값은 지운 뒤 검사한다
+  - 실패해도 모은 글·몸통·값을 출력하지 않는다(실패 글은 `hits`의 종류·경로뿐)
 - 끝난 뒤 시험 계정 세션으로 `message_templates`·`contact_counts` 내 줄을 읽어 금지 글 없음, `contact_counts` 칸이 `followup_left`·`injection_left`(정수)·`updated_at`·`hospital_id`뿐(AC-615.2)
+- 저장된 줄 검사도 `findForbidden`의 종류만 모아 `expect(hits).toEqual([])`(값을 출력하지 않는다)
 - 시험이 바꾼 문구는 처음 값으로 되돌리고, 시험 산출물 폴더에 쿠키·토큰 글자가 없는지 본다(AC-615.3)
 - `contact_counts`에는 delete 권한이 없다(AC-607.3). 시험 계정의 건수 줄(가짜 자료의 정수 둘)은 남는다. 이 시험을 위해 delete 권한을 더하지 않는다
 
@@ -102,6 +105,7 @@ python3 ~/.claude/harness/bin/verify
 
 - 앱 코드에 시험용 확장 흉내·로그인 우회를 넣지 마라. 이유: 운영 사이트에 시험 길이 남는다(CLAUDE.md CRITICAL)
 - 실제 환자 자료로 E2E를 돌리지 마라. 이유: 가짜 조각만(`fixtures/patients/fake`)
+- 요청 머리·쿠키·토큰·apikey 값을 모으거나, 실패 글에 모은 값을 찍지 마라. 이유: 시험 기록에 비밀이 남는다(규칙 C11)
 - 사용자 OK 없이 Supabase에 SQL을 붙이지 마라. 이유: DB 변경은 그때 사용자 OK가 필요하다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다

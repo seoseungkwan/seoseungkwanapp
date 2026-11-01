@@ -110,7 +110,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - 기존 구역 규칙을 지우거나 약하게 바꾸지 마라. 이유: 환자 자료가 새는 길이 열린다(ADR-020)
-- rows 블록·오류 보고 블록에서 `CLIENT_IMPORT`를 빠뜨리지 마라. 이유: 뒤 블록이 같은 규칙 이름을 덮어 `lib/bridge/client.ts` 금지가 풀린다(AC-004.11)
+- rows 블록·오류 보고 블록에서 `CLIENT_IMPORT`를 빠뜨리지 마라. 이유: 뒤 블록이 같은 규칙 이름을 덮어 `lib/bridge/client.ts` 금지가 풀린다(precheck 004.11)
 - `eslint-disable` 주석으로 시험을 통과시키지 마라. 이유: 울타리를 피한 것이다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다

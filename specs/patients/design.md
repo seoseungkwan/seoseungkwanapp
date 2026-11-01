@@ -21,7 +21,7 @@
 - `specs/precheck/requirements.md`에서 REQ-023~026, `tasks.md`에서 TASK-23~26을 빼고 "환자 탭(`specs/patients`)으로 옮김"을 적는다. `phases/precheck-5-contact/`와 `phases/index.json`의 그 줄을 지운다. `docs/precheck/plan.md` §6 Phase 5를 같은 뜻으로 고친다
 - `20261030000000_precheck_settings.sql`에서 `message_templates`를 빼고, `my_hospital_id()`·`touch_updated_at()`는 cross-branch 규칙 C1의 글 그대로(`create or replace`, 같은 몸통·권한)로 바꾼다. `20261030000100_precheck_counts.sql`에서 `contact_counts`를 뺀다
 - precheck TASK-15(작업 저장): `store.load`·`store.save` 처리기를 만들 때 이 명세의 `ContactStore`를 그대로 불러 `contact` 칸을 맡기고, `Program.cs`의 `ContactCommands.RegisterStore` 한 줄을 지운다(아래 '도우미 저장')
-- precheck TASK-15·17(작업 저장·자동 입력의 '한 번에 하나', precheck AC-017.10): 같은 뮤텍스 이름 `Local\SeoseungkwanPrecheckHelper.Work`를 이 명세의 `helper/src/Precheck.Core/Contact/NamedWorkLock.cs`(`IWorkLock`)가 이미 쓴다. 두 번째 뮤텍스 부품을 만들지 말고 이것을 쓰거나 공용 자리로 옮긴다
+- precheck TASK-15·17(작업 저장·자동 입력의 '한 번에 하나', precheck 017.10): 같은 뮤텍스 이름 `Local\SeoseungkwanPrecheckHelper.Work`를 이 명세의 `helper/src/Precheck.Core/Contact/NamedWorkLock.cs`(`IWorkLock`)가 이미 쓴다. 두 번째 뮤텍스 부품을 만들지 말고 이것을 쓰거나 공용 자리로 옮긴다
 - 오류 번호: precheck가 자기 화면에 쓸 `E-SETTINGS-FAILED`·`E-COUNTS-FAILED`·`E-BIT-EXPORT-FAILED`는 precheck가 더한다. 이 명세는 `E-PATIENTS-*`만 더한다(규칙 C3). `E-BIT-EXPORT-FAILED`는 precheck TASK-8이 main에 더한 뒤 도우미 답에서 그대로 쓴다
 - precheck TASK-9(조각 모으기): `src/workers/patients/assemble.ts`와 같은 일이면 하나로 합쳐도 된다
 - precheck TASK-19(밖에서 보는 건수): 연락 남은 건수 칸은 `lib/storage/contactCounts.ts`의 `readContactCount`를 쓴다
@@ -87,7 +87,7 @@ type ContactStoreData = {   // 저장 글자는 30MB 아래(아래 '크기')
 type RecallRecord = { chart: string; name: string; date: string; codes: string[]; text: string; phone: string }  // 원본 ingest 모양 그대로
 ```
 - 연락 표시 정리(AC-604.6·604.7): 저장할 때 **보기 모양이 있는 종류마다 그 보기 모양에 열쇠가 있는 표시만 남긴다**(날짜는 보지 않는다). 그래서 연락한 뒤 다시 오지 않은 정기 주사 환자는 줄이 남아 있는 동안 계속 연락함이고(`injection_left`에 다시 안 들어감), 다시 진료·주사해 열쇠가 바뀐 표시는 빠진다. 보기 모양이 없는 종류(읽기 실패)의 표시는 그대로 둔다 — 예: 정기 주사 기록을 합쳐 저장할 때 내일 오실 F/U 줄의 연락함 표시는 F/U 보기 모양에 있으니 남는다
-- 크기(AC-604.6): `storePayload`는 UTF-8 30MB(`MAX_STORE_BYTES`, 도우미 `ContactStore.MaxContactBytes` 32MB 아래)를 넘으면 증상 글을 자르지 않고(원본 판정이 바뀐다) 가장 오래된 정기 주사 기록부터 빼고 `recall.from`을 그만큼 늦춘다. 원본 한도(50,000건, 증상 1,000자·이름 100자·전화 60자)로 보통은 10MB 안팎이다
+- 크기(AC-604.6): 뺀 건수는 `coverage.trimmed`로 보인다(쌓인 기록 안내는 뺀 뒤 기록으로 만든다). `fitStore`는 UTF-8 30MB(`MAX_STORE_BYTES`, 도우미 `ContactStore.MaxContactBytes` 32MB 아래)를 넘으면 증상 글을 자르지 않고(원본 판정이 바뀐다) 가장 오래된 정기 주사 기록부터 빼고 `recall.from`을 그만큼 늦춘다. 원본 한도(50,000건, 증상 1,000자·이름 100자·전화 60자)로 보통은 10MB 안팎이다
 - PC 저장 덮어쓰기 막기(AC-604.8): `stored`가 성공하기 전(처음·다시 불러오는 중)이나 실패한 뒤에는 Worker가 `store.save`를 보내지 않는다. [연락함]은 `{ok: false, code}`만 돌려주고, 정기 주사 보기 모양은 `null`(기록을 모르면 합칠 수 없다), F/U 보기 모양은 연락 표시 없이(`marksLoaded: false`), 건수는 `null`
 - 줄 열쇠: F/U `f|<내원번호>|<차트번호>|<다음 날짜>`, 정기 주사 `r|<규칙 id>|<차트번호>|<다음 예정일>`. 새로 진료하거나 주사하면 열쇠가 바뀌어 표시가 저절로 풀린다. 열쇠는 메모리·`contact.dat`에만 있고 주소·서버로 가지 않는다
 
@@ -95,9 +95,9 @@ type RecallRecord = { chart: string; name: string; date: string; codes: string[]
 ```ts
 export type FollowupRow = { key: string; chart: string; name: string; phone: string; lastVisit: string; next: string /* YYYY-MM-DD */; nextLabel: string /* 원본 dateStr */; plan: '예정' | '조건부'; visitKind: '주사' | 'F/U'; site: string; tx: string; evidence: string; contacted: boolean }
 export type UndecidedRow = { key: string; chart: string; name: string; phone: string; lastVisit: string; nextLabel: string; evidence: string }
-export type FollowupView = { read: { from: string; to: string }; base: string /* 원본 baseDate */; rows: FollowupRow[]; undecided: UndecidedRow[]; phoneLoaded: boolean }
+export type FollowupView = { read: { from: string; to: string }; base: string /* 원본 baseDate */; rows: FollowupRow[]; undecided: UndecidedRow[]; phoneLoaded: boolean; marksLoaded: boolean /* store.load가 됐는가(AC-604.8) */ }
 export type RecallRow = { key: string; ruleId: string; label: string; months: number; chart: string; name: string; phone: string; last: string; due: string; status: string; evidence: string; contacted: boolean }
-export type RecallCoverage = { records: number; from: string | null; short: { label: string; months: number }[] }
+export type RecallCoverage = { records: number; from: string | null; short: { label: string; months: number }[]; trimmed: number /* 30MB에 맞추려 이번에 뺀 오래된 기록 수(AC-604.6) */ }
 export type RecallView = { rows: RecallRow[]; coverage: RecallCoverage }
 export type ContactCount = { followup_left: number; injection_left: number }
 ```
@@ -112,6 +112,7 @@ export type ContactCount = { followup_left: number; injection_left: number }
   - `{type: 'build', today}` → `{type: 'views', followup: FollowupView | null, recall: RecallView | null, counts: ContactCount | null, codes: { followup?: string; recall?: string; store?: string }}` — 종류마다 따로: 한 종류가 실패하면 그 종류만 `null` + 그 종류 번호, 다른 종류는 그대로(AC-604.3). 정기 주사 조각을 합치면 Worker가 (`stored`가 성공했을 때만) `store.save`로 기록을 저장한 뒤 보낸다. 저장 실패는 `codes.store`
   - `{type: 'filter', tool, filters}` → `{type: 'filtered', tool, rows, copy: {list: string, phones?: string, missingPhones?: number}}`
   - `{type: 'mark', key, on, today}` → `{type: 'marked', key, ok, code?, counts}` + 바뀐 `views`. `stored`가 성공하지 않았으면 `store.save` 없이 `{ok: false, code}`
+  - 저장 줄 세우기(AC-604.4): `store.save`는 한 번에 하나만 보낸다. 표시 요청은 '해야 할 바꿈'으로 줄에 쌓고, 앞 저장의 `sent`가 온 뒤 차례가 오면 그때의 최신 표시 + 줄의 바꿈을 합쳐 글자를 만든다. 됨이면 그 바꿈들을 확정하고 `marked`를 보내고, 실패면 그 바꿈만 버리고 오류 번호를 보낸다(앞서 확정된 표시는 그대로). 정기 주사 기록 저장도 같은 줄을 쓴다
 - 화면은 조각·보낼 글자를 받지 않는다(AC-604.4). Worker 밖으로 나가는 환자 자료는 보기 모양과 복사 글뿐이다
 
 ### 서버 표 (`supabase/migrations/20261101000300_patients.sql`, TASK-5)

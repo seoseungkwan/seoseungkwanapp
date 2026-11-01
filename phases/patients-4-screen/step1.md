@@ -86,7 +86,7 @@ export function CopyButton(props: { text: string | (() => string); label: string
 ### 3. F/U 도구 (`FollowupTool.tsx`)
 - `PatientsScreen`이 넘기는 Worker 연결로 `filter`를 보내 거른 줄·날짜 미정 줄·복사 글을 받는다(화면은 거르지 않는다). 고르기: 기간(처음 `tomorrow`), 조건부 포함(처음 끔), 지난 예정 포함(처음 끔), 구분(전체·주사·F/U)
 - [명단 복사]: 날짜 머리 줄 켜기·끄기 → `copy.list`/`copy.listWithDate`. [문구 복사]: 주사 안내·진료 안내 중 고르기 → `readTemplates`(읽기는 됐고 줄이 없을 때만 `DEFAULT_TEMPLATES`)의 그 종류 첫 문구를 `fillTemplate(body, 기간 시작일)`로. 문구 읽기가 실패하면(`E-PATIENTS-TEMPLATES-READ`) [문구 복사] 자리에 오류 번호와 [다시 불러오기]만, 기본 문구로 대신하지 않는다
-- [연락함]: `mark` 보냄 → `marked`의 `ok`로 줄을 바꾸거나 오류 줄. 누르는 동안 그 단추만 막힘
+- [연락함]: `mark` 보냄 → `marked`의 `ok`로 줄을 바꾸거나 오류 줄. 단추는 막지 않는다 — 여러 줄을 잇따라 눌러도 Worker가 저장을 차례로 보내고 최신 표시로 글자를 만든다(AC-604.4). 답을 기다리는 줄에는 '저장 중' 글자
 - 빈 상태·불러오는 중·실패는 목업 문구. 실패 오류 카드는 `errorInfo(code)`(모르는 번호면 번호만)
 
 ### 4. 환자 줄 (`rows/FollowupRows.tsx`, 울타리 안)
