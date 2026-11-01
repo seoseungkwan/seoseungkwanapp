@@ -29,6 +29,7 @@
 - AC-601.12: Given Worker 답의 품질이 `incomplete`(`days: null`), When 그리면, Then 숫자를 보여 주지 않고 `E-BIT-DATA-UNSURE` 문구·번호로 AC-601.4·AC-601.5처럼 그린다
 - AC-601.13: Given 처음 자료로 받은 저장 숫자(`{ kind: 'data', days }`), When 비트 PC에서 열면, Then 그 숫자를 먼저 그리고 읽는 동안 그대로 둔 채 "다시 읽는 중"이다. 읽기가 끝나면 비트 숫자로 바꾸고, 실패하면 저장 숫자를 둔 채 AC-601.5의 오류 상자를 보인다. 비트 PC가 아니면 저장 숫자만 그린다
 - AC-601.14: Given 통계의 저장 숫자 읽기(`specs/stats` REQ-516 `LiveDashboard`)가 합쳐진 뒤, When `/dashboard`를 열면, Then 그 파일이 읽은 값이 처음 자료로 `BitDashboard`에 간다. 저장 숫자를 읽는 코드를 두 벌 두지 않는다
+- AC-601.15: Given 비트를 읽는 중, When 화면을 떠나면, Then 3분을 기다리지 않고 바로 읽기를 그만두어 통로를 닫고 Worker를 끝낸다. 같은 탭에서 연 청구·연결 화면과 돌아온 대시보드를 막지 않는다
 
 ### REQ-602: 내원환자는 접수 기준이다
 - AC-602.1: Given 처방 줄이 없는 접수 환자가 든 가짜 도우미 답, When 통계 Worker를 거쳐 대시보드 숫자를 만들면, Then 그 환자가 그날 환자 수와 신환 또는 재진에 들어가고 처방 목록에는 빈 코드가 나오지 않는다

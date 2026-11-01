@@ -7,7 +7,7 @@
 
 - `/CLAUDE.md`
 - `/specs/bit-dashboard/requirements.md`, `/specs/bit-dashboard/design.md`, `/specs/bit-dashboard/tasks.md`
-- `/src/components/dashboard/live/readBitDays.ts` (이전 step), `/src/components/claim/setup/StepGuide.tsx`·`SetupAlert.tsx` (이전 step)
+- `/src/components/dashboard/live/readBitDays.ts` (이전 step)
 - `/src/components/dashboard/briefing/DashboardHome.tsx`, `StickyConnect.tsx`, `/src/components/dashboard/summary/DashboardAnalysis.tsx`, `source.ts`, `/src/app/(app)/dashboard/page.tsx`
 - `/docs/mockups/bit-dashboard/` (승인된 시안)
 
@@ -17,6 +17,9 @@
 
 - 맞출 AC: REQ-601 가운데 AC-601.14(TASK-8)를 뺀 화면 AC, AC-603.1. `sdd status`로 확인한다.
 - `source.ts`는 고치지 않는다. 지금은 `dashboard/page.tsx`가 이미 읽는 값을 `initial`로 넘긴다. 통계의 `LiveDashboard`와 잇는 일은 TASK-8이다.
+- 효과를 정리할 때 `AbortController`로 읽기를 취소한다(AC-601.15). 개발 모드는 효과가 두 번 돌 수 있으니 취소 뒤 답을 상태에 넣지 않는다.
+- 도우미 버전 안 맞음은 `not-ready`라 연결 전 모양이다(AC-601.6). 업데이트 안내는 연결 화면이 맡고, 이 화면은 `HelperUpdateSteps`를 쓰지 않는다.
+- 비트 PC가 아니어서 다시 읽기가 `not-ready`면 저장 숫자를 그대로 둔다(AC-601.13).
 - 숫자를 지어내지 않는다. 상태별 칩·숫자 칸 글은 설계 표 그대로다.
 - 옛 시험은 `[비트 PC 연결 시작]` 주소 값만 `/claim/setup?next=dashboard`로 바꾼다. 시험을 약하게 만들지 않는다.
 - 스타일은 앱 규칙(Tailwind, `components/ui/classes.ts`, `globals.css` 토큰)을 따른다.

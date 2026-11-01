@@ -17,7 +17,7 @@
 - TDD: required
 
 ## TASK-3: 비트 읽기 한 번 (`readBitDays`)
-- REQ: REQ-601
+- REQ: REQ-601, REQ-604
 - Files: src/components/dashboard/live/readBitDays.ts, src/components/dashboard/live/readBitDays.test.ts
 - Tests: src/components/dashboard/live/readBitDays.test.ts
 - TDD: required

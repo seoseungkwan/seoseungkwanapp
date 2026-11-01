@@ -22,15 +22,15 @@
 export const LOOKBACK_DAYS = 100
 export const READ_TIMEOUT_MS = 180_000
 export type ReadResult = { kind: 'days'; days: DayPayload[] } | { kind: 'not-ready' } | { kind: 'failed'; code: ErrorCode }
-export function readBitDays(deps: { runtime: ChromeRuntimeLike | undefined; createWorker: () => StatsWorkerLike; today: string; timeoutMs?: number }): Promise<ReadResult>
+export function readBitDays(deps: { runtime: ChromeRuntimeLike | undefined; createWorker: () => StatsWorkerLike; today: string; timeoutMs?: number; signal?: AbortSignal }): Promise<ReadResult>
 ```
-- 차례: `runtime` 없으면 `not-ready`(Worker도 안 만든다) → `connectScreenBridge` → `hello` → `busy`면 `failed(E-BIT-IN-USE)`, `ready`가 아니면 `not-ready` → `bit.check`의 세 단계가 모두 됨이고 `registered`가 아니면 `not-ready` → `stream('stats.rows', {from, to})`와 `requestLoad`(`closeToday: false`, 3분) → 결과. `finally`에서 통로를 닫고 Worker를 끝낸다.
+- 차례: `runtime` 없으면 `not-ready`(Worker도 안 만든다) → `connectScreenBridge` → `hello` → `busy`면 `failed(E-BIT-IN-USE)`, `ready`가 아니면 `not-ready` → `bit.check`의 세 단계가 모두 됨이고 `registered`가 아니면 `not-ready` → `stream('stats.rows', {from, to})`와 `requestLoad`(`closeToday: false`, 3분) → 결과. `finally`에서 통로를 닫고 Worker를 끝낸다. `signal`이 취소되면 그 자리에서 `not-ready`로 끝내 `finally`가 닫게 한다(AC-601.15). 3분 제한은 `hello`부터 읽기 전체에 건다. `hello` 뒤에 오는 `E-BRIDGE-BUSY`도 `E-BIT-IN-USE`로 바꾼다.
 - `StatsLoaded`에서 `days`만 꺼낸다. `months`·`report`·`checks`는 화면 상태에 담지 않는다(AC-601.9). `days`가 `null`이면 `failed(E-BIT-DATA-UNSURE)`다.
 - `E-ANALYZE-TIMEOUT`은 `E-BIT-READ-FAILED`로 바꾼다. 그 문구가 "계산이 30초 넘게 걸려"라 여기 맞지 않고, 통계 표를 고치지 않으려는 것이다.
 - `useBridge`는 쓰지 않는다. 화면이 떠 있는 동안 통로를 쥐기 때문이다. `connectScreenBridge`를 직접 불러 읽는 동안만 연다.
 
 ### 화면
-- `src/components/dashboard/live/BitDashboard.tsx`('use client'): `{ today, initial: SummarySource }`. 상태는 `idle | reading | data | failed`이고 `initial`이 `data`면 그 숫자로 시작한다(AC-601.13). 효과 안에서 `chrome.runtime`이 있을 때만 읽기를 시작하고 `readBitDays`를 부른다. 서버가 그린 첫 모양은 `initial` 그대로다.
+- `src/components/dashboard/live/BitDashboard.tsx`('use client'): `{ today, initial: SummarySource }`. 상태는 `idle | reading | data | failed`이고 `initial`이 `data`면 그 숫자로 시작한다(AC-601.13). 효과 안에서 `chrome.runtime`이 있을 때만 읽기를 시작하고 `readBitDays`를 부른다. 효과를 정리할 때 읽기를 취소하고 그 답은 쓰지 않는다(AC-601.15). 서버가 그린 첫 모양은 `initial` 그대로다.
 - 통계의 `summary/LiveDashboard.tsx`와 역할을 나눈다. 그쪽은 저장 숫자를 읽고, 이쪽은 비트에서 읽어 화면을 고른다. 합치면 `LiveDashboard`가 읽은 값을 `BitDashboard`의 `initial`로 넘긴다(TASK-8). 지금은 `dashboard/page.tsx`가 `dashboardSummarySource()`를 넘긴다.
 - `DashboardHome`은 `report`로 모양을 정하는 방식 그대로 두고, 선택 prop `dateLine`만 더한다(주면 날짜 글자 대신 그린다). `report` 자리에 읽는 중·실패 블록(`ReadStatus.tsx`, 둘 다 h1)을 넘긴다. 데이터가 있으면 `ReportBlock` + `ReadLine`(읽은 시각·[다시 읽기], 같은 파일)이고, 다시 읽기 실패면 `ReadLine`의 단추를 빼고 그 아래 오류 상자를 둔다.
 - [연결 확인]의 주소는 `/claim/setup?next=dashboard`다.
