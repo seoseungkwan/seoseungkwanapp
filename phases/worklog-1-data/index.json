@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-1-data",
+  "steps": [
+    {
+      "step": 0,
+      "name": "docs",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "calc-format",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "memo-store",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "db-table",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "day-storage",
+      "status": "pending"
+    }
+  ]
+}

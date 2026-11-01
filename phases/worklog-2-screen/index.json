@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-2-screen",
+  "steps": [
+    {
+      "step": 0,
+      "name": "autosave",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "sheet-style",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "sheet",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "toolbar",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "screen",
+      "status": "pending"
+    }
+  ]
+}

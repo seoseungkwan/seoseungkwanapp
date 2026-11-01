@@ -27,6 +27,18 @@
     {
       "dir": "precheck-7-backup",
       "status": "pending"
+    },
+    {
+      "dir": "worklog-1-data",
+      "status": "pending"
+    },
+    {
+      "dir": "worklog-2-screen",
+      "status": "pending"
+    },
+    {
+      "dir": "worklog-3-finish",
+      "status": "pending"
     }
   ]
 }

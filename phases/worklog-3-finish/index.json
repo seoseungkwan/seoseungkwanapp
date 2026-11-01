@@ -1,0 +1,21 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-3-finish",
+  "steps": [
+    {
+      "step": 0,
+      "name": "print",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "tab-hookup",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "e2e",
+      "status": "pending"
+    }
+  ]
+}
