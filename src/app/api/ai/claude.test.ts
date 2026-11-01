@@ -2,6 +2,7 @@ import {
   APIConnectionError,
   APIConnectionTimeoutError,
   APIError,
+  APIUserAbortError,
   AuthenticationError,
   BadRequestError,
   InternalServerError,
@@ -9,12 +10,17 @@ import {
 } from '@anthropic-ai/sdk'
 import type {
   BetaContentBlock,
+  BetaFallbackBlock,
+  BetaFallbackMessageIterationUsage,
+  BetaIterationsUsage,
   BetaMessage,
+  BetaMessageIterationUsage,
   BetaMessageStreamParams,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type { ErrorType } from '@anthropic-ai/sdk/resources/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MAX_TOKENS, MODEL, callClaude, type AnthropicLike } from './claude'
+import { CALL_TIMEOUT_MS, MAX_TOKENS, MODEL, callClaude, type AnthropicLike } from './claude'
 
 // Claude 부르기(spec ai-report design.md 'Claude 부르기'). 진짜 SDK 네트워크는 부르지 않는다 — 가짜 클라이언트만 넣는다
 // 열쇠는 늘 가짜 글자(sk-ant-fake-…)다
@@ -26,8 +32,30 @@ function text(t: string): BetaContentBlock {
   return { type: 'text', text: t, citations: null }
 }
 
+function fallback(from: string, to: string): BetaFallbackBlock {
+  return { type: 'fallback', from: { model: from }, to: { model: to }, trigger: { type: 'refusal', category: null } }
+}
+
+// usage.iterations 한 줄. 캐시 칸은 이 부름에서 쓰지 않는다
+function attempt(
+  type: 'message' | 'fallback_message',
+  model: string,
+  input: number,
+  output: number,
+): BetaMessageIterationUsage | BetaFallbackMessageIterationUsage {
+  const common = { cache_creation: null, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
+  return { ...common, type, model, input_tokens: input, output_tokens: output }
+}
+
 function message(
-  over: { content?: BetaContentBlock[]; stop_reason?: BetaStopReason; model?: string; input?: number; output?: number } = {},
+  over: {
+    content?: BetaContentBlock[]
+    stop_reason?: BetaStopReason
+    model?: string
+    input?: number
+    output?: number
+    iterations?: BetaIterationsUsage | null
+  } = {},
 ): BetaMessage {
   return {
     id: 'msg_fake',
@@ -49,7 +77,7 @@ function message(
       cache_read_input_tokens: null,
       fallback_credit: null,
       inference_geo: null,
-      iterations: null,
+      iterations: over.iterations ?? null,
       output_tokens_details: null,
       server_tool_use: null,
       service_tier: null,
@@ -58,14 +86,18 @@ function message(
   }
 }
 
-// stream이 받은 인자를 기록하고, finalMessage()가 정해 둔 답을 돌려주거나 던진다
+// stream이 받은 인자(요청 칸·옵션)를 기록하고, finalMessage()가 정해 둔 답을 돌려주거나 던진다
 function fakeClient(result: BetaMessage | Error) {
   const calls: BetaMessageStreamParams[] = []
+  const options: ({ signal?: AbortSignal } | undefined)[] = []
+  const abortedAtCall: (boolean | undefined)[] = []
   const client: AnthropicLike = {
     beta: {
       messages: {
-        stream(params) {
+        stream(params, opts) {
           calls.push(params)
+          options.push(opts)
+          abortedAtCall.push(opts?.signal?.aborted)
           return {
             finalMessage: () => (result instanceof Error ? Promise.reject(result) : Promise.resolve(result)),
           }
@@ -73,7 +105,27 @@ function fakeClient(result: BetaMessage | Error) {
       },
     },
   }
-  return { client, calls }
+  return { client, calls, options, abortedAtCall }
+}
+
+// 신호가 끊길 때 정해 둔 오류로 실패하는 가짜. 신호를 안 주면 끊길 일이 없으니(기다리면 시험이 멈춘다) 바로 실패한다
+function clientFailingOnAbort(makeError: () => Error): AnthropicLike {
+  return {
+    beta: {
+      messages: {
+        stream(_params, opts) {
+          const signal = opts?.signal
+          return {
+            finalMessage: () =>
+              new Promise<BetaMessage>((_resolve, reject) => {
+                if (!signal) return reject(new Error('신호를 받지 못함'))
+                signal.addEventListener('abort', () => reject(makeError()), { once: true })
+              }),
+          }
+        },
+      },
+    },
+  }
 }
 
 function errorBody(type: string) {
@@ -257,5 +309,261 @@ describe('AC-510.4 열쇠', () => {
     const { client } = fakeClient(APIError.generate(401, errorBody('authentication_error'), undefined, new Headers()))
     const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
     expect(JSON.stringify(result)).not.toContain('sk-ant-fake')
+  })
+})
+
+describe('AC-510.5 모든 시도의 사용량', () => {
+  // 거절한 시도 + 대신 답한 시도. 맨 위 usage는 답을 만든 시도 몫만 담는다
+  const twoAttempts = {
+    model: 'claude-opus-5',
+    input: 1000,
+    output: 200,
+    iterations: [
+      attempt('message', 'claude-opus-5-5', 900, 40),
+      attempt('fallback_message', 'claude-opus-5', 1000, 200),
+    ],
+  }
+  const summed = { inputTokens: 1900, outputTokens: 240, model: 'claude-opus-5' }
+
+  it('AC-510.5 iterations가 여럿이면 입력·출력 토큰은 모든 항목의 합이고 모델은 답의 model이다', async () => {
+    const { client } = fakeClient(message({ ...twoAttempts, content: [text('{"summary":"ok"}')] }))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: true, text: '{"summary":"ok"}', usage: summed })
+  })
+
+  it('AC-510.5 iterations가 null이면 맨 위 usage 값이다', async () => {
+    const { client } = fakeClient(message({ input: 1234, output: 56, iterations: null }))
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result.usage).toEqual({ inputTokens: 1234, outputTokens: 56, model: 'claude-opus-5-5' })
+  })
+
+  it('AC-510.5 iterations가 빈 배열이면 맨 위 usage 값이다', async () => {
+    const { client } = fakeClient(message({ input: 1234, output: 56, iterations: [] }))
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result.usage).toEqual({ inputTokens: 1234, outputTokens: 56, model: 'claude-opus-5-5' })
+  })
+
+  it('AC-510.5 iterations 칸이 아예 없어도 맨 위 usage 값이다', async () => {
+    const answer = message({ input: 1234, output: 56 })
+    delete (answer.usage as { iterations?: unknown }).iterations
+    const { client } = fakeClient(answer)
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result.usage).toEqual({ inputTokens: 1234, outputTokens: 56, model: 'claude-opus-5-5' })
+  })
+
+  it('AC-510.5 마지막 시도가 다른 모델을 적어도 모델은 답의 model이다', async () => {
+    const iterations = [attempt('message', 'claude-opus-5-5', 900, 40), attempt('fallback_message', 'claude-opus-4-8', 1000, 200)]
+    const { client } = fakeClient(message({ model: 'claude-opus-5', iterations }))
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result.usage).toEqual({ inputTokens: 1900, outputTokens: 240, model: 'claude-opus-5' })
+  })
+
+  it('AC-510.5 refusal로 끝난 답도 모든 시도의 합을 돌려준다', async () => {
+    const { client } = fakeClient(message({ ...twoAttempts, stop_reason: 'refusal', content: [] }))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: summed })
+  })
+
+  it('AC-510.5 max_tokens로 끝난 답도 모든 시도의 합을 돌려준다', async () => {
+    const { client } = fakeClient(message({ ...twoAttempts, stop_reason: 'max_tokens', content: [text('{"summary":"잘')] }))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: summed })
+  })
+})
+
+describe('AC-510.6 부르기 전체 시간 한도', () => {
+  it('AC-510.6 CALL_TIMEOUT_MS는 100초다', () => {
+    expect(CALL_TIMEOUT_MS).toBe(100_000)
+  })
+
+  it('AC-510.6 요청 옵션에 끊기 신호를 넣고, 부를 때는 아직 끊기지 않았다', async () => {
+    const { client, options, abortedAtCall } = fakeClient(message())
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(options[0]?.signal).toBeInstanceOf(AbortSignal)
+    expect(abortedAtCall[0]).toBe(false)
+  })
+
+  it('AC-510.6 신호 시간은 기본 CALL_TIMEOUT_MS이고 deps.timeoutMs로 바꿀 수 있다', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const { client } = fakeClient(message())
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(timeout).toHaveBeenCalledTimes(1)
+    expect(timeout).toHaveBeenLastCalledWith(100_000)
+
+    await callClaude(REQ, { client, apiKey: FAKE_KEY, timeoutMs: 20 })
+    expect(timeout).toHaveBeenCalledTimes(2)
+    expect(timeout).toHaveBeenLastCalledWith(20)
+  })
+
+  it('AC-510.6 신호가 끊겨 SDK가 APIUserAbortError를 던지면 E-AI-BUSY, 사용량 없음', async () => {
+    const client = clientFailingOnAbort(() => new APIUserAbortError())
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY, timeoutMs: 20 })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
+  })
+
+  it('AC-510.6 신호가 끊긴 뒤 온 SDK 밖 오류도 E-AI-BUSY, 사용량 없음', async () => {
+    const client = clientFailingOnAbort(() => new Error('boom'))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY, timeoutMs: 20 })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
+  })
+
+  it('AC-510.6 신호가 끊긴 뒤 온 다른 오류(400)도 E-AI-BUSY — 신호를 가장 먼저 본다', async () => {
+    const client = clientFailingOnAbort(() => APIError.generate(400, errorBody('invalid_request_error'), undefined, new Headers()))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY, timeoutMs: 20 })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
+  })
+
+  it('AC-510.6 APIUserAbortError를 바로 던져도 E-AI-BUSY, 사용량 없음', async () => {
+    const { client } = fakeClient(new APIUserAbortError())
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
+  })
+
+  it('AC-510.6 신호가 끊긴 뒤 온 402도 E-AI-BUSY, 사용량 없음 — 신호를 402보다 먼저 본다', async () => {
+    const client = clientFailingOnAbort(() => APIError.generate(402, errorBody('billing_error'), undefined, new Headers()))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY, timeoutMs: 20 })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
+  })
+
+  it('AC-510.6 신호가 끊긴 뒤에 정상 답이 오면 그 답을 그대로 돌려준다(성공 뒤에는 신호를 보지 않는다)', async () => {
+    const answer = message({ content: [text('{"summary":"ok"}')] })
+    const client: AnthropicLike = {
+      beta: {
+        messages: {
+          stream(_params, opts) {
+            const signal = opts?.signal
+            return {
+              finalMessage: () =>
+                new Promise<BetaMessage>((resolve, reject) => {
+                  if (!signal) return reject(new Error('신호를 받지 못함'))
+                  signal.addEventListener('abort', () => resolve(answer), { once: true })
+                }),
+            }
+          },
+        },
+      },
+    }
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY, timeoutMs: 20 })).toEqual({
+      ok: true,
+      text: '{"summary":"ok"}',
+      usage: { inputTokens: 1000, outputTokens: 200, model: 'claude-opus-5-5' },
+    })
+  })
+})
+
+describe('AC-510.7 조각 받는 도중 온 오류', () => {
+  function midStreamError(type: ErrorType) {
+    return new APIError(undefined, errorBody(type), undefined, new Headers(), type)
+  }
+
+  for (const type of ['rate_limit_error', 'overloaded_error', 'api_error'] as const) {
+    it(`AC-510.7 상태 없는 APIError type ${type} → E-AI-BUSY, 사용량 없음`, async () => {
+      const err = midStreamError(type)
+      expect(err.status).toBeUndefined()
+      const { client } = fakeClient(err)
+      expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
+    })
+  }
+
+  for (const type of ['invalid_request_error', 'authentication_error'] as const) {
+    it(`AC-510.7 상태 없는 APIError type ${type} → E-AI-FAILED, 사용량 없음`, async () => {
+      const err = midStreamError(type)
+      expect(err.status).toBeUndefined()
+      const { client } = fakeClient(err)
+      expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: null })
+    })
+  }
+
+  it('AC-510.7 상태도 type도 없는 APIError → E-AI-FAILED, 사용량 없음', async () => {
+    const { client } = fakeClient(new APIError(undefined, undefined, '가짜 오류', undefined))
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: null })
+  })
+
+  it('AC-510.7 상태 없는 APIError의 모르는 type(some_new_error) → E-AI-FAILED, 사용량 없음', async () => {
+    // SDK 타입에 없는 새 type을 일부러 넣는다
+    const unknownType: string = 'some_new_error'
+    const err = midStreamError(unknownType as ErrorType)
+    expect(err.status).toBeUndefined()
+    expect(err.type).toBe('some_new_error')
+    const { client } = fakeClient(err)
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: null })
+  })
+
+  it('AC-510.7 상태가 있는 APIError(400)는 type이 api_error여도 E-AI-FAILED, 사용량 없음', async () => {
+    const err = new APIError(400, errorBody('api_error'), undefined, new Headers(), 'api_error')
+    expect(err.status).toBe(400)
+    expect(err.type).toBe('api_error')
+    const { client } = fakeClient(err)
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: null })
+  })
+})
+
+describe('AC-510.8 대신 답한 글자만', () => {
+  it('AC-510.8 fallback 블록 뒤의 text만 쓴다 — 거절한 모델의 덜 쓴 글자는 버린다', async () => {
+    const { client } = fakeClient(
+      message({
+        model: 'claude-opus-5',
+        content: [text('{"summ'), fallback('claude-opus-5-5', 'claude-opus-5'), text('{"summary":"ok"}')],
+      }),
+    )
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+  })
+
+  it('AC-510.8 fallback이 둘이면 마지막 것 뒤의 text만 쓴다', async () => {
+    const { client } = fakeClient(
+      message({
+        model: 'claude-opus-4-8',
+        content: [
+          text('{"summ'),
+          fallback('claude-opus-5-5', 'claude-opus-5'),
+          text('{"cards'),
+          fallback('claude-opus-5', 'claude-opus-4-8'),
+          text('{"summary":"ok"}'),
+        ],
+      }),
+    )
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+  })
+
+  it('AC-510.8 마지막 fallback 뒤의 text가 여럿이면 이어 붙이고, text 아닌 블록은 넣지 않는다', async () => {
+    const { client } = fakeClient(
+      message({
+        content: [
+          text('덜 쓴 글자'),
+          fallback('claude-opus-5-5', 'claude-opus-5'),
+          { type: 'thinking', thinking: '', signature: 'sig-fake' },
+          text('{"summary":'),
+          text('"ok"}'),
+        ],
+      }),
+    )
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+  })
+
+  it('AC-510.8 마지막 fallback 뒤에 아무것도 없으면 글자는 빈 글자다 — 거절한 모델의 글자를 쓰지 않는다', async () => {
+    const { client } = fakeClient(message({ content: [text('{"summ'), fallback('claude-opus-5-5', 'claude-opus-5')] }))
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result).toMatchObject({ ok: true, text: '' })
+  })
+
+  it('AC-510.8 fallback 블록이 없으면 모든 text를 이어 붙인다', async () => {
+    const { client } = fakeClient(message({ content: [text('{"summary":'), text('"ok"}')] }))
+    const result = await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(result).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+  })
+
+  it('AC-510.8 글자는 대신 답한 것만이어도 사용량은 AC-510.5대로 모든 시도의 합이다', async () => {
+    const { client } = fakeClient(
+      message({
+        model: 'claude-opus-5',
+        input: 1000,
+        output: 200,
+        iterations: [
+          attempt('message', 'claude-opus-5-5', 900, 40),
+          attempt('fallback_message', 'claude-opus-5', 1000, 200),
+        ],
+        content: [text('{"summ'), fallback('claude-opus-5-5', 'claude-opus-5'), text('{"summary":"ok"}')],
+      }),
+    )
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({
+      ok: true,
+      text: '{"summary":"ok"}',
+      usage: { inputTokens: 1900, outputTokens: 240, model: 'claude-opus-5' },
+    })
   })
 })

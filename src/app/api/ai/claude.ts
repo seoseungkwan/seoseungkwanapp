@@ -2,10 +2,11 @@ import 'server-only'
 import Anthropic, {
   APIConnectionError,
   APIError,
+  APIUserAbortError,
   InternalServerError,
   RateLimitError,
 } from '@anthropic-ai/sdk'
-import type { BetaMessage, BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type { BetaContentBlock, BetaMessage, BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AiErrorCode, AiUsage } from '@/types/aiReport'
 
 // Claude 부르기(spec ai-report design.md 'Claude 부르기', ADR-024). SDK는 이 폴더에서만 쓴다(ADR-004)
@@ -13,10 +14,16 @@ import type { AiErrorCode, AiUsage } from '@/types/aiReport'
 
 export const MODEL = 'claude-opus-5-5'
 export const MAX_TOKENS = 16000
+// 부르기 전체 시간 한도: 경로 maxDuration 120초에서 로그인 확인·숫자 읽기·저장 몫 20초를 남긴다
+export const CALL_TIMEOUT_MS = 100_000
 
 // 시험이 넣는 작은 모양. 진짜 Anthropic 클라이언트도 이 모양에 맞는다
 export type AnthropicLike = {
-  beta: { messages: { stream(params: BetaMessageStreamParams): { finalMessage(): Promise<BetaMessage> } } }
+  beta: {
+    messages: {
+      stream(params: BetaMessageStreamParams, options?: { signal?: AbortSignal }): { finalMessage(): Promise<BetaMessage> }
+    }
+  }
 }
 
 export type ClaudeResult =
@@ -28,49 +35,70 @@ const BUSY_TYPES: ReadonlySet<string> = new Set(['rate_limit_error', 'overloaded
 
 export async function callClaude(
   req: { system: string; user: string; schema: object },
-  deps?: { client?: AnthropicLike; apiKey?: string },
+  deps?: { client?: AnthropicLike; apiKey?: string; timeoutMs?: number },
 ): Promise<ClaudeResult> {
   const apiKey = deps?.apiKey ?? process.env.ANTHROPIC_API_KEY
   if (!apiKey) return { ok: false, code: 'E-AI-FAILED', usage: null }
 
   const client: AnthropicLike = deps?.client ?? new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1 })
 
+  // SDK timeout은 시도 한 번의 응답 머리만 잰다. 재시도·조각 받기까지 덮는 신호 하나를 넣는다
+  const signal = AbortSignal.timeout(deps?.timeoutMs ?? CALL_TIMEOUT_MS)
+
   let message: BetaMessage
   try {
     // 조각으로 받아 끝까지 모은다(긴 답의 HTTP 시간 초과를 피하려고). thinking은 보내지 않는다(Opus 5.5는 늘 adaptive)
     message = await client.beta.messages
-      .stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'medium', format: { type: 'json_schema', schema: req.schema as Record<string, unknown> } },
-        system: req.system,
-        messages: [{ role: 'user', content: req.user }],
-      })
+      .stream(
+        {
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          betas: ['server-side-fallback-2026-07-01'],
+          fallbacks: 'default',
+          output_config: { effort: 'medium', format: { type: 'json_schema', schema: req.schema as Record<string, unknown> } },
+          system: req.system,
+          messages: [{ role: 'user', content: req.user }],
+        },
+        { signal },
+      )
       .finalMessage()
   } catch (err) {
-    return { ok: false, code: errorCode(err), usage: null }
+    return { ok: false, code: errorCode(err, signal), usage: null }
   }
 
-  const usage: AiUsage = {
-    inputTokens: message.usage.input_tokens,
-    outputTokens: message.usage.output_tokens,
-    model: message.model,
-  }
+  const usage = totalUsage(message)
   if (message.stop_reason === 'refusal' || message.stop_reason === 'max_tokens') {
     return { ok: false, code: 'E-AI-FAILED', usage }
   }
-
-  let text = ''
-  for (const block of message.content) {
-    if (block.type === 'text') text += block.text
-  }
-  return { ok: true, text, usage }
+  return { ok: true, text: answerText(message.content), usage }
 }
 
-// 가장 좁은 것부터. APIConnectionTimeoutError는 APIConnectionError의 하위 클래스다
-function errorCode(err: unknown): AiErrorCode {
+// 맨 위 usage는 답을 만든 시도 몫만 담는다. 시도마다의 사용량(거절한 시도 + 대신 답한 시도)은 usage.iterations에 있다
+function totalUsage(message: BetaMessage): AiUsage {
+  const attempts: { input_tokens: number; output_tokens: number }[] = message.usage.iterations?.length
+    ? message.usage.iterations
+    : [message.usage]
+  return {
+    inputTokens: attempts.reduce((sum, a) => sum + a.input_tokens, 0),
+    outputTokens: attempts.reduce((sum, a) => sum + a.output_tokens, 0),
+    model: message.model,
+  }
+}
+
+// 조각 도중 거절이 나면 [거절한 모델의 덜 쓴 글자, fallback 블록, 대신 답한 모델의 글자] 차례로 온다. 마지막 fallback 뒤만 답이다
+function answerText(content: BetaContentBlock[]): string {
+  const lastFallback = content.findLastIndex((block) => block.type === 'fallback')
+  let text = ''
+  for (const block of content.slice(lastFallback + 1)) {
+    if (block.type === 'text') text += block.text
+  }
+  return text
+}
+
+// 위에서부터 처음 맞는 것(design '오류 나누기' 1~5). 신호를 가장 먼저 본다: APIUserAbortError는 상태·type이 없는 APIError다
+// APIConnectionTimeoutError는 APIConnectionError의 하위 클래스다
+function errorCode(err: unknown, signal: AbortSignal): AiErrorCode {
+  if (signal.aborted || err instanceof APIUserAbortError) return 'E-AI-BUSY'
   if (err instanceof APIConnectionError || err instanceof RateLimitError || err instanceof InternalServerError) {
     return 'E-AI-BUSY'
   }
