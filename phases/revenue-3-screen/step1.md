@@ -59,10 +59,10 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **시안 승인본**: 배치·문구는 `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 승인 기록 `docs/mockups/revenue/README.md`: 2026-11-01 "이대로 만들기" + 승인 뒤 바뀐 곳의 OK)의 글자 그대로다 (CLAUDE.md: 화면은 목업 승인 뒤)
-- **바뀐 시안 OK 먼저**: `docs/mockups/revenue/README.md`의 '승인 뒤 바뀐 곳' 줄(급여·비급여·기타 덩어리 · 확인 필요한 날 글자)이 OK인지 먼저 확인한다. OK 전이면 시작하지 말고 `blocked`(사유: 바뀐 매출 시안 OK 필요)
+- **바뀐 시안 OK 먼저**: `docs/mockups/revenue/README.md`의 '승인 뒤 바뀐 곳' 줄(급여·비급여·기타 덩어리 · 확인 필요한 날 글자)과 '건당 진료비' 줄이 모두 OK인지 먼저 확인한다(2026-11-01 둘 다 OK: "시안은 좋아", "건당 진료비 좋아요"). OK가 아니면 시작하지 말고 `blocked`(사유: 바뀐 매출 시안 OK 필요)
 - **모양 규칙**: `docs/UI_GUIDE.md` — 토큰 클래스와 `ds`(`components/ui/classes.ts`)만, 16진수·대괄호 임의 값·`font-bold`·`animate-*`·그라데이션·그림자 카드·상자 안 상자 없음. 말끝은 "~요". 숫자는 지어내지 않는다(자료 없으면 "–"와 "자료 없음")
 - **그래프**: HTML 막대(% 높이·폭 inline style만), 가로 눈금선만, 그림은 `aria-hidden`, 숫자는 화면 읽기 표(`sr-only`)로도. 증감은 화살표와 글자("늘어남"·"줄어듦")를 같이. `components/charts/*`는 고치지 않고 불러 쓰기만
-- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
+- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 건수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
 - **통로는 `useBridge`로만**: `lib/bridge/client.ts`를 import하지 않는다(ESLint가 막는다). Worker를 만들지 않는다(`useBridge()` 인자 없이). `revenue.days` 답은 `sync.ts`·`storage/revenue.ts`로만 넘긴다
 - **움직임**: 진행 줄은 정적인 막대(폭 %)다. `animate-*`·`@keyframes`·`transition-all` 없음
 
@@ -70,13 +70,14 @@
 
 ### 1. 부품 (`src/components/revenue/`)
 - `RevenueScreen.tsx`(`'use client'`): `useBridge()` → 상태 `ready`면 처음 한 번 `syncRevenue`(call = `bridge.call('revenue.days', …)`, store = `createRevenueStore(browser client)`) → `loadRevenue(13달)` → `buildRevenueView` → 그리기. 고른 달은 `firstMonth(today)`에서 시작, 최근 13달 안에서만 ‹ › 묶음은 `createRxGroupStore(browser client).listGroups()`로 읽는다(Phase 2 Step 4). 읽기가 던지면(`E-REVENUE-GROUP-LOAD-FAILED`) 보기 모양에 `'load-failed'`를 넘기고 제안으로 바꾸지 않는다. [묶음 고치기] 단추와 편집 화면은 다음 step(TASK-14)이 더한다
-- 덩어리: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`. 그림: `MonthBars.tsx`(13달 막대·쌓은 막대, 고른 달 `accent`·작년 같은 달 `bg-faint`·다른 달 `chart-2`, 급여 `chart-3`·비급여 `accent`·기타 `bg-line-strong`), `TreatmentBars.tsx`. 상태: `RevenueStates.tsx`(연결 필요·가져오는 중·자료 없음·도우미 옛것·확장 옛것·저장 실패·가져오지 못한 달). 이름은 바꿔도 되지만 폴더 밖으로 나가지 않는다
+- 덩어리: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerVisit.tsx`. 그림: `MonthBars.tsx`(13달 막대·쌓은 막대, 고른 달 `accent`·작년 같은 달 `bg-faint`·다른 달 `chart-2`, 급여 `chart-3`·비급여 `accent`·기타 `bg-line-strong`), `TreatmentBars.tsx`. 상태: `RevenueStates.tsx`(연결 필요·가져오는 중·자료 없음·도우미 옛것·확장 옛것·저장 실패·가져오지 못한 달). 이름은 바꿔도 되지만 폴더 밖으로 나가지 않는다
 - 그림 부품은 훅·`'use client'`가 없는 순수 부품이다(UI_GUIDE '차트')
 - 폰(768 미만): KPI 2×2, 막대 날짜 글자 하나 걸러, 순위 막대는 이름·값 한 줄 + 막대 아래 줄, 급여 표의 '지난달보다' 칸 숨김(시안)
 - `RevenueSplit.tsx`: 나눔을 못 한 날이 있으면 시안대로 덩어리 머리 아래에 안내 줄을 보인다(글자는 `view.ts`에서, AC-008.6). 덩어리 합계가 매출보다 작아도 화면에서 맞추지 않는다
+- `RevenuePerVisit.tsx`: 접수 건수를 확인하지 못한 날이 있으면 덩어리 안에 안내 줄을 보인다(글자는 `view.ts`에서, AC-008.7)
 
 ### 2. 시험
-- `parts.test.tsx`: 보기 모양을 넣어 그린 마크업에 시안 글자·막대 % style·`aria-hidden`·`sr-only` 표·화살표와 "늘어남" 글자가 있다, 나눔을 못 한 날이 있는 보기 모양이면 안내 글자와 '합계' 줄이 있다(AC-009.1·009.5)
+- `parts.test.tsx`: 보기 모양을 넣어 그린 마크업에 시안 글자·막대 % style·`aria-hidden`·`sr-only` 표·화살표와 "늘어남" 글자가 있다, 나눔을 못 한 날이 있는 보기 모양이면 안내 글자와 '합계' 줄이 있다, 접수 건수를 확인하지 못한 날이 있는 보기 모양이면 건당 진료비 덩어리에 안내 글자가 있다(AC-009.1·009.5)
 - `RevenueScreen.test.tsx`: 가짜 `useBridge`·가짜 store로 — 연결 `ready` → 가져오기 → 진행 글자 → 숫자(AC-009.2), 확장 없음 + 줄 있음 → [다시 가져오기] 없음·"의원 PC에서" 글자(AC-009.3), 줄 없음 → '비트 PC 연결 필요'와 `/claim/setup` 링크(AC-009.3), 옛 도우미·옛 확장(`E-BRIDGE-REJECTED`) → 각 '새 버전' 상태(일반 오류 카드·[다시 확인]이 아님), 저장 실패 [다시 저장], 가져오지 못한 달 글자(AC-009.4)
 - 기존 화면 규칙 시험(`classes.test.ts`·`rules.test.ts`·상자 겹침)이 새 파일을 자동으로 보고 통과해야 한다(AC-009.5)
 - `AC-009.5` 이름을 단 시험: 폰 단추·달 고르기 단추에 44px 누름 클래스(`h-11`·`min-h-11` 또는 `ds`의 폰 크기), 배치가 `md:`(768)에서 바뀌는 클래스, `sm:`·`xl:` 없음. 390·768·1440 가로 스크롤은 E2E(AC-011.1)와 Phase 끝 화면 캡처(메인 세션)에서 본다
@@ -117,7 +118,7 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- README의 '승인 뒤 바뀐 곳' 줄이 OK 전인데 만들지 마라. 이유: 그 부분은 사용자가 처음 승인한 뒤 다시 그려서 아직 확인받지 않았다(CLAUDE.md: 화면은 목업 승인 뒤)
+- README의 '승인 뒤 바뀐 곳' 줄이나 '건당 진료비' 줄이 OK가 아닌데 만들지 마라. 이유: 그 부분은 처음 승인 뒤 다시 그린 곳이라 따로 OK를 받는다(CLAUDE.md: 화면은 목업 승인 뒤)
 - `src/app/(app)/revenue/page.tsx`를 고치지 마라. 이유: 준비 중 목록과 함께 TASK-10이 바꾼다. 여기서 바꾸면 준비 중 시험이 깨진다
 - 차트 라이브러리·새 npm 패키지를 넣지 마라. 이유: 그래프는 HTML 막대다(UI_GUIDE '차트')
 - 빈 그래프 틀이나 0으로 채운 막대를 그리지 마라. 이유: 자료가 없으면 조용한 빈 상태다(UI_GUIDE '빈 상태')

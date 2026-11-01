@@ -3,14 +3,14 @@
 > **TASK-2** 명령 표 `revenue.days` · 답 검사 · **REQ-002** · AC-002.1 ~ AC-002.4
 > Phase 1 `revenue-1-read` · Step 1 — `specs/revenue/tasks.md`
 > 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-2 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> **다시 열림(2026-11-01 "나눔만 비워")**: 아래 파일은 이미 있다(`copay`·`otherTotal`·아홉 칸 짝까지). 새로 만들지 말고 **시험부터 고쳐 실패를 본 뒤**(RED 기록) 구현한다: `revenueResult.test.ts`·`revenueCall.test.ts`의 맞는 답에 `splitUnconfirmed`를 넣고 아래 4의 사례를 더한다. 그다음 `src/types/revenue.ts`의 `RevenueDayRow`·`REVENUE_DAY_KEYS`에 `splitUnconfirmed`를 `unconfirmed` 뒤에 더하고 `REVENUE_SPLIT_KEYS`·`REVENUE_KEPT_KEYS`를 더한다(아래 2). `unconfirmed` 주석과 `REVENUE_MONEY_KEYS` 주석을 design.md 5-2의 뜻으로 고친다. `revenueResult.ts`는 `COUNT_KEYS`에서 새 칸을 빼고 `isDayRow`가 두 표시의 짝을 정확히 보게 하며 머리 주석도 맞춘다. 기존 칸 이름은 바꾸지 않는다. 이미 맞는 곳(명령 표·`bridge.ts`·`protocol.ts`)은 고치지 않는다. 명세가 바뀌어 기존 시험의 기대값을 바꾸는 것은 약하게 만드는 것이 아니다.
+> **다시 열림(2026-11-01 "건당 진료비 하나로")**: 아래 파일은 이미 있다. 새로 만들지 말고 **시험부터 고쳐 실패를 본 뒤**(RED 기록) 구현한다: `revenueResult.test.ts`·`revenueCall.test.ts`의 맞는 답에서 `patientsToDate`를 빼고, 이 칸이 남아 있는 답은 정해 둔 칸 밖이라 거부되는 사례를 더한다(AC-002.2·002.3). 그다음 `src/types/revenue.ts`의 `RevenueDayRow`·`REVENUE_DAY_KEYS`에서 이 칸을 뺀다(날 칸 16 → 15). `revenueResult.ts`의 `COUNT_KEYS`는 `REVENUE_DAY_KEYS`에서 오므로 더 고칠 것이 없는지만 본다. 이미 맞는 곳(명령 표·`bridge.ts`·`protocol.ts`)은 고치지 않는다. 명세가 바뀌어 기존 시험의 기대값을 바꾸는 것은 약하게 만드는 것이 아니다. **순서**: TASK-1·TASK-2·TASK-3·TASK-5는 함께 돌려도 된다(`specs/revenue/tasks.md` 머리말의 다시 여는 순서). 다만 `src/types/revenue.ts`를 고치기 전에 TASK-7이 RED를 기록했는지 확인한다(`saveMonth`가 칸을 `REVENUE_DAY_KEYS`에서 가져오므로 TASK-2 뒤에는 실패를 볼 수 없다). `specs/revenue/tdd-log.jsonl`에는 지난 승인 때의 TASK-7 RED가 이미 있으므로, 이번 승인(`approval.json`의 `approved_at`) 뒤의 TASK-7 RED가 있는지 Read로 본다(Bash로 이 파일 이름을 쓰면 `guard-bash` 훅이 막는다). 없으면 `src/types/revenue.ts`를 고치지 말고 `blocked`(사유: TASK-7 RED 먼저). TASK-4는 이 변경이 작업 트리에 들어온 뒤에 시작하고, TASK-7도 그때 끝난다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-002에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-002.1**: `commands.json`에 `revenue.days`(`patient: false`, `maxDays: 31`, `args {from: date, to: date}`). 웹 `SMALL_COMMANDS`와 도우미 명령 표 시험이 숫자 명령으로 안다(명령 수를 고정 숫자로 시험하지 않는다)
-- **AC-002.2**: `checkResult('revenue.days', data)`는 칸이 정확히 `days`·`codes`일 때만 통과. days 줄 = `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`copay`·`otherTotal`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`·`splitUnconfirmed`(design.md 5절 표, `copay`·`otherTotal`·`splitUnconfirmed`는 2026-11-01 더함), 날짜 오름차순·하루도 빠짐없이·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, 두 표시는 불리언이고 둘 다 `true`일 수 없음. `unconfirmed: true`면 금액 아홉 칸(`total`~`receivableIn`) 모두 `null`, `splitUnconfirmed: true`면 나눔 네 칸(`insurer`·`noncovered`·`copay`·`otherTotal`) 모두 `null`이고 남는 다섯 칸(`total`·`cash`·`card`·`transfer`·`receivableIn`) 모두 숫자, 둘 다 `false`면 아홉 칸 모두 숫자. codes 줄 = `code`(`^[0-9A-Za-z가-힣_.\-]{1,30}$`)·`name`(1~100자, 줄바꿈·제어 문자 없음, 또는 `null`)·`count`(0 이상 정수)·`amount`(0 이상 안전한 정수 또는 `null`), 1,000개 이하·중복 없음. 어긋나면 `E-BRIDGE-BAD-REPLY`
+- **AC-002.2**: `checkResult('revenue.days', data)`는 칸이 정확히 `days`·`codes`일 때만 통과. days 줄 = `date`·`visits`·`newPatients`·`returnVisits`·`total`·`insurer`·`noncovered`·`copay`·`otherTotal`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`·`splitUnconfirmed`(design.md 5절 표, `copay`·`otherTotal`·`splitUnconfirmed`는 2026-11-01 더함), 날짜 오름차순·하루도 빠짐없이·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, 두 표시는 불리언이고 둘 다 `true`일 수 없음. `unconfirmed: true`면 금액 아홉 칸(`total`~`receivableIn`) 모두 `null`, `splitUnconfirmed: true`면 나눔 네 칸(`insurer`·`noncovered`·`copay`·`otherTotal`) 모두 `null`이고 남는 다섯 칸(`total`·`cash`·`card`·`transfer`·`receivableIn`) 모두 숫자, 둘 다 `false`면 아홉 칸 모두 숫자. codes 줄 = `code`(`^[0-9A-Za-z가-힣_.\-]{1,30}$`)·`name`(1~100자, 줄바꿈·제어 문자 없음, 또는 `null`)·`count`(0 이상 정수)·`amount`(0 이상 안전한 정수 또는 `null`), 1,000개 이하·중복 없음. 어긋나면 `E-BRIDGE-BAD-REPLY`
 - **AC-002.3**: 정해 둔 칸 밖의 칸(`chart`·`name` 등)이 하나라도 있거나 금액이 글자·소수·음수면 통과하지 않는다
 - **AC-002.4**: `connectScreenBridge({runtime})`(Worker 없음)로 `call('revenue.days', {from, to})` → 봉투 하나를 보내고 검사한 답을 돌려준다. 조각을 받지 않는다
 
@@ -52,7 +52,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
+- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 건수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
 - **통로 코드는 환자 자료 구역**: `lib/bridge`는 네트워크·console·브라우저 저장소·React/Next/supabase import를 쓰지 않는다. `revenueResult.ts`도 같다(ESLint가 막는다, ADR-020)
 - **더하기만**: 기존 명령·`protocol`(1)·`checkResult`의 다른 case·`client.ts`를 바꾸지 않는다. 다른 기능(청구 사전점검)과 겹치는 파일이라 줄을 더하기만 한다(design.md 11절)
 
@@ -66,12 +66,12 @@
 ```ts
 // src/types/revenue.ts (새 파일)
 export type RevenueDayRow = {
-  date: string; visits: number | null; newPatients: number | null; returnVisits: number | null; patientsToDate: number | null
+  date: string; visits: number | null; newPatients: number | null; returnVisits: number | null
   total: number | null; insurer: number | null; noncovered: number | null; copay: number | null; otherTotal: number | null; cash: number | null; card: number | null; transfer: number | null; receivableIn: number | null
   unconfirmed: boolean
   splitUnconfirmed: boolean
 }
-export const REVENUE_DAY_KEYS = ['date', 'visits', 'newPatients', 'returnVisits', 'patientsToDate', 'total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn', 'unconfirmed', 'splitUnconfirmed'] as const
+export const REVENUE_DAY_KEYS = ['date', 'visits', 'newPatients', 'returnVisits', 'total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn', 'unconfirmed', 'splitUnconfirmed'] as const
 export const REVENUE_MONEY_KEYS = ['total', 'insurer', 'noncovered', 'copay', 'otherTotal', 'cash', 'card', 'transfer', 'receivableIn'] as const   // unconfirmed면 모두 null
 export const REVENUE_SPLIT_KEYS = ['insurer', 'noncovered', 'copay', 'otherTotal'] as const   // splitUnconfirmed면 이 넷만 null
 export const REVENUE_KEPT_KEYS = ['total', 'cash', 'card', 'transfer', 'receivableIn'] as const   // splitUnconfirmed여도 숫자
@@ -116,11 +116,10 @@ npx vitest run src/lib/bridge                                                   
 export PATH="$HOME/.dotnet:$PATH" && npx vitest run helper/tests/protocol.dotnet.test.ts     # 도우미 명령 표에 revenue.days
 npx vitest run extension
 python3 ~/.claude/harness/bin/tdd-run TASK-2 --expect green
-npm run lint && npm test
-python3 ~/.claude/harness/bin/verify
+npm run lint
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
+- 위 커맨드가 모두 에러 없이 끝나야 한다. 전체 `verify`(SDD 사후 점검 + lint → build → test)와 전체 `npm test`는 이번 다시 열기에서 Phase 2 끝에만 돈다. TASK-2·TASK-5·TASK-7이 모두 들어오기 전에는 타입 검사가 통과할 수 없다(tasks.md 머리말의 다시 여는 순서)
 
 ## 검증 절차
 

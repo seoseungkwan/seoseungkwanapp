@@ -3,12 +3,13 @@
 > **TASK-4** 매출 표 (migration) · **REQ-004** · AC-004.1 ~ AC-004.6
 > Phase 2 `revenue-2-numbers` · Step 0 — `specs/revenue/tasks.md`
 > 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> **다시 열림(2026-11-01 "건당 진료비 하나로")**: migration과 시험은 이미 있다. 새로 만들지 말고 **시험부터 고쳐 실패를 본 뒤**(RED 기록) `sales_days`에서 `patients_to_date`를 뺀다(칸 정의·칸 단위 `grant`·`열여섯 칸` 주석, 표 18칸 → 17칸, 보내는 칸 16 → 15). 실제 Supabase에 붙인 적이 없으므로 파일을 그대로 고치고 `alter`를 쓰지 않는다. `rx_groups`·`save_rx_groups`와, design.md 6절 SQL 글자와 달라도 이미 검토를 지난 곳(`codes` 배열 검사·함수 권한 회수·쓰지 않는 `n`)은 그대로 둔다. 명세가 바뀌어 기존 시험의 기대값을 바꾸는 것은 약하게 만드는 것이 아니다. **순서**: TASK-2의 계약 변경이 작업 트리에 들어온 뒤에 시작한다(`revenue.rls.test.ts`의 칸 목록 시험이 `REVENUE_DAY_KEYS`를 읽는다, `specs/revenue/tasks.md` 머리말의 다시 여는 순서).
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-004에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-004.1**: `supabase/migrations/20261101000400_revenue.sql`을 PGlite에서 auth migration 뒤에 실행 → `sales_days`(`hospital_id`·`day`·`visits`·`new_patients`·`return_visits`·`patients_to_date`·`total`·`insurer`·`noncovered`·`copay`·`other_total`·`cash`·`card`·`transfer`·`receivable_in`·`unconfirmed`·`split_unconfirmed`·`fetched_at`)·`sales_codes`(`hospital_id`·`month`·`code`·`name`·`count`·`amount`·`fetched_at`)·`rx_groups`(`id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`), 기본 키, RLS 켜짐. 칸 목록은 정확히 이것뿐
+- **AC-004.1**: `supabase/migrations/20261101000400_revenue.sql`을 PGlite에서 auth migration 뒤에 실행 → `sales_days`(`hospital_id`·`day`·`visits`·`new_patients`·`return_visits`·`total`·`insurer`·`noncovered`·`copay`·`other_total`·`cash`·`card`·`transfer`·`receivable_in`·`unconfirmed`·`split_unconfirmed`·`fetched_at`)·`sales_codes`(`hospital_id`·`month`·`code`·`name`·`count`·`amount`·`fetched_at`)·`rx_groups`(`id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`), 기본 키, RLS 켜짐. 칸 목록은 정확히 이것뿐
 - **AC-004.2**: anon 거부. authenticated는 승인된 자기 병원 줄만: `sales_days` 읽기·넣기·고치기·지우기, `sales_codes` 읽기·넣기·지우기. 남의 병원 줄 안 보임·안 지워짐, `hospital_id` 직접 넣기·바꾸기 거부, 승인 대기·거절은 아무것도 못 함
 - **AC-004.3**: DB 제약: 0 이상 정수, `unconfirmed`·`split_unconfirmed`는 둘 다 참일 수 없음, `unconfirmed`면 금액 아홉 칸 모두 null, `split_unconfirmed`면 `insurer`·`noncovered`·`copay`·`other_total` 넷만 null이고 나머지 다섯은 있음, 둘 다 거짓이면 아홉 칸 모두 있음, `day` ≥ 2000-01-01, `month`는 1일, `code` 모양, `sales_codes.name` 1~100자 또는 null, `rx_groups.name` 앞뒤 공백 없는 1~30자·제어 문자 없음·숫자 6개 이상 이어지지 않음·병원 안에서 겹치지 않음, `rx_groups.codes` 1,000개 이하·`null` 칸 없음·모양 맞음·`_REST` 없음, `sort_order` 0~999
 - **AC-004.4**: `hospital_id`를 빼고 넣으면 `public.my_hospital_id()`가 채우고, 고치면 `fetched_at`이 DB 시각으로 바뀐다. 다른 갈래가 같은 글자의 `my_hospital_id()`를 먼저 만든 DB에서도 migration이 오류 없이 된다
@@ -47,7 +48,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
+- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 건수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
 - **RLS와 권한 회수**: 두 표 모두 RLS를 켜고, `anon`·`authenticated` 권한을 먼저 모두 거둔 뒤 필요한 것만 칸 단위로 준다. 사용자는 자기 병원·승인 상태를 바꿀 수 없다. 시험으로 증명한다 (CLAUDE.md 보안 규칙)
 - **같은 효과면 DB 제약**: 금액 0 이상·확인 필요 짝·달 1일·코드 모양은 CHECK로 막는다 (plan.md §0)
 - **실제 Supabase에 붙여 넣지 않는다**: 이 step은 파일과 PGlite 시험만 한다. 붙여 넣기는 사용자 OK를 받은 뒤 운영자가 SQL 편집기에서 한다(design.md 6절). 끝나면 summary에 "실제 Supabase 붙여 넣기 사용자 OK 필요"라고 적는다
@@ -78,11 +79,10 @@
 npx vitest run supabase/revenue.rls.test.ts   # AC-004.1~AC-004.6
 npx vitest run supabase/rls.test.ts           # auth 표 시험 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-4 --expect green
-npm run lint && npm test
-python3 ~/.claude/harness/bin/verify
+npm run lint
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
+- 위 커맨드가 모두 에러 없이 끝나야 한다. 전체 `verify`(SDD 사후 점검 + lint → build → test)와 전체 `npm test`는 이번 다시 열기에서 Phase 2 끝에만 돈다. TASK-2·TASK-5·TASK-7이 모두 들어오기 전에는 타입 검사가 통과할 수 없다(tasks.md 머리말의 다시 여는 순서)
 
 ## 검증 절차
 

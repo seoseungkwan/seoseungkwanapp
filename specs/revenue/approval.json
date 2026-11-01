@@ -1,15 +1,16 @@
 {
   "status": "approved",
   "feature": "revenue",
-  "approved_at": "2026-11-01T10:41:29Z",
+  "approved_at": "2026-11-01T13:37:59Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "3c7d52275db8413a0d62cea51360f20fc21ae9cd2dcad569189e818d40f6fab1",
+  "spec_sha256": "a150c8d275abd50e605ba287e92b635e3106a0757570a8a12ad0a2e60c6928cd",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/UI_GUIDE.md",
     "docs/revenue/pc-check.md",
+    "docs/tab-frame/plan.md",
     "e2e/lib/revenueFakeBridge.test.ts",
     "e2e/lib/revenueFakeBridge.ts",
     "e2e/revenue.spec.ts",

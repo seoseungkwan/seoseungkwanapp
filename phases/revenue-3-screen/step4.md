@@ -48,7 +48,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
+- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 건수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
 - **시험 로그인은 시험 코드만**: 앱 코드에 시험용 로그인·우회 길을 만들지 않는다. 세션 쿠키는 `e2e/lib/session.ts`로 넣는다. 시험 계정은 `.env.local`에만 (CLAUDE.md)
 - **산출물에 비밀 없음**: trace·스크린샷·네트워크 기록에 쿠키·토큰을 남기지 않는다(`trace: 'off'`)
 - **먼저 확인**: 실제 Supabase에 `20261101000400_revenue.sql`이 붙어 있고 `.env.local`에 E2E 값이 있어야 한다. 없으면 `blocked`(사유: "매출 표를 실제 Supabase에 붙여 넣기·E2E 값 필요 — 사용자 할 일")
@@ -56,12 +56,12 @@
 ## 작업
 
 ### 1. 가짜 통로 (`e2e/lib/revenueFakeBridge.ts`)
-- `page.addInitScript`로 넣을 글자를 만드는 순수 함수: `window.chrome.runtime.connect(EXTENSION_ID)`가 가짜 포트를 주고, `hello` → 버전 맞는 답, `revenue.days` → 가짜 숫자(정해 둔 칸만) 답. 처음 고른 달의 답에는 `splitUnconfirmed: true`인 날을 하나 넣는다(나눔 네 칸 `null`, `total`·수납 칸은 숫자). 단 한 달(예: 가장 오래된 달)의 답에는 일부러 심은 가짜 환자 자료를 섞는다: 날 줄 하나에 정해 둔 칸 밖의 `chart: '900001'`·`patientName: '가상환자01'`. 이 달은 웹 검사(`E-BRIDGE-BAD-REPLY`)로 거부돼 "가져오지 못한 달"이 된다. 확장 ID·protocol·버전은 `src/lib/bridge/commands.json`·`versions.ts`에서 읽는다. 심은 값은 `PLANTED = { chart: '900001', name: '가상환자01' }` 상수 하나로 시험과 나눠 쓴다
+- `page.addInitScript`로 넣을 글자를 만드는 순수 함수: `window.chrome.runtime.connect(EXTENSION_ID)`가 가짜 포트를 주고, `hello` → 버전 맞는 답, `revenue.days` → 가짜 숫자(정해 둔 칸만, 날 줄은 `REVENUE_DAY_KEYS` 열다섯 칸) 답. 처음 고른 달의 답에는 `splitUnconfirmed: true`인 날을 하나 넣는다(나눔 네 칸 `null`, `total`·수납 칸은 숫자). 단 한 달(예: 가장 오래된 달)의 답에는 일부러 심은 가짜 환자 자료를 섞는다: 날 줄 하나에 정해 둔 칸 밖의 `chart: '900001'`·`patientName: '가상환자01'`. 이 달은 웹 검사(`E-BRIDGE-BAD-REPLY`)로 거부돼 "가져오지 못한 달"이 된다. 확장 ID·protocol·버전은 `src/lib/bridge/commands.json`·`versions.ts`에서 읽는다. 심은 값은 `PLANTED = { chart: '900001', name: '가상환자01' }` 상수 하나로 시험과 나눠 쓴다
 - `revenueFakeBridge.test.ts`(vitest): 보통 달의 답(`splitUnconfirmed`인 날이 든 달 포함)은 `isRevenueDays`를 통과, 심은 달의 답은 통과하지 못함(그래서 화면에 닿지 않음)
 
 ### 2. `e2e/revenue.spec.ts` (Playwright)
 - 시작 전 정리: 시험 계정 세션으로 `sales_days`·`sales_codes`·`rx_groups`의 내 줄을 지운다(RLS의 지우기 권한, AC-004.2). 확장 없음 390·768·1440: 줄 없음 → '비트 PC 연결 필요', `scrollWidth <= innerWidth`(AC-011.1·AC-009.5)
-- 가짜 통로 1440: 가져오기 → 숫자 보임(심은 달은 "가져오지 못한 달", 고른 달의 매출 합계에 `splitUnconfirmed`인 날의 `total`이 들어 있고 급여·비급여·기타에 '나눔을 못 해서' 안내) → [묶음 고치기]에서 묶음 이름 하나를 바꾸고 처방 하나를 옮겨 [저장] → 치료별 매출에 바뀐 묶음. `page.on('request')`로 나간 요청을 모두 가로채 ① Supabase 요청의 표·함수 이름이 `sales_days`·`sales_codes`·`rx_groups`·`save_rx_groups`뿐인지 ② 본문(JSON)의 칸 이름이 표마다 정해 둔 목록 안인지(`sales_days` 열여섯 칸, `sales_codes`는 `month`·`code`·`name`·`count`·`amount`, `rx_groups` 직접 요청은 `id`·`name`·`codes`·`sort_order`, `save_rx_groups` 호출은 맨 위 칸이 `groups` 하나이고 그 배열의 묶음마다 `id`·`name`·`codes`·`sort_order`만 — 이 목록이 사람 이름 칸 같은 것을 막는다. `name` 칸 자체는 처방·묶음 이름이라 허용) ③ 본문 글자 어디에도 심은 값(`900001`·`가상환자01`)·전화번호(`010-\d{3,4}-\d{4}`)·주민번호(`\d{6}-\d{7}`)·파일 이름(`.xls`·`.xlsx`·`.csv`)이 없는지(AC-011.2). 6자리 이상 숫자 글자를 차트번호로 보지 않는다(약 코드가 9자리 숫자일 수 있다) — 차트번호는 심은 값으로만 찾는다
+- 가짜 통로 1440: 가져오기 → 숫자 보임(심은 달은 "가져오지 못한 달", 고른 달의 매출 합계에 `splitUnconfirmed`인 날의 `total`이 들어 있고 급여·비급여·기타에 '나눔을 못 해서' 안내) → [묶음 고치기]에서 묶음 이름 하나를 바꾸고 처방 하나를 옮겨 [저장] → 치료별 매출에 바뀐 묶음. `page.on('request')`로 나간 요청을 모두 가로채 ① Supabase 요청의 표·함수 이름이 `sales_days`·`sales_codes`·`rx_groups`·`save_rx_groups`뿐인지 ② 본문(JSON)의 칸 이름이 표마다 정해 둔 목록 안인지(`sales_days` 열다섯 칸, `sales_codes`는 `month`·`code`·`name`·`count`·`amount`, `rx_groups` 직접 요청은 `id`·`name`·`codes`·`sort_order`, `save_rx_groups` 호출은 맨 위 칸이 `groups` 하나이고 그 배열의 묶음마다 `id`·`name`·`codes`·`sort_order`만 — 이 목록이 사람 이름 칸 같은 것을 막는다. `name` 칸 자체는 처방·묶음 이름이라 허용) ③ 본문 글자 어디에도 심은 값(`900001`·`가상환자01`)·전화번호(`010-\d{3,4}-\d{4}`)·주민번호(`\d{6}-\d{7}`)·파일 이름(`.xls`·`.xlsx`·`.csv`)이 없는지(AC-011.2). 6자리 이상 숫자 글자를 차트번호로 보지 않는다(약 코드가 9자리 숫자일 수 있다) — 차트번호는 심은 값으로만 찾는다
 - 가로채기 규칙(갈래 규칙 C11): `request.url()`의 표·함수 이름과 `request.postData()` 본문만 본다. `headers()`·쿠키·`apikey`·`authorization` 값을 변수·로그·첨부에 담지 않는다. 걸리면 값이 아니라 종류 이름(`'table'`·`'field'`·`'planted-chart'`·`'planted-name'`·`'phone'`·`'rrn'`·`'file'`)만 `hits`에 넣고 `expect(hits).toEqual([])`로 끝낸다. 다시 읽기(AC-011.4)도 같은 ②·③ 규칙
 - 같은 계정 390 다시: 저장된 숫자 + "의원 PC에서" + [다시 가져오기] 없음(AC-011.3)
 - 저장된 줄 다시 읽기: 시험 계정 세션으로 `sales_days`·`sales_codes`·`rx_groups`를 select해 칸 이름과 값을 같은 금지 모양으로 검사(AC-011.4, 갈래 규칙 C7)

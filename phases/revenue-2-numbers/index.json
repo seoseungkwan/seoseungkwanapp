@@ -5,14 +5,14 @@
     {
       "step": 0,
       "name": "revenue-tables",
-      "status": "completed",
-      "summary": "supabase/migrations/20261101000400_revenue.sql + supabase/revenue.rls.test.ts: 표 sales_days·sales_codes·rx_groups, save_rx_groups(jsonb). 실제 Supabase 붙여 넣기 사용자 OK 필요. design 6절 SQL과 다른 점: save_rx_groups가 codes 배열이 아니면 거부(빠지면 처방 목록이 조용히 지워지던 빈틈), rx_group_codes_ok는 authenticated만 실행, touch_updated_at 기본 권한은 C1 글자를 건드리지 않고 따로 회수, 쓰지 않는 n 뺌. 합칠 때: 사전점검 갈래도 touch_updated_at을 만들어 나중에 붙인 쪽 정의가 남는다(트리거는 어느 쪽이든 돈다)"
+      "status": "pending",
+      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patients_to_date·perPatient를 빼고 건당 진료비로 바꾼다. 이전 요약은 git 기록에 있다"
     },
     {
       "step": 1,
       "name": "revenue-summary",
-      "status": "completed",
-      "summary": "src/lib/revenue/summary.ts: splitDay·sumPeriod·periodsFor·firstMonth·compare·monthSeries·perPatient. sumPeriod는 total(매출)과 splitTotal(나눔 합), uncheckedDays·noSplitDays를 따로 낸다. MonthPoint는 명세에 없어 납작하게 정함: {month, partial, total, covered, noncovered, other, visits, patients, perPatient}, 자료 없는 달은 숫자 칸 모두 null. visits null이고 금액이 모두 0인 날은 자료로 본다. TASK-8 주의: 모든 날이 unconfirmed인 달은 total 0이라 compare가 −100을 낸다"
+      "status": "pending",
+      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patients_to_date·perPatient를 빼고 건당 진료비로 바꾼다. 이전 요약은 git 기록에 있다"
     },
     {
       "step": 2,
@@ -23,8 +23,8 @@
     {
       "step": 3,
       "name": "revenue-sync",
-      "status": "completed",
-      "summary": "src/lib/revenue/sync.ts(planFetch·syncRevenue) + src/lib/storage/revenue.ts(createRevenueStore: saveMonth·loadRevenue) + E-REVENUE-SAVE-FAILED. TASK-9 주의: syncRevenue는 months가 없으면 savedDays가 필수라(design 7절에 없음, planFetch에 필요) step1의 순서와 달리 loadRevenue를 먼저 부른다. 읽기 실패와 번호 없는 오류는 E-PAGE-FAILED(명세에 번호 없음). months에서 아직 올 날이 없는 달은 뺀다(도우미가 from>to를 막음). E-BRIDGE-REJECTED는 명세대로 extensionOld인데 통로가 connecting이어도 나오므로 화면은 통로가 ready일 때만 부른다. 명세 빈틈: 이미 저장한 달을 [다시 가져오기]할 때 코드 지우기 뒤 넣기가 실패하면 날 줄은 있고 코드 줄만 비고 planFetch가 복구하지 않는다(그 자리의 failed 알림과 재시도만 있음)"
+      "status": "pending",
+      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patients_to_date·perPatient를 빼고 건당 진료비로 바꾼다. 이전 요약은 git 기록에 있다"
     },
     {
       "step": 4,

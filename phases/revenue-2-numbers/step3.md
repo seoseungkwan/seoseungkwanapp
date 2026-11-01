@@ -3,13 +3,14 @@
 > **TASK-7** 저장·가져오기 · **REQ-007** · AC-007.1 ~ AC-007.5
 > Phase 2 `revenue-2-numbers` · Step 3 — `specs/revenue/tasks.md`
 > 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-7 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> **다시 열림(2026-11-01 "건당 진료비 하나로")**: `sync.ts`·`storage/revenue.ts`와 시험은 이미 있다. 날 칸이 열다섯이 된다(TASK-2). `saveMonth`·`loadRevenue`의 칸 목록은 `REVENUE_DAY_KEYS`에서 오므로 따로 적은 칸 이름이 없다. 시험의 칸 목록·칸 수(`patientsToDate`·`patients_to_date` 줄, '열여섯')와, `saveMonth` 1일 확인의 주석(까닭이 `sales_codes`가 그 달 전체 합이어야 해서로 바뀐다)을 고친다. 1일 확인 자체는 그대로 둔다(AC-007.2). 읽기 실패의 `E-PAGE-FAILED`처럼 이미 검토를 지난 곳은 그대로 둔다. 명세가 바뀌어 기존 시험의 기대값을 바꾸는 것은 약하게 만드는 것이 아니다. **순서**: TASK-2의 구현이 들어오기 **전에** 시험을 고치고 `tdd-run TASK-7 --expect red`로 RED를 기록한다(`saveMonth`가 칸을 `REVENUE_DAY_KEYS`에서 가져오므로 TASK-2 뒤에는 실패를 볼 수 없다). TASK-2의 계약 변경이 작업 트리에 들어온 뒤 주석을 고치고 green을 기록해 끝낸다(`specs/revenue/tasks.md` 머리말의 다시 여는 순서).
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-007에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-007.1**: `planFetch(today, savedDays)`: 어제가 속한 달부터 거꾸로 13달 가운데 와야 할 날이 하나라도 없는 달을 **최근 달부터**, 달마다 1일 ~ 와야 할 마지막 날(31일 이하). 다 저장된 달은 빼기
-- **AC-007.2**: `saveMonth(month, result)`: 답 첫 날이 그 달 1일인지 확인(아니면 `E-REVENUE-SAVE-FAILED`) → 그 달 `sales_codes` 지우기 → 넣기(`month`·`code`·`name`·`count`·`amount`) → **마지막에** `sales_days` upsert(`hospital_id`+`day`, 열여섯 칸). 보내는 칸은 정해 둔 것뿐. 실패하면 `E-REVENUE-SAVE-FAILED`
+- **AC-007.2**: `saveMonth(month, result)`: 답 첫 날이 그 달 1일인지 확인(아니면 `E-REVENUE-SAVE-FAILED`, `sales_codes` 합계가 그 달 전체여야 해서) → 그 달 `sales_codes` 지우기 → 넣기(`month`·`code`·`name`·`count`·`amount`) → **마지막에** `sales_days` upsert(`hospital_id`+`day`, 열다섯 칸). 보내는 칸은 정해 둔 것뿐. 실패하면 `E-REVENUE-SAVE-FAILED`
 - **AC-007.3**: `syncRevenue`: 달마다 가져오기 → 저장, `onProgress`. 그 달의 읽기·검사·저장 오류(`E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`)는 `failed`에 넣고 계속, 그 밖의 번호는 `stopped`로 멈춤. `months`면 그 달만. `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED` → `extensionOld`
 - **AC-007.4**: `loadRevenue(fromMonth, toMonth)`: 그 달들의 날 줄·코드 줄(이름 포함)과 가장 늦은 `fetched_at`
 - **AC-007.5**: `E-REVENUE-SAVE-FAILED`의 '무엇이 · 어떻게 고치나' 문구가 `lib/errors.ts`에
@@ -54,7 +55,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
+- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 건수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
 - **날짜**: 한국 날짜 계산은 `src/lib/analytics/dates.ts`의 함수만 쓴다. `new Date()` 산수를 새로 만들지 않는다 (CLAUDE.md)
 - **서버 코드 없음**: 저장은 브라우저 Supabase 클라이언트 + RLS로만 한다. `app/api/*`를 만들지 않는다 (ADR-004)
 - **보내는 모양을 정해 둔다**: 저장 줄은 정해 둔 칸만 새 객체로 만든다(받은 객체를 그대로 펼쳐 보내지 않는다). `hospital_id`·`fetched_at`은 보내지 않는다(DB가 채운다)
@@ -69,8 +70,8 @@
 
 ### 2. `src/lib/storage/revenue.ts`
 - `createRevenueStore(client)` → `{ saveMonth, loadRevenue }`(design.md 8절). `client`는 인자로 받는다(시험은 가짜 클라이언트로 부른 표 이름·칸·순서를 기록)
-- `saveMonth`: 답 첫 날이 그 달 1일이 아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`(`patientsToDate`가 1일부터 센 값이어야 한다). 순서는 ① 그 달 `sales_codes` 지우기 ② 코드 줄 넣기(`month` = `YYYY-MM-01`, `code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert `{ onConflict: 'hospital_id,day' }`(camelCase → snake_case, 칸 목록은 `REVENUE_DAY_KEYS`에서). 코드 쪽이 실패하면 날 줄이 없어 그 달을 다시 가져온다. 오류가 하나라도 있으면 `E-REVENUE-SAVE-FAILED`를 던진다(Supabase 오류 내용은 버린다)
-- `loadRevenue`: `sales_days`(`day` 범위)·`sales_codes`(`month` 범위)를 읽고 `fetched_at` 가장 늦은 값. 칸을 고른다(`sales_days` 열여섯 칸 + `fetched_at`, snake_case → camelCase로 돌려 `RevenueDayRow`)
+- `saveMonth`: 답 첫 날이 그 달 1일이 아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`(그 달 코드 줄을 지우고 새로 넣으므로 `sales_codes` 합계가 그 달 전체여야 한다). 순서는 ① 그 달 `sales_codes` 지우기 ② 코드 줄 넣기(`month` = `YYYY-MM-01`, `code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert `{ onConflict: 'hospital_id,day' }`(camelCase → snake_case, 칸 목록은 `REVENUE_DAY_KEYS`에서). 코드 쪽이 실패하면 날 줄이 없어 그 달을 다시 가져온다. 오류가 하나라도 있으면 `E-REVENUE-SAVE-FAILED`를 던진다(Supabase 오류 내용은 버린다)
+- `loadRevenue`: `sales_days`(`day` 범위)·`sales_codes`(`month` 범위)를 읽고 `fetched_at` 가장 늦은 값. 칸을 고른다(`sales_days` 열다섯 칸 + `fetched_at`, snake_case → camelCase로 돌려 `RevenueDayRow`)
 
 ### 3. 오류 문구
 - `E-REVENUE-SAVE-FAILED`: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"(design.md 8절)
@@ -93,11 +94,10 @@
 ```bash
 npx vitest run src/lib/revenue/sync.test.ts src/lib/storage/revenue.test.ts src/lib/errors.test.ts   # AC-007.1~AC-007.5
 python3 ~/.claude/harness/bin/tdd-run TASK-7 --expect green
-npm run lint && npm test
-python3 ~/.claude/harness/bin/verify
+npm run lint
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
+- 위 커맨드가 모두 에러 없이 끝나야 한다. 전체 `verify`(SDD 사후 점검 + lint → build → test)와 전체 `npm test`는 이번 다시 열기에서 Phase 2 끝에만 돈다. TASK-2·TASK-5·TASK-7이 모두 들어오기 전에는 타입 검사가 통과할 수 없다(tasks.md 머리말의 다시 여는 순서)
 
 ## 검증 절차
 
