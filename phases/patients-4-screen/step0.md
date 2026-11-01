@@ -62,6 +62,8 @@
   - `src/components/shell/shell.test.tsx`
   - `src/components/dashboard/briefing/features.ts`
   - `src/components/dashboard/briefing/features.test.ts`
+  - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
   - `src/app/(app)/notReadyPages.test.tsx`
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
@@ -78,6 +80,8 @@
   - `src/components/common/notReadyFeatures.test.ts`
   - `src/components/shell/shell.test.tsx`
   - `src/components/dashboard/briefing/features.test.ts`
+  - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
   - `src/app/(app)/notReadyPages.test.tsx`
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
@@ -100,6 +104,7 @@
 - `menu.ts`: `MenuHref`에 `'/patients'`, [환자] 항목 `href: '/patients'`, `ready: true`
 - `features.ts`: 환자 `status: 'connect-first'`(청구와 같다: 비트 PC를 연결해야 명단을 쓴다)
 - 시험: 고정 수("준비 중 10개", `toHaveLength(10)` 등)를 목록 길이·목록에서 계산한 값으로 바꾼다(통계·매출·업무일지 명세도 같은 시험에서 자기 항목을 뺀다. 합칠 때 부딪힘을 줄인다). 바뀐 뜻: [환자]는 화면이 있는 탭
+- `DashboardHome.test.tsx`·`dashboard/page.test.tsx`의 기능 목차 옆 글("N개 가운데 N개는 지금, N개는 연결하면 쓸 수 있어요")과 상태별 칸 수도 `DASHBOARD_FEATURES`에서 센다. 합친 뒤 수가 달라져도 맞도록 "2"처럼 새 숫자를 못 박지 않는다(AC-610.1)
 - `notReadyPages.test.tsx`·`titles.test.tsx`·`notFound.test.tsx`의 `/patients` 줄을 '준비 중' 표에서 '화면이 있는 주소' 쪽으로 옮긴다
 
 ### 2. 주소와 도구 (AC-610.2·610.5)
@@ -148,7 +153,7 @@ export function ToolRow<T extends string>(props: { label: string /* nav 이름 *
 
 ```bash
 npx vitest run "src/app/(app)/patients/page.test.tsx" src/components/patients src/components/patients/ToolRow.test.tsx   # AC-610.1~AC-610.5
-npx vitest run src/components/common/notReadyFeatures.test.ts src/components/shell/shell.test.tsx src/components/dashboard/briefing/features.test.ts "src/app/(app)/notReadyPages.test.tsx" "src/app/(app)/tabFrame.test.tsx" src/app/titles.test.tsx src/app/notFound.test.tsx
+npx vitest run src/components/common/notReadyFeatures.test.ts src/components/shell/shell.test.tsx src/components/dashboard/briefing/features.test.ts src/components/dashboard/briefing/DashboardHome.test.tsx "src/app/(app)/dashboard/page.test.tsx" "src/app/(app)/notReadyPages.test.tsx" "src/app/(app)/tabFrame.test.tsx" src/app/titles.test.tsx src/app/notFound.test.tsx
 python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify

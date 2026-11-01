@@ -87,7 +87,7 @@
 
 ### REQ-610: 환자 탭 입구 · 도구 단추 줄 · 휴대폰은 건수만
 - 옮겨 옴: precheck REQ-026 (수용 기준 026.5의 탭 부분 · 026.6)
-- AC-610.1: Given `/patients`, When 열면, Then 준비 중 화면 대신 환자 탭이 열린다. 탭 줄 [환자]는 화면이 있는 탭(`href: '/patients'`, `ready: true`)이고, 준비 중 목록(`NOT_READY_FEATURES`)과 대시보드 기능 목차의 '준비 중'에서 빠진다(목차 상태는 청구처럼 `connect-first`). 브라우저 탭 이름은 "환자"다
+- AC-610.1: Given `/patients`, When 열면, Then 준비 중 화면 대신 환자 탭이 열린다. 탭 줄 [환자]는 화면이 있는 탭(`href: '/patients'`, `ready: true`)이고, 준비 중 목록(`NOT_READY_FEATURES`)과 대시보드 기능 목차의 '준비 중'에서 빠진다(목차 상태는 청구처럼 `connect-first`). 기능 목차 옆 글의 개수는 `DASHBOARD_FEATURES`에서 센 값과 같다(시험은 개수를 글자로 못 박지 않고 목록에서 센다 — 통계·매출·업무일지도 목록 상태를 바꿔 이 수가 달라진다). 브라우저 탭 이름은 "환자"다
 - AC-610.2: Given 환자 탭, When 그리면, Then 맨 위 도구 단추 줄에 [F/U 명단] · [정기 주사 문자 명단] · [문자 문구]가 있고 고른 도구에 `aria-current`가 붙는다. 고른 도구는 주소 `?tool=followup|recall|messages`로 남고, 없거나 모르는 값이면 F/U 명단이다
 - AC-610.3: Given 확장이 없는 브라우저나 휴대폰, When F/U·정기 주사 도구를 열면, Then 명단 대신 연락 남은 건수(`contact_counts`의 두 수와 마지막 바뀐 시각)만 보인다. 줄이 없으면 숫자 없이 "자료 없음"과 "비트 PC에서 환자 탭을 열면 건수가 생겨요"를 보인다. 건수를 읽지 못하면(`E-PATIENTS-COUNTS-READ`) '자료 없음'이 아니라 오류 카드와 [다시 불러오기]를 보인다. 문자 문구 도구는 그대로 쓸 수 있다
 - AC-610.4: Given 확장은 있는데 도우미 없음·업데이트 필요·끊김, When 명단 도구를 열면, Then 명단 대신 비트 PC 연결 안내와 [비트 PC 연결](`/claim/setup`)을 보인다. 다른 창에서 작업 중(`busy`)이면 그 안내와 [건수만 보기]를 보인다
