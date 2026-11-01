@@ -270,3 +270,15 @@ describe('AC-009.4 단추', () => {
     expect(dateInput().classList.contains('h-11')).toBe(true)
   })
 })
+
+describe('AC-011.3 인쇄', () => {
+  it('AC-011.3: 맨 바깥에 print:hidden이 있어 날짜 줄·저장 상태·[인쇄]·오류 카드가 모두 찍히지 않는다', () => {
+    setup({ ymd: PAST, status: 'failed', blockedYmd: PAST })
+    const root = document.body.firstElementChild?.firstElementChild as HTMLElement
+    expect(root.classList.contains('print:hidden')).toBe(true)
+    for (const el of [dateInput(), screen.getByRole('status'), button('인쇄'), ...screen.getAllByRole('alert')]) {
+      expect(root.contains(el)).toBe(true)
+    }
+    expect(screen.getAllByRole('alert')).toHaveLength(2)
+  })
+})

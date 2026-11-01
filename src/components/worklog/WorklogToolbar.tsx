@@ -76,7 +76,7 @@ export function WorklogToolbar({
   }
 
   return (
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex w-full flex-col gap-3 print:hidden">
       {/* PC 한 줄 / 768px 미만 두 줄(날짜 줄 · 상태 글과 [인쇄]) */}
       <div className="flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch">
         <div className="flex shrink-0 items-center gap-2">
