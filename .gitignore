@@ -66,3 +66,6 @@ extension/dist/
 
 # 확장 개인키는 저장소에 두지 않는다(웹스토어가 서명한다. 공개키만 commands.json에)
 *.pem
+
+# npm run ai:try 결과(가짜 숫자 리포트)
+.ai-try/
