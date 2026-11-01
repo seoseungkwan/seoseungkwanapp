@@ -30,7 +30,7 @@
     },
     {
       "dir": "stats-1-data",
-      "status": "completed"
+      "status": "pending"
     },
     {
       "dir": "stats-2-save",
@@ -38,7 +38,7 @@
     },
     {
       "dir": "stats-3-numbers",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "dir": "stats-4-screen",

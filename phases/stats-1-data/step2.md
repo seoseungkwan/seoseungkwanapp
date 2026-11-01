@@ -9,7 +9,7 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-503(도우미 통계 줄 읽기 (`stats.rows`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-503.1**: Given 등록한 병원과 기간 `{from, to}`(함께 세어 800일 이하, 명령 표 그대로), When 도우미가 `stats.rows`를 처리하면, Then 먼저 등록 확인(Core `HospitalGate.Open` — 도우미 `RequireHospital`이 감싸는 같은 관문)을 하고, 원본 `RxVisitSplit`의 외래 내원 조건으로 읽은 진료 줄 `[차트번호, 진료일, 처방코드, 첫 내원일]`(처방 코드 거르기 없음), 기간 합계(내원·실환자·신환·차트번호 없는 내원·중복 내원·첫 내원을 못 찾은 환자, 원본 `SummarySql`), 날짜별 합계(내원·실환자·신환, 원본 `DaysSql`), 환자·날마다 한 줄인 접수 줄 `patientDays` `[차트번호, 진료일, 접수 건수, 첫 내원일|null]`(`PatientDaysSql`, AC-503.5), 진료 줄에 나온 처방코드의 이름(원본 `TrendDataSource` 처방 목록 SQL)을 JSON 하나(`v` 2)로 만든 뒤 `chunk … end`로 보낸다. 이름·전화·주민번호·주소 칸은 읽지도 보내지도 않는다
+- **AC-503.1**: Given 등록한 병원과 기간 `{from, to}`(함께 세어 800일 이하, 명령 표 그대로), When 도우미가 `stats.rows`를 처리하면, Then 먼저 등록 확인(Core `HospitalGate.Open` — 도우미 `RequireHospital`이 감싸는 같은 관문)을 하고, 원본 `RxVisitSplit`의 외래 내원 조건으로 읽은 진료 줄 `[차트번호, 진료일, 처방코드, 첫 내원일]`(처방 코드 거르기 없음), 기간 합계(내원·실환자·신환·차트번호 없는 내원·중복 내원·첫 내원을 못 찾은 환자, 원본 `SummarySql`), 날짜별 합계(내원·실환자·신환, 원본 `DaysSql`), 환자·날마다 한 줄인 접수 줄 `patientDays` `[차트번호, 진료일, 접수 건수, 첫 내원일|null]`(`PatientDaysSql`, AC-503.5), 진료 줄에 나온 처방코드의 이름(원본 `TrendDataSource` 처방 목록 SQL)을 JSON 하나(`v` 2)로 만든 뒤 `chunk … end`로 보낸다. 이름·전화·주민번호·주소 칸은 읽지도 보내지도 않는다. 처방코드가 비었거나(NULL·공백뿐) 40자를 넘는 진료 줄은 읽으면서 건너뛴다(원본 `RxVisitSplit`이 코드 형식이 틀린 줄을 건너뛰는 것과 같다). 접수 줄·날짜별 합계·기간 합계는 처방 표를 읽지 않으므로 숫자가 바뀌지 않는다. 시험: 빈 글자·NULL·공백뿐·41자 코드의 줄은 답의 `rows`에 없고 40자 코드의 줄은 있다. 시험: 41자 코드가 처방 목록에 있어도 답의 `codes`에 없다. 시험: 그 줄의 환자·날은 `patientDays`에 그대로 있고 `summary`·`days`는 그대로다
 - **AC-503.2**: Given `StatsSql`의 SQL 상수, When 원본 사본(`helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql`)과 견주면, Then 공백만 다르다. 진료 줄 SQL 하나만 원본 `RowsSql`에서 처방 코드 거르기 한 덩어리(`AND (UPPER(RTRIM(o.OdrCod)) IN (@c0, …, @c99) OR (@eswt=1 AND …))`)를 뺀 것이고, 시험은 사본에서 그 덩어리를 뺀 글과 견준다. `PatientDaysSql`은 원본에 없는 새 문장이라 사본 대조는 그 `Visits` 부분에만 한다(AC-503.5). 모두 매개변수를 받는 SELECT이고 `ReadOnlyGuard`를 지난다. 지금 `Sql.All`(청구 SQL 목록)은 그대로다
 - **AC-503.3**: Given 과거 이관 자료가 따로 있음(원본 `HistoryGuard`가 1), 진료 줄이나 접수 줄(`patientDays`)이 700,000줄을 넘음, SQL 하나라도 실패, When `stats.rows`를 처리하면, Then 반쪽 자료를 보내지 않고 각각 `error` `E-STATS-HISTORY` · `E-STATS-TOO-BIG` · `E-BIT-READ-FAILED`만 보낸다. 등록 확인에 걸리면 지금 번호(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`)다
 - **AC-503.4**: Given 도우미 진단 기록, When `stats.rows`를 처리하면, Then 시각·명령 이름·오류 번호만 남고 차트번호·처방코드·숫자는 남지 않는다
@@ -139,6 +139,17 @@ AC-503.1·503.2·503.3은 위 AC 목록대로 바뀌었다(답의 `v` 2와 `pati
 - 차트번호 없는 접수 → 줄 없음
 
 이 복사본은 커밋하지 않는다. 여섯 경우의 결과를 step `summary`와 메인 세션 보고에 적는다. 기대와 다르면 고치지 말고 `blocked`로 멈추고 어떻게 달랐는지 적는다.
+
+## 2026-11-01 빈 코드 줄 건너뛰기 (뒤따라 고치기)
+
+> 메인 세션 판단으로 AC-503.1에 적었다. 까닭은 `specs/stats/design.md` '처방코드가 비었거나 40자를 넘는 진료 줄'. 이 TASK는 이미 커밋되었고 이 변경으로 다시 연다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 코디네이터가 한다.
+
+### 고칠 것 (`helper/src/Precheck.Core/Stats/StatsRows.cs`)
+- 진료 줄을 옮기는 고리에서 처방코드가 null이거나 공백뿐이거나 40자를 넘으면 그 줄을 건너뛴다. 40은 Worker `MAX_CODE`(`src/workers/stats/helperData.ts`)와 같고 줄 수 한도 검사는 지금 자리 그대로다. 코드 목록(`codes`)은 남은 줄에서 만든다(41자 코드가 `codes`에 남으면 Worker에서 같은 실패로 끝난다)
+- 고치지 않는다: `StatsSql.cs`의 SQL(AC-503.2 사본 대조 그대로), 답 모양(`v` 2, 칸), `StatsPayload.cs`, Worker
+
+### 시험 (`helper/tests/Precheck.Core.Tests/Stats/`, 이름에 `AC-503.1`)
+- AC-503.1의 새 '시험' 셋을 가짜 `IBitDb`로 쓴다
 
 ## TDD 순서
 
