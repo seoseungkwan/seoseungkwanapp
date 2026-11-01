@@ -240,19 +240,23 @@ export function filterFollowup(view: FollowupView, f: FollowupFilters): { rows: 
     latest[row.chart] = visit
     if (row.phone) phones[row.chart] = row.phone
   }
-  const listed = scheduleRows(latest, { includeCond: f.includeCond, includePast: f.includePast, base: view.base })
+  // 지난 줄의 기준은 이 명단을 읽은 날이다. view.base(자료의 마지막 진료일)로 가르면 그날 아직 진료가 없을 때 어제 줄이 남는다.
+  // 끄면 scheduleRows가 오늘 전 줄을 고른 기간 안이어도 뺀다(AC-611.1 사용자 결정)
+  const today = view.read.to
+  const listed = scheduleRows(latest, { includeCond: f.includeCond, includePast: f.includePast, base: today })
   const asked = { kind: f.kind, from: f.from, to: f.to }
-  const paste = (withDate: boolean) =>
-    tabbed(
-      pasteRows(
-        listed.filter((v) => passFilters(v, asked, false)),
-        { map: phones, loaded: view.phoneLoaded },
-        { from: f.from, to: f.to, withDate },
-      ),
-    )
+  const kindOnly = { kind: f.kind }
+  // 켜면 고른 기간의 줄에 기간 앞의 지난 줄(오늘 전이고 시작일 전)을 더한다(recallSelect와 같은 규칙). 오늘부터 시작일 전까지의 줄은 지난 줄이 아니다
+  const isEarlier = (v: ChartVisit) => {
+    const next = v.next.sortDate as string
+    return next < today && (!f.from || next < f.from)
+  }
+  const selected = listed.filter((v) => passFilters(v, asked, true) || (f.includePast && passFilters(v, kindOnly, false) && isEarlier(v)))
+  // 복사 글은 고른 줄에서 만든다. pasteRows에 기간을 넘기면 지난 줄이 빠진다. 번호 없는 분을 빼는 규칙은 pasteRows 그대로다
+  const paste = (withDate: boolean) => tabbed(pasteRows(selected, { map: phones, loaded: view.phoneLoaded }, { withDate }))
   return {
-    rows: listed.filter((v) => passFilters(v, asked, true)).map((v) => rowOf.get(v) as FollowupRow),
-    undecided: view.undecided.filter((row) => passFilters(visitOfUndecided(row), asked, false)),
+    rows: selected.map((v) => rowOf.get(v) as FollowupRow),
+    undecided: view.undecided.filter((row) => passFilters(visitOfUndecided(row), kindOnly, false)),
     copy: { list: paste(false), listWithDate: paste(true) },
   }
 }

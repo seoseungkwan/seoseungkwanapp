@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "followup-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/components/patients/{FollowupTool,CopyButton,periods}, rows/FollowupRows, PatientsScreen 도구 자리 followup. jobs.ts filterFollowup: 끄면 오늘(view.read.to) 전 줄 숨김, 켜면 기간 줄 + 기간 앞 지난 줄, 복사 글은 고른 줄에서(pasteRows 번호 없는 분 규칙 그대로). lib followup.ts·handler 안 고침. TASK-12에 전달: CopyButton은 text|()=>string, label, disabled + doneText·unavailable·onResult(목업의 공용 결과 줄용). periods.ts presetRange(주는 월~일). F/U 도구는 도구를 바꿔도 마운트된 채 숨긴다(PatientsScreen). 지금 고른 것을 말하는 안내 줄은 고르기가 바뀌면 지우고, '복사했어요'·복사 실패 줄은 지난 누름의 결과라 남긴다. 날짜 칸은 isYmd를 먼저 보고 틀리면 마지막으로 맞았던 값을 유지한다(0202-11-02처럼 통과하는 값은 던지지 않고 필터로 잠깐 나간다). 환자 값은 rows/ 안에서만 그린다. ESLint 울타리가 도구 부품을 막지 않으니 리뷰에서 본다. store.load·reload 자동 호출 금지. 명세 변경(eb847d1): AC-611.1에 지난 예정 규칙. 사용자 결정 '숨기기'는 docs/mockups/patients/README.md. 문구 날짜는 목업대로 고른 기간 시작일(사용자 미결정, 물어보는 중, 바뀌면 FollowupTool.test.tsx 수요일 시험도 고친다). 목업에 없는 글, 단계 끝에 사용자에게 보인다: '연락 표시를 불러오지 못해 [연락함]을 쓸 수 없어요.', '복사할 명단이 없어요. 모두 번호 없는 분이에요.'; '복사할 문구가 없어요'는 종류를 바꾸면 지운다(목업은 안 지움). 복사 건수는 복사된 줄만 센다(목업은 전체). 알려진 한계: 도우미가 끊기지 않고 멈추면 '저장 중'이 남고 그 줄은 다시 눌러도 안 먹는다. errors.ts의 E-STORE-BROKEN·E-STORE-FAILED 문구는 이 탭에 없는 단추를 말한다(보고)."
     },
     {
       "step": 2,

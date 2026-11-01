@@ -1,12 +1,14 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
 import { isErrorCode } from '@/lib/errors'
+import { FollowupTool } from './FollowupTool'
 import type { PatientsTool } from './tools'
-import { usePatientsWorker, type PatientsBridge, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
+import { usePatientsWorker, type PatientsBridge, type PatientsWorkerApi, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
 
-// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리만 그린다. 도구 몸통은 TASK-11~13이 자리(ToolSlot)에 넣는다.
+// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 나머지는 TASK-12·13).
 // 도구를 바꿔도 다시 읽지 않는다(이 컴포넌트는 도구가 바뀌어도 그대로 있고, 읽기는 usePatientsWorker 한 곳). 한 종류가 실패하면 그 도구만 오류다(AC-604.3).
 // 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다
 
@@ -26,20 +28,27 @@ const LIST_LOADING: Record<ListTool, { title: string; unit: string; note: string
 // 불러오는 중 줄: 위 1px line + 20(목업 .ld)
 const loadingBox = 'mt-4 border-t border-line pt-5'
 
-/** 도구 머리(목업 head) */
-export function ListHead({ tool }: { tool: ListTool }) {
+/** 도구 머리(목업 head). right는 오른쪽 요약 */
+export function ListHead({ tool, right }: { tool: ListTool; right?: ReactNode }) {
   const { title, desc } = LIST_HEAD[tool]
   return (
-    <div>
-      <h2 className="text-subtitle font-semibold text-ink">{title}</h2>
-      <p className="mt-0.5 max-w-170 text-small text-muted">{desc}</p>
+    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+      <div>
+        <h2 className="text-subtitle font-semibold text-ink">{title}</h2>
+        <p className="mt-0.5 max-w-170 text-small text-muted">{desc}</p>
+      </div>
+      {right}
     </div>
   )
 }
 
-/** 도구 몸통 자리. TASK-11~13이 여기에 도구를 넣는다 */
-export function ToolSlot({ tool }: { tool: PatientsTool }) {
-  return <div data-tool-slot={tool} />
+/** 도구 몸통 자리 */
+export function ToolSlot({ tool, hidden, children }: { tool: PatientsTool; hidden?: boolean; children?: ReactNode }) {
+  return (
+    <div data-tool-slot={tool} hidden={hidden}>
+      {children}
+    </div>
+  )
 }
 
 /** 통로를 잇는 동안(읽기 전). 비트를 읽는다고 말하지 않는다(휴대폰도 첫 화면에 이 글을 잠깐 본다) */
@@ -100,11 +109,36 @@ function ErrorView({ tool, code, onReload }: { tool: ListTool; code: string; onR
   )
 }
 
-export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; bridge: PatientsBridge; worker: PatientsWorkerHandle }) {
-  const load = usePatientsWorker(bridge, worker)
+// 지금 도구의 불러오는 중·오류·빈 자리
+function ToolState({ tool, load }: { tool: PatientsTool; load: PatientsWorkerApi }) {
   if (tool === 'messages') return <ToolSlot tool={tool} />
   if (load.status === 'loading') return <LoadingView tool={tool} progress={load.progress[tool]} />
   const code = load.views?.codes[tool]
   if (code) return <ErrorView tool={tool} code={code} onReload={load.reload} />
   return <ToolSlot tool={tool} />
+}
+
+export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; bridge: PatientsBridge; worker: PatientsWorkerHandle }) {
+  const load = usePatientsWorker(bridge, worker)
+  const views = load.status === 'done' ? load.views : null
+  const followup = views && !views.codes.followup ? views.followup : null
+  return (
+    <>
+      {/* F/U 도구는 다 읽은 뒤에는 다른 도구로 가도 살아 있다(숨기기만): 고른 기간·늦게 온 저장 답·오류 줄을 잃지 않는다 */}
+      {followup && (
+        <ToolSlot tool="followup" hidden={tool !== 'followup'}>
+          <FollowupTool
+            view={followup}
+            storeCode={views?.codes.recall}
+            active={tool === 'followup'}
+            post={load.post}
+            listen={load.listen}
+            reload={load.reload}
+            head={(summary) => <ListHead tool="followup" right={summary} />}
+          />
+        </ToolSlot>
+      )}
+      {!(followup && tool === 'followup') && <ToolState tool={tool} load={load} />}
+    </>
+  )
 }

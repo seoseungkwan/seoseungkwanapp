@@ -416,7 +416,7 @@ describe('filterFollowup', () => {
   const filters = (over: Partial<FollowupFilters> = {}): FollowupFilters => ({ kind: '', includeCond: false, includePast: false, ...over })
   const charts = (rows: { chart: string }[]) => rows.map((r) => r.chart)
 
-  it('AC-604.3 기본: 예정만, 기준 날짜 뒤만', () => {
+  it('AC-604.3 AC-611.1 기본: 예정만, 오늘(이 명단을 읽은 날)부터', () => {
     expect(charts(filterFollowup(followupView(), filters()).rows)).toEqual(['900104', '900101', '900102', '900108', '900105'])
   })
 
@@ -472,6 +472,119 @@ describe('filterFollowup', () => {
     const rows = [fuRow({ key: 'a', chart: 'constructor', phone: '' })]
     expect(charts(filterFollowup(fuView(rows), filters()).rows)).toEqual(['constructor'])
     expect(filterFollowup(fuView(rows), filters()).copy.list).toBe('')
+  })
+})
+
+describe('filterFollowup: 지난 예정 포함 (AC-611.1)', () => {
+  const WED = '2026-11-04' // 이 명단을 읽은 날(수요일)
+  const THU = '2026-11-05'
+  const TOMORROW = { from: THU, to: THU }
+  const THIS_WEEK = { from: '2026-11-02', to: '2026-11-08' }
+  const NEXT_WEEK = { from: '2026-11-09', to: '2026-11-15' }
+
+  const row = (chart: string, next: string, over: Partial<FollowupRow> = {}) =>
+    fuRow({ key: `f|V|${chart}|${next}`, chart, name: `가상환자${chart}`, phone: `010-0000-${chart}`, next, ...over })
+  const onWed = (rows: FollowupRow[], over: Partial<FollowupView> = {}): FollowupView => ({ ...fuView(rows), read: { from: '2026-07-08', to: WED }, base: WED, ...over })
+  const select = (view: FollowupView, over: Partial<FollowupFilters>) => filterFollowup(view, { kind: '', includeCond: false, includePast: false, ...over })
+  const charts = (rows: { chart: string }[]) => rows.map((r) => r.chart)
+
+  const LAST_WEEK = '2026-10-30'
+  const MONDAY = '2026-11-02'
+  const YESTERDAY = '2026-11-03'
+  const ROWS = [
+    row('0001', LAST_WEEK),
+    row('0002', MONDAY),
+    row('0003', YESTERDAY),
+    row('0004', WED),
+    row('0005', THU),
+    row('0006', '2026-11-07'),
+    row('0007', '2026-11-10'),
+  ]
+
+  it('AC-611.1 내일: 끄면 내일 줄만, 켜면 지난 줄을 더한다', () => {
+    expect(charts(select(onWed(ROWS), { ...TOMORROW }).rows)).toEqual(['0005'])
+    expect(charts(select(onWed(ROWS), { ...TOMORROW, includePast: true }).rows)).toEqual(['0001', '0002', '0003', '0005'])
+  })
+
+  it('AC-611.1 다음 주: 끄면 다음 주 줄만, 켜면 지난 줄을 더한다(오늘부터 시작일 전까지는 지난 줄이 아니다)', () => {
+    expect(charts(select(onWed(ROWS), { ...NEXT_WEEK }).rows)).toEqual(['0007'])
+    expect(charts(select(onWed(ROWS), { ...NEXT_WEEK, includePast: true }).rows)).toEqual(['0001', '0002', '0003', '0007'])
+  })
+
+  it('AC-611.1 이번 주: 끄면 오늘 전 줄은 기간 안이어도 빠지고(수~일), 켜면 보이고 기간 앞 줄도 더한다', () => {
+    expect(charts(select(onWed(ROWS), { ...THIS_WEEK }).rows)).toEqual(['0004', '0005', '0006'])
+    expect(charts(select(onWed(ROWS), { ...THIS_WEEK, includePast: true }).rows)).toEqual(['0001', '0002', '0003', '0004', '0005', '0006'])
+  })
+
+  it('AC-611.1 그날 진료가 아직 없어 base가 어제여도 어제 줄은 끄면 빠진다(base로 가르지 않는다)', () => {
+    const view = onWed(ROWS, { base: YESTERDAY })
+    expect(charts(select(view, { ...THIS_WEEK }).rows)).toEqual(['0004', '0005', '0006'])
+    expect(charts(select(view, { from: YESTERDAY, to: YESTERDAY }).rows)).toEqual([])
+    expect(select(view, { ...THIS_WEEK }).copy.list).not.toContain('가상환자0003')
+  })
+
+  it('AC-611.1 base가 오늘보다 오래되어도 켠 결과는 같다', () => {
+    const view = onWed(ROWS, { base: '2026-10-01' })
+    expect(charts(select(view, { ...TOMORROW, includePast: true }).rows)).toEqual(['0001', '0002', '0003', '0005'])
+  })
+
+  it('AC-611.1 오늘 줄은 시작일이 내일이면 켜도 더하지 않는다(지난 줄이 아니다)', () => {
+    expect(charts(select(onWed(ROWS), { ...TOMORROW, includePast: true }).rows)).not.toContain('0004')
+  })
+
+  it('AC-611.1 기간이 통째로 지났으면: 끄면 없고, 켜면 기간 줄과 기간 앞 줄이다(기간 뒤의 지난 줄은 아니다)', () => {
+    const past = { from: MONDAY, to: MONDAY }
+    expect(charts(select(onWed(ROWS), past).rows)).toEqual([])
+    expect(charts(select(onWed(ROWS), { ...past, includePast: true }).rows)).toEqual(['0001', '0002'])
+  })
+
+  it('AC-611.1 지난 줄에도 구분이 걸린다', () => {
+    // 구분은 Worker가 근거 문구로 다시 가른다(visitKind)
+    const injection = (site: string) => ({ visitKind: '주사' as const, site, evidence: '1주 뒤 주사' })
+    const rows = [row('0001', LAST_WEEK), row('0002', LAST_WEEK, injection('무릎')), row('0003', THU), row('0004', THU, injection('어깨'))]
+    expect(charts(select(onWed(rows), { ...TOMORROW, includePast: true, kind: '주사' }).rows)).toEqual(['0002', '0004'])
+    expect(charts(select(onWed(rows), { ...TOMORROW, includePast: true, kind: 'F/U' }).rows)).toEqual(['0001', '0003'])
+  })
+
+  it('AC-611.1 지난 줄에도 조건부 거르기가 걸린다', () => {
+    const rows = [row('0001', LAST_WEEK), row('0002', LAST_WEEK, { plan: '조건부' }), row('0003', THU)]
+    expect(charts(select(onWed(rows), { ...TOMORROW, includePast: true }).rows)).toEqual(['0001', '0003'])
+    expect(charts(select(onWed(rows), { ...TOMORROW, includePast: true, includeCond: true }).rows)).toEqual(['0001', '0002', '0003'])
+  })
+
+  it('AC-611.1 복사 글은 고른 줄에서 번호 없는 분만 뺀 것이다(지난 줄 포함)', () => {
+    const rows = [row('0001', LAST_WEEK), row('0002', LAST_WEEK, { phone: '' }), row('0003', THU), row('0004', THU, { phone: '' })]
+    const { rows: shown, copy } = select(onWed(rows), { ...TOMORROW, includePast: true })
+    expect(charts(shown)).toEqual(['0001', '0002', '0003', '0004'])
+    expect(copy.list).toBe(['가상환자0001\t010-0000-0001\t가상환자0001\tfu', '\t\t\t', '가상환자0003\t010-0000-0003\t가상환자0003\tfu'].join('\n'))
+    expect(copy.listWithDate).toBe(
+      [
+        '2026-10-30 (금) — 1명\t\t\t',
+        '가상환자0001\t010-0000-0001\t가상환자0001\tfu',
+        '\t\t\t',
+        '2026-11-05 (목) — 1명\t\t\t',
+        '가상환자0003\t010-0000-0003\t가상환자0003\tfu',
+      ].join('\n'),
+    )
+  })
+
+  it('AC-611.1 끄면 복사 글에도 오늘 전 줄이 없다', () => {
+    const { copy } = select(onWed(ROWS), { ...THIS_WEEK })
+    for (const hidden of ['가상환자0001', '가상환자0002', '가상환자0003']) expect(copy.list).not.toContain(hidden)
+    expect(copy.list).toContain('가상환자0004')
+  })
+
+  it('AC-611.1 전화 자료를 못 읽었으면 번호 없는 분도 복사 글에 남는다(pasteRows 규칙 그대로)', () => {
+    const rows = [row('0001', LAST_WEEK, { phone: '' })]
+    const { copy } = select(onWed(rows, { phoneLoaded: false }), { ...TOMORROW, includePast: true })
+    expect(copy.list).toBe('가상환자0001\t\t가상환자0001\tfu')
+  })
+
+  it('AC-611.1 날짜 미정 명단은 켜도 꺼도 그대로다', () => {
+    const undecided = [{ key: 'f|V|0009|', chart: '0009', name: '가상환자0009', phone: '', lastVisit: '2026-10-27', nextLabel: '12월 초', evidence: '12월 초' }]
+    const view = onWed(ROWS, { undecided })
+    expect(charts(select(view, { ...TOMORROW }).undecided)).toEqual(['0009'])
+    expect(charts(select(view, { ...TOMORROW, includePast: true }).undecided)).toEqual(['0009'])
   })
 })
 
