@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "patients",
-  "approved_at": "2026-11-01T21:21:30Z",
+  "approved_at": "2026-11-01T22:06:33Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "ffce8b9e9b3ef07929b2707d8d45cd3446f247651097dc64977ea5155712f2f9",
+  "spec_sha256": "c2abfb8cf8e50dba5194482c227179e35bc6c07feff01351fd40b3cec4702fe1",
   "scope": [
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",

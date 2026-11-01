@@ -114,8 +114,8 @@
 - Step: Phase 4 · Step 1 · `followup-screen`
 - AC: AC-611.1~AC-611.5
 - REQ: REQ-611
-- Files: src/components/patients/FollowupTool.tsx, src/components/patients/FollowupTool.test.tsx, src/components/patients/rows/FollowupRows.tsx, src/components/patients/rows/FollowupRows.test.tsx, src/components/patients/periods.ts, src/components/patients/periods.test.ts, src/components/patients/PatientsScreen.tsx, src/components/patients/PatientsScreen.test.tsx, src/components/patients/CopyButton.tsx, src/components/patients/CopyButton.test.tsx
-- Tests: src/components/patients/FollowupTool.test.tsx, src/components/patients/rows/FollowupRows.test.tsx, src/components/patients/periods.test.ts, src/components/patients/PatientsScreen.test.tsx, src/components/patients/CopyButton.test.tsx
+- Files: src/components/patients/FollowupTool.tsx, src/components/patients/FollowupTool.test.tsx, src/components/patients/rows/FollowupRows.tsx, src/components/patients/rows/FollowupRows.test.tsx, src/components/patients/periods.ts, src/components/patients/periods.test.ts, src/components/patients/PatientsScreen.tsx, src/components/patients/PatientsScreen.test.tsx, src/components/patients/CopyButton.tsx, src/components/patients/CopyButton.test.tsx, src/workers/patients/jobs.ts, src/workers/patients/jobs.test.ts
+- Tests: src/components/patients/FollowupTool.test.tsx, src/components/patients/rows/FollowupRows.test.tsx, src/components/patients/periods.test.ts, src/components/patients/PatientsScreen.test.tsx, src/components/patients/CopyButton.test.tsx, src/workers/patients/jobs.test.ts
 - TDD: required
 
 ## TASK-12: 정기 주사 문자 명단 화면

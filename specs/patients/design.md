@@ -103,7 +103,7 @@ export type RecallView = { rows: RecallRow[]; coverage: RecallCoverage }
 // trimmed는 handler(TASK-4)가 fitStore 결과로 채워 buildRecall(…, trimmed)에 넘긴다
 export type ContactCount = { followup_left: number; injection_left: number }
 ```
-- 화면 고르기(기간·조건부·지난 예정·구분)는 다시 읽지 않는다. 화면이 `filter` 메시지로 고른 값을 보내면 Worker가 `lib/patients`의 원본 옮김(`scheduleRows`·`passFilters`·`recallSelect`)으로 거른 줄과 그 줄의 복사 글을 돌려준다(원본과 같은 결과를 한 곳에서, 화면은 거르지 않는다)
+- 화면 고르기(기간·조건부·지난 예정·구분)는 다시 읽지 않는다. 화면이 `filter` 메시지로 고른 값을 보내면 Worker가 `lib/patients`의 원본 옮김(`scheduleRows`·`passFilters`·`recallSelect`)으로 거른 줄과 그 줄의 복사 글을 돌려준다(원본과 같은 결과를 한 곳에서, 화면은 거르지 않는다). 다만 F/U의 '지난 예정 포함'만은 원본과 다르다(AC-611.1): `filterFollowup`이 정한다. 끄면 오늘(`view.read.to`, 이 명단을 읽은 날. 원본의 `view.base`가 아니다) 전 줄을 숨기고, 켜면 고른 기간의 줄에 기간 앞의 지난 예정 줄을 더하며(`recallSelect`와 같은 규칙) 복사 글도 그 줄에서 만든다(번호 없는 분을 빼는 `pasteRows` 규칙은 그대로). 화면의 기간 글자와 문구 날짜는 고른 기간 그대로다. `lib/patients`의 `scheduleRows`·`passFilters`·`pasteRows`는 원본 그대로 둔다(AC-602.5)
 
 ### Worker 메시지 약속 (`workers/patients.worker.ts`, TASK-4)
 - 통로 포트(`{type: 'bridge-port'}`로 받음): `chunk`·`end`·`abort`를 `assemble`에 넣고, `{type: 'send', ticket, cmd: 'store.save', payload}`를 보내고 `{type: 'sent', ticket, ok, code?}`를 받는다

@@ -51,12 +51,15 @@
   - `src/components/patients/PatientsScreen.test.tsx`
   - `src/components/patients/CopyButton.tsx`
   - `src/components/patients/CopyButton.test.tsx`
+  - `src/workers/patients/jobs.ts`
+  - `src/workers/patients/jobs.test.ts`
 - Tests:
   - `src/components/patients/FollowupTool.test.tsx`
   - `src/components/patients/rows/FollowupRows.test.tsx`
   - `src/components/patients/periods.test.ts`
   - `src/components/patients/PatientsScreen.test.tsx`
   - `src/components/patients/CopyButton.test.tsx`
+  - `src/workers/patients/jobs.test.ts`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -70,6 +73,14 @@
 - **날짜는 한 곳**: 날짜 계산은 `src/lib/analytics/dates.ts`(한국 날짜, `YYYY-MM-DD`). '오늘'은 함수 인자로 받는다(`new Date()`를 계산 안에서 부르지 않는다). 시험은 `TZ=Asia/Seoul`에서 돈다 (CLAUDE.md)
 
 ## 작업
+
+### 0. 지난 예정 포함 (`src/workers/patients/jobs.ts`의 `filterFollowup`, AC-611.1)
+- 끄면 오늘(`view.read.to`, 이 명단을 읽은 날) 전 날짜의 줄을 고른 기간 안이어도 숨긴다. 수요일에 이번 주를 보면 줄은 수~일이다(승인 목업의 월~일 전체 표시와 다른 사용자 결정, `docs/mockups/patients/README.md`). 기간 글자와 문구 날짜는 목업대로 고른 기간 그대로 둔다. `view.base`(자료의 마지막 진료일)로 가르지 않는다: 그날 아직 진료가 없으면 어제 줄이 남는다
+- 켜면 고른 기간의 줄에 기간 앞의 지난 예정 줄(오늘 전이고 시작일 전)을 더한다(`recallSelect`와 같은 규칙). 구분·조건부 거르기는 지난 줄에도 먼저 적용한다
+- 복사 글은 화면 줄에서 만든다. `pasteRows`에 기간을 넘기면 지난 줄이 빠지므로, 고른 줄을 넘기고 기간은 넘기지 않는다. 번호 없는 분을 빼는 `pasteRows` 규칙은 그대로다(화면 줄에는 있고 복사 글에는 없다)
+- `lib/patients`의 `scheduleRows`·`passFilters`·`pasteRows`는 고치지 않는다(AC-602.5, 골든). 날짜 미정 명단은 그대로다
+- `jobs.test.ts`: 내일·다음 주에서 켬·끔, 이번 주에서 오늘 전 줄이 끄면 빠지고 켜면 보임, 그날 진료가 아직 없어 `base`가 어제여도 어제 줄이 끄면 빠짐(시험 자료의 `base`를 어제로 덮어쓴다), 오늘 줄(시작일이 내일일 때)은 켜도 더하지 않음, 지난 줄에도 구분·조건부가 걸림, 복사 글이 줄에서 번호 없는 분만 뺀 것과 같음. 이름이 낡는 시험("기준 날짜 뒤만")은 새 뜻으로 고친다. AC ID는 AC-611.1
+- `FollowupTool.test.tsx`: 지난 예정 포함을 켜면 지난 줄이 '지남' 표시와 함께 실제로 보인다(보낸 메시지만 보고 멈추지 않는다)
 
 ### 1. 기간 (`periods.ts`)
 ```ts
@@ -109,7 +120,7 @@ export function CopyButton(props: { text: string | (() => string); label: string
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/patients src/components/patients/CopyButton.test.tsx   # AC-611.1~AC-611.5
+npx vitest run src/components/patients src/components/patients/CopyButton.test.tsx src/workers/patients/jobs.test.ts   # AC-611.1~AC-611.5
 npx vitest run src/guardrails.test.ts
 python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green
 npm run lint && npm test && npm run build
