@@ -104,8 +104,8 @@ export function UnreadableNote() {
   )
 }
 
-/** 숫자가 있는 상태에서 다시 읽기 실패: 그 아래 오류 상자. 저장 숫자에는 읽은 시각이 없어 "저장해 둔 그대로"라고 한다 */
-export function RereadAlert({ code, readAt, onRetry }: { code: ErrorCode; readAt: number | null; onRetry(): void }) {
+/** 읽은 적이 있는 상태에서 다시 읽기 실패: 그 아래 오류 상자. 저장 숫자에는 읽은 시각이 없어 "저장해 둔 그대로"라고 하고, 자료 없음 화면(빈 배열)에는 둘 숫자가 없어 그 문장을 뺀다 */
+export function RereadAlert({ code, readAt, hasNumbers, onRetry }: { code: ErrorCode; readAt: number | null; hasNumbers: boolean; onRetry(): void }) {
   const { what, fix } = errorInfo(code)
   const kept = readAt === null ? '아래 숫자는 저장해 둔 그대로예요.' : `아래 숫자는 ${timeText(readAt)}에 읽은 그대로예요.`
   return (
@@ -113,7 +113,7 @@ export function RereadAlert({ code, readAt, onRetry }: { code: ErrorCode; readAt
       <Icon name="stop" className="mt-0.5 shrink-0 text-negative" />
       <div className="flex min-w-0 flex-1 flex-col">
         <p className="text-body font-semibold text-negative">{what}</p>
-        <p className="mt-0.5 text-body text-ink-2">{`${kept} ${fix}`}</p>
+        <p className="mt-0.5 text-body text-ink-2">{hasNumbers ? `${kept} ${fix}` : fix}</p>
         <p className="mt-1 text-caption text-ink-2">오류 번호 {code}</p>
         <div className="mt-3 flex flex-wrap gap-2 max-md:grid">
           <button type="button" className={ds.button.primary} onClick={onRetry}>

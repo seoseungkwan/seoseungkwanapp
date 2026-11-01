@@ -287,11 +287,28 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     expect(region('오늘 브리핑').contains(at)).toBe(true)
   })
 
-  it('AC-601.3: 읽은 시각은 그 PC 시간대와 상관없이 한국 시각이다', async () => {
+  it('AC-601.3: 읽은 시각은 서울 시간대 PC에서 한국 시각이다', async () => {
     vi.setSystemTime(new Date('2026-11-02T00:05:00Z'))
     draw()
     await answer(days())
     expect(screen.getByText('오늘 오전 9:05에 읽었어요')).toBeTruthy()
+  })
+
+  it('AC-601.3: 읽은 시각은 그 PC 시간대와 상관없이 한국 시각이다 — 뉴욕 시간대 PC에서 불러도 같다', async () => {
+    // vitest.config.ts가 시험 전체를 서울 시간대로 고정한다. 시각 서식(KOREA_TIME)은 ReadStatus를 불러올 때 한 번 만들어지므로, 시간대를 바꾼 뒤 모듈을 새로 부른다
+    const at = new Date('2026-11-02T00:05:00Z')
+    const seoul = process.env.TZ
+    process.env.TZ = 'America/New_York'
+    try {
+      expect(at.getHours(), '이 PC 시계가 한국과 달라야 시험이 헛돌지 않는다').not.toBe(9)
+      vi.resetModules()
+      const { ReadLine } = await import('./ReadStatus')
+      render(<ReadLine readAt={at.getTime()} reading={false} failed={false} onReread={() => {}} />)
+      expect(screen.getByText('오늘 오전 9:05에 읽었어요')).toBeTruthy()
+    } finally {
+      process.env.TZ = seoul ?? 'Asia/Seoul'
+      vi.resetModules()
+    }
   })
 
   it('AC-601.3: 누르면 이전 숫자를 둔 채 다시 읽고, 그동안 단추는 "다시 읽는 중"으로 막힌다', async () => {
@@ -454,6 +471,69 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     noText(UNREADABLE)
     expect(screen.queryByRole('status')).toBeNull()
     expect(screen.queryByRole('link', { name: '연결 확인' })).toBeNull()
+  })
+
+  // 직접 누른 표시는 그 읽기 하나에만 쓴다. 날짜가 바뀌어 저절로 다시 읽는 것은 누른 것이 아니다
+  const NEXT_DAY = '2026-11-03'
+
+  it('AC-601.16·AC-601.13: 한 번 누른 뒤 날짜만 바뀌어 저절로 다시 읽은 답이 not-ready면 안내가 없다', async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    const { rerender } = draw()
+    await answer(days())
+    await user.click(button('다시 읽기'))
+    await answer(days(NEWER_DAYS))
+
+    rerender(<BitDashboard today={NEXT_DAY} initial={NONE} />)
+    expect(readBitDays).toHaveBeenCalledTimes(3)
+    await answer(NOT_READY)
+
+    noText(UNREADABLE)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('AC-601.16·AC-601.13: 누른 읽기가 끝나기 전에 날짜가 바뀌면 그 읽기는 취소되고, 저절로 다시 읽은 답이 not-ready여도 안내가 없다', async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    const { rerender } = draw()
+    await answer(days())
+    await user.click(button('다시 읽기'))
+
+    rerender(<BitDashboard today={NEXT_DAY} initial={NONE} />)
+    expect(reads[1]!.deps.signal?.aborted).toBe(true)
+    await answer(NOT_READY)
+
+    noText(UNREADABLE)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('AC-601.16: 날짜가 바뀌어 저절로 읽은 뒤에도 직접 누르면 안내가 나오고, 또 눌러도 다시 나온다', async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    const { rerender } = draw()
+    await answer(days())
+    rerender(<BitDashboard today={NEXT_DAY} initial={NONE} />)
+    await answer(NOT_READY)
+    noText(UNREADABLE)
+
+    await user.click(button('다시 읽기'))
+    await answer(NOT_READY)
+    expectUnreadable()
+
+    await user.click(button('다시 읽기'))
+    noText(UNREADABLE)
+    await answer(NOT_READY)
+    expectUnreadable()
+  })
+
+  it('AC-601.16: 개발 모드(효과가 두 번 도는 곳)에서도 직접 누른 답이 not-ready면 안내가 나온다', async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    render(
+      <StrictMode>
+        <BitDashboard today={TODAY} initial={NONE} />
+      </StrictMode>,
+    )
+    await answer(days())
+    await user.click(button('다시 읽기'))
+    await answer(NOT_READY)
+    expectUnreadable()
   })
 })
 
@@ -672,6 +752,25 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
     expect(within(flow()).queryByText(/생기는 것/)).toBeNull()
     expect(within(flow()).getByRole('heading', { level: 3, name: '환자 수 추이' })).toBeTruthy()
     expect(within(todaySection()).queryByText(/읽기가 끝나면|연결하면/)).toBeNull()
+  })
+
+  it('AC-601.11·AC-601.5: 자료 없음 화면에서 다시 읽기가 실패하면 오류 상자에 "아래 숫자는 …"이 없다 — 둘 숫자가 없다', async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    draw()
+    await answer(days([]))
+    await user.click(button('다시 읽기'))
+    await answer(failed('E-BIT-READ-FAILED'))
+
+    const box = screen.getByRole('alert')
+    const { what, fix } = errorInfo('E-BIT-READ-FAILED')
+    expect(within(box).getByText(what)).toBeTruthy()
+    expect(within(box).getByText(fix)).toBeTruthy()
+    expect(box.textContent).not.toContain('아래 숫자는')
+    expect(within(box).getByText('오류 번호 E-BIT-READ-FAILED')).toBeTruthy()
+    expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
+    expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
+    expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
   })
 })
 

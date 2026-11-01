@@ -54,8 +54,20 @@ describe('AC-601.17: 움직이는 것은 비트 읽는 표시 둘뿐이다', () 
     expect([...css().matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1])).toEqual(['bit-read-bar', 'bit-read-spin'])
   })
 
+  // animation 선언 찾기: (속성, 값). 접두사 붙은 것도 같은 선언이다(landing/rules.test.ts의 BANNED_PROP과 같다)
+  const ANIMATION_DECL = /(?:^|[;{\s])((?:-webkit-)?animation(?:-[\w-]+)?)\s*:\s*([^;}]+)/g
+
+  it('AC-601.17: animation 선언 찾기 규칙이 접두사 붙은 선언까지 잡는다', () => {
+    const props = (text: string) => [...text.matchAll(ANIMATION_DECL)].map((m) => m[1])
+    expect(props('.a { animation: x 1s; }')).toEqual(['animation'])
+    expect(props('.a { animation-name: x; }')).toEqual(['animation-name'])
+    expect(props('.a { -webkit-animation: x 1s; }')).toEqual(['-webkit-animation'])
+    expect(props('.a { -webkit-animation-name: x; }')).toEqual(['-webkit-animation-name'])
+    expect(props('.a { color: var(--ink); }')).toEqual([])
+  })
+
   it('AC-601.17: animation 선언은 두 표시의 것과 모션 줄이기 전체 끄기뿐이고, animation-* 낱개 선언이 없다', () => {
-    const found = [...css().matchAll(/(?:^|[;{\s])(animation(?:-[\w-]+)?)\s*:\s*([^;}]+)/g)].map((m) => `${m[1]}: ${m[2].trim().replace(/\s+/g, ' ')}`)
+    const found = [...css().matchAll(ANIMATION_DECL)].map((m) => `${m[1]}: ${m[2].trim().replace(/\s+/g, ' ')}`)
     expect(found).toEqual(['animation: bit-read-bar 1.6s ease-in-out infinite', 'animation: bit-read-spin 800ms linear infinite', 'animation: none !important'])
   })
 

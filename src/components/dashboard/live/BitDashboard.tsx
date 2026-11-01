@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ComponentProps } from 'react'
+import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
@@ -70,12 +70,15 @@ function emptyLook(status: Status): EmptyLook {
 export function BitDashboard({ today, initial }: { today: string; initial: SummarySource }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   const [attempt, setAttempt] = useState(0)
+  const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
 
   useEffect(() => {
+    // 저절로 읽은 답은 조용히 둔다(열 때·날짜가 바뀔 때, AC-601.13·AC-601.16)
+    const pressed = pressedNow.current
+    pressedNow.current = false
     const runtime = chromeRuntime()
     if (!runtime) return
     const leaving = new AbortController()
-    const pressed = attempt > 0 // 열 때 저절로 읽은 첫 읽기는 조용히 둔다(AC-601.13·AC-601.16)
     setStatus(startRead)
     void readBitDays({ runtime, createWorker: createStatsWorker, today, signal: leaving.signal }).then((result) => {
       // 떠났거나 개발 모드가 효과를 다시 돌렸다: 취소한 읽기의 답은 쓰지 않는다
@@ -84,7 +87,10 @@ export function BitDashboard({ today, initial }: { today: string; initial: Summa
     return () => leaving.abort()
   }, [today, attempt])
 
-  const readAgain = () => setAttempt((n) => n + 1)
+  const readAgain = () => {
+    pressedNow.current = true
+    setAttempt((n) => n + 1)
+  }
   const source: SummarySource = status.kind === 'data' ? { kind: 'data', days: status.days } : { kind: 'none' }
 
   return (
@@ -99,7 +105,7 @@ export function BitDashboard({ today, initial }: { today: string; initial: Summa
           <>
             <ReportBlock today={today} days={status.days} />
             <ReadLine readAt={status.readAt} reading={status.reading} failed={status.code !== null} onReread={readAgain} />
-            {status.code !== null && <RereadAlert code={status.code} readAt={status.readAt} onRetry={readAgain} />}
+            {status.code !== null && <RereadAlert code={status.code} readAt={status.readAt} hasNumbers={status.days.length > 0} onRetry={readAgain} />}
             {status.unreadable && <UnreadableNote />}
           </>
         )
