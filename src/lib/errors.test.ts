@@ -35,6 +35,7 @@ const ALL_CODES = [
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
   'E-RULES-LOAD-FAILED',
+  'E-SETTINGS-FAILED',
   'E-CLAIM-PARTIAL',
   'E-BIT-EXPORT-FAILED',
   'E-AI-BUSY',
@@ -285,6 +286,18 @@ describe('AC-007.5 점검 표 불러오기 오류 문구', () => {
     expect(info.what).toContain('규칙표')
     expect(info.what).toContain('점검을 시작하지 않았어요')
     expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
+// 규칙 설정(precheck TASK-12): 서버 설정 표를 읽거나 쓰지 못함. 저장 실패는 값을 그대로 두고 [다시 저장], 불러오기 실패는 표 없이 [다시 불러오기]
+describe('AC-012.5 설정 저장 오류 문구', () => {
+  it('AC-012.5: E-SETTINGS-FAILED는 무엇이·어떻게 고치나가 있고, 저장하던 중일 때만 고친 값이 그대로 있다고 알린다(불러오기 실패에는 고친 값도 표도 없다)', () => {
+    expect(isErrorCode('E-SETTINGS-FAILED')).toBe(true)
+    const info = errorInfo('E-SETTINGS-FAILED')
+    expect(info.what).toContain('설정')
+    expect(info.fix).toContain('저장하던 중이었다면 고친 값은 화면에 그대로 있어요')
+    expect(info.fix).toContain('다시 눌러')
     expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
   })
 })

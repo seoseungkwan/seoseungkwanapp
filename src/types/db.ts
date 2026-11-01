@@ -1,5 +1,7 @@
 // Supabase 표 줄 모양(손으로 씀, supabase CLI 타입 생성은 쓰지 않는다).
-// 기준은 supabase/migrations/20261028000000_auth.sql
+// 기준은 supabase/migrations/20261028000000_auth.sql, 청구 설정 표는 20261030000000_precheck_settings.sql
+import type { DxLink, Grade } from '@/types/precheck'
+
 export type HospitalStatus = 'pending' | 'approved' | 'rejected'
 
 export type HospitalRow = {
@@ -18,4 +20,30 @@ export type HospitalRow = {
 export type AdminRow = {
   user_id: string
   created_at: string
+}
+
+// 청구 설정 표(precheck design.md 8-1). hospital_id·updated_at·id는 DB가 정한다(읽기만, 보내지 않는다)
+export type ClaimRuleSettingRow = {
+  hospital_id: string
+  rule_id: string // ^[A-Z]{2}-[0-9]{2,3}[a-z]?$
+  enabled: boolean
+  grade: Grade | null // null = 규칙표 기본 등급
+  updated_at: string
+}
+
+export type ClaimHospitalSettingsRow = {
+  hospital_id: string
+  phrases: object // 원본 병원 문구 설정 모양, 256KB 미만
+  dx_links: DxLink[] // 256KB 미만
+  updated_at: string
+}
+
+export type MessageTemplateRow = {
+  id: string
+  hospital_id: string
+  kind: 'injection' | 'followup'
+  name: string // 1~30자
+  body: string // 1~2000자
+  sort_order: number // 0~99
+  updated_at: string
 }

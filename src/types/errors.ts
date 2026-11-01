@@ -12,6 +12,8 @@ export type ErrorCode =
   | 'E-RULES-LOAD-FAILED'
   // 한 달 자료(claim.month): 도우미가 비트 통계 화면 표를 꺼내지 못함 · Worker가 조각·모양이 다 맞지 않아 멈춤(TASK-9)
   | 'E-BIT-EXPORT-FAILED' | 'E-CLAIM-PARTIAL'
+  // 청구 설정 표를 읽거나 쓰지 못함(TASK-12)
+  | 'E-SETTINGS-FAILED'
   // AI 리포트(spec ai-report design.md '오류 문구')
   | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
   // 업무일지(specs/worklog)

@@ -212,6 +212,9 @@ export type CheckView = {
 /** 설정 화면 '점검 규칙' 칸에 보일 규칙 하나(TASK-12가 쓴다) */
 export type RuleSummary = Pick<RuleDef, 'id' | 'title' | 'domain' | 'grade' | 'basis' | 'enabled_default'>
 
+/** 규칙 설정 저장 모양(원본 사전점검 snapshot): off·on = 규칙 ID, grade = [규칙 ID, 등급]. 어디에도 없는 규칙은 규칙표 기본값 */
+export type SavedRuleSettings = { schema: 1; off: string[]; on: string[]; grade: [string, Grade][] }
+
 /**
  * 화면 → Worker. loadStart·month: 한 달 불러오기 / ruleList: 설정 화면용 규칙 목록
  *
