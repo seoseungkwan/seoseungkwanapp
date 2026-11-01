@@ -3,7 +3,7 @@
 > **TASK-14** 통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰) · **REQ-514** · AC-514.1 ~ AC-514.10
 > Phase 4 · 화면 `stats-4-screen` · Step 1 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-14 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-031 (AC-031.1·031.2) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 옮겨 옴: precheck REQ-031 (precheck 031.1·031.2) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
@@ -11,8 +11,8 @@
 
 - **AC-514.1**: Given `/stats`를 엶, When 그리면, Then 고른 기간과 비교 기간의 저장된 숫자를 `readDays`·`readMonths`·`readCoverage`로 읽어 섹션을 그린다. 읽는 동안 섹션 자리는 "불러오는 중"이고, 저장된 숫자가 하나도 없으면 맨 위에 "아직 저장된 통계가 없어요" + 자료 고르기 안내다. 읽기 실패는 오류 카드(`E-STATS-READ-FAILED`) + [다시 읽기]다
 - **AC-514.2**: Given 기간 단추 묶음(`role="group"`, 이름 "기간": 최근 7일 · 최근 30일 · 최근 90일 · 최근 12개월, 처음 30일만 `aria-pressed="true"`), When 다른 단추를 누르면, Then 그 단추만 눌림이 되고 기간 글자와 섹션이 그 기간으로 바뀐다. 처방별 신환·재진은 Worker에 그 기간을 다시 계산시킨다(다시 불러오지 않는다)
-- **AC-514.3**: Given 비트 PC(`useBridge({ worker })` 상태 `ready`), When [비트에서 불러오기]를 누르면, Then 불러올 범위(AC-511.1)로 `stream('stats.rows', {from, to})` → Worker `load` → 저장 모양과 덮은 기간을 `saveStats(source 'bit')` → 새 숫자로 다시 그린다. 그동안 단추는 막히고 "불러오는 중"이다. 끝나면 처방별 신환·재진과 원장님 보고 문장이 생긴다. 화면은 조각·진료 줄을 받지 않는다(Worker만 통로에 넘긴다)
-- **AC-514.4**: Given 파일, When 끌어다 놓거나 [파일 고르기]로 넣으면, Then 지금 `runAnalysis` 길 그대로 분석해 `toMonthPayload`·`toDayPayloads`와 파일이 덮은 기간(성공한 파일들의 기간 줄·받아들인 줄 범위를 합친 것)을 `saveStats(source 'file')`로 저장하고 다시 그린다. 파일마다 실패는 오류 카드(번호)로 보인다. 파일 이름은 화면에만 보이고 어디로도 보내지 않는다
+- **AC-514.3**: Given 비트 PC(`useBridge({ worker })` 상태 `ready`), When [비트에서 불러오기]를 누르면, Then 불러올 범위(AC-511.1)로 `stream('stats.rows', {from, to})` → Worker `load` → 저장 모양과 Worker가 준 저장할 덮은 기간(AC-505.4, 끝은 오늘 진료 끝이면 오늘·아니면 어제)을 `saveStats(source 'bit')` → 새 숫자로 다시 그린다. 그동안 단추는 막히고 "불러오는 중"이다. 끝나면 처방별 신환·재진과 원장님 보고 문장이 생긴다. 화면은 조각·진료 줄을 받지 않는다(Worker만 통로에 넘긴다)
+- **AC-514.4**: Given 파일, When 끌어다 놓거나 [파일 고르기]로 넣으면, Then 지금 `runAnalysis` 길 그대로 분석해 `toMonthPayload`·`toDayPayloads`와 파일이 덮은 기간 하나(성공한 파일들의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하 — 파일 길에는 "오늘 진료 끝"이 없다)를 `saveStats(source 'file')`로 저장하고 다시 그린다. 파일마다 실패는 오류 카드(번호)로 보인다. 파일 이름은 화면에만 보이고 어디로도 보내지 않는다
 - **AC-514.5**: Given 확장이 없는 브라우저·휴대폰(상태 `no-extension`), When 그리면, Then [비트에서 불러오기] 대신 "비트 PC의 크롬에서 불러올 수 있어요"와 파일 길이 보인다. 상태가 `no-helper`·`update-helper`·`update-extension`이면 그 안내와 [설치·연결 확인](`/claim/setup`) 링크다
 - **AC-514.6**: Given 저장 실패, When 그리면, Then 새 숫자는 화면에 그대로 두고 오류 카드 `E-STATS-SAVE-FAILED` + [다시 저장]이며, 누르면 같은 값을 다시 보낸다. 품질 incomplete면 저장하지 않고 "일부 기록을 확인하지 못해 저장하지 않았어요"와 확인 건수(차트번호 없는 내원 N건 등)를 보인다
 - **AC-514.7**: Given 저장된 숫자, When 그리면, Then 기간 머리에 출처 줄 "자료: 비트 PC · {월}월 {일}일 {시}:{분} 저장" 또는 "자료: 파일 · …"이 있다(가장 최근 `updated_at`·`source`)
@@ -82,11 +82,11 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - AC-514.1~514.10을 승인본대로: 저장된 숫자 읽기(기간 + 비교 기간) → 섹션, 기간 단추, 출처 줄, 저장 실패·incomplete 안내, 폭별 배치
 
 ### 2. 자료 고르기 (`SourcePicker.tsx`)
-- 연결 상태(`useBridge`)별: `ready` → [비트에서 불러오기] + "오늘 진료 끝" 체크(AC-514.3·514.8), `no-extension` → "비트 PC의 크롬에서 불러올 수 있어요"(AC-514.5), `no-helper`·`update-*` → 안내 + [설치·연결 확인](`/claim/setup`). 언제나 파일 끌어다 놓기·[파일 고르기](AC-514.4) → `runAnalysis` → `toMonthPayload`·`toDayPayloads` + 덮은 기간(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간) → `saveStats({ …, source: 'file' })`
+- 연결 상태(`useBridge`)별: `ready` → [비트에서 불러오기] + "오늘 진료 끝" 체크(AC-514.3·514.8), `no-extension` → "비트 PC의 크롬에서 불러올 수 있어요"(AC-514.5), `no-helper`·`update-*` → 안내 + [설치·연결 확인](`/claim/setup`). 언제나 파일 끌어다 놓기·[파일 고르기](AC-514.4) → `runAnalysis` → `toMonthPayload`·`toDayPayloads` + 덮은 기간(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하 — 파일 길에는 "오늘 진료 끝"이 없다) → `saveStats({ …, source: 'file' })`
 
 ### 3. 훅 (`useStatsData.ts`, `useStatsWorker.ts`)
 - `useStatsData(period)`: `readDays`·`readMonths`·`readCoverage`, 기간 바꿈마다 그 기간만, 방금 만든 저장 모양을 합쳐 보이기, `saveStats`와 [다시 저장](같은 값)
-- `useStatsWorker()`: `createStatsWorker()` 하나(화면을 떠나면 `terminate`), `useBridge({ worker })`, 불러오기 = `stream('stats.rows', range.load)` → `requestLoad({ streamId: id, … })` → `saveStats({ …, covered: view.covered, source: 'bit' })`, 기간 바꿈 → `requestSplit`. 보고 문장은 `formatClinicReport(…, today)`로 화면에서 만든다
+- `useStatsWorker()`: `createStatsWorker()` 하나(화면을 떠나면 `terminate`), `useBridge({ worker })`, 불러오기 = `stream('stats.rows', range.load)` → `requestLoad({ streamId: id, … })` → `saveStats({ …, covered: view.covered /* 끝 = 오늘 진료 끝 ? 오늘 : 어제, Worker가 정함 */, source: 'bit' })`, 기간 바꿈 → `requestSplit`. 보고 문장은 `formatClinicReport(…, today)`로 화면에서 만든다
 
 ### 4. 시험 (jsdom, 가짜 Worker·가짜 `chrome.runtime`·`vi.mock('@/lib/storage/stats')`)
 - AC마다: 첫 그림(읽는 중 → 섹션 / 없음 안내 / 읽기 실패 + [다시 읽기]), 기간 바꿈(눌림·다시 읽기·`requestSplit`), 비트 불러오기(막힘 → 저장 → 다시 그림, 화면이 받은 값에 가짜 차트번호 글자 없음), 파일 길(`runAnalysis` 가짜), 연결 상태별 안내, 저장 실패 + [다시 저장](같은 값), incomplete 안내, 출처 줄, "오늘 진료 끝"이 `closeToday`로 감, 저장소·주소에 아무것도 안 넣음(`localStorage`·`location.search` 그대로)
@@ -128,9 +128,9 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 화면이 조각·진료 줄·보낼 글자를 받게 하지 마라(`lib/bridge/client`를 부르지 마라). 이유: 화면은 Worker만 통로에 넘긴다(청구 design.md 5절, AC-004.11)
+- 화면이 조각·진료 줄·보낼 글자를 받게 하지 마라(`lib/bridge/client`를 부르지 마라). 이유: 화면은 Worker만 통로에 넘긴다(청구 design.md 5절, precheck 004.11)
 - `useBridge.ts`·`lib/bridge/*`·`workers/*`를 고치지 마라. 이유: 이 step 범위 밖이다(불러 쓰기만)
-- 파일 이름을 저장·전송·Worker 메시지에 넣지 마라. 이유: 환자 이름이 들어 있을 수 있다(stats-core AC-010.1)
+- 파일 이름을 저장·전송·Worker 메시지에 넣지 마라. 이유: 환자 이름이 들어 있을 수 있다(stats-core 010.1)
 - 숫자를 브라우저 저장소·주소에 두지 마라. 이유: AC-514.9
 - 승인본과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로(CLAUDE.md)
 - 기존 테스트를 깨뜨리지 마라. 이유: 지금 통계 엔진·청구·탭 틀 시험이 계속 통과해야 한다(이 TASK의 Files에 있는 시험만, 정한 칸만 고친다)

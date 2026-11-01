@@ -12,7 +12,7 @@
 - **AC-515.2**: Given `DASHBOARD_FEATURES`, When 통계 항목을 읽으면, Then `status: 'connect-first'`이고(연결 전 "연결 먼저", 연결 뒤 "사용 가능") 기능 목차 옆 글의 개수는 그 목록에서 센 값과 같다(시험은 개수를 글자로 못 박지 않고 목록에서 센다 — 다른 탭 명세도 같은 줄을 바꾼다)
 - **AC-515.3**: Given `NOT_READY_FEATURES`·`NotReadyPath`, When 읽으면, Then `/stats`가 빠졌고 다른 항목은 그대로다. 시험은 개수를 숫자로 못 박지 않고 탭 목록(`MENU`)에서 준비 중인 것과 견준다
 - **AC-515.4**: Given `/stats` 페이지, When 그리면, Then `NotReadyScreen`이 아니라 `StatsScreen`(병원 이름은 `currentMe()`가 준 내 병원 이름)이고 브라우저 탭 이름은 "통계"다. 탭 틀 통합 시험(`src/app/(app)/tabFrame.test.tsx`)이 세 곳(menu · features · notReady)과 페이지가 맞는지 보고 통과한다
-- **AC-515.5**: Given 로그인, When 콜백·문지기를 지나면, Then 첫 화면은 지금처럼 `/dashboard`다(tab-frame AC-301.1·301.2 시험 그대로 통과)
+- **AC-515.5**: Given 로그인, When 콜백·문지기를 지나면, Then 첫 화면은 지금처럼 `/dashboard`다(tab-frame 301.1·301.2 시험 그대로 통과)
 
 ## 읽어야 할 파일
 

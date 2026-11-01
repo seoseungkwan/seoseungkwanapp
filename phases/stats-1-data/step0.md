@@ -3,13 +3,13 @@
 > **TASK-1** 신환 30일 재방문 세기 · **REQ-501** · AC-501.1 ~ AC-501.5
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 0 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-1 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-029 (AC-029.1) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 옮겨 옴: precheck REQ-029 (precheck 029.1) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-501(신환 30일 재방문 세기 (aggregate · compare))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-501.1**: Given 신환 줄, When `aggregate`로 세면, Then 칸(일·주·월)마다 `revisit.within30` = 첫 신환일 다음 날부터 30일째까지(양 끝 포함) 외래 줄(어떤 처방이든)이 있는 집단 환자 수다. 집단·첫 신환일·입원 줄·같은 날 다른 처방·다시 신환으로 찍힌 날의 규칙은 지금 7·14일(stats-core AC-006.4·006.5)과 같고, `within7 ≤ within14 ≤ within30 ≤ cohort`다
+- **AC-501.1**: Given 신환 줄, When `aggregate`로 세면, Then 칸(일·주·월)마다 `revisit.within30` = 첫 신환일 다음 날부터 30일째까지(양 끝 포함) 외래 줄(어떤 처방이든)이 있는 집단 환자 수다. 집단·첫 신환일·입원 줄·같은 날 다른 처방·다시 신환으로 찍힌 날의 규칙은 지금 7·14일(stats-core 006.4·006.5)과 같고, `within7 ≤ within14 ≤ within30 ≤ cohort`다
 - **AC-501.2**: Given 31일째에만 다시 온 신환과 30일째에 다시 온 신환, When 세면, Then 30일째는 30일 재방문이고 31일째는 아니다
 - **AC-501.3**: Given 칸 하나, When `buildSummary`로 요약하면, Then `RevisitView.within30`·`rate30`·`after30`은 '칸 첫날 ~ 칸 끝날 + 30일'이 모두 덮였고 끝났을 때만 숫자이고, 아니면 null('집계 중')이다. 집단이 0명이면 `rate30`은 null이다. 30일이 숫자면 7·14일도 숫자다
 - **AC-501.4**: Given 지금 7·14일 시험(`aggregate.test.ts`·`compare.test.ts`·`analyzeFiles.test.ts`), When 돌리면, Then 기대값에 `within30`·`after30`(·`rate30`) 칸만 더하고 나머지는 한 글자도 바꾸지 않은 채 통과한다
@@ -24,7 +24,7 @@
 - `/specs/stats/requirements.md` — REQ-501
 - `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-1, '결정과 트레이드오프'
 - `/specs/stats/tasks.md` — TASK-1 (수정 범위·메모)
-- `/specs/stats-core/requirements.md` — REQ-006(AC-006.4·006.5 재방문 세기)·REQ-007(AC-007.3 '집계 중')
+- `/specs/stats-core/requirements.md` — REQ-006(stats-core 006.4·006.5 재방문 세기)·REQ-007(stats-core 007.3 '집계 중')
 - `/specs/stats-core/design.md` — '재방문 세는 법 (aggregate)'·'재방문 집계 중 (compare)'
 - `/src/lib/analytics/aggregate.ts`, `/src/lib/analytics/compare.ts`, `/src/lib/analytics/coverage.ts`, `/src/lib/analytics/dates.ts`
 - `/src/types/analysis.ts` (`RevisitCounts`·`RevisitView`·`BucketRef`)

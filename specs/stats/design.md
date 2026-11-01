@@ -3,7 +3,7 @@
 ## 개요
 - 숫자는 한 길로 만든다: 자료(도우미 줄 또는 파일) → Worker 안 `aggregate` → `buildSummary` → 저장 모양(`MonthPayload`·`DayPayload`, stats-core v2 + 선택 칸 `within30`·`after30`) + 덮은 기간 → 서버 `stats_months`·`stats_days`·`stats_coverage` 표. 화면(통계 탭·대시보드)은 **저장 모양만** 그린다. 그래서 PC와 휴대폰, 통계 탭과 대시보드의 숫자가 같다
 - 저장 모양으로 만들 수 없는 두 가지(처방별 신환·재진 = 기간 안 서로 다른 환자 수, 원장님 보고 문장 = 금액)는 비트 PC에서 불러온 직후 Worker 메모리·화면 상태에만 있다. 휴대폰에서는 "비트 PC에서 불러오면 보여요"
-- 도우미는 main에 있는 1단계 부품(메시지 틀·등록 확인 `RequireHospital`·읽기 전용 `IBitDb`·`ReadOnlyGuard`·`Chunker`)만 쓰고, 비트 통계 화면 표(47) 대신 **원본 양지바른의 통계 SQL**(`RxVisitSplit`·`TrendDataSource` 처방 목록·`OperationalReportSql`)로 읽는다. 원본의 통계 기능(추세·코호트·처방별 신환·일일보고)도 모두 SQL로 읽었다. 화면 표 읽기(`VendorGridExport`)는 청구 2단계 몫이라 기다리지 않는다
+- 도우미는 main에 있는 1단계 부품(메시지 틀·등록 확인 `HospitalGate`(Core, 도우미 `RequireHospital`이 감싸는 관문)·읽기 전용 `IBitDb`·`ReadOnlyGuard`·`Chunker`)만 쓰고, 비트 통계 화면 표(47) 대신 **원본 양지바른의 통계 SQL**(`RxVisitSplit`·`TrendDataSource` 처방 목록·`OperationalReportSql`)로 읽는다. 원본의 통계 기능(추세·코호트·처방별 신환·일일보고)도 모두 SQL로 읽었다. 화면 표 읽기(`VendorGridExport`)는 청구 2단계 몫이라 기다리지 않는다
 - 파일 올리기(stats-core)는 고치지 않고 예비로 쓴다. 30일 재방문만 세기·요약·저장 모양에 더한다
 
 ## 구성 요소 / 인터페이스
@@ -33,7 +33,8 @@ public static class StatsErrors         // "E-STATS-HISTORY", "E-STATS-TOO-BIG"
 public static class StatsRows           // Read(IBitDb db, string hospitalScope, string from, string to) → StatsRowsResult (TASK-3)
 public static class StatsReport         // Read(IBitDb db, string hospitalScope, string to) → ReportSet[4] (TASK-4)
 public static class StatsPayload        // Build(...) → JSON 글자 하나 (System.Text.Json, 정해 둔 열쇠만)
-public static class StatsCommands       // Register(Dispatcher, BitServices): "stats.rows" → RequireHospital → Build → Chunker.Split
+public static class StatsCommands       // Register(Dispatcher, BitServices): "stats.rows" → HospitalGate.Open → Build → Chunker.Send
+// (RequireHospital은 Precheck.Helper 안(internal)이라 Core에서는 부르지 못한다 — 같은 관문 HospitalGate.Open을 쓴다)
 ```
 - 원본 사본: `helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql`(원본 파일 통째가 아니라 SQL 문장만, 청구 `Bit/original-sql`과 같은 방식)
 - SQL 목록(모두 원본 `seoseungkwan/shared@2a1069b` `YangjiBareun_사전점검/vendor/drbit_export/`):
@@ -47,8 +48,8 @@ public static class StatsCommands       // Register(Dispatcher, BitServices): "s
 
 - 관문: `Sql.cs`의 `IsAllowed`·`ParametersOf` 두 줄이 `StatsSql`에 없으면 거절하던 것을 `StatsSql`도 본다(아래 '다른 작업과 겹치는 파일'). `Sql.All`은 청구 목록 그대로라 청구 시험(`ReadOnlyGuard.test.cs`의 사본 대조)이 바뀌지 않는다
 - 시간 제한: 원본처럼 자료 SQL 150초, 메타(`HistoryGuard`) 15초. 넘으면 `E-BIT-READ-FAILED`
-- 읽는 순서: `RequireHospital.Open` → `HistoryGuard`(1이면 `E-STATS-HISTORY`) → 진료 줄(700,000줄 넘으면 `E-STATS-TOO-BIG`) → 기간 합계 → 날짜별 → 처방 이름(진료 줄에 나온 코드만 남김) → 보고 네 벌(TASK-4) → JSON → `Chunker.Split`. 하나라도 예외면 `error`만(반쪽 없음, 청구 design.md 9-2와 같은 규칙)
-- `Program.cs`: `StatsCommands.Register(dispatcher, services)` 한 줄(지금 `BitCommands.Register` 다음)
+- 읽는 순서: `HospitalGate.Open(services)` → `HistoryGuard`(1이면 `E-STATS-HISTORY`) → 진료 줄(700,000줄 넘으면 `E-STATS-TOO-BIG`) → 기간 합계 → 날짜별 → 처방 이름(진료 줄에 나온 코드만 남김) → 보고 네 벌(TASK-4) → JSON → `Chunker.Split`. 하나라도 예외면 `error`만(반쪽 없음, 청구 design.md 9-2와 같은 규칙)
+- `Program.cs`: 지금 `BitCommands.Register(dispatcher, HelperServices.Create());` 다음에 `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄만 더한다(지금 `services` 변수가 없다. 지금 줄을 고치지 않는 가장 작은 더하기. `HelperServices.Create()`는 만들기만 하고 비트를 건드리지 않아 두 번 불러도 된다)
 
 #### 도우미 → Worker JSON (`stats.rows` 답, 조각을 모은 글자)
 ```jsonc
@@ -90,7 +91,9 @@ export function requestSplit(worker, req: { from; to }): Promise<RxSplitView>
 // src/types/stats.ts — 화면이 받는 모양(숫자만)
 export type StatsChecks = { noChart: number; duplicate: number; noFirst: number }
 export type StatsLoaded = {
-  range: { from: string; to: string }; covered: { from: string; to: string }   // 덮은 기간 = [from, min(to, 오늘)]
+  range: { from: string; to: string }
+  covered: { from: string; to: string } | null   // 저장할 덮은 기간 = [from, min(to, 끝난 마지막 날)], 끝난 마지막 날 = closeToday ? 오늘 : 어제. 비면 null
+  // (요약 buildSummary에 넣는 덮은 기간은 [from, min(to, 오늘)] 그대로 — 오늘 줄은 partial이다)
   quality: 'valid' | 'incomplete'; checks: StatsChecks
   months: MonthPayload[] | null; days: DayPayload[] | null      // incomplete면 null
   report: { daily: ClinicReportNumbers[]; monthly: ClinicReportNumbers[] }   // types/clinicReport.ts (C6: report.ts는 feat-ai-report 몫)
@@ -143,13 +146,13 @@ create table public.stats_coverage (           -- 불러온(덮은) 기간 한 �
 #### TASK-7 저장·읽기 (`src/lib/storage/stats.ts`, 환자 구역 밖)
 ```ts
 export type StatsSource = 'bit' | 'file'
-export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>   // 실패 throw StorageError('E-STATS-SAVE-FAILED')
+export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange | null; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>   // 실패 throw StorageError('E-STATS-SAVE-FAILED')
 export async function readCoverage(range: DateRange, deps?): Promise<DateRange[]>          // 겹치는 덮은 기간을 mergeRanges로 합침
 export async function readDays(range: DateRange, deps?): Promise<{ rows: DayPayload[]; dropped: number; latest: { at: string; source: StatsSource } | null }>
 export async function readMonths(range: { from: string /* YYYY-MM */; to: string }, deps?): Promise<{ rows: MonthPayload[]; dropped: number; latest: … }>
 ```
 - 클라이언트는 `lib/supabase/browser.ts`의 `supabaseBrowser()`. upsert는 `onConflict: 'hospital_id,day'`(`hospital_id`는 DB 기본값). 한 번에 200줄씩 나눠 보내고, 다 되면 `stats_coverage`에 덮은 기간 한 줄
-- ESLint에 `src/lib/storage/**` 블록을 더한다(파일럿에서 미뤄 둔 블록, stats-core design.md '울타리'): `lib/parsers`·`lib/bridge`·`workers`·`lib/analytics`(`dates`·`coverage` 밖) import 금지, `console`·브라우저 저장소 금지
+- ESLint에 `src/lib/storage/stats.ts` 블록을 더한다(통계 파일만 — 다른 브랜치가 `src/lib/storage/`에 둘 파일에는 규칙을 씌우지 않는다. 파일럿에서 미뤄 둔 블록, stats-core design.md '울타리'): `lib/parsers`·`lib/bridge`·`workers`·`lib/analytics`(`dates`·`coverage` 밖) import 금지, `console`·브라우저 저장소 금지
 
 #### TASK-8 처방 추세 (`src/lib/analytics/rxTrend.ts`)
 ```ts
@@ -224,7 +227,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 // useStatsWorker() — createStatsWorker 하나(화면을 떠나면 terminate), useBridge({ worker })
 ```
 - 상태: `period`, 저장 숫자(읽은 것 + 방금 만든 것), 불러오기 진행·오류, 보고 숫자·처방별 결과(메모리), "오늘 진료 끝" 체크
-- 파일 길: `runAnalysis(files)` → `toMonthPayload`·`toDayPayloads` + 덮은 기간(성공한 파일의 기간 줄·줄 범위 합집합 가운데 가장 최근 이어진 구간) → `saveStats(source 'file')`
+- 파일 길: `runAnalysis(files)` → `toMonthPayload`·`toDayPayloads` + 덮은 기간 하나(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하) → `saveStats(source 'file')`. `saveStats`는 덮은 기간 하나(`DateRange | null`)만 받는다
 
 #### TASK-15 탭 연결
 - `menu.ts`(통계 `href: '/stats'`, `ready: true`), `briefing/features.ts`(통계 `connect-first`), `notReadyFeatures.ts`(통계 빼기), `src/app/(app)/stats/page.tsx`(`StatsScreen`, `currentMe()`의 병원 이름, `dynamic = 'force-dynamic'`), 이 넷을 맞추는 시험들
@@ -234,14 +237,14 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - `view.ts` `revisitView`에 `d30`, `DashboardAnalysis` 30일 줄이 진짜 값을 쓴다
 
 #### TASK-17 개인정보 E2E (`e2e/stats-privacy.spec.ts`)
-- 사용자가 TASK-6 SQL을 실제 Supabase에 붙인 뒤에만 돈다(`npm run e2e`, 지금 `e2e/support.ts`의 쿠키 넣기 로그인, `trace: 'off'`). 시험 계정(승인됨)으로 `/stats` → 가짜 비트 파일 넣기 → 저장. `page.on('request')`로 모든 요청의 주소·머리·본문을 모아 가짜 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없는지, 그 뒤 시험 계정으로 세 표를 다시 읽어 같은 값이 없는지 본다(cross-branch C7). 시험 계정 병원의 통계 줄만 쓴다
+- 사용자가 TASK-6 SQL을 실제 Supabase에 붙인 뒤에만 돈다(`npm run e2e`, 지금 `e2e/support.ts`의 쿠키 넣기 로그인, `trace: 'off'`). 시험 계정(승인됨)으로 `/stats` → 가짜 비트 파일 넣기 → 저장. `page.on('request')`로 모든 요청의 주소·본문과 인증 밖 머리(`authorization`·`apikey`·`cookie` 값은 모으지 않는다, C11)를 모아 가짜 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없는지(걸리면 `{ kind, where }`만 — 값을 출력하지 않는다), 그 뒤 시험 계정으로 세 표를 다시 읽어 같은 값이 없는지 본다(cross-branch C7). 시험 계정 병원의 통계 줄만 쓴다
 - TDD: exempt — 시험만 더한다(대상 코드는 TASK-14·15에서 단위 시험을 통과). 일부러 틀린 기대값으로 실패를 한 번 본다(auth-live TASK-7~9와 같은 방식)
 
 ## 데이터 흐름
 ```
 [비트 PC] 화면 [비트에서 불러오기]
    → useBridge.stream('stats.rows', {from, to})            (통로는 조각을 풀지 않고 Worker 포트로)
-   → 도우미: RequireHospital → StatsSql 읽기(읽기 전용) → JSON → Chunker → chunk…end
+   → 도우미: HospitalGate.Open → StatsSql 읽기(읽기 전용) → JSON → Chunker → chunk…end
    → Worker: 모으기·sha256 → 검사 → ConsumptionRow(메모리 번호) → aggregate → buildSummary → 저장 모양
       └ 메모리: 진료 줄 {p,d,c,f} · 기간·날짜 합계 · 처방 이름        (split 일이 쓴다)
    → 화면 ← {저장 모양, 확인 건수, 보고 숫자 네 벌}               (차트번호·진료 줄 없음)
@@ -278,16 +281,19 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 |---|---|---|
 | `supabase/migrations/20261101000200_stats.sql` + `public.my_hospital_id()` | 새 파일. 함수는 C1 글자 그대로(`create or replace`) | 함수: worklog·patients·revenue·precheck(그쪽이 나중에 `create or replace`로) |
 | `src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts` | 끝에 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`(TASK-5), `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`(TASK-7) | 전부(번호는 브랜치마다 앞말이 달라 겹치지 않는다, C3) |
-| `eslint.config.mjs`·`src/guardrails.test.ts` | `lib/storage/**` 블록 하나 (TASK-7) | precheck·patients·revenue·worklog(각자 블록) |
+| `eslint.config.mjs`·`src/guardrails.test.ts` | `src/lib/storage/stats.ts` 블록 하나 (TASK-7). 합칠 자리: 다른 브랜치가 `src/lib/storage/**` 넓은 블록을 더하면 이 파일도 그 규칙을 받는다 — 합칠 때 두 블록이 서로 막지 않는지 본다 | precheck·patients·worklog(각자 블록. revenue는 고치지 않음) |
+| `src/types/db.ts` | 통계 표 줄 모양 셋을 끝에 더함 (TASK-6) | precheck(청구 설정·건수 표), 표를 만드는 다른 브랜치 |
+| `src/app/titles.test.tsx` | `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 (TASK-15) | 탭을 채우는 브랜치 모두 |
 | `docs/ARCHITECTURE.md` | 'DB 표'의 통계 줄·'데이터 흐름' 통계 줄 (TASK-6) | 전부 |
 | `docs/UI_GUIDE.md`·`docs/ADR.md` | 고치지 않는다 | — |
 | `src/components/common/notReadyFeatures.ts`(+시험)·`src/components/shell/menu.ts`·`shell.test.tsx`·`src/components/dashboard/briefing/features.ts`(+시험)·`DashboardHome.test.tsx`·`src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx` | 통계 줄만 (TASK-15). 개수는 목록에서 센다(C5) | worklog·patients·revenue(각자 자기 탭 줄) |
 | `src/components/ui/classes.test.ts` | `APP_DIRS`에 `src/components/stats` 한 줄 (TASK-13) | 화면을 만드는 브랜치 모두 |
 | `helper/src/Precheck.Core/Bit/Sql.cs` | `IsAllowed`·`ParametersOf`가 `StatsSql`도 보는 두 줄 (TASK-3) | precheck(청구 SQL), revenue(`RevenueSql`), patients(자기 SQL) |
-| `helper/src/Precheck.Helper/Program.cs` | `StatsCommands.Register(...)` 한 줄 (TASK-3) | precheck·revenue·patients |
+| `helper/src/Precheck.Helper/Program.cs` | `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄 (TASK-3) | precheck·revenue·patients |
 | `src/lib/bridge/commands.json` | 고치지 않는다(`stats.rows`가 이미 있다) | revenue·patients가 명령을 더할 수 있음 |
 | stats-core·tab-frame 파일(이미 main) | `lib/analytics/aggregate.ts`·`compare.ts`·`types/analysis.ts`(TASK-1), `lib/payload/*`·`types/payload.ts`(TASK-2, 검사는 선택 칸만 더해 남의 가짜 자료가 그대로 통과), `components/dashboard/summary/*`·`dashboard/page.tsx`(TASK-16) | ai-report(저장 모양 가짜 자료를 씀) |
 | `phases/index.json` | 통계 Phase 넷을 끝에 더함 | 전부 |
+- `feat-ai-report`가 알아야 할 것: 통계 달 숫자 표 이름은 `stats_months`(plan.md의 `months`가 아님)·일 숫자는 `stats_days`다. ai-report design.md의 'DB months' 읽기는 `stats_months`를 읽어야 한다. `revisit`의 `within30`·`after30`은 선택 칸이다
 - 고치지 않음: `src/workers/precheck/*`, `helper/src/Precheck.Helper/Commands/*`, `helper/src/Precheck.Windows/*`, `src/types/precheck.ts`, `src/lib/bridge/*`, `src/types/report.ts`·`src/lib/report/*`(ai-report 몫)
 
 ## 사전점검 명세가 할 일 (이 명세는 고치지 않는다)

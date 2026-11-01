@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-517(개인정보 E2E (실제 Supabase, 사용자가 SQL을 붙인 뒤))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-517.1**: Given 시험 계정(승인됨)으로 연 `/stats`와 가짜 비트 파일(`fixtures/fake-bit/`), When 파일을 넣어 저장하면, Then 브라우저가 보낸 모든 요청(주소·머리·본문)에 그 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없다
+- **AC-517.1**: Given 시험 계정(승인됨)으로 연 `/stats`와 가짜 비트 파일(`fixtures/fake-bit/`), When 파일을 넣어 저장하면, Then 브라우저가 보낸 모든 요청(주소·본문, 그리고 `authorization`·`apikey`·`cookie`를 뺀 머리)에 그 파일의 차트번호·이름 칸 값·전화·주민번호 모양·파일 이름이 없다. 시험은 인증 머리·쿠키·apikey 값을 모으지 않고, 걸리면 어떤 종류가 어디에서 걸렸는지(`{ kind, where }`, 값 없음)만 보인다(`expect(hits).toEqual([])`)
 - **AC-517.2**: Given 같은 시험 뒤, When 시험 계정으로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽으면, Then 저장된 값에도 AC-517.1의 값이 하나도 없고 줄 모양이 `validateMonthPayload`·`validateDayPayload`를 지난다
 - **AC-517.3**: Given `/dashboard`, When 그 계정으로 열면, Then 방금 저장한 숫자가 보이고(연결 뒤 짜임) 요청에 같은 금지 값이 없다. 시험은 `npm run e2e`에서만 돌고(`npm test` 밖), 시험 계정 병원의 통계 줄만 쓴다
 
@@ -24,7 +24,7 @@
 - `/tmp/claude-1000/-home-developer/e95c76cc-42cc-429c-acc9-4833022da887/scratchpad/cross-branch-rules.md`가 있으면 C7
 - `/docs/ADR.md` — ADR-017(E2E: 실제 Supabase + 시험 계정, 쿠키 넣기 로그인, trace·영상·스크린샷 끔)
 - `/specs/auth-live/tasks.md` — TASK-7~9(E2E만 더하는 TASK의 본보기: TDD exempt, 일부러 틀린 기대값으로 실패 한 번)
-- `/e2e/support.ts`, `/e2e/requests.spec.ts`(보내는 요청 모으기 본보기), `/e2e/rls-live.spec.ts`(supabase-js로 다시 읽기 본보기), `/playwright.config.ts`, `/e2e/config.ts`
+- `/e2e/support.ts`(역할별 로그인 fixture·쿠키 넣기), `/e2e/lib/session.ts`(시험 계정 세션), `/playwright.config.ts`, `/e2e/config.ts`, `/specs/auth-live/design.md` 'E2E 시나리오'(요청 모으기·다시 읽기 규칙 — 이 브랜치에는 auth-live의 `requests.spec.ts`·`rls-live.spec.ts`가 아직 없으니 본보기로 찾지 않는다)
 - `/fixtures/fake-bit/` (넣을 가짜 파일 — 차트번호·이름 칸 값을 시험이 파일에서 꺼내 금지 목록으로 쓴다)
 - `/src/lib/payload/validate.ts`
 - 이전 step에서 만든 파일: TASK-14·15·16 (통계 화면·탭·대시보드 읽기), TASK-6 SQL이 실제 Supabase에 붙어 있어야 한다
@@ -45,7 +45,7 @@
 ## 꼭 지킬 규칙 (CRITICAL)
 
 - **서버에는 숫자만**: 서버로 가는 값은 검사한 저장 모양(`validateMonthPayload`·`validateDayPayload`), 덮은 기간(날짜 둘), 출처('bit'|'file')뿐이다. 차트번호·환자 번호·진료 줄·파일 이름·보고 금액·보고 글은 보내지 않는다 (CLAUDE.md, plan.md §2-2·§4)
-- **비밀값**: Supabase 키·토큰을 코드·시험·출력에 쓰지 않는다. 시험은 가짜 클라이언트만 쓰고 실제 Supabase에 붙지 않는다 (CLAUDE.md)
+- **비밀값 (E2E)**: 이 시험은 실제 Supabase에 붙는다(사용자가 SQL을 붙인 뒤, `.env.local`의 시험 계정). 시험 계정 값·쿠키·토큰·apikey를 코드·출력·실패 메시지·산출물에 쓰지 않는다. 요청을 모을 때 인증 머리·쿠키·apikey 값은 모으지 않는다(cross-branch C11). `trace: 'off'` (CLAUDE.md, ADR-017)
 - **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 - **새 서버 경로 없음**: `app/api/*`·Route Handler·Server Action을 만들지 않는다. 서버 코드는 `app/api/ai/` 하나다. 통계 숫자는 브라우저가 Supabase(RLS)에 바로 읽고 쓴다. 페이지·`*.server.ts`는 통계 표를 읽지 않는다 (CLAUDE.md, ADR-004)
 
@@ -56,8 +56,8 @@
 
 ### 1. 시험 (`e2e/stats-privacy.spec.ts`, Playwright)
 - 승인된 시험 계정으로(`e2e/support.ts`의 쿠키 넣기) `/stats` → 가짜 비트 파일을 넣고 저장될 때까지 기다린다
-- AC-517.1: `page.on('request')`로 모든 요청의 주소·머리·본문을 모아, 가짜 파일에서 꺼낸 차트번호·이름 칸 값·전화 모양·주민번호 모양·파일 이름이 하나도 없음을 본다(자리표시 `XXXXXX-XXXXXXX` 포함)
-- AC-517.2: 시험 계정 세션의 supabase-js로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽어 같은 값이 없고, 달·일 줄이 `validateMonthPayload`·`validateDayPayload`를 지남을 본다
+- AC-517.1: `page.on('request')`로 요청마다 주소·본문(`postData`)과 머리 가운데 `authorization`·`apikey`·`cookie`(대소문자 무시)를 **뺀** 것만 모은다(인증 값은 처음부터 모으지 않는다, cross-branch C11). 가짜 파일에서 꺼낸 차트번호·이름 칸 값·전화 모양·주민번호 모양(자리표시 `XXXXXX-XXXXXXX` 포함)·파일 이름을 찾고, 걸리면 `{ kind: 'chart' | 'name' | 'phone' | 'rrn' | 'fileName', where: 'url' | 'body' | 'header:<이름>' }`만 `hits`에 넣는다(값을 넣지 않는다). `expect(hits).toEqual([])` — 실패해도 값·토큰이 출력되지 않는다
+- AC-517.2: 같은 방식(`hits`에 종류·표 이름만)으로, 시험 계정 세션의 supabase-js로 `stats_months`·`stats_days`·`stats_coverage`를 다시 읽어 같은 값이 없고, 달·일 줄이 `validateMonthPayload`·`validateDayPayload`를 지남을 본다
 - AC-517.3: `/dashboard`를 열어 방금 저장한 숫자가 연결 뒤 짜임으로 보이고 요청에 금지 값이 없음을 본다
 - 시험 계정 병원의 통계 줄만 쓴다(다른 줄을 지우거나 고치지 않는다). 산출물에 쿠키·토큰을 남기지 않는다(`trace: 'off'`)
 

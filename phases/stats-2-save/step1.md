@@ -10,7 +10,7 @@
 
 - **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고 그 뒤 `stats_coverage`에 덮은 기간 한 줄을 넣는다. 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다
 - **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`·`readCoverage({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. `readCoverage`는 그 기간과 겹치는 덮은 기간을 합쳐(`mergeRanges`) 돌려준다. 읽기 실패는 `E-STATS-READ-FAILED`다
-- **AC-507.3**: Given `src/lib/storage/**`(시험 밖), When ESLint를 돌리면, Then `lib/parsers`·`lib/bridge`·`workers`를 import할 수 없고 `lib/analytics`는 `dates`·`coverage`만 된다. 환자 자료 구역은 지금처럼 `lib/storage`를 import할 수 없다. `console`·브라우저 저장소를 쓰지 않는다. 시험: `src/guardrails.test.ts`
+- **AC-507.3**: Given `src/lib/storage/stats.ts`(통계 파일만 — 다른 브랜치의 `lib/storage` 파일에 규칙을 씌우지 않는다), When ESLint를 돌리면, Then `lib/parsers`·`lib/bridge`·`workers`를 import할 수 없고 `lib/analytics`는 `dates`·`coverage`만 된다. 환자 자료 구역은 지금처럼 `lib/storage`를 import할 수 없다. `console`·브라우저 저장소를 쓰지 않는다. 시험: `src/guardrails.test.ts`
 
 ## 읽어야 할 파일
 
@@ -61,17 +61,17 @@
 ```ts
 export type StatsSource = 'bit' | 'file'
 export class StorageError extends Error { readonly code: 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED' }
-export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>
+export async function saveStats(input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange | null; source: StatsSource }, deps?: { client?: SupabaseLike }): Promise<{ saved: number }>
 export async function readCoverage(range: { from: string; to: string }, deps?: …): Promise<DateRange[]>   // 겹치는 덮은 기간을 mergeRanges로 합침
 export async function readDays(range: { from: string; to: string }, deps?: …): Promise<{ rows: DayPayload[]; dropped: number; latest: { at: string; source: StatsSource } | null }>
 export async function readMonths(range: { from: string; to: string }, deps?: …): Promise<{ rows: MonthPayload[]; dropped: number; latest: … }>
 ```
-- 저장(AC-507.1): 모든 값을 먼저 검사 → 하나라도 null이면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`. 줄 = `{ month|day, partial, source, payload }`만. `stats_months`·`stats_days`에 `upsert(rows, { onConflict: 'hospital_id,month' | 'hospital_id,day' })`, 200줄씩 → 다 되면 `stats_coverage`에 `{ from_day, to_day, source }` 한 줄. 실패 응답도 `E-STATS-SAVE-FAILED`(응답 내용은 옮기지 않는다)
+- 저장(AC-507.1): 모든 값을 먼저 검사 → 하나라도 null이면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`. 줄 = `{ month|day, partial, source, payload }`만. `stats_months`·`stats_days`에 `upsert(rows, { onConflict: 'hospital_id,month' | 'hospital_id,day' })`, 200줄씩 → 다 되면 `covered`가 null이 아닐 때만 `stats_coverage`에 `{ from_day, to_day, source }` 한 줄. 실패 응답도 `E-STATS-SAVE-FAILED`(응답 내용은 옮기지 않는다)
 - 읽기(AC-507.2): `.select('month|day, partial, source, payload, updated_at').gte().lte().order()` → 줄마다 검사, 걸린 줄은 빼고 수만 센다. `readCoverage`는 겹치는 줄을 `mergeRanges`로 합친다. 실패는 `E-STATS-READ-FAILED`
 - `deps.client`는 시험용(가짜 클라이언트). 기본은 `supabaseBrowser()`
 
 ### 2. 울타리 (`eslint.config.mjs`, `src/guardrails.test.ts`)
-- `src/lib/storage/**` 블록(AC-507.3): `@/lib/parsers*`·`@/lib/bridge*`·`@/workers*` import 금지, `@/lib/analytics/*`는 `dates`·`coverage` 밖 금지, `console`·`localStorage`·`sessionStorage`·`indexedDB` 금지. 지금 환자 구역의 `lib/storage` import 금지는 그대로
+- `src/lib/storage/stats.ts` 블록(AC-507.3, 통계 파일만 — 다른 브랜치가 `src/lib/storage/`에 둘 파일에 규칙을 씌우지 않는다): `@/lib/parsers*`·`@/lib/bridge*`·`@/workers*` import 금지, `@/lib/analytics/*`는 `dates`·`coverage` 밖 금지, `console`·`localStorage`·`sessionStorage`·`indexedDB` 금지. 지금 환자 구역의 `lib/storage` import 금지는 그대로
 - `guardrails.test.ts`에 그 블록의 시험(막히는 코드·되는 코드)을 지금 시험과 같은 방식으로 더한다
 
 ### 3. 오류 번호 (앞말 `E-STATS-`, 다른 브랜치와 같은 번호를 더하지 않는다 — cross-branch C3)

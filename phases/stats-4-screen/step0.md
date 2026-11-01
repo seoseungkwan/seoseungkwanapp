@@ -3,7 +3,7 @@
 > **TASK-13** 통계 그래프 섹션 · **REQ-513** · AC-513.1 ~ AC-513.9
 > Phase 4 · 화면 `stats-4-screen` · Step 0 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-031 (AC-031.3·031.4·031.5) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 옮겨 옴: precheck REQ-031 (precheck 031.3·031.4·031.5) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
@@ -17,7 +17,7 @@
 - **AC-513.6**: Given 원장님 보고 문장, When 그리면, Then 일일(오늘·어제)·월말(이번 달·지난달) 고르기 단추 묶음, 보고 글(글자로만, 줄바꿈 그대로), [복사], '확인 필요' 줄 표시(색과 함께 "확인 필요" 글자)가 있다. [복사]는 대시보드 [복사]와 같은 동작이다(`navigator.clipboard.writeText`, 2초 "복사했어요", 실패하면 직접 복사 안내, 폭 흔들림 없음). `ok: false` 벌은 "이 기간은 보고를 확정할 수 없어요" + 비트 원본 통계에서 확인하라는 안내다
 - **AC-513.7**: Given 처방별 신환·재진, When 그리면, Then 머리 글(`rxVisitHeadline`), 처방마다 신환·재진·합계 표(합계가 큰 차례 10개, [모두 보기]로 나머지), [표 복사](`formatRxVisitSplit` 글)가 있다
 - **AC-513.8**: Given 비트 PC에서 불러온 자료가 없음, When 처방별 신환·재진·원장님 보고 문장을 그리면, Then "비트 PC에서 불러오면 보여요" + 한 줄 이유(진료 줄·금액은 서버에 저장하지 않는다)다
-- **AC-513.9**: Given `components/stats/**`(시험 밖) 소스, When 보면, Then Supabase·`fetch`·브라우저 저장소·`lib/bridge`·`workers`를 쓰지 않고(섹션은 props만 받는다) `ds` 공통 모양과 토큰만 쓰며, 상자 안 상자가 없고 앱 화면 규칙 시험(`components/ui/classes.test.ts` 검사 목록에 `src/components/stats`를 더함)을 통과한다
+- **AC-513.9**: Given `components/stats/sections/**`와 `components/stats/view.ts`(시험 밖) 소스(화면 조립 파일 `StatsScreen.tsx`·`useStatsData.ts`·`useStatsWorker.ts`·`SourcePicker.tsx`는 저장·Worker·통로를 불러야 하므로 이 AC 밖이고 AC-514.9를 따른다), When 보면, Then Supabase·`fetch`·브라우저 저장소·`lib/bridge`·`workers`를 쓰지 않고(섹션은 props만 받는다) `ds` 공통 모양과 토큰만 쓰며, 상자 안 상자가 없고 앱 화면 규칙 시험(`components/ui/classes.test.ts` 검사 목록에 `src/components/stats`를 더함)을 통과한다
 
 ## 읽어야 할 파일
 
@@ -121,7 +121,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - 승인본과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로(CLAUDE.md)
-- 섹션에서 Supabase·`fetch`·`lib/bridge`·`workers`를 불러오지 마라. 이유: 섹션은 props만 그린다(AC-513.9)
+- 섹션(`components/stats/sections/**`)에서 Supabase·`fetch`·`lib/bridge`·`workers`를 불러오지 마라. 이유: 섹션은 props만 그린다(AC-513.9 — 화면 조립 파일 `StatsScreen.tsx`·`use*.ts`는 TASK-14 몫이고 이 AC 밖이다)
 - 그래프 패키지(recharts·chart.js 등)를 넣지 마라. 이유: 차트 부품만 쓴다(UI_GUIDE, 새 패키지 없음)
 - `components/common/CopyButton.tsx`를 만들지 마라. 이유: 청구 5단계가 그 이름을 만든다(design.md '결정')
 - 보고 글을 HTML로 그리지 마라(`dangerouslySetInnerHTML`). 이유: 글자로만(ESLint `react/no-danger`)

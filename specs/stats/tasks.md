@@ -11,7 +11,7 @@
 
 ## TASK-1: 신환 30일 재방문 세기
 - Step: Phase 1 · Step 0 · `revisit-30`
-- AC: AC-501.1~AC-501.4
+- AC: AC-501.1~AC-501.5
 - REQ: REQ-501
 - Files: src/lib/analytics/aggregate.ts, src/lib/analytics/aggregate.test.ts, src/lib/analytics/compare.ts, src/lib/analytics/compare.test.ts, src/types/analysis.ts, src/workers/analyzeFiles.test.ts
 - Tests: src/lib/analytics/aggregate.test.ts, src/lib/analytics/compare.test.ts, src/workers/analyzeFiles.test.ts
@@ -106,7 +106,7 @@
 
 ## TASK-11: 통계 화면 숫자
 - Step: Phase 3 · Step 2 · `stats-view`
-- AC: AC-511.1~AC-511.7
+- AC: AC-511.1~AC-511.8
 - REQ: REQ-511
 - Files: src/components/stats/view.ts, src/components/stats/view.test.ts
 - Tests: src/components/stats/view.test.ts

@@ -3,13 +3,13 @@
 > **TASK-3** 도우미 통계 줄 읽기 (`stats.rows`) · **REQ-503** · AC-503.1 ~ AC-503.4
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 2 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-3 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-027 (AC-027.1·027.3·027.4) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 옮겨 옴: precheck REQ-027 (precheck 027.1·027.3·027.4) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-503(도우미 통계 줄 읽기 (`stats.rows`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-503.1**: Given 등록한 병원과 기간 `{from, to}`(함께 세어 800일 이하, 명령 표 그대로), When 도우미가 `stats.rows`를 처리하면, Then 먼저 등록 확인(`RequireHospital`)을 하고, 원본 `RxVisitSplit`의 외래 내원 조건으로 읽은 진료 줄 `[차트번호, 진료일, 처방코드, 첫 내원일]`(처방 코드 거르기 없음), 기간 합계(내원·실환자·신환·차트번호 없는 내원·중복 내원·첫 내원을 못 찾은 환자, 원본 `SummarySql`), 날짜별 합계(내원·실환자·신환, 원본 `DaysSql`), 진료 줄에 나온 처방코드의 이름(원본 `TrendDataSource` 처방 목록 SQL)을 JSON 하나로 만든 뒤 `chunk … end`로 보낸다. 이름·전화·주민번호·주소 칸은 읽지도 보내지도 않는다
+- **AC-503.1**: Given 등록한 병원과 기간 `{from, to}`(함께 세어 800일 이하, 명령 표 그대로), When 도우미가 `stats.rows`를 처리하면, Then 먼저 등록 확인(Core `HospitalGate.Open` — 도우미 `RequireHospital`이 감싸는 같은 관문)을 하고, 원본 `RxVisitSplit`의 외래 내원 조건으로 읽은 진료 줄 `[차트번호, 진료일, 처방코드, 첫 내원일]`(처방 코드 거르기 없음), 기간 합계(내원·실환자·신환·차트번호 없는 내원·중복 내원·첫 내원을 못 찾은 환자, 원본 `SummarySql`), 날짜별 합계(내원·실환자·신환, 원본 `DaysSql`), 진료 줄에 나온 처방코드의 이름(원본 `TrendDataSource` 처방 목록 SQL)을 JSON 하나로 만든 뒤 `chunk … end`로 보낸다. 이름·전화·주민번호·주소 칸은 읽지도 보내지도 않는다
 - **AC-503.2**: Given `StatsSql`의 SQL 상수, When 원본 사본(`helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql`)과 견주면, Then 공백만 다르다. 진료 줄 SQL 하나만 원본 `RowsSql`에서 처방 코드 거르기 한 덩어리(`AND (UPPER(RTRIM(o.OdrCod)) IN (@c0, …, @c99) OR (@eswt=1 AND …))`)를 뺀 것이고, 시험은 사본에서 그 덩어리를 뺀 글과 견준다. 모두 매개변수를 받는 SELECT이고 `ReadOnlyGuard`를 지난다. 지금 `Sql.All`(청구 SQL 목록)은 그대로다
 - **AC-503.3**: Given 과거 이관 자료가 따로 있음(원본 `HistoryGuard`가 1), 진료 줄이 700,000줄을 넘음, SQL 하나라도 실패, When `stats.rows`를 처리하면, Then 반쪽 자료를 보내지 않고 각각 `error` `E-STATS-HISTORY` · `E-STATS-TOO-BIG` · `E-BIT-READ-FAILED`만 보낸다. 등록 확인에 걸리면 지금 번호(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`)다
 - **AC-503.4**: Given 도우미 진단 기록, When `stats.rows`를 처리하면, Then 시각·명령 이름·오류 번호만 남고 차트번호·처방코드·숫자는 남지 않는다
@@ -63,10 +63,10 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **비트는 읽기만**: `StatsSql`(과 지금 `Sql.cs`)에 정해 둔 SELECT 상수만 매개변수로 돌리고, 지금 `IBitDb`(윈도우 `SqlBitDb`: 되돌리는 트랜잭션)로만 읽는다. SQL 글자를 이어 붙이거나 고치지 않는다. 읽기 전에는 늘 `RequireHospital.Open(services)`로 등록 병원을 다시 확인하고, 돌려받은 세션으로만 읽는다 (AC-005.3·005.6, `Commands/RequireHospital.cs` 주석)
+- **비트는 읽기만**: `StatsSql`(과 지금 `Sql.cs`)에 정해 둔 SELECT 상수만 매개변수로 돌리고, 지금 `IBitDb`(윈도우 `SqlBitDb`: 되돌리는 트랜잭션)로만 읽는다. SQL 글자를 이어 붙이거나 고치지 않는다. 읽기 전에는 늘 Core의 `HospitalGate.Open(services)`(도우미 `RequireHospital`이 감싸는 같은 관문 — `RequireHospital`은 `Precheck.Helper` 안이라 Core에서 못 부른다)로 등록 병원을 다시 확인하고, 돌려받은 세션으로만 읽는다 (precheck 005.3·005.6, `Commands/RequireHospital.cs` 주석)
 - **1MB 나눠 보내기**: 도우미 → 크롬 메시지 하나는 앞 4바이트 길이를 포함해 1,000,000바이트 이하다. 환자 자료 명령(`stats.rows`, 명령 표 `patient: true`)의 답은 작아도 늘 `chunk`(`seq` 0부터) … `end {count, bytes, sha256}`이고 지금 `Chunker.Split`을 쓴다. 자료를 다 만든 뒤에 나눈다. 도중에 실패하면 `end` 대신 `error`만 보내고 반쪽 자료를 보내지 않는다 (청구 design.md 4절·9-2)
 - **C# 나누기**: 플랫폼과 상관없는 것은 `Precheck.Core`(netstandard2.0)에 두고 이 서버에서 `dotnet test -f net10.0`으로 시험한다. 윈도우 전용 파일(`Precheck.Windows/*`)은 고치지 않는다. 새 NuGet 패키지를 넣지 않는다 (ADR-016)
-- **도우미 기록**: 표준 출력에는 메시지 틀만 쓴다. 진단 기록에는 시각·명령 이름·오류 번호만 남긴다. 차트번호·처방코드·숫자·SQL 글을 기록·예외 메시지 어디에도 쓰지 않는다 (AC-001.6, AC-503.4)
+- **도우미 기록**: 표준 출력에는 메시지 틀만 쓴다. 진단 기록에는 시각·명령 이름·오류 번호만 남긴다. 차트번호·처방코드·숫자·SQL 글을 기록·예외 메시지 어디에도 쓰지 않는다 (precheck 001.6, AC-503.4)
 - **원본은 저장소 밖**: 원본 경로는 `YANGJI_SRC` 환경 변수나 스크립트 인자로만 받는다. 원본 파일 통째를 저장소에 복사·커밋하지 않는다. 커밋하는 것은 옮긴 코드, 원본 SQL 문장 사본(`original-sql/*.sql`), 골든 결과뿐이다 (specs/stats/tasks.md 머리말)
 - **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)
 
@@ -100,7 +100,7 @@ public static class StatsPayload { public static string Build(string from, strin
 public static class StatsCommands { public const string RowsName = "stats.rows"; public static void Register(Dispatcher dispatcher, BitServices services); }
 ```
 - 처리기: args `{from, to}`(명령 표가 이미 검사) → `using var hospital = HospitalGate.Open(services)`(Helper의 `RequireHospital.Open`이 감싸는 같은 관문, Core에서 부를 수 있는 쪽) → `StatsRows.Read(hospital.Db, hospital.Registration.Scope, …)` → `StatsPayload.Build` → `Chunker.Send(sink, request.Id, json)` → `chunk…end`. 예외는 그 번호로 `error`만
-- `Program.cs`: `BitCommands.Register(...)` 다음 줄에 `StatsCommands.Register(dispatcher, services)`(같은 `BitServices` 하나를 같이 쓰게 변수로 받는다)
+- `Program.cs`: 지금 `BitCommands.Register(dispatcher, HelperServices.Create());` 다음 줄에 `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄만 더한다. 지금 `services` 변수가 없다 — 지금 줄을 고치지 않는다(합치기 자리를 가장 작게, cross-branch C4). `HelperServices.Create()`는 만들기만 하고 비트를 건드리지 않아 두 번 불러도 된다
 
 ### 5. 시험 (`helper/tests/Precheck.Core.Tests/Stats/*.test.cs`, 감싸개 `helper/tests/stats-rows.dotnet.test.ts`)
 - AC-503.2: 상수마다 사본과 공백만 다름(청구 `ReadOnlyGuard.test.cs`의 비교 방식), 진료 줄 SQL = 사본에서 그 덩어리를 뺀 글, `ReadOnlyGuard.Require(sql, args)`가 통과, `Sql.All`에 통계 SQL이 없음

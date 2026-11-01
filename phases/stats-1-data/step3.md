@@ -3,7 +3,7 @@
 > **TASK-4** 도우미 보고 숫자 읽기 · **REQ-504** · AC-504.1 ~ AC-504.4
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 3 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-027 (AC-027.1의 일 운영 숫자) · precheck REQ-030 (AC-030.2의 '확인 필요' 판정) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 옮겨 옴: precheck REQ-027 (precheck 027.1의 일 운영 숫자) · precheck REQ-030 (precheck 030.2의 '확인 필요' 판정) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
@@ -58,10 +58,10 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **비트는 읽기만**: `StatsSql`(과 지금 `Sql.cs`)에 정해 둔 SELECT 상수만 매개변수로 돌리고, 지금 `IBitDb`(윈도우 `SqlBitDb`: 되돌리는 트랜잭션)로만 읽는다. SQL 글자를 이어 붙이거나 고치지 않는다. 읽기 전에는 늘 `RequireHospital.Open(services)`로 등록 병원을 다시 확인하고, 돌려받은 세션으로만 읽는다 (AC-005.3·005.6, `Commands/RequireHospital.cs` 주석)
+- **비트는 읽기만**: `StatsSql`(과 지금 `Sql.cs`)에 정해 둔 SELECT 상수만 매개변수로 돌리고, 지금 `IBitDb`(윈도우 `SqlBitDb`: 되돌리는 트랜잭션)로만 읽는다. SQL 글자를 이어 붙이거나 고치지 않는다. 읽기 전에는 늘 Core의 `HospitalGate.Open(services)`(도우미 `RequireHospital`이 감싸는 같은 관문 — `RequireHospital`은 `Precheck.Helper` 안이라 Core에서 못 부른다)로 등록 병원을 다시 확인하고, 돌려받은 세션으로만 읽는다 (precheck 005.3·005.6, `Commands/RequireHospital.cs` 주석)
 - **1MB 나눠 보내기**: 도우미 → 크롬 메시지 하나는 앞 4바이트 길이를 포함해 1,000,000바이트 이하다. 환자 자료 명령(`stats.rows`, 명령 표 `patient: true`)의 답은 작아도 늘 `chunk`(`seq` 0부터) … `end {count, bytes, sha256}`이고 지금 `Chunker.Split`을 쓴다. 자료를 다 만든 뒤에 나눈다. 도중에 실패하면 `end` 대신 `error`만 보내고 반쪽 자료를 보내지 않는다 (청구 design.md 4절·9-2)
 - **C# 나누기**: 플랫폼과 상관없는 것은 `Precheck.Core`(netstandard2.0)에 두고 이 서버에서 `dotnet test -f net10.0`으로 시험한다. 윈도우 전용 파일(`Precheck.Windows/*`)은 고치지 않는다. 새 NuGet 패키지를 넣지 않는다 (ADR-016)
-- **도우미 기록**: 표준 출력에는 메시지 틀만 쓴다. 진단 기록에는 시각·명령 이름·오류 번호만 남긴다. 차트번호·처방코드·숫자·SQL 글을 기록·예외 메시지 어디에도 쓰지 않는다 (AC-001.6, AC-503.4)
+- **도우미 기록**: 표준 출력에는 메시지 틀만 쓴다. 진단 기록에는 시각·명령 이름·오류 번호만 남긴다. 차트번호·처방코드·숫자·SQL 글을 기록·예외 메시지 어디에도 쓰지 않는다 (precheck 001.6, AC-503.4)
 - **금액**: 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 금액의 합 (CLAUDE.md, plan.md §5)
 - **원본은 저장소 밖**: 원본 경로는 `YANGJI_SRC` 환경 변수나 스크립트 인자로만 받는다. 원본 파일 통째를 저장소에 복사·커밋하지 않는다. 커밋하는 것은 옮긴 코드, 원본 SQL 문장 사본(`original-sql/*.sql`), 골든 결과뿐이다 (specs/stats/tasks.md 머리말)
 - **가짜 자료만**: 실제 환자 자료를 쓰지 않는다. 시험은 `fixtures/`의 가짜 자료와 시험 안에서 만든 가짜 값만 쓴다(차트번호는 `9`로 시작하는 6자리 가짜, 이름·전화·주민번호 없음). 차트번호·주민번호 모양은 소스에 통째로 쓰지 않고 조각을 이어 만든다(stats-core 규칙). 실제 비트 내보내기를 커밋하지 않는다 (CLAUDE.md)

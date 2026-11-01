@@ -3,7 +3,7 @@
 > **TASK-9** 처방별 신환·재진 (골든 + Worker `split` 일) · **REQ-509** · AC-509.1 ~ AC-509.4
 > Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 0 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-9 하나만 한다. 다른 TASK의 일은 하지 않는다.
-> 옮겨 옴: precheck REQ-029 (AC-029.3·029.4) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
+> 옮겨 옴: precheck REQ-029 (precheck 029.3·029.4) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
