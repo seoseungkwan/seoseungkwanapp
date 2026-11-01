@@ -200,8 +200,21 @@ const SPACING = new Set([0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64, 96])
 const SCROLL_EXTRA = new Set([72, 80])
 const RADIUS_PROP = /^border(?:-[\w-]+)?-radius$/
 const RADIUS_OK = new Set(['0', 'var(--r-control)', 'var(--r-float)'])
-const BANNED_PROP =
-  /^(?:-webkit-)?(?:box-shadow|backdrop-filter|filter|animation(?:-[\w-]+)?|transition(?:-[\w-]+)?)$/
+const BANNED_PROP = /^(?:-webkit-)?(?:box-shadow|backdrop-filter|filter|animation(?:-[\w-]+)?)$/
+// 전환(transition*)은 허용 목록(파일 × 선택자 × 값)에만 있다 (ui-90 REQ-420, UI_GUIDE '랜딩 짜임'·'움직임').
+// 맨 위 규칙(@규칙 밖)의 선택자 하나, `transition` 줄임 속성, 정확히 이 값뿐이다. 낱 속성(transition-delay 등)은 늘 잡는다
+const TRANSITION_PROP = /^(?:-webkit-)?transition(?:-[\w-]+)?$/
+const BTN_TRANSITION = 'background-color 150ms, border-color 150ms, color 150ms, opacity 150ms, transform 150ms'
+const LINK_TRANSITION = 'color 150ms, opacity 150ms'
+const TRANSITIONS: Record<string, Record<string, string>> = {
+  'base.module.css': { '.btn': BTN_TRANSITION },
+  'SiteHeader.module.css': { '.navLink': LINK_TRANSITION, '.logo': LINK_TRANSITION },
+}
+const transitionOk = (file: string, rule: Rule, prop: string, value: string) =>
+  prop === 'transition' &&
+  rule.at.length === 0 &&
+  rule.selectors.length === 1 &&
+  TRANSITIONS[file]?.[rule.selectors[0]] === value
 const LAYER = '@layer base'
 const MIN_768 = '@media (min-width: 768px)'
 const MIN_1024 = '@media (min-width: 1024px)'
@@ -226,8 +239,8 @@ function spacingOk(token: string, prop: string): boolean {
   return SPACING.has(n) || (prop.startsWith('scroll-margin') && SCROLL_EXTRA.has(n))
 }
 
-// 모듈 글자 하나가 어긴 규칙(없으면 빈 배열)
-function violations(css: string): string[] {
+// 모듈 글자 하나가 어긴 규칙(없으면 빈 배열). file은 전환 허용 목록을 고르는 파일 이름이다(없으면 허용 목록 없음)
+function violations(css: string, file = ''): string[] {
   const sheet = parseCss(css)
   const found = [...sheet.problems]
   const localVars = new Set(sheet.rules.flatMap((r) => r.decls.filter((d) => d.prop.startsWith('--')).map((d) => d.prop.slice(2))))
@@ -257,6 +270,7 @@ function violations(css: string): string[] {
 
       // 금지 장식
       if (BANNED_PROP.test(prop)) found.push(`장식 ${decl}`)
+      if (TRANSITION_PROP.test(prop) && !transitionOk(file, rule, prop, value)) found.push(`허용 목록 밖 전환 ${decl}`)
       if (/gradient\(/i.test(bare)) found.push(`그라데이션 ${decl}`)
 
       // 색: 토큰 var()·transparent·currentColor·inherit뿐
@@ -337,7 +351,7 @@ describe('AC-212.1: 검사 목록의 랜딩 모듈은 토큰·간격 단계·글
   })
 
   it('AC-212.1: 검사 목록의 모든 모듈이 규칙을 지킨다', () => {
-    for (const name of CHECKED) expect(violations(readLanding(name)), name).toEqual([])
+    for (const name of CHECKED) expect(violations(readLanding(name), name), name).toEqual([])
   })
 
   // 검사가 헛돌지 않는지: 어긴 예는 잡고, 지킨 예는 통과시킨다
@@ -383,8 +397,6 @@ describe('AC-212.1: 검사 목록의 랜딩 모듈은 토큰·간격 단계·글
     ['.a { backdrop-filter: blur(4px); }', '장식'],
     ['.a { -webkit-backdrop-filter: blur(4px); }', '장식'],
     ['.a { animation: spin 1s; }', '장식'],
-    ['.a { transition: background-color .15s ease; }', '장식'],
-    ['.a { transition-duration: .2s; }', '장식'],
     ['.a { background: linear-gradient(var(--ink), var(--surface)); }', '그라데이션'],
     ['.a { background-image: radial-gradient(var(--accent), transparent); }', '그라데이션'],
     ['@keyframes spin { to { opacity: 1; } }', '@규칙 @keyframes'],
@@ -1598,5 +1610,140 @@ describe('AC-211.1: HowSection.module.css — 칸·휴대폰 순서·단계 줄�
     expect(sheet.rules.flatMap((r) => r.selectors).filter((sel) => /::?(?:before|after)\b/.test(sel))).toEqual([])
     expect(howSelectorsWith(/^(?:position|transform|opacity|content|clip-path|mask(?:-[\w-]+)?)$/)).toEqual([])
     expect(howSelectorsWith(/^background(?:-[\w-]+)?$/)).toEqual(['.num'])
+  })
+})
+
+// ---------- REQ-420: 랜딩 누름 반응 (specs/ui-90 AC-420.1~420.3, UI_GUIDE '랜딩 짜임'·'움직임') ----------
+// 옛 "랜딩은 움직이지 않는다"(b2b-redesign AC-212.1 장식 금지의 transition, tab-frame AC-313.4 "랜딩 규칙 시험 고치지 않음")를 대체한다.
+// 전환은 위 TRANSITIONS 허용 목록(파일 × 선택자 × 값)에만 있고, 나머지 금지(animation·@keyframes 등)는 그대로다
+
+// 랜딩 모듈 전체에서 transition*을 쓰는 곳: 파일 · @규칙 · 선택자 · 속성 · 값
+const transitionsIn = (name: string) =>
+  parseCss(readLanding(name)).rules.flatMap((r) =>
+    r.decls
+      .filter((d) => TRANSITION_PROP.test(d.prop))
+      .map((d) => ({ file: name, at: r.at.join(' '), selector: r.selectors.join(', '), prop: d.prop, value: d.value })),
+  )
+
+describe('AC-420.1: 랜딩 단추·메뉴 링크·로고 링크는 150ms로 짧게 반응하고 단추는 누르면 1px 내려간다', () => {
+  it('AC-420.1: .btn은 모든 폭에서 transition: background-color·border-color·color·opacity·transform 150ms다', () => {
+    for (const bp of BPS) {
+      expect(valueOf(base(), '.btn', 'transition', bp), `.btn transition @${bp}`).toBe(BTN_TRANSITION)
+    }
+  })
+
+  it('AC-420.1: 누름 .btn:active:not(:disabled)은 transform: translateY(1px)이고, 누름 규칙에 다른 값은 없다', () => {
+    const press = base().rules.filter((r) => r.selectors.includes('.btn:active:not(:disabled)'))
+    expect(press.map((r) => ({ at: r.at.join(' '), decls: r.decls.map((d) => `${d.prop}: ${d.value}`) }))).toEqual([
+      { at: '', decls: ['transform: translateY(1px)'] },
+    ])
+  })
+
+  it('AC-420.1: 올림 바탕은 주 단추(.btnPrimary:hover) accent-strong · 보조 단추(.btnSecondary:hover) canvas다', () => {
+    for (const bp of BPS) {
+      expect(valueOf(base(), '.btnPrimary:hover', 'background', bp), `.btnPrimary:hover @${bp}`).toBe('var(--accent-strong)')
+      expect(valueOf(base(), '.btnSecondary:hover', 'background', bp), `.btnSecondary:hover @${bp}`).toBe('var(--canvas)')
+    }
+  })
+
+  it('AC-420.1: 메뉴 링크(.navLink)·로고 링크(.logo)는 모든 폭에서 transition: color 150ms, opacity 150ms이고 누름에 움직이지 않는다', () => {
+    const sheet = header()
+    for (const bp of BPS) {
+      for (const name of ['.navLink', '.logo']) {
+        expect(valueOf(sheet, name, 'transition', bp), `${name} transition @${bp}`).toBe(LINK_TRANSITION)
+      }
+    }
+    const moves = sheet.rules.filter(
+      (r) => r.selectors.some((s) => /^\.(?:navLink|logo)\b/.test(s)) && r.decls.some((d) => /^(?:transform|translate)$/.test(d.prop)),
+    )
+    expect(moves.map((r) => r.selectors.join(', ')), '메뉴·로고 링크의 옮김').toEqual([])
+  })
+
+  it('AC-420.1: 랜딩 모듈에서 전환을 쓰는 곳은 .btn(base) · .navLink · .logo(SiteHeader) 셋뿐이다', () => {
+    expect(CHECKED.flatMap(transitionsIn)).toEqual([
+      { file: 'SiteHeader.module.css', at: '', selector: '.logo', prop: 'transition', value: LINK_TRANSITION },
+      { file: 'SiteHeader.module.css', at: '', selector: '.navLink', prop: 'transition', value: LINK_TRANSITION },
+      { file: 'base.module.css', at: '', selector: '.btn', prop: 'transition', value: BTN_TRANSITION },
+    ])
+  })
+})
+
+describe('AC-420.2: 랜딩 규칙 시험은 전환 허용 목록(선택자 × 값)만 통과시키고 나머지 움직임은 잡는다', () => {
+  // [파일, CSS]: 허용 목록 그대로(빈칸·줄바꿈 차이는 같은 값으로 본다)
+  const ALLOWED: Array<[string, string]> = [
+    ['base.module.css', `.btn { transition: ${BTN_TRANSITION}; }`],
+    ['base.module.css', '.btn{transition:background-color 150ms,border-color 150ms,color 150ms,opacity 150ms,transform 150ms}'],
+    ['base.module.css', `.btn { display: inline-flex; transition: ${BTN_TRANSITION}; } .btn:active:not(:disabled) { transform: translateY(1px); }`],
+    ['SiteHeader.module.css', `.navLink { color: var(--ink-2); transition: ${LINK_TRANSITION}; }`],
+    ['SiteHeader.module.css', `.logo {\n  transition: color 150ms,\n    opacity 150ms;\n}`],
+  ]
+  it.each(ALLOWED)('AC-420.2: 허용 목록 %s %s 는 통과한다', (file, css) => {
+    expect(violations(css, file)).toEqual([])
+  })
+
+  // [파일, CSS, 잡는 이유]
+  const CAUGHT: Array<[string, string, string]> = [
+    // b2b-redesign AC-212.1 '장식' 예시에서 옮김: 허용 목록 밖 선택자·값
+    ['', '.a { transition: background-color .15s ease; }', '허용 목록 밖 전환'],
+    ['', '.a { transition-duration: .2s; }', '허용 목록 밖 전환'],
+    // transition: all
+    ['base.module.css', '.btn { transition: all 150ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', '.btn { transition: all; }', '허용 목록 밖 전환'],
+    // 150ms 밖 시간·곡선·지연이 섞인 값
+    ['base.module.css', '.btn { transition: color .3s; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.navLink { transition: color .3s; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.navLink { transition: color 200ms, opacity 200ms; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.logo { transition: color 150ms ease-in, opacity 150ms; }', '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', '.logo { transition: color 150ms 50ms, opacity 150ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', '.btn { transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, transform 0.15s; }', '허용 목록 밖 전환'],
+    // 로고 링크는 색·투명도만(옮김 전환 없음)
+    ['SiteHeader.module.css', `.logo { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    // transition-delay 등 낱 속성은 허용 선택자에서도 잡는다
+    ['base.module.css', '.btn { transition-delay: 50ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', `.btn { transition: ${BTN_TRANSITION}; transition-delay: 0ms; }`, '허용 목록 밖 전환'],
+    ['base.module.css', '.btn { transition-property: transform; transition-duration: 150ms; }', '허용 목록 밖 전환'],
+    ['base.module.css', `.btn { -webkit-transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    // 그 밖 선택자(같은 파일·다른 파일·여럿 묶음·올림·@규칙 안)
+    ['base.module.css', `.btnPrimary { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `.btn:hover { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `.btn, .chip { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `.navLink { transition: ${LINK_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['Hero.module.css', `.btn { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', `.start { transition: ${BTN_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['SiteHeader.module.css', `.navLink:hover { transition: ${LINK_TRANSITION}; }`, '허용 목록 밖 전환'],
+    ['base.module.css', `@media (min-width: 768px) { .btn { transition: ${BTN_TRANSITION}; } }`, '허용 목록 밖 전환'],
+    ['base.module.css', `@layer base { .btn { transition: ${BTN_TRANSITION}; } }`, '허용 목록 밖 전환'],
+    // animation·@keyframes는 허용 선택자에서도 그대로 금지
+    ['base.module.css', '.btn { animation: press 150ms; }', '장식'],
+    ['base.module.css', '.btn:active:not(:disabled) { animation-name: press; }', '장식'],
+    ['base.module.css', '@keyframes press { to { transform: translateY(1px); } }', '@규칙 @keyframes'],
+  ]
+  it.each(CAUGHT)('AC-420.2: %s %s 를 잡는다(%s)', (file, css, why) => {
+    const found = violations(css, file)
+    expect(found.some((v) => v.includes(why)), `${file} ${css} → ${JSON.stringify(found)}`).toBe(true)
+  })
+
+  it('AC-420.2: 모션 줄이기(prefers-reduced-motion: reduce)에서는 globals.css 전역 규칙이 랜딩 전환까지 모두 끈다(전역 규칙은 그대로)', () => {
+    const sheet = parseCss(readFileSync(join(ROOT, 'src/app/globals.css'), 'utf8'))
+    const reduce = sheet.rules.filter((r) => r.at.length === 1 && r.at[0] === '@media (prefers-reduced-motion: reduce)')
+    const all = reduce.find((r) => ['*', '*::before', '*::after'].every((s) => r.selectors.includes(s)))
+    expect(all, '전체 선택자(*, *::before, *::after) 규칙').toBeDefined()
+    expect(all!.decls.filter((d) => d.prop === 'transition')).toEqual([{ prop: 'transition', value: 'none', important: true }])
+    // 랜딩 전환은 !important가 아니라 전역 규칙이 이긴다
+    expect(CHECKED.flatMap((name) => parseCss(readLanding(name)).rules.flatMap((r) => r.decls)).filter((d) => TRANSITION_PROP.test(d.prop) && d.important)).toEqual([])
+  })
+})
+
+describe('AC-420.3: 랜딩 TSX에는 클라이언트 코드·타이머·스크립트 움직임이 없다(지금 그대로)', () => {
+  it("AC-420.3: 랜딩 TSX(랜딩 폴더 *.tsx·src/app/page.tsx)에 'use client'·상태/효과 훅·타이머·animate()·<script>가 없다", () => {
+    expect(LANDING_TSX.map((f) => f.name)).toEqual(
+      expect.arrayContaining(['src/app/page.tsx', 'src/components/landing/SiteHeader.tsx', 'src/components/landing/Hero.tsx']),
+    )
+    for (const f of LANDING_TSX) {
+      expect(f.body, f.name).not.toMatch(/['"]use client['"]/)
+      expect(codeOf(f.body), f.name).not.toMatch(
+        /\b(?:useState|useEffect|useLayoutEffect|useReducer|setTimeout|setInterval|requestAnimationFrame)\b|\.animate\(|<script\b/,
+      )
+    }
   })
 })

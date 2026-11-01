@@ -107,7 +107,9 @@
 }
 
 /* ---------- 단추: 앱 ds.button과 같은 크기·색 (UI_GUIDE '단추') ---------- */
-/* 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자·움직임 없음 */
+/* 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자 없음.
+   짧은 반응(specs/ui-90 REQ-420, UI_GUIDE '움직임'): 색·투명도·옮김만 150ms, 누르면 아래 1px. 앱 ds.button과 같은 반응이다.
+   전환은 rules.test.ts 허용 목록(.btn 이 값 하나)에만 있고, 모션 줄이기 기기에서는 globals.css 전역 규칙이 끈다 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -118,6 +120,10 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms, transform 150ms;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 /* 작은 32 · 기본 36 · 큰 44(600). 휴대폰 메뉴 단추(32px + 누름 영역 44px)는 SiteHeader가 맡는다 */
 .btnSm {
