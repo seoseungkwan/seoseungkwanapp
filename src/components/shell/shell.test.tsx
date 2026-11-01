@@ -695,34 +695,86 @@ describe('AppShell', () => {
     expect(nav().contains(items[0])).toBe(false)
   })
 
-  it('AC-303.6: 본문에 흰 바탕 표시(data-page-surface)가 있는 페이지면 main이 그때만 surface가 되는 클래스를 갖고, 없는 페이지는 앱 틀 바탕(canvas) 그대로다. 안쪽 감싸개는 그대로', () => {
-    const { container } = render(
+  // 바탕 A(ui-90 REQ-404, tab-frame AC-303.6 대체): 모든 앱 화면이 흰 바탕 한 장. 페이지 표시(data-page-surface)와 상관없다
+  it('AC-404.1: 뿌리와 main이 bg-surface이고 bg-canvas·has-[[data-page-surface]]: 클래스가 없다. 본문 감싸개(1280·좌우 24·위 24·아래 48, 폰 16·16·32)는 그대로', () => {
+    const { container } = shell()
+    const root = container.firstElementChild as HTMLElement
+    const main = screen.getByRole('main')
+    for (const el of [root, main]) {
+      hasAll(el, 'bg-surface')
+      expect(classesOf(el), 'bg-canvas').not.toContain('bg-canvas')
+      expect(classesOf(el).filter((c) => c.includes('data-page-surface')), 'has-[[data-page-surface]]:').toEqual([])
+    }
+    hasAll(main, 'flex-1')
+    // 앱 틀 어디에도 옛 표시 클래스·회색 판 바탕이 없다
+    expect(container.innerHTML).not.toContain('data-page-surface')
+    expect(container.querySelectorAll('.bg-canvas')).toHaveLength(0)
+    expect(main.children).toHaveLength(1)
+    hasAll(main.firstElementChild as HTMLElement, `mx-auto w-full ${wrapper} pt-6 pb-12 max-md:pt-4 max-md:pb-8`)
+  })
+
+  it('AC-404.1: 페이지가 옛 표시(data-page-surface)를 달아도 main 클래스는 표시 없는 페이지와 같다(TASK-11 전 대시보드)', () => {
+    render(
       <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false}>
         <div data-page-surface="">
           <h1>대시보드</h1>
         </div>
       </AppShell>,
     )
-    const main = screen.getByRole('main')
-    hasAll(main, 'flex-1 has-[[data-page-surface]]:bg-surface')
-    // 표시 없이도 늘 칠하는 바탕은 없다(뿌리의 canvas가 보인다)
-    expect(classesOf(main).filter((c) => /^bg-/.test(c))).toEqual([])
-    hasAll(container.firstElementChild as HTMLElement, 'bg-canvas')
-    const inner = main.firstElementChild as HTMLElement
-    expect(inner.querySelector('[data-page-surface]')).not.toBeNull()
-    hasAll(inner, `mx-auto w-full ${wrapper} pt-6 pb-12 max-md:pt-4 max-md:pb-8`)
+    const marked = classesOf(screen.getByRole('main'))
     cleanup()
-    // 표시가 없는 페이지: 같은 main 클래스, 본문 안에 표시가 없다 → canvas 그대로
     shell()
-    const plain = screen.getByRole('main')
-    expect(classesOf(plain)).toEqual(classesOf(main))
-    expect(plain.querySelector('[data-page-surface]')).toBeNull()
+    expect(classesOf(screen.getByRole('main'))).toEqual(marked)
+    expect(marked).toContain('bg-surface')
   })
 
-  it('AC-218.1: 앱 뿌리 .app-ui·canvas 바탕. 위에 붙는 묶음(sticky·top 0·z 10)이 띠와 탭 줄을 함께 붙인다 — 띠·탭 줄 자신은 붙지 않는다', () => {
+  // 건너뛰기 링크(ui-90 REQ-403, 시안 docs/mockups/ui-90/app '.skip'): 왼쪽 위 띠 위(위 6px·왼쪽 8px·z 12 > 붙는 묶음 z 10)
+  const skipLink = () => screen.getByRole('link', { name: '본문으로 건너뛰기' })
+
+  it('AC-403.1: 문서 순서로 첫 조작 요소가 <a href="#main">본문으로 건너뛰기</a>이고 뿌리의 첫 자식이다. 첫 Tab이 그 링크로 간다', async () => {
+    const user = userEvent.setup()
     const { container } = shell()
     const root = container.firstElementChild as HTMLElement
-    hasAll(root, 'app-ui bg-canvas text-ink min-h-dvh')
+    const link = skipLink()
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe('#main')
+    expect(link.textContent).toBe('본문으로 건너뛰기')
+    expect(root.firstElementChild).toBe(link)
+    const focusable = container.querySelectorAll('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    expect(focusable[0]).toBe(link)
+    await user.tab()
+    expect(document.activeElement).toBe(link)
+  })
+
+  it('AC-403.1: main은 id="main"·tabIndex -1 — 링크가 가리키는 곳이 본문이다', () => {
+    shell()
+    const main = screen.getByRole('main')
+    expect(main.id).toBe('main')
+    expect(main.getAttribute('tabindex')).toBe('-1')
+    expect(document.getElementById('main')).toBe(main)
+    expect(document.querySelectorAll('#main')).toHaveLength(1)
+  })
+
+  it('AC-403.1: 평소에는 sr-only, 키보드 초점이면 보인다 — 왼쪽 위 띠 위, 44px, surface, 1px line, rounded-float, shadow-float, body 600, 2px accent 초점 고리', () => {
+    shell()
+    const link = skipLink()
+    hasAll(link, 'sr-only focus-visible:not-sr-only')
+    // 자리: 띠 위에 뜬다(위 6px·왼쪽 8px), 붙는 묶음(z 10)보다 위
+    hasAll(link, 'focus-visible:absolute focus-visible:top-1.5 focus-visible:left-2 focus-visible:z-12')
+    // 크기·짜임: 높이 44px·좌우 16px·가운데 줄. not-sr-only가 지우는 테두리 두께·안쪽 여백은 초점일 때 다시 준다
+    hasAll(link, 'focus-visible:inline-flex focus-visible:items-center focus-visible:h-11 focus-visible:px-4 focus-visible:border')
+    // 모양: 흰 바탕·1px line·떠 있는 층 모서리·그림자, 글자 body 600 ink, 밑줄 없음
+    hasAll(link, 'bg-surface border-line rounded-float shadow-float text-body font-semibold text-ink no-underline')
+    // 초점 고리: 2px accent, 밖으로 2px
+    hasAll(link, 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent')
+    // 평소에 보이게 하는 클래스는 없다(초점일 때만)
+    hasNone(link, 'not-sr-only absolute inline-flex h-11')
+  })
+
+  it('AC-218.1·AC-404.1: 앱 뿌리 .app-ui·surface 바탕. 위에 붙는 묶음(sticky·top 0·z 10)이 띠와 탭 줄을 함께 붙인다 — 띠·탭 줄 자신은 붙지 않는다', () => {
+    const { container } = shell()
+    const root = container.firstElementChild as HTMLElement
+    hasAll(root, 'app-ui bg-surface text-ink min-h-dvh')
     const group = stickyGroup()
     expect(group.parentElement).toBe(root)
     expect(group.tagName).toBe('DIV')

@@ -190,22 +190,31 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(match, '<main>').not.toBeNull()
     return { classes: match![1]!.split(/\s+/), body: match![2]! }
   }
-  const SURFACE = 'has-[[data-page-surface]]:bg-surface'
-
-  it('AC-307.8: 대시보드 페이지를 그린 AppShell — 본문 안에 data-page-surface 요소가 있고 main이 흰 바탕 클래스를 가진다', () => {
+  // 바탕 A(ui-90 AC-404.1, tab-frame AC-307.8 대체): 모든 앱 화면이 흰 바탕 한 장 — 페이지 표시(data-page-surface)와 상관없이 main이 bg-surface
+  const SURFACE = 'bg-surface'
+  const OLD_SURFACE = 'has-[[data-page-surface]]:bg-surface'
+  const dashboardMain = () => {
     pathname.mockReturnValue('/dashboard')
-    const { classes, body } = mainOf(shell(<DashboardPage />))
+    return mainOf(shell(<DashboardPage />))
+  }
+
+  it('AC-404.1: 대시보드 페이지를 그린 AppShell — main이 흰 바탕(bg-surface)이고 옛 표시 클래스·canvas가 없다', () => {
+    const { classes } = dashboardMain()
     expect(classes).toContain(SURFACE)
-    expect(body).toMatch(/<div data-page-surface="[^"]*"/)
+    expect(classes).not.toContain(OLD_SURFACE)
+    expect(classes).not.toContain('bg-canvas')
   })
 
   it.each(NOT_READY.map((f) => [f.name, f.href]))(
-    'AC-307.8: 준비 중 페이지 %s(%s)를 그린 AppShell — 본문 안에 data-page-surface가 없다(main 클래스는 같고 바탕은 canvas 그대로)',
+    'AC-404.1: 준비 중 페이지 %s(%s)를 그린 AppShell — main이 대시보드와 같은 흰 바탕(bg-surface)이다. 본문 안에 data-page-surface가 없다',
     async (_name, href) => {
+      const dashboard = dashboardMain().classes
       pathname.mockReturnValue(href)
       const Page = await loadPage(href)
       const { classes, body } = mainOf(shell(<Page />))
       expect(classes).toContain(SURFACE)
+      expect(classes).not.toContain(OLD_SURFACE)
+      expect(classes).toEqual(dashboard)
       expect(body).not.toContain('data-page-surface')
     },
   )

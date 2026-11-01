@@ -4,7 +4,13 @@ import { AccountMenu } from './AccountMenu'
 import { KstClock } from './KstClock'
 import { TabBar } from './TabBar'
 
-// 앱 화면 틀 (REQ-008, b2b-redesign AC-218.1, UI_GUIDE '앱 화면' 앱 틀·폰). 앱 초기화 범위(.app-ui)·canvas 바탕.
+// 건너뛰기 링크 모양(ui-90 AC-403.1, UI_GUIDE '앱 틀' 건너뛰기 링크): 44px·surface·1px line·rounded-float·shadow-float·body 600·2px accent 초점 고리
+const SKIP_LINK =
+  'sr-only rounded-float border-line bg-surface text-body font-semibold text-ink no-underline shadow-float focus-visible:not-sr-only focus-visible:absolute focus-visible:top-1.5 focus-visible:left-2 focus-visible:z-12 focus-visible:inline-flex focus-visible:h-11 focus-visible:items-center focus-visible:border focus-visible:px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+
+// 앱 화면 틀 (REQ-008, b2b-redesign AC-218.1, UI_GUIDE '앱 화면' 앱 틀·폰). 앱 초기화 범위(.app-ui).
+// 바탕 A(ui-90 AC-404.1): 뿌리와 본문 모두 흰 바탕(surface) 한 장. 페이지가 바탕을 고르지 않는다(옛 data-page-surface 표시 없음).
+// 첫 조작 요소는 건너뛰기 링크(ui-90 AC-403.1) → 본문 main#main.
 // 위에 붙는 묶음 하나(sticky·top 0·z 10)에 위쪽 띠와 탭 줄이 함께 있다. 그 아래 본문.
 // 위쪽 띠(흰·56px, 폰 48px): 로고·병원 이름 | 한국 시각·계정 단추. [서비스 이름]과 세로 구분선은 두지 않는다(사용자 결정 2026-10-30).
 // 안쪽 감싸개 셋(띠·탭 줄·본문)은 같은 1280 폭·가운데·좌우 24px(폰 16px). 폰은 서랍 없음.
@@ -21,7 +27,12 @@ export function AppShell({
   children: ReactNode
 }) {
   return (
-    <div className="app-ui flex min-h-dvh flex-col bg-canvas text-ink">
+    <div className="app-ui flex min-h-dvh flex-col bg-surface text-ink">
+      {/* 평소에는 화면 읽기에만. 키보드 초점이면 왼쪽 위 띠 위에 뜬다(시안 .skip: 위 6px·왼쪽 8px·붙는 묶음 z 10 위).
+          not-sr-only가 0으로 돌리는 테두리 두께·안쪽 여백·크기는 초점일 때 다시 준다(같은 변형에서 뒤에 온다) */}
+      <a href="#main" className={SKIP_LINK}>
+        본문으로 건너뛰기
+      </a>
       <div className="sticky top-0 z-10">
         <header className="border-b border-line bg-surface">
           <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-4 px-6 max-md:h-12 max-md:gap-2 max-md:px-4">
@@ -39,8 +50,8 @@ export function AppShell({
         </header>
         <TabBar />
       </div>
-      {/* 페이지 뿌리가 data-page-surface를 달면(대시보드) 본문 전체가 흰 종이 한 장(surface), 아니면 앱 틀 바탕(canvas) 그대로 (AC-303.6) */}
-      <main className="flex-1 has-[[data-page-surface]]:bg-surface">
+      {/* 건너뛰기 링크가 가리키는 본문. 초점을 받을 수 있게 tabIndex -1(Tab 차례에는 들지 않는다) */}
+      <main id="main" tabIndex={-1} className="flex-1 bg-surface">
         <div className="mx-auto w-full max-w-7xl px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8">{children}</div>
       </main>
     </div>
