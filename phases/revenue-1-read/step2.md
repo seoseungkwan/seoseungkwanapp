@@ -12,7 +12,7 @@
 - **AC-003.2**: 세 검사 가운데 하나라도 0이 아니면 그날 금액 일곱 칸 `null`·`unconfirmed: true`. 아니면 `total`·`insurer`·`noncovered` = `FinanceNormal`+`FinanceReceivable`의 1·2·3째 칸 합, `cash`·`card`·`transfer` = `FinanceNormal` 4·5·6째, `receivableIn` = `FinanceReceivable` 4+5+6째(원 미만 버림, DB NULL은 0). 음수가 있으면 `unconfirmed: true`
 - **AC-003.3**: `Patients` 3~5째 칸이 모두 0이면 `visits` = 1째, `newPatients` = 2째, `returnVisits` = `visits − newPatients`, 아니면 셋 다 `null`. `HistoryGuard` ≠ 0이면 모든 날 `newPatients`·`returnVisits` `null`
 - **AC-003.4**: 날마다 `DistinctPatients`(`@from` = 명령의 `from` 0시, `@to` = 그다음 날 0시) → `patientsToDate` = `from`부터 그날까지 서로 다른 환자 수(비트 DB 안의 `COUNT(DISTINCT …)`). 차트번호 없는 내원이 있으면 `null`. 차트번호는 도우미 밖으로 안 나간다
-- **AC-003.5**: `RevenueSql.CodeAmounts` 하나로 코드마다 `count`(유효 처방 줄 수)·`amount`(일수 × 수량 × 단가, 원 미만 버림). 값이 빠진 줄이 있는 코드는 `amount: null`. 앞뒤 공백을 뺀 뒤 같아진 코드는 합치고, 모양이 틀린 코드와 금액 순 999번째 뒤 코드는 이름 없는 한 줄 `_REST`로 합친다(코드 때문에 한 달이 실패하지 않는다)
+- **AC-003.5**: `RevenueSql.CodeAmounts` 하나로 코드마다 `count`(유효 처방 줄 수)·`amount`(일수 × 수량 × 단가, 원 미만 버림)·`name`(처방 목록 `SeeMst`의 적용일 가장 늦은 `SeeKorNam`, 공백·제어 문자 정리, 100자까지, 없으면 `null`). 값이 빠진 줄이 있는 코드는 `amount: null`. 앞뒤 공백을 뺀 뒤 같아진 코드는 합치고, 모양이 틀린 코드와 금액 순 999번째 뒤 코드는 이름 없는 한 줄 `_REST`(`name: null`)로 합친다(코드 때문에 한 달이 실패하지 않는다)
 - **AC-003.6**: 읽기 실패·시간 초과·관문 실패면 일부만 보내지 않고 오류 하나
 - **AC-003.7**: 답·진단 기록에 차트번호·이름·접수 번호가 없다(가짜 DB의 가짜 차트번호 글자가 어디에도 없음). 답의 칸은 AC-002.2와 같다
 - **AC-003.8**: `ReadOnlyGuard`는 매출 문장 9개(원본 7 + `DistinctPatients` + `CodeAmounts`)를 정해 둔 매개변수와 함께만 통과. 문장은 읽기 하나(`SELECT`/`WITH` 시작, `;`·주석·쓰기 낱말 없음). 기존 `Sql` 상수·시험은 그대로
@@ -82,7 +82,7 @@
 - 날마다(빠진 날 없이): 세 검사 → 0이 아니면 `unconfirmed`(금액 일곱 칸 `null`). 아니면 `FinanceNormal`·`FinanceReceivable` 답의 칸을 `decimal`로 더한 뒤 `decimal.Truncate` → `long`: 1·2·3째 = 두 문장 합(`total`·`insurer`·`noncovered`), `FinanceNormal` 4·5·6째 = `cash`·`card`·`transfer`, `FinanceReceivable` 4+5+6째 = `receivableIn`. 음수면 `unconfirmed`
 - 날마다 `Patients` → `visits`·`newPatients`·`returnVisits`(AC-003.3), `DistinctPatients`(`@from` = 명령의 `from`+"0000", `@to` = 그다음 날+"0000") → `patientsToDate`(AC-003.4)
 - 그날 쓰는 원본 매개변수: `@day`·`@nextDay`·`@from`(@day+"0000")·`@to`(@nextDay+"0000")·`@hospital`. `DistinctPatients`만 `@from`이 기간 첫날이다
-- 마지막에 `CodeAmounts` 한 번(`@from` = from+"0000", `@to` = (to+1일)+"0000"). 금액 버림, `MissingValues` > 0이면 `null`. 코드 줄 정리(design.md 4-2): ① `Trim` 뒤 같은 코드는 합침(건수·금액 더함, 하나라도 `null`이면 `null`) ② 모양이 틀린 코드와 금액 순 999번째 뒤(금액 `null`은 맨 뒤)는 `_REST` 한 줄로 합침 → 늘 1,000개 이하·중복 없음
+- 마지막에 `CodeAmounts` 한 번(`@from` = from+"0000", `@to` = (to+1일)+"0000"). 금액 버림, `MissingValues` > 0이면 `null`. 코드 줄 정리(design.md 4-2): ① `Trim` 뒤 같은 코드는 합침(건수·금액 더함, 하나라도 `null`이면 `null`) ② 모양이 틀린 코드와 금액 순 999번째 뒤(금액 `null`은 맨 뒤)는 `_REST` 한 줄로 합침 → 늘 1,000개 이하·중복 없음 이름(`Name` 칸)은 앞뒤 공백을 빼고 줄바꿈·제어 문자를 빈칸 하나로 바꾼 뒤 100자까지, 비면 `null`. 합친 코드의 이름은 첫 줄 것, `_REST`는 `null`
 - 모든 읽기는 `ReadOnlyGuard.Query(db, sql, args, timeout)`로. 시간 제한은 원본 `CommandTimeout=90`과 같게
 - 하나라도 실패하면 예외 → 처리기가 오류 하나만 보낸다(AC-003.6). 날짜 형식은 `yyyy-MM-dd`, 문화권 고정(`CultureInfo.InvariantCulture`)
 

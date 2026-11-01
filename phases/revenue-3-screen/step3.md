@@ -1,17 +1,17 @@
-# Step 3: revenue-e2e
+# Step 3: tab-ready
 
-> **TASK-11** E2E · **REQ-011** · AC-011.1 ~ AC-011.4
+> **TASK-10** 준비 중에서 빼기 · **REQ-010** · AC-010.1 ~ AC-010.4
 > Phase 3 `revenue-3-screen` · Step 3 — `specs/revenue/tasks.md`
-> 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-11 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-10 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
-전체 문장은 `/specs/revenue/requirements.md`의 REQ-011에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
+전체 문장은 `/specs/revenue/requirements.md`의 REQ-010에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-011.1**: 승인된 시험 계정·확장 없는 브라우저로 `/revenue` 390·768·1440 → 저장된 줄 없으면 '비트 PC 연결 필요', 가로 스크롤 없음(AC-009.5도 이름에). 시작 전에 시험 계정 매출 줄을 지운다(다시 돌려도 같다)
-- **AC-011.2**: 가짜 확장(시험 코드가 넣는 가짜 `chrome.runtime`, 가짜 숫자)으로 열기 → 숫자가 보이고, 가로챈 나간 요청은 `sales_days`·`sales_codes`뿐, 본문 칸은 정해 둔 것뿐, 차트번호·이름·전화번호·주민번호·파일 이름 모양 없음. 머리글·쿠키·apikey 값은 모으지 않고 본문만 보며, 실패하면 걸린 종류 이름만(`expect(hits).toEqual([])`)
-- **AC-011.3**: 같은 계정 390에서 다시 열기 → 저장된 숫자·"의원 PC에서 …에 가져온 숫자예요", [다시 가져오기] 없음
-- **AC-011.4**: 저장 뒤 같은 계정으로 `sales_days`·`sales_codes` 줄을 다시 읽기 → 칸 이름은 정해 둔 것뿐, 값에 차트번호·이름·전화번호·주민번호·파일 이름 모양 없음. 끝나면 시험 계정 매출 줄 지우기
+- **AC-010.1**: `notReadyFeatures.ts`에 `/revenue` 없음, `menu.ts` 매출 `ready: true`, 대시보드 기능 목차의 매출이 청구와 같은 `connect-first`("연결 먼저"), [전체 메뉴] "준비 중" 수 하나 줄어듦. 탭 맞춤 시험이 확인하고 탭 수를 고정 숫자로 적지 않음
+- **AC-010.2**: `/revenue` 브라우저 탭 이름 "매출 · 의원 이름"
+- **AC-010.3**: `plan.md` §2-4·`docs/ARCHITECTURE.md`의 매출 줄이 '폴더 연결·파일'이 아니라 '비트 PC 도우미 읽기(`revenue.days`) → `sales_days`·`sales_codes`'(바뀐 날짜 표시)
+- **AC-010.4**: `src/lib/backup/tables.ts`가 이 갈래에 있으면 `sales_days`·`sales_codes`가 그 목록에(그 파일 시험), 없으면 ARCHITECTURE.md DB 표 절에 "백업 목록에 넣는다" 줄
 
 ## 읽어야 할 파일
 
@@ -23,64 +23,89 @@
 - `/specs/revenue/requirements.md` — 맨 위 승인 줄(시안 승인·사용자 결정 2026-11-01)과 이 step의 REQ
 - `/specs/revenue/design.md` — 이 step이 가리키는 절
 - `/specs/revenue/tasks.md` — 머리말과 이 step의 TASK
-- `/specs/revenue/design.md` — 3절, 6절
-- `/docs/ADR.md` ADR-017(E2E 방식)
-- `/playwright.config.ts`, `/e2e/config.ts`, `/e2e/support.ts`, `/e2e/lib/session.ts`(세션 쿠키로 로그인), `/e2e/preflight.ts`
-- `/src/lib/bridge/client.ts`(확장과 주고받는 봉투 모양 — 가짜 runtime이 흉내 낼 것)
+- `/specs/revenue/design.md` — 9절, 11절(겹치는 파일)
+- `/docs/ARCHITECTURE.md` — '(app)/<기능 주소>/page.tsx' 줄(진짜 화면으로 바꿀 때 같이 고칠 파일)
+- `/src/components/common/notReadyFeatures.ts`, `/src/components/shell/menu.ts`, `/src/components/dashboard/briefing/features.ts`와 각 시험, `/src/app/(app)/tabFrame.test.tsx`, `/src/app/(app)/notReadyPages.test.tsx`, `/src/app/titles.test.tsx`
+- `/docs/UI_GUIDE.md` — '앱 틀'(준비 중 목록), '빈 상태'
 - 이전 step에서 만든 파일:
-  - `src/app/(app)/revenue/page.tsx`·`src/components/revenue/*` (Phase 3 Step 1·2)
-  - `supabase/migrations/20261101000400_revenue.sql` (Phase 2 Step 0)
+  - `src/components/revenue/RevenueScreen.tsx`·`groups/*` (Phase 3 Step 1·2)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
-## 수정 범위 (tasks.md TASK-11)
+## 승인된 시안 (화면 step)
+
+- `docs/mockups/revenue/index.html` — 만든 코드 `docs/mockups/revenue/gen.py`(문구의 원천). 숫자는 모두 예시라 화면에 옮기지 않는다
+- 시안의 앱 틀(위쪽 띠·탭 줄)은 이미 있는 `components/shell`이 그린다. 이 step은 본문만 만든다
+- 시안과 명세가 다르면 명세가 이긴다. 다른 점은 summary에 적는다
+
+
+## 수정 범위 (tasks.md TASK-10)
 
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `e2e/revenue.spec.ts`
-  - `e2e/lib/revenueFakeBridge.ts`
-  - `e2e/lib/revenueFakeBridge.test.ts`
+  - `src/app/(app)/revenue/page.tsx`
+  - `src/app/(app)/revenue/page.test.tsx`
+  - `src/components/common/notReadyFeatures.ts`
+  - `src/components/common/notReadyFeatures.test.ts`
+  - `src/components/shell/menu.ts`
+  - `src/components/shell/shell.test.tsx`
+  - `src/components/dashboard/briefing/features.ts`
+  - `src/components/dashboard/briefing/features.test.ts`
+  - `src/app/(app)/notReadyPages.test.tsx`
+  - `src/app/(app)/tabFrame.test.tsx`
+  - `src/app/titles.test.tsx`
+  - `src/app/notFound.test.tsx`
+  - `docs/UI_GUIDE.md`
+  - `docs/ARCHITECTURE.md`
 - Tests:
-  - `e2e/lib/revenueFakeBridge.test.ts`
-  - `e2e/revenue.spec.ts`
+  - `src/app/(app)/revenue/page.test.tsx`
+  - `src/components/common/notReadyFeatures.test.ts`
+  - `src/components/shell/shell.test.tsx`
+  - `src/components/dashboard/briefing/features.test.ts`
+  - `src/app/(app)/notReadyPages.test.tsx`
+  - `src/app/(app)/tabFrame.test.tsx`
+  - `src/app/titles.test.tsx`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **환자 자료는 PC 밖으로 안 나간다**: 서버(Supabase)에는 날짜별 합계 금액·건수(내원·신환·재진·환자 수)·확인 필요 여부와 달별 처방 코드·건수·금액만 간다. 환자 수는 도우미가 비트 DB 안에서 센다. 이름·차트번호·접수 번호·주민번호는 어디에도(답·저장·기록·시험 자료) 없다. 가짜 자료만 쓴다 (CLAUDE.md, design.md 1·3절)
-- **시험 로그인은 시험 코드만**: 앱 코드에 시험용 로그인·우회 길을 만들지 않는다. 세션 쿠키는 `e2e/lib/session.ts`로 넣는다. 시험 계정은 `.env.local`에만 (CLAUDE.md)
-- **산출물에 비밀 없음**: trace·스크린샷·네트워크 기록에 쿠키·토큰을 남기지 않는다(`trace: 'off'`)
-- **먼저 확인**: 실제 Supabase에 `20261101000400_revenue.sql`이 붙어 있고 `.env.local`에 E2E 값이 있어야 한다. 없으면 `blocked`(사유: "매출 표를 실제 Supabase에 붙여 넣기·E2E 값 필요 — 사용자 할 일")
+- **시안 승인본**: 배치·문구는 `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 2026-11-01 사용자 승인 "이대로 만들기")의 글자 그대로다 (CLAUDE.md: 화면은 목업 승인 뒤)
+- **모양 규칙**: `docs/UI_GUIDE.md` — 토큰 클래스와 `ds`(`components/ui/classes.ts`)만, 16진수·대괄호 임의 값·`font-bold`·`animate-*`·그라데이션·그림자 카드·상자 안 상자 없음. 말끝은 "~요". 숫자는 지어내지 않는다(자료 없으면 "–"와 "자료 없음")
+- **그래프**: HTML 막대(% 높이·폭 inline style만), 가로 눈금선만, 그림은 `aria-hidden`, 숫자는 화면 읽기 표(`sr-only`)로도. 증감은 화살표와 글자("늘어남"·"줄어듦")를 같이. `components/charts/*`는 고치지 않고 불러 쓰기만
+- **줄만 고친다**: 다른 탭 명세도 같은 파일의 자기 줄을 고친다. 매출 줄과 "준비 중 n개" 숫자만 바꾸고 다른 탭 줄은 건드리지 않는다(design.md 11절)
 
 ## 작업
 
-### 1. 가짜 통로 (`e2e/lib/revenueFakeBridge.ts`)
-- `page.addInitScript`로 넣을 글자를 만드는 순수 함수: `window.chrome.runtime.connect(EXTENSION_ID)`가 가짜 포트를 주고, `hello` → 버전 맞는 답, `revenue.days` → 가짜 숫자(정해 둔 칸만, 차트번호 없음) 답. 확장 ID·protocol·버전은 `src/lib/bridge/commands.json`·`versions.ts`에서 읽는다
-- `revenueFakeBridge.test.ts`(vitest): 만든 글자의 답이 `isRevenueDays`를 통과, 칸 이름이 정해 둔 것뿐
+### 1. 페이지
+- `src/app/(app)/revenue/page.tsx`: 준비 중 화면 → `<RevenueScreen />`. `metadata`의 `title`은 "매출"(레이아웃이 "매출 · 의원 이름"으로 만든다)
+- `page.test.tsx`: 준비 중 화면이 아니고 매출 화면 뿌리가 있다, 탭 이름(AC-010.2)
 
-### 2. `e2e/revenue.spec.ts` (Playwright)
-- 시작 전 정리: 시험 계정 세션으로 `sales_days`·`sales_codes`의 내 줄을 지운다(RLS의 지우기 권한, AC-004.2). 확장 없음 390·768·1440: 줄 없음 → '비트 PC 연결 필요', `scrollWidth <= innerWidth`(AC-011.1·AC-009.5)
-- 가짜 통로 1440: 가져오기 → 숫자 보임. `page.on('request')`로 나간 요청을 모두 가로채 Supabase 요청의 표 이름이 `sales_days`·`sales_codes`뿐이고 본문 칸이 정해 둔 것뿐인지, 본문에 차트번호 모양(6자리 이상 숫자만인 글자)·이름(`name`·`chart` 칸)·전화번호(`010-…`)·주민번호(6자리-7자리)·파일 이름(`.xls`·`.xlsx`·`.csv`) 모양이 없는지(AC-011.2)
-- 가로채기 규칙(갈래 규칙 C11): `request.url()`의 표 이름과 `request.postData()` 본문만 본다. `headers()`·쿠키·`apikey`·`authorization` 값을 변수·로그·첨부에 담지 않는다. 금지 모양에 걸리면 값이 아니라 종류 이름(`'chart'`·`'name'`·`'phone'`·`'rrn'`·`'file'`·`'table'`)만 `hits`에 넣고 `expect(hits).toEqual([])`로 끝낸다. 다시 읽기(AC-011.4)도 같다
-- 같은 계정 390 다시: 저장된 숫자 + "의원 PC에서" + [다시 가져오기] 없음(AC-011.3)
-- 저장된 줄 다시 읽기: 시험 계정 세션으로 `sales_days`·`sales_codes`를 select해 칸 이름과 값을 같은 금지 모양으로 검사(AC-011.4, 갈래 규칙 C7)
-- 끝나면 시험 계정의 `sales_days`·`sales_codes` 줄 지우기(시험 계정 세션으로, RLS 안에서)
+### 2. 탭 자료
+- `notReadyFeatures.ts`: `NotReadyPath`에서 `'/revenue'`, 목록에서 매출 항목을 뺀다
+- `menu.ts`: 매출 `ready: true`(그리고 `href`를 다른 준비된 탭과 같은 방식으로)
+- `features.ts`: 매출 `status`를 청구와 같은 `'connect-first'`로
+- 시험의 기대값을 목록에 맞춘다. 탭 수·준비 중 수를 고정 숫자로 적지 않고 `MENU`·`NOT_READY_FEATURES`에서 센다(갈래 규칙 C5, 다른 갈래도 같은 시험의 자기 줄을 고친다). 고친 기대값마다 AC-010.1을 이름에 넣는다
+
+### 3. 문서
+- `plan.md` §2-4: "의원 PC 비트 폴더의 파일을 읽는다 …" 줄들 뒤에 `(2026-11-01 바뀜: 매출은 비트 PC 도우미의 `revenue.days`로 읽어 `sales_days`·`sales_codes`에 집계만 저장한다. 폴더 연결·파일 끌어다 놓기는 하지 않는다 — specs/revenue)` 한 줄(AC-010.3). §5 DB 표의 `sales_days` 줄도 "칸은 specs/revenue design.md 6절"로
+- 백업 목록(AC-010.4): `src/lib/backup/tables.ts`가 있으면(청구 사전점검이 먼저 합쳐진 경우) 표 이름 둘을 목록에 더하고 그 시험(`tables.test.ts`)에 AC-010.4 줄을 더한다. 없으면 이 파일들을 만들지 말고 `docs/ARCHITECTURE.md` DB 표 절에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`를 넣는다" 줄만 쓴다
+- 문서 시험(`src/app/(app)/revenue/page.test.tsx`에, `src/b2b-merge.test.ts`처럼 `node:fs`로 파일을 읽는다): `it('AC-010.3 plan.md §2-4와 ARCHITECTURE.md의 매출 줄이 도우미 읽기(revenue.days)를 말한다')` — `plan.md`에 `revenue.days`·`sales_days`가 있고 §2-4에 바뀐 날짜 줄이 있는지, `docs/ARCHITECTURE.md`의 '[매출]' 데이터 흐름 줄에 '폴더 연결'이 없고 `revenue.days`가 있는지. `it('AC-010.4 백업 목록에 매출 표 둘')` — `src/lib/backup/tables.ts`가 있으면 그 글자에 `sales_days`·`sales_codes`가 있고, 없으면 `docs/ARCHITECTURE.md`에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`를 넣는다" 줄이 있는지
+- `docs/UI_GUIDE.md` '앱 틀'·'빈 상태'의 준비 중 목록에서 매출만 빼고("10개" 같은 숫자는 새로 적지 않는다, C5), `docs/ARCHITECTURE.md`의 준비 중 탭 줄에서 매출을 빼고 `components/revenue/`·`lib/revenue/`·`lib/storage/` 줄, DB 표의 `sales_days`(칸이 정해짐)·`sales_codes` 줄과 `rx_groups` 줄(칸: 이름·코드 목록·순서, 즐겨찾기는 아직 없음, 매출 탭이 만들고 통계가 나중에 함께 씀), 데이터 흐름 '[매출]' 줄(폴더 연결 → 도우미 읽기)
 
 ## TDD 순서
 
-1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-011.2 나간 요청은 sales_days와 sales_codes뿐 …', …)`
-2. `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일과 시험 파일은 RED 전에도 고칠 수 있다
-3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green` 으로 통과(GREEN)를 기록한다
+1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-010.1 매출은 준비 중 목록에 없다 …', …)`
+2. `python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일과 시험 파일은 RED 전에도 고칠 수 있다
+3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green` 으로 통과(GREEN)를 기록한다
 4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다
 
 ## Acceptance Criteria
 
 ```bash
-npx vitest run e2e/lib/revenueFakeBridge.test.ts   # 가짜 통로
-npm run e2e -- e2e/revenue.spec.ts          # AC-011.1~AC-011.4 (실제 Supabase + 시험 계정, .env.local 필요)
-python3 ~/.claude/harness/bin/tdd-run TASK-11 --expect green
-npm run lint && npm test
+npx vitest run "src/app/(app)" src/components/common src/components/shell src/components/dashboard src/app/titles.test.tsx src/app/notFound.test.tsx   # AC-010.1~AC-010.4 (lib/backup이 있으면: npx vitest run src/lib/backup)
+python3 ~/.claude/harness/bin/tdd-run TASK-10 --expect green
+npm run lint && npm run build && npm test
 python3 ~/.claude/harness/bin/verify
 ```
 
@@ -103,9 +128,8 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 앱 코드(`src/`)에 시험용 분기·가짜 통로를 넣지 마라. 이유: 시험용 길이 운영에 남는다(CLAUDE.md 보안 규칙)
-- 시험 계정이 아닌 줄을 지우지 마라. 이유: 실제 Supabase다. 시험 계정 세션의 RLS 안에서만 지운다
-- 가짜 숫자에 실제처럼 보이는 차트번호·이름을 넣지 마라. 이유: 금지 자료가 나가지 않는 것을 증명하는 시험이다
+- 다른 탭(고시·공지·업무일지 등)의 준비 중 줄을 바꾸지 마라. 이유: 다른 명세의 일이고 합칠 때 겹친다
+- 준비 중 화면 부품(`NotReadyScreen.tsx`)을 고치지 마라. 이유: 남은 준비 중 탭이 그대로 쓴다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다

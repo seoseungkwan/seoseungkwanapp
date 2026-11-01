@@ -9,7 +9,7 @@
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-002에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-002.1**: `commands.json`에 `revenue.days`(`patient: false`, `maxDays: 31`, `args {from: date, to: date}`). 웹 `SMALL_COMMANDS`와 도우미 명령 표 시험이 숫자 명령으로 안다(명령 수를 고정 숫자로 시험하지 않는다)
-- **AC-002.2**: `checkResult('revenue.days', data)`는 칸이 정확히 `days`·`codes`일 때만 통과. days 줄 = `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`(design.md 5절 표), 날짜 오름차순·하루도 빠짐없이·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, `unconfirmed: true`면 금액 일곱 칸(`total`~`receivableIn`) 모두 `null`, `false`면 모두 숫자. codes 줄 = `code`(`^[0-9A-Za-z가-힣_.\-]{1,30}$`)·`count`(0 이상 정수)·`amount`(0 이상 안전한 정수 또는 `null`), 1,000개 이하·중복 없음. 어긋나면 `E-BRIDGE-BAD-REPLY`
+- **AC-002.2**: `checkResult('revenue.days', data)`는 칸이 정확히 `days`·`codes`일 때만 통과. days 줄 = `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`(design.md 5절 표), 날짜 오름차순·하루도 빠짐없이·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, `unconfirmed: true`면 금액 일곱 칸(`total`~`receivableIn`) 모두 `null`, `false`면 모두 숫자. codes 줄 = `code`(`^[0-9A-Za-z가-힣_.\-]{1,30}$`)·`name`(1~100자, 줄바꿈·제어 문자 없음, 또는 `null`)·`count`(0 이상 정수)·`amount`(0 이상 안전한 정수 또는 `null`), 1,000개 이하·중복 없음. 어긋나면 `E-BRIDGE-BAD-REPLY`
 - **AC-002.3**: 정해 둔 칸 밖의 칸(`chart`·`name` 등)이 하나라도 있거나 금액이 글자·소수·음수면 통과하지 않는다
 - **AC-002.4**: `connectScreenBridge({runtime})`(Worker 없음)로 `call('revenue.days', {from, to})` → 봉투 하나를 보내고 검사한 답을 돌려준다. 조각을 받지 않는다
 
@@ -71,7 +71,7 @@ export type RevenueDayRow = {
 }
 export const REVENUE_DAY_KEYS = ['date', 'visits', 'newPatients', 'returnVisits', 'patientsToDate', 'total', 'insurer', 'noncovered', 'cash', 'card', 'transfer', 'receivableIn', 'unconfirmed'] as const
 export const REVENUE_MONEY_KEYS = ['total', 'insurer', 'noncovered', 'cash', 'card', 'transfer', 'receivableIn'] as const   // unconfirmed면 모두 null
-export type RevenueCodeRow = { code: string; count: number; amount: number | null }
+export type RevenueCodeRow = { code: string; name: string | null; count: number; amount: number | null }
 export type RevenueDaysResult = { days: RevenueDayRow[]; codes: RevenueCodeRow[] }
 export const REVENUE_CODE_SHAPE = /^[0-9A-Za-z가-힣_.\-]{1,30}$/
 export const REVENUE_MAX_DAYS = 31

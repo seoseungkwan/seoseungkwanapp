@@ -247,9 +247,10 @@ def treat(kind):
                  f'<span class="rk-v"><b>{man(amt)}</b><span>{share(amt, allsum)}</span><span>{cnt:,}건</span></span></li>')
     rows += (f'<li class="oth"><span class="rk-n">그 밖 처방</span><span class="rk-b"><i style="width:{min(100, TREAT_OTHER / mx * 100):.2f}%"></i></span>'
              f'<span class="rk-v"><b>{man(TREAT_OTHER)}</b><span>{share(TREAT_OTHER, allsum)}</span><span>진찰료·약·검사 등</span></span></li>')
-    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">치료별 매출</h2><span class="dsec-s">10월 · 처방한 날 기준</span></div>'
+    return (f'<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">치료별 매출</h2><div class="rv-act"><span class="dsec-s">10월 · 처방한 날 기준 · 내가 만든 묶음</span>'
+            '<button type="button" class="btn btn-sec btn-sm">묶음 고치기</button></div></div>'
             f'<ol class="rk">{rows}</ol>'
-            '<p class="d-note">처방 금액(단가 × 수량 × 일수)으로 세요. 환불·할인이 빠지지 않아 위 매출 합계와 조금 달라요.</p></section>')
+            '<p class="d-note">처방 금액(단가 × 수량 × 일수)으로 세요. 환불·할인이 빠지지 않아 위 매출 합계와 조금 달라요. 어느 묶음에도 넣지 않은 처방은 \'그 밖 처방\'으로 세요.</p></section>')
 
 def per_patient(kind):
     ph = kind == 'ph'
@@ -344,6 +345,52 @@ def failed_months():
     return (top_row('pc') + period_row('pc') +
             '<div class="ban" role="status"><p><b>2025년 11월·12월을 가져오지 못했어요.</b> 나머지 달은 그대로 볼 수 있어요.</p>'
             '<button type="button" class="btn btn-sec btn-sm">다시 가져오기</button></div>' + trend('pc'))
+
+# ---------- 묶음 고치기 (2026-11-01 사용자 결정: "처방묶는건 내가 골라서 묶게해") ----------
+# 예시 처방 코드·이름(지어낸 값, 환자 자료 아님)
+G_GROUPS = [
+ ('도수치료', [('도수', '도수치료', 49_812_000)]),
+ ('체외충격파', [('ESWT1', '체외충격파 1부위', 11_204_500), ('ESWT2', '체외충격파 2부위', 5_000_000)]),
+ ('C-arm 주사', [('CARM1', 'C-arm 영상 유도 주사', 13_508_200)]),
+ ('초음파', [('SONO1', '초음파 유도', 7_806_900)]),
+ ('냉동치료', [('CRYO', '냉동치료', 2_604_000)]),
+]
+G_REST = [('MT101', '신장분사 1', 3_120_000), ('MT102', '신장분사 2', 2_480_000), ('HP01', '핫팩', 1_960_000),
+          ('IC01', '간섭파 전류치료', 1_540_000), ('AA154', '재진 진찰료', 21_330_000)]
+G_NAMES = [g for g, _ in G_GROUPS]
+
+def gsel(cur, ph):
+    opts = ''.join(f'<option{" selected" if n == cur else ""}>{n}</option>' for n in G_NAMES) + f'<option{" selected" if cur is None else ""}>묶음 없음</option>'
+    return f'<select class="gsel" aria-label="옮길 묶음">{opts}</select>'
+
+def gcode_row(code, name, amt, cur, ph):
+    return (f'<li class="gc"><span class="gc-c">{code}</span><span class="gc-n">{name}</span>'
+            f'<span class="gc-a">10월 {man(amt)}</span><span class="gc-s">{gsel(cur, ph)}</span></li>')
+
+def group_editor(kind, suggestion=True):
+    ph = kind == 'ph'
+    chip = '<span class="chip chip-a">제안 묶음 · 아직 저장 안 함</span>' if suggestion else ''
+    head = (f'<div class="rv-top"><h1 class="rv-h1">치료 묶음 고치기 {chip}</h1>'
+            + ('' if ph else '<div class="rv-act"><button type="button" class="btn btn-ghost">취소</button><button type="button" class="btn btn-pri">저장</button></div>')
+            + '</div>'
+            '<p class="ge-p">묶음 이름을 짓고, 묶음에 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 어느 묶음에도 없는 처방은 \'그 밖 처방\'으로 세요. '
+            '처음에는 지금 쓰시는 일일 보고의 다섯 가지로 채워 두었어요.</p>')
+    groups = ''
+    for gname, codes in G_GROUPS:
+        rows = ''.join(gcode_row(c, n, a, gname, ph) for c, n, a in codes)
+        groups += (f'<section class="ge-g"><div class="ge-gh"><label class="ge-l"><span class="sr">묶음 이름</span>'
+                   f'<input class="ge-in" value="{gname}" maxlength="30"></label><span class="ge-cnt">처방 {len(codes)}개</span>'
+                   '<button type="button" class="btn btn-ghost ge-del">묶음 지우기</button></div>'
+                   f'<ul class="gcs">{rows}</ul></section>')
+    left = (f'<div class="ge-l1"><div class="ge-bar"><h2 class="ge-t">묶음 {len(G_GROUPS)}개</h2>'
+            '<button type="button" class="btn btn-sec btn-sm">새 묶음</button></div>' + groups + '</div>')
+    rest = ''.join(gcode_row(c, n, a, None, ph) for c, n, a in G_REST)
+    right = (f'<div class="ge-r"><div class="ge-bar"><h2 class="ge-t">그 밖 처방 {len(G_REST)}개</h2></div>'
+             '<label class="ge-find"><span class="sr">처방 찾기</span><input class="ge-in" placeholder="처방 이름이나 코드로 찾기"></label>'
+             f'<ul class="gcs">{rest}</ul>'
+             '<p class="d-note">최근 13달 동안 비트에서 나온 처방만 보여요. 처방 이름과 코드만 쓰고, 환자 정보는 없어요.</p></div>')
+    foot = ('<div class="ge-foot"><button type="button" class="btn btn-sec btn-block">취소</button><button type="button" class="btn btn-pri btn-block">저장</button></div>' if ph else '')
+    return head + f'<div class="ge">{left}{right}</div>' + foot
 
 # ---------- 이 시안만의 CSS (토큰은 ui-90 css_page.css의 :root + 차트 토큰) ----------
 RV_CSS = r'''
@@ -449,6 +496,36 @@ RV_CSS = r'''
 .ban b { color: var(--ink); font-weight: 600; }
 .is-ph .kpi-s { font-size: 12px; line-height: 16px; }
 .qs { margin-top: 16px; display: grid; gap: 16px; }
+.ge-p { margin-top: 8px; font-size: 14px; line-height: 22px; color: var(--ink-2); max-width: 52em; }
+.ge { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; margin-top: 24px; }
+.ge-l1 { grid-column: 1 / 8; }
+.ge-r { grid-column: 8 / 13; }
+.is-ph .ge { display: block; }
+.is-ph .ge-r { margin-top: 32px; }
+.ge-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
+.ge-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.ge-g { padding: 16px 0 8px; border-bottom: 1px solid var(--line); }
+.ge-gh { display: flex; align-items: center; gap: 12px; }
+.ge-l { flex: 1; min-width: 0; }
+.ge-in { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); }
+.is-ph .ge-in { height: 44px; font-size: 16px; }
+.ge-find { display: block; margin-top: 12px; }
+.ge-cnt { font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.ui .ge-del { color: var(--negative); font-size: 13px; }
+.gcs { margin-top: 4px; }
+.gc { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto 168px; align-items: center; gap: 12px; min-height: 44px; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; }
+.gc:last-child { border-bottom: 0; }
+.ge-r .gc { grid-template-columns: 64px minmax(0, 1fr) 150px; }
+.ge-r .gc-a { display: none; }
+.gc-c { color: var(--muted); }
+.gc-n { color: var(--ink); }
+.gc-a { color: var(--muted); white-space: nowrap; }
+.gsel { width: 100%; height: 32px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-control); font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); }
+.is-ph .gc, .is-ph .ge-r .gc { grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; padding: 8px 0; }
+.is-ph .gc-a { display: none; }
+.is-ph .gc-s { grid-column: 1 / -1; }
+.is-ph .gsel { height: 44px; font-size: 16px; }
+.ge-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 24px; }
 '''
 
 # ---------- 시안 페이지 ----------
@@ -503,16 +580,33 @@ S.append('<section class="sec" id="states"><p class="sec-k">2 · 상황마다</p
          '<li><span><b>비트와 연결 안 된 PC</b>(원장님 방 PC 등)와 <b>폰</b>은 의원 PC가 마지막으로 가져와 저장한 숫자를 보여요.</span></li>'
          '</ul></div></div></section>')
 
-decide = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k">정한 것 · 2026년 11월 1일</p><h2>시안 승인과 세 가지 결정</h2><ol>'
+row_groups = ('<div class="row">'
+              + frame('ph', shell('ph', group_editor('ph')), 390, 760, True, cap='<b>폰</b> · 예시 처방 · 아래로 밀어 보세요', label='묶음 고치기 · 폰')
+              + frame('pc', shell('pc', group_editor('pc')), 1440, 860, True, cap='<b>PC</b> · 예시 처방 · 이름 칸과 옮기기 칸을 눌러 보세요',
+                      title='매출 · 예시정형외과의원', label='묶음 고치기 · PC')
+              + '</div>')
+S.append('<section class="sec" id="groups"><p class="sec-k">3 · 새로 그림 · 확인해 주세요</p><h2>치료 묶음 고치기: 처방을 내가 골라 묶어요</h2>'
+         '<p class="sec-p">치료별 매출 머리의 [묶음 고치기]를 누르면 열려요. 묶음 이름을 짓고, 처방마다 어느 묶음에 넣을지 골라요. 처음에는 일일 보고의 다섯 가지를 제안으로 채워 두고, [저장]을 누르면 그때부터 치료별 매출이 내 묶음으로 세요.</p>'
+         + row_groups +
+         '<div class="notes"><div class="nb"><h3>이렇게 써요</h3><ul>'
+         '<li><span><b>묶음 이름</b>은 칸에서 바로 고쳐요(30자까지, 같은 이름은 안 돼요). [새 묶음]으로 더하고, [묶음 지우기]를 누르면 그 묶음의 처방은 \'그 밖 처방\'으로 가요.</span></li>'
+         '<li><span><b>처방 옮기기</b>: 처방마다 오른쪽 칸에서 묶음을 고르면 그 묶음으로 옮겨요. 처방 하나는 한 묶음에만 들어가서 매출이 두 번 세어지지 않아요.</span></li>'
+         '<li><span><b>그 밖 처방</b>: 어느 묶음에도 없는 처방이 오른쪽에 모여요. 이름이나 코드로 찾아 묶음에 넣을 수 있어요.</span></li>'
+         '<li><span>처방 목록은 최근 13달 동안 비트에서 나온 처방 코드와 이름이에요. 저장하는 것은 묶음 이름과 처방 코드 목록뿐이고 환자 정보는 없어요. 폰에서도 고칠 수 있어요.</span></li>'
+         '<li><span>나중에 통계 탭도 같은 묶음을 쓸 수 있게 만들어 둬요.</span></li>'
+         '</ul></div></div></section>')
+
+decide = ('<section class="sec" id="decide"><div class="decide"><p class="sec-k">정한 것 · 2026년 11월 1일</p><h2>시안 승인과 결정</h2><ol>'
           '<li><div><p class="q">시안: 이대로 만들어요</p><p class="a">이 그림대로 작업을 나눠 하나씩 만들어요.</p></div></li>'
           '<li><div><p class="q">1인당 평균 진료비: 환자 한 명마다</p>'
           '<p class="a">매출 ÷ 그 기간에 다녀간 환자 수예요. 한 달에 여러 번 온 분도 한 명으로 세요. 환자 수는 비트 PC 안에서 세고 숫자만 가져와요.</p></div></li>'
-          '<li><div><p class="q">치료 묶음: 도수치료·체외충격파·C-arm 주사·초음파·냉동치료 + 그 밖</p>'
-          '<p class="a">지금 쓰시는 일일 보고의 치료 다섯 가지와 같아요.</p></div></li>'
+          '<li><div><p class="q">치료 묶음: 내가 골라서 묶어요</p>'
+          '<p class="a">묶음 이름과 넣을 처방을 직접 정해요. 처음에는 일일 보고의 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료)를 고칠 수 있는 제안으로 채워 둬요.</p></div></li>'
           '<li><div><p class="q">환불·예치금이 있는 날: 합계에서 빼고 날짜만 알림</p>'
-          '<p class="a">지금 일일 보고처럼 그날 금액은 비워 두고 "확인 필요한 날"로 알려 드려요. 이런 날이 많으면 직접 입력 칸을 다시 의논해요.</p></div></li></ol></div></section>')
+          '<p class="a">지금 일일 보고처럼 그날 금액은 비워 두고 "확인 필요한 날"로 알려 드려요. 이런 날이 많으면 직접 입력 칸을 다시 의논해요.</p></div></li></ol>'
+          '<p class="reply">새로 그린 3번 \'치료 묶음 고치기\'만 확인해 주세요. 이렇게 답해 주시면 돼요: <b>묶음 화면 좋아요</b> (바꿀 것이 있으면 함께 말씀해 주세요)</p></div></section>')
 
-NAV = [('main-view', '자료가 있을 때'), ('states', '상황마다'), ('decide', '정한 것')]
+NAV = [('main-view', '자료가 있을 때'), ('states', '상황마다'), ('groups', '묶음 고치기 (확인)'), ('decide', '정한 것')]
 nav = ''.join(f'<a href="#{i}"{" class=dec" if i == "decide" else ""}>{n}</a>' for i, n in NAV)
 
 page = f'''<!DOCTYPE html>

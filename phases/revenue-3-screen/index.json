@@ -14,11 +14,16 @@
     },
     {
       "step": 2,
-      "name": "tab-ready",
+      "name": "group-editor",
       "status": "pending"
     },
     {
       "step": 3,
+      "name": "tab-ready",
+      "status": "pending"
+    },
+    {
+      "step": 4,
       "name": "revenue-e2e",
       "status": "pending"
     }

@@ -21,6 +21,11 @@
       "step": 3,
       "name": "revenue-sync",
       "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "rx-group-store",
+      "status": "pending"
     }
   ]
 }

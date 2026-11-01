@@ -1,6 +1,7 @@
 # 요구사항: 매출 탭
 
-> **시안 승인: 2026-11-01** 사용자 "이대로 만들기" — `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 숫자는 모두 예시). 같은 날 사용자 결정: 1인당 평균 = 환자 한 명마다, 치료 묶음·환불 날은 추천대로(아래 '배경').
+> **시안 승인: 2026-11-01** 사용자 "이대로 만들기" — `docs/mockups/revenue/index.html`(만든 코드 `gen.py`, 숫자는 모두 예시). 같은 날 사용자 결정: 1인당 평균 = 환자 한 명마다, 환불 날은 추천대로, 치료 묶음은 총괄이 직접 만든다(아래 '배경').
+> **'치료 묶음 고치기' 화면은 시안 확인 전** — 2026-11-01 사용자 결정("처방묶는건 내가 골라서 묶게해")으로 시안 3절에 새로 그렸다. TASK-14는 그 부분의 사용자 OK 뒤에만 한다.
 > 기능 ID: `revenue` · 형식: 요구사항은 `### REQ-001: 제목`, 수용 기준은 `- AC-001.1: Given/When/Then`.
 > 각 AC는 시험 하나 이상으로 검증하고, 시험 이름에 AC ID를 넣는다(TASK-1은 문서라 시험 대신 의원 PC 확인표로 확인한다). REQ 번호 = TASK 번호다. Phase·Step은 `tasks.md` 머리말.
 
@@ -9,7 +10,8 @@
 - 2026-11-01 사용자 결정(다시 묻지 않는다)
   - 시안을 이대로 만든다
   - **환자 1인당 평균 진료비 = 매출 ÷ 그 기간에 다녀간 서로 다른 환자 수**(같은 환자가 여러 번 와도 한 명). 환자 수는 도우미가 비트 DB 안에서 세고 숫자만 돌려준다(차트번호는 PC 밖으로 나가지 않는다)
-  - 치료 묶음은 원본 일일 보고의 다섯 가지 + 그 밖 처방. 환불·예치금이 있는 날은 그날 금액을 합계에서 빼고 날짜만 알린다
+  - **치료 묶음은 총괄이 직접 만든다**("처방묶는건 내가 골라서 묶게해"): 묶음 이름 짓기, 비트에서 나온 처방(코드와 이름) 가운데 넣을 것 고르기, 이름 바꾸기·지우기, 처방을 다른 묶음으로 옮기기. 어느 묶음에도 없는 처방은 '그 밖 처방'. 묶음은 서버 표 `rx_groups`(묶음 이름·처방 코드 목록뿐, 환자 자료 없음)에 두고, 나중에 통계 탭도 같은 표를 쓸 수 있다. 처음에는 원본 일일 보고의 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료)를 고칠 수 있는 제안으로 채운다
+  - 환불·예치금이 있는 날은 그날 금액을 합계에서 빼고 날짜만 알린다
   - 업무일지 탭이 하루 숫자를 비트에서 채울 수 있게, 같은 읽기(`revenue.days`)가 날마다 수납 나눔(현금·카드·계좌이체·미수입금)과 신환·재진 수도 돌려준다. 두 번째 읽기 명령을 만들지 않는다(계약은 design.md 5절)
 - 서버에는 집계 숫자만 간다: 날짜별 합계 금액·건수와 달별 처방 코드 합계뿐이다. 환자 줄(이름·차트번호·접수 번호)은 비트 DB 밖으로 나오지 않는다. 도우미가 비트 DB 안에서 더하고 센 숫자만 돌려준다
 - 금액을 읽는 방법은 원본 양지바른 사전점검이 이미 의원에서 쓰는 SQL을 그대로 옮긴다(`vendor/drbit_export/OperationalReportSql.cs`, 비트 '외래환자경영통계' 조건: 회계일 기준 정상수납 + 미수입금, 환불·변경수납·예치금이 있는 날은 금액 '확인 필요'). 치료별 금액은 원본 `TrendDataSource.cs`의 처방 금액 식(소모량 × 단가)을 코드별로 묶는다. 자세한 것은 design.md 2절
@@ -25,7 +27,7 @@
 
 ### REQ-002: 명령 표 `revenue.days` (Phase 1 · Step 1 · bridge-contract)
 - AC-002.1: Given `src/lib/bridge/commands.json`, When 읽으면, Then `revenue.days`가 `patient: false`, `maxDays: 31`, `args {from: date, to: date}`로 있다. 웹의 `SMALL_COMMANDS`와 도우미 명령 표 시험이 이 명령을 숫자 명령으로 안다(명령 수를 고정 숫자로 시험하지 않는다)
-- AC-002.2: Given 도우미 답 `data`, When `checkResult('revenue.days', data)`, Then 칸이 정확히 `days`·`codes` 둘일 때만 통과한다. `days` 줄은 칸이 정확히 `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`(design.md 5절 표)이고, 날짜는 오름차순·하루도 빠짐없이 이어지고·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, `unconfirmed`가 `true`면 금액 일곱 칸(`total`~`receivableIn`)이 모두 `null`이고 `false`면 모두 숫자다. `codes` 줄은 칸이 정확히 `code`·`count`·`amount`이고, `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, `count`는 0 이상 정수, `amount`는 0 이상 안전한 정수 또는 `null`, 1,000개 이하·코드 중복 없음이다. 어긋나면 `E-BRIDGE-BAD-REPLY`
+- AC-002.2: Given 도우미 답 `data`, When `checkResult('revenue.days', data)`, Then 칸이 정확히 `days`·`codes` 둘일 때만 통과한다. `days` 줄은 칸이 정확히 `date`·`visits`·`newPatients`·`returnVisits`·`patientsToDate`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivableIn`·`unconfirmed`(design.md 5절 표)이고, 날짜는 오름차순·하루도 빠짐없이 이어지고·31개 이하, 숫자 칸은 0 이상 안전한 정수 또는 `null`, `unconfirmed`가 `true`면 금액 일곱 칸(`total`~`receivableIn`)이 모두 `null`이고 `false`면 모두 숫자다. `codes` 줄은 칸이 정확히 `code`·`name`·`count`·`amount`이고, `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, `name`은 1~100자 글자(줄바꿈·제어 문자 없음) 또는 `null`, `count`는 0 이상 정수, `amount`는 0 이상 안전한 정수 또는 `null`, 1,000개 이하·코드 중복 없음이다. 어긋나면 `E-BRIDGE-BAD-REPLY`
 - AC-002.3: Given 줄에 정해 둔 칸 밖의 칸(예: `chart`·`name`)이 하나라도 있거나 숫자 칸이 글자·소수·음수면, When 검사하면, Then 통과하지 않는다(환자 칸이 화면에 닿지 않는다)
 - AC-002.4: Given 화면 통로 `connectScreenBridge({runtime})`(Worker 없음), When `call('revenue.days', {from, to})`, Then 확장에 봉투 하나를 보내고 검사한 답을 돌려준다. 조각(chunk)을 받지 않는다
 
@@ -34,16 +36,17 @@
 - AC-003.2: Given 하루, When 앞의 세 검사(`UnsupportedFinance`·`FinanceMultiplicity`·`ReceivableMultiplicity`) 가운데 하나라도 0이 아니면, Then 그날 금액 일곱 칸은 `null`이고 `unconfirmed: true`다(원본 `SetFinanceUnconfirmed`). 아니면 `total`·`insurer`·`noncovered` = `FinanceNormal`과 `FinanceReceivable` 답의 첫째·둘째·셋째 칸 합, `cash`·`card`·`transfer` = `FinanceNormal`의 넷째·다섯째·여섯째 칸, `receivableIn` = `FinanceReceivable`의 넷째+다섯째+여섯째 칸이다(원 미만 버림 정수, DB `NULL`은 0). 일곱 칸 가운데 음수가 있으면 그날도 `unconfirmed: true`다
 - AC-003.3: Given 하루의 `Patients` 답, When 셋째·넷째·다섯째 칸(차트번호 없음·중복·첫 내원 못 찾음)이 모두 0이면, Then `visits`는 첫째 칸, `newPatients`는 둘째 칸, `returnVisits`는 `visits − newPatients`다. 하나라도 0이 아니면 그날 셋 다 `null`이다. `HistoryGuard`가 0이 아니면(옛 자료가 따로 있어 신환을 정할 수 없음) 모든 날의 `newPatients`·`returnVisits`가 `null`이다(`visits`는 그대로)
 - AC-003.4: Given 하루, When `DistinctPatients`를 `@from` = `from` 0시, `@to` = 그다음 날 0시로 돌리면, Then `patientsToDate`는 `from`부터 그날까지 다녀간 서로 다른 환자 수(비트 DB 안의 `COUNT(DISTINCT …)`)다. 차트번호 없는 내원이 하나라도 있으면 `null`이다. 차트번호는 도우미 밖으로 나가지 않는다
-- AC-003.5: Given 기간, When 코드별 금액을 읽으면, Then 새 문장 `CodeAmounts` 하나로 처방 코드마다 유효 처방 줄 수(`count`)와 금액(`amount`, 원본 `TrendDataSource`의 `일수 × 수량 × 단가` 식, 원 미만 버림)을 낸다. 값이 빠진 줄이 있는 코드는 `amount: null`이다. 앞뒤 공백을 뺀 뒤 같은 코드가 된 줄은 하나로 합친다(건수·금액을 더하고, 하나라도 `null`이면 `null`). AC-002.2 글자 모양이 아닌 코드와, 금액 순으로 999번째 뒤의 코드는 이름 없는 한 줄 `_REST`로 합친다(그래서 코드 때문에 한 달 전체가 실패하지 않는다)
+- AC-003.5: Given 기간, When 코드별 금액을 읽으면, Then 새 문장 `CodeAmounts` 하나로 처방 코드마다 유효 처방 줄 수(`count`), 금액(`amount`, 원본 `TrendDataSource`의 `일수 × 수량 × 단가` 식, 원 미만 버림), 처방 이름(`name`, 비트 처방 목록 `SeeMst`에서 적용일이 가장 늦은 `SeeKorNam`, 앞뒤 공백 뺌, 100자 넘으면 100자까지, 없거나 비면 `null`)을 낸다. 값이 빠진 줄이 있는 코드는 `amount: null`이다. 앞뒤 공백을 뺀 뒤 같은 코드가 된 줄은 하나로 합친다(건수·금액을 더하고, 하나라도 `null`이면 `null`). AC-002.2 글자 모양이 아닌 코드와, 금액 순으로 999번째 뒤의 코드는 이름 없는 한 줄 `_REST`(`name: null`)로 합친다(그래서 코드 때문에 한 달 전체가 실패하지 않는다)
 - AC-003.6: Given 읽기 실패·시간 초과·등록 확인 실패, When 처리하면, Then 일부만 보내지 않고 오류 하나만 보낸다(`E-BIT-READ-FAILED` 또는 관문의 오류 번호)
 - AC-003.7: Given 답과 진단 기록, Then 차트번호·이름·접수 번호가 없다(시험: 가짜 DB가 준 가짜 차트번호 글자가 답·기록 어디에도 없음). 답의 칸은 AC-002.2와 같다
 - AC-003.8: Given 허용 목록, When 매출 문장을 더하면, Then `ReadOnlyGuard`는 매출 문장 아홉 개(원본 7 + `DistinctPatients` + `CodeAmounts`)를 정해 둔 매개변수(`@day`·`@nextDay` Char 8, `@from`·`@to` Char 12, `@hospital` VarChar 32, 문장마다 쓰는 것만)와 함께만 통과시키고, 이 문장들은 읽기 문장 하나다(`SELECT` 또는 `WITH`로 시작, `;`·주석·쓰기 낱말 없음). 기존 `Sql` 상수와 기존 시험은 바뀌지 않는다
 
 ### REQ-004: 매출 표 (Phase 2 · Step 0 · revenue-tables)
-- AC-004.1: Given migration `supabase/migrations/20261101000400_revenue.sql`, When PGlite에서 auth migration 뒤에 실행하면, Then 표 `sales_days`(`hospital_id`·`day`·`visits`·`new_patients`·`return_visits`·`patients_to_date`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivable_in`·`unconfirmed`·`fetched_at`, 기본 키 `hospital_id`+`day`)와 `sales_codes`(`hospital_id`·`month`·`code`·`count`·`amount`·`fetched_at`, 기본 키 `hospital_id`+`month`+`code`)가 생기고 두 표 모두 RLS가 켜져 있다. 칸 목록은 정확히 이것뿐이다(환자 칸 없음)
+- AC-004.1: Given migration `supabase/migrations/20261101000400_revenue.sql`, When PGlite에서 auth migration 뒤에 실행하면, Then 표 `sales_days`(`hospital_id`·`day`·`visits`·`new_patients`·`return_visits`·`patients_to_date`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivable_in`·`unconfirmed`·`fetched_at`, 기본 키 `hospital_id`+`day`), `sales_codes`(`hospital_id`·`month`·`code`·`name`·`count`·`amount`·`fetched_at`, 기본 키 `hospital_id`+`month`+`code`), `rx_groups`(`id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`, 기본 키 `id`, 병원마다 `name` 하나)가 생기고 세 표 모두 RLS가 켜져 있다. 칸 목록은 정확히 이것뿐이다(환자 칸 없음)
 - AC-004.2: Given 표, When anon이 읽거나 쓰면 거부된다. authenticated는 승인(`approved`)된 자기 병원 줄만 다룬다: `sales_days`는 읽기·넣기·고치기·지우기, `sales_codes`는 읽기·넣기·지우기. 남의 병원 줄은 안 보이고 지워지지 않으며, `hospital_id`를 직접 넣거나 바꾸면 거부된다. 승인 대기·거절 사용자는 아무 줄도 못 읽고 못 쓴다
-- AC-004.3: Given 줄, When DB 제약을 어기면 거부된다: 숫자 칸은 0 이상 정수, `unconfirmed`가 참이면 금액 일곱 칸이 모두 `null`이고 거짓이면 모두 있음, `day`는 2000-01-01 이후, `month`는 1일, `code`는 AC-002.2 모양
+- AC-004.3: Given 줄, When DB 제약을 어기면 거부된다: 숫자 칸은 0 이상 정수, `unconfirmed`가 참이면 금액 일곱 칸이 모두 `null`이고 거짓이면 모두 있음, `day`는 2000-01-01 이후, `month`는 1일, `code`는 AC-002.2 모양, `sales_codes.name`은 1~100자 또는 `null`, `rx_groups.name`은 앞뒤 공백 없는 1~30자이고 병원 안에서 겹치지 않음, `rx_groups.codes`는 1,000개 이하이고 하나하나가 AC-002.2 모양이며 `_REST`가 없음, `sort_order`는 0~999
 - AC-004.4: Given `hospital_id`를 빼고 넣으면, Then DB가 `public.my_hospital_id()`(승인된 내 병원)로 채우고, 줄을 고치면 `fetched_at`이 DB 시각으로 바뀐다. 다른 갈래가 같은 글자의 `my_hospital_id()`를 먼저 만든 DB에서도 이 migration이 오류 없이 된다
+- AC-004.5: Given `rx_groups`, When 사용자가 다루면, Then 승인된 자기 병원 줄만 읽기·넣기·고치기·지우기가 되고(남의 병원 줄은 안 보이고 안 바뀜), `id`·`hospital_id`·`updated_at`은 DB가 채운다(칸 권한 없음). 고치면 `updated_at`이 DB 시각으로 바뀐다(`public.touch_updated_at()`, 갈래 규칙 C1 글자 그대로, 이미 있어도 된다)
 
 ### REQ-005: 금액 나눔·기간 합·비교 (Phase 2 · Step 1 · revenue-summary)
 - AC-005.1: Given 하루 줄, When `splitDay(row)`, Then 급여 = `total − noncovered`, 공단부담 = `insurer`, 본인부담 = 급여 − `insurer`, 비급여 = `noncovered`다(TASK-1 확인 답 '예' 기준. '아니오'면 이 AC를 고치는 명세 변경을 먼저 한다). 급여나 본인부담이 음수면 그날은 '확인 필요'로 본다
@@ -53,20 +56,21 @@
 - AC-005.5: Given 날 줄과 마지막 달, When `monthSeries(rows, lastMonth, today)`, Then 마지막 달부터 거꾸로 13달마다 총액·급여·비급여·내원 합·환자 수와 1인당 평균을 낸다. 자료 없는 달은 `null`(0이 아님), 아직 끝나지 않은 달은 `partial: true`
 - AC-005.6: Given 기간 합, When `perPatient(sum)`, Then 환자 1인당 평균 = 확인된 날의 총액 합 ÷ 기간 환자 수(원 미만 버림)다. 환자 수가 `null`이거나 0이면 `null`이다. 기간에 확인 필요한 날이 있으면 `lowered: true`(그날 매출이 빠져 실제보다 낮을 수 있음)
 
-### REQ-006: 치료 묶음 (Phase 2 · Step 2 · treatment-groups)
-- AC-006.1: Given 코드 줄, When `groupTreatments(codes)`, Then 원본 일일 보고(`OperationalReportSql.Treatments`)의 규칙으로 묶는다: 앞뒤 공백을 뺀 코드가 `도수`면 도수치료, 대문자로 바꿔 `CARM1`이면 C-arm 주사, `SONO1`이면 초음파, `CRYO`면 냉동치료, `ESWT`를 품으면 체외충격파다. 나머지는 '그 밖 처방'이다
-- AC-006.2: Given 묶음, Then 묶음마다 금액 합·건수 합을 내고 금액 큰 순(같으면 위 규칙 순서), '그 밖 처방'은 맨 뒤다. 금액이 `null`인 코드는 금액 합에서 빼고 그 묶음에 `missing: true`를 단다. 코드가 없으면 빈 목록이다
-- AC-006.3: Given 묶음 규칙, Then 이름·규칙은 `src/lib/revenue/treatments.ts`의 표 하나에만 있다(시험이 표 순서를 확인)
+### REQ-006: 치료 묶음 계산·고치기 (Phase 2 · Step 2 · treatment-groups)
+- AC-006.1: Given 코드 줄과 묶음 목록(`RxGroup[]`: 이름·코드 목록·순서), When `groupTreatments(codes, groups)`, Then 코드마다 그 코드를 품은 첫 묶음(`sortOrder` 순)에 넣는다(코드 하나는 한 번만 센다). 어느 묶음에도 없는 코드와 `_REST`는 '그 밖 처방'이다
+- AC-006.2: Given 묶음, Then 묶음마다 금액 합·건수 합을 내고 금액 큰 순(같으면 `sortOrder` 순), '그 밖 처방'은 맨 뒤다. 금액이 `null`인 코드는 금액 합에서 빼고 그 묶음에 `missing: true`를 단다. 금액·건수가 모두 0인 묶음은 빼고, 코드가 없으면 빈 목록이다
+- AC-006.3: Given 아는 처방 코드 목록, When `suggestGroups(codes)`(저장된 묶음이 하나도 없을 때만 쓴다), Then 원본 일일 보고(`OperationalReportSql.Treatments`) 규칙으로 고칠 수 있는 제안 묶음 다섯 개를 만든다: 도수치료(앞뒤 공백 뺀 코드가 `도수`), 체외충격파(대문자로 `ESWT`를 품음), C-arm 주사(`CARM1`), 초음파(`SONO1`), 냉동치료(`CRYO`). 제안은 저장되지 않은 표시(`suggested: true`)를 단다. 이 규칙은 `src/lib/revenue/treatments.ts`의 제안 표 하나에만 있다
+- AC-006.4: Given 묶음 목록, When 고치기 함수 `addGroup`·`renameGroup`·`deleteGroup`·`moveCode(code, groupId | null)`를 부르면, Then 새 목록을 돌려준다(받은 목록은 그대로). 이름은 앞뒤 공백을 빼고 1~30자이고 겹치지 않아야 한다(아니면 오류 이유 `empty`·`tooLong`·`duplicate`). 묶음을 지우면 그 코드는 어느 묶음에도 없게 된다. `moveCode`는 코드를 다른 모든 묶음에서 빼고 고른 묶음에 넣는다(`null`이면 그 밖). 묶음 50개·묶음당 코드 1,000개를 넘지 않는다
 
 ### REQ-007: 저장·가져오기 (Phase 2 · Step 3 · revenue-sync)
 - AC-007.1: Given 오늘과 저장된 날 목록, When `planFetch(today, savedDays)`, Then 어제가 속한 달부터 거꾸로 13달 가운데 '와야 할 날'(1일 ~ 말일과 어제 가운데 이른 날)이 하나라도 저장돼 있지 않은 달을 **최근 달부터** 돌려준다. 달마다 기간은 그 달 1일 ~ 와야 할 마지막 날이다(31일 이하). 다 저장된 달은 넣지 않는다
-- AC-007.2: Given 검사를 지난 답, When `saveMonth(month, result)`, Then 답의 첫 날이 그 달 1일인지 확인하고(아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`, `patientsToDate`가 1일부터 센 값이어야 해서), 그 달 코드 줄을 지우고 새로 넣은 **뒤에** 날 줄을 `hospital_id`+`day`로 upsert한다(코드 저장이 실패하면 날 줄이 없어 그 달을 다시 가져온다). 보내는 줄의 칸은 `sales_days` 열세 칸(`day`~`unconfirmed`)·`sales_codes` 네 칸(`month`·`code`·`count`·`amount`)뿐이다(시험: 보내는 객체의 칸 이름 비교). 저장이 실패하면 `E-REVENUE-SAVE-FAILED`
+- AC-007.2: Given 검사를 지난 답, When `saveMonth(month, result)`, Then 답의 첫 날이 그 달 1일인지 확인하고(아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`, `patientsToDate`가 1일부터 센 값이어야 해서), 그 달 코드 줄을 지우고 새로 넣은 **뒤에** 날 줄을 `hospital_id`+`day`로 upsert한다(코드 저장이 실패하면 날 줄이 없어 그 달을 다시 가져온다). 보내는 줄의 칸은 `sales_days` 열세 칸(`day`~`unconfirmed`)·`sales_codes` 다섯 칸(`month`·`code`·`name`·`count`·`amount`)뿐이다(시험: 보내는 객체의 칸 이름 비교). 저장이 실패하면 `E-REVENUE-SAVE-FAILED`
 - AC-007.3: Given `syncRevenue({call, store, today, months?, onProgress})`, When 부르면, Then 가져올 달마다 차례로 `revenue.days` → 저장을 하고 달마다 `onProgress({done, total, month})`를 알린다. 한 달의 읽기·검사·저장 오류(`E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`)는 그 달만 `failed`에 넣고 다음 달을 계속한다. 통로·도우미·등록 오류(그 밖의 번호)는 거기서 멈춘다. `months`를 주면([다시 가져오기]) 그 달만 다시 읽는다. 도우미가 `E-HELPER-UNKNOWN-COMMAND`를 주면 `helperOld`, 확장이 `E-BRIDGE-REJECTED`를 주면(옛 확장은 모르는 명령을 막는다) `extensionOld`를 돌려준다
-- AC-007.4: Given `loadRevenue(fromMonth, toMonth)`, When 읽으면, Then 그 달들의 날 줄·코드 줄과 가장 늦은 `fetched_at`을 돌려준다(RLS가 내 병원 줄만 준다)
+- AC-007.4: Given `loadRevenue(fromMonth, toMonth)`, When 읽으면, Then 그 달들의 날 줄·코드 줄(이름 포함)과 가장 늦은 `fetched_at`을 돌려준다(RLS가 내 병원 줄만 준다)
 - AC-007.5: Given 오류 번호 `E-REVENUE-SAVE-FAILED`, When 오류 카드를 그리면, Then `lib/errors.ts`의 '무엇이 · 어떻게 고치나' 문구가 있다
 
 ### REQ-008: 화면 보기 모양 (Phase 3 · Step 0 · revenue-view)
-- AC-008.1: Given 저장된 줄·고른 달·오늘, When `buildRevenueView(input)`, Then 승인된 시안의 네 덩어리(매출 추이 · 급여·비급여 · 치료별 매출 · 환자 1인당 평균 진료비(환자 한 명 기준))의 글자와 막대 높이·폭(0~100 %, 소수 둘째 자리)을 낸다. 큰 금액은 만 원 아래를 버린 "1억 6,248만 원" 모양이고, 화면 읽기 표는 원 단위 그대로다
+- AC-008.1: Given 저장된 줄·묶음(저장된 것, 없으면 제안)·고른 달·오늘, When `buildRevenueView(input)`, Then 승인된 시안의 네 덩어리(매출 추이 · 급여·비급여 · 치료별 매출(묶음별, 제안이면 "제안 묶음" 표시) · 환자 1인당 평균 진료비(환자 한 명 기준))의 글자와 막대 높이·폭(0~100 %, 소수 둘째 자리)을 낸다. 큰 금액은 만 원 아래를 버린 "1억 6,248만 원" 모양이고, 화면 읽기 표는 원 단위 그대로다
 - AC-008.2: Given 상태 입력, Then 보기 상태는 `connect-needed`(연결 안 됨·저장된 줄 없음) · `fetching`(done/total) · `ready`(가져오지 못한 달이 있으면 그 달 목록도) · `empty`(고른 달 자료 없음) · `helper-old` · `extension-old` · `saved-only`(연결 안 됨·저장된 줄 있음, 마지막 가져온 시각) · `error`(오류 번호) 가운데 하나다
 - AC-008.3: Given 고른 기간에 확인 필요한 날이 있으면, Then "확인 필요한 날 n일"과 날짜를 보이고, 그날 금액이 합계에 들어가지 않았고 1인당 평균이 낮게 보일 수 있다고 알린다. 없으면 "없음"이다
 - AC-008.4: Given 몫·증감, Then 소수 첫째 자리 버림이고 빼기는 U+2212다. 자료 없는 칸은 "–"와 "자료 없음"이고 지어낸 숫자·빈 그래프 틀이 없다
@@ -87,13 +91,26 @@
 
 ### REQ-011: E2E (Phase 3 · Step 3 · revenue-e2e)
 - AC-011.1: Given 승인된 시험 계정·확장 없는 브라우저, When `/revenue`를 390·768·1440으로 열면, Then 저장된 줄이 없을 때 '비트 PC 연결 필요'가 보이고 가로 스크롤이 없다(AC-009.5도 이 시험 이름에 단다). 시험은 시작 전에 시험 계정의 매출 줄을 지우고 시작한다(다시 돌려도 같다)
-- AC-011.2: Given 시험 코드가 넣은 가짜 확장(가짜 숫자 답), When `/revenue`를 열면, Then 가져온 숫자가 화면에 보이고, 가로챈 나간 요청은 `sales_days`·`sales_codes`뿐이며 본문 칸이 정해 둔 칸뿐이고 차트번호·이름·전화번호·주민번호·파일 이름 모양이 없다. 가로챌 때 머리글·쿠키·apikey 값은 모으지 않고 본문만 보며, 실패하면 걸린 종류 이름만 알린다(`expect(hits).toEqual([])`, hits에는 값이 아니라 종류 이름)
+- AC-011.2: Given 시험 코드가 넣은 가짜 확장(가짜 숫자 답), When `/revenue`를 열고 [묶음 고치기]에서 묶음 하나를 고쳐 저장하면, Then 가져온 숫자와 고친 묶음이 화면에 보이고, 가로챈 나간 요청은 `sales_days`·`sales_codes`·`rx_groups`뿐이며 본문 칸이 정해 둔 칸뿐이고(`rx_groups`는 `name`·`codes`·`sort_order`) 차트번호·이름(사람)·전화번호·주민번호·파일 이름 모양이 없다. 가로챌 때 머리글·쿠키·apikey 값은 모으지 않고 본문만 보며, 실패하면 걸린 종류 이름만 알린다(`expect(hits).toEqual([])`, hits에는 값이 아니라 종류 이름)
 - AC-011.3: Given 같은 계정으로 폰 폭(390)에서 다시 열면, Then 저장된 숫자와 "의원 PC에서 …에 가져온 숫자예요"가 보이고 [다시 가져오기]가 없다
-- AC-011.4: Given 저장이 끝난 뒤, When 시험이 같은 계정으로 `sales_days`·`sales_codes` 줄을 다시 읽으면, Then 칸 이름이 정해 둔 것뿐이고 값에 차트번호·이름·전화번호·주민번호·파일 이름 모양이 없다. 시험이 끝나면 시험 계정의 매출 줄을 지운다
+- AC-011.4: Given 저장이 끝난 뒤, When 시험이 같은 계정으로 `sales_days`·`sales_codes`·`rx_groups` 줄을 다시 읽으면, Then 칸 이름이 정해 둔 것뿐이고 값에 차트번호·이름(사람)·전화번호·주민번호·파일 이름 모양이 없다. 시험이 끝나면 시험 계정의 매출 줄과 묶음 줄을 지운다
 
 ### REQ-012: 버전 올리기 (Phase 1 · Step 3 · version-bump)
 - AC-012.1: Given 도우미 판, When 이 TASK가 끝나면, Then `helper/Directory.Build.props`의 `Version`과 `src/lib/bridge/versions.ts`의 `LATEST_HELPER`가 같은 다음 판(0.1.0 다음, 예: 0.2.0)이고 같은 커밋에서 바뀐다(`handshake.test.ts`). `MIN_HELPER`·`MIN_EXTENSION`은 그대로다(옛 도우미·확장으로도 청구는 계속 쓰고, 매출 탭만 '새 버전' 상태를 보인다)
 - AC-012.2: Given `extension/manifest.json`, Then `version`이 다음 판으로 오르고 manifest 모양 시험이 그대로 통과한다. 도우미 릴리스 태그·웹스토어 올리기는 이 TASK가 하지 않는다(사용자가 그때 말할 때만)
+
+### REQ-013: 묶음 저장 (Phase 2 · Step 4 · rx-group-store)
+- AC-013.1: Given `createRxGroupStore(client)`, When `listGroups()`, Then 내 병원의 `rx_groups` 줄을 `sortOrder` 순 `RxGroup[]`(`id`·`name`·`codes`·`sortOrder`)로 돌려준다(RLS가 내 병원 줄만 준다). 줄이 없으면 빈 목록이다
+- AC-013.2: Given 처음 목록과 고친 목록, When `saveGroups(before, after)`, Then 없어진 묶음은 지우고, 바뀐 묶음은 고치고, 새 묶음은 넣는다. 보내는 칸은 `name`·`codes`·`sortOrder`(→ `sort_order`)뿐이다(시험: 보내는 객체의 칸 이름 비교). 제안 묶음을 처음 저장하면 다섯 개를 모두 넣는다
+- AC-013.3: Given 저장 실패(이름 겹침 포함), When 저장하면, Then `E-REVENUE-GROUP-SAVE-FAILED`(무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요")를 던지고, 고친 목록은 화면에 그대로 남는다
+
+### REQ-014: 묶음 고치기 화면 (Phase 3 · Step 2 · group-editor)
+- AC-014.1: Given 치료별 매출, When 머리의 [묶음 고치기]를 누르면, Then 매출 탭 안에서 '치료 묶음 고치기' 화면이 열린다(시안 3절, OK 뒤 승인본). [취소]는 고친 것을 버리고 매출 화면으로 돌아간다
+- AC-014.2: Given 편집 화면, Then 묶음마다 이름 칸·처방 수·[묶음 지우기]와 그 묶음의 처방 줄(코드·이름·고른 달 금액·옮길 묶음 고르기)이 있고, 오른쪽(폰은 아래)에 '그 밖 처방' 목록(찾기 칸 포함)이 있다. [새 묶음]이 있다. 처방 목록은 저장된 `sales_codes`의 최근 13달 코드와 가장 늦은 이름이고 `_REST`는 나오지 않는다
+- AC-014.3: Given 저장된 묶음이 없으면, Then 편집 화면은 제안 묶음 다섯 개로 채워지고 "제안 묶음 · 아직 저장 안 함" 칩이 보인다. 치료별 매출도 제안 묶음으로 세고 같은 뜻의 표시를 한다
+- AC-014.4: Given 이름이 비거나 30자를 넘거나 겹치면, Then [저장] 전에 그 칸 아래 이유 글을 보이고 저장하지 않는다. 묶음을 지울 때는 확인 창("이 묶음의 처방 n개는 '그 밖 처방'으로 가요")을 거친다
+- AC-014.5: Given [저장], When 저장이 되면, Then 매출 화면으로 돌아가 치료별 매출을 저장한 묶음으로 다시 그린다. 실패하면 오류 카드와 [다시 저장]을 보이고 고친 것은 그대로 둔다
+- AC-014.6: Given 폰(768px 미만)·연결 안 된 PC, Then 편집은 그대로 된다(서버 표만 쓴다). 폰은 한 줄 배치, 이름 칸·고르기·단추의 누름 영역 44px 이상, 입력 글자 16px다. 화면 규칙(토큰·`ds`·상자 안 상자 없음)을 따른다
 
 ## 범위 밖
 - 매출 탭에 현금·카드·계좌이체·미수입금·신환·재진을 보이는 것(읽고 저장은 하지만 그리는 것은 업무일지 탭이 한다)
@@ -103,4 +120,4 @@
 - 직원·인센티브와 이어 붙이기(인건비율), AI 분석에 매출 보내기, 월간 PDF
 - 비트 파일 끌어다 놓기로 매출 채우기(plan.md §2-4의 폴더 연결은 이 명세가 도우미 읽기로 대신한다)
 - 입원 매출, 다른 지점 합치기, 목표 매출
-- 치료 묶음 고치는 화면(묶음은 코드 표 하나로 고정)
+- 묶음 즐겨찾기·한 처방을 여러 묶음에 넣기(통계 탭이 나중에 `rx_groups`를 쓸 때 정한다. plan.md §7은 한 코드가 여러 그룹에 들어갈 수 있다고 했지만, 매출은 두 번 세지 않게 한 묶음만 쓴다)

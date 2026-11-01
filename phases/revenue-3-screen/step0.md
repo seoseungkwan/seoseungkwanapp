@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-008에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-008.1**: `buildRevenueView(input)`: 네 덩어리(매출 추이 · 급여·비급여 · 치료별 매출 · 환자 1인당 평균 진료비(환자 한 명 기준)) 글자와 막대 높이·폭(0~100 %, 소수 둘째 자리). 큰 금액은 "1억 6,248만 원"(만 원 아래 버림), 화면 읽기 표는 원 단위
+- **AC-008.1**: `buildRevenueView(input)`: 네 덩어리(매출 추이 · 급여·비급여 · 치료별 매출(묶음별, 저장된 묶음이 없으면 제안 묶음과 "제안 묶음 · 아직 저장 안 함" 표시) · 환자 1인당 평균 진료비(환자 한 명 기준)) 글자와 막대 높이·폭(0~100 %, 소수 둘째 자리). 큰 금액은 "1억 6,248만 원"(만 원 아래 버림), 화면 읽기 표는 원 단위
 - **AC-008.2**: 상태: `connect-needed`·`fetching`(done/total)·`ready`(가져오지 못한 달 목록 포함)·`empty`·`helper-old`·`extension-old`·`saved-only`(마지막 가져온 시각)·`error`(번호)
 - **AC-008.3**: 확인 필요한 날이 있으면 "확인 필요한 날 n일"과 날짜, 합계에서 뺐고 1인당 평균이 낮게 보일 수 있다는 말. 없으면 "없음"
 - **AC-008.4**: 몫·증감 소수 첫째 자리 버림, 빼기 U+2212, 자료 없는 칸 "–"와 "자료 없음", 지어낸 숫자 없음
@@ -69,7 +69,7 @@
 - `formatManWon(n)`: `n`을 만 원 아래 버림 → "1억 6,248만 원" / "6,728만 원" / "2억 원" / 1만 원 미만은 "0만 원"이 아니라 `formatWon`으로. `formatWon(n)`: "86,795원"
 
 ### 2. `view.ts`
-- 입력: `{ days, codes, fetchedAt, month, today, bridge: 'ready' | 'none' | 'helper-old', sync: { state: 'idle' | 'running' | 'error'; done?; total?; code? } }`
+- 입력: `{ days, codes, groups, fetchedAt, month, today, bridge: 'ready' | 'none' | 'helper-old', sync: { state: 'idle' | 'running' | 'error'; done?; total?; code? } }` · `groups`는 `listGroups()` 결과(빈 목록이면 `suggestGroups(아는 코드)`로 세고 `suggested` 표시)
 - 상태 고르기(AC-008.2): `helperOld` → `helper-old`; `extensionOld` → `extension-old`; sync 실행 중 → `fetching`; `stopped` 번호 → `error`; 연결 안 됨 + 저장된 줄 없음 → `connect-needed`; 연결 안 됨 + 줄 있음 → `saved-only`; 고른 달 `sumPeriod`가 `null` → `empty`; 그 밖 `ready`(`failed` 달이 있으면 "n달을 가져오지 못했어요" 글자 함께)
 - 덩어리 글자(시안 그대로): 매출 추이 KPI 넷(고른 달 매출·하루 평균 / 지난달보다 / 작년 같은 달보다 / 확인 필요한 날), 13달 막대(고른 달·작년 같은 달·다른 달 구분), 급여·비급여 표(급여·공단부담·본인부담·비급여·합계, 몫, 지난달보다)와 13달 쌓은 막대, 치료별 순위 막대(금액·몫·건수, '그 밖 처방'), 환자 1인당 평균 KPI 넷(1인당 평균 "매출 ÷ 환자 n명" / 지난달보다 / 작년 같은 달보다 / 환자 수 "내원은 n번")과 13달 막대, 안내(같은 환자 여러 번은 한 명, 확인 필요한 날이 있으면 낮게 보일 수 있음)
 - 막대 %: 값 / `niceScale(최대).max` × 100, 소수 둘째 자리 버림. 순위 막대 폭은 '그 밖' 아닌 최대 대비(UI_GUIDE '순위 막대')

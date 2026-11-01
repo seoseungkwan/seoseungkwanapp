@@ -1,12 +1,14 @@
 # 설계: 매출 탭
 
 > 시안 `docs/mockups/revenue/index.html`(만드는 코드 `gen.py`, 숫자는 모두 예시)은 **2026-11-01 사용자 승인**("이대로 만들기")이다.
+> 시안 3절 **'치료 묶음 고치기'는 2026-11-01 사용자 결정("처방묶는건 내가 골라서 묶게해")으로 새로 그렸고 OK 전**이다. TASK-14만 그 OK를 기다린다.
 > 따르는 문서: `CLAUDE.md` · `plan.md` §2-4·§4·§5 · `docs/ARCHITECTURE.md` · ADR-004·008·016·020·021 · `docs/tab-frame/plan.md` · `docs/UI_GUIDE.md` · `specs/precheck/design.md`(도우미·통로·표 규칙)
 
 ## 1. 개요
 - 도우미에 숫자 명령 `revenue.days {from, to}` 하나를 더한다. 도우미는 비트 DB 안에서 날마다 금액을 **더한 값**, 내원·신환·재진·환자 **수**, 기간의 처방 코드별 합계만 돌려준다. 환자 줄은 비트 DB 밖으로 나오지 않는다
 - 이 명령은 업무일지 탭도 쓴다(하루 숫자 자동 채우기). 두 번째 읽기 명령을 만들지 않는다. 계약은 5절이다
 - 웹은 그 답을 모양 검사(정해 둔 칸·정수만) 뒤 Supabase 표 둘(`sales_days`·`sales_codes`)에 저장하고, 화면은 늘 저장된 숫자로 그린다. 그래서 폰·연결 안 된 PC도 의원 PC가 마지막으로 가져온 숫자를 본다
+- 치료 묶음은 총괄이 만든다: 묶음 이름 + 처방 코드 목록을 서버 표 `rx_groups`에 두고(환자 자료 없음), 매출 탭의 [묶음 고치기] 화면에서 짓고·고르고·옮기고·지운다. 묶음이 없으면 원본 일일 보고의 다섯 가지를 제안으로 보인다. 통계 탭도 합친 뒤 같은 표를 쓸 수 있게 이름을 일반적으로 둔다
 - 계산(급여·비급여 나눔, 기간 합, 지난달·작년 비교, 13달, 환자 1인당 평균, 치료 묶음)은 브라우저의 순수 함수(`src/lib/revenue/*`)다. 서버 코드는 늘지 않는다(ADR-004)
 - Phase: 1 = 도우미 읽기·명령 표(통로 연결)·버전 올리기 · 2 = 표·계산·저장 · 3 = 화면·준비 중 빼기·E2E. 첫 step은 의원 PC 확인표다(2절의 '확인 못 한 것'). 확인표의 '먼저 할 것'은 앱 없이 비트 화면만 보고, '매출 탭에서 볼 것'은 Phase 3 뒤에 한다
 
@@ -25,7 +27,8 @@
 | 금액을 세면 안 되는 날 | `UnsupportedFinance`·`FinanceMultiplicity`·`ReceivableMultiplicity` → `SetFinanceUnconfirmed` | 환불(`OrcPatTyp='R'`, `TFC`·`TPR`), 변경수납, 예치금(`dbo.IrcInf`), 수납 연결 중복이 있으면 금액을 0으로 두고 '확인 필요'. 환자 수·치료는 그대로 |
 | 내원·신환·재진 | `OperationalReportSql.HistoryGuard`·`Patients` | 첫째 칸 = 취소·제외를 뺀 외래 내원 건수, 둘째 = 신환(그 병원 첫 내원이 기간 안), 재진 = 내원 − 신환. 셋째~다섯째 칸이 0이 아니면 원본은 멈춘다. `HistoryGuard`가 0이 아니면 신환을 정할 수 없다 |
 | 서로 다른 환자 수 | `Patients`의 `PeriodVisits` 조건 | 원본에 칸이 없다 → 같은 조건으로 `COUNT(DISTINCT 차트번호)`만 내는 새 문장 `DistinctPatients` |
-| 치료 묶음 | `OperationalReportSql.Treatments` | `도수`·`CARM1`·`SONO1`·`CRYO`·`ESWT`가 든 코드 → manual·carm·sono·cryo·eswt (건수만, 금액 없음) |
+| 치료 묶음(제안) | `OperationalReportSql.Treatments` | `도수`·`CARM1`·`SONO1`·`CRYO`·`ESWT`가 든 코드 → manual·carm·sono·cryo·eswt (건수만, 금액 없음). 이 규칙은 처음 보이는 **제안** 묶음에만 쓴다. 실제 묶음은 총괄이 만든다 |
+| 처방 이름 | `TrendDataSource`의 처방 목록 읽기 | `dbo.SeeMst`(`SeeOdrCod`·`SeeKorNam`·`SeeAdpDte`·`SeeExpDte`) |
 | 처방 금액 | `TrendDataSource` | `SUM(OdrDay × (OdrOutLab='S' ? OdrQty : OdrDtrQty) × OdrPrc)`, 조건 `OdrDelFlg='N' AND OdrCanYon='N' AND OdrOspTyp='I' AND OdrOutCod<>'99'` + 병원 범위. 원본 메모: "수납·환불 대장을 반영한 순수납액은 아닙니다" |
 
 **확인 못 한 것 → TASK-1 의원 PC 확인표** (Claude는 의원 PC와 총괄 계정의 저장된 줄을 볼 수 없다. 총괄이 화면을 보고 적는다)
@@ -97,22 +100,26 @@ WHERE c.OcmAcpDtm >= @from AND c.OcmAcpDtm < @to AND c.OcmPatTyp = 'O'
               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
 ```
   (`MissingCharts`가 0이 아니면 `patientsToDate`는 `null`)
-- `CodeAmounts`(새 문장, 원본 `TrendDataSource` 금액 식을 코드별로 묶음):
+- `CodeAmounts`(새 문장, 원본 `TrendDataSource` 금액 식을 코드별로 묶고, 처방 목록 `SeeMst`에서 이름을 붙임):
 ```sql
-SELECT RTRIM(o.OdrCod) AS Code, COUNT_BIG(*) AS Lines,
-       CAST(SUM(CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc) AS decimal(28,5)) AS Amount,
-       SUM(CASE WHEN o.OdrDay IS NULL OR o.OdrPrc IS NULL OR (CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END) IS NULL
-                THEN CONVERT(bigint,1) ELSE CONVERT(bigint,0) END) AS MissingValues
-FROM dbo.OdrInf o
-WHERE o.OdrDtm >= @from AND o.OdrDtm < @to AND RTRIM(o.OdrCod) <> ''
-  AND o.OdrDelFlg = 'N' AND o.OdrCanYon = 'N' AND o.OdrOspTyp = 'I' AND o.OdrOutCod <> '99'
-  AND EXISTS (SELECT 1 FROM dbo.DepMst d WHERE d.DepCod = o.OdrDepCod AND d.DepHspNum = @hospital
-              AND o.OdrDtm BETWEEN d.DepAdpDte + '0000' AND d.DepExpDte + '2359')
-  AND EXISTS (SELECT 1 FROM dbo.OcmInf c WHERE c.OcmNum = o.OdrOcmNum AND c.OcmPatTyp = 'O'
-              AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB') AND c.OcmRsuYon <> 'O')
-GROUP BY RTRIM(o.OdrCod)
+WITH Codes AS (
+  SELECT RTRIM(o.OdrCod) AS Code, COUNT_BIG(*) AS Lines,
+         CAST(SUM(CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc) AS decimal(28,5)) AS Amount,
+         SUM(CASE WHEN o.OdrDay IS NULL OR o.OdrPrc IS NULL OR (CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END) IS NULL
+                  THEN CONVERT(bigint,1) ELSE CONVERT(bigint,0) END) AS MissingValues
+  FROM dbo.OdrInf o
+  WHERE o.OdrDtm >= @from AND o.OdrDtm < @to AND RTRIM(o.OdrCod) <> ''
+    AND o.OdrDelFlg = 'N' AND o.OdrCanYon = 'N' AND o.OdrOspTyp = 'I' AND o.OdrOutCod <> '99'
+    AND EXISTS (SELECT 1 FROM dbo.DepMst d WHERE d.DepCod = o.OdrDepCod AND d.DepHspNum = @hospital
+                AND o.OdrDtm BETWEEN d.DepAdpDte + '0000' AND d.DepExpDte + '2359')
+    AND EXISTS (SELECT 1 FROM dbo.OcmInf c WHERE c.OcmNum = o.OdrOcmNum AND c.OcmPatTyp = 'O'
+                AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB') AND c.OcmRsuYon <> 'O')
+  GROUP BY RTRIM(o.OdrCod))
+SELECT c.Code, c.Lines, c.Amount, c.MissingValues,
+       (SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s WHERE RTRIM(s.SeeOdrCod) = c.Code ORDER BY s.SeeAdpDte DESC) AS Name
+FROM Codes c
 ```
-  (내원 상태 목록은 원본 `LaCodes`·월간 `Treatments`와 같다. `MissingValues`가 0이 아니면 그 코드의 `amount`는 `null`)
+  (내원 상태 목록은 원본 `LaCodes`·월간 `Treatments`와 같다. `MissingValues`가 0이 아니면 그 코드의 `amount`는 `null`. `Name`은 앞뒤 공백을 빼고 줄바꿈·제어 문자를 빈칸 하나로 바꾼 뒤 100자까지, 비면 `null`. 처방 이름은 처방 목록의 글자라 환자 자료가 아니다)
 - 코드 줄 정리(C#, 한 달이 코드 때문에 실패하지 않게): ① 앞뒤 공백을 뺀 뒤 같은 코드가 된 줄은 하나로 합친다(건수·금액 더함, 금액 하나라도 `null`이면 `null`) ② AC-002.2 글자 모양이 아닌 코드와 금액 순 999번째 뒤 코드(금액 `null`은 맨 뒤)는 이름 없는 한 줄 `_REST`로 합친다(같은 합치기 규칙) → 코드는 늘 1,000개 이하·중복 없음·모양 맞음
 - 기간이 31일을 넘거나 `to < from`이면 명령 표가 먼저 막고(`maxDays`), `Read`도 한 번 더 막는다(`E-HELPER-BAD-MESSAGE`)
 - 오류: 관문 오류(`E-BIT-NOT-REGISTERED`·`E-BIT-HOSPITAL-MISMATCH`·`E-BIT-DB-FAILED`)는 그대로, 읽기 실패·시간 초과는 `E-BIT-READ-FAILED`. 일부만 보내지 않는다. 코드 모양·개수로는 실패하지 않는다(위 코드 줄 정리)
@@ -145,7 +152,7 @@ GROUP BY RTRIM(o.OdrCod)
 | `unconfirmed` | 환불·변경수납·예치금·수납 연결 중복이 있어 금액을 세지 않은 날 | 회계일 | 세 검사 | — (늘 참·거짓) |
 
 - 그날 받은 돈(입금액) = `cash + card + transfer + receivableIn`. 미수발생·지역화폐는 이번 계약에 없다(2절 3)
-- `codes`: 기간 전체의 처방 코드별 `{ code, count, amount }`. `count` = 유효 처방 줄 수, `amount` = 처방 금액(일수 × 수량 × 단가, 원 미만 버림, **처방일 기준**, 수납액 아님), 값 빠짐이면 `null`. `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, 1,000개 이하·중복 없음. 예약 코드 `_REST` = 모양이 맞지 않거나 1,000개를 넘쳐 합친 나머지(이름 없는 '그 밖')
+- `codes`: 기간 전체의 처방 코드별 `{ code, name, count, amount }`. `name` = 비트 처방 목록의 이름(1~100자, 없으면 `null`, `_REST`는 `null`). `count` = 유효 처방 줄 수, `amount` = 처방 금액(일수 × 수량 × 단가, 원 미만 버림, **처방일 기준**, 수납액 아님), 값 빠짐이면 `null`. `code`는 `^[0-9A-Za-z가-힣_.\-]{1,30}$`, 1,000개 이하·중복 없음. 예약 코드 `_REST` = 모양이 맞지 않거나 1,000개를 넘쳐 합친 나머지(이름 없는 '그 밖')
 - 웹의 검사(`isRevenueDays`)가 칸 이름·종류·짝(`unconfirmed`와 금액 일곱 칸)·날짜 이어짐을 정확히 본다(AC-002.2). 칸을 더하거나 바꾸면 이 표·`src/types/revenue.ts`·검사·도우미·`sales_days`를 함께 바꾸는 명세 변경이다
 
 ### 5-3. 파일
@@ -197,15 +204,30 @@ create table public.sales_codes (
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
   month date not null check (extract(day from month) = 1 and month >= date '2000-01-01'),
   code text not null check (code ~ '^[0-9A-Za-z가-힣_.-]{1,30}$'),
+  name text check (char_length(name) between 1 and 100),
   count integer not null check (count between 0 and 10000000),
   amount bigint check (amount >= 0),
   fetched_at timestamptz not null default now(),
   primary key (hospital_id, month, code));
 create trigger sales_days_fetched_at before update on public.sales_days for each row execute function public.sales_touch_fetched_at();
+
+-- 치료 묶음(총괄이 만든다). 이름이 일반적인 까닭: 통계 탭도 합친 뒤 같은 표를 쓴다(plan.md §5의 rx_groups)
+create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
+create function public.rx_group_codes_ok(codes text[]) returns boolean language sql immutable set search_path = ''
+  as $$ select cardinality(codes) <= 1000 and coalesce(bool_and(c ~ '^[0-9A-Za-z가-힣_.-]{1,30}$' and c <> '_REST'), true) from unnest(codes) c $$;
+create table public.rx_groups (
+  id uuid primary key default gen_random_uuid(),
+  hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 30 and name = btrim(name)),
+  codes text[] not null default '{}' check (public.rx_group_codes_ok(codes)),
+  sort_order integer not null default 0 check (sort_order between 0 and 999),
+  updated_at timestamptz not null default now(),
+  unique (hospital_id, name));
+create trigger rx_groups_updated_at before update on public.rx_groups for each row execute function public.touch_updated_at();
 ```
-- 권한: 두 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`count`·`amount`)·`delete`. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `hospital_id`·`fetched_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
+- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete`. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
 - 정책: 읽기·넣기·고치기(·지우기) 모두 `hospital_id = (select public.my_hospital_id())`(using·with check). 승인 안 된 병원은 `my_hospital_id()`가 `null`이라 아무 줄도 못 본다
-- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). 다른 갈래가 같은 `my_hospital_id()`를 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1)
+- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
 - **실제 Supabase에 붙여 넣는 것은 그때 사용자 OK를 받는다.** 운영자가 SQL 편집기에 붙여 넣는다(auth와 같은 방식). TASK-4가 끝나면 쉬운 말 안내만 하고 붙여 넣지 않는다. E2E(TASK-11)는 붙여 넣은 뒤에만 돈다
 
 ## 7. 계산 (`src/lib/revenue/*`, 순수 함수, 네트워크·저장소·React 없음)
@@ -220,9 +242,17 @@ export function firstMonth(today: string): string                       // 어�
 export function compare(now: number | null, before: number | null): { dir: 'up' | 'down' | 'same'; rate: number } | null  // rate는 % 소수 첫째 자리 버림
 export function monthSeries(rows: RevenueDayRow[], lastMonth: string, today: string): MonthPoint[]  // 13개, 오래된 달부터
 export function perPatient(sum: PeriodSum): { value: number; lowered: boolean } | null
+// src/types/rxGroups.ts (TASK-6, 이름이 일반적: 통계도 쓴다)
+export type RxGroup = { id: string | null; name: string; codes: string[]; sortOrder: number }   // id null = 아직 저장 안 함
 // treatments.ts (TASK-6)
-export const TREATMENT_GROUPS: readonly { key: 'manual' | 'eswt' | 'carm' | 'sono' | 'cryo'; name: string; match: (code: string) => boolean }[]
-export function groupTreatments(codes: RevenueCodeRow[]): { key: string; name: string; amount: number; count: number; missing: boolean; rest: boolean }[]
+export const SUGGESTED_GROUPS: readonly { name: string; match: (code: string) => boolean }[]   // 원본 다섯 규칙, 제안에만
+export function suggestGroups(knownCodes: string[]): (RxGroup & { suggested: true })[]
+export function groupTreatments(codes: RevenueCodeRow[], groups: RxGroup[]): { name: string; amount: number; count: number; missing: boolean; rest: boolean }[]
+export type GroupEditError = 'empty' | 'tooLong' | 'duplicate' | 'tooMany'
+export function addGroup(groups: RxGroup[], name: string): RxGroup[] | GroupEditError
+export function renameGroup(groups: RxGroup[], index: number, name: string): RxGroup[] | GroupEditError
+export function deleteGroup(groups: RxGroup[], index: number): RxGroup[]
+export function moveCode(groups: RxGroup[], code: string, toIndex: number | null): RxGroup[]
 // sync.ts (TASK-7)
 export function planFetch(today: string, savedDays: ReadonlySet<string>): DateRange[]
 export type SyncResult = { stopped: string | null; failed: { month: string; code: string }[]; helperOld: boolean; extensionOld: boolean }
@@ -242,10 +272,20 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
   loadRevenue(fromMonth: string, toMonth: string): Promise<{ days: RevenueDayRow[]; codes: (RevenueCodeRow & { month: string })[]; fetchedAt: string | null }>
 }
 ```
-- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열세 개만, camelCase → snake_case). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단)
+- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열세 개만, camelCase → snake_case). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단)
 - `E-REVENUE-SAVE-FAILED`(plan.md §8의 저장 실패 번호를 기능 이름으로, 갈래 규칙 C3)를 `src/lib/errors.ts`·`src/types/errors.ts`에 더한다: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
 
-## 9. 화면 (`src/components/revenue/*`, TASK-8~10)
+### 8-2. 묶음 저장 (`src/lib/storage/rxGroups.ts`, TASK-13)
+```ts
+export function createRxGroupStore(client: SupabaseClient): {
+  listGroups(): Promise<RxGroup[]>                                  // sort_order 순
+  saveGroups(before: RxGroup[], after: RxGroup[]): Promise<RxGroup[]>   // 지우기 → 고치기 → 넣기, 실패하면 E-REVENUE-GROUP-SAVE-FAILED
+}
+```
+- 보내는 칸은 `name`·`codes`·`sort_order`뿐. 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
+- `E-REVENUE-GROUP-SAVE-FAILED`: 무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요"
+
+## 9. 화면 (`src/components/revenue/*`, TASK-8~10·14)
 - `view.ts`(TASK-8, 순수): `buildRevenueView({ days, codes, fetchedAt, month, today, bridge: 'ready' | 'none' | 'helper-old', sync })` → 상태(AC-008.2)와 네 덩어리 글자·막대 %. `money.ts`: `formatManWon(n)`("1억 6,248만 원", 만 원 아래 버림)·`formatWon(n)`("86,795원")
 - 환자 1인당 평균 덩어리(승인 시안): KPI 넷 = 고른 달 1인당 평균("매출 ÷ 환자 n명") · 지난달보다 · 작년 같은 달보다 · 고른 달 환자 수("내원은 n번") + 13달 막대 + 안내 "같은 환자가 한 달에 여러 번 와도 한 명으로 세요 … 확인 필요한 날이 있으면 … 조금 낮게 보일 수 있어요"
 - `RevenueScreen.tsx`(`'use client'`, TASK-9): `useBridge()`(`components/claim/useBridge`, Worker 없이) → 상태 `ready`면 `syncRevenue` → `loadRevenue` → `buildRevenueView`. 달 고르기 상태만 화면에 둔다
@@ -254,6 +294,8 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 - 처음 고르는 달: 어제가 속한 달(1일에는 지난달). 달 고르기는 최근 13달 안에서만 움직인다(그 밖은 저장된 숫자가 없다)
 - 가져오기: 연결된 PC에서 열 때 한 번 저절로(빠진 달만, 최근 달부터). 제목 줄의 [다시 가져오기]는 고른 달만 다시 읽는다. 가져오지 못한 달이 있으면 알림 줄 "n달을 가져오지 못했어요"와 그 줄의 [다시 가져오기](가져오지 못한 달들만). 가져오는 동안 진행 줄(정적인 막대, 움직임 없음)
 - 상태 `extension-old`: `helper-old`와 같은 모양, 문구 "매출을 읽으려면 확장 프로그램을 새 버전으로 바꿔야 해요" + [설정에서 확인](`/claim/setup`). 승인 시안에 같은 모양으로 더했다(2026-11-01 명세 검토)
+- 치료별 매출은 저장된 묶음(`listGroups`)으로 센다. 저장된 묶음이 없으면 `suggestGroups(아는 코드)`로 세고 "제안 묶음 · 아직 저장 안 함"을 보인다. 머리에 [묶음 고치기]
+- 묶음 고치기(TASK-14, 시안 3절 OK 뒤): `src/components/revenue/groups/GroupEditor.tsx`(`'use client'`). 묶음마다 이름 칸·처방 수·[묶음 지우기](확인 창)·처방 줄(코드·이름·고른 달 금액·옮길 묶음 고르기), 오른쪽(폰은 아래) '그 밖 처방' 목록과 찾기 칸, [새 묶음]·[취소]·[저장]. 처방 목록 = 저장된 `sales_codes` 최근 13달의 코드(가장 늦은 이름), `_REST` 빼고. 고치기는 `treatments.ts`의 순수 함수로, 저장은 `saveGroups`로. 폰·연결 안 된 PC에서도 된다
 - 부품 이름: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`·`MonthBars.tsx`·`TreatmentBars.tsx`·`RevenueStates.tsx`
 - 매출 탭은 수납 나눔(현금·카드·계좌·미수입금)·신환·재진을 그리지 않는다(업무일지 몫)
 
@@ -262,7 +304,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 - **환자 1인당 = 환자 한 명마다**(2026-11-01 사용자): 서로 다른 환자 수는 날마다 더할 수 없어서 `patientsToDate`(그 달 1일부터 그날까지 누적)로 받는다. 화면의 기간은 모두 1일에 시작하므로 이 한 칸으로 충분하다. 차트번호는 비트 DB 안에서만 센다
 - **처방 금액은 처방한 날 기준, 매출은 회계일 기준, 환자 수는 접수일 기준**: 치료별 금액 합이 매출 합과 다르다. 화면에 한 줄로 알린다(시안)
 - **확인 필요한 날은 금액을 빼고 날짜만 알린다**(원본과 같음, 사용자 결정). 1인당 평균은 분모(환자 수)에 그날 환자가 들어 있어 조금 낮을 수 있어 `lowered`로 알린다
-- **치료 묶음은 코드 표 하나**(`treatments.ts`, 사용자 결정 = 원본 다섯 가지). 저장은 코드별이라 묶음을 바꿔도 다시 읽지 않아도 된다
+- **치료 묶음은 총괄이 만든다**(2026-11-01 사용자). 묶음은 `rx_groups`(이름·코드 목록)이고 매출 숫자는 코드별로 저장하므로, 묶음을 바꿔도 비트에서 다시 읽지 않고 바로 다시 센다. 한 처방은 한 묶음에만 든다(매출을 두 번 세지 않게). plan.md §7은 통계용으로 한 코드가 여러 그룹에 들어가도 된다고 했으므로, 표는 막지 않고(코드 배열) 매출 계산이 '순서상 첫 묶음'으로 한 번만 센다. 원본 다섯 규칙은 처음 제안에만 쓴다
 - **표 두 개, `hospital_id`는 DB가 채운다**: 같은 효과면 코드 대신 DB 제약(plan.md §0). `my_hospital_id()`는 precheck와 같은 정의라 어느 쪽이 먼저 들어가도 된다
 - **업무일지와 한 계약**: 수납 나눔·신환·재진은 같은 날 같은 문장에서 이미 나오는 값이라 덧붙이는 비용이 거의 없다(`Patients`·`FinanceNormal`·`FinanceReceivable`의 남은 칸). 두 번째 읽기를 두면 숫자가 서로 어긋날 수 있다
 
@@ -272,7 +314,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 | 파일 | 이 명세가 하는 일 | 같은 파일을 고치는 갈래 · 합치는 법 |
 |---|---|---|
 | `supabase/migrations/20261101000400_revenue.sql` + `public.my_hospital_id()` | 새 파일(C2 이름). `my_hospital_id()`는 C1 글자 그대로 `create or replace`(TASK-4) | worklog `…000100`·`…000110`, stats `…000200`, patients `…000300`가 같은 함수를 같은 글자로 만든다. precheck TASK-12는 나중에 `create or replace`로 바꾼다. 함수가 이미 있어도 되는지 시험한다(AC-004.4). 트리거 함수는 기능 이름 `sales_touch_fetched_at()`이라 `touch_updated_at()`과 겹치지 않는다. 백업 목록은 아래 `src/lib/backup/tables.ts` 줄 |
-| `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | `E-REVENUE-SAVE-FAILED` 한 항목 더함(TASK-7, C3) | worklog·stats·patients도 자기 이름 번호(`E-WORKLOG-*` 등)를 더한다 → 같은 번호는 없고 줄만 겹친다 |
+| `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | `E-REVENUE-SAVE-FAILED`(TASK-7)·`E-REVENUE-GROUP-SAVE-FAILED`(TASK-13) 두 항목 더함(C3) | worklog·stats·patients도 자기 이름 번호(`E-WORKLOG-*` 등)를 더한다 → 같은 번호는 없고 줄만 겹친다 |
 | `eslint.config.mjs` · `src/guardrails.test.ts` | 건드리지 않는다. `lib/revenue`·`lib/storage/revenue.ts`는 집계만 다뤄 환자 자료 구역이 아니다. `lib/bridge/revenueResult.ts`는 이미 있는 `lib/bridge` 울타리 안에 든다 | stats·patients·precheck가 울타리를 더할 수 있다 → 이 갈래는 합칠 것이 없다 |
 | `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` | 매출 줄만 고친다(TASK-10: 준비 중 목록에서 매출, `components/revenue/`·`lib/revenue/`·`lib/storage/`·DB 표 `sales_days`·`sales_codes`·데이터 흐름 '[매출]' 줄). 숫자("준비 중 n개")를 새로 적지 않는다(C5) | 네 갈래 모두 자기 탭 줄을 고친다 → 줄 단위로 합친다 |
 | `docs/ADR.md` | 건드리지 않는다(새 결정은 이 design.md 10절에 둔다) | 다른 갈래가 ADR을 더할 수 있다 → 합칠 것이 없다 |
@@ -282,6 +324,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 | `src/lib/bridge/commands.json` | 명령 `revenue.days` 하나 더함(TASK-2) | stats·patients(새 명령이 있으면)·precheck → 명령 줄끼리 합친다 |
 | `src/types/bridge.ts` · `src/lib/bridge/protocol.ts` | 유니온·표·`checkResult` case에 한 줄씩(TASK-2) | 위와 같다 |
 | `helper/tests/Precheck.Core.Tests/Protocol/CommandTable.test.cs` | 명령 목록에 `"revenue.days"` 한 줄(TASK-2) | 명령을 더하는 갈래마다 같은 목록에 한 줄 → 목록 줄끼리 합친다(시험 이름의 숫자는 고치지 않는다) |
+| `rx_groups` 표 · `src/types/rxGroups.ts` · `src/lib/storage/rxGroups.ts` · `public.touch_updated_at()` | 이 갈래가 만든다(TASK-4·6·13). `touch_updated_at()`은 C1 글자 그대로 | stats 명세는 `rx_groups`를 범위 밖으로 두었다(stats-core `RxGroupDef.id`가 나중에 `rx_groups.id`를 쓴다고 적혀 있음) → 합친 뒤 통계 탭이 이 표·타입·저장소를 그대로 쓴다. 다른 갈래가 `touch_updated_at()`을 같은 글자로 만들어도 된다. 통계가 즐겨찾기·여러 묶음 겹침을 원하면 그때 칸을 더하는 migration을 쓴다 |
 | `src/types/revenue.ts` · `sales_days` | 계약(5절)과 표(6절) | worklog 4단계가 `revenue.days`가 main에 들어간 뒤 읽어 쓴다(C4의 유일한 예외). 칸을 바꾸면 두 명세를 같이 고친다 |
 | `src/components/claim/useBridge.ts` | 불러 쓰기만(고치지 않음) | precheck |
 | `helper/Directory.Build.props` · `src/lib/bridge/versions.ts`(`LATEST_HELPER`) · `src/lib/bridge/handshake.test.ts` · `extension/manifest.json` | 다음 판으로 올림(TASK-12, 같은 커밋) | 도우미·확장을 바꾸는 갈래(stats·patients·precheck)도 판을 올린다 → 합칠 때 가장 높은 판 하나로 맞추고 `LATEST_HELPER` = `Version`을 다시 확인한다 |
@@ -291,7 +334,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 
 ## 12. 사용자 결정 (2026-11-01, 다시 묻지 않는다)
 1. **1인당 평균 진료비** — 환자 한 명마다(매출 ÷ 서로 다른 환자 수, 같은 환자 여러 번은 한 명). 환자 수는 도우미가 비트 DB 안에서 센다
-2. **치료 묶음** — 원본 일일 보고와 같은 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료) + 그 밖 처방
+2. **치료 묶음** — 총괄이 직접 만든다("처방묶는건 내가 골라서 묶게해"): 이름 짓기·처방 고르기·이름 바꾸기·지우기·옮기기, 묶음 없는 처방은 '그 밖 처방'. 처음에는 원본 일일 보고의 다섯 가지(도수치료·체외충격파·C-arm 주사·초음파·냉동치료)를 고칠 수 있는 제안으로. 묶음 고치기 화면은 시안 3절 OK 뒤에 만든다
 3. **환불·예치금이 있는 날** — 그날 금액을 합계에서 빼고 "확인 필요한 날 n일"과 날짜만 알림. Phase 3 뒤 확인표 '매출 탭에서 볼 것' ④에서 이런 날이 아주 많으면 직접 입력 칸을 다시 의논한다
 4. **업무일지와 같은 읽기** — `revenue.days`가 수납 나눔·신환·재진도 돌려준다(5절)
 
