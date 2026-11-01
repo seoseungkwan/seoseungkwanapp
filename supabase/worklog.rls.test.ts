@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { WORKLOG_COLUMNS } from '@/types/worklog'
 
 // 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 migration 파일을 그대로 실행하고 RLS를 확인한다.
 // Supabase 흉내와 사용자 바꾸기는 rls.test.ts와 같다. 실제 Supabase에는 붙지 않는다
@@ -32,12 +33,10 @@ const SUPABASE_MOCK = `
 `
 
 // cross-branch C1: 통계·환자·매출·사전점검 갈래와 글자까지 같아야 어느 순서로 붙여 넣어도 된다
-const C1_SHARED_FUNCTIONS = `create or replace function public.my_hospital_id() returns uuid language sql stable security definer set search_path = ''
+const C1_SHARED_FUNCTION = `create or replace function public.my_hospital_id() returns uuid language sql stable security definer set search_path = ''
   as $$ select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved' $$;
 revoke execute on function public.my_hospital_id() from public, anon;
 grant execute on function public.my_hospital_id() to authenticated;
-create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
-revoke execute on function public.touch_updated_at() from public, anon, authenticated;
 `
 
 const COUNT_COLUMNS = ['new_patients', 'return_patients']
@@ -55,9 +54,24 @@ const WON_COLUMNS = [
   'spend_refund',
   'spend_free',
 ]
+const NUMBER_COLUMNS = [...COUNT_COLUMNS, ...WON_COLUMNS]
 const NOTE_COLUMNS = ['note_cash', 'note_card', 'note_refund', 'note_free', 'note_total']
-const VALUE_COLUMNS = [...COUNT_COLUMNS, ...WON_COLUMNS, ...NOTE_COLUMNS]
-// 앱이 upsert로 보내는 칸(AC-005.2). hospital_id·updated_at은 없다
+const NAME_COLUMNS = [
+  'name_total_fee',
+  'name_claim_amount',
+  'name_cash_in',
+  'name_card_in',
+  'name_transfer_in',
+  'name_local_currency_in',
+  'name_unpaid_new',
+  'name_unpaid_paid',
+  'name_spend_cash',
+  'name_spend_card',
+  'name_spend_refund',
+  'name_spend_free',
+]
+const VALUE_COLUMNS = [...NUMBER_COLUMNS, ...NOTE_COLUMNS, 'memo', ...NAME_COLUMNS]
+// 앱이 upsert로 보낼 수 있는 칸 전부(AC-005.2). hospital_id는 없다
 const SENT_COLUMNS = ['work_date', ...VALUE_COLUMNS]
 
 const A = '00000000-0000-4000-8000-00000000000a'
@@ -72,7 +86,6 @@ const USERS: { id: string; email: string; status: string }[] = [
 ]
 
 const DAY = '2020-01-02'
-const LONG_AGO = '2020-01-01T00:00:00Z'
 const NO_PERMISSION = { code: '42501' }
 const CHECK_FAILED = { code: '23514' }
 
@@ -85,8 +98,26 @@ const UPSERT_ALL = `insert into ${TABLE} (${SENT_COLUMNS.join(', ')})
   values (${SENT_COLUMNS.map((_, i) => `$${i + 1}`).join(', ')})
   on conflict (hospital_id, work_date) do update set ${SENT_COLUMNS.map((c) => `${c} = excluded.${c}`).join(', ')}`
 
-function sentValues(date: string, count: number, won: number, note: string) {
-  return [date, ...COUNT_COLUMNS.map(() => count), ...WON_COLUMNS.map(() => won), ...NOTE_COLUMNS.map(() => note)]
+// 칸 하나만 보낸 upsert. PostgREST처럼 work_date는 늘 보내므로 SET에 있고, hospital_id는 없다
+function upsertOne(column: string) {
+  return `insert into ${TABLE} (work_date, ${column}) values ($1, $2)
+    on conflict (hospital_id, work_date) do update set work_date = excluded.work_date, ${column} = excluded.${column}`
+}
+
+function sentValues(date: string, number: string, text: string) {
+  return [
+    date,
+    ...NUMBER_COLUMNS.map(() => number),
+    ...NOTE_COLUMNS.map(() => text),
+    text,
+    ...NAME_COLUMNS.map(() => text),
+  ]
+}
+
+// 보낸 칸 밖의 값 칸이 모두 null인지(보내지 않은 칸을 건드리지 않았는지) 본다
+function expectOnlyFilled(row: Record<string, unknown>, filled: Record<string, unknown>) {
+  const blanks = Object.fromEntries(VALUE_COLUMNS.filter((c) => !(c in filled)).map((c) => [c, null]))
+  expect(row).toMatchObject({ ...blanks, ...filled })
 }
 
 // PGlite 첫 실행(WASM 불러오기)이 느린 PC·CI에서도 흔들리지 않게
@@ -115,13 +146,13 @@ async function rows(sql: string, params: unknown[] = []) {
   return (await db.query<Record<string, unknown>>(sql, params)).rows
 }
 
-// 운영자가 그 병원 줄을 넣어 둔다(RLS를 건너뛴다). 방아쇠는 고칠 때만 도니 updated_at은 옛 시각 그대로다
+// 운영자가 그 병원 줄을 넣어 둔다(RLS를 건너뛴다)
 async function addDay(user: string, date = DAY) {
   await operator()
   await db.query(
-    `insert into ${TABLE} (hospital_id, work_date, total_fee, note_cash, updated_at)
-     values ($1, $2, 100000, '가상 비고', $3)`,
-    [hospital[user], date, LONG_AGO],
+    `insert into ${TABLE} (hospital_id, work_date, total_fee, note_cash)
+     values ($1, $2, '100000', '가상 비고')`,
+    [hospital[user], date],
   )
 }
 
@@ -129,18 +160,25 @@ async function addDay(user: string, date = DAY) {
 async function daysOf(user: string) {
   await operator()
   return rows(
-    `select work_date::text as work_date, total_fee, note_cash, new_patients, updated_at
+    `select work_date::text as work_date, total_fee, note_cash, new_patients
      from ${TABLE} where hospital_id = $1 order by work_date`,
     [hospital[user]],
   )
 }
 
-const UNTOUCHED = { work_date: DAY, total_fee: 100000, note_cash: '가상 비고', new_patients: null }
+const UNTOUCHED = { work_date: DAY, total_fee: '100000', note_cash: '가상 비고', new_patients: null }
+
+describe('AC-004.1 칸 목록이 앱의 WORKLOG_COLUMNS와 같다', () => {
+  it('값 칸은 32개이고 이름·순서가 WORKLOG_COLUMNS 그대로다', () => {
+    expect(VALUE_COLUMNS).toHaveLength(32)
+    expect(Object.values(WORKLOG_COLUMNS)).toEqual(VALUE_COLUMNS)
+  })
+})
 
 describe('AC-004.8 공용 함수 글자가 다른 갈래와 같다', () => {
   it('공용 함수 줄이 cross-branch C1과 글자까지 같고 맨 앞에 있다', () => {
     const sql = WORKLOG_MIGRATION.replace(/^(--.*\n|\s*\n)+/, '')
-    expect(sql.slice(0, C1_SHARED_FUNCTIONS.length)).toBe(C1_SHARED_FUNCTIONS)
+    expect(sql.slice(0, C1_SHARED_FUNCTION.length)).toBe(C1_SHARED_FUNCTION)
   })
 })
 
@@ -153,7 +191,7 @@ describe.each([
     db = await PGlite.create()
     await db.exec(SUPABASE_MOCK)
     await db.exec(AUTH_MIGRATION)
-    if (sharedFirst) await db.exec(C1_SHARED_FUNCTIONS)
+    if (sharedFirst) await db.exec(C1_SHARED_FUNCTION)
     await db.exec(WORKLOG_MIGRATION)
   }, 30_000)
 
@@ -185,20 +223,16 @@ describe.each([
       expect(columns).toEqual([
         { column_name: 'hospital_id', data_type: 'uuid', is_nullable: 'NO' },
         { column_name: 'work_date', data_type: 'date', is_nullable: 'NO' },
-        ...COUNT_COLUMNS.map((column_name) => ({ column_name, data_type: 'integer', is_nullable: 'YES' })),
-        ...WON_COLUMNS.map((column_name) => ({ column_name, data_type: 'bigint', is_nullable: 'YES' })),
-        ...NOTE_COLUMNS.map((column_name) => ({ column_name, data_type: 'text', is_nullable: 'YES' })),
-        { column_name: 'updated_at', data_type: 'timestamp with time zone', is_nullable: 'NO' },
+        ...VALUE_COLUMNS.map((column_name) => ({ column_name, data_type: 'text', is_nullable: 'YES' })),
       ])
-      expect(VALUE_COLUMNS).toHaveLength(19)
     })
 
-    it('업무사항 칸이 없다', async () => {
-      const memo = await rows(
+    it('합계 칸과 저장 시각 칸이 없다', async () => {
+      const extra = await rows(
         `select column_name from information_schema.columns
-         where table_name = 'worklog_days' and column_name ~* '(memo|work_note|업무)'`,
+         where table_name = 'worklog_days' and column_name ~* '(visits|received|spent|^net|sum|합계|updated|created|_at$)'`,
       )
-      expect(memo).toEqual([])
+      expect(extra).toEqual([])
     })
 
     it('hospital_id 기본값은 my_hospital_id()다', async () => {
@@ -248,9 +282,9 @@ describe.each([
       await addDay(A)
       await becomeAnon()
       await expect(db.query(`select * from ${TABLE}`)).rejects.toMatchObject(NO_PERMISSION)
-      await expect(db.query(INSERT_SOME, ['2020-01-03', 200000, '가상'])).rejects.toMatchObject(NO_PERMISSION)
-      await expect(db.query(UPSERT_SOME, [DAY, 200000, '가상'])).rejects.toMatchObject(NO_PERMISSION)
-      await expect(db.query(`update ${TABLE} set total_fee = 1`)).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(INSERT_SOME, ['2020-01-03', '200000', '가상'])).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(UPSERT_SOME, [DAY, '200000', '가상'])).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(`update ${TABLE} set total_fee = '1'`)).rejects.toMatchObject(NO_PERMISSION)
       await expect(db.query(`delete from ${TABLE}`)).rejects.toMatchObject(NO_PERMISSION)
       expect(await daysOf(A)).toMatchObject([UNTOUCHED])
     })
@@ -264,44 +298,70 @@ describe.each([
   describe('AC-004.3 승인된 병원 사용자는 hospital_id 없이 넣고·읽고·upsert로 고친다', () => {
     it('hospital_id 없이 넣으면 내 병원 id로 채워지고 읽힌다', async () => {
       await become(A)
-      await db.query(INSERT_SOME, [DAY, 100000, '가상 비고'])
+      await db.query(INSERT_SOME, [DAY, '100000', '가상 비고'])
       const found = await rows(`select hospital_id, work_date::text as work_date, total_fee, note_cash from ${TABLE}`)
-      expect(found).toEqual([{ hospital_id: hospital[A], work_date: DAY, total_fee: 100000, note_cash: '가상 비고' }])
+      expect(found).toEqual([{ hospital_id: hospital[A], work_date: DAY, total_fee: '100000', note_cash: '가상 비고' }])
     })
 
     it('같은 날 upsert는 보낸 칸만 고치고, 보내지 않은 칸은 그대로다', async () => {
       await become(A)
-      await db.query(`insert into ${TABLE} (work_date, new_patients, total_fee) values ($1, 10, 100000)`, [DAY])
-      await db.query(UPSERT_SOME, [DAY, 200000, '가상 비고'])
+      await db.query(`insert into ${TABLE} (work_date, new_patients, total_fee) values ($1, '10', '100000')`, [DAY])
+      await db.query(UPSERT_SOME, [DAY, '200000', '가상 비고'])
       const found = await rows(`select hospital_id, new_patients, total_fee, note_cash from ${TABLE}`)
-      expect(found).toEqual([{ hospital_id: hospital[A], new_patients: 10, total_fee: 200000, note_cash: '가상 비고' }])
+      expect(found).toEqual([
+        { hospital_id: hospital[A], new_patients: '10', total_fee: '200000', note_cash: '가상 비고' },
+      ])
     })
 
-    it('앱이 보내는 모양(work_date + 값 19칸) upsert가 넣기와 고치기 모두 된다', async () => {
+    it('work_date + 값 32칸을 다 보낸 upsert가 넣기와 고치기 모두 된다', async () => {
       await become(A)
-      await db.query(UPSERT_ALL, sentValues(DAY, 10, 100000, '가상 비고'))
-      await db.query(UPSERT_ALL, sentValues(DAY, 20, 200000, '가상 다른 비고'))
+      await db.query(UPSERT_ALL, sentValues(DAY, '100000', '가상 글자'))
+      await db.query(UPSERT_ALL, sentValues(DAY, '200000', '가상 다른 글자'))
       const found = await rows(`select * from ${TABLE}`)
       expect(found).toHaveLength(1)
       expect(found[0]).toMatchObject({
         hospital_id: hospital[A],
-        new_patients: 20,
-        return_patients: 20,
-        total_fee: 200000,
-        spend_free: 200000,
-        note_cash: '가상 다른 비고',
-        note_total: '가상 다른 비고',
+        new_patients: '200000',
+        return_patients: '200000',
+        total_fee: '200000',
+        spend_free: '200000',
+        note_cash: '가상 다른 글자',
+        note_total: '가상 다른 글자',
+        memo: '가상 다른 글자',
+        name_total_fee: '가상 다른 글자',
+        name_spend_free: '가상 다른 글자',
       })
     })
 
     it('날짜가 다르면 줄이 따로 생긴다', async () => {
       await become(A)
-      await db.query(UPSERT_SOME, ['2020-01-02', 100000, '가상'])
-      await db.query(UPSERT_SOME, ['2020-01-03', 200000, '가상'])
+      await db.query(UPSERT_SOME, ['2020-01-02', '100000', '가상'])
+      await db.query(UPSERT_SOME, ['2020-01-03', '200000', '가상'])
       expect(await daysOf(A)).toMatchObject([
-        { work_date: '2020-01-02', total_fee: 100000 },
-        { work_date: '2020-01-03', total_fee: 200000 },
+        { work_date: '2020-01-02', total_fee: '100000' },
+        { work_date: '2020-01-03', total_fee: '200000' },
       ])
+    })
+
+    it.each(['INSERT', 'UPDATE'])('%s 칸 권한은 work_date와 WORKLOG_COLUMNS 32칸과 정확히 같다', async (privilege) => {
+      await operator()
+      const allowed = await rows(
+        `select column_name from information_schema.column_privileges
+         where grantee = 'authenticated' and table_name = 'worklog_days' and privilege_type = $1`,
+        [privilege],
+      )
+      const expected = ['work_date', ...Object.values(WORKLOG_COLUMNS)].sort()
+      expect(allowed.map((r) => r.column_name).sort()).toEqual(expected)
+      expect(expected).not.toContain('hospital_id')
+    })
+
+    it.each(VALUE_COLUMNS)('%s 칸만 보낸 upsert가 줄을 만들고 고친다', async (column) => {
+      await become(A)
+      await db.query(upsertOne(column), [DAY, '가상 1'])
+      await db.query(upsertOne(column), [DAY, '가상 2'])
+      const found = await rows(`select * from ${TABLE}`)
+      expect(found).toHaveLength(1)
+      expectOnlyFilled(found[0], { hospital_id: hospital[A], [column]: '가상 2' })
     })
   })
 
@@ -316,7 +376,7 @@ describe.each([
     it('다른 병원 줄을 고쳐도 0줄이 바뀌고 그대로다', async () => {
       await addDay(B)
       await become(A)
-      const changed = await db.query(`update ${TABLE} set total_fee = 1 where hospital_id = $1`, [hospital[B]])
+      const changed = await db.query(`update ${TABLE} set total_fee = '1' where hospital_id = $1`, [hospital[B]])
       expect(changed.affectedRows).toBe(0)
       expect(await daysOf(B)).toMatchObject([UNTOUCHED])
     })
@@ -324,8 +384,8 @@ describe.each([
     it('같은 날 upsert는 내 줄만 만들고 다른 병원 줄은 그대로다', async () => {
       await addDay(B)
       await become(A)
-      await db.query(UPSERT_SOME, [DAY, 200000, '가상'])
-      expect(await daysOf(A)).toMatchObject([{ work_date: DAY, total_fee: 200000 }])
+      await db.query(UPSERT_SOME, [DAY, '200000', '가상'])
+      expect(await daysOf(A)).toMatchObject([{ work_date: DAY, total_fee: '200000' }])
       expect(await daysOf(B)).toMatchObject([UNTOUCHED])
     })
 
@@ -375,7 +435,7 @@ describe.each([
       await addDay(A)
       await become(user)
       expect(await rows(`select * from ${TABLE}`)).toEqual([])
-      const changed = await db.query(`update ${TABLE} set total_fee = 1`)
+      const changed = await db.query(`update ${TABLE} set total_fee = '1'`)
       expect(changed.affectedRows).toBe(0)
       expect(await daysOf(user)).toMatchObject([UNTOUCHED])
       expect(await daysOf(A)).toMatchObject([UNTOUCHED])
@@ -383,47 +443,43 @@ describe.each([
 
     it('넣기와 upsert는 42501로 거부된다', async () => {
       await become(user)
-      await expect(db.query(INSERT_SOME, [DAY, 100000, '가상'])).rejects.toMatchObject(NO_PERMISSION)
-      await expect(db.query(UPSERT_SOME, [DAY, 100000, '가상'])).rejects.toMatchObject(NO_PERMISSION)
-      await expect(db.query(UPSERT_ALL, sentValues(DAY, 10, 100000, '가상'))).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(INSERT_SOME, [DAY, '100000', '가상'])).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(UPSERT_SOME, [DAY, '100000', '가상'])).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(UPSERT_ALL, sentValues(DAY, '100000', '가상'))).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(upsertOne('memo'), [DAY, '가상'])).rejects.toMatchObject(NO_PERMISSION)
       expect(await daysOf(user)).toEqual([])
     })
   })
 
   describe('AC-004.6 값 제약', () => {
-    type Case = [column: string, label: string, value: unknown]
-    const cases = (columns: string[], values: [string, unknown][]) =>
+    type Case = [column: string, label: string, value: string | null]
+    const cases = (columns: string[], values: [string, string | null][]) =>
       columns.flatMap((column) => values.map(([label, value]): Case => [column, label, value]))
 
-    const REJECTED = [
-      ...cases(COUNT_COLUMNS, [
-        ['음수', -1],
-        ['99,999 초과', 100_000],
-      ]),
-      ...cases(WON_COLUMNS, [
-        ['음수', -1],
-        ['999,999,999,999 초과', 1_000_000_000_000],
-      ]),
-      ...cases(NOTE_COLUMNS, [
-        ['빈 글자', ''],
-        ['101자', '가'.repeat(101)],
-      ]),
+    const LIMITS: [columns: string[], max: number][] = [
+      [NUMBER_COLUMNS, 50],
+      [NOTE_COLUMNS, 100],
+      [['memo'], 2000],
+      [NAME_COLUMNS, 20],
     ]
+    const REJECTED = LIMITS.flatMap(([columns, max]) =>
+      cases(columns, [
+        ['빈 글자', ''],
+        [`${max + 1}자`, '가'.repeat(max + 1)],
+      ]),
+    )
     const ACCEPTED = [
-      ...cases(COUNT_COLUMNS, [
-        ['0', 0],
-        ['99,999', 99_999],
-        ['null', null],
-      ]),
-      ...cases(WON_COLUMNS, [
-        ['0', 0],
-        ['999,999,999,999', 999_999_999_999],
-        ['null', null],
-      ]),
-      ...cases(NOTE_COLUMNS, [
-        ['한 글자', '가'],
-        ['100자', '가'.repeat(100)],
-        ['null', null],
+      ...LIMITS.flatMap(([columns, max]) =>
+        cases(columns, [
+          ['한 글자', '가'],
+          [`${max}자`, '가'.repeat(max)],
+          ['null', null],
+        ]),
+      ),
+      // 숫자 칸은 글자 칸이다. DB는 길이만 본다(사용자 결정 2)
+      ...cases(NUMBER_COLUMNS, [
+        ['12,000 별도', '12,000 별도'],
+        ['-5,000', '-5,000'],
       ]),
     ]
 
@@ -447,26 +503,25 @@ describe.each([
     it('고칠 때도 같은 제약이 걸린다', async () => {
       await addDay(A)
       await become(A)
-      await expect(db.query(`update ${TABLE} set total_fee = -1`)).rejects.toMatchObject(CHECK_FAILED)
-      await expect(db.query(`update ${TABLE} set note_cash = ''`)).rejects.toMatchObject(CHECK_FAILED)
+      const tooLong = (max: number) => '가'.repeat(max + 1)
+      for (const [column, value] of [
+        ['total_fee', ''],
+        ['total_fee', tooLong(50)],
+        ['note_cash', ''],
+        ['note_cash', tooLong(100)],
+        ['memo', ''],
+        ['memo', tooLong(2000)],
+        ['name_total_fee', ''],
+        ['name_total_fee', tooLong(20)],
+      ]) {
+        await expect(db.query(`update ${TABLE} set ${column} = $1`, [value])).rejects.toMatchObject(CHECK_FAILED)
+      }
       expect(await daysOf(A)).toMatchObject([UNTOUCHED])
     })
   })
 
-  describe('AC-004.7 지우기·updated_at 직접 넣기 거부, 고치면 updated_at이 바뀐다', () => {
-    it('authenticated의 넣기·고치기 권한은 work_date와 값 19칸뿐이고 지우기 권한은 없다', async () => {
-      const allowed = async (privilege: string) =>
-        (
-          await rows(
-            `select column_name from information_schema.column_privileges
-             where grantee = 'authenticated' and table_name = 'worklog_days' and privilege_type = $1`,
-            [privilege],
-          )
-        )
-          .map((r) => r.column_name)
-          .sort()
-      expect(await allowed('INSERT')).toEqual([...SENT_COLUMNS].sort())
-      expect(await allowed('UPDATE')).toEqual([...SENT_COLUMNS].sort())
+  describe('AC-004.7 지우기 거부, 저장 시각 칸·방아쇠 없음', () => {
+    it('authenticated의 표 권한은 읽기뿐이고 지우기 권한은 없다', async () => {
       const table = await rows(
         `select privilege_type from information_schema.role_table_grants
          where grantee = 'authenticated' and table_name = 'worklog_days'`,
@@ -481,64 +536,23 @@ describe.each([
       expect(await daysOf(A)).toMatchObject([UNTOUCHED])
     })
 
-    it('updated_at을 직접 넣거나 고치면 42501이다', async () => {
-      await addDay(A)
-      await become(A)
-      await expect(
-        db.query(`insert into ${TABLE} (work_date, updated_at) values ($1, $2)`, ['2020-01-03', LONG_AGO]),
-      ).rejects.toMatchObject(NO_PERMISSION)
-      await expect(db.query(`update ${TABLE} set updated_at = $1`, [LONG_AGO])).rejects.toMatchObject(NO_PERMISSION)
-      await expect(
-        db.query(
-          `insert into ${TABLE} (work_date, total_fee) values ($1, 1)
-           on conflict (hospital_id, work_date) do update set updated_at = excluded.updated_at`,
-          [DAY],
-        ),
-      ).rejects.toMatchObject(NO_PERMISSION)
-    })
-
-    it('update로 고치면 updated_at이 새 시각으로 바뀐다', async () => {
-      await addDay(A)
-      await become(A)
-      await db.query(`update ${TABLE} set total_fee = 200000`)
-      const [day] = await daysOf(A)
-      expect((day.updated_at as Date).getTime()).toBeGreaterThan(new Date(LONG_AGO).getTime())
-    })
-
-    it('upsert로 고쳐도 updated_at이 새 시각으로 바뀐다', async () => {
-      await addDay(A)
-      await become(A)
-      await db.query(UPSERT_SOME, [DAY, 200000, '가상'])
-      const [day] = await daysOf(A)
-      expect((day.updated_at as Date).getTime()).toBeGreaterThan(new Date(LONG_AGO).getTime())
-    })
-
-    it('방아쇠는 고칠 때 도는 공용 touch_updated_at() 하나다', async () => {
+    it('표에 방아쇠가 없고 touch_updated_at()을 만들지 않으며 파일에 updated_at 글자도 없다', async () => {
       const triggers = await rows(
-        `select t.tgname, p.proname from pg_trigger t join pg_proc p on p.oid = t.tgfoid
-         where t.tgrelid = $1::regclass and not t.tgisinternal`,
+        `select tgname from pg_trigger where tgrelid = $1::regclass and not tgisinternal`,
         [TABLE],
       )
-      expect(triggers).toEqual([{ tgname: 'worklog_days_updated_at', proname: 'touch_updated_at' }])
+      expect(triggers).toEqual([])
+      expect(await rows(`select proname from pg_proc where proname = 'touch_updated_at'`)).toEqual([])
+      expect(WORKLOG_MIGRATION).not.toContain('updated_at')
     })
 
-    it('방아쇠 함수를 직접 실행하면 로그인 사용자도 anon도 42501이다', async () => {
-      await become(A)
-      await expect(db.query('select public.touch_updated_at()')).rejects.toMatchObject(NO_PERMISSION)
-      await becomeAnon()
-      await expect(db.query('select public.touch_updated_at()')).rejects.toMatchObject(NO_PERMISSION)
-    })
-
-    it('공용 함수 실행 권한: my_hospital_id는 authenticated만, touch_updated_at은 아무도 없다', async () => {
-      const grantees = async (fn: string) =>
-        rows(
-          `select coalesce(nullif(a.grantee, 0)::regrole::text, 'PUBLIC') as grantee
-           from pg_proc p, aclexplode(p.proacl) a
-           where p.oid = $1::regprocedure and a.grantee <> p.proowner and a.privilege_type = 'EXECUTE'`,
-          [fn],
-        )
-      expect(await grantees('public.my_hospital_id()')).toEqual([{ grantee: 'authenticated' }])
-      expect(await grantees('public.touch_updated_at()')).toEqual([])
+    it('공용 함수 실행 권한: my_hospital_id는 authenticated만 있다', async () => {
+      const grantees = await rows(
+        `select coalesce(nullif(a.grantee, 0)::regrole::text, 'PUBLIC') as grantee
+         from pg_proc p, aclexplode(p.proacl) a
+         where p.oid = 'public.my_hospital_id()'::regprocedure and a.grantee <> p.proowner and a.privilege_type = 'EXECUTE'`,
+      )
+      expect(grantees).toEqual([{ grantee: 'authenticated' }])
     })
 
     it('security definer 함수는 auth의 승인 함수와 my_hospital_id뿐이다', async () => {
@@ -547,6 +561,59 @@ describe.each([
          where pronamespace = 'public'::regnamespace and prosecdef order by proname`,
       )
       expect(definers).toEqual([{ proname: 'my_hospital_id' }, { proname: 'set_hospital_status' }])
+    })
+  })
+
+  describe('AC-004.9 칸 하나만 보낸 upsert는 다른 칸을 남긴다', () => {
+    it('다른 칸으로 두 번 보내면 두 칸 다 남고 보내지 않은 칸은 그대로다', async () => {
+      await become(A)
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await db.query(upsertOne('card_in'), [DAY, '200000'])
+      const found = await rows(`select * from ${TABLE}`)
+      expect(found).toHaveLength(1)
+      expect(found[0].memo).toBeNull()
+      expectOnlyFilled(found[0], { cash_in: '100000', card_in: '200000' })
+    })
+
+    it('같은 칸을 두 번 보내면 나중 값이 남는다', async () => {
+      await become(A)
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await db.query(upsertOne('cash_in'), [DAY, '200000'])
+      const found = await rows(`select * from ${TABLE}`)
+      expect(found).toHaveLength(1)
+      expectOnlyFilled(found[0], { cash_in: '200000' })
+    })
+
+    it('줄이 없는 날에 칸 하나만 보내도 줄이 만들어진다', async () => {
+      await become(A)
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      const found = await rows(`select hospital_id, work_date::text as work_date, cash_in, card_in from ${TABLE}`)
+      expect(found).toEqual([{ hospital_id: hospital[A], work_date: DAY, cash_in: '100000', card_in: null }])
+    })
+
+    it('업무사항 memo와 항목 이름도 칸 하나만 보내면 있던 칸을 남긴다', async () => {
+      await become(A)
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await db.query(upsertOne('memo'), [DAY, '가상 업무사항'])
+      await db.query(upsertOne('name_cash_in'), [DAY, '가상 항목'])
+      await db.query(upsertOne('name_card_in'), [DAY, '가상 다른 항목'])
+      const found = await rows(`select * from ${TABLE}`)
+      expect(found).toHaveLength(1)
+      expectOnlyFilled(found[0], {
+        cash_in: '100000',
+        memo: '가상 업무사항',
+        name_cash_in: '가상 항목',
+        name_card_in: '가상 다른 항목',
+      })
+    })
+
+    it('칸을 null로 보내면 그 칸만 비워지고 다른 칸은 남는다', async () => {
+      await become(A)
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await db.query(upsertOne('card_in'), [DAY, '200000'])
+      await db.query(upsertOne('cash_in'), [DAY, null])
+      const [row] = await rows(`select * from ${TABLE}`)
+      expectOnlyFilled(row, { card_in: '200000' })
     })
   })
 })

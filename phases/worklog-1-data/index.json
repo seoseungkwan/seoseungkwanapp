@@ -22,7 +22,8 @@
     {
       "step": 3,
       "name": "db-table",
-      "status": "pending"
+      "status": "completed",
+      "summary": "migration을 같은 파일에서 고침: 숫자 14칸 글자·memo·항목 이름 12칸, updated_at·방아쇠 삭제, work_date+32칸 권한. 실제 Supabase에는 아직 안 붙임"
     },
     {
       "step": 4,
