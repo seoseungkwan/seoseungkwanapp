@@ -12,10 +12,10 @@ import { SetupScreen } from './SetupScreen'
 
 // 비트 PC 연결 화면 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body · 다른 창 카드는 precheck 목업 화면 6).
 // 진짜 useBridge·connectScreenBridge·connectBridge에 가짜 확장(chrome.runtime)만 넣는다. 가짜 확장은 받은 명령마다 정해 둔 답을 돌려준다.
-// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.2.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.1.0)
+// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.3.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.2.0)
 vi.mock('@/lib/bridge/versions', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/bridge/versions')>()
-  return { ...real, LATEST_HELPER: '0.2.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.2.0' } }
+  return { ...real, LATEST_HELPER: '0.3.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.3.0' } }
 })
 
 type Reply = Record<string, unknown>
@@ -25,7 +25,7 @@ type Script = { hello: Reply | 'busy'; check?: Answer[]; register?: Answer[] }
 
 const HELLO: Reply = {
   type: 'result',
-  data: { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 },
+  data: { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 },
 }
 const helloWith = (data: Record<string, unknown>): Reply => ({
   type: 'result',
@@ -575,7 +575,7 @@ const SCENES: [string, Scene][] = [
     },
   ],
   ['모두 됨', { arrange: () => fakeExtension({ hello: HELLO }), settled: () => screen.findByText('준비됨') }],
-  ['모두 됨 + 새 도우미', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) }), settled: () => screen.findByText('준비됨') }],
+  ['모두 됨 + 새 도우미', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) }), settled: () => screen.findByText('준비됨') }],
 ]
 async function renderScene(scene: Scene) {
   const fake = scene.arrange()
@@ -763,7 +763,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
       expect(li.textContent).not.toContain('오류 번호')
     }
     expect(row('크롬 확장 프로그램 설치').textContent).toContain('버전 0.1.0')
-    expect(row('도우미 설치').textContent).toContain('버전 0.2.0')
+    expect(row('도우미 설치').textContent).toContain('버전 0.3.0')
     expect(row('연결').textContent).toContain('이어졌어요')
     expect(row('비트 자료 읽기').textContent).toContain('읽을 수 있어요')
     expect(row('요양기관기호 확인').textContent).toContain('등록한 의원과 같아요')
@@ -875,7 +875,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
 
 describe('AC-006.3·AC-412.7 새 도우미', () => {
   it('AC-006.3: 도우미가 최신보다 낮으면 "새 도우미가 있어요" 한 줄과 받는 곳 링크, 나머지는 그대로 쓸 수 있다', async () => {
-    fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) })
+    fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) })
     renderSetup()
     await screen.findByText('준비됨')
     expect(screen.getByText('새 도우미가 있어요.')).toBeTruthy()
@@ -985,7 +985,7 @@ describe('AC-408.2 그림은 공용 Icon, 간격은 단계 안', () => {
   })
 
   it('AC-408.2·AC-412.5: "준비됨" 줄·새 도우미 줄은 사이 8px, \'이렇게 지켜요\' 목록은 왼쪽 20px·사이 8px·body ink-2', async () => {
-    fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) })
+    fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) })
     renderSetup()
     const ready = (await screen.findByText('준비됨')).parentElement as HTMLElement
     const update = screen.getByText('새 도우미가 있어요.').parentElement as HTMLElement

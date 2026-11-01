@@ -69,9 +69,9 @@ describe('AC-004.4 checkVersions', () => {
 })
 
 describe('AC-004.4 웹 versions.ts 값', () => {
-  it('AC-004.4 지금 값은 도우미 최소 0.1.0·최신 0.1.1, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
-    expect(MIN_HELPER).toBe('0.1.0')
-    expect(LATEST_HELPER).toBe('0.1.1')
+  it('AC-004.4·AC-604.1 지금 값은 도우미 최소·최신 0.2.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+    expect(MIN_HELPER).toBe('0.2.0')
+    expect(LATEST_HELPER).toBe('0.2.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -98,13 +98,13 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     ).toEqual({ status: 'ok', helperUpdateAvailable: false })
   })
 
-  it('AC-004.4 이미 깔린 도우미 0.1.0은 막지 않고 "새 도우미가 있어요"만 띄운다(비트 자료 읽기를 고친 0.1.1로 올리게)', () => {
+  it.each(['0.1.0', '0.1.1'])('AC-604.2 옛 도우미 %s는 stats.rows를 모르므로 update-helper로 막는다', (version) => {
     expect(
       checkVersions({
         web: WEB_VERSIONS,
         extension: { version: MIN_EXTENSION, protocol: PROTOCOL },
-        helper: { version: '0.1.0', protocol: PROTOCOL },
+        helper: { version, protocol: PROTOCOL },
       }),
-    ).toEqual({ status: 'ok', helperUpdateAvailable: true })
+    ).toEqual({ status: 'update-helper' })
   })
 })

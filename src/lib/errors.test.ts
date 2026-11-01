@@ -36,6 +36,8 @@ const ALL_CODES = [
   'E-STORE-BROKEN',
   'E-STATS-HISTORY',
   'E-STATS-TOO-BIG',
+  'E-BIT-DATA-UNSURE',
+  'E-BIT-IN-USE',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -244,7 +246,7 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     })
     expect(errorInfo('E-HELPER-OLD')).toEqual({
       what: '도우미를 업데이트하세요',
-      fix: '이 PC의 도우미가 예전 버전이라 청구 화면을 쓸 수 없어요. 고치던 메모는 이 PC에 그대로 있어요.',
+      fix: '이 PC의 도우미가 예전 버전이라 대시보드 숫자와 청구 화면을 쓸 수 없어요. 고치던 메모는 이 PC에 그대로 있어요.',
     })
     expect(errorInfo('E-EXT-OLD').what).toBe('확장을 업데이트하세요')
     expect(errorInfo('E-BRIDGE-BUSY')).toEqual({
@@ -262,6 +264,32 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+describe('REQ-601·REQ-604 비트 대시보드 오류 문구', () => {
+  it('AC-601.12: E-BIT-DATA-UNSURE는 신환을 확정할 수 없다고 알리고 확인할 것을 안내한다', () => {
+    expect(errorInfo('E-BIT-DATA-UNSURE')).toEqual({
+      what: '비트 자료로 신환을 확정할 수 없어요',
+      fix: '비트에 차트번호 없는 접수나 중복 접수가 있는지 확인하고, 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-601.7: E-BIT-IN-USE는 다른 창이 쓰는 중이라고 알리고 [다시 확인]으로 안내한다', () => {
+    expect(errorInfo('E-BIT-IN-USE')).toEqual({
+      what: '다른 창이 비트 자료를 쓰고 있어요',
+      fix: '한 번에 한 창만 비트를 읽을 수 있어요. 그 창의 일이 끝나거나 창을 닫은 뒤 [다시 확인]을 눌러 주세요.',
+    })
+  })
+
+  it('AC-601.7: 청구 화면의 E-BRIDGE-BUSY 문구는 그대로다', () => {
+    expect(errorInfo('E-BRIDGE-BUSY').what).toContain('청구 화면이 다른 창에서 열려 있어요')
+  })
+
+  it('AC-604.3: E-HELPER-OLD는 대시보드 숫자와 청구 화면을 쓸 수 없다고 말한다', () => {
+    expect(errorInfo('E-HELPER-OLD').fix).toBe(
+      '이 PC의 도우미가 예전 버전이라 대시보드 숫자와 청구 화면을 쓸 수 없어요. 고치던 메모는 이 PC에 그대로 있어요.',
+    )
   })
 })
 

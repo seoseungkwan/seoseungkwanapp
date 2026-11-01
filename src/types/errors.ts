@@ -10,5 +10,7 @@ export type ErrorCode =
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
   // 통계 도우미 자료(stats.rows, spec stats)
   | 'E-STATS-HISTORY' | 'E-STATS-TOO-BIG'
+  // 비트 대시보드(spec bit-dashboard)
+  | 'E-BIT-DATA-UNSURE' | 'E-BIT-IN-USE'
 
 export type ErrorInfo = { what: string; fix: string }
