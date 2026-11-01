@@ -57,7 +57,6 @@ const day = (date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow => 
   visits: 11,
   newPatients: 2,
   returnVisits: 9,
-  patientsToDate: 8,
   total: 1060,
   insurer: 500,
   noncovered: 300,
@@ -77,7 +76,6 @@ const sentDay = (date: string) => ({
   visits: 11,
   new_patients: 2,
   return_visits: 9,
-  patients_to_date: 8,
   total: 1060,
   insurer: 500,
   noncovered: 300,
@@ -146,12 +144,12 @@ describe('AC-007.2 saveMonth', () => {
     for (const row of calls[1].rows ?? []) expect(Object.keys(row).sort()).toEqual(CODE_COLUMNS)
   })
 
-  it('AC-007.2 날 줄은 열여섯 칸(day~split_unconfirmed)뿐이고 snake_case로 바꿔 hospital_id+day로 upsert한다', async () => {
+  it('AC-007.2 날 줄은 열다섯 칸(day~split_unconfirmed)뿐이고 snake_case로 바꿔 hospital_id+day로 upsert한다', async () => {
     const { client, calls } = fakeClient()
     await createRevenueStore(client).saveMonth('2026-09', september())
     expect(calls[2].rows).toEqual([sentDay('2026-09-01'), sentDay('2026-09-02')])
     expect(calls[2].options).toEqual({ onConflict: 'hospital_id,day' })
-    expect(DAY_COLUMNS).toHaveLength(16)
+    expect(DAY_COLUMNS).toHaveLength(15)
     for (const row of calls[2].rows ?? []) expect(Object.keys(row).sort()).toEqual(DAY_COLUMNS)
   })
 
@@ -185,9 +183,9 @@ describe('AC-007.2 saveMonth', () => {
     ])
   })
 
-  it('AC-007.2 답에 정해 두지 않은 칸이 섞여 있어도 보내지 않는다(chart·name·hospital_id·fetched_at 없음)', async () => {
+  it('AC-007.2 답에 정해 두지 않은 칸이 섞여 있어도 보내지 않는다(chart·name·hospital_id·fetched_at·patients_to_date 없음)', async () => {
     const { client, calls } = fakeClient()
-    const planted = { chart: '900001', name: '가상환자01', hospital_id: 'h-1', fetched_at: '2026-01-01T00:00:00+00:00' }
+    const planted = { chart: '900001', name: '가상환자01', hospital_id: 'h-1', fetched_at: '2026-01-01T00:00:00+00:00', patientsToDate: 8 }
     await createRevenueStore(client).saveMonth('2026-09', {
       days: [{ ...day('2026-09-01'), ...planted }],
       codes: [{ ...code(), chart: '900001', hospital_id: 'h-1', fetched_at: planted.fetched_at } as RevenueCodeRow],
@@ -200,6 +198,8 @@ describe('AC-007.2 saveMonth', () => {
       for (const key of ['chart', 'hospital_id', 'fetched_at']) expect(row).not.toHaveProperty(key)
     }
     expect(sentDayRow).not.toHaveProperty('name')
+    expect(sentDayRow).not.toHaveProperty('patients_to_date')
+    expect(sentDayRow).not.toHaveProperty('patientsToDate')
     const sent = JSON.stringify(calls.map((call) => call.rows))
     expect(sent).not.toContain('900001')
     expect(sent).not.toContain('가상환자01')
@@ -218,7 +218,7 @@ describe('AC-007.2 saveMonth', () => {
     ['1일이 아닌 날로 시작', { days: [day('2026-09-02')], codes: [code()] }],
     ['다른 달의 1일로 시작', { days: [day('2026-10-01')], codes: [code()] }],
     ['날 줄이 없음', { days: [], codes: [code()] }],
-  ])('AC-007.2 답의 첫 날이 그 달 1일이 아니면(%s) 아무것도 보내지 않고 E-REVENUE-SAVE-FAILED', async (_name, result) => {
+  ])('AC-007.2 답의 첫 날이 그 달 1일이 아니면(%s) 아무것도 보내지 않고 E-REVENUE-SAVE-FAILED(sales_codes 합계가 그 달 전체여야 해서)', async (_name, result) => {
     const { client, calls } = fakeClient()
     expectFailure(await failure(() => createRevenueStore(client).saveMonth('2026-09', result)), 'E-REVENUE-SAVE-FAILED')
     expect(calls).toEqual([])
@@ -284,7 +284,7 @@ describe('AC-007.4 loadRevenue', () => {
     ])
   })
 
-  it('AC-007.4 칸을 골라 읽는다: sales_days 열여섯 칸 + fetched_at, sales_codes 다섯 칸(이름 포함). hospital_id는 읽지 않는다', async () => {
+  it('AC-007.4 칸을 골라 읽는다: sales_days 열다섯 칸 + fetched_at, sales_codes 다섯 칸(이름 포함). hospital_id는 읽지 않는다', async () => {
     const { client, calls } = readingClient([], [])
     await createRevenueStore(client).loadRevenue('2026-09', '2026-09')
     expect(columnsOf(selectOf(calls, 'sales_days')[0])).toEqual([...DAY_COLUMNS, 'fetched_at'].sort())
@@ -299,6 +299,11 @@ describe('AC-007.4 loadRevenue', () => {
       day('2026-09-01'),
       day('2026-09-02', { splitUnconfirmed: true, insurer: null, noncovered: null, copay: null, otherTotal: null }),
     ])
+    // toEqual은 값이 undefined인 칸을 못 본다. 돌려주는 칸이 정확히 열다섯인지 이름으로 견준다
+    for (const row of days) {
+      expect(Object.keys(row)).toHaveLength(15)
+      expect(Object.keys(row).sort()).toEqual(Object.keys(day('2026-09-01')).sort())
+    }
   })
 
   it("AC-007.4 코드 줄은 이름을 포함해 돌려주고 month는 'YYYY-MM'이다", async () => {

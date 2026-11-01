@@ -23,8 +23,8 @@
     {
       "step": 3,
       "name": "revenue-sync",
-      "status": "pending",
-      "summary": "다시 열림(2026-11-01 건당 진료비 하나로): patients_to_date·perPatient를 빼고 건당 진료비로 바꾼다. 이전 요약은 git 기록에 있다"
+      "status": "completed",
+      "summary": "src/lib/revenue/sync.ts(planFetch·syncRevenue) + src/lib/storage/revenue.ts(createRevenueStore: saveMonth·loadRevenue) + E-REVENUE-SAVE-FAILED. 날 칸은 열다섯(REVENUE_DAY_KEYS에서 온다). saveMonth의 1일 확인은 sales_codes 합계가 달 전체여야 해서 둔다. TASK-9 주의: syncRevenue는 months가 없으면 savedDays가 필수라(design 7절에 없음, planFetch에 필요) step1의 순서와 달리 loadRevenue를 먼저 부른다. 읽기 실패와 번호 없는 오류는 E-PAGE-FAILED(명세에 번호 없음). months에서 아직 올 날이 없는 달은 뺀다(도우미가 from>to를 막음). E-BRIDGE-REJECTED는 명세대로 extensionOld인데 통로가 connecting이어도 나오므로 화면은 통로가 ready일 때만 부른다. 알려진 위험: 이미 저장한 달을 [다시 가져오기]할 때 코드 지우기 뒤 넣기가 실패하면 날 줄은 있고 코드 줄만 비고 planFetch가 복구하지 않는다(그 자리의 failed 알림과 재시도만 있음, 다음 명세 변경 때 13절에 적는다)"
     },
     {
       "step": 4,

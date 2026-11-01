@@ -69,7 +69,7 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 } {
   async function writeMonth(month: string, result: RevenueDaysResult): Promise<void> {
     const monthStart = `${month}-01`
-    // patientsToDate가 1일부터 센 값이어야 한다
+    // 그 달 코드 줄을 지우고 새로 넣으므로 sales_codes 합계가 그 달 전체여야 한다
     if (result.days[0]?.date !== monthStart) fail(SAVE_FAILED)
 
     const removed = await client.from('sales_codes').delete().eq('month', monthStart)
