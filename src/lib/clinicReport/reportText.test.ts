@@ -164,9 +164,20 @@ describe('REQ-510 원장님 보고 문장', () => {
       expect(made(format('daily', sample('daily-negative-half'))).text).toContain('건당진료비      -666원')
     })
 
-    it('AC-510.1 0으로 버려진 음수 건당진료비는 원본처럼 "-0원"이다', () => {
-      expect(made(format('daily', sample('daily-negative-zero'))).text).toContain('건당진료비      -0원')
-      expect(made(format('daily', sample('daily-negative-to-zero'))).text).toContain('건당진료비      -0원')
+    it('AC-510.1 버린 건당진료비가 0이면 부호 없이 "0원"이다(-1원·-2원 ÷ 3명), 그 밖의 음수는 그대로다(-3원 ÷ 3명)', () => {
+      expect(made(format('daily', sample('daily-negative-zero'))).text).toContain('건당진료비      0원')
+      expect(made(format('daily', sample('daily-negative-to-zero'))).text).toContain('건당진료비      0원')
+      const minusThree = { ...sample('daily-negative-zero'), totalAmount: -3 }
+      expect(minusThree.totalVisits).toBe(3)
+      expect(made(format('daily', minusThree)).text).toContain('건당진료비      -1원')
+    })
+
+    it('AC-510.1 "0원"의 부호 차이는 knownDiffs에 따로 이유가 적혀 있다', () => {
+      const original = { 'daily-negative-zero': '건당진료비      -0원', 'daily-negative-to-zero': '건당진료비      -1원' }
+      for (const [name, line] of Object.entries(original)) {
+        const lineDiffs = read<CaseGolden>(name).knownDiffs.filter((diff) => diff.field === 'lines')
+        expect(lineDiffs).toMatchObject([{ original: line, ours: '건당진료비      0원', why: expect.stringContaining('부호') }])
+      }
     })
 
     it('AC-510.1 받은 숫자를 고치지 않는다(LA 코드 차례)', () => {

@@ -5,7 +5,7 @@
 
   python3 -I scripts/stats/golden/reports.py <원본 YangjiBareun_사전점검 폴더>   (또는 YANGJI_SRC)
 
-금액 줄의 knownDiffs는 손으로 적지 않는다. 원본을 한 번은 그대로, 한 번은 금액 버림(ROUND_DOWN)만 바꿔 돌려 달라진 줄을 적는다.
+금액 줄의 knownDiffs는 손으로 적지 않는다. 원본을 한 번은 그대로, 한 번은 금액 글자(버림, 버린 결과가 0이면 부호 없음)만 바꿔 돌려 달라진 줄을 적는다.
 안내 첫 줄의 차이만 손으로 적는다(NOTE_ORIGINAL·NOTE_OURS). 그래서 "우리 글" = 원본에서 금액 규칙과 그 안내 한 줄만 바꾼 글이고, 그 밖의 차이는 시험에서 실패한다.
 """
 import json
@@ -21,6 +21,7 @@ ENTRY = "format_report, report_notes"
 OUT = Path(__file__).resolve().parents[3] / "fixtures" / "stats" / "golden"
 
 WHY_ROUND = "금액·건당진료비는 원 미만을 버린다(CLAUDE.md 금액 규칙). 원본은 ROUND_HALF_UP이고, 음수도 0 쪽으로 버린다"
+WHY_ZERO = "버린 결과가 0이면 부호 없이 '0원'으로 찍는다. '-0원'은 뜻이 없고 보고 글은 복사되어 나간다(원본은 '-0원' 또는 '-1원')"
 WHY_NOTE = "건당진료비를 반올림하지 않으므로 안내 문장도 실제 계산에 맞춘다(위 금액 규칙에 따라오는 차이)"
 NOTE_ORIGINAL = "총환을 원 단위로 반올림합니다."
 NOTE_OURS = "총환에서 원 미만을 버립니다."
@@ -68,8 +69,8 @@ CASES = {
     "daily-negative": report("daily", "2024-03-08", **counts(3, 1), total_amount=-1000, insurer_amount=-1000,
                              noncovered_amount=-5, cash_amount=-1000, card_amount=0, transfer_amount=-1234567),
     "daily-negative-half": report("daily", "2024-03-09", **counts(3, 1), **money(-2000)),   # -666.67
-    "daily-negative-zero": report("daily", "2024-01-01", **counts(3, 1), **money(-1)),      # -0.33 → 원본도 '-0원'
-    "daily-negative-to-zero": report("daily", "2024-01-02", **counts(3, 1), **money(-2)),   # -0.67 → 원본 '-1원', 버리면 '-0원'
+    "daily-negative-zero": report("daily", "2024-01-01", **counts(3, 1), **money(-1)),      # -0.33 → 원본 '-0원', 우리 '0원'
+    "daily-negative-to-zero": report("daily", "2024-01-02", **counts(3, 1), **money(-2)),   # -0.67 → 원본 '-1원', 우리 '0원'
     # 원 미만 금액: 계좌이체만 .5 아래라 원본과 같고, 나머지 금액 줄은 반올림과 버림이 갈린다
     "daily-sub-won": report("daily", "2024-03-03", total_amount=100004.5, insurer_amount=65000.5,
                             noncovered_amount=15000.5, cash_amount=1200.5, card_amount=27500.5, transfer_amount=6300.4),
@@ -101,10 +102,14 @@ def head(entry, known_diffs):
     return {"source": SOURCE, "file": FILE, "entry": entry, "knownDiffs": known_diffs}
 
 
+def line_why(before, after):
+    return WHY_ZERO if "-" in before and after.endswith(" 0원") else WHY_ROUND
+
+
 def line_diffs(original, ours):
     if len(original) != len(ours):
-        raise SystemExit("버림만 바꿨는데 줄 수가 달라졌습니다.")
-    return [{"field": "lines", "index": index, "original": before, "ours": after, "why": WHY_ROUND}
+        raise SystemExit("금액 글자만 바꿨는데 줄 수가 달라졌습니다.")
+    return [{"field": "lines", "index": index, "original": before, "ours": after, "why": line_why(before, after)}
             for index, (before, after) in enumerate(zip(original, ours)) if before != after]
 
 
@@ -128,7 +133,8 @@ def main():
     from medicore import reports
 
     def won_down(value):
-        return f"{reports._amount(value).quantize(Decimal('1'), rounding=ROUND_DOWN):,}원"
+        number = reports._amount(value).quantize(Decimal('1'), rounding=ROUND_DOWN)
+        return f"{number.copy_abs() if number.is_zero() else number:,}원"
 
     original_won = reports._won
     OUT.mkdir(parents=True, exist_ok=True)

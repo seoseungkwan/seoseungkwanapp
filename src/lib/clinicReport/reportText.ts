@@ -28,8 +28,8 @@ const MONTHLY_TREATMENTS: [TreatmentKey, string][] = [
 // 차트 글자(components/charts/format.ts)는 빼기 기호가 달라 쓰지 않는다. 원본은 '-1,000'이다
 const NUMBER = new Intl.NumberFormat('en-US')
 
-// 원 미만은 0 쪽으로 버린다. 0으로 버려진 음수는 원본의 Decimal처럼 '-0원'으로 찍힌다(Intl도 -0을 그렇게 쓴다, 골든 daily-negative-zero)
-const won = (value: number) => `${NUMBER.format(Math.trunc(value))}원`
+// 원 미만은 0 쪽으로 버린다. 버린 결과가 0이면 부호 없이 '0원'이다(AC-510.1, 원본은 '-0원' 또는 '-1원'). Intl은 -0을 '-0'으로 쓰므로 + 0으로 부호를 없앤다
+const won = (value: number) => `${NUMBER.format(Math.trunc(value) + 0)}원`
 
 function isFuture(mode: ClinicReportMode, period: string, today: string): boolean {
   return compareYmd(mode === 'monthly' ? monthRange(period).from : period, today) > 0

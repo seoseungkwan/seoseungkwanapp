@@ -4,6 +4,13 @@
   "entry": "format_report, report_notes",
   "knownDiffs": [
     {
+      "field": "lines",
+      "index": 19,
+      "original": "건당진료비      -0원",
+      "ours": "건당진료비      0원",
+      "why": "버린 결과가 0이면 부호 없이 '0원'으로 찍는다. '-0원'은 뜻이 없고 보고 글은 복사되어 나간다(원본은 '-0원' 또는 '-1원')"
+    },
+    {
       "field": "notes",
       "index": 0,
       "original": "총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환을 원 단위로 반올림합니다.",
