@@ -1,0 +1,24 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-4-flow",
+  "steps": [
+    {
+      "step": 0,
+      "name": "generate-flow",
+      "status": "completed",
+      "summary": "src/app/api/ai/generate.ts(+generate.test.ts): generateReport(month, deps: GenerateDeps{loadMonths,callClaude,saveReport,addUsage,now}) -> {ok:true,report,usage}|{ok:false,code}. 고른 달 검사 실패=E-AI-NO-DATA(Claude 안 부름), 비교 달 실패=없는 달. Claude 오류는 그 번호(사용량 있으면 기록), 답 검사 null=사용량 기록+E-AI-FAILED, 저장/기록 실패·deps 던짐=E-AI-FAILED(저장 실패여도 사용량 기록). 모델은 res.usage.model. 시험 24개. 받은 자료의 month가 요청한 달(비교 달은 -1/-12달)과 다르면 고른 달=E-AI-NO-DATA, 비교 달=없는 달. now가 던지면 사용량 기록 후 FAILED. 달 일치는 AC-511.1 해석으로 넣었고 명세 글자에는 없음."
+    },
+    {
+      "step": 1,
+      "name": "report-route",
+      "status": "completed",
+      "summary": "src/app/api/ai/report/route.ts(+route.test.ts 48개): POST /api/ai/report, runtime nodejs·maxDuration 120, export는 POST·runtime·maxDuration뿐. 순서: 몸통 검사(JSON·정확히 month 하나·isMonth·한국 날짜 이번 달 이하, 아니면 400) -> readMe(NotSignedInError 401, 병원 null/비승인 403, 그 밖 읽기 오류 502 E-AI-FAILED) -> supabaseServer -> generateReport(loadReportMonths/saveReport/addUsage에 세션 클라이언트, now=new Date()). 성공 200 {report}(usage 안 실음), 오류 {code} 404/402/503/502, 흐름·supabaseServer가 던져도 502 E-AI-FAILED. 400·401·403은 몸통 없이 상태만, 로그 없음. {code}로 답하는 모든 경우 console.error('[api/ai/report]', code) 한 줄만. 메모: middleware가 로그인 안 한 /api/* 요청을 먼저 /login으로 돌릴 수 있다(화면 명세에서 정할 것, 고치지 않음). 몸통 검사가 로그인 확인보다 먼저라 로그인 안 한 잘못된 몸통은 401이 아니라 400."
+    },
+    {
+      "step": 2,
+      "name": "boundary-test",
+      "status": "completed",
+      "summary": "src/lib/ai/boundary.test.ts(37개, 판정 함수는 시험 파일 안): 저장소 src·scripts·e2e·fixtures·supabase의 .ts/.tsx/.js/.mjs/.cjs를 읽어(node_modules·.next·dist 제외, 경로는 ''를 '/'로, 줄은 split(/\r?\n/), BOM 제거, 주석 제외) 판정. AC-513.1 @anthropic-ai/sdk* import(정적·type·side-effect·export from·동적·require·줄 나뉨)는 src/app/api/ai/·scripts/ 밖에 없음. AC-513.2 src/app/api/ai/ 아래 .ts(시험·route.ts 제외) 첫 줄은 import 'server-only'(;·CRLF·BOM 허용). AC-513.3 src/lib/ai/ 시험 아닌 파일은 import에 supabase·next·react·react-dom·SDK·node:·맨 이름 Node 내장이 없고 fetch( 호출이 없음. 가짜 위반 목록으로 RED 확인 후 GREEN, 실제 저장소 위반 없음(앞 코드 수정 없음). 다음 phase가 만드는 scripts/·markdown.ts도 이 울타리 아래."
+    }
+  ]
+}

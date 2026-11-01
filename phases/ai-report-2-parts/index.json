@@ -1,0 +1,36 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-2-parts",
+  "steps": [
+    {
+      "step": 0,
+      "name": "fake-months",
+      "status": "completed",
+      "summary": "TASK-3 끝: fixtures/fake-ai/months/{2025-10,2026-09,2026-10}.json(MonthPayload, 셋 다 partial:false) + groups.json({id:이름}); 그룹 id fake-eswt·fake-inj·fake-manual·fake-med·fake-pt(체외충격파·주사·도수치료·약물·물리치료); 2026-10에 줄어든 그룹 fake-inj(634→552)·fake-manual(331→318); 신환 2025-10 470·2026-09 486·2026-10 524; 처방 FAKE-001~040(038은 2025-10에만, 039는 2026-10에만, 040은 2025-10에 없음), 동네 23~25개(지어낸 이름); 재방문 2026-09 cohort 480·within7 198·within14 251, 2026-10 within14=null(집계 중); 시험 10개(node:fs로 읽음, src/에서 import 없음) RED→GREEN."
+    },
+    {
+      "step": 1,
+      "name": "db-rls",
+      "status": "completed",
+      "summary": "TASK-4 끝: supabase/migrations/20261101000000_ai_report.sql — ai_reports(hospital_id→hospitals on delete cascade, month 'YYYY-MM', report jsonb 객체 ≤32KB, input_hash 소문자 16진수 64자, model 1~100자, created_at, PK(hospital_id, month))·ai_usage(calls int, input_tokens·output_tokens·cost_micro_usd bigint ≥0, updated_at, 같은 PK). 두 표 RLS, anon·authenticated 권한 회수 뒤 authenticated select만, 읽기는 내 병원(owner_id=auth.uid())만(관리자 예외 없음). save_ai_report(p_month text, p_report jsonb, p_input_hash text, p_model text) returns void(같은 달 덮어쓰고 created_at=now()), add_ai_usage(p_input bigint, p_output bigint, p_cost bigint) returns void(한국 날짜 이번 달, calls+1, 합산). 둘 다 security definer, search_path='', 미승인·없는 병원 42501, 사용량 음수·null 22023, 모양 틀리면 23514. 실행 권한은 authenticated만. report jsonb에는 { partial, summary, cards }만. 시험 supabase/aiReport.rls.test.ts(PGlite 43개) RED(ENOENT)→GREEN. 리뷰 FIX 반영: 시험에 set time zone 'UTC'(이 PC의 PGlite는 PC 시간대를 물려받음), add_ai_usage 본문(prosrc)이 Asia/Seoul 식을 쓰는지·고정 시각 '2026-10-31 15:30Z'→'2026-11' 확인 시험 추가(일부러 UTC 식으로 바꾸면 실패함 확인), 시험 44개."
+    },
+    {
+      "step": 2,
+      "name": "basis-line",
+      "status": "completed",
+      "summary": "TASK-6 끝: src/lib/ai/basis.ts — basisLine(metric: ReportMetric, input: ReportInput): string → '근거 · <label> <지난달> <값> → <고른 달> <값> · <작년 같은 달> <값>'. 달 글자는 input.month/prevMonth/lastYearMonth에서 Number(MM)+'월'(달 계산 없음), 지난달 해가 다르면 '작년 12월', 작년 같은 달은 늘 '작년 N월'. count는 formatCount+'명', rate는 formatRate+'%'(버림). null이면 count '자료 없음', rate는 그 달 자료가 있으면 '집계 중' 없으면 '자료 없음'. 순수 함수(import는 format.ts와 타입뿐). TASK-7은 카드마다 basis: basisLine(metric, input). 시험 14개 RED→GREEN."
+    },
+    {
+      "step": 3,
+      "name": "prompt-text",
+      "status": "completed",
+      "summary": "TASK-8 끝: src/lib/ai/prompt.ts(순수, import는 ReportInput 타입뿐) — PROMPT_VERSION='ai-report-1'(입력·지문·저장에 안 넣음), systemPrompt(): string(합니다체 고정 글자, 날짜·판 번호 없음), userMessage(input: ReportInput): string = '<data>\\n' + JSON.stringify(input)의 <·>를 JSON 유니코드 이스케이프(\\u003c·\\u003e)로 + '\\n</data>', reportJsonSchema(): Record<string, unknown>(design 'AI 답 검사' 스키마 그대로, 최상위·카드 additionalProperties:false, tag enum up/down/watch/guess, 길이·개수 제약 없음, 부를 때마다 새 객체). 시험 14개 RED→GREEN. 참고: sdd status의 'REQ-508 | AC-507.1' 줄은 AC-508.3 문장 속 'AC-507.1 모양' 글자를 도구가 읽은 것, TASK-7 시험이 채울 것. 리뷰 참고 반영: 지시문에 'rate는 자료가 있어도 집계 중이면 null → \"집계 중\"이라고 쓴다' 추가(시험 15개)."
+    },
+    {
+      "step": 4,
+      "name": "cost-calc",
+      "status": "completed",
+      "summary": "TASK-9 끝: src/lib/ai/cost.ts — type Price={input,output}(micro USD/토큰), PRICES(얼린 표: claude-opus-5-5 4·20, claude-opus-5 5·25, claude-opus-4-8 5·25), costMicroUsd(u: Pick<AiUsage,'model'|'inputTokens'|'outputTokens'>): number = 정수 곱의 합(나누기·반올림·환율 없음). 표에 없는 모델(Object.hasOwn 판정, 'constructor'·'__proto__'·'' 포함)은 표의 최댓값(5·25). 순수 함수. 시험 9개 RED→GREEN."
+    }
+  ]
+}

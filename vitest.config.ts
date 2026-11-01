@@ -30,6 +30,7 @@ export default defineConfig({
       'e2e/**/*.test.ts',
       'helper/tests/*.test.ts',
       'extension/**/*.test.ts',
+      'scripts/**/*.test.ts',
     ],
     exclude: ['node_modules/**'],
     environment: 'node',

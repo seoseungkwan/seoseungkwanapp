@@ -142,6 +142,36 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '자료가 다 오지 않아 점검을 멈췄어요',
     fix: '[다시 불러오기]를 눌러 다시 불러오세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // AI 리포트(spec ai-report design.md '오류 문구'). 서버 경로·ai:try는 번호만 주고 문구는 여기서 꺼낸다
+  'E-AI-BUSY': {
+    what: 'AI가 지금 바빠서 답하지 못했어요',
+    fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.',
+  },
+  'E-AI-LIMIT': {
+    what: '이번 달 AI 사용 한도에 닿았어요',
+    fix: 'Anthropic 콘솔에서 한 달 한도를 늘리거나 다음 달에 다시 해 주세요.',
+  },
+  'E-AI-FAILED': {
+    what: 'AI 리포트를 만들지 못했어요',
+    fix: '[다시 분석]을 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-AI-NO-DATA': {
+    what: '이 달 통계가 아직 없어요',
+    fix: '통계 탭에서 그 달 비트 자료를 먼저 넣어 주세요.',
+  },
+  // 업무일지(specs/worklog)
+  'E-WORKLOG-SAVE-FAILED': {
+    what: '업무일지를 저장하지 못했어요',
+    fix: '적은 값은 화면에 그대로 있어요. [다시 저장]을 눌러 주세요. 계속되면 오류 번호와 함께 관리자에게 알려 주세요.',
+  },
+  'E-WORKLOG-LOAD-FAILED': {
+    what: '이 날 업무일지를 불러오지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 불러오기 전에는 칸을 고칠 수 없어요.',
+  },
+  'E-WORKLOG-NOTE-PRIVATE': {
+    what: '전화번호나 주민번호 같은 글자가 있어 그 칸은 저장하지 않았어요',
+    fix: '빨갛게 표시된 칸에서 그 글자를 지우면 바로 저장돼요. 다른 칸은 그대로 저장돼요. 환자 정보는 업무일지에 적지 말아 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

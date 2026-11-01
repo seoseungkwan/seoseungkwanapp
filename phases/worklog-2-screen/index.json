@@ -1,0 +1,36 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-2-screen",
+  "steps": [
+    {
+      "step": 0,
+      "name": "autosave",
+      "status": "completed",
+      "summary": "autosave.ts(차이만 저장). 재시도 대기는 pending(겉으로 saving), failed는 다 실패한 뒤에만. change·retry()는 재시도 횟수 초기화, 저장 중 change는 초기화 안 함(마지막 재시도 중 고친 값은 failed로 멈추되 값은 남고 hasUnsaved 참, retry()로 보냄). serverDay는 보내는 중 칸을 덮지 않음. snapshot().blocked는 800ms 전에도 바로 보임."
+    },
+    {
+      "step": 1,
+      "name": "sheet-style",
+      "status": "completed",
+      "summary": "globals.css :root 토큰 넷, sheet.module.css(시안 화면 규칙), 규칙 시험 예외(파일 하나·토큰 넷·AC-204.6 불러오기). .paper 1px 테두리는 TASK-8이 WorklogSheet.tsx에서 border border-line으로 붙인다. 시험 없이 다른 화면이 var(--xl-*)를 쓰는 것을 막지는 못함(지금은 없음)."
+    },
+    {
+      "step": 2,
+      "name": "sheet",
+      "status": "completed",
+      "summary": "WorklogSheet.tsx(값은 props·콜백만, 합친 칸 46·입력 칸 32), 종이 테두리는 border border-line. 치고 초점이 남은 칸은 친 글자를 계속 보임(AC-008.11): 화면은 날짜 이동·로그아웃 때 blur()(onFocusCell(null) 불림) 또는 key 변경 + 초점 ref 직접 비우기를 해야 함. 시안대로 넣은 것: autoComplete off, 긴 글자 title, 탭 전체 선택 유지, 업무사항 맨 위로."
+    },
+    {
+      "step": 3,
+      "name": "toolbar",
+      "status": "completed",
+      "summary": "WorklogToolbar.tsx(날짜 줄·저장 상태), 오류 번호 셋은 errors 끝에 더함. 768px 미만은 글자 숨기고 화살표만(aria-label 유지, step3과 다른 점). failed·load-failed 상태 글은 비고 오류 카드가 알림. 끊김 아이콘은 clock."
+    },
+    {
+      "step": 4,
+      "name": "screen",
+      "status": "completed",
+      "summary": "WorklogScreen·useWorklogDay·worklogSession(제어는 worklogSession.ts:15 한 곳)."
+    }
+  ]
+}
