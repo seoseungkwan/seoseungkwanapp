@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "bit-claim-read",
-      "status": "pending"
+      "status": "completed",
+      "summary": "도우미 claim.month: 비트 통계 화면 83·83D·47 표(VendorGridExport, 150초 제한)+12개월 이력·상병 추세·처방/LA 목록(원본 SQL 12개, 시간 제한은 원본 값 240·25·20초)+claim.dates(원본 방문 조건 그대로, OcmComStt 포함). 모양 {version,period,historyRange,trendRange,counts,s83,s83d,s47(한글 칸 이름),history[{v,p,d,c,m}],historyStats,dxTrend,catalog{codes,la}}. 83 필수 칸이 없으면 멈춤(원본보다 엄격), 0건 표는 줄 0개로 넘김(판단은 Worker). 처리기는 BitCommands.Register 안에서 ClaimCommands.Register로 붙임. 남은 일: Program.cs 주석 갱신, claim.dates 메모 조건이 정리 전 글자로 셈(TASK-16에서 맞춤). 윈도우 실행·실제 칸 이름은 Actions·의원 PC 시험에서 확인."
     },
     {
       "step": 2,

@@ -88,6 +88,31 @@ public static class HospitalCheck
         VerifyInstitutionNumber(session, registration.Scope, today, registration.InstitutionCode);
     }
 
+    /// <summary>
+    /// 원본 TreatmentUsage.IdentitySql 확인(RxHistory·ClaimMemoHistory·RxDiagnosisTrend가 자료 전에 돌림): 조회 기간(first~last)에
+    /// 등록 범위의 기관기호가 등록한 것인 줄이 하나 이상이고 다른 기관기호 줄이 없어야 한다. 아니면 E-BIT-HOSPITAL-MISMATCH.
+    /// </summary>
+    public static void VerifyPeriod(IBitDb db, HospitalRegistration registration, DateTime first, DateTime last)
+    {
+        if (registration == null) throw new BitException(BitErrors.NotRegistered);
+        var rows = ReadOnlyGuard.Query(db, Sql.PeriodIdentitySql, Args(
+            ("@scope", registration.Scope), ("@institution", registration.InstitutionCode), ("@firstDay", Day(first)), ("@lastDay", Day(last))), Sql.MetaTimeout);
+        var row = rows.FirstOrDefault();
+        if (row == null || row.Count < 2 || Count(row[0]) < 1 || Count(row[1]) != 0) throw Mismatch();
+    }
+
+    private static long Count(object? value)
+    {
+        try
+        {
+            return value == null ? -1 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+        }
+        catch (Exception e) when (e is FormatException || e is InvalidCastException || e is OverflowException)
+        {
+            return -1;
+        }
+    }
+
     /// <summary>yyyyMMdd 글자(원본 작업일 모양).</summary>
     public static string Day(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 

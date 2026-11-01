@@ -19,16 +19,31 @@ public class ReadOnlyGuardTests
     private static Dictionary<string, object?> Args(params (string Name, object? Value)[] pairs) =>
         pairs.ToDictionary(pair => pair.Name, pair => pair.Value);
 
-    /// <summary>original-sql 사본 이름 → Sql.cs 상수.</summary>
-    private static readonly Dictionary<string, string> Originals = new Dictionary<string, string>(StringComparer.Ordinal)
+    /// <summary>original-sql 사본 이름 → Sql.cs 상수. 한 달 자료 읽기(TASK-8)의 원본 SQL도 여기 함께 둔다.</summary>
+    internal static readonly Dictionary<string, string> Originals = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["user-scope.sql"] = Sql.UserScopeSql,
         ["scopes.sql"] = Sql.ScopesSql,
         ["institution.sql"] = Sql.InstitutionSql,
         ["snapshot-state.sql"] = Sql.SnapshotStateSql,
+        ["period-identity.sql"] = Sql.PeriodIdentitySql,
+        ["user-permissions.sql"] = Sql.UserPermissionsSql,
+        ["history-visits.sql"] = Sql.HistoryVisitSql,
+        ["history-codes.sql"] = Sql.HistoryCodeSql,
+        ["memo-rows.sql"] = Sql.MemoRowsSql,
+        ["trend-count.sql"] = Sql.TrendCountSql,
+        ["trend-totals.sql"] = Sql.TrendTotalsSql,
+        ["trend-pairs.sql"] = Sql.TrendPairsSql,
+        ["trend-visit-rx.sql"] = Sql.TrendVisitRxSql,
+        ["trend-visit-dx.sql"] = Sql.TrendVisitDxSql,
+        ["prescription-catalog.sql"] = Sql.PrescriptionCatalogSql,
+        ["la-catalog.sql"] = Sql.LaCatalogSql,
     };
 
-    private static string OriginalDirectory()
+    /// <summary>원본에 없는 새 SELECT(원본 조건을 그대로 쓴 것). 원본 사본 대신 ClaimSqlTests가 원본 조건과 비교한다.</summary>
+    internal static readonly string[] Derived = { Sql.ClaimDatesSql };
+
+    internal static string OriginalDirectory()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir != null)
@@ -40,9 +55,9 @@ public class ReadOnlyGuardTests
         throw new InvalidOperationException("Bit/original-sql 폴더를 찾지 못했다");
     }
 
-    private static string Squash(string sql) => Regex.Replace(sql, @"\s+", " ").Trim();
+    internal static string Squash(string sql) => Regex.Replace(sql, @"\s+", " ").Trim();
 
-    private static string ReadOriginal(string file) =>
+    internal static string ReadOriginal(string file) =>
         string.Join("\n", File.ReadAllLines(Path.Combine(OriginalDirectory(), file)).Where(line => !line.TrimStart().StartsWith("--", StringComparison.Ordinal)));
 
     [Fact(DisplayName = "AC-005.3 Sql.cs 상수는 원본 SQL 사본(original-sql/*.sql)과 공백만 다르다")]
@@ -52,18 +67,20 @@ public class ReadOnlyGuardTests
         Assert.Equal(Originals.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
         foreach (var pair in Originals) Assert.Equal(Squash(ReadOriginal(pair.Key)), Squash(pair.Value));
 
-        // 허용 목록 = 원본에서 옮긴 상수(뒤 TASK가 더하면 사본도 함께 더한다)
-        Assert.Equal(Originals.Values.OrderBy(sql => sql, StringComparer.Ordinal), Sql.All.OrderBy(sql => sql, StringComparer.Ordinal));
+        // 허용 목록 = 원본에서 옮긴 상수 + 원본 조건을 그대로 쓴 새 SELECT(뒤 TASK가 더하면 사본도 함께 더한다)
+        Assert.Equal(Originals.Values.Concat(Derived).OrderBy(sql => sql, StringComparer.Ordinal), Sql.All.OrderBy(sql => sql, StringComparer.Ordinal));
     }
 
-    [Fact(DisplayName = "AC-005.3 허용 SQL은 모두 SELECT 하나뿐(; · 주석 · 쓰기·실행 낱말 없음)")]
+    [Fact(DisplayName = "AC-005.3 허용 SQL은 모두 SELECT 하나뿐(원본 이력·추세의 WITH … SELECT 포함, ; · 주석 · 쓰기·실행 낱말 없음)")]
     public void AllowedStatementsAreSingleSelects()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_", RegexOptions.IgnoreCase);
         Assert.NotEmpty(Sql.All);
         foreach (var sql in Sql.All)
         {
-            Assert.StartsWith("SELECT ", sql, StringComparison.Ordinal);
+            // WITH는 원본 이력·추세 SQL의 공통 테이블 식(CTE) 뒤 SELECT 하나다. 다른 문장 시작은 없다
+            Assert.True(sql.StartsWith("SELECT ", StringComparison.Ordinal) || sql.StartsWith("WITH ", StringComparison.Ordinal), sql);
+            if (sql.StartsWith("WITH ", StringComparison.Ordinal)) Assert.Contains(") SELECT ", Squash(sql), StringComparison.Ordinal);
             Assert.DoesNotContain(";", sql);
             Assert.DoesNotContain("--", sql);
             Assert.DoesNotContain("/*", sql);

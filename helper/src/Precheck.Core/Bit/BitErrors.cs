@@ -20,6 +20,11 @@ public static class BitErrors
     /// <summary>읽기가 실패했다: SQL 오류·시간 지남, 또는 허용 목록 밖 SQL(AC-005.3).</summary>
     public const string ReadFailed = "E-BIT-READ-FAILED";
 
+    /// <summary>
+    /// 비트 통계 화면(83·83D·47)을 읽지 못했다: 화면 DLL·표·칸 구성이 바뀜, 필요한 칸이 없음, 메뉴·권한 없음, 비트 로그인 취소(AC-008.3·AC-008.4).
+    /// </summary>
+    public const string ExportFailed = "E-BIT-EXPORT-FAILED";
+
     /// <summary>이 PC의 저장 폴더에 읽고 쓰지 못했다(파일 잠김·권한).</summary>
     public const string StoreFailed = "E-STORE-FAILED";
 
