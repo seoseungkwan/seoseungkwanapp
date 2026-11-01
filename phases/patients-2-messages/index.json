@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "message-fill",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/patientMessages/fill.ts(DATE_LINE·dateLine·fillTemplate·defaultSendDate), defaults.ts(TemplateKind·DEFAULT_TEMPLATES injection 0·followup 1·DEFAULT_TEMPLATE_NOTE), scripts/patients/golden/messages.mjs → fixtures/patients/golden/messages-{fill,defaults}.json. <<DATE>>가 있는 줄은 줄 전체가 날짜 줄로 바뀐다. TASK-11·TASK-13에 꼭 전달: 잘못된 날짜·빈 값이면 dateLine·fillTemplate·defaultSendDate가 RangeError를 던진다(0002-11-02처럼 모양은 맞아도 던진다. 크롬 날짜 칸은 연도 첫 자리를 치는 순간 이런 값을 낼 수 있다). 화면은 부르기 전에 isYmd(date)(@/lib/analytics/dates)로 막고 거짓이면 마지막으로 맞았던 날짜를 유지한다(F/U 직접 기간 시작일 포함). 그리면서 던지면 전체 오류 화면으로 가 고치던 글을 잃으므로 jsdom 시험으로 이 막기를 증명한다. 명세와 다른 점(knownDiffs 3건): parse:date(원본은 없는 날을 넘기거나 오늘·1902년·NaN 줄을 찍음, 우리는 RangeError), TPLS:id(jusa·jinryo와 배열 순서 → kind·sort_order), TPLS:note(표에 칸이 없어 DEFAULT_TEMPLATE_NOTE로)"
     },
     {
       "step": 2,
