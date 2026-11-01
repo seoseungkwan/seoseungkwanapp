@@ -37,9 +37,10 @@
 
 - Files:
   - `e2e/worklog.spec.ts`
+  - `docs/ARCHITECTURE.md` (업무일지 흐름 줄·`worklog_days` 표 줄의 '(예정)' 빼기만)
 - Tests:
   - `e2e/worklog.spec.ts`
-- TDD: exempt — 시험만 더한다(대상 코드는 TASK-2~12가 이미 만들었다). 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(커밋하지 않음)
+- TDD: exempt — 시험을 더하고 문서 꼬리표 두 곳만 고친다(대상 코드는 TASK-2~12가 이미 만들었다). 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(커밋하지 않음)
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
@@ -98,4 +99,4 @@ python3 ~/.claude/harness/bin/verify
 - 실제 Supabase에 SQL을 실행하거나 붙여 넣지 마라(대시보드·CLI·REST 모두). 이유: DB 바꾸기는 사용자 OK가 필요하다(design.md 8절)
 - 시험·고정 자료에 실제 의원 숫자(엑셀 10월 값)·환자 이름·차트번호·전화번호를 쓰지 마라. 이유: 가짜 자료만 쓴다(CLAUDE.md). 둥근 가짜 숫자(예: 100000)와 "가상" 글자를 쓴다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
-- `.harness/*`·`CLAUDE.md`·`docs/*`를 고치지 마라. 이유: 이 step의 범위가 아니고, 규칙 문서는 Phase 1 Step 0과 사용자 승인으로만 바뀐다
+- `.harness/*`·`CLAUDE.md`를 고치지 마라. `docs/*`는 위 '수정 범위'의 `docs/ARCHITECTURE.md` 두 줄만 고친다. 이유: 이 step의 범위가 아니고, 규칙 문서는 Phase 1 Step 0과 사용자 승인으로만 바뀐다

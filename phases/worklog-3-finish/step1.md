@@ -50,6 +50,10 @@
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
   - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
+  - `src/components/dashboard/briefing/FeatureIndex.tsx` (윗주석만)
+  - `docs/ARCHITECTURE.md`·`docs/UI_GUIDE.md` (design.md 14절의 줄만)
+  - `phases/worklog-2-screen/index.json`·`phases/worklog-3-finish/index.json`
 - Tests:
   - `src/app/(app)/worklog/page.test.tsx`
   - `src/components/shell/shell.test.tsx`
@@ -59,6 +63,7 @@
   - `src/app/(app)/tabFrame.test.tsx`
   - `src/app/titles.test.tsx`
   - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -134,4 +139,4 @@ python3 ~/.claude/harness/bin/verify
 - 실제 Supabase에 SQL을 실행하거나 붙여 넣지 마라(대시보드·CLI·REST 모두). 이유: DB 바꾸기는 사용자 OK가 필요하다(design.md 8절)
 - 시험·고정 자료에 실제 의원 숫자(엑셀 10월 값)·환자 이름·차트번호·전화번호를 쓰지 마라. 이유: 가짜 자료만 쓴다(CLAUDE.md). 둥근 가짜 숫자(예: 100000)와 "가상" 글자를 쓴다
 - `git commit`·`git push`를 하지 마라. 이유: 커밋은 harness-reviewer PASS 뒤에 execute.py(또는 메인 세션)가 한다
-- `.harness/*`·`CLAUDE.md`·`docs/*`를 고치지 마라. 이유: 이 step의 범위가 아니고, 규칙 문서는 Phase 1 Step 0과 사용자 승인으로만 바뀐다
+- `.harness/*`·`CLAUDE.md`를 고치지 마라. `docs/*`는 위 '수정 범위'의 두 문서에서 design.md 14절이 적은 줄만 고친다. 이유: 이 step의 범위가 아니고, 규칙 문서는 Phase 1 Step 0과 사용자 승인으로만 바뀐다

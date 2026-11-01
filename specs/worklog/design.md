@@ -443,6 +443,9 @@ export function startWorklogSession(): () => void                       // befor
 - `notReadyFeatures.ts`: `/worklog` 항목과 `NotReadyPath`의 `'/worklog'` 빼기
 - `(app)/worklog/page.tsx`: `export const dynamic = 'force-dynamic'`, `metadata = { title: '업무일지' }`, `<WorklogScreen initialToday={todayInKorea()} />`. 병원 id는 넘기지 않는다(옛 업무사항 열쇠용이었다. 저장은 RLS·DB 기본값이 내 병원으로 한다). 승인 확인은 `(app)/layout`이 한다
 - 고칠 시험: `src/app/(app)/notReadyPages.test.tsx`(업무일지 줄 빼기), `src/app/titles.test.tsx`(업무일지를 준비 중 목록 밖 `{ path: '/worklog', title: '업무일지' }`로), `src/components/common/notReadyFeatures.test.ts`, `src/components/dashboard/briefing/features.test.ts`, `src/components/shell/shell.test.tsx`(준비 중 칩·ready 기대), `src/app/(app)/tabFrame.test.tsx`(ready·soon 칸을 나누는 기대가 있으면), `src/components/dashboard/briefing/DashboardHome.test.tsx`(기능 목차 옆 글 `INDEX_SIDE` "12개 가운데 1개는 지금 …"·준비 중 개수·사용 가능 개수 — `FeatureIndex.tsx`는 목록에서 세므로 코드는 그대로, 시험 기대만 바뀐다). 기대 숫자는 손으로 적지 않고 `DASHBOARD_FEATURES`에서 센다(cross-branch C5, AC-012.5). '지금 바로 쓸 수 있어요'(`ReadyNow.tsx`)는 청구만 말해 그대로다
+- `src/app/(app)/dashboard/page.test.tsx`: `INDEX_SIDE`의 손 숫자("12개 가운데 1개는 지금, …")도 `DASHBOARD_FEATURES`에서 센다(AC-012.5, C5). 기능 목차 글자를 고정 문구로 지우고 남은 글자에 숫자가 없는지 보는 시험이라, 이 문구가 틀리면 `npm test`가 깨진다
+- 문서와 주석(코드 동작은 그대로): `docs/ARCHITECTURE.md` — 폴더 줄 셋(`worklogDays.ts`, `lib/worklog/`, `components/worklog/`)의 '(예정)' 빼기, '화면이 아직 없는 탭 10개'를 9개로. 흐름 줄(`[업무일지]`)과 표 줄(`worklog_days`)의 '(예정)'은 실제 DB에 표가 들어간 뒤 TASK-13에서 뺀다(문서 첫머리: '(예정) = 아직 없는 폴더·표'). `docs/UI_GUIDE.md` — '준비 중 10개'·'화면이 아직 없는 10개'·그 목록·'준비 중 10개는 neutral 칩'·기능 목차 '12개 가운데 …'·'나머지 10개'를 업무일지가 빠진 값으로, 탭 이름 줄은 업무일지를 앞쪽 묶음으로 옮겨 합 14개를 지키고, '대시보드·청구·설정만 `true`'와 기능 목차 '설정(`ready`)' 줄에 업무일지를 더한다. `FeatureIndex.tsx` 윗주석의 상태 글자 설명에 업무일지(ready)를 맞춘다
+- `phases/worklog-2-screen/index.json`·`phases/worklog-3-finish/index.json`: 끝난 단계의 `status`·`summary`를 적는다(구현 단계에서 범위 밖으로 막혀 밀린 일)
 - `shell.test.tsx`의 "준비 중 주소 /worklog" 탭 띠 밀기 시험은 경로만 쓰므로 그대로 통과한다. 이름 글자만 '준비 중'이 틀리게 되므로, 그 시험을 고칠 일이 생기면 아직 준비 중인 `/inventory`로 바꾼다(이 TASK에서는 고치지 않아 겹침을 줄인다)
 
 ## 15. E2E (TASK-13, `e2e/worklog.spec.ts`)
@@ -455,6 +458,7 @@ export function startWorklogSession(): () => void                       // befor
 - **막는 모양**: 업무사항에 전화 `010-0000-0001`, 비고에 주민번호 모양 `900101 1234567`, 숫자 칸에 `0200000001 별도`, 항목 이름에 `(02)000-0001`, 그리고 다른 칸(지출 카드)에 보통 값 → 넷은 빨강(`aria-invalid`), 오류 카드 `E-WORKLOG-NOTE-PRIVATE`, 보통 값은 저장됨. `page.on('request')`로 **모든 요청**(Supabase·같은 origin Next/Vercel·그 밖)의 주소와 본문을 모아 이 네 글자가 하나도 없는지 보고, `accounts.client('approved')`로 그 날 줄을 다시 읽어 모든 칸에 없는지 본다(AC-013.2, cross-branch C7). 업무사항에 적은 보통 글은 이제 서버에 있는 것이 맞다(옛 '표식이 서버에 없다' 검사는 없앴다). 요청 머리(headers)·쿠키·`apikey` 값은 모으지 않는다(주소에서도 `apikey`·`access_token` 같은 query는 지우고 본다). 걸린 것은 값 대신 **이름만** 담는다(예: `hits = ['업무사항-전화']` → `expect(hits).toEqual([])`, cross-branch C11)
 - 끝에 `accounts.client('approved')`로 그 날 칸을 모두 null로 둔다(지우기 권한이 없다). 시험 계정은 가짜 병원이다
 - 실제 Supabase에 migration이 들어가야 돈다 → 그 전에는 `blocked`
+- 표가 들어간 뒤 `docs/ARCHITECTURE.md`의 `[업무일지]` 흐름 줄·`worklog_days` 표 줄 '(예정)'을 뺀다(14절)
 
 ## 16. 결정과 트레이드오프
 
@@ -485,23 +489,23 @@ export function startWorklogSession(): () => void                       // befor
 
 ## 18. 다른 작업과 겹치는 파일 (cross-branch C8)
 
-같은 때 계획하는 통계·매출·환자 갈래, 사전점검·AI 리포트 갈래와 같이 고칠 수 있는 파일이다. 모두 **더하기만** 하고 다른 줄은 바꾸지 않는다.
+같은 때 계획하는 통계·매출·환자 갈래, 사전점검·AI 리포트 갈래와 같이 고칠 수 있는 파일이다. 모두 **더하기만** 하고 다른 줄은 바꾸지 않는다. 예외: TASK-12·13이 두 문서에서 업무일지가 준비 중 목록을 벗어나며 틀려지는 손 숫자·목록 줄과 업무일지 '(예정)' 꼬리표만 고친다(14절, 합칠 때 다시 맞춤).
 
 | 파일 | 고치는 것 | TASK | 같이 고치는 갈래 |
 |---|---|---|---|
 | `supabase/migrations/` + 공용 함수 `my_hospital_id()` | 새 파일 `20261101000100_worklog.sql`(·Phase 4 `…0110_worklog_bit_fields.sql`), 공용 함수는 C1 글자 그대로 | 4·15 | 통계·환자·매출·사전점검 |
 | `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | 끝에 `E-WORKLOG-*` 셋(C3, 다른 갈래 번호와 겹치지 않음) | 9 | 사전점검·통계·환자·매출 |
 | `docs/ADR.md` | 끝에 업무일지 ADR 하나. 번호는 그때 마지막 번호 + 1(합칠 때 다시 매김, 시험은 번호를 보지 않는다) | 1 | 모두 |
-| `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` · `plan.md` | 줄·절 더하기, '하지 마라' 세 줄 꼬리표, plan.md 금액 줄 꼬리표 한 줄 | 1 | 모두 |
+| `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` · `plan.md` | 줄·절 더하기, '하지 마라' 세 줄 꼬리표, plan.md 금액 줄 꼬리표 한 줄. 위 예외의 손 숫자·꼬리표 줄(두 문서만) | 1·12·13 | 모두 |
 | `src/app/globals.css` | `:root` 끝에 `--xl-*` 넷(필요하면 인쇄 `@page` 한 블록) | 7·11 | — |
 | `src/app/theme.test.ts` · `src/app/fonts.test.ts` · `src/components/ui/classes.test.ts` | 예외 표 한 줄씩(`APP_DIRS`에 한 줄) | 7 | 화면을 더하는 갈래(`APP_DIRS`) |
 | `src/components/shell/AppShell.tsx` · `shell.test.tsx` | `print:hidden`·`print:p-0` 세 곳, 시험 하나 | 11 | — |
 | `src/components/shell/menu.ts`(`MenuHref` 줄) · `src/components/dashboard/briefing/features.ts` · `src/components/common/notReadyFeatures.ts` (+ 시험) | 업무일지 한 줄씩 | 12 | 통계·환자·매출 |
-| `src/app/(app)/tabFrame.test.tsx` · `notReadyPages.test.tsx` · `src/app/titles.test.tsx` · `src/components/dashboard/briefing/DashboardHome.test.tsx` | 업무일지 줄, 목록에서 세는 기대 | 12 | 통계·환자·매출 |
+| `src/app/(app)/tabFrame.test.tsx` · `notReadyPages.test.tsx` · `src/app/titles.test.tsx` · `src/components/dashboard/briefing/DashboardHome.test.tsx` · `src/app/(app)/dashboard/page.test.tsx` | 업무일지 줄, 목록에서 세는 기대 | 12 | 통계·환자·매출 |
 | `phases/index.json` · `.harness/active` | phase 줄 더하기 · 활성 기능 이름 | — | 모두 |
 | `eslint.config.mjs` · `src/guardrails.test.ts` · 도우미 `Sql.cs`·`Program.cs`·`commands.json` | **고치지 않는다**(Phase 4도 매출 명령을 불러 쓰기만) | — | 통계·환자·매출·사전점검 |
 
-- **합칠 때 숫자 다시 맞춤**: 준비 중 개수(`notReadyFeatures.test.ts`의 `toHaveLength(10)` 같은 기대), `MenuHref` 합집합, 대시보드 `INDEX_SIDE`·준비 중·사용 가능 개수, `phases/index.json` 줄 순서, `.harness/active`. 이 명세의 시험은 목록에서 세게 바꾸지만(C5) 다른 갈래 시험에 남은 손 숫자는 합칠 때 맞춘다
+- **합칠 때 숫자 다시 맞춤**: 준비 중 개수(`notReadyFeatures.test.ts`의 `toHaveLength(10)` 같은 기대), `MenuHref` 합집합, 대시보드 `INDEX_SIDE`·준비 중·사용 가능 개수, 두 문서의 손 숫자, 주석의 '10개'(`NotReadyScreen.tsx`·`ClaimEntry.tsx`, 여러 갈래가 바꾸므로 이 명세에서 고치지 않는다), `phases/index.json` 줄 순서, `.harness/active`. 이 명세의 시험은 목록에서 세게 바꾸지만(C5) 다른 갈래 시험에 남은 손 숫자는 합칠 때 맞춘다
 - 사전점검 갈래가 막아 두라고 한 파일(`src/workers/precheck/jobs.ts`·`helper/…/Commands/*`·`SqlBitDb.cs`·`src/types/precheck.ts`)은 고치지 않는다. `src/lib/errors.ts`만 더하기로 고친다
 - [백업 내려받기](사전점검 TASK-32 `lib/backup/tables.ts`)가 생기면 `worklog_days`를 그 표 목록에 더해야 한다(업무사항도 백업에 들어간다). 이 명세 밖이다(그 TASK가 들어간 뒤 한 줄)
 
