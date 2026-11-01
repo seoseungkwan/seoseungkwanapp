@@ -5,8 +5,9 @@
     {
       "step": 0,
       "name": "stats-tables",
-      "status": "completed",
-      "summary": "supabase/migrations/20261101000200_stats.sql: public.my_hospital_id()(C1 글자 그대로)·stats_months·stats_days·stats_coverage·트리거 stats_keep_complete. hospital_id는 DB 기본값이고 어느 권한에도 없다, delete 없음, stats_coverage는 넣기만, payload 묶음은 (...) is true, 기간은 800일 이하. src/types/db.ts에 StatsSourceColumn·StatsMonthRow·StatsDayRow·StatsCoverageRow. docs/ARCHITECTURE.md 표·흐름 줄. 다음 step이 알 것: 완전한 줄에 덜 덮인 줄을 보내면 오류 없이 옛 줄이 남고 영향 줄은 1이다(트리거, 그때 잘못된 payload도 검사 전에 버려진다). 그래서 saved를 '실제로 바뀐 줄 수'로 읽지 않는다. stats_coverage의 800일 검사는 source='file'에도 걸린다. 실제 Supabase에는 아직 붙이지 않았다(Phase 2 끝에 사용자에게 SQL 편집기 순서를 드리고 허락을 받는다)."
+      "status": "pending",
+      "summary": "supabase/migrations/20261101000200_stats.sql: public.my_hospital_id()(C1 글자 그대로)·stats_months·stats_days·stats_coverage·트리거 stats_keep_complete. hospital_id는 DB 기본값이고 어느 권한에도 없다, delete 없음, stats_coverage는 넣기만, payload 묶음은 (...) is true, 기간은 800일 이하. src/types/db.ts에 StatsSourceColumn·StatsMonthRow·StatsDayRow·StatsCoverageRow. docs/ARCHITECTURE.md 표·흐름 줄. 다음 step이 알 것: 완전한 줄에 덜 덮인 줄을 보내면 오류 없이 옛 줄이 남고 영향 줄은 1이다(트리거, 그때 잘못된 payload도 검사 전에 버려진다). 그래서 saved를 '실제로 바뀐 줄 수'로 읽지 않는다. stats_coverage의 800일 검사는 source='file'에도 걸린다. 실제 Supabase에는 아직 붙이지 않았다(Phase 2 끝에 사용자에게 SQL 편집기 순서를 드리고 허락을 받는다).",
+      "reopened": "2026-11-01 달 줄 크기 한도 변경(AC-506.3)으로 다시 엶. step 파일의 달 줄 크기 절을 한다. 끝나면 summary를 고친다"
     },
     {
       "step": 1,

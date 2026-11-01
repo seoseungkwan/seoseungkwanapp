@@ -1,7 +1,7 @@
 # 작업 분할: 통계 탭 (비트 PC 자료 읽기 · 저장 · 통계 화면)
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
-> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 − 500이다. 이 순서대로 한다. 2026-11-01 다시 여는 차례: TASK-1·3·7은 같은 작업 폴더에서 동시에, TASK-5는 TASK-1·7 뒤(`src/lib/errors.test.ts`가 TASK-7의 시험이고 TASK-5가 이 파일을 RED로 만들기 때문이다. TASK-3과는 동시에 돌아도 된다). 동시에 도는 동안 각 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 이 넷이 끝나기 전에는 TASK-9 이후를 시작하지 않는다. `index.json`이 completed이므로 코디네이터가 직접 부르고 끝나면 각 `summary`를 고친다. 한 TASK = 한 step(`phases/stats-<n>-<slug>/stepM.md`).
+> 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. TASK 번호 = REQ 번호 − 500이다. 이 순서대로 한다. 2026-11-01 다시 여는 차례: TASK-1·3·7은 같은 작업 폴더에서 동시에, TASK-5는 TASK-1·7 뒤(`src/lib/errors.test.ts`가 TASK-7의 시험이고 TASK-5가 이 파일을 RED로 만들기 때문이다. TASK-3과는 동시에 돌아도 된다). 동시에 도는 동안 각 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 이 넷이 끝나기 전에는 TASK-9 이후를 시작하지 않는다. 달 줄 크기 한도 변경(AC-506.3)으로 다시 여는 TASK-6도 이 차례에 같이 돌고(파일이 겹치지 않는다) 끝나기 전에는 TASK-9 이후를 시작하지 않는다. `index.json`이 completed이므로 코디네이터가 직접 부르고 끝나면 각 `summary`를 고친다. 한 TASK = 한 step(`phases/stats-<n>-<slug>/stepM.md`).
 > 승인은 이 명세 하나로 한 번 받는다. Phase가 끝날 때마다 `verify`·쉬운 말 보고(화면 Phase는 PC·휴대폰 화면 캡처). 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)·실제 Supabase에 SQL 붙이기는 사용자가 그때마다 말할 때만 한다.
 > 화면 TASK(13~16)는 TASK-12의 목업을 사용자가 승인한 뒤에만 시작한다(CLAUDE.md). 화면은 b2b 공통 모양 `ds`와 토큰만 쓴다.
 > 도우미 C# 시험 파일 이름은 `*.test.cs`이고, 하네스 TDD 기록은 vitest 감싸개 `helper/tests/*.dotnet.test.ts`(`runDotnet('<시험 이름공간>')`)로 남긴다(청구와 같은 방식).
@@ -71,6 +71,7 @@
 - DB 바꿈 TASK다. 시험은 PGlite에서만 돈다. **실제 Supabase에 붙이는 일은 이 TASK가 하지 않는다** — Phase 2가 끝날 때 사용자에게 SQL 편집기 순서를 채팅으로 드리고 허락을 받는다
 - `docs/ARCHITECTURE.md`는 DB 표의 통계 줄(`months`·`days` → `stats_months`·`stats_days`·`stats_coverage`, 칸·트리거)과 '데이터 흐름'의 통계 줄만 고친다
 - `my_hospital_id()`는 cross-branch C1 글자 그대로다. 다른 브랜치가 먼저 만든 경우를 시험한다
+- TASK-6은 이미 커밋되었다. 2026-11-01 사용자 결정(달 줄 크기 한도 올림, AC-506.3 바뀜)으로 다시 연다: 마이그레이션의 `stats_months` 크기 제약과 `supabase/stats-rls.test.ts`의 크기 시험만 고친다. `stats_days`·`stats_coverage`·트리거·권한·RLS는 고치지 않는다. 실제 Supabase에 아직 붙이지 않았으므로 마이그레이션 파일을 제자리에서 고친다(`phases/stats-2-save/step0.md` 달 줄 크기 절)
 
 ## TASK-7: 통계 숫자 저장·읽기
 - Step: Phase 2 · Step 1 · `stats-storage`
@@ -81,6 +82,7 @@
 - TDD: required
 - 오류 번호 `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`를 더한다(앞말 `E-STATS-`, cross-branch C3). 시험은 가짜 Supabase 클라이언트로(실제 Supabase에 붙지 않는다)
 - TASK-7은 이미 커밋되었다. 2026-11-01 사용자 결정 "남기고 안내 붙이기"·"새로 다시 덮어써"(AC-507.1·507.2 바뀜)로 다시 연다: `readDays`가 `fromFile`도 돌려주고, `saveStats`가 파일의 덜 덮인 달 줄을 보내지 않게 이 TASK의 Files 안(`stats.ts`·`stats.test.ts`)에서 뒤따라 고친다. 오류 번호 파일은 이번에 고치지 않는다(TASK-5가 `E-STATS-CHANGED`를 더하는 파일이다)(`phases/stats-2-save/step1.md` 뒤따라 고치기 절)
+- 같은 날 사용자 결정(달 줄 크기 한도 올림, AC-506.3)으로 `saveStats`의 보내기 전 크기 검사를 표에 맞춘다: 달 1,048,576바이트, 날 65,536바이트(`stats.ts`·`stats.test.ts`, `phases/stats-2-save/step1.md` 달 줄 크기 절)
 
 ## TASK-8: 처방 추세
 - Step: Phase 2 · Step 2 · `rx-trend`
@@ -174,4 +176,4 @@
 - Files: e2e/stats-privacy.spec.ts
 - Tests: e2e/stats-privacy.spec.ts
 - TDD: exempt — 시험만 더한다. 대상 코드(저장·화면·대시보드 읽기)는 TASK-7·14·16에서 단위 시험을 통과했으므로 구현할 것이 없어 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음, auth-live TASK-7~9와 같은 방식). 기다림: 사용자가 TASK-6 SQL을 실제 Supabase에 붙임 + 시험 계정(`.env.local`). 확인: `npm run e2e`
-- Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처 → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간, 둘 다 숫자를 보이는 날의 내원·신환·재진이 매출 탭·업무일지와 같은지(차트번호 없는 접수·중복 내원·첫 내원 못 찾은 환자가 불러오는 기간 어디에든 있으면 통계는 그 불러오기를 통째로 저장하지 않고, 매출·업무일지는 그날만 비운다), 취소된 접수가 있는 날을 비트와 비교, 첫 접수가 취소된 환자의 첫 내원일)
+- Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처 → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간과 저장되는지, 둘 다 숫자를 보이는 날의 내원·신환·재진이 매출 탭·업무일지와 같은지(차트번호 없는 접수·중복 내원·첫 내원 못 찾은 환자가 불러오는 기간 어디에든 있으면 통계는 그 불러오기를 통째로 저장하지 않고, 매출·업무일지는 그날만 비운다), 취소된 접수가 있는 날을 비트와 비교, 첫 접수가 취소된 환자의 첫 내원일, 처방 이름에 NUL 글자나 짝 없는 서로게이트(깨진 유니코드)가 든 처방이 불러오는 기간에 있는지(표가 이 둘을 받지 않는다. 비트 길은 그 불러오기가 통째로 저장되지 않는다. 파일 길은 그 줄이 든 묶음에서 멈춰 앞선 줄만 남고 덮은 기간 줄이 없을 수 있다. 화면에 �로 보이는 글자는 그대로 저장된다. 코드는 고치지 않은 알려진 빈틈이고 검토 요청 글에도 적는다))

@@ -150,11 +150,11 @@ create table public.stats_months (
   payload jsonb not null check ((
     jsonb_typeof(payload) = 'object' and payload->'schemaVersion' = '2'::jsonb
     and payload->'month' = to_jsonb(month) and payload->'partial' = to_jsonb(partial)
-    and octet_length(payload::text) <= 65536) is true),          -- 열쇠가 없어 NULL이면 거부(is true)
+    and octet_length(payload::text) <= 1048576) is true),        -- 열쇠가 없어 NULL이면 거부(is true). 크기는 '결정과 트레이드오프'
   updated_at timestamptz not null default now(),
   primary key (hospital_id, month)
 );
--- stats_days: month 대신 day date, payload->'day' = to_jsonb(day::text)
+-- stats_days: month 대신 day date, payload->'day' = to_jsonb(day::text), 크기는 <= 65536
 create table public.stats_coverage (           -- 불러온(덮은) 기간 한 줄씩, 넣기만
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals(id) on delete cascade,
   from_day date not null, to_day date not null, source text not null check (source in ('bit', 'file')),
@@ -320,6 +320,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - **주·달 `totals`는 일 칸의 합, 두 길 모두(2026-11-01 사용자 결정)**: "한달내 같은사람이 5명 오면 5번온걸로 카운트". stats-core AC-006.1의 `totals` 몫을 AC-501.6이 대신한다. 처방 추세·처방별 숫자는 `rx[]`·`RxVisitSplit`·`buildTrend` 그대로라, 건수의 단위가 `totals`와 달라도 그대로 둔다
 - **파일 길은 남기고 안내를 붙인다(2026-11-01 사용자 결정 "남기고 안내 붙이기")**: 파일은 처방 한 줄씩이고 내원 번호가 없어 처방 없는 접수와 같은 날 두 번째 접수를 볼 수 없다. 그래서 일 칸은 지금 그대로 두고, 읽은 줄에 파일 줄이 있으면 화면에 안내 문장을 보인다(AC-514.7). `latest.source`로는 섞인 기간을 알 수 없어 `readDays`가 `fromFile`을 준다(AC-507.2)
 - **가장 최근 불러오기가 덮어쓴다, 화면은 달 줄을 읽지 않는다(2026-11-01 사용자 결정 "새로 다시 덮어써 오전에한번 오후에 한번할수있으니깨")**: 오전과 오후에 한 번씩 불러올 수 있으므로 출처와 상관없이 가장 최근 불러오기가 그 불러오기가 덮은 날을 바꾼다. 그래서 오후 파일이 오전 비트 숫자를 낮출 수 있고, 위 안내가 그것을 알린다. 트리거는 커밋한 그대로다(완전 → 덜만 막는다). 일 줄은 보낸 날만 바뀌어 안전하다. 달 줄은 한 번 불러온 것만 담아서, 달의 일부만 덮는 파일이면 앞선 숫자를 잃고 나눠 넣은 파일이 합쳐지지 않는다. 그런데 주·달 `totals`는 정의상 일 칸의 합이고(AC-501.6) 12개월 보기는 이미 두 기간의 일 줄을 모두 읽는다(AC-511.5·AC-511.6). 그래서 통계 화면의 달 칸을 일 줄의 합으로 만들면(AC-511.2·AC-511.3) 달 줄이 필요 없고, 나눠 넣은 파일도 합쳐진 덮은 기간으로 맞게 더해진다. 파일의 덜 덮인 달 줄은 저장하지 않는다(AC-507.1): 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다
+- **달 줄 크기 한도는 1MiB(1,048,576바이트), 날 줄은 65,536바이트 그대로(2026-11-01 사용자 결정: 의원 PC에서 재 보기 전에 지금 올린다)**: 달 줄에는 그달 나온 처방이 모두 `followup`과 함께 들고 동네도 든다. 표가 재는 글자(`jsonb::text`)로 처방 한 줄은 코드 5자·이름 25자·종류 3자라고 치면 약 216바이트이고, 검사(`validate.ts`)가 받는 가장 긴 줄(코드·이름·종류 100자)은 약 841바이트(영문 코드)~1,041바이트(한글 코드)다(가짜 값으로 잰 수다. 실제 의원 자료는 재지 않았다). 옛 한도 65,536바이트로는 보통 줄 약 300개, 가장 긴 줄 약 62~77개까지라 처방 코드가 400개를 넘는 달에 막힐 수 있었다. 달 줄 하나만 걸려도 그 불러오기 전체가 저장되지 않으므로(`saveStats`가 보내기 전에 크기를 본다) 여유를 크게 둔다. 1MiB면 보통 줄 약 4,850개(검사의 처방 상한 `MAX_RX` 5,000개에 거의 닿는다), 가장 긴 줄로도 약 1,000~1,250개다. 한도를 없애지 않는 까닭: 로그인한 사용자가 브라우저에서 표에 바로 넣을 수 있으므로 DB가 줄 크기를 막아야 한다(코드보다 DB 제약, plan.md §0). 검사 상한을 모두 채운 값(약 6MB)까지 받을 까닭은 없다. 정상 사용 기준으로 병원마다 달 줄은 1년에 12개라 모두 한도까지 차도 1년에 12MiB다. 날 줄은 `followup`·동네가 없고 그날 나온 처방만 들어 보통 줄 약 179바이트로 약 360개까지 되므로 그대로 둔다. `saveStats`의 보내기 전 크기 검사도 표마다 같은 수를 쓴다. 실제 Supabase가 한 요청에 받는 크기는 확인하지 않았다. 800일 불러오기면 달 줄 27~28개라 처방 400개인 달만 있어도 달 줄 요청이 약 2.2MB이고, 의원 PC 시험 '800일 불러오기'에서 저장되는지 함께 본다
 - **완전한 줄은 덜 덮인 줄로 안 바뀐다(트리거)**: 짧은 파일을 넣어도 이미 완전한 달이 망가지지 않는다(코드보다 DB 제약, plan.md §0)
 - **`hospital_id`는 DB 기본값**: 브라우저가 병원 id를 보낼 길이 없다(권한 열에서 뺌). RLS가 한 번 더 막는다
 - **도우미 자료는 동네를 비운다**: 원본 SQL은 주소를 읽지 않는다. 동네 보기는 범위 밖
