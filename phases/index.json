@@ -39,6 +39,10 @@
     {
       "dir": "worklog-3-finish",
       "status": "pending"
+    },
+    {
+      "dir": "worklog-4-bitfill",
+      "status": "pending"
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 > 형식: `## TASK-n: 제목` 아래에 `- Step:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다. TASK 번호 = REQ 번호 = Phase·Step 순서다.
-> Phase 셋: `worklog-1-data`(TASK-1~5) → `worklog-2-screen`(TASK-6~10) → `worklog-3-finish`(TASK-11~13). Phase가 끝날 때마다 `verify`·쉬운 말 보고, 화면이 생긴 뒤(TASK-12 뒤)에는 화면 캡처(dev-browser, 1440·390)도. 합치기·운영 배포는 사용자가 말할 때만 한다.
+> Phase 넷: `worklog-1-data`(TASK-1~5) → `worklog-2-screen`(TASK-6~10) → `worklog-3-finish`(TASK-11~13) → `worklog-4-bitfill`(TASK-14~18, 비트에서 채우기). Phase 4는 매출 갈래의 `revenue.days`(업무일지 칸 포함)가 main에 들어온 뒤에만 시작한다(TASK-14가 확인하고 없으면 `blocked`). Phase가 끝날 때마다 `verify`·쉬운 말 보고, 화면이 생긴 뒤(TASK-12 뒤)에는 화면 캡처(dev-browser, 1440·390)도. 합치기·운영 배포는 사용자가 말할 때만 한다.
 > 화면 TASK(8·9·10·11·12)는 승인된 시안 `docs/mockups/worklog/index.html`과 design.md '목업과 다른 점'을 따른다.
 > **실제 Supabase에 migration을 붙여 넣는 일은 사용자 OK가 필요하다**(TASK-4는 파일과 PGlite 시험만). TASK-13(E2E)은 그 뒤에만 돈다.
 
@@ -109,3 +109,43 @@
 - Files: e2e/worklog.spec.ts
 - Tests: e2e/worklog.spec.ts
 - TDD: exempt — 시험만 더한다. 대상 코드는 TASK-2~12가 단위 시험으로 이미 만들었으므로 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음). **기다림: 사용자가 TASK-4 migration을 실제 Supabase에 붙여 넣은 뒤**(그 전에는 `blocked`). 시험 날짜 2020-01-02, 끝에 빈 값 저장(design.md 15절). 확인: `npm run e2e`
+
+## TASK-14: 비트 숫자 맞추기 규칙
+- Step: Phase 4 · Step 0 · `bit-contract`
+- AC: AC-014.1~AC-014.7
+- REQ: REQ-014
+- Files: src/lib/worklog/bitFill.ts, src/lib/worklog/bitFill.test.ts
+- Tests: src/lib/worklog/bitFill.test.ts
+- TDD: required — **먼저 확인**: `origin/main`에 `revenue.days`(`src/lib/bridge/commands.json`)와 그 답 타입(`src/types/revenue.ts`)이 있고 이 브랜치에 합쳐져 있는가, 통계의 날짜별 저장 숫자 읽기(`readDays`)가 있는가. 없으면 `blocked`(사유: 매출·통계 갈래 합치기 기다림). 있으면 그 타입을 불러 쓰는 순수 함수(design.md 20-2·20-3절). 매출 답에 현금·카드·계좌·미수 칸이 없으면 그 칸은 `BIT_FILL_KEYS`에서 빠지고 summary에 적는다
+
+## TASK-15: 의원 PC 확인
+- Step: Phase 4 · Step 1 · `clinic-check`
+- AC: AC-015.1~AC-015.2
+- REQ: REQ-015
+- Files: docs/worklog/bit-check.md
+- Tests: 없음(사용자 확인)
+- TDD: exempt — 코드 없이 총괄이 비트 화면과 지난 엑셀을 견준다(design.md 20-6절). Claude는 확인표를 만들어 쉬운 말로 안내하고 답을 기다린다(`blocked`). 숫자는 적지 않는다. 결과가 기본 표와 다르면 TASK-16 전에 명세를 고쳐 다시 승인받는다
+
+## TASK-16: 비트 칸 표시 저장
+- Step: Phase 4 · Step 2 · `bit-column`
+- AC: AC-016.1~AC-016.2
+- REQ: REQ-016
+- Files: supabase/migrations/20261101000100_worklog_bit.sql, supabase/worklog.rls.test.ts
+- Tests: supabase/worklog.rls.test.ts
+- TDD: required — 새 migration 하나(design.md 20-4절). PGlite 시험은 auth → TASK-4 → 이 파일 차례로 실행한다. TASK-4 migration 파일은 고치지 않는다. **실제 Supabase에 붙여 넣지 않는다**(사용자 OK)
+
+## TASK-17: 비트 칸 읽기·저장
+- Step: Phase 4 · Step 3 · `bit-storage`
+- AC: AC-017.1
+- REQ: REQ-017
+- Files: src/lib/storage/worklogDays.ts, src/lib/storage/worklogDays.test.ts, src/types/worklog.ts
+- Tests: src/lib/storage/worklogDays.test.ts
+- TDD: required — 읽기·저장에 `bitFields`를 더한다(design.md 20-4절). TASK-5 시험의 "보내는 칸 21개" 기대는 22개(`bit_fields` 더함)로 바뀐다. 업무사항이 없다는 시험은 그대로
+
+## TASK-18: 화면에서 비트로 채우기
+- Step: Phase 4 · Step 4 · `bit-screen`
+- AC: AC-018.1~AC-018.6
+- REQ: REQ-018
+- Files: src/components/worklog/useBitFill.ts, src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/useWorklogDay.ts, src/components/worklog/WorklogSheet.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/sheet.module.css, src/components/worklog/BitNotice.tsx, src/components/worklog/BitNotice.test.tsx, docs/mockups/worklog/bitfill.html
+- Tests: src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.test.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/BitNotice.test.tsx
+- TDD: required — **먼저 시안**: 비트 표시·'다름' 목록·안내 한 줄을 `docs/mockups/worklog/bitfill.html`(예시 숫자)로 만들어 사용자 OK를 받는다. OK 전에는 `blocked`(CLAUDE.md 화면 규칙). `useBridge`·매출 명령·통계 읽기는 `vi.mock`. 화면에 오는 값이 숫자뿐인지, 저장 호출에 업무사항·환자 글자가 없는지 시험한다(design.md 20-1·20-5절)

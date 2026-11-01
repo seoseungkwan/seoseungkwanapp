@@ -16,6 +16,7 @@
 - 화면은 날짜로 고른 **하루 한 장**이다. 오늘(한국 날짜)로 열리고, 화면을 연 채 자정이 지나면 새 날의 빈 양식으로 바뀐다 **(사용자)**
 - 서버에는 숫자 14칸과 지출 비고 5칸만 간다. 업무사항은 그 PC 브라우저에만 있다 **(사용자)**
 - 합계 넷은 저장하지 않고 그릴 때 계산한다(ARCHITECTURE '저장은 세기 숫자만') **(Claude 판단)**
+- Phase 4: 비트 PC가 연결되면 신환·재진과 수입 칸을 비트 숫자로 저절로 채운다(빈 칸만, 적은 칸은 '다름'으로 알림). 매출·통계 갈래의 읽기를 불러 쓴다 — 20절 **(사용자)**
 
 ## 2. 엑셀 원본에서 확인한 것 (사용자 업로드, 서식·계산식만 읽음)
 
@@ -387,3 +388,76 @@ export function WorklogScreen(props: { hospitalId: string; initialToday: string 
 1. **비고 칸에 환자 이름이나 차트번호를 적으시나요?** (특히 환불 비고) — 기본: 비고는 사용자 결정대로 서버에 저장하고, 전화·주민번호 모양만 막는다. 적으신다면 환불 비고도 업무사항처럼 이 PC에만 두도록 바꾼다(칸 하나를 `WORKLOG_NOTE_KEYS`에서 이 PC 저장소로 옮기는 작은 명세 고침)
 2. **휴대폰에서도 고쳐야 하나요?** — 기본: 보기만(`plan.md` §1 "폰은 보기만"). 업무사항은 폰에 보이지 않는다
 3. **업무사항이 크롬 데이터 삭제나 PC 교체 때 사라져도 괜찮나요?** — 기본: 괜찮다(엑셀 파일을 PC에 두던 것과 같다, 백업 없음). 화면에 "이 PC에만 저장돼요"를 보인다
+
+## 20. 비트에서 채우기 (Phase 4, 2026-11-01 사용자 결정 더함)
+
+### 20-1. 자료 길 (새 읽기 코드를 만들지 않는다)
+```
+[의원 PC] 업무일지 열기 → useBridge() (components/claim/useBridge, 고치지 않음)
+   ready → 금액: bridge.call('revenue.days', {from: 그날, to: 그날})   ← 매출 갈래 명령(숫자 명령, 환자 줄 없음, 답 검사는 lib/bridge)
+         → 신환·재진: 통계 갈래의 날짜별 저장 숫자(readDays, DayPayload.totals). 그날 숫자가 없거나 오늘이면
+                      통계 갈래의 불러오기(stats.rows → 통계 Worker → 저장)를 그날 하루로 부른다
+   → bitFill(순수) → mergeBit(빈 칸만 채움 · 다르면 알림) → 화면 값 → 자동 저장(worklog_days + bit_fields)
+[폰·다른 PC] 저장된 값과 bit_fields 표시만. 비트 읽기 없음
+```
+- **금액은 매출 명령 `revenue.days`** (`specs/revenue/design.md` 4절): 양지바른 일일보고 기준(외래환자경영통계, 회계일 = 수납일 기준 정상수납 + 미수입금). 환불·변경수납·예치금이 있는 날은 금액이 `null` + `unconfirmed`(확인 필요) → 업무일지는 그날 금액 칸을 채우지 않고 "이 날은 비트 금액 확인이 필요해요. 직접 적어 주세요"를 보인다
+- 지금(2026-11-01) 매출 명세의 답은 하루에 `visits`·`total`·`insurer`·`noncovered`·`unconfirmed`뿐이다. 업무일지가 더 필요한 칸(현금·카드·계좌·미수발생·미수입금·지역화폐)은 매출 갈래가 같은 명령 답에 더하기로 했다(조정 담당이 요청함, 원본 `FinanceNormal`이 이미 `dbo.OrcInf`의 현금·카드·계좌를 읽는다). 칸 이름은 main에 들어온 매출 코드를 기준으로 TASK-14에서 맞춘다
+- **신환·재진은 매출 명령에 없다** → 통계 갈래 길을 쓴다(`specs/stats/design.md`: `stats.rows`는 환자 자료 명령이라 조각이 Worker로만 가고, 화면·서버에는 날짜별 숫자(`DayPayload.totals.newPatients`·`returning`)만 온다). 업무일지는 그 저장 숫자를 읽는 함수와 불러오기 입구를 불러 쓰기만 한다. 매출 갈래가 나중에 신환·재진을 명령 답에 넣으면 TASK-14에서 그쪽으로 바꾼다(한 줄 고침)
+- 업무일지 자신은 도우미·명령 표·통로·Worker를 고치지 않는다
+
+### 20-2. 칸 맞춤 표 (기본값 — TASK-15 의원 PC 확인으로 확정)
+
+| 업무일지 칸 | 비트에서 | DB 칸 | 기본 |
+|---|---|---|---|
+| 신환 | 통계 날짜 숫자 `totals.newPatients` | `new_patients` | 채움 |
+| 재진 | 통계 날짜 숫자 `totals.returning` | `return_patients` | 채움 |
+| 총진료비 | `revenue.days` `total`(`OrpTotAmt` 합) | `total_fee` | 채움 |
+| 조합청구액 | `revenue.days` `insurer`(공단부담 `OrpCorAmt` 합) | `claim_amount` | 채움(같은 뜻인지 확인) |
+| 현금수납·카드수납·계좌이체 | `revenue.days`에 더할 현금·카드·계좌 칸 | `cash_in`·`card_in`·`transfer_in` | 채움(매출 갈래가 더한 뒤) |
+| 미수발생·미수입금 | `revenue.days`에 더할 미수 칸(`FinanceReceivable`) | `unpaid_new`·`unpaid_paid` | 채움(매출 갈래가 더한 뒤) |
+| 지역화폐 | 비트 결제 종류에 있으면 | `local_currency_in` | 확인 전에는 안 채움 |
+| 지출 넷·비고·업무사항 | — | — | 손으로만 **(사용자)** |
+
+- 매출 명령에 그 칸이 아직 없으면 그 칸은 비트 값이 없는 것으로 보고 손으로 적는다(지어내지 않는다)
+
+### 20-3. 맞추는 규칙 (`src/lib/worklog/bitFill.ts`, 순수 함수)
+```ts
+export type BitValues = Partial<Record<WorklogNumberKey, number>>       // 값이 있는 칸만
+export const BIT_FILL_KEYS: readonly WorklogNumberKey[]                  // 20-2절 '채움' 칸
+export function bitValuesFrom(revenueDay: RevenueDayRow | null, statsDay: DayPayload | null): { values: BitValues; unconfirmed: boolean }
+export type BitMerge = { day: WorklogDay; bitFields: WorklogNumberKey[]; changed: boolean; differs: Array<{ key: WorklogNumberKey; typed: number; bit: number }> }
+export function mergeBit(day: WorklogDay, bitFields: readonly WorklogNumberKey[], bit: BitValues): BitMerge
+export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberKey[], key: WorklogNumberKey, bit: BitValues): BitMerge   // [비트 숫자로 바꾸기]
+```
+- 빈 칸 → 채우고 비트 칸. 비트 칸 → 비트 값을 따라간다. 손으로 적은 칸 → 그대로 두고 다르면 `differs`. 사람이 칸을 고치면 화면이 그 칸을 `bitFields`에서 뺀다
+- 비트 칸을 사람이 비우면 다음 비트 읽기에서 다시 채워진다(빈 칸 = 아직 안 적음). "0"을 뜻하면 0을 적는다 — 화면 안내에 쓰지 않고 위험에 적는다 **(Claude 판단)**
+
+### 20-4. 비트 칸 표시 (`bit_fields`, TASK-16·17)
+- `alter table public.worklog_days add column bit_fields text[] not null default '{}' check (bit_fields <@ array['new_patients', 'return_patients', 'total_fee', 'claim_amount', 'cash_in', 'card_in', 'transfer_in', 'local_currency_in', 'unpaid_new', 'unpaid_paid']::text[])` + `grant insert (bit_fields), update (bit_fields) … to authenticated`. 새 migration 파일 하나(TASK-4 파일은 고치지 않는다). **실제 Supabase에 붙여 넣는 것은 사용자 OK**
+- 저장해 두는 까닭: 폰·다른 PC에서도 어느 칸이 비트에서 왔는지 보이고, 다시 열어도 '비트 칸은 따라가고 적은 칸은 지킨다'가 이어진다 **(Claude 판단)**
+- `loadWorklogDay`·`saveWorklogDay`가 `bitFields`(열쇠 이름 ↔ DB 칸 이름)를 같이 다룬다. 목록 밖 이름은 버린다
+
+### 20-5. 화면 (TASK-18)
+- 비트 칸: 칸 모서리 작은 표시(엑셀 메모 표시처럼, `--xl-focus` 색) + 양식 아래 한 줄 "표시한 칸은 비트에서 불러온 숫자예요". 인쇄에서는 숨긴다
+- 다른 칸: 양식 아래 목록 "현금수납 · 적은 값 120,000원 · 비트 125,000원 [비트 숫자로 바꾸기]"(`ds.button.secondarySmall`)
+- 안내 한 줄(날짜 줄 아래, 오류 카드 아님): 연결 안 됨 "비트 PC가 연결되지 않아 직접 적어요" · 확장/도우미 없음·옛 판 "비트 PC 연결을 마치면 숫자를 저절로 채워요"(`/claim/setup` 글자 링크) · 읽기 실패 "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요" · 확인 필요 날 "이 날은 환불·예치금이 있어 비트 금액을 확인해야 해요. 금액은 직접 적어 주세요"
+- 다시 읽기: 그날을 열 때, 날짜를 옮길 때, 오늘이면 화면이 보이는 동안 10분마다. 폰 폭(보기만)에서는 읽지 않는다
+- **화면 시안이 먼저다**: 이 표시·목록·안내는 승인된 시안 v2에 없다 → TASK-18 전에 시안을 더해(예시 숫자) 사용자 OK를 받는다(CLAUDE.md 화면 규칙)
+
+### 20-6. 의원 PC 확인 (TASK-15, 코드 없음)
+- 총괄이 지난 10월 엑셀 업무일지 사흘(환불 없는 날 둘 + 환불 있는 날 하나)을 골라 비트 '외래환자경영통계' 같은 날 화면과 칸마다 견준다: 신환·재진, 총진료비, 조합청구액(= 공단부담인지), 현금·카드·계좌, 미수발생·미수입금, 지역화폐가 비트에 따로 있는지
+- 결과는 `docs/worklog/bit-check.md`에 "같음 / 다름(어떻게) / 비트에 없음"으로만 적는다(숫자는 적지 않는다 — 실제 매출 숫자는 저장소에 두지 않는다)
+- 20-2절 기본과 다르면 TASK-16 전에 명세를 고친다
+
+### 20-7. 더하는 위험
+- 매출 갈래가 현금·카드·계좌·미수 칸을 더하지 않거나 이름이 다르면 그 칸은 채우지 못한다 → TASK-14가 main 코드 기준으로 표를 다시 맞춘다
+- 엑셀 업무일지 숫자가 진료일 기준이었다면 수납일 기준인 비트 숫자와 날마다 조금 다를 수 있다 → TASK-15가 확인한다
+- 통계 불러오기(그날 하루)는 환자 줄을 그 PC의 Worker로 읽는다. 업무일지 화면에는 숫자 둘만 온다(통계 갈래 규칙 그대로)
+- 오늘은 진료 중 숫자가 늘어난다: 비트 칸은 10분마다 따라가고, 사람이 고친 칸은 '다름'으로만 알린다
+
+### 20-8. 겹치는 파일 (Phase 4)
+| 파일 | 하는 일 |
+|---|---|
+| `src/components/claim/useBridge.ts` · `src/lib/bridge/*` · `src/types/revenue.ts` · 통계 저장·불러오기 함수 | 불러 쓰기만(고치지 않음) |
+| `src/lib/storage/worklogDays.ts` · `src/types/worklog.ts` · `src/components/worklog/*` | 이 명세 파일(Phase 1~3에서 만든 것)에 `bitFields`·표시 더하기 |
+| `supabase/migrations/` | 새 파일 `20261101000100_worklog_bit.sql` |
