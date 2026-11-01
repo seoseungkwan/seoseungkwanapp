@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "helper-revenue-read",
-      "status": "pending"
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Revenue/{RevenueSql,RevenueDays,RevenueCommands}.cs와 Bit/Sql.cs·Program.cs 등록(더하기만). 문장 11개, 금액 아홉 칸. 명세에 없이 더한 것 셋(명세와 다른 점으로 적음): 코드 금액이 음수이거나 JS 안전 정수를 넘으면 amount null(한 달 전체가 웹 검사에 걸리지 않게), newPatients > visits면 내원 세 칸 null(원본이 멈추는 조건), 하루 금액이 안전 정수를 넘으면 E-BIT-READ-FAILED"
     },
     {
       "step": 3,
