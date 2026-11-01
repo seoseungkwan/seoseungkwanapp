@@ -19,12 +19,12 @@
   11. 원장님 보고용 말투(합니다체 존댓말)로 쓴다.
   12. 화면이 생기기 전에는 **명령 하나**(`npm run ai:try`)로 가짜 숫자 + 진짜 Claude 리포트를 뽑아 읽는다.
 - 앱에서 [AI 분석]을 눌러도 통계 저장이 생기기 전까지는 늘 `E-AI-NO-DATA`(이 달 통계가 없어요)다. 진짜 리포트는 `npm run ai:try`로 본다.
-- 이 명세가 바꾸는 옛 문서: `docs/ARCHITECTURE.md` '상태 관리'의 "월간 보고서는 저장하지 않는다"는 AI 리포트에서 바뀐다(월간 PDF 화면은 그대로 열 때마다 모은다). ADR-007의 "모델은 미정"은 Opus 5.5로 정해진다. TASK-1이 ADR-023으로 적는다.
+- 이 명세가 바꾸는 옛 문서: `docs/ARCHITECTURE.md` '상태 관리'의 "월간 보고서는 저장하지 않는다"는 AI 리포트에서 바뀐다(월간 PDF 화면은 그대로 열 때마다 모은다). ADR-007의 "모델은 미정"은 Opus 5.5로 정해진다. TASK-1이 ADR-024으로 적는다.
 
 ## 요구사항
 
 ### REQ-501: 결정을 문서에 남긴다
-- AC-501.1: Given `docs/ADR.md`, When 읽으면, Then ADR-023이 있고 리포트 달마다 저장·덮어쓰기, 지문, 근거 숫자는 앱이 채움, 모델 `claude-opus-5-5`, 숫자 읽는 자리는 통계 명세 전까지 "자료 없음"을 적는다.
+- AC-501.1: Given `docs/ADR.md`, When 읽으면, Then ADR-024이 있고 리포트 달마다 저장·덮어쓰기, 지문, 근거 숫자는 앱이 채움, 모델 `claude-opus-5-5`, 숫자 읽는 자리는 통계 명세 전까지 "자료 없음"을 적는다.
 - AC-501.2: Given `.env.example`, When 읽으면, Then `ANTHROPIC_API_KEY=` 줄(빈 값)과 "서버 전용, `NEXT_PUBLIC_` 금지" 설명이 있다. Given `.gitignore`, Then `.ai-try/`가 있다.
 
 ### REQ-502: AI 오류 번호

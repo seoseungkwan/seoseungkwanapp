@@ -30,7 +30,7 @@
 - `/src/lib/analytics/dates.ts` (`addMonths`·`isMonth` — 달 계산은 이 파일만. 읽기만)
 - `/src/types/errors.ts` (`ErrorCode`)
 - 이전 step에서 만든 파일:
-  - `docs/ADR.md` ADR-023 (Step 0)
+  - `docs/ADR.md` ADR-024 (Step 0)
   - `src/types/errors.ts`의 `E-AI-BUSY`·`E-AI-LIMIT`·`E-AI-FAILED`·`E-AI-NO-DATA`, `src/lib/errors.ts` 문구 (Step 1)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.

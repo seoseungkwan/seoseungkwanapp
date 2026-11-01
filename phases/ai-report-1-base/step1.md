@@ -18,7 +18,7 @@
 
 - `/CLAUDE.md` ("오류 문구는 `lib/errors.ts` 한 곳('무엇이 · 어떻게 고치나 · 번호')")
 - `/docs/ARCHITECTURE.md`
-- `/docs/ADR.md` — ADR-007, ADR-023(Step 0이 더함)
+- `/docs/ADR.md` — ADR-007, ADR-024(Step 0이 더함)
 - `/plan.md` §8(오류 처리)
 - `/specs/ai-report/requirements.md` — REQ-502
 - `/specs/ai-report/design.md` — '오류 문구' 표
@@ -27,7 +27,7 @@
 - `/src/lib/errors.ts` (`ERRORS`·`errorInfo`·`isErrorCode`)
 - `/src/lib/errors.test.ts` (`ALL_CODES` 목록과 `expectTypeOf` 타입 검사, 기존 문구 규칙 시험)
 - 이전 step에서 만든 파일:
-  - `docs/ADR.md` ADR-023, `docs/ARCHITECTURE.md`, `plan.md`, `.env.example`, `.gitignore` (Step 0, 문서·설정만)
+  - `docs/ADR.md` ADR-024, `docs/ARCHITECTURE.md`, `plan.md`, `.env.example`, `.gitignore` (Step 0, 문서·설정만)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 

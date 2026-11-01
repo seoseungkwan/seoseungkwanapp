@@ -135,7 +135,7 @@ python -I -X utf8 C:/Users/tjtmd/.claude/harness/bin/sdd status ai-report
 1. 위 AC 커맨드를 실행한다.
 2. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가? (서버 코드·SDK는 `src/app/api/ai/`만)
-   - ADR 기술 스택을 벗어나지 않았는가? (Claude API, 모델 `claude-opus-5-5` — ADR-023)
+   - ADR 기술 스택을 벗어나지 않았는가? (Claude API, 모델 `claude-opus-5-5` — ADR-024)
    - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가? (열쇠 값 없음, `NEXT_PUBLIC_` 없음, 로그 없음)
 3. 결과에 따라 `phases/ai-report-3-server-parts/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`

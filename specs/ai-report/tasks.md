@@ -22,16 +22,18 @@
 >
 > 병렬 step을 같은 폴더에서 동시에 돌리면 `npm install`(TASK-10의 `node_modules/`)과 `npm run build`(`.next/`)가 부딪힌다. step마다 따로 worktree를 주거나, `npm install`을 먼저 끝내고 `npm run build`·`npm test`는 한 번에 하나만 돌린다. 이 PC(윈도우)는 `execute.py`를 쓰지 않는다 — 오케스트레이터가 step마다 새 세션을 연다.
 
-## TASK-1: 문서·설정 — ADR-023, 구조 문서, 계획, 열쇠 양식, 무시 목록
+## TASK-1: 문서·설정 — ADR-024, 구조 문서, 계획, 열쇠 양식, 무시 목록
 - REQ: REQ-501
-- Files: docs/ADR.md, docs/ARCHITECTURE.md, plan.md, .env.example, .gitignore
-- TDD: exempt — 문서와 설정 글자만 고친다. 앱 코드가 없다.
-- 확인: docs/ADR.md에 ADR-023, .env.example에 ANTHROPIC_API_KEY 줄, .gitignore에 .ai-try/ 줄이 있는지 찾아본다.
+- Files: docs/ADR.md, docs/ARCHITECTURE.md, plan.md, .env.example, .gitignore, e2e/lib/env.test.ts
+- TDD: exempt — 문서와 설정 글자만 고친다. 앱 코드가 없다. `e2e/lib/env.test.ts`는 `.env.example` 값 이름 기대치에 AI 열쇠 하나를 더할 뿐이다.
+- 확인: docs/ADR.md에 ADR-024, .env.example에 ANTHROPIC_API_KEY 줄, .gitignore에 .ai-try/ 줄이 있는지 찾아본다.
 - 할 일:
-  - `docs/ADR.md`: ADR-023(requirements 배경 1·5·6·8과 design '결정과 트레이드오프' 요약). ADR-007 끝에 "모델·저장: ADR-023" 한 줄.
-  - `docs/ARCHITECTURE.md`: DB 표에 `ai_reports`(달별 AI 리포트·지문) 줄, AI 흐름에 저장 단계, '상태 관리'의 월간 보고서 줄을 "AI 리포트는 달마다 저장(ADR-023), 채팅·월간 PDF는 저장하지 않는다"로.
+  - `docs/ADR.md`: ADR-024(requirements 배경 1·5·6·8과 design '결정과 트레이드오프' 요약). ADR-007 끝에 "모델·저장: ADR-024" 한 줄.
+  - `docs/ARCHITECTURE.md`: DB 표에 `ai_reports`(달별 AI 리포트·지문) 줄, AI 흐름에 저장 단계, '상태 관리'의 월간 보고서 줄을 "AI 리포트는 달마다 저장(ADR-024), 채팅·월간 PDF는 저장하지 않는다"로.
   - `plan.md §2-3`: "모델은 구현할 때 정한다" → "모델: Claude Opus 5.5 **(사용자, 2026-11-01)**", 리포트 달마다 저장 **(사용자)** 줄. §5 DB 표에 `ai_reports`.
-  - `.env.example`: 맨 아래 `# AI 리포트(서버 전용). NEXT_PUBLIC_ 금지. 값은 npm run ai:key로 넣는다` + `ANTHROPIC_API_KEY=`.
+  - `plan.md §2-3`의 "리포트 안에서 근거 숫자를 함께 적고 … (프롬프트 규칙만…)" 줄을 ADR-024에 맞춰 "근거 숫자는 앱이 채운다(ADR-024)"로 고친다. 원인 추측은 '추정'이라고 쓴다는 뜻은 남긴다.
+  - `.env.example`: 맨 아래 `# AI 리포트(서버 전용). NEXT_PUBLIC_ 금지. 값은 npm run ai:key로 넣는다` + `ANTHROPIC_API_KEY=`. 첫 줄 "열쇠는 공개 열쇠 둘뿐" 문구를 "브라우저용 공개 열쇠 둘과 서버 전용 AI 열쇠 하나"처럼 사실에 맞게 고친다(service role 키는 여전히 두지 않는다).
+  - `e2e/lib/env.test.ts` 'AC-002.5: E2E 값 이름 10개가 값 없이 있다': 기대치를 `E2E_ENV_NAMES` + `ANTHROPIC_API_KEY`로 바꾼다(값이 빈 칸인지 보는 검사는 그대로). `e2e/lib/env.ts`의 `E2E_ENV_NAMES`는 바꾸지 않는다 — AI 열쇠는 `npm run e2e:env`가 넣는 값이 아니다. 'service role·비밀 열쇠 이름은 없다' 시험도 그대로 통과해야 한다.
   - `.gitignore`: `# npm run ai:try 결과(가짜 숫자 리포트)` + `.ai-try/`.
 
 ## TASK-2: AI 오류 번호 넷

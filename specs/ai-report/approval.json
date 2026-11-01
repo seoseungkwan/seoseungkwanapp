@@ -1,15 +1,16 @@
 {
   "status": "approved",
   "feature": "ai-report",
-  "approved_at": "2026-11-01T05:48:28Z",
+  "approved_at": "2026-11-01T06:13:45Z",
   "approved_via": "user-prompt",
   "session_id": "8257a552-50a8-4a8f-b94c-279d1ce6c4cf",
-  "spec_sha256": "2a50d227d9196531c2f9450bc5bcf70fae7b195391af3b327ea223ab7d511e86",
+  "spec_sha256": "711928c874631ef94f6a9c29618650b1a212f6059c14f17930c2e314b6cb999e",
   "scope": [
     ".env.example",
     ".gitignore",
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
+    "e2e/lib/env.test.ts",
     "fixtures/fake-ai/fakeAi.test.ts",
     "fixtures/fake-ai/groups.json",
     "fixtures/fake-ai/months/2025-10.json",

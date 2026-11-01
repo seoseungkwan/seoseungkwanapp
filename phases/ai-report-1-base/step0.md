@@ -1,6 +1,6 @@
 # Step 0: docs-config
 
-> **TASK-1** 문서·설정 — ADR-023, 구조 문서, 계획, 열쇠 양식, 무시 목록 · **REQ-501** · AC-501.1 ~ AC-501.2
+> **TASK-1** 문서·설정 — ADR-024, 구조 문서, 계획, 열쇠 양식, 무시 목록 · **REQ-501** · AC-501.1 ~ AC-501.2
 > Phase 1 `ai-report-1-base` · Step 0 — `specs/ai-report/tasks.md` 머리말 '할 순서'
 > 명세 `specs/ai-report/`는 사용자가 승인한 뒤에만 이 step을 돌린다. 이 step은 TASK-1 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 이 phase는 차례로 돈다(Step 0 → 1 → 2).
@@ -9,7 +9,7 @@
 
 전체 문장은 `/specs/ai-report/requirements.md`의 REQ-501에 있다. 아래는 요약이다. 이 TASK는 TDD 예외(문서·설정 글자만)라 시험 파일이 없고, 아래 'Acceptance Criteria'의 찾기 명령으로 본다.
 
-- **AC-501.1**: `docs/ADR.md`에 ADR-023이 있고 리포트 달마다 저장·덮어쓰기, 지문, 근거 숫자는 앱이 채움, 모델 `claude-opus-5-5`, 숫자 읽는 자리는 통계 명세 전까지 "자료 없음"을 적는다
+- **AC-501.1**: `docs/ADR.md`에 ADR-024이 있고 리포트 달마다 저장·덮어쓰기, 지문, 근거 숫자는 앱이 채움, 모델 `claude-opus-5-5`, 숫자 읽는 자리는 통계 명세 전까지 "자료 없음"을 적는다
 - **AC-501.2**: `.env.example`에 `ANTHROPIC_API_KEY=` 줄(빈 값)과 "서버 전용, `NEXT_PUBLIC_` 금지" 설명이 있다. `.gitignore`에 `.ai-try/`가 있다
 
 ## 읽어야 할 파일
@@ -37,7 +37,8 @@
   - `plan.md`
   - `.env.example`
   - `.gitignore`
-- Tests: 없음
+  - `e2e/lib/env.test.ts` (기존 시험의 `.env.example` 값 이름 기대치만)
+- Tests: 없음(새 시험 없음. `e2e/lib/env.test.ts`는 기대치 한 줄만 고친다)
 - TDD: exempt — 문서와 설정 글자만 고친다. 앱 코드가 없다
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -51,7 +52,7 @@
 tasks.md TASK-1 '할 일'을 그대로 한다.
 
 ### 1. `docs/ADR.md`
-- 맨 끝에 `### ADR-023: …`을 더한다. 제목 예: `### ADR-023: AI 월간 리포트는 달마다 저장하고, 근거 숫자는 앱이 채운다 (모델 Claude Opus 5.5)`
+- 맨 끝에 `### ADR-024: …`을 더한다. 제목 예: `### ADR-024: AI 월간 리포트는 달마다 저장하고, 근거 숫자는 앱이 채운다 (모델 Claude Opus 5.5)`
 - **결정**에 들어갈 것(requirements 배경 1·5·6·8):
   - 리포트는 병원·달마다 하나 저장한다(`ai_reports`). 다시 분석하면 그 달 리포트를 덮어쓴다(옛 판은 남기지 않는다)
   - 만들 때 쓴 숫자의 지문(SHA-256, 소문자 16진수 64자)을 함께 저장해 숫자가 바뀌었는지 화면이 알 수 있게 한다
@@ -61,17 +62,18 @@ tasks.md TASK-1 '할 일'을 그대로 한다.
   - 쓰기는 DB 함수 둘(`save_ai_report`·`add_ai_usage`)로만, service role 키 없음
 - **이유**·**트레이드오프**: design.md '결정과 트레이드오프'를 짧게(숫자 오기 없음 ↔ 문장에 숫자 못 씀, 저장으로 다시 볼 때 비용 없음 ↔ 옛 판 없음, 사용자 세션으로 쓰므로 자기 병원 자료는 꾸밀 수 있음 — 실제 비용 한도는 Anthropic 콘솔)
 - **바꾸는 것**: ARCHITECTURE '상태 관리'의 "월간 보고서는 저장하지 않는다"(AI 리포트만 바뀜, 월간 PDF는 그대로), ADR-007의 "모델은 미정"
-- ADR-007 끝에 한 줄: `모델·저장: ADR-023`
+- ADR-007 끝에 한 줄: `모델·저장: ADR-024`
 
 ### 2. `docs/ARCHITECTURE.md`
 - DB 표에 `ai_reports` 줄(달별 AI 리포트·지문)
 - AI 흐름 줄에 저장 단계(`… → Claude API → 답 검사 → ai_reports 저장 → ai_usage 기록 → 화면(글자로만)`처럼)
-- '상태 관리'의 월간 보고서 줄 → "AI 리포트는 달마다 저장(ADR-023), 채팅·월간 PDF는 저장하지 않는다"
+- '상태 관리'의 월간 보고서 줄 → "AI 리포트는 달마다 저장(ADR-024), 채팅·월간 PDF는 저장하지 않는다"
 
 ### 3. `plan.md`
 - §2-3 "모델은 구현할 때 비용을 보고 정한다" → "모델: Claude Opus 5.5 **(사용자, 2026-11-01)**"
 - §2-3에 리포트 달마다 저장(다시 분석하면 덮어씀) **(사용자)** 줄
 - §5 DB 표에 `ai_reports`
+- §2-3의 "리포트 안에서 근거 숫자를 함께 적고, 원인 추측은 '추정'이라고 쓴다(프롬프트 규칙만…) **(Claude 판단)**" 줄을 ADR-024에 맞춘다: 근거 숫자는 앱이 채운다(ADR-024), 원인 추측은 '추정'이라고 쓴다. 표시는 **(사용자, 2026-11-01)**
 
 ### 4. `.env.example`
 - 맨 아래에 빈 줄 하나 뒤:
@@ -79,6 +81,12 @@ tasks.md TASK-1 '할 일'을 그대로 한다.
   # AI 리포트(서버 전용). NEXT_PUBLIC_ 금지. 값은 npm run ai:key로 넣는다
   ANTHROPIC_API_KEY=
   ```
+- 첫 줄의 "열쇠는 공개 열쇠 둘뿐 — service role·비밀 열쇠는 두지 않는다"는 이제 틀린 말이다. "브라우저용 공개 열쇠 둘과 서버 전용 AI 열쇠 하나 — service role 키는 두지 않는다"처럼 사실에 맞게 고친다
+
+### 4-1. `e2e/lib/env.test.ts`
+- `describe('.env.example')`의 'AC-002.5: E2E 값 이름 10개가 값 없이 있다' 기대치를 `[...E2E_ENV_NAMES, 'ANTHROPIC_API_KEY'].sort()`로 바꾼다. 값이 빈 칸인지 보는 줄과 'service role·비밀 열쇠 이름은 없다' 시험은 그대로 둔다
+- `e2e/lib/env.ts`의 `E2E_ENV_NAMES`는 바꾸지 않는다(수정 범위 밖, AI 열쇠는 `npm run e2e:env`가 넣는 값이 아니다)
+- 시험 이름의 '10개' 글자는 '10개 + AI 열쇠'처럼 사실에 맞게 고쳐도 된다. AC-002.5 ID는 남긴다
 
 ### 5. `.gitignore`
 - 맨 아래에 빈 줄 하나 뒤:
@@ -100,15 +108,17 @@ tasks.md TASK-1 '할 일'을 그대로 한다.
 ## Acceptance Criteria
 
 ```bash
-grep -n "### ADR-023" docs/ADR.md
-grep -n "모델·저장: ADR-023" docs/ADR.md
-node -e "const t=require('fs').readFileSync('docs/ADR.md','utf8');const s=t.slice(t.indexOf('### ADR-023'));process.exit(t.includes('### ADR-023')&&['claude-opus-5-5','지문','덮어','자료 없음','앱이'].every(w=>s.includes(w))?0:1)"
+grep -n "### ADR-024" docs/ADR.md
+grep -n "모델·저장: ADR-024" docs/ADR.md
+node -e "const t=require('fs').readFileSync('docs/ADR.md','utf8');const s=t.slice(t.indexOf('### ADR-024'));process.exit(t.includes('### ADR-024')&&['claude-opus-5-5','지문','덮어','자료 없음','앱이'].every(w=>s.includes(w))?0:1)"
 grep -n "ai_reports" docs/ARCHITECTURE.md plan.md
 grep -n "AI 리포트는 달마다 저장" docs/ARCHITECTURE.md
 grep -n "Claude Opus 5.5" plan.md
 node -e "const l=require('fs').readFileSync('.env.example','utf8').split(/\r?\n/);process.exit(l.includes('ANTHROPIC_API_KEY=')&&l.some(x=>x.startsWith('#')&&x.includes('서버 전용')&&x.includes('NEXT_PUBLIC_'))?0:1)"
 node -e "const l=require('fs').readFileSync('.gitignore','utf8').split(/\r?\n/);process.exit(l.includes('.ai-try/')?0:1)"
-git status --short   # 바뀐 파일이 위 '수정 범위' 다섯 개뿐인지 본다(phases/ 상태 기록 제외)
+npx vitest run e2e/lib/env.test.ts
+node -e "const t=require('fs').readFileSync('plan.md','utf8');process.exit(t.includes('프롬프트 규칙만')?1:0)"
+git status --short   # 바뀐 파일이 위 '수정 범위' 여섯 개뿐인지 본다(phases/ 상태 기록 제외)
 npm run lint -- --max-warnings=0
 ```
 
@@ -134,7 +144,7 @@ npm run lint -- --max-warnings=0
 
 - `.env.example`·문서에 열쇠 값이나 `sk-ant-`로 시작하는 글자를 쓰지 마라. 이유: 비밀값은 `.env.local`과 서버 환경 변수에만 둔다(CLAUDE.md 보안 규칙)
 - `ANTHROPIC_API_KEY`에 `NEXT_PUBLIC_`를 붙이거나 그런 이름을 안내하지 마라. 이유: `NEXT_PUBLIC_*`는 브라우저 묶음에 들어가 밖으로 나간다
-- ADR-007·ARCHITECTURE의 옛 문장을 통째로 지우지 마라. 이유: 무엇이 언제 바뀌었는지 남아야 한다. 바뀐 것은 ADR-023이 적고 옛 자리는 가리킨다
+- ADR-007·ARCHITECTURE의 옛 문장을 통째로 지우지 마라. 이유: 무엇이 언제 바뀌었는지 남아야 한다. 바뀐 것은 ADR-024이 적고 옛 자리는 가리킨다
 - 앱 코드(`src/**`)·`package.json`·`supabase/**`를 고치지 마라. 이유: 이 TASK는 문서·설정 글자만 다룬다. 코드는 뒤 TASK가 한다
 - 기존 테스트를 깨뜨리지 마라. 이유: 문서 글자를 보는 시험이 있을 수 있다(`npm test` 실패 수가 기준선 46개 그대로여야 한다)
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
