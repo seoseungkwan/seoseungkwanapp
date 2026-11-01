@@ -29,6 +29,7 @@ internal static class Program
             var dispatcher = new Dispatcher(table, log.Write);
             Hello.Register(dispatcher, table);
             BitCommands.Register(dispatcher, HelperServices.Create());
+            HelperStore.Register(dispatcher);
 
             using var input = Console.OpenStandardInput();
             using var output = Console.OpenStandardOutput();

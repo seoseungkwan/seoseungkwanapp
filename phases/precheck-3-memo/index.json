@@ -10,7 +10,8 @@
     {
       "step": 1,
       "name": "helper-store",
-      "status": "pending"
+      "status": "completed",
+      "summary": "도우미 저장소(TASK-15, REQ-015): Precheck.Core/Store(WorkStore·StoreCommands·IStoreFolder)와 Precheck.Helper/Commands/HelperStore.cs. store.load/store.save, 달마다 work-YYYY-MM.dat·contact.dat·settings.dat, DPAPI 암호화, File.Replace+.bak 복구(본 파일 없음+.bak도 복구), 13개월 뒤 정리. 결정: Program.cs에 HelperStore.Register 한 줄 추가(TASK-15 Files 밖이지만 없으면 실제 도우미에서 안 돎); store.*는 registration.dat만 보고 비트 DB는 안 봄(비트 꺼져도 저장됨); drafts/done은 nullable(보낸 칸만 합침, journal 단독 저장용). 남은 일: TASK-17 연결 때 store.save에 WorkLock(AC-017.10)을 걸고 store.load 복구도 잠금 안에 넣기(다른 프로세스 교체 순간 극히 드문 경합, 재현 안 함). 기관기호가 바뀐 재등록은 contact/settings가 영구히 막힘(사용자 결정 대기). [Actions 확인 남음] Precheck.Windows.Tests/Store"
     },
     {
       "step": 2,
