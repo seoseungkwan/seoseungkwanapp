@@ -118,7 +118,7 @@ public static class ClaimMonthPayload
         });
     }
 
-    private static string Write(Action<Utf8JsonWriter> body)
+    internal static string Write(Action<Utf8JsonWriter> body)
     {
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer, Envelope.WriterOptions))
@@ -130,9 +130,9 @@ public static class ClaimMonthPayload
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
-    private static void Text(Utf8JsonWriter writer, string name, string? value) => writer.WriteString(name, ClaimText.Safe(value));
+    internal static void Text(Utf8JsonWriter writer, string name, string? value) => writer.WriteString(name, ClaimText.Safe(value));
 
-    private static void Range(Utf8JsonWriter writer, string name, DateTime from, DateTime to)
+    internal static void Range(Utf8JsonWriter writer, string name, DateTime from, DateTime to)
     {
         writer.WriteStartObject(name);
         Text(writer, "from", ClaimText.Iso(from));

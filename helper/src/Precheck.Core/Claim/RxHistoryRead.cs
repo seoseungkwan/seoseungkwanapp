@@ -60,9 +60,9 @@ public static class RxHistoryRead
     public const int MaximumCodesPerVisit = 120;
     public const int MaximumMemo = 500;
 
-    private static readonly Regex VisitShape = new Regex("^[0-9A-Za-z-]{1,30}$");
-    private static readonly Regex PatientShape = new Regex("^[0-9A-Za-z-]{1,20}$");
-    private static readonly Regex DayShape = new Regex("^[0-9]{8}$");
+    internal static readonly Regex VisitShape = new Regex("^[0-9A-Za-z-]{1,30}$");
+    internal static readonly Regex PatientShape = new Regex("^[0-9A-Za-z-]{1,20}$");
+    internal static readonly Regex DayShape = new Regex("^[0-9]{8}$");
     private static readonly Regex CodeShape = new Regex("^[0-9A-Z][0-9A-Z.-]{0,19}$");
 
     public static RxHistory Read(IBitDb db, string scope, DateTime from, DateTime focus, DateTime last)

@@ -4,6 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows.Forms;
 using Precheck.Core.Bit;
+using Precheck.Core.Input;
 
 namespace Precheck.Windows;
 
@@ -11,22 +12,34 @@ namespace Precheck.Windows;
 /// PC 확인 창(ADR-016, 목업 화면 5 '도우미 PC 확인 창'): 맨 위에 뜨는 윈도우 창. [확인]을 눌러야만 true.
 /// [취소]·창 닫기·Esc·시간 지남이면 false. 기본 단추는 [취소]다(Enter로 실수로 확인되지 않게, 원본 Button2 기본).
 /// 글은 넘겨받은 것만 보인다: 도우미가 비트·묶음에서 만든 글(RegisterPrompt 등). 창 제목은 고정 글자.
-/// TASK-17(입력 확인)도 이 창을 쓴다.
+/// TASK-17(입력 확인)도 이 창을 쓴다: 표준 입력이 닫히면 [취소]처럼 닫힌다(AC-017.9).
 /// </summary>
-public sealed class ConfirmWindow : IConfirmWindow
+public sealed class ConfirmWindow : IConfirmWindow, IInputConfirm
 {
     public const string Title = "청구메모 도우미";
 
-    public bool Show(string text, TimeSpan timeout)
+    private const int CloseCheckMs = 250;
+
+    public bool Show(string text, TimeSpan timeout) => Ask(text, timeout, () => false);
+
+    public bool Ask(string text, TimeSpan timeout, Func<bool> closeRequested)
     {
         if (text == null) throw new ArgumentNullException(nameof(text));
-        if (timeout <= TimeSpan.Zero) return false;
-        return Sta.Run(() => ShowHere(text, timeout));
+        if (closeRequested == null) throw new ArgumentNullException(nameof(closeRequested));
+        if (timeout <= TimeSpan.Zero || closeRequested()) return false;
+        return Sta.Run(() => ShowHere(text, timeout, closeRequested));
     }
 
-    private static bool ShowHere(string text, TimeSpan timeout)
+    private static bool ShowHere(string text, TimeSpan timeout, Func<bool> closeRequested)
     {
         using var form = new ConfirmForm(text);
+        using var closeCheck = new System.Windows.Forms.Timer { Interval = CloseCheckMs };
+        closeCheck.Tick += (sender, e) =>
+        {
+            if (!closeRequested()) return;
+            closeCheck.Stop();
+            form.DialogResult = DialogResult.Cancel;
+        };
         using var timer = new System.Windows.Forms.Timer { Interval = (int)Math.Max(1, Math.Min(int.MaxValue, timeout.TotalMilliseconds)) };
         timer.Tick += (sender, e) =>
         {
@@ -36,6 +49,7 @@ public sealed class ConfirmWindow : IConfirmWindow
         form.Shown += (sender, e) =>
         {
             timer.Start();
+            closeCheck.Start();
             form.Activate();
         };
         return form.ShowDialog() == DialogResult.OK;
