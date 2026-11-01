@@ -42,6 +42,7 @@ class FakeObserver {
 const renderWithTarget = () =>
   render(
     <>
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- 시험에서 위 단추 자리만 흉내 낸다. 모든 주소를 받는 (app)/[...rest] 때문에 규칙이 모든 주소를 페이지로 본다 */}
       <a id={TARGET} href="/claim/setup">
         위 단추
       </a>

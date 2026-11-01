@@ -20,6 +20,8 @@ import { periodRange, tickLabels, topRx, trendBuckets, weekdayBuckets, type Peri
 // 오늘 하루 분석 · 기간별 흐름 (tab-frame REQ-311, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장', 시안 docs/mockups/dashboard-home/ + 메모 §3·§4).
 // jsdom은 CSS를 계산하지 않는다 → 정해 둔 클래스·글자·짜임을 본다. 차트 부품은 같은 props로 따로 그린 마크업과 견준다.
 // 가짜 DayPayload는 이 시험 파일 안에서만 만든다(AC-312.3)
+// ui-90 REQ-414(design.md '대시보드 (TASK-11)', 시안 docs/mockups/ui-90/app/gen.py dash_body): 연결 전 기간별 흐름은 빈 그래프 틀 대신
+// "연결하면 생기는 것 4가지" 순서 목록 + 안내 줄이고 차트 부품을 그리지 않는다. 보조 글은 small + 최대 폭. 연결 뒤 모양은 그대로다
 
 afterEach(cleanup)
 
@@ -44,6 +46,20 @@ function day(ymd: string, o: DayOptions = {}): DayPayload {
   }
 }
 const data = (days: DayPayload[]): SummarySource => ({ kind: 'data', days })
+// 보조 글(AC-414.6): small(13px) muted + 시안 40em(520px)에 가장 가까운 4px 단위 폭 단계
+const NOTE = 'text-small text-muted max-w-130'
+// 연결 전 기간별 흐름 (AC-414.4, 시안 gains 글자 그대로)
+const GAINS_TITLE = '연결하면 생기는 것 4가지'
+const GAINS = [
+  ['환자 수 추이', '신환과 재진을 하루씩 막대로 보여 줘요.'],
+  ['신환 재방문율', '처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.'],
+  ['요일별 환자 수', '요일마다 하루 평균 환자 수예요.'],
+  ['처방 상위', '많이 낸 처방 5가지를 차례로 적어요.'],
+] as const
+const GAINS_NOTE = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
+const TODAY_NOTE = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.'
+// 연결 뒤인데 기간 안 날짜 자료가 없음(오늘 줄만): 그래프 칸은 빈 틀 + "자료 없음"
+const EMPTY_RANGE = data([day(TODAY, { rx: [rx('A1', '물리치료', 3)] })])
 
 // 연결 뒤 가짜 자료: 오늘 끝남(13명) · 지난주 토요일 끝남(10명) · 기간 안 여러 날(덜 끝난 날 하나) · 30일 밖 90일 안 · 90일 밖
 const FULL_DAYS = [
@@ -104,12 +120,13 @@ describe('오늘 하루 분석 — 연결 전', () => {
   it.each([
     ['none', NONE],
     ['data인데 days가 비었음', data([])],
-  ] as const)('AC-311.1: 연결 전(%s) — h2 + "비트 PC 연결 전" 칩, 네 칸 이 순서, 모두 "–" + "연결하면 보여요"', (_, source) => {
+  ] as const)('AC-311.1·AC-414.3: 연결 전(%s) — h2 옆 neutral 칩 "비트 PC 연결 전", 네 칸 이 순서, 모두 "–" + "연결하면 보여요"', (_, source) => {
     draw(source)
     const section = region('오늘 하루 분석')
     expect(within(section).getByRole('heading', { level: 2 }).textContent).toBe('오늘 하루 분석')
     const chip = within(section).getByText('비트 PC 연결 전')
     hasAll(chip, ds.chip.neutral)
+    expect(chip.parentElement).toBe(within(section).getByRole('heading', { level: 2 }).parentElement)
     const cells = kpiCells()
     expect(cells.map((c) => c.querySelector('span')?.textContent)).toEqual(['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다'])
     for (const cell of cells) {
@@ -126,11 +143,13 @@ describe('오늘 하루 분석 — 연결 전', () => {
     })
   })
 
-  it('AC-311.1: 줄 아래 한 줄(caption muted)이 있고, 원장님 보고 문장 빈 줄은 이 섹션에 없다', () => {
+  it('AC-311.1·AC-414.3·AC-414.6: 줄 아래 한 줄(small muted, 최대 폭)이 있고, 원장님 보고 문장 빈 줄은 이 섹션에 없다', () => {
     draw(NONE)
     const section = region('오늘 하루 분석')
-    const note = within(section).getByText('연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.')
-    hasAll(note, 'mt-3 text-caption text-muted')
+    const note = within(section).getByText(TODAY_NOTE)
+    expect(note.tagName).toBe('P')
+    hasAll(note, `mt-3 ${NOTE}`)
+    expect(classesOf(note)).not.toContain('text-caption')
     expect(within(section).queryByText('원장님 보고 문장')).toBeNull()
     expect(section.querySelector('h1')).toBeNull()
   })
@@ -218,16 +237,25 @@ describe('기간별 흐름 — 머리 줄과 기간 단추', () => {
     for (const b of periodButtons()) expect(b.getAttribute('type')).toBe('button')
   })
 
-  it('AC-311.3: 연결 전에도 단추가 눌리고 기간 글자와 환자 수 추이 빈 틀의 날짜 눈금이 바뀐다', async () => {
+  it('AC-311.3·AC-414.4: 연결 전에도 단추가 눌리고 기간 글자가 바뀐다 — 아래 "연결하면 생기는 것" 목록은 그대로다', async () => {
     draw(NONE)
-    expect(emptyTicks()).toEqual(ticksOf(30))
+    const gains = () => region('기간별 흐름').querySelector('ol')!.outerHTML
+    const before = gains()
     await choose('최근 90일')
     expect(pressed()).toEqual(['최근 90일'])
     expect(rangeText()).toBe('8월 2일 – 10월 30일')
-    expect(emptyTicks()).toEqual(ticksOf(90))
     await choose('최근 7일')
     expect(pressed()).toEqual(['최근 7일'])
     expect(rangeText()).toBe('10월 24일 – 10월 30일')
+    expect(gains()).toBe(before)
+  })
+
+  it('AC-311.3: 연결 뒤 기간 안 자료가 없을 때 환자 수 추이 빈 틀의 날짜 눈금이 기간마다 바뀐다', async () => {
+    draw(EMPTY_RANGE)
+    expect(emptyTicks()).toEqual(ticksOf(30))
+    await choose('최근 90일')
+    expect(emptyTicks()).toEqual(ticksOf(90))
+    await choose('최근 7일')
     expect(emptyTicks()).toEqual(['10.24', '10.25', '10.26', '10.27', '10.28', '10.29', '10.30'])
   })
 
@@ -249,9 +277,112 @@ describe('기간별 흐름 — 머리 줄과 기간 단추', () => {
   })
 })
 
-describe('기간별 흐름 — 연결 전 빈 틀', () => {
-  it('AC-311.4: 그래프 넷의 제목(h3)·설명이 이 차례다', () => {
+describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (AC-414.4)', () => {
+  const gainsTitle = () => within(region('기간별 흐름')).getByText(GAINS_TITLE)
+  const gainsList = () => region('기간별 흐름').querySelector('ol') as HTMLOListElement
+
+  it('AC-414.4: 머리 줄(h2 · 기간 글자 · 기간 단추) 아래 "연결하면 생기는 것 4가지"(subtitle 600) → 순서 목록 → 안내 줄 차례', () => {
     draw(NONE)
+    const section = region('기간별 흐름')
+    expect(section.children).toHaveLength(4)
+    const [head, title, list, note] = Array.from(section.children) as HTMLElement[]
+    expect(within(head!).getByRole('heading', { level: 2 }).textContent).toBe('기간별 흐름')
+    expect(within(head!).getByRole('group', { name: '기간' })).toBeTruthy()
+    expect(within(head!).getByText('10월 1일 – 10월 30일')).toBeTruthy()
+    expect(title).toBe(gainsTitle())
+    expect(title!.tagName).toBe('P')
+    hasAll(title!, 'text-subtitle font-semibold text-ink')
+    expect(list).toBe(gainsList())
+    expect(note!.textContent).toBe(GAINS_NOTE)
+    expect(note!.tagName).toBe('P')
+    hasAll(note!, `mt-3 ${NOTE}`)
+    expect(classesOf(note!)).not.toContain('text-caption')
+  })
+
+  it('AC-414.4: 순서 목록(ol, 이름 = "연결하면 생기는 것 4가지") 4줄 — 번호 상자 1~4 · 이름(body 600 ink) · 설명(small ink-2), 시안 gains 글자 그대로', () => {
+    draw(NONE)
+    const list = gainsList()
+    expect(list.getAttribute('aria-labelledby')).toBe(gainsTitle().id)
+    expect(gainsTitle().id).not.toBe('')
+    expect(within(region('기간별 흐름')).getByRole('list', { name: GAINS_TITLE })).toBe(list)
+    const rows = Array.from(list.children) as HTMLElement[]
+    expect(rows.map((li) => li.tagName)).toEqual(['LI', 'LI', 'LI', 'LI'])
+    rows.forEach((li, i) => {
+      const [no, name, desc] = Array.from(li.children) as HTMLElement[]
+      expect(li.children).toHaveLength(3)
+      expect(no!.textContent).toBe(String(i + 1))
+      hasAll(no!, 'grid size-5 shrink-0 place-items-center rounded-control border border-line-strong text-caption font-semibold text-muted')
+      expect(name!.textContent).toBe(GAINS[i]![0])
+      hasAll(name!, 'text-body font-semibold text-ink')
+      expect(desc!.textContent).toBe(GAINS[i]![1])
+      hasAll(desc!, 'text-small text-ink-2')
+    })
+  })
+
+  it('AC-414.4: 768px 이상 4칸 한 줄(위아래 1px line, 칸 사이 1px line 세로선, 첫 칸 왼쪽 0), 768px 미만 쌓기(칸마다 아래 1px line, 설명은 이름 아래로 들여씀)', () => {
+    draw(NONE)
+    const list = gainsList()
+    hasAll(list, 'mt-2 grid list-none border-t border-line md:grid-cols-4 md:border-b')
+    for (const t of classesOf(list)) expect(t, t).not.toMatch(/^grid-cols-/) // 폰은 한 줄에 하나
+    for (const li of Array.from(list.children)) {
+      hasAll(li, 'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 border-b border-line py-3 md:border-b-0 md:border-l md:py-4 md:px-5 md:first:border-l-0 md:first:pl-0')
+      // 설명: 768px 이상 번호 상자 아래 전체 폭(위 4), 768px 미만 이름 칸 아래(위 2)
+      hasAll(li.children[2]!, 'col-span-2 mt-1 max-md:col-span-1 max-md:col-start-2 max-md:mt-0.5')
+    }
+  })
+
+  it('AC-414.4: 빈 그래프 틀·차트 부품이 없다 — 그래프 칸(h3·group)·화면 읽기 표·범례·빈 막대·날짜 눈금·"자료 없음"이 없다', () => {
+    const { container } = draw(NONE)
+    const section = region('기간별 흐름')
+    expect(within(section).queryAllByRole('heading', { level: 3 })).toEqual([])
+    expect(within(section).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['기간'])
+    expect(section.querySelector('table')).toBeNull()
+    expect(section.querySelector('ul')).toBeNull() // ChartLegend
+    expect(section.querySelector('[aria-hidden="true"]')).toBeNull() // 빈 틀·눈금은 꾸밈(aria-hidden)이었다
+    expect(section.querySelector('[style]')).toBeNull()
+    for (const gone of ['비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다', '자료 없음', '7일 안에 다시 옴', '많이 낸 처방 5가지가 차례로 적힙니다', '신환·재진, 하루씩']) {
+      expect(container.textContent, gone).not.toContain(gone)
+    }
+  })
+
+  it.each([7, 30, 90] as const)('AC-414.4·AC-414.7: 연결 전(기간 %i일) 글자에서 고정 글자(기간 글자 · 기간 단추 · "4가지"와 번호 1~4 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다', async (period) => {
+    const { container } = draw(NONE)
+    if (period !== 30) await choose(`최근 ${period}일`)
+    const fixed = [
+      periodRange(TODAY, period).label,
+      '최근 7일',
+      '최근 30일',
+      '최근 90일',
+      GAINS_TITLE,
+      ...GAINS.map(([, desc]) => desc),
+      GAINS_NOTE,
+    ].sort((a, b) => b.length - a.length)
+    // 번호 상자 1~4는 덩어리째 뺀다
+    const numbers = Array.from(gainsList().children).map((li) => li.children[0]!.textContent)
+    expect(numbers).toEqual(['1', '2', '3', '4'])
+    const copy = container.cloneNode(true) as HTMLElement
+    for (const li of Array.from(copy.querySelectorAll('ol > li'))) li.children[0]!.remove()
+    let text = copy.textContent ?? ''
+    for (const s of fixed) {
+      expect(text, s).toContain(s)
+      text = text.split(s).join(' ')
+    }
+    expect(text).not.toMatch(/\d/)
+  })
+
+  it('AC-414.4: 연결 뒤(시험 안 가짜 자료)에는 "연결하면 생기는 것"과 안내 줄이 없고 그래프 넷이 그대로다', () => {
+    draw(data(FULL_DAYS))
+    const section = region('기간별 흐름')
+    expect(within(section).queryByText(GAINS_TITLE)).toBeNull()
+    expect(within(section).queryByText(GAINS_NOTE)).toBeNull()
+    expect(within(section).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위'])
+    expect(section.querySelectorAll('table')).toHaveLength(2)
+  })
+})
+
+describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 모양 그대로)', () => {
+  it('AC-311.4: 그래프 넷의 제목(h3)·설명이 이 차례다', () => {
+    draw(data(FULL_DAYS))
     const section = region('기간별 흐름')
     expect(within(section).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위'])
     const desc = [
@@ -267,17 +398,8 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
     for (const h of within(section).getAllByRole('heading', { level: 3 })) hasAll(h, 'text-subtitle font-semibold')
   })
 
-  it('AC-311.4: 차트 부품(StackedBarChart·RankedBars)을 그리지 않는다 — 화면 읽기 표·순위 목록·세로 눈금 숫자가 없다', () => {
-    draw(NONE)
-    const section = region('기간별 흐름')
-    expect(section.querySelector('table')).toBeNull()
-    expect(section.querySelector('ol[aria-label]')).toBeNull()
-    expect(within(section).queryByText('(명)')).toBeNull()
-    expect(section.querySelector('[style]')).toBeNull()
-  })
-
-  it('AC-311.4: 환자 수 추이 — 범례(ChartLegend 신환 accent · 재진 chart-3), 가로선 다섯(마지막 line-strong, aria-hidden), 가운데 문구, 날짜 눈금', () => {
-    draw(NONE)
+  it('AC-311.4: 기간 안 자료가 없을 때 환자 수 추이 — 범례(ChartLegend 신환 accent · 재진 chart-3), 가로선 다섯(마지막 line-strong, aria-hidden), 가운데 "자료 없음", 날짜 눈금', () => {
+    draw(EMPTY_RANGE)
     const group = chart('환자 수 추이')
     expect(group.querySelector('ul')!.outerHTML).toBe(
       markupOf(
@@ -289,7 +411,7 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
         />,
       ),
     )
-    const message = within(group).getByText('비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다')
+    const message = within(group).getByText('자료 없음')
     expect(message.closest('[aria-hidden="true"]')).toBeNull()
     hasAll(message, 'bg-surface px-3 py-1 text-small text-muted')
     const plot = message.parentElement!.parentElement!
@@ -301,30 +423,17 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
   })
 
   it('AC-311.4: 날짜 눈금은 caption muted 꾸밈(aria-hidden)이고 기간마다 바뀐다', async () => {
-    draw(NONE)
+    draw(EMPTY_RANGE)
     const ticks = tickRow()
     hasAll(ticks, 'flex justify-between text-caption text-muted')
     await choose('최근 90일')
     expect(emptyTicks()).toEqual(['8.2', '8.23', '9.13', '10.4', '10.25'])
   })
 
-  it('AC-311.4·AC-407.2: 신환 재방문율 — 줄 셋(7·14·30일 안에 다시 옴), 값 "–"(muted), 빈 막대 칸(canvas + 1px line, aria-hidden)', () => {
-    draw(NONE)
-    const group = chart('신환 재방문율')
-    const names = ['7일 안에 다시 옴', '14일 안에 다시 옴', '30일 안에 다시 옴']
-    for (const name of names) {
-      const row = within(group).getByText(name).parentElement!
-      hasAll(row, 'border-t border-line py-3')
-      hasAll(within(row).getByText('–'), 'text-muted')
-      const bar = row.querySelector('[aria-hidden="true"]')!
-      hasAll(bar, 'h-2 border border-line bg-canvas')
-      expect(bar.children).toHaveLength(0)
-    }
-  })
-
   it.each([
     ['연결 전', NONE, true],
     ['연결 뒤 · 오늘 줄 없음', data([day('2026-10-30'), day('2026-10-24')]), true],
+    ['연결 뒤 · 기간 안 자료 없음', EMPTY_RANGE, true],
     ['연결 뒤 · 자료 다 있음', data(FULL_DAYS), false],
   ] as const)('AC-407.2: %s — 분석의 "–"(KPI·재방문율·처방 상위 빈 줄)는 모두 글자색 muted이고 faint 글자가 없다', (_, source, hasDash) => {
     const { container } = draw(source)
@@ -334,8 +443,8 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
     expect(allClasses(container).filter((t) => /(?:^|:)text-faint(?:\/\d+)?$/.test(t))).toEqual([])
   })
 
-  it('AC-311.4: 요일별 환자 수 — 빈 막대 칸 7개와 "월 화 수 목 금 토 일"(aria-hidden, 150px · 폰 110px)', () => {
-    draw(NONE)
+  it('AC-311.4: 기간 안 자료가 없을 때 요일별 환자 수 — 빈 막대 칸 7개와 "월 화 수 목 금 토 일"(aria-hidden, 150px · 폰 110px)', () => {
+    draw(EMPTY_RANGE)
     const frame = chart('요일별 환자 수').querySelector('[aria-hidden="true"]')!
     hasAll(frame, 'grid grid-cols-7 h-37.5 max-md:h-27.5')
     expect(frame.children).toHaveLength(7)
@@ -343,8 +452,8 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
     for (const col of Array.from(frame.children)) hasAll(col.children[0]!, 'border border-line bg-canvas border-b-line-strong')
   })
 
-  it('AC-311.4: 처방 상위 — 빈 줄 다섯(번호 · 빈 칸 · "–", aria-hidden, 36px)', () => {
-    draw(NONE)
+  it('AC-311.4: 기간 안 자료가 없을 때 처방 상위 — 빈 줄 다섯(번호 · 빈 칸 · "–", aria-hidden, 36px)', () => {
+    draw(EMPTY_RANGE)
     const list = chart('처방 상위').querySelector('ol')!
     expect(list.getAttribute('aria-hidden')).toBe('true')
     const rows = Array.from(list.children)
@@ -356,29 +465,6 @@ describe('기간별 흐름 — 연결 전 빈 틀', () => {
       expect(row.children[1]!.textContent).toBe('')
       expect(row.children[2]!.textContent).toBe('–')
     })
-  })
-
-  it.each([7, 30, 90] as const)('AC-311.4: 연결 전 화면 글자에서 고정 글자(기간 %i일의 날짜 눈금 포함)를 빼면 숫자가 없다', async (period) => {
-    const { container } = draw(NONE)
-    if (period !== 30) await choose(`최근 ${period}일`)
-    const range = periodRange(TODAY, period)
-    const fixed = [
-      range.label,
-      '최근 7일',
-      '최근 30일',
-      '최근 90일',
-      '7일 안에 다시 옴',
-      '14일 안에 다시 옴',
-      '30일 안에 다시 옴',
-      '많이 낸 처방 5가지가 차례로 적힙니다',
-      // 번호 줄(1~5)과 날짜 눈금은 덩어리째 뺀다
-      chart('처방 상위').querySelector('ol')!.textContent!,
-      tickRow().textContent!,
-    ].sort((a, b) => b.length - a.length)
-    expect(emptyTicks()).toEqual(ticksOf(period))
-    let text = container.textContent ?? ''
-    for (const s of fixed) text = text.split(s).join(' ')
-    expect(text).not.toMatch(/\d/)
   })
 })
 
@@ -479,7 +565,7 @@ describe('짜임 — 폭별 칸 (AC-311.7)', () => {
   })
 
   it('AC-311.7: 그래프는 1024px 이상 8·4 / 6·6칸(오른쪽은 1px line 세로선 + 24px), 768~1023px 전체 / 반반 / 전체, 768px 미만 세로(사이 32px, 세로선 없음)', () => {
-    draw(NONE)
+    draw(data(FULL_DAYS))
     const grid = chart('환자 수 추이').parentElement!
     hasAll(grid, 'grid gap-y-8 md:grid-cols-2 md:gap-x-6 lg:grid-cols-12')
     hasAll(chart('환자 수 추이'), 'min-w-0 md:col-span-2 lg:col-span-8')

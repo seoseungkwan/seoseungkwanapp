@@ -14,6 +14,8 @@ import { DASHBOARD_FEATURES } from './features'
 // 대시보드 짜임 (tab-frame REQ-306·REQ-316, design.md '대시보드 짜임', 시안 docs/mockups/dashboard-home/ + 메모 notes.md §3·§4·§6·§7).
 // 연결 전(report null)과 연결 뒤(report 있음)를 둘 다 그린다. 연결 뒤의 보고 문장·분석은 갈래 라 몫이라 시험 안 가짜 노드로 자리만 본다.
 // jsdom은 CSS를 계산하지 않는다 → 짜임·글자·주소는 DOM으로, 모양·폭별 칸·반응은 정해 둔 클래스로 본다(보이는 모양은 TASK-10 사진)
+// ui-90 REQ-414(design.md '대시보드 (TASK-11)', 시안 docs/mockups/ui-90/app/gen.py dash_body·FEATS): 연결 전 문구(~요), "연결하면 바로 쓸 수 있어요" 줄,
+// 기능 목차 상태 셋(연결 먼저 · 사용 가능 · 준비 중), 보조 글 small + 최대 폭, data-page-surface 없음, 연결 판정 report != null
 
 const DIR = join(process.cwd(), 'src/components/dashboard/briefing')
 const SOURCES = readdirSync(DIR)
@@ -89,6 +91,19 @@ const sectionNamed = (name: string) => {
 }
 const mainLink = () => screen.getByRole('link', { name: '비트 PC 연결 시작' }) // 아래 단추는 aria-hidden이라 빠진다
 const STEPS = ['크롬 확장 프로그램 설치', '도우미 설치', '연결', '비트 자료 읽기', '요양기관기호 확인']
+// 연결 전 문구 (AC-414.1·414.2·414.5, 시안 dash_body 글자 그대로)
+const H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
+const LEAD = '아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 자리에 오늘의 보고 문장이 올라와요.'
+const TRUST = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 해요.'
+const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
+const ROW_SIDE = '삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요.'
+const DESC = '청구하기 전에 삭감될 만한 처방을 미리 찾아 줘요.'
+const DESC_SUB = '청구 점검은 비트 PC의 크롬에서 열려요.'
+const INDEX_SIDE = '12개 가운데 1개는 지금, 1개는 연결하면 쓸 수 있어요'
+const PC_STEPS_NOTE = '설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
+const PHONE_STEPS_NOTE = '연결은 비트 PC의 크롬에서 해요. 설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
+// 보조 글(AC-414.6): small(13px) muted + 시안 40em(13px × 40 = 520px)에 가장 가까운 4px 단위 폭 단계
+const NOTE = 'text-small text-muted max-w-130'
 const SECTION = 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4'
 const SECTION_HEAD = 'mb-4 flex flex-wrap items-center gap-3'
 const REACT_PRESS = 'transition not-disabled:active:translate-y-px'
@@ -142,21 +157,21 @@ describe('DashboardHome: 날짜 줄 (AC-306.1)', () => {
   })
 })
 
-describe('DashboardHome: 연결 전 큰 문장 (AC-306.2)', () => {
-  it('AC-306.2: 화면의 h1은 큰 문장 하나 — display-m 600(폰 heading-m), text-balance', () => {
+describe('DashboardHome: 연결 전 큰 문장 (AC-306.2·AC-414.1)', () => {
+  it('AC-306.2·AC-414.1: 화면의 h1은 큰 문장 하나 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" — display-m 600(폰 heading-m), text-balance', () => {
     const container = renderBefore()
     const h1s = container.querySelectorAll('h1')
     expect(h1s).toHaveLength(1)
-    expect(textOf(h1s[0])).toBe('비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다')
+    expect(textOf(h1s[0])).toBe(H1)
     hasAll(h1s[0], 'text-display-m font-semibold text-ink text-balance max-md:text-heading-m mt-3 max-md:mt-2')
   })
 
-  it('AC-306.2: 날짜 줄 → h1 → 안내 문장(lead ink-2) → [비트 PC 연결 시작] → 안심 줄 차례', () => {
+  it('AC-306.2·AC-414.1: 날짜 줄 → h1 → 안내 문장(lead ink-2) → [비트 PC 연결 시작] → 안심 줄 차례, 문구는 시안 글자 그대로', () => {
     renderBefore()
     const left = briefLeft()
     const h1 = left.querySelector('h1')
-    const lead = byText(left, '아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 큰 문장 자리에 오늘의 보고 문장이 올라옵니다.')
-    const trust = byText(left, '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 합니다.', 'p')
+    const lead = byText(left, LEAD)
+    const trust = byText(left, TRUST, 'p')
     expectOrder(dateLineEl(), h1, lead, mainLink(), trust)
     expect(lead.tagName.toLowerCase()).toBe('p')
     hasAll(lead, 'mt-4 text-lead text-ink-2')
@@ -175,21 +190,22 @@ describe('DashboardHome: 연결 전 큰 문장 (AC-306.2)', () => {
     hasAll(link.parentElement as HTMLElement, 'mt-6 max-md:mt-5')
   })
 
-  it('AC-306.2: 안심 줄은 caption muted, 앞에 꾸밈 shield 14 positive', () => {
+  it('AC-306.2·AC-414.1·AC-414.6: 안심 줄은 small muted(최대 폭 max-w-130), 앞에 꾸밈 shield 14 positive', () => {
     renderBefore()
-    const trust = byText(briefLeft(), '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 합니다.', 'p')
-    hasAll(trust, 'mt-4 flex gap-1.5 text-caption text-muted')
+    const trust = byText(briefLeft(), TRUST, 'p')
+    hasAll(trust, `mt-4 flex gap-1.5 ${NOTE}`)
+    hasNone(trust, 'text-caption')
     expectIcon(trust.firstElementChild, 'shield', 14)
     hasAll(trust.firstElementChild as Element, 'text-positive shrink-0')
   })
 
-  it('AC-306.2: 짜임 차례 — 브리핑 → 지금 바로 쓸 수 있어요 → analysis 자리(받은 그대로) → 기능 목차 → 휴대폰 아래 단추', () => {
+  it('AC-306.2·AC-414.2: 짜임 차례 — 브리핑 → 연결하면 바로 쓸 수 있어요 → analysis 자리(받은 그대로) → 기능 목차 → 휴대폰 아래 단추', () => {
     const container = renderBefore()
     const root = rootOf(container)
     const analysisNode = screen.getByTestId('analysis')
     expect(textOf(analysisNode)).toBe(ANALYSIS_TEXT)
     expect(analysisNode.parentElement).toBe(root)
-    expectOrder(brief(), sectionNamed('지금 바로 쓸 수 있어요'), analysisNode, sectionNamed('기능 목차'), root.querySelector('.sticky'))
+    expectOrder(brief(), sectionNamed(ROW_TITLE), analysisNode, sectionNamed('기능 목차'), root.querySelector('.sticky'))
     expect(root.lastElementChild).toBe(root.querySelector('.sticky'))
     expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['section', 'section', 'section', 'section', 'div'])
   })
@@ -223,8 +239,9 @@ describe('DashboardHome: 연결 전 연결 순서 (AC-306.3)', () => {
       hasAll(no, 'size-5 shrink-0 border border-line-strong rounded-control text-caption font-semibold text-muted')
       hasAll(li.lastElementChild as Element, 'text-body text-ink-2')
     })
-    const foot = byText(pc, '설정의 비트 PC 연결 화면이 한 단계씩 안내해요.', 'p')
-    hasAll(foot, 'mt-3 text-caption text-muted')
+    const foot = byText(pc, PC_STEPS_NOTE, 'p')
+    hasAll(foot, `mt-3 ${NOTE}`) // AC-414.6: 안내 줄 small + 최대 폭
+    hasNone(foot, 'text-caption')
   })
 
   it('AC-306.3: 단계 칩("지금 할 일"·"대기")과 지금 단계 강조가 없다 — 대시보드는 연결 상태를 판정하지 않는다', () => {
@@ -258,8 +275,9 @@ describe('DashboardHome: 연결 전 연결 순서 (AC-306.3)', () => {
     hasAll(list, 'list-none border-t border-line')
     expect(Array.from(list.querySelectorAll('li')).map((li) => textOf(li.lastElementChild))).toEqual(STEPS)
     expect(Array.from(list.querySelectorAll('li')).map((li) => textOf(li.firstElementChild))).toEqual(['1', '2', '3', '4', '5'])
-    const foot = byText(details, '연결은 비트 PC의 크롬에서 해요. 설정의 비트 PC 연결 화면이 한 단계씩 안내해요.', 'p')
-    hasAll(foot, 'text-caption text-muted')
+    const foot = byText(details, PHONE_STEPS_NOTE, 'p')
+    hasAll(foot, NOTE) // AC-414.6: 안내 줄 small + 최대 폭
+    hasNone(foot, 'text-caption')
   })
 
   it('AC-306.3: 펼친 목록(max-md:hidden)과 접는 칸(md:hidden) 두 벌이고, 나머지 오른쪽 칸에는 다른 것이 없다', () => {
@@ -291,17 +309,9 @@ describe('DashboardHome: 연결 뒤 (AC-306.5)', () => {
     expect(renderAfter(<p data-testid="report">h1 없는 보고</p>).querySelectorAll('h1')).toHaveLength(0)
   })
 
-  it('AC-306.5: 큰 문장 · 안내 문장 · 주 단추 · 안심 줄 · 연결 순서 · 폰 아래 단추 · 전체 폭 지금 바로 줄이 없다', () => {
+  it('AC-306.5·AC-414.2: 큰 문장 · 안내 문장 · 주 단추 · 안심 줄 · 연결 순서 · 폰 아래 단추 · 연결 전 "연결하면 바로 쓸 수 있어요" 줄이 없다', () => {
     const container = renderAfter()
-    for (const text of [
-      '비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다',
-      '아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요.',
-      '비트 PC 연결 시작',
-      '환자 개인정보는 의원 PC 밖으로 나가지 않아요.',
-      '연결 순서',
-      '5단계',
-      '기능 12개 가운데 2개예요.',
-    ])
+    for (const text of [H1, LEAD, '비트 PC 연결 시작', TRUST, '연결 순서', '5단계', ROW_TITLE, ROW_SIDE, '비트 PC 연결부터'])
       noText(container, text)
     expect(container.querySelector('details')).toBeNull()
     expect(container.querySelector('ol')).toBeNull()
@@ -322,12 +332,13 @@ describe('DashboardHome: 연결 뒤 (AC-306.5)', () => {
   })
 })
 
-describe('DashboardHome: 폭별 칸·바탕 표시 (AC-306.6)', () => {
-  it('AC-306.6: 뿌리는 data-page-surface를 달고, 앱 틀 안쪽 여백에 위 8px·아래 16px(폰 위 4px·아래 0)을 더한다', () => {
+describe('DashboardHome: 폭별 칸·바탕 (AC-306.6·AC-414.6)', () => {
+  it('AC-306.6·AC-414.6: 뿌리에 data-page-surface가 없고(바탕은 앱 틀이 늘 흰색, ui-90 AC-404.1), 앱 틀 안쪽 여백에 위 8px·아래 16px(폰 위 4px·아래 0)을 더한다', () => {
     forBoth((container) => {
       const root = rootOf(container)
       expect(root.tagName.toLowerCase()).toBe('div')
-      expect(root.hasAttribute('data-page-surface')).toBe(true)
+      expect(root.hasAttribute('data-page-surface')).toBe(false)
+      expect(container.querySelector('[data-page-surface]')).toBeNull()
       expect(classesOf(root).sort()).toEqual(tokens('pt-2 pb-4 max-md:pt-1 max-md:pb-0').sort())
     })
   })
@@ -347,7 +358,7 @@ describe('DashboardHome: 폭별 칸·바탕 표시 (AC-306.6)', () => {
     hasAll(briefRight().children[0], 'max-md:hidden') // 768px 이상은 펼친 목록
     // 큰 문장 최대 15em(display-m 32px = 480px), 안내 문장 최대 32em(lead 16px = 512px)
     hasAll(document.querySelector('h1') as Element, 'max-w-120')
-    hasAll(byText(briefLeft(), '아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 큰 문장 자리에 오늘의 보고 문장이 올라옵니다.'), 'max-w-128')
+    hasAll(byText(briefLeft(), LEAD), 'max-w-128')
   })
 
   it('AC-306.6: 768px 미만은 위에서 아래로 쌓인다 — 격자는 lg:에서만, 연결 전 오른쪽은 위 20px(접는 칸)', () => {
@@ -476,66 +487,67 @@ describe('DashboardHome: 소스·짜임 규칙 (AC-306.8)', () => {
     return [...out].sort()
   }
 
-  it('AC-306.8: 그린 글자의 숫자는 날짜 줄 · "5단계"와 번호 1~5 · 기능 수 글뿐이다(연결 전)', () => {
+  it('AC-306.8·AC-414.7: 그린 글자의 숫자는 날짜 줄 · "5단계"와 번호 1~5 · 기능 수 글뿐이다(연결 전)', () => {
     const container = renderBefore()
-    expect(digitTexts(container)).toEqual(
-      [
-        '10월 31일 토요일',
-        '5단계',
-        '연결 순서 5단계',
-        '1',
-        '2',
-        '3',
-        '4',
-        '5',
-        '기능 12개 가운데 2개예요. 다른 하나는 위의 비트 PC 연결이에요.',
-        '12개 가운데 2개를 지금 쓸 수 있어요',
-      ].sort(),
-    )
+    expect(digitTexts(container)).toEqual(['10월 31일 토요일', '5단계', '연결 순서 5단계', '1', '2', '3', '4', '5', INDEX_SIDE].sort())
   })
 
-  it('AC-306.8: 연결 뒤에도 그린 숫자는 날짜 줄 · 기능 수 글뿐이다(가짜 report·analysis에는 숫자가 없다)', () => {
+  it('AC-306.8·AC-414.7: 연결 뒤에도 그린 숫자는 날짜 줄 · 기능 수 글뿐이다(가짜 report·analysis에는 숫자가 없다)', () => {
     const container = renderAfter()
-    expect(digitTexts(container)).toEqual(['10월 31일 토요일', '12개 가운데 2개를 지금 쓸 수 있어요'].sort())
+    expect(digitTexts(container)).toEqual(['10월 31일 토요일', INDEX_SIDE].sort())
   })
 })
 
-describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 전 한 줄 (AC-316.1)', () => {
-  it('AC-316.1: 브리핑 다음 섹션 — h2 "지금 바로 쓸 수 있어요" + 옆 글(small muted), 섹션 나눔', () => {
+describe('DashboardHome: 연결하면 바로 쓸 수 있어요 — 연결 전 한 줄 (AC-316.1·AC-414.2)', () => {
+  it('AC-316.1·AC-414.2: 브리핑 다음 섹션 — h2 "연결하면 바로 쓸 수 있어요" + 옆 글 "삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요."(small muted, 최대 폭), 섹션 나눔', () => {
     renderBefore()
-    const section = sectionNamed('지금 바로 쓸 수 있어요')
+    const section = sectionNamed(ROW_TITLE)
     expect(section.previousElementSibling).toBe(brief())
     hasAll(section, SECTION)
     const h2 = within(section).getByRole('heading', { level: 2 })
     hasAll(h2, 'text-title font-semibold text-ink')
     const head = h2.parentElement as HTMLElement
     hasAll(head, SECTION_HEAD)
-    hasAll(byText(head, '기능 12개 가운데 2개예요. 다른 하나는 위의 비트 PC 연결이에요.'), 'text-small text-muted')
+    hasAll(byText(head, ROW_SIDE), NOTE)
+    // 옛 h2·옆 글(기능 수)은 없다
+    expect(screen.queryByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' })).toBeNull()
+    noText(section, '기능 12개')
   })
 
-  it('AC-316.1: 줄 하나(위아래 1px line) — 이름 칸 "청구 탭"·"삭감 예방 사전점검", 설명 두 줄, [사전점검 열기]', () => {
+  it('AC-316.1·AC-414.2: 줄 하나(위아래 1px line) — "청구 탭"·"삭감 예방 사전점검", 설명 두 줄(둘째 줄 "…크롬에서 열려요."), [비트 PC 연결부터](/claim/setup)', () => {
     renderBefore()
-    const section = sectionNamed('지금 바로 쓸 수 있어요')
+    const section = sectionNamed(ROW_TITLE)
     expect(section.children).toHaveLength(2)
     const row = section.children[1] as HTMLElement
     hasAll(row, 'border-y border-line py-4 max-md:pt-3')
     expect(row.children).toHaveLength(3)
     const [name, desc, action] = Array.from(row.children) as HTMLElement[]
-    hasAll(byText(name, '청구 탭'), 'text-caption font-medium text-muted')
+    hasAll(byText(name, '청구 탭'), 'text-small text-muted')
+    hasNone(byText(name, '청구 탭'), 'text-caption')
     hasAll(byText(name, '삭감 예방 사전점검'), 'text-subtitle font-semibold text-ink')
     hasAll(name, 'flex flex-col gap-0.5')
     expectOrder(byText(name, '청구 탭'), byText(name, '삭감 예방 사전점검'))
-    hasAll(byText(desc, '청구하기 전에 삭감될 만한 처방을 미리 찾아 줘요.', 'p'), 'text-body text-ink-2')
-    hasAll(byText(desc, '청구 점검은 비트 PC의 크롬에서 엽니다.', 'p'), 'mt-0.5 text-small text-muted')
-    const link = within(action).getByRole('link', { name: '사전점검 열기' })
-    expect(link.getAttribute('href')).toBe('/claim')
-    hasAll(link, `${ds.button.secondary} group max-md:w-full`)
+    hasAll(byText(desc, DESC, 'p'), 'text-body text-ink-2')
+    hasAll(byText(desc, DESC_SUB, 'p'), 'mt-0.5 text-small text-muted')
+    expectOrder(byText(desc, DESC, 'p'), byText(desc, DESC_SUB, 'p'))
+    // 단추 칸에는 [비트 PC 연결부터] 하나뿐: 보조 단추 + 오른쪽 꾸밈 arrow 16(ink-2), 폰 전체 폭
+    expect(action.querySelectorAll('a, button')).toHaveLength(1)
+    const link = within(action).getByRole('link', { name: '비트 PC 연결부터' })
+    expect(link.getAttribute('href')).toBe('/claim/setup')
+    hasAll(link, `${ds.button.secondary} group no-underline max-md:w-full`)
     expectIcon(link.lastElementChild, 'arrow', 16)
+    hasAll(link.lastElementChild as Element, `${ARROW_MOVE} text-ink-2`)
+  })
+
+  it('AC-414.2: 연결 전에는 [사전점검 열기]·[비트 PC 연결 다시 확인]이 없다(연결 뒤 오른쪽 칸 묶음 몫)', () => {
+    renderBefore()
+    expect(screen.queryByRole('link', { name: '사전점검 열기' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 다시 확인' })).toBeNull()
   })
 
   it('AC-316.1: 1024px 이상 이름 1~3칸 · 설명 4~9칸 · 단추 10~12칸(오른쪽 끝), 768~1023px 1~4 · 5~9 · 10~12, 폰은 쌓이고 단추 전체 폭', () => {
     renderBefore()
-    const row = sectionNamed('지금 바로 쓸 수 있어요').children[1] as HTMLElement
+    const row = sectionNamed(ROW_TITLE).children[1] as HTMLElement
     hasAll(row, 'md:grid md:grid-cols-12 md:items-center md:gap-x-6')
     for (const t of classesOf(row)) expect(t, t).not.toMatch(/^(?:grid|grid-cols-)/) // 폰은 격자가 아니다
     const [name, desc, action] = Array.from(row.children) as HTMLElement[]
@@ -556,14 +568,14 @@ describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른�
     hasAll(byText(head, '청구 탭'), 'text-small font-medium text-muted')
   })
 
-  it('AC-316.2: "삭감 예방 사전점검" → 설명 + 둘째 줄(small muted) → [사전점검 열기](/claim, 보조) + [비트 PC 연결 다시 확인](/claim/setup, 글자 단추)', () => {
+  it('AC-316.2·AC-414.2: "삭감 예방 사전점검" → 설명 + 둘째 줄 "…크롬에서 열려요."(small muted) → [사전점검 열기](/claim, 보조) + [비트 PC 연결 다시 확인](/claim/setup, 글자 단추)', () => {
     renderAfter()
     const right = briefRight()
     const name = byText(right, '삭감 예방 사전점검')
     hasAll(name, 'text-subtitle font-semibold text-ink')
-    const desc = byText(right, '청구하기 전에 삭감될 만한 처방을 미리 찾아 줘요.', 'p')
+    const desc = byText(right, DESC, 'p')
     hasAll(desc, 'text-body text-ink-2')
-    const second = byText(right, '청구 점검은 비트 PC의 크롬에서 엽니다.', 'p')
+    const second = byText(right, DESC_SUB, 'p')
     hasAll(second, 'mt-0.5 text-small text-muted')
     const open = within(right).getByRole('link', { name: '사전점검 열기' })
     const recheck = within(right).getByRole('link', { name: '비트 PC 연결 다시 확인' })
@@ -586,24 +598,69 @@ describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른�
     hasAll(recheck, 'max-md:w-full max-md:justify-center')
   })
 
-  it('AC-316.2: 옆 글("기능 12개 …")은 없다', () => {
+  it('AC-316.2·AC-414.2: 옆 글("기능 12개 …" · "…연결한 뒤 열려요.")과 [비트 PC 연결부터]는 없다', () => {
     renderAfter()
     noText(briefRight(), '기능 12개')
     noText(briefRight(), '다른 하나는')
+    noText(briefRight(), ROW_SIDE)
+    noText(briefRight(), '비트 PC 연결부터')
+  })
+
+  it('AC-316.2: 머리 h2의 id는 useId로 만든다 — 두 벌을 함께 그려도 id가 겹치지 않는다(고정 id 없음)', () => {
+    render(
+      <>
+        <DashboardHome today={TODAY} report={report} />
+        <DashboardHome today={TODAY} report={report} />
+      </>,
+    )
+    const ids = screen.getAllByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' }).map((h) => h.id)
+    expect(ids).toHaveLength(2)
+    for (const id of ids) expect(id).not.toBe('')
+    expect(new Set(ids).size).toBe(2)
+    expect(ids).not.toContain('dashboard-ready-now-side-title')
   })
 })
 
-describe('DashboardHome: 기능 목차 (AC-316.4)', () => {
+describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
   const list = () => screen.getByRole('list', { name: '기능' })
+  // 칸 하나의 상태 글자(이름 줄 오른쪽)
+  const statusOf = (link: Element) => (link.children[0] as HTMLElement).children[1] as HTMLElement
+  const linkOf = (name: string) => {
+    const link = Array.from(list().querySelectorAll('a')).find((a) => textOf(a.querySelector('a > span > span')) === name)
+    expect(link, name).toBeDefined()
+    return link as HTMLElement
+  }
+  // "사용 가능"(accent 500 + 꾸밈 arrow 14) / "연결 먼저"(ink-2 600 + 꾸밈 arrow 14) / "준비 중"(muted, 화살표 없음). 셋 다 small(13px)
+  const expectUsable = (status: HTMLElement) => {
+    expect(textOf(status)).toBe('사용 가능')
+    hasAll(status, 'inline-flex shrink-0 items-center gap-0.5 text-small font-medium text-accent')
+    hasNone(status, 'text-caption text-ink-2 font-semibold')
+    expectIcon(status.lastElementChild, 'arrow', 14)
+    hasAll(status.lastElementChild as Element, ARROW_MOVE)
+  }
+  const expectConnectFirst = (status: HTMLElement) => {
+    expect(textOf(status)).toBe('연결 먼저')
+    hasAll(status, 'inline-flex shrink-0 items-center gap-0.5 text-small font-semibold text-ink-2')
+    hasNone(status, 'text-caption text-accent font-medium')
+    expectIcon(status.lastElementChild, 'arrow', 14)
+    hasAll(status.lastElementChild as Element, ARROW_MOVE)
+  }
+  const expectSoon = (status: HTMLElement) => {
+    expect(textOf(status)).toBe('준비 중')
+    hasAll(status, 'shrink-0 text-small text-muted')
+    hasNone(status, 'text-caption text-faint text-accent text-ink-2')
+    expect(status.querySelector('svg')).toBeNull()
+  }
 
-  it('AC-316.4: 섹션 h2 "기능 목차" + 옆 "12개 가운데 2개를 지금 쓸 수 있어요"(small muted), 섹션 나눔 — 연결 전·뒤 모두', () => {
+  it('AC-316.4·AC-414.5: 섹션 h2 "기능 목차" + 옆 "12개 가운데 1개는 지금, 1개는 연결하면 쓸 수 있어요"(small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
     forBoth(() => {
       const section = sectionNamed('기능 목차')
       hasAll(section, SECTION)
       const h2 = within(section).getByRole('heading', { level: 2 })
       hasAll(h2, 'text-title font-semibold text-ink')
       hasAll(h2.parentElement as HTMLElement, SECTION_HEAD)
-      hasAll(byText(section, '12개 가운데 2개를 지금 쓸 수 있어요'), 'text-small text-muted')
+      hasAll(byText(section, INDEX_SIDE), NOTE)
+      noText(section, '2개를 지금 쓸 수 있어요')
       expect(section.contains(list())).toBe(true)
     })
   })
@@ -634,7 +691,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4)', () => {
     }
   })
 
-  it('AC-316.4·AC-407.2: 1줄 이름(subtitle 600, 사용 가능 ink · 준비 중 ink-2, 올림 accent) + 오른쪽 상태("준비 중"은 caption 500 muted), 2줄 설명(small muted)', () => {
+  it('AC-316.4·AC-414.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · 설정 "사용 가능" · 나머지 10개 "준비 중"', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -645,24 +702,34 @@ describe('DashboardHome: 기능 목차 (AC-316.4)', () => {
       const [name, status] = Array.from(line.children) as HTMLElement[]
       expect(textOf(name)).toBe(feature.name)
       hasAll(name, 'text-subtitle font-semibold transition group-hover:text-accent')
-      if (feature.ready) {
-        hasAll(name, 'text-ink')
-        hasNone(name, 'text-ink-2')
-        expect(textOf(status)).toBe('사용 가능')
-        hasAll(status, 'text-caption font-medium text-accent')
-        expectIcon(status.lastElementChild, 'arrow', 14)
-        hasAll(status.lastElementChild as Element, ARROW_MOVE)
-      } else {
+      if (feature.status === 'soon') {
         hasAll(name, 'text-ink-2')
         hasNone(name, 'text-ink')
-        expect(textOf(status)).toBe('준비 중')
-        hasAll(status, 'text-caption font-medium text-muted')
-        hasNone(status, 'text-faint')
-        expect(status.querySelector('svg')).toBeNull()
+        expectSoon(status)
+      } else {
+        hasAll(name, 'text-ink')
+        hasNone(name, 'text-ink-2')
+        if (feature.status === 'connect-first') expectConnectFirst(status)
+        else expectUsable(status)
       }
       expect(textOf(desc)).toBe(feature.desc)
       hasAll(desc, 'mt-0.5 block text-small text-muted')
     })
+    expectConnectFirst(statusOf(linkOf('청구')))
+    expectUsable(statusOf(linkOf('설정')))
+    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(10)
+    expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(1)
+  })
+
+  it('AC-414.5: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, 설정은 그대로 "사용 가능", 나머지 10개는 그대로 "준비 중"', () => {
+    renderAfter()
+    expectUsable(statusOf(linkOf('청구')))
+    expectUsable(statusOf(linkOf('설정')))
+    const links = Array.from(list().querySelectorAll('a'))
+    expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(0)
+    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(2)
+    for (const link of links.filter((a) => textOf(statusOf(a)) === '준비 중')) expectSoon(statusOf(link))
+    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(10)
   })
 
   it('AC-316.4: 1024px 이상 3열(사이 24px) · 768~1023px 2열 · 768px 미만 1열', () => {
@@ -672,17 +739,53 @@ describe('DashboardHome: 기능 목차 (AC-316.4)', () => {
     for (const t of classesOf(ul)) expect(t, t).not.toMatch(/^grid-cols-/)
   })
 
-  it('AC-316.4: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(12 · 2)', () => {
+  it('AC-414.5: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 12 · 지금 1 · 연결하면 1) — 소스에 숫자를 박지 않는다', () => {
     const source = SOURCES.map((s) => s.text).join('\n')
-    expect(source).not.toMatch(/12개 가운데|기능 12개|가운데 2개/)
-    renderBefore()
+    expect(source).not.toMatch(/12개 가운데|기능 12개|가운데 2개|1개는 지금|1개는 연결하면/)
     expect(DASHBOARD_FEATURES.length).toBe(12)
-    expect(DASHBOARD_FEATURES.filter((f) => f.ready)).toHaveLength(2)
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready')).toHaveLength(1)
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first')).toHaveLength(1)
   })
 
   it('AC-316.4: 연결 뒤에도 같은 목록 — 12칸, 주소·이름 그대로', () => {
     renderAfter()
     const items = within(list()).getAllByRole('listitem')
     expect(items.map((li) => li.querySelector('a')?.getAttribute('href'))).toEqual(DASHBOARD_FEATURES.map((f) => f.href))
+  })
+})
+
+describe('DashboardHome: 보조 글 · 연결 판정 (AC-414.6)', () => {
+  it('AC-414.6: 보조 글(안심 줄 · 연결 순서 안내 줄 둘 · 섹션 옆 글 둘)은 모두 small(13px) muted + 최대 폭 max-w-130, caption이 아니다', () => {
+    renderBefore()
+    for (const text of [TRUST, PC_STEPS_NOTE, PHONE_STEPS_NOTE, ROW_SIDE, INDEX_SIDE]) {
+      const el = byText(document.body, text, 'p')
+      hasAll(el, NOTE)
+      hasNone(el, 'text-caption')
+    }
+  })
+
+  it('AC-414.6: 최대 폭은 대괄호 값 없이 폭 단계로만 준다 — 연결 전·뒤 모두, 소스에도 max-w-[ 가 없다', () => {
+    forBoth((container) => {
+      const all = Array.from(container.querySelectorAll('*')).flatMap(classesOf)
+      expect(all.filter((t) => /(?:^|:)max-w-\[/.test(t))).toEqual([])
+    })
+    for (const { file, text } of SOURCES) expect(text, file).not.toContain('max-w-[')
+  })
+
+  it('AC-414.6: 소스에 data-page-surface가 없다', () => {
+    for (const { file, text } of SOURCES) expect(text, file).not.toContain('data-page-surface')
+  })
+
+  it('AC-414.6: 연결 판정은 report != null — report를 주지 않거나(undefined) null이면 연결 전 모양이다', () => {
+    const { container } = render(<DashboardHome today={TODAY} report={undefined} analysis={analysis} />)
+    expect(textOf(container.querySelector('h1'))).toBe(H1)
+    expect(sectionNamed(ROW_TITLE)).toBeTruthy()
+    expect(container.querySelector('.sticky')).not.toBeNull()
+    expect(container.querySelector('details')).not.toBeNull()
+    expect(screen.queryByRole('link', { name: '사전점검 열기' })).toBeNull()
+    for (const source of SOURCES.filter((s) => s.file === 'DashboardHome.tsx')) {
+      expect(source.text).toMatch(/\breport != null\b/)
+      expect(source.text).not.toMatch(/report !== null/)
+    }
   })
 })
