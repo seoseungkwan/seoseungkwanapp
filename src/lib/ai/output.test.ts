@@ -308,3 +308,247 @@ describe('parseAiReport — 같은 지표·카드 수 (AC-507.5)', () => {
     expect(report?.cards).toHaveLength(MAX_CARDS)
   })
 })
+
+// 글자와 숫자가 든 이름을 가진 가짜 자료(AC-507.6·AC-507.7). 숫자·기호뿐인 동네 '1'·처방 '2-3'도 함께 둔다
+const fakeRx = (code: string, name: string): MonthPayload['rx'][number] => ({ code, name, type: '가짜', patients: 20, newPatients: 5, returning: 15, followup: [20, 0, 0, 0] })
+const fakeGroup = (id: string): MonthPayload['groups'][number] => ({ id, patients: 40, newPatients: 8, returning: 30, followup: [40, 0, 0, 0] })
+
+const NAMED: ReportInput = buildReportInput({
+  selected: month({
+    month: '2026-10',
+    totals: { patients: 120, newPatients: 30, returning: 85, unknown: 5 },
+    rx: [fakeRx('FAKE-B01', 'MRI 3T'), fakeRx('FAKE-B02', '2-3'), fakeRx('FAKE-B03', "X선 '2방향'"), fakeRx('FAKE-B04', 'C.T(2)')],
+    groups: [fakeGroup('g-dosu2'), fakeGroup('g-pt1'), fakeGroup('g-pt12')],
+    regions: [{ name: '역삼1동', patients: 30 }, { name: '1', patients: 10 }],
+  }),
+  prev: null,
+  lastYear: null,
+  groupNames: { 'g-dosu2': '도수치료2', 'g-pt1': '물리치료1', 'g-pt12': '물리치료12' },
+})
+
+const namedMetric = (id: string): ReportMetric => {
+  const found = NAMED.metrics.find((m) => m.id === id)
+  if (found === undefined) throw new Error(`지표가 없음: ${id}`)
+  return found
+}
+
+const namedBasis = (c: Card) => ({ tag: c.tag, text: c.text, metric: c.metric, basis: basisLine(namedMetric(c.metric), NAMED) })
+
+// 숫자 규칙에 안 걸리는 평범한 카드 셋: 시험할 카드가 빠져도 카드 수가 모자라 null이 되지 않게 함께 보낸다
+const PLAIN_CARDS: Card[] = [
+  card('total.newPatients', '신환이 지난달보다 크게 늘었습니다.'),
+  card('total.returning', '재진은 비슷했습니다.', 'watch'),
+  card('total.patients', '전체 환자가 조금 늘었습니다.'),
+]
+
+// 손으로 쓴 지표 하나(label 모양을 시험하려고)
+const handMetric = (id: string, label: string): ReportMetric => ({ id, label, kind: 'count', values: { selected: 1, prev: null, lastYear: null } })
+
+describe('parseAiReport — 이름 안의 숫자 (AC-507.6)', () => {
+  it('AC-507.6 시험 입력의 지표 이름은 정해진 모양이다', () => {
+    expect(namedMetric('group:g-dosu2.patients').label).toBe("처방 그룹 '도수치료2' 환자")
+    expect(namedMetric('group:g-dosu2.newPatients').label).toBe("처방 그룹 '도수치료2' 신환")
+    expect(namedMetric('group:g-dosu2.returning').label).toBe("처방 그룹 '도수치료2' 재진")
+    expect(namedMetric('rx:FAKE-B01').label).toBe("처방 'MRI 3T' 환자")
+    expect(namedMetric('region:역삼1동').label).toBe("동네 '역삼1동' 환자")
+  })
+
+  it('AC-507.6 카드 문장이 그룹·처방·동네 이름을 글자 그대로 쓰면 이름 안의 숫자는 걸리지 않는다', () => {
+    const cards = [
+      card('group:g-dosu2.patients', '도수치료2 환자가 크게 늘었습니다.'),
+      card('rx:FAKE-B01', 'MRI 3T 처방이 조금 늘었습니다.'),
+      card('region:역삼1동', '역삼1동 환자가 조금 줄었습니다.', 'down'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, cards), NAMED)?.cards).toEqual(cards.map(namedBasis))
+  })
+
+  it('AC-507.6 요약도 이름을 글자 그대로 쓰면 통과한다', () => {
+    const summary = '10월은 도수치료2와 역삼1동 환자가 늘었고 MRI 3T 처방은 비슷했습니다.'
+    expect(parseAiReport(answer(summary, PLAIN_CARDS), NAMED)?.summary).toBe(summary)
+  })
+
+  it('AC-507.6 한 이름이 다른 이름을 품어도(물리치료1·물리치료12) 긴 이름부터 지워 둘 다 걸리지 않는다', () => {
+    const cards = [
+      card('group:g-pt12.patients', '물리치료12 환자를 살펴볼 만합니다.', 'watch'),
+      card('group:g-pt1.newPatients', '물리치료1 신환이 줄었습니다.', 'down'),
+      card('group:g-pt1.returning', '물리치료1과 물리치료12를 견주면 재진은 비슷합니다.', 'watch'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, cards), NAMED)?.cards).toEqual(cards.map(namedBasis))
+    const summary = '물리치료12가 물리치료1보다 많습니다.'
+    expect(parseAiReport(answer(summary, PLAIN_CARDS), NAMED)?.summary).toBe(summary)
+  })
+
+  it('AC-507.6 이름 안의 따옴표·정규식 글자도 글자 그대로 찾는다', () => {
+    const cards = [
+      card('rx:FAKE-B03', "X선 '2방향' 처방이 늘었습니다."),
+      card('rx:FAKE-B04', 'C.T(2) 처방이 늘었습니다.'),
+      card('total.patients', '전체 환자가 조금 늘었습니다.'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, cards), NAMED)?.cards.map((c) => c.text)).toEqual(cards.map((c) => c.text))
+  })
+
+  it('AC-507.6 그룹 이름은 신환·재진 지표 label에서도 꺼낸다', () => {
+    const input: ReportInput = {
+      ...INPUT,
+      metrics: [...INPUT.metrics, handMetric('group:g-x.newPatients', "처방 그룹 '재활3' 신환"), handMetric('group:g-y.returning', "처방 그룹 '재활4' 재진")],
+    }
+    const cards = [card('group:g-x.newPatients', '재활3 신환이 늘었습니다.'), card('group:g-y.returning', '재활4 재진이 줄었습니다.', 'down'), ...PLAIN_CARDS]
+    expect(parseAiReport(answer(SUMMARY, cards), input)?.cards.map((c) => c.text)).toEqual(cards.map((c) => c.text))
+  })
+
+  it("AC-507.6 숫자 없는 이름은 지우지 않는다(동네 이름 '월'이 허용 낱말 '10월'을 망가뜨리지 않는다)", () => {
+    const input: ReportInput = { ...INPUT, metrics: [...INPUT.metrics, handMetric('region:월', "동네 '월' 환자")] }
+    const summary = '10월은 환자가 늘었습니다.'
+    expect(parseAiReport(answer(summary, PLAIN_CARDS), input)?.summary).toBe(summary)
+  })
+
+  it('AC-507.6 hasForbiddenNumber는 두 번째 인자의 이름을 지운 뒤 숫자를 본다', () => {
+    expect(hasForbiddenNumber('도수치료2 환자가 늘었습니다', ['도수치료2'])).toBe(false)
+    expect(hasForbiddenNumber('10월 역삼1동 환자가 늘었습니다', ['역삼1동'])).toBe(false)
+    expect(hasForbiddenNumber('물리치료12와 물리치료1', ['물리치료12', '물리치료1'])).toBe(false)
+    expect(hasForbiddenNumber('C.T(2) 처방', ['C.T(2)'])).toBe(false)
+  })
+
+  it('AC-507.6 같은 이름이 문장에 두 번 나와도 모두 지운다', () => {
+    expect(hasForbiddenNumber('역삼1동 역삼1동', ['역삼1동'])).toBe(false)
+  })
+
+  it('AC-507.6 이름을 허용 낱말보다 먼저 지운다(이름 안의 10월이 먼저 지워져 이름이 깨지지 않는다)', () => {
+    expect(hasForbiddenNumber('10월2차', ['10월2차'])).toBe(false)
+  })
+
+  it('AC-507.6 이름 목록을 주지 않으면 지금 규칙 그대로다', () => {
+    expect(hasForbiddenNumber('도수치료2 환자가 늘었습니다')).toBe(true)
+    expect(hasForbiddenNumber('도수치료2 환자가 늘었습니다', [])).toBe(true)
+  })
+})
+
+describe('parseAiReport — 그대로 어기는 숫자 (AC-507.7)', () => {
+  it.each([
+    ['이름 밖 숫자', 'region:역삼1동', '역삼1동 환자가 524명으로 늘었습니다.'],
+    ['바꿔 쓴 이름(띄어 쓰기)', 'group:g-dosu2.patients', '도수치료 2 환자가 늘었습니다.'],
+    ['바꿔 쓴 이름(줄여 쓰기)', 'rx:FAKE-B01', 'MRI 3 처방이 늘었습니다.'],
+    ['숫자뿐인 이름', 'region:1', '1 환자가 늘었습니다.'],
+    ['숫자·기호뿐인 이름', 'rx:FAKE-B02', '2-3 처방이 늘었습니다.'],
+  ])('AC-507.7 %s를 쓴 카드는 빠진다', (_name, metric, text) => {
+    const report = parseAiReport(answer(SUMMARY, [card(metric, text), ...PLAIN_CARDS]), NAMED)
+    expect(report?.cards).toEqual(PLAIN_CARDS.map(namedBasis))
+  })
+
+  it.each([
+    ['이름 밖 숫자', '역삼1동 환자가 524명으로 늘었습니다.'],
+    ['바꿔 쓴 이름', '도수치료 2 환자가 늘었습니다.'],
+    ['숫자뿐인 이름', '동네 1 환자가 늘었습니다.'],
+    ['숫자·기호뿐인 이름', '처방 2-3이 늘었습니다.'],
+  ])('AC-507.7 요약이 %s를 쓰면 null', (_name, summary) => {
+    expect(parseAiReport(answer(summary, PLAIN_CARDS), NAMED)).toBeNull()
+  })
+
+  it('AC-507.7 hasForbiddenNumber: 이름 밖 숫자는 남고, 이름을 지운 자리에서 앞뒤 숫자가 붙어 허용 낱말이 되지 않는다', () => {
+    expect(hasForbiddenNumber('역삼1동 환자가 524명', ['역삼1동'])).toBe(true)
+    expect(hasForbiddenNumber('도수치료 2', ['도수치료2'])).toBe(true)
+    expect(hasForbiddenNumber('1역삼1동4일', ['역삼1동'])).toBe(true)
+  })
+
+  it('AC-507.7 이름은 정규식이 아니라 글자 그대로 찾는다(이름 안의 . ( ) 는 뜻이 없다)', () => {
+    expect(hasForbiddenNumber('CxT2 처방', ['C.T(2)'])).toBe(true)
+  })
+
+  it('AC-507.7 숫자·기호뿐인 이름은 허용 목록에 넣지 않아 문장의 다른 같은 숫자도 허용되지 않는다', () => {
+    const cards = [card('total.patients', '환자가 1명 늘었습니다.'), card('total.returning', '재진이 2-3명 늘었습니다.'), ...PLAIN_CARDS]
+    expect(parseAiReport(answer(SUMMARY, cards), NAMED)?.cards).toEqual(PLAIN_CARDS.map(namedBasis))
+  })
+
+  it.each([
+    ['앞글자가 없는 label', handMetric('rx:FAKE-Z1', '초음파5')],
+    ['뒷글자가 없는 label', handMetric('region:역삼2동', "동네 '역삼2동'")],
+    ['뒷글자가 다른 label', handMetric('group:g-z.patients', "처방 그룹 '초음파5' 합계")],
+    ['지표 ID와 모양이 다른 label(그룹)', handMetric('group:g-z.patients', "처방 '초음파5' 환자")],
+    ['지표 ID와 모양이 다른 label(처방)', handMetric('rx:FAKE-Z2', "동네 '초음파5' 환자")],
+    ['이름을 꺼내지 않는 지표', handMetric('total.extra', "처방 '초음파5' 환자")],
+  ])('AC-507.7 모양이 안 맞는 지표에서는 이름을 꺼내지 않는다: %s', (_name, metric) => {
+    const input: ReportInput = { ...INPUT, metrics: [...INPUT.metrics, metric] }
+    const banned = ['초음파5', '역삼2동'].map((name) => card('total.patients', `${name} 환자가 늘었습니다.`))
+    const report = parseAiReport(answer(SUMMARY, [...banned, ...PLAIN_CARDS]), input)
+    expect(report?.cards.map((c) => c.text)).toEqual(PLAIN_CARDS.map((c) => c.text))
+  })
+})
+
+describe('parseAiReport — 폭 없는 글자 (AC-507.8)', () => {
+  const BLANKS: Array<[string, string]> = [
+    ['U+200B 둘', '\u200B\u200B'],
+    ['U+200C', '\u200C'],
+    ['U+200D', '\u200D'],
+    ['U+2060', '\u2060'],
+    ['U+FEFF와 빈칸', ' \uFEFF '],
+    ['섞인 것', ' \u200B\n\u2060\t'],
+  ]
+
+  it.each(BLANKS)('AC-507.8 요약이 빈칸과 폭 없는 글자뿐이면 null: %s', (_name, blank) => {
+    expect(parseAiReport(answer(blank, GOOD_CARDS), INPUT)).toBeNull()
+  })
+
+  it.each(BLANKS)('AC-507.8 카드 문장이 빈칸과 폭 없는 글자뿐이면 null: %s', (_name, blank) => {
+    expect(parseAiReport(answer(SUMMARY, [...GOOD_CARDS, card('total.patients', blank)]), INPUT)).toBeNull()
+  })
+
+  it('AC-507.8 앞뒤에 폭 없는 글자가 붙은 문장은 뗀 글자로 돌려준다', () => {
+    const cards = [card('total.patients', '\u2060 환자가 늘었습니다.\u200D'), card('total.returning', '\uFEFF재진이 비슷했습니다.\u200B'), card('total.newPatients')]
+    const report = parseAiReport(answer(`\u200B ${SUMMARY}\u200C\n`, cards), INPUT)
+    expect(report?.summary).toBe(SUMMARY)
+    expect(report?.cards.map((c) => c.text)).toEqual(['환자가 늘었습니다.', '재진이 비슷했습니다.', '신환이 크게 늘었습니다.'])
+  })
+
+  it('AC-507.8 가운데 폭 없는 글자는 건드리지 않는다', () => {
+    const summary = '신환이\u200B늘었습니다.'
+    const cards = [card('total.patients', '환자가\u2060늘었습니다.'), ...GOOD_CARDS.slice(0, 2)]
+    const report = parseAiReport(answer(summary, cards), INPUT)
+    expect(report?.summary).toBe(summary)
+    expect(report?.cards[0].text).toBe('환자가\u2060늘었습니다.')
+  })
+
+  it('AC-507.8 길이는 뗀 글자로 잰다(최대 자 + 앞뒤 폭 없는 글자는 받고, 최대 자 + 1은 null)', () => {
+    const fullSummary = '가'.repeat(SUMMARY_MAX)
+    const fullText = '나'.repeat(CARD_TEXT_MAX)
+    const cards = [card('total.patients', `\u200B${fullText}\uFEFF`), ...GOOD_CARDS.slice(0, 2)]
+    const report = parseAiReport(answer(`\u2060${fullSummary}\u200D`, cards), INPUT)
+    expect(report?.summary).toBe(fullSummary)
+    expect(report?.cards[0].text).toBe(fullText)
+    expect(parseAiReport(answer(`\u200B${'가'.repeat(SUMMARY_MAX + 1)}\u200B`, GOOD_CARDS), INPUT)).toBeNull()
+    const longCard = card('total.patients', `\u200B${'나'.repeat(CARD_TEXT_MAX + 1)}\u200B`)
+    expect(parseAiReport(answer(SUMMARY, [...GOOD_CARDS, longCard]), INPUT)).toBeNull()
+  })
+})
+
+describe('parseAiReport — __proto__ 열쇠 (AC-507.9)', () => {
+  // JSON 글자를 손으로 쓴다: 객체에 넣고 JSON.stringify하면 __proto__ 칸이 글자로 나오지 않는다
+  const json = (value: unknown) => JSON.stringify(value)
+  const CARD_TAG = '"tag":"up"'
+  const CARD_TEXT = `"text":${json('환자가 늘었습니다.')}`
+  const CARD_METRIC = `"metric":${json('total.patients')}`
+  const REST = GOOD_CARDS.slice(1).map(json).join(',')
+  const cardsWith = (fields: string[]) => `{"summary":${json(SUMMARY)},"cards":[{${fields.join(',')}},${REST}]}`
+
+  it('AC-507.9 손으로 쓴 JSON 글자는 __proto__만 없으면 받는다', () => {
+    expect(parseAiReport(cardsWith([CARD_TAG, CARD_TEXT, CARD_METRIC]), INPUT)).not.toBeNull()
+  })
+
+  it.each([
+    ['셋째 열쇠로(값이 객체)', `{"summary":${json(SUMMARY)},"cards":${json(GOOD_CARDS)},"__proto__":{}}`],
+    ['셋째 열쇠로(값이 null)', `{"summary":${json(SUMMARY)},"cards":${json(GOOD_CARDS)},"__proto__":null}`],
+    ['summary 자리에', `{"__proto__":${json(SUMMARY)},"cards":${json(GOOD_CARDS)}}`],
+    ['cards 자리에', `{"summary":${json(SUMMARY)},"__proto__":${json(GOOD_CARDS)}}`],
+    ['열쇠 하나뿐이고 안에 정상 답', `{"__proto__":${json({ summary: SUMMARY, cards: GOOD_CARDS })}}`],
+  ])('AC-507.9 맨 위에 "__proto__" 열쇠가 있으면 null: %s', (_name, text) => {
+    expect(parseAiReport(text, INPUT)).toBeNull()
+  })
+
+  it.each([
+    ['넷째 열쇠로', [CARD_TAG, CARD_TEXT, CARD_METRIC, '"__proto__":{}']],
+    ['tag 자리에', ['"__proto__":"up"', CARD_TEXT, CARD_METRIC]],
+    ['text 자리에', [CARD_TAG, `"__proto__":${json('환자가 늘었습니다.')}`, CARD_METRIC]],
+    ['metric 자리에', [CARD_TAG, CARD_TEXT, `"__proto__":${json('total.patients')}`]],
+  ])('AC-507.9 카드 안에 "__proto__" 열쇠가 있으면 null: %s', (_name, fields) => {
+    expect(parseAiReport(cardsWith(fields), INPUT)).toBeNull()
+  })
+})

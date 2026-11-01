@@ -23,10 +23,36 @@ const TAGS: readonly CardTag[] = ['up', 'down', 'watch', 'guess']
 const ALLOWED_WORDS = [/\d{4}년/g, /\d{1,2}월/g, /14일/g, /7일/g]
 // 남은 숫자. \d(0~9)보다 넓게 본다 — 전각 숫자(５)·동그라미 숫자(①)도 숫자다
 const ANY_NUMBER = /\p{N}/u
+const ANY_LETTER = /\p{L}/u
+// 글자 앞뒤에서 뗄 것: 빈칸과 폭 없는 글자(U+200B~U+200D·U+2060·U+FEFF)
+const EDGE_BLANK = /[\s\u200B-\u200D\u2060\uFEFF]/
 
-// 허용 낱말을 지운 뒤 숫자가 남으면 어김. 지운 자리에 빈칸을 둔다 — 앞뒤 숫자가 붙어 새 허용 낱말이 되지 않게('12025년2월' → '1 2월' → '1  ')
-export function hasForbiddenNumber(text: string): boolean {
-  const rest = ALLOWED_WORDS.reduce((left, word) => left.replace(word, ' '), text)
+// 지표 ID 앞글자별 label 모양(input.ts가 만드는 모양 그대로). 가운데가 이름이다
+const NAME_LABELS: ReadonlyArray<{ id: string; head: string; tails: readonly string[] }> = [
+  { id: 'group:', head: "처방 그룹 '", tails: ["' 환자", "' 신환", "' 재진"] },
+  { id: 'rx:', head: "처방 '", tails: ["' 환자"] },
+  { id: 'region:', head: "동네 '", tails: ["' 환자"] },
+]
+
+// label에서 이름을 꺼낸다. 앞뒤 정해진 길이로 뗀다 — 이름에 따옴표가 있어도 되게 가운데 따옴표를 찾지 않는다. 모양이 안 맞으면 null
+function nameOf({ id, label }: ReportMetric): string | null {
+  const shape = NAME_LABELS.find((item) => id.startsWith(item.id))
+  if (shape === undefined || !label.startsWith(shape.head)) return null
+  const tail = shape.tails.find((item) => label.endsWith(item))
+  return tail === undefined ? null : label.slice(shape.head.length, label.length - tail.length)
+}
+
+// 숫자 규칙에서 지울 이름: 글자와 숫자가 둘 다 든 것만(숫자·기호뿐인 이름 '1'을 넣으면 문장의 모든 1이 허용된다). 같은 이름은 한 번, 긴 이름부터
+function namesOf(input: ReportInput): string[] {
+  const names = input.metrics.map((metric) => nameOf(metric)).filter((name): name is string => name !== null && ANY_LETTER.test(name) && ANY_NUMBER.test(name))
+  return [...new Set(names)].sort((a, b) => b.length - a.length)
+}
+
+// 숫자 규칙: 이름을 지우고(names는 긴 이름부터, 정규식이 아니라 글자 그대로 찾는다), 허용 낱말을 지운 뒤 숫자가 남으면 어김.
+// 지운 자리에 빈칸을 둔다 — 앞뒤 숫자가 붙어 새 허용 낱말이 되지 않게('12025년2월' → '1 2월' → '1  ')
+export function hasForbiddenNumber(text: string, names: readonly string[] = []): boolean {
+  const unnamed = names.reduce((left, name) => left.split(name).join(' '), text)
+  const rest = ALLOWED_WORDS.reduce((left, word) => left.replace(word, ' '), unnamed)
   return ANY_NUMBER.test(rest)
 }
 
@@ -39,10 +65,20 @@ function exactly(value: unknown, keys: readonly string[]): Fields | null {
   return own.length === keys.length && own.every((key) => keys.includes(key)) ? (value as Fields) : null
 }
 
-// 앞뒤 빈칸을 뺀 글자가 1~max자면 그 글자, 아니면 null
+// 앞뒤의 빈칸과 폭 없는 글자를 뗀다. 가운데는 건드리지 않는다.
+// 한 글자씩 본다 — /[…]+$/ 정규식은 믿지 못할 AI 답의 긴 빈칸 줄에서 시간이 제곱으로 는다
+function withoutEdgeBlanks(text: string): string {
+  let start = 0
+  let end = text.length
+  while (start < end && EDGE_BLANK.test(text.charAt(start))) start += 1
+  while (end > start && EDGE_BLANK.test(text.charAt(end - 1))) end -= 1
+  return text.slice(start, end)
+}
+
+// 앞뒤를 뗀 글자가 1~max자면 그 글자, 아니면 null
 function trimmedText(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null
-  const text = value.trim()
+  const text = withoutEdgeBlanks(value)
   return text.length >= 1 && text.length <= max ? text : null
 }
 
@@ -79,14 +115,15 @@ export function parseAiReport(text: string, input: ReportInput): AiReport | null
   // 3·4. 카드 거르기: 입력에 없는 지표 ID, 숫자 규칙을 어긴 문장은 뺀다. 같은 지표 ID를 쓴 카드는 모두 남긴다(AC-507.5).
   // Map으로 찾는다 — 'toString' 같은 객체 기본 이름을 지표로 잘못 보지 않게
   const metrics = new Map<string, ReportMetric>(input.metrics.map((m) => [m.id, m]))
+  const names = namesOf(input)
   const kept: Array<{ card: Card; metric: ReportMetric }> = []
   for (const card of cards) {
     const metric = metrics.get(card.metric)
-    if (metric !== undefined && !hasForbiddenNumber(card.text)) kept.push({ card, metric })
+    if (metric !== undefined && !hasForbiddenNumber(card.text, names)) kept.push({ card, metric })
   }
 
   // 5. 요약 숫자 규칙, 카드 3~8개
-  if (hasForbiddenNumber(summary) || kept.length < MIN_CARDS) return null
+  if (hasForbiddenNumber(summary, names) || kept.length < MIN_CARDS) return null
 
   // 6. 근거 줄은 앱이 그 지표의 진짜 값으로 붙인다
   return {
