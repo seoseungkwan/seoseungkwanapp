@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "e2e",
-      "status": "pending"
+      "status": "blocked",
+      "blocked_reason": "시험 계정 값 기다림(사용자 결정 2026-11-01). 표는 실제 저장소에 들어감. 그때까지 사이트에 올린 뒤 사용자가 손으로 확인"
     }
   ]
 }

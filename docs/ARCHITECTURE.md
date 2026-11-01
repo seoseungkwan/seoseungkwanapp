@@ -56,7 +56,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
        화면 → toMonthPayload·toDayPayloads → validate → (예정) lib/storage → months·days
 [매출] (예정) 폴더 연결(읽기 전용) 또는 끌어다 놓기 → Worker → 집계 → sales_days
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
-[업무일지] (예정) 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
+[업무일지] 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
        → ai_usage 기록 → 화면(글자로만)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
@@ -83,7 +83,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |
-| `worklog_days` | (예정) 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 |
+| `worklog_days` | 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 |
 | `ai_usage` | 달별 토큰·비용 |
 
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
