@@ -3,14 +3,15 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event'
 import { Component, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { AdminError } from '@/lib/auth/admin'
 import { errorInfo } from '@/lib/errors'
 import { nestedBoxes } from '@/testing/boxes'
 import { AdminApplications } from './AdminApplications'
 
-// 관리자 · 가입 신청 목록 (REQ-007, design.md '관리자', UI_GUIDE '앱 화면' 화면 안 탭·표·칩·확인 창·폰).
-// 문구·순서는 목업 docs/mockups/auth/Admin.dc.html. 실제 Supabase에 붙지 않는다 — 진짜 listApplications·setHospitalStatus를 거쳐
+// 관리자 · 가입 승인 (REQ-007, ui-90 REQ-417, design.md '관리자', UI_GUIDE '관리자' 화면 안 탭·표·칩·확인 창·폰).
+// 순서는 목업 docs/mockups/auth/Admin.dc.html, 이름·문구(~요)는 ui-90 시안 docs/mockups/ui-90/app/gen.py admin_body. 실제 Supabase에 붙지 않는다 — 진짜 listApplications·setHospitalStatus를 거쳐
 // hospitals 읽기와 set_hospital_status 호출이 어떤 값으로 몇 번 나가는지만 본다. jsdom은 CSS를 계산하지 않는다 → 모양은 클래스로 본다
 const { from, select, order, rpc } = vi.hoisted(() => {
   const order = vi.fn()
@@ -27,9 +28,10 @@ const DB_ROWS = [
   { id: 'r4', name: '사아 의원', applicant_name: '박민수', phone: null, email: 'minsu@example.com', status: 'rejected', created_at: '2026-10-22T03:00:00+00:00' },
   { id: 'r3', name: '마바 정형외과의원', applicant_name: '이영희', phone: '0212345678', email: 'younghee@example.com', status: 'approved', created_at: '2026-10-20T03:00:00+00:00' },
 ]
-const COLUMNS = ['신청일', '병원 이름', '신청자', '이메일', '연락처', '동작']
-const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있습니다. 거절한 신청은 거절 탭에서 되돌릴 수 있습니다.'
-const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없습니다. 거절 탭에서 언제든 되돌릴 수 있습니다.'
+const COLUMNS = ['신청일', '의원 이름', '신청자', '이메일', '연락처', '동작']
+const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요.'
+// 시안에 없는 거절 확인 창 문구는 말끝만 "~요"로 바꾼다(design.md '시안과 다른 점' 11)
+const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없어요. 거절 탭에서 언제든 되돌릴 수 있어요.'
 
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 const classesOf = (el: Element) => tokens(el.getAttribute('class') ?? '')
@@ -75,9 +77,9 @@ afterEach(() => {
 })
 
 describe('AdminApplications: 처음 그리기', () => {
-  it('AC-007.1: 제목·안내는 목업 그대로, 탭 줄(대기·승인·거절)마다 줄 수(글자), 처음 탭은 대기', async () => {
+  it('AC-007.1·AC-417.1: 제목 "가입 승인"·안내는 시안 그대로, 탭 줄(대기·승인·거절)마다 줄 수(글자), 처음 탭은 대기', async () => {
     await renderLoaded()
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 신청')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 승인')
     expect(screen.getByText(INTRO)).toBeTruthy()
     expect(tabNames()).toEqual(['대기 2', '승인 1', '거절 1'])
     expect(tabNamed('대기').getAttribute('aria-selected')).toBe('true')
@@ -85,7 +87,7 @@ describe('AdminApplications: 처음 그리기', () => {
     expect(tabNamed('거절').getAttribute('aria-selected')).toBe('false')
   })
 
-  it('AC-007.1: 표 칸은 신청일·병원 이름·신청자·이메일·연락처·동작, 대기 줄만 받은 순서(신청일 내림차순)로', async () => {
+  it('AC-007.1·AC-417.1: 표 칸은 신청일·의원 이름·신청자·이메일·연락처·동작, 대기 줄만 받은 순서(신청일 내림차순)로', async () => {
     await renderLoaded()
     expect(within(table()).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(COLUMNS)
     expect(table().getAttribute('aria-label')).toBe('대기 신청')
@@ -107,7 +109,7 @@ describe('AdminApplications: 처음 그리기', () => {
     let resolve: (v: unknown) => void = () => {}
     order.mockReturnValue(new Promise((r) => (resolve = r)))
     const { container } = render(<AdminApplications />)
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 신청')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 승인')
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.queryByRole('table')).toBeNull()
     expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('true')
@@ -189,7 +191,7 @@ describe('AdminApplications: 승인', () => {
     const user = await renderLoaded()
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
     expect(rpc).toHaveBeenCalledExactlyOnceWith('set_hospital_status', { p_hospital_id: 'r1', p_status: 'approved' })
-    expect(status().textContent).toBe('가나 정형외과의원 신청을 승인했습니다.')
+    expect(status().textContent).toBe('가나 정형외과의원 신청을 승인했어요.')
     expect(tabNames()).toEqual(['대기 1', '승인 2', '거절 1'])
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['다라 통증의학과의원'])
     await user.click(tabNamed('승인'))
@@ -223,7 +225,7 @@ describe('AdminApplications: 완료 알림 자리와 초점', () => {
     hasNone(region, 'empty:hidden hidden')
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
     expect(status()).toBe(region)
-    expect(region.textContent).toBe('가나 정형외과의원 신청을 승인했습니다.')
+    expect(region.textContent).toBe('가나 정형외과의원 신청을 승인했어요.')
     await user.click(tabNamed('승인'))
     expect(status()).toBe(region)
     expect(region.textContent).toBe('')
@@ -337,7 +339,7 @@ describe('AdminApplications: 거절 확인 창', () => {
     await user.click(within(dialog()).getByRole('button', { name: '거절' }))
     expect(rpc).toHaveBeenCalledExactlyOnceWith('set_hospital_status', { p_hospital_id: 'r2', p_status: 'rejected' })
     expect(screen.queryByRole('dialog')).toBeNull()
-    expect(status().textContent).toBe('다라 통증의학과의원 신청을 거절했습니다.')
+    expect(status().textContent).toBe('다라 통증의학과의원 신청을 거절했어요.')
     expect(tabNames()).toEqual(['대기 1', '승인 1', '거절 2'])
     await user.click(tabNamed('거절'))
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['다라 통증의학과의원', '사아 의원'])
@@ -345,14 +347,14 @@ describe('AdminApplications: 거절 확인 창', () => {
 })
 
 describe('AdminApplications: 되돌리기·승인 줄', () => {
-  it('AC-007.4: 거절 줄의 [되돌리기] → pending으로 바꾸고 "○○ 신청을 대기로 되돌렸습니다."', async () => {
+  it('AC-007.4·AC-417.1: 거절 줄의 [되돌리기] → pending으로 바꾸고 "○○ 신청을 대기로 되돌렸어요."', async () => {
     const user = await renderLoaded()
     await user.click(tabNamed('거절'))
     const row = rowOf('사아 의원')
     expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['되돌리기'])
     await user.click(within(row).getByRole('button', { name: '되돌리기' }))
     expect(rpc).toHaveBeenCalledExactlyOnceWith('set_hospital_status', { p_hospital_id: 'r4', p_status: 'pending' })
-    expect(status().textContent).toBe('사아 의원 신청을 대기로 되돌렸습니다.')
+    expect(status().textContent).toBe('사아 의원 신청을 대기로 되돌렸어요.')
     expect(tabNames()).toEqual(['대기 3', '승인 1', '거절 0'])
     expect(screen.queryByRole('dialog')).toBeNull() // 되돌리기는 확인 창 없이 바로
   })
@@ -375,10 +377,10 @@ describe('AdminApplications: 되돌리기·승인 줄', () => {
 
 describe('AdminApplications: 빈 탭', () => {
   it.each([
-    ['대기', [], '대기 중인 신청이 없습니다', '새 가입 신청이 오면 여기에 보입니다.'],
-    ['승인', DB_ROWS.filter((r) => r.status !== 'approved'), '승인한 신청이 없습니다', '승인한 계정이 여기에 모입니다.'],
-    ['거절', DB_ROWS.filter((r) => r.status !== 'rejected'), '거절한 신청이 없습니다', '거절한 신청은 여기에서 되돌릴 수 있습니다.'],
-  ] as const)('AC-007.5: %s 탭이 비면 표 머리는 두고 칸 전체를 잇는 한 줄에 목업 안내', async (label, data, title, body) => {
+    ['대기', [], '대기 중인 신청이 없어요', '새 가입 신청이 오면 여기에 보여요.'],
+    ['승인', DB_ROWS.filter((r) => r.status !== 'approved'), '승인한 신청이 없어요', '승인한 계정이 여기에 모여요.'],
+    ['거절', DB_ROWS.filter((r) => r.status !== 'rejected'), '거절한 신청이 없어요', '거절한 신청은 여기에서 되돌릴 수 있어요.'],
+  ] as const)('AC-007.5·AC-417.1: %s 탭이 비면 표 머리는 두고 칸 전체를 잇는 한 줄에 목업 안내', async (label, data, title, body) => {
     order.mockResolvedValue({ data, error: null, status: 200 })
     const user = await renderLoaded()
     await user.click(tabNamed(label))
@@ -422,7 +424,7 @@ describe('AdminApplications: 함수 호출 실패', () => {
     expect(card.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(status().textContent).toBe('가나 정형외과의원 신청을 승인했습니다.')
+    expect(status().textContent).toBe('가나 정형외과의원 신청을 승인했어요.')
     expect(tablist().compareDocumentPosition(status()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(status().compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -473,7 +475,7 @@ describe('AdminApplications: 폰(768px 미만)', () => {
     }
   })
 
-  it('AC-220.2: 줄 안 순서 — 병원 이름(600, 말줄임) + 오른쪽 신청일(caption muted) → 신청자 · 이메일(small ink-2) → 연락처(small muted) + 오른쪽 단추', async () => {
+  it('AC-220.2: 줄 안 순서 — 의원 이름(600, 말줄임) + 오른쪽 신청일(caption muted) → 신청자 · 이메일(small ink-2) → 연락처(small muted) + 오른쪽 단추', async () => {
     await renderLoaded()
     const tr = rowOf('가나 정형외과의원')
     const [date, clinic, applicant, email, phone, action] = within(tr).getAllByRole('cell')
@@ -549,7 +551,7 @@ describe('AdminApplications: 폰(768px 미만)', () => {
 })
 
 describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
-  it('AC-220.1: h1 "가입 신청"(title 600) → 안내(지금 문구, ink-2, 위 4px) → 화면 안 탭(위 16px) → 표(위 16px)', async () => {
+  it('AC-220.1·AC-417.1: h1 "가입 승인"(title 600) → 안내(시안 문구, ink-2, 위 4px) → 화면 안 탭(위 16px) → 표(위 16px)', async () => {
     const { container } = render(<AdminApplications />)
     await screen.findByRole('tablist', { name: '신청 상태' })
     const h1 = screen.getByRole('heading', { level: 1 })
@@ -602,7 +604,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     }
   })
 
-  it('AC-220.1: 칸 — 신청일(muted 고정폭) · 병원 이름(600) · 신청자 · 이메일(ink-2) · 연락처(ink-2 고정폭) · 동작(오른쪽)', async () => {
+  it('AC-220.1: 칸 — 신청일(muted 고정폭) · 의원 이름(600) · 신청자 · 이메일(ink-2) · 연락처(ink-2 고정폭) · 동작(오른쪽)', async () => {
     const user = await renderLoaded()
     const [date, clinic, , email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     hasAll(date.firstElementChild as Element, 'text-muted tabular-nums')
@@ -626,7 +628,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     const user = await renderLoaded()
     const widths = () =>
       within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /^(max-|md:)?w-/.test(t)))
-    // 신청일·신청자 120px, 연락처·동작 150px, 병원 이름·이메일은 남은 폭을 반씩
+    // 신청일·신청자 120px, 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩
     const FIXED = [['w-30'], [], ['w-30'], [], ['w-37.5'], ['w-37.5']]
     hasAll(table(), 'md:table-fixed')
     expect(widths()).toEqual(FIXED)
@@ -640,7 +642,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     // 정한 폭이 없는 두 칸은 PC에서 넘치면 말줄임(옆 칸을 덮지 않는다). 폰은 줄바꿈 그대로
     const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     for (const c of [cells[1], cells[2], cells[3]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
-    // 768~1023px(글 칸이 좁다)에서는 말줄임 대신 줄바꿈 — 터치·키보드로도 전체 병원 이름·신청자·이메일을 보고 [승인]을 누른다(1024px 이상은 말줄임 그대로)
+    // 768~1023px(글 칸이 좁다)에서는 말줄임 대신 줄바꿈 — 터치·키보드로도 전체 의원 이름·신청자·이메일을 보고 [승인]을 누른다(1024px 이상은 말줄임 그대로)
     for (const c of [cells[1], cells[2], cells[3]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
     // 말줄임으로 잘려도 전체 값은 마우스를 올리면 보인다(title)
     expect([cells[1], cells[2], cells[3]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
@@ -723,6 +725,97 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
     expect(dialog()).toBeTruthy()
     expect(nestedBoxes(document.body), '확인 창').toEqual([])
+  })
+})
+
+describe('AdminApplications: 가입 승인 이름·말투 (ui-90 REQ-417)', () => {
+  it('AC-417.1: h1 위에 작은 "관리자" 표시 — 제목 묶음의 첫 줄, Icon userCheck 14(꾸밈) + small muted', async () => {
+    await renderLoaded()
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1.textContent).toBe('가입 승인')
+    const loc = h1.previousElementSibling
+    if (loc === null) throw new Error('h1 위 "관리자" 줄 없음')
+    expect(loc.tagName).toBe('P')
+    expect(loc.textContent).toBe('관리자')
+    expect(h1.parentElement?.firstElementChild).toBe(loc)
+    hasAll(loc, 'flex items-center gap-1.5 text-small font-semibold text-muted')
+    const svg = loc.querySelector('svg')
+    if (svg === null) throw new Error('"관리자" 아이콘 없음')
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expect(svg.getAttribute('width')).toBe('14')
+    expect(svg.getAttribute('height')).toBe('14')
+    // 그림은 Icon 한 곳의 userCheck(시안 ICONS['userCheck']) 그대로다
+    const { container } = render(<Icon name="userCheck" size={14} />)
+    expect(svg.innerHTML).toBe(container.querySelector('svg')?.innerHTML)
+  })
+
+  it('AC-417.1: 읽는 동안에도 "관리자" 표시와 h1 "가입 승인"이 먼저 보인다', () => {
+    order.mockReturnValue(new Promise(() => {}))
+    render(<AdminApplications />)
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1.textContent).toBe('가입 승인')
+    expect(h1.previousElementSibling?.textContent).toBe('관리자')
+  })
+
+  it('AC-417.1: 안내는 시안 문구(~요) · body ink-2 · 최대 폭 max-w-140(시안 40em × body 14px = 560px에 가장 가까운 4px 단위 폭 단계, 대괄호 값 없음)', async () => {
+    await renderLoaded()
+    const intro = screen.getByText(INTRO)
+    hasAll(intro, 'text-body text-ink-2 max-w-140')
+    expect(classesOf(intro).filter((t) => t.includes('['))).toEqual([])
+  })
+
+  it('AC-417.1: 표 머리는 "의원 이름", 거절 확인 창 문구는 말끝 "~요"', async () => {
+    const user = await renderLoaded()
+    expect(within(table()).getByRole('columnheader', { name: '의원 이름' })).toBeTruthy()
+    expect(within(table()).queryByRole('columnheader', { name: '병원 이름' })).toBeNull()
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '거절' }))
+    expect(within(dialog()).getByText(CONFIRM_BODY)).toBeTruthy()
+  })
+
+  it('AC-417.1: 화면 어디에도 "가입 신청" h1·"병원 이름"·"니다." 글자가 없다 — 세 탭·빈 탭·완료 줄·확인 창', async () => {
+    const seen: string[] = []
+    const snap = () => {
+      seen.push(document.body.textContent ?? '')
+      expect(screen.queryByRole('heading', { name: '가입 신청' })).toBeNull()
+    }
+    const user = await renderLoaded()
+    snap()
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
+    snap() // 승인 완료 줄
+    await user.click(within(rowOf('다라 통증의학과의원')).getByRole('button', { name: '거절' }))
+    snap() // 확인 창
+    await user.click(within(dialog()).getByRole('button', { name: '거절' }))
+    snap() // 거절 완료 줄 + 비어 버린 대기 탭
+    await user.click(tabNamed('거절'))
+    await user.click(within(rowOf('사아 의원')).getByRole('button', { name: '되돌리기' }))
+    snap() // 되돌리기 완료 줄
+    await user.click(tabNamed('승인'))
+    snap()
+    cleanup()
+    order.mockResolvedValue({ data: [], error: null, status: 200 })
+    const empty = await renderLoaded()
+    for (const label of ['대기', '승인', '거절'] as const) {
+      await empty.click(tabNamed(label))
+      snap() // 빈 탭 안내
+    }
+    const all = seen.join('\n')
+    // 빈 검사가 아니다: 새 문구가 실제로 그려졌다
+    for (const text of ['신청을 승인했어요.', '신청을 거절했어요.', '신청을 대기로 되돌렸어요.', '대기 중인 신청이 없어요', '승인한 신청이 없어요', '거절한 신청이 없어요', CONFIRM_BODY]) {
+      expect(all).toContain(text)
+    }
+    expect(all).not.toMatch(/병원 이름|니다\./)
+  })
+
+  it('AC-417.2: 화면 안 탭의 개수 글자는 지금 그대로 — 탭마다 줄 수(muted 500 글자, 칩 아님), 바꾼 뒤에도 다시 센다', async () => {
+    const user = await renderLoaded()
+    expect(tabNames()).toEqual(['대기 2', '승인 1', '거절 1'])
+    for (const t of within(tablist()).getAllByRole('tab')) {
+      const count = t.querySelector('span:last-child') as Element
+      hasAll(count, 'font-medium tabular-nums text-muted')
+      for (const chip of Object.values(ds.chip)) expect(tokens(chip).every((c) => classesOf(count).includes(c))).toBe(false)
+    }
+    await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
+    expect(tabNames()).toEqual(['대기 1', '승인 2', '거절 1'])
   })
 })
 
