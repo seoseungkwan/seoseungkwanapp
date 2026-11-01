@@ -1,6 +1,6 @@
 /* 업무일지 양식 (worklog REQ-007, design.md 12절, docs/UI_GUIDE.md '업무일지 양식'). 엑셀 서식 예외는 이 한 파일이다.
    값은 승인 시안 docs/mockups/worklog 의 화면 규칙 그대로다. 색은 :root 토큰만, 글꼴은 시스템 이름만 쓴다.
-   인쇄는 TASK-11, 막힌 칸·합계 제외 표시는 TASK-8이 더한다 */
+   인쇄는 TASK-11이 더한다 */
 
 /* 바깥 종이. 1px line 테두리는 이 파일의 허용 색(AC-007.4) 밖이라 양식 칸 쪽 Tailwind 클래스(border border-line)가 붙인다 */
 .paper {
@@ -163,6 +163,78 @@
   font-weight: 400;
 }
 
+/* 빨간 막힌 칸: 모든 입력 칸이 같다. 초점이 있어도 옅은 빨강 바탕은 남는다 */
+.sheet td.blocked > input,
+.sheet td.blocked > textarea {
+  background: var(--negative-soft);
+  box-shadow: inset 0 0 0 2px var(--negative);
+}
+
+.sheet td.blocked > input:focus,
+.sheet td.blocked > textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--xl-focus);
+}
+
+/* "합계에서 빠졌어요": 칸 안에 겹쳐 둔다. 줄 높이에 영향이 없다 */
+.sheet .flag {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  white-space: nowrap;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--negative);
+  pointer-events: none;
+}
+
+/* 수입 금액 칸(폭이 넉넉하다): 오른쪽 끝. 친 글자는 다른 줄과 같은 가운데 자리에 그대로 있다 */
+.sheet td.wide .flag {
+  top: 0;
+  bottom: 0;
+  right: 6px;
+  font-size: 12px;
+}
+
+.sheet td.wide.flagged > input {
+  padding: 0 108px;
+}
+
+/* 지출 금액 칸·신환·재진 칸(폭이 좁다): 글자 아래. 친 글자가 칸 폭을 다 쓴다 */
+.sheet td.mid .flag,
+.sheet td.cnt .flag {
+  left: 0;
+  right: 0;
+  justify-content: center;
+}
+
+.sheet td.mid .flag {
+  bottom: 4px;
+  font-size: 11px;
+}
+
+.sheet td.mid.flagged > input {
+  padding: 0 4px 13px;
+}
+
+/* 신환·재진 칸(폭 73, 높이 28)은 표시 전체가 들어가지 않는다: 앞말은 눈에서만 빼고(읽어 주기·마우스 올리기에는 남는다) "빠졌어요"만 보인다 */
+.sheet td.cnt .flag {
+  bottom: 1px;
+  font-size: 10px;
+}
+
+.sheet td.cnt .flagHead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.sheet td.cnt.flagged > input {
+  padding: 0 2px 11px;
+}
+
 /* 768px 미만: 양식을 화면 폭에 맞춘다(시안 값 그대로) */
 @media (max-width: 767px) {
   .paper {
@@ -182,5 +254,32 @@
     --h28: 22px;
     --h40: 30px;
     --h20: 15px;
+  }
+
+  .sheet td.wide .flag {
+    right: 3px;
+    font-size: 9px;
+  }
+
+  .sheet td.wide.flagged > input {
+    padding: 0 80px 0 2px;
+  }
+
+  .sheet td.mid .flag {
+    bottom: 2px;
+    font-size: 9px;
+  }
+
+  .sheet td.mid.flagged > input {
+    padding: 0 2px 10px;
+  }
+
+  .sheet td.cnt .flag {
+    bottom: 1px;
+    font-size: 8px;
+  }
+
+  .sheet td.cnt.flagged > input {
+    padding: 0 1px 8px;
   }
 }
