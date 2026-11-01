@@ -8,8 +8,8 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-014에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-014.1**: `revenue.days` 하루 줄 → 총진료비·조합청구액·현금·카드·계좌·미수발생·미수입금(·지역화폐), '확인 필요'·`null`이면 값 없음
-- **AC-014.2**: 통계 날짜 숫자 → 신환 `newPatients`·재진 `returning`, 없으면 값 없음
+- **AC-014.1**: `revenue.days` 하루 줄 → `total`→총진료비, `insurer`→조합청구액, `cash`→현금수납, `card`→카드수납, `transfer`→계좌이체, `receivableIn`→미수입금. 미수발생·지역화폐는 값 없음. `null` 칸도 값 없음
+- **AC-014.2**: 신환 = `newPatients`, 재진 = `returnVisits`. `unconfirmed`인 날도 두 인원 칸은 채우고(`null`이 아니면) 금액 칸은 안 채움
 - **AC-014.3**: 빈 칸 → 비트 값 + 비트 칸
 - **AC-014.4**: 비트 칸 → 바뀐 비트 값을 따라감
 - **AC-014.5**: 적은 칸 + 다른 비트 값 → 그대로 두고 '다름'
@@ -27,9 +27,8 @@
 - `/specs/worklog/design.md` — 20-1·20-2·20-3절
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
-- `/specs/revenue/design.md` 4·5절(main에 합쳐진 판) — `revenue.days` 답 칸
-- `/src/types/revenue.ts`·`/src/lib/bridge/commands.json` (매출 갈래가 넣은 것)
-- `/specs/stats/design.md` — `readDays`·`DayPayload`(통계 갈래가 넣은 것)
+- `/specs/revenue/design.md` 5-2·5-4절(main에 합쳐진 판) — `revenue.days` 답 칸
+- `/src/types/revenue.ts`(`RevenueDayRow`)·`/src/lib/bridge/commands.json` (매출 갈래가 넣은 것)
 - `/src/types/worklog.ts`·`/src/lib/worklog/calc.ts` (Phase 1)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
@@ -47,16 +46,29 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **먼저 확인(아니면 바로 `blocked`)**: `git fetch origin && git show origin/main:src/lib/bridge/commands.json | grep -q '"revenue.days"'` 가 되고, 이 브랜치에 main이 합쳐져 있다(`git merge-base --is-ancestor <revenue를 넣은 main 커밋> HEAD`). 합치기는 이 step이 하지 않는다 — 없으면 `blocked`(사유: "매출 갈래 revenue.days가 main에 들어와 이 브랜치에 합쳐져야 함")
-- 순수 함수다: 통로·supabase·React를 부르지 않는다. 매출·통계 타입만 `import type`으로 쓴다
-- 비트 값이 없으면 지어내지 않는다(0으로 채우지 않는다). '확인 필요' 날은 금액 칸을 비운 채 둔다
-- 매출·통계 갈래 파일을 고치지 않는다(불러 쓰기만)
+- **기다림(Phase 4 공통, 아니면 바로 `blocked`)**: `origin/main`의 `src/lib/bridge/commands.json`에 `"revenue.days"`가 있고 그 main이 이 브랜치에 합쳐져 있다. 확인: `git fetch origin && git show origin/main:src/lib/bridge/commands.json | grep -q '"revenue.days"' && grep -q '"revenue.days"' src/lib/bridge/commands.json`. 합치기는 이 step이 하지 않는다 — 없으면 `blocked`(사유: "매출 갈래 revenue.days가 main에 들어와 이 브랜치에 합쳐져야 함")
+- 순수 함수다: 통로·supabase·React를 부르지 않는다. 매출 타입만 `import type`으로 쓴다
+- 비트 숫자는 `revenue.days` 한 줄에서만 온다. 통계 갈래 길(`readDays`·`DayPayload`·`stats.rows`)을 쓰지 않는다
+- 비트 값이 없으면 지어내지 않는다(0으로 채우지 않는다). '확인 필요' 날은 금액 칸만 비운 채 둔다
 
 ## 작업
 
-design.md 20-3절의 `BIT_FILL_KEYS`·`bitValuesFrom`·`mergeBit`·`takeBitValue`.
-- `BIT_FILL_KEYS`는 main의 매출 답에 실제로 있는 칸만 넣는다(20-2절 표 기준). 없는 칸(예: 지역화폐, 아직 안 들어온 현금·카드)은 빼고 summary에 적는다
-- 시험: 칸 맞춤(가짜 둥근 숫자), `unconfirmed`, 통계 숫자 없음, 빈 칸 채움, 비트 칸 따라감, 적은 칸 '다름'·같음, 바꾸기, 지출·비고는 그대로
+design.md 20-3절의 `BIT_FILL_KEYS`(여덟 칸)·`bitValuesFrom(revenueDay)`·`mergeBit`·`takeBitValue`. 칸 맞춤은 이 표 그대로(design.md 20-2절):
+
+| 업무일지 칸 | `revenue.days` 칸 | 비고 |
+|---|---|---|
+| 신환 `newPatients` | `newPatients` | `unconfirmed`인 날도 채움 |
+| 재진 `returnPatients` | `returnVisits` | `unconfirmed`인 날도 채움 |
+| 총진료비 `totalFee` | `total` | |
+| 조합청구액 `claimAmount` | `insurer` | |
+| 현금수납 `cashIn` | `cash` | |
+| 카드수납 `cardIn` | `card` | |
+| 계좌이체 `transferIn` | `transfer` | |
+| 미수입금 `unpaidPaid` | `receivableIn` | |
+| 미수발생 `unpaidNew`·지역화폐 `localCurrencyIn` | — | 계약에 생기기 전에는 안 채움 |
+
+- main의 `RevenueDayRow` 칸 이름이 위와 다르면 멈추고 `blocked`(사유: 매출 계약과 업무일지 표가 다름 — 명세 고침 필요)
+- 시험: 칸 맞춤(가짜 둥근 숫자), **`unconfirmed`인 날 신환·재진은 채워지고 금액 여섯 칸은 없음**, `null` 칸, 미수발생·지역화폐는 늘 없음, 빈 칸 채움, 비트 칸 따라감, 적은 칸 '다름'·같음, 바꾸기, 지출·비고는 그대로
 
 ## TDD 순서
 
@@ -94,7 +106,7 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- 매출 명령·답 검사·통계 Worker를 고치거나 새 도우미 명령을 만들지 마라. 이유: 사용자·조정 담당 결정 — 두 번째 읽기 코드를 만들지 않는다
+- 매출 명령·답 검사·도우미를 고치거나 새 도우미 명령·Worker를 만들지 마라. 이유: 사용자·조정 담당 결정 — 두 번째 읽기 코드를 만들지 않는다
 - main을 이 브랜치에 합치거나 rebase하지 마라. 이유: 합치기는 메인 세션이 사용자 지시로 한다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다

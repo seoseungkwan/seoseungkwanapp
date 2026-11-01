@@ -43,6 +43,10 @@
     {
       "dir": "worklog-4-bitfill",
       "status": "pending"
+    },
+    {
+      "dir": "worklog-5-bitcheck",
+      "status": "pending"
     }
   ]
 }

@@ -1,6 +1,6 @@
-# Step 2: bit-column
+# Step 2: bit-storage
 
-> **TASK-16** 비트 칸 표시 저장 · **REQ-016** · AC-016.1 ~ AC-016.2
+> **TASK-16** 비트 칸 읽기·저장 · **REQ-016** · AC-016.1 ~ AC-016.2
 > Phase 4 `worklog-4-bitfill` · Step 2 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-16 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -8,8 +8,8 @@
 
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-016에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-016.1**: 새 migration이 `bit_fields text[] not null default '{}'`(채울 수 있는 DB 칸 이름의 부분 집합만) 더함
-- **AC-016.2**: 승인 사용자 upsert에 `bit_fields` 됨, 다른 규칙은 REQ-004 그대로
+- **AC-016.1**: 하루 읽기·저장이 `bitFields`를 같이 다룸, 목록 밖 이름 버림, 업무사항 여전히 없음
+- **AC-016.2**: `bitFields`를 받지 않은 저장은 `bit_fields` 칸을 보내지 않음(`[]`으로 덮어 지우지 않음)
 
 ## 읽어야 할 파일
 
@@ -19,11 +19,11 @@
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md` — 특히 ADR-004·008·019와 끝의 업무일지 ADR(Phase 1 Step 0이 더함)
 - `/specs/worklog/requirements.md` — REQ-016
-- `/specs/worklog/design.md` — 20-4절, 8절
+- `/specs/worklog/design.md` — 20-4절, 9절
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
-- `/supabase/migrations/20261101000100_worklog.sql`·`/supabase/worklog.rls.test.ts` (Phase 1)
-- `/docs/worklog/bit-check.md` (Step 1 결과)
+- `/src/lib/storage/worklogDays.ts`·시험 (Phase 1)
+- `/src/lib/worklog/bitFill.ts` (Step 0)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -32,22 +32,24 @@
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `supabase/migrations/20261101000110_worklog_bit_fields.sql`
-  - `supabase/worklog.rls.test.ts`
+  - `src/lib/storage/worklogDays.ts`
+  - `src/lib/storage/worklogDays.test.ts`
+  - `src/types/worklog.ts`
 - Tests:
-  - `supabase/worklog.rls.test.ts`
+  - `src/lib/storage/worklogDays.test.ts`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **실제 Supabase에 실행하지 않는다**(사용자 OK). 파일과 PGlite 시험만
-- `alter table … add column`과 칸 권한(`insert`·`update`의 `bit_fields`)만 더한다. RLS 정책(`my_hospital_id()`)·다른 칸·공용 함수는 그대로(공용 함수를 다시 만들지 않는다)
-- TASK-4 migration 파일은 고치지 않는다(이미 붙여 넣었을 수 있다)
+- 보내는 칸은 고른 목록만: `work_date`·19칸(20개), `bitFields`를 주면 + `bit_fields`(21개). `hospital_id`·업무사항은 없음
+- **`bitFields`를 안 주면 `bit_fields`를 보내지 않는다** — 빈 목록 `[]`을 보내면 저장된 표시가 지워진다(AC-016.2)
+- `bitFields`는 열쇠 이름(`cashIn`) ↔ DB 칸 이름(`cash_in`)으로 바꾸고, 채울 수 있는 칸 밖 이름은 버린다
+- **합치기·배포 관문**: 이 step 뒤로 읽기·쓰기가 `bit_fields`를 쓴다. 사용자가 `20261101000110_worklog_bit_fields.sql`을 실제 Supabase에 붙여 넣기 전에는 Phase 4를 main에 합치거나 배포하지 않는다(tasks.md 머리말). summary에 이 관문을 적는다
 
 ## 작업
 
-- design.md 20-4절 SQL. `check` 목록은 Step 1 결과로 확정된 칸만(기본은 20-2절 DB 칸 10개)
-- 시험: auth → worklog → 이 파일 차례로 실행. 기본값 `{}`, 목록 밖 이름(`'memo'`·`'spend_cash'`) 거부, 승인 사용자 upsert 됨, 다른 병원·anon 거부 그대로
+- `loadWorklogDay(client, ymd)` → `{ day, bitFields } | null`(옛 줄·칸 없음 → `bitFields: []`), `saveWorklogDay(client, ymd, day, bitFields?)`. 화면 쪽 호출은 TASK-18이 맞춘다 — 이 step에서 깨지는 화면 시험이 있으면 옛 호출 모양(`bitFields` 없음)을 그대로 받게 해 깨지지 않게 한다
+- 시험: `bitFields` 없이 저장 → 보내는 칸 20개·`bit_fields` 열쇠 없음, `bitFields` 주고 저장 → 21개, 목록 밖 이름 버림, `bit_fields` 없는 옛 줄 → `[]`, 업무사항 없음 그대로
 
 ## TDD 순서
 
@@ -59,7 +61,8 @@
 ## Acceptance Criteria
 
 ```bash
-npx vitest run supabase/worklog.rls.test.ts   # AC-016.1~AC-016.2 + REQ-004 그대로
+npx vitest run src/lib/storage/worklogDays.test.ts   # AC-016.1~AC-016.2
+npx vitest run src/components/worklog   # 화면 시험 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-16 --expect green
 npm run lint && npm test
 python3 ~/.claude/harness/bin/verify
@@ -85,7 +88,7 @@ python3 ~/.claude/harness/bin/verify
 
 ## 금지사항
 
-- `spend_*`·비고·업무사항 이름을 `check` 목록에 넣지 마라. 이유: 지출·업무사항은 손으로만(사용자)
+- `src/types/db.ts`를 고치지 마라. 이유: 다른 갈래와 겹친다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다
 - 위 '수정 범위' 밖의 파일을 만들거나 고치지 마라. 이유: SDD 훅이 막고 Stop 점검이 '범위 밖'으로 실패한다. 꼭 필요하면 `blocked`로 멈추고 어떤 파일이 왜 필요한지 적는다
 - 시험을 지우거나, 건너뛰거나(`skip`·`only`), 기대값을 약하게 바꿔 통과시키지 마라. 이유: AC와 시험의 연결이 끊겨 명세를 지켰는지 알 수 없게 된다
