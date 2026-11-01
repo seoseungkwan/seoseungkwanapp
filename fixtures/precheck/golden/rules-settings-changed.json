@@ -1,0 +1,91 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-settings.json",
+  "settings": {
+    "schema": 1,
+    "off": [
+      "IJ-05",
+      "LA-01"
+    ],
+    "on": [
+      "HD-08"
+    ],
+    "grade": [
+      ["HD-07","확인필요"],
+      ["HY-03","알림"],
+      ["IJ-13","알림"],
+      ["PH-01","참고"]
+    ]
+  },
+  "visits": [
+    {"id":"settings-off-ij05","hits":[],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-off-la01","hits":[{"id":"LA-09","grade":"확인필요","message":"같은 병소에 신경차단술이 3종 이상이거나 둘째 차단이 50%로 줄지 않았으니 2종까지만, 둘째는 50%로 고치세요.","detail":"둘째 차단 LA357 100% (50%로)"},{"id":"LA-11","grade":"알림","message":"같은 척추 부위에 LA357+LA358·LA359 같은 하위·연관 차단을 함께 청구하면 하위 차단이 삭감될 수 있으니 각각의 시행 사유를 차트에 남기세요.","detail":"LA357+LA358"},{"id":"LA-13","grade":"알림","message":"C-arm 투시 필수 차단인데 차트에 투시(C-arm·fluoro) 기록이나 영상 저장 표시가 없으니 영상 저장 여부를 확인하고 기록하세요. (차트에 기록이 없음 — 영상·제출 자료로 갖췄는지 확인)","detail":"LA358"},{"id":"LA-14","grade":"알림","message":"후지내측지·추간관절·회백교통지·경추간공 차단은 2방향 영상이 필요하니 차트·PACS에 방향(AP/Lat/Obl)을 남기고, 못 맞췄으면 사유를 JX999에 적으세요.","detail":"LA358 · 차트 방향 없음"},{"id":"LA-22","grade":"알림","message":"신경차단술 차트에 통증 부위·이학적 소견이 없거나 재시술인데 직전 반응 기록이 없으니 보완하세요.","detail":"LA358·LA357 · 빠진 기록: 증상·이학적검사"}],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-on-hd08","hits":[{"id":"HD-08","grade":"알림","message":"비관혈관절수동술(자78)은 견·슬관절에서 보존치료 후 수동 관절가동범위 50% 이상 감소, 관절조영, 마취(신경차단술 포함)가 함께 있어야 하니 기록을 확인하세요.","detail":"MANIP · 빠진 기록: 가동범위 50% 제한, 관절조영"}],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-grade-hd07","hits":[{"id":"HD-04","grade":"확인필요","message":"수압팽창술(MM410)에 같은 날 조영제가 없으니 조영제 사용·청구를 확인하세요.","detail":"MM410"},{"id":"HD-07","grade":"확인필요","message":"같은 날 같은 어깨에 수압팽창술과 관절강내주사를 함께 청구했으니 별도 시행 목적을 기록하세요.","detail":"MM410 + KK090"},{"id":"HD-05","grade":"알림","message":"수압팽창술 차트에 투시 영상 저장과 조영 전후 관절낭 변화 기록이 없으니 보완하세요.","detail":"MM410 · 빠진 기록: 투시 영상, 관절낭 변화"},{"id":"HD-06","grade":"알림","message":"수압팽창술 차트에 굴곡<120°·외전<100°·외회전<50° 중 하나의 수치나 심한 골다공증 기록이 없으니 각도를 기록하세요.","detail":"MM410"},{"id":"IJ-13","grade":"알림","message":"스테로이드 관절강내·건초내 주사의 상병이 허가 효능(골관절염 활막염·류마티스·점액낭염·통풍·상과염·건초염) 범주 밖이니 상병을 확인하세요.","detail":"KK090 · 필요한 상병 M15·M16·M17·M18·M19·M05·M06·M10…"}],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-grade-ij13","hits":[{"id":"IJ-13","grade":"알림","message":"배제상병으로만 있습니다 — 스테로이드 관절강내·건초내 주사의 상병이 허가 효능(골관절염 활막염·류마티스·점액낭염·통풍·상과염·건초염) 범주 밖이니 상병을 확인하세요. (배제상병은 근거로 약함)","detail":"KK090 · 필요한 상병 M15·M16·M17·M18·M19·M05·M06·M10…"},{"id":"IJ-17","grade":"알림","message":"관절강내주사 부위(예: 무릎)와 관련된 관절 상병이 없으니(예: 요추 염좌만) 해당 관절 상병을 확인하세요.","detail":"KK090 · 상병 부위 요천추"}],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-grade-ph01","hits":[{"id":"PH-01","grade":"참고","message":"같은 날 물리치료 19종과 관절강내·신경간내·건초내 주사·신경차단술이 모두 급여로 청구됐으니 소정점수가 낮은 쪽을 U항(100/100)으로 옮기세요. (점수가 낮은 쪽을 U항(100/100)으로) · 청구 파일에서 U항 처리 확인","detail":"MM010 + KK090"}],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-hy12-from-hy01","hits":[{"id":"HY-01","grade":"확인필요","message":"히알루론산(20·25mg) 주사에 무릎 골관절염(M17)이나 견관절주위염(M75.0) 상병이 없으니 상병을 확인하고 없으면 약값을 전액본인부담으로 돌리세요.","detail":"A49 · 필요한 상병 M17·M750"},{"id":"HY-12","grade":"알림","message":"급여기준 밖 히알루론산을 공단부담 급여로 청구했으니 약값을 전액본인부담(U항)으로 바꾸세요.","detail":"HY-01 기준 밖 → 약값 U항(전액 본인부담) 처리 확인"},{"id":"IJ-17","grade":"알림","message":"관절강내주사 부위(예: 무릎)와 관련된 관절 상병이 없으니(예: 요추 염좌만) 해당 관절 상병을 확인하세요.","detail":"KK090 · 상병 부위 요천추"}],"skipped":{"history":0,"data":0},"checked":151},
+    {"id":"settings-hy12-from-hy03","hits":[{"id":"HY-03","grade":"알림","message":"단회 교차결합 히알루론산은 무릎 골관절염(M17)만 인정되니 상병과 주사 부위(무릎)를 확인하세요.","detail":"SYNO · 필요한 상병 M17"},{"id":"HY-12","grade":"알림","message":"급여기준 밖 히알루론산을 공단부담 급여로 청구했으니 약값을 전액본인부담(U항)으로 바꾸세요.","detail":"HY-03 기준 밖 → 약값 U항(전액 본인부담) 처리 확인"},{"id":"IJ-17","grade":"알림","message":"관절강내주사 부위(예: 무릎)와 관련된 관절 상병이 없으니(예: 요추 염좌만) 해당 관절 상병을 확인하세요.","detail":"KK090 · 상병 부위 요천추"}],"skipped":{"history":0,"data":0},"checked":151}
+  ],
+  "collect": {
+    "visits": [
+      "settings-off-ij05",
+      "settings-off-la01",
+      "settings-on-hd08",
+      "settings-grade-hd07",
+      "settings-grade-ij13",
+      "settings-grade-ph01",
+      "settings-hy12-from-hy01",
+      "settings-hy12-from-hy03"
+    ],
+    "checked": 8,
+    "hi": 4,
+    "mid": 15,
+    "lo": 1,
+    "patients": 3,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"LA-09","grade":"확인필요","visits":["settings-off-la01"]},
+      {"rule":"HD-04","grade":"확인필요","visits":["settings-grade-hd07"]},
+      {"rule":"HD-07","grade":"확인필요","visits":["settings-grade-hd07"]},
+      {"rule":"HY-01","grade":"확인필요","visits":["settings-hy12-from-hy01"]},
+      {"rule":"IJ-17","grade":"알림","visits":["settings-grade-ij13","settings-hy12-from-hy01","settings-hy12-from-hy03"]},
+      {"rule":"IJ-13","grade":"알림","visits":["settings-grade-hd07","settings-grade-ij13"]},
+      {"rule":"HY-12","grade":"알림","visits":["settings-hy12-from-hy01","settings-hy12-from-hy03"]},
+      {"rule":"LA-11","grade":"알림","visits":["settings-off-la01"]},
+      {"rule":"LA-13","grade":"알림","visits":["settings-off-la01"]},
+      {"rule":"LA-14","grade":"알림","visits":["settings-off-la01"]},
+      {"rule":"LA-22","grade":"알림","visits":["settings-off-la01"]},
+      {"rule":"HD-08","grade":"알림","visits":["settings-on-hd08"]},
+      {"rule":"HD-05","grade":"알림","visits":["settings-grade-hd07"]},
+      {"rule":"HD-06","grade":"알림","visits":["settings-grade-hd07"]},
+      {"rule":"HY-03","grade":"알림","visits":["settings-hy12-from-hy03"]},
+      {"rule":"PH-01","grade":"참고","visits":["settings-grade-ph01"]}
+    ],
+    "rows": [
+      ["settings-off-la01","LA-09"],
+      ["settings-off-la01","LA-11"],
+      ["settings-off-la01","LA-13"],
+      ["settings-off-la01","LA-14"],
+      ["settings-off-la01","LA-22"],
+      ["settings-on-hd08","HD-08"],
+      ["settings-grade-hd07","HD-04"],
+      ["settings-grade-hd07","HD-07"],
+      ["settings-grade-hd07","HD-05"],
+      ["settings-grade-hd07","HD-06"],
+      ["settings-grade-hd07","IJ-13"],
+      ["settings-grade-ij13","IJ-13"],
+      ["settings-grade-ij13","IJ-17"],
+      ["settings-grade-ph01","PH-01"],
+      ["settings-hy12-from-hy01","HY-01"],
+      ["settings-hy12-from-hy01","HY-12"],
+      ["settings-hy12-from-hy01","IJ-17"],
+      ["settings-hy12-from-hy03","HY-03"],
+      ["settings-hy12-from-hy03","HY-12"],
+      ["settings-hy12-from-hy03","IJ-17"]
+    ]
+  }
+}

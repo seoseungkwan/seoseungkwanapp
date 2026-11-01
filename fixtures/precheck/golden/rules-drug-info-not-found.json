@@ -1,0 +1,28 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-drug-info-not-found.json",
+  "settings": null,
+  "visits": [
+    {"id":"other-patient-not-in-table","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.miss-asked-code-not-in-table","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.miss-nine-digit-history-only-empty-answer","hits":[],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "other-patient-not-in-table",
+      "IJ-01.miss-asked-code-not-in-table",
+      "IJ-01.miss-nine-digit-history-only-empty-answer"
+    ],
+    "checked": 3,
+    "hi": 0,
+    "mid": 0,
+    "lo": 0,
+    "patients": 0,
+    "historySkips": 0,
+    "byRule": [],
+    "rows": []
+  }
+}

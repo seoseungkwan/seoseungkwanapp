@@ -1,0 +1,48 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-drug-roles.json",
+  "settings": null,
+  "visits": [
+    {"id":"IJ-05.hit-lido-by-code","hits":[{"id":"IJ-05","grade":"확인필요","message":"관절강내·건초내 주사에 리도카인 등 국소마취제만 있으니 스테로이드 등 함께 쓴 약이 빠지지 않았는지 확인하세요(국소마취제 단독은 불인정).","detail":"KK090 + A15"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-05.miss-steroid-by-code-a21","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-05.miss-steroid-by-code-a19","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-05.miss-other-code-not-lido","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"HY-01.hit-a49-by-code","hits":[{"id":"HY-01","grade":"확인필요","message":"히알루론산(20·25mg) 주사에 무릎 골관절염(M17)이나 견관절주위염(M75.0) 상병이 없으니 상병을 확인하고 없으면 약값을 전액본인부담으로 돌리세요.","detail":"A49 · 필요한 상병 M17·M750"},{"id":"HY-12","grade":"알림","message":"급여기준 밖 히알루론산을 공단부담 급여로 청구했으니 약값을 전액본인부담(U항)으로 바꾸세요.","detail":"HY-01 기준 밖 → 약값 U항(전액 본인부담) 처리 확인"},{"id":"IJ-17","grade":"알림","message":"관절강내주사 부위(예: 무릎)와 관련된 관절 상병이 없으니(예: 요추 염좌만) 해당 관절 상병을 확인하세요.","detail":"KK090 · 상병 부위 요천추"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"AG-06.hit-a41-by-code","hits":[{"id":"AG-03","grade":"확인필요","message":"관절조영(HA280) 차트에 비침습 검사 후 병변 미확인이나 대체진단 사유, 진단 목적이 없으니 기록을 보완하세요.","detail":"HA280 · 빠진 기록: 비침습 검사·대체 사유, 진단 목적"},{"id":"AG-06","grade":"알림","message":"관절조영(HA280)에 같은 날 조영제가 없거나 조영 영상 저장 기록이 없으니 확인하세요. (투시 기록 확인)","detail":"HA280"}],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "IJ-05.hit-lido-by-code",
+      "IJ-05.miss-steroid-by-code-a21",
+      "IJ-05.miss-steroid-by-code-a19",
+      "IJ-05.miss-other-code-not-lido",
+      "HY-01.hit-a49-by-code",
+      "AG-06.hit-a41-by-code"
+    ],
+    "checked": 6,
+    "hi": 3,
+    "mid": 3,
+    "lo": 0,
+    "patients": 3,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"IJ-05","grade":"확인필요","visits":["IJ-05.hit-lido-by-code"]},
+      {"rule":"HY-01","grade":"확인필요","visits":["HY-01.hit-a49-by-code"]},
+      {"rule":"AG-03","grade":"확인필요","visits":["AG-06.hit-a41-by-code"]},
+      {"rule":"HY-12","grade":"알림","visits":["HY-01.hit-a49-by-code"]},
+      {"rule":"IJ-17","grade":"알림","visits":["HY-01.hit-a49-by-code"]},
+      {"rule":"AG-06","grade":"알림","visits":["AG-06.hit-a41-by-code"]}
+    ],
+    "rows": [
+      ["IJ-05.hit-lido-by-code","IJ-05"],
+      ["HY-01.hit-a49-by-code","HY-01"],
+      ["HY-01.hit-a49-by-code","HY-12"],
+      ["HY-01.hit-a49-by-code","IJ-17"],
+      ["AG-06.hit-a41-by-code","AG-03"],
+      ["AG-06.hit-a41-by-code","AG-06"]
+    ]
+  }
+}

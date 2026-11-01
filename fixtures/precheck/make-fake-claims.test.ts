@@ -24,7 +24,7 @@ describe('AC-009.3 가짜 한 달 자료 생성기', () => {
     expect(buildFakeClaims()).toEqual(buildFakeClaims())
     expect(buildFakeClaims(FAKE_SEED)).toEqual(buildFakeClaims())
     expect(buildFakeClaims(FAKE_SEED + 1)).not.toEqual(buildFakeClaims())
-  })
+  }, 60_000) // 사례가 많아 여섯 번 만들면 바쁜 기계에서는 5초를 넘는다
 
   it('AC-009.3: 저장소의 fixtures/precheck/fake/*.json은 생성기로 다시 만든 것과 같다', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fake-claims-'))

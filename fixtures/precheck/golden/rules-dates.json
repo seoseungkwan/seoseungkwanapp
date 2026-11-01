@@ -1,0 +1,42 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-dates.json",
+  "settings": null,
+  "visits": [
+    {"id":"MN-05.miss-before-start","hits":[],"skipped":{"history":0,"data":0},"checked":143},
+    {"id":"MN-07.miss-before-start","hits":[{"id":"PH-12","grade":"알림","message":"마사지치료(MM090)는 근마비로 인한 연부조직 위축이나 감염·외상 후 유착에 20분 이상 한 경우이니 상병·차트 기록을 확인하세요.","detail":"MM090 · 빠진 기록: 대상(위축·유착 등), 시간(20분 이상)"}],"skipped":{"history":0,"data":0},"checked":143},
+    {"id":"MN-05.hit-on-start","hits":[{"id":"MN-05","grade":"확인필요","message":"도수치료에 근골격계 질환 상병(M00–M99)이 주·부상병 어디에도 없으니 상병을 확인하세요.","detail":"KR006 · 필요한 상병 M"},{"id":"MN-06","grade":"알림","message":"첫 도수치료 전 1·2절 물리치료가 4회·2주(14일)에 못 미치니 타기관 이력이나 사경·수술 후 예외를 기록하세요.","detail":"앞선 물리치료 0회 · 0일"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"MN-07.hit-on-start","hits":[{"id":"MN-07","grade":"확인필요","message":"도수치료 당일 마사지치료(MM090)는 산정할 수 없으니 마사지 줄을 빼세요(U항 아님). (뒤의 행위는 청구 제외)","detail":"KR006 + MM090"},{"id":"MN-06","grade":"알림","message":"첫 도수치료 전 1·2절 물리치료가 4회·2주(14일)에 못 미치니 타기관 이력이나 사경·수술 후 예외를 기록하세요.","detail":"앞선 물리치료 0회 · 0일"},{"id":"PH-12","grade":"알림","message":"마사지치료(MM090)는 근마비로 인한 연부조직 위축이나 감염·외상 후 유착에 20분 이상 한 경우이니 상병·차트 기록을 확인하세요.","detail":"MM090 · 빠진 기록: 대상(위축·유착 등), 시간(20분 이상)"}],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "MN-05.miss-before-start",
+      "MN-07.miss-before-start",
+      "MN-05.hit-on-start",
+      "MN-07.hit-on-start"
+    ],
+    "checked": 4,
+    "hi": 2,
+    "mid": 4,
+    "lo": 0,
+    "patients": 2,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"MN-05","grade":"확인필요","visits":["MN-05.hit-on-start"]},
+      {"rule":"MN-07","grade":"확인필요","visits":["MN-07.hit-on-start"]},
+      {"rule":"PH-12","grade":"알림","visits":["MN-07.miss-before-start","MN-07.hit-on-start"]},
+      {"rule":"MN-06","grade":"알림","visits":["MN-05.hit-on-start","MN-07.hit-on-start"]}
+    ],
+    "rows": [
+      ["MN-07.miss-before-start","PH-12"],
+      ["MN-05.hit-on-start","MN-05"],
+      ["MN-05.hit-on-start","MN-06"],
+      ["MN-07.hit-on-start","MN-07"],
+      ["MN-07.hit-on-start","MN-06"],
+      ["MN-07.hit-on-start","PH-12"]
+    ]
+  }
+}
