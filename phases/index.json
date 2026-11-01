@@ -43,6 +43,22 @@
     {
       "dir": "stats-4-screen",
       "status": "pending"
+    },
+    {
+      "dir": "bit-dashboard-1-base",
+      "status": "completed"
+    },
+    {
+      "dir": "bit-dashboard-2-read",
+      "status": "pending"
+    },
+    {
+      "dir": "bit-dashboard-3-screen",
+      "status": "pending"
+    },
+    {
+      "dir": "bit-dashboard-4-stats",
+      "status": "blocked"
     }
   ]
 }

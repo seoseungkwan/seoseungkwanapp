@@ -85,10 +85,10 @@ Worker: 합치기·해시 → 검사 → aggregate → buildSummary → 저장 �
 - **`BitDashboard`와 `LiveDashboard`를 두 파일로 둔다.** 처음에는 한 파일로 합치려 했다. 그러면 한쪽이 끝날 때까지 다른 쪽이 기다려야 한다. 역할을 나누면 두 창이 따로 일하고 합칠 때 한 줄로 잇는다.
 - **기간은 100일.** 화면의 가장 긴 기간이 90일이고 그 앞뒤 비교(지난주 같은 요일)가 그 안에 든다. 날짜 고르기도 이 안에서만 한다.
 - **날짜를 고르면 하루 줄만 바꾼다.** 이미 읽은 `DayPayload[]`로 그리므로 다시 읽지 않는다. 기간별 흐름까지 고른 날 기준으로 옮기면 "최근 N일"의 뜻이 흐려져 그대로 둔다.
-- 옛 시험을 바꾸는 곳: `MIN_HELPER`·`LATEST_HELPER`를 못 박은 `handshake.test.ts`, `[비트 PC 연결 시작]` 주소를 본 `DashboardHome.test.tsx`·`StickyConnect.test.tsx`·`page.test.tsx`. 이 요구사항 때문에 값만 바꾼다. 시험을 약하게 만들지 않는다.
+- 옛 시험을 바꾸는 곳: `MIN_HELPER`·`LATEST_HELPER`를 못 박은 `handshake.test.ts`, `[비트 PC 연결 시작]` 주소를 본 `DashboardHome.test.tsx`·`StickyConnect.test.tsx`·`page.test.tsx`, 도우미 버전 글자를 적어 둔 `client.test.ts`·`workerSink.test.ts`·`useBridge.test.ts`·`SetupScreen.test.tsx`. 이 요구사항 때문에 값만 바꾼다. 시험을 약하게 만들지 않는다. `MIN_HELPER`와 `LATEST_HELPER`가 같아져 실제 값으로는 "새 도우미가 있어요"가 나올 수 없으므로, 그 안내를 보는 시험은 시험 안에서 `versions`를 바꿔 계속 확인한다.
 
 ## 위험 / 미해결 질문
-- **접수취소가 실제로 빠지는지는 의원 PC에서만 확인된다(AC-602.3).** 외래 접수는 `OcmComStt IN ('WN','HN','TN','PN')`만 세므로 다른 상태는 빠진다. 입원 쪽에서 빼는 `VC`·`CN`·`CR`도 이 목록에 없다. 다만 코드의 뜻을 적은 문서가 저장소에 없어, 취소된 접수가 어떤 값으로 남는지는 확정하지 못했다. 시험(TASK-7)은 이 조건 글이 `PeriodVisits`에 남아 있는지만 본다. 취소 건이 있는 날을 비트 화면과 견주어 끝낸다.
+- **접수취소가 실제로 빠지는지는 의원 PC에서만 확인된다(AC-602.3).** 외래 접수는 `OcmComStt IN ('WN','HN','TN','PN')`만 세므로 다른 상태는 빠진다. 입원 쪽에서 빼는 `VC`·`CN`·`CR`도 이 목록에 없다. 원본 저장소 `seoseungkwan/shared@2a1069b`도 같다. `test_rx_visit_split_sql.py`는 상태 `CN` 내원을 "취소 내원은 세지 않음"으로 시험하고, `OperationalReportData.cs`는 총환을 "취소·제외 기록을 뺀 외래 내원 건수"라고 적었다. 다만 진짜 의원 자료에서 취소가 늘 이 값으로 남는지는 적힌 곳이 없다. 시험(TASK-7)은 이 조건 글이 `PeriodVisits`에 남아 있는지만 본다. 취소 건이 있는 날을 비트 화면과 견주어 끝낸다.
 - **환자 줄을 읽는 SQL은 진짜 비트에서 돌린 적이 없다.** 첫 의원 PC 시험에서 드러난다. 숫자 비교는 사용자가 의원 PC에서 한다(같음/다름과 건수만 알려 주신다).
 - **100일 안에 차트번호 없는 접수나 중복 접수(같은 내원 번호가 두 번. 같은 날 다른 번호로 두 번 접수한 것은 여기 들지 않는다)가 한 건이라도 있으면 숫자가 나오지 않는다**(AC-601.12, 통계의 `quality: incomplete`). 실제 비트에서 자주 나오면 `specs/stats`와 함께 규칙을 다시 정한다.
 - **도우미 버전 번호를 청구 창과 맞춘다.** 먼저 내는 쪽이 0.2.0을 쓰고 다음 쪽이 그다음 번호를 쓴다.

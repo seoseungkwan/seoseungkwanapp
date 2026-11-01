@@ -1,0 +1,16 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "bit-dashboard-2-read",
+  "steps": [
+    {
+      "step": 0,
+      "name": "read-bit-days",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "return-to-dashboard",
+      "status": "pending"
+    }
+  ]
+}

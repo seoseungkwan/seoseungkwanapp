@@ -12,8 +12,8 @@
 
 ## TASK-2: 도우미 0.2.0
 - REQ: REQ-604
-- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, helper/tests/build.test.ts
-- Tests: src/lib/bridge/handshake.test.ts, helper/tests/build.test.ts
+- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, helper/tests/build.test.ts, src/lib/bridge/client.test.ts, src/lib/bridge/workerSink.test.ts, src/components/claim/useBridge.test.ts, src/components/claim/setup/SetupScreen.test.tsx
+- Tests: src/lib/bridge/handshake.test.ts, helper/tests/build.test.ts, src/lib/bridge/client.test.ts, src/lib/bridge/workerSink.test.ts, src/components/claim/useBridge.test.ts, src/components/claim/setup/SetupScreen.test.tsx
 - TDD: required
 
 ## TASK-3: 비트 읽기 한 번 (`readBitDays`)
