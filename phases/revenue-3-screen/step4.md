@@ -9,9 +9,9 @@
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-011에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-011.1**: 승인된 시험 계정·확장 없는 브라우저로 `/revenue` 390·768·1440 → 저장된 줄 없으면 '비트 PC 연결 필요', 가로 스크롤 없음(AC-009.5도 이름에). 시작 전에 시험 계정 매출 줄을 지운다(다시 돌려도 같다)
-- **AC-011.2**: 가짜 확장(시험 코드가 넣는 가짜 `chrome.runtime`, 가짜 숫자)으로 열고 [묶음 고치기]에서 묶음 하나를 고쳐 저장 → 숫자·묶음이 보이고, 가로챈 나간 요청은 `sales_days`·`sales_codes`·`rx_groups`뿐, 본문 칸은 정해 둔 것뿐(`rx_groups`는 `name`·`codes`·`sort_order`), 차트번호·이름(사람)·전화번호·주민번호·파일 이름 모양 없음. 머리글·쿠키·apikey 값은 모으지 않고 본문만 보며, 실패하면 걸린 종류 이름만(`expect(hits).toEqual([])`)
+- **AC-011.2**: 가짜 확장으로 열고 [묶음 고치기]에서 묶음 하나를 고쳐 저장 → 숫자·묶음이 보이고, 가로챈 요청은 `sales_days`·`sales_codes`·`rx_groups`(와 `save_rx_groups` 호출)뿐, 본문 칸 이름은 표마다 정해 둔 것뿐(`sales_codes.name`·`rx_groups.name`은 허용 칸). 가짜 확장이 한 달 답에 일부러 심은 가짜 환자 자료(정해 둔 칸 밖의 `chart: '900001'`·`patientName: '가상환자01'`)는 검사에서 거부되고, 어느 본문에도 심은 값·전화번호·주민번호·파일 이름 모양이 없음. 머리글·쿠키·apikey 값은 모으지 않고, 실패하면 종류 이름만(`expect(hits).toEqual([])`)
 - **AC-011.3**: 같은 계정 390에서 다시 열기 → 저장된 숫자·"의원 PC에서 …에 가져온 숫자예요", [다시 가져오기] 없음
-- **AC-011.4**: 저장 뒤 같은 계정으로 `sales_days`·`sales_codes`·`rx_groups` 줄을 다시 읽기 → 칸 이름은 정해 둔 것뿐, 값에 차트번호·이름(사람)·전화번호·주민번호·파일 이름 모양 없음. 끝나면 시험 계정 매출·묶음 줄 지우기
+- **AC-011.4**: 저장 뒤 같은 계정으로 `sales_days`·`sales_codes`·`rx_groups` 줄을 다시 읽기 → 칸 이름은 표마다 정해 둔 것뿐, 값에 심은 값(`900001`·`가상환자01`)·전화번호·주민번호·파일 이름 모양 없음. 끝나면 시험 계정 매출·묶음 줄 지우기
 
 ## 읽어야 할 파일
 
@@ -56,13 +56,13 @@
 ## 작업
 
 ### 1. 가짜 통로 (`e2e/lib/revenueFakeBridge.ts`)
-- `page.addInitScript`로 넣을 글자를 만드는 순수 함수: `window.chrome.runtime.connect(EXTENSION_ID)`가 가짜 포트를 주고, `hello` → 버전 맞는 답, `revenue.days` → 가짜 숫자(정해 둔 칸만, 차트번호 없음) 답. 확장 ID·protocol·버전은 `src/lib/bridge/commands.json`·`versions.ts`에서 읽는다
-- `revenueFakeBridge.test.ts`(vitest): 만든 글자의 답이 `isRevenueDays`를 통과, 칸 이름이 정해 둔 것뿐
+- `page.addInitScript`로 넣을 글자를 만드는 순수 함수: `window.chrome.runtime.connect(EXTENSION_ID)`가 가짜 포트를 주고, `hello` → 버전 맞는 답, `revenue.days` → 가짜 숫자(정해 둔 칸만) 답. 단 한 달(예: 가장 오래된 달)의 답에는 일부러 심은 가짜 환자 자료를 섞는다: 날 줄 하나에 정해 둔 칸 밖의 `chart: '900001'`·`patientName: '가상환자01'`. 이 달은 웹 검사(`E-BRIDGE-BAD-REPLY`)로 거부돼 "가져오지 못한 달"이 된다. 확장 ID·protocol·버전은 `src/lib/bridge/commands.json`·`versions.ts`에서 읽는다. 심은 값은 `PLANTED = { chart: '900001', name: '가상환자01' }` 상수 하나로 시험과 나눠 쓴다
+- `revenueFakeBridge.test.ts`(vitest): 보통 달의 답은 `isRevenueDays`를 통과, 심은 달의 답은 통과하지 못함(그래서 화면에 닿지 않음)
 
 ### 2. `e2e/revenue.spec.ts` (Playwright)
 - 시작 전 정리: 시험 계정 세션으로 `sales_days`·`sales_codes`·`rx_groups`의 내 줄을 지운다(RLS의 지우기 권한, AC-004.2). 확장 없음 390·768·1440: 줄 없음 → '비트 PC 연결 필요', `scrollWidth <= innerWidth`(AC-011.1·AC-009.5)
-- 가짜 통로 1440: 가져오기 → 숫자 보임 → [묶음 고치기]에서 묶음 이름 하나를 바꾸고 처방 하나를 옮겨 [저장] → 치료별 매출에 바뀐 묶음. `page.on('request')`로 나간 요청을 모두 가로채 Supabase 요청의 표 이름이 `sales_days`·`sales_codes`·`rx_groups`뿐이고(`rx_groups` 본문은 `name`·`codes`·`sort_order`뿐) 본문 칸이 정해 둔 것뿐인지, 본문에 차트번호 모양(6자리 이상 숫자만인 글자)·이름(`name`·`chart` 칸)·전화번호(`010-…`)·주민번호(6자리-7자리)·파일 이름(`.xls`·`.xlsx`·`.csv`) 모양이 없는지(AC-011.2)
-- 가로채기 규칙(갈래 규칙 C11): `request.url()`의 표 이름과 `request.postData()` 본문만 본다. `headers()`·쿠키·`apikey`·`authorization` 값을 변수·로그·첨부에 담지 않는다. 금지 모양에 걸리면 값이 아니라 종류 이름(`'chart'`·`'name'`·`'phone'`·`'rrn'`·`'file'`·`'table'`)만 `hits`에 넣고 `expect(hits).toEqual([])`로 끝낸다. 다시 읽기(AC-011.4)도 같다
+- 가짜 통로 1440: 가져오기 → 숫자 보임(심은 달은 "가져오지 못한 달") → [묶음 고치기]에서 묶음 이름 하나를 바꾸고 처방 하나를 옮겨 [저장] → 치료별 매출에 바뀐 묶음. `page.on('request')`로 나간 요청을 모두 가로채 ① Supabase 요청의 표·함수 이름이 `sales_days`·`sales_codes`·`rx_groups`·`save_rx_groups`뿐인지 ② 본문(JSON)의 칸 이름이 표마다 정해 둔 목록 안인지(`sales_days` 열세 칸, `sales_codes`는 `month`·`code`·`name`·`count`·`amount`, `rx_groups`는 `id`·`name`·`codes`·`sort_order` — 이 목록이 사람 이름 칸 같은 것을 막는다. `name` 칸 자체는 처방·묶음 이름이라 허용) ③ 본문 글자 어디에도 심은 값(`900001`·`가상환자01`)·전화번호(`010-\d{3,4}-\d{4}`)·주민번호(`\d{6}-\d{7}`)·파일 이름(`.xls`·`.xlsx`·`.csv`)이 없는지(AC-011.2). 6자리 넘는 숫자 글자를 차트번호로 보지 않는다(약 코드가 9자리 숫자일 수 있다) — 차트번호는 심은 값으로만 찾는다
+- 가로채기 규칙(갈래 규칙 C11): `request.url()`의 표·함수 이름과 `request.postData()` 본문만 본다. `headers()`·쿠키·`apikey`·`authorization` 값을 변수·로그·첨부에 담지 않는다. 걸리면 값이 아니라 종류 이름(`'table'`·`'field'`·`'planted-chart'`·`'planted-name'`·`'phone'`·`'rrn'`·`'file'`)만 `hits`에 넣고 `expect(hits).toEqual([])`로 끝낸다. 다시 읽기(AC-011.4)도 같은 ②·③ 규칙
 - 같은 계정 390 다시: 저장된 숫자 + "의원 PC에서" + [다시 가져오기] 없음(AC-011.3)
 - 저장된 줄 다시 읽기: 시험 계정 세션으로 `sales_days`·`sales_codes`·`rx_groups`를 select해 칸 이름과 값을 같은 금지 모양으로 검사(AC-011.4, 갈래 규칙 C7)
 - 끝나면 시험 계정의 `sales_days`·`sales_codes`·`rx_groups` 줄 지우기(시험 계정 세션으로, RLS 안에서)

@@ -11,7 +11,7 @@
 - **AC-010.1**: `notReadyFeatures.ts`에 `/revenue` 없음, `menu.ts` 매출 `ready: true`, 대시보드 기능 목차의 매출이 청구와 같은 `connect-first`("연결 먼저"), [전체 메뉴] "준비 중" 수 하나 줄어듦. 탭 맞춤 시험이 확인하고 탭 수를 고정 숫자로 적지 않음
 - **AC-010.2**: `/revenue` 브라우저 탭 이름 "매출 · 의원 이름"
 - **AC-010.3**: `plan.md` §2-4·`docs/ARCHITECTURE.md`의 매출 줄이 '폴더 연결·파일'이 아니라 '비트 PC 도우미 읽기(`revenue.days`) → `sales_days`·`sales_codes`'(바뀐 날짜 표시)
-- **AC-010.4**: `src/lib/backup/tables.ts`가 이 갈래에 있으면 `sales_days`·`sales_codes`가 그 목록에(그 파일 시험), 없으면 ARCHITECTURE.md DB 표 절에 "백업 목록에 넣는다" 줄
+- **AC-010.4**: `src/lib/backup/tables.ts`가 이 갈래에 있으면 `sales_days`·`sales_codes`·`rx_groups`가 그 목록에(그 파일 시험), 없으면 ARCHITECTURE.md DB 표 절에 "백업 목록에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다" 줄(`rx_groups`는 총괄이 손으로 만든 유일한 자료)
 
 ## 읽어야 할 파일
 
@@ -89,8 +89,8 @@
 
 ### 3. 문서
 - `plan.md` §2-4: "의원 PC 비트 폴더의 파일을 읽는다 …" 줄들 뒤에 `(2026-11-01 바뀜: 매출은 비트 PC 도우미의 `revenue.days`로 읽어 `sales_days`·`sales_codes`에 집계만 저장한다. 폴더 연결·파일 끌어다 놓기는 하지 않는다 — specs/revenue)` 한 줄(AC-010.3). §5 DB 표의 `sales_days` 줄도 "칸은 specs/revenue design.md 6절"로
-- 백업 목록(AC-010.4): `src/lib/backup/tables.ts`가 있으면(청구 사전점검이 먼저 합쳐진 경우) 표 이름 둘을 목록에 더하고 그 시험(`tables.test.ts`)에 AC-010.4 줄을 더한다. 없으면 이 파일들을 만들지 말고 `docs/ARCHITECTURE.md` DB 표 절에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`를 넣는다" 줄만 쓴다
-- 문서 시험(`src/app/(app)/revenue/page.test.tsx`에, `src/b2b-merge.test.ts`처럼 `node:fs`로 파일을 읽는다): `it('AC-010.3 plan.md §2-4와 ARCHITECTURE.md의 매출 줄이 도우미 읽기(revenue.days)를 말한다')` — `plan.md`에 `revenue.days`·`sales_days`가 있고 §2-4에 바뀐 날짜 줄이 있는지, `docs/ARCHITECTURE.md`의 '[매출]' 데이터 흐름 줄에 '폴더 연결'이 없고 `revenue.days`가 있는지. `it('AC-010.4 백업 목록에 매출 표 둘')` — `src/lib/backup/tables.ts`가 있으면 그 글자에 `sales_days`·`sales_codes`가 있고, 없으면 `docs/ARCHITECTURE.md`에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`를 넣는다" 줄이 있는지
+- 백업 목록(AC-010.4): `src/lib/backup/tables.ts`가 있으면(청구 사전점검이 먼저 합쳐진 경우) 표 이름 셋(`sales_days`·`sales_codes`·`rx_groups`)을 목록에 더하고 그 시험(`tables.test.ts`)에 AC-010.4 줄을 더한다. 없으면 이 파일들을 만들지 말고 `docs/ARCHITECTURE.md` DB 표 절에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료)" 줄만 쓴다
+- 문서 시험(`src/app/(app)/revenue/page.test.tsx`에, `src/b2b-merge.test.ts`처럼 `node:fs`로 파일을 읽는다): `it('AC-010.3 plan.md §2-4와 ARCHITECTURE.md의 매출 줄이 도우미 읽기(revenue.days)를 말한다')` — `plan.md`에 `revenue.days`·`sales_days`가 있고 §2-4에 바뀐 날짜 줄이 있는지, `docs/ARCHITECTURE.md`의 '[매출]' 데이터 흐름 줄에 '폴더 연결'이 없고 `revenue.days`가 있는지. `it('AC-010.4 백업 목록에 매출 표 둘과 묶음 표')` — `src/lib/backup/tables.ts`가 있으면 그 글자에 `sales_days`·`sales_codes`·`rx_groups`가 있고, 없으면 `docs/ARCHITECTURE.md`에 "백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다" 줄이 있는지
 - `docs/UI_GUIDE.md` '앱 틀'·'빈 상태'의 준비 중 목록에서 매출만 빼고("10개" 같은 숫자는 새로 적지 않는다, C5), `docs/ARCHITECTURE.md`의 준비 중 탭 줄에서 매출을 빼고 `components/revenue/`·`lib/revenue/`·`lib/storage/` 줄, DB 표의 `sales_days`(칸이 정해짐)·`sales_codes` 줄과 `rx_groups` 줄(칸: 이름·코드 목록·순서, 즐겨찾기는 아직 없음, 매출 탭이 만들고 통계가 나중에 함께 씀), 데이터 흐름 '[매출]' 줄(폴더 연결 → 도우미 읽기)
 
 ## TDD 순서

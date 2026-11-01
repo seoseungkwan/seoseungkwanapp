@@ -367,7 +367,7 @@ def gcode_row(code, name, amt, cur, ph):
     return (f'<li class="gc"><span class="gc-c">{code}</span><span class="gc-n">{name}</span>'
             f'<span class="gc-a">10월 {man(amt)}</span><span class="gc-s">{gsel(cur, ph)}</span></li>')
 
-def group_editor(kind, suggestion=True):
+def group_editor(kind, suggestion=True, name_error=None, confirm=False):
     ph = kind == 'ph'
     chip = '<span class="chip chip-a">제안 묶음 · 아직 저장 안 함</span>' if suggestion else ''
     head = (f'<div class="rv-top"><h1 class="rv-h1">치료 묶음 고치기 {chip}</h1>'
@@ -376,12 +376,16 @@ def group_editor(kind, suggestion=True):
             '<p class="ge-p">묶음 이름을 짓고, 묶음에 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 어느 묶음에도 없는 처방은 \'그 밖 처방\'으로 세요. '
             '처음에는 지금 쓰시는 일일 보고의 다섯 가지로 채워 두었어요.</p>')
     groups = ''
-    for gname, codes in G_GROUPS:
+    for gi, (gname, codes) in enumerate(G_GROUPS):
         rows = ''.join(gcode_row(c, n, a, gname, ph) for c, n, a in codes)
+        shown = '도수치료' if name_error == gi else gname
+        bad = name_error == gi
+        err = f'<p class="ge-err" id="ge-err-{gi}">같은 이름의 묶음이 있어요. 다른 이름을 써 주세요.</p>' if bad else ''
+        aria = f' aria-invalid="true" aria-describedby="ge-err-{gi}"' if bad else ''
         groups += (f'<section class="ge-g"><div class="ge-gh"><label class="ge-l"><span class="sr">묶음 이름</span>'
-                   f'<input class="ge-in" value="{gname}" maxlength="30"></label><span class="ge-cnt">처방 {len(codes)}개</span>'
+                   f'<input class="ge-in{" bad" if bad else ""}" value="{shown}" maxlength="30"{aria}></label><span class="ge-cnt">처방 {len(codes)}개</span>'
                    '<button type="button" class="btn btn-ghost ge-del">묶음 지우기</button></div>'
-                   f'<ul class="gcs">{rows}</ul></section>')
+                   f'{err}<ul class="gcs">{rows}</ul></section>')
     left = (f'<div class="ge-l1"><div class="ge-bar"><h2 class="ge-t">묶음 {len(G_GROUPS)}개</h2>'
             '<button type="button" class="btn btn-sec btn-sm">새 묶음</button></div>' + groups + '</div>')
     rest = ''.join(gcode_row(c, n, a, None, ph) for c, n, a in G_REST)
@@ -390,7 +394,21 @@ def group_editor(kind, suggestion=True):
              f'<ul class="gcs">{rest}</ul>'
              '<p class="d-note">최근 13달 동안 비트에서 나온 처방만 보여요. 처방 이름과 코드만 쓰고, 환자 정보는 없어요.</p></div>')
     foot = ('<div class="ge-foot"><button type="button" class="btn btn-sec btn-block">취소</button><button type="button" class="btn btn-pri btn-block">저장</button></div>' if ph else '')
-    return head + f'<div class="ge">{left}{right}</div>' + foot
+    dlg = ''
+    if confirm:
+        dlg = ('<div class="dlg-bg"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t">'
+               '<h3 class="dlg-t" id="dlg-t">\'체외충격파\' 묶음을 지울까요?</h3>'
+               '<p class="dlg-p">이 묶음의 처방 2개는 \'그 밖 처방\'으로 가요. [저장]을 누르기 전에는 되돌릴 수 있어요.</p>'
+               '<div class="dlg-a"><button type="button" class="btn btn-sec">취소</button><button type="button" class="btn btn-danger">지우기</button></div></div></div>')
+    return head + f'<div class="ge">{left}{right}</div>' + foot + dlg
+
+def treat_load_failed():
+    return (top_row('pc') + period_row('pc') +
+            '<section class="dsec"><div class="dsec-h sp"><h2 class="dsec-t">치료별 매출</h2><div class="rv-act"><span class="dsec-s">10월 · 처방한 날 기준</span>'
+            '<button type="button" class="btn btn-sec btn-sm" disabled aria-disabled="true">묶음 고치기</button></div></div>'
+            '<div class="ban neg" role="alert"><p><b>치료 묶음을 불러오지 못했어요.</b> 인터넷 연결을 확인하고 다시 불러와 주세요. 묶음 없이 제안으로 바꿔 보이지 않아요.</p>'
+            '<button type="button" class="btn btn-sec btn-sm">다시 불러오기</button></div>'
+            '<p class="err">오류 번호 E-REVENUE-GROUP-LOAD-FAILED</p></section>')
 
 # ---------- 이 시안만의 CSS (토큰은 ui-90 css_page.css의 :root + 차트 토큰) ----------
 RV_CSS = r'''
@@ -526,6 +544,17 @@ RV_CSS = r'''
 .is-ph .gc-s { grid-column: 1 / -1; }
 .is-ph .gsel { height: 44px; font-size: 16px; }
 .ge-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 24px; }
+.ge-in.bad { border-color: var(--negative); }
+.ge-err { margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--negative); }
+.dlg-bg { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgb(17 24 39 / 0.36); }
+.dlg { width: 400px; max-width: calc(100% - 32px); padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev-float); }
+.dlg-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.dlg-p { margin-top: 8px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.dlg-a { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
+.ui .btn-danger { background: var(--surface); border-color: var(--line-strong); color: var(--negative); font-weight: 600; }
+.is-ph .dlg-a .btn { height: 44px; }
+.ban.neg { background: var(--negative-soft); }
+.ui .btn[disabled] { opacity: .5; cursor: not-allowed; }
 '''
 
 # ---------- 시안 페이지 ----------
@@ -584,15 +613,22 @@ row_groups = ('<div class="row">'
               + frame('ph', shell('ph', group_editor('ph')), 390, 760, True, cap='<b>폰</b> · 예시 처방 · 아래로 밀어 보세요', label='묶음 고치기 · 폰')
               + frame('pc', shell('pc', group_editor('pc')), 1440, 860, True, cap='<b>PC</b> · 예시 처방 · 이름 칸과 옮기기 칸을 눌러 보세요',
                       title='매출 · 예시정형외과의원', label='묶음 고치기 · PC')
+              + '</div><div class="row">'
+              + frame('ph', shell('ph', group_editor('ph', name_error=1)), 390, 640, True, cap='<b>이름이 겹칠 때</b> · 이름 칸 아래에 이유', label='이름 겹침')
+              + frame('pc', shell('pc', group_editor('pc', confirm=True)), 1440, 700, False, cap='<b>묶음 지우기</b> · 확인 창', label='묶음 지우기 확인')
+              + '</div><div class="row">'
+              + frame('full', shell('pc', treat_load_failed()), 1440, 420, False, cap='<b>묶음을 불러오지 못했을 때</b> · 제안으로 바꾸지 않아요', size='full', label='묶음 읽기 실패')
               + '</div>')
 S.append('<section class="sec" id="groups"><p class="sec-k">3 · 새로 그림 · 확인해 주세요</p><h2>치료 묶음 고치기: 처방을 내가 골라 묶어요</h2>'
          '<p class="sec-p">치료별 매출 머리의 [묶음 고치기]를 누르면 열려요. 묶음 이름을 짓고, 처방마다 어느 묶음에 넣을지 골라요. 처음에는 일일 보고의 다섯 가지를 제안으로 채워 두고, [저장]을 누르면 그때부터 치료별 매출이 내 묶음으로 세요.</p>'
          + row_groups +
          '<div class="notes"><div class="nb"><h3>이렇게 써요</h3><ul>'
-         '<li><span><b>묶음 이름</b>은 칸에서 바로 고쳐요(30자까지, 같은 이름은 안 돼요). [새 묶음]으로 더하고, [묶음 지우기]를 누르면 그 묶음의 처방은 \'그 밖 처방\'으로 가요.</span></li>'
+         '<li><span><b>묶음 이름</b>은 칸에서 바로 고쳐요(30자까지, 같은 이름은 안 돼요. 숫자를 6자리 넘게 잇거나 특수 문자를 넣을 수 없어요). 맞지 않으면 칸 아래에 이유가 나와요. [새 묶음]으로 더하고, [묶음 지우기]를 누르면 확인 창을 거쳐 그 묶음의 처방은 \'그 밖 처방\'으로 가요.</span></li>'
          '<li><span><b>처방 옮기기</b>: 처방마다 오른쪽 칸에서 묶음을 고르면 그 묶음으로 옮겨요. 처방 하나는 한 묶음에만 들어가서 매출이 두 번 세어지지 않아요.</span></li>'
          '<li><span><b>그 밖 처방</b>: 어느 묶음에도 없는 처방이 오른쪽에 모여요. 이름이나 코드로 찾아 묶음에 넣을 수 있어요.</span></li>'
          '<li><span>처방 목록은 최근 13달 동안 비트에서 나온 처방 코드와 이름이에요. 저장하는 것은 묶음 이름과 처방 코드 목록뿐이고 환자 정보는 없어요. 폰에서도 고칠 수 있어요.</span></li>'
+         '<li><span>폰에서는 처방 줄의 금액을 숨기고 코드·이름·옮기기만 보여요.</span></li>'
+         '<li><span>묶음을 불러오지 못하면 제안으로 바꿔 보이지 않고 [다시 불러오기]만 보여요. 저장은 한꺼번에 되어서, 도중에 끊겨도 반쪽만 저장되지 않아요.</span></li>'
          '<li><span>나중에 통계 탭도 같은 묶음을 쓸 수 있게 만들어 둬요.</span></li>'
          '</ul></div></div></section>')
 

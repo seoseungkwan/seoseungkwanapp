@@ -8,9 +8,9 @@
 
 전체 문장은 `/specs/revenue/requirements.md`의 REQ-013에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-013.1**: `createRxGroupStore(client).listGroups()`: 내 병원 `rx_groups`를 `sortOrder` 순 `RxGroup[]`로(RLS가 내 줄만). 없으면 빈 목록
-- **AC-013.2**: `saveGroups(before, after)`: 없어진 묶음 지우기 → 바뀐 묶음 고치기 → 새 묶음 넣기. 보내는 칸은 `name`·`codes`·`sort_order`뿐(시험: 칸 이름 비교). 제안 묶음을 처음 저장하면 다섯 개 모두 넣기
-- **AC-013.3**: 실패(이름 겹침 포함)하면 `E-REVENUE-GROUP-SAVE-FAILED`(무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요")를 던지고 받은 목록은 그대로
+- **AC-013.1**: `createRxGroupStore(client).listGroups()`: 내 병원 `rx_groups`를 `sortOrder` 순 `RxGroup[]`로(RLS가 내 줄만). 없으면 빈 목록. 읽기 실패는 빈 목록이 아니라 `E-REVENUE-GROUP-LOAD-FAILED`를 던진다
+- **AC-013.2**: `saveGroups(after)`: `save_rx_groups` 함수를 한 번 불러 한꺼번에 저장하고 저장된 목록을 돌려준다. 보내는 묶음 칸은 `id`·`name`·`codes`·`sort_order`뿐(시험: 칸 이름 비교). 제안 다섯 개 처음 저장 → 다섯 개. 첫 호출이 실패해도 같은 목록으로 다시 부르면 다섯 개 모두(반쪽 저장 없음)
+- **AC-013.3**: 저장 실패(이름 겹침 포함)는 `E-REVENUE-GROUP-SAVE-FAILED`(무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요"), 읽기 실패는 `E-REVENUE-GROUP-LOAD-FAILED`(무엇이 "치료 묶음을 불러오지 못했어요" · 어떻게 "[다시 불러오기]를 눌러 주세요"). 받은 목록은 그대로
 
 ## 읽어야 할 파일
 
@@ -26,7 +26,7 @@
 - `/src/lib/storage/revenue.ts`(Phase 2 Step 3, 가짜 클라이언트로 시험하는 법), `/src/lib/errors.ts`·`/src/types/errors.ts`
 - 이전 step에서 만든 파일:
   - `src/types/rxGroups.ts`·`src/lib/revenue/treatments.ts` (Phase 2 Step 2)
-  - `supabase/migrations/20261101000400_revenue.sql`의 `rx_groups` (Phase 2 Step 0)
+  - `supabase/migrations/20261101000400_revenue.sql`의 `rx_groups`·`save_rx_groups` (Phase 2 Step 0)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -51,21 +51,21 @@
 - **서버 코드 없음**: 브라우저 Supabase 클라이언트 + RLS로만 저장한다 (ADR-004)
 - **보내는 모양을 정해 둔다**: `name`·`codes`·`sort_order`만 새 객체로 만든다. `id`·`hospital_id`·`updated_at`은 보내지 않는다(DB가 채움). 고칠 때는 `id`로 줄을 고른다
 - **이름이 일반적인 저장소**: `rxGroups.ts`는 통계 탭이 합친 뒤 다시 쓴다. 매출만의 일(코드 금액 등)을 넣지 않는다
-- **겹치는 파일은 더하기만**: `errors.ts`·`types/errors.ts`에 `E-REVENUE-GROUP-SAVE-FAILED` 한 항목(갈래 규칙 C3)
+- **겹치는 파일은 더하기만**: `errors.ts`·`types/errors.ts`에 `E-REVENUE-GROUP-SAVE-FAILED`·`E-REVENUE-GROUP-LOAD-FAILED` 두 항목(갈래 규칙 C3)
 
 ## 작업
 
 ### 1. `src/lib/storage/rxGroups.ts`
-- design.md 8-2절 모양. `listGroups`: `select('id,name,codes,sort_order')` → `order('sort_order')` → `RxGroup[]`(`sort_order` → `sortOrder`)
-- `saveGroups(before, after)`: `before`에 있고 `after`에 없는 `id`는 지우기, 둘 다 있는데 이름·코드·순서가 다르면 고치기(`update ... eq('id', id)`), `id`가 `null`이면 넣기. 순서는 지우기 → 고치기 → 넣기(이름을 바꿔 서로 맞바꿀 때 겹침을 줄인다. 그래도 겹치면 DB가 막고 `E-REVENUE-GROUP-SAVE-FAILED`). 끝나면 `listGroups()`를 다시 읽어 돌려준다
+- design.md 8-2절 모양. `listGroups`: `select('id,name,codes,sort_order')` → `order('sort_order')` → `RxGroup[]`(`sort_order` → `sortOrder`). Supabase 오류면 `E-REVENUE-GROUP-LOAD-FAILED`를 던진다(빈 목록으로 바꾸지 않는다 — 화면이 제안 묶음으로 잘못 바꾸지 않게)
+- `saveGroups(after)`: `client.rpc('save_rx_groups', { groups: after.map(g => ({ id: g.id, name: g.name, codes: g.codes, sort_order: g.sortOrder })) })` 한 번. 함수가 한 트랜잭션이라 도중 실패면 표는 그대로이고, id 없는 새 묶음은 같은 이름 줄을 고치므로 같은 목록으로 다시 불러도 결과가 같다(design.md 6절). 돌려받은 줄을 `RxGroup[]`로
 - Supabase 오류 내용은 버리고 번호만 던진다
 
 ### 2. 시험 (가짜 클라이언트)
-- 읽기 순서·모양(AC-013.1) · 지우기/고치기/넣기 고르기와 순서, 보낸 칸 이름이 `name`·`codes`·`sort_order`뿐(`hospital_id`·`id` 없음), 제안 다섯 개 처음 저장(AC-013.2) · 실패 → `E-REVENUE-GROUP-SAVE-FAILED`, 받은 목록 그대로, `ERRORS['E-REVENUE-GROUP-SAVE-FAILED']` 문구(AC-013.3)
+- 읽기 순서·모양, 빈 목록, 읽기 오류 → `E-REVENUE-GROUP-LOAD-FAILED`(빈 목록이 아님)(AC-013.1) · `rpc` 이름·보낸 칸이 `id`·`name`·`codes`·`sort_order`뿐(`hospital_id` 없음), 제안 다섯 개 저장, 첫 호출 실패 → 같은 목록 다시 → 다섯 개(AC-013.2) · 실패 → `E-REVENUE-GROUP-SAVE-FAILED`, 받은 목록 그대로, 두 오류 문구(AC-013.3)
 
 ## TDD 순서
 
-1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-013.2 보내는 칸은 name·codes·sort_order뿐 …', …)`
+1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-013.2 보내는 칸은 id·name·codes·sort_order뿐 …', …)`
 2. `python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect red` 로 실패(RED)를 확인하고 기록한다. RED 기록 전에는 구현 파일을 고칠 수 없다(훅이 막는다). 설정 파일과 시험 파일은 RED 전에도 고칠 수 있다
 3. 구현하고 `python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green` 으로 통과(GREEN)를 기록한다
 4. 정리(REFACTOR)한 뒤 다시 green을 확인한다. 시험을 지우거나 약하게 바꿔 통과시키지 않는다

@@ -1,6 +1,6 @@
 # Step 0: revenue-tables
 
-> **TASK-4** 매출 표 (migration) · **REQ-004** · AC-004.1 ~ AC-004.5
+> **TASK-4** 매출 표 (migration) · **REQ-004** · AC-004.1 ~ AC-004.6
 > Phase 2 `revenue-2-numbers` · Step 0 — `specs/revenue/tasks.md`
 > 명세 `specs/revenue/`가 승인된 뒤에만 한다(`python3 ~/.claude/harness/bin/sdd status revenue`로 확인. 승인 전이면 `blocked`). 이 step은 TASK-4 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -10,9 +10,10 @@
 
 - **AC-004.1**: `supabase/migrations/20261101000400_revenue.sql`을 PGlite에서 auth migration 뒤에 실행 → `sales_days`(`hospital_id`·`day`·`visits`·`new_patients`·`return_visits`·`patients_to_date`·`total`·`insurer`·`noncovered`·`cash`·`card`·`transfer`·`receivable_in`·`unconfirmed`·`fetched_at`)·`sales_codes`(`hospital_id`·`month`·`code`·`name`·`count`·`amount`·`fetched_at`)·`rx_groups`(`id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`), 기본 키, RLS 켜짐. 칸 목록은 정확히 이것뿐
 - **AC-004.2**: anon 거부. authenticated는 승인된 자기 병원 줄만: `sales_days` 읽기·넣기·고치기·지우기, `sales_codes` 읽기·넣기·지우기. 남의 병원 줄 안 보임·안 지워짐, `hospital_id` 직접 넣기·바꾸기 거부, 승인 대기·거절은 아무것도 못 함
-- **AC-004.3**: DB 제약: 0 이상 정수, `unconfirmed`면 금액 일곱 칸 모두 null(아니면 모두 있음), `day` ≥ 2000-01-01, `month`는 1일, `code` 모양, `sales_codes.name` 1~100자 또는 null, `rx_groups.name` 앞뒤 공백 없는 1~30자·병원 안에서 겹치지 않음, `rx_groups.codes` 1,000개 이하·모양 맞음·`_REST` 없음, `sort_order` 0~999
+- **AC-004.3**: DB 제약: 0 이상 정수, `unconfirmed`면 금액 일곱 칸 모두 null(아니면 모두 있음), `day` ≥ 2000-01-01, `month`는 1일, `code` 모양, `sales_codes.name` 1~100자 또는 null, `rx_groups.name` 앞뒤 공백 없는 1~30자·제어 문자 없음·숫자 6개 넘게 이어지지 않음·병원 안에서 겹치지 않음, `rx_groups.codes` 1,000개 이하·`null` 칸 없음·모양 맞음·`_REST` 없음, `sort_order` 0~999
 - **AC-004.4**: `hospital_id`를 빼고 넣으면 `public.my_hospital_id()`가 채우고, 고치면 `fetched_at`이 DB 시각으로 바뀐다. 다른 갈래가 같은 글자의 `my_hospital_id()`를 먼저 만든 DB에서도 migration이 오류 없이 된다
 - **AC-004.5**: `rx_groups`: 승인된 자기 병원 줄만 읽기·넣기·고치기·지우기, `id`·`hospital_id`·`updated_at`은 DB가 채움(칸 권한 없음), 고치면 `updated_at` 바뀜(`public.touch_updated_at()` C1 글자 그대로, 이미 있어도 됨)
+- **AC-004.6**: DB 함수 `public.save_rx_groups(groups jsonb)`(호출한 사람 권한, RLS 그대로): 한 트랜잭션 안에서 `id` 있는 내 묶음 고치기, `id` 없으면 같은 이름의 내 묶음을 고치거나 넣기, 목록에 없는 내 묶음 지우기 → 저장된 목록. 하나라도 실패하면 아무것도 안 바뀜, 같은 목록 두 번이면 같은 결과, 이름 맞바꾸기 됨(이름 겹침 검사는 끝에), 남의 `id`는 오류이고 남의 줄 그대로
 
 ## 읽어야 할 파일
 
@@ -54,13 +55,14 @@
 ## 작업
 
 ### 1. migration
-- design.md 6절 SQL 그대로: `create or replace function public.my_hospital_id()`(갈래 규칙 C1 글자 그대로) + 실행 권한(`public`·`anon` 회수, `authenticated`만), 트리거 함수 `public.sales_touch_fetched_at()`(실행 권한 모두 회수), `public.touch_updated_at()`(C1 글자 그대로, `create or replace`), CHECK용 `public.rx_group_codes_ok(text[])`, 표 셋(`sales_days`·`sales_codes`·`rx_groups`), 트리거 둘, `enable row level security`, `revoke all … from anon, authenticated`, 칸 단위 `grant`, 정책(`using`·`with check` = `hospital_id = (select public.my_hospital_id())`)
+- design.md 6절 SQL 그대로: `create or replace function public.my_hospital_id()`(갈래 규칙 C1 글자 그대로) + 실행 권한(`public`·`anon` 회수, `authenticated`만), 트리거 함수 `public.sales_touch_fetched_at()`(실행 권한 모두 회수), `public.touch_updated_at()`(C1 글자 그대로, `create or replace`), CHECK용 `public.rx_group_codes_ok(text[])`(`c is not null`을 같이 본다: `bool_and`는 `null`을 건너뛴다), 표 셋(`sales_days`·`sales_codes`·`rx_groups`, `rx_groups`의 이름 겹침은 `deferrable initially deferred`), 트리거 둘, 저장 함수 `public.save_rx_groups(jsonb)`(호출한 사람 권한, `authenticated`만 실행), `enable row level security`, `revoke all … from anon, authenticated`, 칸 단위 `grant`, 정책(`using`·`with check` = `hospital_id = (select public.my_hospital_id())`)
 - 파일 머리 주석: 무엇을 왜(집계 숫자만, 환자 칸 없음), SQL 편집기에 붙여 넣는 순서(auth 다음)
 
 ### 2. 시험 (`supabase/revenue.rls.test.ts`, PGlite)
 - `rls.test.ts`의 Supabase 흉내(`SUPABASE_MOCK`)와 사용자 바꾸기 방식을 이 파일 안에 그대로 둔다(그 파일은 고치지 않는다). auth migration → 이 migration 순서로 실행
 - 사례: 칸 목록이 정확함(`information_schema.columns`, AC-004.1·환자 칸 없음) · RLS 켜짐 · anon 읽기·쓰기 거부 · 승인된 A는 자기 줄만, B 줄 안 보임·못 씀 · 승인 대기·거절 사용자 거부 · `hospital_id` 직접 넣기·바꾸기 거부(칸 권한) · upsert(`on conflict (hospital_id, day) do update`)가 된다 · 금액 음수·소수·글자, `unconfirmed`와 금액 짝 어긋남, `month` 15일, 코드 모양 틀림 거부 · `hospital_id` 빼고 넣으면 내 병원 · 고치면 `fetched_at` 바뀜 · `sales_days`·`sales_codes` 지우기는 내 줄만(B 줄은 그대로, E2E 정리에 쓴다)(AC-004.1~004.4) · 같은 `my_hospital_id()`를 미리 만든 DB(다른 갈래가 먼저 들어간 경우)에서 이 migration 실행 → 오류 없음(AC-004.4, 갈래 규칙 C1)
-- `rx_groups` 사례(AC-004.3·004.5): A는 자기 묶음만 읽기·넣기·고치기·지우기, B 묶음 안 보임·안 바뀜, `id`·`hospital_id` 직접 넣기 거부, 같은 이름 두 번 거부, 31자·앞뒤 공백 이름 거부, `codes`에 `_REST`·모양 틀린 코드·1,001개 거부, 고치면 `updated_at` 바뀜, `touch_updated_at()`을 미리 만든 DB에서도 migration 됨
+- `rx_groups` 사례(AC-004.3·004.5): A는 자기 묶음만 읽기·넣기·고치기·지우기, B 묶음 안 보임·안 바뀜, `id`·`hospital_id` 직접 넣기 거부, 같은 이름 두 번 거부, 31자·앞뒤 공백·제어 문자·`900101-1234567`·`01012345678` 같은 이름 거부(`12345` 다섯 자리 숫자는 됨), `codes`에 `null` 칸·`_REST`·모양 틀린 코드·1,001개 거부, 고치면 `updated_at` 바뀜, `touch_updated_at()`을 미리 만든 DB에서도 migration 됨
+- `save_rx_groups` 사례(AC-004.6): 제안 다섯 개(id 없음) 저장 → 다섯 줄 · 다섯 개 가운데 하나의 이름이 31자면 오류이고 표는 그대로(0줄) · 같은 목록 다시 → 여전히 다섯 줄(같은 이름 줄을 고침) · A↔B 이름 맞바꾸기 됨 · 목록에서 뺀 묶음은 지워짐 · B 병원의 `id`를 넣으면 오류이고 B 줄 그대로 · anon은 실행 못 함
 - 기존 `supabase/rls.test.ts`도 그대로 통과해야 한다
 
 ## TDD 순서
@@ -73,7 +75,7 @@
 ## Acceptance Criteria
 
 ```bash
-npx vitest run supabase/revenue.rls.test.ts   # AC-004.1~AC-004.4
+npx vitest run supabase/revenue.rls.test.ts   # AC-004.1~AC-004.6
 npx vitest run supabase/rls.test.ts           # auth 표 시험 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-4 --expect green
 npm run lint && npm test

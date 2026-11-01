@@ -68,7 +68,7 @@
 ## 작업
 
 ### 1. 부품 (`src/components/revenue/`)
-- `RevenueScreen.tsx`(`'use client'`): `useBridge()` → 상태 `ready`면 처음 한 번 `syncRevenue`(call = `bridge.call('revenue.days', …)`, store = `createRevenueStore(browser client)`) → `loadRevenue(13달)` → `buildRevenueView` → 그리기. 고른 달은 `firstMonth(today)`에서 시작, 최근 13달 안에서만 ‹ › 묶음은 `createRxGroupStore(browser client).listGroups()`로 읽는다(Phase 2 Step 4). [묶음 고치기] 단추와 편집 화면은 다음 step(TASK-14)이 더한다
+- `RevenueScreen.tsx`(`'use client'`): `useBridge()` → 상태 `ready`면 처음 한 번 `syncRevenue`(call = `bridge.call('revenue.days', …)`, store = `createRevenueStore(browser client)`) → `loadRevenue(13달)` → `buildRevenueView` → 그리기. 고른 달은 `firstMonth(today)`에서 시작, 최근 13달 안에서만 ‹ › 묶음은 `createRxGroupStore(browser client).listGroups()`로 읽는다(Phase 2 Step 4). 읽기가 던지면(`E-REVENUE-GROUP-LOAD-FAILED`) 보기 모양에 `'load-failed'`를 넘기고 제안으로 바꾸지 않는다. [묶음 고치기] 단추와 편집 화면은 다음 step(TASK-14)이 더한다
 - 덩어리: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`. 그림: `MonthBars.tsx`(13달 막대·쌓은 막대, 고른 달 `accent`·작년 같은 달 `bg-faint`·다른 달 `chart-2`, 급여 `chart-3`·비급여 `accent`), `TreatmentBars.tsx`. 상태: `RevenueStates.tsx`(연결 필요·가져오는 중·자료 없음·도우미 옛것·확장 옛것·저장 실패·가져오지 못한 달). 이름은 바꿔도 되지만 폴더 밖으로 나가지 않는다
 - 그림 부품은 훅·`'use client'`가 없는 순수 부품이다(UI_GUIDE '차트')
 - 폰(768 미만): KPI 2×2, 막대 날짜 글자 하나 걸러, 순위 막대는 이름·값 한 줄 + 막대 아래 줄, 급여 표의 '지난달보다' 칸 숨김(시안)

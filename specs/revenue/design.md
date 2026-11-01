@@ -214,20 +214,51 @@ create trigger sales_days_fetched_at before update on public.sales_days for each
 -- 치료 묶음(총괄이 만든다). 이름이 일반적인 까닭: 통계 탭도 합친 뒤 같은 표를 쓴다(plan.md §5의 rx_groups)
 create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
 create function public.rx_group_codes_ok(codes text[]) returns boolean language sql immutable set search_path = ''
-  as $$ select cardinality(codes) <= 1000 and coalesce(bool_and(c ~ '^[0-9A-Za-z가-힣_.-]{1,30}$' and c <> '_REST'), true) from unnest(codes) c $$;
+  as $$ select cardinality(codes) <= 1000 and coalesce(bool_and(c is not null and c ~ '^[0-9A-Za-z가-힣_.-]{1,30}$' and c <> '_REST'), true) from unnest(codes) c $$;
+  -- bool_and는 null을 건너뛰므로 c is not null을 같이 본다(null 칸 거부)
 create table public.rx_groups (
   id uuid primary key default gen_random_uuid(),
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
-  name text not null check (char_length(name) between 1 and 30 and name = btrim(name)),
+  name text not null check (char_length(name) between 1 and 30 and name = btrim(name)
+                             and name !~ '[[:cntrl:]]' and name !~ '[0-9]{6,}'),   -- 가벼운 울타리: 제어 문자·주민번호/전화/차트번호 모양 막기
   codes text[] not null default '{}' check (public.rx_group_codes_ok(codes)),
   sort_order integer not null default 0 check (sort_order between 0 and 999),
   updated_at timestamptz not null default now(),
-  unique (hospital_id, name));
+  unique (hospital_id, name) deferrable initially deferred);   -- 이름 맞바꾸기를 한 트랜잭션 안에서 허용(끝에 검사)
 create trigger rx_groups_updated_at before update on public.rx_groups for each row execute function public.touch_updated_at();
+
+-- 묶음 목록 한꺼번에 저장(호출한 사람 권한, RLS 그대로, 한 트랜잭션이라 도중 실패면 아무것도 안 바뀜)
+create function public.save_rx_groups(groups jsonb) returns setof public.rx_groups language plpgsql security invoker set search_path = ''
+as $$
+declare g jsonb; keep uuid[] := '{}'; gid uuid; n int := 0;
+begin
+  if jsonb_typeof(groups) <> 'array' or jsonb_array_length(groups) > 50 then raise exception 'bad groups'; end if;
+  for g in select * from jsonb_array_elements(groups) loop
+    n := n + 1;
+    gid := nullif(g->>'id', '')::uuid;
+    if gid is null then   -- 새 묶음: 같은 이름의 내 묶음이 있으면 그것을 고친다(다시 저장해도 같은 결과)
+      select r.id into gid from public.rx_groups r where r.hospital_id = public.my_hospital_id() and r.name = g->>'name';
+    end if;
+    if gid is null then
+      insert into public.rx_groups (name, codes, sort_order)
+        values (g->>'name', array(select jsonb_array_elements_text(g->'codes')), (g->>'sort_order')::int) returning id into gid;
+    else
+      update public.rx_groups set name = g->>'name', codes = array(select jsonb_array_elements_text(g->'codes')), sort_order = (g->>'sort_order')::int
+        where id = gid;
+      if not found then raise exception 'not my group'; end if;   -- 남의 병원 id(RLS로 안 보임)
+    end if;
+    keep := keep || gid;
+  end loop;
+  delete from public.rx_groups r where r.hospital_id = public.my_hospital_id() and not (r.id = any(keep));
+  return query select * from public.rx_groups r where r.hospital_id = public.my_hospital_id() order by r.sort_order;
+end $$;
+revoke all on function public.save_rx_groups(jsonb) from public, anon;
+grant execute on function public.save_rx_groups(jsonb) to authenticated;
 ```
-- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete`. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
+- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`unconfirmed` 열세 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete` · `save_rx_groups(jsonb)` 실행은 `authenticated`만. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
 - 정책: 읽기·넣기·고치기(·지우기) 모두 `hospital_id = (select public.my_hospital_id())`(using·with check). 승인 안 된 병원은 `my_hospital_id()`가 `null`이라 아무 줄도 못 본다
-- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
+- `save_rx_groups`는 저장을 한 트랜잭션으로 묶으려는 것뿐이다(서버 경로가 아니라 DB 함수, `set_hospital_status`와 같은 길). 호출한 사람 권한이라 RLS·칸 권한이 그대로 걸린다
+- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). `rx_groups`: `codes` 안 `null` 칸 거부, 이름에 제어 문자·숫자 6개 넘게 이어짐 거부, `save_rx_groups` — 다섯 개 가운데 하나가 제약에 걸리면 표 그대로·같은 목록 두 번이면 같은 결과·이름 맞바꾸기 됨·남의 `id`는 오류이고 남의 줄 그대로. 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
 - **실제 Supabase에 붙여 넣는 것은 그때 사용자 OK를 받는다.** 운영자가 SQL 편집기에 붙여 넣는다(auth와 같은 방식). TASK-4가 끝나면 쉬운 말 안내만 하고 붙여 넣지 않는다. E2E(TASK-11)는 붙여 넣은 뒤에만 돈다
 
 ## 7. 계산 (`src/lib/revenue/*`, 순수 함수, 네트워크·저장소·React 없음)
@@ -248,7 +279,7 @@ export type RxGroup = { id: string | null; name: string; codes: string[]; sortOr
 export const SUGGESTED_GROUPS: readonly { name: string; match: (code: string) => boolean }[]   // 원본 다섯 규칙, 제안에만
 export function suggestGroups(knownCodes: string[]): (RxGroup & { suggested: true })[]
 export function groupTreatments(codes: RevenueCodeRow[], groups: RxGroup[]): { name: string; amount: number; count: number; missing: boolean; rest: boolean }[]
-export type GroupEditError = 'empty' | 'tooLong' | 'duplicate' | 'tooMany'
+export type GroupEditError = 'empty' | 'tooLong' | 'duplicate' | 'badChars' | 'digits' | 'tooMany'   // badChars = 제어 문자, digits = 숫자 6개 넘게 이어짐(DB CHECK와 같은 규칙)
 export function addGroup(groups: RxGroup[], name: string): RxGroup[] | GroupEditError
 export function renameGroup(groups: RxGroup[], index: number, name: string): RxGroup[] | GroupEditError
 export function deleteGroup(groups: RxGroup[], index: number): RxGroup[]
@@ -278,12 +309,13 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
 ### 8-2. 묶음 저장 (`src/lib/storage/rxGroups.ts`, TASK-13)
 ```ts
 export function createRxGroupStore(client: SupabaseClient): {
-  listGroups(): Promise<RxGroup[]>                                  // sort_order 순
-  saveGroups(before: RxGroup[], after: RxGroup[]): Promise<RxGroup[]>   // 지우기 → 고치기 → 넣기, 실패하면 E-REVENUE-GROUP-SAVE-FAILED
+  listGroups(): Promise<RxGroup[]>            // sort_order 순. 읽기 실패면 E-REVENUE-GROUP-LOAD-FAILED를 던진다(빈 목록을 돌려주지 않는다)
+  saveGroups(after: RxGroup[]): Promise<RxGroup[]>   // rpc('save_rx_groups') 한 번. 실패하면 E-REVENUE-GROUP-SAVE-FAILED(표는 그대로)
 }
 ```
-- 보내는 칸은 `name`·`codes`·`sort_order`뿐. 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
-- `E-REVENUE-GROUP-SAVE-FAILED`: 무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요"
+- 보내는 칸은 `id`(있을 때)·`name`·`codes`·`sort_order`뿐. 한꺼번에 저장하므로 도중 실패가 반쪽 저장을 남기지 않고, 같은 목록으로 [다시 저장]하면 처음과 같은 결과다(id 없는 새 묶음은 같은 이름의 줄을 고친다). 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
+- `E-REVENUE-GROUP-SAVE-FAILED`: 무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요"
+- `E-REVENUE-GROUP-LOAD-FAILED`: 무엇이 "치료 묶음을 불러오지 못했어요" · 어떻게 "[다시 불러오기]를 눌러 주세요"
 
 ## 9. 화면 (`src/components/revenue/*`, TASK-8~10·14)
 - `view.ts`(TASK-8, 순수): `buildRevenueView({ days, codes, fetchedAt, month, today, bridge: 'ready' | 'none' | 'helper-old', sync })` → 상태(AC-008.2)와 네 덩어리 글자·막대 %. `money.ts`: `formatManWon(n)`("1억 6,248만 원", 만 원 아래 버림)·`formatWon(n)`("86,795원")
@@ -294,8 +326,8 @@ export function createRxGroupStore(client: SupabaseClient): {
 - 처음 고르는 달: 어제가 속한 달(1일에는 지난달). 달 고르기는 최근 13달 안에서만 움직인다(그 밖은 저장된 숫자가 없다)
 - 가져오기: 연결된 PC에서 열 때 한 번 저절로(빠진 달만, 최근 달부터). 제목 줄의 [다시 가져오기]는 고른 달만 다시 읽는다. 가져오지 못한 달이 있으면 알림 줄 "n달을 가져오지 못했어요"와 그 줄의 [다시 가져오기](가져오지 못한 달들만). 가져오는 동안 진행 줄(정적인 막대, 움직임 없음)
 - 상태 `extension-old`: `helper-old`와 같은 모양, 문구 "매출을 읽으려면 확장 프로그램을 새 버전으로 바꿔야 해요" + [설정에서 확인](`/claim/setup`). 승인 시안에 같은 모양으로 더했다(2026-11-01 명세 검토)
-- 치료별 매출은 저장된 묶음(`listGroups`)으로 센다. 저장된 묶음이 없으면 `suggestGroups(아는 코드)`로 세고 "제안 묶음 · 아직 저장 안 함"을 보인다. 머리에 [묶음 고치기]
-- 묶음 고치기(TASK-14, 시안 3절 OK 뒤): `src/components/revenue/groups/GroupEditor.tsx`(`'use client'`). 묶음마다 이름 칸·처방 수·[묶음 지우기](확인 창)·처방 줄(코드·이름·고른 달 금액·옮길 묶음 고르기), 오른쪽(폰은 아래) '그 밖 처방' 목록과 찾기 칸, [새 묶음]·[취소]·[저장]. 처방 목록 = 저장된 `sales_codes` 최근 13달의 코드(가장 늦은 이름), `_REST` 빼고. 고치기는 `treatments.ts`의 순수 함수로, 저장은 `saveGroups`로. 폰·연결 안 된 PC에서도 된다
+- 치료별 매출은 저장된 묶음(`listGroups`)으로 센다. 읽기가 실패하면 제안으로 바꾸지 않고 "치료 묶음을 불러오지 못했어요" + [다시 불러오기], [묶음 고치기]는 누를 수 없다. 읽기가 성공했는데 저장된 묶음이 없으면 `suggestGroups(아는 코드)`로 세고 "제안 묶음 · 아직 저장 안 함"을 보인다. 머리에 [묶음 고치기]
+- 묶음 고치기(TASK-14, 시안 3절 OK 뒤, 편집 중인지는 `RevenueScreen`의 화면 상태이고 `view.ts`의 보기 상태가 아니다): `src/components/revenue/groups/GroupEditor.tsx`(`'use client'`). 묶음마다 이름 칸·처방 수·[묶음 지우기](확인 창)·처방 줄(코드·이름·고른 달 금액·옮길 묶음 고르기), 오른쪽(폰은 아래) '그 밖 처방' 목록과 찾기 칸, [새 묶음]·[취소]·[저장]. 처방 목록 = 저장된 `sales_codes` 최근 13달의 코드(가장 늦은 이름), `_REST` 빼고. 고치기는 `treatments.ts`의 순수 함수로, 저장은 `saveGroups`로. 폰·연결 안 된 PC에서도 된다
 - 부품 이름: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerPatient.tsx`·`MonthBars.tsx`·`TreatmentBars.tsx`·`RevenueStates.tsx`
 - 매출 탭은 수납 나눔(현금·카드·계좌·미수입금)·신환·재진을 그리지 않는다(업무일지 몫)
 
@@ -314,7 +346,7 @@ export function createRxGroupStore(client: SupabaseClient): {
 | 파일 | 이 명세가 하는 일 | 같은 파일을 고치는 갈래 · 합치는 법 |
 |---|---|---|
 | `supabase/migrations/20261101000400_revenue.sql` + `public.my_hospital_id()` | 새 파일(C2 이름). `my_hospital_id()`는 C1 글자 그대로 `create or replace`(TASK-4) | worklog `…000100`·`…000110`, stats `…000200`, patients `…000300`가 같은 함수를 같은 글자로 만든다. precheck TASK-12는 나중에 `create or replace`로 바꾼다. 함수가 이미 있어도 되는지 시험한다(AC-004.4). 트리거 함수는 기능 이름 `sales_touch_fetched_at()`이라 `touch_updated_at()`과 겹치지 않는다. 백업 목록은 아래 `src/lib/backup/tables.ts` 줄 |
-| `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | `E-REVENUE-SAVE-FAILED`(TASK-7)·`E-REVENUE-GROUP-SAVE-FAILED`(TASK-13) 두 항목 더함(C3) | worklog·stats·patients도 자기 이름 번호(`E-WORKLOG-*` 등)를 더한다 → 같은 번호는 없고 줄만 겹친다 |
+| `src/lib/errors.ts` · `src/types/errors.ts` · `src/lib/errors.test.ts` | `E-REVENUE-SAVE-FAILED`(TASK-7)·`E-REVENUE-GROUP-SAVE-FAILED`·`E-REVENUE-GROUP-LOAD-FAILED`(TASK-13) 세 항목 더함(C3) | worklog·stats·patients도 자기 이름 번호(`E-WORKLOG-*` 등)를 더한다 → 같은 번호는 없고 줄만 겹친다 |
 | `eslint.config.mjs` · `src/guardrails.test.ts` | 건드리지 않는다. `lib/revenue`·`lib/storage/revenue.ts`는 집계만 다뤄 환자 자료 구역이 아니다. `lib/bridge/revenueResult.ts`는 이미 있는 `lib/bridge` 울타리 안에 든다 | stats·patients·precheck가 울타리를 더할 수 있다 → 이 갈래는 합칠 것이 없다 |
 | `docs/ARCHITECTURE.md` · `docs/UI_GUIDE.md` | 매출 줄만 고친다(TASK-10: 준비 중 목록에서 매출, `components/revenue/`·`lib/revenue/`·`lib/storage/`·DB 표 `sales_days`·`sales_codes`·데이터 흐름 '[매출]' 줄). 숫자("준비 중 n개")를 새로 적지 않는다(C5) | 네 갈래 모두 자기 탭 줄을 고친다 → 줄 단위로 합친다 |
 | `docs/ADR.md` | 건드리지 않는다(새 결정은 이 design.md 10절에 둔다) | 다른 갈래가 ADR을 더할 수 있다 → 합칠 것이 없다 |
@@ -329,7 +361,7 @@ export function createRxGroupStore(client: SupabaseClient): {
 | `src/components/claim/useBridge.ts` | 불러 쓰기만(고치지 않음) | precheck |
 | `helper/Directory.Build.props` · `src/lib/bridge/versions.ts`(`LATEST_HELPER`) · `src/lib/bridge/handshake.test.ts` · `extension/manifest.json` | 다음 판으로 올림(TASK-12, 같은 커밋) | 도우미·확장을 바꾸는 갈래(stats·patients·precheck)도 판을 올린다 → 합칠 때 가장 높은 판 하나로 맞추고 `LATEST_HELPER` = `Version`을 다시 확인한다 |
 | `plan.md` §2-4 | 매출 읽는 길을 '도우미 읽기'로 고친 줄(TASK-10) | 다른 갈래가 자기 절을 고칠 수 있다 → 줄 단위로 합친다 |
-| `src/lib/backup/tables.ts` · 그 시험 | 그 파일이 있으면 `sales_days`·`sales_codes`를 더한다(TASK-10). 없으면 ARCHITECTURE.md에 메모 | precheck TASK-32가 만든다 → 나중에 합쳐지는 쪽이 매출 표 둘을 목록에 넣는다 |
+| `src/lib/backup/tables.ts` · 그 시험 | 그 파일이 있으면 `sales_days`·`sales_codes`·`rx_groups`를 더한다(TASK-10, `rx_groups`는 총괄이 손으로 만든 유일한 자료라 꼭). 없으면 ARCHITECTURE.md에 메모 | precheck TASK-32가 만든다 → 나중에 합쳐지는 쪽이 표 셋을 목록에 넣는다 |
 | `e2e/revenue.spec.ts` · `e2e/lib/revenueFakeBridge.ts` | 새 파일(기능 이름, C6) | 다른 갈래의 E2E와 이름이 겹치지 않는다 |
 
 ## 12. 사용자 결정 (2026-11-01, 다시 묻지 않는다)

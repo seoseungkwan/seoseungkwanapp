@@ -36,7 +36,7 @@
 
 ## TASK-4: 매출 표 (migration)
 - Step: Phase 2 · Step 0 · `revenue-tables`
-- AC: AC-004.1~AC-004.4
+- AC: AC-004.1~AC-004.6
 - REQ: REQ-004
 - Files: supabase/migrations/20261101000400_revenue.sql, supabase/revenue.rls.test.ts
 - Tests: supabase/revenue.rls.test.ts, supabase/rls.test.ts
@@ -120,7 +120,7 @@
 - Files: src/lib/storage/rxGroups.ts, src/lib/storage/rxGroups.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts
 - Tests: src/lib/storage/rxGroups.test.ts, src/lib/errors.test.ts
 - TDD: required
-- 메모: 이름이 일반적인 `rx_groups`·`RxGroup`은 통계 탭이 합친 뒤 다시 쓸 수 있게 한 것이다(design.md 6·11절). 새 오류 번호는 `E-REVENUE-GROUP-SAVE-FAILED`(갈래 규칙 C3)
+- 메모: 이름이 일반적인 `rx_groups`·`RxGroup`은 통계 탭이 합친 뒤 다시 쓸 수 있게 한 것이다(design.md 6·11절). 저장은 DB 함수 `save_rx_groups` 한 번(TASK-4, 한 트랜잭션). 새 오류 번호는 `E-REVENUE-GROUP-SAVE-FAILED`·`E-REVENUE-GROUP-LOAD-FAILED`(갈래 규칙 C3)
 
 ## TASK-14: 묶음 고치기 화면
 - Step: Phase 3 · Step 2 · `group-editor`
