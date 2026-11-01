@@ -1,0 +1,31 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "patients-4-screen",
+  "steps": [
+    {
+      "step": 0,
+      "name": "tab-entry",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "followup-screen",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "recall-screen",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "messages-screen",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "counts-upload",
+      "status": "pending"
+    }
+  ]
+}

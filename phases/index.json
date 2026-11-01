@@ -27,6 +27,22 @@
     {
       "dir": "precheck-7-backup",
       "status": "pending"
+    },
+    {
+      "dir": "patients-1-lists",
+      "status": "pending"
+    },
+    {
+      "dir": "patients-2-messages",
+      "status": "pending"
+    },
+    {
+      "dir": "patients-3-helper",
+      "status": "pending"
+    },
+    {
+      "dir": "patients-4-screen",
+      "status": "pending"
     }
   ]
 }

@@ -1,0 +1,26 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "patients-1-lists",
+  "steps": [
+    {
+      "step": 0,
+      "name": "patients-fence",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "followup-logic",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "recall-logic",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "patients-worker",
+      "status": "pending"
+    }
+  ]
+}
