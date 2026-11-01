@@ -107,6 +107,9 @@ function naiveAggregate(rows: ConsumptionRow[], groups: RxGroupDef[] = []): Aggr
   }
   const cameBackWithin = (p: number, days: number) =>
     outpatient.some((r) => r.patient === p && diffDays(firstNew.get(p) ?? '', r.date) >= 1 && diffDays(firstNew.get(p) ?? '', r.date) <= days)
+  // N일 안에는 오지 않고 N+1일째 이후에 처음 다시 옴
+  const cameBackOnlyAfter = (p: number, days: number) =>
+    !cameBackWithin(p, days) && outpatient.some((r) => r.patient === p && diffDays(firstNew.get(p) ?? '', r.date) > days)
   const result = {} as Aggregates
   for (const grain of GRAINS) {
     const keyOf = KEY_OF[grain]
@@ -156,6 +159,8 @@ function naiveAggregate(rows: ConsumptionRow[], groups: RxGroupDef[] = []): Aggr
         cohort: cohort.length,
         within7: cohort.filter((p) => cameBackWithin(p, 7)).length,
         within14: cohort.filter((p) => cameBackWithin(p, 14)).length,
+        within30: cohort.filter((p) => cameBackWithin(p, 30)).length,
+        after30: cohort.filter((p) => cameBackOnlyAfter(p, 30)).length,
       }
       return {
         key,
@@ -209,7 +214,7 @@ describe('AC-006.1 aggregate — 칸', () => {
       rx: [exam, { code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 2, newPatients: 1, returning: 1, followup: [2, 0, 0, 0], regions: weekRegions }],
       regions: weekRegions,
       groups: [],
-      revisit: { cohort: 1, within7: 0, within14: 0 }, // 1번 환자는 월요일 신환 뒤로 오지 않았다
+      revisit: { cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 }, // 1번 환자는 월요일 신환 뒤로 오지 않았다
     }
     expect(agg).toEqual({
       day: [
@@ -220,7 +225,7 @@ describe('AC-006.1 aggregate — 칸', () => {
           rx: [exam, { code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 1, newPatients: 1, returning: 0, followup: [1, 0, 0, 0], regions: yeoksam }],
           regions: [{ name: '서울특별시 강남구 역삼동', patients: 1 }],
           groups: [],
-          revisit: { cohort: 1, within7: 0, within14: 0 },
+          revisit: { cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 },
         },
         {
           key: TUE,
@@ -240,7 +245,7 @@ describe('AC-006.1 aggregate — 칸', () => {
           ],
           regions: [{ name: '주소 없음', patients: 1 }],
           groups: [],
-          revisit: { cohort: 0, within7: 0, within14: 0 },
+          revisit: { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 },
         },
       ],
       week: [{ key: MON, range: { from: MON, to: SUN }, ...week }],
@@ -848,11 +853,11 @@ const revisitOf = (agg: Aggregates, grain: Grain, key: string): RevisitCounts =>
 
 describe('AC-006.4 신환 재방문 — 첫 신환일 다음 날부터 N일째까지(양 끝 포함) 외래 줄이 있는 환자', () => {
   it.each([
-    [1, { within7: 1, within14: 1 }],
-    [7, { within7: 1, within14: 1 }],
-    [8, { within7: 0, within14: 1 }],
-    [14, { within7: 0, within14: 1 }],
-    [15, { within7: 0, within14: 0 }],
+    [1, { within7: 1, within14: 1, within30: 1, after30: 0 }],
+    [7, { within7: 1, within14: 1, within30: 1, after30: 0 }],
+    [8, { within7: 0, within14: 1, within30: 1, after30: 0 }],
+    [14, { within7: 0, within14: 1, within30: 1, after30: 0 }],
+    [15, { within7: 0, within14: 0, within30: 1, after30: 0 }],
   ])('%i일째에 왔다 → %j', (days, expected) => {
     const agg = aggregate([newAt(D0), visitAt(addDays(D0, days))])
     expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, ...expected })
@@ -860,58 +865,226 @@ describe('AC-006.4 신환 재방문 — 첫 신환일 다음 날부터 N일째�
 
   it('어떤 처방이든, 초재진 값과 상관없이 외래 줄이면 재방문', () => {
     const agg = aggregate([newAt(D0), row({ patient: 1, date: addDays(D0, 3), rxCode: 'ZZ999', firstVisit: null, outpatient: null })])
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
   })
 
   it('집단은 첫 신환일이 든 일·주·월 칸에 들어가고, 다시 온 날의 칸에는 없다', () => {
     const agg = aggregate([newAt(D0), visitAt(addDays(D0, 7))])
-    expect(revisitOf(agg, 'week', '2026-09-28')).toEqual({ cohort: 1, within7: 1, within14: 1 })
-    expect(revisitOf(agg, 'month', '2026-10')).toEqual({ cohort: 1, within7: 1, within14: 1 })
-    expect(revisitOf(agg, 'day', addDays(D0, 7))).toEqual({ cohort: 0, within7: 0, within14: 0 })
-    expect(revisitOf(agg, 'week', '2026-10-05')).toEqual({ cohort: 0, within7: 0, within14: 0 })
+    expect(revisitOf(agg, 'week', '2026-09-28')).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
+    expect(revisitOf(agg, 'month', '2026-10')).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
+    expect(revisitOf(agg, 'day', addDays(D0, 7))).toEqual({ cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 })
+    expect(revisitOf(agg, 'week', '2026-10-05')).toEqual({ cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 })
   })
 
   it('재진·알 수 없음 환자는 집단이 아니다', () => {
     const agg = aggregate([visitAt(D0, 1), row({ patient: 2, date: D0, firstVisit: null }), visitAt(addDays(D0, 1), 1)])
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 0, within7: 0, within14: 0 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 })
   })
 
   it('여러 환자: 집단·재방문은 몇 명인지', () => {
     const agg = aggregate([newAt(D0, 1), newAt(D0, 2), newAt(D0, 3), visitAt(addDays(D0, 2), 1), visitAt(addDays(D0, 10), 2)])
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 3, within7: 1, within14: 2 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 3, within7: 1, within14: 2, within30: 2, after30: 0 })
   })
 })
 
 describe('AC-006.5 재방문이 아닌 것 · 두 번 찍힌 신환', () => {
   it('첫 신환일과 같은 날의 다른 처방은 재방문이 아니다', () => {
     const agg = aggregate([newAt(D0), visitAt(D0)])
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 })
   })
 
   it('입원 줄은 재방문이 아니다', () => {
     const agg = aggregate([newAt(D0), row({ patient: 1, date: addDays(D0, 3), outpatient: false })])
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 })
   })
 
   it('입원 줄의 신환 표시로는 첫 신환일을 정하지 않는다', () => {
     const agg = aggregate([row({ patient: 1, date: D0, firstVisit: true, outpatient: false }), newAt(addDays(D0, 2))])
-    expect(revisitOf(agg, 'day', addDays(D0, 2))).toEqual({ cohort: 1, within7: 0, within14: 0 })
+    expect(revisitOf(agg, 'day', addDays(D0, 2))).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 })
   })
 
   it('같은 환자가 다른 날 다시 신환으로 찍히면 그 날은 재방문, 그 날 칸 집단에는 넣지 않는다', () => {
     const again = addDays(D0, 3) // 10-04(일), 같은 주
     const agg = aggregate([newAt(D0), newAt(again)])
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1 })
-    expect(revisitOf(agg, 'day', again)).toEqual({ cohort: 0, within7: 0, within14: 0 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
+    expect(revisitOf(agg, 'day', again)).toEqual({ cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 })
     expect(bucketOf(agg, 'day', again).totals.newPatients).toBe(1) // 칸 합계의 신환은 파일럿 규칙 그대로
-    expect(revisitOf(agg, 'week', '2026-09-28')).toEqual({ cohort: 1, within7: 1, within14: 1 })
+    expect(revisitOf(agg, 'week', '2026-09-28')).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
   })
 
   it('첫 신환일은 줄 순서와 상관없이 가장 이른 날', () => {
     const rows = [newAt(addDays(D0, 20)), visitAt(addDays(D0, 5)), newAt(D0)]
     const agg = aggregate(rows)
-    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1 })
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
     expect(revisitOf(agg, 'day', addDays(D0, 20)).cohort).toBe(0)
     expect(aggregate([...rows].reverse())).toEqual(agg)
+  })
+})
+
+// ── 신환 30일 재방문 ──────────────────────────────────────
+
+// D0 = 2026-10-01(목) 신환 → 30일째 10-31(토), 31일째 11-01(일). 그 주 칸은 2026-09-28(월)
+const NO_REVISIT: RevisitCounts = { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 }
+let fakeCache: ParsedFile | undefined
+const fakeRows = () =>
+  (fakeCache ??= parsedOf(parseBitFile(new Uint8Array(readFileSync(join(FAKE_DIR, 'fake-utf8-bom.csv'))), createPatientIds()))).rows
+
+describe('AC-501.1 30일 재방문 — 첫 신환일 다음 날부터 30일째까지(양 끝 포함) 외래 줄이 있는 환자', () => {
+  it.each([
+    [1, 1],
+    [15, 1],
+    [29, 1],
+    [30, 1],
+    [31, 0],
+  ])('%i일째에 왔다 → within30 %i', (days, within30) => {
+    const agg = aggregate([newAt(D0), visitAt(addDays(D0, days))])
+    expect(revisitOf(agg, 'day', D0).within30).toBe(within30)
+  })
+
+  it('집단의 첫 신환일이 든 일·주·월 칸에 더하고, 다시 온 날의 칸에는 없다', () => {
+    const back = addDays(D0, 20) // 10-21(수), 10-19 주
+    const agg = aggregate([newAt(D0), visitAt(back)])
+    const counted: RevisitCounts = { cohort: 1, within7: 0, within14: 0, within30: 1, after30: 0 }
+    expect(revisitOf(agg, 'day', D0)).toEqual(counted)
+    expect(revisitOf(agg, 'week', '2026-09-28')).toEqual(counted)
+    expect(revisitOf(agg, 'month', '2026-10')).toEqual(counted)
+    expect(revisitOf(agg, 'day', back)).toEqual(NO_REVISIT)
+    expect(revisitOf(agg, 'week', '2026-10-19')).toEqual(NO_REVISIT)
+  })
+
+  it('어떤 처방이든, 초재진 값과 상관없이 외래 줄이면 30일 재방문', () => {
+    const agg = aggregate([newAt(D0), row({ patient: 1, date: addDays(D0, 25), rxCode: 'ZZ999', firstVisit: null, outpatient: null })])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 1, after30: 0 })
+  })
+
+  it('첫 신환일과 같은 날의 다른 처방·입원 줄은 30일 재방문이 아니다', () => {
+    const agg = aggregate([newAt(D0), visitAt(D0), row({ patient: 1, date: addDays(D0, 20), outpatient: false })])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 })
+  })
+
+  it('같은 환자가 다른 날 다시 신환으로 찍히면 그 날은 30일 재방문, 그 날 칸 집단에는 넣지 않는다', () => {
+    const again = addDays(D0, 25) // 10-26
+    const agg = aggregate([newAt(D0), newAt(again)])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 1, after30: 0 })
+    expect(revisitOf(agg, 'day', again)).toEqual(NO_REVISIT)
+    expect(revisitOf(agg, 'month', '2026-10')).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 1, after30: 0 })
+  })
+
+  it('재진·알 수 없음 환자는 30일 집단이 아니다', () => {
+    const agg = aggregate([visitAt(D0, 1), row({ patient: 2, date: D0, firstVisit: null }), visitAt(addDays(D0, 20), 1)])
+    expect(revisitOf(agg, 'day', D0)).toEqual(NO_REVISIT)
+  })
+
+  it('여러 환자: 7일 ≤ 14일 ≤ 30일 ≤ 집단', () => {
+    const agg = aggregate([
+      ...[1, 2, 3, 4].map((p) => newAt(D0, p)),
+      visitAt(addDays(D0, 3), 1),
+      visitAt(addDays(D0, 10), 2),
+      visitAt(addDays(D0, 30), 3), // 4번은 다시 오지 않음
+    ])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 4, within7: 1, within14: 2, within30: 3, after30: 0 })
+  })
+
+  it('가짜 파일: 30일 재방문이 실제로 있고, 모든 칸에서 7일 ≤ 14일 ≤ 30일 ≤ 집단, 30일 + 30일 넘어 ≤ 집단', SLOW, () => {
+    const agg = aggregate(fakeRows())
+    expect(agg.day.some((b) => b.revisit.within30 > b.revisit.within14)).toBe(true)
+    for (const grain of GRAINS) {
+      for (const { revisit } of agg[grain]) {
+        expect(revisit.within7).toBeLessThanOrEqual(revisit.within14)
+        expect(revisit.within14).toBeLessThanOrEqual(revisit.within30)
+        expect(revisit.within30).toBeLessThanOrEqual(revisit.cohort)
+        expect(revisit.within30 + revisit.after30).toBeLessThanOrEqual(revisit.cohort)
+      }
+    }
+  })
+})
+
+describe('AC-501.2 30일째는 30일 재방문, 31일째는 아니다', () => {
+  it('30일째에 다시 온 신환과 31일째에만 다시 온 신환', () => {
+    const agg = aggregate([newAt(D0, 1), visitAt(addDays(D0, 30), 1), newAt(D0, 2), visitAt(addDays(D0, 31), 2)])
+    for (const [grain, key] of [['day', D0], ['week', '2026-09-28'], ['month', '2026-10']] as const) {
+      expect(revisitOf(agg, grain, key)).toEqual({ cohort: 2, within7: 0, within14: 0, within30: 1, after30: 1 })
+    }
+  })
+
+  it('31일째에만 다시 온 신환 혼자면 30일 재방문은 0', () => {
+    const agg = aggregate([newAt(D0), visitAt(addDays(D0, 31))])
+    expect(revisitOf(agg, 'day', D0).within30).toBe(0)
+  })
+})
+
+describe('AC-501.5 30일 넘어 다시 옴(after30) — 30일 안에는 오지 않고 31일째 이후에 처음 다시 온 신환', () => {
+  it.each([31, 45, 200])('%i일째에 처음 다시 왔다 → after30', (days) => {
+    const agg = aggregate([newAt(D0), visitAt(addDays(D0, days))])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 1 })
+  })
+
+  it('30일 안에 다시 온 환자는 31일째 이후에 또 와도 after30에 없다(한 환자는 둘 중 하나에만)', () => {
+    const agg = aggregate([newAt(D0), visitAt(addDays(D0, 5)), visitAt(addDays(D0, 40))])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 })
+  })
+
+  it('다시 오지 않은 신환·같은 날만 다른 처방·31일째 이후 입원 줄만 있는 신환은 after30이 아니다', () => {
+    const agg = aggregate([
+      newAt(D0, 1),
+      newAt(D0, 2),
+      visitAt(D0, 2),
+      newAt(D0, 3),
+      row({ patient: 3, date: addDays(D0, 40), outpatient: false }),
+    ])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 3, within7: 0, within14: 0, within30: 0, after30: 0 })
+  })
+
+  it('31일째 이후 다시 신환으로 찍힌 날도 첫 재방문이고, 그 날 칸 집단에는 넣지 않는다', () => {
+    const again = addDays(D0, 35) // 11-05(목)
+    const agg = aggregate([newAt(D0), newAt(again)])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 1 })
+    expect(revisitOf(agg, 'day', again)).toEqual(NO_REVISIT)
+    expect(revisitOf(agg, 'month', '2026-11')).toEqual(NO_REVISIT)
+  })
+
+  it('일·주·월 칸 모두 첫 신환일 칸에 더한다', () => {
+    const agg = aggregate([newAt(D0), visitAt(addDays(D0, 50))])
+    const counted: RevisitCounts = { cohort: 1, within7: 0, within14: 0, within30: 0, after30: 1 }
+    expect(revisitOf(agg, 'week', '2026-09-28')).toEqual(counted)
+    expect(revisitOf(agg, 'month', '2026-10')).toEqual(counted)
+  })
+
+  it('여러 환자: within30 + after30 ≤ 집단, 집단 중 나머지는 아직 다시 오지 않음', () => {
+    const agg = aggregate([
+      ...[1, 2, 3, 4].map((p) => newAt(D0, p)),
+      visitAt(addDays(D0, 12), 1),
+      visitAt(addDays(D0, 33), 2),
+      visitAt(addDays(D0, 60), 3), // 4번은 다시 오지 않음
+    ])
+    expect(revisitOf(agg, 'day', D0)).toEqual({ cohort: 4, within7: 0, within14: 1, within30: 1, after30: 2 })
+  })
+})
+
+describe('AC-501.4 30일 칸은 더하기만 — 집단·7·14일 숫자는 지금 규칙 그대로', () => {
+  it('재방문 칸은 지금 칸(cohort·within7·within14)에 within30·after30만 더한 것이고, 7·14일 숫자는 31일째 이후 줄과 상관없다', SLOW, () => {
+    const rows = fakeRows()
+    const agg = aggregate(rows)
+    const firstNewOf = new Map<number, string>()
+    for (const r of rows) {
+      const seen = firstNewOf.get(r.patient)
+      if (r.outpatient !== false && r.firstVisit === true && (seen === undefined || r.date < seen)) firstNewOf.set(r.patient, r.date)
+    }
+    // 첫 신환일 15일째 이후 줄을 지워도 집단·7·14일은 같다
+    const upTo14 = aggregate(
+      rows.filter((r) => {
+        const first = firstNewOf.get(r.patient)
+        return first === undefined || diffDays(first, r.date) <= 14
+      }),
+    )
+    const old = (revisit: RevisitCounts) => ({ cohort: revisit.cohort, within7: revisit.within7, within14: revisit.within14 })
+    for (const grain of GRAINS) {
+      for (const bucket of agg[grain]) {
+        expect(Object.keys(bucket.revisit).sort()).toEqual(['after30', 'cohort', 'within14', 'within30', 'within7'])
+        const cut = upTo14[grain].find((b) => b.key === bucket.key)
+        if (cut !== undefined) expect(old(cut.revisit)).toEqual(old(bucket.revisit))
+        else expect(bucket.revisit.cohort).toBe(0)
+      }
+    }
   })
 })

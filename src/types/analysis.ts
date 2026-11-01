@@ -28,8 +28,10 @@ export type RxStats = {
 export type GroupStats = { id: string; patients: number; newPatients: number; returning: number; followup: FollowUp }
 
 // 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄의 날)이 이 칸에 있는 환자(cohort) 중
-// 다음 날부터 7일째·14일째까지(양 끝 포함) 외래 줄이 있는 환자 수. 덮은 기간과 상관없이 센 그대로('집계 중'은 요약이 정한다)
-export type RevisitCounts = { cohort: number; within7: number; within14: number }
+// 다음 날부터 7일째·14일째·30일째까지(양 끝 포함) 외래 줄이 있는 환자 수. 덮은 기간과 상관없이 센 그대로('집계 중'은 요약이 정한다).
+// after30 = 30일 안에는 오지 않고 31일째 이후에 처음 다시 온 환자 수(불러온 자료 끝날까지 본 수, 원본 ReturnAfter30Days).
+// within7 ≤ within14 ≤ within30 ≤ cohort, within30 + after30 ≤ cohort
+export type RevisitCounts = { cohort: number; within7: number; within14: number; within30: number; after30: number }
 
 export type BucketStats = {
   key: string // day: 'YYYY-MM-DD', week: 그 주 월요일 'YYYY-MM-DD', month: 'YYYY-MM'
@@ -86,13 +88,16 @@ export type GroupCompare = {
 export type Rates = { newRate: number | null; returningRate: number | null }
 
 // 신환 재방문. withinN null = '집계 중'(칸 첫날 ~ 칸 끝날 + N일이 다 덮이지 않았거나 아직 끝나지 않음).
-// rateN = withinN / cohort — 집단이 0명이거나 집계 중이면 null
+// rateN = withinN / cohort — 집단이 0명이거나 집계 중이면 null. after30은 30일이 숫자일 때만 숫자
 export type RevisitView = {
   cohort: number
   within7: number | null
   within14: number | null
+  within30: number | null
+  after30: number | null
   rate7: number | null
   rate14: number | null
+  rate30: number | null
 }
 
 // 칸 하나의 합계. 덮였지만 줄이 없는 칸은 totals가 모두 0

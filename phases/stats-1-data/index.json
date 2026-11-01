@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "revisit-30",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/types/analysis.ts RevisitCounts에 within30·after30, RevisitView에 within30·after30·rate30(after30은 30일이 숫자일 때만 숫자). aggregate.ts는 REVISIT_DAYS에 30을 더하고 after30 = 30일 안에 없고 다음 날 이후 외래 줄이 있음. compare.ts revisitView는 ready(30)이 within30·after30·rate30을 함께 정한다. 저장 모양은 아직 그대로(TASK-2 몫), analyzeFiles.test.ts는 고칠 곳이 없어 그대로."
     },
     {
       "step": 1,
