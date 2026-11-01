@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "patients-db",
-      "status": "pending"
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000300_patients.sql(C1 함수 글 그대로, message_templates·contact_counts, RLS·칸 단위 권한·트리거, 두 번 실행 가능), supabase/patients.rls.test.ts(PGlite). message_templates: insert·update는 kind·name·body·sort_order, select, delete. contact_counts: insert·update는 followup_left·injection_left, select, delete 없음, upsert onConflict hospital_id. hospital_id·id·updated_at은 기본값·트리거로만. 승인 안 된 병원의 insert는 RLS 오류. 실제 PostgREST·supabase-js 경로는 TASK-15 E2E 때 처음 확인된다. 실제 Supabase에 붙이는 일은 사용자 OK 뒤 운영자가 SQL 편집기로 한다. 다른 브랜치 주의: precheck의 20261030000000_precheck_settings.sql은 아직 if not exists 없는 create table message_templates라 이 migration 뒤에 붙이면 오류(design.md 'precheck가 나중에 할 일'). 명세와 다른 점 없음"
     },
     {
       "step": 1,
