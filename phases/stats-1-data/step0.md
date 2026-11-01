@@ -1,6 +1,6 @@
 # Step 0: revisit-30
 
-> **TASK-1** 신환 30일 재방문 세기 · **REQ-501** · AC-501.1 ~ AC-501.5
+> **TASK-1** 신환 30일 재방문 세기 · **REQ-501** · AC-501.1 ~ AC-501.6
 > Phase 1 · 계산 더하기와 자료 길 `stats-1-data` · Step 0 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-1 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-029 (precheck 029.1) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -12,8 +12,9 @@
 - **AC-501.1**: Given 신환 줄, When `aggregate`로 세면, Then 칸(일·주·월)마다 `revisit.within30` = 첫 신환일 다음 날부터 30일째까지(양 끝 포함) 외래 줄(어떤 처방이든)이 있는 집단 환자 수다. 집단·첫 신환일·입원 줄·같은 날 다른 처방·다시 신환으로 찍힌 날의 규칙은 지금 7·14일(stats-core 006.4·006.5)과 같고, `within7 ≤ within14 ≤ within30 ≤ cohort`다
 - **AC-501.2**: Given 31일째에만 다시 온 신환과 30일째에 다시 온 신환, When 세면, Then 30일째는 30일 재방문이고 31일째는 아니다
 - **AC-501.3**: Given 칸 하나, When `buildSummary`로 요약하면, Then `RevisitView.within30`·`rate30`·`after30`은 '칸 첫날 ~ 칸 끝날 + 30일'이 모두 덮였고 끝났을 때만 숫자이고, 아니면 null('집계 중')이다. 집단이 0명이면 `rate30`은 null이다. 30일이 숫자면 7·14일도 숫자다
-- **AC-501.4**: Given 지금 7·14일 시험(`aggregate.test.ts`·`compare.test.ts`·`analyzeFiles.test.ts`), When 돌리면, Then 기대값에 `within30`·`after30`(·`rate30`) 칸만 더하고 나머지는 한 글자도 바꾸지 않은 채 통과한다
+- **AC-501.4**: Given 지금 7·14일 시험(`aggregate.test.ts`·`compare.test.ts`·`analyzeFiles.test.ts`), When 돌리면, Then 기대값에 `within30`·`after30`(·`rate30`) 칸만 더하고 나머지는 한 글자도 바꾸지 않은 채 통과한다. 예외는 AC-501.6 하나다: 주·달 `totals`를 옛 '서로 다른 환자 수'로 못 박은 기대값은 그 이유로만 바뀐다
 - **AC-501.5**: Given 30일 안에는 다시 오지 않고 31일째 이후에 처음 다시 온 신환, When 세면, Then `revisit.after30`에 센다(불러온 자료 끝날까지 본 수 — 원본 `CohortMonthResult.ReturnAfter30Days`와 같은 뜻). 한 환자는 within30과 after30 가운데 하나에만 들고 `within30 + after30 ≤ cohort`다
+- **AC-501.6**: Given `aggregate(rows, groups, patientDays?)`와 `PatientDay = { patient, date, receptions, firstVisit }`, When 세면, Then 두 길 모두 주·달 `totals`는 그 주·달 일 칸의 네 칸(`patients`·`newPatients`·`returning`·`unknown`) 합이다(stats-core AC-006.1의 '일·주·월을 각각 따로 센 서로 다른 환자 수' 가운데 `totals` 몫은 이 AC가 대신한다. `rx[]`·`groups[]`는 지금처럼 칸마다 서로 다른 환자 수다). 셋째 인자가 없으면(파일 길) 일 칸은 지금 그대로(줄 표시로 센 그날 환자)다. 셋째 인자가 있으면(도우미 길) `patientDays`의 날짜마다 처방 줄이 없어도 일·주·월 칸이 생기고, 일 칸 `totals` = `{ patients: receptions 합, newPatients: firstVisit이 참인 줄 수, returning: patients − newPatients, unknown: 0 }`이며, 재방문을 세는 외래 날과 첫 신환일도 `patientDays`를 본다. 두 길 모두 `rx[]`·`groups[]`·동네는 그대로다(`patientDays`는 칸의 `visit`에 쓰지 않는다). 시험: 하루에 접수 둘(`receptions` 2)이고 그날이 첫 내원 → 환자 2, 신환 1, 재진 1. 시험: 한 달에 같은 사람이 다섯 번 → 달 `totals.patients` 5, 달 `rx[].patients` 1(도우미 길은 접수 줄로, 파일 길은 서로 다른 다섯 날의 줄로, 두 길 모두). 시험: 처방 없는 접수만 있는 날 → 일 칸 `rx: []`, `totals`는 접수대로이고 주·달 칸도 있으며 그 합에 든다. 시험: 처방 없이 다시 온 신환 → 재방문에 든다. 시험: 처방 없이 첫 내원한 환자 → 그 칸 집단에 든다. 시험: 같은 줄에 셋째 인자를 주어도 `rx[]`·`groups[]`·동네가 인자 없을 때와 같다. 시험: 셋째 인자가 없으면 일 칸이 지금 기대값 그대로다
 
 ## 읽어야 할 파일
 
@@ -41,10 +42,18 @@
   - `src/lib/analytics/compare.test.ts`
   - `src/types/analysis.ts`
   - `src/workers/analyzeFiles.test.ts`
+  - `src/workers/runAnalysis.test.ts`
+  - `src/lib/payload/toMonthPayload.test.ts`
+  - `src/lib/payload/toDayPayloads.test.ts`
+  - `src/lib/payload/validate.test.ts`
 - Tests:
   - `src/lib/analytics/aggregate.test.ts`
   - `src/lib/analytics/compare.test.ts`
   - `src/workers/analyzeFiles.test.ts`
+  - `src/workers/runAnalysis.test.ts`
+  - `src/lib/payload/toMonthPayload.test.ts`
+  - `src/lib/payload/toDayPayloads.test.ts`
+  - `src/lib/payload/validate.test.ts`
 - TDD: required
 - 메모: `analyzeFiles.test.ts`는 기대값에 `within30`·`rate30`이 필요할 때만 그 칸을 더한다
 
@@ -80,6 +89,31 @@ export type RevisitView = {
 - `compare.test.ts`: AC-501.3(칸 끝 + 30일이 덮이지 않음 → null, 덮이고 지남 → 숫자, 집단 0 → rate30 null)
 - 지금 시험(AC-501.4): 기대값 객체에 `within30`·`after30`(·`rate30`) 칸만 더한다. 다른 값은 바꾸지 않는다
 
+## 2026-11-01 접수 기준 변경 (뒤따라 고치기)
+
+> 사용자 결정(`specs/stats/requirements.md` 배경 '환자 수의 뜻'·'파일 길'). 이 TASK는 이미 커밋되었고 이 변경으로 다시 연다. TASK-5보다 먼저 끝낸다. 차례는 `specs/stats/tasks.md` 머리말 '2026-11-01 다시 여는 차례'를 따른다. 동시에 도는 동안 이 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 그래서 이번에는 아래 'Acceptance Criteria'의 `npm run lint && npm test && npm run build`·`verify`와 '검증 절차'의 `index.json` 고치기를 하지 않는다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 7·14·30일 창의 판정, 파서·`analyzeFiles.ts`·`runAnalysis.ts`·저장 모양을 고치지 않는다는 규칙은 그대로다.
+
+### 새 AC
+- **AC-501.6**: Given `aggregate(rows, groups, patientDays?)`와 `PatientDay = { patient, date, receptions, firstVisit }`, When 세면, Then 두 길 모두 주·달 `totals`는 그 주·달 일 칸의 네 칸(`patients`·`newPatients`·`returning`·`unknown`) 합이다(stats-core AC-006.1의 '일·주·월을 각각 따로 센 서로 다른 환자 수' 가운데 `totals` 몫은 이 AC가 대신한다. `rx[]`·`groups[]`는 지금처럼 칸마다 서로 다른 환자 수다). 셋째 인자가 없으면(파일 길) 일 칸은 지금 그대로(줄 표시로 센 그날 환자)다. 셋째 인자가 있으면(도우미 길) `patientDays`의 날짜마다 처방 줄이 없어도 일·주·월 칸이 생기고, 일 칸 `totals` = `{ patients: receptions 합, newPatients: firstVisit이 참인 줄 수, returning: patients − newPatients, unknown: 0 }`이며, 재방문을 세는 외래 날과 첫 신환일도 `patientDays`를 본다. 두 길 모두 `rx[]`·`groups[]`·동네는 그대로다(`patientDays`는 칸의 `visit`에 쓰지 않는다). 시험: 하루에 접수 둘(`receptions` 2)이고 그날이 첫 내원 → 환자 2, 신환 1, 재진 1. 시험: 한 달에 같은 사람이 다섯 번 → 달 `totals.patients` 5, 달 `rx[].patients` 1(도우미 길은 접수 줄로, 파일 길은 서로 다른 다섯 날의 줄로, 두 길 모두). 시험: 처방 없는 접수만 있는 날 → 일 칸 `rx: []`, `totals`는 접수대로이고 주·달 칸도 있으며 그 합에 든다. 시험: 처방 없이 다시 온 신환 → 재방문에 든다. 시험: 처방 없이 첫 내원한 환자 → 그 칸 집단에 든다. 시험: 같은 줄에 셋째 인자를 주어도 `rx[]`·`groups[]`·동네가 인자 없을 때와 같다. 시험: 셋째 인자가 없으면 일 칸이 지금 기대값 그대로다
+
+AC-501.4에는 위 AC 목록대로 예외가 붙었다(주·달 `totals`를 옛 '서로 다른 환자 수'로 못 박은 기대값은 그 이유로만 바뀐다).
+
+### 고칠 것
+- `src/types/analysis.ts`: `export type PatientDay = { patient: number; date: string; receptions: number; firstVisit: boolean }`를 더한다
+- `src/lib/analytics/aggregate.ts`: `aggregate(rows, groups = [], patientDays?)`
+  - 두 길 모두: 주·달 `totals` = 그 주·달 일 칸 네 칸(`patients`·`newPatients`·`returning`·`unknown`)의 합. 줄마다 더하지 말고 일 칸을 다 센 뒤 한 번 훑어 더한다
+  - 셋째 인자 없음(파일 길): 일 칸은 지금 그대로다
+  - 셋째 인자 있음(도우미 길): 접수 줄의 날짜마다 처방 줄이 없어도 일·주·월 칸을 만든다. 일 칸 `totals` = `{ patients: receptions 합, newPatients: firstVisit이 참인 줄 수, returning: patients − newPatients, unknown: 0 }`. `visitDays`와 `firstNew`에도 접수 줄을 넣어 재방문이 처방 없는 접수까지 본다
+  - 두 길 모두 `rx[]`·`groups[]`·동네는 그대로다. 접수 줄은 칸의 `visit`에 쓰지 않는다
+  - 파일 머리 주석("일·주·월은 각각 따로 센다 — 일을 더해 주를 만들면 이틀 온 환자를 두 번 센다")을 새 규칙에 맞게 고친다: 처방·그룹·동네는 칸마다 따로 세고, 주·달 `totals`는 일 칸의 합이다. `aggregate.test.ts`의 `describe` 제목 'AC-006.1 환자 수 — 일·주·월을 각각 따로 센다'도 규칙과 함께 고친다
+- 고치지 않는다: `compare.ts`, `lib/payload/*`, 파서, `analyzeFiles.ts`, `runAnalysis.ts`. TASK-5가 셋째 인자를 넘기기 전까지 도우미 길은 인자 없이 돌고 AC-505.3 시험은 계속 통과한다
+
+### 시험
+- `aggregate.test.ts`에 AC-501.6의 '시험'을 모두 쓴다(이름에 `AC-501.6`)
+- 옛 기대값: 2026-11-01에 일회용 복사본에서 합 규칙의 시제품으로 앱 시험을 돌렸을 때 늘 깨지는 시험은 `aggregate.test.ts`의 여덟 개뿐이었다: '칸 달을 넘는 주', '같은 환자 월·화 방문', '주·월은 일을 더한 값이 아니다', '월요일 신환, 수요일 재진', '초재진 값이 모두 null인 환자', 지역 시험 '한 칸에서 두 지역에 나온 환자', '느리지만 뻔한 기준 계산과 모든 칸이 같다', '그룹을 넣어도 느리지만 뻔한 기준과'. 주·달 `totals` 기대값만 합으로 고치고, `naiveAggregate`(기준 계산)는 주·달 `totals`를 일 칸의 합으로 고친다. '주·월은 일을 더한 값이 아니다'는 뜻이 뒤집히므로 '주·달 `totals`는 일의 합이고 `rx[]`는 합이 아니다'로 다시 쓴다. `rx[]`·`groups[]`·동네·재방문 기대값은 고치지 않는다
+- `compare.test.ts`·`analyzeFiles.test.ts`·`runAnalysis.test.ts`·`lib/payload/*.test.ts`는 Files에 더했지만 그 시제품에서 기대값이 깨지지 않았다(`runAnalysis.test.ts`는 전체를 돌릴 때 한 번 실패했고 혼자 돌리면 통과했다). 옛 주·달 `totals`를 못 박은 곳이 나올 때 그 이유로만 고친다
+- '10만 줄을 1초 안에' 두 시험은 서버가 바쁠 때 고치기 전 코드로도 1초를 넘긴다(2026-11-01 확인). 이 변경 탓인지는 서버가 한가할 때 고치기 전 코드와 견주어 본다. 시간 한도를 늘리지 않는다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -98,7 +132,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-501.1 ~ AC-501.5이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-501.1 ~ AC-501.6이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

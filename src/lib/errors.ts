@@ -144,6 +144,20 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '다른 창이 비트 자료를 쓰고 있어요',
     fix: '한 번에 한 창만 비트를 읽을 수 있어요. 그 창의 일이 끝나거나 창을 닫은 뒤 [다시 확인]을 눌러 주세요.',
   },
+  // Worker가 정하는 번호다(도우미는 보내지 않는다). E-BRIDGE-BAD-REPLY는 도우미를 업데이트하라는 말이라 이 경우에 맞지 않는다
+  'E-STATS-CHANGED': {
+    what: '불러오는 사이에 접수가 바뀌었어요',
+    fix: '다시 불러와 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  // 통계 숫자 저장·읽기(lib/storage/stats.ts, spec stats)
+  'E-STATS-SAVE-FAILED': {
+    what: '통계 숫자를 저장하지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+  },
+  'E-STATS-READ-FAILED': {
+    what: '저장된 통계를 읽지 못했어요',
+    fix: '잠시 뒤 [다시 읽기]를 눌러 주세요',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

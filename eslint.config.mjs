@@ -38,6 +38,13 @@ const CLIENT_IMPORT_SYNTAX = { selector: 'ImportExpression[source.value=/(^|\\/)
 const EXTENSION_STORAGE_MESSAGE = '크롬 확장은 chrome.storage·브라우저 저장소를 쓸 수 없다(도우미 답이 확장 안에 남는다)'
 const EXTENSION_NETWORK_MESSAGE = '크롬 확장은 네트워크를 쓸 수 없다(도우미 답은 그 웹 연결로만 간다)'
 const EXTENSION_CONSOLE_MESSAGE = '크롬 확장은 console을 쓸 수 없다(도우미 답이 로그에 남는다)'
+// 통계 저장(AC-507.3): 검사한 저장 모양만 다룬다. 환자 줄을 읽거나 만드는 코드를 부르지 못한다
+const STATS_STORAGE_IMPORT_MESSAGE =
+  '통계 저장(lib/storage/stats.ts)은 lib/parsers·lib/bridge·workers를 import할 수 없고, lib/analytics는 dates·coverage만 쓴다'
+const STATS_STORAGE_BROWSER_MESSAGE = '통계 저장(lib/storage/stats.ts)은 브라우저 저장소를 쓸 수 없다'
+const STATS_STORAGE_CONSOLE_MESSAGE = '통계 저장(lib/storage/stats.ts)은 console을 쓸 수 없다'
+// 빼는 경로를 glob으로 쓰면 lib/analytics 자체를 막을 때 dates·coverage까지 막혀 정규식으로 쓴다
+const STATS_STORAGE_BLOCKED = /(^|\/)(parsers|bridge|workers)(\/|$)|(^|\/)analytics(\/(?!(dates|coverage)$)|$)/
 
 // 환자 자료 구역 규칙(시험 파일도 같은 규칙 아래). node:*(시험이 가짜 파일 읽기)는 막지 않는다.
 // 같은 규칙 이름은 뒤 설정이 앞 설정을 통째로 덮으므로, 구역마다 이 함수로 목록 전체를 만든다
@@ -193,6 +200,34 @@ const eslintConfig = [
     // EXTENSION_ID를 만드는 한 곳
     files: ['src/lib/bridge/extensionId.ts'],
     rules: patientZoneRules({ bridge: true, declaresExtensionId: true }),
+  },
+  {
+    // 통계 저장(AC-507.3). 이 파일만 — 다른 브랜치가 src/lib/storage/에 둘 파일에는 규칙을 씌우지 않는다.
+    // 맨 위 client.ts 금지를 덮으므로 여기에도 넣었다
+    files: ['src/lib/storage/stats.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [CLIENT_IMPORT, { regex: STATS_STORAGE_BLOCKED.source, message: STATS_STORAGE_IMPORT_MESSAGE }] },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        CLIENT_IMPORT_SYNTAX,
+        { selector: `ImportExpression[source.value=${STATS_STORAGE_BLOCKED}]`, message: STATS_STORAGE_IMPORT_MESSAGE },
+        { selector: "ImportExpression[source.type!='Literal']", message: '통계 저장의 동적 import()는 글자로 고정한 경로만 쓴다' },
+      ],
+      'no-restricted-globals': [
+        'error',
+        ...STORAGE.map((name) => ({ name, message: STATS_STORAGE_BROWSER_MESSAGE })),
+        { name: 'console', message: STATS_STORAGE_CONSOLE_MESSAGE },
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...STORAGE.map((property) => ({ property, message: STATS_STORAGE_BROWSER_MESSAGE })),
+        { property: 'console', message: STATS_STORAGE_CONSOLE_MESSAGE },
+      ],
+      'no-console': 'error',
+    },
   },
   {
     // 크롬 확장: 시험 파일도 같은 규칙 아래(src/guardrails.test.ts가 규칙마다 증명)

@@ -9,7 +9,7 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-513(통계 그래프 섹션 (`components/stats/sections/*`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-513.1**: Given 보기 모양(REQ-511·509·510), When 섹션을 그리면, Then 한 쪽에 이어서(도구 단추 줄 없음) 기간 요약 → 환자 수 추이 → 신환 재방문율(첫 재방문까지 날수 포함) → 처방 추세 → 처방별 신환·재진 → 원장님 보고 문장 → 요일별 환자 수 차례이고 섹션마다 h2다. 차례·문구·배치가 목업 승인본과 다르면 목업이 이긴다(그때 이 AC의 차례만 고친다). 예외: 최근 30일 보기의 30일 줄과 첫 재방문까지 날수(S6), 12개월 처방 증감(S7)은 2026-11-01 사용자 결정으로 목업이 아니라 이 명세를 따른다
+- **AC-513.1**: Given 보기 모양(REQ-511·509·510), When 섹션을 그리면, Then 한 쪽에 이어서(도구 단추 줄 없음) 기간 요약 → 환자 수 추이 → 신환 재방문율(첫 재방문까지 날수 포함) → 처방 추세 → 처방별 신환·재진 → 원장님 보고 문장 → 요일별 환자 수 차례이고 섹션마다 h2다. 차례·문구·배치가 목업 승인본과 다르면 목업이 이긴다(그때 이 AC의 차례만 고친다). 예외: 최근 30일 보기의 30일 줄과 첫 재방문까지 날수(S6), 12개월 처방 증감(S7), 파일 안내 문장(AC-514.7)은 2026-11-01 사용자 결정으로 목업이 아니라 이 명세를 따른다
 - **AC-513.2**: Given 그래프, When 그리면, Then `components/charts`의 부품(`StackedBarChart`·`RankedBars`·`KpiStat`·`InlineBar`·`ChartLegend`)만 쓴다(새 패키지 없음, 움직임 없음). 증감은 색만 쓰지 않고 ▲▼와 글자(`formatDelta`)를 같이 쓴다(UI_GUIDE). `StackedBarChart`에는 칸마다 줄 수 있는 선택 값 `comparison?: number | null` 하나만 `BarBucket`에 더한다: 쌓은 막대 왼쪽에 가는 `faint` 막대로 그리고, 값을 줄 때만 눈금 계산에 넣는다. 어느 칸에도 값이 없으면 그림·표·지금 시험은 지금 그대로다. `null`은 막대를 그리지 않는다(예: 덮이지 않은 비교 칸, AC-511.8). 움직임 규칙과 `rules.test.ts`는 그대로 지킨다. 시험: `comparison`을 주면 가는 막대가 보이고 눈금이 그 값을 넣어 정해진다. 시험: 주지 않으면 지금과 결과가 같다(지금 시험을 고치지 않고 통과)
 - **AC-513.3**: Given 그래프마다 있는 [자세히] 단추(`aria-expanded`, `aria-controls`), When 누르면, Then 그 그래프 바로 아래에 숫자 표(머리 줄 + 날짜·달마다 값)가 열리고 다시 누르면 닫힌다. 주소(URL)는 바뀌지 않는다. 처방 추세에서 처방 줄을 누르면 그 처방의 칸별 건수·신환·재진 막대가 열린다
 - **AC-513.4**: Given 자료 없는 섹션, When 그리면, Then 그래프·빈 틀 없이 "자료 없음" + 한 줄 안내(목업 문구)다. 숫자를 지어내지 않는다
@@ -82,6 +82,7 @@
 ### 1. 섹션 (`src/components/stats/sections/*`)
 - `PeriodSummary`·`PatientTrendSection`·`RevisitSection`·`RxTrendSection`·`RxSplitSection`·`ReportSection`·`WeekdaySection` + `DetailToggle`·`CopyButton`. 모두 props(보기 모양)만 받는다. 자세히·복사·고르기 상태만 `'use client'`
 - AC-513.1~513.11을 승인본 배치·문구로(예외는 위 '승인된 목업'). 차트는 `components/charts` 부품만, 증감은 `formatDelta`(▲▼ + 글자), 빈 상태는 그래프 없이 "자료 없음" + 한 줄
+- '아직 끝나지 않은 달' 글은 오늘이 든 달에만 쓴다. 지난 달의 덜 덮인 칸은 빗금과 '일부 기간'만 보인다. 시험: 8월이 덜 덮인 11월의 12개월 보기 → 8월이 끝나지 않았다는 글이 없다.
 - `RevisitSection`(S6, AC-513.10): 날짜는 `revisitRates`의 `d30Cohort`와 `firstRevisit`의 `from`·`to`를 그대로 쓰고, 7·14·30일 줄의 caption 숫자와 [자세히] 표는 비율 칸의 `within`·`cohort`를 쓴다(줄의 "…빼고 셌어요"는 `excluded`가 참일 때만. 단 `'30d'`의 30일 줄은 AC-513.10이 caption을 정하므로 이 말을 붙이지 않는다). `'30d'`의 30일 줄이 비율이 아니면 지금 목업의 "집계 중"·"자료 없음" 그대로다
 - `RxTrendSection`(S7, AC-513.11): 줄의 막대와 비교 눈금은 `comparable.current`·`comparable.previous`로 그린다(`InlineBar`). 증감과 기준을 맞추려는 것이다. `max`는 목록에서 그리는 값(막대·눈금) 가운데 가장 큰 값이다. 글자 건수는 `count`이고 `partial`이면 그 옆에 '일부 기간'을 붙인다. `comparable`이 null이면 `InlineBar`에 `current={count}`·`previous={null}`을 넘겨 막대는 그리고 눈금은 없앤다(목업 `gen.py`의 `pw: None` 줄과 같다). 증감은 `formatDelta`의 "비교할 수 없음"이다. [자세히] 표의 비교 칸은 `rxDetail` 점이 `covered: false`이면 "–"다(목업 `app.js`의 `p.pv == null`과 같다). 처방 줄을 열면 막대에 `rxDetail`의 같은 차례 `previous` 점의 `count`를 `comparison`으로 넘긴다(`covered: false`이면 `null`)
 - `CopyButton`: 대시보드 `ReportBlock`의 [복사] 동작(성공 2초 "복사했어요", `aria-live`, 실패 안내, 폭 흔들림 없음)을 옮긴다. 문구는 이 파일 안에(`lib/errors.ts`를 고치지 않는다)

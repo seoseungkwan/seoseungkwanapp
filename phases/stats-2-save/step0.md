@@ -10,7 +10,7 @@
 
 - **AC-506.1**: Given 마이그레이션 `supabase/migrations/20261101000200_stats.sql`을 PGlite에서 인증 마이그레이션 뒤에 돌림, When 표를 보면, Then `public.stats_months`(`hospital_id`·`month`·`partial`·`source`·`payload`·`updated_at`, 기본 키 `hospital_id + month`), `public.stats_days`(같은 칸, `month` 대신 `day date`), `public.stats_coverage`(`hospital_id`·`from_day`·`to_day`·`source`·`created_at`, 불러온 기간 한 줄씩)가 있고 RLS가 켜져 있으며 `anon` 권한이 하나도 없다. `public.my_hospital_id()`는 여러 브랜치가 같이 쓰는 글자 그대로(`create or replace`, security definer, `search_path = ''`)이고, 다른 브랜치 마이그레이션이 같은 함수를 먼저 만들어 두었어도 이 마이그레이션이 오류 없이 돈다
 - **AC-506.2**: Given 승인된 병원 A의 사용자, When 읽고 넣고 고치면, Then 자기 병원 줄만 보이고, 넣을 때 `hospital_id`는 DB가 정한다(사용자는 그 칸을 보낼 수 없다). 지우기는 안 되고, `stats_coverage`는 고치기도 안 된다(넣기만). 승인 대기·거절된 병원의 사용자와 다른 병원 B의 사용자는 A 줄을 읽지도 넣지도 고치지도 못한다
-- **AC-506.3**: Given `payload`, When 넣거나 고치면, Then jsonb 객체이고 `schemaVersion`이 2이며 `payload.month`(또는 `day`)·`partial`이 칸 값과 같고, 글자 크기가 65,536바이트 이하이고, `source`가 'bit'·'file' 가운데 하나일 때만 들어간다. 열쇠가 빠진 payload(`{}`, `schemaVersion`·`month`·`day`·`partial` 가운데 하나 없음)는 거부한다(제약이 NULL로 통과하지 않는다). `stats_coverage`는 `from_day ≤ to_day`이고 800일 이하일 때만 들어간다
+- **AC-506.3**: Given `payload`, When 넣거나 고치면, Then jsonb 객체이고 `schemaVersion`이 2이며 `payload.month`(또는 `day`)·`partial`이 칸 값과 같고, 글자 크기(`octet_length(payload::text)`)가 `stats_months`는 1,048,576바이트(1MiB) 이하, `stats_days`는 65,536바이트 이하이고, `source`가 'bit'·'file' 가운데 하나일 때만 들어간다. 열쇠가 빠진 payload(`{}`, `schemaVersion`·`month`·`day`·`partial` 가운데 하나 없음)는 거부한다(제약이 NULL로 통과하지 않는다). `stats_coverage`는 `from_day ≤ to_day`이고 800일 이하일 때만 들어간다
 - **AC-506.4**: Given 완전한 줄(`partial` false), When 같은 병원·같은 달(날)을 덜 덮인 줄(`partial` true)로 고치면, Then 옛 줄이 그대로 남는다(트리거). 완전 → 완전, 덜 → 완전, 덜 → 덜은 바뀌고 `updated_at`이 새 시각이다. PostgREST upsert 꼴(`insert … on conflict (hospital_id, day) do update set …`)이 사용자 역할로 돈다
 - **AC-506.5**: Given 세 표의 칸, When 보면, Then 환자 번호·차트번호·이름 칸이 없다. 실제 Supabase에 이 SQL을 붙이는 일은 그때 사용자가 허락한 뒤 사용자가 SQL 편집기에서 한다(시험은 PGlite)
 
@@ -59,7 +59,7 @@
 
 ### 1. 마이그레이션 (`supabase/migrations/20261101000200_stats.sql`, SQL 편집기에 붙여 넣는 파일)
 - design.md TASK-6 뼈대대로: `public.my_hospital_id()`(여러 브랜치가 같이 쓰는 함수 — **design.md 글자 그대로**, `create or replace`·security definer·`search_path = ''`, `revoke … from public, anon` → `grant execute … to authenticated`), `public.stats_months`·`public.stats_days`·`public.stats_coverage`
-- 칸 제약: `month` 'YYYY-MM' / `day` date, `partial` boolean, `source in ('bit','file')`, `payload` jsonb 객체 · `payload->'schemaVersion' = '2'` · `payload->'month'|'day'`·`payload->'partial'`이 칸 값과 같음(`to_jsonb`) · `octet_length(payload::text) <= 65536`. 이 묶음 전체를 `( … ) is true`로 감싸 열쇠가 없어 NULL이 되면 거부한다(AC-506.3). `stats_coverage`: `from_day <= to_day`, 800일 미만
+- 칸 제약: `month` 'YYYY-MM' / `day` date, `partial` boolean, `source in ('bit','file')`, `payload` jsonb 객체 · `payload->'schemaVersion' = '2'` · `payload->'month'|'day'`·`payload->'partial'`이 칸 값과 같음(`to_jsonb`) · 크기 `octet_length(payload::text)`는 `stats_months` `<= 1048576`, `stats_days` `<= 65536`. 이 묶음 전체를 `( … ) is true`로 감싸 열쇠가 없어 NULL이 되면 거부한다(AC-506.3). `stats_coverage`: `from_day <= to_day`, 800일 미만
 - 권한: `revoke all on table … from anon, authenticated`. `stats_months`·`stats_days`: `grant select`, `grant insert (month|day, partial, source, payload)`, `grant update (month|day, partial, source, payload)`(PostgREST upsert는 보낸 칸 모두를 `DO UPDATE SET`에 넣는다 — 열쇠 칸도). `stats_coverage`: `grant select`, `grant insert (from_day, to_day, source)`. `hospital_id`는 어느 권한에도 없다. delete 없음
 - RLS: select·insert(`with check`)·update(`using`·`with check`) 모두 `hospital_id = (select public.my_hospital_id())`
 - 트리거 함수 `public.stats_keep_complete()`(통계 이름, definer 아님, `set search_path = ''`), before update: `old.partial = false and new.partial = true`면 `return old`, 아니면 `new.updated_at := now(); return new`
@@ -83,6 +83,18 @@ export type StatsCoverageRow = { hospital_id: string; from_day: string; to_day: 
 
 ### 4. 문서 (`docs/ARCHITECTURE.md`)
 - 'DB 표'의 `months`·`days` 줄을 `stats_months`·`stats_days`·`stats_coverage`(칸·트리거 한 줄)로, '데이터 흐름' 통계 줄의 `(예정) lib/storage`를 지금 모양으로
+
+## 2026-11-01 달 줄 크기 한도 변경 (뒤따라 고치기)
+
+> 사용자 결정: 의원 PC에서 재 보기 전에 달 줄 한도를 지금 올린다. 까닭은 `specs/stats/design.md` '결정과 트레이드오프'의 '달 줄 크기 한도'. 이 TASK는 이미 커밋되었고 이 변경으로 다시 연다. 동시에 도는 동안 이 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 코디네이터가 한다. 그래서 이번에는 아래 'Acceptance Criteria'의 `npm run lint && npm test && npm run build`·`verify`와 '검증 절차'의 `index.json` 고치기를 하지 않는다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다.
+
+### 고칠 것
+- `supabase/migrations/20261101000200_stats.sql`: `stats_months`의 `octet_length(payload::text) <= 65536`을 `<= 1048576`으로. `stats_days`는 65536 그대로다. 까닭을 맨 위나 제약 곁 주석 한 줄로 남긴다. 트리거·권한·RLS·`stats_coverage`는 고치지 않는다. 실제 Supabase에는 아직 붙이지 않았으므로 새 마이그레이션을 더하지 않고 이 파일을 제자리에서 고친다
+- `src/types/db.ts`·`docs/ARCHITECTURE.md`: 65,536을 적은 곳이 있을 때만 고친다
+
+### 시험 (`supabase/stats-rls.test.ts`)
+- 표마다 한도를 둔다(`stats_months` 1,048,576 · `stats_days` 65,536). 지금 크기 시험('고칠 때도 같은 제약', '65,536바이트까지 된다(글자 수가 아니라 바이트)')은 표 한도로 그대로 돈다: 한도에 꼭 맞으면 들어가고 1바이트 넘으면 거부, 글자 수로는 한도 안이지만 바이트로는 넘는 값(한글)도 거부. 시험을 지우거나 약하게 바꾸지 않는다
+- 시험: 달 줄은 옛 한도를 넘는 크기(65,537바이트)도 들어가고, 날 줄은 거부한다
 
 ## TDD 순서
 

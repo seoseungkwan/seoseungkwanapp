@@ -4,6 +4,7 @@ import type {
   FollowUp,
   Grain,
   GroupStats,
+  PatientDay,
   RevisitCounts,
   RxGroupDef,
   RxStats,
@@ -14,7 +15,8 @@ import type { DateRange } from '@/types/dates'
 import { diffDays, monthOf, monthRange, weekRange, weekStartOf } from './dates'
 
 // ConsumptionRow[] → 일·주·월 칸(버킷)마다 센 숫자. 세기만 한다(완전/부분·증감·재방문 '집계 중'은 다음 단계).
-// 일·주·월은 각각 따로 센다 — 일을 더해 주를 만들면 이틀 온 환자를 두 번 센다.
+// 처방·그룹·동네는 칸마다 따로 센다(칸 안 서로 다른 환자 수) — 일을 더해 주를 만들면 이틀 온 환자를 두 번 센다.
+// 환자 수(totals)는 접수 기준이라 주·달 칸은 일 칸의 합이다 — 한 달에 다섯 번 온 사람은 5다(AC-501.6).
 // 줄은 한 번만 훑으며 그 날의 세 칸에 같이 넣는다. rxCode·region은 숫자 번호로 바꿔 Map 열쇠로 쓴다
 
 export const NO_ADDRESS = '주소 없음'
@@ -45,6 +47,7 @@ type BucketAcc = {
   groups: Map<number, Map<number, number>> // 그룹 자리 → (환자 → 그룹 코드 중 하나라도 받은 서로 다른 날 수)
   regions: Regions
   revisit: RevisitCounts
+  totals: Totals // 일 칸은 그날 값, 주·달 칸은 일 칸의 합. 줄을 다 훑은 뒤 채운다
 }
 
 // 글자 → 0, 1, 2…(처음 나온 순서). 칸마다 글자 열쇠를 찾지 않게
@@ -116,6 +119,7 @@ function bucketIn(buckets: Map<string, BucketAcc>, key: string, rangeOf: (key: s
       groups: new Map(),
       regions: new Map(),
       revisit: { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 },
+      totals: { patients: 0, newPatients: 0, returning: 0, unknown: 0 },
     }
     buckets.set(key, bucket)
   }
@@ -135,26 +139,60 @@ function groupsByCode(groups: readonly RxGroupDef[]): Map<string, number[]> {
   return byCode
 }
 
-export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] = []): Aggregates {
+// 파일 길의 일 칸: 줄 표시로 센 그날 환자
+function addVisits(totals: Totals, visit: Map<number, number>): void {
+  for (const seen of visit.values()) {
+    totals.patients++
+    if (seen === NEW) totals.newPatients++
+    else if (seen === RETURNING) totals.returning++
+    else totals.unknown++
+  }
+}
+
+function addTotals(into: Totals, day: Totals): void {
+  into.patients += day.patients
+  into.newPatients += day.newPatients
+  into.returning += day.returning
+  into.unknown += day.unknown
+}
+
+// patientDays(도우미 길의 접수 줄)가 있으면 일 칸 totals는 접수대로 세고 처방 없는 날의 칸도 만들며, 재방문도 접수를 본다.
+// 없으면(파일 길) 일 칸 totals는 줄 표시로 센다. 어느 쪽이든 칸의 visit·rx·groups·regions에는 접수 줄을 쓰지 않는다
+export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] = [], patientDays?: readonly PatientDay[]): Aggregates {
   const buckets: Record<Grain, Map<string, BucketAcc>> = { day: new Map(), week: new Map(), month: new Map() }
   const bucketsOfDate = new Map<string, readonly [BucketAcc, BucketAcc, BucketAcc]>() // 날짜 → 그 날의 일·주·월 칸
   const rxCodes = numbering()
   const regionNames = numbering()
   const groupsOf = groupsByCode(groups)
-  const firstNew = new Map<number, string>() // 환자 → 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄의 날)
-  const visitDays = new Map<number, Set<string>>() // 환자 → 외래로 온 날
+  const firstNew = new Map<number, string>() // 환자 → 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄·첫 내원 접수 줄의 날)
+  const visitDays = new Map<number, Set<string>>() // 환자 → 외래로 온 날(외래 줄·접수 줄)
+
+  const trioOf = (date: string) => {
+    let trio = bucketsOfDate.get(date)
+    if (trio === undefined) {
+      trio = [
+        bucketIn(buckets.day, date, dayRange),
+        bucketIn(buckets.week, weekStartOf(date), weekRange),
+        bucketIn(buckets.month, monthOf(date), monthRange),
+      ]
+      bucketsOfDate.set(date, trio)
+    }
+    return trio
+  }
+  const noteVisit = (patient: number, date: string, isNew: boolean) => {
+    let days = visitDays.get(patient)
+    if (days === undefined) {
+      days = new Set()
+      visitDays.set(patient, days)
+    }
+    days.add(date)
+    const seenNew = firstNew.get(patient)
+    if (isNew && (seenNew === undefined || date < seenNew)) firstNew.set(patient, date)
+  }
 
   for (const row of rows) {
     if (row.outpatient === false) continue // 입원 줄. null은 외래로 본다
-    let trio = bucketsOfDate.get(row.date)
-    if (trio === undefined) {
-      trio = [
-        bucketIn(buckets.day, row.date, dayRange),
-        bucketIn(buckets.week, weekStartOf(row.date), weekRange),
-        bucketIn(buckets.month, monthOf(row.date), monthRange),
-      ]
-      bucketsOfDate.set(row.date, trio)
-    }
+    const trio = trioOf(row.date)
     const { patient } = row
     const visit = row.firstVisit === true ? NEW : row.firstVisit === false ? RETURNING : UNKNOWN
     const rx = rxCodes.idOf(row.rxCode)
@@ -165,14 +203,7 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     const inGroups = groupsOf.get(row.rxCode)
     const newGroupDays = inGroups === undefined ? NO_GROUPS : inGroups.filter((at) => trio[0].groups.get(at)?.has(patient) !== true)
 
-    let days = visitDays.get(patient)
-    if (days === undefined) {
-      days = new Set()
-      visitDays.set(patient, days)
-    }
-    days.add(row.date)
-    const seenNew = firstNew.get(patient)
-    if (visit === NEW && (seenNew === undefined || row.date < seenNew)) firstNew.set(patient, row.date)
+    noteVisit(patient, row.date, visit === NEW)
 
     for (const bucket of trio) {
       const seen = bucket.visit.get(patient)
@@ -200,6 +231,21 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
       tally(acc.names, row.rxName)
       tally(acc.types, row.rxType)
     }
+  }
+
+  for (const { patient, date, receptions, firstVisit } of patientDays ?? []) {
+    const [day] = trioOf(date)
+    day.totals.patients += receptions
+    if (firstVisit) day.totals.newPatients++
+    noteVisit(patient, date, firstVisit)
+  }
+
+  // 일 칸 totals를 마무리하고 주·달 칸에 더한다. 날짜마다 한 번이라 일 칸도 한 번씩이다
+  for (const [day, week, month] of bucketsOfDate.values()) {
+    if (patientDays === undefined) addVisits(day.totals, day.visit)
+    else day.totals.returning = day.totals.patients - day.totals.newPatients
+    addTotals(week.totals, day.totals)
+    addTotals(month.totals, day.totals)
   }
 
   // 신환 재방문: 첫 신환일이 든 일·주·월 칸에 더한다. 다른 날(다음 날부터 N일째까지)의 외래 줄만 재방문이다.
@@ -245,13 +291,6 @@ function toStats(
   regionNames: readonly string[],
   groups: readonly RxGroupDef[],
 ): BucketStats {
-  const totals: Totals = { patients: bucket.visit.size, newPatients: 0, returning: 0, unknown: 0 }
-  for (const visit of bucket.visit.values()) {
-    if (visit === NEW) totals.newPatients++
-    else if (visit === RETURNING) totals.returning++
-    else totals.unknown++
-  }
-
   const rx: RxStats[] = []
   for (const [id, acc] of bucket.rx) {
     const { patients, newPatients, returning, followup } = countPatients(acc.days, bucket.visit)
@@ -275,7 +314,7 @@ function toStats(
   return {
     key: bucket.key,
     range: bucket.range,
-    totals,
+    totals: bucket.totals,
     rx: rx.sort((a, b) => compareText(a.code, b.code)),
     regions: regionStats(bucket.regions, regionNames),
     groups: groupStats.sort((a, b) => compareText(a.id, b.id)),

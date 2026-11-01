@@ -38,6 +38,9 @@ const ALL_CODES = [
   'E-STATS-TOO-BIG',
   'E-BIT-DATA-UNSURE',
   'E-BIT-IN-USE',
+  'E-STATS-CHANGED',
+  'E-STATS-SAVE-FAILED',
+  'E-STATS-READ-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -305,6 +308,29 @@ describe('REQ-505 통계 오류 번호(도우미가 stats.rows를 거절할 때)
     expect(errorInfo('E-STATS-TOO-BIG')).toEqual({
       what: '고른 기간의 진료 기록이 너무 많아요',
       fix: '기간을 줄여 다시 불러오세요',
+    })
+  })
+
+  it('AC-505.2: E-STATS-CHANGED는 불러오는 사이에 접수가 바뀌었다고 알리고 다시 불러오라고 안내한다', () => {
+    expect(errorInfo('E-STATS-CHANGED')).toEqual({
+      what: '불러오는 사이에 접수가 바뀌었어요',
+      fix: '다시 불러와 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+})
+
+describe('AC-507.1·AC-507.2 통계 저장·읽기 오류 번호', () => {
+  it('AC-507.1: E-STATS-SAVE-FAILED는 저장하지 못했다고 알리고 [다시 저장]을 안내한다', () => {
+    expect(errorInfo('E-STATS-SAVE-FAILED')).toEqual({
+      what: '통계 숫자를 저장하지 못했어요',
+      fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+    })
+  })
+
+  it('AC-507.2: E-STATS-READ-FAILED는 읽지 못했다고 알리고 [다시 읽기]를 안내한다', () => {
+    expect(errorInfo('E-STATS-READ-FAILED')).toEqual({
+      what: '저장된 통계를 읽지 못했어요',
+      fix: '잠시 뒤 [다시 읽기]를 눌러 주세요',
     })
   })
 })

@@ -4,8 +4,12 @@ import type { DateRange } from './dates'
 
 export type Grain = 'day' | 'week' | 'month'
 
-// patients = newPatients + returning + unknown (환자 한 명은 하나에만)
+// patients = newPatients + returning + unknown. 일 칸은 그날 값(파일 길은 줄 표시로 센 그날 환자, 도우미 길은 접수 건수),
+// 주·달 칸은 그 일 칸들의 합이다(칸 안 서로 다른 환자 수가 아니다, AC-501.6)
 export type Totals = { patients: number; newPatients: number; returning: number; unknown: number }
+
+// 도우미 길의 접수 줄: 환자·날마다 한 줄. receptions = 그날 접수 건수, firstVisit = 그날이 첫 내원일
+export type PatientDay = { patient: number; date: string; receptions: number; firstVisit: boolean }
 
 // 1회 · 2회 · 3~5회 · 6회+ (환자 수). 네 칸의 합 = 그 처방의 patients
 export type FollowUp = [number, number, number, number]
@@ -29,6 +33,7 @@ export type GroupStats = { id: string; patients: number; newPatients: number; re
 
 // 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄의 날)이 이 칸에 있는 환자(cohort) 중
 // 다음 날부터 7일째·14일째·30일째까지(양 끝 포함) 외래 줄이 있는 환자 수. 덮은 기간과 상관없이 센 그대로('집계 중'은 요약이 정한다).
+// 도우미 길은 첫 신환일과 외래 날에 접수 줄(PatientDay)도 본다.
 // after30 = 30일 안에는 오지 않고 31일째 이후에 처음 다시 온 환자 수(불러온 자료 끝날까지 본 수, 원본 ReturnAfter30Days).
 // within7 ≤ within14 ≤ within30 ≤ cohort, within30 + after30 ≤ cohort
 export type RevisitCounts = { cohort: number; within7: number; within14: number; within30: number; after30: number }
@@ -43,7 +48,7 @@ export type BucketStats = {
   revisit: RevisitCounts
 }
 
-// 각각 key 오름차순, 줄이 있는 칸만
+// 각각 key 오름차순, 줄이 있는 칸만(도우미 길은 접수 줄만 있는 날의 칸도)
 export type Aggregates = Record<Grain, BucketStats[]>
 
 // ── 요약과 증감 (lib/analytics/compare.ts가 만든다. 화면은 빼기·나누기를 하지 않고 이것만 보여 준다) ──

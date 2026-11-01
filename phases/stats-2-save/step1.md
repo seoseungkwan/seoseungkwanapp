@@ -8,8 +8,8 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-507(통계 숫자 저장·읽기 (`lib/storage/stats.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고, 그 뒤 덮은 기간이 null이 아닐 때만 `stats_coverage`에 한 줄을 넣는다(null이면 덮은 기간 줄을 쓰지 않는다 — 시험이 본다). 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다
-- **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`·`readCoverage({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. `readCoverage`는 그 기간과 겹치는 덮은 기간을 합쳐(`mergeRanges`) 돌려준다. 읽기 실패는 `E-STATS-READ-FAILED`다
+- **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고, 그 뒤 덮은 기간이 null이 아닐 때만 `stats_coverage`에 한 줄을 넣는다(null이면 덮은 기간 줄을 쓰지 않는다 — 시험이 본다). 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다. `source`가 'file'이고 `partial: true`인 달 줄은 보내지 않고 그 달의 일 줄은 보낸다(덮은 기간을 읽지 않는다). 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다. 'bit'의 덜 덮인 달 줄은 지금처럼 보내고 덜 덮인 'bit' 줄을 바꾸며, 트리거는 커밋한 그대로다. `saved`는 보낸 줄 수다. 시험: 파일의 덜 덮인 달 줄은 보내지 않고 그 일 줄은 보낸다. 시험: 파일의 완전한 달 줄은 보낸다. 시험: 비트의 덜 덮인 달 줄은 보낸다. 시험: `saved`는 보낸 줄 수다
+- **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`·`readCoverage({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. `readDays`는 `fromFile: boolean`(남긴 줄 가운데 `source`가 'file'인 줄이 하나라도 있으면 true)도 같이 준다(`latest.source`만으로는 최근 비트 줄과 옛 파일 줄이 섞인 기간을 알 수 없다). 시험: 최근 줄이 'bit'이고 옛 줄이 'file' → `latest.source` 'bit', `fromFile` true. 시험: 모두 'bit' → false. 시험: 검사에 걸려 뺀 줄만 'file' → false. 시험: `updated_at`을 읽지 못해도 남은 'file' 줄 → true. `readCoverage`는 그 기간과 겹치는 덮은 기간을 합쳐(`mergeRanges`) 돌려준다. 읽기 실패는 `E-STATS-READ-FAILED`다
 - **AC-507.3**: Given `src/lib/storage/stats.ts`(통계 파일만 — 다른 브랜치의 `lib/storage` 파일에 규칙을 씌우지 않는다), When ESLint를 돌리면, Then `lib/parsers`·`lib/bridge`·`workers`를 import할 수 없고 `lib/analytics`는 `dates`·`coverage`만 된다. 환자 자료 구역은 지금처럼 `lib/storage`를 import할 수 없다. `console`·브라우저 저장소를 쓰지 않는다. 시험: `src/guardrails.test.ts`
 
 ## 읽어야 할 파일
@@ -80,6 +80,35 @@ export async function readMonths(range: { from: string; to: string }, deps?: …
 
 ### 4. 시험 (`src/lib/storage/stats.test.ts`)
 - 가짜 클라이언트가 받은 호출(표 이름 `stats_*`·줄 칸·충돌 열쇠·나눔·덮은 기간 줄)과 결과. 검사 걸림 → 호출 0번. 읽기 → 검사 걸린 줄 빠짐·`dropped`·`latest`
+
+## 2026-11-01 접수 기준 변경 (뒤따라 고치기)
+
+> 사용자 결정(`specs/stats/requirements.md` 배경 '환자 수의 뜻'·'파일 길'). 이 TASK는 이미 커밋되었고 사용자 결정 "남기고 안내 붙이기"와 "새로 다시 덮어써 오전에한번 오후에 한번할수있으니깨"로 다시 연다. 트리거와 마이그레이션은 고치지 않는다(TASK-6은 다시 열지 않는다). TASK-5보다 먼저 끝낸다. 차례는 `specs/stats/tasks.md` 머리말 '2026-11-01 다시 여는 차례'를 따른다. 동시에 도는 동안 이 TASK는 `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 넷이 끝난 뒤 코디네이터가 한다. 그래서 이번에는 아래 'Acceptance Criteria'의 `npm run lint && npm test && npm run build`·`verify`와 '검증 절차'의 `index.json` 고치기를 하지 않는다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다.
+
+### 바뀐 AC
+- **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고, 그 뒤 덮은 기간이 null이 아닐 때만 `stats_coverage`에 한 줄을 넣는다(null이면 덮은 기간 줄을 쓰지 않는다 — 시험이 본다). 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다. `source`가 'file'이고 `partial: true`인 달 줄은 보내지 않고 그 달의 일 줄은 보낸다(덮은 기간을 읽지 않는다). 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다. 'bit'의 덜 덮인 달 줄은 지금처럼 보내고 덜 덮인 'bit' 줄을 바꾸며, 트리거는 커밋한 그대로다. `saved`는 보낸 줄 수다. 시험: 파일의 덜 덮인 달 줄은 보내지 않고 그 일 줄은 보낸다. 시험: 파일의 완전한 달 줄은 보낸다. 시험: 비트의 덜 덮인 달 줄은 보낸다. 시험: `saved`는 보낸 줄 수다
+- **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`·`readCoverage({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. `readDays`는 `fromFile: boolean`(남긴 줄 가운데 `source`가 'file'인 줄이 하나라도 있으면 true)도 같이 준다(`latest.source`만으로는 최근 비트 줄과 옛 파일 줄이 섞인 기간을 알 수 없다). 시험: 최근 줄이 'bit'이고 옛 줄이 'file' → `latest.source` 'bit', `fromFile` true. 시험: 모두 'bit' → false. 시험: 검사에 걸려 뺀 줄만 'file' → false. 시험: `updated_at`을 읽지 못해도 남은 'file' 줄 → true. `readCoverage`는 그 기간과 겹치는 덮은 기간을 합쳐(`mergeRanges`) 돌려준다. 읽기 실패는 `E-STATS-READ-FAILED`다
+
+### 고칠 것
+- `src/lib/storage/stats.ts` `saveStats`(AC-507.1): 모든 값을 지금처럼 먼저 검사한 뒤, `source`가 'file'이고 `partial: true`인 달 줄을 보낼 목록에서 뺀다. 그 달의 일 줄과 덮은 기간 줄은 보낸다. 덮은 기간을 읽지 않는다. `saved`는 실제로 보낸 줄 수다. 'bit'의 덜 덮인 달 줄은 지금처럼 보내고 덜 덮인 'bit' 줄을 바꾼다
+- 왜: 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다. 통계 화면의 달 칸은 일 숫자의 합이다(AC-511.2·AC-511.3, design.md '가장 최근 불러오기가 덮어쓴다')
+- `src/lib/storage/stats.ts`: `readDays`의 돌려주는 값에 `fromFile: boolean`을 더한다. `readPeriod`에서 검사를 지나 남긴 줄의 `source`가 'file'이면 참이다. 시각을 읽는 것과 상관없이 정한다(`updated_at`을 못 읽어도 남은 줄은 든다). `latest`·`dropped`·`readCoverage`는 그대로다. `readMonths`는 이미 만든 그대로 두고 `fromFile`을 돌려주지 않는다(읽는 곳은 `feat-ai-report`다)
+- `latest.source`만으로는 최근 비트 줄과 옛 파일 줄이 섞인 기간을 알 수 없어서 칸을 따로 둔다. 화면(TASK-14 AC-514.7)이 이 값을 쓴다
+
+### 시험 (`src/lib/storage/stats.test.ts`)
+- AC-507.1의 '시험'을 모두 쓴다. 저장할 때 `stats_coverage`를 읽는 호출이 없음도 본다. 덜 덮인 달 줄을 넣는 지금 시험은 출처가 'bit'라 그대로 보낸다
+- AC-507.2의 '시험' 넷을 `readDays`로 쓴다. 쪽을 나눠 읽을 때 뒤쪽에만 'file' 줄이 있어도 true인지 본다
+
+## 2026-11-01 달 줄 크기 한도 변경 (뒤따라 고치기)
+
+> 위 '접수 기준 변경' 절과 함께 한다. 이 변경으로 TASK-6을 다시 연다. 그래서 위 절의 'TASK-6은 다시 열지 않는다'는 이 변경에는 맞지 않고, 이 부분은 위 절보다 이 절이 먼저다. 이 TASK는 마이그레이션을 고치지 않는다(TASK-6 몫이다).
+
+### 고칠 것
+- `src/lib/storage/stats.ts`: 상수 `MAX_PAYLOAD_BYTES` 하나를 표마다 나눈다(달 1,048,576 · 날 65,536. 표 제약과 같다는 주석도 맞춘다). `saveStats`가 달 값은 달 한도로, 일 값은 날 한도로 본다. 재는 방법(`jsonbText`·UTF-8 바이트)은 그대로다
+
+### 시험 (`src/lib/storage/stats.test.ts`)
+- 지금 크기 시험 셋(`정확히 65,536바이트면 보낸다`·`65,537바이트면 아무것도 보내지 않고`·`글자 수가 아니라 UTF-8 바이트다`)을 표 한도로 돌린다. 달은 1,048,576 · 1,048,577, 날은 65,536 · 65,537이다. 이름 100자로 1,048,577바이트를 채우려면 달은 약 4,809줄 이상(검사 상한 5,000줄 안에서)이 필요하고, 날은 709줄 이하여야 한다(많으면 `sized`의 `need`가 음수가 되어 `repeat`가 오류를 낸다). 값 하나로는 달 안에서도 안 된다(65,537바이트 달 값은 약 300~553줄이다). 줄 수는 표가 아니라 목표 바이트마다 정한다(예: `sized`가 target에서 계산한다). 시험을 지우거나 약하게 바꾸지 않는다
+- 시험: 65,537바이트인 달 값은 보내고, 65,537바이트인 일 값은 아무것도 보내지 않는다
 
 ## TDD 순서
 
