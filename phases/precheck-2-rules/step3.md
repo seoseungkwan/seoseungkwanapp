@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-010에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-010.1**: 가짜 자료 `fixtures/precheck/fake/`로 `runRules(month, tables, settings)`를 돌리면 결과(진료마다 `hits`·건너뛴 수·점검한 수와 원본 `collect` 모양의 묶음)가 원본 `evaluate`·`collect`로 만든 골든 `fixtures/precheck/golden/rules-*.json`과 순서까지 같다
-- **AC-010.2**: 조건 종류 18가지(`count_window`·`claim_code`·`same_day_pair`·`documentation`·`required_dx`·`info_only`·`same_day_limit`·`interval`·`dur`·`multiplier_cap`·`drug_requirement`·`dx_site_match`·`dx_master`·`visit_fee`·`imaging_count`·`episode_period`·`forbidden_dx_combo`·`prerequisite`)마다 골든에 걸리는 사례와 안 걸리는 사례가 하나 이상
+- **AC-010.2**: 조건 종류 18가지(`count_window`·`claim_code`·`same_day_pair`·`documentation`·`required_dx`·`info_only`·`same_day_limit`·`interval`·`dur`·`multiplier_cap`·`drug_requirement`·`dx_site_match`·`dx_master`·`visit_fee`·`imaging_count`·`episode_period`·`forbidden_dx_combo`·`prerequisite`)마다 골든에 걸리는 사례와 안 걸리는 사례가 하나 이상. `info_only`는 원본에 판단 코드가 없어 안 걸리는 사례만 있고 덮기 표에 이유를 적는다
 - **AC-010.3**: 규칙 262개 모두 골든에서 한 번 이상 걸리거나, 걸리게 할 수 없는 이유가 `rules-coverage.json`에 있다. 둘 다 없는 규칙이 있으면 실패
 - **AC-010.4**: 설정 `{off, on, grade}`(원본 저장 모양): 끈 규칙은 결과 없음, 켠 규칙은 `enabled_default`가 꺼져 있어도 돈다, 등급을 바꾼 규칙은 바뀐 등급으로 나오고 정렬도 따른다. `effective_from`·`effective_to` 밖 진료에는 돌지 않는다
 - **AC-010.5**: 이력이 필요한 규칙(`stage`에 `history`)은 늘 함께 오는 12개월 이력(AC-008.1)으로 센다. 이력이 없으면 AC-009.4가 먼저 멈추므로 원본의 '이력을 아직 안 받음' 길(`historyReady()` 거짓 → '이력 없어 건너뜀')은 옮기지 않고 `historyReady()`를 늘 참으로 둔다. 골든은 원본에 이력을 넣고 만들며 이력 건너뜀 수는 0

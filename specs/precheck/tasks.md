@@ -5,6 +5,8 @@
 > 승인은 이 명세 하나로 한 번만 받는다(사용자: "단계마다 sdd 승인받는거 빼줘"). Phase가 끝날 때마다 `verify`·화면 캡처·쉬운 말 보고·의원 PC 시험 목록(plan.md §6).
 > Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장과 `commands.json`에는 운영 주소 하나만 있어, 새 화면이 운영에 배포돼야 의원 PC에서 시험할 수 있다. design.md 12절).
 > 화면 TASK(6·12·13·18·19·22·25·26·31·32)는 Phase 0 목업(승인본)이 있어야 시작한다(CLAUDE.md: 화면은 목업 승인 뒤). TASK-34 뒤의 화면 TASK는 b2b 공통 모양 `ds`와 토큰만 쓴다(옛 `ui`·옛 Tailwind 별칭·`font-bold` 없음, design.md 18-3).
+> **새 목업 승인(2026-11-01)**: TASK-18은 Phase 0 목업에 없는 것을 그린다. '병원 문구'·'시술별 약' 칸과 입력 쪽(입력 방식 고르기·코드 단추·목록·다른 메모 나란히 보기·비트 메모 카드·TASK-37의 PC 확인 창 체크 '이제부터 묻지 않기')은 목업이 승인됐다(TASK-18의 링크 줄). **쓰다 멈춘 사람·기관기호 안내·처음 질문·설정 변경 띠는 어느 승인 목업에도 없어 사용자가 그 부분의 목업을 승인하기 전에는 만들지 않는다**. TASK-13은 승인본 `499cp2Sodph7jYJ4gX4exj` 그대로 시작한다.
+> **2026-11-01 명세 변경**: TASK-35~39를 더했다(plan.md §6 밖). step 파일이 없고 이 파일과 design.md 19절이 그 일을 정한다. 번호가 곧 차례는 아니다. **남은 차례**: ① TASK-10·11·12(먼저 시작함) → ② 나란히: TASK-14 · TASK-35 · TASK-38 → ③ TASK-16 웹 쪽(TASK-14 뒤) · TASK-36(TASK-35 뒤) → ④ TASK-13(TASK-10·11·12·14·16 뒤) → ⑤ TASK-37(TASK-36 뒤. 입력 쪽 목업은 승인됨) → ⑥ TASK-18(TASK-13·14·16·35·36·37 뒤) → ⑦ TASK-19 → 그 뒤 Phase 4부터 그대로. TASK-35·36·37은 `Core/Input`을 함께 고쳐 나란히 하지 않는다. TASK-14 → 16 → 13은 `jobs.ts`·`jobs.test.ts`·`types/precheck.ts`를 함께 고치고 앞 TASK의 결과를 쓰므로 차례대로 한다: TASK-16의 비교는 TASK-14의 메모 글을 쓰고, TASK-14는 고친 메모를 인자로만 받으며 `store.load`를 거기에 잇는 것은 TASK-16이다. TASK-39는 언제든 한다. 도우미 판(`Version`·`LATEST_HELPER`·`MIN_HELPER`)은 릴리스 때 올리고, 릴리스는 사용자가 지시할 때만 한다(design.md 19-5).
 > 도우미 C# 시험 파일 이름은 `*.test.cs`다(하네스가 시험 파일로 알아보게). 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(design.md 11절).
 > 원본 경로는 `YANGJI_SRC`(저장소 밖, `seoseungkwan/shared@2a1069b`)로만 받는다. 원본 파일은 커밋하지 않는다.
 
@@ -102,6 +104,7 @@
 - Files: helper/src/Precheck.Core/Bit/*, helper/src/Precheck.Core/Claim/*, helper/src/Precheck.Windows/VendorGridExport.cs, helper/src/Precheck.Windows/SqlBitDb.cs, helper/src/Precheck.Helper/Commands/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/Precheck.Core.Tests/Claim/*, helper/tests/Precheck.Windows.Tests/Claim/*
 - Tests: helper/tests/claim-read.dotnet.test.ts
 - TDD: required
+- 이 TASK는 끝났다. 뒤에 더한 AC-008.6(47 표 필수 칸)은 TASK-36이 한다
 
 ## TASK-9: 점검용 모양 · 조각 모으기 (Worker)
 - Step: Phase 2 · Step 2 · `claim-shape`
@@ -115,7 +118,7 @@
 - Step: Phase 2 · Step 3 · `rule-engine`
 - AC: AC-010.1~AC-010.6
 - REQ: REQ-010
-- Files: src/lib/precheck/rules/*, scripts/precheck/golden/*, fixtures/precheck/golden/rules-*.json, fixtures/precheck/golden/rules-coverage.json, fixtures/precheck/fake/*, fixtures/precheck/make-fake-claims.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts
+- Files: src/lib/precheck/rules/*, scripts/precheck/golden/*, fixtures/precheck/golden/rules-*.json, fixtures/precheck/golden/rules-coverage.json, fixtures/precheck/fake/*, fixtures/precheck/make-fake-claims.ts, fixtures/precheck/make-fake-claims.test.ts, src/lib/precheck/shape.ts, src/lib/precheck/shape.test.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts
 - Tests: src/lib/precheck/rules/engine.test.ts, src/lib/precheck/rules/golden.test.ts, src/lib/precheck/rules/coverage.test.ts, src/workers/precheck/jobs.test.ts
 - TDD: required
 
@@ -131,28 +134,35 @@
 - Step: Phase 2 · Step 5 · `rule-settings`
 - AC: AC-012.1~AC-012.7
 - REQ: REQ-012
-- Files: supabase/migrations/20261030000000_precheck_settings.sql, supabase/precheck.rls.test.ts, src/lib/storage/claimSettings.ts, src/lib/storage/claimSettings.test.ts, src/lib/precheck/settingsChanged.ts, src/lib/precheck/settingsChanged.test.ts, src/types/db.ts, src/types/precheck.ts, src/components/settings/RuleSettings.tsx, src/components/settings/RuleSettings.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.tsx, src/app/(app)/settings/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
-- Tests: supabase/precheck.rls.test.ts, src/lib/storage/claimSettings.test.ts, src/lib/precheck/settingsChanged.test.ts, src/components/settings/RuleSettings.test.tsx, src/app/(app)/settings/page.test.tsx, src/components/shell/shell.test.tsx, src/lib/errors.test.ts
+- Files: supabase/migrations/20261030000000_precheck_settings.sql, supabase/precheck.rls.test.ts, src/lib/storage/claimSettings.ts, src/lib/storage/claimSettings.test.ts, src/lib/precheck/settingsChanged.ts, src/lib/precheck/settingsChanged.test.ts, src/types/db.ts, src/types/precheck.ts, src/components/settings/RuleSettings.tsx, src/components/settings/RuleSettings.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.tsx, src/app/(app)/settings/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/SetupScreen.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: supabase/precheck.rls.test.ts, src/lib/storage/claimSettings.test.ts, src/lib/precheck/settingsChanged.test.ts, src/components/settings/RuleSettings.test.tsx, src/app/(app)/settings/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/claim/setup/SetupScreen.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/lib/errors.test.ts
 - TDD: required
+- 설정 → `/settings`. `SetupScreen`의 '준비 중' 갈래는 없앤다. 시험은 [청구·연락]의 링크·기본 모양·칩 없음을 본다
 - 사용자 할 일(Phase 2 의원 PC 시험 전): 이 마이그레이션을 Supabase SQL 편집기에 붙여 넣는다
 
 ## TASK-13: 청구 화면 · 날짜 목록 · 점검
 - Step: Phase 2 · Step 6 · `precheck-screen`
-- AC: AC-013.1~AC-013.9
+- AC: AC-013.1~AC-013.14
 - REQ: REQ-013
-- Files: src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/components/claim/*, src/components/claim/rows/*, src/lib/precheck/excel.ts, src/lib/precheck/excel.test.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/workers/precheck.worker.ts, src/lib/storage/claimCounts.ts, src/lib/storage/claimCounts.test.ts, src/types/db.ts, eslint.config.mjs, src/guardrails.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
-- Tests: src/lib/storage/claimCounts.test.ts, src/components/claim/dateList.test.ts, src/components/claim/ClaimScreen.test.tsx, src/components/claim/SettingsChangedBanner.test.tsx, src/components/claim/rows/FindingRows.test.tsx, src/lib/precheck/excel.test.ts, src/workers/precheck/jobs.test.ts, src/app/(app)/claim/page.test.tsx, src/guardrails.test.ts
+- Files: src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/components/claim/*, src/components/claim/rows/*, src/lib/precheck/excel.ts, src/lib/precheck/excel.test.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/workers/precheck.worker.ts, src/lib/storage/claimCounts.ts, src/lib/storage/claimCounts.test.ts, src/lib/analytics/dates.ts, src/lib/analytics/dates.test.ts, src/types/precheck.ts, src/types/db.ts, eslint.config.mjs, src/guardrails.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: src/lib/storage/claimCounts.test.ts, src/components/claim/dateList.test.ts, src/components/claim/claimLoad.test.ts, src/components/claim/ClaimScreen.test.tsx, src/components/claim/SettingsChangedBanner.test.tsx, src/components/claim/rows/FindingRows.test.tsx, src/lib/precheck/excel.test.ts, src/lib/analytics/dates.test.ts, src/workers/precheck/jobs.test.ts, src/app/(app)/claim/page.test.tsx, src/guardrails.test.ts
 - TDD: required
+- 먼저: TASK-10(`jobs.check`)·TASK-11(`dxViews`)·TASK-12(설정 읽기)·TASK-14(메모 결과, AC-014.13)·TASK-16(`loadPart`, AC-016.5)이 합쳐져 있어야 한다
 - `claimCounts.ts`는 이 TASK에서 읽기(`claim_day_counts` select)만 만든다. 표가 없으면(마이그레이션 전) 빈 목록으로 본다. 쓰기는 TASK-19
-- 의원 PC 시험: 실제 한 달 자료로 점검하고 같은 달을 양지바른 결과와 나란히 비교
+- 불러오기 번호는 `components/claim/claimLoad.ts`에 Worker 하나에 하나로 둔다(AC-013.12). 약속은 `PrecheckFromScreen` 주석과 design.md 6-2다. `dates.ts`에 'E의 한 달 전 같은 날' 함수를 더한다(AC-013.13)
+- `dxViews`를 잇는 것은 이 TASK다: 메모 결과를 넘겨 `jobs.check`의 답에 실어 화면 메시지로 보내고, 틀린 연결표로 던지는 `TypeError`를 잡아 `E-SETTINGS-FAILED`로 답한다(AC-013.14). Files의 `jobs.ts`·`types/precheck.ts`·`components/claim/*`로 충분하다. `TASK-14`가 합쳐진 뒤에 하므로 메모 결과가 있다
+- 의원 PC 시험: 실제 한 달 자료로 점검하고 같은 달을 양지바른 결과와 나란히 비교. 하루만 골라 불러와도 내원 간격 문장이 한 달을 불러온 때와 같은지 본다
 
 ## TASK-14: 청구메모 문장 (골든)
 - Step: Phase 3 · Step 0 · `memo-text`
-- AC: AC-014.1~AC-014.4
+- AC: AC-014.1~AC-014.14
 - REQ: REQ-014
-- Files: src/lib/precheck/memo/*, scripts/precheck/golden/*, fixtures/precheck/golden/memo-*.json, fixtures/precheck/golden/phrases-*.json, fixtures/precheck/fake/*, fixtures/precheck/make-fake-claims.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts
-- Tests: src/lib/precheck/memo/buildMemo.test.ts, src/lib/precheck/memo/phrases.test.ts, src/lib/precheck/memo/golden.test.ts, src/workers/precheck/jobs.test.ts
+- Files: src/lib/precheck/memo/*, scripts/precheck/golden/*, scripts/precheck/our-clinic-settings.mjs, fixtures/precheck/our-clinic-settings.test.ts, fixtures/precheck/golden/memo-*.json, fixtures/precheck/golden/phrases-*.json, fixtures/precheck/fake/*, fixtures/precheck/make-fake-claims.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: src/lib/precheck/memo/buildMemo.test.ts, src/lib/precheck/memo/fullText.test.ts, src/lib/precheck/memo/drugs.test.ts, src/lib/precheck/memo/ourClinic.test.ts, src/lib/precheck/memo/phrases.test.ts, src/lib/precheck/memo/golden.test.ts, fixtures/precheck/our-clinic-settings.test.ts, src/workers/precheck/jobs.test.ts, src/lib/errors.test.ts
 - TDD: required
+- 비트에 들어가는 글은 `memoText`가 아니라 `fullText`다. 골든은 그 전체를 덮는다(design.md 19-2). 약은 design.md 19-4(국소마취제·연골주사약 포함), 일부러 다른 곳(시술 종류가 둘 이상인 날의 주사약·연골주사 줄)은 골든 `knownDiffs`에 적는다. 그 표가 `clinic-memo-plan.md`의 옛 글보다 앞선다. 고친 메모는 인자로 받는다(`store.load`를 잇는 것은 TASK-16)
+- `dxContext`의 `hasMemo`를 잇는다(AC-014.13). 이 전까지 비급여 처방만 있고 상병이 없는 진료는 걸리지 않는다
+- 사용자 할 일(Phase 3 의원 PC 시험 전): `scripts/precheck/our-clinic-settings.mjs`가 출력한 SQL을 SQL 편집기에 붙여 넣는다(우리 병원 설정, 환자 정보 없음). 그 전에는 우리 병원도 메모를 만들지 않는다
 
 ## TASK-15: 도우미 작업 저장 (DPAPI)
 - Step: Phase 3 · Step 1 · `helper-store`
@@ -164,11 +174,13 @@
 
 ## TASK-16: 비트 메모 비교 (두 번 입력 막기)
 - Step: Phase 3 · Step 2 · `bit-memo-compare`
-- AC: AC-016.1~AC-016.4
+- 먼저: TASK-14(비교할 메모 글). 도우미 쪽(AC-016.1의 `claim.memos`, `MemoCompare`)은 끝났다. 남은 일은 웹 쪽: `store.load`의 고친 메모를 TASK-14의 메모 함수에 잇기, `compareMemo`·AC-016.3·AC-016.4·AC-016.5(`loadPart`: `claim.memos`와 `store.load` 둘 다 이 TASK가 더한다. TASK-13이 쓴다)·AC-016.6·AC-016.7·AC-016.8(비트 메모 다시 불러오기의 자료 쪽)
+- AC: AC-016.1~AC-016.8
 - REQ: REQ-016
 - Files: helper/src/Precheck.Core/Bit/Sql.cs, helper/src/Precheck.Core/Claim/*, helper/src/Precheck.Helper/Commands/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/Precheck.Core.Tests/Claim/*, src/lib/precheck/memoCompare.ts, src/lib/precheck/memoCompare.test.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts
 - Tests: helper/tests/memo-compare.dotnet.test.ts, src/lib/precheck/memoCompare.test.ts, src/workers/precheck/jobs.test.ts
 - TDD: required
+- 비트 메모 다시 불러오기의 자료 쪽(`memoReloadStart`, `loadPart`의 `run`, 실패 때 전 결과 남기기, design.md 19-12)은 Files의 `jobs.ts`·`types/precheck.ts`, Tests의 `jobs.test.ts`로 충분하다. 단추·카드와 `run` 번호는 TASK-18이다
 
 ## TASK-17: 비트 자동 입력 (FlaUI · PC 확인 창)
 - Step: Phase 3 · Step 3 · `bit-input`
@@ -179,14 +191,64 @@
 - TDD: required
 - NuGet `FlaUI.Core`·`FlaUI.UIA3` 4.0.0(정확한 버전). 의원 PC 시험: 시험용 환자 한 명 → 실제 하루치 → 입력 중 크롬 닫기(지금 사람까지 마치고 끝나는지)
 - `Program.cs`에는 표준 입력을 따로 읽는 스레드와 닫힘 신호만 더한다(AC-017.9). 이름 있는 뮤텍스는 `Core/Input`에 두고 `store.save` 처리기도 같이 쓴다(AC-017.10)
+- **이 TASK만으로는 입력이 돌지 않는다**: 코드는 합쳐졌지만(`be1ae11`) `bit.input`을 일부러 등록하지 않았다. AC-017은 읽기에 끝난 것 같아도 TASK-35 전까지 비트에 아무것도 쓰지 못한다. `phases/precheck-3-memo/index.json`의 이 step은 TASK-35가 끝날 때 completed로 한다
+- 2026-11-01에 바뀐 AC-017.1·017.3·017.4·017.5·017.6·017.7·017.9는 이미 있는 코드를 글로 맞춘 것이다. 여기서 더 고칠 것은 없다. 새 칸(`code`·`replaces`·`checkedByHand`)은 TASK-35·36·37이 더한다
+
+## TASK-35: `bit.input` 연결 (도우미)
+- Step: Phase 3 · TASK-17 뒤 · `input-wiring` (plan.md §6 밖, step 파일 없음. design.md 19-5)
+- AC: AC-035.1~AC-035.8
+- REQ: REQ-035
+- Files: helper/Directory.Build.props, helper/src/Precheck.Helper/Program.cs, helper/src/Precheck.Helper/Commands/*, helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Store/*, helper/src/Precheck.Core/Bit/Sql.cs, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Core.Tests/Store/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/input-wiring.dotnet.test.ts, helper/tests/input.dotnet.test.ts, helper/tests/store.dotnet.test.ts, src/lib/bridge/commands.json, src/lib/bridge/versions.ts, src/lib/bridge/*.test.ts
+- Tests: helper/tests/input-wiring.dotnet.test.ts, helper/tests/input.dotnet.test.ts, helper/tests/store.dotnet.test.ts, src/lib/bridge/protocol.test.ts, src/lib/bridge/handshake.test.ts
+- TDD: required
+- 등록 조건 다섯(`InputParts.cs` 주석의 넷 + 잠금)을 다 채운 뒤에만 `Program.cs`에 등록한다: 내원 수(AC-035.1)·진짜 입력 기록(AC-035.2)·기록 지우는 길(AC-035.5)·쓰다 멈춘 사람을 뺀 묶음 잡기(AC-035.4)·`store.save` 잠금(AC-035.6). 비교(AC-035.3)도 함께 잇는다
+- '아직 붙이지 않았다'를 보던 시험 둘은 AC-035.7이 정한 대로 바꾼다(그 시험 이름에 "배선 작업 때 지운다"고 적혀 있다). 다른 시험은 지우지 않는다
+- `Sql.cs`에 새 상수를 넣을 때 맨 끝의 정적 생성자 앞에 둔다(통계 쪽 창이 그 자리를 쓴다). 새 SQL은 `ReadOnlyGuard` 목록에 들어가고 이름·메모는 읽지 않는다(차트번호는 AC-035.1에 쓰고 답에 싣지 않는다). 도우미 `Version`은 이 TASK에서 올리지 않는다. 릴리스 때 통계 쪽과 겹치지 않게 먼저 내는 쪽이 0.2.0을 쓴다
+- 의원 PC 시험: 시험용 환자 한 명 → 실제 하루치 → 입력 중 크롬 닫기. 같은 날 두 번 온 환자가 '직접 입력'으로 빠지는지, 내원 수가 내원내역 창과 같은지, 32비트(x86) 도우미가 `BITDoctorOrder.exe`를 찾는지
+
+## TASK-36: 처방코드 입력 · 조회 모드 · 47 표 (도우미)
+- Step: Phase 3 · TASK-35 뒤 · `input-code` (plan.md §6 밖, step 파일 없음. design.md 19-1·19-7·19-8)
+- AC: AC-036.1~AC-036.7, AC-008.6
+- REQ: REQ-036, REQ-008
+- Files: helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Bit/GridRows.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/src/Precheck.Windows/ViewModeNotices.cs, helper/src/Precheck.Windows/ProgressWindow.cs, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/Precheck.Core.Tests/Claim/*, helper/tests/Precheck.Windows.Tests/Input/*, helper/tests/input-code.dotnet.test.ts, helper/tests/claim-read.dotnet.test.ts, src/lib/bridge/commands.json, src/lib/bridge/*.test.ts
+- Tests: helper/tests/input-code.dotnet.test.ts, helper/tests/claim-read.dotnet.test.ts, helper/tests/input.dotnet.test.ts
+- TDD: required
+- 의원 PC 시험: 제외 체크를 켜고 시작해 멈추는지(비트 체크 칸에서 `BM_GETCHECK`가 맞게 읽히는지), 처방코드 칸을 같은 코드·다른 코드·빈칸으로 두고 시작, 다른 자리에서 그 환자를 열어 둔 채 조회 모드 안내창이 눌리고 메모 칸이 어떤 상태가 되는지(입력을 받지 않으면 그 사람만 확인 필요), 실제 47 표의 칸 이름
+
+## TASK-37: 다른 메모 바꾸기 · 묻지 않기 (도우미)
+- Step: Phase 3 · TASK-36 뒤 · `input-replace` (plan.md §6 밖, step 파일 없음. design.md 19-6)
+- AC: AC-037.1~AC-037.8
+- REQ: REQ-037
+- Files: helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Store/*, helper/src/Precheck.Windows/ConfirmWindow.cs, helper/src/Precheck.Helper/Commands/*, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Windows.Tests/Input/*, helper/tests/input-replace.dotnet.test.ts, src/lib/bridge/commands.json, src/lib/bridge/*.test.ts
+- Tests: helper/tests/input-replace.dotnet.test.ts, helper/tests/input.dotnet.test.ts
+- TDD: required
+- **목업 승인됨**: PC 확인 창의 체크와 글은 입력 쪽 승인 목업(TASK-18 링크)대로다(AC-037.8)
+- 입력 기록의 새 상태 `SkippedByHand`는 TASK-35가 더하고(AC-035.5) 이 TASK가 다음 묶음에서 읽는다(AC-037.6). Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다
+- 원래 메모는 달 파일의 새 칸 `originals`(진료마다 글 목록. 덮어쓴 글을 모두 두고 보여 주는 화면은 없다, 2026-11-01 사용자 결정)에 `writing`보다 먼저 덧붙여 저장한다. 결과 줄에는 바꾼 사람에게만 `previousMemo`를 더한다(AC-037.1, design.md 19-6). `WorkStore`와 `IInputJournal`을 이 TASK가 고친다. Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다. `store.load` 답은 세 칸 그대로이고 값이 없으면 칸을 쓰지 않으므로 `Core.Tests/Store/*`는 고치지 않는다(이 TASK의 Files 밖). 시험은 `Core.Tests/Input/*`에 둔다
+- 의원 PC 시험: 시험용 환자로 다른 메모 바꾸기 → 저장·이전 메모 확인, 묻지 않기를 켠 뒤 둘째 묶음이 창 없이 돌고, 청구 창을 닫았다 열면 다시 묻는지
+
+## TASK-38: 입력 전 크롬 창 내리기 (확장)
+- Step: Phase 3 · `browser-minimize` (plan.md §6 밖, step 파일 없음. design.md 19-8)
+- AC: AC-038.1~AC-038.3
+- REQ: REQ-038
+- Files: extension/manifest.json, extension/src/background.ts, extension/src/relay.ts, extension/src/chromeLike.ts, extension/src/*.test.ts
+- Tests: extension/src/background.test.ts, extension/src/relay.test.ts, extension/src/manifest.test.ts
+- TDD: required
+- 사용자 할 일(지시받을 때): 새 판을 웹스토어에 올리고 의원 PC 확장을 업데이트한다. 그 전에는 크롬 창을 손으로 내리거나 옆으로 두면 된다. 옛 확장은 창을 내리지 않을 뿐이고 가려져 있으면 도우미가 멈추므로 `MIN_EXTENSION`은 올리지 않는다
+- 의원 PC 시험: [확인] 뒤 크롬이 내려가고 끝나면 전 상태(최대화 포함)로 돌아오는지, 입력 중 진행 숫자가 그대로 오는지
 
 ## TASK-18: 메모 화면 · 입력 결과 · 병원 문구 칸
 - Step: Phase 3 · Step 4 · `memo-screen`
-- AC: AC-018.1~AC-018.7
+- AC: AC-018.1~AC-018.27
 - REQ: REQ-018
-- Files: src/components/claim/*, src/components/claim/memo/*, src/components/claim/rows/*, src/components/settings/HospitalPhrases.tsx, src/components/settings/HospitalPhrases.test.tsx, src/components/settings/DxLinks.tsx, src/components/settings/DxLinks.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/workers/precheck.worker.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
-- Tests: src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/InputResults.test.tsx, src/components/claim/memo/useMemoDrafts.test.ts, src/components/claim/rows/MemoRows.test.tsx, src/components/settings/HospitalPhrases.test.tsx, src/components/settings/DxLinks.test.tsx, src/workers/precheck/jobs.test.ts, src/lib/errors.test.ts
+- Files: src/components/claim/*, src/components/claim/memo/*, src/components/claim/rows/*, src/components/settings/HospitalPhrases.tsx, src/components/settings/HospitalPhrases.test.tsx, src/components/settings/ProcedureDrugs.tsx, src/components/settings/ProcedureDrugs.test.tsx, src/components/settings/DxLinks.tsx, src/components/settings/DxLinks.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/lib/precheck/inputTargets.ts, src/lib/precheck/inputTargets.test.ts, src/lib/precheck/excel.ts, src/lib/precheck/excel.test.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/workers/precheck.worker.ts, src/types/precheck.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/InputMode.test.tsx, src/components/claim/memo/InputResults.test.tsx, src/components/claim/memo/useMemoDrafts.test.ts, src/components/claim/memo/BitMemoButton.test.tsx, src/components/claim/claimLoad.test.ts, src/components/claim/rows/MemoRows.test.tsx, src/components/claim/rows/BitMemoCard.test.tsx, src/components/settings/HospitalPhrases.test.tsx, src/components/settings/ProcedureDrugs.test.tsx, src/components/settings/DxLinks.test.tsx, src/lib/precheck/inputTargets.test.ts, src/lib/precheck/excel.test.ts, src/workers/precheck/jobs.test.ts, src/lib/errors.test.ts
 - TDD: required
+- **승인된 목업(입력 쪽)**: 입력 방식 두 가지(처방코드별이 먼저 골라짐)·코드 단추·안내 문구·입력할 사람과 빠지는 사람 목록·다른 메모 나란히 보기·비트 메모 카드와 [비트 메모 전체 불러오기]·확인 표시 알림·'직접 입력'·[엑셀로 저장]·묻지 않기 안내·PC 확인 창 글은 https://claude.ai/artifact/P7NFu7j9NRNmKHskgY4UYU (판 `1793539759-946b`)를 따른다. 2026-11-01 사용자가 그린 그대로 승인했고 끝의 바꿀 수 있는 것 17가지도 모두 받아들였다. 명세에서는 **(승인 목업)**으로 적었다. 목업과 다르게 둔 곳: 안전 규칙 때문인 것은 AC-018.3의 '지금: 날짜 이름' 줄, AC-018.11의 코드 모양 검사, AC-018.25의 글자 그대로 비교, AC-018.14·AC-018.22의 직접 확인 기록 예외다(손으로 확인하던 메모를 승인 없이 바꾸지 않는다). 안전 규칙 때문이 아닌 것은 AC-018.24의 입력 단추 막음 **(Claude 판단)**(도우미가 쓰기 바로 앞에 칸을 다시 읽으므로 안전과 상관없다, AC-016.8. 입력하는 동안 목록이 바뀌거나 카드의 '뒤에 입력' 안내가 틀리지 않게 하는 작은 더함이다), AC-018.4의 취소 줄(사이트는 취소 때 체크 상태를 모른다), AC-018.3의 확인 기다리는 중 수(도우미가 [확인] 전에 웹에 아무것도 보내지 않아 보낸 묶음의 수를 보인다)다
+- **승인된 목업(설정의 두 칸)**: '병원 문구'·'시술별 약' 칸은 이미 승인된 https://claude.ai/artifact/QnXpDwjWGCDLjNuPBRDNxE (판 `1793534640-5640`)를 따른다. 2026-11-01 사용자가 병원 문구 창에서 승인했다고 그 창이 전했다. 그 목업의 '변경 기록'·'가입 보기 글'은 만들지 않는다(requirements '범위 밖')
+- **둘 다 덮지 않음, 먼저 목업 승인**: 쓰다 멈춘 사람(AC-018.16)·기관기호 안내(AC-018.17)·처음 질문(AC-018.18의 '처음 질문을 먼저 해 주세요')·설정 변경 띠(AC-018.3, design.md 6-5)는 위 두 목업에 없다. 사용자가 이 부분의 목업을 승인하기 전에는 만들지 않는다(CLAUDE.md, 머리말). 그 승인본 링크를 이 줄 아래에 적는다. 그 밖에 어느 목업에도 없는 부분은 Phase 0 목업 화면 4·5·6·10을 따르되, 화면 4의 사람마다 체크는 따르지 않는다(AC-018.26)
+- 비트 메모 화면 쪽(AC-018.24·AC-018.25·AC-018.27, design.md 19-12): `memo/BitMemoButton.tsx`, `rows/BitMemoCard.tsx`, `claimLoad.ts`의 `run` 번호. 모두 Files의 `src/components/claim/*`·`memo/*`·`rows/*` 안이고 입력 쪽 승인 목업대로 만든다
+- 대상 고르기는 순수 함수 `inputTargets.ts`(Worker에서 부름)에 둔다. 묶음 글자는 Worker가 만든다(화면은 쥐지 않는다, AC-004.11). 이 칸들은 기능만 맞추고 모양은 다듬지 않는다(청구 화면은 나중에 다시 디자인한다)
 
 ## TASK-19: 입력 현황 건수 · 밖에서 보기
 - Step: Phase 3 · Step 5 · `claim-counts`
@@ -306,3 +368,13 @@
 - Files: src/lib/backup/tables.ts, src/lib/backup/backup.ts, src/lib/backup/backup.test.ts, src/lib/backup/restoreSql.ts, src/lib/backup/restoreSql.test.ts, supabase/backup.test.ts, src/components/settings/BackupButton.tsx, src/components/settings/BackupButton.test.tsx, src/components/settings/SettingsPage.tsx, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
 - Tests: src/lib/backup/backup.test.ts, src/lib/backup/restoreSql.test.ts, supabase/backup.test.ts, src/components/settings/BackupButton.test.tsx, src/lib/errors.test.ts
 - TDD: required
+
+## TASK-39: 단계 기록 파일
+- Step: 어느 Phase에도 속하지 않는 기록 일 (plan.md §6 밖)
+- AC: 없음(기능이 없다. 승인 범위에 `phases/precheck-*/index.json`을 넣기 위한 TASK다)
+- REQ: REQ-035
+- Files: phases/precheck-*/index.json
+- Tests: 없음
+- TDD: exempt
+- 예외 이유: 끝난 step을 적는 기록 파일이라 시험할 동작이 없다. 이 줄이 없으면 훅이 Edit을 막아 끝난 step을 적지 못한다
+- 할 일: 승인 뒤 `phases/precheck-2-rules/index.json` step 2(TASK-9)를 메모에 적힌 요약과 함께 completed로 하고, TASK-35~38 줄은 `index.json`에 더하지 않는다(`scripts/execute.py`는 step 파일이 없으면 멈춘다). 그 진행은 `sdd status`로 본다. 다른 칸은 건드리지 않는다

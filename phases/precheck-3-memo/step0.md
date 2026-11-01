@@ -1,6 +1,6 @@
 # Step 0: memo-text
 
-> **TASK-14** 청구메모 문장 (골든) · **REQ-014** · AC-014.1 ~ AC-014.4
+> **TASK-14** 청구메모 문장 (골든) · **REQ-014** · AC-014.1 ~ AC-014.14
 > Phase 3 `precheck-3-memo` · Step 0 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-14 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -12,6 +12,16 @@
 - **AC-014.2**: 문구 틀의 말(`좌우`·`한글방향`·`영문방향`·`레벨`·`부위`·`시술`·`약제`·`KLG`·`검사`·`기간`·`진단`·`영상`)을 원본 `fill`과 같게 채우고, 모르는 말은 원본처럼 둔다(골든)
 - **AC-014.3**: 병원 문구 값에 `validatePhrases`·`defaultPhrases`·`diffPhrases`가 원본 `claim_hospital_settings.js`의 `validate`·`defaults`·`diff`와 같은 결과(원본 `sideRuleVersion` 1→2 바꿈 포함, 골든)
 - **AC-014.4**: 사용자가 고친 메모는 다시 점검해도 원본처럼 그대로 두고 빠진 문장만 경고한다(원본 `savedMemoMissing`, 골든)
+- **AC-014.5**: `fullText(visit, phrases, tables)`가 원본 `fullText`·`fullTextBody`와 같은 글(골든 `memo-full-*.json`): `memoText` 묶음 + `rxLines` + `iaLines` + `noteLines` + `patientLines`, `lineKey`, `formatLevels`, `sentenceMemo`, `styleSides`, `gapify`, `oneLineMemo`. 비트에 들어가는 글은 이것이다
+- **AC-014.6**: `applyRx`·`computeIntervals`·문구 사전(`NEW_MEDICORE_DICTIONARY`) 결과가 원본과 같다(골든). 내원 간격은 읽은 기간 전체(AC-013.13)의 급여 처방으로 원본에서 덮어쓴 판을 따른다. 12개월 이력으로 계산하지 않는다
+- **AC-014.7**: 문구·표기·약은 인자로 받은 설정에서만 읽는다. `ourClinicPhrases()`로 만든 `fullText`는 원본 기본값과 같다(다른 곳은 AC-014.10의 약뿐, `knownDiffs`). `scripts/precheck/our-clinic-settings.mjs <병원 ID>`는 이 값을 넣는 SQL 한 벌을 출력한다
+- **AC-014.8**: 병원 설정 줄이 없거나 문구 칸이 `validatePhrases`를 지나지 못하면(빈 `{}`·`procedureDrugs` 없음 포함) 규칙·상병 결과는 그대로 내고 메모는 만들지 않으며 `memoBlocked: 'E-MEMO-NO-SETTINGS'`. 기본값으로 대신 만들지 않는다
+- **AC-014.9**: 시술 종류가 하나인 진료: `procedureDrugs`의 '넣기'는 고른 자리(`afterProc`·`afterEnding`·`ownLine`)에, '빼기'는 뺀다. 아직 안 정한 약은 `[약 확인: 약 이름]`. 대상은 `CODEMAP.k='drug'` 약 전부이고 국소마취제·연골주사약도 같다. 메모를 만들 때는 설정에 적힌 값만 보고, 적히지 않은 약은 마취제도 아직 안 정한 약이다(마취제 '빼기' 기본값은 설정을 채울 때 쓴다)
+- **AC-014.10**: 시술 종류가 둘 이상인 진료: 한 시술이라도 '넣기'이거나 아직 안 정했으면 늘 `[약 확인: 약 이름]`이고 자동으로 넣지 않는다. 모든 시술에서 '빼기'일 때만 뺀다. 국소마취제·연골주사약도 같다(원본 `ambiguousDrug`·`cartilageLine`과 일부러 다름, `knownDiffs`)
+- **AC-014.11**: 설정이 바뀌면 손대지 않은 자동 메모만 새 설정으로 다시 만든다. 고쳤거나 완료한 메모는 그대로(원본 `protectWork`)
+- **AC-014.12**: `unfinished(memo)`가 원본 `unresolved`와 같은 판단. `[약 확인: …]`도 확인 표시다
+- **AC-014.13**: 상병 자료가 있는데 상병이 없고 처방은 비급여뿐이며 부위 메모가 있는 진료는 `missingDx`가 참. `dxViews`의 `hasMemo`를 이 TASK가 잇는다
+- **AC-014.14**: 부위 메모는 있는데 시술 종류(`procKeys`)가 0이고 약이 있으면 원본과 같이 약 글도 `[약 확인]`도 없다(사용자 결정)
 
 ## 읽어야 할 파일
 
@@ -22,13 +32,14 @@
 - `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-014
-- `/specs/precheck/design.md` — 2절 표(청구메모 문장·병원 문구 원본), 8-1절(`claim_hospital_settings.phrases`), 10절(골든)
+- `/specs/precheck/design.md` — 2절 표(청구메모 문장·병원 문구·메모 전체 글 원본), 8-1절(`claim_hospital_settings.phrases`), 8-4절(값 감싸기), 10절(골든), 19-2·19-3·19-4·19-9절
+- `/docs/precheck/clinic-memo-plan.md` §7·§9, `/docs/precheck/clinic-memo-samples.md` (약 결정의 근거. 약 규칙은 design.md 19-4 표가 이 글보다 앞선다)
 - `/specs/precheck/tasks.md` — TASK-14 (수정 범위·메모)
 - 이전 step에서 만든 파일:
   - `src/lib/precheck/shape.ts`·`src/types/precheck.ts`, `fixtures/precheck/make-fake-claims.ts` (Phase 2 Step 2)
   - `scripts/precheck/golden/*` (Phase 2 Step 3·4: 원본 스크립트 꺼내기 방식)
   - `src/lib/storage/claimSettings.ts`의 `readHospitalSettings` (Phase 2 Step 5: `phrases` 모양)
-  - `src/workers/precheck/jobs.ts` (Phase 2)
+  - `src/workers/precheck/jobs.ts`(`dxViews`, TASK-11), `src/lib/precheck/dx/recommend.ts`(`dxContext`의 `hasMemo`) (Phase 2)
 
 이전 step에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
 
@@ -42,6 +53,7 @@
 
 - 이 step에서 볼 원본(폴더 `YangjiBareun_사전점검/` 기준):
   - `assets/mx999_v22.html` 본 스크립트: `buildMemo`·`compose`·`fill`·`memoText`·`savedMemoMissing`, 문구 틀 `TPL_DEF`·`FIXED_PHRASES_DEF`·`SITE_NAMES_DEF`, `sideRuleVersion`
+  - 같은 파일의 메모 전체 글: `fullText`·`fullTextBody`(3986~4010줄), `rxLines`·`iaLines`·`noteLines`·`patientLines`·`lineKey`·`styleSides`·`gapify`·`oneLineMemo`, `applyRx`, 덮어쓴 판 `computeIntervals`(7788줄), `NEW_MEDICORE_DICTIONARY`(7466줄), `NEW_MEDICORE_CLAIM_REVIEW_SAFETY`의 `formatLevels`·`sentenceMemo`·`unresolved`, `protectWork`, `ambiguousDrug`·`procKeys`, `cartilageLine`·`iaKind`, `TPL.drugLocal`
   - `tools/claim_hospital_settings.js` (`defaults`·`validate`·`diff`)
   - `tests/test_claim_memo.py`, `test_claim_hospital_settings.py`, `test_claim_side_policy_v2.py`, `test_claim_text.py`, `test_claim_review_safety.py`(`savedMemoMissing`)
 
@@ -52,6 +64,8 @@
 - Files:
   - `src/lib/precheck/memo/*`
   - `scripts/precheck/golden/*`
+  - `scripts/precheck/our-clinic-settings.mjs`
+  - `fixtures/precheck/our-clinic-settings.test.ts`
   - `fixtures/precheck/golden/memo-*.json`
   - `fixtures/precheck/golden/phrases-*.json`
   - `fixtures/precheck/fake/*`
@@ -59,11 +73,19 @@
   - `src/workers/precheck/jobs.ts`
   - `src/workers/precheck/jobs.test.ts`
   - `src/types/precheck.ts`
+  - `src/lib/errors.ts`
+  - `src/types/errors.ts`
+  - `src/lib/errors.test.ts`
 - Tests:
   - `src/lib/precheck/memo/buildMemo.test.ts`
+  - `src/lib/precheck/memo/fullText.test.ts`
+  - `src/lib/precheck/memo/drugs.test.ts`
+  - `src/lib/precheck/memo/ourClinic.test.ts`
   - `src/lib/precheck/memo/phrases.test.ts`
   - `src/lib/precheck/memo/golden.test.ts`
+  - `fixtures/precheck/our-clinic-settings.test.ts`
   - `src/workers/precheck/jobs.test.ts`
+  - `src/lib/errors.test.ts`
 - TDD: required
 
 ## 꼭 지킬 규칙 (CRITICAL)
@@ -77,12 +99,16 @@
 
 ### 1. 골든
 - `scripts/precheck/golden/memo.mjs`: `mx999_v22.html` 본 스크립트에서 `buildMemo`·`compose`·`fill`·`memoText`·`savedMemoMissing`과 문구 틀 상수를 꺼내 `node:vm`에서 돌린다 → `fixtures/precheck/golden/memo-*.json`
+- 같은 스크립트로 `fullText`와 그 부품·재료를 돌려 `fixtures/precheck/golden/memo-full-*.json`을 만든다. `computeIntervals`·`iaLines`·`noteLines`·`rxLines`는 원본 뒤쪽 스크립트가 덮어쓴 판이 실제로 도니, 스크립트를 끝까지 돌린 뒤의 함수로 만든다(design.md 19-2)
 - `scripts/precheck/golden/phrases.mjs`: `tools/claim_hospital_settings.js`의 `defaults`·`validate`·`diff`를 돌린다(틀린 값·옛 `sideRuleVersion: 1` 사례 포함) → `fixtures/precheck/golden/phrases-*.json`
 - 머리 `{source, file, entry, knownDiffs}`
 
 ### 2. 코드 (`src/lib/precheck/memo/*`)
 ```ts
-export type Phrases = { /* 원본 claim_hospital_settings 모양 그대로 */ }
+export type Phrases = { /* 원본 claim_hospital_settings 모양 + procedureDrugs(design.md 19-3) */ }
+export function ourClinicPhrases(): Phrases                       // 우리 병원 값. 앱 코드에 병원 ID를 두지 않는다
+export function fullText(visit: Visit, phrases: Phrases, tables: Tables): string   // 비트에 들어가는 글(AC-014.5)
+export function unfinished(memo: string): boolean                 // 원본 unresolved(AC-014.12)
 export function defaultPhrases(): Phrases                         // 원본 TPL_DEF·FIXED_PHRASES_DEF·SITE_NAMES_DEF
 export function validatePhrases(p: unknown): { ok: true; value: Phrases } | { ok: false; errors: { path: string; code: string }[] }
 export function diffPhrases(a: Phrases, b: Phrases): PhraseDiff
@@ -93,12 +119,19 @@ export function savedMemoMissing(saved: string, fresh: MemoParts): string[]   //
 - 원본 줄을 그대로 옮긴다. `fill`이 모르는 말은 원본처럼 남긴다(AC-014.2)
 - `sideRuleVersion` 1 → 2 바꿈을 `validatePhrases`/`defaultPhrases` 흐름에 원본 그대로(AC-014.3)
 - 병원 문구는 서버 `claim_hospital_settings.phrases`가 원본이다. 이 step은 순수 함수만 만든다(화면은 TASK-18)
+- 약 규칙은 design.md 19-4 표대로(AC-014.9·014.10). 골든 `knownDiffs`에는 시술 종류가 둘 이상인 날의 주사약(`ambiguousDrug`)과 연골주사 줄(`cartilageLine`)을 이유와 함께 적는다. 시술 종류가 0인 날은 원본과 같으므로 적지 않는다. 원본 `validate`·`defaults`·`diff` 골든은 원본 칸만 보고 `procedureDrugs`는 따로 검사한다
+- 오류 번호 `E-MEMO-NO-SETTINGS`를 `lib/errors.ts`에 더한다. 문구는 '처음 질문을 먼저 해 주세요'
+
+### 2-1. 우리 병원 설정 (`scripts/precheck/our-clinic-settings.mjs`)
+- `<병원 ID>`를 받아 `ourClinicPhrases()` 값을 `claim_hospital_settings`에 넣는 SQL 한 벌을 출력한다(값 감싸기는 design.md 8-4). 환자 정보가 없다. 운영 DB에 직접 넣지 않는다. 붙여 넣기는 사용자가 한다(Phase 3 의원 PC 시험 전)
 
 ### 3. Worker 연결 (`jobs.ts`)
-- 점검 보기 모양에 진료마다 메모 초안을 더한다. 고친 메모(도우미 저장에서 온 것)가 있으면 그것을 두고 `savedMemoMissing` 경고만 붙인다(AC-014.4)
+- 점검 보기 모양에 진료마다 메모 초안(`fullText`)을 더한다. 고친 메모는 인자로 받아, 있으면 그것을 두고 `savedMemoMissing` 경고만 붙인다(AC-014.4). `store.load`의 저장값을 이 인자에 잇는 것은 TASK-16이다(`loadPart`). 이 step의 시험은 가짜 값을 넘긴다
+- 설정 줄이 없거나 `validatePhrases`를 지나지 못하면 메모 없이 `memoBlocked: 'E-MEMO-NO-SETTINGS'`(AC-014.8). 손대지 않은 자동 메모만 새 설정으로 다시 만든다(AC-014.11)
+- `dxViews`에 메모 결과를 넘겨 `dxContext`의 `hasMemo`를 잇는다(AC-014.13). `jobs.check`에 `dxViews`를 잇는 것은 TASK-13이다(AC-013.14)
 
 ### 4. 시험
-- `buildMemo.test.ts`(말 채우기 단위), `phrases.test.ts`(검사·기본값·차이), `golden.test.ts`(AC-014.1~014.4 골든 깊은 비교), `jobs.test.ts`(초안·고친 메모 유지)
+- `buildMemo.test.ts`(말 채우기 단위), `fullText.test.ts`(AC-014.5·014.6), `drugs.test.ts`(AC-014.9, AC-014.10의 세 경우마다 한 사례 이상, 연골주사약 사례 포함, AC-014.14), `ourClinic.test.ts`(AC-014.7, AC-014.9: 코드 표의 약 5개 × 시술 15개 칸마다 값이 있음), `phrases.test.ts`(검사·기본값·차이), `golden.test.ts`(AC-014.1~014.7·014.12 골든 깊은 비교), `our-clinic-settings.test.ts`(출력한 SQL을 PGlite에서 돌려 같은 값을 읽는다), `jobs.test.ts`(초안·고친 메모 유지, AC-014.8·014.11·014.13), `errors.test.ts`
 
 ## TDD 순서
 
@@ -110,7 +143,7 @@ export function savedMemoMissing(saved: string, fresh: MemoParts): string[]   //
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/lib/precheck/memo/buildMemo.test.ts src/lib/precheck/memo/phrases.test.ts src/lib/precheck/memo/golden.test.ts src/workers/precheck/jobs.test.ts
+npx vitest run src/lib/precheck/memo/buildMemo.test.ts src/lib/precheck/memo/fullText.test.ts src/lib/precheck/memo/drugs.test.ts src/lib/precheck/memo/ourClinic.test.ts src/lib/precheck/memo/phrases.test.ts src/lib/precheck/memo/golden.test.ts fixtures/precheck/our-clinic-settings.test.ts src/workers/precheck/jobs.test.ts src/lib/errors.test.ts
 npx vitest run src/lib/precheck/rules/golden.test.ts src/lib/precheck/dx/golden.test.ts   # 앞 골든 그대로
 python3 ~/.claude/harness/bin/tdd-run TASK-14 --expect green
 npm run lint && npm test && npm run build
@@ -118,7 +151,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-014.1 ~ AC-014.4이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-014.1 ~ AC-014.14가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -139,6 +172,11 @@ python3 ~/.claude/harness/bin/verify
 
 - 고친 메모를 새 초안으로 덮어쓰지 마라. 이유: 사용자가 고친 글이 사라진다. 원본처럼 그대로 두고 빠진 문장만 알린다(AC-014.4)
 - 문구 틀·말 채우기 규칙을 '자연스럽게' 다듬지 마라. 이유: 원본과 같은 문장이어야 심평원 메모가 양지바른 때와 같다(AC-014.1)
+- `memoText`만 비트에 보낼 글로 삼지 마라. 이유: 원본이 입력하는 글은 `fullText`다(AC-014.5)
+- 설정 줄이 없는 병원에 기본값으로 메모를 만들어 주지 마라. 이유: 다른 병원은 가입 질문이 생길 때까지 메모를 만들지 않는다(AC-014.8, 사용자 결정)
+- 설정에 없는 약을 이름이나 역할로 짐작해 넣거나 빼지 마라(마취제도 같다). 이유: 국소마취제·연골주사약도 시술별로 고르고 마취제는 '빼기'에서 시작하는 것은 사용자 결정이고, 메모를 만들 때 설정에 없는 값을 `[약 확인: 약 이름]`으로 남겨 자동 입력하지 않는 것은 **(Claude 판단)**이다(AC-014.9)
+- 시술 종류가 둘 이상인 진료에서 '넣기'가 한 시술뿐이라고 그 시술에 약을 넣지 마라. 이유: 그 옛 규칙은 사용자가 없앴다(AC-014.10)
+- 앱 코드에 특정 병원 ID를 두지 마라. 이유: 우리 병원 값은 SQL을 사용자가 붙여 넣어 넣는다(design.md 19-3)
 - 메모 글을 진단 기록·오류 메시지·시험 이름에 넣지 마라. 이유: 메모에는 환자 진료 내용이 들어간다
 - 기존 테스트를 깨뜨리지 마라. 이유: 가짜 자료를 바꾸면 규칙·상병 골든도 원본으로 다시 만들어 맞춘다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다

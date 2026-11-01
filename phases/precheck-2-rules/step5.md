@@ -13,8 +13,8 @@
 - **AC-012.3**: 승인된 사용자는 자기 병원 줄만 보고 고친다. `hospital_id`·`updated_at`을 직접 넣거나 바꾸면 거부, `hospital_id`는 DB 기본값으로만. 남의 병원 줄은 안 보인다
 - **AC-012.4**: 제약: 규칙 ID 모양이 아님, 등급이 `확인필요`·`알림`·`참고`가 아님, 문구 jsonb가 object가 아니거나 256KB 이상, 문자 문구 이름 1~30자·내용 1~2000자 밖, 종류가 `injection`·`followup`이 아님 → 거부
 - **AC-012.5**: `lib/storage/claimSettings.ts`가 규칙 설정 줄들을 원본 저장 모양 `{schema: 1, off, on, grade}`로 바꿔 주고, 쓰면 바뀐 줄만 upsert. 실패하면 값을 그대로 두고 `E-SETTINGS-FAILED`
-- **AC-012.6**: 설정 화면 `/settings`의 '점검 규칙' 칸: 규칙마다 ID·제목·분야·기본 등급·근거(고시 번호)와 켜기·끄기·등급 고르기, [저장]은 바뀐 것만, [기본값으로]는 그 규칙 줄을 지운다. 탭 줄의 [설정]이 `/settings` 링크
-- **AC-012.7**: `settingsChanged(a, b)`: 규칙·병원 문구·상병 연결표·문자 문구 중 하나라도 다르면 `true`(순서만 다른 것은 같다)
+- **AC-012.6**: 설정 화면 `/settings`의 '점검 규칙' 칸: 규칙마다 ID·제목·분야·기본 등급·근거(고시 번호)와 켜기·끄기·등급 고르기, [저장]은 바뀐 것만, [기본값으로]는 화면에서 되돌리고 [저장]할 때 그 규칙 줄을 지운다. 탭 줄의 [설정]과 대시보드 목차의 설정 칸이 `/settings` 링크, 설치 화면의 [청구·연락]도 그 링크(AC-034.2)
+- **AC-012.7**: `settingsChanged(a, b)`: 규칙·병원 문구·상병 연결표·문자 문구 중 하나라도 다르면 `true`. 규칙의 off·on·grade 목록과 문자 문구 줄은 집합으로 견주어 읽힌 차례만 다르면 같다(문자 문구를 실제로 옮기면 `sort_order`가 달라져 `true`). 병원 문구는 칸 이름 순서만 다르면 같고, 그 안 배열의 순서가 다르면 `true`(계획에 줄 순서 설정이 있어 메모 글이 달라질 수 있다). 상병 연결표도 줄 순서가 다르면 `true`(추천 위 3개를 넣은 차례로 고른다)
 
 ## 읽어야 할 파일
 
@@ -34,7 +34,7 @@
 - `/src/components/shell/menu.ts`, `/src/components/shell/shell.test.tsx`
 - 이전 step에서 만든 파일:
   - `src/workers/precheck.worker.ts`의 `ruleList` 메시지 (Step 2: 규칙 목록을 Worker로 받는다)
-  - `src/lib/precheck/rules/*`(`RuleSettings` 모양) (Step 3)
+  - `src/lib/precheck/rules/*`(`RuleSettings` 모양. TASK-10의 `RuleSettings`는 더 넓어서, 저장 모양은 `SavedRuleSettings`다) (Step 3)
   - `src/lib/precheck/dx/*`(`DxLink`) (Step 4)
   - `src/app/(app)/claim/setup/page.tsx`, `src/components/claim/setup/*` (Phase 1 Step 6: 안쪽 탭 '비트 연결')
 
@@ -83,6 +83,13 @@
   - `src/app/(app)/settings/page.test.tsx`
   - `src/components/shell/menu.ts`
   - `src/components/shell/shell.test.tsx`
+  - `src/components/dashboard/briefing/features.ts`
+  - `src/components/dashboard/briefing/features.test.ts`
+  - `src/components/claim/setup/SetupScreen.tsx`
+  - `src/components/claim/setup/SetupScreen.test.tsx`
+  - `src/app/(app)/tabFrame.test.tsx`
+  - `src/app/titles.test.tsx`
+  - `src/app/notFound.test.tsx`
   - `src/lib/errors.ts`
   - `src/types/errors.ts`
   - `src/lib/errors.test.ts`
@@ -93,6 +100,11 @@
   - `src/components/settings/RuleSettings.test.tsx`
   - `src/app/(app)/settings/page.test.tsx`
   - `src/components/shell/shell.test.tsx`
+  - `src/components/dashboard/briefing/features.test.ts`
+  - `src/components/claim/setup/SetupScreen.test.tsx`
+  - `src/app/(app)/tabFrame.test.tsx`
+  - `src/app/titles.test.tsx`
+  - `src/app/notFound.test.tsx`
   - `src/lib/errors.test.ts`
 - TDD: required
 
@@ -118,8 +130,8 @@
 
 ### 3. 저장 (`src/lib/storage/claimSettings.ts`, 환자 자료 구역 밖)
 ```ts
-export async function readRuleSettings(sb: SupabaseClient): Promise<RuleSettings>                 // {schema:1, off, on, grade}
-export async function writeRuleSettings(sb: SupabaseClient, before: RuleSettings, after: RuleSettings): Promise<void>  // 바뀐 줄만 upsert, [기본값으로]는 delete
+export async function readRuleSettings(sb: SupabaseClient): Promise<SavedRuleSettings>                 // {schema:1, off, on, grade}
+export async function writeRuleSettings(sb: SupabaseClient, before: SavedRuleSettings, after: SavedRuleSettings): Promise<void>  // 바뀐 줄만 upsert, [기본값으로]를 고른 줄은 [저장]할 때 delete
 export async function readHospitalSettings(sb): Promise<{ phrases: object; dxLinks: DxLink[] } | null>
 export async function writeHospitalSettings(sb, v: { phrases: object; dxLinks: DxLink[] }): Promise<void>
 ```
@@ -129,19 +141,19 @@ export async function writeHospitalSettings(sb, v: { phrases: object; dxLinks: D
 
 ### 4. 설정 바뀜 (`src/lib/precheck/settingsChanged.ts`)
 ```ts
-export type SettingsBundle = { rules: RuleSettings; phrases: object | null; dxLinks: DxLink[]; templates: { kind: string; name: string; body: string; sort_order: number }[] }
-export function settingsChanged(a: SettingsBundle, b: SettingsBundle): boolean   // 순서만 다른 배열은 같다
+export type SettingsBundle = { rules: SavedRuleSettings; phrases: object | null; dxLinks: DxLink[]; templates: { kind: string; name: string; body: string; sort_order: number }[] }
+export function settingsChanged(a: SettingsBundle, b: SettingsBundle): boolean   // 규칙·문자 문구는 집합으로 견준다(문자 문구를 옮기면 sort_order가 달라져 다르다). 병원 문구 안 배열과 상병 연결표는 순서까지 본다
 ```
 
 ### 5. 화면 (목업 화면 10 '설정')
 - `/settings`(`src/app/(app)/settings/page.tsx`) → `SettingsPage.tsx`: 제목 '설정', 안쪽 탭 `청구·연락 | 비트 연결`. '비트 연결'은 `/claim/setup` 링크(목업 화면 1의 자리). '청구·연락'에 패널을 차례로 둔다: 이 step은 '점검 규칙'만. 병원 문구·상병 연결표(TASK-18), 문자 문구(TASK-25), 백업(TASK-32)이 뒤에 더해진다 — 끼울 자리를 비워 둔다
 - `RuleSettings.tsx`: 규칙 목록은 `precheck.worker.ts`에 `ruleList`를 보내 받는다(표 JSON을 직접 import하지 않는다 — AC-007.4). 목업처럼 묶음·등급 거르기, 줄마다 켜기·ID·제목·분야·등급 고르기·근거·바꾼 날, [저장](바뀐 것만)·[기본값으로]·[되돌리기]. 저장 실패면 값을 그대로 두고 오류 카드 + [다시 저장]. 등급은 색만이 아니라 글자로도
-- `menu.ts`: [설정] `href: '/settings'`. 이렇게 하면 Phase 1의 `/claim/setup` 안쪽 탭 '청구·연락'이 저절로 링크가 된다(그 화면은 `menu.ts`의 설정 `href`를 읽는다)
+- `menu.ts`: [설정] `href: '/settings'`. 이렇게 하면 Phase 1의 `/claim/setup` 안쪽 탭 '청구·연락'이 저절로 링크가 된다(그 화면은 `menu.ts`의 설정 `href`를 읽는다). `features.ts`의 설정 칸도 `/settings`로. `SetupScreen`의 '준비 중' 갈래는 없앤다. 시험은 [청구·연락]의 링크·기본 모양·칩 없음을 본다
 - 오류 번호 `E-SETTINGS-FAILED`
 
 ### 6. 시험
 - `claimSettings.test.ts`: 가짜 supabase 클라이언트로 줄 ↔ 원본 모양, 바뀐 줄만 upsert, [기본값으로] delete, 실패 → `E-SETTINGS-FAILED`(AC-012.5)
-- `settingsChanged.test.ts`(AC-012.7), `RuleSettings.test.tsx`·`page.test.tsx`(jsdom, 가짜 Worker: AC-012.6), `shell.test.tsx`(설정 링크)
+- `settingsChanged.test.ts`(AC-012.7), `RuleSettings.test.tsx`·`page.test.tsx`(jsdom, 가짜 Worker: AC-012.6), `shell.test.tsx`(설정 링크), `features.test.ts`·`SetupScreen.test.tsx`·`tabFrame.test.tsx`·`titles.test.tsx`·`notFound.test.tsx`(새 주소 `/settings`)
 
 ## TDD 순서
 
@@ -154,7 +166,7 @@ export function settingsChanged(a: SettingsBundle, b: SettingsBundle): boolean  
 
 ```bash
 npx vitest run supabase/precheck.rls.test.ts supabase/rls.test.ts                 # 새 RLS + 기존 auth RLS
-npx vitest run src/lib/storage/claimSettings.test.ts src/lib/precheck/settingsChanged.test.ts src/components/settings/RuleSettings.test.tsx "src/app/(app)/settings/page.test.tsx" src/components/shell/shell.test.tsx src/lib/errors.test.ts
+npx vitest run src/lib/storage/claimSettings.test.ts src/lib/precheck/settingsChanged.test.ts src/components/settings/RuleSettings.test.tsx "src/app/(app)/settings/page.test.tsx" src/components/shell/shell.test.tsx src/components/dashboard/briefing/features.test.ts src/components/claim/setup/SetupScreen.test.tsx "src/app/(app)/tabFrame.test.tsx" src/app/titles.test.tsx src/app/notFound.test.tsx src/lib/errors.test.ts
 python3 ~/.claude/harness/bin/tdd-run TASK-12 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify

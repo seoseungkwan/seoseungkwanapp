@@ -11,7 +11,7 @@
 - **AC-019.1**: 마이그레이션 `20261030000100_precheck_counts.sql`을 PGlite로 돌리면 `claim_day_counts`·`claim_month_counts`·`contact_counts`의 칸 종류는 `uuid`(병원)·`date`·`integer`·`timestamp with time zone`뿐(글자·jsonb 칸 없음)이고, RLS·권한 회수·내 병원만·`hospital_id` 기본값만 규칙이 REQ-012와 같다
 - **AC-019.2**: 음수·100,000 넘는 수·입력 수 > 메모 필요 수·달 첫날이 아닌 `claim_month`를 넣으면 거부
 - **AC-019.3**: Worker의 점검·입력 결과로 `dayCounts(view)` → 날짜마다 `{visit_date, need_memo, entered, needs_check, skipped}` 정수만. `lib/storage/claimCounts.ts`는 이 모양 밖의 칸이 있으면 보내지 않는다(검사)
-- **AC-019.4**: 불러오기·입력이 끝나 건수가 바뀌었으면 그 날짜 줄을 upsert. 실패하면 메모리에 두고 다음에 바뀔 때·창 초점이 올 때 다시 올리며 `E-COUNTS-FAILED`를 작은 줄로
+- **AC-019.4**: 불러오기(성공한 비트 메모 다시 불러오기 포함)·입력이 끝나 건수가 바뀌었으면 그 날짜 줄을 upsert. 실패하면 메모리에 두고 다음에 바뀔 때·창 초점이 올 때 다시 올리며 `E-COUNTS-FAILED`를 작은 줄로
 - **AC-019.5**: 밖에서 보는 건수(`/claim`, 확장 없는 곳·휴대폰)는 날짜별 남은 메모 수(남은 날만)를 그 줄의 마지막 바뀐 시각과 함께. 환자 정보·경고 내용 없음. 올린 건수가 없으면 빈 안내 한 줄
 - **AC-019.6**: 서버에 보낸 요청 몸통에는 정해 둔 칸과 정수·날짜만 있고 이름·차트번호·메모 글이 없다(시험)
 
