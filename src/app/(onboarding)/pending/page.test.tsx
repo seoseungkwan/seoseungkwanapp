@@ -5,7 +5,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { guardPage } from '@/lib/auth/guard.server'
 import type { Hospital, Me } from '@/lib/auth/hospital.server'
-import PendingPage from './page'
+import PendingPage, { generateMetadata } from './page'
 
 // 병원 상태로 어디로 보낼지는 lib/auth/guard.server.test.ts가 본다. 여기서는 guard → 화면 연결만 본다
 vi.mock('@/lib/auth/guard.server', () => ({ guardPage: vi.fn() }))
@@ -65,6 +65,25 @@ describe('/pending 화면', () => {
     expect(within(main).getAllByRole('button').map((b) => b.textContent)).toEqual(['다른 계정으로 로그인'])
     expect(screen.getAllByRole('button', { name: '로그아웃' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '상태 다시 확인' })).toBeNull()
+  })
+
+  it('AC-402.2: 탭 이름(generateMetadata)은 페이지와 같은 guardPage("/pending") 읽기로 상태를 본다 — 대기 "승인 대기", 거절 "가입 승인 안 됨"', async () => {
+    expect(await generateMetadata()).toEqual({ title: '승인 대기' })
+    expect(guard).toHaveBeenCalledExactlyOnceWith('/pending')
+    guard.mockResolvedValue(me({ ...HOSPITAL, status: 'rejected' }))
+    expect(await generateMetadata()).toEqual({ title: '가입 승인 안 됨' })
+  })
+
+  it('AC-402.2: 페이지와 generateMetadata는 요청 안에서 한 번 캐시한 같은 읽기(React cache)를 쓴다', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/(onboarding)/pending/page.tsx'), 'utf8')
+    expect(source).toMatch(/import \{ cache \} from 'react'/)
+    expect(source).toMatch(/= cache\(\(\) => guardPage\('\/pending'\)\)/)
+    expect([...source.matchAll(/guardPage\(/g)], 'guardPage는 cache 안 한 곳에서만 부른다').toHaveLength(1)
+  })
+
+  it('AC-402.2: 승인됐으면 탭 이름을 정하기 전에도 guardPage가 보낸다(그대로 던진다)', async () => {
+    guard.mockRejectedValue(new Error('NEXT_REDIRECT /dashboard'))
+    await expect(generateMetadata()).rejects.toThrow('NEXT_REDIRECT /dashboard')
   })
 
   it('AC-005.2: 승인됐으면 guardPage가 /dashboard로 보낸다(redirect가 던짐) → 그리지 않고 그대로 던진다', async () => {

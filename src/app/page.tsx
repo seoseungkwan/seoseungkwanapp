@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 // 공통 모양을 섹션 모듈보다 먼저 불러온다. CSS가 이 순서로 붙어, 구체성이 같으면 섹션 모듈이 이긴다(design.md 'CSS 적용 순서')
 import base from '@/components/landing/base.module.css'
 import AiSection from '@/components/landing/AiSection'
@@ -8,6 +9,9 @@ import OrthoSection from '@/components/landing/OrthoSection'
 import PrivacySection from '@/components/landing/PrivacySection'
 import SiteFooter from '@/components/landing/SiteFooter'
 import SiteHeader from '@/components/landing/SiteHeader'
+
+// 브라우저 탭 이름 (ui-90 AC-402.2)
+export const metadata: Metadata = { title: '숫자로 보는 우리 의원' }
 
 // 랜딩(/): 승인된 시안(docs/mockups/b2b-redesign/screens.mjs) 순서로 섹션 6개를 놓기만 한다(specs/b2b-redesign AC-211.2).
 // 옛 시작하기 섹션(#start)은 #how에 합쳤다. 메뉴 띠·푸터는 main 밖에 둬서 banner·contentinfo 영역으로 읽히게 한다.

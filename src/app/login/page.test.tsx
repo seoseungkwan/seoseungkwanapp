@@ -107,7 +107,9 @@ describe('AuthFrame 머리띠 오른쪽 끝 자리(headerEnd)', () => {
 })
 
 // 페이지 파일은 그리는 틀(AuthFrame)과 그 props만 바뀐다 (b2b-redesign REQ-213 AC-213.3, REQ-201 AC-201.1).
-// 주석 줄을 뺀 파일 글자를 import 줄과 나머지로 나눠, 나머지(문지기·dynamic·쿼리 판단·그리는 JSX)를 공백만 줄여 통째로 비교한다
+// 주석 줄을 뺀 파일 글자를 import 줄과 나머지로 나눠, 나머지(문지기·dynamic·쿼리 판단·그리는 JSX)를 공백만 줄여 통째로 비교한다.
+// ui-90 TASK-2가 기대 글에 탭 이름 줄(metadata·generateMetadata)과 그 import를 더했다. 승인 대기는 페이지와 탭 이름이 같은 읽기
+// (pendingMe = cache(guardPage('/pending')))를 쓰는 본문도 더했다(specs/ui-90/tasks.md TASK-2). 그리는 JSX와 문지기 경로는 그대로다
 const ROOT = process.cwd()
 const squash = (text: string) => text.replace(/\s+/g, ' ').trim()
 function pageParts(rel: string) {
@@ -124,11 +126,13 @@ describe('AC-213.3: 로그인·가입 신청·승인 대기 페이지 파일은 
   const LOGIN = {
     file: 'src/app/login/page.tsx',
     imports: [
+      "import type { Metadata } from 'next'",
       "import { AuthFrame } from '@/components/auth/AuthFrame'",
       "import { LoginAside } from '@/components/auth/LoginAside'",
       "import { LoginCard } from '@/components/auth/LoginCard'",
     ],
-    rest: `export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string | string[] }> }) {
+    rest: `export const metadata: Metadata = { title: '로그인' }
+    export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string | string[] }> }) {
       const { error } = await searchParams
       return (
         <AuthFrame aside={<LoginAside />}>
@@ -140,11 +144,13 @@ describe('AC-213.3: 로그인·가입 신청·승인 대기 페이지 파일은 
   const SIGNUP = {
     file: 'src/app/(onboarding)/signup/page.tsx',
     imports: [
+      "import type { Metadata } from 'next'",
       "import { AuthFrame } from '@/components/auth/AuthFrame'",
       "import { SignupForm } from '@/components/auth/SignupForm'",
       "import { guardPage } from '@/lib/auth/guard.server'",
     ],
     rest: `export const dynamic = 'force-dynamic'
+    export const metadata: Metadata = { title: '가입 신청' }
     export default async function SignupPage() {
       const me = await guardPage('/signup')
       return (
@@ -157,6 +163,8 @@ describe('AC-213.3: 로그인·가입 신청·승인 대기 페이지 파일은 
   const PENDING = {
     file: 'src/app/(onboarding)/pending/page.tsx',
     imports: [
+      "import type { Metadata } from 'next'",
+      "import { cache } from 'react'",
       "import { AuthFrame } from '@/components/auth/AuthFrame'",
       "import { HeaderSignOut, PendingCard, type PendingHospital } from '@/components/auth/PendingCard'",
       "import { guardPage } from '@/lib/auth/guard.server'",
@@ -165,12 +173,21 @@ describe('AC-213.3: 로그인·가입 신청·승인 대기 페이지 파일은 
     rest: `export const dynamic = 'force-dynamic'
     const isWaiting = (hospital: Hospital | null): hospital is PendingHospital =>
       hospital !== null && (hospital.status === 'pending' || hospital.status === 'rejected')
+    const pendingMe = cache(() => guardPage('/pending'))
+    async function waitingHospital(): Promise<PendingHospital> {
+      const { hospital } = await pendingMe()
+      if (!isWaiting(hospital)) throw new Error('승인 대기·거절 상태가 아니에요')
+      return hospital
+    }
+    export async function generateMetadata(): Promise<Metadata> {
+      const hospital = await waitingHospital()
+      return { title: hospital.status === 'rejected' ? '가입 승인 안 됨' : '승인 대기' }
+    }
     export default async function PendingPage() {
-      const me = await guardPage('/pending')
-      if (!isWaiting(me.hospital)) throw new Error('승인 대기·거절 상태가 아니에요')
+      const hospital = await waitingHospital()
       return (
         <AuthFrame headerEnd={<HeaderSignOut />}>
-          <PendingCard hospital={me.hospital} />
+          <PendingCard hospital={hospital} />
         </AuthFrame>
       )
     }`,

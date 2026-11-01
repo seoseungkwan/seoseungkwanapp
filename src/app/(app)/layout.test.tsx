@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
-import AppLayout from './layout'
+import { currentMe } from './currentMe.server'
+import AppLayout, { generateMetadata } from './layout'
 
 // 앱 화면 틀((app) 레이아웃): 그리기 전에 guard가 병원 상태를 보고, 승인된 사람만 AppShell + IdleLogout 안에 페이지를 그린다
 // (design.md '앱 틀'·'데이터 흐름'). 읽기(readMe)만 흉내 내고, guard·gate(어디로 보낼지)는 진짜를 쓴다
@@ -16,6 +19,12 @@ vi.mock('@/lib/auth/hospital.server', async (importOriginal) => ({
 vi.mock('@/lib/auth/guard.server', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/auth/guard.server')>()
   return { ...real, guardPage: vi.fn(real.guardPage) }
+})
+// 레이아웃과 generateMetadata가 같은 읽기(currentMe)를 쓰는지 보려고 진짜 currentMe를 감싼다.
+// 시험(react-server 밖)에서 React cache는 그냥 부르기라 부를 때마다 guard가 한 번 돈다 — 요청 안 한 번 읽기는 Next 서버 몫
+vi.mock('./currentMe.server', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./currentMe.server')>()
+  return { ...real, currentMe: vi.fn(real.currentMe) }
 })
 // redirect()는 Next에서 던져서 그리기를 멈춘다 → 같은 모양으로 흉내 낸다
 const { redirect } = vi.hoisted(() => ({
@@ -30,6 +39,7 @@ vi.mock('@/components/shell/IdleLogout', () => ({ IdleLogout: () => <span data-t
 
 const read = vi.mocked(readMe)
 const guard = vi.mocked(guardPage)
+const current = vi.mocked(currentMe)
 
 const HOSPITAL: Hospital = {
   id: 'h1',
@@ -50,6 +60,7 @@ beforeEach(() => {
   read.mockReset()
   read.mockResolvedValue(me('approved'))
   guard.mockClear()
+  current.mockClear()
   redirect.mockClear()
   Object.defineProperty(Element.prototype, 'scrollIntoView', { value: vi.fn(), configurable: true, writable: true })
 })
@@ -127,6 +138,34 @@ describe('(app) 레이아웃', () => {
     await expect(AppLayout({ children: page })).rejects.toThrow()
     guard.mockResolvedValueOnce(me('pending'))
     await expect(AppLayout({ children: page })).rejects.toThrow()
+  })
+
+  it("AC-402.3: generateMetadata — 탭 이름 틀은 { template: '%s · <의원 이름>', default: '<의원 이름>' }이고 currentMe(guard '/dashboard') 읽기를 쓴다", async () => {
+    expect(await generateMetadata()).toEqual({ title: { template: '%s · 가나 정형외과의원', default: '가나 정형외과의원' } })
+    expect(current).toHaveBeenCalledTimes(1)
+    expect(guard).toHaveBeenCalledExactlyOnceWith('/dashboard')
+  })
+
+  it('AC-402.3: 레이아웃 그리기와 generateMetadata는 같은 읽기 currentMe를 같이 쓴다(레이아웃이 guard를 따로 부르지 않는다)', async () => {
+    await generateMetadata()
+    render(await AppLayout({ children: page }))
+    expect(current).toHaveBeenCalledTimes(2)
+    expect(guard.mock.calls).toEqual([['/dashboard'], ['/dashboard']])
+    expect(within(screen.getByRole('banner')).getByText('가나 정형외과의원')).toBeTruthy()
+  })
+
+  it("AC-402.3: currentMe는 요청 안에서 한 번 캐시한 guardPage('/dashboard') 읽기다(React cache, 서버 전용)", () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/(app)/currentMe.server.ts'), 'utf8')
+    expect(source).toMatch(/^import 'server-only'$/m)
+    expect(source).toMatch(/import \{ cache \} from 'react'/)
+    expect(source).toMatch(/export const currentMe = cache\(\(\) => guardPage\('\/dashboard'\)\)/)
+  })
+
+  it('AC-402.3: 승인 전이면 generateMetadata도 지금처럼 guard가 보낸다(대기·거절 → /pending, 병원 줄 없음 → /signup)', async () => {
+    read.mockResolvedValue(me('pending'))
+    await expect(generateMetadata()).rejects.toThrow('NEXT_REDIRECT /pending')
+    read.mockResolvedValue(me(null))
+    await expect(generateMetadata()).rejects.toThrow('NEXT_REDIRECT /signup')
   })
 
   it('AC-008.1: 요청마다 그린다(로그인 세션으로만 그릴 수 있다 — 빌드 때 미리 그리지 않는다)', async () => {
