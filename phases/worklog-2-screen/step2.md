@@ -68,10 +68,11 @@ export function WorklogSheet(props: {
 }): JSX.Element
 ```
 - `<div className={s.paper}><table className={s.sheet} aria-label="업무일지">…</table></div>`. 23줄 `<tr>`(17·18행은 시안처럼 둘째 줄이 빈 `<tr className={s.r20} />`)
-- 숫자 칸: 칸 안 작은 부품(`NumberCell`)이 초점 여부만 들고 있다. 보이는 글자 = 초점이면 `wonInputText(v, true)`, 아니면 `wonInputText(v, false)`(인원은 `countText`). `onChange`에서 `parseWon`/`parseCount` → `onNumber`. 시안의 "치는 동안 쉼표 다시 넣기"도 같다
+- 숫자 칸: 칸 안 작은 부품(`NumberCell`)이 초점 여부만 들고 있다. 보이는 글자 = 초점이면 `wonInputText(v, true)`, 아니면 `wonInputText(v, false)`(인원 입력 칸은 초점과 상관없이 `countText`: 값이 없거나 0이면 빈 칸). `onChange`에서 `parseWon`/`parseCount` → `onNumber`. 시안의 "치는 동안 쉼표 다시 넣기"도 같다
+- 환자 합계 칸(D6)은 입력 칸이 아니다. `visitsText(worklogTotals(day).visits)`로 그린다(0이면 "0"). `countText`를 쓰면 0이 빈 칸이 된다
 - 비고: `maxLength={NOTE_MAX}`, 업무사항 `textarea maxLength={MEMO_MAX} placeholder="이 PC에만 저장돼요"`. 업무사항·비고는 `spellCheck={false}`(AC-008.3, 브라우저 맞춤법 검사가 글을 밖으로 보낼 수 있다)
 - `readOnly`: 모든 `input`·`textarea`에 `readOnly`. `memoNotice`가 있으면 textarea 대신 그 글을 칸에 보인다(흐린 글)
-- 시험(jsdom + Testing Library): 줄 23개, 각 줄의 칸 수와 `colSpan`·`rowSpan`을 design.md 2절 표로 만든 기대 목록과 견준다(합친 칸 46), 칸 글자, 연보라·회색 클래스 자리(`s.lav`·`s.gray`), 입력 칸 20개와 이름, 자동 칸 글자(가짜 값 예: 현금 100,000 + 카드 200,000 + 총진료비 900,000 → 수납액 "300,000원"), 초점 들어감·나감 글자, `readOnly`·`memoNotice`, `aria-invalid`, 업무사항·비고의 `spellcheck="false"`, `role="button"`·"저장"·시트 탭 글자가 없음
+- 시험(jsdom + Testing Library): 줄 23개, 각 줄의 칸 수와 `colSpan`·`rowSpan`을 design.md 2절 표로 만든 기대 목록과 견준다(합친 칸 46), 칸 글자, 연보라·회색 클래스 자리(`s.lav`·`s.gray`), 입력 칸 20개와 이름, 자동 칸 글자(가짜 값 예: 현금 100,000 + 카드 200,000 + 총진료비 900,000 → 수납액 "300,000원"), 인원 0 → 빈 칸, 환자 합계 0 → "0", 초점 들어감·나감 글자, `readOnly`·`memoNotice`, `aria-invalid`, 업무사항·비고의 `spellcheck="false"`, `role="button"`·"저장"·시트 탭 글자가 없음
 
 ## TDD 순서
 
