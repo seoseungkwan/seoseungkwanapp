@@ -1,5 +1,6 @@
 import 'server-only'
 import Anthropic, {
+  AnthropicError,
   APIConnectionError,
   APIError,
   APIUserAbortError,
@@ -31,7 +32,12 @@ export type ClaudeResult =
   | { ok: false; code: AiErrorCode; usage: AiUsage | null }
 
 // 조각 도중 온 오류(SSE error 이벤트)는 상태 없는 APIError로 온다 — error.type으로 429·5xx·529와 같게 본다
-const BUSY_TYPES: ReadonlySet<string> = new Set(['rate_limit_error', 'overloaded_error', 'api_error'])
+const BUSY_TYPES: ReadonlySet<string> = new Set(['rate_limit_error', 'overloaded_error', 'api_error', 'timeout_error'])
+// SDK 1.3.0 lib/BetaMessageStream.js가 조각이 끝맺지 않고 닫혔을 때 던지는 글자. 시험이 진짜 SDK로 이 글자를 지킨다
+const ENDED_EARLY: ReadonlySet<string> = new Set([
+  'stream ended without producing a Message with role=assistant',
+  'request ended without sending any chunks',
+])
 
 export async function callClaude(
   req: { system: string; user: string; schema: object },
@@ -40,7 +46,7 @@ export async function callClaude(
   const apiKey = deps?.apiKey ?? process.env.ANTHROPIC_API_KEY
   if (!apiKey) return { ok: false, code: 'E-AI-FAILED', usage: null }
 
-  const client: AnthropicLike = deps?.client ?? new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1 })
+  const client: AnthropicLike = deps?.client ?? new Anthropic({ apiKey, timeout: 100_000, maxRetries: 1, logLevel: 'off' })
 
   // SDK timeout은 시도 한 번의 응답 머리만 잰다. 재시도·조각 받기까지 덮는 신호 하나를 넣는다
   const signal = AbortSignal.timeout(deps?.timeoutMs ?? CALL_TIMEOUT_MS)
@@ -95,7 +101,7 @@ function answerText(content: BetaContentBlock[]): string {
   return text
 }
 
-// 위에서부터 처음 맞는 것(design '오류 나누기' 1~5). 신호를 가장 먼저 본다: APIUserAbortError는 상태·type이 없는 APIError다
+// 위에서부터 처음 맞는 것(design '오류 나누기' 1~6). 신호를 가장 먼저 본다: APIUserAbortError는 상태·type이 없는 APIError다
 // APIConnectionTimeoutError는 APIConnectionError의 하위 클래스다
 function errorCode(err: unknown, signal: AbortSignal): AiErrorCode {
   if (signal.aborted || err instanceof APIUserAbortError) return 'E-AI-BUSY'
@@ -104,7 +110,14 @@ function errorCode(err: unknown, signal: AbortSignal): AiErrorCode {
   }
   if (err instanceof APIError) {
     if (err.status === 402) return 'E-AI-LIMIT'
+    if (err.status === undefined && err.type === 'billing_error') return 'E-AI-LIMIT'
     if (err.status === undefined && err.type !== null && BUSY_TYPES.has(err.type)) return 'E-AI-BUSY'
+    return 'E-AI-FAILED'
+  }
+  // SDK는 부르기 안의 모든 Error를 AnthropicError로 감싼다. 넓게 BUSY로 보면 열쇠·주소 설정 잘못과 코드 잘못까지 바쁘다고 말하니, 끊김과 끝맺지 않음만 본다
+  if (err instanceof AnthropicError) {
+    if (err.cause instanceof TypeError && err.cause.message === 'terminated') return 'E-AI-BUSY'
+    if (ENDED_EARLY.has(err.message)) return 'E-AI-BUSY'
   }
   return 'E-AI-FAILED'
 }

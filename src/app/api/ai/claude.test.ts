@@ -1,4 +1,5 @@
 import {
+  AnthropicError,
   APIConnectionError,
   APIConnectionTimeoutError,
   APIError,
@@ -19,10 +20,11 @@ import type {
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { ErrorType } from '@anthropic-ai/sdk/resources/shared'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CALL_TIMEOUT_MS, MAX_TOKENS, MODEL, callClaude, type AnthropicLike } from './claude'
 
-// Claude 부르기(spec ai-report design.md 'Claude 부르기'). 진짜 SDK 네트워크는 부르지 않는다 — 가짜 클라이언트만 넣는다
+// Claude 부르기(spec ai-report design.md 'Claude 부르기'). 네트워크·진짜 Claude는 쓰지 않는다
+// 보통은 가짜 클라이언트를 넣고, SDK 안쪽 사실(끊김·끝맺지 않음의 오류 모양과 글자, logLevel)은 진짜 SDK 클래스 + 가짜 fetch로 본다
 // 열쇠는 늘 가짜 글자(sk-ant-fake-…)다
 
 const FAKE_KEY = 'sk-ant-fake-test-key'
@@ -134,6 +136,7 @@ function errorBody(type: string) {
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -448,7 +451,7 @@ describe('AC-510.7 조각 받는 도중 온 오류', () => {
     return new APIError(undefined, errorBody(type), undefined, new Headers(), type)
   }
 
-  for (const type of ['rate_limit_error', 'overloaded_error', 'api_error'] as const) {
+  for (const type of ['rate_limit_error', 'overloaded_error', 'api_error', 'timeout_error'] as const) {
     it(`AC-510.7 상태 없는 APIError type ${type} → E-AI-BUSY, 사용량 없음`, async () => {
       const err = midStreamError(type)
       expect(err.status).toBeUndefined()
@@ -456,6 +459,13 @@ describe('AC-510.7 조각 받는 도중 온 오류', () => {
       expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-BUSY', usage: null })
     })
   }
+
+  it('AC-510.7 상태 없는 APIError type billing_error → E-AI-LIMIT, 사용량 없음', async () => {
+    const err = midStreamError('billing_error')
+    expect(err.status).toBeUndefined()
+    const { client } = fakeClient(err)
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-LIMIT', usage: null })
+  })
 
   for (const type of ['invalid_request_error', 'authentication_error'] as const) {
     it(`AC-510.7 상태 없는 APIError type ${type} → E-AI-FAILED, 사용량 없음`, async () => {
@@ -477,6 +487,13 @@ describe('AC-510.7 조각 받는 도중 온 오류', () => {
     const err = midStreamError(unknownType as ErrorType)
     expect(err.status).toBeUndefined()
     expect(err.type).toBe('some_new_error')
+    const { client } = fakeClient(err)
+    expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: null })
+  })
+
+  it('AC-510.7 상태가 있는 APIError(400)는 type이 billing_error여도 E-AI-FAILED, 사용량 없음', async () => {
+    const err = new APIError(400, errorBody('billing_error'), undefined, new Headers(), 'billing_error')
+    expect(err.status).toBe(400)
     const { client } = fakeClient(err)
     expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual({ ok: false, code: 'E-AI-FAILED', usage: null })
   })
@@ -564,6 +581,248 @@ describe('AC-510.8 대신 답한 글자만', () => {
       ok: true,
       text: '{"summary":"ok"}',
       usage: { inputTokens: 1900, outputTokens: 240, model: 'claude-opus-5' },
+    })
+  })
+})
+
+// 아래는 deps.client 없이 진짜 SDK 클래스 + 가짜 fetch로 돈다. SDK 판이 바뀌어 오류 모양·글자가 달라지면 여기서 잡힌다
+const enc = new TextEncoder()
+const sse = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`
+const sseError = (type: string) => sse('error', errorBody(type))
+const START = sse('message_start', {
+  type: 'message_start',
+  message: {
+    id: 'msg_fake',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-opus-5-5',
+    content: [],
+    stop_reason: null,
+    stop_sequence: null,
+    usage: { input_tokens: 10, output_tokens: 1 },
+  },
+})
+const BLOCK = sse('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: null } })
+const DELTA = sse('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"summary":"ok"}' } })
+const BLOCK_STOP = sse('content_block_stop', { type: 'content_block_stop', index: 0 })
+const MSG_DELTA = sse('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } })
+const MSG_STOP = sse('message_stop', { type: 'message_stop' })
+const WHOLE_ANSWER = [START, BLOCK, DELTA, BLOCK_STOP, MSG_DELTA, MSG_STOP]
+const MALFORMED = 'event: content_block_delta\ndata: {"type":"content_block_delta" 비밀조각\n\n'
+
+// pull로 하나씩 준다: controller.error()는 쌓여 있던 조각을 버려서, start에서 넣고 바로 error하면 앞 조각이 전해지지 않는다
+function sseResponse(chunks: string[], end: 'close' | Error = 'close'): Response {
+  let i = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (i < chunks.length) return c.enqueue(enc.encode(chunks[i++]))
+      if (end === 'close') c.close()
+      else c.error(end)
+    },
+  })
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+// retry-after-ms: SDK 재시도를 기다리지 않게
+function jsonError(status: number, type: string): Response {
+  return new Response(JSON.stringify(errorBody(type)), { status, headers: { 'content-type': 'application/json', 'retry-after-ms': '1' } })
+}
+
+function fakeFetch(make: () => Response) {
+  const f = vi.fn(async () => make())
+  vi.stubGlobal('fetch', f)
+  return f
+}
+
+// SDK는 로거를 console 객체별로 캐시하고 그때의 함수를 묶어 둔다. spy는 앞 시험이 만든 캐시 때문에 호출을 놓치니, 시험마다 새 객체를 넣는다
+function freshConsole() {
+  const c = { log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  vi.stubGlobal('console', c)
+  return c
+}
+
+function expectSilent(c: ReturnType<typeof freshConsole>) {
+  for (const m of ['log', 'info', 'warn', 'error', 'debug'] as const) expect(c[m]).not.toHaveBeenCalled()
+}
+
+// undici의 fetch가 몸통을 읽는 도중 연결이 깨졌을 때 내는 모양
+const terminated = () => new TypeError('terminated', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })
+
+const BUSY = { ok: false, code: 'E-AI-BUSY', usage: null }
+const LIMIT = { ok: false, code: 'E-AI-LIMIT', usage: null }
+const FAILED = { ok: false, code: 'E-AI-FAILED', usage: null }
+
+describe('진짜 SDK 클래스 + 가짜 fetch', () => {
+  beforeEach(() => {
+    // 가짜 fetch를 빠뜨려도 네트워크로 나가지 않게 막는다
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('가짜 fetch를 먼저 넣어야 한다'))))
+    // 시험 밖 환경 변수에 흔들리지 않게 비운다
+    vi.stubEnv('ANTHROPIC_BASE_URL', undefined)
+    vi.stubEnv('ANTHROPIC_LOG', undefined)
+  })
+
+  // BUSY를 기대하는 시험은 fetch가 불린 횟수도 함께 본다: 막아 둔 fetch에 걸리면 APIConnectionError → BUSY로 헛통과한다
+  describe('AC-510.7 조각 도중 온 오류', () => {
+    const midStream = [
+      ['timeout_error', BUSY],
+      ['api_error', BUSY],
+      ['billing_error', LIMIT],
+      ['invalid_request_error', FAILED],
+      ['authentication_error', FAILED],
+      ['some_new_error', FAILED],
+    ] as const
+
+    for (const [type, want] of midStream) {
+      it(`AC-510.7 SSE error 이벤트 ${type} → ${want.code}, 사용량 없음`, async () => {
+        const f = fakeFetch(() => sseResponse([START, BLOCK, DELTA, sseError(type)]))
+        expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual(want)
+        expect(f).toHaveBeenCalledTimes(1)
+      })
+    }
+
+    const twoRoads = [
+      [504, 'timeout_error', BUSY, 2], // 5xx는 SDK가 한 번 더 시도한다(maxRetries: 1)
+      [402, 'billing_error', LIMIT, 1],
+    ] as const
+
+    for (const [status, type, want, attempts] of twoRoads) {
+      it(`AC-510.7 같은 오류의 두 길: HTTP ${status} ${type}와 조각 도중 ${type}는 둘 다 ${want.code}, 사용량 없음`, async () => {
+        const byStatusFetch = fakeFetch(() => jsonError(status, type))
+        const byStatus = await callClaude(REQ, { apiKey: FAKE_KEY })
+        expect(byStatusFetch).toHaveBeenCalledTimes(attempts)
+
+        const midStreamFetch = fakeFetch(() => sseResponse([START, sseError(type)]))
+        const inStream = await callClaude(REQ, { apiKey: FAKE_KEY })
+        expect(midStreamFetch).toHaveBeenCalledTimes(1)
+
+        expect({ byStatus, inStream }).toEqual({ byStatus: want, inStream: want })
+      })
+    }
+  })
+
+  describe('AC-510.9 끊김·끝맺지 않음', () => {
+    const cases: [string, () => Response][] = [
+      ['글자를 받다가 연결이 끊김', () => sseResponse([START, BLOCK, DELTA], terminated())],
+      ['첫 조각 전에 연결이 끊김', () => sseResponse([], terminated())],
+      ['글자를 받다가 message_stop 없이 닫힘', () => sseResponse([START, BLOCK, DELTA])],
+      ['message_delta까지 받고 message_stop 없이 닫힘', () => sseResponse([START, BLOCK, DELTA, BLOCK_STOP, MSG_DELTA])],
+      ['조각 하나 없이 닫힘', () => sseResponse([])],
+    ]
+
+    for (const [name, make] of cases) {
+      it(`AC-510.9 ${name} → E-AI-BUSY, 사용량 없음`, async () => {
+        const f = fakeFetch(make)
+        expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual(BUSY)
+        expect(f).toHaveBeenCalledTimes(1)
+      })
+    }
+
+    it('AC-510.9 message_stop까지 받은 답은 그대로 성공이다', async () => {
+      fakeFetch(() => sseResponse(WHOLE_ANSWER))
+      expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual({
+        ok: true,
+        text: '{"summary":"ok"}',
+        usage: { inputTokens: 10, outputTokens: 5, model: 'claude-opus-5-5' },
+      })
+    })
+
+    it('AC-510.9 SDK가 감싼 모양(cause에 TypeError: terminated)이면 가짜 클라이언트로도 E-AI-BUSY, 사용량 없음', async () => {
+      const { client } = fakeClient(Object.assign(new AnthropicError('terminated'), { cause: terminated() }))
+      expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual(BUSY)
+    })
+  })
+
+  // 지금 코드로도 통과한다. "APIError가 아닌 AnthropicError면 BUSY"나 "cause가 TypeError면 BUSY" 같은 넓은 규칙을 막는 시험이다
+  describe('AC-510.10 설정·코드 잘못은 바쁘다고 말하지 않는다', () => {
+    // 부르기 전에 실패하는 것들. 가짜 fetch는 온전한 답을 주므로, 닿았다면 성공으로 나와 시험이 실패한다
+    const badKeys = [
+      ['헤더에 못 쓰는 글자(한글)', 'sk-ant-fake-키'],
+      ['가운데 줄바꿈', 'sk-ant-fake\nX-Evil: 1'],
+    ] as const
+
+    for (const [name, apiKey] of badKeys) {
+      it(`AC-510.10 열쇠에 ${name} → E-AI-FAILED, 사용량 없음, 결과에 열쇠 글자 없음`, async () => {
+        const f = fakeFetch(() => sseResponse(WHOLE_ANSWER))
+        const result = await callClaude(REQ, { apiKey })
+        expect(result).toEqual(FAILED)
+        expect(JSON.stringify(result)).not.toContain('sk-ant-fake')
+        expect(f).not.toHaveBeenCalled()
+      })
+    }
+
+    it('AC-510.10 ANTHROPIC_BASE_URL이 주소 모양이 아님 → E-AI-FAILED, 사용량 없음', async () => {
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'not a url')
+      const f = fakeFetch(() => sseResponse(WHOLE_ANSWER))
+      expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual(FAILED)
+      expect(f).not.toHaveBeenCalled()
+    })
+
+    it('AC-510.10 JSON으로 못 바꾸는 요청(자기를 가리키는 스키마) → E-AI-FAILED, 사용량 없음', async () => {
+      const schema: Record<string, unknown> = {}
+      schema.self = schema
+      const f = fakeFetch(() => sseResponse(WHOLE_ANSWER))
+      expect(await callClaude({ ...REQ, schema }, { apiKey: FAKE_KEY })).toEqual(FAILED)
+      expect(f).not.toHaveBeenCalled()
+    })
+
+    // 응답을 받은 뒤 실패하는 것들
+    const badResponses: [string, () => Response][] = [
+      ['깨진 조각', () => sseResponse([START, MALFORMED])],
+      ['모양이 틀린 조각', () => sseResponse([START, sse('message_delta', { type: 'message_delta' })])],
+      ['순서가 틀린 조각(message_start 둘)', () => sseResponse([START, START])],
+      ['몸통 없는 응답', () => new Response(null, { status: 200 })],
+      ['terminated가 아닌 TypeError', () => sseResponse([START], new TypeError('Cannot read properties of undefined'))],
+    ]
+
+    for (const [name, make] of badResponses) {
+      it(`AC-510.10 ${name} → E-AI-FAILED, 사용량 없음`, async () => {
+        const f = fakeFetch(make)
+        expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual(FAILED)
+        expect(f).toHaveBeenCalledTimes(1)
+      })
+    }
+
+    // 끊김 규칙은 cause의 TypeError 글자를, 끝맺지 않음 규칙은 AnthropicError의 글자 전체를 본다
+    const nearMisses: [string, () => Error][] = [
+      ['cause 없이 글자만 terminated인 AnthropicError', () => new AnthropicError('terminated')],
+      ['감싸지 않은 TypeError: terminated', () => terminated()],
+      ['cause가 TypeError가 아닌 AnthropicError', () => Object.assign(new AnthropicError('terminated'), { cause: new Error('terminated') })],
+      ['정해 둔 글자와 앞부분만 같은 AnthropicError', () => new AnthropicError('stream ended without producing a content block with type=text')],
+      ['글자는 같지만 AnthropicError가 아닌 오류', () => new Error('request ended without sending any chunks')],
+    ]
+
+    for (const [name, make] of nearMisses) {
+      it(`AC-510.10 ${name} → E-AI-FAILED, 사용량 없음`, async () => {
+        const { client } = fakeClient(make())
+        expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual(FAILED)
+      })
+    }
+  })
+
+  describe('AC-510.11 SDK 로그 끄기', () => {
+    it('AC-510.11 깨진 조각이 와도 console의 어느 함수도 불리지 않는다(결과는 E-AI-FAILED)', async () => {
+      const c = freshConsole()
+      const f = fakeFetch(() => sseResponse([START, MALFORMED]))
+      expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual(FAILED)
+      expect(f).toHaveBeenCalledTimes(1)
+      expectSilent(c)
+    })
+
+    it('AC-510.11 ANTHROPIC_LOG=debug로 끝까지 받아도 console의 어느 함수도 불리지 않는다', async () => {
+      vi.stubEnv('ANTHROPIC_LOG', 'debug')
+      const c = freshConsole()
+      fakeFetch(() => sseResponse(WHOLE_ANSWER))
+      expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+      expectSilent(c)
+    })
+
+    it('AC-510.11 ANTHROPIC_LOG=debug로 재시도되는 HTTP 500이 와도 console의 어느 함수도 불리지 않고, 재시도는 그대로 한 번이다(결과는 E-AI-BUSY)', async () => {
+      vi.stubEnv('ANTHROPIC_LOG', 'debug')
+      const c = freshConsole()
+      const f = fakeFetch(() => jsonError(500, 'api_error'))
+      expect(await callClaude(REQ, { apiKey: FAKE_KEY })).toEqual(BUSY)
+      expect(f).toHaveBeenCalledTimes(2)
+      expectSilent(c)
     })
   })
 })
