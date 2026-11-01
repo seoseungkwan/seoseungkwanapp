@@ -12,7 +12,7 @@
 - **AC-509.1**: Given Worker 메모리의 진료 줄(환자 번호·진료일·처방코드·첫 내원일)·기간 합계와 기간·코드 목록, When `rxVisitSplit`, Then 원본 `medicore/rx_visit_split.py`의 `summarize`처럼 처방마다 신환(첫 내원일 ≥ 기간 첫날)·재진 환자 수·합계와 기간 합계(내원·환자·신환·재진)를 낸다. 골든: 원본을 `python3 -I`로 같은 가짜 줄에 돌린 `fixtures/stats/golden/rx-visit-split-*.json`과 순서까지 같다
 - **AC-509.2**: Given 같은 입력과 날짜별 합계, When `rxVisitSplitDays`, Then `summarize_days`처럼 날마다 처방별 신환(첫 내원일 = 그날)·재진 수가 골든과 같다
 - **AC-509.3**: Given 결과와 병원 이름, When `formatRxVisitSplit`·`formatRxVisitSplitDays`·`rxVisitHeadline`, Then 원본 `format_text`·`format_days_text`·`headline`과 같은 글이다(골든)
-- **AC-509.4**: Given Worker의 `split` 일, When 화면이 기간을 주면, Then Worker는 메모리의 진료 줄로 그 기간의 처방별 결과(처방마다 수와 이름만, 합계가 큰 차례, 같으면 코드 순)와 글을 보낸다. 환자 번호가 없다. 불러온 자료가 없거나 기간이 불러온 범위 밖이면 `{ kind: 'none' }`이다
+- **AC-509.4**: Given Worker의 `split` 일, When 화면이 기간을 주면, Then Worker는 메모리의 진료 줄로 그 기간의 처방별 결과(처방마다 수와 이름만, 합계가 큰 차례, 같으면 코드 순)와 글을 보낸다. 환자 번호가 없다. 불러온 자료가 없거나 기간이 불러온 범위 밖이면 `{ kind: 'none' }`이다. 머리 글의 기간 합계는 범위 전체든 일부든 고른 기간의 날짜별 합계다: 환자·내원 = `visits` 합(접수 기준), 신환 = `newPatients` 합, 재진 = 환자 − 신환. 처방 줄은 원본대로 서로 다른 환자 수다. 미완성 불러오기에도 같은 규칙으로 숫자를 낸다(승인 시안). 시험: 처방 없는 접수만 있는 재진 환자도 머리 글에 든다. 시험: 같은 사람이 다섯 번 오면 머리 글 5, 처방 줄 1
 
 ## 읽어야 할 파일
 
@@ -91,6 +91,21 @@ export function requestSplit(worker: WorkerLike, req: { from: string; to: string
 
 ### 4. 시험
 - `rxVisitSplit.test.ts`(AC-509.1~509.3 골든), `jobs.test.ts`(AC-509.4: 결과에 환자 번호 없음, 범위 밖 → none), `statsClient.test.ts`(`requestSplit` 시간 초과·실패 번호)
+
+## 2026-11-01 머리 글 합계 (뒤따라 고치기)
+
+> 리뷰에서 찾은 구멍을 메인 세션이 판단해 AC-509.4에 적었다. 이 TASK는 아직 커밋 전이다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 동시에 도는 동안 이 TASK는 `tdd-run`만 돌린다. `load`와 `loadJob`은 고치지 않는다.
+
+### 고칠 것 (`src/workers/stats/jobs.ts`)
+- `periodTotals`: 불러온 범위 전체든 일부든 고른 기간의 `days` 합으로 낸다. `visits` = 합, `patients` = `visits`, `newPatients` = 합. 재진은 `rxVisitSplit`이 `patients − newPatients`로 낸다. 진료 줄로 서로 다른 재진 환자를 세는 길과 `memory.summary`를 합계로 쓰는 길을 없앤다
+- 미완성 불러오기(`summary`의 `noChart`·`duplicate`·`noFirst`가 0이 아님)에도 `splitJob`은 숫자를 낸다(승인 시안, 사용자 선택, design.md). `{ kind: 'none' }`으로 바꾸지 않는다
+- `memory.summary`는 지우지 않는다. TASK-5의 `load`와 그 시험(`jobs.test.ts:302`·`:308`·`:318` 근처)이 본다
+- `rxVisitSplit.ts`·`formatRxVisitSplit`·골든은 고치지 않는다(원본 계산 그대로이고, 합계를 받아서 쓴다). 처방 줄은 서로 다른 환자 수 그대로다
+
+### 시험 (`src/workers/stats/jobs.test.ts`)
+- AC-509.4의 '시험' 둘을 `splitJob`으로 쓴다. 이름에 `AC-509.4`
+- 옛 기대값은 이 규칙으로만 고친다: 전체 기간 합계 시험(`:580` 근처), 일부 기간 `patients: 2` 시험(`:637` 근처), 머리 글 글자 시험(`:562`·`:675` 근처, 외래 환자 6명 → 7명, 재진 2명). `patients`는 `visits`와 같아지고 재진은 차이다
+- '첫 내원을 못 찾은 환자는 신환이 아니다'(`:648` 근처)는 그대로 둔다. 미완성 불러오기에도 숫자가 나온다는 시험이기도 하다
 
 ## TDD 순서
 

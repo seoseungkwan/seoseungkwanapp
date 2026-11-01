@@ -1,0 +1,56 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/medicore/reports.py",
+  "entry": "validate_period",
+  "knownDiffs": [],
+  "cases": [
+    {
+      "mode": "daily",
+      "period": "2024-03-01",
+      "today": "2024-03-01",
+      "future": false
+    },
+    {
+      "mode": "daily",
+      "period": "2024-03-02",
+      "today": "2024-03-01",
+      "future": true
+    },
+    {
+      "mode": "daily",
+      "period": "2024-02-29",
+      "today": "2024-03-01",
+      "future": false
+    },
+    {
+      "mode": "monthly",
+      "period": "2024-03",
+      "today": "2024-03-01",
+      "future": false
+    },
+    {
+      "mode": "monthly",
+      "period": "2024-03",
+      "today": "2024-03-31",
+      "future": false
+    },
+    {
+      "mode": "monthly",
+      "period": "2024-04",
+      "today": "2024-03-31",
+      "future": true
+    },
+    {
+      "mode": "monthly",
+      "period": "2024-02",
+      "today": "2024-03-01",
+      "future": false
+    },
+    {
+      "mode": "monthly",
+      "period": "2025-01",
+      "today": "2024-12-31",
+      "future": true
+    }
+  ]
+}

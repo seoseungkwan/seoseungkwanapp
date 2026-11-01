@@ -86,6 +86,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 
 ### 3. 훅 (`useStatsData.ts`, `useStatsWorker.ts`)
 - `useStatsData(period)`: `readDays`·`readCoverage`(`readMonths`는 쓰지 않는다. `fromFile`은 `readDays`에서), 기간 바꿈마다 그 기간 + 비교 기간만, `saveStats`에 성공하면(비트·파일 모두) 표에서 다시 읽어 그린다. 방금 만든 숫자를 합쳐 보이는 것은 저장 실패 때만이다. `saveStats`와 [다시 저장](같은 값)
+- 처방별 표는 `requestSplit`에 고른 기간을 주되 `to`는 `range.load.to`를 넘지 않게 자른다. `'12m'`의 끝은 달 말일이라 자르지 않으면 그 달 마지막 날 말고는 `{ kind: 'none' }`이다(`splitJob`, AC-509.4). [표 복사]는 `formatRxVisitSplit(hospitalName, view.split)`이고 `view.text`가 아니다
 - `useStatsWorker()`: `createStatsWorker()` 하나(화면을 떠나면 `terminate`), `useBridge({ worker })`, 불러오기 = `stream('stats.rows', range.load)` → `requestLoad({ streamId: id, … })` → `saveStats({ …, covered: view.covered /* 끝 = 오늘 진료 끝 ? 오늘 : 어제, Worker가 정함 */, source: 'bit' })`, 기간 바꿈 → `requestSplit`. 보고 문장은 `formatClinicReport(…, today)`로 화면에서 만든다
 
 ### 4. 시험 (jsdom, 가짜 Worker·가짜 `chrome.runtime`·`vi.mock('@/lib/storage/stats')`)

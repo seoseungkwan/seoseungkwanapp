@@ -102,6 +102,7 @@
 - Tests: src/lib/analytics/rxVisitSplit.test.ts, src/workers/stats/jobs.test.ts, src/workers/statsClient.test.ts
 - TDD: required
 - Worker 쪽은 `split` 일을 붙이는 것만 한다(TASK-5의 `load`는 고치지 않는다)
+- 머리 글 합계(AC-509.4)는 `splitJob`이 고른 기간의 날짜별 합계로 낸다(`phases/stats-3-numbers/step0.md` 머리 글 절)
 
 ## TASK-10: 원장님 보고 문장 (골든)
 - Step: Phase 3 · Step 1 · `report-text`
@@ -110,6 +111,7 @@
 - Files: src/lib/clinicReport/reportText.ts, src/lib/clinicReport/reportText.test.ts, src/types/clinicReport.ts, scripts/stats/golden/reports.py, fixtures/stats/golden/report-*.json
 - Tests: src/lib/clinicReport/reportText.test.ts
 - TDD: required
+- TASK-10은 이미 커밋되었다. 2026-11-01 AC-510.1 바뀜(안내 첫 줄을 명세에 적음, 버린 결과가 0이면 '0원')으로 다시 연다(`phases/stats-3-numbers/step1.md` '0원' 절)
 
 ## TASK-11: 통계 화면 숫자
 - Step: Phase 3 · Step 2 · `stats-view`
@@ -119,6 +121,7 @@
 - Tests: src/components/stats/view.test.ts
 - TDD: required
 - `'12m'`의 달 칸은 일 숫자의 합이다(AC-511.2·511.3, 2026-11-01). 달 줄(`MonthPayload`)을 읽지 않는다. `rxTrend.ts`는 고치지 않는다(`phases/stats-3-numbers/step2.md` 2026-11-01 절)
+- 넷째 칸은 짝이 모두 끝난 칸끼리 견준다(AC-511.2, `phases/stats-3-numbers/step2.md` 넷째 칸 절)
 
 ## TASK-12: 통계 화면 클릭 목업 (사용자 승인)
 - Step: Phase 3 · Step 3 · `stats-mockup`
@@ -155,10 +158,10 @@
 - Step: Phase 4 · Step 2 · `stats-tab`
 - AC: AC-515.1~AC-515.5
 - REQ: REQ-515
-- Files: src/app/(app)/stats/page.tsx, src/app/(app)/stats/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
-- Tests: src/app/(app)/stats/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx
+- Files: src/app/(app)/stats/page.tsx, src/app/(app)/stats/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
+- Tests: src/app/(app)/stats/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx
 - TDD: required
-- 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다
+- 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다. `dashboard/page.test.tsx`는 이 TASK에서 목차 옆 글(`INDEX_SIDE`)만 고친다. 같은 파일의 대시보드 읽기 시험은 TASK-16 몫이다
 
 ## TASK-16: 대시보드가 저장된 통계 숫자를 읽음
 - Step: Phase 4 · Step 3 · `dashboard-source`
@@ -176,4 +179,4 @@
 - Files: e2e/stats-privacy.spec.ts
 - Tests: e2e/stats-privacy.spec.ts
 - TDD: exempt — 시험만 더한다. 대상 코드(저장·화면·대시보드 읽기)는 TASK-7·14·16에서 단위 시험을 통과했으므로 구현할 것이 없어 RED 단계가 없다. 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다(커밋하지 않음, auth-live TASK-7~9와 같은 방식). 기다림: 사용자가 TASK-6 SQL을 실제 Supabase에 붙임 + 시험 계정(`.env.local`). 확인: `npm run e2e`
-- Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처 → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간과 저장되는지, 둘 다 숫자를 보이는 날의 내원·신환·재진이 매출 탭·업무일지와 같은지(차트번호 없는 접수·중복 내원·첫 내원 못 찾은 환자가 불러오는 기간 어디에든 있으면 통계는 그 불러오기를 통째로 저장하지 않고, 매출·업무일지는 그날만 비운다), 취소된 접수가 있는 날을 비트와 비교, 첫 접수가 취소된 환자의 첫 내원일, 처방 이름에 NUL 글자나 짝 없는 서로게이트(깨진 유니코드)가 든 처방이 불러오는 기간에 있는지(표가 이 둘을 받지 않는다. 비트 길은 그 불러오기가 통째로 저장되지 않는다. 파일 길은 그 줄이 든 묶음에서 멈춰 앞선 줄만 남고 덮은 기간 줄이 없을 수 있다. 화면에 �로 보이는 글자는 그대로 저장된다. 코드는 고치지 않은 알려진 빈틈이고 검토 요청 글에도 적는다))
+- Phase 4 끝(메인 세션): `verify` → PC·휴대폰 화면 캡처(기간 요약 넷째 칸의 "견준 …" 글이 보이는 화면을 넣는다. AC-511.2, 시안에 없어 사용자가 여기서 화면으로 처음 본다) → 쉬운 말 보고 → 의원 PC 시험 목록(새 도우미 zip 설치, [비트에서 불러오기], 지난달 숫자를 양지바른·비트 통계와 비교, 보고 문장을 양지바른 일일보고와 비교, 800일 불러오기 시간과 저장되는지, 둘 다 숫자를 보이는 날의 내원·신환·재진이 매출 탭·업무일지와 같은지(차트번호 없는 접수·중복 내원·첫 내원 못 찾은 환자가 불러오는 기간 어디에든 있으면 통계는 그 불러오기를 통째로 저장하지 않고, 매출·업무일지는 그날만 비운다), 취소된 접수가 있는 날을 비트와 비교, 첫 접수가 취소된 환자의 첫 내원일, 처방 이름에 NUL 글자나 짝 없는 서로게이트(깨진 유니코드)가 든 처방이 불러오는 기간에 있는지(표가 이 둘을 받지 않는다. 비트 길은 그 불러오기가 통째로 저장되지 않는다. 파일 길은 그 줄이 든 묶음에서 멈춰 앞선 줄만 남고 덮은 기간 줄이 없을 수 있다. 화면에 �로 보이는 글자는 그대로 저장된다. 코드는 고치지 않은 알려진 빈틈이고 검토 요청 글에도 적는다))

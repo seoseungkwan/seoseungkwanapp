@@ -9,7 +9,7 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-510(원장님 보고 문장 (`lib/clinicReport/reportText.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-510.1**: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatClinicReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 적지 않은 차이는 실패다. 음수 금액은 원본이 찍는 그대로 찍는다("-1,000원"). 골든에 음수 금액이 든 사례가 있고, 건당진료비까지 정확한 글은 그 골든이 정한다
+- **AC-510.1**: Given 보고 숫자 한 벌(일일·월말)과 병원 이름, When `formatClinicReport`, Then 원본 `medicore/reports.py`의 `format_report`·`report_notes`와 같은 글·안내다(골든 `fixtures/stats/golden/report-*.json`, 원본을 `python3 -I`로 돌림). 일부러 다르게 한 곳은 골든의 `knownDiffs`에 이유와 함께 적는다: 금액과 건당진료비는 원 미만을 버린다(원본은 반올림, CLAUDE.md 금액 규칙). 안내 첫 줄도 이 규칙에 맞춰 '총진료비 ÷ 총환에서 원 미만을 버립니다.'로 쓴다(원본은 '…을 원 단위로 반올림합니다.'). 적지 않은 차이는 실패다. 음수 금액은 원본이 찍는 그대로 찍는다("-1,000원"). 버린 결과가 0이면 부호 없이 '0원'으로 찍는다(원본은 '-0원' 또는 '-1원', knownDiffs). 골든에 음수 금액이 든 사례가 있고, 건당진료비까지 정확한 글은 그 골든이 정한다
 - **AC-510.2**: Given 금액 확인 필요 벌, When 만들면, Then 원본처럼 금액 줄은 "확인 필요"이고 다른 숫자는 그대로이며, 돌려주는 `unconfirmedLines`에 그 줄 번호들이 있다
 - **AC-510.3**: Given 오늘보다 뒤 날짜·달, When 만들려 하면, Then 글을 만들지 않고 `{ error: 'future-date' }`다. `{ ok: false }` 벌이면 `{ error: 'unconfirmed', reason }`이다
 - **AC-510.4**: Given `src/types/clinicReport.ts`의 입력 모양(`ClinicReportNumbers`), When 열쇠를 보면, Then 집계 숫자·기간·병원 이름뿐이다(`chart`·`name`·`rows`·`patient` 칸 없음). 시험이 열쇠 목록을 못 박는다
@@ -79,7 +79,19 @@
 
 ### 3. 골든 (`scripts/stats/golden/reports.py` → `fixtures/stats/golden/report-*.json`)
 - 원본 `format_report`·`report_notes`를 `python3 -I`로: 일일 보통 날, 일일 확인 필요, 월말 LA 있음, 월말 LA 없음, 총환 0명, 음수 금액(건당진료비 글자까지 골든이 정한다). 입력은 원본 `validate_report`를 지나는 가짜 값(병원 이름 "가상의원", `profile_id`·`institution_code`는 가짜 모양)
-- `knownDiffs`: 원 미만 금액 버림(원본 `ROUND_HALF_UP`) — 골든 입력에 원 미만 금액 사례를 하나 넣어 차이가 그 줄뿐인지 시험이 본다
+- `knownDiffs`: 원 미만 금액 버림(원본 `ROUND_HALF_UP`) — 골든 입력에 원 미만 금액 사례를 하나 넣어 차이가 그 줄뿐인지 시험이 본다. 안내 첫 줄과 '0원'도 `knownDiffs`에 적는다(아래 '0원' 절)
+
+## 2026-11-01 안내 첫 줄과 '0원' (뒤따라 고치기)
+
+> 메인 세션 판단으로 AC-510.1에 적었다. 이 TASK는 이미 커밋되었고 이 변경으로 다시 연다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. `tdd-run`만 돌린다. `npm test`·`build`·`verify`와 `index.json` 고치기는 코디네이터가 한다.
+
+### 고칠 것
+- 안내 첫 줄은 이미 '총환에서 원 미만을 버립니다' 쪽으로 만들었다. AC-510.1의 글과 맞는지만 본다
+- `src/lib/clinicReport/reportText.ts`: 건당진료비를 버린 결과가 0이면 부호 없이 '0원'으로 찍는다(지금은 '-0원'). 그 밖의 음수 글은 그대로다
+- `scripts/stats/golden/reports.py`: 우리 글을 만드는 쪽이 같은 규칙을 쓰게 고치고 `knownDiffs`에 적는다. 부호 차이의 `why`는 `WHY_ROUND`가 말하지 않으니 따로 적는다. 골든을 다시 만든다(`python3 -I`, `YANGJI_SRC`)
+
+### 시험 (`src/lib/clinicReport/reportText.test.ts`)
+- 작은 음수 건당진료비 시험(`:167` 근처)을 AC-510.1의 새 글로 고친다: 총진료비 -1원 · 총환 3명, -2원 · 총환 3명 모두 '0원'. -3원 · 총환 3명은 '-1원'이다. 시험을 지우지 않는다
 
 ## TDD 순서
 

@@ -50,6 +50,7 @@
   - `src/components/dashboard/briefing/features.ts`
   - `src/components/dashboard/briefing/features.test.ts`
   - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
   - `src/components/common/notReadyFeatures.ts`
   - `src/components/common/notReadyFeatures.test.ts`
   - `src/app/(app)/notReadyPages.test.tsx`
@@ -60,11 +61,12 @@
   - `src/components/shell/shell.test.tsx`
   - `src/components/dashboard/briefing/features.test.ts`
   - `src/components/dashboard/briefing/DashboardHome.test.tsx`
+  - `src/app/(app)/dashboard/page.test.tsx`
   - `src/components/common/notReadyFeatures.test.ts`
   - `src/app/(app)/notReadyPages.test.tsx`
   - `src/app/(app)/tabFrame.test.tsx`
 - TDD: required
-- 메모: 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다
+- 메모: 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다. `dashboard/page.test.tsx`는 이 TASK에서 목차 옆 글(`INDEX_SIDE`)만 고친다. 같은 파일의 대시보드 읽기 시험은 TASK-16 몫이다
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
@@ -87,7 +89,7 @@ export default async function StatsPage() { const me = await currentMe(); return
 - `notReadyFeatures.ts`: `/stats` 항목과 `NotReadyPath`의 `'/stats'` 빼기(AC-515.3)
 
 ### 3. 옛 시험 고치기 (통계 줄만)
-- `shell.test.tsx`(통계 href·ready), `features.test.ts`(통계 status), `DashboardHome.test.tsx`(목차 옆 글과 '연결 먼저'·'사용 가능' 개수 — 숫자를 글자로 못 박지 말고 `DASHBOARD_FEATURES`에서 센 값으로 기대한다, cross-branch C5), `notReadyFeatures.test.ts`·`notReadyPages.test.tsx`(`/stats`가 빠짐 — 개수는 `MENU`의 준비 중 항목에서 센다), `tabFrame.test.tsx`(세 곳 맞춤 — `/stats` 페이지가 `StatsScreen`), `titles.test.tsx`(필요할 때만)
+- `shell.test.tsx`(통계 href·ready), `features.test.ts`(통계 status), `DashboardHome.test.tsx`(목차 옆 글과 '연결 먼저'·'사용 가능' 개수 — 숫자를 글자로 못 박지 말고 `DASHBOARD_FEATURES`에서 센 값으로 기대한다, cross-branch C5), `src/app/(app)/dashboard/page.test.tsx`(`INDEX_SIDE`의 목차 옆 글 — 같은 문장을 글자로 못 박고 있어 통계를 `connect-first`로 바꾸면 깨진다. 같은 방식으로 `DASHBOARD_FEATURES`에서 센 값으로 기대한다), `notReadyFeatures.test.ts`·`notReadyPages.test.tsx`(`/stats`가 빠짐 — 개수는 `MENU`의 준비 중 항목에서 센다), `tabFrame.test.tsx`(세 곳 맞춤 — `/stats` 페이지가 `StatsScreen`), `titles.test.tsx`(필요할 때만)
 - 새 시험 `src/app/(app)/stats/page.test.tsx`(AC-515.4: `StatsScreen`에 병원 이름·오늘, 탭 이름 "통계", `NotReadyScreen` 아님), AC-515.5는 `tabFrame.test.tsx`의 로그인 시험이 그대로 통과
 
 ## TDD 순서

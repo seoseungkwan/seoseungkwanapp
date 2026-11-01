@@ -212,7 +212,7 @@ export function formatRxVisitSplitDays(hospital: string, s: RxSplit, days: RxSpl
 export function rxVisitHeadline(s: RxSplit): string
 ```
 - 골든: `scripts/stats/golden/rx_visit_split.py`(작은 실행 글, `python3 -I`, 원본 경로는 `YANGJI_SRC`)가 `medicore/rx_visit_split.py`를 가짜 줄(`fixtures/stats/golden/rx-visit-split-input.json`, 차트번호 `9`로 시작하는 가짜)에 돌려 `fixtures/stats/golden/rx-visit-split-*.json`에 쓴다. 머리 `{ source: "seoseungkwan/shared@2a1069b", file, entry, knownDiffs }`. 시험은 원본 없이 커밋한 골든과 견준다
-- Worker에 `split` 일을 붙인다(`jobs.ts`의 `splitJob(memory, {from, to})`, `stats.worker.ts`): 코드 목록 = 그 기간 진료 줄의 모든 처방코드, 줄은 합계가 큰 차례(같으면 코드 순). ESWT 묶음은 끈다(범위 밖)
+- Worker에 `split` 일을 붙인다(`jobs.ts`의 `splitJob(memory, {from, to})`, `stats.worker.ts`): 코드 목록 = 그 기간 진료 줄의 모든 처방코드, 줄은 합계가 큰 차례(같으면 코드 순). ESWT 묶음은 끈다(범위 밖). 머리 글의 기간 합계는 고른 기간의 `days` 합이다(AC-509.4). 미완성 불러오기에도 숫자를 보인다
 
 #### TASK-10 보고 문장 (`src/lib/clinicReport/reportText.ts`, `src/types/clinicReport.ts`)
 - 이름은 통계 몫으로 짓는다: `src/types/report.ts`·`ReportNumbers`·`src/lib/report/*`는 `feat-ai-report`가 쓴다(C6)
@@ -225,7 +225,7 @@ export function formatClinicReport(input: { mode: 'daily' | 'monthly'; numbers: 
   { text: string; notes: string[]; unconfirmedLines: number[] } | { error: 'future-date' } | { error: 'unconfirmed'; reason: string }
 ```
 - 원본 `format_report`·`report_notes`의 줄을 그대로 옮긴다(띄어쓰기·"고생하셨습니다 !!"까지). 골든: `scripts/stats/golden/reports.py` → `fixtures/stats/golden/report-*.json`(일일·월말·확인 필요·LA 없음·총환 0명·음수 금액 사례)
-- `knownDiffs`: 금액·건당진료비는 원 미만 버림(원본 `ROUND_HALF_UP`, 음수도 0 쪽으로 버린다). 음수 금액의 글은 골든이 정한다
+- `knownDiffs`: 금액·건당진료비는 원 미만 버림(원본 `ROUND_HALF_UP`, 음수도 0 쪽으로 버린다), 안내 첫 줄은 '총진료비 ÷ 총환에서 원 미만을 버립니다.'(원본은 '…을 원 단위로 반올림합니다.'), 버린 결과가 0이면 부호 없이 '0원'(원본은 '-0원' 또는 '-1원'). 음수 금액의 글은 골든이 정한다
 
 #### TASK-11 화면 숫자 (`src/components/stats/view.ts`, 순수)
 ```ts
@@ -321,6 +321,10 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - **파일 길은 남기고 안내를 붙인다(2026-11-01 사용자 결정 "남기고 안내 붙이기")**: 파일은 처방 한 줄씩이고 내원 번호가 없어 처방 없는 접수와 같은 날 두 번째 접수를 볼 수 없다. 그래서 일 칸은 지금 그대로 두고, 읽은 줄에 파일 줄이 있으면 화면에 안내 문장을 보인다(AC-514.7). `latest.source`로는 섞인 기간을 알 수 없어 `readDays`가 `fromFile`을 준다(AC-507.2)
 - **가장 최근 불러오기가 덮어쓴다, 화면은 달 줄을 읽지 않는다(2026-11-01 사용자 결정 "새로 다시 덮어써 오전에한번 오후에 한번할수있으니깨")**: 오전과 오후에 한 번씩 불러올 수 있으므로 출처와 상관없이 가장 최근 불러오기가 그 불러오기가 덮은 날을 바꾼다. 그래서 오후 파일이 오전 비트 숫자를 낮출 수 있고, 위 안내가 그것을 알린다. 트리거는 커밋한 그대로다(완전 → 덜만 막는다). 일 줄은 보낸 날만 바뀌어 안전하다. 달 줄은 한 번 불러온 것만 담아서, 달의 일부만 덮는 파일이면 앞선 숫자를 잃고 나눠 넣은 파일이 합쳐지지 않는다. 그런데 주·달 `totals`는 정의상 일 칸의 합이고(AC-501.6) 12개월 보기는 이미 두 기간의 일 줄을 모두 읽는다(AC-511.5·AC-511.6). 그래서 통계 화면의 달 칸을 일 줄의 합으로 만들면(AC-511.2·AC-511.3) 달 줄이 필요 없고, 나눠 넣은 파일도 합쳐진 덮은 기간으로 맞게 더해진다. 파일의 덜 덮인 달 줄은 저장하지 않는다(AC-507.1): 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 `feat-ai-report`뿐이다
 - **달 줄 크기 한도는 1MiB(1,048,576바이트), 날 줄은 65,536바이트 그대로(2026-11-01 사용자 결정: 의원 PC에서 재 보기 전에 지금 올린다)**: 달 줄에는 그달 나온 처방이 모두 `followup`과 함께 들고 동네도 든다. 표가 재는 글자(`jsonb::text`)로 처방 한 줄은 코드 5자·이름 25자·종류 3자라고 치면 약 216바이트이고, 검사(`validate.ts`)가 받는 가장 긴 줄(코드·이름·종류 100자)은 약 841바이트(영문 코드)~1,041바이트(한글 코드)다(가짜 값으로 잰 수다. 실제 의원 자료는 재지 않았다). 옛 한도 65,536바이트로는 보통 줄 약 300개, 가장 긴 줄 약 62~77개까지라 처방 코드가 400개를 넘는 달에 막힐 수 있었다. 달 줄 하나만 걸려도 그 불러오기 전체가 저장되지 않으므로(`saveStats`가 보내기 전에 크기를 본다) 여유를 크게 둔다. 1MiB면 보통 줄 약 4,850개(검사의 처방 상한 `MAX_RX` 5,000개에 거의 닿는다), 가장 긴 줄로도 약 1,000~1,250개다. 한도를 없애지 않는 까닭: 로그인한 사용자가 브라우저에서 표에 바로 넣을 수 있으므로 DB가 줄 크기를 막아야 한다(코드보다 DB 제약, plan.md §0). 검사 상한을 모두 채운 값(약 6MB)까지 받을 까닭은 없다. 정상 사용 기준으로 병원마다 달 줄은 1년에 12개라 모두 한도까지 차도 1년에 12MiB다. 날 줄은 `followup`·동네가 없고 그날 나온 처방만 들어 보통 줄 약 179바이트로 약 360개까지 되므로 그대로 둔다. `saveStats`의 보내기 전 크기 검사도 표마다 같은 수를 쓴다. 실제 Supabase가 한 요청에 받는 크기는 확인하지 않았다. 800일 불러오기면 달 줄 27~28개라 처방 400개인 달만 있어도 달 줄 요청이 약 2.2MB이고, 의원 PC 시험 '800일 불러오기'에서 저장되는지 함께 본다
+- **처방별 표 머리 글은 접수 기준이다(2026-11-01 메인 세션 판단. 사용자 말 "하루환자수는 매출 업무일지걸로 통일"에 맞춘다)**: 화면의 기간은 언제나 불러온 범위보다 좁아, 서로 다른 환자 수를 메모리로 만들면 처방 없는 재진 환자가 빠지고 한계도 없다(접수 줄은 메모리에 두지 않는다, AC-505.5). 표시 이름만 바꿔서는 신환(처방 없는 환자 포함)과 재진(제외)이 어긋난다. 날짜별 합계면 정확하다. 도우미 문장 사이에 접수가 바뀌면 기간 요약과 1쯤 다를 수 있다('days'와 'patientDays'는 대조하지 않는다). 처방 줄은 원본대로 서로 다른 환자 수다
+- **미완성 불러오기에도 처방별 표의 숫자를 보인다(2026-11-01 사용자 선택 "숫자 보여 주기")**: 승인 시안 그대로다(`docs/mockups/stats/notes.md` 확인 필요 카드). 원본은 이때 신환·재진을 확정할 수 없다며 거절하고(`RxVisitSplit.cs`) 이 숫자는 저장되지 않는다(AC-514.6). 사용자가 그 둘을 듣고 골랐다. 이때 머리 글에는 차트번호 없는 접수·중복 접수도 환자와 재진에 들고, 첫 내원을 못 찾은 환자는 재진에 든다(`VisitDaysSql`이 그 접수를 모두 센다)
+- **기간 요약 비교는 짝이 모두 끝난 칸끼리만(2026-11-01 메인 세션 판단. AC-511.6의 '끝난 칸끼리만 견준다'를 따른다)**: 비교 쪽 칸만 덜 끝났을 때 이번 쪽 칸을 그대로 두면 숫자가 같아도 가짜 ▲가 나온다(작년 앞쪽 달이 덮이지 않은 12개월: 209 대 100, +109%). 이번 쪽을 좁히면 증감이 평균 칸 값과 달라지므로, 뺀 칸이 있을 때만 아래 글이 무엇을 견주었는지 말한다. 이 글은 시안에 없고 사용자가 시안에서 승인하지 않았다. Phase 4 화면 캡처로 보여 드린다
+- **보고 안내 첫 줄과 '0원'(2026-11-01 메인 세션 판단)**: 원 미만을 버리면서 '반올림합니다'라고 쓰면 거짓 안내라 글을 맞춘다. '-0원'은 뜻이 없고 복사되어 나가므로 '0원'으로 찍는다
 - **완전한 줄은 덜 덮인 줄로 안 바뀐다(트리거)**: 짧은 파일을 넣어도 이미 완전한 달이 망가지지 않는다(코드보다 DB 제약, plan.md §0)
 - **`hospital_id`는 DB 기본값**: 브라우저가 병원 id를 보낼 길이 없다(권한 열에서 뺌). RLS가 한 번 더 막는다
 - **도우미 자료는 동네를 비운다**: 원본 SQL은 주소를 읽지 않는다. 동네 보기는 범위 밖
@@ -345,7 +349,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 | `src/app/titles.test.tsx` | `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 (TASK-15) | 탭을 채우는 브랜치 모두 |
 | `docs/ARCHITECTURE.md` | 'DB 표'의 통계 줄·'데이터 흐름' 통계 줄 (TASK-6) | 전부 |
 | `docs/UI_GUIDE.md`·`docs/ADR.md` | 고치지 않는다 | — |
-| `src/components/common/notReadyFeatures.ts`(+시험)·`src/components/shell/menu.ts`·`shell.test.tsx`·`src/components/dashboard/briefing/features.ts`(+시험)·`DashboardHome.test.tsx`·`src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx` | 통계 줄만 (TASK-15). 개수는 목록에서 센다(C5) | worklog·patients·revenue(각자 자기 탭 줄) |
+| `src/components/common/notReadyFeatures.ts`(+시험)·`src/components/shell/menu.ts`·`shell.test.tsx`·`src/components/dashboard/briefing/features.ts`(+시험)·`DashboardHome.test.tsx`·`src/app/(app)/dashboard/page.test.tsx`(목차 옆 글)·`src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx` | 통계 줄만 (TASK-15). 개수는 목록에서 센다(C5) | worklog·patients·revenue(각자 자기 탭 줄) |
 | `src/components/ui/classes.test.ts` | `APP_DIRS`에 `src/components/stats` 한 줄 (TASK-13) | 화면을 만드는 브랜치 모두 |
 | `helper/src/Precheck.Core/Bit/Sql.cs` | `IsAllowed`·`ParametersOf`가 `StatsSql`도 보는 두 줄 (TASK-3) | precheck(청구 SQL), revenue(`RevenueSql`), patients(자기 SQL) |
 | `helper/src/Precheck.Helper/Program.cs` | `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄 (TASK-3) | precheck·revenue·patients |
