@@ -9,7 +9,7 @@ import { ADMIN_LINK } from './menu'
 
 // 위쪽 띠 오른쪽 계정 단추와 메뉴 (AC-008.3·008.7, b2b-redesign AC-218.3, UI_GUIDE '앱 화면' 앱 틀·폰).
 // 단추에는 로그인한 구글 이메일(plan.md §6-4, design.md '계정 단추에는 이메일'). 폰은 44×44 아이콘만, 이메일은 aria-label.
-// 메뉴: 머리(이메일·병원 이름·관리자면 "관리자 계정" 칩) + 항목([가입 승인]은 관리자만, tab-frame REQ-304 → [로그아웃]).
+// 메뉴: 머리(이메일·병원 이름·관리자면 "관리자 계정" 칩) + 항목([가입 승인]은 관리자만, tab-frame REQ-304, 숫자·칩 없음 ui-90 AC-417.2 → [로그아웃], 꾸밈 Icon logout ui-90 AC-416.7).
 // 열면 첫 항목에 초점, ↓·↑로 항목 사이를 돈다. 바깥 누름·Esc·Tab으로 닫힌다
 
 // PC: 보조 작은 단추(32px·1px line-strong·4px·small 500) 안에 사람 아이콘 16 · 이메일 · 아래 화살표.
@@ -76,8 +76,8 @@ export function AccountMenu({ email, hospitalName, isAdmin }: { email: string; h
         className={buttonClass}
       >
         <Icon name="user" className="shrink-0" />
-        {/* 1024px 미만(시각이 같이 보이는 좁은 PC 띠)에서는 128px로 줄여 병원 이름 자리를 남긴다. 넘치면 말줄임(이름은 aria-label에 전체) */}
-        <span className="max-w-32 truncate max-md:hidden lg:max-w-60">{email}</span>
+        {/* 768px 이상은 최대 240px이고 그보다 길 때만 말줄임이다(ui-90 AC-416.6, 이름은 aria-label에 전체). 768px 미만은 아이콘만 */}
+        <span className="max-w-32 truncate max-md:hidden md:max-w-60">{email}</span>
         <Icon name="chev" className="shrink-0 max-md:hidden" />
       </button>
 
@@ -99,11 +99,7 @@ export function AccountMenu({ email, hospitalName, isAdmin }: { email: string; h
               </Link>
             )}
             <SignOutButton className={itemClass}>
-              <svg aria-hidden="true" className="shrink-0 text-ink-2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
-                <path d="M10 8l-4 4 4 4" />
-                <path d="M6 12h10" />
-              </svg>
+              <Icon name="logout" className="shrink-0 text-ink-2" />
               로그아웃
             </SignOutButton>
           </div>

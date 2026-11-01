@@ -28,13 +28,15 @@ describe('/signup 화면', () => {
     expect(guard).toHaveBeenCalledExactlyOnceWith('/signup')
   })
 
-  it('AC-004.2: 위쪽 띠(로고만)와 본문 안에 가입 신청 폼, 구글 계정 칸에는 로그인한 이메일을 읽기 전용으로', async () => {
+  it('AC-004.2·AC-419.1: 위쪽 띠(로고 링크만)와 본문 안에 가입 신청 폼, 구글 계정 칸에는 로그인한 이메일을 읽기 전용으로', async () => {
     render(await SignupPage())
     const banner = screen.getByRole('banner')
     expect(banner.textContent).toBe('')
-    // 목업 가입 신청 머리띠에는 단추·링크가 없다([다른 계정으로 로그인]은 폼 아래)
+    // 시안 가입 신청 머리띠에는 단추가 없고([다른 계정으로 로그인]은 폼 아래) 로고가 처음 화면 링크 하나다(AC-419.1)
     expect(within(banner).queryAllByRole('button')).toHaveLength(0)
-    expect(within(banner).queryAllByRole('link')).toHaveLength(0)
+    expect(within(banner).getAllByRole('link').map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')])).toEqual([
+      ['처음 화면으로 가기', '/'],
+    ])
     const main = screen.getByRole('main')
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('가입 신청')
     const email = within(main).getByRole<HTMLInputElement>('textbox', { name: '구글 계정' })
@@ -66,5 +68,14 @@ describe('/signup 화면', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/(onboarding)/signup/page.tsx'), 'utf-8')
     expect(source).not.toMatch(/^\s*['"]use client['"]/m)
     expect(source).toContain("guardPage('/signup')")
+  })
+})
+
+describe('AC-419.6: 가입 신청 화면 글자', () => {
+  it('AC-419.6: 화면 전체에 "병원 이름"·"니다." 글자가 없고 칸 이름은 "의원 이름"이다', async () => {
+    render(await SignupPage())
+    expect(screen.getByRole('textbox', { name: '의원 이름 필수' })).toBeTruthy()
+    expect(document.body.textContent).not.toContain('병원 이름')
+    expect(document.body.textContent).not.toContain('니다.')
   })
 })

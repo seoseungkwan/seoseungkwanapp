@@ -117,6 +117,15 @@ const expectAscending = (places: Array<[string, number]>) => {
 }
 const countOf = (text: string, part: string) => text.split(part).length - 1
 
+// ui-90 REQ-414 연결 전 문구(시안 docs/mockups/ui-90/app/gen.py dash_body 글자 그대로)
+const H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
+const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
+const INDEX_SIDE = '12개 가운데 1개는 지금, 1개는 연결하면 쓸 수 있어요'
+const GAINS_TITLE = '연결하면 생기는 것 4가지'
+const GAINS_NOTE = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
+// 시안 gains 설명 가운데 숫자가 든 고정 글자(지어낸 통계가 아니다)
+const GAINS_DIGIT_DESC = ['처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.', '많이 낸 처방 5가지를 차례로 적어요.']
+
 describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -133,47 +142,56 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(vi.mocked(dashboardSummarySource).mock.results[0]?.value).toEqual({ kind: 'none' })
   })
 
-  it('AC-307.5: 위에서부터 날짜 줄 → 큰 문장 h1 → 연결 순서 → 지금 바로 쓸 수 있어요 → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
+  it('AC-307.5·AC-414.2: 위에서부터 날짜 줄 → 큰 문장 h1 → 연결 순서 → 연결하면 바로 쓸 수 있어요 → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
     const html = renderAt(AT_TODAY)
     expect(dateLineText(html)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
     expectAscending([
       ['날짜 줄', html.indexOf('<p')],
-      ['큰 문장 h1', placeOf(html, 'h1', '비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다')],
+      ['큰 문장 h1', placeOf(html, 'h1', H1)],
       ['연결 순서', placeOf(html, 'h2', '연결 순서')],
-      ['지금 바로 쓸 수 있어요', placeOf(html, 'h2', '지금 바로 쓸 수 있어요')],
+      [ROW_TITLE, placeOf(html, 'h2', ROW_TITLE)],
       ['오늘 하루 분석', placeOf(html, 'h2', '오늘 하루 분석')],
       ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
       ['기능 목차', placeOf(html, 'h2', '기능 목차')],
     ])
+    expect(hrefOf(html, '비트 PC 연결부터')).toBe('/claim/setup')
   })
 
-  it('AC-307.5: h1은 큰 문장 하나다', () => {
-    expect(h1Texts(renderAt(AT_TODAY))).toEqual(['비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다'])
+  it('AC-307.5·AC-414.7: h1은 큰 문장 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" 하나다', () => {
+    expect(h1Texts(renderAt(AT_TODAY))).toEqual([H1])
   })
 
-  it('AC-307.5: 분석 칸은 모두 연결 전 빈 상태다 — 숫자 칸 넷 "연결하면 보여요", 연결 전 칩, 빈 그래프 틀(차트 부품 없음)', () => {
+  it('AC-307.5·AC-414.3·AC-414.4: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 넷 "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', () => {
     const html = renderAt(AT_TODAY)
     const text = plain(html)
     expect(countOf(text, '연결하면 보여요')).toBe(4)
     expect(text).toContain('비트 PC 연결 전')
     expect(text).toContain('연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.')
-    expect(text).toContain('비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다')
-    // 연결 뒤에만 나오는 것: 보고 문장 · 연결 뒤 빈 값 글자 · 차트 부품(쌓은 막대의 화면 읽기 표)
+    expect(text).toContain(GAINS_TITLE)
+    expect(text).toContain(GAINS_NOTE)
+    expect(text).not.toContain('비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다')
+    // 연결 뒤에만 나오는 것: 보고 문장 · 연결 뒤 빈 값 글자 · 그래프 칸 · 차트 부품(쌓은 막대의 화면 읽기 표)
     expect(text).not.toContain('원장님 보고 문장 ')
     expect(text).not.toContain('자료 없음')
     expect(html).not.toMatch(/<table\b/)
+    expect(html).not.toMatch(/<h3\b/)
   })
 
-  it('AC-307.5: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · 기능 수 글 둘 · 날짜 눈금 · 재방문 줄 이름 셋 · 처방 상위 설명 · 빈 줄 번호)를 빼면 숫자가 없다', () => {
+  it('AC-307.5·AC-414.7: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', () => {
     let html = renderAt(AT_TODAY)
-    // 번호 줄(연결 순서 두 벌 · 처방 상위 빈 줄): 줄 맨 앞 번호 칸의 1~5만 뺀다
+    // 번호 줄(연결 순서 두 벌 1~5 · 연결하면 생기는 것 1~4): 줄 맨 앞 번호 칸의 번호만 뺀다
     const lists = [...html.matchAll(/<ol\b[^>]*>[\s\S]*?<\/ol>/g)].map((m) => m[0])
     expect(lists).toHaveLength(3)
-    for (const list of lists) {
+    const expected = [
+      ['1', '2', '3', '4', '5'],
+      ['1', '2', '3', '4', '5'],
+      ['1', '2', '3', '4'],
+    ]
+    lists.forEach((list, i) => {
       const numbers = [...list.matchAll(/<li\b[^>]*><span\b[^>]*>(\d+)<\/span>/g)].map((m) => m[1])
-      expect(numbers).toEqual(['1', '2', '3', '4', '5'])
+      expect(numbers).toEqual(expected[i])
       html = html.replace(list, list.replace(/(<li\b[^>]*><span\b[^>]*>)\d+(<\/span>)/g, '$1$2'))
-    }
+    })
     const fixed = [
       '10월 31일 토요일',
       '10월 1일 – 10월 30일', // 기간 글자(처음 30일, 어제까지)
@@ -181,18 +199,10 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
       '최근 30일',
       '최근 90일',
       '5단계',
-      '기능 12개 가운데 2개예요. 다른 하나는 위의 비트 PC 연결이에요.',
-      '12개 가운데 2개를 지금 쓸 수 있어요',
-      // 환자 수 추이 빈 틀의 날짜 눈금(30일: 기간 첫날부터 7일마다)
-      '10.1',
-      '10.8',
-      '10.15',
-      '10.22',
-      '10.29',
-      '7일 안에 다시 옴',
-      '14일 안에 다시 옴',
-      '30일 안에 다시 옴',
-      '많이 낸 처방 5가지가 차례로 적힙니다',
+      INDEX_SIDE,
+      GAINS_TITLE,
+      ...GAINS_DIGIT_DESC,
+      GAINS_NOTE,
     ].sort((a, b) => b.length - a.length)
     let text = plain(html)
     for (const s of fixed) {
@@ -268,17 +278,20 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     expect(h1Texts(renderConnected())).toEqual(['오늘 환자 13명이 왔습니다.'])
   })
 
-  it('AC-307.6: 연결 전 부품이 없다 — 큰 문장 · 주 단추 · 연결 순서 · 폰 아래 단추 · 전체 폭 지금 바로 줄 · 연결 전 빈 상태', () => {
+  it('AC-307.6·AC-414.2·AC-414.4: 연결 전 부품이 없다 — 큰 문장 · 주 단추 · 연결 순서 · 폰 아래 단추 · 연결하면 바로 쓸 수 있어요 줄 · 연결 전 빈 상태 · 연결하면 생기는 것', () => {
     const html = renderConnected()
     const text = plain(html)
     for (const gone of [
-      '비트 PC를 연결하면 오늘 숫자가 여기에 채워집니다',
+      H1,
       '비트 PC 연결 시작',
       '연결 순서',
       '크롬 확장 프로그램 설치',
-      '기능 12개 가운데 2개예요',
+      ROW_TITLE,
+      '비트 PC 연결부터',
       '연결하면 보여요',
       '비트 PC 연결 전',
+      GAINS_TITLE,
+      GAINS_NOTE,
     ]) {
       expect(text, gone).not.toContain(gone)
     }

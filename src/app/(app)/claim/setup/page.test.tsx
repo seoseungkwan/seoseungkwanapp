@@ -7,7 +7,7 @@ import { guardPage } from '@/lib/auth/guard.server'
 import { readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
 import ClaimSetupPage, { dynamic } from './page'
 
-// /claim/setup 페이지 (REQ-006, design.md 7절 '설치·연결 확인'·9-1). 서버는 (app)/layout과 같은 길(guardPage)로 내 병원 줄만 읽고,
+// /claim/setup 비트 PC 연결 페이지 (REQ-006, design.md 7절·9-1, ui-90 REQ-412). 서버는 (app)/layout과 같은 길(guardPage)로 내 병원 줄만 읽고,
 // 화면에는 사이트에 등록한 병원 이름을 넘긴다(도우미는 병원 이름을 주지 않는다, AC-006.4). 통로는 브라우저(SetupScreen)가 연다
 vi.mock('@/lib/auth/hospital.server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/hospital.server')>()),
@@ -51,7 +51,7 @@ beforeEach(() => {
 })
 
 describe('/claim/setup 페이지', () => {
-  it('AC-006.4: 승인된 사용자면 설치·연결 확인 화면에 사이트의 병원 이름(me.hospital.name)을 넘긴다', async () => {
+  it('AC-006.4: 승인된 사용자면 비트 PC 연결 화면에 사이트의 병원 이름(me.hospital.name)을 넘긴다', async () => {
     const page = (await ClaimSetupPage()) as ReactElement<{ clinicName: string }>
     expect(page.type).toBe(SetupScreen)
     expect(page.props.clinicName).toBe('가나 정형외과의원')

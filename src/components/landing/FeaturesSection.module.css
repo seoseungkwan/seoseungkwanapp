@@ -1,36 +1,48 @@
-/* 기능 섹션(#features) (specs/b2b-redesign AC-210.1, 시안 docs/mockups/b2b-redesign/style.css의 [id=features] · .panel · .tbl · .flist).
-   섹션 틀·12칸·글자 단계·칩은 base.module.css가 정하고, 여기서는 위 선·칸 자리·급여 패널·기능 목록만 그린다.
-   base 클래스(.sec·.wrap·.grid)의 속성은 덮어쓰지 않는다(CSS 순서와 상관없이 같은 결과).
+/* 기능 섹션(#features) (specs/b2b-redesign AC-210.1, specs/ui-90 AC-421.6, 시안 docs/mockups/ui-90/entry/base.css의 .panel · .tbl · .flist
+   와 build.mjs의 .feat · .pc-tbl · .flist). 섹션 틀·12칸·글자 단계·칩은 base.module.css가 정하고, 여기서는 위 선·칸 자리·
+   사전점검 덩어리·예시 패널·기능 목록만 그린다. base 클래스(.sec·.wrap·.grid)의 속성은 덮어쓰지 않는다(CSS 순서와 상관없이 같은 결과).
    값은 토큰 var()뿐이다(규칙은 rules.test.ts AC-212.1). 휴대폰 값을 먼저 쓰고 768px·1024px부터 바꾼다.
-   상자(네 변 테두리)는 급여 패널(.panel) 하나다. 표 칸과 목록 줄은 위·아래 1px 선만 쓴다 */
+   상자(네 변 테두리)는 사전점검 예시 패널(.panel) 하나다. 표 칸과 목록 줄은 위·아래 1px 선만 쓴다 */
 
-/* ---------- 내용 위 1px 선: .wrap 안 첫 조각이라 선은 내용 폭이다.
-   섹션 위 여백(base .sec 48 → 64 → 96)만큼 위로 올려 섹션 맨 위에 붙이고, 같은 만큼 아래를 띄운다 ---------- */
+/* ---------- 내용 위 1px 선(768px 이상): .wrap 안 첫 조각이라 선은 내용 폭이다.
+   섹션 위 여백(base .sec 64 → 96)만큼 위로 올려 섹션 맨 위에 붙이고, 같은 만큼 아래를 띄운다.
+   휴대폰은 선 없이 섹션 위 여백(48)만큼만 올려, 정형외과 표와 기능 제목 사이가 정형외과 섹션 아래 여백 48px 하나다(시안 landingPhone mt48) ---------- */
 .inner::before {
   content: "";
   display: block;
-  border-top: 1px solid var(--line);
-  margin-block: -48px 48px;
+  margin-block: -48px 0;
 }
 
-/* ---------- 제목 · 칸: 1024px 미만은 급여 덩어리 → 목록으로 쌓인다(휴대폰은 급여 덩어리가 숨는다) ---------- */
+/* ---------- 제목 · 안내 · 칸: 1024px 미만은 사전점검 덩어리 → 목록으로 쌓인다(휴대폰은 덩어리가 숨는다) ---------- */
 .title {
   max-width: 560px;
+}
+.lead {
+  max-width: 640px;
+  margin-top: 12px;
+  color: var(--ink-2);
 }
 .layout {
   margin-top: 16px;
   row-gap: 32px;
 }
 
-/* ---------- 급여 덩어리(768px 이상) ---------- */
+/* ---------- 01 사전점검 덩어리(768px 이상) ---------- */
+/* 소개 줄: "01 · …"(small 600 accent) + "쓸 수 있어요" 칩, 좁으면 칩이 다음 줄로 */
 .kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.kickerText {
   font-weight: 600;
   color: var(--accent);
 }
-.payTitle {
+.preTitle {
   margin-top: 8px;
 }
-.payLead {
+.preLead {
   margin-top: 8px;
   color: var(--ink-2);
 }
@@ -50,8 +62,13 @@
 .sample {
   color: var(--muted);
 }
+.count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
-/* 급여표: small 글자, 칸 아래 1px 선(마지막 몸 줄 없음), 바닥 줄 위 1px line-strong. 세로 선이 없다 */
+/* 점검 표: small 글자, 칸 아래 1px 선(마지막 줄 없음), 칸은 위 맞춤(근거 줄이 있는 칸과 나란히). 세로 선이 없다 */
 .table {
   width: 100%;
   margin-top: 12px;
@@ -68,9 +85,9 @@
   white-space: nowrap;
 }
 .cell {
-  height: 40px;
-  padding: 0 12px;
+  padding: 12px;
   border-bottom: 1px solid var(--line);
+  vertical-align: top;
   color: var(--ink);
 }
 .row:last-child .cell {
@@ -85,26 +102,29 @@
 .cell:last-child {
   padding-right: 20px;
 }
-.amount {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.patient {
   white-space: nowrap;
+  color: var(--ink-2);
 }
-.sum {
-  border-top: 1px solid var(--line-strong);
-  border-bottom: 0;
-  font-weight: 600;
+/* 결과 칩 칸 폭(시안 112px) */
+.result {
+  width: 112px;
+}
+.basis {
+  display: block;
+  color: var(--muted);
 }
 
-/* ---------- 기능 목록: 줄마다 번호 | 글(h3 + 설명) 두 칸, 줄 사이 1px 선 ---------- */
+/* ---------- 기능 목록: 줄마다 번호 | 글(h3 + 설명) 두 칸, 줄 사이 1px 선 ----------
+   맨 위 선은 목록이 그린다: 768px 이상은 01 줄이 숨어(.phoneOnly) 첫 보이는 줄이 02라, 첫 줄(li:first-child)에 선을 두면 사라진다 */
+.list {
+  border-top: 1px solid var(--line);
+}
 .item {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   padding-block: 12px;
   border-bottom: 1px solid var(--line);
-}
-.item:first-child {
-  border-top: 1px solid var(--line);
 }
 /* 번호는 small 600 accent. 줄 높이는 h3(subtitle)와 같게 해 첫 줄에 맞춘다 */
 .num {
@@ -118,20 +138,28 @@
 .short {
   grid-column: 2;
 }
+/* 이름 + 칩(쓸 수 있어요·준비 중) 한 줄, 좁으면 칩이 다음 줄로 */
+.itemTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* 설명 글자는 .root의 body(14/22) 그대로다(specs/ui-90 AC-421.8) */
 .desc {
   margin-top: 4px;
   color: var(--ink-2);
 }
 /* 휴대폰 짧은 설명 */
 .short {
-  font-size: var(--fs-small);
-  line-height: var(--lh-small);
-  color: var(--muted);
+  margin-top: 2px;
+  color: var(--ink-2);
 }
 
 /* ---------- 768px부터 ---------- */
 @media (min-width: 768px) {
   .inner::before {
+    border-top: 1px solid var(--line);
     margin-block: -64px 64px;
   }
   .layout {
@@ -143,12 +171,12 @@
   }
 }
 
-/* ---------- 1024px부터: 급여 1~6칸 · 목록 8~12칸 ---------- */
+/* ---------- 1024px부터: 사전점검 1~6칸 · 목록 8~12칸 ---------- */
 @media (min-width: 1024px) {
   .inner::before {
     margin-block: -96px 96px;
   }
-  .pay {
+  .pre {
     grid-column: 1 / 7;
     min-width: 0;
   }

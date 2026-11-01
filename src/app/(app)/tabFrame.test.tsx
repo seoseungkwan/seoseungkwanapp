@@ -49,8 +49,9 @@ const plain = (html: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const READY = DASHBOARD_FEATURES.filter((f) => f.ready)
-const NOT_READY = DASHBOARD_FEATURES.filter((f) => !f.ready)
+// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(청구 connect-first · 설정 ready)
+const READY = DASHBOARD_FEATURES.filter((f) => f.status !== 'soon')
+const NOT_READY = DASHBOARD_FEATURES.filter((f) => f.status === 'soon')
 
 describe('로그인하면 늘 대시보드가 첫 화면이다 (REQ-301)', () => {
   beforeEach(() => {
@@ -128,12 +129,17 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
   })
 
   it.each(NOT_READY.map((f) => [f.name, f.href]))(
-    'AC-307.3: 준비 중 칸 %s(%s)의 페이지 = 같은 이름의 준비 중 자료로 그린 NotReadyScreen',
+    'AC-307.3·AC-415.5: 준비 중 칸 %s(%s)의 페이지 = 같은 이름의 준비 중 자료로 그린 NotReadyScreen — h1은 그 자료의 title("…준비 중이에요")',
     async (name, href) => {
       const feature = NOT_READY_FEATURES.find((f) => f.name === name)
       expect(feature, name).toBeDefined()
       const Page = await loadPage(href)
-      expect(renderToStaticMarkup(<Page />)).toBe(renderToStaticMarkup(<NotReadyScreen feature={feature!} />))
+      const html = renderToStaticMarkup(<Page />)
+      expect(html).toBe(renderToStaticMarkup(<NotReadyScreen feature={feature!} />))
+      // 같은 화면 견주기의 기대 글자(ui-90): h1 = title, 옛 안내 "준비 중인 기능입니다"는 없다
+      expect([...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => plain(m[1]!))).toEqual([feature!.title])
+      expect(feature!.title).toMatch(new RegExp(`^${name}[은는] 준비 중이에요$`))
+      expect(plain(html)).not.toContain('준비 중인 기능입니다')
     },
   )
 
@@ -168,13 +174,15 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7: 기능 수 글 둘의 숫자 = DASHBOARD_FEATURES 개수(12)와 사용 가능 칸 수(2)', () => {
+  it('AC-307.7·AC-414.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수(12) · 지금 쓸 수 있는 칸 수(1) · 연결하면 쓸 수 있는 칸 수(1)', () => {
     const total = DASHBOARD_FEATURES.length
-    const ready = READY.length
-    expect([total, ready]).toEqual([12, 2])
+    const now = DASHBOARD_FEATURES.filter((f) => f.status === 'ready').length
+    const afterConnect = DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first').length
+    expect([total, now, afterConnect]).toEqual([12, 1, 1])
     const text = plain(renderToStaticMarkup(<DashboardPage />))
-    expect([.../기능 (\d+)개 가운데 (\d+)개예요\. 다른 하나는 위의 비트 PC 연결이에요\./.exec(text)!.slice(1)].map(Number)).toEqual([total, ready])
-    expect([.../(\d+)개 가운데 (\d+)개를 지금 쓸 수 있어요/.exec(text)!.slice(1)].map(Number)).toEqual([total, ready])
+    expect([.../(\d+)개 가운데 (\d+)개는 지금, (\d+)개는 연결하면 쓸 수 있어요/.exec(text)!.slice(1)].map(Number)).toEqual([total, now, afterConnect])
+    // 옛 기능 수 글 둘은 없다
+    expect(text).not.toMatch(/기능 \d+개 가운데|개를 지금 쓸 수 있어요/)
   })
 
   // 앱 틀 안에 페이지를 그린다(계정은 관리자 아닌 사람)
@@ -190,25 +198,64 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(match, '<main>').not.toBeNull()
     return { classes: match![1]!.split(/\s+/), body: match![2]! }
   }
-  const SURFACE = 'has-[[data-page-surface]]:bg-surface'
-
-  it('AC-307.8: 대시보드 페이지를 그린 AppShell — 본문 안에 data-page-surface 요소가 있고 main이 흰 바탕 클래스를 가진다', () => {
+  // 바탕 A(ui-90 AC-404.1, tab-frame AC-307.8 대체): 모든 앱 화면이 흰 바탕 한 장 — 페이지 표시(data-page-surface)와 상관없이 main이 bg-surface
+  const SURFACE = 'bg-surface'
+  const OLD_SURFACE = 'has-[[data-page-surface]]:bg-surface'
+  const dashboardMain = () => {
     pathname.mockReturnValue('/dashboard')
-    const { classes, body } = mainOf(shell(<DashboardPage />))
+    return mainOf(shell(<DashboardPage />))
+  }
+
+  it('AC-404.1: 대시보드 페이지를 그린 AppShell — main이 흰 바탕(bg-surface)이고 옛 표시 클래스·canvas가 없다', () => {
+    const { classes } = dashboardMain()
     expect(classes).toContain(SURFACE)
-    expect(body).toMatch(/<div data-page-surface="[^"]*"/)
+    expect(classes).not.toContain(OLD_SURFACE)
+    expect(classes).not.toContain('bg-canvas')
   })
 
   it.each(NOT_READY.map((f) => [f.name, f.href]))(
-    'AC-307.8: 준비 중 페이지 %s(%s)를 그린 AppShell — 본문 안에 data-page-surface가 없다(main 클래스는 같고 바탕은 canvas 그대로)',
+    'AC-404.1: 준비 중 페이지 %s(%s)를 그린 AppShell — main이 대시보드와 같은 흰 바탕(bg-surface)이다. 본문 안에 data-page-surface가 없다',
     async (_name, href) => {
+      const dashboard = dashboardMain().classes
       pathname.mockReturnValue(href)
       const Page = await loadPage(href)
       const { classes, body } = mainOf(shell(<Page />))
       expect(classes).toContain(SURFACE)
+      expect(classes).not.toContain(OLD_SURFACE)
+      expect(classes).toEqual(dashboard)
       expect(body).not.toContain('data-page-surface')
     },
   )
+})
+
+describe('바탕 표시 지움 (ui-90 AC-404.2)', () => {
+  // 시험 파일 밖 소스(주석은 빼고 본다 — 옛 표시를 지웠다는 설명 글은 표시가 아니다)
+  const codeOf = (file: string) =>
+    read(file)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+  const sources = (dir: string) =>
+    readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
+      .filter((f) => /\.(?:tsx?|css)$/.test(f) && !/\.test\.tsx?$/.test(f))
+      .map((f) => join(ROOT, dir, f))
+
+  it('AC-404.2: 시험 파일 밖 src/components/**·src/app/** 소스에 data-page-surface가 없다', () => {
+    const files = [...sources('src/components'), ...sources('src/app')]
+    expect(files.some((f) => f.endsWith('briefing/DashboardHome.tsx'))).toBe(true)
+    expect(files.some((f) => f.endsWith('shell/AppShell.tsx'))).toBe(true)
+    expect(files.filter((f) => codeOf(f).includes('data-page-surface')).map((f) => f.slice(ROOT.length + 1))).toEqual([])
+  })
+
+  it('AC-404.2: 대시보드를 그린 앱 틀 안에 data-page-surface 요소가 없다', () => {
+    pathname.mockReturnValue('/dashboard')
+    const html = renderToStaticMarkup(
+      <AppShell hospitalName="가나 정형외과의원" email="manager@example.com" isAdmin={false}>
+        <DashboardPage />
+      </AppShell>,
+    )
+    expect(html).toContain('오늘 브리핑')
+    expect(html).not.toContain('data-page-surface')
+  })
 })
 
 describe('그대로 두는 것 — 관리자 화면 (REQ-308)', () => {

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Application } from '@/lib/auth/admin'
 import { appliedOn, countByTab, doneMessage, EMPTY, phoneText, rowsOf, TABS, withStatus } from './applications'
 
-// 관리자 화면의 순수 계산 (REQ-007, design.md '인터페이스' components/admin/applications.ts). 문구는 목업 docs/mockups/auth/Admin.dc.html
+// 관리자 화면의 순수 계산 (REQ-007, design.md '인터페이스' components/admin/applications.ts).
+// 문구는 ui-90 시안 말투(~요, REQ-417 AC-417.1). 탭·칸·순서는 목업 docs/mockups/auth/Admin.dc.html
 
 const row = (id: string, name: string, status: Application['status'], createdAt: string): Application => ({
   id,
@@ -81,25 +82,34 @@ describe('상태 바꾼 뒤', () => {
     expect(withStatus(ROWS, 'nope', 'approved')).toEqual(ROWS)
   })
 
-  it('AC-007.2: doneMessage(승인) — "○○ 신청을 승인했습니다."', () => {
-    expect(doneMessage('가나 정형외과의원', 'approved')).toBe('가나 정형외과의원 신청을 승인했습니다.')
+  it('AC-007.2·AC-417.1: doneMessage(승인) — "○○ 신청을 승인했어요."', () => {
+    expect(doneMessage('가나 정형외과의원', 'approved')).toBe('가나 정형외과의원 신청을 승인했어요.')
   })
 
-  it('AC-007.3: doneMessage(거절) — "○○ 신청을 거절했습니다."', () => {
-    expect(doneMessage('다라 통증의학과의원', 'rejected')).toBe('다라 통증의학과의원 신청을 거절했습니다.')
+  it('AC-007.3·AC-417.1: doneMessage(거절) — "○○ 신청을 거절했어요."', () => {
+    expect(doneMessage('다라 통증의학과의원', 'rejected')).toBe('다라 통증의학과의원 신청을 거절했어요.')
   })
 
-  it('AC-007.4: doneMessage(되돌리기) — "○○ 신청을 대기로 되돌렸습니다."', () => {
-    expect(doneMessage('사아 의원', 'pending')).toBe('사아 의원 신청을 대기로 되돌렸습니다.')
+  it('AC-007.4·AC-417.1: doneMessage(되돌리기) — "○○ 신청을 대기로 되돌렸어요."', () => {
+    expect(doneMessage('사아 의원', 'pending')).toBe('사아 의원 신청을 대기로 되돌렸어요.')
   })
 })
 
 describe('빈 탭 안내', () => {
-  it('AC-007.5: 탭마다 목업의 빈 탭 안내(제목·한 줄)', () => {
+  it('AC-007.5·AC-417.1: 탭마다 빈 탭 안내(제목·한 줄), 말끝은 "~요"', () => {
     expect(EMPTY).toEqual({
-      pending: { title: '대기 중인 신청이 없습니다', body: '새 가입 신청이 오면 여기에 보입니다.' },
-      approved: { title: '승인한 신청이 없습니다', body: '승인한 계정이 여기에 모입니다.' },
-      rejected: { title: '거절한 신청이 없습니다', body: '거절한 신청은 여기에서 되돌릴 수 있습니다.' },
+      pending: { title: '대기 중인 신청이 없어요', body: '새 가입 신청이 오면 여기에 보여요.' },
+      approved: { title: '승인한 신청이 없어요', body: '승인한 계정이 여기에 모여요.' },
+      rejected: { title: '거절한 신청이 없어요', body: '거절한 신청은 여기에서 되돌릴 수 있어요.' },
     })
+  })
+
+  it('AC-417.1: 빈 탭 안내·완료 알림 글에 "니다."·"병원 이름" 글자가 없다', () => {
+    const texts = [
+      ...Object.values(EMPTY).flatMap((e) => [e.title, e.body]),
+      ...TABS.map((t) => doneMessage('가나 정형외과의원', t.key)),
+    ]
+    expect(texts).toHaveLength(9)
+    for (const text of texts) expect(text).not.toMatch(/니다|병원 이름/)
   })
 })

@@ -7,6 +7,8 @@ export const SECTION = 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-m
 export const SECTION_HEAD = 'mb-4 flex flex-wrap items-center gap-3'
 // 섹션 제목(h2): title 600 모든 폭
 export const SECTION_TITLE = 'text-title font-semibold text-ink'
+// 보조 글(안내 줄·섹션 옆 글, ui-90 AC-414.6): small(13px) muted + 시안 최대 40em(13px × 40 = 520px)에 가장 가까운 4px 단위 폭 단계
+export const NOTE = 'text-small text-muted max-w-130'
 
 // 짧은 반응(ds 뒤에 붙인다): 색 150ms + 누름 아래 1px / 단추 안 오른쪽 화살표는 올림에 오른쪽 2px(단추에 group)
 export const PRESS = 'transition not-disabled:active:translate-y-px'

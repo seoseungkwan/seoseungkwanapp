@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ReactElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminApplications } from '@/components/admin/AdminApplications'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
-import AdminPage, { dynamic } from './page'
+import AdminPage, { dynamic, metadata } from './page'
 
 // /admin 페이지 (REQ-007, AC-002.5, design.md '데이터 흐름' `(app)/admin/page.tsx # 관리자만`).
 // (app) 레이아웃은 지금 경로를 모르고 늘 '/dashboard'로 문지기를 부른다 → 관리자만 여는 이 페이지는 스스로 '/admin'으로 부른다.
@@ -59,7 +60,7 @@ beforeEach(() => {
 })
 
 describe('/admin 페이지 문지기', () => {
-  it('AC-002.5: 승인된 관리자(admins에 있음)면 연다 — 가입 신청 목록(AdminApplications)을 그린다', async () => {
+  it('AC-002.5: 승인된 관리자(admins에 있음)면 연다 — 가입 승인 화면(AdminApplications)을 그린다', async () => {
     const page = (await AdminPage()) as ReactElement
     expect(page.type).toBe(AdminApplications)
     expect(redirect).not.toHaveBeenCalled()
@@ -125,5 +126,17 @@ describe('/admin 페이지 그리기', () => {
     const page = (await AdminPage()) as ReactElement
     expect(page.type).toBe(AdminApplications)
     expect(page.props).toEqual({})
+  })
+})
+
+describe('/admin 페이지 이름 (ui-90 REQ-417)', () => {
+  it('AC-417.1: 탭 이름(metadata)과 h1이 같은 "가입 승인"이고 h1 바로 위에 "관리자" 표시가 있다. "가입 신청" h1·"병원 이름"·"니다." 글자가 없다', async () => {
+    expect(metadata.title).toBe('가입 승인')
+    // 서버 그리기(effect 없음) → 목록은 읽지 않고 제목 묶음만 나온다
+    const html = renderToStaticMarkup((await AdminPage()) as ReactElement)
+    expect(html).toMatch(/<p\b[^>]*><svg\b[^>]*>.*?<\/svg>관리자<\/p><h1\b[^>]*>가입 승인<\/h1>/)
+    expect(html).not.toMatch(/<h1\b[^>]*>가입 신청<\/h1>/)
+    expect(html).not.toMatch(/병원 이름|니다\./)
+    expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 })

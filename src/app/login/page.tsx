@@ -1,6 +1,10 @@
+import type { Metadata } from 'next'
 import { AuthFrame } from '@/components/auth/AuthFrame'
 import { LoginAside } from '@/components/auth/LoginAside'
 import { LoginCard } from '@/components/auth/LoginCard'
+
+// 브라우저 탭 이름 (ui-90 AC-402.2)
+export const metadata: Metadata = { title: '로그인' }
 
 // 로그인(목업 로그인·로그인 실패). 로그인한 사람이 오면 middleware가 /dashboard로 보낸다.
 // 틀은 두 칸 AuthFrame: 왼쪽 로그인 폼, 오른쪽 aside에 소개 문장 + 대시보드 미리보기(b2b-redesign AC-213.3·AC-214.3)

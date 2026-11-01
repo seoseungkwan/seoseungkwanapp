@@ -105,9 +105,21 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
+/* 히어로·섹션 안내: 모든 폭에서 lead 16/24(specs/ui-90 AC-421.8, 시안 .t-lead) */
+.tLead {
+  font-size: var(--fs-lead);
+  line-height: var(--lh-lead);
+  text-wrap: pretty;
+}
+/* 줄 끝에서 끊기지 않게 묶는 말("원장님 보고까지"·"한 화면에서"·"병원 PC", 시안 nw()) */
+.nw {
+  white-space: nowrap;
+}
 
 /* ---------- 단추: 앱 ds.button과 같은 크기·색 (UI_GUIDE '단추') ---------- */
-/* 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자·움직임 없음 */
+/* 4px 모서리, 1px 테두리(색은 종류마다), 가운데 정렬, 사이 8px, 줄바꿈 없음, 그림자 없음.
+   짧은 반응(specs/ui-90 REQ-420, UI_GUIDE '움직임'): 색·투명도·옮김만 150ms, 누르면 아래 1px. 앱 ds.button과 같은 반응이다.
+   전환은 rules.test.ts 허용 목록(.btn 이 값 하나)에만 있고, 모션 줄이기 기기에서는 globals.css 전역 규칙이 끈다 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -118,6 +130,10 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms, transform 150ms;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 /* 작은 32 · 기본 36 · 큰 44(600). 휴대폰 메뉴 단추(32px + 누름 영역 44px)는 SiteHeader가 맡는다 */
 .btnSm {
@@ -156,12 +172,7 @@
   background: var(--canvas);
 }
 
-/* ---------- 칩: 앱 ds.chip과 같은 값 (UI_GUIDE '칩') ---------- */
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
+/* ---------- 칩: 앱 ds.chip과 같은 값 (UI_GUIDE '칩'). 칩 여럿을 늘어놓던 .chips는 AI 채팅 칸과 함께 지웠다(ui-90 AC-421.4) ---------- */
 /* 20px · 좌우 6px · caption 500 · 4px · 1px 테두리(없으면 투명) · 아이콘(12px)과 글자 사이 4px */
 .chip {
   display: inline-flex;
@@ -189,11 +200,49 @@
   border-color: transparent;
   color: var(--positive);
 }
-/* 살펴볼 것 */
+/* 살펴볼 것·확인 필요 */
 .chipWarning {
   background: var(--warning-soft);
   border-color: transparent;
   color: var(--warning);
+}
+/* 사전점검 예시 "알림" (앱 ds.chip.accent와 같은 값) */
+.chipAccent {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-strong);
+}
+
+/* ---------- 건너뛰기 링크 (specs/ui-90 AC-421.1, 시안 docs/mockups/ui-90/entry .skip) ---------- */
+/* 문서 순서로 첫 조작 요소(page.tsx의 SiteHeader 앞). 평소에는 화면 위 밖으로 옮겨 두고, 키보드 초점이면 메뉴 띠(z-index 20) 위
+   왼쪽에 바로 보인다(움직임 없음 — 전환 허용 목록 밖). 초점 고리는 @layer base의 링크 초점 규칙(2px accent)이 그린다.
+   누름 영역은 44px 이상이다(UI_GUIDE '휴대폰', 시안 36px 모양에서 높이만 늘림) */
+.skip {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 16px;
+  border-radius: var(--r-control);
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 500;
+  white-space: nowrap;
+  transform: translateY(-64px);
+}
+.skip:focus-visible {
+  transform: none;
+}
+/* 건너뛰기 링크가 가리키는 본문(main#main). 옮겨도 첫 글이 붙는 메뉴(56 → 64px)에 가리지 않는다(.sec와 같은 72 → 80) */
+.main {
+  scroll-margin-top: 72px;
+}
+/* 코드로 옮긴 초점(tabIndex -1)이라 본문 둘레에 브라우저 기본 초점 고리를 그리지 않는다(건너뛰기 링크 자신의 고리는 그대로) */
+.main:focus {
+  outline: none;
 }
 
 /* ---------- 숨김 도우미 ---------- */
@@ -225,6 +274,9 @@
   }
   .sec {
     padding-block: 64px;
+    scroll-margin-top: 80px;
+  }
+  .main {
     scroll-margin-top: 80px;
   }
   .tDisplay {

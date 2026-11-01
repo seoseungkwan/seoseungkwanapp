@@ -1,18 +1,28 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { LogoMark } from '@/components/common/LogoMark'
 
-// 로그인 전후 화면(로그인·가입 신청·승인 대기·거절)의 틀 (b2b-redesign REQ-213, design.md '인증 화면', UI_GUIDE '인증 화면').
-// 두 모양 모두 surface 바탕 .app-ui 뿌리, 맨 위 줄 header(로고 + headerEnd) 하나, main 하나다. 띠 테두리·[서비스 이름]은 없다.
-// - aside 없음(가입 신청·승인 대기·거절): 가운데 480 한 칸. 위 줄과 본문이 같은 칸이라 로고 왼쪽 끝 = 본문 왼쪽 끝
+// 로그인 전후 화면(로그인·가입 신청·승인 대기·거절)과 오류·없는 주소 화면의 틀 (b2b-redesign REQ-213, ui-90 AC-419.1, design.md '인증 화면', UI_GUIDE '인증 화면').
+// 두 모양 모두 surface 바탕 .app-ui 뿌리, 맨 위 줄 header(로고 링크 + headerEnd) 하나, main 하나다. 띠 테두리·[서비스 이름]은 없다.
+// - aside 없음(가입 신청·승인 대기·거절·오류): 가운데 480 한 칸. 위 줄과 본문이 같은 칸이라 로고 왼쪽 끝 = 본문 왼쪽 끝
 // - aside 있음(로그인): 1024px 이상 두 칸(반반). 왼쪽 400 칸은 위 로고 · 세로 가운데 본문 · 아래 소개 줄, 오른쪽은 canvas aside.
 //   1024px 미만은 한 칸이고 aside와 소개 줄을 숨기며 같은 로고를 클래스로 24px로 줄인다
-// 로고는 랜딩·앱 틀과 같은 LogoMark이고 LogoMark가 정한 고정 두 색(로고 C③)으로 그리며 읽지 않는다.
+// 로고는 랜딩·앱 틀과 같은 LogoMark이고 LogoMark가 정한 고정 두 색(로고 C③)으로 그린다. 그림은 읽지 않고,
+// 감싼 처음 화면 링크(next/link, href "/")의 이름 "처음 화면으로 가기"를 읽는다
 // headerEnd = 위 줄 오른쪽 끝에 둘 것(승인 대기·거절 화면의 [로그아웃]). 없으면 아무것도 그리지 않는다
+
+// 로고 링크: 누름 영역 44px(높이 44·폭 44 이상, 로고는 왼쪽 끝 그대로라 영역은 오른쪽으로만 는다), 안쪽 초점 고리,
+// 올림에 80% 투명도(짧은 반응 150ms, UI_GUIDE '움직임')
+const LOGO_LINK =
+  'inline-flex h-11 min-w-11 shrink-0 items-center rounded-control transition hover:opacity-80 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
+
 export function AuthFrame({ children, headerEnd, aside }: { children: ReactNode; headerEnd?: ReactNode; aside?: ReactNode }) {
   const split = aside != null
   const header = (
     <header className={split ? 'flex items-center max-lg:h-14' : 'flex h-18 items-center max-md:h-14'}>
-      <LogoMark size={28} className={split ? 'shrink-0 max-lg:size-6' : 'shrink-0'} />
+      <Link href="/" aria-label="처음 화면으로 가기" className={LOGO_LINK}>
+        <LogoMark size={28} className={split ? 'shrink-0 max-lg:size-6' : 'shrink-0'} />
+      </Link>
       {headerEnd != null && <div className="ml-auto flex items-center">{headerEnd}</div>}
     </header>
   )

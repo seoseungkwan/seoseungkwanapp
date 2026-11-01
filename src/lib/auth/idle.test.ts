@@ -237,3 +237,128 @@ describe('startIdleLogout', () => {
     expect(tab.channel.close).toHaveBeenCalledTimes(1)
   })
 })
+
+// ── 1분 전 안내(ui-90 REQ-418). 안내 시각 = 마지막 움직임에서 timeoutMs − warnMs
+const WARN = MIN
+
+describe('startIdleLogout — 1분 전 안내', () => {
+  function startWarned(extra: Partial<Parameters<typeof startIdleLogout>[0]> = {}) {
+    const open = channelBus()
+    const tab = { ...fakeTab(), channel: open() }
+    const otherTab = open()
+    const calls = { onWarn: vi.fn(), onActive: vi.fn(), onIdle: vi.fn() }
+    const stop = startIdleLogout({ timeoutMs: TIMEOUT, warnMs: WARN, ...calls, ...tab, ...extra })
+    return { tab, otherTab, stop, ...calls }
+  }
+
+  it('AC-418.1: 움직임 없이 timeoutMs − warnMs가 지나면 onWarn을 한 번 부르고(그 전에는 안 부른다), timeoutMs에 onIdle을 한 번 부른다', () => {
+    const { onWarn, onActive, onIdle } = startWarned()
+    vi.advanceTimersByTime(TIMEOUT - WARN - 1)
+    expect(onWarn).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(onWarn).toHaveBeenCalledTimes(1)
+    expect(onIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(WARN - 1)
+    expect(onIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(onIdle).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(3 * TIMEOUT)
+    expect(onWarn).toHaveBeenCalledTimes(1)
+    expect(onIdle).toHaveBeenCalledTimes(1)
+    expect(onActive).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['누름', (t: ReturnType<typeof startWarned>) => fire(t.tab.target, 'pointerdown')],
+    ['키', (t: ReturnType<typeof startWarned>) => fire(t.tab.target, 'keydown')],
+    ['스크롤', (t: ReturnType<typeof startWarned>) => fire(t.tab.target, 'scroll')],
+    ['화면 보이기 바뀜', (t: ReturnType<typeof startWarned>) => fire(t.tab.doc, 'visibilitychange')],
+    ['다른 탭 소식', (t: ReturnType<typeof startWarned>) => t.otherTab.postMessage('activity')],
+  ])('AC-418.1: 안내 뒤 %s이 오면 onActive를 한 번 부르고 처음부터 다시 센다(다시 29분에 onWarn, 30분에 onIdle)', (_label, act) => {
+    const t = startWarned()
+    vi.advanceTimersByTime(TIMEOUT - WARN + 20 * 1000) // 안내가 뜨고 20초 뒤
+    expect(t.onWarn).toHaveBeenCalledTimes(1)
+    act(t)
+    expect(t.onActive).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(TIMEOUT - WARN - 1)
+    expect(t.onWarn).toHaveBeenCalledTimes(1)
+    expect(t.onIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(t.onWarn).toHaveBeenCalledTimes(2)
+    vi.advanceTimersByTime(WARN - 1)
+    expect(t.onIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(t.onIdle).toHaveBeenCalledTimes(1)
+    expect(t.onActive).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-418.1: 안내 전의 움직임은 onActive를 부르지 않고, 안내 뒤 움직임이 여러 번 와도 onActive는 한 번이다', () => {
+    const t = startWarned()
+    vi.advanceTimersByTime(10 * MIN)
+    fire(t.tab.target, 'keydown')
+    t.otherTab.postMessage('activity')
+    expect(t.onActive).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    expect(t.onWarn).toHaveBeenCalledTimes(1)
+    fire(t.tab.target, 'keydown')
+    fire(t.tab.target, 'pointerdown')
+    t.otherTab.postMessage('activity')
+    expect(t.onActive).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-418.1: 안내 뒤 이 탭의 움직임은 다른 탭에 알리고, 받은 소식은 다시 보내지 않는다', () => {
+    const t = startWarned()
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    fire(t.tab.target, 'pointerdown')
+    expect(t.tab.channel.postMessage).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    t.otherTab.postMessage('activity')
+    expect(t.onActive).toHaveBeenCalledTimes(2)
+    expect(t.tab.channel.postMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-418.1: warnMs를 주지 않으면 onWarn·onActive를 부르지 않고 지금처럼 30분에 onIdle을 한 번 부른다', () => {
+    const t = startWarned({ warnMs: undefined })
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    fire(t.tab.target, 'keydown')
+    vi.advanceTimersByTime(TIMEOUT - 1)
+    expect(t.onIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(t.onIdle).toHaveBeenCalledTimes(1)
+    expect(t.onWarn).not.toHaveBeenCalled()
+    expect(t.onActive).not.toHaveBeenCalled()
+  })
+
+  it('AC-418.1: 잠자기 등으로 안내 시계가 30분이 지난 뒤에 돌면 onWarn 없이 onIdle을 한 번 부른다', () => {
+    const t = startWarned()
+    vi.setSystemTime(Date.now() + TIMEOUT + MIN) // 시계만 가고 타이머는 아직 안 돌았다
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    expect(t.onWarn).not.toHaveBeenCalled()
+    expect(t.onIdle).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(3 * TIMEOUT)
+    expect(t.onIdle).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-418.1: 안내 뒤 30분이 지나 온 첫 움직임은 onActive가 아니라 onIdle이다', () => {
+    const t = startWarned()
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    vi.setSystemTime(Date.now() + 2 * MIN) // 안내 뒤 잠자기
+    fire(t.tab.doc, 'visibilitychange')
+    expect(t.onActive).not.toHaveBeenCalled()
+    expect(t.onIdle).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-418.1: 안내 뒤 정리하면 시간이 지나도·움직여도 onIdle·onActive를 부르지 않고 타이머가 남지 않는다', () => {
+    const t = startWarned()
+    vi.advanceTimersByTime(TIMEOUT - WARN)
+    t.stop()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(t.tab.channel.close).toHaveBeenCalledTimes(1)
+    fire(t.tab.target, 'keydown')
+    t.otherTab.postMessage('activity')
+    vi.advanceTimersByTime(5 * TIMEOUT)
+    expect(t.onActive).not.toHaveBeenCalled()
+    expect(t.onIdle).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})

@@ -11,8 +11,9 @@ const PROMISES: Array<{ icon: IconName; text: string; zero?: string }> = [
   { icon: 'sigma', text: 'AI에는 합계 숫자만' },
 ]
 
-// 히어로(#top) (specs/b2b-redesign REQ-208 AC-208.1, 시안 docs/mockups/b2b-redesign/screens.mjs .l-hero):
+// 히어로(#top) (specs/b2b-redesign REQ-208 AC-208.1, specs/ui-90 AC-421.3, 시안 docs/mockups/ui-90/entry/screens.mjs landingPC·landingPhone .l-hero):
 // 글 덩어리(소개 · 제목 · 안내 · 단추 줄 · 약속) → 대시보드 미리보기(예시 숫자). 숫자 순환·움직임이 없고 서버에서 그대로 그린다.
+// 소개 줄은 body 600, 안내는 모든 폭 lead(AC-421.8). 안내의 "원장님 보고까지"·"한 화면에서"는 줄 끝에서 끊기지 않는다(.nw).
 // 휴대폰은 [AI 분석 보기]와 약속 목록 대신 개인정보 한 줄을 보인다(.pcOnly·.phoneOnly). 배경 장식·반짝이는 없다
 export default function Hero() {
   return (
@@ -20,11 +21,11 @@ export default function Hero() {
       <div className={base.wrap}>
         <div className={`${base.grid} ${styles.layout}`}>
           <div className={styles.text}>
-            <p className={`${base.tSmall} ${styles.kicker}`}>통증 의원 관리자를 위한 AI 업무 도구</p>
+            <p className={styles.kicker}>통증 의원 관리자를 위한 AI 업무 도구</p>
             <h1 className={base.tDisplay}>숫자로 보는 우리 의원</h1>
-            <p className={styles.lead}>
-              환자 통계, 급여·인센티브, 매출·재고, 일일마감과 원장님 보고까지 한 화면에서. 이번 달 숫자는 AI가 읽고 근거와 함께
-              설명합니다.
+            <p className={`${base.tLead} ${styles.lead}`}>
+              청구 전 삭감 예방 사전점검부터 환자 통계·매출·<span className={base.nw}>원장님 보고까지</span>, 의원 일을{' '}
+              <span className={base.nw}>한 화면에서</span> 봐요. 지금은 사전점검을 먼저 쓸 수 있고, 나머지는 차례로 열려요.
             </p>
             <div className={styles.actions}>
               <a href={START_HREF} className={`${base.btn} ${base.btnLg} ${base.btnPrimary} ${styles.start}`}>
@@ -47,7 +48,9 @@ export default function Hero() {
             </ul>
             <p className={`${base.tSmall} ${styles.phoneLine} ${base.phoneOnly}`}>
               <Icon name="shield" size={14} />
-              환자 개인정보는 병원 PC 밖으로 나가지 않습니다
+              <span>
+                환자 개인정보는 <span className={base.nw}>병원 PC</span> 밖으로 나가지 않아요
+              </span>
             </p>
           </div>
           <div className={styles.shot}>

@@ -24,7 +24,8 @@ const EMPTY: SignupInput = { name: '', applicantName: '', phone: '', agreed: fal
 // 칸이 가리킬 설명 id들(틀린 문구 먼저, 그다음 안내). 없으면 속성을 달지 않는다
 const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(' ') || undefined
 
-// 가입 신청 본문(b2b-redesign REQ-215 AC-215.1). 짜임은 승인 시안 docs/mockups/b2b-redesign/screens.mjs의 signupBody다.
+// 가입 신청 본문(b2b-redesign REQ-215 AC-215.1, ui-90 AC-419.3). 짜임은 승인 시안 docs/mockups/b2b-redesign/screens.mjs의 signupBody,
+// 문구는 ui-90 시안 docs/mockups/ui-90/entry/screens.mjs의 signupBody 글자 그대로다(첫 칸 이름 "의원 이름").
 // AuthFrame 480 칸 안에 카드 상자 없이 단계(Stepper) → h1 → 안내 → 폼 → [다른 계정으로 로그인](폼 밖 아래, 왼쪽 정렬 글자 단추).
 // 모양은 공통 묶음 ds.*: 칸 이름 줄(label + labelHint)·입력란·읽기 전용 칸·도움말·체크 상자·주 큰 단추·글자 단추
 // 이메일은 로그인한 구글 계정(서버 guard의 Me) — 보이기만 하고 보내지 않는다(DB가 토큰에서 넣는다)
@@ -32,9 +33,10 @@ export function SignupForm({ email }: { email: string }) {
   const router = useRouter()
   const [values, setValues] = useState<SignupInput>(EMPTY)
   const [errors, setErrors] = useState<SignupErrors>({})
+  // 보내는 동안: [가입 신청]은 막힘(disabled)이 아니라 기다림(aria-busy + "보내는 중…")이다(UI_GUIDE '단추' 기다림)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
-  // 단추가 막히기(다시 그리기) 전에 연달아 들어온 submit도 한 번만 보낸다. 성공하면 넘어가는 동안 풀지 않는다
+  // 다시 그리기 전에 연달아 들어온 submit도 한 번만 보낸다. 성공하면 넘어가는 동안 풀지 않는다
   const sending = useRef(false)
 
   const set = <K extends keyof SignupInput>(key: K, value: SignupInput[K]) =>
@@ -81,7 +83,7 @@ export function SignupForm({ email }: { email: string }) {
       <Stepper current={2} />
 
       <h1 className="mt-6 text-heading-m font-semibold text-ink md:text-heading">가입 신청</h1>
-      <p className="mt-2 text-body text-ink-2">처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인합니다.</p>
+      <p className="mt-2 text-body text-ink-2">처음 로그인하셨어요. 아래 내용을 보내 주시면 관리자가 확인한 뒤 승인해요.</p>
 
       <form className="mt-6 flex flex-col gap-5" noValidate onSubmit={(event) => void onSubmit(event)}>
         <div className={ds.field}>
@@ -98,13 +100,13 @@ export function SignupForm({ email }: { email: string }) {
             </span>
           </div>
           <p id="su-email-help" className={ds.help}>
-            로그인한 계정이라 바꿀 수 없습니다.
+            로그인한 계정이라 바꿀 수 없어요.
           </p>
         </div>
 
         <div className={ds.field}>
           <label htmlFor={IDS.name} className={ds.label}>
-            병원 이름 <span className={ds.labelHint}>필수</span>
+            의원 이름 <span className={ds.labelHint}>필수</span>
           </label>
           <input
             id={IDS.name}
@@ -157,7 +159,7 @@ export function SignupForm({ email }: { email: string }) {
           />
           {fieldError('phone')}
           <p id="su-phone-help" className={ds.help}>
-            승인 관련해 연락이 필요할 때만 씁니다.
+            승인 관련해 연락이 필요할 때만 써요.
           </p>
         </div>
 
@@ -191,7 +193,7 @@ export function SignupForm({ email }: { email: string }) {
               </span>
             </span>
             <span>
-              가입 확인을 위해 이메일·이름·연락처를 저장하는 데 동의합니다. <span className={ds.labelHint}>필수</span>
+              가입 확인을 위해 이메일·이름·연락처를 저장하는 데 동의해요. <span className={ds.labelHint}>필수</span>
             </span>
           </label>
           {fieldError('agreed')}
@@ -199,8 +201,8 @@ export function SignupForm({ email }: { email: string }) {
 
         {failed && <ErrorCard code="E-SIGNUP-FAILED" />}
 
-        <button type="submit" className={`${ds.button.primaryLarge} w-full`} disabled={busy}>
-          가입 신청
+        <button type="submit" className={`${ds.button.primaryLarge} w-full`} aria-busy={busy || undefined}>
+          {busy ? '보내는 중…' : '가입 신청'}
         </button>
       </form>
 

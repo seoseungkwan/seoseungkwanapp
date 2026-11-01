@@ -1,4 +1,4 @@
-// 설치·연결 확인 화면의 바깥 주소(design.md 12절·13절). 주소는 이 파일 한 곳에 둔다
+// 비트 PC 연결 화면의 바깥 주소(design.md 12절·13절). 주소는 이 파일 한 곳에 둔다
 
 /** 도우미·확장 zip 받는 곳: GitHub 릴리스(태그 helper-v*의 precheck-helper-<버전>.zip · precheck-extension-<버전>.zip) */
 export const HELPER_RELEASES_URL = 'https://github.com/seoseungkwan/seoseungkwanapp/releases'

@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { listApplications, setHospitalStatus, type Application } from '@/lib/auth/admin'
 import { appliedOn, countByTab, doneMessage, EMPTY, phoneText, rowsOf, TABS, withStatus, type Tab } from './applications'
 
-// 관리자 · 가입 신청 목록 (REQ-007, b2b-redesign REQ-220, docs/UI_GUIDE.md '관리자'). 문구는 목업 Admin.dc.html, 모양은 b2b-redesign 시안.
+// 관리자 · 가입 승인 (REQ-007, b2b-redesign REQ-220, ui-90 REQ-417, docs/UI_GUIDE.md '관리자'). 짜임은 목업 Admin.dc.html, 모양은 b2b-redesign 시안,
+// 이름("가입 승인" = 계정 메뉴·탭 이름)·"관리자" 표시·말투(~요)는 ui-90 시안 docs/mockups/ui-90/app/gen.py admin_body.
 // 목록은 브라우저가 읽는다(RLS: 관리자는 모든 병원). 상태는 DB 함수 set_hospital_status로만 바꾸고, 성공한 뒤에만 화면 줄을 옮긴다.
 // 앱 틀(위쪽 띠·탭 띠·<main>)은 (app)/layout의 AppShell이 준다
 
-const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있습니다. 거절한 신청은 거절 탭에서 되돌릴 수 있습니다.'
-const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없습니다. 거절 탭에서 언제든 되돌릴 수 있습니다.'
+const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요.'
+// 거절 확인 창 문구는 시안에 없어 말끝만 "~요"로 바꾼다(ui-90 design.md '시안과 다른 점' 11)
+const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없어요. 거절 탭에서 언제든 되돌릴 수 있어요.'
 
 // 화면 안 탭: 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 첫 탭은 왼쪽 12px을 당겨 글자를 제목 끝에 맞춘다.
 // 키보드 초점은 탭 안쪽 2px accent 고리
@@ -29,34 +32,51 @@ const rowClass = `${ds.table.row} md:h-14 max-md:grid max-md:grid-cols-[fit-cont
 const cellPhone = 'max-md:h-auto max-md:border-b-0 max-md:p-0 max-md:first:pl-0 max-md:last:pr-0'
 // DOM은 PC 칸 순서(신청일 먼저). 휴대폰 격자(칸 3개: 신청자 글자 폭(줄 폭의 반까지) · 남은 폭 · 글자 폭).
 // 긴 이름(DB는 30자까지)은 첫 칸 안에서 줄바꿈한다 → 셋째 칸(신청일·단추)은 늘 화면 안에 남는다:
-//   1줄 병원 이름(600, 말줄임) · 오른쪽 신청일(caption muted)
+//   1줄 의원 이름(600, 말줄임) · 오른쪽 신청일(caption muted)
 //   2줄 신청자 · 이메일(small ink-2)
 //   3줄 연락처(small muted) · 오른쪽 동작 단추(44px)
-// 768~1023px(태블릿)은 글 칸(병원 이름·신청자·이메일)이 좁아 말줄임 대신 줄바꿈한다 — title은 마우스로만 보이니 터치·키보드로도
-// 전체 값을 보고 [승인]을 누르게(1024px 이상은 말줄임 그대로, 휴대폰 병원 이름도 말줄임 그대로)
+// 768~1023px(태블릿)은 글 칸(의원 이름·신청자·이메일)이 좁아 말줄임 대신 줄바꿈한다 — title은 마우스로만 보이니 터치·키보드로도
+// 전체 값을 보고 [승인]을 누르게(1024px 이상은 말줄임 그대로, 휴대폰 의원 이름도 말줄임 그대로)
 const wrapTablet = 'md:max-lg:whitespace-normal md:max-lg:break-all'
+// 이메일은 낱말 중간(barun@exampl / e.com)에서 자르지 않는다(ui-90 TASK-19 채점): "@" 바로 뒤에만 줄을 바꿀 자리(<wbr>)를 두고,
+// break-all 대신 overflow-wrap:anywhere — 도메인이 칸보다 길 때만 그 안에서 줄을 바꾼다. 1024px 이상은 말줄임 그대로
+const wrapEmail = 'md:max-lg:whitespace-normal wrap-anywhere'
 const cell = {
   date: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-3 max-md:row-start-1 max-md:ml-3 max-md:justify-self-end max-md:text-caption`,
   clinic: `${ds.table.td} ${cellPhone} truncate ${wrapTablet} text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
   applicant: `${ds.table.td} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-1 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
-  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:before:px-1 max-md:before:content-['·']`,
+  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapEmail} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:before:px-1 max-md:before:content-['·']`,
   phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-3 max-md:mt-1.5 max-md:text-muted`,
   action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-3 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
 // 빈 탭 안내: 제목과 설명을 따로 줄로(목업 <p> 둘). 두 줄이라 위아래 여백을 둔다
 const emptyClass = `${ds.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:px-4`
 // PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
-// 신청일·신청자 120px, 연락처·동작 150px, 병원 이름·이메일은 남은 폭을 반씩. 글 칸(병원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
+// 신청일·신청자 120px, 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩. 글 칸(의원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
 // 표에는 최소 폭이 없다: 768~1023px(본문 720~975px)에서는 정한 칸을 글자 폭에 맞춰 줄여(신청일 116 · 신청자 80 · 연락처 136 · 동작 140)
 // 옆으로 밀지 않고도 모든 칸과 [승인]·[거절]이 보인다. 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
 const COLUMNS = [
   { label: '신청일', width: 'w-30 max-lg:w-29' },
-  { label: '병원 이름', width: '' },
+  { label: '의원 이름', width: '' },
   { label: '신청자', width: 'w-30 max-lg:w-20' },
   { label: '이메일', width: '' },
   { label: '연락처', width: 'w-37.5 max-lg:w-34' },
   { label: '동작', width: 'w-37.5 max-lg:w-35 md:text-right' },
 ] as const
+
+// 이메일 글자: "@" 바로 뒤에 줄을 바꿀 자리(<wbr>). 글자(textContent)·복사한 글자는 그대로다.
+// 크롬은 nowrap 안에서도 <wbr>에서 줄을 바꾼다 → 말줄임하는 1024px 이상에서는 <wbr>을 뺀다(lg:hidden)
+function EmailText({ email }: { email: string }) {
+  const at = email.indexOf('@')
+  if (at < 0) return email
+  return (
+    <>
+      {email.slice(0, at + 1)}
+      <wbr className="lg:hidden" />
+      {email.slice(at + 1)}
+    </>
+  )
+}
 
 function CheckIcon({ size }: { size: number }) {
   return (
@@ -239,9 +259,15 @@ export function AdminApplications() {
 
   return (
     <div aria-busy={rows === null} className="flex flex-col gap-4 max-md:gap-3">
+      {/* 제목 묶음(시안 .loc · .ad-h1 · .ad-p): 작은 "관리자" 표시(small 600 muted + userCheck 14) → h1 → 안내. 줄 사이 4px.
+          안내 최대 폭은 시안 40em × body 14px = 560px → max-w-140 */}
       <div className="flex flex-col gap-1">
-        <h1 className="text-title font-semibold text-ink">가입 신청</h1>
-        <p className="text-body text-ink-2">{INTRO}</p>
+        <p className="flex items-center gap-1.5 text-small font-semibold text-muted">
+          <Icon name="userCheck" size={14} className="shrink-0" />
+          관리자
+        </p>
+        <h1 className="text-title font-semibold text-ink">가입 승인</h1>
+        <p className="max-w-140 text-body text-ink-2">{INTRO}</p>
       </div>
 
       {counts !== null && (
@@ -326,7 +352,7 @@ export function AdminApplications() {
                           {row.applicantName}
                         </td>
                         <td className={cell.email} title={row.email}>
-                          {row.email}
+                          <EmailText email={row.email} />
                         </td>
                         <td className={cell.phone}>
                           {phoneText(row.phone)}

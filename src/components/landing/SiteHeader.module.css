@@ -25,13 +25,15 @@
 
 /* 로고 링크: 보이는 글자 없이 LogoMark만. 누름 영역 48 × 44px(로고 24 + 좌우 12px), 왼쪽 여백만큼 당겨 로고가 본문 왼쪽 끝에 맞는다.
    휴대폰 좌우 틀 여백(16px) 안에 들어간다.
-   메뉴 맨 위에서 잘리지 않게 초점 고리를 안쪽으로 그린다(base의 링크 초점 규칙은 @layer base라 이 규칙이 이긴다) */
+   메뉴 맨 위에서 잘리지 않게 초점 고리를 안쪽으로 그린다(base의 링크 초점 규칙은 @layer base라 이 규칙이 이긴다).
+   짧은 반응(specs/ui-90 REQ-420): 로고·메뉴 링크는 색·투명도만 150ms로 바뀌고 누름에 옮기지 않는다(rules.test.ts 허용 목록) */
 .logo {
   display: flex;
   align-items: center;
   height: 44px;
   padding-inline: 12px;
   margin-inline-start: -12px;
+  transition: color 150ms, opacity 150ms;
 }
 .logo:focus-visible {
   outline-offset: -2px;
@@ -47,6 +49,7 @@
   font-weight: 500;
   color: var(--ink-2);
   white-space: nowrap;
+  transition: color 150ms, opacity 150ms;
 }
 .navLink:hover {
   color: var(--ink);
