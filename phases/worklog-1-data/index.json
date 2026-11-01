@@ -11,12 +11,14 @@
     {
       "step": 1,
       "name": "calc-format",
-      "status": "pending"
+      "status": "completed",
+      "summary": "칸이 글자가 됨. 합계는 읽은 숫자로만. 막는 모양을 손으로 적은 전화·주민번호·번호 글자까지 넓힘(notes.ts, 검사할 때만 글자를 맞추고 받은 글자는 안 바꿈)"
     },
     {
       "step": 2,
       "name": "cell-text",
-      "status": "pending"
+      "status": "completed",
+      "summary": "칸 글자 읽기 cellText.ts(숫자 하나면 더함, 둘 이상·빼기 표시·단위 글자는 합계 제외). memoStore 삭제"
     },
     {
       "step": 3,
@@ -27,7 +29,8 @@
     {
       "step": 4,
       "name": "day-storage",
-      "status": "pending"
+      "status": "completed",
+      "summary": "하루 읽기·저장 worklogDays.ts. 바뀐 칸만 보내고 막힌 칸은 뺌. save는 막힌 칸을 조용히 빼므로 자동 저장(TASK-6)이 blockedCellKeys를 직접 불러 표시해야 함"
     }
   ]
 }
