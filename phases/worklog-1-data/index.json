@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "docs",
-      "status": "pending"
+      "status": "completed",
+      "summary": "ADR-023(업무일지 결정 다섯)·ARCHITECTURE·UI_GUIDE·plan.md 금액 꼬리표 정리. CLAUDE.md의 금액 줄·'집계 숫자만' 줄은 고치지 않고 ADR에 예외로 적음"
     },
     {
       "step": 1,
