@@ -15,7 +15,7 @@
 - **AC-006.5**: `offline` → `offline`, 15초마다 차이만 다시, `online()`이면 바로
 - **AC-006.6**: 개인정보 모양 칸은 그 칸만 빼고 나머지 저장, `blocked`(날짜·칸 이름), `hasUnsaved()` 참, 고칠 때까지 그 칸은 안 보내고 시간이 지나도 다시 안 함, 고쳐서 모양이 없어지면 저장되고 풀림
 - **AC-006.7**: `flush()` → 기다리지 않고 바로 시작
-- **AC-006.8**: 날짜마다 따로, 전체 상태 = 가장 나쁜 것(failed > blocked > offline > saving > saved > idle), `hasUnsaved()`
+- **AC-006.8**: 날짜마다 따로, 전체 상태 = 가장 나쁜 것(failed > offline > saving > blocked > saved > idle), `hasUnsaved()`
 - **AC-006.9**: `dispose()` → 타이머 모두 멈춤, 날짜 상태 비움(`pendingDay` null, `hasUnsaved()` 거짓), 저장 중에 불러도 응답 뒤 타이머·상태가 되살아나지 않음(로그아웃 때만 부른다)
 - **AC-006.10**: `pendingDay(ymd)` → 아직 저장 안 된 최신 값(없으면 null)
 - **AC-006.11**: 되돌려 아는 값과 같아진 칸은 안 보냄. 보낼 칸이 없으면 저장을 부르지 않고 저장 전 상태로
@@ -72,7 +72,7 @@ design.md 10절의 `createAutosave(options)`를 만든다.
 - `dispose()`: 타이머를 멈추고 날짜 상태(`known`·`latest` 포함)를 모두 비운다. 그때 돌던 `save`의 응답은 버린다(세대 번호를 올려, 끝난 저장이 상태를 다시 만들거나 재시도 타이머를 걸지 않게)
 - `pendingDay(ymd)`: pending·saving·offline·failed·blocked인 날의 `latest`(saved·idle이면 null)
 - 이 제어는 화면 밖 모듈 한 벌로 쓰인다(TASK-10 `worklogSession.ts`) → 화면이 내려가도 살아 있어야 하므로 React 수명에 기대지 않는다
-- 시험(`vi.useFakeTimers()`): 묶기(700ms에 또 바뀌면 그 뒤 800ms), **칸 하나만 바꾸면 그 칸만 `save`에 감**, 저장 중 바뀜 → 두 번째 저장은 남은 차이만, 동시 저장 없음(가짜 `save`의 대기 약속으로 확인), **고쳤다 되돌림 → `save` 0번**, 끝 공백만 다름 → `save` 0번, 실패 세 번 뒤 멈춤과 그 사이 시각(2000·5000·15000), 재시도 때 칸이 또 바뀌면 그때의 차이, offline 15초 반복과 `online()`, **막는 모양 칸 + 보통 칸 → 보통 칸만 저장 + `blocked`(칸 이름) + `hasUnsaved()` 참 + 시간이 지나도 저장 안 함**, 그 칸을 고침 → 그 칸 저장·풀림, 막힌 칸이 있는 채 다른 칸을 고침 → 다른 칸만 저장, 날짜 둘(하나 failed·하나 saved → 전체 failed), `dispose()` 뒤 타이머 0개(`vi.getTimerCount()`)·`pendingDay` null·`hasUnsaved()` 거짓, **저장 중 `dispose()` → 그 `save`가 성공해도·실패해도 타이머 0개, `pendingDay` null, `hasUnsaved()` 거짓, `snapshot().state`가 되살아나지 않음**, `pendingDay`(저장 전 값 → 저장 뒤 null), `subscribe` 둘이 같은 상태를 받음, `serverDay`(저장 안 된 칸·초점 칸 그대로, 나머지 바뀜, 반영한 칸은 다음 `change`에서 차이가 아님, 초점 칸의 옛 값이 다른 PC 값을 덮지 않음), `revision`
+- 시험(`vi.useFakeTimers()`): 묶기(700ms에 또 바뀌면 그 뒤 800ms), **칸 하나만 바꾸면 그 칸만 `save`에 감**, 저장 중 바뀜 → 두 번째 저장은 남은 차이만, 동시 저장 없음(가짜 `save`의 대기 약속으로 확인), **고쳤다 되돌림 → `save` 0번**, 끝 공백만 다름 → `save` 0번, 실패 세 번 뒤 멈춤과 그 사이 시각(2000·5000·15000), 재시도 때 칸이 또 바뀌면 그때의 차이, offline 15초 반복과 `online()`, **막는 모양 칸 + 보통 칸 → 보통 칸만 저장 + `blocked`(칸 이름) + `hasUnsaved()` 참 + 시간이 지나도 저장 안 함**, 그 칸을 고침 → 그 칸 저장·풀림, 막힌 칸이 있는 채 다른 칸을 고침 → 다른 칸만 저장, 날짜 둘(하나 failed·하나 saved → 전체 failed), `dispose()` 뒤 타이머 0개(`vi.getTimerCount()`)·`pendingDay` null·`hasUnsaved()` 거짓, **저장 중 `dispose()` → 그 `save`가 성공해도·실패해도 타이머 0개, `pendingDay` null, `hasUnsaved()` 거짓, `snapshot().state`가 되살아나지 않음**, `pendingDay`(저장 전 값 → 저장 뒤 null), `subscribe` 둘이 같은 상태를 받음, `serverDay`(저장 안 된 칸·초점 칸 그대로, 나머지 바뀜, 반영한 칸은 다음 `change`에서 차이가 아님, 초점 칸의 옛 값이 다른 PC 값을 덮지 않음), `revision` 막힌 날 + 끊긴 날이면 전체 상태는 `offline`이다(시험한다).
 
 ## TDD 순서
 

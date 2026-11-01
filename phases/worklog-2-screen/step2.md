@@ -4,11 +4,12 @@
 > Phase 2 `worklog-2-screen` · Step 2 — `specs/worklog/tasks.md`
 > 명세 `specs/worklog/`는 승인됐다. 이 step은 TASK-8 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
-## 시작 전 기다림 (맨 먼저 확인)
+## 시안 승인됨
 
-**시작 전 메인 창이 아래 상태들의 시안을 사용자에게 보여 주고 OK를 받는다**(CLAUDE.md: 화면은 목업 승인 뒤). 승인된 시안 v2에 없는 모양이다.
-- 숫자 칸의 글자('12,000 별도'·'2건 12,000'·'별도 보고'), 항목 이름 고치기, "합계에서 빠졌어요" 표시, 빨간 막힌 칸, 흐린 안내 글 "환자 이름·차트번호는 적지 않아요"
-- 시안 파일: `docs/mockups/worklog/text-cells.html`(예시 글자, "예시" 표시, 메인 창이 만든다). 메인 창이 "시안 OK"를 알려 주지 않았으면 **바로 `blocked`**(사유: "글자 칸 시안 사용자 OK 기다림")로 멈추고 화면 코드를 쓰지 않는다
+사용자가 2026-11-01 시안을 승인했다("좋아", claude.ai artifact `Q2qMenScT5hojDRoqsLcjw`, 파일 `docs/mockups/worklog/text-cells.html`). 기다리지 않고 시작한다.
+- 담긴 상태: 숫자 칸의 글자('12,000 별도'·'2건 12,000'·'별도 보고'), 항목 이름 고치기, "합계에서 빠졌어요" 표시, 빨간 막힌 칸, 흐린 안내 글 "환자 이름·차트번호는 적지 않아요"
+- 사용자 지시: **글씨는 원본과 똑같이**. 양식 칸의 글꼴·굵기·크기는 시안 v2(`docs/mockups/worklog/index.html`)와 엑셀 그대로다(굴림 13pt 굵게, 제목 맑은 고딕 32pt)
+- 모양은 design.md 3절 '시안 승인됨' 줄을 따른다
 
 ## 이 step이 맞출 수용 기준 (AC)
 
@@ -23,7 +24,7 @@
 - **AC-008.7**: 고칠 수 있는 빈 업무사항 칸 흐린 안내 "환자 이름·차트번호는 적지 않아요"
 - **AC-008.8**: 막힌 칸(숫자·비고·업무사항·항목 이름) `aria-invalid` + 빨강
 - **AC-008.9**: 항목 이름 고치면 친 글자 알림, 비우고 나가면 기본 이름, 그날 값이 있으면 그 이름
-- **AC-008.10**: 합계 제외 칸에 "합계에서 빠졌어요"(`aria-describedby`로 이음). 총진료비·조합청구액·미수발생·미수입금·업무사항·비고에는 없음
+- **AC-008.10**: 합계 제외 칸에 "합계에서 빠졌어요"(`aria-describedby`로 이음). 좁은 신환·재진 칸은 눈에 "빠졌어요"만 보이고 온전한 글자는 설명·마우스 올리기에 남는다. 총진료비·조합청구액·미수발생·미수입금·업무사항·비고에는 없음
 - **AC-008.11**: 초점 있는 숫자 칸·항목 이름 칸에 아직 안 침 → 값이 바뀌면 초점 글자도 새 값으로. 친 뒤에는 친 글자 그대로
 
 ## 읽어야 할 파일
@@ -61,7 +62,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- 화면은 승인된 시안대로만 만든다(CLAUDE.md). 칸·글자·합친 칸은 시안·엑셀 그대로이고, 다른 점은 design.md 3절 표뿐이다. 새 모양은 맨 앞 기다림의 시안 OK 뒤에만 만든다
+- 화면은 승인된 시안대로만 만든다(CLAUDE.md). 칸·글자·합친 칸은 시안·엑셀 그대로이고, 다른 점은 design.md 3절 표뿐이다. 새 모양은 맨 앞에 적은 승인 시안 OK 뒤에만 만든다
 - 그리기만 한다: 값은 props, 바뀜은 콜백. 저장·supabase·브라우저 저장소를 부르지 않는다
 - 모든 입력 칸은 `day[key]`로 받고 `onCell(key, 친 글자)`로만 알린다. 읽기·합계·표시는 `cellText`·`calc`를 부른다(이 파일에 규칙을 다시 쓰지 않는다)
 - 양식 안에 `ds` 단추·칩·Pretendard 글자 모양을 넣지 않는다(엑셀 모양만). 클래스는 `sheet.module.css`의 이름만
@@ -84,7 +85,7 @@ export function WorklogSheet(props: {
 - 비고: `maxLength={NOTE_MAX}`, 업무사항 `textarea maxLength={MEMO_MAX} placeholder="환자 이름·차트번호는 적지 않아요"`(고칠 수 있을 때만). 입력 칸은 모두 `spellCheck={false}`(AC-008.3, 브라우저 맞춤법 검사가 글을 밖으로 보낼 수 있다)
 - `readOnly`: 모든 `input`·`textarea`에 `readOnly`
 - `blockedCells`의 칸: `aria-invalid` + `s.blocked`(`--negative` 테두리·`--negative-soft` 바탕)
-- `excludedSumKeys(day)`의 칸: 칸 안 `<span id=… className={s.flag}>합계에서 빠졌어요</span>` + 입력 `aria-describedby`. 칸 높이를 늘리지 않게 겹쳐 둔다(시안대로)
+- `excludedSumKeys(day)`의 칸: 칸 안 `<span id=… className={s.flag}><span className={s.flagHead}>합계에서</span> 빠졌어요</span>` + 입력 `aria-describedby`(읽어 주기에는 온전한 글자). 신환·재진 칸은 `s.flagHead`를 눈에서만 숨기고 `title`로 온전한 글자를 둔다(시안 `text-cells.html`). 칸 높이를 늘리지 않게 겹쳐 둔다(시안대로)
 - `onFocusCell`: 입력 칸 초점이 들어오고 나갈 때 알린다
 - 시험(jsdom + Testing Library): 줄 23개, 각 줄의 칸 수와 `colSpan`·`rowSpan`을 design.md 2절 표로 만든 기대 목록과 견준다(합친 칸 46), 칸 글자, 연보라·회색 클래스 자리(`s.lav`·`s.gray`), 입력 칸 32개와 이름, 자동 칸 글자(가짜 값 예: 현금 '100,000' + 카드 '가상 200,000 별도' + 총진료비 '900,000' → 수납액 "300,000원"), 인원 0 → 빈 칸, 환자 합계 0 → "0", 초점 들어감·나감 글자, 치는 동안 글자 안 바뀜, **`readOnly` 칸에 초점을 둔 채 값·`readOnly`가 바뀜 → 칸에 새 값이 보이고, 그 뒤 치면 새 값에서 이어짐(숫자 칸·항목 이름 칸 각각), 친 뒤 값이 바뀌어도 친 글자 그대로**, 숫자 칸에 inputmode numeric 없음, 항목 이름(기본·고친 이름·비우고 나감·`onCell`), `readOnly`, `aria-invalid`(칸 종류마다), "합계에서 빠졌어요"(열 칸 각각 있음, 넷 없음), 흐린 안내 글자, 입력 칸의 `spellcheck="false"`, `role="button"`·"저장"·시트 탭 글자가 없음
 

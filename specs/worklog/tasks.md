@@ -6,7 +6,7 @@
 > 화면 TASK(8·9·10·11·12)는 승인된 시안 `docs/mockups/worklog/index.html`과 design.md '목업과 다른 점'을 따른다.
 > **실제 Supabase에 migration을 붙여 넣는 일은 사용자 OK가 필요하다**(TASK-4는 파일과 PGlite 시험만). TASK-13(E2E)은 그 뒤에만 돈다.
 > **2026-11-01 명세 변경(사용자 grill 결정, requirements.md 배경)**: 이미 만든 것을 고쳐 다시 만든다. TASK-2(커밋 16ef2ce)·TASK-4(커밋 c5c4c12)는 **기존 파일을 고친다. 시험을 먼저 바꿔 RED를 확인한다**. migration은 실제 Supabase에 아직 안 붙였으므로 같은 파일을 고친다(새 migration을 더하지 않는다). TASK-1·3·5는 커밋 안 된 작업이 작업 폴더에 있다(옛 결정을 담았으니 고치거나 지운다, 되돌리는 git 명령은 쓰지 않는다). 순서: TASK-1 → 2 → 3 → 4 → 5.
-> **화면 시안 기다림**: TASK-8은 글자 칸·항목 이름 고치기·"합계에서 빠졌어요"·빨간 막힌 칸의 시안을 메인 창이 사용자에게 보여 주고 OK를 받은 뒤에만 시작한다(CLAUDE.md 화면 규칙, design.md 3절).
+> **화면 시안 승인됨**: TASK-8의 글자 칸·항목 이름 고치기·"합계에서 빠졌어요"·빨간 막힌 칸 시안 `docs/mockups/worklog/text-cells.html`을 사용자가 2026-11-01 승인했다(design.md 3절). 글씨는 원본과 똑같이
 
 ## TASK-1: 결정과 규칙 문서
 - Step: Phase 1 · Step 0 · `docs`
@@ -70,7 +70,7 @@
 - REQ: REQ-008
 - Files: src/components/worklog/WorklogSheet.tsx, src/components/worklog/WorklogSheet.test.tsx, src/components/worklog/sheet.module.css, docs/mockups/worklog/text-cells.html
 - Tests: src/components/worklog/WorklogSheet.test.tsx
-- TDD: required — **기다림: 시작 전 메인 창이 글자 칸·항목 이름 고치기·"합계에서 빠졌어요"·빨간 막힌 칸·흐린 안내 글의 시안(`docs/mockups/worklog/text-cells.html`, 예시 글자)을 사용자에게 보여 주고 OK를 받는다. OK 전에는 `blocked`(CLAUDE.md 화면 규칙, design.md 3절).** jsdom + Testing Library. 그리기만 하고 값은 props로 받는다(design.md 11-1절). 합친 칸 46개는 design.md 2절 표와 시험이 견준다
+- TDD: required — 시안 승인됨(design.md 3절, `docs/mockups/worklog/text-cells.html`). 글씨는 원본과 똑같이. jsdom + Testing Library. 그리기만 하고 값은 props로 받는다(design.md 11-1절). 합친 칸 46개는 design.md 2절 표와 시험이 견준다
 
 ## TASK-9: 날짜 줄·저장 상태
 - Step: Phase 2 · Step 3 · `toolbar`
