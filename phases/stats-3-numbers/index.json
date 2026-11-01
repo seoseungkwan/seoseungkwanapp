@@ -20,8 +20,8 @@
     {
       "step": 3,
       "name": "stats-mockup",
-      "status": "blocked",
-      "blocked_reason": "목업 승인 대기 — https://claude.ai/artifact/Aty8eb58WBogd3mJKac5y6"
+      "status": "completed",
+      "summary": "docs/mockups/stats/ 클릭 목업 승인됨(2026-11-01, https://claude.ai/artifact/2QDUMeBQ54C1stC9fBLoH6). 문구는 시안이 이긴다: 연결 안내 단추 [비트 PC 연결]. 처방 증감 비교 없음 글자는 formatDelta의 \"비교할 수 없음\"을 쓴다. 칸 이름은 TASK-11 view.ts와 대조할 것"
     }
   ]
 }

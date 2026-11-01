@@ -1,7 +1,9 @@
+승인: 2026-11-01 · https://claude.ai/artifact/2QDUMeBQ54C1stC9fBLoH6 (사용자가 본 시안. 커밋 742533f의 시안과 같은 내용)
+
 # 통계 탭 클릭 목업 — 만드는 분을 위한 메모 (TASK-12 · REQ-512)
 
-> 상태: **사용자 승인 대기**. 승인되면 이 줄 위에 승인 날짜·링크 줄을 적는다(AC-512.2). 승인 전에는 TASK-13~16을 시작하지 않는다.
-> 온라인 시안(비공개 artifact): https://claude.ai/artifact/Aty8eb58WBogd3mJKac5y6
+> 상태: **사용자 승인됨** (2026-11-01, "stats mockup OK"). 문구는 시안이 이긴다(AC-513.1) — 연결 안내 단추는 시안의 [비트 PC 연결].
+> 온라인 시안(비공개 artifact): https://claude.ai/artifact/2QDUMeBQ54C1stC9fBLoH6 (처음 올린 사본: https://claude.ai/artifact/Aty8eb58WBogd3mJKac5y6)
 
 ## 0. 파일과 만드는 법
 - `gen.py` → `index.html`: `python3 docs/mockups/stats/gen.py`. 글꼴·토큰·앱 틀 css는 `docs/mockups/ui-90/app/`의 `fonts.css`·`css_page.css`·`css_app.css`를 그대로 읽어 넣고, 통계 몫 css(`STATS_CSS`)를 뒤에 더한다.
