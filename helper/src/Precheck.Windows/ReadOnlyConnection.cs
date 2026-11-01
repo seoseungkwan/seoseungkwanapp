@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.InteropServices;
 using Precheck.Core.Bit;
 
@@ -62,6 +63,89 @@ public static class VendorRuntime
     }
 }
 
+/// <summary>
+/// 원본 ReadOnlyConnection.Provider를 실행할 때 만든다: `private sealed class Provider : BITDataBaseCommon { public Provider() : base(null) { } }`.
+/// 원본은 빌드 때 비트 DLL을 참조해 물려받았고, 도우미는 비트 DLL 없이 빌드하므로 같은 물려받은 형을 System.Reflection.Emit으로 만든다.
+/// 비트 형이 추상(abstract)이어도 된다(추상 형은 바로 만들 수 없지만 물려받은 형은 만들 수 있다. 0.1.0은 바로 만들어 E-BIT-DB-FAILED였다).
+/// 만든 형은 비트 형마다 한 번만 만든다(동적 어셈블리는 내려놓지 못한다).
+/// </summary>
+public static class VendorProvider
+{
+    private static readonly object Sync = new object();
+    /// <summary>비트 형 → 만든 형. 만들다 실패했으면 null(다시 부를 때마다 동적 어셈블리가 늘지 않게)</summary>
+    private static readonly Dictionary<Type, Type?> Made = new Dictionary<Type, Type?>();
+
+    /// <summary>vendorType을 물려받고 생성자에서 base(null)을 부르는 형의 새 개체. 물려받을 수 없으면 E-BIT-DB-FAILED.</summary>
+    public static object Create(Type vendorType)
+    {
+        if (vendorType == null) throw new ArgumentNullException(nameof(vendorType));
+        try
+        {
+            return Activator.CreateInstance(SubclassOf(vendorType))!;
+        }
+        catch (Exception e) when (!(e is BitException))
+        {
+            // 비트 생성자 안의 예외 글은 버린다(접속 정보가 섞일 수 있다)
+            throw new BitException(BitErrors.DbFailed);
+        }
+    }
+
+    private static Type SubclassOf(Type vendorType)
+    {
+        lock (Sync)
+        {
+            if (Made.TryGetValue(vendorType, out var made)) return made ?? throw new BitException(BitErrors.DbFailed);
+            if (vendorType.IsSealed || vendorType.IsInterface || vendorType.IsGenericTypeDefinition) throw new BitException(BitErrors.DbFailed);
+            var baseConstructor = NullOwnerConstructor(vendorType) ?? throw new BitException(BitErrors.DbFailed);
+
+            var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Precheck.VendorProvider"), AssemblyBuilderAccess.Run);
+            var module = assembly.DefineDynamicModule("Precheck.VendorProvider");
+            var builder = module.DefineType("Precheck.VendorProvider.Provider", TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, vendorType);
+            var constructor = builder.DefineConstructor(
+                MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+                CallingConventions.Standard,
+                Type.EmptyTypes);
+            var il = constructor.GetILGenerator();
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Call, baseConstructor);
+            il.Emit(OpCodes.Ret);
+
+            try
+            {
+                made = builder.CreateType();
+            }
+            finally
+            {
+                Made[vendorType] = made;
+            }
+            return made ?? throw new BitException(BitErrors.DbFailed);
+        }
+    }
+
+    /// <summary>
+    /// 원본 `base(null)`이 고르는 생성자: 물려받은 형이 부를 수 있고(public·protected) 인자 하나가 null을 받는 것.
+    /// 여럿이면 C#처럼 가장 좁은 인자 형(다른 모든 후보의 인자 형으로 바꿀 수 있는 것) 하나. 없거나 하나로 못 고르면 null.
+    /// </summary>
+    private static ConstructorInfo? NullOwnerConstructor(Type vendorType)
+    {
+        var candidates = vendorType.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(c => c.IsPublic || c.IsFamily || c.IsFamilyOrAssembly)
+            .Where(c =>
+            {
+                var parameters = c.GetParameters();
+                if (parameters.Length != 1) return false;
+                var type = parameters[0].ParameterType;
+                return !type.IsValueType && !type.IsByRef && !type.IsPointer;
+            })
+            .ToList();
+        var best = candidates
+            .Where(c => candidates.All(other => other.GetParameters()[0].ParameterType.IsAssignableFrom(c.GetParameters()[0].ParameterType)))
+            .ToList();
+        return best.Count == 1 ? best[0] : null;
+    }
+}
+
 /// <summary>굳힌 접속 글자와 붙을 대상. 접속 글자(비밀번호 포함)는 메모리에만 있고 어디에도 쓰지 않는다.</summary>
 public sealed class ReadOnlyConnectionInfo
 {
@@ -111,22 +195,35 @@ public static class ReadOnlyConnection
         return new ReadOnlyConnectionInfo(options.ConnectionString, new BitTarget(installRoot, options.DataSource, options.InitialCatalog));
     }
 
-    /// <summary>
-    /// 원본은 BITDataBaseCommon을 물려받아 protected bitGetConnection()을 불렀다(빌드 때 비트 DLL 참조).
-    /// 도우미는 비트 DLL 없이 빌드하므로 실행할 때 리플렉션으로 같은 것을 부른다: 생성자(인자 하나, null) → bitGetConnection().
-    /// </summary>
+    /// <summary>설치 폴더 EXE의 비트 DLL에서 BITDataBaseCommon을 찾아 접속 글자를 읽는다.</summary>
     private static string VendorConnectionString(string installRoot)
     {
+        Type type;
+        try
+        {
+            type = VendorRuntime.Load(installRoot, VendorAssembly).GetType(VendorType, true)!;
+        }
+        catch (Exception e) when (!(e is BitException))
+        {
+            // 비트 DLL 안의 예외 글은 버린다(접속 정보가 섞일 수 있다)
+            throw new BitException(BitErrors.DbFailed);
+        }
+        return VendorConnectionString(type);
+    }
+
+    /// <summary>
+    /// 원본 Provider처럼 비트 형을 물려받은 개체(VendorProvider)로 protected bitGetConnection()을 불러 접속 글자를 받는다.
+    /// 접속 글자(비밀번호 포함)는 돌려줄 뿐 어디에도 쓰지 않는다. 못 하면 E-BIT-DB-FAILED(비트 예외 글은 버린다).
+    /// </summary>
+    public static string VendorConnectionString(Type vendorType)
+    {
+        if (vendorType == null) throw new ArgumentNullException(nameof(vendorType));
         object? provider = null;
         try
         {
-            var type = VendorRuntime.Load(installRoot, VendorAssembly).GetType(VendorType, true)!;
+            provider = VendorProvider.Create(vendorType);
             const BindingFlags members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-            var constructor = type.GetConstructors(members)
-                .FirstOrDefault(c => c.GetParameters().Length == 1 && !c.GetParameters()[0].ParameterType.IsValueType)
-                ?? throw new BitException(BitErrors.DbFailed);
-            provider = constructor.Invoke(new object?[] { null });
-            var method = type.GetMethod("bitGetConnection", members, null, Type.EmptyTypes, null) ?? throw new BitException(BitErrors.DbFailed);
+            var method = vendorType.GetMethod("bitGetConnection", members, null, Type.EmptyTypes, null) ?? throw new BitException(BitErrors.DbFailed);
             using var source = method.Invoke(provider, null) as SqlConnection ?? throw new BitException(BitErrors.DbFailed);
             return source.ConnectionString;
         }
