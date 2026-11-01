@@ -12,7 +12,8 @@
     {
       "step": 1,
       "name": "bridge-contract",
-      "status": "pending"
+      "status": "completed",
+      "summary": "revenue.days(patient:false, maxDays:31, args {from,to}) 명령 표·SMALL_COMMANDS·도우미 명령 표 시험에 추가. src/types/revenue.ts(RevenueDayRow·RevenueCodeRow·RevenueDaysResult, REVENUE_*_KEYS·REVENUE_REST_CODE='_REST'·MAX_DAYS 31·MAX_CODES 1000·NAME_MAX 100). isRevenueDays: 칸 정확히·날짜 하루씩 이어짐·0~31줄·0 이상 안전 정수|null·unconfirmed↔금액 7칸 짝·코드 모양/중복/1000개·name 1~100자, C0·DEL·C1·U+2028/2029 거부 → TASK-3 도우미는 이름에서 이 문자를 빼야 함. 명세 변경(기타 금액 칸) 뒤 칸 더하기 필요할 수 있음"
     },
     {
       "step": 2,
