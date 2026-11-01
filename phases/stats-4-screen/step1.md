@@ -11,12 +11,12 @@
 
 - **AC-514.1**: Given `/stats`를 엶, When 그리면, Then 고른 기간과 비교 기간의 저장된 숫자를 `readDays`·`readMonths`·`readCoverage`로 읽어 섹션을 그린다. 읽는 동안 섹션 자리는 "불러오는 중"이고, 저장된 숫자가 하나도 없으면 맨 위에 "아직 저장된 통계가 없어요" + 자료 고르기 안내다. 읽기 실패는 오류 카드(`E-STATS-READ-FAILED`) + [다시 읽기]다
 - **AC-514.2**: Given 기간 단추 묶음(`role="group"`, 이름 "기간": 최근 7일 · 최근 30일 · 최근 90일 · 최근 12개월, 처음 30일만 `aria-pressed="true"`), When 다른 단추를 누르면, Then 그 단추만 눌림이 되고 기간 글자와 섹션이 그 기간으로 바뀐다. 처방별 신환·재진은 Worker에 그 기간을 다시 계산시킨다(다시 불러오지 않는다)
-- **AC-514.3**: Given 비트 PC(`useBridge({ worker })` 상태 `ready`), When [비트에서 불러오기]를 누르면, Then 불러올 범위(AC-511.1)로 `stream('stats.rows', {from, to})` → Worker `load` → 저장 모양과 Worker가 준 저장할 덮은 기간(AC-505.4, 끝은 오늘 진료 끝이면 오늘·아니면 어제)을 `saveStats(source 'bit')` → 새 숫자로 다시 그린다. 그동안 단추는 막히고 "불러오는 중"이다. 끝나면 처방별 신환·재진과 원장님 보고 문장이 생긴다. 화면은 조각·진료 줄을 받지 않는다(Worker만 통로에 넘긴다)
+- **AC-514.3**: Given 비트 PC(`useBridge({ worker })` 상태 `ready`), When [비트에서 불러오기]를 누르면, Then 불러올 범위(REQ-511 `statsRange`의 `load`)로 `stream('stats.rows', {from, to})` → Worker `load` → 저장 모양과 Worker가 준 저장할 덮은 기간(REQ-505 Worker가 정함, 끝은 오늘 진료 끝이면 오늘·아니면 어제)을 `saveStats(source 'bit')` → 새 숫자로 다시 그린다. 그동안 단추는 막히고 "불러오는 중"이다. 끝나면 처방별 신환·재진과 원장님 보고 문장이 생긴다. 화면은 조각·진료 줄을 받지 않는다(Worker만 통로에 넘긴다)
 - **AC-514.4**: Given 파일, When 끌어다 놓거나 [파일 고르기]로 넣으면, Then 지금 `runAnalysis` 길 그대로 분석해 `toMonthPayload`·`toDayPayloads`와 파일이 덮은 기간 하나(성공한 파일들의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하 — 파일 길에는 "오늘 진료 끝"이 없다)를 `saveStats(source 'file')`로 저장하고 다시 그린다. 파일마다 실패는 오류 카드(번호)로 보인다. 파일 이름은 화면에만 보이고 어디로도 보내지 않는다
 - **AC-514.5**: Given 확장이 없는 브라우저·휴대폰(상태 `no-extension`), When 그리면, Then [비트에서 불러오기] 대신 "비트 PC의 크롬에서 불러올 수 있어요"와 파일 길이 보인다. 상태가 `no-helper`·`update-helper`·`update-extension`이면 그 안내와 [설치·연결 확인](`/claim/setup`) 링크다
 - **AC-514.6**: Given 저장 실패, When 그리면, Then 새 숫자는 화면에 그대로 두고 오류 카드 `E-STATS-SAVE-FAILED` + [다시 저장]이며, 누르면 같은 값을 다시 보낸다. 품질 incomplete면 저장하지 않고 "일부 기록을 확인하지 못해 저장하지 않았어요"와 확인 건수(차트번호 없는 내원 N건 등)를 보인다
 - **AC-514.7**: Given 저장된 숫자, When 그리면, Then 기간 머리에 출처 줄 "자료: 비트 PC · {월}월 {일}일 {시}:{분} 저장" 또는 "자료: 파일 · …"이 있다(가장 최근 `updated_at`·`source`)
-- **AC-514.8**: Given 비트 PC, When 그리면, Then [비트에서 불러오기] 옆에 체크 상자 "오늘 진료 끝"(처음 꺼짐)이 있고, 켜고 불러오면 AC-505.6대로 오늘 숫자를 끝난 날로 저장한다
+- **AC-514.8**: Given 비트 PC, When 그리면, Then [비트에서 불러오기] 옆에 체크 상자 "오늘 진료 끝"(처음 꺼짐)이 있고, 켜고 불러오면 REQ-505(오늘 진료 끝)대로 오늘 숫자를 끝난 날로 저장한다
 - **AC-514.9**: Given 화면 상태, When 보면, Then 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 있고 브라우저 저장소·주소(쿼리)·`history.state`에 넣지 않는다. 주소는 `/stats` 그대로다
 - **AC-514.10**: Given 390·768·1440px, When 그리면, Then 섹션이 겹치거나 잘리지 않고 가로로 밀리지 않으며, 768px 미만에서는 섹션이 세로로 쌓이고 기간 단추는 44px이다(목업 승인본 배치)
 

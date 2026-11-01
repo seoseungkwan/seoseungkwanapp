@@ -8,7 +8,7 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-507(통계 숫자 저장·읽기 (`lib/storage/stats.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고 그 뒤 `stats_coverage`에 덮은 기간 한 줄을 넣는다. 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다
+- **AC-507.1**: Given 저장 모양(달·일)·덮은 기간·출처(`'bit'|'file'`), When `saveStats`, Then 모든 값이 `validateMonthPayload`·`validateDayPayload`를 지날 때만 `stats_months`·`stats_days`에 upsert(충돌 열쇠 `hospital_id + month|day`)하고, 그 뒤 덮은 기간이 null이 아닐 때만 `stats_coverage`에 한 줄을 넣는다(null이면 덮은 기간 줄을 쓰지 않는다 — 시험이 본다). 하나라도 걸리면 아무것도 보내지 않고 `E-STATS-SAVE-FAILED`다. 보내는 줄의 칸은 `month|day`·`partial`·`source`·`payload`(덮은 기간 줄은 `from_day`·`to_day`·`source`)뿐이다. 보내기가 실패해도 `E-STATS-SAVE-FAILED`다
 - **AC-507.2**: Given 기간, When `readDays({from, to})`·`readMonths({from, to})`·`readCoverage({from, to})`, Then 그 기간 줄만 읽어 검사를 지난 것만 날짜(달) 순으로 돌려주고, 검사에 걸려 뺀 줄 수와 가장 최근 `updated_at`·`source`를 같이 준다. `readCoverage`는 그 기간과 겹치는 덮은 기간을 합쳐(`mergeRanges`) 돌려준다. 읽기 실패는 `E-STATS-READ-FAILED`다
 - **AC-507.3**: Given `src/lib/storage/stats.ts`(통계 파일만 — 다른 브랜치의 `lib/storage` 파일에 규칙을 씌우지 않는다), When ESLint를 돌리면, Then `lib/parsers`·`lib/bridge`·`workers`를 import할 수 없고 `lib/analytics`는 `dates`·`coverage`만 된다. 환자 자료 구역은 지금처럼 `lib/storage`를 import할 수 없다. `console`·브라우저 저장소를 쓰지 않는다. 시험: `src/guardrails.test.ts`
 

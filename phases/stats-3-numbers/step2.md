@@ -1,6 +1,6 @@
 # Step 2: stats-view
 
-> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.7
+> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.8
 > Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 2 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-11 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-029 (precheck 029.2 첫 재방문까지 날수) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -10,13 +10,13 @@
 전체 문장은 `/specs/stats/requirements.md`의 REQ-511(통계 화면 숫자 (`components/stats/view.ts`))에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-511.1**: Given 오늘과 기간(`'7d' | '30d' | '90d' | '12m'`, 처음 `'30d'`), When `statsRange`, Then 일 기간은 어제까지 N일(대시보드 `periodRange` 그대로), `'12m'`은 이번 달을 넣은 12달이다. 비교 기간은 일 기간이면 바로 앞 같은 일수(`PreviousEqualDays`), `'12m'`이면 작년 같은 12달(`PreviousYear`)이다. 불러올 범위는 비교 기간 첫날이 든 달의 1일 ~ 오늘이고 800일 이하다
-- **AC-511.2**: Given 저장 모양과 기간, When 기간 요약을 만들면, Then 네 칸이다: 평균 환자 수(일 기간은 자료 있는 날 평균, `'12m'`은 자료 있는 달 평균, 소수점 아래는 버림), 신환(합), 재진(합), 비교 기간보다(평균의 `compareNumbers` 증감). 자료 없는 날·달은 0으로 치지 않고, 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다
+- **AC-511.2**: Given 저장 모양과 기간, When 기간 요약을 만들면, Then 네 칸이다: 평균 환자 수(일 기간은 자료 있는 끝난 날 평균, `'12m'`은 자료 있는 **끝난 달**(`partial: false`) 평균, 소수점 아래는 버림), 신환(합), 재진(합), 비교 기간보다(평균의 `compareNumbers` 증감). 덜 끝난 칸(이번 달 같은 `partial: true` 달·날)은 평균과 증감에서 빼고, 비교 기간에서도 그 칸과 짝인 칸(작년 같은 달)을 뺀다 — 엔진이 '집계 중' 칸을 견주지 않는 것(stats-core 007.1 '완전한 칸끼리만 증감')과 같은 규칙이다. 신환·재진 합에는 덜 끝난 칸도 넣고 '일부 기간' 표시를 붙인다. 자료 없는 날·달은 0으로 치지 않고, 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다. 시험: 11월 15일의 12개월 보기 — 덜 끝난 11월과 작년 11월을 빼고 견주어 그 달 때문에 ▼가 나오지 않는다
 - **AC-511.3**: Given 저장 모양(과 덮은 기간), When 환자 수 추이를 만들면, Then 일 기간은 자료 있는 날마다 신환·재진 칸(대시보드 `trendBuckets` 그대로), `'12m'`은 달 숫자(`MonthPayload.totals`)마다 칸이고, 덜 끝난 칸은 '일부 기간'이다
 - **AC-511.4**: Given 저장 모양, When 재방문율을 만들면, Then 7·14·30일 = 그 값이 null이 아닌 칸들의 재방문 합 ÷ 그 칸들의 집단 합이다. 모두 null이면 '집계 중', 분모가 0이면 '자료 없음'이다. 첫 재방문까지 날수는 30일 값이 숫자인 칸들로 원본 `CohortMonthResult`의 네 칸 "7일 안"(within7) · "8~14일"(within14 − within7) · "15~30일"(within30 − within14) · "30일 넘어 다시 옴"(after30)과, 그 밖 "아직 다시 안 옴"(cohort − within30 − after30, 원본 `SingleVisitNewPatients`)이고 다섯의 합 = 그 칸들의 집단 합이다. "30일 넘어 다시 옴"은 불러온 자료 끝날까지 본 수라고 안내 글이 붙는다. 원본 `CohortTests.cs`의 사례(신환율·기존환자율·신환 재방문율의 분모 구별, 분모 0이면 미산출, 재방문 칸 합, 덜 끝난 달)를 옮겨 통과한다
 - **AC-511.5**: Given 저장 모양, When 요일별 환자 수를 만들면, Then 대시보드 `weekdayBuckets` 규칙 그대로다(`'12m'`도 기간 안 일 숫자로)
 - **AC-511.6**: Given 저장 모양, When 처방 목록을 만들면, Then 기간 건수가 큰 5개(같으면 코드 순)이고 처방마다 이름(가장 최근 날의 이름)·기간 건수·비교 기간 건수·증감·신환 건수·재진 건수가 있다
-- **AC-511.8**: Given 처방 하나, When `rxDetail`로 그 처방의 칸별 건수를 만들면, Then 칸은 기간에 따라 정해진다: 최근 7일·30일 = 일, 최근 90일 = 주(월~일), 최근 12개월 = 달. `buildTrend`(덮은 기간 포함)의 점을 그대로 쓰고 비교 기간 점도 같은 칸으로 준다
 - **AC-511.7**: Given `components/stats/view.ts` 소스, When 보면, Then 순수 함수(React·Supabase·`fetch`·브라우저 저장소 없음)이고 날짜는 `lib/analytics/dates.ts`, 증감은 `compareNumbers`, 대시보드 `components/dashboard/summary/view.ts`의 함수는 불러 쓰기만 한다
+- **AC-511.8**: Given 처방 하나, When `rxDetail`로 그 처방의 칸별 건수를 만들면, Then 칸은 기간에 따라 정해진다: 최근 7일·30일 = 일, 최근 90일 = 주(월~일), 최근 12개월 = 달. `buildTrend`(덮은 기간 포함)의 점을 그대로 쓰고 비교 기간 점도 같은 칸으로 준다
 
 ## 읽어야 할 파일
 
@@ -68,11 +68,12 @@
 ### 1. 코드 (`src/components/stats/view.ts`, 순수 — React·Supabase·`fetch`·브라우저 저장소 없음)
 - design.md TASK-11 시그니처. 모든 함수는 저장 모양과 함께 덮은 기간(`readCoverage`가 준 합친 범위 목록)을 받는다. AC-511.1~511.6·511.8의 셈을 그대로:
   - `statsRange`: 일 기간 = 대시보드 `periodRange(today, N)`, `'12m'` = 이번 달 포함 12달, 비교 = `comparisonRange(…, 'PreviousEqualDays' | 'PreviousYear')`, 불러올 범위 = 비교 첫날이 든 달 1일 ~ 오늘(800일 이하를 시험)
-  - 기간 요약 네 칸, 환자 수 추이(일: `trendBuckets` 재사용 / 달: `MonthPayload.totals`), 재방문율 7·14·30 + 첫 재방문까지 날수 다섯 칸(원본 네 칸 7일 안·8~14일·15~30일·30일 넘어 다시 옴 + 아직 다시 안 옴, 합 = 집단 합), 요일별(`weekdayBuckets` 재사용), 처방 목록 상위 5 + `rxDetail`(`buildTrend`, 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달, 비교 기간도 같은 칸 — AC-511.8)
+  - 기간 요약 네 칸(평균·증감은 끝난 칸만 — `'12m'`에서 덜 끝난 이번 달(`partial: true`)은 평균·증감에서 빼고 비교 기간의 짝(작년 같은 달)도 뺀다, 엔진의 '집계 중' 칸 빼기와 같은 규칙. 신환·재진 합에는 넣고 '일부 기간' 표시), 환자 수 추이(일: `trendBuckets` 재사용 / 달: `MonthPayload.totals`), 재방문율 7·14·30 + 첫 재방문까지 날수 다섯 칸(원본 네 칸 7일 안·8~14일·15~30일·30일 넘어 다시 옴 + 아직 다시 안 옴, 합 = 집단 합), 요일별(`weekdayBuckets` 재사용), 처방 목록 상위 5 + `rxDetail`(`buildTrend`, 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달, 비교 기간도 같은 칸 — AC-511.8)
 - 자료 없는 날·달은 0으로 치지 않는다. 평균은 버림
 
 ### 2. 시험 (`view.test.ts`)
 - AC마다 가짜 저장 모양(시험 안에서 만듦)으로. AC-511.4는 원본 `CohortTests.cs`의 사례(신환율·기존환자율·신환 재방문율의 분모 구별, 분모 0이면 미산출, 재방문 칸 합 = 재방문 신환, 덜 끝난 달)를 옮긴다(원본 시험 이름을 시험 이름에). 원본에서 옮기지 않는 것(완전 관찰 수 `FullyObserved*`, 치료 묶음 `Treatments`, 엑셀·HTML)은 시험 머리 `knownDiffs`에 이유와 함께. AC-511.8: 기간마다 `rxDetail`의 칸 크기
+- AC-511.2: 11월 15일의 12개월 보기 사례 — 덜 끝난 11월(적은 숫자)과 작년 11월을 빼고 견주어 ▼(가짜 감소)가 나오지 않음, 비교 기간 자료 없음 → "비교할 자료가 없어요"
 - AC-511.7: 소스 글자에 `react`·`supabase`·`fetch`·`localStorage`가 없고 대시보드 `view.ts`를 불러온다
 
 ## TDD 순서
@@ -92,7 +93,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.7이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.8이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

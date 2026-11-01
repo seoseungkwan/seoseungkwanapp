@@ -48,7 +48,7 @@ public static class StatsCommands       // Register(Dispatcher, BitServices): "s
 
 - 관문: `Sql.cs`의 `IsAllowed`·`ParametersOf` 두 줄이 `StatsSql`에 없으면 거절하던 것을 `StatsSql`도 본다(아래 '다른 작업과 겹치는 파일'). `Sql.All`은 청구 목록 그대로라 청구 시험(`ReadOnlyGuard.test.cs`의 사본 대조)이 바뀌지 않는다
 - 시간 제한: 원본처럼 자료 SQL 150초, 메타(`HistoryGuard`) 15초. 넘으면 `E-BIT-READ-FAILED`
-- 읽는 순서: `HospitalGate.Open(services)` → `HistoryGuard`(1이면 `E-STATS-HISTORY`) → 진료 줄(700,000줄 넘으면 `E-STATS-TOO-BIG`) → 기간 합계 → 날짜별 → 처방 이름(진료 줄에 나온 코드만 남김) → 보고 네 벌(TASK-4) → JSON → `Chunker.Split`. 하나라도 예외면 `error`만(반쪽 없음, 청구 design.md 9-2와 같은 규칙)
+- 읽는 순서: `HospitalGate.Open(services)` → `HistoryGuard`(1이면 `E-STATS-HISTORY`) → 진료 줄(700,000줄 넘으면 `E-STATS-TOO-BIG`) → 기간 합계 → 날짜별 → 처방 이름(진료 줄에 나온 코드만 남김) → 보고 네 벌(TASK-4) → JSON → `Chunker.Send(sink, request.Id, json)`(안에서 `Split`으로 나눠 보냄). 하나라도 예외면 `error`만(반쪽 없음, 청구 design.md 9-2와 같은 규칙)
 - `Program.cs`: 지금 `BitCommands.Register(dispatcher, HelperServices.Create());` 다음에 `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄만 더한다(지금 `services` 변수가 없다. 지금 줄을 고치지 않는 가장 작은 더하기. `HelperServices.Create()`는 만들기만 하고 비트를 건드리지 않아 두 번 불러도 된다)
 
 #### 도우미 → Worker JSON (`stats.rows` 답, 조각을 모은 글자)

@@ -17,7 +17,7 @@
 - **AC-513.6**: Given 원장님 보고 문장, When 그리면, Then 일일(오늘·어제)·월말(이번 달·지난달) 고르기 단추 묶음, 보고 글(글자로만, 줄바꿈 그대로), [복사], '확인 필요' 줄 표시(색과 함께 "확인 필요" 글자)가 있다. [복사]는 대시보드 [복사]와 같은 동작이다(`navigator.clipboard.writeText`, 2초 "복사했어요", 실패하면 직접 복사 안내, 폭 흔들림 없음). `ok: false` 벌은 "이 기간은 보고를 확정할 수 없어요" + 비트 원본 통계에서 확인하라는 안내다
 - **AC-513.7**: Given 처방별 신환·재진, When 그리면, Then 머리 글(`rxVisitHeadline`), 처방마다 신환·재진·합계 표(합계가 큰 차례 10개, [모두 보기]로 나머지), [표 복사](`formatRxVisitSplit` 글)가 있다
 - **AC-513.8**: Given 비트 PC에서 불러온 자료가 없음, When 처방별 신환·재진·원장님 보고 문장을 그리면, Then "비트 PC에서 불러오면 보여요" + 한 줄 이유(진료 줄·금액은 서버에 저장하지 않는다)다
-- **AC-513.9**: Given `components/stats/sections/**`와 `components/stats/view.ts`(시험 밖) 소스(화면 조립 파일 `StatsScreen.tsx`·`useStatsData.ts`·`useStatsWorker.ts`·`SourcePicker.tsx`는 저장·Worker·통로를 불러야 하므로 이 AC 밖이고 AC-514.9를 따른다), When 보면, Then Supabase·`fetch`·브라우저 저장소·`lib/bridge`·`workers`를 쓰지 않고(섹션은 props만 받는다) `ds` 공통 모양과 토큰만 쓰며, 상자 안 상자가 없고 앱 화면 규칙 시험(`components/ui/classes.test.ts` 검사 목록에 `src/components/stats`를 더함)을 통과한다
+- **AC-513.9**: Given `components/stats/sections/**`와 `components/stats/view.ts`(시험 밖) 소스(화면 조립 파일 `StatsScreen.tsx`·`useStatsData.ts`·`useStatsWorker.ts`·`SourcePicker.tsx`는 저장·Worker·통로를 불러야 하므로 이 AC 밖이고 REQ-514의 화면 상태 규칙을 따른다), When 보면, Then Supabase·`fetch`·브라우저 저장소·`lib/bridge`·`workers`를 쓰지 않고(섹션은 props만 받는다) `ds` 공통 모양과 토큰만 쓰며, 상자 안 상자가 없고 앱 화면 규칙 시험(`components/ui/classes.test.ts` 검사 목록에 `src/components/stats`를 더함)을 통과한다
 
 ## 읽어야 할 파일
 
