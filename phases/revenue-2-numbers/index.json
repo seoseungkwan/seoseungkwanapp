@@ -16,7 +16,8 @@
     {
       "step": 2,
       "name": "treatment-groups",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/revenue/treatments.ts + src/types/rxGroups.ts: suggestGroups·groupTreatments·addGroup·renameGroup·deleteGroup·moveCode, 오류 이유 empty·tooLong·duplicate·badChars·digits·tooMany. 이름 검사의 제어 문자는 step 글자(\\u007f)보다 넓혀 U+0000-001F·U+007F-009F로 DB [[:cntrl:]]와 맞춤. TASK-14 주의: moveCode는 _REST를 막지 않고 DB는 거부하므로 편집 화면 목록에서 _REST를 꼭 뺀다(AC-014.2). 짝 없는 서로게이트 이름은 클라이언트가 받고 jsonb가 거부한다(드묾, 반쪽 저장 없음)"
     },
     {
       "step": 3,
