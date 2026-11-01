@@ -53,3 +53,6 @@
 {"ts": "2026-11-01T09:58:50Z", "task": "TASK-4", "reqs": ["REQ-504"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'helper/tests/stats-report.dotnet.test.ts'", "tests": ["helper/tests/stats-report.dotnet.test.ts"], "expect": "red", "source": "tdd-run"}
 {"ts": "2026-11-01T09:59:17Z", "task": "TASK-4", "reqs": ["REQ-504"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'helper/tests/stats-report.dotnet.test.ts'", "tests": ["helper/tests/stats-report.dotnet.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-11-01T10:06:41Z", "task": "TASK-5", "reqs": ["REQ-505"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/workers/stats/assemble.test.ts' 'src/workers/stats/helperData.test.ts' 'src/workers/stats/jobs.test.ts' 'src/workers/statsClient.test.ts' 'src/lib/errors.test.ts'", "tests": ["src/workers/stats/assemble.test.ts", "src/workers/stats/helperData.test.ts", "src/workers/stats/jobs.test.ts", "src/workers/statsClient.test.ts", "src/lib/errors.test.ts"], "expect": "green", "source": "tdd-run"}
+{"ts": "2026-11-01T10:16:16Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-11-01T10:28:00Z", "task": null, "phase": "RED", "exit": 1, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-11-01T10:41:35Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
