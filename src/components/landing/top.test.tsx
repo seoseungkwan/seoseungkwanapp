@@ -13,6 +13,9 @@ import SiteHeader from './SiteHeader'
 import headerStyles from './SiteHeader.module.css'
 
 const header = renderToStaticMarkup(<SiteHeader />)
+// 시안 docs/mockups/ui-90/entry/screens.mjs HERO_LEAD에서 nw() 감싸개를 뺀 글자
+const HERO_LEAD =
+  '청구 전 삭감 예방 사전점검부터 환자 통계·매출·원장님 보고까지, 의원 일을 한 화면에서 봐요. 지금은 사전점검을 먼저 쓸 수 있고, 나머지는 차례로 열려요.'
 const hero = renderToStaticMarkup(<Hero />)
 
 // 태그를 빈칸으로 바꾸고 빈칸을 하나로 모은 글자
@@ -131,11 +134,11 @@ const preview = renderToStaticMarkup(<DashboardPreview />)
 // 히어로에서 미리보기(DashboardPreview)를 표시 하나로 바꾼 마크업
 const heroOwn = hero.replace(preview, '@@PREVIEW@@')
 // section#top > .wrap > .grid( .text(소개 p · h1 · 안내 p · 단추 줄 · 약속 ul · 휴대폰 한 줄 p) → .shot(DashboardPreview) ).
-// 소개·제목·안내는 [^<]*라 안에 태그(br·span)가 없다
+// 소개·제목은 [^<]*라 안에 태그(br·span)가 없다. 안내는 글자와 줄바꿈 막는 span(.nw)만 든다(ui-90 AC-421.3)
 const HERO_SHAPE = new RegExp(
   [
     '^(<section\\b[^>]*>)(<div\\b[^>]*>)(<div\\b[^>]*>)',
-    '(<div\\b[^>]*>)(<p\\b[^>]*>)([^<]*)</p>(<h1\\b[^>]*>)([^<]*)</h1>(<p\\b[^>]*>)([^<]*)</p>',
+    '(<div\\b[^>]*>)(<p\\b[^>]*>)([^<]*)</p>(<h1\\b[^>]*>)([^<]*)</h1>(<p\\b[^>]*>)((?:[^<]|<span\\b[^>]*>[^<]*</span>)*)</p>',
     '(<div\\b[^>]*>)(<a\\b[^>]*>)([^<]*)</a>(<a\\b[^>]*>)([^<]*)</a></div>',
     '(<ul\\b[^>]*>)((?:<li\\b[^>]*>[\\s\\S]*?</li>)*)</ul>',
     '(<p\\b[^>]*>)([\\s\\S]*?)</p></div>',
@@ -163,15 +166,21 @@ describe('AC-208.1: 히어로의 짜임', () => {
     expect(classesOf(shot)).toEqual([heroStyles.shot])
   })
 
-  it('AC-208.1: 글 덩어리 — 소개 <p>(.tSmall·.kicker) → <h1>(.tDisplay) "숫자로 보는 우리 의원" → 안내 <p>(.lead, 지금 문구), 셋 다 태그 없는 글자다', () => {
-    expect(classesOf(kicker)).toEqual([base.tSmall, heroStyles.kicker])
+  it('AC-208.1·AC-421.3·AC-421.8: 글 덩어리 — 소개 <p>(.kicker, body 600 — .tSmall 없음) → <h1>(.tDisplay) "숫자로 보는 우리 의원" → 안내 <p>(.tLead·.lead, 시안 HERO_LEAD)', () => {
+    expect(classesOf(kicker)).toEqual([heroStyles.kicker])
     expect(kickerIn).toBe('통증 의원 관리자를 위한 AI 업무 도구')
     expect(classesOf(h1)).toEqual([base.tDisplay])
     expect(h1In, '줄바꿈 태그·색 강조 span 없음').toBe('숫자로 보는 우리 의원')
-    expect(classesOf(lead)).toEqual([heroStyles.lead])
-    expect(leadIn, 'nowrap span 없음').toBe(
-      '환자 통계, 급여·인센티브, 매출·재고, 일일마감과 원장님 보고까지 한 화면에서. 이번 달 숫자는 AI가 읽고 근거와 함께 설명합니다.',
-    )
+    expect(classesOf(lead)).toEqual([base.tLead, heroStyles.lead])
+    expect((leadIn ?? '').replace(/<[^>]+>/g, ''), '태그만 뺀 글자').toBe(HERO_LEAD)
+  })
+
+  it('AC-421.3: 안내의 "원장님 보고까지"·"한 화면에서"는 줄바꿈 막는 span(.nw) 안에 있고, 안내에 다른 태그가 없다', () => {
+    const spans = [...(leadIn ?? '').matchAll(/(<span\b[^>]*>)([^<]*)<\/span>/g)]
+    expect(spans.map((m) => m[2])).toEqual(['원장님 보고까지', '한 화면에서'])
+    for (const [, open] of spans) expect(classesOf(open)).toEqual([base.nw])
+    expect((leadIn ?? '').replace(/<span\b[^>]*>[^<]*<\/span>/g, ''), 'span 밖은 글자뿐').not.toMatch(/</)
+    expect(baseCss, 'base.module.css .nw').toMatch(/^\.nw\s*\{[^}]*white-space:\s*nowrap/m)
   })
 
   it('AC-208.1: 단추 줄 — [구글로 시작하기](/login, 주·44px .btnLg, .start) · [AI 분석 보기](#ai, 보조·44px, 768px 미만 숨김 .pcOnly), 안에 글자만 있다', () => {
@@ -201,9 +210,9 @@ describe('AC-208.1: 히어로의 짜임', () => {
     }
   })
 
-  it('AC-208.1: 휴대폰 한 줄(768px 미만만, p.tSmall.phoneLine.phoneOnly) — 방패 14px + "환자 개인정보는 병원 PC 밖으로 나가지 않습니다"', () => {
+  it('AC-208.1·AC-421.3: 휴대폰 한 줄(768px 미만만, p.tSmall.phoneLine.phoneOnly) — 방패 14px + 글 span 하나 "환자 개인정보는 병원 PC 밖으로 나가지 않아요"("병원 PC"는 .nw)', () => {
     expect(classesOf(phone)).toEqual([base.tSmall, heroStyles.phoneLine, base.phoneOnly])
-    expect(phoneIn).toBe(`${icon('shield', 14)}환자 개인정보는 병원 PC 밖으로 나가지 않습니다`)
+    expect(phoneIn).toBe(`${icon('shield', 14)}<span>환자 개인정보는 <span class="${base.nw}">병원 PC</span> 밖으로 나가지 않아요</span>`)
   })
 
   it('AC-208.1: 장식이 없다 — 미리보기 밖 svg는 Icon 4개(모두 aria-hidden)뿐이고, inline style·색 글자·반짝이가 없으며 Hero.tsx는 svg를 직접 그리지 않는다', () => {
@@ -296,8 +305,12 @@ describe('AC-005.1: 정한 문구', () => {
     expect(textOf(hero)).toContain('통증 의원 관리자를 위한 AI 업무 도구')
   })
 
-  it('AC-005.1: 히어로 아래 문장 "환자 개인정보는 병원 PC 밖으로 나가지 않습니다"', () => {
-    expect(textOf(hero)).toContain('환자 개인정보는 병원 PC 밖으로 나가지 않습니다')
+  it('AC-005.1·AC-421.3: 히어로 아래 문장 "환자 개인정보는 병원 PC 밖으로 나가지 않아요"', () => {
+    expect(textOf(hero)).toContain('환자 개인정보는 병원 PC 밖으로 나가지 않아요')
+  })
+
+  it('AC-421.9: 메뉴·히어로 글자에 "니다."로 끝나는 문장이 없다', () => {
+    for (const html of [header, hero]) expect(textOf(html)).not.toMatch(/니다\./)
   })
 })
 

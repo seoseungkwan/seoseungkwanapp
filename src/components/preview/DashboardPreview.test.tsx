@@ -9,6 +9,7 @@ import { StackedBarChart } from '@/components/charts/StackedBarChart'
 import { ds } from '@/components/ui/classes'
 import { isBorderBox, nestedBoxes } from '@/testing/boxes'
 import { DashboardPreview } from './DashboardPreview'
+import { MENU } from '@/components/shell/menu'
 import { SAMPLE_KPIS, SAMPLE_SERIES, SAMPLE_WEEKS } from './sample'
 
 // 대시보드 미리보기 (b2b-redesign REQ-206 AC-206.2·AC-206.3, design.md '미리보기', UI_GUIDE '미리보기').
@@ -80,26 +81,41 @@ describe('AC-206.2: 상자 하나 안에 위 줄 → 탭 줄 → KPI 줄 → 차
     expect(textOf(chip)).toBe('예시 숫자')
   })
 
-  it('AC-206.2: 탭 줄 — 36px·아래 1px line·small 500·사이 20px, span 6개(대시보드 · 통계 · AI 리포트 · 매출 · 재고 · 급여)', () => {
+  it('AC-206.2·AC-421.2: 탭 줄 — 36px·아래 1px line·small 500·사이 20px, span 13개가 실제 탭 이름(MENU) 순서다', () => {
     const { tabs } = parts()
-    expectClasses(tabs, 'flex', 'h-9', 'border-b', 'border-line', 'text-small', 'font-medium', 'gap-5')
+    expectClasses(tabs, 'flex', 'h-9', 'border-b', 'border-line', 'text-small', 'font-medium', 'gap-x-5')
     const items = Array.from(tabs.children)
-    expect(items.map((el) => el.tagName)).toEqual(Array(6).fill('SPAN'))
-    expect(items.map(textOf)).toEqual(['대시보드', '통계', 'AI 리포트', '매출', '재고', '급여'])
+    expect(items.map((el) => el.tagName)).toEqual(Array(13).fill('SPAN'))
+    expect(items.map(textOf)).toEqual(MENU.map((item) => item.label))
+    expect(items.map(textOf)).not.toContain('급여')
   })
 
-  it('AC-206.2·AC-407.2: 첫 탭만 ink 600 + 아래 2px accent, 나머지는 muted(밑줄 색 없음)', () => {
+  it('AC-421.2: 한 줄 높이에서 넘치는 탭은 통째로 숨는다 — 줄바꿈(flex-wrap) + 한 줄 높이(h-9) 자르기(overflow-clip), 탭은 줄 높이를 채우고(h-full) 글자가 줄바꿈하지 않는다', () => {
+    const { tabs } = parts()
+    expectClasses(tabs, 'flex-wrap', 'h-9', 'overflow-clip')
+    expectNoClasses(tabs, 'overflow-hidden', 'overflow-x-auto', 'overflow-auto', 'flex-nowrap')
+    for (const tab of Array.from(tabs.children)) {
+      expectClasses(tab, 'flex', 'h-full', 'items-center', 'whitespace-nowrap', 'border-b-2')
+      // 밑줄을 줄 선 위로 내리는 음수 여백은 두 번째 줄을 1px 드러내므로 쓰지 않는다
+      expectNoClasses(tab, '-mb-px')
+    }
+  })
+
+  it('AC-206.2·AC-407.2·AC-421.2: 첫 탭만 ink 600 + 아래 2px accent, 나머지 12개는 muted(밑줄 색 없음)', () => {
     const [first, ...rest] = Array.from(parts().tabs.children)
     expectClasses(first, 'text-ink', 'font-semibold', 'border-b-2', 'border-accent')
+    expect(rest).toHaveLength(12)
     for (const tab of rest) {
-      expectClasses(tab, 'text-muted')
+      expectClasses(tab, 'text-muted', 'border-transparent')
       expectNoClasses(tab, 'text-faint', 'text-ink', 'font-semibold', 'border-accent')
     }
   })
 
-  it('AC-206.2: 5·6번째 탭(재고·급여)만 768px 미만에서 숨는다(max-md:hidden)', () => {
+  it('AC-421.2: 폭에 따라 숨기는 탭이 없다(max-md:hidden 없음) — 넘치는 탭은 줄 자르기만 숨긴다', () => {
     const items = Array.from(parts().tabs.children)
-    expect(items.map((el) => classesOf(el).includes('max-md:hidden'))).toEqual([false, false, false, false, true, true])
+    for (const tab of items) {
+      for (const cls of classesOf(tab)) expect(cls, textOf(tab)).not.toMatch(/(^|:)(hidden|invisible|sr-only)$/)
+    }
   })
 
   it('AC-206.2: KPI 줄 — 아래 1px line, 768px 이상 4칸·미만 2×2(grid-cols-4 max-md:grid-cols-2), 칸 4개', () => {
@@ -181,13 +197,16 @@ describe('AC-206.2: 상자 하나 안에 위 줄 → 탭 줄 → KPI 줄 → 차
     )
   })
 
-  it('AC-206.2: 범례 아래는 StackedBarChart compact(제목 "주별 환자 수 (예시)", 단위 명, 예시 8주)다', () => {
+  it('AC-206.2·AC-421.2: 범례 아래는 StackedBarChart compact thinLabels(제목 "주별 환자 수 (예시)", 단위 명, 예시 8주)다 — 768px 미만은 날짜 글자가 하나 걸러 보인다', () => {
     const { chart } = parts()
     expect(chart.children).toHaveLength(2)
     const bars = chart.children[1]!
     expect(bars.innerHTML).toBe(
-      renderToStaticMarkup(<StackedBarChart compact title="주별 환자 수 (예시)" unit="명" series={SAMPLE_SERIES} buckets={SAMPLE_WEEKS} />),
+      renderToStaticMarkup(
+        <StackedBarChart compact thinLabels title="주별 환자 수 (예시)" unit="명" series={SAMPLE_SERIES} buckets={SAMPLE_WEEKS} />,
+      ),
     )
+    expect(bars.querySelectorAll('.max-md\\:invisible'), '8주 가운데 넷').toHaveLength(4)
     expect(textOf(bars.querySelector('caption'))).toBe('주별 환자 수 (예시) (명)')
     expect(bars.querySelectorAll('tbody tr')).toHaveLength(8)
   })
