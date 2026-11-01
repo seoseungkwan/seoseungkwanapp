@@ -524,3 +524,183 @@ describe('AC-004.11 client.ts는 src/lib/bridge 밖에서 import할 수 없다(�
     expect(await lint(code, 'src/lib/bridge/workerSink.ts')).toEqual([])
   })
 })
+
+describe('AC-601.1 src/lib/patients/**도 환자 자료 구역 규칙 전부 아래 있다', SLOW, () => {
+  const PATIENTS = 'src/lib/patients/probe.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['self.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import React from 'react'", 'no-restricted-imports'],
+    ["import { NextResponse } from 'next/server'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import x from '@/lib/storage/x'", 'no-restricted-imports'],
+    ["import x from '../storage/contactCounts'", 'no-restricted-imports'],
+    ["export const load = async () => await import('react')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/x')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, PATIENTS)).toContain(rule)
+  })
+
+  it('JSX가 막힌다(.tsx)', async () => {
+    expect(await errorRules('export const A = () => <div />', 'src/lib/patients/probe.tsx')).toContain('no-restricted-syntax')
+    expect(await errorRules('export const A = () => <></>', 'src/lib/patients/probe.tsx')).toContain('no-restricted-syntax')
+  })
+
+  it('하위 폴더·시험 파일도 같은 규칙 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/lib/patients/sub/probe.ts')).toContain('no-restricted-globals')
+    expect(await errorRules("fetch('x')", 'src/lib/patients/probe.test.ts')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/lib/patients/probe.test.ts')).toContain('no-console')
+    expect(await errorRules("localStorage.getItem('k')", 'src/lib/patients/probe.test.ts')).toContain(
+      'no-restricted-globals',
+    )
+  })
+
+  it('날짜 계산(@/lib/analytics/dates) import는 된다', async () => {
+    const code = "import { addDays } from '@/lib/analytics/dates'\nexport const next = addDays"
+    expect(await lint(code, PATIENTS)).toEqual([])
+  })
+
+  it('구역 안 시험이 node:fs로 가짜 파일을 읽는 것은 된다', async () => {
+    const code = "import { readFileSync } from 'node:fs'\nexport const read = () => readFileSync('x')"
+    expect(await lint(code, 'src/lib/patients/probe.test.ts')).toEqual([])
+  })
+
+  it('안내는 lib/patients를 환자 자료 구역으로 말한다', async () => {
+    const messages = (await lint("fetch('x')", PATIENTS)).map((m) => m.message).join('\n')
+    expect(messages).toContain('lib/patients')
+  })
+})
+
+describe('AC-601.2 components/patients/rows/**: JSX는 되고 네트워크·console·저장소·supabase·lib/storage·lib/auth는 막힌다', SLOW, () => {
+  const ROWS = 'src/components/patients/rows/Probe.tsx'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["self.indexedDB.open('x')", 'no-restricted-properties'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { saveCounts } from '@/lib/storage/contactCounts'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import x from '../../../lib/storage/contactCounts'", 'no-restricted-imports'],
+    ["import x from '../../../lib/supabase/browser'", 'no-restricted-imports'],
+    ["import x from '../../../lib/auth/gate'", 'no-restricted-imports'],
+    ["import x from '@/lib/auth/hospital/read'", 'no-restricted-imports'],
+    ["import x from '@/lib/storage'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@/lib/supabase/browser')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/contactCounts')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/auth/gate')", 'no-restricted-syntax'],
+  ])('%s → %s', async (code, rule) => {
+    expect(await errorRules(code, ROWS)).toContain(rule)
+  })
+
+  it('JSX와 react import는 된다(props로 받은 줄을 그린다)', async () => {
+    const code = [
+      "import { useState } from 'react'",
+      'export function Rows({ rows }: { rows: string[] }) {',
+      '  const [open] = useState(false)',
+      '  return <>{open ? rows.map((r) => <div key={r}>{r}</div>) : null}</>',
+      '}',
+    ].join('\n')
+    expect(await lint(code, ROWS)).toEqual([])
+  })
+
+  it('하위 폴더·시험 파일도 같은 울타리 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/components/patients/rows/sub/Probe.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/components/patients/rows/Probe.test.tsx')).toContain('no-console')
+  })
+})
+
+describe('AC-601.3 components/patients/**·app/(app)/patients/**: 오류 보고 패키지 import 금지', SLOW, () => {
+  const FILES = [
+    'src/components/patients/Probe.tsx',
+    'src/components/patients/rows/Probe.tsx',
+    'src/app/(app)/patients/page.tsx',
+  ]
+  const IMPORTS = [
+    "import * as Sentry from '@sentry/nextjs'",
+    "import * as Sentry from '@sentry/browser'",
+    "import { Analytics } from '@vercel/analytics/react'",
+    "import { track } from '@vercel/analytics'",
+    "import { SpeedInsights } from '@vercel/speed-insights/next'",
+    "import { injectSpeedInsights } from '@vercel/speed-insights'",
+  ]
+
+  it.each(FILES.flatMap((filePath) => IMPORTS.map((code) => [code, filePath])))(
+    '%s (%s) → no-restricted-imports',
+    async (code, filePath) => {
+      expect(await errorRules(code, filePath)).toContain('no-restricted-imports')
+    },
+  )
+
+  it.each(
+    FILES.flatMap((filePath) =>
+      ["import('@sentry/nextjs')", "import('@vercel/analytics')", "import('@vercel/speed-insights/next')"].map((expr) => [
+        expr,
+        filePath,
+      ]),
+    ),
+  )('await %s (%s) → no-restricted-syntax', async (expr, filePath) => {
+    expect(await errorRules(`export const load = async () => await ${expr}`, filePath)).toContain('no-restricted-syntax')
+  })
+
+  it('components/patients(rows 밖)에서 lib/supabase/browser(건수 올리기)는 막히지 않는다', async () => {
+    const code = "import { supabaseBrowser } from '@/lib/supabase/browser'\nexport const client = supabaseBrowser"
+    expect(await lint(code, 'src/components/patients/Probe.tsx')).toEqual([])
+  })
+
+  it('app/(app)/patients에서 components/patients 화면 import는 된다', async () => {
+    const code = "import { PatientsEntry } from '@/components/patients/PatientsEntry'\nexport default PatientsEntry"
+    expect(await lint(code, 'src/app/(app)/patients/page.tsx')).toEqual([])
+  })
+})
+
+describe('AC-601.4 새 블록이 기존 금지를 덮어 풀지 않는다(client.ts import)', SLOW, () => {
+  it.each([
+    'src/components/patients/Probe.tsx',
+    'src/components/patients/rows/Probe.tsx',
+    'src/app/(app)/patients/page.tsx',
+    'src/lib/patients/probe.ts',
+  ])('%s에서 @/lib/bridge/client import·import()가 막힌다', async (filePath) => {
+    expect(await errorRules("import { connectBridge } from '@/lib/bridge/client'", filePath)).toContain(
+      'no-restricted-imports',
+    )
+    expect(await errorRules("import { connectBridge } from '../../lib/bridge/client'", filePath)).toContain(
+      'no-restricted-imports',
+    )
+    const code = "export const load = async () => await import('@/lib/bridge/client')"
+    expect(await errorRules(code, filePath)).toContain('no-restricted-syntax')
+  })
+
+  it('components/patients에서 workerSink.ts(화면 입구)는 import할 수 있다', async () => {
+    const code = "import { connectScreenBridge } from '@/lib/bridge/workerSink'\nexport const open = connectScreenBridge"
+    expect(await lint(code, 'src/components/patients/Probe.tsx')).toEqual([])
+    expect(await lint(code, 'src/components/patients/rows/Probe.tsx')).toEqual([])
+  })
+})

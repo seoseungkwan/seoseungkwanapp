@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "patients-fence",
-      "status": "pending"
+      "status": "completed",
+      "summary": "eslint.config.mjs: 환자 자료 구역 files에 src/lib/patients/** 추가(PATIENT_ZONE_MESSAGE에 lib/patients), components/patients/**·app/(app)/patients/** 블록(ERROR_REPORT_IMPORT·ERROR_REPORT_SYNTAX로 @sentry/*·@vercel/analytics·@vercel/speed-insights import·import() 금지 + CLIENT_IMPORT 다시 넣음), 그 뒤 components/patients/rows/** 블록 rowsFenceRules()(JSX·react 허용, 네트워크·console·브라우저 저장소·supabase·lib/auth·lib/storage import·동적 import 금지 + 오류 보고·CLIENT_IMPORT 포함). lib/patients에서 @/lib/analytics/dates import는 된다(TASK-3 addMonthsToDay용), components/patients(rows 밖)는 @/lib/supabase/browser·fetch 가능. guardrails.test.ts에 AC-601.1~4 describe 추가, ARCHITECTURE.md 폴더 줄에 lib/patients·components/patients/rows(contact→patients). 명세와 다른 점 없음"
     },
     {
       "step": 1,

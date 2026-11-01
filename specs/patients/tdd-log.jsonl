@@ -1,0 +1,2 @@
+{"ts": "2026-11-01T07:22:33Z", "task": "TASK-1", "reqs": ["REQ-601"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/guardrails.test.ts'", "tests": ["src/guardrails.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-11-01T07:24:22Z", "task": "TASK-1", "reqs": ["REQ-601"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/guardrails.test.ts'", "tests": ["src/guardrails.test.ts"], "expect": "green", "source": "tdd-run"}
