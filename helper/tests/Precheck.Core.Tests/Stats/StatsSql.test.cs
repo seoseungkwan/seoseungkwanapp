@@ -13,6 +13,7 @@ namespace Precheck.Core.Tests.Stats;
 /// AC-503.2 통계 SQL(StatsSql)은 원본 문장 사본(original-sql/*.sql)과 공백만 다르다. 진료 줄 SQL만 원본 RowsSql에서
 /// 처방 코드 거르기 한 덩어리를 뺐다. 모두 매개변수를 받는 SELECT이고 ReadOnlyGuard를 지난다. 청구 Sql.All은 그대로다.
 /// AC-504.4 보고 SQL도 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로). @daily는 Char(1)로 관문을 지난다.
+/// AC-503.5 접수 줄 SQL은 원본에 없는 새 문장이라 사본 대조는 그 Visits 부분에만 하고, 뒤의 SELECT는 정해 둔 글과 견준다.
 /// </summary>
 public class StatsSqlTests
 {
@@ -44,9 +45,15 @@ public class StatsSqlTests
     private const string BlockStart = "AND (UPPER(RTRIM(o.OdrCod)) IN (@c0,";
     private const string BlockEnd = "OR (@eswt=1 AND CHARINDEX('ESWT',UPPER(RTRIM(o.OdrCod)))>0))";
 
+    // 사본에서 Visits 부분이 끝나고 처방 쪽이 시작하는 자리(공백을 한 칸으로 줄인 글 기준)
+    private const string OrdersStart = ", Orders AS (";
+
+    // AC-503.5의 SELECT 글(공백을 한 칸으로 줄인 글 기준)
+    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
+
     private static readonly string[] Constants =
     {
-        StatsSql.VisitRowsSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql, StatsSql.CodeNamesSql, StatsSql.HistoryGuardSql,
+        StatsSql.VisitRowsSql, StatsSql.PatientDaysSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql, StatsSql.CodeNamesSql, StatsSql.HistoryGuardSql,
     };
 
     // 원본 그대로라 남긴 글(AC-504.4 공백만 다름). 이 밖의 ;·주석은 어느 문장에도 없어야 한다
@@ -131,6 +138,36 @@ public class StatsSqlTests
         Assert.Equal(Squash(original.Remove(start, end - start)), Squash(StatsSql.VisitRowsSql));
         Assert.DoesNotContain("@c0", StatsSql.VisitRowsSql);
         Assert.DoesNotContain("@eswt", StatsSql.VisitRowsSql);
+    }
+
+    [Fact(DisplayName = "AC-503.5 접수 줄 SQL은 원본 사본의 Visits 부분(공백만 다름) 뒤에 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
+    public void PatientDaysIsVisitsPlusSelect()
+    {
+        var original = Squash(ReadOriginal(RowsOriginal));
+        Assert.Equal(1, Count(original, OrdersStart));
+        var visits = original.Substring(0, original.IndexOf(OrdersStart, StringComparison.Ordinal));
+        foreach (var part in new[] { "WITH PeriodVisits AS (", "), Patients AS (", "), FirstVisits AS (" }) Assert.Equal(1, Count(visits, part));
+
+        var sql = StatsSql.PatientDaysSql;
+        Assert.Equal(visits + " " + PatientDaysSelect, Squash(sql));
+        Assert.DoesNotContain("OdrInf", sql);
+    }
+
+    [Fact(DisplayName = "AC-503.5 접수 줄 SQL은 매개변수를 받는 SELECT로 ReadOnlyGuard를 지나고(@from·@to Char(12)·@hospital VarChar(32)) 청구 Sql.All에는 없다")]
+    public void PatientDaysPassesTheGuard()
+    {
+        var sql = StatsSql.PatientDaysSql;
+        ReadOnlyGuard.Require(sql, VisitArgs());
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", string.Join(" ", StatsSql.ParametersOf(sql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")")));
+        Assert.Contains(sql, StatsSql.All);
+        Assert.True(Sql.IsAllowed(sql));
+        Assert.DoesNotContain(sql, Sql.All);
+
+        // 고친 글·표에 없는 매개변수는 막는다
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(sql + " ", VisitArgs())).Code);
+        var withCode = VisitArgs();
+        withCode["@c0"] = "MM042";
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(sql, withCode)).Code);
     }
 
     [Fact(DisplayName = "AC-503.2 통계 SQL은 모두 SELECT 하나뿐(; · 주석 · 쓰기·실행 낱말 없음)이고 환자 신상 표를 읽지 않는다")]
@@ -219,7 +256,7 @@ public class StatsSqlTests
     {
         string Shape(string sql) => string.Join(" ", StatsSql.ParametersOf(sql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")"));
 
-        foreach (var sql in new[] { StatsSql.VisitRowsSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql })
+        foreach (var sql in new[] { StatsSql.VisitRowsSql, StatsSql.PatientDaysSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql })
         {
             Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(sql));
         }

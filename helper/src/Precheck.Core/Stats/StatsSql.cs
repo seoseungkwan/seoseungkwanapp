@@ -8,6 +8,7 @@ namespace Precheck.Core.Stats;
 /// 통계 탭이 비트 DB에 돌리는 SQL 전부(REQ-503, design.md 'TASK-3·4'). 문장은 원본 양지바른
 /// (seoseungkwan/shared@2a1069b YangjiBareun_사전점검/vendor/drbit_export/)에서 그대로 옮겼다. 공백만 다를 수 있고
 /// 사본은 helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql, 시험이 비교한다(AC-503.2·AC-504.4).
+/// PatientDaysSql만 원본에 없는 새 문장이다(Visits 글은 원본 그대로, 뒤의 SELECT만 새로 씀, AC-503.5).
 /// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 목록도 보므로 ReadOnlyGuard를 지난다.
 /// 청구 목록 Sql.All에는 넣지 않는다.
 /// </summary>
@@ -48,6 +49,17 @@ public static class StatsSql
 SELECT o.PatientId,o.VisitDay,o.Code,LEFT(f.FirstDtm,8) FirstDay
 FROM Orders o LEFT JOIN FirstVisits f ON f.PatientId=o.PatientId
 ORDER BY o.PatientId,o.VisitDay,o.Code";
+
+    /// <summary>
+    /// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일], 환자·날마다 한 줄(AC-503.5). 원본에 없는 새 문장이다: 원본 Visits 글 뒤에 이 SELECT를 이었다.
+    /// 처방 표를 잇지 않아 처방 없는 접수도 나오고, Visits 조건을 지나지 못한 접수(취소 등)와 차트번호 없는 접수는 나오지 않는다.
+    /// </summary>
+    public const string PatientDaysSql = Visits + @"
+SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay
+FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId
+WHERE v.PatientId IS NOT NULL
+GROUP BY v.PatientId,v.VisitDay,f.FirstDtm
+ORDER BY v.PatientId,v.VisitDay";
 
     /// <summary>원본 RxVisitSplit SummarySql: 총내원, 실환자, 신환, 차트번호 없는 내원, 중복 내원, 첫 내원을 찾지 못한 환자.</summary>
     public const string VisitSummarySql = Visits + @"
@@ -369,6 +381,7 @@ SELECT COUNT_BIG(*)-COUNT(DISTINCT OrpOcmNum) FROM NativeRows;";
     private static readonly Dictionary<string, SqlParam[]> Allowed = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
     {
         [VisitRowsSql] = VisitParams,
+        [PatientDaysSql] = VisitParams,
         [VisitSummarySql] = VisitParams,
         [VisitDaysSql] = VisitParams,
         [CodeNamesSql] = CodeParams,

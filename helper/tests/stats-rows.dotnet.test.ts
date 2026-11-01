@@ -58,4 +58,8 @@ describe('REQ-503 도우미 통계 줄 읽기 stats.rows (C# Precheck.Core.Tests
   it('AC-503.4 진단 기록에는 시각·명령 이름·오류 번호만(차트번호·처방코드·숫자 없음)', () => {
     expectAc('AC-503.4')
   })
+
+  it('AC-503.5 접수 줄 PatientDaysSql은 Visits 글 + 정해 둔 SELECT(OdrInf 없음)로 VisitRowsSql 바로 다음에 돌고, 700,000줄 넘으면 E-STATS-TOO-BIG, 답은 v 2에 patientDays가 days 바로 뒤', () => {
+    expectAc('AC-503.5')
+  })
 })

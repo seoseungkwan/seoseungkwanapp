@@ -10,7 +10,8 @@ namespace Precheck.Core.Stats;
 /// <summary>
 /// stats.rows 답 JSON(design.md '도우미 → Worker JSON'). 정해 둔 열쇠만, 이 차례로 쓴다:
 /// { v, from, to, summary{visits, patients, newPatients, noChart, duplicate, noFirst},
-///   days[[날짜, 내원, 실환자, 신환]], codes[[코드, 이름]], rows[[차트번호, 진료일, 처방코드, 첫 내원일|null]],
+///   days[[날짜, 내원, 실환자, 신환]], patientDays[[차트번호, 진료일, 접수 건수, 첫 내원일|null]],
+///   codes[[코드, 이름]], rows[[차트번호, 진료일, 처방코드, 첫 내원일|null]],
 ///   report{daily[], monthly[]} }. 보고 한 벌은 { ok:true, period, totalVisits, newPatients, returnPatients, totalAmount,
 ///   insurerAmount, noncoveredAmount, cashAmount, cardAmount, transferAmount, treatments{manual, eswt, carm, sono, cryo},
 ///   laCodes[{code, count}], financeUnconfirmed, financeUnconfirmedReason(확인 필요일 때만), notes[] } 또는 { ok:false, period, reason }.
@@ -18,7 +19,7 @@ namespace Precheck.Core.Stats;
 /// </summary>
 public static class StatsPayload
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     public static string Build(string from, string to, StatsRowsResult rows, StatsReportResult report)
     {
@@ -53,6 +54,18 @@ public static class StatsPayload
                 writer.WriteNumberValue(day.Visits);
                 writer.WriteNumberValue(day.Patients);
                 writer.WriteNumberValue(day.NewPatients);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
+
+            writer.WriteStartArray("patientDays");
+            foreach (var day in rows.PatientDays)
+            {
+                writer.WriteStartArray();
+                WriteText(writer, day.Chart);
+                WriteText(writer, day.Day);
+                writer.WriteNumberValue(day.Visits);
+                WriteText(writer, day.FirstDay);
                 writer.WriteEndArray();
             }
             writer.WriteEndArray();

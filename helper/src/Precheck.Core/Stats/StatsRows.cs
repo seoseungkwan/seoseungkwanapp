@@ -90,13 +90,34 @@ public sealed class StatsVisitRow
     public string? FirstDay { get; }
 }
 
+/// <summary>접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일], 환자·날마다 한 줄. 글자는 앞뒤 공백만 없앤 원본 값, 첫 내원일이 없으면 null.</summary>
+public sealed class StatsPatientDay
+{
+    public StatsPatientDay(string? chart, string? day, long visits, string? firstDay)
+    {
+        Chart = chart;
+        Day = day;
+        Visits = visits;
+        FirstDay = firstDay;
+    }
+
+    public string? Chart { get; }
+
+    public string? Day { get; }
+
+    public long Visits { get; }
+
+    public string? FirstDay { get; }
+}
+
 /// <summary>stats.rows가 비트에서 읽은 통계 줄 전부(보고 숫자는 StatsReport).</summary>
 public sealed class StatsRowsResult
 {
-    public StatsRowsResult(StatsSummary summary, IReadOnlyList<StatsDay> days, IReadOnlyList<StatsCode> codes, IReadOnlyList<StatsVisitRow> rows)
+    public StatsRowsResult(StatsSummary summary, IReadOnlyList<StatsDay> days, IReadOnlyList<StatsPatientDay> patientDays, IReadOnlyList<StatsCode> codes, IReadOnlyList<StatsVisitRow> rows)
     {
         Summary = summary ?? throw new ArgumentNullException(nameof(summary));
         Days = days ?? throw new ArgumentNullException(nameof(days));
+        PatientDays = patientDays ?? throw new ArgumentNullException(nameof(patientDays));
         Codes = codes ?? throw new ArgumentNullException(nameof(codes));
         Rows = rows ?? throw new ArgumentNullException(nameof(rows));
     }
@@ -105,6 +126,8 @@ public sealed class StatsRowsResult
 
     public IReadOnlyList<StatsDay> Days { get; }
 
+    public IReadOnlyList<StatsPatientDay> PatientDays { get; }
+
     public IReadOnlyList<StatsCode> Codes { get; }
 
     public IReadOnlyList<StatsVisitRow> Rows { get; }
@@ -112,13 +135,13 @@ public sealed class StatsRowsResult
 
 /// <summary>
 /// 통계 줄 읽기(AC-503.1·AC-503.3). 등록 확인(HospitalGate.Open)을 마친 세션과 등록 범위로 원본 순서대로 읽는다:
-/// HistoryGuard(1이면 E-STATS-HISTORY) → 진료 줄(MaxRows를 넘으면 E-STATS-TOO-BIG) → 기간 합계 → 날짜별 → 처방 이름.
+/// HistoryGuard(1이면 E-STATS-HISTORY) → 진료 줄 → 접수 줄(둘 다 MaxRows를 넘으면 E-STATS-TOO-BIG) → 기간 합계 → 날짜별 → 처방 이름.
 /// SQL은 StatsSql 상수만 ReadOnlyGuard로 돌린다. 하나라도 막히면 BitException(번호만)으로 멈춘다: 반쪽 자료를 돌려주지 않는다.
 /// 값 모양이 틀리면(숫자가 아님·칸이 모자람) E-BIT-READ-FAILED다. 이름·전화·주민번호·주소는 SQL도 읽지 않는다.
 /// </summary>
 public static class StatsRows
 {
-    /// <summary>진료 줄 한도(design.md '줄 수·크기': 700,000줄 ≈ 28MB → 조각 약 30개).</summary>
+    /// <summary>진료 줄·접수 줄 각각의 한도(design.md '줄 수·크기': 700,000줄 ≈ 28MB → 조각 약 30개).</summary>
     public const int MaxRows = 700_000;
 
     /// <param name="from">기간 첫날 YYYY-MM-DD(명령 표가 검사한 값)</param>
@@ -154,8 +177,15 @@ public static class StatsRows
         var rows = new List<StatsVisitRow>(visitRows.Count);
         foreach (var row in visitRows)
         {
-            var firstDay = Text(Cell(row, 3));
-            rows.Add(new StatsVisitRow(Text(Cell(row, 0)), Text(Cell(row, 1)), Text(Cell(row, 2)), firstDay == "" ? null : firstDay));
+            rows.Add(new StatsVisitRow(Text(Cell(row, 0)), Text(Cell(row, 1)), Text(Cell(row, 2)), FirstDay(Cell(row, 3))));
+        }
+
+        var patientRows = ReadOnlyGuard.Query(db, StatsSql.PatientDaysSql, visitArgs, StatsSql.DataTimeout);
+        if (patientRows.Count > MaxRows) throw new BitException(StatsErrors.TooBig);
+        var patientDays = new List<StatsPatientDay>(patientRows.Count);
+        foreach (var row in patientRows)
+        {
+            patientDays.Add(new StatsPatientDay(Text(Cell(row, 0)), Text(Cell(row, 1)), Number(Cell(row, 2)), FirstDay(Cell(row, 3))));
         }
 
         var total = Single(ReadOnlyGuard.Query(db, StatsSql.VisitSummarySql, visitArgs, StatsSql.DataTimeout));
@@ -168,7 +198,14 @@ public static class StatsRows
             .ToList();
 
         var catalog = ReadOnlyGuard.Query(db, StatsSql.CodeNamesSql, codeArgs, StatsSql.DataTimeout);
-        return new StatsRowsResult(summary, days, CodeNames(catalog, rows), rows);
+        return new StatsRowsResult(summary, days, patientDays, CodeNames(catalog, rows), rows);
+    }
+
+    /// <summary>첫 내원일 칸: 앞뒤 공백을 없앤 글자, 없거나 비면 null.</summary>
+    private static string? FirstDay(object? value)
+    {
+        var text = Text(value);
+        return text == "" ? null : text;
     }
 
     /// <summary>
