@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "stats",
-  "approved_at": "2026-11-01T20:26:35Z",
+  "approved_at": "2026-11-01T21:08:48Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "2bd328c00f77371c24da09c18ea86bbd2e4988c125364e6efc0fb4f232c3ff46",
+  "spec_sha256": "3c70026ee22abeae1aa3f47cf5b96f687f779c87c222a5d3e7a847abdee9cb11",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/mockups/stats/app.js",

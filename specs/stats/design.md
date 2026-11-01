@@ -345,7 +345,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 | `src/app/titles.test.tsx` | `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 (TASK-15) | 탭을 채우는 브랜치 모두 |
 | `docs/ARCHITECTURE.md` | 'DB 표'의 통계 줄·'데이터 흐름' 통계 줄 (TASK-6) | 전부 |
 | `docs/UI_GUIDE.md`·`docs/ADR.md` | 고치지 않는다 | — |
-| `src/components/common/notReadyFeatures.ts`(+시험)·`src/components/shell/menu.ts`·`shell.test.tsx`·`src/components/dashboard/briefing/features.ts`(+시험)·`DashboardHome.test.tsx`·`src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx` | 통계 줄만 (TASK-15). 개수는 목록에서 센다(C5) | worklog·patients·revenue(각자 자기 탭 줄) |
+| `src/components/common/notReadyFeatures.ts`(+시험)·`src/components/shell/menu.ts`·`shell.test.tsx`·`src/components/dashboard/briefing/features.ts`(+시험)·`DashboardHome.test.tsx`·`src/app/(app)/dashboard/page.test.tsx`(목차 옆 글)·`src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx` | 통계 줄만 (TASK-15). 개수는 목록에서 센다(C5) | worklog·patients·revenue(각자 자기 탭 줄) |
 | `src/components/ui/classes.test.ts` | `APP_DIRS`에 `src/components/stats` 한 줄 (TASK-13) | 화면을 만드는 브랜치 모두 |
 | `helper/src/Precheck.Core/Bit/Sql.cs` | `IsAllowed`·`ParametersOf`가 `StatsSql`도 보는 두 줄 (TASK-3) | precheck(청구 SQL), revenue(`RevenueSql`), patients(자기 SQL) |
 | `helper/src/Precheck.Helper/Program.cs` | `StatsCommands.Register(dispatcher, HelperServices.Create());` 한 줄 (TASK-3) | precheck·revenue·patients |

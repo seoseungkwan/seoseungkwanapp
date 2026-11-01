@@ -155,10 +155,10 @@
 - Step: Phase 4 · Step 2 · `stats-tab`
 - AC: AC-515.1~AC-515.5
 - REQ: REQ-515
-- Files: src/app/(app)/stats/page.tsx, src/app/(app)/stats/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
-- Tests: src/app/(app)/stats/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx
+- Files: src/app/(app)/stats/page.tsx, src/app/(app)/stats/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
+- Tests: src/app/(app)/stats/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx
 - TDD: required
-- 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다
+- 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다. `dashboard/page.test.tsx`는 이 TASK에서 목차 옆 글(`INDEX_SIDE`)만 고친다. 같은 파일의 대시보드 읽기 시험은 TASK-16 몫이다
 
 ## TASK-16: 대시보드가 저장된 통계 숫자를 읽음
 - Step: Phase 4 · Step 3 · `dashboard-source`
