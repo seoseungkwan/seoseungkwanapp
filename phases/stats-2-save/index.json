@@ -11,9 +11,8 @@
     {
       "step": 1,
       "name": "stats-storage",
-      "status": "pending",
-      "summary": "src/lib/storage/stats.ts: saveStats({months,days,covered,source})→{saved}(보낸 줄 수, 실제로 바뀐 줄 수가 아니다), readDays·readMonths({from,to})→{rows,dropped,latest}, readCoverage({from,to})→DateRange[], StorageError(code), 200줄씩 upsert, 1000줄씩 쪽 읽기. 오류 E-STATS-SAVE-FAILED·E-STATS-READ-FAILED. eslint 블록은 stats.ts만. 명세보다 더한 것(리뷰 PASS): 보내기 전에 출처·덮은 기간(날짜, 양 끝 합쳐 800일 이하)·payload 크기(jsonb 글자 기준 65,536바이트 이하)를 보고 걸리면 아무것도 보내지 않는다. 읽을 때 출처가 틀리거나 칸과 payload가 어긋난 줄은 뺀다. updated_at을 못 읽는 줄은 남기고 latest만 그 줄을 보지 않는다(모두 못 읽으면 latest null). 다음 step이 알 것: latest가 null이어도 줄이 있을 수 있다. 달 payload가 65,536바이트를 넘으면 그 달은 저장되지 않는다(실제 크기는 의원 PC에서 잰다).",
-      "reopened": "2026-11-01 접수 기준 명세 변경으로 다시 엶. step 파일의 뒤따름 절을 한다. 끝나면 summary를 고친다"
+      "status": "completed",
+      "summary": "src/lib/storage/stats.ts: saveStats({months,days,covered,source})→{saved}(보낸 줄 수, 실제로 바뀐 줄 수가 아니다), readDays({from,to})→{rows,dropped,latest,fromFile}, readMonths({from,to})→{rows,dropped,latest}, readCoverage({from,to})→DateRange[], StorageError(code), 200줄씩 upsert, 1000줄씩 쪽 읽기. 오류 E-STATS-SAVE-FAILED·E-STATS-READ-FAILED. eslint 블록은 stats.ts만. 명세보다 더한 것(리뷰 PASS): 보내기 전에 출처·덮은 기간(날짜, 양 끝 합쳐 800일 이하)·payload 크기(jsonb 글자 기준 달 1,048,576바이트·날 65,536바이트 이하)를 보고 걸리면 아무것도 보내지 않는다. 읽을 때 출처가 틀리거나 칸과 payload가 어긋난 줄은 뺀다. updated_at을 못 읽는 줄은 남기고 latest만 그 줄을 보지 않는다(모두 못 읽으면 latest null). 다음 step이 알 것: latest가 null이어도 줄이 있을 수 있다. 값 하나가 한도를 넘으면 그 불러오기 전체가 저장되지 않는다. 파일의 덜 덮인 달 줄은 검사는 받되 보내지 않고 그 일 줄과 덮은 기간 줄은 보낸다. saved는 보낸 줄 수다. fromFile은 남긴 줄의 source만 보고 updated_at과 상관없다. 화면(TASK-14 AC-514.7)이 이 값을 쓴다."
     },
     {
       "step": 2,

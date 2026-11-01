@@ -30,7 +30,8 @@ export class StorageError extends Error {
 const BATCH_ROWS = 200
 const PAGE_ROWS = 1000 // Supabase가 한 번에 주는 줄 수 기본값. 넘는 줄은 알리지 않고 잘라 주므로 쪽으로 나눠 다 읽는다
 const MAX_COVERED_SPAN = 800 // stats_coverage 제약(to_day - from_day < 800)과 같다. 양 끝을 합쳐 800일까지
-const MAX_PAYLOAD_BYTES = 65_536 // stats_months·stats_days 제약(octet_length(payload::text) <= 65536)과 같다
+const MAX_MONTH_BYTES = 1_048_576 // stats_months 제약(octet_length(payload::text) <= 1048576)과 같다
+const MAX_DAY_BYTES = 65_536 // stats_days 제약(octet_length(payload::text) <= 65536)과 같다
 
 // 어디서 실패하든(검사·클라이언트 만들기·보내기·읽기) 번호 하나로 바꾼다. 원래 오류는 버린다
 async function attempt<T>(code: StorageErrorCode, work: () => Promise<T>): Promise<T> {
@@ -57,11 +58,11 @@ function jsonbText(value: unknown): string {
 const UTF8 = new TextEncoder()
 
 // 표가 받지 않을 크기도 먼저 거른다. 앞 묶음을 저장한 뒤에야 그 줄이 든 묶음째 실패하지 않게
-function allChecked<P>(values: readonly unknown[], check: (value: unknown) => P | null): P[] {
+function allChecked<P>(values: readonly unknown[], check: (value: unknown) => P | null, maxBytes: number): P[] {
   return values.map((value) => {
     const checked = check(value)
     if (checked === null) throw new Error('검사에 걸림')
-    if (UTF8.encode(jsonbText(checked)).length > MAX_PAYLOAD_BYTES) throw new Error('표가 받지 않는 크기')
+    if (UTF8.encode(jsonbText(checked)).length > maxBytes) throw new Error('표가 받지 않는 크기')
     return checked
   })
 }
@@ -91,13 +92,17 @@ export async function saveStats(
     // 먼저 전부 검사한다. 하나라도 걸리면 아무것도 보내지 않는다
     const { source } = input
     if (!isSource(source)) throw new Error('출처가 아님')
-    const monthRows = allChecked(input.months, validateMonthPayload).map((payload) => ({
-      month: payload.month,
-      partial: payload.partial,
-      source,
-      payload,
-    }))
-    const dayRows = allChecked(input.days, validateDayPayload).map((payload) => ({
+    // 파일의 덜 덮인 달 줄은 검사만 하고 보내지 않는다. 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 feat-ai-report뿐이다.
+    // 통계 화면의 달 칸은 일 숫자의 합이다. 비트의 덜 덮인 달 줄은 보낸다
+    const monthRows = allChecked(input.months, validateMonthPayload, MAX_MONTH_BYTES)
+      .filter((payload) => source !== 'file' || !payload.partial)
+      .map((payload) => ({
+        month: payload.month,
+        partial: payload.partial,
+        source,
+        payload,
+      }))
+    const dayRows = allChecked(input.days, validateDayPayload, MAX_DAY_BYTES).map((payload) => ({
       day: payload.day,
       partial: payload.partial,
       source,
@@ -139,7 +144,7 @@ async function readPeriod<K extends 'month' | 'day', P extends Record<K, string>
   check: (value: unknown) => P | null,
   range: { from: string; to: string },
   deps?: Deps,
-): Promise<{ rows: P[]; dropped: number; latest: Latest }> {
+): Promise<{ rows: P[]; dropped: number; latest: Latest; fromFile: boolean }> {
   return attempt('E-STATS-READ-FAILED', async () => {
     const client = deps?.client ?? supabaseBrowser()
     const stored = await readAllPages<StoredFields & Record<K, string>>((first, last) =>
@@ -157,6 +162,7 @@ async function readPeriod<K extends 'month' | 'day', P extends Record<K, string>
     let dropped = 0
     let latest: Latest = null
     let latestTime = -Infinity
+    let fromFile = false
     for (const row of stored) {
       const payload = check(row.payload)
       if (payload === null || keyOf(payload) !== keyOf(row) || payload.partial !== row.partial || !isSource(row.source)) {
@@ -164,6 +170,8 @@ async function readPeriod<K extends 'month' | 'day', P extends Record<K, string>
         continue
       }
       rows.push(payload)
+      // 시각을 읽는 것과 상관없이 정한다. latest만으로는 최근 비트 줄과 옛 파일 줄이 섞인 기간을 알 수 없다
+      if (row.source === 'file') fromFile = true
       // 글자 순서는 소수점 자리 수·시간대에 따라 어긋날 수 있어 시각으로 견준다. 걸러진 줄은 화면에 없으니 보지 않는다.
       // 브라우저가 시각을 읽지 못하면(NaN) 숫자는 그대로 두고 이 비교에서만 빠진다. 출처 글자 때문에 숫자를 잃지 않게
       const time = Date.parse(row.updated_at)
@@ -172,14 +180,14 @@ async function readPeriod<K extends 'month' | 'day', P extends Record<K, string>
         latest = { at: row.updated_at, source: row.source }
       }
     }
-    return { rows, dropped, latest }
+    return { rows, dropped, latest, fromFile }
   })
 }
 
 export async function readDays(
   range: { from: string; to: string },
   deps?: Deps,
-): Promise<{ rows: DayPayload[]; dropped: number; latest: Latest }> {
+): Promise<{ rows: DayPayload[]; dropped: number; latest: Latest; fromFile: boolean }> {
   return readPeriod('stats_days', 'day', validateDayPayload, range, deps)
 }
 
@@ -187,7 +195,8 @@ export async function readMonths(
   range: { from: string; to: string },
   deps?: Deps,
 ): Promise<{ rows: MonthPayload[]; dropped: number; latest: Latest }> {
-  return readPeriod('stats_months', 'month', validateMonthPayload, range, deps)
+  const { rows, dropped, latest } = await readPeriod('stats_months', 'month', validateMonthPayload, range, deps)
+  return { rows, dropped, latest }
 }
 
 /** 그 기간과 겹치는 덮은 기간을 합쳐 시작 순으로. 겹치는 줄의 기간 밖 날도 그대로 둔다 */

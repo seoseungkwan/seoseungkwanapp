@@ -162,15 +162,17 @@ function tableBytes(payload: unknown): number {
   return utf8Bytes(json) + (json.match(/[,:]/g) ?? []).length
 }
 
-const RX_ROWS = 400
 const NAME_CHARS = 100 // 검사가 받는 처방 이름 길이
 
-// 처방 이름을 채워 표 기준 정확히 target바이트인 값을 만든다. a는 1바이트, 가는 3바이트
+// 처방 이름을 채워 표 기준 정확히 target바이트인 값을 만든다. a는 1바이트, 가는 3바이트.
+// 줄 수는 target마다 정한다. 적으면 이름 칸에 다 못 채우고, 많으면 빈 이름만으로 target을 넘는다(검사 상한 5,000줄 안이어야 한다)
 function sized<P>(target: number, unit: 'a' | '가', build: (names: string[]) => P): P {
   const width = utf8Bytes(unit)
-  const need = target - tableBytes(build(Array<string>(RX_ROWS).fill('')))
+  const emptyRow = tableBytes(build(['', ''])) - tableBytes(build(['']))
+  const rows = Math.ceil(target / (emptyRow + NAME_CHARS * width))
+  const need = target - tableBytes(build(Array<string>(rows).fill('')))
   const text = unit.repeat(Math.floor(need / width)) + 'a'.repeat(need % width)
-  const payload = build(Array.from({ length: RX_ROWS }, (_, i) => text.slice(i * NAME_CHARS, (i + 1) * NAME_CHARS)))
+  const payload = build(Array.from({ length: rows }, (_, i) => text.slice(i * NAME_CHARS, (i + 1) * NAME_CHARS)))
   expect(tableBytes(payload)).toBe(target)
   return payload
 }
@@ -310,38 +312,50 @@ describe('AC-507.1 saveStats', () => {
     expect(JSON.stringify(calls)).not.toContain('환자별소모통계')
   })
 
-  const SIZED: [string, (target: number, unit?: 'a' | '가') => Record<string, unknown>][] = [
-    ['날', (target, unit) => ({ days: [dayOfBytes(target, unit)] })],
-    ['달', (target, unit) => ({ months: [monthOfBytes(target, unit)] })],
+  // 표 제약과 같은 한도다(AC-506.3). 달과 날이 다르다
+  const SIZED: [string, number, (target: number, unit?: 'a' | '가') => Record<string, unknown>][] = [
+    ['날', 65_536, (target, unit) => ({ days: [dayOfBytes(target, unit)] })],
+    ['달', 1_048_576, (target, unit) => ({ months: [monthOfBytes(target, unit)] })],
   ]
 
-  it.each(SIZED)('AC-507.1 %s payload가 표 기준 정확히 65,536바이트면 보낸다', async (_name, over) => {
+  it.each(SIZED)('AC-507.1 %s payload가 표 기준 정확히 그 표의 한도(%i바이트)면 보낸다', async (_name, limit, over) => {
     const { client, calls } = fakeClient()
-    await saveStats(saveInput(over(65_536)), { client })
+    await saveStats(saveInput(over(limit)), { client })
 
     expect(calls.map((c) => c.table)).toEqual(['stats_months', 'stats_days', 'stats_coverage'])
   })
 
-  it.each(SIZED)('AC-507.1 %s payload가 65,537바이트면 아무것도 보내지 않고 E-STATS-SAVE-FAILED', async (_name, over) => {
+  it.each(SIZED)('AC-507.1 %s payload가 그 표의 한도(%i바이트)보다 1바이트 크면 아무것도 보내지 않고 E-STATS-SAVE-FAILED', async (_name, limit, over) => {
     const { client, calls } = fakeClient()
-    const error = await failure(saveStats(saveInput(over(65_537)), { client }))
+    const error = await failure(saveStats(saveInput(over(limit + 1)), { client }))
 
     expect(error.code).toBe('E-STATS-SAVE-FAILED')
     expect(calls).toEqual([])
   })
 
-  it.each(SIZED)('AC-507.1 %s payload 크기는 글자 수가 아니라 UTF-8 바이트다(한글 한 글자 = 3바이트)', async (_name, over) => {
+  it.each(SIZED)('AC-507.1 %s payload 크기는 글자 수가 아니라 UTF-8 바이트다(한글 한 글자 = 3바이트, 한도 %i바이트)', async (_name, limit, over) => {
     const fits = fakeClient()
-    await saveStats(saveInput(over(65_536, '가')), { client: fits.client })
+    await saveStats(saveInput(over(limit, '가')), { client: fits.client })
     expect(fits.calls).toHaveLength(3)
 
-    const input = over(65_537, '가')
-    expect(JSON.stringify(input).length).toBeLessThan(65_536) // 글자 수로 재면 통과하는 크기다
+    const input = over(limit + 1, '가')
+    expect(JSON.stringify(input).length).toBeLessThan(limit) // 글자 수로 재면 통과하는 크기다
     const tooBig = fakeClient()
     const error = await failure(saveStats(saveInput(input), { client: tooBig.client }))
 
     expect(error.code).toBe('E-STATS-SAVE-FAILED')
     expect(tooBig.calls).toEqual([])
+  })
+
+  it('AC-507.1 65,537바이트인 달 값은 보내고, 65,537바이트인 일 값은 아무것도 보내지 않는다', async () => {
+    const month = fakeClient()
+    await saveStats(saveInput({ months: [monthOfBytes(65_537)] }), { client: month.client })
+    expect(month.calls.map((c) => c.table)).toEqual(['stats_months', 'stats_days', 'stats_coverage'])
+
+    const day = fakeClient()
+    const error = await failure(saveStats(saveInput({ days: [dayOfBytes(65_537)] }), { client: day.client }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(day.calls).toEqual([])
   })
 
   it('AC-507.1 크기는 콤마·콜론 뒤 빈칸까지 잰다(JSON.stringify로 재면 통과하는 크기도 표는 받지 않는다)', async () => {
@@ -360,6 +374,74 @@ describe('AC-507.1 saveStats', () => {
 
     expect(error.code).toBe('E-STATS-SAVE-FAILED')
     expect(supabaseBrowser).not.toHaveBeenCalled()
+  })
+
+  it('AC-507.1 파일의 덜 덮인 달 줄은 보내지 않고 그 일 줄은 보낸다. 덮은 기간 줄도 보내고, 덮은 기간을 읽지 않는다', async () => {
+    const { client, calls } = fakeClient()
+    const days = [dayPayload('2026-09-29'), dayPayload('2026-09-30', { partial: true })]
+    await saveStats(saveInput({ source: 'file', months: [monthPayload('2026-09', { partial: true })], days }), { client })
+
+    expect(writesTo(calls, 'stats_months')).toEqual([])
+    expect(writesTo(calls, 'stats_days')[0].rows.map((row) => row.day)).toEqual(['2026-09-29', '2026-09-30'])
+    expect(writesTo(calls, 'stats_coverage')[0].rows).toEqual([{ from_day: '2026-09-01', to_day: '2026-09-30', source: 'file' }])
+    expect(calls.filter((c) => c.op === 'select')).toEqual([])
+  })
+
+  it('AC-507.1 파일의 완전한 달 줄은 보낸다(같이 온 덜 덮인 달 줄만 뺀다)', async () => {
+    const { client, calls } = fakeClient()
+    const months = [monthPayload('2026-08'), monthPayload('2026-09', { partial: true })]
+    await saveStats(saveInput({ source: 'file', months }), { client })
+
+    const [call] = writesTo(calls, 'stats_months')
+    expect(call.rows.map((row) => row.month)).toEqual(['2026-08'])
+    expect(call.rows[0]).toEqual({ month: '2026-08', partial: false, source: 'file', payload: validateMonthPayload(monthPayload('2026-08')) })
+  })
+
+  it('AC-507.1 비트의 덜 덮인 달 줄은 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    await saveStats(saveInput({ source: 'bit', months: [monthPayload('2026-09', { partial: true })] }), { client })
+
+    const [call] = writesTo(calls, 'stats_months')
+    expect(call.rows.map((row) => [row.month, row.partial, row.source])).toEqual([['2026-09', true, 'bit']])
+  })
+
+  it.each<[string, number]>([
+    ['file', 3],
+    ['bit', 4],
+  ])('AC-507.1 saved는 보낸 줄 수다(%s이면 %i줄, 뺀 달 줄은 세지 않는다)', async (source, sent) => {
+    const { client, calls } = fakeClient()
+    const months = [monthPayload('2026-08'), monthPayload('2026-09', { partial: true })]
+    const days = [dayPayload('2026-09-29'), dayPayload('2026-09-30')]
+    const { saved } = await saveStats(saveInput({ source, months, days }), { client })
+
+    expect(saved).toBe(sent)
+    expect(writesTo(calls, 'stats_months').concat(writesTo(calls, 'stats_days')).flatMap((c) => c.rows)).toHaveLength(sent)
+  })
+
+  it('AC-507.1 파일의 덜 덮인 달 줄만 왔으면 달 표에 빈 요청을 보내지 않고 saved는 일 줄 수다', async () => {
+    const { client, calls } = fakeClient()
+    const result = await saveStats(saveInput({ source: 'file', months: [monthPayload('2026-09', { partial: true })], covered: null }), { client })
+
+    expect(calls.map((c) => c.table)).toEqual(['stats_days'])
+    expect(result).toEqual({ saved: 1 })
+  })
+
+  it.each<[string, () => MonthPayload]>([
+    ['검사에 걸리면', () => monthPayload('2026-09', { partial: true, totals: { patients: 99, newPatients: 1, returning: 2, unknown: 0 } })],
+    [
+      '크기가 달 한도를 넘으면',
+      () => {
+        const month = { ...monthOfBytes(1_048_578), partial: true } // true가 false보다 1바이트 짧다
+        expect(tableBytes(month)).toBe(1_048_577)
+        return month
+      },
+    ],
+  ])('AC-507.1 보내지 않을 파일의 덜 덮인 달 줄도 %s 아무것도 보내지 않고 E-STATS-SAVE-FAILED', async (_name, month) => {
+    const { client, calls } = fakeClient()
+    const error = await failure(saveStats(saveInput({ source: 'file', months: [month()] }), { client }))
+
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(calls).toEqual([])
   })
 
   const phoneLike = () => ['010', '1234', '5678'].join('-')
@@ -573,9 +655,63 @@ describe('AC-507.2 readDays', () => {
     expect(dropped).toBe(1)
   })
 
-  it('AC-507.2 줄이 없으면 빈 목록·dropped 0·latest null이다', async () => {
+  it('AC-507.2 줄이 없으면 빈 목록·dropped 0·latest null·fromFile false다', async () => {
     const { client } = fakeClient()
-    expect(await readDays(RANGE, { client })).toEqual({ rows: [], dropped: 0, latest: null })
+    expect(await readDays(RANGE, { client })).toEqual({ rows: [], dropped: 0, latest: null, fromFile: false })
+  })
+
+  it("AC-507.2 최근 줄이 'bit'이고 옛 줄이 'file'이면 latest.source는 'bit', fromFile은 true다", async () => {
+    const stored = {
+      stats_days: [
+        storedDay('2026-09-01', { updated_at: '2026-10-01T01:00:00+00:00', source: 'file' }),
+        storedDay('2026-09-02', { updated_at: '2026-10-05T01:00:00+00:00', source: 'bit' }),
+      ],
+    }
+    const { client } = fakeClient({ stored })
+    const { latest, fromFile } = await readDays(RANGE, { client })
+
+    expect(latest?.source).toBe('bit')
+    expect(fromFile).toBe(true)
+  })
+
+  it("AC-507.2 모두 'bit'이면 fromFile은 false다", async () => {
+    const { client } = fakeClient({ stored: { stats_days: [storedDay('2026-09-01'), storedDay('2026-09-02')] } })
+    const { rows, fromFile } = await readDays(RANGE, { client })
+
+    expect(rows).toHaveLength(2)
+    expect(fromFile).toBe(false)
+  })
+
+  it("AC-507.2 검사에 걸려 뺀 줄만 'file'이면 fromFile은 false다", async () => {
+    const stored = { stats_days: [storedDay('2026-09-01'), storedDay('2026-09-02', { source: 'file', payload: {} })] }
+    const { client } = fakeClient({ stored })
+    const { rows, dropped, fromFile } = await readDays(RANGE, { client })
+
+    expect(rows.map((r) => r.day)).toEqual(['2026-09-01'])
+    expect(dropped).toBe(1)
+    expect(fromFile).toBe(false)
+  })
+
+  it.each<[string, Stored[]]>([
+    ['읽을 수 있는 시각이 하나도 없어도', [storedDay('2026-09-01', { updated_at: 'nope', source: 'file' })]],
+    ['시각을 읽는 다른 줄이 있어도', [storedDay('2026-09-01', { updated_at: 'nope', source: 'file' }), storedDay('2026-09-02')]],
+  ])("AC-507.2 updated_at을 읽지 못해도 남은 'file' 줄이 있으면 fromFile은 true다(%s)", async (_name, rows) => {
+    const { client } = fakeClient({ stored: { stats_days: rows } })
+    const { dropped, fromFile } = await readDays(RANGE, { client })
+
+    expect(dropped).toBe(0)
+    expect(fromFile).toBe(true)
+  })
+
+  it("AC-507.2 쪽을 나눠 읽을 때 뒤쪽에만 'file' 줄이 있어도 fromFile은 true다", async () => {
+    const days = eachDay({ from: '2020-01-01', to: addDays('2020-01-01', 1202) })
+    const rows = days.map((d, i) => storedDay(d, { source: i === 1202 ? 'file' : 'bit' }))
+    const { client, calls } = fakeClient({ stored: { stats_days: rows } })
+    const { latest, fromFile } = await readDays({ from: days[0], to: days[1202] }, { client })
+
+    expect(calls).toHaveLength(2)
+    expect(latest?.source).toBe('bit')
+    expect(fromFile).toBe(true)
   })
 
   it('AC-507.2 서버가 한 번에 주는 줄 수를 넘어도 그 기간 줄을 다 읽는다', async () => {
@@ -661,6 +797,14 @@ describe('AC-507.2 readMonths', () => {
   it('AC-507.2 줄이 없으면 빈 목록·dropped 0·latest null이다', async () => {
     const { client } = fakeClient()
     expect(await readMonths(RANGE, { client })).toEqual({ rows: [], dropped: 0, latest: null })
+  })
+
+  it("AC-507.2 readMonths는 'file' 줄이 있어도 fromFile을 돌려주지 않는다", async () => {
+    const { client } = fakeClient({ stored: { stats_months: [storedMonth('2026-09', { source: 'file' })] } })
+    const result = await readMonths(RANGE, { client })
+
+    expect(result.rows).toHaveLength(1)
+    expect(result).not.toHaveProperty('fromFile')
   })
 
   it.each(['error', 'throw'] as const)('AC-507.2 읽기 실패(%s) → E-STATS-READ-FAILED', async (how) => {
