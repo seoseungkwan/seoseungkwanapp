@@ -20,12 +20,14 @@
     {
       "step": 3,
       "name": "dashboard-source",
-      "status": "pending"
+      "status": "blocked",
+      "blocked_reason": "user postponed 2026-11-01; overlaps bit-dashboard"
     },
     {
       "step": 4,
       "name": "stats-e2e",
-      "status": "pending"
+      "status": "blocked",
+      "blocked_reason": "needs the user to apply the SQL to the real Supabase; AC-517.3 also needs TASK-16, postponed 2026-11-01"
     }
   ]
 }
