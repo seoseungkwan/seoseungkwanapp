@@ -201,6 +201,25 @@ describe('AC-513.3: 처방 줄 열기', () => {
     expect(within(panel).getByText('하루씩 센 건수예요. 회색 막대는 비교 기간의 같은 차례 날이에요.')).toBeTruthy()
   })
 
+  it('AC-513.3: 열린 칸 제목은 긴 처방 이름도 칸 안에서 줄을 바꾼다(keep-all이라 띄어쓰기 없는 이름은 그대로면 쪽을 민다)', () => {
+    render(<RxTrendSection input={inputOf(BOTH, WHOLE)} saved />)
+    const title = within(open(A)).getByText(`${A} · 일별 건수`)
+    expect(title.className.split(/\s+/)).toContain('wrap-anywhere')
+  })
+
+  it('AC-513.3: 열린 칸의 그림도 휴대폰에서 쪽을 옆으로 밀지 않는다(날짜 글자는 제 칸 가운데로, 화면 읽기 표는 줄바꿈 없이 왼쪽으로). 선택자는 날짜 글자 칸과 그 표만 잡는다', () => {
+    render(<RxTrendSection input={inputOf(BOTH, WHOLE)} saved />)
+    const figure = open(A).querySelector('.tabular-nums[aria-hidden="true"]')!
+    const wrapper = figure.parentElement!.parentElement!
+    const tokens = wrapper.className.split(/\s+/)
+    for (const name of ['relative', '[&_.text-center]:flex', '[&_.text-center]:flex-col', '[&_.text-center]:items-center', '[&_table]:right-0']) expect(tokens).toContain(name)
+    for (const name of ['[&_table]:whitespace-normal', '[&_table]:break-all']) expect(tokens).not.toContain(name)
+    const labelCells = Array.from(figure.lastElementChild!.children)
+    expect(labelCells.length).toBeGreaterThan(0)
+    expect(Array.from(wrapper.querySelectorAll('.text-center'))).toEqual(labelCells)
+    expect(Array.from(wrapper.querySelectorAll('table')).map((table) => table.className)).toEqual(['sr-only'])
+  })
+
   it('AC-513.3: 표 칸은 날짜·건수·신환·재진·비교 이름(COMPARE_NAME)이다', () => {
     render(<RxTrendSection input={inputOf(BOTH, WHOLE)} saved />)
     const panel = openTable(open(A))

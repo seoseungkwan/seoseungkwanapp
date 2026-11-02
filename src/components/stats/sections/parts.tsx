@@ -86,3 +86,9 @@ export function DeltaText({ delta, unit }: { delta: Delta; unit: DeltaUnit }) {
 
 // 칸이 많으면 휴대폰에서 막대 위 합계를 마지막 끝난 칸만 남긴다(시안 §3 '칸 13개 이상이면 마지막 칸만'). 합계 글자만 text-ink-2다
 export const thinTotals = (cells: number) => (cells >= 13 ? 'max-md:[&_.text-ink-2]:invisible' : '')
+
+// 칸이 많은 막대 그림을 감싸는 칸에 준다. 휴대폰에서 쪽이 옆으로 밀리지 않게 한다. StackedBarChart는 대시보드·미리보기와 같이 쓰고 마크업이 시험으로 고정돼 있어 밖에서 고친다.
+// 날짜 글자(.text-center): 글자가 칸보다 넓으면 text-center여도 오른쪽으로만 넘친다. 세로 flex 가운데 정렬은 제 칸 가운데에서 양쪽으로 넘쳐 쪽 여백 16px 안에 든다.
+// 화면 읽기 표(sr-only): 줄을 못 바꾸는 표는 width: 1px를 넘어 글자만큼 넓어지고, 보이지 않아도 쪽을 민다. 오른쪽 끝을 이 칸에 맞춰 왼쪽으로 넘긴다(왼쪽 넘침은 스크롤이 안 생긴다).
+// 표를 줄바꿈시키지 않는다: 글자마다 줄이 바뀌면 표가 수천 px로 길어져 쪽이 아래로 늘어난다
+export const CHART_NO_SIDE_SCROLL = 'relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0'
