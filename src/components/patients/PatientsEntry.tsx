@@ -5,8 +5,10 @@ import { useState } from 'react'
 import { useBridge } from '@/components/claim/useBridge'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
+import { todayInKorea } from '@/lib/analytics/dates'
 import type { BridgeState } from '@/types/bridge'
 import { CountsOnly } from './CountsOnly'
+import { MessagesTool } from './MessagesTool'
 import { ConnectingView, PatientsScreen, ToolSlot } from './PatientsScreen'
 import { ToolRow } from './ToolRow'
 import { PATIENTS_TOOLS, toolHref, type PatientsTool } from './tools'
@@ -17,7 +19,8 @@ import { usePatientsWorkerObject } from './usePatientsWorker'
 // - 도우미 없음·업데이트·끊김(연결 중에 hello가 번호로 끝난 경우 포함): 명단 도구 → 비트 PC 연결 안내
 // - 다른 창 작업 중: 안내 + [건수만 보기](그 자리에서 건수). 글은 환자 탭 전용이다(docs/mockups/patients/README.md)
 // - 연결됨: PatientsScreen
-// 문자 문구 도구는 환자 정보가 없어 어느 상태에서나 자기 자리다(TASK-13)
+// 문자 문구 도구는 환자 정보가 없어 어느 상태에서나 자기 자리다(AC-613.5). 그래서 이 연결 갈래 밖에 하나만 둔다: 고치는 동안 연결 상태가 바뀌거나 다른 도구로 갔다 와도
+// 다시 만들어지지 않아 고친 글을 잃지 않는다. 처음 열 때 만들고(열지 않으면 문구를 읽지 않는다) 그 뒤로는 숨기기만 한다
 
 type Reason = 'no-helper' | 'update' | 'disconnected'
 
@@ -93,7 +96,7 @@ function Connected({ tool, worker }: { tool: PatientsTool; worker: Worker }) {
   const [countsOnly, setCountsOnly] = useState(false)
 
   if (state === 'ready') return <PatientsScreen tool={tool} bridge={{ stream }} worker={worker} />
-  if (tool === 'messages') return <ToolSlot tool={tool} />
+  if (tool === 'messages') return null
   if (state === 'no-extension') return <CountsOnly />
   if (state === 'busy') {
     if (!countsOnly) return <BusyNotice onRetry={retry} onCountsOnly={() => setCountsOnly(true)} />
@@ -123,6 +126,8 @@ function Connected({ tool, worker }: { tool: PatientsTool; worker: Worker }) {
 
 export function PatientsEntry({ tool }: { tool: PatientsTool }) {
   const worker = usePatientsWorkerObject()
+  const [messagesOpened, setMessagesOpened] = useState(tool === 'messages')
+  if (tool === 'messages' && !messagesOpened) setMessagesOpened(true)
   return (
     <div>
       <h1 className="text-title font-semibold text-ink">환자</h1>
@@ -130,7 +135,12 @@ export function PatientsEntry({ tool }: { tool: PatientsTool }) {
         <ToolRow label="환자 도구" items={TOOL_ITEMS} current={tool} />
       </div>
       <div className="mt-6 max-md:mt-4">
-        {worker ? <Connected tool={tool} worker={worker} /> : tool === 'messages' ? <ToolSlot tool={tool} /> : <ConnectingView tool={tool} />}
+        {worker ? <Connected tool={tool} worker={worker} /> : tool !== 'messages' && <ConnectingView tool={tool} />}
+        {messagesOpened && (
+          <ToolSlot tool="messages" hidden={tool !== 'messages'}>
+            <MessagesTool today={todayInKorea()} active={tool === 'messages'} />
+          </ToolSlot>
+        )}
       </div>
     </div>
   )

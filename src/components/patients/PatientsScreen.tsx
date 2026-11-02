@@ -10,7 +10,7 @@ import { RecallTool } from './RecallTool'
 import type { PatientsTool } from './tools'
 import { usePatientsWorker, type PatientsBridge, type PatientsWorkerApi, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
 
-// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 정기 주사는 TASK-12, 문자 문구는 TASK-13).
+// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 정기 주사는 TASK-12). 문자 문구 도구는 연결 상태와 상관없이 살아 있어야 해서 이 화면 밖(PatientsEntry)에 있다(AC-613.5).
 // 도구를 바꿔도 다시 읽지 않는다(이 컴포넌트는 도구가 바뀌어도 그대로 있고, 읽기는 usePatientsWorker 한 곳). 한 종류가 실패하면 그 도구만 오류다(AC-604.3).
 // 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다
 
@@ -111,9 +111,9 @@ function ErrorView({ tool, code, onReload }: { tool: ListTool; code: string; onR
   )
 }
 
-// 지금 도구의 불러오는 중·오류·빈 자리
+// 지금 도구의 불러오는 중·오류·빈 자리. 문자 문구는 이 화면이 그리지 않는다
 function ToolState({ tool, load }: { tool: PatientsTool; load: PatientsWorkerApi }) {
-  if (tool === 'messages') return <ToolSlot tool={tool} />
+  if (tool === 'messages') return null
   if (load.status === 'loading') return <LoadingView tool={tool} progress={load.progress[tool]} />
   const code = load.views?.codes[tool]
   if (code) return <ErrorView tool={tool} code={code} onReload={load.reload} />

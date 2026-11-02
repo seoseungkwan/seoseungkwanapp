@@ -23,7 +23,8 @@
     {
       "step": 3,
       "name": "messages-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/components/patients/{MessagesTool,useTemplates}. 명세와 다른 점: MessagesTool은 PatientsScreen이 아니라 PatientsEntry의 상태 갈래 위에 둔다(step3.md:93과 다름). 처음 열 때 마운트하고 그 뒤로는 숨기기만 해 연결 상태가 바뀌거나 도구를 바꿔도 고치던 글이 남는다. PatientsScreen.test의 slot('messages')는 null이고 상태별 확인은 PatientsEntry.test가 맡는다. 저장(step3.md:80 대신): saveTemplates의 READ는 load-failed + [다시 불러오기], SAVE 실패는 draft 그대로 + saved 다시 읽기, 저장 중 두 번 누름은 훅과 단추에서 막는다. 다시 읽기가 draft와 글·순서까지 같으면 저장된 것으로 친다(alreadySaved, sort_order 포함). 다시 읽기 때 withoutForeign이 모르는 id이면서 id 없는 draft 줄과 글이 다른 줄을 before에서 빼서 [다시 저장]이 본 적 없는 다른 기기 줄을 지우지 않는다(저장이 끝난 뒤 다시 읽어 보인다). 알려진 한계(보고): [다시 저장] 때 다른 기기에서 고친 줄은 초안 글로 되돌아가고 다른 곳에서 지운 줄은 새 id로 다시 들어간다. 답 잃음 + 다시 읽기 실패 + 사용자가 그 줄을 고침이 겹치면 옛 줄이 한 줄 더 남는다(지울 수 있음). 더하기가 다시 읽기보다 늦게 서버에 닿으면 줄이 겹친다(messageTemplates.ts:64). 보고할 문구: errors.ts TEMPLATES-READ/SAVE 고침 줄에 목업의 '인터넷 연결을 확인하고'가 없다. 저장은 됐는데 다시 읽기만 실패하면 READ 카드가 저장됐다고 말하지 않는다. 100줄 넘으면 이유 없이 SAVE 카드. [문구 복사]는 PC 32px, 목업 36px(CopyButton 범위 밖). TASK-14에 전달: PatientsScreen.tsx의 도구 숨김 div, store.load 자동 호출 금지."
     },
     {
       "step": 4,

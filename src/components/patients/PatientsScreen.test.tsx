@@ -8,7 +8,7 @@ import { PatientsScreen } from './PatientsScreen'
 import type { PatientsTool } from './tools'
 import type { PatientsBridge, PatientsWorkerHandle } from './usePatientsWorker'
 
-// 비트 PC 환자 탭 틀(AC-610, 목업 loadingView·errorView). 불러오는 중·오류·도구 자리를 그리고, 도구 자리에 FollowupTool(AC-611)·RecallTool(AC-612)이 들어간다. 문자 문구 몸통은 TASK-13
+// 비트 PC 환자 탭 틀(AC-610, 목업 loadingView·errorView). 불러오는 중·오류·도구 자리를 그리고, 도구 자리에 FollowupTool(AC-611)·RecallTool(AC-612)이 들어간다. 문자 문구 도구는 연결 상태와 상관없이 살아 있어야 해서 이 화면 밖(PatientsEntry)에 있다(AC-613.5)
 const sb = vi.hoisted(() => ({ reads: 0 }))
 vi.mock('@/lib/supabase/browser', () => ({
   supabaseBrowser: () => ({
@@ -121,10 +121,10 @@ describe('PatientsScreen: 불러오는 중', () => {
     expect(status.textContent).not.toMatch(/처음|7개월/)
   })
 
-  it('AC-610.2: 문자 문구 도구는 명단을 읽는 동안에도 불러오는 중이 아니라 자기 자리다', () => {
+  it('AC-610.2: 문자 문구 도구는 명단을 읽는 동안에도 불러오는 중이 아니다. 도구 자리는 PatientsEntry가 둔다(그쪽 AC-613.5 시험)', () => {
     const t = setup('messages')
     expect(screen.queryByRole('status')).toBeNull()
-    expect(t.slot('messages')).not.toBeNull()
+    expect(t.slot('messages')).toBeNull()
     // 탭에 들어왔으니 명단은 뒤에서 읽어 둔다
     expect(t.storeLoads()).toBe(1)
   })
@@ -150,7 +150,7 @@ describe('PatientsScreen: 오류는 그 도구에만 (AC-604.3)', () => {
 
     t.show('messages')
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(t.slot('messages')).not.toBeNull()
+    expect(t.slot('messages')).toBeNull()
   })
 
   it('AC-610.2: 반대도 같다 — 정기 주사만 실패하면 F/U 도구는 자기 자리', async () => {
@@ -566,5 +566,15 @@ describe('PatientsScreen: 정기 주사 도구 자리 (AC-612)', () => {
     await t.toViews({ followup: FOLLOWUP_VIEW, recall: VIEW, counts: null, codes: {} })
     expect(filters(t)).toEqual([{ type: 'filter', tool: 'recall', filters: FIRST }])
     expect(t.storeLoads()).toBe(2)
+  })
+})
+
+describe('PatientsScreen: 문자 문구 도구 (AC-613.5)', () => {
+  it('AC-613.5: 이 화면은 문자 문구 도구를 그리지 않고 문구도 읽지 않는다(연결이 바뀌어도 도구가 다시 만들어지지 않게 PatientsEntry가 둔다)', async () => {
+    const t = setup('messages')
+    await flush()
+    expect(screen.queryByRole('heading', { name: '문자 문구' })).toBeNull()
+    expect(sb.reads).toBe(0)
+    expect(t.storeLoads()).toBe(1)
   })
 })

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useBridge } from '@/components/claim/useBridge'
@@ -9,14 +9,29 @@ import type { BridgeState } from '@/types/bridge'
 import { PatientsEntry } from './PatientsEntry'
 import type { PatientsTool } from './tools'
 
-// 환자 탭 입구(AC-610.2·610.3·610.4, 목업 toolBody). 연결 상태로 도구 자리를 고른다(ClaimEntry와 같은 갈래). 가짜 통로·가짜 Worker·가짜 Supabase
+// 환자 탭 입구(AC-610.2·610.3·610.4·613.5, 목업 toolBody). 연결 상태로 도구 자리를 고른다(ClaimEntry와 같은 갈래). 가짜 통로·가짜 Worker·가짜 Supabase
 vi.mock('@/components/claim/useBridge', () => ({ useBridge: vi.fn() }))
-vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({}) }))
+const sb = vi.hoisted(() => ({ reads: 0 }))
+vi.mock('@/lib/supabase/browser', () => ({
+  supabaseBrowser: () => ({
+    from: () => ({
+      select: () => ({
+        order: () => ({
+          order: async () => {
+            sb.reads += 1
+            return { data: [{ id: 'a', kind: 'injection', name: '주사 알림', body: '주사 글\n<<DATE>>', sort_order: 0 }], error: null }
+          },
+        }),
+      }),
+    }),
+  }),
+}))
 vi.mock('@/lib/storage/contactCounts', () => ({ readContactCount: vi.fn() }))
 
 const bridge = vi.mocked(useBridge)
 const retry = vi.fn()
 const stream = vi.fn()
+const call = vi.fn()
 const made: FakeWorker[] = []
 
 class FakeWorker {
@@ -38,7 +53,7 @@ function withState(state: BridgeState, helloError: string | null = null) {
     hello: null,
     helloError,
     helperUpdateAvailable: false,
-    call: vi.fn(),
+    call,
     stream,
     onProgress: vi.fn(),
     retry,
@@ -60,8 +75,10 @@ const currentTool = () =>
 
 beforeEach(() => {
   made.length = 0
+  sb.reads = 0
   bridge.mockReset()
   retry.mockClear()
+  call.mockClear()
   stream.mockReset()
   stream.mockImplementation(() => new Promise(() => {}))
   vi.mocked(readContactCount).mockReset()
@@ -263,5 +280,115 @@ describe('PatientsEntry: 연결 중·연결됨', () => {
     rerender(<PatientsEntry tool="followup" />)
     expect(stream.mock.calls.filter(([cmd]) => cmd === 'store.load')).toHaveLength(1)
     expect(made).toHaveLength(1)
+  })
+})
+
+describe('PatientsEntry: 문자 문구 도구 (AC-613.5)', () => {
+  const nameBox = () => screen.getByLabelText(/^이름/) as HTMLInputElement
+  const flush = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  const storeLoads = () => stream.mock.calls.filter(([cmd]) => cmd === 'store.load').length
+
+  it.each<[BridgeState, string | null]>([
+    ['no-extension', null],
+    ['no-helper', null],
+    ['update-helper', null],
+    ['update-extension', null],
+    ['disconnected', null],
+    ['busy', null],
+    ['connecting', null],
+    ['connecting', 'E-BRIDGE-HELLO'],
+    ['ready', null],
+  ])('AC-613.5: 상태 %s(%s)에서 같은 도구가 열리고 안내·건수가 없으며, 도구가 통로·store.load를 부르지 않는다', async (state, helloError) => {
+    withState(state, helloError)
+    const { container } = render(<PatientsEntry tool="messages" />)
+    await flush()
+    expect(heading2('문자 문구')).not.toBeNull()
+    expect(nameBox().value).toBe('주사 알림')
+    expect(screen.getByRole('button', { name: /^저장/ })).toBeTruthy()
+    for (const title of [COUNTS_TITLE, CONNECT_TITLE, BUSY_TITLE]) expect(heading2(title)).toBeNull()
+    expect(screen.queryByText('비트 PC 연결을 확인하는 중이에요')).toBeNull()
+    expect(container.querySelectorAll('[data-tool-slot="messages"]')).toHaveLength(1)
+    expect(sb.reads).toBe(1)
+    expect(vi.mocked(readContactCount)).not.toHaveBeenCalled()
+    expect(call).not.toHaveBeenCalled()
+    expect(retry).not.toHaveBeenCalled()
+    // 연결됐을 때 나가는 store.load는 탭 입구의 명단 읽기 한 번이다. 다른 상태에서는 아무것도 나가지 않는다
+    expect(stream.mock.calls).toEqual(state === 'ready' ? [['store.load', { contact: true }]] : [])
+  })
+
+  it.each<BridgeState>(['connecting', 'no-extension', 'no-helper', 'disconnected', 'busy'])('AC-613.5: 고치는 동안 %s → 연결됨이 되어도 도구가 그대로이고 고친 글이 남으며, 문구도 명단도 또 읽지 않는다', async (from) => {
+    withState(from)
+    const { rerender } = render(<PatientsEntry tool="messages" />)
+    await flush()
+    const box = nameBox()
+    fireEvent.change(box, { target: { value: '고치는 중' } })
+
+    withState('ready')
+    rerender(<PatientsEntry tool="messages" />)
+    await flush()
+    expect(nameBox()).toBe(box)
+    expect(box.value).toBe('고치는 중')
+    expect(sb.reads).toBe(1)
+    expect(storeLoads()).toBe(1)
+    expect(retry).not.toHaveBeenCalled()
+
+    // 그 뒤 다시 그려도 그대로다
+    rerender(<PatientsEntry tool="messages" />)
+    await flush()
+    expect(nameBox()).toBe(box)
+    expect(storeLoads()).toBe(1)
+  })
+
+  it.each<BridgeState>(['ready', 'no-extension', 'no-helper', 'busy', 'connecting'])('AC-613.5: 상태 %s에서 다른 도구로 갔다 돌아와도 같은 도구이고 고친 글·날짜가 남는다. 숨어 있는 동안 안 보인다', async (state) => {
+    withState(state)
+    const { rerender, container } = render(<PatientsEntry tool="messages" />)
+    await flush()
+    const box = nameBox()
+    fireEvent.change(box, { target: { value: '고치는 중' } })
+    fireEvent.change(screen.getByLabelText('내원 날짜'), { target: { value: '2027-01-04' } })
+
+    rerender(<PatientsEntry tool="followup" />)
+    await flush()
+    expect((slot(container, 'messages') as HTMLElement).hidden).toBe(true)
+    expect(heading2('문자 문구')).toBeNull()
+    rerender(<PatientsEntry tool="recall" />)
+    await flush()
+    expect((slot(container, 'messages') as HTMLElement).hidden).toBe(true)
+
+    rerender(<PatientsEntry tool="messages" />)
+    await flush()
+    expect((slot(container, 'messages') as HTMLElement).hidden).toBe(false)
+    expect(nameBox()).toBe(box)
+    expect(box.value).toBe('고치는 중')
+    expect((screen.getByLabelText('내원 날짜') as HTMLInputElement).value).toBe('2027-01-04')
+    expect(sb.reads).toBe(1)
+    expect(storeLoads()).toBe(state === 'ready' ? 1 : 0)
+    expect(made).toHaveLength(1)
+  })
+
+  it('AC-613.5: 문구 도구를 열기 전에는 문구를 읽지 않는다. 처음 열 때 한 번 읽고, 숨겼다 다시 열어도 또 읽지 않는다', async () => {
+    withState('no-extension')
+    const { rerender, container } = render(<PatientsEntry tool="followup" />)
+    await flush()
+    expect(sb.reads).toBe(0)
+    expect(slot(container, 'messages')).toBeNull()
+    rerender(<PatientsEntry tool="messages" />)
+    await flush()
+    expect(sb.reads).toBe(1)
+    rerender(<PatientsEntry tool="followup" />)
+    rerender(<PatientsEntry tool="messages" />)
+    await flush()
+    expect(sb.reads).toBe(1)
+  })
+
+  it('AC-613.5: 연결됨에서 열고 있는 동안 명단 불러오는 중 글이 나오지 않는다', async () => {
+    withState('ready')
+    render(<PatientsEntry tool="messages" />)
+    await flush()
+    expect(screen.queryByText('비트에서 F/U 명단을 읽는 중이에요')).toBeNull()
+    expect(heading2('문자 문구')).not.toBeNull()
   })
 })
