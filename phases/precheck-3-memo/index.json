@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "bit-memo-compare",
-      "status": "pending"
+      "status": "completed",
+      "summary": "비트 메모 비교(TASK-16) 웹 쪽: memoCompare.ts의 compareMemo(도우미와 같음)·inputPlan·dayMemoCounts, jobs의 loadPart·memoReloadStart, store.load를 메모에 연결. 도우미 MemoCompare 시험은 진짜 MemoMatcher를 본다(TASK-37과 함께)."
     },
     {
       "step": 3,

@@ -41,7 +41,8 @@
     {
       "step": 6,
       "name": "precheck-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "청구 화면(TASK-13): components/claim/ClaimScreen·claimLoad(claimChannel, ask, 번호, 맡긴 결과 kept)·DateStep(날짜 목록, 기간, clipPeriod)·ResultStep·ClaimError(SETUP_CODES 링크)·excel.ts 두 시트. 다른 탭에 다녀와도 결과 유지(같은 사람·같은 기관기호·bit.check 모든 단계 ok일 때만). TASK-18 연결점: claimLoad의 run 자리, settingsStale, Flow 3~5단계, view.visits[].memo, view.memoBlocked, rows/VisitDetail. 진짜 Worker·도우미로는 의원 PC에서 본다."
     }
   ]
 }
