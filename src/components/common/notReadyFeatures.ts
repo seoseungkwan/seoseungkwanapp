@@ -7,7 +7,6 @@
 export type NotReadyPath =
   | '/notices'
   | '/patients'
-  | '/ai-report'
   | '/forms'
   | '/staff'
   | '/inventory'
@@ -40,13 +39,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '환자는 준비 중이에요',
     intro: `다시 오실 환자와 문자 보낼 환자를 챙길 자리예요. ${SOON}`,
     items: ['다시 오실 환자 명단', '정기 주사 문자 명단', '문자 문구 복사'],
-  },
-  {
-    path: '/ai-report',
-    name: 'AI 리포트',
-    title: 'AI 리포트는 준비 중이에요',
-    intro: `보고 자료를 정해 둔 양식으로 채울 자리예요. ${SOON}`,
-    items: ['월간보고 발표 자료', '주간 요약', '분기와 연간 보고'],
   },
   {
     path: '/forms',

@@ -30,7 +30,7 @@ export type MenuPath =
   | '/contacts'
   | '/claim/setup'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/revenue' | '/worklog'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/revenue' | '/ai-report' | '/worklog'
 
 export type MenuItem = {
   label: MenuLabel
@@ -53,7 +53,7 @@ export const MENU: readonly MenuItem[] = [
   { label: '고시·공지', path: '/notices', href: null, ready: false },
   { label: '환자', path: '/patients', href: null, ready: false },
   { label: '매출', path: '/revenue', href: '/revenue', ready: true },
-  { label: 'AI 리포트', path: '/ai-report', href: null, ready: false },
+  { label: 'AI 리포트', path: '/ai-report', href: '/ai-report', ready: true },
   { label: '서식', path: '/forms', href: null, ready: false },
   { label: '직원', path: '/staff', href: null, ready: false },
   { label: '업무일지', path: '/worklog', href: '/worklog', ready: true },

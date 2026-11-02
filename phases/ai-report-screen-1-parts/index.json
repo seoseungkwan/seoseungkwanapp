@@ -1,0 +1,30 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-screen-1-parts",
+  "steps": [
+    {
+      "step": 0,
+      "name": "error-code-types",
+      "status": "completed",
+      "summary": "TASK-1 끝: E-AI-READ는 ErrorCode·errorInfo에만(AiErrorCode는 넷 그대로), AiUsageView·ShownReport·ReportView는 @/types/aiReport. 리뷰 PASS"
+    },
+    {
+      "step": 1,
+      "name": "saved-report-check",
+      "status": "completed",
+      "summary": "TASK-2 끝: lib/ai/savedReport.ts parseSavedReport(DB 줄 month·report·input_hash·model·created_at → SavedReport), parseShownReport(서버 답 → ShownReport, inputHash 버림). 시각은 Date.parse로 읽히는 글자만, 카드 개수는 안 봄. 진짜 Postgres 시각 모양 통과 확인. 리뷰 PASS"
+    },
+    {
+      "step": 2,
+      "name": "screen-text",
+      "status": "completed",
+      "summary": "TASK-3 끝: lib/ai/reportScreen.ts firstMonth·canGoPrev·canGoNext·longMonth·shortMonth·compareMonths·compareLine·madeAtText·modelName·usageText·reportCopyText·partialNotice, REPORT_FIRST_MONTH. 잘못된 시각 글자는 madeAtText가 던지므로 parseSavedReport·parseShownReport를 거친 값만 넣는다. 리뷰 FIX(시간대 시험) 뒤 재리뷰 PASS"
+    },
+    {
+      "step": 3,
+      "name": "stale-check",
+      "status": "completed",
+      "summary": "TASK-5 끝: generate.ts isReportStale(month, savedHash, loadMonths) → 지문 다르면 true, 고른 달 없음·읽기 실패·던짐은 false. 내부 currentInput을 generateReport와 함께 씀. 지문은 지표 이름도 포함이라 이름만 바뀌어도 true(참고). 리뷰 PASS"
+    }
+  ]
+}

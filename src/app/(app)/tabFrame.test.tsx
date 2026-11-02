@@ -59,6 +59,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/claim/setup': 'claim/setup',
   '/stats': 'stats',
   '/revenue': 'revenue',
+  '/ai-report': 'ai-report',
   '/worklog': 'worklog',
 }
 
@@ -152,15 +153,19 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-010.1·AC-515.4·AC-012.4: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats와 /worklog가 들어 있다', () => {
+  it('AC-307.3·AC-010.1·AC-515.4·AC-714.3·AC-012.4: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats와 /ai-report와 /worklog가 들어 있다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
     expect(READY.map((f) => f.href)).toEqual(expect.arrayContaining(['/claim', '/revenue', '/claim/setup']))
     expect(READY.map((f) => f.href)).toContain('/stats')
+    expect(READY.map((f) => f.href)).toContain('/ai-report')
     expect(READY.map((f) => f.href)).toContain('/worklog')
     for (const feature of READY) {
       const source = read(pageFile(feature.href))
       expect(source, feature.href).not.toMatch(/NotReadyScreen|notReadyFeatures/)
       expect(source, feature.href).toContain(`from '@/components/${SCREEN_DIR[feature.href]}/`)
+      if (feature.href === '/ai-report') {
+        expect(source, feature.href).toMatch(/from '@\/components\/ai-report\/AiReportScreen'/) // AI 리포트 화면
+      }
     }
     // 청구 사전점검 화면(ClaimEntry · SetupScreen)
     for (const href of ['/claim', '/claim/setup']) expect(read(pageFile(href)), href).toMatch(/from '@\/components\/claim\/setup\//)
@@ -178,6 +183,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(fromNotReady).toHaveLength(MENU.filter((m) => !m.ready).length)
     expect(fromNotReady).not.toContainEqual(['통계', '/stats'])
     expect(fromNotReady).not.toContainEqual(['업무일지', '/worklog'])
+    expect(fromNotReady).not.toContainEqual(['AI 리포트', '/ai-report'])
     expect(NOT_READY.map((f) => [f.name, f.href])).toEqual(fromNotReady)
     expect(MENU.filter((m) => m.href === null && m.label !== '설정').map((m) => [m.label, m.path])).toEqual(fromNotReady)
   })
@@ -214,7 +220,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
+  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
     const total = DASHBOARD_FEATURES.length
     const now = featureCount('ready')
     const afterConnect = featureCount('connect-first')

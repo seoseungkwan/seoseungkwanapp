@@ -25,13 +25,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['다시 오실 환자 명단', '정기 주사 문자 명단', '문자 문구 복사'],
   },
   {
-    path: '/ai-report',
-    name: 'AI 리포트',
-    title: 'AI 리포트는 준비 중이에요',
-    intro: `보고 자료를 정해 둔 양식으로 채울 자리예요. ${SOON}`,
-    items: ['월간보고 발표 자료', '주간 요약', '분기와 연간 보고'],
-  },
-  {
     path: '/forms',
     name: '서식',
     title: '서식은 준비 중이에요',
@@ -78,6 +71,11 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
     expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(stats)
     expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('통계')
     expect(NOT_READY_FEATURES.map((f) => [f.name, f.path])).toEqual(MENU.filter((m) => !m.ready).map((m) => [m.label, m.path]))
+  })
+
+  it('AC-714.2: /ai-report가 없다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/ai-report')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('AI 리포트')
   })
 
   it('AC-012.4: 업무일지(/worklog)는 준비 중 목록에 없다', () => {
@@ -127,7 +125,6 @@ describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 �
   const TITLES = [
     '고시·공지는 준비 중이에요',
     '환자는 준비 중이에요',
-    'AI 리포트는 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
     '재고는 준비 중이에요',

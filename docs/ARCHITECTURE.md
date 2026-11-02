@@ -26,6 +26,7 @@ src/
 │   ├── dashboard/briefing/  # 대시보드 브리핑(날짜 줄·큰 문장·연결 순서)·지금 바로 쓸 수 있어요·기능 목차(features.ts). 서버 컴포넌트(폰 아래 단추 StickyConnect만 클라이언트), 자료를 읽지 않고 연결 상태도 판정하지 않는다 (specs/tab-frame)
 │   ├── dashboard/summary/   # 대시보드 오늘 하루 분석·기간별 흐름·원장님 보고 문장(계산은 view.ts). 자료 읽는 자리는 source.ts 하나이고 지금은 늘 자료 없음 — 통계 명세가 진짜 읽기로 바꾼다 (specs/tab-frame)
 │   ├── revenue/         # 매출 화면(RevenueScreen). 보기 모양은 view.ts, 그래프는 charts/를 불러 쓰기만 한다 (specs/revenue)
+│   ├── ai-report/       # AI 리포트 탭 화면(AiReportScreen·ReportBody·UsageAside·RedoDialog)과 서버 경로 `GET/POST /api/ai/report`를 부르는 reportClient. 달·읽기·분석 상태는 화면에만 둔다 (specs/ai-report-screen)
 │   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
 │   ├── charts/          # 차트 부품(숫자 글자·KPI·Sparkline·쌓은 막대·범례·순위 막대·줄 안 막대). 서버에서 그리는 순수 부품, 토큰 클래스만, 자료 모양은 `@/types/analysis` (specs/b2b-redesign)
 │   └── preview/         # 대시보드 미리보기 + 예시 자료(sample.ts). 랜딩 히어로·로그인 오른쪽이 같이 쓴다. 실제 자료를 읽지 않는다

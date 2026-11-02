@@ -18,6 +18,8 @@ export type ErrorCode =
   | 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
   // AI 리포트(spec ai-report design.md '오류 문구')
   | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
+  // 저장한 AI 리포트 읽기(spec ai-report-screen REQ-701). POST가 쓰지 않아 AiErrorCode에는 없다
+  | 'E-AI-READ'
   // 업무일지(specs/worklog)
   | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
   // 비트 대시보드(spec bit-dashboard)

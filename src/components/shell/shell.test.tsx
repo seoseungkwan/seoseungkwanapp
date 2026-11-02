@@ -50,7 +50,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/claim/setup'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '매출', '업무일지']
+const READY = ['대시보드', '통계', '청구', '매출', 'AI 리포트', '업무일지']
 const NOT_READY = LABELS.filter((l) => !READY.includes(l))
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
@@ -88,8 +88,8 @@ const panel = () => {
   const id = allButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·매출·업무일지·설정(비트 PC 연결 화면)
-const READY_TABS = ['대시보드', '통계', '청구', '매출', '업무일지', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·매출·AI 리포트·업무일지·설정(비트 PC 연결 화면)
+const READY_TABS = ['대시보드', '통계', '청구', '매출', 'AI 리포트', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -116,12 +116,13 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-010.1·AC-515.1·AC-012.2: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 매출 /revenue · 업무일지 /worklog이고 나머지(설정 포함)는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-012.2: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 매출 /revenue · AI 리포트 /ai-report · 업무일지 /worklog이고 나머지(설정 포함)는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
       { label: '청구', href: '/claim' },
       { label: '매출', href: '/revenue' },
+      { label: 'AI 리포트', href: '/ai-report' },
       { label: '업무일지', href: '/worklog' },
     ])
     expect(MENU.filter((m) => m.href === null).map((m) => m.label)).toEqual(NOT_READY)
@@ -158,7 +159,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-010.1·AC-515.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·매출·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-010.1·AC-515.1·AC-714.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·매출·AI 리포트·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -513,7 +514,7 @@ describe('AllMenu', () => {
     expect(link.textContent).toBe('업무일지')
   })
 
-  it('AC-416.2·AC-010.1·AC-515.1·AC-012.2: 준비 중 탭은 neutral 칩 "준비 중"(글자 뒤), 화면이 있는 탭(대시보드·통계·청구·매출·업무일지·설정)에는 칩이 없다', async () => {
+  it('AC-416.2·AC-010.1·AC-515.1·AC-714.1·AC-012.2: 준비 중 탭은 neutral 칩 "준비 중"(글자 뒤), 화면이 있는 탭(대시보드·통계·청구·매출·AI 리포트·업무일지·설정)에는 칩이 없다', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(allButton())
@@ -533,6 +534,19 @@ describe('AllMenu', () => {
       }
     }
     expect(within(panel() as HTMLElement).getAllByText('준비 중')).toHaveLength(NOT_READY_FEATURES.length)
+  })
+
+  it('AC-714.1: 탭 줄과 [전체 메뉴] 판 모두 [AI 리포트]는 /ai-report 링크이고 "준비 중" 칩이 없다', async () => {
+    const user = userEvent.setup()
+    render(<TabBar />)
+    const inStrip = within(strip()).getByRole('link', { name: 'AI 리포트' })
+    expect(inStrip.getAttribute('href')).toBe('/ai-report')
+    expect(inStrip.textContent).toBe('AI 리포트')
+    await user.click(allButton())
+    const inPanel = within(panel() as HTMLElement).getByRole('link', { name: 'AI 리포트' })
+    expect(inPanel.getAttribute('href')).toBe('/ai-report')
+    expect(inPanel.children).toHaveLength(1)
+    expect(inPanel.textContent).toBe('AI 리포트')
   })
 
   it('AC-416.2·AC-010.1: 머리의 숫자는 MENU에서 센다(AllMenu.tsx에 수를 적지 않는다)', () => {

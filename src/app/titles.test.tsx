@@ -72,13 +72,14 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
     [
       ['/notices', () => import('./(app)/notices/page')],
       ['/patients', () => import('./(app)/patients/page')],
-      ['/ai-report', () => import('./(app)/ai-report/page')],
       ['/forms', () => import('./(app)/forms/page')],
       ['/staff', () => import('./(app)/staff/page')],
       ['/inventory', () => import('./(app)/inventory/page')],
       ['/contacts', () => import('./(app)/contacts/page')],
     ] as const
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
+  // 진짜 화면이 생겨 준비 중 목록에 없다(AC-714.3)
+  { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
   { path: '/revenue', title: '매출', load: () => import('./(app)/revenue/page') },

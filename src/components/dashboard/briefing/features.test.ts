@@ -13,7 +13,7 @@ const TABLE = [
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'soon' },
   { name: '매출', desc: '매출 추이·급여와 비급여·치료별 매출·건당 진료비', href: '/revenue', status: 'connect-first' },
-  { name: 'AI 리포트', desc: '월간보고 발표 자료·주간 요약·분기와 연간 보고', href: '/ai-report', status: 'soon' },
+  { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
   { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },
   { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
   { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' },
@@ -41,11 +41,14 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     }
   })
 
-  it('AC-414.5·AC-010.1·AC-515.2·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first다', () => {
+  it('AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first, AI 리포트는 ready다', () => {
     const namesOf = (rows: ReadonlyArray<{ name: string; status: string }>, status: string) => rows.filter((f) => f.status === status).map((f) => f.name)
     for (const status of ['ready', 'connect-first', 'soon']) expect(namesOf(DASHBOARD_FEATURES, status), status).toEqual(namesOf(TABLE, status))
     expect(namesOf(DASHBOARD_FEATURES, 'ready')).toContain('설정')
     expect(namesOf(DASHBOARD_FEATURES, 'connect-first')).toContain('청구')
+    const ai = DASHBOARD_FEATURES.find((f) => f.name === 'AI 리포트')
+    expect(ai?.status).toBe('ready')
+    expect(ai?.desc).toBe('지난달·작년 같은 달과 견준 월간 AI 보고')
     for (const { name, status } of DASHBOARD_FEATURES) expect(['ready', 'connect-first', 'soon'], name).toContain(status)
   })
 
