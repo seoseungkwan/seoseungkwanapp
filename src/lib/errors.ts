@@ -76,7 +76,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   },
   'E-BRIDGE-BUSY': {
     what: '비트 연결을 다른 창에서 쓰고 있어요',
-    fix: '비트 연결은 한 창에서만 쓸 수 있어요. 청구나 매출을 연 다른 창을 닫고 [다시 확인]을 눌러 주세요.',
+    fix: '비트 연결은 한 창에서만 쓸 수 있어요. 비트 연결을 쓰는 다른 창을 닫고 [다시 확인]을 눌러 주세요.',
   },
   'E-BRIDGE-DISCONNECTED': {
     what: '도우미와 연결이 끊겼어요',

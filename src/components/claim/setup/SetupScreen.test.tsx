@@ -692,13 +692,13 @@ describe('AC-006.1·AC-412.7 상태별 안내 (동작 그대로)', () => {
     expect(chipOf(row('연결')).textContent).toBe('대기')
   })
 
-  it('AC-006.1·AC-412.7: 다른 창에서 작업 중 — 목업 화면 6의 카드(문구는 errors.ts)·[다시 확인]·[건수만 보기] /claim, 준비 순서는 그리지 않는다', async () => {
+  it('AC-006.1·AC-412.7·AC-009.6: 다른 창에서 작업 중 — 목업 화면 6의 카드(문구는 errors.ts)·[다시 확인]·[건수만 보기] /claim, 준비 순서는 그리지 않는다', async () => {
     const fake = fakeExtension({ hello: 'busy' })
     renderSetup()
     const card = await screen.findByRole('alert')
     await waitFor(() => expectInfo(card, 'E-BRIDGE-BUSY'))
     expect(within(card).getByRole('heading', { name: errorInfo('E-BRIDGE-BUSY').what })).toBeTruthy()
-    expect(card.textContent).toContain('다른 창을 닫았다면 [다시 확인]을 누르세요.')
+    expect(card.textContent).not.toContain('다른 창을 닫았다면 [다시 확인]을 누르세요.')
     expect(within(card).getByRole('link', { name: '건수만 보기' }).getAttribute('href')).toBe('/claim')
     expect(screen.queryByRole('list', { name: '준비 순서' })).toBeNull()
     expect(screen.getByRole('link', { name: '비트 PC 연결' }).getAttribute('aria-current')).toBe('page')

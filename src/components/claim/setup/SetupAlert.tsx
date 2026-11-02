@@ -46,7 +46,6 @@ export function BusyCard({ onRetry, disabled = false, outside }: { onRetry(): vo
         {info.what}
       </h2>
       <p className="text-body text-ink-2">{info.fix}</p>
-      <p className="text-small text-ink-2">다른 창을 닫았다면 [다시 확인]을 누르세요.</p>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={ds.button.primary} onClick={onRetry} disabled={disabled}>
           다시 확인
