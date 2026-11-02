@@ -1,0 +1,364 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!--
+  업무일지 화면 목업 v2 (사용자 승인본, claude.ai artifact BZ9iGjQ6Wmj5QXy76Z73EU, 2026-10-29). specs/worklog의 기준 시안.
+  그대로 옮긴 사본이다. 2026-11-01 사용자 결정으로 실제 화면은 이 시안과 몇 곳이 다르다 → specs/worklog/design.md '목업과 다른 점'.
+  (아래 시트 탭 줄 없음 · [저장] 단추 없음(자동 저장 + 저장 상태 글) · 달 고르기 대신 날짜 이동 · 탭 줄은 지금 앱의 12개 탭)
+  숫자는 모두 지어낸 예시다(실제 의원 숫자 아님). 업무사항·비고 글자와 환자 이름·차트번호는 들어 있지 않다.
+-->
+<title>업무일지 화면 목업</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Gothic:wght@400;700&display=swap">
+<style>
+/* 앱 틀은 UI_GUIDE 토큰, 양식 안은 엑셀 서식(굴림 굵게, 연보라 #CCCCFF, 회색 #D9D9D9, 검은 선, 바깥 굵은 선) 그대로. 밝은 화면 하나. */
+:root {
+  --ink: #111827; --ink-2: #374151; --muted: #6B7280; --line: #E5E7EB;
+  --canvas: #F7F8FA; --surface: #FFFFFF; --accent: #2563EB; --stage: #E9ECF1;
+  --xl-ink: #000000; --xl-lav: #CCCCFF; --xl-gray: #D9D9D9; --xl-paper: #FFFFFF; --xl-tab: #F0F0F0; --xl-tabline: #ABABAB;
+  --shadow: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --font: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --xl-font: "Gulim", "굴림", "Nanum Gothic", "Apple SD Gothic Neo", sans-serif;
+  --xl-title: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Nanum Gothic", sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { background: var(--stage); color: var(--ink); font-family: var(--font); word-break: keep-all; }
+button, input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.page { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; display: grid; gap: 16px; }
+.mock-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; max-width: 1440px; }
+.mock-head h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+.mock-head .ex { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; line-height: 18px; font-weight: 600; vertical-align: middle; }
+.paper .ex { display: block; width: fit-content; margin: 0 0 8px auto; padding: 2px 8px; border-radius: 4px; background: #FEF3C7; color: #92400E; font: 600 12px/18px var(--font); }
+.mock-head p { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--ink-2); max-width: 70ch; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 2px; }
+.seg button { border: 0; background: none; height: 32px; padding: 0 14px; border-radius: 4px; font-size: 13px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.frame-wrap { overflow-x: auto; max-width: 100%; }
+.frame { width: 1440px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--canvas); container: app / inline-size; }
+.stage-m .frame { width: 390px; max-width: 100%; }
+
+/* 앱 틀 */
+.top { height: 64px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mark { width: 26px; height: 26px; border-radius: 6px; background: var(--ink); display: grid; place-items: center; flex: none; }
+.mark i { width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 2px; }
+.svc { font-size: 19px; line-height: 24px; font-weight: 600; white-space: nowrap; }
+.vr { width: 1px; height: 22px; background: var(--line); }
+.hosp { font-size: 16px; line-height: 24px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-right { display: flex; align-items: center; gap: 16px; }
+.clock { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.acct { height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.acct svg { width: 16px; height: 16px; flex: none; }
+.tabs { background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 4px; overflow-x: auto; scrollbar-width: thin; }
+.tab { position: relative; height: 50px; padding: 0 20px; display: flex; align-items: center; font-size: 15px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.tab[aria-current="page"] { color: var(--accent); font-weight: 700; }
+.tab[aria-current="page"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; border-radius: 2px 2px 0 0; background: var(--accent); }
+.tab-vr { width: 1px; height: 16px; background: var(--line); margin: 0 6px; flex: none; }
+
+.body { padding: 24px 24px 28px; display: grid; justify-items: center; gap: 12px; }
+.work { width: 737px; max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.work > * { min-width: 0; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.month { height: 36px; padding: 0 32px 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23374151' stroke-width='1.5'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 10px center / 16px; appearance: none; font-size: 14px; font-weight: 500; cursor: pointer; }
+.btns { display: flex; gap: 8px; }
+.btn { height: 36px; padding: 0 14px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.btn.primary { background: var(--ink); color: var(--surface); border: 1px solid var(--ink); }
+.btn.primary:hover { background: var(--ink-2); }
+.btn.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.btn.secondary:hover { background: var(--canvas); }
+
+/* 엑셀 종이 */
+.paper { background: var(--xl-paper); border: 1px solid var(--line); padding: 24px; overflow-x: auto; }
+.sheet {
+  --c: 17px; --c11: 15px; --c10: 13px; --c14: 19px; --t: 43px;
+  --h1: 53px; --h2: 24px; --h3: 45px; --h28: 28px; --h40: 40px; --h20: 20px;
+  width: 689px; border-collapse: collapse; table-layout: fixed; font-family: var(--xl-font); font-weight: 700; font-size: var(--c); line-height: 1.25; color: var(--xl-ink); text-align: center;
+}
+.sheet td, .sheet th { border: 1px solid var(--xl-ink); padding: 0; font-weight: 700; vertical-align: middle; }
+.sheet tr { height: var(--h40); }
+.sheet .r1 { height: var(--h1); } .sheet .r2 { height: var(--h2); } .sheet .r3 { height: var(--h3); }
+.sheet .r28 { height: var(--h28); } .sheet .r20 { height: var(--h20); }
+.sheet .title { font-family: var(--xl-title); font-weight: 400; font-size: var(--t); letter-spacing: .35em; padding-left: .35em; white-space: nowrap; }
+.sheet .lav { background: var(--xl-lav); }
+.sheet .gray { background: var(--xl-gray); }
+.sheet .date { font-size: var(--c14); }
+.sheet .small { font-size: var(--c10); }
+/* 바깥 굵은 선(엑셀 medium) */
+.sheet tr:first-child > * { border-top-width: 2px; }
+.sheet .L { border-left-width: 2px; }
+.sheet .R { border-right-width: 2px; }
+.sheet .B { border-bottom-width: 2px; }
+.sheet input, .sheet textarea { display: block; width: 100%; height: 100%; border: 0; margin: 0; background: transparent; text-align: center; font-family: var(--xl-font); font-weight: 700; font-size: inherit; color: var(--xl-ink); padding: 0 4px; outline: none; }
+.sheet td.in { position: relative; }
+.sheet td.in input { position: absolute; inset: 0; }
+.sheet input:focus, .sheet textarea:focus { box-shadow: inset 0 0 0 2px #107C41; }
+.sheet .memo { font-size: var(--c11); }
+.sheet .memo textarea { resize: none; height: calc(var(--h28) * 3); padding: 6px; line-height: 1.35; }
+.sheet .memo textarea::placeholder { color: #8A8A8A; font-weight: 400; }
+
+/* 엑셀 시트 탭(날짜) */
+.sheets { display: flex; align-items: stretch; background: var(--xl-tab); border: 1px solid var(--xl-tabline); border-top: 0; overflow-x: auto; scrollbar-width: thin; font-family: var(--xl-title); font-size: 12px; }
+.sheets button { flex: none; height: 30px; padding: 0 12px; border: 0; border-right: 1px solid var(--xl-tabline); background: none; color: #333; cursor: pointer; font-variant-numeric: tabular-nums; }
+.sheets button:hover { background: #E2E2E2; }
+.sheets button[aria-pressed="true"] { background: var(--xl-paper); color: #107C41; font-weight: 700; box-shadow: inset 0 -2px 0 #107C41; }
+.sheets .add { width: 34px; padding: 0; font-size: 16px; color: #555; }
+.sheets .date-pick { flex: none; height: 30px; border: 0; padding: 0 8px; background: var(--xl-paper); font-size: 12px; }
+
+@container app (max-width: 767px) {
+  .top { height: 48px; padding: 0 4px 0 16px; }
+  .svc, .brand .vr, .clock { display: none; }
+  .hosp { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .acct { width: 44px; height: 44px; padding: 0; border: 0; justify-content: center; }
+  .acct span, .acct .caret { display: none; }
+  .tab { height: 46px; padding: 0 14px; font-size: 14px; }
+  .tab[aria-current="page"]::after { left: 6px; right: 6px; }
+  .body { padding: 12px 8px 20px; }
+  .btn, .month { height: 44px; }
+  .paper { padding: 8px; }
+  .sheet { width: 100%; --c: 11px; --c11: 10px; --c10: 9px; --c14: 12px; --t: 24px; --h1: 38px; --h2: 18px; --h3: 30px; --h28: 22px; --h40: 30px; --h20: 15px; }
+  .sheets button { height: 40px; }
+}
+
+.note { max-width: 1440px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+/* 인쇄 미리보기(목업에서 [인쇄]를 누르면 브라우저 인쇄 창 대신 보여 준다) */
+.pv { position: fixed; inset: 0; z-index: 30; background: rgb(17 24 39 / 36%); display: grid; place-items: center; padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.pv-box { background: var(--canvas); border-radius: 6px; box-shadow: var(--shadow); padding: 12px; display: grid; gap: 10px; max-width: 100%; max-height: 100%; overflow: auto; }
+.pv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; }
+.pv-head span { display: block; font-weight: 400; color: var(--muted); font-size: 12px; line-height: 16px; }
+.pv-fit { overflow: hidden; }
+.a4 { width: 794px; height: 1123px; background: #FFFFFF; padding: 45px; transform-origin: top left; box-shadow: 0 0 0 1px var(--line); }
+.a4 .sheet { width: 100%; --c: 13pt; --c11: 11pt; --c10: 10pt; --c14: 14pt; --t: 32pt; --h1: 39.75pt; --h2: 18pt; --h3: 33.75pt; --h28: 21pt; --h40: 30pt; --h20: 15pt; }
+.a4 .sheet input, .a4 .sheet textarea { pointer-events: none; }
+/* 인쇄: 양식만 A4 세로 한 장. 높이·글자는 엑셀의 pt 값 그대로 */
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  body { background: #FFFFFF; }
+  .mock-head, .seg, .top, .tabs, .toolbar, .sheets, .note, .toast { display: none !important; }
+  .page, .frame-wrap, .frame, .body, .work, .paper { display: block; width: auto; max-width: none; padding: 0; margin: 0; border: 0; background: #FFFFFF; overflow: visible; }
+  .sheet { width: 100%; --c: 13pt; --c11: 11pt; --c10: 10pt; --c14: 14pt; --t: 32pt; --h1: 39.75pt; --h2: 18pt; --h3: 33.75pt; --h28: 21pt; --h40: 30pt; --h20: 15pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet .memo textarea::placeholder { color: transparent; }
+}
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--ink); color: var(--surface); font-size: 13px; line-height: 20px; padding: 10px 14px; border-radius: 6px; box-shadow: var(--shadow); z-index: 20; }
+</style>
+
+<div class="page">
+  <header class="mock-head">
+    <div>
+      <h1>업무일지 화면 목업 <span class="ex">예시 숫자</span></h1>
+      <p>엑셀 양식을 글꼴·색·칸 크기까지 그대로 옮겼어요. 숫자는 모두 지어낸 예시이고, 칸을 고치면 합계 칸이 엑셀 계산식대로 다시 계산돼요. 들어오면 오늘 날짜 시트가 저절로 열리고, 지난 날짜는 아래 탭(엑셀 시트 탭과 같아요)에서 열어요.</p>
+    </div>
+    <div class="seg" role="group" aria-label="화면 크기">
+      <button type="button" id="mode-pc" aria-pressed="true">PC 화면</button>
+      <button type="button" id="mode-m" aria-pressed="false">폰 화면</button>
+    </div>
+  </header>
+
+  <div class="frame-wrap">
+    <div class="frame" id="frame">
+      <div class="top">
+        <div class="brand">
+          <span class="mark" aria-hidden="true"><i></i></span>
+          <span class="svc">[서비스 이름]</span>
+          <span class="vr" aria-hidden="true"></span>
+          <span class="hosp">○○정형외과의원</span>
+        </div>
+        <div class="top-right">
+          <span class="clock">2026년 10월 29일 (목) 09:42 (KST)</span>
+          <span class="acct" aria-label="계정 메뉴">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 13.5c.8-2.4 2.8-3.75 5.25-3.75s4.45 1.35 5.25 3.75"/></svg>
+            <span>manager@example.com</span>
+            <svg class="caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>
+          </span>
+        </div>
+      </div>
+      <nav class="tabs" id="tabs" aria-label="메뉴">
+        <span class="tab">대시보드</span><span class="tab">통계</span><span class="tab">AI 리포트</span><span class="tab">매출</span><span class="tab">재고</span><span class="tab">급여</span>
+        <span class="tab" aria-current="page" id="tab-current">업무일지</span>
+        <span class="tab">월간 PDF</span><span class="tab">설정</span><span class="tab-vr" aria-hidden="true"></span><span class="tab">관리자</span>
+      </nav>
+
+      <main class="body">
+        <div class="work">
+          <div class="toolbar">
+            <select class="month" id="month" aria-label="달 고르기"><option>2026년 10월</option><option disabled>2026년 9월 (엑셀 파일)</option></select>
+            <div class="btns">
+              <button type="button" class="btn secondary" id="print">인쇄</button>
+              <button type="button" class="btn primary" id="save">저장</button>
+            </div>
+          </div>
+
+          <div>
+          <div class="paper">
+            <span class="ex">예시</span>
+            <table class="sheet" aria-label="업무일지">
+              <colgroup><col style="width:14.5%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:8.4%"><col style="width:5.8%"><col style="width:12%"><col style="width:11.8%"><col style="width:15.7%"></colgroup>
+              <tr class="r1"><td colspan="9" class="title L R">업무일지</td></tr>
+              <tr class="r2"><td colspan="5" rowspan="2" class="lav date L" data-date></td><td rowspan="2" class="lav">결<br><br>재</td><td class="lav">담&nbsp;&nbsp;&nbsp;&nbsp;당</td><td class="lav">팀&nbsp;&nbsp;&nbsp;&nbsp;장</td><td class="lav R">원&nbsp;&nbsp;&nbsp;&nbsp;장</td></tr>
+              <tr class="r3"><td class="lav"></td><td class="lav"></td><td class="lav R"></td></tr>
+              <tr class="r28"><td rowspan="3" class="L">환 자<br>현 황</td><td>외래</td><td></td><td></td><td colspan="2" rowspan="3">업무사항</td><td colspan="3" rowspan="3" class="memo R"><textarea id="memo" data-k="memo" aria-label="업무사항" placeholder="환자 이름·차트번호는 적지 않아요"></textarea></td></tr>
+              <tr class="r28"><td>신 환</td><td class="in"><input id="new" data-k="new" data-fmt="n" inputmode="numeric" aria-label="신환"></td><td class="lav">합&nbsp;&nbsp;계</td></tr>
+              <tr class="r28"><td>재 진</td><td class="in"><input id="ret" data-k="ret" data-fmt="n" inputmode="numeric" aria-label="재진"></td><td class="lav" data-auto="visits"></td></tr>
+              <tr><td rowspan="9" class="L">수&nbsp;&nbsp;&nbsp;입</td><td colspan="3" class="gray">총진료비</td><td colspan="5" class="gray in R"><input id="total" data-k="total" inputmode="numeric" aria-label="총진료비"></td></tr>
+              <tr><td colspan="3" class="gray">조합청구액</td><td colspan="5" class="gray in R"><input id="claim" data-k="claim" inputmode="numeric" aria-label="조합청구액"></td></tr>
+              <tr><td colspan="3">현금수납</td><td colspan="5" class="in R"><input id="cash" data-k="cash" inputmode="numeric" aria-label="현금수납"></td></tr>
+              <tr><td colspan="3">카드수납</td><td colspan="5" class="in R"><input id="card" data-k="card" inputmode="numeric" aria-label="카드수납"></td></tr>
+              <tr><td colspan="3">계좌이체</td><td colspan="5" class="in R"><input id="bank" data-k="bank" inputmode="numeric" aria-label="계좌이체"></td></tr>
+              <tr><td colspan="3">지역화폐</td><td colspan="5" class="in R"><input id="local" data-k="local" inputmode="numeric" aria-label="지역화폐"></td></tr>
+              <tr><td colspan="3">미수발생</td><td colspan="5" class="in R"><input id="unpaid" data-k="unpaid" inputmode="numeric" aria-label="미수발생"></td></tr>
+              <tr><td colspan="3">미수입금</td><td colspan="5" class="in R"><input id="unpaidIn" data-k="unpaidIn" inputmode="numeric" aria-label="미수입금"></td></tr>
+              <tr><td colspan="3" class="lav">수납액</td><td colspan="5" class="lav R" data-auto="recv"></td></tr>
+              <tr><td rowspan="7" class="L">지 출</td><td colspan="3">&nbsp;항&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;목</td><td colspan="3">금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;액</td><td colspan="2" class="R">비&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;고</td></tr>
+              <tr class="r20"><td colspan="3" rowspan="2">현금</td><td colspan="3" rowspan="2" class="in"><input id="xCash" data-k="xCash" inputmode="numeric" aria-label="지출 현금 금액"></td><td colspan="2" rowspan="2" class="in small R"><input id="nCash" data-k="nCash" aria-label="지출 현금 비고"></td></tr>
+              <tr class="r20"></tr>
+              <tr><td colspan="3">카드</td><td colspan="3" class="in"><input id="xCard" data-k="xCard" inputmode="numeric" aria-label="지출 카드 금액"></td><td colspan="2" class="in small R"><input id="nCard" data-k="nCard" aria-label="지출 카드 비고"></td></tr>
+              <tr><td colspan="3">환불</td><td colspan="3" class="in"><input id="xRefund" data-k="xRefund" inputmode="numeric" aria-label="환불 금액"></td><td colspan="2" class="in small R"><input id="nRefund" data-k="nRefund" aria-label="환불 비고"></td></tr>
+              <tr><td colspan="3">free</td><td colspan="3" class="in"><input id="xFree" data-k="xFree" inputmode="numeric" aria-label="지출 free 금액"></td><td colspan="2" class="in small R"><input id="nFree" data-k="nFree" aria-label="지출 free 비고"></td></tr>
+              <tr><td colspan="3" class="gray">총 지 불 액</td><td colspan="3" class="gray" data-auto="spend"></td><td colspan="2" class="gray in small R"><input id="nTotal" data-k="nTotal" aria-label="총 지불액 비고"></td></tr>
+              <tr><td colspan="4" class="L B">합&nbsp;&nbsp;&nbsp;계</td><td colspan="5" class="lav R B" data-auto="net"></td></tr>
+            </table>
+          </div>
+          <div class="sheets" id="sheets" role="group" aria-label="날짜 시트"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <p class="note">엑셀과 다른 점은 세 가지예요. 위쪽 [저장]·[인쇄] 단추, 날짜가 매일 저절로 바뀌는 것(시트를 미리 만들 필요 없음, 한국 시각 자정 기준), 그리고 업무사항 칸이 비어 있을 때만 보이는 흐린 안내 글("환자 이름·차트번호는 적지 않아요")이에요.</p>
+</div>
+<div class="pv" id="pv" hidden role="dialog" aria-modal="true" aria-labelledby="pv-title">
+  <div class="pv-box">
+    <div class="pv-head"><div id="pv-title">인쇄 미리보기<span>A4 세로 1장 · 실제 사이트에서는 이 화면에서 프린터를 골라 뽑아요</span></div><button type="button" class="btn secondary" id="pv-close">닫기</button></div>
+    <div class="pv-fit" id="pv-fit"><div class="a4" id="pv-page"></div></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const DAYS = {"1":{"new":14,"ret":45,"total":8400000,"claim":5460000,"cash":130000,"card":2300000,"bank":15000},"2":{"new":3,"ret":81,"total":9800000,"claim":6370000,"cash":90000,"card":4100000,"xCash":45000},"5":{"new":5,"ret":68,"total":14100000,"claim":9165000,"cash":160000,"card":2500000},"6":{"new":5,"ret":98,"total":14900000,"claim":9685000,"cash":5000,"card":4200000,"unpaid":10000,"xRefund":160000},"7":{"new":9,"ret":46,"total":13300000,"claim":8645000,"cash":5000,"card":3100000},"8":{"new":13,"ret":90,"total":8300000,"claim":5395000,"cash":110000,"card":3500000,"bank":60000},"9":{"new":7,"ret":60,"total":7300000,"claim":4745000,"cash":55000,"card":3500000},"10":{"new":9,"ret":59,"total":11300000,"claim":7345000,"cash":80000,"card":4900000,"bank":135000,"unpaidIn":170000,"xRefund":20000},"12":{"new":12,"ret":43,"total":12700000,"claim":8255000,"cash":145000,"card":3000000,"bank":110000,"xRefund":160000},"13":{"new":5,"ret":71,"total":12800000,"claim":8320000,"cash":35000,"card":4400000,"bank":50000},"14":{"new":13,"ret":75,"total":13200000,"claim":8580000,"cash":160000,"card":2000000,"xFree":40000},"15":{"new":13,"ret":49,"total":13800000,"claim":8970000,"cash":50000,"card":5000000,"xCash":70000},"16":{"new":10,"ret":69,"total":9200000,"claim":5980000,"cash":70000,"card":5300000,"bank":15000,"xFree":55000},"17":{"new":13,"ret":95,"total":10600000,"claim":6890000,"cash":130000,"card":5300000},"19":{"new":14,"ret":66,"total":15900000,"claim":10335000,"cash":110000,"card":2300000,"bank":40000,"xFree":60000},"20":{"new":7,"ret":59,"total":15900000,"claim":10335000,"cash":105000,"card":2000000},"21":{"new":12,"ret":59,"total":11400000,"claim":7410000,"cash":115000,"card":5000000,"bank":140000},"22":{"new":5,"ret":94,"total":7400000,"claim":4810000,"cash":125000,"card":4200000,"unpaid":65000,"unpaidIn":175000},"23":{"new":11,"ret":67,"total":8600000,"claim":5590000,"cash":145000,"card":2700000,"bank":165000},"24":{"new":11,"ret":93,"total":13500000,"claim":8775000,"cash":170000,"card":2200000},"26":{"new":5,"ret":73,"total":15600000,"claim":10140000,"cash":30000,"card":5000000,"bank":165000},"27":{"new":5,"ret":80,"total":7800000,"claim":5070000,"cash":200000,"card":3800000,"bank":90000},"28":{"new":8,"ret":47,"total":13000000,"claim":8450000,"cash":185000,"card":3100000}};
+const TODAY = 29, FIRST_DOW = 4; // 2026-10-01은 목요일
+const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+const NUM = ['new', 'ret', 'total', 'claim', 'cash', 'card', 'bank', 'local', 'unpaid', 'unpaidIn', 'xCash', 'xCard', 'xRefund', 'xFree'];
+const store = {};
+const sheets = new Set([...Object.keys(DAYS).map(Number), TODAY]);
+let sel = TODAY; // 들어오면 오늘 날짜 시트가 열린다
+const hashDay = /^#d(\d{1,2})$/.exec(location.hash);
+if (hashDay && DAYS[Number(hashDay[1])]) sel = Number(hashDay[1]);
+
+const dow = d => DOW[(FIRST_DOW + d - 1) % 7];
+const pad = d => String(d).padStart(2, '0');
+const commas = n => n.toLocaleString('ko-KR');
+// 엑셀 서식 "#,###원": 0이면 "원"만 보인다
+const wonFmt = n => (n ? commas(n) : '') + '원';
+const draft = d => (store[d] ||= { ...(DAYS[d] || {}) });
+
+function calc(v) {
+  const g = k => v[k] || 0;
+  const recv = g('cash') + g('card') + g('bank') + g('local');
+  const spend = g('xCash') + g('xCard') + g('xRefund') + g('xFree');
+  return { visits: g('new') + g('ret'), recv, spend, net: recv - spend };
+}
+function shown(el, v) {
+  const k = el.dataset.k, x = v[k];
+  if (!NUM.includes(k)) return x || '';
+  if (el.dataset.fmt === 'n') return x ? String(x) : '';
+  if (document.activeElement === el) return x ? commas(x) : '';
+  return x ? wonFmt(x) : '';
+}
+function renderAutos() {
+  const c = calc(draft(sel));
+  document.querySelectorAll('[data-auto]').forEach(el => {
+    const k = el.dataset.auto;
+    el.textContent = k === 'visits' ? String(c.visits) : wonFmt(c[k]);
+  });
+}
+function renderTabs() {
+  const box = document.getElementById('sheets');
+  const btns = [...sheets].sort((a, b) => a - b).map(d => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = `10.${pad(d)}`;
+    b.setAttribute('aria-pressed', String(d === sel));
+    b.setAttribute('aria-label', `10월 ${d}일 (${dow(d)})${d === TODAY ? ', 오늘' : ''}`);
+    b.addEventListener('click', () => { sel = d; render(); });
+    return b;
+  });
+  box.replaceChildren(...btns);
+  const cur = box.querySelector('[aria-pressed="true"]');
+  if (cur) box.scrollLeft = cur.offsetLeft - box.clientWidth / 2;
+}
+function render() {
+  const v = draft(sel);
+  document.querySelectorAll('[data-k]').forEach(el => { el.value = shown(el, v); });
+  document.querySelector('[data-date]').textContent = `2026/10/${pad(sel)} ${dow(sel)}`;
+  renderAutos(); renderTabs();
+}
+
+document.addEventListener('input', e => {
+  const el = e.target, k = el.dataset && el.dataset.k;
+  if (!k) return;
+  const v = draft(sel);
+  if (NUM.includes(k)) {
+    const digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 12);
+    v[k] = digits ? Number(digits) : undefined;
+    el.value = digits ? (el.dataset.fmt === 'n' ? digits : commas(v[k])) : '';
+  } else {
+    v[k] = el.value;
+  }
+  renderAutos();
+});
+document.addEventListener('focusin', e => { if (e.target.dataset && NUM.includes(e.target.dataset.k)) e.target.value = shown(e.target, draft(sel)); });
+document.addEventListener('focusout', e => { if (e.target.dataset && NUM.includes(e.target.dataset.k)) setTimeout(() => { e.target.value = shown(e.target, draft(sel)); }); });
+
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2800);
+}
+document.getElementById('save').addEventListener('click', () => toast(`10.${pad(sel)} 업무일지를 저장했어요.`));
+function fitPreview() {
+  const k = Math.min((window.innerWidth - 56) / 794, (window.innerHeight - 110) / 1123, 1);
+  document.getElementById('pv-page').style.transform = `scale(${k})`;
+  const f = document.getElementById('pv-fit');
+  f.style.width = 794 * k + 'px'; f.style.height = 1123 * k + 'px';
+}
+function openPreview() {
+  const src = document.querySelector('.paper .sheet'), copy = src.cloneNode(true);
+  const from = src.querySelectorAll('input, textarea');
+  copy.querySelectorAll('input, textarea').forEach((el, i) => {
+    el.removeAttribute('id'); el.removeAttribute('placeholder'); el.readOnly = true; el.tabIndex = -1;
+    if (el.tagName === 'TEXTAREA') el.textContent = from[i].value; else el.setAttribute('value', from[i].value);
+  });
+  copy.setAttribute('aria-label', '인쇄될 업무일지');
+  document.getElementById('pv-page').replaceChildren(copy);
+  document.getElementById('pv').hidden = false;
+  fitPreview(); document.getElementById('pv-close').focus();
+}
+function closePreview() { document.getElementById('pv').hidden = true; document.getElementById('print').focus(); }
+document.getElementById('print').addEventListener('click', openPreview);
+document.getElementById('pv-close').addEventListener('click', closePreview);
+document.getElementById('pv').addEventListener('click', e => { if (e.target.id === 'pv') closePreview(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('pv').hidden) closePreview(); });
+window.addEventListener('resize', () => { if (!document.getElementById('pv').hidden) fitPreview(); });
+
+function setMode(m) {
+  document.querySelector('.page').classList.toggle('stage-m', m === 'm');
+  document.getElementById('mode-pc').setAttribute('aria-pressed', String(m === 'pc'));
+  document.getElementById('mode-m').setAttribute('aria-pressed', String(m === 'm'));
+  requestAnimationFrame(() => {
+    const tabs = document.getElementById('tabs'), cur = document.getElementById('tab-current');
+    tabs.scrollLeft = m === 'm' ? cur.offsetLeft - 16 : 0;
+    renderTabs();
+  });
+}
+document.getElementById('mode-pc').addEventListener('click', () => setMode('pc'));
+document.getElementById('mode-m').addEventListener('click', () => setMode('m'));
+
+setMode(window.innerWidth < 900 ? 'm' : 'pc');
+render();
+</script>
+
+</body></html>

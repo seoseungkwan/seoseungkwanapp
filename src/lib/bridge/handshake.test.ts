@@ -102,4 +102,14 @@ describe('AC-004.4 웹 versions.ts 값', () => {
       }),
     ).toEqual({ status: 'ok', helperUpdateAvailable: false })
   })
+
+  it('AC-004.4 이미 깔린 도우미 0.1.0은 막지 않고 "새 도우미가 있어요"만 띄운다(비트 자료 읽기를 고친 0.1.1 이상으로 올리게)', () => {
+    expect(
+      checkVersions({
+        web: WEB_VERSIONS,
+        extension: { version: MIN_EXTENSION, protocol: PROTOCOL },
+        helper: { version: '0.1.0', protocol: PROTOCOL },
+      }),
+    ).toEqual({ status: 'ok', helperUpdateAvailable: true })
+  })
 })

@@ -12,5 +12,9 @@ export type ErrorCode =
   | 'E-REVENUE-SAVE-FAILED'
   // 치료 묶음 저장·읽기(spec revenue design.md 8-2절)
   | 'E-REVENUE-GROUP-SAVE-FAILED' | 'E-REVENUE-GROUP-LOAD-FAILED'
+  // AI 리포트(spec ai-report design.md '오류 문구')
+  | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
+  // 업무일지(specs/worklog)
+  | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
 
 export type ErrorInfo = { what: string; fix: string }

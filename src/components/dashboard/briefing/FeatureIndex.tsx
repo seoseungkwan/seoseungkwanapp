@@ -6,7 +6,7 @@ import { ARROW_MOVE, NOTE, PRESS, SECTION, SECTION_HEAD, SECTION_TITLE } from '.
 // 기능 목차 (tab-frame AC-316.4, ui-90 AC-414.5, design.md '대시보드 (TASK-11)', 시안 docs/mockups/ui-90/app/gen.py dash_body·FEATS). 연결 전·뒤 모두 맨 아래 섹션.
 // 칸 하나 = 링크 하나(안에 다른 링크·단추 없음). 칸마다 테두리 상자가 없고 위 1px line 하나로 나눈다.
 // 1줄 이름(준비 중만 ink-2, 올림 accent) + 오른쪽 상태 글자(small), 2줄 설명. 1024px 이상 3열 · 768~1023px 2열 · 폰 1열(칸 높이 56 이상).
-// 상태 글자: 청구(connect-first)는 연결 전 "연결 먼저"(ink-2 600 + 화살표) · 연결 뒤 "사용 가능", 설정(ready)은 "사용 가능"(accent 500 + 화살표), 나머지는 "준비 중"(muted).
+// 상태 글자: 청구(connect-first)는 연결 전 "연결 먼저"(ink-2 600 + 화살표) · 연결 뒤 "사용 가능", 설정·업무일지(ready)는 "사용 가능"(accent 500 + 화살표), 나머지는 "준비 중"(muted).
 // 같은 칸에 이름·설명이 있고 상태는 덧붙은 표시라 정보가 색에만 기대지 않는다(design.md '준비 중 탭도 보통 탭 모양')
 const INDEX_TITLE_ID = 'dashboard-feature-index-title'
 const CELL = `group block border-t border-line pt-3 pb-4 no-underline max-md:min-h-14 max-md:py-3 ${PRESS} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`

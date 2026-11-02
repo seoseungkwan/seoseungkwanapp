@@ -1,0 +1,18 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-3c-fixes",
+  "steps": [
+    {
+      "step": 0,
+      "name": "plan-name-exception",
+      "status": "completed",
+      "summary": "TASK-1 끝: plan.md §2-3 '리포트의 근거 숫자' 줄에 이름 안 숫자 예외 문장 추가(ADR-024과 글자 같음, 옛 글자 그대로). TDD exempt"
+    },
+    {
+      "step": 1,
+      "name": "claude-stream-errors-log",
+      "status": "completed",
+      "summary": "TASK-10 끝: 오류 나누기 1~6 — 상태 없는 timeout_error→BUSY·billing_error→LIMIT, AnthropicError는 cause TypeError 'terminated'와 정해 둔 글자 둘만 BUSY(그 밖 FAILED), logLevel 'off'. 시험 35개 추가(총 88), RED 15개→GREEN 88개"
+    }
+  ]
+}

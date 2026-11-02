@@ -1,6 +1,6 @@
 // 준비 중 기능 자료 (tab-frame REQ-305 AC-305.4, ui-90 REQ-415 AC-415.1, design.md '준비 중 (TASK-12)'). 주소마다 얇은 페이지가 이 항목을 꺼내 NotReadyScreen에 넘긴다.
 // 주소록은 시안(docs/mockups/ui-90/app/gen.py nr_body) 그대로이고, 나머지는 같은 말투다. 숫자를 쓰지 않는다.
-// title(h1)은 조사(은/는)까지 통째로 적는다 — 받침에 따라 계산하지 않는다(항목이 적고 시험이 글자를 못 박는다). 탭 이름(metadata)은 name이다.
+// title(h1)은 조사(은/는)까지 통째로 적는다 — 받침에 따라 계산하지 않는다(몇 개뿐이고 시험이 글자를 못 박는다). 탭 이름(metadata)은 name이다.
 // 이름·주소는 탭 목록(shell/menu.ts)·기능 목차(dashboard/briefing/features.ts)에도 따로 적는다(병렬 갈래라 서로 불러오지 않는다). 셋이 같은지는 통합 시험이 본다.
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
 
@@ -11,7 +11,6 @@ export type NotReadyPath =
   | '/ai-report'
   | '/forms'
   | '/staff'
-  | '/worklog'
   | '/inventory'
   | '/contacts'
 
@@ -70,13 +69,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '직원은 준비 중이에요',
     intro: `직원과 급여·휴가를 한곳에서 볼 자리예요. ${SOON}`,
     items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
-  },
-  {
-    path: '/worklog',
-    name: '업무일지',
-    title: '업무일지는 준비 중이에요',
-    intro: `엑셀 업무일지를 그대로 옮겨 쓸 자리예요. ${SOON}`,
-    items: ['엑셀 양식과 똑같은 칸', '날짜별로 적고 다시 보기'],
   },
   {
     path: '/inventory',

@@ -1,0 +1,36 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-1-data",
+  "steps": [
+    {
+      "step": 0,
+      "name": "docs",
+      "status": "completed",
+      "summary": "ADR-025(업무일지 결정 다섯)·ARCHITECTURE·UI_GUIDE·plan.md 금액 꼬리표 정리. CLAUDE.md의 금액 줄·'집계 숫자만' 줄은 고치지 않고 ADR에 예외로 적음"
+    },
+    {
+      "step": 1,
+      "name": "calc-format",
+      "status": "completed",
+      "summary": "칸이 글자가 됨. 합계는 읽은 숫자로만. 막는 모양을 손으로 적은 전화·주민번호·번호 글자까지 넓힘(notes.ts, 검사할 때만 글자를 맞추고 받은 글자는 안 바꿈)"
+    },
+    {
+      "step": 2,
+      "name": "cell-text",
+      "status": "completed",
+      "summary": "칸 글자 읽기 cellText.ts(숫자 하나면 더함, 둘 이상·빼기 표시·단위 글자는 합계 제외). memoStore 삭제"
+    },
+    {
+      "step": 3,
+      "name": "db-table",
+      "status": "completed",
+      "summary": "migration을 같은 파일에서 고침: 숫자 14칸 글자·memo·항목 이름 12칸, updated_at·방아쇠 삭제, work_date+32칸 권한. 실제 Supabase에는 아직 안 붙임"
+    },
+    {
+      "step": 4,
+      "name": "day-storage",
+      "status": "completed",
+      "summary": "하루 읽기·저장 worklogDays.ts. 바뀐 칸만 보내고 막힌 칸은 뺌. save는 막힌 칸을 조용히 빼므로 자동 저장(TASK-6)이 blockedCellKeys를 직접 불러 표시해야 함"
+    }
+  ]
+}

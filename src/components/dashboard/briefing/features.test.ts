@@ -16,7 +16,7 @@ const TABLE = [
   { name: 'AI 리포트', desc: '월간보고 발표 자료·주간 요약·분기와 연간 보고', href: '/ai-report', status: 'soon' },
   { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },
   { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
-  { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'soon' },
+  { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' },
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
   { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'soon' },
   { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/claim/setup', status: 'ready' },
@@ -41,7 +41,7 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     }
   })
 
-  it('AC-414.5·AC-010.1: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first다', () => {
+  it('AC-414.5·AC-010.1·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first다', () => {
     const namesOf = (rows: ReadonlyArray<{ name: string; status: string }>, status: string) => rows.filter((f) => f.status === status).map((f) => f.name)
     for (const status of ['ready', 'connect-first', 'soon']) expect(namesOf(DASHBOARD_FEATURES, status), status).toEqual(namesOf(TABLE, status))
     expect(namesOf(DASHBOARD_FEATURES, 'ready')).toContain('설정')
@@ -55,6 +55,15 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     expect(revenue?.status).toBe(DASHBOARD_FEATURES.find((f) => f.name === '청구')?.status)
     expect(revenue?.desc.split('·')[3]).toBe('건당 진료비')
     expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
+  })
+
+  it('AC-012.3: 업무일지 칸은 ready("사용 가능")이고 주소는 /worklog, 설명 글자는 그대로다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '업무일지')).toEqual({
+      name: '업무일지',
+      desc: '엑셀 양식과 똑같은 업무일지',
+      href: '/worklog',
+      status: 'ready',
+    })
   })
 
   it('AC-316.3: 이름과 주소는 겹치지 않고, 주소는 같은 origin 고정 경로다', () => {

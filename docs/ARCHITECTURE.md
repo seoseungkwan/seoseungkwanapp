@@ -18,12 +18,15 @@ src/
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
 │   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts (specs/revenue)
 │   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). 통계 달·일 숫자는 (예정)
+│   │   └── worklogDays.ts  # 업무일지 하루 읽기·저장(Supabase, 바뀐 칸만)
+│   ├── worklog/         # 업무일지 합계·칸 글자 읽기·날짜·개인정보 모양 검사·자동 저장. 환자 구역이 아니다
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
 │   ├── common/LogoMark.tsx  # 로고 마크 한 곳(병원 십자 C③, 고정 두 색). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
 │   ├── dashboard/briefing/  # 대시보드 브리핑(날짜 줄·큰 문장·연결 순서)·지금 바로 쓸 수 있어요·기능 목차(features.ts). 서버 컴포넌트(폰 아래 단추 StickyConnect만 클라이언트), 자료를 읽지 않고 연결 상태도 판정하지 않는다 (specs/tab-frame)
 │   ├── dashboard/summary/   # 대시보드 오늘 하루 분석·기간별 흐름·원장님 보고 문장(계산은 view.ts). 자료 읽는 자리는 source.ts 하나이고 지금은 늘 자료 없음 — 통계 명세가 진짜 읽기로 바꾼다 (specs/tab-frame)
 │   ├── revenue/         # 매출 화면(RevenueScreen). 보기 모양은 view.ts, 그래프는 charts/를 불러 쓰기만 한다 (specs/revenue)
+│   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
 │   ├── charts/          # 차트 부품(숫자 글자·KPI·Sparkline·쌓은 막대·범례·순위 막대·줄 안 막대). 서버에서 그리는 순수 부품, 토큰 클래스만, 자료 모양은 `@/types/analysis` (specs/b2b-redesign)
 │   └── preview/         # 대시보드 미리보기 + 예시 자료(sample.ts). 랜딩 히어로·로그인 오른쪽이 같이 쓴다. 실제 자료를 읽지 않는다
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
@@ -56,8 +59,9 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
        화면 → toMonthPayload·toDayPayloads → validate → (예정) lib/storage → months·days
 [매출] 비트 PC 도우미 읽기(`revenue.days`) → 확장 → lib/bridge → 집계만 → lib/storage → sales_days·sales_codes (2026-11-01 바뀜, specs/revenue)
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
+[업무일지] 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
-       → ai_usage 기록 → 화면(글자로만)
+       → 답 검사(근거 숫자는 앱이 채움) → ai_reports 저장(그 달 덮어씀) → ai_usage 기록 → 화면(글자로만) (ADR-024)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
 [청구] (예정) 도우미(비트 DB·화면) → 확장 → lib/bridge(풀지 않음) → Worker → 화면(보기 모양, PC 메모리만)
        고친 메모·완료 표시 → 도우미가 그 PC에 암호화 저장. 서버에는 건수(정수)·설정만 (ADR-020·021)
@@ -83,8 +87,9 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |
-| `daily_reports` | 미정 — 일일마감·보고 양식(§12)을 보고 정함 |
+| `worklog_days` | 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 |
 | `ai_usage` | 달별 토큰·비용 |
+| `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
 
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 지우지 않고 숨긴다(임금대장 3년 보존, §6-3). 주민번호·계좌번호는 저장하지 않는다
@@ -102,6 +107,6 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 
 ## 상태 관리
 - 브라우저 저장소에는 폴더 핸들만 둔다 (§5). 환자 구역은 브라우저 저장소를 쓰지 않는다
-- 채팅 기록·월간 보고서는 저장하지 않는다(새로 고침하면 사라짐, 열 때마다 새로 만듦)
+- AI 리포트는 달마다 저장(ADR-024), 채팅·월간 PDF는 저장하지 않는다(채팅은 새로 고침하면 사라짐, 월간 PDF는 열 때마다 새로 만듦). 2026-11-01 전 줄은 "채팅 기록·월간 보고서는 저장하지 않는다"였고, AI 리포트만 바뀌었다
 - 입력값 임시 저장은 없다. 저장에 실패하면 값을 화면에 두고 [다시 저장]을 보인다 (§8)
 - 그 밖의 화면 상태 관리 방식: 미정 — 첫 화면 작업 때 정함

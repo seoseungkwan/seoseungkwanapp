@@ -19,4 +19,29 @@
     <ProjectReference Include="../Precheck.Core/Precheck.Core.csproj" />
     <ProjectReference Include="../Precheck.Windows/Precheck.Windows.csproj" />
   </ItemGroup>
+
+  <!-- PrecheckHelper.exe.config의 <startup>: 원본 DrBitExport.exe.config 그대로(useLegacyV2RuntimeActivationPolicy="true", sku만 원본 4.7.2 → 4.8).
+       비트 DLL이 옛 런타임(v2)용 혼합 어셈블리를 불러도 4.x 런타임에서 돌게 한다(AC-005.8).
+       App.config 파일을 따로 두지 않고 빌드 때 obj/에 쓴다. 빌드가 여기에 바인딩 리디렉트(System.Text.Json 등)를 더해
+       bin/Release/net48/PrecheckHelper.exe.config를 만들고, helper.yml이 zip의 app\에, install.ps1이 설치 폴더에 함께 옮긴다 -->
+  <PropertyGroup>
+    <StartupAppConfigXml><![CDATA[<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <startup useLegacyV2RuntimeActivationPolicy="true">
+    <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8" />
+  </startup>
+</configuration>]]></StartupAppConfigXml>
+  </PropertyGroup>
+
+  <!-- PrepareForBuild가 $(AppConfig)를 읽기 전에 쓴다 -->
+  <Target Name="WriteStartupAppConfig" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <AppConfig>$(IntermediateOutputPath)startup.App.config</AppConfig>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(AppConfig)" Lines="$(StartupAppConfigXml)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(AppConfig)" />
+    </ItemGroup>
+  </Target>
 </Project>

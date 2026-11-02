@@ -46,6 +46,7 @@ const APP_DIRS = [
   'src/components/preview', // b2b-redesign TASK-8 (REQ-206)
   'src/components/claim', // ui-90 TASK-5 (AC-408.1)
   'src/components/revenue', // revenue TASK-9 (AC-009.5)
+  'src/components/worklog', // worklog TASK-7 (AC-007.3)
   'src/app/login',
   'src/app/(onboarding)',
   'src/app/(app)',
@@ -74,6 +75,16 @@ const ARBITRARY_COLOR = /\[#|\b(?:rgba?|hsla?|oklch|oklab|color-mix)\(/
 const PALETTE =
   /\b(?:bg|text|border(?:-[trblxyse])?|outline|ring(?:-offset)?|fill|stroke|from|via|to|divide|placeholder|decoration|accent|caret|shadow)-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|[1-9]00|950)|white|black)\b/
 
+// 예외 한 파일(worklog AC-007.3, design.md 12절): 앱 화면의 CSS Module은 엑셀 양식 한 파일뿐이고, 불러오는 소스도 양식 칸 한 파일뿐이다. 다른 파일은 그대로 잡는다
+const WORKLOG_SHEET_CSS = 'src/components/worklog/sheet.module.css'
+const WORKLOG_SHEET_IMPORTER = 'src/components/worklog/WorklogSheet.tsx'
+const WORKLOG_SHEET_SPECIFIER = './sheet.module.css'
+// 글자가 불러오는 *.module.css 가운데 예외 밖의 것
+const badCssModuleImports = (file: string, text: string) =>
+  [...text.matchAll(/['"]([^'"\n]*\.module\.css)['"]/g)]
+    .map((match) => match[1])
+    .filter((specifier) => !(file === WORKLOG_SHEET_IMPORTER && specifier === WORKLOG_SHEET_SPECIFIER))
+
 describe('AC-013.2: 앱 화면 소스 — CSS Module·임의 색·Tailwind 기본 색 없음', () => {
   it('AC-013.2: 검사할 파일 목록에 다시 입힌 화면이 모두 들어 있다(빈 검사가 아니다)', () => {
     const files = sources()
@@ -91,12 +102,28 @@ describe('AC-013.2: 앱 화면 소스 — CSS Module·임의 색·Tailwind 기�
     }
   })
 
-  it('AC-013.2: *.module.css를 import하지 않는다', () => {
-    for (const file of sources()) expect(code(file), file).not.toMatch(/\.module\.css['"]/)
+  it('AC-013.2·AC-007.3: *.module.css를 import하는 소스는 WorklogSheet.tsx 하나뿐이다', () => {
+    for (const file of sources()) expect(badCssModuleImports(file, code(file)), file).toEqual([])
   })
 
-  it('AC-013.2: 앱 화면 폴더에 *.module.css 파일이 없다(랜딩만 CSS Modules)', () => {
-    expect(allAppFiles().filter((f) => f.endsWith('.module.css'))).toEqual([])
+  it('AC-013.2·AC-007.3: 앱 화면 폴더의 *.module.css는 sheet.module.css 하나뿐이다(그 밖은 랜딩만 CSS Modules)', () => {
+    expect(allAppFiles().filter((f) => f.endsWith('.module.css'))).toEqual([WORKLOG_SHEET_CSS])
+  })
+
+  it('AC-007.3: src/components/worklog가 앱 화면 검사 폴더에 든다', () => {
+    expect(APP_DIRS).toContain('src/components/worklog')
+    expect(allAppFiles()).toContain(WORKLOG_SHEET_CSS)
+  })
+
+  it('AC-007.3: 예외는 불러오는 파일 하나 × sheet.module.css 하나뿐이고, 다른 파일과 다른 CSS Module은 그대로 잡는다', () => {
+    const line = `import s from '${WORKLOG_SHEET_SPECIFIER}'`
+    expect(badCssModuleImports(WORKLOG_SHEET_IMPORTER, line)).toEqual([])
+    for (const file of ['src/components/worklog/WorklogToolbar.tsx', 'src/components/worklog/WorklogScreen.tsx', 'src/components/auth/LoginCard.tsx', 'src/app/(app)/worklog/page.tsx']) {
+      expect(badCssModuleImports(file, line), file).toEqual([WORKLOG_SHEET_SPECIFIER])
+    }
+    for (const other of ['./other.module.css', '../landing/sheet.module.css']) {
+      expect(badCssModuleImports(WORKLOG_SHEET_IMPORTER, `import t from '${other}'`), other).toEqual([other])
+    }
   })
 
   it('AC-013.2: 임의 색 값([#…]·rgb(·hsl(·color-mix()이 없다(SVG 그림 색은 예외)', () => {
@@ -676,12 +703,12 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
     }
   })
 
-  it('AC-204.6: ds와 검사 목록 파일에 CSS Module import·임의 색·Tailwind 기본 색 이름이 없다(AC-013.2 검사 그대로)', () => {
+  it('AC-204.6·AC-007.3: ds와 검사 목록 파일에 CSS Module import(양식 칸 한 파일 빼고)·임의 색·Tailwind 기본 색 이름이 없다(AC-013.2 검사 그대로)', () => {
     const dsText = DS_ALL().map(([, value]) => value).join(' ')
     expect(dsText).not.toMatch(ARBITRARY_COLOR)
     expect(dsText).not.toMatch(PALETTE)
     for (const file of ruleFiles()) {
-      expect(code(file), file).not.toMatch(/\.module\.css['"]/)
+      expect(badCssModuleImports(file, code(file)), file).toEqual([])
       expect(code(file), file).not.toMatch(ARBITRARY_COLOR)
       expect(code(file), file).not.toMatch(PALETTE)
     }

@@ -66,6 +66,7 @@ function fakeSink() {
 }
 
 const SHA = 'a'.repeat(64)
+// 도우미는 웹이 아는 최신(LATEST_HELPER)과 같은 판: "새 도우미가 있어요"가 뜨지 않는다
 const HELLO_DATA = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const PATIENT_JSON_PART1 = '{"visits":[{"chart":"000123","name":"가상'
 const PATIENT_JSON_PART2 = '환자01","memo":"가짜 메모"}]}'
