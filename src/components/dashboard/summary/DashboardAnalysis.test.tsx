@@ -11,6 +11,7 @@ import { KpiStat } from '@/components/charts/KpiStat'
 import { RankedBars } from '@/components/charts/RankedBars'
 import { StackedBarChart, type BarSeries } from '@/components/charts/StackedBarChart'
 import { ds } from '@/components/ui/classes'
+import { addDays } from '@/lib/analytics/dates'
 import { isBorderBox, nestedBoxes } from '@/testing/boxes'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
@@ -694,6 +695,41 @@ describe('짜임 — 폭별 칸 (AC-311.7)', () => {
     const { container } = draw(data(FULL_DAYS))
     expect(allClasses(container).filter((t) => t.startsWith('overflow-x') || t.startsWith('overflow-auto'))).toEqual([])
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) hasAll(chart(name), 'min-w-0')
+  })
+})
+
+// 칸이 날짜 글자보다 좁으면 글자가 오른쪽으로만 넘쳐 휴대폰에서 쪽이 옆으로 밀린다(390 폭, 마지막 칸에 눈금이 올 때 30일 396px · 90일 403px).
+// StackedBarChart는 여러 곳이 같이 쓰고 마크업이 시험으로 고정돼 있어 그림을 감싼 칸에서 고친다(통계 화면과 같은 방법, stats e2203ce).
+// jsdom은 크기를 재지 못해 클래스만 본다. 폭은 브라우저에서 잰다
+describe('AC-311.7: 휴대폰에서 환자 수 추이가 쪽을 옆으로 밀지 않는다', () => {
+  // 그 날까지 13일 자료: 마지막 칸이 기간의 마지막 눈금이 된다
+  const endingOn = (last: string) => Array.from({ length: 13 }, (_, i) => day(addDays(last, i - 12)))
+
+  it.each([
+    [7, '2026-10-30', '10.30'],
+    [30, '2026-10-29', '10.29'],
+    [90, '2026-10-25', '10.25'],
+  ] as const)('AC-311.7: 최근 %i일 — 그림을 감싼 칸이 날짜 글자를 제 칸 가운데로 넘치게 하고 화면 읽기 표를 왼쪽으로 넘긴다(줄바꿈 없음). 선택자는 날짜 글자 칸과 그 표만 잡는다', async (period, last, tick) => {
+    draw(data(endingOn(last)))
+    if (period !== 30) await choose(`최근 ${period}일`)
+    const wrapper = chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
+    expect(wrapper.parentElement).toBe(chart('환자 수 추이'))
+    hasAll(wrapper, 'mt-3 relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0')
+    for (const name of ['[&_table]:whitespace-normal', '[&_table]:break-all']) expect(classesOf(wrapper)).not.toContain(name)
+    const labelCells = Array.from(wrapper.querySelector('.tabular-nums[aria-hidden="true"]')!.lastElementChild!.children)
+    expect(labelCells.at(-1)!.textContent).toBe(tick) // 쪽을 미는 바로 그 글자
+    expect(Array.from(wrapper.querySelectorAll('.text-center'))).toEqual(labelCells)
+    expect(Array.from(wrapper.querySelectorAll('table')).map((table) => table.className)).toEqual(['sr-only'])
+  })
+
+  it('AC-311.7: 쪽을 밀지 않는 칸은 그대로다 — 요일별 막대와 빈 틀에는 이 클래스가 없고, 빈 틀 가운데 문구의 .text-center는 선택자에 걸리지 않는다', () => {
+    const isFix = (token: string) => token.startsWith('[&_.text-center]') || token.startsWith('[&_table]')
+    draw(data(FULL_DAYS))
+    expect(allClasses(chart('요일별 환자 수')).filter(isFix)).toEqual([])
+    cleanup()
+    draw(EMPTY_RANGE)
+    expect(allClasses(region('기간별 흐름')).filter(isFix)).toEqual([])
+    hasAll(within(chart('환자 수 추이')).getByText('자료 없음').parentElement!, 'flex items-center justify-center text-center')
   })
 })
 

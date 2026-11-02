@@ -39,6 +39,10 @@ const SECTION_TITLE = 'text-title font-semibold text-ink'
 // 보조 글(안내 줄, ui-90 AC-414.6): small(13px) muted + 시안 최대 40em(520px)에 가장 가까운 4px 단위 폭 단계
 const NOTE = 'text-small text-muted max-w-130'
 const NOT_CONNECTED = '연결하면 보여요'
+// 환자 수 추이를 감싸는 칸. 칸이 날짜 글자보다 좁으면 글자가 오른쪽으로 넘쳐 휴대폰에서 쪽이 옆으로 밀린다(AC-311.7).
+// 통계 CHART_NO_SIDE_SCROLL(stats/sections/parts.tsx)과 같은 값이다. 그 파일을 가져오면 통계 코드가 대시보드에 딸려 와 무거워진다(5 kB).
+// 합본 뒤 ds로 옮겨 한 벌로 합칠 것
+const CHART_NO_SIDE_SCROLL = 'relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0'
 
 const KPI_LABELS = ['오늘 환자 수', '신환', '재진'] as const
 const PAST_KPI_LABELS = ['환자 수', '신환', '재진'] as const
@@ -220,7 +224,7 @@ function TrendBody({ days, range, period }: { days: readonly DayPayload[]; range
   const buckets = trendBuckets(days, range, period)
   if (buckets === null) return <EmptyTrend message={NO_DATA} ticks={tickLabels(range, period)} />
   return (
-    <div className="mt-3">
+    <div className={`mt-3 ${CHART_NO_SIDE_SCROLL}`}>
       <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={period !== 7} />
     </div>
   )
