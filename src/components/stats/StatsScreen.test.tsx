@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MIN_HELPER } from '@/lib/bridge/versions'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
@@ -42,7 +43,7 @@ const HOSPITAL = '가짜정형외과의원'
 const R30 = statsRange(TODAY, '30d')
 const R12 = statsRange(TODAY, '12m')
 const SHA = '0'.repeat(64)
-const HELLO = { helperVersion: '0.1.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO = { helperVersion: MIN_HELPER, protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const LOAD = '비트에서 불러오기'
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
