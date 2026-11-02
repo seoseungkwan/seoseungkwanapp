@@ -1,6 +1,6 @@
 // 준비 중 기능 자료 (tab-frame REQ-305 AC-305.4, ui-90 REQ-415 AC-415.1, design.md '준비 중 (TASK-12)'). 주소마다 얇은 페이지가 이 항목을 꺼내 NotReadyScreen에 넘긴다.
 // 주소록은 시안(docs/mockups/ui-90/app/gen.py nr_body) 그대로이고, 나머지는 같은 말투다. 숫자를 쓰지 않는다.
-// title(h1)은 조사(은/는)까지 통째로 적는다 — 받침에 따라 계산하지 않는다(10개뿐이고 시험이 글자를 못 박는다). 탭 이름(metadata)은 name이다.
+// title(h1)은 조사(은/는)까지 통째로 적는다 — 받침에 따라 계산하지 않는다(항목이 적고 시험이 글자를 못 박는다). 탭 이름(metadata)은 name이다.
 // 이름·주소는 탭 목록(shell/menu.ts)·기능 목차(dashboard/briefing/features.ts)에도 따로 적는다(병렬 갈래라 서로 불러오지 않는다). 셋이 같은지는 통합 시험이 본다.
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
 
@@ -9,7 +9,6 @@ export type NotReadyPath =
   | '/notices'
   | '/patients'
   | '/revenue'
-  | '/ai-report'
   | '/forms'
   | '/staff'
   | '/worklog'
@@ -57,13 +56,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '매출은 준비 중이에요',
     intro: `매출 흐름을 나눠 볼 자리예요. ${SOON}`,
     items: ['매출 추이', '급여와 비급여', '치료별 매출', '한 사람당 평균 진료비'],
-  },
-  {
-    path: '/ai-report',
-    name: 'AI 리포트',
-    title: 'AI 리포트는 준비 중이에요',
-    intro: `보고 자료를 정해 둔 양식으로 채울 자리예요. ${SOON}`,
-    items: ['월간보고 발표 자료', '주간 요약', '분기와 연간 보고'],
   },
   {
     path: '/forms',

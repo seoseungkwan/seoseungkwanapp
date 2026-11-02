@@ -99,7 +99,7 @@ const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
 const ROW_SIDE = '삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요.'
 const DESC = '청구하기 전에 삭감될 만한 처방을 미리 찾아 줘요.'
 const DESC_SUB = '청구 점검은 비트 PC의 크롬에서 열려요.'
-const INDEX_SIDE = '12개 가운데 1개는 지금, 1개는 연결하면 쓸 수 있어요'
+const INDEX_SIDE = '12개 가운데 2개는 지금, 1개는 연결하면 쓸 수 있어요'
 const PC_STEPS_NOTE = '설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
 const PHONE_STEPS_NOTE = '연결은 비트 PC의 크롬에서 해요. 설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
 // 보조 글(AC-414.6): small(13px) muted + 시안 40em(13px × 40 = 520px)에 가장 가까운 4px 단위 폭 단계
@@ -652,7 +652,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expect(status.querySelector('svg')).toBeNull()
   }
 
-  it('AC-316.4·AC-414.5: 섹션 h2 "기능 목차" + 옆 "12개 가운데 1개는 지금, 1개는 연결하면 쓸 수 있어요"(small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
+  it('AC-316.4·AC-414.5·AC-714.4: 섹션 h2 "기능 목차" + 옆 "12개 가운데 2개는 지금, 1개는 연결하면 쓸 수 있어요"(small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
     forBoth(() => {
       const section = sectionNamed('기능 목차')
       hasAll(section, SECTION)
@@ -691,7 +691,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     }
   })
 
-  it('AC-316.4·AC-414.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · 설정 "사용 가능" · 나머지 10개 "준비 중"', () => {
+  it('AC-316.4·AC-414.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · AI 리포트·설정 "사용 가능" · 나머지 9개 "준비 중"', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -717,19 +717,23 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     })
     expectConnectFirst(statusOf(linkOf('청구')))
     expectUsable(statusOf(linkOf('설정')))
-    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(10)
+    expectUsable(statusOf(linkOf('AI 리포트')))
+    expect(textOf(linkOf('AI 리포트').children[1] as HTMLElement)).toBe('지난달·작년 같은 달과 견준 월간 AI 보고')
+    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(2)
+    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(9)
     expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(1)
   })
 
-  it('AC-414.5: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, 설정은 그대로 "사용 가능", 나머지 10개는 그대로 "준비 중"', () => {
+  it('AC-414.5·AC-714.4: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, AI 리포트·설정은 그대로 "사용 가능", 나머지 9개는 그대로 "준비 중"', () => {
     renderAfter()
     expectUsable(statusOf(linkOf('청구')))
+    expectUsable(statusOf(linkOf('AI 리포트')))
     expectUsable(statusOf(linkOf('설정')))
     const links = Array.from(list().querySelectorAll('a'))
     expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(0)
-    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(2)
+    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(3)
     for (const link of links.filter((a) => textOf(statusOf(a)) === '준비 중')) expectSoon(statusOf(link))
-    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(10)
+    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(9)
   })
 
   it('AC-316.4: 1024px 이상 3열(사이 24px) · 768~1023px 2열 · 768px 미만 1열', () => {
@@ -739,11 +743,11 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     for (const t of classesOf(ul)) expect(t, t).not.toMatch(/^grid-cols-/)
   })
 
-  it('AC-414.5: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 12 · 지금 1 · 연결하면 1) — 소스에 숫자를 박지 않는다', () => {
+  it('AC-414.5·AC-714.4: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 12 · 지금 2 · 연결하면 1) — 소스에 숫자를 박지 않는다', () => {
     const source = SOURCES.map((s) => s.text).join('\n')
-    expect(source).not.toMatch(/12개 가운데|기능 12개|가운데 2개|1개는 지금|1개는 연결하면/)
+    expect(source).not.toMatch(/12개 가운데|기능 12개|가운데 2개|2개는 지금|1개는 지금|1개는 연결하면/)
     expect(DASHBOARD_FEATURES.length).toBe(12)
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready')).toHaveLength(1)
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready')).toHaveLength(2)
     expect(DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first')).toHaveLength(1)
   })
 

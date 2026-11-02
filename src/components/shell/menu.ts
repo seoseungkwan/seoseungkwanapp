@@ -30,7 +30,7 @@ export type MenuPath =
   | '/contacts'
   | '/claim/setup'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/claim'
+export type MenuHref = '/dashboard' | '/claim' | '/ai-report'
 
 export type MenuItem = {
   label: MenuLabel
@@ -41,7 +41,7 @@ export type MenuItem = {
   href: MenuHref | null
   /** 이 탭 자리에 속하는 다른 화면 경로(지금은 쓰는 항목 없음. 설정이 /settings를 가지면 /claim/setup을 여기에 둔다) */
   owns?: readonly string[]
-  /** 지금 쓸 수 있는 화면이 있다(대시보드·청구·설정). false면 그 주소는 '준비 중' 화면이고 [전체 메뉴] 판에 "준비 중" 칩이 붙는다(ui-90 AC-416.4).
+  /** 지금 쓸 수 있는 화면이 있다(대시보드·청구·AI 리포트·설정). false면 그 주소는 '준비 중' 화면이고 [전체 메뉴] 판에 "준비 중" 칩이 붙는다(ui-90 AC-416.4).
    *  false인 주소들은 common/notReadyFeatures.ts의 NOT_READY_FEATURES와 같다(시험이 견준다) */
   ready: boolean
 }
@@ -53,7 +53,7 @@ export const MENU: readonly MenuItem[] = [
   { label: '고시·공지', path: '/notices', href: null, ready: false },
   { label: '환자', path: '/patients', href: null, ready: false },
   { label: '매출', path: '/revenue', href: null, ready: false },
-  { label: 'AI 리포트', path: '/ai-report', href: null, ready: false },
+  { label: 'AI 리포트', path: '/ai-report', href: '/ai-report', ready: true },
   { label: '서식', path: '/forms', href: null, ready: false },
   { label: '직원', path: '/staff', href: null, ready: false },
   { label: '업무일지', path: '/worklog', href: null, ready: false },

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { notReadyFeature, type NotReadyPath } from '@/components/common/notReadyFeatures'
 import { decideRoute, type HospitalState } from '@/lib/auth/gate'
@@ -17,7 +17,12 @@ import StaffPage from './staff/page'
 import StatsPage from './stats/page'
 import WorklogPage from './worklog/page'
 
-// 준비 중 주소 10개의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, ui-90 AC-415.5, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
+// 화면 부품은 가짜로 바꿔 페이지가 넘긴 today만 본다(AC-714.3). 화면 자체는 components/ai-report 시험이 본다
+vi.mock('@/components/ai-report/AiReportScreen', () => ({
+  AiReportScreen: ({ today }: { today: string }) => <p data-ai-report-today={today}>AI 리포트 화면</p>,
+}))
+
+// 준비 중 주소 9개의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, ui-90 AC-415.5, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
 // 페이지는 (app) 묶음 안이라 앱 틀과 승인 검사((app)/layout)를 저절로 받는다. 문지기 규칙은 바꾸지 않는다
 
 const ROOT = process.cwd()
@@ -29,7 +34,6 @@ const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: Comp
   { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
   { path: '/patients', name: '환자', title: '환자는 준비 중이에요', Page: PatientsPage },
   { path: '/revenue', name: '매출', title: '매출은 준비 중이에요', Page: RevenuePage },
-  { path: '/ai-report', name: 'AI 리포트', title: 'AI 리포트는 준비 중이에요', Page: AiReportPage },
   { path: '/forms', name: '서식', title: '서식은 준비 중이에요', Page: FormsPage },
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
   { path: '/worklog', name: '업무일지', title: '업무일지는 준비 중이에요', Page: WorklogPage },
@@ -41,7 +45,38 @@ const pageFile = (path: string) => `${APP_GROUP}${path}/page.tsx`
 const h1Texts = (markup: string) =>
   [...markup.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
 
-describe('AC-305.5: 준비 중 주소 10개의 페이지 = notReadyFeature(주소)를 준 NotReadyScreen', () => {
+describe('AC-714.3: /ai-report 페이지 = 준비 중 화면이 아닌 진짜 화면에 요청 때의 한국 날짜를 넘긴다', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-714.3: 가짜 시계 UTC 2026-11-01 15:30(한국 11월 2일 00:30)에서 화면이 받은 today는 "2026-11-02"다(UTC 날짜면 11-01)', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T15:30:00Z'))
+    const html = renderToStaticMarkup(<AiReportPage />)
+    expect(html).toContain('data-ai-report-today="2026-11-02"')
+    expect(html).not.toContain('2026-11-01')
+  })
+
+  it('AC-714.3: dynamic은 "force-dynamic"이고 탭 이름은 "AI 리포트"다', async () => {
+    const page = await import('./ai-report/page')
+    expect(page.dynamic).toBe('force-dynamic')
+    expect(page.metadata).toEqual({ title: 'AI 리포트' })
+  })
+
+  it('AC-714.3: 그린 결과에 준비 중 화면이 없고, 소스에 NotReadyScreen·notReadyFeature가 없다', () => {
+    const html = renderToStaticMarkup(<AiReportPage />)
+    expect(html).not.toContain('준비 중')
+    expect(html).not.toContain('그동안 쓸 수 있어요')
+    expect(html).not.toContain('대시보드로 돌아가기')
+    const source = readFileSync(join(ROOT, pageFile('/ai-report')), 'utf8')
+    expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    expect(source).toMatch(/from '@\/components\/ai-report\/AiReportScreen'/)
+    expect(existsSync(join(ROOT, pageFile('/ai-report'))), pageFile('/ai-report')).toBe(true)
+  })
+})
+
+describe('AC-305.5: 준비 중 주소 9개의 페이지 = notReadyFeature(주소)를 준 NotReadyScreen', () => {
   it.each(PAGES)('AC-305.5: $path 페이지는 notReadyFeature("$path")를 준 NotReadyScreen과 같다', ({ path, Page }) => {
     expect(renderToStaticMarkup(<Page />)).toBe(renderToStaticMarkup(<NotReadyScreen feature={notReadyFeature(path)} />))
   })
@@ -67,12 +102,13 @@ describe('AC-305.5: 준비 중 주소 10개의 페이지 = notReadyFeature(주�
     expect(source).not.toMatch(/['"]use client['"]|supabase|guard\.server|\bfetch\s*\(/)
   })
 
-  it('AC-305.5: 10개 주소가 모두 다르다', () => {
-    expect(new Set(PAGES.map((p) => p.path)).size).toBe(10)
+  it('AC-305.5: 9개 주소가 모두 다르고 /ai-report가 없다', () => {
+    expect(new Set(PAGES.map((p) => p.path)).size).toBe(9)
+    expect(PAGES.map((p) => p.path)).not.toContain('/ai-report')
   })
 })
 
-describe('AC-305.6: 준비 중 주소 10개는 문지기(decideRoute) 규칙 그대로 · 페이지 파일은 (app) 아래', () => {
+describe('AC-305.6: 준비 중 주소 9개는 문지기(decideRoute) 규칙 그대로 · 페이지 파일은 (app) 아래', () => {
   const HOSPITALS: HospitalState[] = ['none', 'pending', 'approved', 'rejected', 'unknown']
 
   it.each(PAGES)('AC-305.6: $path — 로그인 안 함 → /login', ({ path }) => {

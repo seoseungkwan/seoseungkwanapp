@@ -72,7 +72,6 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
       ['/notices', () => import('./(app)/notices/page')],
       ['/patients', () => import('./(app)/patients/page')],
       ['/revenue', () => import('./(app)/revenue/page')],
-      ['/ai-report', () => import('./(app)/ai-report/page')],
       ['/forms', () => import('./(app)/forms/page')],
       ['/staff', () => import('./(app)/staff/page')],
       ['/worklog', () => import('./(app)/worklog/page')],
@@ -80,6 +79,8 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
       ['/contacts', () => import('./(app)/contacts/page')],
     ] as const
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
+  // 진짜 화면이 생겨 준비 중 목록에 없다(AC-714.3)
+  { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },

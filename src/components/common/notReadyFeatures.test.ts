@@ -38,13 +38,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['매출 추이', '급여와 비급여', '치료별 매출', '한 사람당 평균 진료비'],
   },
   {
-    path: '/ai-report',
-    name: 'AI 리포트',
-    title: 'AI 리포트는 준비 중이에요',
-    intro: `보고 자료를 정해 둔 양식으로 채울 자리예요. ${SOON}`,
-    items: ['월간보고 발표 자료', '주간 요약', '분기와 연간 보고'],
-  },
-  {
     path: '/forms',
     name: '서식',
     title: '서식은 준비 중이에요',
@@ -81,9 +74,15 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
   },
 ]
 
-describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능 10개(탭 순서)', () => {
-  it('AC-305.4: 10개가 탭 순서대로 주소·이름이 표와 같다', () => {
+describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능 9개(탭 순서)', () => {
+  it('AC-305.4: 9개가 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
+  })
+
+  it('AC-714.2: 9개이고 /ai-report가 없다', () => {
+    expect(NOT_READY_FEATURES).toHaveLength(9)
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain('/ai-report')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('AI 리포트')
   })
 
   it('AC-305.4: 주소가 겹치지 않는다', () => {
@@ -130,7 +129,6 @@ describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 �
     '고시·공지는 준비 중이에요',
     '환자는 준비 중이에요',
     '매출은 준비 중이에요',
-    'AI 리포트는 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
     '업무일지는 준비 중이에요',
