@@ -99,11 +99,11 @@
 - AC-713.1: Given 읽기나 분석의 답이 "로그인 확인 필요", When 받으면, Then 페이지를 다시 읽고(`location.reload`) 오류 상자를 띄우지 않는다.
 
 ### REQ-714: 탭 켜기
-- AC-714.1: Given `MENU`, When 읽으면, Then 'AI 리포트'는 `href`가 `/ai-report`이고 `ready`가 true다. 탭 줄과 [전체 메뉴]에서 눌러 갈 수 있고 "준비 중" 칩이 없다. 머리는 "모든 탭 13개"·"준비 중 9개"다.
-- AC-714.2: Given `NOT_READY_FEATURES`, When 읽으면, Then 9개이고 `/ai-report`가 없다.
+- AC-714.1: Given `MENU`, When 읽으면, Then 'AI 리포트'는 `href`가 `/ai-report`이고 `ready`가 true다. 탭 줄과 [전체 메뉴]에서 눌러 갈 수 있고 "준비 중" 칩이 없다. 머리는 "모든 탭 13개"이고, 옆의 준비 중 수는 `NOT_READY_FEATURES`에서 센 수다(worklog AC-012.5, 시험은 손으로 적지 않는다. 2026-11-02 합친 뒤 값은 8개).
+- AC-714.2: Given `NOT_READY_FEATURES`, When 읽으면, Then `/ai-report`가 없다.
 - AC-714.3: Given `/ai-report` 페이지, When 읽으면, Then `NotReadyScreen`을 쓰지 않고, 브라우저 탭 이름은 "AI 리포트"이며, 요청 때의 한국 날짜를 화면에 넘긴다(`dynamic = 'force-dynamic'`).
-- AC-714.4: Given 대시보드 기능 목록, When 읽으면, Then 'AI 리포트'는 `status: 'ready'`이고 설명은 "지난달·작년 같은 달과 견준 월간 AI 보고"이며 "사용 가능" 표시가 붙는다. "준비 중" 표시는 9개이고, 기능 목차 옆 글은 "12개 가운데 2개는 지금, 1개는 연결하면 쓸 수 있어요"다.
-- AC-714.5: Given `docs/UI_GUIDE.md`와 `docs/ARCHITECTURE.md`, When 읽으면, Then 화면이 없는 탭이 9개이고 AI 리포트가 그 목록에 없으며, UI_GUIDE에 'AI 리포트' 절이 있다.
+- AC-714.4: Given 대시보드 기능 목록, When 읽으면, Then 'AI 리포트'는 `status: 'ready'`이고 설명은 "지난달·작년 같은 달과 견준 월간 AI 보고"이며 "사용 가능" 표시가 붙는다. "준비 중" 표시 수와 기능 목차 옆 글의 숫자는 `DASHBOARD_FEATURES`에서 센 수다(worklog AC-012.5, 시험은 손으로 적지 않는다. 2026-11-02 합친 뒤 값은 "준비 중" 8개, 옆 글 "12개 가운데 3개는 지금, 1개는 연결하면 쓸 수 있어요").
+- AC-714.5: Given `docs/UI_GUIDE.md`와 `docs/ARCHITECTURE.md`, When 읽으면, Then 화면이 없는 탭의 수가 `NOT_READY_FEATURES`의 수와 같고 AI 리포트가 그 목록에 없으며, UI_GUIDE에 'AI 리포트' 절이 있다. 문서 조건이라 시험을 두지 않고 글자를 찾아 확인한다.
 
 ### REQ-715: 울타리
 - AC-715.1: Given `src/components/ai-report/`의 시험 아닌 파일, When import를 보면, Then `@anthropic-ai/sdk`·`@/lib/supabase`·`@/app/api`와 `server-only`가 없고 `dangerouslySetInnerHTML`·`localStorage`·`sessionStorage`·`console.`이 없다.
