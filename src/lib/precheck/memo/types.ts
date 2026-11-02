@@ -1,0 +1,161 @@
+import type { LineHint, Tables, Visit } from '@/types/precheck'
+
+// 청구메모 모양(precheck TASK-14). 원본(양지바른 사전점검 seoseungkwan/shared@2a1069b)의 설정 모양 + 시술별 약(design.md 19-3)
+
+/** 원본 TPL 칸. 칸의 뜻과 허용 값은 phrases.ts의 validate(원본 claim_hospital_settings)가 정한다 */
+export type PhraseTemplates = {
+  sideRuleVersion?: number
+  main?: string
+  mainCentral?: string
+  mainPeripheral?: string
+  mainCentralCodes?: string
+  mainPeripheralCodes?: string
+  cpb?: string
+  snb?: string
+  sentence?: string
+  ara?: string
+  klg?: string
+  iaAra?: string
+  iaEtc?: string
+  ts?: string
+  itv?: string
+  ia2?: string
+  twoSiteRules?: string
+  intervalCodes?: string
+  lidoCodes?: string
+  intervalDays?: number
+  reasonPriority?: string
+  sideAuto?: string
+  sideQuantity?: string
+  sideOmit?: string
+  sideByCode?: Record<string, string>
+  procedureTypes?: Record<string, string>
+  sideKeep?: string
+  rename?: string
+  icnb?: string
+  byRegion?: Record<string, string>
+  byProc?: Record<string, string>
+  splitEach?: boolean
+  mark?: string
+  fixedPhrases?: { token: string; text: string; on?: boolean }[]
+  siteNames?: Record<string, string>
+  sideStyle?: string
+  drugWrap?: string
+  drugQty?: boolean
+  drugUnit?: string
+  drugLocal?: boolean
+  kneeSetSkipIa?: boolean
+  splitCpb?: boolean
+  splitSnb?: boolean
+  sideMode?: string
+  sideSpread?: string
+  cartilageSideLang?: string
+  drugNames?: Record<string, string>
+  drugUnlistedOther?: boolean
+  lineJoin?: string
+  guides?: string
+  levelSep?: string
+  __labels?: Record<string, string>
+  __catalog?: unknown
+  __codeHistory?: unknown
+}
+
+/** 원본 CODEMAP 한 줄 */
+export type MemoCode = {
+  n: string
+  k: string
+  rg: string | null
+  memo?: string
+  add?: boolean
+  cartilage?: boolean
+  cartilageMemo?: string
+  displayName?: string
+  bitActive?: boolean
+  bitName?: string
+  bitKind?: string
+  standardCode?: string
+  steroid?: boolean
+  localAnesthetic?: boolean
+  carm?: boolean
+  injectionDrug?: boolean
+  pendingReview?: boolean
+  templateKey?: string
+}
+
+/** 약을 넣는 자리: 시술 뒤(틀의 {약제} 자리, 없으면 {시술} 바로 뒤) · 끝맺음 뒤(그 줄 맨 끝) · 따로 한 줄 */
+export type DrugPlace = 'afterProc' | 'afterEnding' | 'ownLine'
+/** 한 시술에서 약 하나를 어떻게 할지. label은 메모에 쓰는 표기(없으면 약 이름). 빼기에는 자리가 없다 */
+export type DrugChoice = { use: 'include' | 'exclude'; place?: DrugPlace; label?: string }
+/** 시술(원본 procKeys, 대문자 코드) → 약 이름(CODEMAP의 n) → 넣기·빼기. 없는 칸은 아직 정하지 않은 것이다(design.md 19-4) */
+export type ProcedureDrugs = Record<string, Record<string, DrugChoice>>
+
+/** 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 */
+export type Phrases = { TPL: PhraseTemplates; CODEMAP: Record<string, MemoCode>; CODEMAP_DEL: string[]; procedureDrugs: ProcedureDrugs }
+
+export type PhraseError = { path: string; message: string }
+export type PhraseCheck = { ok: true; value: Phrases } | { ok: false; errors: PhraseError[] }
+/** 원본 diff 한 줄 */
+export type PhraseDiffRow = { path: string; label: string; before: string; after: string }
+export type PhraseDiff = PhraseDiffRow[]
+
+/** 문구 사전(원본 NEW_MEDICORE_DICTIONARY에서 메모가 읽는 칸): 줄임말과 생략 규칙. 원본은 병원 PC에 둔다 */
+export type MemoDictionary = {
+  aliases: { id?: string; kind: string; term: string; target: string }[]
+  omissions: { dropRootEpi: boolean; dropShoulderAnbWithCervicalMbb: boolean }
+}
+
+/** 메모가 읽는 표: 점검 표(Worker의 Tables)를 그대로 받고, 그중 메모가 읽는 것은 문구 사전뿐이다. 없으면 빈 사전(원본 defaults)이다 */
+export type MemoTables = Partial<Tables> & { dictionary?: MemoDictionary }
+
+export type Region = 'shoulder' | 'cervical' | 'lumbar' | 'knee' | 'ankle' | 'elbow' | 'wrist' | 'hand' | 'hip' | 'chest' | 'foot' | 'upper'
+
+/** 시술 줄을 나눈 분절(원본 segs·segAll) */
+export type MemoSegment = { t: string; rg: string | null; sd: string | null; sourceText?: string }
+/** 증상 한 줄을 분석한 것(원본 v.items) */
+export type MemoItem = { t: string; raw: string; k: string; rg: string | null; sd: string | null; hint: LineHint | null; inherit?: boolean; segs?: MemoSegment[] }
+
+/** 처방 수량 표(원본 v.rxQty): 시술 이름(대문자) → 수량. 코드별 줄은 __nmSideRows에 안 보이게 둔다 */
+export type QuantityMap = Record<string, number | null> & { __nmSideRows?: { code: string; name: string; quantity: number | null }[] }
+
+/** 부위 메모 조각(원본 buildMemo 결과. 화면 점검용 칸 checks·chips·tags·have는 옮기지 않았다) */
+export type MemoParts = {
+  rg: string
+  ko: string
+  side?: string | null
+  headTxt?: string
+  examTxt?: string[]
+  procTxt: string
+  procList?: string[]
+  cpbTxt?: string
+  snbSide?: string | null
+  snbSeg?: string | null
+  dropped: string[]
+  klTxt: string
+  araV?: boolean
+  rxQty?: QuantityMap | null
+  icnbSide?: string
+  kl1?: string | null
+  kl2?: string | null
+  dxKo?: string | null
+  dur?: string | null
+  imgTxt?: string
+  rxOnly?: boolean
+  sub?: MemoParts[]
+}
+
+export type RxAddition = { name: string; rg: string | null; code: string; qty: number | null }
+/** 내원 간격(원본 v.shortItv). prev는 YYYY-MM-DD */
+export type ShortInterval = { nm: string; code: string; d: number; prev: string; src: string; lim: number; steroid: boolean; exact: boolean }
+
+/** 분석한 진료(원본 analyze·applyRx·computeIntervals 뒤의 v) */
+export type MemoVisit = Visit & {
+  items: MemoItem[]
+  segAll: MemoSegment[]
+  memos: MemoParts[]
+  rxAdd: RxAddition[]
+  rxNames: Set<string> | null
+  rxQty: QuantityMap | null
+  rxNone: boolean
+  shortItv: ShortInterval | null
+}
+

@@ -14,6 +14,8 @@ export type ErrorCode =
   | 'E-BIT-EXPORT-FAILED' | 'E-CLAIM-PARTIAL'
   // 청구 설정 표를 읽거나 쓰지 못함(TASK-12)
   | 'E-SETTINGS-FAILED'
+  // 병원 문구 설정이 없거나 틀려 메모를 만들지 않음(TASK-14)
+  | 'E-MEMO-NO-SETTINGS'
   // AI 리포트(spec ai-report design.md '오류 문구')
   | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
   // 업무일지(specs/worklog)

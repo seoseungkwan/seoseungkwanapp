@@ -36,6 +36,7 @@ const ALL_CODES = [
   'E-STORE-BROKEN',
   'E-RULES-LOAD-FAILED',
   'E-SETTINGS-FAILED',
+  'E-MEMO-NO-SETTINGS',
   'E-CLAIM-PARTIAL',
   'E-BIT-EXPORT-FAILED',
   'E-AI-BUSY',
@@ -287,6 +288,17 @@ describe('AC-007.5 점검 표 불러오기 오류 문구', () => {
     expect(info.what).toContain('점검을 시작하지 않았어요')
     expect(info.fix).toContain('[다시 불러오기]')
     expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
+// 청구메모(precheck TASK-14): 병원 설정이 없거나 틀린 병원은 메모를 만들지 않는다
+describe('AC-014.8 메모 설정 없음 오류 문구', () => {
+  it('AC-014.8: E-MEMO-NO-SETTINGS는 처음 질문을 먼저 하라고 알리고 무엇을 고칠지 있다', () => {
+    expect(isErrorCode('E-MEMO-NO-SETTINGS')).toBe(true)
+    const info = errorInfo('E-MEMO-NO-SETTINGS')
+    expect(info.what).toBe('처음 질문을 먼저 해 주세요')
+    expect(info.fix.length).toBeGreaterThan(0)
+    expect(info.fix).toContain('점검 결과')
   })
 })
 

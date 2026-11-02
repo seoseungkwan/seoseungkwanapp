@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Outcome } from '@/types/parse'
 import type { DxLink, PrecheckFromScreen, PrecheckToScreen, Tables } from '@/types/precheck'
-import { loadMonth, createPrecheckJobs, dxViews, ruleList } from './jobs'
+import { defaultPhrases, ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
+import { checkMonth, loadMonth, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
 import { loadTables } from './tables'
 
 // Worker가 부르는 일(REQ-009). 통로 포트로 온 조각을 모아(assemble) 한 번만 풀고(loadMonth) 점검용 모양을 만든다.
@@ -526,5 +527,159 @@ describe('AC-010.1 jobs.check: 규칙 엔진 결과를 보기 모양으로', () 
     const view = jobs.check(octMonth(), await tablesValue(), { off: ['IJ-05'], on: [], grade: {} })
     expect(view.visits.flatMap((v) => v.findings).some((f) => f.ruleId === 'IJ-05')).toBe(false)
     expect(view.groups.some((g) => g.ruleId === 'IJ-05')).toBe(false)
+  })
+})
+
+describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeout: 30_000 }, () => {
+  const noDrugs = () => {
+    const value: Partial<Phrases> = ourClinicPhrases()
+    delete value.procedureDrugs
+    return value
+  }
+  const tablesValue = async () => {
+    const loaded = await loadTables()
+    if (!loaded.ok) throw new Error(loaded.code)
+    return loaded.value
+  }
+  const NO_SETTINGS = { off: [], on: [], grade: {} }
+  const monthFrom = (name: string) => {
+    const loaded = loadMonth(FAKE(name))
+    if (!loaded.ok) throw new Error(loaded.code)
+    return loaded.value
+  }
+  const memo = () => monthFrom('claim-month-memo.json')
+  /** m26: 시술 2종 + IA, 2부위 사유가 나온다 */
+  const REASONED = 'm26'
+  /** m05: 어깨 SSNB 하나 */
+  const PLAIN = 'm05'
+
+  it('AC-014.5: 진료마다 메모 초안(fullText)이 있고 고친 메모가 없으면 고쳤다고 하지 않는다', async () => {
+    const month = memo()
+    const views = memoViews(month, await tablesValue(), { phrases: ourClinicPhrases() })
+    expect(views.memoBlocked).toBeNull()
+    expect(views.memos.map((m) => m.visitKey)).toEqual(month.visits.map((v) => v.key))
+    const plain = views.memos.find((m) => m.visitKey === PLAIN)!
+    expect(plain).toMatchObject({ edited: false, missing: [], hasMemo: true, unfinished: false })
+    expect(plain.text).toContain('SSNB')
+  })
+
+  it('AC-014.4: 고친 메모는 그대로 두고 빠진 문장만 경고한다', async () => {
+    const saved = new Map([[REASONED, '◈직접 고친 글(가상)']])
+    const views = memoViews(memo(), await tablesValue(), { phrases: ourClinicPhrases(), saved })
+    const edited = views.memos.find((m) => m.visitKey === REASONED)!
+    expect(edited.text).toBe('◈직접 고친 글(가상)')
+    expect(edited.edited).toBe(true)
+    expect(edited.missing).toEqual([ourClinicPhrases().TPL.ia2])
+  })
+
+  it('AC-014.12: 확인 표시가 남은 메모를 알린다(고친 메모도 고친 글로 본다)', async () => {
+    const month = memo()
+    const tables = await tablesValue()
+    const auto = memoViews(month, tables, { phrases: ourClinicPhrases() })
+    expect(auto.memos.find((m) => m.visitKey === 'k01')!.unfinished).toBe(true)
+    const fixed = memoViews(month, tables, { phrases: ourClinicPhrases(), saved: new Map([['k01', '◈고쳐서 확인 표시를 지움(가상)']]) })
+    expect(fixed.memos.find((m) => m.visitKey === 'k01')!.unfinished).toBe(false)
+    const left = memoViews(month, tables, { phrases: ourClinicPhrases(), saved: new Map([[PLAIN, '◈[약 확인: 트리암]']]) })
+    expect(left.memos.find((m) => m.visitKey === PLAIN)!.unfinished).toBe(true)
+  })
+
+  it.each([
+    ['설정 줄 없음(null)', null],
+    ['빈 {}', {}],
+    ['약 칸 없음', noDrugs()],
+    ['틀린 문구 칸', { ...ourClinicPhrases(), TPL: { ...ourClinicPhrases().TPL, main: '{없는말}' } }],
+  ])('AC-014.8: %s: 규칙 결과는 그대로 내고 메모는 만들지 않는다', async (_name, phrases) => {
+    const month = monthFrom('claim-month-rules-v1-v18.json')
+    const tables = await tablesValue()
+    const without = checkMonth(month, tables, NO_SETTINGS, { phrases: ourClinicPhrases() })
+    const view = checkMonth(month, tables, NO_SETTINGS, { phrases })
+    expect(view.memoBlocked).toBe('E-MEMO-NO-SETTINGS')
+    expect(view.visits.every((v) => v.memo === null)).toBe(true)
+    expect(view.totals).toEqual(without.totals)
+    expect(view.groups).toEqual(without.groups)
+    expect(view.visits.map((v) => v.findings)).toEqual(without.visits.map((v) => v.findings))
+  })
+
+  it('AC-014.8: 기본값으로 대신 만들지 않는다(메모 없는 답에 글자가 없다)', async () => {
+    const views = memoViews(memo(), await tablesValue(), { phrases: {} })
+    expect(views).toEqual({ memoBlocked: 'E-MEMO-NO-SETTINGS', memos: [] })
+  })
+
+  it('AC-014.8: 약 칸이 빈 설정은 막지 않고, 아직 안 정한 약에 표시를 남긴다', async () => {
+    const views = memoViews(memo(), await tablesValue(), { phrases: defaultPhrases() })
+    expect(views.memoBlocked).toBeNull()
+    expect(views.memos.find((m) => m.visitKey === 'm22')!.text).toContain('[약 확인: 트리암]')
+  })
+
+  it('AC-014.1: jobs.check의 보기 모양에 메모가 실린다', async () => {
+    const { jobs } = setup()
+    const month = memo()
+    const view = jobs.check(month, await tablesValue(), NO_SETTINGS, { phrases: ourClinicPhrases() })
+    expect(view.memoBlocked).toBeNull()
+    expect(view.visits.find((v) => v.key === PLAIN)!.memo?.text).toContain('SSNB')
+  })
+
+  it('AC-014.11: 설정이 바뀌면 손대지 않은 메모만 새 설정으로 다시 만든다(고침·완료는 그대로)', async () => {
+    const month = memo()
+    const tables = await tablesValue()
+    const before = ourClinicPhrases()
+    const after = ourClinicPhrases()
+    after.TPL.mark = '※'
+    const untouched = 'm05'
+    const edited = 'm04'
+    const completed = 'm06'
+    const first = memoViews(month, tables, { phrases: before })
+    const textOf = (views: ReturnType<typeof memoViews>, key: string) => views.memos.find((m) => m.visitKey === key)!.text
+    // 완료한 메모는 도우미가 그때 글로 저장해 둔다(원본 protectWork가 글을 얼리는 것과 같다)
+    const saved = new Map([
+      [edited, '◈직접 고친 글(가상)'],
+      [completed, textOf(first, completed)],
+    ])
+    const second = memoViews(month, tables, { phrases: after, saved })
+    expect(textOf(first, untouched)).toContain('◈')
+    expect(textOf(second, untouched)).toBe(textOf(first, untouched).replaceAll('◈', '※'))
+    expect(textOf(second, edited)).toBe('◈직접 고친 글(가상)')
+    expect(textOf(second, completed)).toBe(textOf(first, completed))
+  })
+
+  describe('AC-014.13 dxViews에 메모 결과를 잇는다', () => {
+    const noDx = 'm33' // 상병 없음·비급여 수압팽창술(MM410)만: 부위 메모가 있다
+    const noMemo = 'm35' // 상병 없음·비급여 도수만: 부위 메모가 없다
+    const withDxData = () => {
+      const month = memo()
+      expect(month.hasDx).toBe(true)
+      return month
+    }
+
+    it('AC-014.13: 상병 없음·비급여뿐·부위 메모 있음: missingDx가 참이다', async () => {
+      const month = withDxData()
+      const views = memoViews(month, await tablesValue(), { phrases: ourClinicPhrases() })
+      expect(month.visits.find((v) => v.key === noDx)!.rx.every((row) => !row.benefit)).toBe(true)
+      expect(views.memos.find((m) => m.visitKey === noDx)!.hasMemo).toBe(true)
+      expect(dxViews(month, [], views).find((v) => v.visitKey === noDx)!.missingDx).toBe(true)
+    })
+
+    it('AC-014.13: 부위 메모가 없으면 거짓이다', async () => {
+      const month = withDxData()
+      const views = memoViews(month, await tablesValue(), { phrases: ourClinicPhrases() })
+      expect(views.memos.find((m) => m.visitKey === noMemo)!.hasMemo).toBe(false)
+      expect(dxViews(month, [], views).find((v) => v.visitKey === noMemo)!.missingDx).toBe(false)
+    })
+
+    it('AC-014.13: 고친 메모가 있어도 부위 메모가 없으면 거짓이다(고친 글의 길이로 보지 않는다)', async () => {
+      const month = withDxData()
+      const views = memoViews(month, await tablesValue(), { phrases: ourClinicPhrases(), saved: new Map([[noMemo, '◈직접 고친 글(가상)']]) })
+      const view = views.memos.find((m) => m.visitKey === noMemo)!
+      expect(view.text).toBe('◈직접 고친 글(가상)')
+      expect(view.edited).toBe(true)
+      expect(view.hasMemo).toBe(false)
+      expect(dxViews(month, [], views).find((v) => v.visitKey === noMemo)!.missingDx).toBe(false)
+    })
+
+    it('AC-014.13: 메모를 만들지 않는 병원은 메모가 없으므로 거짓이다', async () => {
+      const month = withDxData()
+      const views = memoViews(month, await tablesValue(), { phrases: null })
+      expect(dxViews(month, [], views).find((v) => v.visitKey === noDx)!.missingDx).toBe(false)
+    })
   })
 })

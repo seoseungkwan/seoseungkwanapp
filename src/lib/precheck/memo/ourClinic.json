@@ -1,0 +1,270 @@
+{
+  "procedureDrugs": {
+    "LA247": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA248": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA251": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA272": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA274": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA321": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA346": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA347": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA354": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA357": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA358": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "KK090": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "include",
+        "place": "afterProc",
+        "label": "dexa"
+      },
+      "트리암": {
+        "use": "include",
+        "place": "afterProc",
+        "label": "triam"
+      },
+      "조영제": {
+        "use": "include",
+        "place": "afterProc"
+      },
+      "아라간": {
+        "use": "include",
+        "place": "afterProc"
+      }
+    },
+    "KK061": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "KK062": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "include",
+        "place": "afterProc",
+        "label": "dexa"
+      },
+      "트리암": {
+        "use": "include",
+        "place": "afterProc",
+        "label": "triam"
+      },
+      "조영제": {
+        "use": "include",
+        "place": "afterProc"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    },
+    "LA232": {
+      "리도카인": {
+        "use": "exclude"
+      },
+      "덱사": {
+        "use": "exclude"
+      },
+      "트리암": {
+        "use": "exclude"
+      },
+      "조영제": {
+        "use": "exclude"
+      },
+      "아라간": {
+        "use": "exclude"
+      }
+    }
+  }
+}

@@ -1249,6 +1249,151 @@ const YEAR_2027_SEEDS: CaseSeed[] = [
 const OCT_FROM = '2026-10-01'
 const OCT_TO = '2026-10-31'
 
+// 청구메모 문장 사례(TASK-14). 원본 tests/test_claim_review_safety.py·test_claim_side_policy_v2.py의 가짜 사례를 옮기고 줄 종류·약 규칙 사례를 더했다
+const MEMO_DAY = '2026-10-12'
+type MemoSeed = [id: string, lines: string[], rx: string | FakeRx[], options?: { date?: string; chart?: number; dx?: FakeVisit['dx']; joined?: boolean }]
+
+const MEMO_SEEDS: readonly MemoSeed[] = [
+  // 척추 레벨·좌우
+  ['m01', ['LBP', 'MBB L4,5 both SNB Rt'], 'LA358*2 LA272', { dx: [['M5456', true]] }],
+  ['m02', ['Lt neck pain', 'MBB C4,5,6'], 'LA358'],
+  ['m03', ['MBB C4,5,6Lt + ANB Rt', 'Rt rib pain', 'ICNB Rt 2 level'], 'LA358*2 LA346*1.5 LA248'],
+  ['m13', ['neck pain', 'C-MBB 4,5,6 Rt CPB'], 'LA358*3 LA251'],
+  ['m14', ['neck pain', 'Cmbb 456 Rt'], 'LA358*3'],
+  ['m15', ['Rt neck pain', 'MBB C4,5,6Lt'], 'LA358*3'],
+  ['m16', ['Rt neck pain', 'Lt neck pain', 'MBB C4,5,6'], 'LA358*3'],
+  ['m17', ['lumbar pain', 'SNRB(root) L4,5Lt'], 'LA354*3'],
+  ['m18', ['MBB C4 Lt C5 Rt'], 'LA358*3'],
+  ['m41', ['요추 통증', '우측 MBB L4,5'], 'LA358'],
+  ['m43', ['LBP', 'Lmbb 45s1 both'], 'LA358*3'],
+  ['m44', ['LBP', 'MBB L4-S1 Rt'], 'LA358*2'],
+  ['m45', ['MBB L4,5 1.5cc Rt', 'LBP'], 'LA358'],
+  ['m57', ['MBB4,5,6Lt'], 'LA358'],
+  ['m58', ['cervical pain', 'MBB pain 5 days'], 'LA358*3'],
+  ['m59', ['Rt shoulder pain', 'MBB C4,5,6'], 'LA358*3'],
+  ['m72', ['LBP', 'Both MBB L4,5,S1'], 'LA358*3'],
+  ['m73', ['LBP', 'Rt MBB L4,5'], 'LA358*2'],
+  // 어깨·팔: 수량으로 좌우를 정하는 시술
+  ['m04', ['Rt shoulder pain', 'Rt SSNB ANB'], 'LA247 LA346 A15'],
+  ['m05', ['Rt shoulder pain', 'Rt SSNB'], 'LA247*1.5 A15'],
+  ['m06', ['both shoulder pain', 'both SSNB'], 'LA247*2'],
+  ['m07', ['Lt shoulder pain', 'ANB Lt MRU Lt'], 'LA346*1.5 LA347*2'],
+  ['m38', ['Rt hand pain', '액,액하 Rt'], 'LA346 LA347'],
+  ['m40', ['shoulder pain + neck', 'Rt SSNB ANB + C-MBB 4,5,6 both'], 'LA247 LA346 LA358*3'],
+  ['m74', ['Lt shoulder pain', 'Lt ANB Rt MRU'], 'LA346*1.5'],
+  ['m75', ['Rt shoulder pain', 'Rt SSNB MRU'], 'LA247 LA347'],
+  ['m76', ['Lt shoulder pain', 'Lt SSNB'], 'LA247'],
+  // 늑골·ICNB
+  ['m08', ['Rt rib pain', 'ICNB'], 'LA248'],
+  ['m09', ['우측 늑골 3개 골절', 'ICNB', 'PDNB'], 'LA248 LA357'],
+  ['m10', ['Rt rib pain', 'Lt rib pain', 'ICNB'], 'LA248'],
+  ['m31', ['우측 늑골 1개 골절', 'ICNB Rt 3 level'], 'LA248 EB422 A15'],
+  ['m77', ['Rt rib pain', 'ICNB Lt'], 'LA248*3'],
+  ['m78', ['우측 늑골 통증', 'ICNB 3 level'], 'LA248*3'],
+  // 무릎·요추 차단
+  ['m11', ['Rt knee pain', 'FNB Rt'], 'LA274*1.5'],
+  ['m12', ['Rt knee pain', 'Rt FNB SNB IA'], 'LA274 LA272 KK090'],
+  ['m39', ['Lt ankle sprain ATFL', 'FNB Lt SNB Lt'], 'LA274 LA272'],
+  ['m46', ['PDNB both'], 'LA357*2'],
+  ['m47', ['Rt hip pain', 'SNB Rt'], 'LA272*1.5'],
+  ['m48', ['내측지차단술 L4,5 both', '요통'], 'LA358*2'],
+  // 연골주사
+  ['m19', ['Rt knee OA', '아라간 Rt knee 2차'], 'KK090*2 A49*2'],
+  ['m20', ['knee OA KLG 3/3', '아라간 both 2차'], 'KK090*2 A49*2'],
+  ['m21', ['Both knee OA', 'KLG 3/3'], 'KK090*2 A49*2'],
+  ['m49', ['연골주사 Rt knee 3차', '무릎 OA KLG 2/3'], 'KK090 A49'],
+  ['m50', ['Rt knee OA', '아라간 Rt 2차, SSNB'], 'KK090 A49'],
+  ['m54', ['통증'], 'KK090 A49'],
+  ['m55', ['Rt knee 아라간 2차'], 'KK090 A49 HY1:가상히알주'],
+  ['m79', ['knee OA', '아라간 knee 2차'], 'KK090*2 A49*2'],
+  // IA·건초내주사·약
+  ['m22', ['Rt shoulder pain', 'Rt shoulder IA'], 'KK090 A21'],
+  ['m23', ['Rt knee pain', 'Rt knee IA'], 'KK090 A21 A19 A15'],
+  ['m24', ['Rt 3rd finger trigger finger', '건초내주사 Rt 3rd finger'], 'KK062 A21 A15'],
+  ['m25', ['Rt wrist pain', 'Rt 3rd finger trigger finger'], 'KK062*2'],
+  ['m26', ['Rt shoulder pain', 'Rt SSNB IA'], 'LA247 KK090'],
+  ['m27', ['Rt wrist pain', 'Rt TS SSNB'], 'KK062 LA247'],
+  ['m51', ['Rt elbow'], 'KK061 A15'],
+  ['m52', ['cervical pain', 'epidural'], 'LA321'],
+  ['m53', ['통증'], 'KK090'],
+  ['m80', ['Both knee pain', 'both knee IA'], 'KK090*2 A41'],
+  ['m81', ['Rt shoulder pain', 'Rt SSNB'], 'LA247 A21 A19'],
+  ['m82', ['우측 어깨 통증'], 'LA247 A41'],
+  // 비급여·처방 없음·머리말
+  ['m28', ['LBP ESWT', 'MBB L4,5 both', 'ESWT'], 'LA358*2'],
+  ['m29', ['Rt shoulder pain', 'Rt SSNB(DNA)'], 'LA247'],
+  ['m92', ['Rt shoulder pain', 'Rt SSNB root'], 'LA247'],
+  ['m30', ['S) 허리 통증 O) Td(+) P) MBB L4,5 Rt'], 'LA358'],
+  ['m36', ['Rt shoulder pain', 'Rt SSNB'], 'LA247!'],
+  ['m37', ['MBB L4,5 Rt', 'LBP'], []],
+  ['m42', ['B/L knee pain', '(R) SSNB shoulder'], 'LA247'],
+  ['m56', ['Lt shoulder pain', 'ANB Lt'], [['LA346', '액와신경', '']]],
+  ['m83', ['X-ray: NR L4-5', 'MRI: no def. fx', 'MBB L4,5 Rt'], 'LA358'],
+  // 고정 문구 코드. m33·m35는 상병이 없다(AC-014.13)
+  ['m32', ['Rt knee effusion aspiration'], 'C8140010'],
+  ['m33', ['어깨 통증'], 'MM410:수압팽창술! A21:트리암주!'],
+  ['m34', ['관절조영'], 'HA280 A41'],
+  ['m35', ['물리치료만'], 'KR006!'],
+  ['m84', ['Rt shoulder pain', 'Rt SSNB'], 'LA247 E6611'],
+  // 병원 코드(기본 사전에는 없다. 설정 사례에서 쓴다)
+  ['m85', ['lumbar pain', 'LOCALBLOCK L4,5Lt'], 'LOCAL-L*1.5'],
+  ['m86', ['Rt shoulder pain'], 'LOCAL-CUSTOM*1.5'],
+  // 내원 간격(AC-014.6): 같은 코드·같은 부위·다른 부위·진료가 안 된 날·비급여 앞 내원·2부위 사유와 겹침
+  ['m60', ['Rt knee IA'], 'KK090 A21', { date: '2026-10-05', chart: 160 }],
+  ['m61', ['Rt knee IA'], 'KK090 A21', { date: '2026-10-09', chart: 160 }],
+  ['m62', ['Rt knee IA'], 'KK090 A21', { date: '2026-10-17', chart: 160 }],
+  ['m63', ['MBB C4,5,6 Rt'], 'LA358', { date: '2026-10-05', chart: 163 }],
+  ['m64', ['MBB L4,5 Rt'], 'LA358', { date: '2026-10-08', chart: 163 }],
+  ['m65', ['MBB L4,5 Rt'], 'LA358', { date: '2026-10-05', chart: 165 }],
+  ['m66', ['MBB L4,5 Rt'], 'LA358', { date: '2026-10-08', chart: 165 }],
+  ['m67', [], 'KK090', { date: '2026-10-20', chart: 167 }],
+  ['m68', ['Rt knee IA'], 'KK090', { date: '2026-10-24', chart: 167 }],
+  ['m69', ['Rt knee IA'], 'KK090!', { date: '2026-10-20', chart: 169 }],
+  ['m70', ['Rt knee IA'], 'KK090', { date: '2026-10-24', chart: 169 }],
+  ['m71', ['Rt shoulder pain', 'Rt shoulder IA'], 'KK090', { date: '2026-10-05', chart: 171 }],
+  ['m87', ['Rt shoulder pain', 'Rt SSNB IA'], 'KK090 LA247', { date: '2026-10-09', chart: 171 }],
+  ['m88', ['C-MBB 4,5,6 Rt'], 'LA358', { date: '2026-10-05', chart: 188 }],
+  ['m89', ['MBB L4,5 Rt'], 'LA358', { date: '2026-10-08', chart: 188 }],
+  ['m90', ['C-MBB 4,5,6 Rt'], 'LA358', { date: '2026-10-05', chart: 190 }],
+  ['m91', ['C-MBB 4,5,6 Rt'], 'LA358', { date: '2026-10-08', chart: 190 }],
+  // 시술 종류가 둘 이상이고 약이 있는 날(일부러 원본과 다르다, design.md 19-4)
+  ['k01', ['Rt shoulder pain', 'Rt SSNB IA'], 'LA247 KK090 A21'],
+  ['k02', ['Rt knee OA', '아라간 Rt knee 2차', 'Rt SSNB'], 'KK090 A49 LA247'],
+  ['k03', ['Rt knee pain', 'Rt FNB SNB IA'], 'LA274 LA272 KK090 A21'],
+  ['k04', ['Both knee OA', 'KLG 3/3', 'SSNB Rt'], 'KK090*2 A49*2 LA247'],
+  ['k05', ['LBP', 'MBB L4,5 Rt', 'Rt 3rd finger trigger finger'], 'KK062 A19 LA358'],
+]
+
+/** 차트 번호는 나온 차례대로 1부터(가상환자NN이 두 자리로 남게). options.chart가 같으면 같은 환자다 */
+const memoCharts = new Map<number, number>()
+let memoNextChart = 1
+function memoChart(group: number | undefined): number {
+  if (group === undefined) return memoNextChart++
+  if (!memoCharts.has(group)) memoCharts.set(group, memoNextChart++)
+  return memoCharts.get(group)!
+}
+
+const MEMO_CASE: FakeClaimCase = {
+  name: 'memo',
+  file: 'claim-month-memo.json',
+  note: '청구메모 문장(REQ-014): 줄 종류·좌우·레벨·연골주사·약·고정 문구·내원 간격. k로 시작하는 진료는 시술 종류가 둘 이상이고 약이 있어 일부러 원본과 다르다',
+  month: {
+    from: '2026-10-01',
+    to: '2026-10-31',
+    past: [],
+    fill: false,
+    visits: MEMO_SEEDS.map(([id, lines, rx, options]): FakeVisit => ({
+      id,
+      chart: memoChart(options?.chart),
+      date: options?.date ?? MEMO_DAY,
+      lines,
+      joined: options?.joined,
+      rx: typeof rx === 'string' ? readCaseRx(rx) : rx,
+      dx: options?.dx ?? [],
+    })),
+  },
+}
+
 export const FAKE_CLAIM_CASES: readonly FakeClaimCase[] = [
   {
     name: 'rules-v1-v18',
@@ -1417,6 +1562,7 @@ export const FAKE_CLAIM_CASES: readonly FakeClaimCase[] = [
     note: '설정 {off, on, grade}을 넣어 돌리는 사례(AC-010.4). 골든은 기본 설정과 바꾼 설정 둘 다 만든다',
     month: ruleMonth(OCT_FROM, OCT_TO, SETTINGS_SEEDS),
   },
+  MEMO_CASE,
 ]
 
 // ── 함께 오는 고정 자료(추세·처방 목록). 코드 이름은 가상 ─────────────────
