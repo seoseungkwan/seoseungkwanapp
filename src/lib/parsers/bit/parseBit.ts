@@ -50,6 +50,11 @@ function hasSummaryLabel(cells: readonly string[]): boolean {
   return first !== undefined && SUMMARY_LABEL.test(first.replace(/\s/g, ''))
 }
 
+// 처방코드 칸의 과목 구분 표시('◀ 과 목 ▶'). 띄어쓰기와 ◀ ▶ 말고는 글자가 정확히 같아야 한다
+function isSectionDividerCode(code: string): boolean {
+  return code.replace(/[\s◀▶]/g, '') === '과목'
+}
+
 export function parseBitFile(bytes: Uint8Array, ids: PatientIds): ParseResult {
   const grid = readGrid(bytes)
   return grid.ok ? parseBitGrid(grid.value, ids) : grid
@@ -108,9 +113,14 @@ export function parseBitGrid(grid: Grid, ids: PatientIds): ParseResult {
       skippedSummaryRows++ // 반복 머리줄
       continue
     }
+    const chart = textOf(row[c.chart])
+    // 과목 구분 줄: 환자 기록이 아니다. 처방일자나 차트번호가 있으면 구분 줄로 보지 않는다
+    if (dateText === '' && chart === '' && isSectionDividerCode(code)) {
+      skippedSummaryRows++
+      continue
+    }
 
     const date = parseDateCell(row[c.date])
-    const chart = textOf(row[c.chart])
     // 집계 필수값 오류: 그 줄만 뺀다. 못 읽은 날짜를 앞뒤 줄로 추측하지 않는다
     if (date === null || chart === '' || code === '') {
       invalidRows++

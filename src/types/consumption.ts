@@ -22,7 +22,7 @@ export type ParsedFile = {
   period: DateRange | null // 머리 '기간' 줄
   dataRange: DateRange // 받아들인 줄 날짜 최소~최대
   rowCount: number // 받아들인 줄 수
-  skippedSummaryRows: number // 합계·소계·반복 머리줄
+  skippedSummaryRows: number // 합계·소계·반복 머리줄·과목 구분 줄
   invalidRows: number // 집계 필수값 오류로 뺀 줄 (→ 묶음 품질 incomplete)
   unknownVisitRows: number // 신환·재진 값이 표에 없는 줄
   inpatientRows: number // 입원 줄(의도한 제외, 오류 아님)
