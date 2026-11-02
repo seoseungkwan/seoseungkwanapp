@@ -290,6 +290,8 @@ export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; 
  * 화면이 지킬 약속:
  * 1. 불러올 때마다 새 번호 load를 정해(1씩 올린다. 같은 Worker에 같은 번호를 두 번 쓰지 않는다) stream('claim.month') 바로 앞에 loadStart를 보낸다.
  *    Worker는 이 번호를 마지막 불러오기로 삼고 전에 불러온 달을 버린다. 답은 없다.
+ *    [멈추기], 결과 없이 화면을 떠날 때(불러오는 중 포함)에는 stream 없이 loadStart만 보낸다: 달과 진행 중인 불러오기를 버린다.
+ *    점검 결과가 있으면 떠날 때 보내지 않는다. Worker의 달·결과가 그대로라 돌아와서 [다시 점검](12)·엑셀(13)이 달을 다시 읽지 않고 된다. 통로 포트가 새것으로 바뀌어도 달은 그대로다.
  * 2. stream이 거절되면 그 불러오기는 실패다. month를 보내지 않는다(문에서 거절되면 id도 abort도 없다. 달은 1에서 이미 비었다).
  *    마지막 불러오기가 아닌 옛 번호의 stream 거절은 화면에 보이지 않고 버린다.
  * 3. stream이 끝나면 받은 id를 그 불러오기의 번호와 함께 month로 보낸다. 그새 새 불러오기를 시작했어도 보낸다(Worker가 모아 둔 글자를 찾아 가 버리게).
@@ -307,7 +309,7 @@ export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; 
  *    답의 load·run이 마지막 번호와 다르면 ok와 상관없이 버린다. Worker도 take가 끝난 뒤 둘 다 마지막 번호일 때만 비트 메모를 통째로 바꾼다.
  * 10. stream 거절·ok:false면 그 다시 불러오기는 실패다. Worker는 전 자료와 비교를 그대로 둔다(AC-016.8). 거절은 Worker에 알릴 것이 없다.
  * 11. memoReloadStart를 보낸 뒤에 온 run 없는 part: 'memos'는 조각을 찾아 버리고 ok:false다(옛 [자료 불러오기] 답이 새 답을 덮지 않게). part: 'store'는 그대로 받는다. 새 loadStart가 이 표시와 run을 지운다.
- * 12. check(점검)는 그 불러오기의 load와 새 번호 check로 묻는다(1씩 올린다. load와 같은 곳 claimLoad.ts에서 받는다). 답의 check·load가 마지막 번호와 다르면 ok와 상관없이 버린다.
+ * 12. check(점검)는 그 불러오기의 load와 새 번호 check로 묻는다(1씩 올린다. 돌아와 옛 답을 버릴 때 번호 하나를 건너뛸 수 있다. load와 같은 곳 claimLoad.ts에서 받는다). 답의 check·load가 마지막 번호와 다르면 ok와 상관없이 버린다.
  *     visible은 고른 기간이다. settings는 서버에서 읽은 설정이고, 서버를 읽지 못했으면 null이다: Worker가 이 불러오기의 store.load {settings}로 받은 도우미 사본으로 점검하고 답의 usedCopy에 그 사본을 싣는다. 사본도 없으면 E-SETTINGS-FAILED(AC-013.9).
  *     store.load {months}와 {settings}는 따로 부른다(한 호출에 섞으면 파일 하나만 막혀도 호출 전체가 같은 번호로 거절된다). 설정 쪽 거절이 E-BIT-HOSPITAL-MISMATCH면 사본 없이 계속한다.
  * 13. excel은 답을 받은 점검의 check 번호로 묻는다. Worker는 그 점검 결과로만 만들고, 번호가 다르거나 새 loadStart로 결과를 버렸으면 E-CLAIM-PARTIAL이다.

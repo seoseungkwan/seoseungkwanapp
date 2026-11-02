@@ -5,7 +5,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
-import { ClaimError } from './ClaimError'
+import { ClaimError, SetupLink } from './ClaimError'
 import { checkPeriod, dayLabel, inPeriod, periodSummary, statusOf, toggleDay, unfinishedPeriod, weekPeriod, type DateRow } from './dateList'
 import { checkedAtText } from './setup/checkedAt'
 import type { LoadStep } from './claimLoad'
@@ -19,6 +19,9 @@ export type LoadingStep = LoadStep | 'check'
 /** 끝난 날짜는 처음에 이만큼만 보인다(목업 [끝난 날짜 더 보기]) */
 const FINISHED_SHOWN = 3
 const STATUS_CHIP = { neutral: ds.chip.neutral, accent: ds.chip.accent, positive: ds.chip.positive } as const
+
+/** 없으면 크롬 날짜 칸이 연도를 여섯 자리까지 받는다 */
+const DATE_MAX = '9999-12-31'
 
 const groupRow = 'h-10 border-b border-line bg-canvas px-5 text-small font-medium text-ink-2'
 const numHead = `${ds.table.th} text-right`
@@ -121,7 +124,7 @@ const STEPS: { step: LoadingStep; label: string }[] = [
 function LoadingBox({ step, onStop }: { step: LoadingStep; onStop(): void }) {
   const at = STEPS.findIndex((item) => item.step === step)
   return (
-    <div className="flex flex-col gap-2">
+    <div role="status" className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <span className={ds.chip.accent}>진행중</span>
         <span className="text-small font-semibold text-ink">비트에서 읽는 중</span>
@@ -139,6 +142,7 @@ function LoadingBox({ step, onStop }: { step: LoadingStep; onStop(): void }) {
         </button>
         <span className={ds.help}>다 받기 전에는 점검하지 않아요.</span>
       </div>
+      <p className={ds.help}>다른 탭으로 옮기면 불러오기가 멈춰요</p>
     </div>
   )
 }
@@ -161,13 +165,13 @@ function PeriodPanel({ rows, period, onPeriod, loading, onLoad, onStop }: { rows
             <label className={ds.label} htmlFor={fromId}>
               시작
             </label>
-            <input id={fromId} type="date" className={ds.input} value={period.from} aria-invalid={problem !== null || undefined} onChange={(event) => onPeriod({ ...period, from: event.target.value })} />
+            <input id={fromId} type="date" max={DATE_MAX} className={ds.input} value={period.from} aria-invalid={problem !== null || undefined} onChange={(event) => onPeriod({ ...period, from: event.target.value })} />
           </div>
           <div className={ds.field}>
             <label className={ds.label} htmlFor={toId}>
               끝
             </label>
-            <input id={toId} type="date" className={ds.input} value={period.to} aria-invalid={problem !== null || undefined} onChange={(event) => onPeriod({ ...period, to: event.target.value })} />
+            <input id={toId} type="date" max={DATE_MAX} className={ds.input} value={period.to} aria-invalid={problem !== null || undefined} onChange={(event) => onPeriod({ ...period, to: event.target.value })} />
           </div>
         </div>
         {problem && <p className={ds.fieldError}>{problem}</p>}
@@ -237,9 +241,12 @@ export function DateStep({
         {dates.kind === 'failed' && (
           <div className="flex flex-col items-start gap-2 px-5 pb-5 max-md:px-4">
             <ClaimError code={dates.code} />
-            <button type="button" className={ds.button.secondarySmall} onClick={onRetryDates}>
-              다시 불러오기
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className={ds.button.secondarySmall} onClick={onRetryDates}>
+                다시 불러오기
+              </button>
+              <SetupLink code={dates.code} />
+            </div>
           </div>
         )}
         {dates.kind === 'ready' && (

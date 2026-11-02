@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { addDays } from '@/lib/analytics/dates'
 import type { ClaimDayCount } from '@/lib/storage/claimCounts'
 import type { DayCount } from '@/types/bridge'
 import { buildDateList, checkPeriod, dayLabel, defaultPeriod, listRange, monthsIn, periodSummary, readRange, statusOf, toggleDay, unfinishedPeriod, weekPeriod } from './dateList'
@@ -115,6 +116,25 @@ describe('AC-013.13 readRange: 시작과 끝의 한 달 전 같은 날 가운데
   })
 })
 
+describe('AC-013.2 입력 칸에 연도를 치는 중간 값', () => {
+  // 크롬의 날짜 칸은 연도를 칠 때마다 값을 바꾼다. isYmd는 100년 앞과 다섯 자리 연도를 거짓으로 본다(dates.test.ts AC-002.1)
+  const BAD = ['0002-10-28', '0020-10-28', '202610-10-29']
+
+  it.each(BAD)('AC-013.2: %s는 던지지 않고 날짜를 고르라고 한다(시작·끝 어느 쪽이든)', (bad) => {
+    expect(checkPeriod({ from: bad, to: '2026-10-29' })).toBe('날짜를 골라 주세요')
+    expect(checkPeriod({ from: '2026-10-28', to: bad })).toBe('날짜를 골라 주세요')
+  })
+
+  it('AC-013.2: 100년 이후의 먼 연도(0202)는 날짜가 맞아 던지지 않고 35일 안내다', () => {
+    expect(checkPeriod({ from: '0202-10-28', to: '2026-10-29' })).toBe('한 번에 35일까지 고를 수 있어요.')
+  })
+
+  it.each(BAD)('목업: 기간이 %s일 때 표를 체크하면 그 날 하루다(던지지 않는다)', (bad) => {
+    expect(toggleDay({ from: bad, to: '2026-10-29' }, '2026-10-28')).toEqual({ from: '2026-10-28', to: '2026-10-28' })
+    expect(toggleDay({ from: '2026-10-27', to: bad }, '2026-10-28')).toEqual({ from: '2026-10-28', to: '2026-10-28' })
+  })
+})
+
 describe('AC-013.13 monthsIn: store.load는 고른 기간의 달만 묻는다', () => {
   it('AC-013.13: 고른 기간의 달들, 이른 달부터', () => {
     expect(monthsIn({ from: '2026-10-30', to: '2026-11-02' })).toEqual(['2026-10', '2026-11'])
@@ -131,6 +151,17 @@ describe('기간 고르기 단추(목업 화면 2)', () => {
   it('[입력 안 된 날짜 모두]: 덜 끝난 첫 날부터 끝 날까지', () => {
     expect(unfinishedPeriod(rows)).toEqual({ from: '2026-10-28', to: '2026-11-03' })
     expect(unfinishedPeriod([])).toBeNull()
+  })
+
+  it('AC-013.2: 건수 표가 없어 60일이 모두 덜 끝난 날이면 [입력 안 된 날짜 모두]도 처음 기간과 같이 앞에서 35일이다', () => {
+    const sixty = buildDateList(
+      Array.from({ length: 60 }, (_, i) => day(addDays('2026-09-01', i), 1)),
+      [],
+    )
+    const period = unfinishedPeriod(sixty)
+    expect(period).toEqual({ from: '2026-09-01', to: '2026-10-05' })
+    expect(checkPeriod(period!)).toBeNull()
+    expect(defaultPeriod(sixty, '2026-10-31')).toEqual(period)
   })
 
   it('처음 기간은 덜 끝난 날 전체다. 35일을 넘으면 앞에서 35일이다', () => {

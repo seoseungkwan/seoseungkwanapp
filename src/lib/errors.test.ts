@@ -324,6 +324,11 @@ describe('AC-009.2·AC-008.4 한 달 자료 멈춤 오류 문구', () => {
     expect(info.fix).toContain('다시 불러오세요')
   })
 
+  it('AC-009.2: E-CLAIM-PARTIAL은 Worker가 죽어 다시 불러와도 안 될 때 화면을 새로 고치라고 안내한다', () => {
+    const info = errorInfo('E-CLAIM-PARTIAL')
+    expect(info.fix).toContain('새로 고친')
+  })
+
   it('AC-008.4: E-BIT-EXPORT-FAILED(도우미가 비트 통계 화면 표를 꺼내지 못함, design.md 4-5)는 무엇이·어떻게 고치나가 있다', () => {
     expect(isErrorCode('E-BIT-EXPORT-FAILED')).toBe(true)
     const info = errorInfo('E-BIT-EXPORT-FAILED')

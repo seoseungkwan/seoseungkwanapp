@@ -47,7 +47,7 @@ function DxTable({ visit }: { visit: ClaimVisitView }) {
   return (
     <>
       <div className={ds.table.wrap}>
-        <table className={ds.table.table}>
+        <table aria-label="추천 상병" className={ds.table.table}>
           <thead>
             <tr>
               <th className={dxHead}>처방</th>

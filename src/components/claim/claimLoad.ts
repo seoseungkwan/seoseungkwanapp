@@ -8,7 +8,7 @@ import { monthsIn, readRange } from './dateList'
 // 화면이 Worker에 시키는 차례(AC-013.2·AC-013.10·AC-013.11·AC-013.12). 약속 전문은 types/precheck.ts PrecheckFromScreen 주석이고 design.md 6-2다.
 // 번호(load·check)와 Worker는 여기 하나에 둔다. 컴포넌트 state에 두면 화면을 다시 그릴 때 번호가 되풀이되고, Worker는 같은지만 보므로 옛 답이 통과한다.
 // 답은 번호로만 견준다. id나 partial로 판단하지 않는다. 비트 메모 다시 불러오기(run, AC-016.7)는 TASK-18이 여기에 번호 하나를 더한다.
-// 환자 글자는 여기서 다루지 않는다: 지나가는 것은 id·번호·오류 번호와 점검 답(ClaimView)을 그대로 넘기는 것뿐이다
+// 환자 글자는 여기서 다루지 않는다: 지나가는 것은 id·번호·오류 번호와 점검 답(ClaimView)을 그대로 넘기는 것, 화면이 맡긴 결과(keep)를 쥐고 있는 것뿐이다
 
 /** 이 화면이 Worker에 쓰는 것. postMessage의 둘째 인자는 통로 포트를 넘길 때 쓴다(useBridge) */
 export type ClaimWorker = {
@@ -30,6 +30,13 @@ function answerKey(m: PrecheckToScreen): string | null {
   return null
 }
 
+/** 이 결과가 누구 것인가: 로그인한 사람(계정당 병원 하나)과 도우미에 등록한 기관기호. 돌아올 때 지금과 견준다(AC-013.6) */
+export type ClaimOwner = { user: string; institution: string }
+/** 점검 결과. owner를 모르면(null) 떠날 때 남기지 않는다 */
+export type CheckedClaim = { load: number; check: number; visible: DateRange; view: ClaimView; at: Date; used: CheckSettings | null; usedCopy: boolean; owner: ClaimOwner | null }
+/** 다른 탭에 다녀올 동안 남기는 것: 결과·기간·단계·설정 변경 띠. 환자 글자가 있으므로 이 메모리에만 둔다(저장소·주소 금지). 전체 페이지 이동(로그아웃)이면 Worker와 함께 사라진다 */
+export type KeptClaim = { result: CheckedClaim; period: DateRange; page: 'dates' | 'result'; stale: boolean }
+
 export type ClaimChannel = {
   worker: ClaimWorker
   /** 새 불러오기: 새 번호로 loadStart를 보내고 그 번호를 돌려준다. Worker는 전에 불러온 달을 버린다 */
@@ -40,8 +47,11 @@ export type ClaimChannel = {
   lastCheck(): number | null
   /** 물음을 보내고 그 번호의 답을 기다린다 */
   ask<A extends Answer>(message: Asked): Promise<A>
-  /** Worker의 달을 버리고 진행 중인 불러오기를 버린다(화면을 떠날 때·[멈추기]) */
+  /** Worker의 달을 버리고 진행 중인 불러오기를 버린다([멈추기]·결과 없이 화면을 떠날 때). 맡긴 결과도 없어진다 */
   drop(): void
+  /** 맡긴 결과. 새 loadStart는 Worker의 달을 비우므로 함께 지운다 */
+  kept(): KeptClaim | null
+  keep(next: KeptClaim | null): void
 }
 
 const channels = new WeakMap<object, ClaimChannel>()
@@ -54,7 +64,11 @@ export function claimChannel(worker: ClaimWorker): ClaimChannel {
   let check = 0
   let latestLoad: number | null = null
   let latestCheck: number | null = null
+  let keptClaim: KeptClaim | null = null
+  /** Worker가 시작하지 못했거나 죽었다. 이 뒤의 물음에는 답이 오지 않는다 */
+  let dead = false
   const waiting = new Map<string, (answer: Answer) => void>()
+  const FAILED = { ok: false, code: 'E-CLAIM-PARTIAL' } as Answer
 
   worker.addEventListener('message', (event) => {
     const data = (event as MessageEvent<PrecheckToScreen>).data
@@ -68,17 +82,21 @@ export function claimChannel(worker: ClaimWorker): ClaimChannel {
   const failAll = () => {
     for (const [key, resolve] of [...waiting]) {
       waiting.delete(key)
-      resolve({ ok: false, code: 'E-CLAIM-PARTIAL' } as Answer)
+      resolve(FAILED)
     }
   }
-  worker.addEventListener('error', failAll)
-  worker.addEventListener('messageerror', failAll)
+  worker.addEventListener('error', () => {
+    dead = true
+    failAll()
+  })
+  worker.addEventListener('messageerror', failAll) // 답 하나를 읽지 못한 것뿐이다. Worker는 살아 있다
 
   const channel: ClaimChannel = {
     worker,
     startLoad() {
       load += 1
       latestLoad = load
+      keptClaim = null
       worker.postMessage({ type: 'loadStart', load } satisfies PrecheckFromScreen, [])
       return load
     },
@@ -91,12 +109,17 @@ export function claimChannel(worker: ClaimWorker): ClaimChannel {
     lastCheck: () => latestCheck,
     ask<A extends Answer>(message: Asked) {
       return new Promise<A>((resolve) => {
+        if (dead) return resolve(FAILED as A) // error는 기다리는 답이 없을 때도 온다. 그냥 보내면 영영 답이 없다
         waiting.set(askedKey(message), resolve as (answer: Answer) => void)
         worker.postMessage(message, [])
       })
     },
     drop() {
       channel.startLoad()
+    },
+    kept: () => keptClaim,
+    keep(next) {
+      keptClaim = next
     },
   }
   channels.set(worker, channel)
@@ -131,7 +154,8 @@ const codeOf = (error: unknown) => (error instanceof BridgeError ? error.code : 
 export type ClaimStream = <C extends PatientCommand>(cmd: C, args: ArgsOf<C>) => Promise<StreamResult>
 /** 진행 표시: 달(이력 포함) → 비트 메모 → 저장한 작업 */
 export type LoadStep = 'month' | 'memos' | 'store'
-export type LoadResult = { status: 'ok'; load: number } | { status: 'failed'; code: string } | { status: 'replaced' }
+/** stuckMonth: 달 파일이 다른 병원 파일이다(AC-018.17). 다시 등록해도 풀리지 않아 비트 PC 연결로 보내지 않는다 */
+export type LoadResult = { status: 'ok'; load: number } | { status: 'failed'; code: string; stuckMonth?: true } | { status: 'replaced' }
 
 /** 그 자료 없이 계속해도 되는 거절 번호. 그 밖의 번호는 멈춘다(AC-013.11) */
 const NO_HELPER_YET: readonly string[] = ['E-HELPER-UNKNOWN-COMMAND'] // Phase 3 전(AC-013.2)
@@ -173,7 +197,7 @@ export async function runClaimLoad(channel: ClaimChannel, stream: ClaimStream, v
       if (replaced()) return REPLACED
       const code = codeOf(error)
       if (goOn.includes(code)) continue // 그 자료 없이 계속한다
-      return { status: 'failed', code }
+      return step === 'store' && code === 'E-BIT-HOSPITAL-MISMATCH' ? { status: 'failed', code, stuckMonth: true } : { status: 'failed', code }
     }
     const answer = await channel.ask<Extract<Answer, { type: 'loadPart' }>>({ type: 'loadPart', part, id, load })
     if (replaced()) return REPLACED

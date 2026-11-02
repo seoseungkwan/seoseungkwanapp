@@ -197,7 +197,7 @@ describe('AC-013.3 VisitDetail: 환자 자세히', () => {
   it('AC-013.3: 추천 상병 표: 맞으면 맞음, 빠졌으면 상병 없음, 판단하지 않은 처방은 줄표', () => {
     render(<VisitDetail visit={visit()} titles={TITLES} hasDx />)
     expect(screen.getByRole('heading', { level: 3, name: '추천 상병 · 상병 확인' })).toBeTruthy()
-    const table = screen.getByRole('table')
+    const table = screen.getByRole('table', { name: '추천 상병' }) // 표마다 이름이 있다(AC-013.3)
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['처방', '필요한 상병(추천)', '지금 상병', '결과'])
     const rows = within(table).getAllByRole('row').slice(1)
     const text = (r: HTMLElement) => within(r).getAllByRole('cell').map((c) => c.textContent)

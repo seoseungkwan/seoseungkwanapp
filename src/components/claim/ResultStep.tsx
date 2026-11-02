@@ -29,7 +29,9 @@ export function ResultStep({ visits, groups, hasDx }: { visits: readonly ClaimVi
   const [selected, setSelected] = useState<string | null>(null)
 
   const titles = useMemo(() => new Map(groups.map((group) => [group.ruleId, group.title])), [groups])
-  const filtered = useMemo(() => filterVisits(visits, filter, ruleId, query), [visits, filter, ruleId, query])
+  // 고른 규칙이 [다시 점검]으로 목록에서 사라지면 거르기를 푼다: 고르기 칸은 '모든 규칙'인데 목록만 비어 경고가 없는 것처럼 보이면 안 된다
+  const activeRule = titles.has(ruleId) ? ruleId : ''
+  const filtered = useMemo(() => filterVisits(visits, filter, activeRule, query), [visits, filter, activeRule, query])
   const shown = filtered.slice(0, limit)
   const current = filtered.find((visit) => visit.key === selected) ?? filtered[0] ?? null
 
@@ -58,7 +60,7 @@ export function ResultStep({ visits, groups, hasDx }: { visits: readonly ClaimVi
           <select
             aria-label="규칙으로 거르기"
             className={ds.input}
-            value={ruleId}
+            value={activeRule}
             onChange={(event) => {
               setRuleId(event.target.value)
               setLimit(PAGE)

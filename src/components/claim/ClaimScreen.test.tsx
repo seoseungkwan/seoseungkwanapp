@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
-import { errorInfo } from '@/lib/errors'
+import { ERRORS, EXCEL_FAILED, errorInfo } from '@/lib/errors'
 import type { DayCount } from '@/types/bridge'
 import type { CheckSettings, ClaimView, ClaimVisitView, Finding, Grade, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
 import { claimChannel } from './claimLoad'
+import { SETUP_CODES } from './ClaimError'
 import { ClaimScreen } from './ClaimScreen'
 
 // 청구 화면(REQ-013). 가짜 통로·가짜 Worker로 화면만 본다. 이름·차트번호는 모두 지어낸 것이다. 실제 DB에 붙지 않는다
@@ -17,21 +18,29 @@ const db = vi.hoisted(() => ({
   counts: [] as unknown[],
   failSettings: false,
   failCounts: false,
+  userId: 'user-1' as string | null,
+  ruleReads: 0,
+  /** 있으면 설정 표 읽기가 이것을 기다린다(건수 표는 그대로) */
+  settingsGate: null as Promise<void> | null,
 }))
 
 vi.mock('@/lib/supabase/browser', () => ({
   supabaseBrowser: () => ({
+    auth: { getSession: () => Promise.resolve({ data: { session: db.userId ? { user: { id: db.userId } } : null }, error: null }) },
     from(table: string) {
+      if (table === 'claim_rule_settings') db.ruleReads += 1
       const answer = () => {
         if (table === 'claim_day_counts') return db.failCounts ? { data: null, error: { code: '500', message: 'x' }, status: 500 } : { data: db.counts, error: null, status: 200 }
         if (db.failSettings) return { data: null, error: { message: 'x' } }
         return table === 'claim_rule_settings' ? { data: db.rules, error: null } : { data: db.hospital, error: null }
       }
+      const gate = table === 'claim_day_counts' ? null : db.settingsGate
+      const read = () => (gate ? gate.then(answer) : Promise.resolve(answer()))
       const query = {
         gte: () => query,
         lte: () => query,
-        maybeSingle: () => Promise.resolve(answer()),
-        then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => Promise.resolve(answer()).then(ok, no),
+        maybeSingle: read,
+        then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => read().then(ok, no),
       }
       return { select: () => query }
     },
@@ -106,6 +115,7 @@ const manyVisits = (n: number): ClaimView => ({
 type Listener = (event: Event) => void
 function fakeWorker(answers: Partial<{ [K in PrecheckFromScreen['type']]: (m: Extract<PrecheckFromScreen, { type: K }>) => PrecheckToScreen | null }> = {}) {
   const listeners = new Set<Listener>()
+  const errorListeners = new Set<Listener>()
   const posted: PrecheckFromScreen[] = []
   const emit = (data: PrecheckToScreen) => {
     for (const fn of listeners) fn({ data } as unknown as Event)
@@ -130,20 +140,28 @@ function fakeWorker(answers: Partial<{ [K in PrecheckFromScreen['type']]: (m: Ex
     },
     addEventListener(type: string, fn: Listener) {
       if (type === 'message') listeners.add(fn)
+      if (type === 'error') errorListeners.add(fn)
+    },
+    /** Worker가 시작하지 못함 */
+    fail() {
+      for (const fn of errorListeners) fn(new Event('error'))
     },
   }
 }
 type Fake = ReturnType<typeof fakeWorker>
 
-function bridge(over: { month?: () => Promise<{ id: string; count: number }>; memos?: () => Promise<{ id: string; count: number }>; store?: (args: Record<string, unknown>) => Promise<{ id: string; count: number }>; dates?: () => Promise<{ days: DayCount[] }> } = {}) {
+/** 도우미 등록: bit.check 답. 기관기호는 지어낸 것이다 */
+const REGISTERED = { steps: [{ name: 'find', ok: true }, { name: 'db', ok: true }, { name: 'registration', ok: true }], registered: true, institutionCode: '12345678' }
+
+function bridge(over: { month?: () => Promise<{ id: string; count: number }>; memos?: () => Promise<{ id: string; count: number }>; store?: (args: Record<string, unknown>) => Promise<{ id: string; count: number }>; dates?: () => Promise<{ days: DayCount[] }>; check?: () => Promise<unknown> } = {}) {
   let next = 0
   const stream = vi.fn((cmd: string, args: unknown) => {
     const made = cmd === 'claim.month' ? over.month : cmd === 'claim.memos' ? over.memos : over.store
     return made ? made(args as Record<string, unknown>) : Promise.resolve({ id: `${cmd}-${++next}`, count: 1 })
   })
-  const call = vi.fn((_cmd: string, _args: unknown) => {
-    void _cmd
+  const call = vi.fn((cmd: string, _args: unknown) => {
     void _args
+    if (cmd === 'bit.check') return over.check ? over.check() : Promise.resolve(REGISTERED)
     return over.dates ? over.dates() : Promise.resolve({ days: DAYS })
   })
   return { stream, call }
@@ -173,6 +191,9 @@ beforeEach(() => {
   db.counts = COUNTS
   db.failSettings = false
   db.failCounts = false
+  db.userId = 'user-1'
+  db.ruleReads = 0
+  db.settingsGate = null
 })
 afterEach(() => {
   cleanup()
@@ -288,6 +309,49 @@ describe('AC-013.2 기간 고르기', () => {
     expect((screen.getByRole('button', { name: '자료 불러오기' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it.each(['0002-10-28', '0020-10-28', '202610-10-29'])('AC-013.2: 연도를 치는 중간 값 %s가 들어가도 화면이 깨지지 않고 표·기간이 그대로다', async (value) => {
+    show()
+    const table = await screen.findByRole('table', { name: '진료한 날짜' })
+    const from = screen.getByLabelText('시작') as HTMLInputElement
+    fireEvent.change(from, { target: { value } })
+    expect(from.value).toBe(value)
+    expect(screen.getByRole('table', { name: '진료한 날짜' })).toBe(table)
+    expect((screen.getByLabelText('끝') as HTMLInputElement).value).toBe('2026-10-29')
+    expect(screen.getByText('날짜를 골라 주세요')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '자료 불러오기' }) as HTMLButtonElement).disabled).toBe(true)
+    await userEvent.setup().click(within(table).getByRole('checkbox', { name: '10월 28일' }))
+    expect(from.value).toBe('2026-10-28')
+    expect((screen.getByLabelText('끝') as HTMLInputElement).value).toBe('2026-10-28')
+  })
+
+  it('AC-013.2: 끝 칸의 중간 값도 같다', async () => {
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    fireEvent.change(screen.getByLabelText('끝'), { target: { value: '0020-10-28' } })
+    expect(screen.getByText('날짜를 골라 주세요')).toBeTruthy()
+  })
+
+  it('AC-013.2: 날짜 칸은 연도를 네 자리까지만 받는다', async () => {
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(screen.getByLabelText('시작').getAttribute('max')).toBe('9999-12-31')
+    expect(screen.getByLabelText('끝').getAttribute('max')).toBe('9999-12-31')
+  })
+
+  it('AC-013.2: 건수 표가 없어 60일이 모두 덜 끝난 날이어도 [입력 안 된 날짜 모두]가 35일 안내로 막히지 않는다', async () => {
+    db.counts = []
+    const days: DayCount[] = Array.from({ length: 60 }, (_, i) => ({ date: new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10), visits: 1, memoInBit: 0 }))
+    show(fakeWorker(), bridge({ dates: () => Promise.resolve({ days }) }))
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '이번 주' }))
+    await user.click(screen.getByRole('button', { name: '입력 안 된 날짜 모두' }))
+    expect((screen.getByLabelText('시작') as HTMLInputElement).value).toBe('2026-09-01')
+    expect((screen.getByLabelText('끝') as HTMLInputElement).value).toBe('2026-10-05')
+    expect(screen.queryByText('한 번에 35일까지 고를 수 있어요.')).toBeNull()
+    expect((screen.getByRole('button', { name: '자료 불러오기' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('목업: 표의 체크로 기간을 넓히고 좁힌다', async () => {
     show()
     const table = await screen.findByRole('table', { name: '진료한 날짜' })
@@ -321,6 +385,8 @@ describe('AC-013.2 기간 고르기', () => {
     expect(screen.queryByRole('button', { name: '자료 불러오기' })).toBeNull()
     expect(screen.getByText('비트에서 읽는 중')).toBeTruthy()
     expect(screen.getByText('다 받기 전에는 점검하지 않아요.')).toBeTruthy()
+    expect(within(screen.getByRole('status')).getByText('비트에서 읽는 중')).toBeTruthy() // 화면 읽기 도구도 진행을 듣는다
+    expect(screen.getByText('다른 탭으로 옮기면 불러오기가 멈춰요')).toBeTruthy()
     expect(screen.getAllByRole('list').at(-1)?.getAttribute('class')).toContain('list-none')
     expect(worker.of('check')).toEqual([])
     finish({ id: 'm1', count: 1 })
@@ -525,6 +591,37 @@ describe('AC-013.4 엑셀 내려받기', () => {
     expect(screen.getByRole('heading', { level: 2, name: '환자' })).toBeTruthy()
   })
 
+  it('AC-013.4: 실패 글은 결과가 남아 있고 그 단추를 다시 누르면 된다고 말한다. 없는 [다시 불러오기]·멈춘 점검을 말하지 않고, 다시 누르면 된다', async () => {
+    const worker = fakeWorker({ excel: (m) => ({ type: 'excel', check: m.check, ok: false, code: 'E-CLAIM-PARTIAL' }) })
+    const { user } = await toResult(worker)
+    await user.click(screen.getByRole('button', { name: '엑셀 내려받기' }))
+    const card = await screen.findByRole('alert')
+    expect(card.textContent).toContain(EXCEL_FAILED.what)
+    expect(card.textContent).toContain(EXCEL_FAILED.fix)
+    expect(card.textContent).toContain('[엑셀 내려받기]')
+    expect(card.textContent).not.toContain('[다시 불러오기]')
+    expect(card.textContent).not.toContain('점검을 멈췄어요')
+    expect(screen.queryByRole('button', { name: '다시 불러오기' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 확인' })).toBeNull()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:fake'), revokeObjectURL: vi.fn() }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    delete worker.answers.excel
+    await user.click(screen.getByRole('button', { name: '엑셀 내려받기' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(worker.of('excel')).toHaveLength(2)
+  })
+
+  it('AC-013.4: Worker가 시작하지 못했으면 [만드는 중…]에 멈추지 않고 오류 카드다', async () => {
+    const worker = fakeWorker()
+    const { user } = await toResult(worker)
+    worker.fail()
+    await user.click(screen.getByRole('button', { name: '엑셀 내려받기' }))
+    await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: '엑셀 내려받기' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '만드는 중…' })).toBeNull()
+    expect(worker.of('excel')).toEqual([])
+  })
+
   it('AC-013.4: 만드는 동안 다시 눌러도 또 묻지 않는다', async () => {
     const worker = fakeWorker({ excel: () => null })
     const { user } = await toResult(worker)
@@ -607,6 +704,58 @@ describe('AC-013.5 오류 카드', () => {
   })
 })
 
+describe('AC-013.5 비트 PC 연결로 가는 길', () => {
+  const setupLink = () => screen.queryByRole('link', { name: '비트 PC 연결 확인' })
+  const failLoad = async (link: Bridge) => {
+    show(fakeWorker(), link)
+    await userEvent.setup().click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    return screen.findByRole('alert')
+  }
+
+  it('AC-013.5: 날짜를 읽다 E-BIT-NOT-REGISTERED면 [다시 불러오기] 옆에 링크가 있다', async () => {
+    show(fakeWorker(), bridge({ dates: () => Promise.reject(new BridgeError('E-BIT-NOT-REGISTERED')) }))
+    await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(setupLink()?.getAttribute('href')).toBe('/claim/setup')
+  })
+
+  it('AC-013.5: 달을 읽다 E-BIT-NOT-REGISTERED여도 같다', async () => {
+    await failLoad(bridge({ month: () => Promise.reject(new BridgeError('E-BIT-NOT-REGISTERED')) }))
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(setupLink()?.getAttribute('href')).toBe('/claim/setup')
+  })
+
+  it('AC-013.5: 링크를 붙이는 번호는 글에 비트 PC 연결 화면의 단추가 나오는 번호 그대로다', () => {
+    const named = Object.entries(ERRORS)
+      .filter(([, info]) => /\[(다시 확인|처음 등록|다시 등록)\]/.test(info.fix))
+      .map(([code]) => code)
+    expect([...SETUP_CODES].sort()).toEqual(named.sort())
+  })
+
+  it.each(['E-BIT-EXPORT-FAILED', 'E-CLAIM-PARTIAL'])('AC-013.5: [다시 불러오기]로 풀리는 %s에는 링크가 없다', async (code) => {
+    await failLoad(bridge({ month: () => Promise.reject(new BridgeError(code)) }))
+    expect(setupLink()).toBeNull()
+  })
+
+  it('AC-013.5: 이 PC의 비트가 등록과 다른 달 읽기 거절은 [다시 등록]으로 풀려 링크가 있다', async () => {
+    await failLoad(bridge({ month: () => Promise.reject(new BridgeError('E-BIT-HOSPITAL-MISMATCH')) }))
+    expect(setupLink()).toBeTruthy()
+  })
+
+  it('AC-018.17: 달 파일의 E-BIT-HOSPITAL-MISMATCH는 다시 등록해도 풀리지 않아 링크를 붙이지 않는다', async () => {
+    const store = (args: Record<string, unknown>) => (args.months ? Promise.reject(new BridgeError('E-BIT-HOSPITAL-MISMATCH')) : Promise.resolve({ id: 'copy1', count: 1 }))
+    await failLoad(bridge({ store }))
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(setupLink()).toBeNull()
+  })
+
+  it('AC-013.5: 저장 폴더 거절(E-STORE-FAILED)에는 링크가 있다', async () => {
+    const store = (args: Record<string, unknown>) => (args.months ? Promise.reject(new BridgeError('E-STORE-FAILED')) : Promise.resolve({ id: 'copy1', count: 1 }))
+    await failLoad(bridge({ store }))
+    expect(setupLink()).toBeTruthy()
+  })
+})
+
 describe('AC-013.6 설정이 바뀌었을 때', () => {
   const focus = () => window.dispatchEvent(new Event('focus'))
 
@@ -652,6 +801,28 @@ describe('AC-013.6 설정이 바뀌었을 때', () => {
     db.rules = []
     focus()
     await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull())
+  })
+
+  it('AC-013.3·AC-013.6: 고른 규칙이 다시 점검으로 사라지면 그 거르기도 풀린다(경고가 없는 것처럼 보이지 않게)', async () => {
+    const worker = fakeWorker()
+    const { user } = await toResult(worker)
+    await user.selectOptions(screen.getByLabelText('규칙으로 거르기'), 'IJ-05')
+    expect(namesInList()).toEqual(['가상환자A'])
+    worker.answers.check = (m) => ({
+      type: 'check',
+      check: m.check,
+      load: m.load,
+      ok: true,
+      usedCopy: null,
+      view: { ...VIEW, groups: VIEW.groups.filter((g) => g.ruleId !== 'IJ-05'), visits: VIEW.visits.map((v) => ({ ...v, findings: v.findings.filter((f) => f.ruleId !== 'IJ-05') })) },
+    })
+    db.rules = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
+    focus()
+    await user.click(await screen.findByRole('button', { name: '다시 점검' }))
+    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull())
+    expect((screen.getByLabelText('규칙으로 거르기') as HTMLSelectElement).value).toBe('')
+    expect(screen.queryByText('조건에 맞는 환자가 없어요.')).toBeNull()
+    expect(namesInList()).toEqual(['가상환자A', '가상환자B', '가상환자C', '가상환자E'])
   })
 
   it('AC-013.5: [다시 점검]이 실패하면 옛 결과를 보이지 않고 오류 카드다', async () => {
@@ -726,6 +897,8 @@ describe('AC-013.10·AC-013.12 번호', () => {
     await screen.findByRole('heading', { level: 2, name: '환자' })
     first.unmount()
     show(worker)
+    await screen.findByRole('heading', { level: 2, name: '환자' }) // 결과가 남아 있어 1단계로 돌아가 다시 부른다
+    await userEvent.setup().click(screen.getByRole('button', { name: /날짜 고르기/ }))
     await userEvent.setup().click(await screen.findByRole('button', { name: '자료 불러오기' }))
     await screen.findByRole('heading', { level: 2, name: '환자' })
     const loads = worker.of('loadStart').map((m) => m.load)
@@ -735,11 +908,11 @@ describe('AC-013.10·AC-013.12 번호', () => {
     expect(new Set(checks).size).toBe(checks.length)
   })
 
-  it('화면을 떠나면 Worker의 달을 버린다(loadStart로 비운다)', async () => {
+  it('불러오는 중에 화면을 떠나면 불러오기를 버린다(loadStart로 달을 비운다)', async () => {
     const worker = fakeWorker()
-    const first = show(worker)
+    const first = show(worker, bridge({ month: () => new Promise(() => {}) }))
     await userEvent.setup().click(await screen.findByRole('button', { name: '자료 불러오기' }))
-    await screen.findByRole('heading', { level: 2, name: '환자' })
+    await screen.findByText('비트에서 읽는 중')
     const before = worker.of('loadStart').length
     first.unmount()
     expect(worker.of('loadStart')).toHaveLength(before + 1)
@@ -758,5 +931,364 @@ describe('AC-013.10·AC-013.12 번호', () => {
     await Promise.resolve()
     expect(worker.of('check')).toEqual([])
     expect(screen.queryByRole('heading', { level: 2, name: '환자' })).toBeNull()
+  })
+})
+
+describe('AC-013.6 다른 탭에 다녀와도 결과가 남는다', () => {
+  const OFF_IJ = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
+  const band = '설정이 바뀌었어요. 다시 점검하세요'
+  const patients = () => screen.queryByRole('heading', { level: 2, name: '환자' })
+  const flush = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+  }
+  const stubDownload = () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:fake'), revokeObjectURL: vi.fn() }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  }
+  /** 띠를 띄우고 [다시 점검]을 눌러 답을 기다리게 한다 */
+  const recheckPending = async (made: Awaited<ReturnType<typeof toResult>>) => {
+    db.rules = OFF_IJ
+    window.dispatchEvent(new Event('focus'))
+    made.worker.answers.check = () => null
+    await made.user.click(await screen.findByRole('button', { name: '다시 점검' }))
+    await waitFor(() => expect(made.worker.of('check')).toHaveLength(2))
+    return made.worker.of('check')[1]
+  }
+
+  it('AC-013.6: 결과가 있으면 떠나도 달을 버리지 않고, 돌아오면 달을 다시 읽지 않고 같은 결과를 보인다', async () => {
+    const made = await toResult()
+    const line = screen.getByText(/환자 5명/).textContent
+    const streams = made.link.stream.mock.calls.length
+    made.unmount()
+    expect(made.worker.of('loadStart')).toHaveLength(1)
+    show(made.worker, made.link)
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    expect(screen.getByText(/환자 5명/).textContent).toBe(line)
+    expect(screen.getByRole('button', { name: '가상환자A' })).toBeTruthy()
+    expect(made.link.stream.mock.calls.length).toBe(streams)
+    expect(made.worker.of('loadStart')).toHaveLength(1)
+    expect(made.worker.of('check')).toHaveLength(1)
+  })
+
+  it('AC-013.6: 돌아오면 창 초점 없이 설정을 한 번 읽어 바뀌었으면 띠가 뜨고, [다시 점검]은 Worker에 남은 달로 된다', async () => {
+    const made = await toResult()
+    const streams = made.link.stream.mock.calls.length
+    made.unmount()
+    db.rules = OFF_IJ
+    db.ruleReads = 0
+    show(made.worker, made.link)
+    await screen.findByText(band)
+    expect(db.ruleReads).toBe(1)
+    await userEvent.setup().click(screen.getByRole('button', { name: '다시 점검' }))
+    await waitFor(() => expect(screen.queryByText(band)).toBeNull())
+    const checks = made.worker.of('check')
+    expect(checks).toHaveLength(2)
+    expect(checks[1].load).toBe(checks[0].load)
+    expect(checks[1].settings?.rules.off).toEqual(['IJ-05'])
+    expect(made.worker.of('loadStart')).toHaveLength(1)
+    expect(made.link.stream.mock.calls.length).toBe(streams)
+  })
+
+  it('AC-013.6: 돌아온 뒤 설정이 그대로면 띠가 없다', async () => {
+    const made = await toResult()
+    made.unmount()
+    db.ruleReads = 0
+    show(made.worker, made.link)
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    await waitFor(() => expect(db.ruleReads).toBe(1))
+    await flush()
+    expect(screen.queryByText(band)).toBeNull()
+  })
+
+  it('AC-013.6: 떠날 때 띠가 떠 있었으면 돌아와 설정을 못 읽어도 띠가 남는다(읽지 못하면 그대로 둔다, design.md 6-5)', async () => {
+    const made = await toResult()
+    db.rules = OFF_IJ
+    window.dispatchEvent(new Event('focus'))
+    await screen.findByText(band)
+    made.unmount()
+    db.failSettings = true
+    show(made.worker, made.link)
+    expect(await screen.findByText(band)).toBeTruthy()
+  })
+
+  it('AC-013.4·AC-013.6: 돌아와서 [엑셀 내려받기]는 그 점검 번호로 묻고 내려받는다', async () => {
+    stubDownload()
+    const made = await toResult()
+    made.unmount()
+    show(made.worker, made.link)
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    await userEvent.setup().click(screen.getByRole('button', { name: '엑셀 내려받기' }))
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1))
+    expect(made.worker.of('excel')).toEqual([{ type: 'excel', check: made.worker.of('check')[0].check }])
+  })
+
+  it('AC-013.6: 날짜 고르기에 있다 떠나면 그 단계와 고친 기간으로 돌아오고 [점검 결과]도 열려 있다', async () => {
+    const made = await toResult()
+    await made.user.click(screen.getByRole('button', { name: /날짜 고르기/ }))
+    fireEvent.change(screen.getByLabelText('시작'), { target: { value: '2026-10-27' } })
+    made.unmount()
+    show(made.worker, made.link)
+    await waitFor(() => expect((screen.getByLabelText('시작') as HTMLInputElement).value).toBe('2026-10-27'))
+    expect(patients()).toBeNull()
+    await userEvent.setup().click(screen.getByRole('button', { name: /점검 결과/ }))
+    expect(patients()).toBeTruthy()
+    expect(made.worker.of('loadStart')).toHaveLength(1)
+  })
+
+  it('AC-013.6: 돌아와서 누구 것인지 확인이 끝나기 전에는 환자 글자를 그리지 않는다', async () => {
+    let answer!: (value: unknown) => void
+    const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(REGISTERED))
+    const made = await toResult(fakeWorker(), bridge({ check }))
+    made.unmount()
+    check.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+    show(made.worker, made.link)
+    await flush()
+    expect(screen.getByText('지난 점검 결과를 확인하는 중이에요…')).toBeTruthy()
+    expect(screen.queryByText('가상환자A')).toBeNull()
+    expect(patients()).toBeNull()
+    answer(REGISTERED)
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    expect(screen.queryByText('지난 점검 결과를 확인하는 중이에요…')).toBeNull()
+  })
+
+  const gone = async (made: { worker: Fake; channel: ReturnType<typeof claimChannel> }) => {
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(screen.queryByText('가상환자A')).toBeNull()
+    expect(patients()).toBeNull()
+    expect((screen.getByRole('button', { name: /점검 결과/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(made.channel.kept()).toBeNull()
+    expect(made.worker.of('loadStart')).toHaveLength(2) // Worker의 달도 버렸다
+  }
+
+  it('AC-013.6: 그새 다른 사람(다른 의원)으로 로그인했으면 남긴 결과를 보이지 않고 Worker의 달도 버린다', async () => {
+    const made = await toResult()
+    made.unmount()
+    db.userId = 'user-2'
+    show(made.worker, made.link)
+    await gone(made)
+  })
+
+  it('AC-013.6: 그새 로그인이 풀렸어도 같다', async () => {
+    const made = await toResult()
+    made.unmount()
+    db.userId = null
+    show(made.worker, made.link)
+    await gone(made)
+  })
+
+  it('AC-013.6: 그새 도우미에 다른 의원을 등록했으면 같다', async () => {
+    const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(REGISTERED))
+    const made = await toResult(fakeWorker(), bridge({ check }))
+    made.unmount()
+    check.mockImplementation(() => Promise.resolve({ ...REGISTERED, institutionCode: '87654321' }))
+    show(made.worker, made.link)
+    await gone(made)
+  })
+
+  it('AC-013.6: 도우미 등록을 확인하지 못해도 같다(모르면 보이지 않는다)', async () => {
+    const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(REGISTERED))
+    const made = await toResult(fakeWorker(), bridge({ check }))
+    made.unmount()
+    check.mockImplementation(() => Promise.reject(new BridgeError('E-BIT-READ-FAILED')))
+    show(made.worker, made.link)
+    await gone(made)
+  })
+
+  // 기관기호는 등록 파일 값이라 비트가 다른 의원이어도 온다. 실패는 steps로만 온다(AC-005.7). 모양은 BitCheck.Run 그대로: 실패한 단계부터 뒤는 모두 같은 번호다
+  it.each([
+    { code: 'E-BIT-HOSPITAL-MISMATCH', steps: [{ name: 'find', ok: true }, { name: 'db', ok: true }, { name: 'registration', ok: false, code: 'E-BIT-HOSPITAL-MISMATCH' }] },
+    { code: 'E-BIT-DB-FAILED', steps: [{ name: 'find', ok: true }, { name: 'db', ok: false, code: 'E-BIT-DB-FAILED' }, { name: 'registration', ok: false, code: 'E-BIT-DB-FAILED' }] },
+  ])('AC-013.6: 도우미가 같은 기관기호를 줘도 bit.check 단계가 $code 이면 같다', async ({ steps }) => {
+    const check = vi.fn<() => Promise<unknown>>(() => Promise.resolve(REGISTERED))
+    const made = await toResult(fakeWorker(), bridge({ check }))
+    made.unmount()
+    check.mockImplementation(() => Promise.resolve({ ...REGISTERED, steps }))
+    show(made.worker, made.link)
+    await gone(made)
+  })
+
+  it('AC-013.6: 화면이 그려진 뒤 확인을 시작하기 전에 맡긴 결과가 없어져도 "확인하는 중"에 멈추지 않는다', async () => {
+    const made = await toResult()
+    const kept = made.channel.kept()
+    made.unmount()
+    made.channel.keep(null)
+    vi.spyOn(made.channel, 'kept').mockReturnValueOnce(kept) // 첫 그림의 useState만 맡긴 결과를 본다
+    show(made.worker, made.link)
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(screen.queryByText('지난 점검 결과를 확인하는 중이에요…')).toBeNull()
+  })
+
+  it('AC-013.6: 결과를 낼 때 누구 것인지 몰랐으면 남기지 않는다: 결과는 보이고, 떠나면 달을 버린다', async () => {
+    db.userId = null
+    const made = await toResult()
+    expect(patients()).toBeTruthy()
+    expect(made.channel.kept()).toBeNull()
+    made.unmount()
+    expect(made.worker.of('loadStart')).toHaveLength(2)
+  })
+
+  it('AC-013.6: 돌아와 다시 불러오면 남긴 결과는 없어진다. 그 불러오기가 실패하면 옛 결과가 되살아나지 않는다', async () => {
+    const month = vi.fn().mockResolvedValueOnce({ id: 'm1', count: 1 }).mockRejectedValue(new BridgeError('E-BIT-READ-FAILED'))
+    const made = await toResult(fakeWorker(), bridge({ month }))
+    await made.user.click(screen.getByRole('button', { name: /날짜 고르기/ }))
+    await made.user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    await screen.findByRole('alert')
+    expect(made.channel.kept()).toBeNull()
+    made.unmount()
+    show(made.worker, made.link)
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(patients()).toBeNull()
+  })
+
+  it('AC-013.5·AC-013.6: [다시 점검]이 실패하면 남긴 결과도 없어지고 떠날 때 달을 버린다', async () => {
+    const made = await toResult()
+    await recheckPending(made)
+    const asked = made.worker.of('check')[1]
+    made.worker.emit({ type: 'check', check: asked.check, load: asked.load, ok: false, code: 'E-SETTINGS-FAILED' })
+    await screen.findByRole('alert')
+    expect(made.channel.kept()).toBeNull()
+    const before = made.worker.of('loadStart').length
+    made.unmount()
+    expect(made.worker.of('loadStart')).toHaveLength(before + 1)
+  })
+
+  it('AC-013.6: [다시 점검] 답이 떠나 있는 동안 오면 돌아올 때 새 결과이고 엑셀도 새 번호로 묻는다', async () => {
+    stubDownload()
+    const made = await toResult()
+    const asked = await recheckPending(made)
+    made.unmount()
+    made.worker.emit({ type: 'check', check: asked.check, load: asked.load, ok: true, view: { ...VIEW, enabledRules: 100 }, usedCopy: null })
+    await flush()
+    show(made.worker, made.link)
+    await screen.findByText(/켜진 규칙 100개/)
+    expect(made.worker.of('check')).toHaveLength(2)
+    await userEvent.setup().click(screen.getByRole('button', { name: '엑셀 내려받기' }))
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1))
+    expect(made.worker.of('excel')).toEqual([{ type: 'excel', check: asked.check }])
+  })
+
+  it('AC-013.6: [다시 점검] 답을 기다리는 사이 돌아오면 다시 점검해 마지막 답만 쓴다', async () => {
+    const made = await toResult()
+    const asked = await recheckPending(made)
+    made.unmount()
+    made.worker.answers.check = (m) => ({ type: 'check', check: m.check, load: m.load, ok: true, view: { ...VIEW, enabledRules: 200 }, usedCopy: null })
+    show(made.worker, made.link)
+    await screen.findByText(/켜진 규칙 200개/)
+    const checks = made.worker.of('check')
+    expect(checks).toHaveLength(3)
+    expect(checks[2].check).toBeGreaterThan(asked.check)
+    made.worker.emit({ type: 'check', check: asked.check, load: asked.load, ok: true, view: { ...VIEW, enabledRules: 100 }, usedCopy: null })
+    await flush()
+    expect(screen.getByText(/켜진 규칙 200개/)).toBeTruthy()
+    expect(screen.queryByText(/켜진 규칙 100개/)).toBeNull()
+  })
+
+  it('AC-013.5·AC-013.6: 떠나 있는 동안 [다시 점검]이 실패하면 달을 버리고 돌아와도 결과가 없다', async () => {
+    const made = await toResult()
+    const asked = await recheckPending(made)
+    made.unmount()
+    const before = made.worker.of('loadStart').length
+    made.worker.emit({ type: 'check', check: asked.check, load: asked.load, ok: false, code: 'E-SETTINGS-FAILED' })
+    await flush()
+    expect(made.channel.kept()).toBeNull()
+    expect(made.worker.of('loadStart')).toHaveLength(before + 1)
+    show(made.worker, made.link)
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(patients()).toBeNull()
+  })
+
+  describe('설정을 읽는 사이', () => {
+    /** 설정 표 읽기를 붙잡는다. 돌려준 함수가 놓는다 */
+    const holdSettings = () => {
+      let release!: () => void
+      db.settingsGate = new Promise((resolve) => (release = resolve))
+      return () => {
+        db.settingsGate = null
+        release()
+      }
+    }
+    /** 마이크로태스크가 모두 끝날 때까지 */
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve))
+    /** [엑셀 내려받기]가 그 번호로 묻고 내려받는다. Worker는 마지막 점검 번호만 받는다(jobs.ts runExcel) */
+    const excelWorksWith = async (made: { worker: Fake }, check: number) => {
+      await userEvent.setup().click(screen.getByRole('button', { name: '엑셀 내려받기' }))
+      await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1))
+      expect(made.worker.of('excel')).toEqual([{ type: 'excel', check }])
+    }
+    /** 띠를 띄우고 설정 읽기를 붙잡은 채 [다시 점검]을 누른다: 아직 번호를 받지 않았다 */
+    const pressRecheckHeld = async (made: Awaited<ReturnType<typeof toResult>>) => {
+      db.rules = OFF_IJ
+      window.dispatchEvent(new Event('focus'))
+      const button = await screen.findByRole('button', { name: '다시 점검' })
+      await settle() // 초점 비교는 붙잡기 전에 끝낸다
+      const release = holdSettings()
+      await made.user.click(button)
+      return release
+    }
+
+    it('AC-013.5·AC-013.6: 돌아와 다시 점검할 설정을 읽는 사이 옛 답이 실패로 와도 달을 버리지 않고, 새 답을 보이며 엑셀도 된다', async () => {
+      stubDownload()
+      const made = await toResult()
+      const asked = await recheckPending(made)
+      made.unmount()
+      made.worker.answers.check = (m) => ({ type: 'check', check: m.check, load: m.load, ok: true, view: { ...VIEW, enabledRules: 200 }, usedCopy: null })
+      const release = holdSettings()
+      show(made.worker, made.link)
+      await screen.findByRole('heading', { level: 2, name: '환자' })
+      const loads = made.worker.of('loadStart').length
+      made.worker.emit({ type: 'check', check: asked.check, load: asked.load, ok: false, code: 'E-SETTINGS-FAILED' })
+      await settle()
+      expect(made.worker.of('loadStart')).toHaveLength(loads)
+      expect(made.channel.kept()).not.toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      release()
+      await screen.findByText(/켜진 규칙 200개/)
+      const last = made.worker.of('check').at(-1)!
+      expect(last.check).toBeGreaterThan(asked.check)
+      await excelWorksWith(made, last.check)
+    })
+
+    it('AC-013.4·AC-013.6: [다시 점검]이 설정을 읽는 사이 떠나면 새 번호를 받지 않고, 돌아와 띠가 그대로이며 옛 번호로 엑셀이 된다', async () => {
+      stubDownload()
+      const made = await toResult()
+      const release = await pressRecheckHeld(made)
+      made.unmount()
+      release()
+      await settle()
+      expect(made.worker.of('check')).toHaveLength(1)
+      show(made.worker, made.link)
+      await screen.findByText(band)
+      expect(made.worker.of('check')).toHaveLength(1)
+      await excelWorksWith(made, made.worker.of('check')[0].check)
+    })
+
+    it('AC-013.4·AC-013.6: 그 읽기가 끝나기 전에 돌아와도 옛 화면은 새 번호를 받지 않는다', async () => {
+      stubDownload()
+      const made = await toResult()
+      const release = await pressRecheckHeld(made)
+      made.unmount()
+      show(made.worker, made.link)
+      await screen.findByRole('heading', { level: 2, name: '환자' })
+      release()
+      await settle()
+      expect(made.worker.of('check')).toHaveLength(1)
+      await excelWorksWith(made, made.worker.of('check')[0].check)
+    })
+  })
+
+  it('AC-013.6: 떠났다 돌아와도 환자 자료를 저장소·주소·제목·로그에 두지 않는다', async () => {
+    const logs = (['log', 'info', 'warn', 'error'] as const).map((level) => vi.spyOn(console, level))
+    const stored = vi.spyOn(Storage.prototype, 'setItem')
+    const href = location.href
+    const title = document.title
+    const made = await toResult()
+    made.unmount()
+    show(made.worker, made.link)
+    await screen.findByRole('heading', { level: 2, name: '환자' })
+    expect(stored).not.toHaveBeenCalled()
+    expect(location.href).toBe(href)
+    expect(document.title).toBe(title)
+    expect(JSON.stringify(history.state ?? null)).not.toContain('가상환자')
+    for (const spy of logs) expect(spy).not.toHaveBeenCalled()
   })
 })

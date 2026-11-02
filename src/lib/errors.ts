@@ -150,7 +150,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   // 조각이 빠졌거나·끊겼거나·SHA-256이 다르거나, 선언한 줄 수와 받은 줄 수가 다름. 점검을 돌리지 않는다(AC-009.2·AC-009.4)
   'E-CLAIM-PARTIAL': {
     what: '자료가 다 오지 않아 점검을 멈췄어요',
-    fix: '[다시 불러오기]를 눌러 다시 불러오세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    fix: '[다시 불러오기]를 눌러 다시 불러오세요. 계속되면 화면을 새로 고친 뒤 다시 해 보고, 그래도 안 되면 오류 번호와 함께 문의해 주세요.',
   },
   // AI 리포트(spec ai-report design.md '오류 문구'). 서버 경로·ai:try는 번호만 주고 문구는 여기서 꺼낸다
   'E-AI-BUSY': {
@@ -182,6 +182,15 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '전화번호나 주민번호 같은 글자가 있어 그 칸은 저장하지 않았어요',
     fix: '빨갛게 표시된 칸에서 그 글자를 지우면 바로 저장돼요. 다른 칸은 그대로 저장돼요. 환자 정보는 업무일지에 적지 말아 주세요.',
   },
+}
+
+/**
+ * [엑셀 내려받기] 실패 글(AC-013.4). 번호는 Worker 약속(types/precheck.ts 13)과 표(design.md 4-5)의 E-CLAIM-PARTIAL 그대로이고 글만 다르다:
+ * 그 번호의 글은 불러오기 실패 글이라 결과 화면에는 없는 [다시 불러오기]를 말하고, 엑셀이 실패해도 점검은 멈추지 않았다
+ */
+export const EXCEL_FAILED: ErrorInfo = {
+  what: '엑셀 파일을 만들지 못했어요',
+  fix: '점검 결과는 화면에 그대로 있어요. [엑셀 내려받기]를 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

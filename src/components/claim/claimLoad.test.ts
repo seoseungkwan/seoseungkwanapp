@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { CheckSettings, ClaimView, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
-import { claimChannel, runClaimCheck, runClaimExcel, runClaimLoad, type LoadStep } from './claimLoad'
+import { claimChannel, runClaimCheck, runClaimExcel, runClaimLoad, type KeptClaim, type LoadStep } from './claimLoad'
 
 // 화면이 Worker에 보내는 차례(약속 전문: types/precheck.ts PrecheckFromScreen, design.md 6-2). 가짜 통로·가짜 Worker로 본다
 
@@ -264,7 +264,7 @@ describe('AC-013.11 claim.memos·store.load 차례', () => {
     worker.emit(partOk('memos', 'memos1', 1))
     await tick()
     calls[2].reject('E-BIT-HOSPITAL-MISMATCH')
-    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-BIT-HOSPITAL-MISMATCH' })
+    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-BIT-HOSPITAL-MISMATCH', stuckMonth: true })
     expect(calls.map((call) => call.cmd)).toEqual(['claim.month', 'claim.memos', 'store.load'])
   })
 
@@ -356,6 +356,41 @@ describe('Worker가 죽어도 화면이 기다리다 멈추지 않는다', () =>
     worker.fire(type)
     await expect(result).resolves.toEqual({ status: 'failed', code: 'E-CLAIM-PARTIAL' })
   })
+
+  it('AC-013.4: 기다리는 답이 없을 때 error가 와도(Worker가 시작하지 못함) 다음 엑셀은 보내지 않고 바로 실패한다', async () => {
+    const worker = fakeWorker()
+    const channel = claimChannel(worker)
+    worker.fire('error')
+    await expect(runClaimExcel(channel, 7)).resolves.toEqual({ ok: false, code: 'E-CLAIM-PARTIAL' })
+    expect(posted(worker, 'excel')).toEqual([])
+  })
+
+  it('AC-013.2: 그 뒤 불러오기도 Worker 답을 기다리다 멈추지 않고 번호로 실패한다', async () => {
+    const worker = fakeWorker()
+    claimChannel(worker)
+    worker.fire('error')
+    const { calls, result } = start(worker)
+    calls[0].resolve('m1')
+    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-CLAIM-PARTIAL' })
+    expect(posted(worker, 'month')).toEqual([])
+  })
+
+  it('AC-013.14: 그 뒤 점검도 바로 실패한다', async () => {
+    const worker = fakeWorker()
+    const channel = claimChannel(worker)
+    const load = channel.startLoad()
+    worker.fire('error')
+    await expect(runClaimCheck(channel, load, DAY, SETTINGS)).resolves.toEqual({ status: 'failed', code: 'E-CLAIM-PARTIAL' })
+    expect(posted(worker, 'check')).toEqual([])
+  })
+
+  it('messageerror는 그 답 하나만 잃은 것이다: Worker는 살아 있어 다음 물음을 보낸다', async () => {
+    const worker = fakeWorker()
+    const channel = claimChannel(worker)
+    worker.fire('messageerror')
+    void runClaimExcel(channel, 7)
+    expect(posted(worker, 'excel')).toEqual([{ type: 'excel', check: 7 }])
+  })
 })
 
 describe('AC-013.2·AC-013.14 점검 차례', () => {
@@ -431,6 +466,29 @@ describe('AC-013.4 엑셀 차례', () => {
   })
 })
 
+describe('AC-013.6 떠났다 돌아올 결과는 그 탭 메모리에만 있다', () => {
+  const KEPT = { owner: { user: 'u1', institution: '12345678' }, period: DAY, page: 'result', stale: false } as unknown as KeptClaim
+
+  it('AC-013.6: 맡긴 것을 그대로 돌려주고, 처음에는 없다', () => {
+    const channel = claimChannel(fakeWorker())
+    expect(channel.kept()).toBeNull()
+    channel.keep(KEPT)
+    expect(channel.kept()).toBe(KEPT)
+    channel.keep(null)
+    expect(channel.kept()).toBeNull()
+  })
+
+  it('AC-013.6: 새 불러오기·drop은 맡긴 것을 지운다(Worker의 달이 비므로 다시 점검할 수 없다)', () => {
+    const channel = claimChannel(fakeWorker())
+    channel.keep(KEPT)
+    channel.startLoad()
+    expect(channel.kept()).toBeNull()
+    channel.keep(KEPT)
+    channel.drop()
+    expect(channel.kept()).toBeNull()
+  })
+})
+
 describe('화면을 떠나면 달을 버린다', () => {
   it('drop: 새 번호의 loadStart로 Worker의 달을 비우고 진행 중인 불러오기를 버린다', async () => {
     const { worker, channel, calls, result } = start()
@@ -477,6 +535,16 @@ describe('openClaimChannel: 확장이 있는 PC 크롬에서만 Worker를 만든
     const first = open()
     expect(first).not.toBeNull()
     expect(open()).toBe(first)
+    expect(FakeWorkerClass.made).toBe(1)
+  })
+
+  it('AC-013.6: 로그아웃의 전체 페이지 이동(새 모듈)에는 맡긴 결과가 남지 않고 Worker도 새것이다', async () => {
+    const open = await freshTab()
+    vi.stubGlobal('Worker', FakeWorkerClass)
+    vi.stubGlobal('chrome', { runtime: {} })
+    open()!.keep({ page: 'result' } as unknown as KeptClaim)
+    const reopened = await freshTab()
+    expect(reopened()!.kept()).toBeNull()
     expect(FakeWorkerClass.made).toBe(1)
   })
 

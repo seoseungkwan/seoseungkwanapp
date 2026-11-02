@@ -1,4 +1,4 @@
-import { addDays, compareYmd, diffDays, eachDay, monthOf, sameDayLastMonth, weekdayOf, weekRange, weekStartOf } from '@/lib/analytics/dates'
+import { addDays, compareYmd, diffDays, eachDay, isYmd, monthOf, sameDayLastMonth, weekdayOf, weekRange, weekStartOf } from '@/lib/analytics/dates'
 import commands from '@/lib/bridge/commands.json'
 import type { ClaimDayCount } from '@/lib/storage/claimCounts'
 import type { DayCount } from '@/types/bridge'
@@ -63,9 +63,12 @@ export function listRange(today: string, counts: readonly ClaimDayCount[]): Date
   return { from: compareYmd(from, oldestAllowed) < 0 ? oldestAllowed : from, to: today }
 }
 
-/** 고른 기간이 불러올 수 있는지. 안 되면 보일 안내, 되면 null(AC-013.2) */
+/**
+ * 고른 기간이 불러올 수 있는지. 안 되면 보일 안내, 되면 null(AC-013.2). 그리는 동안 부르므로 던지지 않는다:
+ * 크롬 날짜 칸은 연도를 칠 때마다 값을 바꿔 0002-10-28 같은 값이 온다. isYmd가 빈 값과 함께 거른다
+ */
 export function checkPeriod({ from, to }: DateRange): string | null {
-  if (!from || !to) return '날짜를 골라 주세요'
+  if (!isYmd(from) || !isYmd(to)) return '날짜를 골라 주세요'
   if (compareYmd(from, to) > 0) return '기간의 시작일이 종료일보다 늦습니다.'
   if (diffDays(from, to) + 1 > MAX_PERIOD_DAYS) return `한 번에 ${MAX_PERIOD_DAYS}일까지 고를 수 있어요.`
   return null
@@ -80,17 +83,20 @@ export function readRange(visible: DateRange): DateRange {
 /** 고른 기간의 달들, 이른 달부터(store.load는 고른 기간만 묻는다, AC-013.13) */
 export const monthsIn = (visible: DateRange): string[] => [...new Set(eachDay(visible).map(monthOf))]
 
-/** [입력 안 된 날짜 모두]: 덜 끝난 첫 날 ~ 끝 날. 없으면 null */
-export function unfinishedPeriod(rows: readonly DateRow[]): DateRange | null {
-  const dates = rows.filter((row) => !row.done).map((row) => row.date)
-  return dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null
+/** 한 번에 불러올 수 있는 길이로 자른다. 오래된 날부터 끝내게 앞쪽을 남긴다 */
+function clipPeriod(period: DateRange): DateRange {
+  return diffDays(period.from, period.to) + 1 > MAX_PERIOD_DAYS ? { from: period.from, to: addDays(period.from, MAX_PERIOD_DAYS - 1) } : period
 }
 
-/** 처음 기간: 덜 끝난 날 전체. 35일을 넘으면 앞에서 35일, 없으면 오늘 하루 */
+/** [입력 안 된 날짜 모두]: 덜 끝난 첫 날 ~ 끝 날. 35일을 넘으면 앞에서 35일, 없으면 null */
+export function unfinishedPeriod(rows: readonly DateRow[]): DateRange | null {
+  const dates = rows.filter((row) => !row.done).map((row) => row.date)
+  return dates.length ? clipPeriod({ from: dates[0], to: dates[dates.length - 1] }) : null
+}
+
+/** 처음 기간: [입력 안 된 날짜 모두]와 같다. 덜 끝난 날이 없으면 오늘 하루 */
 export function defaultPeriod(rows: readonly DateRow[], today: string): DateRange {
-  const period = unfinishedPeriod(rows)
-  if (!period) return { from: today, to: today }
-  return checkPeriod(period) === null ? period : { from: period.from, to: addDays(period.from, MAX_PERIOD_DAYS - 1) }
+  return unfinishedPeriod(rows) ?? { from: today, to: today }
 }
 
 /** [이번 주](0)·[지난주](-1): 월~일 */
@@ -101,7 +107,7 @@ export const weekPeriod = (today: string, weeks: number): DateRange => weekRange
  * 기간 안 날을 풀면 가까운 쪽 끝을 그 날 다음으로 당긴다. 하루만 남은 기간은 그대로다(기간이 비지 않게)
  */
 export function toggleDay(period: DateRange, date: string): DateRange {
-  if (!period.from || !period.to) return { from: date, to: date }
+  if (!isYmd(period.from) || !isYmd(period.to)) return { from: date, to: date } // 비었거나 연도를 치는 중간 값(checkPeriod)
   if (compareYmd(date, period.from) < 0) return { from: date, to: period.to }
   if (compareYmd(date, period.to) > 0) return { from: period.from, to: date }
   if (period.from === period.to) return period
