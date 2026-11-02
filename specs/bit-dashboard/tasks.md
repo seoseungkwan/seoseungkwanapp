@@ -51,3 +51,9 @@
 - Files: src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx
 - Tests: src/components/dashboard/summary/LiveDashboard.test.tsx, src/app/(app)/dashboard/page.test.tsx
 - TDD: required
+
+## TASK-9: 90일 그래프 아래 빈 곳 (공용 부품 `StackedBarChart`)
+- REQ: REQ-601
+- Files: src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- Tests: src/components/charts/StackedBarChart.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- TDD: required

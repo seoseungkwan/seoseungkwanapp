@@ -109,37 +109,40 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
           ))}
         </div>
       </div>
-      <table className="sr-only">
-        <caption>
-          {title} ({unit})
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">기간</th>
-            {series.map((s, i) => (
-              <th key={i} scope="col">
-                {s.name}
-              </th>
-            ))}
-            <th scope="col">합계</th>
-            <th scope="col">상태</th>
-            {compared && <th scope="col">비교 기간</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {buckets.map((bucket, i) => (
-            <tr key={bucket.key}>
-              <th scope="row">{bucket.rangeLabel}</th>
-              {series.map((_, j) => (
-                <td key={j}>{formatCount(bucket.values[j] ?? 0)}</td>
+      {/* 표의 sr-only만으로는 1px 제한이 안 먹어 줄 수만큼 길어지고 쪽 아래에 빈 곳을 만든다. 감싼 칸이 잘라 준다(AC-601.18) */}
+      <div className="sr-only">
+        <table className="sr-only">
+          <caption>
+            {title} ({unit})
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">기간</th>
+              {series.map((s, i) => (
+                <th key={i} scope="col">
+                  {s.name}
+                </th>
               ))}
-              <td>{formatCount(totals[i]!)}</td>
-              <td>{STATE_TEXT[bucket.state]}</td>
-              {compared && <td>{typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
+              <th scope="col">합계</th>
+              <th scope="col">상태</th>
+              {compared && <th scope="col">비교 기간</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {buckets.map((bucket, i) => (
+              <tr key={bucket.key}>
+                <th scope="row">{bucket.rangeLabel}</th>
+                {series.map((_, j) => (
+                  <td key={j}>{formatCount(bucket.values[j] ?? 0)}</td>
+                ))}
+                <td>{formatCount(totals[i]!)}</td>
+                <td>{STATE_TEXT[bucket.state]}</td>
+                {compared && <td>{typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
