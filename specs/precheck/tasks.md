@@ -215,7 +215,7 @@
 - Files: helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Bit/GridRows.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/src/Precheck.Windows/ViewModeNotices.cs, helper/src/Precheck.Windows/ProgressWindow.cs, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/Precheck.Core.Tests/Claim/*, helper/tests/Precheck.Windows.Tests/Input/*, helper/tests/input-code.dotnet.test.ts, helper/tests/claim-read.dotnet.test.ts, src/lib/bridge/commands.json, src/lib/bridge/*.test.ts
 - Tests: helper/tests/input-code.dotnet.test.ts, helper/tests/claim-read.dotnet.test.ts, helper/tests/input.dotnet.test.ts
 - TDD: required
-- 의원 PC 시험: 제외 체크를 켜고 시작해 멈추는지(비트 체크 칸에서 `BM_GETCHECK`가 맞게 읽히는지), 처방코드 칸을 같은 코드·다른 코드·빈칸으로 두고 시작, 다른 자리에서 그 환자를 열어 둔 채 조회 모드 안내창이 눌리고 메모 칸이 어떤 상태가 되는지(입력을 받지 않으면 그 사람만 확인 필요), 실제 47 표의 칸 이름
+- 의원 PC 시험: 제외 체크를 켜고 시작해 멈추는지(비트 체크 칸에서 `Patterns.Toggle`, 안 되면 `BM_GETCHECK`로 맞게 읽히는지), 처방코드 칸을 같은 코드·다른 코드·빈칸으로 두고 시작, 다른 자리에서 그 환자를 열어 둔 채 조회 모드 안내창이 눌리고 메모 칸이 어떤 상태가 되는지(입력을 받지 않으면 그 사람만 확인 필요), 실제 47 표의 칸 이름
 
 ## TASK-37: 다른 메모 바꾸기 · 묻지 않기 (도우미)
 - Step: Phase 3 · TASK-36 뒤 · `input-replace` (plan.md §6 밖, step 파일 없음. design.md 19-6)
