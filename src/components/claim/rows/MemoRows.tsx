@@ -12,7 +12,7 @@ export const LEFT_GROUPS: Record<LeftReason, { name: string; why: string }> = {
   nomemo: { name: '메모 없음', why: '이 진료에는 넣을 메모가 없어요.' },
   mark: { name: '확인 필요', why: '메모에 확인 표시가 남아 있어요. 고치면 들어가요. 묻지 않기가 켜져 있어도 넣지 않아요.' },
   manual: { name: '직접 입력', why: '같은 사람의 같은 날 진료가 여럿이라 어느 진료에 넣을지 알 수 없어요. 비트에서 직접 넣어 주세요.' },
-  diff: { name: '다른 메모 있음', why: '비트에 우리 메모와 다른 메모가 있어요. [이 메모로 바꾸기]를 누른 사람만 들어가요.' },
+  diff: { name: '다른 메모 있음', why: '비트에 우리 메모와 다른 메모가 있어요. [바꾸지 않기]를 눌렀거나 직접 확인한 사람이에요. [이 메모로 바꾸기]를 누르면 들어가요.' },
   unread: { name: '비트 메모를 읽지 못함', why: '비어 있다고 보고 넣으면 두 번 들어갈 수 있어 뺐어요. 자료를 다시 불러와 주세요.' },
   held: { name: '지난번 건너뜀', why: '지난 입력에서 건너뛴 뒤 메모가 그대로예요. 메모를 고치거나 [다시 하기]를 눌러 주세요.' },
 }
@@ -136,7 +136,7 @@ export function MemoRows(props: MemoRowsProps) {
                       {row.warned && <span className={ds.chip.neutral}>점검 경고 있음 · 입력은 돼요</span>}
                     </Head>
                     {isOpen ? <Opened row={row} card={card} /> : changing && <SideMemos row={row} />}
-                    {row.chip === '메모 바꿈 · 승인함' && (
+                    {row.chip === '메모 바꿈' && (
                       <div>
                         <button type="button" className={ds.button.secondarySmall} disabled={locked} onClick={() => onApprove(row.key, false)}>
                           바꾸지 않기

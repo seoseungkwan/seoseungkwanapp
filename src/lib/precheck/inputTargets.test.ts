@@ -29,7 +29,6 @@ const visit = (key: string, over: Partial<TargetVisit> = {}): TargetVisit => ({
 })
 const context = (over: Partial<TargetContext> = {}): TargetContext => ({
   visible: VISIBLE,
-  noAsk: false,
   done: new Set(),
   held: new Map(),
   foundByPc: new Set(),
@@ -50,7 +49,7 @@ describe('AC-018.26 입력할 사람과 빠지는 사람', () => {
     const visits = [
       visit('held', { date: '2099-03-07' }),
       visit('read', { compare: '조회 못함' }),
-      visit('diff', { compare: '다름', inBit: '비트 글' }),
+      visit('diff', { compare: '다름', inBit: '비트 글', declined: true }),
       visit('twoA', { chart: '9777' }),
       visit('twoB', { chart: '9777' }),
       visit('mark', { unfinished: true }),
@@ -76,7 +75,7 @@ describe('AC-018.26 입력할 사람과 빠지는 사람', () => {
     ['직접 입력 > 확인 표시', { unfinished: true, chart: '9777' }, 'manual'],
     ['확인 표시 > 조회 못함', { unfinished: true, compare: '조회 못함' }, 'mark'],
     ['조회 못함 > 지난번 건너뜀', { compare: '조회 못함', key: 'x' }, 'unread'],
-    ['다른 메모 > 지난번 건너뜀', { compare: '다름', inBit: '비트 글' }, 'diff'],
+    ['다른 메모 > 지난번 건너뜀', { compare: '다름', inBit: '비트 글', declined: true }, 'diff'],
   ] as const)('AC-018.26: 둘에 걸리면 앞선 하나에만 든다: %s', (_, over, reason) => {
     const twin = visit('twin', { chart: '9777' })
     const held = new Map([['x', '메모 x']])
@@ -90,11 +89,31 @@ describe('AC-018.26 입력할 사람과 빠지는 사람', () => {
     expect(keys(result.batch)).toEqual(['a', 'b', 'c'])
   })
 
-  it('AC-018.26: 칩: 새 메모·메모 바꿈 · 승인함·메모 바꿈 · 묻지 않기', () => {
+  it('AC-018.26: 칩은 새 메모·메모 바꿈 둘이다', () => {
     const visits = [visit('new'), visit('ok', { compare: '다름', inBit: '비트', approved: '비트' }), visit('ask', { compare: '다름', inBit: '비트' })]
-    const result = inputTargets(visits, byRange(), context({ noAsk: true }))
-    expect(result.batch.map((row) => row.chip)).toEqual(['새 메모', '메모 바꿈 · 승인함', '메모 바꿈 · 묻지 않기'])
+    const result = inputTargets(visits, byRange(), context())
+    expect(result.batch.map((row) => row.chip)).toEqual(['새 메모', '메모 바꿈', '메모 바꿈'])
     expect(result.replacing).toBe(2)
+  })
+
+  it.each([
+    ['이미 입력됨', { done: new Set(['x']) }, {}, 'done'],
+    ['메모 없음', {}, { hasMemo: false }, 'nomemo'],
+    ['직접 입력(같은 날 여럿)', {}, { chart: '9777' }, 'manual'],
+    ['직접 입력(PC가 찾음)', { foundByPc: new Set(['x']) }, {}, 'manual'],
+    ['확인 표시', {}, { unfinished: true }, 'mark'],
+  ] as const)('AC-018.26·AC-016.3: 다름이어도 앞선 까닭(%s)이 먼저이고 묶음에 없다', (_, ctx, over, reason) => {
+    const twin = visit('twin', { chart: '9777', compare: '같음', inBit: '메모 twin' })
+    const result = inputTargets([visit('x', { compare: '다름', inBit: '비트 글', ...over }), twin], byRange(), context(ctx))
+    expect(groupOf(result, reason)).toContain('x')
+    expect(keys(result.batch)).not.toContain('x')
+    expect(result.replacing).toBe(0)
+  })
+
+  it('AC-018.26·AC-016.2: 조회 못함은 replaces 없이 빠진다', () => {
+    const result = inputTargets([visit('x', { compare: '조회 못함', approved: '옛 글' })], byRange(), context())
+    expect(groupOf(result, 'unread')).toEqual(['x'])
+    expect(result.batch).toEqual([])
   })
 
   it('AC-018.13: 같은 사람 같은 날 진료는 줄마다 건수가 있고, PC가 찾아낸 사람은 표시가 있다', () => {
@@ -148,29 +167,33 @@ describe('AC-018.3 메모 없음과 완료는 묶음에 들지 않는다', () =>
 describe('AC-016.3·AC-018.22 다른 메모와 묻지 않기', () => {
   const diff = (over = {}) => visit('d', { compare: '다름', inBit: '비트 글', ...over })
 
-  it('AC-018.22: 꺼져 있으면 승인하지 않은 다른 메모는 빠진다', () => {
-    expect(groupOf(inputTargets([diff()], byRange(), context()), 'diff')).toEqual(['d'])
-  })
-
-  it('AC-018.22: 켜져 있으면 replaces 없이 든다', () => {
-    const result = inputTargets([diff()], byRange(), context({ noAsk: true }))
+  it('AC-016.3: 승인하지 않은 다른 메모도 지금 비트 글을 replaces로 들고 칩은 메모 바꿈이다', () => {
+    const result = inputTargets([diff()], byRange(), context())
     expect(keys(result.batch)).toEqual(['d'])
+    expect(result.batch[0]).toMatchObject({ replaces: '비트 글', chip: '메모 바꿈' })
+    expect(result.replacing).toBe(1)
+    expect(result.left).toEqual([])
+  })
+
+  it(`AC-018.14: declined면 '다른 메모 있음'이고 입력할 사람에 없다. 목록과 묶음이 같다`, () => {
+    const result = inputTargets([diff({ declined: true }), visit('n')], byRange(), context())
+    expect(groupOf(result, 'diff')).toEqual(['d'])
+    expect(keys(result.batch)).toEqual(['n'])
     expect(result.batch[0]).not.toHaveProperty('replaces')
+    expect(result.replacing).toBe(0)
   })
 
-  it('AC-016.3·AC-037.6: 승인을 푼 사람은 묻지 않기가 켜져 있으면 replaces 없이 든다', () => {
-    const approved = inputTargets([diff({ approved: '비트 글' })], byRange(), context({ noAsk: true }))
-    expect(approved.batch[0].replaces).toBe('비트 글')
-    const released = inputTargets([diff()], byRange(), context({ noAsk: true }))
-    expect(released.batch[0]).not.toHaveProperty('replaces')
-    expect(released.batch[0].chip).toBe('메모 바꿈 · 묻지 않기')
+  it('AC-018.14: 승인이 남아 있어도 declined가 앞선다', () => {
+    expect(groupOf(inputTargets([diff({ declined: true, approved: '비트 글' })], byRange(), context()), 'diff')).toEqual(['d'])
   })
 
-  it('AC-016.3·AC-018.22: skippedByHand 기록이 있는 진료는 켜져 있어도 승인 전에는 빠지고 승인하면 replaces로 든다', () => {
+  it('AC-018.22: skippedByHand 기록이 있는 진료는 [이 메모로 바꾸기] 전에는 빠지고 누르면 replaces로 든다', () => {
     const held = diff({ lastJournal: 'skippedByHand' })
-    expect(groupOf(inputTargets([held], byRange(), context({ noAsk: true })), 'diff')).toEqual(['d'])
-    const approved = inputTargets([{ ...held, approved: '비트 글' }], byRange(), context({ noAsk: true }))
-    expect(approved.batch[0].replaces).toBe('비트 글')
+    const off = inputTargets([held], byRange(), context())
+    expect(groupOf(off, 'diff')).toEqual(['d'])
+    expect(off.batch).toEqual([])
+    const approved = inputTargets([{ ...held, approved: '비트 글' }], byRange(), context())
+    expect(approved.batch[0]).toMatchObject({ replaces: '비트 글', chip: '메모 바꿈' })
   })
 })
 
@@ -260,6 +283,14 @@ describe('AC-018.10·AC-018.11 처방코드별', () => {
 })
 
 describe('AC-018.20 지난번 건너뜀', () => {
+  it('AC-018.20: 입력 직전 변경됨은 기억하지 않는다: 다시 불러온 새 글을 replaces로 다음 묶음에 든다', () => {
+    const before = inputTargets([visit('a', { compare: '다름', inBit: '옛 글' })], byRange(), context())
+    expect(before.batch[0].replaces).toBe('옛 글')
+    const after = inputTargets([visit('a', { compare: '다름', inBit: '새 글' })], byRange(), context())
+    expect(after.batch[0].replaces).toBe('새 글')
+    expect(groupOf(after, 'held')).toEqual([])
+  })
+
   it('AC-018.20: 메모가 그대로면 빠지고 고치면 들어간다', () => {
     const held = new Map([['a', '메모 a']])
     expect(groupOf(inputTargets([visit('a')], byRange(), context({ held })), 'held')).toEqual(['a'])
@@ -287,7 +318,7 @@ describe('AC-018.23 입력할 사람이 0명', () => {
     ['날짜별', byRange()],
     ['처방코드별', byCode()],
   ])('AC-018.23: 모두 빠졌는데 까닭이 여럿이면 빠지는 이유를 보라고 한다: %s', (_, selection) => {
-    const result = inputTargets([visit('a', { compare: '다름', inBit: '비트' }), visit('b', { compare: '조회 못함' })], selection, context())
+    const result = inputTargets([visit('a', { compare: '다름', inBit: '비트', declined: true }), visit('b', { compare: '조회 못함' })], selection, context())
     expect(result.problem).toBe('지금 입력할 수 있는 사람이 없어요. 아래 빠지는 이유를 확인해 주세요.')
   })
 

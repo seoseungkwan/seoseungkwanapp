@@ -5,7 +5,7 @@ import { inputPlan, isBlankMemo } from './memoCompare'
 
 // 입력 대상 고르기(AC-018.8~AC-018.13·AC-018.20·AC-018.23·AC-018.26, design.md 19-1) [환자 자료 구역]. 순수 함수이고 부르는 곳은 Worker(jobs.ts)다.
 // 고를 때마다 입력할 사람과 빠지는 사람(까닭 하나씩)을 돌려주고, [비트에 입력]의 묶음은 이 결과 그대로다. 사람마다 넣고 빼는 체크는 없다.
-// 다른 메모·묻지 않기·확인 표시·조회 못함의 판단은 inputPlan(AC-016.3) 하나로 하고, 여기서는 그것이 모르는 완료 표시·직접 입력·지난번 건너뜀과 범위만 더한다.
+// 다른 메모·확인 표시·조회 못함의 판단은 inputPlan(AC-016.3) 하나로 하고, 여기서는 그것이 모르는 완료 표시·직접 입력·지난번 건너뜀과 범위만 더한다.
 
 export type { TargetVisit } from '@/types/precheck'
 
@@ -18,7 +18,6 @@ const CODE_SHAPE = /^[0-9A-Z][0-9A-Z.-]{0,19}$/
 export type TargetContext = {
   /** 마지막 [자료 불러오기]의 고른 기간. claim.memos가 이 기간만 읽어 그 밖은 비교할 수 없다(AC-018.9) */
   visible: DateRange
-  noAsk: boolean
   /** store.load의 완료 표시와 이번 입력에서 끝난 사람(글 없는 표시 포함) */
   done: ReadonlySet<string>
   /** 지난번 건너뛴 사람: 내원번호 → 그때 글(AC-018.20) */
@@ -46,7 +45,7 @@ function dateProblem(from: string, to: string, visible: DateRange): string | nul
 
 /** 빠지는 까닭 하나(AC-018.26의 차례: 완료 > 메모 없음 > 직접 입력 > 확인 표시 > 조회 못함 > 다른 메모 > 지난번 건너뜀). 없으면 입력할 사람이다 */
 function reasonOf(visit: TargetVisit, sameDay: number, context: TargetContext): { reason: LeftReason | null; replaces?: string } {
-  const plan = inputPlan([visit], context.noAsk)
+  const plan = inputPlan([visit])
   if (context.done.has(visit.key) || plan.done.length > 0) return { reason: 'done' }
   const skipped = plan.skipped[0]?.reason
   if (skipped === '메모 없음') return { reason: 'nomemo' }
@@ -107,7 +106,7 @@ export function inputTargets(visits: readonly TargetVisit[], selection: InputSel
       continue
     }
     if (replaces !== undefined) row.replaces = replaces
-    row.chip = visit.compare !== '다름' ? '새 메모' : replaces !== undefined ? '메모 바꿈 · 승인함' : '메모 바꿈 · 묻지 않기'
+    row.chip = visit.compare !== '다름' ? '새 메모' : '메모 바꿈'
     batch.push(row)
   }
   const left = GROUP_ORDER.flatMap((reason) => {

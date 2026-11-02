@@ -50,9 +50,17 @@ describe('AC-018.4 결과', () => {
     expect(within(done).getAllByText(/이전 메모/)).toHaveLength(1)
   })
 
+  it('AC-018.4: 무엇을 지웠는지: 그중 메모 바꿈 N명과 바꾼 사람 줄의 이전 메모·넣은 메모가 보인다', () => {
+    show(result({ done: [line('a', { result: '완료', reason: '바꿈(기존 메모 덮어씀)', previousMemo: '직접 쓴 메모', memo: '우리가 넣은 메모' }), line('b', { result: '완료', reason: '입력', memo: '새로 넣은 메모' })] }))
+    expect(screen.getByText('그중 메모 바꿈 1명')).toBeTruthy()
+    const done = screen.getByRole('region', { name: '완료' })
+    expect(done.textContent).toContain('직접 쓴 메모')
+    expect(done.textContent).toContain('우리가 넣은 메모')
+  })
+
   it('AC-018.4: 미리 뺀 사람의 이유가 건너뜀에 있고 세지 않은 수를 적는다', () => {
-    show(result({ skipped: [line('a', { reason: '이미 있음: 비트에 다른 메모가 있고 바꾸기를 승인하지 않았어요' })], uncounted: 3 }))
-    expect(screen.getByRole('region', { name: '건너뜀' }).textContent).toContain('이미 있음: 비트에 다른 메모가 있고 바꾸기를 승인하지 않았어요')
+    show(result({ skipped: [line('a', { reason: '이미 있음: 비트에 다른 메모가 있고 바꾸지 않기로 했어요' })], uncounted: 3 }))
+    expect(screen.getByRole('region', { name: '건너뜀' }).textContent).toContain('이미 있음: 비트에 다른 메모가 있고 바꾸지 않기로 했어요')
     expect(screen.getByText(/이미 입력된 사람과 메모 없는 사람 3명은 세지 않았어요/)).toBeTruthy()
   })
 
@@ -142,7 +150,7 @@ describe('AC-018.21 멈춤의 다음 할 일', () => {
 describe('AC-018.22 첫 묶음 뒤 안내', () => {
   it('AC-018.22: N이 있으면 남은 사람을 알리고 0이면 앞 문장만이다', () => {
     show(result({ firstNoAsk: 2 }))
-    expect(screen.getByText('이제부터 묻지 않아요. 다른 메모가 있는 2명은 아직 바꾸지 않았어요. [비트에 입력]을 다시 누르면 원래 메모를 남기고 바꿔요')).toBeTruthy()
+    expect(screen.getByText('이제부터 묻지 않아요. 불러온 뒤에 비트에 메모가 생긴 2명은 아직 바꾸지 않았어요. [비트에 입력]을 다시 누르면 원래 메모를 남기고 바꿔요')).toBeTruthy()
     cleanup()
     show(result({ firstNoAsk: 0 }))
     expect(screen.getByText('이제부터 묻지 않아요.')).toBeTruthy()

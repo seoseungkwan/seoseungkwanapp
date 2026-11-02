@@ -232,6 +232,18 @@ describe('AC-018.3 [비트에 입력]', () => {
     expect(screen.getByText('누르면 PC 화면에 확인 창이 떠요. 거기서 [확인]을 눌러야 들어가요.')).toBeTruthy()
   })
 
+  it('AC-018.3: 단추 옆 글: 꺼져 있어도 바뀌는 사람이 있으면 잇는다', async () => {
+    const view = memoView()
+    view.targets.replacing = 2
+    await toMemo(view)
+    expect(screen.getByText('누르면 PC 화면에 확인 창이 떠요. 거기서 [확인]을 눌러야 들어가요. 다른 메모 2명은 우리 메모로 바뀌고, 원래 메모는 기록에 남아요.')).toBeTruthy()
+  })
+
+  it('AC-018.3: 단추 옆 글: 켜져 있고 바뀌는 사람이 없으면 잇지 않는다', async () => {
+    await toMemo(memoView({ noAsk: true }))
+    expect(screen.getByText('누르면 PC 확인 창 없이 바로 시작해요.')).toBeTruthy()
+  })
+
   it('AC-018.3: 단추 옆 글: 켜짐이고 바뀌는 사람이 있으면 잇는다', async () => {
     const view = memoView({ noAsk: true })
     view.targets.replacing = 1
@@ -716,9 +728,17 @@ describe('AC-018.1 점검 결과에서 메모로', () => {
 describe('AC-018.22 묻지 않기 띠', () => {
   it('AC-018.22: 켜져 있으면 위 띠로 알리고 끄는 단추가 없다', async () => {
     await toMemo(memoView({ noAsk: true }))
-    expect(screen.getByText('묻지 않기 켜짐: 다른 메모도 원래 메모를 남기고 바뀌어요')).toBeTruthy()
-    expect(screen.getByText('[비트에 입력]을 누르면 PC 확인 창 없이 바로 시작해요. 확인 표시가 남은 메모는 그래도 넣지 않아요. 끄려면 청구 창을 닫았다가 다시 여세요.')).toBeTruthy()
+    expect(screen.getByText('묻지 않기 켜짐: PC 확인 창 없이 바로 시작해요')).toBeTruthy()
+    expect(screen.getByText('[비트에 입력]을 누르면 아래 목록 그대로 들어가요. [바꾸지 않기]를 누른 사람과 확인 표시가 남은 메모는 넣지 않아요. 끄려면 청구 창을 닫았다가 다시 여세요.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /청구 창|끄기/ })).toBeNull()
+  })
+
+  it('AC-018.22: 켜져 있어도 [바꾸지 않기]가 눌린다', async () => {
+    const view = memoView({ noAsk: true })
+    view.targets = { ...view.targets, batch: [row('d', { compare: '다름', inBit: '비트 글', replaces: '비트 글', chip: '메모 바꿈' })], replacing: 1 }
+    const { user, worker } = await toMemo(view)
+    await user.click(screen.getByRole('button', { name: '바꾸지 않기' }))
+    expect(worker.of('memoApprove').at(-1)).toMatchObject({ visitKey: 'd', approved: false })
   })
 })
 

@@ -48,7 +48,7 @@ describe('AC-018.26 묶음', () => {
     ['nomemo', '메모 없음', '이 진료에는 넣을 메모가 없어요.'],
     ['mark', '확인 필요', '메모에 확인 표시가 남아 있어요. 고치면 들어가요. 묻지 않기가 켜져 있어도 넣지 않아요.'],
     ['manual', '직접 입력', '같은 사람의 같은 날 진료가 여럿이라 어느 진료에 넣을지 알 수 없어요. 비트에서 직접 넣어 주세요.'],
-    ['diff', '다른 메모 있음', '비트에 우리 메모와 다른 메모가 있어요. [이 메모로 바꾸기]를 누른 사람만 들어가요.'],
+    ['diff', '다른 메모 있음', '비트에 우리 메모와 다른 메모가 있어요. [바꾸지 않기]를 눌렀거나 직접 확인한 사람이에요. [이 메모로 바꾸기]를 누르면 들어가요.'],
     ['unread', '비트 메모를 읽지 못함', '비어 있다고 보고 넣으면 두 번 들어갈 수 있어 뺐어요. 자료를 다시 불러와 주세요.'],
     ['held', '지난번 건너뜀', '지난 입력에서 건너뛴 뒤 메모가 그대로예요. 메모를 고치거나 [다시 하기]를 눌러 주세요.'],
   ] as const)('AC-018.26: %s 묶음의 이름과 까닭', (reason, name, why) => {
@@ -127,25 +127,31 @@ describe('AC-018.14 다른 메모', () => {
     expect(screen.queryByRole('button', { name: '이 메모로 바꾸기' })).toBeNull()
   })
 
-  it(`AC-018.14: '메모 바꿈 · 승인함' 줄에도 두 메모가 늘 보이고 [바꾸지 않기]가 승인을 푼다`, async () => {
-    const on = show(targets({ batch: [row('d', { compare: '다름', inBit: '비트에 있는 글', replaces: '비트에 있는 글', chip: '메모 바꿈 · 승인함' })], replacing: 1 }))
+  it(`AC-018.14·AC-018.26: '메모 바꿈' 줄에 누르지 않아도 두 메모가 늘 보이고 [바꾸지 않기]가 그 사람을 뺀다`, async () => {
+    const on = show(targets({ batch: [row('d', { compare: '다름', inBit: '비트에 있는 글', replaces: '비트에 있는 글', chip: '메모 바꿈' })], replacing: 1 }))
     const list = screen.getByRole('region', { name: '입력할 사람과 빠지는 사람' })
-    expect(list.textContent).toContain('메모 바꿈 · 승인함')
+    expect(screen.getByRole('button', { name: /가상환자d/ }).textContent).toContain('메모 바꿈')
+    expect(list.textContent).toContain('비트에 있는 메모')
     expect(list.textContent).toContain('비트에 있는 글')
     expect(list.textContent).toContain('우리 메모 d')
     await userEvent.setup().click(screen.getByRole('button', { name: '바꾸지 않기' }))
     expect(on.onApprove).toHaveBeenCalledWith('d', false)
   })
 
-  it(`AC-018.14: 묻지 않기가 켜지면 '메모 바꿈 · 묻지 않기' 칩이고 단추가 없고 두 메모는 보인다`, () => {
-    show(targets({ batch: [row('d', { compare: '다름', inBit: '비트에 있는 글', chip: '메모 바꿈 · 묻지 않기' })], replacing: 1 }))
+  it(`AC-018.14: '메모 바꿈' 줄에는 [바꾸지 않기]만 있고(묻지 않기가 켜져 있어도 같은 줄이다) 두 메모는 보인다`, () => {
+    show(targets({ batch: [row('d', { compare: '다름', inBit: '비트에 있는 글', replaces: '비트에 있는 글', chip: '메모 바꿈' })], replacing: 1 }))
     expect(screen.queryByRole('button', { name: '이 메모로 바꾸기' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '바꾸지 않기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '바꾸지 않기' })).toBeTruthy()
     expect(screen.getByRole('region', { name: '입력할 사람과 빠지는 사람' }).textContent).toContain('비트에 있는 글')
   })
 
+  it(`AC-018.14: '새 메모' 줄에는 [바꾸지 않기]가 없다`, () => {
+    show(targets({ batch: [row('a')] }))
+    expect(screen.queryByRole('button', { name: '바꾸지 않기' })).toBeNull()
+  })
+
   it('AC-018.14: 비트 메모를 읽는 동안 [이 메모로 바꾸기]를 누를 수 없고, 입력 중에는 두 단추 다 못 누른다', () => {
-    const value = targets({ batch: [row('b', { compare: '다름', inBit: '글', replaces: '글', chip: '메모 바꿈 · 승인함' })], left: [{ reason: 'diff', rows: [diff] }] })
+    const value = targets({ batch: [row('b', { compare: '다름', inBit: '글', replaces: '글', chip: '메모 바꿈' })], left: [{ reason: 'diff', rows: [diff] }] })
     show(value, { reading: true })
     expect((screen.getByRole('button', { name: '이 메모로 바꾸기' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: '바꾸지 않기' }) as HTMLButtonElement).disabled).toBe(false)

@@ -225,7 +225,7 @@ export type StoreLoadJson = { months?: Record<string, StoreMonthJson>; contact?:
 export type MemoCompare = '같음' | '다름' | '비트에 없음' | '조회 못함'
 /** 받아 둔 claim.memos: 읽은 기간과 내원번호 → 줄(chart는 앞 0을 뺀 차트번호) */
 export type BitMemos = { period: DateRange; rows: Map<string, { chart: string; memo: string }> }
-/** 진료 하나의 비교 상태. inBit은 같음·다름일 때만, approved는 지금 비트 메모와 같은 승인일 때만, lastJournal은 입력 기록이 있을 때만 칸이 있다 */
+/** 진료 하나의 비교 상태. inBit은 같음·다름일 때만, approved는 지금 비트 메모와 같은 승인일 때만, declined는 비교가 다름이고 [바꾸지 않기]를 눌렀을 때만, lastJournal은 입력 기록이 있을 때만 칸이 있다 */
 export type VisitMemo = {
   key: string
   date: string
@@ -235,9 +235,10 @@ export type VisitMemo = {
   compare: MemoCompare
   inBit?: string
   approved?: string
+  declined?: true
   lastJournal?: string
 }
-/** 입력 묶음 줄. replaces는 승인한 비트 메모이고 승인하지 않았으면 칸이 없다(AC-037.1) */
+/** 입력 묶음 줄. replaces는 지금 쥔 비트 메모이고 비교가 다름이 아니면 칸이 없다(AC-016.3·AC-037.1) */
 export type InputPlanRow = VisitMemo & { replaces?: string }
 /** 입력 묶음과 빠지는 사람(AC-016.3). 메모 없음·확인 표시·조회 못함은 AC-018.26의 묶음 까닭이다 */
 export type InputPlan = {
@@ -247,8 +248,8 @@ export type InputPlan = {
 }
 /** 날짜별 수(AC-016.4, REQ-019 건수의 재료): 메모 필요 · 입력(같음) · 이미 있음(다름). 입력 수는 메모 필요 수를 넘지 않는다 */
 export type DayMemoCount = { date: string; needMemo: number; entered: number; already: number }
-/** jobs.memoState 옵션. visible은 고른 기간(AC-013.13), noAsk는 묻지 않기(기본 거짓, AC-018.22), approved는 사람마다 승인(AC-018.14) */
-export type MemoStateOptions = { visible: DateRange; noAsk?: boolean; approved?: ReadonlyMap<string, string> }
+/** jobs.memoState 옵션. visible은 고른 기간(AC-013.13), approved는 직접 확인 기록이 남은 사람의 승인, declined는 [바꾸지 않기]를 누른 사람(AC-018.14) */
+export type MemoStateOptions = { visible: DateRange; approved?: ReadonlyMap<string, string>; declined?: ReadonlySet<string> }
 /** 고른 기간의 비교·입력 묶음·날짜별 수. 환자 글자가 들어 있어 Worker와 환자 줄 화면(components/claim/rows) 밖으로 나가지 않는다 */
 export type MemoState = { memoBlocked: MemoViews['memoBlocked']; rows: VisitMemo[]; plan: InputPlan; days: DayMemoCount[] }
 
@@ -280,7 +281,7 @@ export type LeftReason = 'done' | 'nomemo' | 'mark' | 'manual' | 'diff' | 'unrea
 /** 대상 고르기에 넣는 진료 한 줄: 비교 상태 + 차트번호·이름·처방 코드·처방 이름·규칙 경고 있음 */
 export type TargetVisit = VisitMemo & { chart: string; name: string; rx: readonly string[]; rxNames: readonly string[]; warned: boolean }
 /** 목록 한 줄. sameDay는 같은 사람 같은 날 진료 수, foundByPc는 도우미가 찾아낸 직접 입력(AC-018.13). chip은 입력할 사람에게만 있다 */
-export type TargetRow = TargetVisit & { replaces?: string; sameDay: number; foundByPc: boolean; chip: '새 메모' | '메모 바꿈 · 승인함' | '메모 바꿈 · 묻지 않기' | null }
+export type TargetRow = TargetVisit & { replaces?: string; sameDay: number; foundByPc: boolean; chip: '새 메모' | '메모 바꿈' | null }
 export type CodeChip = { code: string; name: string; count: number }
 /** 고른 조건의 결과(AC-018.26). problem은 고르는 즉시 보이는 안내(AC-018.9~AC-018.11·AC-018.20·AC-018.23), code는 묶음과 함께 보낼 코드(날짜별은 null), replacing은 입력할 사람 가운데 다른 메모가 바뀌는 수 */
 export type InputTargets = { problem: string | null; range: DateRange | null; code: string | null; batch: TargetRow[]; left: { reason: LeftReason; rows: TargetRow[] }[]; chips: CodeChip[]; typedOverChip: boolean; replacing: number }

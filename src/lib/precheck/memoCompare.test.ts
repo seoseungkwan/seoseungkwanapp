@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { BitMemos, ClaimMemosJson, MemoCompare, Visit, VisitMemo, VisitMemoView } from '@/types/precheck'
-import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, readBitMemos, visitMemos } from './memoCompare'
+import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, readBitMemos, replacesOf, visitMemos } from './memoCompare'
 
 // 비트 메모 비교(REQ-016). 메모는 모두 지어낸 것이다.
 // 비교 사례는 도우미 시험(helper/tests/Precheck.Core.Tests/Claim/MemoCompare.test.cs)과 같은 파일을 읽는다: 두 쪽이 같은 답을 내야 두 번 입력을 막는다(AC-016.2·AC-035.3)
@@ -44,7 +44,7 @@ describe('AC-016.3 inputPlan: 비트에 다른 메모가 있는 진료', () => {
   const OTHER = row({ key: 'v1', compare: '다름', inBit: '비트 메모' })
 
   it('AC-016.3: 비트에 없으면 replaces 없이 묶음에 든다', () => {
-    const plan = inputPlan([row({ key: 'v1' })], false)
+    const plan = inputPlan([row({ key: 'v1' })])
     expect(keys(plan.batch)).toEqual(['v1'])
     expect(plan.batch[0]).not.toHaveProperty('replaces')
     expect(plan.done).toEqual([])
@@ -52,63 +52,90 @@ describe('AC-016.3 inputPlan: 비트에 다른 메모가 있는 진료', () => {
   })
 
   it('AC-016.3: 같으면 완료(이미 입력됨)이고 묶음에 없다', () => {
-    const plan = inputPlan([row({ key: 'v1', compare: '같음', inBit: '우리 메모' })], false)
+    const plan = inputPlan([row({ key: 'v1', compare: '같음', inBit: '우리 메모' })])
     expect(plan.batch).toEqual([])
     expect(plan.done).toEqual([{ key: 'v1', reason: '이미 입력됨' }])
   })
 
-  it('AC-016.3: 묻지 않기가 꺼져 있으면 승인하지 않은 진료는 건너뜀(이미 있음)이다', () => {
-    const plan = inputPlan([OTHER], false)
-    expect(plan.batch).toEqual([])
-    expect(plan.skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
-  })
-
-  it('AC-016.3: 사람마다 승인한 진료는 승인한 비트 메모를 replaces로 넣는다', () => {
-    const plan = inputPlan([{ ...OTHER, approved: '비트 메모' }], false)
+  it('AC-016.3: 승인하지 않아도 다름이면 지금 비트 글을 replaces로 묶음에 넣는다', () => {
+    const plan = inputPlan([OTHER])
     expect(keys(plan.batch)).toEqual(['v1'])
     expect(plan.batch[0].replaces).toBe('비트 메모')
     expect(plan.skipped).toEqual([])
   })
 
-  it('AC-016.3: 묻지 않기가 켜져 있으면 승인하지 않은 진료도 replaces 없이 넣는다', () => {
-    const plan = inputPlan([OTHER], true)
+  it('AC-016.3: replaces는 승인해 둔 글이 아니라 지금 쥔 글이다', () => {
+    const plan = inputPlan([{ ...OTHER, inBit: '가\n나', approved: '가\r\n나' }])
+    expect(plan.batch[0].replaces).toBe('가\n나')
+    expect(plan.skipped).toEqual([])
+  })
+
+  it('AC-016.3: [바꾸지 않기]를 누른 사람은 묶음에 없고 이미 있음이다(승인이 남아 있어도)', () => {
+    for (const declined of [{ ...OTHER, declined: true as const }, { ...OTHER, declined: true as const, approved: '비트 메모' }]) {
+      const plan = inputPlan([declined])
+      expect(plan.batch).toEqual([])
+      expect(plan.skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
+    }
+  })
+
+  it('AC-016.3: 마지막 기록이 skippedByHand면 빠지고, [이 메모로 바꾸기]로 승인이 있으면 replaces로 든다', () => {
+    const byHand = { ...OTHER, lastJournal: 'skippedByHand' }
+    const off = inputPlan([byHand])
+    expect(off.batch).toEqual([])
+    expect(off.skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
+    const approved = inputPlan([{ ...byHand, approved: '비트 메모' }])
+    expect(keys(approved.batch)).toEqual(['v1'])
+    expect(approved.batch[0].replaces).toBe('비트 메모')
+  })
+
+  it.each(['writing', 'done', 'skipped', 'check', 'writeUnconfirmed'])('AC-016.3: 마지막 기록이 %s이면 막지 않는다(skippedByHand만 막는다)', (state) => {
+    const plan = inputPlan([{ ...OTHER, lastJournal: state }])
+    expect(keys(plan.batch)).toEqual(['v1'])
+    expect(plan.batch[0].replaces).toBe('비트 메모')
+  })
+
+  it('AC-016.3: skippedByHand여도 칸이 비었으면(비트에 없음) 그대로 넣는다', () => {
+    const plan = inputPlan([row({ key: 'v1', lastJournal: 'skippedByHand' })])
     expect(keys(plan.batch)).toEqual(['v1'])
     expect(plan.batch[0]).not.toHaveProperty('replaces')
   })
 
-  it('AC-016.3: 묻지 않기가 켜져 있어도 승인한 진료는 replaces를 싣는다', () => {
-    expect(inputPlan([{ ...OTHER, approved: '비트 메모' }], true).batch[0].replaces).toBe('비트 메모')
-  })
-
-  it('AC-016.3: 마지막 기록이 skippedByHand면 묻지 않기가 켜져 있어도 빠지고, 승인하면 replaces로 든다', () => {
-    const byHand = { ...OTHER, lastJournal: 'skippedByHand' }
-    const off = inputPlan([byHand], true)
-    expect(off.batch).toEqual([])
-    expect(off.skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
-    for (const noAsk of [false, true]) {
-      const approved = inputPlan([{ ...byHand, approved: '비트 메모' }], noAsk)
-      expect(keys(approved.batch)).toEqual(['v1'])
-      expect(approved.batch[0].replaces).toBe('비트 메모')
-    }
-  })
-
-  it.each(['writing', 'done', 'skipped', 'check', 'writeUnconfirmed'])('AC-016.3: 마지막 기록이 %s이면 묻지 않기를 막지 않는다(skippedByHand만 막는다)', (state) => {
-    expect(keys(inputPlan([{ ...OTHER, lastJournal: state }], true).batch)).toEqual(['v1'])
-  })
-
-  it('AC-016.3: skippedByHand여도 칸이 비었으면(비트에 없음) 그대로 넣는다', () => {
-    expect(keys(inputPlan([row({ key: 'v1', lastJournal: 'skippedByHand' })], false).batch)).toEqual(['v1'])
-  })
-
   it('AC-016.3: 넣는 차례는 받은 차례 그대로다', () => {
-    const plan = inputPlan([row({ key: 'v2' }), { ...OTHER, key: 'v3', approved: 'x' }, row({ key: 'v1' })], false)
+    const plan = inputPlan([row({ key: 'v2' }), { ...OTHER, key: 'v3', approved: 'x' }, row({ key: 'v1' })])
     expect(keys(plan.batch)).toEqual(['v2', 'v3', 'v1'])
+  })
+
+  it.each<[string, Partial<VisitMemo>, string]>([
+    ['메모 없음', { hasMemo: false }, '메모 없음'],
+    ['공백뿐인 메모', { text: '   ' }, '메모 없음'],
+    ['확인 표시', { unfinished: true }, '확인 표시'],
+  ])('AC-016.3: 앞선 까닭(%s)이 다름보다 먼저라 replaces로 들지 않는다', (_, over, reason) => {
+    const plan = inputPlan([{ ...OTHER, ...over }])
+    expect(plan.batch).toEqual([])
+    expect(plan.skipped).toEqual([{ key: 'v1', reason }])
+  })
+
+  it('AC-016.3: 같음·비트에 없음·조회 못함이면 replacesOf는 글을 주지 않는다', () => {
+    expect(replacesOf(row({ key: 'v1', compare: '같음', inBit: '우리 메모' }))).toBeUndefined()
+    expect(replacesOf(row({ key: 'v1' }))).toBeUndefined()
+    expect(replacesOf(row({ key: 'v1', compare: '조회 못함' }))).toBeUndefined()
+  })
+
+  it('AC-016.3: 확인 표시가 남은 메모는 다름이어도 replacesOf가 글을 주지 않는다(AC-018.26 차례)', () => {
+    expect(replacesOf({ ...OTHER, unfinished: true })).toBeUndefined()
+  })
+
+  it('AC-016.3: replacesOf는 inputPlan과 같은 답을 낸다(한 곳에서 정한다)', () => {
+    const rows = [OTHER, { ...OTHER, key: 'v2', declined: true as const }, { ...OTHER, key: 'v3', lastJournal: 'skippedByHand' }, { ...OTHER, key: 'v4', lastJournal: 'skippedByHand', approved: '비트 메모' }]
+    const plan = inputPlan(rows)
+    expect(rows.map(replacesOf)).toEqual(['비트 메모', undefined, undefined, '비트 메모'])
+    expect(plan.batch.map((r) => [r.key, r.replaces])).toEqual([['v1', '비트 메모'], ['v4', '비트 메모']])
   })
 })
 
 describe('AC-016.2 inputPlan: 조회 못함은 빈칸이 아니다', () => {
-  it.each([false, true])('AC-016.2: 조회 못함은 묻지 않기(%s)와 승인에 상관없이 묶음에 없다', (noAsk) => {
-    const plan = inputPlan([row({ key: 'v1', compare: '조회 못함' }), row({ key: 'v2', compare: '조회 못함', approved: '옛 글' })], noAsk)
+  it('AC-016.2: 조회 못함은 승인에 상관없이 묶음에 없다', () => {
+    const plan = inputPlan([row({ key: 'v1', compare: '조회 못함' }), row({ key: 'v2', compare: '조회 못함', approved: '옛 글' })])
     expect(plan.batch).toEqual([])
     expect(plan.skipped).toEqual([
       { key: 'v1', reason: '조회 못함' },
@@ -121,11 +148,8 @@ describe('AC-016.3 inputPlan: 메모가 없는 진료는 글자가 아니라 has
   // 메모가 없는 날에 사람이 직접 친 글: 글자는 있고 hasMemo는 거짓, unfinished도 거짓이다
   const TYPED = { hasMemo: false, text: '사람이 직접 친 글', unfinished: false }
 
-  it.each([false, true])('AC-016.3: 메모 없는 날에 사람이 친 글은 묶음에 들지 않는다(묻지 않기 %s)', (noAsk) => {
-    const plan = inputPlan(
-      [row({ key: 'v1', ...TYPED }), row({ key: 'v2', ...TYPED, compare: '다름', inBit: '다른 글' }), row({ key: 'v3', ...TYPED, compare: '다름', inBit: '다른 글', approved: '다른 글' })],
-      noAsk,
-    )
+  it('AC-016.3: 메모 없는 날에 사람이 친 글은 묶음에 들지 않는다', () => {
+    const plan = inputPlan([row({ key: 'v1', ...TYPED }), row({ key: 'v2', ...TYPED, compare: '다름', inBit: '다른 글' }), row({ key: 'v3', ...TYPED, compare: '다름', inBit: '다른 글', approved: '다른 글' })])
     expect(plan.batch).toEqual([])
     expect(plan.skipped).toEqual([
       { key: 'v1', reason: '메모 없음' },
@@ -135,26 +159,23 @@ describe('AC-016.3 inputPlan: 메모가 없는 진료는 글자가 아니라 has
   })
 
   it('AC-016.3: 메모 없는 진료도 비트와 같으면 완료가 앞선다(AC-018.26 차례)', () => {
-    const plan = inputPlan([row({ key: 'v1', ...TYPED, compare: '같음', inBit: TYPED.text })], false)
+    const plan = inputPlan([row({ key: 'v1', ...TYPED, compare: '같음', inBit: TYPED.text })])
     expect(plan.done).toEqual([{ key: 'v1', reason: '이미 입력됨' }])
     expect(plan.skipped).toEqual([])
   })
 
   it.each(['', '   ', '\r\n\t'])('AC-016.3: 메모가 있어야 하는 진료인데 글이 공백뿐(%j)이면 넣지 않는다(빈 메모 하나가 묶음 전체를 거절시키지 않게, AC-017.1)', (text) => {
-    const plan = inputPlan([row({ key: 'v1', text }), row({ key: 'v2' })], true)
+    const plan = inputPlan([row({ key: 'v1', text }), row({ key: 'v2' })])
     expect(keys(plan.batch)).toEqual(['v2'])
     expect(plan.skipped).toEqual([{ key: 'v1', reason: '메모 없음' }])
   })
 
-  it('AC-016.3: 확인 표시가 남은 메모는 묻지 않기·승인과 상관없이 넣지 않는다(AC-018.26 차례: 조회 못함·다름보다 앞선다)', () => {
-    const plan = inputPlan(
-      [
-        row({ key: 'v1', unfinished: true }),
-        row({ key: 'v2', unfinished: true, compare: '다름', inBit: '다른 글', approved: '다른 글' }),
-        row({ key: 'v3', unfinished: true, compare: '조회 못함' }),
-      ],
-      true,
-    )
+  it('AC-016.3: 확인 표시가 남은 메모는 승인과 상관없이 넣지 않는다(AC-018.26 차례: 조회 못함·다름보다 앞선다)', () => {
+    const plan = inputPlan([
+      row({ key: 'v1', unfinished: true }),
+      row({ key: 'v2', unfinished: true, compare: '다름', inBit: '다른 글', approved: '다른 글' }),
+      row({ key: 'v3', unfinished: true, compare: '조회 못함' }),
+    ])
     expect(plan.batch).toEqual([])
     expect(plan.skipped.map((s) => s.reason)).toEqual(['확인 표시', '확인 표시', '확인 표시'])
   })
@@ -184,6 +205,10 @@ describe('AC-016.4 dayMemoCounts: 날짜마다 메모 필요 수·입력 수·�
   // DB 제약(design.md 8-2, AC-019.2): entered는 need_memo를 넘을 수 없다
   it.each<MemoCompare>(['같음', '다름'])('AC-016.4: 메모 없는 진료가 %s여도 입력 수·이미 있음 수에 넣지 않아 입력 수가 메모 필요 수를 넘지 않는다', (compare) => {
     expect(dayMemoCounts([row({ key: 'a1', hasMemo: false, compare })])).toEqual([{ date: '2026-10-12', needMemo: 0, entered: 0, already: 0 }])
+  })
+
+  it('AC-016.4: 이미 있음 수는 비교가 다름인 수다: 곧 바뀔 사람과 [바꾸지 않기]를 누른 사람이 함께 든다', () => {
+    expect(dayMemoCounts([row({ key: 'a1', compare: '다름', inBit: '글' }), row({ key: 'a2', compare: '다름', inBit: '글', declined: true }), row({ key: 'a3' })])).toEqual([{ date: '2026-10-12', needMemo: 3, entered: 0, already: 2 }])
   })
 
   it('AC-016.4: 진료가 있었으나 메모가 필요 없는 날도 0으로 남는다(아직 안 불러온 날로 보이지 않게)', () => {
@@ -303,13 +328,43 @@ describe('AC-016.6·AC-016.7 visitMemos: 진료마다 비교 상태', () => {
     expect(rows[1]).not.toHaveProperty('lastJournal')
   })
 
-  it('AC-016.3: 승인은 지금 보이는 비트 메모와 같을 때만 친다(글이 바뀌면 묶음에 replaces로 들지 않는다, AC-018.14)', () => {
+  it('AC-016.3: 직접 확인 기록이 있는 사람의 승인은 지금 보이는 비트 메모와 같을 때만 친다(글이 바뀌면 묶음에 replaces로 들지 않는다, AC-018.14)', () => {
     const memos = memosOf([{ v: 'v1', p: '1', m: '새 비트 메모' }])
-    const stale = visitMemos([visit('v1', '1')], [view('v1')], { atLoad: memos, latest: memos, journal: none, approved: new Map([['v1', '옛 비트 메모']]) })
+    const journal = new Map([['v1', 'skippedByHand']])
+    const stale = visitMemos([visit('v1', '1')], [view('v1')], { atLoad: memos, latest: memos, journal, approved: new Map([['v1', '옛 비트 메모']]) })
     expect(stale[0]).not.toHaveProperty('approved')
-    expect(inputPlan(stale, false).skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
-    const same = visitMemos([visit('v1', '1')], [view('v1')], { atLoad: memos, latest: memos, journal: none, approved: new Map([['v1', '새 비트 메모']]) })
-    expect(inputPlan(same, false).batch[0].replaces).toBe('새 비트 메모')
+    expect(inputPlan(stale).skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
+    const same = visitMemos([visit('v1', '1')], [view('v1')], { atLoad: memos, latest: memos, journal, approved: new Map([['v1', '새 비트 메모']]) })
+    expect(inputPlan(same).batch[0].replaces).toBe('새 비트 메모')
+  })
+
+  it('AC-018.14: declined 칸은 비교가 다름일 때만 있다: 같음·비트에 없음이 되면 표시와 상관없이 그 비교대로다', () => {
+    const memos = memosOf([{ v: 'v1', p: '1', m: '비트 메모' }, { v: 'v2', p: '2', m: '우리 메모' }])
+    const declined = new Set(['v1', 'v2', 'v3'])
+    const rows = visitMemos([visit('v1', '1'), visit('v2', '2'), visit('v3', '3')], [view('v1'), view('v2'), view('v3')], { atLoad: memos, latest: memos, journal: none, declined })
+    expect(rows.map((r) => r.compare)).toEqual(['다름', '같음', '비트에 없음'])
+    expect(rows[0].declined).toBe(true)
+    expect(rows[1]).not.toHaveProperty('declined')
+    expect(rows[2]).not.toHaveProperty('declined')
+    const plan = inputPlan(rows)
+    expect(plan.skipped).toEqual([{ key: 'v1', reason: '이미 있음' }])
+    expect(plan.done).toEqual([{ key: 'v2', reason: '이미 입력됨' }])
+    expect(keys(plan.batch)).toEqual(['v3'])
+  })
+
+  it('AC-016.6: 4,000자는 다름이고 replaces로 들고, 4,001자는 그 진료만 조회 못함이라 묶음에 없고 나머지는 산다', () => {
+    const full = '글'.repeat(4000)
+    const over = '글'.repeat(4001)
+    const memos = memosOf([{ v: 'v1', p: '1', m: full }, { v: 'v2', p: '2', m: over }, { v: 'v3', p: '3', m: '비트 메모' }])
+    expect(bitMemoOf(memos, visit('v1', '1'))).toBe(full)
+    expect(bitMemoOf(memos, visit('v2', '2'))).toBeUndefined()
+    const rows = visitMemos([visit('v1', '1'), visit('v2', '2'), visit('v3', '3')], [view('v1'), view('v2'), view('v3')], { atLoad: memos, latest: memos, journal: none })
+    expect(rows.map((r) => r.compare)).toEqual(['다름', '조회 못함', '다름'])
+    expect(rows[1]).not.toHaveProperty('inBit')
+    const plan = inputPlan(rows)
+    expect(plan.batch.map((r) => r.replaces)).toEqual([full, '비트 메모'])
+    expect(plan.skipped).toEqual([{ key: 'v2', reason: '조회 못함' }])
+    for (const r of plan.batch) expect(r.replaces!.length).toBeLessThanOrEqual(4000)
   })
 
   it('AC-014.8: 메모를 만들지 않은 진료는 줄이 없다', () => {

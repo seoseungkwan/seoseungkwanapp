@@ -1361,7 +1361,7 @@ describe('AC-016 비트 메모 자료를 받아 비교한다', { timeout: 30_000
     it('AC-016.3: 사람이 직접 친 글이 있어도 메모 없는 진료는 묶음에 들지 않는다', async () => {
       const made = await withMemos([])
       await givePart(made.jobs, 'store', 's1', storeJson({ drafts: { [NO_MEMO.key]: '사람이 직접 친 글' } }), 1)
-      const state = await stateOf(made.jobs, { noAsk: true })
+      const state = await stateOf(made.jobs)
       const row = state.rows.find((r) => r.key === NO_MEMO.key)!
       expect(row).toMatchObject({ text: '사람이 직접 친 글', hasMemo: false, unfinished: false })
       expect(state.plan.batch.map((r) => r.key)).not.toContain(NO_MEMO.key)
@@ -1410,14 +1410,21 @@ describe('AC-016 비트 메모 자료를 받아 비교한다', { timeout: 30_000
       expect(textOf(C.key).text).not.toBe('true')
     })
 
-    it('AC-016.3: 입력 기록의 skippedByHand는 store.load로 알고, 묻지 않기가 켜져 있어도 승인 없이 넣지 않는다', async () => {
+    it('AC-016.3: 입력 기록의 skippedByHand는 store.load로 알고, 승인 없이 넣지 않는다', async () => {
       const made = await withMemos([memoRow(A, '비트 메모'), memoRow(B, '비트 메모')])
       await givePart(made.jobs, 'store', 's1', storeJson({ journal: { [A.key]: 'skippedByHand', [B.key]: 'done' } }), 1)
-      const on = await stateOf(made.jobs, { noAsk: true })
+      const on = await stateOf(made.jobs)
       expect(on.plan.skipped).toContainEqual({ key: A.key, reason: '이미 있음' })
-      expect(on.plan.batch.map((row) => row.key)).toContain(B.key)
-      const approved = await stateOf(made.jobs, { noAsk: true, approved: new Map([[A.key, '비트 메모']]) })
+      expect(on.plan.batch.find((row) => row.key === B.key)?.replaces).toBe('비트 메모')
+      const approved = await stateOf(made.jobs, { approved: new Map([[A.key, '비트 메모']]) })
       expect(approved.plan.batch.find((row) => row.key === A.key)?.replaces).toBe('비트 메모')
+    })
+
+    it('AC-016.3: memoState의 declined를 받으면 그 사람은 묶음에 없다', async () => {
+      const { jobs } = await withMemos([memoRow(A, '비트 메모'), memoRow(B, '비트 메모')])
+      const state = await stateOf(jobs, { declined: new Set([A.key]) })
+      expect(state.plan.skipped).toContainEqual({ key: A.key, reason: '이미 있음' })
+      expect(state.plan.batch.find((row) => row.key === B.key)?.replaces).toBe('비트 메모')
     })
 
     it('AC-016.5: 새 loadStart는 전에 받은 비트 메모·고친 메모·입력 기록을 모두 버린다', async () => {
@@ -1455,8 +1462,9 @@ describe('AC-016 비트 메모 자료를 받아 비교한다', { timeout: 30_000
       const after = await stateOf(jobs)
       expect(after.rows.find((row) => row.key === A.key)?.inBit).toBe('두 번째 메모')
       expect(compareOf(after, B.key)).toBe('다름')
-      expect(after.plan.batch.map((row) => row.key)).not.toContain(B.key)
-      expect(after.plan.skipped).toContainEqual({ key: B.key, reason: '이미 있음' })
+      expect(after.plan.batch.find((row) => row.key === A.key)?.replaces).toBe('두 번째 메모')
+      expect(after.plan.batch.find((row) => row.key === B.key)?.replaces).toBe(SECOND.find((row) => row.v === B.key)?.m)
+      expect(after.plan.skipped).not.toContainEqual({ key: B.key, reason: '이미 있음' })
       expect(after.days[0].already).toBe(before.days[0].already + 1)
 
       expect(jobs.month()).toBe(month)
@@ -1591,8 +1599,20 @@ describe('AC-016 비트 메모 자료를 받아 비교한다', { timeout: 30_000
       expect(new Set((await stateOf(jobs)).rows.map((row) => row.compare))).toEqual(new Set(['조회 못함']))
     })
 
-    it('AC-016.7: 승인한 글이 달라진 사람은 입력 대상에서 빠지고, 글이 그대로인 사람은 남는다(AC-018.14)', async () => {
+    it('AC-016.7: 성공한 다시 불러오기 뒤에는 다름인 사람의 replaces가 새 글이다', async () => {
       const { jobs } = await withMemos([memoRow(A, '처음 메모'), memoRow(B, '그대로인 메모')])
+      const replacesIn = (state: MemoState, key: string) => state.plan.batch.find((row) => row.key === key)?.replaces
+      const before = await stateOf(jobs)
+      expect([replacesIn(before, A.key), replacesIn(before, B.key)]).toEqual(['처음 메모', '그대로인 메모'])
+      await reloadStart(jobs, 1)
+      await giveReload(jobs, 'r1', memosJson([memoRow(A, '바뀐 메모'), memoRow(B, '그대로인 메모')]), 1, 1)
+      const after = await stateOf(jobs)
+      expect([replacesIn(after, A.key), replacesIn(after, B.key)]).toEqual(['바뀐 메모', '그대로인 메모'])
+    })
+
+    it('AC-016.7: 직접 확인 기록이 있는 사람은 승인한 글이 달라지면 입력 대상에서 빠지고, 글이 그대로면 남는다(AC-018.14)', async () => {
+      const { jobs } = await withMemos([memoRow(A, '처음 메모'), memoRow(B, '그대로인 메모')])
+      await givePart(jobs, 'store', 's1', storeJson({ journal: { [A.key]: 'skippedByHand', [B.key]: 'skippedByHand' } }), 1)
       const approved = new Map([
         [A.key, '처음 메모'],
         [B.key, '그대로인 메모'],
@@ -1775,10 +1795,15 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     return done.result
   }
   /** A·B·C만 입력할 사람인 달: 고른 날의 나머지는 완료 표시로 뺀다 */
-  const threeOnly = async () => {
+  const threeOnly = async (bit: MemoRowRaw[] = []) => {
     const others = batchKeys(await viewOf(await ready())).filter((key) => ![A.key, B.key, C.key].includes(key))
-    return ready({ store: { done: Object.fromEntries(others.map((key) => [key, true])) } })
+    return ready({ bit, store: { done: Object.fromEntries(others.map((key) => [key, true])) } })
   }
+  /** [바꾸지 않기] */
+  const decline = (made: Made, key: string) => made.jobs.fromScreen({ type: 'memoApprove', visitKey: key, approved: false } satisfies PrecheckFromScreen)
+  const itemIn = (sent: { payload: { items: Item[] } | null }, key: string) => sent.payload?.items.find((item) => item.visitKey === key)
+  /** 도우미가 쓰기를 시작해 저장을 확인하지 못한 줄(AC-018.16) */
+  const WRITE_STUCK = '입력은 했지만 임시저장 버튼을 누르지 못했습니다. 직접 임시저장을 눌러 주세요.'
   const CHECK_AGAIN = (check: number, settings: unknown = SETTINGS) => ({ type: 'check', check, load: 1, visible: DAY, settings }) as PrecheckFromScreen
   /** 자동 메모 글이 달라지는 설정 */
   const CHANGED: CheckSettings = (() => {
@@ -2035,15 +2060,14 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect(resume.payload?.items.find((item) => item.visitKey === B.key)?.memo).toBe('사람이 고친 글')
     })
 
-    it('AC-018.14: [이어서 하기]의 replaces는 지금 승인이다: 그새 풀린 승인을 싣지 않는다', async () => {
+    it('AC-018.14: [이어서 하기]는 그새 [바꾸지 않기]를 누른 사람을 보내지 않는다', async () => {
       const made = await ready({ bit: [memoRow(A, '비트 글')] })
-      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: true } satisfies PrecheckFromScreen)
       const first = await press(made)
       expect(first.payload?.items.find((item) => item.visitKey === A.key)?.replaces).toBe('비트 글')
       await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', '미처리')] })
       await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: false } satisfies PrecheckFromScreen)
       const resume = await press(made, 'resume')
-      expect(resume.payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+      expect(resume.payload?.items.find((item) => item.visitKey === A.key)).toBeUndefined()
     })
   })
 
@@ -2114,62 +2138,229 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
   })
 
-  describe('AC-018.14 사람마다 승인', () => {
+  describe('AC-018.14 [바꾸지 않기]와 직접 확인 기록의 승인', () => {
     const FIRST = [memoRow(A, '처음 메모')]
+    /** 직접 확인 기록이 남은 사람: 이 사람의 승인만 전 규칙 그대로다(AC-018.14) */
+    const HAND = { journal: { [A.key]: 'skippedByHand', [B.key]: 'skippedByHand' } }
     const approve = (made: Made, key: string, approved = true) => made.jobs.fromScreen({ type: 'memoApprove', visitKey: key, approved } satisfies PrecheckFromScreen)
     const reload = async (made: Made, run: number, text: string) => {
       await made.jobs.fromScreen({ type: 'memoReloadStart', run } satisfies PrecheckFromScreen)
       await stream(made.jobs, `r${run}`, text)
       await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: `r${run}`, load: 1, run } satisfies PrecheckFromScreen)
     }
+    const batchRow = (view: MemoScreenView, key: string) => view.targets.batch.find((row) => row.key === key)
 
-    it('AC-018.14: 누르면 보인 비트 메모를 replaces로 담아 입력할 사람으로 옮기고, [바꾸지 않기]는 푼다', async () => {
+    it(`AC-018.14: 다른 메모는 승인 없이 '메모 바꿈'으로 들고, [바꾸지 않기]는 '다른 메모 있음'으로 옮기고, [이 메모로 바꾸기]로 돌아오면 지금 글을 replaces로 든다`, async () => {
       const made = await ready({ bit: FIRST })
+      const before = await viewOf(made)
+      expect(batchRow(before, A.key)).toMatchObject({ replaces: '처음 메모', chip: '메모 바꿈' })
+      expect(before.targets.replacing).toBe(1)
+      expect(keysIn(before, 'diff')).toEqual([])
+      await decline(made, A.key)
+      const out = await viewOf(made)
+      expect(keysIn(out, 'diff')).toEqual([A.key])
+      expect(batchRow(out, A.key)).toBeUndefined()
+      expect(out.targets.replacing).toBe(0)
+      await reload(made, 1, memosJson([memoRow(A, '바뀐 메모')]))
+      await approve(made, A.key)
+      const back = await viewOf(made)
+      expect(batchRow(back, A.key)).toMatchObject({ replaces: '바뀐 메모', chip: '메모 바꿈' })
+      expect(keysIn(back, 'diff')).toEqual([])
+    })
+
+    it('AC-018.14: [바꾸지 않기]를 누른 사람은 [비트에 입력]·[다시 하기]·[이어서 하기] 묶음에 없다(묻지 않기가 켜져 있어도)', async () => {
+      for (const noAsk of [false, true]) {
+        const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '다른 메모')] })
+        if (noAsk) await turnNoAskOn(made)
+        expect((await viewOf(made)).noAsk).toBe(noAsk)
+        // [다시 하기]: A·C가 내원일 없음으로 건너뜀. [이어서 하기]: B가 미처리이고 나머지는 줄이 없다
+        const first = await press(made)
+        expect(itemIn(first, A.key)?.replaces).toBe('다른 메모')
+        await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', noAsk, results: [line(A, '건너뜀', '내원일 없음'), line(C, '건너뜀', '내원일 없음'), line(B, '확인 필요', '미처리')] })
+        await decline(made, A.key)
+        await decline(made, B.key)
+        expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key, B.key])
+        const selection = await press(made)
+        expect(selection.payload).not.toBeNull()
+        expect(itemIn(selection, A.key)).toBeUndefined()
+        expect(itemIn(selection, B.key)).toBeUndefined()
+        await made.jobs.fromPort({ type: 'sent', ticket: selection.ticket, ok: false, code: 'E-BIT-READ-FAILED' })
+        const retry = await press(made, 'retry')
+        expect(retry.payload?.items.map((item) => item.visitKey)).toEqual([C.key])
+        await made.jobs.fromPort({ type: 'sent', ticket: retry.ticket, ok: false, code: 'E-BIT-READ-FAILED' })
+        const resume = await press(made, 'resume')
+        expect(resume.payload).not.toBeNull()
+        expect(itemIn(resume, A.key)).toBeUndefined()
+        expect(itemIn(resume, B.key)).toBeUndefined()
+      }
+    })
+
+    it('AC-018.14: [바꾸지 않기]는 우리 메모·비트 메모 글이 달라져도 그대로이고 새 [자료 불러오기]가 지운다', async () => {
+      const made = await ready({ bit: FIRST })
+      await decline(made, A.key)
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      await reload(made, 1, memosJson([memoRow(A, '바뀐 메모')]))
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      // 바꿀 메모가 없으면 표시와 상관없이 그 비교대로다
+      await reload(made, 2, memosJson([]))
+      const gone = await viewOf(made)
+      expect(keysIn(gone, 'diff')).toEqual([])
+      expect(batchRow(gone, A.key)).toMatchObject({ chip: '새 메모' })
+      expect(batchRow(gone, A.key)).not.toHaveProperty('replaces')
+      await reload(made, 3, memosJson([memoRow(A, '고친 글')]))
+      expect(keysIn(await viewOf(made), 'done')).toContain(A.key)
+      // 다시 다름이 되면 또 빠진다
+      await reload(made, 4, memosJson([memoRow(A, '또 다른 메모')]))
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      for (const keepEdits of [false, true]) {
+        const again = await ready({ bit: FIRST })
+        await decline(again, A.key)
+        await again.jobs.fromScreen({ type: 'loadStart', load: 2, ...(keepEdits ? { keepEdits } : {}) } satisfies PrecheckFromScreen)
+        await stream(again.jobs, 'month2', MEMO_MONTH)
+        await again.jobs.fromScreen({ type: 'month', id: 'month2', load: 2 } satisfies PrecheckFromScreen)
+        await stream(again.jobs, 'memos2', memosJson(FIRST))
+        await again.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+        await again.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+        expect(batchRow(await viewOf(again), A.key)).toMatchObject({ replaces: '처음 메모', chip: '메모 바꿈' })
+      }
+    })
+
+    it('AC-018.14: 쓰다 멈춘 사람은 [바꾸지 않기]여도 replaces 없이 [이어서 하기]·[이어서 입력] 묶음에 있다', async () => {
+      const made = await threeOnly([memoRow(A, '다른 메모')])
+      const first = await press(made)
+      expect(itemIn(first, A.key)?.replaces).toBe('다른 메모')
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: WRITE_STUCK, results: [line(A, '확인 필요', WRITE_STUCK), line(B, '확인 필요', '미처리')] })
+      await decline(made, A.key)
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key, C.key])
+      expect(itemIn(resume, A.key)).not.toHaveProperty('replaces')
+      await finish(made, resume.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: WRITE_STUCK, results: [line(A, '확인 필요', WRITE_STUCK)] })
+      const go = await press(made, 'continueStuck')
+      expect(go.payload?.items.map((item) => item.visitKey)).toEqual([A.key])
+      expect(itemIn(go, A.key)).not.toHaveProperty('replaces')
+      expect(itemIn(go, A.key)).not.toHaveProperty('checkedByHand')
+    })
+
+    it('AC-018.14: 고른 기간이 바뀌어 줄이 없어도 [바꾸지 않기]를 누른 사람은 [이어서 하기]에 없고, 누르지 않은 사람은 보낸 replaces 그대로다', async () => {
+      const made = await ready({ visible: OCTOBER, bit: [memoRow(A, '비트 글'), memoRow(B, '비트 글')] })
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', '미처리'), line(B, '확인 필요', '미처리')] })
+      await decline(made, A.key)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: { from: '2026-10-13', to: '2026-10-14' }, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const resume = await press(made, 'resume')
+      expect(itemIn(resume, A.key)).toBeUndefined()
+      expect(itemIn(resume, B.key)?.replaces).toBe('비트 글')
+    })
+
+    it('AC-018.21: [이어서 하기]에서 쓰다 멈춘 사람은 [바꾸지 않기]를 누르지 않았어도 replaces 없이 간다(AC-017.7)', async () => {
+      const made = await threeOnly([memoRow(A, '다른 메모')])
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: WRITE_STUCK, results: [line(A, '확인 필요', WRITE_STUCK), line(B, '확인 필요', '미처리')] })
+      const resume = await press(made, 'resume')
+      expect(itemIn(resume, A.key)).not.toHaveProperty('replaces')
+    })
+
+    it('AC-018.16: [이어서 입력] 묶음에는 replaces가 없다(승인·기본 길 모두)', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '다른 메모')], store: { journal: { [A.key]: 'writing', [B.key]: 'writeUnconfirmed' } } })
+      await approve(made, A.key)
+      const go = await press(made, 'continueStuck')
+      expect(go.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key])
+      expect(go.payload?.items.some((item) => 'replaces' in item)).toBe(false)
+    })
+
+    it('AC-016.3: [직접 확인했어요]로 보낸 사람은 사본을 적지 못한 답(unconfirmed) 뒤에도 다음 묶음에 없다(묻지 않기가 켜져 있어도)', async () => {
+      const made = await ready({ bit: FIRST })
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: A.key, date: DAY.from }, { visitKey: B.key, date: DAY.from }] })
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key])
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '건너뜀', '이미 있음')], unconfirmed: [{ visitKey: B.key, date: DAY.from }] })
+      expect(rowOf(await viewOf(made), A.key)).not.toHaveProperty('lastJournal')
+      const handB = await press(made, 'byHand')
+      await finish(made, handB.ticket, { status: 'finished', noAsk: true, results: [line(B, '건너뜀', '이미 있음')] })
+      const view = await viewOf(made)
+      expect(view.noAsk).toBe(true)
+      expect(view.stuck).toBeNull()
+      expect(rowOf(view, A.key)).not.toHaveProperty('lastJournal')
+      expect(keysIn(view, 'diff')).toEqual([A.key])
+      const next = await press(made)
+      expect(itemIn(next, A.key)).toBeUndefined()
+      await made.jobs.fromPort({ type: 'sent', ticket: next.ticket, ok: false, code: 'E-BIT-READ-FAILED' })
+      // 사람이 [이 메모로 바꾸기]를 누르면 지금 글을 replaces로 든다
+      await approve(made, A.key)
+      expect(itemIn(await press(made), A.key)?.replaces).toBe('처음 메모')
+    })
+
+    it('AC-016.8: 실패한 다시 불러오기는 [바꾸지 않기]·[이 메모로 바꾸기]와 replaces를 그대로 둔다', async () => {
+      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '또 다른 메모')] })
+      await decline(made, A.key)
+      await reload(made, 1, JSON.stringify({ version: 1, period: DAY, truncated: true, invalidRows: 0, rows: [] }))
+      const failed = await viewOf(made)
+      expect(keysIn(failed, 'diff')).toEqual([A.key])
+      expect(batchRow(failed, B.key)?.replaces).toBe('또 다른 메모')
+      await approve(made, A.key)
+      await reload(made, 2, 'not json')
+      expect(batchRow(await viewOf(made), A.key)?.replaces).toBe('처음 메모')
+    })
+
+    it('AC-016.7: 비트 글이 바뀌면 묶음의 replaces가 새 글이다', async () => {
+      const made = await ready({ bit: FIRST })
+      expect(batchRow(await viewOf(made), A.key)?.replaces).toBe('처음 메모')
+      await reload(made, 1, memosJson([memoRow(A, '바뀐 메모')]))
+      expect(batchRow(await viewOf(made), A.key)?.replaces).toBe('바뀐 메모')
+      expect(itemIn(await press(made), A.key)?.replaces).toBe('바뀐 메모')
+    })
+
+    it('AC-018.14: 직접 확인 기록이 있는 사람: 누르면 보인 비트 메모를 replaces로 담아 입력할 사람으로 옮기고, [바꾸지 않기]는 푼다', async () => {
+      const made = await ready({ bit: FIRST, store: HAND })
       expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
       await approve(made, A.key)
       const view = await viewOf(made)
-      expect(view.targets.batch.find((row) => row.key === A.key)).toMatchObject({ replaces: '처음 메모', chip: '메모 바꿈 · 승인함' })
+      expect(batchRow(view, A.key)).toMatchObject({ replaces: '처음 메모', chip: '메모 바꿈' })
       await approve(made, A.key, false)
       expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
     })
 
-    it('AC-018.14: 우리 메모를 고치면 승인이 풀린다', async () => {
-      const made = await ready({ bit: FIRST })
+    it('AC-018.14: 직접 확인 기록이 있는 사람은 우리 메모를 고치면 승인이 풀린다', async () => {
+      const made = await ready({ bit: FIRST, store: HAND })
       await approve(made, A.key)
       await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
       expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
     })
 
-    it('AC-018.14: 성공한 다시 불러오기는 글이 달라진 사람만 푼다', async () => {
-      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '그대로인 메모')] })
+    it('AC-018.14: 직접 확인 기록이 있는 사람: 성공한 다시 불러오기는 글이 달라진 사람만 푼다', async () => {
+      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '그대로인 메모')], store: HAND })
       await approve(made, A.key)
       await approve(made, B.key)
       await reload(made, 1, memosJson([memoRow(A, '바뀐 메모'), memoRow(B, '그대로인 메모')]))
       const view = await viewOf(made)
       expect(keysIn(view, 'diff')).toContain(A.key)
-      expect(view.targets.batch.find((row) => row.key === B.key)?.replaces).toBe('그대로인 메모')
+      expect(batchRow(view, B.key)?.replaces).toBe('그대로인 메모')
     })
 
-    it('AC-018.14: 글이 X→Y→X로 돌아와도 풀린 승인은 되살아나지 않는다', async () => {
-      const made = await ready({ bit: FIRST })
+    it('AC-018.14: 직접 확인 기록이 있는 사람: 글이 X→Y→X로 돌아와도 풀린 승인은 되살아나지 않는다', async () => {
+      const made = await ready({ bit: FIRST, store: HAND })
       await approve(made, A.key)
       await reload(made, 1, memosJson([memoRow(A, '바뀐 메모')]))
       await reload(made, 2, memosJson([memoRow(A, '처음 메모')]))
       expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
     })
 
-    it('AC-016.8: 실패한 다시 불러오기·옛 번호는 승인을 풀지 않는다', async () => {
-      const made = await ready({ bit: FIRST })
+    it('AC-016.8: 직접 확인 기록이 있는 사람: 실패한 다시 불러오기·옛 번호는 승인을 풀지 않는다', async () => {
+      const made = await ready({ bit: FIRST, store: HAND })
       await approve(made, A.key)
       await reload(made, 1, JSON.stringify({ version: 1, period: DAY, truncated: true, invalidRows: 0, rows: [] }))
       await made.jobs.fromScreen({ type: 'memoReloadStart', run: 3 } satisfies PrecheckFromScreen)
       await stream(made.jobs, 'old', memosJson([]))
       await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'old', load: 1, run: 2 } satisfies PrecheckFromScreen)
-      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+      expect(batchRow(await viewOf(made), A.key)?.replaces).toBe('처음 메모')
     })
 
-    it(`AC-018.14: [다시 점검]으로 자동 메모 글이 달라지면 승인이 풀려 '다른 메모 있음'으로 돌아가고, 글이 돌아와도 되살아나지 않는다`, async () => {
-      const made = await ready({ bit: FIRST })
+    it(`AC-018.14: 직접 확인 기록이 있는 사람: [다시 점검]으로 자동 메모 글이 달라지면 승인이 풀려 '다른 메모 있음'으로 돌아가고, 글이 돌아와도 되살아나지 않는다`, async () => {
+      const made = await ready({ bit: FIRST, store: HAND })
       await approve(made, A.key)
       const before = rowOf(await viewOf(made), A.key).text
       await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
@@ -2184,43 +2375,41 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect((await press(made)).payload?.items.map((item) => item.visitKey)).not.toContain(A.key)
     })
 
-    it('AC-018.14: [다시 점검]해도 글이 그대로이면(고친 메모 포함) 승인 그대로다', async () => {
-      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '다른 메모')], store: { drafts: { [B.key]: '사람이 고친 글' } } })
+    it('AC-018.14: 직접 확인 기록이 있는 사람: [다시 점검]해도 글이 그대로이면(고친 메모 포함) 승인 그대로다', async () => {
+      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '다른 메모')], store: { ...HAND, drafts: { [B.key]: '사람이 고친 글' } } })
       await approve(made, A.key)
       await approve(made, B.key)
       await made.jobs.fromScreen(CHECK_AGAIN(2))
       const same = await viewOf(made)
-      expect(same.targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
-      expect(same.targets.batch.find((row) => row.key === B.key)?.replaces).toBe('다른 메모')
+      expect(batchRow(same, A.key)?.replaces).toBe('처음 메모')
+      expect(batchRow(same, B.key)?.replaces).toBe('다른 메모')
       await made.jobs.fromScreen(CHECK_AGAIN(3, CHANGED))
       const changed = await viewOf(made)
       expect(rowOf(changed, B.key).text).toBe('사람이 고친 글')
-      expect(changed.targets.batch.find((row) => row.key === B.key)?.replaces).toBe('다른 메모')
+      expect(batchRow(changed, B.key)?.replaces).toBe('다른 메모')
       expect(keysIn(changed, 'diff')).toEqual([A.key])
     })
 
-    it('AC-018.14: 실패한 [다시 점검]은 승인을 풀지 않는다', async () => {
-      const made = await ready({ bit: FIRST })
+    it('AC-018.14: 직접 확인 기록이 있는 사람: 실패한 [다시 점검]은 승인을 풀지 않는다', async () => {
+      const made = await ready({ bit: FIRST, store: HAND })
       await approve(made, A.key)
       await made.jobs.fromScreen(CHECK_AGAIN(2, {}))
       expect(made.posts.filter((m) => m.type === 'check').at(-1)).toMatchObject({ check: 2, ok: false })
-      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+      expect(batchRow(await viewOf(made), A.key)?.replaces).toBe('처음 메모')
     })
 
-    it(`AC-018.14·AC-037.6: 묻지 않기가 켜져 있으면 [다시 점검]으로 풀린 사람은 replaces 없이 '메모 바꿈 · 묻지 않기'로 든다`, async () => {
+    it(`AC-018.14·AC-016.3: 기록이 없는 사람은 [다시 점검]으로 자동 메모 글이 달라져도 '메모 바꿈'으로 남고 replaces는 지금 글이다(묻지 않기가 켜져 있어도)`, async () => {
       const made = await ready({ bit: FIRST })
       await turnNoAskOn(made)
-      await approve(made, A.key)
-      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+      expect(batchRow(await viewOf(made), A.key)?.replaces).toBe('처음 메모')
       await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
-      const row = (await viewOf(made)).targets.batch.find((item) => item.key === A.key)
-      expect(row).toMatchObject({ chip: '메모 바꿈 · 묻지 않기' })
-      expect(row).not.toHaveProperty('replaces')
-      expect((await press(made)).payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+      const row = batchRow(await viewOf(made), A.key)
+      expect(row).toMatchObject({ chip: '메모 바꿈', replaces: '처음 메모' })
+      expect(itemIn(await press(made), A.key)?.replaces).toBe('처음 메모')
     })
 
     it(`AC-018.14·AC-016.3: 직접 확인 기록이 있는 사람은 [다시 점검]으로 풀리면 묻지 않기가 켜져 있어도 '다른 메모 있음'으로 돌아간다`, async () => {
-      const made = await ready({ bit: FIRST, store: { journal: { [A.key]: 'skippedByHand' } } })
+      const made = await ready({ bit: FIRST, store: HAND })
       await turnNoAskOn(made)
       expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
       await approve(made, A.key)
@@ -2232,11 +2421,13 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
 
     it('AC-018.14: 새 [자료 불러오기]는 승인을 모두 푼다', async () => {
-      const made = await ready({ bit: FIRST })
+      const made = await ready({ bit: FIRST, store: HAND })
       await approve(made, A.key)
       await loadInto(made.jobs, 'month2', MEMO_MONTH, 2)
       await stream(made.jobs, 'memos2', memosJson(FIRST))
       await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'store2', storeJson(HAND))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: 'store2', load: 2 } satisfies PrecheckFromScreen)
       await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
       expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
     })
@@ -2252,6 +2443,17 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect(keysIn(view, 'diff')).toContain(A.key)
       const next = await press(made)
       expect(next.payload?.items.find((item) => item.visitKey === A.key)).toBeUndefined()
+    })
+
+    it('AC-018.14: 직접 확인으로 건너뛴 사람은 [이 메모로 바꾸기]를 누를 때만 replaces로 들고 [바꾸지 않기]로 되돌린다', async () => {
+      const made = await ready({ bit: FIRST, store: { journal: { [A.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '건너뜀', '이미 있음')] })
+      expect(rowOf(await viewOf(made), A.key).lastJournal).toBe('skippedByHand')
+      await approve(made, A.key)
+      expect(batchRow(await viewOf(made), A.key)).toMatchObject({ replaces: '처음 메모', chip: '메모 바꿈' })
+      await decline(made, A.key)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
     })
 
     it('AC-018.14: [직접 확인했어요]를 취소해도 보낼 때 푼 승인은 돌아오지 않는다', async () => {
@@ -2554,6 +2756,64 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect((await press(made, 'resume')).payload?.items.map((item) => item.visitKey)).toEqual([B.key, C.key])
     })
 
+    it('AC-018.21: 비교가 다름인 쓰다 멈춘 두 사람을 [직접 확인했어요]로 보낸 묶음이 E-BIT-UNSAVED-RX로 멈추면 둘 다 [바꾸지 않기]라 남은 0명이고 [이어서 하기]가 없다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '다른 메모')], store: { journal: { [A.key]: 'writing', [B.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items.every((item) => item.checkedByHand === true && !('replaces' in item))).toBe(true)
+      const result = resultOf(await finish(made, hand.ticket, { status: 'stopped', code: 'E-BIT-UNSAVED-RX', results: [] }))
+      expect(result).toMatchObject({ status: 'stopped', code: 'E-BIT-UNSAVED-RX', entered: 0, left: 0, retry: 0 })
+      expect((await press(made, 'resume')).payload).toBeNull()
+      // 기록이 그대로이므로 띠의 두 단추가 남는다(AC-018.16)
+      const view = await viewOf(made)
+      expect(view.stuck?.people.map((person) => person.key)).toEqual([A.key, B.key])
+      expect(itemIn(await press(made, 'continueStuck'), A.key)).not.toHaveProperty('replaces')
+    })
+
+    it(`AC-018.21: 비교가 다름인 declined의 '미처리' 줄은 남은 수와 [이어서 하기]에 세지 않고, 쓰다 멈춘 줄은 세지 않은 채 [이어서 하기] 묶음에 남는다`, async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '다른 메모')], store: { journal: { [A.key]: 'writing', [B.key]: 'writing' } } })
+      await decline(made, A.key)
+      await decline(made, B.key)
+      const go = await press(made, 'continueStuck')
+      const result = resultOf(await finish(made, go.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', WRITE_STUCK), line(B, '확인 필요', '미처리')] }))
+      expect(result.left).toBe(0)
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual([A.key])
+      expect(itemIn(resume, A.key)).not.toHaveProperty('replaces')
+    })
+
+    it('AC-018.21: [이어서 하기]의 replaces는 보낼 때의 값이다(그새 다시 불러온 새 글)', async () => {
+      const made = await threeOnly([memoRow(A, '처음 메모')])
+      const first = await press(made)
+      expect(itemIn(first, A.key)?.replaces).toBe('처음 메모')
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', '미처리')] })
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'r1', memosJson([memoRow(A, '새 메모'), memoRow(B, '생긴 메모')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+      const resume = await press(made, 'resume')
+      expect(itemIn(resume, A.key)?.replaces).toBe('새 메모')
+      expect(itemIn(resume, B.key)?.replaces).toBe('생긴 메모')
+    })
+
+    it('AC-016.3·AC-018.21: 멈춘 뒤 메모에 확인 표시가 생기면 [이어서 하기]에 replaces를 싣지 않는다(뺄지는 도우미가 정한다, AC-037.7)', async () => {
+      const made = await threeOnly([memoRow(A, '처음 메모')])
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', '미처리')] })
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '[부위 확인] 글' } satisfies PrecheckFromScreen)
+      const resume = await press(made, 'resume')
+      expect(itemIn(resume, A.key)?.memo).toBe('[부위 확인] 글')
+      expect(itemIn(resume, A.key)).not.toHaveProperty('replaces')
+    })
+
+    it('AC-018.21: [다시 하기]의 replaces는 보낼 때의 값이다', async () => {
+      const made = await threeOnly([memoRow(A, '처음 메모')])
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음')] })
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'r1', memosJson([memoRow(A, '새 메모')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+      expect(itemIn(await press(made, 'retry'), A.key)?.replaces).toBe('새 메모')
+    })
+
     it('AC-018.21: 보내기가 거절되면 번호만 답하고 다음에 또 누를 수 있다', async () => {
       const made = await ready()
       const { run, ticket } = await press(made)
@@ -2568,13 +2828,36 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
 
     it('AC-018.4: 화면에서 미리 뺀 사람도 이유와 함께 건너뜀에 들고, 완료·메모 없음은 세지 않는다', async () => {
       const made = await ready({ bit: [memoRow(A, '다른 메모')], store: { drafts: { [B.key]: '[부위 확인] 글' } } })
+      await decline(made, A.key)
       const view = await viewOf(made)
       const { ticket } = await press(made)
       const result = resultOf(await finish(made, ticket, { status: 'finished', results: [] }))
-      expect(result.skipped.find((row) => row.key === A.key)?.reason).toBe('이미 있음: 비트에 다른 메모가 있고 바꾸기를 승인하지 않았어요')
+      expect(result.skipped.find((row) => row.key === A.key)?.reason).toBe('이미 있음: 비트에 다른 메모가 있고 바꾸지 않기로 했어요')
       expect(result.skipped.find((row) => row.key === B.key)?.reason).toBe('확인 표시가 남아 입력하지 않았습니다')
       expect(result.uncounted).toBe((view.targets.left.find((group) => group.reason === 'nomemo')?.rows.length ?? 0) + (view.targets.left.find((group) => group.reason === 'done')?.rows.length ?? 0))
       expect(result.retry).toBe(0)
+    })
+
+    it('AC-018.4: 비교가 다름인 declined는 [다시 하기]에 세지 않는다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')], store: { journal: { [A.key]: 'writing' } } })
+      await decline(made, A.key)
+      const go = await press(made, 'continueStuck')
+      const result = resultOf(await finish(made, go.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음')] }))
+      expect(result.skipped.find((row) => row.key === A.key)).toMatchObject({ retry: false })
+      expect(result.retry).toBe(0)
+      expect((await press(made, 'retry')).payload).toBeNull()
+    })
+
+    it('AC-016.6: truncated 없이 4,000자를 넘는 줄은 그 진료만 조회 못함이고 묶음은 산다(replaces는 모두 1~4,000자)', async () => {
+      const made = await ready({ bit: [memoRow(A, '글'.repeat(4001)), memoRow(B, '글'.repeat(4000)), memoRow(C, '짧은 글')] })
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key).compare).toBe('조회 못함')
+      expect(keysIn(view, 'unread')).toEqual([A.key])
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)).toBeUndefined()
+      expect(itemIn(sent, B.key)?.replaces).toHaveLength(4000)
+      for (const item of sent.payload!.items) if (item.replaces !== undefined) expect(item.replaces.length).toBeGreaterThanOrEqual(1)
+      for (const item of sent.payload!.items) if (item.replaces !== undefined) expect(item.replaces.length).toBeLessThanOrEqual(4000)
     })
 
     it(`AC-018.4: 뒤 글이 붙은 '같은 날'은 직접 입력이고, 뒤 글이 붙은 '넣을 메모가 없어'와 함께 [다시 하기]에 들지 않는다`, async () => {
@@ -2625,6 +2908,25 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect(batchKeys(view)).toContain(C.key)
     })
 
+    it(`AC-018.20: 입력 직전 변경됨으로 건너뛴 사람은 다시 불러오면 새 글을 replaces로 다음 묶음에 든다`, async () => {
+      const made = await ready({ bit: [memoRow(C, '비트 메모')] })
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [line(C, '건너뜀', '입력 직전 기존 청구메모가 변경되었습니다. 현재 내용을 다시 비교해 주세요.')] })
+      expect(keysIn(await viewOf(made), 'held')).toEqual([])
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'r1', memosJson([memoRow(C, '바뀐 비트 메모')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+      expect(itemIn(await press(made), C.key)?.replaces).toBe('바뀐 비트 메모')
+    })
+
+    it(`AC-018.20: 다른 메모가 있는 사람의 '지난번 건너뜀' [다시 하기]는 지금 글을 replaces로 싣는다`, async () => {
+      const made = await ready({ bit: [memoRow(A, '비트 메모')] })
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음')] })
+      expect(keysIn(await viewOf(made), 'held')).toEqual([A.key])
+      expect(itemIn(await press(made, 'held'), A.key)?.replaces).toBe('비트 메모')
+    })
+
     it(`AC-018.20: '지난번 건너뜀'의 [다시 하기]는 그 사람들만 다시 묶는다`, async () => {
       const made = await ready()
       const first = await press(made)
@@ -2654,17 +2956,31 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       await askOn(made)
       const view = await viewOf(made)
       expect(view.noAsk).toBe(true)
-      expect(view.targets.batch.find((row) => row.key === A.key)).toMatchObject({ chip: '메모 바꿈 · 묻지 않기' })
+      expect(view.targets.batch.find((row) => row.key === A.key)).toMatchObject({ chip: '메모 바꿈', replaces: '다른 메모' })
       const { payload } = await press(made)
-      expect(payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+      expect(payload?.items.find((item) => item.visitKey === A.key)?.replaces).toBe('다른 메모')
     })
 
-    it('AC-018.22: noAsk: false로 답하면 다시 빠진다', async () => {
+    it('AC-018.22: 꺼짐과 켜짐의 묶음과 replaces가 같다. 켜지면 PC 창만 생략한다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '또 다른 메모')] })
+      const off = await press(made)
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', askPc: true })
+      await finish(made, off.ticket, { status: 'finished', noAsk: true })
+      const on = await press(made)
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', askPc: false })
+      expect(on.payload).toEqual(off.payload)
+      expect(itemIn(on, A.key)?.replaces).toBe('다른 메모')
+    })
+
+    it('AC-018.22: noAsk: false로 답하면 띠만 꺼지고 묶음은 그대로다', async () => {
       const made = await ready({ bit: [memoRow(A, '다른 메모')] })
       await askOn(made)
       const { ticket } = await press(made)
       await finish(made, ticket, { status: 'finished', noAsk: false })
-      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      const view = await viewOf(made)
+      expect(view.noAsk).toBe(false)
+      expect(keysIn(view, 'diff')).toEqual([])
+      expect(view.targets.batch.find((row) => row.key === A.key)).toMatchObject({ chip: '메모 바꿈', replaces: '다른 메모' })
     })
 
     it('AC-018.22: 오류 봉투 뒤 값은 그대로다(꺼짐·켜짐 모두)', async () => {
@@ -2685,21 +3001,44 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect((await viewOf(made)).noAsk).toBe(false)
     })
 
-    it('AC-016.3·AC-037.6: 묻지 않기가 켜져 있으면 풀린 승인은 replaces 없이 들어간다', async () => {
+    it('AC-016.3·AC-037.6: 묻지 않기가 켜져 있어도 [바꾸지 않기]를 누른 사람은 보내지 않는다: replaces 없이 보내면 켜진 도우미가 바꾼다', async () => {
       const made = await ready({ bit: [memoRow(A, '다른 메모')] })
       await askOn(made)
       await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: true } satisfies PrecheckFromScreen)
       expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('다른 메모')
       await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: false } satisfies PrecheckFromScreen)
+      const view = await viewOf(made)
+      expect(keysIn(view, 'diff')).toEqual([A.key])
       const { payload } = await press(made)
-      expect(payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+      expect(payload?.items.find((item) => item.visitKey === A.key)).toBeUndefined()
     })
 
-    it('AC-018.22: 첫 묶음 뒤 안내의 수에 확인 표시·직접 입력은 없고 N이 0이면 null이 아닌 0이다', async () => {
+    it(`AC-018.22: 첫 묶음 뒤 안내의 수는 replaces 없이 보내 이미 있음으로 돌아온 사람뿐이다('다른 메모 있음'·확인 표시·replaces로 보낸 사람은 없다)`, async () => {
+      const made = await threeOnly([memoRow(A, '다른 메모'), memoRow(C, '다른 메모')])
+      await decline(made, C.key)
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)?.replaces).toBe('다른 메모')
+      expect(itemIn(sent, B.key)).not.toHaveProperty('replaces')
+      expect(itemIn(sent, C.key)).toBeUndefined()
+      const result = resultOf(await finish(made, sent.ticket, { status: 'finished', noAsk: true, results: [{ ...line(A, '완료', '바꿈(기존 메모 덮어씀)'), previousMemo: '다른 메모' }, line(B, '건너뜀', '이미 있음')] }))
+      expect(result.firstNoAsk).toBe(1)
+    })
+
+    it('AC-018.22: 첫 묶음 뒤 안내의 수에 replaces로 보낸 사람·직접 확인 기록이 있는 사람·보내지 않은 사람은 없다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')], store: { journal: { [B.key]: 'skippedByHand' } } })
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)?.replaces).toBe('다른 메모')
+      expect(itemIn(sent, B.key)).not.toHaveProperty('replaces')
+      const result = resultOf(await finish(made, sent.ticket, { status: 'finished', noAsk: true, results: [line(A, '건너뜀', '이미 있음'), line(B, '건너뜀', '이미 있음'), line({ key: 'gone' }, '건너뜀', '이미 있음')] }))
+      expect(result.firstNoAsk).toBe(0)
+    })
+
+    it('AC-018.22: 첫 묶음 뒤 안내의 수에 다른 메모로 미리 뺀 사람이 없고 N이 0이면 null이 아닌 0이다', async () => {
       const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(C, '[부위 확인]')], store: { drafts: { [C.key]: '[부위 확인] 글' } } })
+      await decline(made, A.key)
       const { ticket } = await press(made)
       const result = resultOf(await finish(made, ticket, { status: 'finished', noAsk: true }))
-      expect(result.firstNoAsk).toBe(1)
+      expect(result.firstNoAsk).toBe(0)
       const clean = await ready()
       const second = await press(clean)
       expect(resultOf(await finish(clean, second.ticket, { status: 'finished', noAsk: true })).firstNoAsk).toBe(0)
@@ -3149,6 +3488,24 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       const types = made.posts.map((m) => m.type)
       expect(types.indexOf('dayCounts')).toBeLessThan(types.indexOf('inputDone'))
       expectNoPatientText(countPosts(made.posts))
+    })
+
+    it('AC-019.3: 다른 메모는 바꿔 끝나면 entered이고 아직이면 skipped이며 [바꾸지 않기]가 있는 날은 entered가 need_memo보다 적다', async () => {
+      const made = await threeOnly([memoRow(A, '비트 글 가'), memoRow(B, '비트 글 나')])
+      await decline(made, B.key)
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      const view = await viewOf(made)
+      const finished = view.table.filter((row) => row.hasMemo && row.done).length
+      expect(countsIn(made.posts).at(-1)).toEqual([{ visit_date: DAY.from, need_memo: needOf(view), entered: finished, needs_check: 0, skipped: 2 }])
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)?.replaces).toBe('비트 글 가')
+      expect(itemIn(sent, B.key)).toBeUndefined()
+      const preLeft = view.table.filter((row) => row.hasMemo && !row.done && !batchKeys(view).includes(row.key)).length
+      made.posts.length = 0
+      await finish(made, sent.ticket, { status: 'finished', results: [{ ...line(A, '완료', '바꿈(기존 메모 덮어씀)'), previousMemo: '비트 글 가' }, line(C, '완료', '입력')] })
+      const [rows] = countsIn(made.posts)
+      expect(rows).toEqual([{ visit_date: DAY.from, need_memo: needOf(view), entered: finished + 2, needs_check: 0, skipped: preLeft }])
+      expect(rows[0].entered).toBeLessThan(rows[0].need_memo)
     })
 
     it('AC-019.2: 모두 넣으면 입력 수가 메모 필요 수와 같고 넘지 않는다', async () => {
