@@ -1,6 +1,6 @@
 # Step 2: stats-view
 
-> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.8
+> **TASK-11** 통계 화면 숫자 · **REQ-511** · AC-511.1 ~ AC-511.9
 > Phase 3 · 숫자와 글, 화면 목업 `stats-3-numbers` · Step 2 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-11 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-029 (precheck 029.2 첫 재방문까지 날수) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -129,6 +129,14 @@
 - AC-511.2의 새 '시험' 둘. 12개월 예: 오늘 2026-11-15, 덮은 기간 2025-06-01 ~ 2026-11-14, 2025년 6월 앞은 줄이 없고, 두 해 모두 12~5월 달 300명 · 6~10월 달 100명이면 지금은 209 대 100(+109%)이고 고친 뒤에는 평균 칸 209, 변화 없음이며 아래 글이 "견준 5달 평균 · 이번 100명 · 작년 100명"이다. 온전히 덮인 11월 15일 시험과 줄 없는 날 시험(`view.test.ts:270` 근처)은 아래 글이 지금 그대로임을 함께 본다
 - AC-511.6 `'12m'`: 작년 같은 달만 덮이지 않은 경우를 더한다(`comparableOf`는 이미 그렇게 도는지 본다)
 
+## 2026-11-02 사용자 결정 '통계 기본값대로' (뒤따라 고치기)
+
+> 이 TASK는 이미 커밋되었다. 이 절의 일만 한다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 규칙과 시험은 `specs/stats/requirements.md` AC-511.9 그대로다.
+
+- `src/components/stats/view.ts`에 `rxComparedCells(input)` 하나를 더한다(`{ kept, dropped }`). 짝 고르는 코드는 `comparableOf`와 나눠 쓴다
+- `RxTrendRow`·`comparable`의 모양과 `lib/analytics/rxTrend.ts`는 고치지 않는다
+- `src/components/stats/view.test.ts`에 AC-511.9의 시험을 모두 더한다('줄마다 같다' 시험을 빼지 않는다)
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -146,7 +154,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.8이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-511.1 ~ AC-511.9이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

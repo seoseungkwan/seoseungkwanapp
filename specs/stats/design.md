@@ -245,6 +245,7 @@ export type RxTrendRow = { code: string; name: string; count: number; newCount: 
   delta: Delta }                                            // compareNumbers(comparable.current, comparable.previous). comparable이 null이면 { kind: 'unavailable' }
 export type RxDetailPoint = TrendPoint & { covered: boolean }                            // covered = 그 칸의 날이 하나라도 덮은 기간 안에 있음. false인 비교 칸은 "0건"이 아니라 "–"
 export function rxDetail(input, code): { current: RxDetailPoint[]; previous: RxDetailPoint[] }   // buildTrend. 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
+export function rxComparedCells(input): { kept: number; dropped: boolean }               // AC-511.9. 증감에 남은 짝 수(12개월 = 달, 일 기간 = 날)와 뺀 짝이 있는지. partial은 처방과 상관없어 한 번만 센다. RxTrendRow는 그대로다
 // 모든 셈은 덮은 기간(readCoverage)을 같이 받는다
 ```
 - 환자 수·신환·재진은 저장된 `totals` 그대로 쓴다. 접수 기준(AC-501.6)을 여기서 다시 계산하지 않는다(TASK-1 '환자 수는 접수 기준')
@@ -266,9 +267,10 @@ export function rxDetail(input, code): { current: RxDetailPoint[]; previous: RxD
 #### TASK-14 화면 (`src/components/stats/StatsScreen.tsx` 등, `'use client'`)
 ```ts
 export function StatsScreen(props: { hospitalName: string; today: string }): JSX.Element
-// useStatsData(period) — readDays·readCoverage, 기간 바꿈마다 그 기간 + 비교 기간만 읽음(readMonths를 쓰지 않는다. fromFile은 readDays에서)
+// useStatsData(period) — readDays·readCoverage, 기간 바꿈마다 그 기간 + 비교 기간만 읽음(readMonths를 쓰지 않는다. fromFile은 readDays에서). 둘 다 비면 저장 여부만 보려고 최근 12개월 + 작년을 한 번 더 읽고, 그 줄은 그리지 않는다
 // useStatsWorker() — createStatsWorker 하나(화면을 떠나면 terminate), useBridge({ worker })
 ```
+- 멈춘 불러오기(AC-514.12): `stream`을 부를 때 20분 시계를 켜고 `end`가 오면 끈다. 시간이 다 되면 `useBridge`의 `close`로 통로를 닫는다. 그 뒤는 연결이 끊겼을 때의 지금 길 그대로다(요청이 `E-BRIDGE-DISCONNECTED`로 끝남 → `runJob`이 카드를 보이고 일을 끝냄, 비트 칸의 [다시 확인]이 새 연결을 연다). Worker를 바꿔 끼워 다시 붙이는 길은 쓰지 않는다: 확장이 옛 연결을 아직 잡고 있으면 맞지 않는 `E-BRIDGE-BUSY` 글이 보이고, Worker 메모리의 진료 줄이 사라진다
 - 상태: `period`, 저장 숫자(표에서 읽은 것. 방금 만든 숫자를 합쳐 보이는 것은 저장 실패 때만이다), 불러오기 진행·오류, 보고 숫자·처방별 결과(메모리), "오늘 진료 끝" 체크
 - 파일 안내(AC-514.7): 그 기간을 그리려고 읽은 줄(고른 기간과 비교 기간)의 `fromFile`이 하나라도 참이거나 저장하지 못한 방금 만든 파일 숫자를 보이는 동안이면 출처 줄 옆에 승인된 문장을 글자 그대로 보인다. `latest.source`만 보면 최근 비트 줄과 옛 파일 줄이 섞인 기간을 놓친다. 이 문장은 사용자가 승인했고 목업에 없다(AC-513.1의 예외, 목업을 다시 돌리지 않는다)
 - 파일 길: `runAnalysis(files)` → `toMonthPayload`·`toDayPayloads` + 덮은 기간 하나(성공한 파일의 기간 줄·받아들인 줄 범위를 `mergeRanges`로 합친 것 가운데 가장 최근 이어진 구간, 끝은 어제 이하) → `saveStats(source 'file')`. `saveStats`는 덮은 기간 하나(`DateRange | null`)만 받는다. 저장에 성공하면 표에서 다시 읽어 그린다: 트리거(완전 → 덜)가 옛 줄을 남겼을 수 있어 방금 만든 파일 숫자를 저장된 줄 위에 합치면 다시 열었을 때와 숫자가 달라진다(AC-514.4). 저장에 실패하면 방금 만든 숫자를 그대로 둔다(AC-514.6)
@@ -353,12 +355,13 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 | 파일 | 통계가 하는 일 | 같이 고치는 브랜치 |
 |---|---|---|
 | `supabase/migrations/20261101000200_stats.sql` + `public.my_hospital_id()` | 새 파일. 함수는 C1 글자 그대로(`create or replace`) | 함수: worklog·patients·revenue·precheck(그쪽이 나중에 `create or replace`로) |
-| `src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts` | 끝에 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`·`E-STATS-CHANGED`(TASK-5), `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`(TASK-7) | 전부(번호는 브랜치마다 앞말이 달라 겹치지 않는다, C3) |
+| `src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts` | 끝에 `E-STATS-HISTORY`·`E-STATS-TOO-BIG`·`E-STATS-CHANGED`(TASK-5), `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`(TASK-7). `E-ANALYZE-TIMEOUT`의 `what` 한 줄과 `E-STATS-READ-FAILED`의 `fix` 한 줄을 고친다(TASK-7, AC-507.4) | 전부(번호는 브랜치마다 앞말이 달라 겹치지 않는다, C3) |
 | `eslint.config.mjs`·`src/guardrails.test.ts` | `src/lib/storage/stats.ts` 블록 하나 (TASK-7). 합칠 자리: 다른 브랜치가 `src/lib/storage/**` 넓은 블록을 더하면 이 파일도 그 규칙을 받는다 — 합칠 때 두 블록이 서로 막지 않는지 본다 | precheck·patients·worklog(각자 블록. revenue는 고치지 않음) |
 | `src/types/db.ts` | 통계 표 줄 모양 셋을 끝에 더함 (TASK-6) | precheck(청구 설정·건수 표), 표를 만드는 다른 브랜치 |
 | `src/app/titles.test.tsx` | `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 (TASK-15) | 탭을 채우는 브랜치 모두 |
 | `docs/ARCHITECTURE.md` | 'DB 표'의 통계 줄·'데이터 흐름' 통계 줄 (TASK-6) | 전부 |
 | `docs/UI_GUIDE.md`·`docs/ADR.md` | 고치지 않는다 | — |
+| `src/components/claim/useBridge.ts`·`useBridge.test.ts` | 돌려주는 값에 `close` 하나를 더함 (TASK-14, AC-514.12). 더하기만이다 | `useBridge.ts`는 없음. `useBridge.test.ts`는 `feat-combined`·`origin/feat-bit-dashboard`가 도우미 버전 숫자를 고쳤다(7b60206). 새 시험은 버전 글자를 쓰지 않고 `HELLO`를 쓴다(2026-11-02 확인) |
 | `src/components/common/notReadyFeatures.ts`(+시험)·`src/components/shell/menu.ts`·`shell.test.tsx`·`src/components/dashboard/briefing/features.ts`(+시험)·`DashboardHome.test.tsx`·`src/app/(app)/dashboard/page.test.tsx`(목차 옆 글)·`src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx` | 통계 줄만 (TASK-15). 개수는 목록에서 센다(C5) | worklog·patients·revenue(각자 자기 탭 줄) |
 | `src/components/ui/classes.test.ts` | `APP_DIRS`에 `src/components/stats` 한 줄 (TASK-13) | 화면을 만드는 브랜치 모두 |
 | `helper/src/Precheck.Core/Bit/Sql.cs` | `IsAllowed`·`ParametersOf`가 `StatsSql`도 보는 두 줄 (TASK-3) | precheck(청구 SQL), revenue(`RevenueSql`), patients(자기 SQL) |

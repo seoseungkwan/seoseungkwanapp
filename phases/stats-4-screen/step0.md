@@ -1,6 +1,6 @@
 # Step 0: stats-sections
 
-> **TASK-13** 통계 그래프 섹션 · **REQ-513** · AC-513.1 ~ AC-513.11
+> **TASK-13** 통계 그래프 섹션 · **REQ-513** · AC-513.1 ~ AC-513.14
 > Phase 4 · 화면 `stats-4-screen` · Step 0 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-031 (precheck 031.3·031.4·031.5) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -106,6 +106,15 @@
 
 - 90일 보기의 주 칸은 이번·비교 칸 수가 다를 수 있다(90이 7로 나뉘지 않음). `rxDetail`은 두 배열을 그대로 주므로, `RxTrendSection`이 같은 차례에 비교 점이 없는 칸을 `comparison: null`(막대 없음, 표 "–")로 바꾼다. 이번 칸보다 남는 비교 칸은 그리지 않는다. 시험으로 고정한다: 13칸 대 14칸, 14칸 대 13칸
 
+## 2026-11-02 사용자 결정 '통계 기본값대로' (뒤따라 고치기)
+
+> 이 TASK는 이미 커밋되었다. 이 절의 일만 한다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 글과 시험은 `specs/stats/requirements.md` AC-513.12·513.13·513.14 그대로다. TASK-11의 `rxComparedCells`가 커밋된 뒤에 한다.
+
+- `RxTrendSection.tsx`: AC-513.12의 안내 줄(뺀 짝이 있고 남은 짝이 1 이상일 때만, 표 바로 아래, '줄을 누르면…' 위)
+- `PatientTrendSection.tsx`: AC-513.13. 고른 기간의 날이 하나라도 `input.covered` 밖이면 새 문장
+- `RxSplitSection.tsx`: AC-513.14. `{ kind: 'none' }`만 새 글이고, 처방 줄이 0개인 `split`은 옛 글 그대로다
+- 그 밖의 섹션과 `StackedBarChart`는 고치지 않는다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -124,7 +133,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-513.1 ~ AC-513.11이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-513.1 ~ AC-513.14이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

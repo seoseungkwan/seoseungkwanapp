@@ -77,7 +77,7 @@
 
 ## TASK-7: 통계 숫자 저장·읽기
 - Step: Phase 2 · Step 1 · `stats-storage`
-- AC: AC-507.1~AC-507.3
+- AC: AC-507.1~AC-507.4
 - REQ: REQ-507
 - Files: src/lib/storage/stats.ts, src/lib/storage/stats.test.ts, eslint.config.mjs, src/guardrails.test.ts, src/types/errors.ts, src/lib/errors.ts, src/lib/errors.test.ts
 - Tests: src/lib/storage/stats.test.ts, src/guardrails.test.ts, src/lib/errors.test.ts
@@ -85,6 +85,7 @@
 - 오류 번호 `E-STATS-SAVE-FAILED`·`E-STATS-READ-FAILED`를 더한다(앞말 `E-STATS-`, cross-branch C3). 시험은 가짜 Supabase 클라이언트로(실제 Supabase에 붙지 않는다)
 - TASK-7은 이미 커밋되었다. 2026-11-01 사용자 결정 "남기고 안내 붙이기"·"새로 다시 덮어써"(AC-507.1·507.2 바뀜)로 다시 연다: `readDays`가 `fromFile`도 돌려주고, `saveStats`가 파일의 덜 덮인 달 줄을 보내지 않게 이 TASK의 Files 안(`stats.ts`·`stats.test.ts`)에서 뒤따라 고친다. 오류 번호 파일은 이번에 고치지 않는다(TASK-5가 `E-STATS-CHANGED`를 더하는 파일이다)(`phases/stats-2-save/step1.md` 뒤따라 고치기 절)
 - 같은 날 사용자 결정(달 줄 크기 한도 올림, AC-506.3)으로 `saveStats`의 보내기 전 크기 검사를 표에 맞춘다: 달 1,048,576바이트, 날 65,536바이트(`stats.ts`·`stats.test.ts`, `phases/stats-2-save/step1.md` 달 줄 크기 절)
+- 2026-11-02 사용자 결정 "통계 기본값대로"(AC-507.4)로 다시 연다: `src/lib/errors.ts`·`src/lib/errors.test.ts`만 고친다. 옛 글을 못 박은 시험은 `errors.test.ts`의 AC-507.2 `fix` 기대값 하나다(`E-ANALYZE-TIMEOUT`의 `what`을 못 박은 시험은 없다). 보이는 곳(2026-11-02 확인): `E-STATS-READ-FAILED`는 `StatsScreen`([다시 읽기]가 옆에 있어 맞다)과 TASK-16의 `LiveDashboard`(아직 합치지 않은 `wip-stats-dashboard-source`. [다시 읽기]가 없어 옛 글처럼 새 글도 맞지 않는다. TASK-16을 다시 열 때 정한다). `E-ANALYZE-TIMEOUT`은 `StatsScreen`뿐이다(파일 30초, 불러오기·처방별 120초, 맞다). `origin/feat-bit-dashboard`의 `readBitDays`는 이 번호를 `E-BIT-READ-FAILED`로 바꿔 보여서 글이 보이지 않는다(그쪽 주석과 시험 이름의 "계산이 30초"만 낡는다). `feat-revenue`·`feat-patients`는 둘 다 보이지 않는다
 
 ## TASK-8: 처방 추세
 - Step: Phase 2 · Step 2 · `rx-trend`
@@ -117,13 +118,14 @@
 
 ## TASK-11: 통계 화면 숫자
 - Step: Phase 3 · Step 2 · `stats-view`
-- AC: AC-511.1~AC-511.8
+- AC: AC-511.1~AC-511.9
 - REQ: REQ-511
 - Files: src/components/stats/view.ts, src/components/stats/view.test.ts
 - Tests: src/components/stats/view.test.ts
 - TDD: required
 - `'12m'`의 달 칸은 일 숫자의 합이다(AC-511.2·511.3, 2026-11-01). 달 줄(`MonthPayload`)을 읽지 않는다. `rxTrend.ts`는 고치지 않는다(`phases/stats-3-numbers/step2.md` 2026-11-01 절)
 - 넷째 칸은 짝이 모두 끝난 칸끼리 견준다(AC-511.2, `phases/stats-3-numbers/step2.md` 넷째 칸 절)
+- 2026-11-02 사용자 결정 "통계 기본값대로"(AC-511.9)로 다시 연다: `rxComparedCells` 하나만 더한다. `RxTrendRow`·`comparable`·`rxTrend.ts`는 고치지 않는다
 
 ## TASK-12: 통계 화면 클릭 목업 (사용자 승인)
 - Step: Phase 3 · Step 3 · `stats-mockup`
@@ -138,22 +140,24 @@
 
 ## TASK-13: 통계 그래프 섹션
 - Step: Phase 4 · Step 0 · `stats-sections`
-- AC: AC-513.1~AC-513.11
+- AC: AC-513.1~AC-513.14
 - REQ: REQ-513
 - Files: src/components/stats/sections/*, src/components/ui/classes.test.ts, src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx
 - Tests: src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/PatientTrendSection.test.tsx, src/components/stats/sections/RevisitSection.test.tsx, src/components/stats/sections/RxTrendSection.test.tsx, src/components/stats/sections/RxSplitSection.test.tsx, src/components/stats/sections/ReportSection.test.tsx, src/components/stats/sections/WeekdaySection.test.tsx, src/components/stats/sections/DetailToggle.test.tsx, src/components/stats/sections/CopyButton.test.tsx, src/components/ui/classes.test.ts, src/components/charts/StackedBarChart.test.tsx
 - TDD: required
 - `classes.test.ts`는 `APP_DIRS`에 `'src/components/stats'` 한 줄만 더한다
 - `StackedBarChart`는 선택 값 `comparison` 하나만 더한다(AC-513.2). 지금 시험은 고치지 않는다
+- 2026-11-02 사용자 결정 "통계 기본값대로"(AC-513.12·513.13·513.14)로 다시 연다: `RxTrendSection`·`PatientTrendSection`·`RxSplitSection`과 그 시험만 고친다. TASK-11의 AC-511.9 뒤에 한다. `RxSplitSection.test.tsx`의 `{ kind: 'none' }` 시험은 옛 글을 못 박아 기대값이 바뀌고, 줄 0개 시험은 그대로 통과한다
 
 ## TASK-14: 통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰)
 - Step: Phase 4 · Step 1 · `stats-screen`
-- AC: AC-514.1~AC-514.10
+- AC: AC-514.1~AC-514.13
 - REQ: REQ-514
-- Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/SourcePicker.tsx, src/components/stats/SourcePicker.test.tsx, src/components/stats/useStatsData.ts, src/components/stats/useStatsData.test.ts, src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts
-- Tests: src/components/stats/StatsScreen.test.tsx, src/components/stats/SourcePicker.test.tsx, src/components/stats/useStatsData.test.ts, src/components/stats/useStatsWorker.test.ts
+- Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/SourcePicker.tsx, src/components/stats/SourcePicker.test.tsx, src/components/stats/useStatsData.ts, src/components/stats/useStatsData.test.ts, src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts, src/components/claim/useBridge.ts, src/components/claim/useBridge.test.ts
+- Tests: src/components/stats/StatsScreen.test.tsx, src/components/stats/SourcePicker.test.tsx, src/components/stats/useStatsData.test.ts, src/components/stats/useStatsWorker.test.ts, src/components/claim/useBridge.test.ts
 - TDD: required
-- 시험은 jsdom, 가짜 Worker·가짜 통로(`chrome.runtime`)·가짜 저장(`lib/storage/stats` mock — `readCoverage` 포함). `useBridge`(`components/claim/useBridge.ts`)는 불러 쓰기만 한다
+- 시험은 jsdom, 가짜 Worker·가짜 통로(`chrome.runtime`)·가짜 저장(`lib/storage/stats` mock — `readCoverage` 포함). `useBridge`(`components/claim/useBridge.ts`)는 불러 쓰기만 한다. 예외는 AC-514.12의 `close` 하나다(돌려주는 값에 더하기만 한다. 다른 곳은 고치지 않는다)
+- 2026-11-02 사용자 결정 "통계 기본값대로"(AC-514.11·514.12·514.13)로 다시 연다. AC-514.1에 더한 문장(처방별 답을 기다리는 동안)은 이미 만든 동작을 명세에 적은 것이라 코드를 고치지 않는다
 - AC-514.7의 파일 안내 문장은 사용자가 승인했고 목업에 없다(AC-513.1의 예외, 목업을 다시 돌리지 않는다). AC-514.3·514.4는 저장에 성공하면 다시 읽어 그린다. 화면은 `readDays`·`readCoverage`만 쓴다(AC-514.1)(`phases/stats-4-screen/step1.md` 뒤따라 고치기 절)
 
 ## TASK-15: 통계 탭을 진짜 화면으로
@@ -173,6 +177,7 @@
 - Tests: src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/summary/source.test.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/app/(app)/tabFrame.test.tsx
 - TDD: required
 - `components/dashboard/briefing/*`는 고치지 않는다(AC-516.3)
+- 읽기 실패 카드 글은 [다시 읽기]를 말하는데 이 화면에 단추가 없다. 다시 열 때 단추를 더하거나 번호를 나눈다(2026-11-02 사용자 결정 "통계 기본값대로"로 바뀐 글)
 
 ## TASK-17: 개인정보 E2E (실제 Supabase)
 - Step: Phase 4 · Step 4 · `stats-e2e`
