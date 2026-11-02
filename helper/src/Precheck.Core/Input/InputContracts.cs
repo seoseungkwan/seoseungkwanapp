@@ -1,12 +1,27 @@
 using System;
 using System.Collections.Generic;
+using Precheck.Core.Bit;
+using Precheck.Core.Protocol;
 
 namespace Precheck.Core.Input;
 
 /// <summary>PC 확인 창(Precheck.Windows.ConfirmWindow). [확인]이면 true. [취소]·닫기·시간 지남·closeRequested가 서면 false(AC-017.2·AC-017.9).</summary>
 public interface IInputConfirm
 {
-    bool Ask(string text, TimeSpan timeout, Func<bool> closeRequested);
+    /// <param name="noAskOn">묻지 않기가 이미 켜진 채 뜨는 창이다(AC-037.8): 체크는 켜진 채 잠겨 끌 수 없다.</param>
+    /// <param name="noAskTicked">창을 닫을 때 체크를 새로 켜 두었다. [확인]이 아니면 켜지지 않는다(AC-037.4).</param>
+    bool Ask(string text, bool noAskOn, TimeSpan timeout, Func<bool> closeRequested, out bool noAskTicked);
+}
+
+/// <summary>
+/// PC 확인 창의 체크 '이제부터 묻지 않기'(AC-037.4). 값은 이 도우미 프로세스 메모리에만 있고 저장하지 않는다: 도우미는 웹 연결이 닫히면 끝나므로 청구 창을 닫거나 새로 고치면 꺼진다.
+/// 켜는 길은 창의 [확인]뿐이고 끄는 길은 없다. 명령 표에 칸이 없어 사이트는 켤 수 없다(AC-037.5).
+/// </summary>
+public sealed class NoAskSwitch
+{
+    public bool IsOn { get; private set; }
+
+    public void TurnOn() => IsOn = true;
 }
 
 /// <summary>진행 알림. 숫자만 받는다(AC-017.6). 던지지 않는다.</summary>
@@ -44,6 +59,17 @@ public enum JournalState
     SkippedByHand,
 }
 
+/// <summary>
+/// 입력 기록을 읽다가 깨진 달 파일의 이름만 바꾸고 멈췄다(AC-035.9). 번호와 답 모양은 E-STORE-FAILED 그대로이고, 부르는 쪽이 다시 누르면 이어진다는 글을 싣게 해 준다.
+/// 되살렸거나 다른 병원 파일이면 이 예외가 아니다.
+/// </summary>
+public sealed class RecordSetAsideException : HelperException
+{
+    public RecordSetAsideException() : base(BitErrors.StoreFailed)
+    {
+    }
+}
+
 /// <summary>쓰다 멈춘 진료 하나(결과 JSON의 unconfirmed 줄, AC-035.4). 날짜는 YYYY-MM-DD.</summary>
 public sealed class UnconfirmedVisit
 {
@@ -71,6 +97,15 @@ public interface IInputJournal
     /// 못 읽으면(모르는 값 포함) 번호 있는 예외(E-STORE-FAILED)를 던진다: 못 읽은 것을 null로 돌려주면 쓰다 멈춘 사람을 놓쳐 거짓 완료가 된다.
     /// </summary>
     JournalState? LastState(InputItem item);
+
+    /// <summary>
+    /// 바꾸기 전에 칸에 있던 글을 그 진료 달의 파일에 덧붙여 남긴다(AC-037.1). 돌아오기 전에 디스크에 남는다. 목록의 마지막 글과 같으면 덧붙이지 않는다.
+    /// 못 남기면(글을 파일에 담지 못하는 때 포함) 번호 있는 예외(E-STORE-FAILED)를 던진다: 그러면 칸에 쓰지 않고 멈춘다.
+    /// </summary>
+    void SaveOriginal(InputItem item, string text);
+
+    /// <summary>그 진료의 원래 메모 목록의 마지막 글. 없으면 null. 못 읽으면 번호 있는 예외(E-STORE-FAILED)를 던진다.</summary>
+    string? LastOriginal(InputItem item);
 
     /// <summary>
     /// 끝난 묶음의 결과를 작업 저장에 남긴다(다시 열면 보임, AC-017.9). 결과 줄은 상태를 모르므로 이번 묶음에서 Mark한 진료와 앞선 writing·writeUnconfirmed·skippedByHand를 덮지 않고,
@@ -113,7 +148,7 @@ public enum MemoMatch
     /// <summary>같음(이미 입력됨).</summary>
     Same,
 
-    /// <summary>다름(이미 있음, 덮어쓰지 않음).</summary>
+    /// <summary>다름(승인이나 묻지 않기 없이는 덮어쓰지 않음, design.md 19-6).</summary>
     Different,
 
     /// <summary>비트에 없음(입력).</summary>

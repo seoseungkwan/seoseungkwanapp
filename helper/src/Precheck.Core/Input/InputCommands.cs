@@ -20,7 +20,8 @@ public sealed class InputServices
         Func<HospitalRegistration, IBatchJournal> openJournal,
         IMemoMatcher matcher,
         Func<IDisposable?>? tryLock = null,
-        Action<string?, string?>? log = null)
+        Action<string?, string?>? log = null,
+        NoAskSwitch? noAsk = null)
     {
         Bit = bit ?? throw new ArgumentNullException(nameof(bit));
         Signal = signal ?? throw new ArgumentNullException(nameof(signal));
@@ -31,6 +32,7 @@ public sealed class InputServices
         Matcher = matcher ?? throw new ArgumentNullException(nameof(matcher));
         TryLock = tryLock ?? (() => WorkLock.TryAcquire(WorkLock.InputWait));
         Log = log;
+        NoAsk = noAsk ?? new NoAskSwitch();
     }
 
     public BitServices Bit { get; }
@@ -51,11 +53,15 @@ public sealed class InputServices
     public Func<IDisposable?> TryLock { get; }
 
     public Action<string?, string?>? Log { get; }
+
+    /// <summary>이 도우미 프로세스의 묻지 않기(AC-037.4). Program.cs가 처리기를 한 번 붙이므로 프로세스마다 하나다.</summary>
+    public NoAskSwitch NoAsk { get; }
 }
 
 /// <summary>
 /// bit.input 처리기: 묶음 검사(받은 그대로) → 잠금 → 등록 확인·내원 수 → 입력 기록 열기 → 달 파일 검사·쓰다 멈춘 사람 검사 → 빼기(InputBatch)
 /// → InputRunner(지문 → PC 확인 창 → [확인] 뒤 차례는 InputRunner.RunConfirmed) → 결과 기록 → 조각으로 답. 남는 사람도 풀 사람도 없으면 창 없이 finished다(AC-035.8).
+/// 묻지 않기(AC-037.4)는 services.NoAsk에 있고 웹 메시지에서 읽지 않는다. 끝 JSON에 상태를 싣는다.
 /// 진행은 progress 숫자만. 결과는 끝에 JSON 하나를 조각으로(AC-017.6). 보낼 곳이 닫혔으면 보내기 실패는 무시하고 멈춤으로 다룬다(AC-017.9).
 /// 칸 ID 목록은 error 봉투에 실을 수 없어(번호만, AC-001.6) E-BIT-UI-CHANGED도 stopped 조각으로 답한다.
 /// </summary>
@@ -110,7 +116,7 @@ public static class InputCommands
 
         try
         {
-            Chunker.Send(sink, request.Id, outcome.ToJson());
+            Chunker.Send(sink, request.Id, outcome.ToJson(services.NoAsk.IsOn));
         }
         catch (Exception e) when (IsClosedOutput(e))
         {
@@ -129,7 +135,7 @@ public static class InputCommands
         using var ui = services.OpenUi(registration.InstallPath);
         var runner = new InputRunner(ui, services.Confirm, reply, journal, services.Matcher,
             () => services.Signal.StdinClosed || reply.StopPressed || reply.OutputClosed);
-        return runner.Run(batch, registration);
+        return runner.Run(batch, registration, services.NoAsk);
     }
 
     private static List<InputItem> ReadItems(Request request)
@@ -144,7 +150,8 @@ public static class InputCommands
         foreach (var element in array.EnumerateArray())
         {
             var checkedByHand = element.TryGetProperty("checkedByHand", out var hand) && hand.ValueKind == JsonValueKind.True;
-            items.Add(new InputItem(Text(element, "visitKey", request), Text(element, "chart", request), Text(element, "name", request), Text(element, "date", request), Text(element, "memo", request), checkedByHand));
+            var replaces = element.TryGetProperty("replaces", out _) ? Text(element, "replaces", request) : null;
+            items.Add(new InputItem(Text(element, "visitKey", request), Text(element, "chart", request), Text(element, "name", request), Text(element, "date", request), Text(element, "memo", request), checkedByHand, replaces));
         }
         return items;
     }

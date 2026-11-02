@@ -8,9 +8,10 @@ namespace Precheck.Core.Input;
 
 /// <summary>
 /// 묶음 하나를 끝까지 돈다. 원본 mx999_v22.html runAutoRange·autoOne 고리와 vendor/range_bridge ApplyRange 차례를 도우미로 옮겼다.
-/// 지문 → 묶음 검사 → PC 확인 창 → 해시 저장 → 입력 기록 읽기 → 풀 사람 기록 → 내원내역 기간 확인 → 사람마다(열기 → 검사 → 메모 다시 읽기 → 쓰기 → 다시 읽기 → 검사 → 저장 → 다시 읽기).
+/// 지문 → 묶음 검사 → PC 확인 창(묻지 않기가 켜져 있으면 물을 일이 있는 묶음만) → 해시 저장 → 입력 기록 읽기 → 풀 사람 기록 → 내원내역 기간 확인 → 사람마다(열기 → 검사 → 메모 다시 읽기 → 쓰기 → 다시 읽기 → 검사 → 저장 → 다시 읽기).
 /// 사람 하나의 안전한 자리는 '쓰기 전'과 '저장 뒤 다시 읽기까지'다(AC-017.9). 뜻밖의 일이면 짐작하지 않고 멈춘다.
-/// 다른 메모는 덮어쓰지 않는다(AC-017.3). 예외 글은 어디에도 남기지 않는다(AC-001.6).
+/// 다른 메모는 사람이 승인했거나(item.Replaces) 묶음을 시작할 때 묻지 않기가 켜져 있을 때만 바꾼다(design.md 19-6 표). 바꾸는 사람은 원래 메모가 디스크에 남은 뒤에야 writing을 남기고 칸에 쓴다(AC-037.1).
+/// 예외 글은 어디에도 남기지 않는다(AC-001.6).
 /// 전에 쓰다 멈춘 사람(입력 기록의 마지막이 Writing·WriteUnconfirmed)은 칸 글을 그대로 믿지 않는다. 칸이 우리 글과 같아도 저장됐는지 모르고, 다르면 쓰다 만 글일 수 있다.
 /// 그 기록은 저장을 확인해야만(또는 칸이 비어 처음처럼 입력해 확인해야만) 풀린다. 그 전에는 건너뛰지 않고 묶음을 멈춘다.
 /// 또 하나의 푸는 길이 직접 확인(item.CheckedByHand, AC-035.5)이다. [확인] 뒤 그 사람은 쓰다 멈춘 사람으로 보지 않고 비교대로 하되, 완료로 끝나지도 칸에 글을 남기지도 않으면 SkippedByHand를 남긴다.
@@ -25,6 +26,7 @@ public sealed class InputRunner
     public const string AlreadyInput = "이미 입력됨";
     public const string AlreadyOther = "이미 있음";
     public const string Written = "입력";
+    public const string ReplacedOther = "바꿈(기존 메모 덮어씀)";
 
     private const int MaxFailureRun = 3;
 
@@ -49,6 +51,9 @@ public sealed class InputRunner
 
     // 이 도우미에서 더한 문구: 전에 쓰다 멈췄는데 칸 글이 다르다. 덮어쓰지도, 남의 메모로 보고 넘어가지도 않는다
     private const string CheckMemoBox = "이전 입력이 끝나지 않았고 메모 칸 내용이 입력할 글과 다릅니다. 이 환자의 청구메모 칸을 직접 확인해 주세요.";
+
+    // 이 도우미에서 더한 문구: 깨진 달 파일의 이름만 바꿔 아무도 열지 않았다. 번호의 일반 문구만으로는 다시 누르면 된다는 것을 알 수 없다(AC-035.9)
+    private const string RecordSetAside = "그 달의 입력 기록 파일을 읽지 못해 따로 치워 두었습니다. 아무도 열지 않았으니 다시 눌러 이어서 해 주세요.";
 
     // 이 도우미에서 더한 문구: 조회 모드로 열린 진료의 칸이 글을 받지 않았다(AC-036.5)
     private const string NotAccepted = "메모 칸이 입력을 받지 않아 입력하지 못했습니다";
@@ -78,11 +83,14 @@ public sealed class InputRunner
     }
 
     /// <summary>처리기가 다듬은 묶음을 돈다: 열 사람, 미리 뺀 사람, 풀 사람, 묻는 글. 미리 뺀 사람의 줄은 어떻게 끝났는지에 따라 여기서 더한다.</summary>
-    internal InputOutcome Run(InputBatch batch, HospitalRegistration registration)
+    internal InputOutcome Run(InputBatch batch, HospitalRegistration registration, NoAskSwitch? noAsk = null)
     {
         if (batch == null) throw new ArgumentNullException(nameof(batch));
         if (registration == null) throw new ArgumentNullException(nameof(registration));
         var items = batch.Remaining;
+
+        // 묶음을 시작할 때의 값이다: 이 묶음의 창에서 막 켠 체크는 다음 묶음부터 친다(AC-037.6)
+        var noAskOn = noAsk != null && noAsk.IsOn;
 
         var fingerprint = ui.CheckFingerprint();
         if (!fingerprint.Ok) return batch.WithExcluded(new InputOutcome(InputStatus.Stopped, InputErrors.UiChanged, null, fingerprint.Problems, null));
@@ -92,11 +100,15 @@ public sealed class InputRunner
         BatchCheck.ValidateCode(batch.Code);
 
         if (stopRequested()) return NotConfirmed(batch);
-        var text = InputPrompt.Build(items, registration, batch.Excluded.Count, batch.Released.Count, batch.AckRecords != null, batch.Code);
-        var answer = confirm.Ask(text, ConfirmTimeout, stopRequested);
-        if (!answer || stopRequested()) return NotConfirmed(batch);
+        if (!noAskOn || batch.MustAsk)
+        {
+            var text = InputPrompt.Build(items, registration, batch.Excluded.Count, batch.Released.Count, batch.AckRecords != null, batch.Code, noAskOn);
+            var answer = confirm.Ask(text, noAskOn, ConfirmTimeout, stopRequested, out var ticked);
+            if (!answer || stopRequested()) return NotConfirmed(batch);
+            if (ticked) noAsk?.TurnOn();
+        }
 
-        return RunConfirmed(batch);
+        return RunConfirmed(batch, noAskOn);
     }
 
     /// <summary>[확인]을 받지 못함: 아무것도 하지 않은 것이라 기록도 결과도 없다(AC-017.2). 확인할 수 없는 기록을 묻던 창이면 cancelled가 아니라 stopped다(AC-035.9).</summary>
@@ -109,7 +121,7 @@ public sealed class InputRunner
     /// [확인] 뒤의 차례는 여기 한 곳에서 정한다(AC-035.8·AC-035.9): 해시 저장 → 입력 기록 읽기 → 풀 사람 Mark → 내원내역 칸 확인 → 사람마다.
     /// 앞의 둘에서 막히면 아무 기록도 남기지 않는다. Mark가 읽기보다 먼저면 읽지 못한 묶음도 풀려 AC-035.5의 '그대로'에 어긋난다.
     /// </summary>
-    private InputOutcome RunConfirmed(InputBatch batch)
+    private InputOutcome RunConfirmed(InputBatch batch, bool noAskOn)
     {
         var items = batch.Remaining;
 
@@ -118,15 +130,21 @@ public sealed class InputRunner
 
         // 묶음의 진료 전부를 읽는다: 미리 뺀 사람의 달을 못 읽어도 끝의 SaveResults가 아니라 여기서, 아무도 열기 전에 멈춘다(AC-035.9)
         var everyone = items.Concat(batch.Released.Select(person => person.Item)).Concat(batch.Excluded).ToList();
-        var earlierWrites = ReadEarlierWrites(everyone, out stop);
-        if (earlierWrites == null) return LeaveRecords(batch, stop!);
+        var earlier = ReadEarlierWrites(everyone, out stop);
+        if (earlier == null) return LeaveRecords(batch, stop!);
 
         var released = Release(batch, ref stop);
-        if (items.Count == 0 && stop == null) return batch.WithExcluded(new InputOutcome(InputStatus.Finished, null, null, null, released));
+        if (items.Count == 0 && stop == null) return batch.WithExcludedConfirmed(new InputOutcome(InputStatus.Finished, null, null, null, released));
 
         // 쓰다 멈춘 사람이 먼저다: 칸에 저장 안 된 글이 있는 채 다른 사람 줄을 열면 그 글이 다른 환자에게 들어갈 수 있다(StopAfterWrite)
-        var ordered = items.OrderBy(item => earlierWrites.Contains(item.VisitKey) ? 0 : 1).ToList();
-        Person PersonOf(InputItem item) => new Person { EarlierWrite = earlierWrites.Contains(item.VisitKey), CheckedByHand = item.CheckedByHand };
+        var ordered = items.OrderBy(item => earlier.Writes.Contains(item.VisitKey) ? 0 : 1).ToList();
+        Person PersonOf(InputItem item) => new Person
+        {
+            EarlierWrite = earlier.Writes.Contains(item.VisitKey),
+            HandRecord = earlier.ByHand.Contains(item.VisitKey),
+            CheckedByHand = item.CheckedByHand,
+            NoAsk = noAskOn,
+        };
 
         var results = new List<InputResult>(items.Count);
         stop = stop ?? CheckListPeriod(items, batch.Code);
@@ -155,7 +173,8 @@ public sealed class InputRunner
                     failureRun = 0;
                     continue;
                 }
-                if (!ChartRules.IsPatientSkip(result.Reason)) failureRun++;
+                // 승인한 뒤 누가 메모를 고친 것은 설정 문제가 아니다: 3번 잇따른 실패에 세지 않는다(AC-037.2)
+                if (!ChartRules.IsPatientSkip(result.Reason) && !string.Equals(result.Reason, ChangedBefore, StringComparison.Ordinal)) failureRun++;
                 if (failureRun >= MaxFailureRun && !person.Review)
                 {
                     stop = new BatchStop(InputErrors.Stopped, "연속 3명 실패 — 설정 문제일 수 있어 멈췄습니다. 마지막 사유: " + result.Reason);
@@ -164,7 +183,7 @@ public sealed class InputRunner
             }
         }
 
-        if (stop == null) return batch.WithExcluded(new InputOutcome(InputStatus.Finished, null, null, null, released.Concat(results).ToList()));
+        if (stop == null) return batch.WithExcludedConfirmed(new InputOutcome(InputStatus.Finished, null, null, null, released.Concat(results).ToList()));
 
         // 멈추면 남은 사람은 '확인 필요: 미처리'(AC-017.5). 전에 쓰다 멈춘 사람은 미처리로 읽히면 안 된다: 기록을 덮으면 다음 실행에 거짓 완료가 된다
         foreach (var item in ordered.Skip(results.Count))
@@ -174,7 +193,7 @@ public sealed class InputRunner
             results.Add(rest);
             MarkFinal(item, rest, person, ref stop);
         }
-        return batch.WithExcluded(new InputOutcome(InputStatus.Stopped, stop!.Code, stop.Reason, stop.Fields, released.Concat(results).ToList()));
+        return batch.WithExcludedConfirmed(new InputOutcome(InputStatus.Stopped, stop!.Code, stop.Reason, stop.Fields, released.Concat(results).ToList()));
     }
 
     private static BatchStop? SaveRecordAcks(InputBatch batch)
@@ -202,44 +221,62 @@ public sealed class InputRunner
         return batch.WithExcludedLines(new InputOutcome(InputStatus.Stopped, stop.Code, stop.Reason, stop.Fields, unread));
     }
 
-    /// <summary>풀 사람마다 SkippedByHand를 남기고, 남긴 뒤에만 줄을 넣는다(AC-035.8). 못 남기면 거기서 멈춘다: 풀리지 않은 사람에게 줄이 있으면 건너뜀으로 끝난 것처럼 보인다.</summary>
+    /// <summary>
+    /// 풀 사람마다 SkippedByHand를 남기고, 남긴 뒤에만 줄을 넣는다(AC-035.8). 못 남기면 거기서 멈춘다: 풀리지 않은 사람에게 줄이 있으면 건너뜀으로 끝난 것처럼 보인다.
+    /// 쓰다 멈추지 않았는데 미리 빠진 checkedByHand 사람도 같은 자리에서 남긴다(AC-035.5): skipped로 두면 다음 묻지 않기가 승인 없이 바꾼다. 이 사람의 줄은 WithExcludedConfirmed가 더한다.
+    /// </summary>
     private List<InputResult> Release(InputBatch batch, ref BatchStop? stop)
     {
         var lines = new List<InputResult>(batch.Released.Count);
         foreach (var person in batch.Released)
         {
-            try
-            {
-                journal.Mark(person.Item, JournalState.SkippedByHand);
-            }
-            catch (HelperException e)
-            {
-                stop = new BatchStop(e.Code, null);
-                break;
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                stop = new BatchStop(InputErrors.Stopped, Unexpected);
-                break;
-            }
+            stop = MarkByHand(person.Item);
+            if (stop != null) return lines;
             lines.Add(person.Line);
+        }
+        foreach (var item in batch.Excluded.Where(person => person.CheckedByHand))
+        {
+            stop = MarkByHand(item);
+            if (stop != null) return lines;
         }
         return lines;
     }
 
-    /// <summary>묶음에서 전에 쓰기를 시작하고 저장을 확인하지 못한 진료(직접 확인으로 온 사람은 빼고). 입력 기록을 못 읽으면 null과 멈춤 이유: '기록 없음'으로 보지 않는다.</summary>
-    private HashSet<string>? ReadEarlierWrites(IReadOnlyList<InputItem> items, out BatchStop? stop)
+    private BatchStop? MarkByHand(InputItem item)
+    {
+        try
+        {
+            journal.Mark(item, JournalState.SkippedByHand);
+            return null;
+        }
+        catch (HelperException e)
+        {
+            return new BatchStop(e.Code, null);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return new BatchStop(InputErrors.Stopped, Unexpected);
+        }
+    }
+
+    /// <summary>묶음의 앞선 기록을 읽는다. 입력 기록을 못 읽으면 null과 멈춤 이유: '기록 없음'으로 보지 않는다. 깨진 달 파일을 치웠을 뿐이면 다시 누르라는 글을 싣는다(AC-035.9).</summary>
+    private EarlierRecords? ReadEarlierWrites(IReadOnlyList<InputItem> items, out BatchStop? stop)
     {
         stop = null;
         try
         {
-            var found = new HashSet<string>(StringComparer.Ordinal);
+            var found = new EarlierRecords();
             foreach (var item in items)
             {
                 var last = journal.LastState(item);
-                if (!item.CheckedByHand && (last == JournalState.Writing || last == JournalState.WriteUnconfirmed)) found.Add(item.VisitKey);
+                if (!item.CheckedByHand && (last == JournalState.Writing || last == JournalState.WriteUnconfirmed)) found.Writes.Add(item.VisitKey);
+                if (last == JournalState.SkippedByHand) found.ByHand.Add(item.VisitKey);
             }
             return found;
+        }
+        catch (RecordSetAsideException e)
+        {
+            stop = new BatchStop(e.Code, RecordSetAside);
         }
         catch (HelperException e)
         {
@@ -306,13 +343,13 @@ public sealed class InputRunner
     }
 
     /// <summary>
-    /// 사람 하나의 마지막 기록. 직접 확인으로 온 사람은 어떤 까닭이든 완료가 아니면 SkippedByHand다(결과 글은 그대로): Skipped·Check로 두면 다음 묶음의 묻지 않기가
-    /// 직원이 다루던 칸을 승인 없이 바꾼다. 쓰기를 시작해 칸에 글이 남았을 수 있을 때만 WriteUnconfirmed다(AC-035.5).
+    /// 사람 하나의 마지막 기록. 직접 확인으로 왔거나 직접 확인 기록이 남은 사람은 어떤 까닭이든 완료가 아니면 SkippedByHand다(결과 글은 그대로): Skipped·Check로 두면 다음 묶음의 묻지 않기가
+    /// 직원이 다루던 칸을 승인 없이 바꾼다. 쓰기를 시작해 칸에 글이 남았을 수 있을 때만 WriteUnconfirmed다(AC-035.5·AC-037.6).
     /// </summary>
     private static JournalState FinalState(InputResult result, Person person)
     {
         if (result.Result == InputResults.Done) return JournalState.Done;
-        if (person.CheckedByHand) return person.WriteStarted && !person.NothingLeft ? JournalState.WriteUnconfirmed : JournalState.SkippedByHand;
+        if (person.ByHand) return person.WriteStarted && !person.NothingLeft ? JournalState.WriteUnconfirmed : JournalState.SkippedByHand;
         if (result.Result == InputResults.Skipped) return JournalState.Skipped;
         return person.Unconfirmed ? JournalState.WriteUnconfirmed : JournalState.Check;
     }
@@ -347,7 +384,7 @@ public sealed class InputRunner
         var failure = CheckTarget(item);
         if (failure != null) return SkipUnlessEarlierWrite(item, failure, person);
 
-        // 바로 앞에서 비트 메모 다시 읽기: 같으면 완료, 다르면 건너뜀, 덮어쓰지 않는다(AC-017.3)
+        // 바로 앞에서 비트 메모 다시 읽기: 같으면 완료, 비었으면 입력, 다르면 design.md 19-6 표대로(AC-017.3·AC-037.1·AC-037.6)
         var existing = ui.ReadMemo();
         var match = matcher.Compare(item.Memo, existing);
         if (person.EarlierWrite)
@@ -360,8 +397,15 @@ public sealed class InputRunner
             case MemoMatch.Same:
                 return new InputResult(item.VisitKey, InputResults.Done, AlreadyInput);
             case MemoMatch.Different:
-                person.Review = true;
-                return Skip(item, AlreadyOther);
+                if (existing == null) throw Stop(InputErrors.Stopped, MemoUnreadable);
+                var refused = WhyNotReplace(item, existing, person);
+                if (refused != null)
+                {
+                    person.Review = true;
+                    return Skip(item, refused);
+                }
+                person.Replacing = true;
+                break;
             case MemoMatch.Absent:
                 break;
             default:
@@ -373,7 +417,19 @@ public sealed class InputRunner
     }
 
     /// <summary>
-    /// 쓰기부터 저장 뒤 다시 읽기까지. existing은 쓰기 바로 앞에 칸에 있어야 할 글이다(지금은 빈칸. 개별 승인 덮어쓰기가 생기면 승인한 기존 메모).
+    /// 칸에 다른 메모가 있을 때 바꾸지 않는 까닭(design.md 19-6 표). 바꿔도 되면 null이다. 차례가 곧 우선순위다: 직접 확인으로 온 사람은 replaces가 함께 와도 바꾸지 않고(AC-035.5),
+    /// 승인이 있으면 칸 글이 그 글일 때만 바꾸며(AC-037.1·AC-037.2), 승인이 없으면 묶음 시작 때 묻지 않기가 켜져 있고 직접 확인 기록이 없을 때만 바꾼다(AC-037.6).
+    /// </summary>
+    private static string? WhyNotReplace(InputItem item, string existing, Person person)
+    {
+        if (person.CheckedByHand) return AlreadyOther;
+        if (item.Replaces != null) return MemoApproval.Matches(existing, item.Replaces) ? null : ChangedBefore;
+        return person.NoAsk && !person.HandRecord ? null : AlreadyOther;
+    }
+
+    /// <summary>
+    /// 쓰기부터 저장 뒤 다시 읽기까지. existing은 쓰기 바로 앞에 칸에 있어야 할 글이다(빈칸, 또는 바꾸는 사람이면 원래 메모).
+    /// 바꾸는 사람은 원래 메모를 먼저 달 파일에 남긴다(AC-037.1): 못 남기면 번호 있는 예외로 멈추고 writing도 쓰기도 없다.
     /// writing을 남긴 뒤로는 멈춤 신호를 보지 않는다: 시작한 사람은 끝까지 한다(AC-017.9).
     /// </summary>
     private InputResult WriteMemo(InputItem item, string existing, Person person)
@@ -388,7 +444,9 @@ public sealed class InputRunner
         var failure = CheckTarget(item);
         if (failure != null) return SkipUnlessEarlierWrite(item, failure + " (입력 직전 화면이 바뀜)", person);
 
-        if (!MemoApproval.Matches(ui.ReadMemo(), existing))
+        var current = ui.ReadMemo();
+        if (current == null) throw Stop(InputErrors.Stopped, MemoUnreadable);
+        if (!MemoApproval.Matches(current, existing))
         {
             person.Review = true;
             return SkipUnlessEarlierWrite(item, ChangedBefore, person);
@@ -396,6 +454,7 @@ public sealed class InputRunner
         if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
         if (stopRequested()) throw Stop(InputErrors.Stopped, null);
 
+        if (person.Replacing) journal.SaveOriginal(item, existing);
         journal.Mark(item, JournalState.Writing);
         person.WriteStarted = true;
 
@@ -405,16 +464,19 @@ public sealed class InputRunner
             case MemoWrite.NotWritten:
                 if (person.EarlierWrite) throw StopAfterWrite(item, WriteUnknown);
                 person.NothingLeft = true;
+                // 칸을 못 읽어 막힌 것이면 '바뀜'으로 보고 다음 사람을 열지 않는다(AC-037.2·AC-037.6)
+                if (ui.ReadMemo() == null) throw Stop(InputErrors.Stopped, MemoUnreadable);
                 return Skip(item, NothingEntered);
             case MemoWrite.WrittenDifferent:
                 // 다시 읽어 쓰기 전과 같으면 칸에 우리 글이 남지 않았다. 못 읽으면 같음으로 치지 않는다(AC-035.5·AC-036.5)
-                if ((person.CheckedByHand || person.ViewMode) && MemoApproval.Matches(ui.ReadMemo(), existing)) person.NothingLeft = true;
+                if ((person.ByHand || person.ViewMode) && MemoApproval.Matches(ui.ReadMemo(), existing)) person.NothingLeft = true;
                 // 조회 모드로 열려 아무것도 쓰이지 않았으면 그 사람만 확인 필요다. 쓰다 멈춘 사람은 전에 남은 글을 모르니 멈춘다(AC-036.5)
                 if (person.ViewMode && person.NothingLeft && !person.EarlierWrite) return new InputResult(item.VisitKey, InputResults.Check, NotAccepted);
                 throw StopAfterWrite(item, WriteNotConfirmed);
         }
 
-        return SaveAndConfirm(item, text);
+        var saved = SaveAndConfirm(item, text);
+        return person.Replacing ? new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, existing) : saved;
     }
 
     /// <summary>
@@ -422,12 +484,15 @@ public sealed class InputRunner
     /// 기록은 이미 쓰다 멈춤이라 도중에 끝나도 다음 실행이 다시 여기로 온다. 시작한 사람은 끝까지 하므로 멈춤 신호를 보지 않는다(AC-017.9).
     /// 칸이 편집 불가면 저장을 눌러도 저장됐다고 볼 수 없어 누르지 않고 멈춘다(AC-036.5). 조회 모드 표시를 함께 보지 않는다:
     /// 조회 모드로 멈춘 뒤 다시 실행하면 내원이 이미 열려 있어 안내창이 없고 표시도 없다.
+    /// 바꾸다 멈춘 사람이면 남겨 둔 원래 메모를 결과에 준다(AC-037.1). 저장을 누르기 전에 읽는다: 못 읽으면 기록이 쓰다 멈춤 그대로 남는다.
     /// </summary>
     private InputResult FinishEarlierWrite(InputItem item)
     {
         if (!ui.IsMemoEditable()) throw StopAfterWrite(item, WriteUnknown);
         if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
-        return SaveAndConfirm(item, ChartRules.ToWin(item.Memo));
+        var original = journal.LastOriginal(item);
+        var saved = SaveAndConfirm(item, ChartRules.ToWin(item.Memo));
+        return original == null ? saved : new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, original);
     }
 
     private InputResult SaveAndConfirm(InputItem item, string text)
@@ -459,10 +524,26 @@ public sealed class InputRunner
     private static BatchStopException StopAfterWrite(InputItem item, string reason) =>
         new BatchStopException(new BatchStop(InputErrors.Stopped, reason), new InputResult(item.VisitKey, InputResults.Check, reason));
 
+    /// <summary>묶음 앞에 읽은 입력 기록: 쓰다 멈춘 진료(직접 확인으로 온 사람은 빼고)와 마지막이 SkippedByHand인 진료.</summary>
+    private sealed class EarlierRecords
+    {
+        public HashSet<string> Writes { get; } = new HashSet<string>(StringComparer.Ordinal);
+        public HashSet<string> ByHand { get; } = new HashSet<string>(StringComparer.Ordinal);
+    }
+
     private sealed class Person
     {
         /// <summary>입력 기록: 전 실행에서 쓰기를 시작했고 저장을 확인하지 못했다.</summary>
         public bool EarlierWrite;
+
+        /// <summary>입력 기록의 마지막이 SkippedByHand다: 사람이 새로 승인했을 때만 바꾼다(AC-037.6).</summary>
+        public bool HandRecord;
+
+        /// <summary>묶음을 시작할 때 묻지 않기가 켜져 있었다.</summary>
+        public bool NoAsk;
+
+        /// <summary>칸의 다른 메모를 바꾸는 중이다: 원래 메모를 먼저 남기고 결과에 준다(AC-037.1).</summary>
+        public bool Replacing;
 
         /// <summary>이번 실행에서 writing을 남겼다.</summary>
         public bool WriteStarted;
@@ -478,6 +559,9 @@ public sealed class InputRunner
 
         /// <summary>이 사람을 여는 동안 조회 모드 안내창을 눌렀다(AC-036.4·AC-036.5).</summary>
         public bool ViewMode;
+
+        /// <summary>직원이 손으로 다루던 칸의 사람: 이번에 직접 확인으로 왔거나 그 기록이 남았다.</summary>
+        public bool ByHand => CheckedByHand || HandRecord;
 
         /// <summary>확인 필요로 끝나면 우리 글이 칸에 남았을 수 있는 사람.</summary>
         public bool Unconfirmed => EarlierWrite || (WriteStarted && !NothingLeft);

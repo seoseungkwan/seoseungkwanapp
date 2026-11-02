@@ -13,6 +13,7 @@ namespace Precheck.Core.Store;
 /// 무엇이든 못 읽거나 못 남기면 E-STORE-FAILED 하나로 던진다. 쓰는 일은 bit.input이 작업 잠금을 쥔 동안에만 한다. 묶음 하나에 하나씩 연다: 이번 묶음에서 Mark한 진료를 기억한다.
 /// 웹이 보낸 journal은 여기로 오지 않는다(StoreCommands). 그래서 쓰다 멈춘 기록을 푸는 길은 bit.input의 저장 확인과 직접 확인(AC-035.5·AC-035.8)뿐이다.
 /// Scan은 달 파일을 고치지 않고 본다(AC-035.9, WorkStoreRecords.cs). LastState·Mark·SaveResults는 그 달 파일을 AC-015.3·AC-015.4 그대로 읽고 쓴다.
+/// 원래 메모(AC-037.1)는 journal이 아니라 originals 칸의 글 목록이다: journal 값은 상태 글자이고, store.save가 칸째 바꾸는 drafts·done에는 둘 수 없다.
 /// </summary>
 public sealed class WorkStoreJournal : IBatchJournal
 {
@@ -43,6 +44,38 @@ public sealed class WorkStoreJournal : IBatchJournal
         });
         marked.Add(item.VisitKey);
     }
+
+    public void SaveOriginal(InputItem item, string text)
+    {
+        if (text == null) throw new ArgumentNullException(nameof(text));
+        Guarded(() =>
+        {
+            var month = MonthOf(item);
+            var kept = OriginalsOf(month, item.VisitKey);
+            if (kept.Count > 0 && string.Equals(kept[kept.Count - 1], text, StringComparison.Ordinal)) return true;
+
+            kept.Add(text);
+            var originals = Element(writer =>
+            {
+                writer.WriteStartArray(item.VisitKey);
+                foreach (var original in kept) writer.WriteStringValue(original);
+                writer.WriteEndArray();
+            });
+
+            // 글자로 풀 수 없는 글(짝 없는 대리쌍)은 JSON에 쓰면 다른 글자로 바뀐다: 바뀐 글을 남기면 원래 메모를 잃은 것이니 담지 못한 것으로 친다(AC-037.1)
+            var written = originals.GetProperty(item.VisitKey);
+            if (!string.Equals(written[written.GetArrayLength() - 1].GetString(), text, StringComparison.Ordinal)) throw new BitException(BitErrors.StoreFailed);
+
+            store.SaveMonth(month, null, null, null, null, originals);
+            return true;
+        });
+    }
+
+    public string? LastOriginal(InputItem item) => Guarded(() =>
+    {
+        var kept = OriginalsOf(MonthOf(item), item.VisitKey);
+        return kept.Count == 0 ? null : kept[kept.Count - 1];
+    });
 
     public JournalState? LastState(InputItem item) => Guarded<JournalState?>(() =>
     {
@@ -93,6 +126,16 @@ public sealed class WorkStoreJournal : IBatchJournal
             }
             return true;
         });
+    }
+
+    /// <summary>그 진료의 글 목록. 모양이 틀리면 예외다: 틀린 목록을 빈 것으로 보고 덮으면 전에 남긴 글을 잃는다.</summary>
+    private List<string> OriginalsOf(string month, string visitKey)
+    {
+        var kept = new List<string>();
+        var originals = store.ReadOriginals(month);
+        if (!originals.HasValue || !originals.Value.TryGetProperty(visitKey, out var list)) return kept;
+        foreach (var text in list.EnumerateArray()) kept.Add(text.GetString() ?? throw new BitException(BitErrors.StoreFailed));
+        return kept;
     }
 
     private void Write(string month, IReadOnlyList<InputItem> items, JournalState state)
@@ -146,12 +189,19 @@ public sealed class WorkStoreJournal : IBatchJournal
         return document.RootElement.Clone();
     }
 
-    /// <summary>못 읽거나 못 남기면 어떤 까닭이든 E-STORE-FAILED 하나다. 예외 글은 밖으로 나가지 않는다(AC-001.6).</summary>
+    /// <summary>
+    /// 못 읽거나 못 남기면 어떤 까닭이든 E-STORE-FAILED 하나다. 예외 글은 밖으로 나가지 않는다(AC-001.6).
+    /// 깨진 파일의 이름만 바꾼 때(E-STORE-BROKEN)는 번호가 같고 그것만 알려 준다: 다시 누르면 이어진다(AC-035.9).
+    /// </summary>
     private static T Guarded<T>(Func<T> action)
     {
         try
         {
             return action();
+        }
+        catch (BitException e) when (e.Code == BitErrors.StoreBroken)
+        {
+            throw new RecordSetAsideException();
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {

@@ -29,8 +29,20 @@ describe('AC-035.5 bit.input 묶음의 직접 확인 표시', () => {
   it('AC-035.5 items의 칸은 visitKey·chart·name·date·memo와 고르는 checkedByHand(참·거짓)다', () => {
     const payload = commands.commands['bit.input'].args.payload
     const fields = payload.fields.items.items.fields as Record<string, { type: string; optional?: boolean }>
-    expect(Object.keys(fields).sort()).toEqual(['chart', 'checkedByHand', 'date', 'memo', 'name', 'visitKey'])
+    expect(Object.keys(fields).sort()).toEqual(['chart', 'checkedByHand', 'date', 'memo', 'name', 'replaces', 'visitKey'])
     expect(fields.checkedByHand).toEqual({ type: 'bool', optional: true })
+  })
+})
+
+describe('AC-037.1 bit.input 묶음의 승인한 비트 메모', () => {
+  it('AC-037.1 replaces는 고르는 글자 칸이고 1~4,000자다(AC-016.1의 메모 한도)', () => {
+    const fields = commands.commands['bit.input'].args.payload.fields.items.items.fields as Record<string, unknown>
+    expect(fields.replaces).toEqual({ type: 'string', min: 1, max: 4000, optional: true })
+  })
+
+  it('AC-037.5 AC-037.1 명령 표 어디에도 묻지 않기 칸과 originals가 없다: 사이트는 켤 수도 쓸 수도 없다', () => {
+    const table = JSON.stringify(commands.commands)
+    expect(table).not.toMatch(/noAsk|no_ask|originals|previousMemo/i)
   })
 })
 

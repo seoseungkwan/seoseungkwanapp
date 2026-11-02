@@ -25,16 +25,20 @@ public static class InputResults
 
 public sealed class InputResult
 {
-    public InputResult(string visitKey, string result, string reason)
+    public InputResult(string visitKey, string result, string reason, string? previousMemo = null)
     {
         VisitKey = visitKey;
         Result = result;
         Reason = reason;
+        PreviousMemo = previousMemo;
     }
 
     public string VisitKey { get; }
     public string Result { get; }
     public string Reason { get; }
+
+    /// <summary>바꾼 사람의 원래 메모(AC-037.1). 다른 줄은 null이고 답에 칸을 쓰지 않는다.</summary>
+    public string? PreviousMemo { get; }
 }
 
 /// <summary>묶음의 끝. Code는 멈춘 이유 번호, Reason은 원본 문구, Fields는 E-BIT-UI-CHANGED의 칸 ID 목록, Unconfirmed는 쓰다 멈춰 먼저 풀어야 할 진료(AC-035.4).</summary>
@@ -75,8 +79,11 @@ public sealed class InputOutcome
     /// <summary>번호를 바꾼 복사본(결과를 저장하지 못했을 때).</summary>
     public InputOutcome WithCode(string code) => new InputOutcome(Status, code, Reason, Fields, Results, Unconfirmed, Excluded);
 
-    /// <summary>조각으로 보낼 JSON: {status, code, reason, fields, results: [{visitKey, result, reason}], unconfirmed?: [{visitKey, date}]}. unconfirmed는 있을 때만 칸을 쓴다.</summary>
-    public string ToJson()
+    /// <summary>
+    /// 조각으로 보낼 JSON: {status, code, reason, fields, results: [{visitKey, result, reason, previousMemo?}], unconfirmed?: [{visitKey, date}], noAsk}. previousMemo·unconfirmed는 있을 때만 칸을 쓴다.
+    /// noAsk는 도우미의 묻지 않기 상태다(AC-037.4): 취소·멈춤에도 싣는다.
+    /// </summary>
+    public string ToJson(bool noAsk = false)
     {
         return Encoding.UTF8.GetString(Envelope.Write(writer =>
         {
@@ -93,6 +100,7 @@ public sealed class InputOutcome
                 writer.WriteString("visitKey", result.VisitKey);
                 writer.WriteString("result", result.Result);
                 writer.WriteString("reason", result.Reason);
+                if (result.PreviousMemo != null) writer.WriteString("previousMemo", result.PreviousMemo);
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
@@ -108,6 +116,7 @@ public sealed class InputOutcome
                 }
                 writer.WriteEndArray();
             }
+            writer.WriteBoolean("noAsk", noAsk);
         }));
     }
 

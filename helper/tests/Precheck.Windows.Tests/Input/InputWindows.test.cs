@@ -32,6 +32,24 @@ public class InputWindowsTests
     [Fact(DisplayName = "AC-017.9 이미 닫힌 뒤면 확인 창이 바로 false")]
     public void ConfirmAlreadyClosed() => Assert.False(new ConfirmWindow().Ask("가짜 입력 확인", TimeSpan.FromMinutes(1), () => true));
 
+    [Theory(DisplayName = "AC-037.4 체크가 있는 입력 확인 창도 [확인] 없이 닫히면 false이고 체크는 켜지지 않는다")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoAskWindowClosesWithoutTick(bool alreadyOn)
+    {
+        Assert.False(new ConfirmWindow().Ask("가짜 입력 확인", alreadyOn, TimeSpan.FromMilliseconds(300), () => false, out var timedOut));
+        Assert.False(timedOut);
+        Assert.False(new ConfirmWindow().Ask("가짜 입력 확인", alreadyOn, TimeSpan.FromMinutes(1), () => true, out var closed));
+        Assert.False(closed);
+    }
+
+    [Fact(DisplayName = "AC-035.9 맨 위 글이 있는 창도 뜨고 닫힌다(노란 바탕은 그 글이 있을 때만, 그림은 의원 PC 시험)")]
+    public void NoticeWindowCloses()
+    {
+        var text = "입력 기록의 일부를 확인할 수 없습니다. 먼저 비트에 열려 있는 환자의 메모 칸을 확인해 주세요. 저장하지 않은 글이 있으면 마무리한 뒤 [확인]을 눌러 주세요.\r\n\r\n가짜 입력 확인";
+        Assert.False(new ConfirmWindow().Ask(text, false, TimeSpan.FromMilliseconds(300), () => false, out _));
+    }
+
     [Fact(DisplayName = "AC-017.5 진행 창: 누르기 전에는 멈춤이 아니고, 숫자를 바꾸고 닫아도 걸리지 않는다")]
     public void Progress()
     {
