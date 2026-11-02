@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 using Precheck.Core.Claim;
 using Xunit;
 
@@ -48,5 +53,50 @@ public class MemoCompareTests
     public void NormalizeOnlyTouchesCrLf()
     {
         Assert.Equal(" 첫 줄\n둘째\r줄\n\t", MemoCompare.NormalizeNewlines(" 첫 줄\r\n둘째\r줄\n\t"));
+    }
+
+    /// <summary>
+    /// 웹 compareMemo(src/lib/precheck/memoCompare.test.ts)가 같은 파일을 읽어 같은 답을 내는지 본다(AC-016.2·AC-035.3).
+    /// 네 갈래는 쓰기 직전 비교(AC-035.3)의 차례 그대로다: null → 조회 못함, IsNullOrWhiteSpace → 비트에 없음, Matches → 같음, 그 밖은 다름.
+    /// </summary>
+    private static string Compare(string ours, string? inBit)
+    {
+        if (inBit == null) return "조회 못함";
+        if (string.IsNullOrWhiteSpace(inBit)) return "비트에 없음";
+        return MemoCompare.Matches(inBit, ours) ? "같음" : "다름";
+    }
+
+    private static string CasesFile()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            var candidate = Path.Combine(dir.FullName, "Claim", "memo-compare-cases.test.json");
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        throw new InvalidOperationException("Claim/memo-compare-cases.test.json을 찾지 못했다");
+    }
+
+    private static List<(string Name, string Ours, string? InBit, string Expected)> SharedCases()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(CasesFile()));
+        return document.RootElement.EnumerateArray()
+            .Select(item => (
+                item.GetProperty("name").GetString()!,
+                item.GetProperty("ours").GetString()!,
+                item.GetProperty("inBit").ValueKind == JsonValueKind.Null ? null : item.GetProperty("inBit").GetString(),
+                item.GetProperty("expected").GetString()!))
+            .ToList();
+    }
+
+    public static IEnumerable<object[]> SharedCaseNames() => SharedCases().Select(item => new object[] { item.Name });
+
+    [Theory(DisplayName = "AC-016.2 공유 사례: 웹 compareMemo와 같은 파일로 같은 답을 낸다")]
+    [MemberData(nameof(SharedCaseNames))]
+    public void SharedCasesMatchWeb(string name)
+    {
+        var item = SharedCases().Single(row => row.Name == name);
+        Assert.Equal(item.Expected, Compare(item.Ours, item.InBit));
     }
 }
