@@ -50,3 +50,19 @@ export function buildClaimExcel(view: ExcelView): ArrayBuffer {
 
 /** 파일 이름에는 날짜만 넣는다(환자 값 없음, design.md 5절) */
 export const claimExcelName = (period: DateRange) => `사전점검_${period.from}_${period.to}.xlsx`
+
+// [엑셀로 저장](AC-018.15) 원본 nmBatchWorkbook과 같은 칸. 자료에 없는 진료의 줄에는 자리 채움 값을 쓰지 않는다: 부르는 쪽(jobs.ts)이 차트번호·환자명·메모를 비워 넘기고 내원일은 날짜(모르면 달)다
+export type InputExcelRow = { date: string; chart: string; name: string; result: string; reason: string; memo: string; existing: string }
+
+const INPUT_HEAD = ['순번', '내원일', '차트번호', '환자명', '결과', '내용', '입력예정 청구메모', '기존 비트 청구메모']
+const inputRows = (rows: readonly InputExcelRow[]) => rows.map((row, index) => [index + 1, row.date, row.chart, row.name, row.result, row.reason, row.memo, row.existing])
+
+export function buildInputExcel(rows: readonly InputExcelRow[]): ArrayBuffer {
+  const book = XLSX.utils.book_new()
+  addSheet(book, '비트 입력 결과', [INPUT_HEAD, ...inputRows(rows)], 5)
+  addSheet(book, '확인할 환자', [INPUT_HEAD, ...inputRows(rows.filter((row) => row.result !== '완료'))], 5)
+  return XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+}
+
+/** 파일 이름에는 날짜만 넣는다(환자 값 없음) */
+export const inputExcelName = (period: DateRange) => `비트입력결과_${period.from}_${period.to}.xlsx`

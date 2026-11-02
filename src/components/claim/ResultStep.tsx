@@ -9,7 +9,7 @@ import { VisitDetail } from './rows/VisitDetail'
 import { VisitRows } from './rows/VisitRows'
 
 // 2단계 점검 결과(AC-013.3, 목업 화면 3): 거르기 → 왼쪽 환자 목록 · 오른쪽 환자 자세히.
-// 등급·규칙·찾기는 이 화면 메모리에만 있다. 목업의 [다음: 메모 확인]·메모 초안·'나중에 확인'은 그리지 않는다(TASK-18)
+// 등급·규칙·찾기는 이 화면 메모리에만 있다. [다음: 메모 확인]은 ClaimScreen, 메모 초안은 오른쪽 칸(rows/VisitDetail)이고 목업의 '나중에 확인'은 그리지 않는다
 
 const PAGE = 8
 const pill = `${ds.button.secondarySmall} aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent-strong`
@@ -21,7 +21,7 @@ const FILTERS: { key: VisitFilter; label: string }[] = [
   { key: 'clean', label: '경고 없음' },
 ]
 
-export function ResultStep({ visits, groups, hasDx }: { visits: readonly ClaimVisitView[]; groups: readonly { ruleId: string; title: string; visitKeys: readonly string[] }[]; hasDx: boolean }) {
+export function ResultStep({ visits, groups, hasDx, onOpenMemo }: { visits: readonly ClaimVisitView[]; groups: readonly { ruleId: string; title: string; visitKeys: readonly string[] }[]; hasDx: boolean; onOpenMemo?: (visitKey: string) => void }) {
   const [filter, setFilter] = useState<VisitFilter>('warned')
   const [ruleId, setRuleId] = useState('')
   const [query, setQuery] = useState('')
@@ -127,7 +127,7 @@ export function ResultStep({ visits, groups, hasDx }: { visits: readonly ClaimVi
         {current && (
           <section className={ds.panel}>
             <div className={ds.panelBody}>
-              <VisitDetail key={current.key} visit={current} titles={titles} hasDx={hasDx} />
+              <VisitDetail key={current.key} visit={current} titles={titles} hasDx={hasDx} onOpenMemo={onOpenMemo} />
             </div>
           </section>
         )}

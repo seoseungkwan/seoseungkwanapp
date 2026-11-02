@@ -120,6 +120,14 @@ describe('/claim 자리', () => {
     },
   )
 
+  it('AC-018.6: 다른 창에서 이미 청구 화면이 연결됨이면 그 안내만 보이고 불러오기·입력 단추가 없다', () => {
+    withState('busy')
+    render(<ClaimPage />)
+    expect(screen.getByRole('alert').textContent).toContain(errorInfo('E-BRIDGE-BUSY').what)
+    expect(screen.queryByRole('button', { name: '자료 불러오기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /비트에 입력/ })).toBeNull()
+  })
+
   it('AC-006.1·AC-413.3: 다른 창에서 작업 중이면 카드 그대로 — [다시 확인]은 다시 붙고, [건수만 보기]는 h1 "청구" + "건수만 볼 수 있어요" + 준비 중 칩 + [다시 확인](보조)', async () => {
     withState('busy')
     render(<ClaimPage />)

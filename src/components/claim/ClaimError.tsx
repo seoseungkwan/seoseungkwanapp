@@ -30,7 +30,7 @@ export const SETUP_CODES: ReadonlySet<string> = new Set([
   'E-STORE-BROKEN',
 ])
 
-/** 그 단추가 있는 곳으로 가는 링크(AC-013.5). 그런 번호가 아니면 그리지 않는다 */
+/** 그 단추가 있는 곳으로 가는 링크(AC-013.5). 그런 번호가 아니면 그리지 않는다. 달 칸 store.load의 E-BIT-HOSPITAL-MISMATCH는 이 카드로 오지 않는다(AC-018.17의 StoreBlockedCard) */
 export function SetupLink({ code }: { code: string }) {
   if (!SETUP_CODES.has(code)) return null
   return (

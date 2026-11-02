@@ -14,7 +14,7 @@ describe('AC-013.6 설정 바뀜 띠', () => {
     const onRecheck = vi.fn()
     render(<SettingsChangedBanner onRecheck={onRecheck} busy={false} />)
     const banner = screen.getByRole('status')
-    expect(banner.textContent).toContain('설정이 바뀌었어요. 다시 점검하세요')
+    expect(banner.textContent).toContain('설정이 바뀌었어요, 다시 점검하세요')
     expect(banner.textContent).toContain('지금 보이는 결과는 바뀌기 전 기준이에요.')
     const button = screen.getByRole('button', { name: '다시 점검' })
     expect(button.getAttribute('class')).toContain(ds.button.primarySmall)

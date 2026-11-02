@@ -4,10 +4,16 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx'
 import type { Outcome } from '@/types/parse'
-import type { CheckSettings, ClaimMemosJson, ClaimView, DxLink, MemoRowRaw, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables } from '@/types/precheck'
-import { defaultPhrases, ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
+import type { CheckSettings, ClaimMemosJson, ClaimView, DxLink, InputSelection, MemoRowRaw, MemoScreenView, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToPort, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables } from '@/types/precheck'
+import { defaultPhrases, ourClinicPhrases, validatePhrases, type Phrases } from '@/lib/precheck/memo'
 import { checkMonth, loadMonth, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
 import { loadTables } from './tables'
+
+// 검사 함수는 그대로 돌리고 몇 번 불렸는지만 본다(코드 사전을 사람마다 다시 검사하지 않는다)
+vi.mock('@/lib/precheck/memo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/precheck/memo')>()
+  return { ...actual, validatePhrases: vi.fn(actual.validatePhrases) }
+})
 
 // Worker가 부르는 일(REQ-009). 통로 포트로 온 조각을 모아(assemble) 한 번만 풀고(loadMonth) 점검용 모양을 만든다.
 // 화면에는 숫자·달·오류 번호만 보낸다. 시험 자료는 저장소의 가짜 파일 fixtures/precheck/fake/*.json
@@ -1653,6 +1659,1274 @@ describe('AC-016 비트 메모 자료를 받아 비교한다', { timeout: 30_000
       const state = await stateOf(jobs)
       expect(new Set(state.rows.map((row) => row.compare))).toEqual(new Set(['조회 못함']))
       expect(state.plan.batch).toEqual([])
+    })
+  })
+})
+
+describe('AC-018.22 precheck.worker 입구: 새 통로', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('AC-018.22: 새 bridge-port를 받으면 jobs에 알린다: 보낸 입력 묶음을 잊어 다음 묶음이 막히지 않고 글자는 새 포트로 나간다', async () => {
+    const MONTH = FAKE('claim-month-memo.json')
+    const DAY = { from: '2026-10-12', to: '2026-10-12' }
+    const SELECT: InputSelection = { mode: 'date', from: DAY.from, to: DAY.to, typed: '', chip: '', kind: 'range', day: DAY.from, rangeFrom: DAY.from, rangeTo: DAY.to }
+    const SETTINGS: CheckSettings = { rules: { schema: 1, off: [], on: [], grade: [] }, phrases: ourClinicPhrases(), dxLinks: [] }
+    const { posted, givePort, receive } = await loadWorkerEntry()
+    const first = givePort()
+    const heardFirst: { cmd?: string }[] = []
+    first.onmessage = (event) => heardFirst.push(event.data)
+    receive({ type: 'loadStart', load: 1 })
+    const { parts, end } = chunked(MONTH, 4096)
+    parts.forEach((data, seq) => first.postMessage({ type: 'chunk', id: 'm', seq, data }))
+    first.postMessage({ type: 'end', id: 'm', ...end })
+    receive({ type: 'month', id: 'm', load: 1 })
+    await vi.waitFor(() => expect(posted.at(-1)).toMatchObject({ type: 'month', ok: true }), { timeout: 10_000 })
+    const memos = chunked(JSON.stringify({ version: 1, period: DAY, truncated: false, invalidRows: 0, rows: [] }), 4096)
+    memos.parts.forEach((data, seq) => first.postMessage({ type: 'chunk', id: 'b', seq, data }))
+    first.postMessage({ type: 'end', id: 'b', ...memos.end })
+    receive({ type: 'loadPart', part: 'memos', id: 'b', load: 1 })
+    await vi.waitFor(() => expect(posted.at(-1)).toMatchObject({ type: 'loadPart', ok: true }), { timeout: 10_000 })
+    receive({ type: 'check', check: 1, load: 1, visible: DAY, settings: SETTINGS })
+    await vi.waitFor(() => expect(posted.at(-1)).toMatchObject({ type: 'check', ok: true }), { timeout: 20_000 })
+    receive({ type: 'buildInputBatch', run: 1, what: 'selection', selection: SELECT })
+    await vi.waitFor(() => expect(heardFirst.some((m) => m.cmd === 'bit.input')).toBe(true))
+    const second = givePort()
+    const heardSecond: { cmd?: string }[] = []
+    second.onmessage = (event) => heardSecond.push(event.data)
+    receive({ type: 'buildInputBatch', run: 2, what: 'selection', selection: SELECT })
+    await vi.waitFor(() => expect(heardSecond.some((m) => m.cmd === 'bit.input')).toBe(true))
+    expect(posted.filter((m) => m.type === 'inputStart').map((m) => m.type === 'inputStart' && m.ok)).toEqual([true, true])
+    expect(posted.some((m) => (m as { type: string }).type === 'send')).toBe(false)
+    first.close()
+    second.close()
+  }, 60_000)
+})
+
+describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_000 }, () => {
+  const MEMO_MONTH = FAKE('claim-month-memo.json')
+  const DAY = { from: '2026-10-12', to: '2026-10-12' }
+  const SETTINGS: CheckSettings = { rules: { schema: 1, off: [], on: [], grade: [] }, phrases: ourClinicPhrases(), dxLinks: [] }
+  /** m04·m05·m06: 메모가 있는 진료. m36: 메모가 없는 진료(hasMemo 거짓) */
+  const [A, B, C] = [
+    { key: 'm04', chart: '900019' },
+    { key: 'm05', chart: '900020' },
+    { key: 'm06', chart: '900021' },
+  ]
+  const NO_MEMO = 'm36'
+  const SELECT: InputSelection = { mode: 'date', from: DAY.from, to: DAY.to, typed: '', chip: '', kind: 'range', day: DAY.from, rangeFrom: DAY.from, rangeTo: DAY.to }
+  const memoRow = (visit: { key: string; chart: string }, m: string): MemoRowRaw => ({ v: visit.key, p: visit.chart, d: DAY.from, m })
+  const memosJson = (rows: MemoRowRaw[]) => JSON.stringify({ version: 1, period: DAY, truncated: false, invalidRows: 0, rows } satisfies ClaimMemosJson)
+  const storeJson = (work: Partial<StoreMonthJson>) => JSON.stringify({ months: { '2026-10': { drafts: {}, done: {}, journal: {}, ...work } } } satisfies StoreLoadJson)
+
+  type Made = { jobs: Jobs; posts: PrecheckToScreen[]; sent: PrecheckToPort[]; asks: number; runs: number }
+  const OCTOBER = { from: '2026-10-01', to: '2026-10-31' }
+  async function ready(options: { bit?: MemoRowRaw[]; store?: Partial<StoreMonthJson>; settings?: CheckSettings; visible?: { from: string; to: string }; month?: string } = {}): Promise<Made> {
+    const posts: PrecheckToScreen[] = []
+    const sent: PrecheckToPort[] = []
+    const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables, toPort: (m) => sent.push(m) })
+    await loadInto(jobs, 'month', options.month ?? MEMO_MONTH, 1)
+    await stream(jobs, 'memos', memosJson(options.bit ?? []))
+    await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos', load: 1 } satisfies PrecheckFromScreen)
+    await stream(jobs, 'store', storeJson(options.store ?? {}))
+    await jobs.fromScreen({ type: 'loadPart', part: 'store', id: 'store', load: 1 } satisfies PrecheckFromScreen)
+    await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: options.visible ?? DAY, settings: options.settings ?? SETTINGS } satisfies PrecheckFromScreen)
+    expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+    posts.length = 0
+    sent.length = 0
+    return { jobs, posts, sent, asks: 0, runs: 0 }
+  }
+  const viewOf = async (made: Made, selection: InputSelection = SELECT): Promise<MemoScreenView> => {
+    const ask = ++made.asks
+    await made.jobs.fromScreen({ type: 'memoView', ask, selection } satisfies PrecheckFromScreen)
+    const answer = made.posts.filter((m) => m.type === 'memoView' && m.ask === ask).at(-1)
+    if (answer?.type !== 'memoView' || !answer.ok) throw new Error('memoView 답이 없다')
+    return answer.view
+  }
+  const keysIn = (view: MemoScreenView, reason: string) => view.targets.left.find((group) => group.reason === reason)?.rows.map((row) => row.key) ?? []
+  const batchKeys = (view: MemoScreenView) => view.targets.batch.map((row) => row.key)
+  const rowOf = (view: MemoScreenView, key: string) => view.table.find((row) => row.key === key)!
+  const sends = (made: Made, cmd: string) => made.sent.filter((m) => m.cmd === cmd)
+  type Item = { visitKey: string; chart: string; name: string; date: string; memo: string; replaces?: string; checkedByHand?: boolean }
+  /** 단추 하나를 누른다. 보낸 묶음을 돌려준다 */
+  const press = async (made: Made, what: Extract<PrecheckFromScreen, { type: 'buildInputBatch' }>['what'] = 'selection', selection: InputSelection = SELECT) => {
+    const run = ++made.runs
+    made.sent.length = 0
+    await made.jobs.fromScreen({ type: 'buildInputBatch', run, what, selection } satisfies PrecheckFromScreen)
+    const send = sends(made, 'bit.input').at(-1)
+    return { run, ticket: send?.ticket ?? -1, payload: send ? (JSON.parse(send.payload) as { code?: string; items: Item[] }) : null }
+  }
+  type End = { status: string; code?: string | null; reason?: string | null; fields?: string[]; results?: { visitKey: string; result: string; reason: string; previousMemo?: string }[]; unconfirmed?: { visitKey: string; date: string }[]; noAsk?: boolean }
+  let ids = 0
+  /** 도우미 끝 JSON이 조각으로 오고 send가 끝난다 */
+  const finish = async (made: Made, ticket: number, end: End | string) => {
+    const id = `input${++ids}`
+    const text = typeof end === 'string' ? end : JSON.stringify({ code: null, reason: null, fields: [], results: [], noAsk: false, ...end })
+    await stream(made.jobs, id, text)
+    await made.jobs.fromPort({ type: 'sent', ticket, ok: true, id, count: 1 })
+    const done = made.posts.filter((m) => m.type === 'inputDone').at(-1)
+    if (done?.type !== 'inputDone') throw new Error('inputDone 답이 없다')
+    return done
+  }
+  const line = (visit: { key: string }, result: string, reason: string) => ({ visitKey: visit.key, result, reason })
+  const resultOf = (done: Extract<PrecheckToScreen, { type: 'inputDone' }>) => {
+    if (!done.ok) throw new Error(done.code)
+    return done.result
+  }
+  /** A·B·C만 입력할 사람인 달: 고른 날의 나머지는 완료 표시로 뺀다 */
+  const threeOnly = async () => {
+    const others = batchKeys(await viewOf(await ready())).filter((key) => ![A.key, B.key, C.key].includes(key))
+    return ready({ store: { done: Object.fromEntries(others.map((key) => [key, true])) } })
+  }
+  const CHECK_AGAIN = (check: number, settings: unknown = SETTINGS) => ({ type: 'check', check, load: 1, visible: DAY, settings }) as PrecheckFromScreen
+  /** 자동 메모 글이 달라지는 설정 */
+  const CHANGED: CheckSettings = (() => {
+    const phrases = ourClinicPhrases()
+    phrases.TPL.mark = '★'
+    return { ...SETTINGS, phrases }
+  })()
+  /** 묻지 않기를 켠 끝 답을 받는다(그 묶음을 보내고 끝낸다) */
+  const turnNoAskOn = async (made: Made) => {
+    const { ticket } = await press(made)
+    return finish(made, ticket, { status: 'finished', noAsk: true })
+  }
+  /** 화면이 아는 같은 날: 가짜 달에서 B의 진료를 A의 차트번호로 옮긴다. 둘 다 같은 날 메모가 있는 진료다 */
+  const SAME_DAY_MONTH = (() => {
+    const raw = JSON.parse(MEMO_MONTH) as { s83: Record<string, string>[]; history: Record<string, unknown>[] }
+    for (const row of raw.s83) if (row['내원번호'] === B.key) row['차트번호'] = A.chart
+    for (const row of raw.history) if (row.v === B.key) row.p = A.chart
+    return JSON.stringify(raw)
+  })()
+
+  describe('AC-018.3 묶음은 Worker가 만들어 포트로 보낸다', () => {
+    it('AC-018.3·AC-018.26: 목록의 입력할 사람과 묶음이 같고(500명 이하) 화면 메시지에는 묶음 글자가 없다', async () => {
+      const made = await ready()
+      const view = await viewOf(made)
+      expect(batchKeys(view).length).toBeGreaterThan(0)
+      expect(batchKeys(view).length).toBeLessThanOrEqual(500) // 넘으면 일부러 빈 묶음이다(AC-018.23)
+      const { payload } = await press(made)
+      expect(payload?.items.map((item) => item.visitKey)).toEqual(batchKeys(view))
+      expect(payload?.items[0]).toEqual({ visitKey: view.targets.batch[0].key, chart: view.targets.batch[0].chart, name: view.targets.batch[0].name, date: DAY.from, memo: view.targets.batch[0].text })
+      const start = made.posts.at(-1)
+      expect(start).toEqual({ type: 'inputStart', run: 1, ok: true, count: batchKeys(view).length, askPc: true })
+    })
+
+    it('AC-018.3: 메모 없는 날에 사람이 친 글은 글자가 있어도 묶음에 없다', async () => {
+      const made = await ready({ store: { drafts: { [NO_MEMO]: '사람이 친 글' } } })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'nomemo')).toContain(NO_MEMO)
+      const { payload } = await press(made)
+      expect(payload?.items.map((item) => item.visitKey)).not.toContain(NO_MEMO)
+    })
+
+    it('AC-018.3: store.load의 완료 표시(글 없는 표시 포함)가 있는 사람은 묶음에 없다', async () => {
+      const made = await ready({ store: { done: { [A.key]: true, [B.key]: '완료 때 글' } } })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'done')).toEqual(expect.arrayContaining([A.key, B.key]))
+      expect(batchKeys(view)).not.toContain(A.key)
+    })
+
+    it(`AC-018.3: 입력 기록이 done이면 비교가 다름이고 묻지 않기가 켜져 있어도 '이미 입력됨'에 들고 묶음에 없다`, async () => {
+      const made = await ready({ bit: [memoRow(A, '완료 때 글')], store: { journal: { [A.key]: 'done' } } })
+      const off = await viewOf(made)
+      expect(rowOf(off, A.key)).toMatchObject({ compare: '다름', done: true })
+      expect(keysIn(off, 'done')).toContain(A.key)
+      expect(keysIn(off, 'diff')).not.toContain(A.key)
+      await turnNoAskOn(made)
+      const on = await viewOf(made)
+      expect(on.noAsk).toBe(true)
+      expect(rowOf(on, A.key)).toMatchObject({ compare: '다름', done: true })
+      expect(keysIn(on, 'done')).toContain(A.key)
+      expect(batchKeys(on)).not.toContain(A.key)
+      expect((await press(made)).payload?.items.map((item) => item.visitKey)).not.toContain(A.key)
+    })
+
+    it('AC-018.10·AC-018.11: 코드 사전 검사는 점검 때 한다: 고를 때마다 사람마다·코드마다 다시 검사하지 않는다', async () => {
+      const made = await ready()
+      const byCode = (typed: string): InputSelection => ({ ...SELECT, mode: 'code', typed })
+      await viewOf(made) // 첫 보기는 메모를 만들며 한 번 검사한다(점검 뒤 한 번뿐)
+      vi.mocked(validatePhrases).mockClear()
+      for (const typed of ['L', 'LA', 'LA2', 'LA247']) await viewOf(made, byCode(typed))
+      expect(validatePhrases).toHaveBeenCalledTimes(0)
+      // 점검 한 번에 드는 수는 진료 수와 상관없이 몇 번뿐이다
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      const chips = (await viewOf(made, byCode('LA247'))).targets.chips
+      expect(chips.map((chip) => chip.code)).toContain('LA247')
+      expect(vi.mocked(validatePhrases).mock.calls.length).toBeLessThanOrEqual(4)
+    })
+
+    it('AC-018.3: 처방코드별이면 code와 함께 보내고, 날짜별이면 code가 없다', async () => {
+      const made = await ready()
+      const code = await press(made, 'selection', { ...SELECT, mode: 'code', chip: 'LA247' })
+      expect(code.payload?.code).toBe('LA247')
+      expect(code.payload?.items.map((item) => item.visitKey)).toEqual(expect.arrayContaining([A.key, B.key, C.key]))
+      await finish(made, code.ticket, { status: 'cancelled' })
+      expect((await press(made)).payload).not.toHaveProperty('code')
+    })
+
+    it('AC-037.5: 묶음에 묻지 않기 칸이 없다', async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', noAsk: true })
+      const again = await press(made)
+      expect(JSON.stringify(again.payload)).not.toContain('noAsk')
+    })
+
+    it('AC-018.3: 입력하는 사이 또 누르면 보내지 않는다', async () => {
+      const made = await ready()
+      await press(made)
+      const second = await press(made)
+      expect(second.payload).toBeNull()
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', ok: false, code: 'E-BRIDGE-BUSY' })
+    })
+
+    it('AC-018.3: 안내가 있어 보낼 수 없으면 보내지 않는다(0명·코드 없음)', async () => {
+      const made = await ready()
+      const { payload } = await press(made, 'selection', { ...SELECT, mode: 'code' })
+      expect(payload).toBeNull()
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', ok: false })
+    })
+  })
+
+  describe('AC-018.2·AC-014.11 메모 저장', () => {
+    it('AC-018.2: 고치면 그 달의 store.save로 저장한다. 파일에 있던 다른 고친 메모도 함께 보낸다. settings·contact와 섞지 않는다', async () => {
+      const made = await ready({ store: { drafts: { other: '파일에 있던 글' }, done: { older: '완료 글' } } })
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      const [save] = sends(made, 'store.save')
+      expect(JSON.parse(save.payload)).toEqual({ month: '2026-10', drafts: { other: '파일에 있던 글', [A.key]: '고친 글' }, done: { older: '완료 글' } })
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '고친 글', edited: true })
+    })
+
+    it('AC-018.2: 저장에 실패하면 값을 그대로 두고 번호를 알리고, 다시 저장할 수 있다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      const [save] = sends(made, 'store.save')
+      await made.jobs.fromPort({ type: 'sent', ticket: save.ticket, ok: false, code: 'E-STORE-FAILED' })
+      expect(made.posts.at(-1)).toEqual({ type: 'memoSave', ok: false, code: 'E-STORE-FAILED', blocked: false })
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '고친 글', unsaved: true })
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'memoSaveRetry' } satisfies PrecheckFromScreen)
+      const [retry] = sends(made, 'store.save')
+      await made.jobs.fromPort({ type: 'sent', ticket: retry.ticket, ok: true })
+      expect(made.posts.at(-1)).toEqual({ type: 'memoSave', ok: true })
+      expect(rowOf(await viewOf(made), A.key).unsaved).toBe(false)
+    })
+
+    it('AC-014.11: 세 메모(손대지 않음·고침·완료)에 설정을 바꿔 다시 점검하면 첫째만 바뀐다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: B.key, text: '사람이 고친 글' } satisfies PrecheckFromScreen)
+      const { ticket, payload } = await press(made)
+      const doneText = payload!.items.find((item) => item.visitKey === C.key)!.memo
+      await finish(made, ticket, { status: 'finished', results: [line(C, '완료', '입력')] })
+      const changed = ourClinicPhrases()
+      changed.TPL.mark = '★'
+      const before = rowOf(await viewOf(made), A.key).text
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: DAY, settings: { ...SETTINGS, phrases: changed } } satisfies PrecheckFromScreen)
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key).text).not.toBe(before)
+      expect(rowOf(view, B.key).text).toBe('사람이 고친 글')
+      expect(rowOf(view, C.key).text).toBe(doneText)
+    })
+
+    it('AC-014.11: 완료한 메모의 글은 store.save의 done에 글로 남는다(표시만 남기면 다시 불러온 뒤 글이 바뀐다)', async () => {
+      const made = await ready()
+      const { ticket, payload } = await press(made)
+      made.sent.length = 0
+      await finish(made, ticket, { status: 'finished', results: [line(A, '완료', '입력')] })
+      const text = payload!.items.find((item) => item.visitKey === A.key)!.memo
+      const [save] = sends(made, 'store.save')
+      expect(JSON.parse(save.payload)).toEqual({ month: '2026-10', drafts: {}, done: { [A.key]: text } })
+    })
+
+    it('AC-014.11: 글 없는 완료 표시는 메모를 얼리지 않는다', async () => {
+      const made = await ready({ store: { done: { [A.key]: true } } })
+      const changed = ourClinicPhrases()
+      changed.TPL.mark = '★'
+      const before = rowOf(await viewOf(made), A.key).text
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: DAY, settings: { ...SETTINGS, phrases: changed } } satisfies PrecheckFromScreen)
+      expect(rowOf(await viewOf(made), A.key).text).not.toBe(before)
+    })
+  })
+
+  describe('AC-018.2 저장하지 못한 고친 메모를 잃지 않는다', () => {
+    const edit = (made: Made, key: string, text: string) => made.jobs.fromScreen({ type: 'editMemo', visitKey: key, text } satisfies PrecheckFromScreen)
+    const reloadMonth = async (made: Made, load: number, keepEdits: boolean, store: Partial<StoreMonthJson> | null) => {
+      await made.jobs.fromScreen({ type: 'loadStart', load, ...(keepEdits ? { keepEdits: true as const } : {}) } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `m${load}`, MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: `m${load}`, load } satisfies PrecheckFromScreen)
+      if (store) {
+        await stream(made.jobs, `s${load}`, storeJson(store))
+        await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: `s${load}`, load } satisfies PrecheckFromScreen)
+      }
+      await made.jobs.fromScreen({ type: 'check', check: load, load, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+    }
+
+    it('AC-018.2: 저장 실패(E-STORE-FAILED) 뒤 [자료 불러오기]를 해도 고친 메모가 남고, 달 칸을 받으면 저장한다', async () => {
+      const made = await ready()
+      await edit(made, A.key, '고친 글')
+      await made.jobs.fromPort({ type: 'sent', ticket: sends(made, 'store.save')[0].ticket, ok: false, code: 'E-STORE-FAILED' })
+      made.sent.length = 0
+      await reloadMonth(made, 2, true, { drafts: { other: '파일 글' } })
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '고친 글', unsaved: true })
+      expect(sends(made, 'store.save').map((m) => JSON.parse(m.payload)).filter((m) => m.month)).toEqual([{ month: '2026-10', drafts: { other: '파일 글', [A.key]: '고친 글' }, done: {} }])
+    })
+
+    it('AC-018.2: 저장 답을 받은 글은 남기지 않는다(다시 불러온 파일 값이 앞선다)', async () => {
+      const made = await ready()
+      await edit(made, A.key, '고친 글')
+      await made.jobs.fromPort({ type: 'sent', ticket: sends(made, 'store.save')[0].ticket, ok: true })
+      await reloadMonth(made, 2, true, { drafts: { [A.key]: '파일 글' } })
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '파일 글', unsaved: false })
+    })
+
+    it('AC-013.6: keepEdits 없는 loadStart(같은 사람·의원이 아니어 버릴 때)는 남기지 않는다', async () => {
+      const made = await ready()
+      await edit(made, A.key, '고친 글')
+      await reloadMonth(made, 2, false, {})
+      expect(rowOf(await viewOf(made), A.key).text).not.toBe('고친 글')
+    })
+
+    it('AC-013.6: keepEdits 없는 loadStart는 마지막 답의 unconfirmed도 지운다(keepEdits가 있으면 남는다)', async () => {
+      const stopped = async () => {
+        const made = await ready()
+        const first = await press(made)
+        await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: 'gone', date: DAY.from }] })
+        expect((await viewOf(made)).stuck?.people.map((person) => person.key)).toEqual(['gone'])
+        return made
+      }
+      // 달 칸을 읽지 않은 불러오기로 본다: 읽은 달이면 기록으로 풀리는 것은 따로 시험한다(아래 AC-018.16)
+      const kept = await stopped()
+      await reloadMonth(kept, 2, true, null)
+      expect((await viewOf(kept)).stuck?.people.map((person) => person.key)).toEqual(['gone'])
+      const dropped = await stopped()
+      await reloadMonth(dropped, 2, false, null)
+      expect((await viewOf(dropped)).stuck).toBeNull()
+    })
+
+    it('AC-014.11: 글이 같으면 고친 것이 아니다: 저장하지 않아 자동 메모가 얼지 않고 승인도 그대로다', async () => {
+      const made = await ready({ bit: [memoRow(A, '비트 글')] })
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: true } satisfies PrecheckFromScreen)
+      const auto = rowOf(await viewOf(made), A.key).text
+      await edit(made, A.key, auto)
+      expect(sends(made, 'store.save')).toEqual([])
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ edited: false, unsaved: false })
+      expect(view.targets.batch.find((row) => row.key === A.key)?.replaces).toBe('비트 글')
+      const changed = ourClinicPhrases()
+      changed.TPL.mark = '★'
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: DAY, settings: { ...SETTINGS, phrases: changed } } satisfies PrecheckFromScreen)
+      expect(rowOf(await viewOf(made), A.key).text).not.toBe(auto)
+    })
+
+    it('AC-014.11: 멈춘 뒤 다시 점검하고 [이어서 하기]를 누르면 지금 글을 보낸다(고친 글은 그대로)', async () => {
+      const made = await ready()
+      await edit(made, B.key, '사람이 고친 글')
+      const first = await press(made)
+      const before = first.payload!.items.find((item) => item.visitKey === A.key)!.memo
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', '미처리'), line(B, '확인 필요', '미처리')] })
+      const changed = ourClinicPhrases()
+      changed.TPL.mark = '★'
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: DAY, settings: { ...SETTINGS, phrases: changed } } satisfies PrecheckFromScreen)
+      const shown = rowOf(await viewOf(made), A.key).text
+      const resume = await press(made, 'resume')
+      expect(shown).not.toBe(before)
+      expect(resume.payload?.items.find((item) => item.visitKey === A.key)?.memo).toBe(shown)
+      expect(resume.payload?.items.find((item) => item.visitKey === B.key)?.memo).toBe('사람이 고친 글')
+    })
+
+    it('AC-018.14: [이어서 하기]의 replaces는 지금 승인이다: 그새 풀린 승인을 싣지 않는다', async () => {
+      const made = await ready({ bit: [memoRow(A, '비트 글')] })
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: true } satisfies PrecheckFromScreen)
+      const first = await press(made)
+      expect(first.payload?.items.find((item) => item.visitKey === A.key)?.replaces).toBe('비트 글')
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '확인 필요', '미처리')] })
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: false } satisfies PrecheckFromScreen)
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+    })
+  })
+
+  describe('AC-018.5 다시 연 화면', () => {
+    it('AC-018.5: 같은 기간을 불러오면 저장해 둔 고친 메모·완료·입력 기록이 이어서 보인다', async () => {
+      const made = await ready({ bit: [memoRow(B, '완료 때 글')], store: { drafts: { [A.key]: '고친 글' }, done: { [B.key]: '완료 때 글' }, journal: { [C.key]: 'check' } } })
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ text: '고친 글', edited: true, done: false })
+      expect(rowOf(view, B.key)).toMatchObject({ text: '완료 때 글', compare: '같음', done: true })
+      expect(rowOf(view, C.key).lastJournal).toBe('check')
+    })
+  })
+
+  describe('AC-018.17 달 칸의 저장 막힘', () => {
+    it('AC-018.17: storeBlock이면 고쳐도 store.save를 부르지 않고 값은 메모리에 있다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'storeBlock' } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      expect(sends(made, 'store.save')).toEqual([])
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '고친 글', unsaved: true })
+      await made.jobs.fromScreen({ type: 'memoSaveRetry' } satisfies PrecheckFromScreen)
+      expect(sends(made, 'store.save')).toEqual([])
+    })
+
+    it('AC-018.17: store.save가 E-BIT-HOSPITAL-MISMATCH로 거절되면 막힘을 알리고 다음부터 부르지 않는다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      await made.jobs.fromPort({ type: 'sent', ticket: sends(made, 'store.save')[0].ticket, ok: false, code: 'E-BIT-HOSPITAL-MISMATCH' })
+      expect(made.posts.at(-1)).toEqual({ type: 'memoSave', ok: false, code: 'E-BIT-HOSPITAL-MISMATCH', blocked: true })
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: B.key, text: '또 고친 글' } satisfies PrecheckFromScreen)
+      expect(sends(made, 'store.save')).toEqual([])
+    })
+
+    it('AC-018.17: 막힌 채 [자료 불러오기]가 또 거절되어도 고친 메모는 남고, 달 칸이 다시 읽히면 저장한다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'storeBlock' } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'loadStart', load: 2, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'm2', MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: 'm2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'memos2', memosJson([]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'storeBlock' } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '고친 글', unsaved: true })
+      expect(sends(made, 'store.save').map((m) => JSON.parse(m.payload))).toEqual([{ settings: SETTINGS }])
+
+      await made.jobs.fromScreen({ type: 'loadStart', load: 3, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'm3', MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: 'm3', load: 3 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'store3', storeJson({ drafts: { other: '파일 글' } }))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: 'store3', load: 3 } satisfies PrecheckFromScreen)
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'check', check: 3, load: 3, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const months = sends(made, 'store.save').map((m) => JSON.parse(m.payload)).filter((m) => m.month)
+      expect(months).toEqual([{ month: '2026-10', drafts: { other: '파일 글', [A.key]: '고친 글' }, done: {} }])
+    })
+
+    it('AC-013.9: 설정 사본 저장 실패는 화면에 알리지 않는다(settings.dat의 같은 번호도 조용히 건너뛴다)', async () => {
+      const posts: PrecheckToScreen[] = []
+      const sent: PrecheckToPort[] = []
+      const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables, toPort: (m) => sent.push(m) })
+      await loadInto(jobs, 'month', MEMO_MONTH, 1)
+      await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      await jobs.fromPort({ type: 'sent', ticket: sent[0].ticket, ok: false, code: 'E-BIT-HOSPITAL-MISMATCH' })
+      expect(posts.some((m) => m.type === 'memoSave')).toBe(false)
+    })
+  })
+
+  describe('AC-018.14 사람마다 승인', () => {
+    const FIRST = [memoRow(A, '처음 메모')]
+    const approve = (made: Made, key: string, approved = true) => made.jobs.fromScreen({ type: 'memoApprove', visitKey: key, approved } satisfies PrecheckFromScreen)
+    const reload = async (made: Made, run: number, text: string) => {
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `r${run}`, text)
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: `r${run}`, load: 1, run } satisfies PrecheckFromScreen)
+    }
+
+    it('AC-018.14: 누르면 보인 비트 메모를 replaces로 담아 입력할 사람으로 옮기고, [바꾸지 않기]는 푼다', async () => {
+      const made = await ready({ bit: FIRST })
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      await approve(made, A.key)
+      const view = await viewOf(made)
+      expect(view.targets.batch.find((row) => row.key === A.key)).toMatchObject({ replaces: '처음 메모', chip: '메모 바꿈 · 승인함' })
+      await approve(made, A.key, false)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+    })
+
+    it('AC-018.14: 우리 메모를 고치면 승인이 풀린다', async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+    })
+
+    it('AC-018.14: 성공한 다시 불러오기는 글이 달라진 사람만 푼다', async () => {
+      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '그대로인 메모')] })
+      await approve(made, A.key)
+      await approve(made, B.key)
+      await reload(made, 1, memosJson([memoRow(A, '바뀐 메모'), memoRow(B, '그대로인 메모')]))
+      const view = await viewOf(made)
+      expect(keysIn(view, 'diff')).toContain(A.key)
+      expect(view.targets.batch.find((row) => row.key === B.key)?.replaces).toBe('그대로인 메모')
+    })
+
+    it('AC-018.14: 글이 X→Y→X로 돌아와도 풀린 승인은 되살아나지 않는다', async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      await reload(made, 1, memosJson([memoRow(A, '바뀐 메모')]))
+      await reload(made, 2, memosJson([memoRow(A, '처음 메모')]))
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+    })
+
+    it('AC-016.8: 실패한 다시 불러오기·옛 번호는 승인을 풀지 않는다', async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      await reload(made, 1, JSON.stringify({ version: 1, period: DAY, truncated: true, invalidRows: 0, rows: [] }))
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 3 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'old', memosJson([]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'old', load: 1, run: 2 } satisfies PrecheckFromScreen)
+      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+    })
+
+    it(`AC-018.14: [다시 점검]으로 자동 메모 글이 달라지면 승인이 풀려 '다른 메모 있음'으로 돌아가고, 글이 돌아와도 되살아나지 않는다`, async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      const before = rowOf(await viewOf(made), A.key).text
+      await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key).text).not.toBe(before)
+      expect(keysIn(view, 'diff')).toEqual([A.key])
+      expect(batchKeys(view)).not.toContain(A.key)
+      await made.jobs.fromScreen(CHECK_AGAIN(3))
+      const back = await viewOf(made)
+      expect(rowOf(back, A.key).text).toBe(before)
+      expect(keysIn(back, 'diff')).toEqual([A.key])
+      expect((await press(made)).payload?.items.map((item) => item.visitKey)).not.toContain(A.key)
+    })
+
+    it('AC-018.14: [다시 점검]해도 글이 그대로이면(고친 메모 포함) 승인 그대로다', async () => {
+      const made = await ready({ bit: [memoRow(A, '처음 메모'), memoRow(B, '다른 메모')], store: { drafts: { [B.key]: '사람이 고친 글' } } })
+      await approve(made, A.key)
+      await approve(made, B.key)
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      const same = await viewOf(made)
+      expect(same.targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+      expect(same.targets.batch.find((row) => row.key === B.key)?.replaces).toBe('다른 메모')
+      await made.jobs.fromScreen(CHECK_AGAIN(3, CHANGED))
+      const changed = await viewOf(made)
+      expect(rowOf(changed, B.key).text).toBe('사람이 고친 글')
+      expect(changed.targets.batch.find((row) => row.key === B.key)?.replaces).toBe('다른 메모')
+      expect(keysIn(changed, 'diff')).toEqual([A.key])
+    })
+
+    it('AC-018.14: 실패한 [다시 점검]은 승인을 풀지 않는다', async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      await made.jobs.fromScreen(CHECK_AGAIN(2, {}))
+      expect(made.posts.filter((m) => m.type === 'check').at(-1)).toMatchObject({ check: 2, ok: false })
+      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+    })
+
+    it(`AC-018.14·AC-037.6: 묻지 않기가 켜져 있으면 [다시 점검]으로 풀린 사람은 replaces 없이 '메모 바꿈 · 묻지 않기'로 든다`, async () => {
+      const made = await ready({ bit: FIRST })
+      await turnNoAskOn(made)
+      await approve(made, A.key)
+      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('처음 메모')
+      await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
+      const row = (await viewOf(made)).targets.batch.find((item) => item.key === A.key)
+      expect(row).toMatchObject({ chip: '메모 바꿈 · 묻지 않기' })
+      expect(row).not.toHaveProperty('replaces')
+      expect((await press(made)).payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+    })
+
+    it(`AC-018.14·AC-016.3: 직접 확인 기록이 있는 사람은 [다시 점검]으로 풀리면 묻지 않기가 켜져 있어도 '다른 메모 있음'으로 돌아간다`, async () => {
+      const made = await ready({ bit: FIRST, store: { journal: { [A.key]: 'skippedByHand' } } })
+      await turnNoAskOn(made)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      await approve(made, A.key)
+      expect(batchKeys(await viewOf(made))).toContain(A.key)
+      await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
+      const view = await viewOf(made)
+      expect(keysIn(view, 'diff')).toEqual([A.key])
+      expect(batchKeys(view)).not.toContain(A.key)
+    })
+
+    it('AC-018.14: 새 [자료 불러오기]는 승인을 모두 푼다', async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      await loadInto(made.jobs, 'month2', MEMO_MONTH, 2)
+      await stream(made.jobs, 'memos2', memosJson(FIRST))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+    })
+
+    it('AC-018.14: 승인 → 직접 확인 → 다음 묶음에 replaces가 없다', async () => {
+      const made = await ready({ bit: FIRST, store: { journal: { [A.key]: 'writeUnconfirmed' } } })
+      await approve(made, A.key)
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items).toEqual([expect.objectContaining({ visitKey: A.key, checkedByHand: true })])
+      expect(hand.payload?.items[0]).not.toHaveProperty('replaces')
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '건너뜀', '이미 있음')] })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'diff')).toContain(A.key)
+      const next = await press(made)
+      expect(next.payload?.items.find((item) => item.visitKey === A.key)).toBeUndefined()
+    })
+
+    it('AC-018.14: [직접 확인했어요]를 취소해도 보낼 때 푼 승인은 돌아오지 않는다', async () => {
+      const made = await ready({ bit: FIRST, store: { journal: { [A.key]: 'writing' } } })
+      await approve(made, A.key)
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'cancelled' })
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+    })
+
+    it('AC-018.14: 바꾼 뒤 끝나면 승인이 남지 않고 줄이 완료로 간다', async () => {
+      const made = await ready({ bit: FIRST })
+      await approve(made, A.key)
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [{ ...line(A, '완료', '바꿈(기존 메모 덮어씀)'), previousMemo: '처음 메모' }] })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'done')).toContain(A.key)
+    })
+  })
+
+  describe('AC-018.16 쓰다 멈춘 사람', () => {
+    it('AC-018.16: journal의 writing·writeUnconfirmed이면 띠 자료가 있고, 두 단추의 묶음에 들어간다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing', [B.key]: 'writeUnconfirmed', [C.key]: 'done' } } })
+      const view = await viewOf(made)
+      expect(view.stuck?.people.map((person) => person.key)).toEqual([A.key, B.key])
+      expect(view.stuck).toMatchObject({ canContinue: true, canByHand: true, big: true, loadRange: null, note: null })
+      const go = await press(made, 'continueStuck')
+      expect(go.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key])
+      expect(go.payload).not.toHaveProperty('code')
+      expect(go.payload?.items.some((item) => 'checkedByHand' in item)).toBe(false)
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', askPc: true })
+    })
+
+    it('AC-018.16: [직접 확인했어요] 묶음: 확인 표시 메모는 글자 그대로, 빈 메모는 한 칸 공백, 자료에 없는 진료는 자리 채움 값이고 모두 checkedByHand다', async () => {
+      const made = await ready({ visible: OCTOBER, store: { drafts: { [A.key]: '[부위 확인] 글', [NO_MEMO]: '   ' }, journal: { [A.key]: 'writing', [NO_MEMO]: 'writing', gone1: 'writing', gone2: 'writeUnconfirmed' } } })
+      const { payload } = await press(made, 'byHand')
+      const item = (key: string) => payload!.items.find((row) => row.visitKey === key)!
+      expect(item(A.key)).toMatchObject({ memo: '[부위 확인] 글', checkedByHand: true, chart: A.chart })
+      expect(item(NO_MEMO)).toMatchObject({ memo: ' ', checkedByHand: true })
+      expect(item('gone1')).toEqual({ visitKey: 'gone1', chart: '00000000000000000001', name: '-', date: '2026-10-01', memo: ' ', checkedByHand: true })
+      expect(item('gone2')).toEqual({ visitKey: 'gone2', chart: '00000000000000000002', name: '-', date: '2026-10-01', memo: ' ', checkedByHand: true })
+    })
+
+    it('AC-018.16: 화면이 아는 같은 날이면 [이어서 입력]이 흐리고 직접 입력 까닭과 도우미 멈춤 글이 있다', async () => {
+      const made = await ready({ month: SAME_DAY_MONTH, store: { journal: { [A.key]: 'writing' } } })
+      const view = await viewOf(made)
+      expect(view.stuck).toMatchObject({ canContinue: false, canByHand: true, note: '이 환자는 입력에서 빠지는 사람이라 이어서 입력할 수 없습니다. 비트에서 메모 칸을 확인한 뒤 [직접 확인했어요]를 눌러 주세요.' })
+      expect(view.stuck?.people).toEqual([expect.objectContaining({ key: A.key, reason: 'manual', sameDay: 2 })])
+      expect((await press(made, 'continueStuck')).payload).toBeNull()
+    })
+
+    it('AC-018.16: 같은 차트번호·내원일의 쓰다 멈춘 두 사람이면 첫째는 진짜 차트번호, 둘째는 자리 채움 값과 한 칸 공백이고 [다시 하기]에 들지 않는다', async () => {
+      const made = await ready({ month: SAME_DAY_MONTH, store: { journal: { [A.key]: 'writing', [B.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      const [first, second] = hand.payload!.items
+      expect(first).toMatchObject({ visitKey: A.key, chart: A.chart, date: DAY.from, checkedByHand: true })
+      expect(first.memo.trim().length).toBeGreaterThan(0)
+      expect(second).toMatchObject({ visitKey: B.key, chart: '00000000000000000001', date: DAY.from, memo: ' ', checkedByHand: true })
+      // 도우미는 공백 메모를 내원 수보다 먼저 본다(InputBatch.DropReason): 둘째는 '내원일 없음'이 아니라 '넣을 메모가 없어'다
+      const TAIL = ' · 직접 확인해 입력 멈춤을 풀었습니다'
+      const result = resultOf(await finish(made, hand.ticket, { status: 'finished', results: [line(A, '건너뜀', `같은 날 내원이 여러 건이라 직접 입력해 주세요${TAIL}`), line(B, '건너뜀', `넣을 메모가 없어 입력하지 않았습니다${TAIL}`)] }))
+      expect(result.retry).toBe(0)
+      expect(result.skipped.map((row) => [row.key, row.retry])).toEqual([[A.key, false], [B.key, false]])
+      // 줄에는 진짜 차트번호이고 한 칸 공백을 메모로 보이지 않는다(AC-018.15)
+      expect(result.skipped[1]).toMatchObject({ chart: A.chart })
+      expect(result.skipped[1]).not.toHaveProperty('memo')
+      const view = await viewOf(made)
+      expect(view.stuck).toBeNull()
+      expect(keysIn(view, 'held')).toEqual([])
+      expect((await press(made, 'retry')).payload).toBeNull()
+    })
+
+    it('AC-018.16: 답의 unconfirmed는 날짜를 그대로 쓰고 사람 줄에는 날짜가 보인다', async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: '이전 입력이 끝나지 않은 환자가 있어', unconfirmed: [{ visitKey: 'gone', date: '2026-10-12' }] })
+      const view = await viewOf(made)
+      expect(view.stuck?.people).toEqual([expect.objectContaining({ key: 'gone', state: 'noData', date: '2026-10-12' })])
+      expect(view.stuck).toMatchObject({ canContinue: false, canByHand: true, big: false, note: '넣을 메모가 없어 [이어서 입력]은 누를 수 없어요.' })
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items).toEqual([{ visitKey: 'gone', chart: '00000000000000000001', name: '-', date: '2026-10-12', memo: ' ', checkedByHand: true }])
+    })
+
+    it('AC-018.16: 확인 표시·화면이 아는 같은 날이면 [이어서 입력]이 흐리고 도우미 멈춤 글이 있다', async () => {
+      const made = await ready({ store: { drafts: { [A.key]: '[부위 확인] 글' }, journal: { [A.key]: 'writing' } } })
+      const view = await viewOf(made)
+      expect(view.stuck).toMatchObject({ canContinue: false, canByHand: true, note: '이 환자는 입력에서 빠지는 사람이라 이어서 입력할 수 없습니다. 비트에서 메모 칸을 확인한 뒤 [직접 확인했어요]를 눌러 주세요.' })
+      expect(view.stuck?.people[0].reason).toBe('mark')
+    })
+
+    it('AC-018.16: 메모 없는 사람뿐이면 넣을 메모가 없다는 글이다', async () => {
+      const made = await ready({ store: { journal: { [NO_MEMO]: 'writing' } } })
+      const view = await viewOf(made)
+      expect(view.stuck).toMatchObject({ canContinue: false, canByHand: true, note: '넣을 메모가 없어 [이어서 입력]은 누를 수 없어요.' })
+    })
+
+    it('AC-018.16: 불러온 기간 밖이면 두 단추가 흐리고 그 날·달을 담는 가장 짧은 기간을 불러온다', async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: 'away', date: '2026-10-20' }, { visitKey: 'early', date: '2026-10-05' }] })
+      const view = await viewOf(made)
+      expect(view.stuck).toMatchObject({ canContinue: false, canByHand: false, big: false, loadRange: { from: '2026-10-05', to: '2026-10-20' } })
+      expect(view.stuck?.people.map((person) => person.state)).toEqual(['outside', 'outside'])
+      expect((await press(made, 'byHand')).payload).toBeNull()
+    })
+
+    it('AC-018.16: 35일 안에 다 들지 않으면 가장 이른 날부터 35일이고, 그 기간을 불러온 뒤에도 밖인 사람은 자리 채움 값으로 간다', async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: 'early', date: '2026-09-01' }, { visitKey: 'late', date: '2026-12-20' }] })
+      const view = await viewOf(made)
+      expect(view.stuck?.loadRange).toEqual({ from: '2026-09-01', to: '2026-10-05' })
+      // 그 기간을 불러온다
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: { from: '2026-09-01', to: '2026-10-05' }, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const after = await viewOf(made, { ...SELECT, rangeFrom: '2026-09-01', rangeTo: '2026-10-05' })
+      expect(after.stuck).toMatchObject({ canByHand: true, canContinue: false, loadRange: null })
+      expect(after.stuck?.people.find((person) => person.key === 'late')?.state).toBe('noData')
+    })
+
+    it('AC-018.16: 쓰다 멈춘 사람이 완료로 끝나면 사본이 done이라 다시 불러오기 전에도 막히지 않는다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const go = await press(made, 'continueStuck')
+      await finish(made, go.ticket, { status: 'finished', results: [line(A, '완료', '입력')] })
+      expect((await viewOf(made)).stuck).toBeNull()
+    })
+
+    it('AC-018.16: 이번 입력에서 처음 쓰다 멈춘 사람(결과 줄로만 안다)도 띠에 들고 [비트에 입력]이 막힌다', async () => {
+      const made = await threeOnly()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: '입력은 했지만 임시저장 버튼을 누르지 못했습니다. 직접 임시저장을 눌러 주세요.', results: [line(C, '완료', '입력'), line(A, '확인 필요', '입력은 했지만 임시저장 버튼을 누르지 못했습니다. 직접 임시저장을 눌러 주세요.'), line(B, '확인 필요', '미처리')] })
+      const view = await viewOf(made)
+      expect(view.stuck?.people).toEqual([expect.objectContaining({ key: A.key, state: 'known', date: DAY.from })])
+      expect((await press(made)).payload).toBeNull()
+      expect(rowOf(view, A.key).lastJournal).toBeUndefined()
+      // 이어서 하기는 그 사람을 함께 보낸다: 빼면 도우미가 AC-035.4로 막는다
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key])
+      await finish(made, resume.ticket, { status: 'finished', results: [line(A, '완료', '입력'), line(B, '완료', '입력')] })
+      expect((await viewOf(made)).stuck).toBeNull()
+    })
+
+    it(`AC-018.16: '미처리'와 '메모 칸이 입력을 받지 않아'는 쓰다 멈춘 사람이 아니다`, async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '확인 필요', '메모 칸이 입력을 받지 않아 입력하지 못했습니다'), line(B, '확인 필요', '미처리')] })
+      expect((await viewOf(made)).stuck).toBeNull()
+    })
+
+    it('AC-018.16: 답의 unconfirmed는 새 store.load에서 기록이 풀렸으면 사라지고, 그대로면 날짜와 함께 남는다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: 'gone', date: DAY.from }, { visitKey: 'away', date: '2026-09-20' }] })
+      await made.jobs.fromScreen({ type: 'loadStart', load: 2, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'm2', MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: 'm2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 's2', storeJson({ journal: { gone: 'done' } }))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: 's2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      // gone은 그 달을 읽어 done이다. away는 읽지 않은 달이라 남는다
+      expect((await viewOf(made)).stuck?.people.map((person) => [person.key, person.date])).toEqual([['away', '2026-09-20']])
+    })
+
+    it('AC-018.16: [취소]면 그대로 막히고, [이어서 입력]이 stopped여도 그대로다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const go = await press(made, 'continueStuck')
+      await finish(made, go.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: '이 환자는 입력에서 빠지는 사람이라', results: [] })
+      expect((await viewOf(made)).stuck?.people.map((person) => person.key)).toEqual([A.key])
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'cancelled' })
+      expect((await viewOf(made)).stuck?.people.map((person) => person.key)).toEqual([A.key])
+    })
+
+    it('AC-018.16: [직접 확인했어요] 뒤 건너뜀이면 풀리고, 자료에 없는 사람은 [다시 하기]에 들지 않는다', async () => {
+      const made = await ready({ visible: OCTOBER, store: { journal: { gone: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      const done = await finish(made, hand.ticket, { status: 'finished', results: [line({ key: 'gone' }, '건너뜀', '넣을 메모가 없어 입력하지 않았습니다 · 직접 확인해 입력 멈춤을 풀었습니다')] })
+      expect((await viewOf(made)).stuck).toBeNull()
+      const result = resultOf(done)
+      expect(result.skipped[0]).toMatchObject({ key: 'gone', name: null, chart: null, month: '2026-10', retry: false })
+      expect(result.retry).toBe(0)
+    })
+  })
+
+  describe('AC-018.21 끝 JSON', () => {
+    it('AC-018.21: finished는 완료·확인 필요·건너뜀으로 나뉘고 이전 메모가 줄에 있다', async () => {
+      const made = await ready({ bit: [memoRow(A, '옛 메모')] })
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: true } satisfies PrecheckFromScreen)
+      const { ticket } = await press(made)
+      const result = resultOf(
+        await finish(made, ticket, {
+          status: 'finished',
+          results: [{ ...line(A, '완료', '바꿈(기존 메모 덮어씀)'), previousMemo: '옛 메모' }, line(B, '확인 필요', '메모 칸이 입력을 받지 않아 입력하지 못했습니다'), line(C, '건너뜀', '내원일 없음')],
+        }),
+      )
+      expect(result.status).toBe('finished')
+      expect(result.done.map((row) => row.key)).toEqual([A.key])
+      expect(result.done[0].previousMemo).toBe('옛 메모')
+      expect(result.done[0].memo?.length).toBeGreaterThan(0)
+      expect(result.check.map((row) => row.key)).toEqual([B.key])
+      expect(result.skipped.find((row) => row.key === C.key)).toMatchObject({ reason: '내원일 없음', retry: true })
+    })
+
+    it('AC-018.21: stopped는 번호·이유·칸 ID와 넣은 수·남은 수를 싣는다', async () => {
+      const made = await threeOnly()
+      const { ticket } = await press(made)
+      const result = resultOf(
+        await finish(made, ticket, { status: 'stopped', code: 'E-BIT-UI-CHANGED', reason: '칸을 찾지 못했어요', fields: ['txtBilCmt'], results: [line(A, '완료', '입력'), line(B, '확인 필요', '미처리'), line(C, '확인 필요', '미처리')] }),
+      )
+      expect(result).toMatchObject({ status: 'stopped', code: 'E-BIT-UI-CHANGED', reason: '칸을 찾지 못했어요', fields: ['txtBilCmt'], entered: 1, left: 2 })
+    })
+
+    it('AC-018.21: cancelled면 줄이 없고 아무것도 바뀌지 않는다', async () => {
+      const made = await ready()
+      const before = await viewOf(made)
+      const { ticket } = await press(made)
+      expect(resultOf(await finish(made, ticket, { status: 'cancelled' })).status).toBe('cancelled')
+      expect(await viewOf(made)).toEqual(before)
+    })
+
+    it.each([
+      ['JSON이 아님', 'not json'],
+      ['status가 틀림', JSON.stringify({ status: 'nope', fields: [], results: [], noAsk: false })],
+      ['줄 모양이 틀림', JSON.stringify({ status: 'finished', fields: [], results: [{ visitKey: 'a' }], noAsk: false })],
+      ['noAsk가 없음', JSON.stringify({ status: 'finished', fields: [], results: [] })],
+    ])('AC-018.21: %s면 결과를 지어내지 않고 E-CLAIM-PARTIAL이다', async (_, text) => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      expect(await finish(made, ticket, text)).toMatchObject({ ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-018.21: 조각이 다 오지 않으면 E-CLAIM-PARTIAL이다', async () => {
+      const made = await ready()
+      const { run, ticket } = await press(made)
+      await made.jobs.fromPort({ type: 'chunk', id: 'cut', seq: 0, data: '{"status"' })
+      await made.jobs.fromPort({ type: 'abort', id: 'cut', code: 'E-BRIDGE-DISCONNECTED' })
+      await made.jobs.fromPort({ type: 'sent', ticket, ok: true, id: 'cut', count: 1 })
+      expect(made.posts.at(-1)).toEqual({ type: 'inputDone', run, ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-018.21: 칸 없는 줄(previousMemo 없음)도 맞는 모양으로 읽는다', async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      const result = resultOf(await finish(made, ticket, { status: 'finished', results: [line(A, '완료', '입력')] }))
+      expect(result.done[0]).not.toHaveProperty('previousMemo')
+    })
+
+    it('AC-018.21: [직접 확인했어요] 묶음이 멈춘 뒤 [이어서 하기]·[다시 하기]의 묶음에 checkedByHand가 없다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing', [B.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '건너뜀', '내원일 없음'), line(B, '확인 필요', '미처리')] })
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual([B.key])
+      expect(resume.payload?.items.some((item) => 'checkedByHand' in item)).toBe(false)
+      await finish(made, resume.ticket, { status: 'finished', results: [line(B, '완료', '입력')] })
+    })
+
+    it('AC-018.21: [직접 확인했어요] 묶음의 [다시 하기]에도 checkedByHand가 없다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음')] })
+      const retry = await press(made, 'retry')
+      expect(retry.payload?.items.map((item) => item.visitKey)).toEqual([A.key])
+      expect(retry.payload?.items.some((item) => 'checkedByHand' in item)).toBe(false)
+    })
+
+    it('AC-018.21: 결과 줄이 없으면 [이어서 하기]가 보낸 묶음에서 다시 보낸다(checkedByHand는 뺀다)', async () => {
+      const made = await ready({ visible: OCTOBER, store: { journal: { [A.key]: 'writing', gone: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      const sentAgain = hand.payload!.items
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: '입력 기록의 일부를 확인할 수 없어', results: [] })
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.some((item) => 'checkedByHand' in item)).toBe(false)
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual(sentAgain.map((item) => item.visitKey))
+      expect(resume.payload?.items.map((item) => item.chart)).toEqual(sentAgain.map((item) => item.chart))
+    })
+
+    it('AC-018.21: 지문이 틀려 미리 뺀 사람의 줄만 오면 줄이 없는 사람을 남은 수에 세고 [이어서 하기]로 다시 보낸다', async () => {
+      const made = await threeOnly()
+      const first = await press(made)
+      expect(first.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key, C.key])
+      const result = resultOf(await finish(made, first.ticket, { status: 'stopped', code: 'E-BIT-UI-CHANGED', fields: ['txtBilCmt'], results: [line(A, '건너뜀', '같은 날 내원이 여러 건이라 직접 입력해 주세요')] }))
+      expect(result).toMatchObject({ status: 'stopped', entered: 0, left: 2 })
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual([B.key, C.key])
+    })
+
+    it('AC-018.21: 줄이 하나도 없으면 보낸 사람 모두를 남은 수에 세고 [이어서 하기]로 다시 보낸다', async () => {
+      const made = await threeOnly()
+      const first = await press(made)
+      const result = resultOf(await finish(made, first.ticket, { status: 'stopped', code: 'E-BIT-UI-CHANGED', results: [] }))
+      expect(result).toMatchObject({ entered: 0, left: 3 })
+      expect((await press(made, 'resume')).payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key, C.key])
+    })
+
+    it(`AC-018.21: 줄이 일부만 있으면 '미처리' 줄과 줄 없는 사람을 함께 세고 함께 다시 보낸다`, async () => {
+      const made = await threeOnly()
+      const first = await press(made)
+      const result = resultOf(await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '완료', '입력'), line(B, '확인 필요', '미처리')] }))
+      expect(result).toMatchObject({ entered: 1, left: 2 })
+      expect((await press(made, 'resume')).payload?.items.map((item) => item.visitKey)).toEqual([B.key, C.key])
+    })
+
+    it('AC-018.21: 보내기가 거절되면 번호만 답하고 다음에 또 누를 수 있다', async () => {
+      const made = await ready()
+      const { run, ticket } = await press(made)
+      await made.jobs.fromPort({ type: 'sent', ticket, ok: false, code: 'E-HELPER-BAD-MESSAGE' })
+      expect(made.posts.at(-1)).toEqual({ type: 'inputDone', run, ok: false, code: 'E-HELPER-BAD-MESSAGE' })
+      expect((await press(made)).payload).not.toBeNull()
+    })
+  })
+
+  describe('AC-018.4·AC-018.13·AC-018.20 이유는 앞부분으로 가른다', () => {
+    const TAIL = ' · 직접 확인해 입력 멈춤을 풀었습니다'
+
+    it('AC-018.4: 화면에서 미리 뺀 사람도 이유와 함께 건너뜀에 들고, 완료·메모 없음은 세지 않는다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')], store: { drafts: { [B.key]: '[부위 확인] 글' } } })
+      const view = await viewOf(made)
+      const { ticket } = await press(made)
+      const result = resultOf(await finish(made, ticket, { status: 'finished', results: [] }))
+      expect(result.skipped.find((row) => row.key === A.key)?.reason).toBe('이미 있음: 비트에 다른 메모가 있고 바꾸기를 승인하지 않았어요')
+      expect(result.skipped.find((row) => row.key === B.key)?.reason).toBe('확인 표시가 남아 입력하지 않았습니다')
+      expect(result.uncounted).toBe((view.targets.left.find((group) => group.reason === 'nomemo')?.rows.length ?? 0) + (view.targets.left.find((group) => group.reason === 'done')?.rows.length ?? 0))
+      expect(result.retry).toBe(0)
+    })
+
+    it(`AC-018.4: 뒤 글이 붙은 '같은 날'은 직접 입력이고, 뒤 글이 붙은 '넣을 메모가 없어'와 함께 [다시 하기]에 들지 않는다`, async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      const result = resultOf(
+        await finish(made, ticket, {
+          status: 'finished',
+          results: [line(A, '건너뜀', `같은 날 내원이 여러 건이라 직접 입력해 주세요${TAIL}`), line(B, '건너뜀', `넣을 메모가 없어 입력하지 않았습니다${TAIL}`), line(C, '건너뜀', '이미 있음')],
+        }),
+      )
+      expect(result.skipped.filter((row) => row.retry)).toEqual([])
+      expect(result.retry).toBe(0)
+    })
+
+    it(`AC-018.13: 도우미가 같은 날이라 돌려준 사람(뒤 글 포함)은 '직접 입력'으로 옮겨 다음 묶음에 없다`, async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [line(A, '건너뜀', '같은 날 내원이 여러 건이라 직접 입력해 주세요'), line(B, '건너뜀', `같은 날 내원이 여러 건이라 직접 입력해 주세요${TAIL}`)] })
+      const view = await viewOf(made)
+      const manual = view.targets.left.find((group) => group.reason === 'manual')?.rows ?? []
+      expect(manual.map((row) => [row.key, row.foundByPc])).toEqual(expect.arrayContaining([[A.key, true], [B.key, true]]))
+      expect(batchKeys(view)).not.toContain(A.key)
+      expect((await press(made)).payload?.items.map((item) => item.visitKey)).not.toContain(B.key)
+    })
+
+    it('AC-018.20: 건너뜀(내원일 없음 등)은 기억하고 고치면 다시 든다. 뒤 글이 붙어도 앞부분으로 가른다', async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음'), line(B, '건너뜀', `내원일 없음${TAIL}`)] })
+      expect(keysIn(await viewOf(made), 'held')).toEqual(expect.arrayContaining([A.key, B.key]))
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      const view = await viewOf(made)
+      expect(batchKeys(view)).toContain(A.key)
+      expect(keysIn(view, 'held')).toEqual([B.key])
+    })
+
+    it(`AC-018.20: '넣을 메모가 없어'·이미 있음·직접 입력·입력 직전 변경됨은 기억하지 않는다`, async () => {
+      const made = await ready({ bit: [memoRow(C, '비트 메모')] })
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: C.key, approved: true } satisfies PrecheckFromScreen)
+      const { ticket } = await press(made)
+      await finish(made, ticket, {
+        status: 'finished',
+        results: [line(A, '건너뜀', '넣을 메모가 없어 입력하지 않았습니다'), line(B, '건너뜀', '이미 있음'), line(C, '건너뜀', '입력 직전 기존 청구메모가 변경되었습니다. 현재 내용을 다시 비교해 주세요.')],
+      })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'held')).toEqual([])
+      expect(batchKeys(view)).toContain(C.key)
+    })
+
+    it(`AC-018.20: '지난번 건너뜀'의 [다시 하기]는 그 사람들만 다시 묶는다`, async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음')] })
+      const again = await press(made, 'held')
+      expect(again.payload?.items.map((item) => item.visitKey)).toEqual([A.key])
+    })
+
+    it('AC-018.4: [다시 하기]는 다시 할 수 있는 사람만 다시 묶는다', async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음'), line(B, '건너뜀', '이미 있음'), line(C, '완료', '입력')] })
+      const again = await press(made, 'retry')
+      expect(again.payload?.items.map((item) => item.visitKey)).toEqual([A.key])
+    })
+  })
+
+  describe('AC-018.22 묻지 않기', () => {
+    const askOn = async (made: Made) => {
+      const { ticket } = await press(made)
+      return finish(made, ticket, { status: 'finished', noAsk: true })
+    }
+
+    it('AC-018.22: 처음은 꺼져 있고, 끝 JSON의 값을 메모리에 둔다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')] })
+      expect((await viewOf(made)).noAsk).toBe(false)
+      await askOn(made)
+      const view = await viewOf(made)
+      expect(view.noAsk).toBe(true)
+      expect(view.targets.batch.find((row) => row.key === A.key)).toMatchObject({ chip: '메모 바꿈 · 묻지 않기' })
+      const { payload } = await press(made)
+      expect(payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+    })
+
+    it('AC-018.22: noAsk: false로 답하면 다시 빠진다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')] })
+      await askOn(made)
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', noAsk: false })
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+    })
+
+    it('AC-018.22: 오류 봉투 뒤 값은 그대로다(꺼짐·켜짐 모두)', async () => {
+      const made = await ready()
+      const first = await press(made)
+      await made.jobs.fromPort({ type: 'sent', ticket: first.ticket, ok: false, code: 'E-BIT-READ-FAILED' })
+      expect((await viewOf(made)).noAsk).toBe(false)
+      await askOn(made)
+      const second = await press(made)
+      await made.jobs.fromPort({ type: 'sent', ticket: second.ticket, ok: false, code: 'E-BIT-READ-FAILED' })
+      expect((await viewOf(made)).noAsk).toBe(true)
+    })
+
+    it('AC-018.22: 켜진 채 새 bridge-port를 받으면 꺼진다', async () => {
+      const made = await ready()
+      await askOn(made)
+      made.jobs.portChanged()
+      expect((await viewOf(made)).noAsk).toBe(false)
+    })
+
+    it('AC-016.3·AC-037.6: 묻지 않기가 켜져 있으면 풀린 승인은 replaces 없이 들어간다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')] })
+      await askOn(made)
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: true } satisfies PrecheckFromScreen)
+      expect((await viewOf(made)).targets.batch.find((row) => row.key === A.key)?.replaces).toBe('다른 메모')
+      await made.jobs.fromScreen({ type: 'memoApprove', visitKey: A.key, approved: false } satisfies PrecheckFromScreen)
+      const { payload } = await press(made)
+      expect(payload?.items.find((item) => item.visitKey === A.key)).not.toHaveProperty('replaces')
+    })
+
+    it('AC-018.22: 첫 묶음 뒤 안내의 수에 확인 표시·직접 입력은 없고 N이 0이면 null이 아닌 0이다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(C, '[부위 확인]')], store: { drafts: { [C.key]: '[부위 확인] 글' } } })
+      const { ticket } = await press(made)
+      const result = resultOf(await finish(made, ticket, { status: 'finished', noAsk: true }))
+      expect(result.firstNoAsk).toBe(1)
+      const clean = await ready()
+      const second = await press(clean)
+      expect(resultOf(await finish(clean, second.ticket, { status: 'finished', noAsk: true })).firstNoAsk).toBe(0)
+      // 이미 켜져 있었으면 안내가 없다
+      const third = await press(clean)
+      expect(resultOf(await finish(clean, third.ticket, { status: 'finished', noAsk: true })).firstNoAsk).toBeNull()
+    })
+
+    it('AC-018.22: 직접 확인으로 보낸 사람이 건너뜀·미처리면 사본이 skippedByHand라 다른 메모 있음에 남고 칩과 N에 들지 않는다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '다른 메모')], store: { journal: { [A.key]: 'writing', [B.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      const result = resultOf(await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', noAsk: true, results: [line(A, '건너뜀', '이미 있음'), line(B, '확인 필요', '미처리')] }))
+      expect(result.firstNoAsk).toBe(0)
+      const view = await viewOf(made)
+      expect(view.noAsk).toBe(true)
+      expect(keysIn(view, 'diff')).toEqual(expect.arrayContaining([A.key, B.key]))
+      expect(view.targets.replacing).toBe(0)
+      expect(view.stuck).toBeNull()
+    })
+
+    it('AC-018.22: 완료나 쓰다 멈춘 결과면 skippedByHand를 적지 않는다', async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모')], store: { journal: { [A.key]: 'writing', [B.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', noAsk: true, results: [line(B, '완료', '입력'), line(A, '확인 필요', '입력 완료를 확인하지 못했습니다.')] })
+      const view = await viewOf(made)
+      expect(view.stuck?.people.map((person) => person.key)).toEqual([A.key])
+    })
+
+    it(`AC-018.22: checkedByHand로 보낸 쓰다 멈춘 사람의 결과가 '메모 칸이 입력을 받지 않아…'이면 사본이 skippedByHand이고 띠가 풀린다`, async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '확인 필요', '메모 칸이 입력을 받지 않아 입력하지 못했습니다')] })
+      const view = await viewOf(made)
+      expect(view.stuck).toBeNull()
+      expect(rowOf(view, A.key).lastJournal).toBe('skippedByHand')
+    })
+
+    it(`AC-018.22: 마지막 unconfirmed로만 아는 사람도 '메모 칸이 입력을 받지 않아…'이면 사본이 skippedByHand이고 띠가 풀린다`, async () => {
+      const made = await ready()
+      const first = await press(made)
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: A.key, date: DAY.from }] })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '확인 필요', '메모 칸이 입력을 받지 않아 입력하지 못했습니다')] })
+      const view = await viewOf(made)
+      expect(view.stuck).toBeNull()
+      expect(rowOf(view, A.key).lastJournal).toBe('skippedByHand')
+    })
+
+    it(`AC-016.3: '메모 칸이 입력을 받지 않아…'여도 E-STORE-FAILED인 답이면 사본을 적지 않고 띠가 남는다`, async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-STORE-FAILED', results: [line(A, '확인 필요', '메모 칸이 입력을 받지 않아 입력하지 못했습니다')] })
+      const view = await viewOf(made)
+      expect(view.stuck?.people.map((person) => person.key)).toEqual([A.key])
+      expect(rowOf(view, A.key).lastJournal).toBe('writing')
+    })
+
+    it('AC-016.3: E-STORE-FAILED이거나 unconfirmed가 있는 답이면 사본을 적지 않는다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-STORE-FAILED', results: [line(A, '건너뜀', '내원일 없음')] })
+      expect((await viewOf(made)).stuck?.people.map((person) => person.key)).toEqual([A.key])
+      const again = await press(made, 'byHand')
+      await finish(made, again.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [line(A, '건너뜀', '내원일 없음')], unconfirmed: [{ visitKey: A.key, date: DAY.from }] })
+      expect((await viewOf(made)).stuck?.people.map((person) => person.key)).toEqual([A.key])
+    })
+
+    it('AC-016.3: 줄이 모두 뒤 글 없는 빠지는 까닭이면(창 없이 끝남) 사본이 skipped이고 이미 있는 skippedByHand는 그대로다', async () => {
+      const made = await ready({ store: { journal: { [A.key]: 'writing', [B.key]: 'skippedByHand' } } })
+      const first = await press(made, 'byHand')
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', unconfirmed: [{ visitKey: A.key, date: DAY.from }, { visitKey: B.key, date: DAY.from }] })
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key])
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '건너뜀', '내원일 없음'), line(B, '건너뜀', '같은 날 내원이 여러 건이라 직접 입력해 주세요')] })
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key).lastJournal).toBe('skipped')
+      expect(rowOf(view, B.key).lastJournal).toBe('skippedByHand')
+    })
+  })
+
+  describe('AC-018.15 결과 엑셀', () => {
+    it('AC-018.15: 누르기 전에는 만들지 않고, 칸과 두 시트가 원본과 같고 파일 이름에 환자 값이 없다', async () => {
+      const made = await ready({ visible: OCTOBER, store: { journal: { gone: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'finished', results: [line({ key: 'gone' }, '건너뜀', '넣을 메모가 없어 입력하지 않았습니다 · 직접 확인해 입력 멈춤을 풀었습니다')] })
+      const first = await press(made, 'selection', { ...SELECT, rangeFrom: DAY.from, rangeTo: DAY.to })
+      await finish(made, first.ticket, { status: 'finished', results: [{ ...line(A, '완료', '바꿈(기존 메모 덮어씀)'), previousMemo: '옛 메모' }, line(B, '건너뜀', '내원일 없음')] })
+      expect(made.posts.some((m) => m.type === 'inputExcel')).toBe(false)
+      await made.jobs.fromScreen({ type: 'inputExcel', ask: 9 } satisfies PrecheckFromScreen)
+      const answer = made.posts.at(-1)
+      if (answer?.type !== 'inputExcel' || !answer.ok) throw new Error('엑셀 답이 없다')
+      expect(answer.fileName).toBe(`비트입력결과_${OCTOBER.from}_${OCTOBER.to}.xlsx`)
+      const book = XLSX.read(answer.bytes, { type: 'array' })
+      expect(book.SheetNames).toEqual(['비트 입력 결과', '확인할 환자'])
+      const rows = XLSX.utils.sheet_to_json<string[]>(book.Sheets['비트 입력 결과'], { header: 1, raw: true, defval: '' })
+      expect(rows[0]).toEqual(['순번', '내원일', '차트번호', '환자명', '결과', '내용', '입력예정 청구메모', '기존 비트 청구메모'])
+      expect(rows.find((row) => row[2] === A.chart)?.[7]).toBe('옛 메모')
+      const check = XLSX.utils.sheet_to_json<string[]>(book.Sheets['확인할 환자'], { header: 1, raw: true, defval: '' })
+      expect(check.slice(1).every((row) => row[4] !== '완료')).toBe(true)
+    })
+
+    const excelRows = async (made: Made) => {
+      await made.jobs.fromScreen({ type: 'inputExcel', ask: 9 } satisfies PrecheckFromScreen)
+      const answer = made.posts.at(-1)
+      if (answer?.type !== 'inputExcel' || !answer.ok) throw new Error('엑셀 답이 없다')
+      const book = XLSX.read(answer.bytes, { type: 'array' })
+      return book.SheetNames.flatMap((name) => XLSX.utils.sheet_to_json<(string | number)[]>(book.Sheets[name], { header: 1, raw: true, defval: '' }).slice(1))
+    }
+    const expectNoFiller = (rows: (string | number)[][]) => {
+      const cells = rows.flat().map(String)
+      expect(cells).not.toContain('00000000000000000001')
+      expect(cells).not.toContain('-')
+      expect(cells).not.toContain(' ')
+      expect(cells).not.toContain('2026-10-01')
+    }
+    const GONE = '넣을 메모가 없어 입력하지 않았습니다 · 직접 확인해 입력 멈춤을 풀었습니다'
+
+    it('AC-018.15: [직접 확인했어요] 바로 뒤 엑셀에 자리 채움 값이 없고 내원일은 달이며 차트번호·환자명·메모는 비어 있다', async () => {
+      const made = await ready({ visible: OCTOBER, store: { journal: { gone: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items[0]).toMatchObject({ chart: '00000000000000000001', name: '-', date: '2026-10-01', memo: ' ' })
+      await finish(made, hand.ticket, { status: 'finished', results: [line({ key: 'gone' }, '건너뜀', GONE)] })
+      const rows = await excelRows(made)
+      expectNoFiller(rows)
+      expect(rows[0]).toEqual([1, '2026-10', '', '', '건너뜀', GONE, '', ''])
+    })
+
+    it('AC-018.15·AC-035.9: 줄 없이 멈춘 뒤 [이어서 하기]를 지나도 자리 채움 값이 결과와 엑셀에 없다', async () => {
+      const made = await ready({ visible: OCTOBER, store: { journal: { gone: 'writing' } } })
+      const hand = await press(made, 'byHand')
+      await finish(made, hand.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', results: [] })
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items[0]).toMatchObject({ chart: '00000000000000000001', name: '-', date: '2026-10-01', memo: ' ' })
+      const result = resultOf(await finish(made, resume.ticket, { status: 'finished', results: [line({ key: 'gone' }, '건너뜀', GONE)] }))
+      expect(result.skipped[0]).toMatchObject({ key: 'gone', date: null, month: '2026-10', name: null, chart: null, retry: false })
+      expect(result.skipped[0]).not.toHaveProperty('memo')
+      const rows = await excelRows(made)
+      expectNoFiller(rows)
+      expect(rows[0]).toEqual([1, '2026-10', '', '', '건너뜀', GONE, '', ''])
+    })
+
+    it('AC-018.15: 결과가 없으면 번호로 답한다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'inputExcel', ask: 1 } satisfies PrecheckFromScreen)
+      expect(made.posts.at(-1)).toEqual({ type: 'inputExcel', ask: 1, ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+  })
+
+  describe('떠났을 때(useBridge가 통로를 닫는다)', () => {
+    it('입력 중에 통로가 바뀌면 그 묶음을 잊어 다음 묶음을 막지 않고, 늦은 답도 받지 않는다', async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      made.jobs.portChanged()
+      const next = await press(made)
+      expect(next.payload).not.toBeNull()
+      made.posts.length = 0
+      await made.jobs.fromPort({ type: 'sent', ticket, ok: false, code: 'E-BRIDGE-DISCONNECTED' })
+      expect(made.posts).toEqual([])
+    })
+
+    it('저장 답을 못 받고 통로가 바뀌면 고친 메모는 저장 안 됨으로 남고 다시 저장할 수 있다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      made.jobs.portChanged()
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ text: '고친 글', unsaved: true })
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'memoSaveRetry' } satisfies PrecheckFromScreen)
+      expect(JSON.parse(sends(made, 'store.save')[0].payload).drafts[A.key]).toBe('고친 글')
+    })
+
+    it('AC-013.6: 떠났다 돌아와 다시 점검해도 고친 메모는 그대로다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      made.jobs.portChanged()
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const answer = made.posts.filter((m) => m.type === 'check').at(-1)
+      if (answer?.type !== 'check' || !answer.ok) throw new Error('점검 답이 없다')
+      expect(answer.view.visits.find((visit) => visit.key === A.key)?.memo?.text).toBe('고친 글')
+      expect(rowOf(await viewOf(made), A.key).text).toBe('고친 글')
+    })
+  })
+
+  describe('AC-018.25 입력을 마친 사람의 카드', () => {
+    it('AC-018.25: 입력을 마치면 다시 불러오기 전까지 표시가 있고, 성공한 다시 불러오기가 지운다', async () => {
+      const made = await ready()
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [line(A, '완료', '입력')] })
+      expect(rowOf(await viewOf(made), A.key).afterEntry).toBe(true)
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'r1', memosJson([]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+      expect(rowOf(await viewOf(made), A.key).afterEntry).toBe(false)
+    })
+
+    it('AC-018.24: 받은 비트 메모의 수와 기간이 보기 모양에 있다', async () => {
+      const made = await ready({ bit: [memoRow(A, '글'), memoRow(B, '글')] })
+      expect((await viewOf(made)).bit).toEqual({ has: true, count: 2, period: DAY })
+    })
+
+    it('AC-016.8: 읽은 적이 없으면 has가 거짓이다', async () => {
+      const posts: PrecheckToScreen[] = []
+      const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables })
+      await loadInto(jobs, 'month', MEMO_MONTH, 1)
+      await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      await jobs.fromScreen({ type: 'memoView', ask: 1, selection: SELECT } satisfies PrecheckFromScreen)
+      const answer = posts.at(-1)
+      if (answer?.type !== 'memoView' || !answer.ok) throw new Error('memoView 답이 없다')
+      expect(answer.view.bit).toEqual({ has: false, count: 0, period: null })
+    })
+  })
+
+  describe('AC-018.18 메모를 만들지 않는 병원', () => {
+    it('AC-018.18: 쓰다 멈춘 기록이 있어도 띠 자료가 없다', async () => {
+      const made = await ready({ settings: { ...SETTINGS, phrases: null }, store: { journal: { [A.key]: 'writing' } } })
+      const view = await viewOf(made)
+      expect(view.memoBlocked).toBe('E-MEMO-NO-SETTINGS')
+      expect(view.stuck).toBeNull()
+      expect((await press(made, 'byHand')).payload).toBeNull()
+    })
+
+    it('AC-018.18: memoBlocked면 목록과 표가 비고 입력을 시작할 수 없다', async () => {
+      const made = await ready({ settings: { ...SETTINGS, phrases: null } })
+      const view = await viewOf(made)
+      expect(view.memoBlocked).toBe('E-MEMO-NO-SETTINGS')
+      expect(view.table).toEqual([])
+      expect(view.targets.batch).toEqual([])
+      expect((await press(made)).payload).toBeNull()
     })
   })
 })

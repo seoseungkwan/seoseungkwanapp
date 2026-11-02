@@ -522,9 +522,9 @@ describe('AC-013.3 점검 결과', () => {
     expect(screen.getByRole('heading', { level: 2, name: '환자' })).toBeTruthy()
   })
 
-  it('TASK-18 전: [비트에 입력]·[다음: 메모 확인]·메모 칸·나중에 확인·없는 화면으로 가는 단추를 그리지 않는다', async () => {
+  it('AC-013.3: 나중에 확인·없는 화면으로 가는 단추를 그리지 않는다. 메모가 없는 진료에는 메모 초안이 없다', async () => {
     await toResult()
-    for (const name of [/비트에 입력/, /메모 확인/, /메모 이어서/, /월말 마감/]) {
+    for (const name of [/메모 이어서/, /월말 마감/]) {
       expect(screen.queryByRole('button', { name })).toBeNull()
       expect(screen.queryByRole('link', { name })).toBeNull()
     }
@@ -688,12 +688,14 @@ describe('AC-013.5 오류 카드', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('AC-013.2: 달 파일이 다른 병원 파일이면 멈추고 오류 카드다(AC-018.17 안내는 TASK-18)', async () => {
+  it('AC-018.17: 달 파일이 다른 병원 파일이면 멈추지 않고 점검하며 안내 카드를 보인다', async () => {
     const store = (args: Record<string, unknown>) => (args.months ? Promise.reject(new BridgeError('E-BIT-HOSPITAL-MISMATCH')) : Promise.resolve({ id: 'copy1', count: 1 }))
     const worker = fakeWorker()
-    const card = await failing(worker, bridge({ store }))
+    await toResult(worker, bridge({ store }))
+    const card = screen.getByRole('alert')
     expect(card.textContent).toContain('오류 번호 E-BIT-HOSPITAL-MISMATCH')
-    expect(worker.of('check')).toEqual([])
+    expect(card.textContent).not.toContain('[다시 등록]')
+    expect(worker.of('check')).toHaveLength(1)
   })
 
   it('AC-013.11: claim.memos가 다른 번호로 거절되면 멈춘다', async () => {
@@ -744,8 +746,7 @@ describe('AC-013.5 비트 PC 연결로 가는 길', () => {
 
   it('AC-018.17: 달 파일의 E-BIT-HOSPITAL-MISMATCH는 다시 등록해도 풀리지 않아 링크를 붙이지 않는다', async () => {
     const store = (args: Record<string, unknown>) => (args.months ? Promise.reject(new BridgeError('E-BIT-HOSPITAL-MISMATCH')) : Promise.resolve({ id: 'copy1', count: 1 }))
-    await failLoad(bridge({ store }))
-    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    await toResult(fakeWorker(), bridge({ store }))
     expect(setupLink()).toBeNull()
   })
 
@@ -763,7 +764,7 @@ describe('AC-013.6 설정이 바뀌었을 때', () => {
     await toResult()
     focus()
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull()
+    expect(screen.queryByText('설정이 바뀌었어요, 다시 점검하세요')).toBeNull()
   })
 
   it('AC-013.6: 창 초점이 돌아올 때 다시 읽어 다르면 띠와 [다시 점검]이 보이고, 누르면 달을 다시 받지 않고 새 설정으로 점검한다', async () => {
@@ -772,11 +773,11 @@ describe('AC-013.6 설정이 바뀌었을 때', () => {
     const { user } = await toResult(worker, link)
     db.rules = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
     focus()
-    await screen.findByText('설정이 바뀌었어요. 다시 점검하세요')
+    await screen.findByText('설정이 바뀌었어요, 다시 점검하세요')
     expect(screen.getByRole('heading', { level: 2, name: '환자' })).toBeTruthy() // 결과는 그대로 보인다
     const streamed = link.stream.mock.calls.length
     await user.click(screen.getByRole('button', { name: '다시 점검' }))
-    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요, 다시 점검하세요')).toBeNull())
     expect(link.stream.mock.calls.length).toBe(streamed)
     expect(worker.of('loadStart')).toHaveLength(1)
     const checks = worker.of('check')
@@ -790,17 +791,17 @@ describe('AC-013.6 설정이 바뀌었을 때', () => {
     db.failSettings = true
     focus()
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull()
+    expect(screen.queryByText('설정이 바뀌었어요, 다시 점검하세요')).toBeNull()
   })
 
   it('AC-013.6: 도로 같아지면 띠가 사라진다', async () => {
     await toResult()
     db.rules = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
     focus()
-    await screen.findByText('설정이 바뀌었어요. 다시 점검하세요')
+    await screen.findByText('설정이 바뀌었어요, 다시 점검하세요')
     db.rules = []
     focus()
-    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요, 다시 점검하세요')).toBeNull())
   })
 
   it('AC-013.3·AC-013.6: 고른 규칙이 다시 점검으로 사라지면 그 거르기도 풀린다(경고가 없는 것처럼 보이지 않게)', async () => {
@@ -819,7 +820,7 @@ describe('AC-013.6 설정이 바뀌었을 때', () => {
     db.rules = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
     focus()
     await user.click(await screen.findByRole('button', { name: '다시 점검' }))
-    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요. 다시 점검하세요')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('설정이 바뀌었어요, 다시 점검하세요')).toBeNull())
     expect((screen.getByLabelText('규칙으로 거르기') as HTMLSelectElement).value).toBe('')
     expect(screen.queryByText('조건에 맞는 환자가 없어요.')).toBeNull()
     expect(namesInList()).toEqual(['가상환자A', '가상환자B', '가상환자C', '가상환자E'])
@@ -877,7 +878,7 @@ describe('AC-013.9 서버 설정을 읽지 못했을 때', () => {
     db.failSettings = false
     db.rules = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
     window.dispatchEvent(new Event('focus'))
-    expect(await screen.findByText('설정이 바뀌었어요. 다시 점검하세요')).toBeTruthy()
+    expect(await screen.findByText('설정이 바뀌었어요, 다시 점검하세요')).toBeTruthy()
   })
 })
 
@@ -936,7 +937,7 @@ describe('AC-013.10·AC-013.12 번호', () => {
 
 describe('AC-013.6 다른 탭에 다녀와도 결과가 남는다', () => {
   const OFF_IJ = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
-  const band = '설정이 바뀌었어요. 다시 점검하세요'
+  const band = '설정이 바뀌었어요, 다시 점검하세요'
   const patients = () => screen.queryByRole('heading', { level: 2, name: '환자' })
   const flush = async () => {
     for (let i = 0; i < 10; i++) await Promise.resolve()

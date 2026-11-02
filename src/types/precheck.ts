@@ -270,7 +270,35 @@ export type ClaimVisitView = CheckedVisit & { rx: string[]; dxNow: DxLine[]; dx:
  */
 export type ClaimView = Omit<CheckView, 'visits'> & { visits: ClaimVisitView[]; period: DateRange; hasDx: boolean; enabledRules: number }
 
-// ── Worker ↔ 화면 메시지(design.md 6-2). check의 보기 모양(ClaimView)과 엑셀 바이트 밖에는 환자 글자가 없다(숫자·달·오류 번호·규칙 목록) ──────────
+// ── 메모 칸(TASK-18, REQ-018). 대상 고르기는 lib/precheck/inputTargets.ts ──────────
+
+/** 입력 방식(AC-018.8). 고르는 칸을 그대로 들고 있어 방식을 바꿔도 적은 값이 남는다. 어디에도 저장하지 않는다 */
+export type InputSelection = { mode: 'code' | 'date'; from: string; to: string; typed: string; chip: string; kind: 'day' | 'range'; day: string; rangeFrom: string; rangeTo: string }
+/** 빠지는 까닭(AC-018.26): 이미 입력됨 · 메모 없음 · 확인 표시 · 직접 입력 · 다른 메모 · 읽지 못함 · 지난번 건너뜀 */
+export type LeftReason = 'done' | 'nomemo' | 'mark' | 'manual' | 'diff' | 'unread' | 'held'
+/** 대상 고르기에 넣는 진료 한 줄: 비교 상태 + 차트번호·이름·처방 코드·처방 이름·규칙 경고 있음 */
+export type TargetVisit = VisitMemo & { chart: string; name: string; rx: readonly string[]; rxNames: readonly string[]; warned: boolean }
+/** 목록 한 줄. sameDay는 같은 사람 같은 날 진료 수, foundByPc는 도우미가 찾아낸 직접 입력(AC-018.13). chip은 입력할 사람에게만 있다 */
+export type TargetRow = TargetVisit & { replaces?: string; sameDay: number; foundByPc: boolean; chip: '새 메모' | '메모 바꿈 · 승인함' | '메모 바꿈 · 묻지 않기' | null }
+export type CodeChip = { code: string; name: string; count: number }
+/** 고른 조건의 결과(AC-018.26). problem은 고르는 즉시 보이는 안내(AC-018.9~AC-018.11·AC-018.20·AC-018.23), code는 묶음과 함께 보낼 코드(날짜별은 null), replacing은 입력할 사람 가운데 다른 메모가 바뀌는 수 */
+export type InputTargets = { problem: string | null; range: DateRange | null; code: string | null; batch: TargetRow[]; left: { reason: LeftReason; rows: TargetRow[] }[]; chips: CodeChip[]; typedOverChip: boolean; replacing: number }
+/** 메모 표 한 줄(AC-018.1). done은 완료, unsaved는 아직 PC에 저장되지 않은 고친 글, afterEntry는 비트 메모를 받은 뒤 입력을 마친 사람(AC-018.25) */
+export type MemoTableRow = VisitMemo & { chart: string; name: string; rxNames: readonly string[]; edited: boolean; missing: string[]; done: boolean; unsaved: boolean; afterEntry: boolean }
+/** 쓰다 멈춘 사람 한 줄(AC-018.16). known: 자료에 있음 · noData: 자료에 없음(이름도 차트번호도 모른다) · outside: 불러온 기간 밖. date를 모르면 month만 보인다. reason은 입력에서 빠질 까닭 */
+export type StuckPerson = { key: string; state: 'known' | 'noData' | 'outside'; date: string | null; month: string; name: string | null; chart: string | null; rxNames: readonly string[]; reason: LeftReason | null; text: string; sameDay: number }
+/** 띠 하나의 자료(AC-018.16). big은 큰 글을 보일지(모두 자료에 없거나 기간 밖이면 거짓), loadRange는 [자료 불러오기]의 기간, note는 단추 아래 글 */
+export type StuckView = { people: StuckPerson[]; canContinue: boolean; canByHand: boolean; big: boolean; loadRange: DateRange | null; note: string | null }
+/** 메모 칸 보기 모양(Worker → 화면). 환자 글자가 있어 환자 줄 화면과 이 탭 메모리에만 있다. 저장소·주소·로그·오류 카드에 두지 않는다 */
+export type MemoScreenView = { period: DateRange; memoBlocked: MemoViews['memoBlocked']; noAsk: boolean; targets: InputTargets; table: MemoTableRow[]; stuck: StuckView | null; bit: { has: boolean; count: number; period: DateRange | null } }
+/** 입력을 시작하는 단추: [비트에 입력]·[빼고 N명 입력] · '지난번 건너뜀'의 [다시 하기] · 결과의 [다시 하기] · [이어서 하기] · [이어서 입력] · [직접 확인했어요] */
+export type InputWhat = 'selection' | 'held' | 'retry' | 'resume' | 'continueStuck' | 'byHand'
+/** 결과 한 줄. 자료에 없는 진료는 name·chart가 null이다(자리 채움 값을 보이지 않는다, AC-018.15·AC-018.16). retry는 [다시 하기]에 드는 사람 */
+export type InputResultLine = { key: string; date: string | null; month: string; name: string | null; chart: string | null; result: string; reason: string; previousMemo?: string; memo?: string; retry: boolean }
+/** 입력 결과 보기 모양(AC-018.4·AC-018.21·AC-018.22). entered는 넣은 수, left는 남은 수, firstNoAsk는 이번 답에서 묻지 않기가 켜졌을 때 아직 바꾸지 않은 수(켜지지 않았으면 null) */
+export type InputResultView = { status: 'finished' | 'cancelled' | 'stopped'; code: string | null; reason: string | null; fields: string[]; done: InputResultLine[]; check: InputResultLine[]; skipped: InputResultLine[]; uncounted: number; retry: number; entered: number; left: number; firstNoAsk: number | null }
+
+// ── Worker ↔ 화면 메시지(design.md 6-2). check의 보기 모양(ClaimView)과 메모 칸 보기 모양·입력 결과·엑셀 바이트 밖에는 환자 글자가 없다(숫자·달·오류 번호·규칙 목록) ──────────
 
 /** 설정 화면 '점검 규칙' 칸에 보일 규칙 하나(TASK-12가 쓴다) */
 export type RuleSummary = Pick<RuleDef, 'id' | 'title' | 'domain' | 'grade' | 'basis' | 'enabled_default'>
@@ -290,8 +318,10 @@ export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; 
  * 화면이 지킬 약속:
  * 1. 불러올 때마다 새 번호 load를 정해(1씩 올린다. 같은 Worker에 같은 번호를 두 번 쓰지 않는다) stream('claim.month') 바로 앞에 loadStart를 보낸다.
  *    Worker는 이 번호를 마지막 불러오기로 삼고 전에 불러온 달을 버린다. 답은 없다.
- *    [멈추기], 결과 없이 화면을 떠날 때(불러오는 중 포함)에는 stream 없이 loadStart만 보낸다: 달과 진행 중인 불러오기를 버린다.
- *    점검 결과가 있으면 떠날 때 보내지 않는다. Worker의 달·결과가 그대로라 돌아와서 [다시 점검](12)·엑셀(13)이 달을 다시 읽지 않고 된다. 통로 포트가 새것으로 바뀌어도 달은 그대로다.
+ *    [멈추기], 결과 없이 화면을 떠날 때(불러오는 중 포함), 결과를 낼 때 사람이나 기관기호를 몰랐던 결과를 두고 떠날 때, 입력하는 중에 떠날 때에는 stream 없이 loadStart만 보낸다: 달과 진행 중인 불러오기를 버린다.
+ *    결과를 낼 때 사람과 기관기호를 안 점검 결과가 있으면 떠날 때 보내지 않는다(design.md 6-2). Worker의 달·결과가 그대로라 돌아와 같은 사람·같은 의원이면 [다시 점검](12)·엑셀(13)이 달을 다시 읽지 않고 된다. 통로 포트가 새것으로 바뀌어도 달은 그대로다.
+ *    입력하는 동안 떠나면 사람과 기관기호를 안 결과도 맡기지 않고 버리고 loadStart만 보낸다: 끝 답이 이 화면에 오지 않고 결과는 [자료 불러오기]로 읽는다(AC-018.5·AC-017.9, design.md 6-2).
+ *    [자료 불러오기]·[멈추기]의 loadStart에는 keepEdits를 실어 아직 저장하지 못한 고친 메모를 남긴다(AC-018.2·AC-018.17). 떠날 때와 사람이나 기관기호가 다를 때는 싣지 않는다.
  * 2. stream이 거절되면 그 불러오기는 실패다. month를 보내지 않는다(문에서 거절되면 id도 abort도 없다. 달은 1에서 이미 비었다).
  *    마지막 불러오기가 아닌 옛 번호의 stream 거절은 화면에 보이지 않고 버린다.
  * 3. stream이 끝나면 받은 id를 그 불러오기의 번호와 함께 month로 보낸다. 그새 새 불러오기를 시작했어도 보낸다(Worker가 모아 둔 글자를 찾아 가 버리게).
@@ -303,7 +333,7 @@ export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; 
  * 7. partial로 판단하지 않는다. 어느 명령이든 오고(Worker는 명령을 모른다) 불러 둔 달을 바꾸지 않는다. 6과 같은 까닭으로 아직 안 왔다고 성공도 아니다.
  * 8. claim.memos·store.load도 SHA-256이 달라도 stream이 끝나고 신호는 partial뿐이라 7처럼 그것으로 막을 수 없다.
  *    그래서 끝난 id마다 month처럼 그 불러오기의 번호로 loadPart를 보내 take한 답을 받고, 그 답이 ok:false면 멈춘다. ok:false면 Worker는 그 자료를 받지 않았다(AC-016.5).
- *    stream 거절은 E-HELPER-UNKNOWN-COMMAND면 그 자료 없이 계속하고 다른 오류 번호면 멈춘다(AC-013.2). 옛 불러오기의 거절은 2처럼 버린다.
+ *    stream 거절은 E-HELPER-UNKNOWN-COMMAND면 그 자료 없이 계속하고, 달 칸 store.load의 E-BIT-HOSPITAL-MISMATCH면 storeBlock을 보내 저장한 작업 없이 계속하며(AC-018.17), 다른 오류 번호면 멈춘다(AC-013.2). 옛 불러오기의 거절은 2처럼 버린다.
  * 9. 비트 메모 다시 불러오기(AC-016.7, TASK-18)는 load를 그대로 두고 새 번호 run을 정해(load와 같은 곳에서 받는다) stream('claim.memos') 바로 앞에 memoReloadStart를 보낸다. 답은 없다.
  *    stream이 끝나면 그새 새 번호가 나왔어도 run을 실은 loadPart를 보낸다(모아 둔 글자를 찾아 가 버리게). 달과 점검 결과는 그대로다.
  *    답의 load·run이 마지막 번호와 다르면 ok와 상관없이 버린다. Worker도 take가 끝난 뒤 둘 다 마지막 번호일 때만 비트 메모를 통째로 바꾼다.
@@ -313,9 +343,13 @@ export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; 
  *     visible은 고른 기간이다. settings는 서버에서 읽은 설정이고, 서버를 읽지 못했으면 null이다: Worker가 이 불러오기의 store.load {settings}로 받은 도우미 사본으로 점검하고 답의 usedCopy에 그 사본을 싣는다. 사본도 없으면 E-SETTINGS-FAILED(AC-013.9).
  *     store.load {months}와 {settings}는 따로 부른다(한 호출에 섞으면 파일 하나만 막혀도 호출 전체가 같은 번호로 거절된다). 설정 쪽 거절이 E-BIT-HOSPITAL-MISMATCH면 사본 없이 계속한다.
  * 13. excel은 답을 받은 점검의 check 번호로 묻는다. Worker는 그 점검 결과로만 만들고, 번호가 다르거나 새 loadStart로 결과를 버렸으면 E-CLAIM-PARTIAL이다.
+ * 14. 메모 칸(TASK-18). memoView는 번호 ask로 묻고 마지막 번호의 답만 쓴다. 목록·묶음은 Worker의 inputTargets가 같은 판단으로 정한다(AC-018.26). 답에는 환자 글자가 있어 환자 줄 화면(components/claim/rows)에만 넘긴다.
+ *     editMemo·memoApprove는 답이 없고, 저장 결과는 memoSave로 온다. memoSaveRetry는 저장하지 못한 달을 다시 보낸다. storeBlock은 달 칸 저장이 막혔다고 알린다(AC-018.17): 그 뒤로 Worker는 달 칸 store.save를 보내지 않고 달 칸 store.load가 성공하면 풀린다.
+ *     buildInputBatch는 묶음을 Worker가 만들어 통로 포트로 보낸다(AC-004.11. 화면은 글자를 쥐지 않는다). 답은 inputStart 하나, 끝나면 inputDone 하나이고 번호 run은 물을 때 보낸 그대로다.
+ *     통로가 바뀌면(화면을 떠나면) 진행 중인 묶음의 답은 오지 않는다. 결과는 도우미 작업 저장에 있어 다음 store.load로 읽는다(AC-018.5·AC-017.9).
  */
 export type PrecheckFromScreen =
-  | { type: 'loadStart'; load: number }
+  | { type: 'loadStart'; load: number; keepEdits?: true }
   | { type: 'month'; id: string; load: number }
   | { type: 'loadPart'; part: 'memos' | 'store'; id: string; load: number }
   | { type: 'memoReloadStart'; run: number }
@@ -323,9 +357,16 @@ export type PrecheckFromScreen =
   | { type: 'ruleList' }
   | { type: 'check'; check: number; load: number; visible: DateRange; settings: CheckSettings | null }
   | { type: 'excel'; check: number }
+  | { type: 'memoView'; ask: number; selection: InputSelection }
+  | { type: 'editMemo'; visitKey: string; text: string }
+  | { type: 'memoApprove'; visitKey: string; approved: boolean }
+  | { type: 'memoSaveRetry' }
+  | { type: 'storeBlock' }
+  | { type: 'buildInputBatch'; run: number; what: InputWhat; selection: InputSelection }
+  | { type: 'inputExcel'; ask: number }
 
 /** Worker → 통로 포트: 도우미에 보낼 글자(design.md 6-1). 화면을 지나지 않는다. 결과는 포트로 {type: 'sent', ticket, ok, …} */
-export type PrecheckToPort = { type: 'send'; ticket: number; cmd: 'store.save'; payload: string }
+export type PrecheckToPort = { type: 'send'; ticket: number; cmd: 'store.save' | 'bit.input'; payload: string }
 
 /** Worker → 화면. month·loadPart의 load·run은 물을 때 보낸 번호 그대로다. loadPart 답에는 환자 글자가 없다. check의 usedCopy는 서버 대신 쓴 도우미 설정 사본이고 서버 설정을 썼으면 null이다 */
 export type PrecheckToScreen =
@@ -341,3 +382,13 @@ export type PrecheckToScreen =
   | { type: 'check'; check: number; load: number; ok: false; code: ErrorCode }
   | { type: 'excel'; check: number; ok: true; bytes: ArrayBuffer; fileName: string }
   | { type: 'excel'; check: number; ok: false; code: ErrorCode }
+  | { type: 'memoView'; ask: number; ok: true; view: MemoScreenView }
+  | { type: 'memoView'; ask: number; ok: false; code: ErrorCode }
+  | { type: 'memoSave'; ok: true }
+  | { type: 'memoSave'; ok: false; code: string; blocked: boolean }
+  | { type: 'inputStart'; run: number; ok: true; count: number; askPc: boolean }
+  | { type: 'inputStart'; run: number; ok: false; code: string }
+  | { type: 'inputDone'; run: number; ok: true; result: InputResultView }
+  | { type: 'inputDone'; run: number; ok: false; code: string }
+  | { type: 'inputExcel'; ask: number; ok: true; bytes: ArrayBuffer; fileName: string }
+  | { type: 'inputExcel'; ask: number; ok: false; code: ErrorCode }

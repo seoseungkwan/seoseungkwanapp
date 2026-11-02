@@ -259,10 +259,13 @@ describe('AC-013.3 VisitDetail: 환자 자세히', () => {
     expect(screen.getByText('걸린 규칙이 없어요.')).toBeTruthy()
   })
 
-  it('TASK-18 전: 메모 패널과 나중에 확인 표시를 그리지 않는다', () => {
-    render(<VisitDetail visit={visit({ memo: { visitKey: 'v1', text: '메모 초안 글', edited: false, missing: [], hasMemo: true, unfinished: false } })} titles={TITLES} hasDx />)
-    expect(screen.queryByText('메모 초안')).toBeNull()
-    expect(screen.queryByText('메모 초안 글')).toBeNull()
+  it('AC-018.1: 메모 초안이 이 칸 아래에 있고 고치는 곳으로 가는 단추가 있다. 나중에 확인 표시는 없다', async () => {
+    const onOpenMemo = vi.fn()
+    render(<VisitDetail visit={visit({ memo: { visitKey: 'v1', text: '메모 초안 글', edited: false, missing: [], hasMemo: true, unfinished: false } })} titles={TITLES} hasDx onOpenMemo={onOpenMemo} />)
+    expect(screen.getByText('메모 초안')).toBeTruthy()
+    expect(screen.getByText('메모 초안 글')).toBeTruthy()
     expect(screen.queryByRole('checkbox')).toBeNull()
+    await userEvent.setup().click(screen.getByRole('button', { name: '메모 확인에서 고치기' }))
+    expect(onOpenMemo).toHaveBeenCalledWith('v1')
   })
 })
