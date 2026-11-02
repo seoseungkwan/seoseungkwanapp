@@ -23,8 +23,8 @@
     {
       "step": 3,
       "name": "bit-input",
-      "status": "pending",
-      "summary": "bit.input 연결(TASK-35): 내원 수 확인·진짜 입력 기록(WorkStoreJournal)·직접 확인(SkippedByHand)·쓰다 멈춘 사람 검사·store.* 잠금을 갖추고 Program.cs에 등록. 판 번호는 그대로이고 TASK-37 전에는 릴리스하지 않는다. InputRunner.RunConfirmed의 차례: 해시 저장→기록 읽기→풀 사람 Mark→칸 확인→사람마다. AC-035.9 확인할 수 없는 기록은 input-acks.dat. 크롬 창 내리기(TASK-38, 확장 0.1.1)가 첫 progress에 맞춰 돈다. 남은 일: TASK-36·37, 의원 PC 시험."
+      "status": "completed",
+      "summary": "bit.input 연결(TASK-35): 내원 수 확인·진짜 입력 기록(WorkStoreJournal)·직접 확인(SkippedByHand)·쓰다 멈춘 사람 검사·store.* 잠금을 갖추고 Program.cs에 등록. 판 번호는 그대로이고 TASK-37 전에는 릴리스하지 않는다. InputRunner.RunConfirmed의 차례: 해시 저장→기록 읽기→풀 사람 Mark→칸 확인→사람마다. AC-035.9 확인할 수 없는 기록은 input-acks.dat. 크롬 창 내리기(TASK-38, 확장 0.1.1)가 첫 progress에 맞춰 돈다. 남은 일: TASK-36·37, 의원 PC 시험. 처방코드 입력·조회 모드·47 표(TASK-36): 제외 체크는 Toggle 먼저, 쓰다 멈춘 사람의 칸이 편집 불가이면 저장을 누르지 않고 멈춘다. 다른 메모 바꾸기·묻지 않기(TASK-37): 원래 메모를 달 파일 originals에 먼저 저장, 그다음 writing, 그다음 칸. 묻지 않기는 프로세스 메모리에만 있고 PC 창 [확인]으로만 켜지며 다음 묶음부터 친다. 직접 확인한 사람은 바꾸지 않는다. 도우미 판은 올리지 않았다."
     },
     {
       "step": 4,
