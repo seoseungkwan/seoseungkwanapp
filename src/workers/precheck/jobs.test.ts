@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as XLSX from 'xlsx'
 import type { Outcome } from '@/types/parse'
-import type { ClaimMemosJson, DxLink, MemoRowRaw, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables } from '@/types/precheck'
+import type { CheckSettings, ClaimMemosJson, ClaimView, DxLink, MemoRowRaw, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables } from '@/types/precheck'
 import { defaultPhrases, ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
 import { checkMonth, loadMonth, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
 import { loadTables } from './tables'
@@ -358,7 +359,7 @@ async function loadWorkerEntry() {
     receive({ data: { type: 'bridge-port' }, ports: [channel.port2] } as unknown as MessageEvent)
     return channel.port1
   }
-  return { posted, givePort }
+  return { posted, givePort, receive: (data: unknown) => receive({ data, ports: [] } as unknown as MessageEvent) }
 }
 
 describe('AC-009.2 precheck.worker: 통로 포트를 바꿔도 먼저 보낸 abort를 잃지 않는다', () => {
@@ -381,6 +382,412 @@ describe('AC-009.2 precheck.worker: 통로 포트를 바꿔도 먼저 보낸 abo
     await vi.waitFor(() => expect(posted).toHaveLength(2))
     expect(posted[1]).toEqual({ type: 'partial', id: 'm2', code: 'E-CLAIM-PARTIAL' })
     newPort.close()
+  })
+})
+
+// ── 점검(TASK-13): 화면이 check로 시키고 Worker가 보기 모양을 보낸다. 가짜 자료만 쓴다 ──────────
+
+describe('AC-013 점검 메시지 check·excel', { timeout: 30_000 }, () => {
+  const MEMO_MONTH = FAKE('claim-month-memo.json')
+  const OCTOBER = { from: '2026-10-01', to: '2026-10-31' }
+  /** m68(900079): 10/24 진료. 10/20에 급여 KK090이 있어 그 날이 고른 기간 밖이어도 간격 문장이 나와야 한다. m69(900080): 10/20 진료, 고른 기간 밖이라 빠진다 */
+  const ONE_DAY = { from: '2026-10-24', to: '2026-10-24' }
+  const SETTINGS: CheckSettings = { rules: { schema: 1, off: [], on: [], grade: [] }, phrases: ourClinicPhrases(), dxLinks: [] }
+  /** 표 모양이 틀린 연결표. readDxLinks가 TypeError를 던진다 */
+  const BROKEN = { ...SETTINGS, dxLinks: [{ not: 'a row' }] } as unknown as CheckSettings
+
+  type CheckAnswer = Extract<PrecheckToScreen, { type: 'check' }>
+  type ExcelAnswer = Extract<PrecheckToScreen, { type: 'excel' }>
+  const askCheck = (jobs: Jobs, over: Partial<Extract<PrecheckFromScreen, { type: 'check' }>> = {}) =>
+    jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: OCTOBER, settings: SETTINGS, ...over } satisfies PrecheckFromScreen)
+  const answerOf = (posts: readonly PrecheckToScreen[]) => {
+    const found = posts.filter((m): m is CheckAnswer => m.type === 'check')
+    expect(found).toHaveLength(1)
+    return found[0]
+  }
+  const viewOf = (answer: CheckAnswer): ClaimView => {
+    if (!answer.ok) throw new Error(answer.code)
+    return answer.view
+  }
+  async function loaded(text = MEMO_MONTH, load = 1) {
+    const sent: unknown[] = []
+    const posts: PrecheckToScreen[] = []
+    const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables, toPort: (m) => sent.push(m) })
+    await loadInto(jobs, 'month', text, load)
+    posts.length = 0
+    return { jobs, posts, sent }
+  }
+  let storeCalls = 0
+  const giveStore = async (jobs: Jobs, json: unknown, load = 1) => {
+    const id = `store${++storeCalls}`
+    await stream(jobs, id, JSON.stringify(json))
+    await jobs.fromScreen({ type: 'loadPart', part: 'store', id, load } satisfies PrecheckFromScreen)
+  }
+  /** 도우미 store.load 답: 달과 설정 사본 */
+  const storeWith = (settings: unknown) => ({ months: { '2026-10': { drafts: {}, done: {}, journal: {} } }, settings })
+
+  describe('AC-013.14 점검 답에 규칙 결과와 추천 상병·상병 확인이 실린다', () => {
+    it('AC-013.14: 진료마다 추천·경고가 있고 규칙 결과와 함께 온다', async () => {
+      const { jobs, posts } = await loaded(FAKE('claim-month-dx-check.json'))
+      await askCheck(jobs)
+      const answer = answerOf(posts)
+      expect(answer).toMatchObject({ type: 'check', check: 1, load: 1, ok: true, usedCopy: null })
+      const view = viewOf(answer)
+      const d01 = view.visits.find((v) => v.key === 'd01')!
+      expect(d01.dx.issues.map((x) => x.code)).toEqual(['A49'])
+      expect(d01.dx.needsCheck).toBe(true)
+      expect(d01.dx.recommendations.find((r) => r.code === 'A49')?.list.map((r) => r.dx).slice(0, 2)).toEqual(['M17', 'M750'])
+      expect(d01.rx.length).toBeGreaterThan(0)
+      expect(d01.dxNow.every((line) => typeof line.c === 'string')).toBe(true)
+      expect(view.visits.find((v) => v.key === 'd16')!.dx.missingDx).toBe(true)
+      expect(view.hasDx).toBe(true)
+    })
+
+    it('AC-013.14: 상병 연결표가 점검 답에 섞인다', async () => {
+      const { jobs, posts } = await loaded(FAKE('claim-month-dx-check.json'))
+      await askCheck(jobs, { settings: { ...SETTINGS, dxLinks: [['G6604', 'S6350', '연결 이름', 0, 't']] } })
+      const d08 = viewOf(answerOf(posts)).visits.find((v) => v.key === 'd08')!
+      expect(d08.dx.issues.map((x) => [x.code, x.gosi])).toEqual([['G6604', false]])
+    })
+
+    it('AC-013.14·AC-014.13: 상병 없음·메모 있음·비급여뿐인 진료는 점검 답에서 missingDx가 참이다(메모 결과를 넘긴다)', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs)
+      const view = viewOf(answerOf(posts))
+      expect(view.visits.find((v) => v.key === 'm33')!.dx.missingDx).toBe(true)
+      expect(view.visits.find((v) => v.key === 'm35')!.dx.missingDx).toBe(false)
+      expect(view.visits.find((v) => v.key === 'm33')!.memo?.hasMemo).toBe(true)
+    })
+
+    it('AC-013.14: I·N 표 경고는 규칙 DX-01 결과로 한 번만 나온다(상병 확인에 또 나오지 않는다)', async () => {
+      const { jobs, posts } = await loaded(FAKE('claim-month-rules-branches.json'))
+      await askCheck(jobs)
+      const hit = viewOf(answerOf(posts)).visits.find((v) => v.key === 'DX-01.hit')!
+      expect(hit.findings.filter((f) => f.ruleId === 'DX-01')).toHaveLength(1)
+      expect(hit.dx.issues).toEqual([])
+      expect(hit.dx.needsCheck).toBe(false)
+    })
+
+    it('AC-013.14: 틀린 연결표는 점검 결과 없이 ok:false·E-SETTINGS-FAILED다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs, { settings: BROKEN })
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-SETTINGS-FAILED' })
+      expectNoPatientText(posts)
+    })
+  })
+
+  describe('AC-013.13 고른 기간만 보인다', () => {
+    it('AC-013.13: 고른 날의 진료만 싣고 앞 내원은 간격 문장에만 쓴다', async () => {
+      const whole = await loaded()
+      await askCheck(whole.jobs)
+      const wholeView = viewOf(answerOf(whole.posts))
+      expect(wholeView.visits.some((v) => v.key === 'm69')).toBe(true)
+
+      const day = await loaded()
+      await askCheck(day.jobs, { visible: ONE_DAY })
+      const view = viewOf(answerOf(day.posts))
+      expect(view.period).toEqual(ONE_DAY)
+      expect(view.visits.every((v) => v.date === ONE_DAY.from)).toBe(true)
+      expect(view.visits.map((v) => v.key)).toContain('m68')
+      expect(view.visits.map((v) => v.key)).not.toContain('m69')
+      const itv = ourClinicPhrases().TPL.itv as string
+      const memo = view.visits.find((v) => v.key === 'm68')!.memo!
+      expect(memo.text).toContain(itv)
+      expect(memo.text).toBe(wholeView.visits.find((v) => v.key === 'm68')!.memo!.text)
+    })
+
+    it('AC-013.13: 합계·규칙 묶음도 고른 기간만 센다', async () => {
+      const day = await loaded()
+      await askCheck(day.jobs, { visible: ONE_DAY })
+      const view = viewOf(answerOf(day.posts))
+      const keys = new Set(view.visits.map((v) => v.key))
+      const findings = view.visits.flatMap((v) => v.findings)
+      expect(view.totals.hi).toBe(findings.filter((f) => f.grade === '확인필요').length)
+      expect(view.totals.mid).toBe(findings.filter((f) => f.grade === '알림').length)
+      expect(view.totals.lo).toBe(findings.filter((f) => f.grade === '참고').length)
+      expect(view.totals.patients).toBe(view.visits.filter((v) => v.findings.some((f) => f.grade === '확인필요')).length)
+      expect(view.totals.checked).toBe(view.visits.filter((v) => v.checked > 0).length)
+      for (const group of view.groups) {
+        expect(group.visitKeys.length).toBeGreaterThan(0)
+        for (const key of group.visitKeys) expect(keys.has(key)).toBe(true)
+      }
+    })
+
+    it('AC-013.13: 규칙 묶음은 원본처럼 등급 차례, 같은 등급이면 건수 많은 차례다', async () => {
+      const whole = await loaded(OCT)
+      await askCheck(whole.jobs)
+      const groups = viewOf(answerOf(whole.posts)).groups
+      const rank = { 확인필요: 0, 알림: 1, 참고: 2 }
+      for (let i = 1; i < groups.length; i++) {
+        const [a, b] = [groups[i - 1], groups[i]]
+        expect(rank[a.grade] < rank[b.grade] || (rank[a.grade] === rank[b.grade] && a.visitKeys.length >= b.visitKeys.length)).toBe(true)
+      }
+    })
+
+    it('AC-013.3: 켜진 규칙 수를 싣는다(끈 규칙은 빠진다)', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs, { settings: { ...SETTINGS, rules: { schema: 1, off: ['IJ-05'], on: [], grade: [] } } })
+      const tables = await loadTables()
+      if (!tables.ok) throw new Error(tables.code)
+      const on = tables.value.rules.rules.filter((rule) => rule.enabled_default !== false && rule.id !== 'IJ-05').length
+      expect(viewOf(answerOf(posts)).enabledRules).toBe(on)
+    })
+  })
+
+  describe('AC-013.5 점검할 수 없으면 번호만 답한다', () => {
+    it('AC-013.5: 불러온 달이 없으면 E-CLAIM-PARTIAL', async () => {
+      const { jobs, posts } = setup()
+      await askCheck(jobs)
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-013.10: 마지막 불러오기가 아닌 번호의 점검은 하지 않는다', async () => {
+      const { jobs, posts } = await loaded(MEMO_MONTH, 2)
+      await askCheck(jobs, { load: 1 })
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-013.5: 규칙표를 못 부르면 E-RULES-LOAD-FAILED', async () => {
+      const posts: PrecheckToScreen[] = []
+      const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables: async () => ({ ok: false, code: 'E-RULES-LOAD-FAILED' }) })
+      await loadInto(jobs, 'month', MEMO_MONTH, 1)
+      posts.length = 0
+      await askCheck(jobs)
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-RULES-LOAD-FAILED' })
+    })
+
+    it('AC-013.5: 약속 밖의 모양에는 답하지 않는다', async () => {
+      const { jobs, posts } = await loaded()
+      await jobs.fromScreen({ type: 'check', check: 'x', load: 1, visible: OCTOBER, settings: SETTINGS })
+      await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: { from: 'x', to: 'y' }, settings: SETTINGS })
+      expect(posts).toEqual([])
+    })
+
+    it('AC-013.5: 모양이 틀린 설정은 E-SETTINGS-FAILED다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs, { settings: { rules: 'x' } as unknown as CheckSettings })
+      expect(answerOf(posts)).toMatchObject({ ok: false, code: 'E-SETTINGS-FAILED' })
+    })
+
+    it('AC-013.5: 엔진이 뜻밖에 던져도 원래 글 없이 번호로 답한다(화면이 기다리다 멈추지 않게)', async () => {
+      const posts: PrecheckToScreen[] = []
+      const tables = await loadTables()
+      if (!tables.ok) throw new Error(tables.code)
+      const broken = { ...tables.value, rules: { ...tables.value.rules, rules: null } } as unknown as Tables
+      const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables: async () => ({ ok: true, value: broken }) })
+      await loadInto(jobs, 'month', MEMO_MONTH, 1)
+      posts.length = 0
+      await askCheck(jobs)
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-RULES-LOAD-FAILED' })
+    })
+  })
+
+  describe('AC-013.9 설정 사본', () => {
+    it('AC-013.9: 서버 설정을 받아 점검하면 사본을 store.save로 저장한다(화면을 지나지 않고 통로 포트로)', async () => {
+      const { jobs, posts, sent } = await loaded()
+      await askCheck(jobs)
+      expect(answerOf(posts)).toMatchObject({ ok: true, usedCopy: null })
+      expect(sent).toEqual([{ type: 'send', ticket: expect.any(Number), cmd: 'store.save', payload: JSON.stringify({ settings: SETTINGS }) }])
+    })
+
+    it('AC-013.9: 틀린 연결표는 사본을 덮어쓰지 않는다', async () => {
+      const { jobs, sent } = await loaded()
+      await askCheck(jobs, { settings: BROKEN })
+      expect(sent).toEqual([])
+    })
+
+    it('AC-013.9: 서버를 못 읽으면(settings: null) 도우미 사본으로 점검하고 어떤 사본을 썼는지 답한다. 다시 저장하지 않는다', async () => {
+      const { jobs, posts, sent } = await loaded()
+      await giveStore(jobs, storeWith(SETTINGS))
+      posts.length = 0
+      await askCheck(jobs, { settings: null })
+      const answer = answerOf(posts)
+      expect(answer).toMatchObject({ ok: true, usedCopy: JSON.parse(JSON.stringify(SETTINGS)) })
+      expect(viewOf(answer).visits.length).toBeGreaterThan(0)
+      expect(sent).toEqual([])
+    })
+
+    it.each([
+      ['사본 null', storeWith(null)],
+      ['사본 칸 없음', { months: {} }],
+      ['모양이 틀린 사본', storeWith({ rules: 3 })],
+    ])('AC-013.9: 서버를 못 읽고 %s이면 점검하지 않고 E-SETTINGS-FAILED', async (_name, json) => {
+      const { jobs, posts } = await loaded()
+      await giveStore(jobs, json)
+      expect(posts.filter((m) => m.type === 'loadPart').at(-1)).toMatchObject({ ok: true })
+      posts.length = 0
+      await askCheck(jobs, { settings: null })
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-SETTINGS-FAILED' })
+    })
+
+    it('AC-013.2·AC-013.9: Phase 3 전(store.load를 부르지 못함)에도 사본이 없어 E-SETTINGS-FAILED다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs, { settings: null })
+      expect(answerOf(posts)).toMatchObject({ ok: false, code: 'E-SETTINGS-FAILED' })
+    })
+
+    it('AC-013.9: 저장이 됐다는 답을 받은 사본만 다음 점검에 쓴다', async () => {
+      const { jobs, posts, sent } = await loaded()
+      await askCheck(jobs)
+      const { ticket } = sent[0] as { ticket: number }
+      posts.length = 0
+      await askCheck(jobs, { check: 2, settings: null })
+      expect(answerOf(posts)).toMatchObject({ ok: false, code: 'E-SETTINGS-FAILED' })
+
+      await jobs.fromPort({ type: 'sent', ticket, ok: true })
+      posts.length = 0
+      await askCheck(jobs, { check: 3, settings: null })
+      expect(answerOf(posts)).toMatchObject({ ok: true })
+    })
+
+    it('AC-013.9: 저장이 실패하면(Phase 3 전 E-HELPER-UNKNOWN-COMMAND 포함) 사본으로 치지 않는다', async () => {
+      const { jobs, posts, sent } = await loaded()
+      await askCheck(jobs)
+      const { ticket } = sent[0] as { ticket: number }
+      await jobs.fromPort({ type: 'sent', ticket, ok: false, code: 'E-HELPER-UNKNOWN-COMMAND' })
+      posts.length = 0
+      await askCheck(jobs, { check: 2, settings: null })
+      expect(answerOf(posts)).toMatchObject({ ok: false, code: 'E-SETTINGS-FAILED' })
+    })
+
+    it('AC-013.9: 모르는 표의 sent는 무시한다', async () => {
+      const { jobs, posts } = await loaded()
+      await jobs.fromPort({ type: 'sent', ticket: 99, ok: true })
+      expect(posts).toEqual([])
+    })
+
+    it('AC-013.9: 새 불러오기는 사본을 다시 읽는다. 그 불러오기에서 못 읽으면(다른 병원 파일로 거절되면 답이 없다) 옛 사본을 쓰지 않는다', async () => {
+      const { jobs, posts } = await loaded()
+      await giveStore(jobs, storeWith(SETTINGS))
+      await loadInto(jobs, 'month2', MEMO_MONTH, 2)
+      posts.length = 0
+      await askCheck(jobs, { load: 2, settings: null })
+      expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 2, ok: false, code: 'E-SETTINGS-FAILED' })
+    })
+
+    it('AC-013.9: 다른 병원의 settings.dat라 저장이 거절되면(E-BIT-HOSPITAL-MISMATCH) 사본으로 치지 않고 점검은 그대로다', async () => {
+      const { jobs, posts, sent } = await loaded()
+      await askCheck(jobs)
+      expect(answerOf(posts)).toMatchObject({ ok: true })
+      const { ticket } = sent[0] as { ticket: number }
+      await jobs.fromPort({ type: 'sent', ticket, ok: false, code: 'E-BIT-HOSPITAL-MISMATCH' })
+      posts.length = 0
+      await askCheck(jobs, { check: 2, settings: null })
+      expect(answerOf(posts)).toMatchObject({ ok: false, code: 'E-SETTINGS-FAILED' })
+    })
+
+    it('AC-013.9: store.save 한 호출에 달 칸과 설정이 함께 없다(글에는 settings 칸 하나뿐이다)', async () => {
+      const { jobs, sent } = await loaded()
+      await giveStore(jobs, { months: { '2026-10': { drafts: { m05: '◈직접 고친 글(가상)' }, done: {}, journal: {} } } })
+      await askCheck(jobs)
+      expect(sent).toHaveLength(1)
+      const payload = JSON.parse((sent[0] as { payload: string }).payload) as Record<string, unknown>
+      expect(Object.keys(payload)).toEqual(['settings'])
+      expect((sent[0] as { payload: string }).payload).not.toContain('가상')
+    })
+
+    it('AC-013.9: 달만 물은 답은 사본을 건드리지 않고 사본만 물은 답은 고친 메모를 지우지 않는다(두 호출로 나뉜다)', async () => {
+      const draft = { months: { '2026-10': { drafts: { m05: '◈직접 고친 글(가상)' }, done: {}, journal: {} } } }
+      const { jobs, posts } = await loaded()
+      await giveStore(jobs, draft)
+      await giveStore(jobs, { settings: SETTINGS })
+      posts.length = 0
+      await askCheck(jobs, { settings: null })
+      expect(viewOf(answerOf(posts)).visits.find((v) => v.key === 'm05')!.memo).toMatchObject({ text: '◈직접 고친 글(가상)', edited: true })
+
+      const reversed = await loaded()
+      await giveStore(reversed.jobs, { settings: SETTINGS })
+      await giveStore(reversed.jobs, draft)
+      reversed.posts.length = 0
+      await askCheck(reversed.jobs, { settings: null })
+      expect(viewOf(answerOf(reversed.posts)).visits.find((v) => v.key === 'm05')!.memo).toMatchObject({ edited: true })
+    })
+  })
+
+  describe('AC-013.4 엑셀은 Worker가 만든다', () => {
+    const askExcel = (jobs: Jobs, check = 1) => jobs.fromScreen({ type: 'excel', check } satisfies PrecheckFromScreen)
+    const excelOf = (posts: readonly PrecheckToScreen[]) => posts.filter((m): m is ExcelAnswer => m.type === 'excel').at(-1)
+
+    it('AC-013.4: 마지막 점검 결과로 두 시트 xlsx 바이트와 날짜뿐인 파일 이름을 답한다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs)
+      await askExcel(jobs)
+      const answer = excelOf(posts)!
+      if (!answer.ok) throw new Error(answer.code)
+      expect(answer.fileName).toBe('사전점검_2026-10-01_2026-10-31.xlsx')
+      expect(XLSX.read(answer.bytes, { type: 'array' }).SheetNames).toEqual(['규칙별', '내원별'])
+    })
+
+    it('AC-013.13: 엑셀에 고른 기간 밖 진료가 없다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs, { visible: { from: '2026-10-12', to: '2026-10-12' } })
+      await askExcel(jobs)
+      const answer = excelOf(posts)!
+      if (!answer.ok) throw new Error(answer.code)
+      const book = XLSX.read(answer.bytes, { type: 'array' })
+      const rows = XLSX.utils.sheet_to_json<string[]>(book.Sheets['내원별'], { header: 1 }).slice(1)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(new Set(rows.map((row) => row[0]))).toEqual(new Set(['2026-10-12']))
+    })
+
+    it.each([
+      ['점검 전', async () => {}],
+      ['점검이 실패한 뒤', async (jobs: Jobs) => askCheck(jobs, { settings: BROKEN })],
+    ])('AC-013.4: %s에는 만들지 않고 번호로 답한다', async (_name, before) => {
+      const { jobs, posts } = await loaded()
+      await before(jobs)
+      await askExcel(jobs)
+      expect(excelOf(posts)).toEqual({ type: 'excel', check: 1, ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-013.4: 번호가 다른 점검의 엑셀은 만들지 않는다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs)
+      await askExcel(jobs, 9)
+      expect(excelOf(posts)).toEqual({ type: 'excel', check: 9, ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-013.4: 새 불러오기를 시작하면 점검 결과를 버린다', async () => {
+      const { jobs, posts } = await loaded()
+      await askCheck(jobs)
+      await loadStart(jobs, 2)
+      await askExcel(jobs)
+      expect(excelOf(posts)).toMatchObject({ ok: false, code: 'E-CLAIM-PARTIAL' })
+    })
+
+    it('AC-013.4: 약속 밖의 모양에는 답하지 않는다', async () => {
+      const { jobs, posts } = await loaded()
+      await jobs.fromScreen({ type: 'excel', check: 'x' })
+      expect(posts).toEqual([])
+    })
+  })
+
+  describe('precheck.worker 입구', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('AC-013.9: 사본 저장은 마지막 통로 포트로 나간다(화면 메시지가 아니다)', async () => {
+      const { posted, givePort, receive } = await loadWorkerEntry()
+      const oldPort = givePort()
+      const newPort = givePort()
+      const onOld = vi.fn()
+      const heard: unknown[] = []
+      oldPort.onmessage = onOld
+      newPort.onmessage = (event) => heard.push(event.data)
+      receive({ type: 'loadStart', load: 1 })
+      const { parts, end } = chunked(MEMO_MONTH, 4096)
+      parts.forEach((data, seq) => newPort.postMessage({ type: 'chunk', id: 'm', seq, data }))
+      newPort.postMessage({ type: 'end', id: 'm', ...end })
+      receive({ type: 'month', id: 'm', load: 1 }) // take는 end가 올 때까지 기다린다
+      await vi.waitFor(() => expect(posted.at(-1)).toMatchObject({ type: 'month', load: 1, ok: true }), { timeout: 10_000 })
+      receive({ type: 'check', check: 1, load: 1, visible: OCTOBER, settings: SETTINGS })
+      await vi.waitFor(() => expect(heard).toEqual([expect.objectContaining({ type: 'send', cmd: 'store.save' })]), { timeout: 20_000 })
+      expect(onOld).not.toHaveBeenCalled()
+      expect(posted.some((m) => (m as { type: string }).type === 'send')).toBe(false)
+      oldPort.close()
+      newPort.close()
+    })
   })
 })
 

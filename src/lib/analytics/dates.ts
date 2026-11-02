@@ -107,6 +107,13 @@ export function addMonths(month: string, n: number): string {
   return `${pad(year, 4)}-${pad(index - year * 12 + 1)}`
 }
 
+// 한 달 전 같은 날. 그달에 그 날이 없으면 말일(3월 31일 → 2월 28일). 청구메모용 한 달 읽기의 시작(precheck AC-013.13)
+export function sameDayLastMonth(ymd: string): string {
+  const day = dayOf(ymd)
+  const last = fromDay(day - Number(ymd.slice(8))) // 전달 말일
+  return `${last.slice(0, 8)}${pad(Math.min(Number(ymd.slice(8)), Number(last.slice(8))))}`
+}
+
 // 1일 ~ 말일
 export function monthRange(month: string): DateRange {
   return { from: `${month}-01`, to: addDays(`${addMonths(month, 1)}-01`, -1) }

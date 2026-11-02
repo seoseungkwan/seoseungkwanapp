@@ -253,7 +253,7 @@ export type MemoState = { memoBlocked: MemoViews['memoBlocked']; rows: VisitMemo
 
 /** 점검 결과 보기 모양(jobs.check, TASK-10). 환자 글자가 들어 있어 Worker와 환자 줄 화면(components/claim/rows) 밖으로 나가지 않는다 */
 export type CheckedVisit = Pick<Visit, 'key' | 'chart' | 'date' | 'name'> & { findings: Finding[]; skippedNoHistory: number; skippedNoDx: number; checked: number; memo: VisitMemoView | null }
-export type CheckGroup = { ruleId: string; title: string; domain: string; grade: Grade; visitKeys: string[] }
+export type CheckGroup = { ruleId: string; title: string; domain: string; grade: Grade; visitKeys: string[]; basis: Basis[] }
 export type CheckView = {
   visits: CheckedVisit[]
   groups: CheckGroup[]
@@ -261,13 +261,28 @@ export type CheckView = {
   memoBlocked: MemoViews['memoBlocked']
 }
 
-// ── Worker ↔ 화면 메시지(design.md 6-2). 화면에는 숫자·달·오류 번호·규칙 목록만 간다(환자 글자 없음) ──────────
+/** 화면으로 가는 진료 한 줄(AC-013.3·AC-013.14): 규칙 결과 + 처방 이름·지금 상병 + 추천 상병·상병 확인(dxViews) */
+export type ClaimVisitView = CheckedVisit & { rx: string[]; dxNow: DxLine[]; dx: VisitDxView }
+/**
+ * 점검 답(Worker → 화면, AC-013.13·AC-013.14). 고른 기간(period)의 진료·규칙 묶음·합계만 싣는다.
+ * 앞쪽 날은 내원 간격 계산에만 쓰고 싣지 않는다. hasDx 거짓이면 상병을 확인하지 못한 달이다. enabledRules는 켜진 규칙 수.
+ * 환자 글자가 들어 있어 화면 메모리와 환자 줄 화면(components/claim/rows)에만 있다. 저장소·주소·로그·오류 카드에 두지 않는다
+ */
+export type ClaimView = Omit<CheckView, 'visits'> & { visits: ClaimVisitView[]; period: DateRange; hasDx: boolean; enabledRules: number }
+
+// ── Worker ↔ 화면 메시지(design.md 6-2). check의 보기 모양(ClaimView)과 엑셀 바이트 밖에는 환자 글자가 없다(숫자·달·오류 번호·규칙 목록) ──────────
 
 /** 설정 화면 '점검 규칙' 칸에 보일 규칙 하나(TASK-12가 쓴다) */
 export type RuleSummary = Pick<RuleDef, 'id' | 'title' | 'domain' | 'grade' | 'basis' | 'enabled_default'>
 
 /** 규칙 설정 저장 모양(원본 사전점검 snapshot): off·on = 규칙 ID, grade = [규칙 ID, 등급]. 어디에도 없는 규칙은 규칙표 기본값 */
 export type SavedRuleSettings = { schema: 1; off: string[]; on: string[]; grade: [string, Grade][] }
+
+/**
+ * 점검에 쓰는 설정 묶음(환자 정보 아님). 도우미 설정 사본(store.save {settings}, AC-015.7·AC-013.9)도 이 모양이다.
+ * phrases는 claim_hospital_settings.phrases(줄이 없으면 null), dxLinks는 상병 연결표
+ */
+export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; dxLinks: DxLink[] }
 
 /**
  * 화면 → Worker. loadStart·month·loadPart: 한 달 불러오기 / memoReloadStart·loadPart의 run: 비트 메모 다시 불러오기 / ruleList: 설정 화면용 규칙 목록
@@ -292,6 +307,10 @@ export type SavedRuleSettings = { schema: 1; off: string[]; on: string[]; grade:
  *    답의 load·run이 마지막 번호와 다르면 ok와 상관없이 버린다. Worker도 take가 끝난 뒤 둘 다 마지막 번호일 때만 비트 메모를 통째로 바꾼다.
  * 10. stream 거절·ok:false면 그 다시 불러오기는 실패다. Worker는 전 자료와 비교를 그대로 둔다(AC-016.8). 거절은 Worker에 알릴 것이 없다.
  * 11. memoReloadStart를 보낸 뒤에 온 run 없는 part: 'memos'는 조각을 찾아 버리고 ok:false다(옛 [자료 불러오기] 답이 새 답을 덮지 않게). part: 'store'는 그대로 받는다. 새 loadStart가 이 표시와 run을 지운다.
+ * 12. check(점검)는 그 불러오기의 load와 새 번호 check로 묻는다(1씩 올린다. load와 같은 곳 claimLoad.ts에서 받는다). 답의 check·load가 마지막 번호와 다르면 ok와 상관없이 버린다.
+ *     visible은 고른 기간이다. settings는 서버에서 읽은 설정이고, 서버를 읽지 못했으면 null이다: Worker가 이 불러오기의 store.load {settings}로 받은 도우미 사본으로 점검하고 답의 usedCopy에 그 사본을 싣는다. 사본도 없으면 E-SETTINGS-FAILED(AC-013.9).
+ *     store.load {months}와 {settings}는 따로 부른다(한 호출에 섞으면 파일 하나만 막혀도 호출 전체가 같은 번호로 거절된다). 설정 쪽 거절이 E-BIT-HOSPITAL-MISMATCH면 사본 없이 계속한다.
+ * 13. excel은 답을 받은 점검의 check 번호로 묻는다. Worker는 그 점검 결과로만 만들고, 번호가 다르거나 새 loadStart로 결과를 버렸으면 E-CLAIM-PARTIAL이다.
  */
 export type PrecheckFromScreen =
   | { type: 'loadStart'; load: number }
@@ -300,8 +319,13 @@ export type PrecheckFromScreen =
   | { type: 'memoReloadStart'; run: number }
   | { type: 'loadPart'; part: 'memos'; id: string; load: number; run: number }
   | { type: 'ruleList' }
+  | { type: 'check'; check: number; load: number; visible: DateRange; settings: CheckSettings | null }
+  | { type: 'excel'; check: number }
 
-/** Worker → 화면. month·loadPart의 load·run은 물을 때 보낸 번호 그대로다. loadPart 답에는 환자 글자가 없다 */
+/** Worker → 통로 포트: 도우미에 보낼 글자(design.md 6-1). 화면을 지나지 않는다. 결과는 포트로 {type: 'sent', ticket, ok, …} */
+export type PrecheckToPort = { type: 'send'; ticket: number; cmd: 'store.save'; payload: string }
+
+/** Worker → 화면. month·loadPart의 load·run은 물을 때 보낸 번호 그대로다. loadPart 답에는 환자 글자가 없다. check의 usedCopy는 서버 대신 쓴 도우미 설정 사본이고 서버 설정을 썼으면 null이다 */
 export type PrecheckToScreen =
   // 조각이 다 오지 않음(abort·빠짐·SHA-256 다름). 그 id의 조각을 버렸다는 알림일 뿐, 성패 판단에 쓰지 않는다(PrecheckFromScreen 약속 6·7·8)
   | { type: 'partial'; id: string; code: 'E-CLAIM-PARTIAL' }
@@ -311,3 +335,7 @@ export type PrecheckToScreen =
   | { type: 'loadPart'; part: 'memos' | 'store'; id: string; load: number; run?: number; ok: false; code: ErrorCode }
   | { type: 'ruleList'; ok: true; rules: RuleSummary[] }
   | { type: 'ruleList'; ok: false; code: ErrorCode }
+  | { type: 'check'; check: number; load: number; ok: true; view: ClaimView; usedCopy: CheckSettings | null }
+  | { type: 'check'; check: number; load: number; ok: false; code: ErrorCode }
+  | { type: 'excel'; check: number; ok: true; bytes: ArrayBuffer; fileName: string }
+  | { type: 'excel'; check: number; ok: false; code: ErrorCode }
