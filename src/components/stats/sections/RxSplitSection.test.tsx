@@ -5,7 +5,7 @@ import { formatRxVisitSplit, rxVisitHeadline } from '@/lib/analytics/rxVisitSpli
 import type { RxSplit, RxSplitLine, RxSplitView } from '@/types/stats'
 import { RxSplitSection } from './RxSplitSection'
 
-// 처방별 신환·재진 (stats REQ-513 AC-513.7·513.8, 시안 notes.md §3). 줄은 시험 안에서 지은 가짜다
+// 처방별 신환·재진 (stats REQ-513 AC-513.7·513.8·513.14, 시안 notes.md §3). 줄은 시험 안에서 지은 가짜다
 
 const HOSPITAL = '튼튼의원'
 const line = (i: number, total: number): RxSplitLine => ({ code: `R${i}`, label: `가짜 처방 ${i}`, newPatients: 1, returning: total - 1, total })
@@ -74,14 +74,22 @@ describe('AC-513.7: 처방별 신환·재진 표', () => {
     expect((writeText.mock.calls[0] as unknown as [string])[0].split('\n')[0]).toBe(HOSPITAL)
   })
 
-  it('AC-513.7: Worker 결과가 없음이면 표 없이 "자료 없음" + 한 줄이다', () => {
+  it('AC-513.7·AC-513.14: { kind: \'none\' }이면 표·단추 없이 새 글 전체가 글자 그대로다', () => {
     draw({ kind: 'none' })
     expect(screen.queryByRole('table')).toBeNull()
-    expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 이 기간에 불러온 진료 줄이 없어요.')
+    expect(screen.getByText('이 기간은 아직 불러오지 않았어요').parentElement!.textContent).toBe('이 기간은 아직 불러오지 않았어요 · 이 기간을 고른 채 [비트에서 불러오기]를 누르면 보여요.')
+    expect(screen.queryByText('자료 없음')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('AC-513.7: 처방 줄이 하나도 없는 결과도 빈 표 없이 같은 안내다', () => {
+  it('AC-513.14: 처방 줄이 0개인 split은 옛 글이고 새 글이 없다', () => {
+    const { container } = draw(view(0))
+    expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 이 기간에 불러온 진료 줄이 없어요.')
+    expect(container.textContent).not.toContain('아직 불러오지 않았어요')
+    expect(container.textContent).not.toContain('비트에서 불러오기')
+  })
+
+  it('AC-513.7: 처방 줄이 하나도 없는 결과는 빈 표 없이 "자료 없음" + 한 줄이다', () => {
     draw(view(0))
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 이 기간에 불러온 진료 줄이 없어요.')

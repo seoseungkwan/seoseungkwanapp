@@ -4,10 +4,12 @@ import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
 import { formatCount } from '@/components/charts/format'
 import { StackedBarChart, type BarBucket } from '@/components/charts/StackedBarChart'
 import { patientTrend, type StatsInput } from '@/components/stats/view'
+import { isCovered } from '@/lib/analytics/coverage'
+import { eachDay } from '@/lib/analytics/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
 import { CHART_NO_SIDE_SCROLL, dateWithWeekday, dayNumber, EmptyNote, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, Section, thinTotals, todayOf, TREND_SERIES } from './parts'
 
-// 환자 수 추이 (stats REQ-513 AC-513.1·513.3·513.4, AC-511.3, 시안 notes.md §3 '환자 수 추이')
+// 환자 수 추이 (stats REQ-513 AC-513.1·513.3·513.4·513.13, AC-511.3, 시안 notes.md §3 '환자 수 추이')
 
 const TITLE = '환자 수 추이'
 const EMPTY = '불러오면 이 기간의 하루하루가 신환·재진 막대로 그려져요.'
@@ -19,6 +21,12 @@ const LEGEND_PARTIAL: LegendItem[] = [...LEGEND, { label: '일부 기간', mark:
 const DENSE_OVER = 31 // 막대 위 합계는 칸 31개 이하일 때만(시안 §3)
 
 const isPartial = (bucket: BarBucket) => bucket.state !== 'complete'
+
+// 고른 기간의 날이 모두 덮였는지(AC-513.13). 날마다 덮은 기간만 보고 그날 줄이 있는지는 보지 않는다. 일 기간은 어제에서 끝나므로 오늘은 들지 않는다
+function wholeRangeCovered({ covered, range }: StatsInput): boolean {
+  const spans = [...covered]
+  return eachDay(range.current).every((day) => isCovered({ from: day, to: day }, spans))
+}
 
 function tableOf(buckets: readonly BarBucket[], monthly: boolean): DetailTable {
   return {
@@ -54,7 +62,9 @@ export function PatientTrendSection({ input, saved, className }: { input: StatsI
   const today = todayOf(input.range)
   const anyPartial = buckets.some(isPartial)
   const note = !monthly
-    ? '휴진한 날은 칸이 없어요.'
+    ? wholeRangeCovered(input)
+      ? '휴진한 날은 칸이 없어요.'
+      : '휴진한 날과 아직 불러오지 않은 날은 칸이 없어요.'
     : onlyThisMonthPartial(buckets.filter(isPartial).map((bucket) => bucket.key), today)
       ? `빗금 칸은 아직 끝나지 않은 달이에요(${monthNumber(today)}월은 ${dayNumber(today)}일까지).`
       : null

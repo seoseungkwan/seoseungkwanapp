@@ -5,9 +5,8 @@
     {
       "step": 0,
       "name": "stats-sections",
-      "status": "pending",
-      "summary": "`StatsSections`(input·saved·split·report·hospitalName)를 놓는다. `report`는 `{ numbers: view.report, loadedAt: 불러온 시각 'HH:MM', closedToday: 그 불러오기 때의 '오늘 진료 끝' 값 }`이고 비트에서 불러오지 않았으면 null이다. 저장된 숫자가 있는데 고른 기간 자료가 없으면 notes.md §4 문구를 쓴다. 그래프 높이는 `StackedBarChart` 부품 값(기본 220·작은 것 160, 휴대폰도 같음)을 쓴다. 시안의 200/140·150/110·160/120과 다르며, 대시보드와 같이 쓰는 부품을 고치지 않으려는 것이다. Phase 4 화면 캡처로 보여 드린다.",
-      "reopened": "2026-11-02 사용자 결정 '통계 기본값대로'로 명세 변경, 다시 엶. step 파일의 뒤따름 절을 한다. 끝나면 summary를 고친다"
+      "status": "completed",
+      "summary": "`StatsSections`(input·saved·split·report·hospitalName)를 놓는다. `report`는 `{ numbers: view.report, loadedAt: 불러온 시각 'HH:MM', closedToday: 그 불러오기 때의 '오늘 진료 끝' 값 }`이고 비트에서 불러오지 않았으면 null이다. 저장된 숫자가 있는데 고른 기간 자료가 없으면 notes.md §4 문구를 쓴다. 그래프 높이는 `StackedBarChart` 부품 값(기본 220·작은 것 160, 휴대폰도 같음)을 쓴다. 시안의 200/140·150/110·160/120과 다르며, 대시보드와 같이 쓰는 부품을 고치지 않으려는 것이다. Phase 4 화면 캡처로 보여 드린다. 2026-11-02 사용자 결정 '통계 기본값대로': 처방 추세 표 아래 안내(AC-513.12, rxComparedCells), 덮이지 않은 날이 있을 때의 환자 수 추이 글(AC-513.13), 불러온 범위 밖 처방별 글(AC-513.14)."
     },
     {
       "step": 1,

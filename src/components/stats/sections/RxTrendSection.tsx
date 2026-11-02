@@ -6,13 +6,13 @@ import { formatCount } from '@/components/charts/format'
 import { InlineBar } from '@/components/charts/InlineBar'
 import { StackedBarChart, type BarBucket } from '@/components/charts/StackedBarChart'
 import { Icon } from '@/components/common/Icon'
-import { COMPARE_NAME, rxDetail, rxList, type RxDetailPoint, type RxTrendRow, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { COMPARE_NAME, rxComparedCells, rxDetail, rxList, type RxDetailPoint, type RxTrendRow, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { monthOf } from '@/lib/analytics/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
 import { CHART_NO_SIDE_SCROLL, dateWithWeekday, dayNumber, DeltaText, EmptyNote, longDate, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, PERIOD_NAME, Section, thinTotals, todayOf, TREND_SERIES, yearMonth } from './parts'
 
-// 처방 추세 (stats REQ-513 AC-513.2·513.3·513.4·513.5·513.11, AC-511.6·511.8, 시안 notes.md §3 '처방 추세').
+// 처방 추세 (stats REQ-513 AC-513.2·513.3·513.4·513.5·513.11·513.12, AC-511.6·511.8·511.9, 시안 notes.md §3 '처방 추세').
 // 줄의 막대·눈금은 comparable(끝난 칸끼리의 합)로 그리고 글자 건수는 count다. comparable이 null이면 막대는 count, 눈금 없음, 증감 "비교할 수 없음".
 // 줄을 열면 rxDetail 칸마다 같은 차례 비교 점을 comparison으로 넘긴다. 비교 점이 없거나(90일 주 칸 수가 달라서) covered: false이면 null이다. 남는 비교 칸은 그리지 않는다
 
@@ -25,6 +25,10 @@ const DENSE_DETAIL_OVER = 16
 const COLUMNS = 'grid grid-cols-[minmax(0,1fr)_84px_176px_132px_16px] items-center gap-x-3'
 const COLUMNS_PARTIAL = 'grid grid-cols-[minmax(96px,1fr)_minmax(84px,140px)_176px_132px_16px] items-center gap-x-3'
 const PHONE_ROW = 'max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-y-1'
+
+// 뺀 짝이 있을 때의 안내(AC-513.12). 12개월은 달, 나머지는 표시 칸과 상관없이 날이다(AC-511.9)
+const comparedNote = (period: StatsPeriod, kept: number) =>
+  period === '12m' ? `증감과 막대는 끝난 ${kept}달만 견줘요. 건수는 기간 전체예요.` : `증감과 막대는 두 기간 모두 자료가 있는 ${kept}일만 견줘요. 건수는 기간 전체예요.`
 
 const longLabel = (point: RxDetailPoint, period: StatsPeriod) =>
   GRAIN_NAME[period] === '일' ? dateWithWeekday(point.start) : GRAIN_NAME[period] === '주' ? `${longDate(point.start)} – ${longDate(point.end)}` : yearMonth(point.start)
@@ -154,6 +158,7 @@ export function RxTrendSection({ input, saved, className }: { input: StatsInput;
     )
   }
   const { period } = input.range
+  const { kept, dropped } = rxComparedCells(input)
   // 목록에서 그리는 값(막대·눈금) 가운데 가장 큰 값
   const max = Math.max(...rows.flatMap((row) => (row.comparable === null ? [row.count] : [row.comparable.current, row.comparable.previous])))
   const columns = rows.some((row) => row.partial) ? COLUMNS_PARTIAL : COLUMNS
@@ -176,6 +181,7 @@ export function RxTrendSection({ input, saved, className }: { input: StatsInput;
           <RxRow key={row.code} row={row} max={max} open={opened.has(row.code)} onToggle={() => toggle(row.code)} input={input} columns={columns} />
         ))}
       </ul>
+      {dropped && kept >= 1 && <p className="mt-3 text-small text-muted">{comparedNote(period, kept)}</p>}
       <p className="mt-3 text-small text-muted">{`줄을 누르면 그 처방의 ${GRAIN_NAME[period]}별 건수와 신환·재진이 열려요. 막대 안 회색 눈금은 비교 기간 건수예요. 건 = 날마다 그 처방을 받은 환자 수를 더한 값이에요.`}</p>
       <p className="mt-1 text-small text-ink-2">금액·소모량은 매출 탭에서 볼 수 있어요</p>
     </Section>
