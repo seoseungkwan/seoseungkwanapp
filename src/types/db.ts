@@ -38,6 +38,17 @@ export type ClaimHospitalSettingsRow = {
   updated_at: string
 }
 
+/** 날짜별 건수(design.md 8-2, 표는 TASK-19 마이그레이션). 글자 칸이 없다 */
+export type ClaimDayCountRow = {
+  hospital_id: string
+  visit_date: string // YYYY-MM-DD
+  need_memo: number
+  entered: number
+  needs_check: number
+  skipped: number
+  updated_at: string
+}
+
 export type MessageTemplateRow = {
   id: string
   hospital_id: string

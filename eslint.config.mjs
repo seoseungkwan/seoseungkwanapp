@@ -125,6 +125,87 @@ function patientZoneRules({ bridge = false, declaresExtensionId = false } = {}) 
   }
 }
 
+// 청구 화면 폴더(AC-013.7, design.md 5절 '오류 수집 없음'): 오류 보고 패키지가 환자 글자를 밖으로 내보내지 못하게 한다. 오류 카드는 번호만 보인다
+const REPORTER_MESSAGE = '청구 화면은 오류 보고 패키지(@sentry·@vercel/analytics·@vercel/speed-insights)를 import할 수 없다(환자 자료가 밖으로 나간다)'
+const REPORTER_IMPORT = {
+  group: ['@sentry/*', '@vercel/analytics', '@vercel/analytics/*', '@vercel/speed-insights', '@vercel/speed-insights/*'],
+  message: REPORTER_MESSAGE,
+}
+const REPORTER_SYNTAX = { selector: 'ImportExpression[source.value=/^(@sentry\\/|@vercel\\/(analytics|speed-insights)(\\/|$))/]', message: REPORTER_MESSAGE }
+const CLAIM_STORAGE_MESSAGE = '청구 화면은 브라우저 저장소를 쓸 수 없다(환자 글자가 남는다). 작업 저장은 도우미 store.save뿐이다'
+const claimStorageGlobals = (message) => STORAGE.map((name) => ({ name, message }))
+const claimStorageProperties = (message) => STORAGE.map((property) => ({ property, message }))
+
+// 청구 화면 폴더 전체. 같은 규칙 이름은 뒤 설정이 덮으므로 아래 줄 화면 설정에도 같은 것을 넣었다
+function claimScreenRules() {
+  return {
+    'no-restricted-imports': ['error', { patterns: [CLIENT_IMPORT, REPORTER_IMPORT] }],
+    'no-restricted-syntax': ['error', CLIENT_IMPORT_SYNTAX, REPORTER_SYNTAX],
+    'no-restricted-globals': ['error', ...claimStorageGlobals(CLAIM_STORAGE_MESSAGE)],
+    'no-restricted-properties': ['error', ...claimStorageProperties(CLAIM_STORAGE_MESSAGE)],
+  }
+}
+
+// 환자 줄 화면 components/claim/rows(AC-013.7, ADR-020): JSX는 되지만 네트워크·console·브라우저 저장소·supabase·storage·auth는 안 된다. 줄은 props로만 받는다
+const ROWS_NETWORK_MESSAGE = '환자 줄 화면은 네트워크를 쓸 수 없다'
+const ROWS_CONSOLE_MESSAGE = '환자 줄 화면은 console을 쓸 수 없다(환자 자료가 로그에 남는다)'
+const ROWS_STORAGE_MESSAGE = '환자 줄 화면은 브라우저 저장소를 쓸 수 없다'
+const ROWS_IMPORT_MESSAGE = '환자 줄 화면은 supabase·services·lib/storage·lib/auth를 import할 수 없다. 줄은 props로만 받는다'
+const ROWS_BLOCKED_IMPORT = /^@supabase\/|(^|\/)(services|supabase|auth|storage)(\/|$)/
+function claimRowsRules() {
+  return {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          CLIENT_IMPORT,
+          REPORTER_IMPORT,
+          {
+            group: [
+              '@/services/*',
+              '@/lib/supabase/*',
+              '@supabase/*',
+              '@/lib/auth',
+              '@/lib/auth/*',
+              '@/lib/storage',
+              '@/lib/storage/*',
+              '**/services',
+              '**/services/**',
+              '**/supabase',
+              '**/supabase/**',
+              '**/auth',
+              '**/auth/**',
+              '**/storage',
+              '**/storage/**',
+            ],
+            message: ROWS_IMPORT_MESSAGE,
+          },
+        ],
+      },
+    ],
+    'no-restricted-syntax': [
+      'error',
+      CLIENT_IMPORT_SYNTAX,
+      REPORTER_SYNTAX,
+      { selector: `ImportExpression[source.value=${ROWS_BLOCKED_IMPORT}]`, message: ROWS_IMPORT_MESSAGE },
+      { selector: "ImportExpression[source.type!='Literal']", message: '환자 줄 화면의 동적 import()는 글자로 고정한 경로만 쓴다' },
+    ],
+    'no-restricted-globals': [
+      'error',
+      ...NETWORK.map((name) => ({ name, message: ROWS_NETWORK_MESSAGE })),
+      ...claimStorageGlobals(ROWS_STORAGE_MESSAGE),
+      { name: 'console', message: ROWS_CONSOLE_MESSAGE },
+    ],
+    'no-restricted-properties': [
+      'error',
+      ...[...NETWORK, 'sendBeacon'].map((property) => ({ property, message: ROWS_NETWORK_MESSAGE })),
+      ...claimStorageProperties(ROWS_STORAGE_MESSAGE),
+      { property: 'console', message: ROWS_CONSOLE_MESSAGE },
+    ],
+    'no-console': 'error',
+  }
+}
+
 // 통로 코드만: 확장에 말을 거는 곳(connect·sendMessage)은 첫 인자가 EXTENSION_ID일 때만. 주입받은 runtime도 같다
 function bridgeSyntax({ declaresExtensionId }) {
   return [
@@ -182,6 +263,16 @@ const eslintConfig = [
     // 환자 자료 구역
     files: ['src/lib/parsers/**', 'src/lib/analytics/**', 'src/lib/payload/**', 'src/lib/precheck/**', 'src/workers/**'],
     rules: patientZoneRules(),
+  },
+  {
+    // 청구 화면 폴더(AC-013.7): 오류 보고 패키지·브라우저 저장소 금지
+    files: ['src/components/claim/**', 'src/app/\\(app\\)/claim/**'],
+    rules: claimScreenRules(),
+  },
+  {
+    // 환자 줄 화면(AC-013.7): 위 설정 + 네트워크·console·supabase·storage·auth 금지. JSX는 된다
+    files: ['src/components/claim/rows/**'],
+    rules: claimRowsRules(),
   },
   {
     // 통로 코드(lib/bridge): 환자 자료 구역 규칙 전부 + 창 사이 통신 금지 + 확장에는 EXTENSION_ID로만(AC-004.1)

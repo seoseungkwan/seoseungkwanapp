@@ -9,23 +9,33 @@ import { isBorderBox } from '@/testing/boxes'
 import type { BridgeState } from '@/types/bridge'
 import ClaimPage from './page'
 
-// /claim (REQ-006, ui-90 REQ-413): 연결이 안 된 PC 크롬이면 비트 PC 연결(/claim/setup)이 먼저 나오고(목업 화면 1),
+// /claim (REQ-006, ui-90 REQ-413, precheck REQ-013): 연결이 안 된 PC 크롬이면 비트 PC 연결(/claim/setup)이 먼저 나오고(목업 화면 1),
 // 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요"(시안 docs/mockups/ui-90/app/gen.py claim_body),
-// 연결됐으면 준비 중 화면 모양(claim_ready_body), 다른 창에서 작업 중이면 카드(BUSY, 그대로). 점검 화면은 TASK-13
-const { replace } = vi.hoisted(() => ({ replace: vi.fn() }))
+// 연결됐으면 청구 화면(ClaimScreen, TASK-13), 다른 창에서 작업 중이면 카드(BUSY, 그대로)
+const { replace, openClaimChannel, claimScreen } = vi.hoisted(() => ({ replace: vi.fn(), openClaimChannel: vi.fn(), claimScreen: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, push: vi.fn() }), usePathname: () => '/claim' }))
 vi.mock('@/components/claim/useBridge', () => ({ useBridge: vi.fn() }))
+vi.mock('@/components/claim/claimLoad', () => ({ openClaimChannel }))
+vi.mock('@/components/claim/ClaimScreen', () => ({
+  ClaimScreen: (props: unknown) => {
+    claimScreen(props)
+    return <h2>청구 화면 자리</h2>
+  },
+}))
 
 const bridge = vi.mocked(useBridge)
 const retry = vi.fn()
+const call = vi.fn()
+const stream = vi.fn()
+const CHANNEL = { worker: { postMessage: vi.fn() } }
 function withState(state: BridgeState, helloError: string | null = null) {
   bridge.mockReturnValue({
     state,
     hello: null,
     helloError,
     helperUpdateAvailable: false,
-    call: vi.fn(),
-    stream: vi.fn(),
+    call,
+    stream,
     onProgress: vi.fn(),
     retry,
   } as unknown as ReturnType<typeof useBridge>)
@@ -42,10 +52,24 @@ const allOf = (root: Element) => [root, ...Array.from(root.querySelectorAll('*')
 beforeEach(() => {
   replace.mockClear()
   retry.mockClear()
+  claimScreen.mockClear()
+  bridge.mockClear()
+  openClaimChannel.mockReset()
+  openClaimChannel.mockReturnValue(CHANNEL)
 })
 afterEach(cleanup)
 
 describe('/claim 자리', () => {
+  it('AC-013.8·AC-006.5·AC-413.1: 확장 없는 곳·휴대폰이면 점검 칸 없이 건수 자리와 연결 링크다. 청구 화면을 그리지 않는다', () => {
+    withState('no-extension')
+    openClaimChannel.mockReturnValue(null)
+    render(<ClaimPage />)
+    expect(claimScreen).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: '자료 불러오기' })).toBeNull()
+    expect(screen.getByText('다른 PC에서는 건수만 볼 수 있어요')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '이 PC를 비트 PC로 연결' }).getAttribute('href')).toBe('/claim/setup')
+  })
+
   it('AC-006.5·AC-413.1: 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요" — 점 목록 둘, [이 PC를 비트 PC로 연결], 건수 줄. 밖에서 보는 건수·상자가 없고 h1은 하나', () => {
     withState('no-extension')
     const { container } = render(<ClaimPage />)
@@ -125,23 +149,36 @@ describe('/claim 자리', () => {
     expect(screen.queryByText('건수만 볼 수 있어요')).toBeNull()
   })
 
-  it('AC-006.2·AC-413.2: 연결됐으면(ready) 보내지 않고 준비 중 화면 모양 — h1·소개·만들 것 넷·[비트 PC 연결 다시 확인](보조), "그동안 쓸 수 있어요"와 따로 "청구" h1이 없다', () => {
+  it('AC-013.2·AC-006.2: 연결됐으면(ready) 보내지 않고 h1 "청구" 아래 청구 화면이 열린다. 준비 중 화면이 없다', () => {
     withState('ready')
     const { container } = render(<ClaimPage />)
-    const h1s = screen.getAllByRole('heading', { level: 1 })
-    expect(h1s.map(textOf)).toEqual(['청구 점검 화면은 준비 중이에요'])
-    expect(screen.getByText('이 PC는 비트와 연결됐어요. 점검 화면이 만들어지면 이 탭에서 바로 열려요.')).toBeTruthy()
-    const made = screen.getByRole('heading', { level: 2, name: '만들 것' }).nextElementSibling as HTMLElement
-    expect(within(made).getAllByRole('listitem').map(textOf)).toEqual(['삭감 예방 사전점검', '청구메모', '상병 확인', '월말 마감'])
-
-    const again = screen.getByRole('link', { name: '비트 PC 연결 다시 확인' })
-    expect(again.getAttribute('href')).toBe('/claim/setup')
-    expectClasses(again, ds.button.secondary)
-    expect(screen.queryByRole('link', { name: /대시보드로 돌아가기/ })).toBeNull()
-    expect(container.textContent).not.toContain('그동안 쓸 수 있어요')
-    expect(container.textContent).not.toContain('준비 중입니다')
-    expect(container.textContent).not.toContain('설치·연결 확인')
+    expect(screen.getAllByRole('heading', { level: 1 }).map(textOf)).toEqual(['청구'])
+    expect(screen.getByRole('heading', { level: 2, name: '청구 화면 자리' })).toBeTruthy()
+    expect(claimScreen).toHaveBeenCalledWith(expect.objectContaining({ channel: CHANNEL, call, stream }))
+    expect(container.textContent).not.toContain('청구 점검 화면은 준비 중이에요')
     expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-013.12: 통로에 넘기는 Worker는 번호 칸과 같은 Worker다', () => {
+    withState('ready')
+    render(<ClaimPage />)
+    expect(bridge).toHaveBeenCalledWith({ worker: CHANNEL.worker })
+    expect(openClaimChannel).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-013.8: Worker가 없는 곳에서는 통로에 Worker를 넘기지 않는다', () => {
+    withState('no-extension')
+    openClaimChannel.mockReturnValue(null)
+    render(<ClaimPage />)
+    expect(bridge).toHaveBeenCalledWith({ worker: undefined })
+  })
+
+  it('AC-013.5: 연결됐는데 Worker를 만들지 못하면 오류 카드다(점검 칸을 그리지 않는다)', () => {
+    withState('ready')
+    openClaimChannel.mockReturnValue(null)
+    render(<ClaimPage />)
+    expect(claimScreen).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-RULES-LOAD-FAILED')
   })
 
   it('AC-006.1·AC-006.6·AC-413.3: hello가 오류 번호로 끝나 연결 중에 멈췄으면(helloError) 비트 PC 연결로 보낸다(거기서 번호와 [다시 확인])', () => {
