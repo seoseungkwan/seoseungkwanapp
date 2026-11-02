@@ -41,7 +41,7 @@ public class ReadOnlyGuardTests
     };
 
     /// <summary>원본에 없는 새 SELECT(원본 조건을 그대로 쓴 것). 원본 사본 대신 ClaimSqlTests가 원본 조건과 비교한다.</summary>
-    internal static readonly string[] Derived = { Sql.ClaimDatesSql };
+    internal static readonly string[] Derived = { Sql.ClaimDatesSql, Sql.InputVisitCountSql };
 
     internal static string OriginalDirectory()
     {

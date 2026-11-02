@@ -16,7 +16,7 @@ namespace Precheck.Core.Tests.Input;
 
 /// <summary>
 /// bit.input 처리기를 Dispatcher로 끝까지: 명령 표 검사 → 잠금 → 등록 확인 → InputRunner → 진행·조각·end.
-/// 진짜 작업 저장(WorkStore)·MemoCompare 대신 가짜 입력 기록·비교를 끼운다(TASK-15·TASK-16이 합쳐지면 도우미에서 진짜를 끼운다).
+/// 여기서는 가짜 입력 기록·비교를 끼운다. 진짜 작업 저장(WorkStoreJournal)·비교(MemoMatcher)로 끝까지 도는 시험은 InputWiring.test.cs에 있다.
 /// </summary>
 public class InputCommandsTests
 {
@@ -45,6 +45,11 @@ public class InputCommandsTests
         public readonly string LockName = @"Local\PrecheckTest." + Guid.NewGuid().ToString("N");
         public int JournalOpened;
         public string? OpenedInstall;
+
+        public Harness()
+        {
+            Rig.Session.Answer(Precheck.Core.Bit.Sql.InputVisitCountSql, _ => Sample.VisitRows(5));
+        }
 
         public Dispatcher Dispatcher()
         {
@@ -83,17 +88,16 @@ public class InputCommandsTests
         return (replies, chunks.Length == 0 ? (JsonElement?)null : Json.Parse(string.Concat(chunks)));
     }
 
-    // Program은 net48 exe 안의 Main이라(표를 만드는 줄이 Main 안에 있다) 이 시험 프로젝트에서 부를 수 없다. 그래서 Program.cs와 같은 두 줄로 표를 만든다.
-    // 이 시험은 hello·비트 명령이 bit.input을 함께 붙이지 않는다는 것을 본다. Program.cs 자체는 input.dotnet.test.ts의 글자 검사가 본다.
-    [Fact(DisplayName = "AC-017.1 hello·비트 명령만 붙인 표(Program.cs와 같은 두 줄)는 bit.input에 E-HELPER-UNKNOWN-COMMAND로 답한다(배선 작업 때 이 시험을 지운다)")]
-    public void NotWiredWithHelloAndBitCommands()
+    // Program은 net48 exe 안의 Main이라(표를 만드는 줄이 Main 안에 있다) 이 시험 프로젝트에서 부를 수 없다. 그래서 Program.cs와 같은 줄로 표를 만든다.
+    // Program.cs 자체는 input.dotnet.test.ts·input-wiring.dotnet.test.ts의 글자 검사가 본다.
+    [Fact(DisplayName = "AC-035.7 hello·비트 명령에 InputCommands.Register를 더한 표(Program.cs와 같은 줄)는 bit.input에 E-HELPER-UNKNOWN-COMMAND로 답하지 않고 끝까지 돈다")]
+    public void WiredWithHelloAndBitCommands()
     {
-        using var rig = new Rig().Registered();
-        var dispatcher = new Dispatcher(Table);
+        using var harness = new Harness();
+        var dispatcher = harness.Dispatcher();
         Hello.Register(dispatcher, Table);
-        Precheck.Core.Bit.BitCommands.Register(dispatcher, rig.Services);
+        Precheck.Core.Bit.BitCommands.Register(dispatcher, harness.Rig.Services);
 
-        // 명령 표에는 있고 요청 모양도 맞다: UNKNOWN은 처리기가 없어서 나온 답이다
         Assert.True(Table.Has(InputCommands.Name));
         var hello = new ListSink();
         dispatcher.Handle(Encoding.UTF8.GetBytes(Requests.Envelope(Hello.Name, "{}", "h-1")), hello);
@@ -101,10 +105,11 @@ public class InputCommandsTests
 
         var sink = new ListSink();
         dispatcher.Handle(Request(Sample.Items(1)), sink);
-        var reply = Assert.Single(sink.Replies);
-        Assert.Equal("error", reply.GetProperty("type").GetString());
-        Assert.Equal("req-1", reply.GetProperty("id").GetString());
-        Assert.Equal("E-HELPER-UNKNOWN-COMMAND", reply.GetProperty("code").GetString());
+        Assert.DoesNotContain(sink.Replies, reply => reply.GetProperty("type").GetString() == "error");
+        Assert.Equal("end", sink.Replies.Last().GetProperty("type").GetString());
+        Assert.Equal("req-1", sink.Replies.Last().GetProperty("id").GetString());
+        Assert.Equal(1, harness.Ui.Writes);
+        Assert.Single(harness.Journal.Saved);
     }
 
     [Fact(DisplayName = "AC-017.6 진행은 progress {done, total} 숫자만, 결과는 조각(chunk … end) 하나로, result 답은 없다")]

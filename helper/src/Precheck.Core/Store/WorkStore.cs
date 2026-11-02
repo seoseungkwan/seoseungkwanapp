@@ -15,14 +15,16 @@ namespace Precheck.Core.Store;
 
 /// <summary>
 /// 도우미 작업 저장(REQ-015, design.md 9-3). 파일은 머리 PRECHECK-STORE-1\n + IProtector로 암호화한 JSON이고,
-/// JSON 뿌리는 {profileId, 칸…}이다. work-YYYY-MM.dat {drafts, done, journal} · contact.dat {contact} · settings.dat {settings}.
+/// JSON 뿌리는 {profileId, 칸…}이다. work-YYYY-MM.dat {drafts, done, journal, journalDates?} · contact.dat {contact} · settings.dat {settings}.
+/// journalDates(진료 → 내원일)는 입력 기록과 함께 도우미만 쓰고 store.load로 나가지 않는다: 달 파일 이름에는 달뿐이라 쓰다 멈춘 진료의 날짜(AC-035.4)를 여기서 안다.
+/// bit.input 앞의 검사와 input-acks.dat는 WorkStoreRecords.cs에 있다(AC-035.9).
 /// 쓰기: 합친 내용을 암호화한 뒤에야 임시 파일에 쓰고 바꿔치기해 전 파일을 .bak 하나로 남긴다. 평문은 디스크에 닿지 않는다(AC-015.6).
 /// 깨짐(AC-015.3): 맞는 .bak이 있으면 그것으로 되살리고, 없으면 E-STORE-BROKEN. 깨진 파일은 지우지 않고 *.broken-시각으로 이름을 바꾼다.
 /// 본 파일 없이 .bak만 있어도(바꿔치기 중 멈춤) 같은 규칙이다. 둘 다 없을 때만 빈 내용이다(AC-015.2).
 /// 다른 병원(AC-015.4): 프로필 ID가 등록과 다르면 E-BIT-HOSPITAL-MISMATCH이고 어떤 파일도 건드리지 않는다.
 /// 오류는 번호만 싣는다(AC-001.6). 여러 프로세스 사이의 순서는 부르는 쪽이 맞춘다(TASK-17 WorkLock, AC-017.10).
 /// </summary>
-public sealed class WorkStore
+public sealed partial class WorkStore
 {
     public const string ContactFile = "contact.dat";
     public const string SettingsFile = "settings.dat";
@@ -35,10 +37,11 @@ public sealed class WorkStore
     private const string DraftsField = "drafts";
     private const string DoneField = "done";
     private const string JournalField = "journal";
+    private const string JournalDatesField = "journalDates";
     private const string ContactField = "contact";
     private const string SettingsField = "settings";
 
-    private static readonly string[] ObjectFields = { DraftsField, DoneField, JournalField, ContactField, SettingsField };
+    private static readonly string[] ObjectFields = { DraftsField, DoneField, JournalField, JournalDatesField, ContactField, SettingsField };
     private static readonly byte[] HeaderBytes = Encoding.ASCII.GetBytes(RegistrationFile.Header);
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private static readonly Regex MonthShape = new Regex(@"^[0-9]{4}-(?:0[1-9]|1[0-2])\z", RegexOptions.CultureInvariant);
@@ -55,6 +58,11 @@ public sealed class WorkStore
         this.protector = protector ?? throw new ArgumentNullException(nameof(protector));
         this.current = current ?? throw new ArgumentNullException(nameof(current));
         this.today = today ?? throw new ArgumentNullException(nameof(today));
+    }
+
+    /// <summary>잠금 없는 읽기(LoadWithoutRepair)가 파일을 고쳐야 하는 자리에 닿았다.</summary>
+    private sealed class RepairNeededException : Exception
+    {
     }
 
     private enum FileState
@@ -74,14 +82,16 @@ public sealed class WorkStore
 
     /// <summary>
     /// 달 파일 저장. null인 칸은 보내지 않은 것이라 저장해 둔 값을 그대로 둔다(파일 전체를 덮어쓰지 않는다).
-    /// drafts·done은 보낸 값으로 칸 전체를 바꾼다. journal은 도우미가 가진 기록이라 진료(visitKey)마다 합친다: 보낸 진료만 바꾸고 다른 기록은 남는다.
+    /// drafts·done은 보낸 값으로 칸 전체를 바꾼다. journal·journalDates는 도우미가 가진 기록이라 진료(visitKey)마다 합친다: 보낸 진료만 바꾸고 다른 기록은 남는다.
+    /// journalDates는 값이 없으면 칸을 쓰지 않는다.
     /// </summary>
-    public void SaveMonth(string month, JsonElement? drafts, JsonElement? done, JsonElement? journal)
+    public void SaveMonth(string month, JsonElement? drafts, JsonElement? done, JsonElement? journal, JsonElement? journalDates = null)
     {
         var path = MonthPath(month);
         RequireObject(drafts);
         RequireObject(done);
         RequireObject(journal);
+        RequireObject(journalDates);
         Guarded(() =>
         {
             var stored = ReadStored(path);
@@ -92,6 +102,13 @@ public sealed class WorkStore
                 writer.WriteStartObject(JournalField);
                 WriteJournalEntries(writer, Field(stored, JournalField), journal);
                 writer.WriteEndObject();
+                var dates = Field(stored, JournalDatesField);
+                if (dates.HasValue || journalDates.HasValue)
+                {
+                    writer.WriteStartObject(JournalDatesField);
+                    WriteJournalEntries(writer, dates, journalDates);
+                    writer.WriteEndObject();
+                }
             });
         });
     }
@@ -107,15 +124,44 @@ public sealed class WorkStore
     /// 본 파일도 .bak도 없으면 달은 세 칸 모두 {}, contact는 {}, settings는 null(사본 없음, AC-013.9). 프로필 ID는 싣지 않는다.
     /// 하나라도 막히면 그 오류만 던진다(반쪽 내용을 돌려주지 않는다). 조각으로 보내는 일은 부르는 쪽이 한다.
     /// </summary>
-    public string Load(IReadOnlyList<string> months, bool settings, bool contact)
+    public string Load(IReadOnlyList<string> months, bool settings, bool contact) => Load(months, settings, contact, mayRepair: true);
+
+    /// <summary>
+    /// Load와 같지만 파일을 전혀 쓰지 않는다. .bak으로 되살리거나 깨진 파일 이름을 바꿔야 하면 null: 부르는 쪽이 작업 잠금을 잡고 Load를 부른다(AC-035.6).
+    /// 잠금 없이 되살리면 다른 프로세스가 바꿔치기하는 순간의 '본 파일 없음'을 깨짐으로 보고 그 저장을 덮을 수 있다.
+    /// </summary>
+    public string? LoadWithoutRepair(IReadOnlyList<string> months, bool settings, bool contact)
+    {
+        try
+        {
+            return Load(months, settings, contact, mayRepair: false);
+        }
+        catch (RepairNeededException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>달 파일의 입력 기록과 진료일 칸(AC-035.2). 파일이 없거나 칸이 없으면 null. 읽기 규칙은 Load와 같다: 잠금을 쥔 쪽(bit.input)만 부른다.</summary>
+    public (JsonElement? Journal, JsonElement? Dates) ReadJournal(string month)
+    {
+        var path = MonthPath(month);
+        return Guarded(() =>
+        {
+            var stored = ReadStored(path);
+            return (Field(stored, JournalField), Field(stored, JournalDatesField));
+        });
+    }
+
+    private string Load(IReadOnlyList<string> months, bool settings, bool contact, bool mayRepair)
     {
         if (months == null) throw new ArgumentNullException(nameof(months));
         var asked = months.Distinct(StringComparer.Ordinal).Select(month => (Month: month, Path: MonthPath(month))).ToList();
         return Guarded(() =>
         {
-            var monthValues = asked.Select(item => (item.Month, Stored: ReadStored(item.Path))).ToList();
-            var contactValue = contact ? ReadStored(FilePath(ContactFile)) : null;
-            var settingsValue = settings ? ReadStored(FilePath(SettingsFile)) : null;
+            var monthValues = asked.Select(item => (item.Month, Stored: ReadStored(item.Path, mayRepair))).ToList();
+            var contactValue = contact ? ReadStored(FilePath(ContactFile), mayRepair) : null;
+            var settingsValue = settings ? ReadStored(FilePath(SettingsFile), mayRepair) : null;
 
             var clear = Serialize(writer =>
             {
@@ -258,7 +304,7 @@ public sealed class WorkStore
     /// 파일 하나를 읽는다. 본 파일도 .bak도 없으면 null(빈 내용). 본 파일 없이 .bak만 있으면 바꿔치기 중에 멈춘 것이라 깨진 본 파일처럼 다룬다:
     /// 빈 내용으로 보면 다음 저장 두 번이 done·journal과 .bak의 전 내용을 지운다. 나머지 규칙은 맨 위 설명대로다.
     /// </summary>
-    private JsonElement? ReadStored(string path)
+    private JsonElement? ReadStored(string path, bool mayRepair = true)
     {
         var backup = path + BackupSuffix;
         var hasMain = File.Exists(path);
@@ -270,11 +316,12 @@ public sealed class WorkStore
             var mainState = Inspect(path, out var main);
             if (mainState == FileState.Good) return main;
             if (mainState == FileState.OtherHospital) throw new BitException(BitErrors.HospitalMismatch);
-            if (!hasBackup)
-            {
-                SetAside(path);
-                throw new BitException(BitErrors.StoreBroken);
-            }
+        }
+        if (!mayRepair) throw new RepairNeededException();
+        if (hasMain && !hasBackup)
+        {
+            SetAside(path);
+            throw new BitException(BitErrors.StoreBroken);
         }
 
         var state = Inspect(backup, out var root);
@@ -358,10 +405,29 @@ public sealed class WorkStore
             writeFields(writer);
             writer.WriteEndObject();
         });
-        byte[] cipher;
+        var cipher = Encrypt(clear);
+
+        Directory.CreateDirectory(folder.Path);
+        GuardBackup(path);
+        var temporary = TemporaryPath(path);
         try
         {
-            cipher = protector.Protect(clear);
+            WriteTemporary(temporary, cipher);
+            if (File.Exists(path)) ReplaceFile(temporary, path, path + BackupSuffix);
+            else File.Move(temporary, path);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    /// <summary>평문을 암호화한다. 평문은 지운다. 못 하면 E-STORE-FAILED.</summary>
+    private byte[] Encrypt(byte[] clear)
+    {
+        try
+        {
+            return protector.Protect(clear);
         }
         catch (CryptographicException)
         {
@@ -371,25 +437,15 @@ public sealed class WorkStore
         {
             Array.Clear(clear, 0, clear.Length);
         }
+    }
 
-        Directory.CreateDirectory(folder.Path);
-        GuardBackup(path);
-        var temporary = TemporaryPath(path);
-        try
-        {
-            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                output.Write(HeaderBytes, 0, HeaderBytes.Length);
-                output.Write(cipher, 0, cipher.Length);
-                output.Flush(true);
-            }
-            if (File.Exists(path)) ReplaceFile(temporary, path, path + BackupSuffix);
-            else File.Move(temporary, path);
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
-        }
+    /// <summary>머리와 암호문만 임시 파일에 쓴다.</summary>
+    private static void WriteTemporary(string temporary, byte[] cipher)
+    {
+        using var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        output.Write(HeaderBytes, 0, HeaderBytes.Length);
+        output.Write(cipher, 0, cipher.Length);
+        output.Flush(true);
     }
 
     /// <summary>JSON을 바이트로 쓴다. 글자로 풀 수 없는 값(이모지 중간에서 잘린 메모 등)이면 어떤 파일도 건드리기 전에 E-HELPER-BAD-MESSAGE.</summary>
@@ -441,7 +497,7 @@ public sealed class WorkStore
     /// File.Replace. 윈도우 ReplaceFile이 전 파일을 옮긴 뒤 멈추면(ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 등) path가 없어질 수 있어
     /// 그때는 임시 파일을 그 자리로 옮긴다(RegistrationStore와 같다).
     /// </summary>
-    private static void ReplaceFile(string temporary, string path, string kept)
+    private static void ReplaceFile(string temporary, string path, string? kept)
     {
         try
         {

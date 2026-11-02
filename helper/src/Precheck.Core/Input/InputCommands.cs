@@ -17,7 +17,7 @@ public sealed class InputServices
         Func<string, IChartUi> openUi,
         IInputConfirm confirm,
         Func<int, IProgressWindow> openProgress,
-        Func<HospitalRegistration, IInputJournal> openJournal,
+        Func<HospitalRegistration, IBatchJournal> openJournal,
         IMemoMatcher matcher,
         Func<IDisposable?>? tryLock = null,
         Action<string?, string?>? log = null)
@@ -44,7 +44,7 @@ public sealed class InputServices
     /// <summary>진행 창을 띄운다(인자: 전체 수). [확인] 뒤에만 부른다.</summary>
     public Func<int, IProgressWindow> OpenProgress { get; }
 
-    public Func<HospitalRegistration, IInputJournal> OpenJournal { get; }
+    public Func<HospitalRegistration, IBatchJournal> OpenJournal { get; }
     public IMemoMatcher Matcher { get; }
 
     /// <summary>작업 잠금. 못 잡으면 null.</summary>
@@ -54,7 +54,8 @@ public sealed class InputServices
 }
 
 /// <summary>
-/// bit.input 처리기: 잠금 → 등록 확인 → InputRunner(지문 → 묶음 검사 → PC 확인 창 → 사람마다) → 결과 기록 → 조각으로 답.
+/// bit.input 처리기: 묶음 검사(받은 그대로) → 잠금 → 등록 확인·내원 수 → 입력 기록 열기 → 달 파일 검사·쓰다 멈춘 사람 검사 → 빼기(InputBatch)
+/// → InputRunner(지문 → PC 확인 창 → [확인] 뒤 차례는 InputRunner.RunConfirmed) → 결과 기록 → 조각으로 답. 남는 사람도 풀 사람도 없으면 창 없이 finished다(AC-035.8).
 /// 진행은 progress 숫자만. 결과는 끝에 JSON 하나를 조각으로(AC-017.6). 보낼 곳이 닫혔으면 보내기 실패는 무시하고 멈춤으로 다룬다(AC-017.9).
 /// 칸 ID 목록은 error 봉투에 실을 수 없어(번호만, AC-001.6) E-BIT-UI-CHANGED도 stopped 조각으로 답한다.
 /// </summary>
@@ -73,18 +74,24 @@ public static class InputCommands
     {
         var items = ReadItems(request);
 
+        // 받은 그대로 먼저 검사한다: 뺀 뒤에 하면 다 빠진 묶음을 틀린 묶음으로 본다(AC-035.8)
+        BatchCheck.Validate(items);
+
         // 다른 프로세스가 쥐고 있으면 확인 창도 비트도 건드리지 않는다(AC-017.10)
         using var workLock = services.TryLock() ?? throw new HelperException(InputErrors.Busy);
 
         // 입력하는 동안 DB 세션(되돌리는 트랜잭션)을 붙잡지 않는다
         HospitalRegistration registration;
+        IReadOnlyDictionary<string, long> visits;
         using (var hospital = HospitalGate.Open(services.Bit))
         {
             registration = hospital.Registration;
+            visits = InputBatch.ReadVisits(hospital.Db, items);
         }
 
         var journal = services.OpenJournal(registration);
-        var outcome = RunBatch(items, registration, journal, request.Id, sink, services);
+        var batch = InputBatch.Prepare(items, visits, journal);
+        var outcome = batch.Stop ?? RunPrepared(batch, registration, journal, request.Id, sink, services);
 
         if (outcome.Results.Count > 0)
         {
@@ -109,13 +116,18 @@ public static class InputCommands
         }
     }
 
-    private static InputOutcome RunBatch(IReadOnlyList<InputItem> items, HospitalRegistration registration, IInputJournal journal, string requestId, IReplySink sink, InputServices services)
+    private static InputOutcome RunPrepared(InputBatch batch, HospitalRegistration registration, IInputJournal journal, string requestId, IReplySink sink, InputServices services)
     {
+        if (batch.Remaining.Count == 0 && batch.Released.Count == 0)
+        {
+            return batch.WithExcluded(new InputOutcome(InputStatus.Finished, null, null, null, null));
+        }
+
         using var reply = new ProgressReply(sink, requestId, services.OpenProgress);
         using var ui = services.OpenUi(registration.InstallPath);
         var runner = new InputRunner(ui, services.Confirm, reply, journal, services.Matcher,
             () => services.Signal.StdinClosed || reply.StopPressed || reply.OutputClosed);
-        return runner.Run(items, registration);
+        return runner.Run(batch, registration);
     }
 
     private static List<InputItem> ReadItems(Request request)
@@ -129,7 +141,8 @@ public static class InputCommands
         var items = new List<InputItem>(array.GetArrayLength());
         foreach (var element in array.EnumerateArray())
         {
-            items.Add(new InputItem(Text(element, "visitKey", request), Text(element, "chart", request), Text(element, "name", request), Text(element, "date", request), Text(element, "memo", request)));
+            var checkedByHand = element.TryGetProperty("checkedByHand", out var hand) && hand.ValueKind == JsonValueKind.True;
+            items.Add(new InputItem(Text(element, "visitKey", request), Text(element, "chart", request), Text(element, "name", request), Text(element, "date", request), Text(element, "memo", request), checkedByHand));
         }
         return items;
     }

@@ -187,6 +187,15 @@ WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O' AND c.OcmRsuYon
                AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
 GROUP BY LEFT(c.OcmAcpDtm,8)";
 
+    /// <summary>
+    /// bit.input(새 SELECT, 원본에 없음, AC-035.1): 기간의 차트번호·내원일마다 OcmInf 줄 수. 조건은 기간뿐이다: ClaimDatesSql의 방문 조건 밖 줄(취소된 접수 등)도
+    /// 내원내역에서 열리고 VisitOpener는 날짜가 맞는 첫 줄을 열기 때문이다. 차트번호는 도우미 안에서 견주는 데만 쓰고 답에 싣지 않는다. 이름·메모는 읽지 않는다.
+    /// </summary>
+    public const string InputVisitCountSql = @"SELECT RTRIM(c.OcmChtNum) PatientId,LEFT(c.OcmAcpDtm,8) VisitDay,COUNT_BIG(*) Visits
+FROM dbo.OcmInf c
+WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to
+GROUP BY RTRIM(c.OcmChtNum),LEFT(c.OcmAcpDtm,8)";
+
     private static readonly SqlParam[] FocusRange =
     {
         new SqlParam("@from", SqlParamKind.Char, 12), new SqlParam("@focus", SqlParamKind.Char, 12),
@@ -196,6 +205,11 @@ GROUP BY LEFT(c.OcmAcpDtm,8)";
     private static readonly SqlParam[] Range =
     {
         new SqlParam("@from", SqlParamKind.Char, 12), new SqlParam("@to", SqlParamKind.Char, 12), new SqlParam("@hospital", SqlParamKind.VarChar, 32),
+    };
+
+    private static readonly SqlParam[] PeriodOnly =
+    {
+        new SqlParam("@from", SqlParamKind.Char, 12), new SqlParam("@to", SqlParamKind.Char, 12),
     };
 
     private static readonly Dictionary<string, SqlParam[]> Allowed = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
@@ -221,6 +235,7 @@ GROUP BY LEFT(c.OcmAcpDtm,8)";
         [PrescriptionCatalogSql] = new[] { new SqlParam("@today", SqlParamKind.Char, 8) },
         [LaCatalogSql] = new[] { new SqlParam("@today", SqlParamKind.Char, 8), new SqlParam("@prefix", SqlParamKind.VarChar, 8) },
         [ClaimDatesSql] = Range,
+        [InputVisitCountSql] = PeriodOnly,
     };
 
     /// <summary>허용 목록(이 클래스의 SQL 상수 전부).</summary>

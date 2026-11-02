@@ -1,4 +1,5 @@
 using System;
+using Precheck.Core.Input;
 using Precheck.Core.Protocol;
 using Precheck.Core.Registration;
 using Precheck.Core.Store;
@@ -17,4 +18,8 @@ internal static class HelperStore
     }
 
     public static void Register(Dispatcher dispatcher) => StoreCommands.Register(dispatcher, Open);
+
+    /// <summary>bit.input의 입력 기록(AC-035.2). 처리기가 등록 확인을 마친 병원으로, 묶음마다 하나 연다.</summary>
+    public static IBatchJournal OpenJournal(HospitalRegistration registration) =>
+        new WorkStoreJournal(new WorkStore(new StoreFolder(HelperServices.DataDirectory()), new DpapiProtector(), registration, () => DateTime.Today));
 }

@@ -9,8 +9,9 @@ namespace Precheck.Core.Input;
 /// <summary>입력 묶음의 진료 하나(commands.json의 bit.input payload).</summary>
 public sealed class InputItem
 {
-    public InputItem(string visitKey, string chart, string name, string date, string memo)
+    public InputItem(string visitKey, string chart, string name, string date, string memo, bool checkedByHand = false)
     {
+        CheckedByHand = checkedByHand;
         VisitKey = visitKey ?? "";
         Chart = chart ?? "";
         Name = name ?? "";
@@ -26,6 +27,9 @@ public sealed class InputItem
     public string Date { get; }
 
     public string Memo { get; }
+
+    /// <summary>직원이 비트에서 그 진료의 메모 칸을 손으로 확인했다(AC-035.5). 쓰다 멈춘 기록을 푸는 길이다.</summary>
+    public bool CheckedByHand { get; }
 }
 
 /// <summary>
@@ -54,7 +58,7 @@ public static class BatchCheck
 
     // 도우미가 비트 화면에서 가릴 수 있는 것은 차트번호(SamePatient)와 내원일(VisitOpener)까지이고, 둘 다 Digits를 글자 그대로 비교한다(앞자리 0도 다른 번호).
     // 메모는 내원(OcmNum)마다 있어, 같은 사람·같은 날 진료가 둘이면 둘째가 첫째 화면을 열어 '이미 입력됨'으로 보이고 진짜 둘째 진료는 빈 채로 남는다.
-    private static string VisitOnScreen(InputItem item) => ChartRules.Digits(item.Chart) + "|" + ChartRules.Digits(item.Date);
+    internal static string VisitOnScreen(InputItem item) => ChartRules.Digits(item.Chart) + "|" + ChartRules.Digits(item.Date);
 
     private static bool ValidItem(InputItem item) =>
         item.VisitKey.Length >= 1 && item.VisitKey.Length <= MaxVisitKey
