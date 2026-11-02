@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { errorInfo } from '@/lib/errors'
-import type { FollowupRow, FollowupView, PatientsWorkerMessage } from '@/types/patients'
+import type { FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView } from '@/types/patients'
 import { PatientsScreen } from './PatientsScreen'
 import type { PatientsTool } from './tools'
 import type { PatientsBridge, PatientsWorkerHandle } from './usePatientsWorker'
 
-// 비트 PC 환자 탭 틀(AC-610, 목업 loadingView·errorView). 불러오는 중·오류·도구 자리를 그리고, F/U 도구 자리에 FollowupTool이 들어간다(AC-611). 정기 주사·문자 문구 몸통은 TASK-12·13
+// 비트 PC 환자 탭 틀(AC-610, 목업 loadingView·errorView). 불러오는 중·오류·도구 자리를 그리고, 도구 자리에 FollowupTool(AC-611)·RecallTool(AC-612)이 들어간다. 문자 문구 몸통은 TASK-13
 const sb = vi.hoisted(() => ({ reads: 0 }))
 vi.mock('@/lib/supabase/browser', () => ({
   supabaseBrowser: () => ({
@@ -75,7 +75,7 @@ function setup(tool: PatientsTool) {
     await reply({ type: 'views', ...message })
   }
   const show = (next: PatientsTool) => view.rerender(<PatientsScreen tool={next} bridge={bridge} worker={worker} />)
-  const slot = (name: PatientsTool) => view.container.querySelector(`[data-tool-slot="${name}"]`)
+  const slot = (name: PatientsTool) => view.container.querySelector<HTMLElement>(`[data-tool-slot="${name}"]`)
   const storeLoads = () => stream.mock.calls.filter(([cmd]) => cmd === 'store.load').length
   return { ...view, stream, streams, posted, reply, answer, toViews, show, slot, storeLoads }
 }
@@ -221,13 +221,6 @@ describe('PatientsScreen: [다시 불러오기]·도구 바꾸기', () => {
     expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-STORE-BROKEN')
   })
 
-  it('AC-610.2: 정기 주사 몸통은 아직 없다 — 다 읽어도 자리뿐이고 지어낸 줄이 없다', async () => {
-    const t = setup('recall')
-    await t.toViews({ followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: { followup_left: 1, injection_left: 2 }, codes: {} })
-    expect(t.slot('recall')?.textContent).toBe('')
-    expect(screen.queryByRole('table')).toBeNull()
-    expect(screen.queryByRole('status')).toBeNull()
-  })
 })
 
 describe('PatientsScreen: F/U 도구 자리 (AC-611)', () => {
@@ -252,7 +245,7 @@ describe('PatientsScreen: F/U 도구 자리 (AC-611)', () => {
   const BOX = '시험가 연락함'
   const NO_COPY = { list: '', listWithDate: '' }
 
-  const filters = (t: ReturnType<typeof setup>) => t.posted.filter((m) => m.type === 'filter')
+  const filters = (t: ReturnType<typeof setup>) => t.posted.filter((m) => m.type === 'filter' && m.tool === 'followup')
   const mainBox = () => within(screen.getAllByRole('table')[0]!).getByRole('checkbox', { name: BOX }) as HTMLInputElement
   const toRows = async (t: ReturnType<typeof setup>, view: FollowupView = VIEW) => {
     await t.toViews({ followup: view, recall: RECALL_VIEW, counts: null, codes: {} })
@@ -263,7 +256,7 @@ describe('PatientsScreen: F/U 도구 자리 (AC-611)', () => {
     const t = setup('followup')
     expect(screen.getByRole('status').textContent).toContain(FU_LOADING)
     expect(screen.queryByRole('table')).toBeNull()
-    expect(t.posted.filter((m) => m.type === 'filter')).toEqual([])
+    expect(filters(t)).toEqual([])
   })
 
   it('AC-611.2: 실패면 오류 카드 + [다시 불러오기]뿐이고 도구는 없다', async () => {
@@ -346,7 +339,7 @@ describe('PatientsScreen: F/U 도구 자리 (AC-611)', () => {
 
   it('AC-611.4: 문구는 F/U를 열 때 읽는다. 다른 도구에 있는 동안에는 읽지 않고, 돌아오면 다시 읽는다', async () => {
     const t = setup('recall')
-    await t.toViews({ followup: VIEW, recall: RECALL_VIEW, counts: null, codes: {} })
+    await t.toViews({ followup: VIEW, recall: null, counts: null, codes: { recall: 'E-BIT-READ-FAILED' } })
     await flush()
     expect(sb.reads).toBe(0)
     t.show('followup')
@@ -378,6 +371,200 @@ describe('PatientsScreen: F/U 도구 자리 (AC-611)', () => {
     t.posted.length = 0
     await t.toViews({ followup: VIEW, recall: RECALL_VIEW, counts: null, codes: {} })
     expect(filters(t)).toEqual([{ type: 'filter', tool: 'followup', filters: { kind: '', from: NEXT, to: NEXT, includeCond: false, includePast: false } }])
+    expect(t.storeLoads()).toBe(2)
+  })
+})
+
+describe('PatientsScreen: 정기 주사 도구 자리 (AC-612)', () => {
+  const READ_DAY = R1.to // F/U 보기 모양의 읽은 날
+  const IN_30 = '2026-09-04'
+  const KEY = 'r|cartilage|100|2026-08-20'
+  const ROW: RecallRow = {
+    key: KEY,
+    ruleId: 'cartilage',
+    label: '연골주사',
+    months: 6,
+    chart: '100',
+    name: '시험가',
+    phone: '010-0000-0001',
+    last: '2026-02-20',
+    due: '2026-08-20',
+    status: '15일 남음',
+    evidence: '연골주사 3차 맞음',
+    contacted: false,
+  }
+  const VIEW: RecallView = { rows: [ROW], coverage: { records: 3, from: '2026-02-01', short: [], trimmed: 0 } }
+  const BOX = '시험가 연락함'
+  const COPY = { list: '시험가', phones: '01000000001', missingPhones: 0 }
+  const FIRST = { from: READ_DAY, to: IN_30, overdue: true }
+
+  const filters = (t: ReturnType<typeof setup>) => t.posted.filter((m) => m.type === 'filter' && m.tool === 'recall')
+  const mainBox = () => within(screen.getByRole('table')).getByRole('checkbox', { name: BOX }) as HTMLInputElement
+  const toRows = async (t: ReturnType<typeof setup>, view: RecallView = VIEW) => {
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: view, counts: null, codes: {} })
+    await t.reply({ type: 'filtered', tool: 'recall', rows: view.rows, copy: COPY })
+  }
+
+  it('AC-612.4: 불러오는 중에는 도구가 없고 읽는 중 글뿐이다(지어낸 줄 없음)', () => {
+    const t = setup('recall')
+    expect(screen.getByRole('status').textContent).toContain(RC_LOADING)
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(filters(t)).toEqual([])
+    expect(t.slot('recall')).toBeNull()
+  })
+
+  it('AC-612.2: 처음 읽기는 달 진행 "n/전체 달"로 올라간다', async () => {
+    const t = setup('recall')
+    const M2 = { from: '2026-11-01', to: '2026-11-30' }
+    await t.answer('store-1')
+    await t.reply({ type: 'stored', ok: true, recall: [M1, M2] })
+    await t.reply({ type: 'plan', followup: [], recall: [M1, M2] })
+    expect(screen.getByRole('status').textContent).toContain('1/2 달')
+    await t.answer('r1')
+    await t.reply({ type: 'piece', id: 'r1', ok: true })
+    expect(screen.getByRole('status').textContent).toContain('2/2 달')
+    await t.answer('r2')
+    await t.reply({ type: 'piece', id: 'r2', ok: true })
+    expect(screen.getByRole('status').textContent).toContain('2/2 달')
+  })
+
+  it('AC-612.4: 실패면 오류 카드 + [다시 불러오기]뿐이고 도구는 없다', async () => {
+    const t = setup('recall')
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: null, counts: null, codes: { recall: 'E-BIT-READ-FAILED' } })
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-BIT-READ-FAILED')
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(filters(t)).toEqual([])
+    expect(t.slot('recall')).toBeNull()
+  })
+
+  it('AC-612.1: 다 읽으면 자리에 도구가 들어가 처음 고르기(읽은 날 ~ 30일 뒤, 지난 예정 켬)를 Worker에 보내고, 답한 줄을 그린다. 도구 머리는 그대로다', async () => {
+    const t = setup('recall')
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: VIEW, counts: { followup_left: 1, injection_left: 2 }, codes: {} })
+    expect(filters(t)).toEqual([{ type: 'filter', tool: 'recall', filters: FIRST }])
+    expect(screen.getByRole('heading', { level: 2, name: '정기 주사 문자 명단' })).toBeTruthy()
+    expect(screen.getByText('연골주사 · 비타민D 주사처럼 때마다 맞는 주사의 다음 날짜가 다가온 분이에요.')).toBeTruthy()
+    // 답이 오기 전에는 지어낸 줄이 없다
+    expect(screen.queryByRole('table')).toBeNull()
+
+    await t.reply({ type: 'filtered', tool: 'recall', rows: [ROW], copy: COPY })
+    expect(mainBox().checked).toBe(false)
+    expect(t.slot('recall')?.textContent).toContain('1명 · 아직 연락 안 한 분 1명')
+    expect(t.slot('recall')?.textContent).toContain('이 PC에 쌓인 정기 주사 기록 3건')
+  })
+
+  it('AC-612.1: F/U가 실패해 읽은 날을 모르면 오늘(한국 날짜)부터다', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-03-10T03:00:00+09:00') })
+    try {
+      const t = setup('recall')
+      await t.toViews({ followup: null, recall: VIEW, counts: null, codes: { followup: 'E-BIT-READ-FAILED' } })
+      expect(filters(t)).toEqual([{ type: 'filter', tool: 'recall', filters: { from: '2026-03-10', to: '2026-04-09', overdue: true } }])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('AC-612.3: 눌러서 marked·views가 오면 Worker에 다시 물어 줄을 바꾼다(실제 훅 경로). 그래도 store.load는 한 번이다', async () => {
+    const user = userEvent.setup()
+    const t = setup('recall')
+    await toRows(t)
+    await user.click(mainBox())
+    expect(t.posted.at(-1)).toEqual({ type: 'mark', key: KEY, on: true, today: READ_DAY })
+    expect(mainBox().getAttribute('aria-busy')).toBe('true')
+
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: { followup_left: 0, injection_left: 0 } })
+    expect(mainBox().checked).toBe(true)
+    const sent = filters(t).length
+    const marked: RecallView = { ...VIEW, rows: [{ ...ROW, contacted: true }] }
+    await t.reply({ type: 'views', followup: FOLLOWUP_VIEW, recall: marked, counts: { followup_left: 0, injection_left: 0 }, codes: {} })
+    expect(filters(t)).toHaveLength(sent + 1)
+    await t.reply({ type: 'filtered', tool: 'recall', rows: marked.rows, copy: COPY })
+    expect(mainBox().checked).toBe(true)
+    expect(t.storeLoads()).toBe(1)
+  })
+
+  it('AC-612.4: 기록 저장 실패(codes.store)면 명단은 보이고 오류 줄이 나온다. 저절로 다시 읽지 않고, 누를 때만 다시 읽는다', async () => {
+    const user = userEvent.setup()
+    const t = setup('recall')
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: VIEW, counts: null, codes: { store: 'E-STORE-FAILED' } })
+    await t.reply({ type: 'filtered', tool: 'recall', rows: [ROW], copy: COPY })
+    expect(mainBox()).toBeTruthy()
+    expect(screen.getByText('기록을 이 PC에 저장하지 못했어요. 명단은 그대로 볼 수 있어요.')).toBeTruthy()
+    expect(screen.getByText('오류 번호 E-STORE-FAILED')).toBeTruthy()
+    await flush()
+    expect(t.storeLoads()).toBe(1)
+
+    t.posted.length = 0
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    expect(t.posted[0]).toEqual({ type: 'reload' })
+    expect(t.storeLoads()).toBe(2)
+    expect(screen.getByRole('status').textContent).toContain(RC_LOADING)
+  })
+
+  it('AC-612.1: 다른 도구로 갔다 돌아와도 고른 날짜가 남고 그 사이 온 답을 놓치지 않는다. store.load는 한 번이다', async () => {
+    const user = userEvent.setup()
+    const t = setup('recall')
+    await toRows(t)
+    fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2026-10-31' } })
+    await t.reply({ type: 'filtered', tool: 'recall', rows: [ROW], copy: COPY })
+    await user.click(mainBox())
+
+    t.show('followup')
+    expect(t.slot('recall')?.hidden).toBe(true)
+    await t.reply({ type: 'marked', key: KEY, ok: false, code: 'E-STORE-FAILED', counts: null })
+    t.show('messages')
+    expect(screen.queryByRole('table')).toBeNull()
+    t.show('recall')
+    expect(t.slot('recall')?.hidden).toBe(false)
+    expect((screen.getByLabelText('끝 날짜') as HTMLInputElement).value).toBe('2026-10-31')
+    expect(screen.getAllByText('오류 번호 E-STORE-FAILED').length).toBeGreaterThan(0)
+    expect(t.storeLoads()).toBe(1)
+  })
+
+  it('AC-612.3: 문구는 정기 주사를 열 때 읽는다. 다른 도구에 있는 동안에는 읽지 않고, 돌아오면 다시 읽는다', async () => {
+    const t = setup('messages')
+    await t.toViews({ followup: null, recall: VIEW, counts: null, codes: { followup: 'E-BIT-READ-FAILED' } })
+    await flush()
+    expect(sb.reads).toBe(0)
+    t.show('recall')
+    await flush()
+    expect(sb.reads).toBe(1)
+    t.show('messages')
+    await flush()
+    t.show('recall')
+    await flush()
+    expect(sb.reads).toBe(2)
+    expect(t.storeLoads()).toBe(1)
+  })
+
+  it('AC-612.1: F/U filtered 답은 이 도구와 상관없다', async () => {
+    const t = setup('recall')
+    await toRows(t)
+    await t.reply({ type: 'filtered', tool: 'followup', rows: [], undecided: [], copy: { list: '', listWithDate: '' } })
+    expect(mainBox()).toBeTruthy()
+  })
+
+  it('AC-612.1: 두 도구는 함께 살아 있어도 지금 도구만 보인다', async () => {
+    const t = setup('recall')
+    await toRows(t)
+    expect(t.slot('recall')?.hidden).toBe(false)
+    expect(t.slot('followup')?.hidden).toBe(true)
+    t.show('followup')
+    expect(t.slot('recall')?.hidden).toBe(true)
+    expect(t.slot('followup')?.hidden).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: BOX })).toBeNull()
+  })
+
+  it('AC-604.8: [다시 불러오기] 뒤 다시 다 읽으면 도구를 새로 만들어 처음 고르기로 묻는다', async () => {
+    const user = userEvent.setup()
+    const t = setup('recall')
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: VIEW, counts: null, codes: { store: 'E-STORE-FAILED' } })
+    await t.reply({ type: 'filtered', tool: 'recall', rows: [ROW], copy: COPY })
+    fireEvent.change(screen.getByLabelText('끝 날짜'), { target: { value: '2026-10-31' } })
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    t.posted.length = 0
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: VIEW, counts: null, codes: {} })
+    expect(filters(t)).toEqual([{ type: 'filter', tool: 'recall', filters: FIRST }])
     expect(t.storeLoads()).toBe(2)
   })
 })

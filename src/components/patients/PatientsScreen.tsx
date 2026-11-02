@@ -3,12 +3,14 @@
 import type { ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
+import { todayInKorea } from '@/lib/analytics/dates'
 import { isErrorCode } from '@/lib/errors'
 import { FollowupTool } from './FollowupTool'
+import { RecallTool } from './RecallTool'
 import type { PatientsTool } from './tools'
 import { usePatientsWorker, type PatientsBridge, type PatientsWorkerApi, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
 
-// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 나머지는 TASK-12·13).
+// 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 정기 주사는 TASK-12, 문자 문구는 TASK-13).
 // 도구를 바꿔도 다시 읽지 않는다(이 컴포넌트는 도구가 바뀌어도 그대로 있고, 읽기는 usePatientsWorker 한 곳). 한 종류가 실패하면 그 도구만 오류다(AC-604.3).
 // 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다
 
@@ -19,7 +21,7 @@ const LIST_HEAD: Record<ListTool, { title: string; desc: string }> = {
   recall: { title: '정기 주사 문자 명단', desc: '연골주사 · 비타민D 주사처럼 때마다 맞는 주사의 다음 날짜가 다가온 분이에요.' },
 }
 
-// 목업의 정기 주사 글 "처음 읽는 중…7개월치"는 쓰지 않는다: Worker 메시지로는 첫 읽기인지 알 수 없다(TASK-12 첫 읽기 진행 몫)
+// 목업의 정기 주사 글 "처음 읽는 중…7개월치"는 쓰지 않는다: 화면은 첫 읽기인지 모르고, 읽는 달 수도 그때마다 다르다. 진행은 달로 보인다(AC-612.2)
 const LIST_LOADING: Record<ListTool, { title: string; unit: string; note: string }> = {
   followup: { title: '비트에서 F/U 명단을 읽는 중이에요', unit: '', note: '최근 120일을 네 번에 나눠 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' },
   recall: { title: '정기 주사 기록을 읽는 중이에요', unit: ' 달', note: '다 읽을 때까지 이 창을 열어 두세요.' },
@@ -122,9 +124,10 @@ export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; b
   const load = usePatientsWorker(bridge, worker)
   const views = load.status === 'done' ? load.views : null
   const followup = views && !views.codes.followup ? views.followup : null
+  const recall = views && !views.codes.recall ? views.recall : null
   return (
     <>
-      {/* F/U 도구는 다 읽은 뒤에는 다른 도구로 가도 살아 있다(숨기기만): 고른 기간·늦게 온 저장 답·오류 줄을 잃지 않는다 */}
+      {/* 명단 도구는 다 읽은 뒤에는 다른 도구로 가도 살아 있다(숨기기만): 고른 기간·늦게 온 저장 답·오류 줄을 잃지 않는다 */}
       {followup && (
         <ToolSlot tool="followup" hidden={tool !== 'followup'}>
           <FollowupTool
@@ -138,7 +141,22 @@ export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; b
           />
         </ToolSlot>
       )}
-      {!(followup && tool === 'followup') && <ToolState tool={tool} load={load} />}
+      {recall && (
+        <ToolSlot tool="recall" hidden={tool !== 'recall'}>
+          <RecallTool
+            view={recall}
+            storeCode={views?.codes.store}
+            // 정기 주사 보기 모양에는 날짜가 없어 F/U 보기 모양의 읽은 날을 쓴다. F/U가 실패했으면 오늘이다
+            today={views?.followup?.read.to ?? todayInKorea()}
+            active={tool === 'recall'}
+            post={load.post}
+            listen={load.listen}
+            reload={load.reload}
+            head={(summary) => <ListHead tool="recall" right={summary} />}
+          />
+        </ToolSlot>
+      )}
+      {!(followup && tool === 'followup') && !(recall && tool === 'recall') && <ToolState tool={tool} load={load} />}
     </>
   )
 }

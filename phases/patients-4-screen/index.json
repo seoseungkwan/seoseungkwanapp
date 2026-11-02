@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "recall-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/components/patients/{RecallTool,rows/RecallRows}, PatientsScreen 도구 자리 recall. FollowupTool의 Check·useDayField·DayInput·useTemplates·연락함 칸을 범위 때문에 복제했다(TASK-13 뒤 합칠 수 있음, 지금은 같은 코드). today는 views.followup.read.to, F/U 실패면 todayInKorea(). 알려진 한계: F/U가 실패한 채 읽기가 자정을 넘기면 훅·Worker는 D, 화면은 D+1이라 예정일 D인 줄이 빠지고 문구 날짜가 하루 밀린다. [다시 불러오기]로 풀린다. 고치려면 훅이나 RecallView를 바꿔야 해서 범위 밖(보고). PatientsScreen.test의 filters 도우미는 도구별(followup만)로 센다. RecallTool도 filter를 보내므로 TASK-13은 tool을 봐야 한다. 환자 값은 rows/ 안에서만. 목업과 다른 점(단계 끝에 사용자에게 보인다): 처음 읽은 새 PC는 '0건 · 날짜부터'와 짧은 규칙 줄을 보인다(목업 빈 상태는 안내 상자를 숨김, AC-612.2대로 보임). 목업에 없는 글: '복사할 번호가 없어요. 모두 번호 없는 분이에요.'(목업은 '번호 0개')."
     },
     {
       "step": 3,
