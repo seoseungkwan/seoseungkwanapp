@@ -1,4 +1,4 @@
-// 서비스 워커 흐름(TASK-3, REQ-003)을 가짜 chrome으로 시험한다. 자료는 모두 가짜다
+// 서비스 워커 흐름(TASK-3 REQ-003, TASK-38 REQ-038)을 가짜 chrome으로 시험한다. 자료는 모두 가짜다
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import commands from '../../src/lib/bridge/commands.json'
 import { startBackground } from './background'
@@ -8,10 +8,12 @@ const ORIGIN = commands.origin
 const VERSION = '0.1.0'
 const P = commands.protocol
 const MINUTE = 60 * 1000
+const WINDOW = 7
+const OTHER_WINDOW = 8
 
 /** 크롬 Port 흉내. disconnect()는 크롬처럼 제 onDisconnect를 부르지 않고, 끊긴 포트에 보내면 던진다 */
 class FakePort implements PortLike {
-  sender?: { origin?: string }
+  sender?: { origin?: string; tab?: { windowId?: number } }
   posted: unknown[] = []
   disconnected = false
   private messageFns: ((m: unknown) => void)[] = []
@@ -45,11 +47,93 @@ class FakePort implements PortLike {
   }
 }
 
+/** 탭·창의 제목과 주소를 읽으면 시험이 깨지는 가짜 객체(AC-038.3) */
+function withoutText<T extends object>(view: T): T {
+  for (const key of ['title', 'url', 'pendingUrl', 'favIconUrl']) {
+    Object.defineProperty(view, key, {
+      get() {
+        throw new Error(`${key}를 읽으면 안 된다`)
+      },
+    })
+  }
+  return view
+}
+
 function setup(options: { connectNativeThrows?: boolean } = {}) {
   const natives: FakePort[] = []
   let onConnect: ((p: PortLike) => void) | undefined
+  let lastError: { message?: string } | undefined
+  let lastErrorRead = false
+  /** 창 번호 → 지금 상태. 없으면 닫힌 창이다. 상태가 undefined면 크롬이 state를 주지 않은 창이다 */
+  const open = new Map<number, string | undefined>([
+    [WINDOW, 'maximized'],
+    [OTHER_WINDOW, 'normal'],
+  ])
+  const fail = { get: false, update: false }
+  const waiting: (() => void)[] = []
+  /** 콜백이 읽지 않고 넘어간 오류. 크롬이면 'Unchecked runtime.lastError'로 남는다 */
+  const unchecked: string[] = []
+
+  /** 크롬처럼 답은 나중에(flush) 온다. 실패하면 인자 없이 부르고 lastError는 콜백 동안만 채운다 */
+  function answer(windowId: number, call: keyof typeof fail, ok: () => void, failed: () => void) {
+    waiting.push(() => {
+      if (!fail[call] && open.has(windowId)) {
+        ok()
+        return
+      }
+      const message = `No window with id: ${windowId}.`
+      lastError = { message }
+      lastErrorRead = false
+      failed()
+      if (!lastErrorRead) unchecked.push(message)
+      lastError = undefined
+    })
+  }
+
+  const windows = {
+    get: vi.fn((windowId: number, callback: (win?: { state?: string }) => void) => {
+      answer(
+        windowId,
+        'get',
+        () => callback(withoutText({ state: open.get(windowId) })),
+        () => callback(undefined),
+      )
+    }),
+    update: vi.fn((windowId: number, info: { state: string }, callback?: () => void) => {
+      answer(
+        windowId,
+        'update',
+        () => {
+          open.set(windowId, info.state)
+          callback?.()
+        },
+        () => callback?.(),
+      )
+    }),
+  }
+
+  function flush() {
+    for (let run = waiting.shift(); run; run = waiting.shift()) run()
+  }
+
+  /** 기다리는 크롬 답 하나만 오게 한다 */
+  function step() {
+    waiting.shift()?.()
+  }
+
+  /** update 호출을 [창 번호, 상태]로 */
+  function updates() {
+    return windows.update.mock.calls.map(([windowId, info]) => [windowId, info.state])
+  }
+
   const runtime = {
-    lastError: undefined as { message?: string } | undefined,
+    get lastError() {
+      lastErrorRead = true
+      return lastError
+    },
+    set lastError(value: { message?: string } | undefined) {
+      lastError = value
+    },
     onConnectExternal: { addListener: (fn: (p: PortLike) => void) => void (onConnect = fn) },
     connectNative: vi.fn((host: string) => {
       void host
@@ -59,12 +143,21 @@ function setup(options: { connectNativeThrows?: boolean } = {}) {
       return port
     }),
   }
-  const chrome: ChromeLike = { runtime }
+  const chrome = { runtime, windows } as unknown as ChromeLike
   startBackground(chrome, { version: VERSION })
 
   /** 인자가 없으면 우리 origin. undefined를 주면 sender.origin이 없는 연결 */
   function connectWeb(...args: [] | [string | undefined]) {
     const port = new FakePort(args.length === 0 ? ORIGIN : args[0])
+    if (!onConnect) throw new Error('onConnectExternal에 듣는 함수가 없다')
+    onConnect(port)
+    return port
+  }
+
+  /** 그 창의 탭에서 연 우리 사이트의 웹 연결 */
+  function connectTab(windowId = WINDOW) {
+    const port = new FakePort(ORIGIN)
+    port.sender = { origin: ORIGIN, tab: withoutText({ windowId }) }
     if (!onConnect) throw new Error('onConnectExternal에 듣는 함수가 없다')
     onConnect(port)
     return port
@@ -77,7 +170,7 @@ function setup(options: { connectNativeThrows?: boolean } = {}) {
     runtime.lastError = undefined
   }
 
-  return { runtime, natives, connectWeb, helperGone }
+  return { chrome, runtime, natives, connectWeb, connectTab, helperGone, windows, open, fail, unchecked, flush, step, updates }
 }
 
 let seq = 0
@@ -95,6 +188,18 @@ function inputReq() {
 }
 
 const busy = { v: P, id: '', type: 'error', code: 'E-BRIDGE-BUSY' }
+
+function progress(id: string, done = 0, total = 3) {
+  return { v: P, id, type: 'progress', done, total }
+}
+
+function ended(id: string) {
+  return { v: P, id, type: 'end', count: 1, bytes: 2, sha256: '0'.repeat(64) }
+}
+
+function stopped(id: string) {
+  return { v: P, id, type: 'error', code: 'E-INPUT-STOPPED' }
+}
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -482,6 +587,455 @@ describe('AC-003.9 bit.input을 붙잡은 동안 새 웹 연결', () => {
         type: 'result',
         data: { helperVersion: '0.1.0', protocol: P, extensionVersion: VERSION, extensionProtocol: P },
       },
+    ])
+  })
+})
+
+/** 그 창의 탭에서 bit.input을 보낸 상태(아직 PC 확인 창 단계) */
+function started(windowId = WINDOW) {
+  const t = setup()
+  const web = t.connectTab(windowId)
+  const input = inputReq()
+  web.emit(input)
+  return { ...t, web, input, native: t.natives[0] }
+}
+
+type Started = ReturnType<typeof started>
+
+/** 첫 progress가 와서 창을 내린 상태 */
+function lowered(state = 'maximized') {
+  const t = started()
+  t.open.set(WINDOW, state)
+  t.native.emit(progress(t.input.id))
+  t.flush()
+  return t
+}
+
+const FINISHES: [string, (t: Started) => void][] = [
+  ['end', (t) => t.native.emit(ended(t.input.id))],
+  ['error', (t) => t.native.emit(stopped(t.input.id))],
+  ['도우미 연결 끊김', (t) => t.helperGone(t.native, 'Native host has exited.')],
+]
+
+describe('AC-038.1 첫 progress에 크롬 창을 내린다', () => {
+  it('AC-038.1: 확인을 지나기 전(첫 progress 전)에는 창을 건드리지 않는다', () => {
+    const t = started()
+    t.flush()
+    expect(t.windows.get).not.toHaveBeenCalled()
+    expect(t.windows.update).not.toHaveBeenCalled()
+  })
+
+  it('AC-038.1: 첫 progress에 그 탭의 창 상태를 읽은 뒤 그 창만 minimized로 내린다(탭 목록을 달라지 않는다)', () => {
+    const t = started()
+    t.native.emit(progress(t.input.id))
+    expect(t.windows.get).toHaveBeenCalledTimes(1)
+    expect(t.windows.get).toHaveBeenCalledWith(WINDOW, expect.any(Function))
+    // 상태를 읽기 전에는 내리지 않는다: 내린 뒤 읽으면 되돌릴 상태가 'minimized'가 된다
+    expect(t.windows.update).not.toHaveBeenCalled()
+    t.flush()
+    expect(t.windows.update).toHaveBeenCalledTimes(1)
+    expect(t.windows.update.mock.calls[0].slice(0, 2)).toEqual([WINDOW, { state: 'minimized' }])
+    expect(t.open.get(WINDOW)).toBe('minimized')
+    expect(t.open.get(OTHER_WINDOW)).toBe('normal')
+    expect(t.unchecked).toEqual([])
+  })
+
+  it('AC-038.1·AC-003.4: progress는 고치지 않고 창의 답을 기다리지 않고 같은 객체로 넘긴다', () => {
+    const t = started()
+    const reply = progress(t.input.id)
+    const copy = structuredClone(reply)
+    t.native.emit(reply)
+    expect(t.web.posted).toHaveLength(1)
+    expect(t.web.posted[0]).toBe(reply)
+    t.flush()
+    expect(t.web.posted).toHaveLength(1)
+    expect(reply).toEqual(copy)
+  })
+
+  it('AC-038.1: 같은 요청에서 두 번 내리지 않는다(직원이 창을 다시 올려도 그대로 둔다)', () => {
+    const t = lowered()
+    t.open.set(WINDOW, 'normal')
+    t.native.emit(progress(t.input.id, 1))
+    t.native.emit(progress(t.input.id, 2))
+    t.flush()
+    expect(t.windows.get).toHaveBeenCalledTimes(1)
+    expect(t.windows.update).toHaveBeenCalledTimes(1)
+    expect(t.open.get(WINDOW)).toBe('normal')
+    expect(t.web.posted).toHaveLength(3)
+  })
+
+  it('AC-038.1: 상태를 읽는 사이 다음 progress가 와도 한 번만 내린다', () => {
+    const t = started()
+    t.native.emit(progress(t.input.id))
+    t.native.emit(progress(t.input.id, 1))
+    t.flush()
+    expect(t.windows.get).toHaveBeenCalledTimes(1)
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+  })
+
+  it('AC-038.1: bit.input이 아닌 명령의 progress·답에는 창을 건드리지 않는다', () => {
+    const t = setup()
+    const web = t.connectTab()
+    const month = req('claim.month', { from: '2026-10-01', to: '2026-10-31' })
+    web.emit(month)
+    t.natives[0].emit(progress(month.id))
+    t.natives[0].emit(ended(month.id))
+    t.flush()
+    expect(t.windows.get).not.toHaveBeenCalled()
+    expect(t.windows.update).not.toHaveBeenCalled()
+    expect(web.posted).toHaveLength(2)
+  })
+
+  it('AC-038.1: 기다리지 않던 id의 progress, 이미 끝난 bit.input의 늦은 progress에는 내리지 않는다', () => {
+    const t = started()
+    t.native.emit(progress('0f8fad5b-d9cb-469f-a165-ffffffffffff'))
+    t.native.emit(ended(t.input.id))
+    t.native.emit(progress(t.input.id, 3))
+    t.flush()
+    expect(t.windows.get).not.toHaveBeenCalled()
+    expect(t.windows.update).not.toHaveBeenCalled()
+  })
+
+  it('AC-038.1: sender.tab이 없으면 창을 건드리지 않고 넘기기만 한다', () => {
+    const t = setup()
+    const web = t.connectWeb()
+    const input = inputReq()
+    web.emit(input)
+    const reply = progress(input.id)
+    t.natives[0].emit(reply)
+    t.natives[0].emit(ended(input.id))
+    t.flush()
+    expect(t.windows.get).not.toHaveBeenCalled()
+    expect(t.windows.update).not.toHaveBeenCalled()
+    expect(web.posted[0]).toBe(reply)
+    expect(web.posted).toHaveLength(2)
+  })
+
+  it('AC-038.1: 상태를 읽지 못하면(lastError) 내리지 않고 넘기기만 한다. 오류를 읽고, 다음 progress에 다시 하지 않고, 끝에도 건드리지 않는다', () => {
+    const t = started()
+    t.fail.get = true
+    const reply = progress(t.input.id)
+    t.native.emit(reply)
+    t.flush()
+    t.fail.get = false
+    t.native.emit(progress(t.input.id, 1))
+    t.flush()
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    expect(t.windows.get).toHaveBeenCalledTimes(1)
+    expect(t.windows.update).not.toHaveBeenCalled()
+    expect(t.unchecked).toEqual([])
+    expect(t.web.posted[0]).toBe(reply)
+    expect(t.web.posted).toHaveLength(3)
+  })
+
+  it('AC-038.1: lastError가 있으면 창 정보가 함께 와도 내리지 않는다', () => {
+    const t = started()
+    t.windows.get.mockImplementationOnce((_windowId, callback) => {
+      t.runtime.lastError = { message: '가짜 실패' }
+      callback({ state: 'normal' })
+      t.runtime.lastError = undefined
+    })
+    t.native.emit(progress(t.input.id))
+    t.flush()
+    expect(t.windows.update).not.toHaveBeenCalled()
+  })
+
+  it('AC-038.1: 크롬이 상태를 주지 않으면 되돌릴 수 없으니 내리지 않는다', () => {
+    const t = started()
+    t.open.set(WINDOW, undefined)
+    t.native.emit(progress(t.input.id))
+    t.flush()
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    expect(t.windows.update).not.toHaveBeenCalled()
+  })
+
+  it('AC-038.1: 내리기가 실패하면(lastError) 넘기기만 한다. 오류를 읽고, 다시 내리지 않고, 끝에 되돌리지도 않는다', () => {
+    const t = started()
+    t.fail.update = true
+    const reply = progress(t.input.id)
+    t.native.emit(reply)
+    t.flush()
+    t.fail.update = false
+    t.native.emit(progress(t.input.id, 1))
+    t.flush()
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    expect(t.windows.get).toHaveBeenCalledTimes(1)
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+    expect(t.unchecked).toEqual([])
+    expect(t.web.posted[0]).toBe(reply)
+    expect(t.web.posted).toHaveLength(3)
+  })
+
+  it.each<[string, (t: Started) => void]>([
+    [
+      'windows.get이 던짐',
+      (t) =>
+        t.windows.get.mockImplementation(() => {
+          throw new Error('가짜 실패')
+        }),
+    ],
+    [
+      'windows.update가 던짐',
+      (t) =>
+        t.windows.update.mockImplementation(() => {
+          throw new Error('가짜 실패')
+        }),
+    ],
+    ['chrome.windows가 없음', (t) => delete (t.chrome as { windows?: unknown }).windows],
+  ])('AC-038.1: %s 이어도 입력을 막지 않고 답을 그대로 넘긴다', (_name, breakIt) => {
+    const t = started()
+    breakIt(t)
+    const first = progress(t.input.id)
+    const last = ended(t.input.id)
+    t.native.emit(first)
+    t.flush()
+    t.native.emit(last)
+    t.flush()
+    expect(t.web.posted[0]).toBe(first)
+    expect(t.web.posted[1]).toBe(last)
+    expect(t.web.posted).toHaveLength(2)
+  })
+
+  it('AC-038.1: 웹 연결이 끊긴 뒤 온 첫 progress에도 그 연결의 창을 내린다(끝까지 붙잡는 입력, AC-003.7)', () => {
+    const t = started()
+    t.web.drop()
+    t.native.emit(progress(t.input.id))
+    t.flush()
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+    expect(t.web.posted).toEqual([])
+  })
+
+  it('AC-038.1: 입력하는 동안 거절된 새 연결의 창이 아니라 입력을 보낸 연결의 창을 내린다', () => {
+    const t = started()
+    const second = t.connectTab(OTHER_WINDOW)
+    expect(second.disconnected).toBe(true)
+    t.web.drop()
+    const third = t.connectTab(OTHER_WINDOW)
+    expect(third.disconnected).toBe(true)
+    t.native.emit(progress(t.input.id))
+    t.flush()
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+  })
+
+  it('AC-038.1: 다음 웹 연결은 제 창을 내린다. 창이 없는 다음 연결은 전 연결의 창을 쓰지 않는다', () => {
+    const t = setup()
+    t.connectTab(WINDOW).drop()
+
+    const next = t.connectTab(OTHER_WINDOW)
+    const input = inputReq()
+    next.emit(input)
+    t.natives[0].emit(progress(input.id))
+    t.flush()
+    expect(t.windows.update.mock.calls[0].slice(0, 2)).toEqual([OTHER_WINDOW, { state: 'minimized' }])
+    t.natives[0].emit(ended(input.id))
+    t.flush()
+    next.drop()
+    t.windows.get.mockClear()
+    t.windows.update.mockClear()
+
+    const noTab = t.connectWeb()
+    const another = inputReq()
+    noTab.emit(another)
+    t.natives[1].emit(progress(another.id))
+    t.flush()
+    expect(t.windows.get).not.toHaveBeenCalled()
+    expect(t.windows.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-038.2 끝나면 전 상태로 되돌린다', () => {
+  it.each(['normal', 'maximized', 'fullscreen', 'minimized'])(
+    'AC-038.2: 내리기 전이 %s 이면 end에 그 상태로 한 번만 되돌리고 end는 그대로 넘긴다',
+    (state) => {
+      const t = lowered(state)
+      const last = ended(t.input.id)
+      t.native.emit(last)
+      t.flush()
+      expect(t.updates()).toEqual([
+        [WINDOW, 'minimized'],
+        [WINDOW, state],
+      ])
+      expect(t.open.get(WINDOW)).toBe(state)
+      expect(t.web.posted.at(-1)).toBe(last)
+      expect(t.unchecked).toEqual([])
+    },
+  )
+
+  it('AC-038.2: error로 끝나도 되돌리고 error는 그대로 넘긴다', () => {
+    const t = lowered('normal')
+    const last = stopped(t.input.id)
+    t.native.emit(last)
+    t.flush()
+    expect(t.open.get(WINDOW)).toBe('normal')
+    expect(t.updates()).toHaveLength(2)
+    expect(t.web.posted.at(-1)).toBe(last)
+  })
+
+  it('AC-038.2: 도우미 연결이 끊기면 되돌리고, 기다리던 요청에는 지금처럼 E-HELPER-MISSING을 보낸다', () => {
+    const t = lowered('normal')
+    t.helperGone(t.native, 'Native host has exited.')
+    t.flush()
+    expect(t.open.get(WINDOW)).toBe('normal')
+    expect(t.updates()).toHaveLength(2)
+    expect(t.web.posted.at(-1)).toEqual({ v: P, id: t.input.id, type: 'error', code: 'E-HELPER-MISSING' })
+  })
+
+  it('AC-038.2: 웹이 끊긴 뒤 end가 오면 되돌리고 도우미 연결을 닫는다. 닫으면서 다시 되돌리지 않는다', () => {
+    const t = lowered('normal')
+    t.web.drop()
+    t.flush()
+    expect(t.updates()).toHaveLength(1)
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    expect(t.native.disconnected).toBe(true)
+    expect(t.updates()).toEqual([
+      [WINDOW, 'minimized'],
+      [WINDOW, 'normal'],
+    ])
+  })
+
+  it('AC-038.2: 웹이 끊긴 뒤 끝이 오지 않아 30분 만에 도우미 연결을 닫을 때도 되돌린다', () => {
+    const t = lowered('normal')
+    t.web.drop()
+    vi.advanceTimersByTime(30 * MINUTE)
+    t.flush()
+    expect(t.native.disconnected).toBe(true)
+    expect(t.updates()).toEqual([
+      [WINDOW, 'minimized'],
+      [WINDOW, 'normal'],
+    ])
+  })
+
+  it('AC-038.2: end 뒤에 도우미가 끝나거나 웹이 끊겨도 다시 되돌리지 않는다', () => {
+    const t = lowered('normal')
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    t.web.drop()
+    t.helperGone(t.native, 'Native host has exited.')
+    t.flush()
+    expect(t.updates()).toHaveLength(2)
+  })
+
+  it('AC-038.2: 입력 중 다른 요청의 끝으로는 되돌리지 않는다', () => {
+    const t = lowered('normal')
+    const check = req('bit.check')
+    const secondInput = inputReq()
+    t.web.emit(check)
+    t.web.emit(secondInput)
+    t.native.emit({ v: P, id: check.id, type: 'result', data: { steps: [], registered: true } })
+    t.native.emit({ v: P, id: secondInput.id, type: 'error', code: 'E-BRIDGE-BUSY' })
+    t.flush()
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+    expect(t.open.get(WINDOW)).toBe('minimized')
+
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    expect(t.open.get(WINDOW)).toBe('normal')
+  })
+
+  it('AC-038.2: 입력 중 다른 bit.input의 progress가 와도 상태를 다시 읽지 않는다(내린 상태를 기억하면 되돌리지 못한다)', () => {
+    const t = lowered('normal')
+    const secondInput = inputReq()
+    t.web.emit(secondInput)
+    t.native.emit(progress(secondInput.id))
+    t.flush()
+    expect(t.windows.get).toHaveBeenCalledTimes(1)
+    expect(t.windows.update).toHaveBeenCalledTimes(1)
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    expect(t.open.get(WINDOW)).toBe('normal')
+  })
+
+  it('AC-038.2: 창이 이미 닫혔으면 오류를 읽고 넘어가고, 답을 그대로 넘기며, 다시 시도하지 않는다', () => {
+    const t = lowered('normal')
+    t.open.delete(WINDOW)
+    const last = ended(t.input.id)
+    t.native.emit(last)
+    t.flush()
+    expect(t.unchecked).toEqual([])
+    expect(t.web.posted.at(-1)).toBe(last)
+    expect(t.updates()).toHaveLength(2)
+    t.helperGone(t.native, 'Native host has exited.')
+    t.flush()
+    expect(t.updates()).toHaveLength(2)
+  })
+
+  it('AC-038.2: 되돌리기가 던져도 답을 그대로 넘긴다', () => {
+    const t = lowered('normal')
+    t.windows.update.mockImplementation(() => {
+      throw new Error('가짜 실패')
+    })
+    const last = ended(t.input.id)
+    t.native.emit(last)
+    t.flush()
+    expect(t.web.posted.at(-1)).toBe(last)
+  })
+
+  it.each(FINISHES)('AC-038.2: 내리지 않은 요청은 %s 에 창을 건드리지 않는다', (_name, finish) => {
+    const t = started()
+    finish(t)
+    t.flush()
+    expect(t.windows.get).not.toHaveBeenCalled()
+    expect(t.windows.update).not.toHaveBeenCalled()
+  })
+
+  it.each(FINISHES)('AC-038.2: 상태를 읽는 사이 %s 가 오면 내리지 않는다', (_name, finish) => {
+    const t = started()
+    t.native.emit(progress(t.input.id))
+    finish(t)
+    t.flush()
+    expect(t.windows.update).not.toHaveBeenCalled()
+    expect(t.open.get(WINDOW)).toBe('maximized')
+    expect(t.unchecked).toEqual([])
+  })
+
+  it.each(FINISHES)('AC-038.2: 내리는 사이 %s 가 오면 내려간 뒤 한 번만 되돌린다', (_name, finish) => {
+    const t = started()
+    t.native.emit(progress(t.input.id))
+    t.step()
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+    finish(t)
+    t.flush()
+    expect(t.updates()).toEqual([
+      [WINDOW, 'minimized'],
+      [WINDOW, 'maximized'],
+    ])
+    expect(t.open.get(WINDOW)).toBe('maximized')
+  })
+
+  it.each(FINISHES)('AC-038.2: 내리는 사이 %s 가 왔는데 내리기가 실패했으면 되돌리지 않는다', (_name, finish) => {
+    const t = started()
+    t.native.emit(progress(t.input.id))
+    t.step()
+    t.fail.update = true
+    finish(t)
+    t.flush()
+    expect(t.updates()).toEqual([[WINDOW, 'minimized']])
+    expect(t.unchecked).toEqual([])
+  })
+
+  it('AC-038.2: 다음 bit.input은 그때 상태를 새로 읽어 다시 내리고 그 상태로 되돌린다', () => {
+    const t = lowered('maximized')
+    t.native.emit(ended(t.input.id))
+    t.flush()
+    t.open.set(WINDOW, 'normal')
+
+    const next = inputReq()
+    t.web.emit(next)
+    t.native.emit(progress(next.id))
+    t.flush()
+    expect(t.open.get(WINDOW)).toBe('minimized')
+    t.native.emit(ended(next.id))
+    t.flush()
+    expect(t.open.get(WINDOW)).toBe('normal')
+    expect(t.updates()).toEqual([
+      [WINDOW, 'minimized'],
+      [WINDOW, 'maximized'],
+      [WINDOW, 'minimized'],
+      [WINDOW, 'normal'],
     ])
   })
 })
