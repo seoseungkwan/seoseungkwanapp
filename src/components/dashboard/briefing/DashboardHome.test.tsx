@@ -654,7 +654,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expect(status.querySelector('svg')).toBeNull()
   }
 
-  it('AC-316.4·AC-414.5·AC-515.2: 섹션 h2 "기능 목차" + 옆 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(숫자는 목록에서, small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
+  it('AC-316.4·AC-414.5·AC-515.2·AC-012.5: 섹션 h2 "기능 목차" + 옆 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(숫자는 목록에서, small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
     forBoth(() => {
       const section = sectionNamed('기능 목차')
       hasAll(section, SECTION)
@@ -693,7 +693,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     }
   })
 
-  it('AC-316.4·AC-414.5·AC-515.2: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · 설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다)', () => {
+  it('AC-316.4·AC-414.5·AC-515.2: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · 설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다, AC-012.5)', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -734,7 +734,15 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expectUsable(statusOf(linkOf('통계')))
   })
 
-  it('AC-414.5·AC-515.2: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, 설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다)', () => {
+  it('AC-012.3: 업무일지 칸은 연결 전·뒤 모두 "사용 가능"(accent + 화살표)이고 /worklog로 간다', () => {
+    forBoth(() => {
+      const link = linkOf('업무일지')
+      expect(link.getAttribute('href')).toBe('/worklog')
+      expectUsable(statusOf(link))
+    })
+  })
+
+  it('AC-414.5·AC-515.2·AC-012.5: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, 설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다)', () => {
     renderAfter()
     expectUsable(statusOf(linkOf('청구')))
     expectUsable(statusOf(linkOf('설정')))
@@ -752,7 +760,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     for (const t of classesOf(ul)) expect(t, t).not.toMatch(/^grid-cols-/)
   })
 
-  it('AC-414.5·AC-515.2: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 · 지금 · 연결하면) — 소스에 숫자를 박지 않는다', () => {
+  it('AC-414.5·AC-515.2·AC-012.5: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 · 지금 · 연결하면) — 소스에 숫자를 박지 않는다', () => {
     const source = SOURCES.map((s) => s.text).join('\n')
     expect(source).not.toMatch(/\d+개 가운데|기능 \d+개|가운데 \d+개|\d+개는 지금|\d+개는 연결하면/)
     renderBefore()

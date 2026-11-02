@@ -53,13 +53,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
   },
   {
-    path: '/worklog',
-    name: '업무일지',
-    title: '업무일지는 준비 중이에요',
-    intro: `엑셀 업무일지를 그대로 옮겨 쓸 자리예요. ${SOON}`,
-    items: ['엑셀 양식과 똑같은 칸', '날짜별로 적고 다시 보기'],
-  },
-  {
     path: '/inventory',
     name: '재고',
     title: '재고는 준비 중이에요',
@@ -86,6 +79,11 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
     expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(stats)
     expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('통계')
     expect(NOT_READY_FEATURES.map((f) => [f.name, f.path])).toEqual(MENU.filter((m) => !m.ready).map((m) => [m.label, m.path]))
+  })
+
+  it('AC-012.4: 업무일지(/worklog)는 준비 중 목록에 없다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/worklog')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('업무일지')
   })
 
   it('AC-305.4: 주소가 겹치지 않는다', () => {
@@ -134,7 +132,6 @@ describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 �
     'AI 리포트는 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
-    '업무일지는 준비 중이에요',
     '재고는 준비 중이에요',
     '주소록은 준비 중이에요',
   ]

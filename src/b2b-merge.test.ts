@@ -251,6 +251,7 @@ describe('AC-034.5: 합친 뒤 설정 파일', () => {
         'e2e/**/*.test.ts',
         'helper/tests/*.test.ts',
         'extension/**/*.test.ts',
+        'scripts/**/*.test.ts',
       ].sort(),
     )
     const caught = (file: string) => include.some((pattern) => matchesGlob(file, pattern))

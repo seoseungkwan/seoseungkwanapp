@@ -12,5 +12,9 @@ export type ErrorCode =
   | 'E-STATS-HISTORY' | 'E-STATS-TOO-BIG' | 'E-STATS-CHANGED'
   // 통계 숫자 저장·읽기(lib/storage/stats.ts, spec stats)
   | 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
+  // AI 리포트(spec ai-report design.md '오류 문구')
+  | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
+  // 업무일지(specs/worklog)
+  | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
 
 export type ErrorInfo = { what: string; fix: string }

@@ -447,8 +447,8 @@ describe('.env.example', () => {
       return { name: line.slice(0, eq), value: line.slice(eq + 1) }
     })
 
-  it('AC-002.5: E2E 값 이름 10개가 값 없이 있다', () => {
-    expect(entries.map((e) => e.name).sort()).toEqual([...E2E_ENV_NAMES].sort())
+  it('AC-002.5: E2E 값 이름 10개 + AI 열쇠가 값 없이 있다', () => {
+    expect(entries.map((e) => e.name).sort()).toEqual([...E2E_ENV_NAMES, 'ANTHROPIC_API_KEY'].sort())
     for (const e of entries) expect(e.value).toBe('')
   })
 

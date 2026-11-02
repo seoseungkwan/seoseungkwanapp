@@ -15,7 +15,6 @@ import NoticesPage from './notices/page'
 import PatientsPage from './patients/page'
 import RevenuePage from './revenue/page'
 import StaffPage from './staff/page'
-import WorklogPage from './worklog/page'
 
 // 준비 중 주소의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, ui-90 AC-415.5, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
 // 페이지는 (app) 묶음 안이라 앱 틀과 승인 검사((app)/layout)를 저절로 받는다. 문지기 규칙은 바꾸지 않는다
@@ -31,7 +30,6 @@ const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: Comp
   { path: '/ai-report', name: 'AI 리포트', title: 'AI 리포트는 준비 중이에요', Page: AiReportPage },
   { path: '/forms', name: '서식', title: '서식은 준비 중이에요', Page: FormsPage },
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
-  { path: '/worklog', name: '업무일지', title: '업무일지는 준비 중이에요', Page: WorklogPage },
   { path: '/inventory', name: '재고', title: '재고는 준비 중이에요', Page: InventoryPage },
   { path: '/contacts', name: '주소록', title: '주소록은 준비 중이에요', Page: ContactsPage },
 ]
@@ -74,6 +72,11 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     expect(PAGES.map((p) => p.path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
     expect(PAGES.map((p) => p.path as string)).toEqual(MENU.filter((m) => !m.ready).map((m) => m.path as string))
     expect(PAGES.map((p) => p.path as string)).not.toContain('/stats')
+  })
+
+  it('AC-012.4: 이 표의 주소는 준비 중 목록(NOT_READY_FEATURES)과 같고 /worklog는 없다', () => {
+    expect(PAGES.map((p) => p.path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/worklog')
   })
 })
 

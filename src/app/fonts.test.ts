@@ -144,9 +144,12 @@ function cssWeights(css: string): string[] {
   const shorthand = [...text.matchAll(/(?<![\w-])font\s*:\s*([^;}]+)/g)].flatMap((m) => m[1].match(/(?<![\w.-])(?:[1-9]00|bold|bolder|lighter)(?![\w.-])/g) ?? [])
   return [...weights, ...shorthand]
 }
+// 예외 한 파일(worklog AC-007.2, design.md 12절): 업무일지 양식 칸은 엑셀처럼 굵다. 이 파일의 700만 통과하고, 다른 파일의 700과 이 파일의 다른 굵기는 그대로 잡는다
+const SHEET_WEIGHT_EXCEPTION = 'src/components/worklog/sheet.module.css'
+const weightOk = (rel: string, weight: string) => WEIGHTS_OK.has(weight) || (rel === SHEET_WEIGHT_EXCEPTION && weight === '700')
 const badWeightsIn = (rel: string, text: string): string[] =>
   rel.endsWith('.css')
-    ? cssWeights(text).filter((w) => !WEIGHTS_OK.has(w)).map((w) => `${rel}: font-weight ${w}`)
+    ? cssWeights(text).filter((w) => !weightOk(rel, w)).map((w) => `${rel}: font-weight ${w}`)
     : (text.match(BAD_WEIGHT_CLASS) ?? []).map((cls) => `${rel}: ${cls}`)
 
 // 선택자가 정확히 sel인 규칙의 몸통(주석 뺀 CSS, 맨 바깥과 @layer 안 모두)
@@ -193,5 +196,36 @@ describe('AC-203.3: 굵기는 400·500·600만, 숫자는 고정폭', () => {
     const root = ruleBodies(read('src/components/landing/base.module.css'), '.root')
     expect(root.length, '.root 규칙이 없다').toBeGreaterThan(0)
     expect(root.some((body) => /font-variant-numeric:\s*tabular-nums/.test(body))).toBe(true)
+  })
+})
+
+describe('AC-007.2: font-weight 700은 업무일지 양식 CSS 한 파일에서만 통과한다', () => {
+  it('AC-007.2: 그 파일의 700은 통과하고, 같은 글자가 다른 경로에 있으면 잡힌다', () => {
+    const text = '.sheet td { font-weight: 700; }'
+    expect(badWeightsIn(SHEET_WEIGHT_EXCEPTION, text)).toEqual([])
+    for (const rel of [
+      'src/components/worklog/other.module.css',
+      'src/components/landing/sheet.module.css',
+      'src/components/landing/base.module.css',
+      'src/app/globals.css',
+    ]) {
+      expect(badWeightsIn(rel, text), rel).toEqual([`${rel}: font-weight 700`])
+    }
+  })
+
+  it('AC-007.2: 그 파일에서도 300·900·bold는 잡힌다', () => {
+    for (const weight of ['300', '900', 'bold']) {
+      expect(badWeightsIn(SHEET_WEIGHT_EXCEPTION, `.x { font-weight: ${weight}; }`), weight).toEqual([`${SHEET_WEIGHT_EXCEPTION}: font-weight ${weight}`])
+    }
+  })
+
+  it('AC-007.2: TSX의 font-bold는 예외가 아니다(업무일지 폴더도 그대로 잡힌다)', () => {
+    const rel = 'src/components/worklog/WorklogSheet.tsx'
+    expect(badWeightsIn(rel, '<td className="font-bold" />')).toEqual([`${rel}: font-bold`])
+  })
+
+  it('AC-007.2: 그 파일은 실제로 700을 쓰고 전체 검사 목록에 든다(쓰지 않는 예외를 남기지 않는다)', () => {
+    expect(sourceFiles()).toContain(SHEET_WEIGHT_EXCEPTION)
+    expect(cssWeights(read(SHEET_WEIGHT_EXCEPTION))).toContain('700')
   })
 })

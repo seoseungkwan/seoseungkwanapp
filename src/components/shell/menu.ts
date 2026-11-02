@@ -30,7 +30,7 @@ export type MenuPath =
   | '/contacts'
   | '/claim/setup'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/worklog'
 
 export type MenuItem = {
   label: MenuLabel
@@ -56,7 +56,7 @@ export const MENU: readonly MenuItem[] = [
   { label: 'AI 리포트', path: '/ai-report', href: null, ready: false },
   { label: '서식', path: '/forms', href: null, ready: false },
   { label: '직원', path: '/staff', href: null, ready: false },
-  { label: '업무일지', path: '/worklog', href: null, ready: false },
+  { label: '업무일지', path: '/worklog', href: '/worklog', ready: true },
   { label: '재고', path: '/inventory', href: null, ready: false },
   { label: '주소록', path: '/contacts', href: null, ready: false },
   // 설정 href는 null이어야 한다: 설치·연결 확인 화면(SetupScreen)이 이 값으로 [청구·연락] 링크를 정한다.

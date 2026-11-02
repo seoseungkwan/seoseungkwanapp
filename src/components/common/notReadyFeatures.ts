@@ -11,7 +11,6 @@ export type NotReadyPath =
   | '/ai-report'
   | '/forms'
   | '/staff'
-  | '/worklog'
   | '/inventory'
   | '/contacts'
 
@@ -70,13 +69,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '직원은 준비 중이에요',
     intro: `직원과 급여·휴가를 한곳에서 볼 자리예요. ${SOON}`,
     items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
-  },
-  {
-    path: '/worklog',
-    name: '업무일지',
-    title: '업무일지는 준비 중이에요',
-    intro: `엑셀 업무일지를 그대로 옮겨 쓸 자리예요. ${SOON}`,
-    items: ['엑셀 양식과 똑같은 칸', '날짜별로 적고 다시 보기'],
   },
   {
     path: '/inventory',

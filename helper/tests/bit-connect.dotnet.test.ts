@@ -2,9 +2,18 @@
 // - Precheck.Core.Tests.Bit(비트 찾기·서버 이름·SQL 허용 목록·범위·기관기호·bit.check)
 // - Precheck.Core.Tests.Registration(등록 파일·확인 창 글·bit.register·등록 확인 관문)
 // dotnet test를 이름공간마다 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
-// 윈도우 전용 시험(Precheck.Windows.Tests/Connect: DPAPI 왕복·가짜 폴더로 설치 찾기)은 Actions 윈도우에서 돈다.
+// 윈도우 전용 시험(Precheck.Windows.Tests/Connect: DPAPI 왕복·가짜 폴더로 설치 찾기·가짜 비트 DLL로 접속 정보 읽기)은 Actions 윈도우에서 돈다.
+// 이 서버에서는 그 시험이 빌드되는지와 ReadOnlyConnection.cs 글자만 본다(AC-005.2 비트 접속 정보 읽기).
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { runDotnet } from './runDotnet'
+import { buildDotnet, runDotnet } from './runDotnet'
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const WINDOWS_TESTS_CSPROJ = path.join('helper', 'tests', 'Precheck.Windows.Tests', 'Precheck.Windows.Tests.csproj')
+const READ_ONLY_CONNECTION = path.join(ROOT, 'helper', 'src', 'Precheck.Windows', 'ReadOnlyConnection.cs')
+const VENDOR_PROVIDER_TEST = path.join(ROOT, 'helper', 'tests', 'Precheck.Windows.Tests', 'Connect', 'VendorProvider.test.cs')
 
 const FILTERS = ['Precheck.Core.Tests.Bit', 'Precheck.Core.Tests.Registration'] as const
 let runs: { filter: string; code: number; output: string }[] = []
@@ -57,5 +66,33 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
 
   it('AC-005.7 bit.check: steps find·db·registration을 {name, ok, code?}로, 실패한 단계 뒤는 ok:false·그 번호, 등록됐으면 기관기호만(병원 이름은 주지 않음)', () => {
     expectAc('AC-005.7')
+  })
+})
+
+/** 주석(//·///·블록 주석)을 뺀 C# 글자. ReadOnlyConnection.cs의 문자열 안에는 //가 없다 */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+}
+
+// 원본 ReadOnlyConnection: `private sealed class Provider : BITDataBaseCommon { public Provider() : base(null) {} }` → protected bitGetConnection().
+// 도우미 0.1.0은 BITDataBaseCommon의 생성자를 리플렉션으로 바로 불러, 그 형이 추상이면 늘 E-BIT-DB-FAILED였다(design.md 16절 위험)
+describe('AC-005.2 비트 접속 정보: 원본 Provider처럼 BITDataBaseCommon을 물려받은 형으로 읽는다', () => {
+  it('AC-005.2 가짜 추상 BITDataBaseCommon DLL로 읽는 윈도우 시험(VendorProvider.test.cs)이 이 서버에서도 빌드된다(실행은 Actions 윈도우)', () => {
+    const run = buildDotnet(WINDOWS_TESTS_CSPROJ, { timeoutMs: 280_000 })
+    expect(run.code, tail(run.output)).toBe(0)
+    const test = readFileSync(VENDOR_PROVIDER_TEST, 'utf8')
+    expect(test).toMatch(/public abstract class BITDataBaseCommon\b/)
+    expect(test).toMatch(/protected BITDataBaseCommon\(object owner\)/)
+    expect(test).toMatch(/protected SqlConnection bitGetConnection\(\)/)
+    expect(test).toContain('DisplayName = "AC-005.2 추상 BITDataBaseCommon')
+  }, 300_000)
+
+  it('AC-005.2 ReadOnlyConnection.cs는 비트 형의 생성자를 바로 부르지 않고, 실행 때 물려받은 형(AssemblyBuilderAccess.Run · 생성자 base(null))을 만든다', () => {
+    const code = stripComments(readFileSync(READ_ONLY_CONNECTION, 'utf8'))
+    expect(code).toContain('AssemblyBuilderAccess.Run')
+    expect(code).toMatch(/\.DefineType\(/)
+    expect(code).toMatch(/OpCodes\.Ldarg_0[\s\S]*OpCodes\.Ldnull[\s\S]*OpCodes\.Call[\s\S]*OpCodes\.Ret/)
+    // 0.1.0의 길: 비트 형의 생성자를 null 하나로 바로 불렀다
+    expect(code).not.toMatch(/\.Invoke\(\s*new object\?\[\]\s*\{\s*null\s*\}\s*\)/)
   })
 })
