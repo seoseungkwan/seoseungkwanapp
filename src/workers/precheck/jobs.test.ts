@@ -2929,4 +2929,299 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect((await press(made)).payload).toBeNull()
     })
   })
+
+  // ── 건수(REQ-019): Worker가 언제 무엇을 화면에 보내나. 올리기는 useCountsUpload.test.ts ──
+  describe('AC-019 날짜별 건수', () => {
+    const countsIn = (posts: readonly PrecheckToScreen[]) => posts.flatMap((m) => (m.type === 'dayCounts' ? [m.rows] : []))
+    const messagesIn = (posts: readonly PrecheckToScreen[]) => posts.filter((m) => m.type === 'dayCounts')
+    const countPosts = (posts: readonly PrecheckToScreen[]) => posts.filter((m) => m.type === 'dayCounts')
+    /** ready와 같지만 화면으로 간 메시지를 비우지 않는다 */
+    async function firstLoad(options: { bit?: MemoRowRaw[] | null; settings?: CheckSettings; visible?: { from: string; to: string }; store?: Partial<StoreMonthJson>; blockStore?: boolean } = {}) {
+      const posts: PrecheckToScreen[] = []
+      const jobs = createPrecheckJobs({ post: (m) => posts.push(m), loadTables, toPort: () => {} })
+      await loadInto(jobs, 'month', MEMO_MONTH, 1)
+      if (options.bit !== null) {
+        await stream(jobs, 'memos', memosJson(options.bit ?? []))
+        await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos', load: 1 } satisfies PrecheckFromScreen)
+      }
+      if (options.blockStore) {
+        await jobs.fromScreen({ type: 'storeBlock' } satisfies PrecheckFromScreen) // 달 칸이 다른 병원 파일이다(AC-018.17)
+      } else {
+        await stream(jobs, 'store', storeJson(options.store ?? {}))
+        await jobs.fromScreen({ type: 'loadPart', part: 'store', id: 'store', load: 1 } satisfies PrecheckFromScreen)
+      }
+      await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: options.visible ?? DAY, settings: options.settings ?? SETTINGS } satisfies PrecheckFromScreen)
+      return { jobs, posts }
+    }
+    /** 표에서 다시 세어 Worker가 보낸 건수와 견준다 */
+    const needOf = (view: MemoScreenView) => view.table.filter((row) => row.hasMemo).length
+    const reload = async (made: Made, run: number, text: string) => {
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `r${run}`, text)
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: `r${run}`, load: 1, run } satisfies PrecheckFromScreen)
+    }
+    const memosIn = (rows: MemoRowRaw[], over: Partial<ClaimMemosJson> = {}) => JSON.stringify({ version: 1, period: DAY, truncated: false, invalidRows: 0, rows, ...over } satisfies ClaimMemosJson)
+
+    it('AC-019.3·AC-019.4: 불러오기가 끝나면(점검 답) 날짜별 건수를 보낸다. 날짜와 정수뿐이고 환자 글자가 없다', async () => {
+      const { posts, jobs } = await firstLoad()
+      const [rows, ...more] = countsIn(posts)
+      expect(more).toEqual([])
+      expect(rows).toHaveLength(1)
+      expect(Object.keys(rows[0]).sort()).toEqual(['entered', 'need_memo', 'needs_check', 'skipped', 'visit_date'])
+      expect(rows[0].visit_date).toBe(DAY.from)
+      await jobs.fromScreen({ type: 'memoView', ask: 1, selection: SELECT } satisfies PrecheckFromScreen)
+      const answer = posts.find((m) => m.type === 'memoView')
+      if (answer?.type !== 'memoView' || !answer.ok) throw new Error('memoView 답이 없다')
+      expect(rows[0]).toEqual({ visit_date: DAY.from, need_memo: needOf(answer.view), entered: 0, needs_check: 0, skipped: 0 })
+      expect(rows[0].need_memo).toBeGreaterThan(0)
+      expectNoPatientText(countPosts(posts))
+    })
+
+    it('AC-019.4: 건수 메시지에 불러오기 번호와 고른 기간이 있다. Worker의 줄은 다섯 칸이다(진료 수는 화면이 붙인다)', async () => {
+      const { posts } = await firstLoad()
+      const [message] = messagesIn(posts)
+      expect(Object.keys(message).sort()).toEqual(['load', 'range', 'rows', 'type'])
+      expect(message).toMatchObject({ type: 'dayCounts', load: 1, range: DAY })
+      if (message.type !== 'dayCounts') throw new Error('건수가 아니다')
+      expect(Object.keys(message.rows[0]).sort()).toEqual(['entered', 'need_memo', 'needs_check', 'skipped', 'visit_date'])
+    })
+
+    it('AC-019.4: 진료 없는 기간이면 빈 줄과 고른 기간을 보낸다(화면이 사라진 날을 덮을 수 있게)', async () => {
+      const empty = { from: '2026-12-01', to: '2026-12-03' }
+      const { posts } = await firstLoad({ visible: empty })
+      expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+      expect(messagesIn(posts)).toEqual([{ type: 'dayCounts', load: 1, rows: [], range: empty }])
+    })
+
+    it('AC-019.4: 번호는 마지막 불러오기의 번호이고 [다시 점검]·다시 불러오기·입력 끝에도 같다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      await reload(made, 1, memosIn([]))
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [line(A, '완료', '입력')] })
+      expect(messagesIn(made.posts).map((m) => (m as { load: number }).load)).toEqual([1, 1, 1])
+    })
+
+    it('AC-019.3: 불러올 때 비트 메모가 없었으면 그 뒤 성공한 다시 불러오기에도 건수가 없다(비교가 모두 조회 못함이다)', async () => {
+      const { posts, jobs } = await firstLoad({ bit: null })
+      posts.length = 0
+      await jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      await stream(jobs, 'r1', memosIn([memoRow(A, '비트 메모')]))
+      await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+      expect(posts.at(-1)).toMatchObject({ type: 'loadPart', part: 'memos', run: 1, ok: true })
+      expect(countsIn(posts)).toEqual([])
+      // 그래도 [다시 점검]에도 없다
+      await jobs.fromScreen(CHECK_AGAIN(2))
+      expect(countsIn(posts)).toEqual([])
+    })
+
+    it('AC-019.3·AC-018.17: 달 칸이 막히면 건수가 없다(입력 수가 떨어진 수로 덮지 않는다). 다음 불러오기에서 읽히면 다시 보낸다', async () => {
+      const { posts, jobs } = await firstLoad({ blockStore: true })
+      expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+      expect(countsIn(posts)).toEqual([])
+
+      posts.length = 0
+      await jobs.fromScreen({ type: 'loadStart', load: 2, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(jobs, 'month2', MEMO_MONTH)
+      await jobs.fromScreen({ type: 'month', id: 'month2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(jobs, 'memos2', memosJson([]))
+      await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(jobs, 'store2', storeJson({}))
+      await jobs.fromScreen({ type: 'loadPart', part: 'store', id: 'store2', load: 2 } satisfies PrecheckFromScreen)
+      await jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      expect(messagesIn(posts)).toHaveLength(1)
+      expect(messagesIn(posts)[0]).toMatchObject({ load: 2 })
+    })
+
+    it('AC-019.3·AC-018.17: 불러온 뒤에 달 칸이 막혀도 [다시 점검]·다시 불러오기가 건수를 보내지 않는다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'storeBlock' } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      await reload(made, 1, memosIn([]))
+      expect(made.posts.at(-1)).toMatchObject({ type: 'loadPart', ok: true })
+      expect(countsIn(made.posts)).toEqual([])
+    })
+
+    it('AC-019.4: 건수는 점검 답보다 먼저 간다(점검 답이 그 불러오기의 마지막 메시지다)', async () => {
+      const { posts } = await firstLoad()
+      const types = posts.map((m) => m.type)
+      expect(types.indexOf('dayCounts')).toBeLessThan(types.indexOf('check'))
+      expect(types.at(-1)).toBe('check')
+    })
+
+    it('AC-013.13·AC-019.3: 고른 기간의 날짜만 보낸다. 앞쪽까지 읽은 자료(내원 간격용)는 없다', async () => {
+      const { posts } = await firstLoad()
+      const { posts: wide } = await firstLoad({ visible: OCTOBER })
+      const wideDates = countsIn(wide)[0].map((row) => row.visit_date)
+      expect(wideDates.length).toBeGreaterThan(1)
+      expect(wideDates).toContain(DAY.from)
+      expect(wideDates).toEqual([...wideDates].sort())
+      expect(countsIn(posts)[0].map((row) => row.visit_date)).toEqual([DAY.from])
+    })
+
+    it('AC-018.18·AC-019.3: 메모를 만들지 않는 병원은 보내지 않는다: 0으로 덮으면 남은 일이 끝난 것처럼 보인다', async () => {
+      const { posts } = await firstLoad({ settings: { ...SETTINGS, phrases: null } })
+      expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+      expect(countsIn(posts)).toEqual([])
+    })
+
+    it('AC-013.2·AC-019.4: 비트 메모를 받지 못했으면(옛 도우미) 보내지 않는다: 입력 수 0으로 서버 수를 덮지 않는다', async () => {
+      const { posts } = await firstLoad({ bit: null })
+      expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+      expect(countsIn(posts)).toEqual([])
+    })
+
+    it('AC-019.4: 점검이 실패하면 보내지 않는다(앞 점검의 재료가 남아 있어도)', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 1, visible: DAY, settings: { nope: true } } as unknown as PrecheckFromScreen)
+      expect(made.posts.at(-1)).toMatchObject({ type: 'check', ok: false, code: 'E-SETTINGS-FAILED' })
+      expect(countsIn(made.posts)).toEqual([])
+    })
+
+    it('AC-019.4: [다시 점검]도 보낸다. 같은 값인지는 화면이 본다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      expect(countsIn(made.posts)).toHaveLength(1)
+    })
+
+    it('AC-019.4·AC-016.7·AC-018.24·AC-018.27: 성공한 비트 메모 다시 불러오기(단추와 줄 열기가 같은 길, runMemoReload)는 새 건수를 보낸다', async () => {
+      const made = await ready()
+      const ours = rowOf(await viewOf(made), A.key).text
+      made.posts.length = 0
+      await reload(made, 1, memosIn([memoRow(A, ours), memoRow(B, '비트에 있던 다른 글')]))
+      const [rows, ...more] = countsIn(made.posts)
+      expect(more).toEqual([])
+      expect(rows[0]).toMatchObject({ visit_date: DAY.from, entered: 1, skipped: 1 })
+      expect(made.posts.at(-1)).toMatchObject({ type: 'loadPart', part: 'memos', run: 1, ok: true })
+      expect(JSON.stringify(rows)).not.toContain('비트에 있던 다른 글')
+    })
+
+    it('AC-019.4: 다시 불러오기를 시작만 하면(stream이 거절되면 loadPart도 오지 않는다) 보내지 않는다', async () => {
+      const made = await ready()
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      expect(countsIn(made.posts)).toEqual([])
+    })
+
+    it.each<[string, (made: Made) => Promise<void>]>([
+      ['truncated', (made) => reload(made, 1, memosIn([], { truncated: true }))],
+      ['invalidRows', (made) => reload(made, 1, memosIn([], { invalidRows: 1 }))],
+      ['깨진 글자', (made) => reload(made, 1, 'not json')],
+      [
+        'abort(도우미 오류)',
+        async (made) => {
+          await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+          await made.jobs.fromPort({ type: 'abort', id: 'r1', code: 'E-BIT-READ-FAILED' })
+          await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+        },
+      ],
+      [
+        '옛 번호',
+        async (made) => {
+          await made.jobs.fromScreen({ type: 'memoReloadStart', run: 2 } satisfies PrecheckFromScreen)
+          await stream(made.jobs, 'old', memosIn([]))
+          await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'old', load: 1, run: 1 } satisfies PrecheckFromScreen)
+        },
+      ],
+    ])('AC-016.8·AC-019.4: 실패한 다시 불러오기(%s)는 수가 그대로라 보내지 않는다', async (_name, fail) => {
+      const made = await ready()
+      await fail(made)
+      expect(made.posts.at(-1)).toMatchObject({ type: 'loadPart', ok: false })
+      expect(countsIn(made.posts)).toEqual([])
+    })
+
+    it('AC-019.3·AC-019.4: 입력이 끝나면 완료·확인 필요·건너뜀을 센 건수를 보낸다. 비트 메모를 다시 읽지 않아도 완료가 입력 수에 든다', async () => {
+      const made = await threeOnly()
+      const view = await viewOf(made)
+      expect(batchKeys(view)).toEqual([A.key, B.key, C.key])
+      const need = needOf(view)
+      const finished = view.table.filter((row) => row.hasMemo && row.done).length
+      // 화면에서 미리 뺀 사람(확인 표시·같은 날 여럿)은 결과 화면처럼 건너뜀이다
+      const preLeft = view.table.filter((row) => row.hasMemo && !row.done && !batchKeys(view).includes(row.key)).length
+      expect(finished).toBeGreaterThan(0)
+      expect(preLeft).toBeGreaterThan(0)
+      const { ticket } = await press(made)
+      made.posts.length = 0
+      const done = await finish(made, ticket, { status: 'finished', results: [line(A, '완료', '입력'), line(B, '확인 필요', '다시 읽은 값이 달라요'), line(C, '건너뜀', '이미 있음: 다른 메모')] })
+      expect(done.ok).toBe(true)
+      const [rows, ...more] = countsIn(made.posts)
+      expect(more).toEqual([])
+      expect(rows).toEqual([{ visit_date: DAY.from, need_memo: need, entered: finished + 1, needs_check: 1, skipped: preLeft + 1 }])
+      const types = made.posts.map((m) => m.type)
+      expect(types.indexOf('dayCounts')).toBeLessThan(types.indexOf('inputDone'))
+      expectNoPatientText(countPosts(made.posts))
+    })
+
+    it('AC-019.2: 모두 넣으면 입력 수가 메모 필요 수와 같고 넘지 않는다', async () => {
+      const first = await viewOf(await ready())
+      const others = first.table.filter((row) => ![A.key, B.key, C.key].includes(row.key)).map((row) => row.key)
+      const made = await ready({ store: { done: Object.fromEntries(others.map((key) => [key, true])) } })
+      expect(batchKeys(await viewOf(made))).toEqual([A.key, B.key, C.key])
+      const { ticket } = await press(made)
+      made.posts.length = 0
+      await finish(made, ticket, { status: 'finished', results: [line(A, '완료', '입력'), line(B, '완료', '입력'), line(C, '완료', '입력')] })
+      const [rows] = countsIn(made.posts)
+      expect(rows[0].need_memo).toBeGreaterThan(0)
+      expect(rows[0].entered).toBe(rows[0].need_memo)
+      expect(rows[0]).toMatchObject({ needs_check: 0, skipped: 0 })
+    })
+
+    it('AC-019.4: 도우미 끝 답이 실패면(거절·깨진 글자) 보내지 않는다', async () => {
+      const made = await threeOnly()
+      const first = await press(made)
+      made.posts.length = 0
+      await made.jobs.fromPort({ type: 'sent', ticket: first.ticket, ok: false, code: 'E-BRIDGE-DISCONNECTED' })
+      expect(made.posts.filter((m) => m.type === 'inputDone').at(-1)).toMatchObject({ ok: false })
+      expect(countsIn(made.posts)).toEqual([])
+
+      const second = await press(made)
+      made.posts.length = 0
+      await finish(made, second.ticket, 'not json')
+      expect(made.posts.filter((m) => m.type === 'inputDone').at(-1)).toMatchObject({ ok: false })
+      expect(countsIn(made.posts)).toEqual([])
+    })
+
+    it('AC-019.3: 취소한 입력은 건너뜀으로 세지 않는다', async () => {
+      const made = await threeOnly()
+      await made.jobs.fromScreen(CHECK_AGAIN(2))
+      const [before] = countsIn(made.posts)
+      const { ticket } = await press(made)
+      made.posts.length = 0
+      await finish(made, ticket, { status: 'cancelled' })
+      expect(countsIn(made.posts)).toEqual([before])
+    })
+
+    it('AC-019.3: 다음 불러오기에서는 입력 기록(store.load)으로 센다', async () => {
+      const { posts } = await firstLoad({ store: { journal: { [A.key]: 'done', [B.key]: 'check', [C.key]: 'skippedByHand' } } })
+      expect(countsIn(posts)[0][0]).toMatchObject({ entered: 1, needs_check: 1, skipped: 1 })
+    })
+
+    it('AC-019.3: 새 불러오기는 지난 입력 결과를 잊는다(입력 기록이 대신한다)', async () => {
+      const made = await threeOnly()
+      const { ticket } = await press(made)
+      await finish(made, ticket, { status: 'finished', results: [line(B, '확인 필요', '다시 읽은 값이 달라요')] })
+      await loadInto(made.jobs, 'month2', MEMO_MONTH, 2)
+      await stream(made.jobs, 'memos2', memosJson([]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+      made.posts.length = 0
+      await made.jobs.fromScreen({ type: 'check', check: 9, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      expect(countsIn(made.posts)[0][0].needs_check).toBe(0)
+    })
+
+    it('AC-019.4: 건수를 만들다 오류가 나도 점검 답은 간다(건수 때문에 화면이 멈추지 않는다)', async () => {
+      const posts: unknown[] = []
+      const jobs = createPrecheckJobs({
+        post: (m) => {
+          if (m.type === 'dayCounts') throw new Error('건수만 실패')
+          posts.push(m)
+        },
+        loadTables,
+        toPort: () => {},
+      })
+      await loadInto(jobs, 'month', MEMO_MONTH, 1)
+      await stream(jobs, 'memos', memosJson([]))
+      await jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos', load: 1 } satisfies PrecheckFromScreen)
+      await jobs.fromScreen({ type: 'check', check: 1, load: 1, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      expect(posts.at(-1)).toMatchObject({ type: 'check', ok: true })
+    })
+  })
 })

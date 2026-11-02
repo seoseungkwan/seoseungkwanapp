@@ -3,12 +3,13 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-// 청구 설정 표 세 개의 RLS·권한·제약 (precheck REQ-012, design.md 8-1·8-3).
+// 청구 설정 표 세 개와 건수 표 세 개의 RLS·권한·제약 (precheck REQ-012·REQ-019, design.md 8-1·8-2·8-3).
 // rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 마이그레이션 파일을 차례로 그대로 돌린다.
 // 실제 Supabase에는 붙지 않는다. Supabase가 미리 갖춘 것(역할·auth 스키마·auth.uid()·auth.jwt()·새 표와 함수의 기본 권한)만 아래에서 흉내 낸다
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf-8')
 const AUTH_MIGRATION = read('./migrations/20261028000000_auth.sql')
 const SETTINGS_MIGRATION = read('./migrations/20261030000000_precheck_settings.sql')
+const COUNTS_MIGRATION = read('./migrations/20261030000100_precheck_counts.sql')
 
 const SUPABASE_MOCK = `
   create role anon nologin;
@@ -57,6 +58,7 @@ beforeAll(async () => {
   await db.exec(SUPABASE_MOCK)
   await db.exec(AUTH_MIGRATION)
   await db.exec(SETTINGS_MIGRATION)
+  await db.exec(COUNTS_MIGRATION)
 }, 120_000)
 
 // 시험마다 빈 표에서 시작한다(병원·설정 줄은 auth.users를 따라 함께 비워진다). 운영자(superuser)는 RLS를 건너뛴다
@@ -511,5 +513,274 @@ describe('AC-012.4 제약', SLOW, () => {
 
   it.each([-1, 100])('AC-012.4: 문자 문구 순서가 0~99 밖이면 거부된다: %s', async (sortOrder) => {
     await expect(addTemplate('followup', '이름', '내용', sortOrder)).rejects.toThrow(CHECK)
+  })
+})
+
+// ── 건수 표 세 개(REQ-019, design.md 8-2): 칸은 uuid(병원)·date·integer·timestamptz뿐이다. 규칙은 설정 표와 같다 ──
+
+const COUNT_TABLES = ['claim_day_counts', 'claim_month_counts', 'contact_counts'] as const
+type CountTable = (typeof COUNT_TABLES)[number]
+/** 표마다 사용자가 쓸 수 있는 칸 */
+const WRITABLE: Record<CountTable, string[]> = {
+  claim_day_counts: ['entered', 'need_memo', 'needs_check', 'skipped', 'visit_date', 'visits'],
+  claim_month_counts: ['claim_month', 'flagged', 'incomplete', 'missing'],
+  contact_counts: ['followup_left', 'injection_left'],
+}
+const ADD_COUNT: Record<CountTable, string> = {
+  claim_day_counts: `insert into public.claim_day_counts (visit_date, visits, need_memo, entered, needs_check, skipped) values ('2026-10-28', 20, 7, 2, 1, 0)`,
+  claim_month_counts: `insert into public.claim_month_counts (claim_month, incomplete, missing, flagged) values ('2026-10-01', 2, 3, 1)`,
+  contact_counts: `insert into public.contact_counts (followup_left, injection_left) values (4, 3)`,
+}
+const addDay = (date: string, need: number, entered: number, check = 0, skipped = 0, visits = 0) =>
+  db.query(`insert into public.claim_day_counts (visit_date, visits, need_memo, entered, needs_check, skipped) values ($1, $2, $3, $4, $5, $6)`, [date, visits, need, entered, check, skipped])
+const addMonth = (month: string, incomplete = 0, missing = 0, flagged = 0) =>
+  db.query(`insert into public.claim_month_counts (claim_month, incomplete, missing, flagged) values ($1, $2, $3, $4)`, [month, incomplete, missing, flagged])
+const addContact = (followup: number, injection: number) => db.query(`insert into public.contact_counts (followup_left, injection_left) values ($1, $2)`, [followup, injection])
+
+/** 운영자가 그 병원 줄을 표마다 하나씩 넣는다(RLS를 건너뛴다) */
+async function seedCounts(hospital: string, updatedAt = '2020-01-01T00:00:00Z') {
+  await operator()
+  await db.query(`insert into public.claim_day_counts (hospital_id, visit_date, visits, need_memo, entered, needs_check, skipped, updated_at) values ($1, '2026-10-28', 20, 7, 2, 1, 0, $2)`, [hospital, updatedAt])
+  await db.query(`insert into public.claim_month_counts (hospital_id, claim_month, incomplete, missing, flagged, updated_at) values ($1, '2026-10-01', 2, 3, 1, $2)`, [hospital, updatedAt])
+  await db.query(`insert into public.contact_counts (hospital_id, followup_left, injection_left, updated_at) values ($1, 4, 3, $2)`, [hospital, updatedAt])
+}
+
+describe('AC-019.1 건수 표: 칸 종류와 권한', SLOW, () => {
+  it('AC-019.1: 칸 종류는 uuid(병원)·date·integer·timestamp with time zone뿐이다. 글자·jsonb 칸이 없다', async () => {
+    const found = await rows(
+      `select table_name, column_name, data_type from information_schema.columns
+       where table_schema = 'public' and table_name = any($1) order by table_name, ordinal_position`,
+      [[...COUNT_TABLES]],
+    )
+    const columns = (table: string) => found.filter((row) => row.table_name === table).map((row) => [row.column_name, row.data_type])
+    const STAMP = 'timestamp with time zone'
+    expect(columns('claim_day_counts')).toEqual([
+      ['hospital_id', 'uuid'],
+      ['visit_date', 'date'],
+      ['visits', 'integer'],
+      ['need_memo', 'integer'],
+      ['entered', 'integer'],
+      ['needs_check', 'integer'],
+      ['skipped', 'integer'],
+      ['updated_at', STAMP],
+    ])
+    expect(columns('claim_month_counts')).toEqual([
+      ['hospital_id', 'uuid'],
+      ['claim_month', 'date'],
+      ['incomplete', 'integer'],
+      ['missing', 'integer'],
+      ['flagged', 'integer'],
+      ['updated_at', STAMP],
+    ])
+    expect(columns('contact_counts')).toEqual([
+      ['hospital_id', 'uuid'],
+      ['followup_left', 'integer'],
+      ['injection_left', 'integer'],
+      ['updated_at', STAMP],
+    ])
+    expect(new Set(found.map((row) => row.data_type))).toEqual(new Set(['uuid', 'date', 'integer', STAMP]))
+  })
+
+  it('AC-019.1: 세 표 모두 RLS가 켜져 있다', async () => {
+    const found = await rows(
+      `select relname, relrowsecurity from pg_class
+       where relnamespace = 'public'::regnamespace and relname = any($1) order by relname`,
+      [[...COUNT_TABLES]],
+    )
+    expect(found).toEqual([...COUNT_TABLES].sort().map((relname) => ({ relname, relrowsecurity: true })))
+  })
+
+  it('AC-019.1: anon에게 준 표·칸 권한이 하나도 없다(기본 권한을 먼저 거뒀다)', async () => {
+    const tables = await rows(
+      `select table_name from information_schema.role_table_grants
+       where grantee = 'anon' and table_schema = 'public' and table_name = any($1)`,
+      [[...COUNT_TABLES]],
+    )
+    expect(tables).toEqual([])
+    const columns = await rows(
+      `select table_name from information_schema.column_privileges
+       where grantee = 'anon' and table_schema = 'public' and table_name = any($1)`,
+      [[...COUNT_TABLES]],
+    )
+    expect(columns).toEqual([])
+  })
+
+  it('AC-019.1: authenticated의 표 전체 권한은 select뿐이다. 지우기가 없다', async () => {
+    const grants = await rows(
+      `select table_name, privilege_type from information_schema.role_table_grants
+       where grantee = 'authenticated' and table_schema = 'public' and table_name = any($1) order by table_name`,
+      [[...COUNT_TABLES]],
+    )
+    expect(grants).toEqual([...COUNT_TABLES].sort().map((table_name) => ({ table_name, privilege_type: 'SELECT' })))
+  })
+
+  it.each(COUNT_TABLES)('AC-019.1: %s의 넣기·고치기 칸에 hospital_id·updated_at이 없다', async (table) => {
+    const found = await rows(
+      `select column_name, privilege_type from information_schema.column_privileges
+       where grantee = 'authenticated' and table_schema = 'public' and table_name = $1 and privilege_type in ('INSERT', 'UPDATE')`,
+      [table],
+    )
+    for (const privilege of ['INSERT', 'UPDATE']) {
+      expect(found.filter((row) => row.privilege_type === privilege).map((row) => row.column_name).sort()).toEqual(WRITABLE[table])
+    }
+  })
+
+  it.each(COUNT_TABLES)('AC-019.1: anon은 %s를 읽지도 쓰지도 못한다', async (table) => {
+    await becomeAnon()
+    await expect(db.query(`select * from public.${table}`)).rejects.toThrow(DENIED)
+    await expect(db.exec(ADD_COUNT[table])).rejects.toThrow(DENIED)
+  })
+
+  it.each(COUNT_TABLES)('AC-019.1: 승인된 병원은 %s에 hospital_id 없이 넣고, 줄은 DB 기본값으로 내 병원에 들어간다', async (table) => {
+    const mine = await addHospital(A, 'approved')
+    await become(A)
+    await db.exec(ADD_COUNT[table])
+    expect(await rows(`select hospital_id from public.${table}`)).toEqual([{ hospital_id: mine }])
+  })
+
+  it.each(COUNT_TABLES)('AC-019.1: %s의 hospital_id·updated_at을 직접 넣거나 바꾸지 못하고 줄을 지우지 못한다', async (table) => {
+    const mine = await addHospital(A, 'approved')
+    await seedCounts(mine)
+    await become(A)
+    await expect(db.exec(`insert into public.${table} (hospital_id) values ('${mine}')`)).rejects.toThrow(DENIED)
+    await expect(db.exec(`insert into public.${table} (updated_at) values (now())`)).rejects.toThrow(DENIED)
+    await expect(db.exec(`update public.${table} set hospital_id = '${mine}'`)).rejects.toThrow(DENIED)
+    await expect(db.exec(`update public.${table} set updated_at = now()`)).rejects.toThrow(DENIED)
+    await expect(db.exec(`delete from public.${table}`)).rejects.toThrow(DENIED)
+    expect(await countAll(table)).toBe(1)
+  })
+
+  it.each(COUNT_TABLES)('AC-019.1: %s에서 남의 병원 줄은 보이지 않고 고쳐지지 않는다', async (table) => {
+    const other = await addHospital(B, 'approved')
+    await addHospital(A, 'approved')
+    await seedCounts(other)
+    await become(A)
+    expect(await rows(`select * from public.${table}`)).toEqual([])
+    const [column] = WRITABLE[table].filter((name) => !['visit_date', 'claim_month'].includes(name))
+    const updated = await db.query(`update public.${table} set ${column} = 0`)
+    expect(updated.affectedRows).toBe(0)
+    await operator()
+    const [row] = await rows(`select ${column} as value from public.${table} where hospital_id = $1`, [other])
+    expect(row.value).toBe({ claim_day_counts: 2, claim_month_counts: 1, contact_counts: 4 }[table]) // seedCounts 값 그대로
+    expect(await countAll(table)).toBe(1)
+  })
+
+  it.each<[string, string, Status | null]>([
+    ['승인 대기', C, 'pending'],
+    ['거절', D, 'rejected'],
+    ['병원 줄 없음', E, null],
+  ])('AC-019.1: %s인 사용자는 건수 줄을 보지도 넣지도 못한다', async (_name, user, status) => {
+    if (status) await addHospital(user, status)
+    const other = await addHospital(B, 'approved')
+    await seedCounts(other)
+    await become(user)
+    for (const table of COUNT_TABLES) {
+      expect(await rows(`select * from public.${table}`)).toEqual([])
+      await expect(db.exec(ADD_COUNT[table])).rejects.toThrow(RLS_REJECTED)
+    }
+  })
+
+  it('AC-019.1·AC-019.4: PostgREST가 보내는 upsert 모양(칸 넣기 + on conflict 고치기)이 내 권한으로 돈다. 다시 올리면 같은 줄이 바뀌고 바뀐 시각이 새로 찍힌다', async () => {
+    const mine = await addHospital(A, 'approved')
+    await seedCounts(mine, '2020-01-01T00:00:00Z')
+    await become(A)
+    await db.exec(`
+      insert into public.claim_day_counts (visit_date, visits, need_memo, entered, needs_check, skipped)
+      values ('2026-10-28', 23, 9, 5, 2, 1), ('2026-10-29', 8, 3, 0, 0, 0)
+      on conflict (hospital_id, visit_date) do update
+      set visit_date = excluded.visit_date, visits = excluded.visits, need_memo = excluded.need_memo, entered = excluded.entered, needs_check = excluded.needs_check, skipped = excluded.skipped`)
+    const found = await rows(`select visit_date::text as day, visits, need_memo, entered, needs_check, skipped, updated_at > '2021-01-01' as fresh from public.claim_day_counts order by visit_date`)
+    expect(found).toEqual([
+      { day: '2026-10-28', visits: 23, need_memo: 9, entered: 5, needs_check: 2, skipped: 1, fresh: true },
+      { day: '2026-10-29', visits: 8, need_memo: 3, entered: 0, needs_check: 0, skipped: 0, fresh: true },
+    ])
+  })
+
+  it('AC-019.1: 남의 병원 날짜와 겹쳐도 upsert는 내 병원 줄만 만든다', async () => {
+    const other = await addHospital(B, 'approved')
+    const mine = await addHospital(A, 'approved')
+    await seedCounts(other)
+    await become(A)
+    await db.exec(`
+      insert into public.claim_day_counts (visit_date, visits, need_memo, entered, needs_check, skipped) values ('2026-10-28', 1, 1, 1, 0, 0)
+      on conflict (hospital_id, visit_date) do update set need_memo = excluded.need_memo, entered = excluded.entered`)
+    await operator()
+    const found = await rows(`select hospital_id, need_memo from public.claim_day_counts order by need_memo`)
+    expect(found).toEqual([
+      { hospital_id: mine, need_memo: 1 },
+      { hospital_id: other, need_memo: 7 },
+    ])
+  })
+
+  it.each(COUNT_TABLES)('AC-019.1: %s의 줄을 고치면 updated_at을 트리거가 새로 찍는다', async (table) => {
+    const mine = await addHospital(A, 'approved')
+    await seedCounts(mine, '2020-01-01T00:00:00Z')
+    await become(A)
+    const column = WRITABLE[table].find((name) => !['visit_date', 'claim_month', 'entered', 'need_memo'].includes(name))
+    await db.exec(`update public.${table} set ${column} = 9`)
+    expect(await rows(`select updated_at > '2021-01-01' as fresh from public.${table}`)).toEqual([{ fresh: true }])
+  })
+})
+
+describe('AC-019.2 건수 표의 제약', SLOW, () => {
+  beforeEach(async () => {
+    await addHospital(A, 'approved')
+    await become(A)
+  })
+
+  it.each<[string, () => Promise<unknown>]>([
+    ['진료 수 음수', () => addDay('2026-10-28', 5, 0, 0, 0, -1)],
+    ['진료 수 100,001', () => addDay('2026-10-28', 5, 0, 0, 0, 100_001)],
+    ['메모 필요 수 음수', () => addDay('2026-10-28', -1, 0)],
+    ['입력 수 음수', () => addDay('2026-10-28', 5, -1)],
+    ['확인 필요 수 음수', () => addDay('2026-10-28', 5, 0, -1)],
+    ['건너뜀 수 음수', () => addDay('2026-10-28', 5, 0, 0, -1)],
+    ['메모 필요 수 100,001', () => addDay('2026-10-28', 100_001, 0)],
+    ['확인 필요 수 100,001', () => addDay('2026-10-28', 5, 0, 100_001)],
+    ['건너뜀 수 100,001', () => addDay('2026-10-28', 5, 0, 0, 100_001)],
+    ['입력 수 > 메모 필요 수', () => addDay('2026-10-28', 5, 6)],
+    ['달 첫날이 아닌 claim_month', () => addMonth('2026-10-02')],
+    ['달 끝날 claim_month', () => addMonth('2026-10-31')],
+    ['미완료 수 음수', () => addMonth('2026-10-01', -1)],
+    ['빠진 것 수 100,001', () => addMonth('2026-10-01', 0, 100_001)],
+    ['확인 표시 수 100,001', () => addMonth('2026-10-01', 0, 0, 100_001)],
+    ['F/U 남은 수 음수', () => addContact(-1, 0)],
+    ['정기 주사 남은 수 100,001', () => addContact(0, 100_001)],
+  ])('AC-019.2: %s는 거부된다', async (_name, add) => {
+    await expect(add()).rejects.toThrow(CHECK)
+  })
+
+  it.each(['많음', '가상환자'])('AC-019.2: 수 칸에 글자를 넣으면 거부된다: %s', async (text) => {
+    await expect(db.query(`insert into public.claim_day_counts (visit_date, visits, need_memo, entered, needs_check, skipped) values ('2026-10-28', 0, $1, 0, 0, 0)`, [text])).rejects.toThrow()
+    await expect(db.query(`insert into public.claim_day_counts (visit_date, visits, need_memo, entered, needs_check, skipped) values ('2026-10-28', $1, 0, 0, 0, 0)`, [text])).rejects.toThrow()
+    expect(await rows('select * from public.claim_day_counts')).toEqual([])
+  })
+
+  it('AC-019.2: 진료 수를 비우면 거부된다(기본값이 없다)', async () => {
+    await expect(db.exec(`insert into public.claim_day_counts (visit_date, need_memo, entered, needs_check, skipped) values ('2026-10-28', 1, 0, 0, 0)`)).rejects.toThrow(/null value/)
+  })
+
+  it('AC-019.2: 날짜 칸에 글자를 넣으면 거부된다', async () => {
+    await expect(addDay('가상환자', 1, 0)).rejects.toThrow()
+    expect(await rows('select * from public.claim_day_counts')).toEqual([])
+  })
+
+  it('AC-019.2: 끝값 0·100,000, 입력 수 = 메모 필요 수, 달 첫날은 들어간다', async () => {
+    await addDay('2026-10-28', 100_000, 100_000, 100_000, 100_000, 100_000)
+    await addDay('2026-10-29', 0, 0, 0, 0, 0)
+    await addMonth('2026-10-01', 100_000, 0, 100_000)
+    await addContact(100_000, 0)
+    expect(await rows('select count(*)::int as n from public.claim_day_counts')).toEqual([{ n: 2 }])
+    expect(await rows('select count(*)::int as n from public.claim_month_counts')).toEqual([{ n: 1 }])
+    expect(await rows('select count(*)::int as n from public.contact_counts')).toEqual([{ n: 1 }])
+  })
+
+  it('AC-019.2: 고칠 때도 제약이 그대로다', async () => {
+    await addDay('2026-10-28', 5, 5)
+    await expect(db.exec(`update public.claim_day_counts set need_memo = 4`)).rejects.toThrow(CHECK)
+    await expect(db.exec(`update public.claim_day_counts set entered = 6`)).rejects.toThrow(CHECK)
+    await expect(db.exec(`update public.claim_day_counts set visits = -1`)).rejects.toThrow(CHECK)
+    await expect(db.exec(`update public.claim_day_counts set visits = 100001`)).rejects.toThrow(CHECK)
+    expect(await rows('select need_memo, entered, visits from public.claim_day_counts')).toEqual([{ need_memo: 5, entered: 5, visits: 0 }])
   })
 })

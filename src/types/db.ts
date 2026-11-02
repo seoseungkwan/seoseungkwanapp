@@ -42,10 +42,29 @@ export type ClaimHospitalSettingsRow = {
 export type ClaimDayCountRow = {
   hospital_id: string
   visit_date: string // YYYY-MM-DD
+  visits: number // 그 줄을 올릴 때 claim.dates가 준 진료 수(AC-019.3)
   need_memo: number
   entered: number
   needs_check: number
   skipped: number
+  updated_at: string
+}
+
+/** 월말 마감 남은 일(design.md 8-2, TASK-22가 쓴다). 글자 칸이 없다 */
+export type ClaimMonthCountRow = {
+  hospital_id: string
+  claim_month: string // 그 달 1일 YYYY-MM-01
+  incomplete: number
+  missing: number
+  flagged: number
+  updated_at: string
+}
+
+/** 연락 남은 건수(design.md 8-2, TASK-26이 쓴다). 병원마다 한 줄, 글자 칸이 없다 */
+export type ContactCountRow = {
+  hospital_id: string
+  followup_left: number
+  injection_left: number
   updated_at: string
 }
 

@@ -1,4 +1,5 @@
 import { addDays, compareYmd, diffDays, isMonth, isYmd, monthOf, monthRange } from '@/lib/analytics/dates'
+import { dayCounts } from '@/lib/precheck/counts'
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
 import { createMemoEngine, unfinished, validatePhrases, type Phrases } from '@/lib/precheck/memo'
@@ -14,7 +15,7 @@ import { loadTables as defaultLoadTables } from './tables'
 
 // 청구 Worker가 하는 일(design.md 6-2) [환자 자료 구역]. 시험은 이 파일을 바로 부른다(입구 precheck.worker.ts는 메시지만 잇는다).
 // 통로 포트: chunk·end·abort → assemble로 모은다. sent → 설정 사본·달 칸 저장·입력 묶음의 답. 화면: loadStart(번호 load로 새 불러오기 시작, 옛 달을 버림) · month(그 불러오기의 id를 점검용 모양으로) · loadPart(claim.memos·store.load의 id를 받아 둠) · memoReloadStart(비트 메모 다시 불러오기 번호 run) · ruleList(설정 화면용 규칙 목록) · check(점검) · excel(엑셀 바이트) · memoView·editMemo·memoApprove·memoSaveRetry·storeBlock·buildInputBatch·inputExcel(메모 칸, TASK-18). 화면이 지킬 약속은 types/precheck.ts.
-// 화면으로 보내는 것은 진료 수·진료 달·오류 번호·규칙 목록·loadPart의 성패와, check·memoView의 보기 모양·입력 결과·엑셀의 바이트뿐이다. 조각 글자·풀린 자료·도우미에 보낼 글자(묶음·저장 글자)는 Worker 밖으로 화면에 내보내지 않는다(design.md 5절, AC-004.11)
+// 화면으로 보내는 것은 진료 수·진료 달·오류 번호·규칙 목록·loadPart의 성패·날짜별 건수(날짜와 정수)와, check·memoView의 보기 모양·입력 결과·엑셀의 바이트뿐이다. 조각 글자·풀린 자료·도우미에 보낼 글자(묶음·저장 글자)는 Worker 밖으로 화면에 내보내지 않는다(design.md 5절, AC-004.11)
 
 const PARTIAL = { ok: false, code: 'E-CLAIM-PARTIAL' } as const
 const GRADE_ORDER: readonly Grade[] = ['확인필요', '알림', '참고']
@@ -326,6 +327,8 @@ export function createPrecheckJobs(deps: {
   const foundByPc = new Set<string>()
   /** 비트 메모를 받은 뒤 입력을 마친 사람(AC-018.25). 성공한 다시 불러오기가 지운다 */
   const afterEntry = new Set<string>()
+  /** 이번 입력 결과가 완료가 아닌 사람: 내원번호 → 결과(날짜별 건수의 재료, AC-019.3). 새 [자료 불러오기]부터는 입력 기록이 대신한다 */
+  const inputOutcomes = new Map<string, string>()
   /**
    * 마지막 답의 unconfirmed(AC-035.4). 날짜를 아는 유일한 자리라 [자료 불러오기]로 지우지 않는다: 띠가 그 날을 불러오라고 한 뒤에도 날짜가 있어야 한다(AC-018.16).
    * keepEdits 없는 loadStart(떠날 때, 사람이나 기관기호가 다를 때)는 지운다: 다른 의원의 사람을 띠에 보이지 않는다
@@ -390,6 +393,7 @@ export function createPrecheckJobs(deps: {
       const shownNow = textOf()
       for (const key of approved.keys()) if (shownNow.get(key) !== shownBefore.get(key)) approved.delete(key)
     }
+    postDayCounts()
     deps.post({ type: 'check', check, load, ok: true, view: view.value, usedCopy: fromServer ? null : settings })
     if (fromServer) saveCopy(settings)
     saveDirtyMonths() // 막힌 동안 남긴 고친 글이 있으면 달 칸이 다시 읽힌 지금 저장한다(AC-018.17)
@@ -536,6 +540,22 @@ export function createPrecheckJobs(deps: {
       }),
       stuck: blocked ? null : stuckView(rows, visitOf, visible),
       bit,
+    }
+  }
+
+  /**
+   * 날짜별 건수를 화면에 보낸다(AC-019.3·AC-019.4). 불러오기(점검)·성공한 비트 메모 다시 불러오기·입력이 끝날 때 그 답 바로 앞에 부른다. 실패한 쪽에서는 부르지 않는다(AC-016.8).
+   * 믿을 수 없는 수는 보내지 않는다: 메모를 만들지 않는 병원, 불러올 때 비트 메모를 받지 못한 때(뒤에 다시 불러와도 그 불러오기의 비교는 모두 조회 못함이다), 달 칸이 막힌 때(완료 표시가 없어 입력 수가 떨어진다).
+   * 진료가 없는 기간이면 빈 줄과 기간을 보낸다: 사라진 날을 화면이 덮을 수 있게. 건수는 곁일이다: 여기서 난 오류로 점검·입력 답이 막히지 않는다
+   */
+  function postDayCounts() {
+    if (!memoContext || latestLoad === null || !memosAtLoad || !bitMemos || storeBlocked) return
+    try {
+      const { rows, views } = memoRows()
+      if (views.memoBlocked) return
+      deps.post({ type: 'dayCounts', load: latestLoad, rows: dayCounts({ rows, finished: finishedKeys(), results: inputOutcomes }), range: memoContext.visible })
+    } catch {
+      // 원래 글은 환자 글자를 담을 수 있어 어디에도 싣지 않는다. 다음 불러오기에 다시 만든다
     }
   }
 
@@ -693,6 +713,12 @@ export function createPrecheckJobs(deps: {
       })
     }
     for (const line of run.lines) lines.push(line) // 화면에서 미리 뺀 사람(AC-018.4)
+    if (end.status !== 'cancelled') {
+      for (const line of lines) {
+        if (line.result === '완료') inputOutcomes.delete(line.key)
+        else inputOutcomes.set(line.key, line.result)
+      }
+    }
 
     if (end.unconfirmed) lastUnconfirmed = end.unconfirmed
     else if (!quiet) lastUnconfirmed = lastUnconfirmed.filter((person) => !resolved.has(person.visitKey))
@@ -764,7 +790,9 @@ export function createPrecheckJobs(deps: {
     const end = assembled.ok ? readInputEnd(assembled.text) : null
     if (!end) return fail('E-CLAIM-PARTIAL')
     inputRun = null
-    deps.post({ type: 'inputDone', run: run.run, ok: true, result: applyInputResults(end, run) })
+    const result = applyInputResults(end, run)
+    postDayCounts()
+    deps.post({ type: 'inputDone', run: run.run, ok: true, result })
   }
 
   /** [엑셀로 저장](AC-018.15): 누를 때만 만든다 */
@@ -856,6 +884,7 @@ export function createPrecheckJobs(deps: {
         held.clear()
         foundByPc.clear()
         afterEntry.clear()
+        inputOutcomes.clear()
         lastInput = null
         savingMonths.clear()
         // 저장하지 못한 고친 메모는 메모리에만 있다. [자료 불러오기]·[멈추기]로 지우면 옛 글이 비트에 들어가고(AC-018.2) "고친 메모는 이 화면에 그대로 있어요"가 거짓이 된다(AC-018.17)
@@ -912,6 +941,7 @@ export function createPrecheckJobs(deps: {
                 if (inBit === undefined || compareMemo(text, inBit) !== '같음') approved.delete(key)
               }
               afterEntry.clear()
+              postDayCounts()
             }
           }
           answer(memos)

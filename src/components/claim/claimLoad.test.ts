@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { CheckSettings, ClaimView, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
-import { claimChannel, runClaimCheck, runClaimExcel, runClaimLoad, runMemoReload, type KeptClaim, type LoadStep } from './claimLoad'
+import { claimChannel, pressClaimLoad, runClaimCheck, runClaimExcel, runClaimLoad, runMemoReload, type KeptClaim, type LoadStep } from './claimLoad'
 
 // 화면이 Worker에 보내는 차례(약속 전문: types/precheck.ts PrecheckFromScreen, design.md 6-2). 가짜 통로·가짜 Worker로 본다
 
@@ -180,6 +180,133 @@ describe('AC-013.10 claim.month 차례', () => {
       await tick()
     }
     await expect(result).resolves.toMatchObject({ status: 'ok' })
+  })
+})
+
+describe('AC-013.2·AC-019.4 [자료 불러오기]: 고른 기간의 claim.dates를 loadStart 앞에 묻는다', () => {
+  const OTHER = { from: '2026-10-29', to: '2026-10-29' }
+  function pressing(worker = fakeWorker()) {
+    const channel = claimChannel(worker)
+    const { stream, calls } = fakeStream(worker)
+    const asks: { args: unknown; answer(days: { date: string; visits: number; memoInBit: number }[]): void; fail(): void }[] = []
+    const call = vi.fn((cmd: string, args: unknown) => {
+      worker.log.push(`call ${cmd}`)
+      return new Promise<{ days: { date: string; visits: number; memoInBit: number }[] }>((resolve, reject) => {
+        asks.push({ args, answer: (days) => resolve({ days }), fail: () => reject(new BridgeError('E-BIT-READ-FAILED')) })
+      })
+    })
+    const held: { load: number; visits: ReadonlyMap<string, number> | null }[] = []
+    const press = (visible = DAY) => pressClaimLoad(channel, stream, call as never, visible, () => {}, { keepEdits: true, hold: (load, visits) => held.push({ load, visits }) })
+    return { worker, channel, stream, calls, asks, call, held, press }
+  }
+  const DAYS = [{ date: DAY.from, visits: 23, memoInBit: 1 }]
+
+  it('AC-013.2: claim.dates가 loadStart보다 먼저이고 고른 기간을 묻는다. 답이 오기 전에는 loadStart도 stream도 없다', async () => {
+    const made = pressing()
+    void made.press()
+    expect(made.asks.map((ask) => ask.args)).toEqual([DAY])
+    expect(made.worker.log).toEqual(['call claim.dates'])
+    made.asks[0].answer(DAYS)
+    await tick()
+    expect(made.worker.log).toEqual(['call claim.dates', 'post loadStart', 'stream claim.month'])
+    expect(posted(made.worker, 'loadStart')).toEqual([{ type: 'loadStart', load: 1, keepEdits: true }])
+  })
+
+  it('AC-019.3: 받은 진료 수는 loadStart로 받은 번호와 함께 둔다', async () => {
+    const made = pressing()
+    void made.press()
+    expect(made.held).toEqual([])
+    made.asks[0].answer(DAYS)
+    await tick()
+    expect(made.held).toEqual([{ load: 1, visits: new Map([[DAY.from, 23]]) }])
+  })
+
+  it('AC-013.2·AC-019.3: 묻지 못해도 불러오기가 이어지고, 진료 수는 모른다(null)로 둔다', async () => {
+    const made = pressing()
+    void made.press()
+    made.asks[0].fail()
+    await tick()
+    expect(made.worker.log).toEqual(['call claim.dates', 'post loadStart', 'stream claim.month'])
+    expect(made.held).toEqual([{ load: 1, visits: null }])
+  })
+
+  it('AC-013.2: 답을 기다리는 사이에 drop([멈추기])하면 그 뒤로 loadStart·stream이 더 없고 진료 수를 두지 않는다', async () => {
+    const made = pressing()
+    const result = made.press()
+    made.channel.drop({ keepEdits: true })
+    const after = [...made.worker.log]
+    made.asks[0].answer(DAYS)
+    await expect(result).resolves.toEqual({ status: 'replaced' })
+    await tick()
+    expect(made.worker.log).toEqual(after)
+    expect(made.calls).toEqual([])
+    expect(made.held).toEqual([])
+    expect(posted(made.worker, 'loadStart')).toHaveLength(1) // drop 자신의 것뿐이다
+  })
+
+  it('AC-013.2: 답을 기다리는 사이에 화면을 떠나면(cancelPress) loadStart를 보내지 않아 맡긴 결과가 남는다', async () => {
+    const made = pressing()
+    const kept = { result: {}, period: DAY, page: 'result', stale: false } as unknown as KeptClaim
+    made.channel.keep(kept)
+    const result = made.press()
+    made.channel.cancelPress()
+    made.asks[0].answer(DAYS)
+    await expect(result).resolves.toEqual({ status: 'replaced' })
+    expect(posted(made.worker, 'loadStart')).toEqual([])
+    expect(made.channel.kept()).toBe(kept)
+  })
+
+  it('AC-013.2: 묻지 못한 답이 와도 떠났으면 loadStart를 보내지 않는다', async () => {
+    const made = pressing()
+    const result = made.press()
+    made.channel.cancelPress()
+    made.asks[0].fail()
+    await expect(result).resolves.toEqual({ status: 'replaced' })
+    expect(posted(made.worker, 'loadStart')).toEqual([])
+    expect(made.held).toEqual([])
+  })
+
+  it.each([
+    ['앞 답이 먼저', [0, 1]],
+    ['뒤 답이 먼저', [1, 0]],
+  ])('AC-013.2: 둘을 겹쳐 누르면 %s 와도 마지막으로 누른 것만 시작한다', async (_name, order) => {
+    const made = pressing()
+    const first = made.press(DAY)
+    const second = made.press(OTHER)
+    expect(made.asks.map((ask) => ask.args)).toEqual([DAY, OTHER])
+    made.asks[order[0]].answer([{ date: order[0] === 0 ? DAY.from : OTHER.from, visits: 1, memoInBit: 0 }])
+    await tick()
+    made.asks[order[1]].answer([{ date: order[1] === 0 ? DAY.from : OTHER.from, visits: 1, memoInBit: 0 }])
+    await tick()
+    await expect(first).resolves.toEqual({ status: 'replaced' })
+    expect(posted(made.worker, 'loadStart')).toHaveLength(1)
+    expect(made.calls.map((call) => call.cmd)).toEqual(['claim.month'])
+    expect(made.held).toEqual([{ load: 1, visits: new Map([[OTHER.from, 1]]) }])
+    void second
+  })
+
+  it('AC-013.2: 앞 불러오기가 시작한 뒤에 또 눌러도 뒤의 답을 기다렸다가 새 번호로 시작한다', async () => {
+    const made = pressing()
+    void made.press(DAY)
+    made.asks[0].answer(DAYS)
+    await tick()
+    void made.press(OTHER)
+    expect(posted(made.worker, 'loadStart')).toHaveLength(1)
+    made.asks[1].answer([{ date: OTHER.from, visits: 2, memoInBit: 0 }])
+    await tick()
+    expect(posted(made.worker, 'loadStart').map((m) => (m as { load: number }).load)).toEqual([1, 2])
+    expect(made.held.at(-1)).toEqual({ load: 2, visits: new Map([[OTHER.from, 2]]) })
+  })
+
+  it('AC-013.10: 답을 받은 뒤 loadStart와 stream(claim.month)은 같은 차례다', async () => {
+    const made = pressing()
+    void made.press()
+    made.asks[0].answer(DAYS)
+    await Promise.resolve()
+    await Promise.resolve()
+    const start = made.worker.log.indexOf('post loadStart')
+    expect(start).toBeGreaterThan(-1)
+    expect(made.worker.log[start + 1]).toBe('stream claim.month')
   })
 })
 

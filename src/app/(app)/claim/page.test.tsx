@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useBridge } from '@/components/claim/useBridge'
@@ -10,9 +10,26 @@ import type { BridgeState } from '@/types/bridge'
 import ClaimPage from './page'
 
 // /claim (REQ-006, ui-90 REQ-413, precheck REQ-013): 연결이 안 된 PC 크롬이면 비트 PC 연결(/claim/setup)이 먼저 나오고(목업 화면 1),
-// 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요"(시안 docs/mockups/ui-90/app/gen.py claim_body),
+// 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요"(시안 docs/mockups/ui-90/app/gen.py claim_body) + '준비 중' 칩 자리에 건수(precheck AC-019.5),
 // 연결됐으면 청구 화면(ClaimScreen, TASK-13), 다른 창에서 작업 중이면 카드(BUSY, 그대로)
-const { replace, openClaimChannel, claimScreen } = vi.hoisted(() => ({ replace: vi.fn(), openClaimChannel: vi.fn(), claimScreen: vi.fn() }))
+const { replace, openClaimChannel, claimScreen, counts } = vi.hoisted(() => ({
+  replace: vi.fn(),
+  openClaimChannel: vi.fn(),
+  claimScreen: vi.fn(),
+  /** 서버 건수 표의 줄. 실제 DB에 붙지 않는다 */
+  counts: { days: [] as unknown[], fail: false },
+}))
+vi.mock('@/lib/supabase/browser', () => ({
+  supabaseBrowser: () => ({
+    from: (table: string) => ({
+      select: () => {
+        const reply = counts.fail ? { data: null, error: { code: '500', message: 'relation secret' }, status: 500 } : { data: table === 'claim_day_counts' ? counts.days : [], error: null, status: 200 }
+        const query = { order: () => query, limit: () => query, then: (ok: (value: unknown) => unknown) => Promise.resolve(reply).then(ok) }
+        return query
+      },
+    }),
+  }),
+}))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, push: vi.fn() }), usePathname: () => '/claim' }))
 vi.mock('@/components/claim/useBridge', () => ({ useBridge: vi.fn() }))
 vi.mock('@/components/claim/claimLoad', () => ({ openClaimChannel }))
@@ -49,6 +66,21 @@ const expectClasses = (el: Element | null | undefined, ...wanted: string[]) =>
 const textOf = (el: Element | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
 const allOf = (root: Element) => [root, ...Array.from(root.querySelectorAll('*'))]
 
+const countRow = (visit_date: string, need_memo: number, entered: number, updated_at: string) => ({ visit_date, visits: 9, need_memo, entered, needs_check: 0, skipped: 0, updated_at })
+const COUNTS = [
+  countRow('2026-11-03', 4, 4, '2026-11-04T07:41:00+00:00'), // 끝난 날. 한국 시각 11월 4일 (수) 16:41
+  countRow('2026-11-02', 6, 5, '2026-11-03T01:05:00+00:00'), // 한국 시각 11월 3일 (화) 10:05
+]
+const EMPTY_NOTICE = '아직 올린 건수가 없어요'
+/** 건수를 다 읽은 뒤의 '메모 입력 현황' 패널. 읽기 전에 본 시험은 틀린 화면에서도 통과한다 */
+const memoPanel = async () => (await screen.findByRole('heading', { level: 2, name: '메모 입력 현황' })).closest('section') as HTMLElement
+/** 목업 화면 11에만 있고 이 자리에는 넣지 않는 것(AC-019.5) */
+function expectNoMockup11Extras(container: Element) {
+  for (const text of ['설치·연결 확인', '설정 열기', '비트 PC가 아닌 곳에서 보는 화면이에요', '환자 정보와 삭감 경고는 비트 PC에서만 볼 수 있어요', '월말 마감 남은 일', '연락 남은 건수', '준비 중']) {
+    expect(container.textContent).not.toContain(text)
+  }
+}
+
 beforeEach(() => {
   replace.mockClear()
   retry.mockClear()
@@ -56,23 +88,27 @@ beforeEach(() => {
   bridge.mockClear()
   openClaimChannel.mockReset()
   openClaimChannel.mockReturnValue(CHANNEL)
+  counts.days = []
+  counts.fail = false
 })
 afterEach(cleanup)
 
 describe('/claim 자리', () => {
-  it('AC-013.8·AC-006.5·AC-413.1: 확장 없는 곳·휴대폰이면 점검 칸 없이 건수 자리와 연결 링크다. 청구 화면을 그리지 않는다', () => {
+  it('AC-013.8·AC-006.5·AC-413.1: 확장 없는 곳·휴대폰이면 점검 칸 없이 건수 자리와 연결 링크다. 청구 화면을 그리지 않는다', async () => {
     withState('no-extension')
     openClaimChannel.mockReturnValue(null)
     render(<ClaimPage />)
+    await memoPanel()
     expect(claimScreen).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: '자료 불러오기' })).toBeNull()
     expect(screen.getByText('다른 PC에서는 건수만 볼 수 있어요')).toBeTruthy()
     expect(screen.getByRole('link', { name: '이 PC를 비트 PC로 연결' }).getAttribute('href')).toBe('/claim/setup')
   })
 
-  it('AC-006.5·AC-413.1: 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요" — 점 목록 둘, [이 PC를 비트 PC로 연결], 건수 줄. 밖에서 보는 건수·상자가 없고 h1은 하나', () => {
+  it('AC-006.5·AC-413.1·AC-019.5: 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요" — 점 목록 둘, [이 PC를 비트 PC로 연결], 건수 줄과 건수. 상자는 건수 패널 하나이고 h1은 하나', async () => {
     withState('no-extension')
     const { container } = render(<ClaimPage />)
+    const panel = await memoPanel()
     const h1s = screen.getAllByRole('heading', { level: 1 })
     expect(h1s).toHaveLength(1)
     expect(textOf(h1s[0])).toBe('이 PC에서는 청구 점검을 열 수 없어요')
@@ -97,17 +133,16 @@ describe('/claim 자리', () => {
     expectClasses(connect, ds.button.primaryLarge, 'max-md:w-full')
     expect(connect.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
 
-    // 위 1px line 아래 "다른 PC에서는 건수만 볼 수 있어요" + neutral 칩 "준비 중"
+    // 위 1px line 아래 "다른 PC에서는 건수만 볼 수 있어요". '준비 중' 칩은 건수가 들어와 빠졌다(AC-019.5)
     const other = screen.getByText('다른 PC에서는 건수만 볼 수 있어요').parentElement as HTMLElement
     expectClasses(other, 'border-t border-line text-small text-muted')
-    const chip = within(other).getByText('준비 중')
-    expectClasses(chip, ds.chip.neutral)
+    expect(within(other).queryByText('준비 중')).toBeNull()
 
-    // 옛 "밖에서 보는 건수"·"설치·연결 확인"·패널 상자가 없다
+    // 건수를 읽은 뒤에도 옛 "밖에서 보는 건수"·"설치·연결 확인"이 없다. 패널 상자가 없다는 글은 건수가 든 이 자리에 쓰지 않는다: 상자는 건수 패널 하나뿐이다(AC-019.5)
     expect(container.textContent).not.toContain('밖에서 보는 건수')
     expect(container.textContent).not.toContain('설치·연결 확인')
     expect(screen.queryByRole('heading', { level: 1, name: '청구' })).toBeNull()
-    expect(allOf(container).filter(isBorderBox)).toEqual([])
+    expect(allOf(container).filter(isBorderBox)).toEqual([panel])
     expect(replace).not.toHaveBeenCalled()
   })
 
@@ -128,7 +163,7 @@ describe('/claim 자리', () => {
     expect(screen.queryByRole('button', { name: /비트에 입력/ })).toBeNull()
   })
 
-  it('AC-006.1·AC-413.3: 다른 창에서 작업 중이면 카드 그대로 — [다시 확인]은 다시 붙고, [건수만 보기]는 h1 "청구" + "건수만 볼 수 있어요" + 준비 중 칩 + [다시 확인](보조)', async () => {
+  it('AC-006.1·AC-413.3·AC-019.5: 다른 창에서 작업 중이면 카드 그대로 — [다시 확인]은 다시 붙고, [건수만 보기]는 h1 "청구" + "건수만 볼 수 있어요" + 건수 + [다시 확인](보조)', async () => {
     withState('busy')
     render(<ClaimPage />)
     const card = screen.getByRole('alert')
@@ -141,11 +176,11 @@ describe('/claim 자리', () => {
 
     await user.click(within(card).getByRole('button', { name: '건수만 보기' }))
     expect(screen.queryByRole('alert')).toBeNull()
+    await memoPanel()
     const h1s = screen.getAllByRole('heading', { level: 1 })
     expect(h1s.map(textOf)).toEqual(['청구'])
     const line = screen.getByText('건수만 볼 수 있어요').parentElement as HTMLElement
-    expectClasses(within(line).getByText('준비 중'), ds.chip.neutral)
-    expect(screen.queryByText('아직 올린 건수가 없어요.')).toBeNull()
+    expect(within(line).queryByText('준비 중')).toBeNull()
     expect(screen.queryByText('밖에서 보는 건수')).toBeNull()
 
     // [다시 확인](보조): 다시 붙기를 부르고 카드로 돌아간다
@@ -199,10 +234,97 @@ describe('/claim 자리', () => {
     withState('connecting')
     render(<ClaimPage />)
     expect(replace).not.toHaveBeenCalled()
-    expect(screen.queryByText('아직 올린 건수가 없어요.')).toBeNull()
+    expect(screen.queryByText(EMPTY_NOTICE)).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: '메모 입력 현황' })).toBeNull()
     expect(screen.queryByText('이 PC에서는 청구 점검을 열 수 없어요')).toBeNull()
     expect(screen.queryByText('청구 점검 화면은 준비 중이에요')).toBeNull()
     expect(screen.getAllByRole('heading', { level: 1 }).map(textOf)).toEqual(['청구'])
+  })
+})
+
+// 건수가 들어가는 자리(AC-019.5). ui-90 화면을 두고 '준비 중' 칩 자리에 마지막으로 바뀐 시각 줄과 '메모 입력 현황' 패널 하나만 넣는다. 모두 건수를 읽은 뒤에 본다
+describe('AC-019.5 /claim의 건수 자리', () => {
+  it('AC-019.5: 확장 없는 곳·휴대폰: 읽은 뒤 남은 날과 그 줄의 바뀐 시각이 보이고, 위쪽 화면은 그대로다', async () => {
+    counts.days = COUNTS
+    withState('no-extension')
+    const { container } = render(<ClaimPage />)
+    const panel = await memoPanel()
+
+    const table = within(panel).getByRole('table', { name: '메모 입력 현황' })
+    const lines = within(table).getAllByRole('row').slice(1)
+    expect(lines).toHaveLength(1)
+    expect(textOf(lines[0])).toContain('11/2 (월)')
+    expect(textOf(lines[0])).toContain('11월 3일 (화) 10:05에 바뀜')
+    expect(textOf(table)).not.toContain('11/3 (화)')
+    expect(textOf(container)).toContain('마지막으로 바뀐 시각 11월 4일 (수) 16:41 · 비트 PC에서 올라옴')
+
+    expect(screen.getAllByRole('heading', { level: 1 }).map(textOf)).toEqual(['이 PC에서는 청구 점검을 열 수 없어요'])
+    expect(screen.getByRole('link', { name: '이 PC를 비트 PC로 연결' }).getAttribute('href')).toBe('/claim/setup')
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(2)
+    expectNoMockup11Extras(container)
+  })
+
+  it('AC-019.5: 확장 없는 곳: 건수는 "다른 PC에서는…" 줄 뒤에 오고, 패널은 위쪽 화면과 같은 600px 자리를 다 쓴다(자기 폭 제한이 없다)', async () => {
+    counts.days = COUNTS
+    withState('no-extension')
+    render(<ClaimPage />)
+    const panel = await memoPanel()
+    const line = screen.getByText('다른 PC에서는 건수만 볼 수 있어요').parentElement as HTMLElement
+    expect(line.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const wrapper = screen.getByRole('heading', { level: 1 }).parentElement as HTMLElement
+    expectClasses(wrapper, 'max-w-150')
+    expect(wrapper.contains(panel)).toBe(true)
+    expect(classesOf(panel).filter((name) => /^(max-w|w|col-span)-/.test(name))).toEqual([])
+  })
+
+  it('AC-019.5: [건수만 보기]: 읽은 뒤 건수가 보이고 h1은 "청구" 하나, [다시 확인]이 그대로다', async () => {
+    counts.days = COUNTS
+    withState('busy')
+    const { container } = render(<ClaimPage />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '건수만 보기' }))
+    const panel = await memoPanel()
+
+    expect(textOf(within(panel).getByRole('table', { name: '메모 입력 현황' }))).toContain('11/2 (월)')
+    expect(textOf(container)).toContain('마지막으로 바뀐 시각 11월 4일 (수) 16:41')
+    expect(screen.getAllByRole('heading', { level: 1 }).map(textOf)).toEqual(['청구'])
+    expect(screen.getByText('건수만 볼 수 있어요')).toBeTruthy()
+    const again = screen.getByRole('button', { name: '다시 확인' })
+    expectClasses(again, ds.button.secondary)
+    expect(panel.compareDocumentPosition(again) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expectNoMockup11Extras(container)
+  })
+
+  it.each([
+    ['확장 없는 곳', 'no-extension' as const],
+    ['[건수만 보기]', 'busy' as const],
+  ])('AC-019.5: %s: 올린 건수가 없으면 패널 안에 빈 안내 한 줄이고, 읽은 뒤에도 설치·연결 확인이 없다', async (_name, state) => {
+    withState(state)
+    const { container } = render(<ClaimPage />)
+    if (state === 'busy') await userEvent.setup().click(screen.getByRole('button', { name: '건수만 보기' }))
+    const panel = await memoPanel()
+    expect(within(panel).getByText(EMPTY_NOTICE)).toBeTruthy()
+    expect(screen.getAllByText(EMPTY_NOTICE)).toHaveLength(1)
+    expect(within(panel).queryByRole('table')).toBeNull()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expectNoMockup11Extras(container)
+  })
+
+  it('AC-019.5: 건수를 읽지 못해도 위쪽 화면과 [다시 확인]은 그대로다. 오류 번호만 보이고 원래 오류 글이 없다', async () => {
+    counts.fail = true
+    withState('no-extension')
+    const { unmount } = render(<ClaimPage />)
+    const noExtension = await screen.findByRole('alert')
+    expect(noExtension.textContent).toContain('오류 번호 E-COUNTS-FAILED')
+    expect(noExtension.textContent).not.toContain('relation')
+    expect(screen.getByRole('link', { name: '이 PC를 비트 PC로 연결' })).toBeTruthy()
+    unmount()
+
+    withState('busy')
+    render(<ClaimPage />)
+    await userEvent.setup().click(screen.getByRole('button', { name: '건수만 보기' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-COUNTS-FAILED'))
+    expect(screen.getByRole('button', { name: '다시 확인' })).toBeTruthy()
   })
 })
 

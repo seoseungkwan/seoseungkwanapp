@@ -22,12 +22,12 @@ export type DateRow = {
   needMemo: number | null
   entered: number | null
   left: number | null
-  /** 다 끝난 날 */
+  /** 다 끝난 날: 남은 메모가 없고 올린 진료 수가 claim.dates와 같다(오후에 온 환자, AC-013.1) */
   done: boolean
   updatedAt: string | null
 }
 
-/** 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터(AC-013.1) */
+/** 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 진료 수가 다름, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터(AC-013.1) */
 export function buildDateList(days: readonly DayCount[], counts: readonly ClaimDayCount[]): DateRow[] {
   const countOf = new Map(counts.map((count) => [count.visit_date, count]))
   const rows = days
@@ -42,7 +42,7 @@ export function buildDateList(days: readonly DayCount[], counts: readonly ClaimD
         needMemo: count?.need_memo ?? null,
         entered: count?.entered ?? null,
         left,
-        done: left === 0,
+        done: left === 0 && count?.visits === day.visits,
         updatedAt: count?.updated_at ?? null,
       }
     })

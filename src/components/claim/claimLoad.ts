@@ -1,5 +1,5 @@
 import { BridgeError } from '@/lib/bridge/protocol'
-import type { ChromeRuntimeLike, PatientCommand, ArgsOf, StreamResult } from '@/types/bridge'
+import type { ChromeRuntimeLike, DayCount as BitDay, PatientCommand, ArgsOf, StreamResult } from '@/types/bridge'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { CheckSettings, ClaimView, InputResultView, InputSelection, InputWhat, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
@@ -53,6 +53,11 @@ export type KeptMemo = { bit: BitReadState | null; result: InputResultView | nul
 
 export type ClaimChannel = {
   worker: ClaimWorker
+  /** [자료 불러오기]를 누른 번호(AC-013.2). 불러오기 앞에 claim.dates 답을 기다리는 동안 다시 누르거나 멈추거나 떠나면 번호가 바뀌어 그 답을 버린다 */
+  nextPress(): number
+  lastPress(): number
+  /** 답을 기다리는 불러오기를 버린다(화면을 떠날 때). loadStart를 보내지 않으므로 맡긴 결과가 남는다 */
+  cancelPress(): void
   /** 새 불러오기: 새 번호로 loadStart를 보내고 그 번호를 돌려준다. Worker는 전에 불러온 달을 버린다. keepEdits는 아직 저장하지 못한 고친 메모를 남긴다(AC-018.2·AC-018.17) */
   startLoad(options?: { keepEdits?: boolean }): number
   lastLoad(): number | null
@@ -92,6 +97,7 @@ export function claimChannel(worker: ClaimWorker): ClaimChannel {
   if (known) return known
   let load = 0
   let check = 0
+  let press = 0
   let latestLoad: number | null = null
   let latestCheck: number | null = null
   let keptClaim: KeptClaim | null = null
@@ -133,7 +139,16 @@ export function claimChannel(worker: ClaimWorker): ClaimChannel {
 
   const channel: ClaimChannel = {
     worker,
+    nextPress() {
+      press += 1
+      return press
+    },
+    lastPress: () => press,
+    cancelPress() {
+      press += 1
+    },
     startLoad(options) {
+      press += 1 // drop([멈추기])도 여기를 지난다
       load += 1
       latestLoad = load
       keptClaim = null
@@ -245,8 +260,9 @@ const NO_COPY: readonly string[] = [...NO_HELPER_YET, 'E-BIT-HOSPITAL-MISMATCH']
  * store.load는 달과 설정 사본을 따로 부른다(AC-013.9): 도우미는 파일 하나만 막혀도 호출 전체를 같은 번호로 거절해 어느 파일인지 알 수 없다.
  * 끝난 stream은 번호가 옛 번호여도 물어 Worker가 모아 둔 글자를 찾아 가게 한다. 답을 보기 전에 번호부터 본다: 옛 불러오기면 어떤 답이든 버린다
  */
-export async function runClaimLoad(channel: ClaimChannel, stream: ClaimStream, visible: DateRange, onStep: (step: LoadStep) => void = () => {}, options?: { keepEdits?: boolean }): Promise<LoadResult> {
+export async function runClaimLoad(channel: ClaimChannel, stream: ClaimStream, visible: DateRange, onStep: (step: LoadStep) => void = () => {}, options?: { keepEdits?: boolean; onStart?(load: number): void }): Promise<LoadResult> {
   const load = channel.startLoad(options)
+  options?.onStart?.(load)
   const replaced = () => channel.lastLoad() !== load
   const REPLACED: LoadResult = { status: 'replaced' }
 
@@ -289,6 +305,34 @@ export async function runClaimLoad(channel: ClaimChannel, stream: ClaimStream, v
     if (!answer.ok) return { status: 'failed', code: answer.code }
   }
   return stuckMonth ? { status: 'ok', load, stuckMonth: true } : { status: 'ok', load }
+}
+
+/** 불러오기 앞에 물은 날짜별 진료 수. 묻지 못했으면 null(AC-019.3) */
+export type HeldVisits = ReadonlyMap<string, number> | null
+type DatesCall = (cmd: 'claim.dates', args: DateRange) => Promise<{ days: readonly BitDay[] }>
+
+/**
+ * [자료 불러오기]를 눌렀을 때(AC-013.2): 고른 기간의 claim.dates를 loadStart 앞에 묻고, 그 답을 받은 번호와 함께 둔 뒤 불러온다. 실패해도 불러오기를 막지 않는다.
+ * 답을 기다리는 사이에 다시 눌렀거나 [멈추기]를 눌렀거나 화면을 떠났으면 그 답을 버리고 loadStart를 보내지 않는다: 그대로 이으면 멈춘 불러오기가 되살아나고 맡긴 결과가 지워진다
+ */
+export async function pressClaimLoad(
+  channel: ClaimChannel,
+  stream: ClaimStream,
+  call: DatesCall,
+  visible: DateRange,
+  onStep: (step: LoadStep) => void,
+  options: { keepEdits?: boolean; hold(load: number, visits: HeldVisits): void },
+): Promise<LoadResult> {
+  const press = channel.nextPress()
+  let visits: HeldVisits = null
+  try {
+    const { days } = await call('claim.dates', visible)
+    visits = new Map(days.map((day) => [day.date, day.visits]))
+  } catch {
+    // 묻지 못한 불러오기다. 진료 수는 0이고 줄이 없는 날을 건드리지 않는다(AC-019.3·AC-019.4)
+  }
+  if (channel.lastPress() !== press) return { status: 'replaced' }
+  return runClaimLoad(channel, stream, visible, onStep, { keepEdits: options.keepEdits, onStart: (load) => options.hold(load, visits) })
 }
 
 export type MemoReloadResult = { status: 'ok' } | { status: 'failed'; code: string } | { status: 'replaced' }

@@ -9,23 +9,25 @@ import { ds } from '@/components/ui/classes'
 import type { BridgeState } from '@/types/bridge'
 import { openClaimChannel } from '../claimLoad'
 import { ClaimScreen } from '../ClaimScreen'
+import { OutsideCounts } from '../OutsideCounts'
 import { useBridge } from '../useBridge'
 import { BusyCard } from './SetupAlert'
 
 // /claim 입구 (precheck REQ-006·REQ-013, ui-90 REQ-413, design.md '청구 (TASK-10)', 시안 docs/mockups/ui-90/app/gen.py claim_body·BUSY).
-// 다른 PC에서 보는 건수는 precheck TASK-19가 채운다.
+// 다른 PC에서 보는 건수(precheck AC-019.5)는 OutsideCounts가 아래 두 자리에 들어간다. ui-90 화면이 목업 화면 11보다 앞서므로 h1·안내·단추는 그대로다.
 // - 확장이 있는 PC 크롬인데 연결이 안 됐으면 비트 PC 연결(/claim/setup)이 먼저 나온다(목업 화면 1 "연결이 안 된 채로 청구 탭을 열면")
 // - 확장 없는 곳·휴대폰이면 "이 PC에서는 청구 점검을 열 수 없어요"(ClaimOffline, AC-013.8). 이때는 Worker를 만들지 않는다
 // - 연결됐으면 청구 화면(ClaimScreen). 통로와 번호 칸은 Worker 하나를 함께 쓴다
-// - 다른 창에서 작업 중이면 카드 그대로. [건수만 보기]를 누르면 그 자리에서 "건수만 볼 수 있어요"(design.md '시안과 다른 점' 7)
+// - 다른 창에서 작업 중이면 카드 그대로. [건수만 보기]를 누르면 그 자리에서 건수와 "건수만 볼 수 있어요"(design.md '시안과 다른 점' 7)
 
 const TO_SETUP: ReadonlySet<BridgeState> = new Set(['no-helper', 'update-helper', 'update-extension', 'disconnected'])
 
 const titleClass = 'text-title font-semibold text-ink'
-// "준비 중" 칩 옆 글 줄: small muted, 사이 8 · 줄 사이 6(시안 .cl-other gap 6px 8px)
+// 건수 위 글 줄: small muted, 사이 8 · 줄 사이 6(시안 .cl-other gap 6px 8px)
 const chipLine = 'flex flex-wrap items-center gap-x-2 gap-y-1.5 text-small text-muted'
 
-// 확장 없는 곳·휴대폰(시안 claim_body): h1 → 점 목록 둘 → [이 PC를 비트 PC로 연결] → 위 1px line 아래 건수 줄.
+// 확장 없는 곳·휴대폰(시안 claim_body): h1 → 점 목록 둘 → [이 PC를 비트 PC로 연결] → 위 1px line 아래 건수 줄 → 건수(AC-019.5).
+// 건수는 600px 자리 안에 둔다: 네 칸 표가 그 폭에 들어가 윗부분과 폭을 맞춘다.
 // 시안 단계 밖 값은 가까운 단계로(design.md '시안과 다른 점' 2): 22/30 제목 → heading-m, 15px 글자 → body, 점 사이 10 → 8 (준비 중 화면과 같다)
 function ClaimOffline() {
   return (
@@ -51,8 +53,10 @@ function ClaimOffline() {
       {/* 위 32 + 1px line + 16 */}
       <p className={`${chipLine} mt-8 border-t border-line pt-4`}>
         <span>다른 PC에서는 건수만 볼 수 있어요</span>
-        <span className={ds.chip.neutral}>준비 중</span>
       </p>
+      <div className="mt-3">
+        <OutsideCounts />
+      </div>
     </div>
   )
 }
@@ -77,12 +81,12 @@ export function ClaimEntry() {
       <h1 className={titleClass}>청구</h1>
       {state === 'ready' && (channel ? <ClaimScreen channel={channel} call={call} stream={stream} onProgress={onProgress} /> : <ErrorCard code="E-RULES-LOAD-FAILED" />)}
       {state === 'busy' && countsOnly && (
-        // [건수만 보기] 뒤: 건수는 아직 준비 중(precheck TASK-19). [다시 확인]은 다시 붙고 카드로 돌아간다
+        // [건수만 보기] 뒤: 건수(AC-019.5). [다시 확인]은 다시 붙고 카드로 돌아간다
         <>
           <p className={chipLine}>
             <span>건수만 볼 수 있어요</span>
-            <span className={ds.chip.neutral}>준비 중</span>
           </p>
+          <OutsideCounts />
           <div>
             <button
               type="button"

@@ -49,6 +49,7 @@ const ALL_CODES = [
   'E-WORKLOG-SAVE-FAILED',
   'E-WORKLOG-LOAD-FAILED',
   'E-WORKLOG-NOTE-PRIVATE',
+  'E-COUNTS-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -415,5 +416,15 @@ describe('AC-018.21·AC-018.18 입력 쪽 오류 글', () => {
 
   it('AC-018.18: E-MEMO-NO-SETTINGS의 fix는 갈 곳을 말한다(처음 질문 화면은 아직 없다)', () => {
     expect(errorInfo('E-MEMO-NO-SETTINGS').fix).toBe('메모를 만들려면 문구 설정이 먼저 있어야 해요. 처음 질문 화면은 아직 준비 중이에요. 그 전에 메모가 필요하면 개발자에게 문의해 주세요. 점검 결과는 그대로 볼 수 있어요.')
+  })
+})
+
+describe('AC-019.4 건수 오류 문구', () => {
+  it('AC-019.4: E-COUNTS-FAILED는 무엇이·어떻게 고치나가 있고 환자 메모에 영향이 없다고 알린다. 다시 시도하는 때를 말한다', () => {
+    expect(isErrorCode('E-COUNTS-FAILED')).toBe(true)
+    const info = errorInfo('E-COUNTS-FAILED')
+    expect(info.what).toContain('건수')
+    expect(info.fix).toContain('다시')
+    expect(info.fix).toContain('영향이 없어요')
   })
 })

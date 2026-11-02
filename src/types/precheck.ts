@@ -1,6 +1,7 @@
 // 청구 사전점검 모양(spec precheck). 원본은 양지바른 사전점검(seoseungkwan/shared@2a1069b)
 // 점검 표 네 개(src/lib/precheck/data, REQ-007): 원본에서 옮긴 그대로의 모양. 칸 이름도 원본 그대로(snake_case)
 // 계산 모양(ClaimMonth·Visit·Finding 등, design.md 6-3)과 도우미 claim.month JSON 모양은 TASK-9가 아래에 더했다
+import type { ClaimDayCountRow } from '@/types/db'
 import type { ErrorCode } from '@/types/errors'
 import type { DateRange } from '@/types/dates'
 
@@ -300,6 +301,13 @@ export type InputResultView = { status: 'finished' | 'cancelled' | 'stopped'; co
 
 // ── Worker ↔ 화면 메시지(design.md 6-2). check의 보기 모양(ClaimView)과 메모 칸 보기 모양·입력 결과·엑셀 바이트 밖에는 환자 글자가 없다(숫자·달·오류 번호·규칙 목록) ──────────
 
+/** Worker가 만드는 날짜 한 줄(AC-019.3). 날짜와 정수뿐이다. types/bridge의 DayCount(도우미가 주는 날짜 목록)와 다르다 */
+export type DayCount = Pick<ClaimDayCountRow, 'visit_date' | 'need_memo' | 'entered' | 'needs_check' | 'skipped'>
+/** 서버에 올리는 날짜 한 줄: Worker 줄 + 화면이 붙인 진료 수(claim.dates, AC-019.3) */
+export type UploadDayCount = DayCount & Pick<ClaimDayCountRow, 'visits'>
+/** Worker → 화면. load는 마지막 불러오기 번호, range는 고른 기간이고 진료가 없으면 rows가 비어 있다. 바뀐 날만 고르는 것과 진료 수를 붙이는 것은 화면이 한다(useCountsUpload) */
+export type DayCountsMessage = { type: 'dayCounts'; load: number; rows: DayCount[]; range: DateRange }
+
 /** 설정 화면 '점검 규칙' 칸에 보일 규칙 하나(TASK-12가 쓴다) */
 export type RuleSummary = Pick<RuleDef, 'id' | 'title' | 'domain' | 'grade' | 'basis' | 'enabled_default'>
 
@@ -370,6 +378,8 @@ export type PrecheckToPort = { type: 'send'; ticket: number; cmd: 'store.save' |
 
 /** Worker → 화면. month·loadPart의 load·run은 물을 때 보낸 번호 그대로다. loadPart 답에는 환자 글자가 없다. check의 usedCopy는 서버 대신 쓴 도우미 설정 사본이고 서버 설정을 썼으면 null이다 */
 export type PrecheckToScreen =
+  // 날짜별 건수: 건수가 바뀌었을 수 있다. 불러오기(점검)·성공한 비트 메모 다시 불러오기·입력이 끝날 때 그 답 바로 앞에 간다(AC-019.3·AC-019.4). 물음의 답이 아니라 번호가 없다
+  | DayCountsMessage
   // 조각이 다 오지 않음(abort·빠짐·SHA-256 다름). 그 id의 조각을 버렸다는 알림일 뿐, 성패 판단에 쓰지 않는다(PrecheckFromScreen 약속 6·7·8)
   | { type: 'partial'; id: string; code: 'E-CLAIM-PARTIAL' }
   | { type: 'month'; id: string; load: number; ok: true; visits: number; months: string[] }

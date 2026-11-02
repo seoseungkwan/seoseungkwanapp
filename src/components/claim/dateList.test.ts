@@ -7,8 +7,10 @@ import { buildDateList, checkPeriod, dayLabel, defaultPeriod, listRange, monthsI
 // 날짜 목록(REQ-013, design.md 6-4)과 기간 계산. 숫자와 날짜뿐이다(환자 글자 없음)
 
 const day = (date: string, visits: number, memoInBit = 0): DayCount => ({ date, visits, memoInBit })
-const count = (visit_date: string, need_memo: number, entered: number, updated_at = `${visit_date}T02:00:00+00:00`): ClaimDayCount => ({
+/** 서버 건수 줄. visits는 그 줄을 올릴 때의 claim.dates 진료 수다: 끝난 날은 claim.dates와 같아야 한다(AC-013.1) */
+const count = (visit_date: string, need_memo: number, entered: number, visits = 0, updated_at = `${visit_date}T02:00:00+00:00`): ClaimDayCount => ({
   visit_date,
+  visits,
   need_memo,
   entered,
   needs_check: 0,
@@ -24,7 +26,7 @@ describe('AC-013.1 buildDateList', () => {
   it('AC-013.1: 덜 끝난 날을 오래된 날부터, 다 끝난 날을 최근 날부터 놓는다', () => {
     const rows = buildDateList(
       [day('2026-10-24', 20), day('2026-10-26', 55), day('2026-10-27', 50), day('2026-10-28', 51), day('2026-10-29', 49), day('2026-11-03', 47)],
-      [count('2026-10-24', 2, 2), count('2026-10-26', 9, 9), count('2026-10-27', 8, 8), count('2026-10-28', 7, 2), count('2026-11-03', 4, 0)],
+      [count('2026-10-24', 2, 2, 20), count('2026-10-26', 9, 9, 55), count('2026-10-27', 8, 8, 50), count('2026-10-28', 7, 2, 51), count('2026-11-03', 4, 0, 47)],
     )
     expect(rows.map((r) => [r.date, r.done])).toEqual([
       ['2026-10-28', false],
@@ -37,7 +39,7 @@ describe('AC-013.1 buildDateList', () => {
   })
 
   it('AC-013.1: 날마다 진료 수·남은 수·마지막으로 바뀐 시각이 있다', () => {
-    const [row] = buildDateList([day('2026-10-28', 51, 3)], [count('2026-10-28', 7, 2, '2026-10-28T07:41:00+00:00')])
+    const [row] = buildDateList([day('2026-10-28', 51, 3)], [count('2026-10-28', 7, 2, 51, '2026-10-28T07:41:00+00:00')])
     expect(row).toEqual({ date: '2026-10-28', visits: 51, memoInBit: 3, needMemo: 7, entered: 2, left: 5, done: false, updatedAt: '2026-10-28T07:41:00+00:00' })
   })
 
@@ -47,7 +49,7 @@ describe('AC-013.1 buildDateList', () => {
   })
 
   it('AC-013.1: 메모 필요가 0인 날은 다 끝난 날이다', () => {
-    const [row] = buildDateList([day('2026-10-29', 3)], [count('2026-10-29', 0, 0)])
+    const [row] = buildDateList([day('2026-10-29', 3)], [count('2026-10-29', 0, 0, 3)])
     expect(row).toMatchObject({ done: true, left: 0 })
   })
 
@@ -145,7 +147,7 @@ describe('AC-013.13 monthsIn: store.load는 고른 기간의 달만 묻는다', 
 describe('기간 고르기 단추(목업 화면 2)', () => {
   const rows = buildDateList(
     [day('2026-10-27', 50), day('2026-10-28', 51), day('2026-10-29', 49), day('2026-11-03', 47)],
-    [count('2026-10-27', 8, 8), count('2026-10-28', 7, 2)],
+    [count('2026-10-27', 8, 8, 50), count('2026-10-28', 7, 2, 51)],
   )
 
   it('[입력 안 된 날짜 모두]: 덜 끝난 첫 날부터 끝 날까지', () => {
@@ -231,6 +233,69 @@ describe('기간 요약·글자(목업 화면 2)', () => {
     expect(statusOf(partial)).toEqual({ label: '진행중 2/7', tone: 'accent' })
     expect(statusOf(notLoaded)).toEqual({ label: '입력 전', tone: 'neutral' })
     expect(statusOf(zero)).toEqual({ label: '입력 전', tone: 'neutral' })
-    expect(statusOf(buildDateList([day('2026-10-30', 5)], [count('2026-10-30', 6, 6)])[0])).toEqual({ label: '완료', tone: 'positive' })
+    expect(statusOf(buildDateList([day('2026-10-30', 5)], [count('2026-10-30', 6, 6, 5)])[0])).toEqual({ label: '완료', tone: 'positive' })
+  })
+})
+
+describe('AC-013.1 끝난 날은 진료 수까지 claim.dates와 같아야 한다', () => {
+  it('AC-013.1: 3/3이고 올린 진료 수 3과 claim.dates 3이 같으면 끝난 날이다', () => {
+    expect(buildDateList([day('2026-10-28', 3)], [count('2026-10-28', 3, 3, 3)])[0]).toMatchObject({ done: true, left: 0 })
+  })
+
+  it('AC-013.1: 3/3이어도 claim.dates가 23이면(오후에 온 환자) 덜 끝난 날이고 [입력 안 된 날짜 모두]에 든다', () => {
+    const rows = buildDateList([day('2026-10-27', 5), day('2026-10-28', 23)], [count('2026-10-27', 2, 2, 5), count('2026-10-28', 3, 3, 3)])
+    expect(rows.map((row) => [row.date, row.done])).toEqual([
+      ['2026-10-28', false],
+      ['2026-10-27', true],
+    ])
+    expect(rows[0].left).toBe(0)
+    expect(unfinishedPeriod(rows)).toEqual({ from: '2026-10-28', to: '2026-10-28' })
+    expect(statusOf(rows[0]).label).not.toBe('완료')
+  })
+
+  it('AC-013.1: 0/0·진료 5인데 claim.dates가 6이면 덜 끝난 날이다', () => {
+    expect(buildDateList([day('2026-10-28', 6)], [count('2026-10-28', 0, 0, 5)])[0].done).toBe(false)
+  })
+
+  it('AC-013.1: 올릴 때 진료 수를 묻지 못했으면(0) 덜 끝난 날이다', () => {
+    expect(buildDateList([day('2026-10-28', 6)], [count('2026-10-28', 3, 3, 0)])[0].done).toBe(false)
+  })
+
+  it('AC-013.1: 진료 수가 줄어도 다르면 덜 끝난 날이다(취소). 수가 그대로인 변화는 잡지 못한다(알려진 한계)', () => {
+    expect(buildDateList([day('2026-10-28', 4)], [count('2026-10-28', 3, 3, 5)])[0].done).toBe(false)
+    expect(buildDateList([day('2026-10-28', 5)], [count('2026-10-28', 3, 3, 5)])[0].done).toBe(true)
+  })
+})
+
+describe('AC-013.2 [입력 안 된 날짜 모두]가 진짜 건수를 따른다', () => {
+  const DATES = ['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24']
+  const list = (counts: ClaimDayCount[]) =>
+    buildDateList(
+      DATES.map((date) => day(date, 10)),
+      counts,
+    )
+
+  it('AC-013.2: 앞쪽 끝난 날을 건너뛰어 덜 끝난 첫 날부터다. 건수가 없으면(비교) 맨 앞날부터다', () => {
+    expect(unfinishedPeriod(list([]))).toEqual({ from: '2026-10-20', to: '2026-10-24' })
+    expect(unfinishedPeriod(list([count('2026-10-20', 3, 3, 10), count('2026-10-21', 0, 0, 10), count('2026-10-22', 5, 2, 10), count('2026-10-23', 4, 4, 10)]))).toEqual({ from: '2026-10-22', to: '2026-10-24' })
+  })
+
+  it('AC-013.2: 끝쪽 끝난 날은 기간 끝에서도 빠진다', () => {
+    expect(unfinishedPeriod(list([count('2026-10-20', 3, 1, 10), count('2026-10-21', 1, 1, 10), count('2026-10-22', 1, 0, 10), count('2026-10-23', 4, 4, 10), count('2026-10-24', 4, 4, 10)]))).toEqual({ from: '2026-10-20', to: '2026-10-22' })
+  })
+
+  it('AC-013.2: 모두 끝나면 null이고 처음 기간은 오늘 하루다', () => {
+    const rows = list(DATES.map((date) => count(date, 2, 2, 10)))
+    expect(unfinishedPeriod(rows)).toBeNull()
+    expect(defaultPeriod(rows, '2026-11-02')).toEqual({ from: '2026-11-02', to: '2026-11-02' })
+  })
+
+  it('AC-013.2: 35일로 자를 때도 끝난 날 뒤의 덜 끝난 첫 날부터 센다', () => {
+    const dates = Array.from({ length: 60 }, (_, i) => addDays('2026-09-01', i))
+    const rows = buildDateList(
+      dates.map((date) => day(date, 1)),
+      dates.slice(0, 10).map((date) => count(date, 1, 1, 1)),
+    )
+    expect(unfinishedPeriod(rows)).toEqual({ from: '2026-09-11', to: '2026-10-15' })
   })
 })

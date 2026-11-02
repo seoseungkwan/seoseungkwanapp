@@ -16,6 +16,8 @@ export type ErrorCode =
   | 'E-SETTINGS-FAILED'
   // 병원 문구 설정이 없거나 틀려 메모를 만들지 않음(TASK-14)
   | 'E-MEMO-NO-SETTINGS'
+  // 입력 건수를 서버에 올리거나 읽지 못함(TASK-19)
+  | 'E-COUNTS-FAILED'
   // 비트 입력이 멈춘 번호(도우미 끝 JSON의 code, AC-018.21): 입력 멈춤 · 저장 안 한 처방 창 · 비트 화면 칸이 달라짐
   | 'E-INPUT-STOPPED' | 'E-BIT-UNSAVED-RX' | 'E-BIT-UI-CHANGED'
   // AI 리포트(spec ai-report design.md '오류 문구')
