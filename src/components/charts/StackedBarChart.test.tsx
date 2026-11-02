@@ -546,3 +546,80 @@ describe('AC-421.2: StackedBarChart thinLabels — 768px 미만은 날짜 글자
     expect(await sha256(chart({ compact: true }).html)).toBe(BEFORE_REQ_314.sm)
   })
 })
+
+// 비교 막대 (stats REQ-513 AC-513.2, design.md TASK-13, 시안 docs/mockups/stats/gen.py의 .pv). 지금 시험은 고치지 않고 여기에 더한다
+describe('AC-513.2: comparison — 쌓은 막대 왼쪽의 가는 비교 기간 막대', () => {
+  const THREE = BUCKETS.slice(0, 3) // 합계 636 · 656 · 523
+  const withComparison = (values: (number | null | undefined)[]) => THREE.map((bucket, i) => ({ ...bucket, comparison: values[i] }))
+  const faintBars = (root: Element) => Array.from(figureOf(root).querySelectorAll('.bg-faint'))
+  const cellOf = (root: Element, i: number) => {
+    const cells = figureOf(root).querySelector('.absolute.inset-0.flex')?.children
+    expect(cells).toBeTruthy()
+    return cells![i]!
+  }
+
+  it('AC-513.2: 숫자를 주면 칸마다 가는 bg-faint 막대가 쌓은 막대 왼쪽에 보이고 높이가 눈금 대비 %다', () => {
+    const { root } = chart({ buckets: withComparison([400, 500, 300]) })
+    const bars = faintBars(root)
+    expect(bars).toHaveLength(3)
+    // 눈금 최대는 지금처럼 합계 656으로 정해져 800이다
+    expect((bars[0] as HTMLElement).style.height).toBe(`${pct(400, 800)}%`)
+    expect((bars[2] as HTMLElement).style.height).toBe(`${pct(300, 800)}%`)
+    const cell = cellOf(root, 0)
+    expect(cell.firstElementChild).toBe(bars[0])
+    expect(cell.children).toHaveLength(2)
+  })
+
+  it('AC-513.2: 눈금은 합계와 숫자인 comparison 가운데 가장 큰 값으로 정해진다', () => {
+    const { root } = chart({ buckets: withComparison([900, null, 100]) }) // 900 → 간격 250, 최대 1,000
+    expect(leafByText(figureOf(root), '1,000')).toHaveLength(1)
+    expect((faintBars(root)[0] as HTMLElement).style.height).toBe('90%')
+    const stack = cellOf(root, 0).lastElementChild as HTMLElement
+    expect(stack.style.height).toBe(`${pct(636, 1000)}%`)
+  })
+
+  it('AC-513.2: null과 값 없는 칸은 비교 막대를 그리지 않고 눈금에도 넣지 않는다', () => {
+    const { root } = chart({ buckets: withComparison([400, null, undefined]) })
+    expect(faintBars(root)).toHaveLength(1)
+    expect(cellOf(root, 1).querySelector('.bg-faint')).toBeNull()
+    expect(cellOf(root, 2).querySelector('.bg-faint')).toBeNull()
+    expect(leafByText(figureOf(root), '800')).toHaveLength(1)
+  })
+
+  it('AC-513.2: 숫자 0도 값이다(비교 막대 높이 0%), 눈금은 그대로다', () => {
+    const { root } = chart({ buckets: withComparison([0, null, null]) })
+    expect(faintBars(root)).toHaveLength(1)
+    expect((faintBars(root)[0] as HTMLElement).style.height).toBe('0%')
+  })
+
+  it('AC-513.2: 숫자가 있는 칸이 있으면 화면 읽기 표에 "비교 기간" 칸이 하나 붙고 null은 "–"다', () => {
+    const { root } = chart({ buckets: withComparison([1200, null, 300]) })
+    const table = root.querySelector('table')!
+    expect(Array.from(table.querySelectorAll('thead th')).map(textOf)).toEqual(['기간', '신환', '재진', '합계', '상태', '비교 기간'])
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    expect(textOf(rows[0]!.lastElementChild)).toBe('1,200')
+    expect(textOf(rows[1]!.lastElementChild)).toBe('–')
+    expect(textOf(rows[2]!.lastElementChild)).toBe('300')
+  })
+
+  it('AC-513.2: 주지 않으면 지금과 결과가 같다 — 모두 null이어도 그림·표가 한 글자도 다르지 않다', () => {
+    const plain = chart({ buckets: THREE }).html
+    expect(chart({ buckets: withComparison([null, null, null]) }).html).toBe(plain)
+    expect(chart({ buckets: withComparison([undefined, undefined, undefined]) }).html).toBe(plain)
+    expect(plain).not.toContain('bg-faint')
+    expect(plain).not.toContain('비교 기간')
+  })
+
+  it('AC-513.2: 비교 막대가 있어도 빗금 칸과 작은 그림이 그대로 그려진다(움직임 없음)', () => {
+    const buckets = withComparison([100, 200, 300]).map((bucket, i) => (i === 0 ? { ...bucket, state: 'partial' as const } : bucket))
+    const { root, html } = chart({ buckets, compact: true, dense: true })
+    expect(faintBars(root)).toHaveLength(3)
+    const hatchedCell = cellOf(root, 0)
+    expect(hatchedCell.firstElementChild).toBe(faintBars(root)[0])
+    const hatched = hatchedCell.lastElementChild
+    expectClasses(hatched, 'border', 'border-accent')
+    expect(hatched!.querySelectorAll('svg path')).toHaveLength(1)
+    expect(cellOf(root, 1).querySelector('svg')).toBeNull()
+    expect(html).not.toMatch(/animate-|transition/)
+  })
+})

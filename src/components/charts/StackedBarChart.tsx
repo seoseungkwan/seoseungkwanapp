@@ -9,7 +9,9 @@ import { niceScale } from './scale'
 // 서버에서 그대로 그린다(훅·움직임 없음). 색은 토큰 클래스로만 준다
 
 export type BarSeries = { name: string; tone: 'accent' | 'chart-3' } // 첫 계열이 맨 위·범례 첫째
-export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string }
+// comparison: 칸마다 줄 수 있는 비교 기간 값(stats REQ-513 AC-513.2). 숫자면 쌓은 막대 왼쪽에 가는 faint 막대를 그리고 눈금에 넣는다. null·없음은 막대가 없다.
+// 숫자인 칸이 하나도 없으면 그림·표가 지금과 한 글자도 다르지 않다. 하나라도 있으면 화면 읽기 표에 "비교 기간" 칸 하나가 붙는다(null은 "–")
+export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string; comparison?: number | null }
 
 // dense: 칸이 많은 그림용. 막대 위 합계·상태 글자를 그리지 않는다(화면 읽기 표는 그대로, tab-frame REQ-314). 아래 날짜 글자는 부르는 쪽이 label로 고른다(빈 label = 빈칸)
 // thinLabels: 768px 미만에서 날짜 글자를 하나 걸러 보인다(0부터 홀수 번째 칸 글자만 max-md:invisible, 자리는 그대로. ui-90 AC-421.2).
@@ -48,7 +50,9 @@ const at = (v: number, max: number) => `${percentOf(v, max)}%`
 export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false, thinLabels = false }: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
-  const scale = niceScale(Math.max(0, ...totals))
+  const comparisons = buckets.flatMap((b) => (typeof b.comparison === 'number' ? [b.comparison] : []))
+  const compared = comparisons.length > 0
+  const scale = niceScale(Math.max(0, ...totals, ...comparisons))
   // compact는 눈금 가운데 짝수 번째(0·400·800)만
   const ticks = compact ? scale.ticks.filter((_, i) => i % 2 === 0) : scale.ticks
   const lastComplete = buckets.findLastIndex((b) => b.state === 'complete')
@@ -79,7 +83,8 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
             ))}
             <div className="absolute inset-0 flex">
               {buckets.map((bucket, i) => (
-                <div key={bucket.key} className="flex h-full min-w-0 flex-1 items-end justify-center">
+                <div key={bucket.key} className={`flex h-full min-w-0 flex-1 items-end justify-center${compared ? ' gap-0.5' : ''}`}>
+                  {typeof bucket.comparison === 'number' && <div className="w-1/6 max-w-2.5 bg-faint" style={{ height: at(bucket.comparison, scale.max) }} />}
                   <Bar
                     bucket={bucket}
                     series={series}
@@ -118,6 +123,7 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
             ))}
             <th scope="col">합계</th>
             <th scope="col">상태</th>
+            {compared && <th scope="col">비교 기간</th>}
           </tr>
         </thead>
         <tbody>
@@ -129,6 +135,7 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
               ))}
               <td>{formatCount(totals[i]!)}</td>
               <td>{STATE_TEXT[bucket.state]}</td>
+              {compared && <td>{typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
             </tr>
           ))}
         </tbody>

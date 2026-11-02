@@ -387,6 +387,103 @@ public class StatsRowsTests
         Assert.Equal(new[] { "MM042" }, result.Codes.Select(code => code.Code).ToArray());
     }
 
+    private static readonly string Code40 = new string('C', 40);
+    private static readonly string Code41 = new string('C', 41);
+
+    [Fact(DisplayName = "AC-503.1 처방코드가 빈 글자·NULL·공백뿐·41자인 진료 줄은 답의 rows에 없고 40자 코드의 줄은 있다")]
+    public void SkipsRowsWithUnusableCode()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.VisitRowsSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(1), "20260901", "", "20260115" },
+            new object?[] { StatsFake.Chart(1), "20260901", null, "20260115" },
+            new object?[] { StatsFake.Chart(1), "20260901", "   ", "20260115" },
+            new object?[] { StatsFake.Chart(1), "20260901", "\t　", "20260115" },    // 탭·전각 공백뿐
+            new object?[] { StatsFake.Chart(1), "20260901", Code41, "20260115" },
+            new object?[] { StatsFake.Chart(1), "20260901", Code41 + "  ", "20260115" },
+            new object?[] { StatsFake.Chart(2), "20260902", Code40, "20260902" },
+            new object?[] { StatsFake.Chart(2), "20260902", Code40 + "  ", "20260902" }, // 앞뒤 공백을 없애면 40자
+            new object?[] { StatsFake.Chart(2), "20260902", "MM042", "20260902" },
+        });
+        var root = Json.Parse(Assemble(Handle(rig, September)));
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(2), "20260902", Code40, "20260902" },
+            new[] { StatsFake.Chart(2), "20260902", Code40, "20260902" },
+            new[] { StatsFake.Chart(2), "20260902", "MM042", "20260902" },
+        }, Table2(root.GetProperty("rows")));
+    }
+
+    [Fact(DisplayName = "AC-503.1 41자 코드가 처방 목록에 있어도 답의 codes에 없다(40자 코드는 있다)")]
+    public void SkippedCodeIsNotInCodes()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.VisitRowsSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(1), "20260901", Code41, "20260115" },
+            new object?[] { StatsFake.Chart(2), "20260902", Code40, "20260902" },
+            new object?[] { StatsFake.Chart(2), "20260902", "MM042", "20260902" },
+        });
+        rig.Session.Answer(StatsSql.CodeNamesSql, _ => new[]
+        {
+            new object?[] { Code41, "가짜 긴 처방", "", "20200101", "99991231", "1", "", false },
+            new object?[] { Code40, "가짜 40자 처방", "", "20200101", "99991231", "1", "", false },
+            new object?[] { "MM042", "가짜 처방 가", "EA", "20200101", "99991231", "1", "", true },
+        });
+        var root = Json.Parse(Assemble(Handle(rig, September)));
+
+        Assert.Equal(new[]
+        {
+            new[] { Code40, "가짜 40자 처방" },
+            new[] { "MM042", "가짜 처방 가" },
+        }, Table2(root.GetProperty("codes")));
+    }
+
+    [Fact(DisplayName = "AC-503.1 건너뛴 진료 줄의 환자·날은 patientDays에 그대로 있고 summary·days는 그대로다")]
+    public void SkippedRowsLeaveVisitNumbersAlone()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.VisitRowsSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(1), "20260901", "MM042", "20260115" },
+            new object?[] { StatsFake.Chart(2), "20260902", null, "20260902" },    // 이 환자·날의 처방 줄은 모두 건너뛴다
+            new object?[] { StatsFake.Chart(2), "20260902", Code41, "20260902" },
+        });
+        rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115" },
+            new object?[] { StatsFake.Chart(2), "20260902", 2L, "20260902" },
+        });
+        rig.Session.Answer(StatsSql.VisitSummarySql, _ => new[] { new object?[] { 3L, 2L, 1L, 0L, 0L, 0L } });
+        rig.Session.Answer(StatsSql.VisitDaysSql, _ => new[]
+        {
+            new object?[] { "20260901", 1L, 1, 0 },
+            new object?[] { "20260902", 2L, 1, 1 },
+        });
+        var root = Json.Parse(Assemble(Handle(rig, September)));
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(1), "20260901", "1", "20260115" },
+            new[] { StatsFake.Chart(2), "20260902", "2", "20260902" },
+        }, Table2(root.GetProperty("patientDays")));
+        var summary = root.GetProperty("summary");
+        Assert.Equal(new long[] { 3, 2, 1, 0, 0, 0 }, Json.Keys(summary).Select(key => summary.GetProperty(key).GetInt64()).ToArray());
+        Assert.Equal(new[]
+        {
+            new[] { "20260901", "1", "1", "0" },
+            new[] { "20260902", "2", "1", "1" },
+        }, Table2(root.GetProperty("days")));
+
+        // 처방 줄만 빠진다
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(1), "20260901", "MM042", "20260115" },
+        }, Table2(root.GetProperty("rows")));
+    }
+
     [Fact(DisplayName = "AC-503.1 등록이 없으면 비트를 열지 않고 E-BIT-NOT-REGISTERED, 다르면 E-BIT-HOSPITAL-MISMATCH(통계 SQL을 돌리지 않음)")]
     public void RegistrationGate()
     {
