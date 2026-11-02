@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "bit-dashboard",
-  "approved_at": "2026-11-01T21:27:17Z",
+  "approved_at": "2026-11-02T09:26:00Z",
   "approved_via": "user-prompt",
-  "session_id": "29f5f2d1-4083-41a2-9d6d-b31c7f58fa04",
-  "spec_sha256": "3378b7d50f3dc7fe7b3936b2ce0c87d76015da0544fe74735bf7710a1b6dc1ab",
+  "session_id": "b32dcf32-1bc4-44ce-970c-b3327e854ec8",
+  "spec_sha256": "815ed11b01e5b78a70d86ecfba7f7f709a55939d55dbd9ca701d9abbdaa2cf4a",
   "scope": [
     "helper/Directory.Build.props",
     "helper/tests/build.test.ts",
@@ -15,6 +15,8 @@
     "src/app/globals.css",
     "src/app/globals.test.ts",
     "src/app/theme.test.ts",
+    "src/components/charts/StackedBarChart.test.tsx",
+    "src/components/charts/StackedBarChart.tsx",
     "src/components/claim/setup/ReturnWhenReady.tsx",
     "src/components/claim/setup/SetupAlert.tsx",
     "src/components/claim/setup/SetupScreen.test.tsx",

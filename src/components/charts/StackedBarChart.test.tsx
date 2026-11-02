@@ -365,6 +365,14 @@ describe('AC-205.4: StackedBarChart note·compact', () => {
 })
 
 describe('AC-205.4: StackedBarChart 화면 읽기 표(sr-only)', () => {
+  it('AC-601.18: 표를 sr-only 칸이 감싼다 — 표의 sr-only만으로는 1px 제한이 안 먹어 줄 수만큼 길어지고 쪽 아래에 빈 곳이 생긴다', () => {
+    const { root } = chart()
+    const box = tableOf(root).parentElement!
+    expect(box.tagName).toBe('DIV')
+    expect(classesOf(box)).toEqual(['sr-only'])
+    expect(box.parentElement).toBe(root.firstElementChild) // 부품 맨 바깥 바로 아래, 그림과 나란히
+  })
+
   it('AC-205.4: caption "<제목> (<단위>)", 머리 "기간 · 계열 이름들 · 합계 · 상태"', () => {
     const table = tableOf(chart().root)
     expectClasses(table, 'sr-only')
@@ -439,6 +447,8 @@ describe('AC-205.4: StackedBarChart 합계가 모두 0인 차트', () => {
 // 옵션을 주지 않으면 마크업이 REQ-314 전과 한 글자도 같다
 
 const sha256 = async (text: string) => (await import('node:crypto')).createHash('sha256').update(text).digest('hex')
+// AC-601.18이 표를 감싼 칸 하나만 더했다. 그 칸을 되돌리면 아래 고정값과 한 글자도 같아야 한다(다른 곳이 같이 바뀌면 잡는다)
+const withoutTableBox = (html: string) => html.replace('<div class="sr-only"><table class="sr-only">', '<table class="sr-only">').replace('</table></div>', '</table>')
 // REQ-314 전 마크업의 sha256(BUCKETS 기본 · compact)
 const BEFORE_REQ_314 = {
   md: 'd6d72732841dc07a6bad0bd93d754c501380b1f689e7f70060abf7e323fe87df',
@@ -505,8 +515,8 @@ describe('AC-314.2: StackedBarChart dense — 막대 위 합계·상태 글자 �
       expect(chart({ compact, dense: false }).html, `compact=${compact}`).toBe(chart({ compact }).html)
       for (const bar of bars(figureOf(chart({ compact }).root))) expect(aboveBar(bar)).toHaveLength(1)
     }
-    expect(await sha256(chart().html)).toBe(BEFORE_REQ_314.md)
-    expect(await sha256(chart({ compact: true }).html)).toBe(BEFORE_REQ_314.sm)
+    expect(await sha256(withoutTableBox(chart().html))).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(withoutTableBox(chart({ compact: true }).html))).toBe(BEFORE_REQ_314.sm)
   })
 })
 
@@ -542,8 +552,8 @@ describe('AC-421.2: StackedBarChart thinLabels — 768px 미만은 날짜 글자
       expect(chart({ compact, thinLabels: false }).html, `compact=${compact}`).toBe(chart({ compact }).html)
       expect(chart({ compact }).html).not.toContain('invisible')
     }
-    expect(await sha256(chart().html)).toBe(BEFORE_REQ_314.md)
-    expect(await sha256(chart({ compact: true }).html)).toBe(BEFORE_REQ_314.sm)
+    expect(await sha256(withoutTableBox(chart().html))).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(withoutTableBox(chart({ compact: true }).html))).toBe(BEFORE_REQ_314.sm)
   })
 })
 

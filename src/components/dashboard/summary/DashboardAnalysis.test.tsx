@@ -350,11 +350,11 @@ describe('기간별 흐름 — 머리 줄과 기간 단추', () => {
     const range7 = periodRange(TODAY, 7)
     await choose('최근 7일')
     expect(rangeText()).toBe('10월 24일 – 10월 30일')
-    const trend = chart('환자 수 추이').querySelector('table')!.parentElement!
+    const trend = chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
     expect(trend.outerHTML).toBe(
       markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={trendBuckets(FULL_DAYS, range7, 7)!} />),
     )
-    const week = chart('요일별 환자 수').querySelector('table')!.parentElement!
+    const week = chart('요일별 환자 수').querySelector('table')!.parentElement!.parentElement!
     expect(week.outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(FULL_DAYS, range7)!} />))
     expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={topRx(FULL_DAYS, range7)!} />))
     expect(within(chart('신환 재방문율')).getByText('50.0%')).toBeTruthy()
@@ -558,7 +558,7 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
 
   it('AC-311.5: 환자 수 추이 = StackedBarChart(신환 accent · 재진 chart-3 · "명", 30일은 dense) — 기간 안 자료 있는 날마다 한 칸', () => {
     draw(data(FULL_DAYS))
-    const root = chart('환자 수 추이').querySelector('table')!.parentElement!
+    const root = chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
     const buckets = trendBuckets(FULL_DAYS, MONTH, 30)!
     expect(buckets.map((b) => b.key)).toEqual(['2026-10-05', '2026-10-12', '2026-10-24', '2026-10-30'])
     expect(root.outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
@@ -571,7 +571,7 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
     draw(data(FULL_DAYS))
     await choose('최근 90일')
     const quarter = periodRange(TODAY, 90)
-    expect(chart('환자 수 추이').querySelector('table')!.parentElement!.outerHTML).toBe(
+    expect(chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!.outerHTML).toBe(
       markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={trendBuckets(FULL_DAYS, quarter, 90)!} dense />),
     )
     expect(trendBuckets(FULL_DAYS, quarter, 90)!.map((b) => b.key)).toContain('2026-09-15')
@@ -606,7 +606,7 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
 
   it('AC-311.5: 요일별 = StackedBarChart 한 계열(accent "환자 수", "명"), 처방 상위 = RankedBars("건")', () => {
     draw(data(FULL_DAYS))
-    const week = chart('요일별 환자 수').querySelector('table')!.parentElement!
+    const week = chart('요일별 환자 수').querySelector('table')!.parentElement!.parentElement!
     expect(week.outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(FULL_DAYS, MONTH)!} />))
     const rank = chart('처방 상위').querySelector('ol')!
     expect(rank.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={topRx(FULL_DAYS, MONTH)!} />))
@@ -712,7 +712,7 @@ describe('AC-311.7: 휴대폰에서 환자 수 추이가 쪽을 옆으로 밀지
   ] as const)('AC-311.7: 최근 %i일 — 그림을 감싼 칸이 날짜 글자를 제 칸 가운데로 넘치게 하고 화면 읽기 표를 왼쪽으로 넘긴다(줄바꿈 없음). 선택자는 날짜 글자 칸과 그 표만 잡는다', async (period, last, tick) => {
     draw(data(endingOn(last)))
     if (period !== 30) await choose(`최근 ${period}일`)
-    const wrapper = chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
+    const wrapper = chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!.parentElement!
     expect(wrapper.parentElement).toBe(chart('환자 수 추이'))
     hasAll(wrapper, 'mt-3 relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0')
     for (const name of ['[&_table]:whitespace-normal', '[&_table]:break-all']) expect(classesOf(wrapper)).not.toContain(name)
