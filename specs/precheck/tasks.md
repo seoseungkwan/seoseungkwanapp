@@ -263,13 +263,14 @@
 
 ## TASK-19: 입력 현황 건수 · 밖에서 보기
 - Step: Phase 3 · Step 5 · `claim-counts`
-- AC: AC-019.1~AC-019.6
+- AC: AC-019.1~AC-019.6. 바뀐 AC-013.1(`visits` 견주기, `claim.dates` 다시 묻기)과 AC-013.2(불러오기 앞에 묻기, 기다리는 사이의 멈춤)도 이 작업이 만든다(TASK-13은 먼저 끝났다)
 - REQ: REQ-019
-- Files: supabase/migrations/20261030000100_precheck_counts.sql, supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.ts, src/lib/precheck/counts.test.ts, src/types/db.ts, src/types/precheck.ts, src/components/claim/OutsideCounts.tsx, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.ts, src/components/claim/useCountsUpload.test.ts, src/components/claim/ClaimScreen.tsx, src/components/claim/dateList.test.ts, src/components/claim/setup/ClaimEntry.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/workers/precheck.worker.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Files: supabase/migrations/20261030000100_precheck_counts.sql, supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.ts, src/lib/precheck/counts.test.ts, src/types/db.ts, src/types/precheck.ts, src/components/claim/OutsideCounts.tsx, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.ts, src/components/claim/useCountsUpload.test.ts, src/components/claim/ClaimScreen.tsx, src/components/claim/ClaimScreen.test.tsx, src/components/claim/claimLoad.ts, src/components/claim/claimLoad.test.ts, src/components/claim/dateList.ts, src/components/claim/dateList.test.ts, src/components/claim/setup/ClaimEntry.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/workers/precheck.worker.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
 - Tests: supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.test.ts, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.test.ts, src/components/claim/dateList.test.ts, src/app/(app)/claim/page.test.tsx, src/workers/precheck/jobs.test.ts, src/lib/errors.test.ts
 - TDD: required
 - 화면 자리는 AC-019.5가 정한다: ui-90 화면을 두고 '준비 중' 칩 자리에 건수를 넣는다(목업 화면 11의 제목·전체 배치를 쓰지 않는다). '메모 입력 현황' 패널의 표 모양은 목업 화면 11을 따르되 끝난 날은 뺀다. 월말 마감·연락 칸은 그리지 않는다(TASK-22·TASK-26이 더한다)
 - 사용자 할 일(Phase 3 의원 PC 시험 전): 이 마이그레이션을 SQL 편집기에 붙여 넣는다
+- 의원 PC 시험(AC-013.1·AC-019.3): 며칠을 불러와 다 넣은 뒤 날짜 목록에서 그 날이 '완료'로 바뀌는지, 뒤에 환자를 더 받으면 다시 덜 끝난 날이 되는지 본다. 진료 완료 뒤에 증상을 적는 일이 잦은지 사용자에게 묻는다. 잦으면 그 내원이 끝난 날에 묻혀 메모를 놓치므로(AC-019.3의 알려진 한계) 명세 변경을 올린다
 
 ## TASK-20: 심평원 청구 파일 읽기 (도우미)
 - Step: Phase 4 · Step 0 · `sam-read`

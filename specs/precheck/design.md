@@ -249,7 +249,7 @@ type Finding = { visitKey: string; ruleId: string; grade: '확인필요' | '알�
 
 ### 6-4. 날짜 목록 (TASK-13)
 - 재료: 도우미 `claim.dates`(최근 60일, 날짜별 외래 진료 수·비트 메모 수) + 서버 `claim_day_counts`(불러와 점검한 날의 메모 필요 수·입력 수)
-- 진료 0건인 날은 뺀다. 순서: ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터
+- 진료 0건인 날은 뺀다. 순서: ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날, 또는 서버 줄의 진료 수가 `claim.dates`와 다른 날. AC-013.1)을 오래된 날부터 ② 다 끝난 날을 최근 날부터
 - 기간은 달을 넘겨 고를 수 있다(예: 10/30~11/2). 한 번에 35일까지다(12개월 이력까지 원본 한도 400일 안, AC-008.1). 월말 마감은 달마다 따로 한다
 - 고른 기간이 짧아도 `claim.month`는 한 달을 읽는다. 고른 기간만 보인다(19-9, AC-013.13)
 
@@ -305,6 +305,7 @@ create table public.message_templates (
 create table public.claim_day_counts (
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
   visit_date date not null,
+  visits int not null check (visits between 0 and 100000),
   need_memo int not null check (need_memo between 0 and 100000),
   entered int not null check (entered between 0 and need_memo),
   needs_check int not null check (needs_check between 0 and 100000),
