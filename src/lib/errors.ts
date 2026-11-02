@@ -75,8 +75,8 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     fix: '이 PC의 확장이 예전 버전이라 청구 화면을 쓸 수 없어요. 아래 단추로 새 확장을 받아 바꾼 뒤 [다시 확인]을 누르세요.',
   },
   'E-BRIDGE-BUSY': {
-    what: '청구 화면이 다른 창에서 열려 있어요',
-    fix: '같은 환자를 두 번 넣지 않도록 청구 화면은 한 창에서만 열 수 있어요. 열려 있는 다른 창이나 탭으로 가서 계속하세요.',
+    what: '비트 연결을 다른 창에서 쓰고 있어요',
+    fix: '비트 연결은 한 창에서만 쓸 수 있어요. 청구나 매출을 연 다른 창을 닫고 [다시 확인]을 눌러 주세요.',
   },
   'E-BRIDGE-DISCONNECTED': {
     what: '도우미와 연결이 끊겼어요',
@@ -126,6 +126,20 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   'E-STORE-BROKEN': {
     what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
     fix: '[처음 등록]을 눌러 새로 시작해 주세요. 깨진 파일은 지우지 않고 남겨 둬요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요.',
+  },
+  // 매출 탭 저장(spec revenue design.md 8절)
+  'E-REVENUE-SAVE-FAILED': {
+    what: '매출 숫자를 저장하지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+  },
+  // 치료 묶음 저장·읽기(spec revenue design.md 8-2절)
+  'E-REVENUE-GROUP-SAVE-FAILED': {
+    what: '치료 묶음을 저장하지 못했어요',
+    fix: '인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요',
+  },
+  'E-REVENUE-GROUP-LOAD-FAILED': {
+    what: '치료 묶음을 불러오지 못했어요',
+    fix: '[다시 불러오기]를 눌러 주세요',
   },
   // AI 리포트(spec ai-report design.md '오류 문구'). 서버 경로·ai:try는 번호만 주고 문구는 여기서 꺼낸다
   'E-AI-BUSY': {

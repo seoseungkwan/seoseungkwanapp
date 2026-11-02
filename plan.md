@@ -50,6 +50,7 @@
 - 폴더 연결이 안 되면 파일을 끌어다 놓아도 된다 **(Claude 판단)**
 - 매출 파일에도 환자 이름이 있을 수 있다 → 통계와 같이 '환자 자료 구역'(Worker)에서 읽고, 집계만 저장한다
 - 칸·기준일(진료일·수납일)·환불 줄 처리는 파일을 보고 정한다(12절)
+- (2026-11-01 바뀜: 매출은 비트 PC 도우미의 `revenue.days`로 읽어 `sales_days`·`sales_codes`에 집계만 저장한다. 폴더 연결·파일 끌어다 놓기는 하지 않는다 — specs/revenue)
 
 ### 2-5. 재고
 - 입고·사용·실사를 직접 입력한다 **(사용자)**. 최소 수량 아래로 떨어지면 대시보드에 발주 알림을 띄운다
@@ -114,7 +115,7 @@
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
 | `months` · `days` | 통계 월 숫자(파일럿 그대로) · 일 숫자 |
 | `rx_groups` | 그룹 이름·코드 목록·즐겨찾기 |
-| `sales_days` | 일 매출 집계(파일을 보고 칸을 정함) |
+| `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), 상태 `draft`·`final`. `final`은 RLS로 수정 불가 |

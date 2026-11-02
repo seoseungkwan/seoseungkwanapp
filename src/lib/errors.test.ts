@@ -34,6 +34,9 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
+  'E-REVENUE-SAVE-FAILED',
+  'E-REVENUE-GROUP-SAVE-FAILED',
+  'E-REVENUE-GROUP-LOAD-FAILED',
   'E-AI-BUSY',
   'E-AI-LIMIT',
   'E-AI-FAILED',
@@ -238,7 +241,7 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(errorInfo('E-BIT-HOSPITAL-MISMATCH').fix).toContain('[다시 등록]')
   })
 
-  it('AC-006.1·AC-006.6: 상태 안내는 목업 승인본 문구다 — 확장 없음·도우미 없음·도우미 업데이트·확장 업데이트·다른 창', () => {
+  it('AC-006.1·AC-006.6·AC-009.6: 상태 안내는 승인받은 문구다 — 확장 없음·도우미 없음·도우미 업데이트·확장 업데이트·다른 창', () => {
     expect(errorInfo('E-EXT-MISSING')).toEqual({
       what: '크롬 확장 프로그램이 없어요',
       fix: '아래 1번에서 확장을 설치한 뒤 [다시 확인]을 누르세요.',
@@ -253,8 +256,8 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     })
     expect(errorInfo('E-EXT-OLD').what).toBe('확장을 업데이트하세요')
     expect(errorInfo('E-BRIDGE-BUSY')).toEqual({
-      what: '청구 화면이 다른 창에서 열려 있어요',
-      fix: '같은 환자를 두 번 넣지 않도록 청구 화면은 한 창에서만 열 수 있어요. 열려 있는 다른 창이나 탭으로 가서 계속하세요.',
+      what: '비트 연결을 다른 창에서 쓰고 있어요',
+      fix: '비트 연결은 한 창에서만 쓸 수 있어요. 청구나 매출을 연 다른 창을 닫고 [다시 확인]을 눌러 주세요.',
     })
   })
 
@@ -267,6 +270,33 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+// spec revenue REQ-007
+describe('AC-007.5 매출 저장 실패 문구', () => {
+  it('AC-007.5: E-REVENUE-SAVE-FAILED는 lib/errors.ts에 무엇이·어떻게 고치나가 있다(design.md 8절 문구 그대로)', () => {
+    expect(ERRORS['E-REVENUE-SAVE-FAILED']).toEqual({
+      what: '매출 숫자를 저장하지 못했어요',
+      fix: '인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+    })
+  })
+})
+
+// spec revenue REQ-013
+describe('AC-013.3 치료 묶음 저장·읽기 실패 문구', () => {
+  it('AC-013.3: E-REVENUE-GROUP-SAVE-FAILED는 무엇이·어떻게 고치나가 명세 문구 그대로다', () => {
+    expect(ERRORS['E-REVENUE-GROUP-SAVE-FAILED']).toEqual({
+      what: '치료 묶음을 저장하지 못했어요',
+      fix: '인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요',
+    })
+  })
+
+  it('AC-013.3: E-REVENUE-GROUP-LOAD-FAILED는 무엇이·어떻게 고치나가 명세 문구 그대로다', () => {
+    expect(ERRORS['E-REVENUE-GROUP-LOAD-FAILED']).toEqual({
+      what: '치료 묶음을 불러오지 못했어요',
+      fix: '[다시 불러오기]를 눌러 주세요',
+    })
   })
 })
 

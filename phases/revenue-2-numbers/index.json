@@ -1,0 +1,36 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "revenue-2-numbers",
+  "steps": [
+    {
+      "step": 0,
+      "name": "revenue-tables",
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000400_revenue.sql + supabase/revenue.rls.test.ts: 표 sales_days(17칸, 보내는 칸 15, patients_to_date 없음)·sales_codes·rx_groups, save_rx_groups(jsonb). 실제 Supabase 붙여 넣기 사용자 OK 필요. design 6절 SQL과 다른 점: save_rx_groups가 codes 배열이 아니면 거부(빠지면 처방 목록이 조용히 지워지던 빈틈), rx_group_codes_ok는 authenticated만 실행, touch_updated_at 기본 권한은 C1 글자를 건드리지 않고 따로 회수, 쓰지 않는 n 뺌. 합칠 때: 사전점검 갈래도 touch_updated_at을 만들어 나중에 붙인 쪽 정의가 남는다(트리거는 어느 쪽이든 돈다). TDD 기록: 실패 근거는 15:21:30Z RED뿐(앞의 RED 둘은 근거 아님), 구현 뒤에 옛 migration으로 돌려 확인했다"
+    },
+    {
+      "step": 1,
+      "name": "revenue-summary",
+      "status": "completed",
+      "summary": "src/lib/revenue/summary.ts: splitDay·sumPeriod·periodsFor·firstMonth·compare·monthSeries·perVisit. 건당 진료비 = 짝이 맞는 날(unconfirmed 아니고 visits가 null 아닌 날)의 total 합 ÷ 그 날들의 visits 합, 원 미만 버림. PeriodSum에 perVisitTotal·perVisitCount·noVisitDays, visits는 number|null(아는 날이 없으면 null). MonthPoint는 {month, partial, total, covered, noncovered, other, visits, perVisit}, 자료 없는 달은 숫자 칸 모두 null. visits null이고 금액이 모두 0인 날은 자료로 본다. TASK-8 주의: 모든 날이 unconfirmed인 달은 total 0이라 compare가 −100을 낸다. 접수 건수 칸은 visits, '매출 ÷ 접수 n건'의 n은 perVisitCount"
+    },
+    {
+      "step": 2,
+      "name": "treatment-groups",
+      "status": "completed",
+      "summary": "src/lib/revenue/treatments.ts + src/types/rxGroups.ts: suggestGroups·groupTreatments·addGroup·renameGroup·deleteGroup·moveCode, 오류 이유 empty·tooLong·duplicate·badChars·digits·tooMany. 이름 검사의 제어 문자는 step 글자(\\u007f)보다 넓혀 U+0000-001F·U+007F-009F로 DB [[:cntrl:]]와 맞춤. TASK-14 주의: moveCode는 _REST를 막지 않고 DB는 거부하므로 편집 화면 목록에서 _REST를 꼭 뺀다(AC-014.2). 짝 없는 서로게이트 이름은 클라이언트가 받고 jsonb가 거부한다(드묾, 반쪽 저장 없음)"
+    },
+    {
+      "step": 3,
+      "name": "revenue-sync",
+      "status": "completed",
+      "summary": "src/lib/revenue/sync.ts(planFetch·syncRevenue) + src/lib/storage/revenue.ts(createRevenueStore: saveMonth·loadRevenue) + E-REVENUE-SAVE-FAILED. 날 칸은 열다섯(REVENUE_DAY_KEYS에서 온다). saveMonth의 1일 확인은 sales_codes 합계가 달 전체여야 해서 둔다. TASK-9 주의: syncRevenue는 months가 없으면 savedDays가 필수라(design 7절에 없음, planFetch에 필요) step1의 순서와 달리 loadRevenue를 먼저 부른다. 읽기 실패와 번호 없는 오류는 E-PAGE-FAILED(명세에 번호 없음). months에서 아직 올 날이 없는 달은 뺀다(도우미가 from>to를 막음). E-BRIDGE-REJECTED는 명세대로 extensionOld인데 통로가 connecting이어도 나오므로 화면은 통로가 ready일 때만 부른다. 알려진 위험: 이미 저장한 달을 [다시 가져오기]할 때 코드 지우기 뒤 넣기가 실패하면 날 줄은 있고 코드 줄만 비고 planFetch가 복구하지 않는다(그 자리의 failed 알림과 재시도만 있음, 다음 명세 변경 때 13절에 적는다)"
+    },
+    {
+      "step": 4,
+      "name": "rx-group-store",
+      "status": "completed",
+      "summary": "src/lib/storage/rxGroups.ts: createRxGroupStore(client) → listGroups·saveGroups, 오류 클래스는 따로 RxGroupStoreError(통계가 다시 쓰므로 revenue를 import하지 않음, TASK-14는 이 클래스를 잡는다) + E-REVENUE-GROUP-SAVE-FAILED·LOAD-FAILED. 명세 글과 다른 점: id를 늘 보내고 새 묶음은 id:null(AC-013.2·step 작업 절을 따름, design 8-2는 '있을 때', step 규칙 줄은 '안 보냄'). TASK-14 주의: 다른 창에서 이미 지운 묶음의 id를 보내면 저장이 계속 실패하고 문구는 인터넷·이름 겹침만 말하므로 다시 불러오기 길을 생각한다"
+    }
+  ]
+}

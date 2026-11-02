@@ -2,6 +2,7 @@
 import type { Metadata } from 'next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { notReadyFeature, type NotReadyPath } from '@/components/common/notReadyFeatures'
+import { MENU } from '@/components/shell/menu'
 import { guardPage } from '@/lib/auth/guard.server'
 import type { Hospital, Me } from '@/lib/auth/hospital.server'
 
@@ -63,7 +64,7 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
   })
 })
 
-// 앱 페이지 14개 (탭 순서 + /admin)
+// 앱 페이지 (탭 순서 + /admin)
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
   ...(
@@ -71,7 +72,6 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
       ['/stats', () => import('./(app)/stats/page')],
       ['/notices', () => import('./(app)/notices/page')],
       ['/patients', () => import('./(app)/patients/page')],
-      ['/revenue', () => import('./(app)/revenue/page')],
       ['/ai-report', () => import('./(app)/ai-report/page')],
       ['/forms', () => import('./(app)/forms/page')],
       ['/staff', () => import('./(app)/staff/page')],
@@ -81,6 +81,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
+  { path: '/revenue', title: '매출', load: () => import('./(app)/revenue/page') },
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },
 ]
@@ -90,10 +91,16 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(await staticTitle(load)).toBe(title)
   })
 
-  it('AC-402.4: 앱 페이지 14개의 탭 이름은 모두 다르다', async () => {
+  it('AC-402.4·AC-010.2: 앱 페이지 표는 MENU의 탭 주소와 /admin이 빠짐없이 있고, 탭 이름은 모두 다르다', async () => {
+    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/admin'].sort())
     const titles = await Promise.all(APP_PAGES.map(({ load }) => staticTitle(load)))
-    expect(titles).toHaveLength(14)
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(14)
+    expect(new Set(titles).size).toBe(APP_PAGES.length)
+  })
+
+  it('AC-010.2: /revenue 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "매출"이다(레이아웃이 "매출 · 의원 이름"으로 만든다)', async () => {
+    const { metadata } = await import('./(app)/revenue/page')
+    expect(metadata.title).toBe('매출')
+    expect(notReadyFeature('/revenue' as NotReadyPath)).toBeUndefined()
   })
 })

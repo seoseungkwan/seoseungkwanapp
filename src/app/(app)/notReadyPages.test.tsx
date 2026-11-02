@@ -12,7 +12,6 @@ import FormsPage from './forms/page'
 import InventoryPage from './inventory/page'
 import NoticesPage from './notices/page'
 import PatientsPage from './patients/page'
-import RevenuePage from './revenue/page'
 import StaffPage from './staff/page'
 import StatsPage from './stats/page'
 
@@ -27,7 +26,6 @@ const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: Comp
   { path: '/stats', name: '통계', title: '통계는 준비 중이에요', Page: StatsPage },
   { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
   { path: '/patients', name: '환자', title: '환자는 준비 중이에요', Page: PatientsPage },
-  { path: '/revenue', name: '매출', title: '매출은 준비 중이에요', Page: RevenuePage },
   { path: '/ai-report', name: 'AI 리포트', title: 'AI 리포트는 준비 중이에요', Page: AiReportPage },
   { path: '/forms', name: '서식', title: '서식은 준비 중이에요', Page: FormsPage },
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
@@ -65,8 +63,15 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     expect(source).not.toMatch(/['"]use client['"]|supabase|guard\.server|\bfetch\s*\(/)
   })
 
-  it('AC-305.5: 주소가 모두 다르다', () => {
+  it('AC-305.5·AC-010.1: 주소가 모두 다르고, 페이지 표의 주소·순서가 NOT_READY_FEATURES와 같다', () => {
     expect(new Set(PAGES.map((p) => p.path)).size).toBe(PAGES.length)
+    expect(PAGES.map((p) => p.path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
+  })
+
+  it('AC-010.1: /revenue는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 그 페이지 소스는 준비 중 화면을 쓰지 않는다', () => {
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/revenue')
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
+    expect(readFileSync(join(ROOT, pageFile('/revenue')), 'utf8')).not.toMatch(/NotReadyScreen|notReadyFeature/)
   })
 
   it('AC-012.4: 이 표의 주소는 준비 중 목록(NOT_READY_FEATURES)과 같고 /worklog는 없다', () => {

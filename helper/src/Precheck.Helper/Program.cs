@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Precheck.Core.Bit;
 using Precheck.Core.Protocol;
+using Precheck.Core.Revenue;
 using Precheck.Helper.Commands;
 
 namespace Precheck.Helper;
@@ -28,7 +29,9 @@ internal static class Program
             var table = CommandTable.LoadEmbedded();
             var dispatcher = new Dispatcher(table, log.Write);
             Hello.Register(dispatcher, table);
-            BitCommands.Register(dispatcher, HelperServices.Create());
+            var services = HelperServices.Create();
+            BitCommands.Register(dispatcher, services);
+            RevenueCommands.Register(dispatcher, services);
 
             using var input = Console.OpenStandardInput();
             using var output = Console.OpenStandardOutput();

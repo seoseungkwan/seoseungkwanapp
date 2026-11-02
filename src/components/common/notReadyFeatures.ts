@@ -8,7 +8,6 @@ export type NotReadyPath =
   | '/stats'
   | '/notices'
   | '/patients'
-  | '/revenue'
   | '/ai-report'
   | '/forms'
   | '/staff'
@@ -49,13 +48,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '환자는 준비 중이에요',
     intro: `다시 오실 환자와 문자 보낼 환자를 챙길 자리예요. ${SOON}`,
     items: ['다시 오실 환자 명단', '정기 주사 문자 명단', '문자 문구 복사'],
-  },
-  {
-    path: '/revenue',
-    name: '매출',
-    title: '매출은 준비 중이에요',
-    intro: `매출 흐름을 나눠 볼 자리예요. ${SOON}`,
-    items: ['매출 추이', '급여와 비급여', '치료별 매출', '한 사람당 평균 진료비'],
   },
   {
     path: '/ai-report',

@@ -8,14 +8,16 @@ src/
 ├── app/                 # 페이지(App Router). page.tsx = 랜딩(섹션은 components/landing/)
 │   ├── globals.css      # 디자인 토큰 한 곳(`:root`), Tailwind `@theme inline`(토큰을 var()로만), 모션 줄이기 규칙 (docs/UI_GUIDE.md, ADR-019)
 │   ├── fonts/           # Pretendard 1.3.9 정적 subset 세 굵기(400·500·600) woff2 + OFL.txt. layout.tsx가 next/font/local로 낸다 (ADR-019)
-│   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭 9개(/stats 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
+│   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/stats 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
+│   ├── (app)/revenue/page.tsx  # 매출 화면 = components/revenue/RevenueScreen (specs/revenue)
 │   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
 ├── lib/
-│   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'. 매출 파서도 여기 (예정)
+│   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
 │   ├── payload/         # [환자 구역] 저장 모양(toMonthPayload·toDayPayloads)·검사(validate.ts)
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
-│   ├── storage/         # (예정) 검사한 달·일 숫자만 저장
+│   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts (specs/revenue)
+│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). 통계 달·일 숫자는 (예정)
 │   │   └── worklogDays.ts  # 업무일지 하루 읽기·저장(Supabase, 바뀐 칸만)
 │   ├── worklog/         # 업무일지 합계·칸 글자 읽기·날짜·개인정보 모양 검사·자동 저장. 환자 구역이 아니다
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
@@ -23,6 +25,7 @@ src/
 │   ├── common/LogoMark.tsx  # 로고 마크 한 곳(병원 십자 C③, 고정 두 색). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
 │   ├── dashboard/briefing/  # 대시보드 브리핑(날짜 줄·큰 문장·연결 순서)·지금 바로 쓸 수 있어요·기능 목차(features.ts). 서버 컴포넌트(폰 아래 단추 StickyConnect만 클라이언트), 자료를 읽지 않고 연결 상태도 판정하지 않는다 (specs/tab-frame)
 │   ├── dashboard/summary/   # 대시보드 오늘 하루 분석·기간별 흐름·원장님 보고 문장(계산은 view.ts). 자료 읽는 자리는 source.ts 하나이고 지금은 늘 자료 없음 — 통계 명세가 진짜 읽기로 바꾼다 (specs/tab-frame)
+│   ├── revenue/         # 매출 화면(RevenueScreen). 보기 모양은 view.ts, 그래프는 charts/를 불러 쓰기만 한다 (specs/revenue)
 │   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
 │   ├── charts/          # 차트 부품(숫자 글자·KPI·Sparkline·쌓은 막대·범례·순위 막대·줄 안 막대). 서버에서 그리는 순수 부품, 토큰 클래스만, 자료 모양은 `@/types/analysis` (specs/b2b-redesign)
 │   └── preview/         # 대시보드 미리보기 + 예시 자료(sample.ts). 랜딩 히어로·로그인 오른쪽이 같이 쓴다. 실제 자료를 읽지 않는다
@@ -54,7 +57,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 [통계] 파일 끌어다 놓기 → Worker: parse → aggregate → compare → 화면
        화면 → toMonthPayload·toDayPayloads → validate → (예정) lib/storage → months·days
-[매출] (예정) 폴더 연결(읽기 전용) 또는 끌어다 놓기 → Worker → 집계 → sales_days
+[매출] 비트 PC 도우미 읽기(`revenue.days`) → 확장 → lib/bridge → 집계만 → lib/storage → sales_days·sales_codes (2026-11-01 바뀜, specs/revenue)
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
 [업무일지] 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
@@ -78,8 +81,9 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
 | `months` · `days` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용) |
-| `rx_groups` | 그룹 이름·코드 목록·즐겨찾기 |
-| `sales_days` | 일 매출 집계. 칸: 미정 — 매출 파일 예시(§12)를 보고 정함 |
+| `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭이 만들고 통계가 나중에 함께 씀 (specs/revenue) |
+| `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
+| `sales_codes` | 달별 처방 코드 집계(코드·이름·건수·금액). 칸은 specs/revenue design.md 6절 |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |
@@ -89,6 +93,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 지우지 않고 숨긴다(임금대장 3년 보존, §6-3). 주민번호·계좌번호는 저장하지 않는다
+- 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료)
 
 ## 인증·승인 흐름 (§2-1, §5, §6-4)
 ```
