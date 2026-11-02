@@ -294,6 +294,13 @@ describe('AC-009.1 제목 줄·달 고르기·상태 부품', () => {
     expect(line.textContent).toContain('의원 PC에서 11월 1일 07:10에 가져온 숫자를 보여 드려요.')
     expect(within(line).getByRole('link', { name: '비트 PC 연결' }).getAttribute('href')).toBe('/claim/setup')
   })
+
+  it('AC-009.3 비트 PC 연결 필요: 생기는 것 목록은 브라우저 번호 없이 번호 상자만 보인다(list-none, 앱에 기본 초기화가 없다)', () => {
+    const { container } = render(<ConnectNeeded view={stateOf('connect-needed', { bridge: 'none', days: [] })} />)
+    const list = container.querySelector('ol')
+    expect(list).not.toBeNull()
+    expect(classesOf(list)).toContain('list-none')
+  })
 })
 
 describe('AC-009.5 그래프는 HTML 막대 + aria-hidden + 화면 읽기 표', () => {
@@ -397,6 +404,45 @@ describe('AC-009.5 폰(768px 미만)·PC 배치 클래스', () => {
     const values = Array.from(figure.querySelectorAll('[style*="height"] span'))
     expect(values).toHaveLength(13)
     expect(values.filter((value) => !classesOf(value).includes('max-md:hidden'))).toHaveLength(1)
+  })
+
+  describe('AC-009.5 폰: 고른 달 글자가 옆 달 글자와 겹치지 않는다', () => {
+    // 달 글자를 칸 차례대로 모은다. '10월'이 두 번 나와서 글자가 아니라 칸 번호로 본다(0 = 2025-10 … 12 = 2026-10)
+    const monthLabels = (root: Element) => Array.from(root.querySelectorAll('[aria-hidden="true"] p')).filter((p) => /^\d+월$/.test(p.textContent ?? ''))
+    const hiddenSlots = (root: Element) => monthLabels(root).flatMap((label, slot) => (classesOf(label).includes('max-md:invisible') ? [slot] : []))
+    const ODD_SLOTS = [1, 3, 5, 7, 9, 11]
+
+    it('AC-009.5 고른 달이 숨는 자리(열두째 칸, 2026-09)면 바로 앞뒤 칸을 숨기고 고른 달은 보인다', () => {
+      const { container } = render(<MonthBars chart={blocks({ month: '2026-09' }).trend.chart!} size="tall" />)
+      expect(monthLabels(container).map((label) => label.textContent)).toEqual(['10월', '11월', '12월', '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월'])
+      expect(hiddenSlots(container)).toEqual([1, 3, 5, 7, 9, 10, 12])
+      expect(classesOf(monthLabels(container)[11])).toContain('font-semibold')
+    })
+
+    it('AC-009.5 고른 달이 가운데 숨는 자리(여섯째 칸, 2026-03)면 앞뒤 칸만 더 숨고, 두 칸·세 칸 떨어진 글자는 원래 규칙이다', () => {
+      const { container } = render(<MonthBars chart={blocks({ month: '2026-03' }).trend.chart!} size="tall" />)
+      // 고른 달 5는 보인다. 앞뒤 4·6은 더 숨고, 두 칸 떨어진 3·7은 홀수 칸이라 숨고, 세 칸 떨어진 2·8은 짝수 칸이라 보인다
+      expect(hiddenSlots(container)).toEqual([1, 3, 4, 6, 7, 9, 11])
+    })
+
+    it('AC-009.5 건당 진료비 막대와 세 겹 막대도 같은 규칙이다', () => {
+      const perVisit = render(<MonthBars chart={blocks({ month: '2026-09' }).perVisit.chart!} size="short" />)
+      expect(hiddenSlots(perVisit.container)).toEqual([1, 3, 5, 7, 9, 10, 12])
+      perVisit.unmount()
+      const stack = render(<StackBars chart={blocks({ month: '2026-09' }).split.chart!} />)
+      expect(hiddenSlots(stack.container)).toEqual([1, 3, 5, 7, 9, 10, 12])
+    })
+
+    it('AC-009.5 고른 달이 원래 보이는 자리(열셋째 칸, 2026-10)면 원래 규칙 그대로다', () => {
+      const { container } = render(<MonthBars chart={blocks({ month: '2026-10' }).trend.chart!} size="tall" />)
+      expect(hiddenSlots(container)).toEqual(ODD_SLOTS)
+    })
+
+    it('AC-009.5 고른 달이 없는 그림이면 원래 규칙 그대로이고 첫 칸도 보인다', () => {
+      const chart = blocks().trend.chart!
+      const { container } = render(<MonthBars chart={{ ...chart, columns: chart.columns.map((column) => ({ ...column, kind: 'other' as const })) }} size="tall" />)
+      expect(hiddenSlots(container)).toEqual(ODD_SLOTS)
+    })
   })
 
   it('AC-009.5 폰 단추·달 고르기 단추는 44px 누름 영역이다(h-11·size-11 또는 ds의 폰 크기)', () => {

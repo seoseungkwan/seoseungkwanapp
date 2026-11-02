@@ -38,7 +38,12 @@ function ChartHead({ title, legend, tones }: { title: string; legend: LegendItem
 
 type PlotProps = { axis: Axis; columns: (BarColumn | StackColumn)[]; size: keyof typeof SIZE; children: ReactNode }
 
-// 폰은 날짜 글자를 하나 걸러 보인다(자리는 그대로). 고른 달은 늘 보인다
+// 폰은 날짜 글자를 하나 걸러 보인다(자리는 그대로). 고른 달은 늘 보이고, 바로 앞뒤 달은 겹치지 않게 숨긴다
+function hiddenOnPhone(columns: PlotProps['columns'], index: number) {
+  if (columns[index].kind === 'selected') return false
+  return index % 2 === 1 || columns[index - 1]?.kind === 'selected' || columns[index + 1]?.kind === 'selected'
+}
+
 function Plot({ axis, columns, size, children }: PlotProps) {
   return (
     <div aria-hidden="true" className="mt-3 tabular-nums">
@@ -61,7 +66,7 @@ function Plot({ axis, columns, size, children }: PlotProps) {
       <div className={`flex ${LABELS_OFFSET}`}>
         {columns.map((column, index) => (
           <div key={column.month} className="min-w-0 flex-1 text-center text-caption whitespace-nowrap text-muted">
-            <p className={`mt-1.5 ${column.kind === 'selected' ? 'font-semibold text-ink' : ''} ${index % 2 === 1 && column.kind !== 'selected' ? 'max-md:invisible' : ''}`}>{column.label}</p>
+            <p className={`mt-1.5 ${column.kind === 'selected' ? 'font-semibold text-ink' : ''} ${hiddenOnPhone(columns, index) ? 'max-md:invisible' : ''}`}>{column.label}</p>
             {column.year && <p>{column.year}</p>}
           </div>
         ))}

@@ -100,7 +100,7 @@ export function ConnectNeeded({ view }: { view: Extract<RevenueView, { state: 'c
         </div>
       </div>
       <p className="mt-4 text-subtitle font-semibold text-ink">{view.gainsTitle}</p>
-      <ol className="mt-2 grid border-t border-line md:grid-cols-4 md:border-b">
+      <ol className="mt-2 grid list-none border-t border-line md:grid-cols-4 md:border-b">
         {view.gains.map((gain, index) => (
           <li key={gain.name} className="min-w-0 border-b border-line py-3 md:border-b-0 md:border-l md:px-5 md:py-4 md:first:border-l-0 md:first:pl-0">
             <p className="flex items-center gap-3 text-subtitle font-semibold text-ink md:gap-2">
