@@ -5,7 +5,7 @@
 > 승인은 이 명세 하나로 한 번만 받는다(사용자: "단계마다 sdd 승인받는거 빼줘"). Phase가 끝날 때마다 `verify`·화면 캡처·쉬운 말 보고·의원 PC 시험 목록(plan.md §6).
 > Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장과 `commands.json`에는 운영 주소 하나만 있어, 새 화면이 운영에 배포돼야 의원 PC에서 시험할 수 있다. design.md 12절).
 > 화면 TASK(6·12·13·18·19·22·25·26·31·32)는 Phase 0 목업(승인본)이 있어야 시작한다(CLAUDE.md: 화면은 목업 승인 뒤). TASK-34 뒤의 화면 TASK는 b2b 공통 모양 `ds`와 토큰만 쓴다(옛 `ui`·옛 Tailwind 별칭·`font-bold` 없음, design.md 18-3).
-> **새 목업 승인(2026-11-01)**: TASK-18은 Phase 0 목업에 없는 것을 그린다. '병원 문구'·'시술별 약' 칸과 입력 쪽(입력 방식 고르기·코드 단추·목록·다른 메모 나란히 보기·비트 메모 카드·TASK-37의 PC 확인 창 체크 '이제부터 묻지 않기')은 목업이 승인됐다(TASK-18의 링크 줄). **쓰다 멈춘 사람·기관기호 안내·처음 질문·설정 변경 띠는 어느 승인 목업에도 없어 사용자가 그 부분의 목업을 승인하기 전에는 만들지 않는다**. TASK-13은 승인본 `499cp2Sodph7jYJ4gX4exj` 그대로 시작한다.
+> **새 목업 승인(2026-11-01·2026-11-02)**: TASK-18은 Phase 0 목업에 없는 것을 그린다. '병원 문구'·'시술별 약' 칸과 입력 쪽(입력 방식 고르기·코드 단추·목록·다른 메모 나란히 보기·비트 메모 카드·TASK-37의 PC 확인 창 체크 '이제부터 묻지 않기')은 목업이 승인됐다(TASK-18의 링크 줄). 쓰다 멈춘 사람·기관기호 안내·처음 질문·설정 변경 띠는 2026-11-02 승인한 목업을 따른다(TASK-18의 링크 줄). TASK-13은 승인본 `499cp2Sodph7jYJ4gX4exj` 그대로 시작한다.
 > **2026-11-01 명세 변경**: TASK-35~39를 더했다(plan.md §6 밖). step 파일이 없고 이 파일과 design.md 19절이 그 일을 정한다. 번호가 곧 차례는 아니다. **남은 차례**: ① TASK-10·11·12(먼저 시작함) → ② 나란히: TASK-14 · TASK-35 · TASK-38 → ③ TASK-16 웹 쪽(TASK-14 뒤) · TASK-36(TASK-35 뒤) → ④ TASK-13(TASK-10·11·12·14·16 뒤) → ⑤ TASK-37(TASK-36 뒤. 입력 쪽 목업은 승인됨) → ⑥ TASK-18(TASK-13·14·16·35·36·37 뒤) → ⑦ TASK-19 → 그 뒤 Phase 4부터 그대로. TASK-35·36·37은 `Core/Input`을 함께 고쳐 나란히 하지 않는다. TASK-14 → 16 → 13은 `jobs.ts`·`jobs.test.ts`·`types/precheck.ts`를 함께 고치고 앞 TASK의 결과를 쓰므로 차례대로 한다: TASK-16의 비교는 TASK-14의 메모 글을 쓰고, TASK-14는 고친 메모를 인자로만 받으며 `store.load`를 거기에 잇는 것은 TASK-16이다. TASK-39는 언제든 한다. 도우미 판(`Version`·`LATEST_HELPER`·`MIN_HELPER`)은 릴리스 때 올리고, 릴리스는 사용자가 지시할 때만 한다(design.md 19-5).
 > 도우미 C# 시험 파일 이름은 `*.test.cs`다(하네스가 시험 파일로 알아보게). 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(design.md 11절).
 > 원본 경로는 `YANGJI_SRC`(저장소 밖, `seoseungkwan/shared@2a1069b`)로만 받는다. 원본 파일은 커밋하지 않는다.
@@ -153,6 +153,7 @@
 - 불러오기 번호는 `components/claim/claimLoad.ts`에 Worker 하나에 하나로 둔다(AC-013.12). 약속은 `PrecheckFromScreen` 주석과 design.md 6-2다. `dates.ts`에 'E의 한 달 전 같은 날' 함수를 더한다(AC-013.13)
 - `dxViews`를 잇는 것은 이 TASK다: 메모 결과를 넘겨 `jobs.check`의 답에 실어 화면 메시지로 보내고, 틀린 연결표로 던지는 `TypeError`를 잡아 `E-SETTINGS-FAILED`로 답한다(AC-013.14). Files의 `jobs.ts`·`types/precheck.ts`·`components/claim/*`로 충분하다. `TASK-14`가 합쳐진 뒤에 하므로 메모 결과가 있다
 - 의원 PC 시험: 실제 한 달 자료로 점검하고 같은 달을 양지바른 결과와 나란히 비교. 하루만 골라 불러와도 내원 간격 문장이 한 달을 불러온 때와 같은지 본다
+- 달 칸의 `store.load {months}`·`store.save {month,…}`는 `settings`·`contact`와 한 호출에 섞지 않는다 **(Claude 판단)**: 도우미는 파일 하나만 막혀도 호출 전체를 같은 번호로 거절해 어느 파일인지 알 수 없다. 시험: `claimLoad.test.ts`·`jobs.test.ts`(한 호출에 둘이 함께 없음).
 
 ## TASK-14: 청구메모 문장 (골든)
 - Step: Phase 3 · Step 0 · `memo-text`
@@ -218,14 +219,19 @@
 
 ## TASK-37: 다른 메모 바꾸기 · 묻지 않기 (도우미)
 - Step: Phase 3 · TASK-36 뒤 · `input-replace` (plan.md §6 밖, step 파일 없음. design.md 19-6)
-- AC: AC-037.1~AC-037.8
-- REQ: REQ-037
+- AC: AC-037.1~AC-037.8, AC-035.2, AC-035.5, AC-035.8, AC-035.9
+- REQ: REQ-037, REQ-035
 - Files: helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Store/*, helper/src/Precheck.Windows/ConfirmWindow.cs, helper/src/Precheck.Helper/Commands/*, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Windows.Tests/Input/*, helper/tests/input-replace.dotnet.test.ts, src/lib/bridge/commands.json, src/lib/bridge/*.test.ts
 - Tests: helper/tests/input-replace.dotnet.test.ts, helper/tests/input.dotnet.test.ts
 - TDD: required
 - **목업 승인됨**: PC 확인 창의 체크와 글은 입력 쪽 승인 목업(TASK-18 링크)대로다(AC-037.8)
 - 입력 기록의 새 상태 `SkippedByHand`는 TASK-35가 더하고(AC-035.5) 이 TASK가 다음 묶음에서 읽는다(AC-037.6). Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다. AC-035.9의 '묻지 않기 켜짐' 시험 둘은 묻지 않기를 이 TASK가 만들므로 TASK-35에서 돌 수 없어 이 TASK의 `input-replace.dotnet.test.ts`에서 한다(AC-037.4)
 - 원래 메모는 달 파일의 새 칸 `originals`(진료마다 글 목록. 덮어쓴 글을 모두 두고 보여 주는 화면은 없다, 2026-11-01 사용자 결정)에 `writing`보다 먼저 덧붙여 저장한다. 결과 줄에는 바꾼 사람에게만 `previousMemo`를 더한다(AC-037.1, design.md 19-6). `WorkStore`와 `IInputJournal`을 이 TASK가 고친다. Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다. `store.load` 답은 세 칸 그대로이고 값이 없으면 칸을 쓰지 않으므로 `Core.Tests/Store/*`는 고치지 않는다(이 TASK의 Files 밖). 시험은 `Core.Tests/Input/*`에 둔다
+- **TASK-35 리뷰에서 온 일(2026-11-02)**: 아래 넷은 Files의 `Core/Input/*`·`Core/Store/*`·`ConfirmWindow.cs` 안이고 새 명령·새 파일이 없다. 시험은 `Core.Tests/Input/*`에 두고 진짜 `WorkStoreJournal`로 `SaveResults`를 지난 값을 본다
+- **[확인] 뒤 미리 빠진 `checkedByHand` 사람 (Claude 판단: 더 안전한 쪽, AC-035.5·AC-035.8)**: 지금은 쓰다 멈추지 않았는데 빠지면 `skipped`라 다음 묻지 않기가 승인 없이 바꾼다. `InputRunner.RunConfirmed`에서 풀 사람 `Mark`와 같은 자리에 `Mark(item, SkippedByHand)`를 남긴다. `marked`에 들어 `SaveResults`가 건드리지 않으므로 AC-035.2('`Mark`한 진료의 기록을 바꾸지 않고 `skippedByHand`를 덮지 않는다')는 그대로다. `SaveResults`가 이 사람에게 `skipped`를 적는 것은 [확인] 없이 끝난 묶음(모두 빠져 창이 없음·지문 틀림)뿐이다. [확인] 뒤 `Mark`를 못 남기면 풀 사람처럼 아무도 열지 않고 `E-STORE-FAILED`이고, `Mark`를 남기지 못한 사람 모두는 줄만 더하고 `skipped`를 적지 않는다. 줄·이유·'빼는 환자 N명'은 그대로다. 시험: [확인] 뒤 `LastState`가 `SkippedByHand`이고 묻지 않기를 켠 다음 묶음에서 `replaces` 없이 `WriteMemo`가 불리지 않음, `Mark` 실패면 `skipped`가 적히지 않음, 창 없이 모두 빠지면 `Skipped`. `InputWiring.test.cs`의 `ExcludedHandNotStuck`이 보는 `Skipped`는 `SkippedByHand`로 바꾼다(`ExcludedHandNotStuckAlone`은 그대로). `applyInputResults`의 사본(AC-016.3)은 TASK-18이다
+- **깨진 달 파일의 `reason` (Claude 판단, AC-035.9)**: `WorkStore`가 깨진 파일의 이름만 바꾸고 `E-STORE-BROKEN`을 던지면 `WorkStoreJournal`이 번호를 `E-STORE-FAILED` 하나로 바꾸기 전에 그것을 알아, `ReadEarlierWrites`의 `BatchStop`에 AC-035.9의 글을 싣는다. 번호와 답 모양은 그대로다. 시험은 AC-035.9
+- **창 맨 위 글의 노란 바탕 (승인 목업, AC-035.9)**: `ConfirmWindow.cs`. 글은 그대로이고 이 글이 있을 때만이다
+- 같은 바이트의 달 파일 둘(AC-035.9의 알려진 한계)은 코드를 고치지 않는다
 - 의원 PC 시험: 시험용 환자로 다른 메모 바꾸기 → 저장·이전 메모 확인, 묻지 않기를 켠 뒤 둘째 묶음이 창 없이 돌고, 청구 창을 닫았다 열면 다시 묻는지
 
 ## TASK-38: 입력 전 크롬 창 내리기 (확장)
@@ -247,9 +253,13 @@
 - TDD: required
 - **승인된 목업(입력 쪽)**: 입력 방식 두 가지(처방코드별이 먼저 골라짐)·코드 단추·안내 문구·입력할 사람과 빠지는 사람 목록·다른 메모 나란히 보기·비트 메모 카드와 [비트 메모 전체 불러오기]·확인 표시 알림·'직접 입력'·[엑셀로 저장]·묻지 않기 안내·PC 확인 창 글은 https://claude.ai/artifact/P7NFu7j9NRNmKHskgY4UYU (판 `1793539759-946b`)를 따른다. 2026-11-01 사용자가 그린 그대로 승인했고 끝의 바꿀 수 있는 것 17가지도 모두 받아들였다. 명세에서는 **(승인 목업)**으로 적었다. 목업과 다르게 둔 곳: 안전 규칙 때문인 것은 AC-018.3의 '지금: 날짜 이름' 줄, AC-018.11의 코드 모양 검사, AC-018.25의 글자 그대로 비교, AC-018.14·AC-018.22의 직접 확인 기록 예외다(손으로 확인하던 메모를 승인 없이 바꾸지 않는다). 안전 규칙 때문이 아닌 것은 AC-018.24의 입력 단추 막음 **(Claude 판단)**(도우미가 쓰기 바로 앞에 칸을 다시 읽으므로 안전과 상관없다, AC-016.8. 입력하는 동안 목록이 바뀌거나 카드의 '뒤에 입력' 안내가 틀리지 않게 하는 작은 더함이다), AC-018.4의 취소 줄(사이트는 취소 때 체크 상태를 모른다), AC-018.3의 확인 기다리는 중 수(도우미가 [확인] 전에 웹에 아무것도 보내지 않아 보낸 묶음의 수를 보인다)다
 - **승인된 목업(설정의 두 칸)**: '병원 문구'·'시술별 약' 칸은 이미 승인된 https://claude.ai/artifact/QnXpDwjWGCDLjNuPBRDNxE (판 `1793534640-5640`)를 따른다. 2026-11-01 사용자가 병원 문구 창에서 승인했다고 그 창이 전했다. 그 목업의 '변경 기록'·'가입 보기 글'은 만들지 않는다(requirements '범위 밖')
-- **둘 다 덮지 않음, 먼저 목업 승인**: 쓰다 멈춘 사람(AC-018.16)·기관기호 안내(AC-018.17)·처음 질문(AC-018.18의 '처음 질문을 먼저 해 주세요')·설정 변경 띠(AC-018.3, design.md 6-5)는 위 두 목업에 없다. 사용자가 이 부분의 목업을 승인하기 전에는 만들지 않는다(CLAUDE.md, 머리말). 그 승인본 링크를 이 줄 아래에 적는다. 그 밖에 어느 목업에도 없는 부분은 Phase 0 목업 화면 4·5·6·10을 따르되, 화면 4의 사람마다 체크는 따르지 않는다(AC-018.26)
+- **승인된 목업(빠진 화면)**: 쓰다 멈춘 사람(AC-018.16)·기관기호 안내(AC-018.17)·처음 질문(AC-018.18의 '처음 질문을 먼저 해 주세요')·설정 변경 띠(AC-018.3, design.md 6-5)는 https://claude.ai/artifact/JgKnA2UtZ7s8ADnw48dKFn (판 `1793589997-f908`)를 따른다. 2026-11-02 사용자가 '제가 정한 부분'까지 모두 승인했다. 명세에서는 **(승인 목업)**으로 적었다. 목업은 영어를 피하려고 'PC'를 '컴퓨터'로, '비트 PC 연결'을 '비트 연결'로 적고 오류 번호를 ○○○○로 가렸을 뿐이다: 실제 화면은 명세의 말('PC'·'비트 PC 연결')과 진짜 오류 번호를 쓴다 **(Claude 판단)**. 목업과 다르게 둔 곳: AC-018.17의 '이전 병원'과 다음 할 일, AC-018.18의 갈 곳(2026-11-02 사용자 결정), AC-018.21의 `E-INPUT-STOPPED` 줄(목업은 글이 없어 뺐다) **(Claude 판단)**. 목업에 없어 더한 것: AC-018.16의 35일 안에 다 들지 않는 때, AC-018.17의 `store.load`에서 받은 때와 `store.save` 멈춤·여섯 단추 막음·`settings.dat`·`contact.dat`의 같은 번호, AC-018.3의 옆 글이 겹칠 때 **(Claude 판단)**. 그 밖에 어느 목업에도 없는 부분은 Phase 0 목업 화면 4·5·6·10을 따르되, 화면 4의 사람마다 체크는 따르지 않는다(AC-018.26)
 - 비트 메모 화면 쪽(AC-018.24·AC-018.25·AC-018.27, design.md 19-12): `memo/BitMemoButton.tsx`, `rows/BitMemoCard.tsx`, `claimLoad.ts`의 `run` 번호. 모두 Files의 `src/components/claim/*`·`memo/*`·`rows/*` 안이고 입력 쪽 승인 목업대로 만든다
+- `errors.ts`·`types/errors.ts`: `E-INPUT-STOPPED`·`E-BIT-UNSAVED-RX`·`E-BIT-UI-CHANGED`의 번호와 글을 더하고(AC-018.21, 지금 없다) **(Claude 판단: 이 글)**, `E-MEMO-NO-SETTINGS`의 `fix`에 갈 곳을 더한다(AC-018.18). 시험은 `errors.test.ts`
+- `types/precheck.ts`: `PrecheckFromScreen` 주석 8의 '다른 오류 번호면 멈춘다'를 AC-018.17에 맞게 고친다(`store.load`의 `E-BIT-HOSPITAL-MISMATCH`는 멈추지 않는다). Files 안이다
+- **승인 화면의 어색한 곳(동작은 바꾸지 않는다. 청구 화면을 다시 디자인할 때 본다)**: 입력 기록을 확인할 수 없는 창의 [취소]는 아무것도 시작하지 않았는데 '중간에 멈췄어요'와 '넣은 0명'으로 보인다(AC-035.9·AC-018.21). 메모를 넣지 않는 창(풀 사람만 있는 창)에도 묻지 않기 체크가 있다(AC-035.5). 띠의 [이어서 입력]과 멈춘 뒤의 [이어서 하기]는 이름이 비슷한 다른 단추다(AC-018.16·AC-018.21)
 - 대상 고르기는 순수 함수 `inputTargets.ts`(Worker에서 부름)에 둔다. 묶음 글자는 Worker가 만든다(화면은 쥐지 않는다, AC-004.11). 이 칸들은 기능만 맞추고 모양은 다듬지 않는다(청구 화면은 나중에 다시 디자인한다)
+- 달 칸의 `store.load {months}`·`store.save {month,…}`는 `settings`·`contact`와 한 호출에 섞지 않는다 **(Claude 판단)**: 도우미는 파일 하나만 막혀도 호출 전체를 같은 번호로 거절해 어느 파일인지 알 수 없다. 시험: `claimLoad.test.ts`·`jobs.test.ts`(한 호출에 둘이 함께 없음).
 
 ## TASK-19: 입력 현황 건수 · 밖에서 보기
 - Step: Phase 3 · Step 5 · `claim-counts`
@@ -319,6 +329,7 @@
 - Tests: src/components/contact/ContactScreen.test.tsx, src/components/contact/rows/ContactRows.test.tsx, src/components/claim/OutsideCounts.test.tsx, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.test.ts, src/app/(app)/contact/page.test.tsx, src/workers/precheck/jobs.test.ts, src/components/shell/shell.test.tsx, src/guardrails.test.ts
 - TDD: required
 - 의원 PC 시험: 이번 주 F/U 명단을 양지바른과 비교
+- 알려진 한계 **(Claude 판단)**: 13개월 지우기는 `work-*`만 지워(AC-015.5) 새 프로필 ID로 다시 등록한 PC의 옛 `contact.dat`·`settings.dat`는 남는다. 개발자가 치우기 전까지 [연락함] 저장은 `E-BIT-HOSPITAL-MISMATCH`로 실패하고(실패 글은 TASK-26이 정한다) 마지막 설정 사본도 쓰지 못한다(AC-013.9).
 
 ## TASK-27: 통계 자료 읽기 (도우미 · Worker 연결)
 - Step: Phase 6 · Step 0 · `helper-stats-read`
