@@ -75,7 +75,7 @@
 
 ## TASK-7: 문자 문구 · 남은 건수 저장 (브라우저 → Supabase) · 오류 번호
 - Step: Phase 2 · Step 2 · `patients-storage`
-- AC: AC-609.1~AC-609.5
+- AC: AC-609.1~AC-609.6
 - REQ: REQ-609
 - Files: src/lib/storage/messageTemplates.ts, src/lib/storage/messageTemplates.test.ts, src/lib/storage/contactCounts.ts, src/lib/storage/contactCounts.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts, src/types/patients.ts
 - Tests: src/lib/storage/messageTemplates.test.ts, src/lib/storage/contactCounts.test.ts, src/lib/errors.test.ts

@@ -84,6 +84,7 @@
 - AC-609.3: Given 건수, When `checkContactCount(row)`·`upsertContactCount(sb, row)`, Then 0~100000 정수 두 칸(`followup_left`·`injection_left`)만 통과하고(다른 칸·글자·음수·소수는 거절), 보내는 몸통은 그 두 칸뿐이다. 실패면 `E-PATIENTS-COUNTS-SAVE`를 던진다
 - AC-609.4: Given 내 병원, When `readContactCount(sb)`, Then `{followup_left, injection_left, updated_at}` 또는 줄이 없으면 `null`을 돌려준다. 읽기가 실패하면 `null`로 바꾸지 않고 `E-PATIENTS-COUNTS-READ`를 던진다
 - AC-609.5: Given `lib/errors.ts`, When 오류 번호를 찾으면, Then `E-PATIENTS-TEMPLATES-READ`·`E-PATIENTS-TEMPLATES-SAVE`·`E-PATIENTS-COUNTS-READ`·`E-PATIENTS-COUNTS-SAVE`·`E-PATIENTS-SOURCE`의 '무엇이 · 어떻게 고치나' 문구가 있다. 다른 브랜치 몫 번호(`E-SETTINGS-FAILED`·`E-COUNTS-FAILED`·`E-BIT-EXPORT-FAILED` 등)는 더하지 않는다(규칙 C3)
+- AC-609.6: Given `E-BIT-READ-FAILED`·`E-STORE-FAILED`·`E-STORE-BROKEN`, When `errorInfo(code)`, Then `E-BIT-READ-FAILED`·`E-STORE-FAILED`의 '어떻게 고치나'는 단추 이름을 말하지 않고(비트 PC 연결 화면 단추는 [다시 확인], 환자 탭은 [다시 불러오기]), `E-STORE-BROKEN`은 연락 표시 파일이 깨진 경우(다시 불러올 때 빈 상태로 시작하고, 정기 주사 기록은 비트에서 다시 읽고, 연락 표시는 다시 누른다)와 같은 오류가 또 나오는 경우(비트 PC 연결 화면에서 [처음 등록]이 보일 때 누르고, 그래도 계속되면 오류 번호와 함께 문의한다)를 차례로 말한다. `E-PATIENTS-TEMPLATES-READ`·`-TEMPLATES-SAVE`·`-COUNTS-READ`는 승인 목업 글이다(2026-11-02 사용자 결정 "환자 기본값대로"). `E-BRIDGE-BUSY`는 이 명세가 고치지 않는다
 
 ### REQ-610: 환자 탭 입구 · 도구 단추 줄 · 휴대폰은 건수만
 - 옮겨 옴: precheck REQ-026 (수용 기준 026.5의 탭 부분 · 026.6)

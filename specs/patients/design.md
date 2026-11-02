@@ -183,7 +183,7 @@ create table if not exists public.contact_counts (
 - **도구는 주소 `?tool=`로**: 새로 고침해도 같은 도구가 열린다. 도구 이름만이라 환자 정보가 주소에 없다
 - **휴대폰에서 문자 문구는 연다(Claude 판단 (기본값))**: 환자 정보가 없고 설정의 원본은 서버다(ADR-021). 명단 자리만 건수로 바꾼다
 - **도구 단추 줄·복사 단추는 이 기능 폴더에**: 다른 탭도 도구 단추 줄을 두지만(tab-frame 계획), 병렬 브랜치끼리 같은 이름의 새 파일이 부딪히지 않게(규칙 C6) `components/patients/ToolRow.tsx`·`CopyButton.tsx`로 둔다. 여러 탭이 같은 모양을 쓰게 되면 나중에 공용으로 모은다
-- **오류 번호(규칙 C3)**: 이 명세가 더하는 번호는 `E-PATIENTS-*`뿐이다 — `E-PATIENTS-SOURCE`(원본 자료 문제: 필수 칸 없음·중복·충돌 번호), `E-PATIENTS-TEMPLATES-READ`·`-TEMPLATES-SAVE`(문자 문구 읽기·저장), `E-PATIENTS-COUNTS-READ`·`-COUNTS-SAVE`(남은 건수 읽기·올리기). 도우미 오류(`E-BIT-READ-FAILED`·`E-STORE-*`·`E-HELPER-*`·`E-BRIDGE-*`)는 main에 있는 것을 그대로, `E-BIT-EXPORT-FAILED`는 precheck TASK-8이 더한 것을 쓴다(화면은 모르는 번호면 번호만 보인다)
+- **오류 번호(규칙 C3)**: 이 명세가 더하는 번호는 `E-PATIENTS-*`뿐이다 — `E-PATIENTS-SOURCE`(원본 자료 문제: 필수 칸 없음·중복·충돌 번호), `E-PATIENTS-TEMPLATES-READ`·`-TEMPLATES-SAVE`(문자 문구 읽기·저장), `E-PATIENTS-COUNTS-READ`·`-COUNTS-SAVE`(남은 건수 읽기·올리기). 도우미 오류(`E-BIT-READ-FAILED`·`E-STORE-*`·`E-HELPER-*`·`E-BRIDGE-*`)는 main에 있는 것을 그대로, `E-BIT-EXPORT-FAILED`는 precheck TASK-8이 더한 것을 쓴다(화면은 모르는 번호면 번호만 보인다). `E-BIT-READ-FAILED`·`E-STORE-FAILED`·`E-STORE-BROKEN` 글은 청구 화면과 함께 쓰므로 2026-11-02 사용자 결정 "환자 기본값대로"에 따라 AC-609.6대로 고친다. 나머지 도우미 오류 글은 이 명세가 고치지 않는다. 새 번호를 더하지는 않는다
 - **읽기 실패와 '자료 없음'을 나눈다**: 문구·건수 읽기가 실패하면 빈 목록·`null`로 바꾸지 않고 오류 번호를 던진다. 화면은 오류 카드 + [다시 불러오기]를 보이고, 문구는 읽기가 될 때까지 고치기·저장·복사를 열지 않는다(AC-609.1·609.4·610.3·613.6)
 - **개인정보 E2E(규칙 C7)**: TASK-15가 시험 계정·가짜 확장으로 실제 Supabase에 나가는 요청과 저장된 줄을 다시 읽어 환자 정보가 없음을 본다. 사용자가 SQL을 붙인 뒤에만 돈다
 - **CLAUDE.md 글**: CLAUDE.md의 `components/contact/rows`(옛 이름)는 이 명세의 `components/patients/rows`와 같은 뜻이다. `docs/ARCHITECTURE.md`는 TASK-1이 고치고, CLAUDE.md 글 고치기는 메인 세션이 사용자 OK를 받아 한다
