@@ -1,8 +1,9 @@
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
+import { createMemoEngine, unfinished, validatePhrases } from '@/lib/precheck/memo'
 import { runRules } from '@/lib/precheck/rules/engine'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { Outcome } from '@/types/parse'
-import type { CheckView, ClaimMonth, DxLink, PrecheckToScreen, RuleSettings, RuleSummary, Tables, VisitDxView } from '@/types/precheck'
+import type { CheckView, ClaimMonth, DxLink, MemoInput, MemoViews, PrecheckToScreen, RuleSettings, RuleSummary, Tables, VisitDxView } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
@@ -40,22 +41,47 @@ export function ruleList(tables: Tables): RuleSummary[] {
   }))
 }
 
-/** 진료마다 추천 상병과 상병 확인 경고(TASK-11). 점검 결과 보기 모양에 규칙 결과와 함께 넣는다(jobs.check, TASK-10). 진료 자료를 바꾸지 않는다 */
-export function dxViews(month: ClaimMonth, links: readonly DxLink[]): VisitDxView[] {
-  const ctx = dxContext({ trend: month.dxTrend, links, visits: month.visits, hasDx: month.hasDx })
+/**
+ * 진료마다 메모(TASK-14). 설정 줄이 없거나 검사를 지나지 못하면 메모를 만들지 않는다. 기본값으로 대신 만들지 않는다(AC-014.8).
+ * 사람이 고쳤거나 완료한 메모는 그대로 두고 빠진 문장만 알린다(AC-014.4). 손대지 않은 메모는 저장하지 않으므로 늘 지금 설정으로 새로 만든다(AC-014.11, 원본 protectWork)
+ */
+export function memoViews(month: ClaimMonth, tables: Tables, input: MemoInput): MemoViews {
+  const checked = validatePhrases(input.phrases)
+  if (!checked.ok) return { memoBlocked: 'E-MEMO-NO-SETTINGS', memos: [] }
+  const engine = createMemoEngine(checked.value, tables)
+  return {
+    memoBlocked: null,
+    memos: engine.analyzeMonth(month).map((visit) => {
+      const saved = input.saved?.get(visit.key)
+      const text = saved ?? engine.fullText(visit)
+      return { visitKey: visit.key, text, edited: saved !== undefined, missing: engine.savedMemoMissing(saved, visit), hasMemo: visit.memos.length > 0, unfinished: unfinished(text) }
+    }),
+  }
+}
+
+/**
+ * 진료마다 추천 상병과 상병 확인 경고(TASK-11). 점검 결과 보기 모양에 규칙 결과와 함께 넣는다(jobs.check, TASK-10). 진료 자료를 바꾸지 않는다.
+ * 메모 결과를 넘기면 상병 확인이 부위 메모를 본다(AC-014.13). 메모를 만들지 않는 병원은 메모가 없다. 화면까지 잇는 것은 TASK-13이다
+ */
+export function dxViews(month: ClaimMonth, links: readonly DxLink[], memos?: MemoViews): VisitDxView[] {
+  const withMemo = new Set(memos?.memos.filter((memo) => memo.hasMemo).map((memo) => memo.visitKey))
+  const ctx = dxContext({ trend: month.dxTrend, links, visits: month.visits, hasDx: month.hasDx, hasMemo: (visit) => withMemo.has(visit.key) })
   return month.visits.map((visit) => visitDxView(visit, ctx))
 }
 
-/** 규칙 엔진을 돌려 보기 모양으로 바꾼다(TASK-10). 화면으로 보내는 일은 TASK-13이 잇는다 */
-export function checkMonth(month: ClaimMonth, tables: Tables, settings: RuleSettings): CheckView {
+/** 규칙 엔진을 돌려 보기 모양으로 바꾼다(TASK-10). 메모 재료를 함께 받아 진료마다 메모를 싣는다(TASK-14). 메모를 못 만들어도 규칙 결과는 그대로다(AC-014.8). 화면으로 보내는 일은 TASK-13이 잇는다 */
+export function checkMonth(month: ClaimMonth, tables: Tables, settings: RuleSettings, memo: MemoInput = { phrases: null }): CheckView {
   const { perVisit, groups, totals } = runRules(month, tables, settings)
+  const memos = memoViews(month, tables, memo)
+  const memoOf = new Map(memos.memos.map((view) => [view.visitKey, view]))
   return {
     visits: month.visits.map(({ key, chart, date, name }) => {
       const { hits, skippedNoHistory, skippedNoDx, checked } = perVisit.get(key)!
-      return { key, chart, date, name, findings: hits, skippedNoHistory, skippedNoDx, checked }
+      return { key, chart, date, name, findings: hits, skippedNoHistory, skippedNoDx, checked, memo: memoOf.get(key) ?? null }
     }),
     groups: groups.map(({ ruleId, rule, grade, visits }) => ({ ruleId, title: rule.title, domain: rule.domain, grade, visitKeys: visits.map((row) => row.visitKey) })),
     totals,
+    memoBlocked: memos.memoBlocked,
   }
 }
 

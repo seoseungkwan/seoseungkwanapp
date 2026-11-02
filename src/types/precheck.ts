@@ -198,13 +198,21 @@ export type Finding = { visitKey: string; ruleId: string; grade: Grade; message:
 /** 규칙 설정(원본 저장 모양 {schema: 1, off, on, grade}). 등급은 {규칙: 등급}으로도, 원본처럼 [[규칙, 등급]]으로도 받는다 */
 export type RuleSettings = { schema?: 1; off: string[]; on: string[]; grade: Record<string, Grade> | [string, Grade][] }
 
+/** 진료 하나의 메모(TASK-14). text는 비트에 들어가는 글: 사람이 고쳤거나 완료했으면 그 글, 아니면 새 초안(fullText). missing은 고친 글에 빠진 사유 문장, hasMemo는 부위 메모가 있나(원본 v.memos), unfinished는 확인 표시가 남았나 */
+export type VisitMemoView = { visitKey: string; text: string; edited: boolean; missing: string[]; hasMemo: boolean; unfinished: boolean }
+/** 메모 재료. phrases는 claim_hospital_settings.phrases(줄이 없으면 null). saved는 사람이 고쳤거나 완료한 메모: 내원번호 → 글. store.load를 여기 잇는 것은 TASK-16이다 */
+export type MemoInput = { phrases: unknown; saved?: ReadonlyMap<string, string> }
+/** 메모 결과. memoBlocked면 메모를 만들지 않았다(AC-014.8) */
+export type MemoViews = { memoBlocked: 'E-MEMO-NO-SETTINGS' | null; memos: VisitMemoView[] }
+
 /** 점검 결과 보기 모양(jobs.check, TASK-10). 환자 글자가 들어 있어 Worker와 환자 줄 화면(components/claim/rows) 밖으로 나가지 않는다 */
-export type CheckedVisit = Pick<Visit, 'key' | 'chart' | 'date' | 'name'> & { findings: Finding[]; skippedNoHistory: number; skippedNoDx: number; checked: number }
+export type CheckedVisit = Pick<Visit, 'key' | 'chart' | 'date' | 'name'> & { findings: Finding[]; skippedNoHistory: number; skippedNoDx: number; checked: number; memo: VisitMemoView | null }
 export type CheckGroup = { ruleId: string; title: string; domain: string; grade: Grade; visitKeys: string[] }
 export type CheckView = {
   visits: CheckedVisit[]
   groups: CheckGroup[]
   totals: { checked: number; hi: number; mid: number; lo: number; patients: number; historySkips: number }
+  memoBlocked: MemoViews['memoBlocked']
 }
 
 // ── Worker ↔ 화면 메시지(design.md 6-2). 화면에는 숫자·달·오류 번호·규칙 목록만 간다(환자 글자 없음) ──────────
