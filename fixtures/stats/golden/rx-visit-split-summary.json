@@ -1,0 +1,212 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "medicore/rx_visit_split.py",
+  "entry": "summarize",
+  "knownDiffs": [
+    {
+      "what": "줄의 code 칸",
+      "why": "원본 줄에는 label(코드)만 있다. 처방 이름을 label에 넣으려고 코드를 따로 뒀다. 시험은 이 칸을 빼고 견준다"
+    },
+    {
+      "what": "new·returning이 집합이 아니라 수",
+      "why": "환자 번호를 결과에 남기지 않는다(AC-509.4). 여기 값은 원본 집합의 크기다"
+    },
+    {
+      "what": "환자 칸 p가 차트번호 글자가 아니라 메모리 번호",
+      "why": "차트번호는 Worker 안에서도 메모리 번호로만 다닌다. 시험은 가짜 차트번호를 숫자로 바꿔 넣는다"
+    },
+    {
+      "what": "처방 이름이 있으면 label이 코드가 아니라 이름",
+      "why": "화면에 처방 이름을 보인다(AC-509.4). 골든은 이름 없이 돌려 견주므로 label이 코드다"
+    },
+    {
+      "what": "eswt 인자 없음",
+      "why": "ESWT 묶음은 범위 밖이다(design.md TASK-9). 원본도 끔으로 돌렸다"
+    },
+    {
+      "what": "기간 밖 진료 줄을 뺀다",
+      "why": "원본은 validate_split이 기간 안 줄만 들여보낸다. Worker 메모리에는 불러온 범위 전체가 있어 함수가 거른다. 입력이 같으면 결과가 같다"
+    }
+  ],
+  "cases": [
+    {
+      "name": "five-codes",
+      "result": {
+        "from": "2026-10-01",
+        "to": "2026-10-19",
+        "visits": 75,
+        "patients": 50,
+        "newPatients": 7,
+        "returning": 43,
+        "invalidCodes": 0,
+        "lines": [
+          {
+            "label": "LA358",
+            "newPatients": 2,
+            "returning": 2,
+            "total": 4
+          },
+          {
+            "label": "MM042",
+            "newPatients": 1,
+            "returning": 1,
+            "total": 2
+          },
+          {
+            "label": "도수",
+            "newPatients": 2,
+            "returning": 0,
+            "total": 2
+          },
+          {
+            "label": "B4001",
+            "newPatients": 1,
+            "returning": 0,
+            "total": 1
+          },
+          {
+            "label": "ZZ999",
+            "newPatients": 0,
+            "returning": 0,
+            "total": 0
+          },
+          {
+            "label": "고른 처방 중 하나라도",
+            "newPatients": 4,
+            "returning": 3,
+            "total": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "big-counts",
+      "result": {
+        "from": "2026-10-05",
+        "to": "2026-10-06",
+        "visits": 12345,
+        "patients": 9876,
+        "newPatients": 1234,
+        "returning": 8642,
+        "invalidCodes": 1234,
+        "lines": [
+          {
+            "label": "LA358",
+            "newPatients": 1001,
+            "returning": 0,
+            "total": 1001
+          },
+          {
+            "label": "MM042",
+            "newPatients": 0,
+            "returning": 1,
+            "total": 1
+          },
+          {
+            "label": "고른 처방 중 하나라도",
+            "newPatients": 1001,
+            "returning": 1,
+            "total": 1002
+          }
+        ]
+      }
+    },
+    {
+      "name": "one-day-short-code",
+      "result": {
+        "from": "2026-10-19",
+        "to": "2026-10-19",
+        "visits": 5,
+        "patients": 4,
+        "newPatients": 1,
+        "returning": 3,
+        "invalidCodes": 0,
+        "lines": [
+          {
+            "label": "X1",
+            "newPatients": 1,
+            "returning": 1,
+            "total": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "long-code-leap-year",
+      "result": {
+        "from": "2024-02-25",
+        "to": "2024-03-03",
+        "visits": 9,
+        "patients": 6,
+        "newPatients": 2,
+        "returning": 4,
+        "invalidCodes": 0,
+        "lines": [
+          {
+            "label": "LONG-CODE-NAME-0001",
+            "newPatients": 2,
+            "returning": 0,
+            "total": 2
+          },
+          {
+            "label": "X1",
+            "newPatients": 1,
+            "returning": 1,
+            "total": 2
+          },
+          {
+            "label": "고른 처방 중 하나라도",
+            "newPatients": 2,
+            "returning": 1,
+            "total": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "codes-without-rows",
+      "result": {
+        "from": "2026-10-10",
+        "to": "2026-10-11",
+        "visits": 2,
+        "patients": 2,
+        "newPatients": 0,
+        "returning": 2,
+        "invalidCodes": 0,
+        "lines": [
+          {
+            "label": "LA358",
+            "newPatients": 0,
+            "returning": 0,
+            "total": 0
+          },
+          {
+            "label": "도수",
+            "newPatients": 0,
+            "returning": 0,
+            "total": 0
+          },
+          {
+            "label": "고른 처방 중 하나라도",
+            "newPatients": 0,
+            "returning": 0,
+            "total": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty",
+      "result": {
+        "from": "2026-10-01",
+        "to": "2026-10-07",
+        "visits": 0,
+        "patients": 0,
+        "newPatients": 0,
+        "returning": 0,
+        "invalidCodes": 0,
+        "lines": []
+      }
+    }
+  ]
+}

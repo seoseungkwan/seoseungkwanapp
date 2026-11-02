@@ -29,9 +29,9 @@ internal static class Program
             var table = CommandTable.LoadEmbedded();
             var dispatcher = new Dispatcher(table, log.Write);
             Hello.Register(dispatcher, table);
-            var services = HelperServices.Create();
-            BitCommands.Register(dispatcher, services);
-            RevenueCommands.Register(dispatcher, services);
+            BitCommands.Register(dispatcher, HelperServices.Create());
+            Precheck.Core.Stats.StatsCommands.Register(dispatcher, HelperServices.Create());
+            RevenueCommands.Register(dispatcher, HelperServices.Create());
 
             using var input = Console.OpenStandardInput();
             using var output = Console.OpenStandardOutput();

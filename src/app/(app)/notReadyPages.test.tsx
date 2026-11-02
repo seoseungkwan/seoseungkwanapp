@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from '@/components/common/notReadyFeatures'
+import { MENU } from '@/components/shell/menu'
 import { decideRoute, type HospitalState } from '@/lib/auth/gate'
 import AiReportPage from './ai-report/page'
 import ContactsPage from './contacts/page'
@@ -13,7 +14,6 @@ import InventoryPage from './inventory/page'
 import NoticesPage from './notices/page'
 import PatientsPage from './patients/page'
 import StaffPage from './staff/page'
-import StatsPage from './stats/page'
 
 // 준비 중 주소의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, ui-90 AC-415.5, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
 // 페이지는 (app) 묶음 안이라 앱 틀과 승인 검사((app)/layout)를 저절로 받는다. 문지기 규칙은 바꾸지 않는다
@@ -23,7 +23,6 @@ const APP_GROUP = 'src/app/(app)'
 
 // 주소 · 표의 이름 · h1(title) · 페이지 (탭 순서)
 const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = [
-  { path: '/stats', name: '통계', title: '통계는 준비 중이에요', Page: StatsPage },
   { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
   { path: '/patients', name: '환자', title: '환자는 준비 중이에요', Page: PatientsPage },
   { path: '/ai-report', name: 'AI 리포트', title: 'AI 리포트는 준비 중이에요', Page: AiReportPage },
@@ -72,6 +71,12 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     expect(PAGES.map((p) => p.path as string)).not.toContain('/revenue')
     expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
     expect(readFileSync(join(ROOT, pageFile('/revenue')), 'utf8')).not.toMatch(/NotReadyScreen|notReadyFeature/)
+  })
+
+  it('AC-515.3: 이 표의 주소는 준비 중 목록(NOT_READY_FEATURES)·탭 목록(MENU)의 준비 중 항목과 같고 /stats는 없다', () => {
+    expect(PAGES.map((p) => p.path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
+    expect(PAGES.map((p) => p.path as string)).toEqual(MENU.filter((m) => !m.ready).map((m) => m.path as string))
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/stats')
   })
 
   it('AC-012.4: 이 표의 주소는 준비 중 목록(NOT_READY_FEATURES)과 같고 /worklog는 없다', () => {

@@ -29,6 +29,22 @@
       "status": "pending"
     },
     {
+      "dir": "stats-1-data",
+      "status": "completed"
+    },
+    {
+      "dir": "stats-2-save",
+      "status": "completed"
+    },
+    {
+      "dir": "stats-3-numbers",
+      "status": "completed"
+    },
+    {
+      "dir": "stats-4-screen",
+      "status": "blocked"
+    },
+    {
       "dir": "ai-report-1-base",
       "status": "completed"
     },

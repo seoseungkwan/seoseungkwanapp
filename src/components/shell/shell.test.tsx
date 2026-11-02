@@ -33,7 +33,7 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 업무일지는 worklog AC-012.2)
+// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 통계는 stats AC-515.1, 업무일지는 worklog AC-012.2)
 const PATHS: readonly (readonly [string, string])[] = [
   ['대시보드', '/dashboard'],
   ['통계', '/stats'],
@@ -50,7 +50,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/claim/setup'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '청구', '매출', '업무일지']
+const READY = ['대시보드', '통계', '청구', '매출', '업무일지']
 const NOT_READY = LABELS.filter((l) => !READY.includes(l))
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
@@ -88,8 +88,8 @@ const panel = () => {
   const id = allButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·청구·매출·업무일지·설정(비트 PC 연결 화면)
-const READY_TABS = ['대시보드', '청구', '매출', '업무일지', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·매출·업무일지·설정(비트 PC 연결 화면)
+const READY_TABS = ['대시보드', '통계', '청구', '매출', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -116,9 +116,10 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-010.1·AC-012.2: 기능 자신의 화면(href)은 대시보드 /dashboard · 청구 /claim · 매출 /revenue · 업무일지 /worklog이고 나머지(설정 포함)는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-010.1·AC-515.1·AC-012.2: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 매출 /revenue · 업무일지 /worklog이고 나머지(설정 포함)는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
+      { label: '통계', href: '/stats' },
       { label: '청구', href: '/claim' },
       { label: '매출', href: '/revenue' },
       { label: '업무일지', href: '/worklog' },
@@ -157,7 +158,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-010.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·청구·매출·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-010.1·AC-515.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·매출·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -425,7 +426,7 @@ describe('AllMenu', () => {
     hasNone(svg, 'rotate-180')
   })
 
-  it('AC-416.2·AC-010.1·AC-012.5: 누르면 탭 줄 바로 아래 판 — surface·아래 1px line·shadow-float, 머리 "모든 탭 n개" · "준비 중 n개"(small muted, 수는 목록에서 센다), 2칸 목록(ul) 링크가 MENU 순서·44px', async () => {
+  it('AC-416.2·AC-010.1·AC-515.3·AC-012.5: 누르면 탭 줄 바로 아래 판 — surface·아래 1px line·shadow-float, 머리 "모든 탭 n개" · "준비 중 n개"(small muted, 수는 목록에서 센다), 2칸 목록(ul) 링크가 MENU 순서·44px', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(allButton())
@@ -490,6 +491,17 @@ describe('AllMenu', () => {
     expect((panel() as HTMLElement).querySelectorAll('[aria-current]')).toHaveLength(0)
   })
 
+  it('AC-515.1: 통계 탭은 href·path가 /stats이고 ready이며, [전체 메뉴] 판의 그 칸에 "준비 중" 칩이 없다', async () => {
+    expect(MENU.find((m) => m.label === '통계')).toEqual({ label: '통계', path: '/stats', href: '/stats', ready: true })
+    const user = userEvent.setup()
+    render(<TabBar />)
+    await user.click(allButton())
+    const link = within(panel() as HTMLElement).getByRole('link', { name: '통계' })
+    expect(link.getAttribute('href')).toBe('/stats')
+    expect(link.children).toHaveLength(1)
+    expect(link.textContent).toBe('통계')
+  })
+
   it('AC-012.2: 업무일지 탭은 href·path가 /worklog이고 ready이며, [전체 메뉴] 판의 그 칸에 "준비 중" 칩이 없다', async () => {
     expect(MENU.find((m) => m.label === '업무일지')).toEqual({ label: '업무일지', path: '/worklog', href: '/worklog', ready: true })
     const user = userEvent.setup()
@@ -501,7 +513,7 @@ describe('AllMenu', () => {
     expect(link.textContent).toBe('업무일지')
   })
 
-  it('AC-416.2·AC-010.1·AC-012.2: 준비 중 탭은 neutral 칩 "준비 중"(글자 뒤), 화면이 있는 탭(대시보드·청구·매출·업무일지·설정)에는 칩이 없다', async () => {
+  it('AC-416.2·AC-010.1·AC-515.1·AC-012.2: 준비 중 탭은 neutral 칩 "준비 중"(글자 뒤), 화면이 있는 탭(대시보드·통계·청구·매출·업무일지·설정)에는 칩이 없다', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(allButton())

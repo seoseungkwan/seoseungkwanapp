@@ -57,11 +57,12 @@ const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) =>
 const SCREEN_DIR: Record<string, string> = {
   '/claim': 'claim/setup',
   '/claim/setup': 'claim/setup',
+  '/stats': 'stats',
   '/revenue': 'revenue',
   '/worklog': 'worklog',
 }
 
-describe('로그인하면 늘 대시보드가 첫 화면이다 (REQ-301)', () => {
+describe('AC-515.5: 로그인하면 늘 대시보드가 첫 화면이다 (REQ-301)', () => {
   beforeEach(() => {
     exchangeCodeForSession.mockReset()
     exchangeCodeForSession.mockResolvedValue({ data: { session: {}, user: { id: 'user-1' } }, error: null })
@@ -132,7 +133,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
   })
 
   it('AC-307.2: MENU의 탭 주소마다 src/app/(app)<주소>/page.tsx가 있다', () => {
-    expect(MENU).toHaveLength(DASHBOARD_FEATURES.length + 1)
+    expect(MENU).toHaveLength(DASHBOARD_FEATURES.length + 1) // 목차 칸 + 대시보드
     for (const item of MENU) expect(existsSync(pageFile(item.path)), pageFile(item.path)).toBe(true)
   })
 
@@ -151,9 +152,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-010.1·AC-012.4: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /worklog가 들어 있다', () => {
+  it('AC-307.3·AC-010.1·AC-515.4·AC-012.4: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats와 /worklog가 들어 있다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
     expect(READY.map((f) => f.href)).toEqual(expect.arrayContaining(['/claim', '/revenue', '/claim/setup']))
+    expect(READY.map((f) => f.href)).toContain('/stats')
     expect(READY.map((f) => f.href)).toContain('/worklog')
     for (const feature of READY) {
       const source = read(pageFile(feature.href))
@@ -164,9 +166,17 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const href of ['/claim', '/claim/setup']) expect(read(pageFile(href)), href).toMatch(/from '@\/components\/claim\/setup\//)
   })
 
-  it('AC-307.4·AC-010.1·AC-012.4: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같고 업무일지는 없다', () => {
+  it('AC-515.4: 통계는 세 곳(menu · features · notReady)이 맞고 /stats 페이지는 StatsScreen이다', () => {
+    expect(MENU.find((m) => m.label === '통계')).toEqual({ label: '통계', path: '/stats', href: '/stats', ready: true })
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '통계')).toMatchObject({ href: '/stats', status: 'connect-first' })
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/stats')
+    expect(read(pageFile('/stats'))).toMatch(/from '@\/components\/stats\/StatsScreen'/)
+  })
+
+  it('AC-307.4·AC-010.1·AC-515.3·AC-012.4: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같고 통계와 업무일지는 없다', () => {
     const fromNotReady = NOT_READY_FEATURES.map((f) => [f.name, f.path])
     expect(fromNotReady).toHaveLength(MENU.filter((m) => !m.ready).length)
+    expect(fromNotReady).not.toContainEqual(['통계', '/stats'])
     expect(fromNotReady).not.toContainEqual(['업무일지', '/worklog'])
     expect(NOT_READY.map((f) => [f.name, f.href])).toEqual(fromNotReady)
     expect(MENU.filter((m) => m.href === null && m.label !== '설정').map((m) => [m.label, m.path])).toEqual(fromNotReady)
@@ -204,7 +214,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7·AC-414.5·AC-010.1·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
+  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
     const total = DASHBOARD_FEATURES.length
     const now = featureCount('ready')
     const afterConnect = featureCount('connect-first')

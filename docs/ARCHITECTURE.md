@@ -8,7 +8,7 @@ src/
 ├── app/                 # 페이지(App Router). page.tsx = 랜딩(섹션은 components/landing/)
 │   ├── globals.css      # 디자인 토큰 한 곳(`:root`), Tailwind `@theme inline`(토큰을 var()로만), 모션 줄이기 규칙 (docs/UI_GUIDE.md, ADR-019)
 │   ├── fonts/           # Pretendard 1.3.9 정적 subset 세 굵기(400·500·600) woff2 + OFL.txt. layout.tsx가 next/font/local로 낸다 (ADR-019)
-│   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/stats 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
+│   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/notices 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
 │   ├── (app)/revenue/page.tsx  # 매출 화면 = components/revenue/RevenueScreen (specs/revenue)
 │   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
 ├── lib/
@@ -17,7 +17,7 @@ src/
 │   ├── payload/         # [환자 구역] 저장 모양(toMonthPayload·toDayPayloads)·검사(validate.ts)
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
 │   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts (specs/revenue)
-│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). 통계 달·일 숫자는 (예정)
+│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). stats.ts = stats_months·stats_days·stats_coverage (specs/stats)
 │   │   └── worklogDays.ts  # 업무일지 하루 읽기·저장(Supabase, 바뀐 칸만)
 │   ├── worklog/         # 업무일지 합계·칸 글자 읽기·날짜·개인정보 모양 검사·자동 저장. 환자 구역이 아니다
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
@@ -56,7 +56,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 ## 데이터 흐름
 ```
 [통계] 파일 끌어다 놓기 → Worker: parse → aggregate → compare → 화면
-       화면 → toMonthPayload·toDayPayloads → validate → (예정) lib/storage → months·days
+       화면 → toMonthPayload·toDayPayloads + 덮은 기간 → validate → lib/storage/stats.ts → stats_months·stats_days·stats_coverage
 [매출] 비트 PC 도우미 읽기(`revenue.days`) → 확장 → lib/bridge → 집계만 → lib/storage → sales_days·sales_codes (2026-11-01 바뀜, specs/revenue)
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
 [업무일지] 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
@@ -80,7 +80,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 |---|---|
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
-| `months` · `days` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용) |
+| `stats_months` · `stats_days` · `stats_coverage` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용. 칸: `month` 또는 `day`·`partial`·`source`·`payload`·`updated_at`, 완전한 줄은 덜 덮인 줄로 안 바뀌는 트리거) · 불러온 기간 한 줄씩(칸: `from_day`·`to_day`·`source`·`created_at`, 넣기만) |
 | `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭이 만들고 통계가 나중에 함께 씀 (specs/revenue) |
 | `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `sales_codes` | 달별 처방 코드 집계(코드·이름·건수·금액). 칸은 specs/revenue design.md 6절 |

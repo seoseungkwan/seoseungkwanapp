@@ -551,24 +551,24 @@ const refIn = (refs: BucketRef[], key: string) => {
 describe("AC-007.3 재방문 '집계 중' — 칸 첫날 ~ 칸 끝날 + N일이 다 덮이고 끝났을 때만 숫자", () => {
   it('두 창이 다 덮이고 끝났으면 수와 비율', () => {
     const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-24')], '2026-10-25')
-    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, within7: 1, within14: 1, rate7: 1, rate14: 1 })
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, within7: 1, within14: 1, rate7: 1, rate14: 1, within30: null, after30: null, rate30: null })
   })
 
   it('14일 창이 덜 덮였으면 14일만 집계 중(null)', () => {
     const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-10')], '2026-10-25')
-    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, within7: 1, within14: null, rate7: 1, rate14: null })
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, within7: 1, within14: null, rate7: 1, rate14: null, within30: null, after30: null, rate30: null })
   })
 
   it('파일 사이 공백이 창 안에 있으면 집계 중', () => {
     const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-06'), r('2026-10-08', '2026-10-24')], '2026-10-25')
-    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, within7: null, within14: null, rate7: null, rate14: null })
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, within7: null, within14: null, rate7: null, rate14: null, within30: null, after30: null, rate30: null })
   })
 
   it.each([
-    ['2026-10-08', { within7: null, within14: null, rate7: null, rate14: null }], // 7일 창 끝날이 오늘
-    ['2026-10-09', { within7: 1, within14: null, rate7: 1, rate14: null }],
-    ['2026-10-15', { within7: 1, within14: null, rate7: 1, rate14: null }], // 14일 창 끝날이 오늘
-    ['2026-10-16', { within7: 1, within14: 1, rate7: 1, rate14: 1 }],
+    ['2026-10-08', { within7: null, within14: null, rate7: null, rate14: null, within30: null, after30: null, rate30: null }], // 7일 창 끝날이 오늘
+    ['2026-10-09', { within7: 1, within14: null, rate7: 1, rate14: null, within30: null, after30: null, rate30: null }],
+    ['2026-10-15', { within7: 1, within14: null, rate7: 1, rate14: null, within30: null, after30: null, rate30: null }], // 14일 창 끝날이 오늘
+    ['2026-10-16', { within7: 1, within14: 1, rate7: 1, rate14: 1, within30: null, after30: null, rate30: null }],
   ])('오늘이 %s → %j (창 끝날이 오늘 이후면 덮였어도 집계 중)', (today, expected) => {
     const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-24')], today)
     expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 1, ...expected })
@@ -576,14 +576,14 @@ describe("AC-007.3 재방문 '집계 중' — 칸 첫날 ~ 칸 끝날 + N일이 
 
   it('칸 자체가 덜 덮였으면 집계 중(주 9/28~10/4 중 9/28~9/30이 안 덮임)', () => {
     const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-24')], '2026-10-25')
-    expect(refIn(summary.series.week, '2026-09-28').revisit).toEqual({ cohort: 1, within7: null, within14: null, rate7: null, rate14: null })
+    expect(refIn(summary.series.week, '2026-09-28').revisit).toEqual({ cohort: 1, within7: null, within14: null, rate7: null, rate14: null, within30: null, after30: null, rate30: null })
   })
 
   it('달 칸은 다음 달 7일·14일까지 덮이고 끝나야 숫자', () => {
     const both = summarize(revisitRows(), [r('2026-10-01', '2026-11-20')], '2026-11-30')
-    expect(refIn(both.series.month, '2026-10').revisit).toEqual({ cohort: 1, within7: 1, within14: 1, rate7: 1, rate14: 1 })
+    expect(refIn(both.series.month, '2026-10').revisit).toEqual({ cohort: 1, within7: 1, within14: 1, rate7: 1, rate14: 1, within30: null, after30: null, rate30: null })
     const only7 = summarize(revisitRows(), [r('2026-10-01', '2026-11-10')], '2026-11-30')
-    expect(refIn(only7.series.month, '2026-10').revisit).toEqual({ cohort: 1, within7: 1, within14: null, rate7: 1, rate14: null })
+    expect(refIn(only7.series.month, '2026-10').revisit).toEqual({ cohort: 1, within7: 1, within14: null, rate7: 1, rate14: null, within30: null, after30: null, rate30: null })
   })
 
   it('여러 명: 비율 = 재방문 수 ÷ 집단', () => {
@@ -594,13 +594,170 @@ describe("AC-007.3 재방문 '집계 중' — 칸 첫날 ~ 칸 끝날 + N일이 
       row({ patient: 902, date: NEW_DAY, firstVisit: true }), // 다시 오지 않음
     ]
     const summary = summarize(rows, [r('2026-10-01', '2026-10-24')], '2026-10-25')
-    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 3, within7: 1, within14: 2, rate7: 1 / 3, rate14: 2 / 3 })
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({ cohort: 3, within7: 1, within14: 2, rate7: 1 / 3, rate14: 2 / 3, within30: null, after30: null, rate30: null })
   })
 
   it('집단이 0명이면 수는 0, 비율은 null', () => {
     const summary = summarize([row({ date: '2026-10-02' })], [r('2026-10-01', '2026-10-24')], '2026-10-25')
-    expect(refIn(summary.series.day, '2026-10-02').revisit).toEqual({ cohort: 0, within7: 0, within14: 0, rate7: null, rate14: null })
-    expect(refIn(summary.series.day, '2026-10-03').revisit).toEqual({ cohort: 0, within7: 0, within14: 0, rate7: null, rate14: null })
+    expect(refIn(summary.series.day, '2026-10-02').revisit).toEqual({ cohort: 0, within7: 0, within14: 0, rate7: null, rate14: null, within30: null, after30: null, rate30: null })
+    expect(refIn(summary.series.day, '2026-10-03').revisit).toEqual({ cohort: 0, within7: 0, within14: 0, rate7: null, rate14: null, within30: null, after30: null, rate30: null })
+  })
+})
+
+// 10/1(목) 신환. 30일 창 10/2~10/31 — 10/31까지 덮이고 오늘이 11/1 이후여야 숫자
+describe("AC-501.3 30일 재방문 '집계 중' — 칸 첫날 ~ 칸 끝날 + 30일이 다 덮이고 끝났을 때만 숫자", () => {
+  it('30일 창이 다 덮이고 끝났으면 within30·after30·rate30이 숫자', () => {
+    const summary = summarize(revisitRows(), [r('2026-10-01', '2026-11-05')], '2026-11-06')
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({
+      cohort: 1,
+      within7: 1,
+      within14: 1,
+      within30: 1,
+      after30: 0,
+      rate7: 1,
+      rate14: 1,
+      rate30: 1,
+    })
+  })
+
+  it('30일 창이 덜 덮였으면 30일만 집계 중(null), 7·14일은 숫자', () => {
+    const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-30')], '2026-11-06')
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({
+      cohort: 1,
+      within7: 1,
+      within14: 1,
+      within30: null,
+      after30: null,
+      rate7: 1,
+      rate14: 1,
+      rate30: null,
+    })
+  })
+
+  it('파일 사이 공백이 30일 창 안에만 있으면 30일만 집계 중', () => {
+    const summary = summarize(revisitRows(), [r('2026-10-01', '2026-10-20'), r('2026-10-22', '2026-11-05')], '2026-11-06')
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toMatchObject({ within7: 1, within14: 1, within30: null, after30: null, rate30: null })
+  })
+
+  it.each([
+    ['2026-10-31', { within30: null, after30: null, rate30: null }], // 30일 창 끝날이 오늘
+    ['2026-11-01', { within30: 1, after30: 0, rate30: 1 }],
+  ])('오늘이 %s → %j (창 끝날이 오늘 이후면 덮였어도 집계 중)', (today, expected) => {
+    const summary = summarize(revisitRows(), [r('2026-10-01', '2026-11-05')], today)
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toMatchObject(expected)
+  })
+
+  it('30일 넘어 다시 온 신환: 30일이 숫자일 때만 after30도 숫자', () => {
+    const rows = [row({ patient: 900, date: NEW_DAY, firstVisit: true }), row({ patient: 900, date: '2026-11-05' })] // 35일째
+    const done = summarize(rows, [r('2026-10-01', '2026-11-10')], '2026-11-11')
+    expect(refIn(done.series.day, NEW_DAY).revisit).toEqual({
+      cohort: 1,
+      within7: 0,
+      within14: 0,
+      within30: 0,
+      after30: 1,
+      rate7: 0,
+      rate14: 0,
+      rate30: 0,
+    })
+    const counting = summarize(rows, [r('2026-10-01', '2026-10-30'), r('2026-11-05', '2026-11-10')], '2026-11-11')
+    expect(refIn(counting.series.day, NEW_DAY).revisit).toMatchObject({ within14: 0, within30: null, after30: null, rate30: null })
+  })
+
+  it('칸 자체가 덜 덮였으면 집계 중(주 9/28~10/4 중 9/28~9/30이 안 덮임)', () => {
+    const summary = summarize(revisitRows(), [r('2026-10-01', '2026-11-30')], '2026-12-01')
+    expect(refIn(summary.series.week, '2026-09-28').revisit).toMatchObject({ within30: null, after30: null, rate30: null })
+  })
+
+  it('달 칸은 다음 달 30일까지 덮이고 끝나야 숫자(10월 칸 → 11/30)', () => {
+    const done = summarize(revisitRows(), [r('2026-10-01', '2026-11-30')], '2026-12-01')
+    expect(refIn(done.series.month, '2026-10').revisit).toMatchObject({ within14: 1, within30: 1, after30: 0, rate30: 1 })
+    const short = summarize(revisitRows(), [r('2026-10-01', '2026-11-29')], '2026-12-01')
+    expect(refIn(short.series.month, '2026-10').revisit).toMatchObject({ within14: 1, within30: null, after30: null, rate30: null })
+    const today = summarize(revisitRows(), [r('2026-10-01', '2026-11-30')], '2026-11-30')
+    expect(refIn(today.series.month, '2026-10').revisit).toMatchObject({ within30: null, after30: null, rate30: null })
+  })
+
+  it('여러 명: rate30 = 30일 재방문 수 ÷ 집단', () => {
+    const rows = [
+      ...revisitRows(), // 900: 4일째
+      row({ patient: 901, date: NEW_DAY, firstVisit: true }),
+      row({ patient: 901, date: '2026-10-25' }), // 24일째
+      row({ patient: 902, date: NEW_DAY, firstVisit: true }),
+      row({ patient: 902, date: '2026-11-03' }), // 33일째
+      row({ patient: 903, date: NEW_DAY, firstVisit: true }), // 다시 오지 않음
+    ]
+    const summary = summarize(rows, [r('2026-10-01', '2026-11-05')], '2026-11-06')
+    expect(refIn(summary.series.day, NEW_DAY).revisit).toEqual({
+      cohort: 4,
+      within7: 1,
+      within14: 1,
+      within30: 2,
+      after30: 1,
+      rate7: 1 / 4,
+      rate14: 1 / 4,
+      rate30: 2 / 4,
+    })
+  })
+
+  it('집단이 0명이면 within30·after30은 0, rate30은 null', () => {
+    const summary = summarize([row({ date: '2026-10-02' })], [r('2026-10-01', '2026-11-10')], '2026-11-11')
+    for (const key of ['2026-10-02', '2026-10-03']) {
+      expect(refIn(summary.series.day, key).revisit).toEqual({
+        cohort: 0,
+        within7: 0,
+        within14: 0,
+        within30: 0,
+        after30: 0,
+        rate7: null,
+        rate14: null,
+        rate30: null,
+      })
+    }
+  })
+
+  it('30일이 숫자인 칸은 7·14일도 숫자이고, 30일이 집계 중이면 after30·rate30도 집계 중(일·주·월, 여러 덮은 기간·오늘)', () => {
+    const c = clinic()
+    c.daily(r('2026-09-01', '2026-12-10'))
+    c.add('2026-10-01', 3, { firstVisit: true })
+    const cases: [DateRange[], string][] = [
+      [[r('2026-09-01', '2026-12-10')], '2026-12-11'],
+      [[r('2026-09-01', '2026-12-10')], '2026-11-05'],
+      [[r('2026-09-01', '2026-10-20'), r('2026-10-22', '2026-12-10')], '2026-12-11'],
+      [[r('2026-09-15', '2026-11-15')], '2026-11-20'],
+    ]
+    let counted = 0
+    for (const [covered, today] of cases) {
+      const summary = summarize(c.rows, covered, today)
+      for (const ref of [...summary.series.day, ...summary.series.week, ...summary.series.month]) {
+        const { within7, within14, within30, after30, rate30 } = ref.revisit
+        if (within30 === null) {
+          expect(after30).toBeNull()
+          expect(rate30).toBeNull()
+          continue
+        }
+        counted++
+        expect(within7).not.toBeNull()
+        expect(within14).not.toBeNull()
+        expect(after30).not.toBeNull()
+      }
+    }
+    expect(counted).toBeGreaterThan(0)
+  })
+})
+
+describe('AC-501.4 30일 칸은 더하기만 — 7·14일 판정·숫자는 30일 창과 상관없다', () => {
+  it('RevisitView 칸은 지금 칸에 within30·after30·rate30만 더한 것이고, 7·14일은 30일이 집계 중이든 아니든 같다', () => {
+    const counting = summarize(revisitRows(), [r('2026-10-01', '2026-10-24')], '2026-10-25')
+    const done = summarize(revisitRows(), [r('2026-10-01', '2026-11-30')], '2026-12-01')
+    const old = { cohort: 1, within7: 1, within14: 1, rate7: 1, rate14: 1 }
+    for (const summary of [counting, done]) {
+      const { revisit } = refIn(summary.series.day, NEW_DAY)
+      expect(Object.keys(revisit).sort()).toEqual(['after30', 'cohort', 'rate14', 'rate30', 'rate7', 'within14', 'within30', 'within7'])
+      expect(revisit).toMatchObject(old)
+    }
+    expect(refIn(counting.series.day, NEW_DAY).revisit.within30).toBeNull()
+    expect(refIn(done.series.day, NEW_DAY).revisit.within30).toBe(1)
   })
 })
 

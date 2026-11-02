@@ -35,7 +35,7 @@ const UNAVAILABLE: Delta = { kind: 'unavailable' }
 const IN_PROGRESS: Delta = { kind: 'in-progress' }
 const ALL_UNAVAILABLE: TotalsDelta = { patients: UNAVAILABLE, newPatients: UNAVAILABLE, returning: UNAVAILABLE }
 const ZERO: Totals = { patients: 0, newPatients: 0, returning: 0, unknown: 0 }
-const NO_REVISIT: RevisitCounts = { cohort: 0, within7: 0, within14: 0 }
+const NO_REVISIT: RevisitCounts = { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 }
 
 const RISING_MIN_PREVIOUS = 5 // 급증감은 이전 5명 이상인 처방만(0→1 '신규'가 목록을 채우지 않게)
 const TOP_COUNT = 5
@@ -97,17 +97,23 @@ const ratesOf = (totals: Totals): Rates => ({
 })
 
 // N일 재방문은 '칸 첫날 ~ 칸 끝날 + N일'이 다 덮이고 끝났을 때만 숫자다(칸 집단이 다 모였고 창도 다 지났다).
-// 14일이 숫자면 7일도 숫자다
+// 긴 창이 숫자면 짧은 창도 숫자다(30 → 14 → 7). after30은 30일과 같이 숫자이거나 null이다
 function revisitView(range: DateRange, counts: RevisitCounts, ctx: Context): RevisitView {
   const ready = (days: number) => bucketState({ from: range.from, to: addDays(range.to, days) }, ctx.merged, ctx.today) === 'complete'
+  const rateOf = (within: number | null) => (within === null ? null : ratio(within, counts.cohort))
   const within7 = ready(7) ? counts.within7 : null
   const within14 = ready(14) ? counts.within14 : null
+  const ready30 = ready(30)
+  const within30 = ready30 ? counts.within30 : null
   return {
     cohort: counts.cohort,
     within7,
     within14,
-    rate7: within7 === null ? null : ratio(within7, counts.cohort),
-    rate14: within14 === null ? null : ratio(within14, counts.cohort),
+    within30,
+    after30: ready30 ? counts.after30 : null,
+    rate7: rateOf(within7),
+    rate14: rateOf(within14),
+    rate30: rateOf(within30),
   }
 }
 

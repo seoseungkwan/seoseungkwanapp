@@ -68,13 +68,13 @@ public static class Sql
     public static IReadOnlyCollection<string> All => Allowed.Keys;
 
     /// <summary>글자가 허용 목록의 문장과 똑같은가(대소문자·공백까지).</summary>
-    public static bool IsAllowed(string? sql) => sql != null && (Allowed.ContainsKey(sql) || RevenueSql.Parameters.ContainsKey(sql));
+    public static bool IsAllowed(string? sql) => sql != null && (Allowed.ContainsKey(sql) || RevenueSql.Parameters.ContainsKey(sql) || Stats.StatsSql.IsAllowed(sql));
 
     /// <summary>문장이 받는 매개변수 표. 허용 목록 밖이면 BitException(E-BIT-READ-FAILED).</summary>
     public static IReadOnlyList<SqlParam> ParametersOf(string sql)
     {
         if (sql != null && Allowed.TryGetValue(sql, out var parameters)) return parameters;
         if (sql != null && RevenueSql.Parameters.TryGetValue(sql, out var revenue)) return revenue;
-        throw new BitException(BitErrors.ReadFailed);
+        return Stats.StatsSql.ParametersOf(sql!);
     }
 }

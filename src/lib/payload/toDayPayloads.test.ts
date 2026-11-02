@@ -109,9 +109,9 @@ describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·�
         { id: 'g-drug', patients: 3, newPatients: 1, returning: 1 },
         { id: 'g-manual', patients: 2, newPatients: 1, returning: 1 },
       ],
-      revisit: { cohort: 1, within7: 1, within14: 1 },
+      revisit: { cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 },
     })
-    expect(dayOf(payloads, '2026-09-05').revisit).toEqual({ cohort: 0, within7: 0, within14: 0 })
+    expect(dayOf(payloads, '2026-09-05').revisit).toEqual({ cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 })
   })
 
   it('모든 층의 열쇠가 정해진 것뿐이다(동네·F/U·칸 범위가 없다)', () => {
@@ -122,17 +122,38 @@ describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·�
       expect(sorted(p.totals)).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
       for (const x of p.rx) expect(sorted(x)).toEqual(['code', 'name', 'newPatients', 'patients', 'returning', 'type'])
       for (const x of p.groups) expect(sorted(x)).toEqual(['id', 'newPatients', 'patients', 'returning'])
-      expect(sorted(p.revisit)).toEqual(['cohort', 'within14', 'within7'])
+      expect(sorted(p.revisit)).toEqual(['after30', 'cohort', 'within14', 'within30', 'within7'])
     }
   })
 
   it.each<[string, DateRange, string, DayPayload['revisit']]>([
-    ['두 창이 다 덮이고 끝남', COVERED, TODAY, { cohort: 1, within7: 1, within14: 1 }],
-    ['14일 창(9/3~9/16)이 덜 덮임', r('2026-09-01', '2026-09-12'), TODAY, { cohort: 1, within7: 1, within14: null }],
-    ['7일 창(9/3~9/9)의 끝날이 오늘', COVERED, '2026-09-09', { cohort: 1, within7: null, within14: null }],
-  ])('재방문: %s → %j', (_, covered, today, expected) => {
+    ['세 창이 다 덮이고 끝남', COVERED, TODAY, { cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 }],
+    ['30일 창(9/3~10/2)이 덜 덮임', r('2026-09-01', '2026-10-01'), TODAY, { cohort: 1, within7: 1, within14: 1, within30: null, after30: null }],
+    ['30일 창의 끝날이 오늘', COVERED, '2026-10-02', { cohort: 1, within7: 1, within14: 1, within30: null, after30: null }],
+    ['14일 창(9/3~9/16)이 덜 덮임', r('2026-09-01', '2026-09-12'), TODAY, { cohort: 1, within7: 1, within14: null, within30: null, after30: null }],
+    ['7일 창(9/3~9/9)의 끝날이 오늘', COVERED, '2026-09-09', { cohort: 1, within7: null, within14: null, within30: null, after30: null }],
+  ])('AC-502.1 재방문: %s → %j', (_, covered, today, expected) => {
     const payloads = toDayPayloads(analyze(mixedDay(), [covered], today))!
     expect(dayOf(payloads, '2026-09-02').revisit).toEqual(expected)
+  })
+
+  it('AC-502.1 31일째 이후에 처음 다시 온 신환은 after30이다. schemaVersion은 2 그대로', () => {
+    const rows = [row({ patient: 1, firstVisit: true }), row({ patient: 1, date: '2026-10-10' })]
+    const payload = dayOf(toDayPayloads(analyze(rows))!, '2026-09-02')
+    expect(payload.revisit).toEqual({ cohort: 1, within7: 0, within14: 0, within30: 0, after30: 1 })
+    expect(payload.schemaVersion).toBe(2)
+  })
+
+  it.each<[string, DateRange, string]>([
+    ['다 덮임', COVERED, TODAY],
+    ['30일 창이 덜 덮임', r('2026-09-01', '2026-10-01'), TODAY],
+    ['14일 창이 덜 덮임', r('2026-09-01', '2026-09-12'), TODAY],
+    ['7일 창의 끝날이 오늘', COVERED, '2026-09-09'],
+  ])("AC-502.1 '집계 중'은 요약의 판정 그대로: %s", (_, covered, today) => {
+    const result = analyze(mixedDay(), [covered], today)
+    const summary = result.summary.series.day.find((ref) => ref.key === '2026-09-02')!.revisit
+    const { revisit } = dayOf(toDayPayloads(result)!, '2026-09-02')
+    expect([revisit.within7, revisit.within14, revisit.within30, revisit.after30]).toEqual([summary.within7, summary.within14, summary.within30, summary.after30])
   })
 
   it('결과에 다른 칸이 붙어 있어도 따라가지 않는다', () => {

@@ -8,7 +8,7 @@ import { DASHBOARD_FEATURES } from './features'
 
 // 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5. 매출은 spec revenue AC-010.1
 const TABLE = [
-  { name: '통계', desc: '환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수', href: '/stats', status: 'soon' },
+  { name: '통계', desc: '환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수', href: '/stats', status: 'connect-first' },
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'soon' },
@@ -41,7 +41,7 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     }
   })
 
-  it('AC-414.5·AC-010.1·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first다', () => {
+  it('AC-414.5·AC-010.1·AC-515.2·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first다', () => {
     const namesOf = (rows: ReadonlyArray<{ name: string; status: string }>, status: string) => rows.filter((f) => f.status === status).map((f) => f.name)
     for (const status of ['ready', 'connect-first', 'soon']) expect(namesOf(DASHBOARD_FEATURES, status), status).toEqual(namesOf(TABLE, status))
     expect(namesOf(DASHBOARD_FEATURES, 'ready')).toContain('설정')
@@ -55,6 +55,15 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     expect(revenue?.status).toBe(DASHBOARD_FEATURES.find((f) => f.name === '청구')?.status)
     expect(revenue?.desc.split('·')[3]).toBe('건당 진료비')
     expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
+  })
+
+  it('AC-515.2: 통계 칸은 connect-first("연결 먼저" → 연결 뒤 "사용 가능")이고 주소는 /stats, 설명 글자는 그대로다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '통계')).toEqual({
+      name: '통계',
+      desc: '환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수',
+      href: '/stats',
+      status: 'connect-first',
+    })
   })
 
   it('AC-012.3: 업무일지 칸은 ready("사용 가능")이고 주소는 /worklog, 설명 글자는 그대로다', () => {

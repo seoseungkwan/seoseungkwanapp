@@ -5,7 +5,6 @@
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
 
 export type NotReadyPath =
-  | '/stats'
   | '/notices'
   | '/patients'
   | '/ai-report'
@@ -28,13 +27,6 @@ const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
 // 탭 순서
 export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
-  {
-    path: '/stats',
-    name: '통계',
-    title: '통계는 준비 중이에요',
-    intro: `환자 흐름과 처방 추세를 그래프로 볼 자리예요. ${SOON}`,
-    items: ['환자 수 추이(신환·재진)', '신환 재방문율', '처방 추세', '요일별 환자 수', '원장님 보고 문장'],
-  },
   {
     path: '/notices',
     name: '고시·공지',
