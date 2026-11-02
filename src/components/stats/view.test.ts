@@ -13,6 +13,7 @@ import {
   DEFAULT_STATS_PERIOD,
   patientTrend,
   revisitRates,
+  rxComparedCells,
   rxDetail,
   rxList,
   statsRange,
@@ -1063,5 +1064,73 @@ describe('AC-511.8 rxDetail', () => {
     const { current } = rxDetail({ days, covered: [{ from: week.end, to: week.end }], range }, 'R')
     expect(current[2]).toMatchObject({ covered: true, partial: true })
     expect(current[1].covered).toBe(false)
+  })
+})
+
+describe('AC-511.9 rxComparedCells', () => {
+  const today = '2026-11-13'
+  const november15 = '2026-11-15'
+  // '30d' 오늘 11월 13일: 이번 기간 10월 14일 ~ 11월 12일, 비교 기간 9월 14일 ~ 10월 13일
+  const both30 = [{ from: '2026-09-14', to: '2026-11-12' }]
+  const everyDay = (from: string, to: string) => daysFrom(from, to, { rx: [rx('R', 1)] })
+  const everyMonth = (first: string, count: number) => monthsFrom(first, count).map((month) => day(`${month}-10`, { rx: [rx('R', 1)] }))
+
+  it("AC-511.9 11월 13일의 '30d', 비교 기간의 마지막 8일만 덮임 — 8짝이 남는다", () => {
+    const stats = input(today, '30d', everyDay('2026-09-14', '2026-11-12'), [{ from: '2026-10-06', to: '2026-11-12' }])
+    expect(rxComparedCells(stats)).toEqual({ kept: 8, dropped: true })
+    expect(rxList(stats)![0].comparable).toEqual({ current: 8, previous: 8 })
+  })
+
+  it("AC-511.9 2026년 11월 15일의 '12m', 2025년 6월 1일부터 덮임 — 5달이 남는다", () => {
+    const stats = input(november15, '12m', everyMonth('2025-06', 18), [{ from: '2025-06-01', to: '2026-11-14' }])
+    expect(rxComparedCells(stats)).toEqual({ kept: 5, dropped: true })
+    expect(rxList(stats)![0].comparable).toEqual({ current: 5, previous: 5 })
+  })
+
+  it("AC-511.9 11월 15일의 '12m'이 온전히 덮임 — 이번 달만 덜 끝나 11달이 남는다", () => {
+    const stats = input(november15, '12m', everyMonth('2024-12', 24), [{ from: '2024-12-01', to: '2026-11-14' }])
+    expect(rxComparedCells(stats)).toEqual({ kept: 11, dropped: true })
+    expect(rxList(stats)![0].comparable).toEqual({ current: 11, previous: 11 })
+  })
+
+  it("AC-511.9 두 기간이 온전히 덮인 '30d' — 뺀 짝이 없다(줄 없는 날은 휴진이라 빼지 않는다)", () => {
+    expect(rxComparedCells(input(today, '30d', everyDay('2026-10-20', '2026-10-21'), both30))).toEqual({ kept: 30, dropped: false })
+  })
+
+  it('AC-511.9 비교 기간이 모두 덮은 기간 밖 — 남은 짝이 없다', () => {
+    const stats = input(today, '30d', everyDay('2026-10-14', '2026-11-12'), [{ from: '2026-10-14', to: '2026-11-12' }])
+    expect(rxComparedCells(stats)).toEqual({ kept: 0, dropped: true })
+    expect(rxList(stats)![0].comparable).toBeNull()
+  })
+
+  it("AC-511.9 '90d'는 주가 아니라 날로 센다", () => {
+    const range = statsRange(today, '90d')
+    const whole = [{ from: range.previous.from, to: range.current.to }]
+    const lastEight = [{ from: addDays(range.previous.to, -7), to: range.current.to }]
+    expect(rxComparedCells({ days: [], covered: whole, range })).toEqual({ kept: 90, dropped: false })
+    expect(rxComparedCells({ days: [], covered: lastEight, range })).toEqual({ kept: 8, dropped: true })
+    // 덜 끝난 날 하루는 그 날의 짝만 뺀다. 주로 묶으면 그 주의 다른 날까지 빠진다
+    expect(rxComparedCells({ days: [day(range.previous.to, { partial: true })], covered: whole, range })).toEqual({ kept: 89, dropped: true })
+  })
+
+  it('AC-511.9 줄마다 같다 — 서로 다른 날에 나오는 처방 둘의 comparable이 모두 같은 남은 짝의 날만 더한 값이다', () => {
+    // '7d': 이번 기간 11월 6일 ~ 12일, 비교 기간 10월 30일 ~ 11월 5일. 11월 1일까지는 덮은 기간 밖이고 11월 3일은 덜 끝났다.
+    // 남은 짝은 11월 2일↔9일, 4일↔11일, 5일↔12일이다
+    const days = [
+      day('2026-11-02', { rx: [rx('A', 1)] }),
+      day('2026-11-03', { partial: true, rx: [rx('A', 40)] }), // A만 나온 날이 덜 끝나도 B의 짝(11월 10일)까지 빠진다
+      day('2026-11-04', { rx: [rx('A', 2)] }),
+      day('2026-11-05', { rx: [rx('B', 8)] }),
+      day('2026-11-06', { rx: [rx('A', 50)] }), // 짝 10월 30일이 덮은 기간 밖
+      day('2026-11-07', { rx: [rx('B', 60)] }), // 짝 10월 31일이 덮은 기간 밖
+      day('2026-11-09', { rx: [rx('B', 16)] }),
+      day('2026-11-10', { rx: [rx('B', 100)] }), // 짝 11월 3일이 덜 끝남
+      day('2026-11-11', { rx: [rx('B', 32)] }),
+      day('2026-11-12', { rx: [rx('A', 4)] }),
+    ]
+    const stats = input(today, '7d', days, [{ from: '2026-11-02', to: '2026-11-12' }])
+    const comparableByCode = Object.fromEntries(rxList(stats)!.map((row) => [row.code, row.comparable]))
+    expect(comparableByCode).toEqual({ A: { current: 4, previous: 3 }, B: { current: 48, previous: 8 } })
+    expect(rxComparedCells(stats)).toEqual({ kept: 3, dropped: true })
   })
 })

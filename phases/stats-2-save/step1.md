@@ -1,6 +1,6 @@
 # Step 1: stats-storage
 
-> **TASK-7** 통계 숫자 저장·읽기 · **REQ-507** · AC-507.1 ~ AC-507.3
+> **TASK-7** 통계 숫자 저장·읽기 · **REQ-507** · AC-507.1 ~ AC-507.4
 > Phase 2 · 저장과 처방 추세 `stats-2-save` · Step 1 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-7 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -76,7 +76,7 @@ export async function readMonths(range: { from: string; to: string }, deps?: …
 
 ### 3. 오류 번호 (앞말 `E-STATS-`, 다른 브랜치와 같은 번호를 더하지 않는다 — cross-branch C3)
 - `E-STATS-SAVE-FAILED`: "통계 숫자를 저장하지 못했어요" · "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
-- `E-STATS-READ-FAILED`: "저장된 통계를 읽지 못했어요" · "잠시 뒤 [다시 읽기]를 눌러 주세요"
+- `E-STATS-READ-FAILED`: "저장된 통계를 읽지 못했어요" · "잠시 뒤 [다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요."
 
 ### 4. 시험 (`src/lib/storage/stats.test.ts`)
 - 가짜 클라이언트가 받은 호출(표 이름 `stats_*`·줄 칸·충돌 열쇠·나눔·덮은 기간 줄)과 결과. 검사 걸림 → 호출 0번. 읽기 → 검사 걸린 줄 빠짐·`dropped`·`latest`
@@ -110,6 +110,14 @@ export async function readMonths(range: { from: string; to: string }, deps?: …
 - 지금 크기 시험 셋(`정확히 65,536바이트면 보낸다`·`65,537바이트면 아무것도 보내지 않고`·`글자 수가 아니라 UTF-8 바이트다`)을 표 한도로 돌린다. 달은 1,048,576 · 1,048,577, 날은 65,536 · 65,537이다. 이름 100자로 1,048,577바이트를 채우려면 달은 약 4,809줄 이상(검사 상한 5,000줄 안에서)이 필요하고, 날은 709줄 이하여야 한다(많으면 `sized`의 `need`가 음수가 되어 `repeat`가 오류를 낸다). 값 하나로는 달 안에서도 안 된다(65,537바이트 달 값은 약 300~553줄이다). 줄 수는 표가 아니라 목표 바이트마다 정한다(예: `sized`가 target에서 계산한다). 시험을 지우거나 약하게 바꾸지 않는다
 - 시험: 65,537바이트인 달 값은 보내고, 65,537바이트인 일 값은 아무것도 보내지 않는다
 
+## 2026-11-02 사용자 결정 '통계 기본값대로' (뒤따라 고치기)
+
+> 이 TASK는 이미 커밋되었다. 이 절의 일만 한다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 글은 `specs/stats/requirements.md` AC-507.4 그대로다.
+
+- `src/lib/errors.ts`의 두 글만 고친다: `E-STATS-READ-FAILED`의 `fix`, `E-ANALYZE-TIMEOUT`의 `what`. `E-BRIDGE-BUSY`는 고치지 않는다(다른 브랜치 몫)
+- `src/lib/errors.test.ts`: AC-507.4 이름으로 두 번호의 `what`·`fix`를 글자 그대로 본다. AC-507.2 시험의 옛 `fix` 기대값을 새 글로 바꾼다
+- `src/lib/errors.ts`·`src/lib/errors.test.ts` 밖은 고치지 않는다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -127,7 +135,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-507.1 ~ AC-507.3이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-507.1 ~ AC-507.4이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

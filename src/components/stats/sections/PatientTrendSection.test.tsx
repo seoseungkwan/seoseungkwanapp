@@ -7,7 +7,7 @@ import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import { PatientTrendSection } from './PatientTrendSection'
 
-// 환자 수 추이 (stats REQ-513 AC-513.1·513.2·513.3·513.4, 시안 notes.md §3). 가짜 일 줄은 이 파일 안에서만 만든다
+// 환자 수 추이 (stats REQ-513 AC-513.1·513.2·513.3·513.4·513.13, 시안 notes.md §3). 가짜 일 줄은 이 파일 안에서만 만든다
 
 const TODAY = '2026-11-13'
 const WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-12' }]
@@ -200,5 +200,80 @@ describe('AC-513.4: 환자 수 추이 빈 상태', () => {
   it('AC-513.4: 저장된 숫자는 있는데 이 기간 자료가 없으면 그 문구다', () => {
     render(<PatientTrendSection input={inputOf([day('2026-01-05', 1, 1)], WHOLE)} saved />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+  })
+})
+
+describe('AC-513.13: 고른 기간에 덮이지 않은 날이 있을 때의 아래 글', () => {
+  const OLD = '휴진한 날은 칸이 없어요.'
+  const NEW = '휴진한 날과 아직 불러오지 않은 날은 칸이 없어요.'
+  const ROW = [day('2026-11-02', 2, 8)] // 오늘이 11월 13일인 '30d'의 고른 기간은 10월 14일 ~ 11월 12일이다
+  const expectOld = () => {
+    expect(screen.getByText(OLD)).toBeTruthy()
+    expect(screen.queryByText(NEW)).toBeNull()
+  }
+  const expectNew = () => {
+    expect(screen.getByText(NEW)).toBeTruthy()
+    expect(screen.queryByText(OLD)).toBeNull()
+  }
+
+  it("AC-513.13: 오늘이 11월 13일인 '30d', 덮은 기간 끝이 어제(11월 12일)이고 오늘은 덮이지 않음 — 지금 글이다", () => {
+    render(<PatientTrendSection input={inputOf(ROW, [{ from: '2026-10-14', to: '2026-11-12' }])} saved />)
+    expectOld()
+  })
+
+  it('AC-513.13: 덮은 기간 끝이 그저께 — 새 문장이다', () => {
+    render(<PatientTrendSection input={inputOf(ROW, [{ from: '2026-10-14', to: '2026-11-11' }])} saved />)
+    expectNew()
+  })
+
+  it('AC-513.13: 첫날(10월 14일)만 덮이지 않음 — 새 문장이다', () => {
+    render(<PatientTrendSection input={inputOf(ROW, [{ from: '2026-10-15', to: '2026-11-12' }])} saved />)
+    expectNew()
+  })
+
+  it('AC-513.13: 가운데에 빈틈이 있는 덮은 기간 둘 — 새 문장이다', () => {
+    const covered = [
+      { from: '2026-10-14', to: '2026-10-25' },
+      { from: '2026-10-28', to: '2026-11-12' },
+    ]
+    render(<PatientTrendSection input={inputOf(ROW, covered)} saved />)
+    expectNew()
+  })
+
+  it('AC-513.13: 붙어 있는 덮은 기간 둘이 고른 기간을 다 덮음 — 날마다 보므로 지금 글이다', () => {
+    const covered = [
+      { from: '2026-10-14', to: '2026-10-25' },
+      { from: '2026-10-26', to: '2026-11-12' },
+    ]
+    render(<PatientTrendSection input={inputOf(ROW, covered)} saved />)
+    expectOld()
+  })
+
+  it('AC-513.13: input.covered가 비어 있고 일 줄은 있음 — 새 문장이다', () => {
+    render(<PatientTrendSection input={inputOf(ROW, [])} saved />)
+    expectNew()
+  })
+
+  it("AC-513.13: '7d'·'90d'도 같은 판정이다", () => {
+    const partOfBoth = [{ from: '2026-11-08', to: '2026-11-11' }]
+    for (const period of ['7d', '90d'] as const) {
+      const { unmount } = render(<PatientTrendSection input={inputOf([day('2026-11-10', 2, 8)], WHOLE, period)} saved />)
+      expectOld()
+      unmount()
+      const again = render(<PatientTrendSection input={inputOf([day('2026-11-10', 2, 8)], partOfBoth, period)} saved />)
+      expectNew()
+      again.unmount()
+    }
+  })
+
+  it("AC-513.13: '12m'에서 덮이지 않은 날이 있음 — 새 문장이 없다", () => {
+    const { container } = render(<PatientTrendSection input={inputOf([day('2026-10-10', 2, 8)], [{ from: '2026-08-20', to: '2026-11-12' }], '12m')} saved />)
+    expect(container.textContent).not.toContain(NEW)
+  })
+
+  it('AC-513.13: 일 줄이 없을 때의 빈 글은 덮이지 않은 날이 있어도 그대로다', () => {
+    const { container } = render(<PatientTrendSection input={inputOf([], [{ from: '2026-10-20', to: '2026-11-12' }])} saved />)
+    expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+    expect(container.textContent).not.toContain(NEW)
   })
 })

@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "stats",
-  "approved_at": "2026-11-02T05:53:43Z",
+  "approved_at": "2026-11-02T08:24:34Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "46e3cd308bb8fbf9af8371256b9595a36494419b1a2f1c0beff50651bd153613",
+  "spec_sha256": "d400290087eb10246272f66a8dc0a179764ff327cdc98aebb2d429700134486a",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/mockups/stats/app.js",
@@ -35,6 +35,8 @@
     "src/app/titles.test.tsx",
     "src/components/charts/StackedBarChart.test.tsx",
     "src/components/charts/StackedBarChart.tsx",
+    "src/components/claim/useBridge.test.ts",
+    "src/components/claim/useBridge.ts",
     "src/components/common/notReadyFeatures.test.ts",
     "src/components/common/notReadyFeatures.ts",
     "src/components/dashboard/briefing/DashboardHome.test.tsx",

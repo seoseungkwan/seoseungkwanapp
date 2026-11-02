@@ -9,13 +9,15 @@ import { CopyButton } from './CopyButton'
 import { NumberTable } from './DetailToggle'
 import { EmptyNote, Note, Section } from './parts'
 
-// 처방별 신환·재진 (stats REQ-513 AC-513.7·513.8, 시안 notes.md §3). view null = 비트 PC에서 불러온 자료가 없음.
+// 처방별 신환·재진 (stats REQ-513 AC-513.7·513.8·513.14, 시안 notes.md §3). view null = 비트 PC에서 불러온 자료가 없음.
 // [표 복사]는 병원 이름을 넣은 formatRxVisitSplit 글이다. view.text는 쓰지 않는다(Worker에는 병원 이름이 가지 않아 첫 줄이 빈 줄이다, AC-505.7)
 
 const TITLE = '처방별 신환·재진'
 const DESC = '처방마다 서로 다른 환자 수'
 const BIT_ONLY = '비트 PC에서 불러오면 보여요'
 const BIT_REASON = '진료 줄은 서버에 저장하지 않아서, 비트 PC에서 불러온 화면에서만 볼 수 있어요.'
+const NOT_LOADED = '이 기간은 아직 불러오지 않았어요'
+const NOT_LOADED_HOW = '이 기간을 고른 채 [비트에서 불러오기]를 누르면 보여요.'
 const NO_LINES = '이 기간에 불러온 진료 줄이 없어요.'
 const SHOWN = 10
 const COLUMNS = ['처방', '신환', '재진', '합계']
@@ -39,7 +41,14 @@ export function RxSplitSection({ view, hospitalName, saved, className }: { view:
       </Section>
     )
   }
-  if (view.kind === 'none' || view.split.lines.length === 0) {
+  if (view.kind === 'none') {
+    return (
+      <Section title={TITLE} className={className}>
+        <EmptyNote title={NOT_LOADED}>{NOT_LOADED_HOW}</EmptyNote>
+      </Section>
+    )
+  }
+  if (view.split.lines.length === 0) {
     return (
       <Section title={TITLE} className={className}>
         <EmptyNote>{NO_LINES}</EmptyNote>

@@ -1,6 +1,6 @@
 # Step 1: stats-screen
 
-> **TASK-14** 통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰) · **REQ-514** · AC-514.1 ~ AC-514.10
+> **TASK-14** 통계 화면 (자료 고르기 · 기간 · 저장 · 휴대폰) · **REQ-514** · AC-514.1 ~ AC-514.13
 > Phase 4 · 화면 `stats-4-screen` · Step 1 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-14 하나만 한다. 다른 TASK의 일은 하지 않는다.
 > 옮겨 옴: precheck REQ-031 (precheck 031.1·031.2) — 사전점검 명세의 같은 몫은 그 명세가 다음에 뺀다. 이 step은 `specs/stats`만 따른다.
@@ -30,7 +30,7 @@
 - `/specs/stats/design.md` — '구성 요소 / 인터페이스' TASK-14, '데이터 흐름'
 - `/specs/stats/tasks.md` — TASK-14 (수정 범위·메모)
 - `/docs/mockups/stats/notes.md` (승인본)
-- `/src/components/claim/useBridge.ts` (불러 쓰기만), `/src/lib/bridge/workerSink.ts`, `/src/types/bridge.ts`
+- `/src/components/claim/useBridge.ts` (불러 쓰기만. `close` 하나 예외, AC-514.12), `/src/lib/bridge/workerSink.ts`, `/src/types/bridge.ts`
 - `/src/workers/statsClient.ts`·`/src/types/stats.ts` (TASK-5·9), `/src/workers/runAnalysis.ts` (파일 길)
 - `/src/lib/storage/stats.ts` (TASK-7), `/src/lib/payload/toMonthPayload.ts`·`toDayPayloads.ts`
 - `/src/components/stats/view.ts`·`sections/*` (TASK-11·13), `/src/lib/clinicReport/reportText.ts` (TASK-10)
@@ -57,13 +57,16 @@
   - `src/components/stats/useStatsData.test.ts`
   - `src/components/stats/useStatsWorker.ts`
   - `src/components/stats/useStatsWorker.test.ts`
+  - `src/components/claim/useBridge.ts`
+  - `src/components/claim/useBridge.test.ts`
 - Tests:
   - `src/components/stats/StatsScreen.test.tsx`
   - `src/components/stats/SourcePicker.test.tsx`
   - `src/components/stats/useStatsData.test.ts`
   - `src/components/stats/useStatsWorker.test.ts`
+  - `src/components/claim/useBridge.test.ts`
 - TDD: required
-- 메모: 시험은 jsdom, 가짜 Worker·가짜 통로(`chrome.runtime`)·가짜 저장(`lib/storage/stats` mock — `readCoverage` 포함). `useBridge`(`components/claim/useBridge.ts`)는 불러 쓰기만 한다
+- 메모: 시험은 jsdom, 가짜 Worker·가짜 통로(`chrome.runtime`)·가짜 저장(`lib/storage/stats` mock — `readCoverage` 포함). `useBridge`(`components/claim/useBridge.ts`)는 불러 쓰기만 한다(`close` 하나 예외, AC-514.12)
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
@@ -124,6 +127,15 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - `StatsScreen.test.tsx`: `latest.source`가 'bit'이고 `fromFile`이 true → 문장이 글자 그대로 보인다. 모두 비트(`fromFile` false) → 보이지 않는다. 비교 기간 읽기만 `fromFile` true → 보인다. 파일 저장 실패로 방금 만든 숫자를 보이는 동안 → 보인다
 - `useStatsData.test.ts`: 파일 저장 성공 → `readDays`를 다시 부르고 그 답으로 그린다. `readMonths`를 부르지 않는다. 안내가 보이던 기간에서 비트 저장 성공 → 다시 읽은 `fromFile` false → 안내가 사라진다. 저장 실패 → 다시 읽지 않고 방금 만든 숫자를 합쳐 보인다
 
+## 2026-11-02 사용자 결정 '통계 기본값대로' (뒤따라 고치기)
+
+> 이 TASK는 이미 커밋되었다. 이 절의 일만 한다. 이 절이 이 파일의 다른 곳과 다르면 이 절이 먼저다. 글과 시험은 `specs/stats/requirements.md` AC-514.11·514.12·514.13 그대로다.
+
+- `StatsScreen.tsx`: AC-514.11 "방금 불러온 숫자는 저장했어요."(읽기 실패 카드의 [다시 읽기] 옆, 저장 실패 때의 안내와 같은 자리·모양. 없어지고 돌아오는 규칙은 AC 그대로). AC-514.13 파일 쪽 줄의 끝말. AC-514.12 `E-BRIDGE-DISCONNECTED` 오류 카드는 연결 상태가 `disconnected`인 동안만 보인다
+- `useStatsWorker.ts`: AC-514.12 `stream`을 부를 때 20분 시계를 켜고 `end`나 오류로 끝나면 끈다. 시간이 다 되면 `useBridge`의 `close`로 통로를 닫는다. 화면을 떠나면 시계를 남기지 않는다
+- `useBridge.ts`: 돌려주는 값에 `close` 하나를 더한다. 그 밖에는 고치지 않는다
+- 새 오류 번호·새 오류 글을 만들지 않는다. `lib/bridge/*`·`workers/*`·`E-BRIDGE-BUSY`는 고치지 않는다
+
 ## TDD 순서
 
 1. 시험을 먼저 쓴다. 시험 이름(`describe`·`it`)에 AC ID를 넣는다. 예: `it('AC-501.2 31일째에만 다시 오면 30일 재방문이 아니다', …)`
@@ -142,7 +154,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-514.1 ~ AC-514.10이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-514.1 ~ AC-514.13이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -162,7 +174,7 @@ python3 ~/.claude/harness/bin/verify
 ## 금지사항
 
 - 화면이 조각·진료 줄·보낼 글자를 받게 하지 마라(`lib/bridge/client`를 부르지 마라). 이유: 화면은 Worker만 통로에 넘긴다(청구 design.md 5절, precheck 004.11)
-- `useBridge.ts`·`lib/bridge/*`·`workers/*`를 고치지 마라. 이유: 이 step 범위 밖이다(불러 쓰기만)
+- `lib/bridge/*`·`workers/*`를 고치지 마라. `useBridge.ts`는 돌려주는 값에 `close` 하나만 더한다(AC-514.12). 다른 곳은 고치지 마라. 이유: 이 step 범위 밖이다(불러 쓰기만)
 - 파일 이름을 저장·전송·Worker 메시지에 넣지 마라. 이유: 환자 이름이 들어 있을 수 있다(stats-core 010.1)
 - 숫자를 브라우저 저장소·주소에 두지 마라. 이유: AC-514.9
 - 승인본과 다른 배치·문구로 새로 짓지 마라. 이유: 화면은 승인된 목업대로(CLAUDE.md)

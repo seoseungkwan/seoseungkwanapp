@@ -7,7 +7,7 @@ import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import { RxTrendSection } from './RxTrendSection'
 
-// 처방 추세 (stats REQ-513 AC-513.2·513.3·513.4·513.5·513.11, 시안 notes.md §3). 처방·일 줄은 이 파일 안에서만 지은 가짜다
+// 처방 추세 (stats REQ-513 AC-513.2·513.3·513.4·513.5·513.11·513.12, 시안 notes.md §3). 처방·일 줄은 이 파일 안에서만 지은 가짜다
 
 const TODAY = '2026-11-13'
 const WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-12' }]
@@ -386,5 +386,54 @@ describe('AC-513.4: 처방 추세 빈 상태', () => {
   it('AC-513.4: 저장된 숫자는 있는데 이 기간에 처방이 없으면 그 문구다', () => {
     render(<RxTrendSection input={inputOf([day('2026-11-02', [])], WHOLE)} saved />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+  })
+})
+
+describe('AC-513.12: 뺀 짝이 있을 때 처방 표 아래 안내 줄', () => {
+  const NOTE_WORD = '견줘요'
+  const LAST_EIGHT: DateRange[] = [{ from: '2026-10-06', to: '2026-11-12' }]
+  const ROWS = [day('2026-10-10', [['RA', 5], ['RB', 3]]), day('2026-11-02', [['RA', 10], ['RB', 4]])]
+
+  it("AC-513.12: '30d', 비교 기간의 마지막 8일만 덮임 — 날 글이고 표(ul) 뒤, '줄을 누르면…' 앞이다", () => {
+    render(<RxTrendSection input={inputOf(ROWS, LAST_EIGHT)} saved />)
+    const note = screen.getByText('증감과 막대는 두 기간 모두 자료가 있는 8일만 견줘요. 건수는 기간 전체예요.')
+    expect(note.previousElementSibling!.tagName).toBe('UL')
+    expect(note.nextElementSibling!.textContent).toMatch(/^줄을 누르면 /)
+    expect(note.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-small', 'text-muted']))
+  })
+
+  it("AC-513.12: '12m', 5달만 남음 — 달 글이다", () => {
+    render(<RxTrendSection input={inputOf([day('2026-10-10', [['RA', 10]])], [{ from: '2025-06-01', to: '2026-11-14' }], '12m', '2026-11-15')} saved />)
+    expect(screen.getByText('증감과 막대는 끝난 5달만 견줘요. 건수는 기간 전체예요.')).toBeTruthy()
+  })
+
+  it("AC-513.12: '12m'이 온전히 덮이고 이번 달만 덜 끝남 — 11달 글이 보인다", () => {
+    render(<RxTrendSection input={inputOf([day('2026-10-10', [['RA', 10]])], [{ from: '2024-12-01', to: '2026-11-14' }], '12m', '2026-11-15')} saved />)
+    expect(screen.getByText('증감과 막대는 끝난 11달만 견줘요. 건수는 기간 전체예요.')).toBeTruthy()
+  })
+
+  it("AC-513.12: '90d'의 {n}은 표시 칸(주)이 아니라 날이다", () => {
+    const { previous } = statsRange(TODAY, '90d')
+    render(<RxTrendSection input={inputOf([day('2026-11-02', [['RA', 10]])], [{ from: addDays(previous.to, -7), to: '2026-11-12' }], '90d')} saved />)
+    expect(screen.getByText('증감과 막대는 두 기간 모두 자료가 있는 8일만 견줘요. 건수는 기간 전체예요.')).toBeTruthy()
+  })
+
+  it("AC-513.12: 두 기간이 온전히 덮인 '30d' — 이 글이 없다", () => {
+    const { container } = render(<RxTrendSection input={inputOf(BOTH, WHOLE)} saved />)
+    expect(container.textContent).not.toContain(NOTE_WORD)
+    expect(screen.getByText(/^줄을 누르면 /).previousElementSibling!.tagName).toBe('UL')
+  })
+
+  it('AC-513.12: 비교 기간이 모두 덮은 기간 밖 — 이 글이 없고 줄마다 "비교할 수 없음"이다', () => {
+    const { container } = render(<RxTrendSection input={inputOf([day('2026-11-02', [['RA', 10], ['RB', 4]])], [{ from: '2026-10-14', to: '2026-11-12' }])} saved />)
+    expect(container.textContent).not.toContain(NOTE_WORD)
+    expect(rowOf(A).textContent).toContain('비교할 수 없음')
+    expect(rowOf(B).textContent).toContain('비교할 수 없음')
+  })
+
+  it('AC-513.12: rxList가 null — 뺀 짝이 있어도 이 글이 없다', () => {
+    const { container } = render(<RxTrendSection input={inputOf([day('2026-11-02', [])], LAST_EIGHT)} saved />)
+    expect(screen.getByText('자료 없음')).toBeTruthy()
+    expect(container.textContent).not.toContain(NOTE_WORD)
   })
 })

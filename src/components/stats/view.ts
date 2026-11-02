@@ -77,7 +77,7 @@ const DETAIL_BUCKET: Record<StatsPeriod, TrendBucket> = { '7d': 'day', '30d': 'd
 const YEAR_MONTHS = 12
 const TOP_RX = 5
 const TREND_CODE_LIMIT = 200 // buildTrend가 한 번에 받는 코드 수(넘으면 RangeError)
-// 달 점의 partial만 읽을 때 넘기는 코드. buildTrend는 코드가 0개면 RangeError이고 partial은 코드와 상관없다
+// 점의 partial만 읽을 때 넘기는 코드. buildTrend는 코드가 0개면 RangeError이고 partial은 코드와 상관없다
 const ANY_CODE = '-'
 
 const NO_RATE: StatsRateCell = { kind: 'none' }
@@ -322,11 +322,15 @@ function pointsByCode(points: readonly TrendPoint[]): Map<string, TrendPoint[]> 
   return byCode
 }
 
-// 어느 한쪽이라도 partial인 짝을 양쪽에서 뺀 합. now와 before는 같은 칸 수다(날 N개끼리, 달 12개끼리)
+// 어느 한쪽이라도 partial인 짝을 뺀 나머지 짝. now와 before는 같은 칸 수다(날 N개끼리, 달 12개끼리)
+function keptPairs(now: readonly TrendPoint[], before: readonly TrendPoint[]): { current: TrendPoint; previous: TrendPoint }[] {
+  return now.flatMap((point, i) => (point.partial || before[i].partial ? [] : [{ current: point, previous: before[i] }]))
+}
+
 function comparableOf(now: readonly TrendPoint[], before: readonly TrendPoint[]): RxTrendRow['comparable'] {
-  const pairs = now.flatMap((point, i) => (point.partial || before[i].partial ? [] : [{ current: point.count, previous: before[i].count }]))
+  const pairs = keptPairs(now, before)
   if (pairs.length === 0) return null
-  return { current: sum(pairs, (pair) => pair.current), previous: sum(pairs, (pair) => pair.previous) }
+  return { current: sum(pairs, (pair) => pair.current.count), previous: sum(pairs, (pair) => pair.previous.count) }
 }
 
 function rxRow(line: { code: string; name: string }, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod): RxTrendRow {
@@ -358,6 +362,14 @@ export function rxList({ days, covered, range }: StatsInput): RxTrendRow[] | nul
   })
   const ranked = rows.filter((row) => row.count > 0).sort((a, b) => b.count - a.count || compareText(codeKey(a.code), codeKey(b.code)))
   return ranked.length === 0 ? null : ranked.slice(0, TOP_RX)
+}
+
+// 증감을 견준 짝 수. partial은 처방과 상관없어 남은 짝은 모든 처방 줄에서 같으므로 줄마다 세지 않고 한 번만 센다
+export function rxComparedCells({ days, covered, range }: StatsInput): { kept: number; dropped: boolean } {
+  const pointsOf = (span: DateRange) => buildTrend(days, covered, { from: span.from, to: span.to, bucket: range.grain, codes: [ANY_CODE] }).points
+  const now = pointsOf(range.current)
+  const kept = keptPairs(now, pointsOf(range.previous)).length
+  return { kept, dropped: kept < now.length }
 }
 
 const overlaps = (a: DateRange, start: string, end: string) => compareYmd(a.from, end) <= 0 && compareYmd(start, a.to) <= 0

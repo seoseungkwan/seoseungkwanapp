@@ -114,8 +114,9 @@ const SPLIT: RxSplitView = {
 class FakePort implements PortLike {
   sent: Record<string, unknown>[] = []
   private messageFns: ((m: unknown) => void)[] = []
+  private disconnectFns: (() => void)[] = []
   onMessage = { addListener: (fn: (m: unknown) => void) => void this.messageFns.push(fn) }
-  onDisconnect = { addListener: () => undefined }
+  onDisconnect = { addListener: (fn: () => void) => void this.disconnectFns.push(fn) }
   postMessage(m: unknown) {
     this.sent.push(m as Record<string, unknown>)
   }
@@ -125,6 +126,9 @@ class FakePort implements PortLike {
   }
   last() {
     return this.sent[this.sent.length - 1]!
+  }
+  fireDisconnect() {
+    for (const fn of this.disconnectFns) fn()
   }
 }
 
@@ -287,6 +291,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -1226,5 +1231,343 @@ describe('AC-514.10 폭별 배치', () => {
     pressLoad(port)
     await screen.findByText('가짜처방')
     expect(nestedBoxes(document.body)).toEqual([])
+  })
+})
+
+describe('AC-514.11 저장했는데 읽지 못했을 때의 안내', () => {
+  const SAVED_NOTE = '방금 불러온 숫자는 저장했어요.'
+  const KEPT_NOTE = '방금 불러온 숫자는 화면에 그대로 있어요.'
+  const READ_FAILED = '오류 번호 E-STATS-READ-FAILED'
+  const readFails = () => vi.mocked(readDays).mockRejectedValue(new Error('가짜 실패'))
+  const readFailedShown = () => waitFor(() => expect(pageText()).toContain(READ_FAILED))
+  const noteShown = () => expect(screen.getByText(SAVED_NOTE)).toBeTruthy()
+  const noNote = () => expect(screen.queryByText(SAVED_NOTE)).toBeNull()
+  const rereadButton = () => screen.getByRole('button', { name: '다시 읽기' })
+
+  // 비트 저장에 성공했는데 다시 읽기가 실패한 상태
+  async function savedButReadFailed() {
+    const { port } = await drawReady()
+    readFails()
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    await readFailedShown()
+    await loadIsFree()
+    return { port }
+  }
+
+  it('AC-514.11 비트 저장 성공 뒤 읽기 실패 → 카드·[다시 읽기]·이 글', async () => {
+    await savedButReadFailed()
+    const card = screen.getByRole('alert')
+    expect(card.textContent).toContain(READ_FAILED)
+    const note = screen.getByText(SAVED_NOTE)
+    expect(note.parentElement).toBe(rereadButton().parentElement)
+    expect(pageText()).not.toContain(KEPT_NOTE)
+  })
+
+  it('AC-514.11 파일 저장 성공 뒤 읽기 실패 → 이 글', async () => {
+    fileGoesWell()
+    draw()
+    await sectionsShown()
+    readFails()
+    fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    await readFailedShown()
+    noteShown()
+  })
+
+  it('AC-514.11 [다시 저장] 성공 뒤 읽기 실패 → 이 글이고, 저장 실패 때의 안내와 같은 자리·같은 모양이다', async () => {
+    await saveFailedOnce()
+    const kept = screen.getByText(KEPT_NOTE)
+    const keptTag = kept.tagName
+    const keptClass = kept.className
+    expect(kept.parentElement).toBe(screen.getByRole('button', { name: '다시 저장' }).parentElement)
+
+    readFails()
+    fireEvent.click(screen.getByRole('button', { name: '다시 저장' }))
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(2))
+    await readFailedShown()
+
+    const note = await screen.findByText(SAVED_NOTE)
+    expect(note.tagName).toBe(keptTag)
+    expect(note.className).toBe(keptClass)
+    expect(note.parentElement).toBe(rereadButton().parentElement)
+    expect(screen.queryByText(KEPT_NOTE)).toBeNull()
+  })
+
+  it('AC-514.11 저장 없이 처음 열 때 읽기 실패 → 이 글이 없다', async () => {
+    readFails()
+    draw()
+    await readFailedShown()
+    expect(rereadButton()).toBeTruthy()
+    noNote()
+  })
+
+  it('AC-514.11 저장 실패와 읽기 실패가 함께 → "화면에 그대로 있어요"만 있고 이 글이 없다', async () => {
+    readFails()
+    vi.mocked(saveStats).mockRejectedValue(new Error('가짜 실패'))
+    const port = fakeChrome()
+    fakeWorker()
+    draw()
+    sayHello(port)
+    await readFailedShown()
+    pressLoad(port)
+    expect(await screen.findByText(KEPT_NOTE)).toBeTruthy()
+    await loadIsFree()
+    expect(pageText()).toContain(READ_FAILED)
+    noNote()
+  })
+
+  it('AC-514.11 [다시 읽기] 성공 → 없어지고, 그 뒤 다른 기간 읽기가 실패해도 없다', async () => {
+    await savedButReadFailed()
+    noteShown()
+
+    answers(SAVED_NOW)
+    fireEvent.click(rereadButton())
+    await sectionsShown()
+    noNote()
+
+    readFails()
+    pressPeriod('최근 90일')
+    await readFailedShown()
+    noNote()
+  })
+
+  it('AC-514.11 다른 기간 읽기에 성공해도 없어지고, 뒤의 읽기 실패에 돌아오지 않는다', async () => {
+    await savedButReadFailed()
+    noteShown()
+
+    answers(SAVED_NOW)
+    pressPeriod('최근 90일')
+    await sectionsShown()
+    noNote()
+
+    readFails()
+    pressPeriod('최근 30일')
+    await readFailedShown()
+    noNote()
+  })
+
+  it('AC-514.11 [다시 읽기]도 실패 → 읽는 동안은 카드와 함께 없고, 실패하면 카드와 함께 그대로 있다', async () => {
+    await savedButReadFailed()
+    noteShown()
+
+    const rejects: ((error: Error) => void)[] = []
+    vi.mocked(readDays).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejects.push(reject)
+        }),
+    )
+    fireEvent.click(rereadButton())
+    expect(pageText()).not.toContain(READ_FAILED)
+    noNote()
+
+    await act(async () => rejects.forEach((reject) => reject(new Error('가짜 실패'))))
+    await readFailedShown()
+    noteShown()
+  })
+
+  it('AC-514.11 기간을 바꿔 읽기가 실패 → 그대로 있다', async () => {
+    await savedButReadFailed()
+    noteShown()
+
+    pressPeriod('최근 90일')
+    await waitFor(() => expect(vi.mocked(readDays).mock.calls.some(([range]) => range.from === statsRange(TODAY, '90d').current.from)).toBe(true))
+    await flush()
+    await readFailedShown()
+    expect(periodButtons()[2]?.getAttribute('aria-pressed')).toBe('true')
+    noteShown()
+  })
+
+  it('AC-514.11 다음 [비트에서 불러오기]를 시작 → 없어지고, 그 불러오기가 실패해도 없다', async () => {
+    const { port } = await savedButReadFailed()
+    noteShown()
+
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    noNote()
+
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code: 'E-STATS-TOO-BIG' }))
+    await waitFor(() => expect(pageText()).toContain('오류 번호 E-STATS-TOO-BIG'))
+    await loadIsFree()
+    expect(pageText()).toContain(READ_FAILED)
+    noNote()
+  })
+
+  it('AC-514.11 다음 불러오기의 저장이 실패해도 돌아오지 않고 "화면에 그대로 있어요"만 있다', async () => {
+    const { port } = await savedButReadFailed()
+    noteShown()
+
+    vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패'))
+    pressLoad(port)
+    expect(await screen.findByText(KEPT_NOTE)).toBeTruthy()
+    await loadIsFree()
+    expect(pageText()).toContain(READ_FAILED)
+    noNote()
+  })
+
+  it('AC-514.11 파일 넣기를 시작 → 없어지고, 그 일이 실패해도 없다', async () => {
+    await savedButReadFailed()
+    noteShown()
+
+    const { AnalyzeError } = await vi.importActual<typeof import('@/workers/runAnalysis')>('@/workers/runAnalysis')
+    vi.mocked(runAnalysis).mockRejectedValue(new AnalyzeError('E-ANALYZE-TIMEOUT'))
+    fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
+    noNote()
+
+    await waitFor(() => expect(pageText()).toContain('오류 번호 E-ANALYZE-TIMEOUT'))
+    await loadIsFree()
+    expect(pageText()).toContain(READ_FAILED)
+    noNote()
+  })
+})
+
+describe('AC-514.12 답 없이 멈춘 불러오기', () => {
+  const LIMIT_MS = 1_200_000
+  const CARD = '오류 번호 E-BRIDGE-DISCONNECTED'
+  const cards = () => screen.queryAllByRole('alert').map((card) => card.textContent ?? '')
+  const hasCard = () => cards().some((text) => text.includes(CARD))
+  const pressRetry = () => fireEvent.click(screen.getByRole('button', { name: '다시 확인' }))
+
+  // 불러오기를 눌러 답 없이 20분을 보낸다. 이 동안만 시계가 가짜다(findBy·waitFor는 진짜 시계로 돈다)
+  async function stallLoad() {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIMIT_MS)
+    })
+    vi.useRealTimers()
+  }
+
+  it('AC-514.12 멈춘 뒤 카드에 "오류 번호 E-BRIDGE-DISCONNECTED"가 있고 [다시 확인]이 보이며 [파일 고르기]에 aria-disabled가 없다', async () => {
+    await drawReady()
+    await stallLoad()
+
+    expect(hasCard()).toBe(true)
+    expect(screen.getByRole('button', { name: '다시 확인' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull()
+    expect(screen.queryByRole('button', { name: LOAD })).toBeNull()
+    expect(saveStats).not.toHaveBeenCalled()
+  })
+
+  it('AC-514.12 멈춘 뒤 [다시 확인]을 누르면 그 오류 카드가 없고, ready가 되면 [비트에서 불러오기]가 보인다', async () => {
+    const { port } = await drawReady()
+    await stallLoad()
+    expect(hasCard()).toBe(true)
+
+    pressRetry()
+    expect(hasCard()).toBe(false)
+    expect(pageText()).not.toContain(CARD)
+    expect(screen.queryByRole('button', { name: LOAD })).toBeNull()
+
+    sayHello(port)
+    expect(await screen.findByRole('button', { name: LOAD })).toBeTruthy()
+    expect(hasCard()).toBe(false)
+  })
+
+  it('AC-514.12 [다시 확인]으로 붙은 뒤 다시 끊겨도 앞 일의 오류 카드가 돌아오지 않고 비트 칸 안내만 있다', async () => {
+    const { port } = await drawReady()
+    await stallLoad()
+    expect(hasCard()).toBe(true)
+    pressRetry()
+    sayHello(port)
+    await screen.findByRole('button', { name: LOAD })
+
+    act(() => port.fireDisconnect())
+
+    expect(await screen.findByRole('button', { name: '다시 확인' })).toBeTruthy()
+    expect(pageText()).toContain(CARD)
+    expect(hasCard()).toBe(false)
+  })
+
+  it('AC-514.12 다시 붙은 뒤 다음 불러오기도 멈추면 그 일의 오류 카드가 보인다', async () => {
+    const { port } = await drawReady()
+    await stallLoad()
+    expect(hasCard()).toBe(true)
+    pressRetry()
+    sayHello(port) // 가짜 크롬은 다시 붙어도 같은 포트를 준다
+    await screen.findByRole('button', { name: LOAD })
+    expect(hasCard()).toBe(false) // 지금부터 보이는 카드는 앞 일의 것이 아니다
+
+    await stallLoad()
+
+    expect(port.sent.filter((message) => message.cmd === 'stats.rows')).toHaveLength(2)
+    expect(hasCard()).toBe(true)
+    expect(screen.getByRole('button', { name: '다시 확인' })).toBeTruthy()
+  })
+
+  it('AC-514.12 멈춘 뒤 늦은 조각·end가 와도 load 일을 시키지 않고 저장하지 않으며 오류 카드가 그대로다', async () => {
+    const { port, fake } = await drawReady()
+    await stallLoad()
+    expect(hasCard()).toBe(true)
+    expect(fake.sent.some((message) => message.type === 'bridge-port')).toBe(true) // 이 Worker가 화면이 쓰는 그 Worker다
+
+    finishStream(port, ['가짜'])
+    await flush()
+
+    expect(fake.sent.some((message) => message.type === 'load')).toBe(false)
+    expect(saveStats).not.toHaveBeenCalled()
+    expect(hasCard()).toBe(true)
+  })
+
+  it('AC-514.12 [다시 확인]은 Worker를 그대로 두어 앞 불러오기의 처방별 표가 그대로다', async () => {
+    const { port, hand } = await loadedWithSplit()
+    await stallLoad()
+    expect(hasCard()).toBe(true)
+
+    pressRetry()
+    sayHello(port)
+    await screen.findByRole('button', { name: LOAD })
+
+    expect(screen.getByText('가짜처방하나')).toBeTruthy()
+    expect(hand.splits).toHaveLength(1)
+    expect(createStatsWorker).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AC-514.13 저장하지 않은 불러오기의 안내 줄', () => {
+  function fileIncomplete(failedFile: boolean, skippedInvalidRows: number) {
+    vi.mocked(runAnalysis).mockResolvedValue({
+      files: failedFile ? [OK_REPORT, { index: 1, ok: false, code: 'E-PARSE-EMPTY' }] : [OK_REPORT],
+      result: { quality: 'incomplete', skippedInvalidRows } as AnalysisResult,
+    })
+    vi.mocked(toMonthPayload).mockReturnValue(null)
+    vi.mocked(toDayPayloads).mockReturnValue(null)
+  }
+
+  async function dropFiles(...files: File[]) {
+    draw()
+    await sectionsShown()
+    fireEvent.change(fileInput(), { target: { files } })
+    await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
+  }
+
+  it('AC-514.13 파일 1건·줄 3건 → "읽지 못한 파일 1건 · 확인하지 못한 줄 3건이 있어요. 파일을 확인한 뒤 다시 넣어 주세요."', async () => {
+    fileIncomplete(true, 3)
+    await dropFiles(fakeFile('가짜좋은파일.xlsx'), fakeFile('가짜나쁜파일.xlsx'))
+    expect(screen.getByText('읽지 못한 파일 1건 · 확인하지 못한 줄 3건이 있어요. 파일을 확인한 뒤 다시 넣어 주세요.')).toBeTruthy()
+  })
+
+  it('AC-514.13 줄 5건만 → "확인하지 못한 줄 5건이 있어요. 파일을 확인한 뒤 다시 넣어 주세요."', async () => {
+    fileIncomplete(false, 5)
+    await dropFiles(fakeFile())
+    expect(screen.getByText('확인하지 못한 줄 5건이 있어요. 파일을 확인한 뒤 다시 넣어 주세요.')).toBeTruthy()
+  })
+
+  it('AC-514.13 파일 쪽 줄에 "비트에서 이 기록을 고친 뒤"가 없고 비트 쪽 줄은 그대로다', async () => {
+    fileIncomplete(false, 5)
+    await dropFiles(fakeFile())
+    expect(pageText()).toContain('파일을 확인한 뒤 다시 넣어 주세요.')
+    expect(pageText()).not.toContain('비트에서 이 기록을 고친 뒤')
+    cleanup()
+
+    const port = fakeChrome()
+    fakeWorker(INCOMPLETE)
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    pressLoad(port)
+    await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
+    expect(screen.getByText('차트번호 없는 내원 3건 · 중복 내원 1건 · 첫 내원을 못 찾은 환자 2명이 있어요. 비트에서 이 기록을 고친 뒤 다시 불러와 주세요.')).toBeTruthy()
+    expect(pageText()).not.toContain('파일을 확인한 뒤')
   })
 })

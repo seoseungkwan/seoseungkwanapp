@@ -18,7 +18,7 @@
       "step": 2,
       "name": "stats-view",
       "status": "completed",
-      "summary": "src/components/stats/view.ts(순수): statsRange(period 칸을 더함, 12m previous.to는 달 말일까지), summaryCells(SummaryCell 네 칸), patientTrend, revisitRates, firstRevisit(FirstRevisit, items마다 key), rxList·rxDetail, COMPARE_NAME 내보냄. 12m 달 칸은 일 숫자의 합이고 MonthPayload를 읽지 않는다. 넷째 칸은 짝이 모두 끝난 칸끼리 견준다(AC-511.2): 평균 칸 값은 끝난 칸 전체의 평균 그대로, 증감은 남은 칸의 두 평균. 평균에 든 끝난 칸을 짝 때문에 뺐을 때만 아래 글이 '견준 {n}달 평균 · 이번 {a}명 · {작년|지난 기간} {b}명'이다(시안에 없는 글, Phase 4 캡처에 넣는다). 다음 step이 알 것: rxList는 건수 0인 코드를 뺀다(순위는 이번 기간 count). 일 기간 칸의 끝남은 그 줄의 partial이다. PeriodSummary는 note를 그대로 그린다."
+      "summary": "src/components/stats/view.ts(순수): statsRange(period 칸을 더함, 12m previous.to는 달 말일까지), summaryCells(SummaryCell 네 칸), patientTrend, revisitRates, firstRevisit(FirstRevisit, items마다 key), rxList·rxDetail, COMPARE_NAME 내보냄. 12m 달 칸은 일 숫자의 합이고 MonthPayload를 읽지 않는다. 넷째 칸은 짝이 모두 끝난 칸끼리 견준다(AC-511.2): 평균 칸 값은 끝난 칸 전체의 평균 그대로, 증감은 남은 칸의 두 평균. 평균에 든 끝난 칸을 짝 때문에 뺐을 때만 아래 글이 '견준 {n}달 평균 · 이번 {a}명 · {작년|지난 기간} {b}명'이다(시안에 없는 글, Phase 4 캡처에 넣는다). 다음 step이 알 것: rxList는 건수 0인 코드를 뺀다(순위는 이번 기간 count). 일 기간 칸의 끝남은 그 줄의 partial이다. PeriodSummary는 note를 그대로 그린다. 2026-11-02 사용자 결정 '통계 기본값대로'(AC-511.9): rxComparedCells(input) → { kept, dropped }를 더했다. 짝 고르기는 comparableOf와 keptPairs로 나눠 쓴다. RxTrendRow·comparable 모양은 그대로다."
     },
     {
       "step": 3,
