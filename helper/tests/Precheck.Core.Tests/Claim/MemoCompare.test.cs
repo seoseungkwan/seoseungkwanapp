@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Precheck.Core.Claim;
+using Precheck.Core.Input;
 using Xunit;
 
 namespace Precheck.Core.Tests.Claim;
@@ -57,14 +58,16 @@ public class MemoCompareTests
 
     /// <summary>
     /// 웹 compareMemo(src/lib/precheck/memoCompare.test.ts)가 같은 파일을 읽어 같은 답을 내는지 본다(AC-016.2·AC-035.3).
-    /// 네 갈래는 쓰기 직전 비교(AC-035.3)의 차례 그대로다: null → 조회 못함, IsNullOrWhiteSpace → 비트에 없음, Matches → 같음, 그 밖은 다름.
+    /// 쓰기 직전 비교의 진짜 구현(MemoMatcher)을 부른다: 사본을 두면 진짜가 달라져도 이 시험은 통과한다.
     /// </summary>
-    private static string Compare(string ours, string? inBit)
+    private static string Compare(string ours, string? inBit) => new MemoMatcher().Compare(ours, inBit) switch
     {
-        if (inBit == null) return "조회 못함";
-        if (string.IsNullOrWhiteSpace(inBit)) return "비트에 없음";
-        return MemoCompare.Matches(inBit, ours) ? "같음" : "다름";
-    }
+        MemoMatch.Unknown => "조회 못함",
+        MemoMatch.Absent => "비트에 없음",
+        MemoMatch.Same => "같음",
+        MemoMatch.Different => "다름",
+        var other => throw new InvalidOperationException("모르는 비교 결과: " + other),
+    };
 
     private static string CasesFile()
     {
