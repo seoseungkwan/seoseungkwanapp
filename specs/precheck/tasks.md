@@ -265,9 +265,10 @@
 - Step: Phase 3 · Step 5 · `claim-counts`
 - AC: AC-019.1~AC-019.6
 - REQ: REQ-019
-- Files: supabase/migrations/20261030000100_precheck_counts.sql, supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.ts, src/lib/precheck/counts.test.ts, src/types/db.ts, src/components/claim/OutsideCounts.tsx, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.ts, src/components/claim/useCountsUpload.test.ts, src/components/claim/ClaimScreen.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
-- Tests: supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.test.ts, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.test.ts, src/app/(app)/claim/page.test.tsx, src/workers/precheck/jobs.test.ts, src/lib/errors.test.ts
+- Files: supabase/migrations/20261030000100_precheck_counts.sql, supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.ts, src/lib/precheck/counts.test.ts, src/types/db.ts, src/types/precheck.ts, src/components/claim/OutsideCounts.tsx, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.ts, src/components/claim/useCountsUpload.test.ts, src/components/claim/ClaimScreen.tsx, src/components/claim/dateList.test.ts, src/components/claim/setup/ClaimEntry.tsx, src/app/(app)/claim/page.tsx, src/app/(app)/claim/page.test.tsx, src/workers/precheck.worker.ts, src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: supabase/precheck.rls.test.ts, src/lib/storage/claimCounts.test.ts, src/lib/precheck/counts.test.ts, src/components/claim/OutsideCounts.test.tsx, src/components/claim/useCountsUpload.test.ts, src/components/claim/dateList.test.ts, src/app/(app)/claim/page.test.tsx, src/workers/precheck/jobs.test.ts, src/lib/errors.test.ts
 - TDD: required
+- 화면 자리는 AC-019.5가 정한다: ui-90 화면을 두고 '준비 중' 칩 자리에 건수를 넣는다(목업 화면 11의 제목·전체 배치를 쓰지 않는다). '메모 입력 현황' 패널의 표 모양은 목업 화면 11을 따르되 끝난 날은 뺀다. 월말 마감·연락 칸은 그리지 않는다(TASK-22·TASK-26이 더한다)
 - 사용자 할 일(Phase 3 의원 PC 시험 전): 이 마이그레이션을 SQL 편집기에 붙여 넣는다
 
 ## TASK-20: 심평원 청구 파일 읽기 (도우미)
