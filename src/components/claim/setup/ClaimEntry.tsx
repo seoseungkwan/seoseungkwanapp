@@ -60,7 +60,7 @@ function ClaimOffline() {
 export function ClaimEntry() {
   // 서버에서 그릴 때와 Worker를 못 만드는 곳에서는 null이다. 그려지는 글자는 연결 상태로만 정하므로 서버와 어긋나지 않는다
   const [channel] = useState(() => openClaimChannel())
-  const { state, helloError, retry, call, stream } = useBridge({ worker: channel?.worker })
+  const { state, helloError, retry, call, stream, onProgress } = useBridge({ worker: channel?.worker })
   const router = useRouter()
   const [countsOnly, setCountsOnly] = useState(false)
   // hello가 오류 번호로 끝나 연결 중에 멈췄어도 비트 PC 연결로(거기서 번호와 [다시 확인]을 보인다)
@@ -75,7 +75,7 @@ export function ClaimEntry() {
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
       <h1 className={titleClass}>청구</h1>
-      {state === 'ready' && (channel ? <ClaimScreen channel={channel} call={call} stream={stream} /> : <ErrorCard code="E-RULES-LOAD-FAILED" />)}
+      {state === 'ready' && (channel ? <ClaimScreen channel={channel} call={call} stream={stream} onProgress={onProgress} /> : <ErrorCard code="E-RULES-LOAD-FAILED" />)}
       {state === 'busy' && countsOnly && (
         // [건수만 보기] 뒤: 건수는 아직 준비 중(precheck TASK-19). [다시 확인]은 다시 붙고 카드로 돌아간다
         <>

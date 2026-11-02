@@ -1,19 +1,20 @@
-import { compareYmd, isMonth, isYmd } from '@/lib/analytics/dates'
+import { addDays, compareYmd, diffDays, isMonth, isYmd, monthOf, monthRange } from '@/lib/analytics/dates'
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
-import { createMemoEngine, unfinished, validatePhrases } from '@/lib/precheck/memo'
-import { dayMemoCounts, inputPlan, readBitMemos, visitMemos } from '@/lib/precheck/memoCompare'
+import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
+import { createMemoEngine, unfinished, validatePhrases, type Phrases } from '@/lib/precheck/memo'
+import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, readBitMemos, visitMemos } from '@/lib/precheck/memoCompare'
 import { runRules } from '@/lib/precheck/rules/engine'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { Outcome } from '@/types/parse'
-import type { BitMemos, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, MemoInput, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, SavedRuleSettings, Tables, VisitDxView } from '@/types/precheck'
+import type { BitMemos, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, SavedRuleSettings, StuckPerson, StuckView, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
 // 청구 Worker가 하는 일(design.md 6-2) [환자 자료 구역]. 시험은 이 파일을 바로 부른다(입구 precheck.worker.ts는 메시지만 잇는다).
-// 통로 포트: chunk·end·abort → assemble로 모은다. sent → 설정 사본을 저장했는지. 화면: loadStart(번호 load로 새 불러오기 시작, 옛 달을 버림) · month(그 불러오기의 id를 점검용 모양으로) · loadPart(claim.memos·store.load의 id를 받아 둠) · memoReloadStart(비트 메모 다시 불러오기 번호 run) · ruleList(설정 화면용 규칙 목록) · check(점검) · excel(엑셀 바이트). 화면이 지킬 약속은 types/precheck.ts.
-// 화면으로 보내는 것은 진료 수·진료 달·오류 번호·규칙 목록·loadPart의 성패와, check의 보기 모양·excel의 바이트뿐이다. 조각 글자·풀린 자료·도우미에 보낼 글자는 Worker 밖으로 화면에 내보내지 않는다(design.md 5절)
+// 통로 포트: chunk·end·abort → assemble로 모은다. sent → 설정 사본·달 칸 저장·입력 묶음의 답. 화면: loadStart(번호 load로 새 불러오기 시작, 옛 달을 버림) · month(그 불러오기의 id를 점검용 모양으로) · loadPart(claim.memos·store.load의 id를 받아 둠) · memoReloadStart(비트 메모 다시 불러오기 번호 run) · ruleList(설정 화면용 규칙 목록) · check(점검) · excel(엑셀 바이트) · memoView·editMemo·memoApprove·memoSaveRetry·storeBlock·buildInputBatch·inputExcel(메모 칸, TASK-18). 화면이 지킬 약속은 types/precheck.ts.
+// 화면으로 보내는 것은 진료 수·진료 달·오류 번호·규칙 목록·loadPart의 성패와, check·memoView의 보기 모양·입력 결과·엑셀의 바이트뿐이다. 조각 글자·풀린 자료·도우미에 보낼 글자(묶음·저장 글자)는 Worker 밖으로 화면에 내보내지 않는다(design.md 5절, AC-004.11)
 
 const PARTIAL = { ok: false, code: 'E-CLAIM-PARTIAL' } as const
 const GRADE_ORDER: readonly Grade[] = ['확인필요', '알림', '참고']
@@ -47,9 +48,14 @@ type Rec = Record<string, unknown>
 const isRecord = (x: unknown): x is Rec => typeof x === 'object' && x !== null && !Array.isArray(x)
 const allStrings = (x: Rec) => Object.values(x).every((value) => typeof value === 'string')
 
-/** 받아 둔 작업 저장: 고친·완료한 메모(내원번호 → 글)와 입력 기록(내원번호 → 마지막 상태) */
-type StoredWork = { saved: Map<string, string>; journal: Map<string, string> }
-const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map() })
+/** 달 파일 하나의 칸. store.save가 칸 전체를 바꾸므로 받은 그대로(이번 기간 밖 진료 것까지) 들고 있다가 함께 보낸다 */
+type MonthWork = { drafts: Map<string, string>; done: Map<string, string | boolean> }
+/**
+ * 받아 둔 작업 저장: 고친·완료한 메모(내원번호 → 글) · 입력 기록(내원번호 → 마지막 상태) · 완료 표시(글 없는 표시 포함, AC-018.3) · 달 파일별 칸 · 입력 기록의 달.
+ * saved는 메모를 얼리는 글이다: 글 없는 완료 표시는 얼리지 않는다(AC-014.11). journal은 도우미가 쓰고 Worker에는 사본이다(design.md 19-6)
+ */
+type StoredWork = { saved: Map<string, string>; journal: Map<string, string>; done: Set<string>; months: Map<string, MonthWork>; journalMonths: Map<string, string> }
+const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map(), done: new Set(), months: new Map(), journalMonths: new Map() })
 
 const isStrings = (x: unknown) => Array.isArray(x) && x.every((value) => typeof value === 'string')
 
@@ -85,9 +91,16 @@ export function loadStore(text: string): Outcome<{ work: StoredWork | null; sett
     const { drafts, done, journal } = file
     if (!isRecord(drafts) || !isRecord(done) || !isRecord(journal) || !allStrings(drafts) || !allStrings(journal)) return PARTIAL
     if (!Object.values(done).every((value) => typeof value === 'string' || typeof value === 'boolean')) return PARTIAL
-    for (const [key, value] of Object.entries(done)) if (typeof value === 'string') work.saved.set(key, value)
+    for (const [key, value] of Object.entries(done)) {
+      work.done.add(key)
+      if (typeof value === 'string') work.saved.set(key, value)
+    }
     for (const [key, value] of Object.entries(drafts)) work.saved.set(key, value as string)
-    for (const [key, value] of Object.entries(journal)) work.journal.set(key, value as string)
+    for (const [key, value] of Object.entries(journal)) {
+      work.journal.set(key, value as string)
+      work.journalMonths.set(key, month)
+    }
+    work.months.set(month, { drafts: new Map(Object.entries(drafts) as [string, string][]), done: new Map(Object.entries(done) as [string, string | boolean][]) })
   }
   return { ok: true, value: { work, ...settings } }
 }
@@ -213,6 +226,55 @@ const isRange = (x: unknown): x is DateRange => isRecord(x) && typeof x.from ===
 /** 진료 달(YYYY-MM)들, 이른 달부터 */
 const monthsOf = (month: ClaimMonth) => [...new Set(month.visits.map((v) => v.month))].sort()
 
+const inRange = (date: string, { from, to }: DateRange) => compareYmd(date, from) >= 0 && compareYmd(date, to) <= 0
+/** 쓰다 멈춘 기록(AC-017.7·AC-035.4) */
+const isStuckState = (state: string | undefined) => state === 'writing' || state === 'writeUnconfirmed'
+/** AC-035.8의 빠지는 사람 글. 화면이 스스로 알면 [이어서 입력] 아래에 먼저 보인다(AC-018.16) */
+const CANNOT_CONTINUE = '이 환자는 입력에서 빠지는 사람이라 이어서 입력할 수 없습니다. 비트에서 메모 칸을 확인한 뒤 [직접 확인했어요]를 눌러 주세요.'
+const NO_MEMO_NOTE = '넣을 메모가 없어 [이어서 입력]은 누를 수 없어요.'
+/** 화면에서 미리 뺀 사람의 결과 이유(AC-018.4). 완료·메모 없음은 세지 않는다 */
+const PRE_LEFT_REASON: Partial<Record<LeftReason, string>> = {
+  diff: '이미 있음: 비트에 다른 메모가 있고 바꾸기를 승인하지 않았어요',
+  manual: '직접 입력: 같은 날 진료가 여럿이에요',
+  mark: '확인 표시가 남아 입력하지 않았습니다',
+  unread: '비트 메모를 읽지 못해 넣지 않았어요',
+  held: '지난번에 건너뛴 뒤 메모가 그대로예요',
+}
+
+/** 묶음 한 사람(명령 표 bit.input의 items). 화면을 지나지 않는다 */
+type InputItem = { visitKey: string; chart: string; name: string; date: string; memo: string; replaces?: string; checkedByHand?: true }
+type EndLine = { visitKey: string; result: string; reason: string; previousMemo?: string }
+type InputEnd = { status: 'finished' | 'cancelled' | 'stopped'; code: string | null; reason: string | null; fields: string[]; results: EndLine[]; unconfirmed?: { visitKey: string; date: string }[]; noAsk: boolean }
+
+/** 도우미 끝 JSON(helper InputOutcome.ToJson)을 읽는다. 모양이 틀리면 null: 결과를 지어내지 않는다(AC-018.21) */
+export function readInputEnd(text: string): InputEnd | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isRecord(raw) || (raw.status !== 'finished' && raw.status !== 'cancelled' && raw.status !== 'stopped') || typeof raw.noAsk !== 'boolean' || !isStrings(raw.fields) || !Array.isArray(raw.results)) return null
+  const optionalText = (x: unknown) => x === null || x === undefined || typeof x === 'string'
+  if (!optionalText(raw.code) || !optionalText(raw.reason)) return null
+  const results: EndLine[] = []
+  for (const row of raw.results as unknown[]) {
+    if (!isRecord(row) || typeof row.visitKey !== 'string' || typeof row.result !== 'string' || typeof row.reason !== 'string') return null
+    if (row.previousMemo !== undefined && typeof row.previousMemo !== 'string') return null
+    results.push({ visitKey: row.visitKey, result: row.result, reason: row.reason, ...(row.previousMemo === undefined ? {} : { previousMemo: row.previousMemo }) })
+  }
+  let unconfirmed: InputEnd['unconfirmed']
+  if (raw.unconfirmed !== undefined) {
+    if (!Array.isArray(raw.unconfirmed)) return null
+    unconfirmed = []
+    for (const row of raw.unconfirmed as unknown[]) {
+      if (!isRecord(row) || typeof row.visitKey !== 'string' || typeof row.date !== 'string' || !isYmd(row.date)) return null
+      unconfirmed.push({ visitKey: row.visitKey, date: row.date })
+    }
+  }
+  return { status: raw.status, code: (raw.code as string | null | undefined) ?? null, reason: (raw.reason as string | null | undefined) ?? null, fields: raw.fields as string[], results, ...(unconfirmed ? { unconfirmed } : {}), noAsk: raw.noAsk }
+}
+
 export function createPrecheckJobs(deps: {
   post(message: PrecheckToScreen): void
   loadTables?: () => Promise<Outcome<Tables>>
@@ -248,6 +310,39 @@ export function createPrecheckJobs(deps: {
   let nextTicket = 1
   /** 마지막으로 답한 점검 결과(엑셀 재료). 새 loadStart·실패한 점검이 버린다 */
   let lastCheck: { check: number; view: ClaimView } | null = null
+  /** 점검에 쓴 표·설정·고른 기간(메모 칸 재료)과 그 설정의 코드 사전(병원 문구가 검사를 지나지 못하면 null). 새 loadStart가 버린다 */
+  let memoContext: { tables: Tables; settings: CheckSettings; visible: DateRange; codes: Pick<Phrases, 'CODEMAP' | 'CODEMAP_DEL'> | null } | null = null
+  /** 메모 결과 캐시: 고를 때마다 메모를 다시 만들지 않게. 고친 글이나 설정이 바뀌면 지운다 */
+  let viewsCache: MemoViews | null = null
+
+  // ── 메모 칸(TASK-18). 모두 Worker 메모리에만 있다 ──
+  /** 사람마다 승인: 내원번호 → 승인한 비트 글(AC-018.14). 풀 때는 지운다: visitMemos는 글이 같으면 다시 승인으로 치므로 남기면 X→Y→X에 되살아난다 */
+  const approved = new Map<string, string>()
+  /** 묻지 않기(AC-018.22). 끝 JSON으로만 바뀌고 오류 봉투로는 바뀌지 않는다. 새 통로에서 거짓으로 돌아간다 */
+  let noAsk = false
+  /** 지난번 건너뛴 사람: 내원번호 → 그때 글(AC-018.20). 원본 nmAutoHeld처럼 메모리에만 둔다 */
+  const held = new Map<string, string>()
+  /** 도우미가 같은 날 내원이 여럿이라 돌려준 사람(AC-018.13). 새 [자료 불러오기] 전까지 */
+  const foundByPc = new Set<string>()
+  /** 비트 메모를 받은 뒤 입력을 마친 사람(AC-018.25). 성공한 다시 불러오기가 지운다 */
+  const afterEntry = new Set<string>()
+  /**
+   * 마지막 답의 unconfirmed(AC-035.4). 날짜를 아는 유일한 자리라 [자료 불러오기]로 지우지 않는다: 띠가 그 날을 불러오라고 한 뒤에도 날짜가 있어야 한다(AC-018.16).
+   * keepEdits 없는 loadStart(떠날 때, 사람이나 기관기호가 다를 때)는 지운다: 다른 의원의 사람을 띠에 보이지 않는다
+   */
+  let lastUnconfirmed: { visitKey: string; date: string }[] = []
+  /** 달 칸 저장이 막혔다(AC-018.17). 달 칸 store.load가 성공해야 풀린다 */
+  let storeBlocked = false
+  /** 아직 PC에 저장되었다는 답을 못 받은 고친 글: 내원번호 → 글과 달 */
+  let unsaved = new Map<string, { text: string; month: string }>()
+  /** 저장해야 할 달과 그 달의 바뀐 차례. 답이 오면 그 차례까지 저장된 것이다 */
+  const dirtyMonths = new Set<string>()
+  const monthVersions = new Map<string, number>()
+  const savingMonths = new Map<number, { month: string; version: number }>()
+  /** 보낸 입력 묶음. 답을 기다리는 동안 다음 묶음을 보내지 않는다 */
+  let inputRun: { run: number; ticket: number; items: InputItem[]; code: string | null; diffAtSend: string[]; lines: InputResultLine[]; uncounted: number; placeholders: Map<string, { date: string | null; month: string }> } | null = null
+  /** 마지막 결과: [이어서 하기]·[다시 하기]·[엑셀로 저장]의 재료 */
+  let lastInput: { items: InputItem[]; code: string | null; resume: string[]; retry: string[]; placeholders: Map<string, { date: string | null; month: string }>; rows: import('@/lib/precheck/excel').InputExcelRow[] } | null = null
 
   /** 조각이 다 오지 않았다(AC-009.2): 그 id의 조각은 assemble이 버렸다. 화면에 알리기만 한다 */
   const postPartial = (id: string) => deps.post({ type: 'partial', id, code: 'E-CLAIM-PARTIAL' })
@@ -283,9 +378,405 @@ export function createPrecheckJobs(deps: {
       return fail('E-RULES-LOAD-FAILED') // 엔진의 뜻밖의 오류. 원래 글은 환자 글자를 담을 수 있어 싣지 않는다
     }
     if (!view.ok) return fail(view.code)
+    // 승인은 사람이 나란히 본 글에만 친다: 자동 메모 글이 달라졌으면 푼다(AC-018.14). 실패한 점검은 여기 오지 않아 풀지 않는다
+    const textOf = () => new Map(currentViews().memos.map((memo) => [memo.visitKey, memo.text]))
+    const shownBefore = approved.size > 0 ? textOf() : null
     lastCheck = { check, view: view.value }
+    // 병원 문구 검사는 점검 때 한 번이다: 코드 칸·코드 단추는 사람마다 코드마다 사전을 찾는다(AC-018.10·AC-018.11)
+    const phrases = validatePhrases(settings.phrases)
+    memoContext = { tables: tables.value, settings, visible, codes: phrases.ok ? phrases.value : null }
+    viewsCache = null
+    if (shownBefore) {
+      const shownNow = textOf()
+      for (const key of approved.keys()) if (shownNow.get(key) !== shownBefore.get(key)) approved.delete(key)
+    }
     deps.post({ type: 'check', check, load, ok: true, view: view.value, usedCopy: fromServer ? null : settings })
     if (fromServer) saveCopy(settings)
+    saveDirtyMonths() // 막힌 동안 남긴 고친 글이 있으면 달 칸이 다시 읽힌 지금 저장한다(AC-018.17)
+  }
+
+  // ── 달 칸 저장(AC-018.2·AC-018.17) ──
+
+  /** 고친·완료한 글이 바뀐 달을 적어 둔다 */
+  function markMonth(month: string) {
+    monthVersions.set(month, (monthVersions.get(month) ?? 0) + 1)
+    dirtyMonths.add(month)
+  }
+
+  /**
+   * 그 달의 store.save. 칸은 month·drafts·done뿐이다: settings·contact와 한 호출에 섞으면 파일 하나만 막혀도 호출 전체가 같은 번호로 거절된다.
+   * 웹이 보내는 journal은 도우미가 저장하지 않으므로 보내지 않는다. store.load로 그 달을 받지 못했으면 보내지 않는다: 칸 전체를 바꾸므로 받지 못한 고친 메모를 덮는다(AC-018.17)
+   */
+  function saveMonth(month: string) {
+    const file = work.months.get(month)
+    if (!deps.toPort || storeBlocked || !file) return
+    const ticket = nextTicket++
+    savingMonths.set(ticket, { month, version: monthVersions.get(month) ?? 0 })
+    deps.toPort({ type: 'send', ticket, cmd: 'store.save', payload: JSON.stringify({ month, drafts: Object.fromEntries(file.drafts), done: Object.fromEntries(file.done) }) })
+  }
+  function saveDirtyMonths() {
+    for (const month of dirtyMonths) saveMonth(month)
+  }
+
+  /** 받아 둔 칸에 남은 고친 글을 다시 얹는다(막힌 채 새 [자료 불러오기]를 해도 고친 메모가 남는다, AC-018.17) */
+  function applyUnsaved() {
+    for (const [key, { text, month }] of unsaved) {
+      work.saved.set(key, text)
+      work.months.get(month)?.drafts.set(key, text)
+      dirtyMonths.add(month)
+    }
+    viewsCache = null
+  }
+
+  // ── 메모 칸 보기 모양 ──
+
+  function currentViews(): MemoViews {
+    if (!current || !memoContext) return { memoBlocked: null, memos: [] }
+    viewsCache ??= memoViews(current, memoContext.tables, { phrases: memoContext.settings.phrases, saved: work.saved })
+    return viewsCache
+  }
+
+  /** 코드 사전 찾기(원본 cm: 글자 그대로 → 대문자 → 소문자). 병원 문구의 CODEMAP을 쓰고, 지운 코드는 없는 코드다 */
+  function codeInfo(code: string) {
+    const codes = memoContext?.codes
+    if (!codes) return null
+    const { CODEMAP, CODEMAP_DEL } = codes
+    for (const key of [code, code.toUpperCase(), code.toLowerCase()]) if (Object.hasOwn(CODEMAP, key) && !CODEMAP_DEL.includes(key)) return CODEMAP[key]
+    return null
+  }
+
+  /** 고른 기간의 진료 + 비교 상태 */
+  function memoRows(): { rows: VisitMemo[]; visitOf: Map<string, Visit>; views: MemoViews } {
+    const views = currentViews()
+    const visible = memoContext?.visible
+    const inside = visible ? (current?.visits ?? []).filter((visit) => inRange(visit.date, visible)) : []
+    return { views, rows: visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved }), visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+  }
+
+  const rxNamesOf = (visit: Visit) => [...new Set(visit.rx.map((line) => line.name))]
+
+  function targetVisits(rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>): TargetVisit[] {
+    const warned = new Set(lastCheck?.view.visits.filter((visit) => visit.findings.length > 0).map((visit) => visit.key))
+    return rows.map((row) => {
+      const visit = visitOf.get(row.key)!
+      return { ...row, chart: visit.chart, name: visit.name, rx: visit.rx.map((line) => line.code), rxNames: rxNamesOf(visit), warned: warned.has(row.key) }
+    })
+  }
+
+  /** 끝난 사람(AC-018.3): 완료 표시와 입력 기록의 마지막이 done인 사람. 입력 중에 떠나면 도우미는 journal에만 적어 done 칸에 글이 없다(helper WorkStoreJournal) */
+  function finishedKeys(): ReadonlySet<string> {
+    const keys = new Set(work.done)
+    for (const [key, state] of work.journal) if (state === 'done') keys.add(key)
+    return keys
+  }
+
+  function targetsFor(selection: InputSelection, rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>, visible: DateRange): InputTargets {
+    return inputTargets(targetVisits(rows, visitOf), selection, { visible, noAsk, done: finishedKeys(), held, foundByPc, codeInfo })
+  }
+
+  /**
+   * 쓰다 멈춘 사람(AC-018.16): 입력 기록 사본의 writing·writeUnconfirmed와 마지막 답의 unconfirmed. 날짜를 모르면(store.load의 journal로만 안다) 달만 안다.
+   * 고른 기간 밖이면 그 날·달을 불러오게 한다. 다 드는 가장 짧은 기간이 35일을 넘으면 가장 이른 날부터 35일이고, 그 기간을 불러온 뒤에도 밖인 사람은 자료에 없는 진료처럼 친다
+   */
+  function stuckView(rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>, visible: DateRange): StuckView | null {
+    const found = new Map<string, { date: string | null; month: string }>()
+    for (const [key, state] of work.journal) if (isStuckState(state)) found.set(key, { date: null, month: work.journalMonths.get(key) ?? monthOf(visible.from) })
+    for (const { visitKey, date } of lastUnconfirmed) found.set(visitKey, { date, month: monthOf(date) })
+    if (found.size === 0) return null
+    const spans = [...found.values()].map(({ date, month }) => (date ? { from: date, to: date } : monthRange(month)))
+    const from = spans.map((span) => span.from).sort(compareYmd)[0]
+    const last = spans.map((span) => span.to).sort(compareYmd).at(-1)!
+    const target: DateRange = { from, to: diffDays(from, last) > 34 ? addDays(from, 34) : last }
+    const targetLoaded = compareYmd(visible.from, target.from) <= 0 && compareYmd(visible.to, target.to) >= 0
+    const rowOf = new Map(rows.map((row) => [row.key, row]))
+    const sameDay = new Map<string, number>()
+    for (const visit of current?.visits ?? []) sameDay.set(`${visit.chart}|${visit.date}`, (sameDay.get(`${visit.chart}|${visit.date}`) ?? 0) + 1)
+    const people: StuckPerson[] = [...found].map(([key, { date, month }]) => {
+      const row = rowOf.get(key)
+      const visit = visitOf.get(key)
+      if (row && visit) {
+        const count = sameDay.get(`${visit.chart}|${visit.date}`) ?? 1
+        const reason: LeftReason | null = !row.hasMemo || isBlankMemo(row.text) ? 'nomemo' : count > 1 || foundByPc.has(key) ? 'manual' : row.unfinished ? 'mark' : null
+        return { key, state: 'known', date: visit.date, month: visit.month, name: visit.name, chart: visit.chart, rxNames: rxNamesOf(visit), reason, text: row.text, sameDay: count }
+      }
+      const covered = date ? inRange(date, visible) : compareYmd(visible.from, monthRange(month).from) <= 0 && compareYmd(visible.to, monthRange(month).to) >= 0
+      return { key, state: covered || targetLoaded ? 'noData' : 'outside', date, month, name: null, chart: null, rxNames: [], reason: null, text: '', sameDay: 1 }
+    })
+    const outside = people.some((person) => person.state === 'outside')
+    const canContinue = people.every((person) => person.state === 'known' && person.reason === null)
+    const onlyNoMemo = people.every((person) => person.state === 'noData' || person.reason === 'nomemo' || person.reason === null)
+    return {
+      people,
+      canContinue,
+      canByHand: !outside,
+      big: people.some((person) => person.state === 'known'),
+      loadRange: outside ? target : null,
+      note: canContinue || outside ? null : onlyNoMemo ? NO_MEMO_NOTE : CANNOT_CONTINUE,
+    }
+  }
+
+  function memoScreenView(selection: InputSelection): MemoScreenView | null {
+    if (!memoContext || !current) return null
+    const { visible } = memoContext
+    const { rows, visitOf, views } = memoRows()
+    const blocked = views.memoBlocked
+    const bit = { has: bitMemos !== null, count: bitMemos?.rows.size ?? 0, period: bitMemos?.period ?? null }
+    const targets = targetsFor(selection, rows, visitOf, visible)
+    const viewOf = new Map(views.memos.map((view) => [view.visitKey, view]))
+    const finished = finishedKeys()
+    return {
+      period: visible,
+      memoBlocked: blocked,
+      noAsk,
+      targets,
+      table: rows.map((row) => {
+        const visit = visitOf.get(row.key)!
+        const memo = viewOf.get(row.key)
+        return { ...row, chart: visit.chart, name: visit.name, rxNames: rxNamesOf(visit), edited: memo?.edited ?? false, missing: memo?.missing ?? [], done: finished.has(row.key) || row.compare === '같음', unsaved: unsaved.has(row.key), afterEntry: afterEntry.has(row.key) }
+      }),
+      stuck: blocked ? null : stuckView(rows, visitOf, visible),
+      bit,
+    }
+  }
+
+  // ── 입력 묶음(AC-018.3·AC-018.16·AC-018.20·AC-018.21) ──
+
+  /** 메모가 있는 보통 줄. 승인이 있으면 replaces로 싣는다(AC-037.1) */
+  function itemOf(row: VisitMemo, visit: Visit): InputItem {
+    return { visitKey: row.key, chart: visit.chart, name: visit.name, date: visit.date, memo: row.text, ...(row.approved === undefined ? {} : { replaces: row.approved }) }
+  }
+
+  function buildBatch(what: InputWhat, selection: InputSelection): { items: InputItem[]; code: string | null; placeholders: Map<string, { date: string | null; month: string }>; preLeft: { reason: LeftReason; row: { key: string; date: string; month: string; name: string; chart: string; text: string; inBit?: string } }[]; uncounted: number; diffAtSend: string[] } | null {
+    if (!memoContext || !current || storeBlocked) return null
+    const { visible } = memoContext
+    const { rows, visitOf, views } = memoRows()
+    if (views.memoBlocked) return null
+    const targets = targetsFor(selection, rows, visitOf, visible)
+    const diffAtSend = targets.left.find((group) => group.reason === 'diff')?.rows.map((row) => row.key) ?? []
+    const none = new Map<string, { date: string | null; month: string }>()
+    const rowOf = new Map(rows.map((row) => [row.key, row]))
+    const plain = (keys: readonly string[]) => keys.flatMap((key) => {
+      const row = rowOf.get(key)
+      const visit = visitOf.get(key)
+      return row && visit ? [itemOf(row, visit)] : []
+    })
+    if (what === 'selection') {
+      if (stuckView(rows, visitOf, visible) || targets.batch.length === 0) return null
+      const preLeft = targets.left.flatMap((group) => (group.reason === 'done' || group.reason === 'nomemo' ? [] : group.rows.map((row) => ({ reason: group.reason, row: { key: row.key, date: row.date, month: visitOf.get(row.key)!.month, name: row.name, chart: row.chart, text: row.text, ...(row.inBit === undefined ? {} : { inBit: row.inBit }) } }))))
+      const uncounted = targets.left.reduce((sum, group) => sum + (group.reason === 'done' || group.reason === 'nomemo' ? group.rows.length : 0), 0)
+      return { items: plain(targets.batch.map((row) => row.key)), code: targets.code, placeholders: none, preLeft, uncounted, diffAtSend }
+    }
+    if (what === 'held') {
+      const keys = targets.left.find((group) => group.reason === 'held')?.rows.map((row) => row.key) ?? []
+      if (keys.length === 0) return null
+      for (const key of keys) held.delete(key)
+      return { items: plain(keys), code: targets.code, placeholders: none, preLeft: [], uncounted: 0, diffAtSend }
+    }
+    if (what === 'retry') {
+      if (!lastInput || lastInput.retry.length === 0) return null
+      for (const key of lastInput.retry) held.delete(key)
+      return { items: plain(lastInput.retry), code: lastInput.code, placeholders: none, preLeft: [], uncounted: 0, diffAtSend }
+    }
+    if (what === 'resume') {
+      if (!lastInput || lastInput.resume.length === 0) return null
+      // [이어서 하기]에는 checkedByHand를 싣지 않는다: 다시 실으면 쓰다 멈춘 사람으로 보지 않아 저장 안 된 글이 새 확인 없이 넘어갈 수 있다(AC-018.21).
+      // 글과 승인은 지금 값이다: 그새 [다시 점검]·[바꾸지 않기]를 했으면 표에 보이는 글이 들어가야 한다(AC-014.11·AC-018.14). 빈 메모·자리 채움 값은 보낸 그대로다
+      const resume = new Set(lastInput.resume)
+      const items = lastInput.items
+        .filter((item) => resume.has(item.visitKey))
+        .map((item) => {
+          const row = rowOf.get(item.visitKey)
+          const next: InputItem = { visitKey: item.visitKey, chart: item.chart, name: item.name, date: item.date, memo: item.memo }
+          if (row && !isBlankMemo(item.memo)) {
+            next.memo = isBlankMemo(row.text) ? ' ' : row.text
+            if (row.approved !== undefined) next.replaces = row.approved
+          } else if (item.replaces !== undefined) next.replaces = item.replaces
+          return next
+        })
+      // 자리 채움 값도 보낸 그대로이므로 그 표시를 잇는다: 잃으면 결과 줄과 엑셀에 그 값이 보인다(AC-018.15)
+      return { items, code: lastInput.code, placeholders: lastInput.placeholders, preLeft: [], uncounted: 0, diffAtSend }
+    }
+    const stuck = stuckView(rows, visitOf, visible)
+    if (!stuck) return null
+    if (what === 'continueStuck') {
+      if (!stuck.canContinue) return null
+      return { items: plain(stuck.people.map((person) => person.key)), code: null, placeholders: none, preLeft: [], uncounted: 0, diffAtSend }
+    }
+    if (!stuck.canByHand) return null
+    // [직접 확인했어요]: 거르기를 지나지 않고 모두 보낸다(뺄지는 도우미가 정한다, AC-035.8). 빈 메모는 한 칸 공백, 자료에 없는 진료는 자리 채움 값이고 이 값은 비트에 닿지 않는다(AC-018.16)
+    const placeholders = new Map<string, { date: string | null; month: string }>()
+    const taken = new Set<string>()
+    let order = 0
+    const fill = () => String(++order).padStart(20, '0')
+    const items: InputItem[] = stuck.people.map((person) => {
+      approved.delete(person.key) // 도우미는 replaces를 새 승인으로 본다: 남기면 손으로 다루던 메모가 바뀐다(AC-018.14·AC-037.6)
+      const row = rowOf.get(person.key)
+      const visit = visitOf.get(person.key)
+      if (person.state === 'known' && row && visit) {
+        // 같은 차트번호·내원일이 또 있으면 묶음 검사에 걸려 풀리지 않는다. 어차피 열지 않는 사람이라 자리 채움 번호와 한 칸 공백으로 보낸다.
+        // 메모를 실으면 도우미가 '내원일 없음'으로 돌려줘 [다시 하기]에 든다. 공백이면 '넣을 메모가 없어'가 앞선다(helper InputBatch.DropReason)
+        const again = taken.has(`${visit.chart}|${visit.date}`)
+        taken.add(`${visit.chart}|${visit.date}`)
+        const memo = again || !row.hasMemo || isBlankMemo(row.text) ? ' ' : row.text
+        return { visitKey: person.key, chart: again ? fill() : visit.chart, name: visit.name, date: visit.date, memo, checkedByHand: true }
+      }
+      placeholders.set(person.key, { date: person.date, month: person.month })
+      return { visitKey: person.key, chart: fill(), name: '-', date: person.date ?? `${person.month}-01`, memo: ' ', checkedByHand: true }
+    })
+    viewsCache = null
+    return { items, code: null, placeholders, preLeft: [], uncounted: 0, diffAtSend }
+  }
+
+  /**
+   * 끝 JSON을 받아 Worker 메모리와 사본에 적고 화면에 넘길 결과를 만든다(AC-018.21·AC-016.3·AC-018.13·AC-018.20·AC-018.22, design.md 19-6).
+   * 완료한 메모는 글을 done에 남긴다: 표시만 남기면 다시 불러온 뒤 설정이 바뀌었을 때 글이 바뀐다(AC-014.11)
+   */
+  function applyInputResults(end: InputEnd, run: NonNullable<typeof inputRun>): InputResultView {
+    const wasNoAsk = noAsk
+    noAsk = end.noAsk
+    const itemOfKey = new Map(run.items.map((item) => [item.visitKey, item]))
+    const visits = new Map((current?.visits ?? []).map((visit) => [visit.key, visit]))
+    const rowOf = new Map(memoRows().rows.map((row) => [row.key, row]))
+    const quiet = end.code === 'E-STORE-FAILED' || (end.unconfirmed?.length ?? 0) > 0
+    const noWindow = end.results.length > 0 && end.results.every((line) => isPlainExclusion(line.reason))
+    const resolved = new Set<string>()
+    const lines: InputResultLine[] = []
+    for (const line of end.results) {
+      const key = line.visitKey
+      const item = itemOfKey.get(key)
+      const visit = visits.get(key)
+      const byHand = item?.checkedByHand === true
+      const notDone = line.result === '확인 필요' && line.reason.startsWith(NOT_DONE)
+      if (line.result === '완료') {
+        approved.delete(key)
+        held.delete(key)
+        afterEntry.add(key)
+        resolved.add(key)
+        work.done.add(key)
+        if (item && visit) {
+          work.saved.set(key, work.saved.get(key) ?? item.memo)
+          work.months.get(visit.month)?.done.set(key, item.memo)
+          markMonth(visit.month)
+        }
+        if (!quiet) work.journal.set(key, 'done')
+      } else if (byHand && (line.result === '건너뜀' || notDone)) {
+        resolved.add(key)
+        if (!quiet) {
+          // [확인] 없이 끝난 묶음은 도우미 기록도 skipped다. skippedByHand는 덮지 않는다
+          if (!noWindow) work.journal.set(key, 'skippedByHand')
+          else if (work.journal.get(key) !== 'skippedByHand') work.journal.set(key, 'skipped')
+        }
+      } else if (byHand && line.result === '확인 필요' && line.reason.startsWith(NOT_ACCEPTED)) {
+        // 도우미 기록은 SkippedByHand로 바뀌었다(AC-035.5). 안 적으면 다시 불러오기 전까지 띠가 [비트에 입력]을 막는다(AC-016.3)
+        resolved.add(key)
+        if (!quiet && (isStuckState(work.journal.get(key)) || lastUnconfirmed.some((person) => person.visitKey === key))) work.journal.set(key, 'skippedByHand')
+      }
+      if (line.result === '건너뜀') {
+        const kind = reasonKind(line.reason)
+        if (kind === 'manual') foundByPc.add(key)
+        else if (kind !== 'nomemo' && kind !== 'already' && kind !== 'changed' && item) held.set(key, item.memo)
+      }
+      const place = run.placeholders.get(key)
+      const row = rowOf.get(key)
+      const retry = line.result === '건너뜀' && !place && visit !== undefined && !['already', 'manual', 'nomemo'].includes(reasonKind(line.reason)) && row !== undefined && !row.unfinished && row.compare !== '조회 못함'
+      lines.push({
+        key,
+        date: place ? place.date : (visit?.date ?? item?.date ?? null),
+        month: place ? place.month : (visit?.month ?? (item ? monthOf(item.date) : '')),
+        name: place ? null : (visit?.name ?? null),
+        chart: place ? null : (visit?.chart ?? null),
+        result: line.result,
+        reason: line.reason,
+        ...(line.previousMemo === undefined ? {} : { previousMemo: line.previousMemo }),
+        ...(item && !place && !isBlankMemo(item.memo) ? { memo: item.memo } : {}), // 한 칸 공백은 보내려고 채운 값이다(AC-018.15)
+        retry,
+      })
+    }
+    for (const line of run.lines) lines.push(line) // 화면에서 미리 뺀 사람(AC-018.4)
+
+    if (end.unconfirmed) lastUnconfirmed = end.unconfirmed
+    else if (!quiet) lastUnconfirmed = lastUnconfirmed.filter((person) => !resolved.has(person.visitKey))
+    // 이번 입력에서 처음 쓰다 멈춘 사람은 답의 unconfirmed에도 사본에도 없고 결과 줄로만 안다(AC-018.16). 사본은 적지 않는다(도우미 기록과 같은지 모른다, design.md 19-6)
+    const writeStuck = end.results.filter((line) => isWriteStuck(line.result, line.reason) && !run.placeholders.has(line.visitKey))
+    for (const { visitKey } of writeStuck) {
+      const date = visits.get(visitKey)?.date ?? itemOfKey.get(visitKey)?.date
+      if (date && !lastUnconfirmed.some((person) => person.visitKey === visitKey)) lastUnconfirmed = [...lastUnconfirmed, { visitKey, date }]
+    }
+
+    viewsCache = null
+    saveDirtyMonths()
+
+    const firstNoAsk = !wasNoAsk && end.noAsk ? run.diffAtSend.filter((key) => !itemOfKey.has(key) && work.journal.get(key) !== 'skippedByHand').length : null
+    // 쓰다 멈춘 사람도 함께 보낸다: 빼면 도우미가 다른 사람을 열지 않고 멈춘다(AC-035.4). 도우미가 그 사람을 맨 앞에서 먼저 한다(AC-017.7)
+    // 결과 줄이 없는 사람도 남은 사람이다: 지문이 틀리면 미리 뺀 사람의 줄만 오고, 줄이 하나도 없을 수도 있다(AC-018.21)
+    const answered = new Set(end.results.map((line) => line.visitKey))
+    const unanswered = run.items.filter((item) => !answered.has(item.visitKey)).map((item) => item.visitKey)
+    const notDone = (line: EndLine) => line.result === '확인 필요' && line.reason.startsWith(NOT_DONE)
+    const resume = [...unanswered, ...end.results.filter((line) => notDone(line) || isWriteStuck(line.result, line.reason)).map((line) => line.visitKey)]
+    const retry = lines.filter((line) => line.retry).map((line) => line.key)
+    lastInput = {
+      items: run.items,
+      code: run.code,
+      resume: end.status === 'stopped' ? resume : [],
+      retry,
+      placeholders: run.placeholders,
+      rows: lines.map((line) => ({ date: line.date ?? line.month, chart: line.chart ?? '', name: line.name ?? '', result: line.result, reason: line.reason, memo: line.memo ?? '', existing: line.previousMemo ?? rowOf.get(line.key)?.inBit ?? '' })),
+    }
+    return {
+      status: end.status,
+      code: end.code,
+      reason: end.reason,
+      fields: end.fields,
+      done: lines.filter((line) => line.result === '완료'),
+      check: lines.filter((line) => line.result === '확인 필요'),
+      skipped: lines.filter((line) => line.result !== '완료' && line.result !== '확인 필요'),
+      uncounted: run.uncounted,
+      retry: retry.length,
+      entered: end.results.filter((line) => line.result === '완료').length,
+      left: unanswered.length + end.results.filter(notDone).length,
+      firstNoAsk,
+    }
+  }
+
+  /** 화면의 buildInputBatch: 묶음 글자는 여기서 만들어 포트로 바로 보낸다(AC-004.11). 답은 inputStart 하나다 */
+  function startInput(runNumber: number, what: InputWhat, selection: InputSelection) {
+    if (inputRun) return deps.post({ type: 'inputStart', run: runNumber, ok: false, code: 'E-BRIDGE-BUSY' })
+    const built = deps.toPort ? buildBatch(what, selection) : null
+    if (!built || built.items.length === 0) return deps.post({ type: 'inputStart', run: runNumber, ok: false, code: 'E-HELPER-BAD-MESSAGE' })
+    const ticket = nextTicket++
+    const lines: InputResultLine[] = built.preLeft.map(({ reason, row }) => ({ key: row.key, date: row.date, month: row.month, name: row.name, chart: row.chart, result: '건너뜀', reason: PRE_LEFT_REASON[reason] ?? '', memo: row.text, retry: reason === 'held' }))
+    inputRun = { run: runNumber, ticket, items: built.items, code: built.code, diffAtSend: built.diffAtSend, lines, uncounted: built.uncounted, placeholders: built.placeholders }
+    const handChecked = built.items.some((item) => item.checkedByHand)
+    deps.toPort!({ type: 'send', ticket, cmd: 'bit.input', payload: JSON.stringify(built.code ? { code: built.code, items: built.items } : { items: built.items }) })
+    deps.post({ type: 'inputStart', run: runNumber, ok: true, count: built.items.length, askPc: !noAsk || handChecked })
+  }
+
+  /** 보낸 묶음의 답. id가 있으면 끝 JSON이 조각으로 와 있다 */
+  async function finishInput(run: NonNullable<typeof inputRun>, answer: Rec) {
+    const fail = (code: string) => {
+      if (inputRun === run) inputRun = null
+      deps.post({ type: 'inputDone', run: run.run, ok: false, code })
+    }
+    if (answer.ok !== true) return fail(typeof answer.code === 'string' ? answer.code : 'E-BRIDGE-REJECTED')
+    if (!isId(answer.id)) return fail('E-CLAIM-PARTIAL')
+    const assembled = await assembler.take(answer.id)
+    if (inputRun !== run) return // 그새 통로가 바뀌었다: 화면이 답을 기다리지 않는다
+    const end = assembled.ok ? readInputEnd(assembled.text) : null
+    if (!end) return fail('E-CLAIM-PARTIAL')
+    inputRun = null
+    deps.post({ type: 'inputDone', run: run.run, ok: true, result: applyInputResults(end, run) })
+  }
+
+  /** [엑셀로 저장](AC-018.15): 누를 때만 만든다 */
+  async function runInputExcel(ask: number) {
+    const fail = () => deps.post({ type: 'inputExcel', ask, ok: false, code: 'E-CLAIM-PARTIAL' })
+    if (!lastInput || !memoContext) return fail()
+    try {
+      const { buildInputExcel, inputExcelName } = await import('@/lib/precheck/excel')
+      deps.post({ type: 'inputExcel', ask, ok: true, bytes: buildInputExcel(lastInput.rows), fileName: inputExcelName(memoContext.visible) })
+    } catch {
+      fail()
+    }
   }
 
   /** 화면의 excel(AC-013.4). 그 점검 결과로만 만든다. xlsx는 누를 때만 불러온다(규칙표와 같이 고정 경로 import()) */
@@ -307,8 +798,29 @@ export function createPrecheckJobs(deps: {
       if (!isRecord(m)) return
       if (m.type === 'sent' && typeof m.ticket === 'number') {
         const saved = savingCopies.get(m.ticket)
-        savingCopies.delete(m.ticket)
-        if (saved && m.ok === true) settingsCopy = saved
+        if (saved) {
+          // 사본 저장 실패는 조용히 건너뛴다(settings.dat의 같은 번호 포함, AC-018.17)
+          savingCopies.delete(m.ticket)
+          if (m.ok === true) settingsCopy = saved
+          return
+        }
+        const saving = savingMonths.get(m.ticket)
+        if (saving) {
+          savingMonths.delete(m.ticket)
+          if (m.ok === true) {
+            if (saving.version === (monthVersions.get(saving.month) ?? 0)) {
+              dirtyMonths.delete(saving.month)
+              for (const [key, edit] of unsaved) if (edit.month === saving.month) unsaved.delete(key)
+            }
+            deps.post({ type: 'memoSave', ok: true })
+          } else {
+            const code = typeof m.code === 'string' ? m.code : 'E-STORE-FAILED'
+            if (code === 'E-BIT-HOSPITAL-MISMATCH') storeBlocked = true
+            deps.post({ type: 'memoSave', ok: false, code, blocked: storeBlocked })
+          }
+          return
+        }
+        if (inputRun?.ticket === m.ticket) await finishInput(inputRun, m)
         return
       }
       if (!isId(m.id)) return
@@ -338,6 +850,23 @@ export function createPrecheckJobs(deps: {
         lastCheck = null
         settingsCopy = null
         savingCopies.clear()
+        memoContext = null
+        viewsCache = null
+        approved.clear()
+        held.clear()
+        foundByPc.clear()
+        afterEntry.clear()
+        lastInput = null
+        savingMonths.clear()
+        // 저장하지 못한 고친 메모는 메모리에만 있다. [자료 불러오기]·[멈추기]로 지우면 옛 글이 비트에 들어가고(AC-018.2) "고친 메모는 이 화면에 그대로 있어요"가 거짓이 된다(AC-018.17)
+        if (m.keepEdits === true) {
+          applyUnsaved()
+        } else {
+          unsaved = new Map()
+          dirtyMonths.clear()
+          storeBlocked = false
+          lastUnconfirmed = []
+        }
       } else if (m.type === 'month' && isId(m.id) && isLoad(m.load)) {
         const id = m.id
         const load = m.load
@@ -375,12 +904,27 @@ export function createPrecheckJobs(deps: {
           if (memos.ok) {
             bitMemos = memos.value
             if (!reload) memosAtLoad = memos.value
+            else {
+              // 비트 메모 글이 승인한 글과 달라진 사람의 승인을 지운다. 지우지 않으면 글이 돌아왔을 때(X→Y→X) 되살아난다(AC-018.14)
+              for (const [key, text] of approved) {
+                const visit = current?.visits.find((row) => row.key === key)
+                const inBit = visit ? bitMemoOf(memos.value, visit) : undefined
+                if (inBit === undefined || compareMemo(text, inBit) !== '같음') approved.delete(key)
+              }
+              afterEntry.clear()
+            }
           }
           answer(memos)
         } else {
           const stored = loadStore(assembled.text)
           if (stored.ok) {
-            if (stored.value.work) work = stored.value.work
+            if (stored.value.work) {
+              work = stored.value.work
+              storeBlocked = false // 달 칸이 읽혔다(AC-018.17)
+              applyUnsaved()
+              // 그 달을 읽었는데 기록이 쓰다 멈춤이 아니면 풀린 사람이다(떠나 있는 동안 끝났을 수 있다). 읽지 않은 달은 모른다
+              lastUnconfirmed = lastUnconfirmed.filter((person) => !work.months.has(monthOf(person.date)) || isStuckState(work.journal.get(person.visitKey)))
+            }
             if (stored.value.settings !== undefined) settingsCopy = stored.value.settings
           }
           answer(stored)
@@ -392,7 +936,50 @@ export function createPrecheckJobs(deps: {
         await runCheck(m.check, m.load, m.visible, m.settings)
       } else if (m.type === 'excel' && isLoad(m.check)) {
         await runExcel(m.check)
+      } else if (m.type === 'memoView' && isLoad(m.ask) && isRecord(m.selection)) {
+        const view = memoScreenView(m.selection as InputSelection)
+        deps.post(view ? { type: 'memoView', ask: m.ask, ok: true, view } : { type: 'memoView', ask: m.ask, ok: false, code: 'E-CLAIM-PARTIAL' })
+      } else if (m.type === 'editMemo' && typeof m.visitKey === 'string' && typeof m.text === 'string') {
+        const visit = current?.visits.find((row) => row.key === m.visitKey)
+        if (!visit) return
+        // 글이 그대로면 고친 것이 아니다: 저장하면 자동 메모가 얼어 설정을 바꿔도 다시 만들어지지 않는다(AC-014.11)
+        if (currentViews().memos.find((memo) => memo.visitKey === visit.key)?.text === m.text) return
+        approved.delete(visit.key) // 우리 메모를 고치면 승인이 풀린다(AC-018.14)
+        work.saved.set(visit.key, m.text)
+        work.months.get(visit.month)?.drafts.set(visit.key, m.text)
+        unsaved.set(visit.key, { text: m.text, month: visit.month })
+        viewsCache = null
+        markMonth(visit.month)
+        saveMonth(visit.month)
+      } else if (m.type === 'memoApprove' && typeof m.visitKey === 'string') {
+        if (m.approved !== true) approved.delete(m.visitKey)
+        else {
+          const row = memoRows().rows.find((item) => item.key === m.visitKey)
+          // 보인 비트 메모를 담는다(AC-018.14). 메모를 만들지 않은 병원은 줄이 없다
+          if (row?.compare === '다름' && row.inBit !== undefined) approved.set(row.key, row.inBit)
+        }
+      } else if (m.type === 'memoSaveRetry') {
+        saveDirtyMonths()
+      } else if (m.type === 'storeBlock') {
+        storeBlocked = true
+      } else if (m.type === 'buildInputBatch' && isLoad(m.run) && isRecord(m.selection) && typeof m.what === 'string') {
+        startInput(m.run, m.what as InputWhat, m.selection as InputSelection)
+      } else if (m.type === 'inputExcel' && isLoad(m.ask)) {
+        await runInputExcel(m.ask)
       }
+    },
+
+    /**
+     * 새 bridge-port를 받았다(design.md 6-1). 새 통로의 도우미는 새 프로세스라 묻지 않기가 꺼져 있다(AC-018.22).
+     * 옛 통로로 보낸 것의 답은 오지 않는다: useBridge가 닫으면서 보낸 거절도 포트가 먼저 닫혀 닿지 않는다.
+     * 입력 묶음은 잊는다(도우미는 끝까지 하고 결과를 작업 저장에 남긴다, AC-003.7·AC-017.9). 저장 답을 못 받은 달은 저장 안 됨으로 남아 다시 보낸다
+     */
+    portChanged(): void {
+      noAsk = false
+      viewsCache = null
+      inputRun = null
+      savingCopies.clear()
+      savingMonths.clear()
     },
 
     /** 지금 불러와 둔 한 달 자료(뒤 TASK의 점검·메모가 쓴다). Worker 밖으로 보내지 않는다 */

@@ -39,6 +39,9 @@ const ALL_CODES = [
   'E-MEMO-NO-SETTINGS',
   'E-CLAIM-PARTIAL',
   'E-BIT-EXPORT-FAILED',
+  'E-INPUT-STOPPED',
+  'E-BIT-UNSAVED-RX',
+  'E-BIT-UI-CHANGED',
   'E-AI-BUSY',
   'E-AI-LIMIT',
   'E-AI-FAILED',
@@ -396,5 +399,21 @@ describe('AC-009.3 업무일지 오류 번호 문구', () => {
   it('AC-009.3: E-WORKLOG-NOTE-PRIVATE는 비고뿐 아니라 막힌 칸 전체를 말한다("비고"가 없다)', () => {
     const { what, fix } = errorInfo('E-WORKLOG-NOTE-PRIVATE')
     expect(`${what} ${fix}`).not.toContain('비고')
+  })
+})
+
+// 메모 화면(precheck TASK-18): 입력 멈춤 번호의 글과 처음 질문의 갈 곳
+describe('AC-018.21·AC-018.18 입력 쪽 오류 글', () => {
+  it.each([
+    ['E-INPUT-STOPPED', '비트 입력을 끝까지 하지 못했어요', '비트 화면을 확인한 뒤 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.'],
+    ['E-BIT-UNSAVED-RX', '비트에 저장하지 않은 처방 창이 떠 있어요', '그 창을 마무리한 뒤 다시 눌러 주세요.'],
+    ['E-BIT-UI-CHANGED', '비트 화면이 달라져 입력을 멈췄어요', '비트가 업데이트됐을 수 있어요. 아래 칸 이름과 오류 번호를 함께 문의해 주세요.'],
+  ])('AC-018.21: %s의 번호와 글', (code, what, fix) => {
+    expect(isErrorCode(code)).toBe(true)
+    expect(errorInfo(code as ErrorCode)).toEqual({ what, fix })
+  })
+
+  it('AC-018.18: E-MEMO-NO-SETTINGS의 fix는 갈 곳을 말한다(처음 질문 화면은 아직 없다)', () => {
+    expect(errorInfo('E-MEMO-NO-SETTINGS').fix).toBe('메모를 만들려면 문구 설정이 먼저 있어야 해요. 처음 질문 화면은 아직 준비 중이에요. 그 전에 메모가 필요하면 개발자에게 문의해 주세요. 점검 결과는 그대로 볼 수 있어요.')
   })
 })

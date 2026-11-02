@@ -11,9 +11,11 @@ import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
 import type { CheckSettings } from '@/types/precheck'
 import { ClaimError, ExcelError, SetupLink } from './ClaimError'
-import { runClaimCheck, runClaimExcel, runClaimLoad, type CheckedClaim, type ClaimChannel, type ClaimOwner } from './claimLoad'
+import { runClaimCheck, runClaimExcel, runClaimLoad, type CheckedClaim, type ClaimChannel, type ClaimOwner, type ClaimPage } from './claimLoad'
 import { buildDateList, dayLabel, defaultPeriod, listRange } from './dateList'
 import { DateStep, type DatesState, type LoadingStep } from './DateStep'
+import { MemoPanel, type InputStage } from './memo/MemoPanel'
+import { StoreBlockedCard } from './memo/StoreBlockedCard'
 import { ResultStep } from './ResultStep'
 import { SettingsChangedBanner } from './SettingsChangedBanner'
 import { checkedAtText } from './setup/checkedAt'
@@ -23,8 +25,8 @@ import type { UseBridge } from './useBridge'
 // 환자 글자는 Worker가 보낸 보기 모양(ClaimView)으로만 이 탭 메모리에 있다. 저장소·주소·제목·로그·오류 카드에 두지 않는다.
 // 다른 탭에 다녀와도 결과가 남는다(AC-013.6): 결과가 있으면 떠날 때 달을 버리지 않고 결과·기간·단계를 ClaimChannel에 맡긴다(types/precheck.ts 약속 1). 돌아오면 같은 사람·같은 의원인지 본 뒤에만 그린다.
 // 결과 없이 떠나면(불러오는 중 포함) Worker의 달을 버린다. 로그아웃은 전체 페이지 이동이라 메모리와 Worker가 함께 사라진다.
-// TASK-18이 잇는 곳: 메모 칸과 [비트에 입력]은 Flow의 3~5단계와 결과 화면 아래에 더한다. settingsStale이 참이면 [비트에 입력]을 막는다(design.md 6-5),
-// 진료의 메모는 view.visits[].memo에, 메모를 못 만든 까닭은 view.memoBlocked에 이미 있고, 다시 불러오기 번호(run)는 claimLoad.ts에 더한다
+// 메모 칸(REQ-018)은 Flow의 3~5단계로 memo/MemoPanel이 맡는다. 설정 변경 띠와 기관기호 안내는 어느 단계든 화면 맨 위에 둔다(design.md 6-5, AC-018.17). settingsStale이 참이면 [비트에 입력]을 막는다.
+// 고친 글·승인·입력 기록은 Worker 메모리에 있어 다녀와도 그대로이고, 입력하는 동안 떠나면 결과가 이 화면에 오지 않으므로 맡긴 결과를 버린다(결과는 도우미 작업 저장에 있어 [자료 불러오기]로 읽는다, AC-018.5·AC-017.9)
 
 const NO_TEMPLATES: SettingsBundle['templates'] = [] // 문자 문구는 TASK-25가 잇는다
 const bundle = (settings: CheckSettings): SettingsBundle => ({ ...settings, templates: NO_TEMPLATES })
@@ -63,17 +65,21 @@ function saveFile(bytes: ArrayBuffer, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1_000)
 }
 
-type Run = { kind: 'idle' } | { kind: 'loading'; step: LoadingStep } | { kind: 'failed'; code: string; visible: DateRange; stuckMonth?: true }
+type Run = { kind: 'idle' } | { kind: 'loading'; step: LoadingStep } | { kind: 'failed'; code: string; visible: DateRange }
 
-function Flow({ page, hasResult, onPage }: { page: 'dates' | 'result'; hasResult: boolean; onPage(next: 'dates' | 'result'): void }) {
-  const step = (name: 'dates' | 'result', no: number, label: string, enabled: boolean) => (
+type FlowStep = ClaimPage | 'input' | 'inputResult'
+
+function Flow({ page, stage, hasResult, onPage }: { page: ClaimPage; stage: InputStage; hasResult: boolean; onPage(next: ClaimPage): void }) {
+  const locked = stage === 'wait' || stage === 'run'
+  const current: FlowStep = page !== 'memo' || stage === 'pick' ? page : stage === 'result' ? 'inputResult' : 'input'
+  const step = (name: FlowStep, no: number, label: string, enabled: boolean) => (
     <li>
       <button
         type="button"
         disabled={!enabled}
-        aria-current={page === name ? 'step' : undefined}
+        aria-current={current === name ? 'step' : undefined}
         className={`inline-flex cursor-pointer items-center gap-1.5 rounded-control text-small text-muted aria-[current=step]:font-semibold aria-[current=step]:text-ink disabled:cursor-not-allowed ${ds.focusRing} max-md:min-h-11`}
-        onClick={() => onPage(name)}
+        onClick={() => name !== 'input' && name !== 'inputResult' && onPage(name)}
       >
         <span aria-hidden="true" className="inline-flex size-5 items-center justify-center rounded-control border border-line text-caption">
           {no}
@@ -84,16 +90,26 @@ function Flow({ page, hasResult, onPage }: { page: 'dates' | 'result'; hasResult
   )
   return (
     <ol className="flex list-none flex-wrap items-center gap-3">
-      {step('dates', 1, '날짜 고르기', true)}
-      {step('result', 2, '점검 결과', hasResult)}
+      {step('dates', 1, '날짜 고르기', !locked)}
+      {step('result', 2, '점검 결과', hasResult && !locked)}
+      {step('memo', 3, '메모 확인', hasResult && !locked)}
+      {step('input', 4, '비트에 입력', false)}
+      {step('inputResult', 5, '입력 결과', false)}
     </ol>
   )
 }
 
-export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; call: UseBridge['call']; stream: UseBridge['stream'] }) {
+export function ClaimScreen({ channel, call, stream, onProgress }: { channel: ClaimChannel; call: UseBridge['call']; stream: UseBridge['stream']; onProgress?: UseBridge['onProgress'] }) {
   const [dates, setDates] = useState<DatesState>({ kind: 'loading' })
   const [period, setPeriod] = useState<DateRange>({ from: '', to: '' })
-  const [page, setPage] = useState<'dates' | 'result'>('dates')
+  const [page, setPage] = useState<ClaimPage>('dates')
+  const [memoStage, setMemoStage] = useState<InputStage>('pick')
+  /** 달 칸 저장이 막혔다(AC-018.17). 달 칸 store.load가 다음에 성공할 때까지 남는다 */
+  const [storeStuck, setStoreStuck] = useState(false)
+  const [focusMemo, setFocusMemo] = useState<string | null>(null)
+  const flushDrafts = useRef<(() => void) | null>(null)
+  /** 띠의 [자료 불러오기]처럼 메모 칸에서 불렀으면 메모 칸으로 돌아온다(AC-018.16) */
+  const afterLoad = useRef<ClaimPage>('result')
   const [run, setRun] = useState<Run>({ kind: 'idle' })
   const [result, setResult] = useState<CheckedClaim | null>(null)
   const [settingsStale, setSettingsStale] = useState(false)
@@ -134,6 +150,8 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
     onScreen.current = true
     return () => {
       onScreen.current = false
+      // 입력하는 동안 떠나면 끝 답이 이 화면에 오지 않는다(통로를 닫는다). 도우미는 끝까지 하고 작업 저장에 남기므로 맡긴 결과를 버리고 다시 읽게 한다(AC-018.5)
+      if (channel.inputBusy()) channel.keep(null)
       if (!channel.kept()) channel.drop()
     }
   }, [channel])
@@ -155,29 +173,34 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
         return
       }
       const next: CheckedClaim = { load, check: checked.check, visible, view: checked.view, at: new Date(), used: checked.usedCopy ?? settings, usedCopy: checked.usedCopy !== null, owner }
-      if (owner) channel.keep({ result: next, period: channel.kept()?.period ?? visible, page: 'result', stale: false })
+      if (owner) channel.keep({ result: next, period: channel.kept()?.period ?? visible, page: channel.kept()?.page === 'memo' ? 'memo' : 'result', stale: false, storeStuck: channel.kept()?.storeStuck })
       setResult(next)
       setSettingsStale(false)
       setExcelError(null)
       setRun({ kind: 'idle' })
-      setPage('result')
+      // [다시 점검]은 메모 칸에 머문다
+      setPage((now) => (now === 'memo' ? 'memo' : afterLoad.current))
+      afterLoad.current = 'result'
     },
     [channel],
   )
 
   /** [자료 불러오기]·[다시 불러오기](AC-013.2). 모두 끝나고 답을 확인한 뒤에만 점검한다 */
-  async function load(visible: DateRange) {
+  async function load(visible: DateRange, nextPage: ClaimPage = 'result') {
+    flushDrafts.current?.()
+    afterLoad.current = nextPage
     setResult(null)
     setSettingsStale(false)
     setExcelError(null)
     setPage('dates')
     setRun({ kind: 'loading', step: 'month' })
-    const loaded = await runClaimLoad(channel, stream, visible, (step) => setRun({ kind: 'loading', step }))
+    const loaded = await runClaimLoad(channel, stream, visible, (step) => setRun({ kind: 'loading', step }), { keepEdits: true })
     if (loaded.status === 'replaced') return
     if (loaded.status === 'failed') {
-      setRun({ kind: 'failed', code: loaded.code, visible, stuckMonth: loaded.stuckMonth })
+      setRun({ kind: 'failed', code: loaded.code, visible })
       return
     }
+    setStoreStuck(loaded.stuckMonth === true)
     setRun({ kind: 'loading', step: 'check' })
     await runCheck(loaded.load, visible, await readOwner(call))
   }
@@ -185,6 +208,7 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
   /** [다시 점검](AC-013.6): 달은 그대로 두고 새 설정으로만 다시 점검한다 */
   const recheck = useCallback(
     async (target: CheckedClaim) => {
+      flushDrafts.current?.() // 고친 글을 먼저 Worker에 보낸다: 고친 메모는 그대로 남는다(AC-014.11)
       setRechecking(true)
       await runCheck(target.load, target.visible, target.owner)
       setRechecking(false)
@@ -224,6 +248,7 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
       setPeriod(kept.period)
       setPage(kept.page)
       setSettingsStale(kept.stale)
+      setStoreStuck(kept.storeStuck === true)
       // 떠나기 전의 [다시 점검] 답을 아직 못 받았으면 이 화면에서 다시 물어 마지막 답을 받는다(엑셀은 마지막 번호로만 된다)
       if (channel.lastCheck() !== kept.result.check) {
         channel.nextCheck() // 옛 답을 지금 버린다. 옛 답이 실패여도 달을 버리지 않게
@@ -237,8 +262,8 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
 
   // 결과가 있는 동안 기간·단계·띠를 맡겨 둔다(AC-013.6). 누구 것인지 모르는 결과는 남기지 않는다
   useEffect(() => {
-    if (result?.owner) channel.keep({ result, period, page, stale: settingsStale })
-  }, [channel, result, period, page, settingsStale])
+    if (result?.owner) channel.keep({ result, period, page, stale: settingsStale, storeStuck })
+  }, [channel, result, period, page, settingsStale, storeStuck])
 
   // 창 초점이 돌아오면, 그리고 탭을 옮겼다 돌아오면 한 번, 서버 설정을 다시 읽어 점검에 쓴 설정과 견준다(AC-013.6, design.md 6-5). 읽지 못하면 그대로 둔다
   const used = result?.used ?? null
@@ -258,7 +283,21 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
     }
   }, [used])
 
+  /** [비트에 입력] 직전(design.md 6-5): 서버 설정을 다시 읽어 다르면 띠를 띄운다. 읽지 못하면 띠는 그대로 둔다 */
+  const staleRef = useRef(settingsStale)
+  staleRef.current = settingsStale
+  const checkFresh = useCallback(async () => {
+    const fresh = await readServerSettings()
+    if (!used) return true
+    if (!fresh) return !staleRef.current
+    const changed = settingsChanged(bundle(used), bundle(fresh))
+    setSettingsStale(changed)
+    return !changed
+  }, [used])
+  const onStoreStuck = useCallback(() => setStoreStuck(true), [])
+
   const showResult = page === 'result' && result !== null
+  const showMemo = page === 'memo' && result !== null
   const view = result?.view
   const hasFindings = (view?.groups.length ?? 0) > 0
 
@@ -266,7 +305,10 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
 
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
-      <Flow page={showResult ? 'result' : 'dates'} hasResult={result !== null} onPage={setPage} />
+      <Flow page={showMemo ? 'memo' : showResult ? 'result' : 'dates'} stage={memoStage} hasResult={result !== null} onPage={setPage} />
+
+      {result && settingsStale && <SettingsChangedBanner onRecheck={() => void recheck(result)} busy={rechecking} />}
+      {storeStuck && <StoreBlockedCard />}
 
       {run.kind === 'failed' && (
         <div className="flex flex-col items-start gap-2">
@@ -275,12 +317,12 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
             <button type="button" className={ds.button.primarySmall} onClick={() => void load(run.visible)}>
               다시 불러오기
             </button>
-            {!run.stuckMonth && <SetupLink code={run.code} />}
+            <SetupLink code={run.code} />
           </div>
         </div>
       )}
 
-      {!showResult && (
+      {!showResult && !showMemo && (
         <DateStep
           dates={dates}
           period={period}
@@ -288,7 +330,7 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
           loading={run.kind === 'loading' ? run.step : null}
           onLoad={() => void load(period)}
           onStop={() => {
-            channel.drop()
+            channel.drop({ keepEdits: true })
             setRun({ kind: 'idle' })
           }}
           onRetryDates={() => {
@@ -300,7 +342,6 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
 
       {showResult && view && (
         <>
-          {settingsStale && <SettingsChangedBanner onRecheck={() => void recheck(result)} busy={rechecking} />}
           {result.usedCopy && (
             <p role="status" className="rounded-control bg-canvas px-4 py-3 text-small text-ink-2">
               서버에 닿지 않아 마지막으로 받은 설정을 씁니다
@@ -311,12 +352,58 @@ export function ClaimScreen({ channel, call, stream }: { channel: ClaimChannel; 
             <p className="text-small text-ink-2">
               {dayLabel(view.period.from)} ~ {dayLabel(view.period.to)} · 환자 {view.visits.length}명 · {checkedAtText(result.at).slice(-5)}에 점검함 · 켜진 규칙 {view.enabledRules}개
             </p>
-            <button type="button" className={`${ds.button.secondarySmall} max-md:w-full`} disabled={!hasFindings} aria-busy={excelBusy || undefined} onClick={() => void downloadExcel()}>
-              {excelBusy ? '만드는 중…' : '엑셀 내려받기'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2 max-md:w-full">
+              <button type="button" className={`${ds.button.secondarySmall} max-md:w-full`} disabled={!hasFindings} aria-busy={excelBusy || undefined} onClick={() => void downloadExcel()}>
+                {excelBusy ? '만드는 중…' : '엑셀 내려받기'}
+              </button>
+              <button
+                type="button"
+                className={`${ds.button.primarySmall} max-md:w-full`}
+                onClick={() => {
+                  setFocusMemo(null)
+                  setPage('memo')
+                }}
+              >
+                다음: 메모 확인
+              </button>
+            </div>
           </div>
-          <ResultStep visits={view.visits} groups={view.groups} hasDx={view.hasDx} />
+          <ResultStep
+            visits={view.visits}
+            groups={view.groups}
+            hasDx={view.hasDx}
+            onOpenMemo={(key) => {
+              setFocusMemo(key)
+              setPage('memo')
+            }}
+          />
         </>
+      )}
+
+      {showMemo && result && view && (
+        <MemoPanel
+          key={result.load}
+          channel={channel}
+          stream={stream}
+          onProgress={onProgress}
+          load={result.load}
+          check={result.check}
+          visible={result.visible}
+          loadedAt={checkedAtText(result.at).slice(-5)}
+          memoBlocked={view.memoBlocked}
+          settingsStale={settingsStale}
+          storeStuck={storeStuck}
+          onStoreStuck={onStoreStuck}
+          checkFresh={checkFresh}
+          onLoadRange={(range) => {
+            setPeriod(range)
+            void load(range, 'memo')
+          }}
+          onReload={() => void load(result.visible)}
+          onStage={setMemoStage}
+          flushRef={flushDrafts}
+          focusKey={focusMemo}
+        />
       )}
     </div>
   )

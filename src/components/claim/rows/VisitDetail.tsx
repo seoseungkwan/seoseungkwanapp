@@ -5,7 +5,7 @@ import { dayLabel } from '../dateList'
 import { FindingRows } from './FindingRows'
 
 // 환자 자세히(AC-013.3, 목업 화면 3 오른쪽 칸): 이름 → 처방·상병 → 점검 경고 → 추천 상병·상병 확인. 줄은 props로만 받는다.
-// 메모 초안·[메모 확인에서 고치기]는 TASK-18이 이 칸 아래에 잇는다
+// 아래에 메모 초안과 [메모 확인에서 고치기]가 있다(TASK-18). 메모를 만들지 않는 병원은 없다(AC-018.18)
 
 const DX_ROLE = (line: DxLine) => (line.m === true ? '주상병' : line.m === false ? '부상병' : line.m === 'x' ? '배제상병' : '상병')
 
@@ -105,7 +105,7 @@ function Fact({ name, children }: { name: string; children: ReactNode }) {
 
 const dxNowText = (now: readonly DxLine[]) => (now.length ? now.map((line) => `${DX_ROLE(line)} ${line.c} ${line.n}`).join(' · ') : '없음')
 
-export function VisitDetail({ visit, titles, hasDx }: { visit: ClaimVisitView; titles: ReadonlyMap<string, string>; hasDx: boolean }) {
+export function VisitDetail({ visit, titles, hasDx, onOpenMemo }: { visit: ClaimVisitView; titles: ReadonlyMap<string, string>; hasDx: boolean; onOpenMemo?: (visitKey: string) => void }) {
   return (
     <div className="flex flex-col gap-3">
       <h2 className={ds.panelTitle}>
@@ -124,6 +124,19 @@ export function VisitDetail({ visit, titles, hasDx }: { visit: ClaimVisitView; t
       {visit.findings.length ? <FindingRows findings={visit.findings} titles={titles} /> : <p className="text-small text-muted">걸린 규칙이 없어요.</p>}
       <h3 className="mt-1 text-body font-semibold text-ink">추천 상병 · 상병 확인</h3>
       <DxSection visit={visit} hasDx={hasDx} />
+      {visit.memo && (
+        <>
+          <h3 className="mt-1 text-body font-semibold text-ink">메모 초안</h3>
+          <p className="whitespace-pre-wrap break-words text-small text-ink-2">{visit.memo.text || '메모가 없어요.'}</p>
+          {onOpenMemo && (
+            <div>
+              <button type="button" className={ds.button.secondarySmall} onClick={() => onOpenMemo(visit.key)}>
+                메모 확인에서 고치기
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

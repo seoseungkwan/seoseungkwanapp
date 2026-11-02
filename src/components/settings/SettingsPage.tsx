@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { DxLinks } from './DxLinks'
+import { HospitalPhrases } from './HospitalPhrases'
 import { RuleSettings } from './RuleSettings'
 
 // 설정 화면 (precheck REQ-012 AC-012.6, 목업 화면 10). 제목 '설정' → 안쪽 메뉴 [청구·연락 | 비트 PC 연결] → '청구·연락'의 패널들.
@@ -23,7 +25,9 @@ export function SettingsPage() {
         </nav>
       </div>
       <RuleSettings />
-      {/* 뒤 TASK가 이 아래에 차례로 더한다: 병원 문구·상병 연결표(TASK-18) · 문자 문구(TASK-25) · 백업(TASK-32) */}
+      <HospitalPhrases />
+      <DxLinks />
+      {/* 뒤 TASK가 이 아래에 차례로 더한다: 문자 문구(TASK-25) · 백업(TASK-32) */}
     </div>
   )
 }

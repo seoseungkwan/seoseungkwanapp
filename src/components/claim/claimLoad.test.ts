@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { CheckSettings, ClaimView, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
-import { claimChannel, runClaimCheck, runClaimExcel, runClaimLoad, type KeptClaim, type LoadStep } from './claimLoad'
+import { claimChannel, runClaimCheck, runClaimExcel, runClaimLoad, runMemoReload, type KeptClaim, type LoadStep } from './claimLoad'
 
 // 화면이 Worker에 보내는 차례(약속 전문: types/precheck.ts PrecheckFromScreen, design.md 6-2). 가짜 통로·가짜 Worker로 본다
 
@@ -257,15 +257,39 @@ describe('AC-013.11 claim.memos·store.load 차례', () => {
     await expect(result).resolves.toEqual({ status: 'failed', code: 'E-STORE-BROKEN' })
   })
 
-  it('AC-013.2·AC-013.11: 달 호출의 E-BIT-HOSPITAL-MISMATCH는 멈춘다(저장 막힘 안내는 TASK-18의 AC-018.17). 설정 사본을 묻지 않는다', async () => {
+  it('AC-018.17: 달 호출의 E-BIT-HOSPITAL-MISMATCH는 멈추지 않고 저장 막힘을 표시해 점검으로 간다. Worker에 알리고 설정 사본도 따로 묻는다', async () => {
     const { calls, worker, result } = await toMemos()
     calls[1].resolve('memos1')
     await tick()
     worker.emit(partOk('memos', 'memos1', 1))
     await tick()
     calls[2].reject('E-BIT-HOSPITAL-MISMATCH')
-    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-BIT-HOSPITAL-MISMATCH', stuckMonth: true })
-    expect(calls.map((call) => call.cmd)).toEqual(['claim.month', 'claim.memos', 'store.load'])
+    await tick()
+    expect(worker.posted.at(-1)).toEqual({ type: 'storeBlock' })
+    expect(calls.map((call) => call.cmd)).toEqual(['claim.month', 'claim.memos', 'store.load', 'store.load'])
+    expect(calls[3].args).toEqual({ settings: true })
+    calls[3].resolve('copy1')
+    await tick()
+    worker.emit(partOk('store', 'copy1', 1))
+    await expect(result).resolves.toEqual({ status: 'ok', load: 1, stuckMonth: true })
+  })
+
+  it('AC-018.17: 달 칸의 store.load와 settings·contact를 한 호출에 섞지 않는다', async () => {
+    const { calls, worker, result } = await toMemos()
+    calls[1].resolve('memos1')
+    await tick()
+    worker.emit(partOk('memos', 'memos1', 1))
+    await tick()
+    expect(calls[2].args).toEqual({ months: ['2026-10'] })
+    calls[2].resolve('store1')
+    await tick()
+    worker.emit(partOk('store', 'store1', 1))
+    await tick()
+    expect(calls[3].args).toEqual({ settings: true })
+    calls[3].resolve('copy1')
+    await tick()
+    worker.emit(partOk('store', 'copy1', 1))
+    await expect(result).resolves.toEqual({ status: 'ok', load: 1 })
   })
 
   it('AC-013.11: 설정 사본 호출의 옛 번호 거절은 버린다', async () => {
@@ -564,5 +588,70 @@ describe('openClaimChannel: 확장이 있는 PC 크롬에서만 Worker를 만든
     vi.stubGlobal('chrome', { runtime: {} })
     vi.stubGlobal('Worker', undefined)
     expect(open()).toBeNull()
+  })
+})
+
+describe('AC-018.24·AC-016.7 비트 메모 다시 불러오기', () => {
+  const readyChannel = () => {
+    const worker = fakeWorker()
+    const channel = claimChannel(worker)
+    const { stream, calls } = fakeStream(worker)
+    return { worker, channel, stream, calls }
+  }
+
+  it('AC-018.24: run은 load와 같은 곳에서 받아 되풀이되지 않는다(화면을 다시 그려도 같은 Worker면 같은 칸이다)', () => {
+    const { worker, channel } = readyChannel()
+    expect(channel.nextRun()).toBe(1)
+    expect(channel.nextRun()).toBe(2)
+    expect(claimChannel(worker).nextRun()).toBe(3)
+    expect(claimChannel(worker).lastRun()).toBe(3)
+  })
+
+  it('AC-016.7: stream 바로 앞에 memoReloadStart를 보내고, 끝나면 run을 실어 묻는다. claim.month는 부르지 않는다', async () => {
+    const { worker, channel, stream, calls } = readyChannel()
+    const result = runMemoReload(channel, stream, 7, DAY)
+    expect(worker.log).toEqual(['post memoReloadStart', 'stream claim.memos'])
+    expect(worker.posted[0]).toEqual({ type: 'memoReloadStart', run: 1 })
+    expect(calls[0].args).toEqual(DAY)
+    calls[0].resolve('r1')
+    await tick()
+    expect(worker.posted.at(-1)).toEqual({ type: 'loadPart', part: 'memos', id: 'r1', load: 7, run: 1 })
+    worker.emit({ type: 'loadPart', part: 'memos', id: 'r1', load: 7, run: 1, ok: true })
+    await expect(result).resolves.toEqual({ status: 'ok' })
+    expect(calls.map((call) => call.cmd)).toEqual(['claim.memos'])
+  })
+
+  it('AC-016.8: stream 거절은 그 번호의 실패이고 Worker에 묻지 않는다', async () => {
+    const { worker, channel, stream, calls } = readyChannel()
+    const result = runMemoReload(channel, stream, 7, DAY)
+    calls[0].reject('E-BIT-READ-FAILED')
+    await expect(result).resolves.toEqual({ status: 'failed', code: 'E-BIT-READ-FAILED' })
+    expect(worker.posted.filter((m) => m.type === 'loadPart')).toEqual([])
+  })
+
+  it('AC-016.7: 겹치면 마지막 번호의 답만 친다. 옛 stream도 끝나면 물어 조각을 찾아 간다', async () => {
+    const { worker, channel, stream, calls } = readyChannel()
+    const first = runMemoReload(channel, stream, 7, DAY)
+    const second = runMemoReload(channel, stream, 7, DAY)
+    calls[0].resolve('old')
+    await tick()
+    expect(worker.posted).toContainEqual({ type: 'loadPart', part: 'memos', id: 'old', load: 7, run: 1 })
+    worker.emit({ type: 'loadPart', part: 'memos', id: 'old', load: 7, run: 1, ok: true })
+    await expect(first).resolves.toEqual({ status: 'replaced' })
+    calls[1].resolve('new')
+    await tick()
+    worker.emit({ type: 'loadPart', part: 'memos', id: 'new', load: 7, run: 2, ok: false, code: 'E-CLAIM-PARTIAL' })
+    await expect(second).resolves.toEqual({ status: 'failed', code: 'E-CLAIM-PARTIAL' })
+  })
+
+  it('AC-016.7: 새 [자료 불러오기]가 시작되면 그 다시 불러오기는 버린다', async () => {
+    const { worker, channel, stream, calls } = readyChannel()
+    channel.startLoad()
+    const result = runMemoReload(channel, stream, 1, DAY)
+    channel.startLoad()
+    calls[0].resolve('r1')
+    await tick()
+    worker.emit({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1, ok: true })
+    await expect(result).resolves.toEqual({ status: 'replaced' })
   })
 })
