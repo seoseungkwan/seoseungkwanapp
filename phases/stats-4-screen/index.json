@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "stats-tab",
-      "status": "pending"
+      "status": "completed",
+      "summary": "/stats가 진짜 화면이다: `src/app/(app)/stats/page.tsx`가 `StatsScreen`(today, hospitalName)을 놓는다. hospital이 null이면 던지지만 문지기가 먼저 막아 닿지 않는다. 통계 줄은 ready이고 준비 중 목록에서 빠졌다. 대시보드 통계 칸은 AC-515.2대로 '연결 먼저'다(TASK-16을 미룬 동안 저장한 뒤에도 그대로). 공개 첫 화면의 '환자 통계' 준비 중 표시(AC-421.6)는 이 명세 밖이라 그대로다."
     },
     {
       "step": 3,
