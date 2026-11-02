@@ -64,6 +64,13 @@ describe('RecallRows: PC 표', () => {
     expect(cell.className).toContain('text-ellipsis')
   })
 
+  it('AC-612.1 근거 문구 칸은 넘침을 overflow-clip으로 자른다(overflow-hidden 아님, 프로젝트 규칙)', () => {
+    const t = draw([row()])
+    const classes = t.table.getByText('연골주사 3차 맞음').className.split(/\s+/)
+    expect(classes).toContain('overflow-clip')
+    expect(classes).not.toContain('overflow-hidden')
+  })
+
   it('AC-612.1 상태는 Worker 글자 그대로 보이고 색만으로 나타내지 않는다: 지남 N일은 주의, 오늘은 강조, N일 남음은 글자만', () => {
     const t = draw([row({ key: 'a', status: '지남 5일' }), row({ key: 'b', status: '오늘' }), row({ key: 'c', status: '16일 남음' })])
     expect(t.table.getByText('지남 5일').className).toBe(ds.chip.warning)

@@ -12,7 +12,7 @@ const MARK_FAILED = '연락함을 저장하지 못했어요. 다시 눌러 주�
 
 // 표 칸 묶음(ds.table)에 없는 두 칸. 체크 칸은 글자('저장 중')가 옆에 놓여 ds.table.check보다 넓다(목업 .chk 96px)
 const CHECK_CELL = 'h-11 w-24 whitespace-nowrap border-b border-line pr-1 pl-5'
-const EVIDENCE_CELL = `${ds.table.tdSub} max-w-80 overflow-hidden text-ellipsis`
+const EVIDENCE_CELL = `${ds.table.tdSub} max-w-80 overflow-clip text-ellipsis`
 const ERROR_CELL = 'border-b border-line px-3 py-2 first:pl-5 last:pr-5'
 const PHONE_LINE = 'mt-0.5 text-small text-ink-2'
 const MARK_WORD = 'whitespace-nowrap text-small text-ink-2'

@@ -59,6 +59,13 @@ describe('FollowupRows: PC 표', () => {
     expect(cell.className).toContain('text-ellipsis')
   })
 
+  it('AC-611.5 근거 문구 칸은 넘침을 overflow-clip으로 자른다(overflow-hidden 아님, 프로젝트 규칙)', () => {
+    const t = draw([row()])
+    const classes = t.table.getByText('2주 뒤 재진').className.split(/\s+/)
+    expect(classes).toContain('overflow-clip')
+    expect(classes).not.toContain('overflow-hidden')
+  })
+
   it('AC-611.5 지난 예정은 글자 "지남"으로도 보인다(색만 쓰지 않는다). 오늘·앞날은 아니다', () => {
     const t = draw([row({ key: 'a', name: '지난분', next: '2026-11-03' }), row({ key: 'b', name: '오늘분', next: TODAY }), row({ key: 'c', name: '내일분' })])
     const [, past, today, tomorrow] = t.table.getAllByRole('row')
