@@ -1,5 +1,5 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import codeMap from '../precheck/data/codeMap.json'
 import commands from './commands.json'
 import { EXTENSION_ID } from './extensionId'
 import {
@@ -56,6 +56,8 @@ describe('AC-036.1 bit.input 묶음의 처방코드', () => {
   })
 
   it('AC-036.1 코드 표 42개가 대문자로 모두 든다', () => {
+    // 표 파일은 tables.ts만 import한다(AC-007.4). 시험은 파일 글자로 읽는다
+    const codeMap = JSON.parse(readFileSync(new URL('../precheck/data/codeMap.json', import.meta.url), 'utf-8')) as Record<string, unknown>
     const codes = Object.keys(codeMap)
     expect(codes).toHaveLength(42)
     expect(codes.filter((code) => !shape().test(code.toUpperCase()))).toEqual([])
