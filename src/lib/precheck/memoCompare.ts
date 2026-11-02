@@ -7,6 +7,8 @@ import type { BitMemos, DayMemoCount, InputPlan, MemoCompare, Visit, VisitMemo, 
 // 사례는 두 쪽 시험이 같은 파일(helper/tests/Precheck.Core.Tests/Claim/memo-compare-cases.test.json)로 본다
 
 const PARTIAL = { ok: false, code: 'E-CLAIM-PARTIAL' } as const
+/** replaces 한도(commands.json bit.input, helper BatchCheck.MaxReplaces). 도우미도 이 길이에서 잘라 truncated를 알린다(AC-016.6) */
+const MAX_BIT_MEMO = 4000
 
 /**
  * 공백뿐인 글인가. C# string.IsNullOrWhiteSpace(char.IsWhiteSpace)와 같은 글자만 본다.
@@ -49,13 +51,13 @@ export function readBitMemos(raw: unknown): Outcome<BitMemos> {
 /**
  * 그 진료의 비트 메모(AC-016.6). undefined면 읽지 못한 것이다: 받은 자료가 없음(AC-016.8) · 읽은 기간 밖(claim.month는 고른 기간보다 앞쪽까지 읽는다, AC-013.13) ·
  * 차트번호가 다른 줄. 원본은 차트번호가 다르면 '비트에 없음'으로 보지만 비었다고 보면 두 번 입력한다. 읽은 기간 안에 줄이 없으면 빈 글자다.
- * 500자에서 잘린 Visit.memosInBit은 쓰지 않는다
+ * 500자에서 잘린 Visit.memosInBit은 쓰지 않는다. 4,000자를 넘는 글(도우미와 어긋난 때)도 읽지 못한 것이다: replaces로 보내면 묶음 전체가 거절된다
  */
 export function bitMemoOf(memos: BitMemos | null, visit: Pick<Visit, 'key' | 'chart' | 'date'>): string | undefined {
   if (!memos || compareYmd(visit.date, memos.period.from) < 0 || compareYmd(visit.date, memos.period.to) > 0) return undefined
   const row = memos.rows.get(visit.key)
   if (!row) return ''
-  return row.chart === chartKey(visit.chart) ? row.memo : undefined
+  return row.chart === chartKey(visit.chart) && row.memo.length <= MAX_BIT_MEMO ? row.memo : undefined
 }
 
 export type MemoSource = {
@@ -65,11 +67,16 @@ export type MemoSource = {
   latest: BitMemos | null
   /** store.load의 입력 기록: 내원번호 → 마지막 상태 */
   journal: ReadonlyMap<string, string>
-  /** 사람마다 승인한 비트 메모(AC-018.14): 내원번호 → 글 */
+  /** 직접 확인 기록이 남은 사람의 승인(AC-018.14): 내원번호 → 글 */
   approved?: ReadonlyMap<string, string>
+  /** [바꾸지 않기]를 누른 사람의 내원번호(AC-018.14) */
+  declined?: ReadonlySet<string>
 }
 
-/** 진료마다 비교 상태. 메모를 만들지 않은 진료는 줄이 없다(AC-014.8). 승인은 지금 비트 메모와 같을 때만 친다: 글이 바뀌었으면 도우미가 어차피 건너뛴다(AC-037.2) */
+/**
+ * 진료마다 비교 상태. 메모를 만들지 않은 진료는 줄이 없다(AC-014.8). 승인은 지금 비트 메모와 같을 때만 친다: 글이 바뀌었으면 도우미가 어차피 건너뛴다(AC-037.2).
+ * [바꾸지 않기]는 비교가 다름일 때만 친다: 같음·비트에 없음이면 바꿀 메모가 없어 표시와 상관없이 그 비교대로다(AC-018.14)
+ */
 export function visitMemos(visits: readonly Visit[], views: readonly VisitMemoView[], source: MemoSource): VisitMemo[] {
   const viewOf = new Map(views.map((view) => [view.visitKey, view]))
   const rows: VisitMemo[] = []
@@ -82,6 +89,7 @@ export function visitMemos(visits: readonly Visit[], views: readonly VisitMemoVi
     if (inBit !== undefined && (compare === '같음' || compare === '다름')) row.inBit = inBit
     const approved = source.approved?.get(visit.key)
     if (compare === '다름' && approved !== undefined && compareMemo(approved, inBit) === '같음') row.approved = approved
+    if (compare === '다름' && source.declined?.has(visit.key)) row.declined = true
     const last = source.journal.get(visit.key)
     if (last !== undefined) row.lastJournal = last
     rows.push(row)
@@ -90,11 +98,21 @@ export function visitMemos(visits: readonly Visit[], views: readonly VisitMemoVi
 }
 
 /**
- * 비교와 묻지 않기로 나눈 입력 묶음(AC-016.3, 표는 design.md 19-6). 받은 차례 그대로이고, 둘에 걸리면 AC-018.26 차례로 앞선 하나에만 든다.
+ * 보낼 replaces(AC-016.3). 지금 쥔 비트 글이고 칸 글이 이 글일 때만 도우미가 바꾼다(AC-037.1). 묶음을 만드는 곳이 모두 여기서 정한다(inputPlan·jobs.ts).
+ * [바꾸지 않기]를 누른 사람과 확인 표시가 남은 메모는 없다. 직접 확인 기록이 남은 사람은 [이 메모로 바꾸기]를 눌렀을 때만 있다: 도우미는 replaces가 오면 새 승인으로 보므로 사이트가 막는다(AC-037.6)
+ */
+export function replacesOf(row: VisitMemo): string | undefined {
+  if (row.compare !== '다름' || row.declined || row.unfinished) return undefined
+  if (row.lastJournal === 'skippedByHand' && row.approved === undefined) return undefined
+  return row.inBit
+}
+
+/**
+ * 비교로 나눈 입력 묶음(AC-016.3, 표는 design.md 19-6). 묻지 않기와 상관없다(AC-018.22). 받은 차례 그대로이고, 둘에 걸리면 AC-018.26 차례로 앞선 하나에만 든다.
  * 메모 없는 진료는 글자가 아니라 hasMemo로 가른다: 메모 없는 날에 사람이 친 글은 글자가 있어도 넣지 않는다. 공백뿐인 글은 AC-017.1이 묶음 전체를 거절하므로 함께 뺀다.
  * 같은 날 진료 여럿(직접 입력, AC-018.13)과 지난번 건너뜀(AC-018.20)은 여기서 모른다. inputTargets(TASK-18)가 더 거른다
  */
-export function inputPlan(visits: readonly VisitMemo[], noAsk: boolean): InputPlan {
+export function inputPlan(visits: readonly VisitMemo[]): InputPlan {
   const plan: InputPlan = { batch: [], done: [], skipped: [] }
   for (const visit of visits) {
     const { key } = visit
@@ -103,10 +121,11 @@ export function inputPlan(visits: readonly VisitMemo[], noAsk: boolean): InputPl
     else if (visit.unfinished) plan.skipped.push({ key, reason: '확인 표시' })
     else if (visit.compare === '조회 못함') plan.skipped.push({ key, reason: '조회 못함' })
     else if (visit.compare === '비트에 없음') plan.batch.push(visit)
-    else if (visit.approved) plan.batch.push({ ...visit, replaces: visit.approved })
-    // 직접 확인 기록이 남은 사람은 묻지 않기가 켜져 있어도 사람이 새로 승인했을 때만 바꾼다(AC-037.6)
-    else if (noAsk && visit.lastJournal !== 'skippedByHand') plan.batch.push(visit)
-    else plan.skipped.push({ key, reason: '이미 있음' })
+    else {
+      const replaces = replacesOf(visit)
+      if (replaces === undefined) plan.skipped.push({ key, reason: '이미 있음' })
+      else plan.batch.push({ ...visit, replaces })
+    }
   }
   return plan
 }

@@ -298,23 +298,22 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   )
   if (!view) return viewFailed || <p className="text-small text-muted">메모를 준비하는 중이에요…</p>
   const { targets, stuck, noAsk } = view
+  const replacingText = targets.replacing > 0 ? ` 다른 메모 ${targets.replacing}명은 우리 메모로 바뀌고, 원래 메모는 기록에 남아요.` : ''
   const sideText = storeStuck
     ? '저장이 막혀 있는 동안에는 입력할 수 없어요.'
     : stuck
       ? '쓰다 멈춘 사람을 먼저 확인해 주세요.'
       : settingsStale
         ? '[다시 점검]을 누른 뒤에 눌러 주세요.'
-        : noAsk
-          ? `누르면 PC 확인 창 없이 바로 시작해요.${targets.replacing > 0 ? ` 다른 메모 ${targets.replacing}명은 우리 메모로 바뀌고, 원래 메모는 기록에 남아요.` : ''}`
-          : '누르면 PC 화면에 확인 창이 떠요. 거기서 [확인]을 눌러야 들어가요.'
+        : `${noAsk ? '누르면 PC 확인 창 없이 바로 시작해요.' : '누르면 PC 화면에 확인 창이 떠요. 거기서 [확인]을 눌러야 들어가요.'}${replacingText}`
 
   return (
     <div className="flex flex-col gap-3">
       {viewFailed}
       {noAsk && (
         <div role="status" className={BAND}>
-          <b className="text-small font-semibold text-ink">묻지 않기 켜짐: 다른 메모도 원래 메모를 남기고 바뀌어요</b>
-          <span className="text-small text-ink-2">[비트에 입력]을 누르면 PC 확인 창 없이 바로 시작해요. 확인 표시가 남은 메모는 그래도 넣지 않아요. 끄려면 청구 창을 닫았다가 다시 여세요.</span>
+          <b className="text-small font-semibold text-ink">묻지 않기 켜짐: PC 확인 창 없이 바로 시작해요</b>
+          <span className="text-small text-ink-2">[비트에 입력]을 누르면 아래 목록 그대로 들어가요. [바꾸지 않기]를 누른 사람과 확인 표시가 남은 메모는 넣지 않아요. 끄려면 청구 창을 닫았다가 다시 여세요.</span>
         </div>
       )}
       {notice && (

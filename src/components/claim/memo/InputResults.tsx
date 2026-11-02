@@ -32,7 +32,7 @@ export function InputResults({ result, busy, excelBusy, excelError, onRetry, onR
     <div className="flex flex-col gap-3">
       {firstNoAsk !== null && (
         <p role="status" className="rounded-control bg-warning-soft px-4 py-3 text-small font-semibold text-ink">
-          {firstNoAsk > 0 ? `이제부터 묻지 않아요. 다른 메모가 있는 ${firstNoAsk}명은 아직 바꾸지 않았어요. [비트에 입력]을 다시 누르면 원래 메모를 남기고 바꿔요` : '이제부터 묻지 않아요.'}
+          {firstNoAsk > 0 ? `이제부터 묻지 않아요. 불러온 뒤에 비트에 메모가 생긴 ${firstNoAsk}명은 아직 바꾸지 않았어요. [비트에 입력]을 다시 누르면 원래 메모를 남기고 바꿔요` : '이제부터 묻지 않아요.'}
         </p>
       )}
       {status === 'stopped' && (
