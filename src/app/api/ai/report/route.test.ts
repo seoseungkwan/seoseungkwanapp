@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   saveReport: vi.fn(),
   addUsage: vi.fn(),
   callClaude: vi.fn(),
+  readSavedReport: vi.fn(),
+  readUsage: vi.fn(),
+  isReportStale: vi.fn(),
 }))
 vi.mock('@/lib/auth/hospital.server', () => {
   class NotSignedInError extends Error {}
@@ -18,12 +21,14 @@ vi.mock('@/lib/auth/hospital.server', () => {
   return { readMe: mocks.readMe, NotSignedInError, HospitalReadError }
 })
 vi.mock('@/lib/supabase/server', () => ({ supabaseServer: mocks.supabaseServer }))
-vi.mock('../generate', () => ({ generateReport: mocks.generateReport }))
+vi.mock('../generate', () => ({ generateReport: mocks.generateReport, isReportStale: mocks.isReportStale }))
 vi.mock('../claude', () => ({ callClaude: mocks.callClaude }))
 vi.mock('../store', () => ({
   loadReportMonths: mocks.loadReportMonths,
   saveReport: mocks.saveReport,
   addUsage: mocks.addUsage,
+  readSavedReport: mocks.readSavedReport,
+  readUsage: mocks.readUsage,
 }))
 
 import { HospitalReadError, NotSignedInError } from '@/lib/auth/hospital.server'
@@ -87,7 +92,7 @@ describe('AC-512.5 경로 설정', () => {
   it('AC-512.5 runtime은 nodejs, maxDuration은 120, export는 Next가 아는 이름뿐이다', () => {
     expect(route.runtime).toBe('nodejs')
     expect(route.maxDuration).toBe(120)
-    expect(Object.keys(route).sort()).toEqual(['POST', 'maxDuration', 'runtime'])
+    expect(Object.keys(route).sort()).toEqual(['GET', 'POST', 'maxDuration', 'runtime'])
   })
 })
 
@@ -307,5 +312,317 @@ describe('AC-512.4 로그', () => {
     await POST(post({ month: '2026-10' }))
     expect(errorSpy).not.toHaveBeenCalled()
     for (const spy of otherSpies) expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// GET /api/ai/report (spec ai-report-screen REQ-706). 시계는 위 beforeEach의 한국 2026-11-15, 이번 달은 2026-11이다
+describe('GET /api/ai/report', () => {
+  const { GET } = route
+  const USAGE_VIEW = { calls: 3, tokens: 1234, costMicroUsd: 5678 }
+  // 화면으로 나가는 칸. inputHash 말고 REPORT의 칸을 모두 적었다
+  const SHOWN = {
+    month: '2026-10',
+    partial: false,
+    summary: '요약 글자',
+    cards: [{ tag: 'up', text: '문장', metric: 'total.newPatients', basis: '근거 줄' }],
+    model: 'claude-opus-5-5',
+    createdAt: '2026-11-02T01:02:03.000Z',
+  }
+
+  function get(query: string): Request {
+    return new Request(`http://localhost/api/ai/report${query}`, {
+      method: 'GET',
+      headers: { cookie: 'sb-token=SECRET-COOKIE' },
+    })
+  }
+
+  function expectNoReads(): void {
+    expect(mocks.supabaseServer).not.toHaveBeenCalled()
+    expect(mocks.readSavedReport).not.toHaveBeenCalled()
+    expect(mocks.readUsage).not.toHaveBeenCalled()
+    expect(mocks.isReportStale).not.toHaveBeenCalled()
+    expect(mocks.loadReportMonths).not.toHaveBeenCalled()
+  }
+
+  async function expectReadFailed(res: Response): Promise<void> {
+    expect(res.status).toBe(502)
+    expect(await res.text()).toBe(JSON.stringify({ code: 'E-AI-READ' }))
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy.mock.calls[0]).toEqual(['[api/ai/report]', 'E-AI-READ'])
+  }
+
+  beforeEach(() => {
+    mocks.readSavedReport.mockResolvedValue(REPORT)
+    mocks.readUsage.mockResolvedValue(USAGE_VIEW)
+    mocks.isReportStale.mockResolvedValue(false)
+  })
+
+  describe('AC-706.1 로그인·승인 확인', () => {
+    it('AC-706.1 로그인 안 함이면 401, 몸통 없음, supabaseServer를 부르지 않고 로그도 없다', async () => {
+      mocks.readMe.mockRejectedValue(new NotSignedInError('x'))
+      const res = await GET(get('?month=2026-10'))
+      expect(res.status).toBe(401)
+      expect(await bodyOf(res)).toBeNull()
+      expectNoReads()
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['병원 없음', { email: 'a@b.c', isAdmin: false, hospital: null }],
+      ['승인 대기', { email: 'a@b.c', isAdmin: false, hospital: { id: 'h1', status: 'pending' } }],
+      ['거절됨', { email: 'a@b.c', isAdmin: false, hospital: { id: 'h1', status: 'rejected' } }],
+      ['관리자여도 병원 없음', { email: 'a@b.c', isAdmin: true, hospital: null }],
+      ['관리자여도 승인 대기', { email: 'a@b.c', isAdmin: true, hospital: { id: 'h1', status: 'pending' } }],
+    ])('AC-706.1 %s이면 403, 몸통 없음, supabaseServer를 부르지 않고 로그도 없다', async (_n, me) => {
+      mocks.readMe.mockResolvedValue(me)
+      const res = await GET(get('?month=2026-10'))
+      expect(res.status).toBe(403)
+      expect(await bodyOf(res)).toBeNull()
+      expectNoReads()
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['HospitalReadError', () => new HospitalReadError('db 내용 SECRET')],
+      ['그 밖의 오류', () => new Error('내부 SECRET 내용')],
+    ])('AC-706.1 readMe의 %s는 502 E-AI-READ이고 오류 내용은 응답·로그에 없다', async (_n, makeError) => {
+      mocks.readMe.mockRejectedValue(makeError())
+      await expectReadFailed(await GET(get('?month=2026-10')))
+      expectNoReads()
+    })
+
+    it('AC-706.1 승인 확인은 supabaseServer·읽기보다 먼저다', async () => {
+      const order: string[] = []
+      mocks.readMe.mockImplementation(async () => {
+        order.push('readMe')
+        return APPROVED
+      })
+      mocks.supabaseServer.mockImplementation(async () => {
+        order.push('supabaseServer')
+        return SB
+      })
+      mocks.readSavedReport.mockImplementation(async () => {
+        order.push('read')
+        return REPORT
+      })
+      await GET(get('?month=2026-10'))
+      expect(order).toEqual(['readMe', 'supabaseServer', 'read'])
+    })
+  })
+
+  describe('AC-706.1·706.2 로그인과 달 검사의 순서', () => {
+    it.each([
+      ['값 없음', ''],
+      ['13월', '?month=2026-13'],
+      ['다음 달', '?month=2026-12'],
+    ])('AC-706.1·706.2 로그인 안 함 + 잘못된 달(%s)이면 400이 아니라 401이다', async (_n, query) => {
+      mocks.readMe.mockRejectedValue(new NotSignedInError('x'))
+      const res = await GET(get(query))
+      expect(res.status).toBe(401)
+      expect(await bodyOf(res)).toBeNull()
+      expectNoReads()
+    })
+
+    it('AC-706.1·706.2 승인 안 됨 + 잘못된 달이면 400이 아니라 403이다', async () => {
+      mocks.readMe.mockResolvedValue({ email: 'a@b.c', isAdmin: false, hospital: { id: 'h1', status: 'pending' } })
+      const res = await GET(get('?month=2026-13'))
+      expect(res.status).toBe(403)
+      expectNoReads()
+    })
+  })
+
+  describe('AC-706.2 달 검사', () => {
+    it.each([
+      ['값 없음', ''],
+      ['다른 칸만 있음', '?months=2026-10'],
+      ['빈 글자', '?month='],
+      ['13월', '?month=2026-13'],
+      ['00월', '?month=2026-00'],
+      ['한 자리 월', '?month=2026-1'],
+      ['날짜 모양', '?month=2026-10-01'],
+      ['글자', '?month=abc'],
+      ['이번 달 다음 달', '?month=2026-12'],
+      ['다음 해', '?month=2027-01'],
+    ])('AC-706.2 %s이면 400, 몸통 없음, DB를 읽지 않고 로그도 없다', async (_n, query) => {
+      const res = await GET(get(query))
+      expect(res.status).toBe(400)
+      expect(await bodyOf(res)).toBeNull()
+      expect(mocks.readMe).toHaveBeenCalledTimes(1)
+      expectNoReads()
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+
+    it('AC-706.2 이번 달 자체와 지난달은 통과한다', async () => {
+      expect((await GET(get('?month=2026-11'))).status).toBe(200)
+      expect(mocks.readSavedReport).toHaveBeenLastCalledWith(SB, '2026-11')
+      expect((await GET(get('?month=2026-10'))).status).toBe(200)
+      expect((await GET(get('?month=2025-01'))).status).toBe(200)
+    })
+
+    it('AC-706.2 달 끝 경계는 한국 날짜로 본다', async () => {
+      vi.setSystemTime(new Date('2026-10-31T14:59:59Z')) // 한국 2026-10-31 23:59:59
+      expect((await GET(get('?month=2026-11'))).status).toBe(400)
+      expect((await GET(get('?month=2026-10'))).status).toBe(200)
+      expect(mocks.readUsage).toHaveBeenLastCalledWith(SB, '2026-10')
+      vi.setSystemTime(new Date('2026-10-31T15:00:00Z')) // 한국 2026-11-01 00:00:00, UTC로는 아직 10월
+      expect((await GET(get('?month=2026-11'))).status).toBe(200)
+      expect(mocks.readUsage).toHaveBeenLastCalledWith(SB, '2026-11')
+      expect((await GET(get('?month=2026-12'))).status).toBe(400)
+    })
+
+    it('AC-706.2 PC 시간대가 UTC여도 한국 날짜로 본다', async () => {
+      vi.stubEnv('TZ', 'UTC')
+      vi.setSystemTime(new Date('2026-10-31T15:30:00Z')) // 한국 2026-11-01 00:30
+      expect((await GET(get('?month=2026-11'))).status).toBe(200)
+      expect((await GET(get('?month=2026-12'))).status).toBe(400)
+    })
+  })
+
+  describe('AC-706.3 리포트가 있는 달', () => {
+    it.each([
+      ['거짓', false],
+      ['참', true],
+    ])('AC-706.3 stale이 %s이면 200이고 칸은 report·stale·usage 셋이다', async (_n, stale) => {
+      mocks.isReportStale.mockResolvedValue(stale)
+      const res = await GET(get('?month=2026-10'))
+      expect(res.status).toBe(200)
+      const body = (await bodyOf(res)) as Record<string, unknown>
+      expect(Object.keys(body).sort()).toEqual(['report', 'stale', 'usage'])
+      expect(body.report).toEqual(SHOWN)
+      expect(body.stale).toBe(stale)
+      expect(body.usage).toEqual(USAGE_VIEW)
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+
+    it('AC-706.3 report에 inputHash 칸이 없고 응답 글자 전체에 지문 값이 없다', async () => {
+      const text = await (await GET(get('?month=2026-10'))).text()
+      const { report } = JSON.parse(text) as { report: Record<string, unknown> }
+      expect(Object.keys(report).sort()).toEqual(['cards', 'createdAt', 'model', 'month', 'partial', 'summary'])
+      expect(text).not.toContain('inputHash')
+      expect(text).not.toContain(REPORT.inputHash)
+    })
+
+    it('AC-706.3 응답 머리 Cache-Control이 no-store다', async () => {
+      const res = await GET(get('?month=2026-10'))
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
+    })
+
+    it('AC-706.3 바뀜은 고른 달·저장 지문과 사용자 세션으로 읽는 함수로 본다', async () => {
+      await GET(get('?month=2026-10'))
+      expect(mocks.isReportStale).toHaveBeenCalledTimes(1)
+      const [month, hash, loadMonths] = mocks.isReportStale.mock.calls[0] as [
+        string,
+        string,
+        (m: string) => Promise<unknown>,
+      ]
+      expect(month).toBe('2026-10')
+      expect(hash).toBe(REPORT.inputHash)
+
+      const months = { selected: 1 }
+      mocks.loadReportMonths.mockResolvedValue(months)
+      expect(await loadMonths('2026-09')).toBe(months)
+      expect(mocks.loadReportMonths).toHaveBeenCalledWith(SB, '2026-09')
+    })
+
+    it('AC-706.3 readSavedReport는 고른 달, readUsage는 이번 달을 받는다(지난달을 고른 경우)', async () => {
+      await GET(get('?month=2026-10'))
+      expect(mocks.readSavedReport.mock.calls).toEqual([[SB, '2026-10']])
+      expect(mocks.readUsage.mock.calls).toEqual([[SB, '2026-11']])
+    })
+
+    it('AC-706.3 리포트와 사용량은 앞 읽기가 끝나기를 기다리지 않고 함께 부른다', async () => {
+      let finishReport: (value: unknown) => void = () => {}
+      let finishUsage: (value: unknown) => void = () => {}
+      mocks.readSavedReport.mockReturnValue(new Promise((resolve) => (finishReport = resolve)))
+      mocks.readUsage.mockReturnValue(new Promise((resolve) => (finishUsage = resolve)))
+      const pending = GET(get('?month=2026-10'))
+      for (let i = 0; i < 20; i += 1) await Promise.resolve()
+      expect(mocks.readSavedReport).toHaveBeenCalledTimes(1)
+      expect(mocks.readUsage).toHaveBeenCalledTimes(1)
+      finishReport(REPORT)
+      finishUsage(USAGE_VIEW)
+      expect((await pending).status).toBe(200)
+    })
+
+    it('AC-706.3 읽기만 한다: 흐름·Claude·저장·사용량 기록을 부르지 않는다', async () => {
+      await GET(get('?month=2026-10'))
+      expect(mocks.generateReport).not.toHaveBeenCalled()
+      expect(mocks.callClaude).not.toHaveBeenCalled()
+      expect(mocks.saveReport).not.toHaveBeenCalled()
+      expect(mocks.addUsage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('AC-706.4 리포트가 없는 달', () => {
+    it('AC-706.4 { report: null, stale: false, usage }이고 바뀜·숫자 읽기를 부르지 않으며 no-store다', async () => {
+      mocks.readSavedReport.mockResolvedValue(null)
+      const res = await GET(get('?month=2026-10'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
+      expect(await bodyOf(res)).toEqual({ report: null, stale: false, usage: USAGE_VIEW })
+      expect(mocks.isReportStale).not.toHaveBeenCalled()
+      expect(mocks.loadReportMonths).not.toHaveBeenCalled()
+      // 리포트가 없다고 읽는 길에서 만들면 안 된다(Claude 비용이 든다)
+      expect(mocks.generateReport).not.toHaveBeenCalled()
+      expect(mocks.callClaude).not.toHaveBeenCalled()
+      expect(mocks.saveReport).not.toHaveBeenCalled()
+      expect(mocks.addUsage).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('AC-706.5 읽기 실패', () => {
+    it('AC-706.5 리포트가 failed면 502 E-AI-READ, 로그는 경로와 번호 한 줄뿐이다', async () => {
+      mocks.readSavedReport.mockResolvedValue('failed')
+      await expectReadFailed(await GET(get('?month=2026-10')))
+      expect(mocks.isReportStale).not.toHaveBeenCalled()
+    })
+
+    it('AC-706.5 사용량이 failed면 502 E-AI-READ, 로그는 경로와 번호 한 줄뿐이다', async () => {
+      mocks.readUsage.mockResolvedValue('failed')
+      await expectReadFailed(await GET(get('?month=2026-10')))
+      expect(mocks.isReportStale).not.toHaveBeenCalled()
+    })
+
+    it('AC-706.5 둘 다 failed여도 로그는 한 줄이다', async () => {
+      mocks.readSavedReport.mockResolvedValue('failed')
+      mocks.readUsage.mockResolvedValue('failed')
+      await expectReadFailed(await GET(get('?month=2026-10')))
+    })
+
+    it.each([
+      ['readSavedReport', mocks.readSavedReport],
+      ['readUsage', mocks.readUsage],
+      ['supabaseServer', mocks.supabaseServer],
+      ['isReportStale', mocks.isReportStale],
+    ])('AC-706.5 %s가 던지면 502 E-AI-READ, 예외 내용·달은 응답·로그에 없다', async (_n, mock) => {
+      mock.mockRejectedValue(new Error('내부 SECRET 2026-10 내용'))
+      const res = await GET(get('?month=2026-10'))
+      await expectReadFailed(res)
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/SECRET|2026|cookie/i)
+    })
+  })
+
+  describe('AC-706.6 POST는 그대로', () => {
+    it('AC-706.6 runtime·maxDuration이 그대로다', () => {
+      expect(route.runtime).toBe('nodejs')
+      expect(route.maxDuration).toBe(120)
+    })
+
+    it('AC-706.6 POST는 읽기·바뀜 함수를 부르지 않고 답도 그대로다', async () => {
+      const res = await POST(post({ month: '2026-10' }))
+      expect(res.status).toBe(200)
+      expect(await bodyOf(res)).toEqual({ report: REPORT })
+      expect(mocks.readSavedReport).not.toHaveBeenCalled()
+      expect(mocks.readUsage).not.toHaveBeenCalled()
+      expect(mocks.isReportStale).not.toHaveBeenCalled()
+    })
+
+    it('AC-706.6 POST의 오류 번호는 E-AI-READ로 바뀌지 않는다', async () => {
+      mocks.readMe.mockRejectedValue(new Error('내부'))
+      const res = await POST(post({ month: '2026-10' }))
+      expect(res.status).toBe(502)
+      expect(await bodyOf(res)).toEqual({ code: 'E-AI-FAILED' })
+    })
   })
 })
