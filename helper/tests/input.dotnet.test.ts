@@ -2,7 +2,7 @@
 // - Precheck.Core.Tests.Input: 가짜 IChartUi·가짜 확인 창으로 묶음 검사·확인 창·사람 하나 차례·여러 날 내원 찾기·멈춤·결과·입력 기록·표준 입력 닫힘·잠금
 // - Precheck.Windows.Tests/Input: 가짜 비트 프로세스(같은 칸 이름)에만 쓰는 시험. Actions 윈도우에서만 돈다. 이 서버에서는 빌드되는지만 본다.
 // 진짜 비트 화면은 의원 PC 시험이다(시험용 환자 한 명 → 실제 하루치 → 입력 중 크롬 닫기).
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -12,7 +12,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const WINDOWS_TESTS_CSPROJ = path.join('helper', 'tests', 'Precheck.Windows.Tests', 'Precheck.Windows.Tests.csproj')
 const WINDOWS_DIR = path.join(ROOT, 'helper', 'src', 'Precheck.Windows')
 const PROGRAM = path.join(ROOT, 'helper', 'src', 'Precheck.Helper', 'Program.cs')
-const HELPER_SRC = path.join(ROOT, 'helper', 'src')
 
 let run: { code: number; output: string } = { code: -1, output: '' }
 
@@ -129,19 +128,9 @@ describe('REQ-017 윈도우 부분 (이 서버에서는 빌드와 글자만, 실
     expect(code).toMatch(/MessageLoop\.Run\(args, input,/)
   })
 
-  // 새 파일·다른 묶음·별칭·명령 이름 글자로 붙이는 길까지 막으려고 helper/src 전체를 본다. 정의한 파일만 제 이름을 쓸 수 있다
-  it('AC-017.1 bit.input은 아직 붙이지 않았다: helper/src 어디에서도 InputCommands·InputParts·bit.input을 쓰지 않는다(같은 날 두 번 온 환자의 메모가 다른 내원에 들어갈 수 있어서. 배선 작업 때 이 시험을 지운다)', () => {
-    const inputCommands = path.join('Precheck.Core', 'Input', 'InputCommands.cs')
-    const inputParts = path.join('Precheck.Helper', 'Commands', 'InputParts.cs')
-    const sources = readdirSync(HELPER_SRC, { recursive: true, encoding: 'utf8' }).filter(
-      (name) => name.endsWith('.cs') && !name.split(path.sep).some((part) => part === 'bin' || part === 'obj'),
-    )
-    expect(sources).toContain(inputCommands)
-    expect(sources).toContain(inputParts)
-    for (const file of sources) {
-      const code = stripComments(readFileSync(path.join(HELPER_SRC, file), 'utf8'))
-      if (file !== inputCommands) expect(code, file).not.toMatch(/\bInputCommands\b|bit\.input/)
-      if (file !== inputParts) expect(code, file).not.toMatch(/\bInputParts\b/)
-    }
+  it('AC-035.7 Program.cs가 메시지 고리 전에 InputCommands.Register(dispatcher, InputParts.Create(…))로 bit.input을 붙인다', () => {
+    const code = stripComments(readFileSync(PROGRAM, 'utf8'))
+    expect(code.match(/InputCommands\.Register\(dispatcher, InputParts\.Create\(/g)).toHaveLength(1)
+    expect(code.indexOf('InputCommands.Register(')).toBeLessThan(code.indexOf('MessageLoop.Run('))
   })
 })

@@ -10,22 +10,41 @@ namespace Precheck.Core.Input;
 /// PC 확인 창 글(AC-017.2, 목업 화면 5). 묶음의 날짜·수와 등록한 기관기호(뒤 4자리 가림)로만 도우미가 만든다.
 /// 웹이 보낸 글·이름·차트번호·메모를 넣지 않는다. 병원 이름은 도우미가 갖지 않는다(AC-005.9).
 /// 주의 글은 원본 runAutoRange 확인 글에서 옮겼다: 내원내역을 묶음 기간으로 띄워 두기, 미저장 작업 먼저 마치기, 진료일이 맞을 때만 입력.
+/// 확인할 수 없는 기록의 글(AC-035.9)은 맨 위에 더한다: 파일이 몇 개든, 직접 확인과 함께여도 창은 하나다. 아는 환자가 없어 이름·번호·파일 이름을 넣지 않는다.
 /// </summary>
 public static class InputPrompt
 {
     private const string NewLine = "\r\n";
 
-    public static string Build(IReadOnlyList<InputItem> items, HospitalRegistration registration, int excluded = 0)
+    private const string RecordsNotice = "입력 기록의 일부를 확인할 수 없습니다. 먼저 비트에 열려 있는 환자의 메모 칸을 확인해 주세요. 저장하지 않은 글이 있으면 마무리한 뒤 [확인]을 눌러 주세요.";
+
+    /// <param name="items">창 뒤에 열 사람. 비었으면 풀 사람만 있는 묶음이라 입력을 묻는 글과 주의 줄 대신 풀지 묻는다(AC-035.5).</param>
+    /// <param name="excluded">'빼는 환자 N명'. 풀 사람은 세지 않는다.</param>
+    /// <param name="released">풀 사람 수. '직접 확인한 환자 N명'에 함께 센다(AC-035.5).</param>
+    /// <param name="recordsNotice">아직 확인하지 않은 '확인할 수 없는 기록'이 있다(AC-035.9).</param>
+    public static string Build(IReadOnlyList<InputItem> items, HospitalRegistration registration, int excluded = 0, int released = 0, bool recordsNotice = false)
     {
         if (items == null) throw new ArgumentNullException(nameof(items));
         if (registration == null) throw new ArgumentNullException(nameof(registration));
 
-        var period = Period(items);
         var text = new StringBuilder();
+        if (recordsNotice) text.Append(RecordsNotice).Append(NewLine).Append(NewLine);
+        if (items.Count == 0)
+        {
+            text.Append("직접 확인한 환자 ").Append(released).Append("명의 입력 멈춤을 풀까요? 메모는 넣지 않고 건너뜁니다").Append(NewLine);
+            text.Append("기관기호 ").Append(RegisterPrompt.MaskInstitution(registration.InstitutionCode));
+            if (excluded > 0) text.Append(NewLine).Append("빼는 환자 ").Append(excluded).Append("명");
+            return text.ToString();
+        }
+
+        var period = Period(items);
         text.Append("비트에 청구메모를 입력할까요?").Append(NewLine).Append(NewLine);
         text.Append(period).Append(", ").Append(items.Count).Append("명 입력할까요?").Append(NewLine);
         text.Append("기관기호 ").Append(RegisterPrompt.MaskInstitution(registration.InstitutionCode)).Append(NewLine);
         if (excluded > 0) text.Append("빼는 환자 ").Append(excluded).Append("명").Append(NewLine);
+        var byHand = items.Count(item => item.CheckedByHand) + released;
+        if (byHand > 0) text.Append("직접 확인한 환자 ").Append(byHand).Append("명").Append(NewLine);
+        if (released > 0) text.Append("이 가운데 ").Append(released).Append("명은 메모를 넣지 않고 입력 멈춤만 풉니다").Append(NewLine);
         text.Append(NewLine);
         text.Append("주의").Append(NewLine);
         text.Append("· 비트 내원내역 창을 ").Append(period).Append(" 기간이 모두 들어가게 띄워 두고, 처방코드·상병 검색칸은 비워 두세요.").Append(NewLine);

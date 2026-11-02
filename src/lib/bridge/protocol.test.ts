@@ -24,6 +24,15 @@ describe('AC-004.1 확장 ID는 commands.json 한 곳에서', () => {
   })
 })
 
+describe('AC-035.5 bit.input 묶음의 직접 확인 표시', () => {
+  it('AC-035.5 items의 칸은 visitKey·chart·name·date·memo와 고르는 checkedByHand(참·거짓)다', () => {
+    const payload = commands.commands['bit.input'].args.payload
+    const fields = payload.fields.items.items.fields as Record<string, { type: string; optional?: boolean }>
+    expect(Object.keys(fields).sort()).toEqual(['chart', 'checkedByHand', 'date', 'memo', 'name', 'visitKey'])
+    expect(fields.checkedByHand).toEqual({ type: 'bool', optional: true })
+  })
+})
+
 describe('AC-004.5·AC-004.6·AC-004.9 명령 표 읽기', () => {
   const table = commands.commands as Record<string, { patient: boolean; send?: boolean }>
 

@@ -14,13 +14,18 @@ internal static class Sample
 
     public static readonly HospitalRegistration Registration = Synthetic.Registration();
 
-    public static InputItem Item(int n, string? date = null, string? memo = null, string? chart = null, string? name = null, string? visitKey = null) =>
+    public static InputItem Item(int n, string? date = null, string? memo = null, string? chart = null, string? name = null, string? visitKey = null, bool checkedByHand = false) =>
         new InputItem(
             visitKey ?? "v" + n,
             chart ?? "9000" + n.ToString("00", System.Globalization.CultureInfo.InvariantCulture),
             name ?? "가상환자" + n.ToString("00", System.Globalization.CultureInfo.InvariantCulture),
             date ?? Date,
-            memo ?? "가짜 메모 " + n);
+            memo ?? "가짜 메모 " + n,
+            checkedByHand);
+
+    /// <summary>내원 수 SQL의 가짜 답: 차트번호 1~count번이 Sample.Date에 한 번씩(AC-035.1).</summary>
+    public static IEnumerable<object?[]> VisitRows(int count) =>
+        Enumerable.Range(1, count).Select(n => new object?[] { Item(n).Chart, Date.Replace("-", ""), 1L }).ToList();
 
     public static List<InputItem> Items(int count) => Enumerable.Range(1, count).Select(n => Item(n)).ToList();
 
@@ -207,7 +212,7 @@ internal sealed class FakeProgress : IInputProgress
     }
 }
 
-internal sealed class FakeJournal : IInputJournal
+internal sealed class FakeJournal : IBatchJournal
 {
     public List<(string VisitKey, JournalState State)> Marks { get; } = new List<(string VisitKey, JournalState State)>();
     public List<InputOutcome> Saved { get; } = new List<InputOutcome>();
@@ -237,6 +242,18 @@ internal sealed class FakeJournal : IInputJournal
         if (ReadFailWhen != null && ReadFailWhen(item.VisitKey)) throw new Precheck.Core.Bit.BitException(Precheck.Core.Bit.BitErrors.StoreFailed);
         if (ReadThrowWhen != null && ReadThrowWhen(item.VisitKey)) throw new InvalidOperationException("가상환자01 비밀 글");
         return Last(item.VisitKey);
+    }
+
+    public JournalScan Scan() =>
+        new JournalScan(
+            Marks.Select(mark => mark.VisitKey).Distinct()
+                .Where(key => Last(key) == JournalState.Writing || Last(key) == JournalState.WriteUnconfirmed)
+                .Select(key => new UnconfirmedVisit(key, Dates[key]))
+                .ToList(),
+            new string[0]);
+
+    public void SaveAcks(IReadOnlyList<string> hashes)
+    {
     }
 
     public void SaveResults(InputOutcome outcome) => Saved.Add(outcome);

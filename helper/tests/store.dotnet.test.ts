@@ -12,6 +12,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const WORK_STORE = path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Store', 'WorkStore.cs')
 const HELPER_STORE = path.join(ROOT, 'helper', 'src', 'Precheck.Helper', 'Commands', 'HelperStore.cs')
 const PROGRAM = path.join(ROOT, 'helper', 'src', 'Precheck.Helper', 'Program.cs')
+const STORE_COMMANDS = path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Store', 'StoreCommands.cs')
 
 let run: { code: number; output: string } = { code: -1, output: '' }
 
@@ -63,6 +64,10 @@ describe('REQ-015 도우미 작업 저장 (C# Precheck.Core.Tests.Store)', () =>
   it('AC-015.7 store.save {settings}는 settings.dat에 두고 store.load {settings: true}로 돌려준다', () => {
     expectAc('AC-015.7')
   })
+
+  it('AC-035.6 store.save와 .bak으로 되살리는 store.load는 잠금을 잡은 동안에만 파일을 쓴다', () => {
+    expectAc('AC-035.6')
+  })
 })
 
 // ── 글자 시험: 실행으로 드러나지 않는 것(윈도우 없이 글자로 증명, AC-005.11과 같은 방식) ──
@@ -73,7 +78,7 @@ function code(file: string): string {
 }
 
 describe('REQ-015 WorkStore.cs 쓰는 길 (글자)', () => {
-  const store = code(WORK_STORE)
+  const store = code(WORK_STORE) + code(path.join(path.dirname(WORK_STORE), 'WorkStoreRecords.cs'))
 
   it('AC-015.1 바꿔치기는 File.Replace(임시 파일, 본 파일, .bak)이고 본 파일에 바로 쓰는 길이 없다', () => {
     expect(store).toContain('File.Replace(temporary, path, kept)')
@@ -94,6 +99,10 @@ describe('REQ-015 WorkStore.cs 쓰는 길 (글자)', () => {
 })
 
 describe('REQ-015 도우미가 store.* 명령을 실제로 붙인다 (글자)', () => {
+  it('AC-035.6 도우미의 store.* 처리기는 따로 정하지 않으면 진짜 작업 잠금을 5초까지 기다린다', () => {
+    expect(code(STORE_COMMANDS)).toContain('WorkLock.TryAcquire(WorkLock.StoreSaveWait)')
+  })
+
   it('AC-015.1 AC-015.2 Program.cs가 메시지 고리 전에 HelperStore.Register를 부른다(빠지면 웹은 E-HELPER-UNKNOWN-COMMAND를 사본 없음으로 본다, AC-013.9)', () => {
     const program = code(PROGRAM)
     expect(program.match(/HelperStore\.Register\(dispatcher\);/g)).toHaveLength(1)

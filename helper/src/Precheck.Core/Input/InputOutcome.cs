@@ -37,14 +37,18 @@ public sealed class InputResult
     public string Reason { get; }
 }
 
-/// <summary>묶음의 끝. Code는 멈춘 이유 번호, Reason은 원본 문구, Fields는 E-BIT-UI-CHANGED의 칸 ID 목록.</summary>
+/// <summary>묶음의 끝. Code는 멈춘 이유 번호, Reason은 원본 문구, Fields는 E-BIT-UI-CHANGED의 칸 ID 목록, Unconfirmed는 쓰다 멈춰 먼저 풀어야 할 진료(AC-035.4).</summary>
 public sealed class InputOutcome
 {
     private static readonly string[] NoFields = new string[0];
     private static readonly InputResult[] NoResults = new InputResult[0];
+    private static readonly UnconfirmedVisit[] NoVisits = new UnconfirmedVisit[0];
+    private static readonly InputItem[] NoItems = new InputItem[0];
 
-    public InputOutcome(InputStatus status, string? code, string? reason, IReadOnlyList<string>? fields, IReadOnlyList<InputResult>? results)
+    public InputOutcome(InputStatus status, string? code, string? reason, IReadOnlyList<string>? fields, IReadOnlyList<InputResult>? results, IReadOnlyList<UnconfirmedVisit>? unconfirmed = null, IReadOnlyList<InputItem>? excluded = null)
     {
+        Unconfirmed = unconfirmed ?? NoVisits;
+        Excluded = excluded ?? NoItems;
         Status = status;
         Code = code;
         Reason = reason;
@@ -57,13 +61,21 @@ public sealed class InputOutcome
     public string? Reason { get; }
     public IReadOnlyList<string> Fields { get; }
     public IReadOnlyList<InputResult> Results { get; }
+    public IReadOnlyList<UnconfirmedVisit> Unconfirmed { get; }
+
+    /// <summary>확인 창 앞에서 미리 뺀 사람(입력 기록의 달을 찾는 데만 쓴다, AC-035.2). 답에 싣지 않는다.</summary>
+    public IReadOnlyList<InputItem> Excluded { get; }
+
+    /// <summary>미리 뺀 사람과 그 건너뜀 결과를 더한 복사본.</summary>
+    public InputOutcome WithExcluded(IReadOnlyList<InputItem> items, IReadOnlyList<InputResult> results) =>
+        new InputOutcome(Status, Code, Reason, Fields, results.Concat(Results).ToList(), Unconfirmed, items);
 
     public static InputOutcome Cancelled() => new InputOutcome(InputStatus.Cancelled, null, null, null, null);
 
     /// <summary>번호를 바꾼 복사본(결과를 저장하지 못했을 때).</summary>
-    public InputOutcome WithCode(string code) => new InputOutcome(Status, code, Reason, Fields, Results);
+    public InputOutcome WithCode(string code) => new InputOutcome(Status, code, Reason, Fields, Results, Unconfirmed, Excluded);
 
-    /// <summary>조각으로 보낼 JSON: {status, code, reason, fields, results: [{visitKey, result, reason}]}.</summary>
+    /// <summary>조각으로 보낼 JSON: {status, code, reason, fields, results: [{visitKey, result, reason}], unconfirmed?: [{visitKey, date}]}. unconfirmed는 있을 때만 칸을 쓴다.</summary>
     public string ToJson()
     {
         return Encoding.UTF8.GetString(Envelope.Write(writer =>
@@ -84,6 +96,18 @@ public sealed class InputOutcome
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
+            if (Unconfirmed.Count > 0)
+            {
+                writer.WriteStartArray("unconfirmed");
+                foreach (var visit in Unconfirmed)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("visitKey", visit.VisitKey);
+                    writer.WriteString("date", visit.Date);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
         }));
     }
 

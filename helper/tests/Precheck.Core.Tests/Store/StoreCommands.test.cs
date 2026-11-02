@@ -31,8 +31,12 @@ public class StoreCommandsTests
             var registrations = new RegistrationStore(registrationFolder.Path, Files.Protector);
             if (registered) registrations.Save(Synthetic.Registration());
             dispatcher = new Dispatcher(CommandTable.LoadEmbedded(), (name, code) => Log.Add(name + "|" + code));
-            StoreCommands.Register(dispatcher, () =>
-                WorkStore.ForRegistered(new StoreFolder(dataFolder), Files.Protector, registrations, () => StoreRig.Today));
+            // 잠금 이름은 시험마다 새로 짓는다: 다른 작업 폴더의 시험이나 의원 PC의 진짜 이름과 부딪히지 않게
+            var lockName = @"Local\PrecheckTest." + Guid.NewGuid().ToString("N");
+            StoreCommands.Register(
+                dispatcher,
+                () => WorkStore.ForRegistered(new StoreFolder(dataFolder), Files.Protector, registrations, () => StoreRig.Today),
+                () => Precheck.Core.Input.WorkLock.TryAcquire(Precheck.Core.Input.WorkLock.StoreSaveWait, lockName));
         }
 
         public StoreRig Files { get; }
