@@ -71,8 +71,8 @@
 
 ### REQ-007: 저장·가져오기 (Phase 2 · Step 3 · revenue-sync)
 - AC-007.1: Given 오늘과 저장된 날 목록, When `planFetch(today, savedDays)`, Then 어제가 속한 달부터 거꾸로 13달 가운데 '와야 할 날'(1일 ~ 말일과 어제 가운데 이른 날)이 하나라도 저장돼 있지 않은 달을 **최근 달부터** 돌려준다. 달마다 기간은 그 달 1일 ~ 와야 할 마지막 날이다(31일 이하). 다 저장된 달은 넣지 않는다. 알림: 확인표 ⑤가 '다름'으로 나와 도우미를 고쳐도, 이미 저장된 날은 `planFetch`가 다시 읽지 않고 [다시 가져오기]는 고른 달만 읽는다. 그래서 그때의 명세 변경에는 13달 모두 다시 읽기를 넣어야 한다
-- AC-007.2: Given 검사를 지난 답, When `saveMonth(month, result)`, Then 답의 첫 날이 그 달 1일인지 확인하고(아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`, 그 달 코드 줄을 지우고 새로 넣으므로 `sales_codes` 합계가 그 달 전체여야 해서), 그 달 코드 줄을 지우고 새로 넣은 **뒤에** 날 줄을 `hospital_id`+`day`로 upsert한다(코드 저장이 실패하면 날 줄이 없어 그 달을 다시 가져온다). 보내는 줄의 칸은 `sales_days` 열다섯 칸(`day`~`split_unconfirmed`)·`sales_codes` 다섯 칸(`month`·`code`·`name`·`count`·`amount`)뿐이다(시험: 보내는 객체의 칸 이름 비교). 저장이 실패하면 `E-REVENUE-SAVE-FAILED`
-- AC-007.3: Given `syncRevenue({call, store, today, months?, onProgress})`, When 부르면, Then 가져올 달마다 차례로 `revenue.days` → 저장을 하고 달마다 `onProgress({done, total, month})`를 알린다. 한 달의 읽기·검사·저장 오류(`E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`)는 그 달만 `failed`에 넣고 다음 달을 계속한다. 통로·도우미·등록 오류(그 밖의 번호)는 거기서 멈춘다. `months`를 주면([다시 가져오기]) 그 달만 다시 읽는다. 도우미가 `E-HELPER-UNKNOWN-COMMAND`를 주면 `helperOld`, 확장이 `E-BRIDGE-REJECTED`를 주면(옛 확장은 모르는 명령을 막는다) `extensionOld`를 돌려준다
+- AC-007.2: Given 검사를 지난 답, When `saveMonth(month, result)`, Then 답의 첫 날이 그 달 1일인지 확인하고(아니면 저장하지 않고 `E-REVENUE-SAVE-FAILED`, 그 달 코드 줄을 지우고 새로 넣으므로 `sales_codes` 합계가 그 달 전체여야 해서), 그 달 코드 줄을 지우고 새로 넣은 **뒤에** 날 줄을 `hospital_id`+`day`로 upsert한다(처음 저장하는 달은 코드 저장이 실패하면 날 줄이 없어 그 달을 다시 가져온다. 다 저장된 달은 날 줄이 남아 저절로 고쳐지지 않는다, design.md 13절). 보내는 줄의 칸은 `sales_days` 열다섯 칸(`day`~`split_unconfirmed`)·`sales_codes` 다섯 칸(`month`·`code`·`name`·`count`·`amount`)뿐이다(시험: 보내는 객체의 칸 이름 비교). 저장이 실패하면 `E-REVENUE-SAVE-FAILED`
+- AC-007.3: Given `syncRevenue({call, store, today, months?, savedDays?, onProgress})`(`months`가 없으면 `savedDays`가 꼭 있어야 한다), When 부르면, Then 가져올 달마다 차례로 `revenue.days` → 저장을 하고 달마다 `onProgress({done, total, month})`를 알린다. 한 달의 읽기·검사·저장 오류(`E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`)는 그 달만 `failed`에 넣고 다음 달을 계속한다. 통로·도우미·등록 오류(그 밖의 번호)는 거기서 멈춘다. `months`를 주면([다시 가져오기]) 그 달만 다시 읽는다. 도우미가 `E-HELPER-UNKNOWN-COMMAND`를 주면 `helperOld`, 확장이 `E-BRIDGE-REJECTED`를 주면(옛 확장은 모르는 명령을 막는다) `extensionOld`를 돌려준다
 - AC-007.4: Given `loadRevenue(fromMonth, toMonth)`, When 읽으면, Then 그 달들의 날 줄·코드 줄(이름 포함)과 가장 늦은 `fetched_at`을 돌려준다(RLS가 내 병원 줄만 준다)
 - AC-007.5: Given 오류 번호 `E-REVENUE-SAVE-FAILED`, When 오류 카드를 그리면, Then `lib/errors.ts`의 '무엇이 · 어떻게 고치나' 문구가 있다
 
@@ -91,8 +91,10 @@
 - AC-009.3: Given 확장이 없는 PC·폰, When 열면, Then 저장된 숫자만 보이고 [다시 가져오기]가 없으며 "의원 PC에서 …에 가져온 숫자예요"를 보인다. 저장된 줄도 없으면 '비트 PC 연결 필요'([비트 PC 연결] → `/claim/setup`)다
 - AC-009.4: Given 상태 `empty`·`helper-old`·`extension-old`·`error`, Then 시안처럼 그린다(`extension-old`는 `helper-old`와 같은 모양에 "확장 프로그램을 새 버전으로" 문구, 시안에 더함). 저장 실패(`E-REVENUE-SAVE-FAILED`)면 오류 카드와 [다시 저장]이 있고, 가져오지 못한 달이 있으면 알림 줄 "n달을 가져오지 못했어요"와 그 줄의 [다시 가져오기](가져오지 못한 달들만 다시 읽음)가 있다
 - AC-009.5: Given 화면 소스, Then 토큰·`ds`만 쓰고(16진수·대괄호 값·`font-bold` 없음), 그래프는 HTML 막대 + `aria-hidden` + 화면 읽기 표다. 폰(768px 미만)의 단추·달 고르기 누름 영역은 44px 이상이고 768px부터 PC 배치다(시험: AC ID를 단 클래스 시험). 390·768·1440에서 가로 스크롤이 없다(AC-011.1)
+- AC-009.6: Given 통로 `busy`(다른 창이 연결을 쓰는 중), Then 연결 안 됨이라고 말하지 않고, 저장된 숫자는 그대로 둔 채 `E-BRIDGE-BUSY` 카드와 [다시 확인]을 보인다. 저장된 줄이 없어도 같은 카드다. 저장된 줄을 읽지 못했으면 `E-PAGE-FAILED` 카드이고, 열려 있는 묶음 고치기 화면은 그대로 둔다. 카드 글자는 `lib/errors.ts`의 그 번호 문구다
+- AC-009.7: 이 화면이 가져오기를 끝낸 뒤 통로가 끊기면 저절로 다시 붙지 않는다. 저장된 숫자와 '이 PC는 비트와 연결되어 있지 않아요' + [비트 PC 연결](`/claim/setup`으로 가는 링크)을 보인다. 그 화면에 다녀오거나 이 화면을 새로 열면 다시 붙는다. 768px 미만에서는 이 알림 줄이 숨는다(design.md 13절). 저장된 줄이 없으면 `connect-needed`다(AC-009.3). 가져오는 도중 끊기거나 도우미가 끝나면 오류 카드 + [다시 확인]이다(AC-009.4)
 
-### REQ-010: 준비 중에서 빼기 (Phase 3 · Step 2 · tab-ready)
+### REQ-010: 준비 중에서 빼기 (Phase 3 · Step 3 · tab-ready)
 - AC-010.1: Given 탭 자료, Then `notReadyFeatures.ts`에 `/revenue` 항목이 없고, `shell/menu.ts`의 매출이 `ready: true`, 대시보드 기능 목차의 매출이 청구와 같은 `'connect-first'`("연결 먼저")이고 그 설명의 넷째가 '건당 진료비'이며('한 사람당 평균 진료비'가 없다), [전체 메뉴]의 "준비 중" 수가 하나 준다. 탭 맞춤 시험(`(app)/tabFrame.test.tsx`·`notReadyPages.test.tsx`)이 이를 확인하고, 탭 수를 고정 숫자로 적지 않는다
 - AC-010.2: Given `/revenue`, Then 브라우저 탭 이름은 "매출 · 의원 이름"이다
 - AC-010.3: Given 문서, Then `plan.md` §2-4와 `docs/ARCHITECTURE.md`의 매출 줄이 '폴더 연결·파일'이 아니라 '비트 PC 도우미 읽기(`revenue.days`) → `sales_days`·`sales_codes`'를 말한다(바뀐 날짜 표시). `docs/tab-frame/plan.md` §2 표의 매출 줄(28줄)은 넣을 것 넷째를 '건당 진료비'로 말한다
@@ -120,6 +122,7 @@
 - AC-014.4: Given 이름이 비거나 30자를 넘거나 겹치거나 제어 문자·6개 이상 이어진 숫자가 있으면, Then [저장] 전에 그 칸 아래 이유 글(시안: "같은 이름의 묶음이 있어요" 등)을 보이고 저장하지 않는다. 묶음을 지울 때는 확인 창(시안: "이 묶음의 처방 n개는 '그 밖 처방'으로 가요", [지우기]·[취소])을 거친다
 - AC-014.5: Given [저장], When 저장이 되면, Then 매출 화면으로 돌아가 치료별 매출을 저장한 묶음으로 다시 그린다. 실패하면 오류 카드와 [다시 저장]을 보이고 고친 것은 그대로 둔다
 - AC-014.6: Given 폰(768px 미만)·연결 안 된 PC, Then 편집은 그대로 된다(서버 표만 쓴다). 폰은 한 줄 배치, 이름 칸·고르기·단추의 누름 영역 44px 이상, 입력 글자 16px다. 화면 규칙(토큰·`ds`·상자 안 상자 없음)을 따른다
+- AC-014.7: 묶음을 모두 지우고 [저장]하면 저장된 묶음이 없는 상태가 되어 치료별 매출은 제안 묶음으로(금액·건수가 모두 0인 묶음은 빠진다, REQ-006), 편집 화면은 제안 다섯 개로 돌아가고 칩이 다시 보인다(AC-014.3). '묶음 없음'을 따로 저장하지 않는다. 제안 없이 쓰려면 묶음을 하나 남긴다
 
 ## 범위 밖
 - 매출 탭에 현금·카드·계좌이체·미수입금·신환·재진을 보이는 것(읽고 저장은 하지만 그리는 것은 업무일지 탭이 한다)

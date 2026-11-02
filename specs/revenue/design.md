@@ -39,7 +39,7 @@
 2. **요양비용총액·급여 본인부담 읽기**: 원본 `FinanceNormal`의 `NativeRows`가 `OrpInsAmt`·`OrpInsOwn`을 고르지만 더하지 않는다. 이름과 자리로 보아 요양비용총액·급여본인부담금으로 보고(확인 못 함), 같은 수납 줄에서 더한다(새 문장 `FinanceNormalExtra`·`FinanceReceivableExtra`). **100/100미만총액·전액본인부담 칸은 원본 SQL에 없다** → `otherTotal`(기타)은 총진료비에서 급여(`insurer + copay`)와 비급여를 뺀 나머지로 낸다(4-2). 남는 금액으로 셈하므로 **총액 가운데 `insurer + copay`·`noncovered`에 잡히지 않은 금액은 무엇이든 아무 표시 없이 기타로 들어간다**(매출 `total`은 그대로다). 예: `insurer` 300,000 + `copay` 150,000 = `OrpInsAmt` 450,000, `noncovered` 400,000, `total` 1,000,000인데 진짜 기타가 100,000이고 다른 금액 50,000이 총액에 섞여 있으면 `otherTotal`은 150,000이고 어떤 검사에도 걸리지 않는다. 검사 둘이 잡는 것은 다른 일이다: ① `insurer + copay = 요양비용총액`이 아니면 그날 나눔만 비운다(`splitUnconfirmed`, 두 칸의 뜻이 틀린 경우) ② 나눔 네 칸 가운데 음수면 나눔만 비우고, `total`·`cash`·`card`·`transfer`·`receivableIn` 가운데 음수면 '확인 필요'(`unconfirmed`). 웹의 합 검사(AC-005.1)는 도우미가 만든 줄에서 걸리지 않는다(`otherTotal`이 나머지라서). **기타가 맞는지 보는 것은 Phase 3 뒤 확인표 '매출 탭에서 볼 것' ⑤뿐이다**: 급여·비급여·기타가 비트 화면과 같은지 확인 필요한 날도 나눔을 못 한 날도 없는 달로, 만 원 자리까지 같음/다름으로 본다. 다르면 칸을 찾는 명세 변경을 한다(저장된 날을 다시 읽는 일을 포함, AC-007.1). **⑤의 한계**: 만 원 아래 차이는 보지 못하고, 본 달에 없던 금액은 말해 주지 못한다. **화면에 보이는 건강생활유지비(아래 3)가 이 식에 들어가는지도 확인하지 못했다**(지어 정하지 않는다). ⑤의 건강생활유지비 줄이 '아니오'(본 달에 0원)이면 ⑤는 건강생활유지비에 대해 아무것도 말해 주지 못한다. '예'여도 금액이 만 원보다 작으면 드러나지 않는다
 3. **미수발생·지역화폐**: 외래환자경영통계 화면에 **미수발생은 보인다**(건강생활유지비·100/100미만본인부담금·100/100미만청구액도 보인다). **지역화폐는 화면에 없다**. 미수발생을 읽는 칸은 원본 코드에 없으므로 칸이 확인될 때까지 계약(5절)에 넣지 않는다(늘 `null`인 칸을 두지 않는다). 확인표 '먼저 할 것' ③은 그대로 둔다
 4. 치료 코드 다섯 가지가 이 의원 비트 코드와 같은가('먼저 할 것' ②, 처음 보이는 제안 묶음에만 쓰여 만드는 일을 막지 않는다, 14절). 금액·접수 건수가 비트와 같은가, 처음 읽는 시간, '확인 필요' 날과 접수 건수를 확인하지 못한 날이 얼마나 자주 나오는가는 Phase 3 뒤 매출 탭에서 본다('매출 탭에서 볼 것' ①~④). 수납 나눔·신환·재진 맞추기는 이 기능에서 그리지 않으므로 업무일지 4단계 확인표가 한다
-5. **접수취소가 접수 건수에서 빠지는가(확인 못 함)**: `visits`는 원본 `Patients`의 `PeriodVisits` 줄 수이고, 조건은 `OcmPatTyp='O'`·`OcmComStt IN ('WN','HN','TN','PN')`·`OcmRsuYon<>'O'`이다. **이 저장소 어디에도 이 상태 코드들의 뜻이 적혀 있지 않다.** 같은 문장의 입원 쪽 줄이 `VC`·`CN`·`CR`을 거부하지만 그 뜻도 적혀 있지 않다. 시험은 세 조건이 문장 글자에 있고 이 셋이 허용 목록에 없다는 것만 본다(AC-003.4). 그 시험은 접수취소가 빠진다는 증명이 아니다. 증명은 확인표 '매출 탭에서 볼 것' ②다: (나) 비트 통계 화면의 접수(내원) 건수와 매출 탭의 접수 건수가 같고, (다) 접수취소가 있던 하루의 그 화면 건수와 접수 목록에서 취소를 뺀 줄 수가 같을 때만 접수취소가 빠진 것으로 본다. 비트의 숫자는 그 숫자 자체가 접수취소를 뺀 것일 때만 증명이 되므로 둘 다 본다. 하나라도 '다름'이면 증명이 안 된 것이고, 원인을 좁힌 뒤 명세 변경을 정한다. 비트 화면이 다른 상태 목록을 쓰는 것이 원인일 수 있다(금액 문장은 `('PN','TN','OE','VN','OB')`, `PeriodVisits`는 `('WN','HN','TN','PN')`). 통계 갈래의 `Visits` 문장(`helper/src/Precheck.Core/Stats/StatsSql.cs` 24줄, wt-stats)이 같은 조건이라 두 탭의 건수가 서로 맞고, 그래서 통계 탭 숫자와 견주는 것은 증명이 되지 않는다
+5. **접수취소가 접수 건수에서 빠지는가(확인 못 함)**: `visits`는 원본 `Patients`의 `PeriodVisits` 줄 수이고, 조건은 `OcmPatTyp='O'`·`OcmComStt IN ('WN','HN','TN','PN')`·`OcmRsuYon<>'O'`이다. **이 저장소 어디에도 이 상태 코드들의 뜻이 적혀 있지 않다.** 같은 문장의 입원 쪽 줄이 `VC`·`CN`·`CR`을 거부하지만 그 뜻도 적혀 있지 않다. 시험은 세 조건이 문장 글자에 있고 이 셋이 허용 목록에 없다는 것만 본다(AC-003.4). 그 시험은 접수취소가 빠진다는 증명이 아니다. 증명은 확인표 '매출 탭에서 볼 것' ②다: (나) 비트 통계 화면의 접수(내원) 건수와 매출 탭의 접수 건수가 같고, (다) 접수취소가 있던 하루의 그 화면 건수와 접수 목록에서 취소를 뺀 줄 수가 같을 때만 접수취소가 빠진 것으로 본다. 비트의 숫자는 그 숫자 자체가 접수취소를 뺀 것일 때만 증명이 되므로 둘 다 본다. 하나라도 '다름'이면 증명이 안 된 것이고, 원인을 좁힌 뒤 명세 변경을 정한다. 비트 화면이 다른 상태 목록이나 다른 날 기준(접수일과 회계일)을 쓰는 것이 원인일 수 있다(금액 문장은 `('PN','TN','OE','VN','OB')`, `PeriodVisits`는 `('WN','HN','TN','PN')`). 통계 갈래의 `Visits` 문장(`helper/src/Precheck.Core/Stats/StatsSql.cs` 24줄, wt-stats)이 같은 조건이라 두 탭의 건수가 서로 맞고, 그래서 통계 탭 숫자와 견주는 것은 증명이 되지 않는다
 
 ## 3. 자료 길
 ```
@@ -178,6 +178,7 @@ grant execute on function public.my_hospital_id() to authenticated;
 
 create function public.sales_touch_fetched_at() returns trigger language plpgsql set search_path = ''
   as $$ begin new.fetched_at := now(); return new; end $$;
+revoke all on function public.sales_touch_fetched_at() from public, anon, authenticated;   -- 트리거만 부른다
 
 create table public.sales_days (
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
@@ -214,9 +215,14 @@ create trigger sales_days_fetched_at before update on public.sales_days for each
 
 -- 치료 묶음(총괄이 만든다). 이름이 일반적인 까닭: 통계 탭도 합친 뒤 같은 표를 쓴다(plan.md §5의 rx_groups)
 create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = '' as $$ begin new.updated_at = now(); return new; end $$;
+-- 위 줄은 C1 글자 그대로 두고 권한만 따로 거둔다. 트리거는 이 권한 없이도 돈다
+revoke all on function public.touch_updated_at() from public, anon, authenticated;
 create function public.rx_group_codes_ok(codes text[]) returns boolean language sql immutable set search_path = ''
   as $$ select cardinality(codes) <= 1000 and coalesce(bool_and(c is not null and c ~ '^[0-9A-Za-z가-힣_.-]{1,30}$' and c <> '_REST'), true) from unnest(codes) c $$;
   -- bool_and는 null을 건너뛰므로 c is not null을 같이 본다(null 칸 거부)
+-- CHECK는 넣는 사람 권한으로 도니 authenticated에게는 남긴다. anon만 /rest/v1/rpc/로 못 부르게 막는다
+revoke all on function public.rx_group_codes_ok(text[]) from public, anon;
+grant execute on function public.rx_group_codes_ok(text[]) to authenticated;
 create table public.rx_groups (
   id uuid primary key default gen_random_uuid(),
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
@@ -231,11 +237,12 @@ create trigger rx_groups_updated_at before update on public.rx_groups for each r
 -- 묶음 목록 한꺼번에 저장(호출한 사람 권한, RLS 그대로, 한 트랜잭션이라 도중 실패면 아무것도 안 바뀜)
 create function public.save_rx_groups(groups jsonb) returns setof public.rx_groups language plpgsql security invoker set search_path = ''
 as $$
-declare g jsonb; keep uuid[] := '{}'; gid uuid; n int := 0;
+declare g jsonb; keep uuid[] := '{}'; gid uuid;
 begin
   if groups is null or jsonb_typeof(groups) <> 'array' or jsonb_array_length(groups) > 50 then raise exception 'bad groups'; end if;   -- jsonb_typeof(null)은 null이라 따로 본다
   for g in select * from jsonb_array_elements(groups) loop
-    n := n + 1;
+    -- codes가 빠지면 array(...)가 조용히 '{}'가 되어 CHECK를 지나고 손으로 만든 코드가 날아간다. 이름·순서가 빠질 때처럼 거부한다
+    if jsonb_typeof(g->'codes') is distinct from 'array' then raise exception 'bad groups'; end if;
     gid := nullif(g->>'id', '')::uuid;
     if gid is null then   -- 새 묶음은 넣기만(이름으로 다른 줄을 고르지 않는다, 줄은 id로만 고른다)
       insert into public.rx_groups (name, codes, sort_order)
@@ -253,10 +260,10 @@ end $$;
 revoke all on function public.save_rx_groups(jsonb) from public, anon;
 grant execute on function public.save_rx_groups(jsonb) to authenticated;
 ```
-- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`split_unconfirmed` 열다섯 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete` · `save_rx_groups(jsonb)` 실행은 `authenticated`만. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`은 갈래 규칙 C1 글자 그대로(`create or replace`, 정의자 권한 없음)이고, `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수다. `sales_touch_fetched_at()`은 `public`·`anon`·`authenticated`에서 실행 권한을 거둔다(트리거만 부른다)
+- 권한: 세 표 `enable row level security` → `revoke all … from anon, authenticated` → `grant select` 두 표 · `sales_days`에 `insert`·`update`(칸 단위: `day`~`split_unconfirmed` 열다섯 칸. upsert가 충돌 칸도 SET하므로 `day` 포함)·`delete` · `sales_codes`에 `insert`(`month`·`code`·`name`·`count`·`amount`)·`delete` · `rx_groups`에 `select`·`insert`·`update`(칸 단위: `name`·`codes`·`sort_order`)·`delete` · `save_rx_groups(jsonb)` 실행은 `authenticated`만. `delete`는 E2E가 시험 계정 줄을 지우는 데 쓴다(service role 키가 없다). `id`·`hospital_id`·`fetched_at`·`updated_at`은 칸 권한이 없어 기본값·트리거로만 채워진다. `touch_updated_at()`의 `create or replace` 줄은 갈래 규칙 C1 글자 그대로(정의자 권한 없음)이고 권한은 그다음 줄에서 따로 거둔다. 함수 실행 권한: 트리거 함수 `sales_touch_fetched_at()`·`touch_updated_at()`은 `public`·`anon`·`authenticated`에서 모두 거둔다(트리거는 이 권한 없이도 돈다). `rx_group_codes_ok()`는 CHECK가 부르는 순수 함수이고 CHECK는 넣는 사람 권한으로 돌므로, `public`·`anon`에서만 거두고 `authenticated`에 실행 권한을 준다(`anon`이 `/rest/v1/rpc/`로 부르지 못하게)
 - 정책: 읽기·넣기·고치기(·지우기) 모두 `hospital_id = (select public.my_hospital_id())`(using·with check). 승인 안 된 병원은 `my_hospital_id()`가 `null`이라 아무 줄도 못 본다
-- `save_rx_groups`는 저장을 한 트랜잭션으로 묶으려는 것뿐이다(서버 경로가 아니라 DB 함수, `set_hospital_status`와 같은 길). 호출한 사람 권한이라 RLS·칸 권한이 그대로 걸린다
-- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). `rx_groups`: `codes` 안 `null` 칸 거부, 이름에 제어 문자·숫자 6개 이상 이어짐 거부, `save_rx_groups` — `null`·배열 아님·51개 거부, 다섯 개 가운데 하나가 제약에 걸리면 표 그대로, 이름 맞바꾸기와 'A 지우고 새 A 넣기'는 순서와 상관없이 됨, 남긴 묶음과 같은 이름의 새 묶음은 오류이고 표 그대로, 남의 `id`는 오류이고 남의 줄 그대로. 이름 울타리 경계: 숫자 5개 이어짐은 되고 6개는 거부. 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
+- `save_rx_groups`는 저장을 한 트랜잭션으로 묶으려는 것뿐이다(서버 경로가 아니라 DB 함수, `set_hospital_status`와 같은 길). 호출한 사람 권한이라 RLS·칸 권한이 그대로 걸린다. 묶음마다 `codes`가 배열이 아니면(키가 없거나 JSON `null`이어도) `bad groups`로 거부한다: 그대로 두면 `array(...)`가 조용히 `{}`가 되어 CHECK를 지나고 손으로 만든 코드가 날아간다
+- 시험: `supabase/revenue.rls.test.ts`(PGlite, `rls.test.ts`의 Supabase 흉내 그대로 + auth migration 먼저). 함수 실행 권한: `my_hospital_id`·`rx_group_codes_ok`는 `authenticated`만, 트리거 함수 둘은 아무도 없음. `rx_groups`: `codes` 안 `null` 칸 거부, 이름에 제어 문자·숫자 6개 이상 이어짐 거부, `save_rx_groups` — `null`·배열 아님·51개 거부, `codes`가 빠지거나 JSON `null`인 묶음은 고칠 때도 넣을 때도 거부되고 표 그대로, 다섯 개 가운데 하나가 제약에 걸리면 표 그대로, 이름 맞바꾸기와 'A 지우고 새 A 넣기'는 순서와 상관없이 됨, 남긴 묶음과 같은 이름의 새 묶음은 오류이고 표 그대로, 남의 `id`는 오류이고 남의 줄 그대로. 이름 울타리 경계: 숫자 5개 이어짐은 되고 6개는 거부. 다른 갈래가 같은 `my_hospital_id()`·`touch_updated_at()`을 먼저 만든 상태에서도 이 migration이 그대로 되는지 본다(C1). `rx_groups`: 내 줄만 읽기·넣기·고치기·지우기, 이름 겹침·31자·앞뒤 공백·`_REST`·1,001개 코드·모양 틀린 코드 거부, `updated_at` 바뀜
 - **실제 Supabase에 붙여 넣는 것은 그때 사용자 OK를 받는다.** 운영자가 SQL 편집기에 붙여 넣는다(auth와 같은 방식). TASK-4가 끝나면 쉬운 말 안내만 하고 붙여 넣지 않는다. E2E(TASK-11)는 붙여 넣은 뒤에만 돈다
 
 ## 7. 계산 (`src/lib/revenue/*`, 순수 함수, 네트워크·저장소·React 없음)
@@ -286,8 +293,10 @@ export function moveCode(groups: RxGroup[], code: string, toIndex: number | null
 // sync.ts (TASK-7)
 export function planFetch(today: string, savedDays: ReadonlySet<string>): DateRange[]
 export type SyncResult = { stopped: string | null; failed: { month: string; code: string }[]; helperOld: boolean; extensionOld: boolean }
-export function syncRevenue(deps: { call: (args: { from: string; to: string }) => Promise<RevenueDaysResult>; store: RevenueStore; today: string;
-  months?: string[]; onProgress?: (p: { done: number; total: number; month: string }) => void }): Promise<SyncResult>
+type SyncCommon = { call: (args: { from: string; to: string }) => Promise<RevenueDaysResult>; store: RevenueStore; today: string;
+  onProgress?: (p: { done: number; total: number; month: string }) => void }
+export type SyncDeps = SyncCommon & ({ months: string[]; savedDays?: ReadonlySet<string> } | { months?: undefined; savedDays: ReadonlySet<string> })   // months가 없으면 savedDays가 꼭 있다
+export function syncRevenue(deps: SyncDeps): Promise<SyncResult>
 ```
 - 나눔을 못 한 날(`splitUnconfirmed`, 또는 합 검사에 걸린 줄): `total`은 매출·추이·건당 진료비에 들어가고(건당 진료비는 그날 `visits`를 알 때) `covered`~`other`·`splitTotal`에서만 빠진다(`noSplitDays`). `splitTotal`이 `total`보다 작아도 맞춰 고치지 않는다(AC-005.2). 쉬는 날은 아홉 칸이 0이고 두 표시가 거짓이라 나눔이 있는 날로 세어진다. 그래서 나눔 칸이 `null`이 되는 조건은 '그런 날이 없다'가 아니라 '그 날들의 `total` 합이 0'이다(날마다 비는 달에도 일요일이 있어 0원·0÷0·빈 막대가 되지 않게)
 - 건당 진료비의 짝 맞추기(AC-005.6): 짝이 맞는 날 = `unconfirmed`가 아니고 `visits`가 `null`이 아닌 날. `perVisit` = 그 날들의 `total` 합 ÷ `visits` 합(원 미만 버림). `visits`가 `null`이고 `total`을 아는 날은 금액과 건수를 함께 빼고 `noVisitDays`에 넣는다(금액은 `sumPeriod`의 `total`에 그대로 있다). **금액만 남기면 분모가 모자라 건당 진료비가 아무 표시 없이 부풀기 때문이다.** `unconfirmed`인 날도 같은 식으로 둘 다 빠지므로, 그 때문에 낮아 보이는 일이 없고 그 경고도 없다. `visits`가 0이고 금액이 있는 날(쉬는 날의 미수입금 등)은 분자에 남는다(통계 탭 식과 같다). `splitUnconfirmed`인 날은 `total`과 `visits`를 알므로 보통 날이다
@@ -295,7 +304,8 @@ export function syncRevenue(deps: { call: (args: { from: string; to: string }) =
 - 날짜는 `lib/analytics/dates.ts`(`todayInKorea`·`addDays`·`addMonths`·`monthOf`·`monthRange`·`eachDay`)만 쓴다
 - 금액은 원 정수를 더하기만 한다. 나눗셈(건당 진료비)은 `Math.floor`, 비율은 소수 첫째 자리 버림(`components/charts/format.ts`와 같은 규칙, 아주 작은 값을 더한 뒤 자름)
 - `sync.ts`의 `call`은 화면이 `bridge.call('revenue.days', …)`를 감싸 넘긴다. `store`는 `lib/storage/revenue.ts`의 `saveMonth`(시험에서는 가짜)
-- 달 하나의 실패: `E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`는 그 달만 `failed`에 넣고 다음 달로 간다. 그 밖의 번호(통로 끊김·도우미 없음·등록 안 됨·병원 다름 등)는 `stopped`에 넣고 멈춘다. `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED` → `extensionOld`(둘 다 멈춤). 최근 달부터 가져오므로 오래된 달이 실패해도 최근 숫자는 먼저 들어온다
+- 읽을 달: `months`를 주면([다시 가져오기]·[다시 저장]) 그 달들만 읽고 `savedDays`는 쓰지 않는다. 아직 올 날이 없는 달은 부르지 않는다(끝이 시작보다 앞인 기간은 도우미가 `E-HELPER-BAD-MESSAGE`로 막아 가져오기 전체가 멈춘다). `months`가 없으면 `savedDays`로 `planFetch`한다. 그래서 화면은 저절로 가져오기 전에 `loadRevenue`로 저장된 날을 먼저 읽어 넘긴다. 그 읽기가 실패하면 빠진 달을 셀 수 없으므로 13달을 다시 읽지 않고 오류를 보인다
+- 달 하나의 실패: `E-BIT-READ-FAILED`·`E-BRIDGE-BAD-REPLY`·`E-REVENUE-SAVE-FAILED`는 그 달만 `failed`에 넣고 다음 달로 간다. 그 밖의 번호(통로 끊김·도우미 없음·등록 안 됨·병원 다름 등)는 `stopped`에 넣고 멈춘다. 번호가 없거나 모양이 틀린 오류는 `E-PAGE-FAILED`로 보아 `stopped`에 넣는다(오류 글은 화면·기록에 넘기지 않는다). `E-HELPER-UNKNOWN-COMMAND` → `helperOld`, `E-BRIDGE-REJECTED` → `extensionOld`(둘 다 멈춤). 최근 달부터 가져오므로 오래된 달이 실패해도 최근 숫자는 먼저 들어온다
 
 ## 8. 저장 (`src/lib/storage/revenue.ts`, TASK-7)
 ```ts
@@ -304,7 +314,8 @@ export function createRevenueStore(client: SupabaseClient): RevenueStore & {
   loadRevenue(fromMonth: string, toMonth: string): Promise<{ days: RevenueDayRow[]; codes: (RevenueCodeRow & { month: string })[]; fetchedAt: string | null }>
 }
 ```
-- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`, 그 달 코드 줄을 지우고 새로 넣으므로 `sales_codes` 합계가 그 달 전체여야 해서) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열다섯 개만, camelCase → snake_case). 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`. 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단)
+- `saveMonth`: 답의 첫 날이 그 달 1일인지 본다(아니면 `E-REVENUE-SAVE-FAILED`, 그 달 코드 줄을 지우고 새로 넣으므로 `sales_codes` 합계가 그 달 전체여야 해서) → ① `sales_codes`에서 그 달 줄 지우기 ② 새 코드 줄 넣기(`month`·`code`·`name`·`count`·`amount`) ③ **마지막에** `sales_days` upsert(`onConflict: 'hospital_id,day'`, 칸 열다섯 개만, camelCase → snake_case). 코드 줄이 없으면 ②를 건너뛴다. 하나라도 실패하면 `E-REVENUE-SAVE-FAILED`(`RevenueStoreError`, Supabase 오류 내용은 버리고 번호만 던진다). 처음 저장하는 달은 코드 쪽이 실패하면 날 줄이 저장되지 않아 `planFetch`가 그 달을 다시 가져온다(묶음 처리 없이 단순하게, Claude 판단). 이미 저장된 달을 다시 읽을 때는 날 줄이 남아 저절로 고쳐지지 않는다(13절)
+- `loadRevenue`: 날 줄과 코드 줄을 1,000줄씩 빈 쪽이 올 때까지 읽는다(서버가 한 번에 주는 줄 수는 정할 수 없고 13달이면 넘친다). `fetchedAt`은 날 줄의 가장 늦은 `fetched_at`이다. 읽기 실패에는 따로 정한 번호가 없어 화면을 열지 못한 것과 같은 `E-PAGE-FAILED`를 던진다. 빈 목록을 돌려주지 않는다
 - `E-REVENUE-SAVE-FAILED`(plan.md §8의 저장 실패 번호를 기능 이름으로, 갈래 규칙 C3)를 `src/lib/errors.ts`·`src/types/errors.ts`에 더한다: 무엇이 "매출 숫자를 저장하지 못했어요" · 어떻게 "인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요"
 
 ### 8-2. 묶음 저장 (`src/lib/storage/rxGroups.ts`, TASK-13)
@@ -314,7 +325,7 @@ export function createRxGroupStore(client: SupabaseClient): {
   saveGroups(after: RxGroup[]): Promise<RxGroup[]>   // rpc('save_rx_groups') 한 번. 실패하면 E-REVENUE-GROUP-SAVE-FAILED(표는 그대로)
 }
 ```
-- 보내는 칸은 `id`(있을 때)·`name`·`codes`·`sort_order`뿐. 한꺼번에 저장하므로 도중 실패가 반쪽 저장을 남기지 않고, 실패 뒤 같은 목록으로 [다시 저장]하면 처음 저장과 같은 결과다(실패한 호출은 아무것도 바꾸지 않았으므로). 줄은 `id`로만 고르고, 새 묶음은 넣기만 한다. 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
+- 보내는 칸은 늘 `id`·`name`·`codes`·`sort_order`뿐. 아직 저장 안 한 묶음은 `id: null`로 보내고 `save_rx_groups`가 새 줄로 넣는다. 오류·예외·줄 목록이 아닌 답은 모두 번호 하나(`RxGroupStoreError`)로 바꾼다(읽기 실패를 빈 목록으로 돌려주면 화면이 제안 묶음으로 잘못 바꾼다). 한꺼번에 저장하므로 도중 실패가 반쪽 저장을 남기지 않고, 실패 뒤 같은 목록으로 [다시 저장]하면 처음 저장과 같은 결과다(실패한 호출은 아무것도 바꾸지 않았으므로). 줄은 `id`로만 고르고, 새 묶음은 넣기만 한다. 이름이 일반적인 까닭은 통계 탭이 합친 뒤 다시 쓰게 하려는 것이다(11절)
 - `E-REVENUE-GROUP-SAVE-FAILED`: 무엇이 "치료 묶음을 저장하지 못했어요" · 어떻게 "인터넷 연결과 이름이 겹치지 않는지 보고 [다시 저장]을 눌러 주세요"
 - `E-REVENUE-GROUP-LOAD-FAILED`: 무엇이 "치료 묶음을 불러오지 못했어요" · 어떻게 "[다시 불러오기]를 눌러 주세요"
 
@@ -332,6 +343,7 @@ export function createRxGroupStore(client: SupabaseClient): {
 - 묶음 고치기(TASK-14, 시안 3절 2026-11-01 승인, 편집 중인지는 `RevenueScreen`의 화면 상태이고 `view.ts`의 보기 상태가 아니다): `src/components/revenue/groups/GroupEditor.tsx`(`'use client'`). 묶음마다 이름 칸·처방 수·[묶음 지우기](확인 창)·처방 줄(코드·이름·고른 달 금액·옮길 묶음 고르기), 오른쪽(폰은 아래) '그 밖 처방' 목록과 찾기 칸, [새 묶음]·[취소]·[저장]. 처방 목록 = 저장된 `sales_codes` 최근 13달의 코드(가장 늦은 이름), `_REST` 빼고. 고치기는 `treatments.ts`의 순수 함수로, 저장은 `saveGroups`로. 폰·연결 안 된 PC에서도 된다
 - 부품 이름: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerVisit.tsx`·`MonthBars.tsx`·`TreatmentBars.tsx`·`RevenueStates.tsx`
 - 매출 탭은 수납 나눔(현금·카드·계좌·미수입금)·신환·재진을 그리지 않는다(업무일지 몫)
+- 다른 창이 통로를 쓸 때의 카드(AC-009.6): `E-BRIDGE-BUSY` 글자는 `/claim` 화면과 같이 쓰고 `lib/errors.ts` 한 곳에만 둔다. 이 명세에는 글자를 적지 않는다. 사용자 OK(2026-11-02)는 `docs/mockups/revenue/README.md`에 적는다(TASK-15)
 
 ## 10. 결정과 트레이드오프
 - **날마다 원본 문장을 그대로 돌린다**(세 검사를 지난 날 8문장 = 원본 6 + Extra 둘, 걸린 날 2~4문장): 원본이 의원에서 이미 쓰는 하루 보고와 같은 숫자가 나온다. 하루씩 묶는 새 SQL(`GROUP BY` 날짜)은 빠르지만 원본과 달라져 검증이 어렵다. 처음 13달은 약 3,190문장(8문장 × 약 396일 + 달마다 `HistoryGuard`·`CodeAmounts` 2문장 × 13달, 모두 세 검사를 지난 날일 때)이라 몇 분 걸릴 수 있다 → 한 달씩 저장해 이어 가기, 다음부터는 빠진 날만. 너무 느리면(Phase 3 뒤 확인표 '매출 탭에서 볼 것' ③) 그때 명세를 바꾼다
@@ -380,7 +392,7 @@ export function createRxGroupStore(client: SupabaseClient): {
 
 ## 13. 위험 / 미해결
 - **요양비용총액·급여 본인부담 칸의 뜻**(2절 2) — `OrpInsAmt`·`OrpInsOwn`이 그 뜻이 아니면 `insurer + copay ≠ 요양비용총액` 검사로 **매출 탭의 나눔이 날마다 비고 업무일지의 공단 칸도 같이 빈다. 나머지(매출 합계·추이·건당 진료비, 업무일지의 총진료비·수납)는 그대로 돈다**(5-2). 반대로 총액에 섞인 다른 금액은 아무 표시 없이 기타로 들어가 매출 합계만 보아서는 모른다(2절 2). 건강생활유지비가 이 식에 들어가는지도 확인 못 했다. 이것들을 보는 것은 Phase 3 뒤 확인표 ⑤뿐이고 한계가 있다(만 원 아래, 건강생활유지비가 0원인 달, 2절 2). 결정 시점: Phase 3 의원 PC 확인 뒤(다르면 칸을 찾는 명세 변경. 저장된 날은 다시 읽히지 않으므로 그 변경에 13달 모두 다시 읽기를 넣는다, AC-007.1). 확인표 ① 답은 받았다(아니오, 2026-11-01)
-- **접수취소가 접수 건수에서 빠지는가**(2절 5) — 사용자 결정은 "접수취소는 카운트하지말고"인데, 문장의 상태 코드 뜻이 이 저장소 어디에도 적혀 있지 않아 글자 시험(AC-003.4)은 증명이 아니다. 보는 것은 Phase 3 뒤 확인표 '매출 탭에서 볼 것' ②뿐이고, (나)·(다)가 모두 '같음'일 때만 빠진 것으로 본다. 하나라도 '다름'이면 증명이 안 된 것이다. 비트 화면이 다른 상태 목록을 쓰는 것이 원인일 수 있으므로(금액 문장은 `('PN','TN','OE','VN','OB')`, `PeriodVisits`는 `('WN','HN','TN','PN')`) Claude가 어느 칸을 볼지 말로 알려 주며 원인을 좁힌 뒤 명세 변경을 정한다. 명세를 바꾸게 되면 저장된 날은 다시 읽히지 않으므로 그 변경에 13달 모두 다시 읽기를 넣고(AC-007.1), 통계 갈래의 `Visits`도 같은 조건이라 같이 본다. 접수취소가 세어지는 것으로 밝혀지면 화면 글자 '접수취소는 세지 않아요'(`docs/mockups/revenue/gen.py` `per_visit`)도 바꿔야 한다. 결정 시점: Phase 3 의원 PC 확인 뒤
+- **접수취소가 접수 건수에서 빠지는가**(2절 5) — 사용자 결정은 "접수취소는 카운트하지말고"인데, 문장의 상태 코드 뜻이 이 저장소 어디에도 적혀 있지 않아 글자 시험(AC-003.4)은 증명이 아니다. 보는 것은 Phase 3 뒤 확인표 '매출 탭에서 볼 것' ②뿐이고, (나)·(다)가 모두 '같음'일 때만 빠진 것으로 본다. 하나라도 '다름'이면 증명이 안 된 것이다. 비트 화면이 다른 상태 목록이나 다른 날 기준(접수일과 회계일)을 쓰는 것이 원인일 수 있으므로(금액 문장은 `('PN','TN','OE','VN','OB')`, `PeriodVisits`는 `('WN','HN','TN','PN')`) Claude가 어느 칸을 볼지 말로 알려 주며 원인을 좁힌 뒤 명세 변경을 정한다. 명세를 바꾸게 되면 저장된 날은 다시 읽히지 않으므로 그 변경에 13달 모두 다시 읽기를 넣고(AC-007.1), 통계 갈래의 `Visits`도 같은 조건이라 같이 본다. 접수취소가 세어지는 것으로 밝혀지면 화면 글자 '접수취소는 세지 않아요'(`docs/mockups/revenue/gen.py` `per_visit`)도 바꿔야 한다. 결정 시점: Phase 3 의원 PC 확인 뒤
 - **접수 건수를 확인하지 못한 날이 많으면** — 차트번호 없는 접수가 하루에 하나만 있어도 그날 `visits`가 `null`이라(AC-003.3) 금액과 건수가 건당 진료비에서 빠지고 접수 건수 칸도 그만큼 작아진다. 얼마나 흔한지는 확인표 ④로 본다. 결정 시점: Phase 3 의원 PC 확인 뒤
 - **미수발생·지역화폐**(2절 3) — 읽는 곳을 모른다. 업무일지는 그때까지 직접 입력
 - **처음 읽는 시간** — 13달 약 3,190문장(10절). Phase 3 뒤 매출 탭에서 재 본다(확인표 '매출 탭에서 볼 것' ③). 너무 길면 그때 하루씩 묶는 SQL로 바꾸는 명세 변경을 한다(결정 시점: Phase 3 의원 PC 확인 뒤)
@@ -389,6 +401,9 @@ export function createRxGroupStore(client: SupabaseClient): {
 - **확장 다시 올리기·도우미 다시 깔기**: 명령 표가 바뀌어 TASK-12가 판을 올린다(`helper/Directory.Build.props`·`LATEST_HELPER`·`extension/manifest.json`). 새 확장은 웹스토어에 다시 올리고 새 도우미 zip은 `helper-v*` 릴리스로 낸다 — 합치기·배포·릴리스 태그·웹스토어 올리기는 사용자가 그때마다 말할 때만 한다. 확장을 웹스토어에 처음 올리기 전에 Phase 1이 합쳐지면 한 번에 끝난다
 - **Actions 비용**: `helper/**`·`commands.json`이 바뀐 push는 윈도우 빌드(`helper.yml`)를 돌린다(Actions 분)
 - **SQL 문장 시험 규칙**: 기존 `Sql.All` 시험은 `SELECT`로 시작하는 것만 받는다. 매출 문장은 `Sql.All`에 넣지 않고 따로 같은 규칙(+`WITH`)으로 시험한다(4-1)
+- **저장된 달을 다시 읽다가 코드 저장이 실패하면** — `saveMonth`는 코드 줄을 지운 뒤 새로 넣고 날 줄은 마지막에 쓴다(8절). 이미 저장된 달을 다시 읽다가 지운 뒤에 코드 저장이 실패하면 날 줄은 남고 코드 줄은 비어 있으며, `planFetch`는 그 달을 다 저장된 달로 보아 저절로 가져오기가 고치지 않는다. 그 자리의 [다시 저장]이나 [다시 가져오기]로 그 달을 다시 읽어야 고쳐진다. 동작은 그대로 둔다
+- **768px 미만에서 끊기면** — [비트 PC 연결] 링크가 든 알림 줄이 폰 폭에서 숨으므로(`SavedNotice`, 시안의 폰에 없다) 저장된 숫자가 있는 화면에서 통로가 끊긴 뒤 돌아오는 길은 탭을 옮겼다 오거나 새로 고침하는 것이다(AC-009.7). 저장된 줄이 없으면 연결 필요 화면에 링크가 보인다
+- **`bit.input` 중에 창이 닫히면** — 확장은 그 입력이 끝날 때까지 길어도 30분 도우미를 붙잡는다(`extension/src/background.ts` `webGone`, `INPUT_KEEP_MS`). 그동안은 창을 닫았어도 남은 창에서 계속 `busy`(`E-BRIDGE-BUSY`)를 본다. 지금은 `bit.input`을 보내는 화면이 없다
 
 ## 14. 사용자 할 일 (그때 쉬운 말로 안내)
 - 시안: 승인 뒤 바뀐 '급여·비급여·기타' 덩어리·'확인 필요한 날' 글자와 '건당 진료비' 덩어리는 모두 OK를 받았다(2026-11-01, `docs/mockups/revenue/README.md`). 더 할 일이 없다

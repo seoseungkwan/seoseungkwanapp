@@ -1,14 +1,15 @@
 {
   "status": "approved",
   "feature": "revenue",
-  "approved_at": "2026-11-01T21:57:35Z",
+  "approved_at": "2026-11-02T03:24:27Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "6d1751886dd3a0591f3f2ae2ebb0dbf8ef8cd318a63e3c617b626d59c604134f",
+  "spec_sha256": "de849e7322e0705ba8fedf7f393a56725f281e06bc0dd6c7ee5929248348bb44",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/UI_GUIDE.md",
+    "docs/mockups/revenue/README.md",
     "docs/revenue/pc-check.md",
     "docs/tab-frame/plan.md",
     "e2e/lib/revenueFakeBridge.test.ts",
