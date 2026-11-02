@@ -507,6 +507,86 @@ public class InputCodeTests
         Assert.Equal(JournalState.WriteUnconfirmed, rig.Journal.Last("v1"));
     }
 
+    [Fact(DisplayName = "AC-036.5 AC-017.7 쓰다 멈춘 사람이 조회 모드 + 같은 글 + 편집 불가로 멈춘 뒤 다시 실행: 내원이 열려 있어 안내창이 없어도 저장을 누르지 않고 또 멈추며, 칸이 입력을 받게 된 뒤에야 저장한다")]
+    public void StuckPersonRetryInOpenVisitStillStops()
+    {
+        var item = Sample.Item(1);
+        var rig = new RunnerRig();
+        rig.Journal.Mark(item, JournalState.WriteUnconfirmed);
+        rig.Ui.KeepsOpenVisit = true;
+        rig.Ui.OpensInViewMode = true;
+        rig.Ui.Editable = false;
+        rig.Ui.Bit[item.Chart] = item.Memo;
+
+        var first = rig.Run(new[] { item });
+        Assert.Equal(InputStatus.Stopped, first.Status);
+        Assert.Equal(WriteUnknown, Of(first, "v1").Reason);
+        Assert.Equal(0, rig.Ui.Saves);
+
+        var second = rig.Run(new[] { item });
+
+        Assert.Equal(InputStatus.Stopped, second.Status);
+        Assert.Equal("E-INPUT-STOPPED", second.Code);
+        Assert.Equal((InputResults.Check, WriteUnknown), (Of(second, "v1").Result, Of(second, "v1").Reason));
+        Assert.Equal(0, rig.Ui.Saves);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(JournalState.WriteUnconfirmed, rig.Journal.Last("v1"));
+
+        rig.Ui.Editable = true;
+        var third = rig.Run(new[] { item });
+
+        Assert.Equal(InputStatus.Finished, third.Status);
+        Assert.Equal(InputResults.Done, Of(third, "v1").Result);
+        Assert.Equal(1, rig.Ui.Saves);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(JournalState.Done, rig.Journal.Last("v1"));
+    }
+
+    [Theory(DisplayName = "AC-036.5 AC-017.3 쓰다 멈춘 사람이 아니면 보통 모드의 편집 불가는 지금 그대로다: 같으면 이미 입력됨, 비었으면 건너뜀이고 저장을 누르지 않는다")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NormalModeNotEditableNotStuckUnchanged(bool sameText)
+    {
+        var item = Sample.Item(1);
+        var rig = new RunnerRig();
+        rig.Ui.Editable = false;
+        if (sameText) rig.Ui.Bit[item.Chart] = item.Memo;
+
+        var outcome = rig.Run(new[] { item });
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal(
+            sameText ? (InputResults.Done, "이미 입력됨") : (InputResults.Skipped, NoWrite),
+            (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(0, rig.Ui.Saves);
+    }
+
+    [Fact(DisplayName = "AC-017.7 AC-035.5 AC-036.5 보통 모드의 쓰다 멈춘 사람 + 같은 글 + 편집 불가: 저장을 누르지 않고 멈추며, 칸이 계속 편집 불가여도 직접 확인으로 풀린다(완료, 기록 Done)")]
+    public void StuckNotEditableReleasedByHand()
+    {
+        var item = Sample.Item(1);
+        var rig = new RunnerRig();
+        rig.Journal.Mark(item, JournalState.WriteUnconfirmed);
+        rig.Ui.KeepsOpenVisit = true;
+        rig.Ui.Editable = false;
+        rig.Ui.Bit[item.Chart] = item.Memo;
+
+        var stopped = rig.Run(new[] { item });
+        Assert.Equal(InputStatus.Stopped, stopped.Status);
+        Assert.Equal((InputResults.Check, WriteUnknown), (Of(stopped, "v1").Result, Of(stopped, "v1").Reason));
+        Assert.Equal(0, rig.Ui.Saves);
+        Assert.Equal(JournalState.WriteUnconfirmed, rig.Journal.Last("v1"));
+
+        var outcome = rig.Run(new[] { Sample.Item(1, checkedByHand: true) });
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal((InputResults.Done, "이미 입력됨"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal(0, rig.Ui.Saves);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(JournalState.Done, rig.Journal.Last("v1"));
+    }
+
     [Fact(DisplayName = "AC-036.5 3번 잇따른 실패에는 원본처럼 센다: 셋째에서 멈추고 넷째는 미처리이며 아무도 쓰다 멈춤이 아니다")]
     public void ThreeInARowCounts()
     {

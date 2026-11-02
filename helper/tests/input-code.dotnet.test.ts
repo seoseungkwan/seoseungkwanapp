@@ -83,10 +83,30 @@ describe('REQ-036 명령 표·윈도우 코드 (글자, 실행은 Actions 윈도
     expect(check).toContain('@"^[0-9A-Z][0-9A-Z.-]{0,19}\\z"')
   })
 
-  it('AC-036.2 제외 체크를 못 읽으면(메시지 실패 포함) 꺼짐이 아니라 null이다', () => {
+  it('AC-036.2 제외 체크는 Patterns.Toggle을 먼저 읽고, 안 되거나 실패하면 BM_GETCHECK로 읽으며, 둘 다 못 읽으면 꺼짐이 아니라 null이다', () => {
     const code = windowsCode('UChartAutomation.cs')
-    expect(code).toMatch(/private static bool\? IsChecked\(nint h\)/)
-    expect(code).toMatch(/SendMessageTimeout\(h, BM_GETCHECK[^;]*\) == IntPtr\.Zero\) return null/)
+    // Toggle이 먼저이고, 못 읽었을 때(null)만 메시지로 간다
+    expect(code).toContain('private bool? IsChecked(nint h) => ToggleChecked(h) ?? MessageChecked(h);')
+
+    const toggle = code.slice(code.indexOf('private bool? ToggleChecked('), code.indexOf('private static bool? MessageChecked('))
+    expect(toggle).toContain('.Patterns.Toggle')
+    expect(toggle).toMatch(/if \(!toggle\.IsSupported\) return null;/)
+    // Off만 꺼짐이다. On·Indeterminate는 켜짐
+    expect(toggle).toContain('.ToggleState.Value != ToggleState.Off')
+    // ValueOrDefault는 못 읽어도 Off(꺼짐)를 돌려준다
+    expect(toggle).not.toContain('ValueOrDefault')
+    expect(toggle).toMatch(/catch \(Exception e\) when \(e is not OutOfMemoryException\)\s*\{\s*return null;\s*\}/)
+
+    const message = code.slice(code.indexOf('private static bool? MessageChecked('), code.indexOf('public ChartOpenResult OpenPatient('))
+    expect(message).toMatch(/SendMessageTimeout\(h, BM_GETCHECK[^;]*\) == IntPtr\.Zero\) return null/)
+    expect(message).toContain('.ToInt64() != 0')
+    expect(message).not.toContain('== 1')
+  })
+
+  it('AC-036.5 안내창을 눌렀으면 안내창 보기를 끝낸 뒤 OpenPatient 결과에 조회 모드 표시를 붙인다', () => {
+    expect(windowsCode('UChartAutomation.cs')).toMatch(
+      /notices\.Dispose\(\);\s*\}\s*return notices\.Pressed > 0 \? opened\.InViewMode\(\) : opened;/,
+    )
   })
 
   it('AC-036.4 안내창 누르기는 ViewModeNotices.cs에만 있고 환자를 여는 동안만 돈다', () => {

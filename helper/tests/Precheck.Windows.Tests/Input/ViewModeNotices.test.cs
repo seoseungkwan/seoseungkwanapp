@@ -102,7 +102,7 @@ public class ViewModeNoticesTests
         }
     }
 
-    [Fact(DisplayName = "AC-036.2 내원내역의 처방코드 칸과 제외 체크(BM_GETCHECK)를 읽는다")]
+    [Fact(DisplayName = "AC-036.2 내원내역의 처방코드 칸과 기본 모양 체크 칸의 제외 체크(Patterns.Toggle)를 읽는다")]
     public void ReadsCodeAndExcept()
     {
         using var bit = StartReady("code-filter", out var ui);

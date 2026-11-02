@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
@@ -385,11 +386,31 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
 
     private static string? TextOfFirst(List<nint> list) => list.Count == 0 ? null : GetText(list[0]);
 
-    /// <summary>체크 칸 값. 메시지가 실패하거나 시간이 지나면 null: 꺼짐으로 보지 않는다(AC-036.2).</summary>
-    private static bool? IsChecked(nint h)
+    /// <summary>
+    /// 체크 칸 값. Toggle이 되는 칸이면 그 값을 먼저 쓰고, 안 되거나 읽다 실패하면 BM_GETCHECK로 읽는다.
+    /// 기본 모양의 WinForms 체크 칸은 직접 그리는 칸이라 BM_GETCHECK가 늘 0일 수 있다. 둘 다 못 읽으면 null: 꺼짐으로 보지 않는다(AC-036.2).
+    /// </summary>
+    private bool? IsChecked(nint h) => ToggleChecked(h) ?? MessageChecked(h);
+
+    private bool? ToggleChecked(nint h)
+    {
+        try
+        {
+            var toggle = _uia.FromHandle(h).Patterns.Toggle;
+            if (!toggle.IsSupported) return null;
+            // ValueOrDefault는 못 읽어도 Off(꺼짐)를 돌려주므로 쓰지 않는다
+            return toggle.Pattern.ToggleState.Value != ToggleState.Off;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    private static bool? MessageChecked(nint h)
     {
         if (SendMessageTimeout(h, BM_GETCHECK, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000u, out var result) == IntPtr.Zero) return null;
-        return ((IntPtr)result).ToInt64() == 1;
+        return ((IntPtr)result).ToInt64() != 0;
     }
 
     /// <summary>환자를 여는 동안만 조회 모드 안내창을 본다(AC-036.4). 눌렀으면 결과에 표시한다(AC-036.5).</summary>

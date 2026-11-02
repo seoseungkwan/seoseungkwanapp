@@ -352,7 +352,7 @@ public sealed class InputRunner
         var match = matcher.Compare(item.Memo, existing);
         if (person.EarlierWrite)
         {
-            if (match == MemoMatch.Same) return FinishEarlierWrite(item, person);
+            if (match == MemoMatch.Same) return FinishEarlierWrite(item);
             if (match == MemoMatch.Different) throw StopAfterWrite(item, CheckMemoBox);
         }
         switch (match)
@@ -420,11 +420,12 @@ public sealed class InputRunner
     /// <summary>
     /// 전에 쓰다 멈췄고 칸 글이 우리 글과 같다: 저장됐는지 모르니 '이미 입력됨'으로 끝내지 않고 저장을 눌러 다시 읽는다. 다시 쓰지는 않는다.
     /// 기록은 이미 쓰다 멈춤이라 도중에 끝나도 다음 실행이 다시 여기로 온다. 시작한 사람은 끝까지 하므로 멈춤 신호를 보지 않는다(AC-017.9).
-    /// 조회 모드로 열린 칸이 편집 불가면 저장을 눌러도 저장됐다고 볼 수 없어 누르지 않고 멈춘다(AC-036.5).
+    /// 칸이 편집 불가면 저장을 눌러도 저장됐다고 볼 수 없어 누르지 않고 멈춘다(AC-036.5). 조회 모드 표시를 함께 보지 않는다:
+    /// 조회 모드로 멈춘 뒤 다시 실행하면 내원이 이미 열려 있어 안내창이 없고 표시도 없다.
     /// </summary>
-    private InputResult FinishEarlierWrite(InputItem item, Person person)
+    private InputResult FinishEarlierWrite(InputItem item)
     {
-        if (person.ViewMode && !ui.IsMemoEditable()) throw StopAfterWrite(item, WriteUnknown);
+        if (!ui.IsMemoEditable()) throw StopAfterWrite(item, WriteUnknown);
         if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
         return SaveAndConfirm(item, ChartRules.ToWin(item.Memo));
     }

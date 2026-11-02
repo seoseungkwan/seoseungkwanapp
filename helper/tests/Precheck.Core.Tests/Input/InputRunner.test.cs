@@ -879,7 +879,7 @@ public class InputRunnerTests
         Assert.Equal("가짜 메모 1", rig.Ui.Bit["900001"]);
         Assert.Equal(writes, rig.Ui.Writes);
         Assert.Equal(
-            new[] { "open", "locate", "target", "read", "unsaved", "target", "save", "read" },
+            new[] { "open", "locate", "target", "read", "editable", "unsaved", "target", "save", "read" },
             rig.Ui.Calls.Skip(rig.Ui.Calls.IndexOf("open")));
         Assert.Equal(JournalState.Done, rig.Journal.Last("v1"));
     }
