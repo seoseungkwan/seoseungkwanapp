@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
@@ -12,11 +12,13 @@ import { SetupScreen } from './SetupScreen'
 
 // 비트 PC 연결 화면 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body · 다른 창 카드는 precheck 목업 화면 6).
 // 진짜 useBridge·connectScreenBridge·connectBridge에 가짜 확장(chrome.runtime)만 넣는다. 가짜 확장은 받은 명령마다 정해 둔 답을 돌려준다.
-// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.2.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.1.0)
+// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.3.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.2.0)
 vi.mock('@/lib/bridge/versions', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/bridge/versions')>()
-  return { ...real, LATEST_HELPER: '0.2.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.2.0' } }
+  return { ...real, LATEST_HELPER: '0.3.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.3.0' } }
 })
+const { router } = vi.hoisted(() => ({ router: { replace: vi.fn(), push: vi.fn() } }))
+vi.mock('next/navigation', () => ({ useRouter: () => router }))
 
 type Reply = Record<string, unknown>
 /** 'hold' = 답을 잡아 둔다(release()로 보낸다) */
@@ -25,7 +27,7 @@ type Script = { hello: Reply | 'busy'; check?: Answer[]; register?: Answer[] }
 
 const HELLO: Reply = {
   type: 'result',
-  data: { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 },
+  data: { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 },
 }
 const helloWith = (data: Record<string, unknown>): Reply => ({
   type: 'result',
@@ -575,7 +577,7 @@ const SCENES: [string, Scene][] = [
     },
   ],
   ['모두 됨', { arrange: () => fakeExtension({ hello: HELLO }), settled: () => screen.findByText('준비됨') }],
-  ['모두 됨 + 새 도우미', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) }), settled: () => screen.findByText('준비됨') }],
+  ['모두 됨 + 새 도우미', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) }), settled: () => screen.findByText('준비됨') }],
 ]
 async function renderScene(scene: Scene) {
   const fake = scene.arrange()
@@ -763,7 +765,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
       expect(li.textContent).not.toContain('오류 번호')
     }
     expect(row('크롬 확장 프로그램 설치').textContent).toContain('버전 0.1.0')
-    expect(row('도우미 설치').textContent).toContain('버전 0.2.0')
+    expect(row('도우미 설치').textContent).toContain('버전 0.3.0')
     expect(row('연결').textContent).toContain('이어졌어요')
     expect(row('비트 자료 읽기').textContent).toContain('읽을 수 있어요')
     expect(row('요양기관기호 확인').textContent).toContain('등록한 의원과 같아요')
@@ -875,7 +877,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
 
 describe('AC-006.3·AC-412.7 새 도우미', () => {
   it('AC-006.3: 도우미가 최신보다 낮으면 "새 도우미가 있어요" 한 줄과 받는 곳 링크, 나머지는 그대로 쓸 수 있다', async () => {
-    fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) })
+    fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) })
     renderSetup()
     await screen.findByText('준비됨')
     expect(screen.getByText('새 도우미가 있어요.')).toBeTruthy()
@@ -890,6 +892,189 @@ describe('AC-006.3·AC-412.7 새 도우미', () => {
     renderSetup()
     await screen.findByText('준비됨')
     expect(screen.queryByText('새 도우미가 있어요.')).toBeNull()
+  })
+})
+
+// 연결이 끝나면 대시보드로 (bit-dashboard REQ-603, 시안 docs/mockups/bit-dashboard/gen.py setup_v 'ok').
+// 페이지가 받는 값 검사는 page.test.tsx에 있고, 여기는 받은 returnTo로 화면이 어떻게 움직이는지 본다
+describe('REQ-603 연결이 끝나면 대시보드로', () => {
+  const BACK = '5단계를 모두 마쳤어요. 대시보드로 돌아가요.'
+  const RETURN = '/dashboard' as const
+  /** 시계를 손으로 돌린다. 가짜 확장의 답도 setTimeout이라 함께 돈다(findBy·waitFor는 진짜 시계를 기다려 여기서 쓰지 않는다) */
+  const tick = (ms = 1) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+  /** 조건이 될 때까지 1ms씩. 효과는 act 끝에 돌므로 이것이 끝난 순간이 안내가 처음 그려진 순간이다 */
+  const tickUntil = async (done: () => unknown) => {
+    for (let i = 0; i < 100 && !done(); i++) await tick()
+    expect(done()).toBeTruthy()
+  }
+  const backNote = () => screen.queryByRole('status')
+  const notGoing = async () => {
+    await tick(3000)
+    expect(backNote()).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    router.replace.mockClear()
+    router.push.mockClear()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-603.2: 5단계가 모두 됨이면 안내를 1.5초 보인 뒤 누르지 않아도 /dashboard로 돌아간다(뒤로 가기에 남지 않게 replace)', async () => {
+    fakeExtension({ hello: HELLO })
+    renderSetup({ returnTo: RETURN })
+    await tickUntil(backNote)
+    expect(backNote()?.textContent).toBe(BACK)
+    for (const li of rows()) expectMark(li, 'check')
+
+    await tick(1499)
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(backNote()?.textContent).toBe(BACK)
+
+    await tick(1)
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/dashboard')
+    expect(router.push).not.toHaveBeenCalled()
+  })
+
+  it('AC-603.2: 안내는 시안 자리와 모양이다 — 안쪽 메뉴 아래·준비 순서 앞, positive-soft 상자 + Icon check. 그동안 "준비됨"·[청구로 가기] 줄은 없다', async () => {
+    fakeExtension({ hello: HELLO })
+    renderSetup({ returnTo: RETURN })
+    await tickUntil(backNote)
+    const note = backNote() as HTMLElement
+    hasAll(note, 'flex items-center gap-2 rounded-control bg-positive-soft px-4 py-3')
+    const icon = note.querySelector(`path[d="${CHECK_D}"]`)?.closest('svg') as SVGElement
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+    hasAll(icon, 'text-positive')
+    hasAll(within(note).getByText('5단계를 모두 마쳤어요.'), 'font-semibold text-ink')
+    expect(isBefore(screen.getByRole('navigation', { name: '설정 안 메뉴' }), note)).toBe(true)
+    expect(isBefore(note, stepList())).toBe(true)
+    expect(screen.queryByText('준비됨')).toBeNull()
+    expect(screen.queryByRole('link', { name: '청구로 가기' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-603.2: 처음 등록을 마쳐 5단계가 모두 됨이 된 때부터 1.5초 뒤에 돌아간다', async () => {
+    fakeExtension({ hello: HELLO, check: [NOT_REGISTERED, ALL_OK] })
+    renderSetup({ returnTo: RETURN })
+    await tickUntil(() => screen.queryByRole('button', { name: '처음 등록' }))
+    await tick(3000)
+    expect(backNote()).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+
+    fireEvent.click(button('처음 등록'))
+    await tickUntil(backNote)
+    await tick(1499)
+    expect(router.replace).not.toHaveBeenCalled()
+    await tick(1)
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/dashboard')
+  })
+
+  it.each<[string, Answer]>([
+    ['등록 없음', NOT_REGISTERED],
+    ['의원 다름', MISMATCH],
+    ['비트 읽기 실패', DB_FAILED],
+    ['아직 확인하는 중', 'hold'],
+  ])('AC-603.2: %s이면 안내도 이동도 없다', async (_name, answer) => {
+    fakeExtension({ hello: HELLO, check: [answer] })
+    renderSetup({ returnTo: RETURN })
+    await notGoing()
+    expect(screen.queryByText('준비됨')).toBeNull()
+  })
+
+  it('AC-603.2: 도우미 버전이 안 맞으면 안내도 이동도 없다', async () => {
+    const fake = fakeExtension({ hello: helloWith({ helperVersion: '0.1.1' }) })
+    renderSetup({ returnTo: RETURN })
+    await notGoing()
+    expect(fake.count('bit.check')).toBe(0)
+    expectInfo(alertCard(), 'E-HELPER-OLD')
+  })
+
+  it('AC-603.2: 1.5초 안에 연결이 끊기면(5단계가 더는 모두 됨이 아니면) 돌아가지 않고 안내를 거둔다', async () => {
+    const fake = fakeExtension({ hello: HELLO })
+    renderSetup({ returnTo: RETURN })
+    await tickUntil(backNote)
+    await tick(500)
+    act(() => fake.drop())
+    await notGoing()
+  })
+
+  it('AC-603.2: 1.5초 안에 화면을 떠나면 나중에 끌려가지 않는다', async () => {
+    fakeExtension({ hello: HELLO })
+    const view = renderSetup({ returnTo: RETURN })
+    await tickUntil(backNote)
+    await tick(500)
+    view.unmount()
+    await tick(3000)
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-603.3: 돌아갈 곳 없이 연 화면은 5단계가 모두 됨이어도 그 자리에 머문다 — 지금의 "준비됨" 줄·[청구로 가기] 그대로', async () => {
+    fakeExtension({ hello: HELLO })
+    renderSetup()
+    await tickUntil(() => screen.queryByText('준비됨'))
+    await tick(3000)
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(router.push).not.toHaveBeenCalled()
+    expect(backNote()).toBeNull()
+    expect(document.body.textContent).not.toContain('대시보드로 돌아가요')
+    expect(screen.getByText('이 PC에서 청구 화면을 쓸 수 있어요.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '청구로 가기' }).getAttribute('href')).toBe('/claim')
+  })
+})
+
+// 도우미 업데이트 안내 (bit-dashboard REQ-604). 시안은 2단계 줄 안에 그렸지만 진짜 문제는 위 오류 상자가 맡는다(design.md '화면', ui-90 AC-412.3)
+describe('AC-604.3 도우미 업데이트 순서', () => {
+  const UPDATE_STEPS = [
+    '[새 도우미 내려받기]를 눌러 precheck-helper-버전.zip을 받으세요.',
+    '받은 zip을 오른쪽 클릭 → [모두 압축 풀기]로 푼 뒤, 푼 폴더의 install.cmd를 두 번 누르세요. "Windows의 PC 보호" 창이 뜨면 [추가 정보]를 누른 뒤 [실행]을 누르세요.',
+    '설치가 끝나면 [다시 확인]을 누르세요. 크롬은 다시 켤 필요가 없어요.',
+  ]
+
+  it('AC-604.3: 도우미 버전 안 맞음 — 오류 상자가 "대시보드 숫자와 청구 화면을 쓸 수 없어요"를 말하고, 상자 안에 [새 도우미 내려받기] → zip 풀어 install.cmd → [다시 확인] 순서 3줄과 그 두 단추가 있다', async () => {
+    fakeExtension({ hello: helloWith({ helperVersion: '0.1.1' }) })
+    renderSetup()
+    const box = await screen.findByRole('alert')
+    expect(box.textContent).toContain('대시보드 숫자와 청구 화면을 쓸 수 없어요')
+    expectInfo(box, 'E-HELPER-OLD')
+
+    const list = within(box).getByRole('list')
+    expect(list.tagName).toBe('OL')
+    expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual(UPDATE_STEPS)
+    hasAll(list, 'grid list-decimal gap-1.5 pl-5 text-body text-ink-2')
+
+    // 읽는 차례: 문구 → 오류 번호 → 순서 → 단추. 단추 이름은 순서 글이 부르는 이름 그대로다
+    const actions = Array.from(box.querySelectorAll('a, button'))
+    expect(actions.map((el) => el.textContent)).toEqual(['새 도우미 내려받기', '다시 확인'])
+    expect(isBefore(within(box).getByText('오류 번호 E-HELPER-OLD'), list)).toBe(true)
+    expect(isBefore(list, actions[0])).toBe(true)
+    // 안내는 오류 상자 하나에만
+    expect(guideOf(row(STEP_TITLES[1]))).toBeNull()
+    expect(document.body.textContent?.split('install.cmd')).toHaveLength(2)
+  })
+
+  it.each<[string, () => void]>([
+    ['의원 다름', () => void fakeExtension({ hello: HELLO, check: [MISMATCH] })],
+    ['확장 버전 안 맞음', () => void fakeExtension({ hello: helloWith({ extensionVersion: '0.0.1' }) })],
+  ])('AC-604.3: %s 오류 상자에는 도우미 순서가 없다', async (_name, setup) => {
+    setup()
+    renderSetup()
+    const box = await screen.findByRole('alert')
+    expect(within(box).queryByRole('list')).toBeNull()
+    expect(box.textContent).not.toContain('install.cmd')
+  })
+
+  it('AC-604.3: 도우미가 아예 없을 때는 지금처럼 2단계 줄의 설치 안내이고 오류 상자가 없다', async () => {
+    fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
+    renderSetup()
+    await waitFor(() => expect(guideOf(row(STEP_TITLES[1]))).not.toBeNull())
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(guideOf(row(STEP_TITLES[1]))?.textContent).toContain('[도우미 내려받기]를 눌러')
   })
 })
 
@@ -985,7 +1170,7 @@ describe('AC-408.2 그림은 공용 Icon, 간격은 단계 안', () => {
   })
 
   it('AC-408.2·AC-412.5: "준비됨" 줄·새 도우미 줄은 사이 8px, \'이렇게 지켜요\' 목록은 왼쪽 20px·사이 8px·body ink-2', async () => {
-    fakeExtension({ hello: helloWith({ helperVersion: '0.1.0' }) })
+    fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) })
     renderSetup()
     const ready = (await screen.findByText('준비됨')).parentElement as HTMLElement
     const update = screen.getByText('새 도우미가 있어요.').parentElement as HTMLElement

@@ -1,0 +1,468 @@
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
+import type { DayPayload } from '@/types/payload'
+import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
+import { LOOKBACK_DAYS, READ_TIMEOUT_MS, readBitDays, type StatsWorkerLike } from './readBitDays'
+
+// 비트 읽기 한 번 (design.md "### 읽기"). 진짜 connectScreenBridge·connectBridge·requestLoad에 가짜 확장(chrome.runtime)과 가짜 Worker만 넣는다.
+// 자료는 모두 지어낸 값이다. 도우미 답 모양은 가짜 Worker가 받아 삼키므로 이 시험은 stats.rows 글자의 모양에 기대지 않는다
+
+const TODAY = '2026-11-01'
+const FROM = '2026-07-24' // 오늘 100일 전
+const HELLO_OK = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const CHECK_OK = {
+  steps: [
+    { name: 'find', ok: true },
+    { name: 'db', ok: true },
+    { name: 'registration', ok: true },
+  ],
+  registered: true,
+  institutionCode: '12345678',
+}
+const FAKE_CHART = '000123'
+const FAKE_CHUNK = `{"visits":[["${FAKE_CHART}","가상환자01"]]}`
+const SHA = 'a'.repeat(64)
+const DAY: DayPayload = {
+  schemaVersion: 2,
+  quality: 'valid',
+  day: TODAY,
+  partial: true,
+  totals: { patients: 3, newPatients: 1, returning: 2, unknown: 0 },
+  rx: [],
+  groups: [],
+  revisit: { cohort: 0, within7: null, within14: null },
+}
+const VIEW: StatsLoaded = {
+  range: { from: FROM, to: TODAY },
+  covered: { from: FROM, to: '2026-10-31' },
+  quality: 'valid',
+  checks: { noChart: 0, duplicate: 0, noFirst: 0 },
+  months: [],
+  days: [DAY],
+  report: { daily: [], monthly: [] },
+}
+const INCOMPLETE: StatsLoaded = { ...VIEW, quality: 'incomplete', checks: { noChart: 1, duplicate: 0, noFirst: 0 }, months: null, days: null }
+
+// 확장 쪽 답. 함수면 받은 요청 id로 답을 만들고, 'silent'면 답하지 않는다
+type Answer = 'silent' | ((id: string) => unknown[])
+type Command = 'hello' | 'bit.check' | 'stats.rows'
+
+const result = (data: unknown): Answer => (id) => [{ v: 1, id, type: 'result', data }]
+const error = (code: string): Answer => (id) => [{ v: 1, id, type: 'error', code }]
+const otherWindowHasIt: Answer = () => [{ v: 1, id: '', type: 'error', code: 'E-BRIDGE-BUSY' }]
+const chunkEnd = (id: string) => [
+  { v: 1, id, type: 'chunk', seq: 0, data: FAKE_CHUNK },
+  { v: 1, id, type: 'end', count: 1, bytes: FAKE_CHUNK.length, sha256: SHA },
+]
+
+class FakePort implements PortLike {
+  sent: { id: string; cmd: Command; args: unknown }[] = []
+  disconnected = false
+  private messageFns: ((m: unknown) => void)[] = []
+  onMessage = { addListener: (fn: (m: unknown) => void) => void this.messageFns.push(fn) }
+  onDisconnect = { addListener: () => {} }
+
+  constructor(private script: Record<Command, Answer>) {}
+
+  postMessage(m: unknown) {
+    if (this.disconnected) throw new Error('Attempting to use a disconnected port object')
+    const request = m as FakePort['sent'][number]
+    this.sent.push(request)
+    const answer = this.script[request.cmd]
+    if (answer !== 'silent') for (const reply of answer(request.id)) this.reply(reply)
+  }
+  disconnect() {
+    this.disconnected = true
+  }
+  reply(m: unknown) {
+    for (const fn of this.messageFns) fn(m)
+  }
+}
+
+const opened: MessagePort[] = []
+
+// 가짜 통계 Worker. 진짜처럼 load와 통로 끝(end)이 둘 다 와야 답한다. answer가 null이면 답하지 않는다
+function fakeWorker(answer: (req: StatsLoadRequest) => StatsWorkerMessage | null) {
+  const loads: StatsLoadRequest[] = []
+  const fromBridge: Record<string, unknown>[] = []
+  const worker = {
+    onmessage: null as ((event: MessageEvent<StatsWorkerMessage>) => void) | null,
+    onerror: null as ((event: Event) => void) | null,
+    onmessageerror: null as ((event: MessageEvent) => void) | null,
+    terminate: vi.fn(),
+    postMessage(message: { type: string }, transfer?: Transferable[]) {
+      if (message.type === 'bridge-port') {
+        const port = transfer![0] as MessagePort
+        opened.push(port)
+        port.onmessage = (e: MessageEvent) => {
+          fromBridge.push(e.data as Record<string, unknown>)
+          answerIfDue()
+        }
+      } else {
+        loads.push(message as StatsLoadRequest)
+        answerIfDue()
+      }
+    },
+  }
+  function answerIfDue() {
+    const load = loads[0]
+    if (!load || !fromBridge.some((m) => m.type === 'end')) return
+    const reply = answer(load)
+    if (reply) worker.onmessage?.({ data: reply } as MessageEvent<StatsWorkerMessage>)
+  }
+  return { worker, loads, fromBridge, like: worker as unknown as StatsWorkerLike }
+}
+
+const loaded =
+  (view: StatsLoaded) =>
+  (req: StatsLoadRequest): StatsWorkerMessage => ({ type: 'loaded', streamId: req.streamId, view })
+
+function setup(
+  script: Partial<Record<Command, Answer>> = {},
+  answer: (req: StatsLoadRequest) => StatsWorkerMessage | null = loaded(VIEW),
+) {
+  const port = new FakePort({ hello: result(HELLO_OK), 'bit.check': result(CHECK_OK), 'stats.rows': chunkEnd, ...script })
+  const runtime: ChromeRuntimeLike = { connect: () => port }
+  const fake = fakeWorker(answer)
+  const createWorker = vi.fn(() => fake.like)
+  const read = (timeoutMs?: number, signal?: AbortSignal) => readBitDays({ runtime, createWorker, today: TODAY, timeoutMs, signal })
+  const commands = () => port.sent.map((request) => request.cmd)
+  /** AC-601.8: 어느 길이든 통로를 닫고 Worker를 끝낸다 */
+  const expectClosed = () => {
+    expect(port.disconnected).toBe(true)
+    expect(fake.worker.terminate).toHaveBeenCalledTimes(1)
+  }
+  return { ...fake, port, read, commands, expectClosed, createWorker }
+}
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+  for (const port of opened.splice(0)) port.close()
+})
+
+describe('readBitDays', () => {
+  it('진짜 Worker를 StatsWorkerLike로 넘길 수 있다(타입 시험)', () => {
+    expectTypeOf<Worker>().toExtend<StatsWorkerLike>()
+  })
+
+  describe('AC-601.1 차례', () => {
+    it('AC-601.1: hello → bit.check → stats.rows(오늘 100일 전 ~ 오늘) 뒤 같은 id로 Worker에 load(closeToday: false)', async () => {
+      const t = setup()
+      await expect(t.read()).resolves.toEqual({ kind: 'days', days: [DAY] })
+      expect(LOOKBACK_DAYS).toBe(100)
+      expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
+      const stream = t.port.sent[2]
+      expect(stream.args).toEqual({ from: FROM, to: TODAY })
+      expect(t.loads).toEqual([{ type: 'load', streamId: stream.id, from: FROM, to: TODAY, today: TODAY, closeToday: false }])
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.6 준비가 안 된 곳은 읽지 않는다', () => {
+    it('AC-601.6: runtime이 없으면(휴대폰·확장 없는 PC) not-ready이고 Worker도 만들지 않는다', async () => {
+      const createWorker = vi.fn(() => fakeWorker(loaded(VIEW)).like)
+      await expect(readBitDays({ runtime: undefined, createWorker, today: TODAY })).resolves.toEqual({ kind: 'not-ready' })
+      expect(createWorker).not.toHaveBeenCalled()
+    })
+
+    it('AC-601.6: 확장에 붙지 못하면 not-ready이고 만든 Worker를 끝낸다', async () => {
+      const fake = fakeWorker(loaded(VIEW))
+      const runtime: ChromeRuntimeLike = {
+        connect() {
+          throw new Error('Could not establish connection')
+        },
+      }
+      await expect(readBitDays({ runtime, createWorker: () => fake.like, today: TODAY })).resolves.toEqual({ kind: 'not-ready' })
+      expect(fake.worker.terminate).toHaveBeenCalledTimes(1)
+    })
+
+    it('AC-601.6: 도우미가 없으면(E-HELPER-MISSING) not-ready이고 bit.check·stats.rows를 부르지 않는다', async () => {
+      const t = setup({ hello: error('E-HELPER-MISSING') })
+      await expect(t.read()).resolves.toEqual({ kind: 'not-ready' })
+      expect(t.commands()).toEqual(['hello'])
+      t.expectClosed()
+    })
+
+    it('AC-601.6: 확장 버전이 안 맞으면 not-ready이고 bit.check·stats.rows를 부르지 않는다', async () => {
+      const t = setup({ hello: result({ ...HELLO_OK, extensionProtocol: 2 }) })
+      await expect(t.read()).resolves.toEqual({ kind: 'not-ready' })
+      expect(t.commands()).toEqual(['hello'])
+      t.expectClosed()
+    })
+
+    it.each([
+      ['find', 'E-BIT-NOT-FOUND'],
+      ['db', 'E-BIT-DB-FAILED'],
+      ['registration', 'E-BIT-HOSPITAL-MISMATCH'],
+    ])('AC-601.6: bit.check의 %s 단계가 안 됨(%s)이면 not-ready이고 stats.rows를 부르지 않는다', async (name, code) => {
+      const steps = CHECK_OK.steps.map((step) => (step.name === name ? { name, ok: false, code } : step))
+      const t = setup({ 'bit.check': result({ ...CHECK_OK, steps }) })
+      await expect(t.read()).resolves.toEqual({ kind: 'not-ready' })
+      expect(t.commands()).toEqual(['hello', 'bit.check'])
+      expect(t.loads).toEqual([])
+      t.expectClosed()
+    })
+
+    it('AC-601.6: 세 단계가 모두 됨이어도 registered가 아니면 not-ready이고 stats.rows를 부르지 않는다', async () => {
+      const { steps } = CHECK_OK
+      const t = setup({ 'bit.check': result({ steps, registered: false }) })
+      await expect(t.read()).resolves.toEqual({ kind: 'not-ready' })
+      expect(t.commands()).toEqual(['hello', 'bit.check'])
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-604.2 옛 도우미', () => {
+    it('AC-604.2: 옛 도우미(0.1.1)면 hello에서 update-helper라 stats.rows를 보내지 않고 not-ready', async () => {
+      const t = setup({ hello: result({ ...HELLO_OK, helperVersion: '0.1.1' }) })
+      await expect(t.read()).resolves.toEqual({ kind: 'not-ready' })
+      expect(t.commands()).toEqual(['hello'])
+      expect(t.commands()).not.toContain('stats.rows')
+      expect(t.loads).toEqual([])
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.7 다른 창이 통로를 쓰는 중', () => {
+    it('AC-601.7: hello에서 busy면 E-BIT-IN-USE이고 bit.check·stats.rows를 부르지 않는다', async () => {
+      const t = setup({ hello: otherWindowHasIt })
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BIT-IN-USE' })
+      expect(t.commands()).toEqual(['hello'])
+      t.expectClosed()
+    })
+
+    it.each<[Command]>([['bit.check'], ['stats.rows']])('AC-601.7: %s 도중 E-BRIDGE-BUSY여도 청구 번호가 아니라 E-BIT-IN-USE다', async (cmd) => {
+      const t = setup({ [cmd]: error('E-BRIDGE-BUSY') })
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BIT-IN-USE' })
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.9 일 숫자만 돌려준다', () => {
+    it('AC-601.9: 답은 days뿐이고(months·report·checks 없음) 조각은 Worker 포트로만 가며 fetch가 없다', async () => {
+      const fetchSpy = vi.fn()
+      vi.stubGlobal('fetch', fetchSpy)
+      const t = setup()
+      const answer = await t.read()
+      expect(answer).toStrictEqual({ kind: 'days', days: [DAY] })
+      expect(t.fromBridge.map((m) => m.type)).toEqual(['chunk', 'end'])
+      expect(t.fromBridge[0].data).toBe(FAKE_CHUNK)
+      expect(JSON.stringify(answer)).not.toContain(FAKE_CHART)
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
+
+    it('AC-601.11: 읽기는 됐지만 일 숫자가 빈 배열이면 빈 배열 그대로 돌려준다', async () => {
+      const t = setup({}, loaded({ ...VIEW, days: [] }))
+      await expect(t.read()).resolves.toEqual({ kind: 'days', days: [] })
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.12 품질이 incomplete', () => {
+    it('AC-601.12: days가 null이면 E-BIT-DATA-UNSURE', async () => {
+      const t = setup({}, loaded(INCOMPLETE))
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BIT-DATA-UNSURE' })
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.4 읽기 실패는 번호로 끝난다', () => {
+    it.each(['E-STATS-HISTORY', 'E-STATS-TOO-BIG', 'E-BIT-READ-FAILED', 'E-BIT-NOT-REGISTERED', 'E-BIT-HOSPITAL-MISMATCH'])(
+      'AC-601.4: stats.rows가 %s로 끝나면 그 번호이고 Worker에 load를 보내지 않는다',
+      async (code) => {
+        const t = setup({ 'stats.rows': error(code) })
+        await expect(t.read()).resolves.toEqual({ kind: 'failed', code })
+        expect(t.loads).toEqual([])
+        t.expectClosed()
+      },
+    )
+
+    it.each(['E-STATS-TOO-BIG', 'E-BRIDGE-BAD-REPLY', 'E-ANALYZE-FAILED'])('AC-601.4: Worker가 %s로 끝나면 그 번호', async (code) => {
+      const t = setup({}, (req) => ({ type: 'failed', streamId: req.streamId, code }))
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code })
+      t.expectClosed()
+    })
+
+    it('AC-601.4: hello가 오류 번호로 끝나면(모양이 틀린 답) 그 번호이고 bit.check를 부르지 않는다', async () => {
+      const t = setup({ hello: result({ helperVersion: '0.2.0' }) })
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BRIDGE-BAD-REPLY' })
+      expect(t.commands()).toEqual(['hello'])
+      t.expectClosed()
+    })
+
+    it('AC-601.4: bit.check가 오류 번호로 끝나면 그 번호이고 stats.rows를 부르지 않는다', async () => {
+      const t = setup({ 'bit.check': error('E-BIT-READ-FAILED') })
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BIT-READ-FAILED' })
+      expect(t.commands()).toEqual(['hello', 'bit.check'])
+      t.expectClosed()
+    })
+
+    it('AC-601.4: 표에 없는 번호는 옮기지 않고 E-BIT-READ-FAILED로 바꾼다', async () => {
+      const t = setup({ 'stats.rows': error('E-SOMETHING-NEW') })
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BIT-READ-FAILED' })
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.15 읽는 중에 화면을 떠날 때', () => {
+    it.each<[string, Parameters<typeof setup>[0], Parameters<typeof setup>[1], Command[], number]>([
+      ['hello 답을 기다리는 중', { hello: 'silent' }, undefined, ['hello'], 0],
+      ['bit.check 답을 기다리는 중', { 'bit.check': 'silent' }, undefined, ['hello', 'bit.check'], 0],
+      ['stats.rows 답을 기다리는 중', { 'stats.rows': 'silent' }, undefined, ['hello', 'bit.check', 'stats.rows'], 0],
+      ['Worker 답을 기다리는 중', {}, () => null, ['hello', 'bit.check', 'stats.rows'], 1],
+    ])('AC-601.15: %s 취소하면 그 자리에서 통로를 닫고 바로 끝낸다', async (_name, script, answer, sent, loads) => {
+      vi.useFakeTimers()
+      const t = setup(script, answer)
+      const leaving = new AbortController()
+      let result: unknown = null
+      void t.read(undefined, leaving.signal).then((r) => (result = r))
+      await vi.advanceTimersByTimeAsync(10)
+      expect(t.commands()).toEqual(sent)
+      expect(t.loads).toHaveLength(loads)
+      expect(t.port.disconnected).toBe(false)
+
+      leaving.abort()
+      // 기다리지 않고 바로 본다: 화면이 바뀌면 다음 화면이 같은 순간에 통로를 열기 때문이다
+      t.expectClosed()
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(result).toEqual({ kind: 'not-ready' })
+      t.expectClosed()
+    })
+
+    it('AC-601.15: 취소 뒤에 온 늦은 답으로 다음 단계를 보내지 않는다', async () => {
+      vi.useFakeTimers()
+      const t = setup({ hello: 'silent' })
+      const leaving = new AbortController()
+      void t.read(undefined, leaving.signal)
+      await vi.advanceTimersByTimeAsync(10)
+
+      leaving.abort()
+      t.port.reply({ v: 1, id: t.port.sent[0].id, type: 'result', data: HELLO_OK })
+      await vi.advanceTimersByTimeAsync(10)
+
+      expect(t.commands()).toEqual(['hello'])
+    })
+
+    it('AC-601.15: 다 읽으면 취소 리스너를 뗀다', async () => {
+      const t = setup()
+      const leaving = new AbortController()
+      const added = vi.spyOn(leaving.signal, 'addEventListener')
+      const removed = vi.spyOn(leaving.signal, 'removeEventListener')
+
+      await t.read(undefined, leaving.signal)
+
+      expect(added).toHaveBeenCalledTimes(1)
+      expect(removed).toHaveBeenCalledWith('abort', added.mock.calls[0][1])
+    })
+
+    it('AC-601.15: 이미 떠났으면 통로도 Worker도 만들지 않는다', async () => {
+      const t = setup()
+      const leaving = new AbortController()
+      leaving.abort()
+
+      await expect(t.read(undefined, leaving.signal)).resolves.toEqual({ kind: 'not-ready' })
+
+      expect(t.createWorker).not.toHaveBeenCalled()
+      expect(t.commands()).toEqual([])
+    })
+
+    it('AC-601.15: 다 읽은 뒤에 취소해도 답이 그대로고 Worker를 두 번 끝내지 않는다', async () => {
+      const t = setup()
+      const leaving = new AbortController()
+
+      const result = await t.read(undefined, leaving.signal)
+      leaving.abort()
+
+      expect(result).toEqual({ kind: 'days', days: VIEW.days })
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.10 3분 안에 끝나지 않을 때', () => {
+    async function expectTimesOutAt(t: ReturnType<typeof setup>, ms: number, timeoutMs?: number) {
+      vi.useFakeTimers()
+      let answer: unknown = null
+      void t.read(timeoutMs).then((r) => (answer = r))
+      await vi.advanceTimersByTimeAsync(ms - 1)
+      expect(answer).toBeNull()
+      expect(t.port.disconnected).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(answer).toEqual({ kind: 'failed', code: 'E-BIT-READ-FAILED' })
+      t.expectClosed()
+    }
+
+    it('AC-601.10: 정해 둔 시간은 3분이다', () => {
+      expect(READ_TIMEOUT_MS).toBe(180_000)
+    })
+
+    it.each<[Command, Command[]]>([
+      ['hello', ['hello']],
+      ['bit.check', ['hello', 'bit.check']],
+      ['stats.rows', ['hello', 'bit.check', 'stats.rows']],
+    ])('AC-601.10: %s 답이 오지 않으면 3분에 E-BIT-READ-FAILED로 끝내고 통로를 닫는다', async (cmd, sent) => {
+      const t = setup({ [cmd]: 'silent' })
+      await expectTimesOutAt(t, READ_TIMEOUT_MS)
+      expect(t.commands()).toEqual(sent)
+    })
+
+    it('AC-601.10: Worker 답이 오지 않아도 3분에 E-BIT-READ-FAILED로 끝내고 통로를 닫는다', async () => {
+      await expectTimesOutAt(setup({}, () => null), READ_TIMEOUT_MS)
+    })
+
+    it('AC-601.10: 3분은 단계마다가 아니라 읽기 전체다(stats.rows가 2분 걸리면 Worker는 1분만 기다린다)', async () => {
+      vi.useFakeTimers()
+      const t = setup({ 'stats.rows': 'silent' }, () => null)
+      let answer: unknown = null
+      void t.read().then((r) => (answer = r))
+      await vi.advanceTimersByTimeAsync(120_000)
+      for (const reply of chunkEnd(t.port.sent[2].id)) t.port.reply(reply)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(t.loads).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(59_999)
+      expect(answer).toBeNull()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(answer).toEqual({ kind: 'failed', code: 'E-BIT-READ-FAILED' })
+      t.expectClosed()
+      expect(vi.getTimerCount()).toBe(0) // Worker 쪽 시계도 남은 시간만 쟀다
+    })
+
+    it('AC-601.10: timeoutMs를 주면 그 시간에 끝낸다', async () => {
+      await expectTimesOutAt(setup({ hello: 'silent' }), 5_000, 5_000)
+    })
+
+    it('AC-601.10: E-ANALYZE-TIMEOUT은 그 문구("계산이 30초")를 보이지 않게 E-BIT-READ-FAILED로 바꾼다', async () => {
+      const t = setup({}, (req) => ({ type: 'failed', streamId: req.streamId, code: 'E-ANALYZE-TIMEOUT' }))
+      await expect(t.read()).resolves.toEqual({ kind: 'failed', code: 'E-BIT-READ-FAILED' })
+      t.expectClosed()
+    })
+  })
+
+  describe('AC-601.8 끝나면 닫는다', () => {
+    it('AC-601.8: 성공해도 통로를 닫고 Worker를 끝낸다', async () => {
+      const t = setup()
+      await t.read()
+      t.expectClosed()
+    })
+
+    it('AC-601.8: 끝나면 3분 재던 시계도 남지 않는다', async () => {
+      vi.useFakeTimers()
+      const t = setup({ 'stats.rows': error('E-STATS-HISTORY') })
+      await t.read()
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('AC-601.8: Worker를 못 만들면 확장에 붙지 않고 E-BIT-READ-FAILED로 끝난다', async () => {
+      const connect = vi.fn()
+      const createWorker = () => {
+        throw new Error('가짜: Worker 스크립트를 못 불러옴')
+      }
+      await expect(readBitDays({ runtime: { connect }, createWorker, today: TODAY })).resolves.toEqual({
+        kind: 'failed',
+        code: 'E-BIT-READ-FAILED',
+      })
+      expect(connect).not.toHaveBeenCalled()
+    })
+  })
+})

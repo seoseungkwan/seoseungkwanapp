@@ -48,6 +48,8 @@ function day(ymd: string, o: DayOptions = {}): DayPayload {
 const data = (days: DayPayload[]): SummarySource => ({ kind: 'data', days })
 // 보조 글(AC-414.6): small(13px) muted + 시안 40em(520px)에 가장 가까운 4px 단위 폭 단계
 const NOTE = 'text-small text-muted max-w-130'
+// 넷째 칸의 증감·"변화 없음" 값(bit-dashboard design.md '### 날짜 고르기', 시안 css_extra.css .kpi-v.sm): PC 20/36, 폰 16/32. 글자 토큰의 줄 높이는 28·24라 줄 높이를 따로 준다
+const DELTA_VALUE = 'text-title leading-9 max-md:text-subtitle max-md:leading-8 font-semibold'
 // 연결 전 기간별 흐름 (AC-414.4, 시안 gains 글자 그대로)
 const GAINS_TITLE = '연결하면 생기는 것 4가지'
 const GAINS = [
@@ -172,7 +174,8 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
     const cell = kpiCells()[3] as HTMLElement
     expect(within(cell).getByText('지난주 같은 요일보다')).toBeTruthy()
     const value = within(cell).getByText('3명 (+30.0%)').parentElement!
-    hasAll(value, 'text-metric font-semibold text-positive')
+    hasAll(value, `${DELTA_VALUE} text-positive`)
+    expect(classesOf(value)).not.toContain('text-metric')
     expect(within(value).getByText('늘어남').className).toBe('sr-only')
     expect(value.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     const compare = within(cell).getByText('지난주 토요일')
@@ -189,12 +192,15 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
   it('AC-311.2: 줄어들면 화살표 · "줄어듦" · negative, 같으면 화살표 없이 "변화 없음"', () => {
     draw(data([day(TODAY, { newPatients: 1, returning: 4 }), day('2026-10-24', { newPatients: 2, returning: 8 })]))
     const down = within(kpiCells()[3] as HTMLElement).getByText('5명 (−50.0%)').parentElement!
-    hasAll(down, 'text-negative')
+    hasAll(down, `${DELTA_VALUE} text-negative`)
+    expect(classesOf(down)).not.toContain('text-metric')
     expect(within(down).getByText('줄어듦')).toBeTruthy()
     expect(down.querySelector('svg')).not.toBeNull()
     cleanup()
     draw(data([day(TODAY, { newPatients: 2, returning: 8 }), day('2026-10-24', { newPatients: 2, returning: 8 })]))
     const flat = within(kpiCells()[3] as HTMLElement).getByText('변화 없음').parentElement!
+    hasAll(flat, `${DELTA_VALUE} text-muted`)
+    expect(classesOf(flat)).not.toContain('text-metric')
     expect(flat.querySelector('svg')).toBeNull()
     expect(within(kpiCells()[3] as HTMLElement).getByText('지난주 토요일')).toBeTruthy()
   })
@@ -223,6 +229,84 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
       expect(kpiCells()[i]!.innerHTML).toBe(markupOf(<KpiStat label={label} value={null} format="count" unit="명" />))
     })
     expect(within(kpiCells()[3] as HTMLElement).getByText('오늘 진료가 끝나면 비교해요')).toBeTruthy()
+  })
+})
+
+// 비트 읽기 상태 글 (bit-dashboard design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py today_sec·flow_empty). 주지 않으면 위 연결 전 글 그대로다
+describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
+  const READ_NOTE = '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.'
+  const READ_GAINS_TITLE = '읽기가 끝나면 생기는 것 4가지'
+  const READ_GAINS_NOTE = '읽기가 끝나면 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
+  const READ_REVISIT = '처음 온 환자가 7·14일 안에 다시 온 비율이에요.'
+
+  it('AC-601.2: emptyChip·emptyText·emptyNote가 칩·숫자 칸 넷·안내 줄을 바꾸고 모양은 그대로다', () => {
+    render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽는 중" emptyText="읽는 중" emptyNote={READ_NOTE} />)
+    const section = region('오늘 하루 분석')
+    hasAll(within(section).getByText('읽는 중', { selector: 'span.' + ds.chip.neutral.split(' ')[0] }), ds.chip.neutral)
+    const labels = ['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다']
+    kpiCells().forEach((cell, i) => {
+      expect(cell.innerHTML).toBe(markupOf(<KpiStat label={labels[i]!} value={null} format="count" unit="명" emptyText="읽는 중" />))
+    })
+    hasAll(within(section).getByText(READ_NOTE), `mt-3 ${NOTE}`)
+    expect(within(section).queryByText('비트 PC 연결 전')).toBeNull()
+    expect(within(section).queryByText(TODAY_NOTE)).toBeNull()
+  })
+
+  it('AC-601.4·AC-601.7: emptyNote가 null이면 안내 줄이 없다', () => {
+    render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽지 못함" emptyText="읽지 못했어요" emptyNote={null} />)
+    const section = region('오늘 하루 분석')
+    expect(within(section).getByText('읽지 못함')).toBeTruthy()
+    expect(within(section).getAllByText('읽지 못했어요')).toHaveLength(4)
+    expect(section.querySelector('.max-w-130')).toBeNull()
+  })
+
+  it('AC-601.2: gainsTitle·gainsNote·gainsRevisitDesc가 목록 제목·안내 줄·재방문율 설명을 바꾸고, 나머지 줄은 그대로다', () => {
+    render(<DashboardAnalysis today={TODAY} source={NONE} gainsTitle={READ_GAINS_TITLE} gainsNote={READ_GAINS_NOTE} gainsRevisitDesc={READ_REVISIT} />)
+    const section = region('기간별 흐름')
+    expect(within(section).getByText(READ_GAINS_TITLE)).toBeTruthy()
+    expect(within(section).getByText(READ_GAINS_NOTE)).toBeTruthy()
+    expect(within(section).getByRole('list', { name: READ_GAINS_TITLE })).toBeTruthy()
+    expect(within(section).queryByText(GAINS_TITLE)).toBeNull()
+    expect(within(section).queryByText(GAINS_NOTE)).toBeNull()
+    const expected = GAINS.map(([name, desc]) => [name, name === '신환 재방문율' ? READ_REVISIT : desc])
+    const shown = within(section).getAllByRole('listitem').map((li) => {
+      const [, title, desc] = Array.from(li.children)
+      return [title!.textContent, desc!.textContent]
+    })
+    expect(shown).toEqual(expected)
+  })
+
+  it('AC-601.11: emptyCharts면 읽었는데 자료가 없는 것이다 — 목록 대신 빈 그래프 틀 넷("자료 없음"), 숫자 칸은 emptyText', () => {
+    render(<DashboardAnalysis today={TODAY} source={data([])} emptyChip="자료 없음" emptyText="자료 없음" emptyNote={null} emptyCharts />)
+    const flow = region('기간별 흐름')
+    expect(within(flow).queryByText(GAINS_TITLE)).toBeNull()
+    for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) expect(chart(name)).toBeTruthy()
+    expect(within(chart('환자 수 추이')).getByText('자료 없음')).toBeTruthy()
+    expect(within(chart('요일별 환자 수')).getByText('자료 없음')).toBeTruthy()
+    expect(within(chart('처방 상위')).getByText('자료 없음')).toBeTruthy()
+    expect(flow.querySelector('table')).toBeNull()
+    const section = region('오늘 하루 분석')
+    expect(within(section).getAllByText('자료 없음')).toHaveLength(5) // 칩 + 칸 넷
+    expect(within(section).queryByText(TODAY_NOTE)).toBeNull()
+  })
+
+  it('AC-601.1: 숫자가 있으면 이 글들을 쓰지 않는다', () => {
+    render(
+      <DashboardAnalysis
+        today={TODAY}
+        source={data(FULL_DAYS)}
+        emptyChip="읽는 중"
+        emptyText="읽는 중"
+        emptyNote={READ_NOTE}
+        gainsTitle={READ_GAINS_TITLE}
+        gainsNote={READ_GAINS_NOTE}
+        gainsRevisitDesc={READ_REVISIT}
+      />,
+    )
+    expect(screen.queryByText('읽는 중')).toBeNull()
+    expect(screen.queryByText(READ_NOTE)).toBeNull()
+    expect(screen.queryByText(READ_GAINS_TITLE)).toBeNull()
+    expect(chart('환자 수 추이')).toBeTruthy()
   })
 })
 
@@ -678,5 +762,90 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) {
       expect(allClasses(chart(name)).filter((t) => t.includes('transition')), name).toEqual([])
     }
+  })
+})
+
+// 날짜 고르기 (bit-dashboard REQ-605, design.md '### 날짜 고르기', 시안 docs/mockups/bit-dashboard/gen.py applyDay): 고른 날은 하루 줄만 바꾼다
+describe('고른 날 (day)', () => {
+  const LATER = '2026-11-02' // 2026-10-31(토요일)이 지난 날이 되는 오늘
+  const drawDay = (dayValue: string | undefined, source: SummarySource = data(FULL_DAYS), today = LATER) =>
+    render(<DashboardAnalysis today={today} day={dayValue} source={source} />)
+  const cellsOf = (title: string) => Array.from(region(title).children[1]!.children)
+
+  it('AC-605.3: 지난 날짜를 고르면 제목은 "{월}월 {일}일 하루 분석", 첫 칸 이름은 "환자 수"이고 그날 숫자다', () => {
+    drawDay('2026-10-31')
+    expect(screen.getByRole('heading', { level: 2, name: '10월 31일 하루 분석' })).toBeTruthy()
+    const cells = cellsOf('10월 31일 하루 분석')
+    expect(cells.slice(0, 3).map((cell) => cell.textContent)).toEqual(['환자 수13명', '신환4명', '재진9명'])
+  })
+
+  it('AC-605.3: 넷째 칸은 그날과 7일 전을 견준 값이다', () => {
+    drawDay('2026-10-31')
+    const fourth = cellsOf('10월 31일 하루 분석')[3]!
+    expect(fourth.textContent).toContain('지난주 같은 요일보다')
+    expect(fourth.textContent).toContain('3명 (+30.0%)')
+    expect(fourth.textContent).toContain('지난주 토요일')
+    hasAll(within(fourth as HTMLElement).getByText('3명 (+30.0%)').parentElement!, DELTA_VALUE)
+  })
+
+  it('AC-605.3: 7일 전 자료가 없으면 넷째 칸은 "지난주 자료가 없어요"다', () => {
+    drawDay('2026-10-30')
+    const fourth = cellsOf('10월 30일 하루 분석')[3]!
+    expect(within(fourth as HTMLElement).getByText('지난주 자료가 없어요')).toBeTruthy()
+  })
+
+  it('AC-605.3: 지난 날짜의 하루 줄에는 "오늘" 글자가 없다(저장 숫자에 덜 끝난 표시가 남은 날도)', () => {
+    drawDay('2026-10-12') // partial
+    const section = region('10월 12일 하루 분석')
+    expect(section.textContent).not.toContain('오늘')
+    const fourth = cellsOf('10월 12일 하루 분석')[3]!
+    expect(within(fourth as HTMLElement).getByText('자료 없음')).toBeTruthy()
+  })
+
+  it('AC-605.4: 자료가 없는 지난 날짜면 숫자 칸 넷이 모두 "–" + "자료 없음"이고 첫 칸 이름은 "환자 수"다', () => {
+    drawDay('2026-10-29')
+    const section = region('10월 29일 하루 분석')
+    const cells = cellsOf('10월 29일 하루 분석')
+    expect(cells).toHaveLength(4)
+    expect(cells.map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+    expect(section.textContent).not.toContain('오늘')
+    // 읽기는 끝났으니 칩은 없다
+    expect(within(section).queryByText('비트 PC 연결 전')).toBeNull()
+  })
+
+  it('AC-605.4: 읽었는데 빈 배열인 화면에서 지난 날짜를 골라도 제목·첫 칸 이름은 그 날이고 숫자 칸은 받은 글자다', () => {
+    render(<DashboardAnalysis today={LATER} day="2026-10-29" source={data([])} emptyChip="자료 없음" emptyText="자료 없음" emptyNote={null} emptyCharts />)
+    expect(cellsOf('10월 29일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+  })
+
+  it('AC-605.3: day가 없거나 오늘이면 지금처럼 오늘이다', () => {
+    const none = drawDay(undefined, data(FULL_DAYS), TODAY)
+    expect(region('오늘 하루 분석').children[1]!.children[0]!.textContent).toBe('오늘 환자 수13명')
+    const text = document.body.textContent
+    none.unmount()
+    drawDay(TODAY, data(FULL_DAYS), TODAY)
+    expect(document.body.textContent).toBe(text)
+  })
+
+  it('AC-605.3: 오늘 칸의 "오늘 진료가 끝나면 비교해요"는 그대로다', () => {
+    drawDay(LATER, data([day(LATER, { partial: true })]))
+    expect(within(region('오늘 하루 분석')).getByText('오늘 진료가 끝나면 비교해요')).toBeTruthy()
+  })
+
+  it('AC-605.6: 기간별 흐름은 today로만 계산해 고른 날과 상관없다', () => {
+    const today = drawDay(undefined)
+    const flowText = region('기간별 흐름').textContent
+    const range = rangeText()
+    today.unmount()
+    drawDay('2026-10-12')
+    expect(rangeText()).toBe(range)
+    expect(region('기간별 흐름').textContent).toBe(flowText)
+  })
+
+  it('AC-605.6: 날짜가 바뀌어도 고른 기간은 그대로다', async () => {
+    const view = drawDay(undefined)
+    await choose('최근 7일')
+    view.rerender(<DashboardAnalysis today={LATER} day="2026-10-12" source={data(FULL_DAYS)} />)
+    expect(pressed()).toEqual(['최근 7일'])
   })
 })

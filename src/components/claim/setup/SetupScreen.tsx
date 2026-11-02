@@ -11,8 +11,9 @@ import { maskInstitution } from '../maskInstitution'
 import { useBridge } from '../useBridge'
 import { checkedAtText } from './checkedAt'
 import { EXTENSION_STORE_URL, HELPER_RELEASES_URL } from './links'
+import { ReturnWhenReady } from './ReturnWhenReady'
 import { BusyCard, SetupAlert } from './SetupAlert'
-import { ProblemActions, StepGuide } from './StepGuide'
+import { HelperUpdateSteps, ProblemActions, StepGuide } from './StepGuide'
 import { isRealProblem, setupSteps, type StepView } from './steps'
 
 // 비트 PC 연결 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body). 설정 탭 안 [비트 PC 연결] → 제목 '설정'과 안쪽 메뉴.
@@ -144,11 +145,14 @@ function VersionValue({ step }: { step: StepView }) {
 export function SetupScreen({
   clinicName,
   extensionStoreUrl = EXTENSION_STORE_URL,
+  returnTo,
 }: {
   /** 사이트에 등록한 로그인한 사용자의 의원 이름(me.hospital.name) */
   clinicName: string
   /** 확장 설치 주소(웹스토어 등록 전이면 null → 압축 풀린 확장 불러오기 안내) */
   extensionStoreUrl?: string | null
+  /** 5단계가 모두 되면 돌아갈 곳(주소가 ?next=dashboard일 때만, bit-dashboard AC-603.2). 없으면 그 자리에 머문다(AC-603.3) */
+  returnTo?: '/dashboard'
 }) {
   const { state, hello, helloError, helperUpdateAvailable, call, retry } = useBridge()
   const [checked, setChecked] = useState<Checked>(NOT_CHECKED)
@@ -242,11 +246,15 @@ export function SetupScreen({
       {alertCode && (
         <SetupAlert
           code={alertCode}
+          steps={problem?.guide === 'update-helper' ? <HelperUpdateSteps /> : undefined}
           actions={problem ? <ProblemActions kind={problem.guide} {...actions} /> : undefined}
         />
       )}
 
-      {allOk && checked.at && (
+      {/* 대시보드에서 왔으면 "준비됨" 줄 대신 돌아가는 안내(시안 setup_v 'ok', bit-dashboard AC-603.2·AC-603.3) */}
+      {allOk && checked.at && returnTo && <ReturnWhenReady to={returnTo} />}
+
+      {allOk && checked.at && !returnTo && (
         <div className={line}>
           <span className={ds.chip.positive}>준비됨</span>
           <span className="text-body text-ink">이 PC에서 청구 화면을 쓸 수 있어요.</span>

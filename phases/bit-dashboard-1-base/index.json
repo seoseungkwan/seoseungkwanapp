@@ -1,0 +1,18 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "bit-dashboard-1-base",
+  "steps": [
+    {
+      "step": 0,
+      "name": "error-text",
+      "status": "completed",
+      "summary": "TASK-1. E-BIT-DATA-UNSURE·E-BIT-IN-USE를 더하고 E-HELPER-OLD 문구를 바꿈"
+    },
+    {
+      "step": 1,
+      "name": "helper-version",
+      "status": "completed",
+      "summary": "TASK-2. 도우미·MIN_HELPER·LATEST_HELPER를 0.2.0으로. 버전 글자를 적어 둔 시험 값 변경"
+    }
+  ]
+}

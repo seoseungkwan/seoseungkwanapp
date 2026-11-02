@@ -4,6 +4,7 @@ import { addDays } from '@/lib/analytics/dates'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
 import {
   DEFAULT_PERIOD,
+  longDate,
   PERIODS,
   periodRange,
   reportSentence,
@@ -296,5 +297,54 @@ describe('reportSentence — 원장님 보고 문장', () => {
     const s = reportSentence(todayView(TODAY, [today, day(LAST_WEEK)]))
     expect(s?.full).not.toContain('홍길동')
     expect(s?.full).not.toContain('MM042')
+  })
+})
+
+// 날짜 고르기 (bit-dashboard REQ-605, design.md '### 날짜 고르기'): 지난 날짜도 todayView를 그대로 쓰고 문장의 "오늘"만 dayLabel로 바꾼다
+describe('reportSentence — 지난 날짜', () => {
+  const SATURDAY = '2026-10-31'
+  const WEEK_BEFORE = '2026-10-24'
+  const LABEL = '10월 31일'
+
+  it('AC-605.2: "{월}월 {일}일 환자 N명이 왔습니다."로 시작하고 "오늘" 글자가 없다. 7일 전 자료가 있으면 "지난주 X요일보다 …"가 붙는다', () => {
+    const days = [day(SATURDAY, { newPatients: 4, returning: 9 }), day(WEEK_BEFORE)]
+    expect(reportSentence(todayView(SATURDAY, days), LABEL)).toEqual({
+      first: '10월 31일 환자 13명이 왔습니다.',
+      rest: '신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.',
+      full: '10월 31일 환자 13명이 왔습니다. 신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.',
+    })
+  })
+
+  it('AC-605.2: 7일 전보다 적거나 같으면 그대로 말한다', () => {
+    const fewer = [day(SATURDAY, { newPatients: 1, returning: 2 }), day(WEEK_BEFORE)]
+    expect(reportSentence(todayView(SATURDAY, fewer), LABEL)?.rest).toBe('신환 1명, 재진 2명입니다. 지난주 토요일보다 7명 적습니다.')
+    const same = [day(SATURDAY), day(WEEK_BEFORE)]
+    expect(reportSentence(todayView(SATURDAY, same), LABEL)?.rest).toBe('신환 2명, 재진 8명입니다. 지난주 토요일과 같습니다.')
+  })
+
+  it('AC-605.2: 7일 전 자료가 없으면 비교 문장이 없다', () => {
+    const s = reportSentence(todayView(SATURDAY, [day(SATURDAY)]), LABEL)
+    expect(s?.full).toBe('10월 31일 환자 10명이 왔습니다. 신환 2명, 재진 8명입니다.')
+  })
+
+  it('AC-605.2: 저장 숫자에 덜 끝난 표시가 남은 지난 날도 "오늘 지금까지"라고 하지 않는다', () => {
+    const s = reportSentence(todayView(SATURDAY, [day(SATURDAY, { partial: true }), day(WEEK_BEFORE)]), LABEL)
+    expect(s?.full).toBe('10월 31일 환자 10명이 왔습니다. 신환 2명, 재진 8명입니다.')
+  })
+
+  it('AC-605.4: 그 날 줄이 없으면 문장이 없다', () => {
+    expect(reportSentence(todayView(SATURDAY, [day(WEEK_BEFORE)]), LABEL)).toBeNull()
+  })
+
+  it('AC-605.2: dayLabel이 없으면 지금처럼 "오늘"로 시작한다', () => {
+    const closed = reportSentence(todayView(SATURDAY, [day(SATURDAY)]))
+    expect(closed?.first).toBe('오늘 환자 10명이 왔습니다.')
+    const open = reportSentence(todayView(SATURDAY, [day(SATURDAY, { partial: true })]))
+    expect(open?.first).toBe('오늘 지금까지 환자 10명이 왔습니다.')
+  })
+
+  it('AC-605.2: longDate는 앞 0 없이 "{월}월 {일}일"이다', () => {
+    expect(longDate('2026-10-05')).toBe('10월 5일')
+    expect(longDate('2027-01-31')).toBe('1월 31일')
   })
 })

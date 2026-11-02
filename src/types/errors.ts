@@ -20,5 +20,7 @@ export type ErrorCode =
   | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
   // 업무일지(specs/worklog)
   | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
+  // 비트 대시보드(spec bit-dashboard)
+  | 'E-BIT-DATA-UNSURE' | 'E-BIT-IN-USE'
 
 export type ErrorInfo = { what: string; fix: string }

@@ -68,7 +68,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   },
   'E-HELPER-OLD': {
     what: '도우미를 업데이트하세요',
-    fix: '이 PC의 도우미가 예전 버전이라 청구 화면을 쓸 수 없어요. 고치던 메모는 이 PC에 그대로 있어요.',
+    fix: '이 PC의 도우미가 예전 버전이라 대시보드 숫자와 청구 화면을 쓸 수 없어요. 고치던 메모는 이 PC에 그대로 있어요.',
   },
   'E-EXT-OLD': {
     what: '확장을 업데이트하세요',
@@ -149,6 +149,14 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   'E-STATS-TOO-BIG': {
     what: '고른 기간의 진료 기록이 너무 많아요',
     fix: '기간을 줄여 다시 불러오세요',
+  },
+  'E-BIT-DATA-UNSURE': {
+    what: '비트 자료로 신환을 확정할 수 없어요',
+    fix: '비트에 차트번호 없는 접수나 중복 접수가 있는지 확인하고, 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-BIT-IN-USE': {
+    what: '다른 창이 비트 자료를 쓰고 있어요',
+    fix: '한 번에 한 창만 비트를 읽을 수 있어요. 그 창의 일이 끝나거나 창을 닫은 뒤 [다시 확인]을 눌러 주세요.',
   },
   // Worker가 정하는 번호다(도우미는 보내지 않는다). E-BRIDGE-BAD-REPLY는 도우미를 업데이트하라는 말이라 이 경우에 맞지 않는다
   'E-STATS-CHANGED': {

@@ -10,7 +10,7 @@ import { ReadyNowRow, ReadyNowSide } from './ReadyNow'
 import { StickyConnect } from './StickyConnect'
 
 // 대시보드 짜임 — 1안 오늘 브리핑 (tab-frame REQ-306·REQ-316, ui-90 REQ-414, design.md '대시보드 (TASK-11)', 시안 docs/mockups/ui-90/app/gen.py dash_body).
-// 서버 컴포넌트. 자료를 읽지 않고 연결 상태도 판정하지 않는다: report 하나로 모양을 안다(report != null이면 연결 뒤).
+// 훅이 없는 부품이다(BitDashboard 안에서 그려진다). 자료를 읽지 않고 연결 상태도 판정하지 않는다: report 하나로 모양을 안다(report != null이면 연결 뒤).
 //   report null·undefined = 연결 전: 큰 문장 · 연결 순서 · "연결하면 바로 쓸 수 있어요" 한 줄 · 휴대폰 아래 단추
 //   report 있음 = 연결 뒤: 큰 문장 자리에 report를 그대로(h1은 report 안), 오른쪽 칸에 지금 바로 묶음
 // analysis(오늘 하루 분석 + 기간별 흐름)는 갈래 라 몫이라 무엇이 오는지 모르고 받은 그대로 둔다. 무엇을 넘길지는 페이지 조립(TASK-9)이 정한다.
@@ -22,6 +22,8 @@ export type DashboardHomeProps = {
   report: ReactNode | null
   /** 오늘 하루 분석 + 기간별 흐름(갈래 라) */
   analysis?: ReactNode
+  /** 주면 날짜 글자 대신 그린다(숫자를 읽은 뒤의 날짜 고르기, bit-dashboard AC-605.1) */
+  dateLine?: ReactNode
 }
 
 // 휴대폰 아래 단추(StickyConnect)가 이 id로 위 주 단추를 지켜본다
@@ -59,7 +61,7 @@ function BigSentence() {
         아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 자리에 오늘의 보고 문장이 올라와요.
       </p>
       <div className="mt-6 max-md:mt-5">
-        <Link id={CONNECT_ID} href="/claim/setup" className={`${ds.button.primaryLarge} group no-underline ${PRESS} max-md:w-full`}>
+        <Link id={CONNECT_ID} href="/claim/setup?next=dashboard" className={`${ds.button.primaryLarge} group no-underline ${PRESS} max-md:w-full`}>
           비트 PC 연결 시작
           <Icon name="arrow" size={16} className={ARROW_MOVE} />
         </Link>
@@ -73,7 +75,7 @@ function BigSentence() {
   )
 }
 
-export function DashboardHome({ today, report, analysis }: DashboardHomeProps) {
+export function DashboardHome({ today, report, analysis, dateLine: dateControl }: DashboardHomeProps) {
   // undefined도 연결 전이다(tab-frame 남은 일)
   const connected = report != null
   return (
@@ -82,7 +84,7 @@ export function DashboardHome({ today, report, analysis }: DashboardHomeProps) {
       {/* 브리핑: 1024px 이상 12칸(왼쪽 1~7 · 오른쪽 9~12, 위 4). 768~1023px 왼쪽 전체 폭(글 최대 32em) 아래 오른쪽 위 32. 폰은 쌓는다 */}
       <section aria-label="오늘 브리핑" className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6">
         <div className="md:max-lg:max-w-128 lg:col-span-7">
-          <DateLine today={today} />
+          {dateControl ?? <DateLine today={today} />}
           {connected ? report : <BigSentence />}
         </div>
         {connected ? (

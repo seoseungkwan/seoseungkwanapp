@@ -878,6 +878,46 @@ describe('AC-405.3: 규칙 — 불러오기 줄 예외는 LoadBar.tsx 한 파일
   })
 })
 
+// ── bit-dashboard AC-601.17 읽는 표시 예외 (design.md '결정', UI_GUIDE '움직임 › 비트 읽는 표시'): 움직임은 globals.css의 .bit-read-bar·.bit-read-spin 둘뿐이다.
+// Tailwind animate-* 금지는 ReadStatus.tsx를 포함해 그대로다. 윈도우에서도 돌도록 경로 글자를 / 로 맞춘다
+describe('AC-601.17: 규칙 — 움직이는 표시 예외는 ReadStatus.tsx의 클래스 이름 둘뿐이고 animate-*는 그대로 막는다', () => {
+  const READ_STATUS = 'src/components/dashboard/live/ReadStatus.tsx'
+  const GLOBALS_CSS = 'src/app/globals.css'
+  const srcFiles = () =>
+    walk('src')
+      .map((file) => file.replace(/\\/g, '/'))
+      .filter((file) => /\.(?:tsx?|css)$/.test(file) && !/\.test\.tsx?$/.test(file))
+
+  it('AC-601.17: .bit-read-* 클래스를 쓰는 앱 소스는 ReadStatus.tsx 하나이고, 이름은 둘뿐이다', () => {
+    const users = srcFiles().filter((file) => file !== GLOBALS_CSS && /bit-read/.test(code(file)))
+    expect(users).toEqual([READ_STATUS])
+    const names = new Set(stringPieces(READ_STATUS).flatMap(tokens).filter((t) => t.includes('bit-read')))
+    expect([...names].sort()).toEqual(['bit-read-bar', 'bit-read-spin'])
+  })
+
+  it('AC-601.17: @keyframes·animation 선언은 src/에서 globals.css에만 있다', () => {
+    const users = srcFiles().filter((file) => /@keyframes|\banimation(?:-[\w-]+)?\s*:/.test(code(file)))
+    expect(users).toEqual([GLOBALS_CSS])
+  })
+
+  it.each(['animate-spin', 'animate-pulse', 'animate-bit-read-bar', 'motion-safe:animate-spin', 'hover:animate-spin', '!animate-spin'])(
+    'AC-601.17: ReadStatus.tsx에서도 %s는 그대로 잡는다',
+    (bad) => {
+      expect(fileBreaksIn(READ_STATUS, bad).length, bad).toBeGreaterThan(0)
+    },
+  )
+
+  it('AC-601.17: ReadStatus.tsx의 클래스 글자가 규칙을 지키고, 규칙 예외 목록에 들지 않는다', () => {
+    expect(stringPieces(READ_STATUS).flatMap((piece) => fileBreaksIn(READ_STATUS, piece))).toEqual([])
+    expect(RULE_EXCEPTIONS[READ_STATUS]).toBeUndefined()
+  })
+
+  it('AC-601.17: 두 이름은 시안의 도는 원을 rounded-full이나 overflow-hidden 없이 그린다(그 값은 globals.css에만 있다)', () => {
+    const used = stringPieces(READ_STATUS).flatMap(tokens)
+    for (const banned of ['rounded-full', 'overflow-hidden']) expect(used, banned).not.toContain(banned)
+  })
+})
+
 // ── AC-407.1 대비 (ui-90 REQ-407, UI_GUIDE '대비'): 글자색 text-faint를 규칙 시험이 잡는다. 차트 표시 bg-faint는 그대로 된다
 describe('AC-407.1: 규칙 — 글자색 text-faint(변형 앞말 포함)를 잡고 bg-faint는 통과한다', () => {
   it.each(['text-faint', 'hover:text-faint', 'max-md:text-faint', 'group-hover:text-faint', 'not-disabled:hover:text-faint', 'text-faint/60', '!text-faint'])(

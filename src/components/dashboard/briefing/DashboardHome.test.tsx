@@ -159,6 +159,25 @@ describe('DashboardHome: 날짜 줄 (AC-306.1)', () => {
   })
 })
 
+describe('DashboardHome: 날짜 줄 자리 (bit-dashboard AC-605.1·AC-605.7)', () => {
+  const control = <div data-testid="date-control">가짜 날짜 고르기</div>
+
+  it('AC-605.1: dateLine을 주면 날짜 글자 대신 그 자리(왼쪽 칸 맨 위)에 그린다', () => {
+    render(<DashboardHome today={TODAY} report={report} analysis={analysis} dateLine={control} />)
+    expect(dateLineEl()).toBe(screen.getByTestId('date-control'))
+    expect(screen.queryByText('10월 31일 토요일')).toBeNull()
+    expect(screen.queryByText(/이번 달 마지막 날/)).toBeNull()
+    expectOrder(screen.getByTestId('date-control'), screen.getByRole('heading', { level: 1 }))
+  })
+
+  it('AC-605.7: dateLine이 없으면 지금처럼 날짜 글자다', () => {
+    forBoth(() => {
+      expect(dateLineEl().tagName.toLowerCase()).toBe('p')
+      expect(textOf(dateLineEl())).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    })
+  })
+})
+
 describe('DashboardHome: 연결 전 큰 문장 (AC-306.2·AC-414.1)', () => {
   it('AC-306.2·AC-414.1: 화면의 h1은 큰 문장 하나 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" — display-m 600(폰 heading-m), text-balance', () => {
     const container = renderBefore()
@@ -180,10 +199,10 @@ describe('DashboardHome: 연결 전 큰 문장 (AC-306.2·AC-414.1)', () => {
     expect(left.contains(mainLink())).toBe(true)
   })
 
-  it('AC-306.2: [비트 PC 연결 시작]은 /claim/setup 링크, ds.button.primaryLarge + 오른쪽 꾸밈 arrow 16, 폰 전체 폭', () => {
+  it('AC-306.2·AC-603.1: [비트 PC 연결 시작]은 /claim/setup?next=dashboard 링크, ds.button.primaryLarge + 오른쪽 꾸밈 arrow 16, 폰 전체 폭', () => {
     renderBefore()
     const link = mainLink()
-    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.getAttribute('href')).toBe('/claim/setup?next=dashboard')
     expect(textOf(link)).toBe('비트 PC 연결 시작')
     hasAll(link, `${ds.button.primaryLarge} group max-md:w-full`)
     expect(link.id).toBe('dashboard-connect-start') // 휴대폰 아래 단추가 이 id로 지켜본다
