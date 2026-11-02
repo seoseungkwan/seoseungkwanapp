@@ -27,7 +27,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     fix: '① 환자별 소모 통계가 맞나요 ② 보안 프로그램·암호로 잠긴 파일인가요 ③ CSV로 다시 뽑아 보세요',
   },
   'E-ANALYZE-TIMEOUT': {
-    what: '계산이 30초 넘게 걸려 멈췄어요',
+    what: '계산이 너무 오래 걸려 멈췄어요',
     fix: '다시 시도하거나 기간을 줄여 보세요',
   },
   'E-ANALYZE-FAILED': {
@@ -148,7 +148,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   },
   'E-STATS-READ-FAILED': {
     what: '저장된 통계를 읽지 못했어요',
-    fix: '잠시 뒤 [다시 읽기]를 눌러 주세요',
+    fix: '잠시 뒤 [다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.',
   },
   // AI 리포트(spec ai-report design.md '오류 문구'). 서버 경로·ai:try는 번호만 주고 문구는 여기서 꺼낸다
   'E-AI-BUSY': {

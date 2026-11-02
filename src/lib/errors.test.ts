@@ -309,8 +309,20 @@ describe('AC-507.1·AC-507.2 통계 저장·읽기 오류 번호', () => {
   it('AC-507.2: E-STATS-READ-FAILED는 읽지 못했다고 알리고 [다시 읽기]를 안내한다', () => {
     expect(errorInfo('E-STATS-READ-FAILED')).toEqual({
       what: '저장된 통계를 읽지 못했어요',
-      fix: '잠시 뒤 [다시 읽기]를 눌러 주세요',
+      fix: '잠시 뒤 [다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.',
     })
+  })
+
+  it('AC-507.4: E-STATS-READ-FAILED의 fix는 계속되면 오류 번호를 알리라고 하고 what은 그대로다', () => {
+    expect(errorInfo('E-STATS-READ-FAILED').what).toBe('저장된 통계를 읽지 못했어요')
+    expect(errorInfo('E-STATS-READ-FAILED').fix).toBe(
+      '잠시 뒤 [다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.',
+    )
+  })
+
+  it('AC-507.4: E-ANALYZE-TIMEOUT의 what에는 시간을 적지 않고 fix는 그대로다', () => {
+    expect(errorInfo('E-ANALYZE-TIMEOUT').what).toBe('계산이 너무 오래 걸려 멈췄어요')
+    expect(errorInfo('E-ANALYZE-TIMEOUT').fix).toBe('다시 시도하거나 기간을 줄여 보세요')
   })
 })
 
