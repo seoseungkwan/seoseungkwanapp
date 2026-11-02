@@ -15,6 +15,7 @@ namespace Precheck.Core.Input;
 /// 그 기록은 저장을 확인해야만(또는 칸이 비어 처음처럼 입력해 확인해야만) 풀린다. 그 전에는 건너뛰지 않고 묶음을 멈춘다.
 /// 또 하나의 푸는 길이 직접 확인(item.CheckedByHand, AC-035.5)이다. [확인] 뒤 그 사람은 쓰다 멈춘 사람으로 보지 않고 비교대로 하되, 완료로 끝나지도 칸에 글을 남기지도 않으면 SkippedByHand를 남긴다.
 /// 빠질 자리의 그런 사람(풀 사람, AC-035.8)은 줄을 열지도 쓰지도 않고 [확인] 뒤 SkippedByHand만 남긴다.
+/// 조회 모드 안내창을 눌러 연 진료(AC-036.5)는 칸이 입력을 받지 않아도 아무것도 쓰이지 않은 것이라 그 사람만 확인 필요로 두고 다음 사람으로 간다. 쓰다 멈춘 사람이면 저장 안 된 글이 남았을 수 있어 멈춘다.
 /// </summary>
 public sealed class InputRunner
 {
@@ -49,6 +50,9 @@ public sealed class InputRunner
     // 이 도우미에서 더한 문구: 전에 쓰다 멈췄는데 칸 글이 다르다. 덮어쓰지도, 남의 메모로 보고 넘어가지도 않는다
     private const string CheckMemoBox = "이전 입력이 끝나지 않았고 메모 칸 내용이 입력할 글과 다릅니다. 이 환자의 청구메모 칸을 직접 확인해 주세요.";
 
+    // 이 도우미에서 더한 문구: 조회 모드로 열린 진료의 칸이 글을 받지 않았다(AC-036.5)
+    private const string NotAccepted = "메모 칸이 입력을 받지 않아 입력하지 못했습니다";
+
     private readonly IChartUi ui;
     private readonly IInputConfirm confirm;
     private readonly IInputProgress progress;
@@ -66,11 +70,11 @@ public sealed class InputRunner
         this.stopRequested = stopRequested ?? throw new ArgumentNullException(nameof(stopRequested));
     }
 
-    /// <summary>묶음을 돈다. 묶음 검사가 틀리면 HelperException(E-HELPER-BAD-MESSAGE).</summary>
-    public InputOutcome Run(IReadOnlyList<InputItem> items, HospitalRegistration registration)
+    /// <summary>묶음을 돈다. 묶음이나 고른 처방코드 검사가 틀리면 HelperException(E-HELPER-BAD-MESSAGE).</summary>
+    public InputOutcome Run(IReadOnlyList<InputItem> items, HospitalRegistration registration, string? code = null)
     {
         if (items == null) throw new ArgumentNullException(nameof(items));
-        return Run(InputBatch.Plain(items), registration);
+        return Run(InputBatch.Plain(items, code), registration);
     }
 
     /// <summary>처리기가 다듬은 묶음을 돈다: 열 사람, 미리 뺀 사람, 풀 사람, 묻는 글. 미리 뺀 사람의 줄은 어떻게 끝났는지에 따라 여기서 더한다.</summary>
@@ -85,9 +89,10 @@ public sealed class InputRunner
 
         // 풀 사람만 있으면 빈 묶음이라 이 검사에 들어가지 않는다(받은 그대로의 검사는 처리기 맨 앞에서 끝났다)
         if (items.Count > 0 || batch.Released.Count == 0) BatchCheck.Validate(items);
+        BatchCheck.ValidateCode(batch.Code);
 
         if (stopRequested()) return NotConfirmed(batch);
-        var text = InputPrompt.Build(items, registration, batch.Excluded.Count, batch.Released.Count, batch.AckRecords != null);
+        var text = InputPrompt.Build(items, registration, batch.Excluded.Count, batch.Released.Count, batch.AckRecords != null, batch.Code);
         var answer = confirm.Ask(text, ConfirmTimeout, stopRequested);
         if (!answer || stopRequested()) return NotConfirmed(batch);
 
@@ -124,7 +129,7 @@ public sealed class InputRunner
         Person PersonOf(InputItem item) => new Person { EarlierWrite = earlierWrites.Contains(item.VisitKey), CheckedByHand = item.CheckedByHand };
 
         var results = new List<InputResult>(items.Count);
-        stop = stop ?? CheckListPeriod(items);
+        stop = stop ?? CheckListPeriod(items, batch.Code);
         var failureRun = 0;
 
         if (stop == null)
@@ -247,11 +252,11 @@ public sealed class InputRunner
         return null;
     }
 
-    private BatchStop? CheckListPeriod(IReadOnlyList<InputItem> items)
+    private BatchStop? CheckListPeriod(IReadOnlyList<InputItem> items, string? code)
     {
         try
         {
-            var problem = ChartRules.ListProblem(ui.ReadListFilter(), items);
+            var problem = ChartRules.ListProblem(ui.ReadListFilter(), items, code);
             return problem == null ? null : new BatchStop(InputErrors.Stopped, problem);
         }
         catch (Exception e) when (e is not OutOfMemoryException)
@@ -329,6 +334,7 @@ public sealed class InputRunner
                 if (ChartRules.IsFatalOpenMessage(opened.Message)) throw Stop(InputErrors.Stopped, opened.Message);
                 return SkipUnlessEarlierWrite(item, opened.Message, person);
         }
+        person.ViewMode = opened.ViewMode;
 
         var located = ui.Locate();
         if (!located.Ok)
@@ -346,7 +352,7 @@ public sealed class InputRunner
         var match = matcher.Compare(item.Memo, existing);
         if (person.EarlierWrite)
         {
-            if (match == MemoMatch.Same) return FinishEarlierWrite(item);
+            if (match == MemoMatch.Same) return FinishEarlierWrite(item, person);
             if (match == MemoMatch.Different) throw StopAfterWrite(item, CheckMemoBox);
         }
         switch (match)
@@ -372,7 +378,12 @@ public sealed class InputRunner
     /// </summary>
     private InputResult WriteMemo(InputItem item, string existing, Person person)
     {
-        if (!ui.IsMemoEditable()) return SkipUnlessEarlierWrite(item, NotEditable, person);
+        if (!ui.IsMemoEditable())
+        {
+            if (!person.ViewMode) return SkipUnlessEarlierWrite(item, NotEditable, person);
+            if (person.EarlierWrite) throw StopAfterWrite(item, WriteUnknown);
+            return new InputResult(item.VisitKey, InputResults.Check, NotAccepted);
+        }
 
         var failure = CheckTarget(item);
         if (failure != null) return SkipUnlessEarlierWrite(item, failure + " (입력 직전 화면이 바뀜)", person);
@@ -396,8 +407,10 @@ public sealed class InputRunner
                 person.NothingLeft = true;
                 return Skip(item, NothingEntered);
             case MemoWrite.WrittenDifferent:
-                // 다시 읽어 쓰기 전과 같으면 칸에 우리 글이 남지 않았다. 못 읽으면 같음으로 치지 않는다(AC-035.5)
-                if (person.CheckedByHand && MemoApproval.Matches(ui.ReadMemo(), existing)) person.NothingLeft = true;
+                // 다시 읽어 쓰기 전과 같으면 칸에 우리 글이 남지 않았다. 못 읽으면 같음으로 치지 않는다(AC-035.5·AC-036.5)
+                if ((person.CheckedByHand || person.ViewMode) && MemoApproval.Matches(ui.ReadMemo(), existing)) person.NothingLeft = true;
+                // 조회 모드로 열려 아무것도 쓰이지 않았으면 그 사람만 확인 필요다. 쓰다 멈춘 사람은 전에 남은 글을 모르니 멈춘다(AC-036.5)
+                if (person.ViewMode && person.NothingLeft && !person.EarlierWrite) return new InputResult(item.VisitKey, InputResults.Check, NotAccepted);
                 throw StopAfterWrite(item, WriteNotConfirmed);
         }
 
@@ -407,9 +420,11 @@ public sealed class InputRunner
     /// <summary>
     /// 전에 쓰다 멈췄고 칸 글이 우리 글과 같다: 저장됐는지 모르니 '이미 입력됨'으로 끝내지 않고 저장을 눌러 다시 읽는다. 다시 쓰지는 않는다.
     /// 기록은 이미 쓰다 멈춤이라 도중에 끝나도 다음 실행이 다시 여기로 온다. 시작한 사람은 끝까지 하므로 멈춤 신호를 보지 않는다(AC-017.9).
+    /// 조회 모드로 열린 칸이 편집 불가면 저장을 눌러도 저장됐다고 볼 수 없어 누르지 않고 멈춘다(AC-036.5).
     /// </summary>
-    private InputResult FinishEarlierWrite(InputItem item)
+    private InputResult FinishEarlierWrite(InputItem item, Person person)
     {
+        if (person.ViewMode && !ui.IsMemoEditable()) throw StopAfterWrite(item, WriteUnknown);
         if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
         return SaveAndConfirm(item, ChartRules.ToWin(item.Memo));
     }
@@ -460,8 +475,11 @@ public sealed class InputRunner
         /// <summary>원본 res.review: 기존 메모 때문에 건너뜀. 이것만으로 3번 실패 멈춤을 일으키지 않는다.</summary>
         public bool Review;
 
+        /// <summary>이 사람을 여는 동안 조회 모드 안내창을 눌렀다(AC-036.4·AC-036.5).</summary>
+        public bool ViewMode;
+
         /// <summary>확인 필요로 끝나면 우리 글이 칸에 남았을 수 있는 사람.</summary>
-        public bool Unconfirmed => EarlierWrite || WriteStarted;
+        public bool Unconfirmed => EarlierWrite || (WriteStarted && !NothingLeft);
     }
 
     private sealed class BatchStop

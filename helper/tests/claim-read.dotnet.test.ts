@@ -50,4 +50,8 @@ describe('REQ-008 한 달 자료·12개월 이력 읽기 (C# Precheck.Core.Tests
   it('AC-008.5 claim.dates → result {days: [{date, visits, memoInBit}]} 숫자만, 진료 0건인 날은 뺌, 원본 방문 조건으로 셈', () => {
     expectAc('AC-008.5')
   })
+
+  it('AC-008.6 47 표의 처방코드·처방명칭·차트번호·처방일자·급여구분(급/비도 같은 칸)은 필수, 수량만 없어도 된다', () => {
+    expectAc('AC-008.6')
+  })
 })

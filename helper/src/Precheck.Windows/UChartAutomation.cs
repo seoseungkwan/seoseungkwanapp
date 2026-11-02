@@ -23,7 +23,9 @@ namespace Precheck.Windows;
 /// · 칸 찾기: 원본 FindByIds는 첫 칸을 썼다. 지문 칸은 Locate의 Pick 규칙(하나, 또는 보이는 것 하나)으로 찾는다(AC-017.4). 나머지(dtpFrom 등)는 원본처럼 첫 칸.
 /// · 메모 읽기: 원본 GetText는 시간 지남을 빈칸으로 돌려줬다. ReadMemo는 null이다(빈칸으로 보고 쓰지 않게).
 /// · DPI: 원본은 다리 프로세스 전체를 Per-Monitor V2로 켰다. 도우미는 비트 화면 DLL도 같은 프로세스에 띄우므로 이 스레드만 켜고 Dispose에서 되돌린다.
-/// · 조회모드 안내창('다른 사용자가 사용중'): 원본 파이썬 중계가 자동으로 눌렀다. 옮기지 않았다(명세에 없음). 사람이 누르거나 90초 뒤 그 사람을 건너뛴다.
+/// · 조회모드 안내창('다른 사용자가 사용중'): 원본 파이썬 중계처럼 환자를 여는 동안만 ViewModeNotices가 눌러 준다(AC-036.4). 누른 일은 OpenPatient 결과의 ViewMode로 알린다(AC-036.5).
+/// · 메모 칸 편집 가능 여부: 원본은 켜짐(IsWindowEnabled)만 봤다. 읽기 전용 칸에도 EM_REPLACESEL은 들어가므로 읽기 전용도 편집 불가로 본다(AC-036.5).
+/// · 제외 체크: 메시지가 실패하면 꺼짐이 아니라 못 읽음(null)이다(AC-036.2).
 /// 진단 기록·예외에 환자 글자를 남기지 않는다(AC-001.6).
 /// </summary>
 public sealed class UChartAutomation : IChartUi, IVisitRowScreen
@@ -86,6 +88,8 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
     private const uint BM_CLICK = 245u;
     private const uint BM_GETCHECK = 240u;
     private const uint SMTO_ABORTIFHUNG = 2u;
+    private const int GWL_STYLE = -16;
+    private const int ES_READONLY = 0x0800;
     private const int MaxTextLength = 50000;
 
     /// <summary>DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2(원본 InitDpi).</summary>
@@ -94,6 +98,10 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
     private readonly UIA3Automation _uia;
     private readonly NativeTarget target;
     private readonly IWaitClock clock = new SystemWaitClock();
+
+    /// <summary>이 개체는 묶음마다 하나다(InputCommands): 첫 사람 앞에서만 목록을 기다린다(AC-036.6).</summary>
+    private readonly FirstListWait listWait = new FirstListWait();
+
     private readonly nint previousDpi;
     private Ctl? ctl;
     private nint grid;
@@ -377,14 +385,31 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
 
     private static string? TextOfFirst(List<nint> list) => list.Count == 0 ? null : GetText(list[0]);
 
-    private static bool IsChecked(nint h)
+    /// <summary>체크 칸 값. 메시지가 실패하거나 시간이 지나면 null: 꺼짐으로 보지 않는다(AC-036.2).</summary>
+    private static bool? IsChecked(nint h)
     {
-        SendMessageTimeout(h, BM_GETCHECK, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000u, out var result);
+        if (SendMessageTimeout(h, BM_GETCHECK, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000u, out var result) == IntPtr.Zero) return null;
         return ((IntPtr)result).ToInt64() == 1;
     }
 
-    /// <summary>원본 OpenPatientRange: 내원내역에서 차트번호로 찾아 그 진료일의 내원을 연다. 줄 고리는 Core VisitOpener.</summary>
+    /// <summary>환자를 여는 동안만 조회 모드 안내창을 본다(AC-036.4). 눌렀으면 결과에 표시한다(AC-036.5).</summary>
     public ChartOpenResult OpenPatient(string expChart, string expName, string expDate)
+    {
+        var notices = ViewModeNotices.Watch(target);
+        ChartOpenResult opened;
+        try
+        {
+            opened = OpenRange(expChart, expName, expDate);
+        }
+        finally
+        {
+            notices.Dispose();
+        }
+        return notices.Pressed > 0 ? opened.InViewMode() : opened;
+    }
+
+    /// <summary>원본 OpenPatientRange: 내원내역에서 차트번호로 찾아 그 진료일의 내원을 연다. 줄 고리는 Core VisitOpener.</summary>
+    private ChartOpenResult OpenRange(string expChart, string expName, string expDate)
     {
         var started = clock.NowMs;
         var located = Locate();
@@ -460,7 +485,7 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
         var position = Mouse.Position;
         try
         {
-            return VisitOpener.OpenRows(this, clock, started, rows.Value, ChartRules.FullyVisibleRows(rect.Top, rect.Bottom, dpi), expChart, expName, expDate);
+            return VisitOpener.OpenRows(this, clock, started, rows.Value, ChartRules.FullyVisibleRows(rect.Top, rect.Bottom, dpi), expChart, expName, expDate, listWait);
         }
         finally
         {
@@ -570,7 +595,11 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
         return c == null ? null : TryGetText(c.Memo);
     }
 
-    public bool IsMemoEditable() => IsWindowEnabled(Located().Memo);
+    public bool IsMemoEditable()
+    {
+        var memo = Located().Memo;
+        return IsWindowEnabled(memo) && (GetWindowLong(memo, GWL_STYLE) & ES_READONLY) == 0;
+    }
 
     public void SelectAllMemo() => SendMessageTimeout(Located().Memo, EM_SETSEL, IntPtr.Zero, -1, SMTO_ABORTIFHUNG, 1000u, out _);
 
@@ -652,6 +681,9 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowEnabled(nint h);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong(nint h, int index);
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(nint h, uint msg, nint w, nint l);

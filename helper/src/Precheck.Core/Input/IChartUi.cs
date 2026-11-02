@@ -61,16 +61,23 @@ public sealed class ChartOpenResult
 {
     private static readonly string[] NoFields = new string[0];
 
-    private ChartOpenResult(ChartOpenKind kind, string message, IReadOnlyList<string> fields)
+    private ChartOpenResult(ChartOpenKind kind, string message, IReadOnlyList<string> fields, bool viewMode = false)
     {
         Kind = kind;
         Message = message ?? "";
         Fields = fields;
+        ViewMode = viewMode;
     }
 
     public ChartOpenKind Kind { get; }
     public string Message { get; }
     public IReadOnlyList<string> Fields { get; }
+
+    /// <summary>이 사람을 여는 동안 조회 모드 안내창을 눌렀다(AC-036.4). 메모 칸이 입력을 받지 않으면 그 사람만 확인 필요다(AC-036.5).</summary>
+    public bool ViewMode { get; }
+
+    /// <summary>안내창을 눌렀다는 표시만 더한 복사본.</summary>
+    public ChartOpenResult InViewMode() => new ChartOpenResult(Kind, Message, Fields, true);
 
     public static ChartOpenResult Opened(string message) => new ChartOpenResult(ChartOpenKind.Opened, message, NoFields);
 
@@ -128,7 +135,7 @@ public sealed class ChartRead
     public string? WorkDateError { get; }
 }
 
-/// <summary>내원내역의 조회 기간(원본 range_bridge ListFilter). Code는 처방코드 칸, 칸이 없으면 null.</summary>
+/// <summary>내원내역의 조회 기간(원본 range_bridge ListFilter). Code는 처방코드 칸, 칸이 없으면 null. CodeExcept는 제외 체크, 칸이 없거나 못 읽으면 null(AC-036.2).</summary>
 public sealed class ListFilter
 {
     public ListFilter(string? from, string? to, string? code, bool? codeExcept, string? error)

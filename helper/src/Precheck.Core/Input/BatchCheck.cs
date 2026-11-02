@@ -45,6 +45,9 @@ public static class BatchCheck
 
     private static readonly Regex ChartShape = new Regex(@"^[0-9]{1,20}\z", RegexOptions.CultureInvariant);
 
+    // RxHistoryRead.CodeShape와 같은 허용 목록. 끝은 ChartShape처럼 \z로 맞춘다: C# $는 끝 줄바꿈을 지나게 한다(AC-036.1)
+    private static readonly Regex CodeShape = new Regex(@"^[0-9A-Z][0-9A-Z.-]{0,19}\z", RegexOptions.CultureInvariant);
+
     public static void Validate(IReadOnlyList<InputItem> items)
     {
         if (items == null || items.Count == 0 || items.Count > MaxItems) throw Bad();
@@ -54,6 +57,12 @@ public static class BatchCheck
         {
             if (item == null || !ValidItem(item) || !keys.Add(item.VisitKey) || !visits.Add(VisitOnScreen(item))) throw Bad();
         }
+    }
+
+    /// <summary>고른 처방코드(AC-036.1). 없어도 된다. PC 확인 창이 웹 글을 믿지 않는 자리라(ADR-016) 한글·제어 문자가 창에 닿지 않는다. 도우미는 코드로 진료를 거르지 않는다.</summary>
+    public static void ValidateCode(string? code)
+    {
+        if (code != null && !CodeShape.IsMatch(code)) throw Bad();
     }
 
     // 도우미가 비트 화면에서 가릴 수 있는 것은 차트번호(SamePatient)와 내원일(VisitOpener)까지이고, 둘 다 Digits를 글자 그대로 비교한다(앞자리 0도 다른 번호).

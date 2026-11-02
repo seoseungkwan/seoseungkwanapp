@@ -24,19 +24,60 @@ public sealed class FakeBitCollection
 /// </summary>
 public sealed class FakeBit : IDisposable
 {
-    // C# 5(.NET Framework csc)로 컴파일한다. 한글은 인자로 받는다. mode: normal · no-memo · two-memos · hidden-memo · unsaved · no-workdate
+    // C# 5(.NET Framework csc)로 컴파일한다. 한글은 인자로 받는다.
+    // mode: normal · no-memo · two-memos · hidden-memo · unsaved · no-workdate · view-mode · view-mode-no-confirm · code-filter · read-only-memo · disabled-memo
+    // 대화 상자 단추 글은 윈도우 언어를 따라 'OK'가 되므로 뜬 뒤 단추 글을 바꾼다(MessageBox의 모달 고리 안에서 타이머가 돈다)
     private const string Code = @"
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
 static class FakeBitProgram
 {
+    delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport(""kernel32.dll"")]
+    static extern uint GetCurrentThreadId();
+
+    [DllImport(""user32.dll"")]
+    static extern bool EnumThreadWindows(uint thread, EnumProc callback, IntPtr lParam);
+
+    [DllImport(""user32.dll"")]
+    static extern bool EnumChildWindows(IntPtr parent, EnumProc callback, IntPtr lParam);
+
+    [DllImport(""user32.dll"", CharSet = CharSet.Unicode, EntryPoint = ""GetClassNameW"")]
+    static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+
+    [DllImport(""user32.dll"", CharSet = CharSet.Unicode, EntryPoint = ""SetWindowTextW"")]
+    static extern bool SetWindowText(IntPtr hwnd, string text);
+
+    static string ClassOf(IntPtr hwnd)
+    {
+        var name = new StringBuilder(64);
+        GetClassName(hwnd, name, name.Capacity);
+        return name.ToString();
+    }
+
+    static void RelabelDialogButtons(string label)
+    {
+        EnumThreadWindows(GetCurrentThreadId(), delegate(IntPtr dialog, IntPtr unused)
+        {
+            if (ClassOf(dialog) != ""#32770"") return true;
+            EnumChildWindows(dialog, delegate(IntPtr child, IntPtr unusedChild)
+            {
+                if (ClassOf(child) == ""Button"") SetWindowText(child, label);
+                return true;
+            }, IntPtr.Zero);
+            return true;
+        }, IntPtr.Zero);
+    }
+
     [STAThread]
     static void Main(string[] a)
     {
-        string outpatientTitle = a[0], visitsTitle = a[1], chart = a[2], name = a[3], memo = a[4], work = a[5], from = a[6], to = a[7], mode = a[8], record = a[9], unsaved = a[10];
+        string outpatientTitle = a[0], visitsTitle = a[1], chart = a[2], name = a[3], memo = a[4], work = a[5], from = a[6], to = a[7], mode = a[8], record = a[9], unsaved = a[10], notice = a[12], confirmLabel = a[13], otherLabel = a[14], codeFilter = a[15];
 
         var outpatient = new Form { Text = outpatientTitle, Width = 640, Height = 420, StartPosition = FormStartPosition.Manual, Left = 20, Top = 20 };
         var chartBox = new TextBox { Name = ""txtChtNum"", Text = chart, Left = 10, Top = 10, Width = 200 };
@@ -52,6 +93,8 @@ static class FakeBitProgram
         if (mode != ""no-workdate"") outpatient.Controls.Add(workBox);
         if (mode == ""two-memos"") outpatient.Controls.Add(new TextBox { Name = ""txtBilCmt"", Left = 220, Top = 10, Width = 100 });
         if (mode == ""hidden-memo"") outpatient.Controls.Add(new TextBox { Name = ""txtBilCmt"", Left = 220, Top = 10, Width = 100, Visible = false });
+        if (mode == ""read-only-memo"") memoBox.ReadOnly = true;
+        if (mode == ""disabled-memo"") memoBox.Enabled = false;
 
         var visits = new Form { Text = visitsTitle, Width = 640, Height = 420, StartPosition = FormStartPosition.Manual, Left = 680, Top = 20, ShowInTaskbar = false };
         var combo = new ComboBox { Name = ""cbSch"", DropDownStyle = ComboBoxStyle.DropDownList, Left = 10, Top = 10, Width = 120 };
@@ -64,14 +107,29 @@ static class FakeBitProgram
         visits.Controls.Add(new Panel { Name = ""ctgMain"", Left = 10, Top = 40, Width = 500, Height = 300 });
         visits.Controls.Add(new TextBox { Name = ""dtpFrom"", Text = from, Left = 360, Top = 10, Width = 100 });
         visits.Controls.Add(new TextBox { Name = ""dtpTo"", Text = to, Left = 470, Top = 10, Width = 100 });
+        if (mode == ""code-filter"")
+        {
+            visits.Controls.Add(new TextBox { Name = ""txtOdrCod"", Text = codeFilter, Left = 520, Top = 40, Width = 80 });
+            visits.Controls.Add(new CheckBox { Name = ""chkOdrExcept"", Checked = true, Left = 520, Top = 70, Width = 80 });
+        }
 
         outpatient.Shown += delegate
         {
             visits.Show();
-            if (mode == ""unsaved"")
+            if (mode == ""unsaved"" || mode == ""view-mode"" || mode == ""view-mode-no-confirm"")
             {
+                var label = mode == ""view-mode-no-confirm"" ? otherLabel : confirmLabel;
                 var timer = new Timer { Interval = 200 };
-                timer.Tick += delegate { timer.Stop(); MessageBox.Show(unsaved, ""BIT""); File.WriteAllText(record + "".dialog-closed"", ""x""); };
+                timer.Tick += delegate
+                {
+                    timer.Stop();
+                    var relabel = new Timer { Interval = 50 };
+                    relabel.Tick += delegate { RelabelDialogButtons(label); };
+                    relabel.Start();
+                    MessageBox.Show(mode == ""unsaved"" ? unsaved : notice, ""BIT"");
+                    relabel.Stop();
+                    File.WriteAllText(record + "".dialog-closed"", ""x"");
+                };
                 timer.Start();
             }
         };
@@ -92,6 +150,9 @@ static class FakeBitProgram
     public const string Chart = "900001";
     public const string Name = "가상환자01";
     public const string Date = "2026-10-27";
+
+    /// <summary>code-filter 모드의 처방코드 칸 글.</summary>
+    public const string CodeFilter = "LA358";
 
     public string Root { get; }
 
@@ -115,6 +176,8 @@ static class FakeBitProgram
             "외래진료실 ( " + Name + " 환자정보 )",
             "내원내역 " + from + " ~ " + to + " - 1명",
             Chart, Name, memo, workDate, from, to, mode, record, "저장되지 않은 처방이 있습니다", "차트번호",
+            "[IP:0.0.0.0]FAKE '" + Name + "' 환자는 '접수' 사용자가 'BITDoctorOrder' 에서 현재 사용중입니다. 조회모드로 전환합니다",
+            "확인", "아니요", CodeFilter,
         };
         var process = Process.Start(new ProcessStartInfo(exe, string.Join(" ", arguments.Select(Quote))) { UseShellExecute = false })
             ?? throw new InvalidOperationException("가짜 비트를 띄우지 못했다");

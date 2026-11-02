@@ -31,8 +31,9 @@ internal sealed class InputBatch
     private static readonly InputResult[] NoResults = new InputResult[0];
     private static readonly ReleasedPerson[] NoOne = new ReleasedPerson[0];
 
-    private InputBatch(IReadOnlyList<InputItem> remaining, IReadOnlyList<InputItem> excluded, IReadOnlyList<InputResult> excludedResults, IReadOnlyList<ReleasedPerson> released, Action? ackRecords, InputOutcome? stop)
+    private InputBatch(IReadOnlyList<InputItem> remaining, IReadOnlyList<InputItem> excluded, IReadOnlyList<InputResult> excludedResults, IReadOnlyList<ReleasedPerson> released, Action? ackRecords, InputOutcome? stop, string? code)
     {
+        Code = code;
         Remaining = remaining;
         Excluded = excluded;
         ExcludedResults = excludedResults;
@@ -54,6 +55,9 @@ internal sealed class InputBatch
         public InputResult Line { get; }
     }
 
+    /// <summary>고른 처방코드(AC-036.1). 창 글과 내원내역 칸 확인에만 쓰고 진료를 거르지 않는다.</summary>
+    public string? Code { get; }
+
     /// <summary>확인 창 뒤에 열 사람.</summary>
     public IReadOnlyList<InputItem> Remaining { get; }
 
@@ -72,7 +76,7 @@ internal sealed class InputBatch
     public InputOutcome? Stop { get; }
 
     /// <summary>뺄 사람도 풀 사람도 묻는 글도 없는 묶음.</summary>
-    public static InputBatch Plain(IReadOnlyList<InputItem> items) => new InputBatch(items, NoItems, NoResults, NoOne, null, null);
+    public static InputBatch Plain(IReadOnlyList<InputItem> items, string? code = null) => new InputBatch(items, NoItems, NoResults, NoOne, null, null, code);
 
     /// <summary>미리 뺀 사람의 줄을 더하고 skipped도 남기게 한다.</summary>
     public InputOutcome WithExcluded(InputOutcome outcome) => outcome.WithExcluded(Excluded, ExcludedResults);
@@ -99,7 +103,7 @@ internal sealed class InputBatch
         return counts;
     }
 
-    public static InputBatch Prepare(IReadOnlyList<InputItem> items, IReadOnlyDictionary<string, long> visits, IBatchJournal journal)
+    public static InputBatch Prepare(IReadOnlyList<InputItem> items, IReadOnlyDictionary<string, long> visits, IBatchJournal journal, string? code = null)
     {
         JournalScan scan;
         try
@@ -152,7 +156,7 @@ internal sealed class InputBatch
         if (blocked.Count > 0) return Stopped(StoppedForStuck(items, scan.Stuck, blocked, CannotContinue));
 
         Action? ackRecords = scan.RecordsToAck.Count > 0 ? () => journal.SaveAcks(scan.RecordsToAck) : null;
-        return new InputBatch(remaining, excluded, results, released, ackRecords, null);
+        return new InputBatch(remaining, excluded, results, released, ackRecords, null, code);
     }
 
     /// <summary>입력 기록의 달은 내원일의 달이다: 다른 달의 같은 번호는 이 사람이 아니다(LastState가 그 달 파일만 본다). 날짜는 견주지 않는다: 날짜를 모르는 화면은 그 달 1일로 보낸다(AC-018.16).</summary>
@@ -182,5 +186,5 @@ internal sealed class InputBatch
     private static IReadOnlyList<InputResult> Unopened(IReadOnlyList<InputItem> items) =>
         items.Select(item => new InputResult(item.VisitKey, InputResults.Check, InputRunner.NotDone)).ToList();
 
-    private static InputBatch Stopped(InputOutcome outcome) => new InputBatch(NoItems, NoItems, NoResults, NoOne, null, outcome);
+    private static InputBatch Stopped(InputOutcome outcome) => new InputBatch(NoItems, NoItems, NoResults, NoOne, null, outcome, null);
 }

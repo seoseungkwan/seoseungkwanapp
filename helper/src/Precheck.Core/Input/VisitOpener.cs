@@ -155,6 +155,26 @@ public static class OpenWaiter
 }
 
 /// <summary>
+/// [확인] 뒤 첫 사람 앞에서만 내원내역 목록이 보이기를 기다린다(AC-036.6): 확장이 첫 progress를 받아 크롬 창을 내리는 동안이다(AC-038.1).
+/// 입력 중에 가려진 것은 사람이 무언가를 띄운 것이라 기다리지 않고 멈춘다. 도우미 화면 개체(묶음 하나)마다 하나를 둔다.
+/// </summary>
+public sealed class FirstListWait
+{
+    public const int MaxMs = 3000;
+    public const int EveryMs = 250;
+
+    private bool spent;
+
+    /// <summary>처음 한 번은 기다릴 시간, 그 뒤로는 0.</summary>
+    public int Take()
+    {
+        if (spent) return 0;
+        spent = true;
+        return MaxMs;
+    }
+}
+
+/// <summary>
 /// 원본 vendor/range_bridge RangeAutomation.OpenPatientRange의 줄 고리. 내원내역 날짜는 바꾸지 않는다: 비트 목록 칸은 읽을 수 없어,
 /// 차트번호로 검색된 줄을 위에서부터 차례로 열어 환자와 진료일(dtpWorkDate)이 맞는 줄에서 멈춘다.
 /// </summary>
@@ -164,7 +184,8 @@ public static class VisitOpener
 
     private const string Blocked = "환자 열기를 중단했습니다. 비트의 확인 창이나 미저장 처방을 직접 확인한 뒤 다시 실행해 주세요.";
 
-    public static ChartOpenResult OpenRows(IVisitRowScreen screen, IWaitClock clock, long startedMs, int rows, int fullyVisible, string expChart, string expName, string expDate)
+    /// <param name="firstWait">묶음의 첫 사람 앞 기다리기(AC-036.6). 없으면 기다리지 않는다.</param>
+    public static ChartOpenResult OpenRows(IVisitRowScreen screen, IWaitClock clock, long startedMs, int rows, int fullyVisible, string expChart, string expName, string expDate, FirstListWait? firstWait = null)
     {
         if (screen == null) throw new ArgumentNullException(nameof(screen));
         if (clock == null) throw new ArgumentNullException(nameof(clock));
@@ -175,13 +196,13 @@ public static class VisitOpener
         for (var row = 0; row < rows; row++)
         {
             // 프로그램은 환자 한 명 열기를 180초까지 기다리므로, 150초가 지나면 이 환자만 건너뛴다.
-            // 안내는 따랐을 때 다음 실행이 지나가야 한다(ChartRules.ListProblem): 처방코드 칸에 글자가 있거나, 시작일·종료일이 입력할 날을 다 담지 못하면 시작 전에 멈춘다.
+            // 안내는 따랐을 때 다음 실행이 지나가야 한다(ChartRules.ListProblem): 처방코드 칸이 고른 코드와 다르거나, 시작일·종료일이 입력할 날을 다 담지 못하면 시작 전에 멈춘다.
             // '기간'·'날짜'는 쓰지 않는다: 원본 fatal 낱말이라 이 사람만이 아니라 묶음이 멈춘다(ChartRules.IsFatalOpenMessage).
             if (row > 0 && clock.NowMs - startedMs > MaxPersonMs)
             {
                 return ChartOpenResult.Failed($"검색된 {rows}줄 중 {row}줄을 열어봤지만 시간이 오래 걸려 멈췄습니다({expDate} 내원 못 찾음). 입력할 날이 모두 들어가게 내원내역 시작일·종료일을 좁히거나, 이 환자만 직접 입력해 주세요.");
             }
-            if (!screen.ListPointVisible())
+            if (!ListVisible(screen, clock, row == 0 && firstWait != null ? firstWait.Take() : 0))
             {
                 return ChartOpenResult.Failed("U차트 내원내역 목록이 다른 창에 가려져 있습니다. 목록이 보이게 해 주세요.");
             }
@@ -213,5 +234,17 @@ public static class VisitOpener
         return ChartOpenResult.Failed(tried.Count == 0
             ? $"검색된 {rows}줄을 모두 열어봤지만 이 환자의 {expDate} 내원이 없었습니다. 직접 확인해 주세요."
             : $"검색된 {rows}줄을 모두 열어봤지만 {expDate} 내원이 아니었습니다 (열린 진료일: {string.Join(", ", tried)}). 직접 확인해 주세요.");
+    }
+
+    /// <summary>목록이 보이는가. waitMs가 있으면 그만큼 0.25초마다 다시 본다. 키는 누르지 않는다.</summary>
+    private static bool ListVisible(IVisitRowScreen screen, IWaitClock clock, int waitMs)
+    {
+        var started = clock.NowMs;
+        while (!screen.ListPointVisible())
+        {
+            if (clock.NowMs - started >= waitMs) return false;
+            clock.Sleep(FirstListWait.EveryMs);
+        }
+        return true;
     }
 }

@@ -237,6 +237,20 @@ public class ClaimMonthTests
         Assert.Equal("E-BIT-EXPORT-FAILED", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.month", "2026-10-01", "2026-10-31")));
     }
 
+    [Theory(DisplayName = "AC-008.6 47 표에 처방명칭·급여구분 칸이 없으면 claim.month 전체가 E-BIT-EXPORT-FAILED 하나로 멈춘다")]
+    [InlineData("처방명칭")]
+    [InlineData("급여구분")]
+    public void PrescriptionTableNeedsNameAndPay(string missing)
+    {
+        using var rig = new ClaimRig();
+        var header = rig.Screens.Sheets["47"][0];
+        var column = Array.IndexOf(header, missing);
+        Assert.True(column >= 0);
+        rig.Screens.Sheets["47"] = rig.Screens.Sheets["47"].Select(row => row.Where((_, i) => i != column).ToArray()).ToList();
+
+        Assert.Equal("E-BIT-EXPORT-FAILED", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.month", "2026-10-01", "2026-10-31")));
+    }
+
     public static IEnumerable<object[]> FailingSql()
     {
         yield return new object[] { Sql.HistoryVisitSql };

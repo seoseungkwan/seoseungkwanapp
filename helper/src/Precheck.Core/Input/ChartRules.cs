@@ -94,10 +94,10 @@ public static class ChartRules
     }
 
     /// <summary>
-    /// 원본 runAutoRange의 시작 전 확인: 내원내역 기간이 묶음 기간을 모두 포함해야 한다. 문제가 있으면 원본 문구, 없으면 null.
-    /// 처방코드 칸: 원본은 '입력할 코드와 같거나 비어 있어야' 했다. 우리 묶음에는 코드 하나가 없어 비어 있어야 한다.
+    /// 원본 runAutoRange의 시작 전 확인(13215~13218줄): 내원내역 기간이 묶음 기간을 모두 포함해야 하고, 처방코드 칸은 비었거나 고른 코드와 같아야 한다(대소문자 무시). 문제가 있으면 원본 문구, 없으면 null(AC-036.2).
+    /// 제외 체크는 원본과 다르다(design.md 19-1): 칸이 비어도 켜져 있으면 멈추고, 칸에 글자가 있는데 읽지 못해도 멈춘다. 코드로 거른 목록이 뒤집혀 있으면 찾는 환자가 없어 보인다.
     /// </summary>
-    public static string? ListProblem(ListFilter filter, IReadOnlyList<InputItem> items)
+    public static string? ListProblem(ListFilter filter, IReadOnlyList<InputItem> items, string? code = null)
     {
         if (filter == null) throw new ArgumentNullException(nameof(filter));
         if (items == null) throw new ArgumentNullException(nameof(items));
@@ -114,8 +114,13 @@ public static class ChartRules
             return "기간이 다릅니다.\n\n청구메모: " + first + " ~ " + last + "\nU차트 내원내역: " + filter.From + " ~ " + filter.To
                 + "\n\nU차트 내원내역 기간이 청구메모 기간을 모두 포함하도록 맞춰 주세요.";
         }
-        var code = (filter.Code ?? "").Trim();
-        if (code.Length > 0) return "U차트 내원내역의 처방코드 칸(" + code + ")을 비워 주세요.";
+        var box = (filter.Code ?? "").Trim();
+        if (box.Length > 0 && code == null) return "U차트 내원내역의 처방코드 칸(" + box + ")을 비워 주세요.";
+        if (box.Length > 0 && !string.Equals(box, code, StringComparison.OrdinalIgnoreCase))
+        {
+            return "U차트 내원내역의 처방코드 칸(" + box + ")이 입력할 코드(" + code + ")와 다릅니다. 같은 코드로 맞추거나 비워 주세요.";
+        }
+        if (filter.CodeExcept == true || (box.Length > 0 && filter.CodeExcept == null)) return "U차트 내원내역의 처방 '제외' 체크를 풀어 주세요.";
         return null;
     }
 
@@ -166,6 +171,27 @@ public static class ChartRules
     public static bool ContainsUnsavedPrescription(IEnumerable<string?> labels) =>
         (labels ?? Enumerable.Empty<string?>()).Any(text =>
             new string((text ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray()).IndexOf("저장되지않은처방", StringComparison.Ordinal) >= 0);
+
+    /// <summary>
+    /// 원본 medicore/bit_dialogs.py is_view_mode_notice: 공백을 빼고 '현재사용중입니다'와 '조회모드로전환'이 함께 있는가(AC-036.4).
+    /// 원본에 더한 것: 저장 안 한 처방 글이 든 창은 무슨 글이 함께 있어도 아니다. 그 창은 절대 누르지 않는다(AC-017.5).
+    /// </summary>
+    public static bool IsViewModeNotice(IEnumerable<string?> texts)
+    {
+        var list = (texts ?? Enumerable.Empty<string?>()).ToList();
+        if (ContainsUnsavedPrescription(list)) return false;
+        var joined = Squash(string.Join(" ", list));
+        return joined.IndexOf("현재사용중입니다", StringComparison.Ordinal) >= 0 && joined.IndexOf("조회모드로전환", StringComparison.Ordinal) >= 0;
+    }
+
+    /// <summary>원본 is_confirm_button: 공백과 &amp;를 빼고 '확인'이거나 '확인('으로 시작하는가.</summary>
+    public static bool IsConfirmButton(string? text)
+    {
+        var label = Squash(text).Replace("&", "");
+        return string.Equals(label, "확인", StringComparison.Ordinal) || label.StartsWith("확인(", StringComparison.Ordinal);
+    }
+
+    private static string Squash(string? text) => new string((text ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray());
 
     /// <summary>환자 열기 실패가 원본 fatal인가(멈춤). 아니면 그 사람만 건너뛴다.</summary>
     public static bool IsFatalOpenMessage(string? message) => FatalRx.IsMatch(message ?? "");

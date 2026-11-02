@@ -10,6 +10,7 @@ namespace Precheck.Core.Bit;
 /// 83(증상)은 mx999 build의 ci, 83D(상병내역)는 new-medicore-diagnoses parse의 col, 47(처방내역)은 parseRx의 정규식·quantityColumn.
 /// 원본이 읽는 칸만 남기고(이름은 원본이 찾는 이름으로) 나머지 칸(주민번호·주소·전화·금액 등)은 버린다. 줄은 표 순서 그대로 모두 둔다
 /// (빈 줄·합계 줄은 원본처럼 웹 쪽 모양 만들기가 거른다). 필요한 칸이 없으면 E-BIT-EXPORT-FAILED로 그 명령 전체를 멈춘다.
+/// 47의 필수 칸은 원본 selectWorkbook을 따른다(AC-008.6). 급여구분 칸만 parseRx 정규식보다 좁게 찾는다(RxPay).
 /// </summary>
 public static class GridRows
 {
@@ -55,7 +56,10 @@ public static class GridRows
     private static readonly Regex RxName = new Regex("처방명칭|명칭", RegexOptions.CultureInvariant);
     private static readonly Regex RxChart = new Regex("차트|등록번호", RegexOptions.CultureInvariant);
     private static readonly Regex RxDate = new Regex("처방일자|일자|날짜", RegexOptions.CultureInvariant);
-    private static readonly Regex RxPay = new Regex("급.?비|급여구분", RegexOptions.CultureInvariant);
+
+    // 원본 parseRx의 /급.?비|급여구분/는 '급여비용' 같은 돈 칸에도 맞아, 그 칸을 잡으면 모든 처방이 급여로 읽힌다(AC-008.6의 까닭).
+    // 그래서 공백을 지운 칸 이름 전체가 맞아야 한다: 원본 selectWorkbook의 급여구분·급/비는 그대로 들고, 글자 없는 사이만 받는다
+    private static readonly Regex RxPay = new Regex("^(급[^가-힣]?비|급여구분)$", RegexOptions.CultureInvariant);
     private static readonly Regex RxHeaderCode = new Regex("처방코드|코드", RegexOptions.CultureInvariant);
     private static readonly string[] QuantityNames = { "총투여량", "투여량", "수량" };
 
@@ -75,12 +79,13 @@ public static class GridRows
             header => DiagnosisColumns.Select(name => Array.IndexOf(Compact(header), name)).ToArray()),
         [StatsScreens.Prescriptions] = new Spec(
             PrescriptionColumns,
-            new[] { true, false, true, true, false, false },
+            // 수량 말고 모두 필수다(AC-008.6, 원본 selectWorkbook의 필수 칸): 급여구분이 없으면 모든 처방이 급여로 잘못 읽힌다
+            new[] { true, true, true, true, true, false },
             17,
             row => row.Any(v => RxHeaderCode.IsMatch(v)) && row.Any(v => RxChart.IsMatch(v)),
             header => new[]
             {
-                First(header, RxCode), First(header, RxName), First(header, RxChart), First(header, RxDate), First(header, RxPay), QuantityColumn(header),
+                First(header, RxCode), First(header, RxName), First(header, RxChart), First(header, RxDate), First(Compact(header), RxPay), QuantityColumn(header),
             }),
     };
 

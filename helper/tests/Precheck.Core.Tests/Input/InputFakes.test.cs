@@ -77,6 +77,10 @@ internal sealed class FakeChartUi : IChartUi
 
     /// <summary>진짜 OpenPatient처럼 같은 환자·같은 내원이 이미 열려 있으면 칸을 건드리지 않는다: 쓰다 멈춘 글이 칸에 그대로 남는다.</summary>
     public bool KeepsOpenVisit { get; set; }
+
+    /// <summary>열 때 조회 모드 안내창을 눌렀다(AC-036.4·AC-036.5). 진짜 OpenPatient처럼 새로 연 때만 알린다.</summary>
+    public bool OpensInViewMode { get; set; }
+
     public Func<int, FingerprintResult>? FingerprintAt { get; set; }
     public ChartLocate LocateResult { get; set; } = ChartLocate.Found();
     public int Disposed { get; private set; }
@@ -118,7 +122,8 @@ internal sealed class FakeChartUi : IChartUi
         OpenName = name;
         OpenDate = date;
         Editor = Bit.TryGetValue(chart, out var memo) ? memo : "";
-        return ChartOpenResult.Opened("U차트에서 환자를 열었습니다.");
+        var opened = ChartOpenResult.Opened("U차트에서 환자를 열었습니다.");
+        return OpensInViewMode ? opened.InViewMode() : opened;
     }
 
     public ChartLocate Locate()
@@ -303,7 +308,7 @@ internal sealed class RunnerRig
 
     public InputRunner Runner() => new InputRunner(Ui, Confirm, Progress, Journal, Matcher, () => Stop);
 
-    public InputOutcome Run(IReadOnlyList<InputItem> items) => Runner().Run(items, Sample.Registration);
+    public InputOutcome Run(IReadOnlyList<InputItem> items, string? code = null) => Runner().Run(items, Sample.Registration, code);
 
     public static InputResult ResultOf(InputOutcome outcome, string visitKey) => outcome.Results.Single(result => result.VisitKey == visitKey);
 }

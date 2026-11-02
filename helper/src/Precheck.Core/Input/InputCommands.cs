@@ -73,9 +73,11 @@ public static class InputCommands
     private static void Handle(Request request, IReplySink sink, InputServices services)
     {
         var items = ReadItems(request);
+        var code = ReadCode(request);
 
         // 받은 그대로 먼저 검사한다: 뺀 뒤에 하면 다 빠진 묶음을 틀린 묶음으로 본다(AC-035.8)
         BatchCheck.Validate(items);
+        BatchCheck.ValidateCode(code);
 
         // 다른 프로세스가 쥐고 있으면 확인 창도 비트도 건드리지 않는다(AC-017.10)
         using var workLock = services.TryLock() ?? throw new HelperException(InputErrors.Busy);
@@ -90,7 +92,7 @@ public static class InputCommands
         }
 
         var journal = services.OpenJournal(registration);
-        var batch = InputBatch.Prepare(items, visits, journal);
+        var batch = InputBatch.Prepare(items, visits, journal, code);
         var outcome = batch.Stop ?? RunPrepared(batch, registration, journal, request.Id, sink, services);
 
         if (outcome.Results.Count > 0)
@@ -146,6 +148,10 @@ public static class InputCommands
         }
         return items;
     }
+
+    /// <summary>고른 처방코드. 칸이 없으면 null이다. 있는데 글자가 아니면 null로 보지 않고 틀린 메시지다(AC-036.1).</summary>
+    private static string? ReadCode(Request request) =>
+        request.Args.TryGetProperty("code", out _) ? Text(request.Args, "code", request) : null;
 
     private static string Text(JsonElement element, string name, Request request)
     {

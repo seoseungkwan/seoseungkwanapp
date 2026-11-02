@@ -7,7 +7,7 @@ using Precheck.Core.Input;
 namespace Precheck.Windows;
 
 /// <summary>
-/// 입력 중 진행 창(목업 화면 5 '입력 중'): 진행 N/M명과 [멈추기]. 숫자만 보인다(이름·차트번호·메모 없음, AC-017.6).
+/// 입력 중 진행 창(목업 화면 5 '입력 중'): 진행 N/M명, 만지지 말라는 한 줄(AC-036.7), [멈추기]. 숫자만 보인다(이름·차트번호·메모 없음, AC-017.6).
 /// 맨 위에 뜨지만 초점을 뺏지 않는다: 자동 입력은 비트 목록이 초점을 가진 동안만 키를 누른다.
 /// [멈추기]는 '지금 사람까지'다(AC-017.5). 창 닫기도 멈추기로 본다.
 /// </summary>
@@ -93,7 +93,7 @@ public sealed class ProgressWindow : IProgressWindow
             count = new Label { Text = "입력 준비 중", AutoSize = true, Margin = new Padding(0, 0, 0, 8), UseMnemonic = false };
             var note = new Label
             {
-                Text = "입력하는 동안 마우스와 키보드를 쓰지 마세요.",
+                Text = "입력 중 이 PC를 만지지 마세요",
                 AutoSize = true,
                 MaximumSize = new Size(320, 0),
                 Margin = new Padding(0, 0, 0, 8),

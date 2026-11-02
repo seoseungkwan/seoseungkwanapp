@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import codeMap from '../precheck/data/codeMap.json'
 import commands from './commands.json'
 import { EXTENSION_ID } from './extensionId'
 import {
@@ -30,6 +31,26 @@ describe('AC-035.5 bit.input 묶음의 직접 확인 표시', () => {
     const fields = payload.fields.items.items.fields as Record<string, { type: string; optional?: boolean }>
     expect(Object.keys(fields).sort()).toEqual(['chart', 'checkedByHand', 'date', 'memo', 'name', 'visitKey'])
     expect(fields.checkedByHand).toEqual({ type: 'bool', optional: true })
+  })
+})
+
+describe('AC-036.1 bit.input 묶음의 처방코드', () => {
+  const field = () => commands.commands['bit.input'].args.payload.fields.code
+  const shape = () => new RegExp(field().pattern)
+
+  it('AC-036.1 code는 고르는 글자 칸이고 도우미가 처방 코드를 읽을 때의 허용 목록과 같다', () => {
+    expect(field()).toEqual({ type: 'string', min: 1, max: 20, pattern: '^[0-9A-Z][0-9A-Z.-]{0,19}$', optional: true })
+    expect(commands.commands['bit.input'].args.payload.fields.items.min).toBe(1)
+  })
+
+  it('AC-036.1 코드 표 42개가 대문자로 모두 든다', () => {
+    const codes = Object.keys(codeMap)
+    expect(codes).toHaveLength(42)
+    expect(codes.filter((code) => !shape().test(code.toUpperCase()))).toEqual([])
+  })
+
+  it.each(['', 'la358', '처방코드', ' LA358', 'LA358 ', 'LA 358', '.LA358', '-LA358', 'ABCDEFGHIJ0123456789X'])('AC-036.1 틀린 모양(%j)은 표에서 걸린다', (code) => {
+    expect(shape().test(code)).toBe(false)
   })
 })
 

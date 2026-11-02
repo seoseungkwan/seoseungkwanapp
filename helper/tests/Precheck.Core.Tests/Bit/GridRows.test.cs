@@ -124,15 +124,68 @@ public class GridRowsTests
         Assert.Equal("3", row["수량"]);
     }
 
-    [Fact(DisplayName = "AC-008.3 47: 선택 칸(명칭·급여구분·수량)은 없어도 되고 수량 칸이 둘이면 원본처럼 수량 없음, 처방코드·차트번호·처방일자가 없으면 E-BIT-EXPORT-FAILED")]
+    [Fact(DisplayName = "AC-008.3 47: 수량 칸이 둘이면 원본처럼 수량 없음, 처방코드·차트번호·처방일자가 없으면 E-BIT-EXPORT-FAILED")]
     public void PrescriptionsColumnRules()
     {
-        var row = Assert.Single(GridRows.From("47", new[] { "처방코드", "차트번호", "처방일자", "수량", "수량" }, Rows(new[] { "LA221", "900007", "20261007", "1", "2" })));
-        Assert.Equal(new[] { "처방코드", "차트번호", "처방일자" }.OrderBy(k => k, StringComparer.Ordinal), row.Keys.OrderBy(k => k, StringComparer.Ordinal));
+        var row = Assert.Single(GridRows.From("47", new[] { "처방코드", "처방명칭", "차트번호", "처방일자", "급여구분", "수량", "수량" }, Rows(new[] { "LA221", "가짜 처방", "900007", "20261007", "급여", "1", "2" })));
+        Assert.Equal(new[] { "처방코드", "처방명칭", "차트번호", "처방일자", "급여구분" }.OrderBy(k => k, StringComparer.Ordinal), row.Keys.OrderBy(k => k, StringComparer.Ordinal));
 
-        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", new[] { "차트번호", "처방일자" }, Rows(new[] { "900007", "20261007" }))));
-        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", new[] { "처방코드", "처방일자" }, Rows(new[] { "LA221", "20261007" }))));
-        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", new[] { "처방코드", "차트번호" }, Rows(new[] { "LA221", "900007" }))));
+        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", new[] { "차트번호", "처방일자", "처방명칭", "급여구분" }, Rows(new[] { "900007", "20261007", "가짜 처방", "급여" }))));
+        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", new[] { "처방코드", "처방일자", "처방명칭", "급여구분" }, Rows(new[] { "LA221", "20261007", "가짜 처방", "급여" }))));
+        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", new[] { "처방코드", "차트번호", "처방명칭", "급여구분" }, Rows(new[] { "LA221", "900007", "가짜 처방", "급여" }))));
+    }
+
+    private static readonly string[] Header47 = { "처방코드", "처방명칭", "차트번호", "처방일자", "급여구분", "수량" };
+
+    private static string[] Row47(IEnumerable<string> header) => header.Select(_ => "x").ToArray();
+
+    [Theory(DisplayName = "AC-008.6 47: 필수 칸(처방코드·처방명칭·차트번호·처방일자·급여구분)을 하나씩 뺀 표마다 E-BIT-EXPORT-FAILED로 멈춘다")]
+    [InlineData("처방코드")]
+    [InlineData("처방명칭")]
+    [InlineData("차트번호")]
+    [InlineData("처방일자")]
+    [InlineData("급여구분")]
+    public void PrescriptionsNeedEachRequiredColumn(string missing)
+    {
+        var header = Header47.Where(column => column != missing).ToArray();
+        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", header, Rows(Row47(header)))));
+        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.FromSheet("47", Rows(header, Row47(header)))));
+    }
+
+    [Fact(DisplayName = "AC-008.6 47: 수량만 뺀 표는 지나가고 그 줄에 수량 칸이 없다")]
+    public void PrescriptionsPassWithoutQuantity()
+    {
+        var header = Header47.Where(column => column != "수량").ToArray();
+        var row = Assert.Single(GridRows.FromSheet("47", Rows(header, Row47(header))));
+        Assert.Equal(header.OrderBy(k => k, StringComparer.Ordinal), row.Keys.OrderBy(k => k, StringComparer.Ordinal));
+    }
+
+    [Theory(DisplayName = "AC-008.6 47: 원본처럼 '급/비'도 급여구분 칸이다(공백을 지우고 본다)")]
+    [InlineData("급/비")]
+    [InlineData("급 / 비")]
+    [InlineData("급비")]
+    [InlineData("급여 구분")]
+    public void PayColumnNames(string name)
+    {
+        var row = Assert.Single(GridRows.From("47", new[] { "처방코드", "처방명칭", "차트번호", "처방일자", name }, Rows(new[] { "LA221", "가짜 처방", "900007", "20261007", "비급여" })));
+        Assert.Equal("비급여", row["급여구분"]);
+    }
+
+    [Theory(DisplayName = "AC-008.6 47: 돈 칸(급여비용 등)은 급여구분 칸이 아니다: 그 칸만 있으면 모든 처방이 급여로 잘못 읽히니 멈춘다")]
+    [InlineData("급여비용")]
+    [InlineData("비급여비")]
+    [InlineData("급여비")]
+    public void MoneyColumnIsNotPayColumn(string name)
+    {
+        var header = new[] { "처방코드", "처방명칭", "차트번호", "처방일자", name };
+        Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.From("47", header, Rows(Row47(header)))));
+    }
+
+    [Fact(DisplayName = "AC-008.6 47: 돈 칸이 급여구분 칸보다 앞에 있어도 급여구분 칸을 읽는다")]
+    public void PayColumnAfterMoneyColumn()
+    {
+        var row = Assert.Single(GridRows.From("47", new[] { "처방코드", "처방명칭", "차트번호", "처방일자", "급여비용", "급여구분" }, Rows(new[] { "LA221", "가짜 처방", "900007", "20261007", "12,340", "비급여" })));
+        Assert.Equal("비급여", row["급여구분"]);
     }
 
     [Fact(DisplayName = "AC-008.3 줄은 표 순서 그대로 모두 두고(원본 쪽이 거른다), 칸보다 짧은 줄의 빈 칸은 빈 글자")]
@@ -161,7 +214,7 @@ public class GridRowsTests
         Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.FromSheet("83", Rows(new[] { "내원번호", "차트번호", "환자명", "증상내용", "기록날짜" }, new[] { "V1", "900001", "가상환자01", "neck", "2026-10-01" }))));
 
         // 47 머리 줄은 /처방코드|코드/와 /차트|등록번호/가 함께 있는 줄
-        var rx = Assert.Single(GridRows.FromSheet("47", Rows(new[] { "처방 목록" }, new[] { "처방코드", "차트번호", "처방일자" }, new[] { "LA221", "900001", "2026-10-01" })));
+        var rx = Assert.Single(GridRows.FromSheet("47", Rows(new[] { "처방 목록" }, new[] { "처방코드", "처방명칭", "차트번호", "처방일자", "급여구분" }, new[] { "LA221", "가짜 처방", "900001", "2026-10-01", "급여" })));
         Assert.Equal("LA221", rx["처방코드"]);
 
         // 83D 머리 줄은 내원번호·차트번호·상병청구코드가 함께 있는 줄
@@ -172,7 +225,7 @@ public class GridRowsTests
         var late = Enumerable.Range(0, 12).Select(_ => new[] { "-" }).Concat(new[] { new[] { "내원번호", "차트번호", "환자명", "증상", "기록날짜" }, new[] { "V1", "900001", "가상환자01", "neck", "2026-10-01" } }).ToArray();
         Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.FromSheet("83", late)));
         Assert.Single(GridRows.FromSheet("83", late.Skip(1).ToArray()));
-        var lateRx = Enumerable.Range(0, 17).Select(_ => new[] { "-" }).Concat(new[] { new[] { "처방코드", "차트번호", "처방일자" }, new[] { "LA221", "900001", "2026-10-01" } }).ToArray();
+        var lateRx = Enumerable.Range(0, 17).Select(_ => new[] { "-" }).Concat(new[] { new[] { "처방코드", "처방명칭", "차트번호", "처방일자", "급여구분" }, new[] { "LA221", "가짜 처방", "900001", "2026-10-01", "급여" } }).ToArray();
         Assert.Equal("E-BIT-EXPORT-FAILED", ExportCode(() => GridRows.FromSheet("47", lateRx)));
         Assert.Single(GridRows.FromSheet("47", lateRx.Skip(1).ToArray()));
 

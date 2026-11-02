@@ -42,6 +42,13 @@ public class VisitOpenerTests
         public Func<long, DialogState> Dialog { get; set; } = _ => DialogState.None;
         public Func<int, int, string?>? KeyError { get; set; }
         public bool Visible { get; set; } = true;
+
+        /// <summary>시각마다 목록이 보이는지(크롬 창이 내려가는 동안). 없으면 Visible.</summary>
+        public Func<long, bool>? VisibleAt { get; set; }
+
+        /// <summary>목록이 보이는지 본 시각들.</summary>
+        public List<long> LookedAt { get; } = new List<long>();
+
         public long OpenDelayMs { get; set; } = 300;
         public string? Error { get; set; }
         public List<(int Row, int Up)> Opened { get; } = new List<(int Row, int Up)>();
@@ -63,7 +70,11 @@ public class VisitOpenerTests
 
         public void Relocate() => Relocated++;
 
-        public bool ListPointVisible() => Visible;
+        public bool ListPointVisible()
+        {
+            LookedAt.Add(clock.NowMs);
+            return VisibleAt != null ? VisibleAt(clock.NowMs) : Visible;
+        }
 
         public string? OpenListRow(int row, int up)
         {
@@ -95,8 +106,109 @@ public class VisitOpenerTests
         return (new FakeList(clock), clock);
     }
 
-    private static ChartOpenResult Open(FakeList list, FakeClock clock, int rows, int fullyVisible = 20) =>
-        VisitOpener.OpenRows(list, clock, clock.NowMs, rows, fullyVisible, Chart, Name, Date);
+    private static ChartOpenResult Open(FakeList list, FakeClock clock, int rows, int fullyVisible = 20, FirstListWait? wait = null) =>
+        VisitOpener.OpenRows(list, clock, clock.NowMs, rows, fullyVisible, Chart, Name, Date, wait);
+
+    private const string CoveredMessage = "U차트 내원내역 목록이 다른 창에 가려져 있습니다. 목록이 보이게 해 주세요.";
+
+    [Fact(DisplayName = "AC-036.6 첫 사람 앞에서 목록이 가려져 있으면 0.25초마다 보며 기다리고, 보이면 그때 시작한다(가짜 시계)")]
+    public void WaitsForListBeforeFirstPerson()
+    {
+        var (list, clock) = Make();
+        list.VisibleAt = now => now >= 1000;
+        list.RowOpens = _ => (Chart, Name, Date);
+        long openedAt = -1;
+        list.KeyError = (_, __) => { openedAt = clock.NowMs; return null; };
+
+        var result = Open(list, clock, 1, wait: new FirstListWait());
+
+        Assert.Equal(ChartOpenKind.Opened, result.Kind);
+        Assert.Equal(new long[] { 0, 250, 500, 750, 1000 }, list.LookedAt);
+        Assert.Equal(1000, openedAt);
+    }
+
+    [Fact(DisplayName = "AC-036.6 3초 끝에 보이면 시작한다")]
+    public void ListVisibleAtThreeSeconds()
+    {
+        var (list, clock) = Make();
+        list.VisibleAt = now => now >= 3000;
+        list.RowOpens = _ => (Chart, Name, Date);
+
+        var result = Open(list, clock, 1, wait: new FirstListWait());
+
+        Assert.Equal(ChartOpenKind.Opened, result.Kind);
+        Assert.Equal(3000, list.LookedAt.Last());
+        Assert.Single(list.Opened);
+    }
+
+    [Fact(DisplayName = "AC-036.6 3초가 지나도 가려져 있으면 지금 문구로 멈추고 키를 누르지 않는다(묶음을 멈추는 문구)")]
+    public void ListStaysCovered()
+    {
+        var (list, clock) = Make();
+        list.VisibleAt = now => now > 3000;
+
+        var result = Open(list, clock, 1, wait: new FirstListWait());
+
+        Assert.Equal(ChartOpenKind.Failed, result.Kind);
+        Assert.Equal(CoveredMessage, result.Message);
+        Assert.True(ChartRules.IsFatalOpenMessage(result.Message));
+        Assert.Empty(list.Opened);
+        Assert.Equal(3000, clock.NowMs);
+        Assert.Equal(13, list.LookedAt.Count);
+    }
+
+    [Fact(DisplayName = "AC-036.6 이미 보이면 기다리지 않는다")]
+    public void ListAlreadyVisible()
+    {
+        var (list, clock) = Make();
+        list.RowOpens = _ => (Chart, Name, Date);
+        long openedAt = -1;
+        list.KeyError = (_, __) => { openedAt = clock.NowMs; return null; };
+
+        Assert.Equal(ChartOpenKind.Opened, Open(list, clock, 1, wait: new FirstListWait()).Kind);
+
+        Assert.Equal(0, openedAt);
+        Assert.Equal(new long[] { 0 }, list.LookedAt);
+    }
+
+    [Fact(DisplayName = "AC-036.6 기다리기는 묶음에 한 번이다: 둘째 사람부터 가려지면 기다리지 않고 바로 멈춘다")]
+    public void WaitsOnlyOncePerBatch()
+    {
+        var (list, clock) = Make();
+        var wait = new FirstListWait();
+        list.RowOpens = _ => (Chart, Name, Date);
+        Assert.Equal(ChartOpenKind.Opened, Open(list, clock, 1, wait: wait).Kind);
+
+        list.Visible = false;
+        var before = clock.NowMs;
+        var second = Open(list, clock, 1, wait: wait);
+
+        Assert.Equal(CoveredMessage, second.Message);
+        Assert.Equal(before, clock.NowMs);
+    }
+
+    [Fact(DisplayName = "AC-036.6 첫 사람이라도 둘째 줄부터 가려지면 기다리지 않고 바로 멈춘다: 입력 중에 가려진 것이다")]
+    public void NoWaitAfterFirstRow()
+    {
+        var (list, clock) = Make();
+        list.RowOpens = _ => (Chart, Name, "2026-10-27");
+        list.KeyError = (_, __) => { list.Visible = false; return null; };
+
+        var result = Open(list, clock, 3, wait: new FirstListWait());
+
+        Assert.Equal(CoveredMessage, result.Message);
+        Assert.Single(list.Opened);
+        Assert.Equal(2, list.LookedAt.Count);
+    }
+
+    [Fact(DisplayName = "AC-036.6 3초 기다리기는 처음 한 번만 나온다")]
+    public void FirstListWaitIsSpent()
+    {
+        var wait = new FirstListWait();
+        Assert.Equal(3000, wait.Take());
+        Assert.Equal(0, wait.Take());
+        Assert.Equal(0, wait.Take());
+    }
 
     [Fact(DisplayName = "AC-017.3 같은 환자의 다른 날 줄이 먼저 열려도 다음 줄로 가서 진료일이 맞는 줄에서 멈춘다")]
     public void WalksRowsUntilWorkDate()

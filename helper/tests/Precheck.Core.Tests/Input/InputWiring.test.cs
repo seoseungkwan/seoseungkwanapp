@@ -108,7 +108,10 @@ internal sealed class WiringRig : IDisposable
             () => { Steps.Add("lock"); return WorkLock.TryAcquire(WorkLock.InputWait, LockName); },
             (cmd, code) => Log.Add((cmd, code))));
 
-    public static byte[] Request(IEnumerable<InputItem> items)
+    /// <summary>묶음 칸을 더하거나 바꾼다(AC-036.1의 code 등).</summary>
+    public Action<Dictionary<string, object?>>? EditPayload { get; set; }
+
+    public static byte[] Request(IEnumerable<InputItem> items, Action<Dictionary<string, object?>>? editPayload = null)
     {
         var rows = items.Select(item =>
         {
@@ -123,7 +126,9 @@ internal sealed class WiringRig : IDisposable
             if (item.CheckedByHand) row["checkedByHand"] = true;
             return row;
         }).ToList();
-        var inner = JsonSerializer.Serialize(new { items = rows });
+        var fields = new Dictionary<string, object?>(StringComparer.Ordinal) { ["items"] = rows };
+        editPayload?.Invoke(fields);
+        var inner = JsonSerializer.Serialize(fields);
         return Encoding.UTF8.GetBytes(Requests.Envelope("bit.input", JsonSerializer.Serialize(new { payload = inner })));
     }
 
@@ -140,7 +145,7 @@ internal sealed class WiringRig : IDisposable
         var dispatcher = new Dispatcher(Table);
         Register(dispatcher);
         var sink = new ListSink();
-        dispatcher.Handle(Request(current), extra == null ? sink : new TeeSink(sink, extra));
+        dispatcher.Handle(Request(current, EditPayload), extra == null ? sink : new TeeSink(sink, extra));
         return sink.Replies;
     }
 
