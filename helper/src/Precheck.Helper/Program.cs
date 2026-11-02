@@ -17,6 +17,9 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        // 측정 모드(specs/diag-read-speed): 사람이 speed-check.cmd로 켤 때만. 크롬은 첫 인자로 origin을 넘겨 여기 들지 않고, 아래 일반 시작은 그대로다
+        if (Precheck.Core.Diag.DiagMode.IsRequested(args, () => Console.IsInputRedirected)) return Precheck.Windows.DiagEntry.Run(HelperServices.Create);
+
         // 표준 출력은 크롬과의 메시지 통로다. 어디서든 Console 글쓰기가 섞여 통로를 깨지 않게 버린다
         Console.SetOut(TextWriter.Null);
         Console.SetError(TextWriter.Null);

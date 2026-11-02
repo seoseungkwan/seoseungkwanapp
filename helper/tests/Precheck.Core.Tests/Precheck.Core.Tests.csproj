@@ -12,6 +12,8 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- specs/diag-read-speed: 실제 DB가 없어서 측정 문장의 문법·읽기 전용을 T-SQL 해석기로 본다(시험에만 쓴다) -->
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.140.0" />
   </ItemGroup>
 
   <ItemGroup>
