@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>업무일지 새 칸 모양 시안</title>
+<!--
+  specs/worklog design.md 3절 '시안 OK 기다림'의 시안. 승인본 index.html(v2)의 표를 그대로 두고
+  글자 칸·항목 이름 고치기·"합계에서 빠졌어요"·빨간 막힌 칸·날짜 줄을 더했다. 읽기 규칙은 design.md 7절, 막는 모양은 6절과 같다.
+  숫자·글자·전화번호는 모두 지어낸 예시다. 저장은 흉내만 내고 어디로도 보내지 않는다.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Gothic:wght@400;700&display=swap">
+<style>
+:root { color-scheme: light; box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; padding: 0; }
+[hidden]:not([hidden=until-found i]) { display: none !important; }
+
+/* 양식 밖은 앱 토큰(globals.css와 같은 값), 양식 안은 엑셀 서식 그대로(design.md 12절) */
+:root {
+  --ink: #111827; --ink-2: #374151; --muted: #6B7280; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --canvas: #F7F8FA; --surface: #FFFFFF; --accent: #2563EB;
+  --negative: #C2410C; --negative-soft: #FDF0EA;
+  --xl-ink: #000000; --xl-lav: #CCCCFF; --xl-gray: #D9D9D9; --xl-paper: #FFFFFF; --xl-focus: #107C41;
+  --shadow: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --font: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --xl-font: "Gulim", "굴림", "Nanum Gothic", "Apple SD Gothic Neo", sans-serif;
+  --xl-title: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+}
+* { box-sizing: border-box; }
+body { background: var(--canvas); color: var(--ink); font: 14px/22px var(--font); word-break: keep-all; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.page { container: app / inline-size; padding: 20px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px)); }
+.mock-head { max-width: 1101px; margin: 0 auto 16px; }
+.mock-head h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+.mock-head .ex { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; line-height: 18px; font-weight: 600; vertical-align: middle; }
+.mock-head p { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+
+.layout { display: grid; grid-template-columns: 739px 338px; gap: 24px; justify-content: center; align-items: start; }
+.work { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.work > * { min-width: 0; }
+
+/* 날짜 줄 */
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.date-row, .tool-right { display: flex; align-items: center; gap: 8px; }
+.date-pick { height: 36px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); font-size: 14px; font-variant-numeric: tabular-nums; }
+.btn { height: 36px; padding: 0 12px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); }
+.btn:hover:not(:disabled) { background: var(--canvas); }
+.btn:disabled { color: var(--muted); background: var(--canvas); cursor: default; }
+.status { font-size: 13px; line-height: 20px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* 오류 카드(앱 ErrorCard와 같은 모양) */
+.card { display: flex; align-items: flex-start; gap: 8px; padding: 12px 16px; border-radius: 4px; background: var(--negative-soft); }
+.card svg { width: 16px; height: 16px; margin-top: 2px; flex: none; color: var(--negative); }
+.card p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.card .what { font-weight: 600; color: var(--negative); }
+.card .code { font-size: 12px; line-height: 16px; margin-top: 2px; }
+.where { margin: -4px 0 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+
+/* 엑셀 종이: 칸 너비·줄 높이·글꼴·색·선은 승인본 그대로 */
+.paper { background: var(--xl-paper); border: 1px solid var(--line); padding: 24px; overflow-x: auto; }
+.sheet {
+  --c: 17px; --c11: 15px; --c10: 13px; --c14: 19px; --t: 43px;
+  --h1: 53px; --h2: 24px; --h3: 45px; --h28: 28px; --h40: 40px; --h20: 20px;
+  width: 689px; border-collapse: collapse; table-layout: fixed; font-family: var(--xl-font); font-weight: 700; font-size: var(--c); line-height: 1.25; color: var(--xl-ink); text-align: center;
+}
+.sheet td, .sheet th { border: 1px solid var(--xl-ink); padding: 0; font-weight: 700; vertical-align: middle; }
+.sheet tr { height: var(--h40); }
+.sheet .r1 { height: var(--h1); } .sheet .r2 { height: var(--h2); } .sheet .r3 { height: var(--h3); }
+.sheet .r28 { height: var(--h28); } .sheet .r20 { height: var(--h20); }
+.sheet .title { font-family: var(--xl-title); font-weight: 400; font-size: var(--t); letter-spacing: .35em; padding-left: .35em; white-space: nowrap; }
+.sheet .lav { background: var(--xl-lav); }
+.sheet .gray { background: var(--xl-gray); }
+.sheet .date { font-size: var(--c14); }
+.sheet .small { font-size: var(--c10); }
+/* 바깥 굵은 선(엑셀 medium) */
+.sheet tr:first-child > * { border-top-width: 2px; }
+.sheet .L { border-left-width: 2px; }
+.sheet .R { border-right-width: 2px; }
+.sheet .B { border-bottom-width: 2px; }
+/* 긴 글자: 한 줄을 지키고 칸이 늘지 않는다. 초점이 없으면 끝이 "…", 초점이 있으면 밀어 본다 */
+.sheet input, .sheet textarea { display: block; width: 100%; height: 100%; border: 0; margin: 0; background: transparent; text-align: center; font-family: var(--xl-font); font-weight: 700; font-size: inherit; color: var(--xl-ink); padding: 0 4px; outline: none; }
+.sheet input { text-overflow: ellipsis; }
+.sheet input:focus { text-overflow: clip; }
+.sheet td.in { position: relative; }
+.sheet td.in input { position: absolute; inset: 0; }
+.sheet input:focus, .sheet textarea:focus { box-shadow: inset 0 0 0 2px var(--xl-focus); }
+.sheet .memo { font-size: var(--c11); }
+.sheet .memo textarea { resize: none; height: calc(var(--h28) * 3); padding: 6px; line-height: 1.35; }
+.sheet .memo textarea::placeholder { color: var(--muted); font-weight: 400; }
+
+/* 빨간 막힌 칸: 모든 입력 칸이 같다. 초점이 있어도 옅은 빨강 바탕은 남는다 */
+.sheet td.blocked > input, .sheet td.blocked > textarea { background: var(--negative-soft); box-shadow: inset 0 0 0 2px var(--negative); }
+.sheet td.blocked > input:focus, .sheet td.blocked > textarea:focus { box-shadow: inset 0 0 0 2px var(--xl-focus); }
+
+/* "합계에서 빠졌어요": 칸 안에 겹쳐 둔다. 줄 높이에 영향이 없다 */
+.sheet .flag { position: absolute; display: flex; align-items: center; gap: .3em; white-space: nowrap; line-height: 1; font-weight: 400; color: var(--negative); pointer-events: none; }
+/* 수입 금액 칸(폭이 넉넉하다): 오른쪽 끝. 친 글자는 다른 줄과 같은 가운데 자리에 그대로 있다 */
+.sheet td.wide .flag { top: 0; bottom: 0; right: 6px; font-size: 12px; }
+.sheet td.wide.flagged > input { padding: 0 108px; }
+/* 지출 금액 칸·신환·재진 칸(폭이 좁다): 글자 아래. 친 글자가 칸 폭을 다 쓴다 */
+.sheet td.mid .flag, .sheet td.cnt .flag { left: 0; right: 0; justify-content: center; }
+.sheet td.mid .flag { bottom: 4px; font-size: 11px; }
+.sheet td.mid.flagged > input { padding: 0 4px 13px; }
+/* 신환·재진 칸(폭 73, 높이 28)은 표시 전체가 들어가지 않는다: 앞말은 눈에서만 빼고(읽어 주기·마우스 올리기에는 남는다) "빠졌어요"만 보인다 */
+.sheet td.cnt .flag { bottom: 1px; font-size: 10px; }
+.sheet td.cnt .f1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sheet td.cnt.flagged > input { padding: 0 2px 11px; }
+
+/* 설명 묶음 */
+.guide { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.guide h2 { margin: 0 0 8px; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.guide h2 + p { margin: 0 0 8px; }
+.guide ol, .guide ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.guide strong { font-weight: 600; color: var(--ink); }
+.guide .gap { margin-top: 20px; }
+.guide .foot { margin: 12px 0 0; color: var(--muted); }
+.guide .btn { margin-top: 16px; width: 100%; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--ink); color: var(--surface); font-size: 13px; line-height: 20px; padding: 10px 14px; border-radius: 6px; box-shadow: var(--shadow); z-index: 20; }
+
+@container app (max-width: 1130px) {
+  .layout { grid-template-columns: minmax(0, 739px); }
+  .guide { order: -1; }
+}
+@container app (max-width: 767px) {
+  .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .date-row { gap: 6px; }
+  .date-pick { flex: 1; min-width: 0; height: 44px; padding: 0 6px; }
+  .btn { height: 44px; padding: 0 10px; }
+  .tool-right { justify-content: space-between; }
+  .paper { padding: 8px; }
+  .sheet { width: 100%; --c: 11px; --c11: 10px; --c10: 9px; --c14: 12px; --t: 24px; --h1: 38px; --h2: 18px; --h3: 30px; --h28: 22px; --h40: 30px; --h20: 15px; }
+  .sheet td.wide .flag { right: 3px; font-size: 9px; }
+  .sheet td.wide.flagged > input { padding: 0 80px 0 2px; }
+  .sheet td.mid .flag { bottom: 2px; font-size: 9px; }
+  .sheet td.mid.flagged > input { padding: 0 2px 10px; }
+  .sheet td.cnt .flag { bottom: 1px; font-size: 8px; }
+  .sheet td.cnt.flagged > input { padding: 0 1px 8px; }
+}
+@media (max-width: 767px) {
+  .page { padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
+}
+
+/* 인쇄: 양식만 A4 세로 한 장. 표시·빨강은 지우고 엑셀 모양만. 칸보다 긴 글자는 칸 안까지만 찍힌다 */
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  body { background: #FFFFFF; }
+  .mock-head, .toolbar, .card, .where, .guide, .toast, .sheet .flag { display: none !important; }
+  .page { container-type: normal; }
+  .page, .layout, .work, .paper { display: block; width: auto; max-width: none; padding: 0; margin: 0; border: 0; background: #FFFFFF; overflow: visible; }
+  .sheet { width: 100%; --c: 13pt; --c11: 11pt; --c10: 10pt; --c14: 14pt; --t: 32pt; --h1: 39.75pt; --h2: 18pt; --h3: 33.75pt; --h28: 21pt; --h40: 30pt; --h20: 15pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet .memo textarea { overflow: hidden; }
+  .sheet .memo textarea::placeholder { color: transparent; }
+  .sheet td.blocked > input, .sheet td.blocked > textarea { background: transparent; box-shadow: none; }
+  .sheet td.wide.flagged > input, .sheet td.mid.flagged > input, .sheet td.cnt.flagged > input { padding: 0 4px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mock-head">
+    <h1>업무일지 새 칸 모양 시안 <span class="ex">예시 숫자</span></h1>
+    <p>엑셀 양식의 모양은 그대로 두고, 새로 생기는 칸 모양만 넣었어요. 숫자와 글자는 모두 지어낸 예시이고, 쳐 본 값은 어디에도 저장되지 않아요.</p>
+  </header>
+
+  <div class="layout">
+    <main class="work">
+      <div class="toolbar">
+        <div class="date-row">
+          <button type="button" class="btn" id="prev">‹ 전날</button>
+          <input class="date-pick" id="date" type="date" max="2026-11-01" aria-label="날짜 고르기">
+          <button type="button" class="btn" id="next">다음 날 ›</button>
+          <button type="button" class="btn" id="to-today">오늘로</button>
+        </div>
+        <div class="tool-right">
+          <span class="status" id="status" role="status"></span>
+          <button type="button" class="btn" id="print">인쇄</button>
+        </div>
+      </div>
+
+      <div class="card" id="card" role="alert" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>
+        <div>
+          <p class="what">전화번호나 주민번호 같은 글자가 있어 그 칸은 저장하지 않았어요</p>
+          <p>빨갛게 표시된 칸에서 그 글자를 지우면 바로 저장돼요. 다른 칸은 그대로 저장돼요. 환자 정보는 업무일지에 적지 말아 주세요.</p>
+          <p class="code">오류 번호 E-WORKLOG-NOTE-PRIVATE</p>
+        </div>
+      </div>
+      <p class="where" id="where" hidden></p>
+
+      <div class="paper">
+        <table class="sheet" aria-label="업무일지">
+          <colgroup><col style="width:14.5%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:8.4%"><col style="width:5.8%"><col style="width:12%"><col style="width:11.8%"><col style="width:15.7%"></colgroup>
+          <tr class="r1"><td colspan="9" class="title L R">업무일지</td></tr>
+          <tr class="r2"><td colspan="5" rowspan="2" class="lav date L" data-date></td><td rowspan="2" class="lav">결<br><br>재</td><td class="lav">담&nbsp;&nbsp;&nbsp;&nbsp;당</td><td class="lav">팀&nbsp;&nbsp;&nbsp;&nbsp;장</td><td class="lav R">원&nbsp;&nbsp;&nbsp;&nbsp;장</td></tr>
+          <tr class="r3"><td class="lav"></td><td class="lav"></td><td class="lav R"></td></tr>
+          <tr class="r28"><td rowspan="3" class="L">환 자<br>현 황</td><td>외래</td><td></td><td></td><td colspan="2" rowspan="3">업무사항</td><td colspan="3" rowspan="3" class="memo R"><textarea data-k="memo" aria-label="업무사항" maxlength="2000" spellcheck="false" placeholder="환자 이름·차트번호는 적지 않아요"></textarea></td></tr>
+          <tr class="r28"><td>신 환</td><td class="in cnt"><input data-k="new" aria-label="신환"></td><td class="lav">합&nbsp;&nbsp;계</td></tr>
+          <tr class="r28"><td>재 진</td><td class="in cnt"><input data-k="ret" aria-label="재진"></td><td class="lav" data-auto="visits"></td></tr>
+          <tr><td rowspan="9" class="L">수&nbsp;&nbsp;&nbsp;입</td><td colspan="3" class="gray in"><input data-k="mTotal" aria-label="총진료비 항목 이름"></td><td colspan="5" class="gray in R"><input data-k="total" aria-label="총진료비"></td></tr>
+          <tr><td colspan="3" class="gray in"><input data-k="mClaim" aria-label="조합청구액 항목 이름"></td><td colspan="5" class="gray in R"><input data-k="claim" aria-label="조합청구액"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mCash" aria-label="현금수납 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="cash" aria-label="현금수납"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mCard" aria-label="카드수납 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="card" aria-label="카드수납"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mBank" aria-label="계좌이체 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="bank" aria-label="계좌이체"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mLocal" aria-label="지역화폐 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="local" aria-label="지역화폐"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mUnpaid" aria-label="미수발생 항목 이름"></td><td colspan="5" class="in R"><input data-k="unpaid" aria-label="미수발생"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mUnpaidIn" aria-label="미수입금 항목 이름"></td><td colspan="5" class="in R"><input data-k="unpaidIn" aria-label="미수입금"></td></tr>
+          <tr><td colspan="3" class="lav">수납액</td><td colspan="5" class="lav R" data-auto="recv"></td></tr>
+          <tr><td rowspan="7" class="L">지 출</td><td colspan="3">&nbsp;항&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;목</td><td colspan="3">금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;액</td><td colspan="2" class="R">비&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;고</td></tr>
+          <tr class="r20"><td colspan="3" rowspan="2" class="in"><input data-k="mxCash" aria-label="현금 항목 이름"></td><td colspan="3" rowspan="2" class="in mid"><input data-k="xCash" aria-label="지출 현금 금액"></td><td colspan="2" rowspan="2" class="in small R"><input data-k="nCash" aria-label="지출 현금 비고"></td></tr>
+          <tr class="r20"></tr>
+          <tr><td colspan="3" class="in"><input data-k="mxCard" aria-label="카드 항목 이름"></td><td colspan="3" class="in mid"><input data-k="xCard" aria-label="지출 카드 금액"></td><td colspan="2" class="in small R"><input data-k="nCard" aria-label="지출 카드 비고"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mxRefund" aria-label="환불 항목 이름"></td><td colspan="3" class="in mid"><input data-k="xRefund" aria-label="환불 금액"></td><td colspan="2" class="in small R"><input data-k="nRefund" aria-label="환불 비고"></td></tr>
+          <tr><td colspan="3" class="in"><input data-k="mxFree" aria-label="free 항목 이름"></td><td colspan="3" class="in mid"><input data-k="xFree" aria-label="지출 free 금액"></td><td colspan="2" class="in small R"><input data-k="nFree" aria-label="지출 free 비고"></td></tr>
+          <tr><td colspan="3" class="gray">총 지 불 액</td><td colspan="3" class="gray" data-auto="spend"></td><td colspan="2" class="gray in small R"><input data-k="nTotal" aria-label="총 지불액 비고"></td></tr>
+          <tr><td colspan="4" class="L B">합&nbsp;&nbsp;&nbsp;계</td><td colspan="5" class="lav R B" data-auto="net"></td></tr>
+        </table>
+      </div>
+    </main>
+
+    <aside class="guide">
+      <h2>이 시안에서 볼 곳</h2>
+      <p>여러 모양을 한눈에 보이려고 일부러 채워 둔 날이에요. 보통 날은 표시가 없어 엑셀과 똑같아요. [다음 날]을 누르면 빈 양식을 볼 수 있어요.</p>
+      <ol>
+        <li><strong>글자가 섞인 칸.</strong> 계좌이체의 "12,000 별도"는 12,000원으로 더해져요. 환불의 "별도 보고"는 숫자가 없어 더하지 않고 아무 표시도 없어요.</li>
+        <li><strong>"합계에서 빠졌어요".</strong> 카드수납의 "2건 12,000", 지역화폐의 "12만원"처럼 숫자를 짐작해야 하면 더하지 않고 칸 안에 작은 글자로 알려요. 신환·재진 칸은 좁아서 "빠졌어요"만 보여요. 화면에만 보이고 인쇄에는 나오지 않아요.</li>
+        <li><strong>고친 항목 이름.</strong> 지출 맨 아래 항목을 "택배비"로 고쳐 두었어요. 평소에는 엑셀 글자와 똑같고, 누르면 초록 테두리가 보여요. 자리가 그대로라 합계 계산은 바뀌지 않아요.</li>
+        <li><strong>빨간 칸.</strong> 택배비 비고에 전화번호 모양(가짜 번호)을 적어 둔 모습이에요. 이 칸만 저장하지 않고 나머지 칸은 저장돼요. 맨 위 저장 상태 글과 안내를 함께 보세요.</li>
+      </ol>
+      <h2 class="gap">칸에 직접 쳐 보세요</h2>
+      <ul>
+        <li>현금수납 칸에 <strong>12000</strong>을 치고 칸 밖을 누르면 "12,000원"이 돼요. 치는 동안에는 쉼표가 들어가지 않아요.</li>
+        <li>아무 금액 칸에 <strong>3천</strong>이나 <strong>12.5</strong>를 치면 합계가 바로 바뀌고 표시가 나와요.</li>
+        <li>업무사항이나 아무 칸에 <strong>02-000-1234</strong>를 치면 빨개지고, 지우면 바로 저장돼요.</li>
+        <li>"택배비"를 다 지우고 칸 밖을 누르면 원래 이름으로 돌아와요.</li>
+        <li>칸에 아주 길게 쳐 보세요. 칸 크기는 그대로이고 끝이 "…"로 줄어요. 칸을 누르면 밀어서 볼 수 있고, 마우스를 올리면 전체 글자가 떠요. 업무사항은 칸 안에서 위아래로 밀어 봐요. 인쇄에는 칸에 들어가는 만큼만 찍혀요.</li>
+      </ul>
+      <p class="foot">실제 화면에서 휴대폰은 보기만 해요. 이 시안은 어디서나 쳐 볼 수 있어요.</p>
+      <button type="button" class="btn" id="reset">처음 값으로 되돌리기</button>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+'use strict';
+// ---- 칸 목록 (design.md 5절) ----
+const TODAY = '2026-11-01', OPEN_DAY = '2026-10-30', SAMPLE_SAVED_AT = '14:05';
+const COUNT_KEYS = ['new', 'ret'];
+const RECEIVED_KEYS = ['cash', 'card', 'bank', 'local'];
+const SPENT_KEYS = ['xCash', 'xCard', 'xRefund', 'xFree'];
+const SUM_KEYS = [...COUNT_KEYS, ...RECEIVED_KEYS, ...SPENT_KEYS];
+const NUMBER_KEYS = new Set([...SUM_KEYS, 'total', 'claim', 'unpaid', 'unpaidIn']);
+const NAME_OF = { mTotal: '총진료비', mClaim: '조합청구액', mCash: '현금수납', mCard: '카드수납', mBank: '계좌이체', mLocal: '지역화폐', mUnpaid: '미수발생', mUnpaidIn: '미수입금', mxCash: '현금', mxCard: '카드', mxRefund: '환불', mxFree: 'free' };
+const CELL_MAX = 50, NAME_MAX = 20, NOTE_MAX = 100;
+
+// 지어낸 예시 값. 처음 열면 모든 상태가 한 번에 보인다
+const SAMPLE = {
+  new: '10', ret: '40',
+  total: '1000000', claim: '600000',
+  cash: '100000', card: '2건 12,000', bank: '12,000 별도', local: '12만원', unpaid: '20000',
+  xCash: '오전 30,000 오후 20,000', xCard: '30000', xRefund: '별도 보고', xFree: '10000',
+  nCard: '사무용품 묶음 구입, 다음 달에 나누어 정산', nFree: '010-0000-1234',
+  mxFree: '택배비',
+};
+
+// ---- 막는 모양 (design.md 6절, AC-002.10) ----
+const PHONE = /(?<!\d)(?:\+82[-. ]?\(?0?\d{1,2}\)?|\(0\d{1,2}\)|0\d{1,2})[-. ]?\d{3,4}[-. ]?\d{4}(?!\d)/;
+const NATIONAL_ID = /(?<!\d)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])[-. ]\d{7}(?!\d)/;
+const JOINED_NATIONAL_ID = /(?<!\d)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])[1-8]\d{6}(?!\d)/;
+const MAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+const privacyProblem = text => [PHONE, NATIONAL_ID, JOINED_NATIONAL_ID, MAIL].some(shape => shape.test(text));
+
+// ---- 칸 글자 읽기 (design.md 7절, AC-003.6~14) ----
+const NONE = { kind: 'none' }, EXCLUDED = { kind: 'excluded' };
+const kindOf = key => (COUNT_KEYS.includes(key) ? 'count' : 'won');
+function readCell(kind, text) {
+  const t = text.trim();
+  if (!t) return NONE;
+  if (privacyProblem(t)) return EXCLUDED;
+  if (/[０-９]/.test(t)) return EXCLUDED;
+  const chunks = [...t.matchAll(/\d[\d,]*/g)];
+  if (chunks.length === 0) return NONE;
+  if (chunks.length > 1) return EXCLUDED;
+  const chunk = chunks[0];
+  const before = t.slice(0, chunk.index).trimEnd().slice(-1);
+  if (before && '.-−–—－△▲▼(（'.includes(before)) return EXCLUDED;
+  const after = t.slice(chunk.index + chunk[0].length).trimStart().charAt(0);
+  if (after && '백천만억조'.includes(after)) return EXCLUDED;
+  const digits = chunk[0].replace(/,/g, '').replace(/^0+(?=\d)/, '');
+  if (digits.length > (kind === 'count' ? 5 : 12)) return EXCLUDED;
+  return { kind: 'number', value: Number(digits) };
+}
+const commas = n => new Intl.NumberFormat('ko-KR').format(n);
+const wonAuto = n => (n === 0 ? '원' : (n < 0 ? '-' + commas(-n) : commas(n)) + '원');
+function cellShown(kind, text, focused) {
+  const read = readCell(kind, text);
+  if (read.kind === 'number' && /^\d[\d,]*\s*원?$/.test(text.trim())) {
+    if (!read.value) return '';
+    if (kind === 'count') return String(read.value);
+    return focused ? commas(read.value) : commas(read.value) + '원';
+  }
+  return text;
+}
+const numberOf = (day, key) => {
+  const read = readCell(kindOf(key), day[key] || '');
+  return read.kind === 'number' ? read.value : 0;
+};
+const sumOf = (day, keys) => keys.reduce((total, key) => total + numberOf(day, key), 0);
+const isExcluded = (day, key) => readCell(kindOf(key), day[key] || '').kind === 'excluded';
+// 저장·비교에 쓰는 글자(AC-003.15): 숫자 칸·항목 이름은 앞뒤 공백을 지운다
+function saveText(key, value) {
+  if (NUMBER_KEYS.has(key)) return value.trim();
+  if (NAME_OF[key]) { const t = value.trim(); return t === NAME_OF[key] ? '' : t; }
+  return value;
+}
+
+// ---- 날짜 (AC-002.8, AC-009.1) ----
+const parseDay = ymd => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+const addDays = (ymd, n) => { const at = parseDay(ymd); at.setUTCDate(at.getUTCDate() + n); return at.toISOString().slice(0, 10); };
+const sheetDateText = ymd => ymd.replaceAll('-', '/') + ' ' + '일월화수목금토'[parseDay(ymd).getUTCDay()];
+const koreaTime = () => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+
+// ---- 시안 안의 상태. 저장은 흉내만 낸다(어디로도 보내지 않는다) ----
+let selected, days, known, savedAt, saving, saveTimer, toastTimer;
+const $ = id => document.getElementById(id);
+const fields = [...document.querySelectorAll('[data-k]')];
+const fieldOf = Object.fromEntries(fields.map(el => [el.dataset.k, el]));
+const dayOf = ymd => (days[ymd] ||= {});
+
+fields.forEach(el => {
+  const key = el.dataset.k;
+  el.spellcheck = false;
+  el.autocomplete = 'off';
+  if (el.tagName === 'INPUT') el.maxLength = NUMBER_KEYS.has(key) ? CELL_MAX : NAME_OF[key] ? NAME_MAX : NOTE_MAX;
+});
+SUM_KEYS.forEach(key => {
+  const flag = document.createElement('span');
+  flag.className = 'flag'; flag.id = 'flag-' + key; flag.hidden = true;
+  flag.innerHTML = '<span class="f1">합계에서</span> <span class="f2">빠졌어요</span>';
+  fieldOf[key].parentElement.append(flag);
+});
+
+function shownValue(key, day, focused) {
+  const value = day[key] || '';
+  if (NUMBER_KEYS.has(key)) return cellShown(kindOf(key), value, focused);
+  if (NAME_OF[key]) return value.trim() ? value : NAME_OF[key];
+  return value;
+}
+const blockedKeysOf = day => Object.keys(day).filter(key => day[key] && privacyProblem(day[key]));
+// 칸보다 긴 글자, 좁은 칸에서 줄여 보인 표시는 마우스를 올리면 전체가 뜬다
+function markOverflow(el) {
+  if (el.tagName !== 'INPUT') return;
+  const long = el.scrollWidth > el.clientWidth + 1, shortFlag = el.parentElement.matches('.cnt.flagged');
+  el.title = [long ? el.value : '', shortFlag ? '합계에서 빠졌어요' : ''].filter(Boolean).join(' · ');
+}
+function renderMarks() {
+  const day = dayOf(selected), blocked = new Set(blockedKeysOf(day));
+  fields.forEach(el => {
+    const on = blocked.has(el.dataset.k);
+    el.parentElement.classList.toggle('blocked', on);
+    if (on) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+  });
+  SUM_KEYS.forEach(key => {
+    const on = isExcluded(day, key), el = fieldOf[key];
+    $('flag-' + key).hidden = !on;
+    el.parentElement.classList.toggle('flagged', on);
+    if (on) el.setAttribute('aria-describedby', 'flag-' + key); else el.removeAttribute('aria-describedby');
+  });
+  const received = sumOf(day, RECEIVED_KEYS), spent = sumOf(day, SPENT_KEYS);
+  const autos = { visits: String(sumOf(day, COUNT_KEYS)), recv: wonAuto(received), spend: wonAuto(spent), net: wonAuto(received - spent) };
+  document.querySelectorAll('[data-auto]').forEach(el => { el.textContent = autos[el.dataset.auto]; });
+  fields.forEach(markOverflow);
+  renderSaveState();
+}
+function renderSaveState() {
+  const blockedDay = Object.keys(days).sort().find(ymd => blockedKeysOf(days[ymd]).length);
+  $('card').hidden = !blockedDay;
+  const elsewhere = blockedDay && blockedDay !== selected;
+  $('where').hidden = !elsewhere;
+  if (elsewhere) $('where').textContent = '막힌 칸은 ' + sheetDateText(blockedDay) + '에 있어요';
+  let text;
+  if (saving) text = '저장하는 중이에요';
+  else if (blockedDay) text = savedAt ? '빨간 칸 빼고 저장했어요 · ' + savedAt : '빨간 칸은 저장하지 않았어요';
+  else text = savedAt ? '저장했어요 · ' + savedAt : '적으면 바로 저장돼요';
+  $('status').textContent = text;
+}
+function render() {
+  const day = dayOf(selected);
+  fields.forEach(el => { el.value = shownValue(el.dataset.k, day, false); });
+  document.querySelector('[data-date]').textContent = sheetDateText(selected);
+  $('date').value = selected;
+  $('next').disabled = selected === TODAY;
+  $('to-today').hidden = selected === TODAY;
+  renderMarks();
+}
+// 800ms 묶어 바뀐 칸만 저장(막힌 칸은 빼고). 막힌 칸만 바뀌었으면 저장 시각이 그대로다
+function scheduleSave() {
+  saving = true;
+  renderSaveState();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    let changed = false;
+    Object.entries(days).forEach(([ymd, day]) => {
+      const was = (known[ymd] ||= {});
+      Object.keys(day).forEach(key => {
+        if (privacyProblem(day[key] || '')) return;
+        const text = saveText(key, day[key] || '');
+        if (text !== (was[key] || '')) { was[key] = text; changed = true; }
+      });
+    });
+    if (changed) savedAt = koreaTime();
+    saving = false;
+    renderSaveState();
+  }, 800);
+}
+function moveTo(ymd) {
+  if (document.activeElement && document.activeElement.dataset.k) document.activeElement.blur();
+  selected = ymd;
+  render();
+}
+function reset() {
+  clearTimeout(saveTimer);
+  saving = false;
+  selected = OPEN_DAY;
+  days = { [OPEN_DAY]: { ...SAMPLE } };
+  known = { [OPEN_DAY]: Object.fromEntries(Object.entries(SAMPLE).filter(([, value]) => !privacyProblem(value)).map(([key, value]) => [key, saveText(key, value)])) };
+  savedAt = SAMPLE_SAVED_AT;
+  $('toast').hidden = true;
+  render();
+}
+
+// ---- 칸 치기 ----
+document.addEventListener('focusin', e => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key || !NUMBER_KEYS.has(key)) return;
+  const el = e.target, wholeSelected = el.value !== '' && el.selectionStart === 0 && el.selectionEnd === el.value.length;
+  el.value = shownValue(key, dayOf(selected), true);
+  if (wholeSelected) el.select();
+});
+document.addEventListener('input', e => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key) return;
+  dayOf(selected)[key] = e.target.value; // 치는 동안은 친 글자 그대로(쉼표를 넣지 않는다)
+  renderMarks();
+  scheduleSave();
+});
+document.addEventListener('focusout', e => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key) return;
+  const day = dayOf(selected);
+  if (NAME_OF[key]) day[key] = saveText(key, day[key] || ''); // 지우거나 기본 이름이면 기본 이름으로
+  if (NUMBER_KEYS.has(key) || NAME_OF[key]) e.target.value = shownValue(key, day, false);
+  if (e.target.tagName === 'TEXTAREA') e.target.scrollTop = 0; // 긴 글은 나가면 맨 위부터 보인다
+  markOverflow(e.target);
+});
+
+// ---- 단추 ----
+$('prev').addEventListener('click', () => moveTo(addDays(selected, -1)));
+$('next').addEventListener('click', () => { if (selected < TODAY) moveTo(addDays(selected, 1)); });
+$('to-today').addEventListener('click', () => moveTo(TODAY));
+$('date').addEventListener('change', e => {
+  const value = e.target.value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value) && value <= TODAY) moveTo(value);
+  else e.target.value = selected; // 오늘보다 뒤이거나 날짜 모양이 아니면 무시한다
+});
+$('print').addEventListener('click', () => {
+  const toast = $('toast');
+  toast.textContent = '실제 화면에서는 인쇄 창이 열려요';
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
+});
+$('reset').addEventListener('click', reset);
+window.addEventListener('resize', () => fields.forEach(markOverflow));
+
+reset();
+</script>
+</body>
+</html>

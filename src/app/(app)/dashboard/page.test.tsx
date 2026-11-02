@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
+import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { dashboardSummarySource, type SummarySource } from '@/components/dashboard/summary/source'
 import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
@@ -120,7 +121,9 @@ const countOf = (text: string, part: string) => text.split(part).length - 1
 // ui-90 REQ-414 연결 전 문구(시안 docs/mockups/ui-90/app/gen.py dash_body 글자 그대로)
 const H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
 const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
-const INDEX_SIDE = '12개 가운데 2개는 지금, 1개는 연결하면 쓸 수 있어요'
+// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(worklog AC-012.5·ai-report-screen AC-714.4: 다른 갈래가 탭을 채워도 그대로 통과한다)
+const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
+const INDEX_SIDE = `${DASHBOARD_FEATURES.length}개 가운데 ${featureCount('ready')}개는 지금, ${featureCount('connect-first')}개는 연결하면 쓸 수 있어요`
 const GAINS_TITLE = '연결하면 생기는 것 4가지'
 const GAINS_NOTE = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
 // 시안 gains 설명 가운데 숫자가 든 고정 글자(지어낸 통계가 아니다)

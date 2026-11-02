@@ -3,7 +3,7 @@ import { DASHBOARD_FEATURES } from './features'
 
 // 기능 목차 자료 (tab-frame REQ-316 AC-316.3, design.md '대시보드 짜임', 메모 docs/mockups/dashboard-home/notes.md §6).
 // 이름·주소는 탭 목록(menu.ts)과 같아야 한다 — 그 맞춤은 합친 뒤 통합 시험(tabFrame.test.tsx, AC-307.1)이 본다.
-// 여기서는 메모 §6 표 그대로인지만 본다. 상태는 ui-90 AC-414.5(design.md '대시보드 (TASK-11)')의 셋: 청구 connect-first · 설정 ready · 나머지 soon.
+// 여기서는 메모 §6 표 그대로인지만 본다. 상태는 ui-90 AC-414.5(design.md '대시보드 (TASK-11)')의 셋: 청구 connect-first · 화면이 있는 칸(설정·업무일지) ready · 나머지 soon.
 // 설정 설명은 시안(docs/mockups/ui-90/app/gen.py FEATS) 글자 그대로 "의원 문구"다
 
 // 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5
@@ -16,7 +16,7 @@ const TABLE = [
   { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
   { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },
   { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
-  { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'soon' },
+  { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' },
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
   { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'soon' },
   { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/claim/setup', status: 'ready' },
@@ -41,14 +41,24 @@ describe('DASHBOARD_FEATURES: 기능 목차 12개 (AC-316.3·AC-414.5)', () => {
     }
   })
 
-  it('AC-414.5·AC-714.4: 상태는 셋 — 지금 쓸 수 있음(ready)은 AI 리포트·설정 둘, 연결 먼저(connect-first)는 청구 하나, 나머지 아홉은 준비 중(soon)', () => {
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready').map((f) => f.name)).toEqual(['AI 리포트', '설정'])
+  it('AC-414.5·AC-714.4·AC-012.5: 상태는 셋 — 연결 먼저(connect-first)는 청구 하나, 지금 쓸 수 있음(ready)과 준비 중(soon)은 표에서 센다. AI 리포트는 ready', () => {
+    const namesOf = (status: string) => TABLE.filter((row) => row.status === status).map((row) => row.name)
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready').map((f) => f.name)).toEqual(namesOf('ready'))
     expect(DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first').map((f) => f.name)).toEqual(['청구'])
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'soon')).toHaveLength(9)
+    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'soon').map((f) => f.name)).toEqual(namesOf('soon'))
     const ai = DASHBOARD_FEATURES.find((f) => f.name === 'AI 리포트')
     expect(ai?.status).toBe('ready')
     expect(ai?.desc).toBe('지난달·작년 같은 달과 견준 월간 AI 보고')
     for (const { name, status } of DASHBOARD_FEATURES) expect(['ready', 'connect-first', 'soon'], name).toContain(status)
+  })
+
+  it('AC-012.3: 업무일지 칸은 ready("사용 가능")이고 주소는 /worklog, 설명 글자는 그대로다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '업무일지')).toEqual({
+      name: '업무일지',
+      desc: '엑셀 양식과 똑같은 업무일지',
+      href: '/worklog',
+      status: 'ready',
+    })
   })
 
   it('AC-316.3: 이름과 주소는 겹치지 않고, 주소는 같은 origin 고정 경로다', () => {

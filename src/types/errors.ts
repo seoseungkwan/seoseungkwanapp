@@ -12,5 +12,7 @@ export type ErrorCode =
   | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
   // 저장한 AI 리포트 읽기(spec ai-report-screen REQ-701). POST가 쓰지 않아 AiErrorCode에는 없다
   | 'E-AI-READ'
+  // 업무일지(specs/worklog)
+  | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
 
 export type ErrorInfo = { what: string; fix: string }

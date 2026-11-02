@@ -7,7 +7,7 @@ import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notRea
 
 const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
-// 탭 순서(대시보드·청구·설정 빼고)
+// 탭 순서(화면이 있는 탭 빼고)
 const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: string; items: string[] }> = [
   {
     path: '/stats',
@@ -52,13 +52,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
   },
   {
-    path: '/worklog',
-    name: '업무일지',
-    title: '업무일지는 준비 중이에요',
-    intro: `엑셀 업무일지를 그대로 옮겨 쓸 자리예요. ${SOON}`,
-    items: ['엑셀 양식과 똑같은 칸', '날짜별로 적고 다시 보기'],
-  },
-  {
     path: '/inventory',
     name: '재고',
     title: '재고는 준비 중이에요',
@@ -74,15 +67,19 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
   },
 ]
 
-describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능 9개(탭 순서)', () => {
-  it('AC-305.4: 9개가 탭 순서대로 주소·이름이 표와 같다', () => {
+describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () => {
+  it('AC-305.4: 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
   })
 
-  it('AC-714.2: 9개이고 /ai-report가 없다', () => {
-    expect(NOT_READY_FEATURES).toHaveLength(9)
-    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain('/ai-report')
+  it('AC-714.2: /ai-report가 없다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/ai-report')
     expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('AI 리포트')
+  })
+
+  it('AC-012.4: 업무일지(/worklog)는 준비 중 목록에 없다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/worklog')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('업무일지')
   })
 
   it('AC-305.4: 주소가 겹치지 않는다', () => {
@@ -131,7 +128,6 @@ describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 �
     '매출은 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
-    '업무일지는 준비 중이에요',
     '재고는 준비 중이에요',
     '주소록은 준비 중이에요',
   ]

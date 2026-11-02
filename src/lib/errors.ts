@@ -149,6 +149,19 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '저장한 AI 리포트를 읽지 못했어요',
     fix: '[다시 읽기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // 업무일지(specs/worklog)
+  'E-WORKLOG-SAVE-FAILED': {
+    what: '업무일지를 저장하지 못했어요',
+    fix: '적은 값은 화면에 그대로 있어요. [다시 저장]을 눌러 주세요. 계속되면 오류 번호와 함께 관리자에게 알려 주세요.',
+  },
+  'E-WORKLOG-LOAD-FAILED': {
+    what: '이 날 업무일지를 불러오지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 불러오기 전에는 칸을 고칠 수 없어요.',
+  },
+  'E-WORKLOG-NOTE-PRIVATE': {
+    what: '전화번호나 주민번호 같은 글자가 있어 그 칸은 저장하지 않았어요',
+    fix: '빨갛게 표시된 칸에서 그 글자를 지우면 바로 저장돼요. 다른 칸은 그대로 저장돼요. 환자 정보는 업무일지에 적지 말아 주세요.',
+  },
 }
 
 export function errorInfo(code: ErrorCode): ErrorInfo {

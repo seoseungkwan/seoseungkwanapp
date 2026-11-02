@@ -9,7 +9,7 @@ import { Icon, type IconName } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
 import { DashboardHome } from './DashboardHome'
-import { DASHBOARD_FEATURES } from './features'
+import { DASHBOARD_FEATURES, type FeatureStatus } from './features'
 
 // 대시보드 짜임 (tab-frame REQ-306·REQ-316, design.md '대시보드 짜임', 시안 docs/mockups/dashboard-home/ + 메모 notes.md §3·§4·§6·§7).
 // 연결 전(report null)과 연결 뒤(report 있음)를 둘 다 그린다. 연결 뒤의 보고 문장·분석은 갈래 라 몫이라 시험 안 가짜 노드로 자리만 본다.
@@ -99,7 +99,9 @@ const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
 const ROW_SIDE = '삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요.'
 const DESC = '청구하기 전에 삭감될 만한 처방을 미리 찾아 줘요.'
 const DESC_SUB = '청구 점검은 비트 PC의 크롬에서 열려요.'
-const INDEX_SIDE = '12개 가운데 2개는 지금, 1개는 연결하면 쓸 수 있어요'
+// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(worklog AC-012.5·ai-report-screen AC-714.4: 다른 갈래가 탭을 채워도 그대로 통과한다)
+const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
+const INDEX_SIDE = `${DASHBOARD_FEATURES.length}개 가운데 ${featureCount('ready')}개는 지금, ${featureCount('connect-first')}개는 연결하면 쓸 수 있어요`
 const PC_STEPS_NOTE = '설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
 const PHONE_STEPS_NOTE = '연결은 비트 PC의 크롬에서 해요. 설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
 // 보조 글(AC-414.6): small(13px) muted + 시안 40em(13px × 40 = 520px)에 가장 가까운 4px 단위 폭 단계
@@ -652,7 +654,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expect(status.querySelector('svg')).toBeNull()
   }
 
-  it('AC-316.4·AC-414.5·AC-714.4: 섹션 h2 "기능 목차" + 옆 "12개 가운데 2개는 지금, 1개는 연결하면 쓸 수 있어요"(small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
+  it('AC-316.4·AC-414.5·AC-714.4·AC-012.5: 섹션 h2 "기능 목차" + 옆 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(숫자는 목록에서 센다, small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
     forBoth(() => {
       const section = sectionNamed('기능 목차')
       hasAll(section, SECTION)
@@ -691,7 +693,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     }
   })
 
-  it('AC-316.4·AC-414.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · AI 리포트·설정 "사용 가능" · 나머지 9개 "준비 중"', () => {
+  it('AC-316.4·AC-414.5·AC-714.4·AC-012.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · AI 리포트·업무일지·설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다)', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -719,21 +721,29 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expectUsable(statusOf(linkOf('설정')))
     expectUsable(statusOf(linkOf('AI 리포트')))
     expect(textOf(linkOf('AI 리포트').children[1] as HTMLElement)).toBe('지난달·작년 같은 달과 견준 월간 AI 보고')
-    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(2)
-    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(9)
-    expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(1)
+    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(featureCount('soon'))
+    expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(featureCount('connect-first'))
+    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(featureCount('ready'))
   })
 
-  it('AC-414.5·AC-714.4: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, AI 리포트·설정은 그대로 "사용 가능", 나머지 9개는 그대로 "준비 중"', () => {
+  it('AC-012.3: 업무일지 칸은 연결 전·뒤 모두 "사용 가능"(accent + 화살표)이고 /worklog로 간다', () => {
+    forBoth(() => {
+      const link = linkOf('업무일지')
+      expect(link.getAttribute('href')).toBe('/worklog')
+      expectUsable(statusOf(link))
+    })
+  })
+
+  it('AC-414.5·AC-714.4·AC-012.5: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, AI 리포트·업무일지·설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다)', () => {
     renderAfter()
     expectUsable(statusOf(linkOf('청구')))
     expectUsable(statusOf(linkOf('AI 리포트')))
     expectUsable(statusOf(linkOf('설정')))
     const links = Array.from(list().querySelectorAll('a'))
     expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(0)
-    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(3)
+    expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(featureCount('ready') + featureCount('connect-first'))
     for (const link of links.filter((a) => textOf(statusOf(a)) === '준비 중')) expectSoon(statusOf(link))
-    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(9)
+    expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(featureCount('soon'))
   })
 
   it('AC-316.4: 1024px 이상 3열(사이 24px) · 768~1023px 2열 · 768px 미만 1열', () => {
@@ -743,12 +753,12 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     for (const t of classesOf(ul)) expect(t, t).not.toMatch(/^grid-cols-/)
   })
 
-  it('AC-414.5·AC-714.4: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 12 · 지금 2 · 연결하면 1) — 소스에 숫자를 박지 않는다', () => {
+  it('AC-414.5·AC-714.4·AC-012.5: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 · 지금 · 연결하면) — 소스에 숫자를 박지 않는다', () => {
     const source = SOURCES.map((s) => s.text).join('\n')
-    expect(source).not.toMatch(/12개 가운데|기능 12개|가운데 2개|2개는 지금|1개는 지금|1개는 연결하면/)
-    expect(DASHBOARD_FEATURES.length).toBe(12)
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'ready')).toHaveLength(2)
-    expect(DASHBOARD_FEATURES.filter((f) => f.status === 'connect-first')).toHaveLength(1)
+    expect(source).not.toMatch(/\d+개 가운데|기능 \d+개|가운데 \d+개|\d+개는 지금|\d+개는 연결하면/)
+    renderBefore()
+    expect(byText(document.body, INDEX_SIDE, 'p')).toBeDefined()
+    expect(INDEX_SIDE).toMatch(/^\d+개 가운데 \d+개는 지금, \d+개는 연결하면 쓸 수 있어요$/)
   })
 
   it('AC-316.4: 연결 뒤에도 같은 목록 — 12칸, 주소·이름 그대로', () => {
