@@ -86,6 +86,28 @@ describe('AC-513.1·AC-513.2: 환자 수 추이', () => {
   })
 })
 
+// 칸이 글자보다 좁으면 글자가 오른쪽으로만 넘쳐 휴대폰에서 쪽이 옆으로 밀린다(30일 390px, 끝 칸 "10.31"). 숨은 화면 읽기 표도 줄을 못 바꿔 쪽을 민다(90일 처방 칸을 열면 400px).
+// 표는 왼쪽으로 넘기고(스크롤이 안 생긴다) 줄바꿈시키지 않는다: 줄을 바꾸면 표가 수천 px로 길어져 쪽이 아래로 늘어난다.
+// jsdom은 크기를 재지 못해 클래스만 본다. 진짜 증거는 Phase 끝 브라우저 측정이다
+describe('AC-513.1: 휴대폰에서 그림이 쪽을 옆으로 밀지 않는다', () => {
+  it('AC-513.1: 그림을 감싼 칸이 날짜 글자를 제 칸 가운데로 넘치게 하고 화면 읽기 표를 왼쪽으로 넘긴다(줄바꿈 없음). 선택자는 날짜 글자 칸과 그 표만 잡는다', () => {
+    for (const period of ['7d', '30d', '90d', '12m'] as const) {
+      const days = Array.from({ length: 13 }, (_, i) => day(addDays('2026-11-12', i - 12), 2, 8)) // 어제까지 13일: 네 기간 모두에 줄이 있다
+      const { container, unmount } = render(<PatientTrendSection input={inputOf(days, WHOLE, period)} saved />)
+      const figure = container.querySelector('.tabular-nums[aria-hidden="true"]')!
+      const wrapper = figure.parentElement!.parentElement!
+      const tokens = wrapper.className.split(/\s+/)
+      for (const name of ['relative', '[&_.text-center]:flex', '[&_.text-center]:flex-col', '[&_.text-center]:items-center', '[&_table]:right-0']) expect(tokens, period).toContain(name)
+      for (const name of ['[&_table]:whitespace-normal', '[&_table]:break-all']) expect(tokens, period).not.toContain(name)
+      const labelCells = Array.from(figure.lastElementChild!.children)
+      expect(labelCells.length, period).toBeGreaterThan(0)
+      expect(Array.from(wrapper.querySelectorAll('.text-center')), period).toEqual(labelCells)
+      expect(Array.from(wrapper.querySelectorAll('table')).map((table) => table.className), period).toEqual(['sr-only'])
+      unmount()
+    }
+  })
+})
+
 describe('AC-513.1: 12개월 환자 수 추이의 끝나지 않은 달 글', () => {
   const ROWS = [day('2026-07-10', 2, 8), day('2026-10-10', 2, 8), day('2026-11-02', 2, 8)]
 

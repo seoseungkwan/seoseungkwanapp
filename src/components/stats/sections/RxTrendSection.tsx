@@ -10,7 +10,7 @@ import { COMPARE_NAME, rxDetail, rxList, type RxDetailPoint, type RxTrendRow, ty
 import { ds } from '@/components/ui/classes'
 import { monthOf } from '@/lib/analytics/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
-import { dateWithWeekday, dayNumber, DeltaText, EmptyNote, longDate, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, PERIOD_NAME, Section, thinTotals, todayOf, TREND_SERIES, yearMonth } from './parts'
+import { CHART_NO_SIDE_SCROLL, dateWithWeekday, dayNumber, DeltaText, EmptyNote, longDate, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, PERIOD_NAME, Section, thinTotals, todayOf, TREND_SERIES, yearMonth } from './parts'
 
 // 처방 추세 (stats REQ-513 AC-513.2·513.3·513.4·513.5·513.11, AC-511.6·511.8, 시안 notes.md §3 '처방 추세').
 // 줄의 막대·눈금은 comparable(끝난 칸끼리의 합)로 그리고 글자 건수는 count다. comparable이 null이면 막대는 count, 눈금 없음, 증감 "비교할 수 없음".
@@ -94,10 +94,10 @@ function RxDetail({ row, input }: { row: RxTrendRow; input: StatsInput }) {
       {({ button, panel }) => (
         <>
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <p className="text-body font-semibold text-ink">{`${row.name} · ${grain}별 건수`}</p>
+            <p className="text-body font-semibold text-ink wrap-anywhere">{`${row.name} · ${grain}별 건수`}</p>
             <ChartLegend items={legend} />
           </div>
-          <div className={`mt-2 ${thinTotals(buckets.length)}`}>
+          <div className={`mt-2 ${thinTotals(buckets.length)} ${CHART_NO_SIDE_SCROLL}`}>
             <StackedBarChart title={`${row.name} ${grain}별 건수`} unit="건" series={TREND_SERIES} buckets={buckets} compact dense={buckets.length > DENSE_DETAIL_OVER} />
           </div>
           <Note>{detailNote(period, current, todayOf(input.range))}</Note>

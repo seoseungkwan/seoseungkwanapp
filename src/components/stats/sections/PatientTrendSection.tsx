@@ -5,7 +5,7 @@ import { formatCount } from '@/components/charts/format'
 import { StackedBarChart, type BarBucket } from '@/components/charts/StackedBarChart'
 import { patientTrend, type StatsInput } from '@/components/stats/view'
 import { DetailToggle, type DetailTable } from './DetailToggle'
-import { dateWithWeekday, dayNumber, EmptyNote, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, Section, thinTotals, todayOf, TREND_SERIES } from './parts'
+import { CHART_NO_SIDE_SCROLL, dateWithWeekday, dayNumber, EmptyNote, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, Section, thinTotals, todayOf, TREND_SERIES } from './parts'
 
 // 환자 수 추이 (stats REQ-513 AC-513.1·513.3·513.4, AC-511.3, 시안 notes.md §3 '환자 수 추이')
 
@@ -65,7 +65,7 @@ export function PatientTrendSection({ input, saved, className }: { input: StatsI
           <div className="mt-2">
             <ChartLegend items={anyPartial ? LEGEND_PARTIAL : LEGEND} />
           </div>
-          <div className={`mt-2 ${thinTotals(buckets.length)}`}>
+          <div className={`mt-2 ${thinTotals(buckets.length)} ${CHART_NO_SIDE_SCROLL}`}>
             <StackedBarChart title={TITLE} unit="명" series={TREND_SERIES} buckets={buckets} dense={buckets.length > DENSE_OVER} />
           </div>
           {note !== null && <Note>{note}</Note>}
