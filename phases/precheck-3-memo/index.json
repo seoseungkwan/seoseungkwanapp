@@ -5,7 +5,8 @@
     {
       "step": 0,
       "name": "memo-text",
-      "status": "pending"
+      "status": "completed",
+      "summary": "lib/precheck/memo(createMemoEngine·fullText·buildMemo·memoText·validatePhrases·defaultPhrases·diffPhrases·ourClinicPhrases·unfinished), jobs.memoViews, check의 memo·memoBlocked, E-MEMO-NO-SETTINGS, our-clinic-settings.mjs, 골든 memo-*·phrases-engine. 고친 메모는 memoViews의 saved 인자(내원번호→글)로 받는다. 문구 사전은 저장처가 없어 빈 사전이며, 연골주사 줄은 시술 줄이고 빼기는 약 이름만 뺀다. 입력 대상은 글이 아니라 hasMemo로 가른다."
     },
     {
       "step": 1,
@@ -21,7 +22,8 @@
     {
       "step": 3,
       "name": "bit-input",
-      "status": "pending"
+      "status": "pending",
+      "summary": "bit.input 연결(TASK-35): 내원 수 확인·진짜 입력 기록(WorkStoreJournal)·직접 확인(SkippedByHand)·쓰다 멈춘 사람 검사·store.* 잠금을 갖추고 Program.cs에 등록. 판 번호는 그대로이고 TASK-37 전에는 릴리스하지 않는다. InputRunner.RunConfirmed의 차례: 해시 저장→기록 읽기→풀 사람 Mark→칸 확인→사람마다. AC-035.9 확인할 수 없는 기록은 input-acks.dat. 크롬 창 내리기(TASK-38, 확장 0.1.1)가 첫 progress에 맞춰 돈다. 남은 일: TASK-36·37, 의원 PC 시험."
     },
     {
       "step": 4,

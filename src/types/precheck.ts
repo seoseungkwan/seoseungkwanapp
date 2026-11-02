@@ -200,10 +200,56 @@ export type RuleSettings = { schema?: 1; off: string[]; on: string[]; grade: Rec
 
 /** 진료 하나의 메모(TASK-14). text는 비트에 들어가는 글: 사람이 고쳤거나 완료했으면 그 글, 아니면 새 초안(fullText). missing은 고친 글에 빠진 사유 문장, hasMemo는 부위 메모가 있나(원본 v.memos), unfinished는 확인 표시가 남았나 */
 export type VisitMemoView = { visitKey: string; text: string; edited: boolean; missing: string[]; hasMemo: boolean; unfinished: boolean }
-/** 메모 재료. phrases는 claim_hospital_settings.phrases(줄이 없으면 null). saved는 사람이 고쳤거나 완료한 메모: 내원번호 → 글. store.load를 여기 잇는 것은 TASK-16이다 */
+/** 메모 재료. phrases는 claim_hospital_settings.phrases(줄이 없으면 null). saved는 사람이 고쳤거나 완료한 메모: 내원번호 → 글. store.load에서 받은 값은 jobs.check·jobs.memoInput·jobs.memoState가 채운다(TASK-16) */
 export type MemoInput = { phrases: unknown; saved?: ReadonlyMap<string, string> }
 /** 메모 결과. memoBlocked면 메모를 만들지 않았다(AC-014.8) */
 export type MemoViews = { memoBlocked: 'E-MEMO-NO-SETTINGS' | null; memos: VisitMemoView[] }
+
+// ── 비트 메모 비교(TASK-16, REQ-016) ──────────
+
+/** claim.memos 줄(helper Claim/MemoRowsRead): v 내원번호 · p 차트번호 · d 접수일 YYYY-MM-DD · m 비트 청구메모(CRLF→LF 말고 글자 그대로, 4,000자까지) */
+export type MemoRowRaw = { v: string; p: string; d: string; m: string }
+/** 도우미 claim.memos JSON. period는 읽은 기간이고, 공백뿐인 메모의 줄은 오지 않는다 */
+export type ClaimMemosJson = { version: 1; period: DateRange; truncated: boolean; invalidRows: number; rows: MemoRowRaw[] }
+/**
+ * store.load의 달 하나(helper Store/WorkStore.Load). 도우미는 안쪽을 보지 않고 웹이 정한다.
+ * drafts: 내원번호 → 사람이 고친 글. done: 내원번호 → 완료 때의 글(글이 아니면 표시일 뿐 메모로 쓰지 않는다). 같은 진료에 둘 다 있으면 drafts가 앞선다.
+ * journal: 내원번호 → 입력 기록의 마지막 상태(writing·done·skipped·skippedByHand·check·writeUnconfirmed, 도우미만 쓴다)
+ */
+export type StoreMonthJson = { drafts: Record<string, string>; done: Record<string, string | boolean>; journal: Record<string, string> }
+/** 도우미 store.load JSON. 묻지 않은 칸은 없다. settings·contact는 이 TASK에서 쓰지 않는다 */
+export type StoreLoadJson = { months?: Record<string, StoreMonthJson>; contact?: unknown; settings?: unknown }
+
+/** 비교 결과(AC-016.2). 조회 못함은 빈칸이 아니다 */
+export type MemoCompare = '같음' | '다름' | '비트에 없음' | '조회 못함'
+/** 받아 둔 claim.memos: 읽은 기간과 내원번호 → 줄(chart는 앞 0을 뺀 차트번호) */
+export type BitMemos = { period: DateRange; rows: Map<string, { chart: string; memo: string }> }
+/** 진료 하나의 비교 상태. inBit은 같음·다름일 때만, approved는 지금 비트 메모와 같은 승인일 때만, lastJournal은 입력 기록이 있을 때만 칸이 있다 */
+export type VisitMemo = {
+  key: string
+  date: string
+  text: string // 우리 메모(고친 것은 고친 글)
+  hasMemo: boolean
+  unfinished: boolean
+  compare: MemoCompare
+  inBit?: string
+  approved?: string
+  lastJournal?: string
+}
+/** 입력 묶음 줄. replaces는 승인한 비트 메모이고 승인하지 않았으면 칸이 없다(AC-037.1) */
+export type InputPlanRow = VisitMemo & { replaces?: string }
+/** 입력 묶음과 빠지는 사람(AC-016.3). 메모 없음·확인 표시·조회 못함은 AC-018.26의 묶음 까닭이다 */
+export type InputPlan = {
+  batch: InputPlanRow[]
+  done: { key: string; reason: '이미 입력됨' }[]
+  skipped: { key: string; reason: '이미 있음' | '메모 없음' | '확인 표시' | '조회 못함' }[]
+}
+/** 날짜별 수(AC-016.4, REQ-019 건수의 재료): 메모 필요 · 입력(같음) · 이미 있음(다름). 입력 수는 메모 필요 수를 넘지 않는다 */
+export type DayMemoCount = { date: string; needMemo: number; entered: number; already: number }
+/** jobs.memoState 옵션. visible은 고른 기간(AC-013.13), noAsk는 묻지 않기(기본 거짓, AC-018.22), approved는 사람마다 승인(AC-018.14) */
+export type MemoStateOptions = { visible: DateRange; noAsk?: boolean; approved?: ReadonlyMap<string, string> }
+/** 고른 기간의 비교·입력 묶음·날짜별 수. 환자 글자가 들어 있어 Worker와 환자 줄 화면(components/claim/rows) 밖으로 나가지 않는다 */
+export type MemoState = { memoBlocked: MemoViews['memoBlocked']; rows: VisitMemo[]; plan: InputPlan; days: DayMemoCount[] }
 
 /** 점검 결과 보기 모양(jobs.check, TASK-10). 환자 글자가 들어 있어 Worker와 환자 줄 화면(components/claim/rows) 밖으로 나가지 않는다 */
 export type CheckedVisit = Pick<Visit, 'key' | 'chart' | 'date' | 'name'> & { findings: Finding[]; skippedNoHistory: number; skippedNoDx: number; checked: number; memo: VisitMemoView | null }
@@ -224,7 +270,7 @@ export type RuleSummary = Pick<RuleDef, 'id' | 'title' | 'domain' | 'grade' | 'b
 export type SavedRuleSettings = { schema: 1; off: string[]; on: string[]; grade: [string, Grade][] }
 
 /**
- * 화면 → Worker. loadStart·month: 한 달 불러오기 / ruleList: 설정 화면용 규칙 목록
+ * 화면 → Worker. loadStart·month·loadPart: 한 달 불러오기 / memoReloadStart·loadPart의 run: 비트 메모 다시 불러오기 / ruleList: 설정 화면용 규칙 목록
  *
  * 화면이 지킬 약속:
  * 1. 불러올 때마다 새 번호 load를 정해(1씩 올린다. 같은 Worker에 같은 번호를 두 번 쓰지 않는다) stream('claim.month') 바로 앞에 loadStart를 보낸다.
@@ -238,17 +284,30 @@ export type SavedRuleSettings = { schema: 1; off: string[]; on: string[]; grade:
  * 6. 점검해도 되는 때는 마지막 번호의 month가 ok:true로 답했을 때뿐이다. ok:false면 멈춘다. stream이 끝난 것만으로 판단하지 않는다:
  *    SHA-256이 달라도 stream은 끝나고, SHA-256 계산은 그 뒤에 끝난다.
  * 7. partial로 판단하지 않는다. 어느 명령이든 오고(Worker는 명령을 모른다) 불러 둔 달을 바꾸지 않는다. 6과 같은 까닭으로 아직 안 왔다고 성공도 아니다.
- * 8. claim.memos·store.load(뒤 TASK가 만든다)도 SHA-256이 달라도 stream이 끝나고 신호는 partial뿐이라 7처럼 그것으로 막을 수 없다.
- *    그래서 끝난 id마다 month처럼 그 불러오기의 번호로 Worker에 물어 take한 답을 받고, 그 답이 ok:false면 멈춘다.
+ * 8. claim.memos·store.load도 SHA-256이 달라도 stream이 끝나고 신호는 partial뿐이라 7처럼 그것으로 막을 수 없다.
+ *    그래서 끝난 id마다 month처럼 그 불러오기의 번호로 loadPart를 보내 take한 답을 받고, 그 답이 ok:false면 멈춘다. ok:false면 Worker는 그 자료를 받지 않았다(AC-016.5).
  *    stream 거절은 E-HELPER-UNKNOWN-COMMAND면 그 자료 없이 계속하고 다른 오류 번호면 멈춘다(AC-013.2). 옛 불러오기의 거절은 2처럼 버린다.
+ * 9. 비트 메모 다시 불러오기(AC-016.7, TASK-18)는 load를 그대로 두고 새 번호 run을 정해(load와 같은 곳에서 받는다) stream('claim.memos') 바로 앞에 memoReloadStart를 보낸다. 답은 없다.
+ *    stream이 끝나면 그새 새 번호가 나왔어도 run을 실은 loadPart를 보낸다(모아 둔 글자를 찾아 가 버리게). 달과 점검 결과는 그대로다.
+ *    답의 load·run이 마지막 번호와 다르면 ok와 상관없이 버린다. Worker도 take가 끝난 뒤 둘 다 마지막 번호일 때만 비트 메모를 통째로 바꾼다.
+ * 10. stream 거절·ok:false면 그 다시 불러오기는 실패다. Worker는 전 자료와 비교를 그대로 둔다(AC-016.8). 거절은 Worker에 알릴 것이 없다.
+ * 11. memoReloadStart를 보낸 뒤에 온 run 없는 part: 'memos'는 조각을 찾아 버리고 ok:false다(옛 [자료 불러오기] 답이 새 답을 덮지 않게). part: 'store'는 그대로 받는다. 새 loadStart가 이 표시와 run을 지운다.
  */
-export type PrecheckFromScreen = { type: 'loadStart'; load: number } | { type: 'month'; id: string; load: number } | { type: 'ruleList' }
+export type PrecheckFromScreen =
+  | { type: 'loadStart'; load: number }
+  | { type: 'month'; id: string; load: number }
+  | { type: 'loadPart'; part: 'memos' | 'store'; id: string; load: number }
+  | { type: 'memoReloadStart'; run: number }
+  | { type: 'loadPart'; part: 'memos'; id: string; load: number; run: number }
+  | { type: 'ruleList' }
 
-/** Worker → 화면. month의 load는 물을 때 보낸 번호 그대로다 */
+/** Worker → 화면. month·loadPart의 load·run은 물을 때 보낸 번호 그대로다. loadPart 답에는 환자 글자가 없다 */
 export type PrecheckToScreen =
   // 조각이 다 오지 않음(abort·빠짐·SHA-256 다름). 그 id의 조각을 버렸다는 알림일 뿐, 성패 판단에 쓰지 않는다(PrecheckFromScreen 약속 6·7·8)
   | { type: 'partial'; id: string; code: 'E-CLAIM-PARTIAL' }
   | { type: 'month'; id: string; load: number; ok: true; visits: number; months: string[] }
   | { type: 'month'; id: string; load: number; ok: false; code: ErrorCode }
+  | { type: 'loadPart'; part: 'memos' | 'store'; id: string; load: number; run?: number; ok: true }
+  | { type: 'loadPart'; part: 'memos' | 'store'; id: string; load: number; run?: number; ok: false; code: ErrorCode }
   | { type: 'ruleList'; ok: true; rules: RuleSummary[] }
   | { type: 'ruleList'; ok: false; code: ErrorCode }
