@@ -2,17 +2,21 @@
 
 import type { ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { isErrorCode } from '@/lib/errors'
+import { supabaseBrowser } from '@/lib/supabase/browser'
 import { FollowupTool } from './FollowupTool'
 import { RecallTool } from './RecallTool'
 import type { PatientsTool } from './tools'
+import { useCountsUpload } from './useCountsUpload'
 import { usePatientsWorker, type PatientsBridge, type PatientsWorkerApi, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
 
 // 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 정기 주사는 TASK-12). 문자 문구 도구는 연결 상태와 상관없이 살아 있어야 해서 이 화면 밖(PatientsEntry)에 있다(AC-613.5).
 // 도구를 바꿔도 다시 읽지 않는다(이 컴포넌트는 도구가 바뀌어도 그대로 있고, 읽기는 usePatientsWorker 한 곳). 한 종류가 실패하면 그 도구만 오류다(AC-604.3).
-// 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다
+// 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다(건수 올리기 실패 줄만 목업 글이다)
+// 남은 건수는 usePatientsWorker의 counts(views·marked 중 나중에 온 것)를 올린다(AC-614). 다시 읽는 동안 늦게 온 marked가 남아 있을 수 있어 두 명단의 보기 모양이 다 있을 때만 넘긴다
 
 type ListTool = Exclude<PatientsTool, 'messages'>
 
@@ -29,6 +33,8 @@ const LIST_LOADING: Record<ListTool, { title: string; unit: string; note: string
 
 // 불러오는 중 줄: 위 1px line + 20(목업 .ld)
 const loadingBox = 'mt-4 border-t border-line pt-5'
+
+const COUNTS_FAILED = '휴대폰에서 볼 남은 건수를 올리지 못했어요. 명단은 그대로 쓸 수 있어요.'
 
 /** 도구 머리(목업 head). right는 오른쪽 요약 */
 export function ListHead({ tool, right }: { tool: ListTool; right?: ReactNode }) {
@@ -111,6 +117,25 @@ function ErrorView({ tool, code, onReload }: { tool: ListTool; code: string; onR
   )
 }
 
+/** 건수 올리기 실패 줄(AC-614.4, 목업 page .up·errLine). 글과 번호뿐이라 환자 값이 그려질 길이 없다 */
+function CountsFailedLine({ code, onRetry }: { code: string; onRetry(): void }) {
+  return (
+    // 도구 줄 아래 12, 도구 몸통 위 24·휴대폰 16(목업 .up·.tbody). 도구 자리 위 여백(24·휴대폰 16, PatientsEntry) 안에서 맞춘다
+    <p role="alert" className="-mt-3 mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-ink-2 max-md:-mt-1 max-md:mb-4">
+      <Icon name="stop" size={14} className="shrink-0 text-negative" />
+      <span>{COUNTS_FAILED}</span>
+      <span className="text-caption text-ink-2">오류 번호 {code}</span>
+      <button
+        type="button"
+        className={`inline-flex cursor-pointer items-center rounded-control text-small font-medium text-accent underline-offset-3 transition hover:underline ${ds.focusRing} max-md:min-h-11`}
+        onClick={onRetry}
+      >
+        다시 올리기
+      </button>
+    </p>
+  )
+}
+
 // 지금 도구의 불러오는 중·오류·빈 자리. 문자 문구는 이 화면이 그리지 않는다
 function ToolState({ tool, load }: { tool: PatientsTool; load: PatientsWorkerApi }) {
   if (tool === 'messages') return null
@@ -125,8 +150,10 @@ export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; b
   const views = load.status === 'done' ? load.views : null
   const followup = views && !views.codes.followup ? views.followup : null
   const recall = views && !views.codes.recall ? views.recall : null
+  const upload = useCountsUpload(supabaseBrowser(), followup && recall ? load.counts : null)
   return (
     <>
+      {upload.error && <CountsFailedLine code={upload.error} onRetry={upload.retry} />}
       {/* 명단 도구는 다 읽은 뒤에는 다른 도구로 가도 살아 있다(숨기기만): 고른 기간·늦게 온 저장 답·오류 줄을 잃지 않는다 */}
       {followup && (
         <ToolSlot tool="followup" hidden={tool !== 'followup'}>

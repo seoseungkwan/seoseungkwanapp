@@ -3,16 +3,22 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { errorInfo } from '@/lib/errors'
-import type { FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView } from '@/types/patients'
+import type { ContactCount, FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView } from '@/types/patients'
 import { PatientsScreen } from './PatientsScreen'
 import type { PatientsTool } from './tools'
 import type { PatientsBridge, PatientsWorkerHandle } from './usePatientsWorker'
 
 // 비트 PC 환자 탭 틀(AC-610, 목업 loadingView·errorView). 불러오는 중·오류·도구 자리를 그리고, 도구 자리에 FollowupTool(AC-611)·RecallTool(AC-612)이 들어간다. 문자 문구 도구는 연결 상태와 상관없이 살아 있어야 해서 이 화면 밖(PatientsEntry)에 있다(AC-613.5)
-const sb = vi.hoisted(() => ({ reads: 0 }))
+const sb = vi.hoisted(() => ({
+  reads: 0,
+  upserts: [] as { table: string; body: unknown; options: unknown }[],
+  saveFails: false,
+  // 있으면 이것이 끝날 때까지 건수 올리기의 답을 잡아 둔다
+  hold: null as Promise<void> | null,
+}))
 vi.mock('@/lib/supabase/browser', () => ({
   supabaseBrowser: () => ({
-    from: () => ({
+    from: (table: string) => ({
       select: () => ({
         order: () => ({
           order: async () => {
@@ -21,12 +27,20 @@ vi.mock('@/lib/supabase/browser', () => ({
           },
         }),
       }),
+      upsert: async (body: unknown, options: unknown) => {
+        sb.upserts.push({ table, body, options })
+        await sb.hold
+        return { data: null, error: sb.saveFails ? { message: 'permission denied (secret detail)' } : null }
+      },
     }),
   }),
 }))
 
 beforeEach(() => {
   sb.reads = 0
+  sb.upserts = []
+  sb.saveFails = false
+  sb.hold = null
 })
 afterEach(cleanup)
 
@@ -576,5 +590,364 @@ describe('PatientsScreen: 문자 문구 도구 (AC-613.5)', () => {
     expect(screen.queryByRole('heading', { name: '문자 문구' })).toBeNull()
     expect(sb.reads).toBe(0)
     expect(t.storeLoads()).toBe(1)
+  })
+})
+
+describe('PatientsScreen: 남은 건수 올리기 (AC-614)', () => {
+  // 가짜 값이다. 올리는 몸통과 실패 줄에 나오면 안 된다
+  const NAME = '가짜환자'
+  const PHONE = '010-9999-8888'
+  const CHART = '900123'
+  const NEXT = '2026-08-06'
+  const FU_ROW: FollowupRow = {
+    key: `f|1|${CHART}|${NEXT}`,
+    chart: CHART,
+    name: NAME,
+    phone: PHONE,
+    lastVisit: '2026-07-20',
+    next: NEXT,
+    nextLabel: '8/6',
+    plan: '예정',
+    visitKind: 'F/U',
+    site: '',
+    tx: '',
+    evidence: '2주 뒤 재진',
+    contacted: false,
+  }
+  const RC_ROW: RecallRow = {
+    key: `r|cartilage|${CHART}|2026-08-20`,
+    ruleId: 'cartilage',
+    label: '연골주사',
+    months: 6,
+    chart: CHART,
+    name: NAME,
+    phone: PHONE,
+    last: '2026-02-20',
+    due: '2026-08-20',
+    status: '15일 남음',
+    evidence: '연골주사 3차 맞음',
+    contacted: false,
+  }
+  const FU: FollowupView = { ...FOLLOWUP_VIEW, base: R1.to, rows: [FU_ROW] }
+  const RC: RecallView = { rows: [RC_ROW], coverage: { records: 3, from: '2026-02-01', short: [], trimmed: 0 } }
+  const A: ContactCount = { followup_left: 1, injection_left: 2 }
+  const B: ContactCount = { followup_left: 0, injection_left: 2 }
+  const C: ContactCount = { followup_left: 0, injection_left: 1 }
+  const KEY = FU_ROW.key
+  const FAILED_TEXT = '휴대폰에서 볼 남은 건수를 올리지 못했어요. 명단은 그대로 쓸 수 있어요.'
+  const RETRY = '다시 올리기'
+
+  const bodies = () => sb.upserts.map((upsert) => upsert.body)
+  const both = (t: ReturnType<typeof setup>, counts: ContactCount | null) => t.toViews({ followup: FU, recall: RC, counts, codes: {} })
+  const reloads = (t: ReturnType<typeof setup>) => t.posted.filter((m) => m.type === 'reload')
+  const retryButton = () => screen.queryByRole('button', { name: RETRY })
+  // 불러오기를 다시 시작한다(읽기는 usePatientsWorker 한 곳)
+  const reload = async (t: ReturnType<typeof setup>) => {
+    await t.reply({ type: 'views', followup: null, recall: RC, counts: null, codes: { followup: 'E-BIT-READ-FAILED' } })
+    await userEvent.setup().click(screen.getByRole('button', { name: '다시 불러오기' }))
+  }
+  // 응답을 잡아 둔다. 돌려주는 함수를 부르면 답이 온다
+  const holdReplies = () => {
+    let release = () => {}
+    sb.hold = new Promise((resolve) => {
+      release = resolve
+    })
+    return async () => {
+      release()
+      sb.hold = null
+      await flush()
+      await flush()
+    }
+  }
+
+  it('AC-614.1: 다 읽기 전에는 올리지 않는다', async () => {
+    const t = setup('followup')
+    await t.answer('store-1')
+    await t.reply({ type: 'stored', ok: true, recall: [] })
+    await flush()
+    expect(sb.upserts).toEqual([])
+  })
+
+  it.each([
+    ['F/U만 있고 정기 주사 실패', { followup: FU, recall: null, codes: { recall: 'E-BIT-READ-FAILED' } }],
+    ['정기 주사만 있고 F/U 실패', { followup: null, recall: RC, codes: { followup: 'E-BIT-READ-FAILED' } }],
+    ['연락 표시를 못 불러옴', { followup: { ...FU, marksLoaded: false }, recall: null, codes: { recall: 'E-STORE-BROKEN' } }],
+  ])('AC-614.1: %s이면 Worker 건수가 null이라 올리지 않는다', async (_name, message) => {
+    const t = setup('followup')
+    await t.toViews({ ...message, counts: null })
+    await flush()
+    expect(sb.upserts).toEqual([])
+  })
+
+  it('AC-614.1: 두 명단이 다 있어도 Worker 건수가 null이면 올리지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, null)
+    await flush()
+    expect(sb.upserts).toEqual([])
+  })
+
+  it.each([
+    ['F/U만', { followup: FU, recall: null, codes: { recall: 'E-BIT-READ-FAILED' } }],
+    ['정기 주사만', { followup: null, recall: RC, codes: { followup: 'E-BIT-READ-FAILED' } }],
+  ])('AC-614.1: 보기 모양이 %s 있으면 건수가 와도 올리지 않는다(한쪽을 0으로 덮지 않는다)', async (_name, message) => {
+    const t = setup('followup')
+    await t.toViews({ ...message, counts: A })
+    await flush()
+    expect(sb.upserts).toEqual([])
+  })
+
+  it('AC-614.1: 둘 다 오면 그 건수를 한 번 올린다. store.load·reload를 더 부르지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await flush()
+    expect(sb.upserts).toEqual([{ table: 'contact_counts', body: A, options: { onConflict: 'hospital_id' } }])
+    expect(t.storeLoads()).toBe(1)
+    expect(reloads(t)).toEqual([])
+  })
+
+  it('AC-614.1: 기록 저장만 실패(codes.store)면 두 명단과 연락 표시가 있으니 올린다', async () => {
+    const t = setup('followup')
+    await t.toViews({ followup: FU, recall: RC, counts: A, codes: { store: 'E-STORE-FAILED' } })
+    await flush()
+    expect(bodies()).toEqual([A])
+  })
+
+  it('AC-614.1: [다시 불러오기] 동안은 보내지 않고, 같은 값으로 돌아오면 다시 보내지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+    await both(t, { ...A })
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+  })
+
+  it('AC-614.1: 다시 읽기가 실패해 건수가 null이면 보내지 않고, 다음에 값이 바뀌면 그 값만 보낸다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await t.toViews({ followup: FU, recall: null, counts: null, codes: { recall: 'E-BIT-READ-FAILED' } })
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+    await reload(t)
+    await both(t, B)
+    expect(bodies()).toEqual([A, B])
+  })
+
+  it('AC-614.2: 연락 표시로 건수가 바뀌면 marked로 다시 올리고, 같은 값의 views가 뒤따라도 더 보내지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    expect(bodies()).toEqual([A, B])
+    await t.reply({ type: 'views', followup: FU, recall: RC, counts: { ...B }, codes: {} })
+    await flush()
+    expect(bodies()).toEqual([A, B])
+  })
+
+  it('AC-614.2: 건수가 그대로인 marked는 보내지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: { ...A } })
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+  })
+
+  it('AC-614.2: marked가 건수 null을 줘도 보내지 않고 올린 기록을 잃지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await t.reply({ type: 'marked', key: KEY, ok: false, code: 'E-STORE-FAILED', counts: null })
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+    await t.reply({ type: 'marked', key: KEY, ok: false, code: 'E-STORE-FAILED', counts: { ...A } })
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+  })
+
+  it('AC-614.2: 다시 읽은 새 views가 옛 marked 값을 이긴다. 읽는 동안 늦게 온 marked는 보내지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    await flush()
+    expect(bodies()).toEqual([A])
+    await both(t, C)
+    await flush()
+    expect(bodies()).toEqual([A, C])
+  })
+
+  it('AC-614.2: 읽는 동안 늦게 온 marked 값은 새 views 건수가 null이면 사라진다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    await t.toViews({ followup: FU, recall: RC, counts: null, codes: {} })
+    await flush()
+    expect(bodies()).toEqual([A])
+  })
+
+  it('AC-614.2: 읽는 동안 온 옛 흐름의 views 건수는 보내지 않는다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await t.reply({ type: 'views', followup: FU, recall: RC, counts: B, codes: {} })
+    await flush()
+    expect(bodies()).toEqual([A])
+  })
+
+  it('AC-614.2: 다 읽은 뒤에 온 marked는 그 뒤의 값으로 올린다(다시 읽은 값을 지우지 않는다)', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await both(t, C)
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    expect(bodies()).toEqual([A, C, B])
+  })
+
+  it('AC-614.2: 요청이 나가 있는 사이 연락 표시가 바뀌면 답 뒤에 마지막 값만 보낸다', async () => {
+    const t = setup('followup')
+    const answer = holdReplies()
+    await both(t, A)
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: C })
+    expect(bodies()).toEqual([A])
+    await answer()
+    expect(bodies()).toEqual([A, C])
+    expect(retryButton()).toBeNull()
+  })
+
+  it('AC-614.3: 몸통은 정확히 정수 두 칸이고 이름·전화·차트번호·날짜 글자가 없다', async () => {
+    const t = setup('followup')
+    await both(t, A)
+    await t.reply({ type: 'filtered', tool: 'followup', rows: [FU_ROW], undecided: [], copy: { list: `${NAME}\t${PHONE}`, listWithDate: `${NAME}\t${PHONE}\t${NEXT}` } })
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    expect(sb.upserts).toHaveLength(2)
+    for (const { body } of sb.upserts) {
+      expect(Object.keys(body as object).sort()).toEqual(['followup_left', 'injection_left'])
+      for (const value of Object.values(body as object)) expect(Number.isInteger(value)).toBe(true)
+      const text = JSON.stringify(body)
+      for (const secret of [NAME, PHONE, CHART, NEXT, '2026']) expect(text).not.toContain(secret)
+    }
+  })
+
+  it('AC-614.3: Worker 건수에 다른 칸이 끼어 있으면 보내지 않고, 실패 줄에도 그 값이 없다', async () => {
+    const t = setup('followup')
+    await both(t, { ...A, name: NAME, phone: PHONE } as ContactCount)
+    await flush()
+    expect(sb.upserts).toEqual([])
+    expect(screen.getByRole('alert').textContent).toBe(`${FAILED_TEXT}오류 번호 E-PATIENTS-COUNTS-SAVE${RETRY}`)
+  })
+
+  it('AC-614.4: 실패해도 명단은 그대로고, 도구 자리 위에 목업의 작은 줄과 [다시 올리기]가 나온다. 환자 값은 없고 다시 읽지 않는다', async () => {
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    await t.reply({ type: 'filtered', tool: 'followup', rows: [FU_ROW], undecided: [], copy: { list: '', listWithDate: '' } })
+    const line = screen.getByRole('alert')
+    expect(line.textContent).toBe(`${FAILED_TEXT}오류 번호 E-PATIENTS-COUNTS-SAVE${RETRY}`)
+    for (const secret of [NAME, PHONE, CHART, 'secret detail']) expect(line.textContent).not.toContain(secret)
+    // 명단은 그대로
+    expect(within(screen.getAllByRole('table')[0]!).getByRole('checkbox', { name: `${NAME} 연락함` })).toBeTruthy()
+    // 줄은 도구 몸통 위에 있다(목업 page: 도구 줄 → 줄 → 몸통)
+    expect(line.compareDocumentPosition(t.slot('followup')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(t.slot('followup')!.contains(line)).toBe(false)
+    expect(t.storeLoads()).toBe(1)
+    expect(reloads(t)).toEqual([])
+  })
+
+  it('AC-614.4: [다시 올리기]는 지금 값을 다시 보내고, 저장되면 줄이 없어진다. store.load·reload를 부르지 않는다', async () => {
+    const user = userEvent.setup()
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    sb.saveFails = false
+    await user.click(retryButton()!)
+    await flush()
+    expect(bodies()).toEqual([A, A])
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(t.storeLoads()).toBe(1)
+    expect(reloads(t)).toEqual([])
+  })
+
+  it('AC-614.4: [다시 올리기]를 두 번 눌러도 한 번 보낸다', async () => {
+    const user = userEvent.setup()
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    sb.saveFails = false
+    const answer = holdReplies()
+    await user.dblClick(retryButton()!)
+    await flush()
+    expect(sb.upserts).toHaveLength(2)
+    await answer()
+    expect(sb.upserts).toHaveLength(2)
+    expect(retryButton()).toBeNull()
+  })
+
+  it('AC-614.4: 저절로 다시 보내지 않는다. 다시 그려도·도구를 바꿔도·같은 값이 다시 와도 그대로다', async () => {
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    t.show('recall')
+    t.show('messages')
+    t.show('followup')
+    await t.reply({ type: 'views', followup: FU, recall: RC, counts: { ...A }, codes: {} })
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: { ...A } })
+    await flush()
+    expect(sb.upserts).toHaveLength(1)
+    expect(retryButton()).not.toBeNull()
+  })
+
+  it('AC-614.4: 줄은 세 도구 모두에서 보인다(목업: 문자 문구 포함)', async () => {
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    for (const tool of ['recall', 'messages', 'followup'] as const) {
+      t.show(tool)
+      expect(screen.getByRole('alert').textContent).toContain(FAILED_TEXT)
+    }
+  })
+
+  it('AC-614.4: 바뀐 값이 저장되면 줄이 없어진다. 저장되기 전에는 남는다', async () => {
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    sb.saveFails = false
+    const answer = holdReplies()
+    await t.reply({ type: 'marked', key: KEY, ok: true, counts: B })
+    expect(bodies()).toEqual([A, B])
+    expect(retryButton()).not.toBeNull()
+    await answer()
+    expect(retryButton()).toBeNull()
+  })
+
+  it('AC-614.4: 불러오는 동안에는 줄이 없고, 같은 값으로 돌아오면 보내지 않은 채 줄이 다시 나온다. 누르면 그때 보낸다', async () => {
+    const user = userEvent.setup()
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    expect(retryButton()).toBeNull()
+    await t.answer('store-2')
+    await t.reply({ type: 'stored', ok: true, recall: [] })
+    await t.reply({ type: 'plan', followup: [], recall: [] })
+    expect(retryButton()).toBeNull()
+    await t.reply({ type: 'views', followup: FU, recall: RC, counts: { ...A }, codes: {} })
+    expect(sb.upserts).toHaveLength(1)
+    sb.saveFails = false
+    await user.click(retryButton()!)
+    await flush()
+    expect(bodies()).toEqual([A, A])
+    expect(retryButton()).toBeNull()
+  })
+
+  it('AC-614.4: 다시 읽기가 실패해 보낼 값이 없으면 누를 수 없는 줄을 보이지 않는다', async () => {
+    sb.saveFails = true
+    const t = setup('followup')
+    await both(t, A)
+    await reload(t)
+    await t.toViews({ followup: FU, recall: null, counts: null, codes: { recall: 'E-BIT-READ-FAILED' } })
+    expect(retryButton()).toBeNull()
+    expect(sb.upserts).toHaveLength(1)
   })
 })

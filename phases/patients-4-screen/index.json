@@ -29,7 +29,8 @@
     {
       "step": 4,
       "name": "counts-upload",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/components/patients/useCountsUpload(sb, counts): { error, retry, ... }. PatientsScreen이 F/U·정기 주사 보기 모양이 둘 다 있을 때만 counts를 넘긴다(훅의 counts는 views·marked 중 나중에 온 값, reload에 지워짐). 요청은 한 번에 하나, 끝나면 최신 값을 보낸다. 실패 줄 글은 목업 그대로('남은 건수를 올리지 못했어요 / …[다시 올리기]를 눌러 주세요.' + 오류 번호), counts가 null인 동안 줄은 숨고 값이 돌아오면 다시 보인다. 자동 재시도 없음. 다시 마운트하면 기록이 없어 한 번 다시 보낸다(목업 '탭을 열 때마다'). 알려진 한계(보고): 답이 영영 안 오면 뒤 값이 멈춘다(타임아웃 없음). 요청 왕복 안에 [다시 불러오기]를 누르고 그 읽기가 실패하면 서버는 옛 값으로 남는다(다음 성공 읽기에서 고쳐짐). 실패 뒤 재시도 중 값이 바뀌고 다시 읽기가 옛 값이면 저장은 됐는데 실패 줄이 남을 수 있다(닿기 어렵고 서버 값은 맞음). TASK-15에 전달: 가짜 Supabase는 .upsert 인자를 기록한다. PatientsEntry.test의 가짜 모듈에는 upsertContactCount가 없고 counts가 늘 null이라 닿지 않는다."
     },
     {
       "step": 5,
