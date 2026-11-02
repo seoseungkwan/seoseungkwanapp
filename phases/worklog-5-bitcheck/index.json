@@ -1,0 +1,16 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "worklog-5-bitcheck",
+  "steps": [
+    {
+      "step": 0,
+      "name": "bit-e2e",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "clinic-check",
+      "status": "pending"
+    }
+  ]
+}

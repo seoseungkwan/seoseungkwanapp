@@ -201,6 +201,12 @@
 
   /* 글꼴 */
   --font-ui: var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+
+  /* 업무일지 양식 칸 전용 — UI_GUIDE '업무일지 양식' */
+  --xl-ink: #000000;
+  --xl-lav: #CCCCFF;
+  --xl-gray: #D9D9D9;
+  --xl-focus: #107C41;
 }
 
 body {

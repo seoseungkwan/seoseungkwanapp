@@ -6,7 +6,7 @@ import { TabBar } from './TabBar'
 
 // 건너뛰기 링크 모양(ui-90 AC-403.1, UI_GUIDE '앱 틀' 건너뛰기 링크): 44px·surface·1px line·rounded-float·shadow-float·body 600·2px accent 초점 고리
 const SKIP_LINK =
-  'sr-only rounded-float border-line bg-surface text-body font-semibold text-ink no-underline shadow-float focus-visible:not-sr-only focus-visible:absolute focus-visible:top-1.5 focus-visible:left-2 focus-visible:z-12 focus-visible:inline-flex focus-visible:h-11 focus-visible:items-center focus-visible:border focus-visible:px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+  'sr-only rounded-float border-line bg-surface text-body font-semibold text-ink no-underline shadow-float focus-visible:not-sr-only focus-visible:absolute focus-visible:top-1.5 focus-visible:left-2 focus-visible:z-12 focus-visible:inline-flex focus-visible:h-11 focus-visible:items-center focus-visible:border focus-visible:px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent print:hidden'
 
 // 앱 화면 틀 (REQ-008, b2b-redesign AC-218.1, UI_GUIDE '앱 화면' 앱 틀·폰). 앱 초기화 범위(.app-ui).
 // 바탕 A(ui-90 AC-404.1): 뿌리와 본문 모두 흰 바탕(surface) 한 장이고, 어느 페이지에서나 같다.
@@ -33,7 +33,7 @@ export function AppShell({
       <a href="#main" className={SKIP_LINK}>
         본문으로 건너뛰기
       </a>
-      <div className="sticky top-0 z-10">
+      <div className="sticky top-0 z-10 print:hidden">
         <header className="border-b border-line bg-surface">
           <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-4 px-6 max-md:h-12 max-md:gap-2 max-md:px-4">
             <div className="flex min-w-0 items-center gap-3 max-md:gap-2">
@@ -58,7 +58,7 @@ export function AppShell({
         tabIndex={-1}
         className="flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:scroll-mt-23.5"
       >
-        <div className="mx-auto w-full max-w-7xl px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8">{children}</div>
+        <div className="mx-auto w-full max-w-7xl px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8 print:p-0">{children}</div>
       </main>
     </div>
   )

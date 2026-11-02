@@ -60,8 +60,12 @@ describe('AC-005.8 Precheck.Helper.csproj: Precheck.Windows 참조 · x86 빌드
     expect(csproj).not.toMatch(/<OutputPath>/)
   })
 
+  // 두 시험이 같은 빌드 결과를 본다(한 번만 빌드)
+  let built: { code: number; output: string } | undefined
+  const build = () => (built ??= buildDotnet(HELPER_CSPROJ, { timeoutMs: 280_000 }))
+
   it('AC-005.8 dotnet build -c Release가 통과해 bin/Release/net48에 exe·Precheck.Windows.dll·Precheck.Core.dll이 생기고 exe CLR 머리에 32BITREQUIRED가 켜져 있다', () => {
-    const run = buildDotnet(HELPER_CSPROJ, { timeoutMs: 280_000 })
+    const run = build()
     expect(run.code, tail(run.output)).toBe(0)
     for (const file of ['PrecheckHelper.exe', 'Precheck.Windows.dll', 'Precheck.Core.dll']) {
       expect(existsSync(path.join(OUT_DIR, file)), `${file}이 ${OUT_DIR}에 없다`).toBe(true)
@@ -69,6 +73,25 @@ describe('AC-005.8 Precheck.Helper.csproj: Precheck.Windows 참조 · x86 빌드
     const flags = clrFlags(readFileSync(path.join(OUT_DIR, 'PrecheckHelper.exe')))
     expect(flags, 'CLR 머리를 찾지 못했다').not.toBeNull()
     expect((flags ?? 0) & COMIMAGE_FLAGS_32BITREQUIRED).toBe(COMIMAGE_FLAGS_32BITREQUIRED)
+  }, 300_000)
+
+  // 원본 DrBitExport.exe.config: <startup useLegacyV2RuntimeActivationPolicy="true"><supportedRuntime version="v4.0" sku=… /></startup>.
+  // 비트 DLL이 옛 런타임(v2)용 혼합 어셈블리를 불러도 4.x 런타임에서 돌게 한다. 원본 sku는 4.7.2, 도우미는 4.8
+  it('AC-005.8 bin/Release/net48의 PrecheckHelper.exe.config는 원본처럼 startup useLegacyV2RuntimeActivationPolicy="true"·supportedRuntime v4.0(4.8)이고 System.Text.Json 바인딩 리디렉트도 그대로 있다', () => {
+    const run = build()
+    expect(run.code, tail(run.output)).toBe(0)
+    const file = path.join(OUT_DIR, 'PrecheckHelper.exe.config')
+    expect(existsSync(file), `PrecheckHelper.exe.config가 ${OUT_DIR}에 없다`).toBe(true)
+    const config = readFileSync(file, 'utf8')
+
+    expect(config.match(/<startup\b/g) ?? []).toHaveLength(1)
+    expect(config).toMatch(/<startup\s+useLegacyV2RuntimeActivationPolicy="true"\s*>/)
+    const startup = /<startup\b[^>]*>([\s\S]*?)<\/startup>/.exec(config)?.[1] ?? ''
+    expect(startup.match(/<supportedRuntime\b/g) ?? []).toHaveLength(1)
+    expect(startup).toMatch(/<supportedRuntime\s+version="v4\.0"\s+sku="\.NETFramework,Version=v4\.8"\s*\/>/)
+
+    // 빌드가 만드는 바인딩 리디렉트(Core의 System.Text.Json 등)를 덮어 지우지 않는다
+    expect(config).toMatch(/<assemblyIdentity\s+name="System\.Text\.Json"[^>]*\/>\s*<bindingRedirect\b/)
   }, 300_000)
 })
 

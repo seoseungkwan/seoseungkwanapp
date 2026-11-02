@@ -1,0 +1,24 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-3-server-parts",
+  "steps": [
+    {
+      "step": 0,
+      "name": "output-check",
+      "status": "completed",
+      "summary": "TASK-7 끝: src/lib/ai/output.ts — SUMMARY_MAX=200, CARD_TEXT_MAX=120, MIN_CARDS=3, MAX_CARDS=8, hasForbiddenNumber(text): boolean(\\d{4}년·\\d{1,2}월·14일·7일을 ' '(빈칸)으로 바꾼 뒤 \\p{N} 숫자가 남으면 true — 명세의 /\\d/보다 넓게, 전각·원문자 숫자도 잡음), parseAiReport(text, input): {summary; cards: ReportCard[]} | null(모양 정확히 {summary,cards}·{tag,text,metric}, 길이 앞뒤 빈칸 뺀 1~200/1~120, 꼬리표 4종, 지표 ID 안 맞거나 숫자 규칙 어긴 카드 버림, 요약에 숫자·남은 카드 3개 미만 → null, 앞 8개만, 카드마다 basis=basisLine(metric,input)). 시험 59개 RED→GREEN."
+    },
+    {
+      "step": 1,
+      "name": "claude-call",
+      "status": "completed",
+      "summary": "TASK-10 끝: @anthropic-ai/sdk 1.3.0(정확한 판). src/app/api/ai/claude.ts(server-only) — MODEL='claude-opus-5-5', MAX_TOKENS=16000, AnthropicLike(beta.messages.stream(...).finalMessage()), ClaudeResult, callClaude({system,user,schema},{client?,apiKey?}). 호출: beta.messages.stream({model,max_tokens,betas:['server-side-fallback-2026-07-01'],fallbacks:'default',output_config:{effort:'medium',format:{type:'json_schema',schema}},system,messages}), thinking 없음, 기본 클라이언트 new Anthropic({apiKey,timeout:100_000,maxRetries:1}). 열쇠 deps.apiKey ?? env, 비면 클라이언트 안 만들고 FAILED. APIConnectionError·RateLimitError·InternalServerError(5xx/529) → BUSY, 402 → LIMIT, 스트림 중 status 없는 APIError type rate_limit/overloaded/api_error → BUSY, 그 밖 FAILED(usage null); stop_reason refusal·max_tokens → FAILED(usage 있음); 정상이면 text 블록 합침 + usage{inputTokens,outputTokens,model:response.model}. 시험 23개 RED→GREEN."
+    },
+    {
+      "step": 2,
+      "name": "report-store",
+      "status": "completed",
+      "summary": "TASK-11 끝: src/app/api/ai/store.ts(server-only) — type ReportMonths={selected,prev,lastYear: unknown|null; groupNames}; loadReportMonths(supabase, month): Promise<ReportMonths>(DB 안 읽고 늘 새 {null,null,null,{}} — 통계 명세 전까지 '자료 없음', 타입 붙인 const 화살표 함수); saveReport(supabase, r: SavedReport): Promise<boolean> → rpc('save_ai_report',{p_month,p_report:{partial,summary,cards},p_input_hash,p_model}); addUsage(supabase, u: AiUsage & {costMicroUsd}): Promise<boolean> → rpc('add_ai_usage',{p_input,p_output,p_cost}). rpc 오류·throw 모두 false(내용 버림, console 없음) — false를 E-AI-FAILED로 바꾸는 건 TASK-12 generate.ts. 쓰기는 rpc만, service role 없음, 세션 클라이언트는 route.ts가 넘김. 시험 10개 RED→GREEN."
+    }
+  ]
+}

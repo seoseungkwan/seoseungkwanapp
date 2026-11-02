@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "patients",
-  "approved_at": "2026-11-01T22:06:33Z",
+  "approved_at": "2026-11-02T03:36:08Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "c2abfb8cf8e50dba5194482c227179e35bc6c07feff01351fd40b3cec4702fe1",
+  "spec_sha256": "9ea4d694f7cfef17cf90fc960afeb793ac64d1308bd3a08ea371d126d98a53f2",
   "scope": [
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
@@ -35,6 +35,7 @@
     "helper/tests/Precheck.Windows.Tests/Contact/*",
     "helper/tests/contact-read.dotnet.test.ts",
     "helper/tests/contact-store.dotnet.test.ts",
+    "phases/index.json",
     "scripts/patients/golden/*",
     "src/app/(app)/dashboard/page.test.tsx",
     "src/app/(app)/notReadyPages.test.tsx",

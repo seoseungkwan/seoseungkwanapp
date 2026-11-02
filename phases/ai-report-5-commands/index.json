@@ -1,0 +1,18 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "ai-report-5-commands",
+  "steps": [
+    {
+      "step": 0,
+      "name": "ai-try",
+      "status": "completed",
+      "summary": "TASK-15: src/lib/ai/markdown.ts(TAG_LABEL·reportMarkdown(report, usage) — 끝 토큰·비용이 usage에서만 나와 design.md대로 usage 인자)·scripts/aiTry.ts(fakeMonthsLoader·resultFileName·missingKeyMessage)·scripts/ai-try.ts(시험 안 함)와 각 시험, package.json에 ai:try 한 줄, vitest.config.ts include에 'scripts/**/*.test.ts' 한 줄. 사용자가 칠 명령: npm run ai:key 뒤 npm run ai:try (.ai-try/에 Markdown)."
+    },
+    {
+      "step": 1,
+      "name": "ai-key",
+      "status": "completed",
+      "summary": "npm run ai:key 추가: package.json ai:key, scripts/aiKey.ts(applyApiKey·runAiKey), scripts/ai-key.ts(raw 숨김 입력 hiddenKeys + writePrivateFile), scripts/aiKey.test.ts(AC-515.1~2, 12개). 사용자 순서: 따로 연 터미널에서 npm run ai:key → npm run ai:try → .ai-try/ 파일 읽기"
+    }
+  ]
+}

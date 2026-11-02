@@ -8,6 +8,10 @@ export type ErrorCode =
   // 비트 접속·등록(bit.check 단계와 등록 단계, 설치·연결 확인 화면 TASK-6)
   | 'E-BIT-NOT-FOUND' | 'E-BIT-DB-FAILED' | 'E-BIT-READ-FAILED' | 'E-BIT-NOT-REGISTERED' | 'E-BIT-HOSPITAL-MISMATCH'
   | 'E-STORE-FAILED' | 'E-STORE-BROKEN'
+  // AI 리포트(spec ai-report design.md '오류 문구')
+  | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED' | 'E-AI-NO-DATA'
+  // 업무일지(specs/worklog)
+  | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
   // 환자 탭(spec patients REQ-609). 이 명세는 E-PATIENTS-*만 더한다(규칙 C3)
   | 'E-PATIENTS-TEMPLATES-READ' | 'E-PATIENTS-TEMPLATES-SAVE' | 'E-PATIENTS-COUNTS-READ' | 'E-PATIENTS-COUNTS-SAVE' | 'E-PATIENTS-SOURCE'
 
