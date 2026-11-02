@@ -217,7 +217,7 @@ describe('AC-014.2 처방 목록(저장된 sales_codes 최근 13달)', () => {
 describe('AC-014.3 저장된 묶음이 없으면 제안 다섯 개', () => {
   const known: KnownCode[] = [...KNOWN, { code: 'CRYO', name: '가짜 냉동', amount: 100 }]
 
-  it('AC-014.3 제안 다섯 개로 채우고 칩과 안내 끝 문장을 보이며, 코드는 규칙대로 들어가고, 저절로 저장하지 않는다', () => {
+  it('AC-014.3·AC-014.7 제안 다섯 개로 채우고 칩과 안내 끝 문장을 보이며, 코드는 규칙대로 들어가고, 저절로 저장하지 않는다', () => {
     const { save } = draw({ groups: [], known })
     expect(nameFields().map((field) => field.value)).toEqual(['도수치료', '체외충격파', 'C-arm 주사', '초음파', '냉동치료'])
     expect(screen.getByText(CHIP)).toBeTruthy()

@@ -3,13 +3,14 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eachDay, monthOf } from '@/lib/analytics/dates'
+import { errorInfo } from '@/lib/errors'
 import { RxGroupStoreError } from '@/lib/storage/rxGroups'
 import type { BridgeState } from '@/types/bridge'
 import type { RevenueCodeRow, RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import { RevenueScreen } from './RevenueScreen'
 
-// 매출 화면 (TASK-9·TASK-14, REQ-009 · AC-009.1~AC-009.4 · REQ-014 · AC-014.1·014.3·014.5·014.6). 가짜 useBridge·가짜 store를 넣는다. 자료는 모두 가짜 숫자다. 오늘은 2026-11-01(날짜만 멈춘다)
+// 매출 화면 (TASK-9·TASK-14·TASK-15, REQ-009 · AC-009.1~AC-009.4·009.6·009.7 · REQ-014 · AC-014.1·014.3·014.5·014.6·014.7). 가짜 useBridge·가짜 store를 넣는다. 자료는 모두 가짜 숫자다. 오늘은 2026-11-01(날짜만 멈춘다)
 
 const fake = vi.hoisted(() => ({
   bridge: null as unknown,
@@ -33,7 +34,7 @@ const NO_RECORD = '이 달에는 비트에 수납 기록이 없어요'
 const HELPER_OLD = '매출을 읽으려면 도우미를 새로 깔아야 해요'
 const EXTENSION_OLD = '매출을 읽으려면 확장 프로그램을 새 버전으로 바꿔야 해요'
 const NOT_CONNECTED = '이 PC는 비트와 연결되어 있지 않아요.'
-const BUSY_WHAT = '청구 화면이 다른 창에서 열려 있어요'
+const BUSY_WHAT = '비트 연결을 다른 창에서 쓰고 있어요'
 const LATEST_MONTHS = ['2026-10', '2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02', '2026-01', '2025-12', '2025-11', '2025-10']
 
 const day = (date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow => ({
@@ -381,7 +382,7 @@ describe('AC-009.4 상태', () => {
     expect(bridge.retry).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-009.4 저장된 줄이 있는 PC에서 가져오다 끊겨도 "연결되어 있지 않아요"가 아니라 오류 카드와 [다시 확인]이다', async () => {
+  it('AC-009.4·AC-009.7 저장된 줄이 있는 PC에서 가져오다 끊겨도 "연결되어 있지 않아요"가 아니라 오류 카드와 [다시 확인]이다', async () => {
     const { call, rejects } = heldCall()
     const { bridge, store } = setup({ call, rows: rowsOf(...LATEST_MONTHS.slice(1)) })
     const { rerender } = render(<RevenueScreen />)
@@ -474,7 +475,7 @@ describe('AC-009.4 상태', () => {
     expect(bridge.call).not.toHaveBeenCalled()
   })
 
-  it('AC-009.3 가져오기가 다 끝난 뒤에 끊기면 도중 끊김이 아니다: 저장된 숫자만 보이고 오류 카드가 없다', async () => {
+  it('AC-009.3·AC-009.7 가져오기가 다 끝난 뒤에 끊기면 도중 끊김이 아니다: 저장된 숫자만 보이고 오류 카드가 없다', async () => {
     const { bridge } = setup({ rows: rowsOf(...LATEST_MONTHS.slice(1)) })
     const { rerender } = render(<RevenueScreen />)
     await screen.findByRole('heading', { level: 2, name: '매출 추이' })
@@ -485,7 +486,24 @@ describe('AC-009.4 상태', () => {
     expect(screen.queryByRole('button', { name: '다시 가져오기' })).toBeNull()
   })
 
-  it('AC-009.3 비트 쪽 오류로 멈춘 뒤에 끊기면 도중 끊김이 아니다: 끊김 번호를 보이지 않는다', async () => {
+  it('AC-009.7 가져오기를 끝낸 뒤 끊기면 저절로 다시 붙지 않는다: 저장된 숫자와 안내, /claim/setup으로 가는 [비트 PC 연결]이 있고 통로를 다시 부르지 않는다', async () => {
+    const { bridge } = setup({ rows: rowsOf(...LATEST_MONTHS.slice(1)) })
+    const { rerender } = render(<RevenueScreen />)
+    await screen.findByRole('heading', { level: 2, name: '매출 추이' })
+    expect(bridge.call).toHaveBeenCalledTimes(1)
+
+    bridge.state = 'disconnected'
+    rerender(<RevenueScreen />)
+    const notice = (await screen.findByText(NOT_CONNECTED)).closest<HTMLElement>('[role="note"]')!
+    expect(within(notice).getByRole<HTMLAnchorElement>('link', { name: '비트 PC 연결' }).getAttribute('href')).toBe('/claim/setup')
+    expect(screen.getByRole('heading', { level: 2, name: '매출 추이' })).toBeTruthy()
+    expect(screen.getByText('10월 매출')).toBeTruthy()
+    await settle()
+    expect(bridge.retry).not.toHaveBeenCalled()
+    expect(bridge.call).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-009.3·AC-009.7 비트 쪽 오류로 멈춘 뒤에 끊기면 도중 끊김이 아니다: 끊김 번호를 보이지 않는다', async () => {
     const { bridge } = setup({
       call: async () => {
         throw coded('E-BIT-DB-FAILED')
@@ -496,13 +514,45 @@ describe('AC-009.4 상태', () => {
     bridge.state = 'disconnected'
     rerender(<RevenueScreen />)
     expect(await screen.findByText(CONNECT)).toBeTruthy()
+    expect(screen.getByText('비트 PC 연결 전')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
+    expect(bridge.retry).not.toHaveBeenCalled()
+  })
+
+  // 가짜 useBridge라 화면 쪽만 증명한다(새로 그리면 받은 통로로 다시 가져온다). 가짜 저장소의 줄은 unmount 뒤에도 남고, 모든 달이 저장돼 있으면 가져올 달이 없어서 첫 읽기를 실패시켜 달 하나를 남겨 둔다
+  it('AC-009.7 끊긴 뒤 그 화면에 다녀오거나 이 화면을 새로 열면 다시 붙어 남은 달을 가져온다', async () => {
+    const { bridge } = setup({
+      rows: rowsOf(...LATEST_MONTHS.slice(1)),
+      call: async () => {
+        throw coded('E-BIT-READ-FAILED')
+      },
+    })
+    const { rerender, unmount } = render(<RevenueScreen />)
+    await screen.findByText('1달을 가져오지 못했어요.')
+    expect(monthsCalled(bridge.call)).toEqual(['2026-10'])
+
+    bridge.state = 'disconnected'
+    rerender(<RevenueScreen />)
+    expect(await screen.findByText(NOT_CONNECTED)).toBeTruthy()
+    await settle()
+    expect(monthsCalled(bridge.call)).toEqual(['2026-10'])
+    unmount()
+
+    bridge.state = 'ready'
+    bridge.call.mockImplementation(async (_cmd, range) => answerOf(range))
+    render(<RevenueScreen />)
+    await screen.findByRole('heading', { level: 2, name: '매출 추이' })
+    expect(monthsCalled(bridge.call)).toEqual(['2026-10', '2026-10'])
+    expect(screen.getByRole('button', { name: '다시 가져오기' })).toBeTruthy()
+    expect(screen.queryByText(NOT_CONNECTED)).toBeNull()
+    expect(screen.queryByText('1달을 가져오지 못했어요.')).toBeNull()
+    expect(bridge.retry).not.toHaveBeenCalled()
   })
 
   it.each<[string, RevenueDayRow[], string]>([
     ['저장된 줄 없음', [], CONNECT],
     ['저장된 줄 있음', rowsOf(...LATEST_MONTHS.slice(1)), NOT_CONNECTED],
-  ])('AC-009.4 가져오다 도우미가 꺼지면(상태 no-helper가 먼저, E-HELPER-MISSING 거절은 그 뒤) 끊김 오류 카드와 [다시 확인]이다(%s)', async (_name, rows, wrong) => {
+  ])('AC-009.4·AC-009.7 가져오다 도우미가 꺼지면(상태 no-helper가 먼저, E-HELPER-MISSING 거절은 그 뒤) 끊김 오류 카드와 [다시 확인]이다(%s)', async (_name, rows, wrong) => {
     const { call, rejects } = heldCall()
     const { bridge, store } = setup({ call, rows })
     const { rerender } = render(<RevenueScreen />)
@@ -687,11 +737,12 @@ describe('AC-009.4 상태', () => {
     expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-BRIDGE-DISCONNECTED')
   })
 
-  it('AC-009.3·AC-009.4 다른 창이 통로를 쓰는 중이고 저장된 줄이 없으면 연결 필요가 아니라 E-BRIDGE-BUSY 오류 카드와 [다시 확인]이다', async () => {
+  it('AC-009.3·AC-009.4·AC-009.6 다른 창이 통로를 쓰는 중이고 저장된 줄이 없으면 연결 필요가 아니라 E-BRIDGE-BUSY 오류 카드와 [다시 확인]이다', async () => {
     const { bridge } = setup({ state: 'busy' })
     const { rerender } = render(<RevenueScreen />)
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain(BUSY_WHAT)
+    expect(alert.textContent).toContain(errorInfo('E-BRIDGE-BUSY').fix)
     expect(alert.textContent).toContain('오류 번호 E-BRIDGE-BUSY')
     expect(screen.getByRole('heading', { level: 1, name: '매출' })).toBeTruthy()
     expect(screen.queryByText(CONNECT)).toBeNull()
@@ -708,7 +759,7 @@ describe('AC-009.4 상태', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('AC-009.3·AC-009.4 다른 창이 통로를 쓰는 중이고 저장된 줄이 있으면 숫자는 두고 알림 줄 자리에 E-BRIDGE-BUSY 오류 카드와 [다시 확인]이 있다', async () => {
+  it('AC-009.3·AC-009.4·AC-009.6 다른 창이 통로를 쓰는 중이고 저장된 줄이 있으면 숫자는 두고 알림 줄 자리에 E-BRIDGE-BUSY 오류 카드와 [다시 확인]이 있다', async () => {
     const { bridge } = setup({ state: 'busy', rows: ALL_SAVED })
     const { container } = render(<RevenueScreen />)
     await screen.findByRole('heading', { level: 2, name: '매출 추이' })
@@ -720,6 +771,7 @@ describe('AC-009.4 상태', () => {
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain(BUSY_WHAT)
+    expect(alert.textContent).toContain(errorInfo('E-BRIDGE-BUSY').fix)
     expect(alert.textContent).toContain('오류 번호 E-BRIDGE-BUSY')
     // 자리: 달 고르기 → 오류 카드 → 첫 덩어리
     const text = container.textContent ?? ''
@@ -728,6 +780,33 @@ describe('AC-009.4 상태', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: '다시 확인' }))
     expect(bridge.retry).toHaveBeenCalledTimes(1)
+    expect(bridge.call).not.toHaveBeenCalled()
+  })
+
+  it.each<[string, RevenueDayRow[]]>([
+    ['저장된 줄 있음', ALL_SAVED],
+    ['저장된 줄 없음', []],
+  ])('AC-009.6 다른 창이 통로를 쓰는 중에 저장된 줄을 읽지 못하면(%s) E-BRIDGE-BUSY가 아니라 E-PAGE-FAILED 카드이고, [다시 시도]로 다시 붙어 읽으면 E-BRIDGE-BUSY 카드다', async (_name, rows) => {
+    const { store, bridge } = setup({ state: 'busy', rows })
+    store.loadRevenue.mockRejectedValueOnce(coded('E-PAGE-FAILED'))
+    const { rerender } = render(<RevenueScreen />)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain(errorInfo('E-PAGE-FAILED').what)
+    expect(alert.textContent).toContain('오류 번호 E-PAGE-FAILED')
+    expect(alert.textContent).not.toContain('E-BRIDGE-BUSY')
+    expect(screen.queryByText(NOT_CONNECTED)).toBeNull()
+    expect(screen.queryByText(CONNECT)).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: '매출 추이' })).toBeNull()
+    expect(bridge.call).not.toHaveBeenCalled()
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(bridge.retry).toHaveBeenCalledTimes(1)
+    bridge.state = 'connecting'
+    rerender(<RevenueScreen />)
+    bridge.state = 'busy'
+    rerender(<RevenueScreen />)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-BRIDGE-BUSY'))
+    expect(screen.getByRole('alert').textContent).toContain(BUSY_WHAT)
     expect(bridge.call).not.toHaveBeenCalled()
   })
 
@@ -1223,7 +1302,7 @@ describe('AC-014 [묶음 고치기] → 편집 화면', () => {
     expect(nameField().value).toBe('가짜 묶음')
   })
 
-  it('AC-014.3 묶음을 모두 지우고 저장하면 빈 목록을 보내고, 저장된 묶음이 없으니 제안 표시로 돌아간다', async () => {
+  it('AC-014.3·AC-014.7 묶음을 모두 지우고 저장하면 빈 목록을 보내고, 저장된 묶음이 없으니 제안 표시로 돌아간다', async () => {
     const { groupStore } = setup({ rows: ALL_SAVED, groups: [G1] })
     fakeServer(groupStore, [G1])
     render(<RevenueScreen />)
@@ -1236,6 +1315,39 @@ describe('AC-014 [묶음 고치기] → 편집 화면', () => {
     expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
     expect(groupStore.saveGroups).toHaveBeenCalledWith([])
     expect(await screen.findByText(CHIP)).toBeTruthy()
+  })
+
+  it('AC-014.7 묶음을 모두 지우고 저장한 뒤: 치료별 매출은 제안 묶음으로 세고, 다시 연 편집 화면은 제안 다섯 개와 칩이며, 빈 목록 말고 따로 저장하는 것이 없다', async () => {
+    const mine: RxGroup = { ...G1, codes: ['ESWT1'] }
+    const { store, groupStore } = setup({ rows: ALL_SAVED, groups: [mine] })
+    fakeServer(groupStore, [mine])
+    // 기본 자료의 MANUAL1은 제안 규칙에 맞지 않아 제안 묶음이 모두 빠진다
+    const load = store.loadRevenue.getMockImplementation()!
+    store.loadRevenue.mockImplementation(async () => {
+      const rows = await load()
+      return { ...rows, codes: rows.codes.map((row) => ({ ...row, code: 'ESWT1', name: '가짜 충격파' })) }
+    })
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    const treatments = async () => (await backOnScreen()).closest('section')!
+    await editButton()
+    expect(within(await treatments()).getByText('가짜 묶음')).toBeTruthy()
+    expect(screen.queryByText(CHIP)).toBeNull()
+
+    await open(user)
+    await user.click(screen.getByRole('button', { name: '묶음 지우기' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '지우기' }))
+    await user.click(firstButton('저장'))
+    expect(within(await treatments()).getByText('체외충격파')).toBeTruthy()
+    expect(within(await treatments()).getByText(CHIP)).toBeTruthy()
+    expect(within(await treatments()).queryByText('가짜 묶음')).toBeNull()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
+    expect(groupStore.saveGroups).toHaveBeenCalledWith([])
+
+    await open(user)
+    expect(screen.getAllByRole<HTMLInputElement>('textbox', { name: '묶음 이름' }).map((field) => field.value)).toEqual(['도수치료', '체외충격파', 'C-arm 주사', '초음파', '냉동치료'])
+    expect(screen.getByText(CHIP)).toBeTruthy()
+    expect(groupStore.saveGroups).toHaveBeenCalledTimes(1)
   })
 
   it('AC-014.1 열면 초점이 제목 줄로 간다: 세 번째 덩어리에서 눌러도 제목과 [취소]·[저장]이 화면에 들어온다', async () => {
@@ -1305,7 +1417,7 @@ describe('AC-014 [묶음 고치기] → 편집 화면', () => {
     expect(bridge.call).not.toHaveBeenCalled()
   })
 
-  it('AC-014.6 고치는 동안 통로 상태가 바뀌거나 묶음 다시 읽기가 실패해도 편집 화면과 고친 것이 그대로다', async () => {
+  it('AC-014.6·AC-009.6 고치는 동안 통로 상태가 바뀌거나 묶음 다시 읽기가 실패해도 편집 화면과 고친 것이 그대로다', async () => {
     const { groupStore, bridge } = setup({ rows: ALL_SAVED, groups: [G1] })
     const { rerender } = render(<RevenueScreen />)
     const user = userEvent.setup()
@@ -1321,5 +1433,29 @@ describe('AC-014 [묶음 고치기] → 편집 화면', () => {
       expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
       expect(nameField().value).toBe('고치는 중')
     }
+  })
+
+  it('AC-009.6 고치는 동안 다른 창이 통로를 쓰게 되어 저장된 줄을 읽지 못해도 편집 화면과 고친 것이 그대로이고, [취소]로 돌아오면 E-PAGE-FAILED 카드다', async () => {
+    const { store, bridge } = setup({ rows: ALL_SAVED, groups: [G1] })
+    const { rerender } = render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await open(user)
+    await user.clear(nameField())
+    await user.type(nameField(), '고치는 중')
+
+    const reads = store.loadRevenue.mock.calls.length
+    store.loadRevenue.mockRejectedValue(coded('E-PAGE-FAILED'))
+    bridge.state = 'busy'
+    rerender(<RevenueScreen />)
+    await waitFor(() => expect(store.loadRevenue.mock.calls.length).toBeGreaterThan(reads))
+    await settle()
+    expect(screen.getByRole('heading', EDITOR)).toBeTruthy()
+    expect(nameField().value).toBe('고치는 중')
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    await user.click(firstButton('취소'))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('오류 번호 E-PAGE-FAILED')
+    expect(alert.textContent).not.toContain('E-BRIDGE-BUSY')
   })
 })
