@@ -66,9 +66,9 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
 // 앱 페이지 14개 (탭 순서 + /admin)
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
+  { path: '/stats', title: '통계', load: () => import('./(app)/stats/page') },
   ...(
     [
-      ['/stats', () => import('./(app)/stats/page')],
       ['/notices', () => import('./(app)/notices/page')],
       ['/patients', () => import('./(app)/patients/page')],
       ['/revenue', () => import('./(app)/revenue/page')],

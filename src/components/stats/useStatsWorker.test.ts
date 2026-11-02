@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MIN_HELPER } from '@/lib/bridge/versions'
 import { createStatsWorker } from '@/workers/statsClient'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
@@ -18,7 +19,7 @@ vi.mock('@/workers/statsClient', async (importOriginal) => ({
 const RANGE = { from: '2026-09-01', to: '2026-11-13' }
 const TODAY = '2026-11-13'
 const SHA = '0'.repeat(64)
-const HELLO = { helperVersion: '0.1.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO = { helperVersion: MIN_HELPER, protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const VIEW: StatsLoaded = {
   range: RANGE,
   covered: { from: RANGE.from, to: '2026-11-12' },

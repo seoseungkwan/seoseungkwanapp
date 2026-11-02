@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MENU } from '@/components/shell/menu'
 import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notReadyFeatures'
 
 // 준비 중 기능 자료 (tab-frame REQ-305 AC-305.4, ui-90 REQ-415 AC-415.1, design.md '준비 중 (TASK-12)').
@@ -7,15 +8,8 @@ import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notRea
 
 const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
-// 탭 순서(대시보드·청구·설정 빼고)
+// 탭 순서(화면이 있는 탭 빼고)
 const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: string; items: string[] }> = [
-  {
-    path: '/stats',
-    name: '통계',
-    title: '통계는 준비 중이에요',
-    intro: `환자 흐름과 처방 추세를 그래프로 볼 자리예요. ${SOON}`,
-    items: ['환자 수 추이(신환·재진)', '신환 재방문율', '처방 추세', '요일별 환자 수', '원장님 보고 문장'],
-  },
   {
     path: '/notices',
     name: '고시·공지',
@@ -81,9 +75,17 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
   },
 ]
 
-describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능 10개(탭 순서)', () => {
-  it('AC-305.4: 10개가 탭 순서대로 주소·이름이 표와 같다', () => {
+describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () => {
+  it('AC-305.4: 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
+  })
+
+  it('AC-515.3: 통계(/stats)는 준비 중 목록에 없고, 목록은 탭 목록(MENU)에서 준비 중인 것과 같다', () => {
+    // @ts-expect-error '/stats'는 이제 NotReadyPath가 아니다(타입 점검이 본다)
+    const stats: NotReadyPath = '/stats'
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(stats)
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('통계')
+    expect(NOT_READY_FEATURES.map((f) => [f.name, f.path])).toEqual(MENU.filter((m) => !m.ready).map((m) => [m.label, m.path]))
   })
 
   it('AC-305.4: 주소가 겹치지 않는다', () => {
@@ -126,7 +128,6 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능 10개(탭 순서)',
 
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
   const TITLES = [
-    '통계는 준비 중이에요',
     '고시·공지는 준비 중이에요',
     '환자는 준비 중이에요',
     '매출은 준비 중이에요',
