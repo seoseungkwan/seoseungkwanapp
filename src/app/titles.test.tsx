@@ -63,7 +63,7 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
   })
 })
 
-// 앱 페이지 14개 (탭 순서 + /admin)
+// 앱 페이지 15개 (탭 13개 + /claim/setup + /admin)
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
   ...(
@@ -82,6 +82,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
+  { path: '/settings', title: '설정', load: () => import('./(app)/settings/page') },
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },
 ]
 
@@ -90,10 +91,10 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(await staticTitle(load)).toBe(title)
   })
 
-  it('AC-402.4: 앱 페이지 14개의 탭 이름은 모두 다르다', async () => {
+  it('AC-402.4: 앱 페이지 15개의 탭 이름은 모두 다르다', async () => {
     const titles = await Promise.all(APP_PAGES.map(({ load }) => staticTitle(load)))
-    expect(titles).toHaveLength(14)
+    expect(titles).toHaveLength(15)
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(14)
+    expect(new Set(titles).size).toBe(15)
   })
 })

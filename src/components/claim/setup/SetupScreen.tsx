@@ -37,10 +37,8 @@ const subBase =
 const subIdle = `${subBase} font-medium text-ink-2 hover:text-ink`
 // 지금: ink 600 + 아래 2px accent 밑줄(글자 폭, 줄 선 위에 겹침)
 const subCurrent = `${subBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
-// 아직 없는 화면: 기본 모양 그대로, 올림 변화 없음(링크가 아니다)
-const subNotReady = `${subBase} font-medium text-ink-2`
-// [청구·연락]은 설정 탭이 가리키는 화면(menu.ts). 아직 없으면(null) 링크가 아니고 '준비 중'
-const SETTINGS_HREF = MENU.find((m) => m.label === '설정')?.href ?? null
+// [청구·연락]은 설정 탭이 가리키는 화면(menu.ts, AC-012.6)
+const SETTINGS_HREF = MENU.find((m) => m.label === '설정')?.href ?? '/settings'
 
 // 한 줄 상자(목업 '.okline'): surface·1px 선·4px(rounded-control)·안쪽 12px 16px
 const line = 'flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface px-4 py-3'
@@ -48,16 +46,9 @@ const line = 'flex flex-wrap items-center gap-2 rounded-control border border-li
 function SettingsSubnav() {
   return (
     <nav aria-label="설정 안 메뉴" className="flex border-b border-line">
-      {SETTINGS_HREF ? (
-        <Link href={SETTINGS_HREF} className={subIdle}>
-          청구·연락
-        </Link>
-      ) : (
-        <span aria-disabled="true" className={subNotReady}>
-          청구·연락
-          <span className={ds.chip.neutral}>준비 중</span>
-        </span>
-      )}
+      <Link href={SETTINGS_HREF} className={subIdle}>
+        청구·연락
+      </Link>
       <Link href="/claim/setup" aria-current="page" className={subCurrent}>
         비트 PC 연결
       </Link>

@@ -143,12 +143,14 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-012.4: 사용 가능 칸의 페이지는 NotReadyScreen을 쓰지 않는다. 칸 목록은 MENU의 ready 탭(대시보드 뺌)과 같고 /worklog가 들어 있다', () => {
+  it('AC-307.3·AC-012.4·AC-012.6: 사용 가능 칸의 페이지는 NotReadyScreen을 쓰지 않는다. 칸 목록은 MENU의 ready 탭(대시보드 뺌)과 같고 /claim·/worklog·/settings다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
-    expect(READY.map((f) => f.href)).toContain('/worklog')
+    expect(READY.map((f) => f.href)).toEqual(['/claim', '/worklog', '/settings'])
     for (const feature of READY) expect(read(pageFile(feature.href)), feature.href).not.toMatch(/NotReadyScreen|notReadyFeatures/)
     // 청구 사전점검 화면(ClaimEntry · SetupScreen)
     for (const href of ['/claim', '/claim/setup']) expect(read(pageFile(href)), href).toMatch(/from '@\/components\/claim\/setup\//)
+    // 설정 화면(SettingsPage)
+    expect(read(pageFile('/settings')), '/settings').toMatch(/from '@\/components\/settings\//)
   })
 
   it('AC-307.4·AC-012.4: NOT_READY_FEATURES · 준비 중 칸 · MENU에서 href가 null이고 설정이 아닌 탭 — 이름·주소·순서가 모두 같고 업무일지는 없다', () => {

@@ -19,7 +19,7 @@ const TABLE = [
   { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' },
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
   { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'soon' },
-  { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/claim/setup', status: 'ready' },
+  { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/settings', status: 'ready' },
 ]
 
 describe('DASHBOARD_FEATURES: 기능 목차 12개 (AC-316.3·AC-414.5)', () => {

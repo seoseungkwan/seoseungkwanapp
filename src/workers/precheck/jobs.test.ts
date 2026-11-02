@@ -404,7 +404,8 @@ describe('AC-009.5 달을 넘기는 기간은 한 번에 불러 점검한다', (
 })
 
 // 설정 화면(TASK-12) '점검 규칙' 칸의 재료. 규칙표 JSON은 workers/precheck/tables.ts만 부를 수 있어(AC-007.4) Worker가 꺼내 준다
-describe('AC-012.6 설정 화면용 규칙 목록(환자 자료 아님)', () => {
+// 규칙표 첫 import는 PC가 바쁘면 5초(기본 제한)를 넘긴다
+describe('AC-012.6 설정 화면용 규칙 목록(환자 자료 아님)', { timeout: 30_000 }, () => {
   it('AC-012.6: ruleList는 규칙마다 id·title·domain·grade·basis·enabled_default만 준다', async () => {
     const tables = await loadTables()
     expect(tables.ok).toBe(true)

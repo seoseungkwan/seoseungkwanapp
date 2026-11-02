@@ -861,7 +861,7 @@ const DRUG_NAME_SEEDS: readonly CaseSeed[] = [
 // 약 정보를 읽는 길(원본 requestDrugInfo): 이번 달 처방(47 표)에 나온 코드와 그 보험코드 중 9자리만 약 표에 묻는다.
 // 코드 셋은 약 표의 트리암시놀론 주사다. 묻는 코드는 달 전체에 하나로 정해져 같은 코드의 있고 없음을 달을 나눠 둔다
 const TRIAM_SHOT = '642306741'
-const TRIAM_SHOT_2 = '645903001'
+const TRIAM_SHOT_2 = '643701881'
 const TRIAM_SHOT_3 = '648503771'
 const TRIAM_SHOT_4 = '655601771'
 const NOT_IN_DRUG_TABLE = '999999999'

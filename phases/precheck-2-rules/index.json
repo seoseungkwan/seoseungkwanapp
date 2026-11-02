@@ -17,22 +17,26 @@
     {
       "step": 2,
       "name": "claim-shape",
-      "status": "pending"
+      "status": "completed",
+      "summary": "assemble.ts(createAssembler에 take(id) 추가: 결과는 한 번만, 안 찾아 간 결과 16개까지), shape.ts shapeClaimMonth, jobs.ts(loadMonth·ruleList·createPrecheckJobs), precheck.worker.ts(메시지를 넘기기만 함, 옛 포트를 닫지 않음), make-fake-claims.ts. 달은 화면의 loadStart·month로만 바뀌고 포트 실패는 partial만. 불러오기 번호(load)로 겹쳐도 옛 달이 남지 않음. 화면 약속은 src/types/precheck.ts PrecheckFromScreen 주석. design.md 6-3과 다른 점: Visit에 month·hints, RxLine.qty는 number|null·benefit은 boolean, DxLine.m에 null과 s·d·t 칸, ClaimMonth.catalog는 HospitalCatalog, rxByDay·hasDx 추가."
     },
     {
       "step": 3,
       "name": "rule-engine",
-      "status": "pending"
+      "status": "completed",
+      "summary": "lib/precheck/rules: engine.ts runRules(month, tables, settings) → {perVisit, groups, totals}, ruleStatuses, NO_SETTINGS. compile·run·sameDay·past·status로 규칙 262개 중 자동 판정할 수 있는 것만 돈다. jobs.ts checkMonth(jobs.check) → CheckView(화면으로 보내는 일은 TASK-13). 입력 RuleSettings는 {off,on,grade}이고 grade는 객체와 [규칙,등급] 배열 둘 다 받는다. shape.ts·ClaimMonth에 rxDayOrder 추가(47 표에서 처음 나온 차례, 원본 RXDATA 차례). AC-010.7: 처방 목록이 있는 달은 원본 병원 모드 cm처럼 대소문자를 접어 찾고, 분류 확인 대기 줄은 기본 약 이름(리도카인·트리암·덱사·아라간·히알)으로 역할과 줄 이름을 정한다. 약 정보는 원본처럼 그달 처방에 나온 코드와 그 보험코드 중 9자리만 묻는다. 병원마다 고치는 약 이름·역할 칸은 아직 없다(다른 의원이 들어오기 전 일). 골든: scripts/precheck/golden/rules.mjs가 원본(2a1069b)을 돌려 fixtures/precheck/golden/rules-*.json을 만든다(가짜 자료는 make-fake-claims.ts FAKE_CLAIM_CASES의 rules-*). 알고 다르게 둔 곳 knownDiffs는 비어 있다."
     },
     {
       "step": 4,
       "name": "dx-check",
-      "status": "pending"
+      "status": "completed",
+      "summary": "lib/precheck/dx/recommend.ts(recommendDx, dxIssues, needsCheck, missingDx, dxContext, visitDxView, readDxLinks, packDxLinks), 골든 scripts/precheck/golden/dx.mjs → fixtures/precheck/golden/dx-check.json, jobs.ts dxViews(month, links) → VisitDxView[]. I·N 표 경고는 규칙 DX-01·DX-02가 맡는다(AC-011.2). DxLink는 types/precheck.ts에 하나뿐이다. dxContext의 hasMemo는 TASK-14, 화면은 TASK-13."
     },
     {
       "step": 5,
       "name": "rule-settings",
-      "status": "pending"
+      "status": "completed",
+      "summary": "supabase/migrations/20261030000000_precheck_settings.sql(claim_rule_settings·claim_hospital_settings·message_templates, RLS, 사용자가 SQL 편집기에 붙여 넣기 전이다), lib/storage/claimSettings.ts(toRuleSettings·toRuleChoices·diffRuleSettings·changedRuleIds·withRulesFrom·readRuleRows·readRuleSettings·writeRuleSettings·read/writeHospitalSettings), lib/precheck/settingsChanged.ts settingsChanged(a, b), components/settings/RuleSettings.tsx·SettingsPage.tsx, app/(app)/settings/page.tsx, E-SETTINGS-FAILED. 저장 모양은 SavedRuleSettings {schema:1,off,on,grade:[규칙,등급][]}로, 엔진 입력 RuleSettings와 다른 타입이다. 규칙 목록은 Worker ruleList로 받는다. 실패한 저장 뒤에는 서버 값을 다시 읽어 어긋날 수 있는 줄만 맞춘다. 탭 [설정]·대시보드 목차·[청구·연락]이 /settings로 가고 /claim/setup은 설정 탭 자리에 속한다(owns, AC-012.6)."
     },
     {
       "step": 6,
