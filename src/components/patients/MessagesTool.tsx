@@ -30,7 +30,6 @@ const ADD_KINDS: readonly (readonly [TemplateKind, string])[] = [
 // 입력란과 같은 모양인데 높이만 줄 수(rows)로 정한다(목업 textarea.inp)
 const TEXTAREA = `${ds.input.replace('h-11 ', '')} resize-y py-2`
 const AFTER_CARD = 'mt-3 flex flex-wrap items-center gap-x-3 gap-y-2'
-const DATE_FIELD = 'w-40 max-md:w-full'
 const SEG_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:auto-cols-fr max-md:grid-flow-col'
 const SEG_BUTTON =
   'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:px-2'
@@ -363,7 +362,7 @@ export function MessagesTool({
               </div>
             </div>
           )}
-          <ol aria-label="문구 목록" className="border-t border-line">
+          <ol aria-label="문구 목록" className="list-none border-t border-line">
             {draft.length === 0 && <li className="border-b border-line py-4 text-body text-muted">문구가 없어요. 아래에서 문구를 더해 주세요.</li>}
             {draft.map((row, index) => {
               const shows = (field: TemplateField) => invalid.some((bad) => bad.index === index && bad.field === field) && (tried || touched.has(fieldId(field, row.key)))
@@ -405,9 +404,7 @@ export function MessagesTool({
             <label className={ds.label} htmlFor={`${base}-date`}>
               내원 날짜
             </label>
-            <span className={DATE_FIELD}>
-              <input id={`${base}-date`} type="date" className={ds.input} value={date.text} onChange={(event) => date.change(event.target.value)} onBlur={date.settle} />
-            </span>
+            <input id={`${base}-date`} type="date" className={ds.input} value={date.text} onChange={(event) => date.change(event.target.value)} onBlur={date.settle} />
             <p className={ds.help}>처음에는 내일이에요. 문자는 오시기 전날 보내요.</p>
           </div>
           <div className={`${ds.field} mt-4`}>

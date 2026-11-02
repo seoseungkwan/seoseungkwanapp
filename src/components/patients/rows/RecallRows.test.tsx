@@ -11,6 +11,8 @@ afterEach(cleanup)
 
 const EMPTY = '이 기간에 주사 날짜가 다가온 분이 없어요. 기간을 넓혀 보세요.'
 const KEY = 'r|cartilage|100|2026-11-20'
+// 이름·빈 줄은 글자 크기를 따로 주지 않고 목록에서 물려받는다
+const TEXT_SIZE = /\btext-(caption|small|body|lead)\b/
 
 const row = (over: Partial<RecallRow> = {}): RecallRow => ({
   key: KEY,
@@ -140,6 +142,24 @@ describe('RecallRows: 휴대폰 줄', () => {
   it('AC-612.1 전화가 없으면 "번호 없음"', () => {
     const t = draw([row({ phone: '' })])
     expect(t.list.getByRole('listitem').textContent).toContain('번호 없음 · 마지막 주사')
+  })
+
+  it('AC-612.1 목록은 점이 없고 글자는 14/22다(목업 .pl). 이름은 크기를 물려받는다', () => {
+    const t = draw([row()])
+    const list = t.getByRole('list')
+    expect(list.classList.contains('list-none')).toBe(true)
+    expect(list.classList.contains('text-body')).toBe(true)
+    expect(t.list.getByText('시험가').className).not.toMatch(TEXT_SIZE)
+  })
+
+  it('AC-612.4 안내 한 줄도 점 없이 14/22를 물려받는다(목업 .pl > li.empty)', () => {
+    const t = draw([])
+    const list = t.getByRole('list')
+    expect(list.classList.contains('list-none')).toBe(true)
+    expect(list.classList.contains('text-body')).toBe(true)
+    const item = t.list.getByRole('listitem')
+    expect(item.textContent).toBe(EMPTY)
+    expect(item.className).not.toMatch(TEXT_SIZE)
   })
 
   it('AC-612.3 "연락함" 글자가 늘 있고 줄을 눌러도 onMark, 기다리면 "저장 중". 실패 줄이 보인다', async () => {

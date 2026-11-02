@@ -14,6 +14,8 @@ const MARK_FAILED = '연락함을 저장하지 못했어요. 다시 눌러 주�
 const CHECK_CELL = 'h-11 w-24 whitespace-nowrap border-b border-line pr-1 pl-5'
 const EVIDENCE_CELL = `${ds.table.tdSub} max-w-80 overflow-clip text-ellipsis`
 const ERROR_CELL = 'border-b border-line px-3 py-2 first:pl-5 last:pr-5'
+// 앱 초기화(.app-ui)에 목록 점·글자 크기가 없어 여기서 준다(목업 .pl: 점 없음, 이름·빈 줄은 14/22를 물려받는다)
+const PHONE_LIST = 'mt-3 list-none border-t border-line text-body md:hidden'
 const PHONE_LINE = 'mt-0.5 text-small text-ink-2'
 const MARK_WORD = 'whitespace-nowrap text-small text-ink-2'
 
@@ -141,7 +143,7 @@ export function RecallRows({
         </table>
       </div>
 
-      <ul className="mt-3 border-t border-line md:hidden">
+      <ul className={PHONE_LIST}>
         {rows.length === 0 && <li className="border-b border-line py-4 text-muted">{emptyText}</li>}
         {rows.map((row) => {
           const code = markErrors.get(row.key)

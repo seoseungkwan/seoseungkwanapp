@@ -11,6 +11,8 @@ afterEach(cleanup)
 const TODAY = '2026-11-04'
 const EMPTY = '이 기간에 오실 분이 없어요.'
 const KEY = 'f|1|100|2026-11-05'
+// 이름·빈 줄은 글자 크기를 따로 주지 않고 목록에서 물려받는다
+const TEXT_SIZE = /\btext-(caption|small|body|lead)\b/
 
 const row = (over: Partial<FollowupRow> = {}): FollowupRow => ({
   key: KEY,
@@ -188,6 +190,22 @@ describe('FollowupRows: 휴대폰 줄', () => {
     const t = draw([])
     expect(t.list.getByRole('listitem').textContent).toBe(EMPTY)
   })
+
+  it('AC-611.5 목록은 점이 없고 글자는 14/22다(목업 .pl). 이름은 크기를 물려받는다', () => {
+    const t = draw([row()])
+    const list = screen.getByRole('list')
+    expect(list.classList.contains('list-none')).toBe(true)
+    expect(list.classList.contains('text-body')).toBe(true)
+    expect(t.list.getByText('시험가').className).not.toMatch(TEXT_SIZE)
+  })
+
+  it('AC-611.2 안내 한 줄도 점 없이 14/22를 물려받는다(목업 .pl > li.empty)', () => {
+    const t = draw([])
+    const list = screen.getByRole('list')
+    expect(list.classList.contains('list-none')).toBe(true)
+    expect(list.classList.contains('text-body')).toBe(true)
+    expect(t.list.getByRole('listitem').className).not.toMatch(TEXT_SIZE)
+  })
 })
 
 describe('UndecidedRows', () => {
@@ -212,6 +230,14 @@ describe('UndecidedRows', () => {
     expect([...cells].map((td) => td.textContent)).toEqual(['미정분', '010-0000-0002', '10월 29일 (목)', '12월 초에 다시 보기로'])
     expect(cells[3]!.getAttribute('title')).toBe('12월 초에 다시 보기로')
     expect(within(section).queryByRole('checkbox')).toBeNull()
+  })
+
+  it('AC-611.1 휴대폰 목록은 점이 없고 글자는 14/22다(목업 .pl). 이름은 크기를 물려받는다', () => {
+    render(<UndecidedRows rows={[und()]} />)
+    const list = screen.getByRole('list')
+    expect(list.classList.contains('list-none')).toBe(true)
+    expect(list.classList.contains('text-body')).toBe(true)
+    expect(within(list).getByText('미정분').className).not.toMatch(TEXT_SIZE)
   })
 
   it('AC-611.1 휴대폰 줄: 이름, 전화 · 마지막 진료, 근거 문구. 전화가 없으면 "번호 없음"', () => {

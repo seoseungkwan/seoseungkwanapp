@@ -17,7 +17,8 @@ const CHECK_CELL = 'h-11 w-24 whitespace-nowrap border-b border-line pr-1 pl-5'
 const EVIDENCE_CELL = `${ds.table.tdSub} max-w-80 overflow-clip text-ellipsis`
 const ERROR_CELL = 'border-b border-line px-3 py-2 first:pl-5 last:pr-5'
 const TABLE_WRAP = `${ds.table.wrap} mt-3 max-md:hidden`
-const PHONE_LIST = 'mt-3 border-t border-line md:hidden'
+// 앱 초기화(.app-ui)에 목록 점·글자 크기가 없어 여기서 준다(목업 .pl: 점 없음, 이름·빈 줄은 14/22를 물려받는다)
+const PHONE_LIST = 'mt-3 list-none border-t border-line text-body md:hidden'
 const PHONE_ITEM = 'border-b border-line py-3'
 const PHONE_LINE = 'mt-0.5 text-small text-ink-2'
 const PHONE_NOTE = 'mt-0.5 text-small text-muted'

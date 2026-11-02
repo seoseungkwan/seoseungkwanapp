@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { isYmd } from '@/lib/analytics/dates'
 import type { MessageTemplate } from '@/lib/storage/messageTemplates'
@@ -195,6 +196,14 @@ describe('MessagesTool: 처음 열기 (AC-613.1)', () => {
 })
 
 describe('MessagesTool: 날짜 칸 (AC-613.1)', () => {
+  it('AC-613.1: 날짜 칸은 오른쪽 칸 폭을 다 쓴다(목업 .fld 안 .inp.dt: PC는 세로 flex가 늘리고 휴대폰은 100%). 폭을 정하는 감싸개가 없다', async () => {
+    await open()
+    const box = dateBox()
+    expect(box.parentElement?.className).toBe(ds.field)
+    expect(box.classList.contains('w-full')).toBe(true)
+    expect(box.className).toBe(screen.getByLabelText('미리 볼 문구').className)
+  })
+
   it.each(['0002-11-02', '', '2026-02-30'])('AC-613.1: 날짜 칸에 %j가 와도 던지지 않고 고친 글을 잃지 않으며 마지막으로 맞았던 날짜를 쓴다', async (bad) => {
     await open()
     type(bodies()[0]!, '고친 글\n<<DATE>>')
@@ -312,6 +321,16 @@ describe('MessagesTool: 고치고 저장 (AC-613.2)', () => {
     expect(server.inserts).toEqual([[{ kind: 'followup', name: '새 진료 안내', body: '새 글', sort_order: 2 }]])
     // 저장해도 고른 줄이 그대로다
     expect((screen.getByLabelText('미리 볼 문구') as HTMLSelectElement).selectedOptions[0]?.textContent).toBe('3번 · 새 진료 안내')
+  })
+
+  it('AC-613.2: 줄이 없을 때 빈 글에 번호(1.)가 붙지 않고 글자는 14/22다(목업 .mlist > li.empty)', async () => {
+    await open(fakeServer([INJECTION]))
+    fireEvent.click(button('주사 알림 지우기'))
+    const list = screen.getByRole('list', { name: '문구 목록' })
+    expect(list.classList.contains('list-none')).toBe(true)
+    const empty = within(list).getByRole('listitem')
+    expect(empty.textContent).toBe('문구가 없어요. 아래에서 문구를 더해 주세요.')
+    expect(empty.classList.contains('text-body')).toBe(true)
   })
 
   it('AC-613.2: 줄이 없으면 빈 글이 나오고, 미리 볼 문구가 막히며 [문구 복사]가 먹지 않는다', async () => {
