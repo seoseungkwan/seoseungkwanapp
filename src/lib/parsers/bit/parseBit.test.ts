@@ -563,3 +563,148 @@ describe('AC-004.5·AC-004.6 엑셀 숫자 칸 · 처방코드가 첫 칸이 아
     }
   })
 })
+
+// 과목 구분 줄: 환자 기록이 아니다. 진료실 이름은 지어낸 값
+const ROOM = '가짜1진료실'
+const DIVIDER = '◀ 과 목 ▶'
+// 처방코드·처방명칭만 있는 구분 줄. over로 칸을 더 채운다
+function divider(code: string = DIVIDER, over: Record<string, Cell> = {}): Cell[] {
+  return line({
+    처방코드: code, 처방명칭: ROOM, 유형: null, 처방일자: null, 차트번호: null, 초재진구분: null, '외래/입원': null, 주소: null,
+    ...over,
+  })
+}
+
+describe('AC-901.1 과목 구분 줄은 건너뛰고 skippedSummaryRows로 센다', () => {
+  it.each([
+    DIVIDER, '◀과목▶', '◀ 과목 ▶', '◀과 목▶', '  ◀  과  목  ▶  ', '◀　과　목　▶', '◀\n과 목\n▶', ' ◀과목▶ ', '과목', '과 목', '◀과목', '과목▶',
+  ])('처방코드 %j', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(divider(code), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+    expect(parsed.rows.map((row) => row.rxCode)).toEqual(['D1001'])
+  })
+
+  it('줄 끝 빈 칸을 떼어 낸 짧은 줄도 건너뛴다', () => {
+    const parsed = parsedOf(parseBitGrid(grid([DIVIDER, ROOM], line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('처방일자·차트번호에 공백만 있어도 빈 칸으로 본다', () => {
+    const parsed = parsedOf(parseBitGrid(grid(divider(DIVIDER, { 처방일자: '  ', 차트번호: '\t' }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it.each([[null], ['가짜9진료실'], ['']])('처방명칭 칸 값은 조건이 아니다: %j', (room) => {
+    const parsed = parsedOf(parseBitGrid(grid(divider(DIVIDER, { 처방명칭: room }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('처방일자·차트번호 말고 다른 칸에 값이 있어도 조건은 그 세 칸뿐이다', () => {
+    const row = line({ 처방코드: DIVIDER, 처방일자: null, 차트번호: null })
+    const parsed = parsedOf(parseBitGrid(grid(row, line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('칸 순서가 달라도 처방코드·처방일자·차트번호 칸으로 본다', () => {
+    const header = ['차트번호', '처방일자', '처방명칭', '처방코드', '초재진구분', '주소']
+    const parsed = parsedOf(
+      parseBitGrid(
+        [header, [null, null, ROOM, DIVIDER], ['9000001', '2026-10-01', '가짜정 10mg', 'D1001', '재진', '']],
+        createPatientIds(),
+      ),
+    )
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('합계·반복 머리줄과 함께 세고, 구분 줄의 글자는 결과에 없다', () => {
+    const summary = line({ 처방코드: null, 처방일자: null, 차트번호: null, 처방명칭: '소계', 주소: null })
+    const parsed = parsedOf(
+      parseBitGrid(grid(divider(), line({}), divider('◀과목▶'), [...MINI_HEADER], line({}), summary), createPatientIds()),
+    )
+    expect(parsed).toMatchObject({ rowCount: 2, skippedSummaryRows: 4, invalidRows: 0 })
+    expect(parsed.rows.map((row) => row.patient)).toEqual([1, 1])
+    for (const text of [ROOM, '진료실', '과목', '◀', '▶']) expect(JSON.stringify(parsed)).not.toContain(text)
+  })
+})
+
+describe('AC-901.3 구분 줄 모양이라도 처방일자나 차트번호가 있으면 건너뛰지 않는다', () => {
+  it.each<[string, Record<string, Cell>]>([
+    ['차트번호만', { 차트번호: '9000001' }],
+    ['차트번호만(엑셀 숫자 칸)', { 차트번호: 9000001 }],
+    ['처방일자만', { 처방일자: '2026-10-01' }],
+    ['처방일자만(엑셀 숫자 칸)', { 처방일자: 46296 }],
+    ['못 읽는 처방일자만', { 처방일자: '2026-13-45' }],
+    ['못 읽는 처방일자 + 차트번호', { 처방일자: '2026-13-45', 차트번호: '9000001' }],
+  ])('%s → 오류 줄', (_, over) => {
+    const parsed = parsedOf(parseBitGrid(grid(divider(DIVIDER, over), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+  })
+
+  it('처방일자·차트번호가 모두 읽히면 지금처럼 환자 줄이다', () => {
+    const parsed = parsedOf(
+      parseBitGrid(grid(divider(DIVIDER, { 처방일자: '2026-10-01', 차트번호: '9000001' }), line({})), createPatientIds()),
+    )
+    expect(parsed).toMatchObject({ rowCount: 2, skippedSummaryRows: 0, invalidRows: 0 })
+    expect(parsed.rows[0].rxCode).toBe(DIVIDER)
+  })
+})
+
+describe('AC-901.4 처방코드가 구분 표시가 아니면 건너뛰지 않는다', () => {
+  it.each(['과목코드', '가짜과목', `${DIVIDER} 가짜진료실`, '◀ 과 목 ▶ ◀ 과 목 ▶', '◀▶', '◁ 과 목 ▷', '◀ 과 ▶', '[과목]'])(
+    '처방코드 %j, 처방일자·차트번호 빈 줄 → 오류 줄',
+    (code) => {
+      const parsed = parsedOf(parseBitGrid(grid(divider(code), line({})), createPatientIds()))
+      expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+    },
+  )
+
+  it.each(['처방명칭', '유형', '초재진구분', '외래/입원', '주소'])(
+    '처방코드가 비고 %s 칸에만 구분 글자가 있는 줄 → 오류 줄',
+    (column) => {
+      const row = line({
+        처방코드: null, 처방명칭: null, 유형: null, 처방일자: null, 차트번호: null, 초재진구분: null, '외래/입원': null, 주소: null,
+        [column]: DIVIDER,
+      })
+      const parsed = parsedOf(parseBitGrid(grid(row, line({})), createPatientIds()))
+      expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+    },
+  )
+
+  it('처방명칭에 과목이 있는 정상 줄은 그대로 환자 줄이다', () => {
+    const parsed = parsedOf(parseBitGrid(grid(line({ 처방명칭: '◀ 과 목 ▶ 가짜정' })), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 0 })
+  })
+})
+
+describe('AC-901.5 구분 줄이 있어도 진짜 오류 줄은 그대로 센다', () => {
+  it('구분 줄은 빼고 진짜 오류 줄만 invalidRows로 센다', () => {
+    const parsed = parsedOf(
+      parseBitGrid(
+        grid(divider(), line({ 차트번호: null }), divider('◀과목▶'), line({ 처방일자: '2026-13-45' }), line({ 처방일자: null }), divider('과 목'), line({})),
+        createPatientIds(),
+      ),
+    )
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 3, invalidRows: 3 })
+  })
+})
+
+describe('AC-901.6 구분 줄의 주민번호 모양은 건너뛰기 전에 잡는다', () => {
+  const RRN_FOUND = { ok: false, code: 'E-PARSE-RRN' }
+
+  it.each<[string, Record<string, Cell>]>([
+    ['처방명칭', { 처방명칭: idLike() }],
+    ['주소', { 주소: `가짜시 ${idLike()}` }],
+    ['유형', { 유형: joinedIdLike() }],
+  ])('%s 칸 → 파일 전체를 받지 않는다', (_, over) => {
+    expect(parseBitGrid(grid(divider(DIVIDER, over), line({})), createPatientIds())).toEqual(RRN_FOUND)
+  })
+})
+
+describe('AC-901.7 구분 줄만 있고 환자 줄이 없으면', () => {
+  it('지금처럼 E-PARSE-EMPTY', () => {
+    expect(parseBitGrid(grid(divider(), divider('◀과목▶'), divider('과 목')), createPatientIds())).toEqual({
+      ok: false,
+      code: 'E-PARSE-EMPTY',
+    })
+  })
+})

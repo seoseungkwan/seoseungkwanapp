@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
+import * as XLSX from 'xlsx'
 import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { addDays } from '@/lib/analytics/dates'
@@ -303,5 +304,91 @@ describe('AC-010.3 그룹 정의 — 결과의 그룹 숫자는 그 정의로 �
       ]),
     )
     expect(result.aggregates).toEqual(aggregate(rows(), [{ id: 'g-a', codes: [first] }]))
+  })
+})
+
+// 과목 구분 줄을 끼운 가짜 표. 값은 모두 지어낸 것이다
+const ROOMS = ['가짜1진료실', '가짜2진료실', '가짜3진료실']
+
+function headerOf(table: string[][]) {
+  const at = table.findIndex((row) => row[0] === '처방코드')
+  return { at, header: table[at], col: (name: string) => table[at].indexOf(name) }
+}
+
+// 머리줄 바로 아래 하나, 본문 사이에 둘. 줄 끝 칸까지 비운 실제 파일 모양
+function withDividers(table: string[][]): string[][] {
+  const { at, header, col } = headerOf(table)
+  const divider = (room: string) =>
+    header.map((_, i) => (i === col('처방코드') ? '◀ 과 목 ▶' : i === col('처방명칭') ? room : ''))
+  const out = table.map((row) => [...row])
+  const [first, second, third] = ROOMS
+  out.splice(at + 21, 0, divider(third))
+  out.splice(at + 11, 0, divider(second))
+  out.splice(at + 1, 0, divider(first))
+  return out
+}
+
+const smallTable = () => buildFakeBitTable({ rows: 200 })
+
+function toBookBytes(table: string[][], bookType: 'xlsx' | 'biff8'): Uint8Array {
+  const book = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(table.map((row) => row.map((c) => (c === '' ? null : c)))), 'Sheet1')
+  return new Uint8Array(XLSX.write(book, { type: 'array', bookType }))
+}
+
+// 비트는 HTML <table>을 확장자만 .xls로 내보내기도 한다
+function toHtmlXlsBytes(table: string[][]): Uint8Array {
+  const escaped = (c: string) => c.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const rows = table.map((row) => `<tr>${row.map((c) => `<td>${escaped(c)}</td>`).join('')}</tr>`).join('')
+  return new TextEncoder().encode(
+    `<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head><body><table>${rows}</table></body></html>`,
+  )
+}
+
+const FORMATS: Array<[string, (table: string[][]) => Uint8Array]> = [
+  ['CSV(UTF-8)', (table) => toCsvBytes(table, 'utf8-bom')],
+  ['CSV(CP949)', (table) => toCsvBytes(table, 'cp949')],
+  ['xlsx', (table) => toBookBytes(table, 'xlsx')],
+  ['옛 엑셀 .xls', (table) => toBookBytes(table, 'biff8')],
+  ['속이 HTML인 .xls', toHtmlXlsBytes],
+]
+
+describe('AC-901.2 analyzeFiles — 과목 구분 줄 3개와 정상 줄만 있는 파일', () => {
+  it.each(FORMATS)('%s → valid, 오류 줄 0, 결과는 구분 줄이 없는 같은 파일과 같다', SLOW, (_, toBytes) => {
+    const table = smallTable()
+    const plain = analyzeFiles([toBytes(table)], TODAY)
+    const output = analyzeFiles([toBytes(withDividers(table))], TODAY)
+    const result = resultOf(output)
+    expect(result.quality).toBe('valid')
+    expect(result.skippedInvalidRows).toBe(0)
+    expect(result.summary.quality).toBe('valid')
+    expect(result).toStrictEqual(resultOf(plain))
+    const report = okReport(output.files[0])
+    const plainReport = okReport(plain.files[0])
+    expect(report.invalidRows).toBe(0)
+    expect(report.rowCount).toBe(plainReport.rowCount)
+    expect(report.skippedSummaryRows).toBe(plainReport.skippedSummaryRows + 3)
+  })
+
+  it('진료실 이름과 구분 글자는 결과에 없다', SLOW, () => {
+    const output = analyzeFiles([toCsvBytes(withDividers(smallTable()), 'utf8-bom')], TODAY)
+    expect(resultOf(output).quality).toBe('valid')
+    const text = JSON.stringify(output)
+    for (const value of [...ROOMS, '진료실', '과목', '◀', '▶']) expect(text).not.toContain(value)
+  })
+})
+
+describe('AC-901.5 analyzeFiles — 구분 줄과 진짜 오류 줄이 함께 있는 파일', () => {
+  it.each(FORMATS)('%s → incomplete, skippedInvalidRows = 진짜 오류 줄 수', SLOW, (_, toBytes) => {
+    const table = withDividers(smallTable())
+    const { at, col } = headerOf(table)
+    table[at + 2][col('차트번호')] = '' // 구분 줄 바로 아래 줄
+    table[at + 3][col('처방일자')] = '2026-13-45'
+    const output = analyzeFiles([toBytes(table)], TODAY)
+    expect(okReport(output.files[0]).invalidRows).toBe(2)
+    const result = resultOf(output)
+    expect(result.quality).toBe('incomplete')
+    expect(result.skippedInvalidRows).toBe(2)
+    expect(result.summary.quality).toBe('incomplete')
   })
 })
