@@ -239,4 +239,25 @@ describe('useBridge', () => {
     expect(error).toBeInstanceOf(BridgeError)
     expect((error as BridgeError).code).toBe('E-EXT-MISSING')
   })
+
+  it('AC-514.12: close를 부르면 기다리던 요청이 E-BRIDGE-DISCONNECTED로 끝나고 상태가 disconnected다', async () => {
+    const fake = fakeChrome()
+    const { result } = renderHook(() => useBridge())
+    await waitFor(() => expect(fake.port().sent).toHaveLength(1))
+    helloOk(fake.port())
+    await waitFor(() => expect(result.current.state).toBe('ready'))
+    let waiting: Promise<unknown> = Promise.resolve()
+    act(() => {
+      waiting = result.current.stream('stats.rows', { from: '2026-09-01', to: '2026-11-13' }).catch((e: unknown) => e)
+    })
+    expect(fake.port().disconnected).toBe(false)
+
+    act(() => result.current.close())
+
+    const error = await waiting
+    expect(error).toBeInstanceOf(BridgeError)
+    expect((error as BridgeError).code).toBe('E-BRIDGE-DISCONNECTED')
+    expect(fake.port().disconnected).toBe(true)
+    await waitFor(() => expect(result.current.state).toBe('disconnected'))
+  })
 })

@@ -21,6 +21,8 @@ export type UseBridge = {
   call: ScreenBridge['call']
   stream: ScreenBridge['stream']
   onProgress: ScreenBridge['onProgress']
+  /** 지금 연결을 닫는다. 기다리던 요청은 E-BRIDGE-DISCONNECTED로 끝나고 상태는 disconnected다(stats AC-514.12) */
+  close: ScreenBridge['close']
   /** 다시 확인: 붙어 있으면 같은 연결로 hello부터, 끊겼거나 막혔으면 새 연결로 */
   retry(): void
 }
@@ -97,6 +99,7 @@ export function useBridge(opts?: { worker?: WorkerLike }): UseBridge {
       call: ((cmd, args) => bridgeRef.current?.call(cmd, args) ?? notOpen()) as ScreenBridge['call'],
       stream: ((cmd, args) => bridgeRef.current?.stream(cmd, args) ?? notOpen()) as ScreenBridge['stream'],
       onProgress: ((fn) => bridgeRef.current?.onProgress(fn) ?? (() => {})) as ScreenBridge['onProgress'],
+      close: () => bridgeRef.current?.close(),
     }),
     [],
   )

@@ -75,7 +75,7 @@ function incompleteLine(note: Incomplete): string {
     return `${items.join(' · ')}이 있어요. 비트에서 이 기록을 고친 뒤 다시 불러와 주세요.`
   }
   const items = [note.failedFiles > 0 && `읽지 못한 파일 ${note.failedFiles}건`, note.skippedRows > 0 && `확인하지 못한 줄 ${note.skippedRows}건`].filter(Boolean)
-  return `${items.join(' · ')}이 있어요. 비트에서 이 기록을 고친 뒤 파일을 다시 넣어 주세요.`
+  return `${items.join(' · ')}이 있어요. 파일을 확인한 뒤 다시 넣어 주세요.`
 }
 
 function IncompleteCard({ note, latest }: { note: Incomplete; latest: SavedLatest }) {
@@ -182,6 +182,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const [report, setReport] = useState<ReportData | null>(null)
   const [splitAnswer, setSplitAnswer] = useState<SplitAnswer | null>(null)
   const [loads, setLoads] = useState(0) // 비트에서 불러온 횟수. 0이면 Worker 메모리에 진료 줄이 없다
+  const [savedUnread, setSavedUnread] = useState(false) // 방금 저장에 성공했고 그 뒤 아직 읽기에 성공하지 못했다(AC-514.11)
   const working = useRef(false)
 
   const { from: splitFrom, to: splitTo } = splitSpan(range)
@@ -213,6 +214,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       setActionError(null)
       setFileFailures([])
       setIncomplete(null)
+      setSavedUnread(false)
     }
     try {
       await work()
@@ -233,7 +235,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         setIncomplete({ kind: 'bit', checks: view.checks })
         return
       }
-      await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit' })
+      setSavedUnread(await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit' }))
     })
 
   const takeFiles = (files: File[]) =>
@@ -241,12 +243,17 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       const outcome = await readFiles(files, today)
       setFileFailures(outcome.failures)
       if (outcome.incomplete !== null) setIncomplete({ kind: 'file', ...outcome.incomplete })
-      if (outcome.save !== null) await data.save(outcome.save)
+      if (outcome.save !== null) setSavedUnread(await data.save(outcome.save))
     })
 
-  const retrySave = () => void runJob('save', data.retrySave)
+  const retrySave = () =>
+    void runJob('save', async () => {
+      setSavedUnread(await data.retrySave())
+    })
 
   const { reading, readFailed, input, saved, unsaved, saving } = data
+  // 읽기에 성공하면(어느 기간이든) "저장했어요"는 할 일을 다했다. 뒤의 읽기 실패에 돌아오지 않는다(AC-514.11)
+  if (savedUnread && !reading && !readFailed) setSavedUnread(false)
   // 읽기에 실패하면 섹션을 그리지 않는다. 다만 화면이 "그대로 있어요"·"방금 불러온 숫자예요"라고 말한 숫자는 그린다(AC-514.6)
   const freshSplit = incomplete?.kind === 'bit'
   const canDraw = !readFailed || unsaved !== null || freshSplit
@@ -259,7 +266,19 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   return (
     <div>
       <h1 className="text-title font-semibold text-ink">통계</h1>
-      <SourcePicker state={state} helloError={helloError} today={today} job={job} onRetry={retry} onLoad={loadFromBit} onFiles={takeFiles} />
+      {/* 끊김 카드는 끊겨 있는 동안만 참이라 [다시 확인]을 누를 때 지운다(AC-514.12) */}
+      <SourcePicker
+        state={state}
+        helloError={helloError}
+        today={today}
+        job={job}
+        onRetry={() => {
+          setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
+          retry()
+        }}
+        onLoad={loadFromBit}
+        onFiles={takeFiles}
+      />
       <p className="mt-3 flex max-w-160 items-start gap-1.5 text-small text-muted">
         <Icon name="shield" size={14} className="mt-0.5 shrink-0 text-positive" />
         <span>환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.</span>
@@ -293,6 +312,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       {readFailed && (
         <ErrorWithAction
           code="E-STATS-READ-FAILED"
+          note={savedUnread ? '방금 불러온 숫자는 저장했어요.' : undefined}
           action={
             <button type="button" className={`${ds.button.secondarySmall} max-md:w-full`} onClick={data.reread}>
               다시 읽기
