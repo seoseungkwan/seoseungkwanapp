@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "revenue",
-  "approved_at": "2026-11-02T03:24:27Z",
+  "approved_at": "2026-11-02T07:47:59Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "de849e7322e0705ba8fedf7f393a56725f281e06bc0dd6c7ee5929248348bb44",
+  "spec_sha256": "4d2244c38f6842d2252376c1750900bbe1f6b04e9e525ee37fe7b280954d3211",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/UI_GUIDE.md",
@@ -37,6 +37,8 @@
     "src/app/notFound.test.tsx",
     "src/app/titles.test.tsx",
     "src/components/charts/rules.test.ts",
+    "src/components/claim/setup/SetupAlert.tsx",
+    "src/components/claim/setup/SetupScreen.test.tsx",
     "src/components/common/notReadyFeatures.test.ts",
     "src/components/common/notReadyFeatures.ts",
     "src/components/dashboard/briefing/DashboardHome.test.tsx",

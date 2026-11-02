@@ -343,7 +343,7 @@ export function createRxGroupStore(client: SupabaseClient): {
 - 묶음 고치기(TASK-14, 시안 3절 2026-11-01 승인, 편집 중인지는 `RevenueScreen`의 화면 상태이고 `view.ts`의 보기 상태가 아니다): `src/components/revenue/groups/GroupEditor.tsx`(`'use client'`). 묶음마다 이름 칸·처방 수·[묶음 지우기](확인 창)·처방 줄(코드·이름·고른 달 금액·옮길 묶음 고르기), 오른쪽(폰은 아래) '그 밖 처방' 목록과 찾기 칸, [새 묶음]·[취소]·[저장]. 처방 목록 = 저장된 `sales_codes` 최근 13달의 코드(가장 늦은 이름), `_REST` 빼고. 고치기는 `treatments.ts`의 순수 함수로, 저장은 `saveGroups`로. 폰·연결 안 된 PC에서도 된다
 - 부품 이름: `RevenueTrend.tsx`·`RevenueSplit.tsx`·`RevenueTreatments.tsx`·`RevenuePerVisit.tsx`·`MonthBars.tsx`·`TreatmentBars.tsx`·`RevenueStates.tsx`
 - 매출 탭은 수납 나눔(현금·카드·계좌·미수입금)·신환·재진을 그리지 않는다(업무일지 몫)
-- 다른 창이 통로를 쓸 때의 카드(AC-009.6): `E-BRIDGE-BUSY` 글자는 `/claim` 화면과 같이 쓰고 `lib/errors.ts` 한 곳에만 둔다. 이 명세에는 글자를 적지 않는다. 사용자 OK(2026-11-02)는 `docs/mockups/revenue/README.md`에 적는다(TASK-15)
+- 다른 창이 통로를 쓸 때의 카드(AC-009.6): `E-BRIDGE-BUSY` 글자는 `/claim` 화면과 같이 쓰고 `lib/errors.ts` 한 곳에만 둔다. 이 명세에는 글자를 적지 않는다. 사용자 OK(2026-11-02)는 `docs/mockups/revenue/README.md`에 적는다(TASK-15). 그 글자와 같은 안내를 되풀이하던 `BusyCard`의 고정 줄(`src/components/claim/setup/SetupAlert.tsx`)은 뺐다
 
 ## 10. 결정과 트레이드오프
 - **날마다 원본 문장을 그대로 돌린다**(세 검사를 지난 날 8문장 = 원본 6 + Extra 둘, 걸린 날 2~4문장): 원본이 의원에서 이미 쓰는 하루 보고와 같은 숫자가 나온다. 하루씩 묶는 새 SQL(`GROUP BY` 날짜)은 빠르지만 원본과 달라져 검증이 어렵다. 처음 13달은 약 3,190문장(8문장 × 약 396일 + 달마다 `HistoryGuard`·`CodeAmounts` 2문장 × 13달, 모두 세 검사를 지난 날일 때)이라 몇 분 걸릴 수 있다 → 한 달씩 저장해 이어 가기, 다음부터는 빠진 날만. 너무 느리면(Phase 3 뒤 확인표 '매출 탭에서 볼 것' ③) 그때 명세를 바꾼다

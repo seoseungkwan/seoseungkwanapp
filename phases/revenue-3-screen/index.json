@@ -35,7 +35,7 @@
     {
       "step": 5,
       "name": "busy-wording",
-      "status": "completed",
+      "status": "pending",
       "summary": "E-BRIDGE-BUSY 글자를 사용자가 OK한 새 글자로 바꿨다(lib/errors.ts, 2026-11-02 \"연결문구 바꿔\", docs/mockups/revenue/README.md에 기록). 옛 글자를 못 박은 시험 둘을 RED 뒤 GREEN으로 고쳤고, AC-009.6·AC-009.7·AC-014.7을 시험 이름에 달고 빠진 시험을 더했다. 화면 코드는 그대로다. 한계: 끊김 → 나갔다 다시 열기 시험은 가짜 useBridge라 화면 쪽만 증명한다. 진짜로 다시 붙는지는 의원 PC에서 본다. 청구 카드의 고정 줄(SetupAlert.tsx:49)이 새 글자와 같은 말을 되풀이한다(수정 범위 밖)."
     }
   ]
