@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "stats",
-  "approved_at": "2026-11-01T22:35:23Z",
+  "approved_at": "2026-11-02T05:53:43Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "957a47e63178307d7835e2b61d8e7354a382b0cce0c4123022abda5b786fe4eb",
+  "spec_sha256": "46e3cd308bb8fbf9af8371256b9595a36494419b1a2f1c0beff50651bd153613",
   "scope": [
     "docs/ARCHITECTURE.md",
     "docs/mockups/stats/app.js",
@@ -23,6 +23,7 @@
     "helper/tests/Precheck.Core.Tests/Stats/original-sql/*",
     "helper/tests/stats-report.dotnet.test.ts",
     "helper/tests/stats-rows.dotnet.test.ts",
+    "phases/index.json",
     "scripts/stats/golden/reports.py",
     "scripts/stats/golden/rx_visit_split.py",
     "src/app/(app)/dashboard/page.test.tsx",
