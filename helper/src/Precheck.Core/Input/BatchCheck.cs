@@ -9,9 +9,10 @@ namespace Precheck.Core.Input;
 /// <summary>입력 묶음의 진료 하나(commands.json의 bit.input payload).</summary>
 public sealed class InputItem
 {
-    public InputItem(string visitKey, string chart, string name, string date, string memo, bool checkedByHand = false)
+    public InputItem(string visitKey, string chart, string name, string date, string memo, bool checkedByHand = false, string? replaces = null)
     {
         CheckedByHand = checkedByHand;
+        Replaces = replaces;
         VisitKey = visitKey ?? "";
         Chart = chart ?? "";
         Name = name ?? "";
@@ -30,6 +31,9 @@ public sealed class InputItem
 
     /// <summary>직원이 비트에서 그 진료의 메모 칸을 손으로 확인했다(AC-035.5). 쓰다 멈춘 기록을 푸는 길이다.</summary>
     public bool CheckedByHand { get; }
+
+    /// <summary>사람이 화면에서 승인한 비트 메모(AC-037.1). 칸 글이 이것과 같을 때만 바꾼다. 없으면 null.</summary>
+    public string? Replaces { get; }
 }
 
 /// <summary>
@@ -42,6 +46,9 @@ public static class BatchCheck
     public const int MaxVisitKey = 64;
     public const int MaxName = 100;
     public const int MaxMemo = 32000;
+
+    /// <summary>승인한 비트 메모의 한도(AC-037.1): 비트에서 읽는 메모 한도(AC-016.1)와 같다.</summary>
+    public const int MaxReplaces = 4000;
 
     private static readonly Regex ChartShape = new Regex(@"^[0-9]{1,20}\z", RegexOptions.CultureInvariant);
 
@@ -74,7 +81,8 @@ public static class BatchCheck
         && ChartShape.IsMatch(item.Chart)
         && ValidName(item.Name)
         && FieldSpec.TryParseDate(item.Date, out _)
-        && ValidMemo(item.Memo);
+        && ValidMemo(item.Memo)
+        && ValidReplaces(item.Replaces);
 
     // 원본: 1 <= len(name.strip()) <= 100, 제어 문자(32 미만, 127~159) 없음
     private static bool ValidName(string name) =>
@@ -83,6 +91,10 @@ public static class BatchCheck
     // 원본: 0 < len(memo) <= 32000, 줄바꿈·탭 말고 제어 문자 없음
     private static bool ValidMemo(string memo) =>
         memo.Length >= 1 && memo.Length <= MaxMemo && memo.All(c => !IsControl(c) || c == '\r' || c == '\n' || c == '\t');
+
+    // 비트에서 읽은 글을 그대로 견주기만 한다: 창에 보이거나 칸에 쓰이지 않으므로 글자를 가리지 않는다
+    private static bool ValidReplaces(string? replaces) =>
+        replaces == null || (replaces.Length >= 1 && replaces.Length <= MaxReplaces);
 
     private static bool IsControl(char c) => c < 32 || (c >= 127 && c <= 159);
 

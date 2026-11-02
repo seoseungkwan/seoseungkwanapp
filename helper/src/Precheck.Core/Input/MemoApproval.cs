@@ -35,8 +35,7 @@ public enum MemoWrite
 }
 
 /// <summary>
-/// 원본 UChartAutomation.WriteMemo. approvedExisting은 쓰기 바로 앞에 칸에 있어야 할 글이다: 지금은 빈칸 확인에서 읽은 값뿐이고(AC-017.3 덮어쓰기 없음),
-/// 원본의 개별 승인 덮어쓰기도 이 자리로 승인한 기존 메모를 넘긴다.
+/// 원본 UChartAutomation.WriteMemo. approvedExisting은 쓰기 바로 앞에 칸에 있어야 할 글이다: 빈칸 확인에서 읽은 값이거나, 바꾸는 사람이면 바로 앞에서 읽어 승인과 견준 글이다(AC-037.1·AC-037.6).
 /// </summary>
 public static class MemoWriter
 {

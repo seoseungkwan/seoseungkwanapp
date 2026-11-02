@@ -55,6 +55,9 @@ internal sealed class WiringRig : IDisposable
 
     public Func<IBatchJournal, IBatchJournal>? WrapJournal { get; set; }
 
+    /// <summary>이 도우미 프로세스의 묻지 않기(AC-037.4). 시험은 묶음마다 처리기를 새로 붙이지만 프로세스는 하나다.</summary>
+    public NoAskSwitch NoAsk { get; } = new NoAskSwitch();
+
     public static string Key(InputItem item) => item.Chart + "|" + item.Date;
 
     public void Refuse(NoAnswer kind)
@@ -106,7 +109,8 @@ internal sealed class WiringRig : IDisposable
             },
             new MemoMatcher(),
             () => { Steps.Add("lock"); return WorkLock.TryAcquire(WorkLock.InputWait, LockName); },
-            (cmd, code) => Log.Add((cmd, code))));
+            (cmd, code) => Log.Add((cmd, code)),
+            NoAsk));
 
     /// <summary>묶음 칸을 더하거나 바꾼다(AC-036.1의 code 등).</summary>
     public Action<Dictionary<string, object?>>? EditPayload { get; set; }
@@ -124,6 +128,7 @@ internal sealed class WiringRig : IDisposable
                 ["memo"] = item.Memo,
             };
             if (item.CheckedByHand) row["checkedByHand"] = true;
+            if (item.Replaces != null) row["replaces"] = item.Replaces;
             return row;
         }).ToList();
         var fields = new Dictionary<string, object?>(StringComparer.Ordinal) { ["items"] = rows };
@@ -224,6 +229,7 @@ internal sealed class JournalSpy : IBatchJournal
 
     public string? LastStateFailsFor { get; set; }
     public string? MarkFailsFor { get; set; }
+    public string? OriginalFailsFor { get; set; }
 
     /// <summary>입력 기록을 읽기 바로 앞에 부른다(그때 해시가 이미 저장됐는지 보려고).</summary>
     public Action? BeforeRead { get; set; }
@@ -234,6 +240,15 @@ internal sealed class JournalSpy : IBatchJournal
         if (item.VisitKey == MarkFailsFor) throw new BitException(BitErrors.StoreFailed);
         inner.Mark(item, state);
     }
+
+    public void SaveOriginal(InputItem item, string text)
+    {
+        steps.Add("original");
+        if (item.VisitKey == OriginalFailsFor) throw new BitException(BitErrors.StoreFailed);
+        inner.SaveOriginal(item, text);
+    }
+
+    public string? LastOriginal(InputItem item) => inner.LastOriginal(item);
 
     public JournalState? LastState(InputItem item)
     {
@@ -578,7 +593,8 @@ public class InputWiringUnconfirmedTests
     {
         using var rig = new WiringRig();
         var (_, result) = rig.Run(Sample.Item(1));
-        Assert.Equal(new[] { "status", "code", "reason", "fields", "results" }, Json.Keys(result));
+        // noAsk는 언제나 있다(AC-037.4)
+        Assert.Equal(new[] { "status", "code", "reason", "fields", "results", "noAsk" }, Json.Keys(result));
     }
 }
 
@@ -842,7 +858,7 @@ public class InputWiringHandCheckTests
         Assert.Equal("", Send("false"));
     }
 
-    [Fact(DisplayName = "AC-035.8 쓰다 멈춤이 아닌 checkedByHand가 빠질 자리이면 보통 빠지는 사람이다: '빼는 환자'에 세고 '직접 확인한 환자'에 세지 않으며 이유에 뒤 글이 없고 기록은 skipped")]
+    [Fact(DisplayName = "AC-035.8 쓰다 멈춤이 아닌 checkedByHand가 빠질 자리이면 보통 빠지는 사람이다: '빼는 환자'에 세고 '직접 확인한 환자'에 세지 않으며 이유에 뒤 글이 없고 [확인]을 받았으므로 기록은 skippedByHand")]
     public void ExcludedHandNotStuck()
     {
         using var rig = new WiringRig();
@@ -857,7 +873,7 @@ public class InputWiringHandCheckTests
         Assert.DoesNotContain("직접 확인한", text, StringComparison.Ordinal);
         Assert.Equal(("건너뜀", "같은 날 내원이 여러 건이라 직접 입력해 주세요"), WiringRig.Row(result, hand.VisitKey));
         Assert.Equal(1, rig.Ui.Opens);
-        Assert.Equal(JournalState.Skipped, rig.Reopen().LastState(hand));
+        Assert.Equal(JournalState.SkippedByHand, rig.Reopen().LastState(hand));
     }
 
     [Fact(DisplayName = "AC-035.8 쓰다 멈춤이 아닌 checkedByHand가 빠질 자리이고 남는 사람이 없으면 창 없이 finished")]

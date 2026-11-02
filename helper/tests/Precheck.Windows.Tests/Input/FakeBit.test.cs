@@ -251,9 +251,10 @@ internal sealed class YesConfirm : IInputConfirm
 {
     public int Asked;
 
-    public bool Ask(string text, TimeSpan timeout, Func<bool> closeRequested)
+    public bool Ask(string text, bool noAskOn, TimeSpan timeout, Func<bool> closeRequested, out bool noAskTicked)
     {
         Asked++;
+        noAskTicked = false;
         return true;
     }
 }
@@ -280,6 +281,12 @@ internal sealed class ListJournal : IInputJournal
         }
         return last;
     }
+
+    public void SaveOriginal(InputItem item, string text)
+    {
+    }
+
+    public string? LastOriginal(InputItem item) => null;
 
     public void SaveResults(InputOutcome outcome)
     {

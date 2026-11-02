@@ -88,7 +88,8 @@
                   "name": { "type": "string", "min": 1, "max": 100 },
                   "date": { "type": "date" },
                   "memo": { "type": "string", "min": 1, "max": 32000 },
-                  "checkedByHand": { "type": "bool", "optional": true }
+                  "checkedByHand": { "type": "bool", "optional": true },
+                  "replaces": { "type": "string", "min": 1, "max": 4000, "optional": true }
                 }
               }
             }

@@ -15,8 +15,9 @@ namespace Precheck.Core.Store;
 
 /// <summary>
 /// 도우미 작업 저장(REQ-015, design.md 9-3). 파일은 머리 PRECHECK-STORE-1\n + IProtector로 암호화한 JSON이고,
-/// JSON 뿌리는 {profileId, 칸…}이다. work-YYYY-MM.dat {drafts, done, journal, journalDates?} · contact.dat {contact} · settings.dat {settings}.
+/// JSON 뿌리는 {profileId, 칸…}이다. work-YYYY-MM.dat {drafts, done, journal, journalDates?, originals?} · contact.dat {contact} · settings.dat {settings}.
 /// journalDates(진료 → 내원일)는 입력 기록과 함께 도우미만 쓰고 store.load로 나가지 않는다: 달 파일 이름에는 달뿐이라 쓰다 멈춘 진료의 날짜(AC-035.4)를 여기서 안다.
+/// originals(진료 → 바꾸기 전에 칸에 있던 글 목록, AC-037.1)도 도우미만 쓰고 store.load로 나가지 않는다. store.save가 지우지 못하게 그대로 옮겨 쓴다.
 /// bit.input 앞의 검사와 input-acks.dat는 WorkStoreRecords.cs에 있다(AC-035.9).
 /// 쓰기: 합친 내용을 암호화한 뒤에야 임시 파일에 쓰고 바꿔치기해 전 파일을 .bak 하나로 남긴다. 평문은 디스크에 닿지 않는다(AC-015.6).
 /// 깨짐(AC-015.3): 맞는 .bak이 있으면 그것으로 되살리고, 없으면 E-STORE-BROKEN. 깨진 파일은 지우지 않고 *.broken-시각으로 이름을 바꾼다.
@@ -38,10 +39,11 @@ public sealed partial class WorkStore
     private const string DoneField = "done";
     private const string JournalField = "journal";
     private const string JournalDatesField = "journalDates";
+    private const string OriginalsField = "originals";
     private const string ContactField = "contact";
     private const string SettingsField = "settings";
 
-    private static readonly string[] ObjectFields = { DraftsField, DoneField, JournalField, JournalDatesField, ContactField, SettingsField };
+    private static readonly string[] ObjectFields = { DraftsField, DoneField, JournalField, JournalDatesField, OriginalsField, ContactField, SettingsField };
     private static readonly byte[] HeaderBytes = Encoding.ASCII.GetBytes(RegistrationFile.Header);
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private static readonly Regex MonthShape = new Regex(@"^[0-9]{4}-(?:0[1-9]|1[0-2])\z", RegexOptions.CultureInvariant);
@@ -83,15 +85,17 @@ public sealed partial class WorkStore
     /// <summary>
     /// 달 파일 저장. null인 칸은 보내지 않은 것이라 저장해 둔 값을 그대로 둔다(파일 전체를 덮어쓰지 않는다).
     /// drafts·done은 보낸 값으로 칸 전체를 바꾼다. journal·journalDates는 도우미가 가진 기록이라 진료(visitKey)마다 합친다: 보낸 진료만 바꾸고 다른 기록은 남는다.
+    /// originals도 진료마다 합치고(보낸 진료는 목록째 바꾼다), 값이 없으면 칸을 쓰지 않는다. 웹이 보낸 값은 여기로 오지 않는다(StoreCommands·명령 표).
     /// journalDates는 값이 없으면 칸을 쓰지 않는다.
     /// </summary>
-    public void SaveMonth(string month, JsonElement? drafts, JsonElement? done, JsonElement? journal, JsonElement? journalDates = null)
+    public void SaveMonth(string month, JsonElement? drafts, JsonElement? done, JsonElement? journal, JsonElement? journalDates = null, JsonElement? originals = null)
     {
         var path = MonthPath(month);
         RequireObject(drafts);
         RequireObject(done);
         RequireObject(journal);
         RequireObject(journalDates);
+        RequireObject(originals);
         Guarded(() =>
         {
             var stored = ReadStored(path);
@@ -107,6 +111,13 @@ public sealed partial class WorkStore
                 {
                     writer.WriteStartObject(JournalDatesField);
                     WriteJournalEntries(writer, dates, journalDates);
+                    writer.WriteEndObject();
+                }
+                var kept = Field(stored, OriginalsField);
+                if (kept.HasValue || originals.HasValue)
+                {
+                    writer.WriteStartObject(OriginalsField);
+                    WriteJournalEntries(writer, kept, originals);
                     writer.WriteEndObject();
                 }
             });
@@ -151,6 +162,13 @@ public sealed partial class WorkStore
             var stored = ReadStored(path);
             return (Field(stored, JournalField), Field(stored, JournalDatesField));
         });
+    }
+
+    /// <summary>달 파일의 원래 메모 칸(AC-037.1). 파일이 없거나 칸이 없으면 null. 도우미 안에서만 읽고 store.load 답에 없다.</summary>
+    public JsonElement? ReadOriginals(string month)
+    {
+        var path = MonthPath(month);
+        return Guarded(() => Field(ReadStored(path), OriginalsField));
     }
 
     private string Load(IReadOnlyList<string> months, bool settings, bool contact, bool mayRepair)

@@ -14,14 +14,15 @@ internal static class Sample
 
     public static readonly HospitalRegistration Registration = Synthetic.Registration();
 
-    public static InputItem Item(int n, string? date = null, string? memo = null, string? chart = null, string? name = null, string? visitKey = null, bool checkedByHand = false) =>
+    public static InputItem Item(int n, string? date = null, string? memo = null, string? chart = null, string? name = null, string? visitKey = null, bool checkedByHand = false, string? replaces = null) =>
         new InputItem(
             visitKey ?? "v" + n,
             chart ?? "9000" + n.ToString("00", System.Globalization.CultureInfo.InvariantCulture),
             name ?? "가상환자" + n.ToString("00", System.Globalization.CultureInfo.InvariantCulture),
             date ?? Date,
             memo ?? "가짜 메모 " + n,
-            checkedByHand);
+            checkedByHand,
+            replaces);
 
     /// <summary>내원 수 SQL의 가짜 답: 차트번호 1~count번이 Sample.Date에 한 번씩(AC-035.1).</summary>
     public static IEnumerable<object?[]> VisitRows(int count) =>
@@ -198,9 +199,17 @@ internal sealed class FakeInputConfirm : IInputConfirm
     public List<(string Text, TimeSpan Timeout)> Shown { get; } = new List<(string Text, TimeSpan Timeout)>();
     public Func<Func<bool>, bool>? Behavior { get; set; }
 
-    public bool Ask(string text, TimeSpan timeout, Func<bool> closeRequested)
+    /// <summary>체크 '이제부터 묻지 않기'를 켠 채 답한다. 답이 무엇이든 그대로 알린다: 켜지는지는 InputRunner가 [확인]을 보고 정한다.</summary>
+    public bool Tick { get; set; }
+
+    /// <summary>창마다 묻지 않기가 이미 켜져 있었는지.</summary>
+    public List<bool> NoAskOnShown { get; } = new List<bool>();
+
+    public bool Ask(string text, bool noAskOn, TimeSpan timeout, Func<bool> closeRequested, out bool noAskTicked)
     {
         Shown.Add((text, timeout));
+        NoAskOnShown.Add(noAskOn);
+        noAskTicked = Tick;
         return Behavior != null ? Behavior(closeRequested) : Answer;
     }
 }
@@ -233,6 +242,21 @@ internal sealed class FakeJournal : IBatchJournal
     public Func<string, bool>? ReadThrowWhen { get; set; }
 
     public Dictionary<string, string> Dates { get; } = new Dictionary<string, string>();
+
+    /// <summary>원래 메모(AC-037.1). 진료마다 덧붙인 차례대로.</summary>
+    public Dictionary<string, List<string>> Originals { get; } = new Dictionary<string, List<string>>();
+
+    /// <summary>SaveOriginal이 E-STORE-FAILED를 던질 진료.</summary>
+    public Func<string, bool>? OriginalFailWhen { get; set; }
+
+    public void SaveOriginal(InputItem item, string text)
+    {
+        if (OriginalFailWhen != null && OriginalFailWhen(item.VisitKey)) throw new Precheck.Core.Bit.BitException(Precheck.Core.Bit.BitErrors.StoreFailed);
+        if (!Originals.TryGetValue(item.VisitKey, out var kept)) Originals[item.VisitKey] = kept = new List<string>();
+        kept.Add(text);
+    }
+
+    public string? LastOriginal(InputItem item) => Originals.TryGetValue(item.VisitKey, out var kept) ? kept[kept.Count - 1] : null;
 
     public void Mark(InputItem item, JournalState state)
     {

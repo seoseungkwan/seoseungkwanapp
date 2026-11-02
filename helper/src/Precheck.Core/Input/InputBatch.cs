@@ -81,6 +81,17 @@ internal sealed class InputBatch
     /// <summary>미리 뺀 사람의 줄을 더하고 skipped도 남기게 한다.</summary>
     public InputOutcome WithExcluded(InputOutcome outcome) => outcome.WithExcluded(Excluded, ExcludedResults);
 
+    /// <summary>
+    /// [확인]을 받고 입력 기록을 읽은 뒤의 답. 미리 뺀 사람의 줄은 그대로 더하되, checkedByHand인 사람은 skipped를 남기게 하지 않는다: 그 사람의 기록은 InputRunner가 SkippedByHand로 Mark했고,
+    /// 못 남겼으면 줄만 있다(AC-035.5). skipped를 남기는 것은 [확인] 없이 끝난 묶음의 WithExcluded뿐이다.
+    /// </summary>
+    public InputOutcome WithExcludedConfirmed(InputOutcome outcome) =>
+        outcome.WithExcluded(Excluded.Where(item => !item.CheckedByHand).ToList(), ExcludedResults);
+
+    /// <summary>묻지 않기가 켜져 있어도 창을 띄우는 묶음(AC-037.4): 확인할 수 없는 기록을 묻거나 직접 확인으로 온 사람이 있다. 미리 빠질 사람도 친다: [확인]이 없으면 그 사람의 직접 확인 기록이 남지 않는다.</summary>
+    public bool MustAsk =>
+        AckRecords != null || Released.Count > 0 || Remaining.Any(item => item.CheckedByHand) || Excluded.Any(item => item.CheckedByHand);
+
     /// <summary>미리 뺀 사람의 줄만 더한다: 기록은 그대로 둔다(입력 기록을 못 읽었거나 해시를 못 남긴 묶음, AC-035.5).</summary>
     public InputOutcome WithExcludedLines(InputOutcome outcome) => outcome.WithExcluded(NoItems, ExcludedResults);
 
