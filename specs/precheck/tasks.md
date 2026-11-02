@@ -197,12 +197,12 @@
 
 ## TASK-35: `bit.input` 연결 (도우미)
 - Step: Phase 3 · TASK-17 뒤 · `input-wiring` (plan.md §6 밖, step 파일 없음. design.md 19-5)
-- AC: AC-035.1~AC-035.8
+- AC: AC-035.1~AC-035.9
 - REQ: REQ-035
 - Files: helper/Directory.Build.props, helper/src/Precheck.Helper/Program.cs, helper/src/Precheck.Helper/Commands/*, helper/src/Precheck.Core/Input/*, helper/src/Precheck.Core/Store/*, helper/src/Precheck.Core/Bit/Sql.cs, helper/tests/Precheck.Core.Tests/Input/*, helper/tests/Precheck.Core.Tests/Store/*, helper/tests/Precheck.Core.Tests/Bit/*, helper/tests/input-wiring.dotnet.test.ts, helper/tests/input.dotnet.test.ts, helper/tests/store.dotnet.test.ts, src/lib/bridge/commands.json, src/lib/bridge/versions.ts, src/lib/bridge/*.test.ts
 - Tests: helper/tests/input-wiring.dotnet.test.ts, helper/tests/input.dotnet.test.ts, helper/tests/store.dotnet.test.ts, src/lib/bridge/protocol.test.ts, src/lib/bridge/handshake.test.ts
 - TDD: required
-- 등록 조건 다섯(`InputParts.cs` 주석의 넷 + 잠금)을 다 채운 뒤에만 `Program.cs`에 등록한다: 내원 수(AC-035.1)·진짜 입력 기록(AC-035.2)·기록 지우는 길(AC-035.5)·쓰다 멈춘 사람을 뺀 묶음 잡기(AC-035.4)·`store.save` 잠금(AC-035.6). 비교(AC-035.3)도 함께 잇는다
+- 등록 조건 다섯(`InputParts.cs` 주석의 넷 + 잠금)을 다 채운 뒤에만 `Program.cs`에 등록한다: 내원 수(AC-035.1)·진짜 입력 기록(AC-035.2)·기록 지우는 길(AC-035.5)·쓰다 멈춘 사람을 뺀 묶음 잡기(AC-035.4·AC-035.9)·`store.save` 잠금(AC-035.6). 비교(AC-035.3)도 함께 잇는다
 - '아직 붙이지 않았다'를 보던 시험 둘은 AC-035.7이 정한 대로 바꾼다(그 시험 이름에 "배선 작업 때 지운다"고 적혀 있다). 다른 시험은 지우지 않는다
 - `Sql.cs`에 새 상수를 넣을 때 맨 끝의 정적 생성자 앞에 둔다(통계 쪽 창이 그 자리를 쓴다). 새 SQL은 `ReadOnlyGuard` 목록에 들어가고 이름·메모는 읽지 않는다(차트번호는 AC-035.1에 쓰고 답에 싣지 않는다). 도우미 `Version`은 이 TASK에서 올리지 않는다. 릴리스 때 통계 쪽과 겹치지 않게 먼저 내는 쪽이 0.2.0을 쓴다
 - 의원 PC 시험: 시험용 환자 한 명 → 실제 하루치 → 입력 중 크롬 닫기. 같은 날 두 번 온 환자가 '직접 입력'으로 빠지는지, 내원 수가 내원내역 창과 같은지, 32비트(x86) 도우미가 `BITDoctorOrder.exe`를 찾는지
@@ -224,7 +224,7 @@
 - Tests: helper/tests/input-replace.dotnet.test.ts, helper/tests/input.dotnet.test.ts
 - TDD: required
 - **목업 승인됨**: PC 확인 창의 체크와 글은 입력 쪽 승인 목업(TASK-18 링크)대로다(AC-037.8)
-- 입력 기록의 새 상태 `SkippedByHand`는 TASK-35가 더하고(AC-035.5) 이 TASK가 다음 묶음에서 읽는다(AC-037.6). Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다
+- 입력 기록의 새 상태 `SkippedByHand`는 TASK-35가 더하고(AC-035.5) 이 TASK가 다음 묶음에서 읽는다(AC-037.6). Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다. AC-035.9의 '묻지 않기 켜짐' 시험 둘은 묻지 않기를 이 TASK가 만들므로 TASK-35에서 돌 수 없어 이 TASK의 `input-replace.dotnet.test.ts`에서 한다(AC-037.4)
 - 원래 메모는 달 파일의 새 칸 `originals`(진료마다 글 목록. 덮어쓴 글을 모두 두고 보여 주는 화면은 없다, 2026-11-01 사용자 결정)에 `writing`보다 먼저 덧붙여 저장한다. 결과 줄에는 바꾼 사람에게만 `previousMemo`를 더한다(AC-037.1, design.md 19-6). `WorkStore`와 `IInputJournal`을 이 TASK가 고친다. Files의 `Core/Input/*`·`Core/Store/*` 안이고 새 명령·새 파일이 없다. `store.load` 답은 세 칸 그대로이고 값이 없으면 칸을 쓰지 않으므로 `Core.Tests/Store/*`는 고치지 않는다(이 TASK의 Files 밖). 시험은 `Core.Tests/Input/*`에 둔다
 - 의원 PC 시험: 시험용 환자로 다른 메모 바꾸기 → 저장·이전 메모 확인, 묻지 않기를 켠 뒤 둘째 묶음이 창 없이 돌고, 청구 창을 닫았다 열면 다시 묻는지
 
