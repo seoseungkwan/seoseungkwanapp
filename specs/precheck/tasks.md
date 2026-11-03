@@ -303,6 +303,19 @@
 - 글만 바꾼다: `InputPrompt.OtherMemoNote` 한 줄이다. 동작, 체크 글(승인 목업), 켜진 창의 주의 줄, 버전 글자(`Version`·`MIN_HELPER`·`LATEST_HELPER`)는 그대로다. 태그와 릴리스는 사용자가 지시할 때만 한다
 - 시험: `InputReplace.test.cs`의 `AC-037.8 꺼진 창의 주의 줄`이 새 글을 글자까지 본다. `InputCode.test.cs`의 `AC-036.3 코드가 없으면 지금 글 그대로다`는 창 글 전체를 글자까지 보므로 같은 글로 맞춘다(AC-036.3의 뜻은 그대로다)
 
+## TASK-42: 저장 안 한 처방 창 자동으로 누르기 (도우미)
+- Step: Phase 3 · Step 8 · `unsaved-rx-press`
+- AC: AC-017.5(글), AC-017.12
+- REQ: REQ-017
+- Files: helper/src/Precheck.Core/Input/IChartUi.cs, helper/src/Precheck.Core/Input/InputRunner.cs, helper/src/Precheck.Core/Input/VisitOpener.cs, helper/src/Precheck.Core/Input/InputPrompt.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/tests/Precheck.Core.Tests/Input/InputFakes.test.cs, helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/VisitOpener.test.cs, helper/tests/Precheck.Core.Tests/Input/InputCode.test.cs, helper/tests/Precheck.Windows.Tests/Input/UChartAutomation.test.cs, helper/tests/*.dotnet.test.ts, phases/precheck-3-memo/index.json
+- Tests: helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/VisitOpener.test.cs, helper/tests/Precheck.Core.Tests/Input/InputCode.test.cs, helper/tests/Precheck.Windows.Tests/Input/UChartAutomation.test.cs
+- TDD: required
+- **왜 (2026-11-03 사용자 결정)**: 사용자가 의원 PC에서 이 창 사진을 보내며 "이창 나오면 자동으로 확인 눌러줘야해". 지금은 멈춘다(`E-BIT-UNSAVED-RX`). 원본은 눌렀다(design.md 19절의 다른 점).
+- `IChartUi`에 `PressUnsavedRxOk()`(눌렀는지 bool)를 더한다. `InputRunner`의 세 자리(`RunPerson` 첫머리, 쓰기 직전, `FinishEarlierWrite`)와 `VisitOpener`의 `OpenWaitResult.UnsavedRx`가 AC-017.12대로 누른다. 3번 남으면 지금처럼 `Stop(InputErrors.UnsavedRx, null)`. 쓰기 직전·마무리 전에 눌렀으면 `CheckTarget`을 다시 한다.
+- `UChartAutomation`은 그 창 안의 확인 단추를 `IsConfirmButton`(19-6, `ViewModeNotices`와 같은 판단)으로 찾아 누른다. [취소]를 누르는 길이 없어야 한다.
+- `E-BIT-UNSAVED-RX` 번호와 글은 그대로 둔다(눌러도 남을 때 쓴다). 사이트·`commands.json`은 고치지 않는다. 도우미 판 번호는 0.3.0 그대로이고 태그를 달지 않았으니 시험용 도우미를 다시 받는다.
+- 의원 PC 시험에 더함: ① 창이 뜬 사람에서 입력이 멈추지 않는가 ② [확인]을 누르면 쓰던 처방이 어떻게 되는가 ③ 환자가 바뀌어도 메모가 맞는 사람에게 들어가는가.
+
 ## TASK-20: 심평원 청구 파일 읽기 (도우미)
 - Step: Phase 4 · Step 0 · `sam-read`
 - AC: AC-020.1~AC-020.4
