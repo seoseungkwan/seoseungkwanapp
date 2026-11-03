@@ -62,6 +62,7 @@ function withUnsaved({ days, covered, range }: StatsInput, unsaved: SaveInput | 
 }
 
 export type StatsData = {
+  revision: number // 저장에 성공하거나 [다시 읽기]를 누를 때마다 는다. 찾기 목록이 넓은 범위를 다시 읽는 때를 안다(rx-picker AC-802.7)
   reading: boolean // 지금 고른 기간을 읽는 중. input은 그동안 앞 기간 그대로다
   readFailed: boolean
   input: StatsInput | null // 한 번도 읽지 못했고 저장하지 못한 숫자도 없으면 null. 읽기에 실패했는데 저장하지 못한 숫자가 있으면 지금 기간 + 그 숫자뿐이다
@@ -139,6 +140,7 @@ export function useStatsData(period: StatsPeriod, today: string): StatsData {
   }, [readFailed, stored, unsaved, today, period])
 
   return {
+    revision: attempt,
     reading: stored?.key !== key && !readFailed,
     readFailed,
     input,
