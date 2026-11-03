@@ -392,3 +392,52 @@ describe('AC-901.5 analyzeFiles — 구분 줄과 진짜 오류 줄이 함께 �
     expect(result.summary.quality).toBe('incomplete')
   })
 })
+
+// 머리줄 바로 아래 구분 줄 하나, 파일 끝의 꾸민 합계 표시 줄 둘. 끝 줄은 유형·숫자 칸이 차 있고 한 줄은 처방명칭도 찼다.
+// 생성기의 소계·합계 줄 자리에 넣는다. 값은 모두 지어낸 것이다
+function withFooterRows(table: string[][]): string[][] {
+  const { at, header } = headerOf(table)
+  const rowOf = (cells: Record<string, string>) => header.map((name) => cells[name] ?? '')
+  const out = table.slice(0, -2).map((row) => [...row])
+  out.push(
+    rowOf({ 처방코드: '[ 소 계 ]', 처방명칭: '가짜 표시', 유형: '약품', 단가: '120', 금액: '34500' }),
+    rowOf({ 처방코드: '◀ 총 계 ▶', 유형: '약품', 투여량: '7', 금액: '67800' }),
+  )
+  out.splice(at + 1, 0, rowOf({ 처방코드: '◀ 과 목 ▶', 처방명칭: ROOMS[0] }))
+  return out
+}
+
+describe('AC-902.5 analyzeFiles — 구분 줄 하나와 끝의 꾸민 합계 표시 줄 둘, 정상 줄이 있는 파일', () => {
+  it.each(FORMATS)('%s → valid, 오류 줄 0, 결과는 환자 줄이 같은 파일과 같다', SLOW, (_, toBytes) => {
+    const table = smallTable()
+    const plain = analyzeFiles([toBytes(table)], TODAY)
+    const output = analyzeFiles([toBytes(withFooterRows(table))], TODAY)
+    const result = resultOf(output)
+    expect(result.quality).toBe('valid')
+    expect(result.skippedInvalidRows).toBe(0)
+    expect(result.summary.quality).toBe('valid')
+    expect(result).toStrictEqual(resultOf(plain))
+    const report = okReport(output.files[0])
+    const plainReport = okReport(plain.files[0])
+    expect(report.invalidRows).toBe(0)
+    expect(report.rowCount).toBe(plainReport.rowCount)
+    expect(report.skippedSummaryRows).toBe(plainReport.skippedSummaryRows + 1) // 소계·합계 자리는 그대로, 구분 줄 하나만 더
+  })
+})
+
+describe('AC-902.6 analyzeFiles — 꾸민 합계 표시 줄과 진짜 오류 줄이 함께 있는 파일', () => {
+  it.each(FORMATS)('%s → incomplete, skippedInvalidRows = 진짜 오류 줄 수', SLOW, (_, toBytes) => {
+    const table = withFooterRows(smallTable())
+    const { at, col } = headerOf(table)
+    table[at + 2][col('차트번호')] = ''
+    table[at + 3][col('처방일자')] = '2026-13-45'
+    table[at + 4][col('처방코드')] = '복합 계열' // 날짜만 빠진 환자 기록
+    table[at + 4][col('처방일자')] = ''
+    const output = analyzeFiles([toBytes(table)], TODAY)
+    expect(okReport(output.files[0]).invalidRows).toBe(3)
+    const result = resultOf(output)
+    expect(result.quality).toBe('incomplete')
+    expect(result.skippedInvalidRows).toBe(3)
+    expect(result.summary.quality).toBe('incomplete')
+  })
+})

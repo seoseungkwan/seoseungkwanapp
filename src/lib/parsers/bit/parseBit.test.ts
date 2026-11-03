@@ -708,3 +708,151 @@ describe('AC-901.7 구분 줄만 있고 환자 줄이 없으면', () => {
     })
   })
 })
+
+// 꾸민 합계 표시 줄: 처방코드 말고 모든 허용 칸이 비었다. over로 칸을 더 채운다. 값은 모두 지어낸 것
+function footer(code: string, over: Record<string, Cell> = {}): Cell[] {
+  return line({
+    처방코드: code, 처방명칭: null, 유형: null, 처방일자: null, 차트번호: null, 초재진구분: null, '외래/입원': null, 주소: null,
+    ...over,
+  })
+}
+const SPACED_LABELS = ['[ 소 계 ]', '< 합 계 >', '소 계', '◀ 총 계 ▶']
+const OTHER_CELLS: Record<string, Cell> = {
+  처방명칭: '가짜정 10mg', 유형: '약품', 초재진구분: '재진', '외래/입원': '외래', 주소: '서울특별시 강남구 역삼동 123-4',
+}
+
+describe('AC-902.1 꾸민 합계 표시 줄은 건너뛰고 skippedSummaryRows로 센다', () => {
+  it.each([...SPACED_LABELS, 'A1 소 계', '1소2계3', '( 합 계 )', '소　계', '합\n계', ' 총 계 '])('처방코드 %j', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer(code), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+    expect(parsed.rows.map((row) => row.rxCode)).toEqual(['D1001'])
+  })
+
+  it('줄 끝 빈 칸을 떼어 낸 짧은 줄도 건너뛴다', () => {
+    const parsed = parsedOf(parseBitGrid(grid(['[ 소 계 ]'], line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('처방일자·차트번호에 공백만 있어도 빈 칸으로 본다', () => {
+    const parsed = parsedOf(parseBitGrid(grid(footer('[ 소 계 ]', { 처방일자: '  ', 차트번호: '\t' }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('표시 글자는 결과에 없다', () => {
+    const parsed = parsedOf(parseBitGrid(grid(line({}), ...SPACED_LABELS.map((code) => footer(code))), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 4, invalidRows: 0 })
+    for (const text of ['소 계', '합 계', '총 계', '◀', '▶']) expect(JSON.stringify(parsed)).not.toContain(text)
+  })
+})
+
+describe('AC-902.2 꾸민 합계 표시 줄의 다른 칸은 조건이 아니다', () => {
+  it.each(SPACED_LABELS)('%j: 처방명칭·유형·주소 같은 허용 칸이 차 있어도 건너뛴다', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer(code, OTHER_CELLS), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('읽지 않는 숫자 칸이 차 있어도 건너뛴다', () => {
+    const header = [...MINI_HEADER, '단가', '금액']
+    const parsed = parsedOf(
+      parseBitGrid([header, [...footer('[ 소 계 ]', { 유형: '약품' }), 120, 34500], [...line({}), 120, 120]], createPatientIds()),
+    )
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('칸 순서가 달라 처방코드 앞 칸에 값이 있어도 건너뛴다', () => {
+    const header = ['처방명칭', '유형', '처방코드', '처방일자', '차트번호', '초재진구분', '주소']
+    const parsed = parsedOf(
+      parseBitGrid(
+        [header, ['가짜정 10mg', '약품', '[ 소 계 ]'], ['가짜정 10mg', '약품', 'D1001', '2026-10-01', '9000001', '재진', '']],
+        createPatientIds(),
+      ),
+    )
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+})
+
+describe('AC-902.3 꾸민 합계 표시라도 처방일자나 차트번호가 있으면 건너뛰지 않는다', () => {
+  const OVERS: Array<[string, Record<string, Cell>]> = [
+    ['차트번호만', { 차트번호: '9000001' }],
+    ['차트번호만(엑셀 숫자 칸)', { 차트번호: 9000001 }],
+    ['처방일자만', { 처방일자: '2026-10-01' }],
+    ['처방일자만(엑셀 숫자 칸)', { 처방일자: 46296 }],
+    ['못 읽는 처방일자만', { 처방일자: '2026-13-45' }],
+    ['못 읽는 처방일자 + 차트번호', { 처방일자: '2026-13-45', 차트번호: '9000001' }],
+  ]
+
+  describe.each(SPACED_LABELS)('%j', (code) => {
+    it.each(OVERS)('%s → 오류 줄', (_, over) => {
+      const parsed = parsedOf(parseBitGrid(grid(footer(code, over), line({})), createPatientIds()))
+      expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+    })
+
+    it('처방일자·차트번호가 모두 읽히면 지금처럼 환자 줄이다', () => {
+      const parsed = parsedOf(
+        parseBitGrid(grid(footer(code, { 처방일자: '2026-10-01', 차트번호: '9000001' }), line({})), createPatientIds()),
+      )
+      expect(parsed).toMatchObject({ rowCount: 2, skippedSummaryRows: 0, invalidRows: 0 })
+      expect(parsed.rows[0].rxCode).toBe(code)
+    })
+  })
+})
+
+describe('AC-902.4 한글만 남긴 처방코드가 소계·합계·총계가 아니면 건너뛰지 않는다', () => {
+  const NOT_LABELS = ['복합 계열', '합 계 정산', '소 개', '[ 합 격 ]', '소 계 합 계', '소ㄱ계', '가 짜 소 계', '[ ]']
+
+  it.each(NOT_LABELS)('%j, 처방일자·차트번호 빈 줄 → 오류 줄', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer(code), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+  })
+
+  it.each(NOT_LABELS)('%j, 다른 칸이 차 있어도 오류 줄', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer(code, OTHER_CELLS), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+  })
+
+  it.each(['복합 계열', '합 계 정산'])('%j, 처방일자만 비고 차트번호가 찬 환자 기록 → 오류 줄', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(line({ 처방코드: code, 처방일자: null }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+  })
+
+  it.each(['복합 계열', '합 계 정산'])('%j, 처방일자·차트번호가 있으면 지금처럼 환자 줄이다', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(line({ 처방코드: code }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 2, skippedSummaryRows: 0, invalidRows: 0 })
+  })
+
+  it.each(['처방명칭', '유형', '주소'])('처방코드는 다른 값이고 %s 칸에만 표시가 있는 줄 → 오류 줄', (column) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer('D1001', { [column]: '소 계' }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 0, invalidRows: 1 })
+  })
+})
+
+describe('AC-902.7 꾸민 합계 표시 줄의 주민번호 모양은 건너뛰기 전에 잡는다', () => {
+  const RRN_FOUND = { ok: false, code: 'E-PARSE-RRN' }
+
+  it.each<[string, Cell[]]>([
+    ['처방코드', footer(`[ 소 계 ] ${idLike()}`)],
+    ['처방명칭', footer('[ 소 계 ]', { 처방명칭: idLike() })],
+    ['유형', footer('[ 소 계 ]', { 유형: joinedIdLike() })],
+    ['주소', footer('[ 소 계 ]', { 주소: `가짜시 ${idLike()}` })],
+  ])('%s 칸 → 파일 전체를 받지 않는다', (_, row) => {
+    expect(parseBitGrid(grid(row, line({})), createPatientIds())).toEqual(RRN_FOUND)
+  })
+})
+
+describe('AC-902.8 붙여 쓴 합계 글자는 기존 합계 줄 조건 그대로다', () => {
+  it.each(['소계', '[소계]', '복합계열', '합계 정산'])('처방코드 %j, 처방일자가 비면 건너뛴다', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer(code), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it.each(['소계', '[소계]', '복합계열', '합계 정산'])('처방코드 %j, 차트번호가 찬 줄도 건너뛴다', (code) => {
+    const parsed = parsedOf(parseBitGrid(grid(footer(code, { 차트번호: '9000001' }), line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+
+  it('처방코드가 비고 처방명칭의 공백을 빼면 합계 글자가 나오는 줄도 차트번호와 상관없이 건너뛴다', () => {
+    const row = footer('', { 처방코드: null, 처방명칭: '복합 계열', 차트번호: '9000001' })
+    const parsed = parsedOf(parseBitGrid(grid(row, line({})), createPatientIds()))
+    expect(parsed).toMatchObject({ rowCount: 1, skippedSummaryRows: 1, invalidRows: 0 })
+  })
+})
