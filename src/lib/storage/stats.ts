@@ -122,7 +122,7 @@ export async function saveStats(
   })
 }
 
-async function readAllPages<Row>(
+export async function readAllPages<Row>(
   page: (first: number, last: number) => PromiseLike<{ data: unknown; error: unknown }>,
 ): Promise<Row[]> {
   const rows: Row[] = []
