@@ -30,10 +30,10 @@ const PHONE_ROW = 'max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-y-1'
 const comparedNote = (period: StatsPeriod, kept: number) =>
   period === '12m' ? `증감과 막대는 끝난 ${kept}달만 견줘요. 건수는 기간 전체예요.` : `증감과 막대는 두 기간 모두 자료가 있는 ${kept}일만 견줘요. 건수는 기간 전체예요.`
 
-const longLabel = (point: RxDetailPoint, period: StatsPeriod) =>
+export const longLabel = (point: RxDetailPoint, period: StatsPeriod) =>
   GRAIN_NAME[period] === '일' ? dateWithWeekday(point.start) : GRAIN_NAME[period] === '주' ? `${longDate(point.start)} – ${longDate(point.end)}` : yearMonth(point.start)
 
-function tickLabel(point: RxDetailPoint, i: number, cells: number, period: StatsPeriod): string {
+export function tickLabel(point: RxDetailPoint, i: number, cells: number, period: StatsPeriod): string {
   const grain = GRAIN_NAME[period]
   if (grain === '달') return `${monthNumber(point.start)}월`
   const step = grain === '주' ? 3 : cells <= 7 ? 1 : 7
@@ -41,12 +41,12 @@ function tickLabel(point: RxDetailPoint, i: number, cells: number, period: Stats
 }
 
 // 같은 차례 비교 점의 건수. 점이 없거나 덮이지 않았으면 null
-function comparisonAt(previous: readonly RxDetailPoint[], i: number): number | null {
+export function comparisonAt(previous: readonly RxDetailPoint[], i: number): number | null {
   const point = previous[i]
   return point === undefined || !point.covered ? null : point.count
 }
 
-function detailNote(period: StatsPeriod, current: readonly RxDetailPoint[], today: string): string {
+export function detailNote(period: StatsPeriod, current: readonly RxDetailPoint[], today: string): string {
   const grain = GRAIN_NAME[period]
   if (grain === '일') return '하루씩 센 건수예요. 회색 막대는 비교 기간의 같은 차례 날이에요.'
   if (grain === '주') return '주는 월요일–일요일이에요. 기간 처음과 끝에 걸린 주는 일부 기간(빗금)이에요. 회색 막대는 비교 기간의 같은 차례 주예요.'
