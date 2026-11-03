@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { formatDelta } from '@/components/charts/format'
 import { periodRange, trendBuckets, weekdayBuckets } from '@/components/dashboard/summary/view'
 import { compareNumbers } from '@/lib/analytics/compare'
 import { mergeRanges } from '@/lib/analytics/coverage'
@@ -9,6 +10,7 @@ import { buildTrend, comparisonRange } from '@/lib/analytics/rxTrend'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
 import {
+  codeKey,
   COMPARE_NAME,
   DEFAULT_STATS_PERIOD,
   patientTrend,
@@ -16,6 +18,7 @@ import {
   rxComparedCells,
   rxDetail,
   rxList,
+  rxPickRows,
   statsRange,
   summaryCells,
   weekdayBars,
@@ -23,6 +26,12 @@ import {
   type StatsPeriod,
   type SummaryCell,
 } from './view'
+
+// buildTrend는 그대로 돌고 부른 횟수만 본다(AC-804.1)
+vi.mock('@/lib/analytics/rxTrend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/analytics/rxTrend')>()
+  return { ...actual, buildTrend: vi.fn(actual.buildTrend) }
+})
 
 // 통계 화면 숫자 (stats REQ-511, design.md TASK-11). 가짜 저장 모양은 이 파일 안에서만 만든다.
 // AC-511.4는 원본 vendor/drbit_export/CohortTests.cs의 사례를 옮겼다(모두 가짜 자료). 시험 이름의 '원본:'이 원본 확인 글이다.
@@ -1132,5 +1141,168 @@ describe('AC-511.9 rxComparedCells', () => {
     const comparableByCode = Object.fromEntries(rxList(stats)!.map((row) => [row.code, row.comparable]))
     expect(comparableByCode).toEqual({ A: { current: 4, previous: 3 }, B: { current: 48, previous: 8 } })
     expect(rxComparedCells(stats)).toEqual({ kept: 3, dropped: true })
+  })
+})
+
+// 처방 골라 보기 표의 숫자 (rx-picker REQ-804). 모두 지어낸 일 줄이다
+describe('AC-804 rxPickRows', () => {
+  const today = '2026-11-13'
+  // '7d': 이번 기간 11월 6일 ~ 12일, 비교 기간 10월 30일 ~ 11월 5일
+  const bothWeeks = [{ from: '2026-10-30', to: '2026-11-12' }]
+  const pick = (code: string, name = `저장한 ${code}`) => ({ code, name })
+  // 구분 없음이 있는 줄: 신환 + 재진이 건수보다 적다
+  const gapLine = (code: string, patients: number, newPatients: number, returning: number) => ({ ...rx(code, patients, { newPatients }), returning })
+
+  it('AC-804.1 줄은 고른 차례 그대로다(많은 차례로 다시 줄 세우지 않는다)', () => {
+    const days = [day('2026-11-10', { rx: [rx('A', 30), rx('B', 1), rx('C', 20)] })]
+    const rows = rxPickRows(input(today, '7d', days, bothWeeks), [pick('B'), pick('A'), pick('C')])
+    expect(rows.map((row) => row.code)).toEqual(['B', 'A', 'C'])
+    expect(rows.map((row) => row.count)).toEqual([1, 30, 20])
+  })
+
+  it('AC-804.1 고른 처방이 없으면 빈 목록이고 buildTrend를 부르지 않는다', () => {
+    const stats = input(today, '7d', [day('2026-11-10', { rx: [rx('A', 3)] })], bothWeeks)
+    vi.mocked(buildTrend).mockClear()
+    expect(rxPickRows(stats, [])).toEqual([])
+    expect(buildTrend).not.toHaveBeenCalled()
+  })
+
+  it('AC-804.2 건수·신환·재진·견준 짝·증감이 처방 추세(rxList) 줄과 같다', () => {
+    const days = [
+      day('2026-11-01', { rx: [rx('A', 4, { newPatients: 1 })] }),
+      day('2026-11-06', { rx: [rx('A', 10, { newPatients: 3 })] }),
+      day('2026-11-10', { rx: [rx('A', 2, { newPatients: 2 })] }),
+    ]
+    const stats = input(today, '7d', days, bothWeeks)
+    const trend = rxList(stats)![0]
+    const [row] = rxPickRows(stats, [pick('A')])
+    expect(row.count).toBe(12)
+    expect(row.newCount).toBe(5)
+    expect(row.returningCount).toBe(7)
+    expect(row).toEqual({ ...trend, gapCount: 0 })
+  })
+
+  it('AC-804.2 덮은 기간 밖 날은 더하지 않고 덮은 기간 안의 덜 끝난 날은 더한다', () => {
+    const days = [
+      day('2026-11-06', { rx: [rx('A', 100)] }), // 덮은 기간 밖
+      day('2026-11-08', { rx: [rx('A', 5)] }),
+      day('2026-11-12', { partial: true, rx: [rx('A', 2)] }),
+    ]
+    const [row] = rxPickRows(input(today, '7d', days, [{ from: '2026-11-07', to: '2026-11-12' }]), [pick('A')])
+    expect(row.count).toBe(7)
+  })
+
+  it('AC-804.3 구분 없음 = 건수 − 신환 − 재진이다', () => {
+    const days = [day('2026-11-08', { rx: [gapLine('A', 7, 1, 5), rx('B', 3, { newPatients: 1 })] }), day('2026-11-09', { rx: [gapLine('A', 4, 1, 1)] })]
+    const rows = rxPickRows(input(today, '7d', days, bothWeeks), [pick('A'), pick('B')])
+    expect(rows.map((row) => [row.count, row.newCount, row.returningCount, row.gapCount])).toEqual([
+      [11, 2, 6, 3],
+      [3, 1, 2, 0],
+    ])
+  })
+
+  it('AC-804.5 이 기간에 저장된 줄이 없는 처방도 지우지 않고 0건 줄로 두고 이름은 저장해 둔 이름이다', () => {
+    const days = [day('2026-11-08', { rx: [rx('A', 3)] }), day('2026-11-01', { rx: [rx('Z', 5, { name: '비교 기간의 이름' })] })]
+    const rows = rxPickRows(input(today, '7d', days, bothWeeks), [pick('Z', '저장한 이름'), pick('Y', '어디에도 없는 처방'), pick('A')])
+    expect(rows.map((row) => row.code)).toEqual(['Z', 'Y', 'A'])
+    expect(rows[0]).toMatchObject({ name: '저장한 이름', count: 0, newCount: 0, returningCount: 0, gapCount: 0 })
+    expect(rows[1]).toMatchObject({ name: '어디에도 없는 처방', count: 0, newCount: 0, returningCount: 0, gapCount: 0 })
+  })
+
+  it('AC-804.5 이름은 이 기간 가장 최근 날의 이름이다', () => {
+    const days = [
+      day('2026-11-10', { rx: [rx('A', 1, { name: '새 이름' })] }),
+      day('2026-11-06', { rx: [rx('A', 1, { name: '옛 이름' })] }),
+      day('2026-11-01', { rx: [rx('A', 1, { name: '비교 기간의 이름' })] }),
+    ]
+    expect(rxPickRows(input(today, '7d', days, bothWeeks), [pick('A', '저장한 이름')])[0].name).toBe('새 이름')
+  })
+
+  it('AC-804.5 비교 기간 5건이고 이 기간 0건이면 증감이 5건 (−100.0%) ▼다', () => {
+    const days = [day('2026-11-01', { rx: [rx('A', 5)] })]
+    const [row] = rxPickRows(input(today, '7d', days, bothWeeks), [pick('A')])
+    expect(row.comparable).toEqual({ current: 0, previous: 5 })
+    expect(formatDelta(row.delta, '건')).toMatchObject({ dir: 'down', text: '5건 (−100.0%)' })
+  })
+
+  it('AC-804.5 비교 기간도 0건이면 증감이 변화 없음이다', () => {
+    const [row] = rxPickRows(input(today, '7d', [], bothWeeks), [pick('A')])
+    expect(row.comparable).toEqual({ current: 0, previous: 0 })
+    expect(formatDelta(row.delta, '건')).toMatchObject({ dir: 'flat', text: '변화 없음' })
+  })
+
+  it('AC-804.6 7일 — 지난 기간에 덮이지 않은 날이 있으면 건수 − 지난 기간 건수 ≠ 증감 크기', () => {
+    // 11월 2일부터 덮음: 남은 짝은 11월 2~5일 ↔ 9~12일 넷이다. 건수에는 11월 6~8일도 든다
+    const days = [...daysFrom('2026-11-02', '2026-11-05', { rx: [rx('A', 1)] }), ...daysFrom('2026-11-06', '2026-11-12', { rx: [rx('A', 2)] })]
+    const [row] = rxPickRows(input(today, '7d', days, [{ from: '2026-11-02', to: '2026-11-12' }]), [pick('A')])
+    expect(row.count).toBe(14)
+    expect(row.comparable).toEqual({ current: 8, previous: 4 })
+    expect(row.delta).toEqual(compareNumbers(8, 4))
+    expect(row.count - row.comparable!.previous).not.toBe(4)
+  })
+
+  it('AC-804.6 90일도 주가 아니라 날끼리 짝 짓는다 — 덜 끝난 날 하루는 그 짝만 뺀다', () => {
+    const range = statsRange(today, '90d')
+    const days = daysFrom(range.previous.from, range.current.to, { rx: [rx('A', 1)] }).map((row) => (row.day === range.previous.to ? { ...row, partial: true } : row))
+    const [row] = rxPickRows({ days, covered: [{ from: range.previous.from, to: range.current.to }], range }, [pick('A')])
+    expect(row.count).toBe(90)
+    expect(row.comparable).toEqual({ current: 89, previous: 89 })
+  })
+
+  it('AC-804.7 오늘 2026-11-13의 12개월 — 11달을 견주고 건수에는 11월이 들어 건수 − 지난 기간 건수 ≠ 증감 크기', () => {
+    const lastYear = monthsFrom('2024-12', 12).flatMap((month) => monthRows(month, { rx: [rx('A', 3)] }))
+    const thisYear = monthsFrom('2025-12', 12).flatMap((month) => monthRows(month, { rx: [rx('A', 4)] }))
+    const [row] = rxPickRows(input(today, '12m', [...lastYear, ...thisYear], [{ from: '2024-12-01', to: '2026-11-12' }]), [pick('A')])
+    expect(row.count).toBe(96) // 12달 × 8건, 덜 끝난 11월 포함
+    expect(row.comparable).toEqual({ current: 88, previous: 66 }) // 끝난 11달끼리
+    expect(row.delta).toEqual(compareNumbers(88, 66))
+    expect(row.count - row.comparable!.previous).not.toBe(22)
+  })
+
+  it('AC-804.8 견줄 짝이 하나도 없으면 comparable이 null이고 증감은 비교할 수 없음이다. 건수는 그대로다', () => {
+    const days = daysFrom('2026-11-06', '2026-11-12', { rx: [rx('A', 2)] })
+    const [row] = rxPickRows(input(today, '7d', days, [{ from: '2026-11-06', to: '2026-11-12' }]), [pick('A')])
+    expect(row.count).toBe(14)
+    expect(row.comparable).toBeNull()
+    expect(row.delta).toEqual({ kind: 'unavailable' })
+    expect(formatDelta(row.delta, '건').text).toBe('비교할 수 없음')
+  })
+
+  it('AC-804.10 250개를 골라도 오류 없이 250줄이 고른 차례다(200개씩 나눠 부른다)', () => {
+    const picks = Array.from({ length: 250 }, (_, i) => pick(`C${249 - i}`))
+    const days = [day('2026-11-08', { rx: [rx('C0', 1), rx('C50', 2), rx('C249', 3)] })]
+    const rows = rxPickRows(input(today, '7d', days, bothWeeks), picks)
+    expect(rows.map((row) => row.code)).toEqual(picks.map((line) => line.code))
+    expect(rows[0].count).toBe(3) // C249: 첫 묶음
+    expect(rows[199].count).toBe(2) // C50: 첫 묶음 끝
+    expect(rows[249].count).toBe(1) // C0: 둘째 묶음
+  })
+
+  it('AC-804.12 고른 코드와 날 줄 코드의 대소문자가 달라도 건수가 맞게 들고 코드는 고른 글자 그대로다', () => {
+    const days = [day('2026-11-08', { rx: [rx('ABC', 3, { newPatients: 1 })] }), day('2026-11-09', { rx: [rx('Abc', 2)] }), day('2026-11-01', { rx: [rx('aBc', 4)] })]
+    const [row] = rxPickRows(input(today, '7d', days, bothWeeks), [pick('abc')])
+    expect(row).toMatchObject({ code: 'abc', count: 5, newCount: 1, returningCount: 4, comparable: { current: 5, previous: 4 } })
+  })
+
+  it('AC-804.12 입력에 대소문자만 다른 코드가 둘이면 처음 것 한 줄로 모으고 0건 줄을 만들지 않는다', () => {
+    const days = [day('2026-11-08', { rx: [rx('ABC', 3)] })]
+    const rows = rxPickRows(input(today, '7d', days, bothWeeks), [pick('abc', '첫 글자'), pick('B'), pick('ABC', '뒤 글자')])
+    expect(rows.map((row) => [row.code, row.count])).toEqual([
+      ['abc', 3],
+      ['B', 0],
+    ])
+  })
+
+  it('AC-804.12 대소문자만 다른 두 코드가 200개 묶음의 경계를 넘어 있어도 한 줄이다', () => {
+    const others = Array.from({ length: 199 }, (_, i) => pick(`C${i}`))
+    const days = [day('2026-11-08', { rx: [rx('ABC', 3)] })]
+    const rows = rxPickRows(input(today, '7d', days, bothWeeks), [pick('abc'), ...others, pick('D'), pick('ABC')])
+    expect(rows).toHaveLength(201)
+    expect(rows[0]).toMatchObject({ code: 'abc', count: 3 })
+    expect(rows.filter((row) => codeKey(row.code) === 'ABC')).toHaveLength(1)
+  })
+
+  it('AC-802.12 codeKey는 코드를 대문자로 바꾸는 규칙이다', () => {
+    expect(codeKey('aBc-1')).toBe('ABC-1')
   })
 })
