@@ -117,8 +117,9 @@ describe('REQ-036 명령 표·윈도우 코드 (글자, 실행은 Actions 윈도
     expect(watch).toBeGreaterThan(openStart)
     expect(automation.indexOf('notices.Dispose()')).toBeGreaterThan(watch)
     expect(automation.indexOf('private ChartOpenResult OpenRange(')).toBeGreaterThan(watch)
-    // 저장·검색 단추 말고 대화 상자에 메시지를 보내는 길은 UChartAutomation에 없다(input.dotnet.test.ts AC-017.5)
-    expect(automation).not.toContain('IsConfirmButton')
+    // 안내창을 알아보는 길은 UChartAutomation에 없다. [확인]을 알아보는 곳은 저장 안 한 처방 창 누르기 하나다(input.dotnet.test.ts AC-017.12)
+    expect(automation).not.toContain('IsViewModeNotice')
+    expect(automation.match(/ChartRules\.IsConfirmButton\(/g)).toHaveLength(1)
     expect(windowsSource('UChartAutomation.cs')).not.toMatch(/조회모드 안내창[^\n]*옮기지 않았다/)
   })
 

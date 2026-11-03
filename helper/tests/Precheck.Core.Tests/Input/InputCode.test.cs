@@ -229,13 +229,14 @@ public class InputCodeTests
         Assert.Contains("10/27, 2명 입력할까요?", text, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "AC-036.3 코드가 없으면 지금 글 그대로다")]
+    [Fact(DisplayName = "AC-036.3 AC-017.12 코드가 없으면 지금 글 그대로다(저장 안 한 처방 창 주의 줄만 더한다)")]
     public void PromptWithoutCode()
     {
         Assert.Equal(
             "비트에 청구메모를 입력할까요?\r\n\r\n10/27, 2명 입력할까요?\r\n기관기호 1234****\r\n\r\n주의\r\n"
             + "· 비트 내원내역 창을 10/27 기간이 모두 들어가게 띄워 두고, 처방코드·상병 검색칸은 비워 두세요.\r\n"
             + "· 먼저 비트의 저장 안 한 작업을 마치세요. 내원내역 목록이 다른 창에 가려지면 멈춥니다.\r\n"
+            + "· 저장하지 않은 처방 창이 뜨면 자동으로 [확인]을 누릅니다. 쓰던 처방이 있으면 먼저 저장해 주세요.\r\n"
             + "· 환자마다 열린 내원의 진료일이 맞을 때만 입력합니다.\r\n"
             + "· 비트에 다른 메모가 있으면 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 다만 불러온 뒤 달라진 메모, 우리 메모에 확인 표시가 남은 환자, [직접 확인했어요]를 누른 환자는 건너뜁니다.\r\n"
             + "· 입력하는 동안 마우스와 키보드를 쓰지 마세요.",
@@ -312,7 +313,7 @@ public class InputCodeTests
         Assert.False(ChartRules.IsViewModeNotice(new string?[] { null }));
     }
 
-    [Fact(DisplayName = "AC-036.4 AC-017.5 저장 안 한 처방 글이 든 창은 안내창 글이 함께 있어도 안내창이 아니다: 절대 누르지 않는다")]
+    [Fact(DisplayName = "AC-036.4 AC-017.12 저장 안 한 처방 글이 든 창은 안내창 글이 함께 있어도 안내창이 아니다: 안내창 보기가 누르지 않는다")]
     public void UnsavedRxIsNeverTheNotice() =>
         Assert.False(ChartRules.IsViewModeNotice(new[] { "현재 사용중입니다. 조회모드로 전환합니다", "저장되지 않은 처방이 있습니다." }));
 

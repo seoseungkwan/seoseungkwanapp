@@ -174,7 +174,7 @@ public static class ChartRules
 
     /// <summary>
     /// 원본 medicore/bit_dialogs.py is_view_mode_notice: 공백을 빼고 '현재사용중입니다'와 '조회모드로전환'이 함께 있는가(AC-036.4).
-    /// 원본에 더한 것: 저장 안 한 처방 글이 든 창은 무슨 글이 함께 있어도 아니다. 그 창은 절대 누르지 않는다(AC-017.5).
+    /// 원본에 더한 것: 저장 안 한 처방 글이 든 창은 무슨 글이 함께 있어도 아니다. 안내창 보기는 그 창을 누르지 않는다. 그 창의 [확인]은 입력 묶음 안에서 따로 누른다(AC-017.12).
     /// </summary>
     public static bool IsViewModeNotice(IEnumerable<string?> texts)
     {

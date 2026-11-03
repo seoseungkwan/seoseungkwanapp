@@ -6,7 +6,7 @@ public static class InputErrors
     /// <summary>비트 화면 지문이 다르다: 프로세스·창·칸이 없거나 여럿(AC-017.4).</summary>
     public const string UiChanged = "E-BIT-UI-CHANGED";
 
-    /// <summary>저장 안 한 처방 창이 떠 있다. 누르지 않고 멈췄다(AC-017.5).</summary>
+    /// <summary>저장 안 한 처방 창을 넘기지 못해 멈췄다: 넷째로 보였거나 [확인] 단추가 없거나, 쓰다 멈춘 사람이라 누르지 않았다(AC-017.12).</summary>
     public const string UnsavedRx = "E-BIT-UNSAVED-RX";
 
     /// <summary>원본 fatal 문구·3번 잇따른 실패·[멈추기]·표준 입력 닫힘으로 멈췄다(AC-017.5·AC-017.9).</summary>

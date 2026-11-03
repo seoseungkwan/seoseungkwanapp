@@ -43,6 +43,9 @@ public interface IVisitRowScreen
     /// <summary>비트의 확인 창. 저장 안 한 처방 창이 하나라도 있으면 UnsavedRx, 다른 창이 정확히 하나면 Dialog(원본 FindDialog).</summary>
     DialogState ReadDialog();
 
+    /// <summary>저장 안 한 처방 창의 [확인]을 누른다(AC-017.12, IChartUi.PressUnsavedRxOk와 같다). 못 누르면 false.</summary>
+    bool PressUnsavedRxOk();
+
     ChartIdentity ReadIdentity();
 
     /// <summary>열린 내원의 진료일. 못 읽으면 null.</summary>
@@ -75,14 +78,17 @@ public sealed class OpenWaitOutcome
 }
 
 /// <summary>
-/// 원본 vendor/range_bridge RangeAutomation.WaitOpenRange. 한 군데만 다르다: 원본은 저장 안 한 처방 창의 [확인]을 눌러 넘어갔지만(한 번 열 때 3번까지),
-/// 우리는 누르지 않고 멈춘다(AC-017.5, 명세 '범위 밖').
+/// 원본 vendor/range_bridge RangeAutomation.WaitOpenRange. 저장 안 한 처방 창의 [확인]도 원본처럼 눌러 넘어간다(줄 하나를 열 때 3번까지, AC-017.12).
+/// 원본과 다른 점: 쓰다 멈춘 사람이면 누르지 말라는 인자가 와서 누르지 않고 멈춘다. 넷째로 보이거나 [확인] 단추가 없어도 멈춘다.
 /// </summary>
 public static class OpenWaiter
 {
     public const int MaxWaitMs = 90000;
 
-    public static OpenWaitOutcome Wait(IVisitRowScreen screen, IWaitClock clock, string beforeChart, string beforeWork, string expChart, string expName, int maxMs = MaxWaitMs)
+    /// <summary>저장 안 한 처방 창을 한 자리(사람 시작·내원 줄 하나 열기·쓰기 직전)에서 누르는 수(AC-017.12). 사람 단위로 세면 내원이 많은 환자가 멈춘다.</summary>
+    public const int MaxUnsavedRxPresses = 3;
+
+    public static OpenWaitOutcome Wait(IVisitRowScreen screen, IWaitClock clock, string beforeChart, string beforeWork, string expChart, string expName, bool pressUnsavedRx, int maxMs = MaxWaitMs)
     {
         if (screen == null) throw new ArgumentNullException(nameof(screen));
         if (clock == null) throw new ArgumentNullException(nameof(clock));
@@ -94,12 +100,21 @@ public static class OpenWaiter
         string? lastKey = null;
         var stableSince = -1L;
         var expDigits = ChartRules.Digits(expChart);
+        var presses = 0;
 
         while (Elapsed() < maxMs)
         {
             clock.Sleep(150);
             var dialog = screen.ReadDialog();
-            if (dialog == DialogState.UnsavedRx) return new OpenWaitOutcome(OpenWaitResult.UnsavedRx, null, false);
+            if (dialog == DialogState.UnsavedRx)
+            {
+                if (!pressUnsavedRx || presses >= MaxUnsavedRxPresses || !screen.PressUnsavedRxOk()) return new OpenWaitOutcome(OpenWaitResult.UnsavedRx, null, false);
+                presses++;
+                // 창을 본 것으로 친다: 안 그러면 '화면이 안 바뀌는 줄'의 기다림이 일찍 끝난다
+                dialogSeen = true;
+                dialogClosedAt = -1L;
+                continue;
+            }
             if (dialog == DialogState.Dialog)
             {
                 dialogSeen = true;
@@ -155,6 +170,65 @@ public static class OpenWaiter
 }
 
 /// <summary>
+/// 저장 안 한 처방 창을 누른 뒤의 기다림(AC-017.12). 누르기는 비동기라서 창이 닫히기를 기다리고, 화면이 바뀌면 0.7초 그대로일 때까지, 안 바뀌면 2초 기다린다(OpenWaiter와 같은 값).
+/// InputRunner에는 시계가 없어 UChartAutomation이 누른 뒤 부른다. 닫힌 뒤 창이 또 뜨면 바로 돌아간다: 부르는 쪽이 세고 다시 누른다.
+/// 끝없이 기다리지 않는다(MaxMs). 돌아간 뒤 부르는 쪽이 창과 환자를 다시 보므로, 여기서 시간이 지나도 그대로 쓰는 일은 없다.
+/// </summary>
+public static class UnsavedRxSettle
+{
+    public const int MaxMs = 10000;
+
+    private const int EveryMs = 150;
+    private const int StableMs = 700;
+    private const int UnchangedMs = 2000;
+
+    /// <param name="beforeChart">누르기 전 차트번호(숫자만).</param>
+    /// <param name="beforeWork">누르기 전 진료일.</param>
+    public static void Wait(IVisitRowScreen screen, IWaitClock clock, string beforeChart, string beforeWork)
+    {
+        if (screen == null) throw new ArgumentNullException(nameof(screen));
+        if (clock == null) throw new ArgumentNullException(nameof(clock));
+
+        var started = clock.NowMs;
+        var everClosed = false;
+        var closedAt = -1L;
+        string? lastKey = null;
+        var stableSince = -1L;
+
+        while (clock.NowMs - started < MaxMs)
+        {
+            clock.Sleep(EveryMs);
+            var dialog = screen.ReadDialog();
+            if (dialog != DialogState.None)
+            {
+                if (dialog == DialogState.UnsavedRx && everClosed) return;
+                closedAt = -1L;
+                continue;
+            }
+            everClosed = true;
+            if (closedAt < 0) closedAt = clock.NowMs;
+
+            var identity = screen.ReadIdentity();
+            if (identity.Chart.Length == 0)
+            {
+                screen.Relocate();
+                continue;
+            }
+            var chart = ChartRules.Digits(identity.Chart);
+            var work = screen.ReadWorkDate() ?? "";
+            var key = chart + "|" + work;
+            if (!string.Equals(key, lastKey, StringComparison.Ordinal))
+            {
+                lastKey = key;
+                stableSince = clock.NowMs;
+            }
+            var changed = !string.Equals(chart, beforeChart, StringComparison.Ordinal) || !string.Equals(work, beforeWork, StringComparison.Ordinal);
+            if (changed ? clock.NowMs - stableSince >= StableMs : clock.NowMs - closedAt > UnchangedMs) return;
+        }
+    }
+}
+
+/// <summary>
 /// [확인] 뒤 첫 사람 앞에서만 내원내역 목록이 보이기를 기다린다(AC-036.6): 확장이 첫 progress를 받아 크롬 창을 내리는 동안이다(AC-038.1).
 /// 입력 중에 가려진 것은 사람이 무언가를 띄운 것이라 기다리지 않고 멈춘다. 도우미 화면 개체(묶음 하나)마다 하나를 둔다.
 /// </summary>
@@ -184,8 +258,9 @@ public static class VisitOpener
 
     private const string Blocked = "환자 열기를 중단했습니다. 비트의 확인 창이나 미저장 처방을 직접 확인한 뒤 다시 실행해 주세요.";
 
+    /// <param name="pressUnsavedRx">저장 안 한 처방 창을 눌러도 되는가(AC-017.12). 쓰다 멈춘 사람과 같은 묶음의 그 뒷사람이면 false다.</param>
     /// <param name="firstWait">묶음의 첫 사람 앞 기다리기(AC-036.6). 없으면 기다리지 않는다.</param>
-    public static ChartOpenResult OpenRows(IVisitRowScreen screen, IWaitClock clock, long startedMs, int rows, int fullyVisible, string expChart, string expName, string expDate, FirstListWait? firstWait = null)
+    public static ChartOpenResult OpenRows(IVisitRowScreen screen, IWaitClock clock, long startedMs, int rows, int fullyVisible, string expChart, string expName, string expDate, bool pressUnsavedRx, FirstListWait? firstWait = null)
     {
         if (screen == null) throw new ArgumentNullException(nameof(screen));
         if (clock == null) throw new ArgumentNullException(nameof(clock));
@@ -212,7 +287,7 @@ public static class VisitOpener
             if (keyError != null) return ChartOpenResult.Failed(keyError);
             previous = row;
 
-            var wait = OpenWaiter.Wait(screen, clock, beforeChart, beforeWork, expChart, expName);
+            var wait = OpenWaiter.Wait(screen, clock, beforeChart, beforeWork, expChart, expName, pressUnsavedRx);
             switch (wait.Result)
             {
                 case OpenWaitResult.Opened:

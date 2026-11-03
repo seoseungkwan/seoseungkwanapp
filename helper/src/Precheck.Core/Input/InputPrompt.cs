@@ -22,7 +22,10 @@ public static class InputPrompt
     private const string OtherMemoNote = "비트에 다른 메모가 있으면 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 다만 불러온 뒤 달라진 메모, 우리 메모에 확인 표시가 남은 환자, [직접 확인했어요]를 누른 환자는 건너뜁니다.";
     private const string NoAskOnNote = "묻지 않기가 켜져 있어 비트의 다른 메모를 바꿉니다. 다만 직접 확인한 환자는 바꾸지 않고 건너뜁니다";
 
-    private const string RecordsNotice = "입력 기록의 일부를 확인할 수 없습니다. 먼저 비트에 열려 있는 환자의 메모 칸을 확인해 주세요. 저장하지 않은 글이 있으면 마무리한 뒤 [확인]을 눌러 주세요.";
+    /// <summary>직접 확인 창 두 글의 줄(AC-017.12): 칸 글이 우리 메모와 같으면 도우미가 저장을 누르지 않고 완료로 두어(AC-035.5) 다음 묶음은 그 사람의 기록을 모른다.</summary>
+    private const string HandUnsavedNote = "칸에 저장하지 않은 글이 있을 수 있습니다. 비트에서 그 메모를 저장한 뒤 [확인]을 눌러 주세요.";
+
+    private const string RecordsNotice ="입력 기록의 일부를 확인할 수 없습니다. 먼저 비트에 열려 있는 환자의 메모 칸을 확인해 주세요. 저장하지 않은 글이 있으면 마무리한 뒤 [확인]을 눌러 주세요.";
 
     /// <param name="items">창 뒤에 열 사람. 비었으면 풀 사람만 있는 묶음이라 입력을 묻는 글과 주의 줄 대신 풀지 묻는다(AC-035.5).</param>
     /// <param name="excluded">'빼는 환자 N명'. 풀 사람은 세지 않는다.</param>
@@ -40,6 +43,7 @@ public static class InputPrompt
         if (items.Count == 0)
         {
             text.Append("직접 확인한 환자 ").Append(released).Append("명의 입력 멈춤을 풀까요? 메모는 넣지 않고 건너뜁니다").Append(NewLine);
+            text.Append(HandUnsavedNote).Append(NewLine);
             text.Append("기관기호 ").Append(RegisterPrompt.MaskInstitution(registration.InstitutionCode));
             if (code != null) text.Append(NewLine).Append("처방코드 ").Append(code);
             if (excluded > 0) text.Append(NewLine).Append("빼는 환자 ").Append(excluded).Append("명");
@@ -58,6 +62,7 @@ public static class InputPrompt
         var byHand = items.Count(item => item.CheckedByHand) + released;
         if (byHand > 0) text.Append("직접 확인한 환자 ").Append(byHand).Append("명").Append(NewLine);
         if (released > 0) text.Append("이 가운데 ").Append(released).Append("명은 메모를 넣지 않고 입력 멈춤만 풉니다").Append(NewLine);
+        if (byHand > 0) text.Append(HandUnsavedNote).Append(NewLine);
         text.Append(NewLine);
         text.Append("주의").Append(NewLine);
         text.Append("· 비트 내원내역 창을 ").Append(period).Append(" 기간이 모두 들어가게 띄워 두고, ");
@@ -65,6 +70,7 @@ public static class InputPrompt
         else text.Append("처방코드 칸은 비우거나 ").Append(code).Append("로 맞추고, 상병 검색칸은 비워 두세요.");
         text.Append(NewLine);
         text.Append("· 먼저 비트의 저장 안 한 작업을 마치세요. 내원내역 목록이 다른 창에 가려지면 멈춥니다.").Append(NewLine);
+        text.Append("· 저장하지 않은 처방 창이 뜨면 자동으로 [확인]을 누릅니다. 쓰던 처방이 있으면 먼저 저장해 주세요.").Append(NewLine);
         text.Append("· 환자마다 열린 내원의 진료일이 맞을 때만 입력합니다.").Append(NewLine);
         text.Append("· ").Append(noAskOn ? NoAskOnNote : OtherMemoNote).Append(NewLine);
         text.Append("· 입력하는 동안 마우스와 키보드를 쓰지 마세요.");

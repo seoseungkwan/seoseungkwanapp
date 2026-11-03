@@ -59,8 +59,12 @@ describe('REQ-017 비트 자동 입력 (C# Precheck.Core.Tests.Input)', () => {
     expectAc('AC-017.4')
   })
 
-  it('AC-017.5 저장 안 한 처방 창·fatal 문구·3번 실패·[멈추기]면 멈추고 남은 사람은 미처리', () => {
+  it('AC-017.5 fatal 문구·3번 실패·[멈추기]면 멈추고 남은 사람은 미처리', () => {
     expectAc('AC-017.5')
+  })
+
+  it('AC-017.12 입력 묶음 안에서 저장 안 한 처방 창의 [확인]을 자리마다 3번까지 누르고, 쓰기 직전에 눌렀으면 다시 확인하며, 쓰다 멈춘 사람과 묶음 밖에서는 누르지 않는다', () => {
+    expectAc('AC-017.12')
   })
 
   it('AC-017.6 결과는 완료·확인 필요·건너뜀, 진행은 숫자만, 결과는 조각으로', () => {
@@ -96,13 +100,50 @@ describe('REQ-017 윈도우 부분 (이 서버에서는 빌드와 글자만, 실
     expect(csproj).toContain('<PackageReference Include="FlaUI.UIA3" Version="4.0.0" />')
   })
 
-  it('AC-017.5 UChartAutomation.cs에 저장 안 한 처방 창을 누르는 길이 없다(range_bridge의 ConfirmUnsavedPrescription을 옮기지 않음)', () => {
+  it('AC-017.12 UChartAutomation.cs에서 저장 안 한 처방 창에 누르는 길은 [확인] 단추의 WM_COMMAND 하나뿐이고 [취소]를 누르는 길이 없다', () => {
     const code = windowsCode('UChartAutomation.cs')
-    expect(code).not.toContain('ConfirmUnsavedPrescription')
-    expect(code).not.toContain('TryAutoConfirm')
-    // 대화 상자에 WM_COMMAND(273)·BM_CLICK을 보내는 곳은 없다. PostMessage는 선언 하나와 저장·검색 단추를 받는 ClickButton의 부름 하나뿐이다
-    expect(code).not.toMatch(/PostMessage\(\s*dlg/)
-    expect(code.match(/\bPostMessage\(/g)?.length).toBe(2)
+    // PostMessage는 선언, 저장·검색 단추를 받는 ClickButton, 그 창의 [확인]뿐이다. ClickButton을 대화 상자에 쓰지 않는다
+    expect(code.match(/\bPostMessage\(/g)?.length).toBe(3)
+    expect(code).toMatch(/PostMessage\(dialog, WM_COMMAND, GetDlgCtrlID\(child\) & 0xFFFF, child\)/)
+    const press = code.slice(code.indexOf('private static bool PressConfirm('), code.indexOf('public bool HasUnsavedRxDialog('))
+    expect(press).toContain('"Button"')
+    expect(press).toContain('ChartRules.IsConfirmButton(')
+    expect(press).not.toContain('ClickButton(')
+    expect(press).not.toContain('BM_CLICK')
+    // 안 누르는 쪽 단추를 알아보는 글이 코드에 아예 없다
+    expect(code).not.toMatch(/취소|Cancel|IDCANCEL|아니요/)
+    // 창을 찾는 기준은 그대로다
+    expect(code).toContain('private static bool IsUnsavedPrescriptionDialog(nint dialog)')
+    expect(code).toContain('ChartRules.ContainsUnsavedPrescription(children.Select(GetText))')
+  })
+
+  it('AC-017.12 누른 뒤의 기다림: PressUnsavedRxOk가 기준 화면을 누르기 전에 읽고 누른 뒤 UnsavedRxSettle.Wait를 부른다', () => {
+    const code = windowsCode('UChartAutomation.cs')
+    const body = code.slice(code.indexOf('public bool PressUnsavedRxOk('), code.indexOf('private static bool PressConfirm('))
+    expect(body).toContain('UnsavedRxSettle.Wait(this, clock, beforeChart, beforeWork)')
+    expect(body.indexOf('var beforeWork')).toBeGreaterThan(-1)
+    expect(body.indexOf('var beforeWork')).toBeLessThan(body.indexOf('PressConfirm(dialog)'))
+    expect(body.indexOf('PressConfirm(dialog)')).toBeLessThan(body.indexOf('UnsavedRxSettle.Wait('))
+    expect(code.match(/UnsavedRxSettle\.Wait\(/g)).toHaveLength(1)
+  })
+
+  it('AC-017.12 누르는 일은 인자로 넘긴 때만이다: OpenPatient → OpenRows → OpenWaiter.Wait', () => {
+    const code = windowsCode('UChartAutomation.cs')
+    expect(code).toMatch(/public ChartOpenResult OpenPatient\(string expChart, string expName, string expDate, bool pressUnsavedRx\)/)
+    expect(code).toMatch(/OpenRange\(expChart, expName, expDate, pressUnsavedRx\)/)
+    expect(code).toMatch(/VisitOpener\.OpenRows\([^;]*expDate, pressUnsavedRx, listWait\)/)
+    const opener = stripComments(readFileSync(path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Input', 'VisitOpener.cs'), 'utf8'))
+    expect(opener).toMatch(/OpenWaiter\.Wait\(screen, clock, beforeChart, beforeWork, expChart, expName, pressUnsavedRx\)/)
+  })
+
+  it('AC-017.12 낡은 "누르지 않는다" 글이 남지 않았다', () => {
+    const core = path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Input')
+    expect(readFileSync(path.join(core, 'ChartRules.cs'), 'utf8')).not.toContain('그 창은 절대 누르지 않는다')
+    expect(readFileSync(path.join(core, 'IChartUi.cs'), 'utf8')).not.toContain('그 창은 절대 누르지 않는다')
+    expect(readFileSync(path.join(core, 'InputErrors.cs'), 'utf8')).not.toContain('누르지 않고 멈췄다')
+    expect(readFileSync(path.join(core, 'VisitOpener.cs'), 'utf8')).not.toContain('우리는 누르지 않고 멈춘다')
+    expect(readFileSync(path.join(WINDOWS_DIR, 'ViewModeNotices.cs'), 'utf8')).not.toContain('저장 안 한 처방 창을 포함한 다른 대화 상자는 누르지 않는다(AC-017.5)')
+    expect(readFileSync(path.join(WINDOWS_DIR, 'UChartAutomation.cs'), 'utf8')).not.toContain('절대 누르지 않는다')
   })
 
   it('AC-017.3 여러 날 입력은 내원내역 날짜를 바꾸지 않는다: dtpFrom·dtpTo·dtpWorkDate에 쓰는 코드가 없다', () => {

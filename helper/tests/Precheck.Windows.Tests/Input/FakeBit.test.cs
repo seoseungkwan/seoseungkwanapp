@@ -25,8 +25,9 @@ public sealed class FakeBitCollection
 public sealed class FakeBit : IDisposable
 {
     // C# 5(.NET Framework csc)로 컴파일한다. 한글은 인자로 받는다.
-    // mode: normal · no-memo · two-memos · hidden-memo · unsaved · no-workdate · view-mode · view-mode-no-confirm · code-filter · read-only-memo · disabled-memo
+    // mode: normal · no-memo · two-memos · hidden-memo · unsaved · unsaved-no-confirm · no-workdate · view-mode · view-mode-no-confirm · code-filter · read-only-memo · disabled-memo
     // 대화 상자 단추 글은 윈도우 언어를 따라 'OK'가 되므로 뜬 뒤 단추 글을 바꾼다(MessageBox의 모달 고리 안에서 타이머가 돈다)
+    // unsaved 모드의 창은 진짜처럼 [확인]·[취소] 둘이고, 어느 단추로 닫혔는지 .dialog-closed에 남긴다(OK·Cancel, AC-017.12)
     private const string Code = @"
 using System;
 using System.IO;
@@ -53,6 +54,9 @@ static class FakeBitProgram
     [DllImport(""user32.dll"", CharSet = CharSet.Unicode, EntryPoint = ""SetWindowTextW"")]
     static extern bool SetWindowText(IntPtr hwnd, string text);
 
+    [DllImport(""user32.dll"")]
+    static extern int GetDlgCtrlID(IntPtr hwnd);
+
     static string ClassOf(IntPtr hwnd)
     {
         var name = new StringBuilder(64);
@@ -60,14 +64,15 @@ static class FakeBitProgram
         return name.ToString();
     }
 
-    static void RelabelDialogButtons(string label)
+    // IDCANCEL(2) 단추만 cancelLabel이다. 단추가 하나인 창은 둘을 같은 글로 부른다
+    static void RelabelDialogButtons(string label, string cancelLabel)
     {
         EnumThreadWindows(GetCurrentThreadId(), delegate(IntPtr dialog, IntPtr unused)
         {
             if (ClassOf(dialog) != ""#32770"") return true;
             EnumChildWindows(dialog, delegate(IntPtr child, IntPtr unusedChild)
             {
-                if (ClassOf(child) == ""Button"") SetWindowText(child, label);
+                if (ClassOf(child) == ""Button"") SetWindowText(child, GetDlgCtrlID(child) == 2 ? cancelLabel : label);
                 return true;
             }, IntPtr.Zero);
             return true;
@@ -77,7 +82,7 @@ static class FakeBitProgram
     [STAThread]
     static void Main(string[] a)
     {
-        string outpatientTitle = a[0], visitsTitle = a[1], chart = a[2], name = a[3], memo = a[4], work = a[5], from = a[6], to = a[7], mode = a[8], record = a[9], unsaved = a[10], notice = a[12], confirmLabel = a[13], otherLabel = a[14], codeFilter = a[15];
+        string outpatientTitle = a[0], visitsTitle = a[1], chart = a[2], name = a[3], memo = a[4], work = a[5], from = a[6], to = a[7], mode = a[8], record = a[9], unsaved = a[10], notice = a[12], confirmLabel = a[13], otherLabel = a[14], codeFilter = a[15], cancelLabel = a[16];
 
         var outpatient = new Form { Text = outpatientTitle, Width = 640, Height = 420, StartPosition = FormStartPosition.Manual, Left = 20, Top = 20 };
         var chartBox = new TextBox { Name = ""txtChtNum"", Text = chart, Left = 10, Top = 10, Width = 200 };
@@ -116,19 +121,20 @@ static class FakeBitProgram
         outpatient.Shown += delegate
         {
             visits.Show();
-            if (mode == ""unsaved"" || mode == ""view-mode"" || mode == ""view-mode-no-confirm"")
+            var unsavedMode = mode == ""unsaved"" || mode == ""unsaved-no-confirm"";
+            if (unsavedMode || mode == ""view-mode"" || mode == ""view-mode-no-confirm"")
             {
-                var label = mode == ""view-mode-no-confirm"" ? otherLabel : confirmLabel;
+                var label = mode == ""view-mode-no-confirm"" || mode == ""unsaved-no-confirm"" ? otherLabel : confirmLabel;
                 var timer = new Timer { Interval = 200 };
                 timer.Tick += delegate
                 {
                     timer.Stop();
                     var relabel = new Timer { Interval = 50 };
-                    relabel.Tick += delegate { RelabelDialogButtons(label); };
+                    relabel.Tick += delegate { RelabelDialogButtons(label, unsavedMode ? cancelLabel : label); };
                     relabel.Start();
-                    MessageBox.Show(mode == ""unsaved"" ? unsaved : notice, ""BIT"");
+                    var answer = unsavedMode ? MessageBox.Show(unsaved, ""BIT"", MessageBoxButtons.OKCancel).ToString() : MessageBox.Show(notice, ""BIT"").ToString();
                     relabel.Stop();
-                    File.WriteAllText(record + "".dialog-closed"", ""x"");
+                    File.WriteAllText(record + "".dialog-closed"", answer);
                 };
                 timer.Start();
             }
@@ -175,9 +181,9 @@ static class FakeBitProgram
         {
             "외래진료실 ( " + Name + " 환자정보 )",
             "내원내역 " + from + " ~ " + to + " - 1명",
-            Chart, Name, memo, workDate, from, to, mode, record, "저장되지 않은 처방이 있습니다", "차트번호",
+            Chart, Name, memo, workDate, from, to, mode, record, "저장되지 않은 처방이 있습니다. 계속 진행하시겠습니까?", "차트번호",
             "[IP:0.0.0.0]FAKE '" + Name + "' 환자는 '접수' 사용자가 'BITDoctorOrder' 에서 현재 사용중입니다. 조회모드로 전환합니다",
-            "확인", "아니요", CodeFilter,
+            "확인", "아니요", CodeFilter, "취소",
         };
         var process = Process.Start(new ProcessStartInfo(exe, string.Join(" ", arguments.Select(Quote))) { UseShellExecute = false })
             ?? throw new InvalidOperationException("가짜 비트를 띄우지 못했다");

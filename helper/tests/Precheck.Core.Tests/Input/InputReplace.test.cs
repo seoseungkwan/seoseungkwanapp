@@ -30,6 +30,8 @@ public class InputReplaceTests
     private const string SetAside = "그 달의 입력 기록 파일을 읽지 못해 따로 치워 두었습니다. 아무도 열지 않았으니 다시 눌러 이어서 해 주세요.";
     private const string NoteOff = "비트에 다른 메모가 있으면 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 다만 불러온 뒤 달라진 메모, 우리 메모에 확인 표시가 남은 환자, [직접 확인했어요]를 누른 환자는 건너뜁니다.";
     private const string NoteOn = "묻지 않기가 켜져 있어 비트의 다른 메모를 바꿉니다. 다만 직접 확인한 환자는 바꾸지 않고 건너뜁니다";
+    private const string UnsavedRxNote = "저장하지 않은 처방 창이 뜨면 자동으로 [확인]을 누릅니다. 쓰던 처방이 있으면 먼저 저장해 주세요.";
+    private const string HandNote = "칸에 저장하지 않은 글이 있을 수 있습니다. 비트에서 그 메모를 저장한 뒤 [확인]을 눌러 주세요.";
     private const string Label = "이제부터 묻지 않기 (비트에 다른 메모가 있어도 묻지 않고 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 확인 표시가 남은 메모는 입력하지 않습니다. 청구 창을 닫으면 꺼집니다)";
 
     private static readonly byte[] Garbage = Encoding.ASCII.GetBytes("garbage");
@@ -1229,10 +1231,109 @@ public class InputReplaceTests
             "비트에 청구메모를 입력할까요?\r\n\r\n10/27, 1명 입력할까요?\r\n기관기호 1234****\r\n\r\n주의\r\n"
             + "· 비트 내원내역 창을 10/27 기간이 모두 들어가게 띄워 두고, 처방코드·상병 검색칸은 비워 두세요.\r\n"
             + "· 먼저 비트의 저장 안 한 작업을 마치세요. 내원내역 목록이 다른 창에 가려지면 멈춥니다.\r\n"
+            + "· " + UnsavedRxNote + "\r\n"
             + "· 환자마다 열린 내원의 진료일이 맞을 때만 입력합니다.\r\n"
             + "· " + NoteOff + "\r\n"
             + "· 입력하는 동안 마우스와 키보드를 쓰지 마세요.",
             InputPrompt.Build(Sample.Items(1), Sample.Registration));
+    }
+
+    [Fact(DisplayName = "AC-017.12 창 글 전체에 주의 줄: '먼저 비트의 저장 안 한 작업' 줄 바로 다음이고 켜진 창·코드 창에도 있다")]
+    public void UnsavedRxNoteInWindow()
+    {
+        var after = "내원내역 목록이 다른 창에 가려지면 멈춥니다.\r\n· " + UnsavedRxNote + "\r\n· 환자마다";
+        Assert.Contains(after, InputPrompt.Build(Sample.Items(2), Sample.Registration), StringComparison.Ordinal);
+        Assert.Contains(after, InputPrompt.Build(Sample.Items(2), Sample.Registration, noAskOn: true), StringComparison.Ordinal);
+        Assert.Contains(after, InputPrompt.Build(Sample.Items(2), Sample.Registration, code: "LA358"), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-017.12 열 사람이 없어 주의 줄이 없는 창(풀 사람만)에는 이 줄도 없다")]
+    public void UnsavedRxNoteNotInReleaseOnlyWindow() =>
+        Assert.DoesNotContain(UnsavedRxNote, InputPrompt.Build(new InputItem[0], Sample.Registration, released: 1), StringComparison.Ordinal);
+
+    [Fact(DisplayName = "AC-017.12 묻지 않기 묶음은 창 없이 시작한 뒤에 누른다")]
+    public void UnsavedRxPressedInNoAskBatch()
+    {
+        using var rig = new WiringRig();
+        rig.NoAsk.TurnOn();
+        rig.Ui.Unsaved = true;
+
+        var (_, result) = rig.Run(Sample.Item(1));
+
+        Assert.Empty(rig.Confirm.Shown);
+        Assert.Equal("finished", Status(result));
+        Assert.Equal(1, rig.Ui.RxPresses);
+        Assert.Equal(new[] { true }, rig.Ui.OpenPressArgs);
+    }
+
+    [Fact(DisplayName = "AC-017.12 입력을 묻는 창: '직접 확인한 환자' 줄 다음에 칸의 저장 안 한 글을 저장하라는 줄이 나온다")]
+    public void HandNoteInInputWindow() =>
+        Assert.Contains(
+            "직접 확인한 환자 1명\r\n" + HandNote + "\r\n\r\n주의\r\n",
+            InputPrompt.Build(new[] { Sample.Item(1, checkedByHand: true) }, Sample.Registration),
+            StringComparison.Ordinal);
+
+    [Fact(DisplayName = "AC-017.12 풀 사람도 있는 입력 창: 새 줄은 '이 가운데' 줄 다음이다('이 가운데'가 앞 줄을 가리키게)")]
+    public void HandNoteAfterReleasedLine() =>
+        Assert.Contains(
+            "직접 확인한 환자 2명\r\n이 가운데 1명은 메모를 넣지 않고 입력 멈춤만 풉니다\r\n" + HandNote + "\r\n\r\n주의\r\n",
+            InputPrompt.Build(new[] { Sample.Item(1, checkedByHand: true) }, Sample.Registration, released: 1),
+            StringComparison.Ordinal);
+
+    [Fact(DisplayName = "AC-017.12 풀 사람만 있는 창: 묻는 줄 바로 다음에 새 줄이 나온다")]
+    public void HandNoteInReleaseOnlyWindow() =>
+        Assert.StartsWith(
+            "직접 확인한 환자 2명의 입력 멈춤을 풀까요? 메모는 넣지 않고 건너뜁니다\r\n" + HandNote + "\r\n기관기호 ",
+            InputPrompt.Build(new InputItem[0], Sample.Registration, released: 2),
+            StringComparison.Ordinal);
+
+    [Fact(DisplayName = "AC-017.12 직접 확인이 없는 창에는 이 줄이 없다")]
+    public void HandNoteOnlyForByHand() =>
+        Assert.DoesNotContain(HandNote, InputPrompt.Build(Sample.Items(2), Sample.Registration), StringComparison.Ordinal);
+
+    [Fact(DisplayName = "AC-017.12 풀어 준 쓰다 멈춘 사람이 있는 묶음의 뒷사람은 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다")]
+    public void ReleasedStuckThenNextNotPressed()
+    {
+        using var rig = new WiringRig();
+        var released = Sample.Item(1, memo: " ", checkedByHand: true);
+        rig.Reopen().Mark(released, JournalState.Writing);
+        rig.Ui.Unsaved = true;
+
+        var (_, result) = rig.Run(released, Sample.Item(2));
+
+        Assert.Equal("stopped", Status(result));
+        Assert.Equal("E-BIT-UNSAVED-RX", Code(result));
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Opens);
+        Assert.Equal(JournalState.SkippedByHand, rig.Reopen().LastState(released));
+    }
+
+    [Fact(DisplayName = "AC-017.12 쓰다 멈춘 기록 없이 미리 빠진 직접 확인이 있어도 뒷사람은 누른다")]
+    public void ExcludedHandThenNextIsPressed()
+    {
+        using var rig = new WiringRig();
+        rig.Ui.Unsaved = true;
+
+        var (_, result) = rig.Run(Sample.Item(1, memo: " ", checkedByHand: true), Sample.Item(2));
+
+        Assert.Equal("finished", Status(result));
+        Assert.Equal(1, rig.Ui.RxPresses);
+        Assert.Equal(new[] { true }, rig.Ui.OpenPressArgs);
+    }
+
+    [Fact(DisplayName = "AC-017.12 풀 사람만 있는 묶음은 아무도 열지 않으므로 창이 떠 있어도 누르지 않는다")]
+    public void UnsavedRxNotPressedWhenOnlyReleasing()
+    {
+        using var rig = new WiringRig();
+        var item = Sample.Item(1, memo: " ", checkedByHand: true);
+        rig.Reopen().Mark(item, JournalState.Writing);
+        rig.Ui.Unsaved = true;
+
+        var (_, result) = rig.Run(item);
+
+        Assert.Equal("finished", Status(result));
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.True(rig.Ui.Unsaved);
     }
 
     [Fact(DisplayName = "AC-037.8 켜진 채 뜨는 창의 주의 줄")]

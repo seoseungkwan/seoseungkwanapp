@@ -149,7 +149,7 @@ public class UChartAutomationTests
         using var bit = FakeBit.Start(workDate: "2026-10-28");
         using var ui = new UChartAutomation(bit.Root);
         Assert.Empty(bit.WaitForWindows(ui).Problems);
-        var opened = ui.OpenPatient(FakeBit.Chart, FakeBit.Name, "2026-11-30");
+        var opened = ui.OpenPatient(FakeBit.Chart, FakeBit.Name, "2026-11-30", pressUnsavedRx: true);
         Assert.Equal(ChartOpenKind.Failed, opened.Kind);
         Assert.Contains("기간", opened.Message, StringComparison.Ordinal);
         Assert.True(ChartRules.IsFatalOpenMessage(opened.Message));
@@ -167,22 +167,87 @@ public class UChartAutomationTests
         Assert.True(string.IsNullOrEmpty(filter.Code));
     }
 
-    [Fact(DisplayName = "AC-017.5 저장 안 한 처방 창을 알아보고, 누르지 않는다(창이 그대로 떠 있고 입력하지 않음)")]
-    public void UnsavedDialogIsNotPressed()
+    private static void WaitForUnsavedDialog(UChartAutomation ui)
     {
-        using var bit = FakeBit.Start("unsaved");
-        using var ui = new UChartAutomation(bit.Root);
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (!ui.HasUnsavedRxDialog())
         {
             Assert.True(DateTime.UtcNow < deadline, "가짜 저장 안 한 처방 창이 뜨지 않았다");
             Thread.Sleep(200);
         }
+        // 가짜 비트가 단추 글을 바꿀 틈(윈도우 언어를 따라 처음에는 'OK'다)
+        Thread.Sleep(500);
+    }
+
+    [Fact(DisplayName = "AC-017.12 저장 안 한 처방 창을 알아보고 [확인]을 눌러 넘어가 입력한다([취소]로 닫히지 않고 메모는 가짜 비트 저장 파일에 들어간다)")]
+    public void UnsavedDialogIsPressed()
+    {
+        using var bit = FakeBit.Start("unsaved");
+        using var ui = new UChartAutomation(bit.Root);
+        WaitForUnsavedDialog(ui);
+        var outcome = Run(ui, new ListJournal());
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Null(outcome.Code);
+        Assert.Equal("OK", WaitForFile(bit.Record + ".dialog-closed")?.Trim());
+        Assert.Equal("가짜 메모\r\n둘째 줄", WaitForFile(bit.Record));
+        Assert.False(ui.HasUnsavedRxDialog());
+    }
+
+    [Fact(DisplayName = "AC-017.12 그 창의 확인 단추만 누른다: WM_COMMAND로 [확인]으로 닫히고 [취소]로 닫히지 않는다")]
+    public void PressesOnlyConfirm()
+    {
+        using var bit = FakeBit.Start("unsaved");
+        using var ui = new UChartAutomation(bit.Root);
+        WaitForUnsavedDialog(ui);
+        Assert.True(ui.PressUnsavedRxOk());
+        Assert.Equal("OK", WaitForFile(bit.Record + ".dialog-closed")?.Trim());
+        Assert.False(ui.HasUnsavedRxDialog());
+    }
+
+    [Fact(DisplayName = "AC-017.12 창에 [확인] 단추가 없으면 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다(창이 그대로 떠 있고 입력하지 않음)")]
+    public void NoConfirmButtonIsNotPressed()
+    {
+        using var bit = FakeBit.Start("unsaved-no-confirm");
+        using var ui = new UChartAutomation(bit.Root);
+        WaitForUnsavedDialog(ui);
+        Assert.False(ui.PressUnsavedRxOk());
         var outcome = Run(ui, new ListJournal());
         Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
         Assert.False(File.Exists(bit.Record));
         Thread.Sleep(500);
         Assert.True(ui.HasUnsavedRxDialog());
+        Assert.False(File.Exists(bit.Record + ".dialog-closed"));
+    }
+
+    [Fact(DisplayName = "AC-017.12 쓰다 멈춘 사람은 창이 떠 있어도 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다")]
+    public void StuckPersonIsNotPressed()
+    {
+        using var bit = FakeBit.Start("unsaved", memo: "가짜 메모\n둘째 줄");
+        using var ui = new UChartAutomation(bit.Root);
+        WaitForUnsavedDialog(ui);
+        var journal = new ListJournal();
+        journal.Mark(new InputItem("v1", FakeBit.Chart, FakeBit.Name, FakeBit.Date, "가짜 메모\n둘째 줄"), JournalState.WriteUnconfirmed);
+        var outcome = Run(ui, journal);
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.False(File.Exists(bit.Record));
+        Thread.Sleep(500);
+        Assert.True(ui.HasUnsavedRxDialog());
+        Assert.False(File.Exists(bit.Record + ".dialog-closed"));
+    }
+
+    [Fact(DisplayName = "AC-017.12 다른 대화 상자(조회 모드 안내창)는 이 길로 누르지 않는다")]
+    public void OtherDialogIsNotPressed()
+    {
+        using var bit = FakeBit.Start("view-mode");
+        using var ui = new UChartAutomation(bit.Root);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (ui.ReadDialog() != DialogState.Dialog)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "가짜 안내창이 뜨지 않았다");
+            Thread.Sleep(200);
+        }
+        ui.PressUnsavedRxOk();
+        Assert.Equal(DialogState.Dialog, ui.ReadDialog());
         Assert.False(File.Exists(bit.Record + ".dialog-closed"));
     }
 }

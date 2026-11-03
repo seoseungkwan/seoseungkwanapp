@@ -20,7 +20,7 @@ namespace Precheck.Windows;
 /// 내원내역 날짜는 바꾸지 않는다: 사람이 띄워 둔 기간을 읽고, 차트번호로 검색된 줄을 위에서부터 열어 환자와 진료일(dtpWorkDate)이 맞는 줄에서 멈춘다.
 /// 원본 판단 규칙·문구는 Core ChartRules·VisitOpener·InputRunner에 있고 여기는 Win32·FlaUI만 한다.
 /// 원본과 다른 점:
-/// · 저장 안 한 처방 창의 [확인]을 누르지 않는다(원본 ConfirmUnsavedPrescription을 옮기지 않음, AC-017.5). 창을 알아보면 멈춘다.
+/// · 저장 안 한 처방 창: 원본 ConfirmUnsavedPrescription은 열기를 기다릴 때만 [확인]을 눌렀다. 우리는 사람 시작·쓰기 직전에도 누르고(자리마다 3번까지), 쓰다 멈춘 사람은 누르지 않는다(AC-017.12).
 /// · 칸 찾기: 원본 FindByIds는 첫 칸을 썼다. 지문 칸은 Locate의 Pick 규칙(하나, 또는 보이는 것 하나)으로 찾는다(AC-017.4). 나머지(dtpFrom 등)는 원본처럼 첫 칸.
 /// · 메모 읽기: 원본 GetText는 시간 지남을 빈칸으로 돌려줬다. ReadMemo는 null이다(빈칸으로 보고 쓰지 않게).
 /// · DPI: 원본은 다리 프로세스 전체를 Per-Monitor V2로 켰다. 도우미는 비트 화면 DLL도 같은 프로세스에 띄우므로 이 스레드만 켜고 Dispose에서 되돌린다.
@@ -225,7 +225,7 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
         return visible.Count == 1 ? visible[0] : IntPtr.Zero;
     }
 
-    // ── 저장 안 한 처방 창·비트 확인 창. 읽기만 한다. 절대 누르지 않는다 ───────
+    // ── 저장 안 한 처방 창·비트 확인 창. 누르는 것은 저장 안 한 처방 창의 [확인] 하나뿐이다(PressConfirm, AC-017.12) ───────
 
     private List<nint> Dialogs()
     {
@@ -250,6 +250,41 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
             return true;
         }, IntPtr.Zero);
         return ChartRules.ContainsUnsavedPrescription(children.Select(GetText));
+    }
+
+    /// <summary>
+    /// 저장 안 한 처방 창의 [확인]을 누르고 기다린다(AC-017.12). [확인] 단추가 없거나 메시지가 실패하면 false다. 창이 그새 스스로 닫혔으면 누를 것 없이 기다리기만 한다.
+    /// 누르기는 비동기다: 기다리지 않으면 옛 환자로 확인을 통과한 뒤 화면이 바뀌어 메모가 다른 환자에게 간다. 기준 화면은 누르기 전에 읽는다.
+    /// InputRunner와 OpenWaiter가 입력 묶음 안에서만 부르고, 쓰다 멈춘 사람과 같은 묶음의 그 뒷사람이면 부르지 않는다.
+    /// </summary>
+    public bool PressUnsavedRxOk()
+    {
+        if (ctl == null) Relocate();
+        var beforeChart = ChartRules.Digits(ReadIdentity().Chart);
+        var beforeWork = ReadWorkDate() ?? "";
+        var dialog = Dialogs().FirstOrDefault(IsUnsavedPrescriptionDialog);
+        if (dialog != IntPtr.Zero && !PressConfirm(dialog)) return false;
+        UnsavedRxSettle.Wait(this, clock, beforeChart, beforeWork);
+        return true;
+    }
+
+    /// <summary>그 창의 Button 칸 가운데 [확인](ChartRules.IsConfirmButton)만 누른다. 원본처럼 창에 단추의 WM_COMMAND를 보낸다(되돌아오기를 기다리지 않는다). 다른 단추를 누르는 길은 없다.</summary>
+    private static bool PressConfirm(nint dialog)
+    {
+        var children = new List<nint>();
+        EnumChildWindows(dialog, (h, _) =>
+        {
+            children.Add(h);
+            return true;
+        }, IntPtr.Zero);
+        foreach (var child in children)
+        {
+            if (GetCls(child) == "Button" && ChartRules.IsConfirmButton(GetText(child)))
+            {
+                return PostMessage(dialog, WM_COMMAND, GetDlgCtrlID(child) & 0xFFFF, child);
+            }
+        }
+        return false;
     }
 
     public bool HasUnsavedRxDialog() => Dialogs().Any(IsUnsavedPrescriptionDialog);
@@ -413,14 +448,14 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
         return ((IntPtr)result).ToInt64() != 0;
     }
 
-    /// <summary>환자를 여는 동안만 조회 모드 안내창을 본다(AC-036.4). 눌렀으면 결과에 표시한다(AC-036.5).</summary>
-    public ChartOpenResult OpenPatient(string expChart, string expName, string expDate)
+    /// <summary>환자를 여는 동안만 조회 모드 안내창을 본다(AC-036.4). 눌렀으면 결과에 표시한다(AC-036.5). pressUnsavedRx가 false면(쓰다 멈춘 사람과 같은 묶음의 그 뒷사람) 저장 안 한 처방 창을 누르지 않는다(AC-017.12).</summary>
+    public ChartOpenResult OpenPatient(string expChart, string expName, string expDate, bool pressUnsavedRx)
     {
         var notices = ViewModeNotices.Watch(target);
         ChartOpenResult opened;
         try
         {
-            opened = OpenRange(expChart, expName, expDate);
+            opened = OpenRange(expChart, expName, expDate, pressUnsavedRx);
         }
         finally
         {
@@ -430,7 +465,7 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
     }
 
     /// <summary>원본 OpenPatientRange: 내원내역에서 차트번호로 찾아 그 진료일의 내원을 연다. 줄 고리는 Core VisitOpener.</summary>
-    private ChartOpenResult OpenRange(string expChart, string expName, string expDate)
+    private ChartOpenResult OpenRange(string expChart, string expName, string expDate, bool pressUnsavedRx)
     {
         var started = clock.NowMs;
         var located = Locate();
@@ -506,7 +541,7 @@ public sealed class UChartAutomation : IChartUi, IVisitRowScreen
         var position = Mouse.Position;
         try
         {
-            return VisitOpener.OpenRows(this, clock, started, rows.Value, ChartRules.FullyVisibleRows(rect.Top, rect.Bottom, dpi), expChart, expName, expDate, listWait);
+            return VisitOpener.OpenRows(this, clock, started, rows.Value, ChartRules.FullyVisibleRows(rect.Top, rect.Bottom, dpi), expChart, expName, expDate, pressUnsavedRx, listWait);
         }
         finally
         {

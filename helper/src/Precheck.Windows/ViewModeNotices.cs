@@ -11,7 +11,7 @@ namespace Precheck.Windows;
 /// <summary>
 /// 조회 모드 안내창의 [확인] 누르기(AC-036.4). 원본 medicore/bit_dialogs.py를 옮겼다. 판단은 Core ChartRules, 박자는 Core ViewModeWatch이고 여기는 창 찾기·누르기만 한다.
 /// 환자를 여는 동안만(UChartAutomation.OpenPatient 안) 뒤 스레드로 돈다. 등록한 BITDoctorOrder.exe 프로세스의 보이는 #32770 창에서 안내창 글이 있을 때만 그 창의 Button [확인]을 누른다.
-/// 저장 안 한 처방 창을 포함한 다른 대화 상자는 누르지 않는다(AC-017.5). 창 글을 기록·답·예외에 남기지 않는다(AC-001.6).
+/// 다른 대화 상자는 여기서 누르지 않는다. 저장 안 한 처방 창의 [확인]도 여기가 아니라 입력 묶음 안에서 UChartAutomation이 누른다(AC-017.12). 창 글을 기록·답·예외에 남기지 않는다(AC-001.6).
 /// 못 보거나 못 누르면 그대로 끝난다: 안내창이 남으면 VisitOpener가 기다리다 그 사람을 건너뛴다.
 /// </summary>
 public sealed class ViewModeNotices : IDisposable

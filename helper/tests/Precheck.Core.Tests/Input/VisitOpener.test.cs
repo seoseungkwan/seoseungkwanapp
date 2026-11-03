@@ -9,7 +9,7 @@ namespace Precheck.Core.Tests.Input;
 /// <summary>
 /// 여러 날 묶음에서 한 사람의 내원 찾기(AC-017.3·AC-017.5). 원본 vendor/range_bridge RangeAutomation의 줄 고리(OpenPatientRange)·기다리기(WaitOpenRange)를
 /// 가짜 내원내역으로 돌린다. 내원내역 날짜는 바꾸지 않는다: 차트번호 검색 줄을 위에서부터 열어 열린 내원의 진료일(dtpWorkDate)이 맞는 줄을 찾는다.
-/// 저장 안 한 처방 창은 원본 range_bridge와 달리 누르지 않고 멈춘다(명세 '범위 밖').
+/// 저장 안 한 처방 창은 원본 range_bridge처럼 한 줄을 열 때 3번까지 [확인]을 누른다(AC-017.12). 쓰다 멈춘 사람은 누르지 말라는 인자가 온다.
 /// </summary>
 public class VisitOpenerTests
 {
@@ -54,7 +54,23 @@ public class VisitOpenerTests
         public List<(int Row, int Up)> Opened { get; } = new List<(int Row, int Up)>();
         public int Relocated { get; private set; }
 
+        /// <summary>저장 안 한 처방 창에 [확인] 단추가 있다(AC-017.12).</summary>
+        public bool RxHasConfirm { get; set; } = true;
+
+        /// <summary>[확인]을 누른 시각들(AC-017.12).</summary>
+        public List<long> RxPressedAt { get; } = new List<long>();
+
+        public Action? OnRxPress { get; set; }
+
         public DialogState ReadDialog() => Dialog(clock.NowMs);
+
+        public bool PressUnsavedRxOk()
+        {
+            RxPressedAt.Add(clock.NowMs);
+            if (!RxHasConfirm) return false;
+            OnRxPress?.Invoke();
+            return true;
+        }
 
         public ChartIdentity ReadIdentity()
         {
@@ -106,8 +122,16 @@ public class VisitOpenerTests
         return (new FakeList(clock), clock);
     }
 
-    private static ChartOpenResult Open(FakeList list, FakeClock clock, int rows, int fullyVisible = 20, FirstListWait? wait = null) =>
-        VisitOpener.OpenRows(list, clock, clock.NowMs, rows, fullyVisible, Chart, Name, Date, wait);
+    private static ChartOpenResult Open(FakeList list, FakeClock clock, int rows, int fullyVisible = 20, FirstListWait? wait = null, bool press = true) =>
+        VisitOpener.OpenRows(list, clock, clock.NowMs, rows, fullyVisible, Chart, Name, Date, press, wait);
+
+    /// <summary>[확인]을 누르면 닫히는 창(AC-017.12).</summary>
+    private static void DialogUntilPressed(FakeList list, long from)
+    {
+        var closed = false;
+        list.OnRxPress = () => closed = true;
+        list.Dialog = now => !closed && now >= from ? DialogState.UnsavedRx : DialogState.None;
+    }
 
     private const string CoveredMessage = "U차트 내원내역 목록이 다른 창에 가려져 있습니다. 목록이 보이게 해 주세요.";
 
@@ -255,13 +279,99 @@ public class VisitOpenerTests
         Assert.InRange(clock.NowMs, 2500, 3000);
     }
 
-    [Fact(DisplayName = "AC-017.5 저장 안 한 처방 창이 뜨면 그 자리에서 E-BIT-UNSAVED-RX 쪽으로 멈추고 다음 줄을 열지 않는다(누르지 않음)")]
-    public void UnsavedStops()
+    [Fact(DisplayName = "AC-017.12 열기를 기다리는 동안 저장 안 한 처방 창이 뜨면 [확인]을 누르고 이어 가서 그 줄을 연다")]
+    public void UnsavedPressedAndOpened()
+    {
+        var (list, clock) = Make();
+        list.RowOpens = _ => (Chart, Name, Date);
+        list.OpenDelayMs = 1000;
+        DialogUntilPressed(list, 300);
+        var result = Open(list, clock, 3);
+        Assert.Equal(ChartOpenKind.Opened, result.Kind);
+        Assert.Single(list.RxPressedAt);
+        Assert.Single(list.Opened);
+    }
+
+    [Fact(DisplayName = "AC-017.12 누른 뒤 화면이 안 바뀌면 창이 닫히고 2초를 더 본다: 일찍 끝나 옛 화면으로 판단하지 않는다")]
+    public void PressedAndUnchangedWaitsTwoSeconds()
+    {
+        var (list, clock) = Make();
+        list.ShownChart = Chart;
+        list.ShownName = Name;
+        list.ShownWork = Date;
+        // 2.5초 규칙에 닿기 바로 앞에 뜬다. 창을 본 것으로 치지 않으면 다음 바퀴에 끝난다
+        DialogUntilPressed(list, 2400);
+        Assert.Equal(ChartOpenKind.Opened, Open(list, clock, 1).Kind);
+        Assert.True(clock.NowMs - list.RxPressedAt[0] > 2000, $"누른 뒤 {clock.NowMs - list.RxPressedAt[0]}ms만 기다렸다");
+    }
+
+    [Fact(DisplayName = "AC-017.12 누른 뒤 화면이 바뀌면 0.7초 그대로일 때까지 열린 것으로 보지 않는다")]
+    public void PressedAndChangedWaitsStable()
+    {
+        var (list, clock) = Make();
+        list.RowOpens = _ => (Chart, Name, Date);
+        list.OpenDelayMs = 1500;
+        DialogUntilPressed(list, 300);
+        Assert.Equal(ChartOpenKind.Opened, Open(list, clock, 1).Kind);
+        Assert.True(clock.NowMs >= 2200, $"화면이 바뀐 지 {clock.NowMs - 1500}ms만에 끝났다");
+    }
+
+    [Fact(DisplayName = "AC-017.12 눌렀더니 다른 환자가 열리면 그 줄을 연 것으로 보지 않는다")]
+    public void PressedAndOtherPatientIsNotOpened()
+    {
+        var (list, clock) = Make();
+        list.RowOpens = _ => ("900077", "가상환자77", Date);
+        DialogUntilPressed(list, 200);
+        var result = Open(list, clock, 1);
+        Assert.Equal(ChartOpenKind.Failed, result.Kind);
+        Assert.Single(list.RxPressedAt);
+    }
+
+    [Fact(DisplayName = "AC-017.12 한 줄을 여는 동안 3번 누르고 넷째로 보이면 E-BIT-UNSAVED-RX 쪽으로 멈추고 다음 줄을 열지 않는다")]
+    public void FourthSightingStops()
     {
         var (list, clock) = Make();
         list.Dialog = now => now >= 300 ? DialogState.UnsavedRx : DialogState.None;
         var result = Open(list, clock, 3);
         Assert.Equal(ChartOpenKind.UnsavedRx, result.Kind);
+        Assert.Equal(3, list.RxPressedAt.Count);
+        Assert.Single(list.Opened);
+    }
+
+    [Fact(DisplayName = "AC-017.12 3번은 줄마다 다시 센다: 내원이 많은 환자가 멈추지 않는다")]
+    public void CountedPerRow()
+    {
+        var (list, clock) = Make();
+        var left = 0;
+        list.KeyError = (_, __) => { left = 3; return null; };
+        list.OnRxPress = () => left--;
+        list.Dialog = _ => left > 0 ? DialogState.UnsavedRx : DialogState.None;
+        list.RowOpens = row => (Chart, Name, row == 1 ? Date : "2026-09-01");
+        Assert.Equal(ChartOpenKind.Opened, Open(list, clock, 2).Kind);
+        Assert.Equal(6, list.RxPressedAt.Count);
+        Assert.Equal(2, list.Opened.Count);
+    }
+
+    [Fact(DisplayName = "AC-017.12 창에 [확인] 단추가 없으면 E-BIT-UNSAVED-RX 쪽으로 멈추고 다음 줄을 열지 않는다")]
+    public void NoConfirmButtonStops()
+    {
+        var (list, clock) = Make();
+        list.RxHasConfirm = false;
+        list.Dialog = now => now >= 300 ? DialogState.UnsavedRx : DialogState.None;
+        var result = Open(list, clock, 3);
+        Assert.Equal(ChartOpenKind.UnsavedRx, result.Kind);
+        Assert.Single(list.RxPressedAt);
+        Assert.Single(list.Opened);
+    }
+
+    [Fact(DisplayName = "AC-017.12 누르지 말라는 인자면(쓰다 멈춘 사람) 누르지 않고 멈춘다")]
+    public void NoPressArgumentStops()
+    {
+        var (list, clock) = Make();
+        list.Dialog = now => now >= 300 ? DialogState.UnsavedRx : DialogState.None;
+        var result = Open(list, clock, 3, press: false);
+        Assert.Equal(ChartOpenKind.UnsavedRx, result.Kind);
+        Assert.Empty(list.RxPressedAt);
         Assert.Single(list.Opened);
     }
 
@@ -347,7 +457,7 @@ public class VisitOpenerTests
     {
         var (list, clock) = Make();
         list.RowOpens = _ => (Chart, Name, Date);
-        var result = VisitOpener.OpenRows(list, clock, clock.NowMs, 1, 20, "0" + Chart, Name, Date);
+        var result = VisitOpener.OpenRows(list, clock, clock.NowMs, 1, 20, "0" + Chart, Name, Date, pressUnsavedRx: true);
         Assert.Equal(ChartOpenKind.Failed, result.Kind);
         Assert.Equal("검색된 1줄을 모두 열어봤지만 이 환자의 2026-10-28 내원이 없었습니다. 직접 확인해 주세요.", result.Message);
     }
@@ -377,8 +487,108 @@ public class VisitOpenerTests
     {
         var (list, clock) = Make();
         list.ShownChart = "";
-        var wait = OpenWaiter.Wait(list, clock, "", "", Chart, Name, maxMs: 600);
+        var wait = OpenWaiter.Wait(list, clock, "", "", Chart, Name, pressUnsavedRx: true, maxMs: 600);
         Assert.Equal(OpenWaitResult.Timeout, wait.Result);
         Assert.True(list.Relocated > 0);
+    }
+
+    // AC-017.12 : 누른 뒤의 기다림. 부르는 곳은 UChartAutomation이고 값은 OpenWaiter와 같다
+
+    private static (FakeList List, FakeClock Clock) Shown()
+    {
+        var (list, clock) = Make();
+        list.ShownChart = Chart;
+        list.ShownName = Name;
+        list.ShownWork = Date;
+        return (list, clock);
+    }
+
+    [Fact(DisplayName = "AC-017.12 누른 뒤 창이 닫히고 화면이 안 바뀌면 2초 기다린다")]
+    public void SettleUnchanged()
+    {
+        var (list, clock) = Shown();
+        list.Dialog = now => now < 450 ? DialogState.UnsavedRx : DialogState.None;
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, 2450, 2800);
+    }
+
+    [Fact(DisplayName = "AC-017.12 누른 뒤 화면이 바뀌면 바뀐 때부터 0.7초 그대로일 때까지 기다린다")]
+    public void SettleChanged()
+    {
+        var (list, clock) = Shown();
+        list.RowOpens = _ => ("900077", "가상환자77", Date);
+        list.OpenDelayMs = 1000;
+        list.OpenListRow(0, 0);
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, 1700, 2000);
+    }
+
+    [Fact(DisplayName = "AC-017.12 누른 뒤 진료일만 바뀌어도 바뀐 것으로 본다")]
+    public void SettleWorkDateChanged()
+    {
+        var (list, clock) = Shown();
+        list.RowOpens = _ => (Chart, Name, "2026-09-01");
+        list.OpenDelayMs = 300;
+        list.OpenListRow(0, 0);
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, 1000, 1300);
+    }
+
+    [Fact(DisplayName = "AC-017.12 화면이 또 바뀌면 그때부터 다시 0.7초를 센다")]
+    public void SettleChangedTwice()
+    {
+        var (list, clock) = Shown();
+        list.RowOpens = row => row == 0 ? ("900077", "가상환자77", Date) : ("900088", "가상환자88", Date);
+        list.OpenDelayMs = 500;
+        list.OpenListRow(0, 0);
+        var again = false;
+        list.Dialog = now =>
+        {
+            if (!again && now >= 600)
+            {
+                again = true;
+                list.OpenListRow(1, 0);
+            }
+            return DialogState.None;
+        };
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, 1800, 2100);
+    }
+
+    [Fact(DisplayName = "AC-017.12 다른 확인 창이 떠 있는 동안은 닫힌 것으로 보지 않는다")]
+    public void SettleWaitsOtherDialog()
+    {
+        var (list, clock) = Shown();
+        list.Dialog = now => now < 1000 ? DialogState.Dialog : DialogState.None;
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, 3000, 3400);
+    }
+
+    [Fact(DisplayName = "AC-017.12 닫힌 뒤 창이 또 뜨면 기다리지 않고 돌아간다: 부르는 쪽이 세고 다시 누른다")]
+    public void SettleReturnsOnNextDialog()
+    {
+        var (list, clock) = Shown();
+        list.Dialog = now => now >= 300 ? DialogState.UnsavedRx : DialogState.None;
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, 300, 450);
+    }
+
+    [Fact(DisplayName = "AC-017.12 창이 안 닫히면 끝없이 기다리지 않는다: 부르는 쪽이 다시 보고 3번까지 누른다")]
+    public void SettleGivesUpOnStuckDialog()
+    {
+        var (list, clock) = Shown();
+        list.Dialog = _ => DialogState.UnsavedRx;
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.InRange(clock.NowMs, UnsavedRxSettle.MaxMs, UnsavedRxSettle.MaxMs + 150);
+    }
+
+    [Fact(DisplayName = "AC-017.12 차트번호 칸이 비면 칸을 다시 찾고 기다린다: 화면이 바뀌는 중이다")]
+    public void SettleRelocatesWhenBlank()
+    {
+        var (list, clock) = Shown();
+        list.ShownChart = "";
+        UnsavedRxSettle.Wait(list, clock, Chart, Date);
+        Assert.True(list.Relocated > 0);
+        Assert.InRange(clock.NowMs, UnsavedRxSettle.MaxMs, UnsavedRxSettle.MaxMs + 150);
     }
 }

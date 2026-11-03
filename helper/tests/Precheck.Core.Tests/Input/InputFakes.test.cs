@@ -72,6 +72,21 @@ internal sealed class FakeChartUi : IChartUi
     public bool SaveWorks { get; set; } = true;
     public bool Editable { get; set; } = true;
     public bool Unsaved { get; set; }
+
+    /// <summary>저장 안 한 처방 창에 [확인] 단추가 있다(AC-017.12).</summary>
+    public bool RxHasConfirm { get; set; } = true;
+
+    /// <summary>[확인]을 눌러도 창이 다시 뜨는 횟수(AC-017.12). 0이면 한 번 누르면 닫힌다.</summary>
+    public int RxReappears { get; set; }
+
+    /// <summary>[확인]을 누른 뒤 화면에 생기는 일(AC-017.12).</summary>
+    public Action? AfterRxPress { get; set; }
+
+    /// <summary>OpenPatient가 받은 '저장 안 한 처방 창을 눌러도 되는가'(AC-017.12).</summary>
+    public List<bool> OpenPressArgs { get; } = new List<bool>();
+
+    public int RxPresses => Calls.Count(call => call == "press-rx");
+
     public bool ReadFails { get; set; }
     public Action? AfterSave { get; set; }
     public Func<string, string, string, ChartOpenResult?>? OpenOverride { get; set; }
@@ -110,9 +125,20 @@ internal sealed class FakeChartUi : IChartUi
         return Unsaved;
     }
 
-    public ChartOpenResult OpenPatient(string chart, string name, string date)
+    public bool PressUnsavedRxOk()
+    {
+        Note("press-rx");
+        if (!RxHasConfirm) return false;
+        if (RxReappears > 0) RxReappears--;
+        else Unsaved = false;
+        AfterRxPress?.Invoke();
+        return true;
+    }
+
+    public ChartOpenResult OpenPatient(string chart, string name, string date, bool pressUnsavedRx)
     {
         Note("open");
+        OpenPressArgs.Add(pressUnsavedRx);
         var forced = OpenOverride?.Invoke(chart, name, date);
         if (forced != null) return forced;
         if (KeepsOpenVisit && chart == OpenChart && name == OpenName && date == OpenDate)

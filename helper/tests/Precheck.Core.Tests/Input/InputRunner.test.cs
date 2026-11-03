@@ -341,7 +341,7 @@ public class InputRunnerTests
 
     // AC-017.5 : 멈춤
 
-    [Fact(DisplayName = "AC-017.5 저장 안 한 처방 창이 사람 시작 때 있으면 열지 않고 E-BIT-UNSAVED-RX, 남은 사람 미처리")]
+    [Fact(DisplayName = "AC-017.12 저장 안 한 처방 창이 사람 시작 때 있으면 [확인]을 누르고 입력을 멈추지 않는다")]
     public void UnsavedAtStart()
     {
         var rig = new RunnerRig();
@@ -350,15 +350,16 @@ public class InputRunnerTests
             if (call == "open" && number == 1) rig.Ui.AfterSave = () => rig.Ui.Unsaved = true;
         };
         var outcome = rig.Run(Sample.Items(3));
-        Assert.Equal(InputStatus.Stopped, outcome.Status);
-        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
-        Assert.Equal(InputResults.Done, Of(outcome, "v1").Result);
-        Assert.Equal("미처리", Of(outcome, "v2").Reason);
-        Assert.Equal("미처리", Of(outcome, "v3").Reason);
-        Assert.Equal(1, rig.Ui.Opens);
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Null(outcome.Code);
+        Assert.All(new[] { "v1", "v2", "v3" }, key => Assert.Equal(InputResults.Done, Of(outcome, key).Result));
+        Assert.Equal(3, rig.Ui.Opens);
+        Assert.Equal(2, rig.Ui.RxPresses);
+        Assert.True(rig.Ui.Calls.IndexOf("press-rx") < rig.Ui.Calls.LastIndexOf("open"));
+        Assert.Equal("가짜 메모 2", rig.Ui.Bit["900002"]);
     }
 
-    [Fact(DisplayName = "AC-017.5 환자를 여는 중 저장 안 한 처방 창이 뜨면(열기 결과) E-BIT-UNSAVED-RX로 멈추고 쓰지 않는다")]
+    [Fact(DisplayName = "AC-017.12 열기 결과가 UnsavedRx면(넷째로 보였거나 [확인]이 없음) E-BIT-UNSAVED-RX로 멈추고 쓰지 않는다")]
     public void UnsavedWhileOpening()
     {
         var rig = new RunnerRig();
@@ -369,17 +370,378 @@ public class InputRunnerTests
         Assert.Equal(1, rig.Ui.Opens);
     }
 
-    [Fact(DisplayName = "AC-017.5 쓰기 바로 앞에 저장 안 한 처방 창이 뜨면 쓰지 않고 멈춘다")]
+    [Fact(DisplayName = "AC-017.12 쓰기 바로 앞에 창이 뜨면 누르고 칸 찾기·환자 확인·칸 다시 읽기를 다시 한 뒤에 쓴다")]
     public void UnsavedBeforeWrite()
     {
         var rig = new RunnerRig();
         rig.Ui.OnCall = (call, number) =>
         {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal(1, rig.Ui.RxPresses);
+        Assert.Equal(2, rig.Ui.Writes);
+        Assert.Equal(
+            new[] { "press-rx", "locate", "editable", "target", "read", "select" },
+            rig.Ui.Calls.Skip(rig.Ui.Calls.IndexOf("press-rx")).Where(call => call != "unsaved").Take(6));
+    }
+
+    [Theory(DisplayName = "AC-017.12 쓰기 바로 앞에 눌렀더니 환자·진료일·칸 글이 달라지면 그 사람에게 쓰지 않고 건너뛴다")]
+    [InlineData("name", "환자 불일치 - 자동입력을 중단했습니다. (입력 직전 화면이 바뀜)")]
+    [InlineData("chart", "환자 불일치 - 자동입력을 중단했습니다. (입력 직전 화면이 바뀜)")]
+    [InlineData("date", "진료일 불일치 - 열린 내원(2026-10-28)이 입력할 내원(2026-10-27)과 다릅니다. (입력 직전 화면이 바뀜)")]
+    [InlineData("memo", "입력 직전 기존 청구메모가 변경되었습니다. 현재 내용을 다시 비교해 주세요.")]
+    [InlineData("not-editable", "청구메모 칸이 편집할 수 없는 상태입니다.")]
+    public void PressedThenChangedIsNotWritten(string kind, string reason)
+    {
+        var rig = new RunnerRig();
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        rig.Ui.AfterRxPress = () =>
+        {
+            if (kind == "name") rig.Ui.OpenName = "가상환자99";
+            if (kind == "chart") rig.Ui.OpenChart = "900099";
+            if (kind == "date") rig.Ui.OpenDate = "2026-10-28";
+            if (kind == "memo") rig.Ui.Editor = "그사이 다른 환자 화면에서 온 글";
+            if (kind == "not-editable") rig.Ui.Editable = false;
+        };
+        var outcome = rig.Run(Sample.Items(1));
+        Assert.Equal(InputResults.Skipped, Of(outcome, "v1").Result);
+        Assert.Equal(reason, Of(outcome, "v1").Reason);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(0, rig.Ui.Saves);
+        Assert.DoesNotContain(JournalState.Writing, rig.Journal.Of("v1"));
+    }
+
+    [Theory(DisplayName = "AC-017.12 쓰기 바로 앞에 눌렀더니 칸을 못 찾거나 못 읽으면 쓰지 않고 멈춘다")]
+    [InlineData("not-found", "E-INPUT-STOPPED")]
+    [InlineData("missing", "E-BIT-UI-CHANGED")]
+    [InlineData("unreadable", "E-INPUT-STOPPED")]
+    public void PressedThenLostStops(string kind, string code)
+    {
+        var rig = new RunnerRig();
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        rig.Ui.AfterRxPress = () =>
+        {
+            if (kind == "not-found") rig.Ui.LocateResult = ChartLocate.NotFound("U차트 외래진료실 창을 찾지 못했습니다. U차트 본 화면이 열려 있는지 확인해 주세요.");
+            if (kind == "missing") rig.Ui.LocateResult = ChartLocate.Missing("U차트에서 칸을 찾지 못했거나 여러 개라 판단할 수 없습니다: 청구메모(txtBilCmt)", new[] { "txtBilCmt" });
+            if (kind == "unreadable") rig.Ui.ReadFails = true;
+        };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal(InputStatus.Stopped, outcome.Status);
+        Assert.Equal(code, outcome.Code);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(1, rig.Ui.Opens);
+        Assert.Equal("미처리", Of(outcome, "v2").Reason);
+    }
+
+    [Fact(DisplayName = "AC-017.12 사람 시작 자리: 3번 누르고 그래도 넷째로 보이면 열지 않고 E-BIT-UNSAVED-RX, 남은 사람 미처리")]
+    public void FourthAtStartStops()
+    {
+        var rig = new RunnerRig { Ui = { Unsaved = true, RxReappears = 99 } };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal(InputStatus.Stopped, outcome.Status);
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(3, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Opens);
+        Assert.StartsWith("미처리", Of(outcome, "v1").Reason, StringComparison.Ordinal);
+        Assert.Equal("미처리", Of(outcome, "v2").Reason);
+    }
+
+    [Fact(DisplayName = "AC-017.12 쓰기 직전 자리: 3번 누르고 그래도 넷째로 보이면 쓰지 않고 E-BIT-UNSAVED-RX")]
+    public void FourthBeforeWriteStops()
+    {
+        var rig = new RunnerRig { Ui = { RxReappears = 99 } };
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(3, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.DoesNotContain(JournalState.Writing, rig.Journal.Of("v1"));
+        Assert.Equal("미처리", Of(outcome, "v2").Reason);
+    }
+
+    [Fact(DisplayName = "AC-017.12 3번은 사람 단위가 아니라 자리마다다: 같은 사람의 시작과 쓰기 직전에 3번씩 눌러도 이어 간다")]
+    public void CountedPerSpot()
+    {
+        var rig = new RunnerRig { Ui = { Unsaved = true, RxReappears = 2 } };
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call != "editable" || number != 1) return;
+            rig.Ui.Unsaved = true;
+            rig.Ui.RxReappears = 2;
+        };
+        var outcome = rig.Run(Sample.Items(1));
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal(6, rig.Ui.RxPresses);
+        Assert.Equal("가짜 메모 1", rig.Ui.Bit["900001"]);
+    }
+
+    [Theory(DisplayName = "AC-017.12 창에 [확인] 단추가 없으면 그 자리에서 멈추고 쓰지 않는다")]
+    [InlineData("start")]
+    [InlineData("write")]
+    public void NoConfirmButtonStops(string spot)
+    {
+        var rig = new RunnerRig { Ui = { RxHasConfirm = false, Unsaved = spot == "start" } };
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(1, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(spot == "start" ? 0 : 1, rig.Ui.Opens);
+        Assert.Equal("미처리", Of(outcome, "v2").Reason);
+    }
+
+    [Theory(DisplayName = "AC-017.12 [멈추기]를 먼저 본다: 창이 있어도 누르지 않고 E-INPUT-STOPPED")]
+    [InlineData("start")]
+    [InlineData("write")]
+    public void StopComesBeforePress(string spot)
+    {
+        var rig = new RunnerRig();
+        rig.Ui.OnCall = (call, number) =>
+        {
+            // 묶음 고리의 [멈추기] 확인 뒤, 사람의 지문 읽기에서 눌린다
+            if (spot == "start" && call == "fingerprint" && number == 2) { rig.Ui.Unsaved = true; rig.Stop = true; }
+            if (spot == "write" && call == "editable" && number == 1) { rig.Ui.Unsaved = true; rig.Stop = true; }
+        };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-INPUT-STOPPED", outcome.Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+    }
+
+    [Fact(DisplayName = "AC-017.12 누르는 동안 [멈추기]가 오면 쓰지 않는다")]
+    public void StopWhilePressing()
+    {
+        var rig = new RunnerRig();
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        rig.Ui.AfterRxPress = () => rig.Stop = true;
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-INPUT-STOPPED", outcome.Code);
+        Assert.Equal(1, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+    }
+
+    [Theory(DisplayName = "AC-017.12 쓰다 멈춘 사람은 사람 시작에 창이 있어도 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다")]
+    [InlineData(JournalState.Writing)]
+    [InlineData(JournalState.WriteUnconfirmed)]
+    public void StuckNotPressedAtStart(JournalState last)
+    {
+        var rig = LeftOpen(Sample.Item(1), "가짜 메모 1", last);
+        rig.Ui.Unsaved = true;
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Opens);
+        Assert.Equal(last == JournalState.Writing ? JournalState.WriteUnconfirmed : last, rig.Journal.Last("v1"));
+    }
+
+    [Fact(DisplayName = "AC-017.12 쓰다 멈춘 사람은 쓰기 직전에 창이 떠도 누르지 않고 멈춘다(칸이 비어 처음처럼 입력하는 때)")]
+    public void StuckNotPressedBeforeWrite()
+    {
+        var rig = LeftOpen(Sample.Item(1), "", JournalState.WriteUnconfirmed);
+        rig.Ui.OnCall = (call, _) =>
+        {
             if (call == "editable") rig.Ui.Unsaved = true;
         };
         var outcome = rig.Run(Sample.Items(2));
         Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
         Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(JournalState.WriteUnconfirmed, rig.Journal.Last("v1"));
+    }
+
+    [Fact(DisplayName = "AC-017.12 쓰다 멈춘 사람은 마무리 전에 창이 떠도 누르지 않고 저장도 누르지 않는다")]
+    public void StuckNotPressedBeforeFinish()
+    {
+        var rig = LeftOpen(Sample.Item(1), "가짜 메모 1", JournalState.WriteUnconfirmed);
+        rig.Ui.OnCall = (call, _) =>
+        {
+            if (call == "read") rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Saves);
+    }
+
+    [Fact(DisplayName = "AC-017.12 환자 열기에 쓰다 멈춘 사람과 같은 묶음의 그 뒷사람 모두 누르지 말라고 넘긴다")]
+    public void OpenCarriesPressArgument()
+    {
+        var rig = LeftOpen(Sample.Item(1), "가짜 메모 1", JournalState.WriteUnconfirmed);
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal(new[] { false, false }, rig.Ui.OpenPressArgs);
+    }
+
+    [Fact(DisplayName = "AC-017.12 쓰다 멈춘 사람의 저장을 확인했어도 같은 묶음의 뒷사람은 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다")]
+    public void StuckThenNextNotPressed()
+    {
+        var rig = LeftOpen(Sample.Item(1), "가짜 메모 1", JournalState.WriteUnconfirmed);
+        rig.Ui.AfterSave = () => rig.Ui.Unsaved = true;
+        var outcome = rig.Run(Sample.Items(2));
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(InputResults.Done, Of(outcome, "v1").Result);
+        Assert.Equal("미처리", Of(outcome, "v2").Reason);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(1, rig.Ui.Opens);
+    }
+
+    [Theory(DisplayName = "AC-017.12 AC-035.5 직접 확인으로 왔어도 마지막 기록이 쓰다 멈춤이면 사람 시작에서 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다")]
+    [InlineData(JournalState.Writing)]
+    [InlineData(JournalState.WriteUnconfirmed)]
+    public void HandStuckIsNotPressed(JournalState last)
+    {
+        var item = Sample.Item(1, checkedByHand: true);
+        var rig = LeftOpen(item, "", last);
+        rig.Ui.Unsaved = true;
+        var outcome = rig.Run(new[] { item });
+        Assert.Equal(InputStatus.Stopped, outcome.Status);
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Opens);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.True(rig.Ui.Unsaved);
+    }
+
+    [Fact(DisplayName = "AC-017.12 AC-035.5 직접 확인한 쓰다 멈춘 사람은 열기에도 누르지 말라고 넘기고 쓰기 직전에도 누르지 않는다")]
+    public void HandStuckNotPressedBeforeWrite()
+    {
+        var item = Sample.Item(1, checkedByHand: true);
+        var rig = LeftOpen(item, "", JournalState.WriteUnconfirmed);
+        rig.Ui.OnCall = (call, _) =>
+        {
+            if (call == "editable") rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(new[] { item });
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(new[] { false }, rig.Ui.OpenPressArgs);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+    }
+
+    [Fact(DisplayName = "AC-017.12 AC-035.5 직접 확인한 쓰다 멈춘 사람의 칸이 같아 저장 없이 완료돼도 뒷사람은 누르지 않고 E-BIT-UNSAVED-RX로 멈춘다")]
+    public void HandStuckSameThenNextNotPressed()
+    {
+        var item = Sample.Item(1, checkedByHand: true);
+        var rig = LeftOpen(item, "가짜 메모 1", JournalState.WriteUnconfirmed);
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "read" && number == 1) rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(new[] { item, Sample.Item(2) });
+        Assert.Equal(InputStatus.Stopped, outcome.Status);
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        // AC-035.5의 결과는 그대로다: 저장을 누르지 않고 완료(이미 입력됨)
+        Assert.Equal(InputResults.Done, Of(outcome, "v1").Result);
+        Assert.Equal("이미 입력됨", Of(outcome, "v1").Reason);
+        Assert.Equal(0, rig.Ui.Saves);
+        Assert.Equal(JournalState.Done, rig.Journal.Last("v1"));
+        Assert.Equal("미처리", Of(outcome, "v2").Reason);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(1, rig.Ui.Opens);
+    }
+
+    [Fact(DisplayName = "AC-017.12 직접 확인한 쓰다 멈춘 사람의 뒷사람도 열기에 누르지 말라고 넘기고 쓰기 직전에 누르지 않는다")]
+    public void HandStuckNextNotPressedLater()
+    {
+        var item = Sample.Item(1, checkedByHand: true);
+        var rig = LeftOpen(item, "가짜 메모 1", JournalState.WriteUnconfirmed);
+        rig.Ui.OnCall = (call, number) =>
+        {
+            if (call == "editable" && number == 1) rig.Ui.Unsaved = true;
+        };
+        var outcome = rig.Run(new[] { item, Sample.Item(2) });
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(new[] { false, false }, rig.Ui.OpenPressArgs);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.DoesNotContain(JournalState.Writing, rig.Journal.Of("v2"));
+    }
+
+    [Fact(DisplayName = "AC-017.12 기록 없는 직접 확인이 앞에 와도 쓰다 멈춘 직접 확인을 먼저 열고 창을 누르지 않는다")]
+    public void HandStuckGoesBeforeUnrecordedHandChecked()
+    {
+        var first = Sample.Item(1, checkedByHand: true);
+        var stuck = Sample.Item(2, checkedByHand: true);
+        var rig = LeftOpen(stuck, "가짜 메모 2", JournalState.WriteUnconfirmed);
+        rig.Ui.Unsaved = true;
+        var outcome = rig.Run(new[] { first, stuck });
+        Assert.Equal("E-BIT-UNSAVED-RX", outcome.Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.Equal(0, rig.Ui.Writes);
+    }
+
+    [Theory(DisplayName = "AC-017.12 쓰다 멈춘 기록이 없는 직접 확인은 누른다")]
+    [InlineData(null)]
+    [InlineData(JournalState.SkippedByHand)]
+    [InlineData(JournalState.Done)]
+    public void HandCheckedWithoutStuckRecordIsPressed(JournalState? last)
+    {
+        var item = Sample.Item(1, checkedByHand: true);
+        var rig = new RunnerRig { Ui = { Unsaved = true } };
+        if (last != null) rig.Journal.Mark(item, last.Value);
+        var outcome = rig.Run(new[] { item });
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal(1, rig.Ui.RxPresses);
+        Assert.Equal(new[] { true }, rig.Ui.OpenPressArgs);
+    }
+
+    [Fact(DisplayName = "AC-017.12 묶음 밖에서는 누르지 않는다: [취소]")]
+    public void NotPressedWhenCancelled()
+    {
+        var rig = new RunnerRig { Ui = { Unsaved = true } };
+        rig.Confirm.Answer = false;
+        Assert.Equal(InputStatus.Cancelled, rig.Run(Sample.Items(2)).Status);
+        Assert.Equal(0, rig.Ui.RxPresses);
+        Assert.True(rig.Ui.Unsaved);
+    }
+
+    [Fact(DisplayName = "AC-017.12 묶음 밖에서는 누르지 않는다: 확인 창이 떠 있는 동안에도")]
+    public void NotPressedWhileAsking()
+    {
+        var rig = new RunnerRig { Ui = { Unsaved = true } };
+        var pressesWhileAsking = -1;
+        rig.Confirm.Behavior = _ =>
+        {
+            pressesWhileAsking = rig.Ui.RxPresses;
+            return true;
+        };
+        var outcome = rig.Run(Sample.Items(1));
+        Assert.Equal(0, pressesWhileAsking);
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal(1, rig.Ui.RxPresses);
+    }
+
+    [Fact(DisplayName = "AC-017.12 묶음 밖에서는 누르지 않는다: 지문이 틀려 창을 띄우지 않은 묶음")]
+    public void NotPressedWhenFingerprintDiffers()
+    {
+        var rig = new RunnerRig { Ui = { Unsaved = true, FingerprintAt = _ => Sample.With(("btnSch", 2)) } };
+        Assert.Equal("E-BIT-UI-CHANGED", rig.Run(Sample.Items(2)).Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
+    }
+
+    [Fact(DisplayName = "AC-017.12 내원내역 기간이 틀려 사람을 열기 전에 멈춘 묶음에서는 누르지 않는다")]
+    public void NotPressedWhenPeriodDiffers()
+    {
+        var rig = new RunnerRig { Ui = { Unsaved = true, Filter = new ListFilter("2026-11-01", "2026-11-02", "", false, null) } };
+        Assert.Equal("E-INPUT-STOPPED", rig.Run(Sample.Items(2)).Code);
+        Assert.Equal(0, rig.Ui.RxPresses);
     }
 
     [Fact(DisplayName = "AC-017.5 원본 fatal 문구면 그 자리에서 E-INPUT-STOPPED, 이유는 원본 문구, 남은 사람은 미처리이고 더 열지 않는다")]

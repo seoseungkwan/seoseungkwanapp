@@ -13,11 +13,17 @@ public interface IChartUi : IDisposable
     /// <summary>지문 읽기. 읽기만 한다(확인 창 전에 부른다).</summary>
     FingerprintResult CheckFingerprint();
 
-    /// <summary>저장 안 한 처방 창이 떠 있는가. 읽기만 한다. 그 창은 절대 누르지 않는다(AC-017.5).</summary>
+    /// <summary>저장 안 한 처방 창이 떠 있는가. 읽기만 한다.</summary>
     bool HasUnsavedRxDialog();
 
-    /// <summary>내원내역에서 차트번호로 찾아 그 진료일의 내원을 연다(원본 OpenPatientRange).</summary>
-    ChartOpenResult OpenPatient(string chart, string name, string date);
+    /// <summary>
+    /// 저장 안 한 처방 창의 [확인]을 누르고, 창이 닫히고 화면이 자리 잡을 때까지 기다린다(AC-017.12). 못 누르면([확인] 단추가 없음) false다. [취소]를 누르는 길은 없다.
+    /// 입력 묶음 안에서만 부른다. 쓰다 멈춘 사람과 같은 묶음의 그 뒷사람이면 부르지 않는다.
+    /// </summary>
+    bool PressUnsavedRxOk();
+
+    /// <summary>내원내역에서 차트번호로 찾아 그 진료일의 내원을 연다(원본 OpenPatientRange). pressUnsavedRx가 false면(쓰다 멈춘 사람과 같은 묶음의 그 뒷사람) 저장 안 한 처방 창을 누르지 않고 UnsavedRx로 끝난다(AC-017.12).</summary>
+    ChartOpenResult OpenPatient(string chart, string name, string date, bool pressUnsavedRx);
 
     /// <summary>외래진료실 창과 칸을 찾아 둔다(원본 Locate). 아래 읽기·쓰기는 찾아 둔 칸을 쓴다.</summary>
     ChartLocate Locate();

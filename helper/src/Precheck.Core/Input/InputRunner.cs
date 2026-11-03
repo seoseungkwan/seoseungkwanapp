@@ -17,6 +17,7 @@ namespace Precheck.Core.Input;
 /// 또 하나의 푸는 길이 직접 확인(item.CheckedByHand, AC-035.5)이다. [확인] 뒤 그 사람은 쓰다 멈춘 사람으로 보지 않고 비교대로 하되, 완료로 끝나지도 칸에 글을 남기지도 않으면 SkippedByHand를 남긴다.
 /// 빠질 자리의 그런 사람(풀 사람, AC-035.8)은 줄을 열지도 쓰지도 않고 [확인] 뒤 SkippedByHand만 남긴다.
 /// 조회 모드 안내창을 눌러 연 진료(AC-036.5)는 칸이 입력을 받지 않아도 아무것도 쓰이지 않은 것이라 그 사람만 확인 필요로 두고 다음 사람으로 간다. 쓰다 멈춘 사람이면 저장 안 된 글이 남았을 수 있어 멈춘다.
+/// 저장 안 한 처방 창(AC-017.12)은 [확인] 뒤 사람 시작·쓰기 직전·열기를 기다리는 동안(VisitOpener)에만 누른다. PC 확인 창 앞과 [취소] 뒤에는 누르지 않고, 쓰다 멈춘 사람(직접 확인·풀어 준 사람 포함)의 차례와 같은 묶음의 그 뒷사람 차례에는 어디서도 누르지 않는다.
 /// </summary>
 public sealed class InputRunner
 {
@@ -137,10 +138,11 @@ public sealed class InputRunner
         if (items.Count == 0 && stop == null) return batch.WithExcludedConfirmed(new InputOutcome(InputStatus.Finished, null, null, null, released));
 
         // 쓰다 멈춘 사람이 먼저다: 칸에 저장 안 된 글이 있는 채 다른 사람 줄을 열면 그 글이 다른 환자에게 들어갈 수 있다(StopAfterWrite)
-        var ordered = items.OrderBy(item => earlier.Writes.Contains(item.VisitKey) ? 0 : 1).ToList();
+        var ordered = items.OrderBy(item => earlier.Writes.Contains(item.VisitKey) || earlier.HandStuck.Contains(item.VisitKey) ? 0 : 1).ToList();
         Person PersonOf(InputItem item) => new Person
         {
             EarlierWrite = earlier.Writes.Contains(item.VisitKey),
+            HandStuck = earlier.HandStuck.Contains(item.VisitKey),
             HandRecord = earlier.ByHand.Contains(item.VisitKey),
             CheckedByHand = item.CheckedByHand,
             NoAsk = noAskOn,
@@ -149,6 +151,9 @@ public sealed class InputRunner
         var results = new List<InputResult>(items.Count);
         stop = stop ?? CheckListPeriod(items, batch.Code);
         var failureRun = 0;
+
+        // 풀어 준 사람의 칸에도 저장 안 된 글이 남았을 수 있다. 쓰다 멈춘 사람의 차례가 오면 그 뒤로 이 묶음에서는 누르지 않는다(AC-017.12)
+        var afterStuck = batch.Released.Any(person => earlier.HandStuck.Contains(person.Item.VisitKey));
 
         if (stop == null)
         {
@@ -162,6 +167,8 @@ public sealed class InputRunner
                 }
 
                 var person = PersonOf(item);
+                person.AfterStuck = afterStuck;
+                afterStuck = person.NoRxPress;
                 var result = RunGuarded(item, person, ref stop);
                 results.Add(result);
                 MarkFinal(item, result, person, ref stop);
@@ -269,7 +276,7 @@ public sealed class InputRunner
             foreach (var item in items)
             {
                 var last = journal.LastState(item);
-                if (!item.CheckedByHand && (last == JournalState.Writing || last == JournalState.WriteUnconfirmed)) found.Writes.Add(item.VisitKey);
+                if (last == JournalState.Writing || last == JournalState.WriteUnconfirmed) (item.CheckedByHand ? found.HandStuck : found.Writes).Add(item.VisitKey);
                 if (last == JournalState.SkippedByHand) found.ByHand.Add(item.VisitKey);
             }
             return found;
@@ -358,9 +365,14 @@ public sealed class InputRunner
     {
         var fingerprint = ui.CheckFingerprint();
         if (!fingerprint.Ok) throw Stop(InputErrors.UiChanged, null, fingerprint.Problems);
-        if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
 
-        var opened = ui.OpenPatient(item.Chart, item.Name, item.Date);
+        var presses = 0;
+        while (PressUnsavedRx(person, ref presses))
+        {
+            // 또 떠 있으면 이 자리에서 다시 누른다. 넷째로 보이면 PressUnsavedRx가 멈춘다
+        }
+
+        var opened = ui.OpenPatient(item.Chart, item.Name, item.Date, !person.NoRxPress);
         switch (opened.Kind)
         {
             case ChartOpenKind.UnsavedRx:
@@ -373,13 +385,7 @@ public sealed class InputRunner
         }
         person.ViewMode = opened.ViewMode;
 
-        var located = ui.Locate();
-        if (!located.Ok)
-        {
-            throw located.Fields.Count > 0
-                ? Stop(InputErrors.UiChanged, located.Error, located.Fields)
-                : Stop(InputErrors.Stopped, located.Error);
-        }
+        LocateOrStop();
 
         var failure = CheckTarget(item);
         if (failure != null) return SkipUnlessEarlierWrite(item, failure, person);
@@ -431,27 +437,33 @@ public sealed class InputRunner
     /// 쓰기부터 저장 뒤 다시 읽기까지. existing은 쓰기 바로 앞에 칸에 있어야 할 글이다(빈칸, 또는 바꾸는 사람이면 원래 메모).
     /// 바꾸는 사람은 원래 메모를 먼저 달 파일에 남긴다(AC-037.1): 못 남기면 번호 있는 예외로 멈추고 writing도 쓰기도 없다.
     /// writing을 남긴 뒤로는 멈춤 신호를 보지 않는다: 시작한 사람은 끝까지 한다(AC-017.9).
+    /// 쓰기 바로 앞에 저장 안 한 처방 창을 눌렀으면 칸을 다시 찾아 아래 확인을 처음부터 다시 한다(AC-017.12): 옛 환자로 확인을 통과한 뒤 화면이 바뀌면 메모가 다른 환자에게 간다.
     /// </summary>
     private InputResult WriteMemo(InputItem item, string existing, Person person)
     {
-        if (!ui.IsMemoEditable())
+        var presses = 0;
+        for (;;)
         {
-            if (!person.ViewMode) return SkipUnlessEarlierWrite(item, NotEditable, person);
-            if (person.EarlierWrite) throw StopAfterWrite(item, WriteUnknown);
-            return new InputResult(item.VisitKey, InputResults.Check, NotAccepted);
-        }
+            if (!ui.IsMemoEditable())
+            {
+                if (!person.ViewMode) return SkipUnlessEarlierWrite(item, NotEditable, person);
+                if (person.EarlierWrite) throw StopAfterWrite(item, WriteUnknown);
+                return new InputResult(item.VisitKey, InputResults.Check, NotAccepted);
+            }
 
-        var failure = CheckTarget(item);
-        if (failure != null) return SkipUnlessEarlierWrite(item, failure + " (입력 직전 화면이 바뀜)", person);
+            var failure = CheckTarget(item);
+            if (failure != null) return SkipUnlessEarlierWrite(item, failure + " (입력 직전 화면이 바뀜)", person);
 
-        var current = ui.ReadMemo();
-        if (current == null) throw Stop(InputErrors.Stopped, MemoUnreadable);
-        if (!MemoApproval.Matches(current, existing))
-        {
-            person.Review = true;
-            return SkipUnlessEarlierWrite(item, ChangedBefore, person);
+            var current = ui.ReadMemo();
+            if (current == null) throw Stop(InputErrors.Stopped, MemoUnreadable);
+            if (!MemoApproval.Matches(current, existing))
+            {
+                person.Review = true;
+                return SkipUnlessEarlierWrite(item, ChangedBefore, person);
+            }
+            if (!PressUnsavedRx(person, ref presses)) break;
+            LocateOrStop();
         }
-        if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
         if (stopRequested()) throw Stop(InputErrors.Stopped, null);
 
         if (person.Replacing) journal.SaveOriginal(item, existing);
@@ -503,6 +515,30 @@ public sealed class InputRunner
         return new InputResult(item.VisitKey, InputResults.Done, Written);
     }
 
+    /// <summary>
+    /// 저장 안 한 처방 창이 떠 있으면 [확인]을 눌렀다고 true, 창이 없으면 false(AC-017.12). 누른 뒤의 기다림은 UChartAutomation에 있다: 여기에는 시계가 없다.
+    /// 쓰다 멈춘 사람(직접 확인·풀어 준 사람 포함)과 같은 묶음의 그 뒷사람은 누르지 않고 멈춘다: 넘어가면 칸에 남은 저장 안 된 글이 다른 환자에게 가거나 사라질 수 있다. [멈추기]를 먼저 본다: 직원이 멈춘 뒤에 쓰던 처방이 넘어가지 않게 한다.
+    /// presses는 자리마다 새로 센다. 넷째로 보이거나 [확인] 단추가 없으면 멈춘다.
+    /// </summary>
+    private bool PressUnsavedRx(Person person, ref int presses)
+    {
+        if (!ui.HasUnsavedRxDialog()) return false;
+        if (person.NoRxPress) throw Stop(InputErrors.UnsavedRx, null);
+        if (stopRequested()) throw Stop(InputErrors.Stopped, null);
+        if (presses >= OpenWaiter.MaxUnsavedRxPresses || !ui.PressUnsavedRxOk()) throw Stop(InputErrors.UnsavedRx, null);
+        presses++;
+        return true;
+    }
+
+    private void LocateOrStop()
+    {
+        var located = ui.Locate();
+        if (located.Ok) return;
+        throw located.Fields.Count > 0
+            ? Stop(InputErrors.UiChanged, located.Error, located.Fields)
+            : Stop(InputErrors.Stopped, located.Error);
+    }
+
     private string? CheckTarget(InputItem item) => ChartRules.CheckFailure(ui.ReadTarget(), item.Chart, item.Name, item.Date);
 
     private static InputResult Skip(InputItem item, string reason) => new InputResult(item.VisitKey, InputResults.Skipped, reason);
@@ -524,10 +560,11 @@ public sealed class InputRunner
     private static BatchStopException StopAfterWrite(InputItem item, string reason) =>
         new BatchStopException(new BatchStop(InputErrors.Stopped, reason), new InputResult(item.VisitKey, InputResults.Check, reason));
 
-    /// <summary>묶음 앞에 읽은 입력 기록: 쓰다 멈춘 진료(직접 확인으로 온 사람은 빼고)와 마지막이 SkippedByHand인 진료.</summary>
+    /// <summary>묶음 앞에 읽은 입력 기록: 쓰다 멈춘 진료(직접 확인으로 온 사람은 빼고), 직접 확인으로 온 쓰다 멈춘 진료(풀 사람 포함), 마지막이 SkippedByHand인 진료.</summary>
     private sealed class EarlierRecords
     {
         public HashSet<string> Writes { get; } = new HashSet<string>(StringComparer.Ordinal);
+        public HashSet<string> HandStuck { get; } = new HashSet<string>(StringComparer.Ordinal);
         public HashSet<string> ByHand { get; } = new HashSet<string>(StringComparer.Ordinal);
     }
 
@@ -535,6 +572,15 @@ public sealed class InputRunner
     {
         /// <summary>입력 기록: 전 실행에서 쓰기를 시작했고 저장을 확인하지 못했다.</summary>
         public bool EarlierWrite;
+
+        /// <summary>직접 확인으로 왔지만 입력 기록의 마지막이 Writing·WriteUnconfirmed다. AC-035.5대로 쓰다 멈춘 사람으로 보지 않되 저장 안 한 처방 창은 누르지 않는다(AC-017.12).</summary>
+        public bool HandStuck;
+
+        /// <summary>같은 묶음의 앞사람이 쓰다 멈춘 사람이었다(풀어 준 사람 포함): 칸에 저장 안 된 글이 남았을 수 있다(AC-017.12).</summary>
+        public bool AfterStuck;
+
+        /// <summary>저장 안 한 처방 창을 누르지 않고 멈추는 차례다(AC-017.12).</summary>
+        public bool NoRxPress => EarlierWrite || HandStuck || AfterStuck;
 
         /// <summary>입력 기록의 마지막이 SkippedByHand다: 사람이 새로 승인했을 때만 바꾼다(AC-037.6).</summary>
         public bool HandRecord;
