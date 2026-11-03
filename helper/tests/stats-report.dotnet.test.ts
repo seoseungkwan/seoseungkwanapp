@@ -39,7 +39,7 @@ describe('REQ-504 도우미 보고 숫자 읽기 (C# Precheck.Core.Tests.Stats)'
     expectAc('AC-504.3')
   })
 
-  it('AC-504.4 보고 SQL은 원본 사본과 공백만 다르고 @daily는 Char(1)로 관문을 지나며 금액은 원 미만을 버린 정수다', () => {
+  it('AC-504.4 AC-1001.3 보고 SQL은 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르고 @daily는 Char(1)로 관문을 지나며 금액은 원 미만을 버린 정수다', () => {
     expectAc('AC-504.4')
   })
 })
