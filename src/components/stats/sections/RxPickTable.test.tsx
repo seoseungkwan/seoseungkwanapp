@@ -262,6 +262,19 @@ describe('AC-805.6·AC-805.7: 표 아래 안내', () => {
     expect(first.classList.contains('text-ink-2')).toBe(true)
   })
 
+  it('AC-813.4: 옛 모양 줄(30 초진이 구분 없음에 든 채 저장된 줄)은 고치지 않고 구분 없음 칩으로 그대로 보인다', () => {
+    draw(WITH_GAP, [PICK_A])
+    expect(within(rowOf(A)).getByText('구분 없음 1건')).toBeTruthy()
+  })
+
+  it('AC-813.5: 주의 글은 30 초진을 재진으로 센다는 정해진 문장 그대로다', () => {
+    const { container } = draw(WITH_GAP, [PICK_B, PICK_A])
+    const first = container.querySelector('.max-w-160')!.firstElementChild as HTMLElement
+    expect(first.textContent).toBe(
+      '구분 없음은 파일에 신환·재진이 아닌 다른 값(진찰료산정안함 같은 값)이 적힌 건이에요. 어느 쪽에도 넣지 않아서 두 비율을 더해도 100%가 안 돼요. 30 초진은 재진으로 세요. 이렇게 정하기 전에 저장한 날은 그 파일을 다시 넣어야 숫자가 바뀌어요.',
+    )
+  })
+
   it('AC-805.6: 구분 없음이 하나도 없으면 주의 줄이 없다', () => {
     const { container } = draw(PLAIN, [PICK_A])
     expect(notesOf(container).join(' ')).not.toContain(GAP_SENTENCE)

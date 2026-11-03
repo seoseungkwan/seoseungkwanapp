@@ -315,6 +315,18 @@ describe('AC-004.1·AC-004.2 parseBitGrid — 메모리 표', () => {
     expect(parsed.unknownVisitRows).toBe(2)
   })
 
+  it('AC-813.2: 30 초진 줄은 firstVisit false(미확인 아님), 진찰료산정안함 줄은 null이고 unknownVisitRows에 든다', () => {
+    const parsed = parsedOf(
+      parseBitGrid(
+        grid(line({ 초재진구분: '30 초진' }), line({ 초재진구분: '진찰료산정안함' }), line({ 초재진구분: '신환' })),
+        createPatientIds(),
+      ),
+    )
+    expect(parsed.rows.map((row) => row.firstVisit)).toEqual([false, null, true])
+    expect(parsed.unknownVisitRows).toBe(1)
+    expect(parsed).toMatchObject({ invalidRows: 0 })
+  })
+
   it('입원 줄은 받아들이되 inpatientRows로 센다(오류 아님), 모르는 값은 null', () => {
     const parsed = parsedOf(
       parseBitGrid(

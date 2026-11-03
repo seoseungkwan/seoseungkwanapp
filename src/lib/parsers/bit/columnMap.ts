@@ -46,10 +46,11 @@ export function mapColumns(header: readonly Cell[]): ColumnMapping {
   return { ok: true, columns: Object.fromEntries(found) as ColumnIndex }
 }
 
-// 신환·재진 값 표(사용자 확인: 실제 값은 '신환'·'재진'). 그 밖은 알 수 없음
+// 신환·재진 값 표(사용자 확인: 실제 값은 '신환'·'재진'). '30 초진'은 재진으로 센다(rx-picker REQ-813).
+// 실제 파일의 띄어쓰기가 확인되지 않아 '30 초진'만 빈칸을 모두 뺀 뒤 견준다(다른 값은 앞뒤 빈칸만 뺀다). 그 밖(진찰료산정안함 등)은 알 수 없음
 export function readVisit(value: string): boolean | null {
   const v = value.trim()
-  return v === '신환' ? true : v === '재진' ? false : null
+  return v === '신환' ? true : v === '재진' || v.replace(/\s+/g, '') === '30초진' ? false : null
 }
 
 export function readOutpatient(value: string): boolean | null {
