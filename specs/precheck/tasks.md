@@ -312,11 +312,11 @@
 - Tests: helper/tests/input.dotnet.test.ts, helper/tests/input-code.dotnet.test.ts, helper/tests/input-replace.dotnet.test.ts
 - TDD: required
 - **왜 (2026-11-03 사용자 결정)**: 사용자가 의원 PC에서 이 창 사진을 보내며 "이창 나오면 자동으로 확인 눌러줘야해". 지금은 멈춘다(`E-BIT-UNSAVED-RX`). 원본은 눌렀다(design.md 19절의 다른 점).
-- `IChartUi`와 `IVisitRowScreen`(`VisitOpener`)에 `PressUnsavedRxOk()`를 더한다. `InputRunner`의 두 자리(`RunPerson` 첫머리, 쓰기 직전)와 `VisitOpener`의 `OpenWaitResult.UnsavedRx`가 AC-017.12대로 누른다. `VisitOpener`에서 누르면 `dialogSeen=true; dialogClosedAt=-1`로 둔다(안 그러면 기다림이 일찍 끝난다). 쓰기 직전 자리에서는 멈추기를 먼저 본 뒤 누른다. `InputRunner`에 시계가 없으므로 누른 뒤의 기다림은 `UChartAutomation`에 둔다. `OpenPatient`·`OpenRows`·`OpenWaiter.Wait`에 누를지 인자를 더해 `!person.EarlierWrite`를 넘긴다.
+- `IChartUi`와 `IVisitRowScreen`(`VisitOpener`)에 `PressUnsavedRxOk()`를 더한다. `InputRunner`의 두 자리(`RunPerson` 첫머리, 쓰기 직전)와 `VisitOpener`의 `OpenWaitResult.UnsavedRx`가 AC-017.12대로 누른다. `VisitOpener`에서 누르면 `dialogSeen=true; dialogClosedAt=-1`로 둔다(안 그러면 기다림이 일찍 끝난다). 쓰기 직전 자리에서는 멈추기를 먼저 본 뒤 누른다. `InputRunner`에 시계가 없으므로 누른 뒤의 기다림은 `UChartAutomation`에 둔다. `OpenPatient`·`OpenRows`·`OpenWaiter.Wait`에 누를지 인자를 더해 `!person.NoRxPress`를 넘긴다. `ReadEarlierWrites`에서 `CheckedByHand`이고 마지막 기록이 `Writing`·`WriteUnconfirmed`이면 `HandStuck`을 세우고 `Person.NoRxPress = EarlierWrite || HandStuck`로 한다. 묶음의 앞사람이 그렇게 끝났으면 뒷사람도 누르지 않는다. AC-035.5의 결과는 그대로다. `InputPrompt.cs`의 직접 확인 창 두 글에 AC-017.12의 새 줄을 더한다.
 - `UChartAutomation`에 WM_COMMAND로 누르기를 새로 만든다. `IsConfirmButton`(19-7)만 같이 쓴다: `ViewModeNotices.PressConfirm`은 private이고 이 창을 거른다(`ChartRules.cs:182`). [취소]를 누르는 길이 없어야 한다. `ChartRules.cs`·`ViewModeNotices.cs`의 '누르지 않는다' 주석을 고친다. 주의 줄 자리는 `InputPrompt.cs`의 `· 먼저 비트의 저장 안 한 작업을 마치세요` 줄 바로 다음이다.
-- **뒤집히는 시험**(지우지 않고 새 뜻으로 고친다): `input.dotnet.test.ts:99`, `input-code.dotnet.test.ts:121`, `InputRunner.test.cs:344·372`, `VisitOpener.test.cs:258`, `UChartAutomation.test.cs:170`, `InputCode.test.cs:232`, `InputReplace.test.cs:1225`. 쓰다 멈춘 사람의 `InputRunner.test.cs:1013·1096`은 그대로 둔다.
+- **뒤집히는 시험**(지우지 않고 새 뜻으로 고친다): `input.dotnet.test.ts:99`, `input-code.dotnet.test.ts:121`, `InputRunner.test.cs:344·372`, `VisitOpener.test.cs:258`, `UChartAutomation.test.cs:170`, `InputCode.test.cs:232`, `InputReplace.test.cs:1225`, 새로 만든 `HandCheckedIsPressed`(누르지 않고 멈춤으로). 쓰다 멈춘 사람의 `InputRunner.test.cs:1013·1096`은 그대로 둔다.
 - `E-BIT-UNSAVED-RX` 번호와 글은 그대로 둔다(눌러도 남을 때 쓴다). 사이트·`commands.json`은 고치지 않는다. 도우미 판 번호는 0.3.0 그대로이고 태그를 달지 않았으니 시험용 도우미를 다시 받는다.
-- 의원 PC 시험에 더함: ① 창이 뜬 사람에서 입력이 멈추지 않는가 ② [확인]을 누르면 쓰던 처방이 어떻게 되는가 ③ 환자가 바뀌어도 메모가 맞는 사람에게 들어가는가.
+- 의원 PC 시험에 더함: ① 창이 뜬 사람에서 입력이 멈추지 않는가 ② [확인]을 누르면 쓰던 처방이 어떻게 되는가 ③ 환자가 바뀌어도 메모가 맞는 사람에게 들어가는가 ④ 메모 칸에만 저장 안 한 글이 있을 때 이 창이 뜨는가, [확인] 뒤 그 글은 어디로 가는가.
 
 ## TASK-20: 심평원 청구 파일 읽기 (도우미)
 - Step: Phase 4 · Step 0 · `sam-read`
