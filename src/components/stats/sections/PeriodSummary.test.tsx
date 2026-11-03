@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { statsRange, summaryCells, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { nestedBoxes } from '@/testing/boxes'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
@@ -13,7 +13,15 @@ import { PeriodSummary } from './PeriodSummary'
 import type { ReportData } from './ReportSection'
 import { StatsSections } from './StatsSections'
 
-// 기간 요약 + 섹션 차례 (stats REQ-513 AC-513.1·513.2·513.4·513.9, 시안 notes.md §2·§3·§4). 가짜 일 줄은 이 파일 안에서만 만든다
+// 기간 요약 + 섹션 차례 (stats REQ-513 AC-513.1·513.2·513.4·513.9, rx-picker AC-801.1, 시안 notes.md §2·§3·§4). 가짜 일 줄은 이 파일 안에서만 만든다
+// 처방 골라 보기는 이 파일에서 읽는 중에 머문다. 그 칸의 안은 RxPickerSection.test.tsx가 본다
+
+vi.mock('@/lib/storage/rxPicks', () => ({
+  readRxPicks: vi.fn(() => new Promise(() => undefined)),
+  addRxPick: vi.fn(),
+  removeRxPick: vi.fn(),
+  clearRxPicks: vi.fn(),
+}))
 
 const TODAY = '2026-11-13' // 금요일
 
@@ -41,27 +49,29 @@ afterEach(cleanup)
 
 const cellText = (name: string) => screen.getByText(name).closest('.grid-cols-4 > div')!.textContent
 
-describe('AC-513.1: 섹션 차례', () => {
-  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방 추세', '처방별 신환·재진', '원장님 보고 문장', '요일별 환자 수']
+describe('AC-513.1·AC-801.1: 섹션 차례', () => {
+  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
   const draw = (saved: boolean) =>
     render(<StatsSections input={inputOf(saved ? [day('2026-11-02', 10)] : [], saved ? WHOLE : [])} saved={saved} split={null} hospitalName="튼튼의원" report={null} />)
 
-  it('AC-513.1: 일곱 섹션이 승인본 차례이고 섹션마다 h2다', () => {
+  it('AC-513.1·AC-801.1: 여덟 섹션이 승인본 차례이고 섹션마다 h2다', () => {
     draw(true)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TITLES)
   })
 
-  it('AC-513.1: 저장된 숫자가 없어도 차례가 같다', () => {
+  it('AC-513.1·AC-801.1: 저장된 숫자가 없어도 차례가 같다', () => {
     draw(false)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TITLES)
   })
 
-  it('AC-513.1: 1024px 이상 배치는 12 / 8·4 / 7·5 / 7·5이고 오른쪽 칸은 왼쪽 선 + 안쪽 24다', () => {
+  it('AC-513.1·AC-801.1: 1024px 이상 배치는 12 / 8·4 / 7·5 / 12 / 7·5이고 오른쪽 칸은 왼쪽 선 + 안쪽 24다', () => {
     draw(true)
     const sectionOf = (title: string) => screen.getByRole('heading', { level: 2, name: title }).closest('section')!.className
     expect(sectionOf('기간 요약')).toContain('col-span-12')
     expect(sectionOf('환자 수 추이')).toContain('lg:col-span-8')
     expect(sectionOf('처방 추세')).toContain('lg:col-span-7')
+    expect(sectionOf('처방 골라 보기')).toContain('col-span-12')
+    expect(sectionOf('처방 골라 보기')).not.toContain('lg:')
     expect(sectionOf('원장님 보고 문장')).toContain('lg:col-span-7')
     for (const [title, span] of [
       ['신환 재방문율', 'lg:col-span-4'],
@@ -232,9 +242,9 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|\s)\/\/.*$/gm, '$1')
 
-  it('AC-513.9: 검사 대상이 비어 있지 않다(섹션 일곱 + 공용 둘 + view.ts)', () => {
+  it('AC-513.9: 검사 대상이 비어 있지 않다(섹션 여덟 + 공용 둘 + view.ts)', () => {
     const list = files()
-    for (const name of ['PeriodSummary', 'PatientTrendSection', 'RevisitSection', 'RxTrendSection', 'RxSplitSection', 'ReportSection', 'WeekdaySection', 'DetailToggle', 'CopyButton']) {
+    for (const name of ['PeriodSummary', 'PatientTrendSection', 'RevisitSection', 'RxTrendSection', 'RxSplitSection', 'RxPickerSection', 'ReportSection', 'WeekdaySection', 'DetailToggle', 'CopyButton']) {
       expect(list).toContain(`${DIR}/${name}.tsx`)
     }
     expect(list).toContain('src/components/stats/view.ts')
@@ -261,7 +271,7 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     }
   })
 
-  it('AC-513.9: 일곱 섹션을 모두 채우고 모두 열어도 그린 화면에 상자 안 상자가 없다', () => {
+  it('AC-513.9: 여덟 섹션을 모두 채우고 모두 열어도 그린 화면에 상자 안 상자가 없다', () => {
     const withRx = (ymd: string, patients: number): DayPayload => ({
       ...day(ymd, patients),
       rx: [{ code: 'RA', name: '가짜 처방', type: '', patients, newPatients: 2, returning: patients - 2 }],
@@ -318,7 +328,7 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     expect(screen.getByRole('table', { name: '가짜 처방 일별 건수' })).toBeTruthy()
     expect(screen.getByRole('table', { name: '처방별 신환·재진 (명)' })).toBeTruthy()
     expect(screen.getByText('고생하셨습니다 !!')).toBeTruthy()
-    expect(within(container).getAllByRole('heading', { level: 2 })).toHaveLength(7)
+    expect(within(container).getAllByRole('heading', { level: 2 })).toHaveLength(8)
     expect(nestedBoxes(container)).toEqual([])
     // 보고를 확정할 수 없는 벌의 칸도 본다
     fireEvent.click(screen.getByRole('button', { name: '어제 일일보고' }))
