@@ -69,7 +69,7 @@ function v2Reply(input: { patientDays: readonly Reception[]; rows?: readonly RxR
 }
 
 // 확장이 보내는 답. 조각의 조각 수·바이트·SHA-256은 진짜 값이라 Worker의 검사를 그대로 지난다
-const HELLO = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO = { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const CHECK = {
   steps: [
     { name: 'find', ok: true },

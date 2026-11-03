@@ -9,7 +9,7 @@ import { LOOKBACK_DAYS, READ_TIMEOUT_MS, readBitDays, type StatsWorkerLike } fro
 
 const TODAY = '2026-11-01'
 const FROM = '2026-07-24' // 오늘 100일 전
-const HELLO_OK = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO_OK = { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const CHECK_OK = {
   steps: [
     { name: 'find', ok: true },

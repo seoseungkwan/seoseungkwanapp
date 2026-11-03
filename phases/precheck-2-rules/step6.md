@@ -1,6 +1,6 @@
 # Step 6: precheck-screen
 
-> **TASK-13** 청구 화면 · 날짜 목록 · 점검 · **REQ-013** · AC-013.1 ~ AC-013.9
+> **TASK-13** 청구 화면 · 날짜 목록 · 점검 · **REQ-013** · AC-013.1 ~ AC-013.14
 > Phase 2 `precheck-2-rules` · Step 6 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-13 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-013에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-013.1**: 도우미 `claim.dates`와 서버 `claim_day_counts`로 `buildDateList`: 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터. 날마다 진료 수·남은 수·마지막으로 바뀐 시각
-- **AC-013.2**: 시작·끝 날을 고르면 달을 넘겨도 되고 35일 이하만(AC-008.1). [자료 불러오기] → `claim.month`·`claim.memos`·`store.load`를 부르고, 모두 끝나야 점검. 누른 동안 단추를 막고 진행 상태를 보인다
+- **AC-013.2**: 시작·끝 날을 고르면 달을 넘겨도 되고 35일 이하만(AC-008.1). [자료 불러오기] → `claim.month`(읽는 기간은 AC-013.13)·`claim.memos`·`store.load`를 부르고, 모두 끝나고 답을 확인해야(AC-013.10·013.11) 점검. 누른 동안 단추를 막고 진행 상태를 보인다
 - **AC-013.3**: 점검 결과: 환자(진료)마다 등급 칩(확인 필요·알림·참고)과 규칙 제목·내용·고시 근거, 추천 상병, 상병 확인 경고가 목업 승인본처럼. 등급·규칙으로 거를 수 있고, 등급은 색만이 아니라 글자로도 구분
 - **AC-013.4**: [엑셀 내려받기] → Worker가 원본과 같은 두 시트(규칙별 `[규칙, 제목, 분야, 등급, 건수, 근거]`, 내원별 `[진료일, 차트번호, 이름, 등급, 규칙, 제목, 내용, 세부]`)의 xlsx를 만들어 그 PC에 내려받는다. 서버로 보내지 않는다
 - **AC-013.5**: `E-CLAIM-PARTIAL`·`E-RULES-LOAD-FAILED`·읽기 오류면 점검 결과를 보이지 않고 오류 카드("다시 불러오세요")와 [다시 불러오기]
@@ -17,6 +17,11 @@
 - **AC-013.7**: `src/components/claim/rows/**`는 네트워크·console·브라우저 저장소·supabase·storage·auth import가 막힌다(JSX는 된다). `src/components/claim/**`·`src/app/(app)/claim/**`에서 오류 보고 패키지(`@sentry/*`·`@vercel/analytics`·`@vercel/speed-insights`) import가 막힌다. `package.json`에 그런 패키지가 없다(guardrails 시험)
 - **AC-013.8**: 휴대폰이나 확장 없는 브라우저에서 `/claim`은 점검 칸 대신 밖에서 보는 건수(REQ-019) 자리와, PC 크롬이면 설치·연결 확인으로 가는 링크
 - **AC-013.9**: 서버 설정 읽기 실패면 도우미에 둔 마지막 설정 사본(REQ-015)으로 점검하고 "서버에 닿지 않아 마지막으로 받은 설정을 씁니다". 사본도 없으면 점검하지 않고 `E-SETTINGS-FAILED`. 설정을 읽으면 사본을 새로 저장
+- **AC-013.10**: 불러올 때마다 새 번호 `load`로 `stream('claim.month')` 바로 앞에 `loadStart`, stream이 끝나면 새 불러오기를 시작했어도 `{type: 'month', id, load}`. 답의 `load`가 마지막 번호와 다르면 버리고, 점검은 마지막 번호의 `month`가 `ok: true`일 때만. `id`나 `partial`로 판단하지 않는다
+- **AC-013.11**: `claim.memos`·`store.load`의 끝난 `id`마다 `loadPart`로 묻고 `ok: true`를 받아야 점검. `ok: false`면 멈춘다. stream 거절은 `E-HELPER-UNKNOWN-COMMAND`면 그 자료 없이 계속, 다른 번호면 멈춤, 옛 번호의 거절은 버림
+- **AC-013.12**: 번호는 Worker 하나에 하나인 곳(`components/claim/claimLoad.ts`)에 둔다. 컴포넌트 state에 두지 않는다. 화면을 내렸다 올려도 같은 번호를 보내지 않는다
+- **AC-013.13**: `claim.month`가 읽는 기간은 `S`와 'E의 한 달 전 같은 날'(없으면 말일) 가운데 빠른 날부터 E까지. 화면·엑셀·건수·`claim.memos`·`store.load`는 고른 기간만, 앞쪽 자료는 내원 간격 계산에만
+- **AC-013.14**: `jobs.check`가 규칙 결과와 함께 진료마다 `dxViews`의 추천 상병·상병 확인을 싣는다. `dxViews`에 메모 결과를 넘긴다. I·N 표 경고는 규칙 DX-01·DX-02 결과로 한 번만. 틀린 연결표로 `TypeError`가 나면 결과 없이 `ok: false`·`E-SETTINGS-FAILED`
 
 ## 읽어야 할 파일
 
@@ -27,14 +32,15 @@
 - `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-013
-- `/specs/precheck/design.md` — 6-2절(Worker), 6-4절(날짜 목록), 6-5절(설정이 바뀌었을 때), 7절 표 '청구'·'밖에서 보는 건수', 5절(화면 줄 울타리·오류 수집 없음), 15절(엑셀은 Worker에서 `xlsx`)
+- `/specs/precheck/design.md` — 6-2절(Worker·불러오기 약속), 6-3절, 6-4절(날짜 목록), 6-5절(설정이 바뀌었을 때), 7절 표 '청구'·'밖에서 보는 건수', 5절(화면 줄 울타리·오류 수집 없음), 15절(엑셀은 Worker에서 `xlsx`), 19-9절(한 달 읽고 고른 기간만 보이기)
+- `/src/types/precheck.ts` — `PrecheckFromScreen` 주석(화면이 지킬 약속 전문)
 - `/specs/precheck/tasks.md` — TASK-13 (수정 범위·메모)
 - `/docs/UI_GUIDE.md` '앱 화면'(표·칩·오류 카드·빈 상태·폰)
 - `/src/components/common/ErrorCard.tsx`, `/src/components/ui/classes.ts`
 - `/eslint.config.mjs`, `/src/guardrails.test.ts`
 - 이전 step에서 만든 파일:
   - `src/components/claim/useBridge.ts`, `src/app/(app)/claim/page.tsx`(자리만 있음), `src/components/claim/setup/*` (Phase 1 Step 6)
-  - `src/workers/precheck.worker.ts`, `src/workers/precheck/jobs.ts`·`assemble.ts`·`tables.ts` (Step 0·2~4)
+  - `src/workers/precheck.worker.ts`, `src/workers/precheck/jobs.ts`(`checkMonth`·`dxViews`·`loadPart`)·`assemble.ts`·`tables.ts` (Step 0·2~4, TASK-16)
   - `src/lib/precheck/rules/*`, `src/lib/precheck/dx/*` (Step 3·4)
   - `src/lib/storage/claimSettings.ts`, `src/lib/precheck/settingsChanged.ts` (Step 5)
   - `src/lib/bridge/commands.json` (`claim.dates`·`claim.month`·`claim.memos`·`store.load`·`store.save` args)
@@ -81,6 +87,9 @@
   - `src/workers/precheck.worker.ts`
   - `src/lib/storage/claimCounts.ts`
   - `src/lib/storage/claimCounts.test.ts`
+  - `src/lib/analytics/dates.ts`
+  - `src/lib/analytics/dates.test.ts`
+  - `src/types/precheck.ts`
   - `src/types/db.ts`
   - `eslint.config.mjs`
   - `src/guardrails.test.ts`
@@ -90,10 +99,12 @@
 - Tests:
   - `src/lib/storage/claimCounts.test.ts`
   - `src/components/claim/dateList.test.ts`
+  - `src/components/claim/claimLoad.test.ts`
   - `src/components/claim/ClaimScreen.test.tsx`
   - `src/components/claim/SettingsChangedBanner.test.tsx`
   - `src/components/claim/rows/FindingRows.test.tsx`
   - `src/lib/precheck/excel.test.ts`
+  - `src/lib/analytics/dates.test.ts`
   - `src/workers/precheck/jobs.test.ts`
   - `src/app/(app)/claim/page.test.tsx`
   - `src/guardrails.test.ts`
@@ -130,10 +141,10 @@ export async function readDayCounts(sb: SupabaseClient, from: string, to: string
 
 ### 3. 불러오기·점검 흐름 (`src/components/claim/*`, Worker)
 - `useBridge({ worker })`: 화면은 `precheck.worker.ts` Worker 객체만 넘긴다. 조각은 통로 울타리 안 `workerSink`가 전용 포트로 Worker에 넣고, 화면 코드는 조각을 받지 않는다(AC-004.11)
-- [자료 불러오기]: 기간 검사(달 넘김 허용, 35일 이하) → `stream('claim.month')`·`stream('claim.memos')`·`stream('store.load')` → 모두 끝나면 Worker `check`. 누르는 동안 `disabled`와 진행 상태(목업 화면 2 '불러오는 중')
+- [자료 불러오기]: 기간 검사(달 넘김 허용, 35일 이하) → `claimLoad.ts`에서 새 번호 → `loadStart` → `stream('claim.month')`(읽는 기간은 AC-013.13, `dates.ts`에 'E의 한 달 전 같은 날' 함수를 더한다)·`stream('claim.memos')`·`stream('store.load')`(둘은 고른 기간만) → 끝날 때마다 `month`·`loadPart`로 Worker에 묻고 마지막 번호의 답이 모두 `ok: true`일 때만 Worker `check`(고른 기간 `visible`을 함께 준다, design.md 19-9). stream이 끝난 것만으로 점검하지 않는다(약속 전문은 `PrecheckFromScreen` 주석·design.md 6-2, AC-013.10~013.12). 누르는 동안 `disabled`와 진행 상태(목업 화면 2 '불러오는 중')
 - 설정: 점검 직전에 `readRuleSettings`·`readHospitalSettings`로 읽어 Worker에 넘기고, 읽었으면 Worker에 `saveSettingsCopy`를 시켜 Worker가 `store.save {settings}` 글자를 통로 포트로 보내게 한다(화면에는 `send`가 없다, AC-004.11). 서버 읽기 실패면 `store.load {settings: true}` 사본으로 점검하고 안내 한 줄, 사본도 없으면 `E-SETTINGS-FAILED`(AC-013.9)
 - **순서 문제(Phase 2 시점)**: `claim.memos`(TASK-16)·`store.load/save`(TASK-15)의 도우미 처리기는 Phase 3에 생긴다. 지금 도우미는 이 명령에 `E-HELPER-UNKNOWN-COMMAND`로 답한다(명령 표에는 있음). 이 번호일 때만 메모 비교는 '조회 못함'(AC-016.2), 저장한 작업·설정 사본은 '없음'으로 보고 점검은 계속하며, 안내 한 줄("도우미 업데이트 뒤 메모 비교·이어서 하기가 됩니다")을 보인다. 다른 오류는 AC-013.5대로 멈춘다. Phase 2에는 비트 입력이 없어 두 번 입력 위험이 없다. 이 처리를 summary에 적는다
-- 결과(목업 화면 3): 진료마다 등급 칩(글자 포함)·규칙 제목·내용·고시 근거·추천 상병·상병 경고. 등급·규칙 거르기. 환자 줄은 `components/claim/rows/FindingRows.tsx`가 props로만 그린다
+- 결과(목업 화면 3): 진료마다 등급 칩(글자 포함)·규칙 제목·내용·고시 근거·추천 상병·상병 경고. 추천·경고는 Worker가 메모 결과를 넘긴 `dxViews`로 규칙 결과에 함께 실어 보낸다. `dxViews`가 던지면 Worker 안에서 잡아 `E-SETTINGS-FAILED`로 답하고 결과를 보내지 않는다(AC-013.14). 등급·규칙 거르기. 환자 줄은 `components/claim/rows/FindingRows.tsx`가 props로만 그린다
 - 오류(AC-013.5): `E-CLAIM-PARTIAL`·`E-RULES-LOAD-FAILED`·읽기 오류면 결과를 지우고 오류 카드 + [다시 불러오기](목업 화면 2 '자료 일부만 옴')
 - 설정 바뀜(AC-013.6): `window` `focus` 때 설정을 다시 읽어 `settingsChanged` → `SettingsChangedBanner`("설정이 바뀌었어요, 다시 점검하세요" + [다시 점검])
 
@@ -147,7 +158,7 @@ export function buildPrecheckXlsx(view: ClaimView, tables: Tables): Uint8Array  
 - `useBridge` 상태가 `no-extension`이면 점검 칸 대신 '밖에서 보는 건수' 자리(목업 화면 11 모양, 건수는 TASK-19가 채운다 — 지금은 빈 안내 한 줄). PC 크롬이면(확장이 없거나 도우미가 없으면) 설치·연결 확인 링크
 
 ### 6. 시험
-- `dateList.test.ts`(AC-013.1), `ClaimScreen.test.tsx`(jsdom, 가짜 통로·가짜 Worker: AC-013.2·013.3·013.5·013.8·013.9와 위 순서 문제 처리), `SettingsChangedBanner.test.tsx`(AC-013.6), `rows/FindingRows.test.tsx`(칩 글자·근거), `excel.test.ts`(시트 이름·칸 순서·서버 호출 없음: AC-013.4), `claimCounts.test.ts`(읽기·표 없음 → []), `jobs.test.ts`(점검 job·엑셀 job), `page.test.tsx`, `guardrails.test.ts`(AC-013.7)
+- `dateList.test.ts`(AC-013.1), `claimLoad.test.ts`(AC-013.12), `dates.test.ts`(AC-013.13, 그달에 없는 날은 말일), `ClaimScreen.test.tsx`(jsdom, 가짜 통로·가짜 Worker: AC-013.2·013.3·013.5·013.8·013.9·013.10·013.11·013.14와 위 순서 문제 처리), `SettingsChangedBanner.test.tsx`(AC-013.6), `rows/FindingRows.test.tsx`(칩 글자·근거), `excel.test.ts`(시트 이름·칸 순서·서버 호출 없음: AC-013.4), `claimCounts.test.ts`(읽기·표 없음 → []), `jobs.test.ts`(점검 job·엑셀 job, AC-013.13·013.14: 고른 기간 밖 진료는 답에 없음, 상병 없음·메모 있음·비급여뿐인 진료는 `missingDx`가 참, 틀린 연결표는 `E-SETTINGS-FAILED`), `page.test.tsx`, `guardrails.test.ts`(AC-013.7)
 
 ## TDD 순서
 
@@ -159,15 +170,15 @@ export function buildPrecheckXlsx(view: ClaimView, tables: Tables): Uint8Array  
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/claim/dateList.test.ts src/components/claim/ClaimScreen.test.tsx src/components/claim/SettingsChangedBanner.test.tsx src/components/claim/rows/FindingRows.test.tsx
-npx vitest run src/lib/precheck/excel.test.ts src/lib/storage/claimCounts.test.ts src/workers/precheck/jobs.test.ts "src/app/(app)/claim/page.test.tsx" src/guardrails.test.ts
+npx vitest run src/components/claim/dateList.test.ts src/components/claim/claimLoad.test.ts src/components/claim/ClaimScreen.test.tsx src/components/claim/SettingsChangedBanner.test.tsx src/components/claim/rows/FindingRows.test.tsx
+npx vitest run src/lib/precheck/excel.test.ts src/lib/analytics/dates.test.ts src/lib/storage/claimCounts.test.ts src/workers/precheck/jobs.test.ts "src/app/(app)/claim/page.test.tsx" src/guardrails.test.ts
 python3 ~/.claude/harness/bin/tdd-run TASK-13 --expect green
 npm run lint && npm test && npm run build
 python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-013.1 ~ AC-013.9이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-013.1 ~ AC-013.14이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -188,6 +199,7 @@ python3 ~/.claude/harness/bin/verify
 
 - 점검 결과·환자 줄·엑셀을 서버(supabase)나 `fetch`로 보내지 마라. 이유: 환자 자료는 PC 밖으로 나가지 않는다. 서버에는 건수만(ADR-020·021)
 - 일부만 온 자료로 결과를 보이지 마라. 이유: 빠진 환자가 '문제 없음'처럼 보인다(AC-013.5)
+- stream이 끝난 것만으로 점검하지 말고, 불러오기 번호를 컴포넌트 state에 두지 마라. 이유: SHA-256이 달라도 stream은 끝나고, 번호가 되풀이되면 옛 답이 통과한다(AC-013.10·013.12)
 - `E-HELPER-UNKNOWN-COMMAND` 말고 다른 오류를 '없음'으로 넘기지 마라. 이유: 도우미 저장이 깨졌거나(`E-STORE-BROKEN`) 읽기가 실패한 것을 숨기면 두 번 입력·빠뜨림이 생긴다
 - 날짜 목록·결과·고친 메모를 `localStorage` 등에 기억하지 마라. 이유: 청구 쪽은 브라우저 저장소를 쓰지 않는다(ADR-020)
 - 오류 수집·분석 도구(Sentry·Vercel Analytics 등)를 붙이지 마라. 이유: 오류 보고에 환자 줄이 섞여 나갈 수 있다(AC-013.7, ADR-020)
@@ -203,4 +215,4 @@ python3 ~/.claude/harness/bin/verify
 
 - Phase 2 마지막 step이다. 메인 세션이 Phase 끝에 할 일: `verify` → 화면 캡처(PC·휴대폰) → 쉬운 말 보고 → 의원 PC 시험 목록(실제 한 달 자료로 점검하고 같은 달을 양지바른 결과와 나란히 비교). 사용자 할 일: 설정 마이그레이션(`20261030000000_precheck_settings.sql`)을 SQL 편집기에 붙여 넣기(Step 5)
 - Phase가 끝나면 Phase PR을 만든다. 합치기(merge)·운영 배포·도우미 릴리스 태그(`helper-v*`)는 사용자가 그때마다 지시할 때만 한다. Claude가 자동으로 하지 않는다. 의원 PC 시험은 그 뒤에 한다(확장·`commands.json`에는 운영 주소 하나만 있어 새 화면이 운영에 배포돼야 시험할 수 있다. tasks.md 머리말, design.md 12절)
-- 이 Phase에는 메모 비교·이어서 하기가 아직 없다(도우미 처리기는 Phase 3). 의원 PC 시험 목록에 그렇게 적는다
+- 2026-11-01 차례가 바뀌어 이 step은 TASK-10·11·12·14·16 뒤에 한다(tasks.md 머리말). 메모 칸은 아직 없다(TASK-18). 의원 PC 시험 목록에 그렇게 적고, 하루만 골라 불러와도 내원 간격 문장이 한 달을 불러온 때와 같은지 본다

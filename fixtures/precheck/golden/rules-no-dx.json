@@ -1,0 +1,66 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-no-dx.json",
+  "settings": null,
+  "visits": [
+    {"id":"VF-02.miss-aa222-not-counted-as-skipped","hits":[],"skipped":{"history":0,"data":3},"checked":152},
+    {"id":"IJ-13.miss-no-dx-data","hits":[],"skipped":{"history":0,"data":5},"checked":152},
+    {"id":"DR-14.miss-no-dx-data","hits":[],"skipped":{"history":0,"data":4},"checked":152},
+    {"id":"LA-27.miss-no-dx-data","hits":[{"id":"LA-22","grade":"알림","message":"신경차단술 차트에 통증 부위·이학적 소견이 없거나 재시술인데 직전 반응 기록이 없으니 보완하세요.","detail":"LA242 · 빠진 기록: 증상·이학적검사"}],"skipped":{"history":0,"data":6},"checked":152},
+    {"id":"LA-28.miss-no-dx-data","hits":[{"id":"LA-22","grade":"알림","message":"신경차단술 차트에 통증 부위·이학적 소견이 없거나 재시술인데 직전 반응 기록이 없으니 보완하세요.","detail":"LA346 · 빠진 기록: 증상·이학적검사"}],"skipped":{"history":0,"data":5},"checked":152},
+    {"id":"MR-01.miss-no-dx-data","hits":[{"id":"MR-08","grade":"알림","message":"척추 MRI는 표준영상 4종과 판독소견서가 있어야 하니 확인하세요. (차트에 기록이 없음 — 영상·제출 자료로 갖췄는지 확인)","detail":"MRILS"}],"skipped":{"history":0,"data":5},"checked":152},
+    {"id":"ES-03.miss-no-dx-data","hits":[],"skipped":{"history":0,"data":4},"checked":152},
+    {"id":"DX-06.miss-no-dx-data","hits":[],"skipped":{"history":0,"data":3},"checked":152},
+    {"id":"DX-01.miss-no-dx-data","hits":[],"skipped":{"history":0,"data":3},"checked":152},
+    {"id":"VF-02.miss-no-dx-data","hits":[],"skipped":{"history":0,"data":6},"checked":152},
+    {"id":"PH-19.hit-no-dx-data","hits":[{"id":"PH-19","grade":"알림","message":"요부질환 단순운동치료(MM101)는 초진 1~2회(근육경련 동반 시 2주 이내)만 인정되니 3회째 이상이면 경련 기록을 확인하세요.","detail":"3회째"}],"skipped":{"history":0,"data":3},"checked":152},
+    {"id":"LA-17.hit-no-dx-data","hits":[{"id":"LA-17","grade":"확인필요","message":"같은 병소 신경차단술 치료기간이 첫 시술일부터 2개월을 넘었으니 예외 상병(대상포진후통증 등)이 아니면 청구를 다시 검토하세요.","detail":"첫 시행 2026-07-20 → 84일째"},{"id":"LA-13","grade":"알림","message":"C-arm 투시 필수 차단인데 차트에 투시(C-arm·fluoro) 기록이나 영상 저장 표시가 없으니 영상 저장 여부를 확인하고 기록하세요. (차트에 기록이 없음 — 영상·제출 자료로 갖췄는지 확인)","detail":"LA358"},{"id":"LA-14","grade":"알림","message":"후지내측지·추간관절·회백교통지·경추간공 차단은 2방향 영상이 필요하니 차트·PACS에 방향(AP/Lat/Obl)을 남기고, 못 맞췄으면 사유를 JX999에 적으세요.","detail":"LA358 · 차트 방향 없음"},{"id":"LA-22","grade":"알림","message":"신경차단술 차트에 통증 부위·이학적 소견이 없거나 재시술인데 직전 반응 기록이 없으니 보완하세요.","detail":"LA358 · 빠진 기록: 증상·이학적검사"}],"skipped":{"history":0,"data":5},"checked":152},
+    {"id":"MN-05.miss-no-dx-data","hits":[{"id":"MN-06","grade":"알림","message":"첫 도수치료 전 1·2절 물리치료가 4회·2주(14일)에 못 미치니 타기관 이력이나 사경·수술 후 예외를 기록하세요.","detail":"앞선 물리치료 0회 · 0일"}],"skipped":{"history":0,"data":4},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "VF-02.miss-aa222-not-counted-as-skipped",
+      "IJ-13.miss-no-dx-data",
+      "DR-14.miss-no-dx-data",
+      "LA-27.miss-no-dx-data",
+      "LA-28.miss-no-dx-data",
+      "MR-01.miss-no-dx-data",
+      "ES-03.miss-no-dx-data",
+      "DX-06.miss-no-dx-data",
+      "DX-01.miss-no-dx-data",
+      "VF-02.miss-no-dx-data",
+      "PH-19.hit-no-dx-data",
+      "LA-17.hit-no-dx-data",
+      "MN-05.miss-no-dx-data"
+    ],
+    "checked": 13,
+    "hi": 1,
+    "mid": 8,
+    "lo": 0,
+    "patients": 1,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"LA-17","grade":"확인필요","visits":["LA-17.hit-no-dx-data"]},
+      {"rule":"LA-22","grade":"알림","visits":["LA-27.miss-no-dx-data","LA-28.miss-no-dx-data","LA-17.hit-no-dx-data"]},
+      {"rule":"MR-08","grade":"알림","visits":["MR-01.miss-no-dx-data"]},
+      {"rule":"PH-19","grade":"알림","visits":["PH-19.hit-no-dx-data"]},
+      {"rule":"LA-13","grade":"알림","visits":["LA-17.hit-no-dx-data"]},
+      {"rule":"LA-14","grade":"알림","visits":["LA-17.hit-no-dx-data"]},
+      {"rule":"MN-06","grade":"알림","visits":["MN-05.miss-no-dx-data"]}
+    ],
+    "rows": [
+      ["LA-27.miss-no-dx-data","LA-22"],
+      ["LA-28.miss-no-dx-data","LA-22"],
+      ["MR-01.miss-no-dx-data","MR-08"],
+      ["PH-19.hit-no-dx-data","PH-19"],
+      ["LA-17.hit-no-dx-data","LA-17"],
+      ["LA-17.hit-no-dx-data","LA-13"],
+      ["LA-17.hit-no-dx-data","LA-14"],
+      ["LA-17.hit-no-dx-data","LA-22"],
+      ["MN-05.miss-no-dx-data","MN-06"]
+    ]
+  }
+}

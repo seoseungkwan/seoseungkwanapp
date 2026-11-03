@@ -1,4 +1,4 @@
-// 확장 manifest(AC-003.1)와 빌드(AC-003.8)를 파일로 검사한다 (TASK-3, REQ-003)
+// 확장 manifest(AC-003.1·AC-038.3)와 빌드(AC-003.8)를 파일로 검사한다 (TASK-3 REQ-003, TASK-38 REQ-038)
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
@@ -75,6 +75,70 @@ describe('AC-003.1 extension/manifest.json', () => {
     const m = readJson(MANIFEST)
     expect(m.key).toBe(commands.extensionKey)
     expect(extensionIdFromKey(String(m.key))).toBe(commands.extensionId)
+  })
+})
+
+/** 확장 코드(시험 제외)에 있으면 안 되는 글자: 탭·창의 제목·주소와 탭 목록, 정해 둔 창 호출(get·update) 밖의 것(AC-038.3) */
+const FORBIDDEN_TAB_READS = [
+  /\b(?:title|url|pendingUrl|favIconUrl|populate|tabs)\b/i,
+  /\btab\??\.(?!windowId\b)/,
+  /\bwindows\??\.(?!(?:get|update)\b)/,
+]
+
+function readsTabText(code: string): boolean {
+  return FORBIDDEN_TAB_READS.some((re) => re.test(code))
+}
+
+describe('AC-038.3 권한은 그대로, 판은 올린다', () => {
+  it('AC-038.3: permissions는 그대로 ["nativeMessaging"]이고 tabs·host_permissions를 더하지 않았다', () => {
+    const m = readJson(MANIFEST)
+    expect(m.permissions).toEqual(['nativeMessaging'])
+    expect(m).not.toHaveProperty('host_permissions')
+    expect(JSON.stringify(m.permissions)).not.toContain('tabs')
+  })
+
+  it('AC-038.3: manifest.version을 지금 올라가 있는 0.1.0과 매출·통계 쪽 판 0.2.0보다 올렸다', () => {
+    const version = String(readJson(MANIFEST).version)
+    expect(version.localeCompare('0.1.0', undefined, { numeric: true })).toBeGreaterThan(0)
+    expect(version.localeCompare('0.2.0', undefined, { numeric: true })).toBeGreaterThan(0)
+  })
+
+  it.each([
+    'port.sender?.tab?.title',
+    'sender.tab.url',
+    'sender.url',
+    'win.title',
+    "tab['url']",
+    'const { title } = tab',
+    'tab.pendingUrl',
+    'tab.favIconUrl',
+    'tab.id',
+    'chrome.tabs.query({})',
+    'chrome.windows.get(1, { populate: true }, cb)',
+    'chrome.windows.getAll(cb)',
+    'chrome.windows.getCurrent(cb)',
+  ])('AC-038.3: 글자 검사가 %s 를 잡는다', (code) => {
+    expect(readsTabText(code)).toBe(true)
+  })
+
+  it.each([
+    'port.sender?.tab?.windowId',
+    'chrome.windows.get(windowId, cb)',
+    "chrome.windows.update(windowId, { state: 'minimized' }, cb)",
+  ])('AC-038.3: 글자 검사가 쓰는 줄 %s 는 잡지 않는다', (code) => {
+    expect(readsTabText(code)).toBe(false)
+  })
+
+  it('AC-038.3: extension/src/**(시험 파일 빼고)는 탭·창의 제목과 주소를 읽지 않고, 웹 연결의 창 번호만 쓴다', () => {
+    const src = path.join(ROOT, 'extension', 'src')
+    const files = readdirSync(src, { recursive: true, encoding: 'utf8' }).filter(
+      (f) => /\.[cm]?[jt]sx?$/.test(f) && !/\.test\.[cm]?[jt]sx?$/.test(f),
+    )
+    expect(files).toEqual(expect.arrayContaining(['background.ts', 'chromeLike.ts', 'relay.ts']))
+    for (const file of files) {
+      expect(readsTabText(readFileSync(path.join(src, file), 'utf8')), file).toBe(false)
+    }
+    expect(readFileSync(path.join(src, 'background.ts'), 'utf8')).toMatch(/\.sender\?\.tab\?\.windowId/)
   })
 })
 

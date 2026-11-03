@@ -12,10 +12,10 @@ import { SetupScreen } from './SetupScreen'
 
 // 비트 PC 연결 화면 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body · 다른 창 카드는 precheck 목업 화면 6).
 // 진짜 useBridge·connectScreenBridge·connectBridge에 가짜 확장(chrome.runtime)만 넣는다. 가짜 확장은 받은 명령마다 정해 둔 답을 돌려준다.
-// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.3.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.2.0)
+// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.4.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.3.0)
 vi.mock('@/lib/bridge/versions', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/bridge/versions')>()
-  return { ...real, LATEST_HELPER: '0.3.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.3.0' } }
+  return { ...real, LATEST_HELPER: '0.4.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.4.0' } }
 })
 const { router } = vi.hoisted(() => ({ router: { replace: vi.fn(), push: vi.fn() } }))
 vi.mock('next/navigation', () => ({ useRouter: () => router }))
@@ -27,7 +27,7 @@ type Script = { hello: Reply | 'busy'; check?: Answer[]; register?: Answer[] }
 
 const HELLO: Reply = {
   type: 'result',
-  data: { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 },
+  data: { helperVersion: '0.4.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 },
 }
 const helloWith = (data: Record<string, unknown>): Reply => ({
   type: 'result',
@@ -227,18 +227,18 @@ afterEach(() => {
 })
 
 describe('SetupScreen 틀', () => {
-  it('AC-006.4·AC-412.5: 제목 "설정"과 안쪽 메뉴 — [청구·연락]은 설정 화면이 아직 없어 링크가 아니고(준비 중), [비트 PC 연결]은 지금 화면(/claim/setup)', async () => {
+  it('AC-006.4·AC-412.5·AC-012.6: 제목 "설정"과 안쪽 메뉴 — [청구·연락]은 설정 화면(/settings) 링크이고, [비트 PC 연결]은 지금 화면(/claim/setup)', async () => {
     fakeExtension({ hello: HELLO })
     renderSetup()
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
-    expect(within(sub).queryByRole('link', { name: /청구·연락/ })).toBeNull()
-    const notReady = within(sub).getByText('청구·연락').closest('[aria-disabled="true"]')
-    expect(notReady?.textContent).toBe('청구·연락준비 중')
+    const settings = within(sub).getByRole('link', { name: '청구·연락' })
+    expect(settings.getAttribute('href')).toBe('/settings')
+    expect(settings.getAttribute('aria-current')).toBeNull()
     const here = within(sub).getByRole('link', { name: '비트 PC 연결' })
     expect(here.getAttribute('href')).toBe('/claim/setup')
     expect(here.getAttribute('aria-current')).toBe('page')
-    expect(sub.textContent).toBe('청구·연락준비 중비트 PC 연결')
+    expect(sub.textContent).toBe('청구·연락비트 PC 연결')
     await screen.findByText('준비됨')
   })
 
@@ -272,7 +272,7 @@ describe('AC-034.2 설정 안 메뉴 모양', () => {
     renderSetup()
     hasAll(subnav(), 'flex border-b border-line')
     const items = Array.from(subnav().children)
-    expect(items.map((el) => el.getAttribute('aria-current') ?? el.getAttribute('aria-disabled'))).toEqual(['true', 'page'])
+    expect(items.map((el) => el.getAttribute('aria-current') ?? el.getAttribute('aria-disabled'))).toEqual([null, 'page'])
     for (const item of items) {
       hasAll(item, 'relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body first:-ml-3 max-md:h-11')
       hasNone(item, 'rounded-chip rounded-card gap-2')
@@ -291,16 +291,19 @@ describe('AC-034.2 설정 안 메뉴 모양', () => {
     await screen.findByText('준비됨')
   })
 
-  it('AC-034.2: 설정 화면이 아직 없으면 [청구·연락]은 링크가 아니고(aria-disabled) 기본 모양 ink-2 500(올림 변화 없음)에 ds.chip.neutral "준비 중"', async () => {
+  it('AC-034.2·AC-012.6: [청구·연락]은 설정 화면(/settings) 링크이고 기본 모양 ink-2 500(올림 ink)이며 칩이 없다', async () => {
     fakeExtension({ hello: HELLO })
     renderSetup()
-    const notReady = within(subnav()).getByText('청구·연락').closest('[aria-disabled="true"]') as HTMLElement
-    expect(notReady.tagName).not.toBe('A')
-    hasAll(notReady, 'font-medium text-ink-2')
-    hasNone(notReady, 'font-semibold font-bold text-ink text-accent cursor-pointer')
-    expect(classesOf(notReady).filter((t) => t.startsWith('hover:') || t.startsWith('after:'))).toEqual([])
-    const chip = within(notReady).getByText('준비 중')
-    expect(chip.getAttribute('class')).toBe(ds.chip.neutral)
+    const link = within(subnav()).getByRole('link', { name: '청구·연락' })
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe('/settings')
+    expect(link.hasAttribute('aria-disabled')).toBe(false)
+    expect(link.hasAttribute('aria-current')).toBe(false)
+    hasAll(link, 'font-medium text-ink-2 hover:text-ink')
+    hasNone(link, 'font-semibold font-bold text-ink text-accent cursor-pointer')
+    expect(classesOf(link).filter((t) => t.startsWith('after:'))).toEqual([])
+    expect(link.children).toHaveLength(0)
+    expect(within(subnav()).queryByText('준비 중')).toBeNull()
     await screen.findByText('준비됨')
   })
 })
@@ -577,7 +580,7 @@ const SCENES: [string, Scene][] = [
     },
   ],
   ['모두 됨', { arrange: () => fakeExtension({ hello: HELLO }), settled: () => screen.findByText('준비됨') }],
-  ['모두 됨 + 새 도우미', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) }), settled: () => screen.findByText('준비됨') }],
+  ['모두 됨 + 새 도우미', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.3.0' }) }), settled: () => screen.findByText('준비됨') }],
 ]
 async function renderScene(scene: Scene) {
   const fake = scene.arrange()
@@ -765,7 +768,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
       expect(li.textContent).not.toContain('오류 번호')
     }
     expect(row('크롬 확장 프로그램 설치').textContent).toContain('버전 0.1.0')
-    expect(row('도우미 설치').textContent).toContain('버전 0.3.0')
+    expect(row('도우미 설치').textContent).toContain('버전 0.4.0')
     expect(row('연결').textContent).toContain('이어졌어요')
     expect(row('비트 자료 읽기').textContent).toContain('읽을 수 있어요')
     expect(row('요양기관기호 확인').textContent).toContain('등록한 의원과 같아요')
@@ -877,7 +880,7 @@ describe('AC-006.2 연결 확인 (bit.check)', () => {
 
 describe('AC-006.3·AC-412.7 새 도우미', () => {
   it('AC-006.3: 도우미가 최신보다 낮으면 "새 도우미가 있어요" 한 줄과 받는 곳 링크, 나머지는 그대로 쓸 수 있다', async () => {
-    fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) })
+    fakeExtension({ hello: helloWith({ helperVersion: '0.3.0' }) })
     renderSetup()
     await screen.findByText('준비됨')
     expect(screen.getByText('새 도우미가 있어요.')).toBeTruthy()
@@ -1170,7 +1173,7 @@ describe('AC-408.2 그림은 공용 Icon, 간격은 단계 안', () => {
   })
 
   it('AC-408.2·AC-412.5: "준비됨" 줄·새 도우미 줄은 사이 8px, \'이렇게 지켜요\' 목록은 왼쪽 20px·사이 8px·body ink-2', async () => {
-    fakeExtension({ hello: helloWith({ helperVersion: '0.2.0' }) })
+    fakeExtension({ hello: helloWith({ helperVersion: '0.3.0' }) })
     renderSetup()
     const ready = (await screen.findByText('준비됨')).parentElement as HTMLElement
     const update = screen.getByText('새 도우미가 있어요.').parentElement as HTMLElement

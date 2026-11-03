@@ -1,0 +1,26 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-drug-info-history-only.json",
+  "settings": null,
+  "visits": [
+    {"id":"IJ-01.miss-nine-digit-history-only","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.miss-catalog-fee-code-history-only","hits":[],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "IJ-01.miss-nine-digit-history-only",
+      "IJ-01.miss-catalog-fee-code-history-only"
+    ],
+    "checked": 2,
+    "hi": 0,
+    "mid": 0,
+    "lo": 0,
+    "patients": 0,
+    "historySkips": 0,
+    "byRule": [],
+    "rows": []
+  }
+}

@@ -7,10 +7,10 @@ import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import { useBridge } from './useBridge'
 
 // 화면이 쓰는 통로 훅 (design.md 6-1, REQ-006). 진짜 connectScreenBridge·connectBridge에 가짜 chrome.runtime(Port)만 넣는다.
-// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.3.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.2.0)
+// "새 도우미가 있어요"를 시험하려고 웹이 아는 최신 도우미만 0.4.0으로 올린다(막는 기준 MIN_HELPER는 그대로 0.3.0)
 vi.mock('@/lib/bridge/versions', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/bridge/versions')>()
-  return { ...real, LATEST_HELPER: '0.3.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.3.0' } }
+  return { ...real, LATEST_HELPER: '0.4.0', WEB_VERSIONS: { ...real.WEB_VERSIONS, latestHelper: '0.4.0' } }
 })
 
 class FakePort implements PortLike {
@@ -54,7 +54,7 @@ function fakeChrome() {
   return { ports, ids, port: () => ports[ports.length - 1] }
 }
 
-const HELLO = { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO = { helperVersion: '0.4.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 
 /** 마지막으로 보낸 요청에 답한다(확장이 도우미 답을 그대로 넘긴 것처럼) */
 function answer(port: FakePort, reply: Record<string, unknown>) {
@@ -88,7 +88,7 @@ describe('useBridge', () => {
     await waitFor(() => expect(result.current.state).toBe('ready'))
     expect(result.current.hello).toEqual({
       state: 'ready',
-      helperVersion: '0.3.0',
+      helperVersion: '0.4.0',
       extensionVersion: '0.1.0',
       helperUpdateAvailable: false,
     })
@@ -99,7 +99,7 @@ describe('useBridge', () => {
     const fake = fakeChrome()
     const { result } = renderHook(() => useBridge())
     await waitFor(() => expect(fake.port().sent).toHaveLength(1))
-    helloOk(fake.port(), { ...HELLO, helperVersion: '0.2.0' })
+    helloOk(fake.port(), { ...HELLO, helperVersion: '0.3.0' })
     await waitFor(() => expect(result.current.state).toBe('ready'))
     expect(result.current.helperUpdateAvailable).toBe(true)
   })
@@ -206,7 +206,7 @@ describe('useBridge', () => {
     expect(fake.ports).toHaveLength(1)
     expect(fake.port().sent).toHaveLength(2)
     expect(fake.port().last()).toMatchObject({ cmd: 'hello' })
-    helloOk(fake.port(), { ...HELLO, helperVersion: '0.2.0' })
+    helloOk(fake.port(), { ...HELLO, helperVersion: '0.3.0' })
     await waitFor(() => expect(result.current.state).toBe('ready'))
     expect(result.current.hello).not.toBe(before)
     expect(result.current.helperUpdateAvailable).toBe(true)

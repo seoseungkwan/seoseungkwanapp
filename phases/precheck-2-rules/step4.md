@@ -9,7 +9,7 @@
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-011에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-011.1**: 가짜 자료와 상병 추세로 `recommendDx(code, name)`가 원본 `recommend`와 같은 `{visits, list[{dx, nm, src, ex, t}]}`를 돌려준다(원본 상수 `TOP=3`·`LIFT=150`·`EX_SHARE=700`, 골든)
-- **AC-011.2**: 진료 하나에 `dxIssues(visit)`·`needsCheck`·`missingDx`가 원본과 같다(불완전 코드 I·주상병 불가 N 표 포함, 골든)
+- **AC-011.2**: 진료 하나와 `DxContext`로 `dxIssues(visit, ctx)`·`needsCheck(visit, ctx)`·`missingDx(visit, ctx)`가 원본 `issues`·`needsCheck`·`missingDx`와 같다(골든). 이 원본 함수들은 불완전 코드 I·주상병 불가 N 표를 읽지 않는다. 그 표 검사는 규칙 DX-01·DX-02(TASK-10) 몫이다
 - **AC-011.3**: 병원 설정의 상병 연결표(원본 `snapshot.rules` 모양 `[rx, dx, nm, ex, src]`)가 원본과 같은 우선순위로 섞인다(골든)
 - **AC-011.4**: 상병 추세가 없으면 고시·연결표만으로 추천하고 오류를 내지 않는다(원본과 같음)
 
@@ -75,15 +75,15 @@
 
 ### 1. 골든
 - `scripts/precheck/golden/dx.mjs`(Step 3 스크립트와 같은 꺼내기 방식): `<script id="new-medicore-dx-recommend">`을 `node:vm`에서 돌려 `recommend`·`issues`·`needsCheck`·`missingDx` 결과를 `fixtures/precheck/golden/dx-*.json`에 쓴다. 머리 `{source, file, entry, knownDiffs}`
-- 사례: 상병 추세 있음/없음(AC-011.4), I·N 표에 걸리는 코드(AC-011.2), 상병 연결표 있음·없음·우선순위가 부딪히는 경우(AC-011.3)
+- 사례: 상병 추세 있음/없음(AC-011.4), 상병 없음·규칙의 상병이 빠짐(AC-011.2), 상병 연결표 있음·없음·우선순위가 부딪히는 경우(AC-011.3)
 
 ### 2. 코드 (`src/lib/precheck/dx/*`)
 ```ts
 export type DxLink = [rx: string, dx: string, nm: string, ex: number | string, src: string]   // 원본 snapshot.rules 한 줄
 export function recommendDx(code: string, name: string, ctx: { trend: DxTrend | null; links: DxLink[]; tables: Tables }): { visits: number; list: { dx: string; nm: string; src: string; ex: number; t: string }[] }
-export function dxIssues(visit: Visit, tables: Tables): DxIssue[]
-export function needsCheck(visit: Visit, tables: Tables): boolean
-export function missingDx(visit: Visit, tables: Tables): string[]
+export function dxIssues(visit: Visit, ctx: DxContext): DxIssue[]
+export function needsCheck(visit: Visit, ctx: DxContext): boolean
+export function missingDx(visit: Visit, ctx: DxContext): boolean
 ```
 - 원본 줄을 그대로 옮긴다. 상수 `TOP=3`·`LIFT=150`·`EX_SHARE=700`을 원본 이름 그대로 둔다
 - 상병 연결표(`links`)는 서버 설정 `claim_hospital_settings.dx_links`(TASK-12)에서 온다. 이 step에서는 인자로만 받는다

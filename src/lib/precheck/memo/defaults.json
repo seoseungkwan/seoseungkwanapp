@@ -1,0 +1,255 @@
+{
+  "TPL": {
+    "sideRuleVersion": 2,
+    "main": "{시술}",
+    "mainCentral": "{시술}",
+    "mainPeripheral": "{시술}",
+    "mainCentralCodes": "LA321, LA323, LA326, LA354, LA356, LA357, LA358, LA359",
+    "cpb": "{시술}",
+    "snb": "{시술}",
+    "sentence": "",
+    "ara": "{좌우} 슬관절 강내 연골주사 {회차}회차",
+    "klg": "K-L grade ({KL1})/({KL2})",
+    "iaAra": "",
+    "iaEtc": "IA injection of - {부위}{약제}",
+    "ts": "{부위} 건초내주사 시행{약제}",
+    "itv": "환자 스케쥴상 다른 날 내원이 어려워 금일 주사시행.",
+    "ia2": "환자 스케쥴상 주1회 내원 밖에 안되어 당일 주사치료 2부위 시행함. 환자 증상 호소 심해 치료 요하는 상태임",
+    "twoSiteRules": "KK090 = LA274, LA272\nKK061\nKK062",
+    "intervalCodes": "LA358, KK090",
+    "lidoCodes": "A15",
+    "intervalDays": 7,
+    "reasonPriority": "twoSite",
+    "sideAuto": "SSNB, ANB, MRU, FNB, SNB",
+    "sideQuantity": "ANB, MRU, FNB",
+    "sideOmit": "",
+    "sideByCode": {},
+    "procedureTypes": {},
+    "sideKeep": "MBB",
+    "rename": "C-MBB > MBB C",
+    "icnb": "ICNB {좌우} 3 level",
+    "byRegion": {},
+    "byProc": {},
+    "splitEach": true,
+    "mark": "◈"
+  },
+  "CODEMAP": {
+    "LA247": {
+      "n": "SSNB",
+      "k": "proc",
+      "rg": "shoulder"
+    },
+    "LA248": {
+      "n": "ICNB",
+      "k": "proc",
+      "rg": "chest"
+    },
+    "LA251": {
+      "n": "CPB",
+      "k": "proc",
+      "rg": "cervical"
+    },
+    "LA272": {
+      "n": "SNB",
+      "k": "proc",
+      "rg": null
+    },
+    "LA274": {
+      "n": "FNB",
+      "k": "proc",
+      "rg": null
+    },
+    "LA321": {
+      "n": "Cervical epidural nerve block",
+      "k": "proc",
+      "rg": "cervical"
+    },
+    "LA346": {
+      "n": "ANB",
+      "k": "proc",
+      "rg": null
+    },
+    "LA347": {
+      "n": "MRU",
+      "k": "proc",
+      "rg": null
+    },
+    "LA354": {
+      "n": "SNRB(root)",
+      "k": "proc",
+      "rg": null
+    },
+    "LA357": {
+      "n": "PDNB",
+      "k": "proc",
+      "rg": null
+    },
+    "LA358": {
+      "n": "MBB",
+      "k": "proc",
+      "rg": null
+    },
+    "KK090": {
+      "n": "IA",
+      "k": "proc",
+      "rg": null
+    },
+    "KK010": {
+      "n": "근주",
+      "k": "skip",
+      "rg": null
+    },
+    "KK061": {
+      "n": "신경간내주사",
+      "k": "proc",
+      "rg": null
+    },
+    "KK062": {
+      "n": "건초내주사",
+      "k": "proc",
+      "rg": null
+    },
+    "LA232": {
+      "n": "안면신경차단",
+      "k": "proc",
+      "rg": null
+    },
+    "C8140010": {
+      "n": "천자",
+      "k": "note",
+      "rg": null,
+      "memo": "{부위} aspiration"
+    },
+    "E6611": {
+      "n": "도수근력검사",
+      "k": "note",
+      "rg": null,
+      "memo": "FF/FE Gr IV+"
+    },
+    "EB422": {
+      "n": "흉부초음파",
+      "k": "note",
+      "rg": null,
+      "memo": "x-ray에서 확인되지 않는 골절 여부 확인 위해 초음파 시행. {골절}"
+    },
+    "HA280": {
+      "n": "관절조영술",
+      "k": "note",
+      "rg": null,
+      "memo": "관절조영 시행"
+    },
+    "MM410": {
+      "n": "수압팽창술",
+      "k": "note",
+      "rg": null,
+      "memo": "어깨 통증 및 관절운동 제한 지속되어 수압팽창술 시행."
+    },
+    "M0031": {
+      "n": "이물제거술",
+      "k": "note",
+      "rg": null,
+      "memo": ""
+    },
+    "M0111": {
+      "n": "단순처치",
+      "k": "skip",
+      "rg": null
+    },
+    "M0121": {
+      "n": "염증성처치",
+      "k": "skip",
+      "rg": null
+    },
+    "carm1": {
+      "n": "C-arm",
+      "k": "skip",
+      "rg": null
+    },
+    "sono1": {
+      "n": "Sono",
+      "k": "skip",
+      "rg": null
+    },
+    "D7813": {
+      "n": "RA factor",
+      "k": "lab",
+      "rg": null
+    },
+    "D3065": {
+      "n": "HbA1c",
+      "k": "lab",
+      "rg": null
+    },
+    "D2310": {
+      "n": "요산",
+      "k": "lab",
+      "rg": null
+    },
+    "D3230040": {
+      "n": "싸이록신(T4)",
+      "k": "lab",
+      "rg": null
+    },
+    "D3230060": {
+      "n": "트리요도타이로닌(T3)",
+      "k": "lab",
+      "rg": null
+    },
+    "D3250010": {
+      "n": "TSH",
+      "k": "lab",
+      "rg": null
+    },
+    "D0002010": {
+      "n": "CBC 백혈구수",
+      "k": "lab",
+      "rg": null
+    },
+    "D0002030": {
+      "n": "CBC 적혈구수",
+      "k": "lab",
+      "rg": null
+    },
+    "D0002040": {
+      "n": "CBC 헤마토크리트",
+      "k": "lab",
+      "rg": null
+    },
+    "D0002050": {
+      "n": "CBC 혈색소",
+      "k": "lab",
+      "rg": null
+    },
+    "D0002070": {
+      "n": "CBC 혈소판수",
+      "k": "lab",
+      "rg": null
+    },
+    "A15": {
+      "n": "리도카인",
+      "k": "drug",
+      "rg": null
+    },
+    "A19": {
+      "n": "덱사",
+      "k": "drug",
+      "rg": null
+    },
+    "A21": {
+      "n": "트리암",
+      "k": "drug",
+      "rg": null
+    },
+    "A41": {
+      "n": "조영제",
+      "k": "drug",
+      "rg": null
+    },
+    "A49": {
+      "n": "아라간",
+      "k": "drug",
+      "rg": "knee"
+    }
+  },
+  "CODEMAP_DEL": []
+}

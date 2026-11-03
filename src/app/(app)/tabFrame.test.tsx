@@ -61,6 +61,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/revenue': 'revenue',
   '/ai-report': 'ai-report',
   '/worklog': 'worklog',
+  '/settings': 'settings',
 }
 
 describe('AC-515.5: 로그인하면 늘 대시보드가 첫 화면이다 (REQ-301)', () => {
@@ -153,9 +154,9 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-010.1·AC-515.4·AC-714.3·AC-012.4: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats와 /ai-report와 /worklog가 들어 있다', () => {
+  it('AC-307.3·AC-010.1·AC-515.4·AC-714.3·AC-012.4·AC-012.6: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/revenue·/ai-report·/worklog·/settings다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
-    expect(READY.map((f) => f.href)).toEqual(expect.arrayContaining(['/claim', '/revenue', '/claim/setup']))
+    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/revenue', '/ai-report', '/worklog', '/settings'])
     expect(READY.map((f) => f.href)).toContain('/stats')
     expect(READY.map((f) => f.href)).toContain('/ai-report')
     expect(READY.map((f) => f.href)).toContain('/worklog')
@@ -169,6 +170,8 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     }
     // 청구 사전점검 화면(ClaimEntry · SetupScreen)
     for (const href of ['/claim', '/claim/setup']) expect(read(pageFile(href)), href).toMatch(/from '@\/components\/claim\/setup\//)
+    // 설정 화면(SettingsPage)
+    expect(read(pageFile('/settings')), '/settings').toMatch(/from '@\/components\/settings\//)
   })
 
   it('AC-515.4: 통계는 세 곳(menu · features · notReady)이 맞고 /stats 페이지는 StatsScreen이다', () => {

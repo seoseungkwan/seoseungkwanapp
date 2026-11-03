@@ -27,7 +27,7 @@ class FakePort implements PortLike {
 }
 
 const SHA = 'b'.repeat(64)
-const HELLO_DATA = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+const HELLO_DATA = { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const FAKE_NAME = '가상환자01'
 const CHUNK_0 = `{"visits":[{"chart":"000123","name":"${FAKE_NAME.slice(0, 3)}`
 const CHUNK_1 = `${FAKE_NAME.slice(3)}","memo":"가짜"}]}`

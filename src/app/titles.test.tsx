@@ -64,7 +64,7 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
   })
 })
 
-// 앱 페이지 (탭 순서 + /admin)
+// 앱 페이지 15개 (탭 순서 13개 + /claim/setup + /admin)
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
   { path: '/stats', title: '통계', load: () => import('./(app)/stats/page') },
@@ -84,6 +84,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
   { path: '/revenue', title: '매출', load: () => import('./(app)/revenue/page') },
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
+  { path: '/settings', title: '설정', load: () => import('./(app)/settings/page') },
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },
 ]
 
@@ -92,11 +93,12 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(await staticTitle(load)).toBe(title)
   })
 
-  it('AC-402.4·AC-010.2: 앱 페이지 표는 MENU의 탭 주소와 /admin이 빠짐없이 있고, 탭 이름은 모두 다르다', async () => {
-    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/admin'].sort())
+  it('AC-402.4·AC-010.2: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin이 빠짐없이 있고, 15개의 탭 이름은 모두 다르다', async () => {
+    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/claim/setup', '/admin'].sort())
     const titles = await Promise.all(APP_PAGES.map(({ load }) => staticTitle(load)))
+    expect(titles).toHaveLength(15)
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(APP_PAGES.length)
+    expect(new Set(titles).size).toBe(15)
   })
 
   it('AC-010.2: /revenue 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "매출"이다(레이아웃이 "매출 · 의원 이름"으로 만든다)', async () => {

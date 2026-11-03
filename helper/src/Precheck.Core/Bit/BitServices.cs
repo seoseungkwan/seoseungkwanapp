@@ -16,7 +16,8 @@ public sealed class BitServices
         IConfirmWindow confirm,
         RegistrationStore store,
         Func<DateTime>? today = null,
-        Func<string>? newProfileId = null)
+        Func<string>? newProfileId = null,
+        IStatsScreens? screens = null)
     {
         Locator = locator ?? throw new ArgumentNullException(nameof(locator));
         Connector = connector ?? throw new ArgumentNullException(nameof(connector));
@@ -25,6 +26,7 @@ public sealed class BitServices
         Store = store ?? throw new ArgumentNullException(nameof(store));
         Today = today ?? (() => DateTime.Today);
         NewProfileId = newProfileId ?? RandomProfileId;
+        Screens = screens;
     }
 
     public IBitLocator Locator { get; }
@@ -36,6 +38,9 @@ public sealed class BitServices
     public IConfirmWindow Confirm { get; }
 
     public RegistrationStore Store { get; }
+
+    /// <summary>비트 통계 화면(claim.month의 83·83D·47 표, Precheck.Windows.VendorGridExport). 없으면 claim.month는 E-BIT-EXPORT-FAILED.</summary>
+    public IStatsScreens? Screens { get; }
 
     /// <summary>오늘(이 PC의 날짜). 기관기호를 다시 확인할 날이다.</summary>
     public Func<DateTime> Today { get; }

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import commands from './commands.json'
 import { EXTENSION_ID } from './extensionId'
@@ -21,6 +22,49 @@ describe('AC-004.1 확장 ID는 commands.json 한 곳에서', () => {
   it('AC-004.1 PROTOCOL은 commands.json의 protocol(1)이다', () => {
     expect(PROTOCOL).toBe(commands.protocol)
     expect(PROTOCOL).toBe(1)
+  })
+})
+
+describe('AC-035.5 bit.input 묶음의 직접 확인 표시', () => {
+  it('AC-035.5 items의 칸은 visitKey·chart·name·date·memo와 고르는 checkedByHand(참·거짓)다', () => {
+    const payload = commands.commands['bit.input'].args.payload
+    const fields = payload.fields.items.items.fields as Record<string, { type: string; optional?: boolean }>
+    expect(Object.keys(fields).sort()).toEqual(['chart', 'checkedByHand', 'date', 'memo', 'name', 'replaces', 'visitKey'])
+    expect(fields.checkedByHand).toEqual({ type: 'bool', optional: true })
+  })
+})
+
+describe('AC-037.1 bit.input 묶음의 승인한 비트 메모', () => {
+  it('AC-037.1 replaces는 고르는 글자 칸이고 1~4,000자다(AC-016.1의 메모 한도)', () => {
+    const fields = commands.commands['bit.input'].args.payload.fields.items.items.fields as Record<string, unknown>
+    expect(fields.replaces).toEqual({ type: 'string', min: 1, max: 4000, optional: true })
+  })
+
+  it('AC-037.5 AC-037.1 명령 표 어디에도 묻지 않기 칸과 originals가 없다: 사이트는 켤 수도 쓸 수도 없다', () => {
+    const table = JSON.stringify(commands.commands)
+    expect(table).not.toMatch(/noAsk|no_ask|originals|previousMemo/i)
+  })
+})
+
+describe('AC-036.1 bit.input 묶음의 처방코드', () => {
+  const field = () => commands.commands['bit.input'].args.payload.fields.code
+  const shape = () => new RegExp(field().pattern)
+
+  it('AC-036.1 code는 고르는 글자 칸이고 도우미가 처방 코드를 읽을 때의 허용 목록과 같다', () => {
+    expect(field()).toEqual({ type: 'string', min: 1, max: 20, pattern: '^[0-9A-Z][0-9A-Z.-]{0,19}$', optional: true })
+    expect(commands.commands['bit.input'].args.payload.fields.items.min).toBe(1)
+  })
+
+  it('AC-036.1 코드 표 42개가 대문자로 모두 든다', () => {
+    // 표 파일은 tables.ts만 import한다(AC-007.4). 시험은 파일 글자로 읽는다
+    const codeMap = JSON.parse(readFileSync(new URL('../precheck/data/codeMap.json', import.meta.url), 'utf-8')) as Record<string, unknown>
+    const codes = Object.keys(codeMap)
+    expect(codes).toHaveLength(42)
+    expect(codes.filter((code) => !shape().test(code.toUpperCase()))).toEqual([])
+  })
+
+  it.each(['', 'la358', '처방코드', ' LA358', 'LA358 ', 'LA 358', '.LA358', '-LA358', 'ABCDEFGHIJ0123456789X'])('AC-036.1 틀린 모양(%j)은 표에서 걸린다', (code) => {
+    expect(shape().test(code)).toBe(false)
   })
 })
 

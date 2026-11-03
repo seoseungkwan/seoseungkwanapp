@@ -18,7 +18,7 @@ export type DashboardFeature = {
   status: FeatureStatus
 }
 
-// 탭 순서(대시보드 뺌). 설정은 이미 있는 비트 PC 연결 화면(/claim/setup)으로 간다(design.md '설정 탭은 /claim/setup으로 간다')
+// 탭 순서(대시보드 뺌). 설정은 설정 화면(/settings)으로 간다(precheck AC-012.6)
 export const DASHBOARD_FEATURES: readonly DashboardFeature[] = [
   { name: '통계', desc: '환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수', href: '/stats', status: 'connect-first' },
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
@@ -31,5 +31,5 @@ export const DASHBOARD_FEATURES: readonly DashboardFeature[] = [
   { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' },
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
   { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'soon' },
-  { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/claim/setup', status: 'ready' },
+  { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/settings', status: 'ready' },
 ]

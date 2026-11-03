@@ -1,5 +1,5 @@
 // 앱 탭 줄의 항목 (tab-frame REQ-302, design.md '탭 목록'). 13개 모두 자기 주소(path)로 가는 링크다.
-// 화면이 아직 없는 기능은 그 주소의 '준비 중' 화면, 설정은 비트 PC 연결 화면(/claim/setup)으로 간다.
+// 화면이 아직 없는 기능은 그 주소의 '준비 중' 화면이다. 비트 PC 연결 화면(/claim/setup)은 설정 탭 자리에 속한다(owns).
 // 관리자 화면은 탭이 아니라 계정 메뉴의 [가입 승인](ADMIN_LINK)이다
 export type MenuLabel =
   | '대시보드'
@@ -28,18 +28,18 @@ export type MenuPath =
   | '/worklog'
   | '/inventory'
   | '/contacts'
-  | '/claim/setup'
+  | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/revenue' | '/ai-report' | '/worklog'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/revenue' | '/ai-report' | '/worklog' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
-  /** 탭이 가는 곳(모두 있다). 화면이 없는 기능은 그 기능 주소의 '준비 중' 화면, 설정은 비트 PC 연결 화면 */
+  /** 탭이 가는 곳(모두 있다). 화면이 없는 기능은 그 기능 주소의 '준비 중' 화면 */
   path: MenuPath
   /** 기능 자신의 화면. 아직 없으면 null. 있으면 path와 같다.
-   *  SetupScreen이 설정의 이 값으로 [청구·연락] 링크를 정한다(null = 준비 중) */
+   *  SetupScreen이 설정의 이 값으로 [청구·연락] 링크를 정한다 */
   href: MenuHref | null
-  /** 이 탭 자리에 속하는 다른 화면 경로(지금은 쓰는 항목 없음. 설정이 /settings를 가지면 /claim/setup을 여기에 둔다) */
+  /** 이 탭 자리에 속하는 다른 화면 경로(설정 탭의 비트 PC 연결 /claim/setup) */
   owns?: readonly string[]
   /** 지금 쓸 수 있는 화면이 있다. false면 그 주소는 '준비 중' 화면이고 [전체 메뉴] 판에 "준비 중" 칩이 붙는다(ui-90 AC-416.4).
    *  false인 주소들은 common/notReadyFeatures.ts의 NOT_READY_FEATURES와 같다(시험이 견준다) */
@@ -59,10 +59,9 @@ export const MENU: readonly MenuItem[] = [
   { label: '업무일지', path: '/worklog', href: '/worklog', ready: true },
   { label: '재고', path: '/inventory', href: null, ready: false },
   { label: '주소록', path: '/contacts', href: null, ready: false },
-  // 설정 href는 null이어야 한다: 설치·연결 확인 화면(SetupScreen)이 이 값으로 [청구·연락] 링크를 정한다.
-  // '/claim/setup'을 넣으면 [청구·연락]이 지금 보고 있는 화면 자신을 가리키는 링크가 된다(design.md '설정 탭은 /claim/setup으로 간다').
-  // 설정 화면(/settings)이 생기면 path·href를 '/settings'로, owns를 ['/claim/setup']으로 바꾼다
-  { label: '설정', path: '/claim/setup', href: null, ready: true },
+  // 설정 화면 /settings(precheck AC-012.6). 비트 PC 연결(/claim/setup)에 있어도 설정 탭이 지금 탭이다.
+  // SetupScreen의 [청구·연락]은 이 href로 가는 링크가 된다
+  { label: '설정', path: '/settings', href: '/settings', owns: ['/claim/setup'], ready: true },
 ]
 
 // 관리자만, 계정 메뉴 첫 항목(REQ-304)

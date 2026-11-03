@@ -1310,7 +1310,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
   type Answer = 'silent' | ((id: string) => unknown[])
   const result = (data: unknown): Answer => (id) => [{ v: 1, id, type: 'result', data }]
   const error = (code: string): Answer => (id) => [{ v: 1, id, type: 'error', code }]
-  const HELLO_OK = { helperVersion: '0.2.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
+  const HELLO_OK = { helperVersion: '0.3.0', protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
   const steps = [
     { name: 'find', ok: true },
     { name: 'db', ok: true },

@@ -1,5 +1,7 @@
 // Supabase 표 줄 모양(손으로 씀, supabase CLI 타입 생성은 쓰지 않는다).
-// 기준은 supabase/migrations/20261028000000_auth.sql
+// 기준은 supabase/migrations/20261028000000_auth.sql, 청구 설정 표는 20261030000000_precheck_settings.sql
+import type { DxLink, Grade } from '@/types/precheck'
+
 export type HospitalStatus = 'pending' | 'approved' | 'rejected'
 
 export type HospitalRow = {
@@ -47,4 +49,60 @@ export type StatsCoverageRow = {
   to_day: string // 'YYYY-MM-DD'
   source: StatsSourceColumn
   created_at: string
+}
+
+// 청구 설정 표(precheck design.md 8-1). hospital_id·updated_at·id는 DB가 정한다(읽기만, 보내지 않는다)
+export type ClaimRuleSettingRow = {
+  hospital_id: string
+  rule_id: string // ^[A-Z]{2}-[0-9]{2,3}[a-z]?$
+  enabled: boolean
+  grade: Grade | null // null = 규칙표 기본 등급
+  updated_at: string
+}
+
+export type ClaimHospitalSettingsRow = {
+  hospital_id: string
+  phrases: object // 원본 병원 문구 설정 모양, 256KB 미만
+  dx_links: DxLink[] // 256KB 미만
+  updated_at: string
+}
+
+/** 날짜별 건수(design.md 8-2, 표는 TASK-19 마이그레이션). 글자 칸이 없다 */
+export type ClaimDayCountRow = {
+  hospital_id: string
+  visit_date: string // YYYY-MM-DD
+  visits: number // 그 줄을 올릴 때 claim.dates가 준 진료 수(AC-019.3)
+  need_memo: number
+  entered: number
+  needs_check: number
+  skipped: number
+  updated_at: string
+}
+
+/** 월말 마감 남은 일(design.md 8-2, TASK-22가 쓴다). 글자 칸이 없다 */
+export type ClaimMonthCountRow = {
+  hospital_id: string
+  claim_month: string // 그 달 1일 YYYY-MM-01
+  incomplete: number
+  missing: number
+  flagged: number
+  updated_at: string
+}
+
+/** 연락 남은 건수(design.md 8-2, TASK-26이 쓴다). 병원마다 한 줄, 글자 칸이 없다 */
+export type ContactCountRow = {
+  hospital_id: string
+  followup_left: number
+  injection_left: number
+  updated_at: string
+}
+
+export type MessageTemplateRow = {
+  id: string
+  hospital_id: string
+  kind: 'injection' | 'followup'
+  name: string // 1~30자
+  body: string // 1~2000자
+  sort_order: number // 0~99
+  updated_at: string
 }

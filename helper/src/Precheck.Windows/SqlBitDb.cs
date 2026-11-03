@@ -16,7 +16,8 @@ public sealed class SqlBitConnector : IBitConnector
 /// <summary>
 /// 비트 DB 세션(AC-005.3). 원본처럼 스냅숏 격리를 쓸 수 있는지 본 뒤 트랜잭션을 열고, 끝내지 않는다(Commit 없음):
 /// 닫으면 되돌린다. 읽기는 ReadOnlyGuard를 지난 Sql 상수만, Sql 매개변수 표의 종류·길이로 붙인 매개변수와 함께.
-/// SQL 글자를 이어 붙이는 길이 없다.
+/// SQL 글자를 이어 붙이는 길이 없다. 시간 제한은 문장마다 부르는 쪽이 원본 값으로 준다(메타 15초·이력 150초·메모 120초·추세 240초 등,
+/// Sql.*Timeout, AC-008.4). 시간이 지나면 SqlException이라 E-BIT-READ-FAILED가 된다.
 /// </summary>
 public sealed class SqlBitDb : IBitSession
 {
@@ -61,6 +62,12 @@ public sealed class SqlBitDb : IBitSession
         using var command = new SqlCommand(sql, connection, transaction) { CommandTimeout = ReadOnlyConnection.Seconds(timeout) };
         foreach (var parameter in Sql.ParametersOf(sql))
         {
+            if (parameter.Kind == SqlParamKind.Int)
+            {
+                // 원본 Parameters.Add("@minimum", SqlDbType.Int)
+                command.Parameters.Add(parameter.Name, SqlDbType.Int).Value = (int)args[parameter.Name]!;
+                continue;
+            }
             var type = parameter.Kind == SqlParamKind.VarChar ? SqlDbType.VarChar : SqlDbType.Char;
             command.Parameters.Add(parameter.Name, type, parameter.Size).Value = (string)args[parameter.Name]!;
         }

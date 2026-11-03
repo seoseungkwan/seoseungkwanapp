@@ -16,6 +16,9 @@ import * as menuModule from './menu'
 import { ADMIN_LINK, MENU, currentMenuLabel } from './menu'
 import { TabBar } from './TabBar'
 
+// 시험 내용과 상관없이, PC가 바쁠 때 기본 5초를 넘겨 실패하는 일만 막는다
+vi.setConfig({ testTimeout: 60_000 })
+
 // 앱 틀 (REQ-008, b2b-redesign REQ-218, design.md '앱 틀·대시보드·관리자', UI_GUIDE '앱 화면' 앱 틀·탭·폰).
 // jsdom은 CSS를 계산하지 않는다 → 동작·역할은 Testing Library로, 모양은 정해 둔 클래스가 있는지로 본다(보이는 모양은 TASK-18 스크린샷)
 
@@ -47,7 +50,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['업무일지', '/worklog'],
   ['재고', '/inventory'],
   ['주소록', '/contacts'],
-  ['설정', '/claim/setup'],
+  ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
 const READY = ['대시보드', '통계', '청구', '매출', 'AI 리포트', '업무일지']
@@ -88,7 +91,7 @@ const panel = () => {
   const id = allButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·매출·AI 리포트·업무일지·설정(비트 PC 연결 화면)
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·매출·AI 리포트·업무일지·설정
 const READY_TABS = ['대시보드', '통계', '청구', '매출', 'AI 리포트', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
@@ -116,7 +119,7 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-012.2: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 매출 /revenue · AI 리포트 /ai-report · 업무일지 /worklog이고 나머지(설정 포함)는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-012.2·AC-012.6: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 매출 /revenue · AI 리포트 /ai-report · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
@@ -124,11 +127,16 @@ describe('menu', () => {
       { label: '매출', href: '/revenue' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '업무일지', href: '/worklog' },
+      { label: '설정', href: '/settings' },
     ])
-    expect(MENU.filter((m) => m.href === null).map((m) => m.label)).toEqual(NOT_READY)
-    // 설치·연결 확인 화면(SetupScreen)의 [청구·연락]이 고치지 않고도 '준비 중'이려면 설정 href가 null이어야 한다
-    expect(MENU.find((m) => m.label === '설정')?.href).toBeNull()
+    expect(MENU.filter((m) => m.href === null).map((m) => m.label)).toEqual(NOT_READY_TABS)
     for (const { label, path, href } of MENU) if (href !== null) expect(href, label).toBe(path)
+  })
+
+  it('AC-012.6: 탭의 [설정]은 /settings로 가고, 비트 PC 연결(/claim/setup)은 설정 탭 자리에 속한다(owns)', () => {
+    const settings = MENU.find((m) => m.label === '설정')
+    expect(settings?.path).toBe('/settings')
+    expect(settings?.owns).toEqual(['/claim/setup'])
   })
 
   it('AC-006.4·AC-302.4·AC-010.1: 지금 탭 — /claim과 /claim/*은 청구, 설치·연결 확인(/claim/setup)은 목업처럼 설정 자리', () => {
@@ -137,6 +145,8 @@ describe('menu', () => {
     expect(currentMenuLabel('/claim/close')).toBe('청구')
     expect(currentMenuLabel('/claim/setup')).toBe('설정')
     expect(currentMenuLabel('/claim/setup/x')).toBe('설정')
+    expect(currentMenuLabel('/settings')).toBe('설정')
+    expect(currentMenuLabel('/settings/x')).toBe('설정')
     expect(currentMenuLabel('/claimed')).toBeNull()
     expect(currentMenuLabel('/admin')).toBeNull()
     expect(currentMenuLabel('/worklog')).toBe('업무일지')
@@ -151,7 +161,7 @@ describe('menu', () => {
     expect(currentMenuLabel('/stats')).toBe('통계')
     expect(currentMenuLabel('/stats/x')).toBe('통계')
     expect(currentMenuLabel('/ai-report')).toBe('AI 리포트')
-    for (const path of ['/admin', '/', '/statsx', '/claimx', '/settings']) expect(currentMenuLabel(path), path).toBeNull()
+    for (const path of ['/admin', '/', '/statsx', '/claimx', '/settingsx']) expect(currentMenuLabel(path), path).toBeNull()
   })
 
   it('AC-303.4·AC-304.1: 관리자 링크는 탭이 아니라 계정 메뉴의 [가입 승인] /admin(ADMIN_LINK). 옛 관리자 탭(ADMIN_ITEM)은 없다', () => {
@@ -205,7 +215,8 @@ describe('TabBar', () => {
   })
 
   it.each([
-    ['/claim/setup', '설정', '/claim/setup'],
+    ['/claim/setup', '설정', '/settings'],
+    ['/settings', '설정', '/settings'],
     ['/stats', '통계', '/stats'],
     ['/stats/x', '통계', '/stats'],
     ['/contacts', '주소록', '/contacts'],

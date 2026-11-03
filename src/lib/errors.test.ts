@@ -44,6 +44,14 @@ const ALL_CODES = [
   'E-STATS-CHANGED',
   'E-STATS-SAVE-FAILED',
   'E-STATS-READ-FAILED',
+  'E-RULES-LOAD-FAILED',
+  'E-SETTINGS-FAILED',
+  'E-MEMO-NO-SETTINGS',
+  'E-CLAIM-PARTIAL',
+  'E-BIT-EXPORT-FAILED',
+  'E-INPUT-STOPPED',
+  'E-BIT-UNSAVED-RX',
+  'E-BIT-UI-CHANGED',
   'E-AI-BUSY',
   'E-AI-LIMIT',
   'E-AI-FAILED',
@@ -52,6 +60,7 @@ const ALL_CODES = [
   'E-WORKLOG-SAVE-FAILED',
   'E-WORKLOG-LOAD-FAILED',
   'E-WORKLOG-NOTE-PRIVATE',
+  'E-COUNTS-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -386,6 +395,69 @@ describe('AC-507.1·AC-507.2 통계 저장·읽기 오류 번호', () => {
   })
 })
 
+// 점검 표 불러오기(precheck TASK-7): Worker가 표 네 개를 import()로 불러오다 실패하거나 모양이 틀리면 점검을 시작하지 않는다
+describe('AC-007.5 점검 표 불러오기 오류 문구', () => {
+  it('AC-007.5: E-RULES-LOAD-FAILED는 lib/errors.ts에 무엇이·어떻게 고치나가 있다', () => {
+    expect(Object.keys(ERRORS)).toContain('E-RULES-LOAD-FAILED')
+    expect(isErrorCode('E-RULES-LOAD-FAILED')).toBe(true)
+  })
+
+  it('AC-007.5: 점검 규칙표를 불러오지 못해 점검을 시작하지 않았다고 알리고, 오류 카드의 [다시 불러오기]를 안내한다', () => {
+    const info = errorInfo('E-RULES-LOAD-FAILED')
+    expect(info.what).toContain('규칙표')
+    expect(info.what).toContain('점검을 시작하지 않았어요')
+    expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
+// 청구메모(precheck TASK-14): 병원 설정이 없거나 틀린 병원은 메모를 만들지 않는다
+describe('AC-014.8 메모 설정 없음 오류 문구', () => {
+  it('AC-014.8: E-MEMO-NO-SETTINGS는 처음 질문을 먼저 하라고 알리고 무엇을 고칠지 있다', () => {
+    expect(isErrorCode('E-MEMO-NO-SETTINGS')).toBe(true)
+    const info = errorInfo('E-MEMO-NO-SETTINGS')
+    expect(info.what).toBe('처음 질문을 먼저 해 주세요')
+    expect(info.fix.length).toBeGreaterThan(0)
+    expect(info.fix).toContain('점검 결과')
+  })
+})
+
+// 규칙 설정(precheck TASK-12): 서버 설정 표를 읽거나 쓰지 못함. 저장 실패는 값을 그대로 두고 [다시 저장], 불러오기 실패는 표 없이 [다시 불러오기]
+describe('AC-012.5 설정 저장 오류 문구', () => {
+  it('AC-012.5: E-SETTINGS-FAILED는 무엇이·어떻게 고치나가 있고, 저장하던 중일 때만 고친 값이 그대로 있다고 알린다(불러오기 실패에는 고친 값도 표도 없다)', () => {
+    expect(isErrorCode('E-SETTINGS-FAILED')).toBe(true)
+    const info = errorInfo('E-SETTINGS-FAILED')
+    expect(info.what).toContain('설정')
+    expect(info.fix).toContain('저장하던 중이었다면 고친 값은 화면에 그대로 있어요')
+    expect(info.fix).toContain('다시 눌러')
+    expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
+// 한 달 자료(precheck TASK-9): 조각이 다 오지 않았거나 모양이 틀리면 Worker가 점검을 돌리지 않고 이 번호만 화면에 알린다
+describe('AC-009.2·AC-008.4 한 달 자료 멈춤 오류 문구', () => {
+  it('AC-009.2: E-CLAIM-PARTIAL은 자료가 다 오지 않아 점검을 멈췄다고 알리고 [다시 불러오기]로 다시 불러오라고 한다', () => {
+    expect(isErrorCode('E-CLAIM-PARTIAL')).toBe(true)
+    const info = errorInfo('E-CLAIM-PARTIAL')
+    expect(info.what).toBe('자료가 다 오지 않아 점검을 멈췄어요')
+    expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('다시 불러오세요')
+  })
+
+  it('AC-009.2: E-CLAIM-PARTIAL은 Worker가 죽어 다시 불러와도 안 될 때 화면을 새로 고치라고 안내한다', () => {
+    const info = errorInfo('E-CLAIM-PARTIAL')
+    expect(info.fix).toContain('새로 고친')
+  })
+
+  it('AC-008.4: E-BIT-EXPORT-FAILED(도우미가 비트 통계 화면 표를 꺼내지 못함, design.md 4-5)는 무엇이·어떻게 고치나가 있다', () => {
+    expect(isErrorCode('E-BIT-EXPORT-FAILED')).toBe(true)
+    const info = errorInfo('E-BIT-EXPORT-FAILED')
+    expect(info.what).toContain('비트 통계 화면')
+    expect(info.fix).toContain('[다시 불러오기]')
+    expect(info.fix).toContain('오류 번호와 함께 문의해 주세요')
+  })
+})
+
 // AI 리포트(spec ai-report design.md '오류 문구')
 const AI_CODES = ['E-AI-BUSY', 'E-AI-LIMIT', 'E-AI-FAILED', 'E-AI-NO-DATA'] as const
 
@@ -462,5 +534,31 @@ describe('AC-009.3 업무일지 오류 번호 문구', () => {
   it('AC-009.3: E-WORKLOG-NOTE-PRIVATE는 비고뿐 아니라 막힌 칸 전체를 말한다("비고"가 없다)', () => {
     const { what, fix } = errorInfo('E-WORKLOG-NOTE-PRIVATE')
     expect(`${what} ${fix}`).not.toContain('비고')
+  })
+})
+
+// 메모 화면(precheck TASK-18): 입력 멈춤 번호의 글과 처음 질문의 갈 곳
+describe('AC-018.21·AC-018.18 입력 쪽 오류 글', () => {
+  it.each([
+    ['E-INPUT-STOPPED', '비트 입력을 끝까지 하지 못했어요', '비트 화면을 확인한 뒤 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.'],
+    ['E-BIT-UNSAVED-RX', '비트에 저장하지 않은 처방 창이 떠 있어요', '그 창을 마무리한 뒤 다시 눌러 주세요.'],
+    ['E-BIT-UI-CHANGED', '비트 화면이 달라져 입력을 멈췄어요', '비트가 업데이트됐을 수 있어요. 아래 칸 이름과 오류 번호를 함께 문의해 주세요.'],
+  ])('AC-018.21: %s의 번호와 글', (code, what, fix) => {
+    expect(isErrorCode(code)).toBe(true)
+    expect(errorInfo(code as ErrorCode)).toEqual({ what, fix })
+  })
+
+  it('AC-018.18: E-MEMO-NO-SETTINGS의 fix는 갈 곳을 말한다(처음 질문 화면은 아직 없다)', () => {
+    expect(errorInfo('E-MEMO-NO-SETTINGS').fix).toBe('메모를 만들려면 문구 설정이 먼저 있어야 해요. 처음 질문 화면은 아직 준비 중이에요. 그 전에 메모가 필요하면 개발자에게 문의해 주세요. 점검 결과는 그대로 볼 수 있어요.')
+  })
+})
+
+describe('AC-019.4 건수 오류 문구', () => {
+  it('AC-019.4: E-COUNTS-FAILED는 무엇이·어떻게 고치나가 있고 환자 메모에 영향이 없다고 알린다. 다시 시도하는 때를 말한다', () => {
+    expect(isErrorCode('E-COUNTS-FAILED')).toBe(true)
+    const info = errorInfo('E-COUNTS-FAILED')
+    expect(info.what).toContain('건수')
+    expect(info.fix).toContain('다시')
+    expect(info.fix).toContain('영향이 없어요')
   })
 })
