@@ -451,3 +451,48 @@ describe('AC-514.7 파일 안내를 정하는 값', () => {
     expect(view.result.current.fromFile).toBe(false)
   })
 })
+
+describe('AC-802.7 revision', () => {
+  it('AC-802.7 처음에는 0이고 저장에 성공하면 는다', async () => {
+    const view = draw()
+    await settled(view)
+    expect(view.result.current.revision).toBe(0)
+
+    await act(async () => {
+      await view.result.current.save(SAVE_BIT)
+    })
+    expect(view.result.current.revision).toBe(1)
+  })
+
+  it('AC-802.7 저장에 실패하면 늘지 않고, 다시 저장해 성공하면 는다', async () => {
+    const view = draw()
+    await settled(view)
+    vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패'))
+    await act(async () => {
+      await view.result.current.save(SAVE_FILE)
+    })
+    expect(view.result.current.revision).toBe(0)
+
+    await act(async () => {
+      await view.result.current.retrySave()
+    })
+    expect(view.result.current.revision).toBe(1)
+  })
+
+  it('AC-802.7 [다시 읽기]를 누르면 는다', async () => {
+    const view = draw()
+    await settled(view)
+    act(() => view.result.current.reread())
+    expect(view.result.current.revision).toBe(1)
+    await settled(view)
+    expect(view.result.current.revision).toBe(1)
+  })
+
+  it('AC-802.7 기간을 바꾸는 것만으로는 늘지 않는다', async () => {
+    const view = draw()
+    await settled(view)
+    view.rerender({ period: '7d' })
+    await settled(view)
+    expect(view.result.current.revision).toBe(0)
+  })
+})
