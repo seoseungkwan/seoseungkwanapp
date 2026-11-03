@@ -235,8 +235,8 @@
 | `scale.ts` | `niceScale`: 눈금 간격과 최대 |
 | `KpiStat` | 이름 + Sparkline → 값 + 단위 → 증감 줄 |
 | `Sparkline` | 작은 선 그래프(88×28, 작은 것 56×22) |
-| `StackedBarChart` | 주별 쌓은 막대(신환·재진) + 화면 읽기 표 |
-| `ChartLegend` | 범례(accent 면 · chart-3 면 · 빗금 · 지난 기간 막대) |
+| `StackedBarChart` | 주별 쌓은 막대(신환·재진, 계열 색 `accent`·`chart-3`·`hatch-warning`) + 화면 읽기 표. `hideZeroTotals`: 합계 0인 칸은 막대 위 글자 없음 |
+| `ChartLegend` | 범례(accent 면 · chart-3 면 · 빗금 `hatch` · 구분 없음 빗금 `hatch-warning` · 지난 기간 막대) |
 | `RankedBars` | 순위 막대(동네 등) |
 | `InlineBar` | 표 줄 안 작은 막대(이번 값 + 지난 기간 눈금) |
 
@@ -245,7 +245,7 @@
   - inline style은 % 값(0~100, 소수 둘째 자리)뿐이다: 쌓은 막대 `height`·`bottom`, 순위 막대 `width`, 줄 안 막대 `width`·`left`
   - SVG는 Sparkline, 빗금(패턴·id 없이 `<path stroke="currentColor">` 하나, 4px 간격), 화살표, 범례 표시에만 쓴다
 - **색은 토큰 클래스로만 준다**(`fill-accent`·`stroke-accent`·`bg-chart-3`·`bg-line-strong`·`bg-faint` …). svg의 `fill`·`stroke` 속성 값은 `currentColor`·`none`뿐이다
-  - 신환 `accent`, 재진 `chart-3`, 지난 기간 `faint`(표시만, `bg-faint`), '그 밖'·'주소 없음' `line-strong`
+  - 신환 `accent`, 재진 `chart-3`, 구분 없음 `warning`(`bg-warning-soft` 바탕 + `text-warning` 빗금), 지난 기간 `faint`(표시만, `bg-faint`), '그 밖'·'주소 없음' `line-strong`
   - Sparkline: 면 `accent-soft` → 선 `accent` 1.5 → 끝점(`accent`, 테두리 `surface`)
 - **접근성.** 그림은 모두 `aria-hidden="true"`이고 `role="img"`를 쓰지 않는다
   - 쌓은 막대는 `sr-only` 표가 숫자를 준다(caption "<제목> (<단위>)", 기간 · 계열 · 합계 · 상태)
@@ -262,6 +262,8 @@
 - **쌓은 막대.** 첫 계열이 맨 위이고 범례 첫째다. 계열 사이는 2px 띄운다. 막대 폭은 칸의 반, 최대 40px(`compact` 20px)
   - 막대 위 합계는 caption ink-2이고, 마지막 완료 칸만 600 ink다
   - 집계 중·일부 기간 칸은 한 막대로 그리고 빗금(accent 1px 선, 4px 간격 45°) + 1px accent 테두리를 쓴다. 기본 크기에서는 위에 "집계 중"·"일부 기간"을 붙인다
+  - 구분 없음 조각(`hatch-warning`)은 쌓은 막대의 한 조각이고 `warning-soft` 바탕 + 빗금(warning 1px 선, 같은 간격) + 1px warning 테두리다. 범례 표시도 같은 색이다
+  - `hideZeroTotals`를 주면 합계 0인 칸은 막대 위 글자(합계·상태)가 없다. 화면 읽기 표는 그대로다
 - **순위 막대.** 값 큰 순(같으면 받은 순서), '그 밖' 항목은 맨 뒤. 막대 높이 10px, 폭은 '그 밖' 아닌 최대 값 대비 %. 값 "168명"(small 600), 몫 "23.5%"(small muted, 버림)
 - **불러오기.** 폴더 밖에서는 `react` 타입과 `@/types/analysis`의 타입(`Delta`·`BucketState`)만 불러온다. 차트 라이브러리를 쓰지 않는다(새 npm 패키지 없음)
 - 차트 툴팁(마우스 올림 상자)은 이번에 없다. 다음 대시보드 명세에서 정한다

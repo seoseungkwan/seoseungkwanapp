@@ -122,3 +122,66 @@ describe('AC-205.5: ChartLegend — <ul> 안에 항목마다 10×10 색 표시(a
     expect(itemsOf(render([]).root)).toHaveLength(0)
   })
 })
+
+// 구분 없음 표시 (rx-picker AC-805.3 범례 모양·AC-806.4, design.md '차트 부품', 시안 docs/mockups/rx-picker/index.html의 .s-gap). 지금 시험은 고치지 않고 여기에 더한다
+describe('AC-805.3: ChartLegend hatch-warning — 구분 없음 표시(10×10, text-warning 빗금)', () => {
+  const GAP: LegendItem[] = [
+    { label: '신환', mark: 'accent' },
+    { label: '재진', mark: 'chart-3' },
+    { label: '구분 없음', mark: 'hatch-warning' },
+  ]
+  const gapMark = () => markOf(itemsOf(render(GAP).root)[2]!)
+
+  it('AC-805.3: 구분 없음 표시는 10×10 aria-hidden svg이고 text-warning 선, bg-warning-soft 바탕이며 줄어들지 않는다', () => {
+    const mark = gapMark()
+    expect(mark.tagName.toLowerCase()).toBe('svg')
+    expect(mark.getAttribute('aria-hidden')).toBe('true')
+    expect(mark.getAttribute('width')).toBe('10')
+    expect(mark.getAttribute('height')).toBe('10')
+    expect(mark.getAttribute('viewBox')).toBe('0 0 10 10')
+    expectClasses(mark, 'shrink-0', 'text-warning', 'bg-warning-soft')
+    expect(classesOf(mark)).not.toContain('text-accent')
+  })
+
+  it('AC-806.4: 그림은 집계 중 빗금(테두리 + 선 세 개)과 같고 색 클래스만 다르다', () => {
+    const hatch = markOf(itemsOf(render([{ label: '집계 중', mark: 'hatch' }]).root)[0]!)
+    expect(gapMark().innerHTML).toBe(hatch.innerHTML)
+    for (const el of Array.from(gapMark().querySelectorAll('*'))) {
+      for (const attr of ['fill', 'stroke']) {
+        const value = el.getAttribute(attr)
+        if (value !== null) expect(['currentColor', 'none'], `${el.tagName} ${attr}`).toContain(value)
+      }
+    }
+  })
+
+  it('AC-805.3: 패턴·id·그라데이션·inline style이 없다', () => {
+    const { root, html } = render(GAP)
+    expect(html).not.toMatch(/<pattern|gradient/i)
+    expect(html).not.toContain('url(#')
+    expect(root.querySelectorAll('[id]')).toHaveLength(0)
+    expect(root.querySelectorAll('[style]')).toHaveLength(0)
+  })
+
+  it('AC-805.3: 범례는 신환·재진·구분 없음 차례이고 이름은 small ink-2다', () => {
+    const items = itemsOf(render(GAP).root)
+    expect(items.map(textOf)).toEqual(['신환', '재진', '구분 없음'])
+    expectClasses(nameOf(items[2]!), 'text-small', 'text-ink-2')
+  })
+
+  it('AC-805.3: 새 값을 쓰지 않으면 지금 마크업과 한 글자도 다르지 않다', () => {
+    const li = (mark: string, label: string) => `<li class="flex items-center gap-1.5 whitespace-nowrap">${mark}<span class="text-small text-ink-2">${label}</span></li>`
+    const fill = (classes: string) => `<span aria-hidden="true" class="shrink-0 ${classes}"></span>`
+    const hatch =
+      '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" class="shrink-0 text-accent">' +
+      '<rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"></rect>' +
+      '<path d="M0 6 L6 0 M0 10 L10 0 M4 10 L10 4" fill="none" stroke="currentColor" stroke-width="1"></path></svg>'
+    expect(render().html).toBe(
+      '<ul class="flex flex-wrap items-center gap-x-4 gap-y-1">' +
+        li(fill('size-2.5 bg-accent'), '신환') +
+        li(fill('size-2.5 bg-chart-3'), '재진') +
+        li(hatch, '집계 중') +
+        li(fill('h-3 w-0.5 bg-faint'), '그 전 주') +
+        '</ul>',
+    )
+  })
+})

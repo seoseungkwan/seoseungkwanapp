@@ -633,3 +633,206 @@ describe('AC-513.2: comparison — 쌓은 막대 왼쪽의 가는 비교 기간 
     expect(html).not.toMatch(/animate-|transition/)
   })
 })
+
+// 구분 없음 빗금 조각 (rx-picker REQ-806 AC-806.4, design.md '차트 부품', 시안 docs/mockups/rx-picker/index.html의 .s-gap). 지금 시험은 고치지 않고 여기에 더한다.
+// 예시 값은 지어낸 것이다
+const SPLIT_SERIES: BarSeries[] = [
+  { name: '신환', tone: 'accent' },
+  { name: '재진', tone: 'chart-3' },
+  { name: '구분 없음', tone: 'hatch-warning' },
+]
+const SPLIT_BUCKETS: BarBucket[] = [
+  { key: 'd1', label: '1', rangeLabel: '11월 1일', state: 'complete', values: [10, 25, 5] }, // 합계 40, 눈금 최대 40
+  { key: 'd2', label: '2', rangeLabel: '11월 2일', state: 'complete', values: [8, 12, 0] }, // 구분 없음 0
+  { key: 'd3', label: '3', rangeLabel: '11월 3일', state: 'in-progress', values: [3, 4, 3] }, // 덜 끝난 칸
+]
+const splitChart = (props: Partial<Parameters<typeof StackedBarChart>[0]> = {}) => chart({ series: SPLIT_SERIES, buckets: SPLIT_BUCKETS, ...props })
+const gapSegment = (root: Element) => segmentsOf(bars(figureOf(root))[0]!)[2]!
+
+describe('AC-806.4: hatch-warning 계열 — 쌓은 막대의 구분 없음 조각(bg-warning-soft + text-warning 빗금 path)', () => {
+  it('AC-806.4: 구분 없음은 신환·재진 아래 셋째 조각이고 바탕은 bg-warning-soft, 1px warning 테두리(시안 .s-gap), 높이는 값/합계 %다', () => {
+    const list = bars(figureOf(splitChart().root))
+    const segments = segmentsOf(list[0]!)
+    expect(segments).toHaveLength(3)
+    expectClasses(segments[0], 'bg-accent')
+    expectClasses(segments[1], 'bg-chart-3')
+    expectClasses(segments[2], 'relative', 'w-full', 'border', 'border-warning', 'bg-warning-soft')
+    expect(segments.map(styleOf)).toEqual(['height:25%', 'height:62.5%', 'height:12.5%'])
+    expect(styleOf(list[0]!)).toBe('height:100%')
+  })
+
+  it('AC-806.4: 빗금은 조각 안 viewBox 없는 aria-hidden svg 하나(absolute inset-0 size-full, text-warning)다', () => {
+    const segment = gapSegment(splitChart().root)
+    const svgs = segment.querySelectorAll('svg')
+    expect(svgs).toHaveLength(1)
+    const svg = svgs[0]!
+    expect(svg.parentElement).toBe(segment)
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expectClasses(svg, 'absolute', 'inset-0', 'size-full', 'text-warning')
+    for (const attr of ['viewBox', 'style', 'width', 'height', 'id']) expect(svg.hasAttribute(attr), attr).toBe(false)
+  })
+
+  it('AC-806.4: 빗금 선은 1px <path stroke="currentColor"> 하나이고 d는 덜 끝난 칸의 파란 빗금과 같은 HATCH다', () => {
+    const { root } = splitChart()
+    const svg = gapSegment(root).querySelector('svg')!
+    expect(svg.children).toHaveLength(1)
+    const path = svg.querySelector('path')!
+    expect(path.getAttribute('stroke')).toBe('currentColor')
+    expect(path.getAttribute('stroke-width')).toBe('1')
+    expect(path.getAttribute('fill')).toBe('none')
+    const d = path.getAttribute('d') ?? ''
+    expect(hatchKs(d)).toEqual(K_EXPECTED)
+    expect(d).toBe(bars(figureOf(root))[2]!.querySelector('path')!.getAttribute('d'))
+  })
+
+  it('AC-806.4: <pattern>·url(#…)·id·그라데이션이 없다 — 한 쪽에 차트가 둘이어도 겹칠 id가 없다', () => {
+    const { root, html } = splitChart()
+    expect(html).not.toMatch(/<pattern|<linearGradient|gradient/i)
+    expect(html).not.toContain('url(#')
+    expect(root.querySelectorAll('[id]')).toHaveLength(0)
+  })
+
+  it('AC-806.4: 구분 없음이 0인 칸은 조각·빗금이 없고 신환·재진만 쌓는다', () => {
+    const bar = bars(figureOf(splitChart().root))[1]!
+    const segments = segmentsOf(bar)
+    expect(segments).toHaveLength(2)
+    expect(segments.map(styleOf)).toEqual(['height:40%', 'height:60%'])
+    expect(bar.querySelector('svg')).toBeNull()
+    expect(bar.outerHTML).not.toContain('warning')
+  })
+
+  it('AC-806.4: 덜 끝난 칸은 구분 없음이 있어도 파란 빗금 한 막대이고 높이에는 구분 없음까지 든다', () => {
+    const bar = bars(figureOf(splitChart().root))[2]!
+    expectClasses(bar, 'border', 'border-accent', 'bg-surface')
+    expect(styleOf(bar)).toBe('height:25%')
+    expect(segmentsOf(bar)).toEqual([])
+    expect(bar.querySelectorAll('svg')).toHaveLength(1)
+    expectClasses(bar.querySelector('svg'), 'text-accent')
+    expect(bar.outerHTML).not.toContain('warning')
+  })
+
+  it('AC-806.4: 작은 그림(compact)에서도 같은 조각이다', () => {
+    const segment = gapSegment(splitChart({ compact: true }).root)
+    expectClasses(segment, 'border-warning', 'bg-warning-soft')
+    expectClasses(segment.querySelector('svg'), 'text-warning')
+  })
+
+  it('AC-806.4: 화면 읽기 표에 구분 없음 칸이 있고 합계에 든다', () => {
+    const table = tableOf(splitChart().root)
+    expect(Array.from(table.querySelectorAll('thead th')).map(textOf)).toEqual(['기간', '신환', '재진', '구분 없음', '합계', '상태'])
+    expect(rows(table)).toEqual([
+      ['11월 1일', '10', '25', '5', '40', '완료'],
+      ['11월 2일', '8', '12', '0', '20', '완료'],
+      ['11월 3일', '3', '4', '3', '10', '집계 중'],
+    ])
+  })
+
+  it('AC-806.4: hatch-warning 계열을 쓰지 않으면 warning 색이 없고 마크업이 지금과 같다(sha256)', async () => {
+    expect(chart().html).not.toContain('warning')
+    expect(await sha256(withoutTableBox(chart().html))).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(withoutTableBox(chart({ compact: true }).html))).toBe(BEFORE_REQ_314.sm)
+  })
+})
+
+// 합계 0인 칸의 글자 빼기 (rx-picker REQ-806 AC-806.7, design.md '차트 부품', 시안 :496 x.c > 0). 예시 값은 지어낸 것이다.
+// 30칸, 3칸마다 0건(1일·4일·…·28일)이고 마지막 칸(30일)은 건수가 있다
+const MONTH_BUCKETS: BarBucket[] = Array.from({ length: 30 }, (_, i) => ({
+  key: `d${i + 1}`,
+  label: String(i + 1),
+  rangeLabel: `11월 ${i + 1}일`,
+  state: 'complete' as const,
+  values: i % 3 === 0 ? [0, 0] : [i + 1, 2],
+}))
+const monthTotal = (i: number) => MONTH_BUCKETS[i]!.values[0]! + MONTH_BUCKETS[i]!.values[1]!
+const zeroAt = (buckets: BarBucket[], i: number, state: BarBucket['state']): BarBucket[] =>
+  buckets.map((bucket, j) => (j === i ? { ...bucket, state, values: [0, 0] } : bucket))
+
+describe('AC-806.7: StackedBarChart hideZeroTotals — 합계 0인 칸에는 막대 위 글자가 없고, 주지 않으면 지금 그림 그대로', () => {
+  it('AC-806.7: 30칸(dense 없음)에서 건수가 있는 칸은 막대 위 글자가 있고 0인 칸은 없다', () => {
+    const list = bars(figureOf(chart({ buckets: MONTH_BUCKETS, hideZeroTotals: true }).root))
+    expect(list).toHaveLength(30)
+    list.forEach((bar, i) => {
+      const above = aboveBar(bar)
+      if (monthTotal(i) === 0) {
+        expect(above, `${i + 1}일`).toEqual([])
+        expect(textOf(bar), `${i + 1}일`).toBe('')
+      } else {
+        expect(above, `${i + 1}일`).toHaveLength(1)
+        expect(textOf(above[0]), `${i + 1}일`).toBe(String(monthTotal(i)))
+      }
+    })
+  })
+
+  it('AC-806.7: hideZeroTotals는 0인 칸의 글자 덩어리만 뺀다 — 그림이 기본 그림에서 그 덩어리를 지운 것과 같다(기본·compact)', () => {
+    for (const compact of [false, true]) {
+      const base = figureOf(chart({ buckets: MONTH_BUCKETS, compact }).root)
+      bars(base).forEach((bar, i) => {
+        if (monthTotal(i) === 0) aboveBar(bar)[0]!.remove()
+      })
+      expect(figureOf(chart({ buckets: MONTH_BUCKETS, compact, hideZeroTotals: true }).root).outerHTML, `compact=${compact}`).toBe(base.outerHTML)
+    }
+  })
+
+  it('AC-806.7: hideZeroTotals여도 화면 읽기 표는 0인 칸까지 모두 준다 — 표가 기본과 같다', () => {
+    const on = tableOf(chart({ buckets: MONTH_BUCKETS, hideZeroTotals: true }).root)
+    expect(on.outerHTML).toBe(tableOf(chart({ buckets: MONTH_BUCKETS }).root).outerHTML)
+    expect(rows(on)[0]).toEqual(['11월 1일', '0', '0', '0', '완료'])
+  })
+
+  it('AC-806.7: 덜 끝난 칸이 0이면 상태 글자까지 없고 표에는 남는다. 0이 아니면 상태 글자가 그대로다', () => {
+    const buckets = zeroAt(MONTH_BUCKETS.slice(0, 3), 2, 'in-progress')
+    const { root } = chart({ buckets, hideZeroTotals: true })
+    const figure = figureOf(root)
+    expect(aboveBar(bars(figure)[2]!)).toEqual([])
+    expect(leafByText(figure, '집계 중')).toEqual([])
+    expect(rows(tableOf(root))[2]).toEqual(['11월 3일', '0', '0', '0', '집계 중'])
+
+    const partial = MONTH_BUCKETS.slice(1, 3).map((bucket) => ({ ...bucket, state: 'partial' as const }))
+    const shown = figureOf(chart({ buckets: partial, hideZeroTotals: true }).root)
+    expect(leafByText(shown, '일부 기간')).toHaveLength(2)
+  })
+
+  it('AC-806.7: 글자 색은 그대로다 — 마지막 끝난 칸은 600 ink, 나머지는 ink-2(thinTotals가 text-ink-2만 숨긴다)', () => {
+    const list = bars(figureOf(chart({ buckets: MONTH_BUCKETS, hideZeroTotals: true }).root))
+    const strong = oneLeaf(list[29]!, String(monthTotal(29)))
+    expectClasses(strong, 'font-semibold', 'text-ink')
+    expect(classesOf(strong)).not.toContain('text-ink-2')
+    expectClasses(oneLeaf(list[28]!, String(monthTotal(28))), 'text-ink-2')
+    expect(figureOf(chart({ buckets: MONTH_BUCKETS, hideZeroTotals: true }).root).querySelectorAll('.font-semibold')).toHaveLength(1)
+  })
+
+  it('AC-806.7: 마지막 끝난 칸이 0이면 그 칸에 글자가 없고 앞 칸이 대신 굵어지지 않는다(시안 :488·:496과 같다)', () => {
+    const buckets = zeroAt(MONTH_BUCKETS, 29, 'complete')
+    const figure = figureOf(chart({ buckets, hideZeroTotals: true }).root)
+    expect(aboveBar(bars(figure)[29]!)).toEqual([])
+    expect(figure.querySelectorAll('.font-semibold')).toHaveLength(0)
+    expectClasses(oneLeaf(bars(figure)[28]!, String(monthTotal(28))), 'text-ink-2')
+  })
+
+  it('AC-806.7: 합계가 모두 0이면 막대 위 글자가 없고 막대 높이는 0%, 눈금은 그대로다', () => {
+    const buckets = MONTH_BUCKETS.slice(0, 3).map((bucket) => ({ ...bucket, values: [0, 0] }))
+    const { root, html } = chart({ buckets, hideZeroTotals: true })
+    const list = bars(figureOf(root))
+    for (const bar of list) {
+      expect(aboveBar(bar)).toEqual([])
+      expect(styleOf(bar)).toBe('height:0%')
+    }
+    expect(gridlines(figureOf(root))).toHaveLength(1)
+    expect(html).not.toMatch(/NaN|Infinity/)
+  })
+
+  it('AC-806.7: dense와 같이 줘도 막대 위 글자가 없고 표는 그대로다', () => {
+    const both = chart({ buckets: MONTH_BUCKETS, dense: true, hideZeroTotals: true })
+    expect(both.html).toBe(chart({ buckets: MONTH_BUCKETS, dense: true }).html)
+  })
+
+  it('AC-806.7: 주지 않거나 false면 0인 칸에도 "0" 글자가 있고 마크업이 지금과 같다(sha256)', async () => {
+    for (const compact of [false, true]) {
+      expect(chart({ compact, hideZeroTotals: false }).html, `compact=${compact}`).toBe(chart({ compact }).html)
+      expect(chart({ buckets: MONTH_BUCKETS, compact, hideZeroTotals: false }).html, `compact=${compact}`).toBe(chart({ buckets: MONTH_BUCKETS, compact }).html)
+    }
+    expect(textOf(aboveBar(bars(figureOf(chart({ buckets: MONTH_BUCKETS }).root))[0]!)[0])).toBe('0')
+    expect(await sha256(withoutTableBox(chart().html))).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(withoutTableBox(chart({ compact: true }).html))).toBe(BEFORE_REQ_314.sm)
+  })
+})
