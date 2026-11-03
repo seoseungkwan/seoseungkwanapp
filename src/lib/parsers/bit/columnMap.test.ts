@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { BIT_HEADER } from '../../../../fixtures/make-fake-fixtures'
 import { mapColumns, normalizeColumnName, readOutpatient, readVisit } from './columnMap'
@@ -122,5 +124,34 @@ describe('AC-004.2 readOutpatient — 외래/입원 값 표', () => {
     ['', null],
   ])('%j → %s', (value, expected) => {
     expect(readOutpatient(value)).toBe(expected)
+  })
+})
+
+describe('AC-813.1 readVisit — 30 초진은 재진', () => {
+  it.each([
+    ['30 초진', false],
+    ['30초진', false],
+    [' 30  초진 ', false],
+    ['30\t초진', false],
+    ['신환', true],
+    ['재진', false],
+    ['30 초진외', null],
+    ['130초진', null],
+    ['신 환', null],
+    ['재 진', null],
+    ['초진', null],
+    ['초진외', null],
+    ['기타', null],
+    ['진찰료산정안함', null],
+    ['', null],
+  ])('AC-813.1: %j → %s', (value, expected) => {
+    expect(readVisit(value)).toBe(expected)
+  })
+})
+
+describe('AC-813.6 비트 길은 readVisit을 쓰지 않는다', () => {
+  it('AC-813.6: helperData.ts 소스에 readVisit이 없다', () => {
+    const source = readFileSync(join(process.cwd(), 'src/workers/stats/helperData.ts'), 'utf8')
+    expect(source).not.toContain('readVisit')
   })
 })

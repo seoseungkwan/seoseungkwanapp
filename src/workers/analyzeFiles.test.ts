@@ -7,6 +7,7 @@ import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { addDays } from '@/lib/analytics/dates'
 import { createPatientIds, parseBitFile } from '@/lib/parsers/bit'
+import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import type { RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult, AnalyzeOutput, FileReport } from '@/types/analyze'
 import type { ParsedFile } from '@/types/consumption'
@@ -439,5 +440,26 @@ describe('AC-902.6 analyzeFiles — 꾸민 합계 표시 줄과 진짜 오류 �
     expect(result.quality).toBe('incomplete')
     expect(result.skippedInvalidRows).toBe(3)
     expect(result.summary.quality).toBe('incomplete')
+  })
+})
+
+describe('AC-813.3 analyzeFiles → toDayPayloads — 30 초진은 재진', () => {
+  const HEADER = ['처방코드', '처방명칭', '처방일자', '차트번호', '초재진구분', '주소']
+  const row = (chart: string, visit: string) => ['D1001', '가짜정 10mg', '2026-10-01', chart, visit, '서울특별시 강남구 역삼동 1']
+  const dayOf = (visits: Array<[string, string]>) => {
+    const table = [HEADER, ...visits.map(([chart, visit]) => row(chart, visit))]
+    const payloads = toDayPayloads(resultOf(analyzeFiles([toCsvBytes(table, 'utf8-bom')], TODAY)))
+    return payloads?.find((p) => p.day === '2026-10-01')
+  }
+
+  it('AC-813.3: 30 초진 환자는 returning에 들고 unknown에서 빠지며 patients는 그대로', SLOW, () => {
+    const day = dayOf([['9000001', '신환'], ['9000002', '재진'], ['9000003', '30 초진'], ['9000004', '진찰료산정안함']])
+    expect(day?.totals).toEqual({ patients: 4, newPatients: 1, returning: 2, unknown: 1 })
+    expect(day?.rx[0]).toMatchObject({ patients: 4, newPatients: 1, returning: 2 })
+  })
+
+  it('AC-813.3: 같은 날 신환 줄도 있는 환자는 신환이다', SLOW, () => {
+    const day = dayOf([['9000001', '30 초진'], ['9000001', '신환']])
+    expect(day?.totals).toEqual({ patients: 1, newPatients: 1, returning: 0, unknown: 0 })
   })
 })

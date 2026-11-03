@@ -60,6 +60,10 @@ export type RxTrendRow = {
   delta: Delta // comparable이 null이면 { kind: 'unavailable' }
 }
 
+export type RxLine = { code: string; name: string }
+// 처방 골라 보기 표의 줄. gapCount(구분 없음) = 건수 − 신환 − 재진이고 저장 모양에는 없다. partial은 표에 쓰지 않는다
+export type RxPickRow = RxTrendRow & { gapCount: number }
+
 // covered = 그 칸의 날이 하나라도 덮은 기간 안에 있음. false인 비교 칸은 "0건"이 아니라 "–"
 export type RxDetailPoint = TrendPoint & { covered: boolean }
 
@@ -90,7 +94,7 @@ const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 const sum = <T>(list: readonly T[], of: (item: T) => number) => list.reduce((total, item) => total + of(item), 0)
 const monthName = (ymd: string) => `${Number(ymd.slice(0, 4))}년 ${Number(ymd.slice(5, 7))}월`
 // 코드는 buildTrend처럼 대소문자를 가리지 않는다
-const codeKey = (code: string) => code.toUpperCase()
+export const codeKey = (code: string) => code.toUpperCase()
 
 // 기간 안 일 줄, 날짜 순(같은 날은 뒤의 것, 대시보드·buildTrend와 같다)
 function rowsIn(days: readonly DayPayload[], range: DateRange): DayPayload[] {
@@ -333,7 +337,7 @@ function comparableOf(now: readonly TrendPoint[], before: readonly TrendPoint[])
   return { current: sum(pairs, (pair) => pair.current.count), previous: sum(pairs, (pair) => pair.previous.count) }
 }
 
-function rxRow(line: { code: string; name: string }, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod): RxTrendRow {
+function rxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod): RxTrendRow {
   const comparable = comparableOf(now, before)
   return {
     ...line,
@@ -347,21 +351,39 @@ function rxRow(line: { code: string; name: string }, now: readonly TrendPoint[],
   }
 }
 
-// 증감은 표시 칸과 상관없이 12개월은 달끼리, 일 기간은 날끼리 짝 짓는다. 코드는 대소문자를 합친 뒤 나눠 부른다(한 코드가 두 묶음에 들어가면 두 줄이 된다).
-// 건수가 0인 처방(덮은 기간 밖의 날에만 나옴)은 줄이 아니다
-export function rxList({ days, covered, range }: StatsInput): RxTrendRow[] | null {
-  const lines = new Map<string, { code: string; name: string }>()
-  for (const row of rowsIn(days, range.current)) for (const { code, name } of row.rx) lines.set(codeKey(code), { code, name }) // 뒤의 날이 덮어쓴다
+// 증감은 표시 칸과 상관없이 12개월은 달끼리, 일 기간은 날끼리 짝 짓는다. 코드는 대소문자를 합쳐서 받아 나눠 부른다(한 코드가 두 묶음에 들어가면 두 줄이 된다)
+function trendRows({ days, covered, range }: StatsInput, lines: readonly RxLine[]): RxTrendRow[] {
   const bucket: TrendBucket = range.grain
   const pointsOf = (span: DateRange, codes: string[]) => pointsByCode(buildTrend(days, covered, { from: span.from, to: span.to, bucket, codes }).points)
-  const rows = chunks([...lines.values()], TREND_CODE_LIMIT).flatMap((part) => {
+  return chunks(lines, TREND_CODE_LIMIT).flatMap((part) => {
     const codes = part.map((line) => line.code)
     const now = pointsOf(range.current, codes)
     const before = pointsOf(range.previous, codes)
     return part.map((line) => rxRow(line, now.get(line.code) ?? [], before.get(line.code) ?? [], range.period))
   })
+}
+
+// 기간 안에 나온 처방의 가장 최근 날 글자·이름(대문자 코드 → 줄)
+function latestLines({ days, range }: StatsInput): Map<string, RxLine> {
+  const lines = new Map<string, RxLine>()
+  for (const row of rowsIn(days, range.current)) for (const { code, name } of row.rx) lines.set(codeKey(code), { code, name }) // 뒤의 날이 덮어쓴다
+  return lines
+}
+
+// 건수가 0인 처방(덮은 기간 밖의 날에만 나옴)은 줄이 아니다
+export function rxList(input: StatsInput): RxTrendRow[] | null {
+  const rows = trendRows(input, [...latestLines(input).values()])
   const ranked = rows.filter((row) => row.count > 0).sort((a, b) => b.count - a.count || compareText(codeKey(a.code), codeKey(b.code)))
   return ranked.length === 0 ? null : ranked.slice(0, TOP_RX)
+}
+
+// 처방 골라 보기 표 (rx-picker REQ-804). 처방 추세와 같은 셈이고 고른 차례 그대로이며 0건 줄도 남는다.
+// 코드는 고른 글자 그대로(대소문자만 다른 코드는 처음 것 한 줄로, buildTrend가 뒤 코드의 점을 만들지 않으므로 부르기 전에 합친다)이고 이름은 이 기간 가장 최근 날의 이름, 없으면 저장해 둔 이름이다
+export function rxPickRows(input: StatsInput, picks: readonly RxLine[]): RxPickRow[] {
+  const latest = latestLines(input)
+  const lines = new Map<string, RxLine>()
+  for (const { code, name } of picks) if (!lines.has(codeKey(code))) lines.set(codeKey(code), { code, name: latest.get(codeKey(code))?.name ?? name })
+  return trendRows(input, [...lines.values()]).map((row) => ({ ...row, gapCount: row.count - row.newCount - row.returningCount }))
 }
 
 // 증감을 견준 짝 수. partial은 처방과 상관없어 남은 짝은 모든 처방 줄에서 같으므로 줄마다 세지 않고 한 번만 센다

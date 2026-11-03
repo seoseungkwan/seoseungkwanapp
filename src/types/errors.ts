@@ -16,6 +16,8 @@ export type ErrorCode =
   | 'E-STATS-HISTORY' | 'E-STATS-TOO-BIG' | 'E-STATS-CHANGED'
   // 통계 숫자 저장·읽기(lib/storage/stats.ts, spec stats)
   | 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
+  // 통계 탭에서 고른 처방 저장·읽기(lib/storage/rxPicks.ts, spec rx-picker)
+  | 'E-STATS-PICK-READ-FAILED' | 'E-STATS-PICK-SAVE-FAILED'
   // 점검 표 불러오기(Worker의 import(), TASK-7)
   | 'E-RULES-LOAD-FAILED'
   // 한 달 자료(claim.month): 도우미가 비트 통계 화면 표를 꺼내지 못함 · Worker가 조각·모양이 다 맞지 않아 멈춤(TASK-9)

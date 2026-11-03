@@ -51,6 +51,14 @@ export type StatsCoverageRow = {
   created_at: string
 }
 
+// 통계 탭에서 고른 처방. 기준은 supabase/migrations/20261103000000_rx_picks.sql
+export type StatsRxPickRow = {
+  hospital_id: string
+  code: string // 1~100자, 제어 문자 없음. 한 병원 안에서 대소문자를 가리지 않고 하나다
+  name: string // 0~100자, 제어 문자 없음
+  pick_order: number // DB가 매기는 고른 차례
+}
+
 // 청구 설정 표(precheck design.md 8-1). hospital_id·updated_at·id는 DB가 정한다(읽기만, 보내지 않는다)
 export type ClaimRuleSettingRow = {
   hospital_id: string

@@ -39,6 +39,7 @@ const WAITING: { title: string; place: string }[] = [
   { title: '신환 재방문율', place: `col-span-12 lg:col-span-4 ${SIDE}` },
   { title: '처방 추세', place: 'col-span-12 lg:col-span-7' },
   { title: '처방별 신환·재진', place: `col-span-12 lg:col-span-5 ${SIDE}` },
+  { title: '처방 골라 보기', place: 'col-span-12' },
   { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },
   { title: '요일별 환자 수', place: `col-span-12 lg:col-span-5 ${SIDE}` },
 ]
@@ -345,7 +346,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}
       {drawn !== null && (
         <div hidden={!showSections}>
-          <StatsSections input={drawn} saved={drawnSaved} split={answered?.view ?? null} report={report} hospitalName={hospitalName} />
+          <StatsSections input={drawn} saved={drawnSaved} split={answered?.view ?? null} report={report} hospitalName={hospitalName} revision={data.revision} />
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MIN_HELPER } from '@/lib/bridge/versions'
+import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
@@ -27,6 +28,12 @@ vi.mock('@/lib/storage/stats', () => ({
   readCoverage: vi.fn(),
   saveStats: vi.fn(),
 }))
+vi.mock('@/lib/storage/rxPicks', () => ({
+  readRxPicks: vi.fn(),
+  addRxPick: vi.fn(),
+  removeRxPick: vi.fn(),
+  clearRxPicks: vi.fn(),
+}))
 vi.mock('@/workers/statsClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/workers/statsClient')>()),
   createStatsWorker: vi.fn(),
@@ -48,7 +55,7 @@ const LOAD = '비트에서 불러오기'
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
-const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방 추세', '처방별 신환·재진', '원장님 보고 문장', '요일별 환자 수']
+const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
 
 function day(ymd: string, patients = 10): DayPayload {
   return {
@@ -283,8 +290,9 @@ function fileGoesWell() {
 }
 
 beforeEach(() => {
-  for (const fn of [readDays, readMonths, readCoverage, saveStats, createStatsWorker, runAnalysis, toMonthPayload, toDayPayloads]) vi.mocked(fn).mockReset()
+  for (const fn of [readDays, readMonths, readCoverage, saveStats, createStatsWorker, runAnalysis, toMonthPayload, toDayPayloads, readRxPicks]) vi.mocked(fn).mockReset()
   answers(SAVED_NOW)
+  vi.mocked(readRxPicks).mockResolvedValue([])
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
   vi.mocked(saveStats).mockResolvedValue({ saved: 1 })
   fakeWorker()
@@ -298,7 +306,7 @@ afterEach(() => {
 })
 
 describe('AC-514.1 첫 그림', () => {
-  it('AC-514.1 읽는 동안 섹션 자리는 일곱 칸 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
+  it('AC-514.1·AC-801.2 읽는 동안 섹션 자리는 여덟 칸 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     expect(screen.getByRole('heading', { name: '통계', level: 1 })).toBeTruthy()
@@ -308,7 +316,7 @@ describe('AC-514.1 첫 그림', () => {
     expect(pageText()).not.toContain('아직 저장된 통계가 없어요')
   })
 
-  it('AC-514.1·AC-513.1 읽으면 섹션을 승인본 차례대로 그리고 readMonths를 쓰지 않는다', async () => {
+  it('AC-514.1·AC-513.1·AC-801.1 읽으면 섹션을 승인본 차례대로 그리고 readMonths를 쓰지 않는다', async () => {
     draw()
     await sectionsShown()
     expect(screen.queryByText('불러오는 중')).toBeNull()
@@ -1212,7 +1220,7 @@ describe('AC-514.10 폭별 배치', () => {
     expect(group.parentElement?.className).toContain('max-md:flex-col')
   })
 
-  it('AC-514.10 기다리는 칸은 섹션과 같은 12칸 배치이고 좁으면 모두 12칸이다', () => {
+  it('AC-514.10·AC-801.2 기다리는 칸은 섹션과 같은 12칸 배치이고 좁으면 모두 12칸이다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     const place = (name: string) => heading(name)?.closest('section')?.className ?? ''
@@ -1221,6 +1229,7 @@ describe('AC-514.10 폭별 배치', () => {
     expect(place('신환 재방문율')).toContain('lg:col-span-4')
     expect(place('처방 추세')).toContain('lg:col-span-7')
     expect(place('처방별 신환·재진')).toContain('lg:col-span-5')
+    expect(place('처방 골라 보기')).not.toContain('lg:')
     expect(place('원장님 보고 문장')).toContain('lg:col-span-7')
     expect(place('요일별 환자 수')).toContain('lg:col-span-5')
     for (const name of SECTIONS) expect(place(name)).toMatch(/(^| )col-span-12( |$)/)
@@ -1569,5 +1578,159 @@ describe('AC-514.13 저장하지 않은 불러오기의 안내 줄', () => {
     await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
     expect(screen.getByText('차트번호 없는 내원 3건 · 중복 내원 1건 · 첫 내원을 못 찾은 환자 2명이 있어요. 비트에서 이 기록을 고친 뒤 다시 불러와 주세요.')).toBeTruthy()
     expect(pageText()).not.toContain('파일을 확인한 뒤')
+  })
+})
+
+describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
+  const R7 = statsRange(TODAY, '7d')
+  const R90 = statsRange(TODAY, '90d')
+  const NAME = '가짜 고른 처방'
+  const PICK = { code: 'A100', name: NAME }
+  const withRx = (ymd: string): DayPayload => ({ ...day(ymd, 10), rx: [{ code: PICK.code, name: NAME, type: '', patients: 5, newPatients: 1, returning: 4 }] })
+  const RX_DAYS = {
+    [R30.current.from]: read([withRx('2026-11-10')], { latest: BIT_AT }),
+    [R7.current.from]: read([withRx('2026-11-10')], { latest: BIT_AT }),
+    [R90.current.from]: read([withRx('2026-11-10')], { latest: BIT_AT }),
+  }
+  const sectionOf = (name: string) => heading(name)!.closest('section')!
+  const picker = () => within(sectionOf('처방 골라 보기'))
+  const rowIn = (section: HTMLElement, expanded: boolean) => within(section).getByRole('button', { name: new RegExp(NAME), expanded })
+  const WIDEST = { from: R12.previous.from, to: R12.current.to }
+  const wideReads = () => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === WIDEST.from && range.to === WIDEST.to).length
+
+  it('AC-801.1 새 칸은 처방별 신환·재진 다음의 전체 폭이고 다른 일곱 칸의 배치는 그대로다', async () => {
+    draw()
+    await sectionsShown()
+    const place = (name: string) => sectionOf(name).className
+    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
+    expect(place('처방 골라 보기')).toMatch(/(^| )col-span-12( |$)/)
+    expect(place('처방 골라 보기')).not.toContain('lg:')
+    expect(picker().getByText('고른 처방만 건수와 신환율·재진율을 봐요')).toBeTruthy()
+    const KEEP: [string, string[]][] = [
+      ['기간 요약', ['col-span-12']],
+      ['환자 수 추이', ['col-span-12', 'lg:col-span-8']],
+      ['신환 재방문율', ['col-span-12', 'lg:col-span-4', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
+      ['처방 추세', ['col-span-12', 'lg:col-span-7']],
+      ['처방별 신환·재진', ['col-span-12', 'lg:col-span-5', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
+      ['원장님 보고 문장', ['col-span-12', 'lg:col-span-7']],
+      ['요일별 환자 수', ['col-span-12', 'lg:col-span-5', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
+    ]
+    for (const [name, classes] of KEEP) for (const one of classes) expect(place(name).split(' ')).toContain(one)
+  })
+
+  it('AC-801.2 기다리는 칸의 차례·자리가 그린 칸과 같다', async () => {
+    vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
+    draw()
+    const order = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)
+    expect(order).toEqual(SECTIONS)
+    expect(sectionOf('처방 골라 보기').textContent).toContain('불러오는 중')
+    expect(sectionOf('처방 골라 보기').className).toMatch(/(^| )col-span-12( |$)/)
+    expect(sectionOf('처방 골라 보기').className).not.toContain('lg:')
+  })
+
+  it('AC-801.3 저장된 숫자가 없으면 새 칸은 한 줄뿐이다', async () => {
+    vi.mocked(readRxPicks).mockResolvedValue([PICK])
+    answers({})
+    draw()
+    await sectionsShown()
+    expect(sectionOf('처방 골라 보기').textContent).toContain('자료 없음 · 불러오면 처방을 골라 볼 수 있어요.')
+    expect(picker().queryByRole('combobox')).toBeNull()
+    expect(picker().queryByRole('button')).toBeNull()
+  })
+
+  it('AC-806.5 기간을 바꿔도 열린 줄과 그래프 모양이 그대로이고 새 칸(일→주)으로 그린다. 처방 추세 줄 열림과 서로 상관없다', async () => {
+    vi.mocked(readRxPicks).mockResolvedValue([PICK])
+    answers(RX_DAYS)
+    draw()
+    await sectionsShown()
+    const row = await picker().findByRole('button', { name: new RegExp(NAME), expanded: false })
+    fireEvent.click(row)
+    fireEvent.click(picker().getByRole('button', { name: '신환·재진 나눠 보기' }))
+    expect(picker().getByText(`${NAME} · 일별 건수`)).toBeTruthy()
+
+    pressPeriod('최근 90일')
+    await sectionsShown()
+    await waitFor(() => expect(picker().getByText(`${NAME} · 주별 건수`)).toBeTruthy())
+    expect(rowIn(sectionOf('처방 골라 보기'), true)).toBeTruthy()
+    expect(picker().getByRole('button', { name: '신환·재진 나눠 보기' }).getAttribute('aria-pressed')).toBe('true')
+    expect(picker().getByRole('button', { name: '건수만' }).getAttribute('aria-pressed')).toBe('false')
+    // 처방 추세 줄은 닫혀 있고, 열어도 새 칸이 그대로다
+    expect(rowIn(sectionOf('처방 추세'), false)).toBeTruthy()
+    fireEvent.click(rowIn(sectionOf('처방 추세'), false))
+    expect(rowIn(sectionOf('처방 추세'), true)).toBeTruthy()
+    expect(rowIn(sectionOf('처방 골라 보기'), true)).toBeTruthy()
+    fireEvent.click(rowIn(sectionOf('처방 골라 보기'), true))
+    expect(rowIn(sectionOf('처방 골라 보기'), false)).toBeTruthy()
+    expect(rowIn(sectionOf('처방 추세'), true)).toBeTruthy()
+  })
+
+  it('AC-806.5 기간을 읽지 못했다가 [다시 읽기]로 돌아와도 열린 줄과 그래프 모양이 그대로다', async () => {
+    vi.mocked(readRxPicks).mockResolvedValue([PICK])
+    answers(RX_DAYS)
+    draw()
+    await sectionsShown()
+    fireEvent.click(await picker().findByRole('button', { name: new RegExp(NAME), expanded: false }))
+    fireEvent.click(picker().getByRole('button', { name: '신환·재진 나눠 보기' }))
+
+    vi.mocked(readDays).mockRejectedValue(new Error('가짜 실패'))
+    pressPeriod('최근 7일')
+    const again = await screen.findByRole('button', { name: '다시 읽기' })
+    answers(RX_DAYS)
+    fireEvent.click(again)
+    await sectionsShown()
+    await waitFor(() => expect(rowIn(sectionOf('처방 골라 보기'), true)).toBeTruthy())
+    expect(picker().getByRole('button', { name: '신환·재진 나눠 보기' }).getAttribute('aria-pressed')).toBe('true')
+    expect(readRxPicks).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-802.5 찾기 칸을 열기 전에는 넓은 범위를 읽지 않는다', async () => {
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(picker().getByRole('combobox').getAttribute('aria-disabled')).toBeNull())
+    expect(wideReads()).toBe(0)
+    fireEvent.click(picker().getByRole('combobox'))
+    await waitFor(() => expect(wideReads()).toBe(1))
+  })
+
+  it('AC-802.7 새 숫자를 저장하면 열려 있는 찾기 목록이 넓은 범위를 바로 다시 읽는다', async () => {
+    const { port } = await drawReady()
+    await waitFor(() => expect(picker().getByRole('combobox').getAttribute('aria-disabled')).toBeNull())
+    fireEvent.click(picker().getByRole('combobox'))
+    await waitFor(() => expect(wideReads()).toBe(1))
+    pressLoad(port)
+    await waitFor(() => expect(wideReads()).toBe(2))
+  })
+
+  it('AC-812.3 고른 처방을 읽지 못하면 오류 카드는 이 칸에만 있고 다른 칸·기간 단추·다른 오류 카드는 그대로다', async () => {
+    vi.mocked(readRxPicks).mockRejectedValue(new Error('가짜 실패'))
+    draw()
+    await sectionsShown()
+    const card = await picker().findByRole('alert')
+    expect(card.textContent).toContain('오류 번호 E-STATS-PICK-READ-FAILED')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    const again = screen.getAllByRole('button', { name: '다시 읽기' })
+    expect(again).toHaveLength(1)
+    expect(sectionOf('처방 골라 보기').contains(again[0]!)).toBe(true)
+    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
+    expect(pageText()).toContain('하루 평균 환자 수')
+    expect(pageText()).not.toContain('아직 고른 처방이 없어요')
+    pressPeriod('최근 7일')
+    await sectionsShown()
+    expect(periodButtons().find((button) => button.textContent === '최근 7일')?.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('AC-812.6 고른 처방은 주소·브라우저 저장소에 남지 않는다', async () => {
+    vi.mocked(readRxPicks).mockResolvedValue([PICK])
+    answers(RX_DAYS)
+    const { search, pathname } = window.location
+    const state = window.history.state
+    draw()
+    await sectionsShown()
+    fireEvent.click(await picker().findByRole('button', { name: new RegExp(NAME), expanded: false }))
+    expect(window.location.search).toBe(search)
+    expect(window.location.pathname).toBe(pathname)
+    expect(window.history.state).toBe(state)
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
   })
 })
