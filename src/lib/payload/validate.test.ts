@@ -6,7 +6,7 @@ import type { ConsumptionRow } from '@/types/consumption'
 import type { DayPayload, MonthPayload, RevisitPayload } from '@/types/payload'
 import { toDayPayloads } from './toDayPayloads'
 import { toMonthPayload } from './toMonthPayload'
-import { validateDayPayload, validateMonthPayload } from './validate'
+import { validateDayPayload, validateMonthPayload, validateRxPick } from './validate'
 
 // 주민번호 모양은 소스에 통째로 쓰지 않는다(검문소가 막는다) — 조각을 이어 만든다
 const idLike = () => ['900101', '1234567'].join('-')
@@ -553,5 +553,83 @@ describe('AC-008.4 toMonthPayload·toDayPayloads가 그룹과 함께 만든 숫�
       expect(validateDayPayload(payload)).toEqual(payload)
       expect(validateDayPayload(JSON.parse(JSON.stringify(payload)))).toEqual(payload)
     }
+  })
+})
+
+describe('AC-811.1 validateRxPick', () => {
+  const pick = () => ({ code: 'AA154', name: '가짜 주사 1mL' })
+
+  it('AC-811.1: 코드·이름 두 열쇠면 같은 값의 새 객체를 돌려준다', () => {
+    const value = pick()
+    const checked = validateRxPick(value)
+    expect(checked).toEqual(value)
+    expect(checked).not.toBe(value)
+  })
+
+  it.each([
+    ['9자리', '643503420'],
+    ['13자리', ['880612', '1012345'].join('')],
+  ])('AC-811.1: %s 처방코드는 통과한다', (_, code) => {
+    expect(validateRxPick({ code, name: '가짜정' })).toEqual({ code, name: '가짜정' })
+  })
+
+  it('AC-811.1: 빈 이름은 통과하고 빈 코드는 거부한다', () => {
+    expect(validateRxPick({ code: 'AA154', name: '' })).toEqual({ code: 'AA154', name: '' })
+    expect(validateRxPick({ code: '', name: '가짜정' })).toBeNull()
+  })
+
+  it.each([
+    ['전화(붙임표)', '010-1234-5678'],
+    ['전화(붙여 씀)', '01012345678'],
+    ['주민번호', idLike()],
+    ['메일', 'fake@example.com'],
+  ])('AC-811.1: 코드나 이름이 %s 모양이면 거부한다', (_, text) => {
+    expect(validateRxPick({ code: text, name: '가짜정' })).toBeNull()
+    expect(validateRxPick({ code: 'AA154', name: text })).toBeNull()
+  })
+
+  it('AC-811.1: 이름은 붙여 쓴 주민번호 모양도 거부한다', () => {
+    expect(validateRxPick({ code: 'AA154', name: joinedIdLike() })).toBeNull()
+  })
+
+  it('AC-811.1: 코드·이름은 100자까지 통과하고 101자는 거부한다', () => {
+    expect(validateRxPick({ code: long(100), name: long(100) })).toEqual({ code: long(100), name: long(100) })
+    expect(validateRxPick({ code: long(101), name: '가짜정' })).toBeNull()
+    expect(validateRxPick({ code: 'AA154', name: long(101) })).toBeNull()
+  })
+
+  // 표 칸 제약(`[[:cntrl:]]`)보다 일부러 좁게 받는다. 줄·문단 나눔 글자는 글자 분류 설정에 따라 표가 받기도 하지만 여기서는 거른다
+  it.each([
+    ['줄바꿈', '\n'],
+    ['탭', '\t'],
+    ['캐리지 리턴', '\r'],
+    ['NUL', '\u0000'],
+    ['단위 구분', '\u001f'],
+    ['DEL', '\u007f'],
+    ['C1 제어', '\u0085'],
+    ['줄 나눔', ' '],
+    ['문단 나눔', ' '],
+  ])('AC-811.1: 코드나 이름에 제어 문자(%s)가 있으면 거부한다', (_, char) => {
+    expect(validateRxPick({ code: `AA${char}154`, name: '가짜정' })).toBeNull()
+    expect(validateRxPick({ code: 'AA154', name: `가짜${char}정` })).toBeNull()
+  })
+
+  it('AC-811.1: 다른 열쇠가 더 있거나 열쇠가 모자라면 거부한다', () => {
+    expect(validateRxPick({ ...pick(), hospital_id: 'fake-hospital' })).toBeNull()
+    expect(validateRxPick({ ...pick(), pick_order: 1 })).toBeNull()
+    expect(validateRxPick({ code: 'AA154' })).toBeNull()
+    expect(validateRxPick({ name: '가짜정' })).toBeNull()
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['글자', 'AA154'],
+    ['숫자', 154],
+    ['배열', [{ code: 'AA154', name: '가짜정' }]],
+    ['숫자 코드', { code: 154, name: '가짜정' }],
+    ['null 이름', { code: 'AA154', name: null }],
+  ])('AC-811.1: %s은(는) 거부한다', (_, value) => {
+    expect(validateRxPick(value)).toBeNull()
   })
 })

@@ -1,6 +1,7 @@
 import { isMonth, isYmd } from '@/lib/analytics/dates'
 import type { FollowUp, Totals } from '@/types/analysis'
 import type { DayPayload, MonthPayload, RevisitPayload } from '@/types/payload'
+import type { RxPick } from '@/types/rxPicks'
 
 // 저장 전·읽은 뒤에 쓰는 검사. 병원 계정(서버)에 들어가는 모양의 기준이다.
 // 하나라도 어긋나면 null — 고쳐 쓰지 않는다(비트가 원본이라 다시 넣으면 된다).
@@ -21,6 +22,8 @@ const NATIONAL_ID = /(?<!\d)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-\d{7}(
 const MAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/
 // 붙여 쓴 13자리(lib/parsers/bit와 같은 모양). 처방코드에는 쓰지 않는다 — 13자리 의약품 표준코드(880…)와 모양이 같다
 const JOINED_NATIONAL_ID = /(?<!\d)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])[1-8]\d{6}(?!\d)/
+// 제어 문자. stats_rx_picks 칸 제약(`[[:cntrl:]]`)보다 일부러 좁게 받는다. 줄·문단 나눔 글자는 글자 분류 설정에 따라 표가 받기도 하지만 여기서는 거른다
+const CONTROL = /[\p{Cc}\p{Zl}\p{Zp}]/u
 
 const MONTH_KEYS = ['schemaVersion', 'quality', 'month', 'partial', 'totals', 'rx', 'groups', 'revisit', 'regions']
 const DAY_KEYS = ['schemaVersion', 'quality', 'day', 'partial', 'totals', 'rx', 'groups', 'revisit']
@@ -32,6 +35,7 @@ const DAY_GROUP_KEYS = ['id', 'patients', 'newPatients', 'returning']
 const REVISIT_KEYS = ['cohort', 'within7', 'within14']
 const REVISIT_OPTIONAL_KEYS = ['within30', 'after30'] // 없으면 null로 읽는다
 const REGION_KEYS = ['name', 'patients']
+const RX_PICK_KEYS = ['code', 'name']
 
 type Fields = Record<string, unknown>
 
@@ -180,4 +184,13 @@ export function validateDayPayload(value: unknown): DayPayload | null {
   const revisit = revisitOf(o.revisit, totals.newPatients)
   if (revisit === null) return null
   return { schemaVersion: 2, quality: 'valid', day, partial, totals, rx, groups, revisit }
+}
+
+/** 통계 탭에서 고른 처방 한 줄(AC-811.1). 코드는 isCode, 이름은 isText를 지나고 둘 다 제어 문자가 없어야 한다 */
+export function validateRxPick(value: unknown): RxPick | null {
+  const o = exactly(value, RX_PICK_KEYS)
+  if (o === null) return null
+  const { code, name } = o
+  if (!isCode(code) || !isText(name) || CONTROL.test(code) || CONTROL.test(name)) return null
+  return { code, name }
 }

@@ -44,6 +44,8 @@ const ALL_CODES = [
   'E-STATS-CHANGED',
   'E-STATS-SAVE-FAILED',
   'E-STATS-READ-FAILED',
+  'E-STATS-PICK-READ-FAILED',
+  'E-STATS-PICK-SAVE-FAILED',
   'E-RULES-LOAD-FAILED',
   'E-SETTINGS-FAILED',
   'E-MEMO-NO-SETTINGS',
@@ -560,5 +562,23 @@ describe('AC-019.4 건수 오류 문구', () => {
     expect(info.what).toContain('건수')
     expect(info.fix).toContain('다시')
     expect(info.fix).toContain('영향이 없어요')
+  })
+})
+
+describe('AC-811.5 고른 처방 오류 번호', () => {
+  it('AC-811.5: E-STATS-PICK-READ-FAILED는 읽지 못했다고 알리고 [다시 읽기]와 오류 번호 알리기를 안내한다', () => {
+    expect(isErrorCode('E-STATS-PICK-READ-FAILED')).toBe(true)
+    const info = errorInfo('E-STATS-PICK-READ-FAILED')
+    expect(info.what).toBe('고른 처방을 읽지 못했어요')
+    expect(info.fix).toContain('[다시 읽기]')
+    expect(info.fix).toMatch(/계속되면 오류 번호를 .*알려 주세요\.$/)
+  })
+
+  it('AC-811.5: E-STATS-PICK-SAVE-FAILED는 저장하지 못했다고 알리고 [다시 저장]과 오류 번호 알리기를 안내한다', () => {
+    expect(isErrorCode('E-STATS-PICK-SAVE-FAILED')).toBe(true)
+    const info = errorInfo('E-STATS-PICK-SAVE-FAILED')
+    expect(info.what).toBe('고른 처방을 저장하지 못했어요')
+    expect(info.fix).toContain('[다시 저장]')
+    expect(info.fix).toMatch(/계속되면 오류 번호를 .*알려 주세요\.$/)
   })
 })
