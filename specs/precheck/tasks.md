@@ -9,6 +9,7 @@
 > **2026-11-01 명세 변경**: TASK-35~39를 더했다(plan.md §6 밖). step 파일이 없고 이 파일과 design.md 19절이 그 일을 정한다. 번호가 곧 차례는 아니다. **남은 차례**: ① TASK-10·11·12(먼저 시작함) → ② 나란히: TASK-14 · TASK-35 · TASK-38 → ③ TASK-16 웹 쪽(TASK-14 뒤) · TASK-36(TASK-35 뒤) → ④ TASK-13(TASK-10·11·12·14·16 뒤) → ⑤ TASK-37(TASK-36 뒤. 입력 쪽 목업은 승인됨) → ⑥ TASK-18(TASK-13·14·16·35·36·37 뒤) → ⑦ TASK-19 → 그 뒤 Phase 4부터 그대로. TASK-35·36·37은 `Core/Input`을 함께 고쳐 나란히 하지 않는다. TASK-14 → 16 → 13은 `jobs.ts`·`jobs.test.ts`·`types/precheck.ts`를 함께 고치고 앞 TASK의 결과를 쓰므로 차례대로 한다: TASK-16의 비교는 TASK-14의 메모 글을 쓰고, TASK-14는 고친 메모를 인자로만 받으며 `store.load`를 거기에 잇는 것은 TASK-16이다. TASK-39는 언제든 한다. 도우미 판(`Version`·`LATEST_HELPER`·`MIN_HELPER`)은 릴리스 때 올리고, 릴리스는 사용자가 지시할 때만 한다(design.md 19-5).
 > **2026-11-02 명세 변경**: TASK-40을 더했다(plan.md §6 밖, `phases/precheck-3-memo/step6.md`). 비트의 다른 메모를 사람마다 묻지 않고 기본으로 바꾼다(사용자 결정, design.md 19-6). 차례는 TASK-19 뒤, Phase 3 끝 점검 앞이다. 사이트만 고치고 도우미는 그대로다. TASK-40은 끝난 TASK-16·18·19의 AC 일부를 바꾸므로 앞 TASK의 시험 가운데 뒤집히는 것은 이 TASK가 고친다.
 > **2026-11-03 명세 변경**: TASK-41을 더했다(plan.md §6 밖, step 파일 없음). TASK-40 뒤로 맞지 않게 된 PC 확인 창의 주의 줄 한 줄만 고친다(AC-037.8, design.md 19-6의 '고친 글').
+> **2026-11-03 명세 변경**: TASK-42를 더했다(plan.md §6 밖, step 파일 없음). 비트의 저장 안 한 처방 창을 입력 중에 자동으로 누른다(AC-017.12, 사용자 결정).
 > 도우미 C# 시험 파일 이름은 `*.test.cs`다(하네스가 시험 파일로 알아보게). 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(design.md 11절).
 > 원본 경로는 `YANGJI_SRC`(저장소 밖, `seoseungkwan/shared@2a1069b`)로만 받는다. 원본 파일은 커밋하지 않는다.
 
@@ -304,15 +305,16 @@
 - 시험: `InputReplace.test.cs`의 `AC-037.8 꺼진 창의 주의 줄`이 새 글을 글자까지 본다. `InputCode.test.cs`의 `AC-036.3 코드가 없으면 지금 글 그대로다`는 창 글 전체를 글자까지 보므로 같은 글로 맞춘다(AC-036.3의 뜻은 그대로다)
 
 ## TASK-42: 저장 안 한 처방 창 자동으로 누르기 (도우미)
-- Step: Phase 3 · Step 8 · `unsaved-rx-press`
+- Step: Phase 3 · TASK-41 뒤 · `unsaved-rx-press` (plan.md §6 밖, step 파일 없음)
 - AC: AC-017.5(글), AC-017.12
 - REQ: REQ-017
-- Files: helper/src/Precheck.Core/Input/IChartUi.cs, helper/src/Precheck.Core/Input/InputRunner.cs, helper/src/Precheck.Core/Input/VisitOpener.cs, helper/src/Precheck.Core/Input/InputPrompt.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/tests/Precheck.Core.Tests/Input/InputFakes.test.cs, helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/VisitOpener.test.cs, helper/tests/Precheck.Core.Tests/Input/InputCode.test.cs, helper/tests/Precheck.Windows.Tests/Input/UChartAutomation.test.cs, helper/tests/*.dotnet.test.ts, phases/precheck-3-memo/index.json
-- Tests: helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/VisitOpener.test.cs, helper/tests/Precheck.Core.Tests/Input/InputCode.test.cs, helper/tests/Precheck.Windows.Tests/Input/UChartAutomation.test.cs
+- Files: helper/src/Precheck.Core/Input/IChartUi.cs, helper/src/Precheck.Core/Input/InputRunner.cs, helper/src/Precheck.Core/Input/VisitOpener.cs, helper/src/Precheck.Core/Input/InputPrompt.cs, helper/src/Precheck.Core/Input/ChartRules.cs, helper/src/Precheck.Core/Input/InputErrors.cs, helper/src/Precheck.Windows/UChartAutomation.cs, helper/src/Precheck.Windows/ViewModeNotices.cs, helper/tests/Precheck.Core.Tests/Input/InputFakes.test.cs, helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/VisitOpener.test.cs, helper/tests/Precheck.Core.Tests/Input/InputCode.test.cs, helper/tests/Precheck.Core.Tests/Input/InputReplace.test.cs, helper/tests/Precheck.Windows.Tests/Input/UChartAutomation.test.cs, helper/tests/Precheck.Windows.Tests/Input/FakeBit.test.cs, helper/tests/input.dotnet.test.ts, helper/tests/input-code.dotnet.test.ts, helper/tests/input-replace.dotnet.test.ts
+- Tests: helper/tests/input.dotnet.test.ts, helper/tests/input-code.dotnet.test.ts, helper/tests/input-replace.dotnet.test.ts
 - TDD: required
 - **왜 (2026-11-03 사용자 결정)**: 사용자가 의원 PC에서 이 창 사진을 보내며 "이창 나오면 자동으로 확인 눌러줘야해". 지금은 멈춘다(`E-BIT-UNSAVED-RX`). 원본은 눌렀다(design.md 19절의 다른 점).
-- `IChartUi`에 `PressUnsavedRxOk()`(눌렀는지 bool)를 더한다. `InputRunner`의 세 자리(`RunPerson` 첫머리, 쓰기 직전, `FinishEarlierWrite`)와 `VisitOpener`의 `OpenWaitResult.UnsavedRx`가 AC-017.12대로 누른다. 3번 남으면 지금처럼 `Stop(InputErrors.UnsavedRx, null)`. 쓰기 직전·마무리 전에 눌렀으면 `CheckTarget`을 다시 한다.
-- `UChartAutomation`은 그 창 안의 확인 단추를 `IsConfirmButton`(19-6, `ViewModeNotices`와 같은 판단)으로 찾아 누른다. [취소]를 누르는 길이 없어야 한다.
+- `IChartUi`와 `IVisitRowScreen`(`VisitOpener`)에 `PressUnsavedRxOk()`를 더한다. `InputRunner`의 두 자리(`RunPerson` 첫머리, 쓰기 직전)와 `VisitOpener`의 `OpenWaitResult.UnsavedRx`가 AC-017.12대로 누른다. `VisitOpener`에서 누르면 `dialogSeen=true; dialogClosedAt=-1`로 둔다(안 그러면 기다림이 일찍 끝난다). 쓰기 직전 자리에서는 멈추기를 먼저 본 뒤 누른다. `InputRunner`에 시계가 없으므로 누른 뒤의 기다림은 `UChartAutomation`에 둔다. `OpenPatient`·`OpenRows`·`OpenWaiter.Wait`에 누를지 인자를 더해 `!person.EarlierWrite`를 넘긴다.
+- `UChartAutomation`에 WM_COMMAND로 누르기를 새로 만든다. `IsConfirmButton`(19-7)만 같이 쓴다: `ViewModeNotices.PressConfirm`은 private이고 이 창을 거른다(`ChartRules.cs:182`). [취소]를 누르는 길이 없어야 한다. `ChartRules.cs`·`ViewModeNotices.cs`의 '누르지 않는다' 주석을 고친다. 주의 줄 자리는 `InputPrompt.cs`의 `· 먼저 비트의 저장 안 한 작업을 마치세요` 줄 바로 다음이다.
+- **뒤집히는 시험**(지우지 않고 새 뜻으로 고친다): `input.dotnet.test.ts:99`, `input-code.dotnet.test.ts:121`, `InputRunner.test.cs:344·372`, `VisitOpener.test.cs:258`, `UChartAutomation.test.cs:170`, `InputCode.test.cs:232`, `InputReplace.test.cs:1225`. 쓰다 멈춘 사람의 `InputRunner.test.cs:1013·1096`은 그대로 둔다.
 - `E-BIT-UNSAVED-RX` 번호와 글은 그대로 둔다(눌러도 남을 때 쓴다). 사이트·`commands.json`은 고치지 않는다. 도우미 판 번호는 0.3.0 그대로이고 태그를 달지 않았으니 시험용 도우미를 다시 받는다.
 - 의원 PC 시험에 더함: ① 창이 뜬 사람에서 입력이 멈추지 않는가 ② [확인]을 누르면 쓰던 처방이 어떻게 되는가 ③ 환자가 바뀌어도 메모가 맞는 사람에게 들어가는가.
 
