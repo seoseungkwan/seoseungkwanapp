@@ -47,7 +47,7 @@ describe('REQ-503 도우미 통계 줄 읽기 stats.rows (C# Precheck.Core.Tests
     expect(lines.filter((line) => line.includes('StatsCommands'))).toHaveLength(1)
   })
 
-  it('AC-503.2 StatsSql 상수는 원본 사본과 공백만 다르고(진료 줄은 처방 코드 거르기 한 덩어리만 뺌) ReadOnlyGuard를 지난다, Sql.All은 그대로', () => {
+  it('AC-503.2 AC-1001.3 StatsSql 상수는 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르고(진료 줄은 처방 코드 거르기 한 덩어리만 뺌) ReadOnlyGuard를 지난다, Sql.All은 그대로', () => {
     expectAc('AC-503.2')
   })
 

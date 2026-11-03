@@ -7,11 +7,12 @@ namespace Precheck.Core.Revenue;
 /// <summary>
 /// revenue.days가 비트 DB에 돌리는 문장 전부(spec revenue design.md 4-2, AC-003.1·AC-003.8). 원본 일곱 개는 양지바른
 /// OperationalReportSql.cs에서 옮겼고 사본(helper/tests/Precheck.Core.Tests/Revenue/original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다(시험이 비교).
-/// 조건·칸 순서를 고치지 않는다: 의원이 쓰는 일일 보고와 같은 숫자가 나와야 한다. ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.
+/// 예외 하나: Patients의 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
+/// 그 밖의 조건·칸 순서를 고치지 않는다: 의원이 쓰는 일일 보고와 같은 숫자가 나와야 한다. ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.
 /// </summary>
 public static class RevenueSql
 {
-    // ---- 원본 그대로 7개 -------------------------------------------------------------------------------
+    // ---- 원본 7개(Patients 연결 조건만 예외) -------------------------------------------------------------------------------
     /// <summary>옛 자료가 따로 있는가(0이 아니면 신환을 정할 수 없다). 매개변수 없음.</summary>
     public const string HistoryGuard = @"SELECT (CASE WHEN EXISTS(SELECT 1 FROM sys.databases WHERE name='DRBITPACK_OLD') OR EXISTS(SELECT 1 FROM sys.objects WHERE name IN ('V_OcmInf','V_OdrInf')) THEN 1 ELSE 0 END)";
 
@@ -216,7 +217,7 @@ SELECT SUM(OrpTotAmt),SUM(OrpCorAmt),SUM(OrpNonAmt),SUM(CorAmt),SUM(CorCrdAmt),S
 ), Patients AS (
  SELECT DISTINCT PatientId FROM PeriodVisits WHERE PatientId IS NOT NULL
 ), FirstVisits AS (
- SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON NULLIF(RTRIM(c.OcmChtNum),'')=p.PatientId
+ SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON c.OcmChtNum=p.PatientId
  WHERE c.OcmAcpDtm<@to AND c.OcmRsuYon<>'O'
    AND ((c.OcmPatTyp='O' AND c.OcmComStt IN ('WN','HN','TN','PN'))
      OR (c.OcmPatTyp='I' AND c.OcmComStt NOT IN ('VC','CN','CR')))

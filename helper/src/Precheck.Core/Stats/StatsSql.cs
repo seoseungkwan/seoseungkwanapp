@@ -8,7 +8,8 @@ namespace Precheck.Core.Stats;
 /// 통계 탭이 비트 DB에 돌리는 SQL 전부(REQ-503, design.md 'TASK-3·4'). 문장은 원본 양지바른
 /// (seoseungkwan/shared@2a1069b YangjiBareun_사전점검/vendor/drbit_export/)에서 그대로 옮겼다. 공백만 다를 수 있고
 /// 사본은 helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql, 시험이 비교한다(AC-503.2·AC-504.4).
-/// PatientDaysSql만 원본에 없는 새 문장이다(Visits 글은 원본 그대로, 뒤의 SELECT만 새로 씀, AC-503.5).
+/// 예외 하나: 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
+/// PatientDaysSql만 원본에 없는 새 문장이다(Visits 글은 위 예외 말고 원본 그대로, 뒤의 SELECT만 새로 씀, AC-503.5).
 /// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 목록도 보므로 ReadOnlyGuard를 지난다.
 /// 청구 목록 Sql.All에는 넣지 않는다.
 /// </summary>
@@ -28,7 +29,7 @@ public static class StatsSql
 ), Patients AS (
  SELECT DISTINCT PatientId FROM PeriodVisits WHERE PatientId IS NOT NULL
 ), FirstVisits AS (
- SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON NULLIF(RTRIM(c.OcmChtNum),'')=p.PatientId
+ SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON c.OcmChtNum=p.PatientId
  WHERE c.OcmAcpDtm<@to AND c.OcmRsuYon<>'O'
    AND ((c.OcmPatTyp='O' AND c.OcmComStt IN ('WN','HN','TN','PN'))
      OR (c.OcmPatTyp='I' AND c.OcmComStt NOT IN ('VC','CN','CR')))
@@ -123,7 +124,7 @@ ORDER BY SeeOdrCod,
 ), Patients AS (
  SELECT DISTINCT PatientId FROM PeriodVisits WHERE PatientId IS NOT NULL
 ), FirstVisits AS (
- SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON NULLIF(RTRIM(c.OcmChtNum),'')=p.PatientId
+ SELECT p.PatientId,MIN(c.OcmAcpDtm) FirstDtm FROM Patients p JOIN dbo.OcmInf c ON c.OcmChtNum=p.PatientId
  WHERE c.OcmAcpDtm<@to AND c.OcmRsuYon<>'O'
    AND ((c.OcmPatTyp='O' AND c.OcmComStt IN ('WN','HN','TN','PN'))
      OR (c.OcmPatTyp='I' AND c.OcmComStt NOT IN ('VC','CN','CR')))

@@ -5,11 +5,13 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Precheck.Core.Stats;
+using Precheck.Core.Tests.BitReadSpeed;
 using Xunit;
 
 namespace Precheck.Core.Tests.Stats;
 
 /// <summary>
+/// AC-1001.3 사본은 고치지 않는다. 첫 내원 연결 조건 글 하나(FirstVisitJoin)만 바꾼 사본과 견주고, 아래 "공백만 다르다"는 그 바꾼 사본 기준이다.
 /// AC-503.2 통계 SQL(StatsSql)은 원본 문장 사본(original-sql/*.sql)과 공백만 다르다. 진료 줄 SQL만 원본 RowsSql에서
 /// 처방 코드 거르기 한 덩어리를 뺐다. 모두 매개변수를 받는 SELECT이고 ReadOnlyGuard를 지난다. 청구 Sql.All은 그대로다.
 /// AC-504.4 보고 SQL도 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로). @daily는 Char(1)로 관문을 지난다.
@@ -113,18 +115,18 @@ public class StatsSqlTests
     private static Dictionary<string, object?> CodeArgs() =>
         Args(("@from", "20260901"), ("@to", "20260930"), ("@priorFrom", "20260901"), ("@priorTo", "20260930"));
 
-    [Fact(DisplayName = "AC-503.2 기간 합계·날짜별·처방 이름·과거 자료 확인 SQL은 원본 사본과 공백만 다르다")]
+    [Fact(DisplayName = "AC-503.2 AC-1001.3 기간 합계·날짜별·처방 이름·과거 자료 확인 SQL은 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르다")]
     public void ConstantsMatchOriginalCopies()
     {
         var files = Directory.GetFiles(OriginalDirectory(), "*.sql").Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
         Assert.Equal(Originals.Keys.Concat(ReportOriginals.Keys).Append(RowsOriginal).OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
-        foreach (var pair in Originals) Assert.Equal(Squash(ReadOriginal(pair.Key)), Squash(pair.Value));
+        foreach (var pair in Originals) Assert.Equal(Squash(FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key))), Squash(pair.Value));
     }
 
-    [Fact(DisplayName = "AC-503.2 진료 줄 SQL은 원본 Visits + RowsSql에서 처방 코드 거르기 한 덩어리만 뺀 글이다")]
+    [Fact(DisplayName = "AC-503.2 AC-1001.3 진료 줄 SQL은 연결 조건 한 가지만 바꾼 원본 Visits + RowsSql에서 처방 코드 거르기 한 덩어리만 뺀 글이다")]
     public void VisitRowsIsOriginalWithoutCodeFilter()
     {
-        var original = Squash(ReadOriginal(RowsOriginal));
+        var original = Squash(FirstVisitJoin.ApplyTo(RowsOriginal, ReadOriginal(RowsOriginal)));
         Assert.Equal(1, Count(original, BlockStart));
         Assert.Equal(1, Count(original, BlockEnd));
 
@@ -140,10 +142,10 @@ public class StatsSqlTests
         Assert.DoesNotContain("@eswt", StatsSql.VisitRowsSql);
     }
 
-    [Fact(DisplayName = "AC-503.5 접수 줄 SQL은 원본 사본의 Visits 부분(공백만 다름) 뒤에 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
+    [Fact(DisplayName = "AC-503.5 AC-1001.3 접수 줄 SQL은 연결 조건 한 가지만 바꾼 원본 사본의 Visits 부분(공백만 다름) 뒤에 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
     public void PatientDaysIsVisitsPlusSelect()
     {
-        var original = Squash(ReadOriginal(RowsOriginal));
+        var original = Squash(FirstVisitJoin.ApplyTo(RowsOriginal, ReadOriginal(RowsOriginal)));
         Assert.Equal(1, Count(original, OrdersStart));
         var visits = original.Substring(0, original.IndexOf(OrdersStart, StringComparison.Ordinal));
         foreach (var part in new[] { "WITH PeriodVisits AS (", "), Patients AS (", "), FirstVisits AS (" }) Assert.Equal(1, Count(visits, part));
@@ -193,10 +195,10 @@ public class StatsSqlTests
         Assert.DoesNotMatch(forbidden, body);
     }
 
-    [Fact(DisplayName = "AC-504.4 보고 SQL은 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로)")]
+    [Fact(DisplayName = "AC-504.4 AC-1001.3 보고 SQL은 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로)")]
     public void ReportConstantsMatchOriginalCopies()
     {
-        foreach (var pair in ReportOriginals) Assert.Equal(Squash(ReadOriginal(pair.Key)), Squash(pair.Value));
+        foreach (var pair in ReportOriginals) Assert.Equal(Squash(FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key))), Squash(pair.Value));
         // 원본 주석 줄은 뒤 줄을 먹지 않게 줄바꿈을 그대로 둔다
         Assert.Contains("projection's\n", StatsSql.FinanceMultiplicitySql.Replace("\r\n", "\n"));
         Assert.Contains("selected period.\n", StatsSql.FinanceMultiplicitySql.Replace("\r\n", "\n"));

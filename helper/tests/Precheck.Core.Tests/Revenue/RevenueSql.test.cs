@@ -6,11 +6,13 @@ using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Precheck.Core.Revenue;
 using Precheck.Core.Tests.Bit;
+using Precheck.Core.Tests.BitReadSpeed;
 using Xunit;
 
 namespace Precheck.Core.Tests.Revenue;
 
 /// <summary>
+/// AC-1001.3 사본은 고치지 않는다. 첫 내원 연결 조건 글 하나(FirstVisitJoin)만 바꾼 사본과 견준다.
 /// AC-003.1 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고, Extra 둘은 원본과 정해 둔 줄만 다르다.
 /// AC-003.8 ReadOnlyGuard는 매출 문장 10개를 정해 둔 매개변수와 함께만 통과시킨다. 기존 Sql 상수·시험은 그대로.
 /// </summary>
@@ -63,12 +65,12 @@ public class RevenueSqlTests
 
     // ---- AC-003.1 사본 비교 -------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.1 원본 일곱 문장은 사본(original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다")]
+    [Fact(DisplayName = "AC-003.1 AC-1001.3 원본 일곱 문장은 연결 조건 한 가지만 바꾼 사본(original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다")]
     public void OriginalsMatchCopies()
     {
         var files = Directory.GetFiles(OriginalDirectory(), "*.sql").Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
         Assert.Equal(Originals.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
-        foreach (var pair in Originals) Assert.Equal(Squash(ReadOriginal(pair.Key)), Squash(pair.Value));
+        foreach (var pair in Originals) Assert.Equal(Squash(FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key))), Squash(pair.Value));
     }
 
     [Fact(DisplayName = "AC-003.1 사본 맨 위에 출처 한 줄이 있다(원본 커밋 c66488e)")]

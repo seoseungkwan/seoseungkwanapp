@@ -26,7 +26,7 @@ function expectAc(ac: string) {
 }
 
 describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () => {
-  it('AC-003.1 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 8개·걸린 날 2~4개, 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
+  it('AC-003.1 AC-1001.3 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 8개·걸린 날 2~4개, 원본 문장은 연결 조건 한 가지만 바꾼 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
     expectAc('AC-003.1')
   })
 
