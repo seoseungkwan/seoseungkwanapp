@@ -8,6 +8,7 @@
 > **새 목업 승인(2026-11-01·2026-11-02)**: TASK-18은 Phase 0 목업에 없는 것을 그린다. '병원 문구'·'시술별 약' 칸과 입력 쪽(입력 방식 고르기·코드 단추·목록·다른 메모 나란히 보기·비트 메모 카드·TASK-37의 PC 확인 창 체크 '이제부터 묻지 않기')은 목업이 승인됐다(TASK-18의 링크 줄). 쓰다 멈춘 사람·기관기호 안내·처음 질문·설정 변경 띠는 2026-11-02 승인한 목업을 따른다(TASK-18의 링크 줄). TASK-13은 승인본 `499cp2Sodph7jYJ4gX4exj` 그대로 시작한다.
 > **2026-11-01 명세 변경**: TASK-35~39를 더했다(plan.md §6 밖). step 파일이 없고 이 파일과 design.md 19절이 그 일을 정한다. 번호가 곧 차례는 아니다. **남은 차례**: ① TASK-10·11·12(먼저 시작함) → ② 나란히: TASK-14 · TASK-35 · TASK-38 → ③ TASK-16 웹 쪽(TASK-14 뒤) · TASK-36(TASK-35 뒤) → ④ TASK-13(TASK-10·11·12·14·16 뒤) → ⑤ TASK-37(TASK-36 뒤. 입력 쪽 목업은 승인됨) → ⑥ TASK-18(TASK-13·14·16·35·36·37 뒤) → ⑦ TASK-19 → 그 뒤 Phase 4부터 그대로. TASK-35·36·37은 `Core/Input`을 함께 고쳐 나란히 하지 않는다. TASK-14 → 16 → 13은 `jobs.ts`·`jobs.test.ts`·`types/precheck.ts`를 함께 고치고 앞 TASK의 결과를 쓰므로 차례대로 한다: TASK-16의 비교는 TASK-14의 메모 글을 쓰고, TASK-14는 고친 메모를 인자로만 받으며 `store.load`를 거기에 잇는 것은 TASK-16이다. TASK-39는 언제든 한다. 도우미 판(`Version`·`LATEST_HELPER`·`MIN_HELPER`)은 릴리스 때 올리고, 릴리스는 사용자가 지시할 때만 한다(design.md 19-5).
 > **2026-11-02 명세 변경**: TASK-40을 더했다(plan.md §6 밖, `phases/precheck-3-memo/step6.md`). 비트의 다른 메모를 사람마다 묻지 않고 기본으로 바꾼다(사용자 결정, design.md 19-6). 차례는 TASK-19 뒤, Phase 3 끝 점검 앞이다. 사이트만 고치고 도우미는 그대로다. TASK-40은 끝난 TASK-16·18·19의 AC 일부를 바꾸므로 앞 TASK의 시험 가운데 뒤집히는 것은 이 TASK가 고친다.
+> **2026-11-03 명세 변경**: TASK-41을 더했다(plan.md §6 밖, step 파일 없음). TASK-40 뒤로 맞지 않게 된 PC 확인 창의 주의 줄 한 줄만 고친다(AC-037.8, design.md 19-6의 '고친 글').
 > 도우미 C# 시험 파일 이름은 `*.test.cs`다(하네스가 시험 파일로 알아보게). 하네스 TDD 기록은 `helper/tests/*.dotnet.test.ts` 감싸개로 남긴다(design.md 11절).
 > 원본 경로는 `YANGJI_SRC`(저장소 밖, `seoseungkwan/shared@2a1069b`)로만 받는다. 원본 파일은 커밋하지 않는다.
 
@@ -282,7 +283,7 @@
 - TDD: required
 - **왜 (2026-11-02 사용자 결정)**: "직접쓴건 없애 그리고 어떤거 없앴는지만 알려줄수있게해 어차피 내가 한번 다 확인하고 돌릴거여서 괜찮아". 사용자가 고른 말: "우리 메모로 바꾸기: 입력할 때 사람마다 승인받지 않고 직접 쓴 메모를 지운 뒤 우리 메모를 넣어요. 지운 메모는 그 PC 기록에 남고, 결과 화면에 누구 메모를 바꿨는지 이전 메모와 함께 보여요."
 - **새 목업 없음 (Claude 판단)**: 새 화면과 새 배치가 없다. 승인 목업(TASK-18 링크)의 줄·단추 모양 그대로이고 글·칩·[바꾸지 않기]가 보이는 줄만 바뀐다. 바뀌는 글은 AC-018.3·AC-018.4·AC-018.22·AC-018.26이 정한다
-- **도우미는 고치지 않는다**: `helper/`·`commands.json`·`MIN_HELPER`를 건드리지 않는다. AC-037.1·AC-037.2·AC-037.3이 이 길을 그대로 지킨다. PC 창의 낡은 주의 줄(AC-037.8)은 다음 도우미 릴리스 때 고친다. `counts.ts`·`excel.ts`도 그대로다: 건수는 입력을 마치면 `finished`로 입력됨이 되고, 엑셀은 이미 '기존 비트 청구메모'에 `previousMemo`를 싣는다(jobs.ts `existing`, `jobs.test.ts`의 AC-018.15 시험이 본다)
+- **도우미는 고치지 않는다**: `helper/`·`commands.json`·`MIN_HELPER`를 건드리지 않는다. AC-037.1·AC-037.2·AC-037.3이 이 길을 그대로 지킨다. PC 창의 낡은 주의 줄(AC-037.8)은 TASK-41에서 고친다. `counts.ts`·`excel.ts`도 그대로다: 건수는 입력을 마치면 `finished`로 입력됨이 되고, 엑셀은 이미 '기존 비트 청구메모'에 `previousMemo`를 싣는다(jobs.ts `existing`, `jobs.test.ts`의 AC-018.15 시험이 본다)
 - `memoCompare.ts` **(Claude 판단: 모양)**: `MemoSource`에 `declined`, `VisitMemo`에 `declined`를 더한다(비교가 `다름`일 때만 칸이 있다). `inputPlan(visits)`에서 `noAsk` 인자를 뺀다: 결과가 달라지지 않아 쓰지 않는 인자가 된다(`TargetContext`·`MemoStateOptions`의 `noAsk`도). 보낼 `replaces`를 정하는 일은 `replacesOf(row)` 하나로 모아 `inputPlan`과 `jobs.ts`의 `itemOf`가 같은 답을 낸다: `다름`이고 `declined`가 아니고 `skippedByHand`이면 `approved`가 있을 때만 `row.inBit`다. `bitMemoOf`는 4,000자를 넘는 글을 `undefined`로 돌려준다(AC-016.6)
 - `inputTargets.ts`: 칩은 `'새 메모' | '메모 바꿈'`(`types/precheck.ts`도)
 - `jobs.ts` 남은 수: 결과의 남은 수·[이어서 하기]·[다시 하기]는 비교가 `다름`인 `declined`를 세지 않는다(이번 답에 쓰다 멈춘 줄이 있는 사람은 [이어서 하기] 묶음에 남는다. `left`는 지금처럼 그 줄을 세지 않는다). 0명이면 단추가 없다(AC-018.4·AC-018.21). 시험: `jobs.test.ts` `AC-018.21`(비교가 `다름`인 쓰다 멈춘 두 사람을 [직접 확인했어요]로 보낸 묶음이 `E-BIT-UNSAVED-RX`로 멈추면 남은 0명, [이어서 하기] 없음)
@@ -291,6 +292,16 @@
 - 시험 이름에 AC ID를 넣는다. `memoCompare.test.ts`: `AC-016.3`(`다름`이면 지금 비트 글을 `replaces`로 듦, [바꾸지 않기]면 이미 있음, `skippedByHand`면 빠지고 승인하면 듦, 앞선 까닭이 먼저), `AC-016.4`(`already`는 `다름`인 수), `AC-016.6`(4,000자는 `replaces`로 듦, 4,001자는 그 진료만 `조회 못함`). `inputTargets.test.ts`: `AC-018.26`(칩 둘, 까닭 차례), `AC-018.14`(`declined`면 '다른 메모 있음', 목록과 묶음이 같음), `AC-018.22`(`skippedByHand`는 빠짐), `AC-018.20`(입력 직전 변경됨을 기억하지 않음). `jobs.test.ts`: `AC-016.3`(사본을 적지 못한 [직접 확인했어요] 사람이 다음 묶음에 없음), `AC-016.7`(`replaces`가 새 글), `AC-016.8`(실패 뒤 `declined`와 `replaces`가 그대로), `AC-018.4`(미리 뺀 사람의 이유 글), `AC-018.14`(AC 끝의 목록), `AC-018.16`([이어서 입력]에 `replaces` 없음), `AC-018.21`([이어서 하기]·[다시 하기]에서 `declined`를 뺌), `AC-018.22`(꺼짐과 켜짐의 묶음이 같음, 첫 묶음의 N), `AC-019.3`(바꿔 끝나면 `entered`, 아직이면 `skipped`, `declined`가 있는 날은 `entered`가 `need_memo`보다 적음). `rows/MemoRows.test.tsx`: `AC-018.14`, `AC-018.26`. `memo/MemoPanel.test.tsx`: `AC-018.3`(단추 옆 글), `AC-018.22`(띠 글, 켜져 있어도 [바꾸지 않기]가 눌림). `memo/InputResults.test.tsx`: `AC-018.4`(그중 메모 바꿈, 이전 메모와 넣은 메모), `AC-018.22`(첫 묶음 글)
 - **뒤집히는 시험**: 옛 규칙을 본 시험은 지우지 않고 새 뜻으로 고친다: `memoCompare.test.ts`의 '묻지 않기가 꺼져 있으면 승인하지 않은 진료는 건너뜀' 등, `inputTargets.test.ts`의 칩과 'AC-016.3·AC-018.22 다른 메모와 묻지 않기', `jobs.test.ts`의 'AC-018.14 사람마다 승인'과 'AC-018.22 묻지 않기', `MemoRows.test.tsx`의 'AC-018.14 다른 메모'
 - 의원 PC 시험(TASK-37의 것에 더함): 하루치로 먼저 한다. ① 직접 쓴 메모가 실제로 바뀌는가: `replaces`는 DB 글이고 칸 글과 견주므로(19-11) 다르면 모두 '입력 직전 변경됨'으로 건너뛴다 ② [바꾸지 않기]를 누른 사람이 묻지 않기를 켠 뒤에도 열리지 않는가 ③ 결과 화면과 엑셀에 지운 메모가 나오는가
+
+## TASK-41: PC 확인 창의 낡은 주의 줄 고치기 (도우미)
+- Step: Phase 3 · TASK-40 뒤 · `other-memo-note` (plan.md §6 밖, step 파일 없음. design.md 19-6의 '고친 글')
+- AC: AC-037.8(꺼진 창의 주의 줄 글만)
+- REQ: REQ-037
+- Files: helper/src/Precheck.Core/Input/InputPrompt.cs, helper/tests/Precheck.Core.Tests/Input/InputReplace.test.cs, helper/tests/Precheck.Core.Tests/Input/InputCode.test.cs
+- Tests: helper/tests/input-replace.dotnet.test.ts, helper/tests/input-code.dotnet.test.ts
+- TDD: required
+- 글만 바꾼다: `InputPrompt.OtherMemoNote` 한 줄이다. 동작, 체크 글(승인 목업), 켜진 창의 주의 줄, 버전 글자(`Version`·`MIN_HELPER`·`LATEST_HELPER`)는 그대로다. 태그와 릴리스는 사용자가 지시할 때만 한다
+- 시험: `InputReplace.test.cs`의 `AC-037.8 꺼진 창의 주의 줄`이 새 글을 글자까지 본다. `InputCode.test.cs`의 `AC-036.3 코드가 없으면 지금 글 그대로다`는 창 글 전체를 글자까지 보므로 같은 글로 맞춘다(AC-036.3의 뜻은 그대로다)
 
 ## TASK-20: 심평원 청구 파일 읽기 (도우미)
 - Step: Phase 4 · Step 0 · `sam-read`

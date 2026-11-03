@@ -19,7 +19,7 @@ public static class InputPrompt
     /// <summary>체크 글(AC-037.8, 승인 목업). '기록에 남깁니다'는 그 PC의 달 파일(originals)에 저장한다는 뜻이고 보여 주는 화면을 약속하지 않는다.</summary>
     public const string NoAskLabel = "이제부터 묻지 않기 (비트에 다른 메모가 있어도 묻지 않고 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 확인 표시가 남은 메모는 입력하지 않습니다. 청구 창을 닫으면 꺼집니다)";
 
-    private const string OtherMemoNote = "비트에 다른 메모가 있으면 승인한 사람만 바꾸고 나머지는 건너뜁니다. 아래 체크를 켜면 승인하지 않은 다른 메모도 바꿉니다.";
+    private const string OtherMemoNote = "비트에 다른 메모가 있으면 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 다만 불러온 뒤 달라진 메모, 우리 메모에 확인 표시가 남은 환자, [직접 확인했어요]를 누른 환자는 건너뜁니다.";
     private const string NoAskOnNote = "묻지 않기가 켜져 있어 비트의 다른 메모를 바꿉니다. 다만 직접 확인한 환자는 바꾸지 않고 건너뜁니다";
 
     private const string RecordsNotice = "입력 기록의 일부를 확인할 수 없습니다. 먼저 비트에 열려 있는 환자의 메모 칸을 확인해 주세요. 저장하지 않은 글이 있으면 마무리한 뒤 [확인]을 눌러 주세요.";

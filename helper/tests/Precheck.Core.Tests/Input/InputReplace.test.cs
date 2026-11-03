@@ -28,7 +28,7 @@ public class InputReplaceTests
     private const string OldMonth = "work-2026-08.dat";
     private const string Notice = "입력 기록의 일부를 확인할 수 없습니다. 먼저 비트에 열려 있는 환자의 메모 칸을 확인해 주세요. 저장하지 않은 글이 있으면 마무리한 뒤 [확인]을 눌러 주세요.";
     private const string SetAside = "그 달의 입력 기록 파일을 읽지 못해 따로 치워 두었습니다. 아무도 열지 않았으니 다시 눌러 이어서 해 주세요.";
-    private const string NoteOff = "비트에 다른 메모가 있으면 승인한 사람만 바꾸고 나머지는 건너뜁니다. 아래 체크를 켜면 승인하지 않은 다른 메모도 바꿉니다.";
+    private const string NoteOff = "비트에 다른 메모가 있으면 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 다만 불러온 뒤 달라진 메모, 우리 메모에 확인 표시가 남은 환자, [직접 확인했어요]를 누른 환자는 건너뜁니다.";
     private const string NoteOn = "묻지 않기가 켜져 있어 비트의 다른 메모를 바꿉니다. 다만 직접 확인한 환자는 바꾸지 않고 건너뜁니다";
     private const string Label = "이제부터 묻지 않기 (비트에 다른 메모가 있어도 묻지 않고 우리 메모로 바꿉니다. 원래 메모는 기록에 남깁니다. 확인 표시가 남은 메모는 입력하지 않습니다. 청구 창을 닫으면 꺼집니다)";
 
