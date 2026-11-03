@@ -734,6 +734,10 @@ describe('AC-013.5 비트 PC 연결로 가는 길', () => {
     expect([...SETUP_CODES].sort()).toEqual(named.sort())
   })
 
+  it.each(['E-BRIDGE-BUSY', 'E-BIT-IN-USE'])('AC-013.5: 대시보드 쪽 글이 [다시 확인]을 말하는 %s에도 비트 PC 연결 링크가 붙는다', (code) => {
+    expect(SETUP_CODES.has(code)).toBe(true)
+  })
+
   it.each(['E-BIT-EXPORT-FAILED', 'E-CLAIM-PARTIAL'])('AC-013.5: [다시 불러오기]로 풀리는 %s에는 링크가 없다', async (code) => {
     await failLoad(bridge({ month: () => Promise.reject(new BridgeError(code)) }))
     expect(setupLink()).toBeNull()

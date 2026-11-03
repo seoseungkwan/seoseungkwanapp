@@ -244,12 +244,12 @@ public class RevenueSqlTests
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(RevenueSql.HistoryGuard, history)).Code);
     }
 
-    [Fact(DisplayName = "AC-003.8 기존 Sql 상수는 그대로다(Sql.All은 원본 4개, 매출 문장은 끼지 않음)")]
+    // Sql.All의 정확한 목록은 ReadOnlyGuard.test.cs가 본다(청구 쪽이 자기 문장을 더했다). 여기서는 매출이 그 목록을 건드리지 않는 것만 본다
+    [Fact(DisplayName = "AC-003.8 기존 Sql 상수는 그대로다(Sql.All에 원본 4개가 있고, 매출 문장은 끼지 않음)")]
     public void ExistingListUntouched()
     {
-        Assert.Equal(
-            new[] { Sql.UserScopeSql, Sql.ScopesSql, Sql.InstitutionSql, Sql.SnapshotStateSql }.OrderBy(sql => sql, StringComparer.Ordinal),
-            Sql.All.OrderBy(sql => sql, StringComparer.Ordinal));
+        foreach (var sql in new[] { Sql.UserScopeSql, Sql.ScopesSql, Sql.InstitutionSql, Sql.SnapshotStateSql }) Assert.Contains(sql, Sql.All);
+        foreach (var sql in RevenueSql.Parameters.Keys) Assert.DoesNotContain(sql, Sql.All);
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Sql.ParametersOf("SELECT 1")).Code);
     }
 }
