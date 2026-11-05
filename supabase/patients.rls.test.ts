@@ -8,6 +8,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf-8')
 const AUTH_MIGRATION = read('./migrations/20261028000000_auth.sql')
 const PATIENTS_MIGRATION = read('./migrations/20261101000300_patients.sql')
+// 라이브 줄(청구 사전점검)이 운영에 먼저 넣는 두 파일. 읽기만 한다(AC-607.5)
+const PRECHECK_SETTINGS_MIGRATION = read('./migrations/20261030000000_precheck_settings.sql')
+const PRECHECK_COUNTS_MIGRATION = read('./migrations/20261030000100_precheck_counts.sql')
 
 const SUPABASE_MOCK = `
   create role anon nologin;
@@ -94,19 +97,19 @@ beforeEach(async () => {
   hospitalD = await addHospital(D, 'rejected')
 })
 
-async function operator() {
-  await db.exec('reset role; reset request.jwt.claims')
+async function operator(target: PGlite = db) {
+  await target.exec('reset role; reset request.jwt.claims')
 }
 
-async function become(user: string) {
-  await operator()
-  await db.query(`select set_config('request.jwt.claims', $1, false)`, [JSON.stringify({ sub: user, email: EMAIL[user] })])
-  await db.exec('set role authenticated')
+async function become(user: string, target: PGlite = db) {
+  await operator(target)
+  await target.query(`select set_config('request.jwt.claims', $1, false)`, [JSON.stringify({ sub: user, email: EMAIL[user] })])
+  await target.exec('set role authenticated')
 }
 
-async function becomeAnon() {
-  await operator()
-  await db.exec('set role anon')
+async function becomeAnon(target: PGlite = db) {
+  await operator(target)
+  await target.exec('set role anon')
 }
 
 async function rows(sql: string, params: unknown[] = [], target: PGlite = db) {
@@ -205,13 +208,54 @@ async function shape(target: PGlite) {
   return { functions, policies, triggers, grants }
 }
 
-// 운영자가 auth 다음에 steps를 차례로 붙인 새 DB
-async function inFreshDb(steps: string[], check: (fresh: PGlite) => Promise<void>) {
+// 두 표의 칸·제약·표와 칸 권한·RLS·정책·트리거. 공용 함수는 뺀다(함수 권한은 붙인 길마다 다를 수 있다)
+async function tableShape(target: PGlite) {
+  const { policies, triggers, grants } = await shape(target)
+  const columns = await rows(
+    `select table_name, column_name, ordinal_position, data_type, is_nullable, column_default from information_schema.columns
+     where table_schema = 'public' and table_name in ('message_templates', 'contact_counts')
+     order by table_name, ordinal_position`,
+    [],
+    target,
+  )
+  const constraints = await rows(
+    `select conrelid::regclass::text as table_name, conname, contype, pg_get_constraintdef(oid) as def from pg_constraint
+     where conrelid in ('${TEMPLATES}'::regclass, '${COUNTS}'::regclass)
+     order by 1, 2`,
+    [],
+    target,
+  )
+  return { columns, constraints, grants, policies, triggers }
+}
+
+// 공용 함수 둘의 글·definer·search_path(권한은 뺀다)
+async function functionBodies(target: PGlite) {
+  return rows(
+    `select p.proname, pg_get_functiondef(p.oid) as def, p.prosecdef, p.proconfig from pg_proc p
+     where p.pronamespace = 'public'::regnamespace and p.proname in ('my_hospital_id', 'touch_updated_at')
+     order by p.proname`,
+    [],
+    target,
+  )
+}
+
+// 운영자가 auth 다음에 steps를 차례로 붙인 새 DB. 닫는 것은 부른 쪽이 한다
+async function freshDb(steps: string[]) {
   const fresh = await PGlite.create()
   try {
     await fresh.exec(SUPABASE_MOCK)
     await fresh.exec(AUTH_MIGRATION)
     for (const step of steps) await fresh.exec(step)
+    return fresh
+  } catch (error) {
+    await fresh.close()
+    throw error
+  }
+}
+
+async function inFreshDb(steps: string[], check: (fresh: PGlite) => Promise<void>) {
+  const fresh = await freshDb(steps)
+  try {
     await check(fresh)
   } finally {
     await fresh.close()
@@ -556,7 +600,9 @@ describe('AC-607.3 기본 권한을 거두고 authenticated에 칸 단위로만 
     expect(await columnsWith('authenticated', table, 'UPDATE')).toEqual(columns)
   })
 
-  it('AC-607.3 정책은 authenticated에게만, 표마다 정해 둔 동작에만 있고 내 병원 조건이다', async () => {
+  // 정책은 표마다 하나(모든 동작)다(AC-607.5, precheck와 같은 모양). 어떤 동작이 되는지는 위의 표·칸 권한이 정한다
+  // (contact_counts는 delete 권한이 없어 지우기가 안 된다, AC-607.2)
+  it('AC-607.3 AC-607.5 정책은 표마다 하나, authenticated에게만 있고 읽기·쓰기 모두 내 병원 조건이다', async () => {
     const policies = await rows(
       `select tablename, cmd, roles::text[] as roles, qual, with_check from pg_policies
        where schemaname = 'public' and tablename in ('message_templates', 'contact_counts')
@@ -571,15 +617,7 @@ describe('AC-607.3 기본 권한을 거두고 authenticated에 칸 단위로만 
       qual,
       with_check,
     })
-    expect(policies).toEqual([
-      row('contact_counts', 'INSERT', null, MINE),
-      row('contact_counts', 'SELECT', MINE, null),
-      row('contact_counts', 'UPDATE', MINE, MINE),
-      row('message_templates', 'DELETE', MINE, null),
-      row('message_templates', 'INSERT', null, MINE),
-      row('message_templates', 'SELECT', MINE, null),
-      row('message_templates', 'UPDATE', MINE, MINE),
-    ])
+    expect(policies).toEqual([row('contact_counts', 'ALL', MINE, MINE), row('message_templates', 'ALL', MINE, MINE)])
   })
 
   it('AC-607.3 my_hospital_id()는 authenticated만 실행하고 public·anon은 못 한다', async () => {
@@ -618,13 +656,13 @@ describe('AC-607.4 두 번 실행하거나 다른 브랜치 함수가 먼저 있
     expect(PATIENTS_MIGRATION).toContain(C1_TOUCH_UPDATED_AT)
   })
 
-  it('AC-607.4 두 번 실행해도 되는 문장만 쓴다', () => {
+  it('AC-607.4 AC-607.5 두 번 실행해도 되는 문장만 쓴다(정책·트리거는 표마다 하나)', () => {
     const sql = PATIENTS_MIGRATION.replace(/--.*$/gm, '') // 주석을 뺀 SQL만 본다
     const count = (pattern: RegExp) => (sql.match(pattern) ?? []).length
     expect(sql).not.toMatch(/create\s+function/i)
     expect(sql).not.toMatch(/create\s+table\s+(?!if\s+not\s+exists)/i)
-    expect(count(/create\s+policy/gi)).toBe(7)
-    expect(count(/drop\s+policy\s+if\s+exists/gi)).toBe(7)
+    expect(count(/create\s+policy/gi)).toBe(2)
+    expect(count(/drop\s+policy\s+if\s+exists/gi)).toBe(2)
     expect(count(/create\s+trigger/gi)).toBe(2)
     expect(count(/drop\s+trigger\s+if\s+exists/gi)).toBe(2)
   })
@@ -664,5 +702,131 @@ describe('AC-607.4 두 번 실행하거나 다른 브랜치 함수가 먼저 있
     await inFreshDb([PATIENTS_MIGRATION, C1_MY_HOSPITAL_ID, C1_TOUCH_UPDATED_AT], async (fresh) => {
       expect(await shape(fresh)).toEqual(once)
     })
+  })
+})
+
+describe('AC-607.5 라이브 precheck migration이 두 표를 먼저 만든 DB에 붙여도 두 표가 그대로다', SLOW, () => {
+  const LIVE = [PRECHECK_SETTINGS_MIGRATION, PRECHECK_COUNTS_MIGRATION]
+  const MINE = /^\(hospital_id = \( SELECT (public\.)?my_hospital_id\(\)/
+  let beforePatients: Awaited<ReturnType<typeof tableShape>>
+  let onTop: PGlite
+
+  beforeAll(async () => {
+    // 이 migration 전: auth → precheck_settings → precheck_counts
+    await inFreshDb(LIVE, async (live) => {
+      beforePatients = await tableShape(live)
+    })
+    // 운영 차례: auth → precheck_settings → precheck_counts → 이 migration
+    onTop = await freshDb([...LIVE, PATIENTS_MIGRATION])
+  }, 60_000)
+
+  afterAll(async () => {
+    if (onTop) await onTop.close()
+  })
+
+  it('AC-607.5 오류 없이 붙고 두 표의 칸·제약·표와 칸 권한·RLS·정책·트리거가 이 migration 전과 같다', async () => {
+    expect(await tableShape(onTop)).toEqual(beforePatients)
+  })
+
+  it('AC-607.5 정책·트리거는 표마다 하나이고 precheck와 같은 이름·글이다', async () => {
+    const { policies, triggers } = await shape(onTop)
+    expect(policies).toEqual(
+      ['contact_counts', 'message_templates'].map((tablename) => ({
+        tablename,
+        policyname: '승인된 내 병원 줄만',
+        cmd: 'ALL',
+        roles: ['authenticated'],
+        qual: expect.stringMatching(MINE),
+        with_check: expect.stringMatching(MINE),
+      })),
+    )
+    expect(triggers).toEqual(
+      ['contact_counts', 'message_templates'].map((table) => ({
+        table_name: table,
+        tgname: `${table}_touch`,
+        def: expect.stringMatching(
+          new RegExp(`^CREATE TRIGGER ${table}_touch BEFORE UPDATE ON public\\.${table} FOR EACH ROW EXECUTE FUNCTION (public\\.)?touch_updated_at\\(\\)$`),
+        ),
+      })),
+    )
+  })
+
+  it('AC-607.5 공용 함수 둘은 precheck 글을 덮어 C1 글이 된다(touch_updated_at은 definer가 아니다)', async () => {
+    const functions = await functionBodies(onTop)
+    expect(functions).toEqual(await functionBodies(db))
+    expect(functions.map(({ proname, prosecdef }) => ({ proname, prosecdef }))).toEqual([
+      { proname: 'my_hospital_id', prosecdef: true },
+      { proname: 'touch_updated_at', prosecdef: false },
+    ])
+  })
+
+  it('AC-607.5 auth 다음에 이 migration만 실행해도 같은 칸·제약·권한·RLS·정책·트리거가 생긴다', async () => {
+    expect(await tableShape(db)).toEqual(beforePatients)
+  })
+
+  // C1 touch_updated_at은 definer가 아니다(invoker). 라이브 표(claim_rule_settings)의 트리거도 그대로 도는지 본다
+  it('AC-607.5 라이브 위에서도 anon은 못 읽고 승인 대기 병원은 줄이 안 보이며, 승인된 A는 자기 줄만 보고 고치면 바뀐 시각이 바뀐다', async () => {
+    const RULES = 'public.claim_rule_settings'
+    const hospital: Record<string, string> = {}
+    await operator(onTop)
+    for (const [user, status, label] of [
+      [A, 'approved', 'A 문구'],
+      [B, 'approved', 'B 문구'],
+      [C, 'pending', 'C 문구'],
+    ]) {
+      await onTop.query('insert into auth.users (id, email) values ($1, $2)', [user, EMAIL[user]])
+      const [row] = await rows(
+        `insert into public.hospitals (owner_id, name, applicant_name, email, status)
+         values ($1, '가짜병원', '홍길동', $2, $3) returning id`,
+        [user, EMAIL[user], status],
+        onTop,
+      )
+      hospital[user] = row.id as string
+      await onTop.query(
+        `insert into ${TEMPLATES} (hospital_id, kind, name, body, updated_at) values ($1, 'injection', $2, '내일 오세요', $3)`,
+        [row.id, label, LONG_AGO],
+      )
+      await onTop.query(`insert into ${COUNTS} (hospital_id, followup_left, injection_left, updated_at) values ($1, 1, 2, $2)`, [
+        row.id,
+        LONG_AGO,
+      ])
+      await onTop.query(`insert into ${RULES} (hospital_id, rule_id, enabled, updated_at) values ($1, 'AB-01', true, $2)`, [
+        row.id,
+        LONG_AGO,
+      ])
+    }
+    const movedSince = async (table: string) => {
+      await operator(onTop)
+      return rows(`select updated_at > $1::timestamptz as moved from ${table} where hospital_id = $2`, [LONG_AGO, hospital[A]], onTop)
+    }
+    try {
+      await becomeAnon(onTop)
+      for (const table of [TEMPLATES, COUNTS]) {
+        await expect(onTop.query(`select * from ${table}`)).rejects.toThrow(DENIED)
+      }
+
+      await become(C, onTop)
+      expect(await rows(`select id from ${TEMPLATES}`, [], onTop)).toEqual([])
+      expect(await rows(`select hospital_id from ${COUNTS}`, [], onTop)).toEqual([])
+
+      await become(A, onTop)
+      expect(await rows(`select hospital_id, name from ${TEMPLATES}`, [], onTop)).toEqual([
+        { hospital_id: hospital[A], name: 'A 문구' },
+      ])
+      expect(await rows(`select hospital_id from ${COUNTS}`, [], onTop)).toEqual([{ hospital_id: hospital[A] }])
+
+      expect(await rows(`update ${TEMPLATES} set name = '바꿈' returning hospital_id`, [], onTop)).toEqual([
+        { hospital_id: hospital[A] },
+      ])
+      expect(await movedSince(TEMPLATES)).toEqual([{ moved: true }])
+
+      await become(A, onTop)
+      expect(await rows(`update ${RULES} set enabled = false returning hospital_id`, [], onTop)).toEqual([
+        { hospital_id: hospital[A] },
+      ])
+      expect(await movedSince(RULES)).toEqual([{ moved: true }])
+    } finally {
+      await operator(onTop)
+    }
   })
 })

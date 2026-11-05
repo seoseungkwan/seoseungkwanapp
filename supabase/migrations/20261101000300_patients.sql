@@ -4,6 +4,16 @@
 -- auth migration(20261028000000_auth.sql)이 먼저 들어가 있어야 한다. 붙여 넣는 때는 사용자 OK 뒤다.
 -- 파일 이름은 cross-branch 규칙 C2로 정해 둔 것이다(20261101000300_patients.sql)
 --
+-- 운영(라이브 줄)에는 청구 사전점검 migration 둘이 두 표를 먼저 만든다:
+-- 20261030000000_precheck_settings.sql(message_templates)·20261030000100_precheck_counts.sql(contact_counts).
+-- 붙이는 차례는 auth → precheck_settings → precheck_counts → 이 파일이다. 그 둘은 if not exists 없이 create table을 쓰므로
+-- 이 파일을 먼저 붙이면 그 둘이 오류가 난다. 그 둘 뒤에 붙이면 안전하다: 표·칸·제약·권한·RLS는 같고,
+-- 정책·트리거는 같은 이름·글로 지우고 다시 만들 뿐이라 늘지 않는다. 바뀌는 것은 공용 함수 둘이 C1 글이 되는 것뿐이다
+-- (precheck 글은 touch_updated_at이 security definer다. C1이 맞다)
+-- 그래서 touch_updated_at을 쓰는 라이브 표 일곱(claim_rule_settings·claim_hospital_settings·message_templates·claim_day_counts·
+-- claim_month_counts·contact_counts·rx_groups)의 트리거가 모두 invoker(C1)로 돈다. 안전하다: 몸통은 new.updated_at = now()뿐이고,
+-- 트리거는 실행 권한을 검사하지 않으며, BEFORE 트리거가 바꾼 칸은 칸 권한 검사를 받지 않는다
+--
 -- 권한: 로그인 안 한 사용자(anon)는 아무것도 못 한다. 승인된 병원 사용자(authenticated)는 자기 병원 줄만 읽고,
 -- 정해 둔 칸만 넣고 고친다(문구는 지우기도). 병원 id는 DB 기본값으로만 채워진다(칸 권한 없음).
 -- 승인 대기·거절 병원은 my_hospital_id()가 null이라 아무 줄도 못 보고 못 넣는다.
@@ -48,50 +58,26 @@ grant select on table public.contact_counts to authenticated;
 grant insert (followup_left, injection_left) on table public.contact_counts to authenticated;
 grant update (followup_left, injection_left) on table public.contact_counts to authenticated;
 
--- (select …): 줄마다가 아니라 문장마다 한 번 계산한다(Supabase 권장)
-drop policy if exists "내 병원 문구 읽기" on public.message_templates;
-create policy "내 병원 문구 읽기" on public.message_templates
-  for select to authenticated
-  using (hospital_id = (select public.my_hospital_id()));
-
-drop policy if exists "내 병원 문구 넣기" on public.message_templates;
-create policy "내 병원 문구 넣기" on public.message_templates
-  for insert to authenticated
-  with check (hospital_id = (select public.my_hospital_id()));
-
-drop policy if exists "내 병원 문구 고치기" on public.message_templates;
-create policy "내 병원 문구 고치기" on public.message_templates
-  for update to authenticated
+-- 정책은 표마다 하나, 이름·글이 precheck migration과 같다(같은 이름을 지우고 다시 만들 뿐이라 늘지 않는다).
+-- 어떤 동작이 되는지는 위의 표·칸 권한이 정한다: contact_counts는 delete 권한이 없어 지우기가 안 된다.
+-- (select …): 줄마다가 아니라 문장마다 한 번 계산한다(Supabase 권장). 승인 안 된 병원은 null이라 아무 줄과도 같지 않다
+drop policy if exists "승인된 내 병원 줄만" on public.message_templates;
+create policy "승인된 내 병원 줄만" on public.message_templates
+  for all to authenticated
   using (hospital_id = (select public.my_hospital_id()))
   with check (hospital_id = (select public.my_hospital_id()));
 
-drop policy if exists "내 병원 문구 지우기" on public.message_templates;
-create policy "내 병원 문구 지우기" on public.message_templates
-  for delete to authenticated
-  using (hospital_id = (select public.my_hospital_id()));
-
-drop policy if exists "내 병원 건수 읽기" on public.contact_counts;
-create policy "내 병원 건수 읽기" on public.contact_counts
-  for select to authenticated
-  using (hospital_id = (select public.my_hospital_id()));
-
-drop policy if exists "내 병원 건수 넣기" on public.contact_counts;
-create policy "내 병원 건수 넣기" on public.contact_counts
-  for insert to authenticated
-  with check (hospital_id = (select public.my_hospital_id()));
-
-drop policy if exists "내 병원 건수 고치기" on public.contact_counts;
-create policy "내 병원 건수 고치기" on public.contact_counts
-  for update to authenticated
+drop policy if exists "승인된 내 병원 줄만" on public.contact_counts;
+create policy "승인된 내 병원 줄만" on public.contact_counts
+  for all to authenticated
   using (hospital_id = (select public.my_hospital_id()))
   with check (hospital_id = (select public.my_hospital_id()));
 
-drop trigger if exists message_templates_touch_updated_at on public.message_templates;
-create trigger message_templates_touch_updated_at
-  before update on public.message_templates
+-- 트리거도 precheck migration과 같은 이름이다(표마다 하나)
+drop trigger if exists message_templates_touch on public.message_templates;
+create trigger message_templates_touch before update on public.message_templates
   for each row execute function public.touch_updated_at();
 
-drop trigger if exists contact_counts_touch_updated_at on public.contact_counts;
-create trigger contact_counts_touch_updated_at
-  before update on public.contact_counts
+drop trigger if exists contact_counts_touch on public.contact_counts;
+create trigger contact_counts_touch before update on public.contact_counts
   for each row execute function public.touch_updated_at();
