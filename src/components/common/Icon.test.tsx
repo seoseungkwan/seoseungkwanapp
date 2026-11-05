@@ -65,9 +65,9 @@ describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
     for (const name of NAMES) expect(MOCK[name], name).toBeTruthy()
   })
 
-  it('AC-204.6·AC-315.1·AC-416.7·AC-017.9: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout, logout 뒤에 info·reload를 더한 21개뿐이다', () => {
-    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout', 'info', 'reload'])
-    expect(ICON_NAMES).toHaveLength(21)
+  it('AC-204.6·AC-315.1·AC-416.7·AC-017.9·AC-1507.3: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout, logout 뒤에 info·reload, reload 뒤에 alert를 더한 22개뿐이다', () => {
+    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout', 'info', 'reload', 'alert'])
+    expect(ICON_NAMES).toHaveLength(22)
   })
 
   it.each(NAMES)('AC-204.6: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
@@ -231,5 +231,78 @@ describe('AC-017.9 아이콘 둘 info·reload (worklog REQ-017, 시안 docs/mock
     expect(head).toContain('docs/mockups/worklog/bitfill.html')
     expect(head).toContain('ICON_INFO')
     expect(head).toContain('ICON_LOAD')
+  })
+})
+
+// worklog-memo-font AC-1507.3: alert는 잘림 안내 시안 docs/mockups/worklog/memo-font.html의 ICON_WARN을 info의 원 크기(반지름 6)에 맞춘 그림이다(design.md '날짜 줄').
+// 시안은 원 반지름 6.2·한 path에 줄과 점을 이어 적었다 → 기대 그림은 design.md 글자 그대로 여기에 적고, 시안과는 '원 안 세로 줄이 위·점이 아래' 모양을 맞춰 본다
+const MEMO_FONT = readFileSync(join(ROOT, 'docs/mockups/worklog/memo-font.html'), 'utf8')
+const WARN_SVG = MEMO_FONT.match(/const ICON_WARN = '(<svg\b[^>]*>)((?:(?!<\/svg>)[^'])*)<\/svg>'/)
+const ALERT_SHAPE = '<circle cx="8" cy="8" r="6"/><path d="M8 4.67v3.66"/><path d="M8 11h.01"/>'
+// 원 안 세로 줄(v 길이 0.5 넘음)의 위·아래 끝과 점(짧은 v·h)의 높이. path d의 'M8 y v길이'·'M8 y h길이' 조각을 읽는다
+function lineAndDot(inner: string) {
+  const pieces = elementsOf(inner)
+    .filter(([tag]) => tag === 'path')
+    .flatMap(([, attrs]) => [...String((attrs as Record<string, string>).d).matchAll(/M8 ([\d.]+)([vh])([\d.]+)/g)])
+    .map((m) => ({ y: Number(m[1]), dir: m[2], len: Number(m[3]) }))
+  const line = pieces.find((p) => p.dir === 'v' && p.len > 0.5)
+  const dot = pieces.find((p) => p !== line)
+  return { lineTop: line?.y ?? NaN, lineBottom: (line?.y ?? NaN) + (line?.len ?? NaN), dotY: dot?.y ?? NaN, count: pieces.length }
+}
+const circleOf = (inner: string) => elementsOf(inner).find(([tag]) => tag === 'circle')?.[1]
+
+describe('AC-1507.3 아이콘 alert (worklog-memo-font REQ-1507, 시안 docs/mockups/worklog/memo-font.html의 ICON_WARN)', () => {
+  it('AC-1507.3: 시안에서 ICON_WARN 그림을 읽었다(시험 준비 확인)', () => {
+    expect(WARN_SVG?.[1]).toMatch(/^<svg\b/)
+    expect(attrsOf(WARN_SVG?.[1] ?? '')).toMatchObject({ viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', 'aria-hidden': 'true' })
+    expect(tagsOf(WARN_SVG?.[2] ?? '')).toEqual(['circle', 'path'])
+  })
+
+  it('AC-1507.3: alert는 ICON_NAMES 끝(reload 뒤)에 있다', () => {
+    expect(ICON_NAMES.at(-1)).toBe('alert')
+    expect(ICON_NAMES.at(-2)).toBe('reload')
+  })
+
+  it('AC-1507.3: alert는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', () => {
+    const html = draw('alert')
+    expect(attrsOf(openTag(html))).toEqual({ ...SVG_ATTRS, width: '16', height: '16' })
+    expect(html.endsWith('</svg>')).toBe(true)
+  })
+
+  it('AC-1507.3: alert의 안쪽 그림은 design.md 글자(원 반지름 6 + 세로 줄 + 점)와 같고, 안쪽 원소에 색·style·글자가 없다', () => {
+    const inner = innerOf(draw('alert'))
+    expect(elementsOf(inner)).toEqual(elementsOf(ALERT_SHAPE))
+    expect(tagsOf(inner)).toEqual(['circle', 'path', 'path'])
+    expect(inner).not.toMatch(/\b(?:fill|stroke|style|class)=/)
+    expect(inner.replace(/<[^>]*>/g, ''), 'alert 글자').toBe('')
+  })
+
+  it('AC-1507.3: alert의 원은 info의 원과 같고, 세로 줄과 점은 info와 위아래가 바뀌었다(alert는 줄이 위·점이 아래, 시안 ICON_WARN과 같은 모양)', () => {
+    const alert = innerOf(draw('alert'))
+    const info = innerOf(draw('info'))
+    expect(circleOf(alert)).toEqual(circleOf(info))
+    expect(circleOf(alert)).toEqual({ cx: '8', cy: '8', r: '6' })
+
+    const a = lineAndDot(alert)
+    const i = lineAndDot(info)
+    const w = lineAndDot(WARN_SVG?.[2] ?? '')
+    for (const shape of [a, i, w]) expect(shape.count).toBe(2)
+    expect(a.dotY).toBeGreaterThan(a.lineBottom) // 점이 줄 아래
+    expect(i.dotY).toBeLessThan(i.lineTop) // info는 점이 줄 위
+    expect(w.dotY).toBeGreaterThan(w.lineBottom) // 시안도 점이 줄 아래
+    // 줄과 점은 원(반지름 6) 안이다
+    for (const y of [a.lineTop, a.lineBottom, a.dotY]) expect(Math.abs(y - 8)).toBeLessThan(6)
+  })
+
+  it.each([12, 14, 16])('AC-1507.3: alert에 size=%i를 주면 너비·높이가 되고 viewBox·선 굵기는 그대로다', (size) => {
+    const attrs = attrsOf(openTag(draw('alert', { size })))
+    expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
+  })
+
+  it('AC-1507.3: Icon.tsx 머리 주석이 그림 출처(docs/mockups/worklog/memo-font.html의 ICON_WARN)를 적는다', () => {
+    const src = readFileSync(join(ROOT, 'src/components/common/Icon.tsx'), 'utf8')
+    const head = src.slice(0, src.indexOf('export const ICON_NAMES'))
+    expect(head).toContain('docs/mockups/worklog/memo-font.html')
+    expect(head).toContain('ICON_WARN')
   })
 })
