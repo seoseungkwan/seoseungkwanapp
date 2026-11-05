@@ -6,6 +6,7 @@ import type {
   GroupStats,
   PatientDay,
   RevisitCounts,
+  RxAgain,
   RxGroupDef,
   RxStats,
   Totals,
@@ -18,6 +19,7 @@ import { diffDays, monthOf, monthRange, weekRange, weekStartOf } from './dates'
 // 처방·그룹·동네는 칸마다 따로 센다(칸 안 서로 다른 환자 수) — 일을 더해 주를 만들면 이틀 온 환자를 두 번 센다.
 // 환자 수(totals)는 접수 기준이라 주·달 칸은 일 칸의 합이다 — 한 달에 다섯 번 온 사람은 5다(AC-501.6).
 // 줄은 한 번만 훑으며 그 날의 세 칸에 같이 넣는다. rxCode·region은 숫자 번호로 바꿔 Map 열쇠로 쓴다
+// 같은 처방 재방문(again)은 일 칸에만 있다: 처방·환자마다 받은 날을 모아 두었다가 다 훑은 뒤 센다. 칸에는 처방별 몇 명·몇 번뿐이다
 
 export const NO_ADDRESS = '주소 없음'
 
@@ -28,6 +30,10 @@ const NEW = 2
 
 // 신환 재방문 창: 첫 신환일 다음 날부터 이 날수째까지(양 끝 포함)
 const REVISIT_DAYS = [7, 14, 30] as const
+// 같은 처방 재방문: 시작 = 앞 받은 날보다 이 날수 넘게 뒤인 날(첫 날 포함), 창 = 시작 다음 날부터 이 날수째까지(양 끝 포함)
+const AGAIN_GAP = 30
+const AGAIN_DAYS = [7, 14, 30] as const
+const DAY_ZERO = '1970-01-01' // 일 번호의 0일
 const NO_GROUPS: readonly number[] = []
 
 type Regions = Map<number, Set<number>> // 지역 번호 → 환자
@@ -39,15 +45,19 @@ type RxAcc = {
   regions: Regions // 이 처방을 받은 환자만
 }
 
+type AgainAcc = Omit<RxAgain, 'code'>
+
 type BucketAcc = {
   key: string
   range: DateRange
+  at: number // 칸 첫날의 일 번호(DAY_ZERO부터 며칠째). 같은 처방 재방문이 일 칸끼리 날 수를 잰다
   visit: Map<number, number> // 환자 → UNKNOWN·RETURNING·NEW
   rx: Map<number, RxAcc> // 처방 번호 →
   groups: Map<number, Map<number, number>> // 그룹 자리 → (환자 → 그룹 코드 중 하나라도 받은 서로 다른 날 수)
   regions: Regions
   revisit: RevisitCounts
   totals: Totals // 일 칸은 그날 값, 주·달 칸은 일 칸의 합. 줄을 다 훑은 뒤 채운다
+  again: Map<number, AgainAcc> // 처방 번호 → 그날 시작한 환자 수와 창 숫자. 일 칸만 쓴다
 }
 
 // 글자 → 0, 1, 2…(처음 나온 순서). 칸마다 글자 열쇠를 찾지 않게
@@ -111,15 +121,18 @@ function mostCommon(counts: Map<string, number>): string {
 function bucketIn(buckets: Map<string, BucketAcc>, key: string, rangeOf: (key: string) => DateRange): BucketAcc {
   let bucket = buckets.get(key)
   if (bucket === undefined) {
+    const range = rangeOf(key)
     bucket = {
       key,
-      range: rangeOf(key),
+      range,
+      at: diffDays(DAY_ZERO, range.from),
       visit: new Map(),
       rx: new Map(),
       groups: new Map(),
       regions: new Map(),
       revisit: { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 },
       totals: { patients: 0, newPatients: 0, returning: 0, unknown: 0 },
+      again: new Map(),
     }
     buckets.set(key, bucket)
   }
@@ -137,6 +150,15 @@ function groupsByCode(groups: readonly RxGroupDef[]): Map<string, number[]> {
     }
   })
   return byCode
+}
+
+function againIn(day: BucketAcc, rx: number): AgainAcc {
+  let counts = day.again.get(rx)
+  if (counts === undefined) {
+    counts = { starts: 0, back: [0, 0, 0], more: [0, 0, 0] }
+    day.again.set(rx, counts)
+  }
+  return counts
 }
 
 // 파일 길의 일 칸: 줄 표시로 센 그날 환자
@@ -166,6 +188,7 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
   const groupsOf = groupsByCode(groups)
   const firstNew = new Map<number, string>() // 환자 → 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄·첫 내원 접수 줄의 날)
   const visitDays = new Map<number, Set<string>>() // 환자 → 외래로 온 날(외래 줄·접수 줄)
+  const rxDays = new Map<number, Map<number, BucketAcc[]>>() // 처방 번호 → (환자 → 그 처방을 외래로 받은 서로 다른 날의 일 칸). 진료 줄만
 
   const trioOf = (date: string) => {
     let trio = bucketsOfDate.get(date)
@@ -204,6 +227,16 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     const newGroupDays = inGroups === undefined ? NO_GROUPS : inGroups.filter((at) => trio[0].groups.get(at)?.has(patient) !== true)
 
     noteVisit(patient, row.date, visit === NEW)
+    if (newCase) {
+      let byPatient = rxDays.get(rx)
+      if (byPatient === undefined) {
+        byPatient = new Map()
+        rxDays.set(rx, byPatient)
+      }
+      const days = byPatient.get(patient)
+      if (days === undefined) byPatient.set(patient, [trio[0]])
+      else days.push(trio[0])
+    }
 
     for (const bucket of trio) {
       const seen = bucket.visit.get(patient)
@@ -263,10 +296,30 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     }
   }
 
+  // 같은 처방 재방문: 처방·환자마다 받은 날을 늘어놓고, 앞 날보다 30일 넘게 뒤인 날(첫 날 포함)이 시작이다.
+  // 시작 뒤의 날 중 다음 날부터 N일째까지인 날 수가 more, 하나라도 있으면 back 1. 시작한 날의 일 칸에 더한다
+  for (const [rx, byPatient] of rxDays) {
+    for (const days of byPatient.values()) {
+      if (days.length > 1) days.sort((a, b) => a.at - b.at)
+      for (let i = 0; i < days.length; i++) {
+        const { at } = days[i]
+        if (i > 0 && at - days[i - 1].at <= AGAIN_GAP) continue
+        const counts = againIn(days[i], rx)
+        counts.starts++
+        for (let k = 0; k < AGAIN_DAYS.length; k++) {
+          let more = 0
+          while (i + more + 1 < days.length && days[i + more + 1].at - at <= AGAIN_DAYS[k]) more++
+          counts.more[k] += more
+          if (more > 0) counts.back[k]++
+        }
+      }
+    }
+  }
+
   const finish = (grain: Grain): BucketStats[] =>
     [...buckets[grain].values()]
       .sort((a, b) => compareText(a.key, b.key))
-      .map((bucket) => toStats(bucket, rxCodes.texts, regionNames.texts, groups))
+      .map((bucket) => toStats(bucket, rxCodes.texts, regionNames.texts, groups, grain === 'day'))
   return { day: finish('day'), week: finish('week'), month: finish('month') }
 }
 
@@ -290,6 +343,7 @@ function toStats(
   rxCodes: readonly string[],
   regionNames: readonly string[],
   groups: readonly RxGroupDef[],
+  withAgain: boolean,
 ): BucketStats {
   const rx: RxStats[] = []
   for (const [id, acc] of bucket.rx) {
@@ -319,5 +373,13 @@ function toStats(
     regions: regionStats(bucket.regions, regionNames),
     groups: groupStats.sort((a, b) => compareText(a.id, b.id)),
     revisit: { ...bucket.revisit },
+    ...(withAgain ? { again: againStats(bucket.again, rxCodes) } : {}),
   }
+}
+
+// 일 칸의 같은 처방 재방문: 시작이 있는 처방만, 처방코드 순
+function againStats(again: Map<number, AgainAcc>, rxCodes: readonly string[]): RxAgain[] {
+  return [...again]
+    .map(([id, counts]) => ({ code: rxCodes[id], ...counts }))
+    .sort((a, b) => compareText(a.code, b.code))
 }
