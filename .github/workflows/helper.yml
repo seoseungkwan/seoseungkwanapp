@@ -47,7 +47,8 @@ jobs:
       - name: 빌드
         run: dotnet build helper/Precheck.sln -c Release
 
-      # precheck-helper-<Version>.zip = install.cmd·install.ps1·uninstall.ps1·host-manifest.json·README.md + app\(exe·설정·DLL)
+      # precheck-helper-<Version>.zip = install.cmd·install.ps1·uninstall.ps1·host-manifest.json·README.md·reception-check.cmd·reception-check.ps1
+      #   + app\(도우미 exe·설정·DLL + 접수 현황 PrecheckReception.exe·설정, 같은 DLL을 쓴다)
       - name: zip 묶기
         run: |
           $props = [xml](Get-Content -Raw -LiteralPath 'helper/Directory.Build.props')
@@ -58,10 +59,14 @@ jobs:
           }
           $bin = 'helper/src/Precheck.Helper/bin/Release/net48'
           if (-not (Test-Path -LiteralPath "$bin/PrecheckHelper.exe")) { throw "$bin/PrecheckHelper.exe 가 없다" }
+          $receptionBin = 'helper/src/Precheck.Reception/bin/Release/net48'
+          if (-not (Test-Path -LiteralPath "$receptionBin/PrecheckReception.exe")) { throw "$receptionBin/PrecheckReception.exe 가 없다" }
+          if (-not (Test-Path -LiteralPath "$receptionBin/PrecheckReception.exe.config")) { throw "$receptionBin/PrecheckReception.exe.config 가 없다" }
           $stage = Join-Path $env:RUNNER_TEMP 'precheck-helper'
           $app = Join-Path $stage 'app'
           New-Item -ItemType Directory -Force -Path $app | Out-Null
           Copy-Item -Path "$bin/*.exe", "$bin/*.exe.config", "$bin/*.dll" -Destination $app
+          Copy-Item -LiteralPath "$receptionBin/PrecheckReception.exe", "$receptionBin/PrecheckReception.exe.config" -Destination $app
           Copy-Item -Path 'helper/install/*' -Destination $stage
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $zip = "precheck-helper-$version.zip"
