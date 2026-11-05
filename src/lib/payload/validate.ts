@@ -1,6 +1,6 @@
 import { isMonth, isYmd } from '@/lib/analytics/dates'
 import type { FollowUp, Totals } from '@/types/analysis'
-import type { DayPayload, MonthPayload, RevisitPayload } from '@/types/payload'
+import { AGAIN_WINDOWS, type AgainCounts, type DayAgainPayload, type DayPayload, type MonthPayload, type RevisitPayload } from '@/types/payload'
 import type { RxPick } from '@/types/rxPicks'
 
 // 저장 전·읽은 뒤에 쓰는 검사. 병원 계정(서버)에 들어가는 모양의 기준이다.
@@ -35,6 +35,8 @@ const DAY_GROUP_KEYS = ['id', 'patients', 'newPatients', 'returning']
 const REVISIT_KEYS = ['cohort', 'within7', 'within14']
 const REVISIT_OPTIONAL_KEYS = ['within30', 'after30'] // 없으면 null로 읽는다
 const REGION_KEYS = ['name', 'patients']
+const AGAIN_KEYS = ['ready', 'rx']
+const AGAIN_RX_KEYS = ['code', 'starts', 'back', 'more']
 const RX_PICK_KEYS = ['code', 'name']
 
 type Fields = Record<string, unknown>
@@ -150,6 +152,68 @@ function revisitOf(value: unknown, newPatients: number): RevisitPayload | null {
   return { cohort, within7, within14, within30, after30 }
 }
 
+// ── 같은 처방 재방문(again, fu-rate) ──
+type AgainReady = DayAgainPayload['ready']
+
+// 참·거짓 셋, 뒤가 true면 앞도 true. 일부인 날(partial)은 모두 false여야 한다
+function againReadyOf(value: unknown, partial: boolean): AgainReady | null {
+  if (!Array.isArray(value) || value.length !== AGAIN_WINDOWS.length) return null
+  const [ready7, ready14, ready30]: unknown[] = value
+  if (typeof ready7 !== 'boolean' || typeof ready14 !== 'boolean' || typeof ready30 !== 'boolean') return null
+  if ((ready14 && !ready7) || (ready30 && !ready14)) return null
+  return partial && ready7 ? null : [ready7, ready14, ready30]
+}
+
+// 창마다: ready면 0 이상 정수, 아니면 null(아직 다 지나지 않은 창)
+const isAgainCount = (value: unknown, ready: boolean): value is number | null => (ready ? isCount(value) : value === null)
+
+function againCountsOf(value: unknown, ready: AgainReady): AgainCounts | null {
+  if (!Array.isArray(value) || value.length !== AGAIN_WINDOWS.length) return null
+  const [count7, count14, count30]: unknown[] = value
+  if (!isAgainCount(count7, ready[0]) || !isAgainCount(count14, ready[1]) || !isAgainCount(count30, ready[2])) return null
+  return [count7, count14, count30]
+}
+
+// 처방 한 줄(네 열쇠만). 창마다 back ≤ starts, back ≤ more ≤ N × starts. 숫자인 창끼리 back·more는 7 ≤ 14 ≤ 30.
+// ready가 앞에서부터 이어지므로 숫자인 창도 앞에서부터 이어진다 — 처음 만나는 null에서 멈춘다
+function againRxOf(value: unknown, ready: AgainReady): DayAgainPayload['rx'][number] | null {
+  const o = exactly(value, AGAIN_RX_KEYS)
+  if (o === null) return null
+  const { code, starts } = o
+  if (!isCode(code) || !isCount(starts) || starts < 1) return null
+  const back = againCountsOf(o.back, ready)
+  const more = againCountsOf(o.more, ready)
+  if (back === null || more === null) return null
+  let before = { back: 0, more: 0 }
+  for (let k = 0; k < AGAIN_WINDOWS.length; k += 1) {
+    const backK = back[k]
+    const moreK = more[k]
+    if (backK === null || moreK === null) break
+    if (backK > starts || backK > moreK || moreK > AGAIN_WINDOWS[k] * starts) return null
+    if (backK < before.back || moreK < before.more) return null
+    before = { back: backK, more: moreK }
+  }
+  return { code, starts, back, more }
+}
+
+// 그날 줄과 견준다: 코드가 그날 rx에 있고 starts ≤ 그 처방 환자 수, 같은 코드는 한 번만. 하나라도 어긋나면 null
+function againOf(value: unknown, rx: DayPayload['rx'], partial: boolean): DayAgainPayload | null {
+  const o = exactly(value, AGAIN_KEYS)
+  if (o === null) return null
+  const ready = againReadyOf(o.ready, partial)
+  if (ready === null) return null
+  const rows = listOf(o.rx, MAX_RX, (item) => againRxOf(item, ready))
+  if (rows === null) return null
+  const patientsOf = new Map(rx.map((line) => [line.code, line.patients]))
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const patients = patientsOf.get(row.code)
+    if (patients === undefined || row.starts > patients || seen.has(row.code)) return null
+    seen.add(row.code)
+  }
+  return { ready, rx: rows }
+}
+
 function regionOf(value: unknown): MonthPayload['regions'][number] | null {
   const o = exactly(value, REGION_KEYS)
   if (o === null) return null
@@ -172,8 +236,9 @@ export function validateMonthPayload(value: unknown): MonthPayload | null {
   return { schemaVersion: 2, quality: 'valid', month, partial, totals, rx, groups, revisit, regions }
 }
 
+// again은 선택 칸: 없으면(이 기능 전에 저장한 줄) 돌려주는 객체에도 없다. undefined는 없는 것과 같다(JSON에 남지 않는 값)
 export function validateDayPayload(value: unknown): DayPayload | null {
-  const o = exactly(value, DAY_KEYS)
+  const o = exactly(value, DAY_KEYS, ['again'])
   if (o === null || o.schemaVersion !== 2 || o.quality !== 'valid') return null
   const { day, partial } = o
   if (typeof day !== 'string' || !isYmd(day) || typeof partial !== 'boolean') return null
@@ -183,7 +248,10 @@ export function validateDayPayload(value: unknown): DayPayload | null {
   if (totals === null || rx === null || groups === null) return null
   const revisit = revisitOf(o.revisit, totals.newPatients)
   if (revisit === null) return null
-  return { schemaVersion: 2, quality: 'valid', day, partial, totals, rx, groups, revisit }
+  const payload: DayPayload = { schemaVersion: 2, quality: 'valid', day, partial, totals, rx, groups, revisit }
+  if (o.again === undefined) return payload
+  const again = againOf(o.again, rx, partial)
+  return again === null ? null : { ...payload, again }
 }
 
 /** 통계 탭에서 고른 처방 한 줄(AC-811.1). 코드는 isCode, 이름은 isText를 지나고 둘 다 제어 문자가 없어야 한다 */
