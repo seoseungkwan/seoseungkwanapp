@@ -11,7 +11,8 @@
     {
       "step": 1,
       "name": "bit-column",
-      "status": "pending"
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000110_worklog_bit_fields.sql: worklog_days.bit_fields text[] not null default '{}' (add column if not exists) + check(20-2 표 DB 칸 10개만, worklog_days_bit_fields_check) + grant insert/update(bit_fields) to authenticated. 두 번 붙여 넣어도 그대로, 1단계 표·RLS·정책·권한 그대로(PGlite 시험). 0100 뒤에만 붙인다. 관문: 사용자가 0110을 실제 Supabase에 붙여 넣고 TASK-18이 통과하기 전에는 4단계를 합치거나 배포하지 않는다. 참고: <@ check는 중복·다차원 배열을 막지 않으니 TASK-16 읽기에서 목록 밖·중복 이름은 버린다"
     },
     {
       "step": 2,
