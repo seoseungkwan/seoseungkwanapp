@@ -107,7 +107,13 @@ internal static class CheckFakes
         public Call(string sql, IReadOnlyDictionary<string, object?> args, TimeSpan timeout, DateTime at)
         {
             Sql = sql;
-            Args = new Dictionary<string, object?>(args, StringComparer.Ordinal);
+            var copy = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var pair in args)
+            {
+                copy[pair.Key] = pair.Value;
+            }
+
+            Args = copy;
             Timeout = timeout;
             At = at;
         }
