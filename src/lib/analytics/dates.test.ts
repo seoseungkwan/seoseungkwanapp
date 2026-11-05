@@ -12,11 +12,37 @@ import {
   monthOf,
   monthRange,
   parseDateCell,
+  sameDayLastMonth,
   todayInKorea,
   weekRange,
   weekStartOf,
   weekdayOf,
 } from './dates'
+
+describe('AC-013.13 sameDayLastMonth: 한 달 전 같은 날(그달에 없으면 말일)', () => {
+  it.each([
+    ['2026-10-28', '2026-09-28'],
+    ['2026-11-03', '2026-10-03'],
+    ['2026-01-15', '2025-12-15'], // 해를 넘긴다
+    ['2026-03-31', '2026-02-28'], // 2월 31일은 없다 → 말일
+    ['2028-03-31', '2028-02-29'], // 윤년 말일
+    ['2026-05-31', '2026-04-30'],
+    ['2026-03-28', '2026-02-28'],
+    ['2026-07-31', '2026-06-30'],
+  ])('%s → %s', (ymd, want) => {
+    expect(sameDayLastMonth(ymd)).toBe(want)
+  })
+
+  it('AC-013.13: 많아야 31일 전이라 읽는 기간이 늘 35일 안이다', () => {
+    for (const day of eachDay({ from: '2026-01-01', to: '2028-12-31' })) {
+      expect(diffDays(sameDayLastMonth(day), day)).toBeLessThanOrEqual(31)
+    }
+  })
+
+  it('AC-013.13: 날짜가 아니면 던진다', () => {
+    expect(() => sameDayLastMonth('2026-02-30')).toThrow(RangeError)
+  })
+})
 
 describe('AC-002.1 isYmd', () => {
   it.each(['2026-10-01', '2026-12-31', '2028-02-29', '1970-01-01'])('%s → 참', (s) => {

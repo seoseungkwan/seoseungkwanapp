@@ -8,11 +8,15 @@ import { niceScale } from './scale'
 // 집계 중·일부 기간 칸은 한 막대 + 빗금(viewBox 없는 svg 안 path 하나, currentColor) + 1px accent 테두리. 패턴·id를 쓰지 않아 한 쪽에 차트가 둘이어도 겹치지 않는다.
 // 서버에서 그대로 그린다(훅·움직임 없음). 색은 토큰 클래스로만 준다
 
-export type BarSeries = { name: string; tone: 'accent' | 'chart-3' } // 첫 계열이 맨 위·범례 첫째
-export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string }
+// hatch-warning: 구분 없음 조각(rx-picker AC-806.4). warning-soft 바탕 + 1px warning 테두리(시안 .s-gap) + text-warning 빗금이다
+export type BarSeries = { name: string; tone: 'accent' | 'chart-3' | 'hatch-warning' } // 첫 계열이 맨 위·범례 첫째
+// comparison: 칸마다 줄 수 있는 비교 기간 값(stats REQ-513 AC-513.2). 숫자면 쌓은 막대 왼쪽에 가는 faint 막대를 그리고 눈금에 넣는다. null·없음은 막대가 없다.
+// 숫자인 칸이 하나도 없으면 그림·표가 지금과 한 글자도 다르지 않다. 하나라도 있으면 화면 읽기 표에 "비교 기간" 칸 하나가 붙는다(null은 "–")
+export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string; comparison?: number | null }
 
 // dense: 칸이 많은 그림용. 막대 위 합계·상태 글자를 그리지 않는다(화면 읽기 표는 그대로, tab-frame REQ-314). 아래 날짜 글자는 부르는 쪽이 label로 고른다(빈 label = 빈칸)
 // thinLabels: 768px 미만에서 날짜 글자를 하나 걸러 보인다(0부터 홀수 번째 칸 글자만 max-md:invisible, 자리는 그대로. ui-90 AC-421.2).
+// hideZeroTotals: 합계 0인 칸은 막대 위 글자(합계·상태)를 그리지 않는다. 화면 읽기 표는 그대로다(rx-picker AC-806.7).
 // 주지 않으면 지금 그림과 한 글자도 다르지 않다
 type Props = {
   title: string
@@ -22,9 +26,10 @@ type Props = {
   compact?: boolean
   dense?: boolean
   thinLabels?: boolean
+  hideZeroTotals?: boolean
 }
 
-const TONE: Record<BarSeries['tone'], string> = { accent: 'bg-accent', 'chart-3': 'bg-chart-3' }
+const TONE: Record<BarSeries['tone'], string> = { accent: 'bg-accent', 'chart-3': 'bg-chart-3', 'hatch-warning': 'relative border border-warning bg-warning-soft' }
 const STATE_TEXT: Record<BucketState, string> = { complete: '완료', 'in-progress': '집계 중', partial: '일부 기간' }
 
 // 그림 칸 높이(400px 이하 — 빗금 마지막 선 k = 440이 폭 40px까지 덮는다)·눈금 글자 칸 폭(기간 글자 줄도 같은 폭만큼 띄운다)·막대 최대 폭·단위 줄과 그림 칸 사이.
@@ -45,10 +50,21 @@ const HATCH = Array.from({ length: HATCH_REACH / HATCH_GAP }, (_, i) => HATCH_GA
 const tickText = (t: number) => (Number.isInteger(t) ? formatCount(t) : String(t))
 const at = (v: number, max: number) => `${percentOf(v, max)}%`
 
-export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false, thinLabels = false }: Props) {
+// 빗금 svg 하나. 부모(relative)를 채우고 색은 color의 text-* 클래스가 준다
+function HatchLines({ color }: { color: string }) {
+  return (
+    <svg aria-hidden="true" className={`absolute inset-0 size-full ${color}`}>
+      <path d={HATCH} fill="none" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  )
+}
+
+export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false, thinLabels = false, hideZeroTotals = false }: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
-  const scale = niceScale(Math.max(0, ...totals))
+  const comparisons = buckets.flatMap((b) => (typeof b.comparison === 'number' ? [b.comparison] : []))
+  const compared = comparisons.length > 0
+  const scale = niceScale(Math.max(0, ...totals, ...comparisons))
   // compact는 눈금 가운데 짝수 번째(0·400·800)만
   const ticks = compact ? scale.ticks.filter((_, i) => i % 2 === 0) : scale.ticks
   const lastComplete = buckets.findLastIndex((b) => b.state === 'complete')
@@ -79,7 +95,8 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
             ))}
             <div className="absolute inset-0 flex">
               {buckets.map((bucket, i) => (
-                <div key={bucket.key} className="flex h-full min-w-0 flex-1 items-end justify-center">
+                <div key={bucket.key} className={`flex h-full min-w-0 flex-1 items-end justify-center${compared ? ' gap-0.5' : ''}`}>
+                  {typeof bucket.comparison === 'number' && <div className="w-1/6 max-w-2.5 bg-faint" style={{ height: at(bucket.comparison, scale.max) }} />}
                   <Bar
                     bucket={bucket}
                     series={series}
@@ -87,7 +104,7 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
                     max={scale.max}
                     width={size.bar}
                     compact={compact}
-                    dense={dense}
+                    noLabel={dense || (hideZeroTotals && totals[i] === 0)}
                     strong={i === lastComplete}
                   />
                 </div>
@@ -104,35 +121,40 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
           ))}
         </div>
       </div>
-      <table className="sr-only">
-        <caption>
-          {title} ({unit})
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">기간</th>
-            {series.map((s, i) => (
-              <th key={i} scope="col">
-                {s.name}
-              </th>
-            ))}
-            <th scope="col">합계</th>
-            <th scope="col">상태</th>
-          </tr>
-        </thead>
-        <tbody>
-          {buckets.map((bucket, i) => (
-            <tr key={bucket.key}>
-              <th scope="row">{bucket.rangeLabel}</th>
-              {series.map((_, j) => (
-                <td key={j}>{formatCount(bucket.values[j] ?? 0)}</td>
+      {/* 표의 sr-only만으로는 1px 제한이 안 먹어 줄 수만큼 길어지고 쪽 아래에 빈 곳을 만든다. 감싼 칸이 잘라 준다(AC-601.18) */}
+      <div className="sr-only">
+        <table className="sr-only">
+          <caption>
+            {title} ({unit})
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">기간</th>
+              {series.map((s, i) => (
+                <th key={i} scope="col">
+                  {s.name}
+                </th>
               ))}
-              <td>{formatCount(totals[i]!)}</td>
-              <td>{STATE_TEXT[bucket.state]}</td>
+              <th scope="col">합계</th>
+              <th scope="col">상태</th>
+              {compared && <th scope="col">비교 기간</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {buckets.map((bucket, i) => (
+              <tr key={bucket.key}>
+                <th scope="row">{bucket.rangeLabel}</th>
+                {series.map((_, j) => (
+                  <td key={j}>{formatCount(bucket.values[j] ?? 0)}</td>
+                ))}
+                <td>{formatCount(totals[i]!)}</td>
+                <td>{STATE_TEXT[bucket.state]}</td>
+                {compared && <td>{typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -144,13 +166,13 @@ type BarProps = {
   max: number
   width: string
   compact: boolean
-  dense: boolean // 막대 위 글자 없음
+  noLabel: boolean // 막대 위 글자 없음
   strong: boolean // 마지막 complete 칸: 합계 600 ink
 }
 
 // 칸 하나의 막대(폭은 칸의 반, 최대 40px·compact 20px). 합계 글자는 막대 바로 위에 띄운다(기본 크기의 집계 중·일부 기간은 그 위에 상태 글자)
-function Bar({ bucket, series, total, max, width, compact, dense, strong }: BarProps) {
-  const label = dense ? null : (
+function Bar({ bucket, series, total, max, width, compact, noLabel, strong }: BarProps) {
+  const label = noLabel ? null : (
     <span className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2 flex-col items-center whitespace-nowrap text-caption">
       {!compact && bucket.state !== 'complete' && <span className="text-muted">{STATE_TEXT[bucket.state]}</span>}
       <span className={strong ? 'font-semibold text-ink' : 'text-ink-2'}>{formatCount(total)}</span>
@@ -160,9 +182,7 @@ function Bar({ bucket, series, total, max, width, compact, dense, strong }: BarP
   if (bucket.state !== 'complete') {
     return (
       <div className={`relative w-1/2 ${width} border border-accent bg-surface`} style={{ height: at(total, max) }}>
-        <svg aria-hidden="true" className="absolute inset-0 size-full text-accent">
-          <path d={HATCH} fill="none" stroke="currentColor" strokeWidth="1" />
-        </svg>
+        <HatchLines color="text-accent" />
         {label}
       </div>
     )
@@ -174,7 +194,11 @@ function Bar({ bucket, series, total, max, width, compact, dense, strong }: BarP
       {label}
       {series.map((s, i) => {
         const value = bucket.values[i] ?? 0
-        return value > 0 ? <div key={i} className={`w-full ${TONE[s.tone]}`} style={{ height: at(value, total) }} /> : null
+        return value > 0 ? (
+          <div key={i} className={`w-full ${TONE[s.tone]}`} style={{ height: at(value, total) }}>
+            {s.tone === 'hatch-warning' && <HatchLines color="text-warning" />}
+          </div>
+        ) : null
       })}
     </div>
   )

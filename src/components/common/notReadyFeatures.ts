@@ -5,10 +5,7 @@
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
 
 export type NotReadyPath =
-  | '/stats'
   | '/notices'
-  | '/revenue'
-  | '/ai-report'
   | '/forms'
   | '/staff'
   | '/inventory'
@@ -29,32 +26,11 @@ const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 // 탭 순서
 export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
   {
-    path: '/stats',
-    name: '통계',
-    title: '통계는 준비 중이에요',
-    intro: `환자 흐름과 처방 추세를 그래프로 볼 자리예요. ${SOON}`,
-    items: ['환자 수 추이(신환·재진)', '신환 재방문율', '처방 추세', '요일별 환자 수', '원장님 보고 문장'],
-  },
-  {
     path: '/notices',
     name: '고시·공지',
     title: '고시·공지는 준비 중이에요',
     intro: `심사·고시 새 글을 한곳에서 볼 자리예요. ${SOON}`,
     items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
-  },
-  {
-    path: '/revenue',
-    name: '매출',
-    title: '매출은 준비 중이에요',
-    intro: `매출 흐름을 나눠 볼 자리예요. ${SOON}`,
-    items: ['매출 추이', '급여와 비급여', '치료별 매출', '한 사람당 평균 진료비'],
-  },
-  {
-    path: '/ai-report',
-    name: 'AI 리포트',
-    title: 'AI 리포트는 준비 중이에요',
-    intro: `보고 자료를 정해 둔 양식으로 채울 자리예요. ${SOON}`,
-    items: ['월간보고 발표 자료', '주간 요약', '분기와 연간 보고'],
   },
   {
     path: '/forms',

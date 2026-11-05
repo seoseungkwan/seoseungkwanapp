@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MENU } from '@/components/shell/menu'
 import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notReadyFeatures'
 
 // 준비 중 기능 자료 (tab-frame REQ-305 AC-305.4, ui-90 REQ-415 AC-415.1, design.md '준비 중 (TASK-12)').
@@ -7,35 +8,14 @@ import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notRea
 
 const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
-// 탭 순서(화면이 있는 탭 빼고. 화면이 생긴 탭은 표에서 뺀다)
+// 탭 순서(화면이 있는 탭은 빼고). 수는 적지 않는다: 기능에 화면이 생기면 그 줄만 뺀다
 const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: string; items: string[] }> = [
-  {
-    path: '/stats',
-    name: '통계',
-    title: '통계는 준비 중이에요',
-    intro: `환자 흐름과 처방 추세를 그래프로 볼 자리예요. ${SOON}`,
-    items: ['환자 수 추이(신환·재진)', '신환 재방문율', '처방 추세', '요일별 환자 수', '원장님 보고 문장'],
-  },
   {
     path: '/notices',
     name: '고시·공지',
     title: '고시·공지는 준비 중이에요',
     intro: `심사·고시 새 글을 한곳에서 볼 자리예요. ${SOON}`,
     items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
-  },
-  {
-    path: '/revenue',
-    name: '매출',
-    title: '매출은 준비 중이에요',
-    intro: `매출 흐름을 나눠 볼 자리예요. ${SOON}`,
-    items: ['매출 추이', '급여와 비급여', '치료별 매출', '한 사람당 평균 진료비'],
-  },
-  {
-    path: '/ai-report',
-    name: 'AI 리포트',
-    title: 'AI 리포트는 준비 중이에요',
-    intro: `보고 자료를 정해 둔 양식으로 채울 자리예요. ${SOON}`,
-    items: ['월간보고 발표 자료', '주간 요약', '분기와 연간 보고'],
   },
   {
     path: '/forms',
@@ -68,8 +48,27 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
 ]
 
 describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () => {
-  it('AC-305.4: 탭 순서대로 주소·이름이 표와 같다', () => {
+  it('AC-305.4·AC-010.1: 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
+  })
+
+  it('AC-010.1: 매출은 준비 중 목록에 없다 — 주소·이름·옛 만들 것 글자 모두', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('매출')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('한 사람당 평균 진료비')
+  })
+
+  it('AC-515.3: 통계(/stats)는 준비 중 목록에 없고, 목록은 탭 목록(MENU)에서 준비 중인 것과 같다', () => {
+    // @ts-expect-error '/stats'는 이제 NotReadyPath가 아니다(타입 점검이 본다)
+    const stats: NotReadyPath = '/stats'
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(stats)
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('통계')
+    expect(NOT_READY_FEATURES.map((f) => [f.name, f.path])).toEqual(MENU.filter((m) => !m.ready).map((m) => [m.label, m.path]))
+  })
+
+  it('AC-714.2: /ai-report가 없다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/ai-report')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('AI 리포트')
   })
 
   it('AC-012.4: 업무일지(/worklog)는 준비 중 목록에 없다', () => {
@@ -124,17 +123,14 @@ describe('AC-610.1: 환자는 준비 중 목록에서 빠진다', () => {
 
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
   const TITLES = [
-    '통계는 준비 중이에요',
     '고시·공지는 준비 중이에요',
-    '매출은 준비 중이에요',
-    'AI 리포트는 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
     '재고는 준비 중이에요',
     '주소록은 준비 중이에요',
   ]
 
-  it('AC-415.1: 항목마다 title이 있고 탭 순서대로 요구사항의 글자 그대로다', () => {
+  it('AC-415.1·AC-010.1: 항목마다 title이 있고 탭 순서대로 요구사항의 글자 그대로다', () => {
     expect(NOT_READY_FEATURES.map((f) => f.title)).toEqual(TITLES)
     expect(TABLE.map((row) => row.title)).toEqual(TITLES)
   })

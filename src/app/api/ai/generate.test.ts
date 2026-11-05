@@ -9,7 +9,7 @@ import { addMonths } from '@/lib/analytics/dates'
 import { validateMonthPayload } from '@/lib/payload/validate'
 import type { AiErrorCode, AiUsage, ReportInput } from '@/types/aiReport'
 import type { ClaudeResult } from './claude'
-import { generateReport, type GenerateDeps } from './generate'
+import { generateReport, isReportStale, type GenerateDeps } from './generate'
 import type { ReportMonths } from './store'
 
 // 가짜 숫자는 fixtures/fake-ai/에서 읽는다. deps는 모두 가짜이고 부른 차례를 order에 적는다
@@ -309,5 +309,119 @@ describe('generateReport', () => {
   it('AC-511.5 사용량 기록이 던져도 E-AI-FAILED', async () => {
     const { deps } = setup({ usage: 'throw' })
     expect(await generateReport(MONTH, deps)).toEqual({ ok: false, code: 'E-AI-FAILED' })
+  })
+})
+
+describe('isReportStale', () => {
+  type Case = [string, () => ReportMonths]
+
+  // 진짜 generateReport를 가짜 callClaude·saveReport로 돌려 저장 지문을 받는다(지문을 손으로 적지 않는다)
+  async function savedHash(months: ReportMonths = fixtureMonths(), month: string = MONTH): Promise<string> {
+    const { deps } = setup({ months })
+    const res = await generateReport(month, deps)
+    if (!res.ok) throw new Error('성공이어야 한다')
+    return deps.saveReport.mock.calls[0][0].inputHash
+  }
+
+  // 그 달의 동네 환자 수 하나만 바꾼다. 다른 칸과 맞춰야 하는 칸(합계·재방문 등)을 건드리면 검사를 못 넘어 "없는 달"로 빠진다
+  function withOneNumberChanged(month: unknown): unknown {
+    const m = month as { regions: { name: string; patients: number }[] }
+    return { ...m, regions: m.regions.map((r, i) => (i === 0 ? { ...r, patients: r.patients + 1 } : r)) }
+  }
+
+  const withPartial = (months: ReportMonths): ReportMonths => ({
+    ...months,
+    selected: { ...(months.selected as Record<string, unknown>), partial: true },
+  })
+
+  it('AC-705.1 generateReport가 저장한 지문과 같은 세 달 자료면 false', async () => {
+    const hash = await savedHash()
+    const loadMonths = vi.fn<GenerateDeps['loadMonths']>(async () => fixtureMonths())
+    expect(await isReportStale(MONTH, hash, loadMonths)).toBe(false)
+    expect(loadMonths).toHaveBeenCalledTimes(1)
+    expect(loadMonths).toHaveBeenCalledWith(MONTH)
+  })
+
+  it.each<Case>([
+    ['비교 달이 둘 다 없음', () => ({ ...fixtureMonths(), prev: null, lastYear: null })],
+    ['지난달만 없음', () => ({ ...fixtureMonths(), prev: null })],
+    ['작년 같은 달만 없음', () => ({ ...fixtureMonths(), lastYear: null })],
+    ['집계 중(partial)', () => withPartial(fixtureMonths())],
+  ])('AC-705.1 %s인 자료로 저장한 지문도 같은 자료면 false', async (_name, months) => {
+    const hash = await savedHash(months())
+    expect(await isReportStale(MONTH, hash, async () => months())).toBe(false)
+  })
+
+  it('AC-705.1 해가 넘어가는 달을 골라도 같은 자료면 false', async () => {
+    const hash = await savedHash(monthsFor('2026-01'), '2026-01')
+    expect(await isReportStale('2026-01', hash, async () => monthsFor('2026-01'))).toBe(false)
+  })
+
+  it.each([
+    ['고른 달', 'selected'],
+    ['지난달', 'prev'],
+    ['작년 같은 달', 'lastYear'],
+  ] as const)('AC-705.2 %s의 숫자 하나가 바뀌면 true', async (_name, which) => {
+    const hash = await savedHash()
+    const base = fixtureMonths()
+    const changed = { ...base, [which]: withOneNumberChanged(base[which]) }
+    // 검사를 그대로 넘기고 지표 하나만 달라진다: "없는 달"로 빠져서 지문이 달라진 것이 아니다
+    const before = inputOf(base)
+    const after = inputOf(changed)
+    expect(after.hasPrev).toBe(true)
+    expect(after.hasLastYear).toBe(true)
+    expect(after.metrics.filter((m, i) => JSON.stringify(m) !== JSON.stringify(before.metrics[i]))).toHaveLength(1)
+    expect(await isReportStale(MONTH, hash, async () => changed)).toBe(true)
+  })
+
+  it.each<Case>([
+    ['고른 달이 없음', () => ({ ...fixtureMonths(), selected: null })],
+    ['고른 달이 검사를 못 넘음', () => ({ ...fixtureMonths(), selected: { month: MONTH, totals: 'x' } })],
+    ['고른 달이 다른 달 자료임', () => monthsFor('2026-09')],
+    ['입력 만들기가 던짐(groupNames가 null)', () => ({ ...fixtureMonths(), groupNames: null as unknown as Record<string, string> })],
+    ['읽은 값이 undefined임', () => undefined as unknown as ReportMonths],
+  ])('AC-705.3 %s이면 false', async (_name, months) => {
+    const hash = await savedHash()
+    await expect(isReportStale(MONTH, hash, async () => months())).resolves.toBe(false)
+  })
+
+  it('AC-705.3 읽기가 던지면 false(비동기·동기 모두 던지지 않는다)', async () => {
+    const hash = await savedHash()
+    const rejects = async (): Promise<ReportMonths> => {
+      throw new Error('db')
+    }
+    const throwsNow = (): Promise<ReportMonths> => {
+      throw new Error('db')
+    }
+    await expect(isReportStale(MONTH, hash, rejects)).resolves.toBe(false)
+    await expect(isReportStale(MONTH, hash, throwsNow)).resolves.toBe(false)
+  })
+
+  it('AC-705.3 지문 만들기가 던지면 false', async () => {
+    const hash = await savedHash()
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockRejectedValue(new Error('crypto'))
+    try {
+      await expect(isReportStale(MONTH, hash, async () => fixtureMonths())).resolves.toBe(false)
+      expect(digest).toHaveBeenCalledTimes(1)
+    } finally {
+      digest.mockRestore()
+    }
+  })
+
+  it.each<[string, (base: ReportMonths) => Partial<ReportMonths>, Partial<ReportMonths>]>([
+    ['지난달이 다른 달 자료', (base) => ({ prev: base.lastYear }), { prev: null }],
+    ['작년 같은 달이 다른 달 자료', (base) => ({ lastYear: base.prev }), { lastYear: null }],
+    ['지난달이 검사를 못 넘음', () => ({ prev: { month: '2026-09', broken: true } }), { prev: null }],
+    ['작년 같은 달이 검사를 못 넘음', () => ({ lastYear: { month: '2025-10', totals: 'x' } }), { lastYear: null }],
+  ])('AC-705.3 %s이면 만들 때처럼 없는 달로 보아 그 달 없이 저장한 지문과 같으니 false', async (_name, now, atSave) => {
+    const base = fixtureMonths()
+    const hash = await savedHash({ ...base, ...atSave })
+    expect(await isReportStale(MONTH, hash, async () => ({ ...base, ...now(base) }))).toBe(false)
+  })
+
+  it('AC-705.3 저장 때 있던 지난달이 지금 다른 달 자료면 없는 달로 보아 지문이 달라 true', async () => {
+    const base = fixtureMonths()
+    const hash = await savedHash(base)
+    expect(await isReportStale(MONTH, hash, async () => ({ ...base, prev: base.lastYear }))).toBe(true)
   })
 })

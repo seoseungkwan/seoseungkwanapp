@@ -30,7 +30,7 @@ export function StickyConnect({ targetId }: { targetId: string }) {
       className={`sticky bottom-0 -mx-4 -mb-8 border-t border-line bg-surface px-4 py-3 transition duration-200 md:hidden ${shown ? 'visible translate-y-0' : 'invisible translate-y-full'}`}
     >
       <Link
-        href="/claim/setup"
+        href="/claim/setup?next=dashboard"
         tabIndex={shown ? undefined : -1}
         className={`${ds.button.primaryLarge} group w-full no-underline transition not-disabled:active:translate-y-px`}
       >

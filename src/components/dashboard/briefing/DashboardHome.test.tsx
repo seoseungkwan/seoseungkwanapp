@@ -99,7 +99,7 @@ const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
 const ROW_SIDE = '삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요.'
 const DESC = '청구하기 전에 삭감될 만한 처방을 미리 찾아 줘요.'
 const DESC_SUB = '청구 점검은 비트 PC의 크롬에서 열려요.'
-// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(AC-610.1·worklog AC-012.5: 다른 갈래가 탭을 채워도 그대로 통과한다)
+// 기능 수 글과 상태별 수는 손으로 적지 않고 목차 자료에서 센다(spec revenue AC-010.1, worklog AC-012.5·ai-report-screen AC-714.4·patients AC-610.1: 다른 갈래가 탭을 채워도 그대로 통과한다)
 const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
 const INDEX_SIDE = `${DASHBOARD_FEATURES.length}개 가운데 ${featureCount('ready')}개는 지금, ${featureCount('connect-first')}개는 연결하면 쓸 수 있어요`
 const PC_STEPS_NOTE = '설정의 비트 PC 연결 화면이 한 단계씩 안내해요.'
@@ -159,6 +159,25 @@ describe('DashboardHome: 날짜 줄 (AC-306.1)', () => {
   })
 })
 
+describe('DashboardHome: 날짜 줄 자리 (bit-dashboard AC-605.1·AC-605.7)', () => {
+  const control = <div data-testid="date-control">가짜 날짜 고르기</div>
+
+  it('AC-605.1: dateLine을 주면 날짜 글자 대신 그 자리(왼쪽 칸 맨 위)에 그린다', () => {
+    render(<DashboardHome today={TODAY} report={report} analysis={analysis} dateLine={control} />)
+    expect(dateLineEl()).toBe(screen.getByTestId('date-control'))
+    expect(screen.queryByText('10월 31일 토요일')).toBeNull()
+    expect(screen.queryByText(/이번 달 마지막 날/)).toBeNull()
+    expectOrder(screen.getByTestId('date-control'), screen.getByRole('heading', { level: 1 }))
+  })
+
+  it('AC-605.7: dateLine이 없으면 지금처럼 날짜 글자다', () => {
+    forBoth(() => {
+      expect(dateLineEl().tagName.toLowerCase()).toBe('p')
+      expect(textOf(dateLineEl())).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    })
+  })
+})
+
 describe('DashboardHome: 연결 전 큰 문장 (AC-306.2·AC-414.1)', () => {
   it('AC-306.2·AC-414.1: 화면의 h1은 큰 문장 하나 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" — display-m 600(폰 heading-m), text-balance', () => {
     const container = renderBefore()
@@ -180,10 +199,10 @@ describe('DashboardHome: 연결 전 큰 문장 (AC-306.2·AC-414.1)', () => {
     expect(left.contains(mainLink())).toBe(true)
   })
 
-  it('AC-306.2: [비트 PC 연결 시작]은 /claim/setup 링크, ds.button.primaryLarge + 오른쪽 꾸밈 arrow 16, 폰 전체 폭', () => {
+  it('AC-306.2·AC-603.1: [비트 PC 연결 시작]은 /claim/setup?next=dashboard 링크, ds.button.primaryLarge + 오른쪽 꾸밈 arrow 16, 폰 전체 폭', () => {
     renderBefore()
     const link = mainLink()
-    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.getAttribute('href')).toBe('/claim/setup?next=dashboard')
     expect(textOf(link)).toBe('비트 PC 연결 시작')
     hasAll(link, `${ds.button.primaryLarge} group max-md:w-full`)
     expect(link.id).toBe('dashboard-connect-start') // 휴대폰 아래 단추가 이 id로 지켜본다
@@ -391,7 +410,7 @@ describe('DashboardHome: 단추 반응 (AC-306.7)', () => {
   it('AC-306.7: 모든 링크·단추가 색 150ms(transition)와 누름 아래 1px(not-disabled:active:translate-y-px)', () => {
     forBoth((container) => {
       const links = buttonsOf(container)
-      expect(links.length).toBeGreaterThan(12)
+      expect(links.length).toBeGreaterThan(DASHBOARD_FEATURES.length)
       for (const a of links) hasAll(a, REACT_PRESS)
     })
   })
@@ -654,7 +673,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expect(status.querySelector('svg')).toBeNull()
   }
 
-  it('AC-316.4·AC-414.5·AC-610.1·AC-012.5: 섹션 h2 "기능 목차" + 옆 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(숫자는 목록에서, small muted, 최대 폭), 섹션 나눔 — 연결 전·뒤 모두', () => {
+  it('AC-316.4·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 섹션 h2 "기능 목차" + 옆 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(small muted, 최대 폭, 수는 목차 자료에서 센다), 섹션 나눔 — 연결 전·뒤 모두', () => {
     forBoth(() => {
       const section = sectionNamed('기능 목차')
       hasAll(section, SECTION)
@@ -667,12 +686,12 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     })
   })
 
-  it('AC-316.4: 목록(ul, 이름 "기능")에 칸 12개가 표 순서대로 — 칸 하나 = 링크 하나', () => {
+  it('AC-316.4: 목록(ul, 이름 "기능")에 칸이 표 순서대로 — 칸 하나 = 링크 하나', () => {
     renderBefore()
     const ul = list()
     expect(ul.tagName.toLowerCase()).toBe('ul')
     const items = within(ul).getAllByRole('listitem')
-    expect(items).toHaveLength(12)
+    expect(items).toHaveLength(DASHBOARD_FEATURES.length)
     items.forEach((li, i) => {
       const feature = DASHBOARD_FEATURES[i]
       expect(li.children).toHaveLength(1)
@@ -693,7 +712,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     }
   })
 
-  it('AC-316.4·AC-414.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구 "연결 먼저" · 설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다, AC-610.1·AC-012.5)', () => {
+  it('AC-316.4·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구·환자·매출 "연결 먼저" · AI 리포트·업무일지·설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다)', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -718,7 +737,10 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
       hasAll(desc, 'mt-0.5 block text-small text-muted')
     })
     expectConnectFirst(statusOf(linkOf('청구')))
+    expectConnectFirst(statusOf(linkOf('매출')))
     expectUsable(statusOf(linkOf('설정')))
+    expectUsable(statusOf(linkOf('AI 리포트')))
+    expect(textOf(linkOf('AI 리포트').children[1] as HTMLElement)).toBe('지난달·작년 같은 달과 견준 월간 AI 보고')
     expect(links.filter((a) => textOf(statusOf(a)) === '준비 중')).toHaveLength(featureCount('soon'))
     expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(featureCount('connect-first'))
     expect(links.filter((a) => textOf(statusOf(a)) === '사용 가능')).toHaveLength(featureCount('ready'))
@@ -734,6 +756,16 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expectUsable(statusOf(linkOf('환자')))
   })
 
+  it('AC-515.2: 통계 칸은 /stats로 가고 연결 전 "연결 먼저", 연결 뒤 "사용 가능"(accent + 화살표)이다', () => {
+    renderBefore()
+    expect(linkOf('통계').getAttribute('href')).toBe('/stats')
+    expectConnectFirst(statusOf(linkOf('통계')))
+    cleanup()
+    renderAfter()
+    expect(linkOf('통계').getAttribute('href')).toBe('/stats')
+    expectUsable(statusOf(linkOf('통계')))
+  })
+
   it('AC-012.3: 업무일지 칸은 연결 전·뒤 모두 "사용 가능"(accent + 화살표)이고 /worklog로 간다', () => {
     forBoth(() => {
       const link = linkOf('업무일지')
@@ -742,9 +774,11 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     })
   })
 
-  it('AC-414.5·AC-610.1·AC-012.5: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, 설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다)', () => {
+  it('AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 연결 뒤에는 청구·매출도 "사용 가능"(accent + 화살표)이고, AI 리포트·업무일지·설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다)', () => {
     renderAfter()
     expectUsable(statusOf(linkOf('청구')))
+    expectUsable(statusOf(linkOf('매출')))
+    expectUsable(statusOf(linkOf('AI 리포트')))
     expectUsable(statusOf(linkOf('설정')))
     const links = Array.from(list().querySelectorAll('a'))
     expect(links.filter((a) => textOf(statusOf(a)) === '연결 먼저')).toHaveLength(0)
@@ -760,15 +794,19 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     for (const t of classesOf(ul)) expect(t, t).not.toMatch(/^grid-cols-/)
   })
 
-  it('AC-414.5·AC-610.1·AC-012.5: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 · 지금 · 연결하면) — 소스에 숫자를 박지 않는다', () => {
+  it('AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 옆 글의 숫자는 DASHBOARD_FEATURES에서 센 값이다(전체 · 지금 · 연결하면) — 소스에 숫자를 박지 않는다', () => {
     const source = SOURCES.map((s) => s.text).join('\n')
-    expect(source).not.toMatch(/\d+개 가운데|기능 \d+개|가운데 \d+개|\d+개는 지금|\d+개는 연결하면/)
+    expect(source).not.toMatch(/\d+개 가운데|기능 \d+개|가운데 \d+개|\d+개는 지금|\d+개는 연결하면|\b(?:total|now|afterConnect)\s*=\s*\d/)
+    // 세 상태를 더하면 전체다: 어느 칸도 상태 밖에 있지 않다
+    expect(featureCount('ready') + featureCount('connect-first') + featureCount('soon')).toBe(DASHBOARD_FEATURES.length)
+    // 그린 글자가 센 값과 같다
     renderBefore()
+    expect(byText(sectionNamed('기능 목차'), INDEX_SIDE)).toBeTruthy()
     expect(byText(document.body, INDEX_SIDE, 'p')).toBeDefined()
     expect(INDEX_SIDE).toMatch(/^\d+개 가운데 \d+개는 지금, \d+개는 연결하면 쓸 수 있어요$/)
   })
 
-  it('AC-316.4: 연결 뒤에도 같은 목록 — 12칸, 주소·이름 그대로', () => {
+  it('AC-316.4: 연결 뒤에도 같은 목록 — 주소·이름 그대로', () => {
     renderAfter()
     const items = within(list()).getAllByRole('listitem')
     expect(items.map((li) => li.querySelector('a')?.getAttribute('href'))).toEqual(DASHBOARD_FEATURES.map((f) => f.href))

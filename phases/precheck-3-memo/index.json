@@ -5,32 +5,44 @@
     {
       "step": 0,
       "name": "memo-text",
-      "status": "pending"
+      "status": "completed",
+      "summary": "lib/precheck/memo(createMemoEngine·fullText·buildMemo·memoText·validatePhrases·defaultPhrases·diffPhrases·ourClinicPhrases·unfinished), jobs.memoViews, check의 memo·memoBlocked, E-MEMO-NO-SETTINGS, our-clinic-settings.mjs, 골든 memo-*·phrases-engine. 고친 메모는 memoViews의 saved 인자(내원번호→글)로 받는다. 문구 사전은 저장처가 없어 빈 사전이며, 연골주사 줄은 시술 줄이고 빼기는 약 이름만 뺀다. 입력 대상은 글이 아니라 hasMemo로 가른다."
     },
     {
       "step": 1,
       "name": "helper-store",
-      "status": "pending"
+      "status": "completed",
+      "summary": "도우미 저장소(TASK-15, REQ-015): Precheck.Core/Store(WorkStore·StoreCommands·IStoreFolder)와 Precheck.Helper/Commands/HelperStore.cs. store.load/store.save, 달마다 work-YYYY-MM.dat·contact.dat·settings.dat, DPAPI 암호화, File.Replace+.bak 복구(본 파일 없음+.bak도 복구), 13개월 뒤 정리. 결정: Program.cs에 HelperStore.Register 한 줄 추가(TASK-15 Files 밖이지만 없으면 실제 도우미에서 안 돎); store.*는 registration.dat만 보고 비트 DB는 안 봄(비트 꺼져도 저장됨); drafts/done은 nullable(보낸 칸만 합침, journal 단독 저장용). 남은 일: TASK-17 연결 때 store.save에 WorkLock(AC-017.10)을 걸고 store.load 복구도 잠금 안에 넣기(다른 프로세스 교체 순간 극히 드문 경합, 재현 안 함). 기관기호가 바뀐 재등록은 contact/settings가 영구히 막힘(사용자 결정 대기). [Actions 확인 남음] Precheck.Windows.Tests/Store"
     },
     {
       "step": 2,
       "name": "bit-memo-compare",
-      "status": "pending"
+      "status": "completed",
+      "summary": "비트 메모 비교(TASK-16) 웹 쪽: memoCompare.ts의 compareMemo(도우미와 같음)·inputPlan·dayMemoCounts, jobs의 loadPart·memoReloadStart, store.load를 메모에 연결. 도우미 MemoCompare 시험은 진짜 MemoMatcher를 본다(TASK-37과 함께)."
     },
     {
       "step": 3,
       "name": "bit-input",
-      "status": "pending"
+      "status": "completed",
+      "summary": "bit.input 연결(TASK-35): 내원 수 확인·진짜 입력 기록(WorkStoreJournal)·직접 확인(SkippedByHand)·쓰다 멈춘 사람 검사·store.* 잠금을 갖추고 Program.cs에 등록. 판 번호는 그대로이고 TASK-37 전에는 릴리스하지 않는다. InputRunner.RunConfirmed의 차례: 해시 저장→기록 읽기→풀 사람 Mark→칸 확인→사람마다. AC-035.9 확인할 수 없는 기록은 input-acks.dat. 크롬 창 내리기(TASK-38, 확장 0.1.1)가 첫 progress에 맞춰 돈다. 남은 일: TASK-36·37, 의원 PC 시험. 처방코드 입력·조회 모드·47 표(TASK-36): 제외 체크는 Toggle 먼저, 쓰다 멈춘 사람의 칸이 편집 불가이면 저장을 누르지 않고 멈춘다. 다른 메모 바꾸기·묻지 않기(TASK-37): 원래 메모를 달 파일 originals에 먼저 저장, 그다음 writing, 그다음 칸. 묻지 않기는 프로세스 메모리에만 있고 PC 창 [확인]으로만 켜지며 다음 묶음부터 친다. 직접 확인한 사람은 바꾸지 않는다. 도우미 판은 올리지 않았다."
     },
     {
       "step": 4,
       "name": "memo-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "청구 화면 메모 칸(TASK-18): 메모 표·고치기(1초 뒤 저장)·입력 방식 두 가지·입력할 사람과 빠지는 사람 목록·다른 메모 나란히 보기와 승인·비트 메모 카드·쓰다 멈춘 사람 띠·결과 줄과 엑셀. 설정에 병원 문구·시술별 약·상병 연결표 칸(병원 문구는 고친 칸만 저장, 상병 연결표는 표 전체를 쓰는 알려진 한계). 자동 메모 글이 [다시 점검]으로 달라지면 그 사람의 승인을 푼다. 도우미 결과 이유 글은 시험이 C# 원문과 맞춰 본다(글을 바꾸면 MIN_HELPER를 올린다). 도우미·사이트 올리기와 의원 PC 시험은 아직."
     },
     {
       "step": 5,
       "name": "claim-counts",
-      "status": "pending"
+      "status": "completed",
+      "summary": "입력 현황 건수(TASK-19): claim_day_counts에 visits 칸(마이그레이션 20261030000100은 사용자가 붙여 넣어야 표가 생긴다), lib/precheck/counts.ts·storage/claimCounts.ts·useCountsUpload·OutsideCounts. ClaimEntry의 '준비 중' 칩 자리에 '메모 입력 현황' 패널 하나를 넣었다. 하루는 need_memo=entered이고 visits가 claim.dates와 같을 때만 완료다. 메모가 막힌 병원·불러올 때 비트 메모 없음·달 저장소 막힘이면 건수를 보내지 않는다. 3단계 끝 점검: 전체 시험·tsc·lint·build 통과, 가짜 통로로 진짜 Worker가 날짜 고르기부터 입력 결과까지 돌았다. 도우미·사이트 올리기와 의원 PC 시험은 아직."
+    },
+    {
+      "step": 6,
+      "name": "memo-replace-default",
+      "status": "completed",
+      "summary": "다른 메모 기본으로 바꾸기(TASK-40, 2026-11-02 사용자 결정): 비교가 다름이면 사이트가 지금 쥔 비트 글을 replaces로 담아 묶음에 넣는다(memoCompare.replacesOf). [바꾸지 않기]는 declined로 빠지고 새 불러오기까지 간다. 칩은 새 메모·메모 바꿈 둘, inputPlan과 inputTargets에서 noAsk를 뺐다. 4,000자 넘는 줄은 그 사람만 조회 못함. 도우미는 고치지 않았고 AC-037.1이 칸 글이 같을 때만 쓰도록 지킨다. 전체 시험·tsc·lint·build 통과, 가짜 통로로 진짜 Worker가 돌았다. 의원 PC에서 하루치로 먼저 확인: 칸 글과 DB 글이 다르면 모두 입력 직전 변경됨으로 건너뛴다. 알려진 틈: [이어서 입력]이 줄 없이 멈추면 declined인 쓰다 멈춘 사람이 [이어서 하기]에서 빠져 도우미가 멈춘다(덮어쓰기 없음, 띠가 남음)."
     }
   ]
 }

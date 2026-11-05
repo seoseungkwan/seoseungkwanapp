@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>가짜 청구메모 화면(옮기기 스크립트 시험용, 원본 아님)</title></head>
+<body>
+<script>
+// 원본 화면 흉내: 옮기기 스크립트는 아래 CODEMAP 블록 하나만 꺼낸다
+const NOT_THIS = {"YY001":{n:"꺼내면 안 되는 표", k:"skip", rg:null}};
+const PATTERNS = [
+  ["knee","무릎", /\bknee\b|무릎/i],
+];
+
+/* 처방코드 → 시술·약제 사전 (가짜) */
+let CODEMAP = {
+  // 가짜 차단술 }
+  "ZZ001":{n:"가짜차단", k:"proc", rg:"knee"},
+  "ZZ002":{n:"가짜 {중괄호} 처치", k:"note", rg:null, memo:"{부위} 가짜 메모 // 주석 아님"},
+  'ZZ003':{n:'작은따옴표', k:"drug", rg:null}, /* 끝 주석 } */
+};
+const CODEMAP_DEF = JSON.parse(JSON.stringify(CODEMAP));
+let LATER = {"YY002":{n:"뒤에 있는 다른 표", k:"skip", rg:null}};
+</script>
+</body>
+</html>

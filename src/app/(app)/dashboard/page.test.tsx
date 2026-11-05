@@ -3,9 +3,10 @@ import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
+import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
+import { DateControl } from '@/components/dashboard/live/DateControl'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
-import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { dashboardSummarySource, type SummarySource } from '@/components/dashboard/summary/source'
 import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
@@ -121,7 +122,7 @@ const countOf = (text: string, part: string) => text.split(part).length - 1
 // ui-90 REQ-414 연결 전 문구(시안 docs/mockups/ui-90/app/gen.py dash_body 글자 그대로)
 const H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
 const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
-// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(AC-610.1·worklog AC-012.5: 다른 갈래가 탭을 채워도 그대로 통과한다)
+// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(spec revenue AC-010.1, worklog AC-012.5·ai-report-screen AC-714.4·patients AC-610.1: 다른 갈래가 탭을 채워도 그대로 통과한다)
 const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
 const INDEX_SIDE = `${DASHBOARD_FEATURES.length}개 가운데 ${featureCount('ready')}개는 지금, ${featureCount('connect-first')}개는 연결하면 쓸 수 있어요`
 const GAINS_TITLE = '연결하면 생기는 것 4가지'
@@ -160,6 +161,19 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(hrefOf(html, '비트 PC 연결부터')).toBe('/claim/setup')
   })
 
+  it('AC-603.1: [비트 PC 연결 시작](위 단추·휴대폰 아래 단추) 두 곳의 주소는 /claim/setup?next=dashboard다', () => {
+    const html = renderAt(AT_TODAY)
+    const starts = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].filter((m) => plain(m[2]!) === '비트 PC 연결 시작')
+    expect(starts).toHaveLength(2)
+    for (const m of starts) expect(/\bhref="([^"]*)"/.exec(m[1]!)?.[1]).toBe('/claim/setup?next=dashboard')
+  })
+
+  it('AC-601.1: 페이지는 오늘과 자료 읽는 자리의 값을 BitDashboard에 넘기고, 비트 읽기는 그 화면이 맡는다', () => {
+    expect(SOURCE).toMatch(/<BitDashboard\b/)
+    expect(SOURCE).toMatch(/initial=\{dashboardSummarySource\(\)\}/)
+    expect(SOURCE).not.toMatch(/readBitDays|chrome/)
+  })
+
   it('AC-307.5·AC-414.7: h1은 큰 문장 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" 하나다', () => {
     expect(h1Texts(renderAt(AT_TODAY))).toEqual([H1])
   })
@@ -180,7 +194,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(html).not.toMatch(/<h3\b/)
   })
 
-  it('AC-307.5·AC-414.7: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', () => {
+  it('AC-307.5·AC-414.7·AC-010.1: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', () => {
     let html = renderAt(AT_TODAY)
     // 번호 줄(연결 순서 두 벌 1~5 · 연결하면 생기는 것 1~4): 줄 맨 앞 번호 칸의 번호만 뺀다
     const lists = [...html.matchAll(/<ol\b[^>]*>[\s\S]*?<\/ol>/g)].map((m) => m[0])
@@ -244,11 +258,12 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     vi.useRealTimers()
   })
 
-  it('AC-307.6: 화면 = <DashboardHome report={<ReportBlock … />} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', () => {
+  it('AC-307.6·AC-605.1: 화면 = <DashboardHome dateLine={<DateControl … />} report={<ReportBlock … />} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', () => {
     expect(renderConnected()).toBe(
       renderToStaticMarkup(
         <DashboardHome
           today={TODAY}
+          dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
           report={<ReportBlock today={TODAY} days={DAYS} />}
           analysis={<DashboardAnalysis today={TODAY} source={SOURCE_DATA} />}
         />,
@@ -256,11 +271,13 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     )
   })
 
-  it('AC-307.6: 위에서부터 날짜 줄 → 원장님 보고 문장 · [복사] → h1 첫 문장 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
+  it('AC-307.6·AC-605.1: 위에서부터 날짜 고르기(오늘) → 원장님 보고 문장 · [복사] → h1 첫 문장 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
     const html = renderConnected()
-    expect(dateLineText(html)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    const dateControl = html.indexOf('role="group" aria-label="날짜 고르기"')
+    expect(dateControl).toBeGreaterThanOrEqual(0)
+    expect(html).toContain(`value="${TODAY}"`)
     expectAscending([
-      ['날짜 줄', html.indexOf('<p')],
+      ['날짜 고르기', dateControl],
       ['원장님 보고 문장', placeOf(html, 'p', '원장님 보고 문장')],
       ['복사', placeOf(html, 'button', '복사')],
       ['h1 첫 문장', placeOf(html, 'h1', '오늘 환자 13명이 왔습니다.')],
@@ -275,6 +292,13 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     ])
     expect(hrefOf(html, '사전점검 열기')).toBe('/claim')
     expect(hrefOf(html, '비트 PC 연결 다시 확인')).toBe('/claim/setup')
+  })
+
+  it('AC-605.8: 오늘이 10월 31일인 저장 숫자 화면에서도 날짜 고르기 옆에 "·"과 "이번 달 마지막 날"이 붙는다', () => {
+    const html = renderConnected()
+    const dateControl = /<div role="group" aria-label="날짜 고르기"[\s\S]*?<\/div>/.exec(html)?.[0] ?? ''
+    expect(plain(dateControl)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
+    expect(html.match(/이번 달 마지막 날/g)).toHaveLength(1)
   })
 
   it('AC-307.6: h1은 보고 문장의 첫 문장 하나다', () => {

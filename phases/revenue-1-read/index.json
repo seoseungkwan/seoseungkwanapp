@@ -1,0 +1,30 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "revenue-1-read",
+  "steps": [
+    {
+      "step": 0,
+      "name": "pc-check",
+      "status": "completed",
+      "summary": "docs/revenue/pc-check.md: ②를 접수 건수 확인으로 바꿈(달 고르기, (가) 비트 통계 화면, (나) 매출 탭 접수 건수와 같음/다름, (다) 접수취소가 있던 하루의 건수와 접수 목록에서 취소를 뺀 줄 수 같음/다름. 둘 다 같음일 때만 접수취소가 빠진 것으로 본다). ④에 접수 건수를 확인하지 못한 날 수 더함. 명세에 없이 더한 것: 달 고르기 2번의 '같으면 더 최근 달', (가)의 '외래'. '한 화면 반 이내' 목표는 넘음(두 번에 나눠 채우는 표라 그대로 둠). 총괄이 의원 PC에서 적을 칸은 비어 있음(어떤 TASK도 막지 않음)"
+    },
+    {
+      "step": 1,
+      "name": "bridge-contract",
+      "status": "completed",
+      "summary": "src/types/revenue.ts: 칸 15개(patientsToDate 없음, unconfirmed 뒤에 splitUnconfirmed), REVENUE_DAY_KEYS 15개, REVENUE_SPLIT_KEYS(insurer·copay·noncovered·otherTotal)·REVENUE_KEPT_KEYS(total·cash·card·transfer·receivableIn). isRevenueDays는 세 모양만 받음: 둘 다 거짓이면 아홉 칸 숫자, unconfirmed면 아홉 칸 null, splitUnconfirmed면 나눔 네 칸 null·남는 다섯 칸 숫자. 둘 다 참·옛 모양·patientsToDate가 남은 답은 E-BRIDGE-BAD-REPLY"
+    },
+    {
+      "step": 2,
+      "name": "helper-revenue-read",
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Revenue/{RevenueSql,RevenueDays,RevenueCommands}.cs, 문장 10개(원본 7 + CodeAmounts·FinanceNormalExtra·FinanceReceivableExtra), 하루 8문장, 검사에 걸린 날 2~4문장. 답의 날 칸 15개(patientsToDate 없음), visits = 원본 Patients 첫째 칸, AC-003.4 시험이 PeriodVisits 구간 안의 세 조건을 못 박음(접수취소가 빠지는 증명은 의원 PC 확인표 ②뿐). 금액 맞춤 검사·나눔 네 칸 음수는 splitUnconfirmed, total·cash·card·transfer·receivableIn 음수와 세 검사는 unconfirmed. to=9999-12-31은 E-HELPER-BAD-MESSAGE. 명세에 없이 더한 것 셋: 코드 금액이 음수이거나 JS 안전 정수를 넘으면 amount null, newPatients > visits면 내원 세 칸 null, 하루 금액이 안전 정수를 넘으면 요청 전체가 E-BIT-READ-FAILED"
+    },
+    {
+      "step": 3,
+      "name": "version-bump",
+      "status": "completed",
+      "summary": "도우미 판·LATEST_HELPER·확장 판을 0.2.0으로 올림. MIN_HELPER·MIN_EXTENSION은 0.1.0 그대로. handshake.test.ts에 AC-012.1·012.2 시험. 릴리스 태그·웹스토어 올리기는 하지 않음. origin/main은 도우미 0.1.1이므로 합칠 때 0.2.0으로 맞춘다"
+    }
+  ]
+}

@@ -10,9 +10,10 @@ import { actionsRow } from './StepGuide'
 /**
  * 위 오류 상자(ui-90 AC-412.3, 시안 setup_body '.errc'): 진짜 문제(버전 안 맞음·의원 다름) 하나 또는 방금 누른 등록이 실패한 오류만.
  * negative-soft·4px·안쪽 12px 16px, Icon stop 16 → '무엇이'(body 600 negative) · '어떻게'(body ink-2) · 오류 번호(caption ink-2) · 단추 줄.
- * 단추(actions)는 진짜 문제 단계의 내려받기·다시 등록(주)과 [다시 확인](보조)이다. 오류 번호는 이 상자에서만 보인다
+ * 단추(actions)는 진짜 문제 단계의 내려받기·다시 등록(주)과 [다시 확인](보조)이다. 오류 번호는 이 상자에서만 보인다.
+ * steps는 단추 바로 위에 넣는 순서 글이다(도우미 업데이트의 HelperUpdateSteps, bit-dashboard AC-604.3)
  */
-export function SetupAlert({ code, actions }: { code: string; actions?: ReactNode }) {
+export function SetupAlert({ code, steps, actions }: { code: string; steps?: ReactNode; actions?: ReactNode }) {
   const info = isErrorCode(code) ? errorInfo(code) : null
   return (
     <div role="alert" className="flex items-start gap-2 rounded-control bg-negative-soft px-4 py-3">
@@ -22,6 +23,7 @@ export function SetupAlert({ code, actions }: { code: string; actions?: ReactNod
         {info && <p className="text-body font-semibold text-negative">{info.what}</p>}
         {info && <p className="mt-0.5 max-w-160 text-body text-ink-2">{info.fix}</p>}
         <p className="mt-1 text-caption text-ink-2">오류 번호 {code}</p>
+        {steps && <div className="mt-3 max-w-160">{steps}</div>}
         {actions && <div className={actionsRow}>{actions}</div>}
       </div>
     </div>
@@ -46,7 +48,6 @@ export function BusyCard({ onRetry, disabled = false, outside }: { onRetry(): vo
         {info.what}
       </h2>
       <p className="text-body text-ink-2">{info.fix}</p>
-      <p className="text-small text-ink-2">다른 창을 닫았다면 [다시 확인]을 누르세요.</p>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={ds.button.primary} onClick={onRetry} disabled={disabled}>
           다시 확인

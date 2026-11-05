@@ -1,0 +1,48 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-rules-drug-info-this-month.json",
+  "settings": null,
+  "visits": [
+    {"id":"other-patient-nine-digit","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-nine-digit-also-this-month","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-catalog-fee-code-also-this-month","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"other-patient-catalog-row","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-catalog-row-also-this-month","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-fee-code-asked-by-catalog-row","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"other-patient-nine-digit-row","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.hit-nine-digit-row-other-fee-code","hits":[{"id":"IJ-01","grade":"확인필요","message":"같은 관절·같은 쪽에 스테로이드 관절강내주사가 직전(스테로이드 수압팽창술 포함) 후 14일이 안 됐으니 간격을 확인하세요.","detail":"직전 2026-10-05 · 7일 간격 (기준 14일 이상)"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"IJ-01.miss-other-nine-digit-history-only","hits":[],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "other-patient-nine-digit",
+      "IJ-01.hit-nine-digit-also-this-month",
+      "IJ-01.hit-catalog-fee-code-also-this-month",
+      "other-patient-catalog-row",
+      "IJ-01.hit-catalog-row-also-this-month",
+      "IJ-01.hit-fee-code-asked-by-catalog-row",
+      "other-patient-nine-digit-row",
+      "IJ-01.hit-nine-digit-row-other-fee-code",
+      "IJ-01.miss-other-nine-digit-history-only"
+    ],
+    "checked": 9,
+    "hi": 5,
+    "mid": 0,
+    "lo": 0,
+    "patients": 5,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"IJ-01","grade":"확인필요","visits":["IJ-01.hit-nine-digit-also-this-month","IJ-01.hit-catalog-fee-code-also-this-month","IJ-01.hit-catalog-row-also-this-month","IJ-01.hit-fee-code-asked-by-catalog-row","IJ-01.hit-nine-digit-row-other-fee-code"]}
+    ],
+    "rows": [
+      ["IJ-01.hit-nine-digit-also-this-month","IJ-01"],
+      ["IJ-01.hit-catalog-fee-code-also-this-month","IJ-01"],
+      ["IJ-01.hit-catalog-row-also-this-month","IJ-01"],
+      ["IJ-01.hit-fee-code-asked-by-catalog-row","IJ-01"],
+      ["IJ-01.hit-nine-digit-row-other-fee-code","IJ-01"]
+    ]
+  }
+}

@@ -26,12 +26,12 @@
 | 그라데이션(바탕·글자·선), 원형 빛, 격자 바탕, 유리 효과(blur·`backdrop-filter`), `filter` | 장식이다. "AI가 만든 템플릿" 느낌 **(사용자)** |
 | 카드 그림자, 떠 있는 카드 | 그림자는 떠 있는 층(계정 메뉴·확인 창·툴팁·[전체 메뉴] 판·1분 전 안내·건너뛰기 링크)에만 쓴다 |
 | 상자 안 상자(테두리 상자 안에 또 테두리 상자), 같은 카드 반복 | 같은 상자 반복이 템플릿 티의 첫째 원인이다. 안쪽은 선으로 나눈다 |
-| 큰 둥글기(8px 넘는 모서리, 999px 둥근 단추) | 모서리는 4px(조작 요소·패널)와 8px(떠 있는 층)뿐이다 |
+| 큰 둥글기(8px 넘는 모서리, 999px 둥근 단추) | 모서리는 4px(조작 요소·패널)와 8px(떠 있는 층)뿐이다. 예외는 대시보드의 비트 읽는 표시 둘(`.bit-read-bar` 2px, `.bit-read-spin` 50%)뿐이다(아래 '움직임 › 비트 읽는 표시') |
 | 두 번째 글꼴(IBM Plex Sans KR·Space Grotesk 등) | Pretendard 하나만 쓴다 **(사용자, 2026-10-30)** (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 700 굵기(`font-bold` 등)와 300 이하 굵기 | 글꼴 파일이 400·500·600뿐이라 다른 굵기는 가짜 굵게가 된다 (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 지어낸 숫자(예시 표시 없는 숫자), 실제 화면의 예시 숫자 | 믿고 쓰는 데이터 서비스여야 한다. 예시는 랜딩·로그인 미리보기에서만 "예시" 표시와 함께 쓴다 |
 | 일러스트·사진·영상, 이모지, 반짝이(✦) 아이콘, "Powered by AI" | 그림 대신 제품 화면을 보여 준다 |
-| 장식 애니메이션, 숫자 순환, `animate-*`·`@keyframes`, '짧은 반응 허용' 밖의 전환 효과 | 움직이는 것은 앱·랜딩·인증 화면 조작 요소의 짧은 반응과 탭 줄의 불러오기 줄 하나뿐이다(아래 '움직임') |
+| 장식 애니메이션, 숫자 순환, `animate-*`, `globals.css`의 비트 읽는 표시 둘 밖의 `@keyframes`, '짧은 반응 허용' 밖의 전환 효과 | 움직이는 것은 앱·랜딩·인증 화면 조작 요소의 짧은 반응과 탭 줄의 불러오기 줄, 대시보드의 비트 읽는 표시 둘(`.bit-read-bar`·`.bit-read-spin`)뿐이다(아래 '움직임') |
 | 토큰 밖의 색과 값: Tailwind 기본 색(`bg-blue-500`), 대괄호 임의 값(`bg-[#…]`·`p-[10px]`), 화면 소스의 16진수·`rgb(`·`hsl(`·`color-mix(` | 값은 `:root` 한 곳이다. 16진수 색은 `:root`·`LogoMark.tsx`·`GoogleMark.tsx`에만 있다 (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 제목 반쪽만 색칠, 섹션마다 다른 포인트 색 | 강조색은 하나다 |
 | 영문 소제목(SIGN IN·AI ANALYSIS·PRIVACY FIRST 등) | 한국어 페이지다. 대신 넣는 것은 없다 |
@@ -235,8 +235,8 @@
 | `scale.ts` | `niceScale`: 눈금 간격과 최대 |
 | `KpiStat` | 이름 + Sparkline → 값 + 단위 → 증감 줄 |
 | `Sparkline` | 작은 선 그래프(88×28, 작은 것 56×22) |
-| `StackedBarChart` | 주별 쌓은 막대(신환·재진) + 화면 읽기 표 |
-| `ChartLegend` | 범례(accent 면 · chart-3 면 · 빗금 · 지난 기간 막대) |
+| `StackedBarChart` | 주별 쌓은 막대(신환·재진, 계열 색 `accent`·`chart-3`·`hatch-warning`) + 화면 읽기 표. `hideZeroTotals`: 합계 0인 칸은 막대 위 글자 없음 |
+| `ChartLegend` | 범례(accent 면 · chart-3 면 · 빗금 `hatch` · 구분 없음 빗금 `hatch-warning` · 지난 기간 막대) |
 | `RankedBars` | 순위 막대(동네 등) |
 | `InlineBar` | 표 줄 안 작은 막대(이번 값 + 지난 기간 눈금) |
 
@@ -245,7 +245,7 @@
   - inline style은 % 값(0~100, 소수 둘째 자리)뿐이다: 쌓은 막대 `height`·`bottom`, 순위 막대 `width`, 줄 안 막대 `width`·`left`
   - SVG는 Sparkline, 빗금(패턴·id 없이 `<path stroke="currentColor">` 하나, 4px 간격), 화살표, 범례 표시에만 쓴다
 - **색은 토큰 클래스로만 준다**(`fill-accent`·`stroke-accent`·`bg-chart-3`·`bg-line-strong`·`bg-faint` …). svg의 `fill`·`stroke` 속성 값은 `currentColor`·`none`뿐이다
-  - 신환 `accent`, 재진 `chart-3`, 지난 기간 `faint`(표시만, `bg-faint`), '그 밖'·'주소 없음' `line-strong`
+  - 신환 `accent`, 재진 `chart-3`, 구분 없음 `warning`(`bg-warning-soft` 바탕 + `text-warning` 빗금), 지난 기간 `faint`(표시만, `bg-faint`), '그 밖'·'주소 없음' `line-strong`
   - Sparkline: 면 `accent-soft` → 선 `accent` 1.5 → 끝점(`accent`, 테두리 `surface`)
 - **접근성.** 그림은 모두 `aria-hidden="true"`이고 `role="img"`를 쓰지 않는다
   - 쌓은 막대는 `sr-only` 표가 숫자를 준다(caption "<제목> (<단위>)", 기간 · 계열 · 합계 · 상태)
@@ -262,6 +262,8 @@
 - **쌓은 막대.** 첫 계열이 맨 위이고 범례 첫째다. 계열 사이는 2px 띄운다. 막대 폭은 칸의 반, 최대 40px(`compact` 20px)
   - 막대 위 합계는 caption ink-2이고, 마지막 완료 칸만 600 ink다
   - 집계 중·일부 기간 칸은 한 막대로 그리고 빗금(accent 1px 선, 4px 간격 45°) + 1px accent 테두리를 쓴다. 기본 크기에서는 위에 "집계 중"·"일부 기간"을 붙인다
+  - 구분 없음 조각(`hatch-warning`)은 쌓은 막대의 한 조각이고 `warning-soft` 바탕 + 빗금(warning 1px 선, 같은 간격) + 1px warning 테두리다. 범례 표시도 같은 색이다
+  - `hideZeroTotals`를 주면 합계 0인 칸은 막대 위 글자(합계·상태)가 없다. 화면 읽기 표는 그대로다
 - **순위 막대.** 값 큰 순(같으면 받은 순서), '그 밖' 항목은 맨 뒤. 막대 높이 10px, 폭은 '그 밖' 아닌 최대 값 대비 %. 값 "168명"(small 600), 몫 "23.5%"(small muted, 버림)
 - **불러오기.** 폴더 밖에서는 `react` 타입과 `@/types/analysis`의 타입(`Delta`·`BucketState`)만 불러온다. 차트 라이브러리를 쓰지 않는다(새 npm 패키지 없음)
 - 차트 툴팁(마우스 올림 상자)은 이번에 없다. 다음 대시보드 명세에서 정한다
@@ -283,7 +285,7 @@
 - 실제 화면은 자료가 없으면 조용한 빈 상태다. 예시 숫자·차트·"예시" 칩으로 빈칸을 채우지 않는다. 그림·큰 아이콘을 쓰지 않는다
 - 꾸밈 예외가 없다. 빈 그래프 틀·글자 없는 꾸밈 선을 그리지 않는다 (ui-90)
 - 대시보드(`/dashboard`): 자료가 없으면(지금은 늘 그렇다) '연결 전' 모양이다. 큰 문장 자리는 연결 안내, 숫자 칸은 "–"(`muted`) + "연결하면 보여요", 기간별 흐름 자리는 그래프 대신 **"연결하면 생기는 것 4가지"**(subtitle 600 + 순서 목록 4개 + 안내 한 줄)다. 빈 그래프 틀·차트 부품을 그리지 않는다. 문구는 시안 `docs/mockups/ui-90/app/gen.py` `dash_body`다(아래 '대시보드')
-- 준비 중 화면(화면이 아직 없는 기능 주소 8개, `components/common/NotReadyScreen.tsx`): 바깥 상자(`ds.panel`·네 변 테두리)·꾸밈 선·고정 높이가 없다. 기능별 문구(이름·`title`·소개·만들 것)는 `components/common/notReadyFeatures.ts` 한 곳이다
+- 준비 중 화면(화면이 아직 없는 기능 주소, `components/common/NotReadyScreen.tsx`): 바깥 상자(`ds.panel`·네 변 테두리)·꾸밈 선·고정 높이가 없다. 기능별 문구(이름·`title`·소개·만들 것)는 `components/common/notReadyFeatures.ts` 한 곳이다
   - 왼쪽 칸: `neutral` 칩 "준비 중" → h1 = 그 항목의 `title`("통계는 준비 중이에요"처럼 조사까지 자료에 통째로, heading · 휴대폰 heading-m) → 소개(lead `ink-2`, 최대 폭 단계) → [대시보드로 돌아가기](보조 단추 + 왼쪽을 보는 화살표, 휴대폰 전체 폭)
   - 오른쪽 칸: h2 "만들 것"(small 600 muted) + 점 목록(`ul`, 받은 순서, 꾸밈 점 `accent`)
   - 그 아래 전체 폭(위 1px `line`): h2 **"그동안 쓸 수 있어요"** + [비트 PC 연결](`/claim/setup`) "청구 점검을 쓰려면 먼저 해요" · [청구](`/claim`) "삭감 예방 사전점검"(글자 단추 + 화살표)
@@ -293,7 +295,7 @@
 
 ## 앱 틀 (붙는 띠 + 탭)
 - **건너뛰기 링크**: 문서 순서로 첫 조작 요소가 `<a href="#main">본문으로 건너뛰기</a>`다. 평소에는 `sr-only`, 키보드 초점이면 왼쪽 위 띠 위에 보인다(높이 44px, `surface`, 1px `line`, `rounded-float`, `shadow-float`, body 600, 2px `accent` 초점 고리). 본문 `main`은 `id="main"`·`tabIndex={-1}`이다
-- **탭 이름**(브라우저 탭): 앱 화면은 "화면 이름 · 의원 이름"(`(app)/layout.tsx`의 `generateMetadata`, 레이아웃과 같은 요청 안 캐시 읽기 `currentMe`). 화면 이름은 대시보드·청구·비트 PC 연결·가입 승인·업무일지·환자와 준비 중 8개의 기능 이름이고 14개가 모두 다르다. 앱 밖은 "화면 이름 · 병원 업무 도구"(뿌리 `title.template`): 처음 화면 "숫자로 보는 우리 의원" · 로그인 · 가입 신청 · 승인 대기 / 가입 승인 안 됨 · 없는 주소 "찾는 화면이 없어요" · 오류 화면 "오류 · 병원 업무 도구"
+- **탭 이름**(브라우저 탭): 앱 화면은 "화면 이름 · 의원 이름"(`(app)/layout.tsx`의 `generateMetadata`, 레이아웃과 같은 요청 안 캐시 읽기 `currentMe`). 화면 이름은 대시보드·통계·청구·환자·매출·AI 리포트·비트 PC 연결·가입 승인·업무일지와 준비 중 기능의 이름이고 모두 다르다. 앱 밖은 "화면 이름 · 병원 업무 도구"(뿌리 `title.template`): 처음 화면 "숫자로 보는 우리 의원" · 로그인 · 가입 신청 · 승인 대기 / 가입 승인 안 됨 · 없는 주소 "찾는 화면이 없어요" · 오류 화면 "오류 · 병원 업무 도구"
 - 위쪽 띠와 탭 줄이 한 묶음으로 화면 위에 붙어 따라온다(`sticky top-0 z-10`). 위쪽 가로 탭을 그대로 쓴다 **(사용자, 2026-10-30)**
 - **위쪽 띠**(`<header>`): `surface`, 아래 1px line, 56px(768px 미만 48px)
   - 왼쪽: `LogoMark` 24 + 의원 이름(subtitle 600, 넘치면 말줄임. 768px 미만 body 600)
@@ -304,11 +306,11 @@
   - 열면 첫 항목에 초점, ↓↑로 항목 사이를 돈다(끝에서 처음으로). Esc·Tab·바깥 누름은 닫는다. 메뉴 층은 나타날 때만 움직인다('움직임')
 - **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
   - 순서와 주소(13개, `components/shell/menu.ts`의 `MENU`): 대시보드 `/dashboard` · 통계 `/stats` · 청구 `/claim` · 고시·공지 `/notices` · 환자 `/patients` · 매출 `/revenue` · AI 리포트 `/ai-report` · 서식 `/forms` · 직원 `/staff` · 업무일지 `/worklog` · 재고 `/inventory` · 주소록 `/contacts` · 설정 `/claim/setup`(비트 PC 연결 화면). 관리자 탭과 세로 구분선이 없다(관리자 화면은 계정 메뉴 [가입 승인])
-  - 화면이 아직 없는 8개(통계, 고시·공지, 매출, AI 리포트, 서식, 직원, 재고, 주소록)는 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·청구·설정·업무일지·환자만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
+  - 화면이 아직 없는 탭(고시·공지, 서식, 직원, 재고, 주소록)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
   - 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: 탭 주소 가운데 가장 길게 맞는 것이 이긴다. `/claim`·`/claim/…`은 [청구], 비트 PC 연결 `/claim/setup`은 [설정](`/claim`보다 길게 맞는다). `/admin`에서는 지금 탭이 없다
   - 1024px 미만에서는 탭 띠가 옆으로 밀린다(얇은 스크롤바). 지금 탭과 키보드 초점이 간 탭이 보이게 띠만 민다
 - **[전체 메뉴]**(1024px 미만, tab-frame AC-303.5 "메뉴 단추 없음"을 대체, 768px 폭도 같다): 탭 띠 오른쪽 끝, 띠 밖에 단추(44px, 왼쪽 1px `line`, `accent` 600, 꾸밈 `chev`, `aria-expanded`·`aria-controls`). 1024px 이상에서는 보이지 않는다(`lg:hidden`)
-  - 누르면 탭 줄 바로 아래 판(`surface`, 아래 1px `line`, `shadow-float`): 머리 "모든 탭 13개" · "준비 중 8개"(small muted, 숫자는 `MENU`에서) → 2칸 목록(`ul`) 링크 13개(`MENU` 순서, 44px). 지금 탭은 `aria-current="page"`(`accent-strong` 600 + 왼쪽 2px `accent` 막대), 준비 중 8개는 `neutral` 칩 "준비 중"
+  - 누르면 탭 줄 바로 아래 판(`surface`, 아래 1px `line`, `shadow-float`): 머리 "모든 탭 13개" · "준비 중 n개"(small muted, 숫자는 `MENU`에서) → 2칸 목록(`ul`) 링크 13개(`MENU` 순서, 44px). 지금 탭은 `aria-current="page"`(`accent-strong` 600 + 왼쪽 2px `accent` 막대), 준비 중 탭은 `neutral` 칩 "준비 중"
   - 단추를 다시 누름·Esc(초점은 단추로)·판 안 링크 누름·판 밖 누름·경로 바뀜에 닫힌다. 판은 나타날 때만 150ms 흐림 → 보임이고 꺾쇠는 180° 돈다
 - **누른 탭 먼저 + 불러오기 줄**: 지금 경로와 다른 탭(또는 [전체 메뉴] 판 링크)을 누르면 그 탭이 바로 지금 탭 모양(`data-pending="true"`)이 되고, 탭 줄 맨 아래에 `aria-hidden` 2px `accent` 불러오기 줄이 차오른다('움직임'). `aria-current`는 경로가 바뀔 때 옮겨지고 그때 `data-pending`과 줄이 사라진다. 지금 탭을 다시 누르면 아무것도 바뀌지 않는다. 불러오는 동안 본문은 `(app)/loading.tsx`(`role="status"` 안 화면 읽기 글자 "화면을 여는 중이에요"만)
 
@@ -332,10 +334,10 @@
   2. **연결하면 바로 쓸 수 있어요** 한 줄(연결 전만): h2 + 옆 글 "삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요." 아래 줄 하나에 청구 탭 · 삭감 예방 사전점검 · 설명 · "청구 점검은 비트 PC의 크롬에서 열려요." · [비트 PC 연결부터](`/claim/setup`, 보조 + 꾸밈 화살표)
   3. **오늘 하루 분석**: 숫자 4칸(오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다). 연결 전이면 h2 옆 `neutral` 칩 "비트 PC 연결 전", 칸마다 "–"(`muted`) + "연결하면 보여요", 아래 안내 한 줄
   4. **기간별 흐름**: 기간 단추(최근 7·30·90일, 처음 30일, 어제까지. 휴대폰 44px). 연결 전이면 그래프 대신 "연결하면 생기는 것 4가지"(subtitle 600 + 순서 목록 4개, 1024px 이상 4칸·칸 사이 1px `line`, 768px 미만 쌓기 + 안내 한 줄). 연결 뒤면 그래프 넷(환자 수 추이 · 신환 재방문율 · 요일별 환자 수 · 처방 상위)
-  5. **기능 목차**: 탭 12개(대시보드 뺌). 옆 글 "12개 가운데 2개는 지금, 2개는 연결하면 쓸 수 있어요"(숫자는 목차 자료에서 센다). 칸 하나 = 링크 하나(테두리 상자 없이 위 1px `line`). 상태 글자(`features.ts`의 `status`):
-     - 청구·환자(`connect-first`): 연결 전 "연결 먼저"(`ink-2` 600 + 화살표) · 연결 뒤 "사용 가능"
-     - 설정·업무일지(`ready`): "사용 가능"(`accent` + 화살표)
-     - 나머지 8개(`soon`): "준비 중"(`muted`)
+  5. **기능 목차**: 탭 12개(대시보드 뺌). 옆 글 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(n은 목차 자료에서 센다). 칸 하나 = 링크 하나(테두리 상자 없이 위 1px `line`). 상태 글자(`features.ts`의 `status`):
+     - 통계·청구·환자·매출(`connect-first`): 연결 전 "연결 먼저"(`ink-2` 600 + 화살표) · 연결 뒤 "사용 가능"
+     - AI 리포트·업무일지·설정(`ready`): "사용 가능"(`accent` + 화살표). AI 리포트 설명은 "지난달·작년 같은 달과 견준 월간 AI 보고"
+     - 나머지(`soon`): "준비 중"(`muted`)
   6. 휴대폰 아래 단추(연결 전, 768px 미만만): 위 주 단추가 화면 밖으로 나가면 아래에 붙는 [비트 PC 연결 시작]
 - 연결 전·연결 뒤는 자료 읽는 자리(`components/dashboard/summary/source.ts`) 하나로 정하고 판정은 `report != null`이다(`undefined`도 연결 전). 지금은 늘 자료 없음이라 연결 전 모양이다. 대시보드는 확장·도우미 연결 상태를 판정하지 않는다
 - 칸: 1024px 이상 12칸(브리핑 왼쪽 1~7 · 오른쪽 9~12), 768~1023px 왼쪽 전체 폭(글 최대 32em) 아래에 오른쪽 칸, 768px 미만 한 줄로 쌓는다. h1은 늘 하나다
@@ -372,6 +374,15 @@
 
 - 오류 글은 `lib/errors.ts`에서만 가져온다. 글이 없는 번호(도우미가 새로 준 번호)는 번호만 보인다
 - 주소·화면 제목·브라우저 탭 이름에 이름·전화·차트번호를 넣지 않는다. 명단·연락 표시는 브라우저 저장소에 두지 않는다
+
+## AI 리포트 (`/ai-report`)
+- 부품은 `components/ai-report/`: `AiReportScreen`(상태·동작, 브라우저) · `ReportBody`(본문) · `UsageAside`(옆 칸) · `RedoDialog`(다시 분석 확인) · `reportClient`(읽기·분석 요청). 페이지(`(app)/ai-report/page.tsx`)는 서버에서 요청 때의 한국 날짜 `today`만 넘긴다(`force-dynamic`). 여백은 앱 틀이 주므로 화면은 여백 틀을 더 두르지 않는다
+- 승인 시안: `docs/mockups/ai-report/index.html`(글꼴을 품어 1.1MB라 통째로 읽지 않는다). 명세는 `specs/ai-report-screen`
+- 머리: h1 "AI 리포트" + 비교 줄 · 오른쪽에 달 고르기(앞·뒤 단추 사이에 달, 처음 달 `2026-01`) · 리포트가 있을 때만 [다시 분석]("분석 중"과 같은 단추). 숫자가 바뀌었으면 [다시 분석]이 주 단추
+- 본문·옆 칸: 1024px 이상 12칸(본문 1~8 · 옆 칸 9~12, 옆 칸 왼쪽 1px `line`), 그보다 좁으면 본문 아래에 옆 칸(위 1px `line-strong`, 768~1023px에서는 옆 칸 안이 두 칸). 옆 칸은 "이번 달 AI 사용량"과 "AI에게 보내는 것"
+- 본문 상태(위에 있는 것이 이긴다): 읽는 중 · 읽기 실패(오류 상자 + [다시 읽기]) · 분석 중(리포트 없음/있음) · 통계 없음(`E-AI-NO-DATA`, [통계 탭으로]) · 오류(리포트 없음/있음) · 리포트 있음(달 끝나기 전·숫자 바뀜 안내 상자) · 리포트 없음(빈 화면 [AI 분석])
+- 달을 옮겨도 저장하지 않는다: 고른 달은 화면 상태에만 있고 주소에 넣지 않는다. 새로 고치면 지난달로 돌아온다
+- 오류 상자는 `ErrorCard`를 쓰고, 답은 글자로만 그린다(HTML 금지)
 
 ## 인증 화면
 - `AuthFrame` 하나가 틀이다. 어느 모양이든 `<main>`이 하나, `LogoMark`가 하나다. 로고는 처음 화면 링크다(`<a href="/" aria-label="처음 화면으로 가기">`, 누름 영역 44px 이상, 안쪽 초점 고리)
@@ -481,8 +492,8 @@
 - 제목과 랜딩 약속 문구에 줄바꿈 태그를 넣지 않는다
 
 ## 움직임
-- 장식으로 움직이는 것이 없다. 히어로 숫자 순환·장식 애니메이션·`animate-*`·`@keyframes`가 없다
-- 모션 줄이기 전역 규칙(`globals.css`)은 그대로 둔다. 아래 짧은 반응도 이 규칙이 모두 끈다
+- 장식으로 움직이는 것이 없다. 히어로 숫자 순환·장식 애니메이션·`animate-*`가 없고, `@keyframes`는 아래 '비트 읽는 표시' 둘 밖에 없다
+- 모션 줄이기 전역 규칙(`globals.css`)은 그대로 둔다. 아래 짧은 반응과 비트 읽는 표시도 이 규칙이 모두 끈다
 
 ### 짧은 반응 허용 (대시보드 1안부터, 사용자 2026-10-31 · 랜딩·인증까지 넓힘, 총괄 ui-90)
 - 조작 요소만 누름과 올림에 짧게 반응한다
@@ -491,8 +502,8 @@
 - 바뀌어도 되는 것: 색(`color`·`background-color`·`border-color`·`text-decoration-color`), 투명도(`opacity`), 작은 옮김(`translate`·`rotate`)
   - 옮김 크기: 누름 아래로 1px(`active:translate-y-px`), 단추 안 화살표 오른쪽 2px(`group-hover:translate-x-0.5`), 접는 칸 꺾쇠 180°, 떠 있는 층이 나타날 때 위 4px(툴팁 아래 2px)에서 제자리
   - 바뀌면 안 되는 것: 크기·높이·폭·여백·글자 크기·그림자 크기. 내용이 펼쳐질 때 높이를 움직이지 않는다
-- 시간: 150ms(Tailwind `transition` 기본값 `--default-transition-duration`, 곡선 기본값). 휴대폰 아래 단추가 올라올 때만 200ms(`duration-200`). 120~200ms 밖은 쓰지 않는다(아래 불러오기 줄 하나만 예외)
-- 클래스: `transition`(기본 속성 목록)과 `duration-200`, 나타남은 `starting:` 변형. `transition-all`·`delay-*`·`ease-*` 임의 곡선·`animate-*`는 쓰지 않는다
+- 시간: 150ms(Tailwind `transition` 기본값 `--default-transition-duration`, 곡선 기본값). 휴대폰 아래 단추가 올라올 때만 200ms(`duration-200`). 120~200ms 밖은 쓰지 않는다(아래 불러오기 줄과 비트 읽는 표시만 예외)
+- 클래스: `transition`(기본 속성 목록)과 `duration-200`, 나타남은 `starting:` 변형. `transition-all`·`delay-*`·`ease-*` 임의 곡선·`animate-*`는 쓰지 않는다(비트 읽는 표시도 `animate-*`를 쓰지 않는다)
 - 떠 있는 층(계정 메뉴·툴팁·[전체 메뉴] 판)은 나타날 때만 움직이고 닫힐 때는 바로 사라진다
 - 그래프(`components/charts`)와 미리보기(`components/preview`)는 움직이지 않는다
 
@@ -501,6 +512,14 @@
 - 이 700ms·감속 곡선은 `src/components/shell/LoadBar.tsx` 한 파일에서만 규칙 시험의 예외다. 다른 곳의 같은 클래스는 그대로 잡는다
 - 모션 줄이기 기기에서는 전역 규칙으로 움직이지 않는다(그 자리에 서 있다가 사라진다)
 - 모션 줄이기(`prefers-reduced-motion: reduce`)를 켠 기기에서는 모두 바로 바뀐다(전역 규칙)
+
+### 비트 읽는 표시 (예외 둘, 사용자 2026-11-01, bit-dashboard AC-601.17)
+- 비트 읽기가 3분까지 걸려 멈춘 것처럼 보이므로 대시보드의 이 두 표시만 계속 움직인다. 다른 곳에 쓰지 않는다
+- `.bit-read-bar`: 저장 숫자 없이 처음 읽는 중의 막대. 4px `line` 띠 안에서 32% 폭 `accent` 조각이 왼쪽에서 오른쪽으로 1.6초마다 흐른다(왕복 없음, `ease-in-out`). 값이 없는 막대라 진행률을 보이지 않는다. 4px 띠라 띠와 조각의 모서리는 이 표시에서만 2px다
+- `.bit-read-spin`: [다시 읽는 중] 단추 안, 글자 앞의 12px 도는 고리(`aria-hidden`). 800ms에 한 바퀴(`linear`). 도는 원이라 모서리는 이 표시에서만 50%다
+- 위 2px·50%는 '모서리·선·그림자'의 두 가지(4px·8px) 밖의 값이고, 이 두 표시에만 해당한다. 다른 곳에 쓰지 않는다
+- 값은 시안 `docs/mockups/bit-dashboard/css_extra.css`를 따른다. `@keyframes`는 `globals.css`의 이 두 표시에만 쓰고, 클래스는 `ReadStatus.tsx` 한 파일에서만 쓴다. Tailwind `animate-*` 금지는 그대로다(규칙 시험: `globals.test.ts`, `theme.test.ts` AC-202.4, `ui/classes.test.ts`)
+- 모션 줄이기 기기에서는 전역 규칙으로 움직이지 않는다. 막대는 `accent` 40%의 전체 폭 띠로 서고(진행률로 읽히지 않게), 도는 고리는 그 자리에 멈춘다
 
 ## 업무일지 양식 (엑셀 예외)
 사용자가 "엑셀이랑 완전 똑같이"를 골랐다 **(사용자, 2026-10-29)**. 결정 기록은 `docs/ADR.md`의 업무일지 ADR, 기준 시안은 `docs/mockups/worklog/`, 명세는 `specs/worklog/design.md` 2·7·11-1·12·13절이다.

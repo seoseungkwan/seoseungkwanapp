@@ -218,6 +218,56 @@ internal sealed class FakeConfirm : IConfirmWindow
     }
 }
 
+/// <summary>
+/// 가짜 비트 통계 화면(TASK-8). 표는 key마다 정해 둔 줄(머리 줄 + 자료 줄, 비트 화면 표시 글자)을 준다.
+/// 메뉴 파일은 원본 BITSTATISTICS.Xml 모양을 흉내 낸 지어낸 것이다(83·47 보이는 항목).
+/// </summary>
+internal sealed class FakeScreens : IStatsScreens
+{
+    public static readonly string MenuXml =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+        "<root><RootToolsCollection><t href=\"#ref-1\"/><t href=\"#ref-3\"/><t href=\"#ref-4\"/><t href=\"#ref-5\"/></RootToolsCollection>" +
+        "<PopupMenuTool id=\"ref-1\"><Key>CONSUME</Key><SharedProps href=\"#ref-10\"/><Tools href=\"#ref-11\"/></PopupMenuTool>" +
+        "<SharedProps id=\"ref-10\"><Caption>소모 통계(C)</Caption></SharedProps>" +
+        "<Tools id=\"ref-11\"><t href=\"#ref-3\"/><t href=\"#ref-4\"/><t href=\"#ref-5\"/></Tools>" +
+        "<ButtonTool id=\"ref-3\"><Key>83</Key><SharedProps href=\"#ref-12\"/></ButtonTool>" +
+        "<SharedProps id=\"ref-12\"><Caption>전산자료 추출통계</Caption></SharedProps>" +
+        "<ButtonTool id=\"ref-4\"><Key>47</Key><SharedProps href=\"#ref-13\"/></ButtonTool>" +
+        "<SharedProps id=\"ref-13\"><Caption>처방별 환자 목록</Caption><Visible>True</Visible></SharedProps>" +
+        "<ButtonTool id=\"ref-5\"><Key>99</Key><SharedProps href=\"#ref-14\"/></ButtonTool>" +
+        "<SharedProps id=\"ref-14\"><Caption>숨긴 통계</Caption><Visible>false</Visible></SharedProps>" +
+        "</root>";
+
+    public byte[] Menu { get; set; } = Encoding.UTF8.GetBytes(MenuXml);
+
+    public string? MenuFail { get; set; }
+
+    /// <summary>key → 표(줄마다 칸 글자). 없으면 빈 표.</summary>
+    public Dictionary<string, List<string[]>> Sheets { get; } = new Dictionary<string, List<string[]>>(StringComparer.Ordinal);
+
+    /// <summary>key → 그 표를 읽을 때 던질 오류 번호.</summary>
+    public Dictionary<string, string> Fail { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    public List<(string Install, VendorUser User, string Key, DateTime From, DateTime To, TimeSpan Timeout)> Calls { get; } =
+        new List<(string Install, VendorUser User, string Key, DateTime From, DateTime To, TimeSpan Timeout)>();
+
+    public List<string> MenuReads { get; } = new List<string>();
+
+    public byte[] ReadMenu(string installPath)
+    {
+        MenuReads.Add(installPath);
+        if (MenuFail != null) throw new BitException(MenuFail);
+        return Menu;
+    }
+
+    public IReadOnlyList<IReadOnlyList<string>> Read(string installPath, VendorUser user, StatsScreen screen, DateTime from, DateTime to, TimeSpan timeout)
+    {
+        Calls.Add((installPath, user, screen.Key, from, to, timeout));
+        if (Fail.TryGetValue(screen.Key, out var code)) throw new BitException(code);
+        return Sheets.TryGetValue(screen.Key, out var rows) ? rows.Select(row => (IReadOnlyList<string>)row).ToList() : new List<IReadOnlyList<string>>();
+    }
+}
+
 /// <summary>가짜 암호화: 머리 "FAKE" + 바이트 뒤집기(XOR). 머리가 틀리면 CryptographicException(DPAPI처럼).</summary>
 internal sealed class FakeProtector : IProtector
 {
@@ -257,8 +307,11 @@ internal sealed class Rig : IDisposable
     public Rig()
     {
         Store = new RegistrationStore(folder.Path, Protector);
-        Services = new BitServices(Locator, Connector, Login, Confirm, Store, () => Today, NewProfileId);
+        Services = new BitServices(Locator, Connector, Login, Confirm, Store, () => Today, NewProfileId, Screens);
     }
+
+    /// <summary>가짜 비트 통계 화면(claim.month의 83·83D·47 표, TASK-8).</summary>
+    public FakeScreens Screens { get; } = new FakeScreens();
 
     public FakeLocator Locator { get; } = new FakeLocator();
     public FakeConnector Connector { get; } = new FakeConnector();

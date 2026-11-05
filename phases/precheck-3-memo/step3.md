@@ -3,20 +3,21 @@
 > **TASK-17** 비트 자동 입력 (FlaUI · PC 확인 창) · **REQ-017** · AC-017.1 ~ AC-017.10
 > Phase 3 `precheck-3-memo` · Step 3 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-17 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> **2026-11-01 명세 변경**: 이 step의 코드는 이미 합쳐졌다(`be1ae11`). 아래 요약은 그 코드와 바뀐 명세에 맞췄다. `bit.input` 등록은 TASK-35, 새 칸 `code`는 TASK-36, `replaces`·묻지 않기는 TASK-37, `checkedByHand`는 TASK-35다(tasks.md, design.md 19절). 이 step의 index.json은 TASK-35가 끝날 때 completed로 한다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-017에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-017.1**: `bit.input {items: [{visitKey, chart, name, date, memo}]}` → 등록 병원 확인 → 비트 화면 지문 확인 → 묶음 검사(500명 이하, 차트번호 `^[0-9]{1,20}$`, 이름 1~100자, 날짜 모양, 메모 1~32,000자, 같은 진료 두 번 없음). 하나라도 틀리면 아무것도 입력하지 않고 오류
-- **AC-017.2**: 검사를 통과한 묶음은 입력 전에 도우미가 묶음에서 직접 만든 글("10/27~10/29, 32명 입력할까요?"와 등록한 기관기호, 뒤 4자리 가림)의 PC 확인 창. [확인]을 눌러야 시작, [취소]·창 닫기·5분 지남이면 하나도 입력하지 않고 `cancelled`
-- **AC-017.3**: 사람 하나는 원본 `UChartAutomation`·`autoOne` 순서: 내원내역에서 차트번호로 열기 → 이름·차트번호·내원일 검사 → 바로 앞에서 비트 메모 다시 읽기(같으면 완료, 다르면 건너뜀 '이미 있음', 덮어쓰지 않음) → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지
-- **AC-017.4**: 비트 화면 지문(`BITDoctorOrder.exe` 프로세스 규칙, '외래진료실' 창의 `txtChtNum`·`lbPatName`·`txtBilCmt`·`btnBilCmtModify`, '내원내역' 창의 `cbSch`·`txtSch`·`btnSch`·`ctgMain`이 정확히 하나씩)이 하나라도 없거나 여럿이면 입력을 시작하지 않거나 그 사람에서 멈추고 `E-BIT-UI-CHANGED`와 칸 ID 목록. 짐작해서 누르지 않는다
-- **AC-017.5**: 저장 안 한 처방 창(원본 '저장되지않은처방')·원본 fatal 문구·3번 잇따른 실패·진행 창 [멈추기]면 그 자리에서 멈추고(멈추기는 지금 사람까지) 남은 사람을 '확인 필요: 미처리'. 저장 안 한 처방 창은 누르지 않는다(`E-BIT-UNSAVED-RX`)
-- **AC-017.6**: 사람마다 결과는 완료(입력·이미 입력됨)·확인 필요(다시 읽은 값 다름·저장 확인 못함·미처리)·건너뜀(이유: 이미 있음·내원일 없음·환자 불일치·검색 결과 여러 줄 등 원본 문구) 셋 중 하나. 진행은 `progress {done, total}` 숫자만, 결과는 조각으로
-- **AC-017.7**: 입력 기록(`Journal`, 작업 저장 안)에 쓰기 전·확인 뒤 `writing`·`done`·`skipped`·`check`. 도중에 멈춘 묶음을 다시 열어 같은 진료를 입력하면 비트 메모와 비교해 우리 글과 같으면 완료, 비었으면 입력, 다르면 건너뜀(이미 있음)
+- **AC-017.1**: `bit.input {code?, items: [{visitKey, chart, name, date, memo, replaces?, checkedByHand?}]}` → 받은 묶음 그대로 묶음 검사(500명 이하, 차트번호 `^[0-9]{1,20}$`, 이름 1~100자, 날짜 모양, 메모 1~32,000자, 같은 진료 두 번 없음, 같은 차트번호·내원일 두 번 없음) → 등록 병원 확인 → 빼기(AC-035.8, TASK-35) → 비트 화면 지문 확인. 하나라도 틀리면 아무것도 입력하지 않고 오류
+- **AC-017.2**: 검사를 통과한 묶음은 입력 전에 도우미가 묶음에서 직접 만든 글("10/27~10/29, 32명 입력할까요?"와 등록한 기관기호, 뒤 4자리 가림)의 PC 확인 창. [확인]을 눌러야 시작, [취소]·창 닫기·5분 지남이면 하나도 입력하지 않고 `cancelled`. '이제부터 묻지 않기'가 켜져 있을 때의 예외는 AC-037.4
+- **AC-017.3**: 사람 하나는 원본 `UChartAutomation`·`autoOne` 순서: 내원내역에서 차트번호로 찾아 줄을 차례로 열기(`dtpWorkDate`가 내원일과 같은 줄에서 멈춤. 내원내역 날짜는 바꾸지 않는다) → 이름·차트번호·내원일 검사 → 바로 앞에서 비트 메모 다시 읽기(같으면 완료, 다르면 승인 없는 사람은 건너뜀 '이미 있음', 승인한 사람은 AC-037.1, 묻지 않기가 켜져 있으면 AC-037.6) → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지
+- **AC-017.4**: 비트 화면 지문(`BITDoctorOrder.exe` 프로세스 규칙, '외래진료실' 창의 `txtChtNum`·`lbPatName`·`txtBilCmt`·`btnBilCmtModify`·`dtpWorkDate`, '내원내역' 창의 `cbSch`·`txtSch`·`btnSch`·`ctgMain`)는 칸마다 원본 Pick 규칙으로 하나를 정한다(하나뿐이면 그것, 여럿이면 보이는 것이 정확히 하나일 때 그것). 하나라도 없거나 정해지지 않으면 입력을 시작하지 않거나 그 사람에서 멈추고 `E-BIT-UI-CHANGED`와 칸 ID 목록. 짐작해서 누르지 않는다
+- **AC-017.5**: 저장 안 한 처방 창(원본 '저장되지않은처방')·원본 fatal 문구(더해서 키보드 초점을 잃음·비트가 환자 열기를 막음)·3번 잇따른 실패·진행 창 [멈추기]·내원내역 기간이나 처방코드 칸 문제(AC-036.2)·입력 기록을 남기거나 읽지 못함(`E-STORE-FAILED`)·메모 칸을 읽지 못함·쓴 뒤 저장을 확인하지 못함(AC-017.6)이면 그 자리에서 멈추고(멈추기는 지금 사람까지) 남은 사람을 '확인 필요: 미처리'. 저장 안 한 처방 창은 누르지 않는다(`E-BIT-UNSAVED-RX`)
+- **AC-017.6**: 사람마다 결과는 완료(입력·이미 입력됨·바꿈)·확인 필요(다시 읽은 값 다름·저장 확인 못함·미처리·입력 못 받음)·건너뜀(이유: 이미 있음·내원일 없음·환자 불일치·검색 결과 여러 줄·직접 입력 등 원본 문구) 셋 중 하나. 쓰기를 시작한 뒤 저장을 확인하지 못한 확인 필요는 그 자리에서 묶음을 멈춘다(저장 안 된 글이 다른 환자에게 들어갈 수 있다). 진행은 `progress {done, total}` 숫자만, 결과는 조각으로
+- **AC-017.7**: 입력 기록(`Journal`, 작업 저장 안)에 쓰기 전·확인 뒤 `writing`·`done`·`skipped`·`skippedByHand`(TASK-35, AC-035.5)·`check`·`writeUnconfirmed`. 마지막 기록이 `writing`·`writeUnconfirmed`인 진료는 묶음 맨 앞에서 먼저 하고, 칸이 같아도 저장을 눌러 다시 읽어야 완료, 비었으면 입력, 다르면 건너뛰지 않고 확인 필요로 묶음을 멈춘다. 그 밖의 진료는 비트 메모와 비교해 우리 글과 같으면 완료, 비었으면 입력, 다르면 승인 없는 사람은 건너뜀(이미 있음), 승인한 사람은 AC-037.1, 묻지 않기가 켜져 있으면 AC-037.6
 - **AC-017.8**: 원본 `SecurityTests`의 입력 보호 사례(승인한 메모 줄바꿈·공백 그대로, 쓰기 직전 바뀐 메모 거절, 환자 바뀜 거절, 거절이면 절대 안 씀, 가짜 화면에만 씀)를 가짜 `IChartUi`로 돌리면 원본과 같은 결과
-- **AC-017.9**: `bit.input` 중에 표준 입력이 닫히면(웹 창이 닫혀 확장이 30분 뒤 연결을 닫음·로그아웃 뒤·크롬 종료 등) 지금 사람을 안전한 자리까지만 한다: 쓰기 전이면 시작하지 않고, 시작했으면 쓰기 → 다시 읽기 → 저장 → 다시 읽기까지 마친다. 남은 사람은 '확인 필요: 미처리'로 `Journal`과 결과를 작업 저장에 남기고 끝난다. 확인 창이 떠 있던 중이면 [취소]와 같다. 반쯤 쓴 메모를 남기지 않는다
+- **AC-017.9**: `bit.input` 중에 표준 입력이 닫히면(웹 창이 닫혀 확장이 30분 뒤 연결을 닫음·로그아웃 뒤·크롬 종료 등) 지금 사람을 안전한 자리까지만 한다: 쓰기 전이면 시작하지 않고, 시작했으면 쓰기 → 다시 읽기 → 저장 → 다시 읽기까지 마친다. 남은 사람은 '확인 필요: 미처리'로 `Journal`과 결과를 작업 저장에 남기고 끝난다. 확인 창이 떠 있던 중이면 [취소]와 같다. 도우미가 스스로 쓰기를 중간에 끊지 않는다. 저장을 확인하지 못하면 글이 칸에 남을 수 있고 그 사람은 `writeUnconfirmed`로 AC-017.7을 따른다
 - **AC-017.10**: 이름 있는 뮤텍스 `Local\SeoseungkwanPrecheckHelper.Work`를 잡은 동안에만 `bit.input`(확인 창부터 결과 기록까지)·`store.save`를 한다. 다른 도우미 프로세스가 잡고 있으면 `bit.input`은 바로, `store.save`는 5초 기다린 뒤 `E-BRIDGE-BUSY`로 답하고 아무것도 쓰거나 입력하지 않는다. 놓지 않고 끝난 뮤텍스(abandoned)는 잡은 것으로 보고 이어서 하기(AC-017.7)를 따른다
 
 ## 읽어야 할 파일
@@ -28,7 +29,7 @@
 - `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-017
-- `/specs/precheck/design.md` — 9-4절(자동 입력 전체), 4-3절(`bit.input`: progress … chunk … end, 확인 창), 15절(묶음 고리를 도우미로·덮어쓰기 없음·500명·5분), 16절(자동 입력 위험)
+- `/specs/precheck/design.md` — 9-4절(자동 입력 전체), 4-3절(`bit.input`: progress … chunk … end, 확인 창), 15절(묶음 고리를 도우미로·승인 없이 덮어쓰지 않음·500명·5분), 16절(자동 입력 위험), 19절(2026-11-01 변경)
 - `/specs/precheck/tasks.md` — TASK-17 (수정 범위·메모)
 - 이전 step에서 만든 파일:
   - `helper/src/Precheck.Windows/ConfirmWindow.cs`, `helper/src/Precheck.Helper/Commands/*`(등록 확인 관문) (Phase 1 Step 4)
@@ -103,7 +104,7 @@ public interface IChartUi {                       // 비트 화면 흉내 가능
   string? ReadMemo();  void WriteMemo(string text);  bool ClickSave();
   bool HasUnsavedRxDialog();  string? FatalText();
 }
-public static class UiFingerprint { public static readonly string[] Outpatient = { "txtChtNum", "lbPatName", "txtBilCmt", "btnBilCmtModify" }; public static readonly string[] Visits = { "cbSch", "txtSch", "btnSch", "ctgMain" }; }
+public static class UiFingerprint { public static readonly string[] Outpatient = { "txtChtNum", "lbPatName", "txtBilCmt", "btnBilCmtModify", "dtpWorkDate" }; public static readonly string[] Visits = { "cbSch", "txtSch", "btnSch", "ctgMain" }; }
 public static class BatchCheck { public static void Validate(IReadOnlyList<InputItem> items); }  // 원본 validate_request 규칙 + AC-017.1
 public static class InputPrompt { public static string Build(IReadOnlyList<InputItem> items, Registration reg, int excluded); } // "10/27~10/29, 32명 입력할까요?" + 등록한 기관기호(뒤 4자리 가림). 병원 이름 없음
 public sealed class InputRunner {                 // 원본 autoOne 고리를 도우미로
@@ -117,10 +118,10 @@ public sealed class WorkLock : IDisposable {      // 이름 있는 뮤텍스 Loc
   public static WorkLock? TryAcquire(TimeSpan wait);   // 못 잡으면 null → E-BRIDGE-BUSY. abandoned면 잡은 것으로 본다
 }
 ```
-- 순서(AC-017.1~017.3): 등록 확인(관문) → `CheckFingerprint`(하나라도 0개나 2개 이상이면 `E-BIT-UI-CHANGED` + 칸 ID 목록) → `BatchCheck` → `InputPrompt`로 만든 글로 확인 창(5분) → 사람마다: 열기 → 이름·차트번호·내원일 검사 → 메모 다시 읽기(같음 → 완료 '이미 입력됨', 다른 글 → 건너뜀 '이미 있음') → `journal=writing` → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지 → `journal=done` 또는 `check`
+- 순서(AC-017.1~017.3): 등록 확인(관문) → `CheckFingerprint`(Pick 규칙으로 정해지지 않는 칸이 있으면 `E-BIT-UI-CHANGED` + 칸 ID 목록) → `BatchCheck` → `InputPrompt`로 만든 글로 확인 창(5분) → 사람마다: 열기 → 이름·차트번호·내원일 검사 → 메모 다시 읽기(같음 → 완료 '이미 입력됨', 다른 글 → 건너뜀 '이미 있음') → `journal=writing` → 쓰기 → 다시 읽어 같은지 → 저장 → 다시 읽어 같은지 → `journal=done` 또는 `check`. 다른 메모를 바꾸는 사람(TASK-37, AC-037.1)은 `journal=writing` 앞에 원래 메모를 달 파일의 `originals`(진료마다 글 목록, 마지막 글과 같으면 덧붙이지 않음)에 먼저 덧붙여 저장한다. 저장하지 못하면 칸에 쓰지 않고 `E-STORE-FAILED`로 멈춘다. `journal` 값은 상태 글자 그대로다
 - 멈춤(AC-017.5): 저장 안 한 처방 창(누르지 않음, `E-BIT-UNSAVED-RX`) · fatal 문구 · 3번 잇따른 실패(`E-INPUT-STOPPED`) · [멈추기](지금 사람까지) → 남은 사람은 '확인 필요: 미처리'
-- 결과(AC-017.6): 사람마다 `{visitKey, result: '완료'|'확인 필요'|'건너뜀', reason}` — 이유 글은 원본 문구. 진행은 `progress {done, total}`만, 결과는 끝에 JSON 하나 → `Chunker.Split`
-- 이어서 하기(AC-017.7): `journal`에 `writing`이나 미처리로 남은 진료는 다시 열 때 비트 메모와 비교: 우리 글과 같음 → 완료, 비었음 → 입력, 다름 → 건너뜀(이미 있음)
+- 결과(AC-017.6): 사람마다 `{visitKey, result: '완료'|'확인 필요'|'건너뜀', reason}` — 이유 글은 원본 문구. 바꾼 사람의 줄에만 `previousMemo`(TASK-37, AC-037.1. 다른 줄에는 칸이 없다). 진행은 `progress {done, total}`만, 결과는 끝에 JSON 하나 → `Chunker.Split`
+- 이어서 하기(AC-017.7): 마지막 기록이 `writing`·`writeUnconfirmed`인 진료는 묶음 맨 앞에서: 저장을 눌러 다시 읽어 같음 → 완료, 비었음 → 입력, 다름 → 확인 필요로 묶음 멈춤. 미처리 등 그 밖의 진료는 비트 메모와 비교: 우리 글과 같음 → 완료, 비었음 → 입력, 다름 → 승인 없는 사람은 건너뜀(이미 있음), 승인한 사람은 AC-037.1, 묻지 않기가 켜져 있으면 AC-037.6
 - 표준 입력 닫힘(AC-017.9): `stopRequested`는 [멈추기] 또는 `HostSignal.StdinClosed`다. 사람 하나의 안전한 자리는 '쓰기 전'과 '저장 뒤 다시 읽기까지'다. 쓰기 전에 신호가 섰으면 쓰지 않고, 쓰기를 시작했으면 그 사람의 쓰기 → 다시 읽기 → 저장 → 다시 읽기를 마친 뒤 멈춘다. 남은 사람은 '확인 필요: 미처리', `Journal`과 결과를 저장하고 처리기를 끝낸다(보낼 곳이 닫혔으니 보내기 실패는 무시). 확인 창이 떠 있으면 닫고 `cancelled`
 - 한 번에 하나(AC-017.10): `bit.input`은 `WorkLock.TryAcquire(TimeSpan.Zero)`를 확인 창 전에 잡고 결과 기록 뒤에 놓는다. 못 잡으면 확인 창도 띄우지 않고 `E-BRIDGE-BUSY`
 
@@ -132,12 +133,13 @@ public sealed class WorkLock : IDisposable {      // 이름 있는 뮤텍스 Loc
 - 확인 창은 맨 위, 작업 표시줄 이름 '청구메모 도우미'
 
 ### 3. 명령 (`Commands/*`)
-- `bit.input`: args 검사(명령 표 + `BatchCheck`) → `WorkLock` → `InputRunner.Run` → 진행·결과 보내기 → `journal` 저장(`WorkStore`). 웹 연결만 끊기면 확장이 도우미 연결을 30분까지 두므로 끝까지 하고 결과는 작업 저장에 남는다(다시 열면 보임). 표준 입력이 닫히면 AC-017.9
+- `bit.input`: args 검사(명령 표 + `BatchCheck`) → `WorkLock` → `InputRunner.Run` → 진행·결과 보내기 → `journal` 저장(`WorkStore`). 묶음 끝의 `SaveResults`는 이번 묶음에서 `Mark`한 진료의 기록을 바꾸지 않고 `writing`·`writeUnconfirmed`·`skippedByHand`를 덮지 않는다: 결과 줄은 상태를 모른다(TASK-35, AC-035.2). 웹 연결만 끊기면 확장이 도우미 연결을 30분까지 두므로 끝까지 하고 결과는 작업 저장에 남는다(다시 열면 보임). 표준 입력이 닫히면 AC-017.9
 - `store.save`(TASK-15 처리기): 저장 전에 `WorkLock.TryAcquire(5초)`. 못 잡으면 `E-BRIDGE-BUSY`로 답하고 쓰지 않는다(AC-017.10)
 - `Program.cs`: 표준 입력을 따로 읽는 스레드를 두고, 메시지는 차례 줄에 넣어 지금처럼 하나씩 처리한다. 표준 입력이 닫히면 `HostSignal.MarkStdinClosed()`를 부르고, 처리 중인 명령이 끝나면 끝난다(AC-001.1은 그대로)
 
 ### 4. 시험
 - Core(`Input/*.test.cs`): 가짜 `IChartUi`·가짜 확인 창으로 AC-017.1~017.7 전부, 원본 `SecurityTests.cs` 입력 보호 사례(AC-017.8) — 확인 창 [취소]면 `WriteMemo`가 한 번도 불리지 않음, 지문 칸이 둘이면 시작 안 함, 3번 실패면 멈춤, 진행 메시지에 숫자만. 표준 입력 닫힘 신호를 쓰기 전에 세우면 `WriteMemo`가 안 불리고, 쓰기 중에 세우면 그 사람의 저장·다시 읽기까지 마친 뒤 남은 사람이 '미처리'로 `Journal`에 남는다. 확인 창 중이면 `cancelled`(AC-017.9). 다른 스레드가 같은 이름 뮤텍스를 쥔 동안 `bit.input` → 바로 `E-BRIDGE-BUSY`(확인 창 안 뜸), `store.save` → 5초 뒤 `E-BRIDGE-BUSY`(파일 안 바뀜), 쥔 스레드가 놓지 않고 끝나면(abandoned) 잡힘(AC-017.10)
+- `SaveResults`(TASK-35, AC-035.2): `InputCommands`를 진짜 `WorkStoreJournal`로 끝까지 돌린 뒤 다시 열어, 직접 확인으로 온 사람 가운데 미처리나 건너뜀으로 끝난 사람의 `LastState`가 `SkippedByHand`이고 쓰다 멈춘 사람이 `WriteUnconfirmed`임을 본다. 가짜 기록은 `Saved.Add`만 해서 잡지 못한다
 - Windows(`Precheck.Windows.Tests/Input/*`): Actions에서. 가짜 WinForms 창(같은 칸 이름)에만 쓰는 시험. 실제 비트는 의원 PC
 - 감싸개 `input.dotnet.test.ts`: `runDotnet('Precheck.Core.Tests.Input')`
 
@@ -188,7 +190,7 @@ python3 ~/.claude/harness/bin/verify
 
 - 확인 창 [확인] 전에 비트 화면에 무엇이든 쓰거나 누르지 마라. 이유: 사람이 PC에서 확인해야만 입력된다(AC-017.2, ADR-016)
 - 확인 창 글에 웹이 보낸 글(안내문·병원 이름 등)을 쓰지 마라(도우미는 병원 이름을 갖지 않는다). 이유: 도우미가 묶음과 등록 정보에서 직접 만든다. 웹이 잘못되어도 속지 않게(AC-017.2)
-- 비트에 다른 메모가 있으면 덮어쓰지 마라. 이유: 덮어쓰기는 범위 밖이다(requirements '범위 밖'). 늘 '건너뜀: 이미 있음'
+- 비트에 다른 메모가 있으면 승인 없이 덮어쓰지 마라. 이유: 사람의 승인이나 '이제부터 묻지 않기' 없이 덮어쓰기는 범위 밖이다(requirements '범위 밖'). 승인이 없으면 '건너뜀: 이미 있음', 바꾸기는 TASK-37(AC-037.1)이 더한다
 - 칸을 못 찾을 때 비슷한 칸·좌표·순서로 짐작해 누르지 마라. 이유: 비트가 바뀌면 다른 환자·다른 칸에 쓸 수 있다. 바로 멈추고 `E-BIT-UI-CHANGED`(AC-017.4)
 - 저장 안 한 처방 창의 단추를 누르지 마라. 이유: 진료 중인 처방이 사라지거나 저장될 수 있다(AC-017.5)
 - 진행 메시지·진단 기록에 이름·차트번호·메모를 넣지 마라. 이유: 진행은 숫자만, 결과는 조각으로(AC-017.6, AC-001.6)

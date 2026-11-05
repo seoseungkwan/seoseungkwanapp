@@ -12,6 +12,7 @@ import type { DayPayload } from '@/types/payload'
 import { isConnected, type SummarySource } from './source'
 import {
   DEFAULT_PERIOD,
+  longDate,
   PERIODS,
   periodRange,
   revisitView,
@@ -38,8 +39,13 @@ const SECTION_TITLE = 'text-title font-semibold text-ink'
 // 보조 글(안내 줄, ui-90 AC-414.6): small(13px) muted + 시안 최대 40em(520px)에 가장 가까운 4px 단위 폭 단계
 const NOTE = 'text-small text-muted max-w-130'
 const NOT_CONNECTED = '연결하면 보여요'
+// 환자 수 추이를 감싸는 칸. 칸이 날짜 글자보다 좁으면 글자가 오른쪽으로 넘쳐 휴대폰에서 쪽이 옆으로 밀린다(AC-311.7).
+// 통계 CHART_NO_SIDE_SCROLL(stats/sections/parts.tsx)과 같은 값이다. 그 파일을 가져오면 통계 코드가 대시보드에 딸려 와 무거워진다(5 kB).
+// 합본 뒤 ds로 옮겨 한 벌로 합칠 것
+const CHART_NO_SIDE_SCROLL = 'relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0'
 
 const KPI_LABELS = ['오늘 환자 수', '신환', '재진'] as const
+const PAST_KPI_LABELS = ['환자 수', '신환', '재진'] as const
 const LAST_WEEK_LABEL = '지난주 같은 요일보다'
 // 숫자 칸 넷: 위아래 16·좌우 20, 첫 칸 왼쪽 0, 칸 사이 1px line 세로선.
 // 768px 미만 2칸 × 2줄: 12·16, 왼쪽 칸 왼쪽 0, 둘째 줄 위 1px line(셋째 칸은 세로선 없음)
@@ -87,25 +93,55 @@ const GAIN_CELL =
 const GAIN_NUMBER =
   'grid size-5 shrink-0 place-items-center rounded-control border border-line-strong text-caption font-semibold text-muted'
 
-export function DashboardAnalysis({ today, source }: { today: string; source: SummarySource }) {
+// 숫자가 없을 때의 글(bit-dashboard design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py today_sec·flow_empty). 주지 않으면 연결 전 글이고, 숫자가 있으면 쓰지 않는다
+export type DashboardAnalysisProps = {
+  today: string
+  source: SummarySource
+  /** 고른 날(bit-dashboard AC-605.3). 없으면 오늘이다. 하루 줄만 바꾸고 기간별 흐름은 today로만 계산한다(AC-605.6) */
+  day?: string
+  emptyChip?: string
+  emptyText?: string
+  /** 숫자 줄 아래 안내 줄. null이면 없다 */
+  emptyNote?: string | null
+  gainsTitle?: string
+  gainsNote?: string
+  /** '신환 재방문율' 줄 설명 */
+  gainsRevisitDesc?: string
+  /** 읽었는데 자료가 없을 때: 목록 대신 빈 그래프 틀을 그린다 */
+  emptyCharts?: boolean
+}
+
+export function DashboardAnalysis({
+  today,
+  source,
+  day = today,
+  emptyChip = '비트 PC 연결 전',
+  emptyText = NOT_CONNECTED,
+  emptyNote = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.',
+  gainsTitle = `연결하면 생기는 것 ${GAINS.length}가지`,
+  gainsNote = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.',
+  gainsRevisitDesc,
+  emptyCharts = false,
+}: DashboardAnalysisProps) {
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   const todayId = useId()
   const flowId = useId()
   const gainsId = useId()
   const days = isConnected(source) ? source.days : null
   const range = periodRange(today, period)
+  const past = day !== today
 
   return (
     <>
       <section aria-labelledby={todayId} className={SECTION}>
         <div className={SECTION_HEAD}>
           <h2 id={todayId} className={SECTION_TITLE}>
-            오늘 하루 분석
+            {past ? `${longDate(day)} 하루 분석` : '오늘 하루 분석'}
           </h2>
-          {days === null && <span className={ds.chip.neutral}>비트 PC 연결 전</span>}
+          {days === null && <span className={ds.chip.neutral}>{emptyChip}</span>}
         </div>
-        <TodayNumbers view={days === null ? null : todayView(today, days)} />
-        {days === null && <p className={`mt-3 ${NOTE}`}>연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.</p>}
+        <TodayNumbers view={days === null ? null : todayView(day, days)} emptyText={emptyText} past={past} />
+        {days === null && emptyNote !== null && <p className={`mt-3 ${NOTE}`}>{emptyNote}</p>}
       </section>
 
       <section aria-labelledby={flowId} className={SECTION}>
@@ -129,29 +165,35 @@ export function DashboardAnalysis({ today, source }: { today: string; source: Su
           </div>
         </div>
 
-        {days === null ? <Gains id={gainsId} /> : <FlowCharts days={days} range={range} period={period} />}
+        {days === null && !emptyCharts ? (
+          <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />
+        ) : (
+          <FlowCharts days={days ?? []} range={range} period={period} />
+        )}
       </section>
     </>
   )
 }
 
 // 연결 전 기간별 흐름: "연결하면 생기는 것 4가지"(subtitle 600) → 순서 목록(번호 1~4 · 이름 · 설명) → 안내 줄. 그래프 틀·차트 부품을 그리지 않는다
-function Gains({ id }: { id: string }) {
+function Gains({ id, title, note, revisitDesc }: { id: string; title: string; note: string; revisitDesc?: string }) {
   return (
     <>
       <p id={id} className="text-subtitle font-semibold text-ink">
-        연결하면 생기는 것 {GAINS.length}가지
+        {title}
       </p>
       <ol aria-labelledby={id} className={GAIN_LIST}>
         {GAINS.map((gain, i) => (
           <li key={gain.name} className={GAIN_CELL}>
             <span className={GAIN_NUMBER}>{i + 1}</span>
             <p className="text-body font-semibold text-ink">{gain.name}</p>
-            <p className="col-span-2 mt-1 text-small text-ink-2 max-md:col-span-1 max-md:col-start-2 max-md:mt-0.5">{gain.desc}</p>
+            <p className="col-span-2 mt-1 text-small text-ink-2 max-md:col-span-1 max-md:col-start-2 max-md:mt-0.5">
+              {gain.name === '신환 재방문율' && revisitDesc ? revisitDesc : gain.desc}
+            </p>
           </li>
         ))}
       </ol>
-      <p className={`mt-3 ${NOTE}`}>연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.</p>
+      <p className={`mt-3 ${NOTE}`}>{note}</p>
     </>
   )
 }
@@ -182,23 +224,24 @@ function TrendBody({ days, range, period }: { days: readonly DayPayload[]; range
   const buckets = trendBuckets(days, range, period)
   if (buckets === null) return <EmptyTrend message={NO_DATA} ticks={tickLabels(range, period)} />
   return (
-    <div className="mt-3">
+    <div className={`mt-3 ${CHART_NO_SIDE_SCROLL}`}>
       <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={period !== 7} />
     </div>
   )
 }
 
-// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 연결 전
-function TodayNumbers({ view }: { view: TodayView | null }) {
+// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText).
+// past = 지난 날짜(AC-605.3·AC-605.4): 첫 칸 이름이 "환자 수"이고, 그 날은 끝나기를 기다릴 날이 아니라 비교할 수 없으면 "자료 없음"이다
+function TodayNumbers({ view, emptyText, past }: { view: TodayView | null; emptyText: string; past: boolean }) {
   const counts = view?.counts ?? null
   const values = counts === null ? [null, null, null] : [counts.patients, counts.newPatients, counts.returning]
-  const emptyText = view === null ? NOT_CONNECTED : undefined // 연결 뒤 빈 값은 KpiStat 기본 '자료 없음'
 
   return (
     <div className="grid grid-cols-4 border-b border-line max-md:grid-cols-2">
-      {KPI_LABELS.map((label, i) => (
+      {(past ? PAST_KPI_LABELS : KPI_LABELS).map((label, i) => (
         <div key={label} className={KPI_CELLS[i]}>
-          <KpiStat label={label} value={values[i] ?? null} format="count" unit="명" emptyText={emptyText} />
+          {/* 연결 뒤 빈 값은 KpiStat 기본 '자료 없음' */}
+          <KpiStat label={label} value={values[i] ?? null} format="count" unit="명" emptyText={view === null ? emptyText : undefined} />
         </div>
       ))}
       <div className={KPI_CELLS[3]}>
@@ -210,7 +253,7 @@ function TodayNumbers({ view }: { view: TodayView | null }) {
             value={null}
             format="count"
             unit="명"
-            emptyText={view === null ? NOT_CONNECTED : view.compare.kind === 'wait' ? '오늘 진료가 끝나면 비교해요' : '지난주 자료가 없어요'}
+            emptyText={view === null ? emptyText : view.compare.kind === 'no-last-week' ? '지난주 자료가 없어요' : past ? NO_DATA : '오늘 진료가 끝나면 비교해요'}
           />
         )}
       </div>
@@ -219,7 +262,8 @@ function TodayNumbers({ view }: { view: TodayView | null }) {
 }
 
 // 넷째 칸의 값이 증감일 때. KpiStat의 값은 숫자 하나라 증감을 값으로 쓸 수 없어 같은 글자 단계로 따로 둔다:
-// 이름(small muted) → 값 줄(metric 600: 화살표 꾸밈 + 화면 읽기 글자 + 증감 글자) → "지난주 {요일}요일"(small muted)
+// 이름(small muted) → 값 줄(600: 화살표 꾸밈 + 화면 읽기 글자 + 증감 글자) → "지난주 {요일}요일"(small muted).
+// 값 줄은 PC 20/36, 폰 16/32다(bit-dashboard design.md '### 날짜 고르기', 시안 .kpi-v.sm). metric(28)이면 좁은 폭에서 세 줄로 꺾이고, 글자 토큰의 줄 높이는 28·24라 줄 높이를 따로 준다
 const DELTA_ARROW = { up: 'M4 1.2 7.4 6.8H.6z', down: 'M4 6.8 7.4 1.2H.6z' } as const
 const DELTA_TONE = { up: 'text-positive', down: 'text-negative', flat: 'text-muted', none: 'text-muted' } as const
 
@@ -231,7 +275,7 @@ function DeltaStat({ delta, weekday }: { delta: Delta; weekday: string }) {
       <div className="flex h-7 items-start">
         <span className="text-small text-muted">{LAST_WEEK_LABEL}</span>
       </div>
-      <p className={`mt-1 flex flex-wrap items-center gap-x-1 text-metric font-semibold tabular-nums ${DELTA_TONE[view.dir]}`}>
+      <p className={`mt-1 flex flex-wrap items-center gap-x-1 text-title leading-9 font-semibold tabular-nums max-md:text-subtitle max-md:leading-8 ${DELTA_TONE[view.dir]}`}>
         {arrow && (
           <svg aria-hidden="true" width="12" height="12" viewBox="0 0 8 8" className="shrink-0">
             <path d={arrow} fill="currentColor" />

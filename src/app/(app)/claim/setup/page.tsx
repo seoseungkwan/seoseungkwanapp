@@ -12,9 +12,11 @@ export const dynamic = 'force-dynamic'
 // 브라우저 탭 이름 (ui-90 AC-402.4)
 export const metadata: Metadata = { title: '비트 PC 연결' }
 
-export default async function ClaimSetupPage() {
+export default async function ClaimSetupPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
   const me = await guardPage('/claim/setup')
   // guard는 승인된 병원 줄이 있을 때만 앱 경로를 연다 → 여기 올 수 없다. 던지면 오류 화면(app/error.tsx)이 내용 없이 안내한다
   if (me.hospital?.status !== 'approved') throw new Error('승인된 병원 줄이 없어요')
-  return <SetupScreen clinicName={me.hospital.name} />
+  // 대시보드에서 왔을 때만 끝나고 돌아간다(bit-dashboard AC-603.2·AC-603.3). 받은 값은 비교만 하고 주소로 쓰지 않는다(열린 리디렉트 금지)
+  const { next } = await searchParams
+  return <SetupScreen clinicName={me.hospital.name} returnTo={next === 'dashboard' ? '/dashboard' : undefined} />
 }

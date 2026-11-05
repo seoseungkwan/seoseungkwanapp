@@ -1,0 +1,15 @@
+{
+  "status": "approved",
+  "feature": "stats-file-rows",
+  "approved_at": "2026-11-02T23:50:29Z",
+  "approved_via": "user-prompt",
+  "approved_by": "user",
+  "session_id": "302a1a5c-f7de-466c-b31e-dd509d6f56f4",
+  "spec_sha256": "a3f69008ce3a8475442b30132327c76f734692bc8ebfae1ab8455d127092fae7",
+  "scope": [
+    "src/lib/parsers/bit/parseBit.test.ts",
+    "src/lib/parsers/bit/parseBit.ts",
+    "src/types/consumption.ts",
+    "src/workers/analyzeFiles.test.ts"
+  ]
+}

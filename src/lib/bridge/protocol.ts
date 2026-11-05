@@ -2,6 +2,7 @@
 import { isYmd } from '@/lib/analytics/dates'
 import type { BitCheckStepName, CommandName, PatientCommand, PatientSendCommand, Reply, SmallCommand } from '@/types/bridge'
 import commands from './commands.json'
+import { isRevenueDays } from './revenueResult'
 
 type Entry = { patient: boolean; send?: boolean }
 type Rec = Record<string, unknown>
@@ -164,6 +165,8 @@ export function checkResult(cmd: SmallCommand, data: unknown): boolean {
       return exactKeys(data, ['registered']) && isBool(data.registered)
     case 'claim.dates':
       return isClaimDates(data)
+    case 'revenue.days':
+      return isRevenueDays(data)
   }
 }
 

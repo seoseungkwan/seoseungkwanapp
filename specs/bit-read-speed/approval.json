@@ -1,0 +1,20 @@
+{
+  "status": "approved",
+  "feature": "bit-read-speed",
+  "approved_at": "2026-11-03T01:50:54Z",
+  "approved_via": "auto-approve",
+  "approved_by": "auto",
+  "session_id": "",
+  "spec_sha256": "2a1e22a4fcc65a95ef1203d722e78d2ec2fc546d1356d780cd403e2f8db0aad0",
+  "scope": [
+    "helper/src/Precheck.Core/Revenue/RevenueSql.cs",
+    "helper/src/Precheck.Core/Stats/StatsSql.cs",
+    "helper/tests/Precheck.Core.Tests/BitReadSpeed/BitReadSpeedSql.test.cs",
+    "helper/tests/Precheck.Core.Tests/Revenue/RevenueSql.test.cs",
+    "helper/tests/Precheck.Core.Tests/Stats/StatsSql.test.cs",
+    "helper/tests/bit-read-speed.dotnet.test.ts",
+    "helper/tests/revenue-read.dotnet.test.ts",
+    "helper/tests/stats-report.dotnet.test.ts",
+    "helper/tests/stats-rows.dotnet.test.ts"
+  ]
+}

@@ -134,7 +134,7 @@ describe('AC-410.4: 두 404의 탭 이름 — "찾는 화면이 없어요"', () 
 })
 
 describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 자기 페이지가 있다', () => {
-  // 탭 주소 13개(MENU) + 처음 화면 · 로그인 · 가입 · 대기 · 로그인 콜백 · 관리자
+  // 탭 주소 13개(MENU) + 처음 화면 · 로그인 · 가입 · 대기 · 로그인 콜백 · 비트 PC 연결 · 관리자
   const ROUTES: Array<[string, string]> = [
     ['/', 'src/app/page.tsx'],
     ['/login', 'src/app/login/page.tsx'],
@@ -154,6 +154,7 @@ describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 
     ['/inventory', 'src/app/(app)/inventory/page.tsx'],
     ['/contacts', 'src/app/(app)/contacts/page.tsx'],
     ['/claim/setup', 'src/app/(app)/claim/setup/page.tsx'],
+    ['/settings', 'src/app/(app)/settings/page.tsx'],
     ['/admin', 'src/app/(app)/admin/page.tsx'],
   ]
 

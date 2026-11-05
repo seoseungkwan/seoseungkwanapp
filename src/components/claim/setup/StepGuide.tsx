@@ -8,6 +8,7 @@ import type { ProblemGuideKind, StepGuideKind } from './steps'
 // - StepGuide: "할 차례" 단계 줄 아래 안내 상자(canvas·4px·안쪽 16px, 폰 12px). 순서 글(body ink-2) + 단추 줄([…내려받기]·[처음 등록] 주 · [다시 확인] 보조).
 //   다시 확인으로 풀리는 실패(retry)는 errors.ts '무엇이'·'어떻게'와 오류 번호를 한 번 보이고 [다시 확인]만 둔다
 // - ProblemActions: 진짜 문제(버전 안 맞음·의원 다름)의 단추 둘. 위 오류 상자(SetupAlert)의 단추 줄에 들어가고 그 단계 줄에는 단추가 없다
+// - HelperUpdateSteps: 도우미 업데이트 순서 글. 위 오류 상자(SetupAlert) 안에 넣는다
 // 단추는 기본 크기(36px), 768px 미만은 44px 전체 폭이다. 주 단추는 한 화면에 하나다
 
 type ActionProps = {
@@ -77,6 +78,22 @@ function Steps({ items }: { items: ReactNode[] }) {
         <li key={i}>{item}</li>
       ))}
     </ol>
+  )
+}
+
+/**
+ * 도우미 업데이트 순서 3줄(bit-dashboard AC-604.3, 시안 gen.py setup_v). 위 오류 상자(SetupAlert의 steps)에 넣는다.
+ * 글이 부르는 단추 [새 도우미 내려받기]·[다시 확인]은 ProblemActions kind="update-helper"다
+ */
+export function HelperUpdateSteps() {
+  return (
+    <Steps
+      items={[
+        '[새 도우미 내려받기]를 눌러 precheck-helper-버전.zip을 받으세요.',
+        '받은 zip을 오른쪽 클릭 → [모두 압축 풀기]로 푼 뒤, 푼 폴더의 install.cmd를 두 번 누르세요. "Windows의 PC 보호" 창이 뜨면 [추가 정보]를 누른 뒤 [실행]을 누르세요.',
+        '설치가 끝나면 [다시 확인]을 누르세요. 크롬은 다시 켤 필요가 없어요.',
+      ]}
+    />
   )
 }
 

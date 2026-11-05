@@ -1,17 +1,22 @@
 # Step 2: bit-memo-compare
 
-> **TASK-16** 비트 메모 비교 (두 번 입력 막기) · **REQ-016** · AC-016.1 ~ AC-016.4
+> **TASK-16** 비트 메모 비교 (두 번 입력 막기) · **REQ-016** · AC-016.1 ~ AC-016.8
 > Phase 3 `precheck-3-memo` · Step 2 — `docs/precheck/plan.md` §6
 > 명세 `specs/precheck/`는 사용자가 승인했다. 이 step은 TASK-16 하나만 한다. 다른 TASK의 일은 하지 않는다.
+> **2026-11-01**: 도우미 쪽(아래 작업 1, AC-016.1의 `claim.memos`, `MemoCompare`)은 끝나 합쳐졌다. 남은 일은 웹 쪽이다. TASK-14의 메모 글을 비교하므로 TASK-14 뒤에, TASK-13이 이 step의 `loadPart`를 쓰므로 TASK-13보다 먼저 한다.
 
 ## 이 step이 맞출 수용 기준 (AC)
 
 전체 문장은 `/specs/precheck/requirements.md`의 REQ-016에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-016.1**: 기간으로 `claim.memos` → 원본 `ClaimMemoHistory.RowsSql`(공백만 다름)로 비트 청구메모 `{v, p, d, m}`를 읽어 조각으로. 줄 300,000·메모 4,000자를 넘으면 원본처럼 `truncated`를 알리고, 웹은 그 기간을 `E-CLAIM-PARTIAL`로 멈춘다
-- **AC-016.2**: `compareMemo(ours, inBit)`: 원본 `MemoApproval.Matches`처럼 줄바꿈(CRLF→LF)만 맞춰 글자 그대로 비교 → `같음`·`다름`·`비트에 없음`. 읽지 못했으면 `조회 못함`이고 빈칸으로 보지 않는다
-- **AC-016.3**: 비트에 다른 메모가 있는 진료는 입력 묶음에 넣지 않고 '건너뜀: 이미 있음'. `같음`이면 '완료(이미 입력됨)'
+- **AC-016.2**: `compareMemo(ours, inBit)`: 원본 `MemoApproval.Matches`처럼 줄바꿈(CRLF→LF)만 맞춰 글자 그대로 비교 → `같음`·`다름`·`비트에 없음`. 읽지 못했으면 `조회 못함`이고 빈칸으로 보지 않는다. 공백뿐인 비트 메모는 `비트에 없음`이다(AC-035.3과 같게)
+- **AC-016.3**: 비트에 다른 메모가 있는 진료는 승인하지 않았으면 입력 묶음에 넣지 않고 '건너뜀: 이미 있음'. 사람마다 승인한 진료(AC-018.14)는 승인한 비트 메모를 `replaces`에 담아 넣는다(AC-037.1). 묻지 않기가 켜져 있으면(AC-018.22) 승인하지 않은 진료도 `replaces` 없이 넣는다. 다만 `store.load`의 `journal`에서 마지막 기록이 `skippedByHand`인 진료(직접 확인으로 보냈는데 완료도 쓰다 멈춤도 아닌 사람: 칸 다름·다른 건너뜀·미처리·묶음 멈춤, AC-035.5)는 켜져 있어도 승인 없이 넣지 않는다. `같음`이면 '완료(이미 입력됨)'
 - **AC-016.4**: 비교 결과를 날짜별로 세면 메모 필요 수·입력 수(같음)·이미 있음 수(REQ-019 건수의 재료)
+- **AC-016.5**: 화면의 `{type: 'loadPart', part: 'memos' | 'store', id, load}`를 Worker가 받으면 `month`와 같은 규칙으로 그 `id`의 조각을 찾아 간다(`assemble.take`). SHA-256·모양·번호가 맞을 때만 자료를 받아 두고 `ok: true`, 그 밖에는 `ok: false`와 `code`. 답에 환자 글자가 없다
+- **AC-016.6**: 비교는 `claim.memos` 답으로만 한다. 500자에서 잘린 `Visit.memosInBit`을 쓰지 않는다. `truncated`이거나 `invalidRows`가 0이 아니면 `E-CLAIM-PARTIAL`로 멈춘다. 내원번호로 맞춘 줄의 차트번호가 다르면 그 글을 쓰지 않고 `조회 못함`이다
+- **AC-016.7**: 비트 메모 다시 불러오기: 화면이 `{type: 'memoReloadStart', run}` 뒤 `stream('claim.memos')`, 끝나면 늘 `{type: 'loadPart', part: 'memos', id, load, run}`. `assemble.take` 뒤에 번호를 보고 `load`와 `run`이 둘 다 마지막 번호일 때만 비트 메모 자료를 통째로 바꾸고 비교·입력 대상·날짜별 수를 다시 만든다. `claim.month` 자료와 점검 결과는 그대로다. 마지막 [자료 불러오기]에서 `조회 못함`이던 진료는 성공해도 그대로다. `run`이 없는 `loadPart`는 `part: 'store'`이거나 그 `load`에서 `memoReloadStart`를 받기 전일 때만 AC-016.5 그대로이고, 받은 뒤에 온 `run` 없는 `memos`는 찾아 버리고 `ok: false`
+- **AC-016.8**: 다시 불러오기가 실패하면 전 자료와 비교, 사람마다 승인을 그대로 두고 섞지 않는다. 화면은 [불러오지 못함] 옆에 지난번 비교를 함께 보인다. 전 자료가 없으면 `조회 못함`. 도우미가 쓰기 바로 앞에 칸을 다시 읽으므로 안전하다
 
 ## 읽어야 할 파일
 
@@ -22,7 +27,8 @@
 - `/docs/ADR.md` — 특히 ADR-003·004·016·020·021·022
 - `/docs/precheck/plan.md` §6 (Phase·Step 순서)
 - `/specs/precheck/requirements.md` — REQ-016
-- `/specs/precheck/design.md` — 2절 표(비트에 이미 있는 청구메모), 9-2절(이미 있는 메모: 최대 300,000줄·메모 4,000자), 15절(덮어쓰기 없음)
+- `/specs/precheck/design.md` — 2절 표(비트에 이미 있는 청구메모), 9-2절(이미 있는 메모: 최대 300,000줄·메모 4,000자), 6-2절(불러오기 약속·`loadPart`), 15절(승인 없이 덮어쓰지 않음), 19-6절, 19-12절
+- `/src/types/precheck.ts` — `PrecheckFromScreen` 주석(화면 약속. 8번이 `loadPart`다. 메시지를 더하면 주석도 맞춘다)
 - `/specs/precheck/tasks.md` — TASK-16 (수정 범위·메모)
 - 이전 step에서 만든 파일:
   - `helper/src/Precheck.Core/Bit/Sql.cs`(Phase 2 Step 1이 `ClaimMemoHistory.RowsSql` 상수를 이미 넣었다), `helper/tests/Precheck.Core.Tests/Bit/original-sql/*`
@@ -77,7 +83,7 @@
 
 ## 작업
 
-### 1. 도우미 `claim.memos`
+### 1. 도우미 `claim.memos` (끝남, 합쳐져 있다. 다시 하지 않는다)
 - 등록 확인 → `Sql.ClaimMemoRows`(원본 `RowsSql`) → 줄 `{v, p, d, m}` → 원본 한도(300,000줄, 메모 4,000자)를 넘으면 `{"truncated": true, …}`를 JSON에 넣는다(원본처럼 자르는 방식 그대로) → `Chunker.Split`
 - 실패·시간 초과면 `end` 없이 `error`
 - C# 쪽 비교(`Core/Claim/MemoCompare.cs`)는 원본 `MemoApproval.Matches`를 옮긴다. TASK-17이 입력 직전 다시 읽기에 쓴다
@@ -86,20 +92,24 @@
 ```ts
 export type MemoCompare = '같음' | '다름' | '비트에 없음' | '조회 못함'
 export function compareMemo(ours: string, inBit: string | null | undefined /* undefined = 읽지 못함 */): MemoCompare
-export function inputPlan(visits: VisitMemo[]): { batch: VisitMemo[]; skipped: { key: string; reason: '이미 있음' }[]; done: { key: string; reason: '이미 입력됨' }[] }
+export function inputPlan(visits: VisitMemo[], noAsk: boolean): { batch: VisitMemo[]; skipped: { key: string; reason: '이미 있음' }[]; done: { key: string; reason: '이미 입력됨' }[] }   // VisitMemo의 승인한 비트 메모는 batch 줄의 replaces로 간다. store.load journal의 마지막 기록이 skippedByHand이면 noAsk가 참이어도 승인 없이는 skipped다(AC-016.3)
 export function dayMemoCounts(rows: VisitMemoState[]): { date: string; needMemo: number; entered: number; already: number }[]
 ```
 - 줄바꿈만 `\r\n` → `\n`으로 맞추고 앞뒤 공백도 그대로 비교한다(원본과 같음)
-- `claim.memos`가 `truncated`면 그 기간 전체를 `E-CLAIM-PARTIAL`로 멈춘다(AC-016.1)
+- 공백뿐인 비트 메모는 `비트에 없음`이다(AC-016.2). 도우미 쓰기 직전 비교와 같게 하려는 것이다
+- `claim.memos`가 `truncated`이거나 `invalidRows`가 0이 아니면 그 기간 전체를 `E-CLAIM-PARTIAL`로 멈춘다(AC-016.1·016.6). 비교에 `Visit.memosInBit`(500자에서 잘림)을 쓰지 않는다
 - 읽지 못함(`조회 못함`)을 '비트에 없음'으로 바꾸지 않는다 — 비었다고 보면 두 번 입력이 생긴다
 
 ### 3. Worker (`jobs.ts`)
+- `loadPart`(AC-016.5): `month`와 같은 `assemble.take`로 찾아 가고 답은 `{type: 'loadPart', part, id, load, ok: true}` 또는 `{…, ok: false, code}`다. 답이 작아 `precheck.worker.ts`는 그대로다(`jobs.fromScreen`으로 간다). 메시지 타입은 `src/types/precheck.ts`에 더한다
+- `store.load`로 받은 고친 메모를 TASK-14의 메모 함수 인자에 잇는다. `journal`도 받아 두어 `skippedByHand`를 `inputPlan`에 넘긴다(AC-016.3). 새 명령·새 파일이 없다. 묶음 결과를 이 사본에 적는 일은 TASK-18의 `applyInputResults`다(Step 4)
 - 불러오기 결과에 비트 메모를 붙여 진료마다 비교 상태를 만들고, 입력 묶음(`inputPlan`)과 날짜별 수(`dayMemoCounts`)를 낸다
+- 비트 메모 다시 불러오기(AC-016.7·AC-016.8, design.md 19-12): `memoReloadStart`로 마지막 `run`을 적고, `run`이 있는 `loadPart`는 `assemble.take`가 끝난 뒤에 `load`와 `run`을 함께 본다. 옛 조각도 `assemble.take`로 찾아 버린다. `memoReloadStart` 뒤에 온 `run` 없는 `memos`는 자료를 받지 않는다. 실패면 전 자료를 그대로 둔다. 번호를 내고 단추를 그리는 것은 TASK-18이다
 
 ### 4. 시험
 - C#(`Bit/*`·`Claim/*`): `RowsSql` 원본 비교, 한도 넘음 → `truncated`, `Matches` 사례(원본 `SecurityTests`의 줄바꿈·공백 사례)
 - 감싸개 `memo-compare.dotnet.test.ts`: `runDotnet('Precheck.Core.Tests.Claim')` 등, AC ID를 `it` 이름에
-- `memoCompare.test.ts`: AC-016.2·016.3·016.4, `jobs.test.ts`: `truncated` → `E-CLAIM-PARTIAL`(AC-016.1)
+- `memoCompare.test.ts`: AC-016.2·016.3·016.4, `jobs.test.ts`: `truncated`·`invalidRows` → `E-CLAIM-PARTIAL`(AC-016.1·016.6), `loadPart`의 빠진 조각·옛 번호·두 번째 찾기마다 `ok: false`(AC-016.5), 차트번호가 다른 줄은 `조회 못함`(AC-016.6), 겹친 다시 불러오기는 도착 순서와 상관없이 마지막 번호만 받고 `visits`·점검 결과는 그대로, `memoReloadStart` 뒤에 온 `run` 없는 `memos`는 `ok: false`, 처음 `조회 못함`이던 진료는 성공해도 그대로(AC-016.7), 실패·`truncated` 뒤 전 비교가 그대로(AC-016.8)
 
 ## TDD 순서
 
@@ -126,7 +136,7 @@ python3 ~/.claude/harness/bin/verify
 ```
 
 - 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-016.1 ~ AC-016.4이 이 TASK의 시험과 이어져 보여야 한다
+- `python3 ~/.claude/harness/bin/sdd status precheck`에서 AC-016.1 ~ AC-016.8이 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 
@@ -147,7 +157,7 @@ python3 ~/.claude/harness/bin/verify
 
 - '조회 못함'을 '비트에 없음'으로 취급하지 마라. 이유: 읽지 못한 것을 비었다고 보면 이미 있는 메모 위에 두 번 입력한다(AC-016.2)
 - 비교 전에 공백을 지우거나 글자를 다듬지 마라(줄바꿈 CRLF→LF만). 이유: 원본 `Matches`와 달라지면 '같음'이 '다름'으로 바뀌거나 그 반대가 된다
-- 비트에 다른 메모가 있는 진료를 묶음에 넣지 마라. 이유: 덮어쓰기는 하지 않는다(design.md 15절, PRD)
+- 묻지 않기가 꺼져 있는데 승인하지 않은 다른 메모 진료를 묶음에 넣지 마라. 이유: PC에서 체크를 켜지 않았으면 사람의 승인 없이 덮어쓰지 않는다(design.md 15절·19-6, 2026-11-01 사용자 결정)
 - `Sql.cs`의 기존 상수를 고치지 마라. 이유: Phase 2 Step 1의 원본 SQL 비교 시험이 깨진다
 - 기존 테스트를 깨뜨리지 마라. 이유: 도우미·Worker 앞 시험이 계속 통과해야 한다
 - `specs/` 아래 파일(requirements·design·tasks·approval·tdd-log)을 고치지 마라. 이유: 승인 해시가 바뀌면 승인이 풀려 모든 구현이 막힌다. 명세와 다른 점을 찾으면 고치지 말고 summary에 적는다

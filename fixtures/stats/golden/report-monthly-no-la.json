@@ -1,0 +1,78 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/medicore/reports.py",
+  "entry": "format_report, report_notes",
+  "knownDiffs": [
+    {
+      "field": "lines",
+      "index": 16,
+      "original": "건당진료비      12,501원",
+      "ours": "건당진료비      12,500원",
+      "why": "금액·건당진료비는 원 미만을 버린다(CLAUDE.md 금액 규칙). 원본은 ROUND_HALF_UP이고, 음수도 0 쪽으로 버린다"
+    },
+    {
+      "field": "notes",
+      "index": 0,
+      "original": "총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환을 원 단위로 반올림합니다.",
+      "ours": "총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환에서 원 미만을 버립니다.",
+      "why": "건당진료비를 반올림하지 않으므로 안내 문장도 실제 계산에 맞춘다(위 금액 규칙에 따라오는 차이)"
+    }
+  ],
+  "input": {
+    "ok": true,
+    "schema": 2,
+    "mode": "monthly",
+    "period": "2023-12",
+    "hospital_name": "가상의원",
+    "institution_code": "00000000",
+    "profile_id": "ffffffffffffffffffffffffffffffff",
+    "total_visits": 8,
+    "new_patients": 3,
+    "return_patients": 5,
+    "total_amount": 100004,
+    "insurer_amount": 65000,
+    "noncovered_amount": 15000,
+    "cash_amount": 1200,
+    "card_amount": 27500,
+    "transfer_amount": 6300,
+    "treatments": {
+      "manual": 2,
+      "eswt": 3,
+      "carm": 4,
+      "sono": 5,
+      "cryo": 1
+    },
+    "la_codes": [],
+    "notes": [
+      "가상 자료입니다."
+    ]
+  },
+  "output": {
+    "lines": [
+      "가상의원",
+      "2023년 12월",
+      "",
+      "총환                  8명",
+      "총진료비        100,004원",
+      "조합청구액      65,000원",
+      "비급여          15,000원",
+      "",
+      "도수                2건",
+      "충격파               3건",
+      "씨암블락              4건",
+      "쏘노                5건",
+      "크라이오              1건",
+      "",
+      "    LA 코드 처방 없음",
+      "",
+      "건당진료비      12,501원",
+      "",
+      "고생하셨습니다 !!"
+    ],
+    "notes": [
+      "총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환을 원 단위로 반올림합니다.",
+      "치료 및 LA 코드 건수는 취소·삭제 등을 제외한 유효 처방 건수이며 총투여량이 아닙니다.",
+      "가상 자료입니다."
+    ]
+  }
+}

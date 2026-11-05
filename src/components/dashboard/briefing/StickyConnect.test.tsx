@@ -136,10 +136,10 @@ describe('StickyConnect: 휴대폰 아래 단추 (AC-306.4)', () => {
     hasAll(dock, '-mx-4 -mb-8')
   })
 
-  it('AC-306.4: 안의 [비트 PC 연결 시작]은 /claim/setup 주 큰 단추, 전체 폭, 오른쪽 꾸밈 화살표 16', () => {
+  it('AC-306.4·AC-603.1: 안의 [비트 PC 연결 시작]은 /claim/setup?next=dashboard 주 큰 단추, 전체 폭, 오른쪽 꾸밈 화살표 16', () => {
     const { container } = renderWithTarget()
     const link = linkOf(dockOf(container))
-    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.getAttribute('href')).toBe('/claim/setup?next=dashboard')
     expect(link.textContent).toBe('비트 PC 연결 시작')
     hasAll(link, `${ds.button.primaryLarge} w-full group transition not-disabled:active:translate-y-px`)
     const svg = link.lastElementChild as SVGElement

@@ -1,0 +1,27 @@
+{
+"version":"2099-01-01",
+"meta":{
+"title":"가짜 규칙표(옮기기 스크립트 시험용, 원본 아님)",
+"generated":"2099-01-01",
+"language":"ko",
+"contains_patient_data":false,
+"rule_id_prefixes":{"ZZ":"가짜 규칙"}
+},
+"code_groups":{
+"zz_block":{"name":"가짜 차단술","codes":[{"code":"ZZ001","name":"가짜 차단","region":["knee_leg"]}],"pending_codes":[],"note":""},
+"zz_note":{"name":"가짜 처치","codes":[{"code":"ZZ002","name":"가짜 처치"}],"pending_codes":[],"note":"가짜"}
+},
+"drug_classes":{
+"zz_steroid":{"name":"가짜 스테로이드","name_patterns":["가짜스테"],"regex":"가짜스테","clinic_codes":{"ZZ003":"가짜스테"}}
+},
+"regions":{
+"keys":{"knee_leg":"무릎·하퇴","any":"모든 부위와 겹침"},
+"match_semantics":"가짜: 부위 집합이 겹치면 일치",
+"kcd_fifth_char_rules":{"6":"무릎(가짜)","1":"어깨(가짜)"}
+},
+"rules":[
+{"id":"ZZ-01","domain":"가짜 규칙","title":"가짜 같은 날 두 번","type":"same_day_limit","params":{"codes":["ZZ001"],"max":1},"grade":"확인필요","message":"가짜: 같은 날 두 번 넣었는지 확인하세요.","basis":[{"doc":"가짜 고시","number":"가짜 제0000-1호","effective":"2099-01-01","url":"https://example.invalid/1"}],"confidence":"상","data_needed":["rx_lines"],"automatable":"yes","stage":["memo"],"enabled_default":true,"effective_from":null,"effective_to":null,"notes":""},
+{"id":"ZZ-02","domain":"가짜 규칙","title":"가짜 기록 필요","type":"documentation","params":{"codes":["ZZ002"],"chart_keywords":["가짜"]},"grade":"알림","message":"가짜: 차트에 기록이 있는지 보세요.","basis":[{"doc":"가짜 심사기준","number":"가짜 제0000-2호","url":"https://example.invalid/2"},{"doc":"가짜 사례","number":"가짜 사례 3","effective":"2099-02-01","url":"https://example.invalid/3"}],"confidence":"중","data_needed":["chart_text","rx_lines"],"automatable":"partial","stage":["memo","sam"],"enabled_default":true,"effective_from":"2099-01-01","effective_to":null,"notes":"가짜 메모"},
+{"id":"ZZ-103a","domain":"가짜 규칙","title":"가짜 안내만","type":"info_only","params":{},"grade":"참고","message":"가짜: 안내만 합니다.","basis":[{"doc":"가짜 안내문","number":"가짜 안내 4","effective":"2099-03-01","url":"https://example.invalid/4"}],"confidence":"하","data_needed":["notice"],"automatable":"no","stage":["history"],"enabled_default":false,"effective_from":null,"effective_to":null,"notes":""}
+]
+}

@@ -37,7 +37,7 @@ const IN_PROGRESS: RateCell = { kind: 'in-progress' }
 const weekdayName = (ymd: string) => WEEKDAYS[weekdayOf(ymd) - 1]!
 // 'YYYY-MM-DD' 글자의 달·날(앞 0 없이)
 const monthDay = (ymd: string) => [Number(ymd.slice(5, 7)), Number(ymd.slice(8, 10))] as const
-const longDate = (ymd: string) => {
+export const longDate = (ymd: string) => {
   const [m, d] = monthDay(ymd)
   return `${m}월 ${d}일`
 }
@@ -174,12 +174,14 @@ function lastWeekSentence(compare: TodayCompare, patients: number): string | nul
 }
 
 // 오늘 줄의 totals(와 끝난 날이면 7일 전 비교)만으로 만든다 — 환자 이름·차트번호·처방 이름은 쓰지 않는다.
-// first = 처음 "다."까지(h1), rest = 그 뒤(앞뒤 빈칸 뺌), full = 둘을 빈칸 하나로 이은 글([복사])
-export function reportSentence(view: TodayView): { first: string; rest: string; full: string } | null {
+// first = 처음 "다."까지(h1), rest = 그 뒤(앞뒤 빈칸 뺌), full = 둘을 빈칸 하나로 이은 글([복사]).
+// dayLabel('10월 31일')을 주면 지난 날짜 문장이다: 시작의 "오늘"만 그 글자로 바꾼다(bit-dashboard AC-605.2)
+export function reportSentence(view: TodayView, dayLabel?: string): { first: string; rest: string; full: string } | null {
   if (view.counts === null) return null
   const { patients, newPatients, returning } = view.counts
+  const when = dayLabel ?? (view.state === 'open' ? '오늘 지금까지' : '오늘')
   const sentences = [
-    view.state === 'open' ? `오늘 지금까지 환자 ${formatCount(patients)}명이 왔습니다.` : `오늘 환자 ${formatCount(patients)}명이 왔습니다.`,
+    `${when} 환자 ${formatCount(patients)}명이 왔습니다.`,
     `신환 ${formatCount(newPatients)}명, 재진 ${formatCount(returning)}명입니다.`,
     view.state === 'closed' ? lastWeekSentence(view.compare, patients) : null,
   ]

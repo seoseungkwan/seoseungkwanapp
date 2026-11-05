@@ -1,0 +1,42 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "assets/mx999_v22.html",
+  "entry": "new-medicore-precheck evaluate/collect",
+  "knownDiffs": [],
+  "fake": "claim-month-cross-month.json",
+  "settings": null,
+  "visits": [
+    {"id":"c1","hits":[],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"c2","hits":[{"id":"LA-13","grade":"알림","message":"C-arm 투시 필수 차단인데 차트에 투시(C-arm·fluoro) 기록이나 영상 저장 표시가 없으니 영상 저장 여부를 확인하고 기록하세요. (차트에 기록이 없음 — 영상·제출 자료로 갖췄는지 확인)","detail":"LA358"},{"id":"LA-14","grade":"알림","message":"후지내측지·추간관절·회백교통지·경추간공 차단은 2방향 영상이 필요하니 차트·PACS에 방향(AP/Lat/Obl)을 남기고, 못 맞췄으면 사유를 JX999에 적으세요.","detail":"LA358 · 차트 방향 없음"},{"id":"LA-22","grade":"알림","message":"신경차단술 차트에 통증 부위·이학적 소견이 없거나 재시술인데 직전 반응 기록이 없으니 보완하세요.","detail":"LA358 · 빠진 기록: 증상·이학적검사"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"c3","hits":[{"id":"IJ-05","grade":"확인필요","message":"관절강내·건초내 주사에 리도카인 등 국소마취제만 있으니 스테로이드 등 함께 쓴 약이 빠지지 않았는지 확인하세요(국소마취제 단독은 불인정).","detail":"KK090 + A15"}],"skipped":{"history":0,"data":0},"checked":152},
+    {"id":"c4","hits":[{"id":"PH-04","grade":"확인필요","message":"같은 날 표층열(MM010)과 심층열(MM020)을 함께 했으면 표층열을 50% 코드(MM015)로 바꾸세요. (MM015로 청구)","detail":"MM010 + MM020"}],"skipped":{"history":0,"data":0},"checked":152}
+  ],
+  "collect": {
+    "visits": [
+      "c1",
+      "c2",
+      "c3",
+      "c4"
+    ],
+    "checked": 4,
+    "hi": 2,
+    "mid": 3,
+    "lo": 0,
+    "patients": 2,
+    "historySkips": 0,
+    "byRule": [
+      {"rule":"IJ-05","grade":"확인필요","visits":["c3"]},
+      {"rule":"PH-04","grade":"확인필요","visits":["c4"]},
+      {"rule":"LA-13","grade":"알림","visits":["c2"]},
+      {"rule":"LA-14","grade":"알림","visits":["c2"]},
+      {"rule":"LA-22","grade":"알림","visits":["c2"]}
+    ],
+    "rows": [
+      ["c2","LA-13"],
+      ["c2","LA-14"],
+      ["c2","LA-22"],
+      ["c3","IJ-05"],
+      ["c4","PH-04"]
+    ]
+  }
+}

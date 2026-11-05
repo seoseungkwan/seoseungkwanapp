@@ -16,7 +16,10 @@ public static class ReadOnlyGuard
         if (!Sql.IsAllowed(sql)) throw new BitException(BitErrors.ReadFailed);
     }
 
-    /// <summary>문장 + 매개변수: 정해 둔 이름이 모두 있고 그 밖은 없으며, 값은 글자이고 정해 둔 길이 이하.</summary>
+    /// <summary>
+    /// 문장 + 매개변수: 정해 둔 이름이 모두 있고 그 밖은 없으며, 값은 글자이고 정해 둔 길이 이하.
+    /// 정수 매개변수(원본 SqlDbType.Int, 예: 상병 추세 @minimum)는 int 값만.
+    /// </summary>
     public static void Require(string sql, IReadOnlyDictionary<string, object?> args)
     {
         Require(sql);
@@ -25,12 +28,12 @@ public static class ReadOnlyGuard
         if (args.Count != declared.Count) throw new BitException(BitErrors.ReadFailed);
         foreach (var parameter in declared)
         {
-            if (!args.TryGetValue(parameter.Name, out var value) || !(value is string text) || text.Length > parameter.Size)
-            {
-                throw new BitException(BitErrors.ReadFailed);
-            }
+            if (!args.TryGetValue(parameter.Name, out var value) || !Fits(parameter, value)) throw new BitException(BitErrors.ReadFailed);
         }
     }
+
+    private static bool Fits(SqlParam parameter, object? value) =>
+        parameter.Kind == SqlParamKind.Int ? value is int : value is string text && text.Length <= parameter.Size;
 
     /// <summary>관문을 지난 문장만 db로 보낸다.</summary>
     public static IReadOnlyList<IReadOnlyList<object?>> Query(IBitDb db, string sql, IReadOnlyDictionary<string, object?> args, TimeSpan timeout)
