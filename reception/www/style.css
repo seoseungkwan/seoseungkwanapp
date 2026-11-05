@@ -1,0 +1,1017 @@
+/*
+ * 접수 현황 화면 모양 (design.md 10절). 승인 시안 v12(Main·Detail·Offline·Tablet)의 모양을 그대로 옮긴다.
+ * 색·글꼴·둥글기는 theme.css 토큰을 var()로만 부른다(AC-1407.7). CSP가 인라인 스타일을 막으므로 모양은 모두 여기 있다.
+ * 폰은 한 줄 흐름, 가로 1000px 이상이면 같은 DOM을 두 칸(왼쪽 목록, 오른쪽 상세)으로 놓는다(AC-1409.1).
+ *
+ * 화면 틀 (그리는 파일이 쓰는 class 이름)
+ *   #app (index.html) 안에 화면 하나:
+ *   목록   .page.board
+ *            header.top > .top-row > img.logo + .top-status > span.conn + button.refresh
+ *                       > .title-block > h1.top-title + p.asof
+ *            .picker > button.queue[aria-pressed] > span.queue-label + span.queue-count
+ *                    > .tiles > button.tile[aria-pressed] > span.tile-count + span.tile-label
+ *            main.list > h2.list-heading + .rows > .row(.is-picked) > (a 또는 button).row-main
+ *                          > .row-head > span.pos + span.status.status-wait|hold|pay|done + span.chart + span.name + span.info
+ *                          > .row-time > span + span.waited(.is-long|.is-done)
+ *                          > .memo   > .rx-line > span.rx-label + span.rx-text
+ *                        .row > .xray > span.xray-tag.is-before|is-done + button.btn-dark|btn-light
+ *            aside.pane (태블릿 오른쪽, 아래 상세 내용 + p.pane-foot)
+ *            footer.foot
+ *   상세   .page.detail-page
+ *            header.top.is-detail > .top-row > a.back + img.logo-mark
+ *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info
+ *                                            > .status-line > span.status… + span   > .memo
+ *            main.detail > h2.detail-heading + section.today + p.no-visits + .visits > section.visit + button.more + p.end-note
+ *              section.today > .today-head > h3.today-date > span.today-badge … + span.today-state ; p.today-empty | p.sym | ul.rx-list
+ *              section.visit > .visit-head > h3.visit-date + span.visit-ago ; p.sym ; ul.rx-list > li.rx-item > … + span.rx-code
+ *            footer.foot
+ *   끊김·불러오는 중  .page.off-page
+ *            header.top.is-offline > h1.off-title + span.conn.is-off
+ *            main.off > img.off-logo + h2.off-heading + p.off-lead + p.off-sub + .off-status
+ *            footer.foot
+ */
+
+/* ---- 바탕 ---------------------------------------------------------------------------------------- */
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  word-break: keep-all;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+h1, h2, h3, h4, p, ul {
+  margin: 0;
+}
+
+a {
+  color: var(--ink);
+}
+
+a:hover {
+  color: var(--ink-strong);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 제목 글꼴은 머리 제목과 환자 이름 제목에만 (AC-1407.8). 없는 글자는 본문 글꼴로 떨어진다 */
+.top-title, .off-title, .off-heading, .detail-name {
+  margin: 0;
+  font-family: var(--font-title), var(--font-body);
+  font-weight: var(--title-weight);
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+/* ---- 머리 ---------------------------------------------------------------------------------------- */
+
+.top {
+  background: var(--surface);
+  border-bottom: 4px solid var(--accent);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 좁은 폰에서는 연결됨·새로 고침 자리를 남기고 로고가 줄어든다 */
+.logo {
+  display: block;
+  height: 34px;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.top-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ok);
+  background: var(--ok-soft);
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.conn::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.conn.is-off {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+/* [새로 고침]: 연결됨 표시 옆 테두리 단추. 노랑 채움은 고른 칸에만 (design.md 10절, AC-1407.10) */
+.refresh {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.refresh:disabled {
+  color: var(--ink-3);
+}
+
+.title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.top-title {
+  font-size: 30px;
+}
+
+.asof {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* ---- 진료 순서·칸 넷 (폰: 머리에 이어 붙은 흰 띠) ------------------------------------------------------ */
+
+.board > .top {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.picker {
+  background: var(--surface);
+  border-bottom: 4px solid var(--accent);
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.queue {
+  min-height: 52px;
+  padding: 8px 14px;
+  border-radius: var(--radius-m);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  text-align: left;
+}
+
+.queue-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.queue-count {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tile {
+  min-height: 68px;
+  padding: 8px 4px;
+  border-radius: var(--radius-m);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+}
+
+.tile-count {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tile-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.queue[aria-pressed="true"], .tile[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- 목록 줄 ------------------------------------------------------------------------------------- */
+
+.list {
+  flex-grow: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list-heading {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 폰은 a(상세로 옮김), 태블릿은 button(오른쪽에 그림). 둘 다 같은 모양 */
+.row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  color: var(--ink);
+  text-decoration: none;
+  border-radius: var(--radius-m);
+}
+
+button.row-main {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pos {
+  box-sizing: border-box;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  border: 1px solid transparent;
+}
+
+.status-wait {
+  background: var(--status-wait-bg);
+  color: var(--status-wait-fg);
+  border-color: var(--status-wait-line);
+}
+
+.status-hold {
+  background: var(--status-hold-bg);
+  color: var(--status-hold-fg);
+  border-color: var(--status-hold-line);
+}
+
+.status-pay {
+  background: var(--status-pay-bg);
+  color: var(--status-pay-fg);
+  border-color: var(--status-pay-line);
+}
+
+.status-done {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+  border-color: var(--status-done-line);
+}
+
+.chart {
+  font-size: 13px;
+  color: var(--ink-4);
+}
+
+.name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.info {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.row-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.waited {
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  background: var(--status-calm-bg);
+  color: var(--status-calm-fg);
+}
+
+.waited.is-long {
+  background: var(--status-long-bg);
+  color: var(--status-long-fg);
+}
+
+.waited.is-done {
+  background: var(--status-done-bg);
+  color: var(--status-done-fg);
+}
+
+.memo {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--ground);
+  border-radius: var(--radius-s);
+  padding: 6px 8px;
+}
+
+.rx-line {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rx-label {
+  flex-shrink: 0;
+  width: 40px;
+  color: var(--ink-4);
+}
+
+.rx-text {
+  color: var(--ink);
+}
+
+/* ---- 엑스레이 찍음 표시 (진료보류 줄 아래 띠) -------------------------------------------------------- */
+
+.xray {
+  border-top: 1px solid var(--line);
+  padding: 8px 16px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.xray-tag {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  border: 1px solid transparent;
+}
+
+.xray-tag.is-before {
+  background: var(--status-before-bg);
+  color: var(--status-before-fg);
+  border-color: var(--status-before-line);
+}
+
+.xray-tag.is-done {
+  background: var(--status-xray-bg);
+  color: var(--status-xray-fg);
+  border-color: var(--status-xray-bg);
+}
+
+.btn-dark {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-light {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn-dark:disabled, .btn-light:disabled, .more:disabled {
+  opacity: 0.6;
+}
+
+.foot {
+  padding: 12px 16px 24px;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* 태블릿 오른쪽 칸: 폰에서는 없다 */
+.pane {
+  display: none;
+}
+
+/* ---- 상세 (폰: 주소 #/v/열쇠, 태블릿: 오른쪽 칸) --------------------------------------------------------- */
+
+.top.is-detail {
+  padding: 8px 8px 16px;
+  gap: 10px;
+}
+
+.back {
+  min-height: 44px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.back::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin: 0 3px 0 5px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.logo-mark {
+  display: block;
+  height: 32px;
+  width: auto;
+  margin-right: 8px;
+}
+
+.patient {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.is-detail .patient {
+  padding: 0 8px;
+}
+
+.name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.name-line .chart, .name-line .info {
+  font-size: 14px;
+}
+
+.detail-name {
+  font-size: 28px;
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.status-line .status {
+  font-size: 13px;
+}
+
+.patient .memo {
+  padding: 8px 10px;
+}
+
+.detail {
+  flex-grow: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.today {
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-m);
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.today-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.today-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.today-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  color: var(--accent);
+}
+
+.today-state {
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.today-empty {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.no-visits {
+  padding: 16px;
+  font-size: 14px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+.visits {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.visit {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.visit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.visit-date {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.visit-ago {
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.sym {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: var(--ground);
+  border-radius: var(--radius-s);
+  padding: 6px 8px;
+}
+
+.rx-list {
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rx-item {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.rx-code {
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--ink-4);
+}
+
+.more {
+  min-height: 48px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.end-note {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* ---- 연결 끊김·불러오는 중 ------------------------------------------------------------------------------ */
+
+.top.is-offline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.off-title {
+  font-size: 28px;
+}
+
+.off {
+  flex-grow: 1;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.off-logo {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 12px;
+}
+
+.off-heading {
+  font-size: 26px;
+}
+
+.off-lead {
+  max-width: 300px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.off-sub {
+  max-width: 300px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.off-status {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 10px 14px;
+}
+
+/* 다시 읽기 그림(↻): 기기 글꼴에 ↻ 글자가 없을 수 있어 선으로 그린다. 위가 열린 원 + 위 끝의 오른쪽 화살촉 */
+.refresh, .off-status {
+  position: relative;
+}
+
+.refresh::before, .off-status::before {
+  content: "";
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+.refresh::after, .off-status::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 10px);
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+}
+
+.refresh::after {
+  left: 18px;
+}
+
+.off-status::after {
+  left: 20px;
+}
+
+/* ---- 태블릿 두 칸 (승인 태블릿 시안 1194×834) ------------------------------------------------------------- */
+
+@media (min-width: 1000px) and (orientation: landscape) {
+  .board {
+    display: grid;
+    grid-template-columns: 420px minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  /* 머리 한 줄: 로고 · 접수 현황 · 기준 시각(늘어남) · 연결됨 + 새로 고침 */
+  .board > .top {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+    padding: 12px 24px;
+    border-bottom: 4px solid var(--accent);
+  }
+
+  .board .top-row, .board .title-block {
+    display: contents;
+  }
+
+  .board .logo {
+    order: 1;
+    height: 36px;
+    flex-shrink: 0;
+  }
+
+  .board .top-title {
+    order: 2;
+    font-size: 28px;
+  }
+
+  .board .asof {
+    order: 3;
+    flex-grow: 1;
+  }
+
+  .board .top-status {
+    order: 4;
+  }
+
+  /* 왼쪽 칸: 진료 순서·칸 넷·칸 제목은 그대로, 줄만 따로 굴러간다 */
+  .board > .picker {
+    grid-column: 1;
+    grid-row: 2;
+    background: transparent;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+    padding: 16px 16px 0;
+    gap: 8px;
+  }
+
+  .board > .list {
+    grid-column: 1;
+    grid-row: 3;
+    min-height: 0;
+    border-right: 1px solid var(--line);
+    padding: 12px 0 0;
+    gap: 0;
+  }
+
+  .board .list-heading {
+    margin: 0;
+    padding: 0 16px 16px;
+  }
+
+  .board .rows {
+    flex-grow: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 16px 16px;
+    gap: 8px;
+  }
+
+  .board .tile {
+    min-height: 60px;
+    padding: 6px 4px;
+  }
+
+  .board .tile-count {
+    font-size: 20px;
+  }
+
+  .board .row {
+    border-width: 2px;
+    flex-shrink: 0;
+  }
+
+  .board .row.is-picked {
+    background: var(--surface-picked);
+    border-color: var(--accent);
+  }
+
+  .board .row-main {
+    gap: 6px;
+    padding: 12px 14px;
+  }
+
+  .board .xray {
+    padding: 8px 14px;
+  }
+
+  .board > .foot {
+    display: none;
+  }
+
+  /* 오른쪽 칸: 고른 환자 상세 */
+  .board > .pane {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .pane .patient {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    padding: 16px 18px;
+    flex-shrink: 0;
+  }
+
+  .pane .name-line {
+    gap: 10px;
+  }
+
+  .pane .detail-name {
+    font-size: 30px;
+  }
+
+  .pane .name-line .info {
+    font-size: 15px;
+  }
+
+  .pane .status-line, .pane .patient .memo {
+    font-size: 14px;
+  }
+
+  .pane .detail-heading {
+    font-size: 15px;
+  }
+
+  .pane .today {
+    padding: 13px 17px;
+    gap: 8px;
+  }
+
+  .pane .today-date {
+    font-size: 16px;
+  }
+
+  .pane .visits {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .pane-foot {
+    margin: auto 0 0;
+    padding-top: 8px;
+    font-size: 12px;
+    color: var(--ink-3);
+    text-align: center;
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "접수 현황",
+  "short_name": "접수 현황",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/logo-mark.png",
+      "sizes": "206x222",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

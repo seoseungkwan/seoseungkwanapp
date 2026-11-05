@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="format-detection" content="telephone=no">
+<title>접수 현황</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/logo-mark.png">
+<link rel="icon" href="/logo-mark.png" type="image/png">
+<link rel="preload" href="/fonts/title.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<!-- 화면은 app.js가 #app 안에 그린다. 그 전에는 환자 자료 없는 "불러오는 중이에요"만 보인다 (design.md 10절) -->
+<div id="app">
+  <div class="page off-page">
+    <header class="top is-offline">
+      <h1 class="off-title">접수 현황</h1>
+    </header>
+    <main class="off">
+      <img class="off-logo" src="/logo-wordmark.png" alt="양지바른정형외과">
+      <p class="off-lead">불러오는 중이에요</p>
+    </main>
+  </div>
+</div>
+</body>
+</html>
