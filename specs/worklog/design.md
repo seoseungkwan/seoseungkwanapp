@@ -577,10 +577,50 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 
 ### 20-5. 화면 (TASK-17)
 - 비트 칸: 칸 모서리 작은 표시(엑셀 메모 표시처럼, `--xl-focus` 색) + 양식 아래 한 줄 "표시한 칸은 비트에서 불러온 숫자예요". 인쇄에서는 숨긴다
-- 다른 칸: 양식 아래 목록 "현금수납 · 적은 값 120,000 별도 · 비트 125,000원 [비트 숫자로 바꾸기]"(`ds.button.secondarySmall`). 칸 이름은 그날 이름이고, 적은 값은 칸의 화면 글자다
-- 안내 한 줄(날짜 줄 아래, 오류 카드 아님): 연결 안 됨 "비트 PC가 연결되지 않아 직접 적어요" · 확장/도우미 없음·옛 판 "비트 PC 연결을 마치면 숫자를 저절로 채워요"(`/claim/setup` 글자 링크)(통로 오류 `E-BRIDGE-REJECTED`·`E-HELPER-UNKNOWN-COMMAND`도 이 '확장/도우미 새 버전' 상태로 본다 — 매출 설계 5절과 같음, '읽기 실패'가 아니다) · 읽기 실패 "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요" · 확인 필요 날 "이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요"(까닭을 말하지 않는다, 20-1절)
-- 다시 읽기: 그날을 열 때, 날짜를 옮길 때, 오늘이면 화면이 보이는 동안 10분마다. 터치 기기(보기만, `readOnly` — 11-3절과 같은 판정)에서는 읽지 않는다
-- **화면 시안이 먼저다**: 이 표시·목록·안내는 승인된 시안 v2에 없다 → TASK-17 전에 시안을 더해(예시 숫자) 사용자 OK를 받는다(CLAUDE.md 화면 규칙)
+- 다른 칸: 양식 아래 제목 "비트 숫자와 다른 칸이 있어요"(small 600 `ink`, 목록의 이름) 밑 목록 "현금수납 · 적은 값 120,000 별도 · 비트 125,000원 [비트 숫자로 바꾸기]"(`ds.button.secondarySmall`). 칸 이름은 그날 이름이고, 적은 값은 칸의 화면 글자(`cellShownText`)다. 비트 값 글자는 신환·재진이면 칸처럼 숫자만("신환 · 적은 값 11 · 비트 12"), 금액 칸이면 쉼표와 "원"("125,000원", 0은 "0원") **(사용자, 2026-11-05 시안 v2)**
+- 안내 한 줄(날짜 줄 아래, 오류 카드 아님): 연결 안 됨 "비트 PC가 연결되지 않아 직접 적어요" · 확장/도우미 없음·옛 판 "비트 PC 연결을 마치면 숫자를 저절로 채워요" + 끝에 글자 링크 "연결하러 가기"(`/claim/setup`, Next `Link`, **사용자 2026-11-05**)(통로 오류 `E-BRIDGE-REJECTED`·`E-HELPER-UNKNOWN-COMMAND`도 이 '확장/도우미 새 버전' 상태로 본다 — 매출 설계 5절과 같음, '읽기 실패'가 아니다) · 읽기 실패 "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요" · 확인 필요 날 "이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요"(까닭을 말하지 않는다, 20-1절)
+- **휴대폰(터치 기기)에는 비트 안내 줄이 없다** **(사용자, 2026-11-05)**: 위 안내 한 줄도 아래 [지금 불러오기] 줄도 그리지 않고, 툴바의 지금 상태 글("휴대폰에서는 보기만 할 수 있어요", 11-3절 `view-only`)만 보인다. 저장된 비트 칸 표시와 "표시한 칸은 비트에서 불러온 숫자예요" 한 줄은 보인다(AC-017.5)
+- 다시 읽기: 그날을 열 때, 날짜를 옮길 때, 오늘이면 화면이 보이는 동안 10분마다, 그리고 [지금 불러오기]를 누를 때(아래). 터치 기기(보기만, `readOnly` — 11-3절과 같은 판정)에서는 읽지 않는다
+- **[지금 불러오기]** (AC-017.9, **사용자 2026-11-05 "필요해"**): 날짜 줄 아래 안내 자리는 `useBitFill` 상태마다 아래 표와 같다. 비트를 읽을 수 있는 상태(`useBridge` ready이고 터치 기기 아님 = `reading`·`ready`·`unconfirmed`·`failed`)면 그 자리가 한 줄(시안 `.loadrow`)이 된다 — 왼쪽 글(small `ink-2`), 오른쪽 작은 단추 [지금 불러오기](`ds.button.secondarySmall`), 좁으면 줄을 바꾼다(`flex-wrap`). 줄 전체 `print:hidden`
+
+| `useBitFill` 상태 | 날짜 줄 아래 한 줄 왼쪽 | 오른쪽 단추 |
+|---|---|---|
+| `off`(터치 기기) | 없음(줄이 없다) | 없음 |
+| `not-connected` | "비트 PC가 연결되지 않아 직접 적어요" | 없음 |
+| `setup-needed` | "비트 PC 연결을 마치면 숫자를 저절로 채워요" + "연결하러 가기"(`/claim/setup`) | 없음 |
+| `reading`(첫 읽기·10분 읽기·누른 읽기 모두) | "비트 숫자를 불러오는 중이에요" | `disabled`, 글자 "불러오는 중" |
+| `ready` | "비트 숫자를 14:20에 불러왔어요"(`savedTimeText(lastReadAt)`) | [지금 불러오기] |
+| `unconfirmed` | "이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요" | [지금 불러오기] |
+| `failed` | "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요" | [지금 불러오기] |
+
+  - `useBridge` 상태 → `useBitFill` 상태(Claude 판단): 터치 기기면 늘 `off`. 아니면 `connecting` → `reading`(의원 PC를 열 때마다 거치므로 '연결 안 됨'을 잠깐 띄우지 않는다. 단 `connecting`인데 `helloError`가 있으면 `setup-needed` — 매출 화면처럼 멈춘 '불러오는 중'에 갇히지 않게), `ready` → 읽기에 따라 `reading`·`ready`·`unconfirmed`·`failed`, `busy`·`disconnected` → `not-connected`, `no-extension`·`no-helper`·`update-helper`·`update-extension` → `setup-needed`
+  - 인쇄: `BitNotice` 전부(모든 상태의 안내 줄·[지금 불러오기] 줄·'다름' 목록과 그 단추·설명 줄)를 `print:hidden`으로 숨긴다(AC-011.3 "양식만 나온다", 시안 상황 6)
+
+  - 시각: `lastReadAt` = 그날(`ymd`) `revenue.days` 답이 답 검사를 지나 도착한 때(`new Date()`, 시험은 가짜 시계)다. 글자는 `lib/worklog/days.ts`의 `savedTimeText`(한국 시각 `HH:MM`, 24시간, PC 시간대와 상관없음 — "저장했어요 · 14:05"와 같은 함수)로 만든다. 답의 `ymd`가 고른 날과 다르면(날짜를 막 옮김) 옛 날 시각을 보이지 않고 `reading`처럼 그린다 **(Claude 판단)**
+  - 누르면 `reload()`: 그날 `bridge.call('revenue.days', { from: ymd, to: ymd })`을 바로 부른다 — AC-017.1과 같은 길(같은 요청 번호로 늦은 옛 답을 버림, 같은 오류 나눔 `failed`·`setup-needed`), 같은 합치기(`mergeBit`, 그날 읽기 상태가 `ready`일 때만 — AC-017.8 그대로. 첫 읽기 전에 온 답은 들고 있다가 합치고, 불러오기 실패한 날은 합치지 않는다), 바뀐 칸만 자동 저장. 그래서 저장에 넘기는 목록도 `mergeBit`이 돌려준 것뿐이다. 오늘이면 10분 타이머를 누른 때부터 다시 센다(지난 날은 타이머가 없다). `reading`일 때나 단추가 없는 상태에서는 아무 일도 하지 않는다
+  - 다시 읽는 동안(`reading`) 같은 날의 앞 `values`·`lastReadAt`은 그대로 둔다('다름' 목록·표시가 깜빡이지 않게) **(Claude 판단)**. `failed`인 날에 누른 읽기가 성공하면 상태가 `ready`(또는 `unconfirmed`)가 되어 실패 안내가 사라진다
+  - 아이콘(시안 v2 그대로): 날짜 줄 아래 안내 줄은 모든 상태(위 '안내 한 줄' 넷 포함)에서 글 앞에 `Icon info`(16, `text-muted`, `shrink-0`), [지금 불러오기] 단추는 글자 앞에 `Icon reload`(16, 글자색, 읽는 중에도 그대로)다. 두 이름은 지금 `src/components/common/Icon.tsx`에 없어 TASK-17이 `ICON_NAMES` 끝(`logout` 뒤)에 `info`·`reload`를 더한다(21개, tab-frame TASK-4의 `copy`·`userCheck`·ui-90의 `logout`과 같은 길). 그림은 시안 `docs/mockups/worklog/bitfill.html`의 `ICON_INFO`·`ICON_LOAD`(viewBox 24)를 16 칸으로 ×2/3 한 것(소수 둘째 자리, 점 `h.01`은 그대로)이고 속성은 다른 아이콘과 같다(viewBox `0 0 16 16`·`fill="none"`·`stroke="currentColor"`·선 1.5·`aria-hidden`):
+    - `info`: `<circle cx="8" cy="8" r="6" />` · `<path d="M8 7.33v3.67" />` · `<path d="M8 5h.01" />`
+    - `reload`: `<path d="M13.33 8a5.33 5.33 0 1 1-1.56-3.77" />` · `<path d="M13.33 2.67v3.33h-3.33" />`
+    - `Icon.tsx` 머리 주석에 그림 출처(`docs/mockups/worklog/bitfill.html`의 `ICON_INFO`·`ICON_LOAD`, ×2/3)를 더한다. `Icon.test.tsx`: 이름 목록·개수 시험은 이름에 AC-017.9를 더하고 기대를 "… logout 뒤에 info·reload를 더한 21개"로 바꾼다(지금 `NAMES`·`NEW_NAMES`는 그대로). 새 시험(AC-017.9): 시안에서 `ICON_INFO`·`ICON_LOAD`를 읽었다(시험 준비) · 두 이름의 속성·기본 16×16 · 안쪽 그림이 위 글자와 같다(×2/3 바꿈이 있어 기대 그림은 시험에 글자로 적는다) · 원소 종류·개수가 시안과 같다(circle·path·path / path·path) · 안쪽 원소에 색·style·글자가 없다 · 크기 12·14·16 · 머리 주석에 출처가 있다. 나머지 Icon 시험과 `classes.test.ts`는 고치지 않은 채 통과한다
+    - `docs/UI_GUIDE.md` '아이콘·로고' 줄: "19개(…·logout)" → "21개(…·logout·info·reload)"와 "`info`·`reload`는 업무일지 비트 안내 줄·[지금 불러오기]가 쓴다(worklog 비트 표시 시안 그림)" 한 마디만 더한다
+- 모양(TASK-17이 정한다, 화면 시험이 보는 것):
+
+```ts
+// src/components/worklog/useBitFill.ts
+export type BitFillStatus = 'off' | 'reading' | 'ready' | 'unconfirmed' | 'failed' | 'not-connected' | 'setup-needed'
+export function useBitFill(opts: { ymd: string; today: string; readOnly: boolean }): {
+  status: BitFillStatus
+  ymd: string                // 이 답의 날짜(요청 번호로 늦은 옛 답은 버린다)
+  values: BitValues
+  lastReadAt: Date | null    // 이 ymd의 마지막 성공 읽기가 끝난 때. 아직 없으면 null
+  reload(): void             // [지금 불러오기]. ready·unconfirmed·failed일 때만 읽고, 오늘이면 10분 타이머를 다시 건다
+}
+// src/components/worklog/BitNotice.tsx — 그리기만. 날짜 줄 아래 한 줄은 { status, lastReadAt, onReload } 를 받는다
+// (양식 아래 설명 줄·'다름' 목록과 같은 파일에서 나눠 내보내도 된다). 줄 앞 <Icon name="info" />, 단추 글자 앞 <Icon name="reload" />
+// src/components/common/Icon.tsx — ICON_NAMES = [...지금 19개(… 'logout'), 'info', 'reload'] (21개)
+```
+- **화면 시안이 먼저다**: 이 표시·목록·안내는 승인된 시안 v2에 없다 → TASK-17 전에 시안을 더해(예시 숫자) 사용자 OK를 받는다(CLAUDE.md 화면 규칙). **2026-11-05 사용자 OK(비트 표시 시안 v2, [지금 불러오기] 포함)** → `docs/mockups/worklog/bitfill.html`
 
 ### 20-6. 의원 PC 확인 (TASK-19, 코드 없음, Phase 4 배포 뒤)
 - 총괄이 지난 날 사흘(금액이 채워진 날 둘 + 금액이 '확인 필요'로 빈칸인 날 하나, 그런 날이 있으면)을 골라 **업무일지 화면(비트가 채운 칸)**·그날 엑셀 업무일지·비트 '외래환자경영통계'를 칸마다 견준다: 날짜별 신환·재진, 수납 나눔(현금·카드·계좌·미수입금), 총진료비, 조합청구액(= 공단부담인지), 그리고 미수발생·지역화폐가 비트에 따로 있는지
@@ -599,3 +639,4 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 | `src/components/claim/useBridge.ts` · `src/lib/bridge/*` · `src/types/revenue.ts` | 불러 쓰기만(고치지 않음) |
 | `src/lib/storage/worklogDays.ts` · `src/lib/worklog/autosave.ts` · `src/types/worklog.ts` · `src/components/worklog/*` | 이 명세 파일(Phase 1~3에서 만든 것)에 `bitFields`·표시 더하기 |
 | `supabase/migrations/` | 새 파일 `20261101000110_worklog_bit_fields.sql`(C2) |
+| `src/components/common/Icon.tsx` · `Icon.test.tsx` · `docs/UI_GUIDE.md` '아이콘·로고' 줄 | `ICON_NAMES` 끝에 `info`·`reload` 더하기(TASK-17, 20-5절). 다른 갈래가 같은 목록에 이름을 더했으면 합칠 때 목록·개수 시험·UI_GUIDE 개수를 함께 맞춘다 |
