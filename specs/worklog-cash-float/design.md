@@ -229,6 +229,7 @@ const guess: CashGuessMode = viewOnly ? { kind: 'none' }
   - `src/lib/storage/worklogDays.test.ts`: `SELECT` 상수(:28)에 새 12칸, 칸 차례 기대(:167)에 새 12칸, 읽은 모양 통째 기대 `toEqual({ day, bitFields, memoFontPt })` 아홉 곳(:176·:182~192·:199·:205·:523~526·:576·:582·:689·:719)에 `cash: emptyWorklogCash()`(:197의 모두 null 줄은 상수에서 만들어 그대로 빈 시재). 저장 쪽 기대는 하나도 바뀌지 않는다(TASK-3)
   - `src/components/worklog/useWorklogDay.test.tsx`: `serverDay` 부르기 기대 여섯 곳(:389·:581·:595·:609·:762·:875)에 여섯째 인자 `emptyWorklogCash()`(가짜 응답에 `cash`가 없음 → 빈 시재). `setCell`·`editBit` 돌려준 값 기대(:630·:707·:906)는 그대로(TASK-8)
   - `supabase/worklog.rls.test.ts`: `schemaSnapshot(added)`(:657)가 목록도 받게만 넓힌다. 0110·0200 묶음 기대는 그대로(TASK-2)
+- 타입 검사(tsc)만 깨지는 기존 시험 두 곳을 TASK-1이 고친다(기대 동작은 그대로, 2026-11-05 TASK-1 보고로 더함): `src/lib/worklog/memoFont.test.ts:32`의 `expectTypeOf<WorklogSavedDay>()` 모양에 `cash?: WorklogCash`를 더하고, `src/components/worklog/WorklogScreen.test.tsx:1742–1755`의 `Required<WorklogSavedDay>`를 `Required<Omit<WorklogSavedDay, 'cash'>>`로 바꾼다
 - **고치지 않은 채 통과해야 하는 것**(바뀌면 멈추고 보고한다):
   - `autosave.test.ts` 전부: 인자 수(:991·:1001·:1300·:1309·:1317), `save.mock.calls` 통째 배열(:1172~:1448), `serverDay`·`pendingDay` 통째 모양(:1086·:1133·:1218·:1336~1339·:1385~1395), `snapshot().blocked` 모양
   - `worklogSession.test.ts`(:77 인자 셋, 크기 다섯 인자 시험)

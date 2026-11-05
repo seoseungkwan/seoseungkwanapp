@@ -29,7 +29,7 @@
 - Phase: 1 · 혼자
 - AC: AC-1601.1, AC-1601.2, AC-1601.3, AC-1601.4, AC-1601.5, AC-1601.6, AC-1601.7, AC-1601.8
 - REQ: REQ-1601
-- Files: src/types/worklog.ts, src/lib/worklog/cashFloat.ts, src/lib/worklog/cashFloat.test.ts
+- Files: src/types/worklog.ts, src/lib/worklog/cashFloat.ts, src/lib/worklog/cashFloat.test.ts, src/lib/worklog/memoFont.test.ts, src/components/worklog/WorklogScreen.test.tsx
 - Tests: src/lib/worklog/cashFloat.test.ts
 - TDD: required — 순수 함수만(design.md '규칙'). `types/worklog.ts`에는 시재 상수·타입·`emptyWorklogCash`·`WORKLOG_CASH_COLUMNS`·`WorklogBlockedKey`를 더하고 `WorklogSavedDay`에 선택 칸 `cash?`만 더한다. 32칸·`WORKLOG_COLUMNS`·글씨 크기 상수는 그대로인지 시험이 본다. 시안의 예시 숫자(장수 [6,11,1,10,6,20,0,0] → 430,000, 있어야 할 돈 435,000, 비트 142,000)로 AC 예를 시험한다. AC-1601.8은 소스 글자에 React·supabase·`@/lib/storage`·`localStorage`·`console`·`fetch`가 없는지로 본다
 
