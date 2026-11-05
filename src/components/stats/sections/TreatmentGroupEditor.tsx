@@ -258,7 +258,7 @@ export function TreatmentGroupEditor({
           className={ds.input}
         />
         <div className={`${ds.layer} mt-1 overflow-clip`}>
-          <ul aria-label="찾은 처방" className="max-h-62 overflow-y-auto">
+          <ul aria-label="찾은 처방" className="max-h-62 list-none overflow-y-auto">
             {found.map((line) => {
               const owner = ownerOf(rows, line.code)
               const here = owner === index
@@ -320,7 +320,7 @@ export function TreatmentGroupEditor({
     <div>
       <p className="mt-2 max-w-182 text-small text-ink-2">{INTRO}</p>
 
-      <ol className="mt-4 border-t border-line">
+      <ol className="mt-4 list-none border-t border-line">
         {rows.map((group, index) => {
           const key = keys[index]
           const label = group.name.trim() || UNNAMED
@@ -354,7 +354,7 @@ export function TreatmentGroupEditor({
               {group.codes.length === 0 ? (
                 <p className={`${INDENT} mt-1 flex min-h-9 items-center text-small text-muted`}>{NO_CODES}</p>
               ) : (
-                <ul className={`${INDENT} mt-1`}>
+                <ul className={`${INDENT} mt-1 list-none`}>
                   {group.codes.map((code, at) => {
                     const name = shownName(code)
                     return (

@@ -610,6 +610,16 @@ describe('AC-1212.2: 휴대폰 모양(768px 미만)', () => {
     hasAll(within(groupAt(2)).getByText(NO_CODES), 'max-md:ml-0')
   })
 
+  // 화면 확인(TASK-17)에서 찾음: 앱에는 기본 초기화(Preflight)가 없어 목록 표시를 지우지 않으면 묶음 앞에 `1.`·`2.`가 쪽 왼쪽 밖으로 나온다(시안 ol·ul은 표시 없음)
+  it('AC-1215.1: 묶음 목록·묶음 안 처방 목록·찾은 처방 목록에 번호·점 표시가 없다(list-none)', async () => {
+    const user = userEvent.setup()
+    const { view } = draw()
+    await openAdder(user, 0)
+    const lists = [...view.container.querySelectorAll('ol, ul')]
+    expect(lists.length).toBeGreaterThanOrEqual(3)
+    for (const list of lists) hasAll(list, 'list-none')
+  })
+
   it('AC-1212.2: 상자 안 상자가 없다(목록 열림·저장 실패)', async () => {
     const user = userEvent.setup()
     draw({ saveFailed: true, catalogState: 'failed' })
