@@ -101,11 +101,11 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   // 비트 접속·등록(bit.check 단계 find·db·registration과 bit.register, design.md 4-5·9-1·9-3)
   'E-BIT-NOT-FOUND': {
     what: '이 PC에서 비트를 찾지 못했어요',
-    fix: '비트가 설치된 PC(C:\\DrBIT50)에서 이 화면을 열었는지 확인한 뒤 [다시 확인]을 눌러 주세요.',
+    fix: '비트가 설치된 PC(C:\\DrBIT50)에서 이 화면을 열었는지 확인한 뒤 다시 해 주세요.',
   },
   'E-BIT-DB-FAILED': {
     what: '비트 자료(DB)에 연결하지 못했어요',
-    fix: '비트를 켜서 로그인되는지 먼저 확인한 뒤 [다시 확인]을 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    fix: '비트를 켜서 로그인되는지 먼저 확인한 뒤 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
   'E-BIT-READ-FAILED': {
     what: '비트 자료를 읽지 못했어요',
@@ -113,7 +113,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   },
   'E-BIT-NOT-REGISTERED': {
     what: '이 PC에 등록한 의원이 없어요',
-    fix: '[처음 등록]을 눌러 비트에 로그인하고, 이 PC에 뜨는 확인 창에서 [확인]을 눌러 주세요.',
+    fix: '비트 PC 연결 화면에서 [처음 등록]을 눌러 비트에 로그인하고, 이 PC에 뜨는 확인 창에서 [확인]을 눌러 주세요.',
   },
   'E-BIT-HOSPITAL-MISMATCH': {
     what: '이 PC의 비트가 등록한 의원과 달라요',

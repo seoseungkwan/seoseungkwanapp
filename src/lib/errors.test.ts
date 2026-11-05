@@ -348,6 +348,18 @@ describe('AC-609.5 환자 탭 오류 번호 문구', () => {
       fix: '비트 통계 화면의 칸 설정을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
     })
   })
+
+  it('AC-609.5: 이 명세가 더하는 E-PATIENTS- 번호는 이 다섯뿐이다(규칙 C3)', () => {
+    const added = Object.keys(ERRORS).filter((code) => code.startsWith('E-PATIENTS-'))
+    expect(added.sort()).toEqual([...PATIENTS_CODES].sort())
+  })
+
+  it.each(['E-SETTINGS-FAILED', 'E-COUNTS-FAILED', 'E-BIT-EXPORT-FAILED'])(
+    'AC-609.5: %s는 precheck 명세가 더한 번호로 b2bc3cf를 합쳐 들어와 있다',
+    (code) => {
+      expect(isErrorCode(code)).toBe(true)
+    },
+  )
 })
 
 // 비트 PC 연결 화면과 환자 탭에 함께 뜨는 번호. 두 화면의 단추가 달라([다시 확인]·[다시 불러오기]) 단추 이름을 말하지 않는다
@@ -385,6 +397,37 @@ describe('AC-609.6 두 화면에 함께 뜨는 오류 문구', () => {
     expect(blank).toBeGreaterThanOrEqual(0)
     expect(register).toBeGreaterThan(blank)
     expect(contact).toBeGreaterThan(register)
+  })
+})
+
+// 비트 PC 연결 화면·청구·통계·매출·대시보드·환자 탭에 함께 뜨는 비트 접속·등록 번호. 곁의 단추가 화면마다 달라
+// NOT-FOUND·DB-FAILED는 단추 이름을 말하지 않고, NOT-REGISTERED는 [처음 등록]이 있는 화면 이름을 함께 말한다
+describe('AC-609.7 여러 화면에 함께 뜨는 비트 접속·등록 오류 문구', () => {
+  it('AC-609.7: E-BIT-NOT-FOUND는 무엇이는 그대로, 어떻게 고치나는 정해 둔 글이고 단추 이름을 말하지 않는다', () => {
+    const info = errorInfo('E-BIT-NOT-FOUND')
+    expect(info).toEqual({
+      what: '이 PC에서 비트를 찾지 못했어요',
+      fix: '비트가 설치된 PC(C:\\DrBIT50)에서 이 화면을 열었는지 확인한 뒤 다시 해 주세요.',
+    })
+    expect(info.fix).not.toContain('[')
+  })
+
+  it('AC-609.7: E-BIT-DB-FAILED는 무엇이는 그대로, 어떻게 고치나는 정해 둔 글이고 단추 이름을 말하지 않는다', () => {
+    const info = errorInfo('E-BIT-DB-FAILED')
+    expect(info).toEqual({
+      what: '비트 자료(DB)에 연결하지 못했어요',
+      fix: '비트를 켜서 로그인되는지 먼저 확인한 뒤 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+    expect(info.fix).not.toContain('[')
+  })
+
+  it('AC-609.7: E-BIT-NOT-REGISTERED는 무엇이는 그대로, 어떻게 고치나는 [처음 등록]이 있는 비트 PC 연결 화면을 함께 말한다', () => {
+    const info = errorInfo('E-BIT-NOT-REGISTERED')
+    expect(info).toEqual({
+      what: '이 PC에 등록한 의원이 없어요',
+      fix: '비트 PC 연결 화면에서 [처음 등록]을 눌러 비트에 로그인하고, 이 PC에 뜨는 확인 창에서 [확인]을 눌러 주세요.',
+    })
+    expect(info.fix).toContain('비트 PC 연결 화면에서 [처음 등록]')
   })
 })
 
