@@ -105,7 +105,7 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(page, '.top-status > span.conn')).toBe('연결됨')
     expect(shapeOf(top?.querySelector('.title-block'))).toEqual(['h1.top-title', 'p.asof'])
     expect(textOf(page, '.title-block > h1.top-title')).toBe('접수 현황')
-    expect(textOf(page, '.title-block > p.asof')).toBe('13:42:10 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(page, '.title-block > p.asof')).toBe('13:42:10 기준 · 5초마다 저절로 바뀌어요')
 
     const picker = page.querySelector('.picker')
     expect(shapeOf(picker)).toEqual(['button.queue', 'div.tiles'])
@@ -135,6 +135,26 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
     // 문서 제목은 건드리지 않는다(AC-1407.5)
     expect(document.title).toBe('')
+  })
+
+  it('AC-1407.1: 머리 글 "HH:MM:SS 기준 · N초마다 저절로 바뀌어요"의 N은 받은 답의 every다(지금 5, PC가 바꾸면 그 값). 다시 그리면 새 every로 바뀐다', () => {
+    const app = appHost()
+    view.renderBoard(app, fx.mockupBoard())
+    expect(fx.mockupBoard().every).toBe(5)
+    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 5초마다 저절로 바뀌어요')
+    view.renderBoard(app, { ...fx.mockupBoard('13:42:13'), every: 3 })
+    expect(textOf(app, 'p.asof')).toBe('13:42:13 기준 · 3초마다 저절로 바뀌어요')
+    view.renderBoard(app, { ...fx.mockupBoard('13:43:13'), every: 60 })
+    expect(textOf(app, 'p.asof')).toBe('13:43:13 기준 · 60초마다 저절로 바뀌어요')
+  })
+
+  it('AC-1407.1: every가 숫자가 아닌 판을 받아도 간격 숫자를 지어내지 않는다(화면의 간격 숫자는 poll.js 기본값 하나, AC-1403.9)', () => {
+    const app = appHost()
+    for (const every of [undefined, null, '5', '<b>5</b>', 0, 2.5]) {
+      view.renderBoard(app, { ...fx.mockupBoard(), every } as unknown as FakeBoard)
+      expect(textOf(app, 'p.asof'), String(every)).toBe('13:42:10 기준 · 저절로 바뀌어요')
+    }
+    expect(app.querySelector('b')).toBeNull()
   })
 
   it('AC-1407.1: 칸을 고르면 그 칸만 aria-pressed="true"이고 칸 제목·줄이 그 칸 것이다(진료대기·진료보류·수납대기·수납완료)', () => {
@@ -198,7 +218,7 @@ describe('board.js 목록 그리기', () => {
     expect(second).toBe(first)
     expect(app.children.length).toBe(1)
     expect(second.querySelector('main.list > .rows')).toBe(rows)
-    expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 5초마다 저절로 바뀌어요')
     expect(textOf(app, '.queue-count')).toBe('1명')
     expect(textsOf(app, '.tile-count')).toEqual(['1', '0', '0', '0'])
     expect(namesOf(app)).toEqual(['가상환자11'])
@@ -278,7 +298,7 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(row, '.memo')).toBe(`메모 · ${memo}`)
     expect(textOf(row, '.rx-text')).toBe(rx)
     expect(textOf(row, '.rx-label')).toBe('<u>오늘</u>')
-    expect(textOf(app, 'p.asof')).toBe('<b>13:42:10</b> 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('<b>13:42:10</b> 기준 · 5초마다 저절로 바뀌어요')
     expect(app.querySelector('b, i, u, script, img:not(.logo)')).toBeNull()
   })
 
@@ -440,10 +460,10 @@ describe('board.js 목록 그리기', () => {
     vi.setSystemTime(new Date('2026-11-05T08:01:02+09:00'))
     const app = appHost()
     view.renderBoard(app, fx.boardOf({}, '13:42:10'))
-    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 5초마다 저절로 바뀌어요')
     vi.setSystemTime(new Date('2026-11-05T08:01:05+09:00'))
     view.renderBoard(app, fx.boardOf({}, '13:42:10'))
-    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 5초마다 저절로 바뀌어요')
     expect(app.textContent).not.toMatch(/08:01/)
     // 빈 판: 칸 제목은 있고 줄은 없다(지어낸 글 없음)
     expect(textOf(app, '.queue-count')).toBe('0명')

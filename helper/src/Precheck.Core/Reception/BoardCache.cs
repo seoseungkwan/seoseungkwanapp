@@ -33,15 +33,15 @@ public sealed class BoardResult
 /// 비트 읽기 캐시(design.md 3절, REQ-1403). 날 줄(BoardInput)만 들고, 화면 JSON은 요청마다 BoardBuilder가 만든다.
 /// 요청이 와야만 읽는다(타이머 없음, AC-1403.3). 읽기는 한 번에 하나이고 나머지 요청은 그 결과를 함께 기다린다(최대 9초, AC-1403.2·AC-1403.8).
 /// 읽기마다 등록 확인 관문(HospitalGate)을 지나고, 막히거나 실패하면 볼 수 없음이다(AC-1403.5).
-/// - 마지막 읽기가 끝난 지 8초 안이면 그 날 줄(AC-1403.2). fresh는 이 8초 묶음만 건너뛰고, 끝난 지 2초 안이면 그 결과(AC-1403.8).
+/// - 마지막 읽기가 끝난 지 묶음 시간(ReceptionTiming.CacheSeconds) 안이면 그 날 줄(AC-1403.2). fresh는 이 묶음만 건너뛰고, 끝난 지 2초 안이면 그 결과(AC-1403.8).
 /// - 걸린 시간 d가 3초를 넘으면 끝난 때부터 min(3d, 60초) 동안 다시 읽지 않고 그 날 줄을 준다(AC-1403.4).
 /// - 실패하면 앞서 읽은 날 줄을 버리고, 끝난 때부터 10초(3배 쉼이 더 길면 그것) 동안 다시 읽지 않고 볼 수 없음(AC-1403.5).
 /// - 날이 바뀌면 앞 날 줄을 주지 않고 새 날을 읽으며, 이름표도 다시 읽는다(AC-1403.6·AC-1403.7).
 /// </summary>
 public sealed class BoardCache
 {
-    /// <summary>이만큼 안의 날 줄은 다시 읽지 않는다(AC-1403.2).</summary>
-    public static readonly TimeSpan Batch = TimeSpan.FromSeconds(8);
+    /// <summary>이만큼 안의 날 줄은 다시 읽지 않는다(AC-1403.2). 값은 간격 한 곳 ReceptionTiming.CacheSeconds(AC-1403.9).</summary>
+    public static readonly TimeSpan Batch = TimeSpan.FromSeconds(ReceptionTiming.CacheSeconds);
 
     /// <summary>fresh라도 마지막 읽기가 끝난 지 이만큼 안이면 그 결과(AC-1403.8).</summary>
     public static readonly TimeSpan FreshRecent = TimeSpan.FromSeconds(2);

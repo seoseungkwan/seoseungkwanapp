@@ -6,7 +6,7 @@
 //   Origin 머리는 브라우저가 붙인다(같은 곳 방식). 쿠키는 보내지 않고 되돌림(redirect)은 따라가지 않는다
 //
 // 쓰는 법
-//   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, counts, lists }
+//   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists }
 //   getHistory(k, from, { signal })  → GET /api/visit/{k}/history?from=N 답 { visits, next, more, first, total, todaySym }
 //   setXray(k, on, { signal })       → POST /api/xray { k, on } → 204
 //   실패는 모두 ApiError이고 reason은 'network'·'timeout'·'status'·'shape'·'aborted'·'input'(묻지 않음) 중 하나다
@@ -29,6 +29,9 @@ const AT = /^\d\d:\d\d:\d\d$/
 
 /** 찍음 표시 시각 "HH:MM" */
 const MARK_AT = /^\d\d:\d\d$/
+
+/** PC가 정한 저절로 다시 읽는 간격 every(초)가 들어야 할 범위 (AC-1407.4). 간격 자체는 PC 한 곳(ReceptionTiming)이 정한다 */
+const EVERY_RANGE = { min: 2, max: 60 }
 
 const MESSAGES = {
   network: '접수 현황 PC에 연결하지 못했어요',
@@ -55,7 +58,7 @@ function request(signal, extra) {
 
 /**
  * 접수 현황 판을 읽는다.
- * @param {{ fresh?: boolean, signal?: AbortSignal }} [options] fresh가 true면 도우미의 8초 묶음을 건너뛴다(AC-1407.10)
+ * @param {{ fresh?: boolean, signal?: AbortSignal }} [options] fresh가 true면 도우미의 묶음 시간을 건너뛴다(AC-1407.10)
  */
 export function getBoard({ fresh = false, signal } = {}) {
   return within(signal, async (inner) => {
@@ -155,8 +158,14 @@ function isKey(k) {
 /** GET /api/board 200 모양 (design.md 4절, BoardModel.cs ToJson) */
 function isBoard(b) {
   if (!isObject(b) || b.state !== 'ok' || typeof b.at !== 'string' || !AT.test(b.at)) return false
+  if (!isEvery(b.every)) return false
   if (!isObject(b.counts) || !isObject(b.lists)) return false
   return LISTS.every((name) => isCount(b.counts[name]) && Array.isArray(b.lists[name]) && b.lists[name].every(isRow))
+}
+
+/** 읽기 간격(초): 2~60 정수. 없거나 그 밖이면 모양이 틀린 답이다 (AC-1407.4) */
+function isEvery(n) {
+  return Number.isSafeInteger(n) && n >= EVERY_RANGE.min && n <= EVERY_RANGE.max
 }
 
 function isRow(r) {

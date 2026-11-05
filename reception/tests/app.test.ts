@@ -275,7 +275,7 @@ describe('app.js 열기와 목록 (폰)', () => {
     expect(app.querySelector('.page.board')).not.toBeNull()
     expect(textOf(app, 'header.top .top-title')).toBe('접수 현황')
     expect(textOf(app, 'header.top .conn')).toBe('연결됨')
-    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 5초마다 저절로 바뀌어요')
     expect(labelOf(refreshButton())).toBe('새로 고침')
     const queue = app.querySelector('.picker > button.queue')!
     expect(queue.getAttribute('aria-pressed')).toBe('true')
@@ -293,7 +293,7 @@ describe('app.js 열기와 목록 (폰)', () => {
     expect(pane()).toBeNull()
   })
 
-  it('AC-1407.3: 10초마다 다시 읽어 그리고 고른 칸(수납완료)은 그대로다', async () => {
+  it('AC-1407.3: 답의 every초(지금 5초)마다 다시 읽어 그리고 고른 칸(수납완료)은 그대로다', async () => {
     const app = await open()
     tile('수납완료').click()
     expect(textOf(app, 'h2.list-heading')).toBe('수납완료 환자 · 최근 순')
@@ -303,15 +303,15 @@ describe('app.js 열기와 목록 (폰)', () => {
     next.lists.done = next.lists.done.slice(0, 1)
     next.counts.done = 1
     server.board = next
-    await wait(9998)
+    await wait(4998)
     expect(boardReads().length).toBe(1)
     await wait(2)
     expect(boardReads()).toEqual(['/api/board', '/api/board'])
-    expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 5초마다 저절로 바뀌어요')
     expect([...app.querySelectorAll('.tiles > button.tile')].map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'true'])
     expect(textOf(app, 'h2.list-heading')).toBe('수납완료 환자 · 최근 순')
     expect(rowNames()).toEqual(['가상환자08'])
-    await wait(10000)
+    await wait(5000)
     expect(boardReads().length).toBe(3)
   })
 
@@ -360,13 +360,13 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(textOf(page, 'p.end-note')).toContain('모두 37번 왔어요')
     expect(textOf(page, 'a.back')).toBe('접수 현황')
 
-    // 10초 뒤 다시 읽으면 오늘 카드와 머리만 바뀌고 지난 진료는 다시 읽지 않는다
+    // 5초 뒤 다시 읽으면 오늘 카드와 머리만 바뀌고 지난 진료는 다시 읽지 않는다
     const next = fx.mockupBoard('13:42:20')
     const moved = next.lists.wait[1]!
     next.lists.wait.splice(1, 1)
     next.lists.hold.push({ ...moved, lane: 'hold', laneLabel: '진료보류', memo: '엑스레이 찍으러 감', waited: '보류 1분째', xray: { at: null } })
     server.board = fx.boardOf({ wait: next.lists.wait, hold: next.lists.hold, pay: next.lists.pay, done: next.lists.done }, '13:42:20')
-    await wait(10000)
+    await wait(5000)
     expect(boardReads().length).toBe(2)
     expect(historyReads().length).toBe(1)
     expect(detailPage()).toBe(page)
@@ -415,7 +415,7 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(textOf(detailPage(), '.patient .detail-name')).toBe('가상환자03')
     const next = fx.mockupBoard('13:42:20')
     server.board = fx.boardOf({ wait: next.lists.wait.filter((r) => r.k !== fx.fakeKey(3)), hold: next.lists.hold, pay: next.lists.pay, done: next.lists.done }, '13:42:20')
-    await wait(10000)
+    await wait(5000)
     expect(detailPage()).toBeNull()
     expect(rowNames()).toEqual(['가상환자01', '가상환자04', '가상환자05', '가상환자02'])
     expect(window.location.hash).not.toContain(fx.fakeKey(3))
@@ -450,10 +450,10 @@ describe('app.js 태블릿 두 칸', () => {
 
     const reads = historyReads().length
     server.board = fx.mockupBoard('13:42:20')
-    await wait(10000)
+    await wait(5000)
     expect(boardReads().length).toBe(2)
     expect(historyReads().length).toBe(reads)
-    expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 5초마다 저절로 바뀌어요')
     expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자02')
     expect(pane()!.querySelectorAll('.visits > section.visit').length).toBe(25)
 
@@ -476,7 +476,7 @@ describe('app.js 태블릿 두 칸', () => {
     expect(textsOf(pane()!, ':scope > *')).toEqual([FOOT])
 
     server.board = fx.mockupBoard('13:40:10')
-    await wait(10000)
+    await wait(5000)
     expect(historyReads()).toEqual([`/api/visit/${fx.fakeKey(1)}/history?from=0`])
     expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자01')
   })
@@ -505,9 +505,9 @@ describe('app.js 태블릿 두 칸', () => {
 })
 
 describe('app.js [새로 고침]', () => {
-  it('AC-1407.10: [새로 고침]을 누르면 GET /api/board?fresh=1 하나를 읽는 동안 "읽는 중…"(disabled)이고 더 눌러도 요청이 늘지 않는다. 끝나면 기준 시각이 답의 at으로 바뀌고 다음 저절로 읽기는 그때부터 10초 뒤다', async () => {
+  it('AC-1407.10: [새로 고침]을 누르면 GET /api/board?fresh=1 하나를 읽는 동안 "읽는 중…"(disabled)이고 더 눌러도 요청이 늘지 않는다. 끝나면 기준 시각이 답의 at으로 바뀌고 다음 저절로 읽기는 그때부터 every초(5초) 뒤다', async () => {
     const app = await open()
-    await wait(4000)
+    await wait(3000)
     server.board = fx.mockupBoard('13:42:14')
     const fresh = hold('/api/board?fresh=1')
     refreshButton()!.click()
@@ -519,14 +519,14 @@ describe('app.js [새로 고침]', () => {
     refreshButton()!.click()
     await wait(2000)
     expect(boardReads()).toEqual(['/api/board', '/api/board?fresh=1'])
-    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(app, 'p.asof')).toBe('13:42:10 기준 · 5초마다 저절로 바뀌어요')
 
     fresh.answer()
     await settle()
     expect(refreshButton()!.disabled).toBe(false)
     expect(labelOf(refreshButton())).toBe('새로 고침')
-    expect(textOf(app, 'p.asof')).toBe('13:42:14 기준 · 10초마다 저절로 바뀌어요')
-    await wait(9997)
+    expect(textOf(app, 'p.asof')).toBe('13:42:14 기준 · 5초마다 저절로 바뀌어요')
+    await wait(4997)
     expect(boardReads().length).toBe(2)
     await wait(3)
     expect(boardReads()).toEqual(['/api/board', '/api/board?fresh=1', '/api/board'])
@@ -535,7 +535,7 @@ describe('app.js [새로 고침]', () => {
   it('AC-1407.10: 저절로 읽기가 도는 중에 누르면 그것이 끝난 뒤 바로 fresh 읽기를 한 번 한다. 그 읽기가 실패하면 끊김 화면이고 거기에는 [새로 고침]이 없다', async () => {
     await open()
     const plain = hold('/api/board')
-    await wait(10000)
+    await wait(5000)
     expect(plain.asked()).toBe(true)
     refreshButton()!.click()
     await settle()
@@ -547,7 +547,7 @@ describe('app.js [새로 고침]', () => {
     await settle()
     expect(boardReads()).toEqual(['/api/board', '/api/board', '/api/board?fresh=1'])
     // 도는 읽기는 그렸지만 fresh 읽기가 남아 단추는 아직 "읽는 중…"이다
-    expect(textOf(appEl(), 'p.asof')).toBe('13:42:20 기준 · 10초마다 저절로 바뀌어요')
+    expect(textOf(appEl(), 'p.asof')).toBe('13:42:20 기준 · 5초마다 저절로 바뀌어요')
     expect(refreshButton()!.disabled).toBe(true)
     expect(labelOf(refreshButton())).toBe('읽는 중…')
     fresh.fail()
@@ -567,7 +567,7 @@ describe('app.js 새 접수 알림', () => {
     const base = fx.mockupBoard('13:42:20')
     const movedRow = base.lists.wait[2]!
     server.board = fx.boardOf({ wait: base.lists.wait.slice(0, 2), hold: base.lists.hold, pay: [...base.lists.pay, movedRow], done: base.lists.done }, '13:42:20')
-    await wait(10000)
+    await wait(5000)
     expect(boardReads().length).toBe(2)
     expect(vibrate).not.toHaveBeenCalled()
 
@@ -575,20 +575,20 @@ describe('app.js 새 접수 알림', () => {
     const fresh1 = fx.fakeRow({ k: fx.fakeKey(10), chart: '910111', name: '가상환자10', time: '13:41 접수', waited: '방금 접수' })
     const fresh2 = fx.fakeRow({ k: fx.fakeKey(11), chart: '910112', name: '가상환자11', time: '13:42 접수', waited: '방금 접수' })
     server.board = fx.boardOf({ wait: [...base.lists.wait.slice(0, 2), fresh1, fresh2], hold: base.lists.hold, pay: [...base.lists.pay, movedRow], done: base.lists.done }, '13:42:30')
-    await wait(10000)
+    await wait(5000)
     expect(vibrate).toHaveBeenCalledTimes(1)
     expect(vibrate).toHaveBeenLastCalledWith([200, 100, 200])
     expect(rowNames()).toContain('가상환자10')
-    await wait(10000)
+    await wait(5000)
     expect(vibrate).toHaveBeenCalledTimes(1)
 
     // 끊김 뒤 첫 읽기: 새 열쇠가 있어도 알리지 않는다
     failNext()
-    await wait(10000)
+    await wait(5000)
     expect(textOf(appEl(), '.off-heading')).toBe(OFFLINE)
     const fresh3 = fx.fakeRow({ k: fx.fakeKey(12), chart: '910113', name: '가상환자12', time: '13:43 접수' })
     server.board = fx.boardOf({ wait: [fresh3], hold: [], pay: [], done: [] }, '13:43:00')
-    await wait(10000)
+    await wait(5000)
     expect(rowNames()).toEqual(['가상환자12'])
     expect(vibrate).toHaveBeenCalledTimes(1)
 
@@ -604,18 +604,18 @@ describe('app.js 새 접수 알림', () => {
 })
 
 describe('app.js 끊김', () => {
-  it('AC-1407.4: 읽기에 처음 실패하면 그 자리에서 환자 줄·상세를 모두 지우고 연결 끊김 화면("마지막 연결 HH:MM")을 보인다. 10초 뒤 다시 읽어 성공하면 목록으로 돌아온다(폰 상세를 보던 중이어도 목록)', async () => {
+  it('AC-1407.4: 읽기에 처음 실패하면 그 자리에서 환자 줄·상세를 모두 지우고 연결 끊김 화면("마지막 연결 HH:MM")을 보인다. 마지막으로 받은 every초(5초) 뒤 다시 읽어 성공하면 목록으로 돌아온다(폰 상세를 보던 중이어도 목록)', async () => {
     const app = await open({ hash: `#/v/${fx.fakeKey(2)}` })
     expect(detailPage()).not.toBeNull()
     failNext()
-    await wait(10000)
+    await wait(5000)
     expect(textOf(app, '.off-heading')).toBe(OFFLINE)
-    expect(textOf(app, '.off-status')).toBe('10초마다 다시 확인하는 중 · 마지막 연결 13:42')
+    expect(textOf(app, '.off-status')).toBe('5초마다 다시 확인하는 중 · 마지막 연결 13:42')
     expect(refreshButton()).toBeNull()
     expectNoPatient()
     expect(document.title).toBe(TITLE)
 
-    await wait(10000)
+    await wait(5000)
     expect(boardReads().length).toBe(3)
     expect(detailPage()).toBeNull()
     expect(app.querySelector('.page.board')).not.toBeNull()
@@ -628,7 +628,7 @@ describe('app.js 숨김·다시 보임', () => {
   it('AC-1407.11: 숨기면(visibilitychange hidden) 그 자리에서 환자 글이 사라지고 고리가 멈춘다. 읽는 중에 숨겨도 늦은 답을 그리지 않고 다음 읽기도 없다', async () => {
     await open()
     const late = hold('/api/board')
-    await wait(10000)
+    await wait(5000)
     expect(late.asked()).toBe(true)
     hide()
     expect(textOf(appEl(), '.off-lead')).toBe(LOADING)
@@ -662,7 +662,7 @@ describe('app.js 숨김·다시 보임', () => {
     await settle()
     expect(detailPage()).toBeNull()
     const plain = hold('/api/board')
-    await wait(10000)
+    await wait(5000)
     expect(plain.asked()).toBe(true)
     const before = boardReads().length
     refreshButton()!.click()
@@ -738,10 +738,10 @@ describe('app.js 같은 곳만 (끝까지)', () => {
     show('pageshow')
     await settle()
     failNext()
-    await wait(10000)
+    await wait(5000)
     titles.push(document.title)
     expectSamePcLinks()
-    await wait(10000)
+    await wait(5000)
     expect(app.querySelector('.page.board')).not.toBeNull()
     titles.push(document.title)
 

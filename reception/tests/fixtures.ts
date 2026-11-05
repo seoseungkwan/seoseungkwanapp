@@ -30,11 +30,16 @@ export interface FakeRow {
 export interface FakeBoard {
   state: 'ok'
   at: string
+  /** 화면이 저절로 다시 읽는 간격(초). 도우미 ReceptionTiming.PollSeconds (AC-1403.9) */
+  every: number
   counts: Record<FakeList, number>
   lists: Record<FakeList, FakeRow[]>
 }
 
 const LANE_LABEL: Record<FakeLane, string> = { wait: '진료대기', hold: '진료보류', pay: '수납대기', done: '수납완료' }
+
+/** 도우미가 지금 보내는 읽기 간격(초): ReceptionTiming.PollSeconds (AC-1403.9, 사용자 결정 2026-11-05) */
+export const FAKE_EVERY = 5
 
 /** 화면용 열쇠 모양(16자리 소문자 16진수). n이 같으면 같은 열쇠 */
 export function fakeKey(n: number): string {
@@ -70,7 +75,8 @@ function timeOf(row: FakeRow): string {
 
 /**
  * 칸 넷의 줄로 한 판을 만든다(도우미 BoardBuilder와 같은 규칙): 진료 순서 = 진료대기 + 진료보류를 접수 빠른 순으로 잇고
- * 순서 번호(pos)를 1부터 붙인다. 칸 넷의 줄은 pos가 null이다. 건수는 각 목록의 길이다. 칸 넷의 줄 차례는 받은 그대로다
+ * 순서 번호(pos)를 1부터 붙인다. 칸 넷의 줄은 pos가 null이다. 건수는 각 목록의 길이다. 칸 넷의 줄 차례는 받은 그대로다.
+ * 읽기 간격 every는 도우미의 지금 값(FAKE_EVERY)이다
  */
 export function boardOf(lanes: Partial<Record<FakeLane, FakeRow[]>> = {}, at = '13:42:10'): FakeBoard {
   const pick = (lane: FakeLane) => (lanes[lane] ?? []).map((row) => ({ ...row, lane, laneLabel: LANE_LABEL[lane], pos: null }))
@@ -85,6 +91,7 @@ export function boardOf(lanes: Partial<Record<FakeLane, FakeRow[]>> = {}, at = '
   return {
     state: 'ok',
     at,
+    every: FAKE_EVERY,
     counts: { queue: queue.length, wait: wait.length, hold: hold.length, pay: pay.length, done: done.length },
     lists: { queue, wait, hold, pay, done },
   }

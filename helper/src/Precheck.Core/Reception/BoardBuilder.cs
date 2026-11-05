@@ -27,7 +27,8 @@ public static class BoardBuilder
 
     /// <summary>
     /// 한 판을 만든다. map·hiddenRsu는 ReceptionMap.Statuses·HiddenRsu(시험은 가짜), marks는 XrayMarks.Today()(내원번호 → "HH:MM"),
-    /// keys는 그날 열쇠표(input.Day로 부른다), now는 기다린 분과 만 나이의 기준 시각이다. "at"은 input.ReadAt이다.
+    /// keys는 그날 열쇠표(input.Day로 부른다), now는 기다린 분과 만 나이의 기준 시각이다. "at"은 input.ReadAt이고,
+    /// "every"(화면이 저절로 다시 읽는 간격)는 판마다 같은 ReceptionTiming.PollSeconds라 Board.ToJson이 쓴다(AC-1403.9).
     /// </summary>
     public static Board Build(
         BoardInput input,

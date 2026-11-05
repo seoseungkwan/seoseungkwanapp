@@ -375,7 +375,7 @@ describe('alert.js 첫 읽기는 기준', () => {
       return { alert, poll }
     }
 
-    it('AC-1408.2: 처음 열기·끊김에서 돌아옴·숨겼다 다시 보임의 첫 읽기는 알리지 않고, 그다음 10초 읽기의 새 접수는 알린다', async () => {
+    it('AC-1408.2: 처음 열기·끊김에서 돌아옴·숨겼다 다시 보임의 첫 읽기는 알리지 않고, 그다음 저절로 읽기(every초, 지금 5초)의 새 접수는 알린다', async () => {
       const nav = galaxy()
       const { poll } = phone({ navigator: nav })
       server = plus(10)
@@ -384,10 +384,10 @@ describe('alert.js 첫 읽기는 기준', () => {
       expect(nav.vibrate).not.toHaveBeenCalled() // 처음 열기
 
       failing = true
-      await vi.advanceTimersByTimeAsync(10000) // 끊김
+      await vi.advanceTimersByTimeAsync(5000) // 끊김
       server = plus(10, 11)
       failing = false
-      await vi.advanceTimersByTimeAsync(10000) // 돌아온 첫 읽기
+      await vi.advanceTimersByTimeAsync(5000) // 돌아온 첫 읽기
       expect(nav.vibrate).not.toHaveBeenCalled()
 
       poll.pause() // 숨김
@@ -397,7 +397,7 @@ describe('alert.js 첫 읽기는 기준', () => {
       expect(nav.vibrate).not.toHaveBeenCalled()
 
       server = plus(10, 11, 12, 13)
-      await vi.advanceTimersByTimeAsync(10000)
+      await vi.advanceTimersByTimeAsync(5000)
       expect(nav.vibrate).toHaveBeenCalledTimes(1)
     })
   })
@@ -552,7 +552,7 @@ describe('alert.js 첫 누름에 소리 열기', () => {
   it('AC-1408.4: 소리 열기·알림은 화면에 새 글이나 마디를 더하지 않는다', () => {
     const host = document.createElement('div')
     host.id = 'app'
-    host.textContent = '13:42:10 기준 · 10초마다 저절로 바뀌어요'
+    host.textContent = '13:42:10 기준 · 5초마다 저절로 바뀌어요'
     document.body.appendChild(host)
     const snapshot = document.body.innerHTML
     const phone = iphone()
@@ -579,7 +579,7 @@ describe('alert.js 진짜 기기 (의원 PC)', () => {
     vi.useFakeTimers()
   })
 
-  it('AC-1408.5 (가짜 기기로 볼 수 있는 것만 — 진짜 갤럭시 떨기·아이폰 소리·무음 스위치는 의원 PC 확인): 두 기기를 열어 두고 한 번 누른 뒤 새 접수가 들어오면 다음 10초 읽기 안에 갤럭시 모양은 떨고 아이폰 모양은 삐가 난다', async () => {
+  it('AC-1408.5 (가짜 기기로 볼 수 있는 것만 — 진짜 갤럭시 떨기·아이폰 소리·무음 스위치는 의원 PC 확인): 두 기기를 열어 두고 한 번 누른 뒤 새 접수가 들어오면 다음 저절로 읽기(every초, 지금 5초) 안에 갤럭시 모양은 떨고 아이폰 모양은 삐가 난다', async () => {
     let server = BASE
     vi.stubGlobal(
       'fetch',
@@ -603,7 +603,7 @@ describe('alert.js 진짜 기기 (의원 PC)', () => {
     ios.tap() // 직원이 화면을 한 번 누름
 
     server = plus(10) // 비트에 새 접수
-    await vi.advanceTimersByTimeAsync(9999)
+    await vi.advanceTimersByTimeAsync(4999)
     expect(nav.vibrate).not.toHaveBeenCalled()
     expect(beeps(ios.made[0])).toEqual([])
     await vi.advanceTimersByTimeAsync(1)

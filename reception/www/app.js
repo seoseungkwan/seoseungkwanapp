@@ -1,5 +1,5 @@
 // 잇기 (design.md 10절). 다른 화면 파일을 이어 접수 현황 화면 하나로 만든다. 도우미에는 api.js로만 묻는다(같은 PC의 /api/…, AC-1413.2)
-// - 읽기 고리(poll.js)가 10초마다 판을 읽으면 그린다: 폰은 목록 또는 상세(해시 길 #/v/{열쇠}), 태블릿은 목록 + 오른쪽 고른 환자(layout.js)
+// - 읽기 고리(poll.js)가 답의 every초마다 판을 읽으면 그린다: 폰은 목록 또는 상세(해시 길 #/v/{열쇠}), 태블릿은 목록 + 오른쪽 고른 환자(layout.js)
 // - 새 접수 알림(alert.js)은 읽기마다 판을 견준다. 처음·끊김 뒤·다시 보인 뒤 첫 읽기(info.first)는 알리지 않는다(AC-1408.1·1408.2)
 // - [새로 고침]은 poll.refreshNow(), 읽는 동안 단추는 "읽는 중…"(AC-1407.10). [X-ray 완료]는 xray.js가 표시 뒤 poll.readNow()로 다시 읽는다
 // - 숨김(visibilitychange hidden·pagehide)은 poll.pause(): 환자 글을 그 자리에서 지우고 늦은 답을 버린다. 다시 보임(visible·pageshow)은 poll.resume()

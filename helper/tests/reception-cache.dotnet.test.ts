@@ -28,7 +28,7 @@ function expectAc(ac: string) {
 }
 
 describe('REQ-1403 비트 읽기 묶음·캐시 (C# Precheck.Core.Tests.Reception.Cache)', () => {
-  it('AC-1403.2 마지막 읽기가 끝난 지 8초 안이면 다시 읽지 않고 같은 날 줄, 여러 요청이 한꺼번에 와도 읽기(등록 확인·연결 포함)는 한 번', () => {
+  it('AC-1403.2 마지막 읽기가 끝난 지 묶음 시간(ReceptionTiming.CacheSeconds, 4초) 안이면 다시 읽지 않고 같은 날 줄, 여러 요청이 한꺼번에 와도 읽기(등록 확인·연결 포함)는 한 번', () => {
     expectAc('AC-1403.2')
   })
 
@@ -44,7 +44,7 @@ describe('REQ-1403 비트 읽기 묶음·캐시 (C# Precheck.Core.Tests.Receptio
     expectAc('AC-1403.5')
   })
 
-  it('AC-1403.6 그날 @from·@to와 등록 범위로 정해 둔 차례대로 읽어 VisitRow로, 날이 바뀌면 8초 안이어도 새 날만 읽고 열쇠가 새로 된다', () => {
+  it('AC-1403.6 그날 @from·@to와 등록 범위로 정해 둔 차례대로 읽어 VisitRow로, 날이 바뀌면 묶음 시간 안이어도 새 날만 읽고 열쇠가 새로 된다', () => {
     expectAc('AC-1403.6')
   })
 
@@ -52,7 +52,7 @@ describe('REQ-1403 비트 읽기 묶음·캐시 (C# Precheck.Core.Tests.Receptio
     expectAc('AC-1403.7')
   })
 
-  it('AC-1403.8 fresh는 8초 묶음만 건너뛴다: 읽는 중이면 함께 기다림, 2초 안이면 그 결과, 3배 쉼·실패 뒤 10초는 그대로, 한꺼번에 눌러도 읽기는 하나', () => {
+  it('AC-1403.8 fresh는 묶음(4초)만 건너뛴다: 읽는 중이면 함께 기다림, 2초 안이면 그 결과, 3배 쉼·실패 뒤 10초는 그대로, 한꺼번에 눌러도 읽기는 하나', () => {
     expectAc('AC-1403.8')
   })
 })

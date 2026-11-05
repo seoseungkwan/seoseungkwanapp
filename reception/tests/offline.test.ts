@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // 지우기 + 연결 끊김·불러오는 중 화면 offline.js (TASK-18, design.md 10절, 승인 시안 Offline.dc.html).
 // 끊기면 그 자리에서 환자 줄·상세를 모두 지우고 시안 글 그대로 "지금 볼 수 없어요" 화면을 그린다(AC-1407.4).
+// 확인 글의 N은 poll.js가 넘기는 마지막으로 받은 every다(TASK-31, AC-1403.9: 시안의 10은 그때 간격).
 // 숨김 뒤 다시 보일 때는 환자 자료 없는 "불러오는 중이에요"(index.html의 처음 화면과 같은 모양, AC-1407.11). 자료는 가짜다
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -9,7 +10,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import * as fx from './fixtures'
 
 interface OfflineJs {
-  renderOffline: (host: HTMLElement, options?: { lastAt?: string | null }) => HTMLElement
+  renderOffline: (host: HTMLElement, options?: { lastAt?: string | null; every?: unknown }) => HTMLElement
   renderLoading: (host: HTMLElement) => HTMLElement
 }
 
@@ -84,7 +85,7 @@ describe('offline.js 연결 끊김 화면', () => {
     board.renderBoard(app, b)
     for (const t of queueTexts(b)) expect(app.textContent).toContain(t)
 
-    const page = off.renderOffline(app, { lastAt: '13:42' })
+    const page = off.renderOffline(app, { lastAt: '13:42', every: 5 })
     expect(app.children.length).toBe(1)
     expect(app.firstElementChild).toBe(page)
     for (const t of patientTexts(b)) expect(document.body.textContent, t).not.toContain(t)
@@ -105,21 +106,48 @@ describe('offline.js 연결 끊김 화면', () => {
     expect(textOf(page, 'h2.off-heading')).toBe('지금 볼 수 없어요')
     expect(textOf(page, 'p.off-lead')).toBe(LEAD)
     expect(textOf(page, 'p.off-sub')).toBe(SUB)
-    expect(textOf(page, '.off-status')).toBe('10초마다 다시 확인하는 중 · 마지막 연결 13:42')
+    expect(textOf(page, '.off-status')).toBe('5초마다 다시 확인하는 중 · 마지막 연결 13:42')
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
   })
 
-  it('AC-1407.4: 시안 Offline.dc.html의 글(머리·제목·두 줄·확인 글·아래 글)이 화면 글과 같다', () => {
+  it('AC-1407.4: 시안 Offline.dc.html의 글(머리·제목·두 줄·확인 글·아래 글)이 화면 글과 같다(확인 글의 N은 every: 시안의 숫자를 넘기면 시안 글 그대로)', () => {
     const mock = readFileSync(path.join(ROOT, 'docs', 'mockups', 'reception-phone', 'Offline.dc.html'), 'utf8')
     const text = mock.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, '\n')
     const lines = text.split('\n').map((s) => s.trim()).filter(Boolean)
-    for (const line of ['접수 현황', '연결 끊김', '지금 볼 수 없어요', LEAD, SUB, '10초마다 다시 확인하는 중 · 마지막 연결 13:42', FOOT])
-      expect(lines, line).toContain(line)
+    const status = lines.find((line) => /^\d+초마다 다시 확인하는 중 · 마지막 연결 13:42$/.test(line))
+    expect(status).toBeDefined()
+    const every = Number(/^\d+/.exec(status!)![0])
+    const app = appHost()
+    const page = off.renderOffline(app, { lastAt: '13:42', every })
+    for (const line of ['접수 현황', '연결 끊김', '지금 볼 수 없어요', LEAD, SUB, FOOT]) expect(lines, line).toContain(line)
+    for (const [selector, line] of [['h1.off-title', '접수 현황'], ['span.conn.is-off', '연결 끊김'], ['h2.off-heading', '지금 볼 수 없어요'], ['p.off-lead', LEAD], ['p.off-sub', SUB], ['.off-status', status], ['footer.foot', FOOT]] as const)
+      expect(textOf(page, selector), selector).toBe(line)
   })
 
-  it('AC-1407.10: 연결 끊김 화면에는 [새로 고침] 단추도 다른 단추·링크도 없다(10초마다 저절로 다시 본다)', () => {
+  it('AC-1407.4: 확인 글 "N초마다 다시 확인하는 중"의 N은 받은 every(마지막으로 받은 간격, 처음 연결 전에는 poll.js 기본값)다', () => {
     const app = appHost()
-    off.renderOffline(app, { lastAt: '09:05' })
+    for (const every of [2, 3, 5, 7, 60]) {
+      off.renderOffline(app, { lastAt: '13:42', every })
+      expect(textOf(app, '.off-status'), String(every)).toBe(`${every}초마다 다시 확인하는 중 · 마지막 연결 13:42`)
+      off.renderOffline(app, { every })
+      expect(textOf(app, '.off-status'), String(every)).toBe(`${every}초마다 다시 확인하는 중`)
+    }
+  })
+
+  it('AC-1407.4: every가 숫자가 아니면 간격 숫자를 지어내지 않는다(화면의 간격 숫자는 poll.js 기본값 하나, AC-1403.9)', () => {
+    const app = appHost()
+    for (const every of [undefined, null, '5', '<b>5</b>', 0, 2.5]) {
+      off.renderOffline(app, { lastAt: '13:42', every })
+      expect(textOf(app, '.off-status'), String(every)).toBe('다시 확인하는 중 · 마지막 연결 13:42')
+    }
+    off.renderOffline(app)
+    expect(textOf(app, '.off-status')).toBe('다시 확인하는 중')
+    expect(app.querySelector('b')).toBeNull()
+  })
+
+  it('AC-1407.10: 연결 끊김 화면에는 [새로 고침] 단추도 다른 단추·링크도 없다(every초마다 저절로 다시 본다)', () => {
+    const app = appHost()
+    off.renderOffline(app, { lastAt: '09:05', every: 5 })
     expect(app.querySelector('button, a')).toBeNull()
     expect(app.textContent).not.toContain('새로 고침')
   })
@@ -127,18 +155,18 @@ describe('offline.js 연결 끊김 화면', () => {
   it('AC-1407.4: 한 번도 연결하지 못했으면(마지막 연결 없음·모양 틀림) "마지막 연결" 없이 확인 글만 보인다', () => {
     const app = appHost()
     for (const lastAt of [undefined, null, '', '가상환자01', '13:42:10', '<b>1</b>']) {
-      off.renderOffline(app, { lastAt })
-      expect(textOf(app, '.off-status'), String(lastAt)).toBe('10초마다 다시 확인하는 중')
+      off.renderOffline(app, { lastAt, every: 5 })
+      expect(textOf(app, '.off-status'), String(lastAt)).toBe('5초마다 다시 확인하는 중')
     }
-    off.renderOffline(app)
-    expect(textOf(app, '.off-status')).toBe('10초마다 다시 확인하는 중')
+    off.renderOffline(app, { every: 5 })
+    expect(textOf(app, '.off-status')).toBe('5초마다 다시 확인하는 중')
   })
 
   it('AC-1407.4: 다시 그려도 화면은 하나이고 문서 제목은 바꾸지 않는다', () => {
     const app = appHost()
     document.title = '접수 현황'
-    off.renderOffline(app, { lastAt: '13:42' })
-    off.renderOffline(app, { lastAt: '13:42' })
+    off.renderOffline(app, { lastAt: '13:42', every: 5 })
+    off.renderOffline(app, { lastAt: '13:42', every: 5 })
     expect(app.querySelectorAll('.page').length).toBe(1)
     expect(document.title).toBe('접수 현황')
   })

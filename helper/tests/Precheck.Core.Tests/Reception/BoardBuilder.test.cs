@@ -575,7 +575,7 @@ public class BoardBuilderTests
         Assert.Null(scene.Keys.Find(Day, first));
     }
 
-    [Fact(DisplayName = "AC-1402.9 자료 모양(design.md 4절): state·at·counts·lists와 줄 칸 이름·값 종류")]
+    [Fact(DisplayName = "AC-1402.9 자료 모양(design.md 4절): state·at·every·counts·lists와 줄 칸 이름·값 종류, every는 읽기 간격(초, ReceptionTiming.PollSeconds)")]
     public void JsonShape()
     {
         var scene = new Scene().Add(
@@ -585,9 +585,11 @@ public class BoardBuilderTests
             Visit("V1704", "QD", "0912", "901704"));
         var root = scene.Json();
 
-        Assert.Equal(new[] { "state", "at", "counts", "lists" }, root.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(new[] { "state", "at", "every", "counts", "lists" }, root.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal("ok", root.GetProperty("state").GetString());
         Assert.Equal("13:42:10", root.GetProperty("at").GetString());
+        Assert.Equal(JsonValueKind.Number, root.GetProperty("every").ValueKind);
+        Assert.Equal(ReceptionTiming.PollSeconds, root.GetProperty("every").GetInt32());
         var lanes = new[] { "queue", "wait", "hold", "pay", "done" };
         Assert.Equal(lanes, root.GetProperty("counts").EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal(lanes, root.GetProperty("lists").EnumerateObject().Select(p => p.Name).ToArray());

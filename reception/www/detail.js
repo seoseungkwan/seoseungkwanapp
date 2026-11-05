@@ -1,6 +1,6 @@
 // 상세 그리기 (design.md 5절·10절, 승인 시안 Detail.dc.html·Tablet.dc.html 오른쪽 칸). class 이름은 style.css 머리 글의 화면 틀 그대로다.
 // - 지난 진료 글(날짜·N일 전·증상·처방·처음 온 날·모두 N번)은 도우미(C# HistoryBuilder)가 만든 그대로 그린다
-// - 오늘 카드의 상태 이름표·오늘 처방은 화면이 가진 목록 줄(GET /api/board, 10초마다 바뀜)로 그리고, 오늘 증상은 상세 답의 todaySym이다(design.md 5절).
+// - 오늘 카드의 상태 이름표·오늘 처방은 화면이 가진 목록 줄(GET /api/board, every초마다 바뀜)로 그리고, 오늘 증상은 상세 답의 todaySym이다(design.md 5절).
 //   글은 C# HistoryBuilder.TodayTitle·TodayLabel·NoTodayRx와 같다. 상세 답에 오늘 날짜가 없어 제목 날짜만 기기 날짜(options.today)를 쓴다
 // - 환자 글은 dom.js el()로 글 마디로만 넣는다(AC-1407.6). 도우미에 묻는 요청은 하지 않는다: 자료와 onMore를 app.js가 넘긴다
 // - 문서 제목(document.title)은 건드리지 않는다(AC-1407.5). 모듈에 환자 자료를 남기지 않는다(그린 요소에만 있다)

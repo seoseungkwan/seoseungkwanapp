@@ -12,17 +12,20 @@ namespace Precheck.Core.Tests.Reception.Cache;
 
 /// <summary>
 /// 비트 읽기 캐시(BoardCache, design.md 3절, REQ-1403). 캐시는 날 줄(BoardInput)만 든다.
-/// AC-1403.2 8초 안이면 다시 읽지 않고, 여러 요청이 한꺼번에 와도 읽기는 한 번.
+/// AC-1403.2 묶음 시간(ReceptionTiming.CacheSeconds, 4초) 안이면 다시 읽지 않고, 여러 요청이 한꺼번에 와도 읽기는 한 번.
 /// AC-1403.3 요청이 없으면 읽지 않는다(타이머 없음).
 /// AC-1403.4 3초 넘게 걸린 읽기 뒤에는 걸린 시간의 3배(60초까지) 동안 다시 읽지 않는다. 읽기 한 번 8초.
 /// AC-1403.5 등록 없음·병원 다름·연결 실패·읽기 실패·시간 지남 → 볼 수 없음, 실패 뒤 10초 동안 다시 읽지 않음.
 /// AC-1403.6 날이 바뀌면 새 날의 접수만 읽고 열쇠표가 새로 된다. AC-1403.7 이름표는 하루 한 번.
-/// AC-1403.8 새로 고침(fresh): 8초 묶음만 건너뛰고, 읽는 중이면 함께 기다리고, 2초 안이면 그 결과, 3배 쉼·실패 뒤 10초는 그대로.
+/// AC-1403.8 새로 고침(fresh): 묶음만 건너뛰고, 읽는 중이면 함께 기다리고, 2초 안이면 그 결과, 3배 쉼·실패 뒤 10초는 그대로.
 /// 가짜 비트(Rig)·주입한 시계·여러 작업만 쓴다. 비트 자료는 지어낸 것이다.
 /// </summary>
 public class BoardCacheTests
 {
     private static readonly DateTime Morning = BoardFake.Morning;
+
+    /// <summary>묶음 시간(AC-1403.2, ReceptionTiming.CacheSeconds).</summary>
+    private static readonly TimeSpan Batch = TimeSpan.FromSeconds(ReceptionTiming.CacheSeconds);
 
     private static Rig NewRig(DateTime? today = null)
     {
@@ -89,10 +92,10 @@ public class BoardCacheTests
         return tasks.Select(task => task.Result).ToArray();
     }
 
-    // ---- AC-1403.2 8초 묶음·한 번만 ---------------------------------------------------------------------
+    // ---- AC-1403.2 묶음 시간(4초)·한 번만 ---------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1403.2 마지막 읽기가 끝난 지 8초 안이면 비트를 다시 읽지 않고 같은 날 줄을 주고, 8초가 되면 다시 읽는다")]
-    public void EightSecondBatch()
+    [Fact(DisplayName = "AC-1403.2 마지막 읽기가 끝난 지 묶음 시간(4초) 안이면 비트를 다시 읽지 않고 같은 날 줄을 주고, 4초가 되면 다시 읽는다")]
+    public void BatchWindow()
     {
         using var rig = NewRig();
         var clock = new CacheClock(Morning);
@@ -102,7 +105,7 @@ public class BoardCacheTests
         Assert.Equal(1, Reads(rig));
         Assert.Equal(3, first.Input!.Visits.Count);
 
-        clock.Advance(TimeSpan.FromSeconds(7.9));
+        clock.Advance(Batch - TimeSpan.FromSeconds(0.1));
         SameInput(first, Ok(cache.Get()));
         Assert.Equal(1, Reads(rig));
         Assert.Single(rig.Connector.Opened);
@@ -111,7 +114,7 @@ public class BoardCacheTests
         var second = Ok(cache.Get());
         Assert.Equal(2, Reads(rig));
         OtherInput(first, second);
-        Assert.Equal(Morning.AddSeconds(8), second.Input!.ReadAt);
+        Assert.Equal(Morning + Batch, second.Input!.ReadAt);
     }
 
     [Fact(DisplayName = "AC-1403.2 여러 요청이 한꺼번에 와도 비트 읽기(등록 확인·연결 포함)는 한 번만 돌고 모두 같은 날 줄을 받는다")]
@@ -171,7 +174,7 @@ public class BoardCacheTests
         var end = Morning.AddSeconds(4);
         Assert.Equal(Morning, first.Input!.ReadAt);
 
-        clock.Set(end.AddSeconds(8));
+        clock.Set(end + Batch);
         SameInput(first, Ok(cache.Get()));
         clock.Set(end.AddSeconds(11.9));
         SameInput(first, Ok(cache.Get()));
@@ -182,7 +185,7 @@ public class BoardCacheTests
         Assert.Equal(2, Reads(rig));
     }
 
-    [Fact(DisplayName = "AC-1403.4 3초 걸린 읽기는 쉬지 않는다(3초보다 오래일 때만): 끝난 뒤 8초면 다시 읽는다")]
+    [Fact(DisplayName = "AC-1403.4 3초 걸린 읽기는 쉬지 않는다(3초보다 오래일 때만): 끝난 뒤 묶음 시간(4초)이면 다시 읽는다")]
     public void ThreeSecondsNoRest()
     {
         using var rig = NewRig();
@@ -191,7 +194,7 @@ public class BoardCacheTests
         var cache = new BoardCache(rig.Services, clock.Now);
 
         Ok(cache.Get());
-        clock.Set(Morning.AddSeconds(3 + 8));
+        clock.Set(Morning.AddSeconds(3) + Batch);
         Ok(cache.Get());
         Assert.Equal(2, Reads(rig));
     }
@@ -245,7 +248,7 @@ public class BoardCacheTests
         Assert.All(rig.Session.Calls.Where(call => ReceptionSql.Parameters.ContainsKey(call.Sql)),
             call => Assert.True(call.Timeout > TimeSpan.Zero && call.Timeout <= TimeSpan.FromSeconds(8)));
 
-        clock.Advance(TimeSpan.FromSeconds(8));
+        clock.Advance(Batch);
         BoardFake.Slow(rig.Session, ReceptionSql.TodayVisits, clock, TimeSpan.FromSeconds(9));
         var start = clock.Now();
         Unavailable(cache.Get(), BitErrors.ReadFailed);
@@ -327,7 +330,7 @@ public class BoardCacheTests
         }
     }
 
-    [Fact(DisplayName = "AC-1403.5 실패하면 앞서 읽은 날 줄을 버린다: 실패 뒤 10초 동안은 8초 안이어도 볼 수 없음, 10초 뒤 다시 읽는다")]
+    [Fact(DisplayName = "AC-1403.5 실패하면 앞서 읽은 날 줄을 버린다: 실패 뒤 10초 동안은 묶음 시간 안이어도 볼 수 없음, 10초 뒤 다시 읽는다")]
     public void FailureDropsOldInput()
     {
         using var rig = NewRig();
@@ -355,7 +358,7 @@ public class BoardCacheTests
 
     // ---- AC-1403.6 날 바뀜 ------------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1403.6 날이 바뀌면 8초 안이어도 앞 날 줄을 주지 않고 새 날의 접수만 읽으며, 새 날의 열쇠는 앞 날 열쇠와 다르다")]
+    [Fact(DisplayName = "AC-1403.6 날이 바뀌면 묶음 시간(4초) 안이어도 앞 날 줄을 주지 않고 새 날의 접수만 읽으며, 새 날의 열쇠는 앞 날 열쇠와 다르다")]
     public void NewDay()
     {
         var evening = new DateTime(2026, 11, 5, 23, 59, 58);
@@ -368,7 +371,7 @@ public class BoardCacheTests
         Assert.Equal("20261105", before.Input!.Day);
         var oldKey = keys.KeyOf(before.Input.Day, before.Input.Visits[0].VisitId);
 
-        clock.Advance(TimeSpan.FromSeconds(4));
+        clock.Advance(TimeSpan.FromSeconds(3));
         rig.Today = clock.Now().Date;
         var after = Ok(cache.Get());
         Assert.Equal(2, Reads(rig));
@@ -391,7 +394,7 @@ public class BoardCacheTests
         var cache = new BoardCache(rig.Services, clock.Now);
 
         var first = Ok(cache.Get());
-        clock.Advance(TimeSpan.FromSeconds(8));
+        clock.Advance(Batch);
         var second = Ok(cache.Get());
         clock.Advance(TimeSpan.FromHours(5));
         Ok(cache.Get());
@@ -426,7 +429,7 @@ public class BoardCacheTests
 
     // ---- AC-1403.8 새로 고침(fresh) ---------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1403.8 fresh는 8초 묶음을 건너뛰고 바로 읽으며, 그 뒤 fresh 없는 요청은 새로 읽은 줄을 받는다")]
+    [Fact(DisplayName = "AC-1403.8 fresh는 묶음(4초)을 건너뛰고 바로 읽으며, 그 뒤 fresh 없는 요청은 새로 읽은 줄을 받는다")]
     public void FreshSkipsBatch()
     {
         using var rig = NewRig();

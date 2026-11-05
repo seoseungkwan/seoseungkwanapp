@@ -1,7 +1,8 @@
 // 목록 그리기 (design.md 10절, 승인 시안 Main.dc.html·Tablet.dc.html). 도우미 GET /api/board 답(design.md 4절)을 그대로 그린다.
 // - 글은 도우미(C#)가 만든 그대로다. 화면은 계산하지 않고 기준 시각도 답의 at만 쓴다(휴대폰 시계 없음, AC-1407.10)
+// - 머리 글 "N초마다 저절로 바뀌어요"의 N은 답의 every(PC가 정한 간격, AC-1403.9)다. 숫자가 아니면 숫자를 지어내지 않는다
 // - 환자 글은 dom.js el()로 글 마디로만 넣는다(AC-1407.6). class 이름은 style.css 머리 글의 화면 틀 그대로다
-// - 같은 자리에 다시 그리면 뼈대(머리·칸·줄 칸·오른쪽 칸)는 두고 안만 바꾼다. 태블릿 줄 칸·오른쪽 칸의 굴림 자리가 10초마다 맨 위로 가지 않는다
+// - 같은 자리에 다시 그리면 뼈대(머리·칸·줄 칸·오른쪽 칸)는 두고 안만 바꾼다. 태블릿 줄 칸·오른쪽 칸의 굴림 자리가 다시 읽을 때마다 맨 위로 가지 않는다
 //
 // 쓰는 법 (app.js)
 //   renderBoard(host, board, view) → .page.board    host는 #app. 안에 다른 화면이 있으면 지우고 목록을 그린다
@@ -28,6 +29,11 @@ const TILES = [
   ['pay', '수납대기'],
   ['done', '수납완료'],
 ]
+
+/** 머리의 바뀜 글: every(초, 양의 정수)면 "N초마다 저절로 바뀌어요" (AC-1407.1) */
+function refreshText(every) {
+  return Number.isSafeInteger(every) && every > 0 ? `${every}초마다 저절로 바뀌어요` : '저절로 바뀌어요'
+}
 
 /** 칸 제목 (시안 글) */
 const HEADINGS = {
@@ -72,7 +78,7 @@ export function renderBoard(host, board, view = {}) {
     ]),
     el('div', { class: 'title-block' }, [
       el('h1', { class: 'top-title' }, '접수 현황'),
-      el('p', { class: 'asof' }, `${board.at} 기준 · 10초마다 저절로 바뀌어요`),
+      el('p', { class: 'asof' }, `${board.at} 기준 · ${refreshText(board.every)}`),
     ]),
   ])
 

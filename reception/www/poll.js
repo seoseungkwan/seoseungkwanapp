@@ -1,8 +1,11 @@
-// 읽기 고리 (design.md 10절). 10초마다 GET /api/board를 읽어 그리고, 끊기거나 숨겨지면 그 자리에서 지운다.
-// - 다음 읽기는 답이 온 뒤 10초다. 읽기는 한 번에 하나라 요청이 겹치지 않는다(AC-1407.3)
+// 읽기 고리 (design.md 10절). 답의 every초마다 GET /api/board를 읽어 그리고, 끊기거나 숨겨지면 그 자리에서 지운다.
+// - 간격은 PC 한 곳(ReceptionTiming.PollSeconds)이 정해 답의 every(초)로 보낸다. 화면의 간격 숫자는 처음 연결 전에만 쓰는
+//   기본값(DEFAULT_EVERY) 하나뿐이다(AC-1403.9). 끊긴 뒤에는 마지막으로 받은 every를 쓴다
+// - 다음 읽기는 답이 온 뒤 every초다. 읽기는 한 번에 하나라 요청이 겹치지 않는다(AC-1407.3)
 // - 첫 실패(연결 안 됨·5초 넘음·200 아님·모양 틀림)에 판·상세를 모두 버리고 끊김 화면("마지막 연결 HH:MM")을 그린다.
-//   그 연결의 signal도 끊어 나가 있던 상세 읽기가 늦게 그려지지 않게 한다. 끊긴 뒤에도 10초마다 다시 읽는다(AC-1407.4)
-// - refreshNow(): 그 자리에서 ?fresh=1 하나. 도는 읽기가 있으면 그 뒤 한 번. 읽는 동안 더 불러도 요청이 늘지 않는다(AC-1407.10)
+//   그 연결의 signal도 끊어 나가 있던 상세 읽기가 늦게 그려지지 않게 한다. 끊긴 뒤에도 every초마다 다시 읽는다(AC-1407.4)
+// - refreshNow(): 그 자리에서 ?fresh=1 하나. 도는 읽기가 있으면 그 뒤 한 번. 읽는 동안 더 불러도 요청이 늘지 않는다.
+//   끝나면 그때부터 every초 뒤에 다음 저절로 읽기(AC-1407.10)
 // - pause(): 지우기("불러오는 중이에요") + 고리 멈춤. 나가 있던 요청은 끊고 늦은 답은 세대 번호로 버린다. 기다리던 fresh·예약도 없앤다.
 //   resume(): 바로 한 번 읽는다(AC-1407.11)
 // - 기준 시각은 답의 at 그대로다(휴대폰 시계 없음). "마지막 연결"은 마지막으로 받은 at의 시:분이다
@@ -27,8 +30,8 @@
 import { getBoard } from './api.js'
 import { renderLoading, renderOffline } from './offline.js'
 
-/** 저절로 다시 읽는 간격 (AC-1407.3) */
-export const INTERVAL_MS = 10000
+/** 처음 연결 전(답을 한 번도 못 받았을 때)에만 쓰는 저절로 다시 읽는 간격(초). 그 뒤는 답의 every (AC-1403.9, AC-1407.4) */
+export const DEFAULT_EVERY = 5
 
 /**
  * 읽기 고리를 만든다. start()를 부르기 전에는 읽지 않는다.
@@ -52,6 +55,8 @@ export function createPoll({ host, draw, wipe, onReading, timers } = {}) {
   let first = true
   let board = null
   let lastAt = null
+  /** 마지막으로 받은 읽기 간격(초). 환자 자료가 아니라 끊김·숨김 뒤에도 남긴다 */
+  let every = DEFAULT_EVERY
 
   function setReading(next) {
     if (reading === next) return
@@ -88,7 +93,7 @@ export function createPoll({ host, draw, wipe, onReading, timers } = {}) {
     }
   }
 
-  /** 기다리던 읽기가 있으면 바로, 없으면 10초 뒤. draw 안에서 readNow()로 이미 읽기가 시작됐으면 그것을 기다린다 */
+  /** 기다리던 읽기가 있으면 바로, 없으면 every초 뒤. draw 안에서 readNow()로 이미 읽기가 시작됐으면 그것을 기다린다 */
   function next() {
     if (inflight) return
     if (pending) {
@@ -100,12 +105,13 @@ export function createPoll({ host, draw, wipe, onReading, timers } = {}) {
     timer = later(() => {
       timer = null
       begin(false)
-    }, INTERVAL_MS)
+    }, every * 1000)
   }
 
   function show(data) {
     board = data
     lastAt = data.at.slice(0, 5)
+    every = data.every
     const info = { first, reading }
     first = false
     try {
@@ -117,7 +123,7 @@ export function createPoll({ host, draw, wipe, onReading, timers } = {}) {
   }
 
   function goOffline() {
-    renderOffline(host, { lastAt })
+    renderOffline(host, { lastAt, every })
     forget()
   }
 

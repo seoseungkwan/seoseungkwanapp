@@ -185,7 +185,7 @@ describe('api.js getBoard', () => {
     }
   })
 
-  it('AC-1407.4: 모양이 틀린 답(JSON 아님·state가 ok 아님·칸 빠짐·글 칸이 글이 아님·열쇠 모양 틀림·기준 시각 모양 틀림)은 shape 실패다', async () => {
+  it('AC-1407.4: 모양이 틀린 답(JSON 아님·state가 ok 아님·칸 빠짐·글 칸이 글이 아님·열쇠 모양 틀림·기준 시각 모양 틀림·every 없음이나 2~60 밖)은 shape 실패다', async () => {
     const good = fx.mockupBoard()
     const row = good.lists.wait[0]
     const bad: Array<[string, unknown]> = [
@@ -194,6 +194,16 @@ describe('api.js getBoard', () => {
       ['state', { ...good, state: 'unavailable' }],
       ['at 없음', { ...good, at: undefined }],
       ['at 모양', { ...good, at: '13:42' }],
+      ['every 없음', { ...good, every: undefined }],
+      ['every null', { ...good, every: null }],
+      ['every 글', { ...good, every: '5' }],
+      ['every 1', { ...good, every: 1 }],
+      ['every 0', { ...good, every: 0 }],
+      ['every 음수', { ...good, every: -5 }],
+      ['every 61', { ...good, every: 61 }],
+      ['every 10000(밀리초)', { ...good, every: 10000 }],
+      ['every 정수 아님', { ...good, every: 2.5 }],
+      ['every 무한', { ...good, every: Infinity }],
       ['counts 없음', { ...good, counts: undefined }],
       ['counts 글', { ...good, counts: { ...good.counts, wait: '3' } }],
       ['counts 음수', { ...good, counts: { ...good.counts, hold: -1 } }],
@@ -225,6 +235,14 @@ describe('api.js getBoard', () => {
     for (const body of [empty, partial, fx.mockupBoard()]) {
       fakeFetch(() => json(body))
       await expect(api.getBoard()).resolves.toEqual(body)
+    }
+  })
+
+  it('AC-1407.4: 읽기 간격 every(초)는 2~60 정수면 맞는 모양이고 받은 그대로 돌려준다(AC-1403.9: 간격은 PC가 정한다)', async () => {
+    for (const every of [2, 3, 5, 60]) {
+      const body = { ...fx.mockupBoard(), every }
+      fakeFetch(() => json(body))
+      await expect(api.getBoard(), String(every)).resolves.toEqual(body)
     }
   })
 

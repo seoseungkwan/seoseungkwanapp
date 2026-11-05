@@ -175,7 +175,8 @@ public sealed class Board
 
     /// <summary>
     /// 휴대폰에 보내는 JSON(design.md 4절):
-    /// <c>{ "state":"ok", "at", "counts":{queue,wait,hold,pay,done}, "lists":{queue,wait,hold,pay,done} }</c>.
+    /// <c>{ "state":"ok", "at", "every", "counts":{queue,wait,hold,pay,done}, "lists":{queue,wait,hold,pay,done} }</c>.
+    /// every는 화면이 저절로 다시 읽는 간격(초, ReceptionTiming.PollSeconds, AC-1403.9).
     /// 줄 칸 차례: k, lane, pos, laneLabel, chart, name, info, time, waited, long, memo, rxLabel, rx, xray.
     /// </summary>
     public string ToJson()
@@ -190,6 +191,7 @@ public sealed class Board
             writer.WriteStartObject();
             writer.WriteString("state", "ok");
             writer.WriteString("at", At);
+            writer.WriteNumber("every", ReceptionTiming.PollSeconds);
             writer.WriteStartObject("counts");
             foreach (var list in lists) writer.WriteNumber(list.Name, list.Rows.Count);
             writer.WriteEndObject();
