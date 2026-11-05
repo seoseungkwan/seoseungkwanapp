@@ -14,6 +14,7 @@
 
 ## 아키텍처 규칙
 - CRITICAL: 환자 개인정보는 의원 PC 밖으로 나가지 않는다. 환자 파일은 브라우저 Web Worker 안에서만 읽고 계산한다. 비트 자료는 도우미 → 확장 → `lib/bridge` → Worker로만 오고, 고치던 메모·완료 표시·정기 주사 기록은 도우미가 그 PC에 암호화해 둔다. 서버·Claude API에는 집계 숫자만 간다(청구는 건수 표의 숫자와 설정만, ADR-021). 읽는 칸·차트번호·파일 이름 규칙은 `plan.md §4`
+  - 예외(ADR-027, 사용자 결정 2026-11-05): 접수 현황 폰·태블릿 화면(`PrecheckReception.exe`)만 총괄 PC가 병원 직원 와이파이(사설 주소) 안의 직원 폰·태블릿에 접수·처방·증상을 보여 준다. 인터넷·우리 서버·Claude API로는 여전히 보내지 않고, 폰 브라우저 저장소에 남기지 않으며, 연결이 끊기면 화면에서 바로 지운다
 - CRITICAL: `lib/parsers`·`lib/analytics`·`lib/payload`·`lib/precheck`·`lib/bridge`·`workers`는 환자 자료 구역이다. 네트워크·console·브라우저 저장소·React/Next/supabase/auth import를 쓰지 않는다. `lib/bridge`(비트 자료 통로)는 정해 둔 확장 ID 상수로만 확장과 말하고, 받은 조각을 바로 Worker로 넘긴다. 환자 줄을 그리는 `components/claim/rows`·`components/patients/rows`도 네트워크·저장소·console·supabase를 못 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 규칙을 풀지 않는다 (ADR-020)
 - CRITICAL: 서버 코드는 `app/api/ai/` 하나뿐이다. 나머지는 브라우저 + Supabase RLS. 예외는 인증뿐이다: 로그인 콜백·middleware·페이지 guard(`*.server.ts`)는 세션과 내 병원·관리자 줄만 읽고 쓰지 않는다 (ADR-004)
 - CRITICAL: AI 경로는 브라우저가 보낸 숫자를 쓰지 않는다. 서버가 DB에서 읽어 `validate.ts`로 검사한 집계만 보낸다. 답은 글자로만 그린다(HTML 금지) (`plan.md §6-2`)
