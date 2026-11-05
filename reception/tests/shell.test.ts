@@ -364,7 +364,8 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     const files = codeFiles()
     expect(files.length).toBeGreaterThanOrEqual(5)
     for (const rel of files) {
-      const text = read(rel)
+      // SVG 이름 공간 이름(dom.js svg())은 주소 모양의 이름표일 뿐 받아 오지 않는다. 그 글 하나만 뺀다
+      const text = read(rel).replaceAll(`'http://www.w3.org/2000/svg'`, `'svg-ns'`)
       expect(text, rel).not.toMatch(/https?:/i)
       if (path.extname(rel) === '.js') expect(text, rel).not.toMatch(/['"`]\s*\/\//)
       else expect(text, rel).not.toMatch(/\/\//)
@@ -436,6 +437,13 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
         if (p === 'width' || p === 'height' || p === 'max-width' || p === 'max-height') expect(px(v), `${r.selector} ${p}`).not.toBeLessThan(44)
       }
     expect(rules.some((r) => r.decls.some(([p, v]) => p.startsWith('border') && v.includes('var(--')))).toBe(true)
+  })
+
+  it('AC-1407.10: [새로 고침] 그림은 단추 안 svg.refresh-icon 하나다. style.css가 .refresh에 ::before·::after 그림을 더 그리지 않는다(그림 둘이 겹쳐 작은 네모가 보이지 않게)', () => {
+    const rules = parseRules(read('style.css'))
+    const drawn = rules.filter((r) => r.selector.split(',').some((s) => /\.refresh(?![\w-])[^,]*::?(?:before|after)\b/.test(s.trim())))
+    expect(drawn.map((r) => r.selector)).toEqual([])
+    expect(rules.some((r) => r.selector.split(',').some((s) => s.trim() === '.refresh-icon'))).toBe(true)
   })
 
   it('AC-1407.10: 시안의 누르는 단추(칸·X-ray 완료·표시 취소·더 보기·돌아가기)도 44px 이상이다', () => {

@@ -6,7 +6,7 @@
  * 화면 틀 (그리는 파일이 쓰는 class 이름)
  *   #app (index.html) 안에 화면 하나:
  *   목록   .page.board
- *            header.top > .top-row > img.logo + .top-status > span.conn + button.refresh
+ *            header.top > .top-row > img.logo + .top-status > span.conn + button.refresh > svg.refresh-icon + 글
  *                       > .title-block > h1.top-title + p.asof
  *            .picker > button.queue[aria-pressed] > span.queue-label + span.queue-count
  *                    > .tiles > button.tile[aria-pressed] > span.tile-count + span.tile-label
@@ -177,6 +177,12 @@ button:disabled {
 
 .refresh:disabled {
   color: var(--ink-3);
+}
+
+/* 다시 읽기 그림(↻)은 board.js가 단추 안에 선 그림(svg, 글 색 따라감)으로 넣는다. 여기서는 줄어들지 않게만 */
+.refresh-icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 .title-block {
@@ -804,12 +810,12 @@ button.row-main {
   padding: 10px 14px;
 }
 
-/* 다시 읽기 그림(↻): 기기 글꼴에 ↻ 글자가 없을 수 있어 선으로 그린다. 위가 열린 원 + 위 끝의 오른쪽 화살촉 */
-.refresh, .off-status {
+/* 끊김 화면 다시 보기 그림(↻): 기기 글꼴에 ↻ 글자가 없을 수 있어 선으로 그린다. 위가 열린 원 + 위 끝의 오른쪽 화살촉 */
+.off-status {
   position: relative;
 }
 
-.refresh::before, .off-status::before {
+.off-status::before {
   content: "";
   box-sizing: border-box;
   width: 14px;
@@ -821,7 +827,7 @@ button.row-main {
   flex-shrink: 0;
 }
 
-.refresh::after, .off-status::after {
+.off-status::after {
   content: "";
   position: absolute;
   top: calc(50% - 10px);
@@ -830,10 +836,6 @@ button.row-main {
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 5px solid currentColor;
-}
-
-.refresh::after {
-  left: 18px;
 }
 
 .off-status::after {

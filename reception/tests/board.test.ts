@@ -70,7 +70,7 @@ function namesOf(root: ParentNode): string[] {
   return rowsOf(root).map((row) => textOf(row, '.name') ?? '')
 }
 
-/** 단추의 읽히는 글(↻ 같은 aria-hidden 그림 글자는 뺀다) */
+/** 단추의 읽히는 글(aria-hidden 그림은 뺀다) */
 function labelOf(button: Element | null): string {
   if (!button) return ''
   return [...button.childNodes]
@@ -78,6 +78,25 @@ function labelOf(button: Element | null): string {
     .map((n) => n.textContent ?? '')
     .join('')
     .trim()
+}
+
+/**
+ * [새로 고침] 단추의 그림. ↻ 글자 대신 aria-hidden 선 그림(svg) 하나다:
+ * 글자 그림은 기기 글꼴에 따라 작은 네모나 다른 모양으로 보인다. 색은 단추 글 색(currentColor, 숯색)을 따른다
+ */
+function iconsOf(button: Element | null): Element[] {
+  const icons = [...(button?.querySelectorAll('[aria-hidden="true"]') ?? [])]
+  for (const icon of icons) {
+    expect(icon.namespaceURI).toBe('http://www.w3.org/2000/svg')
+    expect(icon.tagName).toBe('svg')
+    expect(icon.getAttribute('class')).toBe('refresh-icon')
+    expect(icon.getAttribute('focusable')).toBe('false')
+    expect(icon.getAttribute('fill')).toBe('none')
+    expect(icon.getAttribute('stroke')).toBe('currentColor')
+    expect(icon.textContent).toBe('')
+    expect(icon.querySelectorAll('path').length).toBeGreaterThan(0)
+  }
+  return icons
 }
 
 function refreshOf(root: ParentNode): HTMLButtonElement | null {
@@ -398,7 +417,7 @@ describe('board.js 목록 그리기', () => {
     expect(app.querySelector('.xray')).toBeNull()
   })
 
-  it('AC-1407.10: 머리의 연결됨 표시 바로 옆에 진짜 단추 <button type="button" class="refresh"> "새로 고침"(↻는 aria-hidden)이 있다', () => {
+  it('AC-1407.10: 머리의 연결됨 표시 바로 옆에 진짜 단추 <button type="button" class="refresh"> "새로 고침"(↻ 그림은 aria-hidden)이 있다', () => {
     const app = appHost()
     view.renderBoard(app, fx.mockupBoard())
     const button = refreshOf(app)
@@ -408,7 +427,8 @@ describe('board.js 목록 그리기', () => {
     expect(button?.parentElement?.className).toBe('top-status')
     expect(shapeOf(button?.parentElement)).toEqual(['span.conn', 'button.refresh'])
     expect(labelOf(button)).toBe('새로 고침')
-    expect(button?.querySelector('[aria-hidden="true"]')?.textContent).toBe('↻')
+    expect(iconsOf(button)).toHaveLength(1)
+    expect(button?.textContent).toBe('새로 고침')
     expect(button?.disabled).toBe(false)
   })
 
@@ -418,10 +438,14 @@ describe('board.js 목록 그리기', () => {
     expect(labelOf(refreshOf(app))).toBe('읽는 중…')
     expect(refreshOf(app)?.disabled).toBe(true)
 
+    expect(iconsOf(refreshOf(app))).toHaveLength(1)
+    expect(refreshOf(app)?.textContent).toBe('읽는 중…')
+
     const button = refreshOf(app)
     view.setReading(app, false)
     expect(refreshOf(app)).toBe(button)
     expect(labelOf(button)).toBe('새로 고침')
+    expect(iconsOf(button)).toHaveLength(1)
     expect(button?.disabled).toBe(false)
     view.setReading(app, true)
     expect(labelOf(button)).toBe('읽는 중…')

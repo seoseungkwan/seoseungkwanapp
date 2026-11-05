@@ -17,7 +17,7 @@
 //   setReading(host, reading)  [새로 고침] 단추만 바꾼다
 //   fillPane(host, nodes)      태블릿 오른쪽 칸의 내용을 바꾼다(아래 글은 그대로). null이면 비운다
 
-import { clear, el } from './dom.js'
+import { clear, el, svg } from './dom.js'
 
 /** 고르는 칸: 진료 순서 + 칸 넷 */
 export const LANES = ['queue', 'wait', 'hold', 'pay', 'done']
@@ -210,7 +210,31 @@ function refreshButton(view) {
 function showReading(button, reading) {
   button.disabled = reading
   clear(button)
-  button.append(el('span', { 'aria-hidden': 'true' }, '↻'), reading ? '읽는 중…' : '새로 고침')
+  button.append(refreshIcon(), reading ? '읽는 중…' : '새로 고침')
+}
+
+/**
+ * [새로 고침] 그림 ↻: 위가 열린 원 + 위 끝의 오른쪽 꺾쇠 화살촉. 글자(↻)가 아니라 선 그림이라 기기 글꼴과 상관없이
+ * 갤럭시·아이폰·PC에서 같게 보이고, 색은 단추 글 색(currentColor: 숯색, 읽는 중이면 흐린 글 색)을 따른다
+ */
+function refreshIcon() {
+  return svg(
+    'svg',
+    {
+      class: 'refresh-icon',
+      viewBox: '0 0 24 24',
+      width: '16',
+      height: '16',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2.5',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+      'aria-hidden': 'true',
+      focusable: 'false',
+    },
+    [svg('path', { d: 'M18.93 8A8 8 0 1 1 12 4' }), svg('path', { d: 'M9 1l3.5 3L9 7' })],
+  )
 }
 
 function readingNow(host) {

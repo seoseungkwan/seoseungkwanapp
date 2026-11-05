@@ -1,4 +1,5 @@
 // 화면 요소 만들기 (design.md 10절). 모든 그리는 파일(board·detail·offline·xray·layout·app)이 이것만으로 요소를 만든다.
+// - svg()는 같은 규칙으로 SVG 그림 요소를 만든다. 그림 글자(↻ 등)는 기기 글꼴에 따라 작은 네모로 보일 수 있어 선 그림으로 그린다
 // - 글(문자열·숫자)은 글 마디(Text, textContent와 같음)로만 넣는다. 환자 글에 <b>가 있어도 글자로만 보인다(AC-1407.6)
 // - 모양은 style.css 한 곳이라 style 속성을 받지 않는다. CSP가 인라인 스타일·처리기를 막는다(AC-1407.7, AC-1406.6)
 // - 처리기는 on: { click: 함수 }로만 붙인다. onclick=… 같은 HTML 처리기 속성은 받지 않는다
@@ -28,6 +29,23 @@ export function el(tag, attrs, children) {
   return node
 }
 
+/** SVG 그림 요소의 이름 공간 */
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/**
+ * SVG 그림 요소 하나를 만든다([새로 고침] 그림 등). 속성·아이 규칙은 el()과 같다.
+ * @param {string} tag 'svg'·'path'…
+ * @param {Record<string, unknown> | null} [attrs]
+ * @param {unknown} [children]
+ * @returns {SVGElement}
+ */
+export function svg(tag, attrs, children) {
+  const node = document.createElementNS(SVG_NS, tag)
+  if (attrs) for (const key of Object.keys(attrs)) setAttr(node, key, attrs[key])
+  append(node, children)
+  return node
+}
+
 /** 아이를 모두 지운다(끊김·숨김 때 환자 줄·상세 지우기) */
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild)
@@ -43,7 +61,8 @@ function setAttr(node, key, value) {
   if (value === false || value === null || value === undefined) return
   const text = value === true ? '' : String(value)
   if (URL_KEYS.has(lower) && !SAME_PC.test(text)) throw new TypeError(`${key} 주소는 같은 PC 길('/…')이나 '#…'만 된다`)
-  if (key === 'class') node.className = text
+  // SVG 요소의 className은 글이 아니라 바꿀 수 없다. 그래서 HTML 요소만 className, 나머지는 class 속성
+  if (key === 'class' && node instanceof HTMLElement) node.className = text
   else node.setAttribute(key, text)
 }
 

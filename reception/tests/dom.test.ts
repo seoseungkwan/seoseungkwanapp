@@ -4,20 +4,24 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 type El = (tag: string, attrs?: Record<string, unknown> | null, children?: unknown) => HTMLElement
+type Svg = (tag: string, attrs?: Record<string, unknown> | null, children?: unknown) => SVGElement
+const SVG_NS = 'http://www.w3.org/2000/svg'
 // 화면 파일은 빌드 없는 JS라 형 선언이 없다(design.md 결정 '화면은 빌드 없는 JS'). 경로를 값으로 두어 형 검사가 묻지 않게 한다
 const DOM_JS = '../www/dom.js'
 let make: El
+let makeSvg: Svg
 let empty: (node: Node) => void
 
 beforeAll(async () => {
   // 아직 없으면(RED) 아무것도 하지 않는 대역으로 시험마다 실패를 보인다
   const missing = { el: (() => document.createElement('i')) as El, clear: () => {} }
-  const dom = ((await import(/* @vite-ignore */ DOM_JS).catch(() => missing)) ?? missing) as { el: El; clear: (node: Node) => void }
+  const dom = ((await import(/* @vite-ignore */ DOM_JS).catch(() => missing)) ?? missing) as { el: El; svg?: Svg; clear: (node: Node) => void }
   make = dom.el
+  makeSvg = dom.svg ?? ((() => document.createElement('i')) as unknown as Svg)
   empty = dom.clear
 })
 
-describe('dom.js el()·clear()', () => {
+describe('dom.js el()·svg()·clear()', () => {
   it('AC-1407.6: 글 아이(문자열)는 textContent로만 들어가 <b>·<img onerror>를 넣어도 글자로만 보인다', () => {
     const name = '<b>가상환자01</b><img src=x onerror=alert(1)>'
     const node = make('span', { class: 'name' }, name)
@@ -86,6 +90,22 @@ describe('dom.js el()·clear()', () => {
     expect(row.firstChild).toBe(child)
     expect(() => make('div', null, { toString: () => '<b>x</b>' })).toThrow(TypeError)
     expect(() => make('div', null, [() => 'x'])).toThrow(TypeError)
+  })
+
+  it('AC-1407.10: svg()는 SVG 이름 공간 그림 요소를 만든다([새로 고침] 그림을 기기 글꼴 없이 선으로). el()과 같이 style·on…·바깥 주소는 받지 않는다', () => {
+    const icon = makeSvg('svg', { class: 'refresh-icon', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, makeSvg('path', { d: 'M4 12h16' }))
+    expect(icon.namespaceURI).toBe(SVG_NS)
+    expect(icon.tagName).toBe('svg')
+    expect(icon.getAttribute('class')).toBe('refresh-icon')
+    expect(icon.getAttribute('viewBox')).toBe('0 0 24 24')
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+    expect(icon.firstElementChild?.namespaceURI).toBe(SVG_NS)
+    expect(icon.firstElementChild?.tagName).toBe('path')
+    expect(icon.firstElementChild?.getAttribute('d')).toBe('M4 12h16')
+    expect(() => makeSvg('svg', { style: 'color: red' })).toThrow(TypeError)
+    expect(() => makeSvg('svg', { onload: 'alert(1)' })).toThrow(TypeError)
+    expect(() => makeSvg('use', { href: 'https://evil.example/x.svg#a' })).toThrow(TypeError)
+    expect(() => makeSvg('svg', null, { toString: () => '<b>x</b>' })).toThrow(TypeError)
   })
 
   it('AC-1407.6: clear()는 아이를 모두 지운다(끊김·숨김에 환자 줄 지우기)', () => {

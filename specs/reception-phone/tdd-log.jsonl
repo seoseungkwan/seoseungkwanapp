@@ -296,3 +296,4 @@
 {"ts": "2026-11-05T21:09:36Z", "task": "TASK-27", "reqs": ["REQ-1412", "REQ-1411", "REQ-1413"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'helper/tests/reception-install.test.ts'", "tests": ["helper/tests/reception-install.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-11-05T21:10:15Z", "task": "TASK-27", "reqs": ["REQ-1412", "REQ-1411", "REQ-1413"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'helper/tests/reception-install.test.ts'", "tests": ["helper/tests/reception-install.test.ts"], "expect": "green", "source": "tdd-run"}
 {"ts": "2026-11-05T21:28:50Z", "task": null, "phase": "GREEN", "exit": 0, "cmd": "npm test", "source": "verify"}
+{"ts": "2026-11-05T21:35:15Z", "task": "TASK-16", "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'reception/tests/shell.test.ts'", "tests": ["reception/tests/shell.test.ts"], "trigger": "reception/tests/shell.test.ts", "source": "post-hook"}
