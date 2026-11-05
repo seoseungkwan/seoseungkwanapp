@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Precheck.Core.Reception;
 using Precheck.Core.Revenue;
 
 namespace Precheck.Core.Bit;
@@ -243,13 +244,14 @@ GROUP BY RTRIM(c.OcmChtNum),LEFT(c.OcmAcpDtm,8)";
     public static IReadOnlyCollection<string> All => Allowed.Keys;
 
     /// <summary>글자가 허용 목록의 문장과 똑같은가(대소문자·공백까지).</summary>
-    public static bool IsAllowed(string? sql) => sql != null && (Allowed.ContainsKey(sql) || RevenueSql.Parameters.ContainsKey(sql) || Stats.StatsSql.IsAllowed(sql));
+    public static bool IsAllowed(string? sql) => sql != null && (Allowed.ContainsKey(sql) || RevenueSql.Parameters.ContainsKey(sql) || ReceptionSql.Parameters.ContainsKey(sql) || Stats.StatsSql.IsAllowed(sql));
 
     /// <summary>문장이 받는 매개변수 표. 허용 목록 밖이면 BitException(E-BIT-READ-FAILED).</summary>
     public static IReadOnlyList<SqlParam> ParametersOf(string sql)
     {
         if (sql != null && Allowed.TryGetValue(sql, out var parameters)) return parameters;
         if (sql != null && RevenueSql.Parameters.TryGetValue(sql, out var revenue)) return revenue;
+        if (sql != null && ReceptionSql.Parameters.TryGetValue(sql, out var reception)) return reception;
         return Stats.StatsSql.ParametersOf(sql!);
     }
 }
