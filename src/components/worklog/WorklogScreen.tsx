@@ -7,6 +7,7 @@ import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { SaveState } from '@/lib/worklog/autosave'
 import { mergeBit, takeBitValue, type BitMerge, type BitValues } from '@/lib/worklog/bitFill'
 import { dayAfterRollover } from '@/lib/worklog/days'
+import { stepMemoFont } from '@/lib/worklog/memoFont'
 import { blockedCellKeys } from '@/lib/worklog/notes'
 import type { WorklogCellKey, WorklogDay, WorklogNumberKey } from '@/types/worklog'
 import { BitNotice, BitSheetNotes } from './BitNotice'
@@ -21,7 +22,9 @@ import { onWorklogSignedOut, startWorklogSession, worklogAutosave } from './work
 // 친 값은 React 상태와 그 제어에만 있고 브라우저 저장소·console로 가지 않는다.
 // 비트 PC가 연결된 의원 PC에서는 그날 비트 숫자(useBitFill)를 맞춰 넣는다(REQ-017, design.md 20절): 그날 읽기가 끝난(ready) 날에만, 그날 답일 때만
 // mergeBit을 돌려 빈 칸을 채우고, 바뀌었으면 화면 값·비트 칸 목록을 바꿔 자동 저장으로 넘긴다(서버로는 바뀐 칸과 바뀐 목록만 간다).
-// 저장에 넘기는 목록은 읽은 목록·mergeBit·takeBitValue·dropBitField가 돌려준 것뿐이다. 손으로 적은 칸은 덮지 않고 '다름'으로만 알린다
+// 저장에 넘기는 목록은 읽은 목록·mergeBit·takeBitValue·dropBitField가 돌려준 것뿐이다. 손으로 적은 칸은 덮지 않고 '다름'으로만 알린다.
+// 업무사항 글씨 크기(specs/worklog-memo-font REQ-1508): 날짜 줄 아래 [가−]·[가+]를 누를 때만 그날 크기를 바꿔 changeMemoFont로 넘긴다(읽기가 끝난 날, PC만).
+// 비트 채우기·칸 고치기는 크기를 넘기지 않는다. 잘림 안내는 양식이 잰 값(onMemoOverflow)으로 툴바가 그린다(터치 기기는 묶음·안내 없음)
 
 const TOUCH_QUERY = '(hover: none) and (pointer: coarse)' // 보기만은 터치 기기로 정한다. 폭으로 정하면 반쪽 창·확대한 의원 PC가 막힌다
 const TODAY_CHECK_MS = 30_000
@@ -65,8 +68,9 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
   const focusCell = useRef<WorklogCellKey | null>(null)
   const rolloverFrom = useRef<string | null>(null) // 초점이 나가기를 기다리는 자정 넘김의 옛 오늘
   const focusKey = useCallback(() => focusCell.current, [])
-  const { status, day, bitFields, setCell, editBit, refresh, reload, clear } = useWorklogDay(ymd, loadDay, focusKey)
+  const { status, day, bitFields, memoFontPt, setCell, setMemoFont, editBit, refresh, reload, clear } = useWorklogDay(ymd, loadDay, focusKey)
   const readOnly = viewOnly || status !== 'ready'
+  const [memoOverflow, setMemoOverflow] = useState(false) // 업무사항 글이 칸을 넘는지(양식이 잰다)
   const bit = useBitFill({ ymd, today, readOnly: viewOnly })
   const bitHere = bit.ymd === ymd // 이 답이 고른 날의 것(날짜를 막 옮겼으면 아니다)
   const answered = bitHere && BIT_ANSWERED.includes(bit.status)
@@ -118,6 +122,14 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
     if (readOnly) return
     const next = setCell(key, value)
     autosave.change(ymd, next.day, next.bitFields)
+  }
+
+  // 화면 크기를 바로 바꾸고 자동 저장으로 넘긴다. 끝 크기·읽기가 끝나지 않은 날은 아무 일도 없다(AC-1508.2)
+  function onMemoFont(step: -1 | 1) {
+    if (readOnly) return
+    const next = stepMemoFont(memoFontPt, step)
+    if (next === memoFontPt || !setMemoFont(next)) return
+    autosave.changeMemoFont(ymd, next)
   }
 
   // 맞춤을 그날 최신 값·목록에 돌려 바뀌었을 때만 화면 값·목록을 바꾸고 자동 저장으로 넘긴다(읽기가 끝난 날만, editBit이 막는다).
@@ -207,6 +219,7 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
         onRetrySave={() => autosave.retry()}
         onReload={reload}
         onPrint={onPrint}
+        memoFont={viewOnly ? null : { pt: memoFontPt, disabled: readOnly, overflow: memoOverflow, onStep: onMemoFont }}
       />
       <BitNotice status={bit.status} lastReadAt={bitHere ? bit.lastReadAt : null} onReload={bit.reload} />
       <div ref={sheetArea} onBlur={onSheetBlur}>
@@ -216,6 +229,8 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
           readOnly={readOnly}
           blockedCells={blockedCellKeys(day)}
           bitFields={bitFields}
+          memoFontPt={memoFontPt}
+          onMemoOverflow={setMemoOverflow}
           onCell={onCell}
           onFocusCell={(key) => {
             focusCell.current = key

@@ -77,6 +77,39 @@ describe('worklogAutosave', () => {
     for (const call of save.mock.calls) expect(call).toHaveLength(3)
   })
 
+  it('AC-1508.8: 자동 저장이 업무사항 글씨 크기를 넘기면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, undefined, 크기) 다섯 인자로 간다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11)
+    autosave.changeMemoFont(YMD, 12)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, {}, undefined, 12)
+    expect(save.mock.calls[0]).toHaveLength(5)
+  })
+
+  it('AC-1508.8: 크기와 비트 칸 목록이 함께 바뀌면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, 목록, 크기)다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11)
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    autosave.changeMemoFont(YMD, 14)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' }, ['cashIn'], 14)
+  })
+
+  it('AC-1508.8: 크기를 넘기지 않는 저장은 지금처럼 인자 셋(목록 없음)·넷(목록 있음)이다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11)
+    autosave.serverDay('2026-10-27', null, null, [], 11)
+    autosave.change(YMD, dayWith({ cashIn: '100000' }))
+    autosave.change('2026-10-27', dayWith({ cashIn: '100000' }), ['cashIn'])
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' })
+    expect(save).toHaveBeenCalledWith(client, '2026-10-27', { cashIn: '100000' }, ['cashIn'])
+    expect(save.mock.calls.map((call) => call.length).sort()).toEqual([3, 4])
+  })
+
   it('AC-010.11: 화면이 없어도 실패한 저장을 2초 뒤 다시 한다', async () => {
     save.mockRejectedValueOnce(new WorklogStorageError('failed'))
     const autosave = worklogAutosave()

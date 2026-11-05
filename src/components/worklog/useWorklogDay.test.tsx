@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
 import {
   emptyWorklogDay,
+  type MemoFontPt,
   type WorklogCellKey,
   type WorklogDay,
   type WorklogNumberKey,
@@ -385,7 +386,7 @@ describe('AC-010.13 다시 읽기', () => {
     act(() => result.current.refresh())
     await settle(60_000)
 
-    expect(serverDay).toHaveBeenCalledWith(DAY, server, 'cardIn', ['cashIn'])
+    expect(serverDay).toHaveBeenCalledWith(DAY, server, 'cardIn', ['cashIn'], 11)
     expect(result.current.day.cashIn).toBe('200000')
     expect(result.current.day.cardIn).toBe('100000')
     expect(change).not.toHaveBeenCalled()
@@ -577,7 +578,7 @@ describe('AC-016.1 읽기 모양 { day, bitFields }', () => {
     await settle()
 
     expect(result.current.status).toBe('ready')
-    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '100000', memo: '가상 글' }), null, ['cashIn', 'newPatients'])
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '100000', memo: '가상 글' }), null, ['cashIn', 'newPatients'], 11)
     expect(result.current.day).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
     expect(result.current.day).not.toHaveProperty('bitFields')
     expect(result.current.bitFields).toEqual(['cashIn', 'newPatients'])
@@ -591,7 +592,7 @@ describe('AC-016.1 읽기 모양 { day, bitFields }', () => {
     const { result } = setup()
     await settle()
 
-    expect(serverDay).toHaveBeenCalledWith(DAY, null, null, [])
+    expect(serverDay).toHaveBeenCalledWith(DAY, null, null, [], 11)
     expect(result.current.day).toEqual(emptyWorklogDay())
     expect(result.current.bitFields).toEqual([])
     serverDay.mockRestore()
@@ -605,7 +606,7 @@ describe('AC-016.1 읽기 모양 { day, bitFields }', () => {
     act(() => result.current.refresh())
     await settle()
 
-    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '200000' }), null, ['cashIn'])
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '200000' }), null, ['cashIn'], 11)
     expect(result.current.day).toEqual(dayWith({ cashIn: '200000' }))
     expect(result.current.bitFields).toEqual(['cashIn'])
     serverDay.mockRestore()
@@ -738,5 +739,198 @@ describe('AC-017.7 날짜별 비트 칸 목록', () => {
     expect(edit).not.toHaveBeenCalled()
     expect(applied).toBeNull()
     expect(result.current.day.cashIn).toBe('')
+  })
+})
+
+// ── 업무사항 글씨 크기(worklog-memo-font REQ-1508, design.md '화면 잇기'): 날짜 칸이 크기도 든다. 읽은 크기는 serverDay 다섯째 인자로 넘기고(줄 없음·크기 없음 → 11)
+// 돌려받은 크기를 그린다. setMemoFont는 그날이 ready일 때만 화면 크기를 바꾼다(저장은 화면이 부른다). 칸 고치기·비트 맞춤은 크기를 떨어뜨리지 않는다
+describe('AC-1508 날짜별 업무사항 글씨 크기', () => {
+  const withFont = (memoFontPt: MemoFontPt, cells: Partial<WorklogDay> = {}, bitFields: WorklogNumberKey[] = []): WorklogSavedDay => ({
+    ...saved(cells, bitFields),
+    memoFontPt,
+  })
+
+  it('AC-1508.1·AC-1508.4: 저장된 크기 14는 serverDay 다섯째 인자로 넘기고, 읽는 동안은 11·다 읽으면 14다', async () => {
+    const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    const { result } = setup()
+    expect(result.current.memoFontPt).toBe(11)
+
+    await act(async () => reply.resolve(withFont(14, { memo: '가상 글' })))
+
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ memo: '가상 글' }), null, [], 14)
+    expect(result.current.status).toBe('ready')
+    expect(result.current.memoFontPt).toBe(14)
+    expect(save).not.toHaveBeenCalled()
+    serverDay.mockRestore()
+  })
+
+  it.each([
+    ['줄이 없는 날(null)', null],
+    ['memoFontPt가 없는 응답', saved({ cashIn: '100000' })],
+  ])('AC-1508.1: %s은 11이다', async (_name, reply) => {
+    load.mockResolvedValueOnce(reply)
+    const { result } = setup()
+    await settle()
+    expect(result.current.status).toBe('ready')
+    expect(result.current.memoFontPt).toBe(11)
+  })
+
+  it('AC-1508.1: 전날이 14여도 처음 여는 다음 날은 11이다(이어받지 않는다)', async () => {
+    load.mockResolvedValueOnce(withFont(14))
+    const { result, rerender } = setup(OTHER)
+    await settle()
+    expect(result.current.memoFontPt).toBe(14)
+
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    rerender({ ymd: DAY })
+    expect(result.current.memoFontPt).toBe(11)
+    await act(async () => reply.resolve(null))
+    expect(result.current.memoFontPt).toBe(11)
+  })
+
+  it('AC-1508.2: setMemoFont는 ready인 날의 화면 크기를 바로 바꾸고 참이며, 자동 저장·저장을 부르지 않는다', async () => {
+    const { result } = await ready(DAY, { memo: '가상 글' })
+    const autosave = worklogAutosave()
+    const changeMemoFont = vi.spyOn(autosave, 'changeMemoFont')
+    const change = vi.spyOn(autosave, 'change')
+
+    let done: boolean | undefined
+    act(() => {
+      done = result.current.setMemoFont(12)
+    })
+
+    expect(done).toBe(true)
+    expect(result.current.memoFontPt).toBe(12)
+    expect(result.current.day).toEqual(dayWith({ memo: '가상 글' }))
+    expect(changeMemoFont).not.toHaveBeenCalled()
+    expect(change).not.toHaveBeenCalled()
+    await settle(5000)
+    expect(save).not.toHaveBeenCalled()
+    changeMemoFont.mockRestore()
+    change.mockRestore()
+  })
+
+  it.each([
+    ['읽는 중', () => load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)],
+    ['불러오기 실패', () => load.mockRejectedValueOnce(new WorklogStorageError('failed'))],
+  ])('AC-1508.2: %s인 날에는 setMemoFont가 거짓이고 크기가 11 그대로다', async (_name, arrange) => {
+    arrange()
+    const { result } = setup()
+    await settle()
+    let done: boolean | undefined
+    act(() => {
+      done = result.current.setMemoFont(12)
+    })
+    expect(done).toBe(false)
+    expect(result.current.memoFontPt).toBe(11)
+  })
+
+  it('AC-1508.3: 다른 날로 옮겼다 돌아오면 저장 안 된 크기가 그대로이고, 옮겨 간 날은 그날 크기다', async () => {
+    const { result, rerender } = await ready()
+    act(() => {
+      result.current.setMemoFont(12)
+    })
+    worklogAutosave().changeMemoFont(DAY, 12)
+
+    load.mockResolvedValueOnce(withFont(16))
+    rerender({ ymd: OTHER })
+    await settle()
+    expect(result.current.memoFontPt).toBe(16)
+
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    rerender({ ymd: DAY })
+    expect(result.current.memoFontPt).toBe(12)
+    await act(async () => reply.resolve(null))
+    expect(result.current.memoFontPt).toBe(12)
+  })
+
+  it('AC-1508.3: 앱 안 이동 뒤 다시 열면 자동 저장에 남은 크기를 읽기 전에 먼저 보이고, 읽은 뒤에도 그대로다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(DAY, null, null, [], 11)
+    autosave.changeMemoFont(DAY, 14)
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+
+    const { result } = setup()
+    expect(result.current.status).toBe('loading')
+    expect(result.current.memoFontPt).toBe(14)
+
+    await act(async () => reply.resolve(null))
+    expect(result.current.status).toBe('ready')
+    expect(result.current.memoFontPt).toBe(14)
+  })
+
+  it('AC-1508.4: 다시 읽기가 다른 PC가 바꾼 크기를 serverDay 다섯째 인자로 넘겨 반영하고, 저장을 부르지 않는다', async () => {
+    const { result } = await ready()
+    const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
+    load.mockResolvedValueOnce(withFont(16))
+
+    act(() => result.current.refresh())
+    await settle(60_000)
+
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith(), null, [], 16)
+    expect(result.current.memoFontPt).toBe(16)
+    expect(save).not.toHaveBeenCalled()
+    serverDay.mockRestore()
+  })
+
+  it('AC-1508.4: 저장 안 된 크기는 다시 읽어도 그대로다', async () => {
+    const { result } = await ready()
+    act(() => {
+      result.current.setMemoFont(12)
+    })
+    worklogAutosave().changeMemoFont(DAY, 12)
+    load.mockResolvedValueOnce(withFont(16))
+
+    act(() => result.current.refresh())
+    await settle()
+
+    expect(result.current.memoFontPt).toBe(12)
+  })
+
+  it('AC-1508.5: 칸 고치기(setCell)는 크기를 이어 가고, 돌려주는 하루·목록에는 크기가 없다', async () => {
+    load.mockResolvedValueOnce(withFont(14, { cashIn: '100000' }, ['cashIn']))
+    const { result } = setup()
+    await settle()
+
+    let edited: { day: WorklogDay; bitFields?: WorklogNumberKey[] } | undefined
+    act(() => {
+      edited = result.current.setCell('cashIn', '120000')
+      result.current.setCell('memo', '가상 글')
+    })
+
+    expect(edited).toEqual({ day: dayWith({ cashIn: '120000' }), bitFields: [] })
+    expect(edited).not.toHaveProperty('memoFontPt')
+    expect(result.current.memoFontPt).toBe(14)
+  })
+
+  it('AC-1508.5: 비트 맞춤(editBit)도 크기를 이어 간다', async () => {
+    load.mockResolvedValueOnce(withFont(14))
+    const { result } = setup()
+    await settle()
+
+    act(() => {
+      result.current.editBit((day, fields) => ({ day: { ...day, cardIn: '200000' }, bitFields: [...fields, 'cardIn'] }))
+    })
+
+    expect(result.current.day.cardIn).toBe('200000')
+    expect(result.current.bitFields).toEqual(['cardIn'])
+    expect(result.current.memoFontPt).toBe(14)
+  })
+
+  it('AC-1508.9: clear(로그아웃)하면 크기도 지워져 11이다', async () => {
+    load.mockResolvedValueOnce(withFont(14))
+    const { result } = setup()
+    await settle()
+    expect(result.current.memoFontPt).toBe(14)
+    worklogAutosave().dispose()
+
+    act(() => result.current.clear())
+
+    expect(result.current.memoFontPt).toBe(11)
   })
 })

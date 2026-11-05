@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadWorklogDay, saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
 import { BIT_FILL_KEYS, mergeBit } from '@/lib/worklog/bitFill'
 import type { RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
-import { emptyWorklogDay, type WorklogDay, type WorklogNumberKey, type WorklogSavedDay } from '@/types/worklog'
+import { emptyWorklogDay, type MemoFontPt, type WorklogDay, type WorklogNumberKey, type WorklogSavedDay } from '@/types/worklog'
 import s from './sheet.module.css'
 import { WorklogScreen } from './WorklogScreen'
 import { startWorklogSession, worklogAutosave } from './worklogSession'
@@ -100,7 +100,12 @@ const blurFrom = (el: HTMLElement) =>
   })
 const button = (name: string) => screen.getByRole('button', { name })
 const dateInput = () => screen.getByLabelText<HTMLInputElement>('날짜 고르기')
-const statusText = () => screen.getByRole('status').textContent
+// 저장 상태 글 하나. 업무사항 글씨 크기 숫자 칸(<output>)도 role="status"라 그것은 뺀다(worklog-memo-font design.md '기존 명세·시험과의 관계')
+const statusText = () => {
+  const lines = screen.getAllByRole('status').filter((el) => el.tagName !== 'OUTPUT')
+  expect(lines).toHaveLength(1)
+  return lines[0].textContent
+}
 const cardCodes = () => screen.queryAllByRole('alert').map((card) => card.textContent?.match(/E-[A-Z-]+/)?.[0])
 const sheetCells = () => within(screen.getByRole('table', { name: '업무일지' })).getAllByRole<HTMLInputElement>('textbox')
 const expectLocked = () => expect(sheetCells().every((el) => el.readOnly)).toBe(true)
@@ -1707,5 +1712,366 @@ describe('AC-017.9 [지금 불러오기]', () => {
     }
     expect(follows(sheetTable(), screen.getByText(DIFFERS_TITLE))).toBe(true)
     expect(hiddenInPrint(sheetTable())).toBe(false)
+  })
+})
+
+// ── 업무사항 글씨 크기(worklog-memo-font REQ-1508, design.md '화면 잇기'). 양식은 진짜 WorklogSheet이고,
+// jsdom은 크기를 재지 않아 업무사항 textarea의 글 높이(scrollHeight)·칸 높이(clientHeight)만 시험이 정한다
+const TWO_AGO = '2026-10-26'
+const CUT = '업무사항 글이 칸보다 길어서 인쇄하면 아랫부분이 잘려요. 글씨를 줄이면 다 들어갈 수 있어요.'
+const fontGroup = () => screen.queryByRole('group', { name: '업무사항 글씨 크기' })
+const fontShown = () => within(screen.getByRole('group', { name: '업무사항 글씨 크기' })).getByRole('status').textContent
+const memoPt = () => tdOf('업무사항').style.getPropertyValue('--memo-pt')
+const bigger = () => button('업무사항 글씨 크게') as HTMLButtonElement
+const smaller = () => button('업무사항 글씨 작게') as HTMLButtonElement
+const withFont = (memoFontPt: MemoFontPt, cells: Partial<WorklogDay> = {}): WorklogSavedDay => ({ ...saved(cells), memoFontPt })
+
+// 업무사항 칸의 크기를 정한다. 값은 box를 바꾸면 따라 바뀐다
+function memoSize(box: { scroll: number; client: number }) {
+  const el = cell('업무사항')
+  Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => box.scroll })
+  Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => box.client })
+}
+// 창 크기가 바뀌면 양식이 다시 잰다
+const remeasure = () =>
+  act(() => {
+    window.dispatchEvent(new Event('resize'))
+  })
+
+// 크기를 든 가짜 서버. 저장은 바뀐 칸과, 받았을 때만 목록·크기를 그 줄에 넣는다
+function fontServer(rows: Record<string, { cells?: Partial<WorklogDay>; bitFields?: WorklogNumberKey[]; memoFontPt?: MemoFontPt }>) {
+  const db = new Map<string, Required<WorklogSavedDay>>(
+    Object.entries(rows).map(([ymd, row]): [string, Required<WorklogSavedDay>] => [
+      ymd,
+      { day: dayWith(row.cells), bitFields: [...(row.bitFields ?? [])], memoFontPt: row.memoFontPt ?? 11 },
+    ]),
+  )
+  load.mockImplementation(async (_client, ymd) => {
+    const row = db.get(ymd)
+    return row ? { day: { ...row.day }, bitFields: [...row.bitFields], memoFontPt: row.memoFontPt } : null
+  })
+  save.mockImplementation(async (_client, ymd, changes, bitFields, memoFontPt) => {
+    const row: Required<WorklogSavedDay> = db.get(ymd) ?? { day: emptyWorklogDay(), bitFields: [], memoFontPt: 11 }
+    db.set(ymd, {
+      day: { ...row.day, ...changes },
+      bitFields: bitFields ? [...bitFields] : row.bitFields,
+      memoFontPt: memoFontPt ?? row.memoFontPt,
+    })
+  })
+  return db
+}
+
+describe('AC-1508.1 그날 크기로 열기', () => {
+  it('AC-1508.1: 서버에 14가 저장된 날은 읽기가 끝나면 업무사항 칸 --memo-pt와 날짜 줄 숫자가 14다(읽는 동안은 11)', async () => {
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    render(<WorklogScreen initialToday={TODAY} />)
+    expect(memoPt()).toBe('11')
+    expect(fontShown()).toBe('11')
+
+    await act(async () => reply.resolve(withFont(14, { memo: '가상 업무 글' })))
+
+    expect(memoPt()).toBe('14')
+    expect(fontShown()).toBe('14')
+    expect(cell('업무사항').value).toBe('가상 업무 글')
+  })
+
+  it.each([
+    ['줄이 없는 날', null],
+    ['memoFontPt가 없는 응답', saved({ memo: '가상 업무 글' })],
+  ])('AC-1508.1: %s은 11이다', async (_name, reply) => {
+    load.mockResolvedValueOnce(reply)
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+    expectOpen()
+    expect(memoPt()).toBe('11')
+    expect(fontShown()).toBe('11')
+  })
+
+  it('AC-1508.1: 전날이 14여도 처음 여는 다음 날은 11이다(이어받지 않는다)', async () => {
+    fontServer({ [TWO_AGO]: { memoFontPt: 14 } })
+    await openScreen()
+    fireEvent.change(dateInput(), { target: { value: TWO_AGO } })
+    await settle()
+    expect(fontShown()).toBe('14')
+
+    fireEvent.click(button('다음 날'))
+    await settle()
+    expect(dateInput().value).toBe(PAST)
+    expect(fontShown()).toBe('11')
+    expect(memoPt()).toBe('11')
+  })
+})
+
+describe('AC-1508.2 [가−]·[가+]', () => {
+  it('AC-1508.2: [가+]를 누르면 화면이 바로 12가 되고 changeMemoFont(그날, 12)가 한 번 불리며, saveWorklogDay(클라이언트, 그날, {}, undefined, 12)로 저장하고 상태 글은 다른 칸과 같다', async () => {
+    const changeMemoFont = vi.spyOn(worklogAutosave(), 'changeMemoFont')
+    await open({ memo: '가상 업무 글' })
+
+    fireEvent.click(bigger())
+
+    expect(fontShown()).toBe('12')
+    expect(memoPt()).toBe('12')
+    expect(changeMemoFont).toHaveBeenCalledTimes(1)
+    expect(changeMemoFont).toHaveBeenCalledWith(TODAY, 12)
+    expect(statusText()).toBe('저장하는 중이에요')
+    expect(save).not.toHaveBeenCalled()
+
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, TODAY, {}, undefined, 12)
+    expect(statusText()).toBe('저장했어요 · 12:00')
+  })
+
+  it('AC-1508.2: [가−]는 한 칸 작게(11 → 10) 바꾸고 칸 고치기와 함께면 한 번에 저장한다', async () => {
+    await open()
+    fireEvent.click(smaller())
+    type('현금수납', '100000')
+    expect(fontShown()).toBe('10')
+    expect(memoPt()).toBe('10')
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { cashIn: '100000' }, undefined, 10)
+  })
+
+  it.each([
+    ['불러오는 중', () => load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)],
+    ['불러오기 실패', () => load.mockRejectedValueOnce(new WorklogStorageError('failed'))],
+  ])('AC-1508.2: %s인 날은 두 단추가 눌리지 않고 눌러도 아무 일이 없다(숫자는 보인다)', async (_name, arrange) => {
+    arrange()
+    const changeMemoFont = vi.spyOn(worklogAutosave(), 'changeMemoFont')
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+
+    expect(bigger().disabled).toBe(true)
+    expect(smaller().disabled).toBe(true)
+    fireEvent.click(bigger())
+    fireEvent.click(smaller())
+    expect(fontShown()).toBe('11')
+    expect(memoPt()).toBe('11')
+    expect(changeMemoFont).not.toHaveBeenCalled()
+    await settle(5000)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [16, '크게', '작게'],
+    [8, '작게', '크게'],
+  ] as const)('AC-1508.2: 끝 크기 %i에서는 [가%s]가 눌리지 않고 눌러도 아무 일이 없다', async (pt, end, other) => {
+    load.mockResolvedValueOnce(withFont(pt))
+    const changeMemoFont = vi.spyOn(worklogAutosave(), 'changeMemoFont')
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+
+    const stuck = button(`업무사항 글씨 ${end}`) as HTMLButtonElement
+    expect(stuck.disabled).toBe(true)
+    expect((button(`업무사항 글씨 ${other}`) as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(stuck)
+    expect(fontShown()).toBe(String(pt))
+    expect(changeMemoFont).not.toHaveBeenCalled()
+    await settle(5000)
+    expect(save).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-1508.3 날짜 옮김·앱 안 이동', () => {
+  it('AC-1508.3: 크기를 바꾼 날은 다른 날로 옮겼다 돌아와도 저장 안 된 크기가 보이고, 옮겨 간 날은 그날 크기다', async () => {
+    fontServer({ [PAST]: { memoFontPt: 16 } })
+    save.mockReturnValue(deferred<void>().promise) // 저장이 끝나지 않는다
+    await openScreen()
+    fireEvent.click(bigger())
+    expect(fontShown()).toBe('12')
+
+    fireEvent.click(button('전날'))
+    await settle()
+    expect(fontShown()).toBe('16')
+    expect(memoPt()).toBe('16')
+
+    fireEvent.click(button('다음 날'))
+    await settle()
+    expect(fontShown()).toBe('12')
+    expect(memoPt()).toBe('12')
+  })
+
+  it('AC-1508.3: 앱 안 다른 탭에 갔다 오면 저장 안 된 크기가 읽기 전부터 보인다', async () => {
+    save.mockReturnValue(deferred<void>().promise)
+    const { unmount } = await open()
+    fireEvent.click(bigger())
+    fireEvent.click(bigger())
+    expect(fontShown()).toBe('14')
+
+    unmount()
+    expect(save).toHaveBeenCalledWith(client, TODAY, {}, undefined, 14)
+
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    render(<WorklogScreen initialToday={TODAY} />)
+    expect(fontShown()).toBe('14')
+    expect(memoPt()).toBe('14')
+    await act(async () => reply.resolve(null))
+    expect(fontShown()).toBe('14')
+  })
+})
+
+describe('AC-1508.4 다시 읽기', () => {
+  it('AC-1508.4: 다른 PC가 바꾼 크기는 60초 다시 읽기에 반영되고, 다시 읽기만으로는 저장하지 않는다', async () => {
+    const db = fontServer({ [TODAY]: { cells: { memo: '가상 업무 글' } } })
+    await openScreen()
+    expect(fontShown()).toBe('11')
+
+    db.set(TODAY, { ...db.get(TODAY)!, memoFontPt: 16 })
+    await settle(60_000)
+
+    expect(fontShown()).toBe('16')
+    expect(memoPt()).toBe('16')
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('AC-1508.4: 이 화면에 저장 안 된 크기가 있으면 다시 읽어도 그대로이고, 그 크기가 저장된다', async () => {
+    const db = fontServer({ [TODAY]: {} })
+    await openScreen()
+    fireEvent.click(bigger())
+    db.set(TODAY, { ...db.get(TODAY)!, memoFontPt: 16 })
+
+    setVisibility('visible')
+    await settle()
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(fontShown()).toBe('12')
+
+    await settle(800)
+    expect(save).toHaveBeenCalledWith(client, TODAY, {}, undefined, 12)
+    expect(fontShown()).toBe('12')
+  })
+})
+
+describe('AC-1508.5 비트 채우기·칸 고치기는 크기를 두고 보내지 않는다', () => {
+  it('AC-1508.5: 크기 14인 날에 비트 숫자가 저절로 채워져도 크기는 14이고, 그 저장에 다섯째 인자가 없다', async () => {
+    connect(bitAnswer(TODAY))
+    fontServer({ [TODAY]: { cells: { spendCash: '20000' }, memoFontPt: 14 } })
+    await openScreen()
+
+    expect(cell('현금수납').value).toBe('100,000원')
+    expect(fontShown()).toBe('14')
+    expect(memoPt()).toBe('14')
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toHaveLength(4)
+    expect(fontShown()).toBe('14')
+  })
+
+  it('AC-1508.5: [비트 숫자로 바꾸기]·[지금 불러오기]·칸 고치기 뒤에도 크기 14 그대로이고, 그 저장들에 다섯째 인자가 없다', async () => {
+    connect(bitAnswer(TODAY, { cash: 125000 }), bitAnswer(TODAY, { cash: 125000, card: 320000 }))
+    fontServer({ [TODAY]: { cells: { cashIn: '120,000 별도' }, memoFontPt: 14 } })
+    await openScreen()
+    await settle(800)
+
+    fireEvent.click(button('현금수납 칸을 비트 숫자로 바꾸기'))
+    expect(cell('현금수납').value).toBe('125,000원')
+    expect(fontShown()).toBe('14')
+    await settle(800)
+
+    fireEvent.click(button('지금 불러오기'))
+    await settle()
+    expect(cell('카드수납').value).toBe('320,000원')
+    expect(fontShown()).toBe('14')
+    await settle(800)
+
+    type('업무사항', '가상 업무 글')
+    type('지출 현금 금액', '30000')
+    expect(fontShown()).toBe('14')
+    await settle(800)
+
+    expect(memoPt()).toBe('14')
+    expect(save).toHaveBeenCalledTimes(4)
+    for (const call of save.mock.calls) expect(call.length).toBeLessThan(5)
+  })
+})
+
+describe('AC-1508.6 터치 기기', () => {
+  it('AC-1508.6: 터치 기기는 크기 14로 보이고, 글씨 묶음·잘림 안내가 없으며 저장을 부르지 않는다', async () => {
+    media.touch = true
+    const changeMemoFont = vi.spyOn(worklogAutosave(), 'changeMemoFont')
+    load.mockResolvedValueOnce(withFont(14, { memo: '가상 긴 업무 글' }))
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+
+    expect(memoPt()).toBe('14')
+    expect(fontGroup()).toBeNull()
+    expect(screen.queryByRole('button', { name: /업무사항 글씨/ })).toBeNull()
+    memoSize({ scroll: 120, client: 84 })
+    remeasure()
+    expect(screen.queryByText(CUT)).toBeNull()
+    expect(statusText()).toBe('휴대폰에서는 보기만 할 수 있어요')
+
+    await settle(5000)
+    expect(changeMemoFont).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-1508.7 잘림 안내', () => {
+  it('AC-1508.7: 업무사항 글이 칸을 넘으면 잘림 안내가 보이고, 글씨를 줄여 다 들어가면 사라진다', async () => {
+    await open({ memo: '가상 긴 업무 글' })
+    expect(screen.queryByText(CUT)).toBeNull()
+    const box = { scroll: 120, client: 84 }
+    memoSize(box)
+    remeasure()
+    expect(screen.getByText(CUT)).toBeTruthy()
+
+    box.scroll = 80
+    fireEvent.click(smaller())
+    expect(fontShown()).toBe('10')
+    expect(screen.queryByText(CUT)).toBeNull()
+  })
+
+  it('AC-1508.7: 글을 지워 다 들어가면 사라진다', async () => {
+    await open({ memo: '가상 긴 업무 글' })
+    const box = { scroll: 120, client: 84 }
+    memoSize(box)
+    remeasure()
+    expect(screen.getByText(CUT)).toBeTruthy()
+
+    box.scroll = 84
+    type('업무사항', '가상')
+    expect(screen.queryByText(CUT)).toBeNull()
+  })
+
+  it('AC-1508.7: 불러오는 중인 날에는 글이 넘쳐도 안내가 없고, 읽기가 끝나면 보인다', async () => {
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    render(<WorklogScreen initialToday={TODAY} />)
+    memoSize({ scroll: 120, client: 84 })
+    remeasure()
+    expect(screen.queryByText(CUT)).toBeNull()
+
+    await act(async () => reply.resolve(saved({ memo: '가상 긴 업무 글' })))
+    expect(screen.getByText(CUT)).toBeTruthy()
+  })
+
+  it('AC-1508.7: 불러오기 실패인 날에는 글이 넘쳐도 안내가 없다', async () => {
+    load.mockRejectedValueOnce(new WorklogStorageError('failed'))
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+    memoSize({ scroll: 120, client: 84 })
+    remeasure()
+    expect(cardCodes()).toContain('E-WORKLOG-LOAD-FAILED')
+    expect(screen.queryByText(CUT)).toBeNull()
+  })
+})
+
+describe('AC-1508.9 로그아웃', () => {
+  it('AC-1508.9: 로그아웃하면 크기도 지워져 그 뒤 그림은 11이고, 바꾸던 크기를 저장하지 않는다', async () => {
+    load.mockResolvedValueOnce(withFont(14, { memo: '가상 업무 글' }))
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+    fireEvent.click(bigger())
+    expect(fontShown()).toBe('16')
+
+    signOut()
+
+    expect(fontShown()).toBe('11')
+    expect(memoPt()).toBe('11')
+    await settle(120_000)
+    expect(save).not.toHaveBeenCalled()
   })
 })
