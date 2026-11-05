@@ -7,7 +7,7 @@ import { COLUMN_NAME, GRAIN_NAME } from '@/components/stats/rxPickView'
 import { rxDetail, type RxDetailPoint, type RxLine, type StatsInput } from '@/components/stats/view'
 import { DetailToggle, type DetailTable } from './DetailToggle'
 import { CHART_NO_SIDE_SCROLL, Note, thinTotals, todayOf, TREND_SERIES } from './parts'
-import { comparisonAt, detailNote, longLabel, tickLabel } from './RxTrendSection'
+import { comparisonAt, detailNote, longLabel, tickLabel } from './trendLabels'
 
 // 처방 골라 보기의 열린 칸 안 (rx-picker REQ-806·807, AC-809.2 그래프 단추, 시안 panelHtml).
 // 바깥 칸(id·hidden·바탕·여백)은 표가 그린다. 그래프 모양은 prop이라 기간을 바꿔도 부모가 지키고, [자세히] 열림은 DetailToggle이 지킨다.

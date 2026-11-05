@@ -6,11 +6,11 @@ import { formatCount } from '@/components/charts/format'
 import { InlineBar } from '@/components/charts/InlineBar'
 import { StackedBarChart, type BarBucket } from '@/components/charts/StackedBarChart'
 import { Icon } from '@/components/common/Icon'
-import { COMPARE_NAME, rxComparedCells, rxDetail, rxList, type RxDetailPoint, type RxTrendRow, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { COMPARE_NAME, rxComparedCells, rxDetail, rxList, type RxTrendRow, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import { monthOf } from '@/lib/analytics/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
-import { CHART_NO_SIDE_SCROLL, dateWithWeekday, dayNumber, DeltaText, EmptyNote, longDate, monthNumber, NO_RANGE_DATA, Note, onlyThisMonthPartial, PartialChip, PERIOD_NAME, Section, thinTotals, todayOf, TREND_SERIES, yearMonth } from './parts'
+import { CHART_NO_SIDE_SCROLL, DeltaText, EmptyNote, NO_RANGE_DATA, Note, PartialChip, PERIOD_NAME, Section, thinTotals, todayOf, TREND_SERIES } from './parts'
+import { comparedNote, comparisonAt, detailNote, GRAIN_NAME, longLabel, tickLabel } from './trendLabels'
 
 // 처방 추세 (stats REQ-513 AC-513.2·513.3·513.4·513.5·513.11·513.12, AC-511.6·511.8·511.9, 시안 notes.md §3 '처방 추세').
 // 줄의 막대·눈금은 comparable(끝난 칸끼리의 합)로 그리고 글자 건수는 count다. comparable이 null이면 막대는 count, 눈금 없음, 증감 "비교할 수 없음".
@@ -18,42 +18,12 @@ import { CHART_NO_SIDE_SCROLL, dateWithWeekday, dayNumber, DeltaText, EmptyNote,
 
 const TITLE = '처방 추세'
 const EMPTY = '불러오면 많이 낸 처방 5가지와 그 흐름이 보여요.'
-const GRAIN_NAME: Record<StatsPeriod, '일' | '주' | '달'> = { '7d': '일', '30d': '일', '90d': '주', '12m': '달' }
 const DENSE_DETAIL_OVER = 16
 
 // 줄·머리의 칸: 처방 · 건수 · 증감 · 신환 재진 · 꺾쇠(시안 .rxr). '일부 기간'이 있으면 건수 칸이 넓어지고 좁으면 칩이 건수 아래로 내려간다. 휴대폰은 두 줄
 const COLUMNS = 'grid grid-cols-[minmax(0,1fr)_84px_176px_132px_16px] items-center gap-x-3'
 const COLUMNS_PARTIAL = 'grid grid-cols-[minmax(96px,1fr)_minmax(84px,140px)_176px_132px_16px] items-center gap-x-3'
 const PHONE_ROW = 'max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-y-1'
-
-// 뺀 짝이 있을 때의 안내(AC-513.12). 12개월은 달, 나머지는 표시 칸과 상관없이 날이다(AC-511.9)
-const comparedNote = (period: StatsPeriod, kept: number) =>
-  period === '12m' ? `증감과 막대는 끝난 ${kept}달만 견줘요. 건수는 기간 전체예요.` : `증감과 막대는 두 기간 모두 자료가 있는 ${kept}일만 견줘요. 건수는 기간 전체예요.`
-
-export const longLabel = (point: RxDetailPoint, period: StatsPeriod) =>
-  GRAIN_NAME[period] === '일' ? dateWithWeekday(point.start) : GRAIN_NAME[period] === '주' ? `${longDate(point.start)} – ${longDate(point.end)}` : yearMonth(point.start)
-
-export function tickLabel(point: RxDetailPoint, i: number, cells: number, period: StatsPeriod): string {
-  const grain = GRAIN_NAME[period]
-  if (grain === '달') return `${monthNumber(point.start)}월`
-  const step = grain === '주' ? 3 : cells <= 7 ? 1 : 7
-  return i % step === 0 ? `${monthNumber(point.start)}.${dayNumber(point.start)}` : ''
-}
-
-// 같은 차례 비교 점의 건수. 점이 없거나 덮이지 않았으면 null
-export function comparisonAt(previous: readonly RxDetailPoint[], i: number): number | null {
-  const point = previous[i]
-  return point === undefined || !point.covered ? null : point.count
-}
-
-export function detailNote(period: StatsPeriod, current: readonly RxDetailPoint[], today: string): string {
-  const grain = GRAIN_NAME[period]
-  if (grain === '일') return '하루씩 센 건수예요. 회색 막대는 비교 기간의 같은 차례 날이에요.'
-  if (grain === '주') return '주는 월요일–일요일이에요. 기간 처음과 끝에 걸린 주는 일부 기간(빗금)이에요. 회색 막대는 비교 기간의 같은 차례 주예요.'
-  const gray = '회색 막대는 작년 같은 달이에요.'
-  const partial = current.filter((point) => point.partial).map((point) => monthOf(point.start))
-  return onlyThisMonthPartial(partial, today) ? `빗금 칸은 아직 끝나지 않은 달이에요(${monthNumber(today)}월은 ${dayNumber(today)}일까지). ${gray}` : gray
-}
 
 function RxDetail({ row, input }: { row: RxTrendRow; input: StatsInput }) {
   const { period } = input.range
