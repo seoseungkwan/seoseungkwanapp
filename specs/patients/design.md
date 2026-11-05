@@ -19,10 +19,10 @@
 
 ### precheck가 나중에 할 일 (이 명세가 합쳐진 뒤, precheck 브랜치에서)
 - `specs/precheck/requirements.md`에서 REQ-023~026, `tasks.md`에서 TASK-23~26을 빼고 "환자 탭(`specs/patients`)으로 옮김"을 적는다. `phases/precheck-5-contact/`와 `phases/index.json`의 그 줄을 지운다. `docs/precheck/plan.md` §6 Phase 5를 같은 뜻으로 고친다
-- `20261030000000_precheck_settings.sql`에서 `message_templates`를 빼고, `my_hospital_id()`·`touch_updated_at()`는 cross-branch 규칙 C1의 글 그대로(`create or replace`, 같은 몸통·권한)로 바꾼다. `20261030000100_precheck_counts.sql`에서 `contact_counts`를 뺀다
-- precheck TASK-15(작업 저장): `store.load`·`store.save` 처리기를 만들 때 이 명세의 `ContactStore`를 그대로 불러 `contact` 칸을 맡기고, `Program.cs`의 `ContactCommands.RegisterStore` 한 줄을 지운다(아래 '도우미 저장')
-- precheck TASK-15·17(작업 저장·자동 입력의 '한 번에 하나', precheck 017.10): 같은 뮤텍스 이름 `Local\SeoseungkwanPrecheckHelper.Work`를 이 명세의 `helper/src/Precheck.Core/Contact/NamedWorkLock.cs`(`IWorkLock`)가 이미 쓴다. 두 번째 뮤텍스 부품을 만들지 말고 이것을 쓰거나 공용 자리로 옮긴다
-- 오류 번호: precheck가 자기 화면에 쓸 `E-SETTINGS-FAILED`·`E-COUNTS-FAILED`·`E-BIT-EXPORT-FAILED`는 precheck가 더한다. 이 명세는 `E-PATIENTS-*`만 더한다(규칙 C3). `E-BIT-EXPORT-FAILED`는 precheck TASK-8이 main에 더한 뒤 도우미 답에서 그대로 쓴다
+- `20261030000000_precheck_settings.sql`의 `message_templates`와 `20261030000100_precheck_counts.sql`의 `contact_counts`는 빼지 않는다(라이브 줄에 있고 운영에 먼저 들어간다). 이 명세의 migration이 같은 칸·정책·트리거 이름으로 맞춰 그 뒤에 붙여도 아무것도 더하지 않는다(AC-607.5). `my_hospital_id()`·`touch_updated_at()`는 cross-branch 규칙 C1의 글 그대로(`create or replace`, 같은 몸통·권한)로 바꾼다(지금 precheck 글은 `touch_updated_at`이 `security definer`이고 줄바꿈이 달라 C1과 다르다. 이 명세·업무일지·통계·매출 migration은 C1 글로 다시 만든다)
+- (합치며 끝남, b2bc3cf) precheck TASK-15(작업 저장)의 `StoreCommands`·`WorkStore`가 `store.load`·`store.save`의 `contact` 칸도 맡는다(도우미 0.3.0). `ContactStore`는 쓰지 않았고, 합칠 때 `Program.cs`는 그쪽 것을 그대로 받아 `ContactCommands.RegisterStore` 줄이 없다. 답 모양은 `{contact: {…}}`다(아래 '도우미 저장')
+- (합치며 끝남, b2bc3cf) precheck TASK-17이 같은 뮤텍스 이름 `Local\SeoseungkwanPrecheckHelper.Work`로 `helper/src/Precheck.Core/Input/WorkLock.cs`를 만들었고 등록된 `store.save`가 그것을 쓴다(5초). 이 명세의 `NamedWorkLock.cs`(`IWorkLock`)는 등록하지 않은 `ContactCommands.RegisterStore`만 쓴다(이름이 같아 함께 돌아도 서로 막는다)
+- 오류 번호: (합치며 끝남, b2bc3cf) `E-SETTINGS-FAILED`(precheck AC-012.5)·`E-COUNTS-FAILED`(AC-019.4·019.5)·`E-BIT-EXPORT-FAILED`(AC-008.3·008.4)는 precheck가 더했고 `lib/errors.ts`에 있다. 이 명세는 `E-PATIENTS-*`만 더한다(규칙 C3, AC-609.5). `E-BIT-EXPORT-FAILED`는 도우미 답에서 그대로 쓴다(AC-605.3)
 - precheck TASK-9(조각 모으기): `src/workers/patients/assemble.ts`와 같은 일이면 하나로 합쳐도 된다
 - precheck TASK-19(밖에서 보는 건수): 연락 남은 건수 칸은 `lib/storage/contactCounts.ts`의 `readContactCount`를 쓴다
 - precheck TASK-31(보고 문장 복사): `components/patients/CopyButton.tsx`를 쓴다
@@ -71,11 +71,11 @@ fixtures/patients/            가짜 자료 생성기·가짜 조각·골든 결
 - `rx`: `ContactColumns.Rx(kind, header, rows)` — 원본 `prepareRx`의 `headerFor(["처방코드","차트번호","처방일자"])`(공백 지우고 포함, 같은 이름 두 칸이면 오류)와 `phoneColumn` 정규식으로 칸을 고른다. F/U는 처방 칸을 버린다. 남긴 칸이 같은 줄은 한 번만(처음 순서 유지)
 - 31일 이하·오늘 이하만 받는다. 웹이 달 조각으로 여러 번 부른다(진행 표시·작은 답·실패하면 거기서 멈춤)
 
-### 도우미 저장 `contact.dat` (TASK-8)
-- `store.save {payload: {contact: {...}}}` · `store.load {contact: true}`만 받는다. 파일 머리 `PRECHECK-STORE-1\n` + `IProtector.Protect`(DPAPI CurrentUser) 바이트. 안쪽 JSON `{ "profileId": "…", "contact": {…} }`
-- `ContactStore`(Core): `Load(profileId) → string /* contact JSON, 없으면 "{}" */`, `Save(profileId, contactJson)`. 임시 파일 → `File.Replace`(`.bak` 하나), 깨짐 → `.bak`, 둘 다 깨짐 → `E-STORE-BROKEN`(깨진 파일 이름 바꿔 남김)
-- `ContactCommands.RegisterStore(dispatcher, services)`: 등록 확인(`HospitalGate`) → `ContactStore`. `contact` 밖의 칸(명령 표의 `store.save` payload `month`·`drafts`·`done`·`journal`·`settings`, `store.load`의 `months`·`settings`)은 무엇이든 `E-HELPER-BAD-MESSAGE`. `store.save`는 작업 뮤텍스(5초) 안에서만
-- precheck TASK-15가 청구 작업 저장을 만들면 그 처리기가 `contact` 칸을 `ContactStore`에 맡기고 이 등록 줄을 지운다
+### 도우미 저장 `contact.dat` (TASK-8 · 합친 뒤 precheck TASK-15)
+- 도우미에 등록된 `store.load`·`store.save` 처리기는 precheck TASK-15의 것이다: `Program.cs`의 `HelperStore.Register(dispatcher)` → `StoreCommands`·`WorkStore`(`helper/src/Precheck.Core/Store/`, 도우미 0.3.0에 나감). b2bc3cf를 합칠 때 `Program.cs`는 그쪽 것을 그대로 받았고 `ContactCommands.RegisterStore` 줄은 없다(`Dispatcher.Register`는 같은 이름이면 나중 것으로 덮는다)
+- 파일은 같다: `contact.dat` = 머리 `PRECHECK-STORE-1\n` + `IProtector.Protect`(DPAPI CurrentUser) 바이트, 안쪽 JSON `{ "profileId": "…", "contact": {…} }`, 임시 파일 → `File.Replace`(`.bak` 하나)
+- `store.load {contact: true}` 답은 `{ "contact": {…} }`(파일이 없으면 `{ "contact": {} }`)이고 Worker는 `contact`만 읽는다(AC-604.8). 등록 파일만 보고 비트 DB에는 붙지 않는다: 등록이 없으면 `E-BIT-NOT-REGISTERED`, 다른 등록 프로필의 `contact.dat`는 건드리지 않고 `E-BIT-HOSPITAL-MISMATCH`(읽기·저장 모두). 깨짐 → 맞는 `.bak`으로 되살림, 아니면 깨진 파일 이름을 바꿔 남기고 `E-STORE-BROKEN`(저장이면 그 저장은 하지 않는다). `contact` 크기 한도는 한 메시지 64MB(`Framing.MaxIncoming`)뿐이다. `store.save`와 파일을 고쳐야 하는 `store.load`는 작업 뮤텍스(`WorkLock`, 5초) 안에서만
+- 이 명세의 `ContactStore`(Core: `Load(profileId) → string /* contact JSON, 없으면 "{}" */`, `Save(profileId, contactJson)`, 32MB 한도), `ContactCommands.RegisterStore(dispatcher, services, store, workLock)`(등록 확인 `HospitalGate` → `ContactStore`, `contact` 밖의 칸은 `E-HELPER-BAD-MESSAGE`), `ContactHelperServices.CreateStore`·`CreateWorkLock`, `NamedWorkLock`은 시험된 코드로 남지만 등록하지 않는다(AC-606.1~606.4의 그 코드 부분). 다시 쓰려면 명세를 고친다
 
 ### `contact` 안쪽 모양 (Worker가 만들고 읽는다, 도우미는 풀어 보지 않고 객체인지·크기만 본다)
 ```ts
@@ -87,7 +87,7 @@ type ContactStoreData = {   // 저장 글자는 30MB 아래(아래 '크기')
 type RecallRecord = { chart: string; name: string; date: string; codes: string[]; text: string; phone: string }  // 원본 ingest 모양 그대로
 ```
 - 연락 표시 정리(AC-604.6·604.7): 저장할 때 **보기 모양이 있는 종류마다 그 보기 모양에 열쇠가 있는 표시만 남긴다**(날짜는 보지 않는다). 그래서 연락한 뒤 다시 오지 않은 정기 주사 환자는 줄이 남아 있는 동안 계속 연락함이고(`injection_left`에 다시 안 들어감), 다시 진료·주사해 열쇠가 바뀐 표시는 빠진다. 보기 모양이 없는 종류(읽기 실패)의 표시는 그대로 둔다 — 예: 정기 주사 기록을 합쳐 저장할 때 내일 오실 F/U 줄의 연락함 표시는 F/U 보기 모양에 있으니 남는다
-- 크기(AC-604.6): 뺀 건수는 `coverage.trimmed`로 보인다(쌓인 기록 안내는 뺀 뒤 기록으로 만든다). `fitStore`는 UTF-8 30MB(`MAX_STORE_BYTES`, 도우미 `ContactStore.MaxContactBytes` 32MB 아래)를 넘으면 증상 글을 자르지 않고(원본 판정이 바뀐다) 가장 오래된 정기 주사 기록부터 빼고 `recall.from`을 그만큼 늦춘다. 원본 한도(50,000건, 증상 1,000자·이름 100자·전화 60자)로 보통은 10MB 안팎이다
+- 크기(AC-604.6): 뺀 건수는 `coverage.trimmed`로 보인다(쌓인 기록 안내는 뺀 뒤 기록으로 만든다). `fitStore`는 UTF-8 30MB(`MAX_STORE_BYTES`. 도우미가 받는 한 메시지 한도 64MB `Framing.MaxIncoming` 아래. 등록하지 않은 `ContactStore`의 32MB보다도 아래)를 넘으면 증상 글을 자르지 않고(원본 판정이 바뀐다) 가장 오래된 정기 주사 기록부터 빼고 `recall.from`을 그만큼 늦춘다. 원본 한도(50,000건, 증상 1,000자·이름 100자·전화 60자)로 보통은 10MB 안팎이다
 - PC 저장 덮어쓰기 막기(AC-604.8): `stored`가 성공하기 전(처음·다시 불러오는 중)이나 실패한 뒤에는 Worker가 `store.save`를 보내지 않는다. [연락함]은 `{ok: false, code}`만 돌려주고, 정기 주사 보기 모양은 `null`(기록을 모르면 합칠 수 없다), F/U 보기 모양은 연락 표시 없이(`marksLoaded: false`), 건수는 `null`
 - 줄 열쇠: F/U `f|<내원번호>|<차트번호>|<다음 날짜>`, 정기 주사 `r|<규칙 id>|<차트번호>|<다음 예정일>`. 새로 진료하거나 주사하면 열쇠가 바뀌어 표시가 저절로 풀린다. 열쇠는 메모리·`contact.dat`에만 있고 주소·서버로 가지 않는다
 
@@ -110,7 +110,7 @@ export type ContactCount = { followup_left: number; injection_left: number }
 - 화면 → Worker
   - `{type: 'plan', today}` → `{type: 'plan', followup: Range[], recall: Range[] | null /* store.load 전이면 null */}`
   - `{type: 'piece', id, kind, from, to}`(화면이 `stream('contact.targets', …)`이 끝난 뒤 그 `id`를 알림) → `{type: 'piece', id, ok, code?}`
-  - `{type: 'stored', id}`(`stream('store.load', {contact: true})`의 `id`) → `{type: 'stored', ok, code?, recall: Range[]}`. 다시 불러오기를 시작하면(`{type: 'reload'}`) Worker는 저장 상태를 '모름'으로 돌리고 새 `stored`가 성공할 때까지 `store.save`를 막는다(AC-604.8)
+  - `{type: 'stored', id}`(`stream('store.load', {contact: true})`의 `id`) → `{type: 'stored', ok, code?, recall: Range[]}`. Worker는 답 `{contact: {…}}`의 `contact`만 읽고, `contact` 객체가 없는 답은 `E-STORE-BROKEN`이다(AC-604.8). 다시 불러오기를 시작하면(`{type: 'reload'}`) Worker는 저장 상태를 '모름'으로 돌리고 새 `stored`가 성공할 때까지 `store.save`를 막는다(AC-604.8)
   - `{type: 'build', today}` → `{type: 'views', followup: FollowupView | null, recall: RecallView | null, counts: ContactCount | null, codes: { followup?: string; recall?: string; store?: string }}` — 종류마다 따로: 한 종류가 실패하면 그 종류만 `null` + 그 종류 번호, 다른 종류는 그대로(AC-604.3). 정기 주사 조각을 합치면 Worker가 (`stored`가 성공했을 때만) `store.save`로 기록을 저장한 뒤 보낸다. 저장 실패는 `codes.store`
   - `{type: 'filter', tool, filters}` → `{type: 'filtered', tool, rows, copy: {list: string, phones?: string, missingPhones?: number}}`
   - `{type: 'mark', key, on, today}` → `{type: 'marked', key, ok, code?, counts}` + 바뀐 `views`. `stored`가 성공하지 않았으면 `store.save` 없이 `{ok: false, code}`
@@ -140,10 +140,11 @@ create table if not exists public.contact_counts (
   injection_left int not null check (injection_left between 0 and 100000),
   updated_at timestamptz not null default now());
 -- RLS 켜기 → revoke all from anon, authenticated → grant select · insert(칸) · update(칸) [· delete] to authenticated
--- 정책: using/with check (hospital_id = (select public.my_hospital_id())). update 트리거 touch_updated_at
+-- 정책: 표마다 하나 "승인된 내 병원 줄만"(for all, using/with check (hospital_id = (select public.my_hospital_id()))). update 트리거 message_templates_touch · contact_counts_touch(touch_updated_at). 이름·글은 precheck migration과 같다(AC-607.5)
 ```
 - `hospitals` 칸 이름(`owner_id`·`status`)은 `20261028000000_auth.sql`에 맞춘다(TASK-5 시작 때 확인)
 - 정책·트리거는 `drop … if exists` 뒤 만든다(두 번 실행해도 됨, AC-607.4)
+- 라이브 줄의 `20261030000000_precheck_settings.sql`·`20261030000100_precheck_counts.sql`가 두 표를 먼저 만든 DB(운영)에서는 같은 정책·트리거를 다시 만들 뿐 늘지 않고 칸·권한도 그대로다(AC-607.5). 차례는 그 둘 다음이다: 그 둘은 `create table`(if not exists 없음)이라 이 파일 뒤에 붙이면 오류다
 - 실제 Supabase에 붙여 넣는 것은 **그때 사용자 OK를 받고** 운영자가 SQL 편집기로 한다(auth와 같은 방식). 붙이기 전에는 표가 없어 문구 읽기·건수 읽기가 `E-PATIENTS-TEMPLATES-READ`·`E-PATIENTS-COUNTS-READ`로 실패한다. 화면은 그때 기본 문구로 대신하지 않고 오류 카드 + [다시 불러오기]를 보이며, 읽기가 될 때까지 문구 저장·복사를 열지 않는다(읽기 실패 뒤 기본 문구를 `before = []`로 저장하면 서버 줄과 겹친다, AC-613.6). 명단(비트 PC)은 건수 올리기만 실패하고 그대로 쓴다
 
 ### 화면 (내용만, 배치·문구는 목업 승인본)
@@ -183,7 +184,7 @@ create table if not exists public.contact_counts (
 - **도구는 주소 `?tool=`로**: 새로 고침해도 같은 도구가 열린다. 도구 이름만이라 환자 정보가 주소에 없다
 - **휴대폰에서 문자 문구는 연다(Claude 판단 (기본값))**: 환자 정보가 없고 설정의 원본은 서버다(ADR-021). 명단 자리만 건수로 바꾼다
 - **도구 단추 줄·복사 단추는 이 기능 폴더에**: 다른 탭도 도구 단추 줄을 두지만(tab-frame 계획), 병렬 브랜치끼리 같은 이름의 새 파일이 부딪히지 않게(규칙 C6) `components/patients/ToolRow.tsx`·`CopyButton.tsx`로 둔다. 여러 탭이 같은 모양을 쓰게 되면 나중에 공용으로 모은다
-- **오류 번호(규칙 C3)**: 이 명세가 더하는 번호는 `E-PATIENTS-*`뿐이다 — `E-PATIENTS-SOURCE`(원본 자료 문제: 필수 칸 없음·중복·충돌 번호), `E-PATIENTS-TEMPLATES-READ`·`-TEMPLATES-SAVE`(문자 문구 읽기·저장), `E-PATIENTS-COUNTS-READ`·`-COUNTS-SAVE`(남은 건수 읽기·올리기). 도우미 오류(`E-BIT-READ-FAILED`·`E-STORE-*`·`E-HELPER-*`·`E-BRIDGE-*`)는 main에 있는 것을 그대로, `E-BIT-EXPORT-FAILED`는 precheck TASK-8이 더한 것을 쓴다(화면은 모르는 번호면 번호만 보인다). `E-BIT-READ-FAILED`·`E-STORE-FAILED`·`E-STORE-BROKEN` 글은 청구 화면과 함께 쓰므로 2026-11-02 사용자 결정 "환자 기본값대로"에 따라 AC-609.6대로 고친다. 나머지 도우미 오류 글은 이 명세가 고치지 않는다. 새 번호를 더하지는 않는다
+- **오류 번호(규칙 C3)**: 이 명세가 더하는 번호는 `E-PATIENTS-*`뿐이다 — `E-PATIENTS-SOURCE`(원본 자료 문제: 필수 칸 없음·중복·충돌 번호), `E-PATIENTS-TEMPLATES-READ`·`-TEMPLATES-SAVE`(문자 문구 읽기·저장), `E-PATIENTS-COUNTS-READ`·`-COUNTS-SAVE`(남은 건수 읽기·올리기). 도우미 오류(`E-BIT-READ-FAILED`·`E-STORE-*`·`E-HELPER-*`·`E-BRIDGE-*`)는 main에 있는 것을 그대로, `E-BIT-EXPORT-FAILED`는 precheck TASK-8이 더한 것을 쓴다(화면은 모르는 번호면 번호만 보인다). `E-BIT-READ-FAILED`·`E-STORE-FAILED`·`E-STORE-BROKEN` 글은 청구 화면과 함께 쓰므로 2026-11-02 사용자 결정 "환자 기본값대로"에 따라 AC-609.6대로 고친다. `E-BIT-NOT-FOUND`·`E-BIT-DB-FAILED`·`E-BIT-NOT-REGISTERED`도 같은 결정으로 AC-609.7대로 고친다(합친 뒤 통계·매출·대시보드도 같은 글을 보인다). `E-BIT-HOSPITAL-MISMATCH`는 ui-90 AC-409.1이 글자 그대로 못 박아 고치지 않는다. Worker 오류(`error`·`messageerror`)는 통계 Worker와 같은 `E-ANALYZE-FAILED`를 쓴다(AC-610.6). 나머지 도우미 오류 글은 이 명세가 고치지 않는다. 새 번호를 더하지는 않는다
 - **읽기 실패와 '자료 없음'을 나눈다**: 문구·건수 읽기가 실패하면 빈 목록·`null`로 바꾸지 않고 오류 번호를 던진다. 화면은 오류 카드 + [다시 불러오기]를 보이고, 문구는 읽기가 될 때까지 고치기·저장·복사를 열지 않는다(AC-609.1·609.4·610.3·613.6)
 - **개인정보 E2E(규칙 C7)**: TASK-15가 시험 계정·가짜 확장으로 실제 Supabase에 나가는 요청과 저장된 줄을 다시 읽어 환자 정보가 없음을 본다. 사용자가 SQL을 붙인 뒤에만 돈다
 - **CLAUDE.md 글**: CLAUDE.md의 `components/contact/rows`(옛 이름)는 이 명세의 `components/patients/rows`와 같은 뜻이다. `docs/ARCHITECTURE.md`는 TASK-1이 고치고, CLAUDE.md 글 고치기는 메인 세션이 사용자 OK를 받아 한다
@@ -192,7 +193,7 @@ create table if not exists public.contact_counts (
 ## 다른 작업과 겹치는 파일 (규칙 C8)
 | 파일 | 이 명세가 하는 일 | 같은 파일을 고치는 다른 브랜치 |
 |---|---|---|
-| `supabase/migrations/20261101000300_patients.sql` (새 파일, 이름은 규칙 C2) + C1 함수 `my_hospital_id()`·`touch_updated_at()` | 두 표 + C1 글 그대로의 함수 | 업무일지(`…000100`·`…000110`)·통계(`…000200`)·매출(`…000400`)·precheck(`20261030000000`·`…000100`)가 같은 함수 글을 쓴다 |
+| `supabase/migrations/20261101000300_patients.sql` (새 파일, 이름은 규칙 C2) + C1 함수 `my_hospital_id()`·`touch_updated_at()` | 두 표 + C1 글 그대로의 함수 | 업무일지(`…000100`·`…000110`)·통계(`…000200`)·매출(`…000400`)가 같은 함수 글을 쓴다. precheck(`20261030000000`·`…000100`)는 두 표·정책·트리거를 먼저 만들고 함수 글이 C1과 다르다(AC-607.5) |
 | `src/lib/errors.ts`·`src/types/errors.ts` | `E-PATIENTS-*` 다섯 줄 더함 | 업무일지·통계·매출(`E-<기능>-*`), precheck(`E-SETTINGS-FAILED` 등) |
 | `eslint.config.mjs`·`src/guardrails.test.ts` | `lib/patients` 구역, `components/patients/rows` 울타리, 오류 보고 패키지 금지 | precheck(TASK-13·26 청구 줄 울타리), 다른 탭 명세가 새 환자 구역을 더하면 같은 블록 |
 | `docs/ARCHITECTURE.md` | 환자 구역 줄에 `lib/patients`·`components/patients/rows` | 업무일지·통계·매출·precheck(폴더 줄) |
@@ -200,7 +201,7 @@ create table if not exists public.contact_counts (
 | `docs/ADR.md` | ADR-020 보충(정기 주사 기록 PC 저장) | precheck(ADR-016·020·021 근처), 다른 브랜치가 새 ADR을 더할 수 있음 — 보충으로 달아 새 번호를 쓰지 않는다 |
 | `src/components/common/notReadyFeatures.ts`(+시험), `src/components/shell/menu.ts`·`shell.test.tsx`, `src/components/dashboard/briefing/features.ts`(+시험), `src/app/(app)/notReadyPages.test.tsx`·`tabFrame.test.tsx`, `src/app/titles.test.tsx`·`notFound.test.tsx` | [환자]를 준비 중에서 빼기. 고정 수는 목록 길이로(규칙 C5) | 업무일지·통계·매출이 자기 항목을 뺀다 |
 | `src/lib/analytics/dates.ts`(+시험) | `addMonthsToDay` 하나 더함 | precheck(TASK-24 몫이던 것), 통계 |
-| `helper/src/Precheck.Helper/Program.cs` | `ContactCommands.RegisterStore`·`RegisterTargets` 두 줄과 `HelperServices.Create()`를 변수로 받기(규칙 C4 합칠 자리) | precheck(TASK-8·15·17 등록 줄), 통계·매출(도우미 명령을 더하면) |
+| `helper/src/Precheck.Helper/Program.cs` | b2bc3cf를 합칠 때 그쪽 글(`HelperStore.Register` 등)을 그대로 받았다. 이 명세는 `ContactCommands.RegisterTargets(dispatcher, HelperServices.Create())` 한 줄만 더한다(다른 등록 줄처럼 그 자리에서 만든다, 변수 없음) | precheck(TASK-8·15·17·35 등록 줄), 통계·매출 |
 | `helper/src/Precheck.Helper/Commands/ContactHelperServices.cs` (새 파일) | 연락 부품 한 벌(`HelperServices.cs`는 고치지 않는다) | — |
 | `helper/src/Precheck.Core/Bit/Sql.cs`·`src/lib/bridge/commands.json` | **고치지 않는다**(SQL 없음, 명령 표 그대로) | 통계·매출·precheck가 고친다 |
 
@@ -211,7 +212,7 @@ create table if not exists public.contact_counts (
 - **precheck TASK-8이 늦게 합쳐짐**: TASK-9가 막힌다. Phase 1·2·4는 가짜 통로로 만들 수 있지만 의원 PC에서 진짜 명단을 보려면 TASK-8·9가 있어야 한다
 - **비트 통계 화면 읽기 시간**: 83·47 표를 31일씩 F/U 넷 + 정기 주사(처음 7개월) 읽는다. precheck TASK-8의 35일 읽기 시간을 의원 PC 시험에서 재 보고 느리면 F/U 기간·조각을 줄인다(명세 고침)
 - **47 표의 전화 칸**: 원본은 통계 엑셀 프로그램이 내보낸 47 표에서 전화 칸을 찾았다. 비트 화면 표에 전화 칸이 숨겨져 있으면(보이는 칸만 읽음) 전화가 빈다. 그때는 원본처럼 전화 칸 없이 명단을 보이고(`phoneLoaded: false`) 의원 PC 시험 목록에 적는다
-- **도우미·확장 배포**: 도우미 새 zip(`contact.targets`·`store.*` 포함)이 있어야 의원 PC에서 쓴다. 확장은 바꾸지 않는다. 도우미 릴리스 태그·운영 배포는 사용자가 그때 지시할 때만
+- **도우미·확장 배포**: 도우미 새 zip(`contact.targets` 포함. `store.*`는 0.3.0에 이미 있다)이 있어야 의원 PC에서 쓴다. 확장은 바꾸지 않는다. 도우미 릴리스 태그·운영 배포는 사용자가 그때 지시할 때만
 - **Supabase 표 붙이기**: TASK-5 뒤 실제 Supabase에 붙이는 일은 사용자 OK가 필요하다
 
 ## 사용자에게 물을 것 (답을 받기 전까지 모두 Claude 판단 (기본값)으로 계획함)

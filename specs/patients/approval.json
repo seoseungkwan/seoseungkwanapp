@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "patients",
-  "approved_at": "2026-11-02T05:15:58Z",
+  "approved_at": "2026-11-05T08:04:17Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "272605b00609bf52e1c53e52c11b533973c9927d13638d96eee0c20c383bbea4",
+  "spec_sha256": "d5ff5996a11af16f3c8f4880ce4577b65b977409328f858ff3c0012026cd26ee",
   "scope": [
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
@@ -44,6 +44,9 @@
     "src/app/(app)/tabFrame.test.tsx",
     "src/app/notFound.test.tsx",
     "src/app/titles.test.tsx",
+    "src/components/claim/ClaimError.tsx",
+    "src/components/claim/ClaimScreen.test.tsx",
+    "src/components/claim/memo/InputResults.test.tsx",
     "src/components/common/notReadyFeatures.test.ts",
     "src/components/common/notReadyFeatures.ts",
     "src/components/dashboard/briefing/DashboardHome.test.tsx",

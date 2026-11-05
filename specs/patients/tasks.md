@@ -7,7 +7,7 @@
 >
 > **시작 조건**
 > - 명세 승인(`/sdd approve patients` 또는 자동 승인).
-> - TASK-9는 main에 precheck TASK-8의 `helper/src/Precheck.Core/Bit/GridReader.cs`·`GridRows.cs`와 비트 통계 화면 읽기(`helper/src/Precheck.Windows/VendorGridExport.cs`)가 있어야 시작한다. 없으면 그 step은 `blocked`(사유: precheck TASK-8 필요)로 멈춘다.
+> - TASK-9는 이 브랜치에 precheck TASK-8의 `helper/src/Precheck.Core/Bit/GridReader.cs`·`GridRows.cs`와 비트 통계 화면 읽기(`helper/src/Precheck.Windows/VendorGridExport.cs`)가 있어야 시작한다(2026-11-05 라이브 줄 b2bc3cf를 합쳐 들어왔다). 없으면 그 step은 `blocked`(사유: precheck TASK-8 필요)로 멈춘다.
 > - 화면 TASK(10~15)는 이 탭의 클릭 목업(`docs/mockups/patients/`, PC·휴대폰·도구 셋·상태)을 사용자가 승인한 뒤에만 시작한다(CLAUDE.md). 없으면 `blocked`(사유: 승인 목업 없음).
 > - TASK-5의 migration을 실제 Supabase에 붙이는 일은 그때 사용자 OK를 받는다(시험은 PGlite). TASK-15(E2E)는 사용자가 SQL을 붙이고 시험 계정(`.env.local`)이 있을 때만 돈다.
 > - 병렬 브랜치 규칙(C1~C9, design.md '다른 작업과 겹치는 파일'): C1 함수 글 그대로, migration 이름 `20261101000300_patients.sql`, 새 오류 번호는 `E-PATIENTS-*`만, 고정 탭 수 금지, 새 파일은 기능 이름으로.
@@ -50,19 +50,21 @@
 - Step: Phase 1 · Step 3 · `patients-worker`
 - AC: AC-604.1~AC-604.8
 - REQ: REQ-604
-- Files: src/workers/patients.worker.ts, src/workers/patients/assemble.ts, src/workers/patients/assemble.test.ts, src/workers/patients/plan.ts, src/workers/patients/plan.test.ts, src/workers/patients/jobs.ts, src/workers/patients/jobs.test.ts, src/workers/patients/handler.ts, src/workers/patients/handler.test.ts, src/types/patients.ts, fixtures/patients/fake/*, fixtures/patients/make-fake-patients.ts, fixtures/patients/make-fake-patients.test.ts
-- Tests: src/workers/patients/assemble.test.ts, src/workers/patients/plan.test.ts, src/workers/patients/jobs.test.ts, src/workers/patients/handler.test.ts, fixtures/patients/make-fake-patients.test.ts
+- Files: src/workers/patients.worker.ts, src/workers/patients/assemble.ts, src/workers/patients/assemble.test.ts, src/workers/patients/plan.ts, src/workers/patients/plan.test.ts, src/workers/patients/jobs.ts, src/workers/patients/jobs.test.ts, src/workers/patients/handler.ts, src/workers/patients/handler.test.ts, src/types/patients.ts, fixtures/patients/fake/*, fixtures/patients/make-fake-patients.ts, fixtures/patients/make-fake-patients.test.ts, src/components/patients/usePatientsWorker.test.ts
+- Tests: src/workers/patients/assemble.test.ts, src/workers/patients/plan.test.ts, src/workers/patients/jobs.test.ts, src/workers/patients/handler.test.ts, fixtures/patients/make-fake-patients.test.ts, src/components/patients/usePatientsWorker.test.ts
 - TDD: required
 - 메시지 약속은 design.md 'Worker 메시지 약속'. `patients.worker.ts`는 `handler.ts`를 잇기만 한다(시험은 handler를 바로 부른다)
+- `store.load` 답 `{contact: {…}}`(AC-604.8): `usePatientsWorker.test.ts`는 진짜 handler에 이은 시험이 `store.load` 답을 넣는 자리만 고친다. 그 파일의 다른 시험은 TASK-10 몫이다
 
 ## TASK-5: 서버 표 — message_templates · contact_counts
 - Step: Phase 2 · Step 0 · `patients-db`
-- AC: AC-607.1~AC-607.4
+- AC: AC-607.1~AC-607.5
 - REQ: REQ-607
 - Files: supabase/migrations/20261101000300_patients.sql, supabase/patients.rls.test.ts
 - Tests: supabase/patients.rls.test.ts
 - TDD: required
 - 실제 Supabase에 붙이는 일은 이 TASK에서 하지 않는다. Phase 끝 보고에 "사용자 OK 뒤 SQL 편집기에 붙일 파일"로 적는다
+- AC-607.5 시험은 라이브 줄의 `supabase/migrations/20261030000000_precheck_settings.sql`·`20261030000100_precheck_counts.sql`를 읽기만 한다(고치지 않는다)
 
 ## TASK-6: 문자 문구 채우기 · 기본 문구 (골든)
 - Step: Phase 2 · Step 1 · `message-fill`
@@ -75,10 +77,10 @@
 
 ## TASK-7: 문자 문구 · 남은 건수 저장 (브라우저 → Supabase) · 오류 번호
 - Step: Phase 2 · Step 2 · `patients-storage`
-- AC: AC-609.1~AC-609.6
+- AC: AC-609.1~AC-609.7
 - REQ: REQ-609
-- Files: src/lib/storage/messageTemplates.ts, src/lib/storage/messageTemplates.test.ts, src/lib/storage/contactCounts.ts, src/lib/storage/contactCounts.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts, src/types/patients.ts
-- Tests: src/lib/storage/messageTemplates.test.ts, src/lib/storage/contactCounts.test.ts, src/lib/errors.test.ts
+- Files: src/lib/storage/messageTemplates.ts, src/lib/storage/messageTemplates.test.ts, src/lib/storage/contactCounts.ts, src/lib/storage/contactCounts.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts, src/types/patients.ts, src/components/claim/ClaimError.tsx
+- Tests: src/lib/storage/messageTemplates.test.ts, src/lib/storage/contactCounts.test.ts, src/lib/errors.test.ts, src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/InputResults.test.tsx
 - TDD: required
 
 ## TASK-8: 도우미 — 연락 표시 · 정기 주사 기록 저장 (contact.dat)
@@ -90,6 +92,7 @@
 - TDD: required
 - `docs/ADR.md`: ADR-020에 '보충 (환자 탭, 2026-11)'을 단다 — `contact.dat`에 담는 것(연락 표시 + 정기 주사 기록: 차트번호·이름·날짜·처방코드·증상 한 줄·전화), DPAPI CurrentUser, 36개월·50,000건 한도, 다른 등록 프로필의 파일은 읽지 않음, `.bak`·깨진 파일은 지우지 않고 남김. 새 ADR 번호는 쓰지 않는다. CLAUDE.md는 고치지 않는다
 - 선행 작업이 없어 TASK-9보다 먼저 한다
+- 합친 뒤(b2bc3cf): 이 TASK의 `ContactStore`·`ContactCommands.RegisterStore`·`NamedWorkLock`은 시험만 돈다. `Program.cs`에는 그 줄이 없고 precheck `HelperStore.Register`가 `store.*`를 맡는다(AC-606.2·606.4)
 
 ## TASK-9: 도우미 — contact.targets (비트 83·47 표 칸 고르기)
 - Step: Phase 3 · Step 1 · `contact-read`
@@ -98,12 +101,13 @@
 - Files: helper/src/Precheck.Core/Contact/ContactColumns.cs, helper/src/Precheck.Core/Contact/ContactTargets.cs, helper/src/Precheck.Core/Contact/IContactGrids.cs, helper/src/Precheck.Core/Contact/ContactCommands.cs, helper/src/Precheck.Windows/ContactGrids.cs, helper/src/Precheck.Helper/Commands/ContactHelperServices.cs, helper/src/Precheck.Helper/Program.cs, helper/tests/Precheck.Core.Tests/Contact/*, helper/tests/Precheck.Windows.Tests/Contact/*
 - Tests: helper/tests/contact-read.dotnet.test.ts
 - TDD: required
-- 시작 조건: precheck TASK-8(`GridReader`·`GridRows`·`VendorGridExport`)이 main에 있다. 그 파일들은 읽기만 하고 고치지 않는다
+- 시작 조건: precheck TASK-8(`GridReader`·`GridRows`·`VendorGridExport`)이 이 브랜치에 있다(b2bc3cf를 합쳐 들어왔다). 그 파일들은 읽기만 하고 고치지 않는다
+- 표는 `BitServices.Screens`(`IStatsScreens`, 도우미는 `VendorGridExport`)로 `claim.month`(`ClaimMonthPayload.Build`)처럼 읽는다: 등록 확인(`HospitalGate`) → 통계 메뉴·비트 로그인·권한(`StatsAccess.Check`, 83·47) → `Read(…, StatsScreens.ReadTimeout)`. 83은 `GridRows.FromSheet("83", …)`, 47은 전화 칸이 필요해 화면 표에서 `ContactColumns.Rx`가 직접 고른다(`GridRows`는 전화 칸을 버린다). 그래서 `IContactGrids.cs`·`Precheck.Windows/ContactGrids.cs`는 만들지 않아도 된다. `Program.cs`에는 `ContactCommands.RegisterTargets(dispatcher, HelperServices.Create())` 한 줄을 더한다
 - 의원 PC 시험(Phase 3 끝): 이번 주 F/U 명단과 정기 주사 명단을 양지바른과 나란히 비교, 31일 한 조각 읽기 시간을 잰다
 
 ## TASK-10: 환자 탭 입구 · 도구 단추 줄 · 휴대폰은 건수만 · 준비 중에서 빼기
 - Step: Phase 4 · Step 0 · `tab-entry`
-- AC: AC-610.1~AC-610.5
+- AC: AC-610.1~AC-610.6
 - REQ: REQ-610
 - Files: src/app/(app)/patients/page.tsx, src/app/(app)/patients/page.test.tsx, src/components/patients/PatientsEntry.tsx, src/components/patients/PatientsEntry.test.tsx, src/components/patients/PatientsScreen.tsx, src/components/patients/PatientsScreen.test.tsx, src/components/patients/usePatientsWorker.ts, src/components/patients/usePatientsWorker.test.ts, src/components/patients/CountsOnly.tsx, src/components/patients/CountsOnly.test.tsx, src/components/patients/tools.ts, src/components/patients/tools.test.ts, src/components/patients/ToolRow.tsx, src/components/patients/ToolRow.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/UI_GUIDE.md
 - Tests: src/app/(app)/patients/page.test.tsx, src/components/patients/PatientsEntry.test.tsx, src/components/patients/PatientsScreen.test.tsx, src/components/patients/usePatientsWorker.test.ts, src/components/patients/CountsOnly.test.tsx, src/components/patients/tools.test.ts, src/components/patients/ToolRow.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx
