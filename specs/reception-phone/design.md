@@ -2,7 +2,7 @@
 
 ## 개요
 - 총괄 PC에 늘 켜 두는 새 프로그램 `PrecheckReception.exe`가 의원 와이파이(사설 주소)에 작은 웹 서버를 연다(문 47200). 직원 휴대폰은 `http://{총괄 PC 주소}:47200/`을 열고, 화면은 10초마다 `/api/board`를 읽는다.
-- 비트는 지금 도우미와 같은 길로 읽는다: 등록 확인(`HospitalGate`) → 읽기 전용 접속 → 되돌리는 트랜잭션 → 허용 목록의 SELECT 상수(`ReadOnlyGuard`). 비트에 쓰는 길은 없다. 엑스레이 '찍음 표시'만 그 PC의 암호화 파일에 둔다.
+- 비트는 지금 도우미와 같은 길로 읽는다: 등록 확인(`HospitalGate`) → 읽기 전용 접속 → 되돌리는 트랜잭션 → 허용 목록의 SELECT 상수(`ReadOnlyGuard`). 비트에 쓰는 길은 없다. 엑스레이 'X-ray 완료' 표시만 그 PC의 암호화 파일에 둔다.
 - 웹사이트(Vercel·Supabase)·크롬 확장·`lib/bridge`·`commands.json`은 이 기능과 상관없다. 환자 자료는 그 PC → 같은 의원 와이파이의 휴대폰까지만 가고, 휴대폰에는 남기지 않는다(ADR-027).
 - 모르는 값은 먼저 **의원 PC 확인 명령**(`--reception-check`)으로 찾고, 답은 `ReceptionMap` 한 곳에 채운다. 그 전에도 아는 칸만으로 서버·화면을 끝까지 만들어 시험한다.
 - 계산·규칙은 거의 모두 `Precheck.Core`(netstandard2.0)에 두어 이 서버(리눅스)에서 `dotnet test`로 시험한다. 윈도우 부분(새 exe·확인 명령 입구·DB 세션·설치 스크립트)은 얇게 두고 의원 PC에서 확인한다.
@@ -104,7 +104,7 @@ Row = { "k": "3f9a…(16)", "lane": "wait|hold|pay|done", "pos": 1 | null, "lane
 - 상세는 그 환자 한 명만, 열 때·[더 보기] 때만 읽는다. 결과는 서버에 쌓지 않는다.
 - 오늘 카드의 상태·오늘 처방은 화면이 가진 `/api/board` 줄로 그리고(10초마다 바뀜), 오늘 증상(`todaySym`)은 상세를 열 때 읽은 값이다.
 
-### 6. 엑스레이 찍음 표시 (`XrayMarks.cs`)
+### 6. 엑스레이 'X-ray 완료' 표시 (`XrayMarks.cs`)
 ```csharp
 public sealed class XrayMarks { public XrayMarks(IStoreFolder folder, IProtector protector, Func<DateTime> now);
     public IReadOnlyDictionary<string, string> Today();  public void Set(string visitId, bool on); }   // 값 = "HH:MM"
@@ -129,21 +129,21 @@ public static class ReceptionPorts { public const int Http = 47200; }
 - 기록 `ReceptionLog`: `logs\reception-yyyy-MM-dd.log`에 시각·오류 번호·건수만(`LogLine` 모양). 주소·경로·예외 글을 남기지 않는다.
 - 시험: 루프백(127.0.0.1, 빈 문)에 진짜 소켓을 열어 끝까지 본다(이 서버에서 돈다).
 
-### 8. 이 PC 주소·QR (`LanAddresses.cs`, `QrImage.cs`, Phase 4)
+### 8. 이 PC 주소·주소 보내기 화면 (`LanAddresses.cs`, `LinkPage.cs`, Phase 4)
 - `LanAddresses.Pick(IEnumerable<NicInfo>)`: 켜져 있고 기본 게이트웨이가 있는 어댑터의 사설 IPv4만, 순서 고정. 윈도우에서는 `NetworkInterface`로 채운다(같은 API가 리눅스에도 있어 걸러내기만 시험한다).
 - `LanAddressWatch(Func<IEnumerable<NicInfo>> read, Func<DateTime> clock)` → `Current() : IReadOnlyList<IPAddress>`: 마지막으로 본 지 30초가 지났으면 `read`를 다시 불러 `Pick`한다(요청 때만, 타이머 없음, 여러 작업이 동시에 불러도 안전). 주입한 시계로 시험한다.
-- `QrImage.Png(string url)`: NuGet `QRCoder`의 `PngByteQRCode`(System.Drawing 없이 PNG). 판은 TASK 때 nuget.org의 최신 안정판을 정확한 번호로 적는다(MIT, netstandard2.0 확인). `/qr` 화면은 `data:` PNG로 그린다(CSP `img-src 'self' data:`).
-- `/qr`은 이 PC 자신(루프백)만. 따로 시안 없이 승인 시안 v12의 상표 모양으로 그린다(사용자가 맡김, 2026-11-05). CSP(AC-1406.6)가 인라인 스타일을 막으므로 `QrPage` HTML에는 `<style>`·`style=`·`<script>`가 없고, `/theme.css`(토큰 한 곳)와 새 화면 파일 `/qr.css`(`reception/www/qr.css`, `var()`만, 색 글자 없음)를 `<link>`로 부른다. 글:
-  - 머리: 로고(`/logo-wordmark.png`) + 제목 "접수 현황 QR"
-  - 주소마다 카드 하나: QR 그림(`data:` PNG, 240px 이상) + 주소 글 `http://{주소}:47200/`
-  - 순서 안내: "1. 직원 휴대폰 카메라로 QR을 찍어요" · "2. 열리면 '홈 화면에 추가'를 눌러요" · "3. 다음부터는 홈 화면 아이콘으로 열어요"
-  - 사설 주소가 없으면 QR 없이 "이 PC가 의원 와이파이에 연결되어 있지 않아요" + "와이파이에 연결한 뒤 이 창을 다시 열어 주세요"
-  - 끝 줄: "같은 와이파이의 직원 휴대폰에서만 열려요"
+- QR 그림은 만들지 않는다(사용자 결정 2026-11-05: 휴대폰 첫 열기는 카카오톡 링크로만). 그래서 새 NuGet 꾸러미도 없다.
+- `/link`(주소 보내기 화면)는 이 PC 자신(루프백)만. 따로 시안 없이 승인 시안 v12의 상표 모양으로 그린다(사용자가 맡김, 2026-11-05). CSP(AC-1406.6)가 인라인 스타일·스크립트를 막으므로 `LinkPage` HTML에는 `<style>`·`style=`·인라인 `<script>`(몸이 있는 것)·`on…=`이 없고, `/theme.css`(토큰 한 곳)·새 화면 파일 `/link.css`(`reception/www/link.css`, `var()`만, 색 글자 없음)를 `<link>`로, `/link.js`(`reception/www/link.js`, 복사 단추만)를 `<script src>` 하나로 부른다. 글:
+  - 머리: 로고(`/logo-wordmark.png`) + 제목 "접수 현황 주소 보내기"
+  - 주소마다 카드 하나: 큰 글자의 전체 주소 링크 `<a href="http://{주소}:47200/">http://{주소}:47200</a>`(카카오톡이 누르는 링크로 바꾸게 `http://`부터 문 번호까지 다 쓴다) + [주소 복사] 단추(`button type="button"`, 44px 이상, `data-url`에 주소). 누르면 `navigator.clipboard.writeText`(이 PC의 `127.0.0.1`은 안전한 곳이라 된다) → 단추 글 "복사했어요" 2초. 안 되면 주소 글을 골라 두고(`Selection`) "주소를 골라 두었어요. Ctrl+C를 눌러 복사해 주세요"
+  - 순서 안내: "1. 직원 단톡방에 붙여 넣어 보내요" · "2. 직원은 병원 와이파이에서 주소를 눌러요" · "3. 카톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기'" · "4. 홈 화면에 추가해요"
+  - 안내: "이 주소는 병원 와이파이에서만 열려요. 밖에서는 열리지 않아 환자 정보가 보이지 않아요"
+  - 사설 주소가 없으면 주소 카드 없이 "이 PC가 의원 와이파이에 연결되어 있지 않아요" + "와이파이에 연결한 뒤 이 창을 다시 열어 주세요"
 
 ### 9. 늘 켜 두는 프로그램 (`helper/src/Precheck.Reception/`, Phase 4)
 - `Precheck.Reception.csproj`: `OutputType WinExe`(콘솔 창 없음), `net48`, `PlatformTarget x86`(비트 DLL이 32비트), `AssemblyName PrecheckReception`, 도우미와 같은 `StartupAppConfigXml`(옛 런타임 정책). Core·Windows를 참조한다. `Precheck.sln`에 더한다.
-- `Program.Main(args)`: 뮤텍스 `Local\Seoseungkwan.PrecheckReception` → 이미 있으면 (`--qr`이면 브라우저로 `/qr`만 열고) 끝 → `ReceptionServices.Create()`(도우미의 `HelperServices`와 같은 부품·같은 `data\` 폴더) → `ReceptionServer.Start(IPAddress.Any, 47200)` → (`--qr`이면 브라우저 열기) → 끝날 때까지 기다림. 문이 쓰이고 있으면 `E-RECEPTION-PORT-BUSY`를 기록하고 끝(AC-1411.5).
-- 켜지는 때: `install.ps1`이 `HKCU\…\Run`에 `"…\PrecheckReception.exe"`를 쓴다(관리자 권한 없음). 바탕 화면 "접수 현황 QR" 바로 가기 = `PrecheckReception.exe --qr`.
+- `Program.Main(args)`: 뮤텍스 `Local\Seoseungkwan.PrecheckReception` → 이미 있으면 (`--link`이면 브라우저로 `/link`만 열고) 끝 → `ReceptionServices.Create()`(도우미의 `HelperServices`와 같은 부품·같은 `data\` 폴더) → `ReceptionServer.Start(IPAddress.Any, 47200)` → (`--link`이면 브라우저 열기) → 끝날 때까지 기다림. 문이 쓰이고 있으면 `E-RECEPTION-PORT-BUSY`를 기록하고 끝(AC-1411.5).
+- 켜지는 때: `install.ps1`이 `HKCU\…\Run`에 `"…\PrecheckReception.exe"`를 쓴다(관리자 권한 없음). 바탕 화면 "접수 현황 주소" 바로 가기 = `PrecheckReception.exe --link`.
 - 비트 프로그램 로그인 여부는 보지 않는다. DB가 답하면 나오고 아니면 휴대폰은 연결 끊김 화면이다(시안 글 "비트에 아직 로그인하지 않았어요"와 같은 상황을 덮는다).
 
 ### 10. 휴대폰 화면 (`reception/www/`, Phase 3)
@@ -159,11 +159,11 @@ public static class ReceptionPorts { public const int Http = 47200; }
 | `offline.js` | 지우기 + 연결 끊김 화면 |
 | `poll.js` | 10초 고리(응답 뒤 다음 예약, 주입한 시계), `refreshNow()`(AC-1407.10: 도는 읽기가 있으면 그 뒤 `fresh` 한 번, 끝나면 10초 다시 예약), `pause()`·`resume()`(AC-1407.11) |
 | `alert.js` | 새 열쇠 찾기 + 떨기/삐 소리 + 첫 누름에 오디오 열기 |
-| `xray.js` | [찍음 표시]·[표시 취소] |
+| `xray.js` | [X-ray 완료]·[표시 취소] |
 | `layout.js` | 폰/태블릿 판정(`matchMedia`), 고른 환자(태블릿은 처음에 고른 칸의 첫 줄, 승인 태블릿 시안) |
 | `app.js` | 잇기: 해시 길(`#/v/{k}`), 고리, 알림, 모양 바뀜, 새로 고침 단추, 숨김·다시 보임(`visibilitychange`·`pagehide`) |
 | `logo-mark.png`·`logo-wordmark.png` | 시안 폴더의 로고 사본 |
-| `qr.css` | `/qr` 화면(8절) 모양. `var()`만 (TASK-25) |
+| `link.css`·`link.js` | `/link` 주소 보내기 화면(8절) 모양(`var()`만)과 [주소 복사] 단추 (TASK-25) |
 | `fonts/title.woff2`·`fonts/OFL.txt` | 제목 글자만 담은 글꼴(아래 결정) |
 - 상태(`board`, 고른 칸, 고른 환자, 앞 열쇠 모음, 마지막 연결 시각)는 메모리에만 둔다. 끊기면 `offline.js`가 DOM과 상태의 환자 값을 모두 비우고 "마지막 연결 HH:MM"만 남긴다(AC-1407.4). 화면이 숨겨져도 같은 지우기를 하고 고리를 멈추며, 나가 있던 요청은 끊거나 답을 버리고 예약도 없앤다(읽기마다 세대 번호를 두고, 숨김 뒤 도착한 옛 세대 답은 버린다). 다시 보이면(`visible`·`pageshow`) "불러오는 중이에요"(환자 자료 없음)에서 바로 읽는다(AC-1407.11). 문서 제목은 늘 "접수 현황"(AC-1407.5).
 - [새로 고침] 단추(AC-1407.10)는 승인 시안 v12 뒤 사용자가 더한 것(2026-11-05)이다. 머리의 연결됨 표시 바로 옆, 같은 높이의 테두리 단추(↻ + "새로 고침", 노랑 채움 아님 — 노랑은 고른 칸 표시에만)로 둔다. "불러오는 중이에요" 화면(AC-1407.11, 숨김 뒤 다시 보일 때 잠깐)도 시안에 없다. 연결 끊김 시안의 머리·로고와 같은 모양에 글 한 줄만 둔다. 둘 다 Phase 3 끝 화면 캡처로 사용자에게 보인다.
@@ -187,8 +187,8 @@ public static class ReceptionPorts { public const int Http = 47200; }
 [다른 휴대폰]  ────────────────────┘                    └→ HospitalGate → ReadOnlyGuard → 비트 SELECT(되돌림)
                                                          └→ BoardBuilder(ReceptionMap·XrayMarks·VisitKeys) → JSON
 [휴대폰] 줄 누름 → GET /api/visit/{k}/history?from=0 → VisitKeys → HistoryReader(그 환자만) → JSON
-[휴대폰] [찍음 표시] → POST /api/xray → XrayMarks(data\reception-marks.dat, DPAPI) → 204 → 다시 GET /api/board
-[총괄 PC] 바탕 화면 "접수 현황 QR" → PrecheckReception --qr → 브라우저 127.0.0.1:47200/qr (QR + 주소)
+[휴대폰] [X-ray 완료] → POST /api/xray → XrayMarks(data\reception-marks.dat, DPAPI) → 204 → 다시 GET /api/board
+[총괄 PC] 바탕 화면 "접수 현황 주소" → PrecheckReception --link → 브라우저 127.0.0.1:47200/link (주소 링크 + [주소 복사]) → 직원 단톡방
 웹사이트·Supabase·Claude API: 아무것도 가지 않는다
 ```
 
@@ -201,7 +201,7 @@ public static class ReceptionPorts { public const int Http = 47200; }
 - **글은 서버가 만든다.** 화면 JS는 그리기·고리·알림만. 규칙이 C# 한 곳이라 시험이 쉽고 휴대폰 시계가 틀려도 기다린 분이 맞다(서버 시각 `at` 기준).
 - **비트 읽기는 요청이 올 때만, 8초 묶음.** 휴대폰이 몇 대든 10초에 한 번쯤만 비트를 읽고, 아무도 안 보면 읽지 않는다. 오래 걸리면 저절로 덜 읽는다. 그동안 화면 "기준" 시각은 진짜 읽은 시각이다.
 - **상세 쪽수 5 → 20.** 첫 화면은 승인 시안 그대로 5번, 더 보기는 20번씩.
-- **끝남 칸은 접수 늦은 순.** 사용자 말 "모든 칸 접수 시각 순"과 승인 시안의 "오늘 끝난 환자 · 최근 순"(09:12 다음 09:05)을 함께 따른 해석이다. 다른 칸은 빠른 순.
+- **끝남 칸은 접수 늦은 순.** 사용자 말 "모든 칸 접수 시각 순"과 승인 시안의 "오늘 끝난 환자 · 최근 순"(지금 글은 "수납완료 환자 · 최근 순", 09:12 다음 09:05)을 함께 따른 해석이다. 다른 칸은 빠른 순.
 - **오래 기다림(주황)은 진료대기·진료보류만.** 진료를 기다리는 사람의 표시다. 수납대기는 이미 진료를 받아 1시간이 넘는 일이 흔하다.
 - **기다린 분은 접수 시각부터.** 상태가 바뀐 시각을 비트에서 읽을 수 있는지 모른다.
 - **알림 소리는 첫 누름으로 연다, 새 글 없음.** 아이폰은 사용자가 누른 뒤에만 소리를 낼 수 있고, 안드로이드 크롬도 누르기 전에는 떨기를 막는다. 직원은 칸·줄을 누르므로 안내 글 없이 첫 누름에 연다. 안내 글이 필요하면 시안부터 다시 한다.
@@ -223,7 +223,7 @@ public static class ReceptionPorts { public const int Http = 47200; }
 ## 사용자 단계 (쉬운 말, README와 같은 글)
 1. 공유기 관리 화면에서 총괄 PC의 주소를 고정한다(‘DHCP 예약’ 또는 ‘고정 IP 할당’). 바뀌면 휴대폰 홈 화면 아이콘이 안 열린다.
 2. 처음 켤 때 "Windows 보안 경고" 창이 뜨면 "개인 네트워크"에 체크하고 [허용]을 누른다.
-3. 직원 휴대폰으로 바탕 화면 "접수 현황 QR"을 눌러 나온 QR을 카메라로 찍는다 → 열리면 홈 화면에 추가한다(아이폰: 공유 → 홈 화면에 추가, 갤럭시: 메뉴 → 홈 화면에 추가).
+3. 총괄 PC 바탕 화면 "접수 현황 주소"를 눌러 [주소 복사] → 직원 단톡방에 붙여 넣어 보낸다 → 직원은 병원 와이파이에서 주소를 누르고, 카톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기' → 홈 화면에 추가한다(아이폰: 공유 → 홈 화면에 추가, 갤럭시: 메뉴 → 홈 화면에 추가).
 4. 화면을 열면 아무 곳이나 한 번 누른다(아이폰 소리를 켜는 일).
 
 ## 릴리스 조건
@@ -233,11 +233,11 @@ public static class ReceptionPorts { public const int Http = 47200; }
 ## 위험 / 미해결 질문
 - 상태 코드·칸 이름·증상 원천은 확인 보고서가 와야 정해진다. 그 전에는 목록이 비어 있다(지어낸 값 없음). 보고서가 애매하면 메인 창이 사용자에게 한 번 더 묻는다.
 - 비트가 오늘 처방을 언제 `OdrInf`에 쓰는지 모른다(진료 중 저장 전에는 없을 수 있다). 확인 보고서의 상태별 '처방 있는 접수 수'로 본다.
-- 수납 시각 칸이 없으면 끝남 줄은 "끝남"만 보인다.
+- 수납 시각 칸이 없으면 끝남 줄은 "수납완료"만 보인다.
 - 옛 자료 DB(`DRBITPACK_OLD`·`V_OcmInf`)가 있으면 아주 옛날 내원이 상세에 안 나오고 "모두 N번"이 적게 나온다. 확인 보고서에 나오면 사용자와 다시 정한다.
 - 처방 순서는 코드 순이다(비트의 처방 순서 칸을 모른다). 시안 순서와 다를 수 있다.
 - 아이폰 무음 스위치를 켜면 Web Audio 소리가 안 날 수 있다(AC-1408.5에서 확인. 안 나면 `<audio>` 길을 시안과 함께 다시 정한다).
 - PC가 꺼진 채로 홈 화면 아이콘을 누르면 휴대폰 기본 오류 화면이 나온다(서비스 워커가 없어서). 우리 연결 끊김 화면은 열린 화면이 끊겼을 때만 보인다.
 - 같은 와이파이의 다른 기기가 엿볼 수 있다(HTTP, 잠금 없음). 사용자가 고른 위험이다(ADR-027). 직원 와이파이 비밀번호를 손님에게 알리지 않는다는 안내를 README에 둔다.
 - `CLAUDE.md`의 CRITICAL "환자 개인정보는 의원 PC 밖으로 나가지 않는다" 아래에 이 예외(같은 의원 직원 와이파이의 폰·태블릿, 저장 없음, 끊기면 지움)를 사용자 결정으로 한 줄 더했다(f1153f4). ADR-027과 `docs/ARCHITECTURE.md`에도 적는다.
-- 의원 상표 시안 v12·태블릿 시안은 승인됐다(2026-11-05 "굿"). QR 화면은 시안 없이 8절의 글과 상표 모양으로 만들고(사용자가 맡김), 화면 캡처를 사용자에게 보여 고칠 곳이 있으면 고친다.
+- 의원 상표 시안 v12·태블릿 시안은 승인됐다(2026-11-05 "굿"). 주소 보내기 화면(QR 없음)은 시안 없이 8절의 글과 상표 모양으로 만들고(사용자가 맡김), 화면 캡처를 사용자에게 보여 고칠 곳이 있으면 고친다.
