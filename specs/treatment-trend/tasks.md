@@ -25,7 +25,7 @@
 > | 5 마무리 | TASK-16 | 개인정보 E2E 파일 | 병렬 |
 > | | TASK-17 | 화면 확인(390·1440)과 전체 검사 | 병렬 |
 >
-> - 파일이 겹치는 곳: `RxTrendSection.tsx`는 TASK-6(글 함수를 옮김)과 TASK-15(지움)가 고친다 → 다른 Phase. `parts.tsx`는 TASK-13만, `StatsSections.tsx`·`StatsScreen.tsx`는 TASK-15만 고친다. TASK-17은 화면 확인에서 고칠 것이 나올 때만 TASK-10~13의 파일을 고친다(TASK-16은 e2e 파일 하나라 겹치지 않는다)
+> - 파일이 겹치는 곳: `RxTrendSection.tsx`는 TASK-6(글 함수를 옮김)과 TASK-15(지움)가 고친다 → 다른 Phase. Worker `load` 메시지를 못 박은 시험은 TASK-7이 `groups: []`만 더하고(`useStatsWorker.test.ts`·`StatsScreen.test.tsx`·`readBitDays.test.ts`·`statsClient.test.ts`), 뒤에 TASK-14(`useStatsWorker.test.ts`)·TASK-15(`StatsScreen.test.tsx`)가 다시 고친다 → 다른 Phase. `parts.tsx`는 TASK-13만, `StatsSections.tsx`·`StatsScreen.tsx`는 TASK-15만 고친다. TASK-17은 화면 확인에서 고칠 것이 나올 때만 TASK-10~13의 파일을 고친다(TASK-16은 e2e 파일 하나라 겹치지 않는다)
 > - 각 Phase 끝(TASK가 아님, 메인 세션): `python3 ~/.claude/harness/bin/verify`. 이 서버는 2 CPU·7.8GB·스왑 없음이라 다른 일이 없을 때 돌린다. 화면 TASK(10~13·15)는 끝나면 390·1440 사진을 쉬운 말로 보인다(찍는 법은 TASK-17과 같다)
 > - 사용자 단계(사이트에 올리기 전): TASK-1의 SQL을 운영 Supabase에 붙여 넣기. 올린 뒤 비트 PC에서 최근 12개월로 한 번 다시 불러오기. TASK-16을 실제로 돌리는 일은 SQL·시험 계정을 기다린다
 > - 승인 시안: `docs/mockups/treatment-trend/index.html`. 시안과 다른 곳은 `design.md` '시안과 다른 곳'을 따른다. 시험 자료는 모두 지어낸 값이고 `.claude/uploads`나 실제 환자 파일을 열지 않는다
@@ -87,9 +87,9 @@
 - Phase: 2 · 병렬
 - AC: AC-1205.4, AC-1213.3(Worker로 가는 칸)
 - REQ: REQ-1205, REQ-1213
-- Files: src/types/stats.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts
-- Tests: src/workers/statsClient.test.ts, src/workers/stats/jobs.test.ts
-- TDD: required — `requestLoad`가 묶음을 `{ id, codes }`만 골라 새로 만들어 보내는지(이름 등 다른 칸을 넘겨도 안 감), `loadJob`이 그 묶음으로 세고 일 줄마다 0줄을 채우는지(가짜 도우미 글자, 같은 환자·같은 날 두 코드 = 1) 본다. 달 줄은 `aggregate` 그대로다. 환자 자료 구역 규칙 그대로다
+- Files: src/types/stats.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts, src/components/stats/useStatsWorker.test.ts, src/components/stats/StatsScreen.test.tsx, src/components/dashboard/live/readBitDays.test.ts
+- Tests: src/workers/statsClient.test.ts, src/workers/stats/jobs.test.ts, src/components/stats/useStatsWorker.test.ts, src/components/stats/StatsScreen.test.tsx, src/components/dashboard/live/readBitDays.test.ts
+- TDD: required — `groups`는 `StatsLoadRequest`·`requestLoad`·`loadJob`에서 선택 칸이다(없으면 `[]`, `design.md` '불러오기 길'). `requestLoad`는 묶음을 `{ id, codes }`만 골라 새로 만들어 늘 배열로 보낸다(이름 등 다른 칸을 넘겨도 안 감). `createStatsHost.load`는 지금 다섯 칸만 꺼내 `loadJob`에 넘기므로(`jobs.ts:176`·`:182`) `groups ?? []`를 함께 넘기게 고친다. AC-1205.4 시험은 `loadJob`만 부르지 않고 `createStatsHost(...).load({ …, groups })`를 거쳐 보낸 `loaded` 답의 `view.days[].groups`에 열쇠 줄이 있는지(가짜 도우미 글자, 같은 환자·같은 날 두 코드 = 1, 그날 안 받은 묶음은 0줄) 본다. 달 줄은 `aggregate` 그대로다. 환자 자료 구역 규칙 그대로다. 메시지가 늘 `groups`를 싣게 되어, `load` 메시지를 `toEqual`로 못 박은 승인된 시험 넷의 기대에 `groups: []`만 더한다(다른 줄은 고치지 않는다): `statsClient.test.ts:55-58`(stats AC-505.7, 이 칸은 AC-1205.4가 대신), `useStatsWorker.test.ts:205`, `StatsScreen.test.tsx:438-445`, `readBitDays.test.ts:157`. `useStatsWorker.ts`·`readBitDays.ts`·`StatsScreen.tsx`는 고치지 않는다(선택 칸이라 타입이 맞는다)
 
 ## TASK-8: 파일 길에 묶음 넘기기
 - Phase: 2 · 병렬
@@ -101,11 +101,11 @@
 
 ## TASK-9: 묶음 읽기·저장·불러오기 준비 훅
 - Phase: 2 · 병렬
-- AC: AC-1204.1~AC-1204.4, AC-1205.7(다시 읽기·실패 때), AC-1211.1~AC-1211.3(상태), AC-1213.1(이 파일)
+- AC: AC-1204.1~AC-1204.5, AC-1205.7(다시 읽기·실패 때), AC-1205.9, AC-1211.1~AC-1211.3(상태), AC-1213.1(이 파일)
 - REQ: REQ-1204, REQ-1205, REQ-1211, REQ-1213
 - Files: src/components/stats/useStatsRxGroups.ts, src/components/stats/useStatsRxGroups.test.ts
 - Tests: src/components/stats/useStatsRxGroups.test.ts
-- TDD: required — 저장 코드는 가짜(`vi.mock('@/lib/storage/statsRxGroups')`)다. 제안 다섯의 코드·차례·대소문자 합침, 보기만으로는 저장 안 함, `forLoad`의 세 갈래(줄 있음·없음·읽기 실패)와 거절하지 않음, 저장 성공·실패 상태를 본다. `forLoad`는 `groupDefs`(TASK-4)를 쓴다. 브라우저 저장소 낱말이 없음을 소스로 본다
+- TDD: required — 저장 코드는 가짜(`vi.mock('@/lib/storage/statsRxGroups')`)다. 상태 셋과 바뀌는 때는 `design.md` '묶음 훅' 그대로다. 제안 다섯의 코드·차례·대소문자 합침, 보기만으로는 저장 안 함, `forLoad`의 세 갈래(줄 있음·없음·읽기 실패)와 거절하지 않음, 저장 성공·실패 상태를 본다. AC-1204.5 시험 둘: (가) 묶음 읽기가 빈 목록으로 끝난 뒤에 `days`가 오면 제안에 코드가 차고 `forLoad`가 그 코드로 정의를 낸다 (나) `forLoad`의 제안 저장이 성공한 뒤 `days`를 바꿔도 묶음 코드가 그대로다. AC-1205.9는 가짜 시계로 본다: 읽기가 끝나지 않으면 4,999ms에는 안 풀리고 5,000ms에 화면 묶음 정의로 풀리며, 그 뒤 늦게 온 답은 상태만 바꾼다. 읽기가 빨리 끝나면 시계를 기다리지 않고 풀린다(시계는 지운다). `forLoad`는 `groupDefs`(TASK-4)를 쓴다. 브라우저 저장소 낱말이 없음을 소스로 본다
 
 ## TASK-10: 묶음 고치기 화면
 - Phase: 2 · 병렬
@@ -147,17 +147,17 @@
 - REQ: REQ-1205
 - Files: src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts
 - Tests: src/components/stats/useStatsWorker.test.ts
-- TDD: required — `load({ …, groups })`의 `groups`는 Promise다. `stats.rows` 요청은 그 Promise를 기다리지 않고 나가고, Worker `load` 메시지는 Promise가 풀린 뒤 `groups`를 싣는다(거절이면 `[]`). 지금 시험의 `load` 메시지 기대(`useStatsWorker.test.ts:205`)는 `groups`를 더해 고친다
+- TDD: required — `load({ …, groups })`의 `groups`는 선택 Promise다(없으면 `[]`, 그래서 Phase 4 전의 `StatsScreen.tsx`가 타입을 지난다). `stats.rows` 요청은 그 Promise를 기다리지 않고 나가고, Worker `load` 메시지는 Promise가 풀린 뒤 그 `groups`를 싣는다(거절이면 `[]`). TASK-7이 `groups: []`를 더해 둔 `useStatsWorker.test.ts:205`는 그대로 두고, 진짜 묶음을 넘기는 시험을 더한다
 
 ## Phase 4 — 넣기 (혼자, Phase 3 뒤)
 
 ## TASK-15: 통계 탭에 넣고 처방 추세 빼기
 - Phase: 4 · 혼자
-- AC: AC-1201.1, AC-1201.2, AC-1201.6, AC-1205.7(통계 화면에서 부름), AC-1213.1(검사 목록), AC-1213.2
+- AC: AC-1201.1, AC-1201.2, AC-1201.6, AC-1201.7, AC-1205.7(통계 화면에서 부름), AC-1213.1(검사 목록), AC-1213.2
 - REQ: REQ-1201, REQ-1205, REQ-1213
-- Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/RxTrendSection.tsx, src/components/stats/sections/RxTrendSection.test.tsx
-- Tests: src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx
-- TDD: required — 먼저 `design.md` '기존 명세·시험과의 관계'에 적은 줄(`StatsScreen.test.tsx:58`·`:438-445`·`:1229-1234`·`:1611-1617`·`:1641-1664`, `PeriodSummary.test.tsx:53`·`:72`·`:76-80`·`:247`·`:320-327`)을 새 차례·배치·`groups`로 고쳐 RED를 본다. 두 파일에 `vi.mock('@/lib/storage/statsRxGroups', …)`를 더한다(기본은 저장된 묶음 하나라 넓은 읽기 횟수 시험 `StatsScreen.test.tsx:1599`가 그대로다). `StatsSections`의 `groups`는 필수 prop이라 `PeriodSummary.test.tsx`의 그리기 도우미가 가짜 `StatsRxGroupsView`를 넘긴다. 파일 길 시험은 `readFiles` 셋째 인자, 비트 길 시험은 Worker `load` 메시지의 `groups`를 본다. `RxTrendSection.tsx`·`RxTrendSection.test.tsx`는 지운다. AC-1213.1은 `PeriodSummary.test.tsx`의 소스 검사 목록에 이 기능 파일을 더해 본다. AC-1213.2는 `npm run lint`·`src/guardrails.test.ts`가 그대로 통과함으로 본다(규칙 파일은 고치지 않는다). 이 밖에 바뀌는 기대값이 나오면 멈추고 보고한다
+- Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/RxTrendSection.tsx, src/components/stats/sections/RxTrendSection.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts
+- Tests: src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/dashboard/briefing/features.test.ts
+- TDD: required — 먼저 `design.md` '기존 명세·시험과의 관계'에 적은 줄(`StatsScreen.test.tsx:58`·`:438-445`·`:1229-1234`·`:1611-1617`·`:1641-1664`, `PeriodSummary.test.tsx:53`·`:72`·`:76-80`·`:247`·`:320-327`)을 새 차례·배치·`groups`로 고쳐 RED를 본다. 두 파일에 `vi.mock('@/lib/storage/statsRxGroups', …)`를 더한다(기본은 저장된 묶음 하나라 넓은 읽기 횟수 시험 `StatsScreen.test.tsx:1599`가 그대로다). `StatsSections`의 `groups`는 필수 prop이라 `PeriodSummary.test.tsx`의 그리기 도우미가 가짜 `StatsRxGroupsView`를 넘긴다. 파일 길 시험은 `readFiles` 셋째 인자, 비트 길 시험은 Worker `load` 메시지의 `groups`를 본다. `RxTrendSection.tsx`·`RxTrendSection.test.tsx`는 지운다. AC-1201.7: `features.ts:23`의 통계 설명 글자를 바꾸고, 승인된 시험 `features.test.ts:11`(표)·`:66`(AC-515.2 기대)의 같은 글자를 먼저 고쳐 RED를 본다(tab-frame AC-316.3·stats AC-515.2의 그 글자를 AC-1201.7이 대신한다). AC-1213.1은 `PeriodSummary.test.tsx`의 소스 검사 목록에 이 기능 파일을 더해 본다. AC-1213.2는 `npm run lint`·`src/guardrails.test.ts`가 그대로 통과함으로 본다(규칙 파일은 고치지 않는다). 이 밖에 바뀌는 기대값이 나오면 멈추고 보고한다
 
 ## Phase 5 — 마무리 (둘 병렬, Phase 4 뒤)
 

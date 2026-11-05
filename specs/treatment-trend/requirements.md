@@ -41,6 +41,7 @@
 - AC-1201.4: Given 저장된 숫자는 있지만 고른 기간에 일 줄이 없음(`hasRows` false), When 새 칸을 그리면, Then 줄·안내 상자 대신 `불러온 숫자에 이 기간 자료가 없어요.`가 있고 [묶음 고치기]는 누를 수 있다(0건으로 거짓말하지 않는다)
 - AC-1201.5: Given 시안에서만 쓰는 것(`바뀐 칸` 칩, `시안에서만 보이는 줄`과 두 모습 단추, `지금 화면의 '처방 추세'와 견주기`, `정하신 내용`, `제가 정한 부분`, `예시` 표시), When 실제 화면을 그리면, Then 어느 것도 없다
 - AC-1201.6: Given 처방별 신환·재진과 처방 골라 보기, When 이 기능이 끝나면, Then 두 칸의 시험(`RxSplitSection.test.tsx`·`RxPick*.test.tsx`·`RxPickerSection.test.tsx`)이 기대값을 바꾸지 않고 통과한다(바뀌는 것은 `RxPickDetail` 쪽 함수를 불러오는 경로 한 줄뿐이다)
+- AC-1201.7: Given 대시보드 기능 목차의 통계 칸(`DASHBOARD_FEATURES`), When 설명 글을 읽으면, Then `환자 수 추이·신환 재방문율·치료별 추세·요일별 환자 수`다. 이름·주소·상태는 그대로다(tab-frame AC-316.3·stats AC-515.2의 `처방 추세` 글자를 이 AC가 대신한다)
 
 ### REQ-1202: 통계 묶음 저장 표 (새 migration)
 - AC-1202.1: Given 새 파일 `supabase/migrations/20261105000100_stats_rx_groups.sql`, When 인증 migration 뒤에 이 파일만 돌리면(다른 갈래 표가 없는 DB), Then 표 `stats_rx_groups`가 생기고 칸은 `id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at` 여섯뿐이다(환자 칸 없음). RLS가 켜져 있다. 다른 migration(통계·매출·처방 골라 보기)이 먼저 있어도 돌고, 그 표·함수(`rx_groups`·`save_rx_groups`·`touch_updated_at`)를 만들거나 바꾸지 않는다. `my_hospital_id()`는 cross-branch C1 글자 그대로다. 파일 머리 주석에 운영자가 붙여 넣는 방법이 있다
@@ -66,16 +67,18 @@
 - AC-1204.2: Given 제안 묶음, When 화면을 보기만 하면, Then 저장하지 않는다(`saveStatsRxGroups`를 부르지 않는다)
 - AC-1204.3: Given 제안 묶음, When [묶음 고치기]에서 [저장]을 누르거나, 처방이 든 제안 묶음이 하나라도 있는 채로 비트·파일 불러오기를 시작하면, Then 그때의 다섯 묶음을 저장한다. 불러오기 쪽 저장이 실패해도 불러오기는 그 다섯의 처방으로 센다. 처방이 든 제안 묶음이 하나도 없으면 불러오기 때 저장하지 않는다
 - AC-1204.4: Given 사용자가 묶음을 모두 지우고 저장함(저장된 줄 0개), When 다음에 묶음을 읽으면, Then 다시 다섯 제안이 보인다(매출 묶음과 같은 규칙)
+- AC-1204.5: Given 저장된 묶음 줄이 없는 동안, When 화면의 일 숫자(`days`)가 바뀌면, Then 제안 다섯의 처방을 지금 `days`로 다시 고른다(시험: 묶음 읽기가 빈 목록으로 `days`보다 먼저 끝남 → 나중에 `days`가 옴 → 제안에 코드가 차고 `forLoad`가 그 코드로 정의를 낸다). 제안 저장이 성공하면(`forLoad` 또는 [저장]) 그 뒤로는 돌려받은 저장 줄이 묶음이고 `days`가 바뀌어도 처방이 그대로다(시험: 저장 성공 뒤 `days`를 바꿔도 코드 그대로, `suggested` 거짓)
 
 ### REQ-1205: 불러올 때 묶음별 건수 세기
 - AC-1205.1: Given 한 묶음(코드 `MM101`·`MM102`)과 환자 줄(1번 환자가 같은 날 두 코드, 2번 환자가 한 코드), When 그날 칸을 세면, Then 그 묶음은 2건이다(같은 환자·같은 날·같은 묶음 = 1건). 같은 환자가 다른 날 또 받으면 그날도 1건이다
 - AC-1205.2: Given 묶음 코드와 줄 코드의 대소문자가 다름(`eswt1`·`ESWT1`), When `aggregate`가 세면, Then 같은 코드로 센다. 묶음을 주지 않거나 대문자만 쓰는 지금 시험은 결과가 그대로다
 - AC-1205.3: Given 묶음 정의(`{ id, codes }`)들과 `toDayPayloads` 결과, When `fillGroupCounts(days, ids)`를 부르면, Then 모든 날 줄의 `groups`에 받은 id마다 한 줄이 있고(그날 아무도 안 받았으면 `{ id, patients: 0, newPatients: 0, returning: 0 }`) id 글자 차례다. 받지 않은 id 줄은 없다. 넣은 값은 바꾸지 않고 새 객체를 돌려주며 `validateDayPayload`를 지난다
-- AC-1205.4: Given 비트 길, When 화면이 불러오면, Then Worker로 가는 `load` 요청에 `groups: [{ id, codes }]`가 있고 이름 등 다른 칸은 없다. Worker는 그 묶음으로 `aggregate`를 세고 일 숫자에 `fillGroupCounts`를 한다. 달 숫자의 `groups`는 `aggregate`가 준 그대로다
+- AC-1205.4: Given 비트 길, When 화면이 불러오면, Then Worker로 가는 `load` 메시지에 늘 `groups` 배열(`[{ id, codes }]`, 묶음을 주지 않으면 `[]`)이 있고 이름 등 다른 칸은 없다. Worker 쪽 입구(`createStatsHost(...).load`)가 그 묶음을 `loadJob`에 넘겨 `aggregate`로 세고 일 숫자에 `fillGroupCounts`를 한다(시험: `host.load({ …, groups })`를 거친 `loaded` 답의 `view.days[].groups`에 열쇠 줄이 있고, 같은 환자·같은 날 두 코드는 1). 달 숫자의 `groups`는 `aggregate`가 준 그대로다. `groups`는 선택 칸이라 묶음을 주지 않는 대시보드 비트 바로 읽기(`readBitDays`)는 고치지 않으며 `groups: []`를 보내고 아무것도 저장하지 않는다(specs/stats AC-505.7의 "Worker에는 … 만 간다"를 이 칸에 한해 이 AC가 대신한다)
 - AC-1205.5: Given 파일 길, When `readFiles(files, today, groups)`를 부르면, Then `runAnalysis`에 그 묶음이 가고 저장할 일 숫자에 `fillGroupCounts`를 한다. `groups`를 주지 않으면 지금과 같다
 - AC-1205.6: Given 화면의 묶음, When 불러오기에 넘길 정의를 만들면(`groupDefs`), Then 처방이 든 묶음만 `{ id: groupKey(codes), codes }`이고 같은 열쇠는 한 번만이다. 처방이 없는 묶음은 넘기지 않는다
-- AC-1205.7: Given [비트에서 불러오기]·파일 넣기, When 누르면, Then 저장된 묶음을 서버에서 다시 읽어(다른 기기에서 고친 것을 쓰려고) 그 묶음으로 센다. 비트 길은 다시 읽기를 비트 요청과 함께 시작하고 비트 요청(`stats.rows`)을 늦추지 않는다. 다시 읽기가 실패하면 화면에 있는 묶음(읽은 적이 없으면 없음)으로 센다. 어느 경우에도 불러오기를 막지 않는다
+- AC-1205.7: Given [비트에서 불러오기]·파일 넣기, When 누르면, Then 저장된 묶음을 서버에서 다시 읽어(다른 기기에서 고친 것을 쓰려고) 그 묶음으로 센다. 비트 길은 다시 읽기를 비트 요청과 함께 시작하고 비트 요청(`stats.rows`)을 늦추지 않는다. 다시 읽기가 실패하면 화면에 있는 묶음(읽은 적이 없으면 없음)으로 센다. 어느 경우에도 불러오기를 막지 않는다(기다림 한도는 AC-1205.9)
 - AC-1205.8: Given 묶음 50개(칸마다 네 자리 숫자), When 하루 줄을 저장 모양으로 만들면, Then 묶음 칸 때문에 늘어나는 `JSON.stringify` 길이는 4,500자 이하다(일 줄 한도 65,536바이트, `stats_days` 제약. DB 글자 모양은 칸마다 빈칸이 붙어 조금 더 길다)
+- AC-1205.9: Given 묶음 다시 읽기나 제안 저장이 끝나지 않음(답이 없음), When 불러오기가 `forLoad`를 기다리면, Then `forLoad`는 부른 뒤 5초(`FOR_LOAD_LIMIT_MS`)에 화면에 있는 묶음(읽은 적이 없으면 없음)의 정의로 풀리고 불러오기가 이어진다. 5초 전에는 풀리지 않는다(답이 오면 그때 푼다). 늦게 온 답은 묶음 상태만 바꾸고 이미 넘긴 정의는 바꾸지 않는다(시험: 가짜 시계, 읽기가 끝나지 않는 가짜 저장 코드)
 
 ### REQ-1206: 묶음 열쇠와 "다시 불러오면 보여요" 판단
 - AC-1206.1: Given `groupKey(codes)`, When 부르면, Then 글자는 `t` + 소문자 16진수 16자리(`/^t[0-9a-f]{16}$/`, `validate.ts`의 `GROUP_ID`를 지남)다. 코드 차례·겹침·대소문자에 상관없이 같다. 고정 값: `['ESWT1','ESWT7']` → `t2538e307d10103cb`, `['eswt7','ESWT1','ESWT1']` → `t2538e307d10103cb`, `['도수']` → `t0c99afbb8431612f`, `['CARM1']` → `t2f4ba094dcd40dcf`. 코드가 하나라도 다르면 다른 글자다(시험: 코드 하나 더함·뺌·바꿈)

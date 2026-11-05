@@ -183,17 +183,19 @@ export function fillGroupCounts(days: readonly DayPayload[], ids: readonly strin
 ### 불러오기 길
 ```ts
 // src/types/stats.ts
-export type StatsLoadRequest = { type: 'load'; streamId: string; from: string; to: string; today: string; closeToday: boolean; groups: RxGroupDef[] }
+export type StatsLoadRequest = { type: 'load'; streamId: string; from: string; to: string; today: string; closeToday: boolean; groups?: RxGroupDef[] }  // 없으면 []로 본다
 // src/workers/statsClient.ts
-export function requestLoad(worker, req: { streamId; from; to; today; closeToday; groups: readonly RxGroupDef[] }, opts?): Promise<StatsLoaded>  // groups는 { id, codes: [...codes] }만 골라 새로 만든다
+export function requestLoad(worker, req: { streamId; from; to; today; closeToday; groups?: readonly RxGroupDef[] }, opts?): Promise<StatsLoaded>  // 메시지에는 늘 groups 배열(없으면 []). { id, codes: [...codes] }만 골라 새로 만든다
 // src/workers/stats/jobs.ts
-loadJob(text, { from, to, today, closeToday, groups })  // aggregate(rows, groups, patientDays) → days: fillGroupCounts(toDayPayloads(result), ids)
+createStatsHost(send).load({ streamId, from, to, today, closeToday, groups })  // loadJob에 groups ?? []를 함께 넘긴다
+loadJob(text, { from, to, today, closeToday, groups = [] })  // aggregate(rows, groups, patientDays) → days: fillGroupCounts(toDayPayloads(result), ids)
 // src/components/stats/useStatsWorker.ts
-load({ range, today, closeToday, groups }: { …; groups: Promise<readonly RxGroupDef[]> })  // stream을 먼저 열고, id를 받은 뒤 groups를 기다린다(거절이면 [])
+load({ range, today, closeToday, groups }: { …; groups?: Promise<readonly RxGroupDef[]> })  // stream을 먼저 열고, id를 받은 뒤 groups를 기다린다(없거나 거절이면 [])
 // src/components/stats/SourcePicker.tsx
 readFiles(files: File[], today: string, groups: readonly RxGroupDef[] = []): Promise<FileOutcome>  // runAnalysis(files, { today, groups }) → fillGroupCounts
 ```
-- `createStatsHost.load`는 받은 요청을 `loadJob`에 그대로 넘긴다(바꿀 것 없음, `stats.worker.ts`도 그대로)
+- `createStatsHost.load`는 지금 요청에서 다섯 칸(`streamId`·`from`·`to`·`today`·`closeToday`)만 꺼내고 `loadJob`에 `{ from, to, today, closeToday }`만 넘긴다(`jobs.ts:176`·`:182`). 그대로 두면 비트 길에서 `groups`가 말없이 빠진다. TASK-7이 `groups ?? []`를 함께 꺼내 넘기게 고치고, 시험은 `loadJob`만 부르지 않고 `createStatsHost(...).load({ …, groups })`를 거쳐 `loaded` 답의 `view.days[].groups`에 열쇠가 있는지 본다. `stats.worker.ts`는 요청을 통째로 `host.load`에 넘기므로 그대로다
+- `groups`는 `StatsLoadRequest`·`requestLoad`·`loadJob`·`useStatsWorker.load` 모두 선택 칸이다(없으면 `[]`). 그래서 고치지 않는 부르는 곳(대시보드 `readBitDays.ts:41`)과 다음 Phase에서 고칠 곳(`useStatsWorker.ts:56`은 TASK-14, `StatsScreen.tsx`는 TASK-15)이 Phase마다 타입 검사·빌드를 지난다. Worker로 가는 메시지에는 늘 `groups` 배열이 있다(없으면 `[]`)
 - `analyzeFiles`·`runAnalysis`·`analyze.worker.ts`는 이미 묶음을 받는다(바꿀 것 없음)
 
 ### 화면 숫자 (`src/components/stats/treatmentView.ts`, 순수 함수, 시험은 가짜 일 줄)
@@ -240,12 +242,18 @@ export type StatsRxGroupsView = {
   saveFailed: boolean
   reread(): void
   save(after: readonly RxGroup[]): Promise<boolean>  // forSave 값을 저장. 성공하면 groups가 돌려받은 줄이 된다
-  forLoad(): Promise<RxGroupDef[]>                   // 거절하지 않는다(AC-1205.7·AC-1204.3)
+  forLoad(): Promise<RxGroupDef[]>                   // 거절하지 않고 부른 뒤 5초 안에 늘 풀린다(AC-1205.7·AC-1205.9·AC-1204.3)
 }
 export function useStatsRxGroups(days: readonly DayPayload[]): StatsRxGroupsView
 ```
-- 처음 그릴 때 한 번 읽는다. 저장된 줄이 없으면 `suggestGroups(rxCatalog(days, [], isSavableLine).map(code))`(대소문자 합친 코드, 제안 다섯)
-- `forLoad`: ① 서버에서 다시 읽는다 → 줄이 있으면 그것으로 상태를 바꾸고 `groupDefs` ② 줄이 없으면 지금 제안을, 처방 든 것이 있을 때만 저장(실패는 무시)하고 `groupDefs(제안)` ③ 읽기 실패면 상태가 `ready`일 때 지금 묶음의 `groupDefs`, 아니면 `[]`
+- 처음 그릴 때 한 번 읽는다. 상태는 셋 중 하나다
+  - (가) 읽는 중·읽기 실패
+  - (나) **저장된 줄 없음**: `groups`는 그릴 때마다 지금 `days`로 다시 고른다: `suggestGroups(rxCatalog(days, [], isSavableLine).map(({ code }) => code))`(대소문자 합친 코드, 제안 다섯, `suggested: true`). 그래서 읽기가 `days`보다 먼저 빈 목록으로 끝나 처방 없는 제안이었다가, `days`가 오면 코드가 찬다
+  - (다) **저장된 줄 있음**: 받은 줄 그대로(`suggested: false`)이고 `days`를 따라가지 않는다
+- (나) → (다): [묶음 고치기] [저장] 성공, `forLoad` ②의 제안 저장 성공(돌려받은 줄이 상태가 된다), `forLoad` ①·[다시 읽기]가 줄을 받음. (다)에서 묶음을 모두 지우고 저장하면 (나)로 돌아간다(AC-1204.4)
+- `forLoad`: ① 서버에서 다시 읽는다 → 줄이 있으면 그것으로 상태를 바꾸고 `groupDefs` ② 줄이 없으면 그때의 제안을, 처방 든 것이 있을 때만 저장하고(성공하면 (다), 실패는 무시) `groupDefs(그 제안)` ③ 읽기 실패면 상태가 (나)·(다)일 때 지금 묶음의 `groupDefs`, (가)이면 `[]`
+- **기다림 한도 5초**(`FOR_LOAD_LIMIT_MS = 5_000`): `forLoad`는 부른 뒤 5초 안에 늘 풀린다. ①·②가 그 안에 끝나지 않으면 그때 화면의 묶음(③과 같은 규칙)으로 푼다. 늦게 끝난 읽기·저장은 묶음 상태만 바꾸고 이미 시작한 불러오기에는 쓰이지 않는다
+  - 5초인 까닭: 읽기는 50줄 안의 작은 select 하나, 처음 한 번의 저장은 RPC 하나라 보통 1초 안이고, 무료 플랜이 잠에서 깨는 첫 요청도 1~2초다. 파일 길은 이 기다림 뒤에 Worker를 시작하므로 한도가 길면 그만큼 늦는다. 5초 넘게 답이 없으면 연결이 끊긴 것에 가깝고 그때는 일 숫자 저장도 실패할 것이라 더 기다릴 값이 없다. 비트 길은 도우미 읽기(수십 초)와 함께 기다리므로 보통 늦어지지 않는다
 - 브라우저 저장소를 쓰지 않는다. 묶음은 React 상태와 서버 표에만 있다
 
 ### 화면 (`src/components/stats/sections/`)
@@ -265,6 +273,7 @@ export function useStatsRxGroups(days: readonly DayPayload[]): StatsRxGroupsView
 ### 잇기
 - `StatsScreen.tsx`: `const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)`. 비트 `load({ …, groups: groups.forLoad() })`(기다리지 않고 넘김), 파일 `readFiles(files, today, await groups.forLoad())`. `WAITING`의 넷째를 `{ title: '치료별 추세', place: 'col-span-12' }`, 다섯째를 `{ title: '처방별 신환·재진', place: 'col-span-12' }`로. `StatsSections`에 `groups`를 넘긴다
 - `StatsSections.tsx`: `RxTrendSection` 자리에 `TreatmentTrendSection`(`col-span-12`), `RxSplitSection`은 `col-span-12`. `groups: StatsRxGroupsView`는 필수 prop이다
+- `dashboard/briefing/features.ts`: 통계 칸 설명 글자의 `처방 추세`를 `치료별 추세`로(AC-1201.7)
 - 지우는 파일: `sections/RxTrendSection.tsx`·`sections/RxTrendSection.test.tsx`(칸이 없어진다. 공용 글 함수는 `trendLabels.ts`로 옮긴 뒤)
 
 ## 데이터 흐름
@@ -293,7 +302,7 @@ stats_days ─ readDays → useStatsData.input → treatmentRows(keyedIn·groupI
 - 화면은 코드를 대문자로 합친다(`codeKey`). 묶음에 `ESWT1`이 있는데 옛날 줄이 `eswt1`이면 화면 목록에는 한 줄인데 셈에서 빠진다. 그래서 `aggregate`의 묶음 맞추기와 `groupKey`, DB 겹침 검사를 모두 대소문자 무시로 맞춘다
 
 ### 제안 다섯은 보기만으로 저장하지 않는다
-- 매출과 같이 "저장된 묶음이 없을 때만 제안"이다. 다만 열쇠가 처방 모음이라, 불러올 때 쓴 제안 처방이 나중에 화면의 제안(그때 일 숫자로 다시 고른 것)과 달라지면 또 숨겨진다. 그래서 처음 불러올 때 그 다섯을 저장해 굳힌다(AC-1204.3)
+- 매출과 같이 "저장된 묶음이 없을 때만 제안"이다. 저장된 줄이 없는 동안 제안은 화면의 일 숫자를 따라 다시 고른다(묶음 훅 (나)). 다만 열쇠가 처방 모음이라, 불러올 때 쓴 제안 처방이 나중에 다시 고른 제안과 달라지면 또 숨겨진다. 그래서 처음 불러올 때 그 다섯을 저장해 굳힌다(AC-1204.3). 저장에 성공하면 그 뒤로는 일 숫자가 바뀌어도 묶음 처방이 그대로다(AC-1204.5)
 - 제안 처방은 화면의 일 숫자(고른 기간 + 비교 기간)에서 고른다. 넓은 범위를 따로 읽지 않는다(처방 골라 보기의 넓은 읽기 횟수 시험과 겹치지 않고, 휴대폰 부담이 없다). 그 기간에 안 나온 코드(예: 7일 보기에서 한 번도 안 한 냉동치료)는 빠질 수 있고, 사용자가 [묶음 고치기]에서 넣는다
 - 모두 지우고 저장하면 다음에 제안이 다시 보인다(표가 비어 "처음"과 가를 수 없다. 매출과 같다)
 
@@ -322,12 +331,18 @@ stats_days ─ readDays → useStatsData.input → treatmentRows(keyedIn·groupI
 | 없음 | 비교 기간만 옛 열쇠인 묶음: 증감 `비교할 수 없음` + 안내 한 줄(AC-1208.4) | 시안이 그리지 않은 상태 |
 | 없음 | 저장된 숫자 없음(AC-1201.3)·이 기간 자료 없음(AC-1201.4)·묶음 읽는 중·읽기 실패(REQ-1211)·저장 실패(AC-1210.13)·찾기 목록 읽는 중·실패(AC-1210.8)·이름 규칙 글 셋(AC-1210.11)·50개 한도(AC-1210.9) | 다른 칸·매출 묶음 화면의 같은 상태 글을 따른다 |
 | 처방 추세 칸 끝 "금액·소모량은 매출 탭에서 볼 수 있어요" | 없음 | 시안에 없다 |
+| 12개월 머리 줄 "지난 12개월보다" | "작년 같은 12달보다"(`COMPARE_NAME['12m']`) | 앱 처방 추세 머리 줄·기간 줄의 비교 이름이 이 글이다. 7·30·90일은 시안과 같다 |
+| 숫자 표 마지막 칸 "비교 기간" | 비교 이름(`COMPARE_NAME`: `지난 30일` 등) | 처방 추세 숫자 표(`RxDetail`)의 칸 이름이 이 글이다 |
+| 휴대폰에서 막대 8칸 이상이면 막대 위 합계를 모두 숨김(`.tot.dense`) | 13칸 이상이면 마지막 칸 글자만 남김(`thinTotals`) | 통계 탭 다른 그래프의 휴대폰 규칙이 이것이다 |
+| [저장] 글: 새 묶음은 처방이 없어도 "처방이 바뀜"으로 셈 | 처방이 든 새 묶음만 "바뀜"으로 셈(빈 새 묶음만 더했으면 "이름과 순서만 바뀌어서 바로 반영했어요") | 처방 없는 묶음은 다시 불러올 것이 없다(줄이 `넣은 처방이 없어요`라 숫자가 없다) |
 
 ## 다른 기능에 미치는 것
 - **처방별 신환·재진**: 폭만 전체로. 숫자·글 그대로
 - **처방 골라 보기**: `RxPickDetail.tsx`·`RxPickDetail.test.tsx`의 불러오는 경로 한 줄. 동작 그대로. 찾기 목록 넓은 읽기는 이 칸과 따로 한 벌이라 두 칸의 목록을 다 열면 넓은 범위를 두 번 읽는다
 - **원장님 보고 문장·요일별 환자 수**: 그대로
 - **대시보드 '처방 상위'**: 그대로(자기 `topRx`, 저장 숫자를 읽지 않음)
+- **대시보드 비트 바로 읽기(`dashboard/live/readBitDays.ts`)**: 고치지 않는다. `requestLoad`에 묶음을 주지 않으므로 Worker 메시지에 `groups: []`가 실리고, Worker는 묶음 없이 세며(일 줄 `groups`는 빈 목록 그대로) 대시보드는 아무것도 저장하지 않는다. 바뀌는 것은 메시지를 못 박은 시험 한 줄(`readBitDays.test.ts:157`)뿐이다
+- **대시보드 기능 목차 글(`dashboard/briefing/features.ts:23`)**: 통계 칸 설명 `환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수`를 `환자 수 추이·신환 재방문율·치료별 추세·요일별 환자 수`로 바꾼다(TASK-15, AC-1201.7). 화면에 없는 칸 이름을 남기지 않으려고
 - **AI 리포트**: 지금은 달 읽기가 늘 없음이라 그대로다. 이 기능 뒤 저장되는 **달 줄 `groups`에 묶음 열쇠(`t…`)가 든다**(`toMonthPayload`가 칸의 묶음을 옮긴다). AI 리포트가 달 줄을 읽게 되면 `groupNames`를 `stats_rx_groups`에서 `groupKey(codes) → name`으로 만들어야 하고, 옛 열쇠는 `이름 없는 그룹`이 된다. 그 명세가 정한다
 - **일 줄 크기**: 묶음 50개면 하루 줄이 약 4KB 는다(AC-1205.8). 지금 64KB 한도에 가까운 날은 저장 전체가 실패할 수 있다('위험')
 - **비트 PC 부담**: 도우미 요청은 그대로다. Worker의 셈이 묶음만큼 조금 는다(`aggregate` 10만 줄 1초 시험 유지)
@@ -336,6 +351,9 @@ stats_days ─ readDays → useStatsData.input → treatmentRows(keyedIn·groupI
 - **승인된 명세는 고치지 않는다.** specs/stats·stats-core·rx-picker·revenue의 승인이 그대로다
 - specs/stats REQ-513의 처방 추세 AC(513.1 차례 중 처방 추세 자리, 513.2·513.3·513.4·513.5·513.11·513.12)와 rx-picker AC-801.1·801.2(여덟 칸 차례·배치)는 이 명세의 REQ-1201·1207~1209가 대신한다. 그 시험 `RxTrendSection.test.tsx`는 칸과 함께 지운다
 - TASK-15에서 함께 고치는 시험(알려진 것): `StatsScreen.test.tsx:58`(SECTIONS)·`:438-445`(load 요청에 `groups`)·`:1229-1234`·`:1611-1617`(배치)·`:1641-1664`(rx-picker AC-806.5의 처방 추세 줄 부분 → 치료별 추세 줄로), `PeriodSummary.test.tsx:53`(TITLES)·`:72`·`:76-80`(배치)·`:247`(검사 파일 목록)·`:320-327`(처방 줄 열기·`접기` 단추 수·`가짜 처방 일별 건수` 표). 두 파일에 `vi.mock('@/lib/storage/statsRxGroups', …)`를 더한다(기본: 저장된 묶음 하나, 넓은 읽기 횟수 시험 `:1599`이 바뀌지 않게)
+- specs/stats AC-505.7(`specs/stats/requirements.md:57`, "Worker에는 기간·오늘·오늘 진료 끝 표시·통로 요청 id만 간다")은 새 칸 `groups`(묶음 열쇠·코드, 없으면 `[]`)에 한해 이 명세의 AC-1205.4가 대신한다. 다른 칸은 그대로 가지 않는다
+- Worker `load` 메시지를 `toEqual`로 못 박은 승인된 시험 넷은 TASK-7에서 기대에 `groups: []`만 더한다(같은 Phase 끝 검사가 깨지지 않게): `statsClient.test.ts:55-58`(AC-505.7), `useStatsWorker.test.ts:205`, `StatsScreen.test.tsx:438-445`, `readBitDays.test.ts:157`(bit-dashboard AC-601.1, 그 AC 글은 칸 목록을 말하지 않아 대신할 것이 없다). 뒤 TASK(14·15)가 진짜 묶음을 넘기는 시험으로 다시 고친다
+- tab-frame AC-316.3과 specs/stats AC-515.2가 못 박은 통계 칸 설명 글자의 `처방 추세`는 이 명세의 AC-1201.7이 `치료별 추세`로 대신한다. 시험 `features.test.ts:11`(표)·`:66`(AC-515.2 기대)을 TASK-15에서 고친다
 - stats-core AC-006.3("한 코드가 여러 그룹에 있으면 각 그룹에", "환자 없는 그룹은 빠진다"): `aggregate`는 그대로 그렇게 센다. "한 묶음에만"은 통계 묶음 저장(DB·고치기 화면)의 규칙이고, 대소문자 무시는 넓힘이라 그 시험이 그대로 통과한다
 - `plan.md §7`의 "한 코드가 여러 그룹에 들어가도 된다"(plan.md:140)는 계획 문서라 줄 끝에 이 묶음의 예외를 붙인다(AC-1214.2). `plan.md:141` "그룹을 바꾸면 이전 달은 파일을 다시 넣어야 반영된다(화면에 안내 한 줄)"와 이 설계가 같다
 
@@ -347,6 +365,8 @@ stats_days ─ readDays → useStatsData.input → treatmentRows(keyedIn·groupI
 ## 위험 / 미해결 질문
 - 처음 한 번은 다시 불러와야 한다(결정 17). 저장된 숫자가 전혀 없는 새 계정은 첫 불러오기 때 제안에 처방이 없어 묶음 숫자를 세지 못하고, 두 번째 불러오기부터 나온다(드묾)
 - 불러올 때 묶음 다시 읽기가 실패하면 그 불러오기는 화면에 있던 묶음으로 센다. 화면이 묶음을 읽은 적도 없으면 묶음 없이 저장해, 그 기간 묶음 숫자가 숨겨진다(틀린 숫자는 아니고 다시 불러오면 된다)
+- 묶음 다시 읽기가 5초 안에 끝나지 않으면 그 불러오기는 화면의 묶음으로 센다(위 '기다림 한도'). 다른 기기에서 막 고친 처방이면 그 묶음은 다시 불러올 때까지 숨겨진다(틀린 숫자는 아님)
+- `supabase/migrations/20261101000200_stats.sql:116`은 완전한 줄을 덜 덮인 줄로 바꾸지 않는다. 그래서 [오늘 진료 끝]을 켜고 오늘을 불러온 뒤 묶음 처방을 바꾸고, 끄고 다시 불러오면 오늘 줄은 옛 열쇠 그대로 남는다. 그 묶음은 오늘이 든 보기에서 다음 날 다시 불러올 때까지 숨겨진다. 틀린 숫자는 보이지 않고 숨겨질 뿐이다
 - 다른 기기에서 지운 묶음을 고쳐 저장하면 `not my group`으로 실패가 이어진다. 화면을 새로 열면 된다(글: AC-1203.4 저장 실패의 "계속되면 화면을 새로 열어 주세요")
 - 하루 줄이 이미 64KB 가까이면 묶음 칸 때문에 그 저장 전체가 실패할 수 있다(실제 크기를 재지 못함). 묶음 수 한도 50과 짧은 열쇠로 늘어남을 4KB 안팎에 묶었다
 - 지문 겹침은 확률로만 막는다(위 '다시 불러오기 판단')
