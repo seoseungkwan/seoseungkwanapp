@@ -4,7 +4,8 @@
 - 처방 골라 보기 안, 건수 표 바로 아래에 묶음 `같은 처방 재방문`을 더한다. 고른 처방마다 "기간 안에 새로 시작한 환자 중 7·14·30일 안에 같은 처방을 또 받은 비율"과 "평균 몇 번 더"를 보인다
 - **셈은 의원 PC 안에서만 한다.** 파일 길(Web Worker)과 비트 길(통계 Worker) 모두 `aggregate()`를 지나므로 거기서 환자를 날 사이로 이어 센다. 결과는 일 칸마다 처방별 `starts`·`back`·`more` 세 숫자뿐이고 환자 번호·날짜 목록은 칸 밖으로 나가지 않는다
 - 서버에는 지금 저장 모양(`stats_days.payload` jsonb)에 칸 `again` 하나를 더해 날마다 저장한다. **jsonb 안의 칸이라 이 숫자에는 DB 마이그레이션이 필요 없다**(`20261101000200_stats.sql:41-47`은 `schemaVersion`·`day`·`partial`·크기만 본다)
-- 고른 날 수(7·14·30)를 "다음에 열어도 남게" 하려고 새 표 `stats_prefs`(병원마다 한 줄)를 둔다. **새 표라서 운영 SQL을 사용자가 한 번 붙여야 한다.** 이 표가 없어도 숫자는 7일로 보이고 그 묶음에만 오류 카드가 뜬다(아래 '미해결 질문 1')
+- 고른 날 수(7·14·30)는 `RxPickerSection`의 React 상태다. 기간을 바꿔도 남고 다시 열면 늘 7일이다(2026-11-05 사용자 결정). 브라우저 저장소·서버 표를 쓰지 않는다
+- **운영 SQL이 필요 없다.** 새 표·새 칸·새 함수가 없다
 - 화면은 저장된 날 숫자로 그려서 휴대폰에서도 된다. 도우미·확장·`helperData.ts`·`columnMap.ts`는 바꾸지 않는다
 
 ## 코드로 확인한 길 (호출자가 읽어 둔 것을 지금 코드에 다시 대 봄)
@@ -54,7 +55,7 @@ again?: DayAgainPayload
 - `toStats`가 일 칸에만 `again`(코드 순, `starts` ≥ 1만)을 붙인다. 주·달 칸은 그대로다
 - 비용: 줄 수만큼 `Set`에 넣고 환자·처방마다 한 번 정렬. 지금도 칸마다 Map을 쓰므로 같은 크기다
 
-### 날 숫자: `toDayPayloads.ts` (TASK-5)
+### 날 숫자: `toDayPayloads.ts` (TASK-4)
 ```ts
 // 신환 재방문 revisitView와 같은 규칙: 그날 ~ 그날 + N일이 다 덮이고 끝났을 때만 숫자
 const readyOf = (day: string, summary: Summary) =>
@@ -75,64 +76,13 @@ function againOf(value: unknown, rx: DayPayload['rx'], partial: boolean): DayAga
 - 규칙은 AC-1303.2 ~ 1303.5. 코드는 `isCode`(처방 코드와 같은 검사), 숫자는 `isCount`
 - `MonthPayload`·`validateMonthPayload`는 그대로다
 
-### 크기: `lib/storage/stats.ts` (TASK-6)
+### 크기: `lib/storage/stats.ts` (TASK-5)
 ```ts
 // allChecked의 날 쪽: 검사한 줄이 MAX_DAY_BYTES를 넘고 again이 있으면 again을 뺀 줄로 다시 잰다. 그래도 넘으면 지금처럼 던진다
 function fitDay(payload: DayPayload): DayPayload
 ```
 
-### DB: `supabase/migrations/20261105000300_stats_prefs.sql` (TASK-3, 전체)
-```sql
--- 통계 탭에서 고른 보기 설정(stats_prefs). 지금은 같은 처방 재방문의 7·14·30일 하나
---
--- 실행: 운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다(앱·CLI는 실행하지 않는다).
--- 먼저 20261028000000_auth.sql이 들어가 있어야 한다. 사이트에 올리기 전에 붙인다. 표가 없으면 그 묶음만 7일로 보이고 오류 카드를 보인다.
---
--- 왜: 고른 날 수를 휴대폰과 컴퓨터에서 다음에 열어도 같게 보려고 계정에 둔다. 브라우저 저장소는 쓰지 않는다. 환자 칸은 없다.
---
--- 권한: 로그인 안 한 사용자(anon)는 아무것도 못 한다. 승인된 병원 사용자만 자기 병원 한 줄을 읽고 넣고 고친다.
--- hospital_id는 칸 권한이 없어 DB가 정한다. 지우기는 아무에게도 없다
-
--- 여러 브랜치가 같이 쓰는 함수(cross-branch C1, 글자 그대로)
-create or replace function public.my_hospital_id() returns uuid language sql stable security definer set search_path = ''
-  as $$ select h.id from public.hospitals h where h.owner_id = (select auth.uid()) and h.status = 'approved' $$;
-revoke execute on function public.my_hospital_id() from public, anon;
-grant execute on function public.my_hospital_id() to authenticated;
-
-create table public.stats_prefs (
-  hospital_id uuid primary key default public.my_hospital_id() references public.hospitals (id) on delete cascade,
-  again_window smallint not null check (again_window in (7, 14, 30))
-);
-
-alter table public.stats_prefs enable row level security;
-
--- Supabase는 새 표에 anon·authenticated 모든 권한을 기본으로 준다. 먼저 다 거두고 필요한 것만 준다
-revoke all on table public.stats_prefs from anon, authenticated;
-grant select on table public.stats_prefs to authenticated;
--- PostgREST upsert는 보낸 칸만 DO UPDATE SET에 넣는다. 보내는 칸은 again_window 하나다
-grant insert (again_window), update (again_window) on table public.stats_prefs to authenticated;
-
-create policy "내 병원 보기 설정 읽기" on public.stats_prefs
-  for select to authenticated
-  using (hospital_id = (select public.my_hospital_id()));
-create policy "내 병원 보기 설정 넣기" on public.stats_prefs
-  for insert to authenticated
-  with check (hospital_id = (select public.my_hospital_id()));
-create policy "내 병원 보기 설정 고치기" on public.stats_prefs
-  for update to authenticated
-  using (hospital_id = (select public.my_hospital_id()))
-  with check (hospital_id = (select public.my_hospital_id()));
-```
-
-### 저장 코드: `lib/storage/statsPrefs.ts` (TASK-7)
-```ts
-export class StatsPrefsError extends Error { readonly code: ErrorCode }
-export async function readAgainWindow(deps?: { client?: SupabaseLike }): Promise<AgainWindow | null> // select('again_window').maybeSingle()
-export async function saveAgainWindow(win: AgainWindow, deps?): Promise<void> // upsert({ again_window: win }, { onConflict: 'hospital_id' })
-```
-- `rxPicks.ts`와 같은 틀(`attempt`로 번호 하나, 서버 답을 옮기지 않음). `types/db.ts`에 `StatsPrefsRow`
-
-### 화면 숫자: `components/stats/againView.ts` (TASK-8, 순수)
+### 화면 숫자: `components/stats/againView.ts` (TASK-6, 순수)
 ```ts
 export type AgainSpan = { from: string; to: string; days: number; shifted: boolean; countFrom: string; countTo: string }
 export type AgainDayKind = 'ok' | 'no' | 'out'
@@ -152,21 +102,19 @@ export function againBaseText(view: AgainView, range: StatsRange, periodName: st
 - 오늘은 `range.load.to`(`parts.tsx:27`의 `todayOf`와 같다). E = min(`range.current.to`, 오늘 − 1). 12개월의 기간 끝은 이달 말일이라 E로 자른다
 - `rateText`(`rxPickView.ts:25`)·`codeKey`(`view.ts`)를 다시 쓴다. 평균은 정수 나눗셈 `Math.floor((10 * more) / starts) / 10`이다(부동소수 오차 없음)
 
-### 훅 (TASK-9)
+### 훅 (TASK-7)
 ```ts
-// components/stats/useAgainWindow.ts
-export function useAgainWindow(): { win: AgainWindow; state: 'reading' | 'ready' | 'read-failed'; saveFailed: boolean; choose(w: AgainWindow): void; reread(): void; retrySave(): void }
 // components/stats/useAgainDays.ts
 export function useAgainDays(input: StatsInput, win: AgainWindow, revision: number, enabled: boolean): { input: StatsInput; state: 'ready' | 'reading' | 'failed'; retry(): void }
 ```
-- 저장은 한 줄 요청 칸(앞 요청이 끝나야 다음)에 마지막 값 하나만 남긴다. 순서가 뒤바뀐 답으로 옛 값이 남지 않게 한다
-- 넓은 날 줄 읽기는 최근 7일 + 14·30일만, 30일 창에 맞춘 넓은 범위를 한 번 읽어 14일에도 쓴다. 열쇠는 `오늘|revision`
+- 넓은 날 줄 읽기는 최근 7일 + 14·30일만, 30일 창에 맞춘 넓은 범위를 한 번 읽어 14일에도 쓴다. 열쇠는 `오늘|revision`. 실패 번호는 지금 있는 `E-STATS-READ-FAILED`(`readDays`·`readCoverage`가 던지는 번호)다
+- 고른 날 수에는 훅을 두지 않는다. `useState<AgainWindow>(7)` 하나다
 
-### 화면 (TASK-10·11)
-- `sections/RxPickAgain.tsx`: props만 받는다 `{ picks, input, win, onWin, windowState, windowSaveFailed, onRereadWindow, onRetryWindowSave, daysState, onRetryDays }`. 안에서 `againView`를 `useMemo`로 부른다. 줄 띠의 빗금은 `RxPickTable.tsx`의 `BAND_HATCH`와 같은 svg path 방식으로 이 파일 안에 둔다(조각 폭이 띠 전체일 수 있어 닿는 길이 1200)
-- 넓으면(1024px 이상) 다섯 칸 `lg:grid-cols-[minmax(150px,1fr)_minmax(200px,1.5fr)_136px_132px_112px]` `gap-x-4`, 좁으면 두 칸 그리드에 네 줄(AC-1309.11)
+### 화면 (TASK-8·9)
+- `sections/RxPickAgain.tsx`: props만 받는다 `{ picks, input, win, onWin, daysState, onRetryDays }`. 안에서 `againView`를 `useMemo`로 부른다. 줄 띠의 빗금은 `RxPickTable.tsx`의 `BAND_HATCH`와 같은 svg path 방식으로 이 파일 안에 둔다(조각 폭이 띠 전체일 수 있어 닿는 길이 1200)
+- 넓으면(1024px 이상) 다섯 칸 `lg:grid-cols-[minmax(150px,1fr)_minmax(200px,1.5fr)_136px_132px_112px]` `gap-x-4`, 좁으면 두 칸 그리드에 네 줄(AC-1307.11)
 - 날 수 단추는 `RxPickDetail.tsx:31-35`의 단추 묶음 모양(기간 단추와 같음)에 `max-md:grid-cols-3`
-- `RxPickerSection.tsx`(TASK-11): 훅 둘을 위에 두고(빈 상태보다 위, 지금 규칙) `state === 'ready'`일 때 표 뒤에 `RxPickAgain`. `picks`는 `rows`(건수 표 줄)에서 코드·이름을 받는다. `useAgainDays`의 `enabled` = 고른 처방이 하나 이상
+- `RxPickerSection.tsx`(TASK-9): `const [win, setWin] = useState<AgainWindow>(7)`와 `useAgainDays`를 위에 두고(빈 상태보다 위, 지금 규칙. 그래서 기간을 바꿔도 날 수가 남는다) `state === 'ready'`일 때 표 뒤에 `RxPickAgain`. `picks`는 `rows`(건수 표 줄)에서 코드·이름을 받는다. `useAgainDays`의 `enabled` = 고른 처방이 하나 이상
 
 ## 데이터 흐름
 ```
@@ -175,11 +123,11 @@ export function useAgainDays(input: StatsInput, win: AgainWindow, revision: numb
                                                                    ↓ (칸에는 처방별 몇 명뿐)
                                         toDayPayloads: ready = 그날 + N일이 덮이고 끝났나 → 숫자 또는 null
                                                                    ↓ validateDayPayload → saveStats(크기 넘으면 again만 뺌)
-[Supabase] stats_days.payload.again (jsonb)        stats_prefs.again_window (7·14·30)
+[Supabase] stats_days.payload.again (jsonb, 새 표·새 칸 없음)
                                                                    ↓ readDays (+ 최근 7일 14·30일만 넓은 범위 한 번 더)
-[화면·휴대폰] againView: 센 범위 → 날마다 ok/no/out → 처방별 합 → RxPickAgain
+[화면·휴대폰] againView(고른 날 수 = 화면 상태, 처음 7): 센 범위 → 날마다 ok/no/out → 처방별 합 → RxPickAgain
 ```
-- 서버로 가는 것: 날 줄의 `again`(코드·숫자)과 `again_window` 하나. 차트번호·환자 번호·날짜 목록·파일 이름은 없다
+- 서버로 가는 것: 날 줄의 `again`(코드·숫자)뿐이다. 고른 날 수는 서버로 가지 않는다. 차트번호·환자 번호·날짜 목록·파일 이름은 없다
 
 ## 결정과 트레이드오프
 
@@ -190,25 +138,25 @@ export function useAgainDays(input: StatsInput, win: AgainWindow, revision: numb
 - 처방 줄(`rx[]`)마다 칸을 더하면 시작이 없는 처방도 칸이 생기고 크기가 커진다. 시작이 있는 처방만 따로 둔다
 - `ready`를 날에 따로 두는 까닭: 시작이 하나도 없는 날도 "센 날"인지 "아직 셀 수 없는 날"인지 띠에 그려야 한다. 처방 줄의 null은 `ready`와 늘 같아야 하고 검사가 본다(서로 어긋난 줄을 받지 않는다)
 - 옛 날 줄(칸 없음)은 0이 아니라 '셀 수 없음'으로 읽는다. 버전을 올리지 않는다(신환 재방문 `within30`·`after30`을 더할 때와 같은 방법, `types/payload.ts:6-7`)
-- 덮어쓰기: 끝난 날을 다시 저장하면 새 `again`으로 바뀐다(`stats_keep_complete`는 끝난 줄을 덜 끝난 줄로만 안 바꾼다). 그래서 짧은 파일을 다시 넣으면 그날의 14·30일 숫자가 null로 돌아갈 수 있다. 신환 재방문 `within14/30`이 지금 그렇게 동작하는 것과 같아 이번에 고치지 않는다(위험 2)
+- 덮어쓰기: 끝난 날을 다시 저장하면 새 `again`으로 바뀐다(`stats_keep_complete`는 끝난 줄을 덜 끝난 줄로만 안 바꾼다). 그래서 짧은 파일을 다시 넣으면 그날의 14·30일 숫자가 null로 돌아갈 수 있다. 신환 재방문 `within14/30`이 지금 그렇게 동작하는 것과 같고, **2026-11-05 사용자가 이대로 두기로 정했다**(알려진 한계, 위험 1)
 
 ### 크기를 넘는 날: 실패 대신 `again`만 뺀다
 - 이 기능 때문에 지금 되던 저장이 깨지면 안 된다. 뺀 날은 '아직 셀 수 없는 날'로 보여 거짓말하지 않는다
 
-### 고른 날 수: 새 표 `stats_prefs`
-- 시안 11 "고른 날 수는 다음에 열어도 남아요". 처방 골라 보기는 고른 처방을 계정에 두고 "이 기능은 어디에도 브라우저 저장소를 쓰지 않는다"로 정했고(rx-picker '이미 정한 것' 3), 통계 화면 시험 이름도 "화면 상태는 메모리에만"이다(`StatsScreen.test.tsx:1176`). 같은 규칙을 따른다
-- 다른 길: 이 기기 브라우저에만 남기기(운영 SQL 없음). 휴대폰과 컴퓨터가 따로 기억하고 위 규칙을 깬다. 사용자가 고르면 TASK-3·7을 빼고 TASK-9의 저장만 바꾼다(미해결 질문 1)
-- `again_window` 칸 하나짜리라도 표 이름은 `stats_prefs`로 둔다. 다음 보기 설정이 생기면 칸을 더한다
+### 고른 날 수: 화면 상태 (사용자 결정)
+- 2026-11-05 사용자가 "남기지 않는다, 늘 7일로 시작"으로 정했다. 그래서 브라우저 저장소도 서버 표도 쓰지 않고 운영 SQL도 없다. 통계 화면의 "화면 상태는 메모리에만"(specs/stats AC-514.9)과도 맞는다
+- `RxPickerSection`은 기간별 key 없이 그대로 남으므로(rx-picker AC-806.5) 기간을 바꿔도 고른 날 수가 남는다. 다른 탭에 갔다 오면 칸이 다시 그려져 7일이다
 
 ### 최근 7일 + 14·30일은 날 줄을 한 번 더 읽는다
 - 시안의 옮기기(지켜볼 날이 다 지난 가장 최근 같은 길이 기간)는 최근 7일에서 비교 기간보다 앞(최대 오늘 − 37일)까지 간다. 페이지 읽기(`useStatsData.ts:38-41`)를 넓히면 다른 칸의 셈·시험(rx-picker AC-802.5 읽기 횟수)이 바뀐다. 그래서 이 묶음만 필요할 때 따로 읽는다
 
 ### 자료 첫 30일은 센다(안내만)
-- 사용자가 승인한 시안대로 센다. 앞 기록이 없는 날을 빼면 따로 넣은 파일·비트 짧은 불러오기에서 거의 모든 날이 빠진다. 대신 안내 `자료 첫 30일`을 늘 보인다(위험 2)
+- 사용자가 승인한 시안대로 센다. 앞 기록이 없는 날을 빼면 따로 넣은 파일·비트 짧은 불러오기에서 거의 모든 날이 빠진다. 대신 안내 `자료 첫 30일`을 늘 보인다(위험 1)
 
 ## 시안과 다른 곳 (까닭은 앱 규칙이나 시안에 없는 상태. 보고에 적는다)
 | 시안 | 실제 | 까닭 |
 |---|---|---|
+| '제가 정한 부분' 11 "고른 날 수는 다음에 열어도 남아요" | 늘 `7일 안`으로 열린다. 기간을 바꾸는 동안만 남는다 | 2026-11-05 사용자 결정 |
 | `새 칸` 칩, 맨 위 안내·`예시` 칩, 조작 줄, `건수 · 지금 있는 표예요` 줄, `이 위에/아래에 … 그대로 있어요` 줄, `제가 정한 부분` | 없음 | 시안에서만 쓰는 표시다(rx-picker AC-801.4와 같다) |
 | 처방 골라 보기 설명 `신환률·재진률` | `신환율·재진율` | 앱 글자가 이미 `율`이다(rx-picker '시안과 다른 곳') |
 | 900px(틀 폭)에서 쌓임 | 1024px(`max-lg`)에서 쌓임 | `classes.test.ts`가 허용하는 폭 접두사는 md·lg·max-md·max-lg뿐이다. 건수 표도 1024px에서 쌓인다 |
@@ -218,27 +166,26 @@ export function useAgainDays(input: StatsInput, win: AgainWindow, revision: numb
 | 안내 폭 72ch·76ch·80ch | `max-w-160`(640px) | 통계 화면 글 폭이고 대괄호 임의 값을 쓰지 않는다(rx-picker와 같다) |
 | 예시 칸 표시 `<i aria-label>` | `role="img"` + `aria-label` | 역할 없는 `i`의 이름은 화면 읽기가 읽지 않는다 |
 | '달마다 따로 넣어서, 달 끝 무렵…' 문장(조작 줄 '달마다 따로'일 때) | 센 범위 안에 셀 수 없는 날이 있으면 ` 그 안에서도 {n}일은 셀 수 없어요(따로 넣은 파일의 끝 무렵, 이 칸이 생기기 전에 저장한 날 등).` | 앱은 파일을 어떻게 넣었는지 모른다. 저장된 날 줄로만 안다 |
-| 없음 | 고른 날 수 읽는 중·읽기 실패·저장 실패, 날 줄 더 읽는 중·실패, 이 기간 자료 없음, `again` 없는 옛 줄뿐(AC-1309.10) | 시안이 그리지 않은 상태다. 다른 칸의 빈 상태·오류 카드 규칙을 따른다 |
+| 없음 | 날 줄 더 읽는 중·실패, 이 기간 자료 없음, `again` 없는 옛 줄뿐(AC-1307.10) | 시안이 그리지 않은 상태다. 다른 칸의 빈 상태·오류 카드 규칙을 따른다 |
 
 ## 기존 명세·시험과의 관계
 - **승인된 명세는 고치지 않는다.** 대신 이 명세의 AC가 대신하는 곳을 적는다
-- stats-core AC-008.2(날 줄에 담는 것, '동네와 F/U는 없다'): 뜻은 그대로다(`again`은 F/U 나눔이 아니다). 시험 `toDayPayloads.test.ts`의 '하루 칸 숫자 그대로'(:92)·'모든 층의 열쇠가 정해진 것뿐이다'(:116)에 `again`을 더한다(TASK-5, AC-1302.2)
+- stats-core AC-008.2(날 줄에 담는 것, '동네와 F/U는 없다'): 뜻은 그대로다(`again`은 F/U 나눔이 아니다). 시험 `toDayPayloads.test.ts`의 '하루 칸 숫자 그대로'(:92)·'모든 층의 열쇠가 정해진 것뿐이다'(:116)에 `again`을 더한다(TASK-4, AC-1302.2)
 - `aggregate.test.ts`의 일 칸 통째 비교(:234 근처 `toEqual`)에 `again`을 더한다. 다른 칸의 기대값은 바꾸지 않는다(TASK-2, AC-1301.6)
-- rx-picker AC-801.1의 설명 글: AC-1310.1이 대신한다. `StatsScreen.test.tsx:1608`·`RxPickerSection.test.tsx:44`의 글을 바꾼다(TASK-11)
-- 처방 골라 보기를 그리는 세 시험 파일(`StatsScreen.test.tsx`·`RxPickerSection.test.tsx`·`PeriodSummary.test.tsx`)은 `@/lib/storage/rxPicks`를 가짜로 둔다. 같은 자리에 `@/lib/storage/statsPrefs` 가짜(`readAgainWindow` → null)를 더한다. 그렇지 않으면 진짜 Supabase를 부르다 오류 카드(`role="alert"`)가 하나 더 생겨 `queryByRole('alert')`를 보는 시험이 깨진다(TASK-11)
-- rx-picker AC-812.6 소스 검사는 `RxPick*.tsx`를 저절로 모으므로 `RxPickAgain.tsx`도 든다. 훅·순수 파일은 AC-1308.5가 본다
-- specs/stats AC-514.9(화면 상태는 메모리에만): 고른 날 수는 React 상태와 서버 표에만 있다. 브라우저 저장소를 쓰지 않으니 그 시험이 그대로 맞다
+- rx-picker AC-801.1의 설명 글: AC-1308.1이 대신한다. `StatsScreen.test.tsx:1608`·`RxPickerSection.test.tsx:44`의 글을 바꾼다(TASK-9)
+- 처방 골라 보기를 그리는 시험 파일(`StatsScreen.test.tsx`·`RxPickerSection.test.tsx`·`PeriodSummary.test.tsx`)에 새 저장 가짜는 필요 없다. 새 묶음은 저장 코드를 부르지 않고, 넓은 날 줄 읽기는 최근 7일 + 14·30일을 누를 때만 나가는데 지금 시험은 그 단추를 누르지 않는다
+- rx-picker AC-812.6 소스 검사는 `RxPick*.tsx`를 저절로 모으므로 `RxPickAgain.tsx`도 든다. 훅·순수 파일은 AC-1306.2가 본다
+- specs/stats AC-514.9(화면 상태는 메모리에만): 고른 날 수는 React 상태에만 있다. 그 시험이 그대로 맞다
 - `validate.test.ts`·`stats.test.ts`·`jobs.test.ts:121`(`validateDayPayload(day)`가 그대로)·`analyzeFiles.test.ts:81`은 그대로 통과해야 한다(옛 모양 줄은 `again`이 없어도 된다)
 - 대시보드·AI 리포트는 바뀌지 않는다: `src/app`·`components/dashboard` 어디도 `stats_days`·`validateDayPayload`를 읽지 않는다(2026-11-05 찾음). 날 줄을 읽는 화면은 `useStatsData.ts`와 처방 찾기 목록(`useRxCatalog.ts`)뿐이고 둘 다 `readDays` → `validateDayPayload`를 지나 `again`이 있어도 그대로다
 
 ## 사용자가 할 일
-1. **사이트에 올리기 전에** `supabase/migrations/20261105000300_stats_prefs.sql` 전체를 운영 Supabase SQL 편집기에 붙여 한 번 실행한다. 빠뜨리면 같은 처방 재방문 묶음만 7일로 보이고 오류 카드가 뜬다. 다른 칸은 그대로다
+1. **운영 SQL은 없다.** 사이트에 올리는 일은 사용자가 말할 때만 한다
 2. 사이트에 올린 뒤 비트에서 다시 불러오거나 파일을 다시 넣는다. 그 전에 저장한 날은 '세기 전에 저장했어요'로 보인다. 파일은 여러 달을 **한 번에 같이** 넣어야 30일 창까지 이어서 센다
-3. 개인정보 E2E(TASK-12)를 실제로 돌리는 일은 1번 SQL과 시험 계정을 기다린다. 운영 SQL·사이트 올리기는 사용자가 말할 때만 한다
+3. 개인정보 E2E(TASK-10)는 새 SQL 없이 시험 계정(`.env.local`)만 기다린다
 
 ## 위험 / 미해결 질문
-1. **고른 날 수를 계정에 남기려면 운영 SQL이 한 번 필요하다.** 원하지 않으면 '이 기기에만 남기기'로 바꿀 수 있지만 통계 화면의 "브라우저 저장소를 쓰지 않는다" 규칙과 어긋난다. 이 명세는 계정 쪽으로 썼다
-2. **덮어쓰기와 첫 30일**: 비트에서 최근 7일처럼 짧게 불러오면 불러온 첫 30일 안의 날이 다시 저장되며, 전에 넓게 불러와 바르게 센 그날 숫자를 "전부터 받던 환자도 새로 시작"으로 센 숫자로 덮는다. 짧은 파일을 다시 넣어도 14·30일 숫자가 '셀 수 없음'으로 돌아간다(신환 재방문 숫자도 지금 같다). 고치려면 DB 트리거나 앞 30일을 봤는지 표시가 필요해 이번에 하지 않는다. 사용자에게 이대로 둘지 묻는다
-3. 하루 줄 크기: 처방이 아주 많은 날은 `again`을 빼고 저장한다(그날만 셀 수 없음). 실제 크기는 재지 못했다
-4. 최근 7일 + 30일의 넓은 읽기(23일)는 휴대폰에서 조금 늦을 수 있다. 그동안 '더 읽는 중' 한 줄이 보인다
-5. 이 서버는 2 CPU·스왑 없음이라 시험은 Phase 끝에 파일 하나씩, 전체 검사(`verify`)와 E2E는 다른 일이 없을 때 돌린다
+1. **덮어쓰기와 첫 30일(사용자 결정으로 둔다, 알려진 한계)**: 비트에서 최근 7일처럼 짧게 불러오면 불러온 첫 30일 안의 날이 다시 저장되며, 전에 넓게 불러와 바르게 센 그날 숫자를 "전부터 받던 환자도 새로 시작"으로 센 숫자로 덮는다. 짧은 파일을 다시 넣어도 14·30일 숫자가 '셀 수 없음'으로 돌아갈 수 있다. 신환 재방문 숫자도 지금 같다. 2026-11-05 사용자가 이대로 두기로 했다. 화면 안내 `자료 첫 30일`·`파일을 따로 넣을 때`가 이 한계를 알린다
+2. 하루 줄 크기: 처방이 아주 많은 날은 `again`을 빼고 저장한다(그날만 셀 수 없음). 실제 크기는 재지 못했다
+3. 최근 7일 + 30일의 넓은 읽기(23일)는 휴대폰에서 조금 늦을 수 있다. 그동안 '더 읽는 중' 한 줄이 보인다
+4. 이 서버는 2 CPU·스왑 없음이라 시험은 Phase 끝에 파일 하나씩, 전체 검사(`verify`)와 E2E는 다른 일이 없을 때 돌린다
