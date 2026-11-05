@@ -23,6 +23,9 @@ internal static class CheckFakes
     /// <summary>등록 병원 범위(가짜).</summary>
     internal const string Hospital = "9001";
 
+    /// <summary>4/8 로그인 단계의 묻는 글(AC-1401.14): 1이면 띄우고, 엔터·그 밖·입력 끝이면 건너뛴다.</summary>
+    internal const string LoginQuestion = "비트 로그인 창을 띄울까요? 1 = 띄우기, 엔터 = 건너뛰기";
+
     internal static string Stamp(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "0000";
 
     /// <summary>센티널: 환자 자료처럼 생긴 가짜 값. 보고서·콘솔 기록 어디에도 나오면 안 된다(AC-1401.10).</summary>
@@ -79,8 +82,8 @@ internal static class CheckFakes
             this.clock = clock;
         }
 
-        /// <summary>마지막으로 쓴 줄 → 친 글(null이면 입력 끝). 기본은 엔터만.</summary>
-        public Func<string, string?> Answer { get; set; } = _ => "";
+        /// <summary>마지막으로 쓴 줄 → 친 글(null이면 입력 끝). 기본은 로그인 묻기(AC-1401.14)에만 1(띄우기), 그 밖은 엔터만.</summary>
+        public Func<string, string?> Answer { get; set; } = last => last == LoginQuestion ? "1" : "";
 
         /// <summary>한 번 읽을 때 사람이 쓰는 시간.</summary>
         public TimeSpan Think { get; set; } = TimeSpan.FromSeconds(3);
@@ -131,7 +134,7 @@ internal static class CheckFakes
 
     /// <summary>
     /// 가짜 비트 DB. 세션을 열 때마다 OpenTook만큼, 문장마다 Took(sql)만큼 시계를 민다. 답은 (문장, @from) → (문장) → 빈 줄 차례로 찾는다.
-    /// 확인 모드 세션처럼 CheckSql·ProbeSql·Sql 허용 목록과 매개변수 표(이름·int·글자 길이)를 보고, 어긋나면 InvalidOperationException.
+    /// 확인 모드 세션처럼 CheckSql·ProbeSql(틀·증상 글 세기)·Sql 허용 목록과 매개변수 표(이름·int·글자 길이)를 보고, 어긋나면 InvalidOperationException.
     /// </summary>
     internal sealed class FakeDb
     {
@@ -195,6 +198,7 @@ internal static class CheckFakes
             IReadOnlyList<SqlParam> declared;
             if (CheckSql.IsAllowed(sql)) declared = CheckSql.ParametersOf(sql);
             else if (ProbeSql.IsProbe(sql)) declared = ProbeSql.Parameters;
+            else if (ProbeSql.IsTextCount(sql)) declared = ProbeSql.TextCountParameters;
             else if (Sql.IsAllowed(sql)) declared = Sql.ParametersOf(sql);
             else throw new InvalidOperationException();
             if (args == null || args.Count != declared.Count) throw new InvalidOperationException();

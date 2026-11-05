@@ -148,7 +148,7 @@ public sealed class CheckBitDb : IBitSession, ICheckSession
     }
 
     /// <summary>
-    /// 실행 전 검사(AC-1401.9): 확인 문장(CheckSql) · 찾기 틀(ProbeSql, 만든 글을 다시 풀어 틀·이름 모양 확인) · 도우미 문장(Sql, ReadOnlyGuard).
+    /// 실행 전 검사(AC-1401.9): 확인 문장(CheckSql) · 찾기 틀(ProbeSql, 만든 글을 다시 풀어 틀·이름 모양 확인) · 증상 글 세기 틀(ProbeSql.IsTextCount, AC-1401.17) · 도우미 문장(Sql, ReadOnlyGuard).
     /// 정해 둔 매개변수 이름이 모두 있고 그 밖은 없으며 값의 종류·길이가 맞아야 한다. 아니면 DB에 닿기 전에 E-BIT-READ-FAILED.
     /// </summary>
     private static IReadOnlyList<SqlParam> Require(string sql, IReadOnlyDictionary<string, object?> args)
@@ -162,6 +162,10 @@ public sealed class CheckBitDb : IBitSession, ICheckSession
         else if (ProbeSql.IsProbe(sql))
         {
             declared = ProbeSql.Parameters;
+        }
+        else if (ProbeSql.IsTextCount(sql))
+        {
+            declared = ProbeSql.TextCountParameters;
         }
         else if (Sql.IsAllowed(sql))
         {

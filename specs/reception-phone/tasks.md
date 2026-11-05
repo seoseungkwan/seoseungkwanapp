@@ -348,3 +348,13 @@
 - Tests: helper/tests/reception-check-login.dotnet.test.ts
 - TDD: required
 - 의원 PC 1회차(2026-11-05): 4/7에서 비트 log4net 오류 글만 나오고 로그인 창이 보이지 않았다. 묻기(엔터 = 띄우기, 0 = 건너뛰기)·건너뜀 줄·60초/5분 기다림은 가짜 콘솔·가짜 시계로 시험. 창 찾기·가운데·맨 위(`EnumWindows`·`SetWindowPos`)와 표준 오류 버리기는 윈도우 부분이라 글자 시험 + net48 빌드(`buildDotnet`)만, 실제는 의원 PC(AC-1401.13). 도우미의 등록·통계 로그인 길은 고치지 않는다
+
+## TASK-33: 확인 고침 2 (로그인 기본 건너뛰기·증상 글 SQL 찾기)
+- Step: Phase 1 · Step 7 · `check-symptom-search`
+- 병렬: 아니오 (TASK-32 뒤, 의원 PC 1회차 결과)
+- AC: AC-1401.14, AC-1401.17, AC-1401.9, AC-1401.11
+- REQ: REQ-1401
+- Files: helper/src/Precheck.Core/Reception/Check/CheckRunner.cs, helper/src/Precheck.Core/Reception/Check/ProbeSql.cs, helper/src/Precheck.Windows/CheckBitDb.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckFakes.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckRunner.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckSymptom.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckStart.test.cs, helper/tests/reception-check-symptom.dotnet.test.ts
+- Tests: helper/tests/reception-check-symptom.dotnet.test.ts
+- TDD: required
+- 의원 PC 1회차(2026-11-06 07:19 KST): 비트에 아이디·비밀번호가 없고(늘 자동 로그인) 4/7 로그인 창이 쓸 수 없게 떴고 한 번은 엔터 뒤 콘솔이 1분 넘게 멈췄다. 그래서 4/8 로그인은 `1`일 때만, 기본은 건너뛰기. 증상 칸(지난 진료)은 SQL로: 6/8에서 친 증상 글 조각으로 후보 칸마다 지난 14일 줄을 DB 안에서 센다(가짜 콘솔·가짜 DB로 시험, 틀은 IsTextCount 글자 시험). 단계 표시 1/8~8/8. 접수 현황 화면·PrecheckReception.exe·설치된 도우미·레지스트리는 고치지 않는다. 실제 칸은 의원 PC 2회차(AC-1401.13)

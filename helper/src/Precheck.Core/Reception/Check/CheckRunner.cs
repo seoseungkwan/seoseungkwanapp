@@ -9,8 +9,8 @@ namespace Precheck.Core.Reception.Check;
 
 /// <summary>
 /// 의원 PC 확인 명령의 차례(spec reception-phone design.md 1절, REQ-1401): ① 안내 + 엔터 ② 등록 확인 세션 ③ 상태 짝(AC-1401.2)
-/// ④ 칸 목록(AC-1401.3) ⑤ 비트 로그인 → 화면 83 하루 → 증상 찾기·이름 찾기(AC-1401.4·5) ⑥ 접수 메모(AC-1401.6) ⑦ 모양(AC-1401.7)
-/// ⑧ 빠르기(AC-1401.8) ⑨ 끝: 경로를 콘솔에(메모장은 입구 ReceptionCheckEntry가 연다).
+/// ④ 칸 목록(AC-1401.3) ⑤ 비트 로그인(1일 때만, AC-1401.14) → 화면 83 하루 → 증상 찾기·이름 찾기(AC-1401.4·5) ⑥ 접수 메모(AC-1401.6)
+/// ⑦ 증상 글 찾기(AC-1401.17) ⑧ 모양(AC-1401.7) ⑨ 빠르기(AC-1401.8) ⑩ 끝: 경로를 콘솔에(메모장은 입구 ReceptionCheckEntry가 연다). 콘솔 단계 표시는 1/8~8/8.
 /// 보고서에는 CheckField로 거른 칸만 간다(AC-1401.10). 콘솔에도 숫자·걸러진 코드·시:분·안내 글만 쓴다.
 /// 시간 제한(AC-1401.11, 주입한 시계): 문장 하나 30초, 전체 15분. 전체 15분은 도우미가 일한 시간이고 사람이 답하는 시간
 /// (콘솔 입력·비트 로그인 창)은 세지 않는다. 넘거나 실패한 항목은 "실패(번호)"로 적고 다음 단계로 간다.
@@ -38,10 +38,26 @@ public sealed class CheckRunner
 
     private const string VisitSuffix = "OcmNum";
 
-    /// <summary>로그인 창을 띄우기 전에 묻는 글(AC-1401.14). 0이면 건너뛴다.</summary>
-    private const string LoginQuestion = "비트 로그인 창을 띄울까요? 엔터 = 띄우기, 0 = 건너뛰기";
+    /// <summary>로그인 창을 띄우기 전에 묻는 글(AC-1401.14). 1일 때만 띄우고, 엔터·그 밖·입력 끝이면 건너뛴다(이 의원 비트는 자동 로그인).</summary>
+    private const string LoginQuestion = "비트 로그인 창을 띄울까요? 1 = 띄우기, 엔터 = 건너뛰기";
 
-    private const string SkipAnswer = "0";
+    private const string ShowAnswer = "1";
+
+    /// <summary>증상 글 찾기에서 묻는 글(AC-1401.17).</summary>
+    private const string SymptomQuestion = "비트에서 지난 진료 한 건의 증상 글을 보고, 두 글자 이상 그대로 쳐 주세요. 모르면 엔터만 누르세요.";
+
+    /// <summary>증상 글 찾기가 세는 날 수: 오늘을 넣어 그 앞 14일(@from = 오늘-14일, @to = 내일).</summary>
+    public const int SymptomDays = 14;
+
+    /// <summary>@text로 보내는 친 글의 최대 글자 수(공백을 뺀 앞부분). 매개변수 VarChar(200)에 한글 두 바이트로 들어간다.</summary>
+    private const int SymptomTextMax = 100;
+
+    /// <summary>증상 글 찾기의 후보 칸(의원 PC 1회차 보고서의 칸 이름, AC-1401.17), 이 차례로 한 줄씩 적는다.</summary>
+    private static readonly (string Table, string Column)[] SymptomCandidates =
+    {
+        ("EmrInf", "EmrCCVal"), ("EmrInf", "EmrPIVal"), ("EmrInf", "EmrShtVal"), ("ShtInf", "EmrChtVal"), ("EmrETCInf", "EmrETCShtVal"),
+        ("OcmInf", "OcmDtrCmt"), ("OcmInf", "OcmCstCmt"),
+    };
 
     /// <summary>이름 찾기(AC-1401.5)의 표와 차트번호 칸(이 저장소에 이미 쓰인 칸).</summary>
     private static readonly (string Table, string Chart)[] NameTables = { ("PbsInf", "PbsChtNum"), ("OcmInf", "OcmChtNum") };
@@ -127,12 +143,13 @@ public sealed class CheckRunner
                 Ask();
 
                 OpenSession();
-                Step("statusPairs", "2/7 오늘 접수 상태를 물어요.", StatusPairs);
-                Step("columns", "3/7 칸 목록을 읽고 있어요.", Columns);
-                Step("login", "4/7 비트 로그인 창으로 증상 화면을 읽어요.", ScreenProbes, "symptom", "name");
-                Step("memo", "5/7 접수 메모를 견줘요.", Memo);
-                Step("shape", "6/7 칸 모양을 보고 있어요.", Shapes);
-                Step("speed", "7/7 빠르기를 재고 있어요.", Speed);
+                Step("statusPairs", "2/8 오늘 접수 상태를 물어요.", StatusPairs);
+                Step("columns", "3/8 칸 목록을 읽고 있어요.", Columns);
+                Step("login", "4/8 비트 로그인 창(증상 화면)을 띄울지 물어요.", ScreenProbes, "symptom", "name");
+                Step("memo", "5/8 접수 메모를 견줘요.", Memo);
+                Step("symptomSearch", "6/8 지난 진료의 증상 글을 견줘요.", SymptomSearch);
+                Step("shape", "7/8 칸 모양을 보고 있어요.", Shapes);
+                Step("speed", "8/8 빠르기를 재고 있어요.", Speed);
                 Report.Line("done", CheckField.Number("ms", Milliseconds(Spent)));
             }
             finally
@@ -149,7 +166,7 @@ public sealed class CheckRunner
 
         private void OpenSession()
         {
-            Say("1/7 비트에 붙고 있어요.");
+            Say("1/8 비트에 붙고 있어요.");
             var t0 = owner.now();
             try
             {
@@ -293,15 +310,16 @@ public sealed class CheckRunner
         }
 
         /// <summary>
-        /// ⑤ 띄울지 묻기(AC-1401.14) → 로그인 → 화면 83 하루 → 증상 찾기(AC-1401.4)·이름 찾기(AC-1401.5).
+        /// ⑤ 띄울지 묻기(AC-1401.14, 1일 때만 띄움) → 로그인 → 화면 83 하루 → 증상 찾기(AC-1401.4)·이름 찾기(AC-1401.5).
         /// 로그인 창이 안 뜨거나(60초) 너무 길면(5분) 콘솔에 알리고 실패(번호)로 적는다(AC-1401.15, 기다림은 입구의 LoginWait).
         /// </summary>
         private void ScreenProbes()
         {
             Say(LoginQuestion);
             var answer = Ask();
-            if (answer == null || answer.Trim() == SkipAnswer)
+            if (answer == null || answer.Trim() != ShowAnswer)
             {
+                Say("로그인 창을 띄우지 않고 건너뛰어요.");
                 Report.Line("login", CheckField.Skipped(null));
                 SkipScreenProbes();
                 return;
@@ -481,7 +499,69 @@ public sealed class CheckRunner
             if (stopped) Report.Line("memo", CheckField.TimedOut("result"));
         }
 
-        /// <summary>⑦ 모양(AC-1401.7): 오늘 접수 환자의 PbsInf 줄(300줄까지)과 오늘 OcmInf·OrcInf 줄, 칸마다 ColumnShape.</summary>
+        /// <summary>
+        /// ⑦ 증상 글 찾기(AC-1401.17): 사람이 지난 진료의 증상 글 조각을 치면(공백을 모두 뺀 뒤 두 글자 이상, 앞 100글자), 후보 칸마다
+        /// 지난 14일 외래 접수에 붙은 줄을 DB 안에서 센다(ProbeSql.TextCount). 친 글은 @text로만 가고, 세기 뒤 바로 버린다.
+        /// 이름표에 내원번호 칸이 없는 표는 noVisitLink, 칸이 없으면 missing, 글자 칸이 아니면 notText로 적고 문장을 돌리지 않는다.
+        /// </summary>
+        private void SymptomSearch()
+        {
+            Say(SymptomQuestion);
+            Say("친 글은 보고서에 적지 않고 견준 뒤 바로 버려요.");
+            Say("증상 글(엔터만 치면 건너뛰어요):");
+            var typed = Squeeze(Ask());
+            if (typed.Length < ProbeMatch.MinMemoLength)
+            {
+                typed = null;
+                Report.Line("symptomSearch", CheckField.Skipped(null));
+                return;
+            }
+            if (typed.Length > SymptomTextMax) typed = typed.Substring(0, SymptomTextMax);
+
+            var args = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["@from"] = Stamp(Today.AddDays(-SymptomDays)),
+                ["@to"] = Stamp(Today.AddDays(1)),
+                ["@hospital"] = session!.Hospital,
+                ["@text"] = typed,
+            };
+            typed = null;
+            Report.Line("symptomSearch", CheckField.Number("days", SymptomDays));
+            try
+            {
+                foreach (var (table, column) in SymptomCandidates)
+                {
+                    if (Over)
+                    {
+                        Report.Line("symptom", CheckField.TimedOut("result"));
+                        return;
+                    }
+                    var col = CheckField.Column("col", table, column);
+                    var visit = VisitColumn(schema, table);
+                    var miss = visit == null ? "noVisitLink" : !schema.Has(table, column) ? "missing" : !schema.TextColumns(table).Contains(column) ? "notText" : null;
+                    if (miss != null)
+                    {
+                        Report.Line("symptom", col, CheckField.Name("result", miss));
+                        continue;
+                    }
+                    var outcome = Query(ProbeSql.TextCount(schema, table, visit!, column), args);
+                    if (!outcome.Ok)
+                    {
+                        Report.Line("symptom", col, outcome.Error!);
+                        continue;
+                    }
+                    var row = outcome.Rows.Count > 0 ? outcome.Rows[0] : null;
+                    Report.Line("symptom", col, CheckField.Number("rows", Cell(row!, 0)), CheckField.Number("nonEmpty", Cell(row!, 1)),
+                        CheckField.Number("containing", Cell(row!, 2)), CheckField.Number("minLength", Cell(row!, 3)), CheckField.Number("maxLength", Cell(row!, 4)));
+                }
+            }
+            finally
+            {
+                args["@text"] = null; // 세기 뒤 바로 버린다(AC-1401.17)
+            }
+        }
+
+        /// <summary>⑧ 모양(AC-1401.7): 오늘 접수 환자의 PbsInf 줄(300줄까지)과 오늘 OcmInf·OrcInf 줄, 칸마다 ColumnShape.</summary>
         private void Shapes()
         {
             var today = Range(Today);
@@ -517,7 +597,7 @@ public sealed class CheckRunner
         }
 
         /// <summary>
-        /// ⑧ 빠르기(AC-1401.8): 등록 확인 한 번, ReceptionSql 문장마다 ms·줄 수(상세 문장은 오늘 첫 환자 한 명으로),
+        /// ⑨ 빠르기(AC-1401.8): 등록 확인 한 번, ReceptionSql 문장마다 ms·줄 수(상세 문장은 오늘 첫 환자 한 명으로),
         /// 상태별 처방 있는 접수 수, 옛 자료 따로 있음(StatsSql.HistoryGuardSql).
         /// </summary>
         private void Speed()
@@ -751,6 +831,9 @@ public sealed class CheckRunner
     private static string Stamp(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "0000";
 
     private static long Milliseconds(TimeSpan span) => (long)span.TotalMilliseconds;
+
+    /// <summary>친 글에서 공백·탭·줄바꿈을 모두 뺀다(증상 글 세기는 칸 값도 공백을 빼고 견준다). null은 빈 글.</summary>
+    private static string Squeeze(string? text) => text == null ? "" : new string(text.Where(c => !char.IsWhiteSpace(c)).ToArray());
 
     private static object? Cell(IReadOnlyList<object?> row, int index) => row != null && index < row.Count ? row[index] : null;
 

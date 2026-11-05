@@ -410,7 +410,7 @@ public class CheckRunnerSentinelTests
     }
 
     private static void Answers(Harness h) =>
-        h.Console.Answer = last => last.Contains("메모 글") ? Sentinels.KoreanName : last.Contains("번호를 쳐") ? "6" : "";
+        h.Console.Answer = last => last == LoginQuestion ? "1" : last.Contains("메모 글") || last.Contains("증상 글(") ? Sentinels.KoreanName : last.Contains("번호를 쳐") ? "6" : "";
 
     [Fact(DisplayName = "AC-1401.10 이름 칸까지 모든 칸이 센티널인 DB·화면 83, 센티널 메모 글로 끝까지 돌려도 보고서·콘솔 기록에 센티널이 없다")]
     public void EveryCellSentinel()
@@ -478,7 +478,7 @@ public class CheckRunnerSentinelTests
 /// <summary>시간 제한·실패·단계 순서(AC-1401.11): 문장 30초·전체 15분(주입한 시계), 실패(번호)로 적고 다음 단계, 줄마다 디스크, 끝나면 경로를 콘솔에.</summary>
 public class CheckRunnerLimitTests
 {
-    [Fact(DisplayName = "AC-1401.11 단계 순서: 머리 줄 → 등록 확인 → 상태 짝 → 칸 목록 → 로그인·화면 83 → 메모 → 모양 → 빠르기 → 끝(AC-1401.3·AC-1401.7 줄 포함)")]
+    [Fact(DisplayName = "AC-1401.11 단계 순서: 머리 줄 → 등록 확인 → 상태 짝 → 칸 목록 → 로그인·화면 83 → 메모 → 증상 글 찾기 → 모양 → 빠르기 → 끝(AC-1401.3·AC-1401.7 줄 포함)")]
     public void StepOrder()
     {
         using var h = new Harness();
@@ -493,7 +493,7 @@ public class CheckRunnerLimitTests
         var labels = lines.Skip(1).Select(l => l.Split(' ')[0]).Distinct().ToArray();
         Assert.Equal(new[]
         {
-            "session", "statusPairs", "columns", "column", "linkedTables", "linkedTable", "login", "symptom", "name", "memo", "shape", "speed", "rxByStatus", "historyGuard", "done",
+            "session", "statusPairs", "columns", "column", "linkedTables", "linkedTable", "login", "symptom", "name", "memo", "symptomSearch", "shape", "speed", "rxByStatus", "historyGuard", "done",
         }, labels);
 
         Assert.Contains("session ms=40", lines);
@@ -600,12 +600,12 @@ public class CheckRunnerLimitTests
 }
 
 /// <summary>
-/// 확인 로그인 창 고침(TASK-32): 4/7에서 띄우기 전에 묻고(AC-1401.14), 창이 안 뜨거나(60초) 로그인이 너무 길면(5분)
+/// 확인 로그인 창 고침(TASK-32·TASK-33): 4/8에서 띄우기 전에 묻고 1일 때만 띄우며(AC-1401.14), 창이 안 뜨거나(60초) 로그인이 너무 길면(5분)
 /// 콘솔에 알리고 실패(번호)로 적은 뒤 다음 단계로 간다(AC-1401.15). 기다림 자체는 LoginWait 시험이 본다.
 /// </summary>
 public class CheckLoginRunnerTests
 {
-    private const string Question = "비트 로그인 창을 띄울까요? 엔터 = 띄우기, 0 = 건너뛰기";
+    private const string Question = "비트 로그인 창을 띄울까요? 1 = 띄우기, 엔터 = 건너뛰기";
     private const string NoWindow = "로그인 창이 뜨지 않아 이 단계를 건너뛰어요";
     private const string TooLong = "로그인이 5분 안에 끝나지 않아 이 단계를 건너뛰어요";
 
@@ -614,16 +614,18 @@ public class CheckLoginRunnerTests
         Assert.Empty(h.Screen.Asked);
         Assert.Contains("symptom 건너뜀", lines);
         Assert.Contains("name 건너뜀", lines);
-        Assert.Contains(h.Console.Written, l => l.StartsWith("5/7 ", StringComparison.Ordinal));
+        Assert.Contains(h.Console.Written, l => l.StartsWith("5/8 ", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("speed name=TodayVisits ", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("done ", StringComparison.Ordinal));
     }
 
-    [Theory(DisplayName = "AC-1401.14 로그인 창을 띄우기 전에 묻고, 0(앞뒤 공백 뗌)이면 띄우지 않고 로그인·증상·이름 찾기를 건너뜀으로 적고 다음 단계로 간다")]
+    [Theory(DisplayName = "AC-1401.14 로그인 창을 띄우기 전에 묻고, 엔터(기본)·1이 아닌 글이면 띄우지 않고 로그인·증상·이름 찾기를 건너뜀으로 적고 다음 단계로 간다")]
+    [InlineData("")]
+    [InlineData("   ")]
     [InlineData("0")]
-    [InlineData(" 0 ")]
-    [InlineData("0\t")]
-    public void ZeroSkipsTheLogin(string typed)
+    [InlineData("2")]
+    [InlineData("11")]
+    public void EnterSkipsTheLogin(string typed)
     {
         using var h = new Harness();
         h.Console.Answer = last => last == Question ? typed : "";
@@ -649,11 +651,11 @@ public class CheckLoginRunnerTests
         AssertSkippedAndContinued(h, lines);
     }
 
-    [Theory(DisplayName = "AC-1401.14 엔터(그 밖의 글)면 묻는 글을 쓴 뒤에 로그인 창을 한 번 띄운다")]
-    [InlineData("")]
+    [Theory(DisplayName = "AC-1401.14 1(앞뒤 공백 뗌)이면 묻는 글을 쓴 뒤에 로그인 창을 한 번 띄운다")]
     [InlineData("1")]
-    [InlineData("00")]
-    public void EnterShowsTheLogin(string typed)
+    [InlineData(" 1 ")]
+    [InlineData("1\t")]
+    public void OneShowsTheLogin(string typed)
     {
         using var h = new Harness();
         h.Console.Answer = last => last == Question ? typed : "";

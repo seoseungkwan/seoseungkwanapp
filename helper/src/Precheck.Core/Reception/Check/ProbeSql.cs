@@ -60,7 +60,7 @@ public sealed class ProbeSchema
 }
 
 /// <summary>
-/// 확인 모드의 찾기 틀 세 가지(spec reception-phone design.md 1절, AC-1401.9). 표·칸 이름은 같은 실행의 ProbeSchema에 있고
+/// 확인 모드의 찾기 틀 세 가지와 증상 글 세기 틀(spec reception-phone design.md 1절, AC-1401.9·AC-1401.17). 표·칸 이름은 같은 실행의 ProbeSchema에 있고
 /// ^[A-Za-z][A-Za-z0-9_]{0,63}$ 모양일 때만 [ ]로 감싸 넣는다. 그 밖은 DB에 닿기 전에 BitException(E-BIT-READ-FAILED).
 /// 모두 그날(@from~@to) 외래 접수 + 등록 병원 범위(CheckSql.TodayScope)에 붙은 줄만 읽는 SELECT 하나다.
 /// 도우미 허용 목록(Sql.IsAllowed)·ReadOnlyGuard·CheckSql은 이 글을 받지 않는다. 확인 모드 세션만 IsProbe로 받는다.
@@ -89,6 +89,15 @@ public static class ProbeSql
         @"^SELECT (?:TOP 300 )?t\.\[(?<a>[^\]]*)\](?:,t\.\[(?<b>[^\]]*)\])? FROM dbo\.\[(?<t>[^\]]*)\] t",
         RegexOptions.CultureInvariant);
 
+    /// <summary>증상 글 세기 틀(TextCount)이 받는 매개변수: @from·@to Char(12), @hospital VarChar(32), 친 글 @text VarChar(200)(AC-1401.17).</summary>
+    public static readonly IReadOnlyList<SqlParam> TextCountParameters =
+        Array.AsReadOnly(CheckSql.TodayRange.Concat(new[] { new SqlParam("@text", SqlParamKind.VarChar, 200) }).ToArray());
+
+    // 세기 틀을 다시 풀 때 이름 자리만 꺼낸다. 나머지 글은 다시 만들어 견준다
+    private static readonly Regex CountBody = new Regex(
+        @"\nFROM dbo\.\[(?<t>[^\]]*)\] t\nCROSS APPLY \(SELECT CAST\(t\.\[(?<c>[^\]]*)\] AS nvarchar\(max\)\) Val\) v\nWHERE t\.\[(?<k>[^\]]*)\] IN ",
+        RegexOptions.CultureInvariant);
+
     /// <summary>표·칸 이름 모양: 영문자로 시작하고 영문자·숫자·_만, 64글자까지.</summary>
     public static bool IsName(string? name) => name != null && NameShape.IsMatch(name);
 
@@ -112,6 +121,29 @@ public static class ProbeSql
         if (table == null || !SampleLinks.TryGetValue(table, out var link)) throw Blocked();
         Require(schema, table, link.Key, column);
         return One(table, column, link.Key, link.Target);
+    }
+
+    /// <summary>
+    /// 증상 글 세기(AC-1401.17): 내원번호 칸이 그날 범위(@from~@to) 접수의 OcmNum인 줄을 DB 안에서 센다. 돌아오는 것은 한 줄
+    /// (Total, NonEmpty, Containing, MinLength, MaxLength)뿐이고 칸 값은 돌아오지 않는다. 칸 값은 nvarchar(max)로 읽어(text·ntext도)
+    /// 공백·CR·LF·탭을 뺀 글에 @text(공백을 뺀 친 글)가 있으면 품은 줄이다. 길이는 빈 글 아닌 줄의 LEN(글자 수).
+    /// </summary>
+    public static string TextCount(ProbeSchema schema, string table, string visitColumn, string textColumn)
+    {
+        Require(schema, table, visitColumn, textColumn);
+        return Count(table, visitColumn, textColumn);
+    }
+
+    /// <summary>글자가 TextCount로 만든 글과 똑같은가(이름 모양까지). 확인 모드 세션만 TextCountParameters와 함께 받는다.</summary>
+    public static bool IsTextCount(string? sql)
+    {
+        if (sql == null) return false;
+        var match = CountBody.Match(sql);
+        if (!match.Success) return false;
+        var table = match.Groups["t"].Value;
+        var text = match.Groups["c"].Value;
+        var key = match.Groups["k"].Value;
+        return IsName(table) && IsName(text) && IsName(key) && sql == Count(table, key, text);
     }
 
     /// <summary>글자가 틀 세 가지 가운데 하나로 만든 글과 똑같은가(이름 모양까지). 이름이 그 실행의 답에 있었는지는 만들 때 본다.</summary>
@@ -148,6 +180,15 @@ public static class ProbeSql
 
     private static string One(string table, string column, string key, string target) =>
         "SELECT TOP 300 t.[" + column + "] FROM dbo.[" + table + "] t" + Within(key, target);
+
+    private const string Squeezed = "REPLACE(REPLACE(REPLACE(REPLACE(v.Val,N' ',N''),NCHAR(13),N''),NCHAR(10),N''),NCHAR(9),N'')";
+
+    private const string Filled = "LEN(LTRIM(v.Val))>0";
+
+    private static string Count(string table, string key, string text) =>
+        "SELECT COUNT_BIG(*) Total,COUNT_BIG(CASE WHEN " + Filled + " THEN 1 END) NonEmpty,COUNT_BIG(CASE WHEN CHARINDEX(@text," + Squeezed + ")>0 THEN 1 END) Containing,"
+        + "MIN(CASE WHEN " + Filled + " THEN LEN(v.Val) END) MinLength,MAX(CASE WHEN " + Filled + " THEN LEN(v.Val) END) MaxLength"
+        + "\nFROM dbo.[" + table + "] t\nCROSS APPLY (SELECT CAST(t.[" + text + "] AS nvarchar(max)) Val) v" + Within(key, "OcmNum");
 
     private static string Within(string key, string target) =>
         "\nWHERE t.[" + key + "] IN (SELECT c." + target + " FROM dbo.OcmInf c\n WHERE " + CheckSql.TodayScope + ")";
