@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "worklog-cash-float",
-  "approved_at": "2026-11-05T22:08:17Z",
+  "approved_at": "2026-11-05T22:44:09Z",
   "approved_via": "user-prompt",
   "approved_by": "user",
   "session_id": "3c407c5a-8c79-4d02-87db-264d4517879f",
-  "spec_sha256": "ee01f6ce321be46c169548cf1ea68cd70ca555e3670c76a995aef08a0e3815c7",
+  "spec_sha256": "5f62a70376a573a4b81cd5fb37f65aae637d5ac70b4741cc0435250c27440b03",
   "scope": [
     "docs/ARCHITECTURE.md",
     "src/components/settings/CashFloatSetting.test.tsx",
@@ -14,6 +14,7 @@
     "src/components/worklog/CashFloatBox.test.tsx",
     "src/components/worklog/CashFloatBox.tsx",
     "src/components/worklog/WorklogScreen.cash.test.tsx",
+    "src/components/worklog/WorklogScreen.test.tsx",
     "src/components/worklog/WorklogScreen.tsx",
     "src/components/worklog/WorklogToolbar.tsx",
     "src/components/worklog/useCashFloatSetting.ts",
@@ -29,6 +30,7 @@
     "src/lib/worklog/autosave.ts",
     "src/lib/worklog/cashFloat.test.ts",
     "src/lib/worklog/cashFloat.ts",
+    "src/lib/worklog/memoFont.test.ts",
     "src/types/worklog.ts",
     "supabase/migrations/20261105000300_worklog_cash_float.sql",
     "supabase/worklog.rls.test.ts"
