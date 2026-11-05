@@ -1,4 +1,4 @@
-# 작업 분할: 통계 치료별 추세
+# 작업 분할: 통계 처방별 추세
 
 > 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
@@ -19,7 +19,7 @@
 > | | TASK-10 | 묶음 고치기 화면 | 병렬 |
 > | | TASK-11 | 묶음 줄 표 | 병렬 |
 > | | TASK-12 | 줄을 눌러 여는 그래프 | 병렬 |
-> | 3 칸 | TASK-13 | 치료별 추세 칸 잇기 | 병렬 |
+> | 3 칸 | TASK-13 | 처방별 추세 칸 잇기 | 병렬 |
 > | | TASK-14 | 통계 Worker 훅에 묶음 넘기기 | 병렬 |
 > | 4 넣기 | TASK-15 | 통계 탭에 넣고 처방 추세 빼기 | 혼자 |
 > | 5 마무리 | TASK-16 | 개인정보 E2E 파일 | 병렬 |
@@ -133,7 +133,7 @@
 
 ## Phase 3 — 칸 (둘 병렬, Phase 2 뒤)
 
-## TASK-13: 치료별 추세 칸 잇기
+## TASK-13: 처방별 추세 칸 잇기
 - Phase: 3 · 병렬
 - AC: AC-1201.3, AC-1201.4, AC-1201.5, AC-1208.1~AC-1208.4(그리기), AC-1207.8(그리기), AC-1209.1(여러 줄 열기), AC-1209.5, AC-1210.1, AC-1210.2(열기·초점), AC-1210.8(목록 읽기), AC-1210.12(돌아오기·저장 글·초점), AC-1210.14(돌아오기·초점), AC-1210.15, AC-1211.1, AC-1211.2, AC-1211.3(그리기), AC-1213.1(섹션 파일)
 - REQ: REQ-1201, REQ-1207, REQ-1208, REQ-1209, REQ-1210, REQ-1211, REQ-1213
@@ -158,6 +158,14 @@
 - Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/RxTrendSection.tsx, src/components/stats/sections/RxTrendSection.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts
 - Tests: src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/dashboard/briefing/features.test.ts
 - TDD: required — 먼저 `design.md` '기존 명세·시험과의 관계'에 적은 줄(`StatsScreen.test.tsx:58`·`:438-445`·`:1229-1234`·`:1611-1617`·`:1641-1664`, `PeriodSummary.test.tsx:53`·`:72`·`:76-80`·`:247`·`:320-327`)을 새 차례·배치·`groups`로 고쳐 RED를 본다. 두 파일에 `vi.mock('@/lib/storage/statsRxGroups', …)`를 더한다(기본은 저장된 묶음 하나라 넓은 읽기 횟수 시험 `StatsScreen.test.tsx:1599`가 그대로다). `StatsSections`의 `groups`는 필수 prop이라 `PeriodSummary.test.tsx`의 그리기 도우미가 가짜 `StatsRxGroupsView`를 넘긴다. 파일 길 시험은 `readFiles` 셋째 인자, 비트 길 시험은 Worker `load` 메시지의 `groups`를 본다. `RxTrendSection.tsx`·`RxTrendSection.test.tsx`는 지운다. AC-1201.7: `features.ts:23`의 통계 설명 글자를 바꾸고, 승인된 시험 `features.test.ts:11`(표)·`:66`(AC-515.2 기대)의 같은 글자를 먼저 고쳐 RED를 본다(tab-frame AC-316.3·stats AC-515.2의 그 글자를 AC-1201.7이 대신한다). AC-1213.1은 `PeriodSummary.test.tsx`의 소스 검사 목록에 이 기능 파일을 더해 본다. AC-1213.2는 `npm run lint`·`src/guardrails.test.ts`가 그대로 통과함으로 본다(규칙 파일은 고치지 않는다). 이 밖에 바뀌는 기대값이 나오면 멈추고 보고한다
+
+## TASK-18: 칸 이름 바꾸기 (치료별 추세 → 처방별 추세)
+- Phase: 4 · 혼자 (TASK-15 뒤)
+- AC: AC-1201.1, AC-1201.7, AC-1203.4, AC-1210.2, AC-1214.1, AC-1214.2, AC-1214.3, AC-1214.4 (글자만 바뀜)
+- REQ: REQ-1201, REQ-1203, REQ-1210, REQ-1214
+- Files: src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts, src/types/rxGroups.ts, src/lib/storage/rxGroups.ts, src/lib/storage/statsRxGroups.ts, src/lib/storage/statsRxGroups.test.ts, src/lib/analytics/aggregate.test.ts, src/components/stats/useStatsRxGroups.ts, src/components/stats/useStatsRxGroups.test.ts, src/components/stats/useStatsWorker.ts, src/components/stats/treatmentEdit.ts, src/components/stats/treatmentEdit.test.ts, src/components/stats/treatmentView.ts, src/components/stats/treatmentView.test.ts, src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/TreatmentTrendSection.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx, src/components/stats/sections/TreatmentTable.tsx, src/components/stats/sections/TreatmentTable.test.tsx, src/components/stats/sections/TreatmentDetail.tsx, src/components/stats/sections/TreatmentDetail.test.tsx, src/components/stats/sections/TreatmentGroupEditor.tsx, src/components/stats/sections/DetailToggle.tsx, src/components/stats/sections/DetailToggle.test.tsx, src/components/stats/sections/trendLabels.ts, src/components/stats/sections/trendLabels.test.ts, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, supabase/migrations/20261105000100_stats_rx_groups.sql, supabase/statsRxGroups.rls.test.ts, plan.md, docs/ARCHITECTURE.md
+- Tests: src/lib/errors.test.ts, src/lib/storage/statsRxGroups.test.ts, src/lib/analytics/aggregate.test.ts, src/components/stats/useStatsRxGroups.test.ts, src/components/stats/treatmentEdit.test.ts, src/components/stats/treatmentView.test.ts, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx, src/components/stats/sections/TreatmentTable.test.tsx, src/components/stats/sections/TreatmentDetail.test.tsx, src/components/stats/sections/DetailToggle.test.tsx, src/components/stats/sections/trendLabels.test.ts, src/components/dashboard/briefing/features.test.ts, supabase/statsRxGroups.rls.test.ts
+- TDD: required — 사용자가 승인 뒤 이름을 바꿨다(요구사항 결정 8, 2026-11-05). 먼저 시험 파일 안의 `치료별 추세` 글자를 `처방별 추세`로 고쳐 RED를 보고, 그다음 화면 글·오류 글·주석·`plan.md`·`docs/ARCHITECTURE.md`·마이그레이션 주석의 같은 글자를 고쳐 GREEN을 본다. 이 글자 말고는 아무것도 바꾸지 않는다. `specs/treatment-trend/tdd-log.jsonl`은 지난 기록이라 고치지 않는다. 다 끝나면 `grep -rn '치료별 추세' src supabase plan.md docs/ARCHITECTURE.md`가 비어야 한다
 
 ## Phase 5 — 마무리 (둘 병렬, Phase 4 뒤)
 

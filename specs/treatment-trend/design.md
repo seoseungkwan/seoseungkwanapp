@@ -1,7 +1,7 @@
-# 설계: 통계 치료별 추세
+# 설계: 통계 처방별 추세
 
 ## 개요
-- 통계 탭의 처방 추세(`RxTrendSection`, 많이 낸 처방 5가지) 자리를 전체 폭 칸 **치료별 추세**(`TreatmentTrendSection`)로 바꾼다. 줄은 총괄이 만든 묶음이다
+- 통계 탭의 처방 추세(`RxTrendSection`, 많이 낸 처방 5가지) 자리를 전체 폭 칸 **처방별 추세**(`TreatmentTrendSection`)로 바꾼다. 줄은 총괄이 만든 묶음이다
 - 묶음은 새 표 `stats_rx_groups`에 둔다(매출 `rx_groups`와 따로). **새 표라서 사용자가 SQL 파일을 운영 Supabase에 손으로 붙여 넣어야 하고, 사이트에 올리기 전에 해야 한다**('사용자가 할 일')
 - 묶음별 건수는 불러올 때 센다. 환자 줄은 불러오는 순간 Worker 안에만 있고, 저장된 일 숫자에는 환자가 누구인지가 없다. 그래서 "같은 환자·같은 날·같은 묶음 = 1건"은 그때만 셀 수 있다. 이미 있는 길을 쓴다: 저장 모양(`DayPayload.groups`)·검사(`validate.ts`)·셈(`aggregate`의 그룹 셈)이 다 있고, 지금은 아무 길도 묶음을 넘기지 않아 저장된 날의 `groups`가 늘 `[]`이다
 - 저장된 숫자가 지금 묶음 처방으로 센 것인지는 **묶음 열쇠 = 처방 코드 모음의 지문**으로 가린다(아래 '다시 불러오기 판단'). DB 칸·저장 모양·검사를 바꾸지 않는다
@@ -50,10 +50,10 @@
 
 ### DB: `supabase/migrations/20261105000100_stats_rx_groups.sql` (전체)
 ```sql
--- 통계 탭 '치료별 추세'의 묶음(stats_rx_groups)과 묶음 저장 함수(save_stats_rx_groups)
+-- 통계 탭 '처방별 추세'의 묶음(stats_rx_groups)과 묶음 저장 함수(save_stats_rx_groups)
 --
 -- 실행: 운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다(앱·CLI는 실행하지 않는다).
--- 먼저 20261028000000_auth.sql이 들어가 있어야 한다. 사이트에 올리기 전에 붙인다. 표가 없으면 치료별 추세 칸만 읽기 오류를 보이고 다른 칸·불러오기는 그대로다.
+-- 먼저 20261028000000_auth.sql이 들어가 있어야 한다. 사이트에 올리기 전에 붙인다. 표가 없으면 처방별 추세 칸만 읽기 오류를 보이고 다른 칸·불러오기는 그대로다.
 --
 -- 왜: 매출 탭 묶음(rx_groups)과 따로 둔다. 한쪽을 고쳐도 다른 쪽은 그대로다(2026-11-05 사용자 결정). 휴대폰과 컴퓨터가 같은 묶음을 보려고 계정에 둔다.
 -- 묶음 이름·처방 코드·차례뿐이고 환자 칸은 없다. 처방 코드는 통계 일 숫자(stats_days)에 이미 있는 값이다.
@@ -169,7 +169,7 @@ export function saveStatsRxGroups(after: readonly RxGroup[], deps?: Deps): Promi
 ```
 - `rxPicks.ts`와 같은 모양(`deps?.client ?? supabaseBrowser()`, 실패는 번호 하나). `rxGroups.ts`를 고치지 않고 따로 둔다(표 이름이 다르고, 매출 쪽 시험을 건드리지 않으려고)
 - `src/types/errors.ts`·`src/lib/errors.ts`에 `E-STATS-GROUP-READ-FAILED`·`E-STATS-GROUP-SAVE-FAILED`(글은 AC-1203.4)
-- `src/types/rxGroups.ts`·`src/lib/storage/rxGroups.ts` 머리 주석의 "통계 탭이 합친 뒤 다시 쓴다"를 "통계 치료별 추세는 같은 모양(`RxGroup`)을 쓰지만 표는 따로(`stats_rx_groups`)"로 고친다(주석만)
+- `src/types/rxGroups.ts`·`src/lib/storage/rxGroups.ts` 머리 주석의 "통계 탭이 합친 뒤 다시 쓴다"를 "통계 처방별 추세는 같은 모양(`RxGroup`)을 쓰지만 표는 따로(`stats_rx_groups`)"로 고친다(주석만)
 
 ### 불러올 때 세기 (환자 자료 구역, 순수 함수)
 ```ts
@@ -271,9 +271,9 @@ export function useStatsRxGroups(days: readonly DayPayload[]): StatsRxGroupsView
 - 찾기 목록은 처방 골라 보기의 `useRxCatalog`(넓은 범위, 처음 열 때 한 번)·`rxCatalog`·`searchCatalog`·`rxPeriodCounts`를 그대로 쓴다. 처방 골라 보기와 따로 한 벌이다
 
 ### 잇기
-- `StatsScreen.tsx`: `const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)`. 비트 `load({ …, groups: groups.forLoad() })`(기다리지 않고 넘김), 파일 `readFiles(files, today, await groups.forLoad())`. `WAITING`의 넷째를 `{ title: '치료별 추세', place: 'col-span-12' }`, 다섯째를 `{ title: '처방별 신환·재진', place: 'col-span-12' }`로. `StatsSections`에 `groups`를 넘긴다
+- `StatsScreen.tsx`: `const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)`. 비트 `load({ …, groups: groups.forLoad() })`(기다리지 않고 넘김), 파일 `readFiles(files, today, await groups.forLoad())`. `WAITING`의 넷째를 `{ title: '처방별 추세', place: 'col-span-12' }`, 다섯째를 `{ title: '처방별 신환·재진', place: 'col-span-12' }`로. `StatsSections`에 `groups`를 넘긴다
 - `StatsSections.tsx`: `RxTrendSection` 자리에 `TreatmentTrendSection`(`col-span-12`), `RxSplitSection`은 `col-span-12`. `groups: StatsRxGroupsView`는 필수 prop이다
-- `dashboard/briefing/features.ts`: 통계 칸 설명 글자의 `처방 추세`를 `치료별 추세`로(AC-1201.7)
+- `dashboard/briefing/features.ts`: 통계 칸 설명 글자의 `처방 추세`를 `처방별 추세`로(AC-1201.7)
 - 지우는 파일: `sections/RxTrendSection.tsx`·`sections/RxTrendSection.test.tsx`(칸이 없어진다. 공용 글 함수는 `trendLabels.ts`로 옮긴 뒤)
 
 ## 데이터 흐름
@@ -342,7 +342,7 @@ stats_days ─ readDays → useStatsData.input → treatmentRows(keyedIn·groupI
 - **원장님 보고 문장·요일별 환자 수**: 그대로
 - **대시보드 '처방 상위'**: 그대로(자기 `topRx`, 저장 숫자를 읽지 않음)
 - **대시보드 비트 바로 읽기(`dashboard/live/readBitDays.ts`)**: 고치지 않는다. `requestLoad`에 묶음을 주지 않으므로 Worker 메시지에 `groups: []`가 실리고, Worker는 묶음 없이 세며(일 줄 `groups`는 빈 목록 그대로) 대시보드는 아무것도 저장하지 않는다. 바뀌는 것은 메시지를 못 박은 시험 한 줄(`readBitDays.test.ts:157`)뿐이다
-- **대시보드 기능 목차 글(`dashboard/briefing/features.ts:23`)**: 통계 칸 설명 `환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수`를 `환자 수 추이·신환 재방문율·치료별 추세·요일별 환자 수`로 바꾼다(TASK-15, AC-1201.7). 화면에 없는 칸 이름을 남기지 않으려고
+- **대시보드 기능 목차 글(`dashboard/briefing/features.ts:23`)**: 통계 칸 설명 `환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수`를 `환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수`로 바꾼다(TASK-15, AC-1201.7). 화면에 없는 칸 이름을 남기지 않으려고
 - **AI 리포트**: 지금은 달 읽기가 늘 없음이라 그대로다. 이 기능 뒤 저장되는 **달 줄 `groups`에 묶음 열쇠(`t…`)가 든다**(`toMonthPayload`가 칸의 묶음을 옮긴다). AI 리포트가 달 줄을 읽게 되면 `groupNames`를 `stats_rx_groups`에서 `groupKey(codes) → name`으로 만들어야 하고, 옛 열쇠는 `이름 없는 그룹`이 된다. 그 명세가 정한다
 - **일 줄 크기**: 묶음 50개면 하루 줄이 약 4KB 는다(AC-1205.8). 지금 64KB 한도에 가까운 날은 저장 전체가 실패할 수 있다('위험')
 - **비트 PC 부담**: 도우미 요청은 그대로다. Worker의 셈이 묶음만큼 조금 는다(`aggregate` 10만 줄 1초 시험 유지)
@@ -350,15 +350,15 @@ stats_days ─ readDays → useStatsData.input → treatmentRows(keyedIn·groupI
 ## 기존 명세·시험과의 관계
 - **승인된 명세는 고치지 않는다.** specs/stats·stats-core·rx-picker·revenue의 승인이 그대로다
 - specs/stats REQ-513의 처방 추세 AC(513.1 차례 중 처방 추세 자리, 513.2·513.3·513.4·513.5·513.11·513.12)와 rx-picker AC-801.1·801.2(여덟 칸 차례·배치)는 이 명세의 REQ-1201·1207~1209가 대신한다. 그 시험 `RxTrendSection.test.tsx`는 칸과 함께 지운다
-- TASK-15에서 함께 고치는 시험(알려진 것): `StatsScreen.test.tsx:58`(SECTIONS)·`:438-445`(load 요청에 `groups`)·`:1229-1234`·`:1611-1617`(배치)·`:1641-1664`(rx-picker AC-806.5의 처방 추세 줄 부분 → 치료별 추세 줄로), `PeriodSummary.test.tsx:53`(TITLES)·`:72`·`:76-80`(배치)·`:247`(검사 파일 목록)·`:320-327`(처방 줄 열기·`접기` 단추 수·`가짜 처방 일별 건수` 표). 두 파일에 `vi.mock('@/lib/storage/statsRxGroups', …)`를 더한다(기본: 저장된 묶음 하나, 넓은 읽기 횟수 시험 `:1599`이 바뀌지 않게)
+- TASK-15에서 함께 고치는 시험(알려진 것): `StatsScreen.test.tsx:58`(SECTIONS)·`:438-445`(load 요청에 `groups`)·`:1229-1234`·`:1611-1617`(배치)·`:1641-1664`(rx-picker AC-806.5의 처방 추세 줄 부분 → 처방별 추세 줄로), `PeriodSummary.test.tsx:53`(TITLES)·`:72`·`:76-80`(배치)·`:247`(검사 파일 목록)·`:320-327`(처방 줄 열기·`접기` 단추 수·`가짜 처방 일별 건수` 표). 두 파일에 `vi.mock('@/lib/storage/statsRxGroups', …)`를 더한다(기본: 저장된 묶음 하나, 넓은 읽기 횟수 시험 `:1599`이 바뀌지 않게)
 - specs/stats AC-505.7(`specs/stats/requirements.md:57`, "Worker에는 기간·오늘·오늘 진료 끝 표시·통로 요청 id만 간다")은 새 칸 `groups`(묶음 열쇠·코드, 없으면 `[]`)에 한해 이 명세의 AC-1205.4가 대신한다. 다른 칸은 그대로 가지 않는다
 - Worker `load` 메시지를 `toEqual`로 못 박은 승인된 시험 넷은 TASK-7에서 기대에 `groups: []`만 더한다(같은 Phase 끝 검사가 깨지지 않게): `statsClient.test.ts:55-58`(AC-505.7), `useStatsWorker.test.ts:205`, `StatsScreen.test.tsx:438-445`, `readBitDays.test.ts:157`(bit-dashboard AC-601.1, 그 AC 글은 칸 목록을 말하지 않아 대신할 것이 없다). 뒤에 TASK-14는 `useStatsWorker.test.ts:205`를 그대로 두고 진짜 묶음을 넘기는 시험을 더하고, TASK-15는 `StatsScreen.test.tsx:438-445`를 진짜 묶음을 넘기는 기대로 고친다
-- tab-frame AC-316.3과 specs/stats AC-515.2가 못 박은 통계 칸 설명 글자의 `처방 추세`는 이 명세의 AC-1201.7이 `치료별 추세`로 대신한다. 시험 `features.test.ts:11`(표)·`:66`(AC-515.2 기대)을 TASK-15에서 고친다
+- tab-frame AC-316.3과 specs/stats AC-515.2가 못 박은 통계 칸 설명 글자의 `처방 추세`는 이 명세의 AC-1201.7이 `처방별 추세`로 대신한다. 시험 `features.test.ts:11`(표)·`:66`(AC-515.2 기대)을 TASK-15에서 고친다
 - stats-core AC-006.3("한 코드가 여러 그룹에 있으면 각 그룹에", "환자 없는 그룹은 빠진다"): `aggregate`는 그대로 그렇게 센다. "한 묶음에만"은 통계 묶음 저장(DB·고치기 화면)의 규칙이고, 대소문자 무시는 넓힘이라 그 시험이 그대로 통과한다
 - `plan.md §7`의 "한 코드가 여러 그룹에 들어가도 된다"(plan.md:140)는 계획 문서라 줄 끝에 이 묶음의 예외를 붙인다(AC-1214.2). `plan.md:141` "그룹을 바꾸면 이전 달은 파일을 다시 넣어야 반영된다(화면에 안내 한 줄)"와 이 설계가 같다
 
 ## 사용자가 할 일
-1. **사이트에 올리기 전에** `supabase/migrations/20261105000100_stats_rx_groups.sql` 전체를 운영 Supabase SQL 편집기에 붙여 한 번 실행한다. 빠뜨리면 치료별 추세 칸만 오류 카드를 보이고 다른 칸·불러오기는 그대로다
+1. **사이트에 올리기 전에** `supabase/migrations/20261105000100_stats_rx_groups.sql` 전체를 운영 Supabase SQL 편집기에 붙여 한 번 실행한다. 빠뜨리면 처방별 추세 칸만 오류 카드를 보이고 다른 칸·불러오기는 그대로다
 2. 올린 뒤 비트 PC에서 **최근 12개월**을 고르고 [비트에서 불러오기]를 한 번 누른다(12개월 + 작년이 함께 읽혀 모든 기간 보기에 숫자가 나온다). 파일로 넣던 기간은 파일을 다시 넣는다
 3. 묶음의 처방을 바꾸면 보고 싶은 기간을 다시 불러온다
 

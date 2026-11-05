@@ -1,4 +1,4 @@
-<title>치료별 추세 시안</title>
+<title>처방별 추세 시안</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* 앱 globals.css 토큰 그대로. 앱이 밝은 화면만 쓰므로(UI_GUIDE 원칙 1) 이 시안도 밝은 한 모습으로 고정한다.
@@ -55,7 +55,7 @@ h2 { font-size: 16px; line-height: 24px; font-weight: 600; text-wrap: balance; }
 .textbtn.danger { color: var(--danger); }
 .textbtn.plain { color: var(--ink-2); }
 
-/* 치료별 추세 */
+/* 처방별 추세 */
 .trend { margin-top: 16px; padding-top: 24px; border-top: 1px solid var(--line-strong); }
 .head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
 .title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
@@ -252,7 +252,7 @@ button.row[aria-expanded="true"] .chev { transform: rotate(180deg); }
     <h2>정하신 내용</h2>
     <p>질문에서 고르신 그대로 그렸어요.</p>
     <ul>
-      <li>칸 이름은 <b>치료별 추세</b>예요.</li>
+      <li>칸 이름은 <b>처방별 추세</b>예요.</li>
       <li>묶음은 통계 탭에서 따로 만들어요. 매출 탭 묶음을 바꿔도 여기는 그대로예요.</li>
       <li>처음에는 도수치료, 체외충격파, C-arm 주사, 초음파, 냉동치료 다섯 묶음이 들어 있어요.</li>
       <li>줄마다 건수, 지난 기간보다 늘었는지 줄었는지, 신환율과 재진율이 바로 보여요.</li>
@@ -499,7 +499,7 @@ button.row[aria-expanded="true"] .chev { transform: rotate(180deg); }
     var max = 1;
     nums.forEach(function (n) { if (n) max = Math.max(max, n.count, n.prev); });
     var stale = state.groups.filter(function (g) { return g.stale; });
-    var h = '<div class="head"><div class="title"><h2 id="trend-title">치료별 추세</h2><span class="chip accent">바뀐 칸</span>' +
+    var h = '<div class="head"><div class="title"><h2 id="trend-title">처방별 추세</h2><span class="chip accent">바뀐 칸</span>' +
       '<p class="desc">만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건</p></div>' +
       '<button type="button" class="btn" id="edit-open">묶음 고치기</button></div>';
     if (state.savedNote) h += '<p class="small" style="margin-top:8px;color:var(--positive)" role="status">' + esc(state.savedNote) + '</p>';
@@ -547,7 +547,7 @@ button.row[aria-expanded="true"] .chev { transform: rotate(180deg); }
 
   function renderEdit() {
     var ed = state.editing, el = document.getElementById('trend');
-    var h = '<div class="head"><div class="title"><h2 id="trend-title">치료별 추세 · 묶음 고치기</h2></div></div>';
+    var h = '<div class="head"><div class="title"><h2 id="trend-title">처방별 추세 · 묶음 고치기</h2></div></div>';
     h += '<p class="intro">묶음 이름을 짓고, 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 어느 묶음에도 없는 처방은 이 칸에 나오지 않아요. 여기서 바꿔도 매출 탭 묶음은 그대로예요.</p>';
     h += '<ol class="groups">';
     ed.forEach(function (g, i) {
