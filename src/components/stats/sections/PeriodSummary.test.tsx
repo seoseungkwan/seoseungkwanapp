@@ -3,24 +3,34 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { groupKey } from '@/components/stats/treatmentView'
+import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { statsRange, summaryCells, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { nestedBoxes } from '@/testing/boxes'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
+import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView } from '@/types/stats'
 import { PeriodSummary } from './PeriodSummary'
 import type { ReportData } from './ReportSection'
 import { StatsSections } from './StatsSections'
 
-// 기간 요약 + 섹션 차례 (stats REQ-513 AC-513.1·513.2·513.4·513.9, rx-picker AC-801.1, 시안 notes.md §2·§3·§4). 가짜 일 줄은 이 파일 안에서만 만든다
+// 기간 요약 + 섹션 차례 (stats REQ-513 AC-513.1·513.2·513.4·513.9, rx-picker AC-801.1, treatment-trend AC-1201.1·AC-1213.1, 시안 notes.md §2·§3·§4). 가짜 일 줄은 이 파일 안에서만 만든다
 // 처방 골라 보기는 이 파일에서 읽는 중에 머문다. 그 칸의 안은 RxPickerSection.test.tsx가 본다
+// 치료별 추세의 묶음 값은 이 파일이 만든 가짜(StatsRxGroupsView)다. 그 칸의 안은 TreatmentTrendSection.test.tsx가 본다
 
 vi.mock('@/lib/storage/rxPicks', () => ({
   readRxPicks: vi.fn(() => new Promise(() => undefined)),
   addRxPick: vi.fn(),
   removeRxPick: vi.fn(),
   clearRxPicks: vi.fn(),
+}))
+// 통계 묶음 저장 코드. 섹션은 묶음 값을 props로만 받아 부르지 않는다
+vi.mock('@/lib/storage/statsRxGroups', () => ({
+  listStatsRxGroups: vi.fn(() => new Promise(() => undefined)),
+  saveStatsRxGroups: vi.fn(),
+  StatsRxGroupStoreError: class extends Error {},
 }))
 
 const TODAY = '2026-11-13' // 금요일
@@ -45,43 +55,69 @@ const inputOf = (days: DayPayload[], covered: DateRange[], period: StatsPeriod =
 })
 const WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-12' }]
 
+// 저장된 묶음 하나(지어낸 이름·코드)
+const GROUP: RxGroup = { id: 'g0', name: '가짜 묶음', codes: ['RA'], sortOrder: 0 }
+const GROUPS: StatsRxGroupsView = {
+  state: 'ready',
+  groups: [GROUP],
+  suggested: false,
+  saving: false,
+  saveFailed: false,
+  reread: () => undefined,
+  save: async () => true,
+  forLoad: async () => [],
+}
+
 afterEach(cleanup)
 
 const cellText = (name: string) => screen.getByText(name).closest('.grid-cols-4 > div')!.textContent
 
-describe('AC-513.1·AC-801.1: 섹션 차례', () => {
-  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
+describe('AC-513.1·AC-801.1·AC-1201.1: 섹션 차례', () => {
+  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '치료별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
   const draw = (saved: boolean) =>
-    render(<StatsSections input={inputOf(saved ? [day('2026-11-02', 10)] : [], saved ? WHOLE : [])} saved={saved} split={null} hospitalName="튼튼의원" report={null} />)
+    render(
+      <StatsSections input={inputOf(saved ? [day('2026-11-02', 10)] : [], saved ? WHOLE : [])} saved={saved} split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} />,
+    )
 
-  it('AC-513.1·AC-801.1: 여덟 섹션이 승인본 차례이고 섹션마다 h2다', () => {
+  it('AC-513.1·AC-801.1·AC-1201.1: 여덟 섹션이 승인본 차례이고 섹션마다 h2다. 처방 추세 h2는 없다', () => {
     draw(true)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TITLES)
+    expect(screen.queryByRole('heading', { name: '처방 추세' })).toBeNull()
   })
 
-  it('AC-513.1·AC-801.1: 저장된 숫자가 없어도 차례가 같다', () => {
+  it('AC-513.1·AC-801.1·AC-1201.1: 저장된 숫자가 없어도 차례가 같다', () => {
     draw(false)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TITLES)
+    expect(screen.queryByRole('heading', { name: '처방 추세' })).toBeNull()
   })
 
-  it('AC-513.1·AC-801.1: 1024px 이상 배치는 12 / 8·4 / 7·5 / 12 / 7·5이고 오른쪽 칸은 왼쪽 선 + 안쪽 24다', () => {
+  it('AC-513.1·AC-801.1·AC-1201.1: 1024px 이상 배치는 12 / 8·4 / 12 / 12 / 12 / 7·5이고 오른쪽 칸은 왼쪽 선 + 안쪽 24다', () => {
     draw(true)
     const sectionOf = (title: string) => screen.getByRole('heading', { level: 2, name: title }).closest('section')!.className
     expect(sectionOf('기간 요약')).toContain('col-span-12')
     expect(sectionOf('환자 수 추이')).toContain('lg:col-span-8')
-    expect(sectionOf('처방 추세')).toContain('lg:col-span-7')
     expect(sectionOf('처방 골라 보기')).toContain('col-span-12')
     expect(sectionOf('처방 골라 보기')).not.toContain('lg:')
     expect(sectionOf('원장님 보고 문장')).toContain('lg:col-span-7')
+    // 치료별 추세와 처방별 신환·재진은 전체 폭이고 세로선·왼쪽 여백이 없다
+    for (const title of ['치료별 추세', '처방별 신환·재진']) {
+      expect(sectionOf(title).split(' '), title).toContain('col-span-12')
+      expect(sectionOf(title), title).not.toMatch(/(^| )lg:(?:col-span|border-l|pl-)/)
+    }
     for (const [title, span] of [
       ['신환 재방문율', 'lg:col-span-4'],
-      ['처방별 신환·재진', 'lg:col-span-5'],
       ['요일별 환자 수', 'lg:col-span-5'],
     ] as const) {
       expect(sectionOf(title)).toContain(span)
       expect(sectionOf(title)).toContain('lg:border-l')
       expect(sectionOf(title)).toContain('lg:pl-6')
     }
+  })
+
+  it('AC-1201.1: 치료별 추세 칸은 h2 옆에 승인본 설명이 있다', () => {
+    draw(true)
+    const section = screen.getByRole('heading', { level: 2, name: '치료별 추세' }).closest('section')!
+    expect(within(section).getByText('만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건')).toBeTruthy()
   })
 
   it('AC-513.1: 섹션 위는 1px line-strong이고 도구 단추 줄이 없다', () => {
@@ -242,12 +278,46 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|\s)\/\/.*$/gm, '$1')
 
-  it('AC-513.9: 검사 대상이 비어 있지 않다(섹션 여덟 + 공용 둘 + view.ts)', () => {
+  it('AC-513.9·AC-1213.1: 검사 대상이 비어 있지 않다(섹션 여덟 + 공용 둘 + view.ts + 치료별 추세 조각)', () => {
     const list = files()
-    for (const name of ['PeriodSummary', 'PatientTrendSection', 'RevisitSection', 'RxTrendSection', 'RxSplitSection', 'RxPickerSection', 'ReportSection', 'WeekdaySection', 'DetailToggle', 'CopyButton']) {
+    for (const name of [
+      'PeriodSummary',
+      'PatientTrendSection',
+      'RevisitSection',
+      'TreatmentTrendSection',
+      'RxSplitSection',
+      'RxPickerSection',
+      'ReportSection',
+      'WeekdaySection',
+      'DetailToggle',
+      'CopyButton',
+      'TreatmentTable',
+      'TreatmentDetail',
+      'TreatmentGroupEditor',
+    ]) {
       expect(list).toContain(`${DIR}/${name}.tsx`)
     }
+    expect(list).toContain(`${DIR}/trendLabels.ts`)
     expect(list).toContain('src/components/stats/view.ts')
+    expect(list).not.toContain(`${DIR}/RxTrendSection.tsx`) // 처방 추세 칸은 지웠다(AC-1201.1)
+  })
+
+  it('AC-1213.1: 치료별 추세의 화면·훅·계산 파일은 브라우저 저장소·document.cookie·console·lib/bridge/client·주소를 쓰지 않는다', () => {
+    const own = [
+      ...['TreatmentTrendSection', 'TreatmentTable', 'TreatmentDetail', 'TreatmentGroupEditor'].map((name) => `${DIR}/${name}.tsx`),
+      `${DIR}/trendLabels.ts`,
+      'src/components/stats/useStatsRxGroups.ts',
+      'src/components/stats/treatmentView.ts',
+      'src/components/stats/treatmentEdit.ts',
+    ]
+    const treatmentSections = readdirSync(join(ROOT, DIR)).filter((name) => /^Treatment.*\.tsx$/.test(name) && !/\.test\.tsx$/.test(name))
+    for (const name of treatmentSections) expect(own).toContain(`${DIR}/${name}`)
+    for (const file of own) {
+      const text = code(file)
+      for (const word of ['localStorage', 'sessionStorage', 'indexedDB', 'document.cookie', 'console', 'lib/bridge/client', 'history.', 'location.', 'useSearchParams', 'fetch(']) {
+        expect(text, `${file}: ${word}`).not.toContain(word)
+      }
+    }
   })
 
   it('AC-513.9: Supabase·fetch·브라우저 저장소·주소·lib/bridge·workers를 쓰지 않는다', () => {
@@ -271,10 +341,11 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     }
   })
 
-  it('AC-513.9: 여덟 섹션을 모두 채우고 모두 열어도 그린 화면에 상자 안 상자가 없다', () => {
+  it('AC-513.9·AC-1201.1: 여덟 섹션을 모두 채우고 모두 열어도 그린 화면에 상자 안 상자가 없다', () => {
     const withRx = (ymd: string, patients: number): DayPayload => ({
       ...day(ymd, patients),
       rx: [{ code: 'RA', name: '가짜 처방', type: '', patients, newPatients: 2, returning: patients - 2 }],
+      groups: [{ id: groupKey(GROUP.codes), patients, newPatients: 2, returning: patients - 2 }],
       revisit: { cohort: 2, within7: 1, within14: 1, within30: 1, after30: 0 },
     })
     const split: RxSplitView = {
@@ -318,14 +389,18 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
       loadedAt: '18:42',
       closedToday: false,
     }
-    const { container } = render(<StatsSections input={inputOf([withRx('2026-09-21', 100), withRx('2026-11-02', 110)], WHOLE)} saved split={split} hospitalName="튼튼의원" report={report} />)
-    // 처방 줄을 먼저 열어야 그 안의 [자세히]까지 함께 열린다
-    fireEvent.click(screen.getByRole('button', { name: /가짜 처방/ }))
+    const { container } = render(
+      <StatsSections input={inputOf([withRx('2026-09-21', 100), withRx('2026-11-02', 110)], WHOLE)} saved split={split} hospitalName="튼튼의원" report={report} groups={GROUPS} />,
+    )
+    // 묶음 줄을 먼저 열어야 그 안의 [숫자로 보기]까지 함께 열린다
+    fireEvent.click(screen.getByRole('button', { name: /가짜 묶음/ }))
     for (const button of screen.getAllByRole('button', { name: '자세히' })) fireEvent.click(button)
+    fireEvent.click(screen.getByRole('button', { name: '숫자로 보기' }))
     expect(screen.queryByRole('button', { name: '자세히' })).toBeNull()
-    expect(screen.getAllByRole('button', { name: '접기' })).toHaveLength(4) // 추이 · 재방문율 · 처방 칸 · 요일별
+    expect(screen.queryByRole('button', { name: '숫자로 보기' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: '접기' })).toHaveLength(4) // 추이 · 재방문율 · 치료별 칸 · 요일별
     expect(screen.getByRole('list', { name: '첫 재방문까지 날수' })).toBeTruthy()
-    expect(screen.getByRole('table', { name: '가짜 처방 일별 건수' })).toBeTruthy()
+    expect(screen.getByRole('table', { name: '가짜 묶음 일별 건수' })).toBeTruthy()
     expect(screen.getByRole('table', { name: '처방별 신환·재진 (명)' })).toBeTruthy()
     expect(screen.getByText('고생하셨습니다 !!')).toBeTruthy()
     expect(within(container).getAllByRole('heading', { level: 2 })).toHaveLength(8)
