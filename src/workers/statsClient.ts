@@ -1,9 +1,10 @@
 import { isErrorCode } from '@/lib/errors'
+import type { RxGroupDef } from '@/types/analysis'
 import type { ErrorCode } from '@/types/errors'
 import type { RxSplitView, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
 import { AnalyzeError } from './runAnalysis'
 
-// 화면이 통계 Worker를 부르는 입구. Worker로는 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id만 간다.
+// 화면이 통계 Worker를 부르는 입구. Worker로는 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id와 묶음 열쇠·코드만 간다(묶음 이름은 안 감).
 // 조각은 통로 포트로 따로 가고(lib/bridge/workerSink.ts), 화면에는 숫자만 돌아온다.
 // runAnalysis와 달리 일이 끝나도 Worker를 끝내지 않는다: 진료 줄이 Worker 메모리에 남고, Worker를 끝내는 것은 화면을 떠날 때다
 
@@ -77,14 +78,23 @@ function ask<T>(
   })
 }
 
-// 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다)
+// 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다). 묶음도 { id, codes }만 골라 새로 만들고,
+// 주지 않으면 []를 싣는다: 메시지에는 늘 groups 배열이 있다(treatment-trend AC-1205.4·AC-1213.3)
 export function requestLoad(
   worker: WorkerLike,
-  req: { streamId: string; from: string; to: string; today: string; closeToday: boolean },
+  req: { streamId: string; from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[] },
   opts: { timeoutMs?: number } = {},
 ): Promise<StatsLoaded> {
-  const { streamId, from, to, today, closeToday } = req
-  const request: StatsLoadRequest = { type: 'load', streamId, from, to, today, closeToday }
+  const { streamId, from, to, today, closeToday, groups = [] } = req
+  const request: StatsLoadRequest = {
+    type: 'load',
+    streamId,
+    from,
+    to,
+    today,
+    closeToday,
+    groups: groups.map(({ id, codes }) => ({ id, codes: [...codes] })),
+  }
   return ask(worker, request, (message) => (message.type === 'loaded' ? message.view : undefined), opts.timeoutMs)
 }
 

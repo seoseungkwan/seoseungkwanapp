@@ -442,6 +442,7 @@ describe('AC-514.3 비트에서 불러오기', () => {
       to: R30.load.to,
       today: TODAY,
       closeToday: false,
+      groups: [],
     })
     expect(saveStats).toHaveBeenCalledWith({ months: LOADED.months, days: LOADED.days, covered: LOADED.covered, source: 'bit' })
     await waitFor(() => expect(vi.mocked(readDays).mock.calls.length).toBeGreaterThan(reads))

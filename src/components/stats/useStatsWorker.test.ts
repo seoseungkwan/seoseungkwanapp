@@ -202,7 +202,7 @@ describe('AC-514.3 Worker 하나와 통로', () => {
     act(() => port.reply({ v: 1, id: request.id, type: 'end', count: 0, bytes: 0, sha256: SHA }))
     await waitFor(() => expect(fake.sent.some((message) => message.type === 'load')).toBe(true))
     const streamId = request.id as string
-    expect(fake.sent.at(-1)).toEqual({ type: 'load', streamId, from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: false })
+    expect(fake.sent.at(-1)).toEqual({ type: 'load', streamId, from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: false, groups: [] })
 
     fake.reply({ type: 'loaded', streamId, view: VIEW })
     await waitFor(() => expect(answer).toEqual(VIEW))

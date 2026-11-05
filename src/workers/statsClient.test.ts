@@ -54,7 +54,7 @@ describe('AC-505.7 statsClient — 가짜 Worker', () => {
     const req = { ...REQ, rows: [['가짜']], hospitalName: '가짜의원' }
     void requestLoad(fake.like, req)
     expect(fake.sent).toEqual([
-      { type: 'load', streamId: REQ.streamId, from: REQ.from, to: REQ.to, today: REQ.today, closeToday: REQ.closeToday },
+      { type: 'load', streamId: REQ.streamId, from: REQ.from, to: REQ.to, today: REQ.today, closeToday: REQ.closeToday, groups: [] },
     ])
     fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
   })
@@ -168,6 +168,55 @@ describe('AC-505.7 statsClient — 가짜 Worker', () => {
     expect(made).toHaveLength(1)
     expect(String(made[0].url)).toMatch(/\/stats\.worker\.ts$/)
     expect(made[0].options).toEqual({ type: 'module' })
+  })
+})
+
+describe('AC-1205.4·AC-1213.3 requestLoad — 묶음은 열쇠와 코드만 간다', () => {
+  // 가짜 묶음 열쇠·코드. 이름·차례는 화면에만 있는 칸이다
+  const GROUPS = [
+    { id: 't00000000000000a1', codes: ['MM042', 'mm043'], name: '가짜 물리치료', sortOrder: 0 },
+    { id: 't00000000000000b2', codes: ['B4001'], name: '가짜 검사', sortOrder: 1 },
+  ]
+  const loadIn = (fake: ReturnType<typeof fakeWorker>) => fake.sent.find((message) => (message as { type?: string }).type === 'load') as Record<string, unknown>
+
+  it('AC-1205.4: 묶음을 주면 load 메시지에 groups 배열 [{ id, codes }]이 있고 이름 등 다른 칸은 없다', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, groups: GROUPS })
+    expect(fake.sent).toEqual([
+      {
+        type: 'load',
+        streamId: REQ.streamId,
+        from: REQ.from,
+        to: REQ.to,
+        today: REQ.today,
+        closeToday: REQ.closeToday,
+        groups: [
+          { id: 't00000000000000a1', codes: ['MM042', 'mm043'] },
+          { id: 't00000000000000b2', codes: ['B4001'] },
+        ],
+      },
+    ])
+    const groups = loadIn(fake).groups as { id: string; codes: string[] }[]
+    for (const group of groups) expect(Object.keys(group).sort()).toEqual(['codes', 'id'])
+    expect(JSON.stringify(fake.sent)).not.toContain('가짜 물리치료')
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-1205.4: 묶음과 코드 목록은 새로 만든다(넘긴 배열을 그대로 보내지 않는다)', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, groups: GROUPS })
+    const groups = loadIn(fake).groups as { id: string; codes: string[] }[]
+    expect(groups).not.toBe(GROUPS)
+    expect(groups[0]).not.toBe(GROUPS[0])
+    expect(groups[0].codes).not.toBe(GROUPS[0].codes)
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-1205.4: 묶음을 주지 않으면 groups: []를 보낸다(늘 배열)', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, REQ)
+    expect(loadIn(fake).groups).toEqual([])
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
   })
 })
 
