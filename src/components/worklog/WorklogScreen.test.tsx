@@ -1740,8 +1740,8 @@ const remeasure = () =>
 
 // 크기를 든 가짜 서버. 저장은 바뀐 칸과, 받았을 때만 목록·크기를 그 줄에 넣는다
 function fontServer(rows: Record<string, { cells?: Partial<WorklogDay>; bitFields?: WorklogNumberKey[]; memoFontPt?: MemoFontPt }>) {
-  const db = new Map<string, Required<WorklogSavedDay>>(
-    Object.entries(rows).map(([ymd, row]): [string, Required<WorklogSavedDay>] => [
+  const db = new Map<string, Required<Omit<WorklogSavedDay, 'cash'>>>(
+    Object.entries(rows).map(([ymd, row]): [string, Required<Omit<WorklogSavedDay, 'cash'>>] => [
       ymd,
       { day: dayWith(row.cells), bitFields: [...(row.bitFields ?? [])], memoFontPt: row.memoFontPt ?? 11 },
     ]),
@@ -1751,7 +1751,7 @@ function fontServer(rows: Record<string, { cells?: Partial<WorklogDay>; bitField
     return row ? { day: { ...row.day }, bitFields: [...row.bitFields], memoFontPt: row.memoFontPt } : null
   })
   save.mockImplementation(async (_client, ymd, changes, bitFields, memoFontPt) => {
-    const row: Required<WorklogSavedDay> = db.get(ymd) ?? { day: emptyWorklogDay(), bitFields: [], memoFontPt: 11 }
+    const row: Required<Omit<WorklogSavedDay, 'cash'>> = db.get(ymd) ?? { day: emptyWorklogDay(), bitFields: [], memoFontPt: 11 }
     db.set(ymd, {
       day: { ...row.day, ...changes },
       bitFields: bitFields ? [...bitFields] : row.bitFields,
