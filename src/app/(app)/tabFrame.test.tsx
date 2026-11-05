@@ -49,7 +49,7 @@ const plain = (html: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(connect-first · ready). 수는 목록에서 센다(spec revenue AC-010.1, 다른 탭 명세도 같은 칸을 바꾼다)
+// 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(connect-first · ready). 수는 목록에서 센다(spec revenue AC-010.1·patients AC-610.1, 다른 탭 명세도 같은 칸을 바꾼다)
 const READY = DASHBOARD_FEATURES.filter((f) => f.status !== 'soon')
 const NOT_READY = DASHBOARD_FEATURES.filter((f) => f.status === 'soon')
 const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
@@ -58,6 +58,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/claim': 'claim/setup',
   '/claim/setup': 'claim/setup',
   '/stats': 'stats',
+  '/patients': 'patients',
   '/revenue': 'revenue',
   '/ai-report': 'ai-report',
   '/worklog': 'worklog',
@@ -154,10 +155,11 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-010.1·AC-515.4·AC-714.3·AC-012.4·AC-012.6: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/revenue·/ai-report·/worklog·/settings다', () => {
+  it('AC-307.3·AC-010.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/patients·/revenue·/ai-report·/worklog·/settings다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
-    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/revenue', '/ai-report', '/worklog', '/settings'])
+    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/patients', '/revenue', '/ai-report', '/worklog', '/settings'])
     expect(READY.map((f) => f.href)).toContain('/stats')
+    expect(READY.map((f) => f.href)).toContain('/patients')
     expect(READY.map((f) => f.href)).toContain('/ai-report')
     expect(READY.map((f) => f.href)).toContain('/worklog')
     for (const feature of READY) {
@@ -168,8 +170,9 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
         expect(source, feature.href).toMatch(/from '@\/components\/ai-report\/AiReportScreen'/) // AI 리포트 화면
       }
     }
-    // 청구 사전점검 화면(ClaimEntry · SetupScreen)
+    // 청구 사전점검 화면(ClaimEntry · SetupScreen) · 환자 탭 입구(PatientsEntry)
     for (const href of ['/claim', '/claim/setup']) expect(read(pageFile(href)), href).toMatch(/from '@\/components\/claim\/setup\//)
+    expect(read(pageFile('/patients')), '/patients').toMatch(/from '@\/components\/patients\//)
     // 설정 화면(SettingsPage)
     expect(read(pageFile('/settings')), '/settings').toMatch(/from '@\/components\/settings\//)
   })
@@ -223,7 +226,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
+  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
     const total = DASHBOARD_FEATURES.length
     const now = featureCount('ready')
     const afterConnect = featureCount('connect-first')

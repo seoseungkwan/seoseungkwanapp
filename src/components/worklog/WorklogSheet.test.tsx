@@ -22,6 +22,7 @@ import {
   type WorklogCellKey,
   type WorklogDay,
 } from '@/types/worklog'
+import { BIT_LEGEND_ID } from './BitNotice'
 import s from './sheet.module.css'
 import { WorklogSheet } from './WorklogSheet'
 
@@ -841,5 +842,58 @@ describe('AC-008.11: 치기 전에 값이 바뀜', () => {
     }
     await user.click(document.body)
     expect(onFocusCell).toHaveBeenLastCalledWith(null)
+  })
+})
+
+// ── 비트 칸 표시 (worklog REQ-017 AC-017.2, design.md 20-5절, 시안 docs/mockups/worklog/bitfill.html ①):
+// 비트에서 불러온 칸(bitFields)은 칸 오른쪽 위 작은 세모(엑셀 메모 표시처럼 --xl-focus)이고, 양식 아래 설명 줄(BitNotice)을 가리킨다. 인쇄에는 없다
+describe('AC-017.2: 비트 칸 표시', () => {
+  const css = () => readFileSync(join(process.cwd(), 'src/components/worklog/sheet.module.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('AC-017.2: bitFields의 숫자 칸에만 표시 클래스가 붙고, 그 칸은 설명 줄을 가리킨다', () => {
+    setup({ newPatients: '12', cashIn: '125000', cardIn: '300000', spendCash: '20000' }, { bitFields: ['newPatients', 'cashIn'] })
+    for (const key of ['newPatients', 'cashIn'] as const) {
+      expect(tdOf(key).classList.contains(s.bit), key).toBe(true)
+      expect(field(key).getAttribute('aria-describedby'), key).toBe(BIT_LEGEND_ID)
+    }
+    for (const key of ['returnPatients', 'cardIn', 'spendCash', 'localCurrencyIn', 'nameCashIn', 'noteCash', 'memo'] as const) {
+      expect(field(key).closest('td')?.classList.contains(s.bit), key).toBe(false)
+    }
+    expect(field('cardIn').getAttribute('aria-describedby')).toBeNull()
+  })
+
+  it('AC-017.2: bitFields가 없거나 비면 표시가 없다(지금 모양 그대로)', () => {
+    setup({ cashIn: '125000' })
+    expect(tdOf('cashIn').classList.contains(s.bit)).toBe(false)
+    cleanup()
+    setup({ cashIn: '125000' }, { bitFields: [] })
+    expect(tdOf('cashIn').classList.contains(s.bit)).toBe(false)
+    expect(field('cashIn').getAttribute('aria-describedby')).toBeNull()
+  })
+
+  it('AC-017.2: 합계에서 빠진 비트 칸은 설명 줄과 "합계에서 빠졌어요"를 함께 가리킨다', () => {
+    setup({ cashIn: EXCLUDED_TEXT }, { bitFields: ['cashIn'] })
+    expect(field('cashIn').getAttribute('aria-describedby')).toBe(`${BIT_LEGEND_ID} worklog-flag-cashIn`)
+  })
+
+  it('AC-017.2: 보기만(터치 기기)에서도 저장된 표시가 보인다', () => {
+    setup({ cashIn: '125000' }, { bitFields: ['cashIn'], readOnly: true })
+    expect(tdOf('cashIn').classList.contains(s.bit)).toBe(true)
+  })
+
+  it('AC-017.2: 표시는 칸 오른쪽 위 세모(--xl-focus)이고 칸을 가리지 않는다(sheet.module.css)', () => {
+    const screenCss = css().slice(0, css().search(/@media\s+print\s*\{/))
+    const rule = screenCss.match(/\.sheet td\.bit::after\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(rule).toMatch(/content:\s*""/)
+    expect(rule).toMatch(/position:\s*absolute/)
+    expect(rule).toMatch(/top:\s*0/)
+    expect(rule).toMatch(/right:\s*0/)
+    expect(rule).toMatch(/pointer-events:\s*none/)
+    expect(rule).toMatch(/border-color:\s*transparent var\(--xl-focus\) transparent transparent/)
+  })
+
+  it('AC-017.2·AC-011.3: 인쇄에는 표시가 없다(@media print에서 세모를 그리지 않는다)', () => {
+    const printCss = css().slice(css().search(/@media\s+print\s*\{/))
+    expect(printCss).toMatch(/\.sheet td\.bit::after\s*\{\s*content:\s*none;?\s*\}/)
   })
 })

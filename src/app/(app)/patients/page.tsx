@@ -1,13 +1,12 @@
 import type { Metadata } from 'next'
-import { NotReadyScreen } from '@/components/common/NotReadyScreen'
-import { notReadyFeature } from '@/components/common/notReadyFeatures'
+import { PatientsEntry } from '@/components/patients/PatientsEntry'
+import { toolFrom } from '@/components/patients/tools'
 
-// /patients 환자 — 준비 중 화면 (tab-frame REQ-305). 화면이 생기면 이 파일을 진짜 화면으로 바꾼다
-// 탭 이름(metadata)과 화면이 같은 항목 하나를 쓴다 (ui-90 AC-402.4)
-const feature = notReadyFeature('/patients')
+// /patients 환자 탭(REQ-610). 문지기와 앱 틀은 (app)/layout이 준다. 통로·Worker는 브라우저(PatientsEntry)가 연다.
+// 주소에서 읽는 것은 ?tool= 하나이고 toolFrom이 정해 둔 도구 이름으로만 바꾼다(AC-610.2·AC-610.5). 탭 이름은 고정 글자다
+export const metadata: Metadata = { title: '환자' }
 
-export const metadata: Metadata = { title: feature.name }
-
-export default function PatientsPage() {
-  return <NotReadyScreen feature={feature} />
+export default async function PatientsPage({ searchParams }: { searchParams: Promise<{ tool?: string | string[] }> }) {
+  const { tool } = await searchParams
+  return <PatientsEntry tool={toolFrom(tool)} />
 }

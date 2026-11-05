@@ -18,13 +18,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
   },
   {
-    path: '/patients',
-    name: '환자',
-    title: '환자는 준비 중이에요',
-    intro: `다시 오실 환자와 문자 보낼 환자를 챙길 자리예요. ${SOON}`,
-    items: ['다시 오실 환자 명단', '정기 주사 문자 명단', '문자 문구 복사'],
-  },
-  {
     path: '/forms',
     name: '서식',
     title: '서식은 준비 중이에요',
@@ -121,10 +114,16 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
   })
 })
 
+describe('AC-610.1: 환자는 준비 중 목록에서 빠진다', () => {
+  it('AC-610.1: /patients·환자는 NOT_READY_FEATURES에 없다', () => {
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/patients')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('환자')
+  })
+})
+
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
   const TITLES = [
     '고시·공지는 준비 중이에요',
-    '환자는 준비 중이에요',
     '서식은 준비 중이에요',
     '직원은 준비 중이에요',
     '재고는 준비 중이에요',

@@ -295,7 +295,7 @@
 
 ## 앱 틀 (붙는 띠 + 탭)
 - **건너뛰기 링크**: 문서 순서로 첫 조작 요소가 `<a href="#main">본문으로 건너뛰기</a>`다. 평소에는 `sr-only`, 키보드 초점이면 왼쪽 위 띠 위에 보인다(높이 44px, `surface`, 1px `line`, `rounded-float`, `shadow-float`, body 600, 2px `accent` 초점 고리). 본문 `main`은 `id="main"`·`tabIndex={-1}`이다
-- **탭 이름**(브라우저 탭): 앱 화면은 "화면 이름 · 의원 이름"(`(app)/layout.tsx`의 `generateMetadata`, 레이아웃과 같은 요청 안 캐시 읽기 `currentMe`). 화면 이름은 대시보드·통계·청구·매출·AI 리포트·비트 PC 연결·가입 승인·업무일지와 준비 중 기능의 이름이고 모두 다르다. 앱 밖은 "화면 이름 · 병원 업무 도구"(뿌리 `title.template`): 처음 화면 "숫자로 보는 우리 의원" · 로그인 · 가입 신청 · 승인 대기 / 가입 승인 안 됨 · 없는 주소 "찾는 화면이 없어요" · 오류 화면 "오류 · 병원 업무 도구"
+- **탭 이름**(브라우저 탭): 앱 화면은 "화면 이름 · 의원 이름"(`(app)/layout.tsx`의 `generateMetadata`, 레이아웃과 같은 요청 안 캐시 읽기 `currentMe`). 화면 이름은 대시보드·통계·청구·환자·매출·AI 리포트·비트 PC 연결·가입 승인·업무일지와 준비 중 기능의 이름이고 모두 다르다. 앱 밖은 "화면 이름 · 병원 업무 도구"(뿌리 `title.template`): 처음 화면 "숫자로 보는 우리 의원" · 로그인 · 가입 신청 · 승인 대기 / 가입 승인 안 됨 · 없는 주소 "찾는 화면이 없어요" · 오류 화면 "오류 · 병원 업무 도구"
 - 위쪽 띠와 탭 줄이 한 묶음으로 화면 위에 붙어 따라온다(`sticky top-0 z-10`). 위쪽 가로 탭을 그대로 쓴다 **(사용자, 2026-10-30)**
 - **위쪽 띠**(`<header>`): `surface`, 아래 1px line, 56px(768px 미만 48px)
   - 왼쪽: `LogoMark` 24 + 의원 이름(subtitle 600, 넘치면 말줄임. 768px 미만 body 600)
@@ -306,7 +306,7 @@
   - 열면 첫 항목에 초점, ↓↑로 항목 사이를 돈다(끝에서 처음으로). Esc·Tab·바깥 누름은 닫는다. 메뉴 층은 나타날 때만 움직인다('움직임')
 - **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
   - 순서와 주소(13개, `components/shell/menu.ts`의 `MENU`): 대시보드 `/dashboard` · 통계 `/stats` · 청구 `/claim` · 고시·공지 `/notices` · 환자 `/patients` · 매출 `/revenue` · AI 리포트 `/ai-report` · 서식 `/forms` · 직원 `/staff` · 업무일지 `/worklog` · 재고 `/inventory` · 주소록 `/contacts` · 설정 `/claim/setup`(비트 PC 연결 화면). 관리자 탭과 세로 구분선이 없다(관리자 화면은 계정 메뉴 [가입 승인])
-  - 화면이 아직 없는 탭(고시·공지, 환자, 서식, 직원, 재고, 주소록)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·매출·AI 리포트·업무일지·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
+  - 화면이 아직 없는 탭(고시·공지, 서식, 직원, 재고, 주소록)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
   - 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: 탭 주소 가운데 가장 길게 맞는 것이 이긴다. `/claim`·`/claim/…`은 [청구], 비트 PC 연결 `/claim/setup`은 [설정](`/claim`보다 길게 맞는다). `/admin`에서는 지금 탭이 없다
   - 1024px 미만에서는 탭 띠가 옆으로 밀린다(얇은 스크롤바). 지금 탭과 키보드 초점이 간 탭이 보이게 띠만 민다
 - **[전체 메뉴]**(1024px 미만, tab-frame AC-303.5 "메뉴 단추 없음"을 대체, 768px 폭도 같다): 탭 띠 오른쪽 끝, 띠 밖에 단추(44px, 왼쪽 1px `line`, `accent` 600, 꾸밈 `chev`, `aria-expanded`·`aria-controls`). 1024px 이상에서는 보이지 않는다(`lg:hidden`)
@@ -335,13 +335,45 @@
   3. **오늘 하루 분석**: 숫자 4칸(오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다). 연결 전이면 h2 옆 `neutral` 칩 "비트 PC 연결 전", 칸마다 "–"(`muted`) + "연결하면 보여요", 아래 안내 한 줄
   4. **기간별 흐름**: 기간 단추(최근 7·30·90일, 처음 30일, 어제까지. 휴대폰 44px). 연결 전이면 그래프 대신 "연결하면 생기는 것 4가지"(subtitle 600 + 순서 목록 4개, 1024px 이상 4칸·칸 사이 1px `line`, 768px 미만 쌓기 + 안내 한 줄). 연결 뒤면 그래프 넷(환자 수 추이 · 신환 재방문율 · 요일별 환자 수 · 처방 상위)
   5. **기능 목차**: 탭 12개(대시보드 뺌). 옆 글 "n개 가운데 n개는 지금, n개는 연결하면 쓸 수 있어요"(n은 목차 자료에서 센다). 칸 하나 = 링크 하나(테두리 상자 없이 위 1px `line`). 상태 글자(`features.ts`의 `status`):
-     - 통계·청구·매출(`connect-first`): 연결 전 "연결 먼저"(`ink-2` 600 + 화살표) · 연결 뒤 "사용 가능"
+     - 통계·청구·환자·매출(`connect-first`): 연결 전 "연결 먼저"(`ink-2` 600 + 화살표) · 연결 뒤 "사용 가능"
      - AI 리포트·업무일지·설정(`ready`): "사용 가능"(`accent` + 화살표). AI 리포트 설명은 "지난달·작년 같은 달과 견준 월간 AI 보고"
      - 나머지(`soon`): "준비 중"(`muted`)
   6. 휴대폰 아래 단추(연결 전, 768px 미만만): 위 주 단추가 화면 밖으로 나가면 아래에 붙는 [비트 PC 연결 시작]
 - 연결 전·연결 뒤는 자료 읽는 자리(`components/dashboard/summary/source.ts`) 하나로 정하고 판정은 `report != null`이다(`undefined`도 연결 전). 지금은 늘 자료 없음이라 연결 전 모양이다. 대시보드는 확장·도우미 연결 상태를 판정하지 않는다
 - 칸: 1024px 이상 12칸(브리핑 왼쪽 1~7 · 오른쪽 9~12), 768~1023px 왼쪽 전체 폭(글 최대 32em) 아래에 오른쪽 칸, 768px 미만 한 줄로 쌓는다. h1은 늘 하나다
 - 숫자는 받은 자료에서만 나온다. 자료가 없는 칸은 '빈 상태'대로다(지어낸 숫자 없음)
+
+## 도구 단추 줄 (`components/patients/ToolRow.tsx`)
+- 한 탭 안에서 도구를 고르는 줄이다. 기준은 환자 탭 승인 목업 `docs/mockups/patients/index.html`(`.tools`·`.tool`). 공용으로 모으기 전까지 기능 폴더에 둔다
+- `<nav aria-label>` 안의 링크 목록이다. 고른 도구는 주소 쿼리로 남아 새로 고쳐도 같은 도구가 열린다. 주소에는 도구 이름만 넣는다
+- 사이 8px, 페이지 제목 아래 12px. 단추 아래 도구 자리까지 24px(768px 미만 16px)
+
+| 상태 | 모양 |
+|------|------|
+| 기본 | 36px(768px 미만 44px), 좌우 16px, 사이 8px, 4px 모서리, 1px `line-strong`, `surface`, body 500 `ink`, 아이콘 16 `ink-2` |
+| 올림 | 바탕 `canvas`(색 150ms) |
+| 고름(`aria-current="page"`) | 1px `accent`, `accent-soft`, `accent-strong` 600, 아이콘 `accent`. 색만이 아니라 굵기와 `aria-current`로도 보인다 |
+| 누름 | 아래 1px |
+
+- 768px 미만: 줄이 본문 좌우 여백까지 옆으로 밀린다(`-mx-4`·`px-4`, 스크롤바 숨김, 위아래 2px은 초점 고리 자리). 줄바꿈하지 않는다
+
+## 환자 (`/patients`)
+- 기준: 승인 목업 `docs/mockups/patients/index.html`(승인 기록 `docs/mockups/patients/README.md`). 목업 안의 이름·전화·숫자는 지어낸 예시이고, 화면에는 Worker가 만든 값만 그린다
+- 제목(h1 "환자", title 600) → 도구 단추 줄 → 도구 자리. 도구는 **F/U 명단** · **정기 주사 문자 명단** · **문자 문구**이고 주소는 `?tool=followup|recall|messages`다. 없거나 모르는 값이면 F/U 명단이다. 이 탭의 도구 이름은 "재방문"으로 바꾸지 않고 "F/U 명단" 그대로 쓴다 **(사용자, 2026-11-01)**
+- 문자 문구 도구는 환자 정보가 없어 어느 연결 상태에서나 같은 자리다. 아래는 두 명단 도구의 자리다
+
+| 상태 | 도구 자리 |
+|------|------|
+| 확장 없는 곳·휴대폰 | 건수만: h2 "이 PC에서는 남은 건수만 볼 수 있어요" → 남은 수 둘(metric 600 + "명", 칸 사이·위아래 1px `line`, 768px 미만 한 줄씩) → "마지막으로 바뀐 때 …"(한국 시각) → 문자 문구 열기 |
+| 건수 줄 없음 | 숫자 없이 "자료 없음"(subtitle 600) + "비트 PC에서 환자 탭을 열면 건수가 생겨요." |
+| 건수 못 읽음 | 오류 카드 + [다시 불러오기]. '자료 없음'을 함께 보이지 않는다 |
+| 도우미 없음·새 판 필요·끊김 | h2 "비트 PC 연결이 먼저예요" → 점 목록 둘(둘째 줄이 까닭) → [비트 PC 연결](주 큰 단추, `/claim/setup`) → 위 1px `line` 아래 문자 문구 열기 |
+| 다른 창 작업 중 | 패널 카드(폭 520px): h2 "비트를 다른 창에서 읽고 있어요"(환자 탭 전용 글, 청구 화면 글을 쓰지 않는다) → [다시 확인](주)·[건수만 보기](보조) → 오류 번호. [건수만 보기]는 그 자리에서 건수만으로 바뀌고 [다시 확인]이 붙는다 |
+| 불러오는 중 | 도구 머리(h2 subtitle 600 + 설명 small `muted`) → 위 1px `line` 아래 읽는 중 글 + 진행 "n/전체"(`accent-strong`, 정기 주사는 "n/전체 달") |
+| 읽기 실패 | 도구 머리 → 오류 카드(최대 폭 720px) → [다시 불러오기](보조) + "다른 도구는 그대로 쓸 수 있어요." 실패한 종류의 도구에만 보인다 |
+
+- 오류 글은 `lib/errors.ts`에서만 가져온다. 글이 없는 번호(도우미가 새로 준 번호)는 번호만 보인다
+- 주소·화면 제목·브라우저 탭 이름에 이름·전화·차트번호를 넣지 않는다. 명단·연락 표시는 브라우저 저장소에 두지 않는다
 
 ## AI 리포트 (`/ai-report`)
 - 부품은 `components/ai-report/`: `AiReportScreen`(상태·동작, 브라우저) · `ReportBody`(본문) · `UsageAside`(옆 칸) · `RedoDialog`(다시 분석 확인) · `reportClient`(읽기·분석 요청). 페이지(`(app)/ai-report/page.tsx`)는 서버에서 요청 때의 한국 날짜 `today`만 넘긴다(`force-dynamic`). 여백은 앱 틀이 주므로 화면은 여백 틀을 더 두르지 않는다
@@ -433,7 +465,7 @@
 - 랜딩 390px 전체 높이는 5화면(4,220px) 이하다
 
 ## 아이콘·로고
-- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 19개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck·logout). `logout`은 계정 메뉴 [로그아웃]이 쓴다(ui-90 시안 그림)
+- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 21개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck·logout·info·reload). `logout`은 계정 메뉴 [로그아웃]이 쓴다(ui-90 시안 그림). `info`·`reload`는 업무일지 비트 안내 줄·[지금 불러오기]가 쓴다(worklog 비트 표시 시안 그림)
   - viewBox `0 0 16 16`, `fill="none"`, `stroke="currentColor"`, 선 1.5, `aria-hidden="true"`. 크기는 `size`(12·14·16)
   - 꼭 필요한 곳에만 쓴다. 아이콘만 있는 단추에는 `aria-label`을 준다
 - **구글 G**: `src/components/common/GoogleMark.tsx`(48×48 viewBox, 상표 네 색). 구글 상표 색은 이 파일에만 있다

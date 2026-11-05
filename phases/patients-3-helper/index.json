@@ -1,0 +1,18 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "patients-3-helper",
+  "steps": [
+    {
+      "step": 0,
+      "name": "contact-store",
+      "status": "completed",
+      "summary": "helper/src/Precheck.Core/Contact/(ContactStore·IWorkLock·NamedWorkLock·ContactCommands.RegisterStore), helper/src/Precheck.Helper/Commands/ContactHelperServices.cs(CreateStore·CreateWorkLock), Program.cs 등록. TASK-9는 Program.cs의 services 변수로 ContactCommands.RegisterTargets를 더하고 부품은 ContactHelperServices에 추가. E-BRIDGE-BUSY는 ContactCommands 안 상수. E-STORE-BROKEN 뒤 다음 읽기는 {}라 화면(TASK-10~14)이 store.load를 자동 재시도하면 빈 상태로 조용히 시작되니 재시도 금지. errors.ts의 E-STORE-BROKEN·E-BRIDGE-BUSY 문구는 청구 화면 기준이라 환자 탭에는 맞지 않음(화면 TASK에서 처리). 검증: tdd-run TASK-8 GREEN·harness-reviewer PASS까지. npm lint/test·verify·Registration/Protocol 필터는 아직 안 돌림, Windows Actions도 아직. 3단계 끝 의원 PC 확인에 30MB 가까운 저장을 넣을 것(32비트 프로세스)."
+    },
+    {
+      "step": 1,
+      "name": "contact-read",
+      "status": "completed",
+      "summary": "a8999ff: helper/src/Precheck.Core/Contact/ContactColumns.cs·ContactTargets.cs, ContactCommands.RegisterTargets, Program.cs 등록 한 줄(라이브 HelperStore 앞, 글자 시험으로 고정). 라이브 줄(b2bc3cf)의 VendorGridExport·GridReader·GridRows로 83·47을 읽고 남길 칸만 보낸다. 시험: Contact/Read C# 48개 + contact-read.dotnet.test.ts(계약 시험: targets-*.json과 같음), input-wiring x86 net48 빌드 통과. 웹 끝에서 끝까지(handler·usePatientsWorker 시험, F/U·정기 주사 모두) 135개 통과. 남은 것: 윈도우 실행·의원 PC에서 실제 비트 83·47 확인(처방 없는 기간의 47이 칸 제목 줄을 주는지 포함)"
+    }
+  ]
+}

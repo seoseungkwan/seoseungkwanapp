@@ -1,0 +1,2568 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/assets/revisit_schedule.html",
+  "entry": [
+    "parseFU",
+    "aragan",
+    "visitKind",
+    "extractTx",
+    "extractSite",
+    "writtenDate"
+  ],
+  "inputs": [
+    {
+      "path": "fixtures/patients/fake/followup-cases.json",
+      "sha256": "13b6f56a9a5f5f9eba3203ee75f493d66b043204ae5a21b8ea4765d71797c7a9"
+    }
+  ],
+  "knownDiffs": [
+    {
+      "entry": "parseFU",
+      "field": "parseFU",
+      "reason": "원본은 말이 안 되는 날짜(11609-06-18 (목), NaN-NaN-NaN (undefined))를 찍는다. 우리는 지어낸 날짜 대신 날짜 없음으로 둔다. 그 말은 날짜를 주지 않은 것으로 치고 원본의 나머지 순서를 그대로 탄다",
+      "cases": {
+        "far-week-417000": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-week-500000": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-week-nan": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-week-infinity": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-days-date-like": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-days-2930000": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-tomorrow": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-day-after": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-one-week": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-next-week": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-next-week-short": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-weekday": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-written": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-aragan": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-round-kind": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-cond-no-return": {
+          "dateStr": "",
+          "sortDate": null,
+          "kind": "",
+          "evidence": ""
+        },
+        "far-then-tomorrow": {
+          "dateStr": "2026-10-16 (금)",
+          "sortDate": "2026-10-16",
+          "kind": "예정",
+          "evidence": "500000주 뒤 내일 f/u"
+        },
+        "far-then-days": {
+          "dateStr": "2026-10-18 (일)",
+          "sortDate": "2026-10-18",
+          "kind": "예정",
+          "evidence": "500000주 뒤 3일 뒤 f/u"
+        },
+        "far-then-weekday": {
+          "dateStr": "9999-12-31 (금)",
+          "sortDate": "9999-12-31",
+          "kind": "예정",
+          "evidence": "다음주 월 금요일 f/u"
+        },
+        "far-then-written": {
+          "dateStr": "2026-10-19 (월)",
+          "sortDate": "2026-10-19",
+          "kind": "예정",
+          "evidence": "500000주 뒤 10/19 f/u"
+        },
+        "far-then-month": {
+          "dateStr": "11월 초",
+          "sortDate": null,
+          "kind": "예정",
+          "evidence": "500000주 뒤 11월 초 재내원"
+        },
+        "far-then-later": {
+          "dateStr": "미정",
+          "sortDate": null,
+          "kind": "예정",
+          "evidence": "2930000일 뒤 추후 재내원"
+        },
+        "far-then-next-line": {
+          "dateStr": "2026-10-29 (목)",
+          "sortDate": "2026-10-29",
+          "kind": "예정",
+          "evidence": "2주뒤 f/u"
+        },
+        "far-then-aragan": {
+          "dateStr": "2026-10-22 (목)",
+          "sortDate": "2026-10-22",
+          "kind": "예정",
+          "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+        },
+        "far-then-cond": {
+          "dateStr": "미정",
+          "sortDate": null,
+          "kind": "조건부",
+          "evidence": "아프면 500000주 뒤 재내원"
+        }
+      }
+    },
+    {
+      "entry": "aragan",
+      "field": "aragan",
+      "reason": "원본은 말이 안 되는 날짜(11609-06-18 (목), NaN-NaN-NaN (undefined))를 찍는다. 우리는 지어낸 날짜 대신 날짜 없음으로 둔다. 그 말은 날짜를 주지 않은 것으로 치고 원본의 나머지 순서를 그대로 탄다",
+      "cases": {
+        "far-aragan": null
+      }
+    },
+    {
+      "entry": "visitKind",
+      "field": "visitKind",
+      "reason": "원본은 말이 안 되는 날짜(11609-06-18 (목), NaN-NaN-NaN (undefined))를 찍는다. 우리는 지어낸 날짜 대신 날짜 없음으로 둔다. 그 말은 날짜를 주지 않은 것으로 치고 원본의 나머지 순서를 그대로 탄다. 그래서 근거 글이 달라져 구분도 따라 달라진다",
+      "cases": {
+        "far-aragan": "F/U",
+        "far-round-kind": "F/U",
+        "far-then-aragan": "주사"
+      }
+    },
+    {
+      "entry": "writtenDate",
+      "field": "result",
+      "reason": "원본은 말이 안 되는 날짜(11609-06-18 (목), NaN-NaN-NaN (undefined))를 찍는다. 우리는 지어낸 날짜 대신 날짜 없음으로 둔다. 그 말은 날짜를 주지 않은 것으로 치고 원본의 나머지 순서를 그대로 탄다",
+      "cases": {
+        "far-next-year": null
+      }
+    }
+  ],
+  "parse": [
+    {
+      "id": "week-1",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "week-1-nospace",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "week-2",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "2주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "week-2-xr",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "2주 뒤 xr f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "week-10",
+      "parseFU": {
+        "dateStr": "2026-12-24 (목)",
+        "sortDate": "2026-12-24",
+        "kind": "예정",
+        "evidence": "10주 뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "week-12-il",
+      "parseFU": {
+        "dateStr": "2027-01-07 (목)",
+        "sortDate": "2027-01-07",
+        "kind": "예정",
+        "evidence": "12주일 뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "ilju-il-dwi",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "일주일 뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "ilju-dwi",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "일주 뒤 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "tomorrow",
+      "parseFU": {
+        "dateStr": "2026-10-16 (금)",
+        "sortDate": "2026-10-16",
+        "kind": "예정",
+        "evidence": "내일 드레싱"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "day-after",
+      "parseFU": {
+        "dateStr": "2026-10-17 (토)",
+        "sortDate": "2026-10-17",
+        "kind": "예정",
+        "evidence": "모레 dressing"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "tomorrow-or-after",
+      "parseFU": {
+        "dateStr": "2026-10-16 (금)",
+        "sortDate": "2026-10-16",
+        "kind": "예정",
+        "evidence": "내일 모레 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "days-3",
+      "parseFU": {
+        "dateStr": "2026-10-18 (일)",
+        "sortDate": "2026-10-18",
+        "kind": "예정",
+        "evidence": "3일 뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "days-10",
+      "parseFU": {
+        "dateStr": "2026-10-25 (일)",
+        "sortDate": "2026-10-25",
+        "kind": "예정",
+        "evidence": "10일뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "next-week-tue",
+      "parseFU": {
+        "dateStr": "2026-10-20 (화)",
+        "sortDate": "2026-10-20",
+        "kind": "예정",
+        "evidence": "다음주 화요일 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "next-week-sun-on-sun",
+      "parseFU": {
+        "dateStr": "2026-10-25 (일)",
+        "sortDate": "2026-10-25",
+        "kind": "예정",
+        "evidence": "다음주 일요일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "next-week-mon-on-mon",
+      "parseFU": {
+        "dateStr": "2026-10-19 (월)",
+        "sortDate": "2026-10-19",
+        "kind": "예정",
+        "evidence": "다음주 월 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "damju-fri",
+      "parseFU": {
+        "dateStr": "2026-10-23 (금)",
+        "sortDate": "2026-10-23",
+        "kind": "예정",
+        "evidence": "담주 금 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "next-week-space",
+      "parseFU": {
+        "dateStr": "2026-10-19 (월)",
+        "sortDate": "2026-10-19",
+        "kind": "예정",
+        "evidence": "다음 주 월요일 2차 주사"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "다음 주 월요일 2차 주사",
+      "extractSite": ""
+    },
+    {
+      "id": "next-week-only",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "weekday-same",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "목요일 무릎주사 합니다"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "weekday-sat",
+      "parseFU": {
+        "dateStr": "2026-10-17 (토)",
+        "sortDate": "2026-10-17",
+        "kind": "예정",
+        "evidence": "토요일 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "weekday-sun-on-sat",
+      "parseFU": {
+        "dateStr": "2026-10-18 (일)",
+        "sortDate": "2026-10-18",
+        "kind": "예정",
+        "evidence": "일요일 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "weekday-before-next-week",
+      "parseFU": {
+        "dateStr": "2026-10-19 (월)",
+        "sortDate": "2026-10-19",
+        "kind": "예정",
+        "evidence": "월요일 or 다음주 수 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "weekday-after-next-week",
+      "parseFU": {
+        "dateStr": "2026-10-21 (수)",
+        "sortDate": "2026-10-21",
+        "kind": "예정",
+        "evidence": "다음주 수 또는 금요일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "month-early",
+      "parseFU": {
+        "dateStr": "11월 초",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "11월 초 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "month-mid",
+      "parseFU": {
+        "dateStr": "11월 중",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "11월 중 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "month-late",
+      "parseFU": {
+        "dateStr": "12월 말",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "12월말 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "month-past",
+      "parseFU": {
+        "dateStr": "9월 초",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "9월 초 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-dot",
+      "parseFU": {
+        "dateStr": "2026-10-17 (토)",
+        "sortDate": "2026-10-17",
+        "kind": "예정",
+        "evidence": "10.17 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-slash",
+      "parseFU": {
+        "dateStr": "2026-10-19 (월)",
+        "sortDate": "2026-10-19",
+        "kind": "예정",
+        "evidence": "10/19 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-korean",
+      "parseFU": {
+        "dateStr": "2026-10-17 (토)",
+        "sortDate": "2026-10-17",
+        "kind": "예정",
+        "evidence": "10월 17일 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-korean-space",
+      "parseFU": {
+        "dateStr": "2026-10-20 (화)",
+        "sortDate": "2026-10-20",
+        "kind": "예정",
+        "evidence": "10 월 20 일 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-next-year",
+      "parseFU": {
+        "dateStr": "2027-01-05 (화)",
+        "sortDate": "2027-01-05",
+        "kind": "예정",
+        "evidence": "1/5 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-day-120",
+      "parseFU": {
+        "dateStr": "2027-02-12 (금)",
+        "sortDate": "2027-02-12",
+        "kind": "예정",
+        "evidence": "2/12 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-day-121",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-same-day",
+      "parseFU": {
+        "dateStr": "2026-10-15 (목)",
+        "sortDate": "2026-10-15",
+        "kind": "예정",
+        "evidence": "10.15 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-past",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-invalid",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-far",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-two",
+      "parseFU": {
+        "dateStr": "2026-10-20 (화)",
+        "sortDate": "2026-10-20",
+        "kind": "예정",
+        "evidence": "10/20 또는 10/22 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-after-weekday",
+      "parseFU": {
+        "dateStr": "2026-10-16 (금)",
+        "sortDate": "2026-10-16",
+        "kind": "예정",
+        "evidence": "금요일 아니면 10/19 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-with-year",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "written-leap-skip",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "vas",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "nrs-with-week",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "NRS 5/10 1주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "pain-score",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "score-colon",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "pain-korean",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "l45",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "허리"
+    },
+    {
+      "id": "l45-then-date",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "L4.5 MBB 10/22 f/u"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "허리"
+    },
+    {
+      "id": "c56-next-week",
+      "parseFU": {
+        "dateStr": "2026-10-20 (화)",
+        "sortDate": "2026-10-20",
+        "kind": "예정",
+        "evidence": "C5.6 root block 다음주 화 f/u"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "목"
+    },
+    {
+      "id": "cond-only",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "조건부",
+        "evidence": "아프면 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "cond-week",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "조건부",
+        "evidence": "아프면 1주뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "cond-written",
+      "parseFU": {
+        "dateStr": "2026-10-20 (화)",
+        "sortDate": "2026-10-20",
+        "kind": "조건부",
+        "evidence": "아프면 10.20 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "cond-no-better",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "조건부",
+        "evidence": "호전 없으면 2주뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "cond-uncomfortable",
+      "parseFU": {
+        "dateStr": "2026-10-16 (금)",
+        "sortDate": "2026-10-16",
+        "kind": "조건부",
+        "evidence": "불편하면 내일 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "cond-symptom",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "조건부",
+        "evidence": "증상 있으면 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "as-needed",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "조건부",
+        "evidence": "필요시 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "later",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "추후 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "aragan-1",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 1차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "aragan-2",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 2차",
+      "extractSite": "무릎 · 연골"
+    },
+    {
+      "id": "aragan-3",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "아라간 3차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "aragan-13",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "아라간 13차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "argan-space",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아르간 1 차 → 1주뒤 2차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아르간 1 차 → 1주뒤 2차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "연골"
+    },
+    {
+      "id": "artrogen",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "Artrogen 2차 Rt knee → 1주뒤 3차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "Artrogen 2차 Rt knee → 1주뒤 3차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "무릎 · 연골"
+    },
+    {
+      "id": "aragan-then-date",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "2주뒤 f/u"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "visitKind": "F/U",
+      "extractTx": "아라간 1차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "aragan-max-round",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 1차 / 아라간 2차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "aragan-no-round",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "아라간",
+      "extractSite": "연골"
+    },
+    {
+      "id": "inject-week-round",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 2차주사"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-eswt-fu",
+      "parseFU": {
+        "dateStr": "2026-10-20 (화)",
+        "sortDate": "2026-10-20",
+        "kind": "예정",
+        "evidence": "다음주 화요일 ESWT후 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-rounds-only",
+      "parseFU": {
+        "dateStr": "2026-10-19 (월)",
+        "sortDate": "2026-10-19",
+        "kind": "예정",
+        "evidence": "다음주 월요일 2차/목요일 3차."
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-manual-round",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 도수치료 2차"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-no-injection",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "2주뒤 주사는 안하고 f/u"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-mbb",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 MBB block 재내원"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-dressing-round",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주 뒤 드레싱 3차"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "inject-hoe-round",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 3회차 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "fu-spaced",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "f / u 2주 뒤"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "fu-korean-typo",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "ㄹ/u 1주뒤"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "fu-so",
+      "parseFU": {
+        "dateStr": "2026-10-16 (금)",
+        "sortDate": "2026-10-16",
+        "kind": "예정",
+        "evidence": "s/o 내일"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "fu-dressing-cap",
+      "parseFU": {
+        "dateStr": "2026-10-17 (토)",
+        "sortDate": "2026-10-17",
+        "kind": "예정",
+        "evidence": "Dressing 모레"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "fu-xr",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "xr f 2주뒤"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "fu-upper",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "KNEE pain 1주뒤 F/U"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "multi-line-skip",
+      "parseFU": {
+        "dateStr": "2026-10-29 (목)",
+        "sortDate": "2026-10-29",
+        "kind": "예정",
+        "evidence": "2주뒤 xr f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "no-instruction",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "empty",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "blank-lines",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "evidence-trim",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "tx-lines",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "1주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "C-MBB 시행 / IA 시행 / ESWT 3회",
+      "extractSite": "목"
+    },
+    {
+      "id": "tx-excluded",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "prolo 시행 / 시노비안 IA / 부목 고정",
+      "extractSite": ""
+    },
+    {
+      "id": "site-many",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "C-MBB",
+      "extractSite": "어깨 · 목 · 손목"
+    },
+    {
+      "id": "site-spine",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "T-MBB",
+      "extractSite": "허리 · 등 · 엉치"
+    },
+    {
+      "id": "site-limbs",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "팔꿈치 · 손목 · 손가락"
+    },
+    {
+      "id": "site-legs",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎 · 발목 · 발"
+    },
+    {
+      "id": "site-other",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "턱 · 갈비뼈"
+    },
+    {
+      "id": "site-l1",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "허리"
+    },
+    {
+      "id": "site-c7",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "목"
+    },
+    {
+      "id": "site-aragan",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 2차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "far-week-416000",
+      "parseFU": {
+        "dateStr": "9999-07-29 (목)",
+        "sortDate": "9999-07-29",
+        "kind": "예정",
+        "evidence": "416000주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-tomorrow-last-day",
+      "parseFU": {
+        "dateStr": "9999-12-31 (금)",
+        "sortDate": "9999-12-31",
+        "kind": "예정",
+        "evidence": "내일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-written-last-day",
+      "parseFU": {
+        "dateStr": "9999-12-31 (금)",
+        "sortDate": "9999-12-31",
+        "kind": "예정",
+        "evidence": "12/31 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-week-417000",
+      "parseFU": {
+        "dateStr": "10018-09-27 (목)",
+        "sortDate": "10018-09-27",
+        "kind": "예정",
+        "evidence": "417000주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-week-500000",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-week-nan",
+      "parseFU": {
+        "dateStr": "NaN-NaN-NaN (undefined)",
+        "sortDate": "NaN-NaN-NaN",
+        "kind": "예정",
+        "evidence": "99999999999주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-week-infinity",
+      "parseFU": {
+        "dateStr": "NaN-NaN-NaN (undefined)",
+        "sortDate": "NaN-NaN-NaN",
+        "kind": "예정",
+        "evidence": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-days-date-like",
+      "parseFU": {
+        "dateStr": "57499-07-25 (화)",
+        "sortDate": "57499-07-25",
+        "kind": "예정",
+        "evidence": "20261015일 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-days-2930000",
+      "parseFU": {
+        "dateStr": "10048-11-08 (일)",
+        "sortDate": "10048-11-08",
+        "kind": "예정",
+        "evidence": "2930000일 뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-tomorrow",
+      "parseFU": {
+        "dateStr": "10000-01-01 (토)",
+        "sortDate": "10000-01-01",
+        "kind": "예정",
+        "evidence": "내일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-day-after",
+      "parseFU": {
+        "dateStr": "10000-01-02 (일)",
+        "sortDate": "10000-01-02",
+        "kind": "예정",
+        "evidence": "모레 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-one-week",
+      "parseFU": {
+        "dateStr": "10000-01-07 (금)",
+        "sortDate": "10000-01-07",
+        "kind": "예정",
+        "evidence": "일주일 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-next-week",
+      "parseFU": {
+        "dateStr": "10000-01-03 (월)",
+        "sortDate": "10000-01-03",
+        "kind": "예정",
+        "evidence": "다음주 월요일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-next-week-short",
+      "parseFU": {
+        "dateStr": "10000-01-07 (금)",
+        "sortDate": "10000-01-07",
+        "kind": "예정",
+        "evidence": "담주 금 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-weekday",
+      "parseFU": {
+        "dateStr": "10000-01-07 (금)",
+        "sortDate": "10000-01-07",
+        "kind": "예정",
+        "evidence": "금요일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-written",
+      "parseFU": {
+        "dateStr": "10000-01-05 (수)",
+        "sortDate": "10000-01-05",
+        "kind": "예정",
+        "evidence": "1/5 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-aragan",
+      "parseFU": {
+        "dateStr": "10000-01-07 (금)",
+        "sortDate": "10000-01-07",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "10000-01-07 (금)",
+        "sortDate": "10000-01-07",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 1차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "far-round-kind",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 2차 주사"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "500000주 뒤 2차 주사",
+      "extractSite": ""
+    },
+    {
+      "id": "far-cond-no-return",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "조건부",
+        "evidence": "불편하면 500000주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-tomorrow",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 내일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-days",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 3일 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-weekday",
+      "parseFU": {
+        "dateStr": "10000-01-03 (월)",
+        "sortDate": "10000-01-03",
+        "kind": "예정",
+        "evidence": "다음주 월 금요일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-written",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 10/19 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-month",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 11월 초 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-later",
+      "parseFU": {
+        "dateStr": "10048-11-08 (일)",
+        "sortDate": "10048-11-08",
+        "kind": "예정",
+        "evidence": "2930000일 뒤 추후 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-next-line",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "far-then-aragan",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "예정",
+        "evidence": "500000주 뒤 f/u"
+      },
+      "aragan": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "visitKind": "F/U",
+      "extractTx": "아라간 1차",
+      "extractSite": "연골"
+    },
+    {
+      "id": "far-then-cond",
+      "parseFU": {
+        "dateStr": "11609-06-18 (목)",
+        "sortDate": "11609-06-18",
+        "kind": "조건부",
+        "evidence": "아프면 500000주 뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "order-weeks-before-tomorrow",
+      "parseFU": {
+        "dateStr": "2026-10-22 (목)",
+        "sortDate": "2026-10-22",
+        "kind": "예정",
+        "evidence": "내일 또는 1주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "order-written-before-days",
+      "parseFU": {
+        "dateStr": "2026-10-19 (월)",
+        "sortDate": "2026-10-19",
+        "kind": "예정",
+        "evidence": "3일 뒤 또는 10/19 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "order-weekday-before-days",
+      "parseFU": {
+        "dateStr": "2026-10-16 (금)",
+        "sortDate": "2026-10-16",
+        "kind": "예정",
+        "evidence": "3일 뒤 금요일 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "order-days-before-month",
+      "parseFU": {
+        "dateStr": "2026-10-18 (일)",
+        "sortDate": "2026-10-18",
+        "kind": "예정",
+        "evidence": "3일 뒤 11월 초 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "order-month-before-later",
+      "parseFU": {
+        "dateStr": "11월 초",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "11월 초 추후 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-01",
+      "parseFU": {
+        "dateStr": "2026-10-01 (목)",
+        "sortDate": "2026-10-01",
+        "kind": "예정",
+        "evidence": "4주 뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "ESWT 3회",
+      "extractSite": ""
+    },
+    {
+      "id": "random-02",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "IA 시행",
+      "extractSite": ""
+    },
+    {
+      "id": "random-03",
+      "parseFU": {
+        "dateStr": "2026-11-24 (화)",
+        "sortDate": "2026-11-24",
+        "kind": "예정",
+        "evidence": "다음주 화요일 ESWT후 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "random-04",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "random-05",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-06",
+      "parseFU": {
+        "dateStr": "2026-02-09 (월)",
+        "sortDate": "2026-02-09",
+        "kind": "조건부",
+        "evidence": "아프면 2/9 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "발"
+    },
+    {
+      "id": "random-07",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "조건부",
+        "evidence": "필요시 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "C-MBB 시행",
+      "extractSite": "목 · 무릎"
+    },
+    {
+      "id": "random-08",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "시노비안 IA",
+      "extractSite": ""
+    },
+    {
+      "id": "random-09",
+      "parseFU": {
+        "dateStr": "2027-01-22 (금)",
+        "sortDate": "2027-01-22",
+        "kind": "예정",
+        "evidence": "1/22 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎 · 발뒤꿈치"
+    },
+    {
+      "id": "random-10",
+      "parseFU": {
+        "dateStr": "2026-06-06 (토)",
+        "sortDate": "2026-06-06",
+        "kind": "예정",
+        "evidence": "6/6 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-11",
+      "parseFU": {
+        "dateStr": "2026-08-04 (화)",
+        "sortDate": "2026-08-04",
+        "kind": "예정",
+        "evidence": "다음주 화요일 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "C-MBB 시행",
+      "extractSite": "목"
+    },
+    {
+      "id": "random-12",
+      "parseFU": {
+        "dateStr": "2026-05-04 (월)",
+        "sortDate": "2026-05-04",
+        "kind": "예정",
+        "evidence": "1주뒤 2차주사"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "어깨"
+    },
+    {
+      "id": "random-13",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "prolo 시행",
+      "extractSite": ""
+    },
+    {
+      "id": "random-14",
+      "parseFU": {
+        "dateStr": "2026-07-19 (일)",
+        "sortDate": "2026-07-19",
+        "kind": "예정",
+        "evidence": "7.19 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-15",
+      "parseFU": {
+        "dateStr": "2026-04-23 (목)",
+        "sortDate": "2026-04-23",
+        "kind": "예정",
+        "evidence": "4/23 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-16",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "발목 · 손목"
+    },
+    {
+      "id": "random-17",
+      "parseFU": {
+        "dateStr": "2026-07-12 (일)",
+        "sortDate": "2026-07-12",
+        "kind": "예정",
+        "evidence": "7.12 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "발목"
+    },
+    {
+      "id": "random-18",
+      "parseFU": {
+        "dateStr": "2026-03-27 (금)",
+        "sortDate": "2026-03-27",
+        "kind": "예정",
+        "evidence": "3월 27일 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-19",
+      "parseFU": {
+        "dateStr": "2026-12-24 (목)",
+        "sortDate": "2026-12-24",
+        "kind": "예정",
+        "evidence": "12.24 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "어깨 · 골반"
+    },
+    {
+      "id": "random-20",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-21",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "조건부",
+        "evidence": "아프면 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "허리"
+    },
+    {
+      "id": "random-22",
+      "parseFU": {
+        "dateStr": "9월 초",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "9월 초 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-23",
+      "parseFU": {
+        "dateStr": "2027-01-13 (수)",
+        "sortDate": "2027-01-13",
+        "kind": "예정",
+        "evidence": "3주뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-24",
+      "parseFU": {
+        "dateStr": "2026-09-28 (월)",
+        "sortDate": "2026-09-28",
+        "kind": "예정",
+        "evidence": "다음 주 월요일 2차 주사"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "다음 주 월요일 2차 주사",
+      "extractSite": "무릎 · 발"
+    },
+    {
+      "id": "random-25",
+      "parseFU": {
+        "dateStr": "2026-07-30 (목)",
+        "sortDate": "2026-07-30",
+        "kind": "예정",
+        "evidence": "목요일 무릎주사 합니다"
+      },
+      "aragan": null,
+      "visitKind": "주사",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "random-26",
+      "parseFU": {
+        "dateStr": "2026-03-18 (수)",
+        "sortDate": "2026-03-18",
+        "kind": "예정",
+        "evidence": "1주뒤 도수치료 2차"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "발뒤꿈치 · 손목"
+    },
+    {
+      "id": "random-27",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "TPI",
+      "extractSite": ""
+    },
+    {
+      "id": "random-28",
+      "parseFU": {
+        "dateStr": "2026-03-06 (금)",
+        "sortDate": "2026-03-06",
+        "kind": "조건부",
+        "evidence": "아프면 3/6 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "허리"
+    },
+    {
+      "id": "random-29",
+      "parseFU": {
+        "dateStr": "2026-01-23 (금)",
+        "sortDate": "2026-01-23",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-01-23 (금)",
+        "sortDate": "2026-01-23",
+        "kind": "예정",
+        "evidence": "아라간 1차 → 1주뒤 2차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 1차",
+      "extractSite": "발뒤꿈치 · 연골"
+    },
+    {
+      "id": "random-30",
+      "parseFU": {
+        "dateStr": "2027-01-19 (화)",
+        "sortDate": "2027-01-19",
+        "kind": "예정",
+        "evidence": "3주뒤 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "C-MBB 시행",
+      "extractSite": "목"
+    },
+    {
+      "id": "random-31",
+      "parseFU": {
+        "dateStr": "2026-07-20 (월)",
+        "sortDate": "2026-07-20",
+        "kind": "조건부",
+        "evidence": "아프면 7/20 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "무릎"
+    },
+    {
+      "id": "random-32",
+      "parseFU": {
+        "dateStr": "미정",
+        "sortDate": null,
+        "kind": "조건부",
+        "evidence": "필요시 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "발 · 골반"
+    },
+    {
+      "id": "random-33",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-34",
+      "parseFU": {
+        "dateStr": "2026-02-01 (일)",
+        "sortDate": "2026-02-01",
+        "kind": "조건부",
+        "evidence": "아프면 2/1 오세요"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "TPI",
+      "extractSite": ""
+    },
+    {
+      "id": "random-35",
+      "parseFU": {
+        "dateStr": "2027-02-03 (수)",
+        "sortDate": "2027-02-03",
+        "kind": "예정",
+        "evidence": "2.3 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "IA 시행 / prolo 시행",
+      "extractSite": ""
+    },
+    {
+      "id": "random-36",
+      "parseFU": {
+        "dateStr": "2026-04-23 (목)",
+        "sortDate": "2026-04-23",
+        "kind": "예정",
+        "evidence": "2주뒤 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "어깨"
+    },
+    {
+      "id": "random-37",
+      "parseFU": {
+        "dateStr": "",
+        "sortDate": null,
+        "kind": "",
+        "evidence": ""
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "허리"
+    },
+    {
+      "id": "random-38",
+      "parseFU": {
+        "dateStr": "11월 말",
+        "sortDate": null,
+        "kind": "예정",
+        "evidence": "11월 말 f/u"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": ""
+    },
+    {
+      "id": "random-39",
+      "parseFU": {
+        "dateStr": "2026-08-13 (목)",
+        "sortDate": "2026-08-13",
+        "kind": "예정",
+        "evidence": "8월 13일 재내원"
+      },
+      "aragan": null,
+      "visitKind": "F/U",
+      "extractTx": "",
+      "extractSite": "어깨"
+    },
+    {
+      "id": "random-40",
+      "parseFU": {
+        "dateStr": "2026-09-03 (목)",
+        "sortDate": "2026-09-03",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "aragan": {
+        "dateStr": "2026-09-03 (목)",
+        "sortDate": "2026-09-03",
+        "kind": "예정",
+        "evidence": "아라간 2차 → 1주뒤 3차주사 (자동)"
+      },
+      "visitKind": "주사",
+      "extractTx": "아라간 2차",
+      "extractSite": "허리 · 연골"
+    }
+  ],
+  "written": [
+    {
+      "id": "in-range",
+      "result": "2026-10-17"
+    },
+    {
+      "id": "same-day",
+      "result": "2026-10-15"
+    },
+    {
+      "id": "day-before",
+      "result": null
+    },
+    {
+      "id": "year-end",
+      "result": "2026-12-31"
+    },
+    {
+      "id": "day-120",
+      "result": "2027-02-12"
+    },
+    {
+      "id": "day-121",
+      "result": null
+    },
+    {
+      "id": "next-year",
+      "result": "2027-01-05"
+    },
+    {
+      "id": "feb-29-first-year-missing",
+      "result": null
+    },
+    {
+      "id": "feb-29-leap",
+      "result": null
+    },
+    {
+      "id": "apr-31",
+      "result": null
+    },
+    {
+      "id": "month-0",
+      "result": null
+    },
+    {
+      "id": "month-13",
+      "result": null
+    },
+    {
+      "id": "day-0",
+      "result": null
+    },
+    {
+      "id": "day-32",
+      "result": null
+    },
+    {
+      "id": "after-vas",
+      "result": null
+    },
+    {
+      "id": "after-vas-colon",
+      "result": null
+    },
+    {
+      "id": "after-nrs-equals",
+      "result": null
+    },
+    {
+      "id": "after-pain",
+      "result": null
+    },
+    {
+      "id": "after-pain-korean",
+      "result": null
+    },
+    {
+      "id": "after-score",
+      "result": null
+    },
+    {
+      "id": "after-vas-number",
+      "result": "2026-10-17"
+    },
+    {
+      "id": "after-text",
+      "result": "2026-10-17"
+    },
+    {
+      "id": "far-same-year",
+      "result": "9999-12-31"
+    },
+    {
+      "id": "far-next-year",
+      "result": "10000-01-05"
+    }
+  ]
+}

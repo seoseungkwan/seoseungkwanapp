@@ -1,0 +1,168 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/assets/revisit_schedule.html",
+  "entry": [
+    "phoneColumn"
+  ],
+  "inputs": [
+    {
+      "path": "fixtures/patients/fake/rx-rows.json",
+      "sha256": "97e3e1d9bee6ff5f87ce5b0b86b710f961cd6ae615a52817b0b2cd3446651cca"
+    }
+  ],
+  "knownDiffs": [],
+  "cases": [
+    {
+      "header": "휴대폰",
+      "result": true
+    },
+    {
+      "header": "휴대폰번호",
+      "result": true
+    },
+    {
+      "header": "휴대 폰",
+      "result": true
+    },
+    {
+      "header": "휴대전화",
+      "result": true
+    },
+    {
+      "header": "휴대전화번호",
+      "result": true
+    },
+    {
+      "header": "휴대 전화",
+      "result": true
+    },
+    {
+      "header": "핸드폰",
+      "result": true
+    },
+    {
+      "header": "핸드폰번호",
+      "result": true
+    },
+    {
+      "header": "이동전화",
+      "result": true
+    },
+    {
+      "header": "이동전화번호",
+      "result": true
+    },
+    {
+      "header": "연락처",
+      "result": true
+    },
+    {
+      "header": "전화번호",
+      "result": true
+    },
+    {
+      "header": "보호자휴대폰",
+      "result": true
+    },
+    {
+      "header": "보호자 연락처",
+      "result": true
+    },
+    {
+      "header": "보호자전화번호",
+      "result": true
+    },
+    {
+      "header": "보호자 핸드폰 2",
+      "result": true
+    },
+    {
+      "header": "연락처1",
+      "result": true
+    },
+    {
+      "header": "연락처2",
+      "result": true
+    },
+    {
+      "header": "연락처(1)",
+      "result": true
+    },
+    {
+      "header": "휴대폰(2)",
+      "result": true
+    },
+    {
+      "header": "연락처 (2)",
+      "result": true
+    },
+    {
+      "header": "휴대폰번호1",
+      "result": true
+    },
+    {
+      "header": "연락처3",
+      "result": false
+    },
+    {
+      "header": "연락처(3)",
+      "result": false
+    },
+    {
+      "header": "팩스",
+      "result": false
+    },
+    {
+      "header": "팩스번호",
+      "result": false
+    },
+    {
+      "header": "FAX",
+      "result": false
+    },
+    {
+      "header": "fax번호",
+      "result": false
+    },
+    {
+      "header": "휴대폰 팩스",
+      "result": false
+    },
+    {
+      "header": "전화번호 확인일",
+      "result": false
+    },
+    {
+      "header": "전화번호확인",
+      "result": false
+    },
+    {
+      "header": "보호자",
+      "result": false
+    },
+    {
+      "header": "전화",
+      "result": false
+    },
+    {
+      "header": "자택전화",
+      "result": false
+    },
+    {
+      "header": "Tel",
+      "result": false
+    },
+    {
+      "header": "차트번호",
+      "result": false
+    },
+    {
+      "header": "환자명",
+      "result": false
+    },
+    {
+      "header": "",
+      "result": false
+    }
+  ]
+}

@@ -122,7 +122,7 @@ const countOf = (text: string, part: string) => text.split(part).length - 1
 // ui-90 REQ-414 연결 전 문구(시안 docs/mockups/ui-90/app/gen.py dash_body 글자 그대로)
 const H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
 const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
-// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(spec revenue AC-010.1, worklog AC-012.5·ai-report-screen AC-714.4: 다른 갈래가 탭을 채워도 그대로 통과한다)
+// 기능 목차의 개수는 손으로 적지 않고 목록에서 센다(spec revenue AC-010.1, worklog AC-012.5·ai-report-screen AC-714.4·patients AC-610.1: 다른 갈래가 탭을 채워도 그대로 통과한다)
 const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) => f.status === status).length
 const INDEX_SIDE = `${DASHBOARD_FEATURES.length}개 가운데 ${featureCount('ready')}개는 지금, ${featureCount('connect-first')}개는 연결하면 쓸 수 있어요`
 const GAINS_TITLE = '연결하면 생기는 것 4가지'
