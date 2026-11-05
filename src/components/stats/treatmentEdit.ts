@@ -1,4 +1,4 @@
-// 치료별 추세 묶음 고치기 규칙(spec treatment-trend design.md '고치기 규칙', REQ-1210). 순수 함수: 네트워크·저장소·React 없음.
+// 처방별 추세 묶음 고치기 규칙(spec treatment-trend design.md '고치기 규칙', REQ-1210). 순수 함수: 네트워크·저장소·React 없음.
 // 모든 함수는 받은 목록을 바꾸지 않고 새 목록을 돌려준다. 없는 자리를 받으면 같은 내용의 새 목록을 돌려준다.
 // 이름 규칙은 매출 묶음의 renameGroup(= DB CHECK)을 그대로 쓴다. 초안에는 빈 이름 칸이 있을 수 있어 검사는 [저장] 때(draftProblem) 한다
 import { codeKey } from '@/components/stats/view'

@@ -3,7 +3,7 @@ import { monthOf } from '@/lib/analytics/dates'
 import { dateWithWeekday, dayNumber, longDate, monthNumber, onlyThisMonthPartial, yearMonth } from './parts'
 
 // 그래프 글 함수 (treatment-trend REQ-1209·1207, design.md '화면' trendLabels.ts). 처방 추세(stats REQ-513)에서 글자 그대로 옮겼다.
-// 처방 추세·처방 골라 보기·치료별 추세의 열린 칸이 같은 칸 이름·눈금·안내 글을 쓴다
+// 처방 추세·처방 골라 보기·처방별 추세의 열린 칸이 같은 칸 이름·눈금·안내 글을 쓴다
 
 export const GRAIN_NAME: Record<StatsPeriod, '일' | '주' | '달'> = { '7d': '일', '30d': '일', '90d': '주', '12m': '달' }
 

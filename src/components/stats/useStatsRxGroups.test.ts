@@ -10,7 +10,7 @@ import type { RxGroup } from '@/types/rxGroups'
 import { groupDefs, groupKey } from './treatmentView'
 import { FOR_LOAD_LIMIT_MS, useStatsRxGroups } from './useStatsRxGroups'
 
-// 치료별 추세 묶음 훅 (treatment-trend REQ-1204·1205·1211·1213, design.md '묶음 훅'). 저장 코드는 가짜다. 처방·묶음은 모두 지어낸 값이다.
+// 처방별 추세 묶음 훅 (treatment-trend REQ-1204·1205·1211·1213, design.md '묶음 훅'). 저장 코드는 가짜다. 처방·묶음은 모두 지어낸 값이다.
 // 가짜 서버는 메모리의 줄을 실제처럼 바꾼다: 저장은 목록 통째 바꾸기이고 id 없는 줄에 새 id를 준다.
 // 요청은 sent에 차례대로 적히고, holdNext로 답을 잡아 두거나(열지 않으면 끝나지 않음) failNext로 실패시킨다
 

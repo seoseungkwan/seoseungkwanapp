@@ -82,9 +82,9 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
 | `stats_months` · `stats_days` · `stats_coverage` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용. 칸: `month` 또는 `day`·`partial`·`source`·`payload`·`updated_at`, 완전한 줄은 덜 덮인 줄로 안 바뀌는 트리거) · 불러온 기간 한 줄씩(칸: `from_day`·`to_day`·`source`·`created_at`, 넣기만) |
-| `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 치료별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |
+| `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 처방별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |
 | `stats_rx_picks` | 통계 처방 골라 보기에서 고른 처방 한 줄씩. 칸: `hospital_id`·`code`·`name`·`pick_order`. 낱개 처방이라 묶음 표(`rx_groups`)와 따로 둔다. 넣기·읽기·지우기만, 고치기 없음 (specs/rx-picker) |
-| `stats_rx_groups` | 통계 치료별 추세의 묶음. 칸: `id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`. 저장은 `save_stats_rx_groups`로 목록 통째(새 묶음 넣기·고치기·빠진 묶음 지우기). 처방 하나는 한 묶음에만 든다(대소문자 무시, 저장이 끝날 때 DB가 검사). 매출 탭 묶음(`rx_groups`)과 따로 둔다 (specs/treatment-trend) |
+| `stats_rx_groups` | 통계 처방별 추세의 묶음. 칸: `id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`. 저장은 `save_stats_rx_groups`로 목록 통째(새 묶음 넣기·고치기·빠진 묶음 지우기). 처방 하나는 한 묶음에만 든다(대소문자 무시, 저장이 끝날 때 DB가 검사). 매출 탭 묶음(`rx_groups`)과 따로 둔다 (specs/treatment-trend) |
 | `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `sales_codes` | 달별 처방 코드 집계(코드·이름·건수·금액). 칸은 specs/revenue design.md 6절 |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
@@ -96,7 +96,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 지우지 않고 숨긴다(임금대장 3년 보존, §6-3). 주민번호·계좌번호는 저장하지 않는다
-- 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료). `stats_rx_picks`: `lib/backup/tables.ts`가 생기면 이 표도 넣는다. `stats_rx_groups`(손으로 만든 자료, 통계 치료별 추세 묶음, specs/treatment-trend)도 넣는다
+- 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료). `stats_rx_picks`: `lib/backup/tables.ts`가 생기면 이 표도 넣는다. `stats_rx_groups`(손으로 만든 자료, 통계 처방별 추세 묶음, specs/treatment-trend)도 넣는다
 
 ## 인증·승인 흐름 (§2-1, §5, §6-4)
 ```

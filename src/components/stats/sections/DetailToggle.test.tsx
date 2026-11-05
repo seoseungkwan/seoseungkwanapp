@@ -92,7 +92,7 @@ describe('AC-513.3: [자세히]', () => {
   })
 })
 
-// treatment-trend REQ-1209: 치료별 추세 열린 칸은 같은 부품에 단추 글자만 바꿔 준다(design.md '화면' DetailToggle.tsx)
+// treatment-trend REQ-1209: 처방별 추세 열린 칸은 같은 부품에 단추 글자만 바꿔 준다(design.md '화면' DetailToggle.tsx)
 const NUMBERS = { closed: '숫자로 보기', open: '접기' }
 
 function drawTwo() {

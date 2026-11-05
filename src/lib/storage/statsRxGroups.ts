@@ -3,7 +3,7 @@ import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { ErrorCode } from '@/types/errors'
 import type { RxGroup } from '@/types/rxGroups'
 
-// 통계 탭 '치료별 추세' 묶음 읽기·저장(spec treatment-trend REQ-1203). 브라우저 Supabase 클라이언트 + RLS로만 한다(ADR-004).
+// 통계 탭 '처방별 추세' 묶음 읽기·저장(spec treatment-trend REQ-1203). 브라우저 Supabase 클라이언트 + RLS로만 한다(ADR-004).
 // 매출 탭 묶음과 모양(RxGroup)은 같지만 표·저장 함수는 따로다(2026-11-05 사용자 결정). 매출 묶음 표·함수는 부르지 않는다(AC-1203.5).
 // 보내는 묶음은 정해 둔 네 칸만 새 객체로 만든다. hospital_id·updated_at은 DB가 채우고, 어느 병원 줄인지는 RLS가 고른다.
 // 실패는 번호 하나로 던지고 서버 답은 옮기지 않는다(cause도 없다). 읽기 실패를 빈 목록으로 돌려주지 않는다(빈 목록이면 화면이 제안 묶음으로 바꾼다)

@@ -24,9 +24,9 @@ import { ds } from '@/components/ui/classes'
 import { renameGroup } from '@/lib/revenue/treatments'
 import { RX_GROUPS_MAX, type RxGroup } from '@/types/rxGroups'
 
-// 치료별 추세 묶음 고치기 화면 (spec treatment-trend TASK-10, REQ-1210·REQ-1212, 시안 docs/mockups/treatment-trend renderEdit()).
+// 처방별 추세 묶음 고치기 화면 (spec treatment-trend TASK-10, REQ-1210·REQ-1212, 시안 docs/mockups/treatment-trend renderEdit()).
 // props만 받는다: 저장·읽기는 부르는 쪽(TreatmentTrendSection·묶음 훅·찾기 목록 훅)이 한다. 고치는 초안·열린 찾기 목록은 이 안의 React 상태에만 있고 [저장] 때 onSave를 한 번 부른다.
-// 칸 제목('치료별 추세 · 묶음 고치기')·돌아가기·초점 돌려주기·저장 글은 부르는 쪽이 그린다. 처방 이름·코드·건수만 다루고 환자 자료는 없다.
+// 칸 제목('처방별 추세 · 묶음 고치기')·돌아가기·초점 돌려주기·저장 글은 부르는 쪽이 그린다. 처방 이름·코드·건수만 다루고 환자 자료는 없다.
 // 시안에서 바꾼 곳(design.md '시안과 다른 곳'): 들여쓰기 72px → 64px(간격 단계), 휴대폰 이름 칸 옆 80px → 96px(▲▼ 두 칸 + 사이), 입력은 ds.input이라 PC에서도 44px
 
 export type CatalogState = 'idle' | 'reading' | 'ready' | 'failed'

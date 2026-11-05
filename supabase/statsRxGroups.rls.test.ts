@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-// 통계 '치료별 추세'의 묶음 표(stats_rx_groups)·저장 함수(save_stats_rx_groups)와 계획 문서 줄 (treatment-trend REQ-1202·REQ-1214, TASK-1).
+// 통계 '처방별 추세'의 묶음 표(stats_rx_groups)·저장 함수(save_stats_rx_groups)와 계획 문서 줄 (treatment-trend REQ-1202·REQ-1214, TASK-1).
 // revenue.rls.test.ts·rxPicks.rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 파일을 그대로 돌린다.
 // 실제 Supabase에는 붙지 않는다. Supabase가 미리 갖춘 것(역할·auth 스키마·새 표·함수·순서표의 기본 권한)만 흉내 낸다
 const fileOf = (rel: string) => fileURLToPath(new URL(rel, import.meta.url))
@@ -1118,13 +1118,13 @@ describe('AC-1214 계획 문서 줄', () => {
   }
 
   const GROUP_LINE =
-    '- **치료별 추세의 묶음**은 통계 탭에서 따로 만든다(표 `stats_rx_groups`). 매출 탭 묶음(`rx_groups`)을 고쳐도 그대로이고 거꾸로도 같다. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이다 **(사용자, 2026-11-05)**. 처방 하나는 한 묶음에만 든다 **(Claude 판단, 2026-11-05 시안 승인)**'
+    '- **처방별 추세의 묶음**은 통계 탭에서 따로 만든다(표 `stats_rx_groups`). 매출 탭 묶음(`rx_groups`)을 고쳐도 그대로이고 거꾸로도 같다. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이다 **(사용자, 2026-11-05)**. 처방 하나는 한 묶음에만 든다 **(Claude 판단, 2026-11-05 시안 승인)**'
 
-  it('AC-1214.1: plan.md §2-2의 처방코드 그룹 줄 바로 아래에 치료별 추세 묶음 줄이 한 번 있고 백슬래시가 없다', () => {
+  it('AC-1214.1: plan.md §2-2의 처방코드 그룹 줄 바로 아래에 처방별 추세 묶음 줄이 한 번 있고 백슬래시가 없다', () => {
     const lines = linesOf('../plan.md')
     const group = '- **처방코드 그룹 + 즐겨찾기** **(사용자)**: 즐겨찾기는 별표한 그룹이다. 코드 하나짜리 그룹도 만들 수 있다 → 표 하나로 끝난다 **(Claude 판단)**'
     expect(lineAfter(lines, group)).toBe(GROUP_LINE)
-    expect(lines.filter((line) => line.includes('**치료별 추세의 묶음**'))).toHaveLength(1)
+    expect(lines.filter((line) => line.includes('**처방별 추세의 묶음**'))).toHaveLength(1)
     expect(GROUP_LINE).not.toContain('\\')
     // §2-2 안이다
     const at = lines.indexOf(GROUP_LINE)
@@ -1134,7 +1134,7 @@ describe('AC-1214 계획 문서 줄', () => {
   it('AC-1214.2: plan.md §7 코드 그룹 줄 끝에 통계 묶음의 예외가 붙고 앞 글은 그대로다', () => {
     const lines = linesOf('../plan.md')
     const old = '- 코드 그룹은 코드 기준이다(처방명이 바뀌어도 그대로). 한 코드가 여러 그룹에 들어가도 된다'
-    const tail = '다만 통계 치료별 추세 묶음(`stats_rx_groups`)은 처방 하나가 한 묶음에만 든다(2-2)'
+    const tail = '다만 통계 처방별 추세 묶음(`stats_rx_groups`)은 처방 하나가 한 묶음에만 든다(2-2)'
     const found = lines.filter((line) => line.startsWith(old))
     expect(found).toEqual([`${old}. ${tail}`])
   })
@@ -1145,7 +1145,7 @@ describe('AC-1214 계획 문서 줄', () => {
     const end = lines.findIndex((line, i) => i > start && !line.startsWith('|'))
     const table = lines.slice(start, end)
     const row =
-      '| `stats_rx_groups` | 통계 치료별 추세의 묶음(이름·코드 목록·차례). 매출 탭 묶음(`rx_groups`)과 따로 둔다. specs/treatment-trend **(사용자, 2026-11-05)** |'
+      '| `stats_rx_groups` | 통계 처방별 추세의 묶음(이름·코드 목록·차례). 매출 탭 묶음(`rx_groups`)과 따로 둔다. specs/treatment-trend **(사용자, 2026-11-05)** |'
     const picks =
       '| `stats_rx_picks` | 처방 골라 보기에서 고른 처방(코드·이름·차례). 낱개 처방이라 묶음 표(`rx_groups`)와 따로 둔다. specs/rx-picker **(Claude 판단, 2026-11-03)** |'
     expect(table.filter((line) => line === row)).toHaveLength(1)
@@ -1162,7 +1162,7 @@ describe('AC-1214 계획 문서 줄', () => {
   it('AC-1214.4: docs/ARCHITECTURE.md rx_groups 줄 끝이 바뀌고, stats_rx_picks 줄 아래에 stats_rx_groups 줄이 있다', () => {
     const lines = linesOf('../docs/ARCHITECTURE.md')
     expect(lines.filter((line) => line.startsWith('| `rx_groups` |'))).toEqual([
-      '| `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 치료별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |',
+      '| `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 처방별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |',
     ])
     expect(lines.some((line) => line.includes('매출 탭이 만들고 통계가 나중에 함께 씀'))).toBe(false)
 

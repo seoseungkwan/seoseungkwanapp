@@ -18,7 +18,7 @@ export type ErrorCode =
   | 'E-STATS-SAVE-FAILED' | 'E-STATS-READ-FAILED'
   // 통계 탭에서 고른 처방 저장·읽기(lib/storage/rxPicks.ts, spec rx-picker)
   | 'E-STATS-PICK-READ-FAILED' | 'E-STATS-PICK-SAVE-FAILED'
-  // 통계 치료별 추세 묶음 읽기·저장(lib/storage/statsRxGroups.ts, spec treatment-trend)
+  // 통계 처방별 추세 묶음 읽기·저장(lib/storage/statsRxGroups.ts, spec treatment-trend)
   | 'E-STATS-GROUP-READ-FAILED' | 'E-STATS-GROUP-SAVE-FAILED'
   // 점검 표 불러오기(Worker의 import(), TASK-7)
   | 'E-RULES-LOAD-FAILED'

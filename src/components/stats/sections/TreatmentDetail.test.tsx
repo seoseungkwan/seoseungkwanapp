@@ -11,7 +11,7 @@ import { CHART_NO_SIDE_SCROLL, todayOf } from './parts'
 import { TreatmentDetail } from './TreatmentDetail'
 import { detailNote } from './trendLabels'
 
-// 치료별 추세 열린 칸 (treatment-trend REQ-1209 AC-1209.2·1209.3·1209.4·1209.6, REQ-1206 AC-1206.5).
+// 처방별 추세 열린 칸 (treatment-trend REQ-1209 AC-1209.2·1209.3·1209.4·1209.6, REQ-1206 AC-1206.5).
 // 묶음·일 줄은 이 파일 안에서만 지은 가짜다. 묶음 줄(groups)의 id는 groupKey(codes)이고, 열 줄은 treatmentRows(TASK-4)가 낸 준비된 줄이다
 
 type Ready = Extract<TreatmentRow, { kind: 'ready' }>

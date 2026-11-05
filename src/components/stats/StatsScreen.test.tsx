@@ -37,7 +37,7 @@ vi.mock('@/lib/storage/rxPicks', () => ({
   removeRxPick: vi.fn(),
   clearRxPicks: vi.fn(),
 }))
-// 치료별 추세 묶음 저장 코드(treatment-trend). 기본은 저장된 묶음 하나다(beforeEach)
+// 처방별 추세 묶음 저장 코드(treatment-trend). 기본은 저장된 묶음 하나다(beforeEach)
 vi.mock('@/lib/storage/statsRxGroups', () => ({
   listStatsRxGroups: vi.fn(),
   saveStatsRxGroups: vi.fn(),
@@ -68,8 +68,8 @@ const LOAD = '비트에서 불러오기'
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
-const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '치료별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
-// 서버에 저장된 치료별 추세 묶음 하나(지어낸 이름·코드)와 Worker로 가는 그 정의(열쇠·코드만)
+const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
+// 서버에 저장된 처방별 추세 묶음 하나(지어낸 이름·코드)와 Worker로 가는 그 정의(열쇠·코드만)
 const SAVED_GROUP: RxGroup = { id: 'g0', name: '가짜 묶음', codes: ['A100'], sortOrder: 0 }
 const defsOf = (group: RxGroup) => [{ id: groupKey(group.codes), codes: group.codes }]
 
@@ -1249,7 +1249,7 @@ describe('AC-514.10 폭별 배치', () => {
     expect(place('기간 요약')).toContain('col-span-12')
     expect(place('환자 수 추이')).toContain('lg:col-span-8')
     expect(place('신환 재방문율')).toContain('lg:col-span-4')
-    expect(place('치료별 추세')).not.toContain('lg:')
+    expect(place('처방별 추세')).not.toContain('lg:')
     expect(place('처방별 신환·재진')).not.toContain('lg:')
     expect(place('처방 골라 보기')).not.toContain('lg:')
     expect(place('원장님 보고 문장')).toContain('lg:col-span-7')
@@ -1620,7 +1620,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
   const WIDEST = { from: R12.previous.from, to: R12.current.to }
   const wideReads = () => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === WIDEST.from && range.to === WIDEST.to).length
 
-  it('AC-801.1·AC-1201.1 새 칸은 처방별 신환·재진 다음의 전체 폭이고, 치료별 추세·처방별 신환·재진은 전체 폭, 다른 다섯 칸의 배치는 그대로다', async () => {
+  it('AC-801.1·AC-1201.1 새 칸은 처방별 신환·재진 다음의 전체 폭이고, 처방별 추세·처방별 신환·재진은 전체 폭, 다른 다섯 칸의 배치는 그대로다', async () => {
     draw()
     await sectionsShown()
     const place = (name: string) => sectionOf(name).className
@@ -1636,7 +1636,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
       ['요일별 환자 수', ['col-span-12', 'lg:col-span-5', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
     ]
     for (const [name, classes] of KEEP) for (const one of classes) expect(place(name).split(' ')).toContain(one)
-    for (const name of ['치료별 추세', '처방별 신환·재진']) {
+    for (const name of ['처방별 추세', '처방별 신환·재진']) {
       expect(place(name).split(' '), name).toContain('col-span-12')
       expect(place(name), name).not.toContain('lg:')
     }
@@ -1662,15 +1662,15 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(picker().queryByRole('button')).toBeNull()
   })
 
-  it('AC-806.5·AC-1201.1 기간을 바꿔도 열린 줄과 그래프 모양이 그대로이고 새 칸(일→주)으로 그린다. 치료별 추세 줄 열림과 서로 상관없다', async () => {
+  it('AC-806.5·AC-1201.1 기간을 바꿔도 열린 줄과 그래프 모양이 그대로이고 새 칸(일→주)으로 그린다. 처방별 추세 줄 열림과 서로 상관없다', async () => {
     vi.mocked(readRxPicks).mockResolvedValue([PICK])
-    // 고른 처방 줄과 같은 날에 저장된 묶음의 열쇠 줄도 있다(치료별 추세 줄이 열 수 있는 줄이 된다)
+    // 고른 처방 줄과 같은 날에 저장된 묶음의 열쇠 줄도 있다(처방별 추세 줄이 열 수 있는 줄이 된다)
     const counted = (ymd: string): DayPayload => ({ ...withRx(ymd), groups: [{ id: groupKey(SAVED_GROUP.codes), patients: 5, newPatients: 1, returning: 4 }] })
     answers({
       [R30.current.from]: read([counted('2026-11-10')], { latest: BIT_AT }),
       [R90.current.from]: read([counted('2026-11-10')], { latest: BIT_AT }),
     })
-    const treatment = (expanded: boolean) => within(sectionOf('치료별 추세')).getByRole('button', { name: new RegExp(SAVED_GROUP.name), expanded })
+    const treatment = (expanded: boolean) => within(sectionOf('처방별 추세')).getByRole('button', { name: new RegExp(SAVED_GROUP.name), expanded })
     draw()
     await sectionsShown()
     const row = await picker().findByRole('button', { name: new RegExp(NAME), expanded: false })
@@ -1684,7 +1684,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(rowIn(sectionOf('처방 골라 보기'), true)).toBeTruthy()
     expect(picker().getByRole('button', { name: '신환·재진 나눠 보기' }).getAttribute('aria-pressed')).toBe('true')
     expect(picker().getByRole('button', { name: '건수만' }).getAttribute('aria-pressed')).toBe('false')
-    // 치료별 추세 줄은 닫혀 있고, 열어도 새 칸이 그대로다
+    // 처방별 추세 줄은 닫혀 있고, 열어도 새 칸이 그대로다
     expect(await waitFor(() => treatment(false))).toBeTruthy()
     fireEvent.click(treatment(false))
     expect(treatment(true)).toBeTruthy()
@@ -1770,7 +1770,7 @@ describe('AC-1205.7 불러올 때 묶음을 서버에서 다시 읽어 센다 (t
   const OTHER: RxGroup = { id: 'g1', name: '가짜 다른 기기 묶음', codes: ['B200', 'B201'], sortOrder: 0 }
   const loadMessage = (sent: StatsWorkerRequest[]) => sent.find((message) => message.type === 'load')
   // 처음 읽기가 상태에 들어가 칸에 저장된 묶음이 보일 때까지
-  const groupsShown = () => waitFor(() => expect(within(heading('치료별 추세')!.closest('section')!).getByText(SAVED_GROUP.name)).toBeTruthy())
+  const groupsShown = () => waitFor(() => expect(within(heading('처방별 추세')!.closest('section')!).getByText(SAVED_GROUP.name)).toBeTruthy())
 
   it('AC-1205.7 [비트에서 불러오기]는 묶음 다시 읽기를 비트 요청과 함께 시작하고 비트 요청을 늦추지 않으며, 다시 읽은 묶음을 Worker에 넘긴다', async () => {
     const { port, fake } = await drawReady()

@@ -92,7 +92,7 @@ describe('AC-1201.6: 처방 골라 보기는 불러오는 경로만 바뀐다', 
 
   it('AC-1201.6: 처방 추세 칸이 남아 있는 동안 그 칸도 trendLabels를 쓰고 같은 함수를 따로 두지 않는다', () => {
     const file = 'RxTrendSection.tsx'
-    if (!existsSync(join(ROOT, DIR, file))) return // 치료별 추세를 넣을 때 칸째 지운다(TASK-15)
+    if (!existsSync(join(ROOT, DIR, file))) return // 처방별 추세를 넣을 때 칸째 지운다(TASK-15)
     const text = code(file)
     expect(text).toMatch(/from '\.\/trendLabels'/)
     expect(text).not.toMatch(/\b(?:const|function)\s+(?:GRAIN_NAME|comparedNote|longLabel|tickLabel|comparisonAt|detailNote)\b/)

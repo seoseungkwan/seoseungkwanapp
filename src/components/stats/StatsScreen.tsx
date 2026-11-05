@@ -20,7 +20,7 @@ import { COMPARE_NAME, DEFAULT_STATS_PERIOD, statsRange, type StatsPeriod, type 
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 둔다(AC-514.9).
 // 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
-// 치료별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
+// 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
 
 const PERIODS: StatsPeriod[] = ['7d', '30d', '90d', '12m']
 const SOURCE_NAME = { bit: '비트 PC', file: '파일' } as const
@@ -40,7 +40,7 @@ const WAITING: { title: string; place: string }[] = [
   { title: '기간 요약', place: 'col-span-12' },
   { title: '환자 수 추이', place: 'col-span-12 lg:col-span-8' },
   { title: '신환 재방문율', place: `col-span-12 lg:col-span-4 ${SIDE}` },
-  { title: '치료별 추세', place: 'col-span-12' },
+  { title: '처방별 추세', place: 'col-span-12' },
   { title: '처방별 신환·재진', place: 'col-span-12' },
   { title: '처방 골라 보기', place: 'col-span-12' },
   { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },

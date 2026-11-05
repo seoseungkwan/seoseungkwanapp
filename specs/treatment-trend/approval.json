@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "treatment-trend",
-  "approved_at": "2026-11-05T08:58:12Z",
+  "approved_at": "2026-11-05T13:47:22Z",
   "approved_via": "user-prompt",
   "approved_by": "user",
-  "session_id": "83153cf0-ed1b-480d-bf28-a80246f81fc6",
-  "spec_sha256": "dff4965ab90e05efa5eaec51fd27335ed2aa159ab911cc535eee199795874aee",
+  "session_id": "353d2527-307c-4eb3-acda-c870508a15f0",
+  "spec_sha256": "ccf3aa82ce7f68593a56def4653f0046ee1cedf4acc186eace8f6ab1c9415488",
   "scope": [
     "docs/ARCHITECTURE.md",
     "e2e/treatment-trend-privacy.spec.ts",

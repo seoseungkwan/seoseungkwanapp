@@ -9,7 +9,7 @@ import { DetailToggle, type DetailLabels, type DetailTable } from './DetailToggl
 import { CHART_NO_SIDE_SCROLL, Note, PartialChip, thinTotals, todayOf, TREND_SERIES } from './parts'
 import { comparisonAt, detailNote, GRAIN_NAME, longLabel, tickLabel } from './trendLabels'
 
-// 치료별 추세 열린 칸 (treatment-trend REQ-1209 AC-1209.2·1209.3·1209.4·1209.6, AC-1206.5 회색 막대·표 비교 칸, design.md '화면').
+// 처방별 추세 열린 칸 (treatment-trend REQ-1209 AC-1209.2·1209.3·1209.4·1209.6, AC-1206.5 회색 막대·표 비교 칸, design.md '화면').
 // 처방 추세 RxDetail과 같은 짜임이다: 제목 · 범례 · 막대(신환·재진 쌓음 + 같은 차례 회색 비교 막대) · 안내 · [숫자로 보기] → 표.
 // 다른 점: 전체 폭이라 막대 위 합계는 칸 13개 넘을 때만 숨긴다(시안 showTot = 칸 ≤ 13), 단추 글자가 숫자로 보기·접기다.
 // 숫자는 treatmentDetail(TASK-4)이다. 비교하지 않는 묶음(compared 거짓)은 비교 점이 모두 덮이지 않아 회색 막대가 없고 표 비교 칸이 –다.

@@ -11,7 +11,7 @@ import { forSave } from './treatmentEdit'
 import { groupDefs } from './treatmentView'
 import { isSavableLine } from './useRxCatalog'
 
-// 치료별 추세 묶음 읽기·저장·불러오기 준비 (treatment-trend REQ-1204·1205·1211, design.md '묶음 훅').
+// 처방별 추세 묶음 읽기·저장·불러오기 준비 (treatment-trend REQ-1204·1205·1211, design.md '묶음 훅').
 // 상태는 셋이다: (가) 읽는 중·읽기 실패 (나) 저장된 줄 없음 = 화면 일 숫자로 그릴 때마다 다시 고른 제안 다섯 (다) 저장된 줄 = 받은 그대로.
 // 서버 답이 상태가 되는 규칙: 더 나중 읽기가 이미 들어갔거나 읽는 사이 저장이 들어갔으면 그 읽기는 넣지 않는다(옛 모습으로 되돌리지 않는다).
 // 묶음은 React 상태와 서버 표에만 있다(AC-1211.3·AC-1213.1)

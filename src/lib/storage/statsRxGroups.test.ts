@@ -1,4 +1,4 @@
-// 통계 치료별 추세 묶음 저장·읽기(spec treatment-trend TASK-2, REQ-1203 · AC-1203.1~AC-1203.5). 실제 Supabase에 붙지 않는다.
+// 통계 처방별 추세 묶음 저장·읽기(spec treatment-trend TASK-2, REQ-1203 · AC-1203.1~AC-1203.5). 실제 Supabase에 붙지 않는다.
 // 가짜 클라이언트가 어느 표·함수에 어떤 칸·본문이 나갔는지 적어 둔다. save_stats_rx_groups 자체(한 트랜잭션·권한·겹침 검사)는
 // supabase/statsRxGroups.rls.test.ts가 증명한다. 이름·코드는 모두 지어낸 값이다
 import { readFileSync } from 'node:fs'

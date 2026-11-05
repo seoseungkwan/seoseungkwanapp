@@ -1,4 +1,4 @@
-// 치료별 추세 묶음 고치기 규칙(treatment-trend TASK-5, REQ-1210). 묶음 이름·처방 코드는 모두 이 파일에서 지어낸 값이다
+// 처방별 추세 묶음 고치기 규칙(treatment-trend TASK-5, REQ-1210). 묶음 이름·처방 코드는 모두 이 파일에서 지어낸 값이다
 import { describe, expect, it } from 'vitest'
 import { RX_GROUPS_MAX, type RxGroup } from '@/types/rxGroups'
 import {

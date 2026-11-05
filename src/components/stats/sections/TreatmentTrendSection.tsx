@@ -17,14 +17,14 @@ import { TreatmentGroupEditor } from './TreatmentGroupEditor'
 import { TreatmentTable, type ReadyTreatmentRow } from './TreatmentTable'
 import { comparedNote } from './trendLabels'
 
-// 치료별 추세 칸 (treatment-trend TASK-13, REQ-1201·1207·1208·1209·1210·1211, design.md '화면', 시안 docs/mockups/treatment-trend renderView()·startEdit()·save()).
+// 처방별 추세 칸 (treatment-trend TASK-13, REQ-1201·1207·1208·1209·1210·1211, design.md '화면', 시안 docs/mockups/treatment-trend renderView()·startEdit()·save()).
 // 묶음 훅 값(StatsRxGroupsView, 통계 화면이 한 번 부름)·찾기 목록 훅·표·열린 칸·고치기 화면을 잇는다. 칸이 드는 것: 고치기 열고 닫기, 열린 줄, 저장 글, 초점 옮기기.
 // 상태 차례: 저장된 숫자 없음 → 고치는 중 → 묶음 읽는 중·실패 → 이 기간 자료 없음 → 안내 상자 + 표 + 아래 안내.
 // 열린 줄은 기간마다 key를 주지 않고 이 칸의 React 상태에 둔다: 기간을 바꿔도 열린 채이고, 다시 불러와야 하는 기간에는 단추가 아니라 닫힌 것으로 보인다(AC-1209.5).
 // 묶음·열린 줄·고치는 내용은 React 상태와 서버 표에만 있다(AC-1211.3)
 
-const TITLE = '치료별 추세'
-const EDIT_TITLE = '치료별 추세 · 묶음 고치기'
+const TITLE = '처방별 추세'
+const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
 const DESC = '만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건'
 const EMPTY = '불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const READING = '묶음을 읽는 중이에요'

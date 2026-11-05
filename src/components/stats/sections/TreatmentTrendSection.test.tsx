@@ -18,7 +18,7 @@ import type { RxGroup } from '@/types/rxGroups'
 import { Section } from './parts'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 
-// 치료별 추세 칸 잇기 (spec treatment-trend TASK-13, REQ-1201·1207·1208·1209·1210·1211·1213, 시안 docs/mockups/treatment-trend renderView()·startEdit()·save()).
+// 처방별 추세 칸 잇기 (spec treatment-trend TASK-13, REQ-1201·1207·1208·1209·1210·1211·1213, 시안 docs/mockups/treatment-trend renderView()·startEdit()·save()).
 // 묶음 값(StatsRxGroupsView)은 이 파일이 만든 가짜다(훅을 부르지 않는다). 찾기 목록은 진짜 useRxCatalog이고 넓은 읽기(readDays)만 가짜다.
 // 묶음·처방 이름·코드·숫자는 모두 이 파일에서 지어낸 값이다
 
@@ -40,8 +40,8 @@ const NOW = '2026-11-02' // 최근 30일·90일·12개월 안
 const BEFORE = '2026-09-21' // 지난 30일 안, 최근 90일·12개월 안
 const SPRING = '2026-03-10' // 최근 12개월에만 든다
 
-const TITLE = '치료별 추세'
-const EDIT_TITLE = '치료별 추세 · 묶음 고치기'
+const TITLE = '처방별 추세'
+const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
 const DESC = '만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건'
 const NOT_SAVED = '자료 없음 · 불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const NO_RANGE = '자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.'
@@ -209,7 +209,7 @@ describe('AC-1201.5: 시안에서만 쓰는 것', () => {
 })
 
 describe('AC-1210.1: 칸 머리와 [묶음 고치기]', () => {
-  it('AC-1210.1: h2 `치료별 추세`, 옆 설명, 같은 머리 줄 오른쪽에 [묶음 고치기]가 있다', () => {
+  it('AC-1210.1: h2 `처방별 추세`, 옆 설명, 같은 머리 줄 오른쪽에 [묶음 고치기]가 있다', () => {
     drawView()
     expect(heading().textContent).toBe(TITLE)
     const head = heading().parentElement!
@@ -263,7 +263,7 @@ describe('AC-1211.1·AC-1211.2: 묶음 읽기 상태', () => {
     const view = viewOf({ state: 'read-failed', groups: [] })
     drawView(view)
     const card = screen.getByRole('alert')
-    expect(within(card).getByText('치료별 추세 묶음을 읽지 못했어요')).toBeTruthy()
+    expect(within(card).getByText('처방별 추세 묶음을 읽지 못했어요')).toBeTruthy()
     expect(card.textContent).toContain('오류 번호 E-STATS-GROUP-READ-FAILED')
     expect(list()).toBeNull()
     expect(notice()).toBeNull()
@@ -438,7 +438,7 @@ describe('AC-1209.1·AC-1209.5: 줄 열기', () => {
 })
 
 describe('AC-1210.2: 묶음 고치기 열기', () => {
-  it('AC-1210.2: 제목이 `치료별 추세 · 묶음 고치기`가 되고(옆 설명·단추 없음) 초점이 그 제목으로 간다', async () => {
+  it('AC-1210.2: 제목이 `처방별 추세 · 묶음 고치기`가 되고(옆 설명·단추 없음) 초점이 그 제목으로 간다', async () => {
     const user = userEvent.setup()
     drawView()
     await user.click(editButton())
@@ -630,7 +630,7 @@ describe('AC-1210.13: 저장 실패', () => {
     await user.click(editButton())
     fireEvent.change(nameFields()[0]!, { target: { value: '체외충격파' } })
     await user.click(screen.getByRole('button', { name: '저장' }))
-    const card = await screen.findByText('치료별 추세 묶음을 저장하지 못했어요')
+    const card = await screen.findByText('처방별 추세 묶음을 저장하지 못했어요')
     expect(card.closest('[role="alert"]')!.textContent).toContain('오류 번호 E-STATS-GROUP-SAVE-FAILED')
     expect(heading().textContent).toBe(EDIT_TITLE)
     expect(nameFields()[0]!.value).toBe('체외충격파')
@@ -644,10 +644,10 @@ describe('AC-1210.13: 저장 실패', () => {
     render(<Live input={inputOf()} ok={false} />)
     await user.click(editButton())
     await user.click(screen.getByRole('button', { name: '저장' }))
-    await screen.findByText('치료별 추세 묶음을 저장하지 못했어요')
+    await screen.findByText('처방별 추세 묶음을 저장하지 못했어요')
     await user.click(screen.getByRole('button', { name: '그만두기' }))
     await user.click(editButton())
-    expect(screen.queryByText('치료별 추세 묶음을 저장하지 못했어요')).toBeNull()
+    expect(screen.queryByText('처방별 추세 묶음을 저장하지 못했어요')).toBeNull()
   })
 })
 

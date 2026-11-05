@@ -8,7 +8,7 @@ import { DASHBOARD_FEATURES } from './features'
 
 // 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5. 매출은 spec revenue AC-010.1
 const TABLE = [
-  { name: '통계', desc: '환자 수 추이·신환 재방문율·치료별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // 설명은 treatment-trend AC-1201.7이 대신한다
+  { name: '통계', desc: '환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // 설명은 treatment-trend AC-1201.7이 대신한다
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'soon' },
@@ -60,10 +60,10 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
   })
 
-  it('AC-515.2·AC-1201.7: 통계 칸은 connect-first("연결 먼저" → 연결 뒤 "사용 가능")이고 주소는 /stats, 설명 글자는 처방 추세 대신 치료별 추세다', () => {
+  it('AC-515.2·AC-1201.7: 통계 칸은 connect-first("연결 먼저" → 연결 뒤 "사용 가능")이고 주소는 /stats, 설명 글자는 처방 추세 대신 처방별 추세다', () => {
     expect(DASHBOARD_FEATURES.find((f) => f.name === '통계')).toEqual({
       name: '통계',
-      desc: '환자 수 추이·신환 재방문율·치료별 추세·요일별 환자 수',
+      desc: '환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수',
       href: '/stats',
       status: 'connect-first',
     })

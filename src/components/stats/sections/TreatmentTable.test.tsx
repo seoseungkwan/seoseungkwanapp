@@ -11,7 +11,7 @@ import type { DayPayload } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
 import { TreatmentTable } from './TreatmentTable'
 
-// 치료별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html).
+// 처방별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html).
 // 줄은 진짜 treatmentRows로 만들고, 묶음·일 줄은 이 파일에서 지어낸 값이다. 열린 칸 그림은 renderPanel 가짜다
 
 const TODAY = '2026-11-13'

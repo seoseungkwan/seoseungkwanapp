@@ -10,7 +10,7 @@ import { COMPARE_NAME, type RxPickRow, type StatsInput } from '@/components/stat
 import { ds } from '@/components/ui/classes'
 import { DeltaText, PartialChip } from './parts'
 
-// 치료별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html .cols·.row). props만 받는다.
+// 처방별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html .cols·.row). props만 받는다.
 // 머리 줄·묶음 줄(준비·다시 불러와야 함·처방 없음)·열린 칸 자리. 숫자는 treatmentRows가 낸 값이고 열린 칸 그림은 renderPanel로 받는다.
 // 넓으면(1024px 이상) 한 줄 칸, 좁으면 한 묶음이 다섯 줄로 쌓인다(시안은 900px이지만 폭 접두사 규칙 때문에 max-lg:, design.md '시안과 다른 곳')
 

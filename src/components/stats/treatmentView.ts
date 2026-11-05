@@ -5,7 +5,7 @@ import type { DayPayload } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
 import { codeKey, rxDetail, rxPickRows, type RxDetailPoint, type RxPickRow, type StatsInput } from './view'
 
-// 치료별 추세의 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자'). view.ts와 같은 규칙의 순수 함수다.
+// 처방별 추세의 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자'). view.ts와 같은 규칙의 순수 함수다.
 // 묶음 열쇠 = 처방 코드 모음의 지문(groupKey). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
 // 숫자는 묶음 줄을 "열쇠가 코드인 처방 줄"로 바꾼 가상 입력(groupInput)을 rxPickRows·rxDetail에 넘겨 낸다. 그래서 증감·짝 빼기·일부 기간이 처방 추세와 같다.
 // 이름·sortOrder·제안 여부는 숫자에 쓰지 않는다. 숫자는 열쇠만 본다

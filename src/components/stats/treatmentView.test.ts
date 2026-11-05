@@ -23,7 +23,7 @@ import {
 } from './treatmentView'
 import { rxDetail, rxList, rxPickRows, statsRange, type RxDetailPoint, type RxTrendRow, type StatsInput, type StatsPeriod } from './view'
 
-// 치료별 추세 화면 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자').
+// 처방별 추세 화면 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자').
 // 입력은 가짜 일 줄·덮은 기간·묶음뿐이다(모두 지어낸 값). 묶음 줄(groups)의 id는 groupKey(codes)다
 
 type Rx = DayPayload['rx'][number]

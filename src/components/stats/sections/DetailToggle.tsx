@@ -41,7 +41,7 @@ export function NumberTable({ caption, columns, rows }: DetailTable) {
   )
 }
 
-// 단추 글자. 주지 않으면 [자세히]·[접기]. 치료별 추세 열린 칸은 [숫자로 보기]·[접기](treatment-trend AC-1209.4)
+// 단추 글자. 주지 않으면 [자세히]·[접기]. 처방별 추세 열린 칸은 [숫자로 보기]·[접기](treatment-trend AC-1209.4)
 export type DetailLabels = { closed: string; open: string }
 const DETAIL_LABELS: DetailLabels = { closed: '자세히', open: '접기' }
 

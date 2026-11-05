@@ -58,7 +58,7 @@ export function useStatsWorker() {
       range: DateRange
       today: string
       closeToday: boolean
-      groups?: Promise<readonly RxGroupDef[]> // 치료별 추세 묶음 다시 읽기(treatment-trend AC-1205.7). 없으면 []
+      groups?: Promise<readonly RxGroupDef[]> // 처방별 추세 묶음 다시 읽기(treatment-trend AC-1205.7). 없으면 []
     }) => {
       const { from, to } = range
       // 묶음은 비트 요청과 함께 읽고, 비트 요청(stats.rows)은 그것을 기다리지 않는다. 거절이면 묶음 없이 센다.

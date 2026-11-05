@@ -18,7 +18,7 @@ import { StatsSections } from './StatsSections'
 
 // 기간 요약 + 섹션 차례 (stats REQ-513 AC-513.1·513.2·513.4·513.9, rx-picker AC-801.1, treatment-trend AC-1201.1·AC-1213.1, 시안 notes.md §2·§3·§4). 가짜 일 줄은 이 파일 안에서만 만든다
 // 처방 골라 보기는 이 파일에서 읽는 중에 머문다. 그 칸의 안은 RxPickerSection.test.tsx가 본다
-// 치료별 추세의 묶음 값은 이 파일이 만든 가짜(StatsRxGroupsView)다. 그 칸의 안은 TreatmentTrendSection.test.tsx가 본다
+// 처방별 추세의 묶음 값은 이 파일이 만든 가짜(StatsRxGroupsView)다. 그 칸의 안은 TreatmentTrendSection.test.tsx가 본다
 
 vi.mock('@/lib/storage/rxPicks', () => ({
   readRxPicks: vi.fn(() => new Promise(() => undefined)),
@@ -73,7 +73,7 @@ afterEach(cleanup)
 const cellText = (name: string) => screen.getByText(name).closest('.grid-cols-4 > div')!.textContent
 
 describe('AC-513.1·AC-801.1·AC-1201.1: 섹션 차례', () => {
-  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '치료별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
+  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
   const draw = (saved: boolean) =>
     render(
       <StatsSections input={inputOf(saved ? [day('2026-11-02', 10)] : [], saved ? WHOLE : [])} saved={saved} split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} />,
@@ -99,8 +99,8 @@ describe('AC-513.1·AC-801.1·AC-1201.1: 섹션 차례', () => {
     expect(sectionOf('처방 골라 보기')).toContain('col-span-12')
     expect(sectionOf('처방 골라 보기')).not.toContain('lg:')
     expect(sectionOf('원장님 보고 문장')).toContain('lg:col-span-7')
-    // 치료별 추세와 처방별 신환·재진은 전체 폭이고 세로선·왼쪽 여백이 없다
-    for (const title of ['치료별 추세', '처방별 신환·재진']) {
+    // 처방별 추세와 처방별 신환·재진은 전체 폭이고 세로선·왼쪽 여백이 없다
+    for (const title of ['처방별 추세', '처방별 신환·재진']) {
       expect(sectionOf(title).split(' '), title).toContain('col-span-12')
       expect(sectionOf(title), title).not.toMatch(/(^| )lg:(?:col-span|border-l|pl-)/)
     }
@@ -114,9 +114,9 @@ describe('AC-513.1·AC-801.1·AC-1201.1: 섹션 차례', () => {
     }
   })
 
-  it('AC-1201.1: 치료별 추세 칸은 h2 옆에 승인본 설명이 있다', () => {
+  it('AC-1201.1: 처방별 추세 칸은 h2 옆에 승인본 설명이 있다', () => {
     draw(true)
-    const section = screen.getByRole('heading', { level: 2, name: '치료별 추세' }).closest('section')!
+    const section = screen.getByRole('heading', { level: 2, name: '처방별 추세' }).closest('section')!
     expect(within(section).getByText('만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건')).toBeTruthy()
   })
 
@@ -278,7 +278,7 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|\s)\/\/.*$/gm, '$1')
 
-  it('AC-513.9·AC-1213.1: 검사 대상이 비어 있지 않다(섹션 여덟 + 공용 둘 + view.ts + 치료별 추세 조각)', () => {
+  it('AC-513.9·AC-1213.1: 검사 대상이 비어 있지 않다(섹션 여덟 + 공용 둘 + view.ts + 처방별 추세 조각)', () => {
     const list = files()
     for (const name of [
       'PeriodSummary',
@@ -302,7 +302,7 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     expect(list).not.toContain(`${DIR}/RxTrendSection.tsx`) // 처방 추세 칸은 지웠다(AC-1201.1)
   })
 
-  it('AC-1213.1: 치료별 추세의 화면·훅·계산 파일은 브라우저 저장소·document.cookie·console·lib/bridge/client·주소를 쓰지 않는다', () => {
+  it('AC-1213.1: 처방별 추세의 화면·훅·계산 파일은 브라우저 저장소·document.cookie·console·lib/bridge/client·주소를 쓰지 않는다', () => {
     const own = [
       ...['TreatmentTrendSection', 'TreatmentTable', 'TreatmentDetail', 'TreatmentGroupEditor'].map((name) => `${DIR}/${name}.tsx`),
       `${DIR}/trendLabels.ts`,
