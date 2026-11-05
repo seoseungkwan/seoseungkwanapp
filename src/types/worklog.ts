@@ -36,8 +36,13 @@ export type WorklogCellKey = WorklogNumberKey | WorklogNoteKey | WorklogNameKey 
 export type WorklogDay = Record<WorklogCellKey, string>
 /** 저장에 넘기는 바뀐 칸만 */
 export type WorklogChanges = Partial<WorklogDay>
-/** 서버에서 읽은 하루: 칸 값 + 비트에서 불러온 칸 목록(bit_fields, design.md 20-4절) */
-export type WorklogSavedDay = { day: WorklogDay; bitFields: WorklogNumberKey[] }
+// 업무사항 글씨 크기(pt, 엑셀처럼). 그날 일지에 저장한다. 칸이 아니라 그날의 설정 하나다 (specs/worklog-memo-font)
+export const MEMO_FONT_PTS = [8, 9, 10, 11, 12, 14, 16] as const
+export type MemoFontPt = (typeof MEMO_FONT_PTS)[number]
+export const MEMO_FONT_DEFAULT: MemoFontPt = 11
+
+/** 서버에서 읽은 하루: 칸 값 + 비트에서 불러온 칸 목록(bit_fields, design.md 20-4절) + 업무사항 글씨 크기(없으면 11로 본다) */
+export type WorklogSavedDay = { day: WorklogDay; bitFields: WorklogNumberKey[]; memoFontPt?: MemoFontPt }
 /** 칸 글자에서 읽은 숫자(합계 계산의 입력). 숫자로 읽히지 않은 칸은 null */
 export type WorklogNumbers = Record<WorklogNumberKey, number | null>
 export type WorklogTotals = { visits: number; received: number; spent: number; net: number }
