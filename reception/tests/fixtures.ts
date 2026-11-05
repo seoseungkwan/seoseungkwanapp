@@ -115,3 +115,173 @@ export function mockupBoard(at = '13:42:10'): FakeBoard {
     at,
   )
 }
+
+// ---- 상세 답과 가짜 도우미 (TASK-23) ------------------------------------------------------------------
+// 화면 끝까지 시험(app.test.ts)과 Phase 끝 화면 캡처가 함께 쓴다. 도우미 없이 같은 모양의 답을 준다(design.md 4·5·6절)
+
+/** 지난 진료 처방 하나 */
+export interface FakeRx {
+  name: string
+  code: string
+}
+
+/** 지난 진료 하나(JSON Visit) */
+export interface FakeVisit {
+  date: string
+  ago: string
+  sym: string
+  rx: FakeRx[]
+}
+
+/** `GET /api/visit/{k}/history?from=N` 200 답 */
+export interface FakeHistory {
+  visits: FakeVisit[]
+  next: number | null
+  more: number
+  first: string
+  total: number
+  todaySym: string
+}
+
+/** 가짜 오늘: 2026년 11월 5일 (시험의 기기 날짜와 같게 둔다) */
+export const FAKE_TODAY = { year: 2026, month: 11, day: 5 }
+
+/** 상세 첫 쪽은 5번, [더 보기]마다 20번 (AC-1404.1) */
+const FIRST_PAGE = 5
+const MORE_PAGE = 20
+
+/** 승인 시안(Detail.dc.html)의 지난 진료 증상·처방. 6번째부터는 차례대로 다시 쓴다 */
+const VISIT_SYMS = [
+  '오른쪽 어깨 통증 조금 줄었음, 밤에 아픔',
+  '오른쪽 어깨 통증, 팔 올릴 때 아픔',
+  '어깨·목 뻐근함',
+  '오른쪽 어깨 통증 2주째, 1주 뒤 다시 봄',
+  '오른쪽 어깨 통증 처음 옴',
+]
+const VISIT_RX: FakeRx[][] = [
+  [{ name: '체외충격파', code: 'ESWT7' }, { name: '도수치료 20분', code: 'DS20' }],
+  [{ name: '체외충격파', code: 'ESWT7' }, { name: '표층열치료', code: 'PT01' }],
+  [{ name: '도수치료 20분', code: 'DS20' }, { name: '간섭파치료', code: 'PT03' }, { name: '표층열치료', code: 'PT01' }],
+  [{ name: '엑스레이 촬영', code: 'XR2' }, { name: '주사', code: 'INJ1' }],
+  [{ name: '엑스레이 촬영', code: 'XR2' }, { name: '표층열치료', code: 'PT01' }],
+]
+
+/** 오늘에서 days일 앞 날 */
+function daysBefore(days: number): { year: number; month: number; day: number } {
+  const d = new Date(Date.UTC(FAKE_TODAY.year, FAKE_TODAY.month - 1, FAKE_TODAY.day) - days * 86400000)
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() }
+}
+
+/** 날짜 글: 올해면 "10월 29일", 다른 해면 "2025년 3월 12일" (AC-1404.2) */
+function visitDate(d: { year: number; month: number; day: number }): string {
+  return d.year === FAKE_TODAY.year ? `${d.month}월 ${d.day}일` : `${d.year}년 ${d.month}월 ${d.day}일`
+}
+
+function longDate(d: { year: number; month: number; day: number }): string {
+  return `${d.year}년 ${d.month}월 ${d.day}일`
+}
+
+/** i번째 지난 진료(0이 가장 최근): 7일 간격으로 거슬러 간다. 처음 5번은 승인 시안과 같다 */
+export function fakeVisit(i: number): FakeVisit {
+  const days = 7 * (i + 1)
+  return { date: visitDate(daysBefore(days)), ago: `${days}일 전`, sym: VISIT_SYMS[i % VISIT_SYMS.length]!, rx: VISIT_RX[i % VISIT_RX.length]! }
+}
+
+/**
+ * 지난 진료가 past번인 환자의 상세 한 쪽. from이 0이면 처음 5번, 그 뒤는 20번씩이다(AC-1404.1·1404.3).
+ * 지난 진료가 없으면 처음 온 날은 오늘이고 모두 1번이다
+ */
+export function fakeHistory(past: number, from = 0, todaySym = ''): FakeHistory {
+  const end = Math.min(past, from + (from === 0 ? FIRST_PAGE : MORE_PAGE))
+  const visits = Array.from({ length: Math.max(0, end - from) }, (_, j) => fakeVisit(from + j))
+  return {
+    visits,
+    next: end < past ? end : null,
+    more: Math.max(0, past - end),
+    first: longDate(past > 0 ? daysBefore(7 * past) : daysBefore(0)),
+    total: past + 1,
+    todaySym,
+  }
+}
+
+/** 가짜 도우미의 답: 상태 번호와 JSON 몸(없으면 몸 없음) */
+export interface FakeReply {
+  status: number
+  body?: unknown
+}
+
+export interface FakeServer {
+  /** 지금 비트 판. 시험이 바꿔 끼운다. 찍음 표시는 답할 때 엑스레이 칸이 있는 줄에 얹는다 */
+  board: FakeBoard
+  /** 찍음 표시: 열쇠 → 'HH:MM'. 판을 바꿔 끼워도 남는다(도우미의 표시 파일처럼) */
+  marks: Map<string, string>
+  /** [X-ray 완료]를 받은 PC 시각 'HH:MM' */
+  now: string
+  /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
+  answer: (method: string, url: string, body?: string | null) => FakeReply
+}
+
+/** 신환은 지난 진료가 없고, 재진은 36번(승인 시안: 모두 37번) */
+function pastOf(row: FakeRow): number {
+  return row.info.includes('신환') ? 0 : 36
+}
+
+/** 오늘 증상: 진료 전(진료대기)에는 아직 없다 */
+function todaySymOf(row: FakeRow): string {
+  return row.lane === 'wait' ? '' : '오른쪽 어깨 통증 계속됨'
+}
+
+function rowsOfBoard(board: FakeBoard): FakeRow[] {
+  return Object.values(board.lists).flat()
+}
+
+/**
+ * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray.
+ * 다른 길·그날 판에 없는 열쇠·모양이 틀린 값은 404, 진료보류가 아닌 줄의 표시는 400이다
+ */
+export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): FakeServer {
+  const marks = new Map<string, string>()
+  for (const row of rowsOfBoard(board)) if (row.xray?.at) marks.set(row.k, row.xray.at)
+  const server: FakeServer = {
+    board,
+    marks,
+    now,
+    answer(method, url, body) {
+      const [path = '', query = ''] = url.split('?')
+      const params = new URLSearchParams(query)
+      if (method === 'GET' && path === '/api/board' && (query === '' || query === 'fresh=1')) {
+        return { status: 200, body: withMarks(server.board, server.marks) }
+      }
+      const history = /^\/api\/visit\/([0-9a-f]{16})\/history$/.exec(path)
+      if (method === 'GET' && history) {
+        const row = rowsOfBoard(server.board).find((r) => r.k === history[1])
+        const from = Number(params.get('from'))
+        if (!row || !/^\d+$/.test(params.get('from') ?? '')) return { status: 404 }
+        return { status: 200, body: fakeHistory(pastOf(row), from, todaySymOf(row)) }
+      }
+      if (method === 'POST' && path === '/api/xray') {
+        let ask: { k?: unknown; on?: unknown }
+        try {
+          ask = JSON.parse(body ?? '') as { k?: unknown; on?: unknown }
+        } catch {
+          return { status: 400 }
+        }
+        const row = server.board.lists.hold.find((r) => r.k === ask.k)
+        if (!row || typeof ask.on !== 'boolean') return { status: row ? 400 : 404 }
+        if (ask.on) server.marks.set(row.k, server.now)
+        else server.marks.delete(row.k)
+        return { status: 204 }
+      }
+      return { status: 404 }
+    },
+  }
+  return server
+}
+
+/** 판의 엑스레이 칸 줄(진료보류)에 찍음 표시를 얹은 사본 */
+function withMarks(board: FakeBoard, marks: Map<string, string>): FakeBoard {
+  const lists = {} as Record<FakeList, FakeRow[]>
+  for (const [name, rows] of Object.entries(board.lists) as Array<[FakeList, FakeRow[]]>)
+    lists[name] = rows.map((row) => (row.xray ? { ...row, xray: { at: marks.get(row.k) ?? null } } : { ...row }))
+  return { ...board, counts: { ...board.counts }, lists }
+}
