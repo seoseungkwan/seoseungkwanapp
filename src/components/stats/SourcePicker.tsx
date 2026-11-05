@@ -7,8 +7,10 @@ import { ds } from '@/components/ui/classes'
 import { mergeRanges } from '@/lib/analytics/coverage'
 import { addDays, compareYmd } from '@/lib/analytics/dates'
 import { errorInfo, isErrorCode } from '@/lib/errors'
+import { fillGroupCounts } from '@/lib/payload/groupCounts'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
+import type { RxGroupDef } from '@/types/analysis'
 import type { FileReport } from '@/types/analyze'
 import type { BridgeState } from '@/types/bridge'
 import type { DateRange } from '@/types/dates'
@@ -41,14 +43,18 @@ export function fileCovered(reports: readonly FileReport[], today: string): Date
   return { from: compareYmd(latest.from, earliest) < 0 ? earliest : latest.from, to: latest.to }
 }
 
-// 지금 runAnalysis 길 그대로다. 품질이 incomplete면 저장 모양이 null이라 저장하지 않는다(AC-514.6)
-export async function readFiles(files: File[], today: string): Promise<FileOutcome> {
-  const { files: reports, result } = await runAnalysis(files, { today })
+// 지금 runAnalysis 길 그대로다. 품질이 incomplete면 저장 모양이 null이라 저장하지 않는다(AC-514.6).
+// 묶음(treatment-trend AC-1205.5)을 주면 Worker로 열쇠·처방 코드만 새로 만들어 넘기고, 저장할 일 줄마다 묶음 id 줄을 채운다(그날 없으면 0줄).
+// 묶음이 없으면 지금과 똑같다(groups 칸도, 일 줄 손질도 없다)
+export async function readFiles(files: File[], today: string, groups: readonly RxGroupDef[] = []): Promise<FileOutcome> {
+  const defs = groups.map(({ id, codes }) => ({ id, codes: [...codes] }))
+  const { files: reports, result } = await runAnalysis(files, defs.length > 0 ? { today, groups: defs } : { today })
   const failures = reports.flatMap((report) => (report.ok ? [] : [{ name: files[report.index]?.name ?? '', code: report.code }]))
   if (result === null) return { failures, save: null, incomplete: null }
   const months = toMonthPayload(result)
-  const days = toDayPayloads(result)
-  if (months === null || days === null) return { failures, save: null, incomplete: { failedFiles: failures.length, skippedRows: result.skippedInvalidRows } }
+  const counted = toDayPayloads(result)
+  if (months === null || counted === null) return { failures, save: null, incomplete: { failedFiles: failures.length, skippedRows: result.skippedInvalidRows } }
+  const days = defs.length > 0 ? fillGroupCounts(counted, defs.map(({ id }) => id)) : counted
   return { failures, save: { months, days, covered: fileCovered(reports, today), source: 'file' }, incomplete: null }
 }
 
