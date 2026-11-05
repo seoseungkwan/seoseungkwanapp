@@ -6,7 +6,10 @@ import { StrictMode } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadWorklogDay, saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
-import { emptyWorklogDay, type WorklogDay, type WorklogSavedDay } from '@/types/worklog'
+import { BIT_FILL_KEYS, mergeBit } from '@/lib/worklog/bitFill'
+import type { RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
+import { emptyWorklogDay, type WorklogDay, type WorklogNumberKey, type WorklogSavedDay } from '@/types/worklog'
+import s from './sheet.module.css'
 import { WorklogScreen } from './WorklogScreen'
 import { startWorklogSession, worklogAutosave } from './worklogSession'
 
@@ -20,6 +23,20 @@ vi.mock('@/lib/storage/worklogDays', async (importOriginal) => ({
   saveWorklogDay: vi.fn(),
 }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => client }))
+// 비트 PC 통로(useBridge)는 가짜다(worklog REQ-017). 기본은 연결 안 됨이라 Phase 2·3 시험은 비트를 읽지 않는다
+const bridge = vi.hoisted(() => ({
+  state: 'disconnected' as string,
+  helloError: null as string | null,
+  call: vi.fn<(cmd: string, args: { from: string; to: string }) => Promise<RevenueDaysResult>>(),
+}))
+vi.mock('@/components/claim/useBridge', () => ({
+  useBridge: () => ({ state: bridge.state, helloError: bridge.helloError, call: bridge.call }),
+}))
+// 맞추기는 진짜 함수다. 부른 횟수만 본다(AC-017.8 합치지 않음)
+vi.mock('@/lib/worklog/bitFill', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/worklog/bitFill')>()
+  return { ...real, mergeBit: vi.fn(real.mergeBit) }
+})
 
 const TODAY = '2026-10-28' // 수요일
 const PAST = '2026-10-27'
@@ -114,6 +131,9 @@ beforeEach(() => {
   save.mockReset()
   load.mockResolvedValue(null)
   save.mockResolvedValue(undefined)
+  bridge.state = 'disconnected'
+  bridge.helloError = null
+  bridge.call.mockReset()
   client.auth.onAuthStateChange.mockImplementation((callback: (event: string, session: null) => void) => {
     emitAuth = (event) => callback(event, null)
     return { data: { subscription: { unsubscribe } } }
@@ -1090,5 +1110,602 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     await settle(800)
     expect(save).toHaveBeenCalledTimes(2)
     expect(save).toHaveBeenLastCalledWith(client, TODAY, { cardIn: '200000' })
+  })
+})
+
+// ── 비트에서 채우기 (worklog REQ-017, design.md 20-1·20-4·20-5절, 시안 docs/mockups/worklog/bitfill.html v2) ─────────────
+// 통로·저장소는 가짜이고 자동 저장 제어·맞추기는 진짜다. revenue.days 답은 둥근 가짜 숫자다
+const MINUTE = 60_000
+const mergeBitSpy = vi.mocked(mergeBit)
+const LEGEND = '표시한 칸은 비트에서 불러온 숫자예요'
+const DIFFERS_TITLE = '비트 숫자와 다른 칸이 있어요'
+const NOTICE = {
+  notConnected: '비트 PC가 연결되지 않아 직접 적어요',
+  setup: '비트 PC 연결을 마치면 숫자를 저절로 채워요',
+  reading: '비트 숫자를 불러오는 중이에요',
+  failed: '비트 숫자를 불러오지 못했어요. 직접 적어도 돼요',
+  unconfirmed: '이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요',
+}
+// revenueRow(TODAY)로 채우는 여덟 칸(design.md 20-2절 표)
+const FILLED: Partial<WorklogDay> = {
+  newPatients: '12',
+  returnPatients: '48',
+  totalFee: '1000000',
+  claimAmount: '600000',
+  cashIn: '100000',
+  cardIn: '300000',
+  transferIn: '50000',
+  unpaidPaid: '10000',
+}
+
+const revenueRow = (date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow => ({
+  date,
+  visits: 60,
+  newPatients: 12,
+  returnVisits: 48,
+  total: 1000000,
+  insurer: 600000,
+  noncovered: 200000,
+  copay: 100000,
+  otherTotal: 100000,
+  cash: 100000,
+  card: 300000,
+  transfer: 50000,
+  receivableIn: 10000,
+  unconfirmed: false,
+  splitUnconfirmed: false,
+  ...over,
+})
+const bitAnswer = (date: string, over: Partial<RevenueDayRow> = {}): RevenueDaysResult => ({ days: [revenueRow(date, over)], codes: [] })
+const UNCONFIRMED: Partial<RevenueDayRow> = {
+  unconfirmed: true,
+  total: null,
+  insurer: null,
+  noncovered: null,
+  copay: null,
+  otherTotal: null,
+  cash: null,
+  card: null,
+  transfer: null,
+  receivableIn: null,
+}
+const bridgeError = (code: string) => Object.assign(new Error(code), { code })
+
+// 비트 PC가 연결된 의원 PC. 답은 차례로 돌려준다
+function connect(...answers: RevenueDaysResult[]) {
+  bridge.state = 'ready'
+  for (const answer of answers) bridge.call.mockResolvedValueOnce(answer)
+}
+
+// 저장한 값을 다시 읽으면 돌려주는 가짜 서버(다시 읽기가 빈 줄로 칸을 지우지 않게). bit_fields는 목록을 받았을 때만 바꾼다
+function fakeServer(rows: Record<string, { cells?: Partial<WorklogDay>; bitFields?: WorklogNumberKey[] }>) {
+  const db = new Map<string, WorklogSavedDay>(
+    Object.entries(rows).map(([ymd, row]) => [ymd, { day: dayWith(row.cells), bitFields: [...(row.bitFields ?? [])] }]),
+  )
+  load.mockImplementation(async (_client, ymd) => {
+    const row = db.get(ymd)
+    return row ? { day: { ...row.day }, bitFields: [...row.bitFields] } : null
+  })
+  save.mockImplementation(async (_client, ymd, changes, bitFields) => {
+    const row = db.get(ymd) ?? { day: emptyWorklogDay(), bitFields: [] }
+    db.set(ymd, { day: { ...row.day, ...changes }, bitFields: bitFields ? [...bitFields] : row.bitFields })
+  })
+  return db
+}
+
+async function openScreen() {
+  const view = render(<WorklogScreen initialToday={TODAY} />)
+  await settle()
+  return view
+}
+
+const tdOf = (label: string) => cell(label).closest('td') as HTMLTableCellElement
+const marked = (label: string) => tdOf(label).classList.contains(s.bit)
+const rowTexts = () => screen.queryAllByRole('listitem').map((item) => item.firstElementChild?.textContent)
+const hiddenInPrint = (el: Element) => el.closest('[class~="print:hidden"]') !== null
+const loadButton = () => screen.queryByRole<HTMLButtonElement>('button', { name: /지금 불러오기|불러오는 중/ })
+const sheetTable = () => screen.getByRole('table', { name: '업무일지' })
+const follows = (first: Element, second: Element) => (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+describe('AC-017.1 비트 PC에서 열면 채우기', () => {
+  it('AC-017.1: 연결된 PC에서 날짜를 열면 그날 비트 숫자로 빈 칸을 채우고, 바뀐 칸과 비트 칸 목록을 자동 저장한다(단추를 누르지 않아도 된다)', async () => {
+    connect(bitAnswer(TODAY))
+    fakeServer({ [TODAY]: { cells: { spendCash: '20000' } } })
+    await openScreen()
+
+    expect(bridge.call).toHaveBeenCalledTimes(1)
+    expect(bridge.call).toHaveBeenCalledWith('revenue.days', { from: TODAY, to: TODAY })
+    expect(cell('신환').value).toBe('12')
+    expect(cell('재진').value).toBe('48')
+    expect(cell('총진료비').value).toBe('1,000,000원')
+    expect(cell('조합청구액').value).toBe('600,000원')
+    expect(cell('현금수납').value).toBe('100,000원')
+    expect(cell('카드수납').value).toBe('300,000원')
+    expect(cell('계좌이체').value).toBe('50,000원')
+    expect(cell('미수입금').value).toBe('10,000원')
+    expect(cell('지역화폐').value).toBe('')
+    expect(cell('미수발생').value).toBe('')
+    expect(received()).toBe('450,000원')
+    expect(save).not.toHaveBeenCalled()
+
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    const [, ymd, changes, fields] = save.mock.calls[0]
+    expect(ymd).toBe(TODAY)
+    expect(changes).toEqual(FILLED)
+    expect([...(fields ?? [])].sort()).toEqual([...BIT_FILL_KEYS].sort())
+    expect(statusText()).toContain('저장했어요')
+  })
+
+  it('AC-017.1: 오늘은 보이는 동안 10분마다 다시 읽어 비트 칸이 따라가고, 바뀐 칸만 저장한다(목록이 그대로면 목록은 보내지 않는다)', async () => {
+    connect(bitAnswer(TODAY), bitAnswer(TODAY, { newPatients: 13, cash: 130000 }))
+    fakeServer({})
+    await openScreen()
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    save.mockClear()
+
+    await settle(10 * MINUTE - 800)
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+    expect(cell('신환').value).toBe('13')
+    expect(cell('현금수납').value).toBe('130,000원')
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { newPatients: '13', cashIn: '130000' })
+  })
+
+  it('AC-017.1: 치기 전 초점 칸도 비트 숫자로 맞춰 보이고, 친 칸은 다음 읽기에서 바꾸지 않고 다름으로 알린다', async () => {
+    bridge.state = 'ready'
+    const first = deferred<RevenueDaysResult>()
+    bridge.call.mockReturnValueOnce(first.promise).mockResolvedValueOnce(bitAnswer(TODAY, { cash: 130000 }))
+    fakeServer({})
+    await openScreen()
+
+    focusOn(cell('현금수납'))
+    await act(async () => first.resolve(bitAnswer(TODAY)))
+    expect(cell('현금수납').value).toBe('100,000')
+    type('현금수납', '90000')
+    blurFrom(cell('현금수납'))
+    expect(marked('현금수납')).toBe(false)
+
+    await settle(10 * MINUTE)
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+    expect(cell('현금수납').value).toBe('90,000원')
+    expect(rowTexts()).toEqual(['현금수납 · 적은 값 90,000원 · 비트 130,000원'])
+  })
+})
+
+describe('AC-017.2 비트 칸 표시', () => {
+  it('AC-017.2: 비트 칸에는 표시가 있고 양식 아래 "표시한 칸은 비트에서 불러온 숫자예요"이며, 손으로 적은 칸·비트에 없는 칸에는 표시가 없다. 인쇄에서는 숨는다', async () => {
+    connect(bitAnswer(TODAY))
+    fakeServer({ [TODAY]: { cells: { cashIn: '90000' } } })
+    await openScreen()
+
+    for (const label of ['신환', '재진', '총진료비', '조합청구액', '카드수납', '계좌이체', '미수입금']) expect(marked(label), label).toBe(true)
+    for (const label of ['현금수납', '지역화폐', '미수발생', '지출 현금 금액']) expect(marked(label), label).toBe(false)
+    const legend = screen.getByText(LEGEND)
+    expect(hiddenInPrint(legend)).toBe(true)
+    expect(follows(sheetTable(), legend)).toBe(true)
+    expect(cell('카드수납').getAttribute('aria-describedby')).toBe(legend.closest('[id]')?.id)
+  })
+
+  it('AC-017.2: 비트 칸이 없는 날에는 설명 줄이 없다', async () => {
+    await open({ cashIn: '100000' })
+    expect(screen.queryByText(LEGEND)).toBeNull()
+    expect(marked('현금수납')).toBe(false)
+  })
+})
+
+describe('AC-017.3 비트 숫자와 다른 칸', () => {
+  it('AC-017.3: 손으로 적은 칸이 비트와 다르면 덮지 않고 목록에 보이며, [비트 숫자로 바꾸기]를 누를 때만 그 칸을 바꾼다', async () => {
+    connect(bitAnswer(TODAY, { cash: 125000 }))
+    fakeServer({ [TODAY]: { cells: { newPatients: '11', cashIn: '120,000 별도' } } })
+    await openScreen()
+
+    expect(cell('신환').value).toBe('11')
+    expect(cell('현금수납').value).toBe('120,000 별도')
+    expect(screen.getByText(DIFFERS_TITLE)).toBeTruthy()
+    expect(rowTexts()).toEqual(['신환 · 적은 값 11 · 비트 12', '현금수납 · 적은 값 120,000 별도 · 비트 125,000원'])
+    await settle(800)
+    expect(save.mock.calls[0][2]).not.toHaveProperty('cashIn')
+    expect(save.mock.calls[0][2]).not.toHaveProperty('newPatients')
+    save.mockClear()
+
+    fireEvent.click(button('현금수납 칸을 비트 숫자로 바꾸기'))
+    expect(cell('현금수납').value).toBe('125,000원')
+    expect(marked('현금수납')).toBe(true)
+    expect(rowTexts()).toEqual(['신환 · 적은 값 11 · 비트 12'])
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    const [, , changes, fields] = save.mock.calls[0]
+    expect(changes).toEqual({ cashIn: '125000' })
+    expect(fields).toContain('cashIn')
+    expect(fields).not.toContain('newPatients')
+  })
+
+  it('AC-017.3: 항목 이름을 고친 칸에도 비트 숫자가 채워지고(칸 위치로 채움), 다름 목록에는 그날 이름이 보인다', async () => {
+    connect(bitAnswer(TODAY, { cash: 125000 }))
+    fakeServer({ [TODAY]: { cells: { nameCardIn: '가상 카드', nameCashIn: '가상 현금', cashIn: '120000' } } })
+    await openScreen()
+
+    expect(cell('카드수납').value).toBe('300,000원')
+    expect(marked('카드수납')).toBe(true)
+    expect(rowTexts()).toEqual(['가상 현금 · 적은 값 120,000원 · 비트 125,000원'])
+    expect(button('가상 현금 칸을 비트 숫자로 바꾸기')).toBeTruthy()
+  })
+
+  it('AC-017.3: 적은 숫자가 비트 숫자와 같으면 목록에 없다', async () => {
+    connect(bitAnswer(TODAY))
+    fakeServer({ [TODAY]: { cells: { cashIn: '100,000원' } } })
+    await openScreen()
+    expect(screen.queryByText(DIFFERS_TITLE)).toBeNull()
+    expect(marked('현금수납')).toBe(false)
+  })
+})
+
+describe('AC-017.4 비트를 못 읽을 때', () => {
+  it.each([
+    ['busy', null, NOTICE.notConnected, false],
+    ['disconnected', null, NOTICE.notConnected, false],
+    ['no-extension', null, NOTICE.setup, true],
+    ['no-helper', null, NOTICE.setup, true],
+    ['update-helper', null, NOTICE.setup, true],
+    ['update-extension', null, NOTICE.setup, true],
+    ['connecting', 'E-BRIDGE-BAD-REPLY', NOTICE.setup, true],
+  ] as const)(
+    'AC-017.4·AC-017.9: useBridge %s(helloError %s)면 안내 한 줄 "%s"만 보이고 [지금 불러오기]가 없으며, 칸은 손으로 적어 저장한다',
+    async (state, helloError, text, link) => {
+      bridge.state = state
+      bridge.helloError = helloError
+      await open({ memo: '가상 업무 글' })
+
+      expect(screen.getByText(text)).toBeTruthy()
+      expect(screen.queryByRole('link', { name: '연결하러 가기' })?.getAttribute('href') ?? null).toBe(link ? '/claim/setup' : null)
+      expect(loadButton()).toBeNull()
+      expect(cardCodes()).toEqual([])
+      expectOpen()
+      type('현금수납', '100000')
+      await settle(800)
+      expect(save).toHaveBeenCalledWith(client, TODAY, { cashIn: '100000' })
+      expect(bridge.call).not.toHaveBeenCalled()
+    },
+  )
+
+  it('AC-017.4·AC-017.8: 비트 읽기가 실패하면 "비트 숫자를 불러오지 못했어요. 직접 적어도 돼요"와 [지금 불러오기]이고, 칸을 채우거나 저장하지 않으며 막지 않는다', async () => {
+    bridge.state = 'ready'
+    bridge.call.mockRejectedValueOnce(bridgeError('E-BIT-READ-FAILED'))
+    await open({ memo: '가상 업무 글' })
+
+    expect(screen.getByText(NOTICE.failed)).toBeTruthy()
+    expect(button('지금 불러오기')).toBeTruthy()
+    expect(cardCodes()).toEqual([])
+    expect(cell('현금수납').value).toBe('')
+    await settle(5000)
+    expect(save).not.toHaveBeenCalled()
+    expectOpen()
+  })
+
+  it('AC-017.4: 통로 오류 E-HELPER-UNKNOWN-COMMAND(도우미 옛 판)는 읽기 실패가 아니라 "연결을 마치면" 안내와 링크이고 단추가 없다', async () => {
+    bridge.state = 'ready'
+    bridge.call.mockRejectedValueOnce(bridgeError('E-HELPER-UNKNOWN-COMMAND'))
+    await open()
+    expect(screen.getByText(NOTICE.setup)).toBeTruthy()
+    expect(screen.queryByText(NOTICE.failed)).toBeNull()
+    expect(screen.getByRole('link', { name: '연결하러 가기' }).getAttribute('href')).toBe('/claim/setup')
+    expect(loadButton()).toBeNull()
+  })
+
+  it('AC-017.4·AC-017.9: 금액 확인이 필요한 날은 금액 칸을 비우고 신환·재진만 채우며, 그 안내와 [지금 불러오기]가 함께 있다', async () => {
+    connect({ days: [revenueRow(TODAY, UNCONFIRMED)], codes: [] })
+    fakeServer({})
+    await openScreen()
+
+    expect(screen.getByText(NOTICE.unconfirmed)).toBeTruthy()
+    expect(button('지금 불러오기')).toBeTruthy()
+    expect(cell('신환').value).toBe('12')
+    expect(cell('재진').value).toBe('48')
+    for (const label of ['총진료비', '조합청구액', '현금수납', '카드수납', '계좌이체', '미수입금']) expect(cell(label).value, label).toBe('')
+    await settle(800)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { newPatients: '12', returnPatients: '48' }, ['newPatients', 'returnPatients'])
+  })
+})
+
+describe('AC-017.5 휴대폰·다른 PC', () => {
+  it('AC-017.5·AC-017.9: 터치 기기는 비트를 읽지 않고 비트 안내 줄·[지금 불러오기]가 없으며, "휴대폰에서는 보기만 할 수 있어요"와 저장된 표시·설명 줄만 보인다', async () => {
+    media.touch = true
+    bridge.state = 'ready'
+    bridge.call.mockResolvedValue(bitAnswer(TODAY))
+    fakeServer({ [TODAY]: { cells: { newPatients: '12', cashIn: '100000' }, bitFields: ['newPatients', 'cashIn'] } })
+    await openScreen()
+    await settle(30 * MINUTE)
+
+    expect(bridge.call).not.toHaveBeenCalled()
+    expect(statusText()).toBe('휴대폰에서는 보기만 할 수 있어요')
+    for (const text of Object.values(NOTICE)) expect(screen.queryByText(text), text).toBeNull()
+    expect(screen.queryByText(/에 불러왔어요$/)).toBeNull()
+    expect(loadButton()).toBeNull()
+    expect(marked('신환')).toBe(true)
+    expect(marked('현금수납')).toBe(true)
+    expect(marked('카드수납')).toBe(false)
+    expect(screen.getByText(LEGEND)).toBeTruthy()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('AC-017.5: 연결 안 된 다른 PC도 저장된 표시를 그대로 보이고 비트를 읽지 않는다', async () => {
+    fakeServer({ [TODAY]: { cells: { cashIn: '100000' }, bitFields: ['cashIn'] } })
+    await openScreen()
+    expect(screen.getByText(NOTICE.notConnected)).toBeTruthy()
+    expect(marked('현금수납')).toBe(true)
+    expect(screen.getByText(LEGEND)).toBeTruthy()
+    expect(bridge.call).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-017.6 오가는 것', () => {
+  it('AC-017.6: 비트 때문에 나가는 저장에는 채운 칸의 숫자 글자와 비트 칸 목록뿐이고, 업무사항·항목 이름·지출·비고는 가지 않는다', async () => {
+    const consoles = (['log', 'info', 'warn', 'error', 'debug'] as const).map((name) => vi.spyOn(console, name))
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    connect(bitAnswer(TODAY))
+    fakeServer({ [TODAY]: { cells: { memo: '가상 업무 글', nameCashIn: '가상 현금', spendCash: '20000', noteCash: '가상 비고' } } })
+    await openScreen()
+    await settle(800)
+
+    expect(save).toHaveBeenCalledTimes(1)
+    const [, , changes, fields] = save.mock.calls[0]
+    for (const [key, value] of Object.entries(changes)) {
+      expect(BIT_FILL_KEYS, key).toContain(key)
+      expect(value, key).toMatch(/^\d+$/)
+    }
+    for (const key of fields ?? []) expect(BIT_FILL_KEYS, key).toContain(key)
+    expect(bridge.call.mock.calls.every(([cmd]) => cmd === 'revenue.days')).toBe(true)
+    for (const spy of consoles) expect(spy).not.toHaveBeenCalled()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-017.7 표시를 지우지 않는다', () => {
+  it('AC-017.7: 표시가 저장된 날을 연결 안 된 PC에서 비트 칸 밖 칸을 고치면 저장에 비트 칸 목록이 없다', async () => {
+    const db = fakeServer({ [TODAY]: { cells: { cashIn: '100000' }, bitFields: ['cashIn'] } })
+    await openScreen()
+    type('지출 현금 금액', '20000')
+    await settle(800)
+
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { spendCash: '20000' })
+    expect(save.mock.calls[0]).toHaveLength(3)
+    expect(db.get(TODAY)?.bitFields).toEqual(['cashIn'])
+    expect(marked('현금수납')).toBe(true)
+  })
+
+  it('AC-017.7: 비트 칸을 손으로 고치면 그 칸 표시가 사라지고 줄어든 목록을 보낸다', async () => {
+    fakeServer({ [TODAY]: { cells: { newPatients: '12', cashIn: '100000' }, bitFields: ['newPatients', 'cashIn'] } })
+    await openScreen()
+    type('현금수납', '120000')
+    expect(marked('현금수납')).toBe(false)
+    expect(marked('신환')).toBe(true)
+    await settle(800)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { cashIn: '120000' }, ['newPatients'])
+  })
+
+  it('AC-017.7: 앱 안 이동(화면이 내려감) 뒤 바로 저장해도 표시를 지우지 않고, 돌아오면 표시가 그대로다', async () => {
+    const db = fakeServer({ [TODAY]: { cells: { cashIn: '100000' }, bitFields: ['cashIn'] } })
+    const view = await openScreen()
+    type('지출 현금 금액', '20000')
+    view.unmount()
+    await settle()
+
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toHaveLength(3)
+    expect(db.get(TODAY)?.bitFields).toEqual(['cashIn'])
+    await openScreen()
+    expect(marked('현금수납')).toBe(true)
+    expect(cell('지출 현금 금액').value).toBe('20,000원')
+  })
+
+  it('AC-017.7: 다시 읽은 비트 칸 목록이 표시로 보이고, 저장 안 된 목록은 그대로다', async () => {
+    const db = fakeServer({ [TODAY]: { cells: { cashIn: '100000', cardIn: '200000' } } })
+    await openScreen()
+    expect(marked('현금수납')).toBe(false)
+
+    db.set(TODAY, { day: dayWith({ cashIn: '100000', cardIn: '200000' }), bitFields: ['cashIn', 'cardIn'] }) // 비트 PC가 저장했다
+    await settle(60_000)
+    expect(marked('현금수납')).toBe(true)
+    expect(marked('카드수납')).toBe(true)
+
+    type('카드수납', '250000')
+    setVisibility('visible') // 저장 전에 다시 읽기
+    await settle()
+    expect(marked('카드수납')).toBe(false)
+    expect(marked('현금수납')).toBe(true)
+  })
+})
+
+describe('AC-017.8 합치는 때', () => {
+  it('AC-017.8: 비트 답이 첫 읽기보다 먼저 오면 그때는 합치거나 저장하지 않고, 읽기가 끝난 뒤 합친다(서버 값이 있는 칸은 다름으로 남는다)', async () => {
+    connect(bitAnswer(TODAY, { cash: 125000 }))
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle(5000)
+
+    expect(bridge.call).toHaveBeenCalledTimes(1)
+    expect(mergeBitSpy).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    expect(cell('현금수납').value).toBe('')
+
+    await act(async () => reply.resolve(saved({ cashIn: '120000' })))
+    expect(cell('현금수납').value).toBe('120,000원')
+    expect(cell('카드수납').value).toBe('300,000원')
+    expect(rowTexts()).toEqual(['현금수납 · 적은 값 120,000원 · 비트 125,000원'])
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][2]).not.toHaveProperty('cashIn')
+    expect(save.mock.calls[0][2]).toHaveProperty('cardIn', '300000')
+  })
+
+  it('AC-017.8: 불러오기에 실패한 날은 합치지 않고 저장하지 않으며, [다시 불러오기]로 열리면 그때 합친다', async () => {
+    connect(bitAnswer(TODAY))
+    load.mockRejectedValueOnce(new WorklogStorageError('failed'))
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle(5000)
+
+    expect(cardCodes()).toEqual(['E-WORKLOG-LOAD-FAILED'])
+    expect(mergeBitSpy).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    expect(cell('현금수납').value).toBe('')
+
+    load.mockResolvedValueOnce(saved({}))
+    fireEvent.click(button('다시 불러오기'))
+    await settle()
+    expect(cell('현금수납').value).toBe('100,000원')
+    expect(marked('현금수납')).toBe(true)
+  })
+
+  it('AC-017.8: 날짜를 옮긴 뒤 온 옛 날짜 답은 버린다', async () => {
+    bridge.state = 'ready'
+    const old = deferred<RevenueDaysResult>()
+    bridge.call.mockReturnValueOnce(old.promise).mockResolvedValueOnce(bitAnswer(PAST, { cash: 70000 }))
+    fakeServer({})
+    await openScreen()
+    fireEvent.click(button('전날'))
+    await settle()
+
+    expect(bridge.call).toHaveBeenLastCalledWith('revenue.days', { from: PAST, to: PAST })
+    expect(cell('현금수납').value).toBe('70,000원')
+    await act(async () => old.resolve(bitAnswer(TODAY, { cash: 990000 })))
+    await settle()
+    expect(cell('현금수납').value).toBe('70,000원')
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][1]).toBe(PAST)
+  })
+})
+
+describe('AC-017.9 [지금 불러오기]', () => {
+  it('AC-017.9: 읽기에 성공하면 날짜 줄 아래 "비트 숫자를 14:20에 불러왔어요"와 [지금 불러오기]이고, 누르면 같은 { from, to }로 바로 다시 읽어 바뀐 칸만 저장한다', async () => {
+    vi.setSystemTime(new Date('2026-10-28T05:20:00Z')) // 한국 시각 14:20
+    connect(bitAnswer(TODAY))
+    fakeServer({})
+    await openScreen()
+    await settle(800)
+    const line = screen.getByText('비트 숫자를 14:20에 불러왔어요')
+    expect(follows(screen.getByLabelText('날짜 고르기'), line)).toBe(true)
+    expect(follows(line, sheetTable())).toBe(true)
+    save.mockClear()
+
+    await settle(5 * MINUTE - 800)
+    const again = deferred<RevenueDaysResult>()
+    bridge.call.mockReturnValueOnce(again.promise)
+    fireEvent.click(button('지금 불러오기'))
+
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+    expect(bridge.call).toHaveBeenLastCalledWith('revenue.days', { from: TODAY, to: TODAY })
+    const busy = button('불러오는 중') as HTMLButtonElement
+    expect(busy.disabled).toBe(true)
+    expect(screen.getByText(NOTICE.reading)).toBeTruthy()
+    fireEvent.click(busy)
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+
+    await act(async () => again.resolve(bitAnswer(TODAY, { card: 320000 })))
+    expect(screen.getByText('비트 숫자를 14:25에 불러왔어요')).toBeTruthy()
+    expect(cell('카드수납').value).toBe('320,000원')
+    await settle(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { cardIn: '320000' })
+  })
+
+  it('AC-017.9: 오늘은 누른 때부터 10분 뒤에 다음 읽기이고, 누르기 전 타이머로는 읽지 않는다', async () => {
+    bridge.state = 'ready'
+    bridge.call.mockResolvedValue(bitAnswer(TODAY))
+    fakeServer({})
+    await openScreen()
+    await settle(4 * MINUTE)
+    fireEvent.click(button('지금 불러오기'))
+    await settle()
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+
+    await settle(6 * MINUTE)
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+    await settle(4 * MINUTE)
+    expect(bridge.call).toHaveBeenCalledTimes(3)
+  })
+
+  it('AC-017.9: 읽기 실패한 날에 누른 읽기가 성공하면 실패 안내가 사라지고 시각 줄이 되며 칸을 채운다', async () => {
+    bridge.state = 'ready'
+    bridge.call.mockRejectedValueOnce(bridgeError('E-BIT-READ-FAILED')).mockResolvedValueOnce(bitAnswer(TODAY))
+    fakeServer({})
+    await openScreen()
+    expect(screen.getByText(NOTICE.failed)).toBeTruthy()
+
+    fireEvent.click(button('지금 불러오기'))
+    await settle()
+    expect(screen.queryByText(NOTICE.failed)).toBeNull()
+    expect(screen.getByText('비트 숫자를 12:00에 불러왔어요')).toBeTruthy()
+    expect(cell('현금수납').value).toBe('100,000원')
+  })
+
+  it('AC-017.9·AC-017.8: 첫 읽기가 끝나기 전에 누른 답은 그때 저장하지 않고, 읽기가 끝난 뒤 그 답으로 합친다', async () => {
+    connect(bitAnswer(TODAY), bitAnswer(TODAY, { cash: 140000 }))
+    const reply = deferred<WorklogSavedDay | null>()
+    load.mockReturnValueOnce(reply.promise)
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+    fireEvent.click(button('지금 불러오기'))
+    await settle(5000)
+
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+    expect(save).not.toHaveBeenCalled()
+    expect(cell('현금수납').value).toBe('')
+
+    await act(async () => reply.resolve(saved({})))
+    expect(cell('현금수납').value).toBe('140,000원')
+    await settle(800)
+    expect(save.mock.calls[0][2]).toHaveProperty('cashIn', '140000')
+  })
+
+  it('AC-017.9·AC-017.8: 불러오기 실패한 날에 눌러도 합치지 않고 저장하지 않는다', async () => {
+    bridge.state = 'ready'
+    bridge.call.mockResolvedValue(bitAnswer(TODAY))
+    load.mockRejectedValueOnce(new WorklogStorageError('failed'))
+    render(<WorklogScreen initialToday={TODAY} />)
+    await settle()
+    fireEvent.click(button('지금 불러오기'))
+    await settle(5000)
+
+    expect(bridge.call).toHaveBeenCalledTimes(2)
+    expect(mergeBitSpy).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    expect(cell('현금수납').value).toBe('')
+  })
+
+  it('AC-017.9: 연결 중(connecting)이면 "비트 숫자를 불러오는 중이에요"와 눌리지 않는 "불러오는 중"이고 읽지 않는다', async () => {
+    bridge.state = 'connecting'
+    await open()
+    expect(screen.getByText(NOTICE.reading)).toBeTruthy()
+    const busy = button('불러오는 중') as HTMLButtonElement
+    expect(busy.disabled).toBe(true)
+    fireEvent.click(busy)
+    expect(bridge.call).not.toHaveBeenCalled()
+  })
+
+  it('AC-017.9·AC-011.3: 날짜 줄 아래 줄·설명 줄·다름 목록(단추 포함)은 모두 인쇄에서 숨는다', async () => {
+    connect(bitAnswer(TODAY, { cash: 125000 }))
+    fakeServer({ [TODAY]: { cells: { cashIn: '120000' } } })
+    await openScreen()
+
+    for (const el of [
+      screen.getByText(/^비트 숫자를 \d\d:\d\d에 불러왔어요$/),
+      button('지금 불러오기'),
+      screen.getByText(LEGEND),
+      screen.getByText(DIFFERS_TITLE),
+      button('현금수납 칸을 비트 숫자로 바꾸기'),
+    ]) {
+      expect(hiddenInPrint(el), el.textContent ?? '').toBe(true)
+    }
+    expect(follows(sheetTable(), screen.getByText(DIFFERS_TITLE))).toBe(true)
+    expect(hiddenInPrint(sheetTable())).toBe(false)
   })
 })

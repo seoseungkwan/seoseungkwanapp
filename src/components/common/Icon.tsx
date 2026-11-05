@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 // 16px 선 아이콘 한 곳 (b2b-redesign REQ-204, UI_GUIDE '아이콘·로고'). 그림은 승인 시안 그대로다: 처음 16개는 docs/mockups/b2b-redesign/parts.mjs의 I,
-// copy·userCheck는 docs/mockups/dashboard-home/index.html의 [복사]·[가입 승인] 단추(tab-frame REQ-315), logout은 docs/mockups/ui-90/app/gen.py의 ICONS(ui-90 AC-416.7).
+// copy·userCheck는 docs/mockups/dashboard-home/index.html의 [복사]·[가입 승인] 단추(tab-frame REQ-315), logout은 docs/mockups/ui-90/app/gen.py의 ICONS(ui-90 AC-416.7),
+// info·reload는 docs/mockups/worklog/bitfill.html의 ICON_INFO·ICON_LOAD(viewBox 24)를 16 칸으로 ×2/3 한 것(worklog AC-017.9, design.md 20-5절).
 // 늘 꾸밈이다(aria-hidden). 아이콘만 있는 단추는 단추에 aria-label을 준다. 색은 글자색을 따른다(currentColor) → 놓는 자리가 text-* 토큰 클래스로 정한다.
 // 크기는 size(12·14·16)가 너비·높이이고 viewBox·선 굵기 1.5는 그대로다. 서버에서 그대로 그린다(훅 없음)
 
@@ -27,6 +28,9 @@ export const ICON_NAMES = [
   'userCheck',
   // ui-90 AC-416.7: 계정 메뉴 [로그아웃]. 그림은 시안 docs/mockups/ui-90/app/gen.py의 ICONS['logout'] 그대로다
   'logout',
+  // worklog AC-017.9: 업무일지 비트 안내 줄·[지금 불러오기]. 그림은 시안 docs/mockups/worklog/bitfill.html의 ICON_INFO·ICON_LOAD ×2/3
+  'info',
+  'reload',
 ] as const
 
 export type IconName = (typeof ICON_NAMES)[number]
@@ -111,6 +115,19 @@ const SHAPES: Record<IconName, ReactNode> = {
     <>
       <path d="M9.5 2.75h2.75a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1H9.5" />
       <path d="M6.5 5 3.5 8l3 3M3.5 8h6.5" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 7.33v3.67" />
+      <path d="M8 5h.01" />
+    </>
+  ),
+  reload: (
+    <>
+      <path d="M13.33 8a5.33 5.33 0 1 1-1.56-3.77" />
+      <path d="M13.33 2.67v3.33h-3.33" />
     </>
   ),
 }

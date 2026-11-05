@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorklogStorageError } from '@/lib/storage/worklogDays'
-import { emptyWorklogDay, type WorklogChanges, type WorklogDay } from '@/types/worklog'
+import { emptyWorklogDay, type WorklogChanges, type WorklogDay, type WorklogNumberKey } from '@/types/worklog'
 import { createAutosave, type AutosaveOptions, type AutosaveSnapshot } from './autosave'
 
 // 자동 저장 제어 (REQ-006, design.md 10절). 숫자와 글자는 모두 지어낸 것이다
@@ -17,6 +17,8 @@ const offlineError = () => new WorklogStorageError('offline')
 type SaveCall = {
   ymd: string
   changes: WorklogChanges
+  bitFields: readonly WorklogNumberKey[] | undefined // 받지 않았으면 undefined(AC-017.7)
+  args: number // save가 받은 인자 수
   succeed: () => Promise<void>
   fail: (err: unknown) => Promise<void>
 }
@@ -25,11 +27,14 @@ type SaveCall = {
 function harness(options: Partial<AutosaveOptions> = {}) {
   const calls: SaveCall[] = []
   const save = vi.fn<AutosaveOptions['save']>(
-    (ymd, changes) =>
+    (...args: Parameters<AutosaveOptions['save']>) =>
       new Promise<void>((resolve, reject) => {
+        const [ymd, changes, bitFields] = args
         calls.push({
           ymd,
           changes,
+          bitFields,
+          args: args.length,
           succeed: async () => {
             resolve()
             await wait(0)
@@ -704,14 +709,14 @@ describe('createAutosave dispose', () => {
     expect(autosave.pendingDay(YMD)).toBeNull()
     const first = dayWith({ memo: '가상 메모' })
     autosave.change(YMD, first)
-    expect(autosave.pendingDay(YMD)).toEqual(first)
+    expect(autosave.pendingDay(YMD)?.day).toEqual(first)
     await wait(800)
-    expect(autosave.pendingDay(YMD)).toEqual(first) // 저장 중
+    expect(autosave.pendingDay(YMD)?.day).toEqual(first) // 저장 중
     const second = dayWith({ memo: '가상 메모 둘' })
     autosave.change(YMD, second)
-    expect(autosave.pendingDay(YMD)).toEqual(second)
+    expect(autosave.pendingDay(YMD)?.day).toEqual(second)
     await calls[0].succeed()
-    expect(autosave.pendingDay(YMD)).toEqual(second) // 남은 차이를 저장 중
+    expect(autosave.pendingDay(YMD)?.day).toEqual(second) // 남은 차이를 저장 중
     await calls[1].succeed()
     expect(autosave.pendingDay(YMD)).toBeNull()
   })
@@ -725,7 +730,7 @@ describe('createAutosave dispose', () => {
   ])('AC-006.10: %s인 날은 pendingDay가 최신 값이다', async (kind, cells) => {
     const h = harness({ retryDelaysMs: [] })
     await put(h, YMD, kind)
-    expect(h.autosave.pendingDay(YMD)).toEqual(dayWith(cells))
+    expect(h.autosave.pendingDay(YMD)?.day).toEqual(dayWith(cells))
   })
 
   it('AC-006.10: 읽기만 한 날과 저장 끝난 날은 null이다', async () => {
@@ -742,8 +747,8 @@ describe('createAutosave dispose', () => {
     autosave.change(YMD, day)
     day.memo = '가상 메모 밖에서 고침'
     const pending = autosave.pendingDay(YMD)
-    expect(pending?.memo).toBe('가상 메모')
-    if (pending) pending.memo = '가상 메모 또 고침'
+    expect(pending?.day.memo).toBe('가상 메모')
+    if (pending) pending.day.memo = '가상 메모 또 고침'
     await wait(800)
     expect(save).toHaveBeenCalledWith(YMD, { memo: '가상 메모' })
   })
@@ -812,7 +817,7 @@ describe('createAutosave serverDay', () => {
   it('AC-006.12: 처음 읽으면 서버 값 그대로이고 저장·타이머를 부르지 않는다', () => {
     const { autosave, save } = harness()
     const server = dayWith({ cashIn: '100000', memo: '가상 메모' })
-    expect(autosave.serverDay(YMD, server, 'memo')).toEqual(server)
+    expect(autosave.serverDay(YMD, server, 'memo').day).toEqual(server)
     expect(save).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
     expect(autosave.snapshot().state).toBe('idle')
@@ -822,7 +827,7 @@ describe('createAutosave serverDay', () => {
 
   it('AC-006.12: 서버 줄이 없으면 빈 하루다', () => {
     const { autosave } = harness()
-    expect(autosave.serverDay(YMD, null)).toEqual(emptyWorklogDay())
+    expect(autosave.serverDay(YMD, null).day).toEqual(emptyWorklogDay())
   })
 
   it('AC-006.12: 저장 안 된 칸·초점 칸은 그대로이고 나머지는 서버 값으로 바뀐다', () => {
@@ -831,7 +836,7 @@ describe('createAutosave serverDay', () => {
     autosave.serverDay(YMD, read)
     autosave.change(YMD, { ...read, cashIn: '200000' })
     const server = dayWith({ cashIn: '900000', cardIn: '900000', transferIn: '900000' })
-    expect(autosave.serverDay(YMD, server, 'cardIn')).toEqual(
+    expect(autosave.serverDay(YMD, server, 'cardIn').day).toEqual(
       dayWith({ cashIn: '200000', cardIn: '100000', transferIn: '900000' }),
     )
   })
@@ -839,7 +844,7 @@ describe('createAutosave serverDay', () => {
   it('AC-006.12: 반영한 칸은 다음 저장에서 차이가 아니라 저장으로 가지 않는다', async () => {
     const { autosave, save } = harness()
     autosave.serverDay(YMD, dayWith({ cashIn: '100000' }))
-    const merged = autosave.serverDay(YMD, dayWith({ cashIn: '900000' }))
+    const merged = autosave.serverDay(YMD, dayWith({ cashIn: '900000' })).day
     autosave.change(YMD, { ...merged, memo: '가상 메모' })
     await wait(800)
     expect(save).toHaveBeenCalledTimes(1)
@@ -858,12 +863,12 @@ describe('createAutosave serverDay', () => {
   it('AC-006.12: 초점 칸의 옛 값이 다른 PC 값을 덮지 않고, 초점이 나간 뒤 읽으면 서버 값이 된다', async () => {
     const { autosave, save } = harness()
     autosave.serverDay(YMD, dayWith({ memo: '가상 옛 메모' }))
-    const merged = autosave.serverDay(YMD, dayWith({ memo: '가상 다른 PC 메모' }), 'memo')
+    const merged = autosave.serverDay(YMD, dayWith({ memo: '가상 다른 PC 메모' }), 'memo').day
     expect(merged.memo).toBe('가상 옛 메모')
     autosave.change(YMD, { ...merged, cashIn: '100000' })
     await wait(800)
     expect(save).toHaveBeenCalledWith(YMD, { cashIn: '100000' })
-    const later = autosave.serverDay(YMD, dayWith({ memo: '가상 다른 PC 메모', cashIn: '100000' }))
+    const later = autosave.serverDay(YMD, dayWith({ memo: '가상 다른 PC 메모', cashIn: '100000' })).day
     expect(later.memo).toBe('가상 다른 PC 메모')
   })
 
@@ -872,7 +877,7 @@ describe('createAutosave serverDay', () => {
     autosave.serverDay(YMD, dayWith({ memo: '가상 옛 메모' }))
     autosave.change(YMD, dayWith({ memo: PHONE }))
     await wait(800)
-    const merged = autosave.serverDay(YMD, dayWith({ memo: '가상 다른 PC 메모', cashIn: '900000' }))
+    const merged = autosave.serverDay(YMD, dayWith({ memo: '가상 다른 PC 메모', cashIn: '900000' })).day
     expect(merged).toEqual(dayWith({ memo: PHONE, cashIn: '900000' }))
     expect(autosave.snapshot().blocked).toEqual({ ymd: YMD, fields: ['memo'] })
     expect(autosave.snapshot().state).toBe('blocked')
@@ -885,7 +890,7 @@ describe('createAutosave serverDay', () => {
     autosave.change(YMD, dayWith({ cashIn: '100000' }))
     await wait(800)
     autosave.change(YMD, dayWith({})) // 보내는 중에 되돌림: 아는 값과 같지만 서버에는 곧 100000이 들어간다
-    expect(autosave.serverDay(YMD, dayWith({ cashIn: '100000' })).cashIn).toBe('')
+    expect(autosave.serverDay(YMD, dayWith({ cashIn: '100000' })).day.cashIn).toBe('')
     await calls[0].succeed()
     expect(calls[1].changes).toEqual({ cashIn: '' })
   })
@@ -916,7 +921,7 @@ describe('createAutosave serverDay', () => {
   it('AC-006.12: 돌려준 값을 밖에서 고쳐도 안쪽 값은 바뀌지 않는다', async () => {
     const { autosave, save } = harness()
     const server = dayWith({ cashIn: '100000' })
-    const merged = autosave.serverDay(YMD, server)
+    const merged = autosave.serverDay(YMD, server).day
     merged.cashIn = '200000'
     server.cashIn = '300000'
     autosave.change(YMD, dayWith({ cashIn: '100000', memo: '가상 메모' }))
@@ -968,5 +973,184 @@ describe('createAutosave revision', () => {
     autosave.serverDay(YMD, dayWith({ cashIn: '100000' }))
     autosave.serverDay(YMD, dayWith({ cashIn: '200000' }))
     expect(autosave.revision(YMD)).toBe(0)
+  })
+})
+
+// ── 비트 칸 목록(bitFields, worklog REQ-017 · design.md 20-4절) ─────────────
+// 자동 저장은 칸처럼 목록의 아는 값·최신 값을 들고, 목록이 바뀌었을 때만(차례는 보지 않는다) save에 셋째 인자로 넘긴다.
+// 목록을 모르거나 안 바뀌었으면 인자 둘로 부른다 → 저장이 bit_fields를 보내지 않아 저장된 표시가 지워지지 않는다(AC-017.7)
+describe('AC-017.7 비트 칸 목록은 바뀌었을 때만 save에 간다', () => {
+  it('AC-017.7: 목록을 받지 않은 change는 save를 인자 둘로 부른다(표시가 저장된 날에 비트 칸 밖 칸을 고침)', async () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, ['cashIn'])
+    autosave.change(YMD, { ...server, spendCash: '20000' })
+    await wait(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(YMD, { spendCash: '20000' })
+    expect(save.mock.calls[0]).toHaveLength(2)
+  })
+
+  it('AC-017.7: 아는 목록과 같은 목록(차례만 다름)을 주면 목록을 보내지 않는다', async () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ newPatients: '10', cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, ['newPatients', 'cashIn'])
+    autosave.change(YMD, { ...server, spendCash: '20000' }, ['cashIn', 'newPatients'])
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, { spendCash: '20000' })
+    expect(save.mock.calls[0]).toHaveLength(2)
+  })
+
+  it('AC-017.7: 비트 칸을 손으로 고쳐 목록이 줄면 바뀐 칸과 줄어든 목록을 보낸다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, dayWith({ newPatients: '10', cashIn: '100000' }), null, ['newPatients', 'cashIn'])
+    autosave.change(YMD, dayWith({ newPatients: '10', cashIn: '120000' }), ['newPatients'])
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, { cashIn: '120000' }, ['newPatients'])
+  })
+
+  it('AC-017.7: 칸은 그대로이고 목록만 바뀌어도 목록만 보낸다(바뀐 칸 없음)', async () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, [])
+    autosave.change(YMD, server, ['cashIn'])
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, {}, ['cashIn'])
+  })
+
+  it('AC-017.7: 보낸 목록은 저장 뒤 아는 목록이 되어 다음 저장에 다시 가지 않는다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, null, null, [])
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    await wait(800)
+    expect(calls[0]).toMatchObject({ changes: { cashIn: '100000' }, bitFields: ['cashIn'], args: 3 })
+    await calls[0].succeed()
+    autosave.change(YMD, dayWith({ cashIn: '100000', cardIn: '200000' }), ['cashIn'])
+    await wait(800)
+    expect(calls[1]).toMatchObject({ changes: { cardIn: '200000' }, bitFields: undefined, args: 2 })
+  })
+
+  it('AC-017.7: 저장 중에 목록이 또 바뀌면 끝난 뒤 남은 목록을 보낸다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, null, null, [])
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    await wait(800)
+    autosave.change(YMD, dayWith({ cashIn: '100000', cardIn: '200000' }), ['cashIn', 'cardIn'])
+    await calls[0].succeed()
+    expect(calls[1]).toMatchObject({ changes: { cardIn: '200000' }, bitFields: ['cashIn', 'cardIn'], args: 3 })
+  })
+
+  it('AC-017.7: 실패하면 다시 할 때 그 목록을 다시 보낸다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, null, null, [])
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    await wait(800)
+    await calls[0].fail(failedError())
+    await wait(2000)
+    expect(calls[1]).toMatchObject({ changes: { cashIn: '100000' }, bitFields: ['cashIn'], args: 3 })
+  })
+
+  it('AC-017.7: 아는 목록이 없는 날(읽기 전)에 받은 목록은 보낸다', async () => {
+    const { autosave, save } = harness()
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, { cashIn: '100000' }, ['cashIn'])
+  })
+
+  it('AC-017.7: 막힌 칸만 남아도 바뀐 목록은 보내고, 그 뒤 막힌 상태다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, dayWith({ cashIn: '100000' }), null, [])
+    autosave.change(YMD, dayWith({ cashIn: '100000', memo: PHONE }), ['cashIn'])
+    await wait(800)
+    expect(calls[0]).toMatchObject({ changes: {}, bitFields: ['cashIn'], args: 3 })
+    await calls[0].succeed()
+    expect(calls).toHaveLength(1)
+    expect(autosave.snapshot().state).toBe('blocked')
+  })
+
+  it('AC-017.7: 넘긴 목록을 밖에서 고쳐도 안쪽 목록은 바뀌지 않는다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, [])
+    const fields: WorklogNumberKey[] = ['cashIn']
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), fields)
+    fields.push('cardIn')
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, { cashIn: '100000' }, ['cashIn'])
+  })
+})
+
+describe('AC-017.7 serverDay·pendingDay가 나르는 비트 칸 목록', () => {
+  it('AC-017.7: serverDay는 { day, bitFields }를 돌려준다. 처음 읽으면 받은 목록 그대로이고, 목록을 받지 않으면 bitFields가 없다', () => {
+    const { autosave } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    expect(autosave.serverDay(YMD, server, null, ['cashIn'])).toEqual({ day: server, bitFields: ['cashIn'] })
+    const plain = autosave.serverDay(OTHER, server)
+    expect(plain.day).toEqual(server)
+    expect(plain).not.toHaveProperty('bitFields')
+  })
+
+  it('AC-017.7: 다시 읽은 목록은 저장 안 된 목록이 아니면 아는 목록·최신 목록이 되고, 같은 목록을 주면 저장하지 않는다', async () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ cashIn: '100000', cardIn: '200000' })
+    autosave.serverDay(YMD, server, null, ['cashIn'])
+    expect(autosave.serverDay(YMD, server, null, ['cashIn', 'cardIn']).bitFields).toEqual(['cashIn', 'cardIn'])
+    autosave.change(YMD, server, ['cardIn', 'cashIn'])
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('AC-017.7: 저장 안 된 목록은 다시 읽어도 그대로이고(돌려준 목록) 저장으로 간다', async () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, [])
+    autosave.change(YMD, server, ['cashIn'])
+    expect(autosave.serverDay(YMD, server, null, ['cardIn']).bitFields).toEqual(['cashIn'])
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, {}, ['cashIn'])
+  })
+
+  it('AC-017.7: 보내는 중인 목록은 다시 읽어도 그대로다', async () => {
+    const { autosave, calls } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, [])
+    autosave.change(YMD, server, ['cashIn'])
+    await wait(800)
+    expect(autosave.serverDay(YMD, server, null, []).bitFields).toEqual(['cashIn'])
+    await calls[0].succeed()
+    expect(calls).toHaveLength(1)
+    expect(autosave.serverDay(YMD, server, null, ['cashIn']).bitFields).toEqual(['cashIn'])
+  })
+
+  it('AC-017.7: 다시 읽을 때 목록을 받지 않으면 아는 목록을 그대로 둔다', () => {
+    const { autosave } = harness()
+    autosave.serverDay(YMD, null, null, ['cashIn'])
+    expect(autosave.serverDay(YMD, dayWith({ cashIn: '100000' })).bitFields).toEqual(['cashIn'])
+  })
+
+  it('AC-017.7: pendingDay는 최신 목록도 돌려주고, 목록을 모르는 날은 bitFields가 없다', () => {
+    const { autosave } = harness()
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    expect(autosave.pendingDay(YMD)).toEqual({ day: dayWith({ cashIn: '100000' }), bitFields: ['cashIn'] })
+    autosave.change(OTHER, dayWith({ memo: '가상 메모' }))
+    expect(autosave.pendingDay(OTHER)?.day).toEqual(dayWith({ memo: '가상 메모' }))
+    expect(autosave.pendingDay(OTHER)).not.toHaveProperty('bitFields')
+  })
+
+  it('AC-017.7: 돌려준 목록을 밖에서 고쳐도 안쪽 목록은 바뀌지 않는다', () => {
+    const { autosave } = harness()
+    const read = autosave.serverDay(YMD, null, null, ['cashIn'])
+    read.bitFields?.push('cardIn')
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    const pending = autosave.pendingDay(YMD)
+    pending?.bitFields?.push('cardIn')
+    expect(autosave.pendingDay(YMD)?.bitFields).toEqual(['cashIn'])
+  })
+
+  it('AC-017.7: dispose하면 목록도 비운다', () => {
+    const { autosave } = harness()
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    autosave.dispose()
+    expect(autosave.pendingDay(YMD)).toBeNull()
+    expect(autosave.serverDay(YMD, null)).not.toHaveProperty('bitFields')
   })
 })

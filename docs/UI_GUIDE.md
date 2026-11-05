@@ -433,7 +433,7 @@
 - 랜딩 390px 전체 높이는 5화면(4,220px) 이하다
 
 ## 아이콘·로고
-- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 19개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck·logout). `logout`은 계정 메뉴 [로그아웃]이 쓴다(ui-90 시안 그림)
+- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 21개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck·logout·info·reload). `logout`은 계정 메뉴 [로그아웃]이 쓴다(ui-90 시안 그림). `info`·`reload`는 업무일지 비트 안내 줄·[지금 불러오기]가 쓴다(worklog 비트 표시 시안 그림)
   - viewBox `0 0 16 16`, `fill="none"`, `stroke="currentColor"`, 선 1.5, `aria-hidden="true"`. 크기는 `size`(12·14·16)
   - 꼭 필요한 곳에만 쓴다. 아이콘만 있는 단추에는 `aria-label`을 준다
 - **구글 G**: `src/components/common/GoogleMark.tsx`(48×48 viewBox, 상표 네 색). 구글 상표 색은 이 파일에만 있다

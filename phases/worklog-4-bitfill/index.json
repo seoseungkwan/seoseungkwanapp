@@ -23,7 +23,8 @@
     {
       "step": 3,
       "name": "bit-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "useBitFill(revenue.days 읽기·오늘 10분·reload [지금 불러오기]·useBridge→상태 표, connecting+helloError→setup-needed, 터치 off) + BitNotice(안내 줄·[지금 불러오기]·설명 줄·'다름' 목록 '비트 숫자와 다른 칸이 있어요', 모두 print:hidden) + autosave/worklogSession/useWorklogDay가 bitFields를 나르고 바뀌었을 때만 보냄(모르면 saveWorklogDay 3인자) + 시트 비트 표시(.bit 초록 모서리, 인쇄 content:none) + Icon info·reload(21개) + docs/mockups/worklog/bitfill.html(승인 v2 그대로). 참고: 확장은 웹 연결 하나만 받아 업무일지를 연 브라우저 탭이 있으면 다른 브라우저 탭의 청구·매출 화면은 busy(기존 방식, design 20-1). 관문: 0110 SQL을 실제 Supabase에 붙이고 TASK-18 통과 전에는 합치기·배포 금지"
     }
   ]
 }

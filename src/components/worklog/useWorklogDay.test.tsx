@@ -268,12 +268,12 @@ describe('AC-010.3 칸 바꾸기', () => {
     const { result } = await ready(DAY, { cashIn: '100000' })
     const change = vi.spyOn(worklogAutosave(), 'change')
 
-    let returned: WorklogDay | undefined
+    let returned: { day: WorklogDay } | undefined
     act(() => {
       returned = result.current.setCell('memo', '가상 글')
     })
 
-    expect(returned).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
+    expect(returned?.day).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
     expect(result.current.day).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
     expect(change).not.toHaveBeenCalled()
     change.mockRestore()
@@ -281,12 +281,12 @@ describe('AC-010.3 칸 바꾸기', () => {
 
   it('AC-010.3: 같은 때 두 칸을 바꿔도 앞 칸을 잃지 않는다', async () => {
     const { result } = await ready()
-    let last: WorklogDay | undefined
+    let last: { day: WorklogDay } | undefined
     act(() => {
       result.current.setCell('cashIn', '100000')
       last = result.current.setCell('cardIn', '200000')
     })
-    expect(last).toEqual(dayWith({ cashIn: '100000', cardIn: '200000' }))
+    expect(last?.day).toEqual(dayWith({ cashIn: '100000', cardIn: '200000' }))
     expect(result.current.day).toEqual(dayWith({ cashIn: '100000', cardIn: '200000' }))
   })
 })
@@ -373,7 +373,7 @@ describe('AC-010.4 날짜 옮김', () => {
 })
 
 describe('AC-010.13 다시 읽기', () => {
-  it('AC-010.13: 받은 값은 serverDay(날짜, 값, 초점 칸)의 결과로 화면 값을 바꾸고 저장을 부르지 않는다', async () => {
+  it('AC-010.13·AC-017.7: 받은 값은 serverDay(날짜, 값, 초점 칸, 읽은 목록)의 결과로 화면 값을 바꾸고 저장을 부르지 않는다', async () => {
     const { result } = await ready(DAY, { cashIn: '100000', cardIn: '100000' })
     const autosave = worklogAutosave()
     const serverDay = vi.spyOn(autosave, 'serverDay')
@@ -385,7 +385,7 @@ describe('AC-010.13 다시 읽기', () => {
     act(() => result.current.refresh())
     await settle(60_000)
 
-    expect(serverDay).toHaveBeenCalledWith(DAY, server, 'cardIn')
+    expect(serverDay).toHaveBeenCalledWith(DAY, server, 'cardIn', ['cashIn'])
     expect(result.current.day.cashIn).toBe('200000')
     expect(result.current.day.cardIn).toBe('100000')
     expect(change).not.toHaveBeenCalled()
@@ -398,7 +398,7 @@ describe('AC-010.13 다시 읽기', () => {
     const { result } = await ready(DAY, { cashIn: '100000' })
     let day: WorklogDay | undefined
     act(() => {
-      day = result.current.setCell('cardIn', '300000')
+      day = result.current.setCell('cardIn', '300000').day
     })
     worklogAutosave().change(DAY, day as WorklogDay)
     load.mockResolvedValueOnce(saved({ cashIn: '200000', cardIn: '200000' }))
@@ -450,7 +450,7 @@ describe('AC-010.13 다시 읽기', () => {
 
     let day: WorklogDay | undefined
     act(() => {
-      day = result.current.setCell('cashIn', '200000')
+      day = result.current.setCell('cashIn', '200000').day
     })
     autosave.change(DAY, day as WorklogDay)
     autosave.flush()
@@ -570,32 +570,34 @@ describe('AC-010.11 화면이 내려감', () => {
 })
 
 describe('AC-016.1 읽기 모양 { day, bitFields }', () => {
-  it('AC-016.1: 처음 읽기는 읽은 day만 serverDay에 넘기고, 화면 값에 비트 칸 목록이 섞이지 않는다', async () => {
+  it('AC-016.1·AC-017.7: 처음 읽기는 읽은 day와 목록을 따로 serverDay에 넘기고, 화면 값(day)에 비트 칸 목록이 섞이지 않는다', async () => {
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
     load.mockResolvedValueOnce(saved({ cashIn: '100000', memo: '가상 글' }, ['cashIn', 'newPatients']))
     const { result } = setup()
     await settle()
 
     expect(result.current.status).toBe('ready')
-    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '100000', memo: '가상 글' }), null)
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '100000', memo: '가상 글' }), null, ['cashIn', 'newPatients'])
     expect(result.current.day).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
     expect(result.current.day).not.toHaveProperty('bitFields')
+    expect(result.current.bitFields).toEqual(['cashIn', 'newPatients'])
     expect(save).not.toHaveBeenCalled()
     serverDay.mockRestore()
   })
 
-  it('AC-016.1: 줄이 없는 날(null)은 serverDay에 null을 넘겨 빈 하루다', async () => {
+  it('AC-016.1·AC-017.7: 줄이 없는 날(null)은 serverDay에 null과 빈 목록을 넘겨 빈 하루·빈 목록이다', async () => {
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
     load.mockResolvedValueOnce(null)
     const { result } = setup()
     await settle()
 
-    expect(serverDay).toHaveBeenCalledWith(DAY, null, null)
+    expect(serverDay).toHaveBeenCalledWith(DAY, null, null, [])
     expect(result.current.day).toEqual(emptyWorklogDay())
+    expect(result.current.bitFields).toEqual([])
     serverDay.mockRestore()
   })
 
-  it('AC-016.1: 다시 읽기도 읽은 day만 serverDay에 넘긴다', async () => {
+  it('AC-016.1·AC-017.7: 다시 읽기도 읽은 day와 목록을 따로 serverDay에 넘기고, 돌려받은 목록으로 표시를 그린다', async () => {
     const { result } = await ready(DAY, { cashIn: '100000' })
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
     load.mockResolvedValueOnce(saved({ cashIn: '200000' }, ['cashIn']))
@@ -603,8 +605,138 @@ describe('AC-016.1 읽기 모양 { day, bitFields }', () => {
     act(() => result.current.refresh())
     await settle()
 
-    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '200000' }), null)
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '200000' }), null, ['cashIn'])
     expect(result.current.day).toEqual(dayWith({ cashIn: '200000' }))
+    expect(result.current.bitFields).toEqual(['cashIn'])
     serverDay.mockRestore()
+  })
+})
+
+// ── 비트 칸 목록(worklog REQ-017, design.md 20-4·20-5절): 날짜별 화면 값이 목록도 든다. 사람이 숫자 칸을 고치면 그 칸을 뺀다(dropBitField).
+// 맞춤(mergeBit·takeBitValue)은 화면이 editBit로 그날 최신 값에 바로 적용한다(ready인 날만). 저장은 부르지 않는다
+describe('AC-017.7 날짜별 비트 칸 목록', () => {
+  it('AC-017.7: 사람이 비트 칸을 고치면 setCell이 그 칸을 뺀 목록을 돌려주고 화면 목록도 줄며, 저장은 부르지 않는다', async () => {
+    load.mockResolvedValueOnce(saved({ newPatients: '10', cashIn: '100000' }, ['newPatients', 'cashIn']))
+    const { result } = setup()
+    await settle()
+    const change = vi.spyOn(worklogAutosave(), 'change')
+
+    let edited: { day: WorklogDay; bitFields?: WorklogNumberKey[] } | undefined
+    act(() => {
+      edited = result.current.setCell('cashIn', '120000')
+    })
+
+    expect(edited).toEqual({ day: dayWith({ newPatients: '10', cashIn: '120000' }), bitFields: ['newPatients'] })
+    expect(result.current.bitFields).toEqual(['newPatients'])
+    expect(change).not.toHaveBeenCalled()
+    change.mockRestore()
+  })
+
+  it('AC-017.7: 비트 칸 밖 칸을 고치면 목록은 그대로다', async () => {
+    load.mockResolvedValueOnce(saved({ cashIn: '100000' }, ['cashIn']))
+    const { result } = setup()
+    await settle()
+    let edited: { day: WorklogDay; bitFields?: WorklogNumberKey[] } | undefined
+    act(() => {
+      edited = result.current.setCell('spendCash', '20000')
+      result.current.setCell('memo', '가상 글')
+    })
+    expect(edited?.bitFields).toEqual(['cashIn'])
+    expect(result.current.bitFields).toEqual(['cashIn'])
+  })
+
+  it('AC-017.7: 목록을 모르는 날(자동 저장에도 없음)은 setCell이 목록을 돌려주지 않는다', () => {
+    load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)
+    const { result } = setup()
+    let edited: { day: WorklogDay; bitFields?: WorklogNumberKey[] } | undefined
+    act(() => {
+      edited = result.current.setCell('cashIn', '100000')
+    })
+    expect(edited).not.toHaveProperty('bitFields')
+    expect(result.current.bitFields).toBeUndefined()
+  })
+
+  it('AC-017.7: 앱 안 이동 뒤 돌아오면 자동 저장에 남은 목록을 읽기 전에 먼저 보인다', async () => {
+    worklogAutosave().change(DAY, dayWith({ cashIn: '100000' }), ['cashIn'])
+    load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)
+    const { result } = setup()
+    expect(result.current.status).toBe('loading')
+    expect(result.current.bitFields).toEqual(['cashIn'])
+  })
+
+  it('AC-017.7: 다시 읽은 목록은 표시로 보이고, 저장 안 된 목록은 그대로다', async () => {
+    load.mockResolvedValueOnce(saved({ cashIn: '100000' }, []))
+    const { result } = setup()
+    await settle()
+
+    load.mockResolvedValueOnce(saved({ cashIn: '100000', cardIn: '200000' }, ['cardIn']))
+    act(() => result.current.refresh())
+    await settle()
+    expect(result.current.bitFields).toEqual(['cardIn'])
+
+    let edited: { day: WorklogDay; bitFields?: WorklogNumberKey[] } | undefined
+    act(() => {
+      edited = result.current.setCell('cardIn', '250000')
+    })
+    worklogAutosave().change(DAY, edited!.day, edited!.bitFields)
+    load.mockResolvedValueOnce(saved({ cashIn: '100000', cardIn: '200000' }, ['cardIn', 'cashIn']))
+    act(() => result.current.refresh())
+    await settle()
+    expect(result.current.bitFields).toEqual([])
+    expect(result.current.day.cardIn).toBe('250000')
+  })
+
+  it('AC-017.8: editBit은 ready인 날의 최신 값·목록으로 맞춤을 돌려 화면 값·목록을 바꾸고 결과를 돌려준다(저장은 부르지 않는다)', async () => {
+    load.mockResolvedValueOnce(saved({ cashIn: '100000' }, []))
+    const { result } = setup()
+    await settle()
+    const change = vi.spyOn(worklogAutosave(), 'change')
+    const seen: Array<[WorklogDay, readonly WorklogNumberKey[]]> = []
+
+    let applied: { day: WorklogDay; bitFields: WorklogNumberKey[] } | null = null
+    act(() => {
+      result.current.setCell('memo', '가상 글')
+      applied = result.current.editBit((day, fields) => {
+        seen.push([day, fields])
+        return { day: { ...day, cardIn: '200000' }, bitFields: [...fields, 'cardIn'] }
+      })
+    })
+
+    expect(seen).toEqual([[dayWith({ cashIn: '100000', memo: '가상 글' }), []]])
+    expect(applied).toEqual({ day: dayWith({ cashIn: '100000', memo: '가상 글', cardIn: '200000' }), bitFields: ['cardIn'] })
+    expect(result.current.day.cardIn).toBe('200000')
+    expect(result.current.bitFields).toEqual(['cardIn'])
+    expect(change).not.toHaveBeenCalled()
+    change.mockRestore()
+  })
+
+  it('AC-017.8: editBit은 맞춤이 null을 돌려주면 아무것도 바꾸지 않는다', async () => {
+    load.mockResolvedValueOnce(saved({ cashIn: '100000' }, ['cashIn']))
+    const { result } = setup()
+    await settle()
+    let applied: unknown = 'not-called'
+    act(() => {
+      applied = result.current.editBit(() => null)
+    })
+    expect(applied).toBeNull()
+    expect(result.current.day).toEqual(dayWith({ cashIn: '100000' }))
+    expect(result.current.bitFields).toEqual(['cashIn'])
+  })
+
+  it.each([
+    ['읽는 중', () => load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)],
+    ['불러오기 실패', () => load.mockRejectedValueOnce(new WorklogStorageError('failed'))],
+  ])('AC-017.8: %s인 날에는 editBit이 맞춤을 부르지 않고 null이다(합치지 않는다)', async (_name, arrange) => {
+    arrange()
+    const { result } = setup()
+    await settle()
+    const edit = vi.fn(() => ({ day: dayWith({ cashIn: '100000' }), bitFields: ['cashIn'] as WorklogNumberKey[] }))
+    let applied: unknown = 'not-called'
+    act(() => {
+      applied = result.current.editBit(edit)
+    })
+    expect(edit).not.toHaveBeenCalled()
+    expect(applied).toBeNull()
+    expect(result.current.day.cashIn).toBe('')
   })
 })
