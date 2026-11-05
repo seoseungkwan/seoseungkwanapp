@@ -235,6 +235,43 @@
   padding: 0 2px 11px;
 }
 
+/* 비트 칸 표시 (worklog AC-017.2, 시안 docs/mockups/worklog/bitfill.html ①): 칸 오른쪽 위 작은 세모(엑셀 메모 표시처럼 초록).
+   칸을 가리거나 누름을 막지 않는다. 인쇄에는 없다(@media print) */
+.sheet td.bit::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent var(--xl-focus) transparent transparent;
+}
+
+/* 양식 아래 설명 줄 앞의 작은 칸 그림(WorklogSheet.tsx의 BitMark). 엑셀 색은 이 파일에만 둔다 */
+.mini {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 24px;
+  height: 15px;
+  border: 1px solid var(--xl-ink);
+  background: var(--surface);
+}
+
+.mini::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 7px 7px 0;
+  border-color: transparent var(--xl-focus) transparent transparent;
+}
+
 /* 768px 미만: 양식을 화면 폭에 맞춘다(시안 값 그대로) */
 @media (max-width: 767px) {
   .paper {
@@ -281,6 +318,10 @@
 
   .sheet td.cnt.flagged > input {
     padding: 0 1px 8px;
+  }
+
+  .sheet td.bit::after {
+    border-width: 0 6px 6px 0;
   }
 }
 
@@ -339,5 +380,10 @@
   .sheet td.blocked > textarea {
     background: transparent;
     box-shadow: none;
+  }
+
+  /* 비트 칸 표시도 찍지 않는다(AC-017.2). 숨기는 규칙은 .flag 하나로 두려고 display 대신 그림을 비운다 */
+  .sheet td.bit::after {
+    content: none;
   }
 }

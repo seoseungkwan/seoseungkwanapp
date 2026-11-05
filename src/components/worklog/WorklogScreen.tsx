@@ -5,9 +5,12 @@ import { todayInKorea } from '@/lib/analytics/dates'
 import { loadWorklogDay } from '@/lib/storage/worklogDays'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { SaveState } from '@/lib/worklog/autosave'
+import { mergeBit, takeBitValue, type BitMerge, type BitValues } from '@/lib/worklog/bitFill'
 import { dayAfterRollover } from '@/lib/worklog/days'
 import { blockedCellKeys } from '@/lib/worklog/notes'
-import type { WorklogCellKey } from '@/types/worklog'
+import type { WorklogCellKey, WorklogDay, WorklogNumberKey } from '@/types/worklog'
+import { BitNotice, BitSheetNotes } from './BitNotice'
+import { useBitFill, type BitFillStatus } from './useBitFill'
 import { useWorklogDay, type WorklogDayStatus } from './useWorklogDay'
 import { WorklogSheet } from './WorklogSheet'
 import { WorklogToolbar, type ToolbarStatus } from './WorklogToolbar'
@@ -15,11 +18,17 @@ import { onWorklogSignedOut, startWorklogSession, worklogAutosave } from './work
 
 // 업무일지 화면 (specs/worklog REQ-010, design.md 11-3절). 날짜 줄과 양식을 잇고 읽기·자동 저장·다시 읽기·자정 넘김·로그아웃을 맞춘다.
 // 자동 저장 제어는 화면 밖 모듈에 한 벌이다: 내려갈 때 flush만 하고 비우지 않는다(앱 안 이동 = 바로 저장).
-// 친 값은 React 상태와 그 제어에만 있고 브라우저 저장소·console로 가지 않는다
+// 친 값은 React 상태와 그 제어에만 있고 브라우저 저장소·console로 가지 않는다.
+// 비트 PC가 연결된 의원 PC에서는 그날 비트 숫자(useBitFill)를 맞춰 넣는다(REQ-017, design.md 20절): 그날 읽기가 끝난(ready) 날에만, 그날 답일 때만
+// mergeBit을 돌려 빈 칸을 채우고, 바뀌었으면 화면 값·비트 칸 목록을 바꿔 자동 저장으로 넘긴다(서버로는 바뀐 칸과 바뀐 목록만 간다).
+// 저장에 넘기는 목록은 읽은 목록·mergeBit·takeBitValue·dropBitField가 돌려준 것뿐이다. 손으로 적은 칸은 덮지 않고 '다름'으로만 알린다
 
 const TOUCH_QUERY = '(hover: none) and (pointer: coarse)' // 보기만은 터치 기기로 정한다. 폭으로 정하면 반쪽 창·확대한 의원 PC가 막힌다
 const TODAY_CHECK_MS = 30_000
 const REFRESH_MS = 60_000
+// 비트를 읽을 수 있는 화면의 상태(연결됨·터치 기기 아님). 이때만 '다름' 목록을 보인다
+const BIT_READABLE: readonly BitFillStatus[] = ['reading', 'ready', 'unconfirmed', 'failed']
+const BIT_ANSWERED: readonly BitFillStatus[] = ['ready', 'unconfirmed']
 
 // async로 감싼다: 클라이언트를 만들다 바로 던져도 읽기 실패로 다루려고(다시 읽기는 조용히 넘긴다)
 async function loadDay(ymd: string) {
@@ -56,8 +65,12 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
   const focusCell = useRef<WorklogCellKey | null>(null)
   const rolloverFrom = useRef<string | null>(null) // 초점이 나가기를 기다리는 자정 넘김의 옛 오늘
   const focusKey = useCallback(() => focusCell.current, [])
-  const { status, day, setCell, refresh, reload, clear } = useWorklogDay(ymd, loadDay, focusKey)
+  const { status, day, bitFields, setCell, editBit, refresh, reload, clear } = useWorklogDay(ymd, loadDay, focusKey)
   const readOnly = viewOnly || status !== 'ready'
+  const bit = useBitFill({ ymd, today, readOnly: viewOnly })
+  const bitHere = bit.ymd === ymd // 이 답이 고른 날의 것(날짜를 막 옮겼으면 아니다)
+  const answered = bitHere && BIT_ANSWERED.includes(bit.status)
+  const merged = useRef<BitValues | null>(null) // 마지막으로 합친 답. 같은 답을 두 번 합치지 않는다(사람이 비운 비트 칸은 다음 읽기에서 채운다)
 
   const sheetHasFocus = useCallback(() => sheetArea.current?.contains(document.activeElement) === true, [])
 
@@ -103,8 +116,37 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
 
   function onCell(key: WorklogCellKey, value: string) {
     if (readOnly) return
-    autosave.change(ymd, setCell(key, value))
+    const next = setCell(key, value)
+    autosave.change(ymd, next.day, next.bitFields)
   }
+
+  // 맞춤을 그날 최신 값·목록에 돌려 바뀌었을 때만 화면 값·목록을 바꾸고 자동 저장으로 넘긴다(읽기가 끝난 날만, editBit이 막는다).
+  // 돌려받은 하루·목록을 통째로 쓴다: takeBitValue는 다른 빈 칸도 다시 채울 수 있다
+  const applyBit = useCallback(
+    (fit: (day: WorklogDay, fields: readonly WorklogNumberKey[]) => BitMerge) => {
+      const next = editBit((current, fields) => {
+        const result = fit(current, fields)
+        return result.changed ? result : null
+      })
+      if (next) autosave.change(ymd, next.day, next.bitFields)
+    },
+    [autosave, editBit, ymd],
+  )
+
+  // [비트 숫자로 바꾸기]: 사람이 누를 때만 적은 값을 덮는다(AC-017.3)
+  function onTakeBit(key: WorklogNumberKey) {
+    if (readOnly || !bitHere) return
+    applyBit((current, fields) => takeBitValue(current, fields, key, bit.values))
+  }
+
+  // 비트 답 합치기(AC-017.1·AC-017.8): 답이 첫 읽기보다 먼저 오면 들고 있다가 ready 뒤에 합치고, 불러오기 실패한 날(error)은 합치지 않는다.
+  // 초점 칸도 치기 전이면 새 값으로 보이고(REQ-008), 친 칸은 손으로 적은 칸이라 mergeBit이 바꾸지 않는다
+  useEffect(() => {
+    if (status !== 'ready' || !answered || merged.current === bit.values) return
+    const values = bit.values
+    merged.current = values
+    applyBit((current, fields) => mergeBit(current, fields, values))
+  }, [answered, applyBit, bit.values, status])
 
   function onPrint() {
     autosave.flush()
@@ -149,6 +191,10 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
     }
   }, [autosave, checkToday, refresh])
 
+  // '다름' 목록은 그린 값으로 그때그때 맞춰 본다(사람이 고치면 바로 바뀐다). 읽기가 끝난 날, 비트를 읽을 수 있는 화면에서 그날 답이 있을 때만
+  const differs =
+    status === 'ready' && bitHere && bitFields !== undefined && BIT_READABLE.includes(bit.status) ? mergeBit(day, bitFields, bit.values).differs : []
+
   return (
     <div className="mx-auto flex w-full max-w-184.25 flex-col gap-3">
       <WorklogToolbar
@@ -162,18 +208,21 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
         onReload={reload}
         onPrint={onPrint}
       />
+      <BitNotice status={bit.status} lastReadAt={bitHere ? bit.lastReadAt : null} onReload={bit.reload} />
       <div ref={sheetArea} onBlur={onSheetBlur}>
         <WorklogSheet
           ymd={ymd}
           day={day}
           readOnly={readOnly}
           blockedCells={blockedCellKeys(day)}
+          bitFields={bitFields}
           onCell={onCell}
           onFocusCell={(key) => {
             focusCell.current = key
           }}
         />
       </div>
+      <BitSheetNotes day={day} bitFields={bitFields ?? []} differs={differs} onTake={onTakeBit} />
     </div>
   )
 }

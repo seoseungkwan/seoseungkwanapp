@@ -21,18 +21,28 @@ import {
 import s from './sheet.module.css'
 
 // 업무일지 엑셀 양식 칸 (specs/worklog REQ-008, design.md 2·11-1절). 값은 props로 받아 그리기만 하고, 바뀜은 콜백으로만 알린다.
-// 표는 승인 시안 docs/mockups/worklog/text-cells.html을 칸·글자·빈칸 수까지 그대로 옮겼다. 칸 읽기·합계는 lib/worklog만 부른다
+// 표는 승인 시안 docs/mockups/worklog/text-cells.html을 칸·글자·빈칸 수까지 그대로 옮겼다. 칸 읽기·합계는 lib/worklog만 부른다.
+// 비트에서 불러온 칸(bitFields)은 칸 모서리 작은 표시를 달고 양식 아래 설명 줄(BitNotice)을 가리킨다(worklog AC-017.2, 시안 bitfill.html)
 
 export type WorklogSheetProps = {
   ymd: string
   day: WorklogDay
   readOnly: boolean
   blockedCells: readonly WorklogCellKey[]
+  bitFields?: readonly WorklogNumberKey[] // 비트에서 불러온 칸(표시). 없으면 표시가 없다
   onCell(key: WorklogCellKey, value: string): void
   onFocusCell(key: WorklogCellKey | null): void
 }
 
-type Sheet = Omit<WorklogSheetProps, 'ymd'> & { excluded: readonly WorklogCellKey[] }
+/** 양식 아래 설명 줄 "표시한 칸은 비트에서 불러온 숫자예요"의 id. 비트 칸이 aria-describedby로 가리킨다 */
+export const BIT_LEGEND_ID = 'worklog-bit-legend'
+
+/** 설명 줄 앞 작은 칸 그림(칸 표시와 같은 세모). 엑셀 색은 양식 CSS 한 파일에만 있어 여기서 내보낸다 */
+export function BitMark() {
+  return <span aria-hidden="true" className={s.mini} />
+}
+
+type Sheet = Omit<WorklogSheetProps, 'ymd' | 'bitFields'> & { excluded: readonly WorklogCellKey[]; bitFields: readonly WorklogNumberKey[] }
 type Place = { sheet: Sheet; className?: string; colSpan?: number; rowSpan?: number }
 
 const COLUMN_WIDTHS = ['14.5%', '10.6%', '10.6%', '10.6%', '8.4%', '5.8%', '12%', '11.8%', '15.7%']
@@ -49,10 +59,11 @@ type InputCellProps = Place & {
   shown(focused: boolean): string // 아직 치지 않았을 때 칸 글자
   flagged?: boolean
   shortFlag?: boolean // 좁은 칸: 눈에는 "빠졌어요"만 보여 온전한 글자를 마우스 올리기에 둔다
+  bit?: boolean // 비트에서 불러온 칸
 }
 
 // 숫자·항목 이름·비고 칸. 초점 중 친 글자만 들고 있다. 치기 전 글자는 값에서 내므로 값이 바뀌면 함께 바뀐다(AC-008.11)
-function InputCell({ sheet, className, colSpan, rowSpan, cell, maxLength, shown, flagged = false, shortFlag = false }: InputCellProps) {
+function InputCell({ sheet, className, colSpan, rowSpan, cell, maxLength, shown, flagged = false, shortFlag = false, bit = false }: InputCellProps) {
   const { readOnly, blockedCells, onCell, onFocusCell } = sheet
   const [focused, setFocused] = useState(false)
   const [typed, setTyped] = useState<string | null>(null)
@@ -70,15 +81,16 @@ function InputCell({ sheet, className, colSpan, rowSpan, cell, maxLength, shown,
   const blocked = blockedCells.includes(cell)
   const flagId = `worklog-flag-${cell}`
   const title = hoverText(overflowing ? text : '', flagged && shortFlag ? FLAG_TEXT : '')
+  const describedBy = classes(bit && BIT_LEGEND_ID, flagged && flagId) || undefined
 
   return (
-    <td colSpan={colSpan} rowSpan={rowSpan} className={classes(s.in, className, blocked && s.blocked, flagged && s.flagged)}>
+    <td colSpan={colSpan} rowSpan={rowSpan} className={classes(s.in, className, blocked && s.blocked, flagged && s.flagged, bit && s.bit)}>
       <input
         ref={input}
         value={text}
         aria-label={WORKLOG_LABELS[cell]}
         aria-invalid={blocked || undefined}
-        aria-describedby={flagged ? flagId : undefined}
+        aria-describedby={describedBy}
         title={title}
         maxLength={maxLength}
         readOnly={readOnly}
@@ -111,7 +123,7 @@ function InputCell({ sheet, className, colSpan, rowSpan, cell, maxLength, shown,
 }
 
 function NumberCell({ cell, ...place }: Place & { cell: WorklogNumberKey }) {
-  const { day, excluded } = place.sheet
+  const { day, excluded, bitFields } = place.sheet
   const kind = cellKindOf(cell)
   return (
     <InputCell
@@ -120,6 +132,7 @@ function NumberCell({ cell, ...place }: Place & { cell: WorklogNumberKey }) {
       maxLength={CELL_MAX}
       flagged={excluded.includes(cell)}
       shortFlag={kind === 'count'}
+      bit={bitFields.includes(cell)}
       shown={(focused) => cellShownText(kind, day[cell], focused)}
     />
   )
@@ -161,9 +174,11 @@ function MemoCell({ sheet }: { sheet: Sheet }) {
   )
 }
 
-export function WorklogSheet({ ymd, day, readOnly, blockedCells, onCell, onFocusCell }: WorklogSheetProps) {
+const NO_BIT_FIELDS: readonly WorklogNumberKey[] = []
+
+export function WorklogSheet({ ymd, day, readOnly, blockedCells, bitFields = NO_BIT_FIELDS, onCell, onFocusCell }: WorklogSheetProps) {
   const totals = worklogTotals(readDayNumbers(day))
-  const sheet: Sheet = { day, readOnly, blockedCells, onCell, onFocusCell, excluded: excludedSumKeys(day) }
+  const sheet: Sheet = { day, readOnly, blockedCells, bitFields, onCell, onFocusCell, excluded: excludedSumKeys(day) }
 
   return (
     // 1px line 테두리는 sheet.module.css의 허용 색(AC-007.4) 밖이라 Tailwind 클래스로 붙인다

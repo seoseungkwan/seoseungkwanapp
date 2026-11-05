@@ -1,0 +1,771 @@
+<title>업무일지 비트 채우기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  specs/worklog design.md 20-5절 '화면 시안이 먼저다'의 시안(4단계, TASK-17 전).
+  양식은 승인본 docs/mockups/worklog/text-cells.html · src/components/worklog/sheet.module.css 그대로이고,
+  4단계가 더하는 것(비트 칸 표시, 양식 아래 한 줄, 다른 숫자 목록, 안내 한 줄)만 넣었다.
+  숫자·글은 모두 지어낸 예시다. 저장은 흉내만 내고 어디로도 보내지 않는다.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Gothic:wght@400;700&display=swap">
+<style>
+/* 배치: 위 상황 고르기 줄 → [화면 틀 | 설명] 두 칸(좁으면 설명이 위) → 맨 아래 문구 상자.
+   바깥 설명 쪽만 밝음/어두움을 따른다. 화면 틀 안은 실제 앱(밝은 화면만, UI_GUIDE)과 엑셀 양식 색 그대로 고정 */
+:root {
+  /* 바깥 설명 쪽 */
+  --bg: #E9ECF1;
+  --panel: #FFFFFF;
+  --fg: #111827;
+  --fg-2: #374151;
+  --muted: #5F6672;
+  --rule: #D3D8E0;
+  --chip: #EEF0F4;
+  --tag-bg: #FEF3C7;
+  --tag-fg: #92400E;
+  --bezel: #2A2F37;
+  --focus: #2563EB;
+  /* 실제 앱 화면(globals.css 값, 어두운 화면에서도 그대로) */
+  --app-canvas: #F7F8FA;
+  --app-surface: #FFFFFF;
+  --app-line: #E5E7EB;
+  --app-line-strong: #D1D5DB;
+  --app-ink: #111827;
+  --app-ink-2: #374151;
+  --app-muted: #6B7280;
+  --app-accent: #2563EB;
+  --app-negative: #C2410C;
+  /* 엑셀 양식(design.md 12절) */
+  --xl-ink: #000000;
+  --xl-lav: #CCCCFF;
+  --xl-gray: #D9D9D9;
+  --xl-paper: #FFFFFF;
+  --xl-focus: #107C41;
+  --shadow: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  /* 글꼴 */
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --xl-font: "Gulim", "굴림", "Nanum Gothic", "Apple SD Gothic Neo", sans-serif;
+  --xl-title: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171C; --panel: #1D2128; --fg: #E8EAEE; --fg-2: #C4C9D1; --muted: #9AA1AC; --rule: #343A45;
+    --chip: #2A2F38; --tag-bg: #4A3A12; --tag-fg: #F4D48A; --bezel: #454C58; --focus: #7AA7FF;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171C; --panel: #1D2128; --fg: #E8EAEE; --fg-2: #C4C9D1; --muted: #9AA1AC; --rule: #343A45;
+  --chip: #2A2F38; --tag-bg: #4A3A12; --tag-fg: #F4D48A; --bezel: #454C58; --focus: #7AA7FF;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font: 14px/22px var(--font-ui); word-break: keep-all; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.page {
+  container: page / inline-size;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+  display: grid;
+  gap: 20px;
+}
+.wrap { width: 100%; max-width: 1115px; margin: 0 auto; min-width: 0; }
+
+/* 머리 */
+.head { display: grid; gap: 6px; }
+.eyebrow { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.head h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+.tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-fg); font-size: 12px; line-height: 18px; font-weight: 600; vertical-align: middle; letter-spacing: 0; }
+.head p.lead { margin: 0; max-width: 68ch; font-size: 14px; line-height: 22px; color: var(--fg-2); }
+
+/* 상황 고르기 */
+.tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.tab {
+  display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 10px;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--fg-2);
+  font-size: 13px; line-height: 18px; font-weight: 500; text-align: left; cursor: pointer;
+}
+.tab:hover { border-color: var(--muted); }
+.tab .no { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--chip); color: var(--fg); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tab[aria-selected="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.tab[aria-selected="true"] .no { background: var(--bg); color: var(--fg); }
+
+/* 두 칸 */
+.layout { display: grid; grid-template-columns: 775px minmax(0, 1fr); gap: 24px; align-items: start; }
+.stage { display: grid; gap: 10px; min-width: 0; }
+.stage-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.frame-label { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--fg-2); }
+.subpick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.subpick > span { font-size: 12px; color: var(--muted); }
+.sub { min-height: 32px; padding: 4px 12px; border: 1px solid var(--rule); border-radius: 16px; background: var(--panel); color: var(--fg-2); font-size: 13px; line-height: 20px; font-weight: 500; cursor: pointer; }
+.sub[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+
+/* 설명 */
+.notes { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.notes h2 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--fg); text-wrap: balance; }
+.notes .situation { margin: 0; font-size: 13px; line-height: 20px; color: var(--fg-2); }
+.notes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: n; }
+.notes li { counter-increment: n; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14px; line-height: 22px; color: var(--fg); }
+.notes li::before { content: counter(n); display: grid; place-items: center; width: 22px; height: 22px; margin-top: 0; border: 1.5px solid var(--fg); border-radius: 50%; font-size: 12px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.notes .next { justify-self: start; min-height: 40px; padding: 0 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--chip); color: var(--fg); font-size: 14px; font-weight: 500; cursor: pointer; }
+.notes .next:hover { border-color: var(--muted); }
+
+/* 문구 상자 */
+.wording { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 32px; }
+.wording h2 { margin: 0 0 4px; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--fg); }
+.wording h2 .tag { margin-left: 6px; }
+.wording .hint { margin: 0 0 10px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.wording ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; line-height: 20px; color: var(--fg-2); }
+.wording q { quotes: "“" "”"; color: var(--fg); font-weight: 500; }
+
+/* ---------- 화면 틀 (여기부터 실제 앱 모양) ---------- */
+.screen {
+  container: screen / inline-size;
+  color-scheme: light;
+  display: grid; gap: 12px; min-width: 0;
+  background: var(--app-canvas); color: var(--app-ink);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 16px;
+}
+.screen > * { min-width: 0; }
+.screen.phone { width: min(390px, 100%); justify-self: center; border: 6px solid var(--bezel); border-radius: 28px; padding: 20px 12px 24px; }
+
+/* 날짜 줄 (WorklogToolbar) */
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.date-row, .tool-right { display: flex; align-items: center; gap: 8px; }
+.tool-right { min-width: 0; justify-content: flex-end; gap: 12px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+  height: 36px; padding: 0 16px; border: 1px solid var(--app-line-strong); border-radius: 4px;
+  background: var(--app-surface); color: var(--app-ink); font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.btn svg { width: 16px; height: 16px; }
+.btn:hover:not(:disabled) { background: var(--app-canvas); }
+.btn:disabled { color: var(--app-muted); background: var(--app-canvas); cursor: default; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.date-pick { width: 160px; height: 36px; padding: 0 12px; border: 1px solid var(--app-line-strong); border-radius: 4px; background: var(--app-surface); color: var(--app-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.status { margin: 0; min-width: 0; font-size: 13px; line-height: 20px; color: var(--app-ink-2); font-variant-numeric: tabular-nums; }
+
+/* 비트 안내 한 줄 (날짜 줄 아래, 오류 상자가 아니다) */
+.notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 13px; line-height: 20px; color: var(--app-ink-2); }
+.notice svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--app-muted); }
+.tlink { display: inline; padding: 0; margin-left: 4px; border: 0; background: none; color: var(--app-accent); font-weight: 500; cursor: pointer; text-underline-offset: 3px; }
+.tlink:hover { text-decoration: underline; }
+/* 11-05 더함: 날짜 줄 아래 '불러온 때 + [지금 불러오기]' 한 줄 (비트 PC가 연결된 컴퓨터에서만) */
+.loadrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.loadrow .notice { min-width: 0; }
+
+/* 엑셀 종이: 칸 너비·줄 높이·글꼴·색·선은 승인본 그대로 */
+.paper { background: var(--xl-paper); border: 1px solid var(--app-line); padding: 24px; overflow-x: auto; }
+.sheet {
+  --c: 17px; --c11: 15px; --c10: 13px; --c14: 19px; --t: 43px;
+  --h1: 53px; --h2: 24px; --h3: 45px; --h28: 28px; --h40: 40px; --h20: 20px; --tri: 8px;
+  width: 689px; border-collapse: collapse; table-layout: fixed; font-family: var(--xl-font); font-weight: 700; font-size: var(--c); line-height: 1.25; color: var(--xl-ink); text-align: center;
+}
+.sheet td { border: 1px solid var(--xl-ink); padding: 0; font-weight: 700; vertical-align: middle; }
+.sheet tr { height: var(--h40); }
+.sheet .r1 { height: var(--h1); } .sheet .r2 { height: var(--h2); } .sheet .r3 { height: var(--h3); }
+.sheet .r28 { height: var(--h28); } .sheet .r20 { height: var(--h20); }
+.sheet .title { font-family: var(--xl-title); font-weight: 400; font-size: var(--t); letter-spacing: .35em; padding-left: .35em; white-space: nowrap; }
+.sheet .lav { background: var(--xl-lav); }
+.sheet .gray { background: var(--xl-gray); }
+.sheet .date { font-size: var(--c14); }
+.sheet .small { font-size: var(--c10); }
+.sheet tr:first-child > * { border-top-width: 2px; }
+.sheet .L { border-left-width: 2px; }
+.sheet .R { border-right-width: 2px; }
+.sheet .B { border-bottom-width: 2px; }
+.sheet input, .sheet textarea { display: block; width: 100%; height: 100%; border: 0; margin: 0; background: transparent; text-align: center; font-family: var(--xl-font); font-weight: 700; font-size: inherit; color: var(--xl-ink); padding: 0 4px; outline: none; }
+.sheet input { text-overflow: ellipsis; }
+.sheet input:focus { text-overflow: clip; }
+.sheet td.in { position: relative; }
+.sheet td.in input { position: absolute; inset: 0; }
+.sheet input:focus, .sheet textarea:focus { box-shadow: inset 0 0 0 2px var(--xl-focus); }
+.sheet .memo { font-size: var(--c11); }
+.sheet .memo textarea { resize: none; height: calc(var(--h28) * 3); padding: 6px; line-height: 1.35; }
+.sheet .memo textarea::placeholder { color: var(--app-muted); font-weight: 400; }
+
+/* "합계에서 빠졌어요" (승인본 그대로) */
+.sheet .flag { position: absolute; display: flex; align-items: center; gap: .3em; white-space: nowrap; line-height: 1; font-weight: 400; color: var(--app-negative); pointer-events: none; }
+.sheet td.wide .flag { top: 0; bottom: 0; right: 6px; font-size: 12px; }
+.sheet td.wide.flagged > input { padding: 0 108px; }
+.sheet td.mid .flag, .sheet td.cnt .flag { left: 0; right: 0; justify-content: center; }
+.sheet td.mid .flag { bottom: 4px; font-size: 11px; }
+.sheet td.mid.flagged > input { padding: 0 4px 13px; }
+.sheet td.cnt .flag { bottom: 1px; font-size: 10px; }
+.sheet td.cnt .f1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sheet td.cnt.flagged > input { padding: 0 2px 11px; }
+
+/* 4단계 새 모양 ① 비트 칸 표시: 칸 오른쪽 위 모서리 초록 세모(엑셀 메모 표시처럼, --xl-focus) */
+.sheet td.bit::after {
+  content: ""; position: absolute; top: 0; right: 0; width: 0; height: 0; z-index: 1; pointer-events: none;
+  border-style: solid; border-width: 0 var(--tri) var(--tri) 0; border-color: transparent var(--xl-focus) transparent transparent;
+}
+
+/* ② 양식 아래 한 줄 */
+.bitline { display: flex; align-items: center; gap: 8px; margin: -2px 0 0; font-size: 13px; line-height: 20px; color: var(--app-ink-2); }
+.mini { position: relative; flex: none; width: 24px; height: 15px; border: 1px solid var(--xl-ink); background: var(--xl-paper); }
+.mini::after { content: ""; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 7px 7px 0; border-color: transparent var(--xl-focus) transparent transparent; }
+
+/* ③ 다른 숫자 목록 */
+.differs { display: grid; gap: 8px; }
+.differs-head { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--app-ink); }
+.differs ul { list-style: none; margin: 0; padding: 0; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 4px; }
+.differs li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border-top: 1px solid var(--app-line); font-size: 13px; line-height: 20px; color: var(--app-ink-2); font-variant-numeric: tabular-nums; }
+.differs li:first-child { border-top: 0; }
+.differs li b { color: var(--app-ink); font-weight: 600; }
+.differs .d-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* 인쇄 미리보기: A4 세로 한 장 */
+.a4 { width: 100%; max-width: 794px; aspect-ratio: 210 / 297; justify-self: center; background: var(--xl-paper); padding: 5.7%; box-shadow: var(--shadow); border: 1px solid var(--app-line); }
+.a4 .paper { padding: 0; border: 0; overflow: visible; }
+.a4 .sheet { width: 100%; }
+
+/* 좁은 화면: 양식을 폭에 맞춘다(승인본 값 그대로), 날짜 줄 두 줄, 단추 44px */
+@container screen (max-width: 738px) {
+  .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .date-row { gap: 6px; }
+  .date-pick { flex: 1; width: auto; min-width: 0; height: 44px; padding: 0 8px; }
+  .btn, .btn.sm { height: 44px; padding: 0 12px; }
+  .btn .pc-only { display: none; }
+  .tool-right { justify-content: space-between; }
+  .paper { padding: 8px; }
+  .sheet { width: 100%; --c: 11px; --c11: 10px; --c10: 9px; --c14: 12px; --t: 24px; --h1: 38px; --h2: 18px; --h3: 30px; --h28: 22px; --h40: 30px; --h20: 15px; --tri: 6px; }
+  .sheet td.wide .flag { right: 3px; font-size: 9px; }
+  .sheet td.wide.flagged > input { padding: 0 80px 0 2px; }
+  .sheet td.mid .flag { bottom: 2px; font-size: 9px; }
+  .sheet td.mid.flagged > input { padding: 0 2px 10px; }
+  .sheet td.cnt .flag { bottom: 1px; font-size: 8px; }
+  .sheet td.cnt.flagged > input { padding: 0 1px 8px; }
+  .a4 .paper { padding: 0; }
+}
+
+@container page (max-width: 1150px) {
+  .layout { grid-template-columns: minmax(0, 775px); justify-content: center; }
+  .notes { order: -1; }
+  .wrap { max-width: 775px; }
+}
+@container page (max-width: 820px) {
+  .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wording { grid-template-columns: minmax(0, 1fr); }
+}
+@container page (max-width: 480px) {
+  .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .screen { padding: 12px 8px; }
+  .screen.phone { padding: 16px 8px 20px; }
+  .head h1 { font-size: 21px; line-height: 28px; }
+}
+
+/* 실제 인쇄: 양식만. 비트 표시·안내·목록은 찍히지 않는다 */
+@media print {
+  body { background: #FFFFFF; }
+  .head, .tabs, .notes, .wording, .stage-top, .toolbar, .notice, .loadrow, .bitline, .differs { display: none !important; }
+  .screen, .a4 { border: 0; box-shadow: none; padding: 0; background: #FFFFFF; }
+  .sheet td.bit::after, .sheet .flag { display: none; }
+}
+</style>
+
+<div class="page">
+  <header class="wrap head">
+    <p class="eyebrow">업무일지 · 4단계 화면 시안</p>
+    <h1>비트에서 숫자 채우기<span class="tag">예시 숫자</span></h1>
+    <p class="lead">엑셀 업무일지 모양은 그대로 두고, 비트에서 숫자를 불러올 때 새로 생기는 모습만 더했어요. 숫자와 글은 모두 지어낸 예시이고, 쳐 본 값은 어디에도 저장되지 않아요. 아래에서 상황을 하나씩 눌러 보세요.</p>
+    <p class="lead"><span class="tag" style="margin-left:0">11월 5일 더함</span> 날짜 줄 아래에 <b>[지금 불러오기]</b> 단추를 넣었어요. 1번 화면에서 눌러 보세요.</p>
+  </header>
+
+  <div class="wrap tabs" role="tablist" aria-label="상황 고르기" id="tabs">
+    <button type="button" class="tab" role="tab" id="tab-connected" data-view="connected" aria-controls="panel"><span class="no">1</span>비트 연결됨</button>
+    <button type="button" class="tab" role="tab" id="tab-differs" data-view="differs" aria-controls="panel"><span class="no">2</span>다른 숫자가 있을 때</button>
+    <button type="button" class="tab" role="tab" id="tab-offline" data-view="offline" aria-controls="panel"><span class="no">3</span>비트를 못 읽을 때</button>
+    <button type="button" class="tab" role="tab" id="tab-unconfirmed" data-view="unconfirmed" aria-controls="panel"><span class="no">4</span>금액 확인이 필요한 날</button>
+    <button type="button" class="tab" role="tab" id="tab-devices" data-view="devices" aria-controls="panel"><span class="no">5</span>휴대폰·다른 컴퓨터</button>
+    <button type="button" class="tab" role="tab" id="tab-print" data-view="print" aria-controls="panel"><span class="no">6</span>인쇄</button>
+  </div>
+
+  <div class="wrap layout" id="panel" role="tabpanel">
+    <section class="stage" aria-label="화면 예시">
+      <div class="stage-top">
+        <p class="frame-label" id="frame-label"></p>
+        <div class="subpick" id="subpick" hidden></div>
+      </div>
+      <div class="screen" id="screen"></div>
+    </section>
+    <aside class="notes" aria-live="polite">
+      <h2 id="note-title"></h2>
+      <p class="situation" id="note-situation"></p>
+      <ol id="note-list"></ol>
+      <button type="button" class="next" id="next-view"></button>
+    </aside>
+  </div>
+
+  <section class="wrap wording" aria-label="화면 문구">
+    <div>
+      <h2>명세 그대로 쓴 문구</h2>
+      <p class="hint">업무일지 설계 문서에 이미 정해 둔 글이에요.</p>
+      <ul>
+        <li><q>표시한 칸은 비트에서 불러온 숫자예요</q></li>
+        <li><q>현금수납 · 적은 값 120,000 별도 · 비트 125,000원</q> + [비트 숫자로 바꾸기]</li>
+        <li><q>비트 PC가 연결되지 않아 직접 적어요</q></li>
+        <li><q>비트 PC 연결을 마치면 숫자를 저절로 채워요</q></li>
+        <li><q>비트 숫자를 불러오지 못했어요. 직접 적어도 돼요</q></li>
+        <li><q>이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요</q></li>
+      </ul>
+    </div>
+    <div>
+      <h2>제안 문구<span class="tag">새로 씀</span></h2>
+      <p class="hint">설계 문서에 글이 없어 새로 썼어요. 바꿔도 돼요.</p>
+      <ul>
+        <li>다른 숫자 목록 위 제목: <q>비트 숫자와 다른 칸이 있어요</q></li>
+        <li>‘도우미가 옛 판’ 안내 끝의 글자 링크: <q>연결하러 가기</q> (누르면 비트 PC 연결 화면으로 가요)</li>
+        <li>신환·재진이 다를 때 비트 숫자는 칸처럼 숫자만 보여요: <q>신환 · 적은 값 11 · 비트 12</q></li>
+        <li>휴대폰에서는 비트 안내 줄을 따로 보이지 않고, 지금 있는 <q>휴대폰에서는 보기만 할 수 있어요</q>만 보여요</li>
+        <li>11월 5일 더함 · 날짜 줄 아래 한 줄: <q>비트 숫자를 14:20에 불러왔어요</q> + [지금 불러오기] 단추 (비트 PC가 연결된 컴퓨터에서만)</li>
+        <li>11월 5일 더함 · 누르는 동안: <q>비트 숫자를 불러오는 중이에요</q>, 단추 글자는 <q>불러오는 중</q></li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<template id="sheet-tpl">
+  <table class="sheet" aria-label="업무일지">
+    <colgroup><col style="width:14.5%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:8.4%"><col style="width:5.8%"><col style="width:12%"><col style="width:11.8%"><col style="width:15.7%"></colgroup>
+    <tr class="r1"><td colspan="9" class="title L R">업무일지</td></tr>
+    <tr class="r2"><td colspan="5" rowspan="2" class="lav date L" data-date></td><td rowspan="2" class="lav">결<br><br>재</td><td class="lav">담&nbsp;&nbsp;&nbsp;&nbsp;당</td><td class="lav">팀&nbsp;&nbsp;&nbsp;&nbsp;장</td><td class="lav R">원&nbsp;&nbsp;&nbsp;&nbsp;장</td></tr>
+    <tr class="r3"><td class="lav"></td><td class="lav"></td><td class="lav R"></td></tr>
+    <tr class="r28"><td rowspan="3" class="L">환 자<br>현 황</td><td>외래</td><td></td><td></td><td colspan="2" rowspan="3">업무사항</td><td colspan="3" rowspan="3" class="memo R"><textarea data-k="memo" aria-label="업무사항" maxlength="2000" spellcheck="false"></textarea></td></tr>
+    <tr class="r28"><td>신 환</td><td class="in cnt"><input data-k="new" aria-label="신환"></td><td class="lav">합&nbsp;&nbsp;계</td></tr>
+    <tr class="r28"><td>재 진</td><td class="in cnt"><input data-k="ret" aria-label="재진"></td><td class="lav" data-auto="visits"></td></tr>
+    <tr><td rowspan="9" class="L">수&nbsp;&nbsp;&nbsp;입</td><td colspan="3" class="gray in"><input data-k="mTotal" aria-label="총진료비 항목 이름"></td><td colspan="5" class="gray in R"><input data-k="total" aria-label="총진료비"></td></tr>
+    <tr><td colspan="3" class="gray in"><input data-k="mClaim" aria-label="조합청구액 항목 이름"></td><td colspan="5" class="gray in R"><input data-k="claim" aria-label="조합청구액"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mCash" aria-label="현금수납 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="cash" aria-label="현금수납"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mCard" aria-label="카드수납 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="card" aria-label="카드수납"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mBank" aria-label="계좌이체 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="bank" aria-label="계좌이체"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mLocal" aria-label="지역화폐 항목 이름"></td><td colspan="5" class="in wide R"><input data-k="local" aria-label="지역화폐"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mUnpaid" aria-label="미수발생 항목 이름"></td><td colspan="5" class="in R"><input data-k="unpaid" aria-label="미수발생"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mUnpaidIn" aria-label="미수입금 항목 이름"></td><td colspan="5" class="in R"><input data-k="unpaidIn" aria-label="미수입금"></td></tr>
+    <tr><td colspan="3" class="lav">수납액</td><td colspan="5" class="lav R" data-auto="recv"></td></tr>
+    <tr><td rowspan="7" class="L">지 출</td><td colspan="3">&nbsp;항&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;목</td><td colspan="3">금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;액</td><td colspan="2" class="R">비&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;고</td></tr>
+    <tr class="r20"><td colspan="3" rowspan="2" class="in"><input data-k="mxCash" aria-label="현금 항목 이름"></td><td colspan="3" rowspan="2" class="in mid"><input data-k="xCash" aria-label="지출 현금 금액"></td><td colspan="2" rowspan="2" class="in small R"><input data-k="nCash" aria-label="지출 현금 비고"></td></tr>
+    <tr class="r20"></tr>
+    <tr><td colspan="3" class="in"><input data-k="mxCard" aria-label="카드 항목 이름"></td><td colspan="3" class="in mid"><input data-k="xCard" aria-label="지출 카드 금액"></td><td colspan="2" class="in small R"><input data-k="nCard" aria-label="지출 카드 비고"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mxRefund" aria-label="환불 항목 이름"></td><td colspan="3" class="in mid"><input data-k="xRefund" aria-label="환불 금액"></td><td colspan="2" class="in small R"><input data-k="nRefund" aria-label="환불 비고"></td></tr>
+    <tr><td colspan="3" class="in"><input data-k="mxFree" aria-label="free 항목 이름"></td><td colspan="3" class="in mid"><input data-k="xFree" aria-label="지출 free 금액"></td><td colspan="2" class="in small R"><input data-k="nFree" aria-label="지출 free 비고"></td></tr>
+    <tr><td colspan="3" class="gray">총 지 불 액</td><td colspan="3" class="gray" data-auto="spend"></td><td colspan="2" class="gray in small R"><input data-k="nTotal" aria-label="총 지불액 비고"></td></tr>
+    <tr><td colspan="4" class="L B">합&nbsp;&nbsp;&nbsp;계</td><td colspan="5" class="lav R B" data-auto="net"></td></tr>
+  </table>
+</template>
+
+<script>
+'use strict';
+// ---- 칸 목록 (design.md 5절, 20-2절) ----
+const TODAY = '2026-11-05';
+const COUNT_KEYS = ['new', 'ret'];
+const RECEIVED_KEYS = ['cash', 'card', 'bank', 'local'];
+const SPENT_KEYS = ['xCash', 'xCard', 'xRefund', 'xFree'];
+const SUM_KEYS = [...COUNT_KEYS, ...RECEIVED_KEYS, ...SPENT_KEYS];
+const NUMBER_KEYS = new Set([...SUM_KEYS, 'total', 'claim', 'unpaid', 'unpaidIn']);
+const BIT_FILL_KEYS = ['new', 'ret', 'total', 'claim', 'cash', 'card', 'bank', 'unpaidIn']; // 20-2절 '채움' 여덟 칸
+const NAME_OF = { mTotal: '총진료비', mClaim: '조합청구액', mCash: '현금수납', mCard: '카드수납', mBank: '계좌이체', mLocal: '지역화폐', mUnpaid: '미수발생', mUnpaidIn: '미수입금', mxCash: '현금', mxCard: '카드', mxRefund: '환불', mxFree: 'free' };
+const NAME_KEY_OF = { total: 'mTotal', claim: 'mClaim', cash: 'mCash', card: 'mCard', bank: 'mBank', local: 'mLocal', unpaid: 'mUnpaid', unpaidIn: 'mUnpaidIn' };
+const CELL_MAX = 50, NAME_MAX = 20, NOTE_MAX = 100;
+
+// ---- 칸 글자 읽기 (design.md 7절, 승인본 그대로. 막는 모양은 이 시안에서 뺐다) ----
+const NONE = { kind: 'none' }, EXCLUDED = { kind: 'excluded' };
+const kindOf = key => (COUNT_KEYS.includes(key) ? 'count' : 'won');
+function readCell(kind, text) {
+  const t = text.trim();
+  if (!t) return NONE;
+  if (/[０-９]/.test(t)) return EXCLUDED;
+  const chunks = [...t.matchAll(/\d[\d,]*/g)];
+  if (chunks.length === 0) return NONE;
+  if (chunks.length > 1) return EXCLUDED;
+  const chunk = chunks[0];
+  const before = t.slice(0, chunk.index).trimEnd().slice(-1);
+  if (before && '.-−–—－△▲▼(（'.includes(before)) return EXCLUDED;
+  const after = t.slice(chunk.index + chunk[0].length).trimStart().charAt(0);
+  if (after && '백천만억조'.includes(after)) return EXCLUDED;
+  const digits = chunk[0].replace(/,/g, '').replace(/^0+(?=\d)/, '');
+  if (digits.length > (kind === 'count' ? 5 : 12)) return EXCLUDED;
+  return { kind: 'number', value: Number(digits) };
+}
+const commas = n => new Intl.NumberFormat('ko-KR').format(n);
+const wonAuto = n => (n === 0 ? '원' : (n < 0 ? '-' + commas(-n) : commas(n)) + '원');
+function cellShown(kind, text, focused) {
+  const read = readCell(kind, text);
+  if (read.kind === 'number' && /^\d[\d,]*\s*원?$/.test(text.trim())) {
+    if (!read.value) return '';
+    if (kind === 'count') return String(read.value);
+    return focused ? commas(read.value) : commas(read.value) + '원';
+  }
+  return text;
+}
+const numberOf = (day, key) => { const r = readCell(kindOf(key), day[key] || ''); return r.kind === 'number' ? r.value : 0; };
+const sumOf = (day, keys) => keys.reduce((total, key) => total + numberOf(day, key), 0);
+const isExcluded = (day, key) => readCell(kindOf(key), day[key] || '').kind === 'excluded';
+const bitShown = (key, n) => (kindOf(key) === 'count' ? String(n) : commas(n) + '원');
+const dayName = (day, key) => (NAME_KEY_OF[key] ? ((day[NAME_KEY_OF[key]] || '').trim() || NAME_OF[NAME_KEY_OF[key]]) : (key === 'new' ? '신환' : '재진'));
+
+// ---- 날짜 ----
+const parseDay = ymd => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+const sheetDateText = ymd => ymd.replaceAll('-', '/') + ' ' + '일월화수목금토'[parseDay(ymd).getUTCDay()];
+const koreaTime = () => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+
+// ---- 지어낸 예시 날 ----
+const DAY_TODAY = {
+  new: '12', ret: '48', total: '1840000', claim: '1290000', cash: '125000', card: '350000', bank: '40000',
+  local: '15000', unpaid: '20000', unpaidIn: '18000',
+  xCash: '24000', nCash: '다과', xCard: '38500', nCard: '사무용품',
+  memo: '물리치료실 온열기 점검 요청\n오후 2시 소독 업체 방문',
+};
+const BIT_TODAY = { new: 12, ret: 48, total: 1840000, claim: 1290000, cash: 125000, card: 350000, bank: 40000, unpaidIn: 18000 };
+const BIT_TODAY_LATER = { new: 13, ret: 50, total: 1902000, claim: 1333000, cash: 131000, card: 368000, bank: 40000, unpaidIn: 18000 }; // [지금 불러오기]를 누르면 오는 조금 늘어난 숫자
+const DAY_YESTERDAY = {
+  new: '10', ret: '52', total: '1962000', claim: '1384000', cash: '98000', card: '402000', bank: '52000', unpaidIn: '26000',
+  xCash: '18000', nCash: '우편', xCard: '45000', nCard: '복사 용지', memo: '온열기 수리 완료',
+};
+const DAY_MORNING = { new: '7', ret: '26', cash: '42000', card: '168000', xCash: '24000', nCash: '다과', memo: '오후 2시 소독 업체 방문' };
+const DAY_UNCONFIRMED = { new: '9', ret: '41', xCash: '15000', nCash: '다과', xRefund: '30000', nRefund: '영수증 보관', memo: '오전 물리치료실 기계 점검' };
+
+const ICON_INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.5h.01"/></svg>';
+const ICON_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
+const ICON_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const ICON_LOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>';
+
+const NOTICE = {
+  none: { text: '비트 PC가 연결되지 않아 직접 적어요' },
+  old: { text: '비트 PC 연결을 마치면 숫자를 저절로 채워요', link: '연결하러 가기' },
+  fail: { text: '비트 숫자를 불러오지 못했어요. 직접 적어도 돼요' },
+  unconfirmed: { text: '이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요' },
+};
+
+// ---- 상황마다 화면과 설명 ----
+const VIEWS = {
+  connected: {
+    title: '비트 연결됨',
+    make: () => ({ label: '의원 컴퓨터 화면 · 비트 PC 연결됨', ymd: TODAY, day: { ...DAY_TODAY }, bitFields: [...BIT_FILL_KEYS], bit: BIT_TODAY, status: '저장했어요 · 14:20', canLoad: true, loadedAt: '14:20', bitNext: BIT_TODAY_LATER }),
+    situation: '오늘(11월 5일 목), 비트 PC가 연결된 의원 컴퓨터에서 업무일지를 연 모습이에요.',
+    notes: [
+      '초록 세모가 있는 칸은 비트에서 저절로 채운 숫자예요. 열기만 하면 채워져요. 오늘 날짜는 화면을 켜 두면 10분마다 다시 불러와서, 진료가 늘면 숫자도 따라 늘어요.',
+      '[지금 불러오기]를 누르면 10분을 기다리지 않고 바로 다시 불러와요. 마감 직후에 쓰면 좋아요. 누른 때부터 10분을 다시 세요. 눌러 보세요(예시 숫자가 조금 늘어나요).',
+      '미수발생·지역화폐·지출·업무사항은 비트에서 오지 않아 지금처럼 손으로 적어요. 이 칸들은 세모가 없고 모양도 그대로예요.',
+      '세모 칸도 고칠 수 있어요. 고치면 세모가 사라지고, 비트 숫자와 다르면 양식 아래에 알려 줘요. 현금수납 칸을 눌러 숫자를 바꿔 보세요.',
+    ],
+  },
+  differs: {
+    title: '다른 숫자가 있을 때',
+    make: () => ({ label: '의원 컴퓨터 화면 · 비트 PC 연결됨', ymd: TODAY, day: { ...DAY_TODAY, new: '11', cash: '120,000 별도' }, bitFields: BIT_FILL_KEYS.filter(k => k !== 'new' && k !== 'cash'), bit: BIT_TODAY, status: '저장했어요 · 14:20', canLoad: true, loadedAt: '14:20', bitNext: BIT_TODAY_LATER }),
+    situation: '아침에 손으로 적어 둔 칸이, 나중에 불러온 비트 숫자와 다른 경우예요.',
+    notes: [
+      '먼저 적어 둔 칸은 몰래 바꾸지 않아요. 양식 아래에 칸 이름, 적은 값, 비트 숫자가 한 줄씩 나와요.',
+      '[비트 숫자로 바꾸기]를 누르면 그 칸만 비트 숫자로 바뀌고 세모가 붙어요. 적은 값을 그대로 두려면 누르지 않으면 돼요.',
+      '적은 숫자가 비트 숫자와 같으면 목록에 나오지 않아요. 항목 이름을 고친 날은 고친 이름으로 나와요.',
+    ],
+  },
+  offline: {
+    title: '비트를 못 읽을 때',
+    subs: [['none', '연결 안 됨'], ['old', '도우미가 옛 판'], ['fail', '읽기 실패']],
+    make: sub => ({ label: '의원 컴퓨터 화면 · 비트를 못 읽음', ymd: TODAY, day: { ...DAY_MORNING }, bitFields: [], bit: null, status: '저장했어요 · 10:42', notice: NOTICE[sub], canLoad: sub === 'fail', bitNext: BIT_TODAY }),
+    situations: {
+      none: '비트 PC가 꺼져 있거나 연결이 끊긴 날이에요.',
+      old: '비트 PC 연결 프로그램(도우미)이 옛 판이거나, 아직 연결을 마치지 않은 컴퓨터예요.',
+      fail: '연결은 됐는데 비트 숫자를 읽다가 실패한 경우예요.',
+    },
+    notes: [
+      '양식은 지금과 똑같이 쓸 수 있어요. 손으로 적으면 저절로 저장돼요.',
+      '날짜 줄 아래에 쉬운 안내 한 줄만 나와요. 빨간 오류 상자가 뜨거나 칸이 막히지 않아요. 위에서 세 경우를 바꿔 보세요.',
+      '읽기 실패일 때는 [지금 불러오기]로 다시 해 볼 수 있어요. 연결 안 됨·옛 판일 때는 읽을 수 없어서 단추가 없어요.',
+      '다시 연결되면 빈 칸만 비트 숫자로 채워요. 적어 둔 칸이 다르면 2번 상황처럼 양식 아래에 알려 줘요. 읽기 실패에서 [지금 불러오기]를 눌러 보세요.',
+    ],
+  },
+  unconfirmed: {
+    title: '금액 확인이 필요한 날',
+    make: () => ({ label: '의원 컴퓨터 화면 · 지난 날', ymd: '2026-11-03', day: { ...DAY_UNCONFIRMED }, bitFields: ['new', 'ret'], bit: { new: 9, ret: 41 }, status: '저장했어요 · 09:12', notice: NOTICE.unconfirmed, canLoad: true, loadedAt: '09:12', bitNext: { new: 9, ret: 41 } }),
+    situation: '11월 3일(화)처럼, 환불이 있었던 날 등 비트 금액을 그대로 쓰기 어려운 날이에요.',
+    notes: [
+      '신환·재진은 이런 날에도 비트에서 채워요. 세모가 붙어 있어요.',
+      '금액 칸은 비워 두고 안내 한 줄만 보여요. 틀릴 수 있는 숫자를 넣지 않으려는 거예요. 비트가 까닭을 알려 주지 않아서 화면에도 까닭은 적지 않아요.',
+      '금액은 지금처럼 손으로 적으면 되고, 수납액과 합계는 저절로 계산돼요.',
+    ],
+  },
+  devices: {
+    title: '휴대폰·다른 컴퓨터',
+    subs: [['phone', '휴대폰'], ['pc', '다른 컴퓨터']],
+    make: sub => (sub === 'phone'
+      ? { label: '휴대폰 화면 · 어제 일지', ymd: '2026-11-04', day: { ...DAY_YESTERDAY }, bitFields: [...BIT_FILL_KEYS], bit: null, phone: true, readOnly: true, status: '휴대폰에서는 보기만 할 수 있어요' }
+      : { label: '다른 컴퓨터 화면 · 어제 일지', ymd: '2026-11-04', day: { ...DAY_YESTERDAY }, bitFields: [...BIT_FILL_KEYS], bit: null, status: '적으면 바로 저장돼요', notice: NOTICE.old }),
+    situations: {
+      phone: '어제(11월 4일 수) 일지를 휴대폰으로 연 모습이에요.',
+      pc: '같은 날을 비트 PC가 연결되지 않은 다른 컴퓨터에서 연 모습이에요.',
+    },
+    notes: [
+      '어디서 열어도 세모 표시가 그대로 보여요. 어느 칸이 비트에서 왔는지 함께 저장해 두기 때문이에요.',
+      '휴대폰은 보기만 해요. 비트를 읽지 않고 숫자도 바꾸지 않아서 비트 안내 줄도 없어요.',
+      '다른 컴퓨터에서는 손으로 고칠 수 있지만 비트는 읽지 않아서 [지금 불러오기] 단추도 없어요. 고친 칸만 세모가 사라지고 나머지 표시는 그대로 지켜요.',
+    ],
+  },
+  print: {
+    title: '인쇄',
+    make: () => ({ label: '인쇄한 종이 · A4 한 장', ymd: TODAY, day: { ...DAY_TODAY }, bitFields: [...BIT_FILL_KEYS], bit: null, print: true, readOnly: true }),
+    situation: '1번 화면에서 [인쇄]를 누르면 A4 한 장에 이렇게 찍혀요.',
+    notes: [
+      '세모 표시, 양식 아래 한 줄, 안내 줄, 다른 숫자 목록은 찍히지 않아요. 엑셀 업무일지와 똑같은 모양만 나와요.',
+      '숫자는 그대로 찍혀요. 비트에서 온 숫자와 손으로 적은 숫자가 똑같이 보여요.',
+    ],
+  },
+};
+const ORDER = Object.keys(VIEWS);
+const subOf = { offline: 'none', devices: 'phone' };
+
+// ---- 화면 그리기 ----
+const $ = id => document.getElementById(id);
+const screen = $('screen');
+let view = 'connected', S = null, fields = [], fieldOf = {}, saveTimer = 0;
+
+function toolbarHTML() {
+  const today = S.ymd === TODAY;
+  return '<div class="toolbar">' +
+    '<div class="date-row">' +
+      '<button type="button" class="btn" aria-label="전날">' + ICON_LEFT + '<span class="pc-only">전날</span></button>' +
+      '<input class="date-pick" type="date" aria-label="날짜 고르기" max="' + TODAY + '" value="' + S.ymd + '" data-date-pick>' +
+      '<button type="button" class="btn" aria-label="다음 날"' + (today ? ' disabled' : '') + '><span class="pc-only">다음 날</span>' + ICON_RIGHT + '</button>' +
+      (today ? '' : '<button type="button" class="btn">오늘로</button>') +
+    '</div>' +
+    '<div class="tool-right"><p class="status" role="status" id="status"></p><button type="button" class="btn" data-print>인쇄</button></div>' +
+  '</div>';
+}
+function noticeHTML() {
+  if (S.canLoad) {
+    const text = S.notice ? S.notice.text : '비트 숫자를 ' + S.loadedAt + '에 불러왔어요';
+    return '<div class="loadrow"><p class="notice">' + ICON_INFO + '<span id="load-text">' + text + '</span></p>' +
+      '<button type="button" class="btn sm" data-load>' + ICON_LOAD + '<span id="load-label">지금 불러오기</span></button></div>';
+  }
+  if (!S.notice) return '';
+  return '<p class="notice">' + ICON_INFO + '<span>' + S.notice.text + (S.notice.link ? '<button type="button" class="tlink" data-setup>' + S.notice.link + '</button>' : '') + '</span></p>';
+}
+
+function render() {
+  const tpl = $('sheet-tpl').innerHTML;
+  screen.className = 'screen' + (S.phone ? ' phone' : '');
+  if (S.print) {
+    screen.innerHTML = '<div class="a4"><div class="paper">' + tpl + '</div></div>';
+  } else {
+    screen.innerHTML = toolbarHTML() + noticeHTML() +
+      '<div class="paper">' + tpl + '</div>' +
+      '<p class="bitline" id="bitline" hidden><span class="mini" aria-hidden="true"></span>표시한 칸은 비트에서 불러온 숫자예요</p>' +
+      '<div class="differs" id="differs-box" hidden><p class="differs-head" id="differs-head">비트 숫자와 다른 칸이 있어요</p><ul id="differs-list" aria-labelledby="differs-head"></ul></div>';
+  }
+  fields = [...screen.querySelectorAll('[data-k]')];
+  fieldOf = Object.fromEntries(fields.map(el => [el.dataset.k, el]));
+  fields.forEach(el => {
+    const key = el.dataset.k;
+    el.spellcheck = false;
+    el.autocomplete = 'off';
+    el.readOnly = !!S.readOnly;
+    if (el.tagName === 'INPUT') el.maxLength = NUMBER_KEYS.has(key) ? CELL_MAX : NAME_OF[key] ? NAME_MAX : NOTE_MAX;
+    if (key === 'memo' && !S.readOnly) el.placeholder = '환자 이름·차트번호는 적지 않아요';
+    el.value = shownValue(key, false);
+  });
+  SUM_KEYS.forEach(key => {
+    const flag = document.createElement('span');
+    flag.className = 'flag'; flag.id = 'flag-' + key; flag.hidden = true;
+    flag.innerHTML = '<span class="f1">합계에서</span> <span class="f2">빠졌어요</span>';
+    fieldOf[key].parentElement.append(flag);
+  });
+  screen.querySelector('[data-date]').textContent = sheetDateText(S.ymd);
+  if (!S.print) $('status').textContent = S.status;
+  renderMarks();
+  renderDiffers();
+}
+
+function shownValue(key, focused) {
+  const value = S.day[key] || '';
+  if (NUMBER_KEYS.has(key)) return cellShown(kindOf(key), value, focused);
+  if (NAME_OF[key]) return value.trim() ? value : NAME_OF[key];
+  return value;
+}
+
+function renderMarks() {
+  const marks = S.print ? new Set() : new Set(S.bitFields);
+  fields.forEach(el => {
+    const key = el.dataset.k, bit = marks.has(key);
+    const flagged = SUM_KEYS.includes(key) && !S.print && isExcluded(S.day, key);
+    el.parentElement.classList.toggle('bit', bit);
+    el.parentElement.classList.toggle('flagged', flagged);
+    if (SUM_KEYS.includes(key)) $('flag-' + key).hidden = !flagged;
+    const ids = [bit ? 'bitline' : '', flagged ? 'flag-' + key : ''].filter(Boolean).join(' ');
+    if (ids) el.setAttribute('aria-describedby', ids); else el.removeAttribute('aria-describedby');
+  });
+  const received = sumOf(S.day, RECEIVED_KEYS), spent = sumOf(S.day, SPENT_KEYS);
+  const autos = { visits: String(sumOf(S.day, COUNT_KEYS)), recv: wonAuto(received), spend: wonAuto(spent), net: wonAuto(received - spent) };
+  screen.querySelectorAll('[data-auto]').forEach(el => { el.textContent = autos[el.dataset.auto]; });
+  const line = $('bitline');
+  if (line) line.hidden = marks.size === 0;
+}
+
+// 다른 숫자 목록(AC-014.5, AC-017.3): 비트 값이 있고, 비트 칸이 아니고, 적은 숫자가 비트와 다른 칸
+function renderDiffers() {
+  const box = $('differs-box');
+  if (!box) return;
+  const list = $('differs-list');
+  const rows = S.bit ? BIT_FILL_KEYS.filter(key => {
+    if (!(key in S.bit) || S.bitFields.includes(key)) return false;
+    const text = (S.day[key] || '').trim();
+    if (!text) return false;
+    const read = readCell(kindOf(key), text);
+    return !(read.kind === 'number' && read.value === S.bit[key]);
+  }) : [];
+  // 같은 목록이면 다시 그리지 않는다(칸에서 바로 단추를 눌러도 단추가 그대로 남게)
+  const sig = rows.map(key => key + '|' + S.day[key] + '|' + dayName(S.day, key)).join('\n');
+  if (box.dataset.sig === sig && list.childElementCount === rows.length) { box.hidden = rows.length === 0; return; }
+  box.dataset.sig = sig;
+  list.replaceChildren();
+  rows.forEach(key => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.className = 'd-text';
+    const b = document.createElement('b');
+    b.textContent = dayName(S.day, key);
+    span.append(b, ' · 적은 값 ' + cellShown(kindOf(key), S.day[key], false) + ' · 비트 ' + bitShown(key, S.bit[key]));
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'btn sm'; btn.textContent = '비트 숫자로 바꾸기';
+    btn.dataset.take = key;
+    btn.setAttribute('aria-label', dayName(S.day, key) + ' 칸을 비트 숫자로 바꾸기');
+    li.append(span, btn);
+    list.append(li);
+  });
+  box.hidden = rows.length === 0;
+}
+
+function scheduleSave() {
+  const status = $('status');
+  if (!status) return;
+  status.textContent = '저장하는 중이에요';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { status.textContent = '저장했어요 · ' + koreaTime(); }, 800);
+}
+
+// ---- [지금 불러오기] (11-05 더함): AC-014 규칙 그대로. 빈 칸은 채우고, 비트 칸은 새 값으로, 손으로 적은 칸은 그대로(다르면 목록) ----
+let loadTimer = 0;
+function loadNow(btn) {
+  btn.disabled = true;
+  $('load-label').textContent = '불러오는 중';
+  $('load-text').textContent = '비트 숫자를 불러오는 중이에요';
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => {
+    const next = S.bitNext || {};
+    let changed = false;
+    S.bit = { ...next };
+    BIT_FILL_KEYS.forEach(key => {
+      if (!(key in next)) return;
+      const value = String(next[key]);
+      if (S.bitFields.includes(key)) {
+        if (S.day[key] !== value) { S.day[key] = value; changed = true; }
+      } else if (!(S.day[key] || '').trim()) {
+        S.day[key] = value; S.bitFields = [...S.bitFields, key]; changed = true;
+      }
+    });
+    if (S.notice === NOTICE.fail) S.notice = null;
+    S.loadedAt = koreaTime();
+    render();
+    if (changed) scheduleSave();
+  }, 900);
+}
+
+// ---- 칸 치기 ----
+screen.addEventListener('focusin', e => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key || !NUMBER_KEYS.has(key) || e.target.readOnly) return;
+  e.target.value = shownValue(key, true);
+});
+screen.addEventListener('input', e => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key) return;
+  S.day[key] = e.target.value;
+  S.bitFields = S.bitFields.filter(k => k !== key); // 사람이 고치면 비트 칸이 아니게 된다(AC-014.6)
+  renderMarks();
+  scheduleSave();
+});
+screen.addEventListener('focusout', e => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key) return;
+  if (NAME_OF[key]) { const t = (S.day[key] || '').trim(); S.day[key] = t === NAME_OF[key] ? '' : t; }
+  if (NUMBER_KEYS.has(key) || NAME_OF[key]) e.target.value = shownValue(key, false);
+  if (e.target.tagName === 'TEXTAREA') e.target.scrollTop = 0;
+  renderDiffers();
+});
+screen.addEventListener('change', e => {
+  if (e.target.matches('[data-date-pick]')) e.target.value = S.ymd; // 시안에서는 날짜를 옮기지 않는다
+});
+screen.addEventListener('click', e => {
+  const load = e.target.closest('[data-load]');
+  if (load) { loadNow(load); return; }
+  const take = e.target.closest('[data-take]');
+  if (take) {
+    const key = take.dataset.take;
+    S.day[key] = String(S.bit[key]); // 적은 글자를 덮어 비트 값(숫자 글자)으로(AC-014.6)
+    S.bitFields = [...S.bitFields, key];
+    fieldOf[key].value = shownValue(key, false);
+    renderMarks();
+    renderDiffers();
+    scheduleSave();
+    fieldOf[key].focus();
+    return;
+  }
+  if (e.target.closest('[data-print]')) location.hash = 'print';
+});
+
+// ---- 상황 고르기 ----
+function show(name) {
+  view = VIEWS[name] ? name : 'connected';
+  const v = VIEWS[view], sub = subOf[view];
+  clearTimeout(saveTimer);
+  clearTimeout(loadTimer);
+  S = v.make(sub);
+  document.querySelectorAll('.tab').forEach(tab => {
+    const on = tab.dataset.view === view;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  });
+  $('panel').setAttribute('aria-labelledby', 'tab-' + view);
+  $('frame-label').textContent = S.label;
+  const pick = $('subpick');
+  if (v.subs) {
+    pick.hidden = false;
+    pick.innerHTML = '<span>경우</span>' + v.subs.map(([id, text]) => '<button type="button" class="sub" data-sub="' + id + '" aria-pressed="' + (id === sub) + '">' + text + '</button>').join('');
+  } else {
+    pick.hidden = true;
+    pick.innerHTML = '';
+  }
+  $('note-title').textContent = v.title;
+  $('note-situation').textContent = v.situations ? v.situations[sub] : v.situation;
+  $('note-list').innerHTML = v.notes.map(text => '<li><span>' + text + '</span></li>').join('');
+  const i = ORDER.indexOf(view);
+  $('next-view').textContent = i === ORDER.length - 1 ? '처음 상황으로 ›' : '다음 상황 보기 ›';
+  $('next-view').dataset.go = ORDER[(i + 1) % ORDER.length];
+  render();
+}
+$('subpick').addEventListener('click', e => {
+  const b = e.target.closest('[data-sub]');
+  if (!b) return;
+  subOf[view] = b.dataset.sub;
+  show(view);
+});
+$('tabs').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (tab) location.hash = tab.dataset.view;
+});
+$('tabs').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  const i = ORDER.indexOf(view) + (e.key === 'ArrowRight' ? 1 : -1);
+  const next = ORDER[(i + ORDER.length) % ORDER.length];
+  location.hash = next;
+  $('tab-' + next).focus();
+});
+$('next-view').addEventListener('click', e => { location.hash = e.currentTarget.dataset.go; });
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+show(location.hash.slice(1));
+</script>

@@ -56,6 +56,27 @@ describe('worklogAutosave', () => {
     expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' })
   })
 
+  it('AC-017.7: 비트 칸 목록이 바뀌었으면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, 목록)으로 간다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [])
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' }, ['cashIn'])
+  })
+
+  it('AC-017.7: 목록을 모르거나 안 바뀐 저장은 넷째 인자 없이 불러 bit_fields를 보내지 않는다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, dayWith({ cashIn: '100000' }), null, ['cashIn'])
+    autosave.change(YMD, dayWith({ cashIn: '100000', spendCash: '20000' }), ['cashIn'])
+    autosave.change('2026-10-27', dayWith({ memo: '가상 메모' }))
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenCalledWith(client, YMD, { spendCash: '20000' })
+    expect(save).toHaveBeenCalledWith(client, '2026-10-27', { memo: '가상 메모' })
+    for (const call of save.mock.calls) expect(call).toHaveLength(3)
+  })
+
   it('AC-010.11: 화면이 없어도 실패한 저장을 2초 뒤 다시 한다', async () => {
     save.mockRejectedValueOnce(new WorklogStorageError('failed'))
     const autosave = worklogAutosave()
@@ -149,7 +170,7 @@ describe('AC-010.12 로그아웃', () => {
     startWorklogSession()
     const autosave = worklogAutosave()
     autosave.change(YMD, dayWith({ cashIn: '100000' }))
-    const seen: Array<{ blocked: boolean; pending: WorklogDay | null }> = []
+    const seen: Array<{ blocked: boolean; pending: { day: WorklogDay } | null }> = []
     const off = onWorklogSignedOut(() => seen.push({ blocked: leaveIsBlocked(), pending: autosave.pendingDay(YMD) }))
 
     emitAuth('SIGNED_OUT')
