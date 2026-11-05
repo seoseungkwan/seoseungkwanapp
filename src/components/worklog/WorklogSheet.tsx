@@ -1,17 +1,19 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { visitsText, wonAutoText, worklogTotals } from '@/lib/worklog/calc'
 import { cellKindOf, cellShownText, excludedSumKeys, readDayNumbers } from '@/lib/worklog/cellText'
 import { sheetDateText } from '@/lib/worklog/days'
 import {
   CELL_MAX,
+  MEMO_FONT_DEFAULT,
   MEMO_MAX,
   NAME_MAX,
   NOTE_MAX,
   WORKLOG_DEFAULT_NAMES,
   WORKLOG_LABELS,
   WORKLOG_NAME_OF,
+  type MemoFontPt,
   type WorklogCellKey,
   type WorklogDay,
   type WorklogNoteKey,
@@ -23,6 +25,7 @@ import s from './sheet.module.css'
 // 업무일지 엑셀 양식 칸 (specs/worklog REQ-008, design.md 2·11-1절). 값은 props로 받아 그리기만 하고, 바뀜은 콜백으로만 알린다.
 // 표는 승인 시안 docs/mockups/worklog/text-cells.html을 칸·글자·빈칸 수까지 그대로 옮겼다. 칸 읽기·합계는 lib/worklog만 부른다.
 // 비트에서 불러온 칸(bitFields)은 칸 모서리 작은 표시를 달고 양식 아래 설명 줄(BitNotice)을 가리킨다(worklog AC-017.2, 시안 bitfill.html)
+// 업무사항 글씨는 그날 고른 크기(memoFontPt)이고, 글이 칸을 넘는지 재서 바뀔 때만 알린다(specs/worklog-memo-font REQ-1505, 시안 memo-font.html)
 
 export type WorklogSheetProps = {
   ymd: string
@@ -32,6 +35,8 @@ export type WorklogSheetProps = {
   bitFields?: readonly WorklogNumberKey[] // 비트에서 불러온 칸(표시). 없으면 표시가 없다
   onCell(key: WorklogCellKey, value: string): void
   onFocusCell(key: WorklogCellKey | null): void
+  memoFontPt?: MemoFontPt // 업무사항 글씨 크기. 없으면 11
+  onMemoOverflow?(overflows: boolean): void // 업무사항 글이 칸을 넘는지 바뀔 때만
 }
 
 /** 양식 아래 설명 줄 "표시한 칸은 비트에서 불러온 숫자예요"의 id. 비트 칸이 aria-describedby로 가리킨다 */
@@ -42,7 +47,11 @@ export function BitMark() {
   return <span aria-hidden="true" className={s.mini} />
 }
 
-type Sheet = Omit<WorklogSheetProps, 'ymd' | 'bitFields'> & { excluded: readonly WorklogCellKey[]; bitFields: readonly WorklogNumberKey[] }
+type Sheet = Omit<WorklogSheetProps, 'ymd' | 'bitFields' | 'memoFontPt'> & {
+  excluded: readonly WorklogCellKey[]
+  bitFields: readonly WorklogNumberKey[]
+  memoFontPt: MemoFontPt
+}
 type Place = { sheet: Sheet; className?: string; colSpan?: number; rowSpan?: number }
 
 const COLUMN_WIDTHS = ['14.5%', '10.6%', '10.6%', '10.6%', '8.4%', '5.8%', '12%', '11.8%', '15.7%']
@@ -149,12 +158,47 @@ function NoteCell({ cell, ...place }: Place & { cell: WorklogNoteKey }) {
   return <InputCell {...place} cell={cell} maxLength={NOTE_MAX} shown={() => note} />
 }
 
+// 글이 칸을 넘는지(반올림 1px 여유, 시안 그대로). 마지막으로 알린 값과 다를 때만 알린다. 처음 잰 값은 알린다
+function useMemoOverflow(memo: string, pt: MemoFontPt, onMemoOverflow: WorklogSheetProps['onMemoOverflow']) {
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const reported = useRef<boolean | null>(null)
+
+  const measure = useCallback(() => {
+    const el = textarea.current
+    if (el === null) return
+    const overflows = el.scrollHeight > el.clientHeight + 1
+    if (overflows === reported.current) return
+    reported.current = overflows
+    onMemoOverflow?.(overflows)
+  }, [onMemoOverflow])
+
+  // 글·크기가 바뀐 뒤 그려진 칸을 잰다(읽기 전용이어도 잰다. 안내를 보일지는 툴바가 정한다)
+  useLayoutEffect(() => measure(), [memo, pt, measure])
+
+  // 창 크기가 바뀌거나 글꼴을 다 읽으면 다시 잰다. 내려가면 듣기를 뗀다
+  useEffect(() => {
+    let mounted = true
+    window.addEventListener('resize', measure)
+    void document.fonts?.ready.then(() => {
+      if (mounted) measure()
+    })
+    return () => {
+      mounted = false
+      window.removeEventListener('resize', measure)
+    }
+  }, [measure])
+
+  return textarea
+}
+
 function MemoCell({ sheet }: { sheet: Sheet }) {
-  const { day, readOnly, blockedCells, onCell, onFocusCell } = sheet
+  const { day, readOnly, blockedCells, memoFontPt, onCell, onFocusCell, onMemoOverflow } = sheet
   const blocked = blockedCells.includes('memo')
+  const textarea = useMemoOverflow(day.memo, memoFontPt, onMemoOverflow)
   return (
-    <td colSpan={3} rowSpan={3} className={classes(s.memo, s.R, blocked && s.blocked)}>
+    <td colSpan={3} rowSpan={3} className={classes(s.memo, s.R, blocked && s.blocked)} style={{ '--memo-pt': memoFontPt } as CSSProperties}>
       <textarea
+        ref={textarea}
         value={day.memo}
         aria-label={WORKLOG_LABELS.memo}
         aria-invalid={blocked || undefined}
@@ -176,9 +220,19 @@ function MemoCell({ sheet }: { sheet: Sheet }) {
 
 const NO_BIT_FIELDS: readonly WorklogNumberKey[] = []
 
-export function WorklogSheet({ ymd, day, readOnly, blockedCells, bitFields = NO_BIT_FIELDS, onCell, onFocusCell }: WorklogSheetProps) {
+export function WorklogSheet({
+  ymd,
+  day,
+  readOnly,
+  blockedCells,
+  bitFields = NO_BIT_FIELDS,
+  memoFontPt = MEMO_FONT_DEFAULT,
+  onCell,
+  onFocusCell,
+  onMemoOverflow,
+}: WorklogSheetProps) {
   const totals = worklogTotals(readDayNumbers(day))
-  const sheet: Sheet = { day, readOnly, blockedCells, bitFields, onCell, onFocusCell, excluded: excludedSumKeys(day) }
+  const sheet: Sheet = { day, readOnly, blockedCells, bitFields, memoFontPt, onCell, onFocusCell, onMemoOverflow, excluded: excludedSumKeys(day) }
 
   return (
     // 1px line 테두리는 sheet.module.css의 허용 색(AC-007.4) 밖이라 Tailwind 클래스로 붙인다
