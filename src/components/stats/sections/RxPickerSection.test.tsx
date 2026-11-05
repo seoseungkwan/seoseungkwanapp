@@ -6,10 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { rxCatalog, rxPeriodCounts } from '@/components/stats/rxPickView'
 import { rxPickRows, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { addRxPick, clearRxPicks, readRxPicks, removeRxPick } from '@/lib/storage/rxPicks'
-import { readDays } from '@/lib/storage/stats'
+import { readCoverage, readDays, saveStats } from '@/lib/storage/stats'
 import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
-import type { DayPayload } from '@/types/payload'
+import type { AgainCounts, AgainWindow, DayAgainPayload, DayPayload } from '@/types/payload'
 import type { RxPick } from '@/types/rxPicks'
 import { RxPickerSection } from './RxPickerSection'
 
@@ -41,7 +41,7 @@ const TODAY = '2026-11-13'
 const WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-12' }]
 const HOSPITAL = '가짜정형외과의원'
 const TITLE = '처방 골라 보기'
-const DESC = '고른 처방만 건수와 신환율·재진율을 봐요'
+const DESC = '고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요'
 const EMPTY_LINE = '자료 없음 · 불러오면 처방을 골라 볼 수 있어요.'
 const READING = '고른 처방을 읽는 중이에요'
 const KEPT = '고른 처방은 이 화면에 그대로 있어요.'
@@ -593,7 +593,8 @@ describe('AC-804·AC-805: 표를 잇기', () => {
     stored = [A]
     await drawReady({ input: NO_DAYS })
     expect(chipNames()).toEqual([A.name])
-    expect(screen.getByText(/불러온 숫자에 이 기간 자료가 없어요\./).textContent).toContain(`자료 없음 · ${NO_RANGE}`)
+    // 아래 같은 처방 재방문 묶음에도 같은 안내가 있어(fu-rate AC-1307.10) 표 자리의 첫 안내를 본다
+    expect(screen.getAllByText(/불러온 숫자에 이 기간 자료가 없어요\./)[0]!.textContent).toContain(`자료 없음 · ${NO_RANGE}`)
     expect(rowButtons()).toEqual([])
     expect(screen.queryByRole('button', { name: '표 복사' })).toBeNull()
     expect(pageText()).not.toContain(MEANING)
@@ -718,5 +719,233 @@ describe('AC-806: 줄을 눌러 여는 그래프를 잇기', () => {
     pressRow(A.name)
     pressRow(A.name)
     expect(modeOf(rowOf(A.name)!)).toBe('split')
+  })
+})
+
+describe('fu-rate AC-1308: 같은 처방 재방문 묶음을 잇기', () => {
+  // 오늘은 명세의 날짜 2026-11-05로 둔다. 날 줄·처방·숫자는 모두 이 파일에서 지어낸 값이다
+  const NOW = '2026-11-05'
+  const NOW_WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-04' }]
+  const AGAIN = '같은 처방 재방문'
+  const AGAIN_EMPTY = '처방을 고르면 7일·14일·30일 안에 같은 처방을 다시 받은 환자가 여기 보여요.'
+  const AGAIN_READING = '같은 처방 재방문 숫자를 더 읽는 중이에요'
+  const COUNT_TAIL = '줄을 누르면 그 처방의'
+  // 최근 7일의 넓은 날 줄 읽기(30일 창으로 옮긴 첫날 09-29 ~ 비교 기간 첫날 − 1)
+  const EXTRA: DateRange = { from: '2026-09-29', to: '2026-10-21' }
+
+  type AgainRx = DayAgainPayload['rx'][number]
+  const ag = (line: RxPick, starts: number, back: AgainCounts, more: AgainCounts): AgainRx => ({ code: line.code, starts, back, more })
+  const withAgain = (row: DayPayload, ready: DayAgainPayload['ready'], rx: AgainRx[]): DayPayload => ({ ...row, again: { ready, rx } })
+  const ALL_READY: DayAgainPayload['ready'] = [true, true, true]
+
+  // A의 시작: 08-20 2명(최근 90일 + 30일에만), 09-10 4명·09-30 12명(최근 30일 + 30일), 10-10 5명(최근 30일 + 7일)
+  const D0820 = withAgain(day('2026-08-20', [[A, 2, 2, 0]]), ALL_READY, [ag(A, 2, [0, 1, 1], [0, 1, 1])])
+  const D0910 = withAgain(day('2026-09-10', [[A, 4, 4, 0]]), ALL_READY, [ag(A, 4, [1, 2, 3], [1, 2, 5])])
+  const D0930 = withAgain(day('2026-09-30', [[A, 12, 12, 0]]), ALL_READY, [ag(A, 12, [3, 5, 6], [4, 7, 9])])
+  const D1010 = withAgain(day('2026-10-10', [[A, 5, 5, 0]]), [true, true, false], [ag(A, 5, [2, 2, null], [2, 3, null])])
+  const D1025 = withAgain(day('2026-10-25', [[A, 3, 3, 0]]), [true, false, false], [ag(A, 3, [1, null, null], [1, null, null])])
+  const D1103 = day('2026-11-03', [
+    [A, 6, 1, 5],
+    [B, 2, 0, 2],
+  ])
+  const WIDE_DAYS = [D0820, D0910, D0930, D1010, D1103]
+  const WEEK_DAYS = [D1025, D1103] // 최근 7일의 페이지 읽기(10-22 ~)
+
+  const inputAt = (period: StatsPeriod, days: readonly DayPayload[] = WIDE_DAYS): StatsInput => ({ days, covered: NOW_WHOLE, range: statsRange(NOW, period) })
+  const againSection = () => screen.queryByRole('heading', { level: 3, name: AGAIN })?.closest('section') ?? null
+  const againText = () => againSection()!.textContent ?? ''
+  const winButton = (w: AgainWindow) => within(againSection()!).getByRole('button', { name: `${w}일 안` })
+  const pressedWin = () =>
+    within(againSection()!)
+      .getAllByRole('button', { pressed: true })
+      .map((node) => node.textContent)
+  // 묶음의 처방 줄(py-3 li)의 이름. 예시 칸·범례 li는 py-3이 아니다
+  const againRowNames = () =>
+    Array.from(againSection()!.querySelectorAll('li'))
+      .filter((li) => li.classList.contains('py-3'))
+      .map((li) => li.querySelector('.font-semibold')?.textContent)
+
+  beforeEach(() => {
+    vi.mocked(readCoverage).mockReset().mockResolvedValue([EXTRA])
+    vi.mocked(saveStats).mockReset()
+  })
+
+  it('AC-1308.1: 옆 설명이 `고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요`이고 자리(전체 폭)는 그대로다', async () => {
+    await drawReady({ input: inputAt('30d') })
+    const head = screen.getByRole('heading', { level: 2, name: TITLE })
+    expect(screen.getByText('고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요').parentElement).toBe(head.parentElement)
+    expect(head.closest('section')!.className).toMatch(/(^| )col-span-12( |$)/)
+  })
+
+  it('AC-1308.2: 다 읽으면 건수 표 바로 아래에 묶음이 있고 줄은 건수 표와 같은 차례·이름이다', async () => {
+    stored = [
+      { code: B.code, name: '가짜처방 저장한 나' },
+      { code: A.code, name: '가짜처방 저장한 가' },
+    ]
+    await drawReady({ input: inputAt('30d') })
+    expect(rowNames()).toEqual([B.name, A.name])
+    const section = againSection()!
+    expect(section.parentElement).toBe(screen.getByRole('heading', { level: 2, name: TITLE }).closest('section'))
+    expect(section.previousElementSibling!.textContent).toContain(COUNT_TAIL)
+    expect(againRowNames()).toEqual([B.name, A.name])
+  })
+
+  it('AC-1308.2: 이 기간 자료가 없으면 그 안내 바로 아래에 묶음이 있다', async () => {
+    stored = [A]
+    await drawReady({ input: NO_DAYS })
+    expect(rowButtons()).toEqual([])
+    expect(againSection()!.previousElementSibling!.textContent).toBe(`자료 없음 · ${NO_RANGE}`)
+  })
+
+  it('AC-1308.2: 고른 처방이 없으면 빈 안내 아래에 AC-1307.2 한 줄만 있다', async () => {
+    await drawReady({ input: inputAt('30d') })
+    const section = againSection()!
+    expect(section.previousElementSibling!.textContent).toContain(HINT)
+    expect(section.textContent).toContain(AGAIN_EMPTY)
+    expect(within(section).queryAllByRole('button')).toEqual([])
+  })
+
+  it('AC-1308.2: 고른 처방을 읽는 중·읽기 실패·저장된 숫자 없음이면 묶음이 없다', async () => {
+    vi.mocked(readRxPicks).mockImplementationOnce(() => new Promise(() => undefined))
+    const reading = draw({ input: inputAt('30d') })
+    await flush()
+    expect(screen.getByText(READING)).toBeTruthy()
+    expect(againSection()).toBeNull()
+    reading.unmount()
+
+    stored = [A]
+    vi.mocked(readRxPicks).mockRejectedValueOnce(new Error('가짜 실패'))
+    const failed = draw({ input: inputAt('30d') })
+    await screen.findByRole('alert')
+    expect(againSection()).toBeNull()
+    failed.unmount()
+
+    draw({ saved: false, input: inputAt('30d') })
+    await flush()
+    expect(againSection()).toBeNull()
+  })
+
+  it('AC-1308.2·AC-1307.5: 고른 처방이 다 빠졌다 다시 생겨도 묶음이 그대로 있어 닫은 예시가 닫힌 채다', async () => {
+    stored = [A]
+    await drawReady({ input: inputAt('30d') })
+    const details = againSection()!.querySelector('details')!
+    details.open = false
+    fireEvent(details, new Event('toggle'))
+    fireEvent.click(chip(A.name))
+    await flush()
+    expect(againText()).toContain(AGAIN_EMPTY)
+    openList()
+    await pressOption(A.name)
+    expect(againSection()!.querySelector('details')!.open).toBe(false)
+  })
+
+  it('AC-1308.3: 처음은 `7일 안`이고, 30일을 누른 뒤 기간을 바꾸면 30일 그대로 새 기간 숫자다. 내렸다가 다시 그리면 `7일 안`이다', async () => {
+    stored = [A]
+    const view = await drawReady({ input: inputAt('30d') })
+    expect(pressedWin()).toEqual(['7일 안'])
+    expect(againText()).toContain('5명 중 2명')
+
+    fireEvent.click(winButton(30))
+    expect(pressedWin()).toEqual(['30일 안'])
+    expect(againText()).toContain('16명 중 9명')
+
+    view.rerender(sectionOf({ input: inputAt('90d') }))
+    expect(pressedWin()).toEqual(['30일 안'])
+    expect(againText()).toContain('18명 중 10명')
+
+    view.unmount()
+    await drawReady({ input: inputAt('90d') })
+    expect(pressedWin()).toEqual(['7일 안'])
+  })
+
+  it('AC-1308.3: 최근 30일에서 `14일 안`·`30일 안`을 눌러도 읽기·저장 가짜와 브라우저 저장소·주소를 부르지 않는다', async () => {
+    stored = [A]
+    await drawReady({ input: inputAt('30d') })
+    const fakes = [readDays, readCoverage, saveStats, readRxPicks, addRxPick, removeRxPick, clearRxPicks] as const
+    for (const fn of fakes) vi.mocked(fn).mockClear()
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const pushState = vi.spyOn(window.history, 'pushState')
+    try {
+      fireEvent.click(winButton(14))
+      expect(pressedWin()).toEqual(['14일 안'])
+      fireEvent.click(winButton(30))
+      await flush()
+      expect(pressedWin()).toEqual(['30일 안'])
+      for (const fn of fakes) expect(fn).not.toHaveBeenCalled()
+      expect(setItem).not.toHaveBeenCalled()
+      expect(pushState).not.toHaveBeenCalled()
+    } finally {
+      setItem.mockRestore()
+      pushState.mockRestore()
+    }
+  })
+
+  it('AC-1308.4: 최근 7일에서 30일을 누르면 넓은 날 줄을 한 번 읽고(09-29 ~ 10-21), 그동안 더 읽는 중이며 답이 오면 09-29 ~ 10-05로 센 숫자다', async () => {
+    stored = [A]
+    let answer!: (value: Read) => void
+    vi.mocked(readDays).mockImplementationOnce(() => new Promise((yes) => (answer = yes)))
+    await drawReady({ input: inputAt('7d', WEEK_DAYS) })
+    expect(againText()).toContain('3명 중 1명')
+    expect(readDays).not.toHaveBeenCalled()
+
+    fireEvent.click(winButton(30))
+    expect(within(againSection()!).getByRole('status').textContent).toContain(AGAIN_READING)
+    expect(againText()).not.toContain('명 중')
+    expect(vi.mocked(readDays).mock.calls).toEqual([[EXTRA]])
+    expect(vi.mocked(readCoverage).mock.calls).toEqual([[EXTRA]])
+
+    await act(async () => answer(read([D0930, D1010])))
+    expect(againText()).not.toContain(AGAIN_READING)
+    expect(againText()).toContain('9월 29일 – 10월 5일')
+    expect(againText()).toContain('12명 중 6명')
+
+    fireEvent.click(winButton(14))
+    await flush()
+    expect(readDays).toHaveBeenCalledTimes(1)
+    expect(readCoverage).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1308.4: 넓은 읽기에 실패하면 묶음 안에 오류 카드와 [다시 읽기]가 있고, 누르면 다시 읽는다', async () => {
+    stored = [A]
+    vi.mocked(readDays).mockRejectedValueOnce(new Error('가짜 실패'))
+    await drawReady({ input: inputAt('7d', WEEK_DAYS) })
+    fireEvent.click(winButton(30))
+    const card = await within(againSection()!).findByRole('alert')
+    expect(card.textContent).toContain('오류 번호 E-STATS-READ-FAILED')
+
+    vi.mocked(readDays).mockResolvedValueOnce(read([D0930]))
+    fireEvent.click(within(againSection()!).getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(againText()).toContain('12명 중 6명'))
+    expect(vi.mocked(readDays).mock.calls).toEqual([[EXTRA], [EXTRA]])
+    expect(within(againSection()!).queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-1308.4: 최근 7일 + 7일, 다른 기간 + 14·30일에서는 날 줄을 더 읽지 않는다', async () => {
+    stored = [A]
+    const view = await drawReady({ input: inputAt('7d', WEEK_DAYS) })
+    await flush()
+    view.rerender(sectionOf({ input: inputAt('30d') }))
+    fireEvent.click(winButton(14))
+    fireEvent.click(winButton(30))
+    for (const period of ['90d', '12m', '30d'] as const) {
+      view.rerender(sectionOf({ input: inputAt(period) }))
+      await flush()
+    }
+    expect(pressedWin()).toEqual(['30일 안'])
+    expect(readDays).not.toHaveBeenCalled()
+    expect(readCoverage).not.toHaveBeenCalled()
+  })
+
+  it('AC-1308.5: rx-picker AC-812.6 소스 검사가 새 화면 파일 RxPickAgain.tsx도 보고 통과한다', () => {
+    const ROOT = process.cwd()
+    const sections = 'src/components/stats/sections'
+    const names = readdirSync(join(ROOT, sections)).filter((name) => /^RxPick.*\.tsx$/.test(name) && !name.includes('.test.'))
+    expect(names).toContain('RxPickAgain.tsx')
+    const text = readFileSync(join(ROOT, sections, 'RxPickAgain.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '$1')
+    for (const word of ['localStorage', 'sessionStorage', 'indexedDB', 'history.', 'location.', 'useSearchParams', 'lib/bridge/client', 'fetch(', '@/lib/storage']) {
+      expect(text, word).not.toContain(word)
+    }
   })
 })
