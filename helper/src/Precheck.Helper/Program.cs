@@ -19,6 +19,9 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        // 의원 PC 확인 명령(spec reception-phone REQ-1401): 사람이 reception-check.cmd로 켤 때만. 크롬은 첫 인자로 origin을 넘기고 입력이 파이프라 여기 들지 않고, 아래 일반 시작은 그대로다
+        if (Precheck.Core.Reception.Check.CheckMode.IsRequested(args, !Console.IsInputRedirected)) return Precheck.Windows.ReceptionCheckEntry.Run(HelperServices.Create);
+
         // 표준 출력은 크롬과의 메시지 통로다. 어디서든 Console 글쓰기가 섞여 통로를 깨지 않게 버린다
         Console.SetOut(TextWriter.Null);
         Console.SetError(TextWriter.Null);
