@@ -7,7 +7,7 @@
 > - Phase 1 `reception-1-check` — 의원 PC 확인 명령 (TASK-1~6). **병렬 묶음 A**: TASK-1·2·3·4를 함께 → TASK-5 → TASK-6
 > - Phase 2 `reception-2-core` — 도우미 안쪽: 줄 만들기·읽기·상세·X-ray 완료 표시·웹 서버 (TASK-7~14). **병렬 묶음 B**: TASK-7·8·9·10·12를 함께 → **묶음 C**: TASK-11·13을 함께 → TASK-14
 > - Phase 3 `reception-3-page` — 폰·태블릿 화면 (TASK-15~23). TASK-15 → TASK-16 → **묶음 E**: TASK-17·18·19·20·21·22를 함께 → TASK-23
-> - Phase 4 `reception-4-host` — 늘 켜 두기·주소 보내기·설치 (TASK-24~27). TASK-24 → TASK-26 → TASK-25·TASK-27을 함께
+> - Phase 4 `reception-4-host` — 늘 켜 두기·주소 보내기·설치 (TASK-24~27). TASK-24 → TASK-26 → TASK-25·TASK-27·TASK-31을 함께
 > - Phase 5 `reception-5-fill` — 확인 결과 채우기 (TASK-28~30, 차례대로). 확인 보고서가 오면 Phase 3·4와 겹쳐 돌려도 된다(만지는 파일이 다르다)
 >
 > **시작 조건**
@@ -21,6 +21,7 @@
 > 2. 설치 전: 공유기 관리 화면에서 총괄 PC 주소를 고정한다(‘DHCP 예약’ 또는 ‘고정 IP 할당’). 모르면 메인 창이 그 공유기 이름으로 순서를 알려 준다.
 > 3. 설치 뒤 처음 켤 때: "Windows 보안 경고" 창에서 "개인 네트워크"에 체크하고 [허용]을 누른다.
 > 4. 직원 휴대폰마다: 총괄 PC 바탕 화면 "접수 현황 주소"를 눌러 [주소 복사] → 직원 단톡방에 붙여 넣어 보낸다. 직원은 병원 와이파이에서 주소를 누르고, 카톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기' → 홈 화면에 추가한다. 열 때마다 화면을 한 번 누른다(아이폰 소리).
+> 5. 설치 뒤 진료 시간에: 휴대폰 두 대 이상을 접수 현황에 열어 두고 30분쯤 비트가 느려지지 않는지 본다(지금 5초. 괜찮으면 3초로 낮춰 한 번 더). 느려지면 메인 창에 알린다(AC-1403.10).
 >
 > **모든 TASK 공통**
 > - 시험을 먼저 쓰고 `python3 ~/.claude/harness/bin/tdd-run TASK-n --expect red`로 RED를 본 뒤 구현하고 `--expect green`. 시험 이름에 이 명세의 AC ID(AC-1401.1 등)를 넣는다.
@@ -146,7 +147,7 @@
 - Files: helper/src/Precheck.Core/Reception/BoardReader.cs, helper/src/Precheck.Core/Reception/BoardInput.cs, helper/src/Precheck.Core/Reception/BoardCache.cs, helper/tests/Precheck.Core.Tests/Reception/BoardReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/BoardCache.test.cs, helper/tests/reception-cache.dotnet.test.ts
 - Tests: helper/tests/reception-cache.dotnet.test.ts
 - TDD: required
-- 캐시는 날 줄(`BoardInput`)만 들고, 화면 JSON은 요청마다 TASK-11이 만든다(X-ray 완료 표시가 바로 보이게). 가짜 `IBitDb`·주입한 시계·동시 요청(작업 여러 개)으로 한 번만 읽음, 8초, 3배 미룸(60초 끝), 실패 뒤 10초, 등록 없음·병원 다름 → `unavailable`, 날 바뀜, 이름표 하루 한 번, `fresh`(8초 건너뜀·읽는 중 함께 기다림·2초 안 같은 결과·3배 쉼과 실패 뒤 10초는 그대로). `VisitRow`는 `Name`·`BirthDate`·`Sex`·`Memo`·`PaidAt`을 빈 값 허용으로 처음부터 갖는다(design.md 3절)
+- 캐시는 날 줄(`BoardInput`)만 들고, 화면 JSON은 요청마다 TASK-11이 만든다(X-ray 완료 표시가 바로 보이게). 가짜 `IBitDb`·주입한 시계·동시 요청(작업 여러 개)으로 한 번만 읽음, 8초(TASK-31에서 `CacheSeconds` 4초로), 3배 미룸(60초 끝), 실패 뒤 10초, 등록 없음·병원 다름 → `unavailable`, 날 바뀜, 이름표 하루 한 번, `fresh`(8초 건너뜀·읽는 중 함께 기다림·2초 안 같은 결과·3배 쉼과 실패 뒤 10초는 그대로). `VisitRow`는 `Name`·`BirthDate`·`Sex`·`Memo`·`PaidAt`을 빈 값 허용으로 처음부터 갖는다(design.md 3절)
 
 ## TASK-13: 상세 (`HistoryReader`·`HistoryBuilder`)
 - Step: Phase 2 · Step 6 · `visit-history`
@@ -206,7 +207,7 @@
 - Files: reception/www/api.js, reception/www/poll.js, reception/www/offline.js, reception/tests/api.test.ts, reception/tests/poll.test.ts, reception/tests/offline.test.ts
 - Tests: reception/tests/api.test.ts, reception/tests/poll.test.ts, reception/tests/offline.test.ts
 - TDD: required
-- 가짜 `fetch`·가짜 시계: 10초 고리, 5초 끊음, 200 아님·모양 틀림, 첫 실패에 DOM·상태의 환자 값이 모두 사라짐(이름·차트번호 글자 검색), "마지막 연결 HH:MM", 다시 성공하면 목록. 모든 요청 주소가 `/`로 시작. `getBoard({ fresh: true })` → `/api/board?fresh=1`. `refreshNow()`: 요청 하나(두 번 불러도), 도는 읽기 뒤 `fresh` 한 번, 끝나면 10초 다시 예약. `pause()`: 지우기 + 고리 멈춤(읽는 중 `pause()` → 답이 와도 DOM·상태에 환자 글 없음, 예약 없음, 기다리던 `fresh` 없음), `resume()`: 바로 한 번 읽기. 기준 시각은 답의 `at`(같은 `at`이면 그대로)
+- 가짜 `fetch`·가짜 시계: 10초 고리(TASK-31에서 답의 `every`초로), 5초 끊음, 200 아님·모양 틀림, 첫 실패에 DOM·상태의 환자 값이 모두 사라짐(이름·차트번호 글자 검색), "마지막 연결 HH:MM", 다시 성공하면 목록. 모든 요청 주소가 `/`로 시작. `getBoard({ fresh: true })` → `/api/board?fresh=1`. `refreshNow()`: 요청 하나(두 번 불러도), 도는 읽기 뒤 `fresh` 한 번, 끝나면 10초 다시 예약. `pause()`: 지우기 + 고리 멈춤(읽는 중 `pause()` → 답이 와도 DOM·상태에 환자 글 없음, 예약 없음, 기다리던 `fresh` 없음), `resume()`: 바로 한 번 읽기. 기준 시각은 답의 `at`(같은 `at`이면 그대로)
 
 ## TASK-19: 상세 그리기 (`detail.js`)
 - Step: Phase 3 · Step 4 · `page-detail`
@@ -327,3 +328,13 @@
 - Tests: helper/tests/reception-symptoms.dotnet.test.ts
 - TDD: required
 - 보고서에 화면 83과 똑같은 칸이 있을 때만 `VisitSymptoms` 상수(내원번호로, 여러 줄이면 보고서의 이음 순서). 없으면 이 TASK는 `blocked`(사유: 증상 SQL 원천 없음 → 화면 83 길로 명세 변경, design.md '증상 원천')
+
+## TASK-31: 읽기 간격 한 곳 (`ReceptionTiming`, 5초)
+- Step: Phase 4 · Step 4 · `poll-timing`
+- 병렬: TASK-25·TASK-27과 함께 (TASK-23 뒤. 만지는 파일이 다르다)
+- AC: AC-1403.2, AC-1403.8, AC-1403.9, AC-1403.10, AC-1407.1, AC-1407.3, AC-1407.4, AC-1407.10
+- REQ: REQ-1403, REQ-1407
+- Files: helper/src/Precheck.Core/Reception/ReceptionTiming.cs, helper/src/Precheck.Core/Reception/BoardCache.cs, helper/src/Precheck.Core/Reception/BoardBuilder.cs, helper/src/Precheck.Core/Reception/BoardModel.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionTiming.test.cs, helper/tests/Precheck.Core.Tests/Reception/BoardCache.test.cs, helper/tests/Precheck.Core.Tests/Reception/BoardBuilder.test.cs, helper/tests/reception-timing.dotnet.test.ts, helper/tests/reception-cache.dotnet.test.ts, helper/tests/reception-board.dotnet.test.ts, reception/www/poll.js, reception/www/board.js, reception/www/offline.js, reception/www/api.js, reception/tests/poll.test.ts, reception/tests/board.test.ts, reception/tests/offline.test.ts, reception/tests/api.test.ts, reception/tests/app.test.ts, reception/tests/fixtures.ts
+- Tests: helper/tests/reception-timing.dotnet.test.ts, reception/tests/poll.test.ts, reception/tests/board.test.ts, reception/tests/offline.test.ts, reception/tests/app.test.ts
+- TDD: required
+- 사용자 결정(2026-11-05): 화면 저절로 읽기 10초 → 5초. `ReceptionTiming.PollSeconds = 5`·`CacheSeconds = 4` 한 곳(`CacheSeconds < PollSeconds` 시험). `BoardCache` 묶음은 `CacheSeconds`, 3배 쉼·실패 뒤 10초·`fresh` 2초는 그대로. `/api/board` 답에 `every`(= `PollSeconds`). 화면: 다음 저절로 읽기·머리 글 "N초마다 저절로 바뀌어요"·끊김 글 "N초마다 다시 확인하는 중"을 `every`로(처음 연결 전에는 `poll.js`의 기본값 5 하나). `every`가 없거나 2~60 밖이면 모양 틀림(AC-1407.4). 화면 파일에 다른 간격 숫자 없음(글자 시험). 실제 비트 부담은 AC-1403.10(의원 PC)

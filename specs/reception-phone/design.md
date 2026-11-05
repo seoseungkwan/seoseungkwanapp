@@ -1,7 +1,7 @@
 # 설계: 접수 현황 폰 화면
 
 ## 개요
-- 총괄 PC에 늘 켜 두는 새 프로그램 `PrecheckReception.exe`가 의원 와이파이(사설 주소)에 작은 웹 서버를 연다(문 47200). 직원 휴대폰은 `http://{총괄 PC 주소}:47200/`을 열고, 화면은 10초마다 `/api/board`를 읽는다.
+- 총괄 PC에 늘 켜 두는 새 프로그램 `PrecheckReception.exe`가 의원 와이파이(사설 주소)에 작은 웹 서버를 연다(문 47200). 직원 휴대폰은 `http://{총괄 PC 주소}:47200/`을 열고, 화면은 5초마다(간격은 PC 한 곳 `ReceptionTiming`, 3절) `/api/board`를 읽는다.
 - 비트는 지금 도우미와 같은 길로 읽는다: 등록 확인(`HospitalGate`) → 읽기 전용 접속 → 되돌리는 트랜잭션 → 허용 목록의 SELECT 상수(`ReadOnlyGuard`). 비트에 쓰는 길은 없다. 엑스레이 'X-ray 완료' 표시만 그 PC의 암호화 파일에 둔다.
 - 웹사이트(Vercel·Supabase)·크롬 확장·`lib/bridge`·`commands.json`은 이 기능과 상관없다. 환자 자료는 그 PC → 같은 의원 와이파이의 휴대폰까지만 가고, 휴대폰에는 남기지 않는다(ADR-027).
 - 모르는 값은 먼저 **의원 PC 확인 명령**(`--reception-check`)으로 찾고, 답은 `ReceptionMap` 한 곳에 채운다. 그 전에도 아는 칸만으로 서버·화면을 끝까지 만들어 시험한다.
@@ -65,12 +65,13 @@ public static class ReceptionMap {
 - 모두 `Sql.IsAllowed`·`Sql.ParametersOf`에 더한다(지금의 Revenue·Stats처럼 `ReceptionSql.Parameters` 표를 `Sql`이 묻는다). 완료 내원 조건은 `HistoryVisitsCte`의 `OcmPatTyp='O' AND OcmRsuYon<>'O' AND OcmComStt IN (…)` + 병원 범위 그대로.
 - `@before`는 그 접수의 `OcmAcpDtm` 원값을 그대로 넘긴다(길이를 짐작하지 않는다). 시각 글은 앞 12글자(`yyyyMMddHHmm`)로 만든다.
 - `BoardReader.Read(IBitDb db, DateTime now) : BoardInput`: 위 문장을 차례로 돌려 줄 모양(`VisitRow`, `RxItem`)으로 바꾼다. 문장마다 시간 제한 8초.
+- 간격 한 곳 `ReceptionTiming.cs`(AC-1403.9, TASK-31): `PollSeconds = 5`(화면이 저절로 다시 읽는 간격, `/api/board` 답의 `every`), `CacheSeconds = 4`(묶음). 사용자 결정 2026-11-05(10초 → 5초). 의원 PC 확인(AC-1403.10) 뒤 3초로 낮추면 `CacheSeconds`는 2로 한다(늘 간격보다 작게). 3배 쉼·실패 뒤 10초·`fresh` 2초는 그대로다.
 - `VisitRow`는 처음(TASK-12)부터 `Name`·`BirthDate`(또는 주민번호 앞 7글자)·`Sex`·`Memo`·`PaidAt` 칸을 빈 값(`null`) 허용으로 갖는다. 지금은 비어 있고, Phase 5(TASK-29)는 `BoardReader`에서 그 칸을 채우기만 한다(`BoardBuilder`는 고치지 않는다). TASK-11은 이 칸에 값이 있을 때와 없을 때를 모두 시험한다.
 - `BoardCache`: `Get(DateTime now, bool fresh = false) : BoardResult`(`ok + board` 또는 `unavailable`).
-  - 마지막 성공이 8초 안이면 그것(AC-1403.2), 한 번에 하나만 읽고 나머지는 그 결과를 기다린다(최대 9초).
+  - 마지막 성공이 묶음 시간(`ReceptionTiming.CacheSeconds` = 4초) 안이면 그것(AC-1403.2), 한 번에 하나만 읽고 나머지는 그 결과를 기다린다(최대 9초).
   - 걸린 시간 `d`가 3초를 넘으면 `min(3d, 60초)` 동안 다시 읽지 않는다(AC-1403.4). 실패 뒤 10초 동안 다시 읽지 않고 `unavailable`(AC-1403.5).
   - 요청이 와야만 읽는다(타이머 없음, AC-1403.3). 시계·읽기는 주입해 시험한다.
-  - `fresh`(새로 고침 단추, AC-1403.8): 8초 묶음만 건너뛴다. 읽는 중이면 함께 기다리고, 마지막 읽기가 끝난 지 2초 안이면 그것을 주며, 3배 쉼·실패 뒤 10초는 그대로다. 라우터는 `/api/board?fresh=1`만 `fresh`로 넘기고 다른 질의 글은 404다.
+  - `fresh`(새로 고침 단추, AC-1403.8): 묶음 시간만 건너뛴다. 읽는 중이면 함께 기다리고, 마지막 읽기가 끝난 지 2초 안이면 그것을 주며, 3배 쉼·실패 뒤 10초는 그대로다. 라우터는 `/api/board?fresh=1`만 `fresh`로 넘기고 다른 질의 글은 404다.
   - 날이 바뀌면 `VisitKeys`와 이름표를 새로 만든다(AC-1403.6).
 
 ### 4. 자료 만들기 (`BoardBuilder.cs`, `VisitKeys.cs`)
@@ -81,7 +82,7 @@ public static class BoardBuilder { public static Board Build(BoardInput input, I
 ```
 휴대폰이 받는 `GET /api/board` (200):
 ```json
-{ "state": "ok", "at": "13:42:10",
+{ "state": "ok", "at": "13:42:10", "every": 5,
   "counts": { "queue": 5, "wait": 3, "hold": 2, "pay": 2, "done": 2 },
   "lists": { "queue": [Row], "wait": [Row], "hold": [Row], "pay": [Row], "done": [Row] } }
 Row = { "k": "3f9a…(16)", "lane": "wait|hold|pay|done", "pos": 1 | null, "laneLabel": "진료대기",
@@ -89,7 +90,7 @@ Row = { "k": "3f9a…(16)", "lane": "wait|hold|pay|done", "pos": 1 | null, "lane
         "waited": "18분째 대기", "long": false, "memo": "" , "rxLabel": "오늘|지난번|처방",
         "rx": "체외충격파(ESWT7) · 도수치료 20분(DS20)", "xray": null | { "at": "10:55" | null } }
 ```
-- 볼 수 없을 때 503 `{ "state": "unavailable" }`. 글 규칙은 AC-1402.3~1402.6. `pos`는 진료 순서에만, `xray`는 진료보류에만 있다.
+- `every` = `ReceptionTiming.PollSeconds`(초). 볼 수 없을 때 503 `{ "state": "unavailable" }`. 글 규칙은 AC-1402.3~1402.6. `pos`는 진료 순서에만, `xray`는 진료보류에만 있다.
 - 글은 서버(C#)가 만들고 화면은 그대로 그린다. 계산이 한 곳이고 C# 시험으로 거의 다 증명된다.
 - 기다린 분은 **모든 칸에서 접수 시각부터** 센다. 비트에 상태가 바뀐 시각 칸이 있는지 모르기 때문이다(확인 결과에 있으면 다시 정한다). 시안의 "보류 22분째"·"수납 6분째" 글 모양은 그대로다.
 
@@ -102,7 +103,7 @@ Row = { "k": "3f9a…(16)", "lane": "wait|hold|pay|done", "pos": 1 | null, "lane
 - 한 번에 주는 수: `from=0`이면 5번, 그 뒤는 20번(`HistoryChunk.First = 5`, `HistoryChunk.Next = 20`). 첫 5는 승인 시안, 20은 37번 온 환자도 두 번 누르면 끝나고 답 하나가 작게 유지되는 값이다.
 - `total` = 앞선 완료 내원 수 + 1(오늘 접수), `first` = 가장 이른 완료 내원일(없으면 오늘). `more` = 아직 안 준 앞선 내원 수.
 - 상세는 그 환자 한 명만, 열 때·[더 보기] 때만 읽는다. 결과는 서버에 쌓지 않는다.
-- 오늘 카드의 상태·오늘 처방은 화면이 가진 `/api/board` 줄로 그리고(10초마다 바뀜), 오늘 증상(`todaySym`)은 상세를 열 때 읽은 값이다.
+- 오늘 카드의 상태·오늘 처방은 화면이 가진 `/api/board` 줄로 그리고(저절로 읽을 때마다 바뀜), 오늘 증상(`todaySym`)은 상세를 열 때 읽은 값이다.
 
 ### 6. 엑스레이 'X-ray 완료' 표시 (`XrayMarks.cs`)
 ```csharp
@@ -157,7 +158,7 @@ public static class ReceptionPorts { public const int Http = 47200; }
 | `board.js` | 목록(머리·[새로 고침] 단추·진료 순서·칸 넷·줄) 그리기. 단추는 `reading` 값으로 "새로 고침"/"읽는 중…"(`disabled`) |
 | `detail.js` | 상세(오늘 카드·지난 진료·더 보기·끝 줄) 그리기 |
 | `offline.js` | 지우기 + 연결 끊김 화면 |
-| `poll.js` | 10초 고리(응답 뒤 다음 예약, 주입한 시계), `refreshNow()`(AC-1407.10: 도는 읽기가 있으면 그 뒤 `fresh` 한 번, 끝나면 10초 다시 예약), `pause()`·`resume()`(AC-1407.11) |
+| `poll.js` | `every`초 고리(답의 값, 처음 연결 전에는 기본 5. 응답 뒤 다음 예약, 주입한 시계), `refreshNow()`(AC-1407.10: 도는 읽기가 있으면 그 뒤 `fresh` 한 번, 끝나면 `every`초 다시 예약), `pause()`·`resume()`(AC-1407.11) |
 | `alert.js` | 새 열쇠 찾기 + 떨기/삐 소리 + 첫 누름에 오디오 열기 |
 | `xray.js` | [X-ray 완료]·[표시 취소] |
 | `layout.js` | 폰/태블릿 판정(`matchMedia`), 고른 환자(태블릿은 처음에 고른 칸의 첫 줄, 승인 태블릿 시안) |
@@ -182,8 +183,8 @@ public static class ReceptionPorts { public const int Http = 47200; }
 
 ## 데이터 흐름
 ```
-[휴대폰] 10초마다 GET /api/board ─┐            [총괄 PC: PrecheckReception.exe]
-                                   ├→ ClientGuard(사설 주소·Host) → Router → BoardCache(8초·한 번만)
+[휴대폰] 5초마다 GET /api/board ──┐            [총괄 PC: PrecheckReception.exe]
+                                   ├→ ClientGuard(사설 주소·Host) → Router → BoardCache(4초·한 번만)
 [다른 휴대폰]  ────────────────────┘                    └→ HospitalGate → ReadOnlyGuard → 비트 SELECT(되돌림)
                                                          └→ BoardBuilder(ReceptionMap·XrayMarks·VisitKeys) → JSON
 [휴대폰] 줄 누름 → GET /api/visit/{k}/history?from=0 → VisitKeys → HistoryReader(그 환자만) → JSON
@@ -199,7 +200,7 @@ public static class ReceptionPorts { public const int Http = 47200; }
 - **켜는 법은 사용자 레지스트리 시작 항목(HKCU Run).** 관리자 권한이 없고(지금 설치 규칙), 등록 파일이 DPAPI CurrentUser라 그 사용자로 돌아야 한다. 작업 스케줄러 로그온 트리거는 관리자 권한이 필요하다. 대가: 그 사용자가 로그인해야 켜진다(사용자 결정 "PC가 켜지고 로그인하면"과 맞다). 꺼져도 바로 가기가 다시 켠다.
 - **잠금 없음, HTTP (사용자 결정).** 직원 와이파이에 들어온 기기면 누구나 본다. 인증서가 없어 HTTPS는 휴대폰마다 경고가 떠서 쓰지 않는다. 같은 와이파이에서 엿볼 수 있는 위험이 남는다(ADR-027). 줄이는 것: 사설 주소만, `Host`·`Origin` 검사, 휴대폰에 남기지 않음(`no-store`·저장소 금지·끊기면 지움), 서버 기록에 환자 글 없음.
 - **글은 서버가 만든다.** 화면 JS는 그리기·고리·알림만. 규칙이 C# 한 곳이라 시험이 쉽고 휴대폰 시계가 틀려도 기다린 분이 맞다(서버 시각 `at` 기준).
-- **비트 읽기는 요청이 올 때만, 8초 묶음.** 휴대폰이 몇 대든 10초에 한 번쯤만 비트를 읽고, 아무도 안 보면 읽지 않는다. 오래 걸리면 저절로 덜 읽는다. 그동안 화면 "기준" 시각은 진짜 읽은 시각이다.
+- **비트 읽기는 요청이 올 때만, 4초 묶음.** 휴대폰이 몇 대든 5초에 한 번쯤만 비트를 읽고, 아무도 안 보면 읽지 않는다. 오래 걸리면 저절로 덜 읽는다. 그동안 화면 "기준" 시각은 진짜 읽은 시각이다.
 - **상세 쪽수 5 → 20.** 첫 화면은 승인 시안 그대로 5번, 더 보기는 20번씩.
 - **끝남 칸은 접수 늦은 순.** 사용자 말 "모든 칸 접수 시각 순"과 승인 시안의 "오늘 끝난 환자 · 최근 순"(지금 글은 "수납완료 환자 · 최근 순", 09:12 다음 09:05)을 함께 따른 해석이다. 다른 칸은 빠른 순.
 - **오래 기다림(주황)은 진료대기·진료보류만.** 진료를 기다리는 사람의 표시다. 수납대기는 이미 진료를 받아 1시간이 넘는 일이 흔하다.
@@ -218,7 +219,7 @@ public static class ReceptionPorts { public const int Http = 47200; }
 - AC-1411.6 방화벽 창·네트워크 "개인"·직원 와이파이에서 총괄 PC가 보이는지(공유기의 '기기끼리 막기'가 켜져 있으면 안 된다)
 - AC-1411.7 껐다 켜고 로그인 → 휴대폰 아이콘만 눌러 열림
 - 이 서버에서는 글자·구성만 보고 실제 동작은 의원 PC에서 보는 것: AC-1411.1~1411.3(뮤텍스·시작 항목·바로 가기), AC-1412.1(설치), AC-1412.5(빌드는 여기서, 실행은 PC), AC-1405.4의 DPAPI(여기서는 가짜 암호화), AC-1407.9(홈 화면 추가)
-- 비트 부담: 확인 보고서의 빠르기(AC-1401.8)로 본다. 10초마다 오늘 접수만 읽는 문장이 1초 안팎이어야 한다
+- 비트 부담: 확인 보고서의 빠르기(AC-1401.8)로 본다. 5초마다(뒤에 3초 검토) 오늘 접수만 읽는 문장이 1초 안팎이어야 하고, 접수 PC의 비트가 느려지지 않아야 한다(AC-1403.10)
 
 ## 사용자 단계 (쉬운 말, README와 같은 글)
 1. 공유기 관리 화면에서 총괄 PC의 주소를 고정한다(‘DHCP 예약’ 또는 ‘고정 IP 할당’). 바뀌면 휴대폰 홈 화면 아이콘이 안 열린다.
