@@ -156,6 +156,7 @@ export type CashFloatBoxProps = {
 ```
 - 앱 규칙(`ds`·토큰·Pretendard). 결과 상자 색은 토큰 `positive`/`negative`(soft 배경). 장수 칸 `ds.input` 폭 고정·오른쪽 맞춤·`inputMode="numeric"`·`maxLength={4}`, 768px 미만 44px
 - 결과 글 자리는 `aria-live="polite"`(역할 없음). `role="status"`·`output`·`ErrorCard`를 쓰지 않는다(지금 화면 시험이 그것을 센다)
+- [이 날만 고치기](AC-1605.8): 상자 안 작은 상태(열림·적는 글)만 들고, 저장은 `onCash({ ...cash, floatWon: n })` 한 번이다. 그래서 화면·자동 저장은 장수 칸과 같은 길(`changeCash` → 바뀐 칸 `floatWon`만)이고 새 저장 함수·새 칸이 없다. 설정(`worklog_settings`)은 건드리지 않는다
 - 상자 맨 바깥 `print:hidden`. `view`는 머리(제목·저장 상태 글)·두 줄(세어 본 돈·있어야 할 돈)·결과·이유(읽기만)뿐
 
 ### 설정 칸 (`src/components/settings/CashFloatSetting.tsx`, TASK-7)
@@ -212,6 +213,7 @@ const guess: CashGuessMode = viewOnly ? { kind: 'none' }
 | 장수 칸 아무 자리 수 | 숫자만 4자리(9999장)까지 | DB 범위 |
 | 설정 0원·빈 칸 모두 "숫자로 적어 주세요" | 0원은 된다(시재 없이 쓰는 병원), 1천만원 넘으면 따로 안내 | 범위를 분명히 |
 | 시안 글꼴 IBM Plex Sans KR | 앱 Pretendard | UI_GUIDE |
+| 시재 줄에 단추 없음, 작은 글 늘 "설정 금액" | 센 날은 [이 날만 고치기]와 작은 글 "이 날 금액" | 2026-11-05 사용자 추가 답 |
 
 ## 시안이 말하지 않아 정한 것
 - requirements.md '이 명세에서 Claude가 정한 것' 10~14. 그 밖: 확인란은 금액이 지워져도 켜진 값이 남지만 계산에는 0이다. 그날 시재가 없는데 장수가 있는 줄(있으면 안 되지만)은 PC에서는 설정 금액으로 계산하고 휴대폰에서는 결과를 보이지 않는다(`no-float`)
@@ -241,6 +243,6 @@ const guess: CashGuessMode = viewOnly ? { kind: 'none' }
 ## 위험 / 미해결 질문
 - SQL 관문(위 1번). 새 화면은 읽을 때 새 칸을 고르므로 칸이 없는 DB에서는 모든 날 읽기가 실패한다
 - 두 PC가 거의 동시에 첫 장수를 적으면 나중 PC의 설정 금액이 그날 시재가 된다(보통 같은 설정이라 같다)
-- 설정을 틀리게 둔 채 센 날은 그 시재로 남는다(바꾸는 단추는 범위 밖). 사용자에게 알린다
+- 설정을 틀리게 둔 채 센 날은 [이 날만 고치기]로 날마다 고쳐야 한다(여러 날 한 번에 고치기는 범위 밖)
 - `WorklogScreen.tsx`·`WorklogToolbar.tsx`(`export` 한 단어)는 글씨 크기 TASK-8과 겹친다. 그 TASK가 합쳐진 뒤 만든다
 - 화면 확인(TASK-9)은 이 서버(2 CPU·7.8GB·스왑 없음)에 다른 일이 없을 때 돌린다

@@ -69,11 +69,11 @@
 
 ## TASK-6: 현금 시재 상자
 - Phase: 2 · 병렬
-- AC: AC-1605.1, AC-1605.2, AC-1605.3, AC-1605.4, AC-1605.5, AC-1605.6, AC-1605.7, AC-1606.1, AC-1606.2, AC-1606.3, AC-1607.1, AC-1607.2
+- AC: AC-1605.1, AC-1605.2, AC-1605.3, AC-1605.4, AC-1605.5, AC-1605.6, AC-1605.7, AC-1605.8, AC-1606.1, AC-1606.2, AC-1606.3, AC-1607.1, AC-1607.2
 - REQ: REQ-1605, REQ-1606, REQ-1607
 - Files: src/components/worklog/CashFloatBox.tsx, src/components/worklog/CashFloatBox.test.tsx
 - Tests: src/components/worklog/CashFloatBox.test.tsx
-- TDD: required — 시안 승인됨(`docs/mockups/worklog/cash-float.html`). 받은 값을 그리기만 하는 부품(design.md '상자'). 먼저 시험을 더해 RED: 차례·글(글자 그대로)·쉼표 금액, 장수 치기 → 숫자만·`onCash` 한 번, 확인란 보임/숨김·켜면 계산, 결과 네 가지·색(토큰 클래스), 다름일 때만 추측·이유, 추측 세 가지 글·[비트 숫자로 고치기] → `onTakeBitCash`, 다른 PC 한 줄, 모드 `none`, 막힌 이유 빨강·`aria-invalid`, 설정 불러오는 중·실패 줄과 잠김·[시재 금액 다시 불러오기] → `onReloadFloat`, `locked`면 모두 잠김, `view`(센 날·안 센 날), 바깥 `print:hidden`, `role="status"`·`output`·`role="alert"` 없음·안 센 날 `li` 없음, 768px 미만 장수 칸 44px
+- TDD: required — 시안 승인됨(`docs/mockups/worklog/cash-float.html`). 받은 값을 그리기만 하는 부품(design.md '상자'). 먼저 시험을 더해 RED: 차례·글(글자 그대로)·쉼표 금액, 장수 치기 → 숫자만·`onCash` 한 번, 확인란 보임/숨김·켜면 계산, 결과 네 가지·색(토큰 클래스), 다름일 때만 추측·이유, 추측 세 가지 글·[비트 숫자로 고치기] → `onTakeBitCash`, 다른 PC 한 줄, 모드 `none`, 막힌 이유 빨강·`aria-invalid`, 설정 불러오는 중·실패 줄과 잠김·[시재 금액 다시 불러오기] → `onReloadFloat`, `locked`면 모두 잠김, `view`(센 날·안 센 날), [이 날만 고치기](센 날 `edit`만·열기·저장 → `onCash`의 `floatWon`만 바뀜·틀린 값 두 안내·[취소]·작은 글 두 가지), 바깥 `print:hidden`, `role="status"`·`output`·`role="alert"` 없음·안 센 날 `li` 없음, 768px 미만 장수 칸 44px
 
 ## Phase 3 — 잇기 (두 병렬, Phase 2 뒤)
 
@@ -87,11 +87,11 @@
 
 ## TASK-8: 업무일지 화면·날짜별 값·자동 저장 한 벌에 잇기
 - Phase: 3 · 병렬
-- AC: AC-1606.4, AC-1607.3, AC-1609.1, AC-1609.2, AC-1609.3, AC-1609.4, AC-1609.5, AC-1609.6, AC-1609.7
+- AC: AC-1606.4, AC-1607.3, AC-1609.1, AC-1609.2, AC-1609.3, AC-1609.4, AC-1609.5, AC-1609.6, AC-1609.7, AC-1609.8
 - REQ: REQ-1606, REQ-1607, REQ-1609
 - Files: src/components/worklog/useWorklogDay.ts, src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/useCashFloatSetting.ts, src/components/worklog/WorklogScreen.tsx, src/components/worklog/WorklogScreen.cash.test.tsx, src/components/worklog/worklogSession.ts, src/components/worklog/worklogSession.test.ts, src/components/worklog/WorklogToolbar.tsx
 - Tests: src/components/worklog/useWorklogDay.test.tsx, src/components/worklog/WorklogScreen.cash.test.tsx, src/components/worklog/worklogSession.test.ts
-- TDD: required — design.md '화면 잇기'. 먼저 `useWorklogDay.test.tsx`의 `serverDay` 기대 여섯 곳에 여섯째 인자를 더하고 새 시험을 더해 RED: 날짜 칸이 시재를 들고 `setCell`·`setMemoFont`·`editBit` 뒤에도 남음, `setCash`는 ready만. 새 파일 `WorklogScreen.cash.test.tsx`(지금 화면 시험과 같은 가짜 + `@/lib/storage/worklogSettings` 가짜): 저장된 시재가 보임·줄 없는 날 빈 시재, 첫 장수 → `floatWon` 설정 금액과 함께 여섯 인자 저장, 이미 센 날은 설정이 달라도 그날 시재·`floatWon` 안 보냄, 설정 불러오는 중·실패면 안 센 날 장수 잠김·다시 불러오기, 날짜 옮김·앱 안 이동 뒤 저장 안 된 시재, 다시 읽기 반영·저장 안 부름, 비트 채우기·[비트 숫자로 바꾸기]·칸 고치기·글씨 크기 뒤 시재 그대로·여섯째 없음, 비트 PC 추측 모드 규칙(그날 읽기 끝난 뒤만, 확인 필요 날 비트 현금 없음, 연결 안 됨·준비 전 → 다른 PC 줄)·[비트 숫자로 고치기] → 현금수납이 비트 숫자·결과 다시 계산, 터치 기기는 보기만·설정 읽지 않음·저장 없음, 상자가 비트 설명 줄 뒤·인쇄 숨김, 막힌 이유 → `E-WORKLOG-NOTE-PRIVATE`·"빨간 칸 빼고 저장했어요", 로그아웃 뒤 시재 없음. `worklogSession`: 시재 있으면 여섯 인자·없으면 지금처럼. `WorklogToolbar.tsx`는 `statusText`에 `export`만 붙인다. **`WorklogScreen.test.tsx`·`WorklogToolbar.test.tsx`를 포함해 지금 시험은 위 여섯 줄 말고 고치지 않은 채 통과해야 한다**
+- TDD: required — design.md '화면 잇기'. 먼저 `useWorklogDay.test.tsx`의 `serverDay` 기대 여섯 곳에 여섯째 인자를 더하고 새 시험을 더해 RED: 날짜 칸이 시재를 들고 `setCell`·`setMemoFont`·`editBit` 뒤에도 남음, `setCash`는 ready만. 새 파일 `WorklogScreen.cash.test.tsx`(지금 화면 시험과 같은 가짜 + `@/lib/storage/worklogSettings` 가짜): 저장된 시재가 보임·줄 없는 날 빈 시재, 첫 장수 → `floatWon` 설정 금액과 함께 여섯 인자 저장, 이미 센 날은 설정이 달라도 그날 시재·`floatWon` 안 보냄, 설정 불러오는 중·실패면 안 센 날 장수 잠김·다시 불러오기, 날짜 옮김·앱 안 이동 뒤 저장 안 된 시재, 다시 읽기 반영·저장 안 부름, 비트 채우기·[비트 숫자로 바꾸기]·칸 고치기·글씨 크기 뒤 시재 그대로·여섯째 없음, 비트 PC 추측 모드 규칙(그날 읽기 끝난 뒤만, 확인 필요 날 비트 현금 없음, 연결 안 됨·준비 전 → 다른 PC 줄)·[비트 숫자로 고치기] → 현금수납이 비트 숫자·결과 다시 계산, 터치 기기는 보기만·설정 읽지 않음·저장 없음, 상자가 비트 설명 줄 뒤·인쇄 숨김, 막힌 이유 → `E-WORKLOG-NOTE-PRIVATE`·"빨간 칸 빼고 저장했어요", 로그아웃 뒤 시재 없음, [이 날만 고치기] → `floatWon`만 여섯째 인자로 저장·설정 저장 안 부름·다른 날 그대로. `worklogSession`: 시재 있으면 여섯 인자·없으면 지금처럼. `WorklogToolbar.tsx`는 `statusText`에 `export`만 붙인다. **`WorklogScreen.test.tsx`·`WorklogToolbar.test.tsx`를 포함해 지금 시험은 위 여섯 줄 말고 고치지 않은 채 통과해야 한다**
 
 ## Phase 4 — 확인 (혼자, Phase 3 뒤)
 
