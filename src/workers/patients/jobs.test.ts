@@ -19,6 +19,7 @@ import {
   mergeRecall,
   pruneMarks,
   readStore,
+  readStoreReply,
   readTargets,
   setMark,
   storePayload,
@@ -221,6 +222,36 @@ describe('readStore', () => {
 
   it('AC-604.6 표시가 없는 줄은 constructor 같은 열쇠여도 표시된 것으로 읽지 않는다', () => {
     expect(readStore({}).marks['constructor']).toBeUndefined()
+  })
+})
+
+// 도우미 0.3.0의 store.load {contact: true} 답은 {contact: {…}}다. Worker는 그 contact만 읽는다
+describe('readStoreReply', () => {
+  it('AC-604.8 {contact: {}}(저장 파일 없음)는 빈 것으로 시작한다', () => {
+    expect(readStoreReply({ contact: {} })).toEqual({ v: 1, marks: {}, recall: { from: null, readThrough: null, records: [] } })
+  })
+
+  it('AC-604.8 {contact: {v: 1, marks, recall}}는 그 contact를 읽은 것과 같다', () => {
+    expect(readStoreReply({ contact: MARKED.contact })).toEqual(readStore(MARKED.contact))
+  })
+
+  it('AC-604.8 contact 밖의 칸은 읽지 않는다', () => {
+    expect(readStoreReply({ contact: {}, months: {} })).toEqual(readStore({}))
+    expect(readStoreReply({ contact: MARKED.contact, note: { v: 2 } })).toEqual(readStore(MARKED.contact))
+  })
+
+  it.each<[string, unknown]>([
+    ['null', null],
+    ['배열', []],
+    ['글자', 'x'],
+    ['contact 없음(옛 답 {})', {}],
+    ['contact 없음(안쪽 모양을 바로 준 옛 답)', MARKED.contact],
+    ['contact가 null', { contact: null }],
+    ['contact가 배열', { contact: [] }],
+    ['contact가 글자', { contact: 'x' }],
+    ['안쪽 모양이 틀림(v가 다름)', { contact: { v: 2, marks: {}, recall: empty() } }],
+  ])('AC-604.8 빈 것으로 시작하지 않고 E-STORE-BROKEN: %s', (_id, json) => {
+    expectCode(() => readStoreReply(json), 'E-STORE-BROKEN')
   })
 })
 

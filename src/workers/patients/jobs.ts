@@ -80,7 +80,7 @@ export function readTargets(json: unknown, expect: { kind: TargetsKind; from: st
 
 const emptyStore = (): ContactStoreData => ({ v: 1, marks: newTable(), recall: { from: null, readThrough: null, records: [] } })
 
-// 도우미 store.load 답. {}는 저장이 아직 없는 것. 모양이 틀리면 빈 것으로 시작하지 않는다(PC 저장을 덮어쓰게 된다)
+// store.load 답 {contact: …}의 contact 안쪽 값(readStoreReply가 꺼내 넘긴다). {}는 저장이 아직 없는 것. 모양이 틀리면 빈 것으로 시작하지 않는다(PC 저장을 덮어쓰게 된다)
 export function readStore(json: unknown): ContactStoreData {
   if (!isRecord(json)) throw new BridgeError(STORE_BROKEN)
   if (Object.keys(json).length === 0) return emptyStore()
@@ -95,6 +95,13 @@ export function readStore(json: unknown): ContactStoreData {
   } catch {
     throw new BridgeError(STORE_BROKEN)
   }
+}
+
+// 도우미 store.load {contact: true}의 답 {contact: {…}}(도우미 0.3.0). contact만 읽고 밖의 칸은 보지 않는다.
+// contact가 없거나 객체가 아니면(안쪽 모양을 바로 준 옛 답 {}·{v: 1, …} 포함) 빈 것으로 시작하지 않는다
+export function readStoreReply(json: unknown): ContactStoreData {
+  if (!isRecord(json) || !isRecord(json.contact)) throw new BridgeError(STORE_BROKEN)
+  return readStore(json.contact)
 }
 
 // ── 표 잇기 ─────────────────────────────────────────────

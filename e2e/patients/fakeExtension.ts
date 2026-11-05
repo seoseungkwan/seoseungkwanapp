@@ -19,7 +19,7 @@ export type FakeFixtures = {
   /** 조각이 맞춰 둔 날(YYYY-MM-DD). 이 날이어야 Worker의 읽기 계획이 조각의 기간과 같다 */
   today: string
   pieces: TargetsReply[]
-  /** store.load 답 */
+  /** store.load 답의 contact(답은 {contact: 이 값}) */
   contact: unknown
 }
 
@@ -95,7 +95,8 @@ export async function installFakeExtension(page: Page, fixtures: FakeFixtures): 
     extensionId: EXTENSION_ID,
     protocol: PROTOCOL,
     hello: { helperVersion: LATEST_HELPER, protocol: PROTOCOL, extensionVersion: MIN_EXTENSION, extensionProtocol: PROTOCOL },
-    load: toStream(fixtures.contact),
+    // 도우미 0.3.0의 store.load {contact: true} 답 모양 {contact: {…}}
+    load: toStream({ contact: fixtures.contact }),
     targets: Object.fromEntries(fixtures.pieces.map((piece) => [`${piece.kind}|${piece.from}|${piece.to}`, toStream(piece)])),
   }
   await page.addInitScript(fakeChromeRuntime, answers)

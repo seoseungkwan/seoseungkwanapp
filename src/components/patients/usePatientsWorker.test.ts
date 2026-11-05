@@ -453,7 +453,7 @@ describe('usePatientsWorker: 진짜 handler에 이어서 (옛 흐름이 새 읽�
         const id = `req-${++n}`
         const nth = (counts.get(cmd) ?? 0) + 1
         counts.set(cmd, nth)
-        const value = cmd === 'store.load' ? FIRST : pieceFor(args)
+        const value = cmd === 'store.load' ? { contact: FIRST } : pieceFor(args)
         const finish = () => resolve({ id, count: 1 })
         if (shouldHold(cmd, nth)) held.push({ cmd, id, deliver: () => deliver(id, value), resolve: finish })
         else {

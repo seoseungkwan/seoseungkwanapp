@@ -111,14 +111,17 @@ function harness() {
 
   const newId = () => `req-${++nextId}`
 
-  async function stored(contact: unknown) {
+  // store.load {contact: true}의 답을 그대로 보낸다(도우미 0.3.0은 {contact: {…}})
+  async function storedReply(reply: unknown) {
     const id = newId()
     const before = all('stored').length
-    deliver(id, contact)
+    deliver(id, reply)
     handler.onScreen({ type: 'stored', id })
     await until(() => all('stored').length > before, 'stored')
     return last('stored')
   }
+
+  const stored = (contact: unknown) => storedReply({ contact })
 
   async function storedAbort(code: string) {
     const id = newId()
@@ -173,7 +176,7 @@ function harness() {
     }
   }
 
-  return { handler, posted, sent, all, last, deliver, newId, stored, storedAbort, piece, pieces, plan, build, sentOk, sentFail, saved, open }
+  return { handler, posted, sent, all, last, deliver, newId, stored, storedReply, storedAbort, piece, pieces, plan, build, sentOk, sentFail, saved, open }
 }
 
 // 화면으로 가는 메시지에 보낼 글자·조각이 없다
@@ -633,6 +636,15 @@ describe('연락 표시를 못 불러옴 (AC-604.8)', () => {
     expect(h.sent).toHaveLength(0)
   })
 
+  it('AC-604.8 contact 없이 안쪽 모양을 바로 준 옛 답 {}는 빈 것으로 시작하지 않고 E-STORE-BROKEN이며 [연락함]이 store.save를 보내지 않는다', async () => {
+    const h = await failedLoad((x) => x.storedReply({}))
+    expect(h.last('stored')).toEqual({ type: 'stored', ok: false, code: 'E-STORE-BROKEN', recall: [] })
+    h.handler.onScreen({ type: 'mark', key: KEY_A, on: true, today: TODAY })
+    await settle()
+    expect(h.last('marked')).toEqual({ type: 'marked', key: KEY_A, ok: false, code: 'E-STORE-BROKEN', counts: null })
+    expect(h.sent).toHaveLength(0)
+  })
+
   it('AC-604.8 스트림이 거절돼 id가 없으면 화면이 번호를 알린다', async () => {
     const h = harness()
     h.plan()
@@ -777,7 +789,7 @@ describe('연락 표시를 못 불러옴 (AC-604.8)', () => {
     const h = harness()
     h.handler.onScreen({ type: 'stored', id: 'old' })
     h.handler.onScreen({ type: 'reload' })
-    h.deliver('old', MARKED)
+    h.deliver('old', { contact: MARKED })
     await settle()
     expect(h.all('stored')).toHaveLength(0)
     h.handler.onScreen({ type: 'mark', key: KEY_A, on: true, today: TODAY })
@@ -824,9 +836,9 @@ describe('연락 표시를 못 불러옴 (AC-604.8)', () => {
     const h = harness()
     h.handler.onScreen({ type: 'stored', id: 'a' })
     h.handler.onScreen({ type: 'stored', id: 'b' })
-    h.deliver('b', FIRST)
+    h.deliver('b', { contact: FIRST })
     await until(() => h.all('stored').length === 1, 'stored')
-    h.deliver('a', MARKED)
+    h.deliver('a', { contact: MARKED })
     await settle()
     expect(h.all('stored')).toHaveLength(1)
     expect(h.plan().recall).toEqual(INJECTION.pieces.map((p) => ({ from: p.from, to: p.to })))
@@ -1147,9 +1159,9 @@ describe('저장 줄 세우기 (AC-604.4)', () => {
   it('AC-604.4 포트가 없으면 저장하지 못했다고 번호만 돌려준다', async () => {
     const posted: PatientsWorkerMessage[] = []
     const handler = createHandler({ post: (message) => posted.push(message as PatientsWorkerMessage) })
-    const text = '{}'
+    const text = '{"contact":{}}'
     handler.onPort({ type: 'chunk', id: 'a', seq: 0, data: text })
-    handler.onPort({ type: 'end', id: 'a', count: 1, bytes: 2, sha256: createHash('sha256').update(text).digest('hex') })
+    handler.onPort({ type: 'end', id: 'a', count: 1, bytes: Buffer.byteLength(text, 'utf8'), sha256: createHash('sha256').update(text).digest('hex') })
     handler.onScreen({ type: 'stored', id: 'a' })
     await until(() => posted.some((m) => m.type === 'stored'), 'stored')
     handler.onScreen({ type: 'mark', key: 'f|V1|900001|2026-11-03', on: true, today: TODAY })
@@ -1463,7 +1475,7 @@ describe('이상한 값에도 멈추지 않는다', () => {
     const digest = vi.spyOn(crypto.subtle, 'digest')
     const h = harness()
     h.plan()
-    const text = JSON.stringify(FIRST)
+    const text = JSON.stringify({ contact: FIRST })
     h.handler.onPort({ type: 'chunk', id: 'slow', seq: 0, data: text })
     h.handler.onScreen({ type: 'stored', id: 'slow' })
     await vi.advanceTimersByTimeAsync(60_000)
@@ -1498,7 +1510,7 @@ describe('이상한 값에도 멈추지 않는다', () => {
     const digest = vi.spyOn(crypto.subtle, 'digest')
     const h = harness()
     const p = FOLLOWUP.pieces[0]
-    h.deliver('old-load', MARKED)
+    h.deliver('old-load', { contact: MARKED })
     h.deliver('old-piece', p)
     const text = JSON.stringify(p)
     h.handler.onPort({ type: 'chunk', id: 'old-open', seq: 0, data: text })
@@ -1521,7 +1533,7 @@ describe('이상한 값에도 멈추지 않는다', () => {
 
   it('AC-604.1 reload 뒤에 새로 온 요청은 그대로 쓴다', async () => {
     const h = harness()
-    h.deliver('old', MARKED)
+    h.deliver('old', { contact: MARKED })
     await settle()
     h.handler.onScreen({ type: 'reload' })
     expect(await h.stored(FIRST)).toMatchObject({ ok: true })

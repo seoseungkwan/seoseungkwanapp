@@ -14,7 +14,7 @@ import {
   followupPhones,
   mergeRecall,
   pruneMarks,
-  readStore,
+  readStoreReply,
   readTargets,
   setMark,
   storePayload,
@@ -227,7 +227,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
         if (asked !== epoch) return // reload·새 stored가 앞섰다. 그쪽 답이 온다
         if (!result.ok) return failLoad(result.code)
         try {
-          const loaded = readStore(result.json)
+          const loaded = readStoreReply(result.json)
           planned = { ...planned, recall: today ? recallPlan(loaded.recall, RULES, today) : null }
           store = loaded
           saveState = 'loaded'
