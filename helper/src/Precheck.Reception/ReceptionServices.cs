@@ -47,7 +47,7 @@ internal static class ReceptionServices
         }
     }
 
-    /// <summary>길 나누기 한 벌: 비트 부품·접수 현황 캐시·엑스레이 표시·화면용 열쇠·품은 화면 파일·이 PC 주소.</summary>
+    /// <summary>길 나누기 한 벌: 비트 부품·접수 현황 캐시·엑스레이 표시·화면용 열쇠·품은 화면 파일·이 PC 주소·이 PC 자신만 여는 주소 보내기 화면(/link, 부를 때마다 lan.Current()의 주소).</summary>
     public static ReceptionRouter CreateRouter(ReceptionLog log)
     {
         var protector = new DpapiProtector();
@@ -63,14 +63,8 @@ internal static class ReceptionServices
             () => lan.Current(),
             log,
             Now,
-            qrPage: LinkPage(lan));
+            linkPage: LinkPage.For(() => lan.Current()));
     }
-
-    /// <summary>
-    /// 이 PC 자신만 여는 주소 보내기 화면(/link)의 답(lan.Current()의 주소마다 링크). TASK-25가 Core LinkPage로 채우고 라우터 매개변수 이름을 바꾼다.
-    /// 지금은 없음이라 그 길은 404다.
-    /// </summary>
-    private static Func<HttpResponse>? LinkPage(LanAddressWatch lan) => null;
 
     /// <summary>도우미 HelperServices.Create와 같은 비트 부품(화면 내보내기는 접수 현황이 쓰지 않아 뺀다).</summary>
     private static BitServices CreateBit(DpapiProtector protector)

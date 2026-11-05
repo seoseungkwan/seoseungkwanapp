@@ -17,7 +17,7 @@ namespace Precheck.Core.Reception.Http;
 /// - GET /api/board → BoardCache.Get() → BoardBuilder 판 JSON(200). GET /api/board?fresh=1만 fresh로 넘긴다(AC-1403.8). 다른 질의 글은 404.
 /// - GET /api/visit/{k}/history?from=N → HistoryReader.Get(200·404·503). 틀린 열쇠·시작 위치는 비트를 읽지 않고 404(AC-1404.5).
 /// - POST /api/xray {k, on} → 쓰기 검사(아니면 403) → 몸 모양(아니면 400) → 그날 열쇠·오늘 진료보류 줄(아니면 404) → XrayMarks.Set → 204(AC-1405.5).
-/// - GET /qr은 이 PC 자신(루프백)만. 다른 곳에는 없는 길이다(404, AC-1406.8).
+/// - GET /link(주소 보내기 화면, LinkPage)는 이 PC 자신(루프백)만. 다른 곳에는 없는 길이다(404, AC-1406.8). /qr 길은 없다(QR 없음).
 /// - 그 밖은 화면 파일(StaticFiles, 질의 글 없이 GET만). 어디에도 없으면 404, 있는 길에 다른 방법이면 405(Allow).
 /// 비트를 볼 수 없으면 503 {"state":"unavailable"}(환자 자료 없음). 기록에는 오류 번호만 남긴다(AC-1406.7).
 /// </summary>
@@ -26,7 +26,7 @@ public sealed class ReceptionRouter
     private const string BoardPath = "/api/board";
     private const string FreshQuery = "fresh=1";
     private const string XrayPath = "/api/xray";
-    private const string QrPath = "/qr";
+    private const string LinkPath = "/link";
     private const string VisitPrefix = "/api/visit/";
     private const string HistorySuffix = "/history";
     private const string FromPrefix = "from=";
@@ -47,7 +47,7 @@ public sealed class ReceptionRouter
     private readonly Func<DateTime> clock;
     private readonly IReadOnlyDictionary<string, Lane> statuses;
     private readonly HashSet<string> hiddenRsu;
-    private readonly Func<HttpResponse>? qrPage;
+    private readonly Func<HttpResponse>? linkPage;
 
     /// <param name="services">상세 읽기의 등록 확인·비트 연결(HistoryReader).</param>
     /// <param name="board">접수 현황 캐시(같은 시계로 만든 것).</param>
@@ -59,7 +59,7 @@ public sealed class ReceptionRouter
     /// <param name="clock">이 PC의 시계(기다린 분·오늘 날짜). 없으면 DateTime.Now.</param>
     /// <param name="statuses">상태 코드 → 칸. 없으면 ReceptionMap.Statuses.</param>
     /// <param name="hiddenRsu">숨기는 OcmRsuYon 값. 없으면 ReceptionMap.HiddenRsu.</param>
-    /// <param name="qrPage">이 PC 자신의 GET /qr 답(TASK-25 QrPage). 없으면 /qr은 404.</param>
+    /// <param name="linkPage">이 PC 자신의 GET /link 답(LinkPage.For). 없으면 /link는 404.</param>
     public ReceptionRouter(
         BitServices services,
         BoardCache board,
@@ -71,7 +71,7 @@ public sealed class ReceptionRouter
         Func<DateTime>? clock = null,
         IReadOnlyDictionary<string, Lane>? statuses = null,
         IEnumerable<string>? hiddenRsu = null,
-        Func<HttpResponse>? qrPage = null)
+        Func<HttpResponse>? linkPage = null)
     {
         this.services = services ?? throw new ArgumentNullException(nameof(services));
         this.board = board ?? throw new ArgumentNullException(nameof(board));
@@ -83,7 +83,7 @@ public sealed class ReceptionRouter
         this.clock = clock ?? (() => DateTime.Now);
         this.statuses = statuses ?? ReceptionMap.Statuses;
         this.hiddenRsu = new HashSet<string>(hiddenRsu ?? ReceptionMap.HiddenRsu, StringComparer.Ordinal);
-        this.qrPage = qrPage;
+        this.linkPage = linkPage;
     }
 
     /// <summary>요청 하나의 답. client는 보낸 쪽 주소, port는 서버가 듣는 문(Host 검사, 보통 47200). 던지지 않는다.</summary>
@@ -120,12 +120,12 @@ public sealed class ReceptionRouter
             if (r.Method != Post) return HttpResponse.NotAllowed(Post);
             return r.Query == null ? Xray(r) : NotFound();
         }
-        if (r.Path == QrPath)
+        if (r.Path == LinkPath)
         {
-            // 이 PC 자신이 아니면 /qr은 없는 길이다(AC-1406.8)
-            if (!IsLoopback(client) || qrPage == null) return NotFound();
+            // 이 PC 자신이 아니면 /link는 없는 길이다(AC-1406.8)
+            if (!IsLoopback(client) || linkPage == null) return NotFound();
             if (r.Method != Get) return HttpResponse.NotAllowed(Get);
-            return r.Query == null ? qrPage() : NotFound();
+            return r.Query == null ? linkPage() : NotFound();
         }
         if (TryHistoryKey(r.Path, out var key))
         {

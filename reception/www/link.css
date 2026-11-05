@@ -1,0 +1,207 @@
+/*
+ * 주소 보내기 화면(/link, design.md 8절, TASK-25) 모양. 이 PC 브라우저에서만 연다(직원 단톡방에 주소를 보내려고).
+ * 시안은 따로 없고 승인 시안 v12의 상표 모양(로고, 흰 머리 + 노랑 밑줄, 숯색 글자, 노랑 채움)을 따른다.
+ * 색·글꼴·둥글기는 theme.css 토큰을 var()로만 부른다(색 글자 없음). CSP가 인라인 스타일을 막으므로 모양은 모두 여기 있다.
+ *
+ * 화면 틀 (LinkPage.cs가 쓰는 class 이름)
+ *   .link-page > header.link-top > img.link-logo + h1.link-title
+ *              > main.link-main > section.link-none > h2.link-none-title + p.link-none-sub   (사설 주소가 없을 때만)
+ *                               > section.link-card > a.link-url + button.link-copy + p.link-help   (주소마다)
+ *                               > ol.link-steps > li.link-step > span.link-step-no + 글
+ *                               > p.link-safe
+ */
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  word-break: keep-all;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+h1, h2, p, ol {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.link-page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- 머리 ---------------------------------------------------------------------------------------- */
+
+.link-top {
+  background: var(--surface);
+  border-bottom: 4px solid var(--accent);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.link-logo {
+  display: block;
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+}
+
+.link-title {
+  font-family: var(--font-title), var(--font-body);
+  font-weight: var(--title-weight);
+  font-size: 28px;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+/* ---- 본문 ---------------------------------------------------------------------------------------- */
+
+.link-main {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 주소 카드: 오늘 카드처럼 노랑 테두리, 주소는 큰 글자 */
+.link-card {
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-m);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.link-url {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.link-url:hover {
+  color: var(--ink-strong);
+}
+
+/* [주소 복사]: 노랑 채움 + 숯색 글자, 누르는 곳 44px 이상 */
+.link-copy {
+  min-height: 48px;
+  min-width: 140px;
+  padding: 0 20px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.link-copy:hover {
+  border-color: var(--ink);
+}
+
+.link-help {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* 사설 주소가 없을 때 */
+.link-none {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warn);
+  border-radius: var(--radius-m);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-none-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.link-none-sub {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* 쉬운 순서 넷: 번호는 진료 순서 번호처럼 숯색 위 노랑 글자 */
+.link-steps {
+  list-style: none;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.link-step {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.link-step-no {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 26px;
+  margin-right: 6px;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.link-safe {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: var(--ok-soft);
+  border-radius: var(--radius-m);
+  padding: 12px 16px;
+}

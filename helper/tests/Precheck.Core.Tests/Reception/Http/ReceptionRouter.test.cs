@@ -20,12 +20,12 @@ namespace Precheck.Core.Tests.Reception.Serve;
 
 /// <summary>
 /// 길 나누기(ReceptionRouter, design.md 7절·데이터 흐름, REQ-1406·REQ-1403·REQ-1404·REQ-1405).
-/// AC-1406.5 정해 둔 길(화면 파일, GET /api/board·?fresh=1, GET /api/visit/{k}/history?from=N, POST /api/xray, 이 PC 자신만 GET /qr)만 받고
+/// AC-1406.5 정해 둔 길(화면 파일, GET /api/board·?fresh=1, GET /api/visit/{k}/history?from=N, POST /api/xray, 이 PC 자신만 GET /link)만 받고
 ///           다른 길은 404, 다른 방법은 405다. 화면 파일은 넣어 둔 원천(IStaticSource)에 있는 것만 준다(디스크 경로를 받지 않는다).
 /// AC-1403.8 /api/board?fresh=1만 fresh로 넘기고(8초 묶음을 건너뜀), 다른 질의 글은 404다.
 /// AC-1404.5 그날 열쇠표에 없는·모양이 틀린 열쇠, 음수·숫자 아닌 시작 위치는 비트를 읽지 않고 404다.
 /// AC-1405.5 진료보류가 아닌 줄·그날 없는 열쇠·모양이 틀린 요청은 표시를 바꾸지 않고 400·404다.
-/// AC-1406.7 기록에는 오류 번호와 건수만 남는다. AC-1406.8 이 PC 자신이 아닌 곳의 GET /qr은 404다.
+/// AC-1406.7 기록에는 오류 번호와 건수만 남는다. AC-1406.8 이 PC 자신이 아닌 곳의 GET /link는 404다. /qr 길은 없다(QR 없음, TASK-25).
 /// 가짜 비트(Rig)·가짜 화면 파일·주입한 시계만 쓴다. 차트번호는 9로 시작하는 6자리, 내원번호는 V+숫자다.
 /// </summary>
 public class ReceptionRouterTests
@@ -185,7 +185,7 @@ public class ReceptionRouterTests
     public void HostMustBeThisPc(string host, string client)
     {
         using var rig = new ServeRig();
-        foreach (var target in new[] { "/api/board", "/api/board?fresh=1", "/", "/qr" })
+        foreach (var target in new[] { "/api/board", "/api/board?fresh=1", "/", "/link" })
         {
             var answer = rig.Send("GET", target, IPAddress.Parse(client), host.Length == 0 ? null : host, omitHost: host.Length == 0);
             Assert.Equal(403, answer.Status);
@@ -502,39 +502,53 @@ public class ReceptionRouterTests
         Assert.False(rig.MarksFileExists);
     }
 
-    // ---- AC-1406.8 /qr ----------------------------------------------------------------------------
+    // ---- AC-1406.8 /link ----------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1406.8 이 PC 자신이 아닌 곳(직원 폰)의 /qr은 어떤 방법이든 404다(QR 화면을 부르지 않는다)")]
-    public void QrOnlyFromThisPc()
+    [Fact(DisplayName = "AC-1406.8 이 PC 자신이 아닌 곳(직원 폰)의 /link는 어떤 방법이든 404다(주소 보내기 화면을 부르지 않는다)")]
+    public void LinkOnlyFromThisPc()
     {
         var calls = 0;
-        using var rig = new ServeRig(qr: () => { calls++; return QrAnswer(); });
-        Assert.Equal(404, rig.Get("/qr").Status);
-        Assert.Equal(404, rig.Send("POST", "/qr").Status);
-        Assert.Equal(404, rig.Get("/qr", IPAddress.Parse("10.0.0.8")).Status);
+        using var rig = new ServeRig(link: () => { calls++; return LinkAnswer(); });
+        Assert.Equal(404, rig.Get("/link").Status);
+        Assert.Equal(404, rig.Send("POST", "/link").Status);
+        Assert.Equal(404, rig.Get("/link", IPAddress.Parse("10.0.0.8")).Status);
+        Assert.Equal(404, rig.Get("/link?x=1").Status);
         Assert.Equal(0, calls);
     }
 
-    [Fact(DisplayName = "AC-1406.8 이 PC 자신(127.0.0.1·::1·섞인 IPv6)의 GET /qr은 QR 화면이고, 다른 방법은 405, 질의 글은 404다")]
-    public void QrFromLoopback()
+    [Fact(DisplayName = "AC-1406.8 이 PC 자신(127.0.0.1·::1·섞인 IPv6)의 GET /link는 주소 보내기 화면이고, 다른 방법은 405, 질의 글·다른 모양 길은 404다")]
+    public void LinkFromLoopback()
     {
         var calls = 0;
-        using var rig = new ServeRig(qr: () => { calls++; return QrAnswer(); });
-        var page = rig.Get("/qr", IPAddress.Loopback, "127.0.0.1:47200");
+        using var rig = new ServeRig(link: () => { calls++; return LinkAnswer(); });
+        var page = rig.Get("/link", IPAddress.Loopback, "127.0.0.1:47200");
         Assert.Equal(200, page.Status);
-        Assert.Equal("<p>qr</p>", Encoding.UTF8.GetString(page.Body));
-        Assert.Equal(200, rig.Get("/qr", IPAddress.IPv6Loopback, "localhost:47200").Status);
-        Assert.Equal(200, rig.Get("/qr", IPAddress.Parse("::ffff:127.0.0.1"), "127.0.0.1:47200").Status);
-        Assert.Equal(405, rig.Send("POST", "/qr", IPAddress.Loopback, "127.0.0.1:47200").Status);
-        Assert.Equal(404, rig.Get("/qr?x=1", IPAddress.Loopback, "127.0.0.1:47200").Status);
+        Assert.Equal("<p>link</p>", Encoding.UTF8.GetString(page.Body));
+        Assert.Equal(200, rig.Get("/link", IPAddress.IPv6Loopback, "localhost:47200").Status);
+        Assert.Equal(200, rig.Get("/link", IPAddress.Parse("::ffff:127.0.0.1"), "127.0.0.1:47200").Status);
+        Assert.Equal(405, rig.Send("POST", "/link", IPAddress.Loopback, "127.0.0.1:47200").Status);
+        Assert.Equal(404, rig.Get("/link?x=1", IPAddress.Loopback, "127.0.0.1:47200").Status);
+        Assert.Equal(404, rig.Get("/link/", IPAddress.Loopback, "127.0.0.1:47200").Status);
+        Assert.Equal(404, rig.Get("/LINK", IPAddress.Loopback, "127.0.0.1:47200").Status);
         Assert.Equal(3, calls);
     }
 
-    [Fact(DisplayName = "AC-1406.8 QR 화면을 넘겨받지 않았으면 이 PC 자신의 /qr도 404다")]
-    public void QrWithoutPage()
+    [Fact(DisplayName = "AC-1406.8 주소 보내기 화면을 넘겨받지 않았으면 이 PC 자신의 /link도 404다")]
+    public void LinkWithoutPage()
     {
         using var rig = new ServeRig();
+        Assert.Equal(404, rig.Get("/link", IPAddress.Loopback, "127.0.0.1:47200").Status);
+    }
+
+    [Fact(DisplayName = "AC-1406.8 /qr 길은 없다(QR 없음): 주소 보내기 화면을 넘겨받아도 이 PC 자신·직원 폰의 /qr은 어떤 방법이든 404다")]
+    public void QrIsGone()
+    {
+        var calls = 0;
+        using var rig = new ServeRig(link: () => { calls++; return LinkAnswer(); });
         Assert.Equal(404, rig.Get("/qr", IPAddress.Loopback, "127.0.0.1:47200").Status);
+        Assert.Equal(404, rig.Send("POST", "/qr", IPAddress.Loopback, "127.0.0.1:47200").Status);
+        Assert.Equal(404, rig.Get("/qr").Status);
+        Assert.Equal(0, calls);
     }
 
     // ---- AC-1406.7 기록 ---------------------------------------------------------------------------
@@ -634,7 +648,7 @@ public class ReceptionRouterTests
         return document.RootElement.Clone();
     }
 
-    private static HttpResponse QrAnswer() => HttpResponse.Bytes("text/html; charset=utf-8", Encoding.UTF8.GetBytes("<p>qr</p>"));
+    private static HttpResponse LinkAnswer() => HttpResponse.Bytes("text/html; charset=utf-8", Encoding.UTF8.GetBytes("<p>link</p>"));
 }
 
 /// <summary>기록 줄 검사: 모양이 '시각 - 번호 건수'뿐이고 환자 글자·주소·경로·예외 글이 없다(AC-1406.7).</summary>
@@ -645,7 +659,7 @@ internal static class LogAssert
 
     private static readonly string[] Forbidden =
     {
-        "가상환자", "900101", "900102", "900103", "V100", "127.0.0.1", "192.168.", "10.0.0.", "8.8.8.8", "evil", "/api", "/qr", "history",
+        "가상환자", "900101", "900102", "900103", "V100", "127.0.0.1", "192.168.", "10.0.0.", "8.8.8.8", "evil", "/api", "/qr", "/link", "history",
         "Exception", "boom", "Host", "47200",
     };
 
@@ -723,7 +737,7 @@ internal sealed class ServeRig : IDisposable
     private readonly TempFolder data = new TempFolder();
     private readonly TempFolder logs = new TempFolder();
 
-    public ServeRig(bool registered = true, Func<HttpResponse>? qr = null, Func<IReadOnlyList<IPAddress>>? lan = null)
+    public ServeRig(bool registered = true, Func<HttpResponse>? link = null, Func<IReadOnlyList<IPAddress>>? lan = null)
     {
         Bit = new Rig();
         if (registered) Bit.Registered();
@@ -738,7 +752,7 @@ internal sealed class ServeRig : IDisposable
         Static = new FakeStatic();
         Router = new ReceptionRouter(
             Bit.Services, Cache, Marks, Keys, new StaticFiles(Static), lan ?? (() => new[] { ThisPc }), Log, Clock.Now,
-            Statuses, new string[0], qr);
+            Statuses, new string[0], link);
     }
 
     public Rig Bit { get; }
