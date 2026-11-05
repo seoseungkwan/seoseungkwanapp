@@ -69,13 +69,13 @@ a{color:#333432}a:hover{color:#000000}
       </a>
       <sc-if value="{{item.xrWaiting}}" hint-placeholder-val="{{false}}">
         <div style="border-top: 1px solid #E4E4E0; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #F4F4F2; color: #4A4A47; border: 1px solid #CFCFCA;">엑스레이 찍기 전</span>
-          <button type="button" onClick="{{item.markXr}}" style="min-height: 44px; padding: 0 16px; border-radius: 4px; border: 1px solid #333432; background: #333432; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">찍음 표시</button>
+          <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #F4F4F2; color: #4A4A47; border: 1px solid #CFCFCA;">X-ray 전</span>
+          <button type="button" onClick="{{item.markXr}}" style="min-height: 44px; padding: 0 16px; border-radius: 4px; border: 1px solid #333432; background: #333432; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">X-ray 완료</button>
         </div>
       </sc-if>
       <sc-if value="{{item.xrDone}}" hint-placeholder-val="{{false}}">
         <div style="border-top: 1px solid #E4E4E0; padding: 8px 16px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #ECF7EF; color: #15803D;">엑스레이 찍음 {{item.xrTime}}</span>
+          <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #ECF7EF; color: #15803D;">X-ray 완료 {{item.xrTime}}</span>
           <sc-if value="{{item.xrUndo}}" hint-placeholder-val="{{false}}">
             <button type="button" onClick="{{item.unmarkXr}}" style="min-height: 44px; padding: 0 12px; border-radius: 4px; border: 1px solid #CFCFCA; background: #FFFFFF; color: #333432; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">표시 취소</button>
           </sc-if>
@@ -115,7 +115,7 @@ class Component extends DCLogic {
         Object.assign({ chart: '08833', name: '정미경', info: '62세 · 여 · 재진', time: '09:58 접수', waited: '수납 6분째', memo: '', rxLabel: '오늘', rx: '체외충격파(ESWT7) · 주사(INJ1)' }, calm),
         Object.assign({ chart: '10920', name: '오세진', info: '29세 · 남 · 신환', time: '10:12 접수', waited: '수납 2분째', memo: '실손 서류 요청', rxLabel: '오늘', rx: '엑스레이 촬영(XR2) · 표층열치료(PT01)' }, calm)
       ] },
-      done: { label: '오늘 끝남', heading: '오늘 끝난 환자 · 최근 순', list: [
+      done: { label: '수납완료', heading: '수납완료 환자 · 최근 순', list: [
         Object.assign({ chart: '07761', name: '한지훈', info: '48세 · 남 · 재진', time: '09:12 접수', waited: '09:40 수납', memo: '', rxLabel: '오늘', rx: '도수치료 20분(DS20) · 간섭파치료(PT03)' }, done),
         Object.assign({ chart: '10655', name: '윤가영', info: '33세 · 여 · 재진', time: '09:05 접수', waited: '09:31 수납', memo: '', rxLabel: '오늘', rx: '체외충격파(ESWT7)' }, done)
       ] }
