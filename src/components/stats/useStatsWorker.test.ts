@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { createStatsWorker } from '@/workers/statsClient'
+import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
@@ -248,6 +249,150 @@ describe('AC-514.3 Worker 하나와 통로', () => {
     expect(Object.keys(message!).sort()).toEqual(['from', 'streamId', 'to', 'type'])
     fake.reply({ type: 'split-result', streamId: (message as { streamId: string }).streamId, view: SPLIT })
     await waitFor(() => expect(answer).toEqual(SPLIT))
+  })
+})
+
+// treatment-trend TASK-14: load의 groups는 선택 Promise다. 비트 요청은 그것을 기다리지 않고, Worker load는 풀린 묶음을 싣는다(거절이면 [])
+describe('AC-1205.4·AC-1205.7 묶음 넘기기', () => {
+  const GROUPS: RxGroupDef[] = [
+    { id: 't0123456789abcdef', codes: ['MM101', 'MM102'] },
+    { id: 'tfedcba9876543210', codes: ['ESWT1'] },
+  ]
+  const end = (id: unknown) => ({ v: 1, id, type: 'end', count: 0, bytes: 0, sha256: SHA })
+  // 진짜 시계로 한 번 쉬어, 이어 달린 약속을 모두 돌린다
+  const settle = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  const loads = (sent: StatsWorkerRequest[]) => sent.filter((message) => message.type === 'load')
+
+  const unhandled = vi.fn()
+  beforeEach(() => {
+    unhandled.mockReset()
+    process.on('unhandledRejection', unhandled)
+  })
+  afterEach(() => {
+    process.off('unhandledRejection', unhandled)
+  })
+
+  it('AC-1205.7 묶음이 풀리기 전에 stats.rows 요청이 바로 나가고, Worker load는 비트 요청이 끝나고 묶음이 풀린 뒤에 그 묶음을 싣고 간다', async () => {
+    const { fake, view, port } = drawReady()
+    const groups = deferred<readonly RxGroupDef[]>()
+    let answer: StatsLoaded | null = null
+    const sentBefore = port.sent.length
+    act(() => {
+      void view.result.current
+        .load({ range: RANGE, today: TODAY, closeToday: false, groups: groups.promise })
+        .then((loaded) => (answer = loaded))
+    })
+    expect(port.sent).toHaveLength(sentBefore + 1)
+    const request = port.last()
+    expect(request.cmd).toBe('stats.rows')
+    expect(request.args).toEqual(RANGE)
+
+    act(() => port.reply(end(request.id)))
+    await settle()
+    expect(loads(fake.sent)).toEqual([]) // 비트 요청은 끝났지만 묶음이 아직이다
+
+    groups.resolve(GROUPS)
+    await waitFor(() => expect(loads(fake.sent)).toHaveLength(1))
+    const streamId = request.id as string
+    expect(fake.sent.at(-1)).toEqual({ type: 'load', streamId, from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: false, groups: GROUPS })
+
+    fake.reply({ type: 'loaded', streamId, view: VIEW })
+    await waitFor(() => expect(answer).toEqual(VIEW))
+  })
+
+  it('AC-1205.4 묶음이 비트 요청보다 먼저 풀려도 Worker load에는 비트 요청이 끝난 뒤 [{ id, codes }]만 간다(이름 등 다른 칸 없음)', async () => {
+    const { fake, view, port } = drawReady()
+    const named = GROUPS.map((group) => ({ ...group, name: '가짜 묶음 이름', sortOrder: 0 })) as RxGroupDef[]
+    act(() => {
+      void view.result.current.load({ range: RANGE, today: TODAY, closeToday: true, groups: Promise.resolve(named) }).catch(() => undefined)
+    })
+    const request = port.last()
+    expect(request.cmd).toBe('stats.rows')
+    await settle()
+    expect(loads(fake.sent)).toEqual([]) // 묶음은 풀렸지만 비트 요청이 아직이다
+
+    act(() => port.reply(end(request.id)))
+    await waitFor(() => expect(loads(fake.sent)).toHaveLength(1))
+    const message = fake.sent.at(-1)!
+    expect(message).toEqual({ type: 'load', streamId: request.id, from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: true, groups: GROUPS })
+    expect(JSON.stringify(message)).not.toContain('가짜 묶음 이름')
+    fake.reply({ type: 'loaded', streamId: request.id as string, view: VIEW })
+  })
+
+  it('AC-1205.7 비트 요청이 끝난 뒤 묶음 읽기가 거절되면 groups: []로 불러오기가 이어진다', async () => {
+    const { fake, view, port } = drawReady()
+    const groups = deferred<readonly RxGroupDef[]>()
+    let answer: StatsLoaded | null = null
+    act(() => {
+      void view.result.current
+        .load({ range: RANGE, today: TODAY, closeToday: false, groups: groups.promise })
+        .then((loaded) => (answer = loaded))
+    })
+    const request = port.last()
+    act(() => port.reply(end(request.id)))
+    await settle()
+
+    groups.reject(new Error('가짜 내용'))
+    await waitFor(() => expect(loads(fake.sent)).toHaveLength(1))
+    expect(fake.sent.at(-1)).toEqual({ type: 'load', streamId: request.id, from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: false, groups: [] })
+    expect(JSON.stringify(fake.sent)).not.toContain('가짜 내용')
+
+    fake.reply({ type: 'loaded', streamId: request.id as string, view: VIEW })
+    await waitFor(() => expect(answer).toEqual(VIEW))
+    expect(unhandled).not.toHaveBeenCalled()
+  })
+
+  it('AC-1205.7 비트 요청이 끝나기 전에 묶음 읽기가 거절돼도 처리되지 않은 거절이 남지 않고, 비트 요청이 끝나면 groups: []로 간다', async () => {
+    const { fake, view, port } = drawReady()
+    const groups = deferred<readonly RxGroupDef[]>()
+    act(() => {
+      void view.result.current.load({ range: RANGE, today: TODAY, closeToday: false, groups: groups.promise }).catch(() => undefined)
+    })
+    const request = port.last()
+    expect(request.cmd).toBe('stats.rows')
+
+    groups.reject(new Error('가짜 내용'))
+    await settle()
+    expect(unhandled).not.toHaveBeenCalled()
+    expect(loads(fake.sent)).toEqual([])
+
+    act(() => port.reply(end(request.id)))
+    await waitFor(() => expect(loads(fake.sent)).toHaveLength(1))
+    expect(fake.sent.at(-1)).toMatchObject({ type: 'load', streamId: request.id, groups: [] })
+    fake.reply({ type: 'loaded', streamId: request.id as string, view: VIEW })
+  })
+
+  it('AC-1205.7 비트 요청이 오류로 끝나면 묶음을 기다리지 않고 그 오류 번호로 끝나며, 묶음 거절도 남지 않는다', async () => {
+    const { fake, view, port } = drawReady()
+    const groups = deferred<readonly RxGroupDef[]>()
+    let failure: unknown = null
+    act(() => {
+      void view.result.current
+        .load({ range: RANGE, today: TODAY, closeToday: false, groups: groups.promise })
+        .catch((e: unknown) => (failure = e))
+    })
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code: 'E-STATS-TOO-BIG' }))
+    await waitFor(() => expect(failure).not.toBeNull())
+    expect(errorCodeOf(failure)).toBe('E-STATS-TOO-BIG')
+
+    groups.reject(new Error('가짜 내용'))
+    await settle()
+    expect(unhandled).not.toHaveBeenCalled()
+    expect(loads(fake.sent)).toEqual([])
   })
 })
 
