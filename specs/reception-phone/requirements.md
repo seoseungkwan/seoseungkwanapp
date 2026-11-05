@@ -10,7 +10,7 @@
 - 화면은 **총괄 PC의 도우미가 직접 내준다**. 웹사이트 서버(Vercel·Supabase)를 거치지 않고 환자 자료를 서버에 저장하지 않는다. "환자 자료는 우리 서버에 저장하지 않는다"는 그대로다. 환자 자료가 그 PC에서 같은 의원 와이파이의 직원 휴대폰까지는 간다(사용자 결정, ADR-027). 휴대폰에는 남기지 않는다.
 - **잠금 없음**(사용자 결정): 직원 와이파이의 휴대폰이면 누구나 연다. 그래도 사설 주소(의원 안)에서 온 요청만 받는다.
 - **보기만 한다.** 비트에 쓰지 않는다. 예외 하나: 진료보류 환자의 **'찍음 표시'**(엑스레이 찍음). 비트가 아니라 총괄 PC에 둔다.
-- 시안(사용자 승인 2026-11-05 "시안좋아", 뒤에 바뀐 것 포함): `docs/mockups/reception-phone/` — `Main.dc.html`(목록), `Detail.dc.html`(지난 진료 전부·증상), `Offline.dc.html`(연결 끊김). 의원 상표(양지바른정형외과 로고)로 다시 그린 시안과 `Tablet.dc.html`(태블릿 두 칸)은 다른 창이 만드는 중이고, 화면 TASK는 그 시안이 승인된 뒤 시작한다.
+- 시안(사용자 승인 2026-11-05 "시안좋아", 뒤에 바뀐 것 포함): `docs/mockups/reception-phone/` — `Main.dc.html`(목록), `Detail.dc.html`(지난 진료 전부·증상), `Offline.dc.html`(연결 끊김). 의원 상표(양지바른정형외과 로고)로 다시 그린 시안 v12와 `Tablet.dc.html`(태블릿 두 칸)도 사용자가 승인했다(2026-11-05 "굿"). QR 화면(`/qr`)은 따로 시안을 그리지 않고 이 상표 모양(로고·노랑 채움·짙은 글자·쉬운 한국어)으로 design.md 8절의 글대로 만든다(사용자가 사소한 결정을 맡김, 2026-11-05). 만든 뒤 화면 캡처를 사용자에게 보인다.
 - 모르는 값(비트 상태 코드·접수 메모·이름·생년·성별 칸·증상 원천)은 추측하지 않는다. 먼저 의원 PC에서 확인 명령을 돌려 답을 받고(REQ-1401), 그 답으로 한 곳(`ReceptionMap`)을 채운다(REQ-1410).
 - 도우미 새 버전은 다른 창의 속도 고침(`bit-read-speed`)이 들어간 뒤에만 낸다(사용자 결정). 이 명세는 만들기까지이고 릴리스는 하지 않는다(REQ-1412).
 
@@ -49,6 +49,7 @@
 - AC-1403.4: Given 한 번 읽기가 3초보다 오래 걸림, When 다음 읽기를 정하면, Then 그 걸린 시간의 3배(60초까지)가 지나기 전에는 다시 읽지 않는다. 읽기 한 번의 시간 제한은 8초다
 - AC-1403.5: Given 등록 없음·병원 다름·DB 연결 실패·읽기 실패·시간 지남, When 요청이 오면, Then 자료 대신 "볼 수 없음" 답(HTTP 503, 환자 자료 없음)을 주고 실패 뒤 10초 안에는 다시 읽지 않는다
 - AC-1403.6: Given 날이 바뀜, When 다음에 읽으면, Then 새 날의 접수만 읽고 화면용 열쇠·내원 연결표를 새로 만든다
+- AC-1403.8: Given 새로 고침 요청(`GET /api/board?fresh=1`, 화면의 [새로 고침] 단추), When 받으면, Then 8초 묶음(AC-1403.2)을 건너뛰고 바로 비트를 읽는다. 다만 (가) 이미 읽는 중이면 그 읽기를 함께 기다리고, (나) 마지막 읽기가 끝난 지 2초 안이면 그 결과를 주며, (다) 3초 넘게 걸린 읽기 뒤의 쉼(AC-1403.4)과 실패 뒤 10초(AC-1403.5)는 그대로 지켜 그동안은 `fresh` 없는 요청과 같은 답을 준다. 여러 폰이 한꺼번에 눌러도 비트 읽기는 한 번에 하나다
 - AC-1403.7: Given 처방 이름, When 처방 코드에 이름을 붙이면, Then 하루 한 번 읽은 이름표(`SeeMst`, 코드마다 적용일이 가장 늦은 이름 — `RevenueSql`과 같은 규칙)를 쓴다
 
 ### REQ-1404: 지난 진료 전부 (상세)
@@ -72,7 +73,7 @@
 - AC-1406.2: Given 요청의 `Host`, When 보면, Then 이 PC의 지금 사설 IPv4 주소 하나 + `:47200`(이 PC 자신이면 `127.0.0.1:47200`·`localhost:47200`)일 때만 받고 다른 이름은 403이다(다른 사이트가 주소를 바꿔 끼우는 공격을 막는다)
 - AC-1406.3: Given 쓰기 요청(`POST /api/xray`), When 받으면, Then `Origin`이 `http://{Host}`와 같고, `X-Reception: 1`과 `Content-Type: application/json`이 있으며, 몸이 256바이트 이하일 때만 처리한다. `OPTIONS`는 405이고 어떤 답에도 CORS 머리가 없다
 - AC-1406.4: Given 요청 줄 1KB·머리 8KB를 넘음, 5초 안에 다 오지 않음, 동시에 32개를 넘는 연결, When 오면, Then 그 연결만 끊거나 431·408로 답하고 서버는 계속 돈다
-- AC-1406.5: Given 정해 둔 길(화면 파일 목록, `GET /api/board`, `GET /api/visit/{열쇠}/history?from=N`, `POST /api/xray`, 이 PC 자신만 `GET /qr`), When 다른 길·다른 방법이면, Then 404·405다. 화면 파일은 도우미에 넣어 둔 것만 준다(디스크 경로를 받지 않는다)
+- AC-1406.5: Given 정해 둔 길(화면 파일 목록, `GET /api/board`·`GET /api/board?fresh=1`, `GET /api/visit/{열쇠}/history?from=N`, `POST /api/xray`, 이 PC 자신만 `GET /qr`), When 다른 길·다른 방법이면, Then 404·405다. 화면 파일은 도우미에 넣어 둔 것만 준다(디스크 경로를 받지 않는다)
 - AC-1406.6: Given 모든 답, When 머리를 보면, Then `Content-Security-Policy: default-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`, `Connection: close`가 있다
 - AC-1406.7: Given 서버 기록, When 남기면, Then 오류 번호와 건수만 남고 환자 글자·주소·경로·예외 글은 없다
 - AC-1406.8: Given 이 PC 자신이 아닌 곳에서 `GET /qr`, When 요청하면, Then 404다
@@ -82,11 +83,13 @@
 - AC-1407.2: Given 줄 하나, When 그리면, Then 진료 순서에서만 순서 번호와 상태 이름표가 있고, 차트번호·이름·정보 글, 접수 시각·기다린 글(오래 기다림이면 주황), 접수 메모가 있을 때만 "메모 · …", 처방 이름표와 처방 글이 있다
 - AC-1407.3: Given 화면이 열려 있음, When 10초가 지나면, Then 다시 읽어 그린다. 고른 칸은 그대로다
 - AC-1407.4: Given 읽기 실패(연결 안 됨·5초 넘음·200이 아님·모양이 틀린 답), When 처음 한 번 실패하면, Then 그 자리에서 환자 줄·상세·메모리의 자료를 모두 지우고 연결 끊김 화면("지금 볼 수 없어요", 시안 글, "10초마다 다시 확인하는 중 · 마지막 연결 HH:MM")을 보인다. 다시 읽기에 성공하면 목록으로 돌아온다
-- AC-1407.5: Given 줄을 누름(폰 폭), When 상세를 열면, Then 주소 해시(`#/v/{열쇠}`)로 상세 화면이 열리고 [접수 현황]으로 돌아온다. 상세는 REQ-1404의 자료를 그리고 [지난 진료 더 보기]를 누르면 다음 20번을 이어 붙인다
-- AC-1407.6: Given 화면 코드(`reception/www/**`), When ESLint와 울타리 시험을 돌리면, Then 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`·`caches`)·서비스 워커·`console`·`innerHTML`·`outerHTML`·`insertAdjacentHTML`·`document.write`·`eval`·`Function`, 그리고 `/`로 시작하지 않는 주소로의 `fetch`가 막힌다. 환자 글은 모두 `textContent`로만 넣는다
+- AC-1407.5: Given 줄을 누름(폰 폭), When 상세를 열면, Then 주소 해시(`#/v/{열쇠}`)로 상세 화면이 열리고 [접수 현황]으로 돌아온다. 문서 제목(`document.title`)은 어느 화면에서나 "접수 현황" 그대로다(환자 이름이 폰 방문 기록에 남지 않게). 상세는 REQ-1404의 자료를 그리고 [지난 진료 더 보기]를 누르면 다음 20번을 이어 붙인다
+- AC-1407.6: Given 화면 코드(`reception/www/**`), When ESLint와 울타리 시험을 돌리면, Then 브라우저 저장소(`localStorage`·`sessionStorage`·`indexedDB`·`caches`)·서비스 워커·`console`·`innerHTML`·`outerHTML`·`insertAdjacentHTML`·`document.write`·`eval`·`Function`, 그리고 `/`로 시작하지 않거나 `//`로 시작하는 주소로의 `fetch`가 막힌다. 환자 글은 모두 `textContent`로만 넣는다
 - AC-1407.7: Given 화면 색·글꼴, When 살피면, Then 색과 글꼴은 `reception/www/theme.css` 한 파일의 `:root` 값에만 있고(다른 파일에 색 글자 `#…`·`rgb(`·`hsl(` 없음), 승인된 의원 상표 시안의 값을 따른다. 상태 색(대기·보류·수납·끝남·오래 기다림·찍음)은 강조색(라임 노랑)과 다른 값이다
 - AC-1407.8: Given 글꼴과 로고, When 화면을 열면, Then 바깥 주소에서 받는 것이 없다. 본문은 기기 글꼴(`"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif`)이고, 제목 글꼴(시안의 Black Han Sans, OFL)은 완성형 한글 2,350자와 영문·숫자만 남긴 woff2 하나(600KB 이하)를 도우미가 함께 내주고, 머리 제목과 환자 이름 제목에만 쓴다(없는 글자는 본문 글꼴로 떨어진다). 로고는 도우미가 내주는 그림 파일이다
 - AC-1407.9: Given 화면, When 홈 화면에 추가하려고 보면, Then `manifest.webmanifest`(이름 "접수 현황", `display: standalone`, 로고 아이콘)와 `apple-touch-icon`이 있다. 서비스 워커는 없다
+- AC-1407.10: Given 폰·태블릿 목록 머리, When 그리면, Then 연결됨 표시 옆에 진짜 단추(`<button type="button">`) "새로 고침"(↻ 아이콘 허용, 누르는 곳 가로·세로 44px 이상)이 있다. 누르면 그 자리에서 `GET /api/board?fresh=1`을 한 번 읽어 다시 그리고 "HH:MM:SS 기준"은 받은 답의 `at`(PC가 비트를 읽은 시각)으로 그린다(휴대폰 시계를 쓰지 않는다. PC가 2초 안의 결과나 쉼 중의 결과를 주면 기준 시각이 그대로일 수 있다). 읽는 동안 단추 글은 "읽는 중…"이고 `disabled`라 더 눌러도 요청이 늘지 않는다. 끝나면 "새로 고침"으로 돌아오고 다음 저절로 읽기는 그때부터 10초 뒤다. 저절로 읽기가 도는 중에 누르면 그것이 끝난 뒤 바로 `fresh` 읽기를 한 번 한다. 실패하면 AC-1407.4와 같다. 연결 끊김 화면에는 이 단추가 없다(10초마다 저절로 다시 본다)
+- AC-1407.11: Given 화면이 숨겨짐(`visibilitychange`가 `hidden`, 또는 `pagehide`), When 그 일이 오면, Then 그 자리에서 환자 줄·상세·메모리의 환자 자료를 모두 지우고 읽기 고리를 멈춘다. 그때 나가 있던 요청(`getBoard`·`fresh` 읽기·`getHistory`)은 `AbortController`로 끊거나 답을 버려서, 숨긴 뒤 답이 와도 환자 글을 그리지 않고 다음 읽기도 예약하지 않는다. 기다리던 `fresh` 읽기와 다음 예약도 없앤다. 다시 보이면(`visibilitychange`가 `visible`, 또는 `pageshow`) 환자 자료 없는 "불러오는 중이에요" 화면에서 바로 한 번 읽고, 성공하면 목록(고른 칸 그대로, 폰 상세 주소면 그 상세를 다시 읽음)을, 실패하면 연결 끊김 화면을 보인다. 숨김 뒤 첫 읽기는 새 접수 알림을 하지 않는다(AC-1408.2와 같음)
 
 ### REQ-1408: 새 접수 알림 (화면이 열려 있을 때만)
 - AC-1408.1: Given 앞 읽기가 성공했고 이번 읽기에 앞에 없던 열쇠가 있음, When 그리면, Then 한 번 알린다(새 접수가 여럿이어도 한 번)
@@ -113,7 +116,7 @@
 - AC-1411.1: Given 새 프로그램 `PrecheckReception.exe`(창 없는 윈도우 프로그램, x86, .NET Framework 4.8), When 켜면, Then 이 PC 사용자당 하나만 돈다(이름 붙은 뮤텍스). 이미 돌고 있으면 새것은 바로 끝난다
 - AC-1411.2: Given 윈도우 로그인, When 사용자가 로그인하면, Then 사용자 레지스트리 시작 항목(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`)이 `PrecheckReception.exe`를 켜고 47200번 문에서 기다린다. 비트 DB가 아직 답하지 않으면 휴대폰에는 "볼 수 없음"이고 DB가 답하면 저절로 자료가 나온다(비트 프로그램 로그인 여부는 보지 않는다)
 - AC-1411.3: Given 바탕 화면의 "접수 현황 QR" 바로 가기, When 누르면, Then 돌고 있지 않으면 켜고, 이 PC 브라우저로 `http://127.0.0.1:47200/qr`을 연다
-- AC-1411.4: Given `/qr`, When 그리면, Then 이 PC의 사설 IPv4 주소마다 `http://{주소}:47200/`의 QR 그림과 그 주소 글, 휴대폰에서 여는 순서(카메라로 찍기 → 열리면 홈 화면에 추가)가 승인된 QR 시안대로 나온다. 사설 주소가 없으면 "이 PC가 의원 와이파이에 연결되어 있지 않아요" 모양의 안내다
+- AC-1411.4: Given `/qr`, When 그리면, Then 이 PC의 사설 IPv4 주소마다 `http://{주소}:47200/`의 QR 그림과 그 주소 글, 휴대폰에서 여는 순서(카메라로 찍기 → 열리면 홈 화면에 추가)가 design.md 8절의 글과 상표 모양대로 나온다. 사설 주소가 없으면 "이 PC가 의원 와이파이에 연결되어 있지 않아요" 모양의 안내다
 - AC-1411.5: Given 문 47200을 다른 프로그램이 씀, When 켜면, Then 오류 번호를 기록하고 끝난다(다른 문으로 바꾸지 않는다: 휴대폰 홈 화면 주소가 바뀌기 때문)
 - AC-1411.6: [의원 PC] Given 처음 켬, When 윈도우 방화벽 창이 뜨면, Then 사용자가 "개인 네트워크"에 [허용]을 눌러 휴대폰에서 열린다. 네트워크가 "공용"이면 "개인"으로 바꾼 뒤 열린다
 - AC-1411.7: [의원 PC] Given PC를 껐다 켜고 로그인, When 직원 휴대폰 홈 화면 아이콘을 누르면, Then 따로 누르지 않아도 접수 현황이 나온다

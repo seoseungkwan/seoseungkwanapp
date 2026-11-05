@@ -6,14 +6,14 @@
 > **순서 (Phase마다 끝나면 메인 세션이 점검 → 화면 Phase는 화면 캡처 → 쉬운 말 보고)**
 > - Phase 1 `reception-1-check` — 의원 PC 확인 명령 (TASK-1~6). **병렬 묶음 A**: TASK-1·2·3·4를 함께 → TASK-5 → TASK-6
 > - Phase 2 `reception-2-core` — 도우미 안쪽: 줄 만들기·읽기·상세·찍음 표시·웹 서버 (TASK-7~14). **병렬 묶음 B**: TASK-7·8·9·10·12를 함께 → **묶음 C**: TASK-11·13을 함께 → TASK-14
-> - Phase 3 `reception-3-page` — 폰·태블릿 화면 (TASK-15~23). **묶음 D**: TASK-15·16을 함께 → **묶음 E**: TASK-17·18·19·20·21·22를 함께 → TASK-23
-> - Phase 4 `reception-4-host` — 늘 켜 두기·QR·설치 (TASK-24~27). **묶음 F**: TASK-24·26을 함께 → TASK-25(QR 시안 승인 뒤)·TASK-27을 함께
+> - Phase 3 `reception-3-page` — 폰·태블릿 화면 (TASK-15~23). TASK-15 → TASK-16 → **묶음 E**: TASK-17·18·19·20·21·22를 함께 → TASK-23
+> - Phase 4 `reception-4-host` — 늘 켜 두기·QR·설치 (TASK-24~27). TASK-24 → TASK-26 → TASK-25·TASK-27을 함께
 > - Phase 5 `reception-5-fill` — 확인 결과 채우기 (TASK-28~30, 차례대로). 확인 보고서가 오면 Phase 3·4와 겹쳐 돌려도 된다(만지는 파일이 다르다)
 >
 > **시작 조건**
 > - 명세 승인(`/sdd approve reception-phone` 또는 자동 승인).
-> - Phase 3(화면)은 의원 상표로 다시 그린 시안(`docs/mockups/reception-phone/` Main·Detail·Offline·Tablet)을 사용자가 승인한 뒤 시작한다(CLAUDE.md). 없으면 `blocked`(사유: 승인 시안 없음).
-> - TASK-25(QR 화면)는 QR 시안 승인 뒤. 없으면 `blocked`.
+> - Phase 3(화면): 의원 상표로 다시 그린 시안 v12(`docs/mockups/reception-phone/` Main·Detail·Offline·Tablet)는 사용자가 승인했다(2026-11-05 "굿", CLAUDE.md 조건 충족).
+> - TASK-25(QR 화면): 따로 시안 없이 design.md 8절의 글과 상표 모양으로 만든다(사용자가 사소한 결정을 맡김, 2026-11-05). Phase 4 끝에 화면 캡처를 사용자에게 보인다.
 > - Phase 5는 의원 PC 확인 보고서가 `docs/reception/check-result.md`에 있어야 시작한다(메인 창이 사용자가 붙여 넣은 보고서로 만든다). 없으면 `blocked`(사유: 확인 보고서 없음).
 >
 > **사용자 할 일 (쉬운 말, Phase 사이에 메인 창이 안내)**
@@ -130,7 +130,7 @@
 
 ## TASK-11: 줄 만들기 (`BoardBuilder`)
 - Step: Phase 2 · Step 4 · `board-builder`
-- 병렬: 묶음 C (TASK-13과 함께, TASK-7·8 뒤)
+- 병렬: 묶음 C (TASK-13과 함께, TASK-7·8·12 뒤. `BoardInput`·`VisitRow`는 TASK-12가 만든다)
 - AC: AC-1402.1, AC-1402.2, AC-1402.3, AC-1402.4, AC-1402.5, AC-1402.6, AC-1402.7, AC-1402.8, AC-1402.9
 - REQ: REQ-1402
 - Files: helper/src/Precheck.Core/Reception/BoardBuilder.cs, helper/src/Precheck.Core/Reception/BoardModel.cs, helper/tests/Precheck.Core.Tests/Reception/BoardBuilder.test.cs, helper/tests/reception-board.dotnet.test.ts
@@ -141,12 +141,12 @@
 ## TASK-12: 비트 읽기 묶음·캐시 (`BoardReader`·`BoardCache`)
 - Step: Phase 2 · Step 5 · `board-cache`
 - 병렬: 묶음 B (TASK-1이 끝나 있어야 한다)
-- AC: AC-1403.2, AC-1403.3, AC-1403.4, AC-1403.5, AC-1403.6, AC-1403.7
+- AC: AC-1403.2, AC-1403.3, AC-1403.4, AC-1403.5, AC-1403.6, AC-1403.7, AC-1403.8
 - REQ: REQ-1403
 - Files: helper/src/Precheck.Core/Reception/BoardReader.cs, helper/src/Precheck.Core/Reception/BoardInput.cs, helper/src/Precheck.Core/Reception/BoardCache.cs, helper/tests/Precheck.Core.Tests/Reception/BoardReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/BoardCache.test.cs, helper/tests/reception-cache.dotnet.test.ts
 - Tests: helper/tests/reception-cache.dotnet.test.ts
 - TDD: required
-- 캐시는 날 줄(`BoardInput`)만 들고, 화면 JSON은 요청마다 TASK-11이 만든다(찍음 표시가 바로 보이게). 가짜 `IBitDb`·주입한 시계·동시 요청(작업 여러 개)으로 한 번만 읽음, 8초, 3배 미룸(60초 끝), 실패 뒤 10초, 등록 없음·병원 다름 → `unavailable`, 날 바뀜, 이름표 하루 한 번
+- 캐시는 날 줄(`BoardInput`)만 들고, 화면 JSON은 요청마다 TASK-11이 만든다(찍음 표시가 바로 보이게). 가짜 `IBitDb`·주입한 시계·동시 요청(작업 여러 개)으로 한 번만 읽음, 8초, 3배 미룸(60초 끝), 실패 뒤 10초, 등록 없음·병원 다름 → `unavailable`, 날 바뀜, 이름표 하루 한 번, `fresh`(8초 건너뜀·읽는 중 함께 기다림·2초 안 같은 결과·3배 쉼과 실패 뒤 10초는 그대로). `VisitRow`는 `Name`·`BirthDate`·`Sex`·`Memo`·`PaidAt`을 빈 값 허용으로 처음부터 갖는다(design.md 3절)
 
 ## TASK-13: 상세 (`HistoryReader`·`HistoryBuilder`)
 - Step: Phase 2 · Step 6 · `visit-history`
@@ -161,52 +161,52 @@
 ## TASK-14: 길 나누기·서버·화면 파일·기록
 - Step: Phase 2 · Step 7 · `reception-server`
 - 병렬: 아니오 (TASK-9~13 뒤)
-- AC: AC-1406.4, AC-1406.5, AC-1406.7, AC-1406.8, AC-1404.5, AC-1405.5, AC-1413.1
-- REQ: REQ-1406, REQ-1404, REQ-1405, REQ-1413
+- AC: AC-1406.4, AC-1406.5, AC-1403.8, AC-1406.7, AC-1406.8, AC-1404.5, AC-1405.5, AC-1413.1
+- REQ: REQ-1406, REQ-1404, REQ-1405, REQ-1413, REQ-1403
 - Files: helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs, helper/src/Precheck.Core/Reception/Http/ReceptionServer.cs, helper/src/Precheck.Core/Reception/Http/StaticFiles.cs, helper/src/Precheck.Core/Reception/Http/IStaticSource.cs, helper/src/Precheck.Core/Reception/ReceptionLog.cs, helper/src/Precheck.Core/Reception/ReceptionPorts.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionRouter.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionServer.test.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionText.test.cs, helper/tests/reception-server.dotnet.test.ts
 - Tests: helper/tests/reception-server.dotnet.test.ts
 - TDD: required
-- 루프백 빈 문에 진짜 소켓: 길 목록·404·405·503·32개 넘는 연결·느린 연결. `ReceptionText.test.cs`는 `Reception/**`·`Precheck.Reception/**` 글자에서 바깥 연결 API가 없음을 본다(AC-1413.1, `Precheck.Reception`이 생기면 함께 본다). 화면 파일은 가짜 `IStaticSource`
+- 루프백 빈 문에 진짜 소켓: 길 목록(`/api/board?fresh=1`은 `fresh`로, 다른 질의 글은 404)·404·405·503·32개 넘는 연결·느린 연결. `ReceptionText.test.cs`는 `Reception/**`·`Precheck.Reception/**` 글자에서 바깥 연결 API가 없음을 본다(AC-1413.1, `Precheck.Reception`이 생기면 함께 본다). 화면 파일은 가짜 `IStaticSource`
 
 ## TASK-15: 화면 울타리 (ESLint·시험 범위·문서)
 - Step: Phase 3 · Step 0 · `page-fence`
-- 병렬: 묶음 D (TASK-16과 함께)
+- 병렬: 아니오 (Phase 3 처음. TASK-16이 `reception/tests`를 시험으로 잡으려면 이 TASK의 `vitest.config.ts` 줄이 먼저 있어야 한다)
 - AC: AC-1407.6
 - REQ: REQ-1407
 - Files: eslint.config.mjs, src/guardrails.test.ts, vitest.config.ts, tsconfig.json, docs/ARCHITECTURE.md
 - Tests: src/guardrails.test.ts
 - TDD: required
-- `reception/www/**`에 AC-1407.6의 막기(`no-restricted-globals`·`no-restricted-properties`·`no-restricted-syntax`: `fetch` 첫 인자가 `/`로 시작하지 않는 글이면 막기). 기존 규칙은 그대로. `vitest.config.ts`에 `reception/**/*.test.ts`, 루트 `tsconfig.json` exclude에 `reception`. `ARCHITECTURE.md`에 `reception/`·`Precheck.Reception`과 예외 한 줄(ADR-027)
+- `reception/www/**`에 AC-1407.6의 막기(`no-restricted-globals`·`no-restricted-properties`·`no-restricted-syntax`: `fetch` 첫 인자가 `/`로 시작하지 않거나 `//`로 시작하는 글이면 막기). 기존 규칙은 그대로. `vitest.config.ts`에 `reception/**/*.test.ts`, 루트 `tsconfig.json` exclude에 `reception`. `ARCHITECTURE.md`에 `reception/`·`Precheck.Reception`과 예외 한 줄(ADR-027)
 
 ## TASK-16: 화면 뼈대·의원 상표 (색·글꼴 한 곳, 로고, 품기)
 - Step: Phase 3 · Step 1 · `page-shell`
-- 병렬: 묶음 D
-- AC: AC-1407.7, AC-1407.8, AC-1407.9
+- 병렬: 아니오 (TASK-15 뒤)
+- AC: AC-1407.7, AC-1407.8, AC-1407.9, AC-1407.10
 - REQ: REQ-1407
 - Files: reception/www/index.html, reception/www/theme.css, reception/www/style.css, reception/www/dom.js, reception/www/manifest.webmanifest, reception/www/logo-mark.png, reception/www/logo-wordmark.png, reception/www/fonts/*, reception/fonts/make-title-font.py, reception/tests/shell.test.ts, reception/tests/dom.test.ts, helper/src/Precheck.Core/Precheck.Core.csproj, helper/tests/Precheck.Core.Tests/Reception/StaticEmbed.test.cs, helper/tests/reception-embed.dotnet.test.ts
 - Tests: reception/tests/shell.test.ts, reception/tests/dom.test.ts, helper/tests/reception-embed.dotnet.test.ts
 - TDD: required
-- 승인된 상표 시안의 값으로 `theme.css` 토큰, `style.css`는 시안의 모든 모양(폰 + 태블릿 두 칸)을 `var()`로. 시험: 다른 파일에 색 글자 없음, 바깥 주소 없음(`http`·`//`), 상태 색 ≠ 강조색, 매니페스트 칸, 제목 글꼴(Black Han Sans 완성형 2,350자 + 영문·숫자) 600KB 이하 + OFL.txt(시안 글꼴이 OFL이 아니면 글꼴 파일 없이 기기 글꼴 800), Core가 `reception/` 이름으로 파일을 모두 품음
+- 승인된 상표 시안의 값으로 `theme.css` 토큰, `style.css`는 시안의 모든 모양(폰 + 태블릿 두 칸)을 `var()`로. 시험: 다른 파일에 색 글자 없음, 바깥 주소 없음(`http`·`//`), 상태 색 ≠ 강조색, 매니페스트 칸, 제목 글꼴(Black Han Sans 완성형 2,350자 + 영문·숫자) 600KB 이하 + OFL.txt(시안 글꼴이 OFL이 아니면 글꼴 파일 없이 기기 글꼴 800), Core가 `reception/` 이름으로 파일을 모두 품음, [새로 고침] 단추 모양(`min-width`·`min-height` 44px 이상, design.md 10절), `index.html`의 `<title>접수 현황</title>`
 
 ## TASK-17: 목록 그리기 (`board.js`)
 - Step: Phase 3 · Step 2 · `page-board`
 - 병렬: 묶음 E (TASK-18~22와 함께, TASK-16 뒤)
-- AC: AC-1407.1, AC-1407.2
+- AC: AC-1407.1, AC-1407.2, AC-1407.10
 - REQ: REQ-1407
 - Files: reception/www/board.js, reception/tests/board.test.ts, reception/tests/fixtures.ts
 - Tests: reception/tests/board.test.ts
 - TDD: required
-- jsdom. 시안 글·칸 순서·`aria-pressed`·진료 순서에만 번호·이름표, 메모 있을 때만, 주황, 환자 글에 `<b>`를 넣어도 글자로만 보임
+- jsdom. 시안 글·칸 순서·`aria-pressed`·진료 순서에만 번호·이름표, 메모 있을 때만, 주황, 환자 글에 `<b>`를 넣어도 글자로만 보임, 머리의 [새로 고침] 단추(`type="button"`, 연결됨 표시 옆, `reading`이면 "읽는 중…"·`disabled`)
 
 ## TASK-18: 읽기 고리·연결 끊김 (`api.js`·`poll.js`·`offline.js`)
 - Step: Phase 3 · Step 3 · `page-poll`
 - 병렬: 묶음 E
-- AC: AC-1407.3, AC-1407.4, AC-1413.2
+- AC: AC-1407.3, AC-1407.4, AC-1407.10, AC-1407.11, AC-1413.2
 - REQ: REQ-1407, REQ-1413
 - Files: reception/www/api.js, reception/www/poll.js, reception/www/offline.js, reception/tests/api.test.ts, reception/tests/poll.test.ts, reception/tests/offline.test.ts
 - Tests: reception/tests/api.test.ts, reception/tests/poll.test.ts, reception/tests/offline.test.ts
 - TDD: required
-- 가짜 `fetch`·가짜 시계: 10초 고리, 5초 끊음, 200 아님·모양 틀림, 첫 실패에 DOM·상태의 환자 값이 모두 사라짐(이름·차트번호 글자 검색), "마지막 연결 HH:MM", 다시 성공하면 목록. 모든 요청 주소가 `/`로 시작
+- 가짜 `fetch`·가짜 시계: 10초 고리, 5초 끊음, 200 아님·모양 틀림, 첫 실패에 DOM·상태의 환자 값이 모두 사라짐(이름·차트번호 글자 검색), "마지막 연결 HH:MM", 다시 성공하면 목록. 모든 요청 주소가 `/`로 시작. `getBoard({ fresh: true })` → `/api/board?fresh=1`. `refreshNow()`: 요청 하나(두 번 불러도), 도는 읽기 뒤 `fresh` 한 번, 끝나면 10초 다시 예약. `pause()`: 지우기 + 고리 멈춤(읽는 중 `pause()` → 답이 와도 DOM·상태에 환자 글 없음, 예약 없음, 기다리던 `fresh` 없음), `resume()`: 바로 한 번 읽기. 기준 시각은 답의 `at`(같은 `at`이면 그대로)
 
 ## TASK-19: 상세 그리기 (`detail.js`)
 - Step: Phase 3 · Step 4 · `page-detail`
@@ -251,36 +251,36 @@
 ## TASK-23: 잇기 (`app.js`) + 가짜 서버로 끝까지
 - Step: Phase 3 · Step 8 · `page-app`
 - 병렬: 아니오 (TASK-17~22 뒤)
-- AC: AC-1407.1, AC-1407.3, AC-1407.4, AC-1407.5, AC-1408.1, AC-1409.2, AC-1413.2
+- AC: AC-1407.1, AC-1407.3, AC-1407.4, AC-1407.5, AC-1407.10, AC-1407.11, AC-1408.1, AC-1409.2, AC-1413.2
 - REQ: REQ-1407, REQ-1408, REQ-1409, REQ-1413
 - Files: reception/www/app.js, reception/www/index.html, reception/tests/app.test.ts, reception/tests/fixtures.ts
 - Tests: reception/tests/app.test.ts
 - TDD: required
-- jsdom에 `index.html`을 넣고 가짜 `fetch`로 열기 → 칸 고르기 → 줄 누르기(폰: 해시 길, 태블릿: 오른쪽) → 더 보기 → 찍음 표시 → 새 접수 알림 → 끊김 → 돌아옴. 요청 주소 모두 같은 곳 `/…`. 메인 세션은 Phase 끝에 도우미 없이 `reception/www`를 가짜 자료로 띄워 화면 캡처를 사용자에게 보인다
+- jsdom에 `index.html`을 넣고 가짜 `fetch`로 열기 → 칸 고르기 → 줄 누르기(폰: 해시 길, 태블릿: 오른쪽) → 더 보기 → 찍음 표시 → 새 접수 알림 → [새로 고침](요청 `?fresh=1` 하나, "읽는 중…" 뒤 기준 시각 바뀜) → 숨김(`visibilitychange`, 환자 글 사라짐, 읽는 중에 숨겨도 늦은 답을 그리지 않음) → 다시 보임(`visible`·`pageshow`, 불러오는 중 → 목록, 알림 없음) → 끊김 → 돌아옴. `document.title`은 늘 "접수 현황". 요청 주소 모두 같은 곳 `/…`. 메인 세션은 Phase 끝에 도우미 없이 `reception/www`를 가짜 자료로 띄워 화면 캡처를 사용자에게 보인다
 
 ## TASK-24: 이 PC 주소·QR 그림
 - Step: Phase 4 · Step 0 · `lan-qr`
-- 병렬: 묶음 F (TASK-26과 함께)
+- 병렬: 아니오 (Phase 4 처음, Phase 3 뒤. TASK-16과 같은 `Precheck.Core.csproj`를 고치고, TASK-25가 TASK-16의 화면 파일을 쓴다)
 - AC: AC-1411.4, AC-1406.2
 - REQ: REQ-1411, REQ-1406
 - Files: helper/src/Precheck.Core/Reception/LanAddresses.cs, helper/src/Precheck.Core/Reception/QrImage.cs, helper/src/Precheck.Core/Precheck.Core.csproj, helper/tests/Precheck.Core.Tests/Reception/LanAddresses.test.cs, helper/tests/Precheck.Core.Tests/Reception/QrImage.test.cs, helper/tests/reception-qr.dotnet.test.ts
 - Tests: helper/tests/reception-qr.dotnet.test.ts
 - TDD: required
-- 어댑터 걸러내기(켜짐·게이트웨이·사설 IPv4·순서). `QRCoder` 정확한 판(nuget.org 최신 안정판, MIT·netstandard2.0 확인 후 적음), PNG 머리·주소가 QR 자료에 그대로 들어감
+- 어댑터 걸러내기(켜짐·게이트웨이·사설 IPv4·순서). `LanAddressWatch` 30초마다 다시 봄(주입한 시계, 30초 안에는 `read`를 다시 부르지 않음). `QRCoder` 정확한 판(nuget.org 최신 안정판, MIT·netstandard2.0 확인 후 적음), PNG 머리·주소가 QR 자료에 그대로 들어감
 
 ## TASK-25: QR 화면 (`/qr`, 이 PC만)
 - Step: Phase 4 · Step 1 · `qr-page`
-- 병렬: TASK-27과 함께 (TASK-14·24 뒤, QR 시안 승인 뒤)
+- 병렬: TASK-27과 함께 (TASK-14·24 뒤)
 - AC: AC-1411.4, AC-1406.8
 - REQ: REQ-1411, REQ-1406
-- Files: helper/src/Precheck.Core/Reception/QrPage.cs, helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs, helper/tests/Precheck.Core.Tests/Reception/QrPage.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionRouter.test.cs, helper/tests/reception-qr-page.dotnet.test.ts
+- Files: helper/src/Precheck.Core/Reception/QrPage.cs, helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs, helper/src/Precheck.Reception/ReceptionServices.cs, reception/www/qr.css, helper/tests/Precheck.Core.Tests/Reception/QrPage.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionRouter.test.cs, helper/tests/reception-qr-page.dotnet.test.ts
 - Tests: helper/tests/reception-qr-page.dotnet.test.ts
 - TDD: required
-- 승인된 QR 시안 글·주소마다 QR·사설 주소 없음 안내. 루프백이 아니면 404. 글은 HTML 이스케이프
+- design.md 8절의 글·`/theme.css`와 `/qr.css` 링크(HTML에 `<style>`·`style=`·`<script>` 없음, `qr.css`에 색 글자 없음)·주소마다 QR·사설 주소 없음 안내. 라우터 생성자가 바뀌면 `ReceptionServices.cs`도 맞춘다. 루프백이 아니면 404. 글은 HTML 이스케이프
 
 ## TASK-26: 늘 켜 두는 프로그램 `PrecheckReception.exe`
 - Step: Phase 4 · Step 2 · `reception-host`
-- 병렬: 묶음 F (TASK-24와 함께, Phase 2 뒤)
+- 병렬: 아니오 (TASK-24 뒤. `ReceptionServices`가 `LanAddressWatch`를 라우터·`ClientGuard`에 넘긴다)
 - AC: AC-1411.1, AC-1411.2, AC-1411.3, AC-1411.5, AC-1411.7, AC-1412.5, AC-1413.1
 - REQ: REQ-1411, REQ-1412, REQ-1413
 - Files: helper/src/Precheck.Reception/Precheck.Reception.csproj, helper/src/Precheck.Reception/Program.cs, helper/src/Precheck.Reception/ReceptionServices.cs, helper/src/Precheck.Reception/SingleInstance.cs, helper/Precheck.sln, helper/src/Precheck.Core/Reception/ReceptionStart.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionStart.test.cs, helper/tests/reception-host.dotnet.test.ts

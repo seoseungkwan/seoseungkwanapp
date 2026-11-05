@@ -65,10 +65,12 @@ public static class ReceptionMap {
 - 모두 `Sql.IsAllowed`·`Sql.ParametersOf`에 더한다(지금의 Revenue·Stats처럼 `ReceptionSql.Parameters` 표를 `Sql`이 묻는다). 완료 내원 조건은 `HistoryVisitsCte`의 `OcmPatTyp='O' AND OcmRsuYon<>'O' AND OcmComStt IN (…)` + 병원 범위 그대로.
 - `@before`는 그 접수의 `OcmAcpDtm` 원값을 그대로 넘긴다(길이를 짐작하지 않는다). 시각 글은 앞 12글자(`yyyyMMddHHmm`)로 만든다.
 - `BoardReader.Read(IBitDb db, DateTime now) : BoardInput`: 위 문장을 차례로 돌려 줄 모양(`VisitRow`, `RxItem`)으로 바꾼다. 문장마다 시간 제한 8초.
-- `BoardCache`: `Get(DateTime now) : BoardResult`(`ok + board` 또는 `unavailable`).
+- `VisitRow`는 처음(TASK-12)부터 `Name`·`BirthDate`(또는 주민번호 앞 7글자)·`Sex`·`Memo`·`PaidAt` 칸을 빈 값(`null`) 허용으로 갖는다. 지금은 비어 있고, Phase 5(TASK-29)는 `BoardReader`에서 그 칸을 채우기만 한다(`BoardBuilder`는 고치지 않는다). TASK-11은 이 칸에 값이 있을 때와 없을 때를 모두 시험한다.
+- `BoardCache`: `Get(DateTime now, bool fresh = false) : BoardResult`(`ok + board` 또는 `unavailable`).
   - 마지막 성공이 8초 안이면 그것(AC-1403.2), 한 번에 하나만 읽고 나머지는 그 결과를 기다린다(최대 9초).
   - 걸린 시간 `d`가 3초를 넘으면 `min(3d, 60초)` 동안 다시 읽지 않는다(AC-1403.4). 실패 뒤 10초 동안 다시 읽지 않고 `unavailable`(AC-1403.5).
   - 요청이 와야만 읽는다(타이머 없음, AC-1403.3). 시계·읽기는 주입해 시험한다.
+  - `fresh`(새로 고침 단추, AC-1403.8): 8초 묶음만 건너뛴다. 읽는 중이면 함께 기다리고, 마지막 읽기가 끝난 지 2초 안이면 그것을 주며, 3배 쉼·실패 뒤 10초는 그대로다. 라우터는 `/api/board?fresh=1`만 `fresh`로 넘기고 다른 질의 글은 404다.
   - 날이 바뀌면 `VisitKeys`와 이름표를 새로 만든다(AC-1403.6).
 
 ### 4. 자료 만들기 (`BoardBuilder.cs`, `VisitKeys.cs`)
@@ -122,15 +124,21 @@ public sealed class StaticFiles { public StaticFiles(IStaticSource source); publ
 public static class ReceptionPorts { public const int Http = 47200; }
 ```
 - `TcpListener`(System.Net.Sockets)로 직접 받는다. 응답마다 `Connection: close`(keep-alive 없음). 보안 머리는 AC-1406.6, 화면 파일은 `Content-Type`을 확장자 표로 정한다.
-- 이 PC의 사설 IPv4 목록은 `LanAddresses`(8절)가 30초마다 새로 본다. `Host` 검사로 다른 사이트의 DNS 바꿔치기를, `Origin` + `X-Reception` + JSON 검사로 다른 사이트의 쓰기를 막는다(그런 요청은 사전 확인 `OPTIONS`가 필요한데 405로 답한다).
+- 이 PC의 사설 IPv4 목록은 `LanAddresses`(8절)의 `LanAddressWatch`가 30초마다 새로 본다(TASK-24가 만들고 TASK-26의 `ReceptionServices`가 라우터·`ClientGuard`에 넘긴다). `Host` 검사로 다른 사이트의 DNS 바꿔치기를, `Origin` + `X-Reception` + JSON 검사로 다른 사이트의 쓰기를 막는다(그런 요청은 사전 확인 `OPTIONS`가 필요한데 405로 답한다).
 - 화면 파일: Core csproj가 `reception/www/**`를 `reception/…` 이름으로 품는다. 윈도우 빌드의 `%(RecursiveDir)`은 `\`라서 `StaticFiles`가 `\` → `/`로 맞춘다. 요청 경로를 디스크 경로로 쓰지 않는다.
 - 기록 `ReceptionLog`: `logs\reception-yyyy-MM-dd.log`에 시각·오류 번호·건수만(`LogLine` 모양). 주소·경로·예외 글을 남기지 않는다.
 - 시험: 루프백(127.0.0.1, 빈 문)에 진짜 소켓을 열어 끝까지 본다(이 서버에서 돈다).
 
 ### 8. 이 PC 주소·QR (`LanAddresses.cs`, `QrImage.cs`, Phase 4)
 - `LanAddresses.Pick(IEnumerable<NicInfo>)`: 켜져 있고 기본 게이트웨이가 있는 어댑터의 사설 IPv4만, 순서 고정. 윈도우에서는 `NetworkInterface`로 채운다(같은 API가 리눅스에도 있어 걸러내기만 시험한다).
+- `LanAddressWatch(Func<IEnumerable<NicInfo>> read, Func<DateTime> clock)` → `Current() : IReadOnlyList<IPAddress>`: 마지막으로 본 지 30초가 지났으면 `read`를 다시 불러 `Pick`한다(요청 때만, 타이머 없음, 여러 작업이 동시에 불러도 안전). 주입한 시계로 시험한다.
 - `QrImage.Png(string url)`: NuGet `QRCoder`의 `PngByteQRCode`(System.Drawing 없이 PNG). 판은 TASK 때 nuget.org의 최신 안정판을 정확한 번호로 적는다(MIT, netstandard2.0 확인). `/qr` 화면은 `data:` PNG로 그린다(CSP `img-src 'self' data:`).
-- `/qr`은 이 PC 자신(루프백)만. 승인된 QR 시안(아직 없음, Phase 4 시작 조건)대로 그린다.
+- `/qr`은 이 PC 자신(루프백)만. 따로 시안 없이 승인 시안 v12의 상표 모양으로 그린다(사용자가 맡김, 2026-11-05). CSP(AC-1406.6)가 인라인 스타일을 막으므로 `QrPage` HTML에는 `<style>`·`style=`·`<script>`가 없고, `/theme.css`(토큰 한 곳)와 새 화면 파일 `/qr.css`(`reception/www/qr.css`, `var()`만, 색 글자 없음)를 `<link>`로 부른다. 글:
+  - 머리: 로고(`/logo-wordmark.png`) + 제목 "접수 현황 QR"
+  - 주소마다 카드 하나: QR 그림(`data:` PNG, 240px 이상) + 주소 글 `http://{주소}:47200/`
+  - 순서 안내: "1. 직원 휴대폰 카메라로 QR을 찍어요" · "2. 열리면 '홈 화면에 추가'를 눌러요" · "3. 다음부터는 홈 화면 아이콘으로 열어요"
+  - 사설 주소가 없으면 QR 없이 "이 PC가 의원 와이파이에 연결되어 있지 않아요" + "와이파이에 연결한 뒤 이 창을 다시 열어 주세요"
+  - 끝 줄: "같은 와이파이의 직원 휴대폰에서만 열려요"
 
 ### 9. 늘 켜 두는 프로그램 (`helper/src/Precheck.Reception/`, Phase 4)
 - `Precheck.Reception.csproj`: `OutputType WinExe`(콘솔 창 없음), `net48`, `PlatformTarget x86`(비트 DLL이 32비트), `AssemblyName PrecheckReception`, 도우미와 같은 `StartupAppConfigXml`(옛 런타임 정책). Core·Windows를 참조한다. `Precheck.sln`에 더한다.
@@ -145,18 +153,20 @@ public static class ReceptionPorts { public const int Http = 47200; }
 | `theme.css` | 색·글꼴·둥글기 토큰(`:root`) 한 곳. 승인된 의원 상표 시안 값 |
 | `style.css` | 모양. `var(--…)`만 쓴다. 폰 한 줄 흐름 + `(min-width: 1000px) and (orientation: landscape)` 두 칸 |
 | `dom.js` | `el(tag, attrs, children)`: 글은 `textContent`만 |
-| `api.js` | `getBoard()`·`getHistory(k, from)`·`setXray(k, on)`: 같은 주소, 5초 `AbortController`, 답 모양 검사 |
-| `board.js` | 목록(머리·진료 순서·칸 넷·줄) 그리기 |
+| `api.js` | `getBoard({ fresh })`·`getHistory(k, from)`·`setXray(k, on)`: 같은 주소, 5초 `AbortController`, 답 모양 검사 |
+| `board.js` | 목록(머리·[새로 고침] 단추·진료 순서·칸 넷·줄) 그리기. 단추는 `reading` 값으로 "새로 고침"/"읽는 중…"(`disabled`) |
 | `detail.js` | 상세(오늘 카드·지난 진료·더 보기·끝 줄) 그리기 |
 | `offline.js` | 지우기 + 연결 끊김 화면 |
-| `poll.js` | 10초 고리(응답 뒤 다음 예약, 주입한 시계) |
+| `poll.js` | 10초 고리(응답 뒤 다음 예약, 주입한 시계), `refreshNow()`(AC-1407.10: 도는 읽기가 있으면 그 뒤 `fresh` 한 번, 끝나면 10초 다시 예약), `pause()`·`resume()`(AC-1407.11) |
 | `alert.js` | 새 열쇠 찾기 + 떨기/삐 소리 + 첫 누름에 오디오 열기 |
 | `xray.js` | [찍음 표시]·[표시 취소] |
 | `layout.js` | 폰/태블릿 판정(`matchMedia`), 고른 환자(태블릿은 처음에 고른 칸의 첫 줄, 승인 태블릿 시안) |
-| `app.js` | 잇기: 해시 길(`#/v/{k}`), 고리, 알림, 모양 바뀜 |
+| `app.js` | 잇기: 해시 길(`#/v/{k}`), 고리, 알림, 모양 바뀜, 새로 고침 단추, 숨김·다시 보임(`visibilitychange`·`pagehide`) |
 | `logo-mark.png`·`logo-wordmark.png` | 시안 폴더의 로고 사본 |
+| `qr.css` | `/qr` 화면(8절) 모양. `var()`만 (TASK-25) |
 | `fonts/title.woff2`·`fonts/OFL.txt` | 제목 글자만 담은 글꼴(아래 결정) |
-- 상태(`board`, 고른 칸, 고른 환자, 앞 열쇠 모음, 마지막 연결 시각)는 메모리에만 둔다. 끊기면 `offline.js`가 DOM과 상태의 환자 값을 모두 비우고 "마지막 연결 HH:MM"만 남긴다(AC-1407.4).
+- 상태(`board`, 고른 칸, 고른 환자, 앞 열쇠 모음, 마지막 연결 시각)는 메모리에만 둔다. 끊기면 `offline.js`가 DOM과 상태의 환자 값을 모두 비우고 "마지막 연결 HH:MM"만 남긴다(AC-1407.4). 화면이 숨겨져도 같은 지우기를 하고 고리를 멈추며, 나가 있던 요청은 끊거나 답을 버리고 예약도 없앤다(읽기마다 세대 번호를 두고, 숨김 뒤 도착한 옛 세대 답은 버린다). 다시 보이면(`visible`·`pageshow`) "불러오는 중이에요"(환자 자료 없음)에서 바로 읽는다(AC-1407.11). 문서 제목은 늘 "접수 현황"(AC-1407.5).
+- [새로 고침] 단추(AC-1407.10)는 승인 시안 v12 뒤 사용자가 더한 것(2026-11-05)이다. 머리의 연결됨 표시 바로 옆, 같은 높이의 테두리 단추(↻ + "새로 고침", 노랑 채움 아님 — 노랑은 고른 칸 표시에만)로 둔다. "불러오는 중이에요" 화면(AC-1407.11, 숨김 뒤 다시 보일 때 잠깐)도 시안에 없다. 연결 끊김 시안의 머리·로고와 같은 모양에 글 한 줄만 둔다. 둘 다 Phase 3 끝 화면 캡처로 사용자에게 보인다.
 - 홈 화면에 추가: 매니페스트 + `apple-touch-icon`. 서비스 워커는 없다(http에서는 쓸 수 없고, 쓰면 환자 화면이 휴대폰에 남는다).
 
 ### 11. 설치·내보내기 (Phase 4)
@@ -229,5 +239,5 @@ public static class ReceptionPorts { public const int Http = 47200; }
 - 아이폰 무음 스위치를 켜면 Web Audio 소리가 안 날 수 있다(AC-1408.5에서 확인. 안 나면 `<audio>` 길을 시안과 함께 다시 정한다).
 - PC가 꺼진 채로 홈 화면 아이콘을 누르면 휴대폰 기본 오류 화면이 나온다(서비스 워커가 없어서). 우리 연결 끊김 화면은 열린 화면이 끊겼을 때만 보인다.
 - 같은 와이파이의 다른 기기가 엿볼 수 있다(HTTP, 잠금 없음). 사용자가 고른 위험이다(ADR-027). 직원 와이파이 비밀번호를 손님에게 알리지 않는다는 안내를 README에 둔다.
-- `CLAUDE.md`의 CRITICAL "환자 개인정보는 의원 PC 밖으로 나가지 않는다"에 이 예외(같은 의원 와이파이의 직원 휴대폰, 저장 없음)를 한 줄 더할지는 사용자·메인 창이 정한다. ADR-027과 `docs/ARCHITECTURE.md`에는 적는다.
-- 의원 상표 시안·태블릿 시안·QR 시안이 아직 승인 전이다. 화면 TASK(Phase 3)와 QR TASK(TASK-25)는 승인 뒤 시작한다.
+- `CLAUDE.md`의 CRITICAL "환자 개인정보는 의원 PC 밖으로 나가지 않는다" 아래에 이 예외(같은 의원 직원 와이파이의 폰·태블릿, 저장 없음, 끊기면 지움)를 사용자 결정으로 한 줄 더했다(f1153f4). ADR-027과 `docs/ARCHITECTURE.md`에도 적는다.
+- 의원 상표 시안 v12·태블릿 시안은 승인됐다(2026-11-05 "굿"). QR 화면은 시안 없이 8절의 글과 상표 모양으로 만들고(사용자가 맡김), 화면 캡처를 사용자에게 보여 고칠 곳이 있으면 고친다.
