@@ -159,5 +159,5 @@
 
 ## TASK-16: 합치기 정리
 - REQ: REQ-610
-- Files: phases/index.json
+- Files: phases/index.json, phases/patients-3-helper/index.json
 - TDD: exempt — 코드 없는 목록

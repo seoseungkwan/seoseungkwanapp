@@ -11,8 +11,8 @@
     {
       "step": 1,
       "name": "contact-read",
-      "status": "blocked",
-      "blocked_reason": "precheck TASK-8 필요: helper/src/Precheck.Core/Bit/GridReader.cs·GridRows.cs·helper/src/Precheck.Windows/VendorGridExport.cs가 origin/main에 없다(2026-11-01 확인, origin/main 1712082). 합쳐지면 이 step을 시작한다"
+      "status": "completed",
+      "summary": "a8999ff: helper/src/Precheck.Core/Contact/ContactColumns.cs·ContactTargets.cs, ContactCommands.RegisterTargets, Program.cs 등록 한 줄(라이브 HelperStore 앞, 글자 시험으로 고정). 라이브 줄(b2bc3cf)의 VendorGridExport·GridReader·GridRows로 83·47을 읽고 남길 칸만 보낸다. 시험: Contact/Read C# 48개 + contact-read.dotnet.test.ts(계약 시험: targets-*.json과 같음), input-wiring x86 net48 빌드 통과. 웹 끝에서 끝까지(handler·usePatientsWorker 시험, F/U·정기 주사 모두) 135개 통과. 남은 것: 윈도우 실행·의원 PC에서 실제 비트 83·47 확인(처방 없는 기간의 47이 칸 제목 줄을 주는지 포함)"
     }
   ]
 }

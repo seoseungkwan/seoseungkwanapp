@@ -145,6 +145,7 @@ create table if not exists public.contact_counts (
 - `hospitals` 칸 이름(`owner_id`·`status`)은 `20261028000000_auth.sql`에 맞춘다(TASK-5 시작 때 확인)
 - 정책·트리거는 `drop … if exists` 뒤 만든다(두 번 실행해도 됨, AC-607.4)
 - 라이브 줄의 `20261030000000_precheck_settings.sql`·`20261030000100_precheck_counts.sql`가 두 표를 먼저 만든 DB(운영)에서는 같은 정책·트리거를 다시 만들 뿐 늘지 않고 칸·권한도 그대로다(AC-607.5). 차례는 그 둘 다음이다: 그 둘은 `create table`(if not exists 없음)이라 이 파일 뒤에 붙이면 오류다
+- `touch_updated_at()`가 precheck 글(security definer)에서 C1 글(definer 없음)로 바뀌어도 이 함수를 쓰는 라이브 표 일곱(`claim_rule_settings`·`claim_hospital_settings`·`message_templates`·`claim_day_counts`·`claim_month_counts`·`contact_counts`·`rx_groups`)의 트리거는 똑같이 돈다: 몸통이 `new.updated_at = now()`뿐이라 표를 읽거나 쓰지 않고, 트리거가 돌 때는 함수 실행 권한을 보지 않으며(매출 migration이 이미 authenticated에서 거둔다), 트리거가 바꾼 칸은 칸 권한 검사를 받지 않는다(invoker로 도는 것은 AC-607.2 updated_at 시험·AC-607.5 라이브 위 시험, 실행 권한 없이 도는 것은 `supabase/revenue.rls.test.ts:849-852`·`:985-990`(AC-004.5)). `supabase/precheck.rls.test.ts`의 AC-012.1 definer 확인(:185-195·:216-244)은 precheck 파일만 붙인 DB를 보며, 위 'precheck가 나중에 할 일'(:22)로 C1에 맞춘다
 - 실제 Supabase에 붙여 넣는 것은 **그때 사용자 OK를 받고** 운영자가 SQL 편집기로 한다(auth와 같은 방식). 붙이기 전에는 표가 없어 문구 읽기·건수 읽기가 `E-PATIENTS-TEMPLATES-READ`·`E-PATIENTS-COUNTS-READ`로 실패한다. 화면은 그때 기본 문구로 대신하지 않고 오류 카드 + [다시 불러오기]를 보이며, 읽기가 될 때까지 문구 저장·복사를 열지 않는다(읽기 실패 뒤 기본 문구를 `before = []`로 저장하면 서버 줄과 겹친다, AC-613.6). 명단(비트 PC)은 건수 올리기만 실패하고 그대로 쓴다
 
 ### 화면 (내용만, 배치·문구는 목업 승인본)
