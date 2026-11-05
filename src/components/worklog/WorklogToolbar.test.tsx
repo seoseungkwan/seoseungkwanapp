@@ -472,6 +472,14 @@ describe('AC-1506.4 단추·숫자 칸 모양', () => {
     }
   })
 
+  it('AC-1509.1·AC-1506.4: [가−]·[가+]의 글자는 시안처럼 굵다(600, ds.button.secondary의 font-medium보다 이기게 !)', () => {
+    // 화면 확인(TASK-8)에서 찾은 차이: 시안 .fontctl .btn은 font-weight 600, ds 보조 단추는 500
+    setupFont()
+    for (const el of [smaller(), bigger()]) {
+      expect(el.classList.contains('font-semibold!')).toBe(true)
+    }
+  })
+
   it('AC-1506.4: 숫자 칸은 단추와 같은 높이(36px, 768px 미만 44px)·1px line-strong 선·4px 모서리·가운데 정렬이다', () => {
     setupFont()
     const output = within(fontGroup()).getByRole('status')
