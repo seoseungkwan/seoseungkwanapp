@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>접수 현황 태블릿</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&amp;family=Noto+Sans+KR:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#333432}a:hover{color:#000000}
+</style>
+</helmet>
+<div style="width: 1194px; height: 834px; box-sizing: border-box; background: #F4F4F2; font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; color: #333432; word-break: keep-all; font-variant-numeric: tabular-nums; display: flex; flex-direction: column;">
+  <header style="flex-shrink: 0; background: #FFFFFF; border-bottom: 4px solid #DFDA06; padding: 12px 24px; display: flex; align-items: center; gap: 20px;">
+    <img src="/_blob/dc1e6c895a61e7668f8d69c6a51ce1bc" alt="양지바른정형외과" style="height: 36px; width: auto; display: block;">
+    <h1 style="margin: 0; font-family: 'Black Han Sans', 'Noto Sans KR', sans-serif; font-weight: 400; font-size: 28px; line-height: 1.2; color: #333432;">접수 현황</h1>
+    <p style="margin: 0; flex-grow: 1; font-size: 13px; color: #5F5F5C;">13:42:10 기준 · 10초마다 저절로 바뀌어요</p>
+    <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803D; background: #ECF7EF; padding: 4px 8px; border-radius: 4px;">
+      <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="#15803D"></circle></svg>
+      연결됨
+    </span>
+  </header>
+
+  <div style="flex-grow: 1; min-height: 0; display: flex;">
+    <section aria-label="환자 목록" style="width: 420px; flex-shrink: 0; border-right: 1px solid #E4E4E0; display: flex; flex-direction: column; min-height: 0;">
+      <div style="flex-shrink: 0; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+        <button type="button" onClick="{{queue.pick}}" aria-pressed="{{queue.pressed}}" style="min-height: 52px; padding: 8px 14px; border-radius: 8px; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: {{queue.bg}}; border: 1px solid {{queue.border}}; color: #333432;">
+          <span style="font-size: 15px; font-weight: 600;">진료 순서 · 대기와 보류 한눈에</span>
+          <span style="font-size: 20px; font-weight: 600;">{{queue.count}}명</span>
+        </button>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;">
+          <sc-for list="{{tiles}}" as="t" hint-placeholder-count="4">
+            <button type="button" onClick="{{t.pick}}" aria-pressed="{{t.pressed}}" style="min-height: 60px; padding: 6px 4px; border-radius: 8px; font-family: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: {{t.bg}}; border: 1px solid {{t.border}}; color: #333432;">
+              <span style="font-size: 20px; font-weight: 600; line-height: 1.2;">{{t.count}}</span>
+              <span style="font-size: 12px; font-weight: 500;">{{t.label}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <h2 style="margin: 4px 0 0; font-size: 14px; font-weight: 600; color: #4A4A47;">{{heading}}</h2>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px;">
+        <sc-for list="{{shown}}" as="item" hint-placeholder-count="4">
+          <div style="background: {{item.cardBg}}; border: 2px solid {{item.cardBorder}}; border-radius: 8px; display: flex; flex-direction: column; flex-shrink: 0;">
+            <button type="button" onClick="{{item.select}}" aria-pressed="{{item.pressed}}" style="width: 100%; min-height: 44px; padding: 12px 14px; border: 0; background: transparent; text-align: left; font-family: inherit; color: #333432; cursor: pointer; display: flex; flex-direction: column; gap: 6px;">
+              <span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <sc-if value="{{item.showStatus}}" hint-placeholder-val="{{false}}">
+                  <span style="min-width: 26px; height: 26px; padding: 0 4px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #333432; color: #DFDA06; font-size: 14px; font-weight: 600;">{{item.pos}}</span>
+                  <span style="font-size: 12px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: {{item.statusBg}}; color: {{item.statusFg}}; border: 1px solid {{item.statusBorder}};">{{item.statusLabel}}</span>
+                </sc-if>
+                <span style="font-size: 13px; color: #6B6B67;">{{item.chart}}</span>
+                <span style="font-size: 17px; font-weight: 600;">{{item.name}}</span>
+                <span style="font-size: 13px; color: #4A4A47;">{{item.info}}</span>
+              </span>
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4A4A47;">
+                <span>{{item.time}}</span>
+                <span style="font-weight: 500; padding: 2px 6px; border-radius: 4px; background: {{item.chipBg}}; color: {{item.chipFg}};">{{item.waited}}</span>
+              </span>
+              <sc-if value="{{item.hasMemo}}" hint-placeholder-val="{{true}}">
+                <span style="display: block; font-size: 13px; color: #4A4A47; background: #F4F4F2; border-radius: 4px; padding: 6px 8px;">메모 · {{item.memo}}</span>
+              </sc-if>
+              <span style="display: flex; gap: 10px; font-size: 13px; line-height: 1.5;">
+                <span style="flex-shrink: 0; width: 40px; color: #6B6B67;">{{item.rxLabel}}</span>
+                <span>{{item.rx}}</span>
+              </span>
+            </button>
+            <sc-if value="{{item.xrWaiting}}" hint-placeholder-val="{{false}}">
+              <div style="border-top: 1px solid #E4E4E0; padding: 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #F4F4F2; color: #4A4A47; border: 1px solid #CFCFCA;">엑스레이 찍기 전</span>
+                <button type="button" onClick="{{item.markXr}}" style="min-height: 44px; padding: 0 16px; border-radius: 4px; border: 1px solid #333432; background: #333432; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">찍음 표시</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{item.xrDone}}" hint-placeholder-val="{{false}}">
+              <div style="border-top: 1px solid #E4E4E0; padding: 8px 14px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #ECF7EF; color: #15803D;">엑스레이 찍음 {{item.xrTime}}</span>
+                <sc-if value="{{item.xrUndo}}" hint-placeholder-val="{{false}}">
+                  <button type="button" onClick="{{item.unmarkXr}}" style="min-height: 44px; padding: 0 12px; border-radius: 4px; border: 1px solid #CFCFCA; background: #FFFFFF; color: #333432; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">표시 취소</button>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section aria-label="처방 내역" style="flex-grow: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="background: #FFFFFF; border: 1px solid #E4E4E0; border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+        <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;">
+          <span style="font-size: 14px; color: #6B6B67;">{{sel.chart}}</span>
+          <h2 style="margin: 0; font-family: 'Black Han Sans', 'Noto Sans KR', sans-serif; font-weight: 400; font-size: 30px; line-height: 1.2; color: #333432;">{{sel.name}}</h2>
+          <span style="font-size: 15px; color: #4A4A47;">{{sel.info}}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #4A4A47;">
+          <span style="font-size: 13px; font-weight: 500; padding: 2px 6px; border-radius: 4px; background: {{sel.statusBg}}; color: {{sel.statusFg}}; border: 1px solid {{sel.statusBorder}};">{{sel.statusLabel}}</span>
+          <span>{{sel.time}} · {{sel.waited}}</span>
+        </div>
+        <sc-if value="{{sel.hasMemo}}" hint-placeholder-val="{{true}}">
+          <div style="font-size: 14px; color: #4A4A47; background: #F4F4F2; border-radius: 4px; padding: 8px 10px;">메모 · {{sel.memo}}</div>
+        </sc-if>
+      </div>
+
+      <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #4A4A47;">처방 내역 · 오늘과 지난 진료 전부</h3>
+
+      <div style="background: #FFFFFF; border: 2px solid #DFDA06; border-radius: 8px; padding: 13px 17px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <h4 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; color: #333432;">
+            <span style="font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #333432; color: #DFDA06;">오늘</span>
+            11월 5일
+          </h4>
+          <span style="font-size: 12px; color: #6B6B67;">{{sel.todayState}}</span>
+        </div>
+        <sc-if value="{{sel.todayEmpty}}" hint-placeholder-val="{{false}}">
+          <p style="margin: 0; font-size: 14px; color: #5F5F5C;">아직 처방이 없어요. 진료가 끝나면 여기에 나와요.</p>
+        </sc-if>
+        <sc-if value="{{sel.hasTodaySym}}" hint-placeholder-val="{{false}}">
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #4A4A47; background: #F4F4F2; border-radius: 4px; padding: 6px 8px;">증상 · {{sel.todaySym}}</p>
+        </sc-if>
+        <sc-if value="{{sel.hasTodayRx}}" hint-placeholder-val="{{false}}">
+          <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;">
+            <sc-for list="{{sel.todayRx}}" as="r" hint-placeholder-count="2">
+              <li style="font-size: 14px; line-height: 1.5; color: #333432;">{{r.name}}<span style="margin-left: 4px; font-size: 13px; color: #6B6B67;">({{r.code}})</span></li>
+            </sc-for>
+          </ul>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{sel.noVisits}}" hint-placeholder-val="{{false}}">
+        <p style="margin: 0; padding: 16px; font-size: 14px; color: #5F5F5C; background: #FFFFFF; border: 1px solid #E4E4E0; border-radius: 8px;">첫 방문이라 지난 진료가 없어요.</p>
+      </sc-if>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+        <sc-for list="{{sel.visits}}" as="v" hint-placeholder-count="4">
+          <article style="background: #FFFFFF; border: 1px solid #E4E4E0; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <h4 style="margin: 0; font-size: 15px; font-weight: 600; color: #333432;">{{v.date}}</h4>
+              <span style="font-size: 12px; color: #6B6B67;">{{v.ago}}</span>
+            </div>
+            <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #4A4A47; background: #F4F4F2; border-radius: 4px; padding: 6px 8px;">증상 · {{v.sym}}</p>
+            <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;">
+              <sc-for list="{{v.rx}}" as="r" hint-placeholder-count="2">
+                <li style="font-size: 14px; line-height: 1.5; color: #333432;">{{r.name}}<span style="margin-left: 4px; font-size: 13px; color: #6B6B67;">({{r.code}})</span></li>
+              </sc-for>
+            </ul>
+          </article>
+        </sc-for>
+      </div>
+      <sc-if value="{{sel.hasMore}}" hint-placeholder-val="{{false}}">
+        <button type="button" style="flex-shrink: 0; min-height: 48px; border-radius: 8px; border: 1px solid #333432; background: #FFFFFF; color: #333432; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">지난 진료 더 보기 · {{sel.more}}번 더 있어요</button>
+      </sc-if>
+      <sc-if value="{{sel.hasVisits}}" hint-placeholder-val="{{true}}">
+        <p style="margin: 0; font-size: 12px; color: #5F5F5C; text-align: center;">처음 온 날 {{sel.first}} · 모두 {{sel.total}}번 왔어요</p>
+      </sc-if>
+      <p style="margin: auto 0 0; padding-top: 8px; font-size: 12px; color: #5F5F5C; text-align: center;">보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요</p>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1194,"height":834}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'queue', sel: '10234', marks: { '10733': '10:55' } };
+  }
+  renderVals() {
+    const s = this.state || {};
+    const tab = s.tab || 'queue';
+    const selChart = s.sel || '10234';
+    const marks = s.marks || {};
+    const r = (name, code) => ({ name, code });
+    const visit = (date, ago, sym, rx) => ({ date, ago, sym, rx });
+    const warn = { chipBg: '#FDF0EA', chipFg: '#C2410C' };
+    const calm = { chipBg: '#F4F4F2', chipFg: '#4A4A47' };
+    const done = { chipBg: '#ECF7EF', chipFg: '#15803D' };
+    const st = {
+      wait: { statusLabel: '진료대기', statusBg: '#333432', statusFg: '#DFDA06', statusBorder: '#333432' },
+      hold: { statusLabel: '진료보류', statusBg: '#FFFFFF', statusFg: '#333432', statusBorder: '#333432' },
+      pay: { statusLabel: '수납대기', statusBg: '#FFFFFF', statusFg: '#4A4A47', statusBorder: '#CFCFCA' },
+      done: { statusLabel: '오늘 끝남', statusBg: '#ECF7EF', statusFg: '#15803D', statusBorder: '#ECF7EF' }
+    };
+    const P = (status, base, chip, today, hist) => Object.assign({ status, today, hist }, st[status], base, chip);
+    const groups = {
+      wait: { label: '진료대기', heading: '진료대기 · 접수한 순서', list: [
+        P('wait', { chart: '10871', name: '박준호', info: '37세 · 남 · 신환', time: '09:38 접수', waited: '1시간 4분째 대기', memo: '', rxLabel: '처방', rx: '첫 방문이라 지난 처방이 없어요' }, warn,
+          null, null),
+        P('wait', { chart: '10234', name: '김영희', info: '54세 · 여 · 재진', time: '10:42 접수', waited: '18분째 대기', memo: '오른쪽 어깨 통증 심해짐', rxLabel: '지난번', rx: '체외충격파(ESWT7) · 도수치료 20분(DS20)' }, calm,
+          null, { first: '2024년 3월 12일', total: 37, visits: [
+            visit('10월 29일', '7일 전', '오른쪽 어깨 통증 조금 줄었음, 밤에 아픔', [r('체외충격파', 'ESWT7'), r('도수치료 20분', 'DS20')]),
+            visit('10월 22일', '14일 전', '오른쪽 어깨 통증, 팔 올릴 때 아픔', [r('체외충격파', 'ESWT7'), r('표층열치료', 'PT01')]),
+            visit('10월 15일', '21일 전', '어깨·목 뻐근함', [r('도수치료 20분', 'DS20'), r('간섭파치료', 'PT03'), r('표층열치료', 'PT01')]),
+            visit('10월 8일', '28일 전', '오른쪽 어깨 통증 2주째, 1주 뒤 다시 봄', [r('엑스레이 촬영', 'XR2'), r('주사', 'INJ1')]),
+            visit('9월 30일', '36일 전', '오른쪽 어깨 통증 처음 옴', [r('엑스레이 촬영', 'XR2'), r('표층열치료', 'PT01')])
+          ] }),
+        P('wait', { chart: '09412', name: '이순자', info: '71세 · 여 · 재진', time: '10:51 접수', waited: '9분째 대기', memo: '보호자 동반', rxLabel: '지난번', rx: '표층열치료(PT01) · 간섭파치료(PT03)' }, calm,
+          null, { first: '2025년 10월 10일', total: 4, visits: [
+            visit('10월 31일', '5일 전', '허리 통증, 오래 앉으면 다리 저림', [r('표층열치료', 'PT01'), r('간섭파치료', 'PT03')]),
+            visit('10월 24일', '12일 전', '허리 통증', [r('표층열치료', 'PT01'), r('간섭파치료', 'PT03')]),
+            visit('10월 10일', '26일 전', '허리 통증 처음 옴', [r('엑스레이 촬영', 'XR2'), r('주사', 'INJ1')])
+          ] })
+      ] },
+      hold: { label: '진료보류', heading: '진료보류 · 접수한 순서', list: [
+        P('hold', { chart: '10502', name: '최동현', info: '45세 · 남 · 재진', time: '10:05 접수', waited: '보류 22분째', memo: '엑스레이 찍으러 감', rxLabel: '오늘', rx: '엑스레이 촬영(XR2)', xray: 'none' }, calm,
+          { sym: '왼쪽 무릎 통증, 계단 내려갈 때 아픔', rx: [r('엑스레이 촬영', 'XR2')] }, { first: '2025년 8월 26일', total: 3, visits: [
+            visit('9월 2일', '64일 전', '왼쪽 발목 삠, 붓기 줄었음', [r('표층열치료', 'PT01'), r('간섭파치료', 'PT03')]),
+            visit('8월 26일', '71일 전', '왼쪽 발목 삠, 붓기 있음', [r('엑스레이 촬영', 'XR2'), r('표층열치료', 'PT01')])
+          ] }),
+        P('hold', { chart: '10733', name: '강민지', info: '58세 · 여 · 재진', time: '10:15 접수', waited: '보류 15분째', memo: '', rxLabel: '오늘', rx: '엑스레이 촬영(XR2)', xray: 'none' }, calm,
+          { sym: '오른쪽 손목 통증', rx: [r('엑스레이 촬영', 'XR2')] }, { first: '2025년 6월 3일', total: 2, visits: [
+            visit('6월 3일', '155일 전', '목 뻐근함', [r('도수치료 20분', 'DS20')])
+          ] })
+      ] },
+      pay: { label: '수납대기', heading: '수납대기 · 접수한 순서', list: [
+        P('pay', { chart: '08833', name: '정미경', info: '62세 · 여 · 재진', time: '09:58 접수', waited: '수납 6분째', memo: '', rxLabel: '오늘', rx: '체외충격파(ESWT7) · 주사(INJ1)' }, calm,
+          { sym: '왼쪽 무릎 통증 계속됨', rx: [r('체외충격파', 'ESWT7'), r('주사', 'INJ1')] }, { first: '2025년 5월 14일', total: 12, visits: [
+            visit('10월 27일', '9일 전', '왼쪽 무릎 통증, 조금 나아짐', [r('체외충격파', 'ESWT7')]),
+            visit('10월 20일', '16일 전', '왼쪽 무릎 통증', [r('체외충격파', 'ESWT7'), r('주사', 'INJ1')])
+          ] }),
+        P('pay', { chart: '10920', name: '오세진', info: '29세 · 남 · 신환', time: '10:12 접수', waited: '수납 2분째', memo: '실손 서류 요청', rxLabel: '오늘', rx: '엑스레이 촬영(XR2) · 표층열치료(PT01)' }, calm,
+          { sym: '오른쪽 어깨 부딪힘', rx: [r('엑스레이 촬영', 'XR2'), r('표층열치료', 'PT01')] }, null)
+      ] },
+      done: { label: '오늘 끝남', heading: '오늘 끝난 환자 · 최근 순', list: [
+        P('done', { chart: '07761', name: '한지훈', info: '48세 · 남 · 재진', time: '09:12 접수', waited: '09:40 수납', memo: '', rxLabel: '오늘', rx: '도수치료 20분(DS20) · 간섭파치료(PT03)' }, done,
+          { sym: '허리 뻐근함', rx: [r('도수치료 20분', 'DS20'), r('간섭파치료', 'PT03')] }, { first: '2025년 9월 1일', total: 6, visits: [
+            visit('10월 29일', '7일 전', '허리 뻐근함, 아침에 심함', [r('도수치료 20분', 'DS20')]),
+            visit('10월 15일', '21일 전', '허리 통증', [r('도수치료 20분', 'DS20'), r('간섭파치료', 'PT03')])
+          ] }),
+        P('done', { chart: '10655', name: '윤가영', info: '33세 · 여 · 재진', time: '09:05 접수', waited: '09:31 수납', memo: '', rxLabel: '오늘', rx: '체외충격파(ESWT7)' }, done,
+          { sym: '발뒤꿈치 통증', rx: [r('체외충격파', 'ESWT7')] }, { first: '2025년 10월 22일', total: 2, visits: [
+            visit('10월 22일', '14일 전', '발뒤꿈치 통증 처음 옴', [r('엑스레이 촬영', 'XR2'), r('체외충격파', 'ESWT7')])
+          ] })
+      ] }
+    };
+    groups.queue = { label: '진료 순서', heading: '진료대기와 진료보류 · 접수한 순서', list: groups.wait.list.concat(groups.hold.list).sort((a, b) => (a.time < b.time ? -1 : 1)) };
+    const on = (yes) => ({ pressed: yes ? 'true' : 'false', bg: yes ? '#DFDA06' : '#FFFFFF', border: yes ? '#DFDA06' : '#CFCFCA' });
+    const qOn = tab === 'queue';
+    const queue = Object.assign({ count: groups.queue.list.length, pick: () => this.setState({ tab: 'queue' }) }, on(qOn));
+    const tiles = ['wait', 'hold', 'pay', 'done'].map((key) => Object.assign({
+      label: groups[key].label,
+      count: groups[key].list.length,
+      pick: () => this.setState({ tab: key })
+    }, on(key === tab)));
+    const shown = groups[tab].list.map((p, i) => {
+      const marked = marks[p.chart];
+      const picked = p.chart === selChart;
+      return Object.assign({}, p, {
+        hasMemo: p.memo !== '',
+        showStatus: qOn,
+        pos: String(i + 1),
+        pressed: picked ? 'true' : 'false',
+        cardBg: picked ? '#FCFBE3' : '#FFFFFF',
+        cardBorder: picked ? '#DFDA06' : '#E4E4E0',
+        select: () => this.setState({ sel: p.chart }),
+        xrWaiting: !!p.xray && !marked,
+        xrDone: !!p.xray && !!marked,
+        xrTime: marked || '',
+        xrUndo: !!marked,
+        markXr: () => this.setState({ marks: Object.assign({}, marks, { [p.chart]: '13:42' }) }),
+        unmarkXr: () => {
+          const next = Object.assign({}, marks);
+          delete next[p.chart];
+          this.setState({ marks: next });
+        }
+      });
+    });
+    const everyone = ['wait', 'hold', 'pay', 'done'].reduce((all, key) => all.concat(groups[key].list), []);
+    const p = everyone.find((x) => x.chart === selChart) || everyone[1];
+    const hist = p.hist;
+    const shownVisits = hist ? hist.visits : [];
+    const more = hist ? hist.total - 1 - shownVisits.length : 0;
+    const today = p.today;
+    const sel = Object.assign({}, p, {
+      hasMemo: p.memo !== '',
+      todayState: today ? (p.status === 'hold' ? '진료 중' : '진료 끝') : '진료 전',
+      todayEmpty: !today,
+      hasTodaySym: !!(today && today.sym),
+      todaySym: today ? today.sym : '',
+      hasTodayRx: !!today,
+      todayRx: today ? today.rx : [],
+      visits: shownVisits,
+      noVisits: shownVisits.length === 0,
+      hasVisits: shownVisits.length > 0,
+      hasMore: more > 0,
+      more: String(more),
+      first: hist ? hist.first : '',
+      total: hist ? String(hist.total) : ''
+    });
+    return { tiles, queue, shown, heading: groups[tab].heading, sel };
+  }
+}
+</script>
+</body>
+</html>

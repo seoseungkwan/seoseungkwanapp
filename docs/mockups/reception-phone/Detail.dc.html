@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>환자 처방 내역</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&amp;family=Noto+Sans+KR:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#333432}a:hover{color:#000000}
+</style>
+</helmet>
+<div style="width: 390px; height: 1320px; box-sizing: border-box; background: #F4F4F2; font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; color: #333432; word-break: keep-all; font-variant-numeric: tabular-nums; display: flex; flex-direction: column;">
+  <header style="background: #FFFFFF; border-bottom: 4px solid #DFDA06; padding: 8px 8px 16px; display: flex; flex-direction: column; gap: 10px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <a href="Main.dc.html" style="min-height: 44px; padding: 0 8px; display: flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 600; color: #333432; text-decoration: none;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+        접수 현황
+      </a>
+      <img src="/_blob/73aa453e3b945b2e2e3f1cbe10e74300" alt="양지바른정형외과" style="height: 32px; width: auto; display: block; margin-right: 8px;">
+    </div>
+    <div style="padding: 0 8px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+        <span style="font-size: 14px; color: #6B6B67;">10234</span>
+        <h1 style="margin: 0; font-family: 'Black Han Sans', 'Noto Sans KR', sans-serif; font-weight: 400; font-size: 28px; line-height: 1.2; color: #333432;">김영희</h1>
+        <span style="font-size: 14px; color: #4A4A47;">54세 · 여 · 재진</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4A4A47;">
+        <span style="font-weight: 500; padding: 2px 6px; border-radius: 4px; background: #333432; color: #DFDA06;">진료대기</span>
+        <span>10:42 접수 · 18분째 대기</span>
+      </div>
+      <div style="font-size: 13px; color: #4A4A47; background: #F4F4F2; border-radius: 4px; padding: 8px 10px;">메모 · 오른쪽 어깨 통증 심해짐</div>
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+    <h2 style="margin: 0; font-size: 14px; font-weight: 600; color: #4A4A47;">처방 내역 · 오늘과 지난 진료 전부</h2>
+
+    <section style="background: #FFFFFF; border: 2px solid #DFDA06; border-radius: 8px; padding: 13px 15px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #333432;">
+          <span style="font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #333432; color: #DFDA06;">오늘</span>
+          11월 5일
+        </h3>
+        <span style="font-size: 12px; color: #6B6B67;">진료 전</span>
+      </div>
+      <p style="margin: 0; font-size: 14px; color: #5F5F5C;">아직 처방이 없어요. 진료가 끝나면 여기에 나와요.</p>
+    </section>
+
+    <sc-for list="{{visits}}" as="v" hint-placeholder-count="5">
+      <section style="background: #FFFFFF; border: 1px solid #E4E4E0; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+          <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: #333432;">{{v.date}}</h3>
+          <span style="font-size: 12px; color: #6B6B67;">{{v.ago}}</span>
+        </div>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #4A4A47; background: #F4F4F2; border-radius: 4px; padding: 6px 8px;">증상 · {{v.sym}}</p>
+        <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;">
+          <sc-for list="{{v.rx}}" as="r" hint-placeholder-count="2">
+            <li style="font-size: 14px; color: #333432; line-height: 1.5;">{{r.name}}<span style="margin-left: 4px; font-size: 13px; color: #6B6B67;">({{r.code}})</span></li>
+          </sc-for>
+        </ul>
+      </section>
+    </sc-for>
+    <button type="button" style="min-height: 48px; border-radius: 8px; border: 1px solid #333432; background: #FFFFFF; color: #333432; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">지난 진료 더 보기 · 31번 더 있어요</button>
+    <p style="margin: 0; font-size: 12px; color: #5F5F5C; text-align: center;">처음 온 날 2024년 3월 12일 · 모두 37번 왔어요</p>
+  </main>
+
+  <footer style="padding: 12px 16px 24px; font-size: 12px; color: #5F5F5C; text-align: center;">
+    보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const rx = (name, code) => ({ name, code });
+    const visits = [
+      { date: '10월 29일', ago: '7일 전', sym: '오른쪽 어깨 통증 조금 줄었음, 밤에 아픔', rx: [rx('체외충격파', 'ESWT7'), rx('도수치료 20분', 'DS20')] },
+      { date: '10월 22일', ago: '14일 전', sym: '오른쪽 어깨 통증, 팔 올릴 때 아픔', rx: [rx('체외충격파', 'ESWT7'), rx('표층열치료', 'PT01')] },
+      { date: '10월 15일', ago: '21일 전', sym: '어깨·목 뻐근함', rx: [rx('도수치료 20분', 'DS20'), rx('간섭파치료', 'PT03'), rx('표층열치료', 'PT01')] },
+      { date: '10월 8일', ago: '28일 전', sym: '오른쪽 어깨 통증 2주째, 1주 뒤 다시 봄', rx: [rx('엑스레이 촬영', 'XR2'), rx('주사', 'INJ1')] },
+      { date: '9월 30일', ago: '36일 전', sym: '오른쪽 어깨 통증 처음 옴', rx: [rx('엑스레이 촬영', 'XR2'), rx('표층열치료', 'PT01')] }
+    ];
+    return { visits };
+  }
+}
+</script>
+</body>
+</html>
