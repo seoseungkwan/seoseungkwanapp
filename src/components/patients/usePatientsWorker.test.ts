@@ -40,18 +40,54 @@ function fakeBridge() {
   return { calls, stream: stream as unknown as PatientsBridge['stream'], spy: stream }
 }
 
+type Listener = (event: Event) => void
+type WorkerEvent = 'message' | 'error' | 'messageerror'
+
+/** 듣는 함수를 종류(message·error·messageerror)마다 따로 둔다. message가 error 듣기에 가면 안 된다 */
+function listenerMap() {
+  const byType = new Map<string, Set<Listener>>()
+  const of = (type: string) => {
+    let set = byType.get(type)
+    if (!set) byType.set(type, (set = new Set()))
+    return set
+  }
+  /** error는 취소할 수 있는 Event로 보낸다(preventDefault를 불렀는지 본다) */
+  const fire = (type: WorkerEvent, data?: unknown) => {
+    const event = type === 'message' ? new MessageEvent('message', { data }) : new Event(type, { cancelable: true })
+    const preventDefault = vi.spyOn(event, 'preventDefault')
+    for (const listener of [...of(type)]) listener(event)
+    return { event, preventDefault }
+  }
+  const count = () => [...byType.values()].reduce((n, set) => n + set.size, 0)
+  return {
+    add: (type: string, listener: Listener) => void of(type).add(listener),
+    remove: (type: string, listener: Listener) => void of(type).delete(listener),
+    fire,
+    count,
+  }
+}
+
 function fakeWorker() {
   const posted: { type: string; [key: string]: unknown }[] = []
-  const listeners = new Set<(event: MessageEvent) => void>()
+  const listeners = listenerMap()
   const worker: PatientsWorkerHandle = {
     postMessage: (message) => void posted.push(message as (typeof posted)[number]),
-    addEventListener: (_type, listener) => void listeners.add(listener),
-    removeEventListener: (_type, listener) => void listeners.delete(listener),
+    addEventListener: listeners.add,
+    removeEventListener: listeners.remove,
   }
-  const emit = (message: PatientsWorkerMessage) => {
-    for (const listener of [...listeners]) listener({ data: message } as MessageEvent)
-  }
-  return { worker, posted, emit, listeners }
+  const emit = (message: PatientsWorkerMessage) => void listeners.fire('message', message)
+  const emitError = () => listeners.fire('error')
+  const emitMessageError = () => listeners.fire('messageerror')
+  return { worker, posted, emit, emitError, emitMessageError, listenerCount: listeners.count }
+}
+
+/** act 안에서 부르고 그 값을 돌려준다(act는 값을 돌려주지 않는다) */
+function inAct<T>(fn: () => T): T {
+  let value: T | undefined
+  act(() => {
+    value = fn()
+  })
+  return value as T
 }
 
 // 다음 일로 넘어갈 때까지(약속이 다 풀릴 때까지) 기다린다
@@ -411,13 +447,11 @@ describe('usePatientsWorker: 진짜 handler에 이어서 (옛 흐름이 새 읽�
 
   // 진짜 handler를 Worker 자리에, 조각은 진짜처럼 포트로 넣는다. shouldHold가 true인 스트림은 release 때까지 끝나지 않는다
   function realSetup(shouldHold: (cmd: string, nth: number) => boolean) {
-    const listeners = new Set<(event: MessageEvent) => void>()
+    const listeners = listenerMap()
     const toWorker: { type: string; id?: string }[] = []
     const saves: unknown[] = []
     const handler = createHandler({
-      post: (message) => {
-        for (const listener of [...listeners]) listener({ data: message } as MessageEvent)
-      },
+      post: (message) => void listeners.fire('message', message),
     })
     handler.setPort({
       postMessage: (message) => {
@@ -431,8 +465,8 @@ describe('usePatientsWorker: 진짜 handler에 이어서 (옛 흐름이 새 읽�
         toWorker.push(message as (typeof toWorker)[number])
         handler.onScreen(message)
       },
-      addEventListener: (_type, listener) => void listeners.add(listener),
-      removeEventListener: (_type, listener) => void listeners.delete(listener),
+      addEventListener: listeners.add,
+      removeEventListener: listeners.remove,
     }
     const deliver = (id: string, value: unknown) => {
       const text = JSON.stringify(value)
@@ -566,29 +600,212 @@ describe('usePatientsWorker: 도구로 가는 길(TASK-11~14가 쓴다)', () => 
     const t = setup()
     const load = t.bridge.calls[0]!
     t.unmount()
-    expect(t.worker.listeners.size).toBe(0)
+    expect(t.worker.listenerCount()).toBe(0)
     load.ok('store-1')
     await flush()
     expect(t.worker.posted).toEqual([])
   })
 })
 
-describe('usePatientsWorkerObject: Worker 한 개 (AC-610.4)', () => {
-  function stubWorker() {
-    const made: { url: unknown; options: unknown; terminate: ReturnType<typeof vi.fn> }[] = []
-    vi.stubGlobal(
-      'Worker',
-      class {
-        terminate = vi.fn()
-        constructor(url: unknown, options: unknown) {
-          made.push({ url, options, terminate: this.terminate })
-        }
-      },
-    )
-    return made
+/**
+ * 전역 Worker 자리의 가짜. 스크립트를 못 불러온 Worker처럼 받은 메시지에는 아무것도 답하지 않는다.
+ * fire로 error·messageerror를 낸다(진짜 Worker처럼 두 번째 오류는 저절로 나지 않는다)
+ */
+function stubWorker() {
+  const made: FakeWorker[] = []
+  class FakeWorker {
+    terminate = vi.fn()
+    posted: unknown[] = []
+    private listeners = listenerMap()
+    addEventListener = this.listeners.add
+    removeEventListener = this.listeners.remove
+    fire = (type: 'error' | 'messageerror') => inAct(() => this.listeners.fire(type))
+    listenerCount = () => this.listeners.count()
+    constructor(
+      public url: unknown,
+      public options: unknown,
+    ) {
+      made.push(this)
+    }
+    postMessage(message: unknown) {
+      this.posted.push(message)
+    }
+  }
+  vi.stubGlobal('Worker', FakeWorker)
+  return made
+}
+
+const handleOf = (worker: Worker | null) => worker as unknown as PatientsWorkerHandle
+
+describe('usePatientsWorker: Worker 오류 (AC-610.6)', () => {
+  const FAILED_VIEWS = { followup: null, recall: null, codes: { followup: 'E-ANALYZE-FAILED', recall: 'E-ANALYZE-FAILED' } }
+  const expectFailed = (api: { status: string; views: unknown; counts: unknown }) => {
+    expect(api.status).toBe('done')
+    expect(api.views).toEqual(FAILED_VIEWS)
+    expect(api.counts).toBeNull()
   }
 
-  it('AC-610.4: 한 번 만들고 다시 그려도 그대로이며, 화면을 떠나면 끝낸다', async () => {
+  // 들어온 직후(store.load 기다림) · 조각 읽는 중 · build 뒤 views 기다림
+  const STAGES = {
+    'store.load를 기다리는 중': async () => setup(),
+    '조각을 읽는 중': async () => {
+      const t = setup()
+      await t.toPlan({ followup: [R1, R2], recall: [M1] })
+      await t.answer(t.lastCall(), 'f1')
+      return t
+    },
+    'build 뒤 views를 기다리는 중': async () => {
+      const t = setup()
+      await t.toPlan({ followup: [], recall: [] })
+      expect(t.types()).toContain('build')
+      return t
+    },
+  }
+
+  it.each(Object.keys(STAGES) as (keyof typeof STAGES)[])('AC-610.6: %s error가 나면 읽는 중에 머물지 않는다 — 두 도구 모두 E-ANALYZE-FAILED, 건수 null, preventDefault로 콘솔에 남기지 않는다', async (stage) => {
+    const t = await STAGES[stage]()
+    expect(t.result.current.status).toBe('loading')
+    const { preventDefault } = inAct(() => t.worker.emitError())
+    expectFailed(t.result.current)
+    expect(preventDefault).toHaveBeenCalled()
+  })
+
+  it('AC-610.6: 다 읽은 뒤에 error가 나도 보던 명단을 버리고 두 도구 모두 카드다(건수 null)', async () => {
+    const t = setup()
+    await t.toPlan({ followup: [], recall: [] })
+    await t.reply({ type: 'views', followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: { followup_left: 1, injection_left: 2 }, codes: {} })
+    expect(t.result.current.status).toBe('done')
+    act(() => void t.worker.emitError())
+    expectFailed(t.result.current)
+  })
+
+  it.each(['읽는 중', '다 읽은 뒤'])('AC-610.6: %s messageerror도 같다', async (when) => {
+    const t = setup()
+    if (when === '다 읽은 뒤') {
+      await t.toPlan({ followup: [], recall: [] })
+      await t.reply({ type: 'views', followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: { followup_left: 1, injection_left: 2 }, codes: {} })
+    } else await t.toPlan({ followup: [R1], recall: [M1] })
+    act(() => void t.worker.emitMessageError())
+    expectFailed(t.result.current)
+  })
+
+  it('AC-610.6: 그 흐름을 버린다 — 오류 뒤에 끝난 스트림은 Worker에 보내지 않고, 늦게 온 답(piece·stored·plan·views·marked)은 아무것도 바꾸지 않는다', async () => {
+    const t = setup()
+    await t.toPlan({ followup: [R1, R2], recall: [M1] })
+    const pending = t.lastCall()
+    act(() => void t.worker.emitError())
+    t.worker.posted.length = 0
+    const calls = t.bridge.calls.length
+
+    await t.answer(pending, 'late-f1')
+    await t.reply({ type: 'piece', id: 'late-f1', ok: true })
+    await t.reply({ type: 'stored', ok: true, recall: [] })
+    await t.reply({ type: 'plan', followup: [R2], recall: [] })
+    await t.reply({ type: 'views', followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: { followup_left: 9, injection_left: 9 }, codes: {} })
+    await t.reply({ type: 'marked', key: 'f|a', ok: true, counts: { followup_left: 8, injection_left: 9 } })
+
+    expect(t.worker.posted).toEqual([])
+    expect(t.bridge.calls).toHaveLength(calls)
+    expectFailed(t.result.current)
+  })
+
+  it('AC-610.6: 오류를 낸 Worker로는 새 흐름을 시작하지 않는다 — [다시 불러오기]도 그 Worker에 reload·store.load를 보내지 않는다', async () => {
+    const t = setup()
+    act(() => void t.worker.emitError())
+    t.worker.posted.length = 0
+    act(() => t.result.current.reload())
+    await flush()
+    expect(t.worker.posted).toEqual([])
+    expect(t.storeLoads()).toBe(1)
+    expectFailed(t.result.current)
+  })
+
+  it('AC-610.6: 통로가 열리기 전에(명단 훅을 붙이기 전에) 오류를 낸 Worker — preventDefault, 붙이면 바로 카드이고 store.load를 부르지 않는다', () => {
+    const made = stubWorker()
+    const object = renderHook(() => usePatientsWorkerObject())
+    const { preventDefault } = made[0]!.fire('error')
+
+    const bridge = fakeBridge()
+    const list = renderHook(() => usePatientsWorker({ stream: bridge.stream }, handleOf(object.result.current)))
+    expectFailed(list.result.current)
+    expect(bridge.spy).not.toHaveBeenCalled()
+    expect(made[0]!.posted).toEqual([])
+    expect(preventDefault).toHaveBeenCalled()
+  })
+
+  it('AC-610.6: messageerror를 낸 Worker도 붙이면 바로 카드이고 store.load를 부르지 않는다', () => {
+    const made = stubWorker()
+    const object = renderHook(() => usePatientsWorkerObject())
+    made[0]!.fire('messageerror')
+    const bridge = fakeBridge()
+    const list = renderHook(() => usePatientsWorker({ stream: bridge.stream }, handleOf(object.result.current)))
+    expectFailed(list.result.current)
+    expect(bridge.spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-610.6: 명단 자리를 다시 그려도(훅을 새로 붙여도) 오류를 낸 Worker에는 store.load를 부르지 않고 카드다', async () => {
+    const t = setup()
+    act(() => void t.worker.emitError())
+    t.unmount()
+    const bridge = fakeBridge()
+    const again = renderHook(() => usePatientsWorker({ stream: bridge.stream }, t.worker.worker))
+    await flush()
+    expectFailed(again.result.current)
+    expect(bridge.spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-610.6: [다시 불러오기]는 오류를 낸 Worker를 끝내고 새 Worker를 만든다. 새 Worker로 붙으면 store.load부터 읽고(읽는 중), 새 Worker도 오류면 다시 카드다', async () => {
+    const made = stubWorker()
+    const object = renderHook(() => usePatientsWorkerObject())
+    const dead = made[0]!
+    const bridge = fakeBridge()
+    const first = renderHook(() => usePatientsWorker({ stream: bridge.stream }, handleOf(object.result.current)))
+    expect(first.result.current.status).toBe('loading')
+    // 스크립트를 못 불러온 Worker: 오류 하나만 내고 무엇을 보내도 답하지 않는다(stored를 보내도 답이 없다)
+    bridge.calls[0]!.ok('store-1')
+    await flush()
+    expect(dead.posted).toEqual([{ type: 'stored', id: 'store-1' }])
+    dead.fire('error')
+    expectFailed(first.result.current)
+    dead.posted.length = 0
+
+    act(() => first.result.current.reload())
+    expect(dead.terminate).toHaveBeenCalledTimes(1)
+    expect(made).toHaveLength(2)
+    const fresh = made[1]!
+    expect(object.result.current).toBe(fresh)
+    expect(fresh.terminate).not.toHaveBeenCalled()
+    expect(dead.posted).toEqual([])
+    expect(fresh.posted).toEqual([])
+    expect(bridge.calls.filter((c) => c.cmd === 'store.load')).toHaveLength(1)
+
+    // 통로가 새 Worker로 다시 붙어 ready가 되면 명단 자리를 새로 그린다(PatientsEntry)
+    first.unmount()
+    expect(dead.listenerCount()).toBe(0)
+    const second = renderHook(() => usePatientsWorker({ stream: bridge.stream }, handleOf(object.result.current)))
+    expect(second.result.current.status).toBe('loading')
+    expect(bridge.calls.map((c) => c.cmd)).toEqual(['store.load', 'store.load'])
+
+    fresh.fire('error')
+    expectFailed(second.result.current)
+  })
+
+  it('AC-610.6: Worker 오류가 없으면 [다시 불러오기]는 지금처럼 같은 Worker에 reload를 먼저 보내고 새 Worker를 만들지 않는다', async () => {
+    const made = stubWorker()
+    const object = renderHook(() => usePatientsWorkerObject())
+    const bridge = fakeBridge()
+    const list = renderHook(() => usePatientsWorker({ stream: bridge.stream }, handleOf(object.result.current)))
+    act(() => list.result.current.reload())
+    expect(made).toHaveLength(1)
+    expect(made[0]!.terminate).not.toHaveBeenCalled()
+    expect(made[0]!.posted).toEqual([{ type: 'reload' }])
+    expect(bridge.calls.map((c) => c.cmd)).toEqual(['store.load', 'store.load'])
+    expect(list.result.current.status).toBe('loading')
+  })
+})
+
+describe('usePatientsWorkerObject: Worker 한 개 (AC-610.4)', () => {
+  it('AC-610.4: 한 번 만들고 다시 그려도 그대로이며, 화면을 떠나면 끝내고 듣기를 멈춘다', async () => {
     const made = stubWorker()
     const { result, rerender, unmount } = renderHook(() => usePatientsWorkerObject())
     expect(made).toHaveLength(1)
@@ -600,6 +817,7 @@ describe('usePatientsWorkerObject: Worker 한 개 (AC-610.4)', () => {
     expect(made).toHaveLength(1)
     unmount()
     expect(made[0]!.terminate).toHaveBeenCalledTimes(1)
+    expect(made[0]!.listenerCount()).toBe(0)
   })
 
   it('AC-610.4: StrictMode의 두 번째 effect 뒤에는 끝내지 않은 Worker 하나만 쓴다', () => {

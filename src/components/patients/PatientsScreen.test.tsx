@@ -66,18 +66,30 @@ function setup(tool: PatientsTool) {
       }),
   )
   const posted: ({ type: string } & Record<string, unknown>)[] = []
-  const listeners = new Set<(event: MessageEvent) => void>()
+  // 듣는 함수는 종류(message·error·messageerror)마다 따로다
+  const listeners = new Map<string, Set<(event: Event) => void>>()
+  const of = (type: string) => {
+    let set = listeners.get(type)
+    if (!set) listeners.set(type, (set = new Set()))
+    return set
+  }
   const worker: PatientsWorkerHandle = {
     postMessage: (message) => void posted.push(message as { type: string } & Record<string, unknown>),
-    addEventListener: (_type, listener) => void listeners.add(listener),
-    removeEventListener: (_type, listener) => void listeners.delete(listener),
+    addEventListener: (type, listener) => void of(type).add(listener),
+    removeEventListener: (type, listener) => void of(type).delete(listener),
   }
   const bridge = { stream: stream as unknown as PatientsBridge['stream'] }
   const view = render(<PatientsScreen tool={tool} bridge={bridge} worker={worker} />)
-  const reply = async (message: PatientsWorkerMessage) => {
-    for (const listener of [...listeners]) listener({ data: message } as MessageEvent)
+  const fire = async (event: Event) => {
+    act(() => {
+      for (const listener of [...of(event.type)]) listener(event)
+    })
     await flush()
+    return event
   }
+  const reply = (message: PatientsWorkerMessage) => fire(new MessageEvent('message', { data: message })).then(() => {})
+  const emitError = () => fire(new Event('error', { cancelable: true }))
+  const emitMessageError = () => fire(new MessageEvent('messageerror'))
   const answer = async (id: string) => {
     streams[streams.length - 1]!.ok(id)
     await flush()
@@ -91,7 +103,7 @@ function setup(tool: PatientsTool) {
   const show = (next: PatientsTool) => view.rerender(<PatientsScreen tool={next} bridge={bridge} worker={worker} />)
   const slot = (name: PatientsTool) => view.container.querySelector<HTMLElement>(`[data-tool-slot="${name}"]`)
   const storeLoads = () => stream.mock.calls.filter(([cmd]) => cmd === 'store.load').length
-  return { ...view, stream, streams, posted, reply, answer, toViews, show, slot, storeLoads }
+  return { ...view, stream, streams, posted, reply, emitError, emitMessageError, answer, toViews, show, slot, storeLoads }
 }
 
 describe('PatientsScreen: 불러오는 중', () => {
@@ -235,6 +247,73 @@ describe('PatientsScreen: [다시 불러오기]·도구 바꾸기', () => {
     expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-STORE-BROKEN')
   })
 
+})
+
+describe('PatientsScreen: Worker 오류 (AC-610.6)', () => {
+  const FAILED = errorInfo('E-ANALYZE-FAILED')
+  const expectCard = () => {
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain(FAILED.what)
+    expect(alert.textContent).toContain('오류 번호 E-ANALYZE-FAILED')
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+  }
+
+  it('AC-610.6: 읽는 중에 error가 나면 F/U·정기 주사 두 도구 모두 E-ANALYZE-FAILED 카드와 [다시 불러오기]이고 읽는 중 글이 없다', async () => {
+    const t = setup('followup')
+    await t.answer('store-1')
+    await t.reply({ type: 'stored', ok: true, recall: [] })
+    await t.reply({ type: 'plan', followup: [R1], recall: [M1] })
+    expect(screen.getByRole('status').textContent).toContain(FU_LOADING)
+
+    const event = await t.emitError()
+    expectCard()
+    expect(event.defaultPrevented).toBe(true)
+    t.show('recall')
+    expectCard()
+    expect(screen.getByRole('heading', { level: 2, name: '정기 주사 문자 명단' })).toBeTruthy()
+    t.show('messages')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(sb.upserts).toEqual([])
+  })
+
+  it('AC-610.6: 다 읽은 뒤에 error가 나도 명단 대신 두 도구 모두 카드이고 건수를 올리지 않는다', async () => {
+    const t = setup('recall')
+    // 건수 올리기가 끝나지 않게 잡아 두고, 오류 뒤에 새로 올리지 않는지 본다
+    sb.hold = new Promise(() => {})
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: { followup_left: 1, injection_left: 2 }, codes: {} })
+    expect(t.slot('recall')).not.toBeNull()
+    const uploads = sb.upserts.length
+
+    await t.emitError()
+    expectCard()
+    expect(t.slot('recall')).toBeNull()
+    t.show('followup')
+    expectCard()
+    expect(t.slot('followup')).toBeNull()
+    await flush()
+    expect(sb.upserts).toHaveLength(uploads)
+  })
+
+  it('AC-610.6: messageerror도 같다', async () => {
+    const t = setup('followup')
+    await t.emitMessageError()
+    expectCard()
+    t.show('recall')
+    expectCard()
+  })
+
+  it('AC-610.6: 오류를 낸 Worker로는 다시 읽지 않는다 — 카드의 [다시 불러오기]가 그 Worker에 reload·store.load를 보내지 않는다(새 Worker는 PatientsEntry 시험)', async () => {
+    const user = userEvent.setup()
+    const t = setup('followup')
+    await t.emitError()
+    t.posted.length = 0
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    await flush()
+    expect(t.posted).toEqual([])
+    expect(t.storeLoads()).toBe(1)
+    expectCard()
+  })
 })
 
 describe('PatientsScreen: F/U 도구 자리 (AC-611)', () => {

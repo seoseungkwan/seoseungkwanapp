@@ -90,7 +90,10 @@ function BusyNotice({ onRetry, onCountsOnly }: { onRetry(): void; onCountsOnly()
   )
 }
 
-/** Worker가 생긴 뒤에 그린다: useBridge는 처음부터 같은 Worker로 한 번만 붙는다 */
+/**
+ * Worker가 생긴 뒤에 그린다: useBridge는 처음부터 같은 Worker로 붙는다(Worker 오류가 없으면 한 번).
+ * Worker 오류 뒤 [다시 불러오기]로 새 Worker가 오면 useBridge가 새 통로 포트로 다시 붙고(연결 중 → ready), ready에서 명단 자리를 새로 그린다(AC-610.6)
+ */
 function Connected({ tool, worker }: { tool: PatientsTool; worker: Worker }) {
   const { state, helloError, retry, stream } = useBridge({ worker })
   const [countsOnly, setCountsOnly] = useState(false)

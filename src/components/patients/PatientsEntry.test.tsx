@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useBridge } from '@/components/claim/useBridge'
+import { PROTOCOL } from '@/lib/bridge/protocol'
+import { LATEST_HELPER, MIN_EXTENSION } from '@/lib/bridge/versions'
 import { errorInfo } from '@/lib/errors'
 import { readContactCount } from '@/lib/storage/contactCounts'
 import type { BridgeState } from '@/types/bridge'
@@ -34,17 +36,38 @@ const stream = vi.fn()
 const call = vi.fn()
 const made: FakeWorker[] = []
 
+/** 전역 Worker 자리의 가짜. 스크립트를 못 불러온 Worker처럼 받은 메시지에 답하지 않는다. fire로 error·messageerror를 낸다 */
 class FakeWorker {
   posted: unknown[] = []
   terminate = vi.fn()
+  private listeners = new Map<string, Set<(event: Event) => void>>()
   constructor() {
     made.push(this)
   }
   postMessage(message: unknown) {
     this.posted.push(message)
   }
-  addEventListener() {}
-  removeEventListener() {}
+  private of(type: string) {
+    let set = this.listeners.get(type)
+    if (!set) this.listeners.set(type, (set = new Set()))
+    return set
+  }
+  addEventListener(type: string, listener: (event: Event) => void) {
+    this.of(type).add(listener)
+  }
+  removeEventListener(type: string, listener: (event: Event) => void) {
+    this.of(type).delete(listener)
+  }
+  listenerCount() {
+    return [...this.listeners.values()].reduce((n, set) => n + set.size, 0)
+  }
+  fire(type: 'error' | 'messageerror') {
+    const event = new Event(type, { cancelable: true })
+    act(() => {
+      for (const listener of [...this.of(type)]) listener(event)
+    })
+    return event
+  }
 }
 
 function withState(state: BridgeState, helloError: string | null = null) {
@@ -280,6 +303,193 @@ describe('PatientsEntry: 연결 중·연결됨', () => {
     rerender(<PatientsEntry tool="followup" />)
     expect(stream.mock.calls.filter(([cmd]) => cmd === 'store.load')).toHaveLength(1)
     expect(made).toHaveLength(1)
+  })
+})
+
+describe('PatientsEntry: Worker 오류 (AC-610.6)', () => {
+  const FAILED = errorInfo('E-ANALYZE-FAILED')
+  const FU_LOADING = '비트에서 F/U 명단을 읽는 중이에요'
+  const CONNECTING = '비트 PC 연결을 확인하는 중이에요'
+  const storeLoads = () => stream.mock.calls.filter(([cmd]) => cmd === 'store.load').length
+  const expectCard = () => {
+    expect(screen.getByRole('alert').textContent).toContain(FAILED.what)
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-ANALYZE-FAILED')
+    expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(screen.queryByText(FU_LOADING)).toBeNull()
+  }
+
+  it.each<[BridgeState, string]>([
+    ['no-extension', COUNTS_TITLE],
+    ['no-helper', CONNECT_TITLE],
+    ['disconnected', CONNECT_TITLE],
+    ['busy', BUSY_TITLE],
+    ['connecting', ''],
+  ])('AC-610.6: 통로가 %s인 동안 Worker가 error를 내도 그 화면 그대로다. ready가 되어 명단 자리를 그리면 store.load 없이 E-ANALYZE-FAILED 카드다', async (state, title) => {
+    withState(state)
+    const { rerender } = render(<PatientsEntry tool="followup" />)
+    const event = made[0]!.fire('error')
+    rerender(<PatientsEntry tool="followup" />)
+    if (title) expect(await screen.findByRole('heading', { level: 2, name: title })).toBeTruthy()
+    else expect(screen.getByRole('status').textContent).toBe(CONNECTING)
+    expect(screen.queryByText(FAILED.what)).toBeNull()
+
+    withState('ready')
+    rerender(<PatientsEntry tool="followup" />)
+    expectCard()
+    rerender(<PatientsEntry tool="recall" />)
+    expectCard()
+    expect(storeLoads()).toBe(0)
+    expect(made).toHaveLength(1)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('AC-610.6: 통로가 열리기 전의 messageerror도 같다', () => {
+    withState('connecting')
+    const { rerender } = render(<PatientsEntry tool="followup" />)
+    made[0]!.fire('messageerror')
+    withState('ready')
+    rerender(<PatientsEntry tool="followup" />)
+    expectCard()
+    expect(storeLoads()).toBe(0)
+  })
+
+  it('AC-610.6: 읽는 중에 error → 카드. 통로가 끊겼다 다시 ready가 되어 명단 자리를 다시 그려도 store.load를 부르지 않고 카드다', () => {
+    withState('ready')
+    const { rerender } = render(<PatientsEntry tool="followup" />)
+    expect(storeLoads()).toBe(1)
+    expect(screen.getByText(FU_LOADING)).toBeTruthy()
+    const event = made[0]!.fire('error')
+    expectCard()
+    expect(event.defaultPrevented).toBe(true)
+
+    withState('disconnected')
+    rerender(<PatientsEntry tool="followup" />)
+    expect(heading2(CONNECT_TITLE)).toBeTruthy()
+    withState('ready')
+    rerender(<PatientsEntry tool="followup" />)
+    expectCard()
+    expect(storeLoads()).toBe(1)
+    expect(made).toHaveLength(1)
+  })
+
+  it('AC-610.6: 카드의 [다시 불러오기]는 오류를 낸 Worker를 끝내고 새 Worker를 만들어 통로에 넘긴다. 연결 중 → ready에서 store.load부터 다시 읽고, 새 Worker도 오류면 다시 카드다', async () => {
+    const user = userEvent.setup()
+    withState('ready')
+    const { rerender } = render(<PatientsEntry tool="followup" />)
+    made[0]!.fire('error')
+    expectCard()
+
+    // 새 Worker로 다시 붙는 동안은 연결 중이다(진짜 통로는 아래 시험)
+    withState('connecting')
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    expect(made).toHaveLength(2)
+    expect(made[0]!.terminate).toHaveBeenCalledTimes(1)
+    expect(made[0]!.listenerCount()).toBe(0)
+    expect(made[1]!.terminate).not.toHaveBeenCalled()
+    expect(bridge.mock.calls[bridge.mock.calls.length - 1]![0]?.worker).toBe(made[1])
+    // 스크립트를 못 불러온 Worker는 다시 쓰지 않는다: 옛 Worker에도 새 Worker에도 reload를 보내지 않는다
+    expect(made[0]!.posted).toEqual([])
+    expect(made[1]!.posted).toEqual([])
+    expect(screen.getByRole('status').textContent).toBe(CONNECTING)
+    expect(storeLoads()).toBe(1)
+
+    withState('ready')
+    rerender(<PatientsEntry tool="followup" />)
+    expect(storeLoads()).toBe(2)
+    expect(screen.getByText(FU_LOADING)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    made[1]!.fire('error')
+    expectCard()
+    expect(made).toHaveLength(2)
+  })
+
+  describe('진짜 useBridge로', () => {
+    class FakePort {
+      sent: Record<string, unknown>[] = []
+      disconnected = false
+      private messageFns: ((m: unknown) => void)[] = []
+      private disconnectFns: (() => void)[] = []
+      onMessage = { addListener: (fn: (m: unknown) => void) => void this.messageFns.push(fn) }
+      onDisconnect = { addListener: (fn: () => void) => void this.disconnectFns.push(fn) }
+      postMessage(m: unknown) {
+        if (this.disconnected) throw new Error('Attempting to use a disconnected port object')
+        this.sent.push(m as Record<string, unknown>)
+      }
+      disconnect() {
+        this.disconnected = true
+      }
+      reply(m: unknown) {
+        act(() => {
+          for (const fn of this.messageFns) fn(m)
+        })
+      }
+      helloOk() {
+        const hello = this.sent.find((m) => m.cmd === 'hello')!
+        this.reply({ v: PROTOCOL, id: hello.id, type: 'result', data: { helperVersion: LATEST_HELPER, protocol: PROTOCOL, extensionVersion: MIN_EXTENSION, extensionProtocol: PROTOCOL } })
+      }
+      busy() {
+        act(() => {
+          for (const fn of this.messageFns) fn({ v: PROTOCOL, id: '', type: 'error', code: 'E-BRIDGE-BUSY' })
+          this.disconnected = true
+          for (const fn of this.disconnectFns) fn()
+        })
+      }
+      cmds() {
+        return this.sent.map((m) => m.cmd)
+      }
+    }
+
+    async function connectedWithDeadWorker() {
+      const { useBridge: real } = await vi.importActual<typeof import('@/components/claim/useBridge')>('@/components/claim/useBridge')
+      bridge.mockImplementation(real)
+      const ports: FakePort[] = []
+      vi.stubGlobal('chrome', {
+        runtime: {
+          connect: () => {
+            const port = new FakePort()
+            ports.push(port)
+            return port
+          },
+        },
+      })
+      const user = userEvent.setup()
+      render(<PatientsEntry tool="followup" />)
+      await act(async () => {})
+      ports[0]!.helloOk()
+      expect(await screen.findByText(FU_LOADING)).toBeTruthy()
+      expect(ports[0]!.cmds()).toEqual(['hello', 'store.load'])
+      made[0]!.fire('error')
+      expectCard()
+      await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+      await act(async () => {})
+      return ports
+    }
+
+    it('AC-610.6: 새 Worker에는 통로 포트를 새로 주고 확장 연결도 새로 연다(옛 연결은 닫는다). 연결 중 → ready에서 새 연결로 store.load부터 읽는다', async () => {
+      const ports = await connectedWithDeadWorker()
+      expect(made).toHaveLength(2)
+      expect(made[0]!.terminate).toHaveBeenCalledTimes(1)
+      expect(made[0]!.posted).toEqual([{ type: 'bridge-port' }])
+      expect(made[1]!.posted).toEqual([{ type: 'bridge-port' }])
+      expect(ports).toHaveLength(2)
+      expect(ports[0]!.disconnected).toBe(true)
+      expect(ports[0]!.cmds()).toEqual(['hello', 'store.load'])
+      expect(screen.getByRole('status').textContent).toBe(CONNECTING)
+
+      ports[1]!.helloOk()
+      expect(await screen.findByText(FU_LOADING)).toBeTruthy()
+      expect(ports[1]!.cmds()).toEqual(['hello', 'store.load'])
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('AC-610.6: 새 연결이 E-BRIDGE-BUSY면 AC-610.4의 다른 창 안내다', async () => {
+      const ports = await connectedWithDeadWorker()
+      ports[1]!.busy()
+      expect(await screen.findByRole('heading', { level: 2, name: BUSY_TITLE })).toBeTruthy()
+      expect(screen.getByRole('button', { name: '건수만 보기' })).toBeTruthy()
+      expect(ports[1]!.cmds()).toEqual(['hello'])
+    })
   })
 })
 
