@@ -36,6 +36,8 @@ export type WorklogCellKey = WorklogNumberKey | WorklogNoteKey | WorklogNameKey 
 export type WorklogDay = Record<WorklogCellKey, string>
 /** 저장에 넘기는 바뀐 칸만 */
 export type WorklogChanges = Partial<WorklogDay>
+/** 서버에서 읽은 하루: 칸 값 + 비트에서 불러온 칸 목록(bit_fields, design.md 20-4절) */
+export type WorklogSavedDay = { day: WorklogDay; bitFields: WorklogNumberKey[] }
 /** 칸 글자에서 읽은 숫자(합계 계산의 입력). 숫자로 읽히지 않은 칸은 null */
 export type WorklogNumbers = Record<WorklogNumberKey, number | null>
 export type WorklogTotals = { visits: number; received: number; spent: number; net: number }

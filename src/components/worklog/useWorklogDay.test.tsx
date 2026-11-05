@@ -3,7 +3,13 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
-import { emptyWorklogDay, type WorklogCellKey, type WorklogDay } from '@/types/worklog'
+import {
+  emptyWorklogDay,
+  type WorklogCellKey,
+  type WorklogDay,
+  type WorklogNumberKey,
+  type WorklogSavedDay,
+} from '@/types/worklog'
 import { useWorklogDay } from './useWorklogDay'
 import { worklogAutosave } from './worklogSession'
 
@@ -20,11 +26,16 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => client }))
 const DAY = '2026-10-28'
 const OTHER = '2026-10-27'
 const save = vi.mocked(saveWorklogDay)
-const load = vi.fn<(ymd: string) => Promise<WorklogDay | null>>()
+const load = vi.fn<(ymd: string) => Promise<WorklogSavedDay | null>>()
 let focused: WorklogCellKey | null = null
 const focusKey = () => focused
 
 const dayWith = (cells: Partial<WorklogDay> = {}): WorklogDay => ({ ...emptyWorklogDay(), ...cells })
+// 읽기가 돌려주는 모양(AC-016.1). 비트 칸 목록은 비트 표시 전(TASK-17)까지 화면 값에 섞이지 않는다
+const saved = (cells: Partial<WorklogDay> = {}, bitFields: WorklogNumberKey[] = []): WorklogSavedDay => ({
+  day: dayWith(cells),
+  bitFields,
+})
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -47,7 +58,7 @@ async function settle(ms = 0) {
 }
 
 async function ready(ymd = DAY, cells: Partial<WorklogDay> = {}) {
-  load.mockResolvedValueOnce(dayWith(cells))
+  load.mockResolvedValueOnce(saved(cells))
   const view = setup(ymd)
   await settle()
   expect(view.result.current.status).toBe('ready')
@@ -71,7 +82,7 @@ afterEach(() => {
 
 describe('AC-010.1 처음 읽기', () => {
   it('AC-010.1: 읽는 동안 loading이고 빈 하루이며, 다 읽으면 ready이고 서버 값이다', async () => {
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     const { result } = setup()
     expect(result.current.status).toBe('loading')
@@ -79,7 +90,7 @@ describe('AC-010.1 처음 읽기', () => {
     expect(load).toHaveBeenCalledTimes(1)
     expect(load).toHaveBeenCalledWith(DAY)
 
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000', memo: '가상 글' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000', memo: '가상 글' })))
 
     expect(result.current.status).toBe('ready')
     expect(result.current.day).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
@@ -94,29 +105,29 @@ describe('AC-010.1 처음 읽기', () => {
   })
 
   it('AC-010.1: StrictMode로 효과가 두 번 돌아도 마지막 응답으로 열린다', async () => {
-    const first = deferred<WorklogDay | null>()
-    const second = deferred<WorklogDay | null>()
+    const first = deferred<WorklogSavedDay | null>()
+    const second = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
     const { result } = renderHook(() => useWorklogDay(DAY, load, focusKey), { wrapper: StrictMode })
     expect(load).toHaveBeenCalledTimes(2)
 
-    await act(async () => first.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => first.resolve(saved({ cashIn: '100000' })))
     expect(result.current.status).toBe('loading')
 
-    await act(async () => second.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => second.resolve(saved({ cashIn: '200000' })))
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('200000')
   })
 
   it('AC-010.4: 자동 저장에 저장 안 된 값이 있으면 읽기 전에 그 값을 먼저 보인다', async () => {
     worklogAutosave().change(DAY, dayWith({ cashIn: '100000' }))
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     const { result } = setup()
     expect(result.current.status).toBe('loading')
     expect(result.current.day.cashIn).toBe('100000')
 
-    await act(async () => reply.resolve(dayWith({ memo: '가상 글' })))
+    await act(async () => reply.resolve(saved({ memo: '가상 글' })))
 
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('100000')
@@ -127,7 +138,7 @@ describe('AC-010.1 처음 읽기', () => {
     const autosave = worklogAutosave()
     autosave.change(DAY, dayWith({ cashIn: '100000' }))
     autosave.flush()
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     const { result, rerender } = setup()
 
@@ -148,8 +159,8 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     autosave.change(DAY, dayWith({ cashIn: '100000' }))
     autosave.flush()
 
-    const old = deferred<WorklogDay | null>()
-    const fresh = deferred<WorklogDay | null>()
+    const old = deferred<WorklogSavedDay | null>()
+    const fresh = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
     const serverDay = vi.spyOn(autosave, 'serverDay')
     const { result } = setup()
@@ -161,7 +172,7 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     expect(result.current.status).toBe('loading')
     expect(load).toHaveBeenCalledTimes(2)
 
-    await act(async () => fresh.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => fresh.resolve(saved({ cashIn: '100000' })))
 
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('100000')
@@ -175,9 +186,9 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     autosave.change(DAY, dayWith({ cashIn: '100000' }))
     autosave.flush()
 
-    const one = deferred<WorklogDay | null>()
-    const two = deferred<WorklogDay | null>()
-    const three = deferred<WorklogDay | null>()
+    const one = deferred<WorklogSavedDay | null>()
+    const two = deferred<WorklogSavedDay | null>()
+    const three = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(one.promise).mockReturnValueOnce(two.promise).mockReturnValueOnce(three.promise)
     const { result } = setup()
 
@@ -190,11 +201,11 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     autosave.change(DAY, dayWith({ cashIn: '200000' }))
     autosave.flush()
     await act(async () => secondSave.resolve())
-    await act(async () => two.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => two.resolve(saved({ cashIn: '100000' })))
     expect(load).toHaveBeenCalledTimes(3)
     expect(result.current.status).toBe('loading')
 
-    await act(async () => three.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => three.resolve(saved({ cashIn: '200000' })))
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('200000')
   })
@@ -207,11 +218,11 @@ describe('AC-010.8 읽기 실패', () => {
     await settle()
     expect(result.current.status).toBe('error')
 
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     act(() => result.current.reload())
     expect(result.current.status).toBe('loading')
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000' })))
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('100000')
   })
@@ -226,7 +237,7 @@ describe('AC-010.8 읽기 실패', () => {
     await settle()
     expect(result.current.status).toBe('ready')
 
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     rerender({ ymd: DAY })
     expect(result.current.status).toBe('loading')
@@ -244,7 +255,7 @@ describe('AC-010.8 읽기 실패', () => {
   })
 
   it('AC-010.8: 읽는 중에는 refresh가 읽지 않는다(ready인 날만)', () => {
-    load.mockReturnValueOnce(deferred<WorklogDay | null>().promise)
+    load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)
     const { result } = setup()
     act(() => result.current.refresh())
     expect(load).toHaveBeenCalledTimes(1)
@@ -283,22 +294,22 @@ describe('AC-010.3 칸 바꾸기', () => {
 describe('AC-010.4 날짜 옮김', () => {
   it('AC-010.4: 처음 여는 날은 읽는 동안 loading이고 옛 날짜의 값이 보이지 않는다', async () => {
     const { result, rerender } = await ready(DAY, { cashIn: '100000' })
-    load.mockReturnValueOnce(deferred<WorklogDay | null>().promise)
+    load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)
     rerender({ ymd: OTHER })
     expect(result.current.status).toBe('loading')
     expect(result.current.day).toEqual(emptyWorklogDay())
   })
 
   it('AC-010.4: 늦게 온 옛 읽기 응답은 버린다', async () => {
-    const late = deferred<WorklogDay | null>()
-    const now = deferred<WorklogDay | null>()
+    const late = deferred<WorklogSavedDay | null>()
+    const now = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(late.promise).mockReturnValueOnce(now.promise)
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
     const { result, rerender } = setup(DAY)
     rerender({ ymd: OTHER })
 
-    await act(async () => now.resolve(dayWith({ cashIn: '200000' })))
-    await act(async () => late.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => now.resolve(saved({ cashIn: '200000' })))
+    await act(async () => late.resolve(saved({ cashIn: '100000' })))
 
     expect(result.current.day.cashIn).toBe('200000')
     expect(serverDay).toHaveBeenCalledTimes(1)
@@ -307,9 +318,9 @@ describe('AC-010.4 날짜 옮김', () => {
   })
 
   it('AC-010.4: 응답 전에 떠난 날로 돌아오면 다시 읽고, 옛 응답은 버린다', async () => {
-    const first = deferred<WorklogDay | null>()
-    const other = deferred<WorklogDay | null>()
-    const again = deferred<WorklogDay | null>()
+    const first = deferred<WorklogSavedDay | null>()
+    const other = deferred<WorklogSavedDay | null>()
+    const again = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(first.promise).mockReturnValueOnce(other.promise).mockReturnValueOnce(again.promise)
     const { result, rerender } = setup(DAY)
     rerender({ ymd: OTHER })
@@ -317,10 +328,10 @@ describe('AC-010.4 날짜 옮김', () => {
     expect(load).toHaveBeenCalledTimes(3)
     expect(result.current.status).toBe('loading')
 
-    await act(async () => first.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => first.resolve(saved({ cashIn: '100000' })))
     expect(result.current.status).toBe('loading')
 
-    await act(async () => again.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => again.resolve(saved({ cashIn: '200000' })))
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('200000')
   })
@@ -330,7 +341,7 @@ describe('AC-010.4 날짜 옮김', () => {
     rerender({ ymd: OTHER })
     await settle()
 
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     rerender({ ymd: DAY })
 
@@ -338,22 +349,22 @@ describe('AC-010.4 날짜 옮김', () => {
     expect(result.current.day.cashIn).toBe('100000')
     expect(load).toHaveBeenLastCalledWith(DAY)
 
-    await act(async () => reply.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '200000' })))
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('200000')
   })
 
   it('AC-010.4: 다시 읽기 중 다른 날로 옮기면 그 응답은 지금 날에 들어가지 않는다', async () => {
     const { result, rerender } = await ready(DAY, { cashIn: '100000' })
-    const late = deferred<WorklogDay | null>()
+    const late = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(late.promise)
     act(() => result.current.refresh())
-    load.mockResolvedValueOnce(dayWith({ cashIn: '300000' }))
+    load.mockResolvedValueOnce(saved({ cashIn: '300000' }))
     rerender({ ymd: OTHER })
     await settle()
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
 
-    await act(async () => late.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => late.resolve(saved({ cashIn: '200000' })))
 
     expect(result.current.day.cashIn).toBe('300000')
     expect(serverDay).not.toHaveBeenCalled()
@@ -369,7 +380,7 @@ describe('AC-010.13 다시 읽기', () => {
     const change = vi.spyOn(autosave, 'change')
     focused = 'cardIn'
     const server = dayWith({ cashIn: '200000', cardIn: '200000' })
-    load.mockResolvedValueOnce(server)
+    load.mockResolvedValueOnce({ day: server, bitFields: ['cashIn'] })
 
     act(() => result.current.refresh())
     await settle(60_000)
@@ -390,7 +401,7 @@ describe('AC-010.13 다시 읽기', () => {
       day = result.current.setCell('cardIn', '300000')
     })
     worklogAutosave().change(DAY, day as WorklogDay)
-    load.mockResolvedValueOnce(dayWith({ cashIn: '200000', cardIn: '200000' }))
+    load.mockResolvedValueOnce(saved({ cashIn: '200000', cardIn: '200000' }))
 
     act(() => result.current.refresh())
     await settle()
@@ -401,14 +412,14 @@ describe('AC-010.13 다시 읽기', () => {
 
   it('AC-010.13: 겹친 다시 읽기는 마지막 요청의 응답만 쓴다', async () => {
     const { result } = await ready(DAY, { cashIn: '100000' })
-    const older = deferred<WorklogDay | null>()
-    const newer = deferred<WorklogDay | null>()
+    const older = deferred<WorklogSavedDay | null>()
+    const newer = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise)
     act(() => result.current.refresh())
     act(() => result.current.refresh())
 
-    await act(async () => newer.resolve(dayWith({ cashIn: '300000' })))
-    await act(async () => older.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => newer.resolve(saved({ cashIn: '300000' })))
+    await act(async () => older.resolve(saved({ cashIn: '200000' })))
 
     expect(result.current.day.cashIn).toBe('300000')
   })
@@ -424,7 +435,7 @@ describe('AC-010.13 다시 읽기', () => {
     expect(result.current.status).toBe('ready')
     expect(result.current.day.cashIn).toBe('100000')
 
-    load.mockResolvedValueOnce(dayWith({ cashIn: '200000' }))
+    load.mockResolvedValueOnce(saved({ cashIn: '200000' }))
     act(() => result.current.refresh())
     await settle()
     expect(result.current.day.cashIn).toBe('200000')
@@ -433,7 +444,7 @@ describe('AC-010.13 다시 읽기', () => {
   it('AC-010.14: 읽기를 시작한 뒤 그 날 저장이 오갔으면 응답을 버린다', async () => {
     const { result } = await ready(DAY, { cashIn: '100000' })
     const autosave = worklogAutosave()
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     act(() => result.current.refresh())
 
@@ -446,7 +457,7 @@ describe('AC-010.13 다시 읽기', () => {
     await settle()
 
     const serverDay = vi.spyOn(autosave, 'serverDay')
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000', memo: '가상 옛 글' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000', memo: '가상 옛 글' })))
 
     expect(serverDay).not.toHaveBeenCalled()
     expect(result.current.day.cashIn).toBe('200000')
@@ -459,7 +470,7 @@ describe('AC-010.13 다시 읽기', () => {
 describe('AC-010.12 지우기', () => {
   it('AC-010.12: clear하면 값이 비고 잠기며, 그 뒤 온 읽기 응답은 버린다', async () => {
     const { result } = await ready(DAY, { cashIn: '100000', memo: '가상 글' })
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     act(() => result.current.refresh())
     const autosave = worklogAutosave()
@@ -470,19 +481,19 @@ describe('AC-010.12 지우기', () => {
     expect(result.current.day).toEqual(emptyWorklogDay())
 
     const serverDay = vi.spyOn(autosave, 'serverDay')
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000', memo: '가상 글' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000', memo: '가상 글' })))
     expect(result.current.day).toEqual(emptyWorklogDay())
     expect(serverDay).not.toHaveBeenCalled()
     serverDay.mockRestore()
   })
 
   it('AC-010.12: 첫 읽기 중 clear해도 응답이 칸을 채우지 않는다', async () => {
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     const { result } = setup()
 
     act(() => result.current.clear())
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000' })))
 
     expect(result.current.status).toBe('loading')
     expect(result.current.day).toEqual(emptyWorklogDay())
@@ -490,7 +501,7 @@ describe('AC-010.12 지우기', () => {
   })
 
   it('AC-010.12: 첫 읽기가 실패해도 clear 뒤에는 오류 상태가 되지 않는다', async () => {
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     const { result } = setup()
 
@@ -531,13 +542,13 @@ describe('AC-010.12 지우기', () => {
 
 describe('AC-010.11 화면이 내려감', () => {
   it('AC-010.11: 내려간 뒤 온 읽기 응답은 자동 저장 제어에 넘기지 않는다', async () => {
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
     const { unmount } = setup()
 
     unmount()
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000' })))
 
     expect(serverDay).not.toHaveBeenCalled()
     serverDay.mockRestore()
@@ -545,15 +556,55 @@ describe('AC-010.11 화면이 내려감', () => {
 
   it('AC-010.11: 내려간 뒤 끝난 다시 읽기도 넘기지 않는다', async () => {
     const { result, unmount } = await ready(DAY, { cashIn: '100000' })
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     act(() => result.current.refresh())
     const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
 
     unmount()
-    await act(async () => reply.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '200000' })))
 
     expect(serverDay).not.toHaveBeenCalled()
+    serverDay.mockRestore()
+  })
+})
+
+describe('AC-016.1 읽기 모양 { day, bitFields }', () => {
+  it('AC-016.1: 처음 읽기는 읽은 day만 serverDay에 넘기고, 화면 값에 비트 칸 목록이 섞이지 않는다', async () => {
+    const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
+    load.mockResolvedValueOnce(saved({ cashIn: '100000', memo: '가상 글' }, ['cashIn', 'newPatients']))
+    const { result } = setup()
+    await settle()
+
+    expect(result.current.status).toBe('ready')
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '100000', memo: '가상 글' }), null)
+    expect(result.current.day).toEqual(dayWith({ cashIn: '100000', memo: '가상 글' }))
+    expect(result.current.day).not.toHaveProperty('bitFields')
+    expect(save).not.toHaveBeenCalled()
+    serverDay.mockRestore()
+  })
+
+  it('AC-016.1: 줄이 없는 날(null)은 serverDay에 null을 넘겨 빈 하루다', async () => {
+    const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
+    load.mockResolvedValueOnce(null)
+    const { result } = setup()
+    await settle()
+
+    expect(serverDay).toHaveBeenCalledWith(DAY, null, null)
+    expect(result.current.day).toEqual(emptyWorklogDay())
+    serverDay.mockRestore()
+  })
+
+  it('AC-016.1: 다시 읽기도 읽은 day만 serverDay에 넘긴다', async () => {
+    const { result } = await ready(DAY, { cashIn: '100000' })
+    const serverDay = vi.spyOn(worklogAutosave(), 'serverDay')
+    load.mockResolvedValueOnce(saved({ cashIn: '200000' }, ['cashIn']))
+
+    act(() => result.current.refresh())
+    await settle()
+
+    expect(serverDay).toHaveBeenCalledWith(DAY, dayWith({ cashIn: '200000' }), null)
+    expect(result.current.day).toEqual(dayWith({ cashIn: '200000' }))
     serverDay.mockRestore()
   })
 })

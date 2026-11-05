@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { emptyWorklogDay, type WorklogCellKey, type WorklogDay } from '@/types/worklog'
+import { emptyWorklogDay, type WorklogCellKey, type WorklogDay, type WorklogSavedDay } from '@/types/worklog'
 import { worklogAutosave } from './worklogSession'
 
 // 날짜별 화면 값과 읽기 상태 (specs/worklog/design.md 11-3절). 저장은 부르지 않는다: 받은 값을 화면에 두기만 하고 change는 화면이 부른다.
@@ -11,9 +11,12 @@ export type WorklogDayStatus = 'loading' | 'ready' | 'error'
 type Slot = { status: WorklogDayStatus; day: WorklogDay }
 type Slots = ReadonlyMap<string, Slot>
 
+// 읽기는 { day, bitFields }를 준다(AC-016.1). 비트 칸 목록은 비트 표시(TASK-17) 전까지 쓰지 않고 칸 값만 넘긴다
+const dayOf = (saved: WorklogSavedDay | null): WorklogDay | null => (saved === null ? null : saved.day)
+
 export function useWorklogDay(
   ymd: string,
-  load: (ymd: string) => Promise<WorklogDay | null>,
+  load: (ymd: string) => Promise<WorklogSavedDay | null>,
   focusKey: () => WorklogCellKey | null,
 ) {
   const autosave = worklogAutosave()
@@ -46,7 +49,7 @@ export function useWorklogDay(
       put(target, { status: 'loading', day: shown })
       for (;;) {
         const revision = autosave.revision(target)
-        let server: WorklogDay | null
+        let server: WorklogSavedDay | null
         try {
           server = await load(target)
         } catch {
@@ -55,7 +58,7 @@ export function useWorklogDay(
         }
         if (mine !== request.current) return
         if (autosave.revision(target) === revision) {
-          put(target, { status: 'ready', day: autosave.serverDay(target, server, null) })
+          put(target, { status: 'ready', day: autosave.serverDay(target, dayOf(server), null) })
           return
         }
       }
@@ -71,7 +74,7 @@ export function useWorklogDay(
     load(ymd).then(
       (server) => {
         if (mine !== request.current || autosave.revision(ymd) !== revision) return
-        put(ymd, { status: 'ready', day: autosave.serverDay(ymd, server, focusKey()) })
+        put(ymd, { status: 'ready', day: autosave.serverDay(ymd, dayOf(server), focusKey()) })
       },
       () => {},
     )

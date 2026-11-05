@@ -6,7 +6,7 @@ import { StrictMode } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadWorklogDay, saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
-import { emptyWorklogDay, type WorklogDay } from '@/types/worklog'
+import { emptyWorklogDay, type WorklogDay, type WorklogSavedDay } from '@/types/worklog'
 import { WorklogScreen } from './WorklogScreen'
 import { startWorklogSession, worklogAutosave } from './worklogSession'
 
@@ -37,6 +37,8 @@ const media = { touch: false, listeners: new Set<() => void>() }
 let emitAuth: (event: string) => void
 
 const dayWith = (cells: Partial<WorklogDay> = {}): WorklogDay => ({ ...emptyWorklogDay(), ...cells })
+// 읽기가 돌려주는 모양(AC-016.1). 비트 칸 목록은 비어 있다(비트 표시는 TASK-17)
+const saved = (cells: Partial<WorklogDay> = {}): WorklogSavedDay => ({ day: dayWith(cells), bitFields: [] })
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -55,7 +57,7 @@ async function settle(ms = 0) {
 }
 
 async function open(cells: Partial<WorklogDay> | null = null) {
-  load.mockResolvedValueOnce(cells === null ? null : dayWith(cells))
+  load.mockResolvedValueOnce(cells === null ? null : saved(cells))
   const view = render(<WorklogScreen initialToday={TODAY} />)
   await settle()
   return view
@@ -65,7 +67,7 @@ async function open(cells: Partial<WorklogDay> | null = null) {
 function serverByDate(values: Record<string, Partial<WorklogDay> | null>) {
   load.mockImplementation(async (_client, ymd) => {
     const cells = values[ymd]
-    return cells ? dayWith(cells) : null
+    return cells ? saved(cells) : null
   })
 }
 
@@ -138,7 +140,7 @@ afterEach(() => {
 
 describe('AC-010.1 열기', () => {
   it('AC-010.1: 받은 오늘의 양식으로 열리고, 다 읽기 전에는 칸이 읽기 전용이며 "불러오는 중이에요"다', async () => {
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     render(<WorklogScreen initialToday={TODAY} />)
 
@@ -150,7 +152,7 @@ describe('AC-010.1 열기', () => {
     expectLocked()
     expect(statusText()).toBe('불러오는 중이에요')
 
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000' })))
 
     expectOpen()
     expect(cell('현금수납').value).toBe('100,000원')
@@ -159,7 +161,7 @@ describe('AC-010.1 열기', () => {
   })
 
   it('AC-010.1: 읽는 동안 잠긴 칸은 고쳐지지 않고 저장도 부르지 않는다', async () => {
-    load.mockReturnValueOnce(deferred<WorklogDay | null>().promise)
+    load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)
     render(<WorklogScreen initialToday={TODAY} />)
     type('현금수납', '100000')
     await settle(5000)
@@ -177,7 +179,7 @@ describe('AC-010.1 열기', () => {
   })
 
   it('AC-010.1: StrictMode에서도 마지막 읽기로 열리고 저장을 부르지 않는다', async () => {
-    load.mockResolvedValue(dayWith({ cashIn: '100000' }))
+    load.mockResolvedValue(saved({ cashIn: '100000' }))
     render(
       <StrictMode>
         <WorklogScreen initialToday={TODAY} />
@@ -360,7 +362,7 @@ describe('AC-010.4 날짜 옮김·다시 읽기', () => {
 
   it('AC-010.4: 처음 여는 날은 읽는 동안 칸을 잠그고 옛 날짜 값을 보이지 않는다', async () => {
     await open({ cashIn: '100000' })
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
 
     fireEvent.click(button('전날'))
@@ -371,20 +373,20 @@ describe('AC-010.4 날짜 옮김·다시 읽기', () => {
     expect(statusText()).toBe('불러오는 중이에요')
     expect(screen.getByText('2026/10/27 화')).toBeTruthy()
 
-    await act(async () => reply.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '200000' })))
     expectOpen()
     expect(cell('현금수납').value).toBe('200,000원')
   })
 
   it('AC-010.4: 늦게 온 옛 날짜 응답은 버린다', async () => {
-    const late = deferred<WorklogDay | null>()
-    const now = deferred<WorklogDay | null>()
+    const late = deferred<WorklogSavedDay | null>()
+    const now = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(late.promise).mockReturnValueOnce(now.promise)
     render(<WorklogScreen initialToday={TODAY} />)
     fireEvent.click(button('전날'))
 
-    await act(async () => now.resolve(dayWith({ cashIn: '200000' })))
-    await act(async () => late.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => now.resolve(saved({ cashIn: '200000' })))
+    await act(async () => late.resolve(saved({ cashIn: '100000' })))
 
     expect(cell('현금수납').value).toBe('200,000원')
     expect(dateInput().value).toBe(PAST)
@@ -396,7 +398,7 @@ describe('AC-010.4 날짜 옮김·다시 읽기', () => {
     fireEvent.click(button('전날'))
     await settle()
 
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     fireEvent.click(button('오늘로'))
 
@@ -404,7 +406,7 @@ describe('AC-010.4 날짜 옮김·다시 읽기', () => {
     expectOpen()
     expect(cell('현금수납').value).toBe('100,000원')
 
-    await act(async () => reply.resolve(dayWith({ cashIn: '200000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '200000' })))
     expect(cell('현금수납').value).toBe('200,000원')
   })
 
@@ -412,7 +414,7 @@ describe('AC-010.4 날짜 옮김·다시 읽기', () => {
     await open({ cashIn: '100000' })
     expect(load).toHaveBeenCalledTimes(1)
 
-    load.mockResolvedValue(dayWith({ cashIn: '100000' }))
+    load.mockResolvedValue(saved({ cashIn: '100000' }))
     await settle(59_999)
     expect(load).toHaveBeenCalledTimes(1)
     await settle(1)
@@ -424,7 +426,7 @@ describe('AC-010.4 날짜 옮김·다시 읽기', () => {
     await settle(180_000)
     expect(load).toHaveBeenCalledTimes(3)
 
-    load.mockResolvedValue(dayWith({ cashIn: '200000' }))
+    load.mockResolvedValue(saved({ cashIn: '200000' }))
     setVisibility('visible')
     expect(load).toHaveBeenCalledTimes(4)
     expect(load).toHaveBeenLastCalledWith(client, TODAY)
@@ -625,7 +627,7 @@ describe('AC-010.7 터치 기기는 보기만', () => {
     await open({})
     expect(statusText()).toBe('휴대폰에서는 보기만 할 수 있어요')
 
-    load.mockResolvedValue(dayWith({ cashIn: '100000' }))
+    load.mockResolvedValue(saved({ cashIn: '100000' }))
     await settle(60_000)
     expect(cell('현금수납').value).toBe('100,000원')
     expect(statusText()).toBe('휴대폰에서는 보기만 할 수 있어요')
@@ -634,7 +636,7 @@ describe('AC-010.7 터치 기기는 보기만', () => {
   it('AC-010.7: 터치 기기도 다시 읽기를 한다', async () => {
     media.touch = true
     await open({ memo: '가상 옛 글' })
-    load.mockResolvedValue(dayWith({ memo: '가상 새 글' }))
+    load.mockResolvedValue(saved({ memo: '가상 새 글' }))
     await settle(60_000)
     expect(cell('업무사항').value).toBe('가상 새 글')
     expect(save).not.toHaveBeenCalled()
@@ -675,7 +677,7 @@ describe('AC-010.8 불러오기 실패', () => {
     expect(cardCodes()).toEqual(['E-WORKLOG-LOAD-FAILED'])
     expect(statusText()).toBe('')
 
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     fireEvent.click(button('다시 불러오기'))
 
@@ -684,7 +686,7 @@ describe('AC-010.8 불러오기 실패', () => {
     expect(cardCodes()).toEqual([])
     expectLocked()
 
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000' })))
     expectOpen()
     expect(cell('현금수납').value).toBe('100,000원')
   })
@@ -729,7 +731,7 @@ describe('AC-010.11 앱 안 이동', () => {
     await settle(2000)
     expect(save).toHaveBeenCalledTimes(2)
 
-    load.mockReturnValueOnce(deferred<WorklogDay | null>().promise)
+    load.mockReturnValueOnce(deferred<WorklogSavedDay | null>().promise)
     render(<WorklogScreen initialToday={TODAY} />)
     expect(cell('현금수납').value).toBe('100,000원')
     expect(statusText()).toBe('저장하는 중이에요')
@@ -805,12 +807,12 @@ describe('AC-010.12 로그아웃', () => {
   })
 
   it('AC-010.12: 그 뒤 온 읽기 응답이 칸을 채우지 않는다', async () => {
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     render(<WorklogScreen initialToday={TODAY} />)
 
     signOut()
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000', memo: '가상 업무 글' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000', memo: '가상 업무 글' })))
 
     expect(cell('현금수납').value).toBe('')
     expect(cell('업무사항').value).toBe('')
@@ -819,13 +821,13 @@ describe('AC-010.12 로그아웃', () => {
 
   it('AC-010.12: 다시 읽는 중 로그아웃해도 그 응답이 칸을 채우지 않는다', async () => {
     await open({ cashIn: '100000' })
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     await settle(60_000)
     expect(load).toHaveBeenCalledTimes(2)
 
     signOut()
-    await act(async () => reply.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => reply.resolve(saved({ cashIn: '100000' })))
 
     expect(cell('현금수납').value).toBe('')
   })
@@ -915,7 +917,7 @@ describe('AC-010.12 로그아웃', () => {
 describe('AC-010.13 다시 읽은 값 반영', () => {
   it('AC-010.13: 다른 PC 값이 칸·업무사항·항목 이름·자동 칸에 반영되고, 저장을 부르지 않는다', async () => {
     await open({ cashIn: '100000', memo: '가상 옛 글' })
-    load.mockResolvedValue(dayWith({ cashIn: '300000', memo: '가상 새 글', nameCashIn: '가상 항목' }))
+    load.mockResolvedValue(saved({ cashIn: '300000', memo: '가상 새 글', nameCashIn: '가상 항목' }))
 
     await settle(60_000)
 
@@ -937,7 +939,7 @@ describe('AC-010.13 다시 읽은 값 반영', () => {
     focusOn(focused)
     type('카드수납', '200000')
 
-    load.mockResolvedValue(dayWith({ cashIn: '300000', cardIn: '300000', transferIn: '300000' }))
+    load.mockResolvedValue(saved({ cashIn: '300000', cardIn: '300000', transferIn: '300000' }))
     await settle(500)
 
     expect(cell('현금수납').value).toBe('300,000원')
@@ -951,7 +953,7 @@ describe('AC-010.13 다시 읽은 값 반영', () => {
     blurFrom(focused)
     expect(focused.value).toBe('100,000원')
 
-    load.mockResolvedValue(dayWith({ cashIn: '300000', cardIn: '200000', transferIn: '300000' }))
+    load.mockResolvedValue(saved({ cashIn: '300000', cardIn: '200000', transferIn: '300000' }))
     await settle(60_000)
     expect(focused.value).toBe('300,000원')
     expect(save).toHaveBeenCalledTimes(1)
@@ -962,7 +964,7 @@ describe('AC-010.13 다시 읽은 값 반영', () => {
     focusOn(cell('업무사항'))
     await settle(59_000)
     type('업무사항', '가상 치는 글')
-    load.mockResolvedValue(dayWith({ memo: '가상 다른 PC 글' }))
+    load.mockResolvedValue(saved({ memo: '가상 다른 PC 글' }))
     await settle(1000)
     expect(cell('업무사항').value).toBe('가상 치는 글')
   })
@@ -987,7 +989,7 @@ describe('AC-010.13 다시 읽은 값 반영', () => {
     first.unmount()
 
     await open({ cashIn: '100000' })
-    load.mockResolvedValue(dayWith({ cashIn: '300000' }))
+    load.mockResolvedValue(saved({ cashIn: '300000' }))
     await settle(60_000)
     expect(cell('현금수납').value).toBe('300,000원')
   })
@@ -1009,7 +1011,7 @@ describe('AC-010.14 다시 읽기 실패', () => {
     expect(cell('현금수납').value).toBe('100,000원')
     expectOpen()
 
-    load.mockResolvedValueOnce(dayWith({ cashIn: '200000' }))
+    load.mockResolvedValueOnce(saved({ cashIn: '200000' }))
     await settle(60_000)
     expect(load).toHaveBeenCalledTimes(3)
     expect(cell('현금수납').value).toBe('200,000원')
@@ -1017,7 +1019,7 @@ describe('AC-010.14 다시 읽기 실패', () => {
 
   it('AC-010.14: 읽기를 시작한 뒤 그 날 저장이 오갔으면 응답을 버린다', async () => {
     await open()
-    const reply = deferred<WorklogDay | null>()
+    const reply = deferred<WorklogSavedDay | null>()
     load.mockReturnValueOnce(reply.promise)
     await settle(60_000)
     expect(load).toHaveBeenCalledTimes(2)
@@ -1026,7 +1028,7 @@ describe('AC-010.14 다시 읽기 실패', () => {
     await settle(800)
     expect(save).toHaveBeenCalledTimes(1)
 
-    await act(async () => reply.resolve(dayWith({ memo: '가상 옛 글' })))
+    await act(async () => reply.resolve(saved({ memo: '가상 옛 글' })))
 
     expect(cell('현금수납').value).toBe('100,000원')
     expect(cell('업무사항').value).toBe('')
@@ -1063,8 +1065,8 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     unmount()
     expect(save).toHaveBeenCalledTimes(1)
 
-    const old = deferred<WorklogDay | null>()
-    const fresh = deferred<WorklogDay | null>()
+    const old = deferred<WorklogSavedDay | null>()
+    const fresh = deferred<WorklogSavedDay | null>()
     load.mockReset()
     load.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
     render(<WorklogScreen initialToday={TODAY} />)
@@ -1079,7 +1081,7 @@ describe('AC-010.16 첫 읽기 중 저장', () => {
     expectLocked()
     expect(cell('현금수납').value).toBe('100,000원')
 
-    await act(async () => fresh.resolve(dayWith({ cashIn: '100000' })))
+    await act(async () => fresh.resolve(saved({ cashIn: '100000' })))
 
     expectOpen()
     expect(cell('현금수납').value).toBe('100,000원')

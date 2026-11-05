@@ -17,7 +17,8 @@
     {
       "step": 2,
       "name": "bit-storage",
-      "status": "pending"
+      "status": "completed",
+      "summary": "worklogDays: loadWorklogDay → { day, bitFields } | null (WorklogSavedDay, src/types/worklog.ts; bit_fields 없는 옛 줄·목록 아님 → []). saveWorklogDay(client, ymd, changes, bitFields?)는 bitFields가 배열일 때만 bit_fields를 보낸다(undefined·null이면 열쇠 없음 → 저장된 표시 그대로; 바뀐 칸 없어도 bitFields 있으면 work_date+bit_fields만). 읽기·저장 모두 BIT_FILL_KEYS 8칸만 남기고 중복·목록 밖·중첩·글자 아님은 버림, 차례는 그대로. 목록 밖 이름만 주면 []을 보내 표시를 지우므로 TASK-17은 mergeBit·dropBitField가 돌려준 목록만 넘긴다. useWorklogDay는 .day만 serverDay에. worklogSession은 아직 3인자(bit_fields 안 보냄)"
     },
     {
       "step": 3,
