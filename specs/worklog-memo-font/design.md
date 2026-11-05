@@ -195,6 +195,7 @@ function onMemoFont(step: -1 | 1) {
 - worklog AC-005.1·AC-016.1의 읽는 칸 목록에 `memo_font_pt`가, 읽은 모양에 `memoFontPt: 11`이 더해진다(AC-1503.1). 시험 `worklogDays.test.ts`의 `SELECT` 상수(:26)·칸 차례 기대(:164)·읽은 모양 기대(:173·:195·:201·:571·:577)를 고친다(TASK-3)
 - worklog AC-010.13·AC-017.7 시험 `useWorklogDay.test.tsx:388`(`serverDay(DAY, server, 'cardIn', ['cashIn'])`)에 다섯째 인자 `11`이 더해진다(TASK-7)
 - 양식 CSS 허용 변수 목록 `sheet.style.test.ts:25`(`SIZE_VARS`)에 `--memo-pt`를 더한다(TASK-5). 공용 아이콘 수·이름 시험(`Icon.test.tsx`)은 22개·`alert`로 고친다(TASK-6, tab-frame·ui-90·worklog TASK-17이 아이콘을 더한 것과 같은 길)
+- 숫자 칸 `output`은 그 자체로 `role="status"`라서, PC 화면에 글씨 묶음이 그려지면 `WorklogScreen.test.tsx:103`의 도움 함수 `statusText = () => screen.getByRole('status').textContent`가 둘을 찾아 던진다. 이 도움 함수만 **저장 상태 글 하나를 고르게** 바꾼다(예: `getAllByRole('status')`에서 `output`이 아닌 것). 이 함수를 쓰는 22곳의 기대 글은 그대로다(TASK-7, 2026-11-05 TASK-6 보고로 더함)
 - 위 말고 다른 승인된 시험의 기대값이 바뀌어야 하면 멈추고 보고한다. 특히 `autosave.test.ts`의 인자 수 시험(:991·:1001)과 `worklogSession.test.ts:77`(인자 셋), `WorklogToolbar.test.tsx:265`(단추 수)는 **고치지 않은 채 통과해야 한다**(크기를 넘기지 않는 저장은 지금과 같다)
 
 ## 사용자가 할 일
