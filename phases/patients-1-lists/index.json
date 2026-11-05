@@ -1,0 +1,30 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "patients-1-lists",
+  "steps": [
+    {
+      "step": 0,
+      "name": "patients-fence",
+      "status": "completed",
+      "summary": "eslint.config.mjs: 환자 자료 구역 files에 src/lib/patients/** 추가(PATIENT_ZONE_MESSAGE에 lib/patients), components/patients/**·app/(app)/patients/** 블록(ERROR_REPORT_IMPORT·ERROR_REPORT_SYNTAX로 @sentry/*·@vercel/analytics·@vercel/speed-insights import·import() 금지 + CLIENT_IMPORT 다시 넣음), 그 뒤 components/patients/rows/** 블록 rowsFenceRules()(JSX·react 허용, 네트워크·console·브라우저 저장소·supabase·lib/auth·lib/storage import·동적 import 금지 + 오류 보고·CLIENT_IMPORT 포함). lib/patients에서 @/lib/analytics/dates import는 된다(TASK-3 addMonthsToDay용), components/patients(rows 밖)는 @/lib/supabase/browser·fetch 가능. guardrails.test.ts에 AC-601.1~4 describe 추가, ARCHITECTURE.md 폴더 줄에 lib/patients·components/patients/rows(contact→patients). 명세와 다른 점 없음"
+    },
+    {
+      "step": 1,
+      "name": "followup-logic",
+      "status": "completed",
+      "summary": "src/lib/patients/followup.ts(parseFU·writtenDate·aragan·extractTx·extractSite·visitKind·dateKey·prepareSchedule·phoneColumn·phoneTokens·preparePhones·phoneOf·baseDate·scheduleRows·undecidedRows·passFilters·pasteRows), sourceError.ts(PatientsSourceError, code E-PATIENTS-SOURCE, 값 없는 고정 사유), types/patients.ts(F/U 줄 타입 + design 계산 모양), fixtures/patients/make-fake-patients.ts → fake/{followup-cases,chart-rows,rx-rows}.json, scripts/patients/golden/revisit.mjs → golden/followup-{parse,schedule,phones}.json·phone-columns.json(TASK-9 IsPhoneColumn도 이 파일로 견줌). 명세와 다른 점(knownDiffs에 적음): 연도가 4자리가 아니거나 NaN인 날짜는 날짜 없음으로 친다(원본은 11609-06-18 같은 값을 찍음, 우리 쪽은 지어낸 날짜를 보이지 않음), baseDate([])는 '', row.nmRecordedAt 안 씀. TASK-4에 전달: phoneOf에는 preparePhones가 만든 map(프로토타입 없음)을 넘긴다. 빈 {}를 넘기면 차트번호 'constructor'에서 함수가 돌아온다(원본도 같음)"
+    },
+    {
+      "step": 2,
+      "name": "recall-logic",
+      "status": "completed",
+      "summary": "dates.ts에 addMonthsToDay(말일 맞춤, 음수 가능, 9999년을 넘으면 던짐) 하나 더함. src/lib/patients/recall.ts(RECALL_DEFAULTS·KEEP_MONTHS·MAX_RECORDS·roundTest·prepareRx·validateHistory·ingestRecall·recallCompute·recallSelect·recallStatus·recallCoverage·recallCopyLines·recallPhones), types/patients.ts에 RecallRecord·RecallHistory, fixtures/patients/fake/recall-cases.json, scripts/patients/golden/recall.mjs → golden/recall-{ingest,compute,coverage,copy}.json. 명세와 다른 점: 새 이유 번호를 더하지 않음 — validateHistory의 전체 모양 오류는 기존 이유 row-unreadable로 던짐(goldenFollowup.test.ts의 이유 표가 빠짐없는 표이고 TASK-3 범위 밖). 연도가 잘못된 날짜는 날짜 없음(knownDiffs). readThrough 등 차이는 knownDiffs. TASK-4에 전달: prepareRx·prepareSchedule은 null 줄이면 번호 없는 TypeError를 던지므로 handler가 잡아 오류 번호로 바꾼다"
+    },
+    {
+      "step": 3,
+      "name": "patients-worker",
+      "status": "completed",
+      "summary": "src/workers/patients.worker.ts(handler를 잇기만), patients/assemble.ts(createAssembler: chunk·end·abort·take + discardUntaken), plan.ts(followupPlan·recallPlan), jobs.ts(readTargets·readStore·buildFollowup·mergeRecall·buildRecall·filterFollowup·filterRecall·markKey·setMark·pruneMarks·fitStore·storePayload·contactCounts), handler.ts(createHandler: onScreen·onPort·setPort, 저장 줄 세우기, 저장 상태 unknown·loaded·failed), types/patients.ts에 Worker 메시지 타입, fixtures/patients/fake/{targets-followup,targets-injection,store-first,store-marked}.json. TASK-10(usePatientsWorker)에 전달: reload는 새 스트림보다 먼저 보내고, 그 뒤 옛 id의 piece·stored는 Worker에 보내지 않는다(옛 흐름은 화면이 버린다). handler는 옛 흐름을 가려내지 못한다: reload가 지운 id의 piece가 다음 plan 뒤에 오면 그 종류가 E-BRIDGE-BAD-REPLY로 실패하고, 옛 stored면 저장 상태가 failed가 된다. 남은 틈(리뷰 참고): reload 뒤에 첫 조각이 온 옛 요청을 화면이 버리면 다음 reload나 탭을 닫을 때까지 푼 JSON이 Worker 메모리에 남는다(쌓이지 않고 밖으로 나가지 않음). sent에는 시간 제한이 없다(도우미가 끊기지 않고 멈추면 뒤따르는 [연락함]이 답을 못 받음, 포트가 바뀌거나 새로 고치면 풀림). 명세와 다른 점 없음"
+    }
+  ]
+}

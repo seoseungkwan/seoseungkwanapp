@@ -5,13 +5,16 @@ import {
   type WorklogCellKey,
   type WorklogChanges,
   type WorklogDay,
+  type WorklogNumberKey,
 } from '@/types/worklog'
 import { cellSaveText } from './cellText'
 import { blockedCellKeys } from './notes'
 
 // 자동 저장 제어 (specs/worklog/design.md 10절). 화면 밖 모듈 한 벌로 쓰여 화면이 내려가도 살아 있으므로 React 수명에 기대지 않는다.
 // 바뀐 칸만 보낸다: 하루 전체를 보내면 다른 PC가 고친 칸을 덮는다.
-// 브라우저 저장소에 사본을 두지 않는다(plan.md §10). 저장 안 된 값은 조용히 잃지 않고 상태로 드러나며 hasUnsaved()가 참이다
+// 브라우저 저장소에 사본을 두지 않는다(plan.md §10). 저장 안 된 값은 조용히 잃지 않고 상태로 드러나며 hasUnsaved()가 참이다.
+// 비트 칸 목록(bitFields, design.md 20-4절)도 칸처럼 아는 값·최신 값을 들고 바뀌었을 때만(차례는 보지 않는다) save의 셋째 인자로 넘긴다.
+// 목록을 모르거나 안 바뀌었으면 인자 둘로 부른다: 저장이 bit_fields를 보내지 않아야 저장된 비트 표시가 지워지지 않는다(AC-017.7)
 
 /** 날짜 하나의 상태. pending = 타이머를 기다리는 중(묶기 800ms·실패 뒤 다시 하기) */
 export type DaySaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked'
@@ -23,7 +26,7 @@ export type AutosaveSnapshot = {
   blocked: { ymd: string; fields: readonly WorklogCellKey[] } | null // 막힌 칸이 있는 가장 이른 날
 }
 export type AutosaveOptions = {
-  save: (ymd: string, changes: WorklogChanges) => Promise<void> // WorklogStorageError를 던진다
+  save: (ymd: string, changes: WorklogChanges, bitFields?: readonly WorklogNumberKey[]) => Promise<void> // WorklogStorageError를 던진다
   delayMs?: number
   retryDelaysMs?: readonly number[]
   offlineRetryMs?: number
@@ -32,13 +35,20 @@ export type AutosaveOptions = {
   onChange?: (snapshot: AutosaveSnapshot) => void
 }
 
+/** 읽은 하루·저장 안 된 하루. 비트 칸 목록을 모르면(받은 적 없음) bitFields가 없다 */
+export type AutosaveDay = { day: WorklogDay; bitFields?: WorklogNumberKey[] }
+
 type Listener = (snapshot: AutosaveSnapshot) => void
+type BitList = WorklogNumberKey[] | null // null = 모름
 type DayEntry = {
   state: DaySaveState
   settled: 'idle' | 'saved' // 보낼 칸이 없을 때 돌아갈 상태
   known: WorklogDay // 서버에 있다고 아는 값
   latest: WorklogDay // 최신 값
   sending: WorklogChanges | null // 응답을 기다리는 칸
+  knownBits: BitList // 서버에 있다고 아는 비트 칸 목록
+  latestBits: BitList // 최신 목록
+  sendingBits: BitList // 응답을 기다리는 목록
   attempt: number // 실패 뒤 다시 한 횟수
   timer: ReturnType<typeof setTimeout> | null
   revision: number
@@ -49,13 +59,16 @@ const STATE_RANK: Readonly<Record<SaveState, number>> = { idle: 0, saved: 1, blo
 const UNSAVED_STATES: readonly DaySaveState[] = ['pending', 'saving', 'offline', 'failed', 'blocked']
 const RETRYABLE_STATES: readonly DaySaveState[] = ['failed', 'offline', 'pending']
 
-function newEntry(known: WorklogDay): DayEntry {
+function newEntry(known: WorklogDay, bits: readonly WorklogNumberKey[] | undefined): DayEntry {
   return {
     state: 'idle',
     settled: 'idle',
     known: { ...known },
     latest: { ...known },
     sending: null,
+    knownBits: bits ? [...bits] : null,
+    latestBits: bits ? [...bits] : null,
+    sendingBits: null,
     attempt: 0,
     timer: null,
     revision: 0,
@@ -64,6 +77,20 @@ function newEntry(known: WorklogDay): DayEntry {
 
 function isDifferent(entry: DayEntry, key: WorklogCellKey): boolean {
   return cellSaveText(key, entry.latest[key]) !== cellSaveText(key, entry.known[key])
+}
+
+const sameBits = (a: readonly WorklogNumberKey[], b: readonly WorklogNumberKey[]) =>
+  new Set(a).size === new Set(b).size && a.every((key) => b.includes(key))
+
+// 보낼 목록: 최신 목록을 알고, 아는 목록과 다를 때만(모르는 아는 목록과는 늘 다르다). 아니면 null(보내지 않는다)
+function bitsToSend(entry: DayEntry): WorklogNumberKey[] | null {
+  const { latestBits, knownBits } = entry
+  if (latestBits === null || (knownBits !== null && sameBits(latestBits, knownBits))) return null
+  return [...latestBits]
+}
+
+function dayOf(entry: DayEntry): AutosaveDay {
+  return entry.latestBits === null ? { day: { ...entry.latest } } : { day: { ...entry.latest }, bitFields: [...entry.latestBits] }
 }
 
 // 차이를 보낼 칸과 막힌 칸으로 나눈다. 막는 모양은 save 앞에서 뺀다:
@@ -134,7 +161,8 @@ export function createAutosave(options: AutosaveOptions) {
   function send(ymd: string, entry: DayEntry): void {
     disarm(entry)
     const { changes, blocked } = splitDifference(entry)
-    if (Object.keys(changes).length === 0) {
+    const bits = bitsToSend(entry)
+    if (Object.keys(changes).length === 0 && bits === null) {
       entry.attempt = 0
       entry.state = blocked.length > 0 ? 'blocked' : entry.settled
       notify()
@@ -142,13 +170,14 @@ export function createAutosave(options: AutosaveOptions) {
     }
     entry.state = 'saving'
     entry.sending = changes
+    entry.sendingBits = bits
     entry.revision += 1
     notify()
     const sentIn = generation
-    // async로 감싼다: save가 바로 던져도 실패로 다루려고
-    void (async () => save(ymd, changes))().then(
+    // async로 감싼다: save가 바로 던져도 실패로 다루려고. 목록이 없으면 셋째 인자를 넘기지 않는다
+    void (async () => (bits === null ? save(ymd, changes) : save(ymd, changes, bits)))().then(
       () => {
-        if (sentIn === generation) succeeded(ymd, entry, changes)
+        if (sentIn === generation) succeeded(ymd, entry, changes, bits)
       },
       (err: unknown) => {
         if (sentIn === generation) failed(ymd, entry, err)
@@ -156,9 +185,11 @@ export function createAutosave(options: AutosaveOptions) {
     )
   }
 
-  function succeeded(ymd: string, entry: DayEntry, sent: WorklogChanges): void {
+  function succeeded(ymd: string, entry: DayEntry, sent: WorklogChanges, sentBits: WorklogNumberKey[] | null): void {
     Object.assign(entry.known, sent)
+    if (sentBits !== null) entry.knownBits = [...sentBits]
     entry.sending = null
+    entry.sendingBits = null
     entry.attempt = 0
     entry.revision += 1
     entry.settled = 'saved'
@@ -169,6 +200,7 @@ export function createAutosave(options: AutosaveOptions) {
   // known을 건드리지 않는다: 다음 시도가 그때의 차이를 다시 구한다
   function failed(ymd: string, entry: DayEntry, err: unknown): void {
     entry.sending = null
+    entry.sendingBits = null
     entry.revision += 1
     if (err instanceof WorklogStorageError && err.kind === 'offline') {
       entry.attempt = 0
@@ -184,13 +216,15 @@ export function createAutosave(options: AutosaveOptions) {
     notify()
   }
 
-  function change(ymd: string, day: WorklogDay): void {
+  // bitFields를 주지 않으면 최신 목록을 그대로 둔다(모르는 목록을 [](빈 목록)로 바꾸지 않는다)
+  function change(ymd: string, day: WorklogDay, bitFields?: readonly WorklogNumberKey[]): void {
     let entry = days.get(ymd)
     if (!entry) {
-      entry = newEntry(emptyWorklogDay())
+      entry = newEntry(emptyWorklogDay(), undefined)
       days.set(ymd, entry)
     }
     entry.latest = { ...day }
+    if (bitFields !== undefined) entry.latestBits = [...bitFields]
     if (entry.state !== 'saving') {
       entry.attempt = 0
       entry.state = 'pending'
@@ -201,20 +235,31 @@ export function createAutosave(options: AutosaveOptions) {
 
   // 타이머·상태를 건드리지 않는다. 보내는 중인 칸도 저장 안 된 칸이다:
   // 그 사이 되돌린 값이 곧 서버에 들어갈 값으로 바뀌면 되돌림을 잃는다.
-  // 초점 칸의 known을 올리면 그 칸의 옛 화면 값이 차이가 되어 다른 PC 값을 덮으므로 올리지 않는다
-  function serverDay(ymd: string, server: WorklogDay | null, focusKey: WorklogCellKey | null = null): WorklogDay {
+  // 초점 칸의 known을 올리면 그 칸의 옛 화면 값이 차이가 되어 다른 PC 값을 덮으므로 올리지 않는다.
+  // 읽은 목록도 같다: 저장 안 된 목록(보내는 중 포함)이 아니면 아는 목록·최신 목록이 서버 목록이 된다. 목록을 받지 않으면 그대로 둔다
+  function serverDay(
+    ymd: string,
+    server: WorklogDay | null,
+    focusKey: WorklogCellKey | null = null,
+    bitFields?: readonly WorklogNumberKey[],
+  ): AutosaveDay {
     const incoming = server ?? emptyWorklogDay()
     const entry = days.get(ymd)
     if (!entry) {
-      days.set(ymd, newEntry(incoming))
-      return { ...incoming }
+      const fresh = newEntry(incoming, bitFields)
+      days.set(ymd, fresh)
+      return dayOf(fresh)
     }
     for (const key of WORKLOG_CELL_KEYS) {
       if (key === focusKey || entry.sending?.[key] !== undefined || isDifferent(entry, key)) continue
       entry.known[key] = incoming[key]
       entry.latest[key] = incoming[key]
     }
-    return { ...entry.latest }
+    if (bitFields !== undefined && entry.sendingBits === null && bitsToSend(entry) === null) {
+      entry.knownBits = [...bitFields]
+      entry.latestBits = [...bitFields]
+    }
+    return dayOf(entry)
   }
 
   function dispose(): void {
@@ -258,9 +303,9 @@ export function createAutosave(options: AutosaveOptions) {
         listeners.delete(listener)
       }
     },
-    pendingDay(ymd: string): WorklogDay | null {
+    pendingDay(ymd: string): AutosaveDay | null {
       const entry = days.get(ymd)
-      return entry && UNSAVED_STATES.includes(entry.state) ? { ...entry.latest } : null
+      return entry && UNSAVED_STATES.includes(entry.state) ? dayOf(entry) : null
     },
     dispose,
   }

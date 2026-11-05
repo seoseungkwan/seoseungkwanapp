@@ -5,22 +5,26 @@
     {
       "step": 0,
       "name": "bit-contract",
-      "status": "pending"
+      "status": "completed",
+      "summary": "src/lib/worklog/bitFill.ts: BIT_FILL_KEYS(8칸, 20-2 표 순서)·bitValuesFrom·mergeBit·takeBitValue + dropBitField(사람이 고친 칸을 bitFields에서 뺌, AC-014.6). bitValuesFrom.unconfirmed는 줄의 unconfirmed만 따른다(splitUnconfirmed면 조합청구액만 없음). 비트 값이 사라진 비트 칸(확인 필요로 바뀐 날)은 값과 bitFields를 그대로 둔다. takeBitValue는 그 칸을 덮은 뒤 mergeBit을 다시 돌려 남은 '다름' 목록을 돌려주며, 이때 다른 빈 칸(사람이 막 비운 비트 칸 포함)도 다시 채울 수 있다 — 화면은 돌려받은 day·bitFields를 통째로 쓴다"
     },
     {
       "step": 1,
       "name": "bit-column",
-      "status": "pending"
+      "status": "completed",
+      "summary": "supabase/migrations/20261101000110_worklog_bit_fields.sql: worklog_days.bit_fields text[] not null default '{}' (add column if not exists) + check(20-2 표 DB 칸 10개만, worklog_days_bit_fields_check) + grant insert/update(bit_fields) to authenticated. 두 번 붙여 넣어도 그대로, 1단계 표·RLS·정책·권한 그대로(PGlite 시험). 0100 뒤에만 붙인다. 관문: 사용자가 0110을 실제 Supabase에 붙여 넣고 TASK-18이 통과하기 전에는 4단계를 합치거나 배포하지 않는다. 참고: <@ check는 중복·다차원 배열을 막지 않으니 TASK-16 읽기에서 목록 밖·중복 이름은 버린다"
     },
     {
       "step": 2,
       "name": "bit-storage",
-      "status": "pending"
+      "status": "completed",
+      "summary": "worklogDays: loadWorklogDay → { day, bitFields } | null (WorklogSavedDay, src/types/worklog.ts; bit_fields 없는 옛 줄·목록 아님 → []). saveWorklogDay(client, ymd, changes, bitFields?)는 bitFields가 배열일 때만 bit_fields를 보낸다(undefined·null이면 열쇠 없음 → 저장된 표시 그대로; 바뀐 칸 없어도 bitFields 있으면 work_date+bit_fields만). 읽기·저장 모두 BIT_FILL_KEYS 8칸만 남기고 중복·목록 밖·중첩·글자 아님은 버림, 차례는 그대로. 목록 밖 이름만 주면 []을 보내 표시를 지우므로 TASK-17은 mergeBit·dropBitField가 돌려준 목록만 넘긴다. useWorklogDay는 .day만 serverDay에. worklogSession은 아직 3인자(bit_fields 안 보냄)"
     },
     {
       "step": 3,
       "name": "bit-screen",
-      "status": "pending"
+      "status": "completed",
+      "summary": "useBitFill(revenue.days 읽기·오늘 10분·reload [지금 불러오기]·useBridge→상태 표, connecting+helloError→setup-needed, 터치 off) + BitNotice(안내 줄·[지금 불러오기]·설명 줄·'다름' 목록 '비트 숫자와 다른 칸이 있어요', 모두 print:hidden) + autosave/worklogSession/useWorklogDay가 bitFields를 나르고 바뀌었을 때만 보냄(모르면 saveWorklogDay 3인자) + 시트 비트 표시(.bit 초록 모서리, 인쇄 content:none) + Icon info·reload(21개) + docs/mockups/worklog/bitfill.html(승인 v2 그대로). 참고: 확장은 웹 연결 하나만 받아 업무일지를 연 브라우저 탭이 있으면 다른 브라우저 탭의 청구·매출 화면은 busy(기존 방식, design 20-1). 관문: 0110 SQL을 실제 Supabase에 붙이고 TASK-18 통과 전에는 합치기·배포 금지"
     }
   ]
 }

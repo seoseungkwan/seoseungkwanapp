@@ -8,6 +8,7 @@ import { buildSummary } from '@/lib/analytics/compare'
 import { addDays } from '@/lib/analytics/dates'
 import { createPatientIds, parseBitFile } from '@/lib/parsers/bit'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
+import { validateDayPayload } from '@/lib/payload/validate'
 import type { RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult, AnalyzeOutput, FileReport } from '@/types/analyze'
 import type { ParsedFile } from '@/types/consumption'
@@ -461,5 +462,99 @@ describe('AC-813.3 analyzeFiles → toDayPayloads — 30 초진은 재진', () =
   it('AC-813.3: 같은 날 신환 줄도 있는 환자는 신환이다', SLOW, () => {
     const day = dayOf([['9000001', '30 초진'], ['9000001', '신환']])
     expect(day?.totals).toEqual({ patients: 1, newPatients: 1, returning: 0, unknown: 0 })
+  })
+})
+
+// ── 같은 처방 재방문(again, fu-rate AC-1302.3) ──
+// 가짜 생성기에 없는 지어낸 처방 코드와, 생성기가 쓰지 않는 지어낸 차트번호 둘. 값은 모두 지어낸 것이다
+const AGAIN_CODE = 'FU7001'
+const AGAIN_A = '9700001' // 9/20에 시작, 3일째(9/23)에 또 받는다
+const AGAIN_B = '9700002' // 9/25에 시작, 10월 파일의 10/1(6일째)에 또 받는다
+
+// 머리줄 바로 아래에 지어낸 환자의 외래 줄을 끼운다
+function withAgainRows(table: string[][], visits: Array<[chart: string, date: string]>): string[][] {
+  const { at, header } = headerOf(table)
+  const rowOf = (chart: string, date: string) => {
+    const cells: Record<string, string> = {
+      처방코드: AGAIN_CODE,
+      처방명칭: '가짜 재방문 처치',
+      유형: '처치',
+      차트번호: chart,
+      처방일자: date,
+      '외래/입원': '외래',
+      초재진구분: '재진',
+      주소: '서울특별시 강남구 역삼동 1',
+    }
+    return header.map((name) => cells[name] ?? '')
+  }
+  const out = table.map((row) => [...row])
+  out.splice(at + 1, 0, ...visits.map(([chart, date]) => rowOf(chart, date)))
+  return out
+}
+
+// 9월 파일(머리 기간 줄 9/1 ~ 9/30)과 10월 파일(10/1 ~ 10/24). 생성기 환자는 두 파일에 같은 차트번호로 나온다
+const septemberFile = () =>
+  toCsvBytes(
+    withAgainRows(buildFakeBitTable({ from: '2026-09-01', to: '2026-09-30', rows: 200 }), [
+      [AGAIN_A, '2026-09-20'],
+      [AGAIN_A, '2026-09-23'],
+      [AGAIN_B, '2026-09-25'],
+    ]),
+    'utf8-bom',
+  )
+const octoberFile = () =>
+  toCsvBytes(withAgainRows(buildFakeBitTable({ from: '2026-10-01', to: '2026-10-24', rows: 200, seed: 20261001 }), [[AGAIN_B, '2026-10-01']]), 'utf8-bom')
+
+function againPayloads(files: Uint8Array[]) {
+  const output = analyzeFiles(files, TODAY)
+  const result = resultOf(output)
+  expect(result.quality).toBe('valid')
+  const payloads = toDayPayloads(result)
+  if (payloads === null) throw new Error('날 줄 없음')
+  return payloads
+}
+const againOf = (payloads: NonNullable<ReturnType<typeof toDayPayloads>>, day: string) => {
+  const again = payloads.find((p) => p.day === day)?.again
+  if (again === undefined) throw new Error(`again이 없어요: ${day}`)
+  return { ready: again.ready, line: again.rx.find((x) => x.code === AGAIN_CODE) }
+}
+const NONE = [null, null, null]
+
+describe('AC-1302.3 analyzeFiles → toDayPayloads — 같은 처방 재방문(again)', () => {
+  it('AC-1302.3: 9월 파일 하나 → 9/20 시작은 ready [true, false, false], 9/25 시작은 [false, false, false](따로 넣은 파일 끝 무렵)', SLOW, () => {
+    const payloads = againPayloads([septemberFile()])
+    expect(againOf(payloads, '2026-09-20')).toEqual({
+      ready: [true, false, false],
+      line: { code: AGAIN_CODE, starts: 1, back: [1, null, null], more: [1, null, null] },
+    })
+    expect(againOf(payloads, '2026-09-25')).toEqual({
+      ready: [false, false, false],
+      line: { code: AGAIN_CODE, starts: 1, back: NONE, more: NONE },
+    })
+    for (const p of payloads) expect(validateDayPayload(p)).toEqual(p)
+  })
+
+  it('AC-1302.3: 9월·10월 두 파일을 한 번에 같이 넣으면 9/25 시작의 7일 창이 숫자이고 10월 줄(10/1)이 든다', SLOW, () => {
+    const payloads = againPayloads([septemberFile(), octoberFile()])
+    // 덮은 기간 9/1 ~ 10/24: 9/25 + 30일(10/25)은 덮이지 않았다
+    expect(againOf(payloads, '2026-09-25')).toEqual({
+      ready: [true, true, false],
+      line: { code: AGAIN_CODE, starts: 1, back: [1, 1, null], more: [1, 1, null] },
+    })
+    expect(againOf(payloads, '2026-09-20')).toEqual({
+      ready: [true, true, true],
+      line: { code: AGAIN_CODE, starts: 1, back: [1, 1, 1], more: [1, 1, 1] },
+    })
+    // 10/1은 앞 30일 안(9/25)에 받아 시작이 아니다
+    expect(againOf(payloads, '2026-10-01').line).toBeUndefined()
+    for (const p of payloads) expect(validateDayPayload(p)).toEqual(p)
+  })
+
+  it('AC-1302.3: 두 파일을 따로 넣으면 이어지지 않는다(10월 파일만 넣으면 10/1이 새로 시작)', SLOW, () => {
+    // 덮은 기간 10/1 ~ 10/24: 10/1 + 30일(10/31)은 덮이지 않았다
+    expect(againOf(againPayloads([octoberFile()]), '2026-10-01')).toEqual({
+      ready: [true, true, false],
+      line: { code: AGAIN_CODE, starts: 1, back: [0, 0, null], more: [0, 0, null] },
+    })
   })
 })

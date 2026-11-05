@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addDays,
   addMonths,
+  addMonthsToDay,
   compareYmd,
   diffDays,
   eachDay,
@@ -181,6 +182,70 @@ describe('AC-002.1 addMonths', () => {
     expect(() => addMonths('2026-13', 1)).toThrow(RangeError)
     expect(() => addMonths('2026-1', 1)).toThrow(RangeError)
     expect(() => addMonths('2026-10', 1.5)).toThrow(RangeError)
+  })
+})
+
+describe('AC-603.1 addMonthsToDay', () => {
+  // 기대값은 원본 addMonths 결과다(fixtures/patients/golden/recall-compute.json의 addMonths)
+  it.each([
+    ['2026-01-31', 1, '2026-02-28'],
+    ['2028-01-31', 1, '2028-02-29'],
+    ['2100-01-31', 1, '2100-02-28'],
+    ['2000-01-31', 1, '2000-02-29'],
+    ['2026-08-31', 6, '2027-02-28'],
+    ['2026-07-31', 3, '2026-10-31'],
+  ] as const)('AC-603.1 말일에 맞춘다: %s + %i달 → %s', (day, n, expected) => {
+    expect(addMonthsToDay(day, n)).toBe(expected)
+  })
+
+  it.each([
+    ['2026-12-15', 1, '2027-01-15'],
+    ['2026-11-30', 3, '2027-02-28'],
+    ['2026-01-15', -1, '2025-12-15'],
+    ['2026-01-31', -2, '2025-11-30'],
+  ] as const)('AC-603.1 해를 넘긴다: %s + %i달 → %s', (day, n, expected) => {
+    expect(addMonthsToDay(day, n)).toBe(expected)
+  })
+
+  it.each([
+    ['2026-03-31', -1, '2026-02-28'],
+    ['2024-02-29', -12, '2023-02-28'],
+    ['2024-02-29', -36, '2021-02-28'],
+    ['2026-11-01', -36, '2023-11-01'],
+    ['2026-08-31', -6, '2026-02-28'],
+  ] as const)('AC-603.1 음수도 된다: %s + %i달 → %s', (day, n, expected) => {
+    expect(addMonthsToDay(day, n)).toBe(expected)
+  })
+
+  it('AC-603.1 윤날은 다음 윤년으로 가면 그대로, 아니면 2월 말일이다', () => {
+    expect(addMonthsToDay('2024-02-29', 48)).toBe('2028-02-29')
+    expect(addMonthsToDay('2024-02-29', 12)).toBe('2025-02-28')
+  })
+
+  it('AC-603.1 0달은 그 날 그대로다', () => {
+    expect(addMonthsToDay('2026-10-31', 0)).toBe('2026-10-31')
+  })
+
+  it('AC-603.1 범위 끝: 9999년 12월까지는 된다', () => {
+    expect(addMonthsToDay('9999-11-30', 1)).toBe('9999-12-30')
+    expect(addMonthsToDay('9999-12-31', 0)).toBe('9999-12-31')
+  })
+
+  // 원본은 10000-01-31 같은 날을 만든다. 우리 날짜는 'YYYY-MM-DD'뿐이라 addMonths처럼 던진다. 부르는 쪽(recall.ts)이 날짜 없음으로 친다
+  it.each([
+    ['9999-12-31', 1],
+    ['9999-07-01', 6],
+    ['0100-01-15', -1],
+  ] as const)('AC-603.1 네 자리 해를 벗어나면 던진다: %s + %i달', (day, n) => {
+    expect(() => addMonthsToDay(day, n)).toThrow(RangeError)
+  })
+
+  it.each([['2026-02-30'], ['2026-1-5'], ['10000-01-01'], ['글자'], ['']])('AC-603.1 없는 날은 던진다: %s', (day) => {
+    expect(() => addMonthsToDay(day, 1)).toThrow(RangeError)
+  })
+
+  it.each([[0.5], [Number.NaN], [Number.POSITIVE_INFINITY], [1e300]])('AC-603.1 쓸 수 없는 달 수는 던진다: %s', (n) => {
+    expect(() => addMonthsToDay('2026-01-31', n)).toThrow(RangeError)
   })
 })
 

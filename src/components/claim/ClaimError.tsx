@@ -23,12 +23,8 @@ export const SETUP_CODES: ReadonlySet<string> = new Set([
   'E-BRIDGE-REJECTED',
   'E-BRIDGE-BUSY',
   'E-BIT-IN-USE',
-  'E-BIT-NOT-FOUND',
-  'E-BIT-DB-FAILED',
-  'E-BIT-READ-FAILED',
   'E-BIT-NOT-REGISTERED',
   'E-BIT-HOSPITAL-MISMATCH',
-  'E-STORE-FAILED',
   'E-STORE-BROKEN',
 ])
 

@@ -1,0 +1,43 @@
+{
+  "project": "병원 업무 도구",
+  "phase": "patients-4-screen",
+  "steps": [
+    {
+      "step": 0,
+      "name": "tab-entry",
+      "status": "completed",
+      "summary": "src/components/patients/{tools,ToolRow,CountsOnly,usePatientsWorker,PatientsScreen,PatientsEntry}, (app)/patients/page. 훅: usePatientsWorkerObject()로 Worker를 먼저 만들고(useBridge가 Worker를 먼저 받아야 한다) usePatientsWorker(bridge, worker)가 status·progress·views·counts·reload·post(filter|mark)·listen(filtered|marked)를 돌려준다. reload는 Worker에 reload를 먼저 보내고 옛 흐름의 piece·stored는 보내지 않는다. 한 번 마운트에 store.load 한 번(자동 재시도 금지, E-STORE-BROKEN 뒤 다음 읽기는 {}). 화면 도구 몸통은 TASK-11~13이 PatientsScreen 도구 자리에 넣는다. ESLint 울타리는 rows/ 안에만 있으니 도구 부품 리뷰에서 환자 값이 rows 밖에 그려지지 않는지 본다. ready가 풀렸다 돌아오면 PatientsScreen이 다시 만들어져 reload 없이 store.load가 또 나간다(PatientsEntry.tsx:95): 지금은 도달할 수 없지만 ready에 다시 확인을 넣는 TASK는 이것부터 고친다. 명세와 다른 점: 정기 주사 불러오기 글은 목업의 '처음…7개월' 대신 '정기 주사 기록을 읽는 중이에요 n/전체 달'(Worker 답으로 첫 읽기를 알 수 없고 처음 읽기는 8달, 최대 37달). 목업에 없는 글 둘: '비트 PC 연결을 확인하는 중이에요', '남은 건수를 불러오는 중이에요'. 사용자 확인 대기. 명세 변경: DashboardHome.test.tsx·dashboard/page.test.tsx를 TASK-10에 더하고 목차 개수는 목록에서 센다(AC-610.1). errors.ts 문구는 이 탭에 안 맞는 줄이 있으나 고치지 않고 보고한다. Worker 오류 듣기가 없어 Worker를 못 불러오면 '읽는 중'에 멈춘다(AC 없음, 보고)."
+    },
+    {
+      "step": 1,
+      "name": "followup-screen",
+      "status": "completed",
+      "summary": "src/components/patients/{FollowupTool,CopyButton,periods}, rows/FollowupRows, PatientsScreen 도구 자리 followup. jobs.ts filterFollowup: 끄면 오늘(view.read.to) 전 줄 숨김, 켜면 기간 줄 + 기간 앞 지난 줄, 복사 글은 고른 줄에서(pasteRows 번호 없는 분 규칙 그대로). lib followup.ts·handler 안 고침. TASK-12에 전달: CopyButton은 text|()=>string, label, disabled + doneText·unavailable·onResult(목업의 공용 결과 줄용). periods.ts presetRange(주는 월~일). F/U 도구는 도구를 바꿔도 마운트된 채 숨긴다(PatientsScreen). 지금 고른 것을 말하는 안내 줄은 고르기가 바뀌면 지우고, '복사했어요'·복사 실패 줄은 지난 누름의 결과라 남긴다. 날짜 칸은 isYmd를 먼저 보고 틀리면 마지막으로 맞았던 값을 유지한다(0202-11-02처럼 통과하는 값은 던지지 않고 필터로 잠깐 나간다). 환자 값은 rows/ 안에서만 그린다. ESLint 울타리가 도구 부품을 막지 않으니 리뷰에서 본다. store.load·reload 자동 호출 금지. 명세 변경(eb847d1): AC-611.1에 지난 예정 규칙. 사용자 결정 '숨기기'는 docs/mockups/patients/README.md. 문구 날짜는 목업대로 고른 기간 시작일(사용자 미결정, 물어보는 중, 바뀌면 FollowupTool.test.tsx 수요일 시험도 고친다). 목업에 없는 글, 단계 끝에 사용자에게 보인다: '연락 표시를 불러오지 못해 [연락함]을 쓸 수 없어요.', '복사할 명단이 없어요. 모두 번호 없는 분이에요.'; '복사할 문구가 없어요'는 종류를 바꾸면 지운다(목업은 안 지움). 복사 건수는 복사된 줄만 센다(목업은 전체). 알려진 한계: 도우미가 끊기지 않고 멈추면 '저장 중'이 남고 그 줄은 다시 눌러도 안 먹는다. errors.ts의 E-STORE-BROKEN·E-STORE-FAILED 문구는 이 탭에 없는 단추를 말한다(보고)."
+    },
+    {
+      "step": 2,
+      "name": "recall-screen",
+      "status": "completed",
+      "summary": "src/components/patients/{RecallTool,rows/RecallRows}, PatientsScreen 도구 자리 recall. FollowupTool의 Check·useDayField·DayInput·useTemplates·연락함 칸을 범위 때문에 복제했다(TASK-13 뒤 합칠 수 있음, 지금은 같은 코드). today는 views.followup.read.to, F/U 실패면 todayInKorea(). 알려진 한계: F/U가 실패한 채 읽기가 자정을 넘기면 훅·Worker는 D, 화면은 D+1이라 예정일 D인 줄이 빠지고 문구 날짜가 하루 밀린다. [다시 불러오기]로 풀린다. 고치려면 훅이나 RecallView를 바꿔야 해서 범위 밖(보고). PatientsScreen.test의 filters 도우미는 도구별(followup만)로 센다. RecallTool도 filter를 보내므로 TASK-13은 tool을 봐야 한다. 환자 값은 rows/ 안에서만. 목업과 다른 점(단계 끝에 사용자에게 보인다): 처음 읽은 새 PC는 '0건 · 날짜부터'와 짧은 규칙 줄을 보인다(목업 빈 상태는 안내 상자를 숨김, AC-612.2대로 보임). 목업에 없는 글: '복사할 번호가 없어요. 모두 번호 없는 분이에요.'(목업은 '번호 0개')."
+    },
+    {
+      "step": 3,
+      "name": "messages-screen",
+      "status": "completed",
+      "summary": "src/components/patients/{MessagesTool,useTemplates}. 명세와 다른 점: MessagesTool은 PatientsScreen이 아니라 PatientsEntry의 상태 갈래 위에 둔다(step3.md:93과 다름). 처음 열 때 마운트하고 그 뒤로는 숨기기만 해 연결 상태가 바뀌거나 도구를 바꿔도 고치던 글이 남는다. PatientsScreen.test의 slot('messages')는 null이고 상태별 확인은 PatientsEntry.test가 맡는다. 저장(step3.md:80 대신): saveTemplates의 READ는 load-failed + [다시 불러오기], SAVE 실패는 draft 그대로 + saved 다시 읽기, 저장 중 두 번 누름은 훅과 단추에서 막는다. 다시 읽기가 draft와 글·순서까지 같으면 저장된 것으로 친다(alreadySaved, sort_order 포함). 다시 읽기 때 withoutForeign이 모르는 id이면서 id 없는 draft 줄과 글이 다른 줄을 before에서 빼서 [다시 저장]이 본 적 없는 다른 기기 줄을 지우지 않는다(저장이 끝난 뒤 다시 읽어 보인다). 알려진 한계(보고): [다시 저장] 때 다른 기기에서 고친 줄은 초안 글로 되돌아가고 다른 곳에서 지운 줄은 새 id로 다시 들어간다. 답 잃음 + 다시 읽기 실패 + 사용자가 그 줄을 고침이 겹치면 옛 줄이 한 줄 더 남는다(지울 수 있음). 더하기가 다시 읽기보다 늦게 서버에 닿으면 줄이 겹친다(messageTemplates.ts:64). 보고할 문구: errors.ts TEMPLATES-READ/SAVE 고침 줄에 목업의 '인터넷 연결을 확인하고'가 없다. 저장은 됐는데 다시 읽기만 실패하면 READ 카드가 저장됐다고 말하지 않는다. 100줄 넘으면 이유 없이 SAVE 카드. [문구 복사]는 PC 32px, 목업 36px(CopyButton 범위 밖). TASK-14에 전달: PatientsScreen.tsx의 도구 숨김 div, store.load 자동 호출 금지."
+    },
+    {
+      "step": 4,
+      "name": "counts-upload",
+      "status": "completed",
+      "summary": "src/components/patients/useCountsUpload(sb, counts): { error, retry, ... }. PatientsScreen이 F/U·정기 주사 보기 모양이 둘 다 있을 때만 counts를 넘긴다(훅의 counts는 views·marked 중 나중에 온 값, reload에 지워짐). 요청은 한 번에 하나, 끝나면 최신 값을 보낸다. 실패 줄 글은 목업 그대로('남은 건수를 올리지 못했어요 / …[다시 올리기]를 눌러 주세요.' + 오류 번호), counts가 null인 동안 줄은 숨고 값이 돌아오면 다시 보인다. 자동 재시도 없음. 다시 마운트하면 기록이 없어 한 번 다시 보낸다(목업 '탭을 열 때마다'). 알려진 한계(보고): 답이 영영 안 오면 뒤 값이 멈춘다(타임아웃 없음). 요청 왕복 안에 [다시 불러오기]를 누르고 그 읽기가 실패하면 서버는 옛 값으로 남는다(다음 성공 읽기에서 고쳐짐). 실패 뒤 재시도 중 값이 바뀌고 다시 읽기가 옛 값이면 저장은 됐는데 실패 줄이 남을 수 있다(닿기 어렵고 서버 값은 맞음). TASK-15에 전달: 가짜 Supabase는 .upsert 인자를 기록한다. PatientsEntry.test의 가짜 모듈에는 upsertContactCount가 없고 counts가 늘 null이라 닿지 않는다."
+    },
+    {
+      "step": 5,
+      "name": "privacy-e2e",
+      "status": "blocked",
+      "blocked_reason": "시험 파일은 만들고 리뷰 PASS. 본 시험 실행은 Supabase에 환자 탭 표가 없고(20261101000300_patients.sql을 사용자 OK 뒤 붙여야 함) 시험 계정 값이 있어야 해서 대기. AC-615.1·615.2와 화면 찾기는 아직 실제로 돌려 보지 못했고 AC-615.3은 가짜로 바꾼 실행에서만 확인했다",
+      "summary": "e2e/patients-privacy.spec.ts, e2e/patients/{fakeExtension,forbidden}.ts. 요청은 브라우저 맥락 수준에서 모아 Worker fetch·WebSocket·beacon까지 본다. 읽을 수 없는 쓰기 몸통은 unread로 실패. AC-615.3은 파일 끝의 ./support test(로그인 안 함, E2E 값 필요, 본 시험이 실패해도 새 worker에서 돈다, 재시도를 켜면 그 산출물은 검사 뒤에 생긴다). 승인 문구와 다른 점: 금지 글 종류에 symptom을 더했다(AC-615.1은 다섯 종류, requirements.md:11이 증상 글도 금지하고 이 탭이 실제로 받는다. 코디네이터 결정, 5자 미만·도움말 글은 뺌). 알려진 빈틈: 호스트·사용자 정보 칸 안 봄, /auth/v1/ 건너뛰기가 호스트를 가리지 않음. 실패 시 호출 기록·error-context.md에 가짜 이름이 나올 수 있다(가짜만)."
+    }
+  ]
+}

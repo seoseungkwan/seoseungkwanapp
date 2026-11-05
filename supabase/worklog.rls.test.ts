@@ -98,10 +98,16 @@ const UPSERT_ALL = `insert into ${TABLE} (${SENT_COLUMNS.join(', ')})
   values (${SENT_COLUMNS.map((_, i) => `$${i + 1}`).join(', ')})
   on conflict (hospital_id, work_date) do update set ${SENT_COLUMNS.map((c) => `${c} = excluded.${c}`).join(', ')}`
 
-// 칸 하나만 보낸 upsert. PostgREST처럼 work_date는 늘 보내므로 SET에 있고, hospital_id는 없다
+// 보낸 칸만 SET에 쓰는 upsert. PostgREST처럼 work_date는 늘 보내므로 SET에 있고, hospital_id는 없다
+function upsertOf(columns: string[]) {
+  const sent = ['work_date', ...columns]
+  return `insert into ${TABLE} (${sent.join(', ')}) values (${sent.map((_, i) => `$${i + 1}`).join(', ')})
+    on conflict (hospital_id, work_date) do update set ${sent.map((c) => `${c} = excluded.${c}`).join(', ')}`
+}
+
+// 칸 하나만 보낸 upsert
 function upsertOne(column: string) {
-  return `insert into ${TABLE} (work_date, ${column}) values ($1, $2)
-    on conflict (hospital_id, work_date) do update set work_date = excluded.work_date, ${column} = excluded.${column}`
+  return upsertOf([column])
 }
 
 function sentValues(date: string, number: string, text: string) {
@@ -144,6 +150,21 @@ async function becomeAnon() {
 
 async function rows(sql: string, params: unknown[] = []) {
   return (await db.query<Record<string, unknown>>(sql, params)).rows
+}
+
+// 시험마다 빈 표에서 시작한다. A·B는 승인, C는 대기, D는 거절
+async function seedUsers() {
+  await operator()
+  await db.exec('truncate auth.users cascade')
+  for (const user of USERS) {
+    await db.query('insert into auth.users (id, email) values ($1, $2)', [user.id, user.email])
+    const [row] = await rows(
+      `insert into public.hospitals (owner_id, name, applicant_name, email, status)
+       values ($1, '가상병원', '가상 신청자', $2, $3) returning id`,
+      [user.id, user.email, user.status],
+    )
+    hospital[user.id] = row.id as string
+  }
 }
 
 // 운영자가 그 병원 줄을 넣어 둔다(RLS를 건너뛴다)
@@ -199,20 +220,7 @@ describe.each([
     await db.close()
   })
 
-  // 시험마다 빈 표에서 시작한다. A·B는 승인, C는 대기, D는 거절
-  beforeEach(async () => {
-    await operator()
-    await db.exec('truncate auth.users cascade')
-    for (const user of USERS) {
-      await db.query('insert into auth.users (id, email) values ($1, $2)', [user.id, user.email])
-      const [row] = await rows(
-        `insert into public.hospitals (owner_id, name, applicant_name, email, status)
-         values ($1, '가상병원', '가상 신청자', $2, $3) returning id`,
-        [user.id, user.email, user.status],
-      )
-      hospital[user.id] = row.id as string
-    }
-  })
+  beforeEach(seedUsers)
 
   describe('AC-004.1 표 칸이 정해 둔 목록과 정확히 같다', () => {
     it('칸 이름·종류·순서·빈 칸 허용이 목록과 같다', async () => {
@@ -614,6 +622,318 @@ describe.each([
       await db.query(upsertOne('cash_in'), [DAY, null])
       const [row] = await rows(`select * from ${TABLE}`)
       expectOnlyFilled(row, { card_in: '200000' })
+    })
+  })
+})
+
+// ── Phase 4: 비트 칸 표시(bit_fields, REQ-015, design.md 20-4절) ──
+// 운영자가 auth → 업무일지(TASK-4) → 0110 차례로 붙여 넣은 DB. 위 시험은 TASK-4 파일만 넣은 DB 그대로 둔다(이미 붙여 넣었을 수 있다)
+const BIT_MIGRATION_URL = new URL('./migrations/20261101000110_worklog_bit_fields.sql', import.meta.url)
+
+// 비트가 채울 수 있는 DB 칸 열 개(design.md 20-2절). 미수발생·지역화폐는 아직 안 채우지만 나중 계약을 위해 받는다
+const BIT_FIELDS = [
+  'new_patients',
+  'return_patients',
+  'total_fee',
+  'claim_amount',
+  'cash_in',
+  'card_in',
+  'transfer_in',
+  'local_currency_in',
+  'unpaid_new',
+  'unpaid_paid',
+]
+// 지출·비고·업무사항·항목 이름 칸은 손으로만 적는다. 앱 열쇠 이름(cashIn)·빈 이름·다른 칸 이름도 받지 않는다
+const NOT_BIT_NAMES = [
+  ...VALUE_COLUMNS.filter((c) => !BIT_FIELDS.includes(c)),
+  'work_date',
+  'hospital_id',
+  'cashIn',
+  '',
+]
+
+// 0110이 바꾸면 안 되는 것 전부: RLS·정책·함수(공용 함수 포함)·bit_fields 밖 칸·제약·방아쇠·표 권한·칸 권한
+async function schemaSnapshot() {
+  await operator()
+  return {
+    rls: await rows('select relrowsecurity, relforcerowsecurity from pg_class where oid = $1::regclass', [TABLE]),
+    policies: await rows(
+      `select policyname, cmd, roles::text as roles, qual, with_check from pg_policies
+       where tablename = 'worklog_days' order by policyname`,
+    ),
+    functions: await rows(
+      `select p.oid::regprocedure::text as name, pg_get_functiondef(p.oid) as body, p.proacl::text as acl
+       from pg_proc p where p.pronamespace = 'public'::regnamespace order by 1`,
+    ),
+    columns: await rows(
+      `select column_name, data_type, is_nullable, column_default from information_schema.columns
+       where table_schema = 'public' and table_name = 'worklog_days' and column_name <> 'bit_fields'
+       order by ordinal_position`,
+    ),
+    constraints: await rows(
+      `select conname, pg_get_constraintdef(oid) as def from pg_constraint
+       where conrelid = $1::regclass and pg_get_constraintdef(oid) not like '%bit_fields%' order by conname`,
+      [TABLE],
+    ),
+    triggers: await rows('select tgname from pg_trigger where tgrelid = $1::regclass', [TABLE]),
+    tableGrants: await rows(
+      `select grantee, privilege_type from information_schema.role_table_grants
+       where table_name = 'worklog_days' order by 1, 2`,
+    ),
+    columnGrants: await rows(
+      `select grantee, privilege_type, column_name from information_schema.column_privileges
+       where table_name = 'worklog_days' and column_name <> 'bit_fields' order by 1, 2, 3`,
+    ),
+  }
+}
+
+// 운영자 눈으로 본 그 병원 줄의 비트 칸과 값 몇 칸
+async function bitsOf(user: string) {
+  await operator()
+  return rows(
+    `select work_date::text as work_date, bit_fields, total_fee, cash_in, memo
+     from ${TABLE} where hospital_id = $1 order by work_date`,
+    [hospital[user]],
+  )
+}
+
+describe('REQ-015 비트 칸 표시 migration(0110)을 업무일지 표 위에 붙여 넣은 DB', SLOW, () => {
+  let bitMigration = ''
+  let before: Awaited<ReturnType<typeof schemaSnapshot>>
+  let after: Awaited<ReturnType<typeof schemaSnapshot>>
+  // 0110 전에 있던 줄이 0110 뒤에 어떻게 보이는지
+  let existing: Record<string, unknown>[] = []
+
+  beforeAll(async () => {
+    db = await PGlite.create()
+    await db.exec(SUPABASE_MOCK)
+    await db.exec(AUTH_MIGRATION)
+    await db.exec(WORKLOG_MIGRATION)
+    await seedUsers()
+    await addDay(A)
+    before = await schemaSnapshot()
+    bitMigration = readFileSync(fileURLToPath(BIT_MIGRATION_URL), 'utf-8')
+    await operator()
+    await db.exec(bitMigration)
+    after = await schemaSnapshot()
+    existing = await bitsOf(A)
+  }, 30_000)
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  beforeEach(seedUsers)
+
+  describe('AC-015.1 bit_fields 칸이 더해진다', () => {
+    it('AC-015.1: bit_fields text[] not null default {}가 맨 끝에 하나 더해지고 다른 칸은 그대로다', async () => {
+      const columns = await rows(
+        `select column_name, data_type, udt_name, is_nullable, column_default from information_schema.columns
+         where table_schema = 'public' and table_name = 'worklog_days' order by ordinal_position`,
+      )
+      expect(columns.map((c) => c.column_name)).toEqual(['hospital_id', 'work_date', ...VALUE_COLUMNS, 'bit_fields'])
+      expect(columns.at(-1)).toEqual({
+        column_name: 'bit_fields',
+        data_type: 'ARRAY',
+        udt_name: '_text',
+        is_nullable: 'NO',
+        column_default: "'{}'::text[]",
+      })
+    })
+
+    it('AC-015.1: RLS·정책·공용 함수·다른 칸·제약·방아쇠·표 권한·다른 칸 권한이 붙여 넣기 전과 같다', () => {
+      expect(after).toEqual(before)
+      expect(after.policies).toHaveLength(3)
+      expect(after.functions.map((f) => f.name)).toContain('my_hospital_id()')
+    })
+
+    it('AC-015.1: 파일은 함수·정책을 만들거나 고치거나 지우지 않는다', () => {
+      expect(bitMigration).toContain('alter table public.worklog_days add column')
+      expect(bitMigration).not.toMatch(/create\s+(or\s+replace\s+)?function/i)
+      expect(bitMigration).not.toMatch(/(create|alter|drop)\s+policy/i)
+      expect(bitMigration).not.toMatch(/\b(drop|revoke|truncate|delete)\b/i)
+    })
+
+    it('AC-015.1: 붙여 넣기 전에 있던 줄은 빈 목록이 되고 값은 그대로다', () => {
+      expect(existing).toEqual([{ work_date: DAY, bit_fields: [], total_fee: '100000', cash_in: null, memo: null }])
+    })
+
+    it('AC-015.1: 두 번 붙여 넣어도 오류 없이 그대로다', async () => {
+      await db.exec(bitMigration)
+      expect(await schemaSnapshot()).toEqual(after)
+      // check 제약(contype 'c')만 센다. PG18은 not null도 pg_constraint에 따로 적는다
+      const checks = await rows(
+        `select conname from pg_constraint
+         where conrelid = $1::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%bit_fields%'`,
+        [TABLE],
+      )
+      expect(checks).toEqual([{ conname: 'worklog_days_bit_fields_check' }])
+    })
+
+    it('AC-015.1: bit_fields 없이 넣은 줄은 빈 목록이다', async () => {
+      await become(A)
+      const [row] = await rows(`insert into ${TABLE} (work_date, cash_in) values ($1, '100000') returning bit_fields`, [
+        DAY,
+      ])
+      expect(row.bit_fields).toEqual([])
+    })
+
+    it.each(BIT_FIELDS)('AC-015.1: 채울 수 있는 칸 이름 %s 하나만 담은 목록은 된다', async (name) => {
+      await become(A)
+      const [row] = await rows(`insert into ${TABLE} (work_date, bit_fields) values ($1, $2) returning bit_fields`, [
+        DAY,
+        [name],
+      ])
+      expect(row.bit_fields).toEqual([name])
+    })
+
+    it('AC-015.1: 열 칸을 모두 담은 목록과 빈 목록은 된다', async () => {
+      await become(A)
+      for (const [date, list] of [
+        ['2020-01-02', BIT_FIELDS],
+        ['2020-01-03', []],
+      ] as const) {
+        const [row] = await rows(`insert into ${TABLE} (work_date, bit_fields) values ($1, $2) returning bit_fields`, [
+          date,
+          list,
+        ])
+        expect(row.bit_fields).toEqual(list)
+      }
+    })
+
+    it.each(NOT_BIT_NAMES)('AC-015.1: 목록 밖 이름 "%s"는 넣기·고치기 모두 23514로 거부된다', async (name) => {
+      await become(A)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, bit_fields) values ($1, $2)`, [DAY, ['cash_in', name]]),
+      ).rejects.toMatchObject(CHECK_FAILED)
+      expect(await bitsOf(A)).toEqual([])
+      await become(A)
+      await db.query(upsertOne('bit_fields'), [DAY, ['cash_in']])
+      await expect(db.query(`update ${TABLE} set bit_fields = $1`, [[name]])).rejects.toMatchObject(CHECK_FAILED)
+      expect(await bitsOf(A)).toMatchObject([{ bit_fields: ['cash_in'] }])
+    })
+
+    it('AC-015.1: 이름 대신 null 한 칸이 든 목록은 23514, 목록 자체가 null이면 23502로 거부된다', async () => {
+      await become(A)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, bit_fields) values ($1, array['cash_in', null]::text[])`, [DAY]),
+      ).rejects.toMatchObject(CHECK_FAILED)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, bit_fields) values ($1, null)`, [DAY]),
+      ).rejects.toMatchObject({ code: '23502' })
+      expect(await bitsOf(A)).toEqual([])
+    })
+  })
+
+  describe('AC-015.2 승인 사용자 upsert에 bit_fields가 되고 다른 규칙은 REQ-004 그대로다', () => {
+    it('AC-015.2: 새 칸 권한은 authenticated의 넣기·고치기 둘뿐이다(anon 없음, 표 권한은 읽기뿐)', async () => {
+      const granted = await rows(
+        `select grantee, privilege_type from information_schema.column_privileges
+         where table_name = 'worklog_days' and column_name = 'bit_fields' and grantee in ('anon', 'authenticated')
+         order by 1, 2`,
+      )
+      expect(granted).toEqual([
+        { grantee: 'authenticated', privilege_type: 'INSERT' },
+        { grantee: 'authenticated', privilege_type: 'SELECT' },
+        { grantee: 'authenticated', privilege_type: 'UPDATE' },
+      ])
+      const table = await rows(
+        `select grantee, privilege_type from information_schema.role_table_grants
+         where table_name = 'worklog_days' and grantee in ('anon', 'authenticated')`,
+      )
+      expect(table).toEqual([{ grantee: 'authenticated', privilege_type: 'SELECT' }])
+    })
+
+    it.each(['INSERT', 'UPDATE'])(
+      'AC-015.2: %s 칸 권한은 work_date·WORKLOG_COLUMNS 32칸·bit_fields와 정확히 같다',
+      async (privilege) => {
+        const allowed = await rows(
+          `select column_name from information_schema.column_privileges
+           where grantee = 'authenticated' and table_name = 'worklog_days' and privilege_type = $1`,
+          [privilege],
+        )
+        const expected = ['work_date', ...Object.values(WORKLOG_COLUMNS), 'bit_fields'].sort()
+        expect(allowed.map((r) => r.column_name).sort()).toEqual(expected)
+      },
+    )
+
+    it('AC-015.2: bit_fields만 보낸 upsert가 hospital_id 없이 내 줄을 만들고 고친다', async () => {
+      await become(A)
+      await db.query(upsertOne('bit_fields'), [DAY, ['cash_in', 'card_in']])
+      await db.query(upsertOne('bit_fields'), [DAY, ['total_fee']])
+      const found = await rows(`select hospital_id, work_date::text as work_date, bit_fields, cash_in from ${TABLE}`)
+      expect(found).toEqual([{ hospital_id: hospital[A], work_date: DAY, bit_fields: ['total_fee'], cash_in: null }])
+    })
+
+    it('AC-015.2: 바뀐 칸과 bit_fields를 함께 보낸 upsert가 되고, 보내지 않은 칸은 그대로다', async () => {
+      await become(A)
+      await db.query(upsertOne('memo'), [DAY, '가상 업무사항'])
+      await db.query(upsertOf(['cash_in', 'bit_fields']), [DAY, '100000', ['cash_in']])
+      expect(await bitsOf(A)).toEqual([
+        { work_date: DAY, bit_fields: ['cash_in'], total_fee: null, cash_in: '100000', memo: '가상 업무사항' },
+      ])
+    })
+
+    it('AC-015.2: work_date + 값 32칸 + bit_fields를 다 보낸 upsert가 넣기와 고치기 모두 된다', async () => {
+      await become(A)
+      const sql = upsertOf([...VALUE_COLUMNS, 'bit_fields'])
+      await db.query(sql, [...sentValues(DAY, '100000', '가상 글자'), BIT_FIELDS])
+      await db.query(sql, [...sentValues(DAY, '200000', '가상 다른 글자'), ['new_patients']])
+      expect(await bitsOf(A)).toEqual([
+        { work_date: DAY, bit_fields: ['new_patients'], total_fee: '200000', cash_in: '200000', memo: '가상 다른 글자' },
+      ])
+    })
+
+    it('AC-015.2: bit_fields를 SET에 넣지 않은 upsert는 저장된 bit_fields를 바꾸지 않는다', async () => {
+      await become(A)
+      await db.query(upsertOne('bit_fields'), [DAY, ['cash_in', 'total_fee']])
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await db.query(upsertOne('memo'), [DAY, '가상 업무사항'])
+      await db.query(UPSERT_SOME, [DAY, '200000', '가상 비고'])
+      await db.query(UPSERT_ALL, sentValues(DAY, '300000', '가상 글자'))
+      await db.query(upsertOne('cash_in'), [DAY, null])
+      expect(await bitsOf(A)).toEqual([
+        { work_date: DAY, bit_fields: ['cash_in', 'total_fee'], total_fee: '300000', cash_in: null, memo: '가상 글자' },
+      ])
+    })
+
+    it('AC-015.2: 다른 병원 줄의 bit_fields는 안 보이고, 고쳐도 0줄이며, 같은 날 upsert는 내 줄만 만든다', async () => {
+      await addDay(B)
+      await become(B)
+      await db.query(upsertOne('bit_fields'), [DAY, ['card_in']])
+      await become(A)
+      expect(await rows(`select bit_fields from ${TABLE}`)).toEqual([])
+      const changed = await db.query(`update ${TABLE} set bit_fields = '{cash_in}' where hospital_id = $1`, [
+        hospital[B],
+      ])
+      expect(changed.affectedRows).toBe(0)
+      await db.query(upsertOne('bit_fields'), [DAY, ['cash_in']])
+      expect(await bitsOf(A)).toMatchObject([{ bit_fields: ['cash_in'] }])
+      expect(await bitsOf(B)).toMatchObject([{ bit_fields: ['card_in'], total_fee: '100000' }])
+    })
+
+    it('AC-015.2: anon은 bit_fields를 읽기·넣기·upsert·고치기 모두 42501이고 줄은 그대로다', async () => {
+      await addDay(A)
+      await becomeAnon()
+      await expect(db.query(`select bit_fields from ${TABLE}`)).rejects.toMatchObject(NO_PERMISSION)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, bit_fields) values ($1, $2)`, ['2020-01-03', ['cash_in']]),
+      ).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(upsertOne('bit_fields'), [DAY, ['cash_in']])).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(`update ${TABLE} set bit_fields = '{cash_in}'`)).rejects.toMatchObject(NO_PERMISSION)
+      expect(await bitsOf(A)).toMatchObject([{ bit_fields: [], total_fee: '100000' }])
+    })
+
+    it.each([
+      { label: '승인 대기', user: C },
+      { label: '거절', user: D },
+    ])('AC-015.2: $label 병원 사용자는 bit_fields upsert가 42501이고 고쳐도 0줄이다', async ({ user }) => {
+      await addDay(user)
+      await become(user)
+      await expect(db.query(upsertOne('bit_fields'), [DAY, ['cash_in']])).rejects.toMatchObject(NO_PERMISSION)
+      const changed = await db.query(`update ${TABLE} set bit_fields = '{cash_in}'`)
+      expect(changed.affectedRows).toBe(0)
+      expect(await bitsOf(user)).toMatchObject([{ bit_fields: [] }])
     })
   })
 })

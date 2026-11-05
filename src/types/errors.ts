@@ -38,6 +38,8 @@ export type ErrorCode =
   | 'E-AI-READ'
   // 업무일지(specs/worklog)
   | 'E-WORKLOG-SAVE-FAILED' | 'E-WORKLOG-LOAD-FAILED' | 'E-WORKLOG-NOTE-PRIVATE'
+  // 환자 탭(spec patients REQ-609). 이 명세는 E-PATIENTS-*만 더한다(규칙 C3)
+  | 'E-PATIENTS-TEMPLATES-READ' | 'E-PATIENTS-TEMPLATES-SAVE' | 'E-PATIENTS-COUNTS-READ' | 'E-PATIENTS-COUNTS-SAVE' | 'E-PATIENTS-SOURCE'
   // 비트 대시보드(spec bit-dashboard)
   | 'E-BIT-DATA-UNSURE' | 'E-BIT-IN-USE'
 

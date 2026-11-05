@@ -65,9 +65,9 @@ describe('AC-204.6 아이콘 Icon (REQ-204, 시안 parts.mjs의 I)', () => {
     for (const name of NAMES) expect(MOCK[name], name).toBeTruthy()
   })
 
-  it('AC-204.6·AC-315.1·AC-416.7: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout을 더한 19개뿐이다', () => {
-    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout'])
-    expect(ICON_NAMES).toHaveLength(19)
+  it('AC-204.6·AC-315.1·AC-416.7·AC-017.9: 이름은 16개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop) 뒤에 copy·userCheck, 그 뒤에 logout, logout 뒤에 info·reload를 더한 21개뿐이다', () => {
+    expect([...ICON_NAMES]).toEqual([...NAMES, ...NEW_NAMES, 'logout', 'info', 'reload'])
+    expect(ICON_NAMES).toHaveLength(21)
   })
 
   it.each(NAMES)('AC-204.6: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
@@ -168,5 +168,68 @@ describe('AC-416.7 아이콘 logout (ui-90 REQ-416, 시안 docs/mockups/ui-90/ap
     for (const source of ['docs/mockups/b2b-redesign/parts.mjs', 'docs/mockups/dashboard-home/index.html', 'docs/mockups/ui-90/app/gen.py']) {
       expect(head, source).toContain(source)
     }
+  })
+})
+
+// worklog AC-017.9: info·reload는 비트 표시 시안 docs/mockups/worklog/bitfill.html의 ICON_INFO·ICON_LOAD(viewBox 24)를 ×2/3 한 그림이다(design.md 20-5절).
+// 바꿈이 있어 기대 그림은 design.md 글자 그대로 여기에 적고, 원소 종류·개수는 시안과 맞춰 본다
+const BITFILL = readFileSync(join(ROOT, 'docs/mockups/worklog/bitfill.html'), 'utf8')
+const BIT_SVG = {
+  info: BITFILL.match(/const ICON_INFO = '(<svg\b[^>]*>)((?:(?!<\/svg>)[^'])*)<\/svg>';/),
+  reload: BITFILL.match(/const ICON_LOAD = '(<svg\b[^>]*>)((?:(?!<\/svg>)[^'])*)<\/svg>';/),
+}
+const BIT_NAMES = ['info', 'reload'] as const
+const BIT_SHAPES: Record<(typeof BIT_NAMES)[number], string> = {
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.33v3.67"/><path d="M8 5h.01"/>',
+  reload: '<path d="M13.33 8a5.33 5.33 0 1 1-1.56-3.77"/><path d="M13.33 2.67v3.33h-3.33"/>',
+}
+const tagsOf = (inner: string) => elementsOf(inner).map(([tag]) => tag)
+
+describe('AC-017.9 아이콘 둘 info·reload (worklog REQ-017, 시안 docs/mockups/worklog/bitfill.html의 ICON_INFO·ICON_LOAD)', () => {
+  it('AC-017.9: 시안에서 ICON_INFO·ICON_LOAD 그림을 읽었다(시험 준비 확인)', () => {
+    for (const name of BIT_NAMES) {
+      expect(BIT_SVG[name]?.[1], name).toMatch(/^<svg\b/)
+      expect(elementsOf(BIT_SVG[name]?.[2] ?? '').length, name).toBeGreaterThan(0)
+    }
+  })
+
+  it('AC-017.9: 시안의 두 그림은 viewBox 24·currentColor·aria-hidden이다(×2/3 하면 16 칸이 된다)', () => {
+    for (const name of BIT_NAMES) {
+      expect(attrsOf(BIT_SVG[name]?.[1] ?? ''), name).toMatchObject({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'aria-hidden': 'true' })
+    }
+  })
+
+  it.each(BIT_NAMES)('AC-017.9: %s는 aria-hidden·viewBox 0 0 16 16·fill none·stroke currentColor·선 1.5이고 기본 16×16이다', (name) => {
+    const html = draw(name)
+    expect(attrsOf(openTag(html))).toEqual({ ...SVG_ATTRS, width: '16', height: '16' })
+    expect(html.endsWith('</svg>')).toBe(true)
+  })
+
+  it.each(BIT_NAMES)('AC-017.9: %s의 안쪽 그림은 design.md 20-5절 글자(시안 ×2/3)와 같다', (name) => {
+    expect(elementsOf(innerOf(draw(name)))).toEqual(elementsOf(BIT_SHAPES[name]))
+  })
+
+  it.each(BIT_NAMES)('AC-017.9: %s의 원소 종류·개수는 시안과 같고(circle·path·path / path·path), 안쪽 원소에 색·style·글자가 없다', (name) => {
+    const inner = innerOf(draw(name))
+    expect(tagsOf(inner)).toEqual(tagsOf(BIT_SVG[name]?.[2] ?? ''))
+    expect(tagsOf(inner)).toEqual(name === 'info' ? ['circle', 'path', 'path'] : ['path', 'path'])
+    expect(inner, name).not.toMatch(/\b(?:fill|stroke|style|class)=/)
+    expect(inner.replace(/<[^>]*>/g, ''), `${name} 글자`).toBe('')
+  })
+
+  it.each(BIT_NAMES.flatMap((name) => [12, 14, 16].map((size) => [name, size] as const)))(
+    'AC-017.9: %s에 size=%i를 주면 너비·높이가 되고 viewBox·선 굵기는 그대로다',
+    (name, size) => {
+      const attrs = attrsOf(openTag(draw(name, { size })))
+      expect(attrs).toMatchObject({ width: String(size), height: String(size), viewBox: '0 0 16 16', 'stroke-width': '1.5' })
+    },
+  )
+
+  it('AC-017.9: Icon.tsx 머리 주석이 그림 출처(docs/mockups/worklog/bitfill.html의 ICON_INFO·ICON_LOAD, ×2/3)를 적는다', () => {
+    const src = readFileSync(join(ROOT, 'src/components/common/Icon.tsx'), 'utf8')
+    const head = src.slice(0, src.indexOf('export const ICON_NAMES'))
+    expect(head).toContain('docs/mockups/worklog/bitfill.html')
+    expect(head).toContain('ICON_INFO')
+    expect(head).toContain('ICON_LOAD')
   })
 })

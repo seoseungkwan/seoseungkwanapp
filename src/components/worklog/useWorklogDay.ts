@@ -1,19 +1,40 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { emptyWorklogDay, type WorklogCellKey, type WorklogDay } from '@/types/worklog'
+import type { AutosaveDay } from '@/lib/worklog/autosave'
+import { BIT_FILL_KEYS, dropBitField } from '@/lib/worklog/bitFill'
+import {
+  emptyWorklogDay,
+  type WorklogCellKey,
+  type WorklogDay,
+  type WorklogNumberKey,
+  type WorklogSavedDay,
+} from '@/types/worklog'
 import { worklogAutosave } from './worklogSession'
 
 // 날짜별 화면 값과 읽기 상태 (specs/worklog/design.md 11-3절). 저장은 부르지 않는다: 받은 값을 화면에 두기만 하고 change는 화면이 부른다.
-// 요청 번호 하나로 늦게 온 응답을 버린다(지금 보는 날의 마지막 읽기만 쓴다). load·focusKey는 바뀌지 않는 함수로 준다
+// 요청 번호 하나로 늦게 온 응답을 버린다(지금 보는 날의 마지막 읽기만 쓴다). load·focusKey는 바뀌지 않는 함수로 준다.
+// 비트 칸 목록(bitFields, design.md 20-4절)도 날짜마다 든다. 읽은 목록은 자동 저장의 serverDay를 거쳐 돌려받은 것으로 그리고(저장 안 된 목록은 그대로),
+// 모르면(읽기 전이고 자동 저장에도 없음) undefined다 — 모르는 목록을 빈 목록으로 저장해 표시를 지우지 않게
 
 export type WorklogDayStatus = 'loading' | 'ready' | 'error'
-type Slot = { status: WorklogDayStatus; day: WorklogDay }
+type Slot = { status: WorklogDayStatus; day: WorklogDay; bitFields?: WorklogNumberKey[] }
 type Slots = ReadonlyMap<string, Slot>
+/** 비트 맞춤(mergeBit·takeBitValue)이 돌려준 하루와 목록. null이면 바꾸지 않는다 */
+export type BitEdit = (day: WorklogDay, bitFields: readonly WorklogNumberKey[]) => { day: WorklogDay; bitFields: WorklogNumberKey[] } | null
+
+// 줄이 없는 날은 비트 칸도 없다(빈 목록). 칸 값과 목록은 따로 serverDay에 넘긴다(AC-016.1)
+const fromServer = (autosave: ReturnType<typeof worklogAutosave>, ymd: string, saved: WorklogSavedDay | null, focus: WorklogCellKey | null) =>
+  autosave.serverDay(ymd, saved === null ? null : saved.day, focus, saved === null ? [] : saved.bitFields)
+
+const slotOf = (status: WorklogDayStatus, shown: AutosaveDay): Slot =>
+  shown.bitFields === undefined ? { status, day: shown.day } : { status, day: shown.day, bitFields: shown.bitFields }
+
+const isBitKey = (key: WorklogCellKey): key is WorklogNumberKey => (BIT_FILL_KEYS as readonly string[]).includes(key)
 
 export function useWorklogDay(
   ymd: string,
-  load: (ymd: string) => Promise<WorklogDay | null>,
+  load: (ymd: string) => Promise<WorklogSavedDay | null>,
   focusKey: () => WorklogCellKey | null,
 ) {
   const autosave = worklogAutosave()
@@ -42,20 +63,21 @@ export function useWorklogDay(
   const readFirst = useCallback(
     async (target: string) => {
       const mine = ++request.current
-      const shown = latest.current.get(target)?.day ?? autosave.pendingDay(target) ?? emptyWorklogDay()
-      put(target, { status: 'loading', day: shown })
+      const before = latest.current.get(target)
+      const shown: AutosaveDay = before ?? autosave.pendingDay(target) ?? { day: emptyWorklogDay() }
+      put(target, slotOf('loading', shown))
       for (;;) {
         const revision = autosave.revision(target)
-        let server: WorklogDay | null
+        let server: WorklogSavedDay | null
         try {
           server = await load(target)
         } catch {
-          if (mine === request.current) put(target, { status: 'error', day: shown })
+          if (mine === request.current) put(target, slotOf('error', shown))
           return
         }
         if (mine !== request.current) return
         if (autosave.revision(target) === revision) {
-          put(target, { status: 'ready', day: autosave.serverDay(target, server, null) })
+          put(target, slotOf('ready', fromServer(autosave, target, server, null)))
           return
         }
       }
@@ -71,7 +93,7 @@ export function useWorklogDay(
     load(ymd).then(
       (server) => {
         if (mine !== request.current || autosave.revision(ymd) !== revision) return
-        put(ymd, { status: 'ready', day: autosave.serverDay(ymd, server, focusKey()) })
+        put(ymd, slotOf('ready', fromServer(autosave, ymd, server, focusKey())))
       },
       () => {},
     )
@@ -88,12 +110,27 @@ export function useWorklogDay(
     update((next) => next.clear())
   }, [update])
 
+  // 사람이 고친 숫자 칸은 비트 칸이 아니다(dropBitField, AC-014.6). 목록을 모르면 목록 없이 돌려준다
   const setCell = useCallback(
-    (key: WorklogCellKey, value: string): WorklogDay => {
+    (key: WorklogCellKey, value: string): AutosaveDay => {
       const slot = latest.current.get(ymd) ?? { status: 'loading' as const, day: emptyWorklogDay() }
       const day = { ...slot.day, [key]: value }
-      put(ymd, { ...slot, day })
-      return day
+      const bitFields = slot.bitFields && isBitKey(key) && slot.bitFields.includes(key) ? dropBitField(slot.bitFields, key) : slot.bitFields
+      put(ymd, slotOf(slot.status, { day, bitFields }))
+      return bitFields === undefined ? { day } : { day, bitFields }
+    },
+    [put, ymd],
+  )
+
+  // 비트 맞춤은 그날 읽기가 끝난(ready) 날에만, 목록을 아는 때만 최신 값에 적용한다(AC-017.8: 읽기 전 known은 빈 하루라 서버 값을 덮는다)
+  const editBit = useCallback(
+    (edit: BitEdit) => {
+      const slot = latest.current.get(ymd)
+      if (slot?.status !== 'ready' || slot.bitFields === undefined) return null
+      const next = edit(slot.day, slot.bitFields)
+      if (next === null) return null
+      put(ymd, { status: 'ready', day: next.day, bitFields: next.bitFields })
+      return next
     },
     [put, ymd],
   )
@@ -112,7 +149,7 @@ export function useWorklogDay(
   }, [readFirst, refresh, update, ymd])
 
   // 효과가 아직 돌지 않은 첫 그림. 다른 날의 값이 새 날짜 밑에 잠깐이라도 보이면 안 된다
-  const slot = slots.get(ymd) ?? { status: 'loading' as const, day: autosave.pendingDay(ymd) ?? emptyWorklogDay() }
+  const slot = slots.get(ymd) ?? slotOf('loading', autosave.pendingDay(ymd) ?? { day: emptyWorklogDay() })
 
-  return { status: slot.status, day: slot.day, setCell, refresh, reload, clear }
+  return { status: slot.status, day: slot.day, bitFields: slot.bitFields, setCell, editBit, refresh, reload, clear }
 }

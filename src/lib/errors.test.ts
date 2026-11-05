@@ -65,6 +65,11 @@ const ALL_CODES = [
   'E-WORKLOG-LOAD-FAILED',
   'E-WORKLOG-NOTE-PRIVATE',
   'E-COUNTS-FAILED',
+  'E-PATIENTS-TEMPLATES-READ',
+  'E-PATIENTS-TEMPLATES-SAVE',
+  'E-PATIENTS-COUNTS-READ',
+  'E-PATIENTS-COUNTS-SAVE',
+  'E-PATIENTS-SOURCE',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -291,6 +296,140 @@ describe('AC-006.6 비트 접속·등록 오류 번호 문구', () => {
     expect(isErrorCode('E-SOMETHING-NEW')).toBe(false)
     expect(isErrorCode('toString')).toBe(false)
     expect(isErrorCode('__proto__')).toBe(false)
+  })
+})
+
+// 환자 탭(spec patients REQ-609)이 더한 번호
+const PATIENTS_CODES = [
+  'E-PATIENTS-TEMPLATES-READ',
+  'E-PATIENTS-TEMPLATES-SAVE',
+  'E-PATIENTS-COUNTS-READ',
+  'E-PATIENTS-COUNTS-SAVE',
+  'E-PATIENTS-SOURCE',
+] as const satisfies readonly ErrorCode[]
+
+describe('AC-609.5 환자 탭 오류 번호 문구', () => {
+  it.each(PATIENTS_CODES)('AC-609.5: %s는 lib/errors.ts에 무엇이·어떻게 고치나가 있다', (code) => {
+    expect(Object.keys(ERRORS)).toContain(code)
+    const info = errorInfo(code)
+    expect(info.what.trim()).not.toBe('')
+    expect(info.fix.trim()).not.toBe('')
+  })
+
+  it('AC-609.5: E-PATIENTS-TEMPLATES-READ는 [다시 불러오기]와 문의를 안내한다', () => {
+    expect(errorInfo('E-PATIENTS-TEMPLATES-READ')).toEqual({
+      what: '문자 문구를 불러오지 못했어요',
+      fix: '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-TEMPLATES-SAVE는 고친 글이 그대로 있고 [다시 저장]을 누르라고 한다', () => {
+    expect(errorInfo('E-PATIENTS-TEMPLATES-SAVE')).toEqual({
+      what: '문자 문구를 저장하지 못했어요',
+      fix: '고친 글은 그대로 있어요. 인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-COUNTS-READ는 [다시 불러오기]를 안내한다', () => {
+    expect(errorInfo('E-PATIENTS-COUNTS-READ')).toEqual({
+      what: '남은 건수를 불러오지 못했어요',
+      fix: '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-COUNTS-SAVE는 명단을 그대로 쓸 수 있고 [다시 올리기]를 누르라고 한다', () => {
+    expect(errorInfo('E-PATIENTS-COUNTS-SAVE')).toEqual({
+      what: '남은 건수를 올리지 못했어요',
+      fix: '명단은 그대로 쓸 수 있어요. [다시 올리기]를 눌러 주세요.',
+    })
+  })
+
+  it('AC-609.5: E-PATIENTS-SOURCE는 비트 칸 설정 확인과 [다시 불러오기]·문의를 안내한다', () => {
+    expect(errorInfo('E-PATIENTS-SOURCE')).toEqual({
+      what: '비트에서 읽은 명단 자료에 맞지 않는 줄이 있어요',
+      fix: '비트 통계 화면의 칸 설정을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-609.5: 이 명세가 더하는 E-PATIENTS- 번호는 이 다섯뿐이다(규칙 C3)', () => {
+    const added = Object.keys(ERRORS).filter((code) => code.startsWith('E-PATIENTS-'))
+    expect(added.sort()).toEqual([...PATIENTS_CODES].sort())
+  })
+
+  it.each(['E-SETTINGS-FAILED', 'E-COUNTS-FAILED', 'E-BIT-EXPORT-FAILED'])(
+    'AC-609.5: %s는 precheck 명세가 더한 번호로 b2bc3cf를 합쳐 들어와 있다',
+    (code) => {
+      expect(isErrorCode(code)).toBe(true)
+    },
+  )
+})
+
+// 비트 PC 연결 화면과 환자 탭에 함께 뜨는 번호. 두 화면의 단추가 달라([다시 확인]·[다시 불러오기]) 단추 이름을 말하지 않는다
+describe('AC-609.6 두 화면에 함께 뜨는 오류 문구', () => {
+  it('AC-609.6: E-BIT-READ-FAILED는 정해 둔 글 그대로이고 단추 이름을 말하지 않는다', () => {
+    const info = errorInfo('E-BIT-READ-FAILED')
+    expect(info).toEqual({
+      what: '비트 자료를 읽지 못했어요',
+      fix: '잠시 뒤 다시 해 주세요. 계속되면 비트가 업데이트됐을 수 있으니 오류 번호와 함께 문의해 주세요.',
+    })
+    expect(info.fix).not.toContain('[')
+  })
+
+  it('AC-609.6: E-STORE-FAILED는 정해 둔 글 그대로이고 단추 이름을 말하지 않는다', () => {
+    const info = errorInfo('E-STORE-FAILED')
+    expect(info).toEqual({
+      what: '이 PC의 도우미 저장 폴더를 읽거나 쓰지 못했어요',
+      fix: '크롬을 모두 닫았다가 다시 연 뒤 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+    expect(info.fix).not.toContain('[')
+  })
+
+  it('AC-609.6: E-STORE-BROKEN은 정해 둔 글 그대로다', () => {
+    expect(errorInfo('E-STORE-BROKEN')).toEqual({
+      what: '이 PC에 저장해 둔 파일이 깨져서 읽지 못했어요',
+      fix: '연락 표시 파일이 깨졌다면 다시 불러올 때 빈 상태로 시작해요. 정기 주사 기록은 비트에서 다시 읽고, 연락 표시는 다시 눌러 주세요. 같은 오류가 또 나오면 비트 PC 연결 화면을 열어 [처음 등록]이 보일 때 눌러 주세요. 비트에 이미 넣은 메모는 비트와 비교해 다시 넣지 않아요. 깨진 파일은 지우지 않고 남겨 둬요. 그래도 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+
+  it('AC-609.6: E-STORE-BROKEN은 빈 상태로 시작 → [처음 등록] → 문의 차례로 말한다', () => {
+    const { fix } = errorInfo('E-STORE-BROKEN')
+    const blank = fix.indexOf('다시 불러올 때 빈 상태로 시작해요')
+    const register = fix.indexOf('[처음 등록]')
+    const contact = fix.indexOf('그래도 계속되면 오류 번호와 함께 문의해 주세요')
+    expect(blank).toBeGreaterThanOrEqual(0)
+    expect(register).toBeGreaterThan(blank)
+    expect(contact).toBeGreaterThan(register)
+  })
+})
+
+// 비트 PC 연결 화면·청구·통계·매출·대시보드·환자 탭에 함께 뜨는 비트 접속·등록 번호. 곁의 단추가 화면마다 달라
+// NOT-FOUND·DB-FAILED는 단추 이름을 말하지 않고, NOT-REGISTERED는 [처음 등록]이 있는 화면 이름을 함께 말한다
+describe('AC-609.7 여러 화면에 함께 뜨는 비트 접속·등록 오류 문구', () => {
+  it('AC-609.7: E-BIT-NOT-FOUND는 무엇이는 그대로, 어떻게 고치나는 정해 둔 글이고 단추 이름을 말하지 않는다', () => {
+    const info = errorInfo('E-BIT-NOT-FOUND')
+    expect(info).toEqual({
+      what: '이 PC에서 비트를 찾지 못했어요',
+      fix: '비트가 설치된 PC(C:\\DrBIT50)에서 이 화면을 열었는지 확인한 뒤 다시 해 주세요.',
+    })
+    expect(info.fix).not.toContain('[')
+  })
+
+  it('AC-609.7: E-BIT-DB-FAILED는 무엇이는 그대로, 어떻게 고치나는 정해 둔 글이고 단추 이름을 말하지 않는다', () => {
+    const info = errorInfo('E-BIT-DB-FAILED')
+    expect(info).toEqual({
+      what: '비트 자료(DB)에 연결하지 못했어요',
+      fix: '비트를 켜서 로그인되는지 먼저 확인한 뒤 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+    expect(info.fix).not.toContain('[')
+  })
+
+  it('AC-609.7: E-BIT-NOT-REGISTERED는 무엇이는 그대로, 어떻게 고치나는 [처음 등록]이 있는 비트 PC 연결 화면을 함께 말한다', () => {
+    const info = errorInfo('E-BIT-NOT-REGISTERED')
+    expect(info).toEqual({
+      what: '이 PC에 등록한 의원이 없어요',
+      fix: '비트 PC 연결 화면에서 [처음 등록]을 눌러 비트에 로그인하고, 이 PC에 뜨는 확인 창에서 [확인]을 눌러 주세요.',
+    })
+    expect(info.fix).toContain('비트 PC 연결 화면에서 [처음 등록]')
   })
 })
 

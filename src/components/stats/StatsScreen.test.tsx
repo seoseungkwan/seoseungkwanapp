@@ -1627,7 +1627,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
     expect(place('처방 골라 보기')).toMatch(/(^| )col-span-12( |$)/)
     expect(place('처방 골라 보기')).not.toContain('lg:')
-    expect(picker().getByText('고른 처방만 건수와 신환율·재진율을 봐요')).toBeTruthy()
+    expect(picker().getByText('고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요')).toBeTruthy()
     const KEEP: [string, string[]][] = [
       ['기간 요약', ['col-span-12']],
       ['환자 수 추이', ['col-span-12', 'lg:col-span-8']],
@@ -1762,6 +1762,71 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(window.history.state).toBe(state)
     expect(window.localStorage.length).toBe(0)
     expect(window.sessionStorage.length).toBe(0)
+  })
+
+  // fu-rate REQ-1308: 같은 처방 재방문 묶음. 고른 날 수는 RxPickerSection의 React 상태에만 있다
+  const winIn = (w: 7 | 14 | 30, pressed?: boolean) => picker().getByRole('button', { name: `${w}일 안`, ...(pressed === undefined ? {} : { pressed }) })
+  const EXTRA7 = { from: '2026-10-07', to: '2026-10-29' } // 오늘 11-13의 최근 7일 + 30일 창으로 옮긴 첫날 ~ 비교 기간 첫날 − 1
+  const extraReads = () => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === EXTRA7.from && range.to === EXTRA7.to).length
+
+  it('AC-1308.1 새 설명 글이고 칸 차례·자리(전체 폭)는 그대로다', async () => {
+    draw()
+    await sectionsShown()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
+    expect(picker().getByText('고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요')).toBeTruthy()
+    expect(sectionOf('처방 골라 보기').className).toMatch(/(^| )col-span-12( |$)/)
+  })
+
+  it('AC-1308.3 고른 날 수는 기간을 바꿔도 남고 다른 탭에 갔다 오면 `7일 안`이다. 누를 때 읽기·저장·저장소·주소를 부르지 않는다', async () => {
+    vi.mocked(readRxPicks).mockResolvedValue([PICK])
+    answers(RX_DAYS)
+    const first = draw()
+    await sectionsShown()
+    expect(await picker().findByRole('button', { name: '7일 안', pressed: true })).toBeTruthy()
+
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const pushState = vi.spyOn(window.history, 'pushState')
+    const fakes = [readDays, readCoverage, saveStats, readRxPicks] as const
+    const before = fakes.map((fn) => vi.mocked(fn).mock.calls.length)
+    fireEvent.click(winIn(14))
+    fireEvent.click(winIn(30))
+    await flush()
+    expect(winIn(30, true)).toBeTruthy()
+    expect(fakes.map((fn) => vi.mocked(fn).mock.calls.length)).toEqual(before)
+
+    pressPeriod('최근 90일')
+    await sectionsShown()
+    await waitFor(() => expect(winIn(30, true)).toBeTruthy())
+    expect(winIn(7, false)).toBeTruthy()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(pushState).not.toHaveBeenCalled()
+
+    first.unmount()
+    draw()
+    await sectionsShown()
+    expect(await picker().findByRole('button', { name: '7일 안', pressed: true })).toBeTruthy()
+  })
+
+  it('AC-1308.4 최근 7일에서 30일을 누를 때만 넓은 날 줄을 한 번 더 읽고, 페이지 읽기와 찾기 목록 읽기 셈은 그대로다', async () => {
+    vi.mocked(readRxPicks).mockResolvedValue([PICK])
+    answers(RX_DAYS)
+    draw()
+    await sectionsShown()
+    await picker().findByRole('button', { name: '7일 안', pressed: true })
+    pressPeriod('최근 7일')
+    await sectionsShown()
+    await waitFor(() => expect(winIn(7, true)).toBeTruthy())
+    await flush()
+    expect(extraReads()).toBe(0) // 최근 7일 + 7일은 페이지 읽기 그대로다
+    const before = vi.mocked(readDays).mock.calls.length
+
+    fireEvent.click(winIn(30))
+    await waitFor(() => expect(extraReads()).toBe(1))
+    expect(vi.mocked(readCoverage).mock.calls.filter(([range]) => range.from === EXTRA7.from && range.to === EXTRA7.to)).toHaveLength(1)
+    fireEvent.click(winIn(14))
+    await flush()
+    expect(vi.mocked(readDays).mock.calls.length).toBe(before + 1)
+    expect(wideReads()).toBe(0)
   })
 })
 

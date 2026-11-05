@@ -1,0 +1,46 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/assets/message_templates.html",
+  "entry": [
+    "TPLS"
+  ],
+  "knownDiffs": [
+    {
+      "entry": "TPLS",
+      "field": "id",
+      "reason": "원본 id(jusa·jinryo)와 배열 순서 대신 표의 kind·sort_order를 쓴다(design.md '문자 문구 종류'). 이름과 글은 그대로다",
+      "cases": {
+        "jusa": {
+          "kind": "injection",
+          "sort_order": 0
+        },
+        "jinryo": {
+          "kind": "followup",
+          "sort_order": 1
+        }
+      }
+    },
+    {
+      "entry": "TPLS",
+      "field": "note",
+      "reason": "표(message_templates)에 note 칸이 없다. 화면 안내 글로 쓰도록 DEFAULT_TEMPLATE_NOTE로 내보낸다",
+      "cases": {
+        "DEFAULT_TEMPLATE_NOTE": "사용 전 병원명·연락처·진료시간을 수정하세요"
+      }
+    }
+  ],
+  "TPLS": [
+    {
+      "id": "jusa",
+      "name": "주사 안내",
+      "note": "사용 전 병원명·연락처·진료시간을 수정하세요",
+      "text": "[병원명 설정 필요]\n\n[*1*]님, 안녕하세요.\n병원명 설정 필요입니다.\n<<DATE>>\n[*2*] 주사 예정일입니다.\n병원에서 안내한 시간에 내원해 주세요.\n\n문의: 전화번호 설정 필요\n진료시간: 병원 진료시간 설정 필요"
+    },
+    {
+      "id": "jinryo",
+      "name": "진료 안내",
+      "note": "사용 전 병원명·연락처·진료시간을 수정하세요",
+      "text": "[병원명 설정 필요]\n\n[*1*]님, 안녕하세요.\n병원명 설정 필요입니다.\n<<DATE>>\n[*2*] 진료 예정일입니다.\n예약 시간을 확인하고 내원해 주세요.\n\n문의: 전화번호 설정 필요\n진료시간: 병원 진료시간 설정 필요"
+    }
+  ]
+}

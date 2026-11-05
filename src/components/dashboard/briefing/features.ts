@@ -23,7 +23,7 @@ export const DASHBOARD_FEATURES: readonly DashboardFeature[] = [
   { name: '통계', desc: '환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // treatment-trend AC-1201.7
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
-  { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'soon' },
+  { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },
   { name: '매출', desc: '매출 추이·급여와 비급여·치료별 매출·건당 진료비', href: '/revenue', status: 'connect-first' },
   { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
   { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },

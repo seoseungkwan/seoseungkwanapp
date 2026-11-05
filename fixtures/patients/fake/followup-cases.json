@@ -1,0 +1,1437 @@
+{
+  "note": "가짜 자료(fixtures/patients/make-fake-patients.ts가 만듦). 실제 환자 자료가 아니다.",
+  "parse": [
+    {
+      "id": "week-1",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "week-1-nospace",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주뒤 f/u"
+      ]
+    },
+    {
+      "id": "week-2",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2주뒤 f/u"
+      ]
+    },
+    {
+      "id": "week-2-xr",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2주 뒤 xr f/u"
+      ]
+    },
+    {
+      "id": "week-10",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10주 뒤 재내원"
+      ]
+    },
+    {
+      "id": "week-12-il",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "12주일 뒤 재내원"
+      ]
+    },
+    {
+      "id": "ilju-il-dwi",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "일주일 뒤 재내원"
+      ]
+    },
+    {
+      "id": "ilju-dwi",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "일주 뒤 오세요"
+      ]
+    },
+    {
+      "id": "tomorrow",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "내일 드레싱"
+      ]
+    },
+    {
+      "id": "day-after",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "모레 dressing"
+      ]
+    },
+    {
+      "id": "tomorrow-or-after",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "내일 모레 오세요"
+      ]
+    },
+    {
+      "id": "days-3",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "3일 뒤 재내원"
+      ]
+    },
+    {
+      "id": "days-10",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10일뒤 f/u"
+      ]
+    },
+    {
+      "id": "next-week-tue",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "다음주 화요일 재내원"
+      ]
+    },
+    {
+      "id": "next-week-sun-on-sun",
+      "visitDate": "2026-10-18",
+      "lines": [
+        "다음주 일요일 f/u"
+      ]
+    },
+    {
+      "id": "next-week-mon-on-mon",
+      "visitDate": "2026-10-12",
+      "lines": [
+        "다음주 월 f/u"
+      ]
+    },
+    {
+      "id": "damju-fri",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "담주 금 f/u"
+      ]
+    },
+    {
+      "id": "next-week-space",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "다음 주 월요일 2차 주사"
+      ]
+    },
+    {
+      "id": "next-week-only",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "다음주 f/u"
+      ]
+    },
+    {
+      "id": "weekday-same",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "목요일 무릎주사 합니다"
+      ]
+    },
+    {
+      "id": "weekday-sat",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "토요일 재내원"
+      ]
+    },
+    {
+      "id": "weekday-sun-on-sat",
+      "visitDate": "2026-10-17",
+      "lines": [
+        "일요일 오세요"
+      ]
+    },
+    {
+      "id": "weekday-before-next-week",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "월요일 or 다음주 수 f/u"
+      ]
+    },
+    {
+      "id": "weekday-after-next-week",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "다음주 수 또는 금요일 f/u"
+      ]
+    },
+    {
+      "id": "month-early",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "11월 초 재내원"
+      ]
+    },
+    {
+      "id": "month-mid",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "11월 중 f/u"
+      ]
+    },
+    {
+      "id": "month-late",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "12월말 오세요"
+      ]
+    },
+    {
+      "id": "month-past",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "9월 초 재내원"
+      ]
+    },
+    {
+      "id": "written-dot",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10.17 f/u"
+      ]
+    },
+    {
+      "id": "written-slash",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10/19 재내원"
+      ]
+    },
+    {
+      "id": "written-korean",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10월 17일 재내원"
+      ]
+    },
+    {
+      "id": "written-korean-space",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10 월 20 일 오세요"
+      ]
+    },
+    {
+      "id": "written-next-year",
+      "visitDate": "2026-12-20",
+      "lines": [
+        "1/5 f/u"
+      ]
+    },
+    {
+      "id": "written-day-120",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2/12 f/u"
+      ]
+    },
+    {
+      "id": "written-day-121",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2/13 f/u"
+      ]
+    },
+    {
+      "id": "written-same-day",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10.15 f/u"
+      ]
+    },
+    {
+      "id": "written-past",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10.10 f/u"
+      ]
+    },
+    {
+      "id": "written-invalid",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2/30 f/u"
+      ]
+    },
+    {
+      "id": "written-far",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "3/1 f/u"
+      ]
+    },
+    {
+      "id": "written-two",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "10/20 또는 10/22 f/u"
+      ]
+    },
+    {
+      "id": "written-after-weekday",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "금요일 아니면 10/19 f/u"
+      ]
+    },
+    {
+      "id": "written-with-year",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2026.10.20 재내원"
+      ]
+    },
+    {
+      "id": "written-leap-skip",
+      "visitDate": "2027-12-01",
+      "lines": [
+        "2/29 f/u"
+      ]
+    },
+    {
+      "id": "vas",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "VAS 7/10 재내원"
+      ]
+    },
+    {
+      "id": "nrs-with-week",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "NRS 5/10 1주뒤 f/u"
+      ]
+    },
+    {
+      "id": "pain-score",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "pain 6/10 f/u"
+      ]
+    },
+    {
+      "id": "score-colon",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "점수: 3/10 재내원"
+      ]
+    },
+    {
+      "id": "pain-korean",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "통증 10/17 재내원"
+      ]
+    },
+    {
+      "id": "l45",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "L4.5 MBB f/u"
+      ]
+    },
+    {
+      "id": "l45-then-date",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "L4.5 MBB 10/22 f/u"
+      ]
+    },
+    {
+      "id": "c56-next-week",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "C5.6 root block 다음주 화 f/u"
+      ]
+    },
+    {
+      "id": "cond-only",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아프면 오세요"
+      ]
+    },
+    {
+      "id": "cond-week",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아프면 1주뒤 재내원"
+      ]
+    },
+    {
+      "id": "cond-written",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아프면 10.20 재내원"
+      ]
+    },
+    {
+      "id": "cond-no-better",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "호전 없으면 2주뒤 재내원"
+      ]
+    },
+    {
+      "id": "cond-uncomfortable",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "불편하면 내일 오세요"
+      ]
+    },
+    {
+      "id": "cond-symptom",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "증상 있으면 재내원"
+      ]
+    },
+    {
+      "id": "as-needed",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "필요시 재내원"
+      ]
+    },
+    {
+      "id": "later",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "추후 재내원"
+      ]
+    },
+    {
+      "id": "aragan-1",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간 1차"
+      ]
+    },
+    {
+      "id": "aragan-2",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "무릎",
+        "아라간 2차"
+      ]
+    },
+    {
+      "id": "aragan-3",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간 3차"
+      ]
+    },
+    {
+      "id": "aragan-13",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간 13차"
+      ]
+    },
+    {
+      "id": "argan-space",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아르간 1 차"
+      ]
+    },
+    {
+      "id": "artrogen",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "Artrogen 2차 Rt knee"
+      ]
+    },
+    {
+      "id": "aragan-then-date",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간 1차",
+        "2주뒤 f/u"
+      ]
+    },
+    {
+      "id": "aragan-max-round",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간 1차",
+        "아라간 2차"
+      ]
+    },
+    {
+      "id": "aragan-no-round",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간"
+      ]
+    },
+    {
+      "id": "inject-week-round",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주뒤 2차주사"
+      ]
+    },
+    {
+      "id": "inject-eswt-fu",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "다음주 화요일 ESWT후 f/u"
+      ]
+    },
+    {
+      "id": "inject-rounds-only",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "다음주 월요일 2차/목요일 3차."
+      ]
+    },
+    {
+      "id": "inject-manual-round",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주뒤 도수치료 2차"
+      ]
+    },
+    {
+      "id": "inject-no-injection",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2주뒤 주사는 안하고 f/u"
+      ]
+    },
+    {
+      "id": "inject-mbb",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주뒤 MBB block 재내원"
+      ]
+    },
+    {
+      "id": "inject-dressing-round",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주 뒤 드레싱 3차"
+      ]
+    },
+    {
+      "id": "inject-hoe-round",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "1주뒤 3회차 f/u"
+      ]
+    },
+    {
+      "id": "fu-spaced",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "f / u 2주 뒤"
+      ]
+    },
+    {
+      "id": "fu-korean-typo",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "ㄹ/u 1주뒤"
+      ]
+    },
+    {
+      "id": "fu-so",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "s/o 내일"
+      ]
+    },
+    {
+      "id": "fu-dressing-cap",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "Dressing 모레"
+      ]
+    },
+    {
+      "id": "fu-xr",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "xr f 2주뒤"
+      ]
+    },
+    {
+      "id": "fu-upper",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "KNEE pain 1주뒤 F/U"
+      ]
+    },
+    {
+      "id": "multi-line-skip",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "",
+        "  ",
+        "무릎 통증",
+        "f/u",
+        "2주뒤 xr f/u"
+      ]
+    },
+    {
+      "id": "no-instruction",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "무릎 통증",
+        "x-ray 촬영"
+      ]
+    },
+    {
+      "id": "empty",
+      "visitDate": "2026-10-15",
+      "lines": []
+    },
+    {
+      "id": "blank-lines",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "",
+        "   "
+      ]
+    },
+    {
+      "id": "evidence-trim",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "   1주뒤 f/u  "
+      ]
+    },
+    {
+      "id": "tx-lines",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "C-MBB 시행",
+        "주사 고려",
+        "IA 시행",
+        "1주뒤 f/u",
+        "ESWT 3회",
+        "TPI"
+      ]
+    },
+    {
+      "id": "tx-excluded",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "주사합니다",
+        "f/u 주사",
+        "맞아왔던 주사",
+        "prolo 시행",
+        "시노비안 IA",
+        "부목 고정",
+        "cast"
+      ]
+    },
+    {
+      "id": "site-many",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "shoulder",
+        "C-MBB",
+        "wrist",
+        "ankle"
+      ]
+    },
+    {
+      "id": "site-spine",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "L-spine",
+        "T-MBB",
+        "SIJ block",
+        "꼬리뼈"
+      ]
+    },
+    {
+      "id": "site-limbs",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "Lt elbow 외상과염",
+        "CTS",
+        "trigger finger",
+        "hip pain"
+      ]
+    },
+    {
+      "id": "site-legs",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "ACL",
+        "ATFL",
+        "plantar",
+        "heel",
+        "achilles",
+        "calf",
+        "hamstring",
+        "shin"
+      ]
+    },
+    {
+      "id": "site-other",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "TMJ",
+        "rib fx"
+      ]
+    },
+    {
+      "id": "site-l1",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "L1 compression fx"
+      ]
+    },
+    {
+      "id": "site-c7",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "C7 radiculopathy"
+      ]
+    },
+    {
+      "id": "site-aragan",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아라간 2차"
+      ]
+    },
+    {
+      "id": "far-week-416000",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "416000주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-tomorrow-last-day",
+      "visitDate": "9999-12-30",
+      "lines": [
+        "내일 f/u"
+      ]
+    },
+    {
+      "id": "far-written-last-day",
+      "visitDate": "9999-10-01",
+      "lines": [
+        "12/31 f/u"
+      ]
+    },
+    {
+      "id": "far-week-417000",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "417000주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-week-500000",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-week-nan",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "99999999999주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-week-infinity",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-days-date-like",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "20261015일 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-days-2930000",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2930000일 뒤 재내원"
+      ]
+    },
+    {
+      "id": "far-tomorrow",
+      "visitDate": "9999-12-31",
+      "lines": [
+        "내일 f/u"
+      ]
+    },
+    {
+      "id": "far-day-after",
+      "visitDate": "9999-12-31",
+      "lines": [
+        "모레 f/u"
+      ]
+    },
+    {
+      "id": "far-one-week",
+      "visitDate": "9999-12-31",
+      "lines": [
+        "일주일 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-next-week",
+      "visitDate": "9999-12-30",
+      "lines": [
+        "다음주 월요일 f/u"
+      ]
+    },
+    {
+      "id": "far-next-week-short",
+      "visitDate": "9999-12-30",
+      "lines": [
+        "담주 금 f/u"
+      ]
+    },
+    {
+      "id": "far-weekday",
+      "visitDate": "9999-12-31",
+      "lines": [
+        "금요일 f/u"
+      ]
+    },
+    {
+      "id": "far-written",
+      "visitDate": "9999-10-01",
+      "lines": [
+        "1/5 f/u"
+      ]
+    },
+    {
+      "id": "far-aragan",
+      "visitDate": "9999-12-31",
+      "lines": [
+        "아라간 1차"
+      ]
+    },
+    {
+      "id": "far-round-kind",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 2차 주사"
+      ]
+    },
+    {
+      "id": "far-cond-no-return",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "불편하면 500000주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-then-tomorrow",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 내일 f/u"
+      ]
+    },
+    {
+      "id": "far-then-days",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 3일 뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-then-weekday",
+      "visitDate": "9999-12-30",
+      "lines": [
+        "다음주 월 금요일 f/u"
+      ]
+    },
+    {
+      "id": "far-then-written",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 10/19 f/u"
+      ]
+    },
+    {
+      "id": "far-then-month",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 11월 초 재내원"
+      ]
+    },
+    {
+      "id": "far-then-later",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "2930000일 뒤 추후 재내원"
+      ]
+    },
+    {
+      "id": "far-then-next-line",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 f/u",
+        "2주뒤 f/u"
+      ]
+    },
+    {
+      "id": "far-then-aragan",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "500000주 뒤 f/u",
+        "아라간 1차"
+      ]
+    },
+    {
+      "id": "far-then-cond",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "아프면 500000주 뒤 재내원"
+      ]
+    },
+    {
+      "id": "order-weeks-before-tomorrow",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "내일 또는 1주뒤 f/u"
+      ]
+    },
+    {
+      "id": "order-written-before-days",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "3일 뒤 또는 10/19 f/u"
+      ]
+    },
+    {
+      "id": "order-weekday-before-days",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "3일 뒤 금요일 f/u"
+      ]
+    },
+    {
+      "id": "order-days-before-month",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "3일 뒤 11월 초 f/u"
+      ]
+    },
+    {
+      "id": "order-month-before-later",
+      "visitDate": "2026-10-15",
+      "lines": [
+        "11월 초 추후 재내원"
+      ]
+    },
+    {
+      "id": "random-01",
+      "visitDate": "2026-09-03",
+      "lines": [
+        "주사 고려",
+        "ESWT 3회",
+        "4주 뒤 f/u"
+      ]
+    },
+    {
+      "id": "random-02",
+      "visitDate": "2026-10-03",
+      "lines": [
+        "IA 시행",
+        "x-ray 촬영"
+      ]
+    },
+    {
+      "id": "random-03",
+      "visitDate": "2026-11-19",
+      "lines": [
+        "무릎 통증",
+        "다음주 화요일 ESWT후 f/u"
+      ]
+    },
+    {
+      "id": "random-04",
+      "visitDate": "2026-10-23",
+      "lines": [
+        "Rt knee pain"
+      ]
+    },
+    {
+      "id": "random-05",
+      "visitDate": "2026-11-27",
+      "lines": []
+    },
+    {
+      "id": "random-06",
+      "visitDate": "2026-01-02",
+      "lines": [
+        "plantar fasciitis",
+        "아프면 2/9 오세요"
+      ]
+    },
+    {
+      "id": "random-07",
+      "visitDate": "2026-01-02",
+      "lines": [
+        "C-MBB 시행",
+        "Rt knee pain",
+        "필요시 재내원"
+      ]
+    },
+    {
+      "id": "random-08",
+      "visitDate": "2026-10-17",
+      "lines": [
+        "시노비안 IA",
+        "물리치료"
+      ]
+    },
+    {
+      "id": "random-09",
+      "visitDate": "2026-10-01",
+      "lines": [
+        "무릎 통증",
+        "heel pain",
+        "1/22 재내원"
+      ]
+    },
+    {
+      "id": "random-10",
+      "visitDate": "2026-05-19",
+      "lines": [
+        "6/6 재내원"
+      ]
+    },
+    {
+      "id": "random-11",
+      "visitDate": "2026-07-31",
+      "lines": [
+        "C-MBB 시행",
+        "다음주 화요일 재내원"
+      ]
+    },
+    {
+      "id": "random-12",
+      "visitDate": "2026-04-27",
+      "lines": [
+        "shoulder pain",
+        "1주뒤 2차주사"
+      ]
+    },
+    {
+      "id": "random-13",
+      "visitDate": "2026-08-31",
+      "lines": [
+        "prolo 시행"
+      ]
+    },
+    {
+      "id": "random-14",
+      "visitDate": "2026-04-19",
+      "lines": [
+        "7.19 f/u"
+      ]
+    },
+    {
+      "id": "random-15",
+      "visitDate": "2026-01-17",
+      "lines": [
+        "4/23 재내원"
+      ]
+    },
+    {
+      "id": "random-16",
+      "visitDate": "2026-12-28",
+      "lines": [
+        "ankle sprain ATFL",
+        "손목 통증 CTS"
+      ]
+    },
+    {
+      "id": "random-17",
+      "visitDate": "2026-06-13",
+      "lines": [
+        "주사 고려",
+        "ankle sprain ATFL",
+        "7.12 f/u"
+      ]
+    },
+    {
+      "id": "random-18",
+      "visitDate": "2026-02-14",
+      "lines": [
+        "3월 27일 재내원"
+      ]
+    },
+    {
+      "id": "random-19",
+      "visitDate": "2026-11-15",
+      "lines": [
+        "shoulder pain",
+        "hip pain",
+        "12.24 f/u"
+      ]
+    },
+    {
+      "id": "random-20",
+      "visitDate": "2026-11-06",
+      "lines": [
+        "f/u"
+      ]
+    },
+    {
+      "id": "random-21",
+      "visitDate": "2026-12-31",
+      "lines": [
+        "LBP",
+        "아프면 오세요"
+      ]
+    },
+    {
+      "id": "random-22",
+      "visitDate": "2026-01-16",
+      "lines": [
+        "물리치료",
+        "9월 초 재내원"
+      ]
+    },
+    {
+      "id": "random-23",
+      "visitDate": "2026-12-23",
+      "lines": [
+        "3주뒤 재내원"
+      ]
+    },
+    {
+      "id": "random-24",
+      "visitDate": "2026-09-27",
+      "lines": [
+        "무릎 통증",
+        "plantar fasciitis",
+        "다음 주 월요일 2차 주사"
+      ]
+    },
+    {
+      "id": "random-25",
+      "visitDate": "2026-07-24",
+      "lines": [
+        "목요일 무릎주사 합니다"
+      ]
+    },
+    {
+      "id": "random-26",
+      "visitDate": "2026-03-11",
+      "lines": [
+        "heel pain",
+        "손목 통증 CTS",
+        "1주뒤 도수치료 2차"
+      ]
+    },
+    {
+      "id": "random-27",
+      "visitDate": "2026-08-28",
+      "lines": [
+        "TPI"
+      ]
+    },
+    {
+      "id": "random-28",
+      "visitDate": "2026-02-16",
+      "lines": [
+        "LBP",
+        "아프면 3/6 오세요"
+      ]
+    },
+    {
+      "id": "random-29",
+      "visitDate": "2026-01-16",
+      "lines": [
+        "heel pain",
+        "아라간 1차"
+      ]
+    },
+    {
+      "id": "random-30",
+      "visitDate": "2026-12-29",
+      "lines": [
+        "C-MBB 시행",
+        "3주뒤 재내원"
+      ]
+    },
+    {
+      "id": "random-31",
+      "visitDate": "2026-07-01",
+      "lines": [
+        "Rt knee pain",
+        "아프면 7/20 오세요"
+      ]
+    },
+    {
+      "id": "random-32",
+      "visitDate": "2026-07-14",
+      "lines": [
+        "plantar fasciitis",
+        "hip pain",
+        "필요시 재내원"
+      ]
+    },
+    {
+      "id": "random-33",
+      "visitDate": "2026-01-27",
+      "lines": []
+    },
+    {
+      "id": "random-34",
+      "visitDate": "2026-01-10",
+      "lines": [
+        "x-ray 촬영",
+        "TPI",
+        "아프면 2/1 오세요"
+      ]
+    },
+    {
+      "id": "random-35",
+      "visitDate": "2026-12-12",
+      "lines": [
+        "IA 시행",
+        "prolo 시행",
+        "2.3 f/u"
+      ]
+    },
+    {
+      "id": "random-36",
+      "visitDate": "2026-04-09",
+      "lines": [
+        "어깨 회전근개",
+        "주사 고려",
+        "2주뒤 f/u"
+      ]
+    },
+    {
+      "id": "random-37",
+      "visitDate": "2026-07-10",
+      "lines": [
+        "LBP",
+        "11/11 재내원"
+      ]
+    },
+    {
+      "id": "random-38",
+      "visitDate": "2026-10-01",
+      "lines": [
+        "11월 말 f/u"
+      ]
+    },
+    {
+      "id": "random-39",
+      "visitDate": "2026-06-28",
+      "lines": [
+        "shoulder pain",
+        "shoulder pain",
+        "8월 13일 재내원"
+      ]
+    },
+    {
+      "id": "random-40",
+      "visitDate": "2026-08-27",
+      "lines": [
+        "LBP",
+        "아라간 2차"
+      ]
+    }
+  ],
+  "written": [
+    {
+      "id": "in-range",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": ""
+    },
+    {
+      "id": "same-day",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 15,
+      "before": ""
+    },
+    {
+      "id": "day-before",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 14,
+      "before": ""
+    },
+    {
+      "id": "year-end",
+      "visitDate": "2026-10-15",
+      "month": 12,
+      "day": 31,
+      "before": ""
+    },
+    {
+      "id": "day-120",
+      "visitDate": "2026-10-15",
+      "month": 2,
+      "day": 12,
+      "before": ""
+    },
+    {
+      "id": "day-121",
+      "visitDate": "2026-10-15",
+      "month": 2,
+      "day": 13,
+      "before": ""
+    },
+    {
+      "id": "next-year",
+      "visitDate": "2026-12-20",
+      "month": 1,
+      "day": 5,
+      "before": ""
+    },
+    {
+      "id": "feb-29-first-year-missing",
+      "visitDate": "2027-12-01",
+      "month": 2,
+      "day": 29,
+      "before": ""
+    },
+    {
+      "id": "feb-29-leap",
+      "visitDate": "2027-12-30",
+      "month": 2,
+      "day": 29,
+      "before": ""
+    },
+    {
+      "id": "apr-31",
+      "visitDate": "2026-10-15",
+      "month": 4,
+      "day": 31,
+      "before": ""
+    },
+    {
+      "id": "month-0",
+      "visitDate": "2026-10-15",
+      "month": 0,
+      "day": 10,
+      "before": ""
+    },
+    {
+      "id": "month-13",
+      "visitDate": "2026-10-15",
+      "month": 13,
+      "day": 1,
+      "before": ""
+    },
+    {
+      "id": "day-0",
+      "visitDate": "2026-10-15",
+      "month": 11,
+      "day": 0,
+      "before": ""
+    },
+    {
+      "id": "day-32",
+      "visitDate": "2026-10-15",
+      "month": 11,
+      "day": 32,
+      "before": ""
+    },
+    {
+      "id": "after-vas",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "VAS "
+    },
+    {
+      "id": "after-vas-colon",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "VAS: "
+    },
+    {
+      "id": "after-nrs-equals",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "nrs="
+    },
+    {
+      "id": "after-pain",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "Pain "
+    },
+    {
+      "id": "after-pain-korean",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "통증"
+    },
+    {
+      "id": "after-score",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "점수 : "
+    },
+    {
+      "id": "after-vas-number",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "VAS 7 "
+    },
+    {
+      "id": "after-text",
+      "visitDate": "2026-10-15",
+      "month": 10,
+      "day": 17,
+      "before": "무릎 "
+    },
+    {
+      "id": "far-same-year",
+      "visitDate": "9999-10-01",
+      "month": 12,
+      "day": 31,
+      "before": ""
+    },
+    {
+      "id": "far-next-year",
+      "visitDate": "9999-10-01",
+      "month": 1,
+      "day": 5,
+      "before": ""
+    }
+  ]
+}

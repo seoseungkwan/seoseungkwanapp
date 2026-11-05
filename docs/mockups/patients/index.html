@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>환자 탭 클릭 목업</title>
+<!--
+  환자 탭 클릭 목업 (specs/patients REQ-610 ~ REQ-614, design.md '화면' 절).
+  한 파일: CSS·JS가 이 안에 있다. 바깥 글꼴·그림·주소를 부르지 않는다.
+  색·글자·모서리·그림자 값은 src/app/globals.css :root 그대로(아래 :root). 모양 이름은 components/ui/classes.ts ds와 짝이 맞게 적었다:
+    .btn-pri = ds.button.primary · .btn-sec = ds.button.secondary · .btn-sm = …Small · .btn-lg = …Large · .btn-gh = ds.button.ghostSmall · .tbtn = ds.textButton
+    .chip-n/-a/-w = ds.chip.neutral/accent/warning · .inp = ds.input · .cb = ds.checkbox · .tb = ds.table · .errc = ErrorCard · .seg = 대시보드 기간 단추 묶음
+  사람 이름·전화·숫자는 모두 지어낸 예시다. 화면은 Worker가 만든 값만 그린다.
+-->
+<style>
+:root {
+  /* src/app/globals.css :root 값 그대로 */
+  --canvas: #F7F8FA;
+  --surface: #FFFFFF;
+  --line: #E5E7EB;
+  --line-strong: #D1D5DB;
+  --faint: #9CA3AF;
+  --muted: #6B7280;
+  --ink-2: #374151;
+  --ink: #111827;
+  --accent: #2563EB;
+  --accent-strong: #1D4ED8;
+  --accent-soft: #EAF1FE;
+  --positive: #15803D;
+  --positive-soft: #ECF7EF;
+  --negative: #C2410C;
+  --negative-soft: #FDF0EA;
+  --warning: #B45309;
+  --warning-soft: #FDF4E3;
+  --chart-1: #DBE7FD;
+  --chart-2: #B4CDFA;
+  --chart-3: #8DB0F4;
+  --chart-4: #2563EB;
+  --chart-5: #1D4ED8;
+  --chart-prev: #9CA3AF;
+  --cat-1: #2563EB;
+  --cat-2: #0F766E;
+  --cat-3: #B45309;
+  --cat-4: #6D28D9;
+  --cat-5: #6B7280;
+  --fs-caption: 12px; --lh-caption: 16px;
+  --fs-small: 13px; --lh-small: 20px;
+  --fs-body: 14px; --lh-body: 22px;
+  --fs-lead: 16px; --lh-lead: 24px;
+  --fs-subtitle: 16px; --lh-subtitle: 24px;
+  --fs-title: 20px; --lh-title: 28px;
+  --fs-heading-m: 24px; --lh-heading-m: 32px;
+  --fs-heading: 28px; --lh-heading: 36px;
+  --fs-metric: 28px; --lh-metric: 36px;
+  --fs-display-m: 32px; --lh-display-m: 40px;
+  --fs-display: 48px; --lh-display: 56px;
+  --ls-heading: -0.01em;
+  --ls-display: -0.02em;
+  --r-control: 4px;
+  --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
+  --w-landing: 1200px;
+  --w-app: 1280px;
+  --gutter: 24px;
+  --gutter-m: 16px;
+  --font-ui: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--surface); -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 400 var(--fs-body)/var(--lh-body) var(--font-ui); word-break: keep-all; overflow-wrap: break-word; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p, ul, ol, li, dl, dt, dd { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+/* ---------- 목업 쪽 (앱 밖) ---------- */
+.doc { max-width: 1328px; margin: 0 auto; padding: 32px 24px 64px; }
+.eyebrow { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--accent); }
+.doc-h { margin-top: 4px; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: var(--ls-heading); }
+.wait { display: inline-flex; margin-top: 12px; padding: 6px 12px; border-radius: var(--r-control); background: var(--warning-soft); color: var(--warning); font-size: 13px; line-height: 20px; font-weight: 600; }
+.doc-p { margin-top: 12px; color: var(--ink-2); max-width: 52em; }
+.guide { margin-top: 16px; padding: 16px 20px; border-radius: var(--r-control); background: var(--canvas); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.guide h2 { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.guide h2 + * { margin-top: 6px; }
+.guide * + h2 { margin-top: 16px; }
+.guide ul { display: grid; gap: 4px; }
+.guide li { display: grid; grid-template-columns: 12px 1fr; }
+.guide li::before { content: '·'; color: var(--muted); }
+.guide dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
+.guide dt { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.guide p { margin-top: 12px; }
+@media (max-width: 640px) { .guide dl { grid-template-columns: 1fr; gap: 0; } .guide dd { margin-bottom: 8px; } }
+.ctl { margin-top: 24px; display: grid; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.ctl-r { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ctl-k { width: 72px; flex: none; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.pick { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 13px; line-height: 20px; font-weight: 500; color: var(--ink-2); cursor: pointer; white-space: nowrap; transition: background-color 150ms, border-color 150ms; }
+.pick:hover { background: var(--canvas); }
+.pick[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.xck { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px 0 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); cursor: pointer; }
+.xck input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.ctl-note { font-size: 12px; line-height: 16px; color: var(--muted); }
+.stage { margin-top: 24px; }
+.bw { margin: 0 auto; border: 1px solid var(--line-strong); border-radius: var(--r-control); overflow: hidden; background: var(--surface); }
+.bw-bar { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 12px; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.bw-tab { display: inline-flex; align-items: center; gap: 6px; flex: none; max-width: 45%; height: 32px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-control); font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw-url { flex: 1; min-width: 0; display: flex; align-items: center; height: 32px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-control); font-size: 13px; line-height: 20px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw-url b { color: var(--ink); font-weight: 600; }
+.vpw { overflow: hidden; }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 30; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 12px 16px; background: var(--ink); color: var(--surface); border-radius: var(--r-float); box-shadow: var(--elev-float); font-size: 13px; line-height: 20px; }
+
+/* ---------- 앱 화면 (ds와 같은 값) ---------- */
+.ui { position: relative; background: var(--surface); color: var(--ink); font: 400 14px/22px var(--font-ui); text-align: left; }
+.ui button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; }
+.ui a { color: inherit; text-decoration: none; }
+.ui .ic, .ui .logo { flex: none; display: block; }
+.wa { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+.mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; } .mt24 { margin-top: 24px; }
+
+/* 위쪽 띠 */
+.a-hdr { background: var(--surface); border-bottom: 1px solid var(--line); }
+.is-pc .a-hdr .wa { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.is-ph .a-hdr { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 0 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.is-ph .brand { gap: 8px; }
+.clinic { font-size: 16px; line-height: 24px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.is-ph .clinic { font-size: 14px; line-height: 22px; }
+.hdr-r { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.clock { font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.ui .acct { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; }
+.acct .ic { color: var(--muted); }
+.ui .iconbtn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--r-control); color: var(--ink-2); }
+
+/* 탭 줄 */
+.tabw { position: relative; }
+.a-tabs { position: relative; height: 44px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs-in { display: flex; height: 43px; }
+.is-pc .tabs-in > .tab:first-child { margin-left: -12px; }
+.ui .tab { position: relative; display: flex; align-items: center; padding: 0 12px; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; transition: color 150ms; }
+.ui .tab:hover { color: var(--ink); }
+.ui .tab[aria-current=page] { color: var(--ink); font-weight: 600; }
+.ui .tab[aria-current=page]::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.is-ph .a-tabs { display: flex; }
+.tabs-sc { flex: 1; min-width: 0; height: 43px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs-sc::-webkit-scrollbar { display: none; }
+.tabs-sc .tabs-in { width: max-content; padding: 0 4px; }
+.ui .allbtn { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 43px; padding: 0 12px; border-left: 1px solid var(--line); font-size: 14px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.allbtn .ic { transition: transform 150ms; }
+.allbtn[aria-expanded=true] .ic { transform: rotate(180deg); }
+.allp { position: absolute; left: 0; right: 0; top: 100%; z-index: 7; padding: 4px 16px 16px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--elev-float); }
+.allp-h { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.allp-g { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; border-top: 1px solid var(--line); }
+.ui .allp-i { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 44px; padding: 0 4px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 500; color: var(--ink); }
+.ui .allp-i[aria-current=page] { color: var(--accent-strong); font-weight: 600; }
+.ui .allp-i[aria-current=page]::before { content: ''; width: 2px; height: 20px; margin-left: -4px; background: var(--accent); }
+.allp-i span:first-of-type { flex: 1; }
+
+/* 본문 */
+.main { background: var(--surface); }
+.is-pc .main { padding: 24px 0 48px; }
+.is-ph .main { padding: 16px 16px 32px; }
+.pg-h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+
+/* 도구 단추 줄 */
+.tools { display: flex; gap: 8px; margin-top: 12px; }
+.ui .tool { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink); white-space: nowrap; transition: background-color 150ms, border-color 150ms, color 150ms; }
+.ui .tool .ic { color: var(--ink-2); }
+.ui .tool:hover { background: var(--canvas); }
+.ui .tool[aria-current=page] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.ui .tool[aria-current=page] .ic { color: var(--accent); }
+.ui .tool:active { transform: translateY(1px); }
+.is-ph .tools { overflow-x: auto; margin: 12px -16px 0; padding: 2px 16px; scrollbar-width: none; }
+.is-ph .tools::-webkit-scrollbar { display: none; }
+.is-ph .tool { height: 44px; }
+.tbody { margin-top: 24px; }
+.is-ph .tbody { margin-top: 16px; }
+.up { margin-top: 12px; }
+
+/* 단추 */
+.ui .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--r-control); font-size: 14px; line-height: 22px; font-weight: 500; white-space: nowrap; transition: background-color 150ms, border-color 150ms, color 150ms, opacity 150ms; }
+.ui .btn-sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; }
+.ui .btn-lg { height: 44px; padding: 0 20px; font-weight: 600; }
+.ui .btn-gh { height: 32px; padding: 0 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.is-ph .btn, .is-ph .btn-sm, .is-ph .btn-gh { height: 44px; }
+.ui .btn-pri { background: var(--accent); color: var(--surface); }
+.ui .btn-pri:not([aria-disabled=true]):not([aria-busy=true]):hover { background: var(--accent-strong); }
+.ui .btn-sec { background: var(--surface); border-color: var(--line-strong); color: var(--ink); }
+.ui .btn-sec:not([aria-disabled=true]):not([aria-busy=true]):hover { background: var(--canvas); }
+.ui .btn-sec .ic { color: var(--ink-2); }
+.ui .btn-gh:not([aria-disabled=true]):hover { background: var(--canvas); }
+.ui .btn[aria-disabled=true] { opacity: .4; cursor: not-allowed; }
+.ui .btn[aria-busy=true] { opacity: .6; cursor: progress; }
+.ui .btn:not([aria-disabled=true]):not([aria-busy=true]):active { transform: translateY(1px); }
+.ui .tbtn { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--accent); text-underline-offset: 3px; transition: color 150ms; }
+.ui .tbtn:hover { text-decoration: underline; }
+.is-ph .tbtn { min-height: 44px; }
+.ui .btn .ic-go, .ui .tbtn .ic-go { transition: transform 150ms; }
+.ui .btn:hover .ic-go, .ui .tbtn:hover .ic-go { transform: translateX(2px); }
+.ic-up { transform: rotate(180deg); }
+.is-ph .w-ph { width: 100%; }
+
+/* 칩 */
+.chip { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r-control); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.chip-n { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip-a { background: var(--accent-soft); color: var(--accent-strong); }
+.chip-w { background: var(--warning-soft); color: var(--warning); }
+
+/* 입력 · 체크 상자 */
+.ui .inp { height: 44px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 14px; line-height: 22px; color: var(--ink); }
+.ui .inp:hover { border-color: var(--muted); }
+.ui .inp:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ui .inp[aria-invalid=true] { border-color: var(--negative); }
+.is-ph .inp { font-size: 16px; }
+.ui textarea.inp { height: auto; padding: 8px 12px; resize: vertical; }
+.ui .inp.dt { width: auto; }
+.is-ph .inp.dt { width: 100%; }
+.cbw { position: relative; display: inline-flex; width: 16px; height: 16px; flex: none; }
+.ui .cb { -webkit-appearance: none; appearance: none; margin: 0; width: 16px; height: 16px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); cursor: pointer; }
+.ui .cb:checked { border-color: var(--accent); background: var(--accent); }
+.ui .cb[aria-busy=true] { opacity: .6; cursor: progress; }
+.cbm { position: absolute; inset: 0; display: none; color: var(--surface); pointer-events: none; }
+.cb:checked + .cbm { display: block; }
+.ck { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.is-ph .ck { min-height: 44px; }
+
+/* 기간 단추 묶음 (대시보드 기간 단추와 같다) */
+.seg { display: inline-flex; flex: none; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); overflow: hidden; }
+.ui .seg button { height: 30px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--ink-2); transition: background-color 150ms; }
+.ui .seg button + button { border-left: 1px solid var(--line-strong); }
+.ui .seg button:hover { background: var(--canvas); }
+.ui .seg button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; transition: none; }
+.ui .seg button:focus-visible { outline-offset: -2px; }
+.is-ph .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+.ui.is-ph .seg button { height: 44px; padding: 0 8px; text-align: center; }
+
+/* 도구 머리 · 고르기 · 단추 줄 */
+.sh { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
+.sh-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.sh-d { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 52em; }
+.sum { font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.sum b { color: var(--ink); font-weight: 600; }
+.flt { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.fg-k { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.rng { font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.fhelp { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.is-ph .flt { display: grid; gap: 12px; }
+.is-ph .fg { display: grid; gap: 6px; }
+.is-ph .fg.row { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 16px; }
+.ag { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.is-ph .acts { display: grid; gap: 12px; }
+.is-ph .ag { display: grid; gap: 4px; }
+.is-ph .ag .btn { width: 100%; }
+.cst { min-height: 20px; margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.okt { display: inline-flex; align-items: center; gap: 4px; color: var(--positive); font-weight: 500; }
+.cov { margin-top: 16px; padding: 12px 16px; border-radius: var(--r-control); background: var(--canvas); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.cov b { color: var(--ink); font-weight: 600; }
+.cov p + p { margin-top: 4px; }
+
+/* 표 (ds.table) */
+.tbw { min-width: 0; overflow-x: auto; margin-top: 12px; }
+.tb { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.tb th { height: 40px; padding: 0 12px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.tb td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--ink); }
+.tb th:first-child, .tb td:first-child { padding-left: 20px; }
+.tb th:last-child, .tb td:last-child { padding-right: 20px; }
+.tb tbody tr:hover { background: var(--canvas); }
+.tb tbody tr:last-child td { border-bottom: 0; }
+.tb td.sub { color: var(--ink-2); }
+.tb td.ev { max-width: 320px; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.tb td.chk { width: 96px; padding-right: 4px; }
+.tb td.empty { height: 48px; color: var(--muted); white-space: normal; }
+.tb tr.err td { height: auto; padding-top: 8px; padding-bottom: 8px; white-space: normal; }
+.tb tr.err:hover { background: none; }
+.cellf { display: inline-flex; align-items: center; gap: 6px; }
+.na { color: var(--muted); }
+.mk { display: inline-flex; align-items: center; gap: 8px; }
+.mk-t { font-size: 13px; line-height: 20px; color: var(--ink-2); white-space: nowrap; }
+.is-ph .mk { min-height: 44px; padding-left: 8px; cursor: pointer; }
+
+/* 휴대폰 폭 줄 */
+.pl { margin-top: 12px; border-top: 1px solid var(--line); }
+.pl > li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.pl > li.empty { padding: 16px 0; color: var(--muted); }
+.pl-1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin: -8px 0 -4px; }
+.pl-n { font-weight: 600; }
+.pl-2 { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.pl-3 { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.pl .errl { margin-top: 8px; }
+.und { margin-top: 32px; }
+.und-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+
+/* 오류 카드 (ErrorCard) · 작은 오류 줄 */
+.errc { display: flex; align-items: flex-start; gap: 8px; padding: 12px 16px; border-radius: var(--r-control); background: var(--negative-soft); max-width: 720px; }
+.errc > svg { margin-top: 2px; flex: none; color: var(--negative); }
+.errc-w { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--negative); }
+.errc-f { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.errc-c { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.after { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.errl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.errl .ic { color: var(--negative); }
+.errl .code { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.errl .tbtn { font-size: 13px; line-height: 20px; }
+
+/* 불러오는 중 */
+.ld { margin-top: 16px; padding-top: 20px; border-top: 1px solid var(--line); }
+.ld-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 16px; line-height: 24px; font-weight: 600; }
+.ld-n { color: var(--accent-strong); }
+.ld-s { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 46em; }
+
+/* 건수만 */
+.cv-h { font-size: 20px; line-height: 28px; font-weight: 600; }
+.cv-p { margin-top: 8px; color: var(--ink-2); }
+.cnt { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 720px; margin-top: 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.cnt > div { min-width: 0; padding: 16px 20px; }
+.cnt > div + div { border-left: 1px solid var(--line); }
+.cnt > div:first-child { padding-left: 0; }
+.cnt-n { font-size: 13px; line-height: 20px; color: var(--muted); }
+.cnt-v { margin-top: 4px; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: var(--ls-heading); }
+.cnt-v small { margin-left: 2px; font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0; color: var(--ink-2); }
+.cnt-s { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.is-ph .cnt { grid-template-columns: 1fr; }
+.is-ph .cnt > div { padding: 12px 0; }
+.is-ph .cnt > div + div { border-left: 0; border-top: 1px solid var(--line); }
+.is-ph .cnt-v { font-size: 24px; line-height: 32px; }
+.cnt-t { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.nod { max-width: 720px; margin-top: 16px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.nod-v { font-size: 16px; line-height: 24px; font-weight: 600; }
+.nod-s { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.more { margin-top: 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
+
+/* 다른 창 작업 중 (BusyCard와 같은 모양) */
+.busy { display: grid; gap: 12px; width: 520px; max-width: 100%; padding: 24px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--surface); }
+.is-ph .busy { padding: 16px; }
+.busy h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+.busy p { color: var(--ink-2); }
+.busy .s { font-size: 13px; line-height: 20px; }
+.busy .a { display: flex; flex-wrap: wrap; gap: 8px; }
+.is-ph .busy .a { display: grid; }
+.busy .c { font-size: 12px; line-height: 16px; color: var(--muted); }
+
+/* 비트 PC 연결 먼저 */
+.cf { max-width: 600px; padding-top: 8px; }
+.cf-h { font-size: 20px; line-height: 28px; font-weight: 600; }
+.dots { margin-top: 12px; display: grid; gap: 8px; }
+.dots li { display: flex; gap: 16px; color: var(--ink); }
+.dots li::before { content: ''; flex: none; width: 6px; height: 6px; margin-top: 8px; background: var(--accent); }
+.cf-b { margin-top: 24px; }
+.cf-o { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
+
+/* 문자 문구 */
+.mhelp { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 52em; }
+.mg { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; margin-top: 16px; }
+.m-l { grid-column: 1 / 8; min-width: 0; }
+.m-r { grid-column: 9 / 13; min-width: 0; }
+.is-ph .mg { grid-template-columns: 1fr; row-gap: 32px; }
+.is-ph .m-l, .is-ph .m-r { grid-column: 1; }
+.notice { display: flex; gap: 8px; margin-bottom: 16px; padding: 12px 16px; border-radius: var(--r-control); background: var(--accent-soft); color: var(--ink); }
+.notice .ic { margin-top: 3px; color: var(--accent-strong); }
+.notice b { font-weight: 600; }
+.notice p + p { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.mlist { border-top: 1px solid var(--line); }
+.mlist > li { display: grid; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.mlist > li.empty { color: var(--muted); }
+.m-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.m-no { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.m-ord { margin-left: auto; display: flex; gap: 4px; }
+.fld { display: flex; flex-direction: column; gap: 6px; }
+.lab { display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.hint { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--muted); }
+.help { font-size: 12px; line-height: 16px; color: var(--muted); }
+.ferr { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--negative); }
+.ferr:empty { display: none; }
+.m-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.m-cnt { font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; }
+.m-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; }
+.is-ph .m-add { display: grid; }
+.prev { margin-top: 6px; padding: 16px; border-radius: var(--r-control); background: var(--canvas); white-space: pre-wrap; color: var(--ink); }
+.prev.none { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <p class="eyebrow">환자 탭 · 클릭 목업</p>
+  <h1 class="doc-h">환자 탭 화면 시안 (F/U 명단 · 정기 주사 문자 명단 · 문자 문구)</h1>
+  <p class="wait">상태: 사용자 확인 기다리는 중</p>
+  <p class="doc-p">지금 앱과 같은 모양(흰 바탕, 파랑 강조색 하나)으로 그린 환자 탭이에요. 아래 단추로 화면 폭과 상태를 바꿔 가며 눌러 보세요. 이 배치와 문구대로 화면을 만들어요.</p>
+
+  <section class="guide" aria-label="이 목업 보는 법">
+    <h2>이 목업 보는 법</h2>
+    <ul>
+      <li><span>앱 안 맨 위 도구 단추 셋을 누르면 도구가 바뀌고, 위 주소 끝이 ?tool=followup(F/U 명단) · recall(정기 주사) · messages(문자 문구)로 바뀌어요. 주소에는 도구 이름만 들어가고 환자 정보는 들어가지 않아요.</span></li>
+      <li><span>‘PC 화면 · 휴대폰 화면’으로 폭을 바꿔 볼 수 있어요. 휴대폰 화면에서 ‘정상’은 비트 PC 창을 좁게 줄였을 때 모양이에요. 진짜 휴대폰은 ‘건수만’처럼 보여요.</span></li>
+      <li><span>이름·전화·숫자는 모두 지어낸 예시예요. 오늘을 2026년 11월 4일(수)로 놓고 그렸어요.</span></li>
+    </ul>
+    <h2>상태 단추가 보여 주는 것</h2>
+    <dl>
+      <dt>정상</dt><dd>비트 PC에서 두 명단을 다 읽은 모양이에요. 기간 단추, 연락함 표시, 복사 단추, 문구 고치기를 눌러 볼 수 있어요.</dd>
+      <dt>불러오는 중</dt><dd>비트에서 명단을 읽는 동안이에요. ‘2/4’처럼 몇 번째를 읽는지 보여요. 정기 주사는 처음 읽을 때 ‘3/7 달’처럼 달로 보여요.</dd>
+      <dt>오류</dt><dd>지금 고른 도구 하나만 읽지 못한 모양이에요. 오류 번호와 [다시 불러오기]가 나오고, 다른 도구로 바꾸면 그대로 쓸 수 있어요.</dd>
+      <dt>연결 안 됨</dt><dd>도우미가 없거나, 새 판으로 바꿔야 하거나, 연결이 끊긴 비트 PC예요. 명단 자리에 [비트 PC 연결]이 나와요. ‘까닭’ 단추로 세 경우를 바꿔 볼 수 있어요.</dd>
+      <dt>다른 창 작업 중</dt><dd>다른 창에서 비트를 읽고 있을 때예요. [건수만 보기]를 누르면 그 자리에서 남은 건수가 나와요.</dd>
+      <dt>건수만</dt><dd>확장 프로그램이 없는 PC나 휴대폰이에요. 명단 대신 남은 건수 둘과 마지막으로 바뀐 시각만 나와요.</dd>
+      <dt>자료 없음</dt><dd>아직 비트 PC에서 환자 탭을 연 적이 없을 때예요. 숫자 없이 ‘자료 없음’이 나와요.</dd>
+      <dt>건수 못 읽음</dt><dd>남은 건수를 불러오지 못했을 때예요. ‘자료 없음’과 달리 오류 카드와 [다시 불러오기]가 나와요.</dd>
+      <dt>빈 명단</dt><dd>비트 PC에서 다 읽었는데 그 기간에 해당하는 분이 없을 때예요.</dd>
+      <dt>더 보기</dt><dd>드물게 생기는 실패를 하나씩 켜 보는 칸이에요. ‘정상’ 상태에서 켜 보세요.</dd>
+    </dl>
+    <p>문자 문구 도구는 ‘불러오는 중’ · ‘오류’ 말고는 어느 상태에서나 같은 화면이에요. 환자 정보가 없어서 휴대폰에서도 고칠 수 있어요.</p>
+  </section>
+
+  <section class="ctl" id="ctl" aria-label="목업 조작"></section>
+
+  <div class="stage" id="stage">
+    <div class="bw" id="bw">
+      <div class="bw-bar">
+        <span class="bw-tab" id="bw-tab">환자 · 예시정형외과의원</span>
+        <span class="bw-url" id="bw-url" aria-label="주소"></span>
+      </div>
+      <div class="vpw"><div class="vp" id="vp"><div class="ui is-pc" id="app"></div></div></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 날짜 (오늘 = 2026-11-04 수요일로 놓고 그린다) ---------- */
+  var TODAY = '2026-11-04';
+  var WD = ['일', '월', '화', '수', '목', '금', '토'];
+  function D(s) { var p = s.split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
+  function ymd(d) { return d.toISOString().slice(0, 10); }
+  function addDays(s, n) { var d = D(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); }
+  function addMonths(s, n) {
+    var d = D(s), day = d.getUTCDate();
+    d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n);
+    var last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    d.setUTCDate(Math.min(day, last)); return ymd(d);
+  }
+  function diff(a, b) { return Math.round((D(a) - D(b)) / 86400000); }
+  function wd(s) { return WD[D(s).getUTCDay()]; }
+  function md(s) { var d = D(s); return (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 (' + wd(s) + ')'; }
+  function ymdK(s) { return D(s).getUTCFullYear() + '년 ' + md(s); }
+  function dateLine(s) { var d = D(s); return '* ' + (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 ' + wd(s) + '요일 *'; }
+  function weekStart(s) { return addDays(s, -((D(s).getUTCDay() + 6) % 7)); }
+  var TOMORROW = addDays(TODAY, 1);
+
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  /* ---------- 아이콘 (components/common/Icon.tsx 그림 그대로) ---------- */
+  var IC = {
+    cal: '<rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1"/><path d="M2.25 6.5h11.5M5.5 1.75v3M10.5 1.75v3"/>',
+    clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.75V8l2.25 1.5"/>',
+    doc: '<path d="M4 1.75h5.25L12 4.5v9.75H4z"/><path d="M9.25 1.75V4.5H12M6 8h4M6 10.75h4"/>',
+    copy: '<rect x="5.25" y="5.25" width="8" height="8" rx="1"/><path d="M10.75 5.25V3.75a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1.5"/>',
+    check: '<path d="m3.5 8.25 2.9 2.9 6.1-6.65"/>',
+    arrow: '<path d="M2.75 8h10.5M9.25 4l4 4-4 4"/>',
+    arrowDown: '<path d="M8 2.75v10.5M4 9.25l4 4 4-4"/>',
+    stop: '<circle cx="8" cy="8" r="6"/><path d="m3.9 3.9 8.2 8.2"/>',
+    user: '<circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 14c.6-2.5 2.7-3.9 5.25-3.9s4.65 1.4 5.25 3.9"/>',
+    chev: '<path d="m4.75 6.25 3.25 3.25 3.25-3.25"/>'
+  };
+  function ic(n, s, cls) {
+    s = s || 16;
+    return '<svg class="ic ' + (cls || '') + '" aria-hidden="true" width="' + s + '" height="' + s + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + IC[n] + '</svg>';
+  }
+  var GO = ic('arrow', 16, 'ic-go');
+  var CHECK = '<svg class="cbm" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 8.25 2.6 2.6 5.4-5.85"/></svg>';
+  var ERR_IC = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>';
+  function logo(s) {
+    return '<svg class="logo" aria-hidden="true" width="' + s + '" height="' + s + '" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/>' +
+      '<path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg>';
+  }
+
+  /* ---------- 오류 문구 ---------- */
+  // E-BIT-READ-FAILED·E-STORE-FAILED·E-BRIDGE-BUSY는 src/lib/errors.ts 글 그대로. E-PATIENTS-*는 이 목업이 정하는 글(TASK-7이 errors.ts에 넣는다)
+  var ERR = {
+    'E-BIT-READ-FAILED': ['비트 자료를 읽지 못했어요', '잠시 뒤 [다시 확인]을 눌러 주세요. 계속되면 비트가 업데이트됐을 수 있으니 오류 번호와 함께 문의해 주세요.'],
+    'E-PATIENTS-TEMPLATES-READ': ['문자 문구를 불러오지 못했어요', '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.'],
+    'E-PATIENTS-TEMPLATES-SAVE': ['문자 문구를 저장하지 못했어요', '고친 글은 그대로 있어요. 인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요.'],
+    'E-PATIENTS-COUNTS-READ': ['남은 건수를 불러오지 못했어요', '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.']
+  };
+  function errCard(code) {
+    var e = ERR[code];
+    return '<div class="errc" role="alert">' + ERR_IC + '<div><p class="errc-w">' + e[0] + '</p><p class="errc-f">' + e[1] + '</p><p class="errc-c">오류 번호 ' + code + '</p></div></div>';
+  }
+  function errLine(text, code, btn) {
+    return '<p class="errl">' + ic('stop', 14) + '<span>' + text + '</span><span class="code">오류 번호 ' + code + '</span>' + (btn || '') + '</p>';
+  }
+
+  /* ---------- 지어낸 자료 ---------- */
+  // F/U: [번호, 전화, 마지막 진료, 다음 날짜, 예정/조건부, 구분, 근거 문구, 연락함]
+  var FU = [
+    ['01', '010-0000-0101', '2026-10-29', '2026-11-05', '예정', '주사', '무릎 주사 2차, 1주 뒤 오세요', false],
+    ['02', '010-0000-0102', '2026-10-22', '2026-11-05', '예정', 'F/U', '2주 뒤 재진, 약 먹어 보고 조절', false],
+    ['03', '010-0000-0103', '2026-10-29', '2026-11-05', '조건부', 'F/U', '통증 계속되면 1주 뒤 내원', false],
+    ['04', '010-0000-0104', '2026-10-31', '2026-11-05', '예정', '주사', '어깨 주사 3차 11/5', true],
+    ['05', '010-0000-0105', '2026-10-29', '2026-11-05', '예정', 'F/U', '1주 뒤 엑스레이 다시 찍기', false],
+    ['06', '010-0000-0106', '2026-10-22', '2026-11-05', '예정', 'F/U', '2주 뒤 재진, 물리치료 계속', false],
+    ['07', '', '2026-10-29', '2026-11-05', '예정', '주사', '허리 주사 1주 뒤', false],
+    ['08', '010-0000-0108', '2026-10-30', '2026-11-06', '예정', '주사', '주사 2차 11/6', false],
+    ['09', '010-0000-0109', '2026-10-23', '2026-11-07', '조건부', 'F/U', '불편하면 2주 뒤 오세요', false],
+    ['10', '010-0000-0110', '2026-10-27', '2026-11-10', '예정', '주사', '허리 주사 2차, 2주 뒤', false],
+    ['11', '010-0000-0111', '2026-10-20', '2026-11-11', '예정', 'F/U', '3주 뒤 재진', false],
+    ['12', '010-0000-0112', '2026-10-29', '2026-11-12', '예정', 'F/U', '물리치료 2주 더 받고 11/12 재진, 그때 엑스레이 다시 보고 운동 방법 알려 드리기', false],
+    ['13', '010-0000-0113', '2026-10-30', '2026-11-13', '조건부', '주사', '효과 없으면 2주 뒤 주사', false],
+    ['14', '010-0000-0114', '2026-10-21', '2026-11-02', '예정', 'F/U', '12일 뒤 재진', false],
+    ['15', '010-0000-0115', '2026-10-27', '2026-11-03', '예정', '주사', '주사 2차 1주 뒤', false],
+    ['16', '010-0000-0116', '2026-10-30', '2026-11-04', '예정', 'F/U', '5일 뒤 실밥 풀기', false]
+  ].map(function (r) { return { key: 'f' + r[0], name: '가상환자' + r[0], phone: r[1], last: r[2], next: r[3], plan: r[4], kind: r[5], ev: r[6], on: r[7] }; });
+  var UND = [
+    ['17', '010-0000-0117', '2026-10-30', '검사 결과 나오면 연락 후 재진'],
+    ['18', '010-0000-0118', '2026-10-27', '큰 병원 진료 뒤 다시 오기로 함'],
+    ['19', '', '2026-10-24', '좋아지면 안 와도 됨, 아프면 내원']
+  ].map(function (r) { return { name: '가상환자' + r[0], phone: r[1], last: r[2], ev: r[3] }; });
+  var RULES = { cart: { label: '연골주사', months: 6 }, vitd: { label: '비타민D 주사', months: 3 } };
+  // 정기 주사: [번호, 전화, 규칙, 마지막 주사, 연락함, 근거 문구]
+  var RC = [
+    ['21', '010-0000-0121', 'vitd', '2026-07-28', false, '비타민D 주사'],
+    ['22', '010-0000-0122', 'cart', '2026-05-04', false, '무릎 연골주사 3차 끝'],
+    ['23', '010-0000-0123', 'vitd', '2026-08-04', true, '비타민D 주사'],
+    ['24', '010-0000-0124', 'vitd', '2026-08-06', false, '비타민D 주사'],
+    ['25', '010-0000-0125', 'cart', '2026-05-08', false, '양쪽 무릎 연골주사 3차'],
+    ['26', '', 'vitd', '2026-08-12', false, '비타민D 주사'],
+    ['27', '010-0000-0127', 'vitd', '2026-08-20', false, '비타민D 주사'],
+    ['28', '010-0000-0128', 'cart', '2026-05-25', false, '무릎 연골주사 3차 끝'],
+    ['29', '010-0000-0129', 'cart', '2026-06-01', false, '무릎 연골주사 3차'],
+    ['30', '010-0000-0130', 'vitd', '2026-09-03', false, '비타민D 주사'],
+    ['31', '010-0000-0131', 'cart', '2026-06-10', false, '무릎 연골주사 3차 끝']
+  ].map(function (r) { var ru = RULES[r[2]]; return { key: 'r' + r[0], name: '가상환자' + r[0], phone: r[1], rule: ru, last: r[3], due: addMonths(r[3], ru.months), on: r[4], ev: r[5] }; });
+  var COVER = { records: 1284, from: '2026-05-01', short: [RULES.cart], trimmed: 1200 };
+  var COUNTS = { fu: 5, rc: 2, at: '2026년 11월 4일 (수) 08:42' };
+
+  var uid = 0;
+  function T(kind, name, body) { uid += 1; return { id: 't' + uid, kind: kind, name: name, body: body }; }
+  var SAVED0 = [
+    T('injection', '주사 안내', '[예시정형외과의원] 주사 예약 안내\n[*1*]님, [*2*] 주사 날짜를 알려 드려요.\n* 11월 5일 목요일 *\n오전 9시부터 오후 6시 사이에 편하게 오세요.\n날짜를 바꾸려면 02-0000-0000으로 전화 주세요.'),
+    T('followup', '진료 안내', '[예시정형외과의원] 진료 안내\n[*1*]님, 다음 진료일을 알려 드려요.\n* 11월 5일 목요일 *\n날짜를 바꾸려면 02-0000-0000으로 전화 주세요.'),
+    T('injection', '주사 안내 (토요일 진료)', '[예시정형외과의원] 주사 예약 안내\n[*1*]님, [*2*] 주사 날짜를 알려 드려요.\n* 11월 5일 목요일 *\n토요일은 오후 1시까지 진료해요.')
+  ];
+  var DEFAULTS = [
+    T('injection', '주사 안내', '[○○의원] 주사 안내\n[*1*]님, [*2*] 주사 맞으실 날이에요.\n<<DATE>>\n진료시간: 평일 00:00~00:00\n문의: 000-0000-0000'),
+    T('followup', '진료 안내', '[○○의원] 진료 안내\n[*1*]님, 다음 진료일이에요.\n<<DATE>>\n진료시간: 평일 00:00~00:00\n문의: 000-0000-0000')
+  ];
+  function clone(list) { return list.map(function (t) { return { id: t.id, kind: t.kind, name: t.name, body: t.body }; }); }
+  var KIND = { injection: '주사 안내', followup: '진료 안내' };
+
+  /* ---------- 상태 ---------- */
+  var S = {
+    tool: 'followup', view: 'pc', st: 'ok', errTool: 'followup', reason: 'nohelper',
+    x: {}, busyCounts: false, allOpen: false, tick: 0, autoOk: false,
+    marks: {}, pending: {}, markErr: {},
+    fu: { preset: 'tomorrow', cfrom: TOMORROW, cto: addDays(TOMORROW, 6), cond: false, past: false, kind: 'all', head: true, tpl: 'injection' },
+    rc: { from: TODAY, to: addDays(TODAY, 30), past: true },
+    copy: {},
+    msg: { saved: clone(SAVED0), draft: clone(SAVED0), sel: null, date: TOMORROW, save: null, tried: false, touched: {}, addKind: 'injection' }
+  };
+  FU.concat(RC).forEach(function (r) { if (r.on) S.marks[r.key] = true; });
+  try {
+    var q = new URLSearchParams(location.search).get('tool');
+    if (q === 'recall' || q === 'messages' || q === 'followup') S.tool = q;
+  } catch (e) { /* 주소를 못 읽으면 F/U 명단 */ }
+
+  var TOOLS = [
+    { id: 'followup', label: 'F/U 명단', icon: 'cal' },
+    { id: 'recall', label: '정기 주사 문자 명단', icon: 'clock' },
+    { id: 'messages', label: '문자 문구', icon: 'doc' }
+  ];
+  var STATES = [['ok', '정상'], ['loading', '불러오는 중'], ['error', '오류'], ['disconnected', '연결 안 됨'], ['busy', '다른 창 작업 중'], ['counts', '건수만 (확장 없음 · 휴대폰)'], ['nodata', '자료 없음'], ['countsfail', '건수 못 읽음'], ['empty', '빈 명단']];
+  var REASONS = [['nohelper', '도우미 없음'], ['update', '새 판 필요'], ['lost', '연결 끊김']];
+  var EXTRAS = {
+    markFail: '연락함 저장이 실패할 때',
+    storeFail: '기록을 이 PC에 저장 못 했을 때',
+    trimmed: '기록이 많아 오래된 것을 뺐을 때',
+    tplFail: '문자 문구를 못 읽었을 때',
+    copyFail: '복사가 막혔을 때',
+    uploadFail: '남은 건수 올리기가 실패할 때',
+    defaults: '저장한 문구가 없을 때 (처음)',
+    saveFail: '문구 저장이 실패할 때'
+  };
+  var EXTRAS_BY_TOOL = {
+    followup: ['markFail', 'tplFail', 'copyFail', 'uploadFail'],
+    recall: ['markFail', 'storeFail', 'trimmed', 'tplFail', 'copyFail', 'uploadFail'],
+    messages: ['defaults', 'saveFail', 'copyFail', 'tplFail', 'uploadFail']
+  };
+
+  /* ---------- 공용 조각 ---------- */
+  function seg(name, opts, cur, label) {
+    return '<div class="seg" role="group" aria-label="' + label + '">' + opts.map(function (o) {
+      return '<button type="button" data-act="seg" data-n="' + name + '" data-v="' + o[0] + '" data-fid="seg-' + name + '-' + o[0] + '" aria-pressed="' + (o[0] === cur ? 'true' : 'false') + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function ck(name, label, on) {
+    return '<label class="ck"><span class="cbw"><input type="checkbox" class="cb" data-ck="' + name + '" data-fid="ck-' + name + '"' + (on ? ' checked' : '') + '>' + CHECK + '</span>' + label + '</label>';
+  }
+  function head(t, d, right) {
+    return '<div class="sh"><div><h2 class="sh-t">' + t + '</h2><p class="sh-d">' + d + '</p></div>' + (right || '') + '</div>';
+  }
+  function copyBtn(w, label, disabled) {
+    return '<button type="button" class="btn btn-sec btn-sm" data-act="copy" data-w="' + w + '" data-fid="copy-' + w + '"' + (disabled ? ' aria-disabled="true"' : '') + '>' + ic('copy') + label + '</button>';
+  }
+  function phone(p) { return p ? p : '<span class="na">번호 없음</span>'; }
+  function pastChip(d) { return d < TODAY ? '<span class="chip chip-w">지남</span>' : ''; }
+  var COPY_FAILED = '복사하지 못했어요. 다시 눌러 주세요. 계속되면 크롬에서 이 사이트의 클립보드 쓰기를 허용해 주세요.';
+  function copyStatus(area) {
+    var c = S.copy[area];
+    var inner = !c ? '' : c.ok ? '<span class="okt">' + ic('check', 14) + c.text + '</span>' : c.text;
+    return '<p class="cst" role="status" id="cst-' + area + '">' + inner + '</p>';
+  }
+  function tplFailLine() {
+    return errLine('문자 문구를 불러오지 못해 [문구 복사]를 쓸 수 없어요.', 'E-PATIENTS-TEMPLATES-READ', '<button type="button" class="tbtn" data-act="reload-tpl" data-fid="reload-tpl-line">다시 불러오기</button>');
+  }
+  function firstTpl(kind) {
+    var list = S.msg.saved.length ? S.msg.saved : (S.x.defaults ? DEFAULTS : []);
+    for (var i = 0; i < list.length; i++) if (list[i].kind === kind) return list[i];
+    return null;
+  }
+  function markBox(x, phoneRow) {
+    var on = !!S.marks[x.key], busy = !!S.pending[x.key];
+    var box = '<span class="cbw"><input type="checkbox" class="cb" data-act="mark" data-k="' + x.key + '" data-fid="mark-' + x.key + '" aria-label="' + x.name + ' 연락함"' + (on ? ' checked' : '') + (busy ? ' aria-busy="true"' : '') + '>' + CHECK + '</span>';
+    var txt = busy ? '<span class="mk-t">저장 중</span>' : (on ? '<span class="mk-t">연락함</span>' : (phoneRow ? '<span class="mk-t">연락함</span>' : ''));
+    return phoneRow ? '<label class="mk">' + txt + box + '</label>' : '<span class="mk">' + box + txt + '</span>';
+  }
+  function markErr(x) {
+    return S.markErr[x.key] ? errLine('연락함을 저장하지 못했어요. 다시 눌러 주세요.', 'E-STORE-FAILED') : '';
+  }
+  function leftCount(rows) { return rows.filter(function (x) { return !S.marks[x.key]; }).length; }
+  function summary(rows) { return '<p class="sum"><b>' + rows.length + '명</b> · 아직 연락 안 한 분 ' + leftCount(rows) + '명</p>'; }
+
+  /* ---------- F/U 명단 ---------- */
+  var FU_TITLE = 'F/U 명단';
+  var FU_DESC = '다시 오시기로 한 날이 다가온 분이에요. 오시기 전날 문자로 알려 드려요.';
+  function fuRange() {
+    var p = S.fu.preset, ws = weekStart(TODAY);
+    if (p === 'tomorrow') return { from: TOMORROW, to: TOMORROW };
+    if (p === 'thisWeek') return { from: ws, to: addDays(ws, 6) };
+    if (p === 'nextWeek') return { from: addDays(ws, 7), to: addDays(ws, 13) };
+    return { from: S.fu.cfrom, to: S.fu.cto < S.fu.cfrom ? S.fu.cfrom : S.fu.cto };
+  }
+  function rangeLabel(r) { return r.from === r.to ? md(r.from) : md(r.from) + ' ~ ' + md(r.to); }
+  function fuRows() {
+    if (S.st === 'empty') return [];
+    var r = fuRange();
+    return FU.filter(function (x) {
+      if (x.plan === '조건부' && !S.fu.cond) return false;
+      if (S.fu.kind !== 'all' && x.kind !== S.fu.kind) return false;
+      var inRange = x.next >= r.from && x.next <= r.to;
+      var past = S.fu.past && x.next < TODAY && x.next < r.from;
+      return inRange || past;
+    }).sort(function (a, b) { return a.next < b.next ? -1 : a.next > b.next ? 1 : a.name < b.name ? -1 : 1; });
+  }
+  var FU_EMPTY = '이 기간에 오실 분이 없어요. 기간을 바꾸거나 ‘조건부 포함’ · ‘지난 예정 포함’을 켜 보세요.';
+  function fuTool() {
+    var r = fuRange(), rows = fuRows(), und = S.st === 'empty' ? [] : UND, pc = S.view === 'pc';
+    var h = head(FU_TITLE, FU_DESC, summary(rows));
+    h += '<div class="flt">';
+    h += '<div class="fg"><span class="fg-k">기간</span>' + seg('fu-preset', [['tomorrow', '내일'], ['thisWeek', '이번 주'], ['nextWeek', '다음 주'], ['custom', '직접']], S.fu.preset, '기간') + '<span class="rng">' + rangeLabel(r) + '</span></div>';
+    if (S.fu.preset === 'custom') {
+      h += '<div class="fg"><label class="sr" for="fu-from">시작 날짜</label><input type="date" class="inp dt" id="fu-from" data-date="fu-from" data-fid="fu-from" value="' + S.fu.cfrom + '"><span class="rng">~</span><label class="sr" for="fu-to">끝 날짜</label><input type="date" class="inp dt" id="fu-to" data-date="fu-to" data-fid="fu-to" value="' + S.fu.cto + '"></div>';
+    }
+    h += '<div class="fg row">' + ck('fu-cond', '조건부 포함', S.fu.cond) + ck('fu-past', '지난 예정 포함', S.fu.past) + '</div>';
+    h += '<div class="fg"><span class="fg-k">구분</span>' + seg('fu-kind', [['all', '전체'], ['주사', '주사'], ['F/U', 'F/U']], S.fu.kind, '구분') + '</div>';
+    h += '</div><p class="fhelp">조건부: ‘아프면 오세요’처럼 조건을 달아 둔 분 · 지난 예정: 날짜가 지났는데 아직 안 오신 분</p>';
+    h += '<div class="acts"><div class="ag">' + copyBtn('fu-list', '명단 복사', !rows.length) + ck('fu-head', '날짜 제목 줄 넣기', S.fu.head) + '</div>';
+    h += '<div class="ag">' + (S.x.tplFail ? tplFailLine() : copyBtn('fu-tpl', '문구 복사', false) + seg('fu-tpl', [['injection', '주사 안내'], ['followup', '진료 안내']], S.fu.tpl, '복사할 문구') + '<span class="rng">문구 날짜 ' + md(r.from) + '</span>') + '</div></div>';
+    h += copyStatus('fu');
+    if (pc) {
+      h += '<div class="tbw"><table class="tb"><thead><tr><th scope="col">연락함</th><th scope="col">이름</th><th scope="col">전화</th><th scope="col">마지막 진료</th><th scope="col">다음 날짜</th><th scope="col">구분</th><th scope="col">근거 문구</th></tr></thead><tbody>';
+      if (!rows.length) h += '<tr><td class="empty" colspan="7">' + FU_EMPTY + '</td></tr>';
+      rows.forEach(function (x) {
+        h += '<tr><td class="chk">' + markBox(x) + '</td><td>' + x.name + '</td><td class="sub">' + phone(x.phone) + '</td><td class="sub">' + md(x.last) + '</td>' +
+          '<td><span class="cellf">' + md(x.next) + pastChip(x.next) + (x.plan === '조건부' ? '<span class="chip chip-n">조건부</span>' : '') + '</span></td><td class="sub">' + x.kind + '</td><td class="ev" title="' + esc(x.ev) + '">' + esc(x.ev) + '</td></tr>';
+        if (S.markErr[x.key]) h += '<tr class="err"><td></td><td colspan="6">' + markErr(x) + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    } else {
+      h += '<ul class="pl">';
+      if (!rows.length) h += '<li class="empty">' + FU_EMPTY + '</li>';
+      rows.forEach(function (x) {
+        h += '<li><div class="pl-1"><span class="pl-n">' + x.name + '</span>' + markBox(x, true) + '</div>' +
+          '<p class="pl-2"><span class="cellf">' + md(x.next) + ' · ' + x.kind + pastChip(x.next) + (x.plan === '조건부' ? '<span class="chip chip-n">조건부</span>' : '') + '</span></p>' +
+          '<p class="pl-2">' + phone(x.phone) + ' · 마지막 진료 ' + md(x.last) + '</p><p class="pl-3">' + esc(x.ev) + '</p>' + markErr(x) + '</li>';
+      });
+      h += '</ul>';
+    }
+    if (und.length) {
+      h += '<section class="und" aria-labelledby="und-t"><h3 class="und-t" id="und-t">날짜 미정 ' + und.length + '명</h3><p class="sh-d">다시 오라고 적었지만 날짜가 없는 분이에요. 전화로 날짜를 잡아 주세요.</p>';
+      if (pc) {
+        h += '<div class="tbw"><table class="tb"><thead><tr><th scope="col">이름</th><th scope="col">전화</th><th scope="col">마지막 진료</th><th scope="col">근거 문구</th></tr></thead><tbody>';
+        und.forEach(function (x) { h += '<tr><td>' + x.name + '</td><td class="sub">' + phone(x.phone) + '</td><td class="sub">' + md(x.last) + '</td><td class="ev" title="' + esc(x.ev) + '">' + esc(x.ev) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+      } else {
+        h += '<ul class="pl">';
+        und.forEach(function (x) { h += '<li><p class="pl-n">' + x.name + '</p><p class="pl-2">' + phone(x.phone) + ' · 마지막 진료 ' + md(x.last) + '</p><p class="pl-3">' + esc(x.ev) + '</p></li>'; });
+        h += '</ul>';
+      }
+      h += '</section>';
+    }
+    return h;
+  }
+
+  /* ---------- 정기 주사 문자 명단 ---------- */
+  var RC_TITLE = '정기 주사 문자 명단';
+  var RC_DESC = '연골주사 · 비타민D 주사처럼 때마다 맞는 주사의 다음 날짜가 다가온 분이에요.';
+  function rcRows() {
+    if (S.st === 'empty') return [];
+    var to = S.rc.to < S.rc.from ? S.rc.from : S.rc.to;
+    return RC.filter(function (x) { return (x.due >= S.rc.from && x.due <= to) || (S.rc.past && x.due < S.rc.from); })
+      .sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : a.name < b.name ? -1 : 1; });
+  }
+  function dueState(due) {
+    var d = diff(due, TODAY);
+    if (d < 0) return '<span class="chip chip-w">지남 ' + (-d) + '일</span>';
+    if (d === 0) return '<span class="chip chip-a">오늘</span>';
+    return '<span class="sub">' + d + '일 남음</span>';
+  }
+  var RC_EMPTY = '이 기간에 주사 날짜가 다가온 분이 없어요. 기간을 넓혀 보세요.';
+  function rcTool() {
+    var rows = rcRows(), pc = S.view === 'pc';
+    var h = head(RC_TITLE, RC_DESC, summary(rows));
+    h += '<div class="flt"><div class="fg"><span class="fg-k">다음 예정일</span><label class="sr" for="rc-from">시작 날짜</label><input type="date" class="inp dt" id="rc-from" data-date="rc-from" data-fid="rc-from" value="' + S.rc.from + '"><span class="rng">~</span><label class="sr" for="rc-to">끝 날짜</label><input type="date" class="inp dt" id="rc-to" data-date="rc-to" data-fid="rc-to" value="' + S.rc.to + '"></div>';
+    h += '<div class="fg row">' + ck('rc-past', '지난 예정 포함', S.rc.past) + '</div></div>';
+    h += '<p class="fhelp">처음에는 오늘부터 30일 뒤까지예요 · 지난 예정: 주사 날짜가 지났는데 아직 안 오신 분</p>';
+    if (S.st !== 'empty') {
+      h += '<div class="cov"><p>이 PC에 쌓인 정기 주사 기록 <b>' + num(COVER.records) + '건</b> · ' + ymdK(COVER.from) + '부터</p>';
+      COVER.short.forEach(function (s) { h += '<p>' + s.label + '는 ' + s.months + '개월마다 맞는데, 쌓인 기록이 아직 그만큼 길지 않아요. 그보다 오래전에 맞은 분은 아직 명단에 없어요.</p>'; });
+      if (S.x.trimmed) h += '<p>기록이 많아 오래된 ' + num(COVER.trimmed) + '건을 뺐어요.</p>';
+      h += '</div>';
+    }
+    if (S.x.storeFail) h += '<div class="mt12">' + errLine('기록을 이 PC에 저장하지 못했어요. 명단은 그대로 볼 수 있어요.', 'E-STORE-FAILED', '<button type="button" class="tbtn" data-act="reload" data-fid="reload-store">다시 불러오기</button>') + '</div>';
+    var tpl = firstTpl('injection');
+    h += '<div class="acts"><div class="ag">' + copyBtn('rc-list', '명단 복사', !rows.length) + copyBtn('rc-phone', '번호 복사', !rows.length) + '</div>';
+    h += '<div class="ag">' + (S.x.tplFail ? tplFailLine() : copyBtn('rc-tpl', '문구 복사', !tpl) + '<span class="rng">주사 안내 · 문구 날짜 ' + md(TOMORROW) + '</span>') + '</div></div>';
+    h += copyStatus('rc');
+    if (pc) {
+      h += '<div class="tbw"><table class="tb"><thead><tr><th scope="col">연락함</th><th scope="col">종류</th><th scope="col">이름</th><th scope="col">전화</th><th scope="col">마지막 주사</th><th scope="col">다음 예정일</th><th scope="col">상태</th><th scope="col">근거 문구</th></tr></thead><tbody>';
+      if (!rows.length) h += '<tr><td class="empty" colspan="8">' + RC_EMPTY + '</td></tr>';
+      rows.forEach(function (x) {
+        h += '<tr><td class="chk">' + markBox(x) + '</td><td>' + x.rule.label + ' <span class="na">' + x.rule.months + '개월마다</span></td><td>' + x.name + '</td><td class="sub">' + phone(x.phone) + '</td><td class="sub">' + md(x.last) + '</td><td>' + md(x.due) + '</td><td>' + dueState(x.due) + '</td><td class="ev" title="' + esc(x.ev) + '">' + esc(x.ev) + '</td></tr>';
+        if (S.markErr[x.key]) h += '<tr class="err"><td></td><td colspan="7">' + markErr(x) + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    } else {
+      h += '<ul class="pl">';
+      if (!rows.length) h += '<li class="empty">' + RC_EMPTY + '</li>';
+      rows.forEach(function (x) {
+        h += '<li><div class="pl-1"><span class="pl-n">' + x.name + '</span>' + markBox(x, true) + '</div>' +
+          '<p class="pl-2"><span class="cellf">' + x.rule.label + ' · 다음 ' + md(x.due) + dueState(x.due) + '</span></p>' +
+          '<p class="pl-2">' + phone(x.phone) + ' · 마지막 주사 ' + md(x.last) + '</p><p class="pl-3">' + esc(x.ev) + '</p>' + markErr(x) + '</li>';
+      });
+      h += '</ul>';
+    }
+    return h;
+  }
+
+  /* ---------- 상태 화면 (명단 도구 자리) ---------- */
+  function listHead() { return S.tool === 'followup' ? head(FU_TITLE, FU_DESC) : head(RC_TITLE, RC_DESC); }
+  function loadingView() {
+    var fu = S.tool === 'followup', total = fu ? 4 : 7, n = Math.min(S.tick + 1, total);
+    return listHead() + '<div class="ld" role="status"><p class="ld-t"><span>' + (fu ? '비트에서 F/U 명단을 읽는 중이에요' : '정기 주사 기록을 처음 읽는 중이에요') + '</span><span class="ld-n">' + n + '/' + total + (fu ? '' : ' 달') + '</span></p>' +
+      '<p class="ld-s">' + (fu ? '최근 120일을 네 번에 나눠 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' : '처음 한 번만 7개월치를 읽어요. 다음부터는 새로 생긴 달만 읽어서 빨라요. 다 읽을 때까지 이 창을 열어 두세요.') + '</p></div>';
+  }
+  function errorView() {
+    return listHead() + '<div class="mt16">' + errCard('E-BIT-READ-FAILED') + '<div class="after"><button type="button" class="btn btn-sec w-ph" data-act="reload" data-fid="reload-list">다시 불러오기</button><span class="rng">다른 도구는 그대로 쓸 수 있어요.</span></div></div>';
+  }
+  var REASON_TEXT = {
+    nohelper: '이 PC에서 도우미를 찾지 못했어요. 도우미가 꺼져 있거나 아직 설치하지 않았어요.',
+    update: '도우미나 크롬 확장 프로그램을 새 판으로 바꿔야 해요.',
+    lost: '도우미와 연결이 끊겼어요.'
+  };
+  function connectView() {
+    return '<div class="cf"><h2 class="cf-h">비트 PC 연결이 먼저예요</h2><ul class="dots"><li>명단은 비트 PC(비트가 깔린 의원 PC)에서 비트를 읽어 만들어요.</li><li>' + REASON_TEXT[S.reason] + ' [비트 PC 연결]에서 하나씩 확인할 수 있어요.</li></ul>' +
+      '<div class="cf-b"><a href="#" class="btn btn-pri btn-lg w-ph" data-act="to-setup" data-fid="to-setup">비트 PC 연결' + GO + '</a></div>' +
+      '<p class="cf-o"><span>연결하지 않아도 문자 문구는 고칠 수 있어요</span><a href="?tool=messages" class="tbtn" data-act="tool" data-v="messages" data-fid="to-msg">문자 문구 열기' + GO + '</a></p></div>';
+  }
+  function busyView() {
+    return '<section class="busy" role="alert" aria-labelledby="busy-t"><h2 id="busy-t">비트를 다른 창에서 읽고 있어요</h2>' +
+      '<p>비트는 한 번에 한 창에서만 읽을 수 있어요. 청구나 환자 탭이 열린 다른 창으로 가서 계속하거나, 그 창을 닫아 주세요.</p>' +
+      '<p class="s">다른 창을 닫았다면 [다시 확인]을 누르세요.</p>' +
+      '<div class="a"><button type="button" class="btn btn-pri" data-act="reload" data-fid="busy-retry">다시 확인</button><button type="button" class="btn btn-sec" data-act="busy-counts" data-fid="busy-counts">건수만 보기</button></div>' +
+      '<p class="c">오류 번호 E-BRIDGE-BUSY</p></section>';
+  }
+  function countsView(kind, fromBusy) {
+    var h = '<h2 class="cv-h">이 PC에서는 남은 건수만 볼 수 있어요</h2><p class="cv-p">환자 이름과 전화는 비트 PC(비트가 깔린 의원 PC)에서만 보여요.</p>';
+    if (kind === 'fail') {
+      h += '<div class="mt16">' + errCard('E-PATIENTS-COUNTS-READ') + '<div class="after"><button type="button" class="btn btn-sec w-ph" data-act="counts-retry" data-fid="counts-retry">다시 불러오기</button></div></div>';
+    } else if (kind === 'nodata') {
+      h += '<div class="nod"><p class="nod-v">자료 없음</p><p class="nod-s">비트 PC에서 환자 탭을 열면 건수가 생겨요.</p></div>';
+    } else {
+      h += '<div class="cnt"><div><p class="cnt-n">F/U 명단</p><p class="cnt-v">' + COUNTS.fu + '<small>명</small></p><p class="cnt-s">내일 오실 분 중 아직 연락 안 한 분</p></div>' +
+        '<div><p class="cnt-n">정기 주사 문자 명단</p><p class="cnt-v">' + COUNTS.rc + '<small>명</small></p><p class="cnt-s">주사 날짜가 오늘까지 왔는데 아직 연락 안 한 분</p></div></div>' +
+        '<p class="cnt-t">마지막으로 바뀐 때 ' + COUNTS.at + ' · 비트 PC에서 환자 탭을 열 때마다 새로 바뀌어요.</p>';
+    }
+    if (fromBusy) h += '<div class="mt16"><button type="button" class="btn btn-sec w-ph" data-act="busy-back" data-fid="busy-back">다시 확인</button></div>';
+    h += '<p class="more"><span>문자 문구는 여기서도 고칠 수 있어요</span><a href="?tool=messages" class="tbtn" data-act="tool" data-v="messages" data-fid="to-msg2">문자 문구 열기' + GO + '</a></p>';
+    return h;
+  }
+
+  /* ---------- 문자 문구 ---------- */
+  var MSG_TITLE = '문자 문구';
+  var MSG_DESC = '명단과 함께 문자 프로그램에 붙여 넣을 안내 글이에요. 여기서 고치면 다른 PC와 휴대폰에서도 같은 글을 써요.';
+  var DATE_RE = /^\*\s*\d{1,2}월\s*\d{1,2}일\s*[월화수목금토일]요일\s*\*$/;
+  function fill(body, date) {
+    return body.split('\n').map(function (l) { return (l.indexOf('<<DATE>>') >= 0 || DATE_RE.test(l.trim())) ? dateLine(date) : l; }).join('\n');
+  }
+  function changed() {
+    var a = S.msg.draft.map(function (t) { return [t.kind, t.name, t.body]; }), b = S.msg.saved.map(function (t) { return [t.kind, t.name, t.body]; });
+    return JSON.stringify(a) !== JSON.stringify(b);
+  }
+  function badName(t) { return t.name.trim().length < 1 || t.name.length > 30; }
+  function badBody(t) { return t.body.trim().length < 1 || t.body.length > 2000; }
+  function showErr(t, f) { return S.msg.tried || S.msg.touched[t.id + f]; }
+  function selTpl() {
+    var d = S.msg.draft;
+    for (var i = 0; i < d.length; i++) if (d[i].id === S.msg.sel) return d[i];
+    return d[0] || null;
+  }
+  function saveStatusHtml() {
+    var m = S.msg, invalid = m.draft.some(function (t) { return badName(t) || badBody(t); });
+    if (m.save === 'busy') return '저장하는 중이에요…';
+    if (m.tried && invalid) return '고칠 칸이 있어요. 칸 아래 안내를 확인해 주세요.';
+    if (changed()) return '바뀐 것이 있어요. [저장]을 눌러야 다른 PC와 휴대폰에도 같은 글이 나와요.';
+    if (m.save === 'done') return '<span class="okt">' + ic('check', 14) + '저장했어요</span>';
+    return '';
+  }
+  function messagesTool() {
+    var m = S.msg;
+    if (S.st === 'loading') return head(MSG_TITLE, MSG_DESC) + '<div class="ld" role="status"><p class="ld-t">문자 문구를 불러오는 중이에요</p></div>';
+    if ((S.st === 'error' && S.errTool === 'messages') || S.x.tplFail) {
+      return head(MSG_TITLE, MSG_DESC) + '<div class="mt16">' + errCard('E-PATIENTS-TEMPLATES-READ') + '<div class="after"><button type="button" class="btn btn-sec w-ph" data-act="reload-tpl" data-fid="reload-tpl">다시 불러오기</button></div></div>';
+    }
+    var ch = changed();
+    var saveBtn = '<button type="button" class="btn btn-pri w-ph" id="m-save" data-act="save" data-fid="save"' + (ch ? '' : ' aria-disabled="true"') + (m.save === 'busy' ? ' aria-busy="true"' : '') + '>' + (m.save === 'busy' ? '저장하는 중…' : '저장') + '</button>';
+    var h = head(MSG_TITLE, MSG_DESC, saveBtn);
+    h += '<p class="cst" role="status" id="m-st">' + saveStatusHtml() + '</p>';
+    if (m.save === 'failed') h += '<div class="mt8">' + errCard('E-PATIENTS-TEMPLATES-SAVE') + '<div class="after"><button type="button" class="btn btn-sec w-ph" data-act="save" data-fid="resave">다시 저장</button></div></div>';
+    h += '<p class="mhelp">[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.</p>';
+    h += '<div class="mg"><div class="m-l">';
+    if (!m.saved.length) h += '<div class="notice">' + ic('doc') + '<div><p><b>처음이라 기본 문구 ' + DEFAULTS.length + '개를 넣어 뒀어요.</b></p><p>사용 전 병원명·연락처·진료시간을 수정하세요. [저장]을 누르면 우리 의원 문구로 남아요.</p></div></div>';
+    h += '<ol class="mlist" aria-label="문구 목록">';
+    if (!m.draft.length) h += '<li class="empty">문구가 없어요. 아래에서 문구를 더해 주세요.</li>';
+    m.draft.forEach(function (t, i) {
+      var nE = badName(t) && showErr(t, 'n'), bE = badBody(t) && showErr(t, 'b');
+      h += '<li><div class="m-top"><span class="m-no">' + (i + 1) + '번</span><span class="chip chip-n">' + KIND[t.kind] + '</span><div class="m-ord">' +
+        '<button type="button" class="btn btn-gh" data-act="up" data-id="' + t.id + '" data-fid="up-' + t.id + '" aria-label="' + esc(t.name || (i + 1) + '번 문구') + ' 위로"' + (i === 0 ? ' aria-disabled="true"' : '') + '>' + ic('arrowDown', 14, 'ic-up') + '위로</button>' +
+        '<button type="button" class="btn btn-gh" data-act="down" data-id="' + t.id + '" data-fid="down-' + t.id + '" aria-label="' + esc(t.name || (i + 1) + '번 문구') + ' 아래로"' + (i === m.draft.length - 1 ? ' aria-disabled="true"' : '') + '>' + ic('arrowDown', 14) + '아래로</button>' +
+        '<button type="button" class="btn btn-gh" data-act="del" data-id="' + t.id + '" data-fid="del-' + t.id + '" aria-label="' + esc(t.name || (i + 1) + '번 문구') + ' 지우기">지우기</button></div></div>' +
+        '<div class="fld"><label class="lab" for="mn-' + t.id + '">이름 <span class="hint">1~30자</span></label><input class="inp" id="mn-' + t.id + '" data-in="name" data-id="' + t.id + '" data-fid="mn-' + t.id + '" value="' + esc(t.name) + '"' + (nE ? ' aria-invalid="true"' : '') + ' aria-describedby="mne-' + t.id + '"><p class="ferr" id="mne-' + t.id + '">' + (nE ? '이름을 1~30자로 적어 주세요.' : '') + '</p></div>' +
+        '<div class="fld"><label class="lab" for="mb-' + t.id + '">내용 <span class="hint">1~2000자</span></label><textarea class="inp" rows="6" id="mb-' + t.id + '" data-in="body" data-id="' + t.id + '" data-fid="mb-' + t.id + '"' + (bE ? ' aria-invalid="true"' : '') + ' aria-describedby="mbe-' + t.id + '">' + esc(t.body) + '</textarea>' +
+        '<div class="m-sub"><button type="button" class="tbtn" data-act="dateline" data-id="' + t.id + '" data-fid="dl-' + t.id + '">날짜 줄 넣기</button><span class="m-cnt" id="mc-' + t.id + '">' + num(t.body.length) + '/2,000자</span></div><p class="ferr" id="mbe-' + t.id + '">' + (bE ? '내용을 1~2000자로 적어 주세요.' : '') + '</p></div></li>';
+    });
+    h += '</ol>';
+    h += '<div class="m-add"><span class="fg-k">새 문구</span>' + seg('m-add', [['injection', '주사 안내'], ['followup', '진료 안내']], m.addKind, '새 문구 종류') + '<button type="button" class="btn btn-sec w-ph" data-act="add" data-fid="add">문구 더하기</button></div>';
+    h += '</div><div class="m-r">';
+    var sel = selTpl();
+    h += '<div class="fld"><label class="lab" for="m-date">내원 날짜</label><input type="date" class="inp dt" id="m-date" data-fid="m-date" value="' + m.date + '"><p class="help">처음에는 내일이에요. 문자는 오시기 전날 보내요.</p></div>';
+    h += '<div class="fld mt16"><label class="lab" for="m-sel">미리 볼 문구</label><select class="inp" id="m-sel" data-fid="m-sel"' + (m.draft.length ? '' : ' disabled') + '>' + m.draft.map(function (t, i) {
+      return '<option value="' + t.id + '"' + (sel && sel.id === t.id ? ' selected' : '') + '>' + (i + 1) + '번 · ' + esc(t.name || '이름 없음') + '</option>';
+    }).join('') + '</select></div>';
+    h += '<p class="lab mt16" id="m-prev-k">미리 보기</p><div class="prev' + (sel ? '' : ' none') + '" id="m-prev" role="region" aria-labelledby="m-prev-k">' + (sel ? esc(fill(sel.body, m.date)) : '미리 볼 문구가 없어요.') + '</div>';
+    h += '<div class="mt12">' + '<button type="button" class="btn btn-sec w-ph" data-act="copy" data-w="msg" data-fid="copy-msg"' + (sel ? '' : ' aria-disabled="true"') + '>' + ic('copy') + '문구 복사</button></div>' + copyStatus('msg');
+    h += '</div></div>';
+    return h;
+  }
+  function refreshMsg(t) {
+    var app = document.getElementById('app');
+    var cnt = app.querySelector('#mc-' + t.id); if (cnt) cnt.textContent = num(t.body.length) + '/2,000자';
+    var nE = badName(t) && showErr(t, 'n'), bE = badBody(t) && showErr(t, 'b');
+    var ni = app.querySelector('#mn-' + t.id), bi = app.querySelector('#mb-' + t.id);
+    if (ni) { if (nE) ni.setAttribute('aria-invalid', 'true'); else ni.removeAttribute('aria-invalid'); }
+    if (bi) { if (bE) bi.setAttribute('aria-invalid', 'true'); else bi.removeAttribute('aria-invalid'); }
+    var ne = app.querySelector('#mne-' + t.id); if (ne) ne.textContent = nE ? '이름을 1~30자로 적어 주세요.' : '';
+    var be = app.querySelector('#mbe-' + t.id); if (be) be.textContent = bE ? '내용을 1~2000자로 적어 주세요.' : '';
+    var sb = app.querySelector('#m-save'); if (sb) { if (changed()) sb.removeAttribute('aria-disabled'); else sb.setAttribute('aria-disabled', 'true'); }
+    var st = app.querySelector('#m-st'); if (st) st.innerHTML = saveStatusHtml();
+    var opt = app.querySelector('#m-sel option[value="' + t.id + '"]');
+    if (opt) { var i = S.msg.draft.indexOf(t); opt.textContent = (i + 1) + '번 · ' + (t.name || '이름 없음'); }
+    refreshPreview();
+  }
+  function refreshPreview() {
+    var p = document.getElementById('m-prev'), sel = selTpl();
+    if (p) { p.textContent = sel ? fill(sel.body, S.msg.date) : '미리 볼 문구가 없어요.'; p.classList.toggle('none', !sel); }
+  }
+  function findTpl(id) { for (var i = 0; i < S.msg.draft.length; i++) if (S.msg.draft[i].id === id) return i; return -1; }
+
+  /* ---------- 앱 틀 ---------- */
+  var TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '매출', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정'];
+  var READY = { '대시보드': 1, '청구': 1, '환자': 1, '설정': 1 };
+  function tabLinks() {
+    return TABS.map(function (t) { return '<a href="#" class="tab" data-act="tab"' + (t === '환자' ? ' aria-current="page"' : '') + '>' + t + '</a>'; }).join('');
+  }
+  function shell(inner) {
+    var pc = S.view === 'pc', h;
+    if (pc) {
+      h = '<header class="a-hdr"><div class="wa"><div class="brand">' + logo(24) + '<span class="clinic">예시정형외과의원</span></div><div class="hdr-r"><span class="clock">2026년 11월 4일 (수) 09:12 (KST)</span>' +
+        '<button type="button" class="acct" data-act="tab">' + ic('user') + 'manager@example.com' + ic('chev') + '</button></div></div></header>' +
+        '<nav class="a-tabs" aria-label="메뉴"><div class="wa"><div class="tabs-in">' + tabLinks() + '</div></div></nav>';
+    } else {
+      var notReady = TABS.filter(function (t) { return !READY[t]; }).length;
+      h = '<header class="a-hdr"><div class="brand">' + logo(24) + '<span class="clinic">예시정형외과의원</span></div><button type="button" class="iconbtn" data-act="tab" aria-label="manager@example.com">' + ic('user') + '</button></header>' +
+        '<div class="tabw"><nav class="a-tabs" aria-label="메뉴"><div class="tabs-sc" id="tabs-sc"><div class="tabs-in">' + tabLinks() + '</div></div>' +
+        '<button type="button" class="allbtn" data-act="allmenu" data-fid="allmenu" aria-expanded="' + (S.allOpen ? 'true' : 'false') + '">전체 메뉴' + ic('chev') + '</button></nav>' +
+        (S.allOpen ? '<div class="allp"><p class="allp-h"><span>모든 탭 ' + TABS.length + '개</span><span>준비 중 ' + notReady + '개</span></p><ul class="allp-g">' + TABS.map(function (t) {
+          return '<li><a href="#" class="allp-i" data-act="tab"' + (t === '환자' ? ' aria-current="page"' : '') + '><span>' + t + '</span>' + (READY[t] ? '' : '<span class="chip chip-n">준비 중</span>') + '</a></li>';
+        }).join('') + '</ul></div>' : '') + '</div>';
+    }
+    h += '<main class="main" id="main"><div class="' + (pc ? 'wa' : '') + '">' + inner + '</div></main>';
+    return h;
+  }
+  function toolRow() {
+    return '<nav class="tools" aria-label="환자 도구">' + TOOLS.map(function (t) {
+      return '<a href="?tool=' + t.id + '" class="tool" data-act="tool" data-v="' + t.id + '" data-fid="tool-' + t.id + '"' + (S.tool === t.id ? ' aria-current="page"' : '') + '>' + ic(t.icon) + '<span>' + t.label + '</span></a>';
+    }).join('') + '</nav>';
+  }
+  function toolBody() {
+    if (S.tool === 'messages') return messagesTool();
+    var st = S.st;
+    if (st === 'error' && S.errTool !== S.tool) st = 'ok';
+    if (st === 'loading') return loadingView();
+    if (st === 'error') return errorView();
+    if (st === 'disconnected') return connectView();
+    if (st === 'busy') return S.busyCounts ? countsView('counts', true) : busyView();
+    if (st === 'counts') return countsView('counts');
+    if (st === 'nodata') return countsView('nodata');
+    if (st === 'countsfail') return countsView('fail');
+    return S.tool === 'followup' ? fuTool() : rcTool();
+  }
+  function page() {
+    var h = '<h1 class="pg-h1">환자</h1>' + toolRow();
+    if (S.x.uploadFail && S.st === 'ok') {
+      h += '<div class="up">' + errLine('휴대폰에서 볼 남은 건수를 올리지 못했어요. 명단은 그대로 쓸 수 있어요.', 'E-PATIENTS-COUNTS-SAVE', '<button type="button" class="tbtn" data-act="reupload" data-fid="reupload">다시 올리기</button>') + '</div>';
+    }
+    return h + '<div class="tbody">' + toolBody() + '</div>';
+  }
+
+  /* ---------- 목업 조작 줄 ---------- */
+  function picks(name, opts, cur) {
+    return opts.map(function (o) { return '<button type="button" class="pick" data-pick="' + name + '" data-v="' + o[0] + '" data-fid="pick-' + name + '-' + o[0] + '" aria-pressed="' + (o[0] === cur ? 'true' : 'false') + '">' + o[1] + '</button>'; }).join('');
+  }
+  function renderCtl() {
+    var ctl = document.getElementById('ctl');
+    var h = '<div class="ctl-r"><span class="ctl-k">화면 폭</span>' + picks('view', [['pc', 'PC 화면'], ['ph', '휴대폰 화면']], S.view) + '</div>';
+    h += '<div class="ctl-r"><span class="ctl-k">상태</span>' + picks('st', STATES, S.st) + '</div>';
+    if (S.st === 'disconnected') h += '<div class="ctl-r"><span class="ctl-k">까닭</span>' + picks('reason', REASONS, S.reason) + '</div>';
+    h += '<div class="ctl-r"><span class="ctl-k">더 보기</span>' + EXTRAS_BY_TOOL[S.tool].map(function (k) {
+      return '<label class="xck"><input type="checkbox" data-x="' + k + '" data-fid="x-' + k + '"' + (S.x[k] ? ' checked' : '') + '>' + EXTRAS[k] + '</label>';
+    }).join('') + '<span class="ctl-note">(지금 도구에 맞는 것만 보여요)</span></div>';
+    ctl.innerHTML = h;
+  }
+
+  /* ---------- 그리기 ---------- */
+  var W = { pc: 1280, ph: 390 };
+  function fit() {
+    var stage = document.getElementById('stage'), bw = document.getElementById('bw'), vp = document.getElementById('vp');
+    var w = W[S.view], avail = stage.clientWidth, outer = Math.min(w + 2, avail);
+    bw.style.width = outer + 'px';
+    vp.style.width = w + 'px';
+    var z = (outer - 2) / w;
+    vp.style.zoom = z < 1 ? String(z) : '';
+  }
+  function render() {
+    var a = document.activeElement, fid = a && a.getAttribute ? a.getAttribute('data-fid') : null;
+    var sc = document.getElementById('tabs-sc'), scLeft = sc ? sc.scrollLeft : null;
+    renderCtl();
+    document.getElementById('bw-url').innerHTML = '/patients<b>?tool=' + S.tool + '</b>';
+    var app = document.getElementById('app');
+    app.className = 'ui ' + (S.view === 'pc' ? 'is-pc' : 'is-ph');
+    app.innerHTML = shell(page());
+    fit();
+    // 휴대폰 탭 띠: 지금 탭([환자])이 보이게 띠만 민다
+    var sc2 = document.getElementById('tabs-sc');
+    if (sc2) {
+      if (scLeft !== null) sc2.scrollLeft = scLeft;
+      var cur = sc2.querySelector('[aria-current=page]');
+      if (cur) {
+        var a1 = sc2.getBoundingClientRect(), b1 = cur.getBoundingClientRect();
+        if (b1.right > a1.right || b1.left < a1.left) sc2.scrollLeft += b1.left - a1.left - 24;
+      }
+    }
+    if (fid) { var n = document.querySelector('[data-fid="' + fid + '"]'); if (n) n.focus({ preventScroll: true }); }
+  }
+
+  var toastTimer = null;
+  function toast(text) {
+    var t = document.getElementById('toast');
+    t.textContent = text; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 2600);
+  }
+
+  /* 불러오는 중: 몇 번째를 읽는지 한 칸씩 올린다. [다시 불러오기]로 들어오면 끝까지 읽고 정상으로 */
+  var ticker = null;
+  function startLoading(autoOk) {
+    S.st = 'loading'; S.tick = 0; S.autoOk = autoOk;
+    clearInterval(ticker);
+    ticker = setInterval(function () {
+      var total = S.tool === 'recall' ? 7 : 4;
+      if (S.st !== 'loading') { clearInterval(ticker); return; }
+      if (S.tick + 1 < total - (S.autoOk ? 0 : 1)) { S.tick += 1; render(); }
+      else if (S.autoOk) { clearInterval(ticker); S.st = 'ok'; S.copy = {}; render(); }
+      else clearInterval(ticker);
+    }, S.tool === 'messages' ? 500 : 800);
+    render();
+  }
+
+  function setTool(id) {
+    if (!(id === 'followup' || id === 'recall' || id === 'messages')) id = 'followup';
+    S.tool = id; S.copy = {}; S.allOpen = false;
+    try { history.replaceState(null, '', '?tool=' + id); } catch (e) { /* 주소를 못 바꾸는 곳에서도 목업은 그대로 */ }
+    render();
+  }
+
+  function doCopy(w) {
+    var area = w.indexOf('fu') === 0 ? 'fu' : w.indexOf('rc') === 0 ? 'rc' : 'msg';
+    if (S.x.copyFail) {
+      var text = COPY_FAILED;
+      if (w === 'msg') {
+        text = '복사하지 못했어요. 미리 보기 글을 골라 두었어요. 골라 둔 글을 오른쪽 클릭해 [복사]를 눌러 주세요.';
+        S.copy[area] = { ok: false, text: text }; render();
+        var p = document.getElementById('m-prev');
+        if (p && window.getSelection) { var r = document.createRange(); r.selectNodeContents(p); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+        return;
+      }
+      S.copy[area] = { ok: false, text: text }; render(); return;
+    }
+    var msg;
+    if (w === 'fu-list') { var n = fuRows().length; msg = '복사했어요 · ' + n + '명' + (S.fu.head ? ' · 날짜 제목 줄 포함' : ''); }
+    else if (w === 'fu-tpl') { var t = firstTpl(S.fu.tpl); msg = t ? '복사했어요 · ' + t.name + ' · ' + md(fuRange().from) : '복사할 문구가 없어요. 문자 문구에서 먼저 만들어 주세요.'; if (!t) { S.copy[area] = { ok: false, text: msg }; render(); return; } }
+    else if (w === 'rc-list') { var rows = rcRows(), miss = rows.filter(function (x) { return !x.phone; }).length; msg = '복사했어요 · ' + rows.length + '명' + (miss ? ' (번호 없는 분 ' + miss + '명)' : ''); }
+    else if (w === 'rc-phone') { var rr = rcRows(), have = {}, m2 = 0; rr.forEach(function (x) { if (x.phone) have[x.phone] = 1; else m2 += 1; }); msg = '번호 ' + Object.keys(have).length + '개를 복사했어요' + (m2 ? ' · 번호 없는 분 ' + m2 + '명은 빠졌어요' : ''); }
+    else if (w === 'rc-tpl') { var t2 = firstTpl('injection'); msg = '복사했어요 · ' + (t2 ? t2.name : '주사 안내') + ' · ' + md(TOMORROW); }
+    else { var t3 = selTpl(); msg = '복사했어요 · ' + (t3 ? t3.name : '') + ' · ' + md(S.msg.date); }
+    S.copy[area] = { ok: true, text: msg };
+    render();
+  }
+
+  function mark(key) {
+    if (S.pending[key]) return;
+    S.pending[key] = true; delete S.markErr[key]; render();
+    setTimeout(function () {
+      delete S.pending[key];
+      if (S.x.markFail) S.markErr[key] = 'E-STORE-FAILED';
+      else { if (S.marks[key]) delete S.marks[key]; else S.marks[key] = true; }
+      render();
+    }, 700);
+  }
+
+  function save() {
+    var m = S.msg;
+    if (m.save === 'busy') return;
+    var invalid = m.draft.some(function (t) { return badName(t) || badBody(t); });
+    if (invalid) {
+      m.tried = true; render();
+      var first = document.querySelector('#app [aria-invalid="true"]'); if (first) first.focus();
+      return;
+    }
+    m.save = 'busy'; render();
+    setTimeout(function () {
+      if (S.x.saveFail) m.save = 'failed';
+      else { m.saved = clone(m.draft); m.save = 'done'; m.tried = false; }
+      render();
+    }, 800);
+  }
+
+  /* ---------- 누름 ---------- */
+  document.addEventListener('click', function (e) {
+    var pk = e.target.closest('[data-pick]');
+    if (pk) {
+      var n = pk.getAttribute('data-pick'), v = pk.getAttribute('data-v');
+      if (n === 'view') { S.view = v; S.allOpen = false; render(); }
+      else if (n === 'reason') { S.reason = v; render(); }
+      else if (n === 'st') {
+        S.busyCounts = false; S.copy = {}; S.pending = {}; S.markErr = {};
+        if (v === 'error') S.errTool = S.tool;
+        if (v === 'loading') { startLoading(false); return; }
+        S.st = v; render();
+      }
+      return;
+    }
+    var el = e.target.closest('#app [data-act]');
+    if (!el) return;
+    var act = el.getAttribute('data-act');
+    if (el.tagName === 'A') e.preventDefault();
+    if (el.getAttribute('aria-disabled') === 'true') return;
+    switch (act) {
+      case 'tool': setTool(el.getAttribute('data-v')); break;
+      case 'tab': break;
+      case 'allmenu': S.allOpen = !S.allOpen; render(); break;
+      case 'seg': {
+        var sn = el.getAttribute('data-n'), sv = el.getAttribute('data-v');
+        if (sn === 'fu-preset') S.fu.preset = sv;
+        else if (sn === 'fu-kind') S.fu.kind = sv;
+        else if (sn === 'fu-tpl') S.fu.tpl = sv;
+        else if (sn === 'm-add') S.msg.addKind = sv;
+        render(); break;
+      }
+      case 'mark': e.preventDefault(); mark(el.getAttribute('data-k')); break;
+      case 'copy': doCopy(el.getAttribute('data-w')); break;
+      case 'reload': S.busyCounts = false; S.x.storeFail = false; startLoading(true); break;
+      case 'reload-tpl': S.x.tplFail = false; if (S.st === 'error' && S.errTool === 'messages') S.st = 'ok'; render(); break;
+      case 'reupload': S.x.uploadFail = false; render(); break;
+      case 'counts-retry': S.st = 'counts'; render(); break;
+      case 'busy-counts': S.busyCounts = true; render(); break;
+      case 'busy-back': S.busyCounts = false; render(); break;
+      case 'to-setup': toast('목업이에요. 진짜 화면에서는 여기서 비트 PC 연결 화면(설정 탭)으로 가요.'); break;
+      case 'save': save(); break;
+      case 'up': case 'down': {
+        var i = findTpl(el.getAttribute('data-id')), j = act === 'up' ? i - 1 : i + 1, d = S.msg.draft;
+        if (i < 0 || j < 0 || j >= d.length) break;
+        var tmp = d[i]; d[i] = d[j]; d[j] = tmp;
+        if (S.msg.save === 'done') S.msg.save = null;
+        render(); break;
+      }
+      case 'del': {
+        var k = findTpl(el.getAttribute('data-id'));
+        if (k >= 0) { S.msg.draft.splice(k, 1); if (S.msg.save === 'done') S.msg.save = null; }
+        render(); break;
+      }
+      case 'add': {
+        var nt = T(S.msg.addKind, '새 ' + KIND[S.msg.addKind], '');
+        S.msg.draft.push(nt); S.msg.sel = nt.id; if (S.msg.save === 'done') S.msg.save = null;
+        render();
+        var ta = document.getElementById('mb-' + nt.id); if (ta) ta.focus();
+        break;
+      }
+      case 'dateline': {
+        var id = el.getAttribute('data-id'), t = S.msg.draft[findTpl(id)], area = document.getElementById('mb-' + id);
+        if (!t || !area) break;
+        var pos = typeof area.selectionStart === 'number' ? area.selectionStart : t.body.length;
+        var before = t.body.slice(0, pos), after = t.body.slice(pos), line = dateLine(S.msg.date);
+        var ins = (before && before.slice(-1) !== '\n' ? '\n' : '') + line + (after && after.charAt(0) !== '\n' ? '\n' : '');
+        t.body = before + ins + after; area.value = t.body;
+        area.focus(); area.selectionStart = area.selectionEnd = (before + ins).length;
+        if (S.msg.save === 'done') S.msg.save = null;
+        refreshMsg(t); break;
+      }
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    var x = el.getAttribute('data-x');
+    if (x) {
+      S.x[x] = el.checked;
+      if (x === 'defaults') {
+        S.msg.saved = el.checked ? [] : clone(SAVED0);
+        S.msg.draft = el.checked ? clone(DEFAULTS) : clone(SAVED0);
+        S.msg.sel = null; S.msg.save = null; S.msg.tried = false; S.msg.touched = {};
+      }
+      if (x === 'saveFail' && S.msg.save === 'failed' && !el.checked) S.msg.save = null;
+      S.copy = {};
+      render(); return;
+    }
+    var c = el.getAttribute('data-ck');
+    if (c) {
+      if (c === 'fu-cond') S.fu.cond = el.checked;
+      else if (c === 'fu-past') S.fu.past = el.checked;
+      else if (c === 'fu-head') S.fu.head = el.checked;
+      else if (c === 'rc-past') S.rc.past = el.checked;
+      render(); return;
+    }
+    var dt = el.getAttribute('data-date');
+    if (dt && el.value) {
+      if (dt === 'fu-from') S.fu.cfrom = el.value;
+      else if (dt === 'fu-to') S.fu.cto = el.value;
+      else if (dt === 'rc-from') S.rc.from = el.value;
+      else if (dt === 'rc-to') S.rc.to = el.value;
+      render(); return;
+    }
+    if (el.id === 'm-sel') { S.msg.sel = el.value; refreshPreview(); return; }
+    if (el.id === 'm-date' && el.value) { S.msg.date = el.value; refreshPreview(); }
+  });
+
+  document.addEventListener('input', function (e) {
+    var el = e.target, f = el.getAttribute('data-in');
+    if (f) {
+      var t = S.msg.draft[findTpl(el.getAttribute('data-id'))];
+      if (!t) return;
+      t[f] = el.value; S.msg.touched[t.id + (f === 'name' ? 'n' : 'b')] = true;
+      if (S.msg.save === 'done') S.msg.save = null;
+      refreshMsg(t); return;
+    }
+    if (el.id === 'm-date' && el.value) { S.msg.date = el.value; refreshPreview(); }
+  });
+
+  window.addEventListener('resize', fit);
+  render();
+})();
+</script>
+</body>
+</html>

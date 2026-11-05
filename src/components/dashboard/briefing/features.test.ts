@@ -11,7 +11,7 @@ const TABLE = [
   { name: '통계', desc: '환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // 설명은 treatment-trend AC-1201.7이 대신한다
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
-  { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'soon' },
+  { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },
   { name: '매출', desc: '매출 추이·급여와 비급여·치료별 매출·건당 진료비', href: '/revenue', status: 'connect-first' },
   { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
   { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },
@@ -41,7 +41,7 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
     }
   })
 
-  it('AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first, AI 리포트는 ready다', () => {
+  it('AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 상태는 셋 — 상태마다 칸 이름이 표와 같고, 설정은 ready, 청구는 connect-first, AI 리포트는 ready다', () => {
     const namesOf = (rows: ReadonlyArray<{ name: string; status: string }>, status: string) => rows.filter((f) => f.status === status).map((f) => f.name)
     for (const status of ['ready', 'connect-first', 'soon']) expect(namesOf(DASHBOARD_FEATURES, status), status).toEqual(namesOf(TABLE, status))
     expect(namesOf(DASHBOARD_FEATURES, 'ready')).toContain('설정')
@@ -67,6 +67,10 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
       href: '/stats',
       status: 'connect-first',
     })
+  })
+
+  it('AC-610.1: 환자 칸은 준비 중이 아니라 연결 먼저이고 주소는 /patients다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '환자')).toMatchObject({ href: '/patients', status: 'connect-first' })
   })
 
   it('AC-012.3: 업무일지 칸은 ready("사용 가능")이고 주소는 /worklog, 설명 글자는 그대로다', () => {

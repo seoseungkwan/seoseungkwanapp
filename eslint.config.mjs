@@ -10,7 +10,7 @@ const compat = new FlatCompat({
 })
 
 const PATIENT_ZONE_MESSAGE =
-  '환자 자료 구역(lib/parsers·lib/analytics·lib/payload·lib/precheck·lib/bridge·workers)은 네트워크를 쓸 수 없다'
+  '환자 자료 구역(lib/parsers·lib/analytics·lib/payload·lib/precheck·lib/patients·lib/bridge·workers)은 네트워크를 쓸 수 없다'
 const CONSOLE_MESSAGE = '환자 자료 구역은 console을 쓸 수 없다(환자 자료가 로그에 남는다)'
 const IMPORT_MESSAGE = '환자 자료 구역은 React·Next·services·supabase·lib/auth를 import할 수 없다'
 // 저장은 lib/storage가 검사한 달 숫자(MonthPayload)만 한다. 환자 줄이 저장소로 새지 않게
@@ -45,6 +45,23 @@ const STATS_STORAGE_BROWSER_MESSAGE = '통계 저장(lib/storage/stats.ts)은 �
 const STATS_STORAGE_CONSOLE_MESSAGE = '통계 저장(lib/storage/stats.ts)은 console을 쓸 수 없다'
 // 빼는 경로를 glob으로 쓰면 lib/analytics 자체를 막을 때 dates·coverage까지 막혀 정규식으로 쓴다
 const STATS_STORAGE_BLOCKED = /(^|\/)(parsers|bridge|workers)(\/|$)|(^|\/)analytics(\/(?!(dates|coverage)$)|$)/
+// 환자 화면(REQ-601): 오류 보고 패키지는 화면 글·오류 내용을 밖으로 보낸다. 환자 줄이 실려 나가지 않게
+const ERROR_REPORT_MESSAGE = '환자 화면(components/patients·app/(app)/patients)은 오류 보고 패키지(@sentry·@vercel/analytics·@vercel/speed-insights)를 쓸 수 없다'
+const ERROR_REPORT_IMPORT = {
+  group: ['@sentry/*', '@vercel/analytics', '@vercel/analytics/*', '@vercel/speed-insights', '@vercel/speed-insights/*'],
+  message: ERROR_REPORT_MESSAGE,
+}
+const ERROR_REPORT_SYNTAX = {
+  selector: 'ImportExpression[source.value=/^@sentry\\/|^@vercel\\/(analytics|speed-insights)(\\/|$)/]',
+  message: ERROR_REPORT_MESSAGE,
+}
+// 환자 줄을 그리는 화면(components/patients/rows): JSX·React는 되고, 받은 줄을 밖·저장소·로그로 보내지 못한다
+const PATIENT_ROWS_MESSAGE = '환자 줄 화면(components/patients/rows)은 네트워크를 쓸 수 없다(줄은 props로만 받는다)'
+const PATIENT_ROWS_CONSOLE_MESSAGE = '환자 줄 화면은 console을 쓸 수 없다(환자 자료가 로그에 남는다)'
+const PATIENT_ROWS_STORAGE_MESSAGE = '환자 줄 화면은 브라우저 저장소·lib/storage를 쓸 수 없다'
+const PATIENT_ROWS_IMPORT_MESSAGE = '환자 줄 화면은 supabase·lib/auth를 import할 수 없다(줄은 props로만 받는다)'
+// 동적 import()용. 아래 patientRowsRules의 no-restricted-imports group과 같은 목록이다(React·Next는 된다)
+const PATIENT_ROWS_BLOCKED_IMPORT = /^@supabase\/|(^|\/)(supabase|auth)(\/|$)/
 
 // 환자 자료 구역 규칙(시험 파일도 같은 규칙 아래). node:*(시험이 가짜 파일 읽기)는 막지 않는다.
 // 같은 규칙 이름은 뒤 설정이 앞 설정을 통째로 덮으므로, 구역마다 이 함수로 목록 전체를 만든다
@@ -213,6 +230,64 @@ function claimRowsRules() {
   }
 }
 
+// 환자 줄 화면(components/patients/rows, AC-601.2). 같은 규칙 이름은 뒤 설정이 앞 설정을 통째로 덮으므로
+// 전역 블록의 client.ts 금지(CLIENT_IMPORT)와 환자 화면의 오류 보고 패키지 금지도 여기 다시 넣는다
+function patientRowsRules() {
+  return {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: [
+              '@supabase/*',
+              '@/lib/supabase',
+              '@/lib/supabase/*',
+              '@/lib/auth',
+              '@/lib/auth/*',
+              '**/supabase',
+              '**/supabase/**',
+              '**/auth',
+              '**/auth/**',
+            ],
+            message: PATIENT_ROWS_IMPORT_MESSAGE,
+          },
+          { group: ['@/lib/storage', '@/lib/storage/*', '**/storage', '**/storage/**'], message: PATIENT_ROWS_STORAGE_MESSAGE },
+          ERROR_REPORT_IMPORT,
+          CLIENT_IMPORT,
+        ],
+      },
+    ],
+    // no-restricted-imports는 동적 import()를 검사하지 않는다
+    'no-restricted-syntax': [
+      'error',
+      { selector: `ImportExpression[source.value=${PATIENT_ROWS_BLOCKED_IMPORT}]`, message: PATIENT_ROWS_IMPORT_MESSAGE },
+      { selector: `ImportExpression[source.value=${STORAGE_IMPORT}]`, message: PATIENT_ROWS_STORAGE_MESSAGE },
+      {
+        selector: "ImportExpression[source.type!='Literal']",
+        message: '환자 줄 화면의 동적 import()는 글자로 고정한 경로만 쓴다',
+      },
+      ERROR_REPORT_SYNTAX,
+      CLIENT_IMPORT_SYNTAX,
+    ],
+    'no-restricted-globals': [
+      'error',
+      ...NETWORK.map((name) => ({ name, message: PATIENT_ROWS_MESSAGE })),
+      ...STORAGE.map((name) => ({ name, message: PATIENT_ROWS_STORAGE_MESSAGE })),
+      { name: 'console', message: PATIENT_ROWS_CONSOLE_MESSAGE },
+    ],
+    // window·self·globalThis·navigator 등 어느 객체를 거쳐도 막는다
+    'no-restricted-properties': [
+      'error',
+      ...[...NETWORK, 'sendBeacon'].map((property) => ({ property, message: PATIENT_ROWS_MESSAGE })),
+      ...STORAGE.map((property) => ({ property, message: PATIENT_ROWS_STORAGE_MESSAGE })),
+      { property: 'console', message: PATIENT_ROWS_CONSOLE_MESSAGE },
+    ],
+    'no-console': 'error',
+  }
+}
+
+
 // 통로 코드만: 확장에 말을 거는 곳(connect·sendMessage)은 첫 인자가 EXTENSION_ID일 때만. 주입받은 runtime도 같다
 function bridgeSyntax({ declaresExtensionId }) {
   return [
@@ -268,7 +343,14 @@ const eslintConfig = [
   },
   {
     // 환자 자료 구역
-    files: ['src/lib/parsers/**', 'src/lib/analytics/**', 'src/lib/payload/**', 'src/lib/precheck/**', 'src/workers/**'],
+    files: [
+      'src/lib/parsers/**',
+      'src/lib/analytics/**',
+      'src/lib/payload/**',
+      'src/lib/precheck/**',
+      'src/lib/patients/**',
+      'src/workers/**',
+    ],
     rules: patientZoneRules(),
   },
   {
@@ -348,6 +430,19 @@ const eslintConfig = [
       ],
       'no-console': 'error',
     },
+  },
+  {
+    // 환자 화면: 오류 보고 패키지 금지(AC-601.3). 전역 블록의 client.ts 금지를 덮으므로 다시 넣는다
+    files: ['src/components/patients/**', 'src/app/(app)/patients/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [ERROR_REPORT_IMPORT, CLIENT_IMPORT] }],
+      'no-restricted-syntax': ['error', ERROR_REPORT_SYNTAX, CLIENT_IMPORT_SYNTAX],
+    },
+  },
+  {
+    // 환자 줄 화면(AC-601.2): 위 블록 다음에 두어 rows 파일은 이 블록이 이긴다
+    files: ['src/components/patients/rows/**'],
+    rules: patientRowsRules(),
   },
 ]
 

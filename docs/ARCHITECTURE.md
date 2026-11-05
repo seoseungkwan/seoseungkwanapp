@@ -10,11 +10,13 @@ src/
 │   ├── fonts/           # Pretendard 1.3.9 정적 subset 세 굵기(400·500·600) woff2 + OFL.txt. layout.tsx가 next/font/local로 낸다 (ADR-019)
 │   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/notices 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
 │   ├── (app)/revenue/page.tsx  # 매출 화면 = components/revenue/RevenueScreen (specs/revenue)
+│   ├── (app)/patients/page.tsx # 환자 탭 = components/patients/PatientsEntry (specs/patients)
 │   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
 │   ├── payload/         # [환자 구역] 저장 모양(toMonthPayload·toDayPayloads)·검사(validate.ts)
+│   ├── patients/        # [환자 구역] 환자 탭 계산(F/U·정기 주사 명단, 원본 양지바른 옮김) — specs/patients
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
 │   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts (specs/revenue)
 │   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). stats.ts = stats_months·stats_days·stats_coverage (specs/stats). statsRxGroups.ts = stats_rx_groups (specs/treatment-trend)
@@ -28,6 +30,7 @@ src/
 │   ├── revenue/         # 매출 화면(RevenueScreen). 보기 모양은 view.ts, 그래프는 charts/를 불러 쓰기만 한다 (specs/revenue)
 │   ├── ai-report/       # AI 리포트 탭 화면(AiReportScreen·ReportBody·UsageAside·RedoDialog)과 서버 경로 `GET/POST /api/ai/report`를 부르는 reportClient. 달·읽기·분석 상태는 화면에만 둔다 (specs/ai-report-screen)
 │   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
+│   ├── patients/rows/   # [울타리] 환자 줄 화면(props로만). JSX는 되고 네트워크·console·브라우저 저장소·supabase·lib/auth·lib/storage는 못 쓴다. components/patients·app/(app)/patients 전체는 오류 보고 패키지(@sentry·@vercel/analytics·@vercel/speed-insights)도 못 쓴다 — specs/patients
 │   ├── charts/          # 차트 부품(숫자 글자·KPI·Sparkline·쌓은 막대·범례·순위 막대·줄 안 막대). 서버에서 그리는 순수 부품, 토큰 클래스만, 자료 모양은 `@/types/analysis` (specs/b2b-redesign)
 │   └── preview/         # 대시보드 미리보기 + 예시 자료(sample.ts). 랜딩 히어로·로그인 오른쪽이 같이 쓴다. 실제 자료를 읽지 않는다
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
@@ -40,8 +43,8 @@ supabase/*.sql           # 시험 계정·처음 관리자 SQL(SQL 편집기에 
 public/                  # fake-sample/
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
-- [환자 구역] 네 곳은 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
-- (예정, 청구 사전점검 ADR-016·020·021) `lib/bridge`(비트 자료 통로)·`lib/precheck`(청구 계산)도 환자 구역이다. 환자 줄을 그리는 `components/claim/rows`·`components/contact/rows`는 네트워크·저장소·console·supabase를 못 쓴다. 저장소 밖에 `extension/`(크롬 확장)·`helper/`(윈도우 도우미, C#)·`.github/workflows/helper.yml`이 생긴다 — `specs/precheck/design.md` 3절
+- [환자 구역] 네 곳과 `lib/patients`(환자 탭 계산)는 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
+- (예정, 청구 사전점검 ADR-016·020·021) `lib/bridge`(비트 자료 통로)·`lib/precheck`(청구 계산)도 환자 구역이다. 환자 줄을 그리는 `components/claim/rows`·`components/patients/rows`(환자 줄 울타리)는 네트워크·저장소·console·supabase를 못 쓴다. 저장소 밖에 `extension/`(크롬 확장)·`helper/`(윈도우 도우미, C#)·`.github/workflows/helper.yml`이 생긴다 — `specs/precheck/design.md` 3절
 - `lib/supabase/`(연결), `lib/auth/`(문지기·가입·관리자·자동 로그아웃), `components/{auth,shell,dashboard,admin,common}/`, `supabase/migrations/`(SQL 편집기에 붙여 넣음) — `specs/auth/design.md`
 - 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
 

@@ -1,0 +1,2575 @@
+{
+  "source": "seoseungkwan/shared@2a1069b",
+  "file": "YangjiBareun_사전점검/assets/revisit_schedule.html",
+  "entry": [
+    "RECALL_DEFAULTS",
+    "roundTest",
+    "addMonthsToDay",
+    "recallCompute",
+    "recallSelect",
+    "recallStatus"
+  ],
+  "inputs": [
+    {
+      "path": "fixtures/patients/fake/recall-cases.json",
+      "sha256": "31319aa78ac8a6bca9bf9a598ee9dfe0e8b7d806d2f1b1a722e22710d37b3808"
+    }
+  ],
+  "knownDiffs": [
+    {
+      "entry": "recallCompute",
+      "field": "result",
+      "reason": "원본은 예정일의 해가 네 자리를 넘으면 말이 안 되는 날짜(10000-06-30)를 그대로 찍고, 쌓인 기록의 날짜를 못 읽으면 TypeError로 명단 전체가 멈춘다. F/U(followup.ts)와 같이 쓸 수 없는 날은 날짜 없음으로 친다: 예정일이 없으면 명단에 넣을 수 없으니 그 환자의 그 줄만 빼고 나머지 명단은 그대로 낸다. 쌓인 기록을 validateHistory로 읽으면 못 읽는 날짜는 이미 빠져 있어, 멈추는 쪽은 validateHistory를 거치지 않은 자료에서만 생긴다",
+      "cases": {
+        "far-dates": [
+          {
+            "ruleId": "cartilage",
+            "label": "연골주사",
+            "months": 6,
+            "chart": "900048",
+            "name": "가상환자48",
+            "phone": "",
+            "last": "2026-04-15",
+            "due": "2026-10-15",
+            "evidence": "아라간 3차"
+          },
+          {
+            "ruleId": "vitamin-d",
+            "label": "비타민D",
+            "months": 3,
+            "chart": "900045",
+            "name": "가상환자45",
+            "phone": "",
+            "last": "9999-09-30",
+            "due": "9999-12-30",
+            "evidence": "비타민D"
+          },
+          {
+            "ruleId": "cartilage",
+            "label": "연골주사",
+            "months": 6,
+            "chart": "900043",
+            "name": "가상환자43",
+            "phone": "",
+            "last": "9999-06-30",
+            "due": "9999-12-30",
+            "evidence": "아라간 3차"
+          }
+        ],
+        "bad-dates": [
+          {
+            "ruleId": "vitamin-d",
+            "label": "비타민D",
+            "months": 3,
+            "chart": "900057",
+            "name": "가상환자57",
+            "phone": "",
+            "last": "2026-07-10",
+            "due": "2026-10-10",
+            "evidence": "비타민D"
+          },
+          {
+            "ruleId": "cartilage",
+            "label": "연골주사",
+            "months": 6,
+            "chart": "900051",
+            "name": "가상환자51",
+            "phone": "",
+            "last": "2026-04-15",
+            "due": "2026-10-15",
+            "evidence": "아라간 3차"
+          }
+        ]
+      }
+    }
+  ],
+  "defaults": [
+    {
+      "id": "cartilage",
+      "enabled": true,
+      "label": "연골주사",
+      "codes": [
+        "A49"
+      ],
+      "round": "3차",
+      "months": 6
+    },
+    {
+      "id": "vitamin-d",
+      "enabled": true,
+      "label": "비타민D",
+      "codes": [
+        "A32"
+      ],
+      "round": "",
+      "months": 3
+    }
+  ],
+  "roundTest": [
+    {
+      "round": "3차",
+      "text": "아라간 3차",
+      "result": true
+    },
+    {
+      "round": "3차",
+      "text": "아라간 3 차",
+      "result": true
+    },
+    {
+      "round": "3차",
+      "text": "아라간 3  차",
+      "result": true
+    },
+    {
+      "round": "3차",
+      "text": "아라간3차",
+      "result": true
+    },
+    {
+      "round": "3차",
+      "text": "3차",
+      "result": true
+    },
+    {
+      "round": "3차",
+      "text": "아라간 13차",
+      "result": false
+    },
+    {
+      "round": "3차",
+      "text": "아라간 23차",
+      "result": false
+    },
+    {
+      "round": "3차",
+      "text": "아라간 33차",
+      "result": false
+    },
+    {
+      "round": "3차",
+      "text": "아라간 03차",
+      "result": false
+    },
+    {
+      "round": "3차",
+      "text": "아라간 1차",
+      "result": false
+    },
+    {
+      "round": "3차",
+      "text": "아라간 13차 / 3차",
+      "result": true
+    },
+    {
+      "round": "3차",
+      "text": "",
+      "result": false
+    },
+    {
+      "round": "3 차",
+      "text": "아라간 3차",
+      "result": true
+    },
+    {
+      "round": "12차",
+      "text": "아라간 12차",
+      "result": true
+    },
+    {
+      "round": "12차",
+      "text": "아라간 112차",
+      "result": false
+    },
+    {
+      "round": "12차",
+      "text": "아라간 2차",
+      "result": false
+    },
+    {
+      "round": "123차",
+      "text": "아라간 123차",
+      "result": true
+    },
+    {
+      "round": "123차",
+      "text": "아라간 3차",
+      "result": false
+    },
+    {
+      "round": "",
+      "text": "아무 글",
+      "result": true
+    },
+    {
+      "round": "",
+      "text": "",
+      "result": true
+    },
+    {
+      "round": "무릎",
+      "text": "오른쪽 무릎 주사",
+      "result": true
+    },
+    {
+      "round": "무릎",
+      "text": "어깨 주사",
+      "result": false
+    },
+    {
+      "round": "ARAGAN",
+      "text": "aragan 주사",
+      "result": true
+    },
+    {
+      "round": "aragan",
+      "text": "ARAGAN 주사",
+      "result": true
+    },
+    {
+      "round": "(",
+      "text": "주사 (왼쪽)",
+      "result": true
+    },
+    {
+      "round": "3차 ",
+      "text": "아라간 3차",
+      "result": false
+    }
+  ],
+  "addMonths": [
+    {
+      "date": "2026-01-31",
+      "months": 1,
+      "result": "2026-02-28"
+    },
+    {
+      "date": "2028-01-31",
+      "months": 1,
+      "result": "2028-02-29"
+    },
+    {
+      "date": "2100-01-31",
+      "months": 1,
+      "result": "2100-02-28"
+    },
+    {
+      "date": "2000-01-31",
+      "months": 1,
+      "result": "2000-02-29"
+    },
+    {
+      "date": "2026-03-31",
+      "months": -1,
+      "result": "2026-02-28"
+    },
+    {
+      "date": "2026-12-15",
+      "months": 1,
+      "result": "2027-01-15"
+    },
+    {
+      "date": "2026-11-30",
+      "months": 3,
+      "result": "2027-02-28"
+    },
+    {
+      "date": "2026-01-15",
+      "months": -1,
+      "result": "2025-12-15"
+    },
+    {
+      "date": "2026-01-31",
+      "months": -2,
+      "result": "2025-11-30"
+    },
+    {
+      "date": "2026-08-31",
+      "months": 6,
+      "result": "2027-02-28"
+    },
+    {
+      "date": "2026-08-29",
+      "months": 6,
+      "result": "2027-02-28"
+    },
+    {
+      "date": "2026-08-28",
+      "months": 6,
+      "result": "2027-02-28"
+    },
+    {
+      "date": "2026-07-31",
+      "months": 3,
+      "result": "2026-10-31"
+    },
+    {
+      "date": "2026-04-15",
+      "months": 6,
+      "result": "2026-10-15"
+    },
+    {
+      "date": "2024-02-29",
+      "months": 12,
+      "result": "2025-02-28"
+    },
+    {
+      "date": "2024-02-29",
+      "months": -12,
+      "result": "2023-02-28"
+    },
+    {
+      "date": "2024-02-29",
+      "months": 48,
+      "result": "2028-02-29"
+    },
+    {
+      "date": "2026-11-01",
+      "months": -36,
+      "result": "2023-11-01"
+    },
+    {
+      "date": "2026-05-31",
+      "months": -36,
+      "result": "2023-05-31"
+    },
+    {
+      "date": "2024-02-29",
+      "months": -36,
+      "result": "2021-02-28"
+    },
+    {
+      "date": "2026-10-31",
+      "months": 0,
+      "result": "2026-10-31"
+    },
+    {
+      "date": "2026-10-16",
+      "months": -6,
+      "result": "2026-04-16"
+    },
+    {
+      "date": "2026-08-31",
+      "months": -6,
+      "result": "2026-02-28"
+    },
+    {
+      "date": "2026-08-31",
+      "months": -3,
+      "result": "2026-05-31"
+    },
+    {
+      "date": "9999-11-30",
+      "months": 1,
+      "result": "9999-12-30"
+    },
+    {
+      "date": "9999-12-31",
+      "months": 0,
+      "result": "9999-12-31"
+    },
+    {
+      "date": "1000-02-28",
+      "months": -1,
+      "result": "1000-01-28"
+    }
+  ],
+  "compute": [
+    {
+      "id": "main",
+      "result": [
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900007",
+          "name": "가상환자07",
+          "phone": "",
+          "last": "2026-01-31",
+          "due": "2026-07-31",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "0900016",
+          "name": "가상환자16",
+          "phone": "",
+          "last": "2026-03-01",
+          "due": "2026-09-01",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900005",
+          "name": "가상환자05",
+          "phone": "010-0000-0005",
+          "last": "2026-07-10",
+          "due": "2026-10-10",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900032",
+          "name": "가상환자32",
+          "phone": "",
+          "last": "2026-07-14",
+          "due": "2026-10-14",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900011",
+          "name": "가상환자11",
+          "phone": "",
+          "last": "2026-07-15",
+          "due": "2026-10-15",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900001",
+          "name": "가상환자01",
+          "phone": "010-0000-0001",
+          "last": "2026-04-15",
+          "due": "2026-10-15",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900033",
+          "name": "가상환자33",
+          "phone": "",
+          "last": "2026-07-16",
+          "due": "2026-10-16",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900034",
+          "name": "가상환자34",
+          "phone": "",
+          "last": "2026-07-31",
+          "due": "2026-10-31",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900035",
+          "name": "가상환자35",
+          "phone": "",
+          "last": "2026-08-01",
+          "due": "2026-11-01",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900006",
+          "name": "가상환자06",
+          "phone": "",
+          "last": "2026-08-31",
+          "due": "2026-11-30",
+          "evidence": "아라간 3차 · 비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900036",
+          "name": "가상환자36",
+          "phone": "",
+          "last": "2026-08-30",
+          "due": "2026-11-30",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900037",
+          "name": "가상환자37",
+          "phone": "",
+          "last": "2026-08-31",
+          "due": "2026-11-30",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900012",
+          "name": "가상환자12",
+          "phone": "",
+          "last": "2026-06-01",
+          "due": "2026-12-01",
+          "evidence": "아라간 3 차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900013",
+          "name": "가상환자13",
+          "phone": "",
+          "last": "2026-06-02",
+          "due": "2026-12-02",
+          "evidence": "아라간3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900014",
+          "name": "가상환자14",
+          "phone": "",
+          "last": "2026-06-03",
+          "due": "2026-12-03",
+          "evidence": "3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900018",
+          "name": "가상환자18",
+          "phone": "",
+          "last": "2026-06-06",
+          "due": "2026-12-06",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900021",
+          "name": "가상환자21",
+          "phone": "",
+          "last": "2026-06-09",
+          "due": "2026-12-09",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900004",
+          "name": "가상환자04",
+          "phone": "",
+          "last": "2026-09-20",
+          "due": "2026-12-20",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "0900030",
+          "name": "가상환자30",
+          "phone": "",
+          "last": "2026-09-20",
+          "due": "2026-12-20",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900031",
+          "name": "가상환자31",
+          "phone": "",
+          "last": "2026-09-20",
+          "due": "2026-12-20",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900019",
+          "name": "가상환자19",
+          "phone": "",
+          "last": "2026-06-20",
+          "due": "2026-12-20",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900010",
+          "name": "가상환자10",
+          "phone": "",
+          "last": "2026-11-30",
+          "due": "2027-02-28",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900006",
+          "name": "가상환자06",
+          "phone": "",
+          "last": "2026-08-31",
+          "due": "2027-02-28",
+          "evidence": "아라간 3차 · 비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900008",
+          "name": "가상환자08",
+          "phone": "",
+          "last": "2026-08-30",
+          "due": "2027-02-28",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900009",
+          "name": "가상환자09",
+          "phone": "",
+          "last": "2026-08-29",
+          "due": "2027-02-28",
+          "evidence": "아라간 3차"
+        }
+      ]
+    },
+    {
+      "id": "cartilage-off",
+      "result": [
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900005",
+          "name": "가상환자05",
+          "phone": "010-0000-0005",
+          "last": "2026-07-10",
+          "due": "2026-10-10",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900032",
+          "name": "가상환자32",
+          "phone": "",
+          "last": "2026-07-14",
+          "due": "2026-10-14",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900011",
+          "name": "가상환자11",
+          "phone": "",
+          "last": "2026-07-15",
+          "due": "2026-10-15",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900033",
+          "name": "가상환자33",
+          "phone": "",
+          "last": "2026-07-16",
+          "due": "2026-10-16",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900034",
+          "name": "가상환자34",
+          "phone": "",
+          "last": "2026-07-31",
+          "due": "2026-10-31",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900035",
+          "name": "가상환자35",
+          "phone": "",
+          "last": "2026-08-01",
+          "due": "2026-11-01",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900006",
+          "name": "가상환자06",
+          "phone": "",
+          "last": "2026-08-31",
+          "due": "2026-11-30",
+          "evidence": "아라간 3차 · 비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900036",
+          "name": "가상환자36",
+          "phone": "",
+          "last": "2026-08-30",
+          "due": "2026-11-30",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900037",
+          "name": "가상환자37",
+          "phone": "",
+          "last": "2026-08-31",
+          "due": "2026-11-30",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900004",
+          "name": "가상환자04",
+          "phone": "",
+          "last": "2026-09-20",
+          "due": "2026-12-20",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "0900030",
+          "name": "가상환자30",
+          "phone": "",
+          "last": "2026-09-20",
+          "due": "2026-12-20",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900031",
+          "name": "가상환자31",
+          "phone": "",
+          "last": "2026-09-20",
+          "due": "2026-12-20",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900010",
+          "name": "가상환자10",
+          "phone": "",
+          "last": "2026-11-30",
+          "due": "2027-02-28",
+          "evidence": "비타민D"
+        }
+      ]
+    },
+    {
+      "id": "vitamin-d-off",
+      "result": [
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900007",
+          "name": "가상환자07",
+          "phone": "",
+          "last": "2026-01-31",
+          "due": "2026-07-31",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "0900016",
+          "name": "가상환자16",
+          "phone": "",
+          "last": "2026-03-01",
+          "due": "2026-09-01",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900001",
+          "name": "가상환자01",
+          "phone": "010-0000-0001",
+          "last": "2026-04-15",
+          "due": "2026-10-15",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900012",
+          "name": "가상환자12",
+          "phone": "",
+          "last": "2026-06-01",
+          "due": "2026-12-01",
+          "evidence": "아라간 3 차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900013",
+          "name": "가상환자13",
+          "phone": "",
+          "last": "2026-06-02",
+          "due": "2026-12-02",
+          "evidence": "아라간3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900014",
+          "name": "가상환자14",
+          "phone": "",
+          "last": "2026-06-03",
+          "due": "2026-12-03",
+          "evidence": "3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900018",
+          "name": "가상환자18",
+          "phone": "",
+          "last": "2026-06-06",
+          "due": "2026-12-06",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900021",
+          "name": "가상환자21",
+          "phone": "",
+          "last": "2026-06-09",
+          "due": "2026-12-09",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900019",
+          "name": "가상환자19",
+          "phone": "",
+          "last": "2026-06-20",
+          "due": "2026-12-20",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900006",
+          "name": "가상환자06",
+          "phone": "",
+          "last": "2026-08-31",
+          "due": "2027-02-28",
+          "evidence": "아라간 3차 · 비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900008",
+          "name": "가상환자08",
+          "phone": "",
+          "last": "2026-08-30",
+          "due": "2027-02-28",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900009",
+          "name": "가상환자09",
+          "phone": "",
+          "last": "2026-08-29",
+          "due": "2027-02-28",
+          "evidence": "아라간 3차"
+        }
+      ]
+    },
+    {
+      "id": "all-off",
+      "result": []
+    },
+    {
+      "id": "no-rules",
+      "result": []
+    },
+    {
+      "id": "no-records",
+      "result": []
+    },
+    {
+      "id": "text-round",
+      "result": [
+        {
+          "ruleId": "knee",
+          "label": "무릎",
+          "months": 1,
+          "chart": "900001",
+          "name": "가상환자01",
+          "phone": "",
+          "last": "2026-01-31",
+          "due": "2026-02-28",
+          "evidence": "왼쪽 무릎 / 아라간 3차"
+        }
+      ]
+    },
+    {
+      "id": "far-dates",
+      "result": [
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900048",
+          "name": "가상환자48",
+          "phone": "",
+          "last": "2026-04-15",
+          "due": "2026-10-15",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900045",
+          "name": "가상환자45",
+          "phone": "",
+          "last": "9999-09-30",
+          "due": "9999-12-30",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900043",
+          "name": "가상환자43",
+          "phone": "",
+          "last": "9999-06-30",
+          "due": "9999-12-30",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "label": "비타민D",
+          "months": 3,
+          "chart": "900044",
+          "name": "가상환자44",
+          "phone": "",
+          "last": "9999-10-01",
+          "due": "10000-01-01",
+          "evidence": "비타민D"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900042",
+          "name": "가상환자42",
+          "phone": "",
+          "last": "9999-07-01",
+          "due": "10000-01-01",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900041",
+          "name": "가상환자41",
+          "phone": "",
+          "last": "9999-12-31",
+          "due": "10000-06-30",
+          "evidence": "아라간 3차"
+        },
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900046",
+          "name": "가상환자46",
+          "phone": "",
+          "last": "9999-12-31",
+          "due": "10000-06-30",
+          "evidence": "아라간 3차"
+        }
+      ]
+    },
+    {
+      "id": "bad-dates",
+      "throws": true,
+      "message": "Cannot read properties of null (reading 'getFullYear')"
+    },
+    {
+      "id": "bad-date-not-matching",
+      "result": [
+        {
+          "ruleId": "cartilage",
+          "label": "연골주사",
+          "months": 6,
+          "chart": "900062",
+          "name": "가상환자62",
+          "phone": "",
+          "last": "2026-04-16",
+          "due": "2026-10-16",
+          "evidence": "아라간 3차"
+        }
+      ]
+    }
+  ],
+  "select": [
+    {
+      "from": "2026-10-15",
+      "to": "2026-10-31",
+      "overdue": false,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "due": "2026-10-16"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "due": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "from": "2026-10-15",
+      "to": "2026-10-31",
+      "overdue": true,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "due": "2026-10-16"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "due": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "from": null,
+      "to": null,
+      "overdue": false,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "due": "2026-10-16"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "due": "2026-10-31"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "due": "2026-11-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "due": "2026-12-01"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "due": "2026-12-02"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "due": "2026-12-03"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "due": "2026-12-06"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "due": "2026-12-09"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "due": "2027-02-28"
+        }
+      ]
+    },
+    {
+      "from": null,
+      "to": null,
+      "overdue": true,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "due": "2026-10-16"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "due": "2026-10-31"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "due": "2026-11-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "due": "2026-12-01"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "due": "2026-12-02"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "due": "2026-12-03"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "due": "2026-12-06"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "due": "2026-12-09"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "due": "2027-02-28"
+        }
+      ]
+    },
+    {
+      "from": "2026-11-01",
+      "to": "2026-11-30",
+      "overdue": true,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "due": "2026-11-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "due": "2026-11-30"
+        }
+      ]
+    },
+    {
+      "from": "2026-11-01",
+      "to": "2026-11-30",
+      "overdue": false,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "due": "2026-11-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "due": "2026-11-30"
+        }
+      ]
+    },
+    {
+      "from": "2026-10-15",
+      "to": "2026-10-10",
+      "overdue": true,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        }
+      ]
+    },
+    {
+      "from": null,
+      "to": "2026-10-15",
+      "overdue": false,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        }
+      ]
+    },
+    {
+      "from": "2026-10-15",
+      "to": null,
+      "overdue": false,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "due": "2026-10-16"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "due": "2026-10-31"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "due": "2026-11-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "due": "2026-12-01"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "due": "2026-12-02"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "due": "2026-12-03"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "due": "2026-12-06"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "due": "2026-12-09"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "due": "2027-02-28"
+        }
+      ]
+    },
+    {
+      "from": "2026-10-15",
+      "to": null,
+      "overdue": true,
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "due": "2026-10-16"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "due": "2026-10-31"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "due": "2026-11-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "due": "2026-11-30"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "due": "2026-12-01"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "due": "2026-12-02"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "due": "2026-12-03"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "due": "2026-12-06"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "due": "2026-12-09"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "due": "2027-02-28"
+        }
+      ]
+    },
+    {
+      "from": "2026-10-15",
+      "to": "2026-10-15",
+      "overdue": false,
+      "today": "2026-10-16",
+      "items": [
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        }
+      ]
+    },
+    {
+      "from": "2026-12-01",
+      "to": null,
+      "overdue": true,
+      "today": "2026-10-16",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "due": "2026-07-31"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "due": "2026-09-01"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "due": "2026-10-10"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "due": "2026-10-14"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "due": "2026-10-15"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "due": "2026-12-01"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "due": "2026-12-02"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "due": "2026-12-03"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "due": "2026-12-06"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "due": "2026-12-09"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "due": "2026-12-20"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "due": "2027-02-28"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "due": "2027-02-28"
+        }
+      ]
+    }
+  ],
+  "status": [
+    {
+      "today": "2026-10-14",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "status": "지남 75일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "status": "지남 43일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "status": "지남 4일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "status": "오늘"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "status": "1일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "status": "1일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "status": "2일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "status": "17일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "status": "18일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "status": "47일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "status": "47일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "status": "47일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "status": "48일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "status": "49일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "status": "50일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "status": "53일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "status": "56일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "status": "67일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "status": "67일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "status": "67일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "status": "67일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "status": "137일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "status": "137일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "status": "137일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "status": "137일 남음"
+        }
+      ]
+    },
+    {
+      "today": "2026-10-15",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "status": "지남 76일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "status": "지남 44일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "status": "지남 5일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "status": "지남 1일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "status": "오늘"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "status": "오늘"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "status": "1일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "status": "16일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "status": "17일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "status": "46일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "status": "46일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "status": "46일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "status": "47일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "status": "48일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "status": "49일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "status": "52일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "status": "55일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "status": "66일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "status": "66일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "status": "66일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "status": "66일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "status": "136일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "status": "136일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "status": "136일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "status": "136일 남음"
+        }
+      ]
+    },
+    {
+      "today": "2026-10-16",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "status": "지남 77일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "status": "지남 45일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "status": "지남 6일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "status": "지남 2일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "status": "지남 1일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "status": "지남 1일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "status": "오늘"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "status": "15일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "status": "16일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "status": "45일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "status": "45일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "status": "45일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "status": "46일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "status": "47일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "status": "48일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "status": "51일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "status": "54일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "status": "65일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "status": "65일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "status": "65일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "status": "65일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "status": "135일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "status": "135일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "status": "135일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "status": "135일 남음"
+        }
+      ]
+    },
+    {
+      "today": "2027-03-01",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "status": "지남 213일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "status": "지남 181일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "status": "지남 142일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "status": "지남 138일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "status": "지남 137일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "status": "지남 137일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "status": "지남 136일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "status": "지남 121일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "status": "지남 120일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "status": "지남 91일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "status": "지남 91일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "status": "지남 91일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "status": "지남 90일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "status": "지남 89일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "status": "지남 88일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "status": "지남 85일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "status": "지남 82일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "status": "지남 71일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "status": "지남 71일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "status": "지남 71일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "status": "지남 71일"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "status": "지남 1일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "status": "지남 1일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "status": "지남 1일"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "status": "지남 1일"
+        }
+      ]
+    },
+    {
+      "today": "2024-02-29",
+      "items": [
+        {
+          "ruleId": "cartilage",
+          "chart": "900007",
+          "status": "883일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "0900016",
+          "status": "915일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900005",
+          "status": "954일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900032",
+          "status": "958일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900011",
+          "status": "959일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900001",
+          "status": "959일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900033",
+          "status": "960일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900034",
+          "status": "975일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900035",
+          "status": "976일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900006",
+          "status": "1005일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900036",
+          "status": "1005일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900037",
+          "status": "1005일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900012",
+          "status": "1006일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900013",
+          "status": "1007일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900014",
+          "status": "1008일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900018",
+          "status": "1011일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900021",
+          "status": "1014일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900004",
+          "status": "1025일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "0900030",
+          "status": "1025일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900031",
+          "status": "1025일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900019",
+          "status": "1025일 남음"
+        },
+        {
+          "ruleId": "vitamin-d",
+          "chart": "900010",
+          "status": "1095일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900006",
+          "status": "1095일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900008",
+          "status": "1095일 남음"
+        },
+        {
+          "ruleId": "cartilage",
+          "chart": "900009",
+          "status": "1095일 남음"
+        }
+      ]
+    }
+  ]
+}

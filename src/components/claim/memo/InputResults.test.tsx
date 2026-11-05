@@ -133,9 +133,12 @@ describe('AC-018.21 멈춤의 다음 할 일', () => {
     expect(screen.queryByRole('button', { name: '이어서 하기' })).toBeNull()
   })
 
-  it('AC-013.5: 글에 비트 PC 연결 화면의 단추가 나오는 번호면 그리로 가는 링크가 있다', () => {
-    show(result({ status: 'stopped', code: 'E-STORE-FAILED', left: 1 }))
+  it('AC-013.5·AC-609.7: 글에 비트 PC 연결 화면의 단추가 나오는 번호면 그리로 가는 링크가 있다(E-STORE-FAILED는 단추 이름이 없어 링크가 없다)', () => {
+    show(result({ status: 'stopped', code: 'E-BIT-NOT-REGISTERED', left: 1 }))
     expect(screen.getByRole('link', { name: '비트 PC 연결 확인' })).toBeTruthy()
+    cleanup()
+    show(result({ status: 'stopped', code: 'E-STORE-FAILED', left: 1 }))
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 확인' })).toBeNull()
     cleanup()
     show(result({ status: 'stopped', code: 'E-INPUT-STOPPED', left: 1 }))
     expect(screen.queryByRole('link', { name: '비트 PC 연결 확인' })).toBeNull()

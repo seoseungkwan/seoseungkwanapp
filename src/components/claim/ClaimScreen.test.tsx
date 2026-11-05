@@ -754,10 +754,13 @@ describe('AC-013.5 비트 PC 연결로 가는 길', () => {
     expect(setupLink()).toBeNull()
   })
 
-  it('AC-013.5: 저장 폴더 거절(E-STORE-FAILED)에는 링크가 있다', async () => {
-    const store = (args: Record<string, unknown>) => (args.months ? Promise.reject(new BridgeError('E-STORE-FAILED')) : Promise.resolve({ id: 'copy1', count: 1 }))
-    await failLoad(bridge({ store }))
-    expect(setupLink()).toBeTruthy()
+  it('AC-013.5·AC-609.7: 저장 폴더 거절(E-STORE-FAILED)은 글에 단추 이름이 없어 링크가 없다. 같은 자리의 E-BIT-NOT-REGISTERED에는 링크가 있다', async () => {
+    const storeFails = (code: string) => (args: Record<string, unknown>) => (args.months ? Promise.reject(new BridgeError(code)) : Promise.resolve({ id: 'copy1', count: 1 }))
+    await failLoad(bridge({ store: storeFails('E-STORE-FAILED') }))
+    expect(setupLink()).toBeNull()
+    cleanup()
+    await failLoad(bridge({ store: storeFails('E-BIT-NOT-REGISTERED') }))
+    expect(setupLink()?.getAttribute('href')).toBe('/claim/setup')
   })
 })
 

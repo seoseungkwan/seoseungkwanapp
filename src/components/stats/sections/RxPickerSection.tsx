@@ -4,22 +4,26 @@ import { useMemo, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { rxCatalog, rxPeriodCounts, rxPickTotal } from '@/components/stats/rxPickView'
+import { useAgainDays } from '@/components/stats/useAgainDays'
 import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
 import { useRxPicks } from '@/components/stats/useRxPicks'
 import { codeKey, rxPickRows, type RxLine, type RxPickRow, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { ErrorCode } from '@/types/errors'
+import type { AgainWindow } from '@/types/payload'
 import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
+import { RxPickAgain } from './RxPickAgain'
 import { RxPickDetail, type RxPickMode } from './RxPickDetail'
 import { RxPickSearch } from './RxPickSearch'
 import { RxPickTable } from './RxPickTable'
 
 // 처방 골라 보기 칸 (rx-picker REQ-801·803·806·812, 시안 docs/mockups/rx-picker). 찾기·표·그래프와 두 훅을 잇고, 그래프 열림·모양을 든다.
-// 고른 처방·그래프 열림은 React 상태와 서버 표에만 있다(AC-812.6). 기간별 key를 주지 않는다: 기간을 바꿔도 열린 줄과 모양이 그대로여야 한다(AC-806.5).
+// 건수 표 바로 아래에 같은 처방 재방문 묶음을 잇는다(fu-rate REQ-1308). 고른 날 수는 이 칸의 React 상태뿐이고 남기지 않는다(다시 열면 7일).
+// 고른 처방·그래프 열림은 React 상태와 서버 표에만 있다(AC-812.6). 기간별 key를 주지 않는다: 기간을 바꿔도 열린 줄과 모양·고른 날 수가 그대로여야 한다(AC-806.5).
 // 훅과 상태는 빈 상태보다 위에 둔다: 기간을 읽지 못하면 saved가 잠깐 false가 되는데, 그때도 열린 줄과 모양을 잊지 않으려고
 
 const TITLE = '처방 골라 보기'
-const DESC = '고른 처방만 건수와 신환율·재진율을 봐요'
+const DESC = '고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요'
 const EMPTY = '불러오면 처방을 골라 볼 수 있어요.'
 const READING = '고른 처방을 읽는 중이에요'
 const SAVE_KEPT = '고른 처방은 이 화면에 그대로 있어요.'
@@ -45,6 +49,8 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
   // 그래프 열림·모양. 열쇠는 대문자 코드다: 표는 저장된 글자, 목록은 날 줄의 글자를 준다
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
   const [modes, setModes] = useState<ReadonlyMap<string, RxPickMode>>(new Map())
+  // 같은 처방 재방문의 고른 날 수(fu-rate AC-1308.3). 브라우저 저장소·서버로 보내지 않는다
+  const [win, setWin] = useState<AgainWindow>(7)
 
   // 일 줄 셈과 고른 처방을 나눈다. 넓은 범위는 최대 731일이라, 고를 때마다 모든 줄을 다시 검사하지 않게 한다.
   // 같은 날은 뒤의 것이 이겨서 화면의 날 숫자를 뒤에 둔다(방금 만든 숫자가 표와 같은 이름을 보인다)
@@ -57,6 +63,8 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
   const total = useMemo(() => rxPickTotal(rows), [rows])
   // 칩 이름은 그 처방 표 줄의 이름이다(AC-803.1). 코드는 저장된 글자 그대로다
   const shownPicks = useMemo<RxLine[]>(() => rows.map(({ code, name }) => ({ code, name })), [rows])
+  // 최근 7일 + 14·30일만 넓은 날 줄을 더 읽는다(AC-1308.4). 묶음 줄은 건수 표 줄의 차례·이름이다
+  const again = useAgainDays(input, win, revision, shownPicks.length > 0)
 
   if (!saved) {
     return (
@@ -141,6 +149,8 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
         ) : (
           <EmptyNote>{NO_RANGE_DATA}</EmptyNote>
         ))}
+      {/* 고른 처방이 비어도 같은 자리에 그대로 둔다: 예시 열림이 이 화면 안에서 남는다(AC-1307.5) */}
+      {state === 'ready' && <RxPickAgain picks={shownPicks} input={again.input} win={win} onWin={setWin} daysState={again.state} onRetryDays={again.retry} />}
     </Section>
   )
 }

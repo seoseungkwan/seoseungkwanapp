@@ -36,7 +36,7 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 통계는 stats AC-515.1, 업무일지는 worklog AC-012.2)
+// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2)
 const PATHS: readonly (readonly [string, string])[] = [
   ['대시보드', '/dashboard'],
   ['통계', '/stats'],
@@ -53,7 +53,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '매출', 'AI 리포트', '업무일지']
+const READY = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '업무일지']
 const NOT_READY = LABELS.filter((l) => !READY.includes(l))
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
@@ -91,8 +91,8 @@ const panel = () => {
   const id = allButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·매출·AI 리포트·업무일지·설정
-const READY_TABS = ['대시보드', '통계', '청구', '매출', 'AI 리포트', '업무일지', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정
+const READY_TABS = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -119,11 +119,12 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-012.2·AC-012.6: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 매출 /revenue · AI 리포트 /ai-report · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · 매출 /revenue · AI 리포트 /ai-report · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
       { label: '청구', href: '/claim' },
+      { label: '환자', href: '/patients' },
       { label: '매출', href: '/revenue' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '업무일지', href: '/worklog' },
@@ -152,6 +153,9 @@ describe('menu', () => {
     expect(currentMenuLabel('/worklog')).toBe('업무일지')
     // 준비 중 주소와 그 아래 경로는 그 탭. 화면이 생긴 매출도 같다
     expect(NOT_READY_PATHS).toHaveLength(NOT_READY_FEATURES.length)
+    expect(NOT_READY_PATHS.map(([, path]) => path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
+    // 환자 탭도 그 탭이다(?tool=은 경로가 아니다)
+    expect(currentMenuLabel('/patients')).toBe('환자')
     for (const [label, path] of NOT_READY_PATHS) {
       expect(currentMenuLabel(path), path).toBe(label)
       expect(currentMenuLabel(`${path}/x`), `${path}/x`).toBe(label)
@@ -169,7 +173,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-010.1·AC-515.1·AC-714.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·매출·AI 리포트·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -525,7 +529,7 @@ describe('AllMenu', () => {
     expect(link.textContent).toBe('업무일지')
   })
 
-  it('AC-416.2·AC-010.1·AC-515.1·AC-714.1·AC-012.2: 준비 중 탭은 neutral 칩 "준비 중"(글자 뒤), 화면이 있는 탭(대시보드·통계·청구·매출·AI 리포트·업무일지·설정)에는 칩이 없다', async () => {
+  it('AC-416.2·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2: 준비 중 탭은 neutral 칩 "준비 중"(글자 뒤), 화면이 있는 탭(대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정)에는 칩이 없다', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(allButton())

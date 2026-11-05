@@ -11,8 +11,15 @@ let autosave: WorklogAutosave | null = null
 let stopSession: (() => void) | null = null
 const signedOutListeners = new Set<() => void>()
 
+// 비트 칸 목록은 자동 저장이 바뀌었다고 넘길 때만 넷째 인자로 보낸다. 모르거나 안 바뀌었으면 인자 셋으로 불러
+// bit_fields 칸이 가지 않는다(저장된 비트 표시를 지우지 않는다, AC-017.7)
 export function worklogAutosave(): WorklogAutosave {
-  autosave ??= createAutosave({ save: (ymd, changes) => saveWorklogDay(supabaseBrowser(), ymd, changes) })
+  autosave ??= createAutosave({
+    save: (ymd, changes, bitFields) =>
+      bitFields === undefined
+        ? saveWorklogDay(supabaseBrowser(), ymd, changes)
+        : saveWorklogDay(supabaseBrowser(), ymd, changes, bitFields),
+  })
   return autosave
 }
 
