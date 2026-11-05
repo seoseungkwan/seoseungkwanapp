@@ -287,6 +287,69 @@ function patientRowsRules() {
   }
 }
 
+// 접수 현황 휴대폰 화면(reception/www, AC-1407.6, ADR-027): 총괄 PC가 내주는 순수 JS 화면. 환자 자료가 휴대폰에 남거나
+// 로그·바깥 주소로 새지 않게 하고, 환자 글은 textContent로만 넣는다. 화면 시험(reception/tests)은 이 울타리 밖이다
+const RECEPTION_STORAGE_MESSAGE =
+  '접수 현황 화면(reception/www)은 브라우저 저장소(localStorage·sessionStorage·indexedDB·caches·cookie)를 쓸 수 없다(환자 자료가 휴대폰에 남는다)'
+const RECEPTION_SERVICE_WORKER_MESSAGE = '접수 현황 화면은 서비스 워커를 쓸 수 없다(환자 화면이 휴대폰에 남는다)'
+const RECEPTION_CONSOLE_MESSAGE = '접수 현황 화면은 console을 쓸 수 없다(환자 자료가 로그에 남는다)'
+const RECEPTION_HTML_MESSAGE =
+  '접수 현황 화면은 HTML로 넣지 못한다(innerHTML·outerHTML·insertAdjacentHTML·document.write 등). 글은 textContent로만 넣는다'
+const RECEPTION_EVAL_MESSAGE = '접수 현황 화면은 글자를 코드로 돌리지 못한다(eval·Function·문자열 setTimeout)'
+const RECEPTION_FETCH_MESSAGE =
+  "접수 현황 화면은 같은 PC에만 묻는다: fetch 첫 인자는 '/'로 시작하는 글자('/api/board')나 '/'로 시작하는 틀 글자(`/api/history?k=${k}`)만 쓴다. '//'·바깥 주소·변수는 안 된다"
+const RECEPTION_NETWORK_MESSAGE =
+  "접수 현황 화면은 fetch('/…') 말고 다른 길(window.fetch·XMLHttpRequest·WebSocket·EventSource·sendBeacon)로 묻지 못한다"
+const RECEPTION_IMPORT_MESSAGE = '접수 현황 화면은 화면 파일만 불러온다(./…·../… 상대 경로를 글자로 고정)'
+const RECEPTION_STORAGE = ['localStorage', 'sessionStorage', 'indexedDB', 'caches']
+const RECEPTION_HTML = ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'write', 'writeln', 'setHTMLUnsafe', 'createContextualFragment']
+const RECEPTION_NETWORK = ['XMLHttpRequest', 'WebSocket', 'EventSource', 'importScripts']
+// '/' 다음 글자가 '/'·'\'·탭·줄바꿈이면 브라우저가 '//바깥주소'로 읽는다. 그래서 다음 글자를 길 글자로만 받는다
+const SAME_PC_LITERAL = '/^\\/([A-Za-z0-9_.~?#%=&+-]|$)/'
+const SAME_PC_TEMPLATE = '/^\\/[A-Za-z0-9_.~?#%=&+-]/'
+const RELATIVE_SOURCE = '/^\\.\\.?\\//'
+function receptionScreenRules() {
+  return {
+    'no-restricted-globals': [
+      'error',
+      ...RECEPTION_STORAGE.map((name) => ({ name, message: RECEPTION_STORAGE_MESSAGE })),
+      { name: 'console', message: RECEPTION_CONSOLE_MESSAGE },
+      ...['eval', 'Function'].map((name) => ({ name, message: RECEPTION_EVAL_MESSAGE })),
+      { name: 'DOMParser', message: RECEPTION_HTML_MESSAGE },
+      ...RECEPTION_NETWORK.map((name) => ({ name, message: RECEPTION_NETWORK_MESSAGE })),
+    ],
+    // window·self·globalThis·navigator·document 등 어느 객체를 거쳐도, 꺼내 써도 막는다
+    'no-restricted-properties': [
+      'error',
+      ...[...RECEPTION_STORAGE, 'cookie', 'storage'].map((property) => ({ property, message: RECEPTION_STORAGE_MESSAGE })),
+      { property: 'serviceWorker', message: RECEPTION_SERVICE_WORKER_MESSAGE },
+      { property: 'console', message: RECEPTION_CONSOLE_MESSAGE },
+      ...RECEPTION_HTML.map((property) => ({ property, message: RECEPTION_HTML_MESSAGE })),
+      ...['eval', 'Function'].map((property) => ({ property, message: RECEPTION_EVAL_MESSAGE })),
+      ...['fetch', ...RECEPTION_NETWORK, 'sendBeacon'].map((property) => ({ property, message: RECEPTION_NETWORK_MESSAGE })),
+    ],
+    'no-restricted-syntax': [
+      'error',
+      // 맨 위 블록의 client.ts 금지를 덮으므로 다시 넣는다
+      CLIENT_IMPORT_SYNTAX,
+      {
+        selector: `CallExpression[callee.type='Identifier'][callee.name='fetch']:not([arguments.0.type='Literal'][arguments.0.value=${SAME_PC_LITERAL}]):not([arguments.0.type='TemplateLiteral'][arguments.0.quasis.0.value.cooked=${SAME_PC_TEMPLATE}])`,
+        message: RECEPTION_FETCH_MESSAGE,
+      },
+      // fetch는 그 자리에서 부르기만 한다(const f = fetch·fetch.call(…)·fetch를 다른 값으로 가리기 금지)
+      { selector: "Identifier[name='fetch']:not(CallExpression > Identifier.callee)", message: RECEPTION_FETCH_MESSAGE },
+      { selector: `ImportDeclaration[source.value!=${RELATIVE_SOURCE}]`, message: RECEPTION_IMPORT_MESSAGE },
+      { selector: `ExportAllDeclaration[source.value!=${RELATIVE_SOURCE}]`, message: RECEPTION_IMPORT_MESSAGE },
+      { selector: `ExportNamedDeclaration[source][source.value!=${RELATIVE_SOURCE}]`, message: RECEPTION_IMPORT_MESSAGE },
+      { selector: "ImportExpression[source.type!='Literal']", message: RECEPTION_IMPORT_MESSAGE },
+      { selector: `ImportExpression[source.value!=${RELATIVE_SOURCE}]`, message: RECEPTION_IMPORT_MESSAGE },
+    ],
+    'no-console': 'error',
+    'no-eval': 'error',
+    'no-implied-eval': 'error',
+    'no-new-func': 'error',
+  }
+}
 
 // 통로 코드만: 확장에 말을 거는 곳(connect·sendMessage)은 첫 인자가 EXTENSION_ID일 때만. 주입받은 runtime도 같다
 function bridgeSyntax({ declaresExtensionId }) {
@@ -443,6 +506,12 @@ const eslintConfig = [
     // 환자 줄 화면(AC-601.2): 위 블록 다음에 두어 rows 파일은 이 블록이 이긴다
     files: ['src/components/patients/rows/**'],
     rules: patientRowsRules(),
+  },
+  {
+    // 접수 현황 휴대폰 화면(AC-1407.6): 저장소·서비스 워커·console·HTML 넣기·eval·바깥 주소 fetch 금지.
+    // reception/www/는 TASK-16부터 생긴다. 규칙은 src/guardrails.test.ts가 경로만 빌려 증명한다
+    files: ['reception/www/**'],
+    rules: receptionScreenRules(),
   },
 ]
 

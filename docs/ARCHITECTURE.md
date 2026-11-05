@@ -36,15 +36,17 @@ src/
 ├── workers/             # [환자 구역] Web Worker(analyze.worker.ts)와 실행기
 ├── types/               # 공용 타입
 ├── testing/             # 시험 도우미(boxes.ts: 그린 마크업에서 상자 안 상자 찾기). 앱 화면이 쓰지 않는다
-└── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험
+└── guardrails.test.ts   # 환자 구역 ESLint 규칙 시험(접수 현황 화면 울타리 포함)
 fixtures/                # 가짜 비트 파일·생성기. 실제 파일은 .gitignore로 막음
 e2e/                     # E2E. Playwright 시험 `*.spec.ts` + Vitest `*.test.ts`(config.test.ts·lib/). `npm run e2e` (ADR-017)
 supabase/*.sql           # 시험 계정·처음 관리자 SQL(SQL 편집기에 붙여 넣음). 시험은 supabase/setup-sql.test.ts
 public/                  # fake-sample/
+reception/               # 접수 현황 휴대폰 화면(ADR-027). www/ = 빌드 없는 순수 JS 화면(총괄 PC의 PrecheckReception.exe가 품어 그대로 내준다), tests/ = vitest + jsdom 시험. [울타리] www/는 브라우저 저장소·서비스 워커·console·innerHTML 등 HTML 넣기·eval·Function·'/'로 시작하지 않는 주소의 fetch를 못 쓴다(eslint.config.mjs, src/guardrails.test.ts) — specs/reception-phone
 specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 - [환자 구역] 네 곳과 `lib/patients`(환자 탭 계산)는 `eslint.config.mjs`가 네트워크·console·브라우저 저장소·React/Next/supabase/auth/storage import를 막는다. 시험 파일도 같다
 - (예정, 청구 사전점검 ADR-016·020·021) `lib/bridge`(비트 자료 통로)·`lib/precheck`(청구 계산)도 환자 구역이다. 환자 줄을 그리는 `components/claim/rows`·`components/patients/rows`(환자 줄 울타리)는 네트워크·저장소·console·supabase를 못 쓴다. 저장소 밖에 `extension/`(크롬 확장)·`helper/`(윈도우 도우미, C#)·`.github/workflows/helper.yml`이 생긴다 — `specs/precheck/design.md` 3절
+- 접수 현황(ADR-027): `helper/src/Precheck.Reception/`(늘 켜 두는 창 없는 프로그램 `PrecheckReception.exe`, 의원 와이파이에 문 47200으로 `reception/www` 화면과 `/api/*`를 내준다). 계산·규칙·HTTP는 `helper/src/Precheck.Core/Reception/`(netstandard2.0, 이 서버에서 시험) — `specs/reception-phone/design.md`
 - `lib/supabase/`(연결), `lib/auth/`(문지기·가입·관리자·자동 로그아웃), `components/{auth,shell,dashboard,admin,common}/`, `supabase/migrations/`(SQL 편집기에 붙여 넣음) — `specs/auth/design.md`
 - 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
 
@@ -67,11 +69,13 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
        → 답 검사(근거 숫자는 앱이 채움) → ai_reports 저장(그 달 덮어씀) → ai_usage 기록 → 화면(글자로만) (ADR-024)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
+[접수 현황] 비트 DB → PrecheckReception.exe(읽기 전용, 허용 SELECT만) → 의원 와이파이 HTTP → 직원 폰 화면(메모리만, 10초마다 다시 읽기) (ADR-027)
 [청구] (예정) 도우미(비트 DB·화면) → 확장 → lib/bridge(풀지 않음) → Worker → 화면(보기 모양, PC 메모리만)
        고친 메모·완료 표시 → 도우미가 그 PC에 암호화 저장. 서버에는 건수(정수)·설정만 (ADR-020·021)
 ```
 - 환자 줄·차트번호·파일 이름은 Worker 밖으로 나가지 않는다. 차트번호는 메모리 안 번호로만 쓴다 (§4)
 - 예외는 청구·환자 연락 화면뿐이다: 일을 하려면 PC 화면에 환자 줄(차트번호·이름·전화)을 보여야 한다. 그 줄은 화면 줄 울타리 안에서만 그리고 서버·저장소·로그로 가지 않는다 (ADR-020)
+- 예외(ADR-027, 사용자 결정 2026-11-05): 접수 현황 화면만 환자 줄(이름·차트번호·접수 메모·처방·증상)이 총괄 PC 밖, 같은 의원 직원 와이파이(사설 주소)의 폰·태블릿까지 간다. 인터넷·우리 서버·Claude API로는 가지 않고, 폰에 남기지 않으며(`no-store`·저장소 금지 울타리), 연결이 끊기거나 화면이 숨겨지면 바로 지운다
 - 서버로 가는 것: 통계·매출 집계, 재고, 직원 이름·직종·금액, 일일마감·보고 내용, 병원 이름 (§4)
 - Claude API로 가는 것: 서버가 DB에서 꺼낸 집계와 인건비 총액뿐. 직원 이름·개인별 급여는 안 보낸다 (§2-3)
 - 채팅 입력에 전화·주민번호·메일 모양이 있으면 보내지 않는다. 처방명은 '데이터'로 감싼다 (§6-2)

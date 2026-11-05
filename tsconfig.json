@@ -19,5 +19,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "extension", "helper"]
+  "exclude": ["node_modules", "extension", "helper", "reception"]
 }
