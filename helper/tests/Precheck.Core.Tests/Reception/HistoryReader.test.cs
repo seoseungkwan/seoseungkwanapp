@@ -1,0 +1,553 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text.Json;
+using Precheck.Core.Bit;
+using Precheck.Core.Reception;
+using Precheck.Core.Tests.Bit;
+using Precheck.Core.Tests.Reception.Cache;
+using Xunit;
+
+// 이 TASK의 시험만 한 거르기로 돌리려고 Detail 이름 공간에 둔다
+namespace Precheck.Core.Tests.Reception.Detail;
+
+/// <summary>
+/// 상세 읽기(HistoryReader, design.md 5절, REQ-1404). GET /api/visit/{k}/history?from=N 한 번 = 그 환자 한 명만 그때 읽기.
+/// AC-1404.1 그 접수보다 앞선 완료 내원을 최근 순으로 처음 5번, 그 뒤 20번씩(HistoryCount → HistoryPage, @first·@last는 1부터 둘 다 포함).
+/// AC-1404.2·AC-1404.4 증상 원천(VisitSymptoms, Phase 5 TASK-30)이 아직 없어 증상 글은 비어 있다.
+/// AC-1404.5 그날 열쇠표에 없는 열쇠·모양이 틀린 열쇠·음수나 숫자 아닌 시작 위치는 비트를 읽지 않고 환자 자료 없음(404).
+/// 가짜 DB·가짜 자료만 쓴다(차트번호 9로 시작하는 6자리, 내원번호 V+숫자, 처방 코드는 시안의 것).
+/// </summary>
+public class HistoryReaderTests
+{
+    private static readonly DateTime Morning = DetailFake.Morning;
+
+    private static string[] HistorySqls(FakeDb db) =>
+        db.Sqls.Where(sql => sql == ReceptionSql.HistoryCount || sql == ReceptionSql.HistoryPage).ToArray();
+
+    private static string[] Dates(JsonElement history) =>
+        history.GetProperty("visits").EnumerateArray().Select(visit => visit.GetProperty("date").GetString()!).ToArray();
+
+    private static int? Next(JsonElement history) =>
+        history.GetProperty("next").ValueKind == JsonValueKind.Null ? null : history.GetProperty("next").GetInt32();
+
+    /// <summary>오늘 접수를 아는 가짜 접수 현황(읽기 횟수를 센다).</summary>
+    private sealed class BoardSource
+    {
+        private readonly BoardResult result;
+
+        public BoardSource(BoardResult result)
+        {
+            this.result = result;
+        }
+
+        public int Calls { get; private set; }
+
+        public BoardResult Get()
+        {
+            Calls++;
+            return result;
+        }
+    }
+
+    private static Rig NewRig(int earlier = DetailFake.Earlier)
+    {
+        var rig = new Rig().Registered();
+        rig.Today = Morning.Date;
+        DetailFake.Answer(rig.Session, earlier);
+        return rig;
+    }
+
+    private static (VisitKeys Keys, string Key) KeysFor(string visitId = DetailFake.TodayId, string day = DetailFake.Day)
+    {
+        var keys = new VisitKeys();
+        return (keys, keys.KeyOf(day, visitId));
+    }
+
+    private static void NothingRead(Rig rig, BoardSource board)
+    {
+        Assert.Equal(0, board.Calls);
+        Assert.Equal(0, rig.Locator.Calls);
+        Assert.Empty(rig.Connector.Opened);
+        Assert.Empty(rig.Session.Calls);
+    }
+
+    private static void NotFound(DetailApi.Answer answer)
+    {
+        Assert.Equal("NotFound", answer.State);
+        Assert.Null(answer.Error);
+        Assert.Null(answer.Json);
+    }
+
+    private static JsonElement Ok(DetailApi.Answer answer)
+    {
+        Assert.True(answer.State == "Ok", $"{answer.State} {answer.Error}");
+        Assert.Null(answer.Error);
+        Assert.NotNull(answer.Json);
+        return answer.Json!.Value;
+    }
+
+    // ---- AC-1404.1 처음 5번, 그 뒤 20번씩, 그 환자 한 명만 ---------------------------------------------------
+
+    [Fact(DisplayName = "AC-1404.1 처음(from=0)은 그 환자 차트번호·그 접수 시각 원값(@before)·등록 범위로 수·첫날을 읽고, 최근 순 1~5번째만 읽어 5번을 준다(next 5·more 31·total 37)")]
+    public void FirstChunk()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var clock = new CacheClock(Morning);
+
+        var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, clock.Now);
+
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, db.Sqls);
+        Assert.Equal(
+            new Dictionary<string, object?> { ["@chart"] = "900101", ["@before"] = "20261105091230", ["@hospital"] = Synthetic.Scope },
+            db.Calls[0].Args);
+        Assert.Equal(
+            new Dictionary<string, object?>
+            {
+                ["@chart"] = "900101", ["@before"] = "20261105091230", ["@hospital"] = Synthetic.Scope, ["@first"] = 1, ["@last"] = 5,
+            },
+            db.Calls[1].Args);
+        Assert.Equal(new[] { "10월 29일", "10월 15일", "10월 1일", "9월 17일", "9월 3일" }, Dates(history));
+        Assert.Equal(5, Next(history));
+        Assert.Equal(31, history.GetProperty("more").GetInt64());
+        Assert.Equal(37, history.GetProperty("total").GetInt64());
+        Assert.Equal("2025년 6월 26일", history.GetProperty("first").GetString());
+    }
+
+    [Fact(DisplayName = "AC-1404.1 접수 시각은 길이를 짐작하지 않고 원값 그대로(@before, 끝 공백 포함) 넘긴다")]
+    public void BeforeIsRaw()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var visit = DetailFake.Today(accepted: "20261105101500 ");
+
+        DetailApi.Read(db, DetailFake.Board(visit), visit, 0, new CacheClock(Morning).Now);
+
+        Assert.All(db.Calls, call => Assert.Equal("20261105101500 ", call.Args["@before"]));
+    }
+
+    [Fact(DisplayName = "AC-1404.1 더 보기(from=5)는 6~25번째 20번(next 25·more 11), from=25는 26~36번째 남은 11번(next null·more 0)")]
+    public void NextChunks()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var second = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 5, new CacheClock(Morning).Now);
+        Assert.Equal(6, db.Calls[1].Args["@first"]);
+        Assert.Equal(25, db.Calls[1].Args["@last"]);
+        Assert.Equal(20, Dates(second).Length);
+        Assert.Equal("8월 20일", Dates(second)[0]);
+        Assert.Equal("2025년 11월 27일", Dates(second)[19]);
+        Assert.Equal(25, Next(second));
+        Assert.Equal(11, second.GetProperty("more").GetInt64());
+        Assert.Equal(37, second.GetProperty("total").GetInt64());
+
+        var lastDb = DetailFake.Answer(new FakeDb());
+        var last = DetailApi.Read(lastDb, DetailFake.Board(), DetailFake.Today(), 25, new CacheClock(Morning).Now);
+        Assert.Equal(26, lastDb.Calls[1].Args["@first"]);
+        Assert.Equal(45, lastDb.Calls[1].Args["@last"]);
+        Assert.Equal(11, Dates(last).Length);
+        Assert.Equal("2025년 6월 26일", Dates(last)[10]);
+        Assert.Null(Next(last));
+        Assert.Equal(0, last.GetProperty("more").GetInt64());
+    }
+
+    [Fact(DisplayName = "AC-1404.1 시작 위치가 지난 내원 수 이상이면 쪽 문장을 돌리지 않고 빈 목록(next null·more 0), 아주 큰 시작 위치도 넘치지 않는다")]
+    public void PastTheEnd()
+    {
+        foreach (var from in new[] { 36, 100, int.MaxValue })
+        {
+            var db = DetailFake.Answer(new FakeDb());
+            var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), from, new CacheClock(Morning).Now);
+            Assert.Equal(new[] { ReceptionSql.HistoryCount }, db.Sqls);
+            Assert.Empty(Dates(history));
+            Assert.Null(Next(history));
+            Assert.Equal(0, history.GetProperty("more").GetInt64());
+            Assert.Equal(37, history.GetProperty("total").GetInt64());
+        }
+
+        var huge = new FakeDb();
+        huge.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { 3_000_000_000L, "20000101" } });
+        huge.Answer(ReceptionSql.HistoryPage, _ => new object?[0][]);
+        DetailApi.Read(huge, DetailFake.Board(), DetailFake.Today(), int.MaxValue - 3, new CacheClock(Morning).Now);
+        Assert.Equal(int.MaxValue - 2, huge.Calls[1].Args["@first"]);
+        Assert.Equal(int.MaxValue, huge.Calls[1].Args["@last"]);
+    }
+
+    [Fact(DisplayName = "AC-1404.1 쪽 줄은 내원마다 묶어 비트가 준 차례(최근 순) 그대로, 처방 없는 내원(RxCode NULL)은 빈 처방, 내원번호가 빈 줄은 버리고 한 쪽보다 많이 주지 않는다")]
+    public void GroupsPageRows()
+    {
+        var db = new FakeDb();
+        db.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { 9L, "20240312" } });
+        db.Answer(ReceptionSql.HistoryPage, _ => new[]
+        {
+            new object?[] { "V0209", "20261029", "DS20" },
+            new object?[] { "V0209", "20261029", "ESWT7" },
+            new object?[] { "V0208", "20261022", null },
+            new object?[] { " ", "20261020", "PT01" },
+            new object?[] { "V0207", "20261015", "PT01" },
+            new object?[] { "V0206", "20261008", "PT01" },
+            new object?[] { "V0205", "20261001", "PT01" },
+            new object?[] { "V0204", "20260924", "PT01" },
+        });
+
+        var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now);
+
+        Assert.Equal(new[] { "10월 29일", "10월 22일", "10월 15일", "10월 8일", "10월 1일" }, Dates(history));
+        var visits = history.GetProperty("visits").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "DS20", "ESWT7" }, visits[0].GetProperty("rx").EnumerateArray().Select(rx => rx.GetProperty("code").GetString()));
+        Assert.Equal(new[] { "도수치료 20분", "체외충격파" }, visits[0].GetProperty("rx").EnumerateArray().Select(rx => rx.GetProperty("name").GetString()));
+        Assert.Empty(visits[1].GetProperty("rx").EnumerateArray());
+        Assert.Equal(5, Next(history));
+        Assert.Equal(4, history.GetProperty("more").GetInt64());
+        Assert.Equal("2024년 3월 12일", history.GetProperty("first").GetString());
+    }
+
+    [Fact(DisplayName = "AC-1404.1 처방 이름은 그날 이름표(BoardInput.RxNames)로 붙이고 코드 순, 이름표에 없는 코드는 이름 \"\"")]
+    public void NamesFromBoard()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now);
+
+        var visits = history.GetProperty("visits").EnumerateArray().ToArray();
+        (string?, string?)[] Rx(JsonElement visit) =>
+            visit.GetProperty("rx").EnumerateArray().Select(rx => (rx.GetProperty("name").GetString(), rx.GetProperty("code").GetString())).ToArray();
+        Assert.Equal(new (string?, string?)[] { ("도수치료 20분", "DS20"), ("체외충격파", "ESWT7") }, Rx(visits[0]));
+        Assert.Equal(new (string?, string?)[] { ("체외충격파", "ESWT7"), ("표층열치료", "PT01") }, Rx(visits[1]));
+        Assert.Empty(Rx(visits[2]));
+        Assert.Equal(new (string?, string?)[] { ("간섭파치료", "PT03"), ("", "ZZ9") }, Rx(visits[3]));
+    }
+
+    [Fact(DisplayName = "AC-1404.1 읽기 한 번의 시간 제한 8초: 문장마다 남은 시간을 주고, 다 쓰면 다음 문장을 돌리지 않고 E-BIT-READ-FAILED")]
+    public void OneBudget()
+    {
+        var clock = new CacheClock(Morning);
+        var db = DetailFake.Answer(new FakeDb());
+        db.Answer(ReceptionSql.HistoryCount, _ =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(3));
+            return new[] { new object?[] { 36L, "20250626" } };
+        });
+        DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, clock.Now);
+        Assert.Equal(TimeSpan.FromSeconds(8), db.Calls[0].Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(5), db.Calls[1].Timeout);
+
+        var spent = DetailFake.Answer(new FakeDb());
+        spent.Answer(ReceptionSql.HistoryCount, _ =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(8));
+            return new[] { new object?[] { 36L, "20250626" } };
+        });
+        var error = Assert.Throws<BitException>(() => DetailApi.Read(spent, DetailFake.Board(), DetailFake.Today(), 0, clock.Now));
+        Assert.Equal(BitErrors.ReadFailed, error.Code);
+        Assert.Equal(new[] { ReceptionSql.HistoryCount }, spent.Sqls);
+    }
+
+    [Fact(DisplayName = "AC-1404.1 칸이 모자란 줄·숫자 아닌 수·음수·수 줄 없음·문장 실패는 일부만 주지 않고 E-BIT-READ-FAILED")]
+    public void ReadFailures()
+    {
+        var cases = new List<FakeDb>
+        {
+            DetailFake.Answer(new FakeDb()).Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { 36L } }),
+            DetailFake.Answer(new FakeDb()).Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { "많음", "20250626" } }),
+            DetailFake.Answer(new FakeDb()).Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { -1L, "20250626" } }),
+            DetailFake.Answer(new FakeDb()).Answer(ReceptionSql.HistoryCount, _ => new object?[0][]),
+            DetailFake.Answer(new FakeDb()).Answer(ReceptionSql.HistoryPage, _ => new[] { new object?[] { "V0201", "20261029" } }),
+            DetailFake.Answer(new FakeDb()).Fail(ReceptionSql.HistoryPage, BitErrors.ReadFailed),
+        };
+        foreach (var db in cases)
+        {
+            var error = Assert.Throws<BitException>(() => DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now));
+            Assert.Equal(BitErrors.ReadFailed, error.Code);
+        }
+    }
+
+    [Fact(DisplayName = "AC-1404.1 차트번호가 빈 접수는 다른 환자를 읽지 않게 상세 문장을 돌리지 않고 지난 진료 없음(total 1, 처음 온 날 오늘)")]
+    public void BlankChartReadsNothing()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var visit = DetailFake.Today(chart: "");
+
+        var history = DetailApi.Read(db, DetailFake.Board(visit), visit, 0, new CacheClock(Morning).Now);
+
+        Assert.Empty(db.Calls);
+        Assert.Empty(Dates(history));
+        Assert.Equal(1, history.GetProperty("total").GetInt64());
+        Assert.Equal("2026년 11월 5일", history.GetProperty("first").GetString());
+    }
+
+    [Fact(DisplayName = "AC-1404.1 그 환자 한 명만 그때 읽는다: 등록 확인 뒤 상세 문장 둘만 돌고(오늘 접수 문장 없음), 다시 열면 다시 읽는다(서버에 쌓지 않음)")]
+    public void OnePatientEachTime()
+    {
+        using var rig = NewRig();
+        var (keys, key) = KeysFor();
+        var board = new BoardSource(BoardResult.Ok(DetailFake.Board(DetailFake.Today(), DetailFake.Today("V1002", "900102", "20261105093005"))));
+        var clock = new CacheClock(Morning);
+
+        var first = Ok(DetailApi.Get(rig.Services, keys, board.Get, key, "0", clock.Now));
+        var again = Ok(DetailApi.Get(rig.Services, keys, board.Get, key, "0", clock.Now));
+
+        Assert.Equal(Dates(first), Dates(again));
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage, ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, HistorySqls(rig.Session));
+        Assert.DoesNotContain(rig.Session.Sqls, sql => sql == ReceptionSql.TodayVisits || sql == ReceptionSql.PriorVisits);
+        Assert.All(rig.Session.Calls.Where(call => call.Sql == ReceptionSql.HistoryCount), call => Assert.Equal("900101", call.Args["@chart"]));
+        Assert.Equal(2, rig.Connector.Opened.Count);
+        Assert.Equal(2, rig.Session.Disposed);
+        Assert.Equal(2, board.Calls);
+    }
+
+    [Fact(DisplayName = "AC-1404.1 올바른 시작 위치(\"0\"·\"5\"·앞 0 \"05\"·int 끝)만 그 위치부터 읽는다")]
+    public void GoodFromReads()
+    {
+        foreach (var (from, first) in new[] { ("0", 1), ("5", 6), ("05", 6), ("25", 26) })
+        {
+            using var rig = NewRig();
+            var (keys, key) = KeysFor();
+            var board = new BoardSource(BoardResult.Ok(DetailFake.Board()));
+            Ok(DetailApi.Get(rig.Services, keys, board.Get, key, from, new CacheClock(Morning).Now));
+            var page = rig.Session.Calls.Single(call => call.Sql == ReceptionSql.HistoryPage);
+            Assert.Equal(first, page.Args["@first"]);
+        }
+
+        using var end = NewRig();
+        var (endKeys, endKey) = KeysFor();
+        var endHistory = Ok(DetailApi.Get(end.Services, endKeys, new BoardSource(BoardResult.Ok(DetailFake.Board())).Get, endKey, "2147483647", new CacheClock(Morning).Now));
+        Assert.Empty(Dates(endHistory));
+    }
+
+    [Fact(DisplayName = "AC-1404.1 볼 수 없음(번호만, 환자 자료 없음): 등록 없음 E-BIT-NOT-REGISTERED·병원 다름·문장 실패 E-BIT-READ-FAILED·접수 현황을 못 읽음은 그 번호")]
+    public void Unavailable()
+    {
+        var (keys, key) = KeysFor();
+
+        using (var unregistered = new Rig())
+        {
+            unregistered.Today = Morning.Date;
+            var answer = DetailApi.Get(unregistered.Services, keys, new BoardSource(BoardResult.Ok(DetailFake.Board())).Get, key, "0", new CacheClock(Morning).Now);
+            Assert.Equal("Unavailable", answer.State);
+            Assert.Equal(BitErrors.NotRegistered, answer.Error);
+            Assert.Null(answer.Json);
+        }
+
+        using (var other = new Rig().Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution)))
+        {
+            other.Today = Morning.Date;
+            DetailFake.Answer(other.Session);
+            var answer = DetailApi.Get(other.Services, keys, new BoardSource(BoardResult.Ok(DetailFake.Board())).Get, key, "0", new CacheClock(Morning).Now);
+            Assert.Equal("Unavailable", answer.State);
+            Assert.Equal(BitErrors.HospitalMismatch, answer.Error);
+            Assert.DoesNotContain(other.Session.Sqls, sql => sql == ReceptionSql.HistoryCount);
+            Assert.Equal(1, other.Session.Disposed);
+        }
+
+        using (var failing = NewRig())
+        {
+            failing.Session.Fail(ReceptionSql.HistoryPage, BitErrors.ReadFailed);
+            var answer = DetailApi.Get(failing.Services, keys, new BoardSource(BoardResult.Ok(DetailFake.Board())).Get, key, "0", new CacheClock(Morning).Now);
+            Assert.Equal("Unavailable", answer.State);
+            Assert.Equal(BitErrors.ReadFailed, answer.Error);
+            Assert.Null(answer.Json);
+            Assert.Equal(1, failing.Session.Disposed);
+        }
+
+        using (var noBoard = NewRig())
+        {
+            var board = new BoardSource(BoardResult.Unavailable(BitErrors.NotRegistered));
+            var answer = DetailApi.Get(noBoard.Services, keys, board.Get, key, "0", new CacheClock(Morning).Now);
+            Assert.Equal("Unavailable", answer.State);
+            Assert.Equal(BitErrors.NotRegistered, answer.Error);
+            Assert.Empty(noBoard.Connector.Opened);
+        }
+    }
+
+    // ---- AC-1404.2·AC-1404.4 증상 원천은 Phase 5 ------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-1404.2 증상 원천(VisitSymptoms)이 아직 없어 증상 문장을 돌리지 않고 내원마다 sym은 \"\"(칸 없음)")]
+    public void NoSymptomSourceYet()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now);
+
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, db.Sqls);
+        Assert.All(history.GetProperty("visits").EnumerateArray(), visit => Assert.Equal("", visit.GetProperty("sym").GetString()));
+    }
+
+    [Fact(DisplayName = "AC-1404.4 오늘 증상(todaySym)도 원천이 생기기 전에는 \"\"")]
+    public void NoTodaySymptomYet()
+    {
+        using var rig = NewRig();
+        var (keys, key) = KeysFor();
+        var history = Ok(DetailApi.Get(rig.Services, keys, new BoardSource(BoardResult.Ok(DetailFake.Board())).Get, key, "0", new CacheClock(Morning).Now));
+        Assert.Equal("", history.GetProperty("todaySym").GetString());
+    }
+
+    // ---- AC-1404.5 틀린 열쇠·시작 위치는 비트를 읽지 않는다 ------------------------------------------------
+
+    [Fact(DisplayName = "AC-1404.5 그날 열쇠표에 없는 열쇠·모양이 틀린 열쇠(대문자·15자리·17자리·16진수 아님·빈 글·null)·다른 날 열쇠는 비트도 접수 현황도 읽지 않고 환자 자료 없음")]
+    public void WrongKeyReadsNothing()
+    {
+        var (keys, key) = KeysFor();
+        var unknown = key == "0123456789abcdef" ? "fedcba9876543210" : "0123456789abcdef";
+        var wrongKeys = new[] { unknown, key.ToUpperInvariant(), key.Substring(1), key + "0", "g123456789abcdef", "", " " + key.Substring(1), null };
+        Assert.NotEqual(key, key.ToUpperInvariant());
+
+        foreach (var wrong in wrongKeys)
+        {
+            using var rig = NewRig();
+            var board = new BoardSource(BoardResult.Ok(DetailFake.Board()));
+            NotFound(DetailApi.Get(rig.Services, keys, board.Get, wrong, "0", new CacheClock(Morning).Now));
+            NothingRead(rig, board);
+        }
+
+        var yesterday = new VisitKeys();
+        var oldKey = yesterday.KeyOf("20261104", DetailFake.TodayId);
+        using (var rig = NewRig())
+        {
+            var board = new BoardSource(BoardResult.Ok(DetailFake.Board()));
+            NotFound(DetailApi.Get(rig.Services, yesterday, board.Get, oldKey, "0", new CacheClock(Morning).Now));
+            NothingRead(rig, board);
+        }
+    }
+
+    [Fact(DisplayName = "AC-1404.5 음수·숫자 아닌·빈·소수·공백·부호·int를 넘는 시작 위치는 올바른 열쇠라도 비트도 접수 현황도 읽지 않고 환자 자료 없음")]
+    public void BadFromReadsNothing()
+    {
+        var (keys, key) = KeysFor();
+        foreach (var from in new[] { "-1", "-0", "abc", "", " ", null, "1.5", " 5", "5 ", "+5", "1e3", "0x10", "2147483648", "99999999999", "５" })
+        {
+            using var rig = NewRig();
+            var board = new BoardSource(BoardResult.Ok(DetailFake.Board()));
+            NotFound(DetailApi.Get(rig.Services, keys, board.Get, key, from, new CacheClock(Morning).Now));
+            NothingRead(rig, board);
+        }
+    }
+
+    [Fact(DisplayName = "AC-1404.5 열쇠는 있으나 그날 접수 현황에 그 내원이 없거나 날이 다르면 등록 확인·상세 문장을 돌리지 않고 환자 자료 없음")]
+    public void VisitGoneReadsNothing()
+    {
+        var (keys, key) = KeysFor();
+
+        using (var rig = NewRig())
+        {
+            var board = new BoardSource(BoardResult.Ok(DetailFake.Board(DetailFake.Today("V1002", "900102", "20261105093005"))));
+            NotFound(DetailApi.Get(rig.Services, keys, board.Get, key, "0", new CacheClock(Morning).Now));
+            Assert.Empty(rig.Connector.Opened);
+            Assert.Empty(rig.Session.Calls);
+        }
+
+        using (var rig = NewRig())
+        {
+            var other = new BoardInput("20261104", Morning.AddDays(-1), new[] { DetailFake.Today() }, DetailFake.Names);
+            var board = new BoardSource(BoardResult.Ok(other));
+            NotFound(DetailApi.Get(rig.Services, keys, board.Get, key, "0", new CacheClock(Morning).Now));
+            Assert.Empty(rig.Connector.Opened);
+            Assert.Empty(rig.Session.Calls);
+        }
+    }
+}
+
+/// <summary>
+/// 상세 시험이 같이 쓰는 가짜 비트 자료. 모두 지어낸 것이다.
+/// 오늘 접수 V1001(차트 900101, 2026-11-05 09:12:30 접수)의 앞선 완료 내원 36번: 최근 순 k번째는 내원번호 V(2000+k), 날짜는 2026-10-29에서 14일씩 앞.
+/// 처방: 1번째 ESWT7·DS20, 2번째 PT01·ESWT7, 3번째 없음, 4번째 ZZ9(이름표에 없음)·PT03, 나머지 PT01.
+/// </summary>
+internal static class DetailFake
+{
+    public const string Day = "20261105";
+    public const string TodayId = "V1001";
+    public const string Chart = "900101";
+    public const string Accepted = "20261105091230";
+    public const int Earlier = 36;
+
+    public static readonly DateTime Morning = BoardFake.Morning;
+
+    public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["ESWT7"] = "체외충격파",
+        ["DS20"] = "도수치료 20분",
+        ["PT01"] = "표층열치료",
+        ["PT03"] = "간섭파치료",
+    };
+
+    public static VisitRow Today(string visitId = TodayId, string chart = Chart, string accepted = Accepted) =>
+        new VisitRow(visitId, chart, accepted, "S1", "N", earlierCount: Earlier);
+
+    public static BoardInput Board(params VisitRow[] rows) =>
+        new BoardInput(Day, Morning, rows.Length == 0 ? new[] { Today() } : rows, Names);
+
+    public static string VisitId(int seq) => "V" + (2000 + seq).ToString(CultureInfo.InvariantCulture);
+
+    public static string DayOf(int seq) =>
+        new DateTime(2026, 10, 29).AddDays(-14 * (seq - 1)).ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
+    public static string[] CodesOf(int seq) => seq switch
+    {
+        1 => new[] { "ESWT7", "DS20" },
+        2 => new[] { "PT01", "ESWT7" },
+        3 => new string[0],
+        4 => new[] { "ZZ9", "PT03" },
+        _ => new[] { "PT01" },
+    };
+
+    /// <summary>HistoryPage 흉내: 최근 순 @first~@last번째(둘 다 포함) 내원의 처방 줄, 처방이 없으면 RxCode NULL 한 줄(문장처럼 Seq·코드 순).</summary>
+    public static object?[][] Page(IReadOnlyDictionary<string, object?> args, int earlier)
+    {
+        var first = (int)args["@first"]!;
+        var last = Math.Min((int)args["@last"]!, earlier);
+        var rows = new List<object?[]>();
+        for (var seq = first; seq <= last; seq++)
+        {
+            var codes = CodesOf(seq).OrderBy(code => code, StringComparer.Ordinal).ToArray();
+            if (codes.Length == 0) rows.Add(new object?[] { VisitId(seq), DayOf(seq), null });
+            foreach (var code in codes) rows.Add(new object?[] { VisitId(seq), DayOf(seq), code });
+        }
+        return rows.ToArray();
+    }
+
+    public static T Answer<T>(T db, int earlier = Earlier) where T : FakeDb
+    {
+        db.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { (long)earlier, earlier == 0 ? null : DayOf(earlier) } });
+        db.Answer(ReceptionSql.HistoryPage, args => Page(args, earlier));
+        return db;
+    }
+}
+
+/// <summary>상세 공개 길(HistoryReader·HistoryBuilder)을 시험이 부르는 곳: 답을 (상태, 오류 번호, JSON)으로 바꿔 견주기 쉽게 한다.</summary>
+internal static class DetailApi
+{
+    public sealed class Answer
+    {
+        public Answer(string state, string? error, JsonElement? json)
+        {
+            State = state;
+            Error = error;
+            Json = json;
+        }
+
+        public string State { get; }
+        public string? Error { get; }
+        public JsonElement? Json { get; }
+    }
+
+    /// <summary>HistoryReader.Get(services, keys, board, key, from, clock) → (상태, 오류 번호, JSON).</summary>
+    public static Answer Get(BitServices services, VisitKeys keys, Func<BoardResult> board, string? key, string? from, Func<DateTime> clock)
+    {
+        var result = HistoryReader.Get(services, keys, board, key, from, clock);
+        return new Answer(result.State.ToString(), result.Error, result.History == null ? null : Parse(result.History.ToJson()));
+    }
+
+    /// <summary>HistoryReader.Read(db, 등록 범위, board, visit, from, clock) → HistoryBuilder.Build → JSON.</summary>
+    public static JsonElement Read(IBitDb db, BoardInput board, VisitRow visit, int from, Func<DateTime> clock) =>
+        Parse(HistoryBuilder.Build(HistoryReader.Read(db, Synthetic.Scope, board, visit, from, clock)).ToJson());
+
+    /// <summary>HistoryInput(오늘, 시작 위치, 앞선 완료 내원 수, 첫날, 이 쪽 내원들, 오늘 증상) → HistoryBuilder.Build → ToJson 글.</summary>
+    public static string BuildText(string day, int from, long earlier, string? firstDay, IEnumerable<HistoryVisit> visits, string? todaySymptom) =>
+        HistoryBuilder.Build(new HistoryInput(day, from, earlier, firstDay, visits.ToArray(), todaySymptom)).ToJson();
+
+    public static JsonElement Build(string day, int from, long earlier, string? firstDay, IEnumerable<HistoryVisit> visits, string? todaySymptom) =>
+        Parse(BuildText(day, from, earlier, firstDay, visits, todaySymptom));
+
+    private static JsonElement Parse(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+}
