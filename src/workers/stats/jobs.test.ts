@@ -812,3 +812,42 @@ describe('AC-509.4 stats.worker.ts: split을 일에 잇는다', () => {
     expect(posted).toEqual([{ type: 'split-result', streamId: 'q1', view: { kind: 'none' } }])
   })
 })
+
+// ── 같은 처방 재방문(again, fu-rate AC-1302.4) ──
+// 지어낸 환자 하나가 오늘 − 7일(10/25)에 MM042를 시작하고, 7일째인 오늘 또 받는다. 값은 모두 지어낸 것이다
+const AGAIN_START = addDays(TODAY, -7)
+const AGAIN_ROWS = [...ROWS, [chart(8), '20261025', 'MM042', '20250101'], [chart(8), '20261101', 'MM042', '20250101']]
+
+describe('AC-1302.4 loadJob: 날 줄마다 같은 처방 재방문(again)', () => {
+  it.each([false, true])('AC-1302.4: 오늘 진료 끝 %s → view.days의 날마다 again이 있고 validateDayPayload를 지난다', (closeToday) => {
+    const { view } = loadJob(helperJson({ rows: AGAIN_ROWS }), { ...OPTS, closeToday })
+    expect(view.days?.map((d) => d.day)).toEqual(['2026-09-01', '2026-09-02', '2026-09-03', '2026-10-05', AGAIN_START, TODAY])
+    for (const day of view.days ?? []) {
+      expect(day.again).toBeDefined()
+      expect(validateDayPayload(day)).toEqual(day)
+    }
+    // 9/1: 두 명이 MM042를 시작하고 다시 받지 않았다(CHARTS[0]의 10/5는 34일 뒤라 새 시작). 세 창 모두 끝났다
+    expect(dayOf(view, '2026-09-01')?.again).toEqual({
+      ready: [true, true, true],
+      rx: [{ code: 'MM042', starts: 2, back: [0, 0, 0], more: [0, 0, 0] }],
+    })
+  })
+
+  it('AC-1302.4: 오늘 진료 끝(closeToday true)이면 오늘 − 7일 시작의 7일 창이 숫자다(오늘 줄이 든다)', () => {
+    const { view } = loadJob(helperJson({ rows: AGAIN_ROWS }), { ...OPTS, closeToday: true })
+    expect(AGAIN_START).toBe('2026-10-25')
+    expect(dayOf(view, AGAIN_START)?.again).toEqual({
+      ready: [true, false, false],
+      rx: [{ code: 'MM042', starts: 1, back: [1, null, null], more: [1, null, null] }],
+    })
+  })
+
+  it('AC-1302.4: 끄면 오늘 − 7일 시작의 7일 창은 null이다(7일째인 오늘이 아직 집계 중)', () => {
+    const { view } = loadJob(helperJson({ rows: AGAIN_ROWS }), OPTS)
+    expect(dayOf(view, AGAIN_START)?.partial).toBe(false)
+    expect(dayOf(view, AGAIN_START)?.again).toEqual({
+      ready: [false, false, false],
+      rx: [{ code: 'MM042', starts: 1, back: [null, null, null], more: [null, null, null] }],
+    })
+  })
+})

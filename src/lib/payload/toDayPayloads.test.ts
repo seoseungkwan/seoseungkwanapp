@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
+import { bucketState } from '@/lib/analytics/coverage'
+import { addDays } from '@/lib/analytics/dates'
 import type { RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { ConsumptionRow } from '@/types/consumption'
 import type { DateRange } from '@/types/dates'
-import type { DayPayload } from '@/types/payload'
+import { AGAIN_WINDOWS, type DayPayload } from '@/types/payload'
 import { toDayPayloads } from './toDayPayloads'
+import { validateDayPayload } from './validate'
 
 const BASE: ConsumptionRow = {
   rxCode: 'D1001',
@@ -93,7 +96,7 @@ describe('AC-008.2 줄이 있는 날마다 하나, 날짜 순', () => {
 })
 
 describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·신환·재진)·그룹(환자·신환·재진)·재방문 — 동네·F/U 없음', () => {
-  it('하루 칸 숫자 그대로', () => {
+  it('하루 칸 숫자 그대로(AC-1302.2: 같은 처방 재방문 again도)', () => {
     const payloads = toDayPayloads(analyze(mixedDay(), [COVERED], TODAY, 'valid', GROUPS))!
     expect(dayOf(payloads, '2026-09-02')).toEqual({
       schemaVersion: 2,
@@ -110,20 +113,33 @@ describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·�
         { id: 'g-manual', patients: 2, newPatients: 1, returning: 1 },
       ],
       revisit: { cohort: 1, within7: 1, within14: 1, within30: 1, after30: 0 },
+      // D1001: 환자 1·3·4가 시작, 환자 1이 3일째(9/5)에 또 받음. MM101: 환자 1·2가 시작, 다시 받지 않음
+      again: {
+        ready: [true, true, true],
+        rx: [
+          { code: 'D1001', starts: 3, back: [1, 1, 1], more: [1, 1, 1] },
+          { code: 'MM101', starts: 2, back: [0, 0, 0], more: [0, 0, 0] },
+        ],
+      },
     })
     expect(dayOf(payloads, '2026-09-05').revisit).toEqual({ cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 })
+    // 9/5의 D1001은 앞 30일 안(9/2)에 받아 시작이 아니다
+    expect(dayOf(payloads, '2026-09-05').again).toEqual({ ready: [true, true, true], rx: [] })
   })
 
-  it('모든 층의 열쇠가 정해진 것뿐이다(동네·F/U·칸 범위가 없다)', () => {
+  it('모든 층의 열쇠가 정해진 것뿐이다(동네·F/U·칸 범위가 없다, AC-1302.2: again은 ready·rx, 그 줄은 back·code·more·starts)', () => {
     const payloads = JSON.parse(JSON.stringify(toDayPayloads(analyze(mixedDay(), [COVERED], TODAY, 'valid', GROUPS))))
     expect(payloads).toHaveLength(2)
     for (const p of payloads) {
-      expect(sorted(p)).toEqual(['day', 'groups', 'partial', 'quality', 'revisit', 'rx', 'schemaVersion', 'totals'])
+      expect(sorted(p)).toEqual(['again', 'day', 'groups', 'partial', 'quality', 'revisit', 'rx', 'schemaVersion', 'totals'])
       expect(sorted(p.totals)).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
       for (const x of p.rx) expect(sorted(x)).toEqual(['code', 'name', 'newPatients', 'patients', 'returning', 'type'])
       for (const x of p.groups) expect(sorted(x)).toEqual(['id', 'newPatients', 'patients', 'returning'])
       expect(sorted(p.revisit)).toEqual(['after30', 'cohort', 'within14', 'within30', 'within7'])
+      expect(sorted(p.again)).toEqual(['ready', 'rx'])
+      for (const x of p.again.rx) expect(sorted(x)).toEqual(['back', 'code', 'more', 'starts'])
     }
+    expect(payloads.flatMap((p: DayPayload) => p.again?.rx ?? [])).toHaveLength(2) // 줄 열쇠를 실제로 봤다
   })
 
   it.each<[string, DateRange, string, DayPayload['revisit']]>([
@@ -206,5 +222,160 @@ describe('AC-008.2 같은 결과 → 같은 JSON(정렬 고정)', () => {
     payloads[0].groups[0].patients = 999
     payloads[0].revisit.cohort = 999
     expect(result).toEqual(before)
+  })
+})
+
+// ── 같은 처방 재방문(again, fu-rate REQ-1302) ──
+// mixedDay의 9/2: D1001은 환자 1·3·4가 시작하고 환자 1이 3일째(9/5)에 또 받는다. MM101은 환자 1·2가 시작하고 다시 받지 않는다
+const againOn = (payloads: DayPayload[], day: string) => {
+  const { again } = dayOf(payloads, day)
+  if (again === undefined) throw new Error(`again이 없어요: ${day}`)
+  return again
+}
+const countsFor = (ready: readonly boolean[], value: number) => ready.map((r) => (r ? value : null))
+const NONE = [null, null, null]
+
+// [이름, 덮은 기간, 오늘, 9/2의 ready]. 9/2 + 7일 = 9/9, + 14일 = 9/16, + 30일 = 10/2
+const READY_CASES: Array<[string, DateRange, string, [boolean, boolean, boolean]]> = [
+  ['세 창 모두 덮이고 끝남', COVERED, TODAY, [true, true, true]],
+  ['그날 + 29일(10/1)까지만 덮임', r('2026-09-01', '2026-10-01'), TODAY, [true, true, false]],
+  ['그날 + 30일(10/2)이 오늘', COVERED, '2026-10-02', [true, true, false]],
+  ['그날 + 14일(9/16)까지 덮이고 끝남', r('2026-09-01', '2026-09-16'), '2026-09-17', [true, true, false]],
+  ['그날 + 14일(9/16)까지 덮였지만 그날이 오늘', r('2026-09-01', '2026-09-16'), '2026-09-16', [true, false, false]],
+  ['그날 + 13일(9/15)까지만 덮임', r('2026-09-01', '2026-09-15'), TODAY, [true, false, false]],
+  ['그날 + 7일(9/9)이 오늘', COVERED, '2026-09-09', [false, false, false]],
+  ['그날 + 6일(9/8)까지만 덮임', r('2026-09-01', '2026-09-08'), TODAY, [false, false, false]],
+]
+
+describe('REQ-1302 날 숫자에 같은 처방 재방문(again)을 담는다', () => {
+  it.each(READY_CASES)('AC-1302.1·AC-1302.2: %s → ready는 표대로, ready가 false인 창의 back·more는 null', (_, covered, today, ready) => {
+    const again = againOn(toDayPayloads(analyze(mixedDay(), [covered], today))!, '2026-09-02')
+    expect(again).toEqual({
+      ready,
+      rx: [
+        { code: 'D1001', starts: 3, back: countsFor(ready, 1), more: countsFor(ready, 1) },
+        { code: 'MM101', starts: 2, back: countsFor(ready, 0), more: countsFor(ready, 0) },
+      ],
+    })
+  })
+
+  it.each(READY_CASES)('AC-1302.1 ready는 신환 재방문 within7·14·30이 숫자가 되는 규칙과 같다: %s', (_, covered, today) => {
+    const payload = dayOf(toDayPayloads(analyze(mixedDay(), [covered], today))!, '2026-09-02')
+    const { within7, within14, within30 } = payload.revisit
+    expect(payload.again?.ready).toEqual([within7 !== null, within14 !== null, within30 !== null])
+  })
+
+  it('AC-1302.1 날마다 ready[k] = bucketState({ 그날, 그날 + N일 }, 요약의 덮은 기간, 요약의 오늘)가 complete인가(덮은 기간 사이 공백 포함)', () => {
+    const days = ['2026-09-01', '2026-09-10', '2026-09-20', '2026-10-01', '2026-10-10']
+    const result = analyze(
+      days.map((date) => row({ date })),
+      [r('2026-09-01', '2026-09-25'), r('2026-09-28', '2026-10-20')],
+      '2026-10-15',
+    )
+    const payloads = toDayPayloads(result)!
+    expect(payloads.map((p) => [p.day, p.again?.ready])).toEqual([
+      ['2026-09-01', [true, true, false]], // + 30일(10/1)은 공백(9/26·9/27)을 지난다
+      ['2026-09-10', [true, true, false]],
+      ['2026-09-20', [false, false, false]], // + 7일(9/27)이 공백
+      ['2026-10-01', [true, false, false]], // + 14일(10/15)이 오늘
+      ['2026-10-10', [false, false, false]], // + 7일(10/17)이 오늘 뒤
+    ])
+    for (const p of payloads) {
+      const complete = AGAIN_WINDOWS.map(
+        (n) => bucketState({ from: p.day, to: addDays(p.day, n) }, result.summary.covered, result.summary.today) === 'complete',
+      )
+      expect(p.again?.ready).toEqual(complete)
+    }
+  })
+
+  it('AC-1302.1 오늘(집계 중)인 날은 ready가 모두 false이고 숫자는 모두 null', () => {
+    const payload = dayOf(toDayPayloads(analyze([row({ date: TODAY })]))!, TODAY)
+    expect(payload.partial).toBe(true)
+    expect(payload.again).toEqual({ ready: [false, false, false], rx: [{ code: 'D1001', starts: 1, back: NONE, more: NONE }] })
+  })
+
+  it('AC-1302.1 partial인 날은 창이 덮였어도 ready가 모두 false다(요약에 그날 칸이 없음 → 검사 AC-1303.2와 어긋나지 않는다)', () => {
+    const result = analyze(mixedDay())
+    const noRef: AnalysisResult = {
+      ...result,
+      summary: { ...result.summary, series: { ...result.summary.series, day: result.summary.series.day.filter((ref) => ref.key !== '2026-09-02') } },
+    }
+    const payload = dayOf(toDayPayloads(noRef)!, '2026-09-02')
+    expect(payload.partial).toBe(true)
+    expect(payload.again).toEqual({
+      ready: [false, false, false],
+      rx: [
+        { code: 'D1001', starts: 3, back: NONE, more: NONE },
+        { code: 'MM101', starts: 2, back: NONE, more: NONE },
+      ],
+    })
+    expect(validateDayPayload(payload)).toEqual(payload)
+  })
+
+  it.each(READY_CASES)('AC-1302.1·AC-1302.2 만든 날 줄은 모두 저장 검사(validateDayPayload)를 지난다: %s', (_, covered, today) => {
+    const payloads = toDayPayloads(analyze(mixedDay(), [covered], today, 'valid', GROUPS))!
+    for (const p of payloads) expect(validateDayPayload(p)).toEqual(p)
+  })
+
+  it('AC-1302.2 again 줄은 코드 글자 순이다(결과 안 순서가 흐트러져 있어도)', () => {
+    const result = analyze(mixedDay())
+    const shuffled: AnalysisResult = {
+      ...result,
+      aggregates: {
+        ...result.aggregates,
+        day: result.aggregates.day.map((bucket) => ({ ...bucket, again: bucket.again && [...bucket.again].reverse() })),
+      },
+    }
+    expect(againOn(toDayPayloads(shuffled)!, '2026-09-02').rx.map((x) => x.code)).toEqual(['D1001', 'MM101'])
+    expect(JSON.stringify(toDayPayloads(shuffled))).toBe(JSON.stringify(toDayPayloads(result)))
+  })
+
+  it('AC-1302.2 again 줄에 다른 칸이 붙어 있어도 따라가지 않는다(환자 번호·날짜 목록이 없다)', () => {
+    const result = analyze(mixedDay())
+    const extra = { patientIds: [1, 3, 4], visitDays: ['2026-09-05'], chartNo: 'C-0001' }
+    const tainted = {
+      ...result,
+      aggregates: {
+        ...result.aggregates,
+        day: result.aggregates.day.map((bucket) => ({ ...bucket, again: bucket.again?.map((x) => ({ ...x, ...extra })) })),
+      },
+    } as AnalysisResult
+    const json = JSON.stringify(toDayPayloads(tainted))
+    expect(json).toBe(JSON.stringify(toDayPayloads(result)))
+    for (const text of ['patientIds', 'visitDays', 'chartNo', 'C-0001']) expect(json).not.toContain(text)
+  })
+
+  it('AC-1302.2 칸에 again 열쇠가 없으면 rx는 빈 목록이고 ready는 그대로 낸다', () => {
+    const result = analyze(mixedDay())
+    const withoutAgain: AnalysisResult = {
+      ...result,
+      aggregates: {
+        ...result.aggregates,
+        day: result.aggregates.day.map((bucket) => {
+          const copy = { ...bucket }
+          delete copy.again
+          return copy
+        }),
+      },
+    }
+    expect(againOn(toDayPayloads(withoutAgain)!, '2026-09-02')).toEqual({ ready: [true, true, true], rx: [] })
+  })
+
+  it('AC-1302.2 넣은 결과를 바꾸지 않는다(again 숫자 배열도 새로 만든다)', () => {
+    const result = analyze(mixedDay())
+    const before = structuredClone(result)
+    const again = againOn(toDayPayloads(result)!, '2026-09-02')
+    again.ready[0] = false
+    again.rx[0].starts = 999
+    again.rx[0].back[0] = 999
+    again.rx[0].more[2] = 999
+    expect(result).toEqual(before)
+    expect(againOn(toDayPayloads(result)!, '2026-09-02').rx[0]).toEqual({ code: 'D1001', starts: 3, back: [1, 1, 1], more: [1, 1, 1] })
+  })
+
+  it('AC-1302.5 집계 품질이 incomplete면 시작이 있는 날이 있어도 지금처럼 null', () => {
+    const result = analyze(mixedDay(), [COVERED], TODAY, 'incomplete')
+    expect(result.aggregates.day.some((bucket) => (bucket.again ?? []).length > 0)).toBe(true)
+    expect(toDayPayloads(result)).toBeNull()
   })
 })
