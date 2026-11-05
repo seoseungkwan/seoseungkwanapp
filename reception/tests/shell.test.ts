@@ -282,7 +282,7 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     expect(resolve(t, 'var(--surface)').toUpperCase()).toBe('#FFFFFF')
   })
 
-  it('AC-1407.7: 상태 색(대기·보류·수납·끝남·오래 기다림·찍음)의 채움과 테두리는 강조색(라임 노랑)과 다른 값이다', () => {
+  it('AC-1407.7: 상태 색(대기·보류·수납·수납완료·오래 기다림·X-ray 완료)의 채움과 테두리는 강조색(라임 노랑)과 다른 값이다', () => {
     const t = rootTokens()
     const accent = resolve(t, 'var(--accent)').toUpperCase()
     for (const s of STATUSES) {
@@ -438,7 +438,7 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     expect(rules.some((r) => r.decls.some(([p, v]) => p.startsWith('border') && v.includes('var(--')))).toBe(true)
   })
 
-  it('AC-1407.10: 시안의 누르는 단추(칸·찍음 표시·표시 취소·더 보기·돌아가기)도 44px 이상이다', () => {
+  it('AC-1407.10: 시안의 누르는 단추(칸·X-ray 완료·표시 취소·더 보기·돌아가기)도 44px 이상이다', () => {
     const rules = parseRules(read('style.css'))
     for (const cls of ['.queue', '.tile', '.btn-dark', '.btn-light', '.more', '.back']) {
       const heights = rules

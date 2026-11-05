@@ -171,13 +171,13 @@ public static class HistoryBuilder
         return ShortDate(today) + " · 오늘";
     }
 
-    /// <summary>오늘 카드 오른쪽 이름표(AC-1404.4): 진료대기 "진료 전", 진료보류 "진료보류", 수납대기 "수납대기", 끝남 "끝남". 숨김 줄은 카드가 없다.</summary>
+    /// <summary>오늘 카드 오른쪽 이름표(AC-1404.4): 진료대기 "진료 전", 진료보류 "진료보류", 수납대기 "수납대기", 끝남 "수납완료". 숨김 줄은 카드가 없다.</summary>
     public static string TodayLabel(Lane lane) => lane switch
     {
         Lane.Wait => "진료 전",
         Lane.Hold => "진료보류",
         Lane.Pay => "수납대기",
-        Lane.Done => "끝남",
+        Lane.Done => "수납완료",
         _ => throw new ArgumentOutOfRangeException(nameof(lane)),
     };
 

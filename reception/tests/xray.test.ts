@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// 엑스레이 찍음 표시 띠 xray.js (TASK-20, REQ-1405, design.md 6절·10절). 승인 시안 Main.dc.html·Tablet.dc.html 진료보류 줄의 두 모양:
-// 찍기 전 = "엑스레이 찍기 전" + [찍음 표시], 찍음 = "엑스레이 찍음 HH:MM" + [표시 취소].
+// X-ray 완료 표시 띠 xray.js (TASK-20, REQ-1405, design.md 6절·10절). 승인 시안 Main.dc.html·Tablet.dc.html 진료보류 줄의 두 모양:
+// 전 = "X-ray 전" + [X-ray 완료], 완료 = "X-ray 완료 HH:MM" + [표시 취소].
 // 누르면 setXray 한 번(누르는 동안 disabled, 두 번 못 누름) → 성공하면 다시 읽기 한 번. 줄 자리는 그대로다. 자료는 가짜다(fixtures.ts)
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as fx from './fixtures'
@@ -77,7 +77,7 @@ function rowsOf(root: ParentNode): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>('main.list > .rows > .row')]
 }
 
-/** 진료보류 줄 둘(가상환자04 찍기 전, 가상환자05 찍음 10:55)과 진료대기 줄 하나 */
+/** 진료보류 줄 둘(가상환자04 X-ray 전, 가상환자05 X-ray 완료 10:55)과 진료대기 줄 하나 */
 function holdBoard(marks: { four?: string | null; five?: string | null } = {}, at = '13:42:10'): FakeBoard {
   return fx.boardOf(
     {
@@ -99,23 +99,23 @@ function doneRow(n = 5, at = '10:55'): FakeRow {
   return fx.fakeRow({ k: fx.fakeKey(n), lane: 'hold', name: `가상환자0${n}`, xray: { at } })
 }
 
-describe('xray.js 찍음 표시 띠', () => {
-  it('AC-1405.1: 찍기 전 줄은 시안 그대로 .xray > "엑스레이 찍기 전"(is-before) + [찍음 표시](btn-dark)', () => {
+describe('xray.js X-ray 완료 표시 띠', () => {
+  it('AC-1405.1: X-ray 전 줄은 시안 그대로 .xray > "X-ray 전"(is-before) + [X-ray 완료](btn-dark)', () => {
     const band = xray.xrayBand(beforeRow(), { setXray: vi.fn(), readNow: vi.fn() })
     expect(band?.tagName.toLowerCase()).toBe('div')
     expect(band?.className).toBe('xray')
     expect(shapeOf(band)).toEqual(['span.xray-tag.is-before', 'button.btn-dark'])
-    expect(textOf(band, '.xray-tag')).toBe('엑스레이 찍기 전')
-    expect(buttonOf(band)?.textContent).toBe('찍음 표시')
+    expect(textOf(band, '.xray-tag')).toBe('X-ray 전')
+    expect(buttonOf(band)?.textContent).toBe('X-ray 완료')
     expect(buttonOf(band)?.type).toBe('button')
     expect(buttonOf(band)?.disabled).toBe(false)
   })
 
-  it('AC-1405.1: 찍음 표시가 있는 줄은 시안 그대로 .xray > "엑스레이 찍음 HH:MM"(is-done) + [표시 취소](btn-light)', () => {
+  it('AC-1405.1: X-ray 완료 표시가 있는 줄은 시안 그대로 .xray > "X-ray 완료 HH:MM"(is-done) + [표시 취소](btn-light)', () => {
     const band = xray.xrayBand(doneRow(5, '10:55'), { setXray: vi.fn(), readNow: vi.fn() })
     expect(band?.className).toBe('xray')
     expect(shapeOf(band)).toEqual(['span.xray-tag.is-done', 'button.btn-light'])
-    expect(textOf(band, '.xray-tag')).toBe('엑스레이 찍음 10:55')
+    expect(textOf(band, '.xray-tag')).toBe('X-ray 완료 10:55')
     expect(buttonOf(band)?.textContent).toBe('표시 취소')
     expect(buttonOf(band)?.disabled).toBe(false)
   })
@@ -124,7 +124,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(xray.xrayBand(fx.fakeRow({ k: fx.fakeKey(2), lane: 'wait', xray: null }), { setXray: vi.fn(), readNow: vi.fn() })).toBeNull()
   })
 
-  it('AC-1405.1: [찍음 표시]를 누르면 setXray(열쇠, true)를 한 번 부르고, 기다리는 동안 단추는 disabled라 더 눌러도 늘지 않고, 204 뒤 다시 읽기를 한 번 한다', async () => {
+  it('AC-1405.1: [X-ray 완료]를 누르면 setXray(열쇠, true)를 한 번 부르고, 기다리는 동안 단추는 disabled라 더 눌러도 늘지 않고, 204 뒤 다시 읽기를 한 번 한다', async () => {
     const answer = deferred()
     const setXray = vi.fn(() => answer.promise)
     const readNow = vi.fn()
@@ -193,7 +193,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(readNow).not.toHaveBeenCalled()
     expect(button.disabled).toBe(false)
     expect(redrawn.disabled).toBe(false)
-    expect(textOf(band, '.xray-tag')).toBe('엑스레이 찍기 전')
+    expect(textOf(band, '.xray-tag')).toBe('X-ray 전')
 
     setXray.mockImplementation(() => Promise.resolve())
     redrawn.click()
@@ -202,7 +202,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(readNow).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-1405.1: 목록에서 [찍음 표시] → 다시 읽은 판에 "엑스레이 찍음 13:42" + [표시 취소]가 나오고 줄의 자리(차례)는 그대로다', async () => {
+  it('AC-1405.1: 목록에서 [X-ray 완료] → 다시 읽은 판에 "X-ray 완료 13:42" + [표시 취소]가 나오고 줄의 자리(차례)는 그대로다', async () => {
     const app = appHost()
     const setXray = vi.fn(() => Promise.resolve())
     let current = holdBoard()
@@ -220,7 +220,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(keysBefore).toEqual([fx.fakeKey(4), fx.fakeKey(5), fx.fakeKey(2)])
 
     const target = rowsOf(app)[0] as HTMLElement
-    expect(textOf(target, '.xray > .xray-tag')).toBe('엑스레이 찍기 전')
+    expect(textOf(target, '.xray > .xray-tag')).toBe('X-ray 전')
     buttonOf(target.querySelector('.xray'))?.click()
     // 누르는 동안에도 줄은 그 자리다
     expect(rowsOf(app).map((row) => row.dataset.k)).toEqual(keysBefore)
@@ -231,7 +231,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(readNow).toHaveBeenCalledTimes(1)
     expect(rowsOf(app).map((row) => row.dataset.k)).toEqual(keysBefore)
     const after = rowsOf(app)[0] as HTMLElement
-    expect(textOf(after, '.xray > .xray-tag.is-done')).toBe('엑스레이 찍음 13:42')
+    expect(textOf(after, '.xray > .xray-tag.is-done')).toBe('X-ray 완료 13:42')
     expect(textOf(after, '.xray > button.btn-light')).toBe('표시 취소')
     expect(buttonOf(after.querySelector('.xray'))?.disabled).toBe(false)
   })
@@ -256,7 +256,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(readNow).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-1405.2: 목록에서 [표시 취소] → 다시 읽은 판에 "엑스레이 찍기 전" + [찍음 표시]가 다시 나오고 줄의 자리는 그대로다', async () => {
+  it('AC-1405.2: 목록에서 [표시 취소] → 다시 읽은 판에 "X-ray 전" + [X-ray 완료]가 다시 나오고 줄의 자리는 그대로다', async () => {
     const app = appHost()
     const setXray = vi.fn(() => Promise.resolve())
     let current = holdBoard()
@@ -273,7 +273,7 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(keysBefore).toEqual([fx.fakeKey(4), fx.fakeKey(5)])
 
     const target = rowsOf(app)[1] as HTMLElement
-    expect(textOf(target, '.xray > .xray-tag.is-done')).toBe('엑스레이 찍음 10:55')
+    expect(textOf(target, '.xray > .xray-tag.is-done')).toBe('X-ray 완료 10:55')
     buttonOf(target.querySelector('.xray'))?.click()
     await settle()
 
@@ -283,13 +283,13 @@ describe('xray.js 찍음 표시 띠', () => {
     expect(rowsOf(app).map((row) => row.dataset.k)).toEqual(keysBefore)
     const after = rowsOf(app)[1] as HTMLElement
     expect(shapeOf(after.querySelector('.xray'))).toEqual(['span.xray-tag.is-before', 'button.btn-dark'])
-    expect(textOf(after, '.xray > .xray-tag')).toBe('엑스레이 찍기 전')
-    expect(textOf(after, '.xray > button')).toBe('찍음 표시')
+    expect(textOf(after, '.xray > .xray-tag')).toBe('X-ray 전')
+    expect(textOf(after, '.xray > button')).toBe('X-ray 완료')
   })
 
   it('AC-1405.1: 시각 글은 글자로만 들어간다(HTML로 읽히지 않는다)', () => {
     const band = xray.xrayBand(doneRow(5, '<b>10:55</b>'), { setXray: vi.fn(), readNow: vi.fn() })
     expect(band?.querySelector('b')).toBeNull()
-    expect(textOf(band, '.xray-tag')).toBe('엑스레이 찍음 <b>10:55</b>')
+    expect(textOf(band, '.xray-tag')).toBe('X-ray 완료 <b>10:55</b>')
   })
 })

@@ -255,7 +255,7 @@ public class BoardBuilderTests
         Assert.Equal("진료대기", Text(Row(root, "wait", "900501"), "laneLabel"));
         Assert.Equal("진료보류", Text(Row(root, "hold", "900502"), "laneLabel"));
         Assert.Equal("수납대기", Text(Row(root, "pay", "900503"), "laneLabel"));
-        Assert.Equal("끝남", Text(Row(root, "done", "900504"), "laneLabel"));
+        Assert.Equal("수납완료", Text(Row(root, "done", "900504"), "laneLabel"));
         Assert.Equal("pay", Text(Row(root, "pay", "900503"), "lane"));
         Assert.Equal("done", Text(Row(root, "done", "900504"), "lane"));
     }
@@ -302,7 +302,7 @@ public class BoardBuilderTests
         Assert.Equal("수납 1시간째", Waited("QC", "pay", "0958", At(10, 58)));
     }
 
-    [Fact(DisplayName = "AC-1402.3 끝남: 수납 시각을 알면 HH:MM 수납, 모르면 끝남")]
+    [Fact(DisplayName = "AC-1402.3 끝남 칸: 수납 시각을 알면 HH:MM 수납, 모르면 수납완료")]
     public void DoneText()
     {
         string Done(string? paidAt) => Text(One(Visit("V701", "QD", "0912", "900701", paidAt: paidAt), "done"), "waited");
@@ -311,10 +311,10 @@ public class BoardBuilderTests
         Assert.Equal("09:40 수납", Done("202611050940"));
         Assert.Equal("09:31 수납", Done("2026-11-05 09:31:00"));
         Assert.Equal("09:31 수납", Done("09:31"));
-        Assert.Equal("끝남", Done(null));
-        Assert.Equal("끝남", Done(""));
-        Assert.Equal("끝남", Done("수납"));
-        Assert.Equal("끝남", Done("20261105996100"));
+        Assert.Equal("수납완료", Done(null));
+        Assert.Equal("수납완료", Done(""));
+        Assert.Equal("수납완료", Done("수납"));
+        Assert.Equal("수납완료", Done("20261105996100"));
     }
 
     [Fact(DisplayName = "AC-1402.3 접수 시각 글은 원값 앞 12글자로 HH:MM 접수이고, 읽지 못하면 비운다")]
@@ -485,7 +485,7 @@ public class BoardBuilderTests
 
     // ---- AC-1402.8 엑스레이 칸 -----------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1402.8 진료보류 줄은 찍음 표시가 있으면 xray.at = HH:MM이다(진료 순서 줄도)")]
+    [Fact(DisplayName = "AC-1402.8 진료보류 줄은 X-ray 완료 표시가 있으면 xray.at = HH:MM이다(진료 순서 줄도)")]
     public void HoldWithMark()
     {
         var scene = new Scene().Add(Visit("V1301", "QB", "1015", "901301"));
@@ -496,7 +496,7 @@ public class BoardBuilderTests
         Assert.Equal("10:55", Row(root, "queue", "901301").GetProperty("xray").GetProperty("at").GetString());
     }
 
-    [Fact(DisplayName = "AC-1402.8 찍음 표시가 없는 진료보류 줄은 xray.at = null이다")]
+    [Fact(DisplayName = "AC-1402.8 X-ray 완료 표시가 없는 진료보류 줄은 xray.at = null이다")]
     public void HoldWithoutMark()
     {
         var root = new Scene().Add(Visit("V1302", "QB", "1015", "901302")).Json();
@@ -505,7 +505,7 @@ public class BoardBuilderTests
         Assert.Equal(JsonValueKind.Null, xray.GetProperty("at").ValueKind);
     }
 
-    [Fact(DisplayName = "AC-1402.8 다른 상태 줄에는 엑스레이 칸이 없다(찍음 표시가 남아 있어도 xray = null)")]
+    [Fact(DisplayName = "AC-1402.8 다른 상태 줄에는 엑스레이 칸이 없다(X-ray 완료 표시가 남아 있어도 xray = null)")]
     public void OtherLanesHaveNoXray()
     {
         var scene = new Scene().Add(

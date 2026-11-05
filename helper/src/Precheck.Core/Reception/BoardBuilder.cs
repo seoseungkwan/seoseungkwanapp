@@ -8,7 +8,7 @@ namespace Precheck.Core.Reception;
 
 /// <summary>
 /// 비트 날 줄(BoardInput) → 휴대폰 줄(Board) (design.md 4절, REQ-1402). 글은 모두 여기서 만들고 화면은 그대로 그린다.
-/// 칸은 상태 표(지도)로만 나눈다(ReceptionMap.LaneOf). 지도·숨기는 OcmRsuYon 값·찍음 표시·열쇠표·지금 시각은 인자로 받아
+/// 칸은 상태 표(지도)로만 나눈다(ReceptionMap.LaneOf). 지도·숨기는 OcmRsuYon 값·X-ray 완료 표시·열쇠표·지금 시각은 인자로 받아
 /// 시험은 가짜를 쓴다. 기다린 분은 모든 칸에서 접수 시각부터 센다. 모르는 값은 지어내지 않고 비우거나 뺀다(AC-1402.7).
 /// </summary>
 public static class BoardBuilder
@@ -116,7 +116,7 @@ public static class BoardBuilder
         if (lane == Lane.Done)
         {
             var paid = ClockOf(paidAt);
-            return paid == null ? "끝남" : paid + " 수납";
+            return paid == null ? "수납완료" : paid + " 수납";
         }
         if (minutes == null) return "";
         var span = Span(minutes.Value);
@@ -258,7 +258,7 @@ public static class BoardBuilder
 
     // ---- 그 밖 ----------------------------------------------------------------------------------
 
-    /// <summary>찍음 표시 "HH:MM"(AC-1402.8). 없거나 모양이 틀리면 null.</summary>
+    /// <summary>X-ray 완료 표시 "HH:MM"(AC-1402.8). 없거나 모양이 틀리면 null.</summary>
     private static string? MarkOf(IReadOnlyDictionary<string, string> marks, string visitId) =>
         marks.TryGetValue(visitId, out var at) && at != null && MarkShape.IsMatch(at) ? at : null;
 

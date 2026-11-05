@@ -40,7 +40,7 @@ describe('REQ-1404 지난 진료 전부 (C# Precheck.Core.Tests.Reception.Detail
     expectAc('AC-1404.3')
   })
 
-  it('AC-1404.4 오늘 카드: 제목 "M월 D일 · 오늘", 이름표 넷(진료 전·진료보류·수납대기·끝남), 처방 없을 때 글, 오늘 증상(todaySym)', () => {
+  it('AC-1404.4 오늘 카드: 제목 "M월 D일 · 오늘", 이름표 넷(진료 전·진료보류·수납대기·수납완료), 처방 없을 때 글, 오늘 증상(todaySym)', () => {
     expectAc('AC-1404.4')
   })
 

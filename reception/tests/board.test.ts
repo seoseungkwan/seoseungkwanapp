@@ -120,7 +120,7 @@ describe('board.js 목록 그리기', () => {
       ['3', '진료대기'],
       ['2', '진료보류'],
       ['2', '수납대기'],
-      ['2', '오늘 끝남'],
+      ['2', '수납완료'],
     ])
     for (const tile of tiles) {
       expect(tile.getAttribute('type')).toBe('button')
@@ -137,12 +137,12 @@ describe('board.js 목록 그리기', () => {
     expect(document.title).toBe('')
   })
 
-  it('AC-1407.1: 칸을 고르면 그 칸만 aria-pressed="true"이고 칸 제목·줄이 그 칸 것이다(진료대기·진료보류·수납대기·오늘 끝남)', () => {
+  it('AC-1407.1: 칸을 고르면 그 칸만 aria-pressed="true"이고 칸 제목·줄이 그 칸 것이다(진료대기·진료보류·수납대기·수납완료)', () => {
     const cases: [string, number, string, string[]][] = [
       ['wait', 0, '진료대기 · 접수한 순서', ['가상환자01', '가상환자02', '가상환자03']],
       ['hold', 1, '진료보류 · 접수한 순서', ['가상환자04', '가상환자05']],
       ['pay', 2, '수납대기 · 접수한 순서', ['가상환자06', '가상환자07']],
-      ['done', 3, '오늘 끝난 환자 · 최근 순', ['가상환자08', '가상환자09']],
+      ['done', 3, '수납완료 환자 · 최근 순', ['가상환자08', '가상환자09']],
     ]
     for (const [lane, at, heading, names] of cases) {
       const app = appHost()
@@ -357,7 +357,7 @@ describe('board.js 목록 그리기', () => {
     const xray = vi.fn((row: FakeRow) => {
       const band = document.createElement('div')
       band.className = 'xray'
-      band.textContent = row.xray?.at ? `엑스레이 찍음 ${row.xray.at}` : '엑스레이 찍기 전'
+      band.textContent = row.xray?.at ? `X-ray 완료 ${row.xray.at}` : 'X-ray 전'
       return band
     })
     const app = appHost()
@@ -370,7 +370,7 @@ describe('board.js 목록 그리기', () => {
       ['a.row-main'],
       ['a.row-main'],
     ])
-    expect(textsOf(app, '.row > .xray')).toEqual(['엑스레이 찍기 전', '엑스레이 찍음 10:55'])
+    expect(textsOf(app, '.row > .xray')).toEqual(['X-ray 전', 'X-ray 완료 10:55'])
 
     xray.mockClear()
     view.renderBoard(app, fx.mockupBoard(), { xray, lane: 'pay' })

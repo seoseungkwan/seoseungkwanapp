@@ -34,7 +34,7 @@ export interface FakeBoard {
   lists: Record<FakeList, FakeRow[]>
 }
 
-const LANE_LABEL: Record<FakeLane, string> = { wait: '진료대기', hold: '진료보류', pay: '수납대기', done: '끝남' }
+const LANE_LABEL: Record<FakeLane, string> = { wait: '진료대기', hold: '진료보류', pay: '수납대기', done: '수납완료' }
 
 /** 화면용 열쇠 모양(16자리 소문자 16진수). n이 같으면 같은 열쇠 */
 export function fakeKey(n: number): string {
@@ -90,7 +90,7 @@ export function boardOf(lanes: Partial<Record<FakeLane, FakeRow[]>> = {}, at = '
   }
 }
 
-/** 승인 시안(Main.dc.html·Tablet.dc.html)과 같은 판: 진료대기 3 · 진료보류 2 · 수납대기 2 · 오늘 끝남 2, 진료 순서 5명, 13:42:10 기준 */
+/** 승인 시안(Main.dc.html·Tablet.dc.html)과 같은 판: 진료대기 3 · 진료보류 2 · 수납대기 2 · 수납완료 2, 진료 순서 5명, 13:42:10 기준 */
 export function mockupBoard(at = '13:42:10'): FakeBoard {
   return boardOf(
     {

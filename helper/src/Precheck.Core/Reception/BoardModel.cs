@@ -9,7 +9,7 @@ using System.Text.Unicode;
 
 namespace Precheck.Core.Reception;
 
-/// <summary>진료보류 줄의 엑스레이 칸(AC-1402.8): 찍음 표시가 있으면 누른 시각 "HH:MM", 없으면 null.</summary>
+/// <summary>진료보류 줄의 엑스레이 칸(AC-1402.8): X-ray 완료 표시가 있으면 누른 시각 "HH:MM", 없으면 null.</summary>
 public sealed class BoardXray
 {
     public BoardXray(string? at)
@@ -80,7 +80,7 @@ public sealed class BoardRow
     /// <summary>"10:42 접수". 접수 시각을 읽지 못하면 "".</summary>
     public string Time { get; }
 
-    /// <summary>"18분째 대기"·"보류 22분째"·"수납 6분째"·"09:40 수납"·"끝남"(AC-1402.3).</summary>
+    /// <summary>"18분째 대기"·"보류 22분째"·"수납 6분째"·"09:40 수납"·"수납완료"(AC-1402.3).</summary>
     public string Waited { get; }
 
     /// <summary>오래 기다림(주황): 진료대기·진료보류가 60분 이상(AC-1402.4).</summary>
@@ -118,7 +118,7 @@ public sealed class BoardRow
         Lane.Wait => "진료대기",
         Lane.Hold => "진료보류",
         Lane.Pay => "수납대기",
-        Lane.Done => "끝남",
+        Lane.Done => "수납완료",
         _ => throw new ArgumentOutOfRangeException(nameof(lane)),
     };
 }
@@ -167,7 +167,7 @@ public sealed class Board
 
     public IReadOnlyList<BoardRow> Pay { get; }
 
-    /// <summary>오늘 끝남: 접수 늦은 순(최근 순).</summary>
+    /// <summary>수납완료: 접수 늦은 순(최근 순).</summary>
     public IReadOnlyList<BoardRow> Done { get; }
 
     /// <summary>어느 칸에도 넣지 않은 줄 수(AC-1402.1). 서버 기록용이고 JSON에는 없다.</summary>

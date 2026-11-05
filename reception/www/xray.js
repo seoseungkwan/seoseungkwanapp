@@ -1,5 +1,5 @@
-// 엑스레이 찍음 표시 띠 (design.md 6절·10절, 승인 시안 Main.dc.html·Tablet.dc.html 진료보류 줄). class 이름은 style.css 머리 글의 화면 틀 그대로다.
-// - 두 모양: 찍기 전 = "엑스레이 찍기 전" + [찍음 표시], 찍음 = "엑스레이 찍음 HH:MM" + [표시 취소](AC-1405.1·1405.2).
+// 엑스레이 'X-ray 완료' 표시 띠 (design.md 6절·10절, 승인 시안 Main.dc.html·Tablet.dc.html 진료보류 줄). class 이름은 style.css 머리 글의 화면 틀 그대로다.
+// - 두 모양: 전 = "X-ray 전" + [X-ray 완료], 완료 = "X-ray 완료 HH:MM" + [표시 취소](AC-1405.1·1405.2).
 //   시각은 도우미가 준 줄의 xray.at 그대로다(휴대폰 시계 없음). 글은 dom.js el()로 글 마디로만 넣는다(AC-1407.6)
 // - 누르면 setXray(열쇠, 켬/끔)를 한 번 부른다. 답을 기다리는 동안 그 줄의 단추는 disabled라 두 번 못 누르고,
 //   그 사이 목록이 다시 그려져도(10초 읽기) 그 줄의 새 단추도 disabled다. 성공(204)하면 다시 읽기를 한 번 해 새 판으로 그린다.
@@ -31,7 +31,7 @@ export function xrayBand(row, deps = {}) {
   const button = el(
     'button',
     { type: 'button', class: marked ? 'btn-light' : 'btn-dark', on: { click: () => press(row.k, !marked, deps, button) } },
-    marked ? '표시 취소' : '찍음 표시',
+    marked ? '표시 취소' : 'X-ray 완료',
   )
   const waiting = pressing.get(row.k)
   if (waiting) {
@@ -39,7 +39,7 @@ export function xrayBand(row, deps = {}) {
     waiting.add(button)
   }
   return el('div', { class: 'xray' }, [
-    el('span', { class: marked ? 'xray-tag is-done' : 'xray-tag is-before' }, marked ? `엑스레이 찍음 ${at}` : '엑스레이 찍기 전'),
+    el('span', { class: marked ? 'xray-tag is-done' : 'xray-tag is-before' }, marked ? `X-ray 완료 ${at}` : 'X-ray 전'),
     button,
   ])
 }

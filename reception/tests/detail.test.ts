@@ -216,7 +216,7 @@ describe('detail.js 상세 그리기 (폰)', () => {
       ['wait', 'status-wait', '진료대기'],
       ['hold', 'status-hold', '진료보류'],
       ['pay', 'status-pay', '수납대기'],
-      ['done', 'status-done', '끝남'],
+      ['done', 'status-done', '수납완료'],
     ]
     for (const [lane, cls, label] of cases) {
       const app = appHost()
@@ -402,12 +402,12 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(visits.querySelectorAll('section.visit').length).toBe(5)
   })
 
-  it('AC-1404.4: 오늘 카드 제목은 "M월 D일 · 오늘"(시안: [오늘] 이름표 + 날짜)이고, 오른쪽 이름표는 진료대기 "진료 전"·진료보류 "진료보류"·수납대기 "수납대기"·끝남 "끝남"이다', () => {
+  it('AC-1404.4: 오늘 카드 제목은 "M월 D일 · 오늘"(시안: [오늘] 이름표 + 날짜)이고, 오른쪽 이름표는 진료대기 "진료 전"·진료보류 "진료보류"·수납대기 "수납대기"·끝남 "수납완료"이다', () => {
     const cases: [FakeRow['lane'], string][] = [
       ['wait', '진료 전'],
       ['hold', '진료보류'],
       ['pay', '수납대기'],
-      ['done', '끝남'],
+      ['done', '수납완료'],
     ]
     for (const [lane, label] of cases) {
       const app = appHost()
@@ -488,7 +488,7 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(moreOf(app)).toBe(more)
     expect(app.querySelectorAll('section.today').length).toBe(1)
 
-    const other = mockupRow({ k: fx.fakeKey(9), name: '가상환자09', lane: 'done', laneLabel: '끝남' })
+    const other = mockupRow({ k: fx.fakeKey(9), name: '가상환자09', lane: 'done', laneLabel: '수납완료' })
     expect(view.updateDetail(app, other, { today: TODAY })).toBe(false)
     expect(textOf(app, '.detail-name')).toBe('가상환자02')
     expect(textOf(app, '.today-state')).toBe('수납대기')

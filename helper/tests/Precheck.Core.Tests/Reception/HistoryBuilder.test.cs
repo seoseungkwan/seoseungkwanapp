@@ -217,13 +217,13 @@ public class HistoryBuilderTests
         Assert.Equal("12월 31일 · 오늘", HistoryBuilder.TodayTitle("20261231"));
     }
 
-    [Fact(DisplayName = "AC-1404.4 오늘 이름표 네 가지: 진료대기 \"진료 전\"·진료보류 \"진료보류\"·수납대기 \"수납대기\"·끝남 \"끝남\"(숨김 줄은 카드가 없다)")]
+    [Fact(DisplayName = "AC-1404.4 오늘 이름표 네 가지: 진료대기 \"진료 전\"·진료보류 \"진료보류\"·수납대기 \"수납대기\"·끝남 \"수납완료\"(숨김 줄은 카드가 없다)")]
     public void TodayLabels()
     {
         Assert.Equal("진료 전", HistoryBuilder.TodayLabel(Lane.Wait));
         Assert.Equal("진료보류", HistoryBuilder.TodayLabel(Lane.Hold));
         Assert.Equal("수납대기", HistoryBuilder.TodayLabel(Lane.Pay));
-        Assert.Equal("끝남", HistoryBuilder.TodayLabel(Lane.Done));
+        Assert.Equal("수납완료", HistoryBuilder.TodayLabel(Lane.Done));
         Assert.Throws<ArgumentOutOfRangeException>(() => HistoryBuilder.TodayLabel(Lane.Hidden));
     }
 

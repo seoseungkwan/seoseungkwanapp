@@ -27,7 +27,7 @@ const NO_VISITS = '첫 방문이라 지난 진료가 없어요.'
 const NO_TODAY_RX = '아직 처방이 없어요. 진료가 끝나면 여기에 나와요.'
 
 /** 오늘 카드 오른쪽 이름표 (HistoryBuilder.TodayLabel, AC-1404.4) */
-const TODAY_LABEL = { wait: '진료 전', hold: '진료보류', pay: '수납대기', done: '끝남' }
+const TODAY_LABEL = { wait: '진료 전', hold: '진료보류', pay: '수납대기', done: '수납완료' }
 
 /** 상태 이름표 모양 (JSON lane → class, board.js와 같다) */
 const STATUS_CLASS = { wait: 'status-wait', hold: 'status-hold', pay: 'status-pay', done: 'status-done' }
