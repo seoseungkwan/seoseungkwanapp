@@ -1,18 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BIT_FILL_KEYS } from '@/lib/worklog/bitFill'
 import { cellSaveText } from '@/lib/worklog/cellText'
+import { toMemoFontPt } from '@/lib/worklog/memoFont'
 import { blockedCellKeys } from '@/lib/worklog/notes'
 import {
   emptyWorklogDay,
+  MEMO_FONT_PTS,
   WORKLOG_CELL_KEYS,
   WORKLOG_COLUMNS,
+  type MemoFontPt,
   type WorklogChanges,
   type WorklogDay,
   type WorklogNumberKey,
   type WorklogSavedDay,
 } from '@/types/worklog'
 
-// 업무일지 하루 읽기·저장 (specs/worklog/design.md 9절, 비트 칸 목록은 20-4절).
+// 업무일지 하루 읽기·저장 (specs/worklog/design.md 9절, 비트 칸 목록은 20-4절, 업무사항 글씨 크기는 specs/worklog-memo-font).
 // 내 병원 줄만 보이고 들어가는 것은 RLS와 DB 기본값이 한다. 여기서는 병원 id를 거르지도 보내지도 않는다
 
 export type WorklogErrorKind = 'offline' | 'failed'
@@ -31,11 +34,13 @@ export class WorklogStorageError extends Error {
 type Client = Pick<SupabaseClient, 'from'>
 type Row = Record<string, string | null>
 type ReadRow = Record<string, unknown> // 읽은 줄은 모양을 믿지 않고 칸마다 확인한다
-type SaveRow = Record<string, string | string[] | null>
+type SaveRow = Record<string, string | string[] | number | null>
 
 const TABLE = 'worklog_days'
 const BIT_COLUMN = 'bit_fields'
-const SELECT = [...WORKLOG_CELL_KEYS.map((key) => WORKLOG_COLUMNS[key]), BIT_COLUMN].join(',')
+const MEMO_FONT_COLUMN = 'memo_font_pt'
+const SELECT = [...WORKLOG_CELL_KEYS.map((key) => WORKLOG_COLUMNS[key]), BIT_COLUMN, MEMO_FONT_COLUMN].join(',')
+const MEMO_FONT_LIST: readonly unknown[] = MEMO_FONT_PTS
 
 function failIfOffline(): void {
   if (globalThis.navigator?.onLine === false) throw new WorklogStorageError('offline')
@@ -96,20 +101,28 @@ export async function loadWorklogDay(client: Client, ymd: string): Promise<Workl
     client.from(TABLE).select(SELECT).eq('work_date', ymd).maybeSingle<ReadRow>(),
   )
   if (data === null) return null
-  return { day: toDay(data), bitFields: pickBitFields(data[BIT_COLUMN], (key) => WORKLOG_COLUMNS[key]) }
+  return {
+    day: toDay(data),
+    bitFields: pickBitFields(data[BIT_COLUMN], (key) => WORKLOG_COLUMNS[key]),
+    memoFontPt: toMemoFontPt(data[MEMO_FONT_COLUMN]), // 목록 밖·null·칸 없는 옛 줄은 11
+  }
 }
 
-// bitFields를 받지 않으면 bit_fields 칸을 보내지 않는다. 빈 목록 []을 보내면 저장된 비트 표시가 지워진다(AC-016.2)
+// bitFields를 받지 않으면 bit_fields 칸을 보내지 않는다. 빈 목록 []을 보내면 저장된 비트 표시가 지워진다(AC-016.2).
+// memoFontPt도 받지 않으면 memo_font_pt 칸을 보내지 않는다. 기본값 11로 보내면 다른 PC가 고른 크기가 지워진다(AC-1503.3).
+// 목록 밖 값(타입을 넘어 온 값)도 보내지 않는다: 서버로 가는 마지막 문이다
 export async function saveWorklogDay(
   client: Client,
   ymd: string,
   changes: WorklogChanges,
   bitFields?: readonly WorklogNumberKey[],
+  memoFontPt?: MemoFontPt,
 ): Promise<void> {
   const columns: SaveRow = changedColumns(changes)
   if (Array.isArray(bitFields)) {
     columns[BIT_COLUMN] = pickBitFields(bitFields, (key) => key).map((key) => WORKLOG_COLUMNS[key])
   }
+  if (MEMO_FONT_LIST.includes(memoFontPt)) columns[MEMO_FONT_COLUMN] = memoFontPt as MemoFontPt
   if (Object.keys(columns).length === 0) return
   failIfOffline()
   const row: SaveRow = { work_date: ymd, ...columns }
