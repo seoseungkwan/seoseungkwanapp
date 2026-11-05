@@ -338,3 +338,13 @@
 - Tests: helper/tests/reception-timing.dotnet.test.ts, reception/tests/poll.test.ts, reception/tests/board.test.ts, reception/tests/offline.test.ts, reception/tests/app.test.ts, reception/tests/alert.test.ts
 - TDD: required
 - 사용자 결정(2026-11-05): 화면 저절로 읽기 10초 → 5초. `ReceptionTiming.PollSeconds = 5`·`CacheSeconds = 4` 한 곳(`CacheSeconds < PollSeconds` 시험). `BoardCache` 묶음은 `CacheSeconds`, 3배 쉼·실패 뒤 10초·`fresh` 2초는 그대로. `/api/board` 답에 `every`(= `PollSeconds`). 화면: 다음 저절로 읽기·머리 글 "N초마다 저절로 바뀌어요"·끊김 글 "N초마다 다시 확인하는 중"을 `every`로(처음 연결 전에는 `poll.js`의 기본값 5 하나). `every`가 없거나 2~60 밖이면 모양 틀림(AC-1407.4). 화면 파일에 다른 간격 숫자 없음(글자 시험). 실제 비트 부담은 AC-1403.10(의원 PC)
+
+## TASK-32: 확인 로그인 창 고침 (묻기·가운데·맨 앞·60초)
+- Step: Phase 1 · Step 6 · `check-login-window`
+- 병렬: 아니오 (TASK-6 뒤, 의원 PC 1회차 결과)
+- AC: AC-1401.14, AC-1401.15, AC-1401.16
+- REQ: REQ-1401
+- Files: helper/src/Precheck.Core/Reception/Check/CheckRunner.cs, helper/src/Precheck.Core/Reception/Check/LoginWait.cs, helper/src/Precheck.Windows/ReceptionCheckEntry.cs, helper/src/Precheck.Windows/CheckLoginWindow.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckRunner.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/LoginWait.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckStart.test.cs, helper/tests/reception-check-login.dotnet.test.ts
+- Tests: helper/tests/reception-check-login.dotnet.test.ts
+- TDD: required
+- 의원 PC 1회차(2026-11-05): 4/7에서 비트 log4net 오류 글만 나오고 로그인 창이 보이지 않았다. 묻기(엔터 = 띄우기, 0 = 건너뛰기)·건너뜀 줄·60초/5분 기다림은 가짜 콘솔·가짜 시계로 시험. 창 찾기·가운데·맨 위(`EnumWindows`·`SetWindowPos`)와 표준 오류 버리기는 윈도우 부분이라 글자 시험 + net48 빌드(`buildDotnet`)만, 실제는 의원 PC(AC-1401.13). 도우미의 등록·통계 로그인 길은 고치지 않는다

@@ -38,6 +38,11 @@ public sealed class CheckRunner
 
     private const string VisitSuffix = "OcmNum";
 
+    /// <summary>로그인 창을 띄우기 전에 묻는 글(AC-1401.14). 0이면 건너뛴다.</summary>
+    private const string LoginQuestion = "비트 로그인 창을 띄울까요? 엔터 = 띄우기, 0 = 건너뛰기";
+
+    private const string SkipAnswer = "0";
+
     /// <summary>이름 찾기(AC-1401.5)의 표와 차트번호 칸(이 저장소에 이미 쓰인 칸).</summary>
     private static readonly (string Table, string Chart)[] NameTables = { ("PbsInf", "PbsChtNum"), ("OcmInf", "OcmChtNum") };
 
@@ -124,7 +129,7 @@ public sealed class CheckRunner
                 OpenSession();
                 Step("statusPairs", "2/7 오늘 접수 상태를 물어요.", StatusPairs);
                 Step("columns", "3/7 칸 목록을 읽고 있어요.", Columns);
-                Step("login", "4/7 비트 로그인 창이 뜨면 로그인하세요. 증상 화면을 읽어요. 취소하면 이 단계를 건너뛰어요.", ScreenProbes, "symptom", "name");
+                Step("login", "4/7 비트 로그인 창으로 증상 화면을 읽어요.", ScreenProbes, "symptom", "name");
                 Step("memo", "5/7 접수 메모를 견줘요.", Memo);
                 Step("shape", "6/7 칸 모양을 보고 있어요.", Shapes);
                 Step("speed", "7/7 빠르기를 재고 있어요.", Speed);
@@ -287,9 +292,22 @@ public sealed class CheckRunner
             schema = ProbeSchema.From(rows);
         }
 
-        /// <summary>⑤ 로그인 → 화면 83 하루 → 증상 찾기(AC-1401.4)·이름 찾기(AC-1401.5).</summary>
+        /// <summary>
+        /// ⑤ 띄울지 묻기(AC-1401.14) → 로그인 → 화면 83 하루 → 증상 찾기(AC-1401.4)·이름 찾기(AC-1401.5).
+        /// 로그인 창이 안 뜨거나(60초) 너무 길면(5분) 콘솔에 알리고 실패(번호)로 적는다(AC-1401.15, 기다림은 입구의 LoginWait).
+        /// </summary>
         private void ScreenProbes()
         {
+            Say(LoginQuestion);
+            var answer = Ask();
+            if (answer == null || answer.Trim() == SkipAnswer)
+            {
+                Report.Line("login", CheckField.Skipped(null));
+                SkipScreenProbes();
+                return;
+            }
+            Say("로그인 창을 화면 가운데에 띄워요. 비트 아이디·비밀번호로 로그인하세요. 1분 안에 창이 뜨지 않으면 건너뛰어요.");
+
             VendorUser? user;
             var t0 = owner.now();
             try
@@ -299,6 +317,8 @@ public sealed class CheckRunner
             catch (Exception e)
             {
                 Waited(t0);
+                if (e is LoginWindowMissingException) Say("로그인 창이 뜨지 않아 이 단계를 건너뛰어요");
+                else if (e is LoginTooLongException) Say("로그인이 5분 안에 끝나지 않아 이 단계를 건너뛰어요");
                 Report.Line("login", CheckField.Failed("result", e));
                 SkipScreenProbes();
                 return;

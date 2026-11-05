@@ -44,6 +44,8 @@ public static class ReceptionCheckEntry
         CheckReport? report = null;
         try
         {
+            // 비트 DLL(log4net 등)이 표준 오류에 쓰는 글이 콘솔에 섞이지 않게 버린다(AC-1401.16). 확인 코드는 표준 오류를 쓰지 않는다
+            Console.SetError(TextWriter.Null);
             UseKoreanConsole();
             TurnOffQuickEdit();
 
@@ -134,12 +136,15 @@ public static class ReceptionCheckEntry
             this.services = services;
         }
 
-        /// <summary>비트 로그인 창. 취소하면 null. 권한·병원이 안 맞으면 BitException(보고서에 번호만).</summary>
+        /// <summary>
+        /// 비트 로그인 창. 취소하면 null. 권한·병원이 안 맞으면 BitException(보고서에 번호만). 창은 CheckLoginWindow가 가운데·맨 위로 두고,
+        /// 60초 안에 안 뜨거나 5분 안에 안 끝나면 그 예외(AC-1401.15)가 CheckRunner로 간다.
+        /// </summary>
         public VendorUser? Login()
         {
             install = null;
             var root = services.Locator.Find();
-            var user = services.Login.Login(root);
+            var user = CheckLoginWindow.Run(() => services.Login.Login(root));
             if (user == null) return null;
 
             var screens = services.Screens ?? throw new BitException(BitErrors.ExportFailed);

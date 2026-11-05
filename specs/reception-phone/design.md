@@ -36,6 +36,7 @@ public sealed class CheckReport { /* 줄마다 바로 디스크에 쓰기. 적�
 - 보고서 거르기: 칸·표 이름은 `^[A-Za-z][A-Za-z0-9_]{0,63}$`만, 숫자는 숫자 형만, 상태 코드는 `^[A-Z0-9]{1,4}$`만, 모양 단계의 값 목록은 AC-1401.7 조건일 때만 적고 나머지는 `?`. 예외는 `GetType().Name`·`BitException.Code`·`SqlException.Number`만 쓴다(`.Message` 금지, diag-read-speed와 같은 규칙).
 - 확인 모드 세션 `Precheck.Windows/CheckBitDb.cs`: `ReadOnlyConnection.Create` + 되돌리는 트랜잭션, 실행 전 `CheckSql.IsAllowed || ProbeSql.IsProbe || Sql.IsAllowed`. 도우미의 `SqlBitDb`·`Sql.IsAllowed`는 찍기 틀을 받지 않는다(AC-1401.9).
 - 화면 83은 지금의 `VendorGridExport`·`GridRows.From("83", …)`을 그대로 쓴다. 비트 로그인은 `VendorLogin`(지금의 비트 로그인 창). 확인 명령에서만 뜬다.
+- 확인 로그인 창 고침(TASK-32, 의원 PC 1회차: 4/7에서 로그인 창이 보이지 않고 콘솔에 비트 log4net 오류만 나옴): 띄우기 전에 묻고(AC-1401.14), `Precheck.Windows/CheckLoginWindow.cs`가 로그인을 자기 STA 배경 스레드에서 돌리며 이 프로세스의 보이는 최상위 창(콘솔 창 뺌)을 찾아 새 창마다 한 번 가운데·맨 위로 둔다. 기다림 규칙은 Core `Reception/Check/LoginWait.cs`(주입한 시계·쉼): 창 없음 60초 → `LoginWindowMissingException`, 전체 5분 → `LoginTooLongException`(AC-1401.15). 입구는 확인 모드 시작 때 `Console.SetError(TextWriter.Null)`로 비트 DLL의 표준 오류 글을 버린다(AC-1401.16). 도우미의 등록·통계 로그인(`VendorLogin`·`Sta`)은 바꾸지 않는다.
 - 입구: `Program.cs`의 `Console.SetOut(TextWriter.Null)` **앞**에 `CheckMode.IsRequested`면 `ReceptionCheckEntry.Run()` 분기 한 곳. 그 밖의 시작 줄은 그대로다. `reception-check.cmd`(ASCII)·`reception-check.ps1`(UTF-8 BOM)은 diag-read-speed의 `speed-check.*`와 같은 모양: 푼 폴더 확인, `app\`만 `Unblock-File`, exe를 직접 켠다. 설치 폴더·레지스트리를 건드리지 않는다.
 - 이 명령은 릴리스가 아니다: 버전·태그 없이 브랜치 빌드(Actions zip)를 푼 폴더에서 돌린다. 그래서 `bit-read-speed`를 기다리지 않는다. 깃허브에 올리기는 사용자 OK 뒤 부모 세션이 한다.
 

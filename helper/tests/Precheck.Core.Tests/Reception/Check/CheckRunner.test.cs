@@ -598,3 +598,135 @@ public class CheckRunnerLimitTests
         Assert.True(h.Console.Reads >= 2);
     }
 }
+
+/// <summary>
+/// 확인 로그인 창 고침(TASK-32): 4/7에서 띄우기 전에 묻고(AC-1401.14), 창이 안 뜨거나(60초) 로그인이 너무 길면(5분)
+/// 콘솔에 알리고 실패(번호)로 적은 뒤 다음 단계로 간다(AC-1401.15). 기다림 자체는 LoginWait 시험이 본다.
+/// </summary>
+public class CheckLoginRunnerTests
+{
+    private const string Question = "비트 로그인 창을 띄울까요? 엔터 = 띄우기, 0 = 건너뛰기";
+    private const string NoWindow = "로그인 창이 뜨지 않아 이 단계를 건너뛰어요";
+    private const string TooLong = "로그인이 5분 안에 끝나지 않아 이 단계를 건너뛰어요";
+
+    private static void AssertSkippedAndContinued(Harness h, string[] lines)
+    {
+        Assert.Empty(h.Screen.Asked);
+        Assert.Contains("symptom 건너뜀", lines);
+        Assert.Contains("name 건너뜀", lines);
+        Assert.Contains(h.Console.Written, l => l.StartsWith("5/7 ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("speed name=TodayVisits ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("done ", StringComparison.Ordinal));
+    }
+
+    [Theory(DisplayName = "AC-1401.14 로그인 창을 띄우기 전에 묻고, 0(앞뒤 공백 뗌)이면 띄우지 않고 로그인·증상·이름 찾기를 건너뜀으로 적고 다음 단계로 간다")]
+    [InlineData("0")]
+    [InlineData(" 0 ")]
+    [InlineData("0\t")]
+    public void ZeroSkipsTheLogin(string typed)
+    {
+        using var h = new Harness();
+        h.Console.Answer = last => last == Question ? typed : "";
+
+        var lines = Harness.Lines(h.Run());
+
+        Assert.Equal(0, h.Logins);
+        Assert.Contains(Question, h.Console.Written);
+        Assert.Contains("login 건너뜀", lines);
+        AssertSkippedAndContinued(h, lines);
+    }
+
+    [Fact(DisplayName = "AC-1401.14 묻는 자리에서 입력이 끝나면(null) 로그인 창을 띄우지 않고 건너뜀")]
+    public void InputEndSkipsTheLogin()
+    {
+        using var h = new Harness();
+        h.Console.Answer = last => last == Question ? null : "";
+
+        var lines = Harness.Lines(h.Run());
+
+        Assert.Equal(0, h.Logins);
+        Assert.Contains("login 건너뜀", lines);
+        AssertSkippedAndContinued(h, lines);
+    }
+
+    [Theory(DisplayName = "AC-1401.14 엔터(그 밖의 글)면 묻는 글을 쓴 뒤에 로그인 창을 한 번 띄운다")]
+    [InlineData("")]
+    [InlineData("1")]
+    [InlineData("00")]
+    public void EnterShowsTheLogin(string typed)
+    {
+        using var h = new Harness();
+        h.Console.Answer = last => last == Question ? typed : "";
+        var questionBeforeLogin = false;
+        h.Login = () =>
+        {
+            questionBeforeLogin = h.Console.Written.Contains(Question);
+            return new VendorUser("U01", "20261105");
+        };
+
+        var lines = Harness.Lines(h.Run());
+
+        Assert.Equal(1, h.Logins);
+        Assert.True(questionBeforeLogin, "로그인 창을 띄우기 전에 물어야 한다");
+        Assert.Contains("login result=ok", lines);
+        Assert.Equal(1, h.Console.Written.Count(l => l == Question));
+    }
+
+    [Fact(DisplayName = "AC-1401.14 묻고 답하는 시간은 사람이 쓴 시간이라 전체 15분에 세지 않는다")]
+    public void QuestionTimeIsHumanTime()
+    {
+        using var h = new Harness();
+        h.Console.Think = TimeSpan.FromMinutes(20);
+
+        var report = h.Run();
+
+        Assert.Contains(Question, h.Console.Written);
+        Assert.DoesNotContain("시간 초과", report);
+        Assert.Contains("login result=ok", Harness.Lines(report));
+    }
+
+    [Fact(DisplayName = "AC-1401.15 60초 안에 로그인 창이 안 뜨면(LoginWindowMissingException) 콘솔에 알리고 login은 실패(번호), 증상·이름 찾기는 건너뜀, 다음 단계는 그대로")]
+    public void WindowMissing()
+    {
+        using var h = new Harness();
+        var error = new LoginWindowMissingException();
+        h.Login = () => throw error;
+
+        var lines = Harness.Lines(h.Run());
+
+        Assert.Equal(1, h.Logins);
+        Assert.Contains(NoWindow, h.Console.Written);
+        Assert.DoesNotContain(TooLong, h.Console.Written);
+        Assert.Contains("login result=실패(LoginWindowMissingException)", lines);
+        AssertSkippedAndContinued(h, lines);
+    }
+
+    [Fact(DisplayName = "AC-1401.15 창이 떠도 5분 안에 로그인이 안 끝나면(LoginTooLongException) 콘솔에 알리고 login은 실패(번호), 다음 단계는 그대로")]
+    public void LoginTooLong()
+    {
+        using var h = new Harness();
+        var error = new LoginTooLongException();
+        h.Login = () => throw error;
+
+        var lines = Harness.Lines(h.Run());
+
+        Assert.Contains(TooLong, h.Console.Written);
+        Assert.DoesNotContain(NoWindow, h.Console.Written);
+        Assert.Contains("login result=실패(LoginTooLongException)", lines);
+        AssertSkippedAndContinued(h, lines);
+    }
+
+    [Fact(DisplayName = "AC-1401.15 다른 로그인 오류는 지금처럼 실패(번호)만 적고 창 없음·5분 글은 쓰지 않는다")]
+    public void OtherLoginErrorUnchanged()
+    {
+        using var h = new Harness();
+        h.Login = () => throw new BitException(BitErrors.NotFound);
+
+        var lines = Harness.Lines(h.Run());
+
+        Assert.Contains("login result=실패(E-BIT-NOT-FOUND)", lines);
+        Assert.DoesNotContain(NoWindow, h.Console.Written);
+        Assert.DoesNotContain(TooLong, h.Console.Written);
+        AssertSkippedAndContinued(h, lines);
+    }
+}

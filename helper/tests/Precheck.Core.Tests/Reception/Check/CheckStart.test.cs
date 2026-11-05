@@ -397,3 +397,103 @@ public class CheckStartTests
         Assert.Matches(@"\bConsole\s*\.\s*ReadLine\(\)", Statements(Entry()));
     }
 }
+
+/// <summary>
+/// 확인 로그인 창 고침(TASK-32)의 윈도우 부분: 이 서버에서 돌릴 수 없어 글자로 본다(컴파일은 감싸개가 buildDotnet으로).
+/// 실제로 창이 가운데·맨 앞에 뜨는지는 의원 PC에서 본다(AC-1401.13).
+/// </summary>
+public class CheckLoginStartTests
+{
+    private static string Read(params string[] parts) => File.ReadAllText(Repo.PathOf(parts));
+
+    private static string Entry() => Read("helper", "src", "Precheck.Windows", "ReceptionCheckEntry.cs");
+
+    private static string Window() => Read("helper", "src", "Precheck.Windows", "CheckLoginWindow.cs");
+
+    private static string Statements(string source) =>
+        Regex.Replace(
+            string.Join("\n", source.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal))),
+            @"//.*$", "", RegexOptions.Multiline);
+
+    private static int At(string source, string text, int from = 0)
+    {
+        var index = source.IndexOf(text, from, StringComparison.Ordinal);
+        Assert.True(index >= 0, "글자가 없다: " + text);
+        return index;
+    }
+
+    [Fact(DisplayName = "AC-1401.16 입구는 확인 모드를 시작하자마자(부품을 만들기 전에) 표준 오류를 버린다: 비트 DLL의 log4net 글이 콘솔에 나오지 않게")]
+    public void EntryDropsStandardError()
+    {
+        var source = Statements(Entry());
+        var run = At(source, "public static int Run(Func<BitServices> createServices)");
+        var drop = At(source, "Console.SetError(TextWriter.Null);", run);
+        var create = At(source, "createServices()", run);
+        var runner = At(source, "new CheckRunner(", run);
+        Assert.True(drop < create && create < runner);
+        Assert.DoesNotMatch(@"\bConsole\s*\.\s*Error\b", source);
+        Assert.DoesNotMatch(@"\bConsole\s*\.\s*Error\b", Statements(Window()));
+    }
+
+    [Fact(DisplayName = "AC-1401.15 로그인은 확인 전용 배경 STA 스레드에서 돌고, 입구는 LoginWait로 기다린 뒤 로그인 사용자의 범위·권한을 본다")]
+    public void EntryWaitsThroughLoginWait()
+    {
+        var window = Statements(Window());
+        Assert.Contains("SetApartmentState(ApartmentState.STA)", window);
+        Assert.Contains("IsBackground = true", window);
+        Assert.Contains("LoginWait.Until(", window);
+        Assert.Contains("Thread.Sleep", window);
+        Assert.Contains("() => DateTime.Now", window);
+
+        var entry = Statements(Entry());
+        var start = At(entry, "CheckLoginWindow.Run(");
+        var login = At(entry, ".Login.Login(", start);
+        var access = At(entry, "StatsAccess.Check(", login);
+        Assert.True(start < login && login < access);
+    }
+
+    [Fact(DisplayName = "AC-1401.15 이 프로세스의 보이는 최상위 창(콘솔 창 뺌)을 찾아 새 창마다 한 번 작업 영역 가운데·맨 위로 둔다. 창 제목은 읽지 않는다")]
+    public void WindowIsFoundCenteredAndOnTop()
+    {
+        var window = Statements(Window());
+        Assert.Contains("EnumWindows(", window);
+        Assert.Contains("IsWindowVisible(", window);
+        Assert.Contains("GetWindowThreadProcessId(", window);
+        Assert.Contains("GetConsoleWindow()", window);
+        Assert.Contains("WindowPlace.Center(", window);
+        Assert.Contains("WorkingArea", window);
+        Assert.Contains("SetWindowPos(", window);
+        Assert.Contains("TopMost", window);
+        Assert.Contains("SetForegroundWindow(", window);
+        // 같은 창은 한 번만 옮긴다(사람이 옮긴 창을 다시 끌어오지 않게)
+        Assert.Contains("HashSet<IntPtr>", window);
+        // 창 글자는 읽지 않는다(환자 값이 섞일 수 있다)
+        Assert.DoesNotContain("GetWindowText", window);
+        Assert.DoesNotContain("SendMessage", window);
+    }
+
+    [Fact(DisplayName = "AC-1401.15 확인 로그인 창 코드는 예외 글·추적·파일 쓰기를 하지 않고, 도우미의 등록·통계 로그인 길(VendorLogin·Sta)은 그대로다")]
+    public void HelperLoginPathsUnchanged()
+    {
+        var window = Statements(Window());
+        Assert.DoesNotMatch(@"\.(Message|StackTrace|InnerException|Source)\b", window);
+        Assert.DoesNotContain("Trace.", window);
+        Assert.DoesNotContain("Debug.", window);
+        Assert.DoesNotContain("File.", window);
+        Assert.DoesNotMatch(@"\bConsole\s*\.", window);
+
+        foreach (var parts in new[]
+        {
+            new[] { "helper", "src", "Precheck.Windows", "VendorLogin.cs" },
+            new[] { "helper", "src", "Precheck.Windows", "ConfirmWindow.cs" },
+            new[] { "helper", "src", "Precheck.Core", "Registration", "RegisterFlow.cs" },
+            new[] { "helper", "src", "Precheck.Core", "Claim", "ClaimMonthPayload.cs" },
+        })
+        {
+            var source = Read(parts);
+            Assert.DoesNotContain("LoginWait", source);
+            Assert.DoesNotContain("CheckLoginWindow", source);
+            Assert.DoesNotContain("SetError", source);
+        }
+    }
+}
