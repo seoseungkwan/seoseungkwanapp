@@ -93,7 +93,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |
-| `worklog_days` | 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 |
+| `worklog_days` | 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 · 업무사항 글씨 크기 `memo_font_pt`(8·9·10·11·12·14·16pt, 기본 11, specs/worklog-memo-font) |
 | `ai_usage` | 달별 토큰·비용 |
 | `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
 

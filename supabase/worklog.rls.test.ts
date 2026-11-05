@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { WORKLOG_COLUMNS } from '@/types/worklog'
+import { MEMO_FONT_PTS, WORKLOG_COLUMNS } from '@/types/worklog'
 
 // 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 migration 파일을 그대로 실행하고 RLS를 확인한다.
 // Supabase 흉내와 사용자 바꾸기는 rls.test.ts와 같다. 실제 Supabase에는 붙지 않는다
@@ -652,8 +652,9 @@ const NOT_BIT_NAMES = [
   '',
 ]
 
-// 0110이 바꾸면 안 되는 것 전부: RLS·정책·함수(공용 함수 포함)·bit_fields 밖 칸·제약·방아쇠·표 권한·칸 권한
-async function schemaSnapshot() {
+// 칸 하나를 더하는 migration(0110·0200)이 바꾸면 안 되는 것 전부: RLS·정책·함수(공용 함수 포함)·더한 칸 밖 칸·제약·방아쇠·표 권한·칸 권한.
+// added = 그 migration이 더하는 칸 이름(기본 0110의 bit_fields). 그 칸과 그 칸을 담은 제약·그 칸 권한만 빼고 본다
+async function schemaSnapshot(added = 'bit_fields') {
   await operator()
   return {
     rls: await rows('select relrowsecurity, relforcerowsecurity from pg_class where oid = $1::regclass', [TABLE]),
@@ -667,13 +668,14 @@ async function schemaSnapshot() {
     ),
     columns: await rows(
       `select column_name, data_type, is_nullable, column_default from information_schema.columns
-       where table_schema = 'public' and table_name = 'worklog_days' and column_name <> 'bit_fields'
+       where table_schema = 'public' and table_name = 'worklog_days' and column_name <> $1::text
        order by ordinal_position`,
+      [added],
     ),
     constraints: await rows(
       `select conname, pg_get_constraintdef(oid) as def from pg_constraint
-       where conrelid = $1::regclass and pg_get_constraintdef(oid) not like '%bit_fields%' order by conname`,
-      [TABLE],
+       where conrelid = $1::regclass and pg_get_constraintdef(oid) not like ('%' || $2::text || '%') order by conname`,
+      [TABLE, added],
     ),
     triggers: await rows('select tgname from pg_trigger where tgrelid = $1::regclass', [TABLE]),
     tableGrants: await rows(
@@ -682,7 +684,8 @@ async function schemaSnapshot() {
     ),
     columnGrants: await rows(
       `select grantee, privilege_type, column_name from information_schema.column_privileges
-       where table_name = 'worklog_days' and column_name <> 'bit_fields' order by 1, 2, 3`,
+       where table_name = 'worklog_days' and column_name <> $1::text order by 1, 2, 3`,
+      [added],
     ),
   }
 }
@@ -935,5 +938,375 @@ describe('REQ-015 비트 칸 표시 migration(0110)을 업무일지 표 위에 �
       expect(changed.affectedRows).toBe(0)
       expect(await bitsOf(user)).toMatchObject([{ bit_fields: [] }])
     })
+  })
+})
+
+// ── 업무사항 글씨 크기(memo_font_pt, specs/worklog-memo-font REQ-1502) ──
+// 운영과 같은 차례: auth → 업무일지(0100) → 비트 칸 표시(0110) → 0200. 위 두 묶음(0100만·0110까지)은 그대로 둔다
+const MEMO_FONT_MIGRATION_URL = new URL('./migrations/20261105000200_worklog_memo_font.sql', import.meta.url)
+const MEMO_FONT = 'memo_font_pt'
+// 목록 옆 값(7·13·15·17)과 터무니없는 값. 앱 목록(MEMO_FONT_PTS)에 없다
+const NOT_MEMO_FONT_PTS = [7, 13, 15, 17, 0, -11, 100]
+const NOT_NULL_FAILED = { code: '23502' }
+
+// 운영자 눈으로 본 그 병원 줄의 글씨 크기·비트 칸 표시와 값 몇 칸
+async function fontsOf(user: string) {
+  await operator()
+  return rows(
+    `select work_date::text as work_date, memo_font_pt, bit_fields, total_fee, cash_in, memo
+     from ${TABLE} where hospital_id = $1 order by work_date`,
+    [hospital[user]],
+  )
+}
+
+// 새 칸 하나의 모양(칸·그 칸을 담은 제약·그 칸 권한). schemaSnapshot(MEMO_FONT)이 빼고 보는 몫이다
+async function memoFontShape() {
+  await operator()
+  return {
+    column: await rows(
+      `select column_name, data_type, is_nullable, column_default, ordinal_position from information_schema.columns
+       where table_schema = 'public' and table_name = 'worklog_days' and column_name = $1::text`,
+      [MEMO_FONT],
+    ),
+    constraints: await rows(
+      `select conname, contype, pg_get_constraintdef(oid) as def from pg_constraint
+       where conrelid = $1::regclass and pg_get_constraintdef(oid) like ('%' || $2::text || '%') order by conname`,
+      [TABLE, MEMO_FONT],
+    ),
+    grants: await rows(
+      `select grantee, privilege_type from information_schema.column_privileges
+       where table_name = 'worklog_days' and column_name = $1::text order by 1, 2`,
+      [MEMO_FONT],
+    ),
+  }
+}
+
+describe('REQ-1502 업무사항 글씨 크기 migration(0200)을 0110 위에 붙여 넣은 DB', SLOW, () => {
+  let memoFontMigration = ''
+  let before: Awaited<ReturnType<typeof schemaSnapshot>>
+  let after: Awaited<ReturnType<typeof schemaSnapshot>>
+  let shape: Awaited<ReturnType<typeof memoFontShape>>
+  // 0200 전에 있던 줄이 0200 전·뒤에 어떻게 보이는지(운영자 눈, 모든 칸)
+  let existingBefore: Record<string, unknown>[] = []
+  let existingAfter: Record<string, unknown>[] = []
+
+  beforeAll(async () => {
+    db = await PGlite.create()
+    await db.exec(SUPABASE_MOCK)
+    await db.exec(AUTH_MIGRATION)
+    await db.exec(WORKLOG_MIGRATION)
+    await db.exec(readFileSync(fileURLToPath(BIT_MIGRATION_URL), 'utf-8'))
+    await seedUsers()
+    await addDay(A)
+    await operator()
+    await db.query(
+      `update ${TABLE} set cash_in = '50000', memo = '가상 업무사항', bit_fields = '{cash_in}' where hospital_id = $1`,
+      [hospital[A]],
+    )
+    existingBefore = await rows(`select * from ${TABLE}`)
+    before = await schemaSnapshot(MEMO_FONT)
+    memoFontMigration = readFileSync(fileURLToPath(MEMO_FONT_MIGRATION_URL), 'utf-8')
+    await operator()
+    await db.exec(memoFontMigration)
+    after = await schemaSnapshot(MEMO_FONT)
+    shape = await memoFontShape()
+    await operator()
+    existingAfter = await rows(`select * from ${TABLE}`)
+  }, 30_000)
+
+  afterAll(async () => {
+    await db.close()
+  })
+
+  beforeEach(seedUsers)
+
+  describe('AC-1502.1 memo_font_pt 칸 하나만 더해지고 나머지는 그대로다', () => {
+    it('AC-1502.1: memo_font_pt smallint not null default 11이 bit_fields 뒤 맨 끝에 하나 더해진다', async () => {
+      const columns = await rows(
+        `select column_name, data_type, is_nullable, column_default from information_schema.columns
+         where table_schema = 'public' and table_name = 'worklog_days' order by ordinal_position`,
+      )
+      expect(columns.map((c) => c.column_name)).toEqual([
+        'hospital_id',
+        'work_date',
+        ...VALUE_COLUMNS,
+        'bit_fields',
+        MEMO_FONT,
+      ])
+      expect(columns.at(-1)).toEqual({
+        column_name: MEMO_FONT,
+        data_type: 'smallint',
+        is_nullable: 'NO',
+        column_default: '11',
+      })
+    })
+
+    it('AC-1502.1: RLS·정책 셋·공용 함수·다른 칸(값 32칸·bit_fields)·다른 제약·표 권한·다른 칸 권한이 붙여 넣기 전과 같다', () => {
+      expect(after).toEqual(before)
+      expect(after.rls).toEqual([{ relrowsecurity: true, relforcerowsecurity: false }])
+      expect(after.policies).toHaveLength(3)
+      expect(after.functions.map((f) => f.name)).toContain('my_hospital_id()')
+      // 견준 칸에 bit_fields가 들어 있다(거르는 칸 이름이 memo_font_pt 하나뿐이다)
+      expect(after.columns.map((c) => c.column_name)).toEqual(['hospital_id', 'work_date', ...VALUE_COLUMNS, 'bit_fields'])
+      expect(after.constraints.some((c) => String(c.def).includes('bit_fields'))).toBe(true)
+      expect(after.columnGrants.some((g) => g.column_name === 'bit_fields')).toBe(true)
+    })
+
+    it('AC-1502.1: 방아쇠는 실행 뒤에도 없다', async () => {
+      const triggers = await rows(`select tgname from pg_trigger where tgrelid = $1::regclass and not tgisinternal`, [
+        TABLE,
+      ])
+      expect(triggers).toEqual([])
+      expect(after.triggers).toEqual(before.triggers)
+    })
+
+    it('AC-1502.1: 더한 제약은 memo_font_pt 목록 check 하나와 not null뿐이다', () => {
+      const checks = shape.constraints.filter((c) => c.contype === 'c')
+      expect(checks.map((c) => c.conname)).toEqual(['worklog_days_memo_font_pt_check'])
+      // PG18은 not null도 pg_constraint에 따로 적는다(contype 'n'). 그 밖의 종류는 없다
+      expect(shape.constraints.every((c) => c.contype === 'c' || c.contype === 'n')).toBe(true)
+    })
+
+    it('AC-1502.1: 파일은 칸 하나와 그 칸 권한만 더하고 함수·정책을 만들거나 고치거나 지우지 않는다', () => {
+      expect(memoFontMigration).toContain('alter table public.worklog_days add column if not exists memo_font_pt')
+      expect(memoFontMigration).toContain(
+        'grant insert (memo_font_pt), update (memo_font_pt) on table public.worklog_days to authenticated;',
+      )
+      expect(memoFontMigration).not.toMatch(/create\s+(or\s+replace\s+)?function/i)
+      expect(memoFontMigration).not.toMatch(/(create|alter|drop)\s+policy/i)
+      expect(memoFontMigration).not.toMatch(/\b(drop|revoke|truncate|delete)\b/i)
+    })
+  })
+
+  describe('AC-1502.2 있던 줄은 11이 되고 두 번 붙여 넣어도 그대로다', () => {
+    it('AC-1502.2: 붙여 넣기 전에 있던 줄은 memo_font_pt가 11이고 다른 값·bit_fields는 그대로다', () => {
+      expect(existingBefore).toHaveLength(1)
+      expect(existingBefore[0]).not.toHaveProperty(MEMO_FONT)
+      expect(existingBefore[0]).toMatchObject({ total_fee: '100000', cash_in: '50000', bit_fields: ['cash_in'] })
+      expect(existingAfter).toEqual([{ ...existingBefore[0], memo_font_pt: 11 }])
+    })
+
+    it('AC-1502.2: 두 번 붙여 넣어도 오류 없이 모양·저장된 크기가 그대로다', async () => {
+      await addDay(A)
+      await become(A)
+      await db.query(upsertOne(MEMO_FONT), [DAY, 14])
+      await operator()
+      await db.exec(memoFontMigration)
+      expect(await schemaSnapshot(MEMO_FONT)).toEqual(after)
+      expect(await memoFontShape()).toEqual(shape)
+      expect(await fontsOf(A)).toEqual([
+        { work_date: DAY, memo_font_pt: 14, bit_fields: [], total_fee: '100000', cash_in: null, memo: null },
+      ])
+    })
+  })
+
+  describe('AC-1502.3 값 제약은 MEMO_FONT_PTS 일곱 값만 받는다', () => {
+    it('AC-1502.3: 시험의 거부 값은 MEMO_FONT_PTS에 없고, 목록 옆 값(±1)을 모두 담는다', () => {
+      const list: readonly number[] = MEMO_FONT_PTS
+      expect(list).toHaveLength(7)
+      expect(NOT_MEMO_FONT_PTS.filter((v) => list.includes(v))).toEqual([])
+      const neighbors = list.flatMap((v) => [v - 1, v + 1]).filter((v) => !list.includes(v))
+      for (const v of neighbors) expect(NOT_MEMO_FONT_PTS).toContain(v)
+    })
+
+    it.each(MEMO_FONT_PTS)('AC-1502.3: %d pt는 넣기·고치기·upsert 모두 된다', async (pt) => {
+      await become(A)
+      const [inserted] = await rows(
+        `insert into ${TABLE} (work_date, memo_font_pt) values ($1, $2) returning memo_font_pt`,
+        [DAY, pt],
+      )
+      expect(inserted.memo_font_pt).toBe(pt)
+      await db.query(`insert into ${TABLE} (work_date) values ($1)`, ['2020-01-03'])
+      const [updated] = await rows(
+        `update ${TABLE} set memo_font_pt = $1 where work_date = $2 returning memo_font_pt`,
+        [pt, '2020-01-03'],
+      )
+      expect(updated.memo_font_pt).toBe(pt)
+      await db.query(upsertOne(MEMO_FONT), ['2020-01-04', pt])
+      expect((await fontsOf(A)).map((r) => r.memo_font_pt)).toEqual([pt, pt, pt])
+    })
+
+    it.each(NOT_MEMO_FONT_PTS)('AC-1502.3: %d는 넣기·고치기·upsert 모두 23514로 거부되고 줄은 그대로다', async (value) => {
+      await become(A)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, memo_font_pt) values ($1, $2)`, [DAY, value]),
+      ).rejects.toMatchObject(CHECK_FAILED)
+      await expect(db.query(upsertOne(MEMO_FONT), [DAY, value])).rejects.toMatchObject(CHECK_FAILED)
+      expect(await fontsOf(A)).toEqual([])
+      await become(A)
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await expect(db.query(`update ${TABLE} set memo_font_pt = $1`, [value])).rejects.toMatchObject(CHECK_FAILED)
+      await expect(db.query(upsertOne(MEMO_FONT), [DAY, value])).rejects.toMatchObject(CHECK_FAILED)
+      expect(await fontsOf(A)).toMatchObject([{ memo_font_pt: 11, cash_in: '100000' }])
+    })
+
+    it('AC-1502.3: null은 넣기·고치기·upsert 모두 23502로 거부된다', async () => {
+      await become(A)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, memo_font_pt) values ($1, null)`, [DAY]),
+      ).rejects.toMatchObject(NOT_NULL_FAILED)
+      expect(await fontsOf(A)).toEqual([])
+      await become(A)
+      await db.query(upsertOne(MEMO_FONT), [DAY, 14])
+      await expect(db.query(`update ${TABLE} set memo_font_pt = null`)).rejects.toMatchObject(NOT_NULL_FAILED)
+      await expect(db.query(upsertOne(MEMO_FONT), [DAY, null])).rejects.toMatchObject(NOT_NULL_FAILED)
+      expect(await fontsOf(A)).toMatchObject([{ memo_font_pt: 14 }])
+    })
+
+    it('AC-1502.3: memo_font_pt 없이 넣은 줄은 11이다', async () => {
+      await become(A)
+      const [row] = await rows(
+        `insert into ${TABLE} (work_date, cash_in) values ($1, '100000') returning memo_font_pt`,
+        [DAY],
+      )
+      expect(row.memo_font_pt).toBe(11)
+    })
+  })
+
+  describe('AC-1502.4 승인 사용자 upsert에 memo_font_pt가 되고, 보내지 않으면 그대로다', () => {
+    it.each(['INSERT', 'UPDATE'])(
+      'AC-1502.4: %s 칸 권한은 work_date·WORKLOG_COLUMNS 32칸·bit_fields·memo_font_pt와 정확히 같다',
+      async (privilege) => {
+        const allowed = await rows(
+          `select column_name from information_schema.column_privileges
+           where grantee = 'authenticated' and table_name = 'worklog_days' and privilege_type = $1`,
+          [privilege],
+        )
+        const expected = ['work_date', ...Object.values(WORKLOG_COLUMNS), 'bit_fields', MEMO_FONT].sort()
+        expect(allowed.map((r) => r.column_name).sort()).toEqual(expected)
+        expect(expected).not.toContain('hospital_id')
+      },
+    )
+
+    it('AC-1502.4: 줄이 없던 날에 work_date + memo_font_pt만 보낸 upsert가 hospital_id 없이 내 줄을 만들고 고친다', async () => {
+      await become(A)
+      await db.query(upsertOne(MEMO_FONT), [DAY, 14])
+      const [created] = await rows(`select * from ${TABLE}`)
+      expectOnlyFilled(created, { hospital_id: hospital[A], memo_font_pt: 14, bit_fields: [] })
+      await db.query(upsertOne(MEMO_FONT), [DAY, 12])
+      const found = await rows(`select * from ${TABLE}`)
+      expect(found).toHaveLength(1)
+      expectOnlyFilled(found[0], { hospital_id: hospital[A], memo_font_pt: 12, bit_fields: [] })
+    })
+
+    it('AC-1502.4: 있던 날에 memo_font_pt만 보낸 upsert는 그 칸만 고치고 다른 칸·bit_fields는 그대로다', async () => {
+      await become(A)
+      await db.query(upsertOf(['cash_in', 'memo', 'bit_fields']), [DAY, '100000', '가상 업무사항', ['cash_in']])
+      await db.query(upsertOne(MEMO_FONT), [DAY, 16])
+      expect(await fontsOf(A)).toEqual([
+        { work_date: DAY, memo_font_pt: 16, bit_fields: ['cash_in'], total_fee: null, cash_in: '100000', memo: '가상 업무사항' },
+      ])
+    })
+
+    it('AC-1502.4: memo_font_pt를 SET에 넣지 않은 upsert는 저장된 memo_font_pt를 바꾸지 않는다', async () => {
+      await become(A)
+      await db.query(upsertOne(MEMO_FONT), [DAY, 14])
+      await db.query(upsertOne('cash_in'), [DAY, '100000'])
+      await db.query(upsertOne('memo'), [DAY, '가상 업무사항'])
+      await db.query(upsertOne('bit_fields'), [DAY, ['cash_in']])
+      await db.query(upsertOf(['cash_in', 'bit_fields']), [DAY, '200000', ['cash_in', 'total_fee']])
+      await db.query(UPSERT_SOME, [DAY, '200000', '가상 비고'])
+      await db.query(UPSERT_ALL, sentValues(DAY, '300000', '가상 글자'))
+      await db.query(upsertOne('cash_in'), [DAY, null])
+      expect(await fontsOf(A)).toEqual([
+        {
+          work_date: DAY,
+          memo_font_pt: 14,
+          bit_fields: ['cash_in', 'total_fee'],
+          total_fee: '300000',
+          cash_in: null,
+          memo: '가상 글자',
+        },
+      ])
+    })
+
+    it('AC-1502.4: work_date + 값 32칸 + bit_fields + memo_font_pt를 다 보낸 upsert가 넣기와 고치기 모두 된다', async () => {
+      await become(A)
+      const sql = upsertOf([...VALUE_COLUMNS, 'bit_fields', MEMO_FONT])
+      await db.query(sql, [...sentValues(DAY, '100000', '가상 글자'), BIT_FIELDS, 8])
+      await db.query(sql, [...sentValues(DAY, '200000', '가상 다른 글자'), ['new_patients'], 16])
+      expect(await fontsOf(A)).toEqual([
+        {
+          work_date: DAY,
+          memo_font_pt: 16,
+          bit_fields: ['new_patients'],
+          total_fee: '200000',
+          cash_in: '200000',
+          memo: '가상 다른 글자',
+        },
+      ])
+    })
+  })
+
+  describe('AC-1502.5 로그인 안 한 사용자·다른 병원·승인 대기·거절은 REQ-004 그대로 막힌다', () => {
+    it('AC-1502.5: anon에게는 새 칸 권한이 하나도 없고, 새 칸 권한은 authenticated의 넣기·고치기와 표 읽기뿐이다', async () => {
+      const granted = await rows(
+        `select grantee, privilege_type from information_schema.column_privileges
+         where table_name = 'worklog_days' and column_name = $1::text and grantee in ('anon', 'authenticated')
+         order by 1, 2`,
+        [MEMO_FONT],
+      )
+      expect(granted).toEqual([
+        { grantee: 'authenticated', privilege_type: 'INSERT' },
+        { grantee: 'authenticated', privilege_type: 'SELECT' },
+        { grantee: 'authenticated', privilege_type: 'UPDATE' },
+      ])
+      const table = await rows(
+        `select grantee, privilege_type from information_schema.role_table_grants
+         where table_name = 'worklog_days' and grantee in ('anon', 'authenticated')`,
+      )
+      expect(table).toEqual([{ grantee: 'authenticated', privilege_type: 'SELECT' }])
+    })
+
+    it('AC-1502.5: anon은 memo_font_pt를 읽기·넣기·upsert·고치기 모두 42501이고 줄은 그대로다', async () => {
+      await addDay(A)
+      await becomeAnon()
+      await expect(db.query(`select memo_font_pt from ${TABLE}`)).rejects.toMatchObject(NO_PERMISSION)
+      await expect(
+        db.query(`insert into ${TABLE} (work_date, memo_font_pt) values ($1, $2)`, ['2020-01-03', 14]),
+      ).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(upsertOne(MEMO_FONT), [DAY, 14])).rejects.toMatchObject(NO_PERMISSION)
+      await expect(db.query(`update ${TABLE} set memo_font_pt = 14`)).rejects.toMatchObject(NO_PERMISSION)
+      expect(await fontsOf(A)).toEqual([
+        { work_date: DAY, memo_font_pt: 11, bit_fields: [], total_fee: '100000', cash_in: null, memo: null },
+      ])
+    })
+
+    it('AC-1502.5: 다른 병원 줄의 memo_font_pt는 안 보이고, 고쳐도 0줄이며, 같은 날 upsert는 내 줄만 만든다', async () => {
+      await addDay(B)
+      await become(B)
+      await db.query(upsertOne(MEMO_FONT), [DAY, 14])
+      await become(A)
+      expect(await rows(`select memo_font_pt from ${TABLE}`)).toEqual([])
+      expect(await rows(`select memo_font_pt from ${TABLE} where hospital_id = $1`, [hospital[B]])).toEqual([])
+      const changed = await db.query(`update ${TABLE} set memo_font_pt = 8 where hospital_id = $1`, [hospital[B]])
+      expect(changed.affectedRows).toBe(0)
+      await db.query(upsertOne(MEMO_FONT), [DAY, 16])
+      expect(await fontsOf(A)).toMatchObject([{ work_date: DAY, memo_font_pt: 16, total_fee: null }])
+      expect(await fontsOf(B)).toEqual([
+        { work_date: DAY, memo_font_pt: 14, bit_fields: [], total_fee: '100000', cash_in: null, memo: null },
+      ])
+    })
+
+    it.each([
+      { label: '승인 대기', user: C },
+      { label: '거절', user: D },
+    ])(
+      'AC-1502.5: $label 병원 사용자는 memo_font_pt를 읽으면 0줄, 넣기·upsert는 42501, 고쳐도 0줄이고 줄은 그대로다',
+      async ({ user }) => {
+        await addDay(user)
+        await become(user)
+        expect(await rows(`select memo_font_pt from ${TABLE}`)).toEqual([])
+        await expect(
+          db.query(`insert into ${TABLE} (work_date, memo_font_pt) values ($1, $2)`, ['2020-01-03', 14]),
+        ).rejects.toMatchObject(NO_PERMISSION)
+        await expect(db.query(upsertOne(MEMO_FONT), [DAY, 14])).rejects.toMatchObject(NO_PERMISSION)
+        const changed = await db.query(`update ${TABLE} set memo_font_pt = 14`)
+        expect(changed.affectedRows).toBe(0)
+        expect(await fontsOf(user)).toEqual([
+          { work_date: DAY, memo_font_pt: 11, bit_fields: [], total_fee: '100000', cash_in: null, memo: null },
+        ])
+      },
+    )
   })
 })
