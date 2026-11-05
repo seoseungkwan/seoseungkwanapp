@@ -11,7 +11,7 @@
 //     matchMedia(query)     바꿔 끼우기(기본은 window.matchMedia). 없거나 던지면 폰 모양
 //     onChange({ tablet, picked })  폰 ↔ 태블릿이 바뀔 때. 폰이고 picked가 있으면 그 상세 길, 태블릿이면 sync(판) 뒤 목록 + 오른쪽을 그린다
 //   layout.view()           { lane, tablet, picked } → board.js renderBoard(host, 판, { ...layout.view(), … })
-//   layout.sync(판)          읽기 성공마다(poll draw). 아래 '고른 결과'
+//   layout.sync(판)          읽기 성공마다(poll draw). 아래 '고른 결과' 참고.
 //   layout.select(k, 판?)    태블릿 줄 누름(board onSelect)·폰 상세 길 열기(k), 폰 목록으로(null)
 //   layout.pickLane(칸, 판?)  칸 단추 누름(board onPick)
 //   layout.wipe()           끊김·숨김(poll wipe)
