@@ -1,0 +1,605 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>같은 처방 재방문 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 짜임: 시안 조작 줄 → 앱 화면 한 장(컴퓨터 폭 / 휴대폰 390px 틀, 틀 폭을 기준으로 모양이 바뀜) → 제가 정한 부분.
+   색·글자는 앱 globals.css 토큰 그대로. 앱은 밝은 화면만 쓴다(UI_GUIDE 원칙 1)라서 이 시안도 밝은 화면 하나로 고정한다 */
+:root {
+  color-scheme: light;
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --faint: #9CA3AF; --muted: #6B7280; --ink-2: #374151; --ink: #111827;
+  --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --negative: #C2410C; --warning: #B45309; --warning-soft: #FDF4E3;
+  --r-control: 4px; --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / .06), 0 6px 16px rgb(17 24 39 / .1);
+  --font-ui: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
+  --hatch-accent: repeating-linear-gradient(45deg, var(--accent) 0 1px, var(--accent-soft) 1px 4px);
+  --hatch-warn: repeating-linear-gradient(45deg, var(--warning) 0 1px, var(--warning-soft) 1px 4px);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--canvas); }
+body { color: var(--ink); font: 14px/22px var(--font-ui); font-variant-numeric: tabular-nums; word-break: keep-all; overflow-x: clip; }
+button, input { font: inherit; color: inherit; letter-spacing: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.outer { max-width: 1320px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; font-size: 12px; line-height: 16px; font-weight: 500; border-radius: var(--r-control); border: 1px solid transparent; white-space: nowrap; }
+.chip.accent { background: var(--accent-soft); color: var(--accent-strong); }
+.chip.warn { background: var(--warning-soft); color: var(--warning); }
+.chip.neutral { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+
+/* 맨 위 안내 */
+.intro { display: grid; gap: 4px; max-width: 76ch; }
+.intro-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 20px; line-height: 28px; font-weight: 600; text-wrap: balance; }
+.intro p { font-size: 14px; line-height: 22px; color: var(--ink-2); }
+
+/* 시안 조작 줄 */
+.mock-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+.mock-bar .say { flex-basis: 100%; font-size: 13px; line-height: 20px; color: var(--muted); }
+.mgroup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.mgroup > span { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink-2); }
+.seg { display: inline-flex; flex-shrink: 0; overflow: clip; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); }
+.seg button { height: 32px; padding: 0 12px; border-left: 1px solid var(--line-strong); font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.seg button:first-child { border-left: 0; }
+.seg button:hover { background: var(--canvas); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.seg button:focus-visible { outline-offset: -2px; }
+.mock-state { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+
+/* 앱 화면 틀: 이 틀의 폭을 기준으로 모양이 바뀐다 */
+.stage { margin-top: 16px; }
+.device { container: app / inline-size; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); overflow: clip; }
+.stage[data-device="phone"] .device { width: 390px; max-width: 100%; border-color: var(--line-strong); }
+.device-cap { margin-bottom: 6px; text-align: center; font-size: 12px; line-height: 16px; color: var(--muted); }
+.stage[data-device="pc"] .device-cap { text-align: left; }
+
+/* 여기부터 앱 화면(처방 골라 보기 시안과 같은 모양) */
+.page { padding: 24px; }
+.page h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+h2, h3 { font-size: 16px; line-height: 24px; font-weight: 600; text-wrap: balance; }
+.small { font-size: 13px; line-height: 20px; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+.periodbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-strong); }
+.range { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.range b { color: var(--ink); font-weight: 600; }
+.source { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.above { margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--muted); }
+.below { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--muted); }
+
+.picker { padding-top: 24px; border-top: 1px solid var(--line-strong); }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.desc { width: 100%; font-size: 13px; line-height: 20px; color: var(--muted); }
+.search { position: relative; max-width: 480px; margin-top: 12px; }
+.search label { display: block; margin-bottom: 4px; font-size: 13px; line-height: 20px; font-weight: 600; }
+.search input { display: block; width: 100%; height: 44px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-control); }
+.search input:hover { border-color: var(--muted); }
+.search input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.search input::placeholder { color: var(--muted); }
+.help { margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.drop { position: absolute; z-index: 5; left: 0; right: 0; top: 74px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev-float); overflow: hidden; }
+.drop ul { max-height: 264px; overflow-y: auto; }
+.opt { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; align-items: center; gap: 8px; min-height: 44px; padding: 4px 12px; cursor: pointer; font-size: 14px; }
+.opt:hover, .opt.on { background: var(--canvas); }
+.opt .tick { font-size: 12px; font-weight: 500; color: var(--accent-strong); text-align: right; }
+.none { padding: 12px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.drop-foot { display: flex; justify-content: flex-end; padding: 0 12px; border-top: 1px solid var(--line); }
+.drop-foot button { min-height: 44px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.cd { margin-left: 6px; font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; }
+
+.picked { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.pill { display: inline-flex; align-items: center; height: 32px; padding-left: 10px; background: var(--accent-soft); border-radius: var(--r-control); font-size: 13px; font-weight: 500; color: var(--accent-strong); }
+.pill button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--accent-strong); }
+.pill button:focus-visible { outline-offset: -2px; }
+.textbtn { display: inline-flex; align-items: center; min-height: 32px; font-size: 13px; font-weight: 500; color: var(--accent-strong); }
+.textbtn:hover { text-decoration: underline; }
+.empty { margin-top: 16px; padding: 16px 0; border-top: 1px solid var(--line); }
+.empty b { display: block; font-weight: 600; }
+
+/* 지금 있는 건수 표(줄여서) */
+.sub-label { margin-top: 16px; font-size: 13px; line-height: 20px; font-weight: 600; }
+.sub-label span { margin-left: 6px; font-weight: 400; color: var(--muted); }
+.cols, .row { display: grid; grid-template-columns: minmax(160px, 1fr) 72px 96px 148px 120px 120px; column-gap: 12px; }
+.cols { align-items: center; height: 36px; margin-top: 4px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--muted); }
+.cols span { text-align: right; }
+.cols span:first-child, .cols .left { text-align: left; }
+.row { padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.c-name { min-width: 0; }
+.nm { font-weight: 600; }
+.c-count { text-align: right; font-weight: 600; }
+.c-prev, .c-new, .c-ret { text-align: right; font-size: 13px; color: var(--ink-2); }
+.c-delta { font-size: 13px; font-weight: 600; }
+.c-new b, .c-ret b { font-weight: 600; color: var(--ink); }
+.lb { display: none; color: var(--muted); }
+.up { color: var(--positive); } .down { color: var(--negative); } .flat { color: var(--muted); }
+
+/* 새 칸: 같은 처방 재방문 */
+.again { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line-strong); }
+.ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.ctl-label { font-size: 13px; line-height: 20px; font-weight: 600; }
+.how { margin-top: 12px; max-width: 72ch; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.how b { margin-right: 6px; font-weight: 600; color: var(--ink); }
+.eg { margin-top: 8px; max-width: 560px; }
+.eg > summary { display: inline-flex; align-items: center; min-height: 32px; font-size: 13px; font-weight: 500; color: var(--accent-strong); cursor: pointer; }
+.tl { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); margin-top: 4px; }
+.tl li { display: grid; justify-items: center; gap: 4px; padding: 6px 0; border-left: 1px solid var(--line); font-size: 12px; line-height: 16px; color: var(--muted); }
+.tl li:first-child { border-left: 0; }
+.tl li i { display: block; width: 12px; height: 12px; border: 1px solid var(--line-strong); border-radius: 2px; }
+.tl li.got i { background: var(--accent); border-color: var(--accent); }
+.tl li.start span { font-weight: 600; color: var(--ink); }
+.tl li.late { color: var(--faint); }
+.tl li.late.got i { background: var(--surface); border: 1px dashed var(--muted); }
+.tl-win { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.tl-win span { grid-column: 2 / 9; padding-top: 2px; border-top: 2px solid var(--accent); text-align: center; font-size: 12px; line-height: 16px; color: var(--accent-strong); font-weight: 500; }
+.eg p { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+
+.base { margin-top: 16px; max-width: 80ch; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.strip { display: flex; gap: 1px; height: 12px; margin-top: 8px; }
+.strip i { display: block; height: 100%; min-width: 2px; }
+.k-ok { background: var(--accent); }
+.k-no { background: var(--hatch-warn); outline: 1px solid var(--warning); outline-offset: -1px; }
+.k-out { background: var(--line); }
+.strip-ends { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.sw { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.sw i { width: 10px; height: 10px; border-radius: 1px; }
+
+.ag-cols, .ag-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.5fr) 136px 132px 112px; column-gap: 16px; align-items: center; }
+.ag-cols { height: 36px; margin-top: 16px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--muted); }
+.ag-cols span { text-align: right; }
+.ag-cols span:first-child, .ag-cols .left { text-align: left; }
+.ag-row { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.a-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.a-name .cd { margin-left: 0; }
+.a-rate { display: flex; align-items: center; gap: 12px; }
+.a-rate .v { min-width: 60px; font-size: 16px; line-height: 24px; font-weight: 600; text-align: right; white-space: nowrap; }
+.a-rate .tag { display: none; font-size: 13px; color: var(--muted); }
+.meter { display: block; flex: 1 1 auto; min-width: 0; height: 6px; background: var(--line); border-radius: 1px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); }
+.a-of, .a-wait { text-align: right; font-size: 13px; line-height: 20px; color: var(--ink-2); white-space: nowrap; }
+.a-wait { color: var(--muted); }
+.a-avg { text-align: right; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.ag-row.few .a-rate .v, .ag-row.few .a-avg { color: var(--muted); }
+.ag-row.few .meter i { background: var(--hatch-accent); outline: 1px solid var(--accent); outline-offset: -1px; }
+.ag-row.zero .a-rate .v, .ag-row.zero .a-avg { color: var(--muted); }
+.ag-empty { margin-top: 12px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.notes { margin-top: 12px; display: grid; gap: 4px; max-width: 76ch; font-size: 13px; line-height: 20px; color: var(--muted); }
+.notes b { margin-right: 6px; font-weight: 600; color: var(--ink-2); }
+
+/* 900px 아래: 표 한 줄이 여러 줄로 쌓인다 */
+@container app (max-width: 899px) {
+  .cols, .ag-cols { display: none; }
+  .row { grid-template-columns: 1fr 1fr; column-gap: 8px; row-gap: 2px; padding: 12px 0; }
+  .c-name { grid-column: 1 / 3; }
+  .c-count { grid-column: 1; grid-row: 2 / span 2; align-self: center; text-align: left; font-size: 20px; line-height: 28px; }
+  .c-prev { grid-column: 2; grid-row: 2; }
+  .c-delta { grid-column: 2; grid-row: 3; text-align: right; }
+  .c-new { grid-column: 1; grid-row: 4; text-align: left; margin-top: 4px; }
+  .c-ret { grid-column: 2; grid-row: 4; margin-top: 4px; }
+  .lb { display: inline; }
+  .ag-row { grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 6px; padding: 14px 0; }
+  .a-name { grid-column: 1 / -1; }
+  .a-rate { grid-column: 1; grid-row: 2; display: flex; align-items: baseline; gap: 6px; }
+  .a-rate .v { min-width: 0; font-size: 24px; line-height: 32px; letter-spacing: -.01em; text-align: left; }
+  .a-rate .tag { display: inline; }
+  .a-rate .meter { display: none; }
+  .a-avg { grid-column: 2; grid-row: 2; align-self: baseline; font-size: 16px; line-height: 24px; }
+  .a-bar { grid-column: 1 / -1; grid-row: 3; }
+  .a-of { grid-column: 1; grid-row: 4; text-align: left; }
+  .a-wait { grid-column: 2; grid-row: 4; }
+}
+.a-bar { display: none; }
+@container app (max-width: 899px) { .a-bar { display: block; } }
+@container app (max-width: 767px) {
+  .page { padding: 16px; }
+  .periodbar { flex-direction: column; align-items: stretch; }
+  .periodbar .seg { display: grid; width: 100%; grid-template-columns: repeat(4, 1fr); }
+  .periodbar .seg button { height: 44px; padding: 0 4px; }
+  .ctl .seg { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); }
+  .ctl .seg button { height: 44px; padding: 0 4px; }
+  .search { max-width: none; }
+  .search input { font-size: 16px; }
+  .pill { height: 44px; }
+  .pill button { width: 44px; height: 44px; }
+  .textbtn, .eg > summary { min-height: 44px; }
+}
+@media (max-width: 767px) {
+  .mgroup { width: 100%; }
+  .mgroup > span { width: 100%; }
+  .mgroup .seg { display: grid; width: 100%; grid-auto-flow: column; grid-auto-columns: 1fr; }
+  .mgroup .seg button { height: 44px; padding: 0 4px; }
+}
+
+/* 제가 정한 부분 */
+.mine { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line-strong); max-width: 76ch; }
+.mine h2 + p { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.mine ol { margin-top: 12px; display: grid; gap: 8px; counter-reset: pick; }
+.mine li { padding-left: 12px; border-left: 2px solid var(--line-strong); font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.mine li b { font-weight: 600; color: var(--ink); }
+.mine li.key { border-left-color: var(--warning); }
+.ask { margin-top: 24px; padding: 12px 16px; background: var(--warning-soft); font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.ask b { display: block; font-weight: 600; color: var(--warning); }
+</style>
+
+<div class="outer">
+  <header class="intro">
+    <p class="intro-title"><span class="chip accent">예시</span>같은 처방 재방문 시안</p>
+    <p>말씀하신 FU률을 통계 탭 '처방 골라 보기' 안에 넣어 본 모습이에요. ESWT7을 고르면, 그 처방을 시작한 환자 가운데 7일·14일·30일 안에 같은 처방을 또 받은 사람이 몇 %인지, 평균 몇 번 더 받았는지 보여 드려요.</p>
+    <p class="muted small">숫자와 처방 이름은 모두 지어낸 예시예요. 실제 환자 자료는 쓰지 않았어요.</p>
+  </header>
+
+  <div class="mock-bar" role="group" aria-label="시안 조작">
+    <p class="say">시안에서만 보이는 줄이에요. 눌러서 모습을 바꿔 보세요.</p>
+    <div class="mgroup"><span>화면 크기</span>
+      <div class="seg" id="m-device"><button type="button" data-device="pc">컴퓨터</button><button type="button" data-device="phone">휴대폰 (390)</button></div>
+    </div>
+    <div class="mgroup"><span>고른 처방</span>
+      <div class="seg" id="m-preset"><button type="button" data-preset="0">없음</button><button type="button" data-preset="1">1개</button><button type="button" data-preset="2">2개</button></div>
+    </div>
+    <div class="mgroup"><span>파일 넣은 방법</span>
+      <div class="seg" id="m-files"><button type="button" data-monthly="0">한 번에 같이</button><button type="button" data-monthly="1">달마다 따로</button></div>
+    </div>
+  </div>
+  <p class="mock-state" id="mock-state"></p>
+
+  <div class="stage" id="stage" data-device="pc">
+    <p class="device-cap" id="device-cap"></p>
+    <div class="device">
+      <main class="page">
+        <h1>통계</h1>
+        <div class="periodbar">
+          <div class="seg" id="periods" role="group" aria-label="기간"></div>
+          <div class="range" id="range"></div>
+        </div>
+        <p class="source">자료: 파일 · 11월 5일 08:40 저장</p>
+        <p class="above">이 위에 기간 요약 · 환자 수 추이 · 신환 재방문율 · 처방 추세가 그대로 있어요.</p>
+
+        <section class="picker" id="picker">
+          <div class="head">
+            <h2>처방 골라 보기</h2>
+            <p class="desc">고른 처방만 건수와 신환률·재진률, 같은 처방 재방문을 봐요</p>
+          </div>
+          <div class="search" id="search">
+            <label for="q">처방 찾기</label>
+            <input id="q" type="text" role="combobox" aria-expanded="false" aria-controls="list" aria-autocomplete="list" autocomplete="off" placeholder="이름이나 코드를 적어 주세요">
+            <p class="help">불러온 숫자에 있는 처방만 찾아요. 고른 처방은 다음에도 남아요.</p>
+            <div class="drop" id="drop" hidden>
+              <ul id="list" role="listbox" aria-label="찾은 처방" aria-multiselectable="true"></ul>
+              <div class="drop-foot"><button type="button" id="drop-close">닫기</button></div>
+            </div>
+          </div>
+          <div id="result"></div>
+        </section>
+
+        <p class="below">이 아래에 원장님 보고 문장 · 요일별 환자 수가 그대로 있어요.</p>
+      </main>
+    </div>
+  </div>
+
+  <section class="mine" aria-labelledby="mine-h">
+    <h2 id="mine-h">제가 정한 부분</h2>
+    <p>요청에 없어서 제가 정했어요. 바꾸고 싶은 것만 번호로 말씀해 주세요.</p>
+    <ol>
+      <li class="key"><b>1. 누구를 셀지.</b> 기간 안에 그 처방을 새로 시작한 환자를 세요. 새로 시작은 앞 30일 동안 같은 처방을 받지 않은 날이에요. 두 달 쉬었다가 다시 시작하면 한 번 더 세요. '기간 안에 처음 받은 날'로 세는 방법도 있지만, 그건 의원 PC에서 막 불러온 화면에서만 셀 수 있고 휴대폰에서는 볼 수 없어요.</li>
+      <li><b>2. 다시 받음.</b> 시작한 다음 날부터 7일(14일·30일) 안에 같은 처방을 한 번이라도 또 받으면 '다시 받음'이에요.</li>
+      <li><b>3. 같은 처방.</b> 처방 코드가 같아야 같은 처방이에요. 도수치료20을 받고 다음에 도수치료30을 받으면 다시 받은 것으로 치지 않아요. 묶어서 보고 싶은 처방이 있으면 말씀해 주세요.</li>
+      <li><b>4. 같은 날 두 번.</b> 하루에 두 번 받아도 1번으로 쳐요.</li>
+      <li class="key"><b>5. 평균 몇 번 더.</b> 더 받은 날 수를 모두 더해 시작한 환자 수로 나눠요. 다시 오지 않은 환자(0번)도 같이 나눠요. 다시 온 환자만으로 나누면 숫자가 더 커져요.</li>
+      <li><b>6. 기간 단추와 7·14·30일.</b> 기간 단추는 '시작한 날'을 고르고, 7·14·30일은 시작하고 며칠을 지켜볼지 골라요. 지켜볼 날이 아직 다 지나지 않은 날은 빼요. 그래서 30일을 누르면 센 환자 수가 줄어요.</li>
+      <li><b>7. 기간이 짧을 때.</b> 최근 7일, 그리고 최근 30일에서 30일을 고르면 셀 수 있는 날이 없어요. 이때는 지켜볼 날이 다 지난 가장 최근의 같은 길이 기간으로 봐요. 위쪽 신환 재방문율이 최근 30일에서 하는 방식과 같아요. '아직 셀 수 없어요'만 보여 드리는 쪽으로 바꿀 수도 있어요.</li>
+      <li><b>8. 적은 수.</b> 시작한 환자가 10명보다 적으면 숫자는 보여 드리되 흐리게 하고 '10명 미만' 표시를 붙여요. 0명이면 –로 보여요. 견인치료를 찾아 골라 보시면 보여요.</li>
+      <li><b>9. 합계 줄.</b> 넣지 않았어요. 서로 다른 처방을 더하면 '같은 처방을 다시 받음'의 뜻이 흐려져요.</li>
+      <li><b>10. 지난 기간과 견주기.</b> 늘었는지 줄었는지는 넣지 않았어요. 필요하면 건수 표처럼 지난 기간 칸을 더할 수 있어요.</li>
+      <li><b>11. 처음 열 때.</b> '7일 안'으로 열려요. 고른 날 수는 다음에 열어도 남아요.</li>
+      <li><b>12. 숫자 자리.</b> 비율과 평균 모두 소수 첫째 자리까지 쓰고 나머지는 버려요. 앱의 다른 숫자와 같아요.</li>
+      <li><b>13. 자리.</b> 처방 골라 보기 안, 건수 표 바로 아래예요. 위에서 고른 처방을 그대로 써서 따로 고를 필요가 없어요.</li>
+      <li><b>14. 휴대폰 모양.</b> 처방 하나를 네 줄로 쌓았어요. 옆으로 밀지 않아요.</li>
+    </ol>
+    <div class="ask">
+      <b>먼저 정해 주시면 좋은 것: 1번과 5번</b>
+      누구를 셀지(새로 시작한 환자)와 평균을 누구로 나눌지(시작한 환자 모두)가 숫자를 가장 크게 바꿔요.
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var DAY = 864e5;
+  var ymd = function (s) { var p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); };
+  var START = ymd('2024-11-01'), LAST = ymd('2026-11-04');
+  var COUNT = Math.round((LAST - START) / DAY) + 1, END = COUNT - 1;
+  var at = function (i) { return new Date(START + i * DAY); };
+  var ix = function (s) { return Math.round((ymd(s) - START) / DAY); };
+  var weekday = function (i) { return at(i).getUTCDay(); };
+  var monthOf = function (i) { var d = at(i); return d.getUTCFullYear() * 12 + d.getUTCMonth(); };
+  var WINDOWS = [7, 14, 30];
+  var DAY_FACTOR = [0, 1.15, 1, 1, .95, 1, .7]; // 일요일은 쉰다
+
+  // 지어낸 처방과 지어낸 환자 흐름. 한 환자의 한 번 치료 = 시작한 날 + 띄엄띄엄 더 받은 날
+  var RX = [
+    { code: 'T3107', name: 'ESWT7', starts: 3.4, pNo: .30, kMin: 1, kMax: 5, gMin: 4, gMax: 8, pLate: .2, lMin: 12, lMax: 27, pNew: .30 },
+    { code: 'T1030', name: '도수치료30', starts: 2.3, pNo: .22, kMin: 2, kMax: 9, gMin: 2, gMax: 5, pLate: .12, lMin: 9, lMax: 25, pNew: .26 },
+    { code: 'T1020', name: '도수치료20', starts: 1.5, pNo: .28, kMin: 1, kMax: 7, gMin: 3, gMax: 6, pLate: .12, lMin: 9, lMax: 25, pNew: .22 },
+    { code: 'T3105', name: 'ESWT5', starts: 1.1, pNo: .38, kMin: 1, kMax: 4, gMin: 5, gMax: 10, pLate: .2, lMin: 12, lMax: 28, pNew: .10 },
+    { code: 'T4001', name: '견인치료', starts: .24, pNo: .45, kMin: 1, kMax: 4, gMin: 1, gMax: 6, pLate: .15, lMin: 8, lMax: 24, pNew: .15 },
+    { code: 'T5001', name: '초음파', starts: 2.0, pNo: .50, kMin: 1, kMax: 5, gMin: 1, gMax: 4, pLate: .1, lMin: 8, lMax: 25, pNew: .17 },
+    { code: 'J2002', name: '프롤로주사', starts: .7, pNo: .35, kMin: 1, kMax: 3, gMin: 10, gMax: 21, pLate: 0, lMin: 0, lMax: 0, pNew: .06 },
+    { code: 'T6001', name: '냉동치료', starts: .3, pNo: .70, kMin: 1, kMax: 2, gMin: 2, gMax: 8, pLate: .1, lMin: 10, lMax: 25, pNew: .16 }
+  ];
+  var BY_CODE = {};
+  var SORTED = RX.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'ko'); });
+  var zeros = function () { var a = new Array(COUNT); for (var i = 0; i < COUNT; i++) a[i] = 0; return a; };
+
+  function random(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  RX.forEach(function (rx, k) {
+    var rnd = random(5077 + k * 131);
+    rx.c = zeros(); rx.n = zeros(); rx.s = zeros(); rx.back = {}; rx.more = {};
+    WINDOWS.forEach(function (w) { rx.back[w] = zeros(); rx.more[w] = zeros(); });
+    for (var i = 0; i < COUNT; i++) {
+      var f = DAY_FACTOR[weekday(i)];
+      if (!f) continue;
+      var howMany = Math.floor(rx.starts * f * (.7 + .6 * rnd()) + rnd());
+      for (var j = 0; j < howMany; j++) {
+        var days = [i];
+        if (rnd() >= rx.pNo) {
+          var times = rx.kMin + Math.floor(rnd() * (rx.kMax - rx.kMin + 1)), d = i;
+          var late = rnd() < rx.pLate; // 첫 재방문이 늦은 환자(2~4주 뒤)
+          for (var m = 0; m < times; m++) {
+            d += m === 0 && late ? rx.lMin + Math.floor(rnd() * (rx.lMax - rx.lMin + 1)) : rx.gMin + Math.floor(rnd() * (rx.gMax - rx.gMin + 1));
+            if (d <= END && weekday(d) === 0) d++;
+            if (d > END) break;
+            days.push(d);
+          }
+        }
+        rx.s[i]++;
+        if (rnd() < rx.pNew) rx.n[i]++;
+        for (var q = 0; q < days.length; q++) rx.c[days[q]]++;
+        for (var wi = 0; wi < WINDOWS.length; wi++) {
+          var w = WINDOWS[wi], more = 0;
+          for (q = 1; q < days.length; q++) if (days[q] - i <= w) more++;
+          if (more) rx.back[w][i]++;
+          rx.more[w][i] += more;
+        }
+      }
+    }
+    BY_CODE[rx.code] = rx;
+  });
+
+  var PERIODS = {
+    '7d': { name: '최근 7일', from: '2026-10-29', to: '2026-11-04', pf: '2026-10-22', pt: '2026-10-28', col: '지난 7일', label: '10월 29일 – 11월 4일', pl: '10월 22일 – 10월 28일', end: '어제까지' },
+    '30d': { name: '최근 30일', from: '2026-10-06', to: '2026-11-04', pf: '2026-09-06', pt: '2026-10-05', col: '지난 30일', label: '10월 6일 – 11월 4일', pl: '9월 6일 – 10월 5일', end: '어제까지' },
+    '90d': { name: '최근 90일', from: '2026-08-07', to: '2026-11-04', pf: '2026-05-09', pt: '2026-08-06', col: '지난 90일', label: '8월 7일 – 11월 4일', pl: '5월 9일 – 8월 6일', end: '어제까지' },
+    '12m': { name: '최근 12개월', from: '2025-12-01', to: '2026-11-04', pf: '2024-12-01', pt: '2025-11-04', col: '작년 같은 때', label: '2025년 12월 – 2026년 11월', pl: '2024년 12월 – 2025년 11월', end: '11월은 4일까지' }
+  };
+  var PRESETS = { '0': [], '1': ['T3107'], '2': ['T3107', 'T1030'] };
+
+  var state = {
+    device: window.matchMedia('(min-width: 900px)').matches ? 'pc' : 'phone',
+    period: '30d', win: 7, monthly: false, picks: PRESETS['2'].slice(), active: -1
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
+  var fmt = function (n) { return n.toLocaleString('ko-KR'); };
+  var cut = function (v) { return Math.floor(v * 1000 + 1e-9) / 10; };
+  var rate = function (part, all) { return all === 0 ? '–' : cut(part / all).toFixed(1) + '%'; };
+  var D = function (i) { var d = at(i), y = d.getUTCFullYear(); return (y !== 2026 ? y + '년 ' : '') + (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일'; };
+
+  // ── 지금 있는 건수 표 ──
+  function sumC(rx, from, to) {
+    var c = 0, n = 0;
+    for (var i = Math.max(0, from); i <= Math.min(END, to); i++) { c += rx.c[i]; n += rx.n[i]; }
+    return { c: c, n: n, r: c - n };
+  }
+  function delta(cur, prev) {
+    if (cur === prev) return { text: '변화 없음', tone: 'flat', arrow: '' };
+    if (prev === 0) return { text: '새로 생김', tone: 'flat', arrow: '' };
+    var d = cur - prev, up = d > 0;
+    return { text: fmt(Math.abs(d)) + '건 (' + (up ? '+' : '−') + cut(Math.abs(d) / prev).toFixed(1) + '%)', tone: up ? 'up' : 'down', arrow: up ? '↑ ' : '↓ ' };
+  }
+  function countRow(rx) {
+    var p = PERIODS[state.period];
+    var t = sumC(rx, ix(p.from), ix(p.to)), pv = sumC(rx, ix(p.pf), ix(p.pt)).c, d = delta(t.c, pv);
+    return '<li class="row"><span class="c-name"><span class="nm">' + esc(rx.name) + '</span><span class="cd">' + rx.code + '</span></span>' +
+      '<span class="c-count">' + fmt(t.c) + '건</span>' +
+      '<span class="c-prev"><span class="lb">' + p.col + ' </span>' + fmt(pv) + '건</span>' +
+      '<span class="c-delta ' + d.tone + '">' + (d.arrow ? '<span aria-hidden="true">' + d.arrow + '</span>' : '') + esc(d.text) + '</span>' +
+      '<span class="c-new"><span class="lb">신환 </span>' + fmt(t.n) + '건 · <b>' + rate(t.n, t.c) + '</b></span>' +
+      '<span class="c-ret"><span class="lb">재진 </span>' + fmt(t.r) + '건 · <b>' + rate(t.r, t.c) + '</b></span></li>';
+  }
+
+  // ── 새 칸: 같은 처방 재방문 ──
+  // 기간 단추 = 시작한 날, 7·14·30일 = 지켜볼 날. 지켜볼 날이 다 지나지 않은 시작일은 뺀다.
+  // 기간 전체가 다 빠지면(최근 7일, 최근 30일 + 30일) 지켜볼 날이 다 지난 가장 최근의 같은 길이 기간으로 옮긴다
+  function fuRange(w) {
+    var p = PERIODS[state.period], from = ix(p.from), to = ix(p.to), len = to - from + 1, shift = to - w < from;
+    return { from: from, to: to, len: len, shift: shift, sFrom: shift ? to - w - len + 1 : from, sTo: shift ? to - w : to };
+  }
+  // 달마다 따로 넣으면 시작한 날과 지켜볼 마지막 날이 같은 파일(같은 달)에 있어야 이어서 셀 수 있다
+  function countable(i, w) { return i + w <= END && (!state.monthly || monthOf(i) === monthOf(i + w)); }
+  function fu(rx, r, w) {
+    var o = { base: 0, back: 0, more: 0, wait: 0 }, i;
+    for (i = r.sFrom; i <= r.sTo; i++) {
+      if (countable(i, w)) { o.base += rx.s[i]; o.back += rx.back[w][i]; o.more += rx.more[w][i]; }
+      else o.wait += rx.s[i];
+    }
+    if (r.shift) for (i = r.from; i <= r.to; i++) o.wait += rx.s[i];
+    return o;
+  }
+  function runsOf(r, w) {
+    var runs = [], from = r.shift ? r.sFrom : r.from;
+    for (var i = from; i <= r.to; i++) {
+      var k = i >= r.sFrom && i <= r.sTo ? (countable(i, w) ? 'ok' : 'no') : (i >= r.from ? 'no' : 'out');
+      var last = runs[runs.length - 1];
+      if (last && last.k === k) { last.n++; last.to = i; } else runs.push({ k: k, n: 1, from: i, to: i });
+    }
+    return runs;
+  }
+  function baseText(r, w) {
+    var p = PERIODS[state.period], t;
+    if (r.shift) {
+      t = p.name + '(' + D(r.from) + ' – ' + D(r.to) + ')에 시작한 환자는 아직 ' + w + '일이 다 지나지 않았어요. 그래서 ' + w + '일이 다 지난 가장 최근 ' + r.len + '일, <b>' + D(r.sFrom) + ' – ' + D(r.sTo) + '</b>에 시작한 환자로 봤어요.';
+    } else {
+      t = '<b>' + D(r.from) + ' – ' + D(r.to - w) + '</b>에 시작한 환자로 셌어요. 시작하고 ' + w + '일이 안 지난 ' + D(r.to - w + 1) + ' – ' + D(r.to) + '은 아직 셀 수 없어요.';
+    }
+    if (state.monthly) t += ' 파일을 달마다 따로 넣어서, 달 끝 무렵에 시작해 다음 달로 넘어가는 날도 셀 수 없어요.';
+    return t;
+  }
+  function stripHtml(r, w) {
+    var runs = runsOf(r, w), ok = 0, no = 0, out = 0;
+    runs.forEach(function (x) { if (x.k === 'ok') ok += x.n; else if (x.k === 'no') no += x.n; else out += x.n; });
+    var from = runs[0].from;
+    var sw = function (cls, text) { return '<span class="sw"><i class="' + cls + '"></i>' + text + '</span>'; };
+    return '<div class="strip" aria-hidden="true">' + runs.map(function (x) { return '<i class="k-' + x.k + '" style="flex-grow:' + x.n + '"></i>'; }).join('') + '</div>' +
+      '<div class="strip-ends" aria-hidden="true"><span>' + D(from) + '</span><span>' + D(r.to) + '</span></div>' +
+      '<div class="legend">' + sw('k-ok', '센 날 ' + ok + '일') + sw('k-no', '아직 셀 수 없는 날 ' + no + '일') + (out ? sw('k-out', '기간 밖 ' + out + '일') : '') + '</div>';
+  }
+  function agRow(rx, r, w) {
+    var o = fu(rx, r, w), few = o.base > 0 && o.base < 10, zero = o.base === 0;
+    var pct = zero ? null : cut(o.back / o.base);
+    var avg = zero ? null : Math.floor(o.more / o.base * 10 + 1e-9) / 10;
+    var bar = '<span class="meter" aria-hidden="true"><i style="width:' + (pct || 0) + '%"></i></span>';
+    return '<li class="ag-row' + (few ? ' few' : '') + (zero ? ' zero' : '') + '">' +
+      '<span class="a-name"><span class="nm">' + esc(rx.name) + '</span><span class="cd">' + rx.code + '</span>' + (few ? '<span class="chip neutral">10명 미만</span>' : '') + '</span>' +
+      '<span class="a-rate"><span class="v">' + (zero ? '–' : pct.toFixed(1) + '%') + '</span><span class="tag">다시 받음</span>' + bar + '</span>' +
+      '<span class="a-bar">' + bar + '</span>' +
+      '<span class="a-of">' + (zero ? '시작한 환자 0명' : fmt(o.base) + '명 중 ' + fmt(o.back) + '명') + '</span>' +
+      '<span class="a-avg">' + (zero ? '–' : '평균 ' + avg.toFixed(1) + '번 더') + '</span>' +
+      '<span class="a-wait">' + '<span class="lb">아직 셀 수 없음 </span>' + fmt(o.wait) + '명</span></li>';
+  }
+
+  function againHtml(picks) {
+    var w = state.win, r = fuRange(w);
+    var head = '<div class="head"><h3>같은 처방 재방문</h3><span class="chip accent">새 칸</span>' +
+      '<p class="desc">고른 처방을 시작한 환자가 같은 처방을 다시 받으러 왔는지 봐요</p></div>';
+    if (picks.length === 0) return '<section class="again" aria-label="같은 처방 재방문">' + head + '<p class="ag-empty">처방을 고르면 7일·14일·30일 안에 같은 처방을 다시 받은 환자가 여기 보여요.</p></section>';
+    var ctl = '<div class="ctl"><span class="ctl-label" id="win-label">시작하고</span><div class="seg" role="group" aria-labelledby="win-label">' +
+      WINDOWS.map(function (x) { return '<button type="button" data-win="' + x + '" aria-pressed="' + (x === w) + '">' + x + '일 안</button>'; }).join('') + '</div></div>';
+    var how = '<p class="how"><b>어떻게 세나요</b>기간 안에 그 처방을 새로 시작한 환자를 모아, 다음 날부터 ' + w + '일 안에 같은 처방을 또 받았는지 봐요. 새로 시작한 날은 앞 30일 동안 그 처방을 받지 않은 날이에요.</p>';
+    var eg = '<details class="eg" id="eg"' + (state.egOpen ? ' open' : '') + '><summary>한 환자로 예를 들면 (7일 안)</summary>' +
+      '<ol class="tl" aria-label="한 환자의 9일">' +
+      ['시작', '1일째', '2일째', '3일째', '4일째', '5일째', '6일째', '7일째', '8일째'].map(function (label, i) {
+        var got = i === 0 || i === 3 || i === 6 || i === 8;
+        return '<li class="' + (i === 0 ? 'start ' : '') + (i === 8 ? 'late ' : '') + (got ? 'got' : '') + '"><span>' + label + '</span><i aria-label="' + (got ? 'ESWT7 받음' : '안 옴') + '"></i></li>';
+      }).join('') + '</ol><div class="tl-win" aria-hidden="true"><span>지켜보는 7일</span></div>' +
+      '<p>ESWT7을 시작하고 3일째와 6일째에 또 받았어요. 7일 안에 2번 더 받았으니 다시 받은 환자 1명, 더 받은 횟수 2번으로 들어가요. 8일째에 받은 것은 7일이 지난 뒤라 7일 안에는 넣지 않아요.</p></details>';
+    var anyFew = picks.some(function (rx) { var o = fu(rx, r, w); return o.base > 0 && o.base < 10; });
+    var cols = '<div class="ag-cols" aria-hidden="true"><span>처방</span><span class="left">' + w + '일 안 재방문율</span><span>시작한 환자 중</span><span>더 받은 횟수</span><span>아직 셀 수 없음</span></div>';
+    var notes = '<div class="notes">' +
+      '<p><b>아직 셀 수 없는 날</b>시작하고 ' + w + '일이 다 지나야 셀 수 있어요. 날이 지나고 새 자료를 넣으면 채워져요.</p>' +
+      '<p><b>파일을 따로 넣을 때</b>앞 파일 끝 무렵에 시작한 환자가 뒤 파일에서 다시 받은 것은 이어서 세지 못해요. 두 파일을 한 번에 같이 넣으면 이어서 세요. 비트 PC에서 불러오면 불러온 기간 안에서 이어서 세요.</p>' +
+      '<p><b>자료 첫 30일</b>그 전 기록이 없어서, 전부터 받던 환자도 새로 시작한 것처럼 잡힐 수 있어요.</p>' +
+      (anyFew ? '<p><b>10명 미만</b>시작한 환자가 적으면 한두 명에 비율이 크게 바뀌어요. 참고만 해 주세요.</p>' : '') +
+      '<p><b>신환 재방문율과 달라요</b>위쪽 신환 재방문율은 처음 온 환자가 아무 진료로나 다시 온 비율이에요. 이 칸은 신환·재진 모두, 고른 처방을 다시 받았는지만 봐요.</p>' +
+      '<p><b>환자 번호</b>의원 PC 밖으로 나가지 않아요. 자료를 넣을 때 그 PC 안에서 세고, 날마다 몇 명인지만 저장해요.</p></div>';
+    return '<section class="again" aria-label="같은 처방 재방문">' + head + ctl + how + eg +
+      '<p class="base">' + baseText(r, w) + '</p>' + stripHtml(r, w) +
+      cols + '<ul>' + picks.map(function (rx) { return agRow(rx, r, w); }).join('') + '</ul>' + notes + '</section>';
+  }
+
+  function resultHtml() {
+    var picks = state.picks.map(function (c) { return BY_CODE[c]; });
+    if (picks.length === 0) {
+      return '<div class="empty"><b>아직 고른 처방이 없어요</b><span class="ink2">위 칸에 이름이나 코드를 적어 찾아보세요. 여러 개를 고를 수 있어요.</span></div>' + againHtml(picks);
+    }
+    var p = PERIODS[state.period];
+    var chips = picks.map(function (rx) {
+      return '<span class="pill">' + esc(rx.name) + '<button type="button" data-remove="' + rx.code + '" aria-label="' + esc(rx.name) + ' 빼기"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button></span>';
+    }).join('');
+    return '<div class="picked">' + chips + '<button type="button" class="textbtn" id="clear">모두 지우기</button></div>' +
+      '<p class="sub-label">건수<span>지금 있는 표예요. 시안에서는 줄여서 보여 드려요.</span></p>' +
+      '<div class="cols" aria-hidden="true"><span>처방</span><span>건수</span><span>' + p.col + '</span><span class="left">증감</span><span>신환 · 신환률</span><span>재진 · 재진률</span></div>' +
+      '<ul>' + picks.map(countRow).join('') + '</ul>' + againHtml(picks);
+  }
+
+  function renderTop() {
+    var p = PERIODS[state.period];
+    $('periods').innerHTML = Object.keys(PERIODS).map(function (k) { return '<button type="button" data-period="' + k + '" aria-pressed="' + (k === state.period) + '">' + PERIODS[k].name + '</button>'; }).join('');
+    $('range').innerHTML = '<span><b>' + p.label + '</b> (' + p.end + ')</span><span>비교: ' + p.pl + ' (' + p.col + ')</span>';
+  }
+  function renderMock() {
+    $('stage').dataset.device = state.device;
+    $('device-cap').textContent = state.device === 'phone' ? '휴대폰 화면 (390px 폭)' : '컴퓨터 화면';
+    var pick = function (box, attr, value) { Array.prototype.forEach.call($(box).querySelectorAll('button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === value)); }); };
+    pick('m-device', 'data-device', state.device);
+    var key = Object.keys(PRESETS).filter(function (k) { return PRESETS[k].join() === state.picks.join(); })[0] || '';
+    pick('m-preset', 'data-preset', key);
+    pick('m-files', 'data-monthly', state.monthly ? '1' : '0');
+    $('mock-state').textContent = state.monthly
+      ? '지금: 달마다 파일을 한 개씩 따로 넣은 모습이에요. 띠에 주황 빗금이 달마다 생겨요.'
+      : '지금: 2024년 11월 – 2026년 11월 4일 파일을 한 번에 같이 넣은 모습이에요.';
+  }
+  function renderResult() { $('result').innerHTML = resultHtml(); }
+  function renderAll() { renderMock(); renderTop(); renderResult(); if (!$('drop').hidden) renderList(); }
+
+  // ── 처방 찾기 ──
+  function hits() {
+    var q = $('q').value.trim().toLowerCase();
+    return SORTED.filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0 || r.code.toLowerCase().indexOf(q) >= 0; });
+  }
+  function renderList() {
+    var list = hits(), p = PERIODS[state.period];
+    if (state.active >= list.length) state.active = list.length - 1;
+    $('list').innerHTML = list.length === 0
+      ? '<li class="none">“' + esc($('q').value.trim()) + '”에 맞는 처방이 없어요. 불러온 숫자에 있는 처방만 찾을 수 있어요.</li>'
+      : list.map(function (r, i) {
+        var picked = state.picks.indexOf(r.code) >= 0;
+        return '<li class="opt' + (i === state.active ? ' on' : '') + '" role="option" id="opt-' + r.code + '" aria-selected="' + picked + '" data-pick="' + r.code + '"><span>' + esc(r.name) + '<span class="cd">' + r.code + '</span></span><span class="small muted">' + fmt(sumC(r, ix(p.from), ix(p.to)).c) + '건</span><span class="tick">' + (picked ? '고름' : '') + '</span></li>';
+      }).join('');
+    var on = list[state.active];
+    if (on) { $('q').setAttribute('aria-activedescendant', 'opt-' + on.code); var el = $('opt-' + on.code); if (el) el.scrollIntoView({ block: 'nearest' }); }
+    else $('q').removeAttribute('aria-activedescendant');
+  }
+  function openList() { $('drop').hidden = false; $('q').setAttribute('aria-expanded', 'true'); renderList(); }
+  function closeList() { $('drop').hidden = true; $('q').setAttribute('aria-expanded', 'false'); state.active = -1; }
+  function setPicks(next) { state.picks = next; renderMock(); renderResult(); if (!$('drop').hidden) renderList(); }
+  function togglePick(code) {
+    var atIdx = state.picks.indexOf(code);
+    setPicks(atIdx >= 0 ? state.picks.filter(function (c) { return c !== code; }) : state.picks.concat(code));
+    $('q').value = ''; state.active = -1; renderList();
+  }
+
+  document.addEventListener('toggle', function (e) { if (e.target.id === 'eg') state.egOpen = e.target.open; }, true);
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button, [data-pick]');
+    if (!e.target.closest('#search')) closeList();
+    if (!t) return;
+    if (t.dataset.device) { state.device = t.dataset.device; renderMock(); return; }
+    if (t.dataset.preset !== undefined) { setPicks(PRESETS[t.dataset.preset].slice()); return; }
+    if (t.dataset.monthly !== undefined) { state.monthly = t.dataset.monthly === '1'; renderMock(); renderResult(); return; }
+    if (t.dataset.period) { state.period = t.dataset.period; renderAll(); return; }
+    if (t.dataset.win) { state.win = Number(t.dataset.win); renderResult(); var b = document.querySelector('[data-win="' + state.win + '"]'); if (b) b.focus(); return; }
+    if (t.dataset.pick) { togglePick(t.dataset.pick); $('q').focus(); return; }
+    if (t.dataset.remove) { setPicks(state.picks.filter(function (c) { return c !== t.dataset.remove; })); $('q').focus(); closeList(); return; }
+    if (t.id === 'clear') { setPicks([]); return; }
+    if (t.id === 'drop-close') { closeList(); return; }
+  });
+  $('drop').addEventListener('mousedown', function (e) { e.preventDefault(); });
+  $('q').addEventListener('focus', openList);
+  $('q').addEventListener('click', openList);
+  $('q').addEventListener('input', function () { state.active = -1; openList(); });
+  $('q').addEventListener('keydown', function (e) {
+    var list = hits();
+    if (e.key === 'Escape') { closeList(); return; }
+    if ($('drop').hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { openList(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); state.active = Math.min(list.length - 1, state.active + 1); renderList(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); state.active = Math.max(0, state.active - 1); renderList(); }
+    else if (e.key === 'Enter') { e.preventDefault(); var on = list[state.active < 0 ? 0 : state.active]; if (on && !e.isComposing) togglePick(on.code); }
+  });
+
+  state.egOpen = true;
+  renderAll();
+})();
+</script>
+
+</body></html>
