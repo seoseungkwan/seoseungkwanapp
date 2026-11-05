@@ -529,7 +529,7 @@ export function startWorklogSession(): () => void                       // befor
 [폰(터치 기기)·다른 PC] 저장된 값과 bit_fields 표시만. 비트 읽기 없음
 ```
 - **합치기 조건**(AC-017.8): `mergeBit`은 그날 읽기 상태가 `ready`일 때만 돌린다. 비트 답이 첫 읽기보다 먼저 오면 들고 있다가 `ready` 뒤에 합친다. 불러오기에 실패한 날은 합치지 않는다. 고른 날짜와 다른 옛 날짜 답은 버린다. 까닭: 읽기 전에는 `known`이 빈 하루라 화면 빈 칸에 비트 숫자가 차고 차이로 저장되어, 손으로 적어 둔 서버 값을 덮는다
-- **모든 비트 숫자는 매출 명령 `revenue.days` 하나에서 온다**(`specs/revenue/design.md` 5-2·5-4절): 금액은 양지바른 일일보고 기준(외래환자경영통계, 회계일 = 수납일 기준 정상수납 + 미수입금), 신환·재진은 접수일 기준 `newPatients`·`returnVisits`(= `visits − newPatients`). 금액을 세지 않은 날은 금액 아홉 칸이 `null` + `unconfirmed`(확인 필요)다. 환불·변경수납·예치금·수납 연결 중복, 금액 맞춤 검사(`insurer + copay ≠ 요양비용총액`), 음수가 그 까닭이고 **까닭은 답에 없다**(환불이 없는 날도 빈칸일 수 있다). 업무일지가 쓰는 금액 여섯 칸도 그 안에 든다 → 업무일지는 그날 **금액 칸만** 채우지 않고 "이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요"를 보인다. 신환·재진은 그날도 채운다(`null`이 아니면)
+- **모든 비트 숫자는 매출 명령 `revenue.days` 하나에서 온다**(`specs/revenue/design.md` 5-2·5-4절): 금액은 양지바른 일일보고 기준(외래환자경영통계, 회계일 = 수납일 기준 정상수납 + 미수입금), 신환·재진은 접수일 기준 `newPatients`·`returnVisits`(= `visits − newPatients`). 금액을 세지 않은 날은 금액 아홉 칸이 `null` + `unconfirmed`(확인 필요)다. 환불·변경수납·예치금·수납 연결 중복, `total`·`cash`·`card`·`transfer`·`receivableIn` 가운데 음수가 그 까닭이고 **까닭은 답에 없다**(환불이 없는 날도 빈칸일 수 있다). 업무일지가 쓰는 금액 여섯 칸도 그 안에 든다 → 업무일지는 그날 **금액 칸만** 채우지 않고 "이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요"를 보인다. 신환·재진은 그날도 채운다(`null`이 아니면). 금액 맞춤 검사(`insurer + copay ≠ 요양비용총액`)나 나눔 네 칸의 음수에 걸린 날은 나눔만 못 센 날(`splitUnconfirmed`)이고 조합청구액만 빈다(20-2절)
 - 업무일지 자신은 도우미·명령 표·통로·검사·Worker를 고치지 않고, 통계 갈래의 길(`stats.rows`·Worker·저장 숫자)도 쓰지 않는다
 - `sales_days`(매출 저장 표)에 쓰지 않는다(매출 5-4절: 하루만 따로 쓰는 길은 없다). 업무일지는 자기 표 `worklog_days`에만 쓴다
 
@@ -540,7 +540,7 @@ export function startWorklogSession(): () => void                       // befor
 | 신환(`newPatients`) | `newPatients` | `new_patients` | 채움(`unconfirmed`인 날도) |
 | 재진(`returnPatients`) | `returnVisits` | `return_patients` | 채움(`unconfirmed`인 날도) |
 | 총진료비(`totalFee`) | `total` | `total_fee` | 채움 |
-| 조합청구액(`claimAmount`) | `insurer` | `claim_amount` | 채움 |
+| 조합청구액(`claimAmount`) | `insurer` | `claim_amount` | 채움(`splitUnconfirmed`인 날은 안 채움) |
 | 현금수납(`cashIn`) | `cash` | `cash_in` | 채움 |
 | 카드수납(`cardIn`) | `card` | `card_in` | 채움 |
 | 계좌이체(`transferIn`) | `transfer` | `transfer_in` | 채움 |
@@ -549,7 +549,8 @@ export function startWorklogSession(): () => void                       // befor
 | 지역화폐(`localCurrencyIn`) | — | `local_currency_in` | **계약에 생기기 전에는 안 채움** |
 | 지출 넷·비고·업무사항 | — | — | 손으로만 **(사용자)** |
 
-- 값이 `null`인 칸은 비트 값이 없는 것으로 본다(지어내지 않는다). `visits`·`noncovered`·`patientsToDate`는 업무일지에 칸이 없어 쓰지 않는다. 매출 쪽에 더해진 `copay`·`otherTotal`도 칸이 없어 이 표에 영향이 없다
+- 값이 `null`인 칸은 비트 값이 없는 것으로 본다(지어내지 않는다). `visits`·`noncovered`는 업무일지에 칸이 없어 쓰지 않는다. 매출 쪽에 더해진 `copay`·`otherTotal`도 칸이 없어 이 표에 영향이 없다
+- 하루 줄의 두 표시(`src/types/revenue.ts`, 함께 참이 되지 않는다): `unconfirmed`면 금액 아홉 칸이 모두 `null` → 금액 칸(총진료비·조합청구액·현금수납·카드수납·계좌이체·미수입금)은 채우지 않고 신환·재진은 채운다(`null`이 아니면). `splitUnconfirmed`면 나눔 네 칸(`insurer`·`noncovered`·`copay`·`otherTotal`)만 `null` → 조합청구액만 비트 값이 없어 채우지 않고, 총진료비·현금수납·카드수납·계좌이체·미수입금·신환·재진은 채운다
 - **칸 위치로 채운다** **(사용자)**: 위 표의 DB 칸에 넣고 그날 항목 이름은 보지 않는다. 현금수납 이름을 다른 글자로 고쳐도 비트 현금은 `cash_in`에 들어간다
 
 ### 20-3. 맞추는 규칙 (`src/lib/worklog/bitFill.ts`, 순수 함수)
@@ -562,6 +563,7 @@ export function mergeBit(day: WorklogDay, bitFields: readonly WorklogNumberKey[]
 export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberKey[], key: WorklogNumberKey, bit: BitValues): BitMerge   // [비트 숫자로 바꾸기]
 ```
 - 비트 값은 숫자 글자로 저장한다(`String(125000)` = `'125000'`, 화면에는 엑셀 모양 `125,000원`)
+- `bitValuesFrom`의 `unconfirmed`는 하루 줄의 `unconfirmed`만 따른다. `splitUnconfirmed`인 날은 `unconfirmed: false`이고 `values`에 조합청구액만 없다(그날은 '확인 필요 날' 안내를 띄우지 않는다, 20-5절)
 - 빈 칸 → 채우고 비트 칸. 비트 칸 → 비트 값을 따라간다. 손으로 적은 칸 → `readCell`로 읽은 숫자가 비트 값과 같으면 아무 일도 없고, 그 밖(다른 숫자·숫자 없음·합계 제외)은 그대로 두고 `differs`(적은 글자·비트 값). [비트 숫자로 바꾸기]는 적은 글자를 덮는다. 사람이 칸을 고치면 화면이 그 칸을 `bitFields`에서 뺀다
 - 비트 칸을 사람이 비우면 다음 비트 읽기에서 다시 채워진다(빈 칸 = 아직 안 적음). "0"을 뜻하면 0을 적는다 — 위험에 적는다 **(Claude 판단)**
 
@@ -584,7 +586,7 @@ export function takeBitValue(day: WorklogDay, bitFields: readonly WorklogNumberK
 - 총괄이 지난 날 사흘(금액이 채워진 날 둘 + 금액이 '확인 필요'로 빈칸인 날 하나, 그런 날이 있으면)을 골라 **업무일지 화면(비트가 채운 칸)**·그날 엑셀 업무일지·비트 '외래환자경영통계'를 칸마다 견준다: 날짜별 신환·재진, 수납 나눔(현금·카드·계좌·미수입금), 총진료비, 조합청구액(= 공단부담인지), 그리고 미수발생·지역화폐가 비트에 따로 있는지
 - 수납 나눔과 날짜별 신환·재진은 **매출 갈래가 넘긴 확인**이다(그 칸은 매출 탭에 없고 업무일지 화면에만 그려진다, `specs/revenue/design.md` 5절)
 - 결과는 `docs/worklog/bit-check.md`에 "같음 / 다름(어떻게) / 비트에 없음"으로만 적는다(숫자는 적지 않는다 — 실제 매출 숫자는 저장소에 두지 않는다)
-- 20-2절과 다르면 명세를 고친다(채우는 칸 목록). 미수발생·지역화폐가 비트에 있거나 수납 나눔·신환·재진 기준이 다르면 매출 갈래에 계약 변경을 알린다. 금액이 날마다 빈칸이면 금액 맞춤 검사의 가정이 틀린 것일 수 있으니 적어 두고 매출 갈래에 알린다(`specs/revenue/design.md` 5-2절)
+- 20-2절과 다르면 명세를 고친다(채우는 칸 목록). 미수발생·지역화폐가 비트에 있거나 수납 나눔·신환·재진 기준이 다르면 매출 갈래에 계약 변경을 알린다. 조합청구액이 날마다 빈칸이면 금액 맞춤 검사의 가정이 틀린 것일 수 있으니 적어 두고 매출 갈래에 알린다(`specs/revenue/design.md` 5-2절)
 
 ### 20-7. 더하는 위험
 - 엑셀 업무일지 숫자가 진료일 기준이었다면 수납일 기준인 비트 금액과 날마다 조금 다를 수 있다. 신환·재진은 접수일 기준이라 엑셀과 같을 가능성이 높다 → TASK-19가 확인한다

@@ -29,7 +29,7 @@
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
 - `/src/components/claim/useBridge.ts` — 상태 이름(ready·no-extension·helper-old 등)
-- 매출 갈래 화면이 `revenue.days`를 부르는 법(`src/components/revenue/*`, main)
+- 매출 갈래 화면이 `revenue.days`를 부르는 법(`src/components/revenue/*`, 사이트를 올리는 줄 `origin/feat-combined-precheck`에서 이 브랜치에 합쳐진 판)
 - `/src/components/worklog/*`·`/src/lib/worklog/autosave.ts` (Phase 2·3)
 - `/src/lib/worklog/bitFill.ts`·`/src/lib/storage/worklogDays.ts` (Step 0·2)
 
@@ -68,7 +68,7 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **기다림(Phase 4 공통, 아니면 바로 `blocked`)**: `origin/main`의 `src/lib/bridge/commands.json`에 `"revenue.days"`가 있고 그 main이 이 브랜치에 합쳐져 있다. 확인: `git fetch origin && git show origin/main:src/lib/bridge/commands.json | grep -q '"revenue.days"' && grep -q '"revenue.days"' src/lib/bridge/commands.json`. 합치기는 이 step이 하지 않는다 — 없으면 `blocked`(사유: "매출 갈래 revenue.days가 main에 들어와 이 브랜치에 합쳐져야 함")
+- **기다림(Phase 4 공통, 아니면 바로 `blocked`)**: 사이트를 올리는 줄 `origin/feat-combined-precheck`의 `src/lib/bridge/commands.json`에 `"revenue.days"`가 있고 그 줄이 이 브랜치에 합쳐져 있다. 확인: `git fetch origin && git show origin/feat-combined-precheck:src/lib/bridge/commands.json | grep -q '"revenue.days"' && grep -q '"revenue.days"' src/lib/bridge/commands.json`. 합치기는 이 step이 하지 않는다 — 없으면 `blocked`(사유: "매출 갈래 revenue.days가 사이트를 올리는 줄(origin/feat-combined-precheck)에 들어와 이 브랜치에 합쳐져야 함")
 - **시안 먼저**: `docs/mockups/worklog/bitfill.html`(예시 숫자, "예시" 표시)을 만들고 사용자 OK를 받기 전에는 화면 코드를 쓰지 않는다 → OK가 없으면 시안만 만들고 `blocked`(사유: 비트 표시 시안 OK 기다림)
 - **그날 읽기가 끝나기 전에는 합치지 않는다**: 읽기 전에는 `known`이 빈 하루라 비트 숫자가 차이로 저장되어 손으로 적어 둔 서버 값을 덮는다
 - 적은 값을 몰래 덮어쓰지 않는다(사용자). '다름'은 보여 주기만 하고, 바꾸기는 사람이 누를 때만

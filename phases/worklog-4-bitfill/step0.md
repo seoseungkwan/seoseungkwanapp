@@ -9,7 +9,7 @@
 전체 문장은 `/specs/worklog/requirements.md`의 REQ-014에 있다. 아래는 요약이다. 시험 이름에 이 AC ID를 넣는다.
 
 - **AC-014.1**: `revenue.days` 하루 줄 → `total`→총진료비, `insurer`→조합청구액, `cash`→현금수납, `card`→카드수납, `transfer`→계좌이체, `receivableIn`→미수입금. 미수발생·지역화폐는 값 없음. `null` 칸도 값 없음
-- **AC-014.2**: 신환 = `newPatients`, 재진 = `returnVisits`. `unconfirmed`인 날도 두 인원 칸은 채우고(`null`이 아니면) 금액 칸은 안 채움
+- **AC-014.2**: 신환 = `newPatients`, 재진 = `returnVisits`. `unconfirmed`인 날도 두 인원 칸은 채우고(`null`이 아니면) 금액 칸은 안 채움. `splitUnconfirmed`인 날은 조합청구액만 안 채우고 나머지는 채움
 - **AC-014.3**: 빈 칸 → 비트 값을 숫자 글자('125000')로 + 비트 칸
 - **AC-014.4**: 비트 칸 → 바뀐 비트 값을 따라감
 - **AC-014.5**: 적은 칸 → REQ-003 규칙으로 읽은 숫자가 비트 값과 같으면 아무 일 없음. 그 밖(다른 숫자·숫자 없음·합계 제외)은 그대로 두고 '다름'(적은 글자·비트 값)
@@ -28,7 +28,7 @@
 - `/specs/worklog/design.md` — 20-1·20-2·20-3절
 - `/specs/worklog/tasks.md` — 이 TASK의 수정 범위·메모
 - 승인된 시안 `/docs/mockups/worklog/index.html` (화면 step이면 꼭)
-- `/specs/revenue/design.md` 5-2·5-4절(main에 합쳐진 판) — `revenue.days` 답 칸
+- `/specs/revenue/design.md` 5-2·5-4절(사이트를 올리는 줄 `origin/feat-combined-precheck`에서 이 브랜치에 합쳐진 판) — `revenue.days` 답 칸
 - `/src/types/revenue.ts`(`RevenueDayRow`)·`/src/lib/bridge/commands.json` (매출 갈래가 넣은 것)
 - `/src/types/worklog.ts`·`/src/lib/worklog/cellText.ts`(`readCell`) (Phase 1)
 
@@ -47,10 +47,10 @@
 
 ## 꼭 지킬 규칙 (CRITICAL)
 
-- **기다림(Phase 4 공통, 아니면 바로 `blocked`)**: `origin/main`의 `src/lib/bridge/commands.json`에 `"revenue.days"`가 있고 그 main이 이 브랜치에 합쳐져 있다. 확인: `git fetch origin && git show origin/main:src/lib/bridge/commands.json | grep -q '"revenue.days"' && grep -q '"revenue.days"' src/lib/bridge/commands.json`. 합치기는 이 step이 하지 않는다 — 없으면 `blocked`(사유: "매출 갈래 revenue.days가 main에 들어와 이 브랜치에 합쳐져야 함")
+- **기다림(Phase 4 공통, 아니면 바로 `blocked`)**: 사이트를 올리는 줄 `origin/feat-combined-precheck`의 `src/lib/bridge/commands.json`에 `"revenue.days"`가 있고 그 줄이 이 브랜치에 합쳐져 있다. 확인: `git fetch origin && git show origin/feat-combined-precheck:src/lib/bridge/commands.json | grep -q '"revenue.days"' && grep -q '"revenue.days"' src/lib/bridge/commands.json`. 합치기는 이 step이 하지 않는다 — 없으면 `blocked`(사유: "매출 갈래 revenue.days가 사이트를 올리는 줄(origin/feat-combined-precheck)에 들어와 이 브랜치에 합쳐져야 함")
 - 순수 함수다: 통로·supabase·React를 부르지 않는다. 매출 타입만 `import type`으로 쓴다
 - 비트 숫자는 `revenue.days` 한 줄에서만 온다. 통계 갈래 길(`readDays`·`DayPayload`·`stats.rows`)을 쓰지 않는다
-- 비트 값이 없으면 지어내지 않는다(0으로 채우지 않는다). '확인 필요' 날은 금액 칸만 비운 채 둔다
+- 비트 값이 없으면 지어내지 않는다(0으로 채우지 않는다). '확인 필요' 날은 금액 칸만 비운 채 둔다. 나눔만 못 센 날(`splitUnconfirmed`)은 조합청구액만 비운 채 둔다
 - **칸 위치로 채운다**(사용자 결정 3): 항목 이름을 읽거나 견주지 않는다
 - 적은 글자를 몰래 덮지 않는다. 숫자를 짐작하지 않고 `readCell` 규칙만 쓴다
 
@@ -63,7 +63,7 @@ design.md 20-3절의 `BIT_FILL_KEYS`(여덟 칸)·`bitValuesFrom(revenueDay)`·`
 | 신환 `newPatients` | `newPatients` | `unconfirmed`인 날도 채움 |
 | 재진 `returnPatients` | `returnVisits` | `unconfirmed`인 날도 채움 |
 | 총진료비 `totalFee` | `total` | |
-| 조합청구액 `claimAmount` | `insurer` | |
+| 조합청구액 `claimAmount` | `insurer` | `splitUnconfirmed`인 날은 안 채움 |
 | 현금수납 `cashIn` | `cash` | |
 | 카드수납 `cardIn` | `card` | |
 | 계좌이체 `transferIn` | `transfer` | |
@@ -72,8 +72,8 @@ design.md 20-3절의 `BIT_FILL_KEYS`(여덟 칸)·`bitValuesFrom(revenueDay)`·`
 
 - 매출 쪽에 더해진 `copay`·`otherTotal`은 이 표에 없고 쓰지 않는다
 - 비트 값은 숫자 글자로 넣는다(`String(값)`). `BitMerge.differs`는 `{ key, typed: 적은 글자, bit: 숫자 }`(design.md 20-3절)
-- main의 `RevenueDayRow` 칸 이름이 위와 다르면 멈추고 `blocked`(사유: 매출 계약과 업무일지 표가 다름 — 명세 고침 필요)
-- 시험: 칸 맞춤(가짜 둥근 숫자), **`unconfirmed`인 날 신환·재진은 채워지고 금액 여섯 칸은 없음**, `null` 칸, 미수발생·지역화폐는 늘 없음, 빈 칸 채움(숫자 글자), 비트 칸 따라감, 적은 칸: '125,000원'·'125,000 별도' 같음 / '120,000'·'별도 보고'·'2건 125,000' 다름(적은 글자 그대로), 바꾸기, 지출·비고·업무사항·항목 이름은 그대로, **항목 이름을 고친 칸도 같은 칸에 채움**
+- 사이트를 올리는 줄 `origin/feat-combined-precheck`에서 이 브랜치에 합쳐진 `RevenueDayRow` 칸 이름이 위와 다르면 멈추고 `blocked`(사유: 매출 계약과 업무일지 표가 다름 — 명세 고침 필요)
+- 시험: 칸 맞춤(가짜 둥근 숫자), **`unconfirmed`인 날 신환·재진은 채워지고 금액 여섯 칸은 없음**, **`splitUnconfirmed`인 날 조합청구액만 없고 나머지 일곱 칸은 채워짐(`unconfirmed: false`)**, `null` 칸, 미수발생·지역화폐는 늘 없음, 빈 칸 채움(숫자 글자), 비트 칸 따라감, 적은 칸: '125,000원'·'125,000 별도' 같음 / '120,000'·'별도 보고'·'2건 125,000' 다름(적은 글자 그대로), 바꾸기, 지출·비고·업무사항·항목 이름은 그대로, **항목 이름을 고친 칸도 같은 칸에 채움**
 
 ## TDD 순서
 
