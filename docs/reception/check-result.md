@@ -70,3 +70,30 @@ Gate 42 · TodayVisits 7 (8줄) · TodayRx 29 · PriorVisits 117 · PriorRx 76 �
 
 Gate 47 · TodayVisits 8 (10줄) · TodayRx 29 · PriorVisits 54 · PriorRx 7 · RxNames 1544 (546,073줄) · HistoryCount 0 · HistoryPage 1.
 → 1회차와 같이 5초 간격에 충분하다.
+
+## 3회차 — 2026-11-06 09:40 KST (진료 시간)
+
+비트확인4.zip(build=0.3.0+check4, 커밋 ccf0a02). 전체 165초. 이번에는 2/10에서 WN 말고 모두 6(모름)으로 답했고, 6/10 증상 글은 건너뜀.
+
+### 지난 30일 상태 내력 (`statusHistory`)
+
+| 코드 | 30일 내원 | 수납 있음 | 처방 있음 | 읽은 뜻 → 칸 |
+|---|---|---|---|---|
+| PN | 2029 | 2029 | 2029 | 수납완료 → 끝남 (확정) |
+| TN | 1 | 0 | 1 | 진료 끝, 수납 전 → 수납대기 (2회차에 TN→PN 바뀜과 맞음) |
+| HN | 1 | 0 | 1 | 진료보류 → 진료보류 (오늘 처음 보임, KnownDoneCodes에 있음) |
+| WN | 4 | 0 | 0 | 진료대기 → 진료대기 |
+| CN | 54 | 0 | 0 | 접수 취소 → 숨김. 처방·수납이 한 번도 없음. 2회차의 CN 1건은 07:20 시험 접수를 취소한 것이었다. 2회차 "수납대기" 답은 잘못 고른 것으로 본다 |
+| CR | 39 | 0 | 0 | 예약 취소 → 숨김 (WR이 예약이므로 R은 예약 쪽) |
+| WR | 5 | 0 | 0 | 예약 → 숨김 |
+
+→ 2회차 표(CN·TN=수납대기)를 고친다: TN만 수납대기, CN·CR은 숨김, HN은 진료보류.
+
+### 증상
+
+- `sheetCode typ=S cod=? rows=8701 nonEmpty=5925 minLength=2 maxLength=72` — 지난 14일 EmrInf 줄이 모두 기록지 종류 S 하나이고 코드 칸은 비어 있다. 내원 하나에 줄 약 9개(비어 있지 않은 줄 약 6개), 한 줄 2~72자 → 진료 기록 S(환자가 말한 증상) 부분의 줄들로 보인다.
+- 그래서 증상 글 = 그 내원의 EmrInf에서 EmrShtTyp='S'이고 비어 있지 않은 EmrShtVal 줄들을 순서대로 이은 것. 2회차에서 친 증상 글도 이 칸에서 찾아졌다.
+
+### 속도 (ms)
+
+Gate 43 · TodayVisits 2 (21줄) · TodayRx 3 · PriorVisits 27 · PriorRx 9 · RxNames 1633 · HistoryCount 8 · HistoryPage 57. 오늘 수납 OrcInf 9줄.
