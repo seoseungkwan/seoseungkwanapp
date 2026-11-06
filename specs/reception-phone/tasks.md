@@ -307,7 +307,7 @@
 - Files: helper/src/Precheck.Core/Reception/ReceptionMap.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionMap.test.cs, helper/tests/reception-map.dotnet.test.ts
 - Tests: helper/tests/reception-map.dotnet.test.ts
 - TDD: required
-- `docs/reception/check-result.md`의 상태 짝 답 그대로. 답이 "모름"인 코드는 숨김. `Validate`가 문제 없음. 시험은 채운 표가 보고서 표와 같은지 본다
+- `docs/reception/check-result.md` 답 그대로: WR 숨김, WN 진료대기, CN·TN 수납대기, PN 끝남(추정). 진료보류는 `Unconfirmed`. 답이 없는 코드는 표에 넣지 않는다. `Validate(Statuses, Unconfirmed)`가 문제 없음. 시험은 채운 표가 보고서 표와 같은지 본다
 
 ## TASK-29: 사람·접수 메모·수납 시각 칸 읽기
 - Step: Phase 5 · Step 1 · `fill-columns`
@@ -358,3 +358,13 @@
 - Tests: helper/tests/reception-check-symptom.dotnet.test.ts
 - TDD: required
 - 의원 PC 1회차(2026-11-06 07:19 KST): 비트에 아이디·비밀번호가 없고(늘 자동 로그인) 4/7 로그인 창이 쓸 수 없게 떴고 한 번은 엔터 뒤 콘솔이 1분 넘게 멈췄다. 그래서 4/8 로그인은 `1`일 때만, 기본은 건너뛰기. 증상 칸(지난 진료)은 SQL로: 6/8에서 친 증상 글 조각으로 후보 칸마다 지난 14일 줄을 DB 안에서 센다(가짜 콘솔·가짜 DB로 시험, 틀은 IsTextCount 글자 시험). 단계 표시 1/8~8/8. 접수 현황 화면·PrecheckReception.exe·설치된 도우미·레지스트리는 고치지 않는다. 실제 칸은 의원 PC 2회차(AC-1401.13)
+
+## TASK-34: 확인 고침 3 (증상 기록지 코드·상태 내력)
+- Step: Phase 1 · Step 8 · `check-sheet-status`
+- 병렬: 아니오 (TASK-33 뒤, 의원 PC 2회차 결과)
+- AC: AC-1401.18, AC-1401.19, AC-1401.9, AC-1401.10
+- REQ: REQ-1401
+- Files: helper/src/Precheck.Core/Reception/Check/CheckRunner.cs, helper/src/Precheck.Core/Reception/Check/CheckSql.cs, helper/src/Precheck.Core/Reception/Check/ProbeSql.cs, helper/src/Precheck.Core/Reception/Check/CheckReport.cs, helper/src/Precheck.Windows/CheckBitDb.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckFakes.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckRunner.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckSymptom.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckStart.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckSql.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckCodes.test.cs, helper/tests/reception-check-codes.dotnet.test.ts
+- Tests: helper/tests/reception-check-codes.dotnet.test.ts
+- TDD: required
+- 의원 PC 2회차(2026-11-06 09:00 KST): 진료보류·접수 취소 코드와 증상 기록지 코드를 아직 모른다. 가짜 콘솔·가짜 DB로 시험하고 net48 빌드(`buildDotnet`). 끝나면 zip 3과 같은 방법으로 `비트확인4.zip`(저장소에 넣지 않음). 접수 현황 화면·PrecheckReception.exe는 고치지 않는다

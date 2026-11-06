@@ -48,10 +48,12 @@ public static class ReceptionMap {
     public static IReadOnlyDictionary<string, Lane> Statuses { get; }      // 상태 코드 → 칸. 채우기 전 비어 있음
     public static IReadOnlyCollection<string> HiddenRsu { get; }           // 숨기는 OcmRsuYon 값
     public static ColumnPlan? Columns { get; }                             // 이름·생년·성별·메모·수납 시각·증상 칸. 채우기 전 null
-    public static IReadOnlyList<string> Validate(IReadOnlyDictionary<string, Lane> statuses); } // AC-1410.2 문제 목록
+    public static IReadOnlyCollection<Lane> Unconfirmed { get; }           // 확인 답이 아직 없는 칸(비어 있어도 문제 아님)
+    public static IReadOnlyList<string> Validate(IReadOnlyDictionary<string, Lane> statuses, IReadOnlyCollection<Lane> unconfirmed); } // AC-1410.2 문제 목록
 ```
 - `BoardBuilder`는 지도를 인자로 받아 시험은 가짜 지도를 쓴다. 이 저장소의 진짜 지도는 Phase 5에서 확인 보고서(`docs/reception/check-result.md`, 메인 창이 사용자 붙여 넣기로 만든다)대로 채운다.
 - 이미 아는 완료 코드(`HN PN TN VN OE WN OB`, 원본 RxHistory·ClaimDates 조건)는 지난 내원을 셀 때 쓴다. 오늘 줄을 칸에 나누는 일에는 확인 답만 쓴다(완료 코드 일부가 '수납대기'일 수 있다: `StatsSql`의 재무 문장은 `HN`·`WN`을 빼고 센다).
+- 표는 확인 답이 있는 코드만 담고, 답이 없는 칸은 `Unconfirmed`에 둔다. 다음 확인(TASK-34)이 더 답하면 이 파일에서 다시 채운다.
 
 ### 3. 비트 읽기 (`Precheck.Core/Reception/ReceptionSql.cs`, `BoardReader.cs`, `BoardCache.cs`)
 | 상수 | 매개변수 | 칸 | 뜻 |
