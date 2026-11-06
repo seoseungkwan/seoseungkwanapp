@@ -127,6 +127,39 @@ public class HistoryReaderTests
         Assert.All(db.Calls, call => Assert.Equal("20261105101500 ", call.Args["@before"]));
     }
 
+    [Fact(DisplayName = "AC-1404.1 차트번호는 접수 현황 줄의 값 그대로(@chart, 앞 공백 포함) 넘긴다: 앞을 공백으로 채운 char(14) 번호도 지우지 않는다")]
+    public void ChartIsRaw()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var visit = DetailFake.Today(chart: "        900101");
+
+        DetailApi.Read(db, DetailFake.Board(visit), visit, 0, new CacheClock(Morning).Now);
+
+        Assert.Equal(3, db.Calls.Count);
+        Assert.All(db.Calls, call => Assert.Equal("        900101", call.Args["@chart"]));
+    }
+
+    [Fact(DisplayName = "AC-1404.1 [회귀] 실제 칸 모양(차트번호 char 14 앞 공백 채움·내원번호 char 10·접수 시각 char 12)의 가짜 DB에서 접수 현황이 재진(앞선 완료 내원 2번)인 환자는 상세도 2번·그 증상·오늘 증상을 준다")]
+    public void RealShapesMatchBoard()
+    {
+        var db = RealShapeBit.Answer(BoardFake.Quiet(new FakeDb()));
+        var clock = new CacheClock(Morning);
+
+        var board = BoardReader.Read(db, Synthetic.Scope, Morning, clock.Now);
+        var visit = board.Visits.Single(row => row.VisitId == RealShapeBit.TodayId);
+        Assert.Equal(2L, visit.EarlierCount);
+
+        var read = HistoryReader.Read(db, Synthetic.Scope, board, visit, 0, clock.Now);
+
+        Assert.Equal(visit.EarlierCount, read.EarlierCount);
+        Assert.Equal("20261015", read.FirstDay);
+        Assert.Equal(new[] { "V2902", "V2901" }, read.Visits.Select(v => v.VisitId));
+        Assert.Equal(new[] { "20261029", "20261015" }, read.Visits.Select(v => v.Day));
+        Assert.Equal("어깨 통증 밤에 더 아픔", read.Visits[0].Symptom);
+        Assert.Null(read.Visits[1].Symptom);
+        Assert.Equal("오늘 다시 아파서 옴", read.TodaySymptom);
+    }
+
     [Fact(DisplayName = "AC-1404.1 더 보기(from=5)는 6~25번째 20번(next 25·more 11), from=25는 26~36번째 남은 11번(next null·more 0)")]
     public void NextChunks()
     {
@@ -634,6 +667,99 @@ internal static class DetailFake
         db.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { (long)earlier, earlier == 0 ? null : DayOf(earlier) } });
         db.Answer(ReceptionSql.HistoryPage, args => Page(args, earlier));
         db.Answer(ReceptionSql.VisitSymptoms, args => Symptoms(args, earlier));
+        return db;
+    }
+}
+
+/// <summary>
+/// 의원 PC 확인 보고서의 칸 모양을 흉내 낸 가짜 비트(모두 지어낸 자료): OcmNum char(10)(값은 왼쪽, 뒤 공백), OcmChtNum char(14)(번호는 오른쪽, 앞 공백),
+/// OcmAcpDtm char(12). 문장마다 SQL Server처럼 답한다: 글자 칸 비교(=·&lt;)는 짧은 쪽 끝에 공백을 채워 견주고(끝 공백은 무시, 앞 공백은 글자),
+/// RTRIM은 끝 공백만, 내원번호(T.OcmNum·H.OcmNum)는 원값(뒤 공백 포함)으로 준다.
+/// </summary>
+internal static class RealShapeBit
+{
+    public const string TodayId = "V3001";
+
+    private sealed class Row
+    {
+        public Row(string id, string chart, string accepted, string status)
+        {
+            Id = id.PadRight(10);
+            Chart = chart.PadLeft(14);
+            Accepted = accepted;
+            Status = status;
+        }
+
+        public string Id { get; }
+        public string Chart { get; }
+        public string Accepted { get; }
+        public string Status { get; }
+    }
+
+    private static readonly string[] Done = { "HN", "PN", "TN", "VN", "OE", "WN", "OB" };
+
+    private static readonly Row[] OcmInf =
+    {
+        new Row("V2901", "900201", "202610150930", "PN"),
+        new Row("V2902", "900201", "202610290940", "PN"),
+        new Row("V2903", "900201", "202611010900", "CN"),
+        new Row("V2801", "900202", "202609010900", "PN"),
+        new Row(TodayId, "900201", "202611050912", "TN"),
+        new Row("V3002", "900203", "202611050930", "WN"),
+    };
+
+    private static readonly (string Visit, string Line)[] EmrS =
+    {
+        ("V2902", "어깨 통증"), ("V2902", " 밤에 더 아픔 "), ("V2801", "다른 환자 증상"), (TodayId, "오늘 다시 아파서 옴"),
+    };
+
+    /// <summary>SQL Server의 글자 비교: 짧은 쪽 끝에 공백을 채워 서수로 견준다.</summary>
+    private static int Compare(string a, string b)
+    {
+        var width = Math.Max(a.Length, b.Length);
+        return string.CompareOrdinal(a.PadRight(width), b.PadRight(width));
+    }
+
+    private static bool Same(string a, object? b) => b is string text && Compare(a, text) == 0;
+
+    private static IEnumerable<Row> EarlierDone(object? chart, object? before) =>
+        OcmInf.Where(c => Same(c.Chart, chart) && before is string at && Compare(c.Accepted, at) < 0 && Done.Contains(c.Status))
+            .OrderByDescending(c => c.Accepted, StringComparer.Ordinal)
+            .ThenByDescending(c => c.Id, StringComparer.Ordinal);
+
+    private static IEnumerable<Row> Window(IReadOnlyDictionary<string, object?> args) =>
+        EarlierDone(args["@chart"], args["@before"]).Skip((int)args["@first"]! - 1).Take((int)args["@last"]! - (int)args["@first"]! + 1);
+
+    public static T Answer<T>(T db) where T : FakeDb
+    {
+        db.Answer(ReceptionSql.TodayVisits, args => OcmInf
+            .Where(c => Compare(c.Accepted, (string)args["@from"]!) >= 0 && Compare(c.Accepted, (string)args["@to"]!) < 0)
+            .Select(c => new object?[] { c.Id, c.Chart.TrimEnd(' '), c.Accepted, c.Status, "" })
+            .ToArray());
+        db.Answer(ReceptionSql.TodayRx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.PriorVisits, args => OcmInf
+            .Where(t => Compare(t.Accepted, (string)args["@from"]!) >= 0 && Compare(t.Accepted, (string)args["@to"]!) < 0 && t.Chart.Trim().Length > 0)
+            .Select(t => (Today: t, Earlier: EarlierDone(t.Chart, t.Accepted).ToArray()))
+            .Where(p => p.Earlier.Length > 0)
+            .Select(p => new object?[] { p.Today.Id, (long)p.Earlier.Length, p.Earlier[0].Id, p.Earlier[0].Accepted.Substring(0, 8) })
+            .ToArray());
+        db.Answer(ReceptionSql.PriorRx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.HistoryCount, args =>
+        {
+            var earlier = EarlierDone(args["@chart"], args["@before"]).ToArray();
+            var first = earlier.Length == 0 ? null : earlier.Min(c => c.Accepted)!.Substring(0, 8);
+            return new[] { new object?[] { (long)earlier.Length, first } };
+        });
+        db.Answer(ReceptionSql.HistoryPage, args => Window(args)
+            .Select(c => new object?[] { c.Id, c.Accepted.Substring(0, 8), null })
+            .ToArray());
+        db.Answer(ReceptionSql.VisitSymptoms, args =>
+        {
+            var visits = Window(args).Select(c => c.Id)
+                .Concat(OcmInf.Where(c => Same(c.Chart, args["@chart"]) && Same(c.Accepted, args["@before"])).Select(c => c.Id))
+                .ToArray();
+            return visits.SelectMany(id => EmrS.Where(e => Same(id, e.Visit)).Select(e => new object?[] { id, e.Line })).ToArray();
+        });
         return db;
     }
 }

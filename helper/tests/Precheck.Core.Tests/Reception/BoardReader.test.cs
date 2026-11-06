@@ -104,6 +104,22 @@ public class BoardReaderTests
         Assert.Empty(third.LastRx);
     }
 
+    [Fact(DisplayName = "AC-1403.6 차트번호는 비트 칸(char 14) 그대로 오른쪽 공백만 뺀다: 앞이 공백으로 채워진 번호도 앞 공백을 지우지 않는다(상세 @chart가 같은 줄을 찾게)")]
+    public void ChartKeepsLeadingSpaces()
+    {
+        var db = BoardFake.Quiet(new FakeDb());
+        db.Answer(ReceptionSql.TodayVisits, _ => new[]
+        {
+            BoardFake.Visit("V1001", "        900101", "202611050912", "PN"),
+            BoardFake.Visit("V1002", "900102        ", "202611050930", "PN"),
+            BoardFake.Visit("V1003", "              ", "202611051015", "WN"),
+        });
+
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+
+        Assert.Equal(new[] { "        900101", "900102", "" }, input.Visits.Select(row => row.PatientId));
+    }
+
     [Fact(DisplayName = "AC-1402.7 칸이 채워지기 전(ColumnPlan 없음)에는 칸 문장을 돌리지 않고 이름·생년월일·성별·메모·수납 시각만 빈 값(null), 줄은 그대로다")]
     public void PersonColumnsEmptyBeforeFill()
     {

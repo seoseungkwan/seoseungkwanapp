@@ -169,12 +169,13 @@ public static class HistoryReader
         if (from < 0) throw new ArgumentOutOfRangeException(nameof(from));
         var deadline = clock() + Timeout;
 
-        var chart = visit.PatientId.Trim();
+        // 차트번호는 접수 현황 줄의 값(RTRIM 원값) 그대로: char(14) 칸은 번호 앞을 공백으로 채울 수 있고, 앞 공백을 지우면 c.OcmChtNum=@chart가 아무 줄도 못 찾는다
+        var chart = visit.PatientId.TrimEnd(' ');
         long count = 0;
         string? firstDay = null;
         var lines = new List<PageLine>();
         var symptoms = NoSymptoms;
-        if (chart.Length > 0 && visit.AcceptedAt.Trim().Length > 0)
+        if (chart.Trim().Length > 0 && visit.AcceptedAt.Trim().Length > 0)
         {
             var args = new Dictionary<string, object?>(StringComparer.Ordinal)
             {

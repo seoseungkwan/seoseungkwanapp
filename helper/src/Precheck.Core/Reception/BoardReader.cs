@@ -130,7 +130,10 @@ public static class BoardReader
         return names;
     }
 
-    /// <summary>오늘 접수 줄(VisitId, PatientId, AcceptedAt, Status, Rsu). 내원번호가 빈 줄은 빼고 같은 내원은 처음 줄만.</summary>
+    /// <summary>
+    /// 오늘 접수 줄(VisitId, PatientId, AcceptedAt, Status, Rsu). 내원번호가 빈 줄은 빼고 같은 내원은 처음 줄만.
+    /// 차트번호는 SQL RTRIM처럼 오른쪽 공백만 뺀다: char(14) 칸이 앞을 공백으로 채운 번호면 앞 공백까지 지운 글로는 상세의 c.OcmChtNum=@chart가 그 환자를 못 찾는다.
+    /// </summary>
     private static List<TodayLine> Visits(IReadOnlyList<IReadOnlyList<object?>> rows)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -139,9 +142,16 @@ public static class BoardReader
         {
             var id = Id(row[0]);
             if (id == null || !seen.Add(id)) continue;
-            visits.Add(new TodayLine(id, Id(row[1]) ?? "", Text(row[2]) ?? "", Text(row[3]), Text(row[4])));
+            visits.Add(new TodayLine(id, Chart(row[1]), Text(row[2]) ?? "", Text(row[3]), Text(row[4])));
         }
         return visits;
+    }
+
+    /// <summary>차트번호 칸: 오른쪽 공백만 뺀 원값(앞 공백은 그대로). 공백뿐이거나 NULL이면 "".</summary>
+    private static string Chart(object? cell)
+    {
+        var text = Text(cell)?.TrimEnd(' ') ?? "";
+        return text.Trim().Length == 0 ? "" : text;
     }
 
     /// <summary>(내원번호, 처방 코드) 줄 → 내원번호 → 코드들.</summary>
