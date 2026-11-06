@@ -368,3 +368,13 @@
 - Tests: helper/tests/reception-check-codes.dotnet.test.ts
 - TDD: required
 - 의원 PC 2회차(2026-11-06 09:00 KST): 진료보류·접수 취소 코드와 증상 기록지 코드를 아직 모른다. 가짜 콘솔·가짜 DB로 시험하고 net48 빌드(`buildDotnet`). 끝나면 zip 3과 같은 방법으로 `비트확인4.zip`(저장소에 넣지 않음). 접수 현황 화면·PrecheckReception.exe는 고치지 않는다
+
+## TASK-35: 접수 현황 따로 설치 zip
+- Step: Phase 4 · Step 5 · `reception-own-zip`
+- 병렬: 아니오 (TASK-27 뒤, 사용자 결정 2026-11-06)
+- AC: AC-1411.2, AC-1411.3, AC-1411.6, AC-1412.1, AC-1412.3, AC-1413.3
+- REQ: REQ-1411, REQ-1412, REQ-1413
+- Files: helper/install/install-reception.cmd, helper/install/install-reception.ps1, helper/install/uninstall-reception.cmd, helper/install/uninstall-reception.ps1, .github/workflows/helper.yml, helper/tests/reception-own-zip.test.ts, helper/tests/reception-install.test.ts
+- Tests: helper/tests/reception-own-zip.test.ts, helper/tests/reception-install.test.ts
+- TDD: required
+- design.md 11절 '따로 설치'. 글자 시험: 네 파일(.cmd ASCII 한 줄·.ps1 UTF-8 BOM), 관리자 권한 명령 없음, 자기 폴더 `PrecheckReception\`만 덮어쓰고 지움, 도우미 없으면 멈춤, `PrecheckHelper` 끄기·덮어쓰기·크롬 등록 없음, 시작 항목·바로 가기 `--link` 짝, zip 단계의 `precheck-reception-<Version>.zip`과 artifact. `reception-install.test.ts`는 helper.yml 비교가 새 artifact 단계를 받아들이게만 고친다. 실제 설치는 의원 PC에서 본다

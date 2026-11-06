@@ -178,6 +178,9 @@ public static class ReceptionPorts { public const int Http = 47200; }
 - `install.ps1`: 돌던 `PrecheckHelper`·`PrecheckReception`(이 로그인 것만) 끄기 → 파일 덮어쓰기 → 크롬 등록(그대로) → 시작 항목 → 바탕 화면 바로 가기(`WScript.Shell` .lnk) → `PrecheckReception.exe` 켜기. `uninstall.ps1`은 시작 항목·바로 가기 지우고 끈다.
 - `helper.yml` zip 단계: `helper/src/Precheck.Reception/bin/Release/net48/PrecheckReception.exe`·`.exe.config`를 `app\`에 더 복사한다. `helper/install/*` 복사로 `reception-check.*`도 들어간다. 시험·빌드·태그 줄은 그대로다.
 - `README.md`: AC-1412.4의 쉬운 안내.
+- 따로 설치(TASK-35, 사용자 결정 2026-11-06): 의원은 공식 도우미 0.4.0 릴리스를 그대로 쓰고, 접수 현황은 `precheck-reception-<Version>.zip`으로 따로 깐다. 0.4.0 `install.ps1`은 `%LOCALAPPDATA%\Seoseungkwan\PrecheckHelper\`에 `Precheck.Core.dll` 등을 덮어쓰고(접수 현황은 끄지 않는다) `uninstall.ps1`은 `data\` 말고 다 지우므로, 접수 현황은 자기 폴더 `%LOCALAPPDATA%\Seoseungkwan\PrecheckReception\`에 exe·config·DLL 한 벌을 둔다. 등록 파일(`registration.dat`)·엑스레이 표시(`reception-marks.dat`)는 `PrecheckHelper\data\`, 기록은 `PrecheckHelper\logs\`의 고정 경로로 찾으므로(`ReceptionServices`) 코드는 그대로다.
+- `install-reception.cmd` → `install-reception.ps1`(관리자 권한 없음): 도우미 `PrecheckHelper.exe`나 `data\registration.dat`이 없으면 "도우미를 먼저 설치하고 병원 등록을 마치세요" 모양의 한 줄을 쓰고 멈춘다. 있으면 이 로그인의 `PrecheckReception`만 끄기 → 자기 폴더에 덮어쓰기 → 시작 항목(같은 이름 `Seoseungkwan.PrecheckReception`) → 바탕 화면 "접수 현황 주소"(`--link`) → 켜기. 도우미는 끄지도·덮어쓰지도·크롬 등록하지도 않는다. `uninstall-reception.cmd` → `uninstall-reception.ps1`: 끄기 → 시작 항목·바로 가기 지우기 → 자기 폴더만 지우기. `.cmd`는 ASCII 한 줄, `.ps1`은 UTF-8 BOM.
+- `helper.yml` zip 단계가 `Precheck.Reception/bin/Release/net48`의 exe·config·DLL(`app\`)과 위 네 파일로 `precheck-reception-<Version>.zip`을 더 만들고 artifact `precheck-reception`으로 올린다. 도우미 zip·`install.ps1`은 그대로 둔다. 도우미 판은 올리지 않는다(AC-1412.3).
 
 ## 증상 원천
 - 증상 글은 지금 비트 화면 83(전산자료 추출통계, 종류 '증상')을 비트 화면 DLL로 띄워 읽는다(`VendorGridExport`, `GridRows` 칸 내원번호·차트번호·환자명·증상·기록날짜). 느리고(기간 전체·모든 환자), 윈도우 전용이며, 비트 로그인 창이 필요하다. 상세는 환자 한 명의 모든 내원을 그때그때 원한다.
