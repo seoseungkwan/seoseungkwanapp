@@ -97,3 +97,8 @@ Gate 47 · TodayVisits 8 (10줄) · TodayRx 29 · PriorVisits 54 · PriorRx 7 ·
 ### 속도 (ms)
 
 Gate 43 · TodayVisits 2 (21줄) · TodayRx 3 · PriorVisits 27 · PriorRx 9 · RxNames 1633 · HistoryCount 8 · HistoryPage 57. 오늘 수납 OrcInf 9줄.
+
+### 증상 칸 이어 붙이기 (TASK-30용)
+
+- 내원번호 칸: `EmrInf.EmrOcmNum` (3회차 `linkedTable table=EmrInf visitColumn=EmrOcmNum columns=13 text=12`).
+- 순서 칸: EmrInf 13칸 중 글자 칸이 아닌 한 칸이 순서 번호로 보이지만, 보고서에 이름이 없다. 그래서 `EmrUpdDtm` 순, 같으면 DB가 주는 순서로 잇는다. 폰 화면에서 줄 순서가 어색하면 그때 고친다.
