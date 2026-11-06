@@ -1,0 +1,18 @@
+{
+  "status": "approved",
+  "feature": "patients-source-reason",
+  "approved_at": "2026-11-06T06:13:40Z",
+  "approved_via": "user-prompt",
+  "session_id": "c6b141a4-f240-43e6-b51e-f7f563a3a2e5",
+  "spec_sha256": "db9c30e1f67aee25eeb0e4ce44d4735553c14a28f78595aafff60fcff7799d59",
+  "scope": [
+    "src/components/common/ErrorCard.test.tsx",
+    "src/components/common/ErrorCard.tsx",
+    "src/components/patients/PatientsScreen.test.tsx",
+    "src/components/patients/PatientsScreen.tsx",
+    "src/components/patients/usePatientsWorker.ts",
+    "src/types/patients.ts",
+    "src/workers/patients/handler.test.ts",
+    "src/workers/patients/handler.ts"
+  ]
+}
