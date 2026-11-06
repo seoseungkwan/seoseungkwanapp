@@ -1,11 +1,11 @@
 {
   "status": "approved",
   "feature": "stats-period",
-  "approved_at": "2026-11-06T02:44:42Z",
+  "approved_at": "2026-11-06T03:17:28Z",
   "approved_via": "auto-approve",
   "approved_by": "auto",
   "session_id": "",
-  "spec_sha256": "93266fb1d81a14bf5aaede7b5336a1562473df3f21af2df9820c1624a8ffaa0c",
+  "spec_sha256": "a138013644c86da713bdb9de62d81f8045ba3a111e284f1e8234d0fc43324a41",
   "scope": [
     "src/components/charts/StackedBarChart.test.tsx",
     "src/components/charts/StackedBarChart.tsx",

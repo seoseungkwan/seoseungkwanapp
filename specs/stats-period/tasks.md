@@ -16,7 +16,7 @@
 
 ## TASK-2: 고른 기간 셈 (순수 모듈)
 - REQ: REQ-1701, REQ-1702, REQ-1707
-- AC: AC-1701.1~AC-1701.4, AC-1702.1~AC-1702.3, AC-1707.2, AC-1707.3
+- AC: AC-1701.1~AC-1701.4, AC-1702.1~AC-1702.4, AC-1707.2, AC-1707.3
 - Files: src/components/stats/periodPick.ts, src/components/stats/periodPick.test.ts
 - Tests: src/components/stats/periodPick.test.ts
 - TDD: required — `pickRange`·`lastDayOf`·`defaultPick`·`stepPick`·`checkCustom`·`pickReportText`. view.ts에서는 타입만 불러온다. 날짜는 `lib/analytics/dates.ts`·`comparisonRange`만 쓴다
@@ -37,7 +37,7 @@
 
 ## TASK-5: 기간 고르기 부품
 - REQ: REQ-1702, REQ-1703
-- AC: AC-1702.1(▶ disabled), AC-1702.2·AC-1702.3(판 글), AC-1703.2, AC-1703.3, AC-1703.5, AC-1703.7
+- AC: AC-1702.1(▶ disabled), AC-1702.2·AC-1702.3·AC-1702.4(판 글), AC-1703.2, AC-1703.3, AC-1703.5, AC-1703.7
 - Files: src/components/stats/PeriodPicker.tsx, src/components/stats/PeriodPicker.test.tsx
 - Tests: src/components/stats/PeriodPicker.test.tsx
 - TDD: required — props만 받는다(`choice`·`lastDay`·`todayDone`·`onChoose`; `todayDone`은 checkCustom에 넘긴다). 단추 모양 글(`PERIOD_GROUP`·`PERIOD_BUTTON`·`PERIOD_ON`·`PERIOD_OFF`)은 StatsScreen.tsx에서 이 파일로 옮겨 내보낸다(이 TASK는 복사해 두고, TASK-8이 StatsScreen.tsx의 것을 지우고 여기서 불러온다). 날짜 칸은 `ds.input`이다
