@@ -1,7 +1,8 @@
 // 접수 현황 설치·내보내기·안내(TASK-27, REQ-1412·REQ-1411·REQ-1413, design.md 9·11절, 사용자 단계)를 글자로 읽어 검사한다.
 // - 윈도우에서 실제로 도는지(시작 항목·바로 가기·방화벽 창·휴대폰 열기)는 의원 PC에서 본다. 이 시험은 파일끼리의 약속(이름·자리·순서·안내 글)만 본다
 // - 지금 도우미 설치의 약속(크롬 등록·data\·install.cmd·SmartScreen 안내)은 build.test.ts가 그대로 본다
-// - "바뀌지 않음"은 이 브랜치와 origin/main의 갈림점(git merge-base)과 비교한다. git은 읽기만 한다(fetch·push 없음)
+// - "바뀌지 않음"은 이 브랜치와 origin/main의 갈림점(git merge-base)과 비교한다. 도우미 릴리스 줄(origin/release-helper-*)을 합쳤으면
+//   그 줄과의 갈림점이 더 새것이라 그것과 비교한다. git은 읽기만 한다(fetch·push 없음)
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -42,13 +43,40 @@ function git(...args: string[]): string {
   return execFileSync('git', ['--no-optional-locks', ...args], { cwd: ROOT, encoding: 'utf8' })
 }
 
-function mergeBase(): string {
-  let base: string
+/** a가 b의 조상(또는 같은 커밋)인가 */
+function isAncestor(a: string, b: string): boolean {
   try {
-    base = git('merge-base', 'HEAD', 'origin/main').trim()
+    git('merge-base', '--is-ancestor', a, b)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 갈림점: origin/main과의 갈림점. 이 브랜치에 도우미 릴리스 줄(origin/release-helper-*)을 합쳤으면
+ * 그 줄과의 갈림점이 더 새것이라 그것을 쓴다(릴리스 줄이 올린 도우미 판·크롬 통로를 이 기능이 바꾼 것으로 보지 않게)
+ */
+function mergeBase(): string {
+  let bases: string[]
+  try {
+    bases = [git('merge-base', 'HEAD', 'origin/main').trim()]
   } catch {
     throw new Error('git merge-base HEAD origin/main을 구하지 못했다(origin/main이 없다)')
   }
+  const releases = git('for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin/release-helper-*')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+  for (const ref of releases) {
+    try {
+      bases.push(git('merge-base', 'HEAD', ref).trim())
+    } catch {
+      // 이 브랜치와 이어지지 않은 릴리스 줄은 건너뛴다
+    }
+  }
+  const base = bases.find((b) => bases.every((o) => isAncestor(o, b)))
+  if (base === undefined) throw new Error(`갈림점 가운데 가장 새것을 고르지 못했다: ${bases.join(', ')}`)
   expect(base).toMatch(/^[0-9a-f]{40}$/)
   return base
 }
