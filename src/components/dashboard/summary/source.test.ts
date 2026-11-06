@@ -176,8 +176,8 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
 })
 
 describe('예시 자료 없음 — 가짜 자료는 시험 파일 안에서만', () => {
-  it('AC-312.3: 시험 밖 summary 파일은 넷(자료 읽는 자리·계산·분석 화면·보고 문장)이다', () => {
-    expect(appFiles().sort()).toEqual(['DashboardAnalysis.tsx', 'ReportBlock.tsx', 'source.ts', 'view.ts'])
+  it('AC-312.3·AC-516.3: 시험 밖 summary 파일은 다섯(자료 모양·계산·분석 화면·보고 문장·저장 숫자 읽기 LiveDashboard)이다', () => {
+    expect(appFiles().sort()).toEqual(['DashboardAnalysis.tsx', 'LiveDashboard.tsx', 'ReportBlock.tsx', 'source.ts', 'view.ts'])
   })
 
   it('AC-312.3: 시험 밖 파일에 DayPayload 값을 만드는 코드(schemaVersion:)와 예시 숫자 자료가 없다', () => {

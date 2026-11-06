@@ -823,13 +823,28 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
 
   // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
   const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
+  // LiveDashboard.tsx만 저장 숫자를 읽어 BitDashboard에 넘기고, 읽기 전에는 연결 전 모양(DashboardHome)을, 실패면 오류 카드를 그린다
+  // (bit-dashboard AC-601.14·AC-601.19, stats AC-516.3). 그 파일이 실제로 불러오는 것만 하나씩 허락한다
+  const LIVE_IMPORTS = [
+    'LiveDashboard.tsx: @/components/common/ErrorCard',
+    'LiveDashboard.tsx: @/components/dashboard/briefing/DashboardHome',
+    'LiveDashboard.tsx: @/components/dashboard/live/BitDashboard',
+    'LiveDashboard.tsx: @/components/dashboard/live/readBitDays',
+    'LiveDashboard.tsx: @/lib/storage/stats',
+    'LiveDashboard.tsx: ./DashboardAnalysis',
+  ]
+  const EXCEPTIONS = new Set([SOURCE_READ_TYPE, ...LIVE_IMPORTS])
+  // 아래 글자 검사에서 LiveDashboard.tsx의 이 한 줄만 뺀다(briefing을 부르는 곳은 이 불러오기 하나뿐이어야 한다)
+  const LIVE_HOME_IMPORT = "import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'"
 
   it('AC-311.8: 불러오는 곳은 react · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
     const all = appFiles().flatMap((file) => importsOf(file).map((from) => `${file}: ${from}`))
     expect(all.length).toBeGreaterThan(0)
-    expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && entry !== SOURCE_READ_TYPE)).toEqual([])
+    expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && !EXCEPTIONS.has(entry))).toEqual([])
+    // 허락한 줄은 실제로 있는 불러오기다(쓰지 않는 예외가 남지 않게)
+    expect(all).toEqual(expect.arrayContaining([SOURCE_READ_TYPE, ...LIVE_IMPORTS]))
     for (const file of appFiles()) {
-      const text = code(file)
+      const text = file === 'LiveDashboard.tsx' ? code(file).replace(LIVE_HOME_IMPORT, '') : code(file)
       expect(text, file).not.toMatch(/components\/shell|dashboard\/briefing|notReadyFeatures|supabase|@\/lib\/auth|AppShell/)
       expect(text, file).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|indexedDB|document\.cookie/)
     }

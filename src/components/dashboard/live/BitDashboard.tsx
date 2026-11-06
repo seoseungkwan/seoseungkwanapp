@@ -68,11 +68,17 @@ function emptyLook(status: Status): EmptyLook {
   return status.kind === 'data' ? NO_DAYS_LOOK : {}
 }
 
-export function BitDashboard({ today, initial }: { today: string; initial: SummarySource }) {
+/** onBitLoaded: 비트 읽기가 일 숫자(days, 빈 배열 포함)로 끝날 때 부른다. LiveDashboard가 저장 숫자 오류 카드를 거두는 때다(AC-601.19) */
+export function BitDashboard({ today, initial, onBitLoaded }: { today: string; initial: SummarySource; onBitLoaded?: () => void }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   const [attempt, setAttempt] = useState(0)
   const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
+  // 마지막으로 받은 onBitLoaded. 읽기 효과의 의존에 넣지 않는다(부모가 다시 그려도 읽기를 다시 시작하지 않게)
+  const bitLoaded = useRef(onBitLoaded)
+  useEffect(() => {
+    bitLoaded.current = onBitLoaded
+  })
   // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5)
   const selected = picked !== null && inDateRange(picked, today) ? picked : today
 
@@ -86,7 +92,9 @@ export function BitDashboard({ today, initial }: { today: string; initial: Summa
     setStatus(startRead)
     void readBitDays({ runtime, createWorker: createStatsWorker, today, signal: leaving.signal }).then((result) => {
       // 떠났거나 개발 모드가 효과를 다시 돌렸다: 취소한 읽기의 답은 쓰지 않는다
-      if (!leaving.signal.aborted) setStatus((current) => finishRead(current, result, Date.now(), pressed))
+      if (leaving.signal.aborted) return
+      setStatus((current) => finishRead(current, result, Date.now(), pressed))
+      if (result.kind === 'days') bitLoaded.current?.()
     })
     return () => leaving.abort()
   }, [today, attempt])

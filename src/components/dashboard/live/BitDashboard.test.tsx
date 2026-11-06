@@ -887,6 +887,74 @@ describe('AC-601.15: 화면을 떠나면 그만둔다', () => {
   })
 })
 
+// LiveDashboard가 저장 숫자 오류 카드를 거두는 때(design.md '### 화면' onBitLoaded). 비트 읽기가 days로 끝날 때만 부른다
+describe('AC-601.19·AC-601.14: 비트 숫자가 오면 알린다(onBitLoaded)', () => {
+  beforeEach(onBitPc)
+  const drawWith = (onBitLoaded: () => void, initial: SummarySource = NONE) => render(<BitDashboard today={TODAY} initial={initial} onBitLoaded={onBitLoaded} />)
+
+  it('AC-601.19: 비트 읽기가 days로 끝나면 한 번 부른다 — 읽는 동안에는 부르지 않는다', async () => {
+    const loaded = vi.fn()
+    drawWith(loaded)
+    expect(loaded).not.toHaveBeenCalled()
+    await answer(days())
+    expect(loaded).toHaveBeenCalledTimes(1)
+    expectNumbersShown(64, 9, 55)
+  })
+
+  it('AC-601.19: 일 숫자가 빈 배열이어도(days: []) 부른다', async () => {
+    const loaded = vi.fn()
+    drawWith(loaded, SAVED)
+    await answer(days([]))
+    expect(loaded).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-601.19: 직접 누른 다시 읽기가 days로 끝나도 부른다', async () => {
+    const loaded = vi.fn()
+    drawWith(loaded)
+    await answer(days())
+    fireEvent.click(button('다시 읽기'))
+    await answer(days(NEWER_DAYS))
+    expect(loaded).toHaveBeenCalledTimes(2)
+  })
+
+  it.each<[string, ReadResult]>([
+    ['실패', failed('E-BIT-READ-FAILED')],
+    ['품질 incomplete', failed('E-BIT-DATA-UNSURE')],
+    ['다른 창 사용 중', failed('E-BIT-IN-USE')],
+    ['not-ready', NOT_READY],
+  ])('AC-601.19: 비트 읽기가 %s로 끝나면 부르지 않는다', async (_name, result) => {
+    const loaded = vi.fn()
+    drawWith(loaded, SAVED)
+    await answer(result)
+    expect(loaded).not.toHaveBeenCalled()
+  })
+
+  it('AC-601.19·AC-601.15: 취소된 읽기와 떠난 뒤에 온 답으로는 부르지 않는다', async () => {
+    const loaded = vi.fn()
+    const { unmount } = render(
+      <StrictMode>
+        <BitDashboard today={TODAY} initial={NONE} onBitLoaded={loaded} />
+      </StrictMode>,
+    )
+    await answer(days(), 0) // 개발 모드가 취소한 첫 읽기
+    expect(loaded).not.toHaveBeenCalled()
+    unmount()
+    await answer(days(), 1)
+    expect(loaded).not.toHaveBeenCalled()
+  })
+
+  it('AC-601.19: 다시 그릴 때 바뀐 onBitLoaded가 있으면 마지막 것을 부른다(읽기를 다시 시작하지 않는다)', async () => {
+    const first = vi.fn()
+    const last = vi.fn()
+    const { rerender } = drawWith(first)
+    rerender(<BitDashboard today={TODAY} initial={NONE} onBitLoaded={last} />)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    await answer(days())
+    expect(first).not.toHaveBeenCalled()
+    expect(last).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('AC-601.9: 자동 읽기는 서버로 아무것도 보내지 않는다', () => {
   it('AC-601.9: 화면 파일에 서버 요청·브라우저 저장소가 없다', () => {
     const dir = join(process.cwd(), 'src/components/dashboard/live')
