@@ -15,7 +15,6 @@ import {
   revisitView,
   tickLabels,
   todayView,
-  topRx,
   trendBuckets,
   weekdayBuckets,
   type Period,
@@ -315,31 +314,6 @@ describe('weekdayBuckets — 요일별 환자 수', () => {
 
   it('AC-311.5: 기간 안 자료가 없으면 null(오늘 줄은 기간 밖)', () => {
     expect(weekdayBuckets([day(TODAY)], MONTH)).toBeNull()
-  })
-})
-
-describe('topRx — 처방 상위', () => {
-  const MONTH = periodRange(TODAY, 30)
-
-  it('AC-311.5: 코드별 patients 합 큰 5개, 같으면 코드 순 · 이름은 그 코드가 나온 가장 최근 날의 이름 · 기간 밖은 빼고', () => {
-    const days = [
-      day('2026-10-20', { rx: [rx('A1', '새 이름', 1), rx('D4', '도수', 4), rx('E5', '견인', 2), rx('F6', '초음파', 2)] }),
-      day('2026-10-05', { rx: [rx('A1', '옛 이름', 3), rx('B2', '물리치료', 2), rx('C3', '주사', 1)] }),
-      day(TODAY, { partial: true, rx: [rx('Z9', '오늘만', 50)] }),
-      day('2026-09-01', { rx: [rx('Y8', '기간 밖', 40)] }),
-    ]
-    expect(topRx(days, MONTH)).toEqual([
-      { name: '새 이름', value: 4 },
-      { name: '도수', value: 4 },
-      { name: '물리치료', value: 2 },
-      { name: '견인', value: 2 },
-      { name: '초음파', value: 2 },
-    ])
-  })
-
-  it('AC-311.5: 기간 안 자료가 없으면 null, 처방이 없는 날만 있으면 빈 목록', () => {
-    expect(topRx([day(TODAY, { rx: [rx('A1', '물리치료', 3)] })], MONTH)).toBeNull()
-    expect(topRx([day('2026-10-10')], MONTH)).toEqual([])
   })
 })
 

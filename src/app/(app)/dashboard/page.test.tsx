@@ -161,8 +161,8 @@ const featureCount = (status: FeatureStatus) => DASHBOARD_FEATURES.filter((f) =>
 const INDEX_SIDE = `${DASHBOARD_FEATURES.length}개 가운데 ${featureCount('ready')}개는 지금, ${featureCount('connect-first')}개는 연결하면 쓸 수 있어요`
 const GAINS_TITLE = '연결하면 생기는 것 4가지'
 const GAINS_NOTE = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
-// 시안 gains 설명 가운데 숫자가 든 고정 글자(지어낸 통계가 아니다)
-const GAINS_DIGIT_DESC = ['처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.', '많이 낸 처방 5가지를 차례로 적어요.']
+// 시안 gains 설명 가운데 숫자가 든 고정 글자(지어낸 통계가 아니다). 처방 상위 설명은 bit-dashboard AC-606.6이 바꾼 글이다
+const GAINS_DIGIT_DESC = ['처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.', '통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요.']
 
 describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', () => {
   beforeEach(() => {
@@ -231,7 +231,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(html).not.toMatch(/<h3\b/)
   })
 
-  it('AC-307.5·AC-414.7·AC-010.1: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', () => {
+  it('AC-307.5·AC-414.7·AC-010.1·AC-606.6: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', () => {
     let html = renderAt(AT_TODAY)
     // 번호 줄(연결 순서 두 벌 1~5 · 연결하면 생기는 것 1~4): 줄 맨 앞 번호 칸의 번호만 뺀다
     const lists = [...html.matchAll(/<ol\b[^>]*>[\s\S]*?<\/ol>/g)].map((m) => m[0])

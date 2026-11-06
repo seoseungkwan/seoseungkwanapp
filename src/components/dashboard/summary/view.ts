@@ -52,7 +52,6 @@ const shortDate = (ymd: string) => {
   const [m, d] = monthDay(ymd)
   return `${m}.${d}`
 }
-const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 const sum = <T>(list: readonly T[], of: (item: T) => number) => list.reduce((total, item) => total + of(item), 0)
 
 // 그 날의 줄(같은 날이 둘이면 뒤의 것)
@@ -178,21 +177,6 @@ export function weekdayBuckets(days: readonly DayPayload[], range: PeriodRange):
       } satisfies BarBucket,
     ]
   })
-}
-
-// 처방 상위: 기간 안 처방코드별 patients 합(받은 날마다의 환자 수 합) 큰 5개, 같으면 코드 순.
-// 이름은 그 코드가 나온 가장 최근 날의 이름(daysIn이 날짜 순이라 뒤의 날이 덮어쓴다)
-export function topRx(days: readonly DayPayload[], range: PeriodRange): RankedItem[] | null {
-  const rows = daysIn(days, range)
-  if (rows.length === 0) return null
-  const byCode = new Map<string, RankedItem>()
-  for (const row of rows) {
-    for (const item of row.rx) byCode.set(item.code, { name: item.name, value: (byCode.get(item.code)?.value ?? 0) + item.patients })
-  }
-  return [...byCode.entries()]
-    .sort(([codeA, a], [codeB, b]) => b.value - a.value || compareText(codeA, codeB))
-    .slice(0, TOP_RX)
-    .map(([, item]) => item)
 }
 
 // 처방 상위 = 통계 탭 묶음(bit-dashboard REQ-606). lines는 처방 든 묶음, 통계 탭 차례(sortOrder)다.

@@ -15,8 +15,8 @@ import { addDays } from '@/lib/analytics/dates'
 import { isBorderBox, nestedBoxes } from '@/testing/boxes'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
-import type { SummarySource } from './source'
-import { periodRange, tickLabels, topRx, trendBuckets, weekdayBuckets, type Period } from './view'
+import type { RxGroupLine, SummarySource } from './source'
+import { groupRank, periodRange, tickLabels, trendBuckets, weekdayBuckets, type Period } from './view'
 
 // 오늘 하루 분석 · 기간별 흐름 (tab-frame REQ-311, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장', 시안 docs/mockups/dashboard-home/ + 메모 §3·§4).
 // jsdom은 CSS를 계산하지 않는다 → 정해 둔 클래스·글자·짜임을 본다. 차트 부품은 같은 props로 따로 그린 마크업과 견준다.
@@ -31,7 +31,10 @@ const NONE: SummarySource = { kind: 'none' }
 
 type Rx = DayPayload['rx'][number]
 const rx = (code: string, name: string, patients: number): Rx => ({ code, name, type: '처치', patients, newPatients: 0, returning: patients })
-type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; rx?: Rx[]; revisit?: RevisitPayload }
+type GroupLine = DayPayload['groups'][number]
+// 일 줄의 묶음 열쇠 줄(id = 통계 탭 묶음 열쇠, bit-dashboard REQ-606)
+const g = (id: string, patients: number): GroupLine => ({ id, patients, newPatients: 0, returning: patients })
+type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; rx?: Rx[]; groups?: GroupLine[]; revisit?: RevisitPayload }
 function day(ymd: string, o: DayOptions = {}): DayPayload {
   const newPatients = o.newPatients ?? 2
   const returning = o.returning ?? 8
@@ -42,11 +45,16 @@ function day(ymd: string, o: DayOptions = {}): DayPayload {
     partial: o.partial ?? false,
     totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
     rx: o.rx ?? [],
-    groups: [],
+    groups: o.groups ?? [],
     revisit: o.revisit ?? { cohort: newPatients, within7: 0, within14: 0 },
   }
 }
 const data = (days: DayPayload[]): SummarySource => ({ kind: 'data', days })
+// 통계 탭 묶음까지 실은 자료(REQ-606). null = 묶음을 읽지 못함
+const grouped = (days: DayPayload[], groups: readonly RxGroupLine[] | null): SummarySource => ({ kind: 'data', days, groups })
+// 묶음 열쇠(treatment-trend groupKey 모양: 't' + 16진수 16자리)
+const key = (n: number) => `t${n.toString(16).padStart(16, '0')}`
+const line = (name: string, n: number): RxGroupLine => ({ name, key: key(n) })
 // 보조 글(AC-414.6): small(13px) muted + 시안 40em(520px)에 가장 가까운 4px 단위 폭 단계
 const NOTE = 'text-small text-muted max-w-130'
 // 넷째 칸의 증감·"변화 없음" 값(bit-dashboard design.md '### 날짜 고르기', 시안 css_extra.css .kpi-v.sm): PC 20/36, 폰 16/32. 글자 토큰의 줄 높이는 28·24라 줄 높이를 따로 준다
@@ -57,23 +65,34 @@ const GAINS = [
   ['환자 수 추이', '신환과 재진을 하루씩 막대로 보여 줘요.'],
   ['신환 재방문율', '처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.'],
   ['요일별 환자 수', '요일마다 하루 평균 환자 수예요.'],
-  ['처방 상위', '많이 낸 처방 5가지를 차례로 적어요.'],
+  ['처방 상위', '통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요.'],
 ] as const
 const GAINS_NOTE = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
 const TODAY_NOTE = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.'
 // 연결 뒤인데 기간 안 날짜 자료가 없음(오늘 줄만): 그래프 칸은 빈 틀 + "자료 없음"
-const EMPTY_RANGE = data([day(TODAY, { rx: [rx('A1', '물리치료', 3)] })])
+const EMPTY_RANGE_DAYS = [day(TODAY, { rx: [rx('A1', '물리치료', 3)] })]
+const EMPTY_RANGE = data(EMPTY_RANGE_DAYS)
+// '처방 상위' 설명(AC-606.6)
+const RANK_DESC = '통계 탭에서 묶은 치료 중 많이 한 순서예요'
 
-// 연결 뒤 가짜 자료: 오늘 끝남(13명) · 지난주 토요일 끝남(10명) · 기간 안 여러 날(덜 끝난 날 하나) · 30일 밖 90일 안 · 90일 밖
+// 통계 탭 묶음 셋(통계 탭 차례). 이름은 일 줄의 처방 이름(물리치료·도수치료 등)과 달라 어느 쪽이 그려졌는지 가린다(AC-606.1)
+const LINES: RxGroupLine[] = [line('운동치료', 1), line('체외충격파', 2), line('신경차단술', 3)]
+const keyed = (a: number, b: number, c: number) => [g(key(1), a), g(key(2), b), g(key(3), c)]
+// 연결 뒤 가짜 자료: 오늘 끝남(13명) · 지난주 토요일 끝남(10명) · 기간 안 여러 날(덜 끝난 날 하나) · 30일 밖 90일 안 · 90일 밖.
+// 날마다 묶음 열쇠 줄 셋이 있다: 30일 = 운동치료 12 · 체외충격파 5 · 신경차단술 3, 7일 = 체외충격파 4 · 운동치료 3 · 신경차단술 0
 const FULL_DAYS = [
-  day(TODAY, { newPatients: 4, returning: 9 }),
-  day('2026-10-24', { newPatients: 2, returning: 8, rx: [rx('A1', '물리치료', 6)], revisit: { cohort: 2, within7: 1, within14: 1 } }),
-  day('2026-10-30', { newPatients: 3, returning: 7, rx: [rx('A1', '물리치료', 5), rx('B2', '도수치료', 2)], revisit: { cohort: 3, within7: 1, within14: null } }),
-  day('2026-10-12', { partial: true, newPatients: 1, returning: 5, rx: [rx('C3', '주사', 3)], revisit: { cohort: 1, within7: null, within14: null } }),
-  day('2026-10-05', { newPatients: 5, returning: 15, rx: [rx('D4', '견인', 4)], revisit: { cohort: 5, within7: 2, within14: 3 } }),
-  day('2026-09-15', { newPatients: 1, returning: 1, rx: [rx('E5', '초음파', 9)] }),
-  day('2026-07-01', { newPatients: 9, returning: 9, rx: [rx('Z9', '기간 밖', 99)] }),
+  day(TODAY, { newPatients: 4, returning: 9, groups: keyed(50, 50, 50) }),
+  day('2026-10-24', { newPatients: 2, returning: 8, rx: [rx('A1', '물리치료', 6)], groups: keyed(1, 2, 0), revisit: { cohort: 2, within7: 1, within14: 1 } }),
+  day('2026-10-30', { newPatients: 3, returning: 7, rx: [rx('A1', '물리치료', 5), rx('B2', '도수치료', 2)], groups: keyed(2, 2, 0), revisit: { cohort: 3, within7: 1, within14: null } }),
+  day('2026-10-12', { partial: true, newPatients: 1, returning: 5, rx: [rx('C3', '주사', 3)], groups: keyed(5, 0, 1), revisit: { cohort: 1, within7: null, within14: null } }),
+  day('2026-10-05', { newPatients: 5, returning: 15, rx: [rx('D4', '견인', 4)], groups: keyed(4, 1, 2), revisit: { cohort: 5, within7: 2, within14: 3 } }),
+  day('2026-09-15', { newPatients: 1, returning: 1, rx: [rx('E5', '초음파', 9)], groups: keyed(1, 1, 9) }),
+  day('2026-07-01', { newPatients: 9, returning: 9, rx: [rx('Z9', '기간 밖', 99)], groups: keyed(99, 99, 99) }),
 ]
+// 일 줄 처방 이름(묶음 이름이 아니다)
+const RX_NAMES = ['물리치료', '도수치료', '주사', '견인', '초음파', '기간 밖']
+// 묶음까지 실은 연결 뒤 자료(처방 상위 = 묶음 막대)
+const FULL = grouped(FULL_DAYS, LINES)
 
 const TREND_SERIES: BarSeries[] = [
   { name: '신환', tone: 'accent' },
@@ -344,8 +363,8 @@ describe('기간별 흐름 — 머리 줄과 기간 단추', () => {
     expect(emptyTicks()).toEqual(['10.24', '10.25', '10.26', '10.27', '10.28', '10.29', '10.30'])
   })
 
-  it('AC-311.3: 연결 뒤 다른 기간을 누르면 그래프 넷이 그 기간으로 다시 그려지고 숫자 줄은 그대로다', async () => {
-    draw(data(FULL_DAYS))
+  it('AC-311.3·AC-606.1: 연결 뒤 다른 기간을 누르면 그래프 넷(처방 상위는 묶음 막대)이 그 기간으로 다시 그려지고 숫자 줄은 그대로다', async () => {
+    draw(FULL)
     const before = kpiRow().innerHTML
     const range7 = periodRange(TODAY, 7)
     await choose('최근 7일')
@@ -356,7 +375,13 @@ describe('기간별 흐름 — 머리 줄과 기간 단추', () => {
     )
     const week = chart('요일별 환자 수').querySelector('table')!.parentElement!.parentElement!
     expect(week.outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(FULL_DAYS, range7)!} />))
-    expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={topRx(FULL_DAYS, range7)!} />))
+    const items7 = groupRank(FULL_DAYS, range7, LINES)!.items
+    expect(items7).toEqual([
+      { name: '체외충격파', value: 4 },
+      { name: '운동치료', value: 3 },
+      { name: '신경차단술', value: 0 },
+    ])
+    expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={items7} />))
     expect(within(chart('신환 재방문율')).getByText('50.0%')).toBeTruthy()
     expect(kpiRow().innerHTML).toBe(before)
   })
@@ -425,7 +450,7 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
     expect(section.querySelector('ul')).toBeNull() // ChartLegend
     expect(section.querySelector('[aria-hidden="true"]')).toBeNull() // 빈 틀·눈금은 꾸밈(aria-hidden)이었다
     expect(section.querySelector('[style]')).toBeNull()
-    for (const gone of ['비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다', '자료 없음', '7일 안에 다시 옴', '많이 낸 처방 5가지가 차례로 적힙니다', '신환·재진, 하루씩']) {
+    for (const gone of ['비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다', '자료 없음', '7일 안에 다시 옴', RANK_DESC, '묶음 고치기', '묶음 만들기', '신환·재진, 하루씩']) {
       expect(container.textContent, gone).not.toContain(gone)
     }
   })
@@ -466,7 +491,7 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
 })
 
 describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 모양 그대로)', () => {
-  it('AC-311.4: 그래프 넷의 제목(h3)·설명이 이 차례다', () => {
+  it('AC-311.4·AC-606.6: 그래프 넷의 제목(h3)·설명이 이 차례다', () => {
     draw(data(FULL_DAYS))
     const section = region('기간별 흐름')
     expect(within(section).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위'])
@@ -474,7 +499,7 @@ describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 
       ['환자 수 추이', '신환·재진, 하루씩'],
       ['신환 재방문율', '처음 온 환자가 다시 온 비율'],
       ['요일별 환자 수', '하루 평균, 요일마다'],
-      ['처방 상위', '많이 낸 처방 5가지가 차례로 적힙니다'],
+      ['처방 상위', RANK_DESC],
     ]
     for (const [name, text] of desc) {
       const p = within(chart(name!)).getByText(text!)
@@ -519,7 +544,7 @@ describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 
     ['연결 전', NONE, true],
     ['연결 뒤 · 오늘 줄 없음', data([day('2026-10-30'), day('2026-10-24')]), true],
     ['연결 뒤 · 기간 안 자료 없음', EMPTY_RANGE, true],
-    ['연결 뒤 · 자료 다 있음', data(FULL_DAYS), false],
+    ['연결 뒤 · 자료 다 있음', FULL, false],
   ] as const)('AC-407.2: %s — 분석의 "–"(KPI·재방문율·처방 상위 빈 줄)는 모두 글자색 muted이고 faint 글자가 없다', (_, source, hasDash) => {
     const { container } = draw(source)
     const dashes = Array.from(container.querySelectorAll('*')).filter((el) => el.children.length === 0 && el.textContent === '–')
@@ -604,13 +629,18 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
     expect(within(row14).getByText('집계 중')).toBeTruthy()
   })
 
-  it('AC-311.5: 요일별 = StackedBarChart 한 계열(accent "환자 수", "명"), 처방 상위 = RankedBars("건")', () => {
-    draw(data(FULL_DAYS))
+  it('AC-311.5·AC-606.1: 요일별 = StackedBarChart 한 계열(accent "환자 수", "명"), 처방 상위 = 묶음 줄의 RankedBars("건")', () => {
+    draw(FULL)
     const week = chart('요일별 환자 수').querySelector('table')!.parentElement!.parentElement!
     expect(week.outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(FULL_DAYS, MONTH)!} />))
     const rank = chart('처방 상위').querySelector('ol')!
-    expect(rank.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={topRx(FULL_DAYS, MONTH)!} />))
-    expect(topRx(FULL_DAYS, MONTH)!.map((item) => item.name)).toEqual(['물리치료', '견인', '주사', '도수치료'])
+    const items = groupRank(FULL_DAYS, MONTH, LINES)!.items
+    expect(rank.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={items} />))
+    expect(items).toEqual([
+      { name: '운동치료', value: 12 },
+      { name: '체외충격파', value: 5 },
+      { name: '신경차단술', value: 3 },
+    ])
   })
 
   it('AC-311.5·AC-311.6: 기간 안 날짜 자료가 하나도 없으면 각 그래프는 빈 틀 + 가운데 "자료 없음"', () => {
@@ -634,6 +664,131 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
     expect(rows).toHaveLength(2)
     // 오늘 줄 없음 → 숫자 칸은 빈 상태, 그래프는 그린다
     expect(within(kpiCells()[0] as HTMLElement).getByText('자료 없음')).toBeTruthy()
+  })
+})
+
+// '처방 상위' = 통계 탭 처방별 추세 묶음 (bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음' 칸 그리기 ①~⑤).
+// 묶음은 새 prop이 아니라 source(data)의 groups로 온다. 숫자는 groupRank(view.ts)가 세고, 여기서는 그린 모양·글자·링크를 본다
+describe("기간별 흐름 — '처방 상위' = 통계 탭 묶음 (REQ-606)", () => {
+  const MONTH = periodRange(TODAY, 30)
+  const UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.'
+  const NO_GROUPS = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.'
+  const ALL_STALE = '통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.'
+  const rank = () => chart('처방 상위')
+  // 그래프 칸 = 머리 줄(h3 · 링크) → 설명 → 몸
+  const body = () => rank().children[2] as HTMLElement
+  const barRows = () =>
+    Array.from(rank().querySelectorAll('ol[aria-label="처방 상위"] > li')).map((li) => [li.children[0]!.textContent, li.children[2]!.textContent])
+  // ① 기간 안 자료 없음의 몸(tab-frame AC-311.4 그대로)을 따로 그려 가운데 글만 바꾼 마크업
+  const emptyBodyWith = (message: string) => {
+    draw(grouped(EMPTY_RANGE_DAYS, LINES))
+    const html = body().outerHTML
+    cleanup()
+    expect(html.split('>자료 없음<')).toHaveLength(2)
+    return html.replace('>자료 없음<', `>${message}<`)
+  }
+
+  it('AC-606.6: 머리 — 제목 h3 "처방 상위", 설명 "통계 탭에서 묶은 치료 중 많이 한 순서예요"(small muted), 오른쪽 위 /stats 글자 링크 [묶음 고치기](ds.textButton 그대로, 폰 44px)', () => {
+    draw(FULL)
+    const heading = within(rank()).getByRole('heading', { level: 3 })
+    expect(heading.textContent).toBe('처방 상위')
+    const head = heading.parentElement!
+    expect(head).toBe(rank().children[0])
+    const desc = within(rank()).getByText(RANK_DESC)
+    expect(desc).toBe(rank().children[1])
+    expect(desc.tagName).toBe('P')
+    hasAll(desc, 'text-small text-muted')
+    const link = within(rank()).getByRole('link', { name: '묶음 고치기' })
+    expect(within(rank()).getAllByRole('link')).toEqual([link])
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe('/stats')
+    expect(link.parentElement).toBe(head)
+    expect(head.lastElementChild).toBe(link) // 제목 다음, 오른쪽 위
+    expect(classesOf(link)).toEqual(tokens(ds.textButton)) // 화면 파일이 클래스를 따로 붙이지 않는다
+    hasAll(link, 'max-md:min-h-11')
+    expect(link.textContent).toBe('묶음 고치기')
+    expect(screen.queryByText('많이 낸 처방 5가지가 차례로 적힙니다')).toBeNull()
+  })
+
+  it.each([
+    ['① 기간 안 자료 없음 · 묶음 있음', '자료 없음', '묶음 고치기', grouped(EMPTY_RANGE_DAYS, LINES)],
+    ['① 기간 안 자료 없음 · 묶음 읽지 못함', '자료 없음', '묶음 고치기', grouped(EMPTY_RANGE_DAYS, null)],
+    ['① 기간 안 자료 없음 · 묶음 없음', '자료 없음', '묶음 만들기', data(EMPTY_RANGE_DAYS)],
+    ['② 묶음을 읽지 못함(null)', UNREAD, '묶음 고치기', grouped(FULL_DAYS, null)],
+    ['③ 묶음 없음(groups 없음)', NO_GROUPS, '묶음 만들기', data(FULL_DAYS)],
+    ['③ 묶음 없음(빈 목록)', NO_GROUPS, '묶음 만들기', grouped(FULL_DAYS, [])],
+    ['⑤ 셀 수 있는 묶음 없음(모두 다시 불러와야 함)', ALL_STALE, '묶음 고치기', grouped(FULL_DAYS, [line('고주파', 7), line('견인치료', 8)])],
+  ] as const)('AC-606.3·AC-606.4·AC-606.5·AC-606.6·AC-311.4: %s — 빈 줄 다섯 틀(① 자료 없음과 같은 마크업) 가운데 "%s", 머리 링크 [%s](/stats)', (_, message, linkText, source) => {
+    const expected = emptyBodyWith(message)
+    draw(source)
+    expect(body().outerHTML).toBe(expected)
+    const note = within(rank()).getByText(message)
+    hasAll(note, 'bg-surface px-3 py-1 text-small text-muted')
+    expect(note.closest('[aria-hidden="true"]')).toBeNull() // 화면 읽기가 읽는다
+    const link = within(rank()).getByRole('link')
+    expect(link.textContent).toBe(linkText)
+    expect(link.getAttribute('href')).toBe('/stats')
+    // 숫자를 지어내지 않는다: 순위 막대도 "건"도 없다
+    expect(rank().querySelector('ol[aria-label]')).toBeNull()
+    expect(rank().textContent).not.toContain('건')
+  })
+
+  it('AC-606.1·AC-606.6: 셀 수 있는 묶음이 있으면 RankedBars("처방 상위" · "건") 하나 — 줄 이름은 묶음 이름, 값은 기간 안 열쇠 줄 patients의 합. 처방 코드 이름은 나오지 않는다', () => {
+    draw(FULL)
+    expect(body().tagName).toBe('DIV')
+    expect(classesOf(body())).toEqual(['mt-2'])
+    expect(body().innerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={groupRank(FULL_DAYS, MONTH, LINES)!.items} />))
+    expect(barRows()).toEqual([
+      ['운동치료', '12건'],
+      ['체외충격파', '5건'],
+      ['신경차단술', '3건'],
+    ])
+    for (const name of RX_NAMES) expect(rank().textContent, name).not.toContain(name)
+    expect(within(rank()).getByRole('link').textContent).toBe('묶음 고치기')
+  })
+
+  it('AC-606.2: 줄은 건수 큰 차례(같으면 통계 탭 차례), 많아야 5줄이고 5줄 안에 든 0건 묶음은 "0건"으로 보인다', () => {
+    const lines = [line('견인치료', 1), line('체외충격파', 2), line('운동치료', 3), line('신경차단술', 4), line('고주파', 5), line('초음파치료', 6)]
+    const values = [3, 0, 8, 3, 1, 0]
+    draw(grouped([day('2026-10-12', { groups: lines.map((l, i) => g(l.key, values[i]!)) })], lines))
+    expect(barRows()).toEqual([
+      ['운동치료', '8건'],
+      ['견인치료', '3건'],
+      ['신경차단술', '3건'],
+      ['고주파', '1건'],
+      ['체외충격파', '0건'],
+    ])
+    expect(within(rank()).queryByText('초음파치료')).toBeNull()
+  })
+
+  it('AC-606.3: 다시 불러와야 하는 묶음은 숫자 줄로 나오지 않고, 막대 아래 small muted 한 줄 "{이름}, {이름} 묶음은 …"(통계 탭 차례)이 붙는다', () => {
+    const lines = [line('고주파', 7), ...LINES, line('견인치료', 8)]
+    draw(grouped(FULL_DAYS, lines))
+    const bars = rank().querySelector('ol[aria-label="처방 상위"]')!
+    expect(bars.parentElement).toBe(body())
+    expect(bars.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={groupRank(FULL_DAYS, MONTH, lines)!.items} />))
+    expect(barRows().map(([name]) => name)).toEqual(['운동치료', '체외충격파', '신경차단술'])
+    expect(body().children).toHaveLength(2)
+    const stale = bars.nextElementSibling!
+    expect(stale.tagName).toBe('P')
+    expect(stale.textContent).toBe('고주파, 견인치료 묶음은 통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.')
+    hasAll(stale, 'text-small text-muted')
+    expect(within(rank()).getByRole('link').textContent).toBe('묶음 고치기')
+  })
+
+  it('AC-606.3: 다시 불러와야 하는 묶음이 없으면 막대 아래 한 줄도 없다', () => {
+    draw(FULL)
+    expect(body().children).toHaveLength(1)
+    expect(rank().textContent).not.toContain('다시 불러와야')
+  })
+
+  it('AC-606.6: 연결 전 "연결하면 생기는 것 4가지"의 넷째는 처방 상위 · "통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요."이고 링크는 없다', () => {
+    draw(NONE)
+    const fourth = region('기간별 흐름').querySelector('ol')!.children[3]!
+    expect(fourth.children[1]!.textContent).toBe('처방 상위')
+    expect(fourth.children[2]!.textContent).toBe('통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요.')
+    expect(screen.queryByText('많이 낸 처방 5가지를 차례로 적어요.')).toBeNull()
+    expect(within(region('기간별 흐름')).queryByRole('link')).toBeNull()
   })
 })
 
@@ -769,7 +924,7 @@ describe('짜임 — 폭별 칸 (AC-311.7)', () => {
   })
 
   it('AC-311.7: 가로로 밀리지 않는다 — 옆 밀기 감싸개가 없고 그래프 칸은 min-w-0', () => {
-    const { container } = draw(data(FULL_DAYS))
+    const { container } = draw(FULL)
     expect(allClasses(container).filter((t) => t.startsWith('overflow-x') || t.startsWith('overflow-auto'))).toEqual([])
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) hasAll(chart(name), 'min-w-0')
   })
@@ -819,7 +974,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
   const importsOf = (file: string) => [...code(file).matchAll(/^import\s[^'"]*?from\s+['"]([^'"]+)['"]/gm)].map((m) => m[1]!)
   const ALLOWED =
-    /^(?:react|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view))$/
+    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view))$/
 
   // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
   const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
@@ -837,7 +992,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
   // 아래 글자 검사에서 LiveDashboard.tsx의 이 한 줄만 뺀다(briefing을 부르는 곳은 이 불러오기 하나뿐이어야 한다)
   const LIVE_HOME_IMPORT = "import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'"
 
-  it('AC-311.8: 불러오는 곳은 react · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
+  it('AC-311.8·AC-606.6: 불러오는 곳은 react · next/link · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
     const all = appFiles().flatMap((file) => importsOf(file).map((from) => `${file}: ${from}`))
     expect(all.length).toBeGreaterThan(0)
     expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && !EXCEPTIONS.has(entry))).toEqual([])
@@ -864,7 +1019,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
 
   it.each([
     ['연결 전', NONE],
-    ['연결 뒤', data(FULL_DAYS)],
+    ['연결 뒤', FULL],
   ] as const)('AC-311.8: %s — 앱 틀을 다시 그리지 않고, 상자 안 상자가 없고, overflow-hidden·animate- 클래스가 없다', (_, source) => {
     const { container } = draw(source)
     expect(container.querySelector('header, nav, main')).toBeNull()
@@ -888,11 +1043,28 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     check()
   })
 
-  it('AC-311.8: 그래프는 움직이지 않는다 — 그래프 칸 안에 transition 클래스가 없다', () => {
-    draw(data(FULL_DAYS))
-    for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) {
-      expect(allClasses(chart(name)).filter((t) => t.includes('transition')), name).toEqual([])
-    }
+  it.each([
+    ['묶음 막대', FULL],
+    ['막대 + 다시 불러와야 하는 묶음 안내', grouped(FULL_DAYS, [...LINES, line('고주파', 7)])],
+    ['묶음 없음', data(FULL_DAYS)],
+    ['기간 안 자료 없음', grouped(EMPTY_RANGE_DAYS, LINES)],
+  ] as const)('AC-311.8·AC-606.6: 그래프는 움직이지 않는다(%s) — 그래프 칸 안에 transition 클래스가 없다. 처방 상위는 머리 링크(글자 단추, 그래프가 아니다)만 빼고 본다', (_, source) => {
+    draw(source)
+    const moving = (root: Element) => allClasses(root).filter((t) => t.includes('transition'))
+    for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(moving(chart(name)), name).toEqual([])
+    const group = chart('처방 상위')
+    // 빼는 것은 머리 줄의 링크 하나, 글자뿐인 ds.textButton 그대로다 — 그 밖의 것을 숨기지 않는다
+    const links = within(group).getAllByRole('link')
+    expect(links).toHaveLength(1)
+    const link = links[0]!
+    expect(link.parentElement).toBe(within(group).getByRole('heading', { level: 3 }).parentElement)
+    expect(link.children).toHaveLength(0)
+    expect(classesOf(link)).toEqual(tokens(ds.textButton))
+    const rest = group.cloneNode(true) as HTMLElement
+    rest.querySelector('a[href="/stats"]')!.remove()
+    expect(rest.querySelector('a')).toBeNull()
+    expect(allClasses(rest)).toHaveLength(allClasses(group).length - tokens(ds.textButton).length)
+    expect(moving(rest)).toEqual([])
   })
 })
 
