@@ -90,12 +90,24 @@ function Opened({ row, card }: { row: TargetRow; card: MemoRowsProps['card'] }) 
   )
 }
 
-function Editor({ row, onDone }: { row: TargetRow; onDone(text: string): void }) {
+/** 고치는 칸. 입력 중(locked)에는 읽기 전용이고 칸 밖을 눌러도 알리지 않는다: 열린 채 입력이 시작되는 틈에도 입력 중에 글이 바뀌지 않는다(AC-2203.3) */
+function Editor({ row, locked, onDone }: { row: TargetRow; locked: boolean; onDone(text: string): void }) {
   return (
     <div className={ds.field}>
       <label className={ds.label}>
         {row.name} 메모 고치기
-        <textarea aria-label={`${row.name} 메모 고치기`} autoFocus defaultValue={row.text} rows={3} maxLength={32000} className={`${ds.input} h-auto py-2`} onBlur={(event) => onDone(event.target.value)} />
+        <textarea
+          aria-label={`${row.name} 메모 고치기`}
+          autoFocus
+          defaultValue={row.text}
+          rows={3}
+          maxLength={32000}
+          readOnly={locked}
+          className={`${locked ? ds.readonly : ds.input} h-auto py-2`}
+          onBlur={(event) => {
+            if (!locked) onDone(event.target.value)
+          }}
+        />
       </label>
       <span className={ds.help}>확인 표시를 지우거나 글을 고친 뒤 칸 밖을 누르면 목록에 바로 반영돼요.</span>
     </div>
@@ -125,7 +137,7 @@ function Actions({ row, editing, locked, onEdit, onEditDone, children }: { row: 
           )}
         </div>
       )}
-      {open && <Editor row={row} onDone={(text) => onEditDone(row.key, text)} />}
+      {open && <Editor row={row} locked={locked} onDone={(text) => onEditDone(row.key, text)} />}
     </>
   )
 }

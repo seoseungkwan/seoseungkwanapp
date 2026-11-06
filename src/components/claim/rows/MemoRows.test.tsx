@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -138,7 +140,7 @@ describe('AC-018.14 다른 메모', () => {
     expect(on.onApprove).toHaveBeenCalledWith('d', false)
   })
 
-  it(`AC-018.14: '메모 바꿈' 줄에는 [바꾸지 않기]·[메모 고치기]만 있고(묻지 않기가 켜져 있어도 같은 줄이다) 두 메모는 보인다`, () => {
+  it(`AC-018.14·AC-2204.3: '메모 바꿈' 줄에는 [바꾸지 않기]·[메모 고치기]만 있고(묻지 않기가 켜져 있어도 같은 줄이다) 두 메모는 보인다`, () => {
     show(targets({ batch: [row('d', { compare: '다름', inBit: '비트에 있는 글', replaces: '비트에 있는 글', chip: '메모 바꿈' })], replacing: 1 }))
     expect(screen.queryByRole('button', { name: '이 메모로 바꾸기' })).toBeNull()
     expect(screen.getByRole('button', { name: '바꾸지 않기' })).toBeTruthy()
@@ -215,10 +217,48 @@ describe('REQ-2203 목록의 메모 줄마다 [메모 고치기]', () => {
 
   it('AC-2203.3: 입력 중에는 모든 [메모 고치기]가 막히고, 비트 메모 읽는 중·startBlocked로는 막지 않는다', () => {
     show(all(), { locked: true })
-    for (const button of screen.getAllByRole('button', { name: EDIT })) expect((button as HTMLButtonElement).disabled).toBe(true)
+    const locked = screen.getAllByRole('button', { name: EDIT })
+    expect(locked).toHaveLength(8)
+    for (const button of locked) expect((button as HTMLButtonElement).disabled).toBe(true)
     cleanup()
     show(all(), { reading: true, startBlocked: true })
-    for (const button of screen.getAllByRole('button', { name: EDIT })) expect((button as HTMLButtonElement).disabled).toBe(false)
+    const open = screen.getAllByRole('button', { name: EDIT })
+    expect(open).toHaveLength(8)
+    for (const button of open) expect((button as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('AC-2203.3: 고치는 칸이 열린 채 입력이 시작되면(locked) 칸은 읽기 전용이고 칸 밖을 눌러도 알리지 않는다. 풀리면 다시 고칠 수 있다', async () => {
+    const user = userEvent.setup()
+    const value = all()
+    const on = handlers()
+    const view = render(<MemoRows targets={value} locked={true} reading={false} open={new Set()} editing="d" card={() => null} {...on} />)
+    const box = () => screen.getByRole('textbox', { name: '가상환자d 메모 고치기' }) as HTMLTextAreaElement
+    expect(box().readOnly).toBe(true)
+    await user.click(box())
+    await user.type(box(), '더')
+    expect(box().value).toBe('우리 메모 d')
+    await user.tab()
+    expect(on.onEditDone).not.toHaveBeenCalled()
+    view.rerender(<MemoRows targets={value} locked={false} reading={false} open={new Set()} editing="d" card={() => null} {...on} />)
+    expect(box().readOnly).toBe(false)
+    await user.click(box())
+    await user.type(box(), '더')
+    await user.tab()
+    expect(on.onEditDone).toHaveBeenCalledWith('d', '우리 메모 d더')
+  })
+
+  it('AC-2204.2: 환자 줄 두 파일은 정한 것만 불러오고(MemoRows의 새 불러오기는 memoCompare의 isBlankMemo 하나) 네트워크·저장소·console·supabase가 없다', () => {
+    const source = (name: string) => readFileSync(join(process.cwd(), 'src/components/claim/rows', name), 'utf-8')
+    const imports = (text: string) => [...text.matchAll(/^import\s[^;]*?from\s+'([^']+)'/gm)].map((match) => match[1])
+    const rows = source('MemoRows.tsx')
+    const table = source('MemoTable.tsx')
+    expect(imports(rows)).toEqual(['react', '@/components/ui/classes', '@/lib/precheck/memoCompare', '@/types/precheck', '../dateList'])
+    expect(rows).toContain("import { isBlankMemo } from '@/lib/precheck/memoCompare'")
+    expect(imports(table)).toEqual(['react', '@/components/ui/classes', '@/types/precheck', '../dateList'])
+    for (const text of [rows, table]) {
+      expect(text).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|console|supabase)\b/)
+      expect(text).not.toMatch(/\bimport\(/)
+    }
   })
 
   it('AC-2203.4: [메모 고치기]는 [바꾸지 않기]·[이 메모로 바꾸기]의 오른쪽 같은 줄이고, 있던 단추는 이름·막힘이 그대로다', () => {
