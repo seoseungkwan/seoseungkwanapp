@@ -53,10 +53,11 @@ const allStrings = (x: Rec) => Object.values(x).every((value) => typeof value ==
 type MonthWork = { drafts: Map<string, string>; done: Map<string, string | boolean> }
 /**
  * 받아 둔 작업 저장: 고친·완료한 메모(내원번호 → 글) · 입력 기록(내원번호 → 마지막 상태) · 완료 표시(글 없는 표시 포함, AC-018.3) · 달 파일별 칸 · 입력 기록의 달.
- * saved는 메모를 얼리는 글이다: 글 없는 완료 표시는 얼리지 않는다(AC-014.11). journal은 도우미가 쓰고 Worker에는 사본이다(design.md 19-6)
+ * saved는 메모를 얼리는 글이다: 글 없는 완료 표시는 얼리지 않는다(AC-014.11). journal은 도우미가 쓰고 Worker에는 사본이다(design.md 19-6).
+ * released는 done 값이 false인 사람, 곧 완료한 뒤 고쳐 완료를 푼 사람이다(AC-2202.1·AC-2202.5). 웹은 journal을 지울 수 없으므로 이것이 journal의 done보다 앞선다
  */
-type StoredWork = { saved: Map<string, string>; journal: Map<string, string>; done: Set<string>; months: Map<string, MonthWork>; journalMonths: Map<string, string> }
-const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map(), done: new Set(), months: new Map(), journalMonths: new Map() })
+type StoredWork = { saved: Map<string, string>; journal: Map<string, string>; done: Set<string>; released: Set<string>; months: Map<string, MonthWork>; journalMonths: Map<string, string> }
+const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map(), done: new Set(), released: new Set(), months: new Map(), journalMonths: new Map() })
 
 const isStrings = (x: unknown) => Array.isArray(x) && x.every((value) => typeof value === 'string')
 
@@ -93,7 +94,9 @@ export function loadStore(text: string): Outcome<{ work: StoredWork | null; sett
     if (!isRecord(drafts) || !isRecord(done) || !isRecord(journal) || !allStrings(drafts) || !allStrings(journal)) return PARTIAL
     if (!Object.values(done).every((value) => typeof value === 'string' || typeof value === 'boolean')) return PARTIAL
     for (const [key, value] of Object.entries(done)) {
-      work.done.add(key)
+      // false는 완료 표시가 아니다: 완료한 뒤 고쳐 푼 사람이다(AC-2202.5). 달 칸에는 그대로 두어 다시 보낼 때 남는다
+      if (value === false) work.released.add(key)
+      else work.done.add(key)
       if (typeof value === 'string') work.saved.set(key, value)
     }
     for (const [key, value] of Object.entries(drafts)) work.saved.set(key, value as string)
@@ -327,8 +330,11 @@ export function createPrecheckJobs(deps: {
   const held = new Map<string, string>()
   /** 도우미가 같은 날 내원이 여럿이라 돌려준 사람(AC-018.13). 새 [자료 불러오기] 전까지 */
   const foundByPc = new Set<string>()
-  /** 비트 메모를 받은 뒤 입력을 마친 사람(AC-018.25). 성공한 다시 불러오기가 지운다 */
-  const afterEntry = new Set<string>()
+  /**
+   * 비트 메모를 받은 뒤 입력을 마친 사람: 내원번호 → 그때 넣은 글(보낸 묶음에 없던 줄이면 null, AC-018.25). 성공한 다시 불러오기가 지운다.
+   * 받은 사본은 입력 전 값이라, 이 사람을 고쳐 완료를 풀면 이 글과 견준다(AC-2202.3)
+   */
+  const afterEntry = new Map<string, string | null>()
   /** 이번 입력 결과가 완료가 아닌 사람: 내원번호 → 결과(날짜별 건수의 재료, AC-019.3). 새 [자료 불러오기]부터는 입력 기록이 대신한다 */
   const inputOutcomes = new Map<string, string>()
   /**
@@ -338,8 +344,8 @@ export function createPrecheckJobs(deps: {
   let lastUnconfirmed: { visitKey: string; date: string }[] = []
   /** 달 칸 저장이 막혔다(AC-018.17). 달 칸 store.load가 성공해야 풀린다 */
   let storeBlocked = false
-  /** 아직 PC에 저장되었다는 답을 못 받은 고친 글: 내원번호 → 글과 달 */
-  let unsaved = new Map<string, { text: string; month: string }>()
+  /** 아직 PC에 저장되었다는 답을 못 받은 고친 글: 내원번호 → 글과 달. release는 그 고치기가 완료를 풀었다는 뜻이다(AC-2202.7) */
+  let unsaved = new Map<string, { text: string; month: string; release?: true }>()
   /** 저장해야 할 달과 그 달의 바뀐 차례. 답이 오면 그 차례까지 저장된 것이다 */
   const dirtyMonths = new Set<string>()
   const monthVersions = new Map<string, number>()
@@ -424,14 +430,22 @@ export function createPrecheckJobs(deps: {
     for (const month of dirtyMonths) saveMonth(month)
   }
 
-  /** 받아 둔 칸에 남은 고친 글을 다시 얹는다(막힌 채 새 [자료 불러오기]를 해도 고친 메모가 남는다, AC-018.17) */
+  /** 받아 둔 칸에 남은 고친 글과 완료 풀림을 다시 얹는다(막힌 채 새 [자료 불러오기]를 해도 고친 메모가 남는다, AC-018.17·AC-2202.7) */
   function applyUnsaved() {
-    for (const [key, { text, month }] of unsaved) {
+    for (const [key, { text, month, release }] of unsaved) {
       work.saved.set(key, text)
       work.months.get(month)?.drafts.set(key, text)
+      if (release) releaseDone(key, month)
       dirtyMonths.add(month)
     }
     viewsCache = null
+  }
+
+  /** 완료를 푼다(AC-2202.1): 완료 표시를 지우고 달 칸 done에 false를 둔다. journal의 done은 도우미 것이라 그대로이고 released가 앞선다 */
+  function releaseDone(key: string, month: string) {
+    work.done.delete(key)
+    work.released.add(key)
+    work.months.get(month)?.done.set(key, false)
   }
 
   // ── 메모 칸 보기 모양 ──
@@ -456,7 +470,14 @@ export function createPrecheckJobs(deps: {
     const views = currentViews()
     const visible = memoContext?.visible
     const inside = visible ? (current?.visits ?? []).filter((visit) => inRange(visit.date, visible)) : []
-    return { views, rows: visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined }), visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+    return { views, rows: visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased() }), visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+  }
+
+  /** 완료를 푼 사람 가운데 이 화면에서 비트 메모를 읽은 뒤 넣은 사람: 내원번호 → 넣은 글(AC-2202.3). 고치지 않은 완료 줄은 지금처럼 받은 사본으로 견준다 */
+  function enteredReleased(): Map<string, string> {
+    const entered = new Map<string, string>()
+    for (const [key, text] of afterEntry) if (text !== null && work.released.has(key)) entered.set(key, text)
+    return entered
   }
 
   const rxNamesOf = (visit: Visit) => [...new Set(visit.rx.map((line) => line.name))]
@@ -469,10 +490,13 @@ export function createPrecheckJobs(deps: {
     })
   }
 
-  /** 끝난 사람(AC-018.3): 완료 표시와 입력 기록의 마지막이 done인 사람. 입력 중에 떠나면 도우미는 journal에만 적어 done 칸에 글이 없다(helper WorkStoreJournal) */
+  /**
+   * 끝난 사람(AC-018.3): 완료 표시와 입력 기록의 마지막이 done인 사람. 입력 중에 떠나면 도우미는 journal에만 적어 done 칸에 글이 없다(helper WorkStoreJournal).
+   * 고쳐 완료를 푼 사람(released)은 journal이 done이어도 끝나지 않았다(AC-2202.1)
+   */
   function finishedKeys(): ReadonlySet<string> {
     const keys = new Set(work.done)
-    for (const [key, state] of work.journal) if (state === 'done') keys.add(key)
+    for (const [key, state] of work.journal) if (state === 'done' && !work.released.has(key)) keys.add(key)
     return keys
   }
 
@@ -696,9 +720,10 @@ export function createPrecheckJobs(deps: {
       if (line.result === '완료') {
         approved.delete(key)
         held.delete(key)
-        afterEntry.add(key)
+        afterEntry.set(key, item?.memo ?? null)
         resolved.add(key)
         work.done.add(key)
+        work.released.delete(key) // 다시 넣었으니 다시 완료다(AC-2202.6)
         if (item && visit) {
           work.saved.set(key, work.saved.get(key) ?? item.memo)
           work.months.get(visit.month)?.done.set(key, item.memo)
@@ -1010,9 +1035,12 @@ export function createPrecheckJobs(deps: {
         // 글이 그대로면 고친 것이 아니다: 저장하면 자동 메모가 얼어 설정을 바꿔도 다시 만들어지지 않는다(AC-014.11)
         if (currentViews().memos.find((memo) => memo.visitKey === visit.key)?.text === m.text) return
         approved.delete(visit.key) // 우리 메모를 고치면 승인이 풀린다(AC-018.14)
+        // 완료한 사람을 고치면 완료가 풀리고 다음 입력에서 '메모 바꿈'으로 든다. 같은 store.save에 drafts와 함께 간다(AC-2202.1)
+        const release = finishedKeys().has(visit.key) || unsaved.get(visit.key)?.release === true
+        if (release) releaseDone(visit.key, visit.month)
         work.saved.set(visit.key, m.text)
         work.months.get(visit.month)?.drafts.set(visit.key, m.text)
-        unsaved.set(visit.key, { text: m.text, month: visit.month })
+        unsaved.set(visit.key, release ? { text: m.text, month: visit.month, release: true } : { text: m.text, month: visit.month })
         viewsCache = null
         markMonth(visit.month)
         saveMonth(visit.month)

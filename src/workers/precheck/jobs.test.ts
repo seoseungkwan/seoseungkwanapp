@@ -3269,6 +3269,155 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
   })
 
+  // ── 어느 메모든 고치기(memo-edit-any REQ-2202·REQ-2204): 완료한 사람을 고치면 완료가 풀리고 '메모 바꿈'으로 든다 ──
+  describe('REQ-2202 고친 완료 메모는 완료가 풀린다', () => {
+    const edit = (made: Made, key: string, text: string) => made.jobs.fromScreen({ type: 'editMemo', visitKey: key, text } satisfies PrecheckFromScreen)
+    const saves = (made: Made) => sends(made, 'store.save').map((m) => JSON.parse(m.payload) as Record<string, unknown>)
+    const inBatch = (view: MemoScreenView, key: string) => view.targets.batch.find((row) => row.key === key)
+    /** 완료한 A: 달 파일 done에 넣은 글, 입력 기록 done, 비트 메모도 그 글 */
+    const FINISHED = { bit: [memoRow(A, '넣은 글')], store: { drafts: { other: '파일 글' }, done: { [A.key]: '넣은 글', older: '완료 글' }, journal: { [A.key]: 'done' } } }
+
+    it('AC-2202.1·AC-2204.1: 완료한 사람을 고치면 store.save 한 번에 drafts와 done false가 가고, 메모 바꿈·replaces로 묶음에 든다', async () => {
+      const made = await ready(FINISHED)
+      const before = await viewOf(made)
+      expect(rowOf(before, A.key)).toMatchObject({ done: true, compare: '같음' })
+      expect(keysIn(before, 'done')).toContain(A.key)
+      await edit(made, A.key, '고친 글')
+      const [save, ...rest] = saves(made)
+      expect(rest).toEqual([])
+      expect(save).toEqual({ month: '2026-10', drafts: { other: '파일 글', [A.key]: '고친 글' }, done: { [A.key]: false, older: '완료 글' } })
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: false, edited: true, compare: '다름', text: '고친 글' })
+      expect(keysIn(view, 'done')).not.toContain(A.key)
+      expect(inBatch(view, A.key)).toMatchObject({ chip: '메모 바꿈', replaces: '넣은 글' })
+      const item = itemIn(await press(made), A.key)!
+      expect(Object.keys(item).sort()).toEqual(['chart', 'date', 'memo', 'name', 'replaces', 'visitKey'])
+      expect(item).toMatchObject({ visitKey: A.key, chart: A.chart, date: DAY.from, memo: '고친 글', replaces: '넣은 글' })
+    })
+
+    it('AC-2202.2: 완료 기록 없이 같음인 사람을 고치면 done은 받은 그대로이고 메모 바꿈으로 든다', async () => {
+      const auto = rowOf(await viewOf(await ready()), B.key).text
+      const made = await ready({ bit: [memoRow(B, auto)], store: { done: { older: '완료 글' } } })
+      expect(rowOf(await viewOf(made), B.key)).toMatchObject({ done: true, compare: '같음' })
+      await edit(made, B.key, '고친 글')
+      expect(saves(made)).toEqual([{ month: '2026-10', drafts: { [B.key]: '고친 글' }, done: { older: '완료 글' } }])
+      const view = await viewOf(made)
+      expect(rowOf(view, B.key)).toMatchObject({ done: false, compare: '다름' })
+      expect(inBatch(view, B.key)).toMatchObject({ chip: '메모 바꿈', replaces: auto })
+    })
+
+    it('AC-2202.3: 이 화면에서 넣은 뒤 고치면 그때 넣은 글로 견주어 메모 바꿈이 되고, 고치지 않은 사람·다시 불러온 뒤는 읽은 글로 견준다', async () => {
+      const made = await ready()
+      const first = await press(made)
+      const entered = itemIn(first, A.key)!.memo
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '완료', '입력'), line(C, '완료', '입력')] })
+      const after = await viewOf(made)
+      expect(rowOf(after, A.key)).toMatchObject({ done: true, afterEntry: true, compare: '비트에 없음' })
+      await edit(made, A.key, '고친 글')
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: false, compare: '다름', inBit: entered })
+      expect(inBatch(view, A.key)).toMatchObject({ chip: '메모 바꿈', replaces: entered })
+      // 고치지 않은 C는 지금처럼 받은 사본 그대로다
+      expect(rowOf(view, C.key)).toMatchObject({ done: true, compare: '비트에 없음' })
+      expect(itemIn(await press(made), A.key)).toMatchObject({ memo: '고친 글', replaces: entered })
+      // 성공한 비트 메모 다시 불러오기 뒤에는 읽은 글로 견준다
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'r1', memosJson([memoRow(A, '누가 바꾼 글')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+      const reread = await viewOf(made)
+      expect(rowOf(reread, A.key)).toMatchObject({ afterEntry: false, compare: '다름', inBit: '누가 바꾼 글' })
+      expect(inBatch(reread, A.key)?.replaces).toBe('누가 바꾼 글')
+    })
+
+    it('AC-2202.3: 넣은 글이 4,000자를 넘으면 고친 뒤 비트 메모를 읽지 못한 것이다', async () => {
+      const made = await ready()
+      const long = '글'.repeat(4001)
+      await edit(made, A.key, long)
+      const first = await press(made)
+      expect(itemIn(first, A.key)?.memo).toBe(long)
+      await finish(made, first.ticket, { status: 'finished', results: [line(A, '완료', '입력')] })
+      await edit(made, A.key, '고친 글')
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: false, compare: '조회 못함' })
+      expect(keysIn(view, 'unread')).toContain(A.key)
+      expect(inBatch(view, A.key)).toBeUndefined()
+    })
+
+    it('AC-2202.4: 고치지 않거나 글이 같은 editMemo면 완료 그대로이고 저장도 없다(비트 메모가 뒤에 바뀌어도)', async () => {
+      const made = await ready({ bit: [memoRow(A, '누가 바꾼 글')], store: { done: { [A.key]: '넣은 글' }, journal: { [A.key]: 'done' } } })
+      const before = await viewOf(made)
+      expect(rowOf(before, A.key)).toMatchObject({ done: true, compare: '다름' })
+      await edit(made, A.key, '넣은 글')
+      expect(saves(made)).toEqual([])
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key).done).toBe(true)
+      expect(keysIn(view, 'done')).toContain(A.key)
+      expect(batchKeys(view)).not.toContain(A.key)
+      expect(itemIn(await press(made), A.key)).toBeUndefined()
+    })
+
+    it('AC-2202.5: done false로 저장된 사람은 다시 불러와도 완료가 아니고, 다음 저장에도 false가 남는다', async () => {
+      const made = await ready({ bit: [memoRow(A, '넣은 글')], store: { drafts: { [A.key]: '고친 글' }, done: { [A.key]: false }, journal: { [A.key]: 'done' } } })
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: false, edited: true, compare: '다름', text: '고친 글' })
+      expect(keysIn(view, 'done')).not.toContain(A.key)
+      expect(inBatch(view, A.key)).toMatchObject({ chip: '메모 바꿈', replaces: '넣은 글' })
+      await edit(made, B.key, 'B 고친 글')
+      expect(saves(made)).toEqual([{ month: '2026-10', drafts: { [A.key]: '고친 글', [B.key]: 'B 고친 글' }, done: { [A.key]: false } }])
+    })
+
+    it('AC-2202.6: 풀린 사람이 다시 완료되면 done에 고친 글이 남아 다시 완료이고, 건너뜀·확인 필요면 풀린 채다', async () => {
+      const entered = await ready(FINISHED)
+      await edit(entered, A.key, '고친 글')
+      const first = await press(entered)
+      entered.sent.length = 0
+      await finish(entered, first.ticket, { status: 'finished', results: [line(A, '완료', '바꿈(기존 메모 덮어씀)')] })
+      expect(saves(entered).at(-1)).toMatchObject({ done: { [A.key]: '고친 글', older: '완료 글' } })
+      expect(rowOf(await viewOf(entered), A.key)).toMatchObject({ done: true, text: '고친 글' })
+      for (const result of [line(A, '건너뜀', '입력 직전 기존 청구메모가 변경되었습니다. 현재 내용을 다시 비교해 주세요.'), line(A, '확인 필요', '미처리')]) {
+        const made = await ready(FINISHED)
+        await edit(made, A.key, '고친 글')
+        const run = await press(made)
+        made.sent.length = 0
+        await finish(made, run.ticket, { status: result.result === '확인 필요' ? 'stopped' : 'finished', code: result.result === '확인 필요' ? 'E-INPUT-STOPPED' : null, results: [result] })
+        for (const save of saves(made)) expect(save).toMatchObject({ done: { [A.key]: false } })
+        expect(rowOf(await viewOf(made), A.key).done).toBe(false)
+      }
+    })
+
+    it('AC-2202.7: 저장 실패 뒤 고친 메모를 남기고 다시 불러오면 완료 풀림도 다시 얹혀 다음 저장에 false가 간다', async () => {
+      const made = await ready(FINISHED)
+      await edit(made, A.key, '고친 글')
+      await made.jobs.fromPort({ type: 'sent', ticket: sends(made, 'store.save')[0].ticket, ok: false, code: 'E-STORE-FAILED' })
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'loadStart', load: 2, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'm2', MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: 'm2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'b2', memosJson([memoRow(A, '넣은 글')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'b2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 's2', storeJson({ done: { [A.key]: '넣은 글' }, journal: { [A.key]: 'done' } }))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: 's2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: false, text: '고친 글', compare: '다름', unsaved: true })
+      expect(inBatch(view, A.key)).toMatchObject({ chip: '메모 바꿈', replaces: '넣은 글' })
+      expect(saves(made).filter((save) => save.month)).toEqual([{ month: '2026-10', drafts: { [A.key]: '고친 글' }, done: { [A.key]: false } }])
+    })
+
+    it('AC-2202.8: 설정을 바꿔 다시 점검하면 손대지 않은 메모만 바뀌고, 풀린 사람의 고친 글과 완료한 사람의 글·완료는 그대로다', async () => {
+      const made = await ready({ bit: [memoRow(A, '넣은 글')], store: { done: { [A.key]: '넣은 글', [B.key]: 'B 완료 글' }, journal: { [A.key]: 'done' } } })
+      await edit(made, A.key, '고친 글')
+      const before = await viewOf(made)
+      const untouched = rowOf(before, C.key).text
+      await made.jobs.fromScreen(CHECK_AGAIN(2, CHANGED))
+      const view = await viewOf(made)
+      expect(rowOf(view, C.key).text).not.toBe(untouched)
+      expect(rowOf(view, A.key)).toMatchObject({ text: '고친 글', done: false })
+      expect(rowOf(view, B.key)).toMatchObject({ text: 'B 완료 글', done: true })
+      expect(keysIn(view, 'done')).toContain(B.key)
+    })
+  })
+
   // ── 건수(REQ-019): Worker가 언제 무엇을 화면에 보내나. 올리기는 useCountsUpload.test.ts ──
   describe('AC-019 날짜별 건수', () => {
     const countsIn = (posts: readonly PrecheckToScreen[]) => posts.flatMap((m) => (m.type === 'dayCounts' ? [m.rows] : []))
