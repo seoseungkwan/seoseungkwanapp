@@ -307,7 +307,7 @@
 - Files: helper/src/Precheck.Core/Reception/ReceptionMap.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionMap.test.cs, helper/tests/reception-map.dotnet.test.ts
 - Tests: helper/tests/reception-map.dotnet.test.ts
 - TDD: required
-- `docs/reception/check-result.md` 답 그대로: WR 숨김, WN 진료대기, CN·TN 수납대기, PN 끝남(추정). 진료보류는 `Unconfirmed`. 답이 없는 코드는 표에 넣지 않는다. `Validate(Statuses, Unconfirmed)`가 문제 없음. 시험은 채운 표가 보고서 표와 같은지 본다
+- `docs/reception/check-result.md` 3회차 답 그대로(2회차 표를 고침): WR·CR·CN 숨김(예약·예약 취소·접수 취소), WN 진료대기, HN 진료보류, TN 수납대기, PN 끝남. `Unconfirmed`는 비어 있다. 답이 없는 코드는 표에 넣지 않는다. `Validate(Statuses, Unconfirmed)`가 문제 없음. 시험은 채운 표가 보고서 표와 같은지 본다
 
 ## TASK-29: 사람·접수 메모·수납 시각 칸 읽기
 - Step: Phase 5 · Step 1 · `fill-columns`
@@ -327,7 +327,7 @@
 - Files: helper/src/Precheck.Core/Reception/ReceptionMap.cs, helper/src/Precheck.Core/Reception/ReceptionSql.cs, helper/src/Precheck.Core/Reception/HistoryReader.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionSql.test.cs, helper/tests/Precheck.Core.Tests/Reception/HistoryReader.test.cs, helper/tests/reception-symptoms.dotnet.test.ts
 - Tests: helper/tests/reception-symptoms.dotnet.test.ts
 - TDD: required
-- 보고서에 화면 83과 똑같은 칸이 있을 때만 `VisitSymptoms` 상수(내원번호로, 여러 줄이면 보고서의 이음 순서). 없으면 이 TASK는 `blocked`(사유: 증상 SQL 원천 없음 → 화면 83 길로 명세 변경, design.md '증상 원천')
+- 원천은 AC-1410.4(3회차): `VisitSymptoms`(내원번호로 EmrInf의 EmrShtTyp='S'·빈 글 아닌 EmrShtVal 줄, 순서 칸 차례), 이음은 도우미가 공백 하나로. 내원번호·순서 칸 이름이 확인 보고서에 없으면 `blocked`(사유: EmrInf 칸 이름 없음)
 
 ## TASK-31: 읽기 간격 한 곳 (`ReceptionTiming`, 5초)
 - Step: Phase 4 · Step 4 · `poll-timing`
