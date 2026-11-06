@@ -72,14 +72,14 @@
 - Files: src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/source.ts, src/components/dashboard/summary/source.test.ts
 - Tests: src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/source.test.ts
 - TDD: required
-- AC-606.1·606.2·606.3의 숫자 쪽(셀 수 있음/다시 불러와야 함, 차례, 5줄, 0건). `RxGroupLine`·`SummarySource.groups` 타입을 `source.ts`에 더한다(불러오기·`toSummarySource`는 그대로). `topRx`는 이 TASK에서 지우지 않는다(TASK-12). TASK-13·14와 파일이 겹치지 않아 동시에 돌 수 있다
+- AC-606.1·606.2·606.3의 숫자 쪽(셀 수 있음/다시 불러와야 함, 차례, 5줄, 0건). `RxGroupLine`·`SummarySource.groups` 타입을 `source.ts`에 더한다(불러오기·`toSummarySource`는 그대로). `topRx`는 이 TASK에서 지우지 않는다(TASK-12). `keyedIn`과 견주는 시험 하나(design.md). TASK-13과 파일이 겹치지 않아 동시에 돌 수 있다. TASK-12·14는 이 TASK의 함수·타입을 쓰므로 이 TASK 뒤에 한다
 
 ## TASK-12: '처방 상위' 칸 그리기 (`DashboardAnalysis`)
 - REQ: REQ-606
 - Files: src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/app/(app)/dashboard/page.test.tsx
 - Tests: src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/view.test.ts, src/app/(app)/dashboard/page.test.tsx
 - TDD: required
-- AC-606.3~606.6의 화면 쪽(design.md '처방 상위 = 통계 탭 묶음'의 ①~⑤, 링크, 설명 글, 연결 전 넷째 설명). TASK-11 뒤에 한다. `view.ts`·`view.test.ts`에서는 `topRx`와 그 시험만 지운다. AC-311.8 허락 목록에 `next/link` 한 줄을 더한다
+- AC-606.3~606.6의 화면 쪽(design.md '처방 상위 = 통계 탭 묶음'의 ①~⑤, 링크, 설명 글, 연결 전 넷째 설명). TASK-11 뒤에 한다. TASK-14와 파일이 겹치지 않아 동시에 돌 수 있다. `view.ts`·`view.test.ts`에서는 `topRx`와 그 시험만 지운다. AC-311.8 허락 목록에 `next/link` 한 줄을 더하고, 움직임 검사는 '처방 상위' 머리 링크만 뺀다(design.md '칸 그리기')
 
 ## TASK-13: 비트 읽기에 묶음 싣기 (`readBitDays`)
 - REQ: REQ-606
@@ -93,7 +93,7 @@
 - Files: src/components/dashboard/live/rxGroups.ts, src/components/dashboard/live/rxGroups.test.ts
 - Tests: src/components/dashboard/live/rxGroups.test.ts
 - TDD: required
-- `toDashboardGroups`(차례, 처방 없는 묶음 뺌, 열쇠 = `groupKey`, `defs` = `groupDefs`)와 `readDashboardGroups`(실패 = null, 서버로 보내는 것 없음). `listStatsRxGroups`는 시험에서 가짜로 바꾼다
+- AC-606.1(이름·열쇠)·606.4(처방 없는 묶음 뺌)·606.5(실패 = null)·606.7(`defs`)·606.8(받아 오기만 함)의 묶음 쪽. `toDashboardGroups`(차례, 처방 없는 묶음 뺌, 열쇠 = `groupKey`, `defs` = `groupDefs`)와 `readDashboardGroups`(실패 = null, 서버로 보내는 것 없음). `listStatsRxGroups`는 시험에서 가짜로 바꾼다. `RxGroupLine` 타입을 쓰므로 TASK-11 뒤에 한다(TASK-12와 동시에 돌 수 있다)
 
 ## TASK-15: 잇기 (`LiveDashboard`·`BitDashboard`)
 - REQ: REQ-606
