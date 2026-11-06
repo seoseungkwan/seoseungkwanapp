@@ -505,6 +505,81 @@ describe('종류마다 따로', () => {
     expect(h.sent).toHaveLength(0)
   })
 
+  describe('E-PATIENTS-SOURCE의 이유 낱말(patients-source-reason)', () => {
+    it.each([
+      ['visit-conflict', [['V9', '900101', '가상환자01', '1주 뒤 f/u', '2026-07-10'], ['V9', '900102', '가상환자02', '1주 뒤 f/u', '2026-07-10']]],
+      ['row-unreadable', [['V8', '900101', '', '1주 뒤 f/u', '2026-07-10']]],
+    ])('AC-2101.1 F/U가 %s로 멈추면 codes는 그대로이고 reasons에 그 낱말만 있으며 환자 값이 없다', async (reason, rows) => {
+      const h = harness()
+      await loaded(h)
+      const head = FOLLOWUP.pieces[0]
+      await h.piece({ ...head, chart: [head.chart[0], ...rows] })
+      await h.pieces(FOLLOWUP.pieces.slice(1))
+      await h.pieces(INJECTION.pieces)
+      await h.build()
+      h.sentOk(0)
+      const views = h.last('views')
+      expect(views.followup).toBeNull()
+      expect(views.codes).toEqual({ followup: 'E-PATIENTS-SOURCE' })
+      expect(views.reasons).toEqual({ followup: reason })
+      expectCodesOnly(views.reasons)
+    })
+
+    it('AC-2101.2 정기 주사가 E-PATIENTS-SOURCE로 멈추면 reasons는 {recall: 그 낱말}이다', async () => {
+      const h = harness()
+      await loaded(h)
+      await h.pieces(FOLLOWUP.pieces)
+      const april = INJECTION.pieces[0]
+      await h.piece({
+        ...april,
+        chart: [april.chart[0], ['V9', '900201', '가상환자21', '아라간 1차', '2026-04-18'], ['V9', '900202', '가상환자22', '아라간 1차', '2026-04-18']],
+      })
+      await h.pieces(INJECTION.pieces.slice(1))
+      await h.build()
+      await settle()
+      const views = h.last('views')
+      expect(views.codes).toEqual({ recall: 'E-PATIENTS-SOURCE' })
+      expect(views.reasons).toEqual({ recall: 'visit-conflict' })
+      expectCodesOnly(views.reasons)
+    })
+
+    it('AC-2101.3 E-PATIENTS-SOURCE가 아닌 오류만 있으면 views에 reasons 칸이 없다', async () => {
+      const h = harness()
+      await loaded(h)
+      await h.piece({ ...FOLLOWUP.pieces[3], chart: [['이름']] })
+      await h.pieces(INJECTION.pieces)
+      await h.build()
+      h.sentOk(0)
+      const views = h.last('views')
+      expect(views.codes).toEqual({ followup: 'E-BRIDGE-BAD-REPLY' })
+      expect('reasons' in views).toBe(false)
+    })
+
+    it('AC-2101.3 이유가 있던 읽기 뒤 새 읽기가 잘 끝나면 reasons 칸이 없다', async () => {
+      const h = harness()
+      await loaded(h)
+      const head = FOLLOWUP.pieces[0]
+      await h.piece({ ...head, chart: [head.chart[0], ['V8', '900101', '', '1주 뒤 f/u', '2026-07-10']] })
+      await h.pieces(FOLLOWUP.pieces.slice(1))
+      await h.pieces(INJECTION.pieces)
+      await h.build()
+      h.sentOk(0)
+      expect(h.last('views').reasons).toEqual({ followup: 'row-unreadable' })
+
+      const again = h.plan()
+      await h.pieces(FOLLOWUP.pieces)
+      await h.pieces(INJECTION.pieces.filter((p) => again.recall?.some((r) => r.from === p.from && r.to === p.to)))
+      const saves = h.sent.length
+      const before = h.all('views').length
+      await h.build()
+      if (h.sent.length > saves) h.sentOk(saves)
+      await until(() => h.all('views').length > before, 'views')
+      const views = h.last('views')
+      expect(views.codes).toEqual({})
+      expect('reasons' in views).toBe(false)
+    })
+  })
+
   describe('번호 없는 오류(원본의 TypeError 같은 것)', () => {
     afterEach(() => {
       boom.followup = false
