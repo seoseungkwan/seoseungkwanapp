@@ -7,8 +7,17 @@ import type { DayPayload } from '@/types/payload'
 /** 통계 탭 처방별 추세 묶음 하나(bit-dashboard REQ-606). key = 그 묶음 처방 코드 모음의 groupKey(treatment-trend), 일 줄 groups[].id와 견준다 */
 export type RxGroupLine = { name: string; key: string }
 
-/** groups: 처방 든 묶음(통계 탭 차례). [] = 묶음 없음, null = 묶음을 읽지 못함. 주지 않으면 []과 같다(toSummarySource는 넣지 않는다) */
-export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[]; groups?: readonly RxGroupLine[] | null }
+/**
+ * 옛 기간 읽기(dashboard-period REQ-1804). from = 손에 든 숫자의 첫날(오늘 − LOOKBACK_DAYS), 고른 기간의 첫날이 이보다 앞일 때만 읽는다.
+ * read = 그 기간의 저장 숫자 한 번(받아 오기만 한다, 10초 한도). null = 실패·한도. 읽는 코드는 LiveDashboard 한 곳이 만든다
+ */
+export type OlderDays = { from: string; read: (range: { from: string; to: string }) => Promise<readonly DayPayload[] | null> }
+
+/**
+ * groups: 처방 든 묶음(통계 탭 차례). [] = 묶음 없음, null = 묶음을 읽지 못함. 주지 않으면 []과 같다(toSummarySource는 넣지 않는다).
+ * older: 옛 기간 읽기. 주지 않으면 손에 든 숫자만 쓴다. 새 prop이 아니라 이 모양 안으로 온다(groups와 같은 길, tab-frame AC-312.2)
+ */
+export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[]; groups?: readonly RxGroupLine[] | null; older?: OlderDays }
 
 // 처음 자료 자리: 늘 '자료 없음'(none)이다. dashboard/page.tsx가 브라우저 읽기(bit-dashboard TASK-8 LiveDashboard)로 바뀔 때까지 쓴다
 export function dashboardSummarySource(): SummarySource {

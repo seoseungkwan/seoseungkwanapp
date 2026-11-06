@@ -6,7 +6,7 @@ import type { readDays } from '@/lib/storage/stats'
 import type { DayPayload } from '@/types/payload'
 import type { DashboardAnalysis } from './DashboardAnalysis'
 import type { ReportBlock } from './ReportBlock'
-import { dashboardSummarySource, isConnected, toSummarySource, type RxGroupLine, type SummarySource } from './source'
+import { dashboardSummarySource, isConnected, toSummarySource, type OlderDays, type RxGroupLine, type SummarySource } from './source'
 
 // 자료 모양 한 곳 (tab-frame REQ-312, stats REQ-516, stats design.md 'TASK-16 대시보드 읽기').
 // dashboardSummarySource()는 지금처럼 늘 '자료 없음'이다(dashboard/page.tsx가 bit-dashboard TASK-8 전까지 쓴다).
@@ -152,7 +152,18 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     // 타입만 더한다: 다시 정의한 묶음 모양은 이름·열쇠 두 칸이고, groups는 선택 칸이다
     const text = code(read('source.ts'))
     expect(text).toMatch(/export type RxGroupLine = \{ name: string; key: string \}/)
-    expect(text).toMatch(/\{ kind: 'data'; days: readonly DayPayload\[\]; groups\?: readonly RxGroupLine\[\] \| null \}/)
+    expect(text).toMatch(/\{ kind: 'data'; days: readonly DayPayload\[\]; groups\?: readonly RxGroupLine\[\] \| null; older\?: OlderDays \}/)
+  })
+
+  it('AC-1804.1·AC-1804.2: data 모양에 선택 칸 older(옛 기간 읽기: 손에 든 숫자의 첫날 · 기간 한 번 읽기, null = 실패·한도)가 붙는다. 필수 칸은 그대로 kind·days다', () => {
+    type Data = Extract<SummarySource, { kind: 'data' }>
+    expectTypeOf<Data['older']>().toEqualTypeOf<OlderDays | undefined>()
+    expectTypeOf<RequiredKeys<Data>>().toEqualTypeOf<'kind' | 'days'>()
+    expectTypeOf<OlderDays>().toEqualTypeOf<{ from: string; read: (range: { from: string; to: string }) => Promise<readonly DayPayload[] | null> }>()
+    const older: OlderDays = { from: '2026-07-29', read: async () => null }
+    // 연결 판정은 older와 상관없이 days만 본다
+    expect(isConnected({ kind: 'data', days: [fakeDay('2026-10-31')], older })).toBe(true)
+    expect(isConnected({ kind: 'data', days: [], older })).toBe(false)
   })
 
   it('AC-312.2: DashboardAnalysis의 필수 칸은 정확히 today·source이고, 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐이다', () => {
@@ -198,8 +209,8 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
 })
 
 describe('예시 자료 없음 — 가짜 자료는 시험 파일 안에서만', () => {
-  it('AC-312.3·AC-516.3: 시험 밖 summary 파일은 다섯(자료 모양·계산·분석 화면·보고 문장·저장 숫자 읽기 LiveDashboard)이다', () => {
-    expect(appFiles().sort()).toEqual(['DashboardAnalysis.tsx', 'LiveDashboard.tsx', 'ReportBlock.tsx', 'source.ts', 'view.ts'])
+  it('AC-312.3·AC-516.3: 시험 밖 summary 파일은 일곱(자료 모양·계산·분석 화면·보고 문장·저장 숫자 읽기 LiveDashboard·고른 기간 잇기 flow·옛 기간 읽기 usePeriodDays)이다', () => {
+    expect(appFiles().sort()).toEqual(['DashboardAnalysis.tsx', 'LiveDashboard.tsx', 'ReportBlock.tsx', 'flow.ts', 'source.ts', 'usePeriodDays.ts', 'view.ts'])
   })
 
   it('AC-312.3: 시험 밖 파일에 DayPayload 값을 만드는 코드(schemaVersion:)와 예시 숫자 자료가 없다', () => {
