@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // 잇기 app.js (TASK-23, design.md 10절). jsdom에 index.html을 넣고 app.js를 부른 뒤 가짜 도우미(fixtures.ts fakeServer)에 묻는 가짜 fetch로
-// 끝까지 본다: 열기 → 칸 고르기 → 줄 누르기(폰: 해시 길 #/v/{열쇠}, 태블릿: 오른쪽) → 더 보기 → X-ray 완료 → 새 접수 알림 →
+// 끝까지 본다: 열기 → 칸 고르기 → 줄 누르기(폰: 해시 길 #/v/{열쇠}, 태블릿: 오른쪽) → 오늘 증상 다시 읽기(AC-1404.8) → X-ray 완료 → 새 접수 알림 →
 // [새로 고침] → 숨김(읽는 중이어도 늦은 답을 그리지 않음) → 다시 보임 → 끊김 → 돌아옴. 시계는 가짜다. 자료는 가짜다(fixtures.ts)
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -341,7 +341,7 @@ describe('app.js 열기와 목록 (폰)', () => {
 })
 
 describe('app.js 폰 상세 (해시 길)', () => {
-  it('AC-1407.5: 폰에서 줄을 누르면 #/v/{열쇠}로 상세(오늘 카드·지난 진료 5번)가 열리고, [지난 진료 더 보기]로 다음 20번을 이어 붙이고, [접수 현황]으로 돌아온다. 문서 제목은 늘 "접수 현황"이다', async () => {
+  it('AC-1407.5: 폰에서 줄을 누르면 #/v/{열쇠}로 상세(오늘 카드·지난번 증상, AC-1404.7)가 열리고 [더 보기]는 없으며, [접수 현황]으로 돌아온다. 문서 제목은 늘 "접수 현황"이다', async () => {
     const app = await open()
     tile('진료대기').click()
     rowOf('가상환자02').querySelector<HTMLAnchorElement>('a.row-main')!.click()
@@ -355,33 +355,15 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(textOf(page, '.patient .memo')).toBe('메모 · 오른쪽 어깨 통증 심해짐')
     expect(textOf(page, 'section.today .today-date')).toContain('11월 5일')
     expect(textOf(page, 'section.today .today-state')).toBe('진료 전')
-    expect(textsOf(page, '.visits > section.visit .visit-date')).toEqual(['10월 29일', '10월 22일', '10월 15일', '10월 8일', '10월 1일'])
-    expect(textOf(page, 'button.more')).toBe('지난 진료 더 보기 · 31번 더 있어요')
+    expect(page.querySelectorAll('section.visit').length).toBe(1)
+    expect(textOf(page, 'section.visit.is-last .last-badge')).toBe('지난번')
+    expect(textOf(page, 'section.visit.is-last .visit-date')).toContain('10월 29일')
+    expect(textOf(page, 'section.visit.is-last .visit-ago')).toBe('7일 전')
+    expect(textOf(page, 'section.visit.is-last p.sym')).toBe('증상 · 오른쪽 어깨 통증 조금 줄었음, 밤에 아픔')
+    expect(page.querySelector('ul.rx-list, .visits')).toBeNull()
+    expect(moreButton(page)).toBeNull()
     expect(textOf(page, 'p.end-note')).toContain('모두 37번 왔어요')
     expect(textOf(page, 'a.back')).toBe('접수 현황')
-
-    // 5초 뒤 다시 읽으면 오늘 카드와 머리만 바뀌고 지난 진료는 다시 읽지 않는다
-    const next = fx.mockupBoard('13:42:20')
-    const moved = next.lists.wait[1]!
-    next.lists.wait.splice(1, 1)
-    next.lists.hold.push({ ...moved, lane: 'hold', laneLabel: '진료보류', memo: '엑스레이 찍으러 감', waited: '보류 1분째', xray: { at: null } })
-    server.board = fx.boardOf({ wait: next.lists.wait, hold: next.lists.hold, pay: next.lists.pay, done: next.lists.done }, '13:42:20')
-    await wait(5000)
-    expect(boardReads().length).toBe(2)
-    expect(historyReads().length).toBe(1)
-    expect(detailPage()).toBe(page)
-    expect(textOf(page, '.patient .memo')).toBe('메모 · 엑스레이 찍으러 감')
-    expect(textOf(page, 'section.today .today-state')).toBe('진료보류')
-    expect(page.querySelectorAll('.visits > section.visit').length).toBe(5)
-    expect(document.title).toBe(TITLE)
-
-    // [더 보기]: 다음 20번을 이어 붙인다
-    moreButton(page)!.click()
-    await settle()
-    expect(historyReads().at(-1)).toBe(`/api/visit/${fx.fakeKey(2)}/history?from=5`)
-    expect(page.querySelectorAll('.visits > section.visit').length).toBe(25)
-    expect(textOf(page, 'button.more')).toBe('지난 진료 더 보기 · 11번 더 있어요')
-    expect(document.title).toBe(TITLE)
 
     // [접수 현황]으로 돌아온다: 고른 칸(진료대기) 그대로
     page.querySelector<HTMLAnchorElement>('a.back')!.click()
@@ -389,7 +371,105 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(window.location.hash).toBe('#/')
     expect(detailPage()).toBeNull()
     expect(textOf(app, 'h2.list-heading')).toBe('진료대기 · 접수한 순서')
-    expect(rowNames()).toEqual(['가상환자01', '가상환자03'])
+    expect(rowNames()).toEqual(['가상환자01', '가상환자02', '가상환자03'])
+    expect(document.title).toBe(TITLE)
+  })
+
+  it('AC-1404.8: 상세가 열린 동안 그 환자 줄의 칸이 바뀌면 다음 읽기에 상세를 한 번 더 읽어 오늘 증상 줄만 바꾼다(지난번 카드 요소는 그대로). 그 뒤 같은 줄이면 다시 읽지 않는다', async () => {
+    await open()
+    tile('진료대기').click()
+    rowOf('가상환자02').querySelector<HTMLAnchorElement>('a.row-main')!.click()
+    await settle()
+    const page = detailPage()!
+    const last = page.querySelector('section.visit.is-last')
+    expect(page.querySelector('section.today > p.sym')).toBeNull()
+
+    // 진료를 받고 진료보류로 옮겼다: 오늘 증상이 생겼다
+    const moved = (b: FakeBoard): FakeBoard => {
+      const row = b.lists.wait[1]!
+      return fx.boardOf(
+        { wait: b.lists.wait.filter((r) => r.k !== row.k), hold: [...b.lists.hold, { ...row, lane: 'hold', laneLabel: '진료보류', memo: '엑스레이 찍으러 감', waited: '보류 1분째', xray: { at: null } }], pay: b.lists.pay, done: b.lists.done },
+        b.at,
+      )
+    }
+    server.board = moved(fx.mockupBoard('13:42:20'))
+    await wait(5000)
+    expect(boardReads().length).toBe(2)
+    expect(historyReads()).toEqual([`/api/visit/${fx.fakeKey(2)}/history?from=0`, `/api/visit/${fx.fakeKey(2)}/history?from=0`])
+    expect(detailPage()).toBe(page)
+    expect(textOf(page, 'section.today .today-state')).toBe('진료보류')
+    expect(textOf(page, '.patient .memo')).toBe('메모 · 엑스레이 찍으러 감')
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 오른쪽 어깨 통증 계속됨')
+    expect(page.querySelector('section.visit.is-last')).toBe(last)
+    expect(document.title).toBe(TITLE)
+
+    server.board = moved(fx.mockupBoard('13:42:30'))
+    await wait(5000)
+    expect(boardReads().length).toBe(3)
+    expect(historyReads().length).toBe(2)
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 오른쪽 어깨 통증 계속됨')
+  })
+
+  it('AC-1404.8: 칸·오늘 처방이 그대로면 마지막 상세 읽기에서 30초가 지나기 전에는 다시 읽지 않고, 지나면 한 번 읽어 새 오늘 증상으로 바꾼다. 오늘 처방 글이 바뀌어도 다시 읽는다', async () => {
+    server.syms.set(fx.fakeKey(2), '어깨 아픔 1')
+    await open({ hash: `#/v/${fx.fakeKey(2)}` })
+    const page = detailPage()!
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 1')
+    expect(historyReads().length).toBe(1)
+
+    server.syms.set(fx.fakeKey(2), '어깨 아픔 2')
+    await wait(25000)
+    expect(boardReads().length).toBeGreaterThanOrEqual(5)
+    expect(historyReads().length).toBe(1)
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 1')
+    await wait(10000)
+    expect(historyReads().length).toBe(2)
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 2')
+
+    // 오늘 처방이 생겼다(칸은 그대로)
+    const next = fx.mockupBoard('13:43:00')
+    next.lists.wait[1] = { ...next.lists.wait[1]!, rxLabel: '오늘', rx: '체외충격파(ESWT7)' }
+    server.board = fx.boardOf({ wait: next.lists.wait, hold: next.lists.hold, pay: next.lists.pay, done: next.lists.done }, '13:43:00')
+    server.syms.set(fx.fakeKey(2), '어깨 아픔 3')
+    await wait(5000)
+    expect(historyReads().length).toBe(3)
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 3')
+    expect(textsOf(page, 'section.today li.rx-item')).toEqual(['체외충격파(ESWT7)'])
+    expect(detailPage()).toBe(page)
+  })
+
+  it('AC-1404.8: 다시 읽기는 한 번에 하나이고, 실패하면 오늘 증상을 그대로 두었다가 다음 읽기에 다시 보며, 기다리는 사이 목록으로 돌아가면 늦은 답을 그리지 않는다', async () => {
+    server.syms.set(fx.fakeKey(2), '어깨 아픔 1')
+    await open({ hash: `#/v/${fx.fakeKey(2)}` })
+    const page = detailPage()!
+    server.syms.set(fx.fakeKey(2), '어깨 아픔 2')
+    const held = hold(`/api/visit/${fx.fakeKey(2)}/`)
+    for (let i = 0; i < 8 && !held.asked(); i += 1) await wait(5000)
+    expect(held.asked()).toBe(true)
+    expect(historyReads().length).toBe(2)
+    // 읽는 중에 다시 그려도(같은 주소의 hashchange) 또 부르지 않는다
+    window.dispatchEvent(new Event('hashchange'))
+    await settle()
+    expect(detailPage()).toBe(page)
+    expect(historyReads().length).toBe(2)
+    held.fail()
+    await settle()
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 1')
+    await wait(5000)
+    expect(historyReads().length).toBe(3)
+    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 2')
+
+    // 기다리는 사이 [접수 현황]으로 돌아가면 늦은 답은 버린다
+    server.syms.set(fx.fakeKey(2), '어깨 아픔 3')
+    const late = hold(`/api/visit/${fx.fakeKey(2)}/`)
+    for (let i = 0; i < 8 && !late.asked(); i += 1) await wait(5000)
+    expect(late.asked()).toBe(true)
+    page.querySelector<HTMLAnchorElement>('a.back')!.click()
+    await settle()
+    late.answer()
+    await settle()
+    expect(detailPage()).toBeNull()
+    expect(document.body.textContent).not.toContain('어깨 아픔 3')
     expect(document.title).toBe(TITLE)
   })
 
@@ -441,12 +521,9 @@ describe('app.js 태블릿 두 칸', () => {
     expect(rowOf('가상환자02').classList.contains('is-picked')).toBe(true)
     expect(rowOf('가상환자01').classList.contains('is-picked')).toBe(false)
     expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자02')
-    expect(pane()!.querySelectorAll('.visits > section.visit').length).toBe(5)
-
-    moreButton(pane())!.click()
-    await settle()
-    expect(historyReads().at(-1)).toBe(`/api/visit/${fx.fakeKey(2)}/history?from=5`)
-    expect(pane()!.querySelectorAll('.visits > section.visit').length).toBe(25)
+    expect(pane()!.querySelectorAll('section.visit').length).toBe(1)
+    expect(textOf(pane(), 'section.visit.is-last .visit-ago')).toBe('7일 전')
+    expect(moreButton(pane())).toBeNull()
 
     const reads = historyReads().length
     server.board = fx.mockupBoard('13:42:20')
@@ -455,7 +532,7 @@ describe('app.js 태블릿 두 칸', () => {
     expect(historyReads().length).toBe(reads)
     expect(textOf(app, 'p.asof')).toBe('13:42:20 기준 · 5초마다 저절로 바뀌어요')
     expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자02')
-    expect(pane()!.querySelectorAll('.visits > section.visit').length).toBe(25)
+    expect(pane()!.querySelectorAll('section.visit').length).toBe(1)
 
     // 칸을 바꿔도 고른 환자 그대로
     tile('수납대기').click()
@@ -716,7 +793,7 @@ describe('app.js 숨김·다시 보임', () => {
 })
 
 describe('app.js 같은 곳만 (끝까지)', () => {
-  it('AC-1413.2: 열기부터 칸·줄·더 보기·X-ray 완료·새로 고침·숨김·다시 보임·끊김·돌아옴까지 요청은 모두 같은 곳 /api/…뿐이고 화면 주소도 같은 PC 길뿐이다', async () => {
+  it('AC-1413.2: 열기부터 칸·줄·상세·X-ray 완료·새로 고침·숨김·다시 보임·끊김·돌아옴까지 요청은 모두 같은 곳 /api/…뿐이고 화면 주소도 같은 PC 길뿐이다', async () => {
     const titles: string[] = []
     const app = await open()
     titles.push(document.title)
@@ -727,8 +804,7 @@ describe('app.js 같은 곳만 (끝까지)', () => {
     rowOf('가상환자04').querySelector<HTMLAnchorElement>('a.row-main')!.click()
     await settle()
     expectSamePcLinks()
-    moreButton(detailPage())!.click()
-    await settle()
+    expect(moreButton(detailPage())).toBeNull()
     titles.push(document.title)
     detailPage()!.querySelector<HTMLAnchorElement>('a.back')!.click()
     await settle()

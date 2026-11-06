@@ -5,6 +5,8 @@
 // - 숨김(visibilitychange hidden·pagehide)은 poll.pause(): 환자 글을 그 자리에서 지우고 늦은 답을 버린다. 다시 보임(visible·pageshow)은 poll.resume()
 //   폰 상세 주소면 다시 보인 뒤 그 상세를 다시 읽는다(AC-1407.11). 끊김 뒤 돌아오면 목록이다(AC-1407.4)
 // - 상세 읽기는 차례 번호(ticket)로 늦은 답을 버린다: 숨김·끊김·다른 환자·돌림 때마다 번호가 바뀐다
+// - 상세가 열린 동안 읽기마다 그 환자 줄의 칸·오늘 처방이 마지막 상세 읽기 때와 다르거나 30초가 지났으면 상세를 한 번 더 읽어
+//   오늘 증상 줄만 바꾼다(AC-1404.8). 한 번에 하나만 읽고, 실패하면 그대로 두었다가 다음 읽기에 다시 본다
 // - 문서 제목은 늘 "접수 현황"이다(환자 이름이 방문 기록에 남지 않게, AC-1407.5). 환자 자료는 메모리에만 있고 저장하지 않는다
 //
 // 쓰는 법
@@ -13,7 +15,7 @@
 import { createAlert } from './alert.js'
 import { getHistory, setXray } from './api.js'
 import { fillPane, renderBoard, setReading } from './board.js'
-import { detailPane, renderDetail, updateDetail } from './detail.js'
+import { detailPane, renderDetail, updateDetail, updateTodaySym } from './detail.js'
 import { createLayout, findRow } from './layout.js'
 import { createPoll } from './poll.js'
 import { xrayBand } from './xray.js'
@@ -25,6 +27,9 @@ const DETAIL_ROUTE = /^#\/v\/([0-9a-f]{16})$/
 
 /** 폰 목록 길 */
 const LIST_ROUTE = '#/'
+
+/** 오늘 증상 다시 읽기: 칸·오늘 처방이 그대로여도 마지막 상세 읽기에서 이만큼 지나면 다시 읽는다(AC-1404.8) */
+const SYM_AGAIN_MS = 30_000
 
 /**
  * 접수 현황 화면을 연다.
@@ -42,6 +47,10 @@ export function startApp() {
   let ticket = 0
   /** 숨김으로 지우는 중인가(끊김 지우기와 나눈다) */
   let hiding = false
+  /** 그린 상세의 마지막 상세 읽기: 그때 줄의 칸·오늘 처방 글과 시각. 그리기 전이면 null (AC-1404.8) */
+  let symMark = null
+  /** 오늘 증상 다시 읽는 중인가 */
+  let symBusy = false
 
   const notice = createAlert()
   const unlistenNotice = notice.listen(doc)
@@ -49,7 +58,6 @@ export function startApp() {
   const poll = createPoll({ host, draw, wipe, onReading: (reading) => setReading(host, reading) })
 
   const band = (row) => xrayBand(row, { setXray, readNow: poll.readNow, signal: poll.signal })
-  const moreOf = (k) => (next) => getHistory(k, next, { signal: poll.signal() })
 
   /** 목록 그리기 값: 고른 칸·모양·고른 환자 + 누름 처리 */
   function viewOf(reading) {
@@ -76,8 +84,35 @@ export function startApp() {
   /** 앞서 나간 상세 읽기를 버린다. 새 차례 번호를 돌려준다 */
   function dropDetail() {
     detailK = null
+    symMark = null
+    symBusy = false
     ticket += 1
     return ticket
+  }
+
+  /** 상세를 읽어 그린 때의 줄을 적어 둔다 */
+  function markSym(row) {
+    symMark = { lane: row.lane, rx: rxOf(row), at: Date.now() }
+  }
+
+  /** 그린 상세 k의 줄이 바뀌었거나 30초가 지났으면 상세를 다시 읽어 오늘 증상 줄만 바꾼다(AC-1404.8) */
+  function refreshSym(k, row) {
+    if (symBusy || symMark === null || detailK !== k) return
+    if (symMark.lane === row.lane && symMark.rx === rxOf(row) && Date.now() - symMark.at < SYM_AGAIN_MS) return
+    const mine = ticket
+    symBusy = true
+    getHistory(k, 0, { signal: poll.signal() }).then(
+      (history) => {
+        if (mine !== ticket || detailK !== k) return
+        symBusy = false
+        updateTodaySym(host, k, history.todaySym)
+        markSym(row)
+      },
+      () => {
+        /* 그대로 두고 다음 읽기에 다시 본다 */
+        if (mine === ticket) symBusy = false
+      },
+    )
   }
 
   // ---- 폰 ------------------------------------------------------------------------------------------
@@ -102,11 +137,12 @@ export function startApp() {
     renderBoard(host, board, viewOf(reading))
   }
 
-  /** 폰 상세: 처음이면 지난 진료를 읽어 그리고, 이미 그렸으면 머리와 오늘 카드만 바꾼다(AC-1404.4) */
+  /** 폰 상세: 처음이면 상세를 읽어 그리고, 이미 그렸으면 머리와 오늘 카드만 바꾸고 오늘 증상을 다시 볼지 정한다(AC-1404.4·1404.8) */
   function phoneDetail(k, row, board) {
     layout.select(k, board)
     if (detailK === k) {
       updateDetail(host, row)
+      refreshSym(k, row)
       return
     }
     const mine = dropDetail()
@@ -115,7 +151,10 @@ export function startApp() {
       (history) => {
         if (mine !== ticket || layout.tablet() || routeKey() !== k) return
         const now = findRow(poll.board(), k)
-        if (now) renderDetail(host, now, history, { onMore: moreOf(k) })
+        if (now) {
+          renderDetail(host, now, history)
+          markSym(now)
+        }
         keepTitle()
       },
       () => {
@@ -145,10 +184,13 @@ export function startApp() {
     showPane(picked)
   }
 
-  /** 오른쪽 칸: 고른 환자가 같으면 오늘 카드만 바꾸고(AC-1409.3), 다르면 지난 진료를 새로 읽는다. 아무도 없으면 비운다 */
+  /** 오른쪽 칸: 고른 환자가 같으면 오늘 카드만 바꾸고 오늘 증상을 다시 볼지 정하며(AC-1409.3·1404.8), 다르면 상세를 새로 읽는다. 아무도 없으면 비운다 */
   function showPane({ picked, row }) {
     if (picked === detailK) {
-      if (row) updateDetail(host, row)
+      if (row) {
+        updateDetail(host, row)
+        refreshSym(picked, row)
+      }
       return
     }
     const mine = dropDetail()
@@ -159,7 +201,10 @@ export function startApp() {
       (history) => {
         if (mine !== ticket || !layout.tablet()) return
         const now = findRow(poll.board(), picked)
-        if (now) fillPane(host, detailPane(now, history, { onMore: moreOf(picked) }))
+        if (now) {
+          fillPane(host, detailPane(now, history))
+          markSym(now)
+        }
       },
       () => {
         /* 다음 읽기에 다시 읽는다 */
@@ -257,6 +302,11 @@ export function startApp() {
       hide()
     },
   }
+}
+
+/** 줄의 오늘 처방 글(이름표 + 글). 바뀌면 오늘 증상을 다시 읽는다(AC-1404.8) */
+function rxOf(row) {
+  return `${row.rxLabel ?? ''}|${row.rx ?? ''}`
 }
 
 /** 브라우저가 이 파일을 부르면 바로 연다 */

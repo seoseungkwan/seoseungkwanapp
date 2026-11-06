@@ -21,9 +21,9 @@
  *            header.top.is-detail > .top-row > a.back + img.logo-mark
  *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info
  *                                            > .status-line > span.status… + span   > .memo
- *            main.detail > h2.detail-heading + section.today + p.no-visits + .visits > section.visit + button.more + p.end-note
+ *            main.detail > h2.detail-heading + section.today + (section.visit.is-last | p.no-visits) + p.end-note
  *              section.today > .today-head > h3.today-date > span.today-badge … + span.today-state ; p.today-empty | p.sym | ul.rx-list
- *              section.visit > .visit-head > h3.visit-date + span.visit-ago ; p.sym ; ul.rx-list > li.rx-item > … + span.rx-code
+ *              section.visit.is-last > .visit-head > h3.visit-date > span.last-badge … + span.visit-ago ; p.sym | p.sym-empty
  *            footer.foot
  *   끊김·불러오는 중  .page.off-page
  *            header.top.is-offline > h1.off-title + span.conn.is-off
@@ -699,6 +699,28 @@ button.row-main {
 .visit-ago {
   font-size: 12px;
   color: var(--ink-4);
+}
+
+/* 지난번 카드 (AC-1404.7): 오늘 카드의 [오늘] 이름표 짝, 증상이 없을 때 글 */
+.visit.is-last .visit-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.last-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  background: var(--ground);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+
+.sym-empty {
+  font-size: 14px;
+  color: var(--ink-3);
 }
 
 .sym {

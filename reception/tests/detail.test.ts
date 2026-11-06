@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// 상세 그리기 detail.js (TASK-19, REQ-1407·REQ-1404, design.md 5절·10절). 승인 시안 Detail.dc.html과 Tablet.dc.html 오른쪽 칸의 글 그대로:
-// 오늘 카드(제목·이름표·오늘 처방·오늘 증상), 지난 진료 카드(날짜·N일 전·증상·처방), [더 보기](이어 붙임, 앞 것 유지), 끝 줄.
+// 상세 그리기 detail.js (TASK-19·TASK-36, REQ-1407·REQ-1404, design.md 5절·10절). 승인 시안 Detail.dc.html과 Tablet.dc.html 오른쪽 칸에서
+// 지난 진료 목록·처방·[더 보기]를 뺀 것(AC-1404.7, 사용자 결정 2026-11-06): 오늘 카드(제목·이름표·오늘 처방·오늘 증상), '지난번' 카드 하나
+// (가장 최근 지난 내원의 날짜·N일 전·증상, 없으면 "적힌 증상이 없어요"), 끝 줄. 오늘 증상 줄만 바꾸기(updateTodaySym, AC-1404.8).
 // 상세 자료는 도우미 GET /api/visit/{k}/history 답(HistoryBuilder.cs ToJson)의 모양이고, 오늘 카드의 상태·오늘 처방은 목록 줄로 그린다.
 // 자료는 가짜다(가상환자NN, 9로 시작하는 6자리 차트번호, 시안의 처방 코드)
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -38,6 +39,7 @@ interface DetailJs {
   renderDetail: (host: HTMLElement, row: FakeRow, history: FakeHistory, options?: DetailOptions) => HTMLElement
   detailPane: (row: FakeRow, history: FakeHistory, options?: DetailOptions) => Node[]
   updateDetail: (host: ParentNode, row: FakeRow, options?: DetailOptions) => boolean
+  updateTodaySym: (host: ParentNode, k: string, todaySym: string) => boolean
 }
 
 interface BoardJs {
@@ -57,6 +59,7 @@ beforeAll(async () => {
     renderDetail: (host) => host.appendChild(document.createElement('div')),
     detailPane: () => [],
     updateDetail: () => false,
+    updateTodaySym: () => false,
   }
   view = ((await import(/* @vite-ignore */ DETAIL_JS).catch(() => missing)) ?? missing) as DetailJs
   board = (await import(/* @vite-ignore */ BOARD_JS)) as BoardJs
@@ -70,9 +73,10 @@ afterEach(() => {
 /** 오늘(시험 기준): 2026년 11월 5일 */
 const TODAY = new Date(2026, 10, 5, 13, 42, 10)
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
-const HEADING = '처방 내역 · 오늘과 지난 진료 전부'
+const HEADING = '오늘과 지난번 증상'
 const NO_TODAY_RX = '아직 처방이 없어요. 진료가 끝나면 여기에 나와요.'
 const NO_VISITS = '첫 방문이라 지난 진료가 없어요.'
+const NO_SYM = '적힌 증상이 없어요'
 
 const rx = (name: string, code: string): FakeRx => ({ name, code })
 
@@ -145,34 +149,19 @@ function ownText(node: Element | null | undefined): string {
     .trim()
 }
 
-/** 지난 진료 카드 하나를 [날짜, N일 전, 증상 줄 | null, [처방 글…]]로 */
-function cardOf(visit: Element): [string | null, string | null, string | null, string[]] {
-  return [textOf(visit, '.visit-head > .visit-date'), textOf(visit, '.visit-head > .visit-ago'), textOf(visit, ':scope > p.sym'), textsOf(visit, 'ul.rx-list > li.rx-item')]
+/** '지난번' 카드 (AC-1404.7) */
+function lastOf(root: ParentNode | null | undefined): Element | null {
+  return root?.querySelector('section.visit.is-last') ?? null
 }
 
-function cardsOf(root: ParentNode): Element[] {
-  return [...root.querySelectorAll('.visits > section.visit')]
+/** 지난번 카드를 [표시, 날짜, N일 전, 증상 줄 또는 빈 증상 글]로 */
+function lastCardOf(card: Element | null): [string | null, string, string | null, string | null] {
+  const title = card?.querySelector('.visit-head > .visit-date')
+  return [textOf(title, '.last-badge'), ownText(title), textOf(card, '.visit-head > .visit-ago'), textOf(card, ':scope > p.sym') ?? textOf(card, ':scope > p.sym-empty')]
 }
 
 function moreOf(root: ParentNode): HTMLButtonElement | null {
   return root.querySelector<HTMLButtonElement>('button.more')
-}
-
-/** 기다리는 약속 (onMore 답을 시험이 정한 때에 준다) */
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
-
-/** 약속 고리가 다 돌 때까지 */
-async function settle() {
-  for (let i = 0; i < 5; i++) await Promise.resolve()
-  await new Promise((r) => setTimeout(r, 0))
 }
 
 describe('detail.js 상세 그리기 (폰)', () => {
@@ -244,162 +233,108 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(app.querySelector('b, img:not(.logo-mark), i, u, s')).toBeNull()
     expect(textOf(app, '.detail-name')).toBe('<b>가상환자02</b>')
     expect(textOf(app, '.patient > .memo')).toBe('메모 · <img src=x onerror=alert(1)>')
-    expect(textOf(cardsOf(app)[0]!, 'p.sym')).toBe('증상 · <i>밤에 아픔</i>')
+    expect(textOf(lastOf(app), 'p.sym')).toBe('증상 · <i>밤에 아픔</i>')
     expect(textOf(app, 'section.today > p.sym')).toBe('증상 · <s>어깨</s>')
   })
 
-  it('AC-1404.2: 지난 진료 카드는 시안처럼 날짜·N일 전·증상 줄("증상 · …")·처방 목록(이름 + "(코드)", 받은 차례)이다', () => {
+  it('AC-1404.7: 상세는 제목 "오늘과 지난번 증상"·오늘 카드·지난번 카드 하나·끝 줄뿐이고, 지난번 카드는 답의 첫 지난 내원의 "지난번" 표시·날짜·N일 전·증상 줄이다. 처방 목록·둘째 이후 내원·[더 보기]는 없다', () => {
     const app = appHost()
-    const page = view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY })
+    const onMore = vi.fn(() => Promise.resolve(pageAt(5, 20, 11)))
+    const page = view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY, onMore })
     const main = page.querySelector('main.detail')
-    expect(shapeOf(main)).toEqual(['h2.detail-heading', 'section.today', 'div.visits', 'button.more', 'p.end-note'])
-    const cards = cardsOf(page)
-    expect(cards.length).toBe(5)
-    expect(cards.map(cardOf)).toEqual([
-      ['10월 29일', '7일 전', '증상 · 오른쪽 어깨 통증 조금 줄었음, 밤에 아픔', ['체외충격파(ESWT7)', '도수치료 20분(DS20)']],
-      ['10월 22일', '14일 전', '증상 · 오른쪽 어깨 통증, 팔 올릴 때 아픔', ['체외충격파(ESWT7)', '표층열치료(PT01)']],
-      ['10월 15일', '21일 전', '증상 · 어깨·목 뻐근함', ['도수치료 20분(DS20)', '간섭파치료(PT03)', '표층열치료(PT01)']],
-      ['10월 8일', '28일 전', '증상 · 오른쪽 어깨 통증 2주째, 1주 뒤 다시 봄', ['엑스레이 촬영(XR2)', '주사(INJ1)']],
-      ['9월 30일', '36일 전', '증상 · 오른쪽 어깨 통증 처음 옴', ['엑스레이 촬영(XR2)', '표층열치료(PT01)']],
-    ])
-    const first = cards[0]!
-    expect(shapeOf(first)).toEqual(['div.visit-head', 'p.sym', 'ul.rx-list'])
-    expect(shapeOf(first.querySelector('.visit-head'))).toEqual(['h3.visit-date', 'span.visit-ago'])
-    // 처방 한 줄: 이름은 글, 코드는 "(코드)" 작은 글
-    const item = first.querySelector('li.rx-item')
-    expect(ownText(item)).toBe('체외충격파')
-    expect(shapeOf(item)).toEqual(['span.rx-code'])
-    expect(textOf(item, '.rx-code')).toBe('(ESWT7)')
+    expect(shapeOf(main)).toEqual(['h2.detail-heading', 'section.today', 'section.visit.is-last', 'p.end-note'])
+    expect(textOf(main, 'h2.detail-heading')).toBe(HEADING)
+    const last = lastOf(page)!
+    expect(shapeOf(last)).toEqual(['div.visit-head', 'p.sym'])
+    expect(shapeOf(last.querySelector('.visit-head'))).toEqual(['h3.visit-date', 'span.visit-ago'])
+    expect(shapeOf(last.querySelector('.visit-head > .visit-date'))).toEqual(['span.last-badge'])
+    expect(lastCardOf(last)).toEqual(['지난번', '10월 29일', '7일 전', '증상 · 오른쪽 어깨 통증 조금 줄었음, 밤에 아픔'])
+    // 지난 처방·둘째 이후 내원·[더 보기]는 그리지 않는다(답에 있어도)
+    expect(page.querySelectorAll('section.visit').length).toBe(1)
+    expect(page.querySelector('.visits')).toBeNull()
+    expect(last.querySelector('ul.rx-list, li.rx-item')).toBeNull()
+    expect(moreOf(page)).toBeNull()
+    expect(page.textContent).not.toContain('체외충격파')
+    expect(page.textContent).not.toContain('10월 22일')
+    expect(onMore).not.toHaveBeenCalled()
   })
 
-  it('AC-1404.2: 다른 해 날짜·"오늘"은 받은 글 그대로, 증상이 없으면 증상 칸이 없고, 이름 없는 처방은 코드만, 처방이 없으면 목록이 없다', () => {
-    const app = appHost()
-    const visits: FakeVisit[] = [
-      { date: '11월 5일', ago: '오늘', sym: '', rx: [rx('', 'ESWT7'), rx('도수치료 20분', 'DS20')] },
-      { date: '2024년 3월 12일', ago: '603일 전', sym: '처음 옴', rx: [] },
+  it('AC-1404.7: 지난번 내원에 증상 글이 없으면 증상 줄 대신 "적힌 증상이 없어요"이고, 날짜·N일 전은 받은 글 그대로다(다른 해·"오늘")', () => {
+    const cases: [FakeVisit, [string | null, string, string | null, string | null]][] = [
+      [{ date: '10월 29일', ago: '7일 전', sym: '', rx: [rx('체외충격파', 'ESWT7')] }, ['지난번', '10월 29일', '7일 전', NO_SYM]],
+      [{ date: '2024년 3월 12일', ago: '603일 전', sym: '처음 옴', rx: [] }, ['지난번', '2024년 3월 12일', '603일 전', '증상 · 처음 옴']],
+      [{ date: '11월 5일', ago: '오늘', sym: '', rx: [] }, ['지난번', '11월 5일', '오늘', NO_SYM]],
     ]
-    view.renderDetail(app, mockupRow(), mockupHistory({ visits, next: null, more: 0, total: 3 }), { today: TODAY })
-    const cards = cardsOf(app)
-    expect(cards.map(cardOf)).toEqual([
-      ['11월 5일', '오늘', null, ['ESWT7', '도수치료 20분(DS20)']],
-      ['2024년 3월 12일', '603일 전', '증상 · 처음 옴', []],
-    ])
-    expect(shapeOf(cards[0])).toEqual(['div.visit-head', 'ul.rx-list'])
-    // 이름이 없으면 코드가 그 줄의 글이다(괄호·작은 글 없음)
-    const codeOnly = cards[0]!.querySelector('li.rx-item')
-    expect(ownText(codeOnly)).toBe('ESWT7')
-    expect(codeOnly?.querySelector('.rx-code')).toBeNull()
-    expect(shapeOf(cards[1])).toEqual(['div.visit-head', 'p.sym'])
+    for (const [visit, want] of cases) {
+      const app = appHost()
+      view.renderDetail(app, mockupRow(), mockupHistory({ visits: [visit], next: null, more: 0, total: 2 }), { today: TODAY })
+      const last = lastOf(app)
+      expect(lastCardOf(last), visit.date).toEqual(want)
+      expect(shapeOf(last), visit.date).toEqual(['div.visit-head', visit.sym ? 'p.sym' : 'p.sym-empty'])
+      app.remove()
+    }
   })
 
-  it('AC-1404.3: 끝 줄은 "처음 온 날 YYYY년 M월 D일 · 모두 N번 왔어요"이고, 안 보인 지난 진료가 있으면 [지난 진료 더 보기 · m번 더 있어요] 단추가 있다', () => {
+  it('AC-1404.3: 끝 줄은 "처음 온 날 YYYY년 M월 D일 · 모두 N번 왔어요"이고, 안 보인 지난 진료가 있어도(next·more) 단추는 없다', () => {
     const app = appHost()
     view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY })
-    const more = moreOf(app)
-    expect(more?.getAttribute('type')).toBe('button')
-    expect(more?.disabled).toBe(false)
-    expect(more?.textContent?.trim()).toBe('지난 진료 더 보기 · 31번 더 있어요')
+    expect(moreOf(app)).toBeNull()
     expect(textOf(app, 'main.detail > p.end-note')).toBe('처음 온 날 2024년 3월 12일 · 모두 37번 왔어요')
     expect(app.querySelector('.no-visits')).toBeNull()
   })
 
-  it('AC-1404.3: 안 보인 지난 진료가 0번이면(next null) 단추가 없고 끝 줄만 있다', () => {
-    const app = appHost()
-    view.renderDetail(app, mockupRow(), mockupHistory({ next: null, more: 0, total: 6, first: '2025년 9월 1일' }), { today: TODAY })
-    expect(moreOf(app)).toBeNull()
-    expect(shapeOf(app.querySelector('main.detail'))).toEqual(['h2.detail-heading', 'section.today', 'div.visits', 'p.end-note'])
-    expect(textOf(app, 'p.end-note')).toBe('처음 온 날 2025년 9월 1일 · 모두 6번 왔어요')
-  })
-
-  it('AC-1404.3: 지난 진료가 없으면(첫 방문) 지난 진료 자리에 "첫 방문이라 지난 진료가 없어요."가 있고 처음 온 날은 오늘, 모두 1번이다', () => {
+  it('AC-1404.3: 지난 진료가 없으면(첫 방문) 지난번 카드 자리에 "첫 방문이라 지난 진료가 없어요."가 있고 처음 온 날은 오늘, 모두 1번이다', () => {
     const app = appHost()
     const row = mockupRow({ info: '37세 · 남 · 신환', rxLabel: '처방', rx: '첫 방문이라 지난 처방이 없어요', memo: '' })
     view.renderDetail(app, row, { visits: [], next: null, more: 0, first: '2026년 11월 5일', total: 1, todaySym: '' }, { today: TODAY })
     expect(shapeOf(app.querySelector('main.detail'))).toEqual(['h2.detail-heading', 'section.today', 'p.no-visits', 'p.end-note'])
     expect(textOf(app, 'p.no-visits')).toBe(NO_VISITS)
-    expect(cardsOf(app).length).toBe(0)
+    expect(lastOf(app)).toBeNull()
     expect(moreOf(app)).toBeNull()
     expect(textOf(app, 'p.end-note')).toBe('처음 온 날 2026년 11월 5일 · 모두 1번 왔어요')
   })
 
-  it('AC-1407.5: [지난 진료 더 보기]를 누르면 onMore(next)를 한 번 부르고, 기다리는 동안 다시 눌러도 늘지 않으며, 받은 20번을 앞 것 뒤에 이어 붙인다(앞 것 유지). 다 보면 단추가 없다', async () => {
+  it('AC-1404.8: updateTodaySym은 그린 상세가 그 열쇠 환자면 오늘 카드의 증상 줄만 새 글로 바꾸고(없던 줄은 오늘 처방 앞에 넣음, 새 글이 ""이면 지움), 지난번 카드·머리·오늘 처방은 그대로다', () => {
     const app = appHost()
-    const second = deferred<FakeHistory>()
-    const third = deferred<FakeHistory>()
-    const onMore = vi.fn((next: number) => (next === 5 ? second.promise : third.promise))
-    view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY, onMore })
-    const before = cardsOf(app)
-    expect(before.length).toBe(5)
+    const row = mockupRow({ lane: 'pay', laneLabel: '수납대기', rxLabel: '오늘', rx: '체외충격파(ESWT7) · 도수치료 20분(DS20)' })
+    view.renderDetail(app, row, mockupHistory({ todaySym: '' }), { today: TODAY })
+    const today = app.querySelector('section.today')!
+    const last = lastOf(app)
+    const patient = app.querySelector('.patient')
+    const list = today.querySelector('ul.rx-list')
+    expect(shapeOf(today)).toEqual(['div.today-head', 'ul.rx-list'])
 
-    moreOf(app)?.click()
-    expect(onMore).toHaveBeenCalledTimes(1)
-    expect(onMore).toHaveBeenLastCalledWith(5)
-    expect(moreOf(app)?.disabled).toBe(true)
-    moreOf(app)?.click()
-    moreOf(app)?.click()
-    expect(onMore).toHaveBeenCalledTimes(1)
+    expect(view.updateTodaySym(app, row.k, '오른쪽 어깨 통증 심해짐')).toBe(true)
+    expect(app.querySelector('section.today')).toBe(today)
+    expect(shapeOf(today)).toEqual(['div.today-head', 'p.sym', 'ul.rx-list'])
+    expect(textOf(today, 'p.sym')).toBe('증상 · 오른쪽 어깨 통증 심해짐')
+    expect(today.querySelector('ul.rx-list')).toBe(list)
 
-    second.resolve(pageAt(5, 20, 11))
-    await settle()
-    const after = cardsOf(app)
-    expect(after.length).toBe(25)
-    // 앞의 5번은 같은 요소 그대로 맨 앞에 있다
-    expect(after.slice(0, 5)).toEqual(before)
-    expect(after.slice(0, 5).map(cardOf)[0]?.[0]).toBe('10월 29일')
-    expect(cardOf(after[5]!)).toEqual(['2025년 6월 6일', '75일 전', '증상 · 가상 증상 5', ['체외충격파(ESWT7)']])
-    expect(cardOf(after[24]!)).toEqual(['2025년 1월 25일', '208일 전', '증상 · 가상 증상 24', ['체외충격파(ESWT7)']])
-    expect(moreOf(app)?.disabled).toBe(false)
-    expect(moreOf(app)?.textContent?.trim()).toBe('지난 진료 더 보기 · 11번 더 있어요')
-    expect(shapeOf(app.querySelector('main.detail'))).toEqual(['h2.detail-heading', 'section.today', 'div.visits', 'button.more', 'p.end-note'])
+    expect(view.updateTodaySym(app, row.k, '<b>밤에 더 아픔</b>')).toBe(true)
+    expect(today.querySelectorAll('p.sym').length).toBe(1)
+    expect(textOf(today, 'p.sym')).toBe('증상 · <b>밤에 더 아픔</b>')
+    expect(today.querySelector('b')).toBeNull()
 
-    moreOf(app)?.click()
-    expect(onMore).toHaveBeenCalledTimes(2)
-    expect(onMore).toHaveBeenLastCalledWith(25)
-    third.resolve(pageAt(25, 11, 0))
-    await settle()
-    expect(cardsOf(app).length).toBe(36)
-    expect(cardsOf(app).slice(0, 5)).toEqual(before)
-    expect(moreOf(app)).toBeNull()
-    expect(shapeOf(app.querySelector('main.detail'))).toEqual(['h2.detail-heading', 'section.today', 'div.visits', 'p.end-note'])
-    expect(textOf(app, 'p.end-note')).toBe('처음 온 날 2024년 3월 12일 · 모두 37번 왔어요')
+    expect(view.updateTodaySym(app, row.k, '')).toBe(true)
+    expect(shapeOf(today)).toEqual(['div.today-head', 'ul.rx-list'])
+    expect(lastOf(app)).toBe(last)
+    expect(app.querySelector('.patient')).toBe(patient)
+    expect(lastCardOf(last)).toEqual(['지난번', '10월 29일', '7일 전', '증상 · 오른쪽 어깨 통증 조금 줄었음, 밤에 아픔'])
+
+    // 오늘 처방이 없으면 "아직 처방이 없어요" 뒤에 붙는다
+    const empty = appHost()
+    view.renderDetail(empty, mockupRow({ k: fx.fakeKey(5) }), mockupHistory(), { today: TODAY })
+    expect(view.updateTodaySym(empty, fx.fakeKey(5), '왼쪽 무릎')).toBe(true)
+    expect(shapeOf(empty.querySelector('section.today'))).toEqual(['div.today-head', 'p.today-empty', 'p.sym'])
   })
 
-  it('AC-1407.5: 더 보기가 실패하거나 답을 버리면(null) 앞 진료는 그대로이고 단추를 다시 누를 수 있다', async () => {
+  it('AC-1404.8: 다른 환자 열쇠이거나 그린 상세가 없으면 updateTodaySym은 아무것도 바꾸지 않는다(false)', () => {
     const app = appHost()
-    const failing = deferred<FakeHistory>()
-    // 시험 쪽에서도 받아 두어 처리 안 된 실패로 새지 않게 한다(detail.js는 따로 받는다)
-    failing.promise.catch(() => {})
-    let calls = 0
-    const onMore = vi.fn(() => {
-      calls++
-      return calls === 1 ? failing.promise : Promise.resolve(null)
-    })
-    view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY, onMore })
-    moreOf(app)?.click()
-    failing.reject(new Error('offline'))
-    await settle()
-    expect(cardsOf(app).length).toBe(5)
-    expect(moreOf(app)?.disabled).toBe(false)
-    expect(moreOf(app)?.textContent?.trim()).toBe('지난 진료 더 보기 · 31번 더 있어요')
-
-    moreOf(app)?.click()
-    await settle()
-    expect(onMore).toHaveBeenCalledTimes(2)
-    expect(cardsOf(app).length).toBe(5)
-    expect(moreOf(app)?.disabled).toBe(false)
-  })
-
-  it('AC-1407.5: 기다리는 동안 화면을 지웠으면(끊김·숨김) 늦게 온 답을 그리지 않는다', async () => {
-    const app = appHost()
-    const late = deferred<FakeHistory>()
-    view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY, onMore: () => late.promise })
-    const visits = app.querySelector('.visits')!
-    moreOf(app)?.click()
-    app.replaceChildren()
-    late.resolve(pageAt(5, 20, 11))
-    await settle()
-    expect(app.children.length).toBe(0)
-    expect(visits.querySelectorAll('section.visit').length).toBe(5)
+    view.renderDetail(app, mockupRow(), mockupHistory({ todaySym: '오른쪽 어깨 통증 심해짐' }), { today: TODAY })
+    expect(view.updateTodaySym(app, fx.fakeKey(9), '다른 환자 증상')).toBe(false)
+    expect(textOf(app, 'section.today > p.sym')).toBe('증상 · 오른쪽 어깨 통증 심해짐')
+    expect(view.updateTodaySym(appHost(), fx.fakeKey(2), '빈 자리')).toBe(false)
+    expect(document.body.textContent).not.toContain('빈 자리')
   })
 
   it('AC-1404.4: 오늘 카드 제목은 "M월 D일 · 오늘"(시안: [오늘] 이름표 + 날짜)이고, 오른쪽 이름표는 진료대기 "진료 전"·진료보류 "진료보류"·수납대기 "수납대기"·끝남 "수납완료"이다', () => {
@@ -466,12 +401,10 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(textOf(today, '.today-state')).toBe('수납대기')
   })
 
-  it('AC-1404.4: 접수 현황 자료가 바뀌면 updateDetail이 오늘 카드(이름표·오늘 처방)와 머리(상태·기다린 글·메모)를 바꾸고 지난 진료·오늘 증상은 그대로 둔다. 다른 환자 줄이면 바꾸지 않는다', () => {
+  it('AC-1404.4: 접수 현황 자료가 바뀌면 updateDetail이 오늘 카드(이름표·오늘 처방)와 머리(상태·기다린 글·메모)를 바꾸고 지난번 카드·오늘 증상은 그대로 둔다. 다른 환자 줄이면 바꾸지 않는다', () => {
     const app = appHost()
     view.renderDetail(app, mockupRow(), mockupHistory({ todaySym: '오른쪽 어깨 통증 심해짐' }), { today: TODAY })
-    const cards = cardsOf(app)
-    const visits = app.querySelector('.visits')
-    const more = moreOf(app)
+    const last = lastOf(app)
 
     const paid = mockupRow({ lane: 'pay', laneLabel: '수납대기', waited: '수납 3분째', memo: '', rxLabel: '오늘', rx: '체외충격파(ESWT7) · 도수치료 20분(DS20)' })
     expect(view.updateDetail(app, paid, { today: TODAY })).toBe(true)
@@ -483,9 +416,7 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(app.querySelector('.status-line > span.status')?.className).toBe('status status-pay')
     expect(textsOf(app, '.status-line > span')).toEqual(['수납대기', '10:42 접수 · 수납 3분째'])
     expect(app.querySelector('.patient > .memo')).toBeNull()
-    expect(app.querySelector('.visits')).toBe(visits)
-    expect(cardsOf(app)).toEqual(cards)
-    expect(moreOf(app)).toBe(more)
+    expect(lastOf(app)).toBe(last)
     expect(app.querySelectorAll('section.today').length).toBe(1)
 
     const other = mockupRow({ k: fx.fakeKey(9), name: '가상환자09', lane: 'done', laneLabel: '수납완료' })
@@ -498,45 +429,43 @@ describe('detail.js 상세 그리기 (폰)', () => {
 })
 
 describe('detail.js 상세 그리기 (태블릿 오른쪽 칸)', () => {
-  it('AC-1407.5: detailPane은 태블릿 시안 오른쪽 칸의 내용(환자 칸·처방 내역 제목·오늘 카드·지난 진료·더 보기·끝 줄)이고 돌아가기·머리·아래 글은 없다', () => {
+  it('AC-1409.1: detailPane은 태블릿 오른쪽 칸의 내용(환자 칸·제목·오늘 카드·지난번 카드·끝 줄, AC-1404.7)이고 돌아가기·머리·아래 글·[더 보기]는 없다', () => {
     const nodes = view.detailPane(mockupRow(), mockupHistory(), { today: TODAY })
     expect(nodes.map((n) => (n instanceof Element ? `${n.tagName.toLowerCase()}.${n.className.split(' ').join('.')}` : '#text'))).toEqual([
       'div.patient',
       'h3.detail-heading',
       'section.today',
-      'div.visits',
-      'button.more',
+      'section.visit.is-last',
       'p.end-note',
     ])
     const patient = nodes[0] as Element
     expect(shapeOf(patient.querySelector('.name-line'))).toEqual(['span.chart', 'h2.detail-name', 'span.info'])
     expect(nodes[1]?.textContent?.trim()).toBe(HEADING)
     expect(shapeOf((nodes[2] as Element).querySelector('.today-head'))).toEqual(['h4.today-date', 'span.today-state'])
-    expect(shapeOf((nodes[3] as Element).querySelector('section.visit > .visit-head'))).toEqual(['h4.visit-date', 'span.visit-ago'])
-    expect(nodes.some((n) => n instanceof Element && (n.matches('a.back, header, footer') || n.querySelector('a.back, header, footer')))).toBe(false)
+    expect(shapeOf((nodes[3] as Element).querySelector('.visit-head'))).toEqual(['h4.visit-date', 'span.visit-ago'])
+    expect(lastCardOf(nodes[3] as Element)).toEqual(['지난번', '10월 29일', '7일 전', '증상 · 오른쪽 어깨 통증 조금 줄었음, 밤에 아픔'])
+    expect(nodes.some((n) => n instanceof Element && (n.matches('a.back, header, footer, button.more') || n.querySelector('a.back, header, footer, button.more')))).toBe(false)
   })
 
-  it('AC-1407.5: 목록 오른쪽 칸(fillPane)에 넣으면 [더 보기]가 그 칸에 이어 붙이고, updateDetail(#app)이 오른쪽 칸의 오늘 카드를 바꾼다', async () => {
+  it('AC-1409.3: 목록 오른쪽 칸(fillPane)에 넣으면 updateDetail(#app)이 오른쪽 칸의 오늘 카드를, updateTodaySym이 오늘 증상 줄만 바꾸고 지난번 카드는 그대로다', () => {
     const app = appHost()
     const fake = fx.mockupBoard()
     const row = fake.lists.wait[1]!
     board.renderBoard(app, fake, { tablet: true, picked: row.k })
-    const onMore = vi.fn(() => Promise.resolve(pageAt(5, 20, 11)))
-    board.fillPane(app, view.detailPane(row, mockupHistory(), { today: TODAY, onMore }))
+    board.fillPane(app, view.detailPane(row, mockupHistory(), { today: TODAY }))
     const pane = app.querySelector('.page.board > aside.pane')!
-    expect(shapeOf(pane)).toEqual(['div.patient', 'h3.detail-heading', 'section.today', 'div.visits', 'button.more', 'p.end-note', 'p.pane-foot'])
+    expect(shapeOf(pane)).toEqual(['div.patient', 'h3.detail-heading', 'section.today', 'section.visit.is-last', 'p.end-note', 'p.pane-foot'])
     expect(textOf(pane, '.detail-name')).toBe('가상환자02')
-
-    moreOf(pane)?.click()
-    await settle()
-    expect(onMore).toHaveBeenCalledWith(5)
-    expect(cardsOf(pane).length).toBe(25)
-    expect(textOf(pane, 'button.more')).toBe('지난 진료 더 보기 · 11번 더 있어요')
+    const last = lastOf(pane)
 
     expect(view.updateDetail(app, { ...row, lane: 'hold', laneLabel: '진료보류', waited: '보류 3분째', rxLabel: '오늘', rx: '엑스레이 촬영(XR2)' }, { today: TODAY })).toBe(true)
     expect(textOf(pane, '.today-state')).toBe('진료보류')
     expect(textsOf(pane, 'section.today li.rx-item')).toEqual(['엑스레이 촬영(XR2)'])
     expect(shapeOf(pane.querySelector('.today-head'))).toEqual(['h4.today-date', 'span.today-state'])
-    expect(cardsOf(pane).length).toBe(25)
+
+    expect(view.updateTodaySym(app, row.k, '어깨 다시 아픔')).toBe(true)
+    expect(shapeOf(pane.querySelector('section.today'))).toEqual(['div.today-head', 'p.sym', 'ul.rx-list'])
+    expect(textOf(pane, 'section.today > p.sym')).toBe('증상 · 어깨 다시 아픔')
+    expect(lastOf(pane)).toBe(last)
   })
 })

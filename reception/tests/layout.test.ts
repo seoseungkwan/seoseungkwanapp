@@ -253,7 +253,7 @@ describe('REQ-1409 폰/태블릿 판정', () => {
     expect(make({ matchMedia: throwing }).tablet()).toBe(false)
   })
 
-  it('AC-1409.1: 태블릿 모양이면 왼쪽은 목록(머리·칸·줄), 오른쪽은 고른 환자의 상세(오늘 카드·지난 진료·증상·더 보기)다', () => {
+  it('AC-1409.1: 태블릿 모양이면 왼쪽은 목록(머리·칸·줄), 오른쪽은 고른 환자의 상세(AC-1404.7: 오늘 카드·지난번 증상, [더 보기] 없음)다', () => {
     const { layout } = tabletLayout()
     const board = fx.mockupBoard()
     const host = appHost()
@@ -271,9 +271,9 @@ describe('REQ-1409 폰/태블릿 판정', () => {
     expect(pane).not.toBeNull()
     expect(paneKey(host)).toBe(first(board.lists.queue).k)
     expect(pane?.querySelector('section.today')).not.toBeNull()
-    expect(pane?.querySelectorAll('section.visit')).toHaveLength(2)
-    expect(pane?.querySelector('p.sym')).not.toBeNull()
-    expect(pane?.querySelector('button.more')).not.toBeNull()
+    expect(pane?.querySelectorAll('section.visit')).toHaveLength(1)
+    expect(pane?.querySelector('section.visit.is-last p.sym')).not.toBeNull()
+    expect(pane?.querySelector('button.more')).toBeNull()
   })
 
   it('AC-1409.1: 폰 모양이면 한 줄 흐름: 오른쪽 칸이 없고 줄은 상세 링크이며 저절로 고르지 않는다', () => {
@@ -391,7 +391,7 @@ describe('REQ-1409 다시 읽기·끊김', () => {
     boardJs.fillPane(host, detailJs.detailPane(target, history(), { today: TODAY }))
     const visitsBefore = [...host.querySelectorAll('.page.board > aside.pane section.visit')]
     const todayBefore = host.querySelector('.page.board > aside.pane section.today')
-    expect(visitsBefore).toHaveLength(2)
+    expect(visitsBefore).toHaveLength(1)
 
     // 다음 읽기: 그 환자가 진료를 마치고 수납대기로 옮겨 오늘 처방이 생겼다
     const moved: FakeRow = { ...target, lane: 'pay', waited: '수납 1분째', rxLabel: '오늘', rx: '체외충격파(ESWT7) · 주사(INJ1)', xray: null }

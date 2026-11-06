@@ -1,27 +1,31 @@
-// 상세 그리기 (design.md 5절·10절, 승인 시안 Detail.dc.html·Tablet.dc.html 오른쪽 칸). class 이름은 style.css 머리 글의 화면 틀 그대로다.
-// - 지난 진료 글(날짜·N일 전·증상·처방·처음 온 날·모두 N번)은 도우미(C# HistoryBuilder)가 만든 그대로 그린다
+// 상세 그리기 (design.md 5절·10절, 승인 시안 Detail.dc.html·Tablet.dc.html 오른쪽 칸에서 지난 진료 목록·처방·[더 보기]를 뺀 것, AC-1404.7).
+// class 이름은 style.css 머리 글의 화면 틀 그대로다.
+// - 지난 진료는 답의 첫 내원(visits[0], 가장 최근 지난 완료 내원) 하나만 '지난번' 카드로 그린다: 날짜·N일 전·증상(없으면 "적힌 증상이 없어요").
+//   글(날짜·N일 전·증상·처음 온 날·모두 N번)은 도우미(C# HistoryBuilder)가 만든 그대로다. 지난 처방·둘째 이후 내원·더 보기는 그리지 않는다
 // - 오늘 카드의 상태 이름표·오늘 처방은 화면이 가진 목록 줄(GET /api/board, every초마다 바뀜)로 그리고, 오늘 증상은 상세 답의 todaySym이다(design.md 5절).
 //   글은 C# HistoryBuilder.TodayTitle·TodayLabel·NoTodayRx와 같다. 상세 답에 오늘 날짜가 없어 제목 날짜만 기기 날짜(options.today)를 쓴다
-// - 환자 글은 dom.js el()로 글 마디로만 넣는다(AC-1407.6). 도우미에 묻는 요청은 하지 않는다: 자료와 onMore를 app.js가 넘긴다
+// - 환자 글은 dom.js el()로 글 마디로만 넣는다(AC-1407.6). 도우미에 묻는 요청은 하지 않는다: 자료는 app.js가 넘긴다
 // - 문서 제목(document.title)은 건드리지 않는다(AC-1407.5). 모듈에 환자 자료를 남기지 않는다(그린 요소에만 있다)
 //
 // 쓰는 법 (app.js)
 //   renderDetail(host, row, history, options) → .page.detail-page   폰 상세(#/v/{열쇠}). host(#app) 안을 지우고 그린다
 //   detailPane(row, history, options) → 요소 배열                    태블릿 오른쪽 칸 내용. board.js fillPane(host, 이것)에 넘긴다
 //   updateDetail(host, row, options) → true|false                    목록을 다시 읽을 때마다 부른다. 그린 상세가 row.k 환자면
-//                                                                    머리(상태·기다린 글·메모)와 오늘 카드만 바꾸고 지난 진료·오늘 증상은 둔다
+//                                                                    머리(상태·기다린 글·메모)와 오늘 카드만 바꾸고 지난번 카드·오늘 증상은 둔다
+//   updateTodaySym(host, k, todaySym) → true|false                   오늘 증상 다시 읽기(AC-1404.8)의 답. 그린 상세가 k 환자면 오늘 카드의 증상 줄만 바꾼다
 //     row                  지금 목록 줄(board.lists 안의 그 열쇠 줄)
 //     history              getHistory(k, 0) 답 { visits, next, more, first, total, todaySym }
 //     options.today        오늘(Date). 없으면 지금 기기 날짜
-//     options.onMore(next) [지난 진료 더 보기]를 누름 → getHistory(k, next) 답(약속). 받은 내원을 앞 것 뒤에 이어 붙인다.
-//                          실패하거나 null이면 그대로 두고 다시 누를 수 있다. 기다리는 동안 단추는 disabled다.
-//                          그 사이 화면을 지웠으면(끊김·숨김·다른 환자) 늦게 온 답은 그리지 않는다
 
 import { clear, el } from './dom.js'
 
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
-const HEADING = '처방 내역 · 오늘과 지난 진료 전부'
+const HEADING = '오늘과 지난번 증상'
 const NO_VISITS = '첫 방문이라 지난 진료가 없어요.'
+
+/** 지난번 카드 표시와 증상이 없을 때 글 (AC-1404.7) */
+const LAST_BADGE = '지난번'
+const NO_SYM = '적힌 증상이 없어요'
 
 /** 오늘 처방이 없을 때 (HistoryBuilder.NoTodayRx, AC-1404.4) */
 const NO_TODAY_RX = '아직 처방이 없어요. 진료가 끝나면 여기에 나와요.'
@@ -41,7 +45,7 @@ const NAMED_RX = /^(.+)\(([^()]+)\)$/
  * @param {HTMLElement} host 화면 자리(#app)
  * @param {object} row 목록 줄
  * @param {object} history 상세 답 첫 쪽
- * @param {{ today?: Date, onMore?: (next: number) => unknown }} [options]
+ * @param {{ today?: Date }} [options]
  * @returns {HTMLElement} .page.detail-page
  */
 export function renderDetail(host, row, history, options = {}) {
@@ -62,7 +66,7 @@ export function renderDetail(host, row, history, options = {}) {
 }
 
 /**
- * 태블릿 오른쪽 칸 내용(승인 태블릿 시안): 환자 칸·처방 내역 제목·오늘 카드·지난 진료·더 보기·끝 줄. 돌아가기·아래 글은 없다.
+ * 태블릿 오른쪽 칸 내용(승인 태블릿 시안, AC-1404.7): 환자 칸·제목·오늘 카드·지난번 카드·끝 줄. 돌아가기·아래 글은 없다.
  * 목록 화면의 제목이 h1·h2라 한 단계 아래 제목을 쓴다.
  * @returns {HTMLElement[]}
  */
@@ -85,6 +89,22 @@ export function updateDetail(host, row, options = {}) {
   return true
 }
 
+/**
+ * 그린 상세(폰 화면 또는 태블릿 오른쪽 칸)가 k 환자면 오늘 카드의 증상 줄만 todaySym으로 바꾼다(AC-1404.8). ""이면 줄을 지운다.
+ * 없던 줄은 오늘 처방 목록 앞(없으면 카드 끝)에 넣는다. 지난번 카드·머리·오늘 처방은 그대로다.
+ * @param {ParentNode} host 화면 자리(#app)
+ * @returns {boolean} 바꿨으면 true
+ */
+export function updateTodaySym(host, k, todaySym) {
+  const patient = host.querySelector('.patient')
+  const today = host.querySelector('section.today')
+  if (!patient || !today || patient.getAttribute('data-k') !== k) return false
+  today.querySelector(':scope > p.sym')?.remove()
+  const sym = symLine(todaySym)
+  if (sym) today.insertBefore(sym, today.querySelector(':scope > ul.rx-list'))
+  return true
+}
+
 /** 환자 칸: 차트번호·이름·정보, 상태 이름표 + "접수 시각 · 기다린 글", 메모(있을 때만). 못 읽은 칸("")은 그 칸만 비운다(AC-1402.7) */
 function patientOf(row, level) {
   return el('div', { class: 'patient', 'data-k': row.k }, [
@@ -97,17 +117,15 @@ function patientOf(row, level) {
   ])
 }
 
-/** 처방 내역: 제목·오늘 카드·지난 진료(없으면 첫 방문 글)·더 보기·끝 줄 */
+/** 상세 몸(AC-1404.7): 제목·오늘 카드·지난번 카드(없으면 첫 방문 글)·끝 줄 */
 function historyOf(row, history, options, level) {
-  const visits = history.visits.length > 0 ? el('div', { class: 'visits' }, history.visits.map((v) => visitOf(v, level + 1))) : null
-  const end = el('p', { class: 'end-note' }, endNote(history))
+  const last = history.visits[0]
   return [
     el(`h${level}`, { class: 'detail-heading' }, HEADING),
     todayOf(row, symLine(history.todaySym), options, level + 1),
-    visits ?? el('p', { class: 'no-visits' }, NO_VISITS),
-    visits && hasMore(history) ? moreButton(history, visits, end, options, level + 1) : null,
-    end,
-  ].filter(Boolean)
+    last ? lastOf(last, level + 1) : el('p', { class: 'no-visits' }, NO_VISITS),
+    el('p', { class: 'end-note' }, endNote(history)),
+  ]
 }
 
 /** 오늘 카드: [오늘] + 날짜, 오른쪽 이름표, 오늘 처방이 없으면 그 글, 오늘 증상, 오늘 처방 목록 */
@@ -138,12 +156,14 @@ function todayRxOf(row) {
     })
 }
 
-/** 지난 진료 카드 하나: 날짜·N일 전, 증상(있을 때만), 처방 목록(있을 때만) */
-function visitOf(visit, level) {
-  return el('section', { class: 'visit' }, [
-    el('div', { class: 'visit-head' }, [textEl(`h${level}`, 'visit-date', visit.date), textEl('span', 'visit-ago', visit.ago)]),
-    symLine(visit.sym),
-    visit.rx.length > 0 ? rxList(visit.rx) : null,
+/** 지난번 카드: [지난번] + 날짜, N일 전, 증상 줄(없으면 "적힌 증상이 없어요"). 처방은 그리지 않는다 */
+function lastOf(visit, level) {
+  return el('section', { class: 'visit is-last' }, [
+    el('div', { class: 'visit-head' }, [
+      el(`h${level}`, { class: 'visit-date' }, [el('span', { class: 'last-badge' }, LAST_BADGE), visit.date]),
+      textEl('span', 'visit-ago', visit.ago),
+    ]),
+    symLine(visit.sym) ?? el('p', { class: 'sym-empty' }, NO_SYM),
   ])
 }
 
@@ -160,59 +180,6 @@ function rxList(items) {
       isText(name) ? el('li', { class: 'rx-item' }, [name, isText(code) ? el('span', { class: 'rx-code' }, `(${code})`) : null]) : el('li', { class: 'rx-item' }, code),
     ),
   )
-}
-
-/** [지난 진료 더 보기 · m번 더 있어요]: 누르면 onMore(next)의 답을 visits 뒤에 이어 붙이고 단추·끝 줄을 그 답으로 바꾼다 */
-function moreButton(history, visits, end, options, level) {
-  let next = history.next
-  const button = el('button', { type: 'button', class: 'more', on: { click: () => load() } }, moreText(history.more))
-
-  function load() {
-    if (button.disabled || typeof options.onMore !== 'function') return
-    button.disabled = true
-    let answer
-    try {
-      answer = Promise.resolve(options.onMore(next))
-    } catch {
-      button.disabled = false
-      return
-    }
-    answer.then(
-      (page) => {
-        // 기다리는 동안 화면을 지웠으면(끊김·숨김·다른 환자) 버린다
-        if (!button.isConnected || !visits.isConnected) return
-        if (!page || !Array.isArray(page.visits)) {
-          button.disabled = false
-          return
-        }
-        for (const visit of page.visits) visits.appendChild(visitOf(visit, level))
-        clear(end)
-        end.append(endNote(page))
-        if (!hasMore(page)) {
-          button.remove()
-          return
-        }
-        next = page.next
-        clear(button)
-        button.append(moreText(page.more))
-        button.disabled = false
-      },
-      () => {
-        if (button.isConnected) button.disabled = false
-      },
-    )
-  }
-
-  return button
-}
-
-function moreText(more) {
-  return `지난 진료 더 보기 · ${more}번 더 있어요`
-}
-
-/** 안 보인 지난 진료가 있는가(m이 0이거나 next가 없으면 단추 없음, AC-1404.3) */
-function hasMore(history) {
-  return Number.isInteger(history.next) && Number(history.more) > 0
 }
 
 /** 끝 줄: "처음 온 날 YYYY년 M월 D일 · 모두 N번 왔어요"(처음 온 날을 못 읽었으면 그 앞부분 없이) */

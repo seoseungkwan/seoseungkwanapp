@@ -224,6 +224,8 @@ export interface FakeServer {
   marks: Map<string, string>
   /** [X-ray 완료]를 받은 PC 시각 'HH:MM' */
   now: string
+  /** 오늘 증상을 정해 둔 환자: 열쇠 → todaySym(없으면 칸으로 정함). 상세가 열린 동안 바뀌는 증상 시험(AC-1404.8) */
+  syms: Map<string, string>
   /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
   answer: (method: string, url: string, body?: string | null) => FakeReply
 }
@@ -253,6 +255,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     board,
     marks,
     now,
+    syms: new Map<string, string>(),
     answer(method, url, body) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
@@ -264,7 +267,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
         const row = rowsOfBoard(server.board).find((r) => r.k === history[1])
         const from = Number(params.get('from'))
         if (!row || !/^\d+$/.test(params.get('from') ?? '')) return { status: 404 }
-        return { status: 200, body: fakeHistory(pastOf(row), from, todaySymOf(row)) }
+        return { status: 200, body: fakeHistory(pastOf(row), from, server.syms.get(row.k) ?? todaySymOf(row)) }
       }
       if (method === 'POST' && path === '/api/xray') {
         let ask: { k?: unknown; on?: unknown }
