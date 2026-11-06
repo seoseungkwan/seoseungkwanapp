@@ -5,6 +5,7 @@ import { ErrorCard } from '@/components/common/ErrorCard'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
+import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { readDays } from '@/lib/storage/stats'
@@ -15,22 +16,27 @@ import { toSummarySource, type SummarySource } from './source'
 // 저장 숫자(오늘 − LOOKBACK_DAYS ~ 오늘)를 읽는 곳은 여기 한 곳이고, 연결 전·뒤 모양은 BitDashboard가 고른다.
 // 읽기가 끝나거나 한도가 지나기 전에는 서버가 그리는 연결 전 모양 그대로이고 BitDashboard(비트 읽기)를 아직 놓지 않는다.
 // 읽은 숫자는 화면 상태에만 둔다. 이 읽기는 받아 오기만 하고 비트 숫자를 보내지 않는다(AC-601.9 밖, 2026-11-06 사용자 결정)
+// 통계 탭 묶음(처방 상위, REQ-606)도 여기 한 곳이 화면을 열 때 한 번 읽어 BitDashboard에 넘긴다(AC-606.8). 두 읽기가 모두 끝나거나 한도가 지난 뒤에 BitDashboard를 놓는다.
+// [다시 읽기]와 날짜가 바뀔 때는 저장 숫자만 다시 읽고 묶음은 처음 값을 그대로 둔다(AC-606.5, design.md '처방 상위 = 통계 탭 묶음')
 
 export const SAVED_READ_TIMEOUT_MS = 10_000
 
 type SavedResult = Awaited<ReturnType<typeof readDays>>
 
-/** 저장 숫자 한 번 읽기. null = 실패했거나 한도 안에 끝나지 않음. 한도가 먼저 오면 늦게 온 답은 버린다 */
-function readSaved(today: string): Promise<SavedResult | null> {
+/** 한 번 읽기에 한도를 건다. null = 실패했거나 한도 안에 끝나지 않음. 한도가 먼저 오면 늦게 온 답은 버린다 */
+function withinLimit<T>(read: () => Promise<T>): Promise<T | null> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(null), SAVED_READ_TIMEOUT_MS)
-    const settle = (result: SavedResult | null) => {
+    const settle = (result: T | null) => {
       clearTimeout(timer)
       resolve(result)
     }
-    readDays({ from: addDays(today, -LOOKBACK_DAYS), to: today }).then(settle, () => settle(null))
+    read().then(settle, () => settle(null))
   })
 }
+
+/** 저장 숫자 한 번 읽기(AC-601.19) */
+const readSaved = (today: string) => withinLimit(() => readDays({ from: addDays(today, -LOOKBACK_DAYS), to: today }))
 
 /** round: BitDashboard를 새 처음 자료로 다시 놓을 때 올린다. failed: 오류 카드. bitLoaded: 비트 숫자가 왔다(그 뒤 저장 숫자 답은 쓰지 않는다) */
 type Drawn = { initial: SummarySource; round: number; failed: boolean; retrying: boolean; bitLoaded: boolean }
@@ -46,6 +52,18 @@ function withAnswer(state: Drawn | null, result: SavedResult | null): Drawn {
 
 export function LiveDashboard({ today }: { today: string }) {
   const [drawn, setDrawn] = useState<Drawn | null>(null) // null = 저장 숫자를 읽는 중
+  const [groups, setGroups] = useState<DashboardGroups | null | undefined>(undefined) // undefined = 묶음을 읽는 중, null = 읽지 못함(AC-606.5)
+
+  // 묶음은 화면을 열 때 한 번만 읽는다(같은 10초 한도). 날짜가 바뀌어도 다시 읽지 않는다
+  useEffect(() => {
+    let gone = false // 떠난 뒤에 온 답은 버린다
+    void withinLimit(() => readDashboardGroups()).then((result) => {
+      if (!gone) setGroups(result)
+    })
+    return () => {
+      gone = true
+    }
+  }, [])
 
   useEffect(() => {
     let gone = false // 떠났거나 날짜가 바뀐 뒤에 온 답은 버린다
@@ -59,7 +77,9 @@ export function LiveDashboard({ today }: { today: string }) {
 
   const markBitLoaded = useCallback(() => setDrawn((current) => (current === null ? current : { ...current, bitLoaded: true })), [])
 
-  if (drawn === null) return <DashboardHome today={today} report={null} analysis={<DashboardAnalysis today={today} source={{ kind: 'none' }} />} />
+  if (drawn === null || groups === undefined) {
+    return <DashboardHome today={today} report={null} analysis={<DashboardAnalysis today={today} source={{ kind: 'none' }} />} />
+  }
 
   const readAgain = () => {
     if (drawn.retrying) return
@@ -80,7 +100,7 @@ export function LiveDashboard({ today }: { today: string }) {
           </div>
         </div>
       )}
-      <BitDashboard key={drawn.round} today={today} initial={drawn.initial} onBitLoaded={markBitLoaded} />
+      <BitDashboard key={drawn.round} today={today} initial={drawn.initial} groups={groups} onBitLoaded={markBitLoaded} />
     </>
   )
 }

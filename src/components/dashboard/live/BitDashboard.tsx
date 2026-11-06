@@ -12,10 +12,15 @@ import { createStatsWorker } from '@/workers/statsClient'
 import { DateControl, inDateRange } from './DateControl'
 import { BIT_IN_USE, ReadFailed, ReadingBlock, ReadLine, RereadAlert, UnreadableNote } from './ReadStatus'
 import { readBitDays, type ReadResult } from './readBitDays'
+import type { DashboardGroups } from './rxGroups'
 
 // 비트에서 읽어 대시보드를 그리는 화면 (bit-dashboard REQ-601, design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py state_body).
 // 서버가 그린 첫 모양은 initial 그대로이고, 효과 안에서 chrome.runtime이 있을 때만 읽는다. 화면 상태에는 일 숫자만 담고 서버로 아무것도 보내지 않는다(AC-601.9).
 // 고른 날은 여기 상태 하나다(design.md '### 날짜 고르기'). 주소·저장소에 두지 않아 새로 열면 오늘이고, 이미 읽은 숫자로 그려 비트를 다시 읽지 않는다(AC-605.6)
+// 통계 탭 묶음(groups)은 LiveDashboard가 읽어 넘긴다. 비트 읽기에 묶음 정의를 싣고(AC-606.7), 처방 상위는 그 묶음으로 센다(AC-606.1·AC-606.5)
+
+/** 묶음을 주지 않으면 묶음 없음 */
+const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
 
 type Status =
   | { kind: 'idle' } // 숫자 없음, 읽지도 않음: 연결 전 모양
@@ -68,16 +73,31 @@ function emptyLook(status: Status): EmptyLook {
   return status.kind === 'data' ? NO_DAYS_LOOK : {}
 }
 
-/** onBitLoaded: 비트 읽기가 일 숫자(days, 빈 배열 포함)로 끝날 때 부른다. LiveDashboard가 저장 숫자 오류 카드를 거두는 때다(AC-601.19) */
-export function BitDashboard({ today, initial, onBitLoaded }: { today: string; initial: SummarySource; onBitLoaded?: () => void }) {
+/**
+ * onBitLoaded: 비트 읽기가 일 숫자(days, 빈 배열 포함)로 끝날 때 부른다. LiveDashboard가 저장 숫자 오류 카드를 거두는 때다(AC-601.19).
+ * groups: 통계 탭 묶음. 주지 않으면 묶음 없음, null = 묶음을 읽지 못함(비트 읽기는 묶음 없이, 처방 상위는 AC-606.5 글)
+ */
+export function BitDashboard({
+  today,
+  initial,
+  groups = NO_GROUPS,
+  onBitLoaded,
+}: {
+  today: string
+  initial: SummarySource
+  groups?: DashboardGroups | null
+  onBitLoaded?: () => void
+}) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   const [attempt, setAttempt] = useState(0)
   const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
-  // 마지막으로 받은 onBitLoaded. 읽기 효과의 의존에 넣지 않는다(부모가 다시 그려도 읽기를 다시 시작하지 않게)
+  // 마지막으로 받은 onBitLoaded·묶음 정의. 읽기 효과의 의존에 넣지 않는다(부모가 다시 그려도 읽기를 다시 시작하지 않게)
   const bitLoaded = useRef(onBitLoaded)
+  const groupDefs = useRef(groups?.defs ?? [])
   useEffect(() => {
     bitLoaded.current = onBitLoaded
+    groupDefs.current = groups?.defs ?? []
   })
   // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5)
   const selected = picked !== null && inDateRange(picked, today) ? picked : today
@@ -90,7 +110,7 @@ export function BitDashboard({ today, initial, onBitLoaded }: { today: string; i
     if (!runtime) return
     const leaving = new AbortController()
     setStatus(startRead)
-    void readBitDays({ runtime, createWorker: createStatsWorker, today, signal: leaving.signal }).then((result) => {
+    void readBitDays({ runtime, createWorker: createStatsWorker, today, signal: leaving.signal, groups: groupDefs.current }).then((result) => {
       // 떠났거나 개발 모드가 효과를 다시 돌렸다: 취소한 읽기의 답은 쓰지 않는다
       if (leaving.signal.aborted) return
       setStatus((current) => finishRead(current, result, Date.now(), pressed))
@@ -103,7 +123,7 @@ export function BitDashboard({ today, initial, onBitLoaded }: { today: string; i
     pressedNow.current = true
     setAttempt((n) => n + 1)
   }
-  const source: SummarySource = status.kind === 'data' ? { kind: 'data', days: status.days } : { kind: 'none' }
+  const source: SummarySource = status.kind === 'data' ? { kind: 'data', days: status.days, groups: groups === null ? null : groups.lines } : { kind: 'none' }
 
   return (
     <DashboardHome

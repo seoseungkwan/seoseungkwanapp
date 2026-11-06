@@ -21,6 +21,7 @@ import { createStatsWorker } from '@/workers/statsClient'
 import { BitDashboard } from './BitDashboard'
 import { DateControl } from './DateControl'
 import { readBitDays, type ReadResult, type StatsWorkerLike } from './readBitDays'
+import type { DashboardGroups } from './rxGroups'
 
 // 대시보드가 저절로 채워지는 화면 (bit-dashboard REQ-601, design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py).
 // 대부분은 readBitDays를 잡아 두고 답을 시험이 정한다(화면이 답마다 어떻게 그리는지 본다).
@@ -53,6 +54,38 @@ const DAYS = [day(TODAY, 9, 55, true), day('2026-10-26', 7, 60)]
 const NEWER_DAYS = [day(TODAY, 10, 60, true), day('2026-10-26', 7, 60)]
 const SAVED: SummarySource = { kind: 'data', days: [day(TODAY, 2, 3, true)] }
 
+// 통계 탭 묶음 둘(가짜 이름·열쇠·코드, REQ-606). 일 줄 groups[].id가 묶음 열쇠다
+const GROUPS: DashboardGroups = {
+  lines: [
+    { name: '운동치료', key: 'key-exercise' },
+    { name: '체외충격파', key: 'key-shock' },
+  ],
+  defs: [
+    { id: 'key-exercise', codes: ['MM301'] },
+    { id: 'key-shock', codes: ['MM302', 'MM303'] },
+  ],
+}
+const keyed = (d: DayPayload, exercise: number, shock: number): DayPayload => ({
+  ...d,
+  groups: [
+    { id: 'key-exercise', patients: exercise, newPatients: 0, returning: exercise },
+    { id: 'key-shock', patients: shock, newPatients: 0, returning: shock },
+  ],
+})
+// 묶음 열쇠 줄을 실은 저장 숫자(오늘 5명)·비트 숫자(오늘 64명). 기간(지난 30일) 안 날은 10월 26일 하루다
+const SAVED_KEYED: SummarySource = { kind: 'data', days: [keyed(day(TODAY, 2, 3, true), 1, 1), keyed(day('2026-10-26', 7, 60), 12, 5)] }
+const BIT_KEYED = [keyed(day(TODAY, 9, 55, true), 2, 2), keyed(day('2026-10-26', 7, 60), 4, 20)]
+const SAVED_RANK = [
+  ['운동치료', '12건'],
+  ['체외충격파', '5건'],
+]
+const BIT_RANK = [
+  ['체외충격파', '20건'],
+  ['운동치료', '4건'],
+]
+const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.' // AC-606.5
+const GROUPS_NONE = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.' // AC-606.4
+
 const CONNECT_CHECK = '/claim/setup?next=dashboard'
 const CONNECT_H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
 const READ_H1 = '비트에서 오늘 숫자를 읽고 있어요'
@@ -74,6 +107,8 @@ const NOT_READY: ReadResult = { kind: 'not-ready' }
 const onBitPc = () => vi.stubGlobal('chrome', { runtime: { connect: vi.fn() } })
 const notBitPc = () => vi.stubGlobal('chrome', undefined)
 const draw = (initial: SummarySource = NONE) => render(<BitDashboard today={TODAY} initial={initial} />)
+const drawWith = (initial: SummarySource, groups: DashboardGroups | null | undefined) =>
+  render(<BitDashboard today={TODAY} initial={initial} groups={groups} />)
 
 // ── 화면 읽기 도우미 ──
 const region = (name: string) => screen.getByRole('region', { name })
@@ -85,6 +120,10 @@ const button = (name: string) => screen.getByRole('button', { name })
 const noButton = (name: string) => expect(screen.queryByRole('button', { name })).toBeNull()
 const link = (name: string) => screen.getByRole('link', { name })
 const noText = (text: string | RegExp) => expect(screen.queryByText(text)).toBeNull()
+// '처방 상위' 칸과 그 순위 막대 줄([이름, 값])
+const rankChart = () => screen.getByRole('group', { name: '처방 상위' })
+const rankRows = () =>
+  Array.from(rankChart().querySelectorAll('ol[aria-label="처방 상위"] > li')).map((li) => [li.children[0]!.textContent, li.children[2]!.textContent])
 // 화면에 있는 움직이는 표시 이름(AC-601.17). 움직임 자체는 globals.css가 맡는다
 const motionMarks = (container: Element) => [...container.innerHTML.matchAll(/bit-read-[\w-]+/g)].map((m) => m[0])
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
@@ -955,6 +994,77 @@ describe('AC-601.19·AC-601.14: 비트 숫자가 오면 알린다(onBitLoaded)',
   })
 })
 
+describe('AC-606.7·AC-606.1·AC-606.5: 통계 탭 묶음(groups)', () => {
+  it('AC-606.7: 비트 읽기(readBitDays)에 받은 묶음 정의(defs)를 그대로 싣는다 — [다시 읽기]에도 같은 정의다', async () => {
+    onBitPc()
+    drawWith(NONE, GROUPS)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(reads[0]!.deps.groups).toEqual(GROUPS.defs)
+    await answer(days(BIT_KEYED))
+    fireEvent.click(button('다시 읽기'))
+    expect(readBitDays).toHaveBeenCalledTimes(2)
+    expect(reads[1]!.deps.groups).toEqual(GROUPS.defs)
+  })
+
+  it.each<[string, DashboardGroups | null | undefined]>([
+    ['groups를 주지 않음', undefined],
+    ['묶음을 읽지 못함(null)', null],
+    ['묶음 없음', { lines: [], defs: [] }],
+  ])('AC-606.7: %s이면 비트 읽기에 빈 목록(groups: [])을 싣는다', (_name, groups) => {
+    onBitPc()
+    drawWith(NONE, groups)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(reads[0]!.deps.groups).toEqual([])
+  })
+
+  it('AC-606.7: 묶음은 읽기 효과의 의존이 아니다 — 같은 묶음을 새 객체로 다시 넘겨 다시 그려도 비트를 다시 읽지 않는다', () => {
+    onBitPc()
+    const { rerender } = drawWith(NONE, GROUPS)
+    rerender(<BitDashboard today={TODAY} initial={NONE} groups={{ lines: [...GROUPS.lines], defs: [...GROUPS.defs] }} />)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(reads[0]!.deps.signal?.aborted).toBe(false)
+  })
+
+  it('AC-606.1: 비트 PC가 아니면 저장 숫자로 처방 상위를 묶음 이름·기간 안 열쇠 줄 건수로 그린다', () => {
+    notBitPc()
+    drawWith(SAVED_KEYED, GROUPS)
+    expect(rankRows()).toEqual(SAVED_RANK)
+  })
+
+  it.each<[string, SummarySource]>([
+    ['저장 숫자 없이 시작', NONE],
+    ['저장 숫자로 시작', SAVED_KEYED],
+  ])('AC-606.1: %s해도 비트 숫자가 오면 처방 상위는 같은 묶음으로 비트 숫자의 열쇠 줄 건수다', async (_name, initial) => {
+    onBitPc()
+    drawWith(initial, GROUPS)
+    if (initial.kind === 'data') expect(rankRows()).toEqual(SAVED_RANK)
+    await answer(days(BIT_KEYED))
+    expectNumbersShown(64, 9, 55)
+    expect(rankRows()).toEqual(BIT_RANK)
+  })
+
+  it('AC-606.5: 묶음을 읽지 못함(null)이면 처방 상위 칸에 "통계 탭 묶음을 읽지 못했어요…" — 저장 숫자·비트 숫자 모두. 보고 문장·다른 그래프는 그대로다', async () => {
+    onBitPc()
+    drawWith(SAVED_KEYED, null)
+    expect(within(rankChart()).getByText(GROUPS_UNREAD)).toBeTruthy()
+    expect(rankChart().querySelector('ol[aria-label]')).toBeNull()
+    expect(h1().textContent).toBe('오늘 지금까지 환자 5명이 왔습니다.')
+    await answer(days(BIT_KEYED))
+    expectNumbersShown(64, 9, 55)
+    expect(within(rankChart()).getByText(GROUPS_UNREAD)).toBeTruthy()
+    expect(rankChart().querySelector('ol[aria-label]')).toBeNull()
+    for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(screen.getByRole('group', { name })).toBeTruthy()
+  })
+
+  it('AC-606.7·AC-606.4: groups를 주지 않으면 묶음 없음과 같다 — 처방 상위 칸은 "묶음을 만들면 여기에 보여요"', async () => {
+    onBitPc()
+    draw(SAVED_KEYED)
+    expect(within(rankChart()).getByText(GROUPS_NONE)).toBeTruthy()
+    await answer(days(BIT_KEYED))
+    expect(within(rankChart()).getByText(GROUPS_NONE)).toBeTruthy()
+  })
+})
+
 describe('AC-601.9: 자동 읽기는 서버로 아무것도 보내지 않는다', () => {
   it('AC-601.9: 화면 파일에 서버 요청·브라우저 저장소가 없다', () => {
     const dir = join(process.cwd(), 'src/components/dashboard/live')
@@ -1475,6 +1585,22 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
     expect(fetch).not.toHaveBeenCalled()
     expect(t.port.disconnected).toBe(true)
     expect(t.worker.terminate).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-606.7: 불러오기 요청(requestLoad)에 받은 묶음 정의를 싣는다 — 다 읽은 비트 숫자로 처방 상위가 묶음 줄이다', async () => {
+    const t = await wire({}, { ...VIEW, days: BIT_KEYED } as unknown as StatsLoaded)
+    drawWith(NONE, GROUPS)
+    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    expect(t.loads).toHaveLength(1)
+    expect(t.loads[0]!.groups).toEqual(GROUPS.defs)
+    expect(rankRows()).toEqual(BIT_RANK)
+  })
+
+  it('AC-606.7: 묶음이 없으면 불러오기 요청에 빈 목록을 싣는다', async () => {
+    const t = await wire()
+    draw()
+    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    expect(t.loads[0]!.groups).toEqual([])
   })
 
   it.each<[string, Partial<Record<Command, Answer>>]>([

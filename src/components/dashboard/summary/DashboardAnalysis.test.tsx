@@ -985,6 +985,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'LiveDashboard.tsx: @/components/dashboard/briefing/DashboardHome',
     'LiveDashboard.tsx: @/components/dashboard/live/BitDashboard',
     'LiveDashboard.tsx: @/components/dashboard/live/readBitDays',
+    'LiveDashboard.tsx: @/components/dashboard/live/rxGroups',
     'LiveDashboard.tsx: @/lib/storage/stats',
     'LiveDashboard.tsx: ./DashboardAnalysis',
   ]

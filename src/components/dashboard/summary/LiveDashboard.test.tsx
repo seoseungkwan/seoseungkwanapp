@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { LOOKBACK_DAYS, readBitDays, type ReadResult } from '@/components/dashboard/live/readBitDays'
+import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
@@ -18,11 +19,16 @@ import { LiveDashboard, SAVED_READ_TIMEOUT_MS } from './LiveDashboard'
 import type { SummarySource } from './source'
 
 // 대시보드가 저장 숫자를 먼저 읽어 BitDashboard에 넘김 (bit-dashboard AC-601.14·AC-601.19, stats AC-516.1·AC-516.3, design.md '### 화면').
-// 저장 숫자 읽기(readDays)와 비트 읽기(readBitDays)는 잡아 두고 답을 시험이 정한다. 진짜 Supabase·확장에 붙지 않는다.
-// 가짜 DayPayload는 이 시험 파일 안에서만 만든다(AC-312.3)
+// 통계 탭 묶음도 여기서 한 번 읽어 넘긴다(AC-606.8·AC-606.5, design.md '처방 상위 = 통계 탭 묶음').
+// 저장 숫자 읽기(readDays)·묶음 읽기(readDashboardGroups)·비트 읽기(readBitDays)는 잡아 두고 답을 시험이 정한다. 진짜 Supabase·확장에 붙지 않는다.
+// 가짜 DayPayload·묶음은 이 시험 파일 안에서만 만든다(AC-312.3)
 vi.mock('@/lib/storage/stats', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/stats')>()
   return { ...real, readDays: vi.fn() }
+})
+vi.mock('@/components/dashboard/live/rxGroups', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/dashboard/live/rxGroups')>()
+  return { ...real, readDashboardGroups: vi.fn() }
 })
 vi.mock('@/components/dashboard/live/readBitDays', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/components/dashboard/live/readBitDays')>()
@@ -58,6 +64,38 @@ const CONNECT_H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워�
 const READ_H1 = '비트에서 오늘 숫자를 읽고 있어요'
 const READ_FAILED = errorInfo('E-STATS-READ-FAILED')
 
+// 통계 탭 묶음 둘(가짜 이름·열쇠·코드). 일 줄 groups[].id가 묶음 열쇠다(AC-606.1)
+const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
+const GROUPS: DashboardGroups = {
+  lines: [
+    { name: '운동치료', key: 'key-exercise' },
+    { name: '체외충격파', key: 'key-shock' },
+  ],
+  defs: [
+    { id: 'key-exercise', codes: ['MM301'] },
+    { id: 'key-shock', codes: ['MM302', 'MM303'] },
+  ],
+}
+const keyed = (d: DayPayload, exercise: number, shock: number): DayPayload => ({
+  ...d,
+  groups: [
+    { id: 'key-exercise', patients: exercise, newPatients: 0, returning: exercise },
+    { id: 'key-shock', patients: shock, newPatients: 0, returning: shock },
+  ],
+})
+// 묶음 열쇠 줄을 실은 저장 숫자(오늘 5명)·비트 숫자(오늘 64명). 기간(지난 30일) 안 날은 10월 26일 하루다
+const SAVED_KEYED = [keyed(day('2026-10-26', 7, 60), 12, 5), keyed(day(TODAY, 2, 3, true), 1, 1)]
+const BIT_KEYED = [keyed(day('2026-10-26', 7, 60), 4, 20), keyed(day(TODAY, 9, 55, true), 2, 2)]
+const SAVED_RANK = [
+  ['운동치료', '12건'],
+  ['체외충격파', '5건'],
+]
+const BIT_RANK = [
+  ['체외충격파', '20건'],
+  ['운동치료', '4건'],
+]
+const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.' // AC-606.5
+
 // ── 잡아 둔 저장 숫자 읽기: 화면이 부른 차례대로 쌓이고, 시험이 답을 준다 ──
 type SavedRead = { range: Parameters<typeof readDays>[0]; resolve(result: SavedResult): void; reject(error: unknown): void }
 const savedReads: SavedRead[] = []
@@ -69,6 +107,25 @@ const savedAnswer = (rows: readonly DayPayload[], i = savedReads.length - 1) =>
 const savedFail = (i = savedReads.length - 1, error: unknown = new StorageError('E-STATS-READ-FAILED')) =>
   act(async () => {
     savedReads[i]!.reject(error)
+  })
+
+// ── 잡아 둔 묶음 읽기: 시험이 holdGroups()로 잡지 않으면 바로 '묶음 없음'으로 끝난다 ──
+type GroupRead = { resolve(result: DashboardGroups | null): void; reject(error: unknown): void }
+const groupReads: GroupRead[] = []
+const holdGroups = () =>
+  vi.mocked(readDashboardGroups).mockImplementation(
+    () =>
+      new Promise<DashboardGroups | null>((resolve, reject) => {
+        groupReads.push({ resolve, reject })
+      }),
+  )
+const groupAnswer = (result: DashboardGroups | null, i = groupReads.length - 1) =>
+  act(async () => {
+    groupReads[i]!.resolve(result)
+  })
+const groupThrow = (i = groupReads.length - 1) =>
+  act(async () => {
+    groupReads[i]!.reject(new Error('묶음 읽기 실패'))
   })
 
 // ── 잡아 둔 비트 읽기 ──
@@ -94,6 +151,14 @@ const savedCard = () => screen.queryByText(READ_FAILED.what)?.closest('[role="al
 // 카드와 그 아래 단추를 감싼 칸
 const savedCardBox = () => savedCard()!.parentElement as HTMLElement
 const retryButton = () => within(savedCardBox()).getByRole('button')
+// '처방 상위' 칸과 그 순위 막대 줄([이름, 값])
+const rankChart = () => screen.getByRole('group', { name: '처방 상위' })
+const rankRows = () =>
+  Array.from(rankChart().querySelectorAll('ol[aria-label="처방 상위"] > li')).map((li) => [li.children[0]!.textContent, li.children[2]!.textContent])
+const expectGroupsUnread = () => {
+  expect(within(rankChart()).getByText(GROUPS_UNREAD)).toBeTruthy()
+  expect(rankChart().querySelector('ol[aria-label]')).toBeNull() // 숫자를 지어내지 않는다
+}
 const expectOrder = (...els: Element[]) => {
   for (let i = 1; i < els.length; i += 1) {
     expect(els[i - 1]!.compareDocumentPosition(els[i]!) & Node.DOCUMENT_POSITION_FOLLOWING, `${i - 1}번 → ${i}번`).toBeTruthy()
@@ -111,7 +176,10 @@ const BEFORE_CONNECT = <DashboardHome today={TODAY} report={null} analysis={<Das
 
 beforeEach(() => {
   savedReads.length = 0
+  groupReads.length = 0
   bitReads.length = 0
+  vi.mocked(readDashboardGroups).mockReset()
+  vi.mocked(readDashboardGroups).mockResolvedValue(NO_GROUPS)
   vi.mocked(readDays).mockReset()
   vi.mocked(readDays).mockImplementation(
     (range) =>
@@ -428,6 +496,175 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
   })
 })
 
+describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함께 한 번 읽는다', () => {
+  it('AC-606.8: 서버 그림에서는 묶음을 읽지 않고, 브라우저에 붙으면 readDashboardGroups로 저장 숫자 읽기와 함께 한 번 읽는다', () => {
+    onBitPc()
+    renderToStaticMarkup(<LiveDashboard today={TODAY} />)
+    expect(readDashboardGroups).not.toHaveBeenCalled()
+    draw()
+    expect(readDashboardGroups).toHaveBeenCalledTimes(1)
+    expect(readDays).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-606.8: 저장 숫자가 먼저 와도 묶음 읽기가 끝나기 전에는 BitDashboard를 그리지 않는다 — 묶음이 오면 그리고, 비트 읽기에 그 묶음 정의를 싣는다', async () => {
+    onBitPc()
+    holdGroups()
+    draw()
+    await savedAnswer(SAVED_KEYED)
+    expect(readBitDays).not.toHaveBeenCalled()
+    expect(h1().textContent).toBe(CONNECT_H1)
+    expect(screen.queryByRole('button', { name: '다시 읽는 중' })).toBeNull()
+    await groupAnswer(GROUPS)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(bitReads[0]!.deps.groups).toEqual(GROUPS.defs)
+    expect(h1().textContent).toBe(SAVED_H1)
+    expect(screen.getByRole('button', { name: '다시 읽는 중' })).toBeTruthy()
+  })
+
+  it('AC-606.8: 묶음이 먼저 와도 저장 숫자 읽기가 끝나기 전에는 그리지 않는다', async () => {
+    onBitPc()
+    holdGroups()
+    draw()
+    await groupAnswer(GROUPS)
+    expect(readBitDays).not.toHaveBeenCalled()
+    expect(h1().textContent).toBe(CONNECT_H1)
+    await savedAnswer(SAVED_KEYED)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(h1().textContent).toBe(SAVED_H1)
+  })
+
+  it('AC-606.8·AC-601.19: 두 읽기 모두 10초 안에 끝나지 않으면 한도에서 저장 숫자·묶음 없이 오류 카드와 함께 그린다', async () => {
+    onBitPc()
+    holdGroups()
+    draw()
+    await wait(SAVED_READ_TIMEOUT_MS - 1)
+    expect(readBitDays).not.toHaveBeenCalled()
+    expect(h1().textContent).toBe(CONNECT_H1)
+    await wait(1)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(bitReads[0]!.deps.groups).toEqual([])
+    expect(h1().textContent).toBe(READ_H1)
+    expect(savedCard()).not.toBeNull()
+  })
+
+  it('AC-606.1·AC-606.8: 저장 숫자로 먼저 그릴 때 처방 상위는 묶음 이름·기간 안 열쇠 줄 건수이고, 비트 숫자가 오면 같은 묶음으로 다시 센다', async () => {
+    onBitPc()
+    vi.mocked(readDashboardGroups).mockResolvedValue(GROUPS)
+    draw()
+    await savedAnswer(SAVED_KEYED)
+    expect(h1().textContent).toBe(SAVED_H1)
+    expect(rankRows()).toEqual(SAVED_RANK)
+    await bitAnswer(bitDays(BIT_KEYED))
+    expect(h1().textContent).toBe(BIT_H1)
+    expect(rankRows()).toEqual(BIT_RANK)
+    expect(readDashboardGroups).toHaveBeenCalledTimes(1)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('AC-606.1·AC-606.8: 비트 PC가 아니면 저장 숫자와 묶음으로만 그린다', async () => {
+    notBitPc()
+    vi.mocked(readDashboardGroups).mockResolvedValue(GROUPS)
+    draw()
+    await savedAnswer(SAVED_KEYED)
+    expect(readBitDays).not.toHaveBeenCalled()
+    expect(rankRows()).toEqual(SAVED_RANK)
+  })
+
+  it('AC-606.8·AC-606.5: 묶음은 열 때 한 번만 읽는다 — [다시 읽기]로 BitDashboard가 다시 놓여도, 연 채 날짜가 바뀌어 저장 숫자를 다시 읽어도 처음 값을 그대로 둔다', async () => {
+    onBitPc()
+    holdGroups()
+    const { rerender } = draw()
+    await groupAnswer(GROUPS)
+    await savedFail()
+    expect(bitReads[0]!.deps.groups).toEqual(GROUPS.defs)
+    fireEvent.click(retryButton())
+    await savedAnswer(SAVED_KEYED)
+    expect(readDays).toHaveBeenCalledTimes(2)
+    expect(readDashboardGroups).toHaveBeenCalledTimes(1)
+    // 새로 놓인 BitDashboard도 같은 묶음으로 그리고 읽는다
+    expect(readBitDays).toHaveBeenCalledTimes(2)
+    expect(bitReads[1]!.deps.groups).toEqual(GROUPS.defs)
+    expect(rankRows()).toEqual(SAVED_RANK)
+    rerender(<LiveDashboard today="2026-11-03" />)
+    expect(readDays).toHaveBeenCalledTimes(3)
+    await savedAnswer(SAVED_KEYED)
+    expect(readDashboardGroups).toHaveBeenCalledTimes(1)
+    expect(rankRows().map(([name]) => name)).toEqual(['운동치료', '체외충격파'])
+  })
+
+  it('AC-606.8: 묶음을 읽는 동안 화면을 떠나도 오류 없이 끝나고, 늦게 온 답은 쓰지 않는다', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    holdGroups()
+    const { unmount } = draw()
+    unmount()
+    await groupAnswer(GROUPS)
+    await savedAnswer(SAVED_KEYED)
+    await wait(SAVED_READ_TIMEOUT_MS)
+    expect(logged).not.toHaveBeenCalled()
+    logged.mockRestore()
+  })
+})
+
+describe('AC-606.5: 묶음 읽기 실패·10초 한도', () => {
+  it.each<[string, () => Promise<void>]>([
+    ['null로 끝남', () => groupAnswer(null)],
+    ['던짐', () => groupThrow()],
+  ])(
+    'AC-606.5: 묶음 읽기가 실패하면(%s) 처방 상위 칸에 "통계 탭 묶음을 읽지 못했어요…" — 보고 문장·다른 그래프·비트 읽기(묶음 없이)는 그대로이고 오류 카드는 없다',
+    async (_name, settle) => {
+      onBitPc()
+      holdGroups()
+      draw()
+      await savedAnswer(SAVED_KEYED)
+      await settle()
+      expect(h1().textContent).toBe(SAVED_H1)
+      expectGroupsUnread()
+      for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(screen.getByRole('group', { name })).toBeTruthy()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(readBitDays).toHaveBeenCalledTimes(1)
+      expect(bitReads[0]!.deps.groups).toEqual([])
+      await bitAnswer(bitDays(BIT_KEYED))
+      expect(h1().textContent).toBe(BIT_H1)
+      expectGroupsUnread()
+      expect(screen.queryByRole('alert')).toBeNull()
+    },
+  )
+
+  it('AC-606.5: 묶음 읽기가 10초 안에 끝나지 않으면 읽지 못함(null)으로 그린다 — 그 전까지는 BitDashboard를 그리지 않고, 늦게 온 답은 쓰지 않는다', async () => {
+    onBitPc()
+    holdGroups()
+    draw()
+    await savedAnswer(SAVED_KEYED)
+    await wait(SAVED_READ_TIMEOUT_MS - 1)
+    expect(readBitDays).not.toHaveBeenCalled()
+    expect(h1().textContent).toBe(CONNECT_H1)
+    await wait(1)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(bitReads[0]!.deps.groups).toEqual([])
+    expect(h1().textContent).toBe(SAVED_H1)
+    expectGroupsUnread()
+    await groupAnswer(GROUPS, 0)
+    expectGroupsUnread()
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(readDashboardGroups).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-606.5: [다시 읽기]는 지금처럼 저장 숫자만 다시 읽는다 — 읽지 못한 묶음은 다시 읽지 않고 그대로 "읽지 못했어요"다', async () => {
+    notBitPc()
+    holdGroups()
+    draw()
+    await savedFail()
+    await groupAnswer(null)
+    expect(savedCard()).not.toBeNull()
+    fireEvent.click(retryButton())
+    await savedAnswer(SAVED_KEYED)
+    expect(savedCard()).toBeNull()
+    expect(readDays).toHaveBeenCalledTimes(2)
+    expect(readDashboardGroups).toHaveBeenCalledTimes(1)
+    expectGroupsUnread()
+  })
+})
+
 describe('AC-601.14·AC-516.3: 저장 숫자를 읽는 곳은 한 곳이다', () => {
   const ROOT = process.cwd()
   const read = (file: string) => readFileSync(file, 'utf8')
@@ -467,5 +704,11 @@ describe('AC-601.14·AC-516.3: 저장 숫자를 읽는 곳은 한 곳이다', ()
   it('AC-601.14: 저장 숫자 읽기는 비트 숫자를 보내지 않는다 — LiveDashboard에 저장·서버 요청·브라우저 저장소가 없다', () => {
     const text = code(read(join(ROOT, LIVE)))
     expect(text).not.toMatch(/saveStats|\bfetch\s*\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage|indexedDB|document\.cookie|lib\/supabase/)
+  })
+
+  it('AC-606.8: 묶음은 받아 오기만 한다 — LiveDashboard는 readDashboardGroups 하나로 읽고, 묶음 표·저장·제안 묶음을 직접 다루지 않는다', () => {
+    const text = code(read(join(ROOT, LIVE)))
+    expect(text).toMatch(/\breadDashboardGroups\b/)
+    expect(text).not.toMatch(/listStatsRxGroups|saveStatsRxGroups|stats_rx_groups|storage\/statsRxGroups|toDashboardGroups|suggest/i)
   })
 })

@@ -23,6 +23,11 @@ vi.mock('@/lib/storage/stats', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/stats')>()
   return { ...real, readDays: vi.fn() }
 })
+// 통계 탭 묶음 읽기(listStatsRxGroups)도 감싼다: 이 파일의 계정은 묶음이 없다(bit-dashboard AC-606.8). 진짜 Supabase에 붙지 않는다
+vi.mock('@/lib/storage/statsRxGroups', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/storage/statsRxGroups')>()
+  return { ...real, listStatsRxGroups: vi.fn(async () => []) }
+})
 
 // /dashboard 페이지 (tab-frame REQ-306, design.md '대시보드 짜임'·'대시보드 페이지 조립'). 문지기와 앱 틀(위쪽 띠·탭·<main>)은 (app)/layout이 준다(layout.test.tsx).
 // 여기서는 오늘 한국 날짜로 대시보드(DashboardHome)를 그리는지, 자료 읽는 자리(저장 숫자 읽기) 하나로 연결 전·뒤 분석·보고 문장을 끼우는지 본다(AC-307.5·307.6)
