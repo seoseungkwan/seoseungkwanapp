@@ -1,0 +1,18 @@
+{
+  "status": "approved",
+  "feature": "memo-edit-any",
+  "approved_at": "2026-11-06T08:18:13Z",
+  "approved_via": "user-prompt",
+  "session_id": "85714357-c326-40a4-8ee3-407d5bb46881",
+  "spec_sha256": "596ad0187272225227150847314106412a10264a717aaf004a628bac6e882b37",
+  "scope": [
+    "src/components/claim/rows/MemoRows.test.tsx",
+    "src/components/claim/rows/MemoRows.tsx",
+    "src/components/claim/rows/MemoTable.test.tsx",
+    "src/components/claim/rows/MemoTable.tsx",
+    "src/lib/precheck/memoCompare.test.ts",
+    "src/lib/precheck/memoCompare.ts",
+    "src/workers/precheck/jobs.test.ts",
+    "src/workers/precheck/jobs.ts"
+  ]
+}
