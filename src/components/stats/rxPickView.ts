@@ -4,7 +4,7 @@ import { isCovered } from '@/lib/analytics/coverage'
 import { compareYmd, eachDay } from '@/lib/analytics/dates'
 import type { Delta } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import { codeKey, COMPARE_NAME, rxComparedCells, type RxLine, type RxPickRow, type StatsInput, type StatsPeriod, type StatsRange } from './view'
+import { codeKey, rxComparedCells, type CompareRange, type RxLine, type RxPickRow, type StatsInput, type StatsPeriod, type StatsRange, type YearCompare } from './view'
 
 // 처방 골라 보기의 글자·찾기·복사 (rx-picker REQ-802·804·805·808). view.ts와 같은 규칙의 순수 함수다.
 // 입력은 일 숫자·덮은 기간·표 줄뿐이고 환자 줄은 들어올 수 없다
@@ -38,7 +38,16 @@ export function addedRateText(row: RxPickRow): string {
 
 // ── 합계·안내 ────────────────────────────────────────────
 
-// 지난 기간과 증감은 합계 건수가 아니라 줄마다 견준 짝의 합으로 낸다. 남은 짝은 모든 줄이 같다(rxComparedCells)
+// 고른 기간의 작년 합계: 견줄 수 있는 줄의 건수·작년 건수를 더한다(견줄 수 있는지는 처방과 상관없어 모든 줄이 같다)
+function lastYearTotal(rows: readonly RxPickRow[]): YearCompare {
+  const counted = rows.flatMap((row) => (row.lastYear === undefined || row.lastYear.previous === null ? [] : [{ current: row.count, previous: row.lastYear.previous }]))
+  if (counted.length === 0) return { previous: null, delta: UNAVAILABLE }
+  const previous = sum(counted, (pair) => pair.previous)
+  return { previous, delta: compareNumbers(sum(counted, (pair) => pair.current), previous) }
+}
+
+// 지난 기간과 증감은 합계 건수가 아니라 줄마다 견준 짝의 합으로 낸다. 남은 짝은 모든 줄이 같다(rxComparedCells).
+// 고른 기간은 비교마다 더한다(바로 전 = comparable·delta, 작년 = lastYear)
 export function rxPickTotal(rows: readonly RxPickRow[]): RxPickRow | null {
   if (rows.length < 2) return null
   const compared = rows.flatMap((row) => (row.comparable === null ? [] : [row.comparable]))
@@ -53,6 +62,7 @@ export function rxPickTotal(rows: readonly RxPickRow[]): RxPickRow | null {
     partial: rows.some((row) => row.partial),
     comparable,
     delta: comparable === null ? UNAVAILABLE : compareNumbers(comparable.current, comparable.previous),
+    ...(rows.some((row) => row.lastYear !== undefined) ? { lastYear: lastYearTotal(rows) } : {}),
   }
 }
 
@@ -116,13 +126,18 @@ function deltaCell(delta: Delta): string {
   return `${ARROW[view.dir]}${view.text}`
 }
 
-function copyLine(row: RxPickRow): string {
+// 고른 기간 + 작년 비교일 때만 작년 두 칸이 붙는다
+const hasLastYear = (range: StatsRange): range is StatsRange & { lastYear: CompareRange } => range.period === null && range.lastYear !== null
+
+function copyLine(row: RxPickRow, range: StatsRange): string {
+  const lastYear = row.lastYear ?? { previous: null, delta: UNAVAILABLE }
   return [
     oneLine(row.code),
     oneLine(row.name),
     row.count,
     row.comparable === null ? NO_VALUE : row.comparable.previous,
     deltaCell(row.delta),
+    ...(hasLastYear(range) ? [lastYear.previous === null ? NO_VALUE : lastYear.previous, deltaCell(lastYear.delta)] : []),
     row.newCount,
     rateText(row.newCount, row.count),
     row.returningCount,
@@ -131,14 +146,22 @@ function copyLine(row: RxPickRow): string {
   ].join('\t')
 }
 
-// periodName은 부르는 쪽이 준다(PERIOD_NAME이 화면 파일에 있다)
+// 비교 칸 머리. 빠른 단추는 지금 이름('지난 30일'·'증감'), 고른 기간은 비교마다 '{name}'·'{name}보다'
+function compareHead(range: StatsRange): string[] {
+  if (range.period !== null) return [COLUMN_NAME[range.period], '증감']
+  const compares = [range.previous, ...(range.lastYear === null ? [] : [range.lastYear])]
+  return compares.flatMap(({ name }) => [name, `${name}보다`])
+}
+
+// periodName은 부르는 쪽이 준다(PERIOD_NAME이 화면 파일에 있다). 비교 글의 괄호는 비교마다 why다(빠른 단추의 why = COMPARE_NAME)
 export function rxPickCopyText({ hospitalName, periodName, range, rows, total }: { hospitalName: string; periodName: string; range: StatsRange; rows: readonly RxPickRow[]; total: RxPickRow | null }): string {
+  const compares = [range.previous, ...(range.lastYear === null ? [] : [range.lastYear])]
   return [
     `${oneLine(hospitalName)} 처방 골라 보기`,
-    `${periodName} (${range.current.label}) · 비교: ${range.previous.label} (${COMPARE_NAME[range.period]})`,
-    ['코드', '처방', '건수', COLUMN_NAME[range.period], '증감', '신환', '신환율', '재진', '재진율', '구분 없음'].join('\t'),
-    ...rows.map(copyLine),
-    ...(total === null ? [] : [copyLine(total)]),
+    `${periodName} (${range.current.label}) · 비교: ${compares.map(({ label, why }) => `${label} (${why})`).join(' · ')}`,
+    ['코드', '처방', '건수', ...compareHead(range), '신환', '신환율', '재진', '재진율', '구분 없음'].join('\t'),
+    ...rows.map((row) => copyLine(row, range)),
+    ...(total === null ? [] : [copyLine(total, range)]),
     RATE_MEANING,
   ].join('\n')
 }

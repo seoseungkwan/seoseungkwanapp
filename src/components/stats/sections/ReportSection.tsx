@@ -10,7 +10,8 @@ import { CopyButton } from './CopyButton'
 import { EmptyNote, longDate, monthNumber, Section, weekdayName } from './parts'
 
 // 원장님 보고 문장 (stats REQ-513 AC-513.6·513.8, 시안 notes.md §3). 글은 formatClinicReport가 정하고(TASK-10) 여기서는 글자로만 그린다.
-// report null = 비트 PC에서 불러온 자료가 없음. 벌은 차례가 아니라 기간으로 찾는다. 고르기 상태는 화면 안에만 둔다
+// report null = 비트 PC에서 불러온 자료가 없음. 벌은 차례가 아니라 기간으로 찾는다. 고르기 상태는 화면 안에만 둔다.
+// pick(stats-period REQ-1707) = 고른 기간 보고. 있으면 [고른 기간 보고]가 맨 앞이고 처음 눌려 있다. 저장된 숫자로 만든 글이라 비트 없이도 보인다
 
 export type ReportData = {
   numbers: StatsLoaded['report']
@@ -18,8 +19,12 @@ export type ReportData = {
   closedToday: boolean // "오늘 진료 끝"을 켜고 불러옴
 }
 
-type PickKey = 'today' | 'yesterday' | 'month' | 'lastMonth'
-type Pick = { key: PickKey; name: string; mode: ClinicReportMode }
+// 고른 기간 보고. label = 고른 기간 글(range.label), text = pickReportText 글(null = current 자료가 없어 만들 수 없음)
+export type PickReport = { label: string; text: string | null }
+
+type BitKey = 'today' | 'yesterday' | 'month' | 'lastMonth'
+type PickKey = 'pick' | BitKey
+type Pick = { key: BitKey; name: string; mode: ClinicReportMode }
 
 const PICKS: Pick[] = [
   { key: 'today', name: '오늘 일일보고', mode: 'daily' },
@@ -32,14 +37,17 @@ const TITLE = '원장님 보고 문장'
 const DESC = '비트 PC에서 불러온 숫자로 만든 보고 글'
 const BIT_ONLY = '비트 PC에서 불러오면 보여요'
 const BIT_REASON = '금액은 서버에 저장하지 않아서, 비트 PC에서 불러온 화면에서만 볼 수 있어요.'
+const PICK_NAME = '고른 기간 보고'
 
 // 고르기 묶음 모양은 대시보드 기간 단추와 같다(시안 .seg). 휴대폰은 2칸 × 2줄
 const GROUP = 'inline-flex flex-wrap overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:grid-cols-2'
 const BUTTON = 'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 const BUTTON_ON = 'bg-accent-soft font-semibold text-accent-strong'
 const BUTTON_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
+// 다섯이면 휴대폰에서 [고른 기간 보고]가 한 줄을 다 쓰고 옛 넷이 2칸 × 2줄이다
+const PICK_BUTTON = 'max-md:col-span-2'
 
-function periodOf(key: PickKey, today: string): string {
+function periodOf(key: BitKey, today: string): string {
   const thisMonth = monthOf(today)
   if (key === 'today') return today
   if (key === 'yesterday') return addDays(today, -1)
@@ -48,7 +56,7 @@ function periodOf(key: PickKey, today: string): string {
 
 const weekdayDate = (ymd: string) => `${longDate(ymd)} ${weekdayName(ymd)}요일`
 
-function dateLine(key: PickKey, today: string, report: ReportData, numbers: ClinicReportNumbers): string {
+function dateLine(key: BitKey, today: string, report: ReportData, numbers: ClinicReportNumbers): string {
   const period = periodOf(key, today)
   const unconfirmed = numbers.ok && numbers.financeUnconfirmed ? ' · 금액 확인 필요' : ''
   if (key === 'today') return `${weekdayDate(today)} · ${report.loadedAt}까지 불러온 숫자예요${report.closedToday ? '' : '(오늘은 진료 중)'}${unconfirmed}`
@@ -86,39 +94,23 @@ function Unconfirmable({ place, reason }: { place: string; reason: string }) {
   )
 }
 
-export function ReportSection({ report, hospitalName, today, saved, className }: { report: ReportData | null; hospitalName: string; today: string; saved: boolean; className?: string }) {
-  const [key, setKey] = useState<PickKey>('today')
-  if (report === null) {
-    return (
-      <Section title={TITLE} desc={saved ? DESC : undefined} className={className}>
-        <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
-      </Section>
-    )
-  }
+type Bit = { key: BitKey; numbers: ClinicReportNumbers | null; result: ClinicReportResult | null; shown: Shown | null; place: string }
+
+function bitReport(key: BitKey, report: ReportData, hospitalName: string, today: string): Bit {
   const pick = PICKS.find((item) => item.key === key)!
   const period = periodOf(key, today)
   const numbers = report.numbers[pick.mode].find((set) => set.period === period) ?? null
   const result = numbers === null ? null : formatClinicReport({ mode: pick.mode, numbers, hospitalName }, today)
   const shown = result !== null && 'text' in result ? shownOf(result) : null
   const place = pick.mode === 'daily' ? longDate(period) : `${monthNumber(`${period}-01`)}월`
+  return { key, numbers, result, shown, place }
+}
+
+// 비트에서 불러온 숫자의 보고(옛 넷)
+function BitBody({ bit, report, today }: { bit: Bit; report: ReportData; today: string }) {
+  const { key, numbers, result, shown, place } = bit
   return (
-    <Section title={TITLE} desc={DESC} className={className}>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div role="group" aria-label="보고 고르기" className={GROUP}>
-          {PICKS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              aria-pressed={item.key === key}
-              onClick={() => setKey(item.key)}
-              className={`${BUTTON} ${item.key === key ? BUTTON_ON : BUTTON_OFF}`}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
-        <CopyButton key={key} text={shown?.text ?? null} label="복사" fullOnPhone />
-      </div>
+    <>
       {numbers !== null && <p className="mt-4 text-small text-muted">{dateLine(key, today, report, numbers)}</p>}
       {shown !== null && <ReportText shown={shown} />}
       {shown !== null && shown.notes.length > 0 && (
@@ -135,6 +127,57 @@ export function ReportSection({ report, hospitalName, today, saved, className }:
       )}
       {result !== null && 'error' in result && result.error === 'unconfirmed' && <Unconfirmable place={place} reason={result.reason} />}
       {(numbers === null || (result !== null && 'error' in result && result.error === 'future-date')) && <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>}
+    </>
+  )
+}
+
+function PickBody({ pick }: { pick: PickReport }) {
+  if (pick.text === null) return <p className="mt-4 text-body text-ink-2">{`${pick.label}은 자료가 없어 보고 문장을 만들 수 없어요.`}</p>
+  return (
+    <>
+      <p className="mt-4 text-small text-muted">{`${pick.label} · 저장된 숫자로 만든 글이에요`}</p>
+      <ReportText shown={{ lines: pick.text.split('\n'), unconfirmed: new Set(), notes: [], text: pick.text }} />
+    </>
+  )
+}
+
+type Props = { report: ReportData | null; hospitalName: string; today: string; saved: boolean; pick?: PickReport | null; className?: string }
+
+export function ReportSection({ report, hospitalName, today, saved, pick = null, className }: Props) {
+  const [chosen, setKey] = useState<PickKey>(pick === null ? 'today' : 'pick')
+  // 고른 기간 보고가 없어지면(빠른 단추로 돌아옴) 오늘 일일보고다. 화면은 들어오고 나갈 때 이 칸을 다시 그린다
+  const key: PickKey = chosen === 'pick' && pick === null ? 'today' : chosen
+  if (report === null && pick === null) {
+    return (
+      <Section title={TITLE} desc={saved ? DESC : undefined} className={className}>
+        <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
+      </Section>
+    )
+  }
+  const buttons: { key: PickKey; name: string }[] = [...(pick === null ? [] : [{ key: 'pick' as const, name: PICK_NAME }]), ...PICKS]
+  const bit = key === 'pick' || report === null ? null : bitReport(key, report, hospitalName, today)
+  const copyText = key === 'pick' ? (pick?.text ?? null) : (bit?.shown?.text ?? null)
+  return (
+    <Section title={TITLE} desc={DESC} className={className}>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div role="group" aria-label="보고 고르기" className={GROUP}>
+          {buttons.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              aria-pressed={item.key === key}
+              onClick={() => setKey(item.key)}
+              className={`${BUTTON} ${item.key === key ? BUTTON_ON : BUTTON_OFF}${item.key === 'pick' ? ` ${PICK_BUTTON}` : ''}`}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+        <CopyButton key={key} text={copyText} label="복사" fullOnPhone />
+      </div>
+      {key === 'pick' && pick !== null && <PickBody pick={pick} />}
+      {key !== 'pick' && report === null && <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>}
+      {bit !== null && report !== null && <BitBody bit={bit} report={report} today={today} />}
       <p className="mt-3 flex items-start gap-1.5 text-caption text-muted">
         <Icon name="shield" size={14} className="mt-px shrink-0 text-positive" />
         <span>보고 문장은 숫자만 쓰고 환자 이름은 쓰지 않아요.</span>

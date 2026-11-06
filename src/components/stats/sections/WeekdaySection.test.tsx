@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { statsRange } from '@/components/stats/view'
+import { rangeOf, statsRange } from '@/components/stats/view'
 import type { DayPayload } from '@/types/payload'
 import { WeekdaySection } from './WeekdaySection'
 
@@ -125,6 +125,31 @@ describe('AC-513.4: 요일별 빈 상태', () => {
 
   it('AC-513.4: 저장된 숫자는 있는데 이 기간 자료가 없으면 그 문구다', () => {
     render(<WeekdaySection days={[day('2026-01-05', 3)]} range={RANGE} saved />)
+    expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+  })
+})
+
+// ── 고른 기간 (stats-period REQ-1704). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1704.4·AC-1704.5: 고른 기간의 요일별 환자 수', () => {
+  const OCT = rangeOf('2026-11-06', { kind: 'month', unit: 'day', month: '2026-10' }, false)
+  // 10월 월요일 둘(5일·12일) 평균 15명. 9월 7일(월) 100명은 바로 전 기간이라 세지 않는다
+  const PICK_DAYS = [day('2026-09-07', 100), day('2026-10-05', 10), day('2026-10-12', 20)]
+
+  it('AC-1704.4: 설명 끝에 " · {name}"이 붙는다', () => {
+    render(<WeekdaySection days={PICK_DAYS} range={OCT} saved />)
+    expect(screen.getByText('하루 평균, 요일마다 · 2026년 10월')).toBeTruthy()
+  })
+
+  it('AC-1704.5: current 날만 센다', () => {
+    render(<WeekdaySection days={PICK_DAYS} range={OCT} saved />)
+    fireEvent.click(screen.getByRole('button', { name: '자세히' }))
+    const table = screen.getByRole('table', { name: '요일별 환자 수' })
+    const rows = within(table).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell').map((td) => td.textContent))
+    expect(rows).toEqual([['월요일', '15명', '2일']])
+  })
+
+  it('AC-1704.5: current에 줄이 없으면 지금처럼 "불러온 숫자에 이 기간 자료가 없어요."다', () => {
+    render(<WeekdaySection days={[day('2026-09-07', 100)]} range={OCT} saved />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
   })
 })

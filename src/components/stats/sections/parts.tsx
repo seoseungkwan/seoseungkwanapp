@@ -1,14 +1,15 @@
 import { useId, type ReactNode, type Ref } from 'react'
 import { formatDelta, type DeltaUnit } from '@/components/charts/format'
 import type { BarSeries } from '@/components/charts/StackedBarChart'
-import { patientTrend, type StatsInput, type StatsPeriod, type StatsRange } from '@/components/stats/view'
+import { patientTrend, type StatsInput, type StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { monthOf, weekdayOf } from '@/lib/analytics/dates'
 import type { Delta } from '@/types/analysis'
 
 // 통계 섹션들이 같이 쓰는 틀·글자 (stats REQ-513, 시안 docs/mockups/stats/notes.md §2·§3·§4). props만 받는다
 
-export const PERIOD_NAME: Record<StatsPeriod, string> = { '7d': '최근 7일', '30d': '최근 30일', '90d': '최근 90일', '12m': '최근 12개월' }
+// 기간 이름 표는 view.ts에 있다(stats-period TASK-1). 섹션은 고른 기간도 그리려고 range.name을 읽는다
+export { PERIOD_NAME } from '@/components/stats/view'
 export const NO_RANGE_DATA = '불러온 숫자에 이 기간 자료가 없어요.'
 export const TREND_SERIES: BarSeries[] = [
   { name: '신환', tone: 'accent' },

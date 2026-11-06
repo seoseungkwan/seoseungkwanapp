@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { rxCatalog, rxPeriodCounts } from '@/components/stats/rxPickView'
-import { rxPickRows, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { rangeOf, rxPickRows, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { addRxPick, clearRxPicks, readRxPicks, removeRxPick } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, saveStats } from '@/lib/storage/stats'
 import { nestedBoxes } from '@/testing/boxes'
@@ -80,6 +80,8 @@ const PAGE_DAYS = [
   ]),
 ]
 const inputOf = (days: readonly DayPayload[] = PAGE_DAYS, period: StatsPeriod = '30d', covered: DateRange[] = WHOLE): StatsInput => ({ days, covered, range: statsRange(TODAY, period) })
+// 고른 기간: 2026년 11월(1–12일까지)
+const pickInputOf = (days: readonly DayPayload[] = PAGE_DAYS): StatsInput => ({ days, covered: WHOLE, range: rangeOf(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, false) })
 const NO_DAYS = inputOf([], '30d', [])
 
 type Read = Awaited<ReturnType<typeof readDays>>
@@ -947,5 +949,13 @@ describe('fu-rate AC-1308: 같은 처방 재방문 묶음을 잇기', () => {
     for (const word of ['localStorage', 'sessionStorage', 'indexedDB', 'history.', 'location.', 'useSearchParams', 'lib/bridge/client', 'fetch(', '@/lib/storage']) {
       expect(text, word).not.toContain(word)
     }
+  })
+})
+
+// ── 고른 기간 (stats-period AC-1704.4) ─────────────────
+describe('AC-1704.4: 고른 기간의 처방 골라 보기', () => {
+  it('AC-1704.4: 설명 끝에 " · {name}"이 붙는다', async () => {
+    await drawReady({ input: pickInputOf() })
+    expect(screen.getByText(`${DESC} · 2026년 11월`)).toBeTruthy()
   })
 })
