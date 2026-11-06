@@ -7,18 +7,19 @@
 
 - `/CLAUDE.md`
 - `/specs/bit-dashboard/requirements.md`, `/specs/bit-dashboard/design.md`, `/specs/bit-dashboard/tasks.md`
-- 통계의 `/src/components/dashboard/summary/LiveDashboard.tsx`, `/src/components/dashboard/live/BitDashboard.tsx`
+- `/src/components/dashboard/live/BitDashboard.tsx`, `/src/lib/storage/stats.ts`의 `readDays`, `/src/components/common/ErrorCard.tsx`, `/src/components/stats/StatsScreen.tsx`의 [다시 읽기] 카드
+- `/specs/stats/requirements.md` REQ-516(AC-516.1·516.3·516.4)
 
 ## 작업
 
-시작 조건: 통계의 `LiveDashboard`(REQ-516)가 이 브랜치에 합쳐졌다. 그 전에는 시작하지 않는다.
+AC-601.14·AC-601.19(2026-11-06 사용자 결정)와 통계 AC-516.1·AC-516.3·AC-516.4의 페이지 쪽. 모양은 design.md '### 화면'의 `LiveDashboard` 두 줄을 따른다. `wip-stats-dashboard-source` `5abd9db`의 `LiveDashboard`는 `BitDashboard` 없이 `DashboardHome`을 바로 그려서 쓰지 않는다. 새로 쓴다.
 
-AC-601.14: 그 파일이 읽은 값을 `BitDashboard`의 `initial`로 넘긴다. 저장 숫자를 읽는 코드를 두 벌 두지 않는다.
+통계 TASK-16(`phases/stats-4-screen` step 3)과 같은 때 돌 수 있다. 그 TASK의 여섯 파일(`source.ts`·`view.ts`·`DashboardAnalysis.tsx`와 시험)은 고치지 않는다. `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`를 그 모양대로 부르고, GREEN 기록은 그 함수가 작업 폴더에 생긴 뒤 한다.
 
 ## 이 step을 돌리는 방식 (꼭 지킨다)
 
-- 작업 폴더는 `seoseungkwanapp/.claude/worktrees/feat-bit-dashboard` 하나다. 다른 폴더를 고치지 않는다.
-- 이 step은 혼자 돈다. 그래도 이 TASK의 `Files`만 고친다.
+- 작업 폴더는 시킨 쪽이 알려 준 한 곳이다. 다른 폴더를 고치지 않는다.
+- 이 TASK의 `Files`만 고친다.
 - `git commit`·`git add`·`git stash`·`git merge`·`git reset`을 하지 마라. 이유: 커밋은 독립 리뷰가 PASS한 뒤 이 step을 시킨 쪽이 한다.
 - `specs/bit-dashboard/` 아래를 고치지 마라. 이유: 명세를 바꾸면 승인이 무효가 된다. 승인 범위 밖 파일이 꼭 필요하거나 명세와 코드가 부딪히면 멈추고 무엇이 왜 필요한지 보고한다.
 - `phases/**/index.json`·`approval.json`·`tdd-log.jsonl`을 직접 고치지 마라. 이유: 상태는 시킨 쪽이, 시험 기록은 훅과 `tdd-run`이 쓴다.

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useId, useState, type ReactNode } from 'react'
 import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
 import { formatDelta, formatRate, percentOf } from '@/components/charts/format'
@@ -9,21 +10,24 @@ import { StackedBarChart, type BarSeries } from '@/components/charts/StackedBarC
 import { ds } from '@/components/ui/classes'
 import type { Delta } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import { isConnected, type SummarySource } from './source'
+import { isConnected, type RxGroupLine, type SummarySource } from './source'
 import {
   DEFAULT_PERIOD,
+  groupRank,
   longDate,
   PERIODS,
   periodRange,
+  revisitCohortCaption,
   revisitView,
   tickLabels,
   todayView,
-  topRx,
   trendBuckets,
   weekdayBuckets,
+  type GroupRank,
   type Period,
   type PeriodRange,
   type RateCell,
+  type RevisitCells,
   type TodayView,
 } from './view'
 
@@ -31,7 +35,7 @@ import {
 // 시안 docs/mockups/dashboard-home/index.html + 메모 §3 '오늘 하루 분석'·'기간별 흐름', 문구는 메모 §4 그대로).
 // 상태는 기간 하나(처음 30일)뿐이다. 연결 전(자료 없음)에는 숫자를 지어내지 않는다(ui-90 REQ-414, 시안 docs/mockups/ui-90/app/gen.py dash_body):
 //   오늘 하루 분석 = 칩 "비트 PC 연결 전" + 빈 숫자 칸 넷 + 안내 줄, 기간별 흐름 = "연결하면 생기는 것 4가지" 순서 목록 + 안내 줄(빈 그래프 틀·차트 부품 없음).
-// 연결 뒤 그래프는 차트 부품(components/charts)을 고치지 않고 불러 쓴다. 그래프는 움직이지 않는다 — 짧은 반응은 기간 단추에만(150ms)
+// 연결 뒤 그래프는 차트 부품(components/charts)을 고치지 않고 불러 쓴다. 그래프는 움직이지 않는다 — 짧은 반응은 기간 단추와 '처방 상위' 머리 링크(ds.textButton)에만(150ms)
 
 const SECTION = 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4' // 메모 §3 '덩어리 사이'
 const SECTION_HEAD = 'mb-4 flex flex-wrap items-center gap-3'
@@ -77,13 +81,20 @@ const WEEK_SERIES: BarSeries[] = [{ name: '환자 수', tone: 'accent' }]
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일'] as const
 const RANK_ROWS = [1, 2, 3, 4, 5] as const // 처방 상위 빈 줄 번호
 const NO_DATA = '자료 없음'
+// 처방 상위 = 통계 탭 처방별 추세 묶음(bit-dashboard REQ-606). 글은 요구사항 그대로다
+const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.' // AC-606.5
+const NO_GROUPS = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.' // AC-606.4
+const RELOAD = '통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.' // AC-606.3
+/** source의 묶음: undefined·[] = 묶음 없음, null = 묶음을 읽지 못함 */
+type GroupLines = readonly RxGroupLine[] | null | undefined
+const noGroups = (groups: GroupLines) => groups !== null && (groups ?? []).length === 0
 
 // 연결하면 생기는 것(시안 gains 글자 그대로): 연결 뒤 이 자리에 그려지는 그래프 넷의 이름·설명
 const GAINS = [
   { name: '환자 수 추이', desc: '신환과 재진을 하루씩 막대로 보여 줘요.' },
   { name: '신환 재방문율', desc: '처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.' },
   { name: '요일별 환자 수', desc: '요일마다 하루 평균 환자 수예요.' },
-  { name: '처방 상위', desc: '많이 낸 처방 5가지를 차례로 적어요.' },
+  { name: '처방 상위', desc: '통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요.' }, // bit-dashboard AC-606.6
 ] as const
 // 768px 이상 4칸 한 줄(위아래 1px line, 칸 사이 1px line 세로선, 위아래 16·좌우 20, 첫 칸 왼쪽 0).
 // 768px 미만 쌓기(칸마다 아래 1px line, 위아래 12). 번호 상자 · 이름 한 줄, 설명은 768px 이상 아래 전체 폭 · 768px 미만 이름 아래로 들여씀
@@ -128,6 +139,8 @@ export function DashboardAnalysis({
   const flowId = useId()
   const gainsId = useId()
   const days = isConnected(source) ? source.days : null
+  // 묶음은 새 prop이 아니라 source 안으로 온다(탭 틀 AC-312.2, bit-dashboard design.md)
+  const groups = source.kind === 'data' ? source.groups : undefined
   const range = periodRange(today, period)
   const past = day !== today
 
@@ -168,7 +181,7 @@ export function DashboardAnalysis({
         {days === null && !emptyCharts ? (
           <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />
         ) : (
-          <FlowCharts days={days ?? []} range={range} period={period} />
+          <FlowCharts days={days ?? []} groups={groups} range={range} period={period} />
         )}
       </section>
     </>
@@ -198,22 +211,27 @@ function Gains({ id, title, note, revisitDesc }: { id: string; title: string; no
   )
 }
 
-// 연결 뒤 그래프 넷(지금 그대로).
+// 연결 뒤 그래프 넷. 처방 상위는 통계 탭 묶음으로 센다(bit-dashboard REQ-606).
 // 1024px 이상 [추이 1~8 · 재방문율 9~12] / [요일별 1~6 · 처방 7~12], 768~1023px 추이 전체 / 반반 / 처방 전체, 폰 세로
-function FlowCharts({ days, range, period }: { days: readonly DayPayload[]; range: PeriodRange; period: Period }) {
+function FlowCharts({ days, groups, range, period }: { days: readonly DayPayload[]; groups: GroupLines; range: PeriodRange; period: Period }) {
   return (
     <div className="grid gap-y-8 md:grid-cols-2 md:gap-x-6 lg:grid-cols-12">
       <Chart title="환자 수 추이" desc="신환·재진, 하루씩" aside={<ChartLegend items={TREND_LEGEND} />} className="md:col-span-2 lg:col-span-8">
         <TrendBody days={days} range={range} period={period} />
       </Chart>
       <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className="lg:col-span-4 lg:border-l lg:border-line lg:pl-6">
-        <RevisitRows cells={revisitView(days, range)} />
+        <RevisitRows cells={revisitView(days, range, period)} />
       </Chart>
       <Chart title="요일별 환자 수" desc="하루 평균, 요일마다" className="lg:col-span-6">
         <WeekBody buckets={weekdayBuckets(days, range)} />
       </Chart>
-      <Chart title="처방 상위" desc="많이 낸 처방 5가지가 차례로 적힙니다" className="md:col-span-2 lg:col-span-6 lg:border-l lg:border-line lg:pl-6">
-        <RankBody items={topRx(days, range)} />
+      <Chart
+        title="처방 상위"
+        desc="통계 탭에서 묶은 치료 중 많이 한 순서예요"
+        aside={<GroupsLink groups={groups} />}
+        className="md:col-span-2 lg:col-span-6 lg:border-l lg:border-line lg:pl-6"
+      >
+        <RankBody rank={groupRank(days, range, groups ?? [])} groups={groups} />
       </Chart>
     </div>
   )
@@ -337,24 +355,20 @@ function EmptyTrend({ message, ticks }: { message: string; ticks: { day: string;
   )
 }
 
-// 신환 재방문율 줄 셋(연결 뒤). 30일은 저장 자료에 없어 늘 '자료 없음'
+// 신환 재방문율 줄 셋(연결 뒤). 30일 줄도 7·14일과 같은 줄이고, 30일 기간에는 아래에 무엇을 셌는지 글을 붙인다(stats AC-516.2)
 const REVISIT_ROW = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-line py-3'
 
-function RevisitRows({ cells }: { cells: { d7: RateCell; d14: RateCell } }) {
+function RevisitRows({ cells }: { cells: RevisitCells }) {
   return (
     <div className="mt-2">
       <RevisitRow name="7일 안에 다시 옴" cell={cells.d7} />
       <RevisitRow name="14일 안에 다시 옴" cell={cells.d14} />
-      <div className={REVISIT_ROW}>
-        <span className="text-body text-ink-2">30일 안에 다시 옴</span>
-        <span className="text-small text-muted">{NO_DATA}</span>
-        <span className="col-span-2 text-caption text-muted">30일 기록은 아직 모으지 않아요</span>
-      </div>
+      <RevisitRow name="30일 안에 다시 옴" cell={cells.d30} caption={cells.d30Cohort === null ? null : revisitCohortCaption(cells.d30Cohort)} />
     </div>
   )
 }
 
-function RevisitRow({ name, cell }: { name: string; cell: RateCell }) {
+function RevisitRow({ name, cell, caption = null }: { name: string; cell: RateCell; caption?: string | null }) {
   return (
     <div className={REVISIT_ROW}>
       <span className="text-body text-ink-2">{name}</span>
@@ -370,6 +384,7 @@ function RevisitRow({ name, cell }: { name: string; cell: RateCell }) {
       ) : (
         <RateBar value={cell.kind === 'rate' ? cell.value : null} />
       )}
+      {caption !== null && <span className="col-span-2 text-caption text-muted">{caption}</span>}
     </div>
   )
 }
@@ -409,15 +424,35 @@ function WeekBody({ buckets }: { buckets: ReturnType<typeof weekdayBuckets> }) {
   )
 }
 
-// 처방 상위: 자료가 있으면 순위 막대("건"), 없으면 36px 빈 줄 다섯(번호 · 빈 칸 · "–") + "자료 없음"
-function RankBody({ items }: { items: ReturnType<typeof topRx> }) {
-  if (items !== null && items.length > 0) {
-    return (
-      <div className="mt-2">
-        <RankedBars title="처방 상위" unit="건" items={items} />
-      </div>
-    )
-  }
+// 처방 상위 머리 링크(AC-606.6): 묶음은 통계 탭 처방별 추세에서 고친다. 묶음 없음일 때만 [묶음 만들기], 읽지 못함은 [묶음 고치기].
+// 글자 단추 모양 그대로(폰 44px) + no-underline 하나: 앱에는 a 밑줄을 지우는 바탕 규칙이 없어 붙이지 않으면 늘 밑줄이다
+// (UI_GUIDE 글자 단추의 밑줄은 올림 반응뿐. CountsOnly·PatientsEntry 링크와 같다). 그래프가 아니라 AC-311.8 움직임 검사에서 이 링크만 뺀다
+function GroupsLink({ groups }: { groups: GroupLines }) {
+  return (
+    <Link href="/stats" className={`${ds.textButton} no-underline`}>
+      {noGroups(groups) ? '묶음 만들기' : '묶음 고치기'}
+    </Link>
+  )
+}
+
+// 처방 상위 몸(bit-dashboard design.md '칸 그리기'), 이 차례로 고른다:
+// ① 기간 안 일 줄 없음 → 빈 줄 다섯 + "자료 없음" ② 묶음을 읽지 못함 ③ 묶음 없음 → 빈 줄 다섯 + 그 글
+// ④ 셀 수 있는 묶음이 있음 → 순위 막대("건") + 다시 불러와야 하는 묶음이 있으면 그 아래 한 줄 ⑤ 다시 불러와야 하는 묶음뿐 → 빈 줄 다섯 + 글
+function RankBody({ rank, groups }: { rank: GroupRank | null; groups: GroupLines }) {
+  if (rank === null) return <EmptyRank message={NO_DATA} />
+  if (groups === null) return <EmptyRank message={GROUPS_UNREAD} />
+  if (noGroups(groups)) return <EmptyRank message={NO_GROUPS} />
+  if (rank.items.length === 0) return <EmptyRank message={RELOAD} />
+  return (
+    <div className="mt-2">
+      <RankedBars title="처방 상위" unit="건" items={rank.items} />
+      {rank.stale.length > 0 && <p className="mt-2 text-small text-muted">{`${rank.stale.join(', ')} 묶음은 ${RELOAD}`}</p>}
+    </div>
+  )
+}
+
+// 처방 상위 빈 틀: 36px 빈 줄 다섯(번호 · 빈 칸 · "–", 꾸밈) + 가운데 글
+function EmptyRank({ message }: { message: string }) {
   return (
     <div className="relative mt-2">
       <ol aria-hidden="true">
@@ -429,7 +464,7 @@ function RankBody({ items }: { items: ReturnType<typeof topRx> }) {
           </li>
         ))}
       </ol>
-      <Note>{NO_DATA}</Note>
+      <Note>{message}</Note>
     </div>
   )
 }

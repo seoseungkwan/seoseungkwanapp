@@ -350,8 +350,31 @@ describe('고른 날 (selected)', () => {
     expect(same.container.innerHTML.replace(/_r_\w*_|:r\w*:|«r\w*»/g, '')).toBe(html)
   })
 
-  it('AC-605.2: 저장 숫자에 덜 끝난 표시가 남은 지난 날도 "오늘 지금까지"라고 하지 않는다', () => {
-    pick(TODAY, [day(TODAY, { partial: true })])
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('10월 31일 환자 10명이 왔습니다.')
+  it('AC-605.9: 고른 지난 날이 partial: true면 h1 "{월}월 {일}일 환자 N명까지 확인됐어요.", 그 아래 줄 "그날 자료가 중간까지만 저장돼 있어요."', () => {
+    const { container } = pick(TODAY, [day(TODAY, { partial: true }), day('2026-10-24')])
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1.textContent).toBe('10월 31일 환자 10명까지 확인됐어요.')
+    const rest = screen.getByText('그날 자료가 중간까지만 저장돼 있어요.')
+    hasAll(rest, 'mt-2 max-w-128 text-lead text-ink-2')
+    expect(rest.previousElementSibling).toBe(h1)
+    expect(container.textContent).not.toMatch(/신환|재진|지난주|오늘/)
+  })
+
+  it('AC-605.9: [복사]는 막히지 않고 두 줄을 빈칸 하나로 이은 글을 복사한다(툴팁 없음)', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    setClipboard({ writeText })
+    pick(TODAY, [day(TODAY, { partial: true }), day('2026-10-24')])
+    expect(copyButton().getAttribute('aria-disabled')).toBeNull()
+    expect(screen.queryByRole('tooltip', { hidden: true })).toBeNull()
+    await act(async () => {
+      fireEvent.click(copyButton())
+    })
+    expect(writeText.mock.calls).toEqual([['10월 31일 환자 10명까지 확인됐어요. 그날 자료가 중간까지만 저장돼 있어요.']])
+  })
+
+  it('AC-605.9: 고른 날이 오늘이면 partial: true여도 지금처럼 "오늘 지금까지 …" 틀이다', () => {
+    pick(TODAY, [day(TODAY, { partial: true, newPatients: 1, returning: 2 })], TODAY)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('오늘 지금까지 환자 3명이 왔습니다.')
+    expect(screen.getByText('신환 1명, 재진 2명입니다.')).toBeTruthy()
   })
 })

@@ -149,9 +149,9 @@
 - AC-515.5: Given 로그인, When 콜백·문지기를 지나면, Then 첫 화면은 지금처럼 `/dashboard`다(tab-frame 301.1·301.2 시험 그대로 통과)
 
 ### REQ-516: 대시보드가 저장된 통계 숫자를 읽음
-- AC-516.1: Given `/dashboard`, When 그리면, Then 브라우저에서 저장된 일 숫자(오늘 − 97일 ~ 오늘)를 `readDays`로 읽어 `{ kind: 'data', days }`를 만든다. 읽기 전·줄 없음은 지금 연결 전 모양이고, 읽기 실패는 연결 전 모양 + 오류 카드 한 줄(`E-STATS-READ-FAILED`)이다. 서버 코드(`*.server.ts`·페이지)는 통계 표를 읽지 않는다
+- AC-516.1: Given `/dashboard`, When 그리면, Then 브라우저에서 저장된 일 숫자(오늘 − `LOOKBACK_DAYS`일 ~ 오늘. 날짜 고르기와 같은 `components/dashboard/live/readBitDays.ts`의 상수)를 `readDays`로 읽어 `{ kind: 'data', days }`(줄 없음은 `{ kind: 'none' }`)를 만들고 `BitDashboard`의 처음 자료로 넘긴다. 연결 전·뒤 모양은 `BitDashboard`가 고르고, 읽는 동안·읽기 실패·기다리는 한도는 `specs/bit-dashboard` REQ-601(저장 숫자 읽기 줄)이 정한다(2026-11-06 사용자 결정). 서버 코드(`*.server.ts`·페이지)는 통계 표를 읽지 않는다
 - AC-516.2: Given 연결 뒤 가짜 자료, When 신환 재방문율을 그리면, Then 30일 줄도 7·14일과 같은 규칙(값이 null이 아닌 날들의 합 ÷ 집단 합, 모두 null이면 "집계 중", 분모 0이면 "자료 없음")이고 "30일 기록은 아직 모으지 않아요"가 없다. 대시보드의 30일 기간에서는 30일 줄이 오늘 − 60 ~ 오늘 − 31을 AC-511.4와 같은 규칙으로 세어(S6, 2026-11-01 사용자 결정 — 같은 이름의 줄이 통계 탭과 다르게 움직이지 않게. 모두 null이면 "집계 중", 분모가 0이거나 줄이 없으면 "자료 없음") 비율을 보이고 caption은 "{시작} – {끝}에 온 신환 {N}명 가운데 {K}명 · 온 뒤 30일이 지난 가장 최근 신환이에요"다. 날짜는 그 범위에서 30일 값이 숫자인 첫날과 끝날이다. 7·14일 줄은 고른 기간 그대로이고, 7일·90일 기간은 바뀌지 않는다. 시험: 오늘이 11월 13일인 30일 기간 — 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 보인다. 시험: 가장 새로운 날들이 null — 날짜가 숫자인 날까지로 줄어든다. 시험: 7일 기간 — 30일 줄이 "집계 중"이다
-- AC-516.3: Given 대시보드 브리핑 파일(`components/dashboard/briefing/*`), When 보면, Then 고치지 않았고 `'use client'`는 지금처럼 폰 아래 단추 파일 하나뿐이다. 읽기와 연결 전·뒤 고르기는 `components/dashboard/summary/`의 새 클라이언트 파일 하나가 한다
+- AC-516.3: Given 대시보드 브리핑 파일(`components/dashboard/briefing/*`), When 보면, Then 이 요구사항으로 고치지 않았고 `'use client'`는 지금처럼 폰 아래 단추 파일 하나뿐이다. 저장 숫자 읽기는 `components/dashboard/summary/`의 새 클라이언트 파일 하나(`LiveDashboard`)가 하고, 연결 전·뒤 고르기는 `BitDashboard`가 한다
 - AC-516.4: Given 지금 대시보드 시험(브리핑·분석·보고 문장·페이지), When 돌리면, Then 30일 줄 기대값과 페이지가 읽기 자리를 부르는 방식만 고치고 나머지는 그대로 통과한다
 
 ### REQ-517: 개인정보 E2E (실제 Supabase, 사용자가 SQL을 붙인 뒤)

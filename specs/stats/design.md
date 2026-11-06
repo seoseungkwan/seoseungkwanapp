@@ -281,7 +281,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 
 #### TASK-16 대시보드 읽기
 - 대시보드의 "오늘 환자 n명"·신환·재진은 저장된 `totals` 그대로다. 접수 기준(AC-501.6)을 여기서 다시 계산하지 않는다(TASK-1 '환자 수는 접수 기준')
-- `components/dashboard/summary/LiveDashboard.tsx`(`'use client'`, 새 파일): `readDays([today − 97, today])` → `SummarySource` → 지금 `DashboardHome`(report·analysis 자리)을 그린다. `dashboard/page.tsx`는 이것 하나를 놓는다. `source.ts`는 `toSummarySource(result)`(읽은 결과 → none/data, 순수)로 바뀐다
+- `source.ts`에 `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`(줄 없음·null → none, 순수)를 더한다. 읽는 쪽 `LiveDashboard.tsx`(오늘 − `LOOKBACK_DAYS` ~ 오늘을 읽어 `BitDashboard`에 넘김)와 `dashboard/page.tsx`는 `specs/bit-dashboard` TASK-8이 만든다(2026-11-06 나눔)
 - `view.ts` `revisitView(days, range, period?)`는 `{ d7; d14; d30: RateCell; d30Cohort: { from; to; within; cohort } | null }`을 돌려준다. `rateOf`에 `within30`을 더한다(`within30`은 선택 칸이라 빠진 칸은 null로 친다 — `undefined !== null`로 세어지지 않게). `RateCell`은 고치지 않는다(통계 view가 대시보드 함수를 불러 쓴다, AC-511.7)
 - `period`가 30이면 30일 줄만 `addDays(range.from, −30)` ~ `addDays(range.from, −1)`(= 오늘 − 60 ~ 오늘 − 31)의 날로 센다. 비율이면 `d30Cohort`에 그 범위에서 30일 값이 숫자인 첫날·끝날과 `within`·`cohort` 합을 싣고, 그 밖은 null이다. `period`를 주지 않거나 7·90이면 30일 줄도 고른 기간 그대로다. 그래서 지금 시험은 부르는 모양을 고치지 않고 기대값에 30일 칸만 더한다(AC-516.4)
 - `DashboardAnalysis`는 `revisitView(days, range, period)`로 부르고 30일 줄을 7·14일과 같은 줄로 그린다. `d30Cohort`가 있으면 그 아래 AC-516.2의 caption({N} = `cohort`, {K} = `within`)을 붙인다. 글자는 `view.ts`에서 만든다(`longDate`·`formatCount`)
@@ -395,7 +395,7 @@ export function StatsScreen(props: { hospitalName: string; today: string }): JSX
 - **줄 수·크기**: 800일 모든 처방 줄이 700,000줄을 넘을 수 있다. 넘으면 `E-STATS-TOO-BIG`("기간을 줄여 다시")이고, 12개월 보기는 그때 불러올 범위를 줄인다(그 결정은 의원 PC 시험 뒤). 접수 줄도 700,000줄까지이고 문장이 하나 늘어 읽기 시간과 답 크기가 는다. 800일 읽기 시간 재기에 함께 든다
 - **12개월 일 숫자 읽기**: 12개월 보기는 고른 기간과 비교 기간의 일 숫자를 모두 읽는다(최대 약 730줄, 처방 목록 때문에 줄마다 수 KB, 합 수 MB). 달 칸·요일별·처방 목록이 모두 일 숫자를 쓰므로 요일별만 줄여서는 읽는 양이 줄지 않는다. 휴대폰에서 느리면 그때 다시 정한다
 - **실제 Supabase 표**: TASK-6 SQL을 사용자가 붙이기 전에는 저장·읽기가 실패한다(화면은 오류 카드). 붙일 때 허락을 받는다
-- **대시보드 첫 그림**: 대시보드가 브라우저에서 읽으므로 읽는 동안 잠깐 연결 전 모양이 보일 수 있다. TASK-16에서 읽는 동안은 분석 자리에 "불러오는 중"을 둔다
+- **대시보드 첫 그림**: 대시보드가 브라우저에서 읽으므로 읽는 동안 잠깐 연결 전 모양이 보일 수 있다. 읽는 동안은 연결 전 모양 그대로다(최대 10초, `specs/bit-dashboard` AC-601.14·AC-601.19)
 - **덮은 기간이 낡을 수 있음**: 비트에서 진료 기록이 지워진 날은 그 뒤 다시 불러와도 옛 일 숫자 줄이 남는다(지우기 없음). 드물다고 보고 의원 PC 시험에서 본다
 - **신환 기준 차이**: 위 '결정'. 파일과 도우미를 번갈아 쓰면 같은 날 숫자가 조금 바뀔 수 있다(가장 최근 저장이 이긴다, 완전한 줄끼리)
 - 오전에 '오늘 진료 끝'을 켜고 불러온 뒤 오후에 끄고 불러오면 오늘 일 줄은 트리거가 지켜 오전 숫자로 남는다. 같은 날 진료 끝을 켜고 다시 불러오거나 다음 날 불러오면 풀린다.

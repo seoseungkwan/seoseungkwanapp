@@ -31,13 +31,14 @@ export function readBitDays(deps: { runtime: ChromeRuntimeLike | undefined; crea
 
 ### 화면
 - `src/components/dashboard/live/BitDashboard.tsx`('use client'): `{ today, initial: SummarySource }`. 상태는 `idle | reading | data | failed`이고 `initial`이 `data`면 그 숫자로 시작한다(AC-601.13). 효과 안에서 `chrome.runtime`이 있을 때만 읽기를 시작하고 `readBitDays`를 부른다. 효과를 정리할 때 읽기를 취소하고 그 답은 쓰지 않는다(AC-601.15). 서버가 그린 첫 모양은 `initial` 그대로다.
-- 통계의 `summary/LiveDashboard.tsx`와 역할을 나눈다. 그쪽은 저장 숫자를 읽고, 이쪽은 비트에서 읽어 화면을 고른다. 합치면 `LiveDashboard`가 읽은 값을 `BitDashboard`의 `initial`로 넘긴다(TASK-8). `initial`은 처음 그릴 때 한 번만 읽으므로, `LiveDashboard`는 저장 숫자 읽기가 끝난 뒤 `BitDashboard`를 처음 그린다. 통계의 `E-STATS-READ-FAILED` 카드는 `BitDashboard` 밖에서 그린다. 지금은 `dashboard/page.tsx`가 `dashboardSummarySource()`를 넘긴다.
+- `summary/LiveDashboard.tsx`('use client', TASK-8)가 저장 숫자를 읽고 `BitDashboard`가 비트에서 읽어 화면을 고른다. `dashboard/page.tsx`는 `<LiveDashboard today={todayInKorea()} />` 하나를 놓는다. `LiveDashboard`는 `readDays`를 10초(이 파일의 `SAVED_READ_TIMEOUT_MS = 10_000`)까지 기다린 뒤 `<BitDashboard key={round} today={today} initial={toSummarySource(result)} onBitLoaded={…} />`를 처음 그린다(`initial`은 처음 한 번만 읽는다). 실패·한도는 `toSummarySource(null)`이다. 그 전에는 `DashboardHome`을 `report={null}`, `DashboardAnalysis`의 `source={{ kind: 'none' }}`로 그린다. `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`(줄 없음·null → none)는 통계 TASK-16이 `source.ts`에 만든다.
+- `E-STATS-READ-FAILED` `ErrorCard`와 그 아래 [다시 읽기](`ds.button.secondarySmall`)는 `BitDashboard` 위에 그린다(시안에 없어 통계 탭의 같은 카드 모양을 따른다). [다시 읽기]가 `data`로 성공하면 `round`를 올려 `BitDashboard`를 새 `initial`로 다시 놓는다. 비트를 읽는 중이었다면 그 읽기는 처음부터 다시 돈다(받아들임. 카드는 비트 숫자가 오기 전에만 있어 받은 비트 숫자를 지우지 않는다). `BitDashboard`의 새 선택 prop `onBitLoaded?: () => void`는 비트 읽기가 `days`로 끝날 때 부른다.
 - `DashboardHome`은 `report`로 모양을 정하는 방식 그대로 두고, 선택 prop `dateLine`만 더한다(주면 날짜 글자 대신 그린다). `report` 자리에 읽는 중·실패 블록(`ReadStatus.tsx`, 둘 다 h1)을 넘긴다. 데이터가 있으면 `ReportBlock` + `ReadLine`(읽은 시각·[다시 읽기], 같은 파일)이고, 다시 읽기 실패면 `ReadLine`의 단추를 빼고 그 아래 오류 상자를 둔다.
 - [연결 확인]의 주소는 `/claim/setup?next=dashboard`다.
 - 사용자가 직접 누른 다시 읽기의 답이 `not-ready`면 AC-601.16 안내를 보인다. 열 때 저절로 읽은 첫 읽기는 조용히 둔다.
 - `DashboardAnalysis`에 선택 props `emptyChip`·`emptyText`·`emptyNote`·`gainsTitle`·`gainsNote`·`gainsRevisitDesc`·`emptyCharts`·`day`를 더한다. `emptyNote`는 시안의 읽는 중 안내 줄, `gainsRevisitDesc`는 시안의 "7·14일 안에", `emptyCharts`는 탭 틀에 이미 있는 "기간 안 자료 없음" 빈 그래프 틀이다. 기본값은 지금 글("비트 PC 연결 전"·"연결하면 보여요"·"연결하면 생기는 것 4가지")과 오늘이다. `days`가 빈 배열이면 `BitDashboard`가 `emptyChip`·`emptyText`로 "자료 없음"을 넘긴다.
 - 상태별 칩·숫자 칸: 읽는 중 "읽는 중"·"읽는 중" / 처음 실패 "읽지 못함"·"읽지 못했어요" / 다른 창 사용 중 "기다리는 중"·"아직 못 읽었어요".
-- `source.ts`는 고치지 않는다. 통계의 REQ-516이 맡는다.
+- `source.ts`의 불러오기·`toSummarySource`는 고치지 않는다. 통계의 REQ-516이 맡는다(REQ-606은 이 파일에 타입만 더한다).
 - [비트 PC 연결 시작] 두 곳의 `href`를 `/claim/setup?next=dashboard`로. "비트 PC 연결 다시 확인"·"비트 PC 연결부터"는 그대로 `/claim/setup`.
 - `claim/setup/page.tsx`: `searchParams.next === 'dashboard'`일 때만 `returnTo="/dashboard"`를 넘긴다. `SetupScreen`은 `allOk && checked.at`이면 `<ReturnWhenReady to={returnTo} />`를 그린다. 이 부품은 "5단계를 모두 마쳤어요. 대시보드로 돌아가요."(`role="status"`)를 그리고 1.5초 뒤 `router.replace`한다. `useRouter`는 이 작은 부품 안에만 둔다.
 - 도우미 업데이트 순서 3줄은 `StepGuide.tsx`에 두고 `SetupAlert`의 선택 prop `steps`로 오류 상자 안에 넣는다. 시안은 2단계 줄 안에 그렸지만, 진짜 문제는 위 오류 상자가 맡는 ui-90 규칙을 따른다.
@@ -53,9 +54,38 @@ export function reportSentence(view: TodayView, dayLabel?: string): { first: str
 - `DateControl`: [이전 날] · 날짜 글자 위에 투명하게 겹친 `<input type="date" min max>` · [다음 날] · 오늘이 아닐 때 [오늘로]. 범위는 `addDays(today, -LOOKBACK_DAYS)` ~ `today`. 날짜 계산은 `lib/analytics/dates.ts`만 쓴다. 폰 폭에서 단추는 44px이다.
 - 월말 덧말(AC-605.8): `DateControl`이 `selected === today`일 때 `briefing/dateLine.ts`의 `dateLine(today).note`를 [다음 날] 뒤에 그린다. 글자 모양은 `DashboardHome`의 날짜 줄과 같고(small muted, "·" 좌우 8px), 줄이 넘치면 "·"와 덧말이 함께 내려간다. 시안 `.dp-n`을 따른다.
 - 넷째 칸의 증감·"변화 없음" 값은 시안 `.kpi-v.sm`대로 `text-metric`보다 작게 그린다(PC 20/36, 폰 16/32). 그대로 두면 좁은 폭에서 세모·"12명"·"(+21.8%)"가 세 줄로 꺾인다. 값이 없을 때의 글과 앞의 세 칸은 그대로다.
-- 지난 날짜도 `todayView(selected, days)`를 그대로 쓴다. `partial: false`라 저절로 끝난 날이 되고 7일 전과 견준다. 문장의 "오늘"만 `dayLabel`로 바꾼다.
+- 지난 날짜도 `todayView(selected, days)`를 그대로 쓴다. `partial: false`라 저절로 끝난 날이 되고 7일 전과 견준다. 문장의 "오늘"만 `dayLabel`로 바꾼다. 저장 숫자에는 `partial: true`인 지난 날이 있을 수 있어, `reportSentence`는 `dayLabel`이 있고 `state === 'open'`이면 AC-605.9의 두 줄을 `first`·`rest`로 돌려준다(TASK-10).
 - `ReportBlock`에 선택 prop `selected`를, `DashboardAnalysis`에 `day`를 더한다. 없으면 지금처럼 오늘이다. 자료 없는 지난 날짜는 AC-605.4 문구이고, 오늘 자료가 아직 없을 때는 지금 문구 그대로다.
 - 기간별 흐름은 `today`로만 계산해 고른 날과 상관없다. 날짜를 바꿔도 비트를 다시 읽지 않는다.
+
+### 처방 상위 = 통계 탭 묶음 (REQ-606, TASK-11~15)
+```ts
+// src/components/dashboard/summary/source.ts (타입만 더한다. 불러오기는 그대로)
+/** 통계 탭 처방별 추세 묶음 하나. key = 그 묶음 처방 코드 모음의 groupKey(treatment-trend), 일 줄 groups[].id와 견준다 */
+export type RxGroupLine = { name: string; key: string }
+/** groups: 처방 든 묶음(통계 탭 차례). [] = 묶음 없음, null = 묶음을 읽지 못함. 주지 않으면 []과 같다 */
+export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[]; groups?: readonly RxGroupLine[] | null }
+
+// src/components/dashboard/summary/view.ts (순수)
+export type GroupRank = { items: RankedItem[]; stale: string[] } // items 많아야 5줄, stale = 다시 불러와야 하는 묶음 이름(통계 탭 차례)
+export function groupRank(days: readonly DayPayload[], range: PeriodRange, lines: readonly RxGroupLine[]): GroupRank | null // null = 기간 안 일 줄 없음
+
+// src/components/dashboard/live/rxGroups.ts (새 파일)
+export type DashboardGroups = { lines: RxGroupLine[]; defs: RxGroupDef[] }
+export function toDashboardGroups(rows: readonly RxGroup[]): DashboardGroups // 순수
+export function readDashboardGroups(): Promise<DashboardGroups | null> // listStatsRxGroups → toDashboardGroups. 실패 = null
+
+// src/components/dashboard/live/readBitDays.ts
+export function readBitDays(deps: { …지금 그대로; groups?: readonly RxGroupDef[] }): Promise<ReadResult> // requestLoad에 그대로 싣는다. 주지 않으면 []
+```
+- **묶음 읽기는 `LiveDashboard` 한 곳.** 저장 숫자 읽기(`readSaved`)와 같은 효과에서 `readDashboardGroups()`를 함께 시작하고, 둘 다 같은 `SAVED_READ_TIMEOUT_MS`(10초) 한도를 따로 건다. 두 답이 모두 오거나 한도가 지난 뒤에 `BitDashboard`를 처음 놓는다(AC-606.8). 묶음이 한도 안에 오지 않거나 실패하면 `null`이고 늦게 온 답은 버린다. 묶음은 화면을 열 때 한 번만 읽는다: [다시 읽기](AC-601.19)도, 연 채 날짜가 바뀌어 저장 숫자를 다시 읽을 때도 묶음은 다시 읽지 않고 처음 값을 그대로 둔다(AC-606.5). 그래서 `BitDashboard`가 다시 놓여도(`round`) 묶음 값이 같다.
+- `toDashboardGroups`: `sortOrder` 차례로, 처방(`codes`)이 든 묶음마다 `{ name, key: groupKey(codes) }` 한 줄. `defs`는 통계 탭과 같은 `groupDefs(rows)`(같은 열쇠는 한 번). 둘 다 `@/components/stats/treatmentView`의 `groupKey`·`groupDefs`를 불러 쓴다. 열쇠 규칙을 두 벌 두지 않는다. 이 파일은 `dashboard/live`에 두어 `summary` 폴더의 불러오기 규칙(AC-311.8)과 고리를 피한다(통계 `view.ts`가 대시보드 `view.ts`를 불러 쓰므로 대시보드 `view.ts`가 `components/stats`를 부르면 고리가 생긴다).
+- `BitDashboard`에 선택 prop `groups?: DashboardGroups | null`을 더한다. 주지 않으면 묶음 없음(`{ lines: [], defs: [] }`)이다. 비트 읽기에 `defs`를 싣고(`readBitDays({ …, groups: defs })`, `null`이면 `[]`), `DashboardAnalysis`에 넘기는 `source`가 `data`면 `groups`에 `lines`(읽지 못함이면 `null`)를 넣는다. 저장 숫자로 시작한 화면과 비트 숫자로 바뀐 화면 모두 같다. 읽기 효과의 의존은 지금처럼 `today`·`attempt`뿐이고 `groups`는 처음 놓일 때 값이다(`LiveDashboard`가 묶음이 온 뒤에 놓는다).
+- 묶음은 `DashboardAnalysis`의 새 prop이 아니라 `source` 안으로 온다. 탭 틀 AC-312.2(선택 props는 글자·참거짓뿐)를 그대로 지킨다. `toSummarySource`는 바꾸지 않는다(저장 숫자에는 `groups`를 넣지 않고 `BitDashboard`가 넣는다).
+- `groupRank`: `daysIn(days, range)`(같은 날은 뒤의 것)이 비면 `null`. 묶음마다 기간 안 모든 일 줄이 그 `key` 줄을 가지면 셀 수 있고 값 = 그 줄 `patients`의 합, 아니면 `stale`. 열쇠 판단은 treatment-trend `keyedIn`과 같은 규칙을 이 파일 안에 몇 줄로 둔다(위 고리 때문). 두 규칙이 갈라지지 않게 `view.test.ts`에 같은 가짜 자료로 `treatmentView.keyedIn`과 결과를 견주는 시험을 하나 둔다(시험 파일은 AC-311.8 불러오기 규칙 밖이다). `items`는 셀 수 있는 묶음을 값 큰 차례(같으면 받은 차례 = 통계 탭 차례)로 세워 앞 5개, 이름은 묶음 이름이다. `RankedBars`도 값 큰 차례·같으면 받은 차례로 그려 차례가 같다. 0건도 그대로 한 줄이다(`RankedBars`는 0을 막대 0%·"0건"으로 그린다).
+- `topRx`는 쓰는 곳이 없어져 지운다(TASK-12). 처방 코드별 순위는 통계 탭 처방 골라 보기·처방별 추세가 맡는다.
+- 칸 그리기(`DashboardAnalysis` `FlowCharts`의 '처방 상위'): 머리 `aside`에 `next/link` `<Link href="/stats">`. 모양은 `ds.textButton` 그대로다(바탕 없음 accent body 500, 폰 44px, 150ms 반응. UI_GUIDE '단추'대로 화면 파일이 클래스를 따로 붙이지 않는다). 글은 [묶음 고치기], 묶음 없음(③)일 때만 [묶음 만들기]다(읽지 못함 ②는 [묶음 고치기]). 이 링크는 그래프가 아니므로 탭 틀 AC-311.8 '그래프는 움직이지 않는다' 시험은 '처방 상위' 칸에서 머리 링크를 뺀 나머지(제목·설명·몸)에 transition이 없음을 본다. 다른 세 칸은 지금 그대로 칸 전체를 본다. 몸은 차례대로 ① 기간 안 일 줄 없음 → 지금의 빈 줄 다섯 + "자료 없음" ② `groups === null` → 빈 줄 다섯 + AC-606.5 글 ③ 묶음 없음(`[]`·없음) → 빈 줄 다섯 + AC-606.4 글 ④ `items`가 하나 이상 → `RankedBars`(title "처방 상위", unit "건") + `stale`이 있으면 그 아래 small muted 한 줄(AC-606.3) ⑤ `items` 없음·`stale`만 → 빈 줄 다섯 + AC-606.3 모두 글. 빈 줄 다섯 틀과 가운데 글(`Note`)은 지금 모양 그대로 쓴다.
+- 시안: 새 시안은 없다. 칸 모양(제목·설명·순위 막대·빈 줄 다섯 틀)은 승인된 탭 틀·비트 대시보드 시안 그대로이고 바뀌는 것은 줄의 뜻(처방 → 묶음), 설명 글, 작은 링크 하나, 안내 글 한 줄이다(2026-11-06 사용자가 사진으로 요청하고 정함).
 
 ### 문구 (`lib/errors.ts`, 모두 ~요)
 - `E-BIT-DATA-UNSURE`(웹에서만 쓰는 새 번호): 무엇이 "비트 자료로 신환을 확정할 수 없어요" · 고치기 "비트에 차트번호 없는 접수나 중복 접수가 있는지 확인하고, 계속되면 오류 번호와 함께 문의해 주세요."
@@ -92,6 +122,7 @@ Worker: 합치기·해시 → 검사 → aggregate → buildSummary → 저장 �
 - **기간은 100일.** 화면의 가장 긴 기간이 90일이고 그 앞뒤 비교(지난주 같은 요일)가 그 안에 든다. 날짜 고르기도 이 안에서만 한다.
 - **날짜를 고르면 하루 줄만 바꾼다.** 이미 읽은 `DayPayload[]`로 그리므로 다시 읽지 않는다. 기간별 흐름까지 고른 날 기준으로 옮기면 "최근 N일"의 뜻이 흐려져 그대로 둔다.
 - 옛 시험을 바꾸는 곳: `DashboardAnalysis.test.tsx` AC-311.2는 넷째 칸 값의 `text-metric`을 위의 작은 글자로 바꾼다(`specs/tab-frame/design.md`의 넷째 칸 크기를 이 기능이 덮어쓴다). `page.test.tsx` AC-307.6의 저장 숫자 화면은 날짜 글자 대신 날짜 고르기를 기대한다(AC-605.1). `MIN_HELPER`·`LATEST_HELPER`를 못 박은 `handshake.test.ts`, `[비트 PC 연결 시작]` 주소를 본 `DashboardHome.test.tsx`·`StickyConnect.test.tsx`·`page.test.tsx`, 도우미 버전 글자를 적어 둔 `client.test.ts`·`workerSink.test.ts`·`useBridge.test.ts`·`SetupScreen.test.tsx`. 이 요구사항 때문에 값만 바꾼다. 시험을 약하게 만들지 않는다. `source.test.ts` AC-312.2는 값이 아니라 모양을 바꾼다: 필수 props가 정확히 `today`·`source`(`ReportBlock`은 `today`·`days`)이고 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐임을 본다(탭 틀 AC-312.2 "오늘 날짜와 이 값만"을 이 기능이 덮어쓴다). `BitDashboard.test.tsx`의 `animate-` 금지는 `.bit-read-*` 두 표시를 뺀 나머지에 대해 유지한다. `MIN_HELPER`와 `LATEST_HELPER`가 같아져 실제 값으로는 "새 도우미가 있어요"가 나올 수 없으므로, 그 안내를 보는 시험은 시험 안에서 `versions`를 바꿔 계속 확인한다.
+- REQ-606이 덮어쓰는 곳(2026-11-06 사용자 결정): 탭 틀 AC-311.5·AC-311.6의 '처방 상위 = 처방 코드별 `patients` 합 큰 5개'(→ AC-606.1·606.2), 탭 틀 AC-312.2의 자료 모양 `{ kind: 'data', days }`(→ 선택 칸 `groups?`가 붙는다. `DashboardAnalysis`·`ReportBlock`의 props 모양 규칙은 그대로), 탭 틀 AC-311.8의 '그래프는 움직이지 않는다'가 보는 범위('처방 상위' 머리 링크를 뺀다, 위 '칸 그리기'), treatment-trend AC-1205.4의 '대시보드 비트 바로 읽기(`readBitDays`)는 고치지 않으며 `groups: []`를 보낸다'와 그 design.md의 같은 뜻 줄(표 10번, '대시보드 비트 바로 읽기: 고치지 않는다' 등)(→ AC-606.7: 묶음 정의를 싣는다), 탭 틀 AC-311.4의 '처방 상위' 설명 "많이 낸 처방 5가지가 차례로 적힙니다"와 ui-90 AC-414.4의 연결 전 넷째 설명 "많이 낸 처방 5가지를 차례로 적어요."(→ AC-606.6), treatment-trend design.md의 "대시보드 '처방 상위': 그대로"와 requirements.md 범위 밖의 대시보드 줄. 그 명세들은 고치지 않고(재승인 없이 두려고) 여기 적는다. 바꾸는 시험: `view.test.ts`의 `topRx` 묶음(지움), `DashboardAnalysis.test.tsx`의 설명 글 두 곳·사라진 글 목록·AC-311.5의 `topRx` 막대 비교(→ 묶음 막대), AC-311.8의 불러오기 허락 목록(`next/link` 한 줄, `LiveDashboard.tsx: @/components/dashboard/live/rxGroups` 한 줄)과 움직임 검사의 범위(위), `page.test.tsx`의 `GAINS_DIGIT_DESC`. 값과 뜻만 바꾸고 시험을 약하게 만들지 않는다. `LiveDashboard.test.tsx`·`page.test.tsx`는 묶음 읽기(`listStatsRxGroups`)를 가짜로 바꾼다.
 
 ## 위험 / 미해결 질문
 - **접수취소가 실제로 빠지는지는 의원 PC에서만 확인된다(AC-602.3).** 외래 접수는 `OcmComStt IN ('WN','HN','TN','PN')`만 세므로 다른 상태는 빠진다. 입원 쪽에서 빼는 `VC`·`CN`·`CR`도 이 목록에 없다. 원본 저장소 `seoseungkwan/shared@2a1069b`도 같다. `test_rx_visit_split_sql.py`는 상태 `CN` 내원을 "취소 내원은 세지 않음"으로 시험하고, `OperationalReportData.cs`는 총환을 "취소·제외 기록을 뺀 외래 내원 건수"라고 적었다. 다만 진짜 의원 자료에서 취소가 늘 이 값으로 남는지는 적힌 곳이 없다. 시험(TASK-7)은 이 조건 글이 `PeriodVisits`에 남아 있는지만 본다. 취소 건이 있는 날을 비트 화면과 견주어 끝낸다.
@@ -99,4 +130,6 @@ Worker: 합치기·해시 → 검사 → aggregate → buildSummary → 저장 �
 - **100일 안에 차트번호 없는 접수나 중복 접수(같은 내원 번호가 두 번. 같은 날 다른 번호로 두 번 접수한 것은 여기 들지 않는다)가 한 건이라도 있으면 숫자가 나오지 않는다**(AC-601.12, 통계의 `quality: incomplete`). 실제 비트에서 자주 나오면 `specs/stats`와 함께 규칙을 다시 정한다.
 - **도우미 버전 번호를 청구 창과 맞춘다.** 먼저 내는 쪽이 0.2.0을 쓰고 다음 쪽이 그다음 번호를 쓴다.
 - **코드래빗은 이 PC에 없다.** 시험 기준선 실패도 있어 이 PC에서는 `cr-review`가 통과하지 못한다. 어디서 돌릴지는 사용자에게 묻는다.
+- **처방 상위의 묶음 숫자는 묶음을 만든 뒤 불러온 기간에만 있다(AC-606.3).** 폰·다른 PC는 저장 숫자만 보므로, 통계 탭에서 그 기간을 다시 불러오기 전에는 "다시 불러와야" 안내가 나온다. 비트 PC는 다 읽은 비트 숫자에 모든 묶음이 들어 저절로 맞다. 통계 탭에서 묶음을 고치면 열쇠가 바뀌어 같은 일이 다시 생긴다(treatment-trend와 같다).
+- **묶음 읽기가 대시보드 여는 시간을 늘릴 수 있다.** 저장 숫자 읽기와 함께 돌아 보통 더 늦지 않지만, 묶음 읽기만 느리면 10초까지 기다린 뒤 묶음 없이 그린다.
 - 실제 화면 시험에는 합치기와 배포, 도우미 릴리스(`helper-v0.2.0` 태그)가 필요하다. 확장이 정식 주소에서만 말을 받기 때문이다. 합치기·태그·배포는 그때 사용자에게 묻는다.

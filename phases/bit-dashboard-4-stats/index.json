@@ -11,8 +11,12 @@
     {
       "step": 1,
       "name": "live-dashboard",
-      "status": "blocked",
-      "blocked_reason": "통계 창의 수정이 이 브랜치에 들어와야 시작한다"
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "report-partial",
+      "status": "pending"
     }
   ]
 }
