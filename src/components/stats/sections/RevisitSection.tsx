@@ -2,7 +2,7 @@
 
 import { formatCount, formatRate } from '@/components/charts/format'
 import { InlineBar } from '@/components/charts/InlineBar'
-import { revisitRates, type FirstRevisit, type RevisitRates, type StatsInput, type StatsPeriod, type StatsRateCell } from '@/components/stats/view'
+import { periodDesc, revisitRates, type FirstRevisit, type RevisitRates, type StatsInput, type StatsPeriod, type StatsRateCell } from '@/components/stats/view'
 import { compareYmd } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
@@ -21,6 +21,8 @@ const NO_DATA = '자료 없음'
 const IN_PROGRESS = '집계 중'
 
 type Line = { name: string; days: 7 | 14 | 30; cell: StatsRateCell }
+// null = 고른 기간(stats-period). 고른 기간은 일 칸이라 글은 일 기간과 같고 다른 기간을 권하지 않는다
+type Period = StatsPeriod | null
 
 const linesOf = (rates: RevisitRates): Line[] => [
   { name: '7일 안에 다시 옴', days: 7, cell: rates.d7 },
@@ -28,10 +30,10 @@ const linesOf = (rates: RevisitRates): Line[] => [
   { name: '30일 안에 다시 옴', days: 30, cell: rates.d30 },
 ]
 
-const asksOtherPeriod = (period: StatsPeriod) => period === '7d' || period === '30d'
+const asksOtherPeriod = (period: Period) => period === '7d' || period === '30d'
 const rangeText = ({ from, to }: DateRange) => `${longDate(from)} – ${longDate(to)}`
 
-function captionOf({ cell, days }: Line, period: StatsPeriod, d30Cohort: DateRange | null): string {
+function captionOf({ cell, days }: Line, period: Period, d30Cohort: DateRange | null): string {
   if (cell.kind === 'none') return NO_DATA
   if (cell.kind === 'in-progress') return `신환이 온 뒤 ${days}일이 지나야 셀 수 있어요.${days === 30 && asksOtherPeriod(period) ? OTHER_PERIOD : ''}`
   const counts = `신환 ${formatCount(cell.cohort)}명 가운데 ${formatCount(cell.within)}명`
@@ -60,7 +62,7 @@ function LineRow({ line, caption }: { line: Line; caption: string }) {
   )
 }
 
-function baseLine(first: FirstRevisit, period: StatsPeriod): string {
+function baseLine(first: FirstRevisit, period: Period): string {
   const cohort = formatCount(first.cohort)
   if (period === '12m') return `${yearMonth(first.from)} – ${yearMonth(first.to)}에 온 신환 ${cohort}명 기준 (온 뒤 30일이 지난 달만)`
   return `${rangeText(first)}에 온 신환 ${cohort}명 기준 (온 뒤 30일이 지난 날만)`
@@ -140,7 +142,7 @@ function tableOf(lines: readonly Line[], first: FirstRevisit | null): DetailTabl
 export function RevisitSection({ input, saved, className }: { input: StatsInput; saved: boolean; className?: string }) {
   if (!hasRows(input)) {
     return (
-      <Section title={TITLE} desc={saved ? DESC : undefined} className={className}>
+      <Section title={TITLE} desc={saved ? periodDesc(DESC, input.range) : undefined} className={className}>
         <EmptyNote>{saved ? NO_RANGE_DATA : EMPTY}</EmptyNote>
       </Section>
     )
@@ -150,7 +152,7 @@ export function RevisitSection({ input, saved, className }: { input: StatsInput;
   return (
     <DetailToggle table={tableOf(lines, rates.firstRevisit)}>
       {({ button, panel }) => (
-        <Section title={TITLE} desc={DESC} action={button} className={className}>
+        <Section title={TITLE} desc={periodDesc(DESC, input.range)} action={button} className={className}>
           <ul className="mt-2 list-none">
             {lines.map((line) => (
               <LineRow key={line.days} line={line} caption={captionOf(line, input.range.period, rates.d30Cohort)} />

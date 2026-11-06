@@ -1,8 +1,9 @@
+import { formatCount } from '@/components/charts/format'
 import { KpiStat } from '@/components/charts/KpiStat'
 import type { BarBucket } from '@/components/charts/StackedBarChart'
-import { patientTrend, summaryCells, type StatsInput, type SummaryCell } from '@/components/stats/view'
+import { missingDays, patientTrend, summaryCells, type StatsInput, type SummaryCell } from '@/components/stats/view'
 import { addMonths, monthOf } from '@/lib/analytics/dates'
-import { DeltaText, EmptyNote, monthNumber, NO_RANGE_DATA, PartialChip, PERIOD_NAME, Section, todayOf } from './parts'
+import { DeltaText, EmptyNote, monthNumber, NO_RANGE_DATA, PartialChip, Section, todayOf } from './parts'
 
 // 기간 요약 (stats REQ-513 AC-513.1·513.4, AC-511.2, 시안 notes.md §3 '기간 요약'). 칸은 key로 고른다.
 // 값이 있는 칸의 아래 글·칩은 KpiStat 자리가 없어 그 아래에 둔다. 넷째 칸(값이 증감)은 대시보드 DeltaStat과 같은 글자 단계다.
@@ -17,8 +18,19 @@ const CELLS = [
   'min-w-0 border-l border-line py-4 px-5 max-md:border-t max-md:py-3 max-md:px-4',
 ] as const
 
+// 고른 기간(stats-period AC-1704.1): PC는 한 줄(비교 칸 1~2개라 4·5칸), 768px 미만은 평균·신환·재진 셋이 한 줄이고 비교 칸마다 한 줄(전체 폭)이다
+const PICK_CELLS = [
+  'min-w-0 py-4 pr-5 pl-0 max-md:py-3 max-md:pr-3',
+  'min-w-0 border-l border-line py-4 px-5 max-md:py-3 max-md:px-3',
+  'min-w-0 border-l border-line py-4 px-5 max-md:py-3 max-md:px-3',
+] as const
+const PICK_COMPARE = 'min-w-0 border-l border-line py-4 px-5 max-md:col-span-3 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:px-0'
+const PICK_GRID: Record<number, string> = { 4: 'grid-cols-4', 5: 'grid-cols-5' }
+
+const isCompare = (cell: SummaryCell) => cell.key === 'compare' || cell.key === 'lastYear'
+
 function Cell({ cell }: { cell: SummaryCell }) {
-  if (cell.key === 'compare' && cell.delta !== null) {
+  if (isCompare(cell) && cell.delta !== null) {
     return (
       <>
         <div className="flex h-7 items-start">
@@ -68,11 +80,15 @@ export function PeriodSummary({ input, saved, className }: { input: StatsInput; 
   const cells = summaryCells(input)
   const hasAverage = cells.some((cell) => cell.key === 'average' && cell.value !== null)
   const note = monthNote(input, trend, hasAverage)
+  const picked = input.range.period === null
+  const missing = missingDays(input)
+  const desc = `${input.range.name} · ${input.range.label}${missing > 0 ? ` · 자료 없는 날 ${formatCount(missing)}일은 빼고 셌어요` : ''}`
+  const grid = picked ? `${PICK_GRID[cells.length] ?? 'grid-cols-4'} border-b border-line max-md:grid-cols-3` : 'grid-cols-4 border-b border-line max-md:grid-cols-2'
   return (
-    <Section title="기간 요약" desc={`${PERIOD_NAME[input.range.period]} · ${input.range.label}`} className={className}>
-      <div className="mt-2 grid grid-cols-4 border-b border-line max-md:grid-cols-2 max-md:[&_.text-metric]:text-heading-m">
+    <Section title="기간 요약" desc={desc} className={className}>
+      <div className={`mt-2 grid ${grid} max-md:[&_.text-metric]:text-heading-m`}>
         {cells.map((cell, i) => (
-          <div key={cell.key} className={CELLS[i]}>
+          <div key={cell.key} className={picked ? (isCompare(cell) ? PICK_COMPARE : PICK_CELLS[i]) : CELLS[i]}>
             <Cell cell={cell} />
           </div>
         ))}
