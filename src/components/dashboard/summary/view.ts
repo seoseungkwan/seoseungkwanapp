@@ -206,10 +206,16 @@ function lastWeekSentence(compare: TodayCompare, patients: number): string | nul
 
 // 오늘 줄의 totals(와 끝난 날이면 7일 전 비교)만으로 만든다 — 환자 이름·차트번호·처방 이름은 쓰지 않는다.
 // first = 처음 "다."까지(h1), rest = 그 뒤(앞뒤 빈칸 뺌), full = 둘을 빈칸 하나로 이은 글([복사]).
-// dayLabel('10월 31일')을 주면 지난 날짜 문장이다: 시작의 "오늘"만 그 글자로 바꾼다(bit-dashboard AC-605.2)
+// dayLabel('10월 31일')을 주면 지난 날짜 문장이다: 시작의 "오늘"만 그 글자로 바꾼다(bit-dashboard AC-605.2).
+// 지난 날인데 그날 줄이 덜 끝남(partial true)이면 신환·재진·지난주 비교 없이 두 줄만 돌려준다(bit-dashboard AC-605.9)
 export function reportSentence(view: TodayView, dayLabel?: string): { first: string; rest: string; full: string } | null {
   if (view.counts === null) return null
   const { patients, newPatients, returning } = view.counts
+  if (dayLabel !== undefined && view.state === 'open') {
+    const first = `${dayLabel} 환자 ${formatCount(patients)}명까지 확인됐어요.`
+    const rest = '그날 자료가 중간까지만 저장돼 있어요.'
+    return { first, rest, full: `${first} ${rest}` }
+  }
   const when = dayLabel ?? (view.state === 'open' ? '오늘 지금까지' : '오늘')
   const sentences = [
     `${when} 환자 ${formatCount(patients)}명이 왔습니다.`,

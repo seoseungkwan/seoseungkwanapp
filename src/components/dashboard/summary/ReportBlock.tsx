@@ -11,7 +11,8 @@ import { longDate, reportSentence, todayView } from './view'
 // 문장은 view.ts의 reportSentence(오늘 줄의 totals만)로 만든다 — 환자 이름·차트번호·처방 이름은 쓰지 않는다.
 // 첫 문장이 이 화면의 h1이다(연결 뒤에는 대시보드 짜임이 h1을 그리지 않는다).
 // 복사 결과 문구는 이 파일 안에 둔다(로그인 화면 [주소 복사]와 같은 방식, 오류 번호가 없는 안내라 lib/errors.ts 틀에 맞지 않는다).
-// selected(bit-dashboard AC-605.2·AC-605.4)는 고른 날이다. 없으면 오늘이고, 지난 날짜면 문장의 "오늘"이 그 날 글자로 바뀐다
+// selected(bit-dashboard AC-605.2·AC-605.4·AC-605.9)는 고른 날이다. 없으면 오늘이고, 지난 날짜면 문장의 "오늘"이 그 날 글자로 바뀐다.
+// 그 지난 날 줄이 덜 끝났으면 reportSentence가 "…명까지 확인됐어요." 두 줄을 주고, [복사]도 그 두 줄이다
 
 const NO_TODAY = { first: '오늘 받은 진료 자료가 아직 없어요', rest: '오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.' }
 const NO_PAST_DAY = { first: '이 날은 진료 자료가 없어요', rest: '진료가 없었거나 비트에 접수 기록이 없는 날이에요.' }

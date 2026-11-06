@@ -418,9 +418,29 @@ describe('reportSentence — 지난 날짜', () => {
     expect(s?.full).toBe('10월 31일 환자 10명이 왔습니다. 신환 2명, 재진 8명입니다.')
   })
 
-  it('AC-605.2: 저장 숫자에 덜 끝난 표시가 남은 지난 날도 "오늘 지금까지"라고 하지 않는다', () => {
-    const s = reportSentence(todayView(SATURDAY, [day(SATURDAY, { partial: true }), day(WEEK_BEFORE)]), LABEL)
-    expect(s?.full).toBe('10월 31일 환자 10명이 왔습니다. 신환 2명, 재진 8명입니다.')
+  it('AC-605.9: 그날 줄이 partial: true면 "{월}월 {일}일 환자 N명까지 확인됐어요." + "그날 자료가 중간까지만 저장돼 있어요."이고 full은 두 줄을 빈칸 하나로 이은 글', () => {
+    const days = [day(SATURDAY, { partial: true, newPatients: 120, returning: 1114 }), day(WEEK_BEFORE)]
+    expect(reportSentence(todayView(SATURDAY, days), LABEL)).toEqual({
+      first: '10월 31일 환자 1,234명까지 확인됐어요.',
+      rest: '그날 자료가 중간까지만 저장돼 있어요.',
+      full: '10월 31일 환자 1,234명까지 확인됐어요. 그날 자료가 중간까지만 저장돼 있어요.',
+    })
+  })
+
+  it('AC-605.9: 덜 끝난 지난 날은 신환·재진 문장과 지난주 비교가 붙지 않고 "오늘" 글자가 없다', () => {
+    const s = reportSentence(todayView(SATURDAY, [day(SATURDAY, { partial: true }), day(WEEK_BEFORE, { newPatients: 0, returning: 1 })]), LABEL)
+    if (s === null) throw new Error('보고 문장이 없다')
+    expect(s.full).not.toContain('신환')
+    expect(s.full).not.toContain('재진')
+    expect(s.full).not.toContain('지난주')
+    expect(s.full).not.toContain('오늘')
+  })
+
+  it('AC-605.9: 오늘의 partial: true와 partial: false인 날은 지금 그대로다', () => {
+    const openToday = reportSentence(todayView(SATURDAY, [day(SATURDAY, { partial: true }), day(WEEK_BEFORE)]))
+    expect(openToday?.full).toBe('오늘 지금까지 환자 10명이 왔습니다. 신환 2명, 재진 8명입니다.')
+    const closedPast = reportSentence(todayView(SATURDAY, [day(SATURDAY), day(WEEK_BEFORE)]), LABEL)
+    expect(closedPast?.full).toBe('10월 31일 환자 10명이 왔습니다. 신환 2명, 재진 8명입니다. 지난주 토요일과 같습니다.')
   })
 
   it('AC-605.4: 그 날 줄이 없으면 문장이 없다', () => {
