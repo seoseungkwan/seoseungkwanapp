@@ -692,4 +692,30 @@ describe('AC-1609.8 [이 날만 고치기]', () => {
     expect(floatShown()).toBe('280,000원')
     expect(saveSetting).not.toHaveBeenCalled()
   })
+
+  it('AC-1605.8: [이 날만 고치기] 칸에 적고 저장·취소 없이 다른 센 날로 옮기면 칸이 닫히거나 그날 금액이고, 아무것도 저장하지 않으며 그날 시재도 그대로다(돌아와도 같다)', async () => {
+    const db = cashServer({ [TODAY]: { cells: CELLS, cash: cashOf(SHORT) }, [PAST]: { cells: CELLS, cash: cashOf(SHORT, { floatWon: 320000 }) } })
+    await openScreen()
+    const floatField = () => within(box()).queryByLabelText<HTMLInputElement>('이 날 시재 금액')
+    fireEvent.click(within(box()).getByRole('button', { name: '이 날만 고치기' }))
+    fireEvent.change(floatField()!, { target: { value: '280000' } })
+
+    fireEvent.click(button('전날'))
+    await settle()
+    expect([null, '320,000']).toContain(floatField()?.value ?? null)
+    // 320,000 + 147,000 − 12,000 = 455,000 → 430,000이면 25,000원 모자라요
+    expect(inBox('25,000원 모자라요')).not.toBeNull()
+    await settle(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(db.get(PAST)?.cash.floatWon).toBe(320000)
+
+    fireEvent.click(button('다음 날'))
+    await settle()
+    expect([null, '300,000']).toContain(floatField()?.value ?? null)
+    expect(inBox('5,000원 모자라요')).not.toBeNull()
+    await settle(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(db.get(TODAY)?.cash.floatWon).toBe(300000)
+    expect(db.get(PAST)?.cash.floatWon).toBe(320000)
+  })
 })

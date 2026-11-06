@@ -268,7 +268,9 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
         />
       </div>
       <BitSheetNotes day={day} bitFields={bitFields ?? []} differs={differs} onTake={onTakeBit} />
+      {/* 날짜마다 새로 그린다: 저장하지 않은 [이 날만 고치기] 칸이 다른 날로 넘어가지 않게(AC-1605.8) */}
       <CashFloatBox
+        key={ymd}
         mode={viewOnly ? 'view' : readOnly ? 'locked' : 'edit'}
         day={day}
         cash={cash}
