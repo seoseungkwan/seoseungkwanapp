@@ -53,7 +53,7 @@ public sealed class VisitRow
         long earlierCount = 0,
         string? lastVisitId = null,
         string? lastDay = null,
-        IReadOnlyList<RxItem>? lastRx = null,
+        string? lastSymptom = null,
         string? name = null,
         string? birthDate = null,
         string? sex = null,
@@ -71,7 +71,7 @@ public sealed class VisitRow
         EarlierCount = earlierCount;
         LastVisitId = lastVisitId;
         LastDay = lastDay;
-        LastRx = lastRx ?? NoRx;
+        LastSymptom = lastSymptom;
         Name = name;
         BirthDate = birthDate;
         Sex = sex;
@@ -106,8 +106,8 @@ public sealed class VisitRow
     /// <summary>가장 최근 지난 완료 내원의 날짜(yyyyMMdd). 없으면 null.</summary>
     public string? LastDay { get; }
 
-    /// <summary>가장 최근 지난 완료 내원의 처방(코드 순). 지난 내원이 없거나 그 내원에 처방이 없으면 빈 목록.</summary>
-    public IReadOnlyList<RxItem> LastRx { get; }
+    /// <summary>가장 최근 지난 완료 내원의 증상 글(EmrInf S 줄을 공백 하나로 이은 것, AC-1402.6). 지난 내원이 없거나 증상 줄이 없거나 증상 칸을 모르면 null.</summary>
+    public string? LastSymptom { get; }
 
     public string? Name { get; }
 

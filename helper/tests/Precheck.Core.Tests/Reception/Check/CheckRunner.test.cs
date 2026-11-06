@@ -301,7 +301,7 @@ public class CheckRunnerMemoTests
 /// <summary>빠르기 단계(AC-1401.8): 이 명세의 비트 문장마다 걸린 ms·줄 수, 상태별 처방 있는 접수 수, 옛 자료 따로 있음.</summary>
 public class CheckRunnerSpeedTests
 {
-    private static readonly string[] Names = { "TodayVisits", "TodayRx", "PriorVisits", "PriorRx", "RxNames", "HistoryCount", "HistoryPage" };
+    private static readonly string[] Names = { "TodayVisits", "TodayRx", "PriorVisits", "PriorSymptoms", "RxNames", "HistoryCount", "HistoryPage" };
 
     private static Harness WithToday()
     {
@@ -317,7 +317,7 @@ public class CheckRunnerSpeedTests
         h.Db.Answer(StatsSql.HistoryGuardSql, new object?[] { 1 });
         var took = new Dictionary<string, int>
         {
-            [ReceptionSql.TodayVisits] = 120, [ReceptionSql.TodayRx] = 80, [ReceptionSql.PriorVisits] = 900, [ReceptionSql.PriorRx] = 300,
+            [ReceptionSql.TodayVisits] = 120, [ReceptionSql.TodayRx] = 80, [ReceptionSql.PriorVisits] = 900, [ReceptionSql.PriorSymptoms] = 300,
             [ReceptionSql.RxNames] = 50, [ReceptionSql.HistoryCount] = 30, [ReceptionSql.HistoryPage] = 45,
         };
         h.Db.Took = sql => TimeSpan.FromMilliseconds(took.TryGetValue(sql, out var ms) ? ms : 10);
@@ -336,7 +336,7 @@ public class CheckRunnerSpeedTests
         Assert.Contains("speed name=TodayVisits ms=120 rows=2", lines);
         Assert.Contains("speed name=TodayRx ms=80 rows=1", lines);
         Assert.Contains("speed name=PriorVisits ms=900 rows=0", lines);
-        Assert.Contains("speed name=PriorRx ms=300 rows=0", lines);
+        Assert.Contains("speed name=PriorSymptoms ms=300 rows=0", lines);
         Assert.Contains("speed name=RxNames ms=50 rows=2", lines);
         Assert.Contains("speed name=HistoryCount ms=30 rows=1", lines);
         Assert.Contains("speed name=HistoryPage ms=45 rows=0", lines);
@@ -363,7 +363,7 @@ public class CheckRunnerSpeedTests
 
         h.Run();
 
-        foreach (var sql in new[] { ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.PriorVisits, ReceptionSql.PriorRx, CheckSql.RxByStatus })
+        foreach (var sql in new[] { ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.PriorVisits, ReceptionSql.PriorSymptoms, CheckSql.RxByStatus })
         {
             var call = Assert.Single(h.Db.Calls, c => c.Sql == sql);
             Assert.Equal(Stamp(Today), call.Args["@from"]);

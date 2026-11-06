@@ -62,7 +62,7 @@ export function fakeRow(over: Partial<FakeRow> = {}): FakeRow {
     long: false,
     memo: '',
     rxLabel: '지난번',
-    rx: '체외충격파(ESWT7) · 도수치료 20분(DS20)',
+    rx: '오른쪽 어깨 통증 조금 줄었음 밤에 아픔',
     xray: lane === 'hold' ? { at: null } : null,
     ...over,
   }
@@ -103,8 +103,8 @@ export function mockupBoard(at = '13:42:10'): FakeBoard {
     {
       wait: [
         fakeRow({ k: fakeKey(1), chart: '910871', name: '가상환자01', info: '37세 · 남 · 신환', time: '09:38 접수', waited: '1시간 4분째 대기', long: true, memo: '', rxLabel: '처방', rx: '첫 방문이라 지난 처방이 없어요' }),
-        fakeRow({ k: fakeKey(2), chart: '910234', name: '가상환자02', info: '54세 · 여 · 재진', time: '10:42 접수', waited: '18분째 대기', memo: '오른쪽 어깨 통증 심해짐', rxLabel: '지난번', rx: '체외충격파(ESWT7) · 도수치료 20분(DS20)' }),
-        fakeRow({ k: fakeKey(3), chart: '909412', name: '가상환자03', info: '71세 · 여 · 재진', time: '10:51 접수', waited: '9분째 대기', memo: '보호자 동반', rxLabel: '지난번', rx: '표층열치료(PT01) · 간섭파치료(PT03)' }),
+        fakeRow({ k: fakeKey(2), chart: '910234', name: '가상환자02', info: '54세 · 여 · 재진', time: '10:42 접수', waited: '18분째 대기', memo: '오른쪽 어깨 통증 심해짐', rxLabel: '지난번', rx: '오른쪽 어깨 통증 조금 줄었음 밤에 아픔' }),
+        fakeRow({ k: fakeKey(3), chart: '909412', name: '가상환자03', info: '71세 · 여 · 재진', time: '10:51 접수', waited: '9분째 대기', memo: '보호자 동반', rxLabel: '지난번', rx: '적힌 증상이 없어요' }),
       ],
       hold: [
         fakeRow({ k: fakeKey(4), lane: 'hold', chart: '910502', name: '가상환자04', info: '45세 · 남 · 재진', time: '10:05 접수', waited: '보류 22분째', memo: '엑스레이 찍으러 감', rxLabel: '오늘', rx: '엑스레이 촬영(XR2)', xray: { at: null } }),

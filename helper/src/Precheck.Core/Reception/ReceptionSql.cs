@@ -7,7 +7,7 @@ namespace Precheck.Core.Reception;
 /// <summary>
 /// 접수 현황(spec reception-phone design.md 3절)이 비트 DB에 돌리는 문장 전부(AC-1403.1·AC-1403.7·AC-1404.6). 모두 매개변수를 받는 SELECT 하나다.
 /// 표·칸은 이 저장소의 다른 허용 문장(Sql·StatsSql·RevenueSql)이 이미 읽는 것과, 의원 PC 확인 결과로 채운 칸(ReceptionMap.Columns:
-/// 이름·생년월일·성별·접수 메모·수납 시각·증상, TodayPeople·TodayMemos·TodayPaid·VisitSymptoms, REQ-1410)뿐이다. 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
+/// 이름·생년월일·성별·접수 메모·수납 시각·증상, TodayPeople·TodayMemos·TodayPaid·VisitSymptoms·PriorSymptoms, REQ-1410)뿐이다. 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
 /// 지난 내원의 완료 조건은 Sql.HistoryVisitSql, 처방 줄 조건은 Sql.HistoryCodeSql과 같다. SQL Server 2008 R2에서 돌도록 OFFSET·FETCH 없이 ROW_NUMBER()로 자르고,
 /// 차트번호는 함수 없이 견준다(색인을 쓰게, spec bit-read-speed와 같은 까닭). Sql.IsAllowed·Sql.ParametersOf가 Parameters 표를 묻는다.
 /// </summary>
@@ -61,10 +61,16 @@ WHERE " + RxRow;
     public const string PriorVisits = PriorCte + @"
 SELECT P.TodayVisitId,P.Earlier EarlierCount,P.OcmNum LastVisitId,LEFT(P.OcmAcpDtm,8) LastDay FROM P WHERE P.Seq=1";
 
-    /// <summary>가장 최근 지난 내원의 처방 코드.</summary>
-    public const string PriorRx = PriorCte + @"
-SELECT DISTINCT o.OdrOcmNum LastVisitId,UPPER(RTRIM(o.OdrCod)) RxCode FROM dbo.OdrInf o JOIN P ON P.OcmNum=o.OdrOcmNum
-WHERE P.Seq=1 AND " + RxRow;
+    /// <summary>
+    /// 목록 줄의 '지난번' 증상(AC-1402.6, TASK-37): 오늘 접수마다 가장 최근 지난 내원(P.Seq=1)의 EmrInf 줄 중 EmrShtTyp='S'이고 빈 글 아닌
+    /// EmrShtVal 줄(VisitSymptoms와 같은 조건), 내원마다 EmrUpdDtm 순. IN이라 같은 지난 내원이 오늘 접수 둘에 걸려도 줄이 겹치지 않는다.
+    /// 잇기는 도우미(BoardReader)가 공백 하나로 한다.
+    /// </summary>
+    public const string PriorSymptoms = PriorCte + @"
+SELECT e.EmrOcmNum LastVisitId,CAST(e.EmrShtVal AS nvarchar(max)) Line FROM dbo.EmrInf e
+WHERE e.EmrOcmNum IN (SELECT P.OcmNum FROM P WHERE P.Seq=1)
+  AND e.EmrShtTyp='S' AND LEN(LTRIM(CAST(e.EmrShtVal AS nvarchar(max))))>0
+ORDER BY e.EmrOcmNum,e.EmrUpdDtm";
 
     /// <summary>
     /// 처방 이름표: 코드(UPPER(RTRIM), 처방 문장의 RxCode와 같은 모양)마다 적용일(SeeAdpDte)이 가장 늦은 이름 한 줄(RevenueSql.CodeAmounts와 같은 규칙).
@@ -139,7 +145,7 @@ ORDER BY V.OcmNum,e.EmrUpdDtm";
         [TodayVisits] = Today,
         [TodayRx] = Today,
         [PriorVisits] = Today,
-        [PriorRx] = Today,
+        [PriorSymptoms] = Today,
         [RxNames] = new SqlParam[0],
         [HistoryCount] = new[] { Chart, Before, Hospital },
         [HistoryPage] = new[] { Chart, Before, Hospital, First, Last },

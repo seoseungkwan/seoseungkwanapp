@@ -12,7 +12,7 @@ namespace Precheck.Core.Tests.Reception.BoardRows;
 /// <summary>
 /// 줄 만들기(BoardBuilder·Board, design.md 4절, REQ-1402). 가짜 지도·가짜 줄만 쓴다(진짜 지도는 Phase 5까지 비어 있다).
 /// AC-1402.1 칸 나누기·숨긴 줄 건수. AC-1402.2 순서·순서 번호·건수. AC-1402.3 기다린 글. AC-1402.4 오래 기다림.
-/// AC-1402.5 정보 글(만 나이·성별·신환/재진). AC-1402.6 처방 글. AC-1402.7 빈 칸. AC-1402.8 엑스레이 칸.
+/// AC-1402.5 정보 글(만 나이·성별·신환/재진). AC-1402.6 처방·지난번 증상 글. AC-1402.7 빈 칸. AC-1402.8 엑스레이 칸.
 /// AC-1402.9 화면용 열쇠·원값 없음·JSON 모양.
 /// 이름은 '가상환자NN', 차트번호는 9로 시작하는 6자리, 내원번호는 V+숫자, 상태 코드는 지어낸 것(QA…)이다.
 /// </summary>
@@ -59,14 +59,14 @@ public class BoardBuilderTests
         long earlier = 0,
         string? lastId = null,
         string? lastDay = null,
-        IReadOnlyList<RxItem>? lastRx = null,
+        string? lastSymptom = null,
         string? name = null,
         string? birth = null,
         string? sex = null,
         string? memo = null,
         string? paidAt = null,
         string? acceptedAt = null)
-        => new VisitRow(id, chart, acceptedAt ?? Day + hhmm + "00", status, rsu, todayRx, earlier, lastId, lastDay, lastRx, name, birth, sex, memo, paidAt);
+        => new VisitRow(id, chart, acceptedAt ?? Day + hhmm + "00", status, rsu, todayRx, earlier, lastId, lastDay, lastSymptom, name, birth, sex, memo, paidAt);
 
     /// <summary>한 번 만들기에 쓰는 것들. 기본: 가짜 지도, 오늘, 읽은 때 + 5초.</summary>
     private sealed class Scene
@@ -410,16 +410,16 @@ public class BoardBuilderTests
         Assert.Equal("재진", Info("20271105", null, 2));
     }
 
-    // ---- AC-1402.6 처방 글 ---------------------------------------------------------------------------------
+    // ---- AC-1402.6 처방·지난번 증상 글 ------------------------------------------------------------------------
 
-    private static JsonElement RxRow(IReadOnlyList<RxItem>? today, long earlier, IReadOnlyList<RxItem>? last) =>
+    private static JsonElement RxRow(IReadOnlyList<RxItem>? today, long earlier, string? lastSymptom) =>
         One(Visit("V1101", "QA", "0900", "901101", todayRx: today, earlier: earlier, lastId: earlier > 0 ? "V1050" : null,
-            lastDay: earlier > 0 ? "20261029" : null, lastRx: last), "wait");
+            lastDay: earlier > 0 ? "20261029" : null, lastSymptom: lastSymptom), "wait");
 
     [Fact(DisplayName = "AC-1402.6 오늘 처방이 있으면 오늘: 이름(코드)를 코드 순으로 · 로 잇는다")]
     public void RxToday()
     {
-        var row = RxRow(new[] { new RxItem("ESWT7", "체외충격파"), new RxItem("DS20", "도수치료 20분") }, 3, Rx("PT01"));
+        var row = RxRow(new[] { new RxItem("ESWT7", "체외충격파"), new RxItem("DS20", "도수치료 20분") }, 3, "허리 통증");
         Assert.Equal("오늘", Text(row, "rxLabel"));
         Assert.Equal("도수치료 20분(DS20) · 체외충격파(ESWT7)", Text(row, "rx"));
     }
@@ -432,26 +432,29 @@ public class BoardBuilderTests
         Assert.Equal("체외충격파(ESWT7) · XR9", Text(row, "rx"));
     }
 
-    [Fact(DisplayName = "AC-1402.6 오늘 처방이 없고 지난 내원이 있으면 지난번: 가장 최근 지난 내원의 처방")]
+    [Fact(DisplayName = "AC-1402.6 오늘 처방이 없고 지난 내원이 있으면 지난번: 가장 최근 지난 내원의 증상 글(앞뒤 공백 뺌), 처방이 아니다")]
     public void RxLastVisit()
     {
-        var row = RxRow(null, 4, Rx("PT03", "PT01"));
+        var row = RxRow(null, 4, "  오른쪽 어깨 통증 조금 줄었음 밤에 아픔 ");
         Assert.Equal("지난번", Text(row, "rxLabel"));
-        Assert.Equal("표층열치료(PT01) · 간섭파치료(PT03)", Text(row, "rx"));
+        Assert.Equal("오른쪽 어깨 통증 조금 줄었음 밤에 아픔", Text(row, "rx"));
     }
 
-    [Fact(DisplayName = "AC-1402.6 지난 내원에 처방이 없으면 지난번 처방이 없어요")]
-    public void RxLastVisitWithoutRx()
+    [Fact(DisplayName = "AC-1402.6 지난 내원에 증상 글이 없으면(null·빈 글·공백뿐) 지난번·적힌 증상이 없어요")]
+    public void RxLastVisitWithoutSymptom()
     {
-        var row = RxRow(new RxItem[0], 1, new RxItem[0]);
-        Assert.Equal("지난번", Text(row, "rxLabel"));
-        Assert.Equal("지난번 처방이 없어요", Text(row, "rx"));
+        foreach (var none in new[] { null, "", "   " })
+        {
+            var row = RxRow(new RxItem[0], 1, none);
+            Assert.Equal("지난번", Text(row, "rxLabel"));
+            Assert.Equal("적힌 증상이 없어요", Text(row, "rx"));
+        }
     }
 
     [Fact(DisplayName = "AC-1402.6 지난 내원도 없으면 처방·첫 방문이라 지난 처방이 없어요")]
     public void RxFirstVisit()
     {
-        var row = RxRow(null, 0, null);
+        var row = RxRow(null, 0, "지난 증상(있어도 첫 방문이면 안 씀)");
         Assert.Equal("처방", Text(row, "rxLabel"));
         Assert.Equal("첫 방문이라 지난 처방이 없어요", Text(row, "rx"));
     }
@@ -461,14 +464,14 @@ public class BoardBuilderTests
     [Fact(DisplayName = "AC-1402.7 이름·메모를 아직 못 읽으면 그 칸만 비우고 줄은 그대로 만든다")]
     public void UnknownNameAndMemoStayEmpty()
     {
-        var row = One(Visit("V1201", "QA", "1042", "901201", earlier: 2, lastId: "V1200", lastRx: Rx("ESWT7")), "wait", At(11, 0));
+        var row = One(Visit("V1201", "QA", "1042", "901201", earlier: 2, lastId: "V1200", lastSymptom: "무릎 통증"), "wait", At(11, 0));
         Assert.Equal("", Text(row, "name"));
         Assert.Equal("", Text(row, "memo"));
         Assert.Equal("재진", Text(row, "info"));
         Assert.Equal("901201", Text(row, "chart"));
         Assert.Equal("10:42 접수", Text(row, "time"));
         Assert.Equal("18분째 대기", Text(row, "waited"));
-        Assert.Equal("체외충격파(ESWT7)", Text(row, "rx"));
+        Assert.Equal("무릎 통증", Text(row, "rx"));
     }
 
     [Fact(DisplayName = "AC-1402.7 이름·메모가 있으면 그대로 싣고, 공백뿐이면 비운다")]

@@ -83,7 +83,7 @@ public sealed class CheckRunner
         (nameof(ReceptionSql.TodayVisits), ReceptionSql.TodayVisits),
         (nameof(ReceptionSql.TodayRx), ReceptionSql.TodayRx),
         (nameof(ReceptionSql.PriorVisits), ReceptionSql.PriorVisits),
-        (nameof(ReceptionSql.PriorRx), ReceptionSql.PriorRx),
+        (nameof(ReceptionSql.PriorSymptoms), ReceptionSql.PriorSymptoms),
         (nameof(ReceptionSql.RxNames), ReceptionSql.RxNames),
     };
 

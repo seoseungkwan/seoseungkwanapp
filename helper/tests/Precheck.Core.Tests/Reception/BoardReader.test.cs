@@ -22,9 +22,12 @@ public class BoardReaderTests
 
     private static readonly string[] Order =
     {
-        ReceptionSql.RxNames, ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.PriorVisits, ReceptionSql.PriorRx,
+        ReceptionSql.RxNames, ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.PriorVisits, ReceptionSql.PriorSymptoms,
         ReceptionSql.TodayPeople, ReceptionSql.TodayMemos, ReceptionSql.TodayPaid,
     };
+
+    /// <summary>증상 칸이 없을 때(칸 문장 PriorSymptoms를 돌리지 않음)의 차례.</summary>
+    private static string[] OrderWithoutSymptoms() => Order.Where(sql => sql != ReceptionSql.PriorSymptoms).ToArray();
 
     private static (string Code, string? Name)[] Rx(params (string Code, string? Name)[] items) => items;
 
@@ -32,7 +35,7 @@ public class BoardReaderTests
 
     // ---- AC-1403.6 그날의 접수만, 정해 둔 차례 -------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1403.6 이름표 → 오늘 접수 → 오늘 처방 → 지난 내원 → 지난 처방 차례로, 그날 @from·@to(yyyyMMdd0000 ~ 다음 날 0000)와 등록 범위만 넘긴다")]
+    [Fact(DisplayName = "AC-1403.6 이름표 → 오늘 접수 → 오늘 처방 → 지난 내원 → 지난 증상 차례로, 그날 @from·@to(yyyyMMdd0000 ~ 다음 날 0000)와 등록 범위만 넘긴다")]
     public void ReadsTodayInOrder()
     {
         var clock = new CacheClock(Morning);
@@ -70,7 +73,7 @@ public class BoardReaderTests
         }
     }
 
-    [Fact(DisplayName = "AC-1403.6 오늘 접수 줄 → VisitRow: 내원번호·차트번호·접수 시각 원값·상태·OcmRsuYon, 오늘 처방, 앞선 완료 내원 수·가장 최근 내원·그 처방")]
+    [Fact(DisplayName = "AC-1403.6 오늘 접수 줄 → VisitRow: 내원번호·차트번호·접수 시각 원값·상태·OcmRsuYon, 오늘 처방, 앞선 완료 내원 수·가장 최근 내원·그 증상")]
     public void MapsRows()
     {
         var db = BoardFake.Quiet(new FakeDb());
@@ -87,21 +90,21 @@ public class BoardReaderTests
         Assert.Equal(3L, first.EarlierCount);
         Assert.Equal("V0901", first.LastVisitId);
         Assert.Equal("20261029", first.LastDay);
-        Assert.Equal(Rx(("PT01", "표층열치료"), ("PT03", "간섭파치료")), Pairs(first.LastRx));
+        Assert.Equal("허리 통증 조금 줄었음 밤에 아픔", first.LastSymptom);
 
         var second = input.Visits[1];
         Assert.Empty(second.TodayRx);
         Assert.Equal(1L, second.EarlierCount);
         Assert.Equal("V0802", second.LastVisitId);
         Assert.Equal("20261001", second.LastDay);
-        Assert.Empty(second.LastRx);
+        Assert.Null(second.LastSymptom);
 
         var third = input.Visits[2];
         Assert.Equal("20261105101500 ", third.AcceptedAt);
         Assert.Equal(0L, third.EarlierCount);
         Assert.Null(third.LastVisitId);
         Assert.Null(third.LastDay);
-        Assert.Empty(third.LastRx);
+        Assert.Null(third.LastSymptom);
     }
 
     [Fact(DisplayName = "AC-1403.6 차트번호는 비트 칸(char 14) 그대로 오른쪽 공백만 뺀다: 앞이 공백으로 채워진 번호도 앞 공백을 지우지 않는다(상세 @chart가 같은 줄을 찾게)")]
@@ -126,7 +129,7 @@ public class BoardReaderTests
         var db = BoardFake.Quiet(new FakeDb());
         var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, null);
 
-        Assert.Equal(Order.Take(5), db.Sqls);
+        Assert.Equal(OrderWithoutSymptoms().Take(4), db.Sqls);
         Assert.Equal(new[] { "V1001", "V1002", "V1003" }, input.Visits.Select(row => row.VisitId));
         Assert.All(input.Visits, row =>
         {
@@ -135,6 +138,7 @@ public class BoardReaderTests
             Assert.Null(row.Sex);
             Assert.Null(row.Memo);
             Assert.Null(row.PaidAt);
+            Assert.Null(row.LastSymptom);
         });
     }
 
@@ -147,7 +151,7 @@ public class BoardReaderTests
 
         var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, partial);
 
-        Assert.Equal(Order.Take(6), db.Sqls);
+        Assert.Equal(OrderWithoutSymptoms().Take(5), db.Sqls);
         var first = input.Visits[0];
         Assert.Equal("가상환자01", first.Name);
         Assert.Equal("19720304", first.BirthDate);
@@ -167,6 +171,65 @@ public class BoardReaderTests
         Assert.Equal(("가상환자01", "19720304", "F", "허리 통증 재진", (string?)null), (first.Name, first.BirthDate, first.Sex, first.Memo, first.PaidAt));
         Assert.Equal(("가상환자02", "19900101", "M", (string?)null, "202611050945"), (second.Name, second.BirthDate, second.Sex, second.Memo, second.PaidAt));
         Assert.Equal(((string?)null, (string?)null, (string?)null, (string?)null, (string?)null), (third.Name, third.BirthDate, third.Sex, third.Memo, third.PaidAt));
+    }
+
+    // ---- AC-1402.6 목록 줄의 지난번 증상 (TASK-37) --------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-1402.6 지난 증상(PriorSymptoms)은 가장 최근 지난 내원마다 줄 앞뒤 공백을 빼 비트 차례대로 공백 하나로 잇고, 빈 줄·빈 내원번호·모르는 내원 줄은 버린다")]
+    public void LastSymptomJoined()
+    {
+        var db = BoardFake.Quiet(new FakeDb());
+        db.Answer(ReceptionSql.PriorSymptoms, _ => new[]
+        {
+            new object?[] { "V0802", "  어깨 결림  " },
+            new object?[] { "V0901", "첫 줄" },
+            new object?[] { "V0802", "   " },
+            new object?[] { "", "빈 번호 줄" },
+            new object?[] { "V7777", "모르는 내원 줄" },
+            new object?[] { "V0802", "\r\n손 저림\t" },
+            new object?[] { "V0901", null },
+        });
+
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+
+        Assert.Equal("첫 줄", input.Visits[0].LastSymptom);
+        Assert.Equal("어깨 결림 손 저림", input.Visits[1].LastSymptom);
+        Assert.Null(input.Visits[2].LastSymptom);
+    }
+
+    [Fact(DisplayName = "AC-1402.6 증상 칸(ColumnPlan.Symptom)이 없으면 PriorSymptoms를 돌리지 않고 지난 증상은 null이며, 칸이 모자란 증상 줄은 E-BIT-READ-FAILED")]
+    public void LastSymptomNeedsColumn()
+    {
+        var plan = ReceptionMap.Columns!;
+        var noSymptom = new ColumnPlan(plan.Name, plan.BirthDate, plan.Sex, plan.Memo, plan.PaidAt, null);
+        var db = BoardFake.Quiet(new FakeDb());
+
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, noSymptom);
+
+        Assert.Equal(OrderWithoutSymptoms(), db.Sqls);
+        Assert.All(input.Visits, row => Assert.Null(row.LastSymptom));
+
+        var shortRow = BoardFake.Quiet(new FakeDb());
+        shortRow.Answer(ReceptionSql.PriorSymptoms, _ => new[] { new object?[] { "V0901" } });
+        Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => BoardReader.Read(shortRow, Synthetic.Scope, Morning, new CacheClock(Morning).Now)).Code);
+    }
+
+    [Fact(DisplayName = "AC-1402.6 읽은 지난 증상으로 목록 줄은 지난번·그 증상 글, 지난 내원에 증상이 없으면 적힌 증상이 없어요, 오늘 처방이 있으면 오늘 처방이다")]
+    public void BoardShowsLastSymptom()
+    {
+        var board = BuildBoard();
+
+        var first = Row(board, "900101");
+        Assert.Equal(("오늘", "도수치료 20분(DS20) · 체외충격파(ESWT7)"), (first.RxLabel, first.Rx));
+        var second = Row(board, "900102");
+        Assert.Equal(("지난번", "적힌 증상이 없어요"), (second.RxLabel, second.Rx));
+
+        var db = BoardFake.Quiet(new FakeDb());
+        db.Answer(ReceptionSql.PriorSymptoms, _ => new[] { new object?[] { "V0802", "오른쪽 어깨 통증 조금 줄었음" } });
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+        var map = new Dictionary<string, Lane>(StringComparer.Ordinal) { ["S1"] = Lane.Wait, ["S2"] = Lane.Done };
+        var withSymptom = BoardBuilder.Build(input, map, new string[0], new Dictionary<string, string>(StringComparer.Ordinal), new VisitKeys(), Morning);
+        Assert.Equal(("지난번", "오른쪽 어깨 통증 조금 줄었음"), (Row(withSymptom, "900102").RxLabel, Row(withSymptom, "900102").Rx));
     }
 
     [Fact(DisplayName = "AC-1402.5 읽은 생년월일(yyyyMMdd)·성별(F/M)·지난 완료 내원 수로 정보 글이 '54세 · 여 · 재진' 모양이고, 모르는 값은 빼며 지난 내원이 없으면 신환이다")]
@@ -306,7 +369,7 @@ public class BoardReaderTests
     [Fact(DisplayName = "AC-1403.5 문장이 실패하면 그 번호 그대로, 칸이 모자란 줄·숫자 아닌 내원 수는 E-BIT-READ-FAILED(일부만 주지 않음)")]
     public void ReadFailures()
     {
-        var failing = BoardFake.Quiet(new FakeDb()).Fail(ReceptionSql.PriorRx, BitErrors.ReadFailed);
+        var failing = BoardFake.Quiet(new FakeDb()).Fail(ReceptionSql.PriorSymptoms, BitErrors.ReadFailed);
         Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => BoardReader.Read(failing, Synthetic.Scope, Morning, new CacheClock(Morning).Now)).Code);
 
         var shortRow = BoardFake.Quiet(new FakeDb());
@@ -341,7 +404,7 @@ internal static class BoardFake
     public static object?[] Visit(string? id, string chart, string acceptedAt, string status, string rsu = "N") =>
         new object?[] { id, chart, acceptedAt, status, rsu };
 
-    /// <summary>오늘 접수 셋: V1001(오늘 처방 둘, 지난 내원 3번·그 처방 둘, 메모), V1002(오늘 처방 없음, 지난 내원 1번·처방 없음, 수납 09:45), V1003(첫 방문, 이름 없는 코드, 사람 줄 없음).</summary>
+    /// <summary>오늘 접수 셋: V1001(오늘 처방 둘, 지난 내원 3번·그 증상 두 줄, 메모), V1002(오늘 처방 없음, 지난 내원 1번·증상 없음, 수납 09:45), V1003(첫 방문, 이름 없는 코드, 사람 줄 없음).</summary>
     public static T Quiet<T>(T db) where T : FakeDb
     {
         db.Answer(ReceptionSql.RxNames, _ => new[]
@@ -365,10 +428,11 @@ internal static class BoardFake
             new object?[] { "V1001", 3L, "V0901", "20261029" },
             new object?[] { "V1002", 1L, "V0802", "20261001" },
         });
-        db.Answer(ReceptionSql.PriorRx, _ => new[]
+        // 가장 최근 지난 내원의 증상 줄(EmrInf S, 비트 차례). V0802(V1002의 지난 내원)는 줄이 없다
+        db.Answer(ReceptionSql.PriorSymptoms, _ => new[]
         {
-            new object?[] { "V0901", "PT03" },
-            new object?[] { "V0901", "PT01" },
+            new object?[] { "V0901", " 허리 통증 조금 줄었음 " },
+            new object?[] { "V0901", "밤에 아픔" },
         });
         // 확인 결과로 채운 칸(이름·생년월일·성별, 접수 메모, 수납 시각). V1003은 PbsInf 줄이 없다
         db.Answer(ReceptionSql.TodayPeople, _ => new[]

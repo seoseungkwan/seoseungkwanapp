@@ -331,7 +331,17 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(rows[0], '.chart')).toBe('912222')
     expect(textOf(rows[0], '.info')).toBe('54세 · 여 · 재진')
     expect(rows[0].querySelector('.memo')).toBeNull()
-    expect(textOf(rows[0], '.rx-text')).toBe('체외충격파(ESWT7) · 도수치료 20분(DS20)')
+    expect(textOf(rows[0], '.rx-text')).toBe('오른쪽 어깨 통증 조금 줄었음 밤에 아픔')
+  })
+
+  it('AC-1407.2: 지난번 줄(AC-1402.6)은 이름표 "지난번"과 도우미가 준 지난 증상 글을 그대로 그리고, 증상이 없으면 받은 "적힌 증상이 없어요"를 그린다', () => {
+    const app = appHost()
+    view.renderBoard(app, fx.mockupBoard())
+    const rows = rowsOf(app)
+    expect(textsOf(rows[3], '.rx-line > span')).toEqual(['지난번', '오른쪽 어깨 통증 조금 줄었음 밤에 아픔'])
+    expect(textsOf(rows[4], '.rx-line > span')).toEqual(['지난번', '적힌 증상이 없어요'])
+    expect(textsOf(rows[0], '.rx-line > span')).toEqual(['처방', '첫 방문이라 지난 처방이 없어요'])
+    expect(textsOf(rows[1], '.rx-line > span')).toEqual(['오늘', '엑스레이 촬영(XR2)'])
   })
 
   it('AC-1407.2: 폰 줄은 상세로 가는 링크(#/v/열쇠)이고, 태블릿 줄은 고르는 단추(aria-pressed, 고른 줄 표시, onSelect(열쇠))다', () => {

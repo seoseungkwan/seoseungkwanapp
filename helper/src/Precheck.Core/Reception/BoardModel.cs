@@ -92,7 +92,7 @@ public sealed class BoardRow
     /// <summary>"오늘"·"지난번"·"처방"(AC-1402.6).</summary>
     public string RxLabel { get; }
 
-    /// <summary>"체외충격파(ESWT7) · 도수치료 20분(DS20)" 또는 처방이 없다는 글(AC-1402.6).</summary>
+    /// <summary>"오늘"이면 오늘 처방("체외충격파(ESWT7) · 도수치료 20분(DS20)"), "지난번"이면 지난 내원의 증상 글(없으면 "적힌 증상이 없어요"), "처방"이면 첫 방문 글(AC-1402.6).</summary>
     public string Rx { get; }
 
     /// <summary>엑스레이 칸. 진료보류 줄에만 있고 다른 칸 줄은 null(AC-1402.8).</summary>

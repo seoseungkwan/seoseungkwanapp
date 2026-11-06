@@ -27,7 +27,7 @@ public class ReceptionSqlTests
         ["TodayVisits"] = ReceptionSql.TodayVisits,
         ["TodayRx"] = ReceptionSql.TodayRx,
         ["PriorVisits"] = ReceptionSql.PriorVisits,
-        ["PriorRx"] = ReceptionSql.PriorRx,
+        ["PriorSymptoms"] = ReceptionSql.PriorSymptoms,
         ["RxNames"] = ReceptionSql.RxNames,
         ["HistoryCount"] = ReceptionSql.HistoryCount,
         ["HistoryPage"] = ReceptionSql.HistoryPage,
@@ -45,7 +45,7 @@ public class ReceptionSqlTests
         ["TodayVisits"] = new[] { "VisitId", "PatientId", "AcceptedAt", "Status", "Rsu" },
         ["TodayRx"] = new[] { "VisitId", "RxCode" },
         ["PriorVisits"] = new[] { "TodayVisitId", "EarlierCount", "LastVisitId", "LastDay" },
-        ["PriorRx"] = new[] { "LastVisitId", "RxCode" },
+        ["PriorSymptoms"] = new[] { "LastVisitId", "Line" },
         ["RxNames"] = new[] { "Code", "Name", "AdpDte" },
         ["HistoryCount"] = new[] { "Count", "FirstDay" },
         ["HistoryPage"] = new[] { "VisitId", "VisitDay", "RxCode" },
@@ -64,7 +64,7 @@ public class ReceptionSqlTests
         ["TodayVisits"] = TodayParams,
         ["TodayRx"] = TodayParams,
         ["PriorVisits"] = TodayParams,
-        ["PriorRx"] = TodayParams,
+        ["PriorSymptoms"] = TodayParams,
         ["RxNames"] = new string[0],
         ["HistoryCount"] = HistoryParams,
         ["HistoryPage"] = HistoryParams.Concat(new[] { "@first", "@last" }).ToArray(),
@@ -304,10 +304,10 @@ public class ReceptionSqlTests
             Assert.DoesNotContain("OcmRsuYon<>", squashed, StringComparison.Ordinal);
         }
         Assert.Equal(1, Count(Squash(PriorVisits), DoneVisit));
-        Assert.Equal(1, Count(Squash(PriorRx), DoneVisit));
+        Assert.Equal(1, Count(Squash(PriorSymptoms), DoneVisit));
         Assert.Equal(1, Count(Squash(HistoryCount), DoneVisit));
         Assert.Equal(1, Count(Squash(HistoryPage), DoneVisit));
-        foreach (var sql in new[] { TodayRx, PriorRx, HistoryPage }) Assert.Equal(1, Count(Squash(sql), RxRow));
+        foreach (var sql in new[] { TodayRx, HistoryPage }) Assert.Equal(1, Count(Squash(sql), RxRow));
 
         // 앞선 내원 = 그 접수 시각보다 앞(같은 내원은 빠진다). 오늘 접수 시각은 원값 그대로 낸다(design.md 3절)
         Assert.Contains("c.OcmAcpDtm<T.OcmAcpDtm", Squash(PriorVisits), StringComparison.Ordinal);
@@ -445,6 +445,43 @@ public class ReceptionSqlTests
         Assert.Equal(new[] { symptom.Table, symptom.Column }.Concat(SymptomLinkColumns).OrderBy(n => n, StringComparer.Ordinal), emr);
     }
 
+    // ---- AC-1402.6·AC-1410.4 목록 줄의 지난번 증상 (PriorSymptoms, TASK-37) ---------------------------------
+
+    [Fact(DisplayName = "AC-1402.6 지난 처방 문장(PriorRx)은 없고, 목록 줄의 지난번 글은 PriorSymptoms(오늘 매개변수 @from·@to·@hospital, 결과 칸 LastVisitId·Line)가 준다")]
+    public void PriorSymptomsReplacesPriorRx()
+    {
+        Assert.Null(typeof(ReceptionSql).GetField("PriorRx"));
+        Assert.True(Sql.IsAllowed(PriorSymptoms));
+        Assert.Same(Parameters[PriorSymptoms], Sql.ParametersOf(PriorSymptoms));
+        Assert.Equal(
+            Parameters[TodayVisits].Select(p => p.Name + ":" + p.Kind + ":" + p.Size),
+            Parameters[PriorSymptoms].Select(p => p.Name + ":" + p.Kind + ":" + p.Size));
+        Assert.Equal(new[] { "LastVisitId", "Line" }, OuterColumns(PriorSymptoms));
+        Assert.DoesNotContain("dbo.OdrInf", PriorSymptoms, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-1410.4 PriorSymptoms는 PriorVisits와 같은 P 창의 가장 최근 지난 내원(P.Seq=1)마다 EmrInf(EmrOcmNum)에서 EmrShtTyp='S'이고 빈 글 아닌 EmrShtVal 줄을 EmrUpdDtm 순으로 주고, IN이라 같은 지난 내원 줄이 겹치지 않는다")]
+    public void PriorSymptomLinesFromSheetS()
+    {
+        var symptom = ReceptionMap.Columns!.Symptom!;
+        var sql = Squash(PriorSymptoms);
+        var priorCte = Squash(PriorVisits.Substring(0, PriorVisits.LastIndexOf("SELECT P.TodayVisitId", StringComparison.Ordinal)));
+        Assert.StartsWith(priorCte + " SELECT ", sql, StringComparison.Ordinal);
+        Assert.Contains(
+            "SELECT e.EmrOcmNum LastVisitId,CAST(e." + symptom.Column + " AS nvarchar(max)) Line FROM dbo." + symptom.Table
+            + " e WHERE e.EmrOcmNum IN (SELECT P.OcmNum FROM P WHERE P.Seq=1)",
+            sql, StringComparison.Ordinal);
+        // 증상 줄 조건은 상세의 VisitSymptoms와 같은 글이다
+        const string SheetS = "e.EmrShtTyp='S' AND LEN(LTRIM(CAST(e.EmrShtVal AS nvarchar(max))))>0";
+        Assert.Contains(SheetS, Squash(VisitSymptoms), StringComparison.Ordinal);
+        Assert.Contains(" AND " + SheetS, sql, StringComparison.Ordinal);
+        Assert.EndsWith("ORDER BY e.EmrOcmNum,e.EmrUpdDtm", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("FOR XML", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("STRING_AGG", sql, StringComparison.OrdinalIgnoreCase);
+        var emr = BitName.Matches(sql).Cast<Match>().Select(m => m.Value).Where(name => name.StartsWith("Emr", StringComparison.Ordinal)).Distinct().OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(new[] { symptom.Table, symptom.Column }.Concat(SymptomLinkColumns).OrderBy(n => n, StringComparer.Ordinal), emr);
+    }
+
     // ---- AC-1403.7 처방 이름표 ----------------------------------------------------------------------
 
     [Fact(DisplayName = "AC-1403.7 RxNames는 SeeMst만 읽고, 코드마다 적용일(SeeAdpDte)이 가장 늦은 이름 한 줄이다(RevenueSql과 같은 규칙), 코드 모양은 처방 문장과 같다")]
@@ -460,7 +497,7 @@ public class ReceptionSqlTests
         Assert.Empty(Parameters[RxNames]);
 
         // 이름표 열쇠(UPPER(RTRIM(코드)))와 처방 문장의 RxCode가 같은 모양이라 그대로 맞춰 볼 수 있다
-        foreach (var rx in new[] { TodayRx, PriorRx, HistoryPage }) Assert.Contains("UPPER(RTRIM(o.OdrCod)) RxCode", Squash(rx), StringComparison.Ordinal);
+        foreach (var rx in new[] { TodayRx, HistoryPage }) Assert.Contains("UPPER(RTRIM(o.OdrCod)) RxCode", Squash(rx), StringComparison.Ordinal);
     }
 
     // ---- AC-1404.6 SQL Server 2008 R2·차트번호 -------------------------------------------------------
@@ -490,7 +527,7 @@ public class ReceptionSqlTests
         Assert.Contains("c.OcmChtNum=@chart AND ", Squash(HistoryCount), StringComparison.Ordinal);
         Assert.Contains("c.OcmChtNum=@chart AND ", Squash(HistoryPage), StringComparison.Ordinal);
         Assert.Contains("JOIN dbo.OcmInf c ON c.OcmChtNum=T.OcmChtNum WHERE T.OcmChtNum<>'' AND ", Squash(PriorVisits), StringComparison.Ordinal);
-        Assert.Contains("JOIN dbo.OcmInf c ON c.OcmChtNum=T.OcmChtNum WHERE T.OcmChtNum<>'' AND ", Squash(PriorRx), StringComparison.Ordinal);
+        Assert.Contains("JOIN dbo.OcmInf c ON c.OcmChtNum=T.OcmChtNum WHERE T.OcmChtNum<>'' AND ", Squash(PriorSymptoms), StringComparison.Ordinal);
 
         const string Output = "RTRIM(T.OcmChtNum) PatientId";
         Assert.Equal(1, Count(Squash(TodayVisits), Output));

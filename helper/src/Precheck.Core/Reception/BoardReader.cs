@@ -8,7 +8,7 @@ namespace Precheck.Core.Reception;
 
 /// <summary>
 /// 오늘 접수 현황을 비트에서 한 번 읽는다(design.md 3절, REQ-1403). 등록 확인을 마친 세션(HospitalGate)에서 부른다.
-/// 이름표(그날 처음이면) → 오늘 접수 → 오늘 처방 → 지난 내원 → 지난 처방 차례로 ReceptionSql 문장만 ReadOnlyGuard를 지나 돌리고 날 줄(BoardInput)로 바꾼다.
+/// 이름표(그날 처음이면) → 오늘 접수 → 오늘 처방 → 지난 내원 → 지난 증상(증상 칸이 있을 때) 차례로 ReceptionSql 문장만 ReadOnlyGuard를 지나 돌리고 날 줄(BoardInput)로 바꾼다.
 /// 읽기 한 번의 시간 제한은 8초다(AC-1403.4): 문장마다 남은 시간을 시간 제한으로 주고, 다 쓰면 다음 문장을 돌리지 않고 E-BIT-READ-FAILED.
 /// 하나라도 실패하면 예외가 올라가 일부만 주는 일이 없다(AC-1403.5). 그 뒤 확인 결과로 채운 칸(이름·생년월일·성별, 접수 메모, 수납 시각)을 읽는다(TASK-29).
 /// </summary>
@@ -30,7 +30,7 @@ public static class BoardReader
 
     /// <summary>
     /// columns(확인 결과로 채운 칸, 보통 ReceptionMap.Columns)에 칸이 있을 때만 그 칸 문장을 돌린다: 이름·생년월일·성별 → TodayPeople,
-    /// 접수 메모 → TodayMemos, 수납 시각 → TodayPaid. 찾지 못한 칸(null)은 돌리지 않고 그 값만 비운다(AC-1402.7).
+    /// 접수 메모 → TodayMemos, 수납 시각 → TodayPaid, 증상 → PriorSymptoms(목록 줄의 지난번 증상, AC-1402.6). 찾지 못한 칸(null)은 돌리지 않고 그 값만 비운다(AC-1402.7).
     /// </summary>
     public static BoardInput Read(
         IBitDb db, string hospitalScope, DateTime now, Func<DateTime> clock, IReadOnlyDictionary<string, string>? names, ColumnPlan? columns)
@@ -50,7 +50,7 @@ public static class BoardReader
         var visits = Visits(Query(db, ReceptionSql.TodayVisits, today, clock, deadline));
         var todayRx = CodesBy(Query(db, ReceptionSql.TodayRx, today, clock, deadline));
         var prior = Prior(Query(db, ReceptionSql.PriorVisits, today, clock, deadline));
-        var priorRx = CodesBy(Query(db, ReceptionSql.PriorRx, today, clock, deadline));
+        var priorSymptoms = columns?.Symptom != null ? Symptoms(Query(db, ReceptionSql.PriorSymptoms, today, clock, deadline)) : NoSymptoms;
         var people = columns?.Name != null || columns?.BirthDate != null || columns?.Sex != null
             ? ByVisit(Query(db, ReceptionSql.TodayPeople, today, clock, deadline), 4)
             : NoRows;
@@ -61,8 +61,8 @@ public static class BoardReader
         {
             todayRx.TryGetValue(visit.Id, out var codes);
             var last = prior.TryGetValue(visit.Id, out var found) ? found : null;
-            List<string?>? lastCodes = null;
-            if (last?.VisitId != null) priorRx.TryGetValue(last.VisitId, out lastCodes);
+            string? lastSymptom = null;
+            if (last?.VisitId != null) priorSymptoms.TryGetValue(last.VisitId, out lastSymptom);
             var person = people.TryGetValue(visit.Id, out var p) ? p : null;
             return new VisitRow(
                 visit.Id,
@@ -74,7 +74,7 @@ public static class BoardReader
                 earlierCount: last?.Count ?? 0,
                 lastVisitId: last?.VisitId,
                 lastDay: last?.Day,
-                lastRx: RxItem.Of(lastCodes ?? Enumerable.Empty<string?>(), table),
+                lastSymptom: lastSymptom,
                 name: columns?.Name != null ? Id(person?[1]) : null,
                 birthDate: columns?.BirthDate != null ? Id(person?[2]) : null,
                 sex: columns?.Sex != null ? Id(person?[3]) : null,
@@ -182,6 +182,28 @@ public static class BoardReader
     }
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<object?>> NoRows = new Dictionary<string, IReadOnlyList<object?>>();
+
+    private static readonly IReadOnlyDictionary<string, string> NoSymptoms = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 지난 증상 줄(LastVisitId, Line) → 지난 내원번호 → 증상 글(AC-1402.6, HistoryReader와 같은 규칙): 비트가 준 차례대로 줄마다 앞뒤 공백을 빼고
+    /// 공백 하나로 잇는다. 빈 글·공백만 있는 줄과 내원번호가 빈 줄은 버리고, 칸이 모자란 줄은 읽기 실패로 본다.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> Symptoms(IReadOnlyList<IReadOnlyList<object?>> rows)
+    {
+        var parts = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var row in Cells(rows, 2))
+        {
+            var id = Id(row[0]);
+            var line = Id(row[1]);
+            if (id == null || line == null) continue;
+            if (!parts.TryGetValue(id, out var list)) parts.Add(id, list = new List<string>());
+            list.Add(line);
+        }
+        return parts.ToDictionary(pair => pair.Key, pair => string.Join(SymptomGlue, pair.Value), StringComparer.Ordinal);
+    }
+
+    private const string SymptomGlue = " ";
 
     /// <summary>(내원번호, 값…) 줄 → 내원번호 → 그 줄. 내원번호가 빈 줄은 빼고 같은 내원은 처음 줄만.</summary>
     private static IReadOnlyDictionary<string, IReadOnlyList<object?>> ByVisit(IReadOnlyList<IReadOnlyList<object?>> rows, int cells)

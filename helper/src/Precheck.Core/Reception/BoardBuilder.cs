@@ -226,17 +226,14 @@ public static class BoardBuilder
         }
     }
 
-    // ---- 처방 글 (AC-1402.6) --------------------------------------------------------------------
+    // ---- 처방·지난번 증상 글 (AC-1402.6) ---------------------------------------------------------
 
+    /// <summary>오늘 처방이 있으면 "오늘"과 오늘 처방, 없고 지난 내원이 있으면 "지난번"과 그 내원의 증상 글(처방이 아님, TASK-37), 둘 다 없으면 첫 방문 글.</summary>
     private static (string Label, string Text) RxOf(VisitRow visit, bool hasPrior, IReadOnlyDictionary<string, string> names)
     {
         var today = RxText(visit.TodayRx, names);
         if (today.Length > 0) return ("오늘", today);
-        if (hasPrior)
-        {
-            var last = RxText(visit.LastRx, names);
-            return ("지난번", last.Length > 0 ? last : "지난번 처방이 없어요");
-        }
+        if (hasPrior) return ("지난번", Clean(visit.LastSymptom) ?? "적힌 증상이 없어요");
         return ("처방", "첫 방문이라 지난 처방이 없어요");
     }
 

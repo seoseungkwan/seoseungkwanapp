@@ -743,7 +743,7 @@ internal static class RealShapeBit
             .Where(p => p.Earlier.Length > 0)
             .Select(p => new object?[] { p.Today.Id, (long)p.Earlier.Length, p.Earlier[0].Id, p.Earlier[0].Accepted.Substring(0, 8) })
             .ToArray());
-        db.Answer(ReceptionSql.PriorRx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.PriorSymptoms, _ => new object?[0][]);
         db.Answer(ReceptionSql.HistoryCount, args =>
         {
             var earlier = EarlierDone(args["@chart"], args["@before"]).ToArray();
