@@ -76,8 +76,9 @@ public static class ReceptionMap
     public static IReadOnlyCollection<string> HiddenRsu { get; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
-    /// 이름·생년월일·성별·접수 메모·수납 시각·증상을 읽는 칸(확인 보고서 1·2회차, TASK-29). ReceptionSql의 TodayPeople·TodayMemos·TodayPaid가 이 이름을 읽는다.
-    /// 생년월일은 yyyyMMdd, 성별은 F/M이라 주민번호 칸은 읽지 않는다. 수납 시각은 OrcInf.OrcOcmNum으로 내원에 잇는다. 증상은 아직 없다(TASK-30).
+    /// 이름·생년월일·성별·접수 메모·수납 시각·증상을 읽는 칸(확인 보고서 1·2·3회차, TASK-29·30). ReceptionSql의 TodayPeople·TodayMemos·TodayPaid·VisitSymptoms가 이 이름을 읽는다.
+    /// 생년월일은 yyyyMMdd, 성별은 F/M이라 주민번호 칸은 읽지 않는다. 수납 시각은 OrcInf.OrcOcmNum으로 내원에 잇는다.
+    /// 증상은 EmrInf.EmrShtVal의 기록지 종류 S 줄(3회차: 내원번호 칸 EmrOcmNum, 줄 차례는 EmrUpdDtm)을 내원마다 공백 하나로 이은 글이다.
     /// </summary>
     public static ColumnPlan? Columns { get; } = new ColumnPlan(
         name: new ColumnRef("PbsInf", "PbsPatNam"),
@@ -85,7 +86,7 @@ public static class ReceptionMap
         sex: new ColumnRef("PbsInf", "PbsSexTyp"),
         memo: new ColumnRef("OcmInf", "OcmRefCmt"),
         paidAt: new ColumnRef("OrcInf", "OrcUpdDtm"),
-        symptom: null);
+        symptom: new ColumnRef("EmrInf", "EmrShtVal"));
 
     /// <summary>
     /// 접수 줄 하나가 가는 칸(AC-1402.1). 숨기는 OcmRsuYon 값이면, 또 표에 없거나 숨김으로 정한 상태 코드면 Hidden(어느 칸에도 나오지 않음).

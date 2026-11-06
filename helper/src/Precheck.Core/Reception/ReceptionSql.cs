@@ -7,7 +7,7 @@ namespace Precheck.Core.Reception;
 /// <summary>
 /// 접수 현황(spec reception-phone design.md 3절)이 비트 DB에 돌리는 문장 전부(AC-1403.1·AC-1403.7·AC-1404.6). 모두 매개변수를 받는 SELECT 하나다.
 /// 표·칸은 이 저장소의 다른 허용 문장(Sql·StatsSql·RevenueSql)이 이미 읽는 것과, 의원 PC 확인 결과로 채운 칸(ReceptionMap.Columns:
-/// 이름·생년월일·성별·접수 메모·수납 시각, TodayPeople·TodayMemos·TodayPaid, REQ-1410)뿐이다. 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
+/// 이름·생년월일·성별·접수 메모·수납 시각·증상, TodayPeople·TodayMemos·TodayPaid·VisitSymptoms, REQ-1410)뿐이다. 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
 /// 지난 내원의 완료 조건은 Sql.HistoryVisitSql, 처방 줄 조건은 Sql.HistoryCodeSql과 같다. SQL Server 2008 R2에서 돌도록 OFFSET·FETCH 없이 ROW_NUMBER()로 자르고,
 /// 차트번호는 함수 없이 견준다(색인을 쓰게, spec bit-read-speed와 같은 까닭). Sql.IsAllowed·Sql.ParametersOf가 Parameters 표를 묻는다.
 /// </summary>
@@ -107,6 +107,22 @@ WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O'
 SELECT r.OrcOcmNum VisitId,MAX(r.OrcUpdDtm) PaidAt FROM dbo.OrcInf r JOIN T ON T.OcmNum=r.OrcOcmNum
 GROUP BY r.OrcOcmNum";
 
+    /// <summary>
+    /// 상세 한 쪽의 증상 줄(AC-1410.4, 확인 보고서 3회차): HistoryPage와 같은 H 창의 최근 순 @first~@last번째 지난 내원과 그 접수
+    /// (같은 차트번호·OcmAcpDtm=@before 원값·외래·병원 범위)마다, 내원번호 칸 EmrOcmNum으로 이은 EmrInf에서 EmrShtTyp='S'이고 빈 글 아닌
+    /// EmrShtVal 줄. 내원마다 EmrUpdDtm 순(같으면 DB가 주는 차례). SQL Server 2008 R2라 잇기는 도우미(HistoryReader)가 공백 하나로 한다.
+    /// </summary>
+    public const string VisitSymptoms = HistoryCte + @", V AS (
+ SELECT H.OcmNum FROM H WHERE H.Seq BETWEEN @first AND @last
+ UNION ALL
+ SELECT c.OcmNum FROM dbo.OcmInf c
+ WHERE c.OcmChtNum=@chart AND c.OcmAcpDtm=@before AND c.OcmPatTyp='O'
+   AND " + InHospital + @"
+)
+SELECT V.OcmNum VisitId,CAST(e.EmrShtVal AS nvarchar(max)) Line FROM V JOIN dbo.EmrInf e ON e.EmrOcmNum=V.OcmNum
+WHERE e.EmrShtTyp='S' AND LEN(LTRIM(CAST(e.EmrShtVal AS nvarchar(max))))>0
+ORDER BY V.OcmNum,e.EmrUpdDtm";
+
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
@@ -130,5 +146,6 @@ GROUP BY r.OrcOcmNum";
         [TodayPeople] = Today,
         [TodayMemos] = Today,
         [TodayPaid] = Today,
+        [VisitSymptoms] = new[] { Chart, Before, Hospital, First, Last },
     };
 }

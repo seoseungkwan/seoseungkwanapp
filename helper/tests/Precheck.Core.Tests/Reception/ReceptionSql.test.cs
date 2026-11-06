@@ -17,6 +17,7 @@ namespace Precheck.Core.Tests.Reception;
 /// ReadOnlyGuard를 지난다. 내원은 등록 병원 범위 안에서만 읽고, 표·칸은 이 저장소의 다른 허용 문장이 이미 읽는 것뿐이다.
 /// AC-1403.7 처방 이름표는 SeeMst에서 코드마다 적용일이 가장 늦은 이름(RevenueSql과 같은 규칙)이다.
 /// AC-1404.6 SQL Server 2008 R2에서 도는 글(OFFSET·FETCH 없이 ROW_NUMBER())이고, 차트번호 칸은 함수 없이 견준다.
+/// AC-1410.4 증상 문장(VisitSymptoms)은 그 쪽 지난 내원과 그 접수의 EmrInf(내원번호 칸 EmrOcmNum) 중 EmrShtTyp='S'이고 빈 글 아닌 EmrShtVal 줄을 EmrUpdDtm 순으로 준다.
 /// </summary>
 public class ReceptionSqlTests
 {
@@ -33,6 +34,7 @@ public class ReceptionSqlTests
         ["TodayPeople"] = ReceptionSql.TodayPeople,
         ["TodayMemos"] = ReceptionSql.TodayMemos,
         ["TodayPaid"] = ReceptionSql.TodayPaid,
+        ["VisitSymptoms"] = ReceptionSql.VisitSymptoms,
     };
 
     // ---- 설계 표(design.md 3절) ----------------------------------------------------------------------
@@ -50,6 +52,7 @@ public class ReceptionSqlTests
         ["TodayPeople"] = new[] { "VisitId", "Name", "BirthDate", "Sex" },
         ["TodayMemos"] = new[] { "VisitId", "Memo" },
         ["TodayPaid"] = new[] { "VisitId", "PaidAt" },
+        ["VisitSymptoms"] = new[] { "VisitId", "Line" },
     };
 
     private static readonly string[] TodayParams = { "@from", "@to", "@hospital" };
@@ -68,6 +71,7 @@ public class ReceptionSqlTests
         ["TodayPeople"] = TodayParams,
         ["TodayMemos"] = TodayParams,
         ["TodayPaid"] = TodayParams,
+        ["VisitSymptoms"] = HistoryParams.Concat(new[] { "@first", "@last" }).ToArray(),
     };
 
     private static readonly Dictionary<string, string> Kinds = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -164,12 +168,12 @@ public class ReceptionSqlTests
 
     // ---- AC-1403.1 읽기 문장 하나·허용 목록 --------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 10개(확인 칸 문장 셋 포함)이고 매개변수 표와 같으며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
+    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 11개(확인 칸 문장 넷 포함)이고 매개변수 표와 같으며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|OPENDATASOURCE|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR|DECLARE|SET)\b|xp_|sp_", RegexOptions.IgnoreCase);
         var all = All();
-        Assert.Equal(10, all.Values.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(11, all.Values.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(all.Values.OrderBy(sql => sql, StringComparer.Ordinal), Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
         foreach (var sql in all.Values)
         {
@@ -321,6 +325,7 @@ public class ReceptionSqlTests
         var filled = FilledColumns().SelectMany(c => new[] { c.Table, c.Column }).ToArray();
         Assert.NotEmpty(filled);
         existing.UnionWith(filled);
+        existing.UnionWith(SymptomLinkColumns);
 
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var sql in All().Values)
@@ -336,6 +341,12 @@ public class ReceptionSqlTests
             .Except(new[] { "OcmInf", "OdrInf", "DepMst", "SeeMst" }.Concat(FilledColumns().Select(c => c.Table))));
     }
 
+    /// <summary>
+    /// 증상 줄(Columns.Symptom = EmrInf.EmrShtVal)을 읽을 때 함께 쓰는 EmrInf 칸(docs/reception/check-result.md 3회차 '증상 칸 이어 붙이기'):
+    /// 내원번호 칸 EmrOcmNum, 기록지 종류 칸 EmrShtTyp, 줄 순서 칸 EmrUpdDtm. 이 셋 말고 다른 칸은 읽지 않는다.
+    /// </summary>
+    private static readonly string[] SymptomLinkColumns = { "EmrOcmNum", "EmrShtTyp", "EmrUpdDtm" };
+
     /// <summary>확인 결과로 채운 칸(ReceptionMap.Columns에서 찾은 것만).</summary>
     private static ColumnRef[] FilledColumns()
     {
@@ -346,7 +357,7 @@ public class ReceptionSqlTests
 
     // ---- AC-1410.3 확인 결과로 채운 칸 문장 -----------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1410.3 채운 칸(ReceptionMap.Columns)은 이름 PbsInf.PbsPatNam·생년월일 PbsBirDte·성별 PbsSexTyp·접수 메모 OcmInf.OcmRefCmt·수납 시각 OrcInf.OrcUpdDtm이고 증상은 아직 없다")]
+    [Fact(DisplayName = "AC-1410.3 채운 칸(ReceptionMap.Columns)은 이름 PbsInf.PbsPatNam·생년월일 PbsBirDte·성별 PbsSexTyp·접수 메모 OcmInf.OcmRefCmt·수납 시각 OrcInf.OrcUpdDtm·증상 EmrInf.EmrShtVal이다")]
     public void FilledColumnsMatchReport()
     {
         var plan = ReceptionMap.Columns;
@@ -357,7 +368,7 @@ public class ReceptionSqlTests
         Assert.Equal("PbsInf.PbsSexTyp", Of(plan.Sex));
         Assert.Equal("OcmInf.OcmRefCmt", Of(plan.Memo));
         Assert.Equal("OrcInf.OrcUpdDtm", Of(plan.PaidAt));
-        Assert.Null(plan.Symptom);
+        Assert.Equal("EmrInf.EmrShtVal", Of(plan.Symptom));
     }
 
     [Fact(DisplayName = "AC-1410.3 칸 문장(TodayPeople·TodayMemos·TodayPaid)은 허용 목록의 상수이고 채운 칸 이름 그대로 읽는다(사람은 차트번호로, 수납은 내원번호로 잇는다)")]
@@ -388,6 +399,50 @@ public class ReceptionSqlTests
     public void NoResidentNumber()
     {
         foreach (var sql in All().Values) Assert.DoesNotContain("ResNum", sql, StringComparison.Ordinal);
+    }
+
+    // ---- AC-1410.4 증상 문장 ----------------------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-1410.4 VisitSymptoms는 허용 목록의 상수이고 HistoryPage와 같은 매개변수(@chart·@before·@hospital·@first·@last)를 받으며, 결과 칸은 VisitId·Line이다")]
+    public void SymptomStatementIsAllowed()
+    {
+        Assert.True(Sql.IsAllowed(VisitSymptoms));
+        Assert.Same(Parameters[VisitSymptoms], Sql.ParametersOf(VisitSymptoms));
+        Assert.Equal(
+            Parameters[HistoryPage].Select(p => p.Name + ":" + p.Kind + ":" + p.Size),
+            Parameters[VisitSymptoms].Select(p => p.Name + ":" + p.Kind + ":" + p.Size));
+        Assert.Equal(new[] { "VisitId", "Line" }, OuterColumns(VisitSymptoms));
+    }
+
+    [Fact(DisplayName = "AC-1410.4 증상 내원은 HistoryPage와 같은 H 창의 최근 순 @first~@last번째 지난 내원과, 그 접수(같은 차트번호·OcmAcpDtm=@before 원값·외래·병원 범위)다")]
+    public void SymptomVisitsArePageAndToday()
+    {
+        var sql = Squash(VisitSymptoms);
+        var historyCte = Squash(HistoryPage.Substring(0, HistoryPage.IndexOf(", R AS (", StringComparison.Ordinal)));
+        Assert.StartsWith(historyCte + ", V AS ( SELECT H.OcmNum FROM H WHERE H.Seq BETWEEN @first AND @last UNION ALL ", sql, StringComparison.Ordinal);
+        Assert.Equal(1, Count(sql, DoneVisit));
+        Assert.Contains(
+            "UNION ALL SELECT c.OcmNum FROM dbo.OcmInf c WHERE c.OcmChtNum=@chart AND c.OcmAcpDtm=@before AND c.OcmPatTyp='O' AND " + InHospital + " )",
+            sql, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-1410.4 증상 줄은 그 내원(V.OcmNum)에 내원번호 칸 EmrOcmNum으로 이은 EmrInf에서 EmrShtTyp='S'이고 빈 글 아닌 EmrShtVal 줄만, 내원마다 EmrUpdDtm 순이다(잇기는 도우미가 한다)")]
+    public void SymptomLinesFromSheetS()
+    {
+        var plan = ReceptionMap.Columns!;
+        var symptom = plan.Symptom!;
+        var sql = Squash(VisitSymptoms);
+        Assert.Contains(
+            "SELECT V.OcmNum VisitId,CAST(e." + symptom.Column + " AS nvarchar(max)) Line FROM V JOIN dbo." + symptom.Table + " e ON e.EmrOcmNum=V.OcmNum",
+            sql, StringComparison.Ordinal);
+        Assert.Contains("WHERE e.EmrShtTyp='S' AND LEN(LTRIM(CAST(e." + symptom.Column + " AS nvarchar(max))))>0", sql, StringComparison.Ordinal);
+        Assert.EndsWith("ORDER BY V.OcmNum,e.EmrUpdDtm", sql, StringComparison.Ordinal);
+        // SQL Server 2008 R2: 줄 잇기(STRING_AGG·FOR XML PATH)는 문장에 없다
+        Assert.DoesNotContain("FOR XML", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("STRING_AGG", sql, StringComparison.OrdinalIgnoreCase);
+        // 표에서 읽는 칸은 증상 칸과 확인 보고서의 세 칸뿐이다
+        var emr = BitName.Matches(sql).Cast<Match>().Select(m => m.Value).Where(name => name.StartsWith("Emr", StringComparison.Ordinal)).Distinct().OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(new[] { symptom.Table, symptom.Column }.Concat(SymptomLinkColumns).OrderBy(n => n, StringComparer.Ordinal), emr);
     }
 
     // ---- AC-1403.7 처방 이름표 ----------------------------------------------------------------------

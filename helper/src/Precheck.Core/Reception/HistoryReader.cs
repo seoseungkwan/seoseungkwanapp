@@ -29,7 +29,7 @@ public sealed class HistoryVisit
     /// <summary>그 내원의 처방(코드 순, 그날 이름표의 이름).</summary>
     public IReadOnlyList<RxItem> Rx { get; }
 
-    /// <summary>증상 글 원값. 증상 원천(Phase 5 TASK-30)이 생기기 전에는 null.</summary>
+    /// <summary>증상 글(그 내원의 S 줄을 공백 하나로 이은 것). 줄이 없거나 증상 칸이 없으면 null.</summary>
     public string? Symptom { get; }
 }
 
@@ -63,7 +63,7 @@ public sealed class HistoryInput
     /// <summary>이번 쪽의 지난 내원(최근 순).</summary>
     public IReadOnlyList<HistoryVisit> Visits { get; }
 
-    /// <summary>오늘 접수의 증상 글 원값. 증상 원천이 생기기 전에는 null.</summary>
+    /// <summary>오늘 접수의 증상 글(S 줄을 공백 하나로 이은 것). 줄이 없거나 증상 칸이 없으면 null.</summary>
     public string? TodaySymptom { get; }
 }
 
@@ -98,7 +98,7 @@ public sealed class HistoryResult
 /// <summary>
 /// 상세 읽기(design.md 5절, REQ-1404): 줄을 누르거나 [더 보기]를 누를 때만 그 환자 한 명의 지난 완료 내원을 비트에서 읽는다. 결과는 서버에 쌓지 않는다.
 /// 열쇠(VisitKeys)·시작 위치가 틀리면 비트도 접수 현황도 읽지 않고 환자 자료 없음이다(AC-1404.5).
-/// 읽기는 등록 확인(HospitalGate)을 지난 세션에서 ReceptionSql.HistoryCount → HistoryPage만 ReadOnlyGuard를 지나 돌린다.
+/// 읽기는 등록 확인(HospitalGate)을 지난 세션에서 ReceptionSql.HistoryCount → HistoryPage → VisitSymptoms만 ReadOnlyGuard를 지나 돌린다.
 /// 읽기 한 번의 시간 제한은 8초이고(문장마다 남은 시간), 하나라도 실패하면 일부만 주지 않는다.
 /// </summary>
 public static class HistoryReader
@@ -109,6 +109,9 @@ public static class HistoryReader
     private const int MaxFromDigits = 10;
 
     private static readonly IReadOnlyDictionary<string, string> NoSymptoms = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>증상 줄 사이에 넣는 글(공백 하나, AC-1410.4).</summary>
+    private const string SymptomGlue = " ";
 
     /// <summary>
     /// `GET /api/visit/{key}/history?from={from}` 한 번(서버가 부르는 곳). 던지지 않는다.
@@ -146,12 +149,18 @@ public static class HistoryReader
         }
     }
 
+    /// <summary>그날 접수(visit) 환자의 지난 완료 내원 한 쪽을 확인 결과로 채운 칸(ReceptionMap.Columns)으로 읽는다.</summary>
+    public static HistoryInput Read(IBitDb db, string hospitalScope, BoardInput board, VisitRow visit, int from, Func<DateTime> clock) =>
+        Read(db, hospitalScope, board, visit, from, clock, ReceptionMap.Columns);
+
     /// <summary>
     /// 그날 접수(visit) 환자의 지난 완료 내원 한 쪽을 읽는다(AC-1404.1). 등록 확인을 마친 세션(db)과 등록 범위(hospitalScope)로 부른다.
     /// 수·첫날(HistoryCount)을 읽고, from이 그 수보다 작을 때만 최근 순 from+1 ~ from+HistoryChunk.SizeAt(from)번째(HistoryPage)를 읽는다.
+    /// columns(보통 ReceptionMap.Columns)에 증상 칸이 있으면 같은 매개변수로 VisitSymptoms를 돌려 이 쪽 내원과 오늘 접수의 증상 글을 붙인다(AC-1410.4).
     /// 처방 이름은 그날 이름표(board.RxNames)로 붙인다. 차트번호나 접수 시각이 비면 다른 환자를 읽지 않게 아무 문장도 돌리지 않는다.
     /// </summary>
-    public static HistoryInput Read(IBitDb db, string hospitalScope, BoardInput board, VisitRow visit, int from, Func<DateTime> clock)
+    public static HistoryInput Read(
+        IBitDb db, string hospitalScope, BoardInput board, VisitRow visit, int from, Func<DateTime> clock, ColumnPlan? columns)
     {
         if (db == null) throw new ArgumentNullException(nameof(db));
         if (board == null) throw new ArgumentNullException(nameof(board));
@@ -164,6 +173,7 @@ public static class HistoryReader
         long count = 0;
         string? firstDay = null;
         var lines = new List<PageLine>();
+        var symptoms = NoSymptoms;
         if (chart.Length > 0 && visit.AcceptedAt.Trim().Length > 0)
         {
             var args = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -173,19 +183,20 @@ public static class HistoryReader
                 ["@hospital"] = hospitalScope,
             };
             (count, firstDay) = Count(Query(db, ReceptionSql.HistoryCount, args, clock, deadline));
-            if (from < count)
+            var size = HistoryChunk.SizeAt(from);
+            var page = new Dictionary<string, object?>(args, StringComparer.Ordinal)
             {
-                var size = HistoryChunk.SizeAt(from);
-                var page = new Dictionary<string, object?>(args, StringComparer.Ordinal)
-                {
-                    ["@first"] = from + 1,
-                    ["@last"] = (int)Math.Min((long)from + size, int.MaxValue),
-                };
-                lines = Page(Query(db, ReceptionSql.HistoryPage, page, clock, deadline), size);
+                ["@first"] = (int)Math.Min((long)from + 1, int.MaxValue),
+                ["@last"] = (int)Math.Min((long)from + size, int.MaxValue),
+            };
+            if (from < count) lines = Page(Query(db, ReceptionSql.HistoryPage, page, clock, deadline), size);
+            if (columns?.Symptom != null)
+            {
+                var wanted = lines.Select(line => line.VisitId).Concat(new[] { visit.VisitId }).ToArray();
+                symptoms = Symptoms(Query(db, ReceptionSql.VisitSymptoms, page, clock, deadline), wanted);
             }
         }
 
-        var symptoms = Symptoms(lines.Select(line => line.VisitId).Concat(new[] { visit.VisitId }).ToArray());
         var visits = lines
             .Select(line => new HistoryVisit(line.VisitId, line.Day, RxItem.Of(line.Codes, board.RxNames), SymptomOf(symptoms, line.VisitId)))
             .ToArray();
@@ -203,13 +214,26 @@ public static class HistoryReader
     }
 
     /// <summary>
-    /// 증상 원천 자리(design.md '증상 원천', AC-1410.4): 내원번호 → 증상 글. Phase 5 TASK-30이 확인 결과에 화면 83과 똑같은 칸이 있을 때만
-    /// VisitSymptoms 상수를 더해 여기서 같은 세션·같은 시간 제한 안에 visitIds(이 쪽 내원 + 오늘 접수)로 읽는다. 그전에는 아무 문장도 돌리지 않고 비운다(증상 칸 없음).
+    /// 증상 줄(VisitId, Line) → 내원번호 → 증상 글(design.md '증상 원천', AC-1410.4). visitIds(이 쪽 내원 + 오늘 접수)의 줄만, 비트가 준 차례대로
+    /// 줄마다 앞뒤 공백을 빼고 공백 하나로 잇는다. 빈 글·공백만 있는 줄과 내원번호가 빈 줄은 버리고, 칸이 모자란 줄은 읽기 실패로 본다.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> Symptoms(IReadOnlyCollection<string> visitIds)
+    private static IReadOnlyDictionary<string, string> Symptoms(IReadOnlyList<IReadOnlyList<object?>> rows, IReadOnlyCollection<string> visitIds)
     {
-        if (visitIds == null) throw new ArgumentNullException(nameof(visitIds));
-        return NoSymptoms;
+        var wanted = new HashSet<string>(visitIds, StringComparer.Ordinal);
+        var parts = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var row in Cells(rows, 2))
+        {
+            var id = Id(row[0]);
+            var line = Text(row[1])?.Trim();
+            if (id == null || !wanted.Contains(id) || string.IsNullOrEmpty(line)) continue;
+            if (!parts.TryGetValue(id, out var list))
+            {
+                list = new List<string>();
+                parts.Add(id, list);
+            }
+            list.Add(line!);
+        }
+        return parts.ToDictionary(pair => pair.Key, pair => string.Join(SymptomGlue, pair.Value), StringComparer.Ordinal);
     }
 
     private static string? SymptomOf(IReadOnlyDictionary<string, string> symptoms, string visitId) =>

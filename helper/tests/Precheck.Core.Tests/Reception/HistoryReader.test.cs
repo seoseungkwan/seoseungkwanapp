@@ -15,7 +15,8 @@ namespace Precheck.Core.Tests.Reception.Detail;
 /// <summary>
 /// 상세 읽기(HistoryReader, design.md 5절, REQ-1404). GET /api/visit/{k}/history?from=N 한 번 = 그 환자 한 명만 그때 읽기.
 /// AC-1404.1 그 접수보다 앞선 완료 내원을 최근 순으로 처음 5번, 그 뒤 20번씩(HistoryCount → HistoryPage, @first·@last는 1부터 둘 다 포함).
-/// AC-1404.2·AC-1404.4 증상 원천(VisitSymptoms, Phase 5 TASK-30)이 아직 없어 증상 글은 비어 있다.
+/// AC-1404.2·AC-1404.4·AC-1410.4 증상 글은 VisitSymptoms(HistoryPage와 같은 매개변수, 같은 시간 제한)가 준 그 내원의 S 줄을
+/// 비트가 준 차례대로 앞뒤 공백을 빼고 공백 하나로 이은 것이다(지난 내원마다 sym, 오늘 접수는 todaySym). 줄이 없으면 ""(칸 없음).
 /// AC-1404.5 그날 열쇠표에 없는 열쇠·모양이 틀린 열쇠·음수나 숫자 아닌 시작 위치는 비트를 읽지 않고 환자 자료 없음(404).
 /// 가짜 DB·가짜 자료만 쓴다(차트번호 9로 시작하는 6자리, 내원번호 V+숫자, 처방 코드는 시안의 것).
 /// </summary>
@@ -98,7 +99,7 @@ public class HistoryReaderTests
 
         var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, clock.Now);
 
-        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, db.Sqls);
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage, ReceptionSql.VisitSymptoms }, db.Sqls);
         Assert.Equal(
             new Dictionary<string, object?> { ["@chart"] = "900101", ["@before"] = "20261105091230", ["@hospital"] = Synthetic.Scope },
             db.Calls[0].Args);
@@ -157,7 +158,7 @@ public class HistoryReaderTests
         {
             var db = DetailFake.Answer(new FakeDb());
             var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), from, new CacheClock(Morning).Now);
-            Assert.Equal(new[] { ReceptionSql.HistoryCount }, db.Sqls);
+            Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.VisitSymptoms }, db.Sqls);
             Assert.Empty(Dates(history));
             Assert.Null(Next(history));
             Assert.Equal(0, history.GetProperty("more").GetInt64());
@@ -167,6 +168,7 @@ public class HistoryReaderTests
         var huge = new FakeDb();
         huge.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { 3_000_000_000L, "20000101" } });
         huge.Answer(ReceptionSql.HistoryPage, _ => new object?[0][]);
+        huge.Answer(ReceptionSql.VisitSymptoms, _ => new object?[0][]);
         DetailApi.Read(huge, DetailFake.Board(), DetailFake.Today(), int.MaxValue - 3, new CacheClock(Morning).Now);
         Assert.Equal(int.MaxValue - 2, huge.Calls[1].Args["@first"]);
         Assert.Equal(int.MaxValue, huge.Calls[1].Args["@last"]);
@@ -188,6 +190,7 @@ public class HistoryReaderTests
             new object?[] { "V0205", "20261001", "PT01" },
             new object?[] { "V0204", "20260924", "PT01" },
         });
+        db.Answer(ReceptionSql.VisitSymptoms, _ => new object?[0][]);
 
         var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now);
 
@@ -226,9 +229,15 @@ public class HistoryReaderTests
             clock.Advance(TimeSpan.FromSeconds(3));
             return new[] { new object?[] { 36L, "20250626" } };
         });
+        db.Answer(ReceptionSql.HistoryPage, args =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(2));
+            return DetailFake.Page(args, DetailFake.Earlier);
+        });
         DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, clock.Now);
         Assert.Equal(TimeSpan.FromSeconds(8), db.Calls[0].Timeout);
         Assert.Equal(TimeSpan.FromSeconds(5), db.Calls[1].Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(3), db.Calls[2].Timeout);
 
         var spent = DetailFake.Answer(new FakeDb());
         spent.Answer(ReceptionSql.HistoryCount, _ =>
@@ -358,25 +367,120 @@ public class HistoryReaderTests
         }
     }
 
-    // ---- AC-1404.2·AC-1404.4 증상 원천은 Phase 5 ------------------------------------------------------------
+    // ---- AC-1404.2·AC-1404.4·AC-1410.4 증상 (VisitSymptoms) ------------------------------------------------
 
-    [Fact(DisplayName = "AC-1404.2 증상 원천(VisitSymptoms)이 아직 없어 증상 문장을 돌리지 않고 내원마다 sym은 \"\"(칸 없음)")]
-    public void NoSymptomSourceYet()
+    private static string[] Syms(JsonElement history) =>
+        history.GetProperty("visits").EnumerateArray().Select(visit => visit.GetProperty("sym").GetString()!).ToArray();
+
+    [Fact(DisplayName = "AC-1410.4 증상 문장 VisitSymptoms는 쪽 문장 뒤에 한 번, HistoryPage와 같은 매개변수(@chart·@before·@hospital·@first·@last)로 돈다")]
+    public void SymptomsReadOnceWithPageArgs()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 5, new CacheClock(Morning).Now);
+
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage, ReceptionSql.VisitSymptoms }, db.Sqls);
+        Assert.Equal(db.Calls[1].Args, db.Calls[2].Args);
+        Assert.Equal(6, db.Calls[2].Args["@first"]);
+        Assert.Equal(25, db.Calls[2].Args["@last"]);
+    }
+
+    [Fact(DisplayName = "AC-1404.2 지난 내원마다 증상 글은 그 내원의 S 줄을 비트가 준 차례(EmrUpdDtm 순)대로 앞뒤 공백을 빼고 공백 하나로 이은 것이고, 줄이 없는 내원은 \"\"(칸 없음)")]
+    public void PastVisitSymptoms()
     {
         var db = DetailFake.Answer(new FakeDb());
         var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now);
 
-        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, db.Sqls);
-        Assert.All(history.GetProperty("visits").EnumerateArray(), visit => Assert.Equal("", visit.GetProperty("sym").GetString()));
+        Assert.Equal(new[] { "오른쪽 어깨 통증 밤에 더 아픔 팔 들 때 걸림", "어깨 조금 나아짐", "", "", "" }, Syms(history));
     }
 
-    [Fact(DisplayName = "AC-1404.4 오늘 증상(todaySym)도 원천이 생기기 전에는 \"\"")]
-    public void NoTodaySymptomYet()
+    [Fact(DisplayName = "AC-1410.4 이은 글: 줄 사이는 공백 하나, 빈 글·공백만 있는 줄은 잇지 않고, 다른 내원·빈 내원번호 줄은 버리며, 내원마다 따로 모은다")]
+    public void JoinsLinesPerVisit()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        db.Answer(ReceptionSql.VisitSymptoms, _ => new[]
+        {
+            new object?[] { "V2001", "  목 뻐근함\r\n" },
+            new object?[] { "V2002", "허리" },
+            new object?[] { "V2001", "   " },
+            new object?[] { "V2001", null },
+            new object?[] { "V2001", "" },
+            new object?[] { "V9999", "다른 내원" },
+            new object?[] { " ", "빈 내원번호" },
+            new object?[] { null, "빈 내원번호" },
+            new object?[] { "V2002", "\t왼쪽 " },
+            new object?[] { "V2001", "고개 돌릴 때 아픔" },
+            new object?[] { " V2004 ", "무릎" },
+        });
+
+        var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now);
+
+        Assert.Equal(new[] { "목 뻐근함 고개 돌릴 때 아픔", "허리 왼쪽", "", "무릎", "" }, Syms(history));
+        Assert.Equal("", history.GetProperty("todaySym").GetString());
+    }
+
+    [Fact(DisplayName = "AC-1404.4 오늘 증상(todaySym)은 오늘 접수 내원의 S 줄을 이은 글이다(상세를 열 때 읽음)")]
+    public void TodaySymptom()
     {
         using var rig = NewRig();
         var (keys, key) = KeysFor();
         var history = Ok(DetailApi.Get(rig.Services, keys, new BoardSource(BoardResult.Ok(DetailFake.Board())).Get, key, "0", new CacheClock(Morning).Now));
-        Assert.Equal("", history.GetProperty("todaySym").GetString());
+
+        Assert.Equal("어깨가 다시 아파서 옴 오늘 주사 원함", history.GetProperty("todaySym").GetString());
+        Assert.Contains(ReceptionSql.VisitSymptoms, rig.Session.Sqls);
+    }
+
+    [Fact(DisplayName = "AC-1404.4 지난 내원이 더 없는 쪽(from이 수 이상)이어도 오늘 증상은 읽는다, 차트번호가 빈 접수는 증상 문장도 돌리지 않아 \"\"")]
+    public void TodaySymptomWithoutPage()
+    {
+        var db = DetailFake.Answer(new FakeDb());
+        var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 36, new CacheClock(Morning).Now);
+        Assert.Equal("어깨가 다시 아파서 옴 오늘 주사 원함", history.GetProperty("todaySym").GetString());
+
+        var blank = DetailFake.Answer(new FakeDb());
+        var visit = DetailFake.Today(chart: "");
+        var none = DetailApi.Read(blank, DetailFake.Board(visit), visit, 0, new CacheClock(Morning).Now);
+        Assert.Empty(blank.Calls);
+        Assert.Equal("", none.GetProperty("todaySym").GetString());
+    }
+
+    [Fact(DisplayName = "AC-1404.2 증상 칸(ReceptionMap.Columns.Symptom)이 없으면 증상 문장을 돌리지 않고 내원마다 sym·todaySym은 \"\"(칸 없음)")]
+    public void NoSymptomColumnReadsNothing()
+    {
+        var plan = ReceptionMap.Columns!;
+        var noSymptom = new ColumnPlan(plan.Name, plan.BirthDate, plan.Sex, plan.Memo, plan.PaidAt, symptom: null);
+        foreach (var columns in new[] { noSymptom, null })
+        {
+            var db = DetailFake.Answer(new FakeDb());
+            var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now, columns);
+
+            Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, db.Sqls);
+            Assert.All(Syms(history), sym => Assert.Equal("", sym));
+            Assert.Equal("", history.GetProperty("todaySym").GetString());
+        }
+    }
+
+    [Fact(DisplayName = "AC-1410.4 증상 문장이 실패하거나·칸이 모자라거나·시간이 다 가면 일부만 주지 않고 E-BIT-READ-FAILED")]
+    public void SymptomFailures()
+    {
+        var clock = new CacheClock(Morning);
+        var spent = DetailFake.Answer(new FakeDb());
+        spent.Answer(ReceptionSql.HistoryPage, args =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(8));
+            return DetailFake.Page(args, DetailFake.Earlier);
+        });
+        var cases = new[]
+        {
+            (Db: DetailFake.Answer(new FakeDb()).Fail(ReceptionSql.VisitSymptoms, BitErrors.ReadFailed), Clock: new CacheClock(Morning)),
+            (Db: DetailFake.Answer(new FakeDb()).Answer(ReceptionSql.VisitSymptoms, _ => new[] { new object?[] { "V2001" } }), Clock: new CacheClock(Morning)),
+            (Db: spent, Clock: clock),
+        };
+        foreach (var (db, at) in cases)
+        {
+            var error = Assert.Throws<BitException>(() => DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, at.Now));
+            Assert.Equal(BitErrors.ReadFailed, error.Code);
+        }
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, spent.Sqls);
     }
 
     // ---- AC-1404.5 틀린 열쇠·시작 위치는 비트를 읽지 않는다 ------------------------------------------------
@@ -448,6 +552,7 @@ public class HistoryReaderTests
 /// 상세 시험이 같이 쓰는 가짜 비트 자료. 모두 지어낸 것이다.
 /// 오늘 접수 V1001(차트 900101, 2026-11-05 09:12:30 접수)의 앞선 완료 내원 36번: 최근 순 k번째는 내원번호 V(2000+k), 날짜는 2026-10-29에서 14일씩 앞.
 /// 처방: 1번째 ESWT7·DS20, 2번째 PT01·ESWT7, 3번째 없음, 4번째 ZZ9(이름표에 없음)·PT03, 나머지 PT01.
+/// 증상 줄(VisitSymptoms): 1번째 세 줄, 2번째 한 줄, 나머지 없음, 오늘 접수(같은 차트·같은 접수 시각) 두 줄.
 /// </summary>
 internal static class DetailFake
 {
@@ -502,10 +607,33 @@ internal static class DetailFake
         return rows.ToArray();
     }
 
+    public static string[] SymptomLinesOf(int seq) => seq switch
+    {
+        1 => new[] { "오른쪽 어깨 통증 ", " 밤에 더 아픔", "팔 들 때 걸림" },
+        2 => new[] { "어깨 조금 나아짐" },
+        _ => new string[0],
+    };
+
+    public static readonly string[] TodaySymptomLines = { "어깨가 다시 아파서 옴", "오늘 주사 원함" };
+
+    /// <summary>VisitSymptoms 흉내: 최근 순 @first~@last번째 지난 내원과 그 접수(차트·접수 시각이 같은 오늘 접수)의 S 줄(VisitId, Line), 내원마다 줄 차례대로.</summary>
+    public static object?[][] Symptoms(IReadOnlyDictionary<string, object?> args, int earlier)
+    {
+        var first = (int)args["@first"]!;
+        var last = Math.Min((int)args["@last"]!, earlier);
+        var rows = new List<object?[]>();
+        for (var seq = first; seq <= last; seq++)
+            foreach (var line in SymptomLinesOf(seq)) rows.Add(new object?[] { VisitId(seq), line });
+        if (Equals(args["@chart"], Chart) && Equals(args["@before"], Accepted))
+            foreach (var line in TodaySymptomLines) rows.Add(new object?[] { TodayId, line });
+        return rows.ToArray();
+    }
+
     public static T Answer<T>(T db, int earlier = Earlier) where T : FakeDb
     {
         db.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { (long)earlier, earlier == 0 ? null : DayOf(earlier) } });
         db.Answer(ReceptionSql.HistoryPage, args => Page(args, earlier));
+        db.Answer(ReceptionSql.VisitSymptoms, args => Symptoms(args, earlier));
         return db;
     }
 }
@@ -537,6 +665,10 @@ internal static class DetailApi
     /// <summary>HistoryReader.Read(db, 등록 범위, board, visit, from, clock) → HistoryBuilder.Build → JSON.</summary>
     public static JsonElement Read(IBitDb db, BoardInput board, VisitRow visit, int from, Func<DateTime> clock) =>
         Parse(HistoryBuilder.Build(HistoryReader.Read(db, Synthetic.Scope, board, visit, from, clock)).ToJson());
+
+    /// <summary>칸(columns, 보통 ReceptionMap.Columns)을 정해 읽기: HistoryReader.Read(db, 등록 범위, board, visit, from, clock, columns) → JSON.</summary>
+    public static JsonElement Read(IBitDb db, BoardInput board, VisitRow visit, int from, Func<DateTime> clock, ColumnPlan? columns) =>
+        Parse(HistoryBuilder.Build(HistoryReader.Read(db, Synthetic.Scope, board, visit, from, clock, columns)).ToJson());
 
     /// <summary>HistoryInput(오늘, 시작 위치, 앞선 완료 내원 수, 첫날, 이 쪽 내원들, 오늘 증상) → HistoryBuilder.Build → ToJson 글.</summary>
     public static string BuildText(string day, int from, long earlier, string? firstDay, IEnumerable<HistoryVisit> visits, string? todaySymptom) =>
