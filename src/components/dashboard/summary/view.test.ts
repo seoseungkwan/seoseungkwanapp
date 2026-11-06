@@ -5,6 +5,7 @@ import { addDays } from '@/lib/analytics/dates'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
 import type { RxGroupLine } from './source'
 import {
+  dayCount,
   DEFAULT_PERIOD,
   groupRank,
   longDate,
@@ -12,6 +13,7 @@ import {
   periodRange,
   reportSentence,
   revisitCohortCaption,
+  revisitSkipped,
   revisitView,
   tickLabels,
   todayView,
@@ -553,5 +555,59 @@ describe('reportSentence — 지난 날짜', () => {
   it('AC-605.2: longDate는 앞 0 없이 "{월}월 {일}일"이다', () => {
     expect(longDate('2026-10-05')).toBe('10월 5일')
     expect(longDate('2027-01-31')).toBe('1월 31일')
+  })
+})
+
+// 대시보드 기간 고르기 (dashboard-period REQ-1802·REQ-1803, design.md '숫자'): 처방 상위 날짜 줄의 N과 재방문율 줄 아래 글의 판단
+describe('dayCount · revisitSkipped — 고른 기간의 날 수와 뺀 날 (dashboard-period)', () => {
+  const OCT = { from: '2026-10-01', to: '2026-10-31' }
+  const key = (n: number) => `t${n.toString(16).padStart(16, '0')}`
+  const lines: RxGroupLine[] = [{ name: '도수치료', key: key(1) }]
+  const r = (ymd: string, revisit: RevisitPayload) => day(ymd, { revisit })
+
+  it('AC-1803.3: dayCount = 기간 안 일 줄이 있는 날 수 — 같은 날 두 줄은 하루, 기간 밖 날은 세지 않는다', () => {
+    const days = [day('2026-10-01'), day('2026-10-15'), day('2026-10-15'), day('2026-10-31'), day('2026-09-30'), day('2026-11-01')]
+    expect(dayCount(days, OCT)).toBe(3)
+    expect(dayCount([], OCT)).toBe(0)
+    expect(dayCount([day('2026-09-30'), day('2026-11-01')], OCT)).toBe(0)
+  })
+
+  it('AC-1803.3: dayCount는 groupRank가 센 날과 같다(날마다 열쇠 줄 1명이면 묶음 합 = 센 날 수, 같은 날 두 줄 포함)', () => {
+    const days = ['2026-10-02', '2026-10-09', '2026-10-09', '2026-10-20', '2026-10-31', '2026-11-02'].map((ymd) => day(ymd, { groups: [g(key(1), 1)] }))
+    const rank = groupRank(days, { ...OCT, label: '' }, lines)!
+    expect(rank.items).toEqual([{ name: '도수치료', value: 4 }])
+    expect(dayCount(days, OCT)).toBe(4)
+  })
+
+  it('AC-1802.3: revisitSkipped — 기간 안 날 가운데 그 값이 null인 날이 있는 줄만 true(7·14·30일 따로)', () => {
+    const days = [
+      r('2026-10-01', { cohort: 3, within7: 1, within14: 2, within30: 2 }),
+      r('2026-10-20', { cohort: 2, within7: 1, within14: 1, within30: null }),
+      r('2026-10-30', { cohort: 4, within7: 1, within14: null, within30: null }),
+    ]
+    expect(revisitSkipped(days, OCT)).toEqual({ d7: false, d14: true, d30: true })
+  })
+
+  it('AC-1802.3: revisitSkipped — within30이 빠진 줄은 null로 친다(revisitView와 같은 규칙)', () => {
+    expect(revisitSkipped([r('2026-10-05', { cohort: 2, within7: 0, within14: 0 })], OCT)).toEqual({ d7: false, d14: false, d30: true })
+  })
+
+  it('AC-1802.3: revisitSkipped — 기간 밖 날의 null과 같은 날의 앞 줄은 보지 않는다(같은 날은 뒤의 것), 줄이 없으면 모두 false', () => {
+    const days = [
+      r('2026-09-30', { cohort: 1, within7: null, within14: null, within30: null }),
+      r('2026-10-10', { cohort: 1, within7: null, within14: null, within30: null }),
+      r('2026-10-10', { cohort: 1, within7: 1, within14: 1, within30: 1 }),
+      r('2026-11-01', { cohort: 1, within7: null, within14: null, within30: null }),
+    ]
+    expect(revisitSkipped(days, OCT)).toEqual({ d7: false, d14: false, d30: false })
+    expect(revisitSkipped([], OCT)).toEqual({ d7: false, d14: false, d30: false })
+  })
+
+  it('AC-1802.3: 뺀 날이 있어도 비율은 revisitView 그대로다(값이 있는 날만 센다, 30일 줄도 고른 기간)', () => {
+    const days = [r('2026-10-01', { cohort: 4, within7: 1, within14: 2, within30: 2 }), r('2026-10-20', { cohort: 6, within7: 3, within14: 3, within30: null })]
+    const cells = revisitView(days, { ...OCT, label: '' })
+    expect(cells.d30).toEqual({ kind: 'rate', value: 0.5 })
+    expect(cells.d30Cohort).toBeNull()
+    expect(revisitSkipped(days, OCT).d30).toBe(true)
   })
 })

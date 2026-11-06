@@ -179,6 +179,20 @@ export function weekdayBuckets(days: readonly DayPayload[], range: PeriodRange):
   })
 }
 
+// ── 고른 기간의 날 수와 뺀 날 (dashboard-period REQ-1802·REQ-1803) ──
+
+// 기간 안 일 줄이 있는 날 수(같은 날 두 줄은 하루). groupRank가 센 날과 같다(둘 다 daysIn) — 처방 상위 날짜 줄의 N
+export function dayCount(days: readonly DayPayload[], range: { from: string; to: string }): number {
+  return daysIn(days, range).length
+}
+
+// 재방문율 줄마다 그 값이 null(아직 집계 중)이라 셈에서 뺀 날이 있는지. 규칙은 rateOf와 같다(within30이 빠진 줄도 null)
+export function revisitSkipped(days: readonly DayPayload[], range: { from: string; to: string }): Record<'d7' | 'd14' | 'd30', boolean> {
+  const rows = daysIn(days, range)
+  const skipped = (key: RevisitKey) => countedRows(rows, key).length < rows.length
+  return { d7: skipped('within7'), d14: skipped('within14'), d30: skipped('within30') }
+}
+
 // 처방 상위 = 통계 탭 묶음(bit-dashboard REQ-606). lines는 처방 든 묶음, 통계 탭 차례(sortOrder)다.
 // 기간 안 모든 일 줄이 그 묶음 열쇠 줄(groups[].id === key, 0명 줄도 센 날이다)을 가지면 셀 수 있고 값 = 그 줄 patients의 합, 아니면 stale.
 // 열쇠 판단은 treatment-trend keyedIn과 같은 규칙이다. components/stats를 부르면 고리가 생겨(통계 view.ts가 이 파일을 부른다) 여기 둔다.
