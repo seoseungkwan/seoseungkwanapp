@@ -6,7 +6,7 @@ import type { readDays } from '@/lib/storage/stats'
 import type { DayPayload } from '@/types/payload'
 import type { DashboardAnalysis } from './DashboardAnalysis'
 import type { ReportBlock } from './ReportBlock'
-import { dashboardSummarySource, isConnected, toSummarySource, type SummarySource } from './source'
+import { dashboardSummarySource, isConnected, toSummarySource, type RxGroupLine, type SummarySource } from './source'
 
 // 자료 모양 한 곳 (tab-frame REQ-312, stats REQ-516, stats design.md 'TASK-16 대시보드 읽기').
 // dashboardSummarySource()는 지금처럼 늘 '자료 없음'이다(dashboard/page.tsx가 bit-dashboard TASK-8 전까지 쓴다).
@@ -131,6 +131,28 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     expect(text).toMatch(/import type \{ DayPayload \} from '@\/types\/payload'/)
     expect(text).not.toMatch(/(?:type|interface)\s+DayPayload\b/)
     expectTypeOf<Extract<SummarySource, { kind: 'data' }>['days']>().toEqualTypeOf<readonly DayPayload[]>()
+  })
+
+  it('AC-606.1·AC-606.4·AC-606.5: data 모양에 선택 칸 groups가 붙는다(묶음 한 줄 = 이름·열쇠, [] 또는 없음 = 묶음 없음, null = 묶음을 읽지 못함)', () => {
+    expectTypeOf<RxGroupLine>().toEqualTypeOf<{ name: string; key: string }>()
+    type Data = Extract<SummarySource, { kind: 'data' }>
+    expectTypeOf<Data['groups']>().toEqualTypeOf<readonly RxGroupLine[] | null | undefined>()
+    expectTypeOf<RequiredKeys<Data>>().toEqualTypeOf<'kind' | 'days'>()
+    const days = [fakeDay('2026-10-31')]
+    const lines: readonly RxGroupLine[] = [{ name: '도수치료', key: 't0000000000000001' }]
+    const sources: SummarySource[] = [
+      { kind: 'data', days },
+      { kind: 'data', days, groups: lines },
+      { kind: 'data', days, groups: [] },
+      { kind: 'data', days, groups: null },
+    ]
+    // 연결 판정은 groups와 상관없이 days만 본다
+    for (const source of sources) expect(isConnected(source)).toBe(true)
+    expect(isConnected({ kind: 'data', days: [], groups: lines })).toBe(false)
+    // 타입만 더한다: 다시 정의한 묶음 모양은 이름·열쇠 두 칸이고, groups는 선택 칸이다
+    const text = code(read('source.ts'))
+    expect(text).toMatch(/export type RxGroupLine = \{ name: string; key: string \}/)
+    expect(text).toMatch(/\{ kind: 'data'; days: readonly DayPayload\[\]; groups\?: readonly RxGroupLine\[\] \| null \}/)
   })
 
   it('AC-312.2: DashboardAnalysis의 필수 칸은 정확히 today·source이고, 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐이다', () => {

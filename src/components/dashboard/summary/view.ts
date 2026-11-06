@@ -5,6 +5,7 @@ import { compareNumbers } from '@/lib/analytics/compare'
 import { addDays, compareYmd, eachDay, weekdayOf } from '@/lib/analytics/dates'
 import type { Delta } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
+import type { RxGroupLine } from './source'
 
 // 대시보드 오늘 하루 분석 · 기간별 흐름 · 원장님 보고 문장의 계산 (tab-frame REQ-311·REQ-317, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장').
 // 순수 함수다(React 없음). 날짜는 lib/analytics/dates.ts, 증감은 compareNumbers, 숫자 글자는 charts/format만 쓴다.
@@ -27,6 +28,8 @@ export type RateCell = { kind: 'rate'; value: number } | { kind: 'in-progress' }
 // 30일 기간의 30일 줄이 센 신환: 30일 값이 숫자인 첫날·끝날과 그 날들의 합
 export type RevisitCohort = { from: string; to: string; within: number; cohort: number }
 export type RevisitCells = { d7: RateCell; d14: RateCell; d30: RateCell; d30Cohort: RevisitCohort | null }
+// 처방 상위(묶음): items 많아야 5줄, stale = 이 기간을 다시 불러와야 숫자가 나오는 묶음 이름(받은 차례 = 통계 탭 차례)
+export type GroupRank = { items: RankedItem[]; stale: string[] }
 type RevisitKey = 'within7' | 'within14' | 'within30'
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일'] as const // weekdayOf 1=월 … 7=일
@@ -190,6 +193,24 @@ export function topRx(days: readonly DayPayload[], range: PeriodRange): RankedIt
     .sort(([codeA, a], [codeB, b]) => b.value - a.value || compareText(codeA, codeB))
     .slice(0, TOP_RX)
     .map(([, item]) => item)
+}
+
+// 처방 상위 = 통계 탭 묶음(bit-dashboard REQ-606). lines는 처방 든 묶음, 통계 탭 차례(sortOrder)다.
+// 기간 안 모든 일 줄이 그 묶음 열쇠 줄(groups[].id === key, 0명 줄도 센 날이다)을 가지면 셀 수 있고 값 = 그 줄 patients의 합, 아니면 stale.
+// 열쇠 판단은 treatment-trend keyedIn과 같은 규칙이다. components/stats를 부르면 고리가 생겨(통계 view.ts가 이 파일을 부른다) 여기 둔다.
+// view.test.ts가 같은 가짜 자료로 두 판단을 견준다. items = 셀 수 있는 묶음을 값 큰 차례(같으면 받은 차례)로 앞 5개. 0건도 한 줄이다
+export function groupRank(days: readonly DayPayload[], range: PeriodRange, lines: readonly RxGroupLine[]): GroupRank | null {
+  const rows = daysIn(days, range)
+  if (rows.length === 0) return null
+  const counted: RankedItem[] = []
+  const stale: string[] = []
+  for (const { name, key } of lines) {
+    const found = rows.map((row) => row.groups.find((group) => group.id === key))
+    if (found.every((group) => group !== undefined)) counted.push({ name, value: sum(found, (group) => group.patients) })
+    else stale.push(name)
+  }
+  // Array.prototype.sort는 안정 정렬이라 같은 값은 받은 차례 그대로다
+  return { items: counted.sort((a, b) => b.value - a.value).slice(0, TOP_RX), stale }
 }
 
 // ── 원장님 보고 문장 ──────────────────────────────────────

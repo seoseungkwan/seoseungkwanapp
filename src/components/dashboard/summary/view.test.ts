@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { keyedIn } from '@/components/stats/treatmentView'
 import { compareNumbers } from '@/lib/analytics/compare'
 import { addDays } from '@/lib/analytics/dates'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
+import type { RxGroupLine } from './source'
 import {
   DEFAULT_PERIOD,
+  groupRank,
   longDate,
   PERIODS,
   periodRange,
@@ -24,7 +27,11 @@ import {
 type Rx = DayPayload['rx'][number]
 const rx = (code: string, name: string, patients: number): Rx => ({ code, name, type: '처치', patients, newPatients: 0, returning: patients })
 
-type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; rx?: Rx[]; revisit?: RevisitPayload }
+type GroupLine = DayPayload['groups'][number]
+// 일 줄의 묶음 열쇠 줄(id = 묶음 열쇠)
+const g = (id: string, patients: number): GroupLine => ({ id, patients, newPatients: 0, returning: patients })
+
+type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; rx?: Rx[]; groups?: GroupLine[]; revisit?: RevisitPayload }
 function day(ymd: string, o: DayOptions = {}): DayPayload {
   const newPatients = o.newPatients ?? 2
   const returning = o.returning ?? 8
@@ -35,7 +42,7 @@ function day(ymd: string, o: DayOptions = {}): DayPayload {
     partial: o.partial ?? false,
     totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
     rx: o.rx ?? [],
-    groups: [],
+    groups: o.groups ?? [],
     revisit: o.revisit ?? { cohort: newPatients, within7: 0, within14: 0 },
   }
 }
@@ -333,6 +340,121 @@ describe('topRx — 처방 상위', () => {
   it('AC-311.5: 기간 안 자료가 없으면 null, 처방이 없는 날만 있으면 빈 목록', () => {
     expect(topRx([day(TODAY, { rx: [rx('A1', '물리치료', 3)] })], MONTH)).toBeNull()
     expect(topRx([day('2026-10-10')], MONTH)).toEqual([])
+  })
+})
+
+describe('groupRank — 처방 상위 = 통계 탭 묶음 (REQ-606)', () => {
+  const MONTH = periodRange(TODAY, 30) // 2026-10-01 – 2026-10-30
+  // 묶음 열쇠(treatment-trend groupKey 모양: 't' + 16진수 16자리)
+  const key = (n: number) => `t${n.toString(16).padStart(16, '0')}`
+  const line = (name: string, n: number): RxGroupLine => ({ name, key: key(n) })
+
+  it('AC-606.1: 줄 이름은 묶음 이름, 값은 기간 안 그 열쇠 줄 patients의 합이다. 처방 코드별 줄(재진진찰료·약 이름)과 묶음에 없는 열쇠 줄은 나오지 않는다', () => {
+    const days = [
+      day('2026-10-05', { rx: [rx('AA254', '재진진찰료', 30), rx('643301234', '록소프로펜정', 25)], groups: [g(key(1), 3), g(key(2), 1), g(key(9), 80)] }),
+      day('2026-10-20', { rx: [rx('MM042', '도수치료 30분', 9)], groups: [g(key(1), 4), g(key(2), 0), g(key(9), 70)] }),
+      day(TODAY, { partial: true, groups: [g(key(1), 50), g(key(2), 50)] }),
+      day('2026-09-01', { groups: [g(key(1), 40), g(key(2), 40)] }),
+    ]
+    const rank = groupRank(days, MONTH, [line('도수치료', 1), line('충격파', 2)])
+    expect(rank).toEqual({ items: [{ name: '도수치료', value: 7 }, { name: '충격파', value: 1 }], stale: [] })
+    for (const rxName of ['재진진찰료', '록소프로펜정', '도수치료 30분']) expect(rank!.items.map((item) => item.name)).not.toContain(rxName)
+  })
+
+  it('AC-606.1: 같은 날 줄이 둘이면 뒤의 것으로 센다(다른 기간별 흐름 칸과 같다)', () => {
+    const days = [day('2026-10-10', { groups: [g(key(1), 100)] }), day('2026-10-11', { groups: [g(key(1), 2)] }), day('2026-10-10', { groups: [g(key(1), 5)] })]
+    expect(groupRank(days, MONTH, [line('도수치료', 1)])).toEqual({ items: [{ name: '도수치료', value: 7 }], stale: [] })
+  })
+
+  it('AC-606.2: 건수 큰 차례, 같으면 받은 차례(통계 탭 sortOrder 차례)이고 많아야 5줄이다', () => {
+    const lines = [line('견인', 1), line('충격파', 2), line('도수치료', 3), line('주사', 4), line('체외충격파', 5), line('운동치료', 6), line('초음파', 7)]
+    const values = [2, 5, 2, 0, 7, 0, 1]
+    const days = [day('2026-10-12', { groups: lines.map((l, i) => g(l.key, values[i]!)) })]
+    expect(groupRank(days, MONTH, lines)).toEqual({
+      items: [
+        { name: '체외충격파', value: 7 },
+        { name: '충격파', value: 5 },
+        { name: '견인', value: 2 },
+        { name: '도수치료', value: 2 },
+        { name: '초음파', value: 1 },
+      ],
+      stale: [],
+    })
+  })
+
+  it('AC-606.2: 같은 건수는 이름·열쇠 차례가 아니라 받은 차례다', () => {
+    const lines = [line('충격파', 9), line('도수치료', 3), line('견인', 5)]
+    const days = [day('2026-10-12', { groups: [g(key(3), 4), g(key(5), 4), g(key(9), 4)] })]
+    expect(groupRank(days, MONTH, lines)!.items.map((item) => item.name)).toEqual(['충격파', '도수치료', '견인'])
+  })
+
+  it('AC-606.2: 0건인 묶음도 5줄 안에 들면 숨기지 않는다(열쇠 줄이 0명이어도 센 날이다)', () => {
+    const lines = [line('견인', 1), line('도수치료', 2), line('충격파', 3)]
+    const days = [day('2026-10-12', { groups: [g(key(1), 0), g(key(2), 3), g(key(3), 0)] }), day('2026-10-13', { groups: [g(key(1), 0), g(key(2), 1), g(key(3), 0)] })]
+    expect(groupRank(days, MONTH, lines)).toEqual({
+      items: [
+        { name: '도수치료', value: 4 },
+        { name: '견인', value: 0 },
+        { name: '충격파', value: 0 },
+      ],
+      stale: [],
+    })
+  })
+
+  it('AC-606.3: 기간 안 일 줄 가운데 하루라도 열쇠 줄이 없는 묶음은 세지 않고 stale(받은 차례)에 이름을 둔다. 기간 밖 날은 상관없다', () => {
+    const lines = [line('충격파', 3), line('도수치료', 1), line('견인', 2)]
+    const days = [
+      day('2026-10-03', { groups: [g(key(1), 2), g(key(2), 5), g(key(3), 6)] }),
+      day('2026-10-04', { groups: [g(key(1), 1), g(key(3), 6)] }), // 견인 열쇠 없음
+      day('2026-10-05', { groups: [g(key(1), 3)] }), // 견인·충격파 열쇠 없음
+      day('2026-09-01', { groups: [] }), // 기간 밖
+      day(TODAY, { partial: true, groups: [] }), // 오늘은 기간 밖
+    ]
+    expect(groupRank(days, MONTH, lines)).toEqual({ items: [{ name: '도수치료', value: 6 }], stale: ['충격파', '견인'] })
+  })
+
+  it('AC-606.3: 셀 수 있는 묶음이 하나도 없으면 items는 비고 stale에 모든 이름이 있다(숫자를 지어내지 않는다)', () => {
+    const lines = [line('도수치료', 1), line('충격파', 2)]
+    const days = [day('2026-10-03', { rx: [rx('MM042', '도수치료 30분', 9)], groups: [g(key(1), 3)] }), day('2026-10-04', { rx: [rx('MM042', '도수치료 30분', 4)] })]
+    expect(groupRank(days, MONTH, lines)).toEqual({ items: [], stale: ['도수치료', '충격파'] })
+  })
+
+  it('AC-606.3: 같은 날 줄이 둘이면 뒤의 줄로 열쇠를 본다(앞 줄에만 있는 열쇠는 없는 것이다)', () => {
+    const days = [day('2026-10-10', { groups: [g(key(1), 5)] }), day('2026-10-10', { groups: [g(key(2), 5)] })]
+    expect(groupRank(days, MONTH, [line('도수치료', 1), line('충격파', 2)])).toEqual({ items: [{ name: '충격파', value: 5 }], stale: ['도수치료'] })
+  })
+
+  it('AC-606.4: 묶음이 없으면 줄도 안내할 이름도 없다', () => {
+    expect(groupRank([day('2026-10-10', { groups: [g(key(1), 5)] })], MONTH, [])).toEqual({ items: [], stale: [] })
+  })
+
+  it('AC-606.1: 기간 안 일 줄이 없으면 null(오늘 줄·기간 밖 줄만 있음 포함)', () => {
+    const lines = [line('도수치료', 1)]
+    expect(groupRank([], MONTH, lines)).toBeNull()
+    expect(groupRank([day(TODAY, { groups: [g(key(1), 5)] }), day('2026-09-30', { groups: [g(key(1), 5)] })], MONTH, lines)).toBeNull()
+    expect(groupRank([day(TODAY)], MONTH, [])).toBeNull()
+  })
+
+  it('AC-606.3: 셀 수 있음/다시 불러와야 함 판단이 treatment-trend keyedIn과 같다(같은 가짜 자료)', () => {
+    const days = [
+      day('2026-10-03', { groups: [g(key(1), 2), g(key(2), 0), g(key(3), 1), g(key(4), 1)] }),
+      day('2026-10-04', { groups: [g(key(1), 1), g(key(2), 0), g(key(4), 1)] }),
+      day('2026-10-04', { groups: [g(key(1), 1), g(key(2), 0), g(key(3), 4)] }), // 같은 날 뒤 줄: 4번 열쇠가 빠지고 3번이 생김
+      day('2026-10-24', { groups: [g(key(1), 0), g(key(2), 3), g(key(3), 2)] }),
+      day('2026-10-28', { groups: [g(key(1), 5), g(key(3), 2), g(key(4), 2)] }), // 2번 열쇠 없음
+      day('2026-09-15', { groups: [] }), // 기간 밖
+    ]
+    const ranges = [MONTH, periodRange(TODAY, 7), { from: '2026-10-03', to: '2026-10-04', label: '' }, { from: '2026-10-24', to: '2026-10-24', label: '' }]
+    const keys = [1, 2, 3, 4, 5].map(key)
+    for (const range of ranges) {
+      for (const k of keys) {
+        const rank = groupRank(days, range, [{ name: '묶음', key: k }])
+        expect(rank, `${range.from}–${range.to} ${k}`).not.toBeNull()
+        expect(rank!.stale.length === 0, `${range.from}–${range.to} ${k}`).toBe(keyedIn(days, range, k))
+      }
+    }
+    // 두 판단이 모두 참·거짓인 경우가 실제로 있다(한쪽으로만 맞는 시험이 아니다)
+    expect(keys.map((k) => keyedIn(days, MONTH, k))).toEqual([true, false, true, false, false])
   })
 })
 

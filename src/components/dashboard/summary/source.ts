@@ -4,7 +4,11 @@ import type { DayPayload } from '@/types/payload'
 // 대시보드 자료 모양 한 곳 (tab-frame REQ-312, stats REQ-516, stats design.md 'TASK-16 대시보드 읽기').
 // 지어낸 숫자를 주지 않는다. days는 이미 있는 저장 모양 DayPayload(stats-core REQ-008)를 그대로 쓴다(다시 정의하지 않는다)
 
-export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[] }
+/** 통계 탭 처방별 추세 묶음 하나(bit-dashboard REQ-606). key = 그 묶음 처방 코드 모음의 groupKey(treatment-trend), 일 줄 groups[].id와 견준다 */
+export type RxGroupLine = { name: string; key: string }
+
+/** groups: 처방 든 묶음(통계 탭 차례). [] = 묶음 없음, null = 묶음을 읽지 못함. 주지 않으면 []과 같다(toSummarySource는 넣지 않는다) */
+export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[]; groups?: readonly RxGroupLine[] | null }
 
 // 처음 자료 자리: 늘 '자료 없음'(none)이다. dashboard/page.tsx가 브라우저 읽기(bit-dashboard TASK-8 LiveDashboard)로 바뀔 때까지 쓴다
 export function dashboardSummarySource(): SummarySource {
