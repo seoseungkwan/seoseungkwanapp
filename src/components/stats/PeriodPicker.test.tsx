@@ -163,7 +163,7 @@ describe('AC-1703.2: 위쪽 [일별][주별][월별]과 ◀ ▶', () => {
   })
 })
 
-describe('AC-1702.1: 못 가는 ▶는 disabled, ◀는 늘 간다', () => {
+describe('AC-1702.1: 못 가는 ▶·◀는 disabled — ◀는 2020년 1월(월별은 2020년)까지', () => {
   it('AC-1702.1: 2026-10은 ▶로 2026-11에 가고, 2026-11에서는 ▶가 disabled다', () => {
     const { onChoose } = draw({ kind: 'month', unit: 'day', month: '2026-10' })
     expect((nextButton() as HTMLButtonElement).disabled).toBe(false)
@@ -187,9 +187,32 @@ describe('AC-1702.1: 못 가는 ▶는 disabled, ◀는 늘 간다', () => {
     expect((nextButton() as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('AC-1702.1: ◀는 먼 해에서도 disabled가 아니다', () => {
-    draw({ kind: 'month', unit: 'day', month: '2001-01' })
+  it('AC-1702.1: ◀는 2021년 1월에서 2020년 12월로 간다', () => {
+    const { onChoose } = draw({ kind: 'month', unit: 'day', month: '2021-01' })
     expect((prevButton() as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(prevButton())
+    expect(onChoose).toHaveBeenLastCalledWith({ kind: 'month', unit: 'day', month: '2020-12' })
+  })
+
+  it('AC-1702.1: 2020년 1월(일별·주별)에서는 ◀가 disabled이고 눌러도 고르지 않는다. ▶는 된다', () => {
+    for (const unit of ['day', 'week'] as const) {
+      const { onChoose, unmount } = draw({ kind: 'month', unit, month: '2020-01' })
+      expect(stepText()).toBe('2020년 1월')
+      expect((prevButton() as HTMLButtonElement).disabled).toBe(true)
+      expect((nextButton() as HTMLButtonElement).disabled).toBe(false)
+      fireEvent.click(prevButton())
+      expect(onChoose).not.toHaveBeenCalled()
+      unmount()
+    }
+  })
+
+  it('AC-1702.1: 월별은 2020년에서 ◀가 disabled이고, 2021년에서는 2020년으로 간다', () => {
+    const { onChoose } = draw({ kind: 'year', year: '2021' })
+    expect((prevButton() as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(prevButton())
+    expect(onChoose).toHaveBeenLastCalledWith({ kind: 'year', year: '2020' })
+    expect(stepText()).toBe('2020년')
+    expect((prevButton() as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('AC-1702.1: disabled인 ▶를 눌러도 고르지 않는다', () => {
@@ -200,7 +223,7 @@ describe('AC-1702.1: 못 가는 ▶는 disabled, ◀는 늘 간다', () => {
 })
 
 describe('AC-1703.3: [직접 날짜] 판', () => {
-  it('AC-1703.3: 누르면 판(role="dialog", 이름 "직접 날짜 고르기")에 시작·끝 날짜(type="date", max = 끝난 날), 보는 단위 셋, [닫기]·[이 기간 보기]가 있다', () => {
+  it('AC-1703.3: 누르면 판(role="dialog", 이름 "직접 날짜 고르기")에 시작·끝 날짜(type="date", min = 2020-01-01, max = 끝난 날), 보는 단위 셋, [닫기]·[이 기간 보기]가 있다', () => {
     draw({ kind: 'month', unit: 'day', month: '2026-10' })
     expect(customButton().getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(customButton())
@@ -209,6 +232,7 @@ describe('AC-1703.3: [직접 날짜] 판', () => {
     expect(within(panel).getByText('직접 날짜 고르기')).toBeTruthy()
     for (const input of [startInput(), endInput()]) {
       expect(input.type).toBe('date')
+      expect(input.min).toBe('2020-01-01')
       expect(input.max).toBe(LAST_DAY)
     }
     expect(within(within(panel).getByRole('group', { name: '보는 단위' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['일별', '주별', '월별'])
@@ -359,6 +383,49 @@ describe('AC-1702.2: 판의 오류 글 — 오류 동안 [이 기간 보기]는 
     expect(dialog()).toBeTruthy()
     fireEvent.click(panelUnit('주별'))
     expect(dialog()).toBeTruthy()
+  })
+})
+
+describe('AC-1702.4: 판의 날짜 한도 오류 — 2020-01-01부터, 한 번에 5년(1827일)까지', () => {
+  it('AC-1702.4: 시작이 2020-01-01보다 앞이면 "2020년 1월 1일부터 고를 수 있어요."이고 [이 기간 보기]는 disabled다', () => {
+    const { onChoose } = draw()
+    fireEvent.click(customButton())
+    setDates('2019-12-31', '2020-01-31')
+    expect(within(dialog()).getByText('2020년 1월 1일부터 고를 수 있어요.')).toBeTruthy()
+    expect(within(dialog()).queryByText(/^고른 기간:/)).toBeNull()
+    expect((applyButton() as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(applyButton())
+    expect(onChoose).not.toHaveBeenCalled()
+  })
+
+  it('AC-1702.4: 2020-01-01 시작은 볼 수 있다', () => {
+    draw()
+    fireEvent.click(customButton())
+    setDates('2020-01-01', '2020-01-31')
+    expect(within(dialog()).queryByText('2020년 1월 1일부터 고를 수 있어요.')).toBeNull()
+    expect((applyButton() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('AC-1702.4: 1827일을 넘으면 "한 번에 5년까지 볼 수 있어요."이고 [이 기간 보기]는 disabled다 — 일별도 92일 경고가 아니라 이 오류다', () => {
+    draw()
+    fireEvent.click(customButton())
+    setDates('2021-11-04', '2026-11-05')
+    for (const unit of ['월별', '주별', '일별'] as const) {
+      fireEvent.click(panelUnit(unit))
+      expect(within(dialog()).getByText('한 번에 5년까지 볼 수 있어요.')).toBeTruthy()
+      expect(within(dialog()).queryByText(/^일별은 92일까지/)).toBeNull()
+      expect((applyButton() as HTMLButtonElement).disabled).toBe(true)
+    }
+  })
+
+  it('AC-1702.4: 1827일(5년)은 볼 수 있다', () => {
+    draw()
+    fireEvent.click(customButton())
+    setDates('2021-11-05', '2026-11-05')
+    fireEvent.click(panelUnit('월별'))
+    expect(within(dialog()).queryByText('한 번에 5년까지 볼 수 있어요.')).toBeNull()
+    expect(within(dialog()).getByText('고른 기간: 2021년 11월 5일 – 2026년 11월 5일 · 1827일')).toBeTruthy()
+    expect((applyButton() as HTMLButtonElement).disabled).toBe(false)
   })
 })
 

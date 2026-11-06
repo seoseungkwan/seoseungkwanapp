@@ -4,7 +4,7 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { addDays, compareYmd } from '@/lib/analytics/dates'
-import { checkCustom, defaultPick, pickRange, stepPick, type PickUnit, type StatsChoice, type StatsPick } from './periodPick'
+import { checkCustom, defaultPick, FIRST_DAY, pickRange, stepPick, type PickUnit, type StatsChoice, type StatsPick } from './periodPick'
 import { statsRange } from './view'
 
 // 기간 고르기 부품 (stats-period REQ-1702·REQ-1703, design.md 'PeriodPicker.tsx', 승인 시안 BEpX6zDbmmBmvBhZqCKmno).
@@ -243,7 +243,8 @@ type PanelProps = {
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
 }
 
-// 직접 날짜 판(AC-1703.3). 오류·경고 동안 [이 기간 보기]는 disabled이고, 경고의 [주별로 보기]·[월별로 보기]는 판의 단위만 바꾼다
+// 직접 날짜 판(AC-1703.3). 날짜 칸은 FIRST_DAY(2020-01-01)~끝난 날이다. 오류·경고 동안 [이 기간 보기]는 disabled이고(날짜 한도 오류 AC-1702.4 포함),
+// 경고의 [주별로 보기]·[월별로 보기]는 판의 단위만 바꾼다
 function CustomPanel({ id, draft, lastDay, check, label, canApply, onDraft, onClose, onApply, onKeyDown }: PanelProps) {
   const titleId = useId()
   return (
@@ -255,14 +256,14 @@ function CustomPanel({ id, draft, lastDay, check, label, canApply, onDraft, onCl
         <label className={`${ds.field} min-w-0 flex-1`}>
           <span className={ds.label}>시작 날짜</span>
           {/* 열면 초점이 시작 날짜에 간다(판 안으로) */}
-          <input type="date" autoFocus className={ds.input} max={lastDay} value={draft.from} onChange={(event) => onDraft({ from: event.target.value })} />
+          <input type="date" autoFocus className={ds.input} min={FIRST_DAY} max={lastDay} value={draft.from} onChange={(event) => onDraft({ from: event.target.value })} />
         </label>
         <span aria-hidden="true" className="pb-3 text-muted max-md:hidden">
           ~
         </span>
         <label className={`${ds.field} min-w-0 flex-1`}>
           <span className={ds.label}>끝 날짜</span>
-          <input type="date" className={ds.input} max={lastDay} value={draft.to} onChange={(event) => onDraft({ to: event.target.value })} />
+          <input type="date" className={ds.input} min={FIRST_DAY} max={lastDay} value={draft.to} onChange={(event) => onDraft({ to: event.target.value })} />
         </label>
       </div>
       <div>
