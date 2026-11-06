@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isCovered } from '@/lib/analytics/coverage'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
+import type { StatsChoice } from './periodPick'
 import { useStatsData, type SaveInput } from './useStatsData'
-import { statsRange, type StatsPeriod } from './view'
+import { rangeOf, statsRange, type StatsPeriod } from './view'
 
 // 저장된 숫자 읽기·저장·다시 읽기 (stats REQ-514, design.md TASK-14). 저장은 가짜다. 가짜 일 줄은 이 파일 안에서만 만든다
 
@@ -494,5 +496,164 @@ describe('AC-802.7 revision', () => {
     view.rerender({ period: '7d' })
     await settled(view)
     expect(view.result.current.revision).toBe(0)
+  })
+})
+
+// ── 고른 기간 읽기 (stats-period REQ-1706). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('REQ-1706 고른 기간 읽기', () => {
+  const P_TODAY = '2026-11-06'
+  const OCTOBER: StatsChoice = { kind: 'month', unit: 'day', month: '2026-10' }
+  const NOVEMBER: StatsChoice = { kind: 'month', unit: 'day', month: '2026-11' }
+  const WIDE_COVER: DateRange[] = [{ from: '2025-01-01', to: '2026-11-05' }]
+  const drawPick = (choice: StatsChoice) => renderHook(({ chosen }) => useStatsData(chosen, P_TODAY), { initialProps: { chosen: choice } })
+
+  // 세 기간에 줄이 하나씩 있게 해서 가장 넓은 범위 읽기를 하지 않는다
+  const octoberRows = () =>
+    answers({
+      '2026-10-01': read([day('2026-10-05')]),
+      '2026-09-01': read([day('2026-09-05')]),
+      '2025-10-01': read([day('2025-10-05')]),
+    })
+
+  it('AC-1706.1 readDays를 current·previous·lastYear 범위로 한 번씩, readCoverage를 가장 앞 비교 첫날~오늘로 읽는다', async () => {
+    octoberRows()
+    vi.mocked(readCoverage).mockResolvedValue(WIDE_COVER)
+    const view = drawPick(OCTOBER)
+    await settled(view)
+
+    expect(readRanges()).toEqual([
+      { from: '2026-10-01', to: '2026-10-31' },
+      { from: '2026-09-01', to: '2026-09-30' },
+      { from: '2025-10-01', to: '2025-10-31' },
+    ])
+    expect(readCoverage).toHaveBeenCalledTimes(1)
+    expect(readCoverage).toHaveBeenCalledWith({ from: '2025-10-01', to: P_TODAY })
+    expect(view.result.current.input?.days.map((row) => row.day).sort()).toEqual(['2025-10-05', '2026-09-05', '2026-10-05'])
+  })
+
+  it('AC-1706.1 input.covered는 덮은 기간을 세 읽기 범위와 겹치는 조각만 남긴 것이다(그 사이 날은 휴진이 아니라 자료 없음)', async () => {
+    octoberRows()
+    vi.mocked(readCoverage).mockResolvedValue(WIDE_COVER)
+    const view = drawPick(OCTOBER)
+    await settled(view)
+
+    const covered = view.result.current.input?.covered ?? []
+    expect(covered).toEqual([
+      { from: '2025-10-01', to: '2025-10-31' },
+      { from: '2026-09-01', to: '2026-10-31' },
+    ])
+    expect(isCovered({ from: '2026-01-15', to: '2026-01-15' }, [...covered])).toBe(false)
+  })
+
+  it('AC-1706.1 고른 기간에 줄이 없으면 빠른 단추처럼 가장 넓은 범위를 한 번 더 봐서 saved를 정한다', async () => {
+    answers({ [statsRange(P_TODAY, '12m').previous.from]: read([day('2025-01-05')]) })
+    const view = drawPick(OCTOBER)
+    await settled(view)
+    expect(view.result.current.saved).toBe(true)
+    expect(view.result.current.input?.days).toEqual([])
+  })
+
+  it('AC-1706.1 빠른 단추는 지금과 같은 범위·횟수로 읽고 덮은 기간을 자르지 않는다', async () => {
+    const covered: DateRange[] = [{ from: '2026-09-01', to: '2026-11-12' }]
+    answers({ [R30.current.from]: read([day('2026-11-01')]) })
+    vi.mocked(readCoverage).mockResolvedValue(covered)
+    const view = draw('30d')
+    await settled(view)
+    expect(readRanges()).toEqual([
+      { from: R30.current.from, to: R30.current.to },
+      { from: R30.previous.from, to: R30.previous.to },
+    ])
+    expect(readCoverage).toHaveBeenCalledWith({ from: R30.previous.from, to: R30.current.to })
+    expect(view.result.current.input?.covered).toEqual(covered)
+    expect(view.result.current.input?.range).toEqual(R30)
+  })
+
+  it('AC-1706.2 읽은 덮은 기간에 오늘이 들면 todayDone 참이고 input.range는 rangeOf(today, choice, true)다', async () => {
+    vi.mocked(readCoverage).mockResolvedValue([{ from: '2025-01-01', to: P_TODAY }])
+    const view = drawPick(NOVEMBER)
+    await settled(view)
+
+    expect(view.result.current.todayDone).toBe(true)
+    expect(view.result.current.input?.range).toEqual(rangeOf(P_TODAY, NOVEMBER, true))
+    expect(view.result.current.input?.range.current.to).toBe(P_TODAY)
+  })
+
+  it('AC-1706.2 오늘이 덮이지 않았으면 todayDone 거짓이고 input.range는 어제까지다. 읽기는 늘 오늘까지(rangeOf(today, choice, true))라 다시 읽지 않는다', async () => {
+    vi.mocked(readCoverage).mockResolvedValue(WIDE_COVER)
+    const view = drawPick(NOVEMBER)
+    await settled(view)
+
+    expect(view.result.current.todayDone).toBe(false)
+    expect(view.result.current.input?.range).toEqual(rangeOf(P_TODAY, NOVEMBER, false))
+    expect(view.result.current.input?.range.current.to).toBe('2026-11-05')
+    expect(readRanges()).toEqual([
+      { from: '2026-11-01', to: P_TODAY },
+      { from: '2026-10-01', to: '2026-10-06' },
+      { from: '2025-11-01', to: '2025-11-06' },
+      { from: statsRange(P_TODAY, '12m').previous.from, to: statsRange(P_TODAY, '12m').current.to },
+    ])
+  })
+
+  it('AC-1706.2 같은 것을 새 값으로 다시 넘겨도 다시 읽지 않고, 고른 것이 바뀔 때만 다시 읽는다', async () => {
+    octoberRows()
+    const view = drawPick(OCTOBER)
+    await settled(view)
+    vi.mocked(readDays).mockClear()
+
+    view.rerender({ chosen: { kind: 'month', unit: 'day', month: '2026-10' } })
+    await settled(view)
+    expect(readDays).not.toHaveBeenCalled()
+
+    view.rerender({ chosen: { kind: 'month', unit: 'week', month: '2026-10' } })
+    expect(view.result.current.reading).toBe(true)
+    await settled(view)
+    expect(readRanges()).toContainEqual({ from: '2026-10-01', to: '2026-10-31' })
+    expect(view.result.current.input?.range.bucket).toBe('week')
+  })
+
+  it('AC-1706.3 저장하지 못한 숫자는 가장 앞 비교 첫날~current 끝의 날만 얹고, 그 덮은 기간도 세 범위로 자른다', async () => {
+    octoberRows()
+    vi.mocked(readCoverage).mockResolvedValue([])
+    const view = drawPick(OCTOBER)
+    await settled(view)
+
+    vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패'))
+    const unsaved: SaveInput = {
+      months: [],
+      days: [day('2025-09-30', 70), day('2025-10-02', 71), day('2026-10-20', 72), day('2026-11-02', 73)],
+      covered: { from: '2026-03-01', to: '2026-11-05' },
+      source: 'bit',
+    }
+    await act(async () => {
+      await view.result.current.save(unsaved)
+    })
+
+    const { input } = view.result.current
+    const fresh = input?.days.filter((row) => row.totals.patients >= 70).map((row) => row.day)
+    expect(fresh).toEqual(['2025-10-02', '2026-10-20'])
+    expect(input?.covered).toEqual([{ from: '2026-09-01', to: '2026-10-31' }])
+  })
+
+  it('AC-1706.5 coveredTo는 자르지 않은 덮은 기간의 끝이다(잘린 input.covered의 끝이 아니다)', async () => {
+    octoberRows()
+    vi.mocked(readCoverage).mockResolvedValue(WIDE_COVER)
+    const view = drawPick(OCTOBER)
+    await settled(view)
+    expect(view.result.current.input?.covered.at(-1)?.to).toBe('2026-10-31')
+    expect(view.result.current.coveredTo).toBe('2026-11-05')
+  })
+
+  it('AC-1706.5 빠른 단추의 coveredTo는 지금 출처 줄이 쓰던 input.covered의 끝과 같다. 덮은 기간이 없으면 null이다', async () => {
+    vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
+    const view = draw('30d')
+    await settled(view)
+    expect(view.result.current.coveredTo).toBe('2026-11-12')
+    expect(view.result.current.coveredTo).toBe(view.result.current.input?.covered.at(-1)?.to)
+    expect(view.result.current.todayDone).toBe(false)
+
+    vi.mocked(readCoverage).mockResolvedValue([])
+    act(() => view.result.current.reread())
+    await settled(view)
+    expect(view.result.current.coveredTo).toBeNull()
   })
 })
