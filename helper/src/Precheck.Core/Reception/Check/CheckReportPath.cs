@@ -16,7 +16,9 @@ public static class CheckReportPath
 
     public static IReadOnlyList<string> Folders(string appDirectory, string tempDirectory)
     {
-        var parent = Path.GetDirectoryName((appDirectory ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var trimmed = (appDirectory ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        // .NET Framework 4.8의 Path.GetDirectoryName은 빈 글자에 ArgumentException을 던진다(.NET 10은 null)
+        var parent = trimmed.Length == 0 ? null : Path.GetDirectoryName(trimmed);
         return string.IsNullOrEmpty(parent) ? new[] { tempDirectory } : new[] { parent!, tempDirectory };
     }
 

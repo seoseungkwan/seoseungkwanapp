@@ -204,11 +204,14 @@ public class CheckRunnerScreenTests
 
     private static string[] RunWithScreen(Harness h, Func<VendorUser, DateTime, IReadOnlyList<IReadOnlyList<string>>> screen)
     {
+        // 보고서는 쓰기 손잡이를 FileShare.Read로 잡고 있어 윈도우에서는 닫기 전에 File.ReadAllText로 열 수 없다. 닫은 뒤 읽는다
+        string file;
         using (var report = CheckReport.Create(Path.Combine(h.Folder, "app"), Path.Combine(h.Folder, "temp"), h.Clock.Now))
         {
             NewRunner(h.Console, h.Db.Open, () => new VendorUser("U01", "20261105"), screen, report, h.Clock.Read).Run();
-            return Harness.Lines(File.ReadAllText(report.FilePath));
+            file = report.FilePath;
         }
+        return Harness.Lines(File.ReadAllText(file));
     }
 }
 
