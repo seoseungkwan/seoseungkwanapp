@@ -101,6 +101,8 @@ const TREND_SERIES: BarSeries[] = [
 const WEEK_SERIES: BarSeries[] = [{ name: '환자 수', tone: 'accent' }]
 
 const tokens = (classes: string | null) => (classes ?? '').split(/\s+/).filter(Boolean)
+// 처방 상위 머리 링크의 클래스(AC-606.6): 글자 단추 그대로 + 쉴 때 밑줄 없음
+const GROUPS_LINK_CLASSES = [...tokens(ds.textButton), 'no-underline']
 const classesOf = (el: Element) => tokens(el.getAttribute('class'))
 const hasAll = (el: Element, classes: string) => expect(classesOf(el)).toEqual(expect.arrayContaining(tokens(classes)))
 const allClasses = (root: Element) => [root, ...Array.from(root.querySelectorAll('[class]'))].flatMap(classesOf)
@@ -704,7 +706,8 @@ describe("기간별 흐름 — '처방 상위' = 통계 탭 묶음 (REQ-606)", (
     expect(link.getAttribute('href')).toBe('/stats')
     expect(link.parentElement).toBe(head)
     expect(head.lastElementChild).toBe(link) // 제목 다음, 오른쪽 위
-    expect(classesOf(link)).toEqual(tokens(ds.textButton)) // 화면 파일이 클래스를 따로 붙이지 않는다
+    // ds.textButton 그대로 + no-underline 하나: 앱에는 a 밑줄을 지우는 바탕 규칙이 없어, 붙이지 않으면 늘 밑줄이 그어진다(UI_GUIDE 글자 단추의 밑줄은 올림 반응뿐. CountsOnly·PatientsEntry 링크와 같다)
+    expect(classesOf(link)).toEqual(GROUPS_LINK_CLASSES)
     hasAll(link, 'max-md:min-h-11')
     expect(link.textContent).toBe('묶음 고치기')
     expect(screen.queryByText('많이 낸 처방 5가지가 차례로 적힙니다')).toBeNull()
@@ -1054,17 +1057,17 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     const moving = (root: Element) => allClasses(root).filter((t) => t.includes('transition'))
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(moving(chart(name)), name).toEqual([])
     const group = chart('처방 상위')
-    // 빼는 것은 머리 줄의 링크 하나, 글자뿐인 ds.textButton 그대로다 — 그 밖의 것을 숨기지 않는다
+    // 빼는 것은 머리 줄의 링크 하나, 글자뿐인 ds.textButton + no-underline이다 — 그 밖의 것을 숨기지 않는다
     const links = within(group).getAllByRole('link')
     expect(links).toHaveLength(1)
     const link = links[0]!
     expect(link.parentElement).toBe(within(group).getByRole('heading', { level: 3 }).parentElement)
     expect(link.children).toHaveLength(0)
-    expect(classesOf(link)).toEqual(tokens(ds.textButton))
+    expect(classesOf(link)).toEqual(GROUPS_LINK_CLASSES)
     const rest = group.cloneNode(true) as HTMLElement
     rest.querySelector('a[href="/stats"]')!.remove()
     expect(rest.querySelector('a')).toBeNull()
-    expect(allClasses(rest)).toHaveLength(allClasses(group).length - tokens(ds.textButton).length)
+    expect(allClasses(rest)).toHaveLength(allClasses(group).length - GROUPS_LINK_CLASSES.length)
     expect(moving(rest)).toEqual([])
   })
 })

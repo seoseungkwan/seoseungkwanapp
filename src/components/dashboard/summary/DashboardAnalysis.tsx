@@ -425,10 +425,11 @@ function WeekBody({ buckets }: { buckets: ReturnType<typeof weekdayBuckets> }) {
 }
 
 // 처방 상위 머리 링크(AC-606.6): 묶음은 통계 탭 처방별 추세에서 고친다. 묶음 없음일 때만 [묶음 만들기], 읽지 못함은 [묶음 고치기].
-// 글자 단추 모양 그대로(폰 44px), 클래스를 따로 붙이지 않는다. 그래프가 아니라 AC-311.8 움직임 검사에서 이 링크만 뺀다
+// 글자 단추 모양 그대로(폰 44px) + no-underline 하나: 앱에는 a 밑줄을 지우는 바탕 규칙이 없어 붙이지 않으면 늘 밑줄이다
+// (UI_GUIDE 글자 단추의 밑줄은 올림 반응뿐. CountsOnly·PatientsEntry 링크와 같다). 그래프가 아니라 AC-311.8 움직임 검사에서 이 링크만 뺀다
 function GroupsLink({ groups }: { groups: GroupLines }) {
   return (
-    <Link href="/stats" className={ds.textButton}>
+    <Link href="/stats" className={`${ds.textButton} no-underline`}>
       {noGroups(groups) ? '묶음 만들기' : '묶음 고치기'}
     </Link>
   )
