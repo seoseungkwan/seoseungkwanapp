@@ -88,6 +88,8 @@ const RESULT_TONE: Record<'neutral' | 'positive' | 'negative', { box: string; ve
   negative: { box: `${RESULT_BASE} border-transparent bg-negative-soft`, verdict: 'text-lead font-semibold text-negative' },
 }
 const REASON_INPUT = `min-h-14 w-full min-w-0 resize-y rounded-control border border-line-strong bg-surface px-3 py-2 text-body text-ink placeholder:text-muted not-disabled:hover:border-muted focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-hidden aria-invalid:border-negative aria-invalid:ring-1 aria-invalid:ring-negative disabled:cursor-not-allowed disabled:opacity-40 max-md:text-lead`
+// 휴대폰의 적어 둔 이유: 입력 칸이 아니지만(AC-1607.1) 시안의 읽기만 하는 칸 모양(canvas 바탕·line-strong 테두리)
+const REASON_VIEW = 'min-h-14 whitespace-pre-wrap wrap-anywhere rounded-control border border-line-strong bg-canvas px-3 py-2 text-body text-ink'
 const SMALL_TEXT_BUTTON = `${ds.textButton} text-small!`
 
 const pieceOf = (key: CashCountKey): CashPiece => CASH_PIECES[CASH_COUNT_KEYS.indexOf(key)]
@@ -188,7 +190,7 @@ function ViewBox({ titleId, saveText, cash, counted, expected, verdict }: { titl
         <p className="text-body text-ink-2">아직 센 돈을 적지 않았어요</p>
       ) : (
         <>
-          <div role="group" aria-label="현금 시재 결과" className="flex flex-col tabular-nums">
+          <div role="group" aria-label="현금 시재 결과" className="flex flex-col text-body tabular-nums">
             <div className={ROW}>
               <span className={ROW_KEY}>세어 본 돈</span>
               <span className={ROW_VALUE}>{wonText(counted)}</span>
@@ -201,8 +203,8 @@ function ViewBox({ titleId, saveText, cash, counted, expected, verdict }: { titl
           <Result verdict={verdict} counted={counted} expected={expected}>
             {differ && cash.reason.trim() !== '' && (
               <div className="flex flex-col gap-1">
-                <p className="text-small font-medium text-ink-2">차이 이유</p>
-                <p className="whitespace-pre-wrap wrap-anywhere text-body text-ink">{cash.reason}</p>
+                <p className="text-small font-medium text-ink-2">차이 이유 (선택)</p>
+                <p className={REASON_VIEW}>{cash.reason}</p>
               </div>
             )}
           </Result>
@@ -454,7 +456,7 @@ export function CashFloatBox({ mode, day, cash, floatWon, floatSetting, guess, s
             </ul>
           </div>
         )}
-        {differ && guess.kind === 'other-pc' && <p className="text-small text-ink-2">비트 PC에서 열면 무엇이 틀렸을지 추측해 드려요</p>}
+        {differ && guess.kind === 'other-pc' && <p className="text-small font-semibold text-ink">비트 PC에서 열면 무엇이 틀렸을지 추측해 드려요</p>}
         {differ && (
           <div className="flex flex-col gap-1">
             <label htmlFor={reasonId} className="text-small font-medium text-ink-2">

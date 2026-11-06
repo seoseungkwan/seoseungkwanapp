@@ -534,6 +534,14 @@ describe('AC-1606.1·AC-1606.2·AC-1606.3 추측', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
   })
 
+  it('AC-1610.1: 시안처럼 다른 PC 한 줄은 "이렇게 생겼을 수 있어요"와 같은 굵은 ink 글이다 (AC-1606.3)', () => {
+    box({ guess: { kind: 'other-pc' } })
+    const line = screen.getByText(OTHER_PC)
+    expect(line.classList.contains('font-semibold')).toBe(true)
+    expect(line.classList.contains('text-ink')).toBe(true)
+    expect(line.classList.contains('text-ink-2')).toBe(false)
+  })
+
   it('AC-1606.3: 모드 none이면 추측 자리가 없다', () => {
     box({ guess: { kind: 'none' } })
     expect(screen.queryByText(GUESS_TITLE)).toBeNull()
@@ -578,7 +586,22 @@ describe('AC-1607.1·AC-1607.2 휴대폰(view)', () => {
     expect(screen.queryByText('가상 이유')).toBeNull()
     cleanup()
     box({ mode: 'view', cash: cashOf(SHORT) })
-    expect(screen.queryByText('차이 이유')).toBeNull()
+    expect(screen.queryByText(/^차이 이유/)).toBeNull()
+  })
+
+  it('AC-1610.1: 시안처럼 휴대폰 두 줄(세어 본 돈·있어야 할 돈)은 본문 크기(text-body)다', () => {
+    box({ mode: 'view' })
+    expect(screen.getByRole('group', { name: '현금 시재 결과' }).classList.contains('text-body')).toBe(true)
+  })
+
+  it('AC-1610.1: 시안처럼 휴대폰의 적어 둔 이유는 "차이 이유 (선택)" 이름 아래 읽기만 하는 칸 모양(canvas 바탕·line-strong 테두리)이고 입력 칸이 아니다', () => {
+    box({ mode: 'view', cash: cashOf(SHORT, { reason: '가상 택배비 영수증' }) })
+    expect(screen.getByText('차이 이유 (선택)')).toBeTruthy()
+    const text = screen.getByText('가상 택배비 영수증')
+    expect(text.tagName).toBe('P')
+    expect(text.classList.contains('bg-canvas')).toBe(true)
+    expect(text.classList.contains('border-line-strong')).toBe(true)
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
   })
 
   it('AC-1607.1: 그날 시재가 없는 줄(있으면 안 되지만)은 결과를 보이지 않는다(no-float)', () => {
