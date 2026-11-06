@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { groupKey, treatmentDetail, treatmentRows, type TreatmentRow } from '@/components/stats/treatmentView'
-import { COMPARE_NAME, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { COMPARE_NAME, rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { addDays } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
@@ -126,7 +126,7 @@ describe('AC-1209.2: 열린 칸 짜임', () => {
     for (const input of [inputOf(BOTH, WHOLE), quarter('2026-11-16'), inputOf([day('2026-10-10', [[KEY, 10]])], WHOLE, '12m')]) {
       const { root, item } = draw(input)
       const { current } = treatmentDetail(input, item)
-      expect(within(root).getByText(detailNote(input.range.period, current, todayOf(input.range)))).toBeTruthy()
+      expect(within(root).getByText(detailNote(input.range.bucket, current, todayOf(input.range)))).toBeTruthy()
       cleanup()
     }
     const { root } = draw(inputOf([day('2026-10-10', [[KEY, 10]])], WHOLE, '12m'))
@@ -183,7 +183,7 @@ describe('AC-1209.3: 칸 나누기와 막대 위 합계(그리기)', () => {
     ]
     for (const [input, totals] of cases) {
       const { root } = draw(input)
-      expect(totalsOf(root), input.range.period).toHaveLength(totals)
+      expect(totalsOf(root), input.range.name).toHaveLength(totals)
       cleanup()
     }
   })
@@ -198,7 +198,7 @@ describe('AC-1209.3: 칸 나누기와 막대 위 합계(그리기)', () => {
     ]
     for (const [input, thinned] of cases) {
       const { root } = draw(input)
-      expect(tokens(chartBoxOf(root)).includes(thin), input.range.period).toBe(thinned)
+      expect(tokens(chartBoxOf(root)).includes(thin), input.range.name).toBe(thinned)
       cleanup()
     }
   })
@@ -323,5 +323,32 @@ describe('AC-1209.4: 이 칸만 단추 글자를 바꾼다', () => {
     draw(inputOf(BOTH, WHOLE))
     expect(screen.queryByRole('button', { name: '자세히' })).toBeNull()
     expect(screen.getByRole('button', { name: NUMBERS.closed })).toBeTruthy()
+  })
+})
+
+// ── 고른 기간 (stats-period AC-1705.4). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1705.4: 고른 기간의 처방별 추세 열린 칸', () => {
+  const P_TODAY = '2026-11-06'
+  const pickInput = (unit: 'day' | 'week'): StatsInput => ({
+    days: [day('2026-09-07', [[KEY, 40, 10]]), day('2026-10-05', [[KEY, 100, 30]])],
+    covered: [{ from: '2025-01-01', to: '2026-11-05' }],
+    range: rangeOf(P_TODAY, { kind: 'month', unit, month: '2026-10' }, false),
+  })
+
+  it('AC-1705.4: 주별이면 칸은 주이고 표의 비교 칸 이름은 바로 전 기간 이름(9월)이다', () => {
+    const { root } = draw(pickInput('week'))
+    expect(within(root).getByText(`${NAME} · 주별 건수`)).toBeTruthy()
+    const table = openTable(root)
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['주', '건수', '신환', '재진', '9월'])
+  })
+
+  it('AC-1705.4: 일별이면 칸은 날이고 회색 막대(표 비교 칸)는 바로 전 기간의 같은 차례 날이다', () => {
+    const input = pickInput('day')
+    const { root, item } = draw(input)
+    expect(within(root).getByText(`${NAME} · 일별 건수`)).toBeTruthy()
+    const { current, previous } = treatmentDetail(input, item)
+    expect(current[0]?.start).toBe('2026-10-01')
+    expect(previous[0]?.start).toBe('2026-09-01')
+    expect(within(root).getByText(detailNote('day', current, P_TODAY, true))).toBeTruthy()
   })
 })

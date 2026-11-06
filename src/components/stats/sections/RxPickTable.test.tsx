@@ -6,7 +6,8 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Icon } from '@/components/common/Icon'
 import { rxPickCopyText, rxPickTotal } from '@/components/stats/rxPickView'
-import { rxPickRows, statsRange, type RxLine, type RxPickRow, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import type { StatsPick } from '@/components/stats/periodPick'
+import { rangeOf, rxPickRows, statsRange, type RxLine, type RxPickRow, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { nestedBoxes } from '@/testing/boxes'
@@ -538,5 +539,78 @@ describe('AC-809.1·AC-809.2: 좁은 화면', () => {
     expect(screen.getByRole('button', { name: '표 복사' }).classList.contains('max-md:h-11')).toBe(true)
     const row = rowOf(A)
     expect(document.getElementById(row.getAttribute('aria-controls')!)!.classList.contains('max-md:-mx-4')).toBe(true)
+  })
+})
+
+// ── 고른 기간 (stats-period REQ-1705). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1705.3: 고른 기간의 처방 골라 보기 표', () => {
+  const P_TODAY = '2026-11-06'
+  const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const COVER: DateRange[] = [{ from: '2025-01-01', to: '2026-11-05' }]
+  // RA 이번 10월 120(신환 30·재진 90), 9월 50, 작년 10월 100. RB 이번 40, 9월 10, 작년 20
+  const THREE = [
+    day('2025-10-06', [['RA', 100, 10, 90], ['RB', 20, 2, 18]]),
+    day('2026-09-07', [['RA', 50, 5, 45], ['RB', 10, 1, 9]]),
+    day('2026-10-05', [['RA', 120, 30, 90], ['RB', 40, 8, 32]]),
+  ]
+  function drawPick(days: DayPayload[], picks: RxLine[], pick: StatsPick = OCT, covered: DateRange[] = COVER) {
+    const input: StatsInput = { days, covered, range: rangeOf(P_TODAY, pick, false) }
+    const rows = rxPickRows(input, picks)
+    const total = rxPickTotal(rows)
+    const view = render(<RxPickTable input={input} rows={rows} total={total} hospitalName="가짜 의원" opened={new Set()} onToggle={() => {}} renderPanel={() => null} />)
+    return { ...view, input, rows, total }
+  }
+  const headTexts = (container: HTMLElement) => Array.from(headOf(container).children).map((cell) => cell.textContent)
+  // 줄 안 비교 칸: 휴대폰 이름표('{name}보다', 넓으면 화면 읽기에만)가 든 칸
+  const compareIn = (row: HTMLElement, name: string) => within(row).getByText(`${name}보다`).parentElement!
+  const totalRow = () => screen.getByText('합계').closest('li') as HTMLElement
+
+  it('AC-1705.3: 칸은 처방·건수·"9월보다"·"작년 10월보다"·신환·신환율·재진·재진율이다', () => {
+    const { container } = drawPick(THREE, [PICK_A])
+    expect(headTexts(container)).toEqual(['처방', '건수', '9월보다', '작년 10월보다', '신환', '신환율', '재진', '재진율', ''])
+  })
+
+  it('AC-1705.3: 해는 비교 칸이 "2025년보다" 하나다', () => {
+    const { container } = drawPick([day('2025-03-02', [['RA', 40, 4, 36]]), day('2026-03-02', [['RA', 60, 6, 54]])], [PICK_A], { kind: 'year', year: '2026' })
+    expect(headTexts(container)).toEqual(['처방', '건수', '2025년보다', '신환', '신환율', '재진', '재진율', ''])
+  })
+
+  it('AC-1705.3: 줄의 비교 칸은 비교마다 증감이고, 견줄 수 없는 비교(작년이 덮이지 않음)는 "–"다', () => {
+    drawPick(THREE, [PICK_A], OCT, [{ from: '2026-09-01', to: '2026-11-05' }])
+    const row = rowOf(A)
+    expect(compareIn(row, '9월').textContent).toContain('▲')
+    expect(compareIn(row, '작년 10월').textContent).toBe('작년 10월보다–')
+  })
+
+  it('AC-1705.3: 합계 줄도 비교마다 더한다', () => {
+    drawPick(THREE, [PICK_A, PICK_B])
+    expect(compareIn(totalRow(), '9월').textContent).toContain('▲')
+    expect(compareIn(totalRow(), '작년 10월').textContent).toContain('▲')
+  })
+
+  it('AC-1705.3: [표 복사] 글의 둘째 줄은 "{name} ({label}) · 비교: {label} (바로 전 달) · {label} (작년 같은 달)"이고 머리 줄에 비교마다 "{name}"·"{name}보다"가 있다', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => {})
+    fakeClipboard(writeText)
+    const { input, rows, total } = drawPick(THREE, [PICK_A, PICK_B])
+    await pressCopy()
+    const text = writeText.mock.calls[0]![0]
+    expect(text).toBe(rxPickCopyText({ hospitalName: '가짜 의원', periodName: '2026년 10월', range: input.range, rows, total }))
+    const lines = text.split('\n')
+    expect(lines[1]).toBe('2026년 10월 (2026년 10월 1일 – 31일) · 비교: 9월 1일 – 30일 (바로 전 달) · 2025년 10월 1일 – 31일 (작년 같은 달)')
+    expect(lines[2]!.split('\t')).toEqual(expect.arrayContaining(['9월', '9월보다', '작년 10월', '작년 10월보다']))
+  })
+
+  it('AC-1705.4: 줄을 누르면 열리는 칸 글은 고른 칸(주별)을 따른다', () => {
+    const { container } = drawPick(THREE, [PICK_A], { kind: 'month', unit: 'week', month: '2026-10' })
+    expect(notesOf(container)).toContain('줄을 누르면 그 처방의 주별 건수가 열려요.')
+  })
+})
+
+describe('AC-1705.5: 빠른 단추의 처방 골라 보기 표는 지금과 같다', () => {
+  it('AC-1705.5: 칸은 처방·건수·지난 30일·증감·신환·신환율·재진·재진율이고 비교 이름표·작년 칸이 없다', () => {
+    const { container } = draw(PLAIN, [PICK_A, PICK_B])
+    expect(Array.from(headOf(container).children).map((cell) => cell.textContent)).toEqual(['처방', '건수', '지난 30일', '증감', '신환', '신환율', '재진', '재진율', ''])
+    expect(within(rowOf(A)).queryByText(/보다$/)).toBeNull()
+    expect(notesOf(container)).toContain('줄을 누르면 그 처방의 일별 건수가 열려요.')
   })
 })

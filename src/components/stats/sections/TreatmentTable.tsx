@@ -6,13 +6,15 @@ import { InlineBar } from '@/components/charts/InlineBar'
 import { Icon } from '@/components/common/Icon'
 import { addedRateText, rateText } from '@/components/stats/rxPickView'
 import { rowKey, type TreatmentRow } from '@/components/stats/treatmentView'
-import { COMPARE_NAME, type RxPickRow, type StatsInput } from '@/components/stats/view'
+import type { RxPickRow, StatsInput, StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
+import type { Delta } from '@/types/analysis'
 import { DeltaText, PartialChip } from './parts'
 
 // 처방별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html .cols·.row). props만 받는다.
 // 머리 줄·묶음 줄(준비·다시 불러와야 함·처방 없음)·열린 칸 자리. 숫자는 treatmentRows가 낸 값이고 열린 칸 그림은 renderPanel로 받는다.
-// 넓으면(1024px 이상) 한 줄 칸, 좁으면 한 묶음이 다섯 줄로 쌓인다(시안은 900px이지만 폭 접두사 규칙 때문에 max-lg:, design.md '시안과 다른 곳')
+// 넓으면(1024px 이상) 한 줄 칸, 좁으면 한 묶음이 다섯 줄로 쌓인다(시안은 900px이지만 폭 접두사 규칙 때문에 max-lg:, design.md '시안과 다른 곳').
+// 고른 기간(stats-period AC-1705.2)은 비교마다 '{name}보다' 칸이고(작년 비교가 있으면 칸이 하나 는다) 견줄 수 없는 칸은 '–'다. 빠른 단추는 지금 칸 그대로다
 
 export type ReadyTreatmentRow = Extract<TreatmentRow, { kind: 'ready' }>
 
@@ -36,6 +38,36 @@ const RETURNING_PLACE = 'lg:col-start-5 max-lg:col-[2/4]'
 const CHEV_CELL = 'text-muted transition lg:col-start-6 lg:row-[1/span_2] max-lg:col-start-3 max-lg:row-start-1'
 const WAIT_CELL = 'text-small text-muted lg:col-[2/6] lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2'
 const PANEL = 'border-b border-line bg-canvas p-4 max-md:-mx-4 [&_th]:bg-canvas'
+// 고른 기간 비교 칸(넓으면 셋째·넷째 칸, 좁으면 둘째 줄 오른쪽에 위아래로). 좁을 때만 이름표가 보인다
+const PICK_COMPARES = 'lg:contents max-lg:col-[2/4] max-lg:row-start-2 max-lg:flex max-lg:flex-col max-lg:items-end max-lg:gap-0.5'
+const PICK_COMPARE = ['text-small font-semibold lg:col-start-3 lg:row-[1/span_2]', 'text-small font-semibold lg:col-start-4 lg:row-[1/span_2]'] as const
+const COMPARE_LABEL = 'mr-1 font-normal text-muted lg:sr-only'
+const NO_VALUE = '–'
+const UNAVAILABLE: Delta = { kind: 'unavailable' }
+
+// 칸 자리. 비교 칸이 둘(고른 기간 + 작년)이면 칸이 하나 늘어 뒤 칸이 한 칸씩 밀린다
+type Layout = { columns: string; newPlace: string; returningPlace: string; chev: string; wait: string }
+const ONE: Layout = { columns: COLUMNS, newPlace: NEW_PLACE, returningPlace: RETURNING_PLACE, chev: CHEV_CELL, wait: WAIT_CELL }
+const TWO: Layout = {
+  columns:
+    'grid w-full items-center gap-x-3 lg:grid-cols-[minmax(200px,1fr)_84px_184px_184px_128px_128px_16px] max-lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_16px] max-lg:gap-x-2 max-lg:gap-y-0.5',
+  newPlace: 'lg:col-start-5 max-lg:col-start-1 max-lg:text-left',
+  returningPlace: 'lg:col-start-6 max-lg:col-[2/4]',
+  chev: 'text-muted transition lg:col-start-7 lg:row-[1/span_2] max-lg:col-start-3 max-lg:row-start-1',
+  wait: 'text-small text-muted lg:col-[2/7] lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2',
+}
+
+// 고른 기간의 비교 하나(바로 전 = comparable·delta, 작년 = lastYear). previous null = 견줄 수 없음('–')
+type Compare = { name: string; previous: number | null; delta: Delta }
+
+function comparesOf(row: RxPickRow, range: StatsRange): Compare[] {
+  return [
+    { name: range.previous.name, previous: row.comparable?.previous ?? null, delta: row.delta },
+    ...(range.lastYear === null ? [] : [{ name: range.lastYear.name, previous: row.lastYear?.previous ?? null, delta: row.lastYear?.delta ?? UNAVAILABLE }]),
+  ]
+}
+
+const pickedRange = (range: StatsRange): StatsRange | null => (range.period === null ? range : null)
 
 // 이름(굵게) + 그 옆 코드 줄(` · `로 이음). 처방 없는 묶음은 코드 줄이 없다
 function Name({ name, codes }: { name: string; codes: readonly string[] }) {
@@ -58,7 +90,22 @@ function Pair({ label, part, whole, place }: { label: string; part: number; whol
   )
 }
 
-function Numbers({ row, max }: { row: RxPickRow; max: number }) {
+// 고른 기간의 비교 칸들
+function PickCompares({ row, range }: { row: RxPickRow; range: StatsRange }) {
+  return (
+    <span className={PICK_COMPARES}>
+      {comparesOf(row, range).map((compare, i) => (
+        <span key={compare.name} className={PICK_COMPARE[i]}>
+          <span className={COMPARE_LABEL}>{`${compare.name}보다`}</span>
+          {compare.previous === null ? NO_VALUE : <DeltaText delta={compare.delta} unit="건" />}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+// picked = 고른 기간(null = 빠른 단추, 지금 칸 그대로)
+function Numbers({ row, max, picked, layout }: { row: RxPickRow; max: number; picked: StatsRange | null; layout: Layout }) {
   return (
     <>
       <span className={BAR_CELL}>
@@ -74,23 +121,29 @@ function Numbers({ row, max }: { row: RxPickRow; max: number }) {
         {`${formatCount(row.count)}건`}
         {row.partial && <PartialChip className="" />}
       </span>
-      <span className={DELTA_CELL}>
-        <DeltaText delta={row.delta} unit="건" />
-      </span>
-      <Pair label="신환" part={row.newCount} whole={row.count} place={NEW_PLACE} />
-      <Pair label="재진" part={row.returningCount} whole={row.count} place={RETURNING_PLACE} />
+      {picked === null ? (
+        <span className={DELTA_CELL}>
+          <DeltaText delta={row.delta} unit="건" />
+        </span>
+      ) : (
+        <PickCompares row={row} range={picked} />
+      )}
+      <Pair label="신환" part={row.newCount} whole={row.count} place={layout.newPlace} />
+      <Pair label="재진" part={row.returningCount} whole={row.count} place={layout.returningPlace} />
     </>
   )
 }
 
-function ReadyLine({ item, max, open, onToggle, renderPanel }: { item: ReadyTreatmentRow; max: number; open: boolean; onToggle: () => void; renderPanel: (item: ReadyTreatmentRow) => ReactNode }) {
+type LineProps = { item: ReadyTreatmentRow; max: number; picked: StatsRange | null; layout: Layout; open: boolean; onToggle: () => void; renderPanel: (item: ReadyTreatmentRow) => ReactNode }
+
+function ReadyLine({ item, max, picked, layout, open, onToggle, renderPanel }: LineProps) {
   const panelId = useId()
   return (
     <li>
-      <button type="button" aria-expanded={open} aria-controls={panelId} onClick={onToggle} className={`${COLUMNS} ${LINE} cursor-pointer transition hover:bg-canvas ${ds.focusRing}`}>
+      <button type="button" aria-expanded={open} aria-controls={panelId} onClick={onToggle} className={`${layout.columns} ${LINE} cursor-pointer transition hover:bg-canvas ${ds.focusRing}`}>
         <Name name={item.group.name} codes={item.group.codes} />
-        <Numbers row={item.row} max={max} />
-        <Icon name="chev" size={16} className={`${CHEV_CELL} ${open ? 'rotate-180' : ''}`} />
+        <Numbers row={item.row} max={max} picked={picked} layout={layout} />
+        <Icon name="chev" size={16} className={`${layout.chev} ${open ? 'rotate-180' : ''}`} />
       </button>
       <div id={panelId} hidden={!open} className={PANEL}>
         {open && renderPanel(item)}
@@ -100,12 +153,12 @@ function ReadyLine({ item, max, open, onToggle, renderPanel }: { item: ReadyTrea
 }
 
 // 다시 불러와야 하는 줄·처방 없는 줄: 단추가 아니고 숫자·막대·꺾쇠가 없다(AC-1207.9)
-function WaitingLine({ item }: { item: Exclude<TreatmentRow, { kind: 'ready' }> }) {
+function WaitingLine({ item, layout }: { item: Exclude<TreatmentRow, { kind: 'ready' }>; layout: Layout }) {
   return (
     <li>
-      <div className={`${COLUMNS} ${LINE}`}>
+      <div className={`${layout.columns} ${LINE}`}>
         <Name name={item.group.name} codes={item.group.codes} />
-        <span className={WAIT_CELL}>{item.kind === 'stale' ? STALE : NO_CODES}</span>
+        <span className={layout.wait}>{item.kind === 'stale' ? STALE : NO_CODES}</span>
       </div>
     </li>
   )
@@ -119,6 +172,13 @@ function barMax(rows: readonly TreatmentRow[]): number {
     return row.comparable === null ? [row.count] : [row.comparable.current, row.comparable.previous]
   })
   return Math.max(0, ...drawn)
+}
+
+// 고른 기간에서 견줄 수 없는 칸('–')이 있는 비교의 이름(차례대로)
+function missingCompares(rows: readonly TreatmentRow[], range: StatsRange): string[] {
+  const ready = rows.flatMap((item) => (item.kind === 'ready' ? [comparesOf(item.row, range)] : []))
+  const names = [range.previous.name, ...(range.lastYear === null ? [] : [range.lastYear.name])]
+  return names.filter((_, i) => ready.some((compares) => compares[i]?.previous === null))
 }
 
 export function TreatmentTable({
@@ -135,12 +195,17 @@ export function TreatmentTable({
   renderPanel: (item: ReadyTreatmentRow) => ReactNode
 }) {
   const max = barMax(rows)
+  const picked = pickedRange(input.range)
+  const layout = picked !== null && picked.lastYear !== null ? TWO : ONE
+  const heads = picked === null ? [input.range.previous.name] : [picked.previous.name, ...(picked.lastYear === null ? [] : [picked.lastYear.name])]
   return (
     <>
-      <div aria-hidden="true" className={`${COLUMNS} mt-3 h-9 border-b border-line text-small font-medium text-muted max-lg:hidden`}>
+      <div aria-hidden="true" className={`${layout.columns} mt-3 h-9 border-b border-line text-small font-medium text-muted max-lg:hidden`}>
         <span>묶음</span>
         <span className="text-right">건수</span>
-        <span>{`${COMPARE_NAME[input.range.period]}보다`}</span>
+        {heads.map((name) => (
+          <span key={name}>{`${name}보다`}</span>
+        ))}
         <span className="text-right">신환</span>
         <span className="text-right">재진</span>
         <span />
@@ -149,12 +214,16 @@ export function TreatmentTable({
         {rows.map((item) => {
           const key = rowKey(item.group)
           return item.kind === 'ready' ? (
-            <ReadyLine key={key} item={item} max={max} open={opened.has(key)} onToggle={() => onToggle(key)} renderPanel={renderPanel} />
+            <ReadyLine key={key} item={item} max={max} picked={picked} layout={layout} open={opened.has(key)} onToggle={() => onToggle(key)} renderPanel={renderPanel} />
           ) : (
-            <WaitingLine key={key} item={item} />
+            <WaitingLine key={key} item={item} layout={layout} />
           )
         })}
       </ul>
+      {picked !== null &&
+        missingCompares(rows, picked).map((name) => (
+          <p key={name} className="mt-2 text-small text-muted">{`${name}: 자료가 없어요. 비트 PC에서 그 기간을 불러오면 보여요.`}</p>
+        ))}
     </>
   )
 }

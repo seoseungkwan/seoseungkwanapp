@@ -8,7 +8,7 @@ import { againAverageText, againBaseText, againRateText, againView, isFewStarts,
 import type { RxLine, StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { AGAIN_WINDOWS, type AgainWindow } from '@/types/payload'
-import { EmptyNote, longDate, NO_RANGE_DATA, PERIOD_NAME, todayOf } from './parts'
+import { EmptyNote, longDate, NO_RANGE_DATA, todayOf } from './parts'
 
 // 같은 처방 재방문 묶음 (fu-rate REQ-1307, 시안 docs/mockups/fu-rate/index.html의 .again). props만 받는다: 고른 날 수는 부모의 React 상태,
 // 넓은 날 줄 읽기는 부모의 useAgainDays가 하고(daysState) 이 파일은 저장 코드를 부르지 않는다. 숫자는 againView가 낸 값이다.
@@ -259,7 +259,8 @@ export function RxPickAgain({
     if (!view.hasRows) return <EmptyNote>{NO_RANGE_DATA}</EmptyNote>
     if (!view.hasAgain) return <EmptyNote>{BEFORE_AGAIN}</EmptyNote>
 
-    const base = againBaseText(view, range, PERIOD_NAME[range.period])
+    // 기간 이름은 range.name이다(빠른 단추는 PERIOD_NAME과 같다). 고른 기간에 셀 날이 없으면 굵은 글 없이 lead 한 글이다(AC-1705.4)
+    const base = againBaseText(view, range, range.name)
     const { strip } = view
     const stripDays = strip.ok + strip.no + strip.out
     const legend: { kind: AgainDayKind; label: string }[] = [
@@ -272,7 +273,7 @@ export function RxPickAgain({
       <>
         <p className="mt-4 max-w-160 text-small text-ink-2">
           {base.lead}
-          <span className="font-semibold text-ink">{base.strong}</span>
+          {base.strong !== '' && <span className="font-semibold text-ink">{base.strong}</span>}
           {base.tail}
         </p>
         <div aria-hidden="true" className="mt-2 flex h-3 gap-px">
