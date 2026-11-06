@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { statsRange, type RxLine, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { againBaseText, againView } from '@/components/stats/againView'
+import { rangeOf, statsRange, type RxLine, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
@@ -568,5 +569,27 @@ describe('AC-1307.12: 상자·초점·규칙', () => {
       .replace(/(^|\s)\/\/.*$/gm, '$1')
     expect(text).not.toMatch(/gradient|#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/)
     expect(text).not.toMatch(/@\/lib\/storage|useAgainDays|useRxPicks|useStatsData/)
+  })
+})
+
+// ── 고른 기간 (stats-period AC-1705.4). 오늘은 2026-11-05로 둔다 ─────────────────
+describe('AC-1705.4: 고른 기간의 같은 처방 재방문', () => {
+  const pickInput = (month: string, days: DayPayload[]): StatsInput => ({ days, covered: ALL, range: rangeOf(TODAY, { kind: 'month', unit: 'day', month }, false) })
+  const drawPick = (input: StatsInput) =>
+    render(<RxPickAgain picks={[PICK_A, PICK_B]} input={input} win={7} onWin={() => {}} daysState="ready" onRetryDays={() => {}} />)
+
+  it('AC-1705.4: 센 범위 글은 고른 기간 이름(range.name)으로 낸 againBaseText 글이다', () => {
+    const input = pickInput('2026-10', DAYS)
+    const { container } = drawPick(input)
+    const base = againBaseText(againView(input, 7, [PICK_A, PICK_B]), input.range, '2026년 10월')
+    const text = `${base.lead}${base.strong}${base.tail}`
+    expect(Array.from(container.querySelectorAll('p')).some((p) => p.textContent === text)).toBe(true)
+  })
+
+  it('AC-1705.4: 창이 다 지난 날이 없으면 "{name}에 시작한 환자는 아직 {창}일이 다 지나지 않아 셀 수 없어요." 한 글이다(굵은 글이 없다)', () => {
+    const nov = [day('2026-11-02', { ready: READY_NONE, rx: [ag('RA', 2, [null, null, null], [null, null, null])] })]
+    drawPick(pickInput('2026-11', nov))
+    const line = screen.getByText('2026년 11월에 시작한 환자는 아직 7일이 다 지나지 않아 셀 수 없어요.')
+    expect(line.querySelector('.font-semibold')).toBeNull()
   })
 })

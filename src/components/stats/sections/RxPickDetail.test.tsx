@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { rxDetail, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { rangeOf, rxDetail, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { addDays } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
@@ -258,7 +258,7 @@ describe('AC-806.6: 그래프 아래 안내', () => {
     const input = inputOf(WITH_GAP)
     draw(input)
     const note = screen.getByText(DAY_NOTE)
-    expect(note.textContent).toBe(detailNote('30d', rxDetail(input, 'RA').current, TODAY))
+    expect(note.textContent).toBe(detailNote('day', rxDetail(input, 'RA').current, TODAY))
   })
 
   it('AC-806.6: 나눠 보기에서 구분 없음이 있으면 주황 빗금 글이 붙는다', () => {
@@ -405,5 +405,35 @@ describe('AC-809.2: 좁은 화면의 단추', () => {
   it('AC-809.2: [자세히]는 768px 미만에서 44px 이상이다', () => {
     draw(inputOf(NO_GAP))
     expect(screen.getByRole('button', { name: '자세히' }).className.split(/\s+/)).toContain('max-md:min-h-11')
+  })
+})
+
+// ── 고른 기간 (stats-period AC-1705.4). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1705.4: 고른 기간의 줄을 눌러 연 그래프', () => {
+  const pickInput = (unit: 'day' | 'week'): StatsInput => ({
+    days: [day('2026-09-07', [['RA', 40, 10]]), day('2026-10-05', [['RA', 100, 30]])],
+    covered: [{ from: '2025-01-01', to: '2026-11-05' }],
+    range: rangeOf('2026-11-06', { kind: 'month', unit, month: '2026-10' }, false),
+  })
+
+  it('AC-1705.4: 주별이면 칸은 주(range.bucket)이고 [자세히] 표의 비교 칸 이름은 바로 전 기간(9월)이다', () => {
+    const input = pickInput('week')
+    draw(input)
+    expect(screen.getByText(`${NAME} · 주별 건수`)).toBeTruthy()
+    openDetail()
+    const table = screen.getByRole('table', { name: detailName('주') })
+    expect(headsOf(table)).toEqual(['주', '건수', '신환', '재진', '9월'])
+    expect(rxDetail(input, 'RA').current).toHaveLength(5)
+  })
+
+  it('AC-1705.4: 회색 막대는 바로 전 기간이다(같은 차례 날의 9월 건수)', () => {
+    const input = pickInput('day')
+    draw(input)
+    openDetail()
+    const rows = detailRows()
+    // 10월 7일(일곱째 날)과 9월 7일이 같은 차례다
+    expect(rows[6]).toEqual(['10월 7일 (수)', '0건', '0', '0', '40건'])
+    expect(rows[4]![0]).toBe('10월 5일 (월)')
+    expect(screen.getByText(detailNote('day', rxDetail(input, 'RA').current, '2026-11-06', true))).toBeTruthy()
   })
 })

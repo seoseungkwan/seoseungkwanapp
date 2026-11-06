@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { groupKey } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
-import { statsRange, summaryCells, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import type { StatsPick } from '@/components/stats/periodPick'
+import { rangeOf, statsRange, summaryCells, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { nestedBoxes } from '@/testing/boxes'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { DateRange } from '@/types/dates'
@@ -409,5 +410,64 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     fireEvent.click(screen.getByRole('button', { name: '어제 일일보고' }))
     expect(screen.getByText('이 기간은 보고를 확정할 수 없어요')).toBeTruthy()
     expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+// ── 고른 기간 (stats-period REQ-1704). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1704.1·AC-1704.2·AC-1704.4: 고른 기간의 기간 요약', () => {
+  const P_TODAY = '2026-11-06'
+  const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const NOV: StatsPick = { kind: 'month', unit: 'day', month: '2026-11' }
+  const pickOf = (pick: StatsPick, days: DayPayload[], covered: DateRange[], todayDone = false): StatsInput => ({ days, covered, range: rangeOf(P_TODAY, pick, todayDone) })
+  // 9월·10월은 날마다 덮고 줄은 몇 날만(나머지는 휴진). 작년 10월은 줄도 덮은 기간도 없다
+  const SEP_OCT: DateRange[] = [{ from: '2026-09-01', to: '2026-10-31' }]
+  const DAYS = [day('2026-09-07', 30), day('2026-10-05', 40), day('2026-10-06', 44)]
+  const gridOf = () => screen.getByText('하루 평균 환자 수').closest('.grid')!
+  const labels = () => [...gridOf().children].map((cell) => cell.querySelector('.text-small')?.textContent)
+  const pickCell = (label: string) => [...gridOf().children].find((cell) => cell.querySelector('.text-small')?.textContent === label)!
+
+  it('AC-1704.4: 설명은 "{name} · {label}"이고 칸은 평균·신환·재진·비교마다 한 칸("9월보다"·"작년 10월보다")이다', () => {
+    render(<PeriodSummary input={pickOf(OCT, DAYS, SEP_OCT)} saved />)
+    expect(screen.getByText('2026년 10월 · 2026년 10월 1일 – 31일')).toBeTruthy()
+    expect(labels()).toEqual(['하루 평균 환자 수', '신환', '재진', '9월보다', '작년 10월보다'])
+  })
+
+  it('AC-1704.1: 견준 비교 칸은 증감 글자와 "{비교 label} 하루 평균 N명"이고, 견줄 수 없는 비교 칸은 "–"와 "{비교 label} 자료가 없어요"다(0이 아니다)', () => {
+    render(<PeriodSummary input={pickOf(OCT, DAYS, SEP_OCT)} saved />)
+    const before = pickCell('9월보다')
+    expect(before.textContent).toContain('▲')
+    expect(before.textContent).toContain('9월 1일 – 30일 하루 평균 30명')
+    const lastYear = pickCell('작년 10월보다')
+    expect(lastYear.textContent).toContain('–')
+    expect(lastYear.textContent).toContain('2025년 10월 1일 – 31일 자료가 없어요')
+    expect(lastYear.textContent).not.toContain('0명')
+  })
+
+  it('AC-1704.1: PC는 한 줄(비교 둘이면 5칸), 휴대폰은 평균·신환·재진 셋이 한 줄이고 비교 칸마다 한 줄이다', () => {
+    render(<PeriodSummary input={pickOf(OCT, DAYS, SEP_OCT)} saved />)
+    const grid = gridOf()
+    expect(grid.className.split(' ')).toEqual(expect.arrayContaining(['grid-cols-5', 'max-md:grid-cols-3']))
+    expect(grid.className).not.toContain('max-md:grid-cols-2')
+    const spans = [...grid.children].map((cell) => cell.className.split(' ').includes('max-md:col-span-3'))
+    expect(spans).toEqual([false, false, false, true, true])
+  })
+
+  it('AC-1704.1: 해 고르기는 비교 칸이 하나("2025년보다")라 PC 4칸이다', () => {
+    const covered: DateRange[] = [{ from: '2025-01-01', to: '2026-11-05' }]
+    render(<PeriodSummary input={pickOf({ kind: 'year', year: '2026' }, [day('2025-03-02', 20), day('2026-03-02', 30)], covered)} saved />)
+    expect(screen.getByText('2026년 · 2026년 1월 1일 – 11월 5일')).toBeTruthy()
+    expect(labels()).toEqual(['하루 평균 환자 수', '신환', '재진', '2025년보다'])
+    expect(gridOf().className.split(' ')).toEqual(expect.arrayContaining(['grid-cols-4', 'max-md:grid-cols-3']))
+  })
+
+  it('AC-1704.2: 고른 기간에 끝나지 않은 날이 있으면 설명 끝에 " · 자료 없는 날 N일은 빼고 셌어요"가 붙는다', () => {
+    // 11월 1–5일 가운데 2·3일만 줄이 있고 덮은 기간은 10월 31일까지다 → 1·4·5일 셋이 자료 없는 날
+    render(<PeriodSummary input={pickOf(NOV, [day('2026-11-02', 40), day('2026-11-03', 44)], SEP_OCT)} saved />)
+    expect(screen.getByText('2026년 11월 · 2026년 11월 1일 – 5일 · 자료 없는 날 3일은 빼고 셌어요')).toBeTruthy()
+  })
+
+  it('AC-1704.2: 끝나지 않은 날이 없으면 붙지 않는다', () => {
+    render(<PeriodSummary input={pickOf(OCT, DAYS, SEP_OCT)} saved />)
+    expect(screen.queryByText(/자료 없는 날/)).toBeNull()
   })
 })
