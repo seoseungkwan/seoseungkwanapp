@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { saveWorklogDay, WorklogStorageError } from '@/lib/storage/worklogDays'
-import { emptyWorklogDay, type WorklogDay } from '@/types/worklog'
+import { emptyWorklogCash, emptyWorklogDay, type WorklogDay } from '@/types/worklog'
 import { onWorklogSignedOut, startWorklogSession, worklogAutosave } from './worklogSession'
 
 // 자동 저장 제어 한 벌과 창 이벤트를 화면 없이 시험한다. 값은 둥근 가짜 숫자와 "가상" 글자다
@@ -75,6 +75,75 @@ describe('worklogAutosave', () => {
     expect(save).toHaveBeenCalledWith(client, YMD, { spendCash: '20000' })
     expect(save).toHaveBeenCalledWith(client, '2026-10-27', { memo: '가상 메모' })
     for (const call of save.mock.calls) expect(call).toHaveLength(3)
+  })
+
+  it('AC-1508.8: 자동 저장이 업무사항 글씨 크기를 넘기면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, undefined, 크기) 다섯 인자로 간다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11)
+    autosave.changeMemoFont(YMD, 12)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, {}, undefined, 12)
+    expect(save.mock.calls[0]).toHaveLength(5)
+  })
+
+  it('AC-1508.8: 크기와 비트 칸 목록이 함께 바뀌면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, 목록, 크기)다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11)
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    autosave.changeMemoFont(YMD, 14)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' }, ['cashIn'], 14)
+  })
+
+  it('AC-1508.8: 크기를 넘기지 않는 저장은 지금처럼 인자 셋(목록 없음)·넷(목록 있음)이다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11)
+    autosave.serverDay('2026-10-27', null, null, [], 11)
+    autosave.change(YMD, dayWith({ cashIn: '100000' }))
+    autosave.change('2026-10-27', dayWith({ cashIn: '100000' }), ['cashIn'])
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' })
+    expect(save).toHaveBeenCalledWith(client, '2026-10-27', { cashIn: '100000' }, ['cashIn'])
+    expect(save.mock.calls.map((call) => call.length).sort()).toEqual([3, 4])
+  })
+
+  // 현금 시재(worklog-cash-float AC-1609.6): 자동 저장이 시재를 넘길 때만 여섯째 인자로 보낸다(목록·크기가 없으면 넷째·다섯째는 undefined)
+  it('AC-1609.6: 자동 저장이 시재를 넘기면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, undefined, undefined, 시재) 여섯 인자로 간다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11, emptyWorklogCash())
+    autosave.changeCash(YMD, { ...emptyWorklogCash(), count5000: 2, floatWon: 300000 })
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 })
+    expect(save.mock.calls[0]).toHaveLength(6)
+  })
+
+  it('AC-1609.6: 시재와 칸·목록·크기가 함께 바뀌면 saveWorklogDay(supabaseBrowser(), 날짜, 바뀐 칸, 목록, 크기, 시재)다', async () => {
+    const autosave = worklogAutosave()
+    autosave.serverDay(YMD, null, null, [], 11, emptyWorklogCash())
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    autosave.changeMemoFont(YMD, 14)
+    autosave.changeCash(YMD, { ...emptyWorklogCash(), count1000: 3, floatWon: 300000 })
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' }, ['cashIn'], 14, { count1000: 3, floatWon: 300000 })
+  })
+
+  it('AC-1609.6: 시재를 넘기지 않는 저장은 지금 인자 수 그대로다(셋·넷·다섯)', async () => {
+    const autosave = worklogAutosave()
+    for (const ymd of [YMD, '2026-10-27', '2026-10-26']) autosave.serverDay(ymd, null, null, [], 11, { ...emptyWorklogCash(), count5000: 2, floatWon: 300000 })
+    autosave.change(YMD, dayWith({ cashIn: '100000' }))
+    autosave.change('2026-10-27', dayWith({ cashIn: '100000' }), ['cashIn'])
+    autosave.changeMemoFont('2026-10-26', 12)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save).toHaveBeenCalledTimes(3)
+    expect(save).toHaveBeenCalledWith(client, YMD, { cashIn: '100000' })
+    expect(save).toHaveBeenCalledWith(client, '2026-10-27', { cashIn: '100000' }, ['cashIn'])
+    expect(save).toHaveBeenCalledWith(client, '2026-10-26', {}, undefined, 12)
+    expect(save.mock.calls.map((call) => call.length).sort()).toEqual([3, 4, 5])
   })
 
   it('AC-010.11: 화면이 없어도 실패한 저장을 2초 뒤 다시 한다', async () => {

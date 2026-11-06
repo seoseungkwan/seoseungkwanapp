@@ -3,7 +3,7 @@ import type { ErrorCode } from '@/types/errors'
 import type { RxGroup } from '@/types/rxGroups'
 
 // 치료 묶음 저장·읽기(spec revenue design.md 8-2절, REQ-013). 브라우저 Supabase 클라이언트 + RLS로만 한다.
-// 이름이 일반적인 까닭: 통계 탭이 합친 뒤 다시 쓴다(design.md 11절). 매출만의 일을 넣지 않는다.
+// 이름이 일반적인 까닭: 통계 처방별 추세는 같은 모양(RxGroup)을 쓰지만 표는 따로(stats_rx_groups, lib/storage/statsRxGroups.ts)다(spec treatment-trend). 매출만의 일을 넣지 않는다.
 // 보내는 묶음은 정해 둔 칸만 새 객체로 만든다. hospital_id·updated_at은 DB가 채운다.
 // Supabase 오류 내용은 버린다(화면·기록에 넘기지 않는다). 번호만 던진다.
 

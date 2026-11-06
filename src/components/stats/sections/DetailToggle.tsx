@@ -41,12 +41,24 @@ export function NumberTable({ caption, columns, rows }: DetailTable) {
   )
 }
 
-export function DetailToggle({ table, children }: { table: DetailTable; children: (parts: { button: ReactNode; panel: ReactNode }) => ReactNode }) {
+// 단추 글자. 주지 않으면 [자세히]·[접기]. 처방별 추세 열린 칸은 [숫자로 보기]·[접기](treatment-trend AC-1209.4)
+export type DetailLabels = { closed: string; open: string }
+const DETAIL_LABELS: DetailLabels = { closed: '자세히', open: '접기' }
+
+export function DetailToggle({
+  table,
+  labels = DETAIL_LABELS,
+  children,
+}: {
+  table: DetailTable
+  labels?: DetailLabels
+  children: (parts: { button: ReactNode; panel: ReactNode }) => ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const id = useId()
   const button = (
     <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className={`${ds.textButton} min-h-8`}>
-      <span>{open ? '접기' : '자세히'}</span>
+      <span>{open ? labels.open : labels.closed}</span>
       <Icon name="chev" size={14} className={open ? 'rotate-180 transition' : 'transition'} />
     </button>
   )

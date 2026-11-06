@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
+import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import { nestedBoxes } from '@/testing/boxes'
@@ -13,10 +14,12 @@ import type { AnalysisResult, FileReport } from '@/types/analyze'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { DayPayload } from '@/types/payload'
+import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { StatsScreen } from './StatsScreen'
+import { groupKey } from './treatmentView'
 import { statsRange } from './view'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 가짜 Worker·가짜 chrome.runtime·가짜 저장으로 시험한다.
@@ -34,6 +37,12 @@ vi.mock('@/lib/storage/rxPicks', () => ({
   removeRxPick: vi.fn(),
   clearRxPicks: vi.fn(),
 }))
+// 처방별 추세 묶음 저장 코드(treatment-trend). 기본은 저장된 묶음 하나다(beforeEach)
+vi.mock('@/lib/storage/statsRxGroups', () => ({
+  listStatsRxGroups: vi.fn(),
+  saveStatsRxGroups: vi.fn(),
+  StatsRxGroupStoreError: class extends Error {},
+}))
 vi.mock('@/workers/statsClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/workers/statsClient')>()),
   createStatsWorker: vi.fn(),
@@ -42,7 +51,11 @@ vi.mock('@/workers/runAnalysis', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/workers/runAnalysis')>()),
   runAnalysis: vi.fn(),
 }))
-vi.mock('@/lib/payload/toMonthPayload', () => ({ toMonthPayload: vi.fn() }))
+// 파일 길의 묶음 0줄 채우기(fillGroupCounts)가 이 파일의 compareText를 쓰므로 나머지는 진짜다
+vi.mock('@/lib/payload/toMonthPayload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/payload/toMonthPayload')>()),
+  toMonthPayload: vi.fn(),
+}))
 vi.mock('@/lib/payload/toDayPayloads', () => ({ toDayPayloads: vi.fn() }))
 
 const TODAY = '2026-11-13' // 금요일
@@ -55,7 +68,10 @@ const LOAD = '비트에서 불러오기'
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
-const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
+const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
+// 서버에 저장된 처방별 추세 묶음 하나(지어낸 이름·코드)와 Worker로 가는 그 정의(열쇠·코드만)
+const SAVED_GROUP: RxGroup = { id: 'g0', name: '가짜 묶음', codes: ['A100'], sortOrder: 0 }
+const defsOf = (group: RxGroup) => [{ id: groupKey(group.codes), codes: group.codes }]
 
 function day(ymd: string, patients = 10): DayPayload {
   return {
@@ -290,7 +306,10 @@ function fileGoesWell() {
 }
 
 beforeEach(() => {
-  for (const fn of [readDays, readMonths, readCoverage, saveStats, createStatsWorker, runAnalysis, toMonthPayload, toDayPayloads, readRxPicks]) vi.mocked(fn).mockReset()
+  for (const fn of [readDays, readMonths, readCoverage, saveStats, createStatsWorker, runAnalysis, toMonthPayload, toDayPayloads, readRxPicks, listStatsRxGroups, saveStatsRxGroups])
+    vi.mocked(fn).mockReset()
+  vi.mocked(listStatsRxGroups).mockResolvedValue([SAVED_GROUP])
+  vi.mocked(saveStatsRxGroups).mockImplementation(async (after) => after.map((group, i) => ({ ...group, id: group.id ?? `saved${i}` })))
   answers(SAVED_NOW)
   vi.mocked(readRxPicks).mockResolvedValue([])
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
@@ -306,7 +325,7 @@ afterEach(() => {
 })
 
 describe('AC-514.1 첫 그림', () => {
-  it('AC-514.1·AC-801.2 읽는 동안 섹션 자리는 여덟 칸 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
+  it('AC-514.1·AC-801.2·AC-1201.2 읽는 동안 섹션 자리는 여덟 칸 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     expect(screen.getByRole('heading', { name: '통계', level: 1 })).toBeTruthy()
@@ -316,12 +335,13 @@ describe('AC-514.1 첫 그림', () => {
     expect(pageText()).not.toContain('아직 저장된 통계가 없어요')
   })
 
-  it('AC-514.1·AC-513.1·AC-801.1 읽으면 섹션을 승인본 차례대로 그리고 readMonths를 쓰지 않는다', async () => {
+  it('AC-514.1·AC-513.1·AC-801.1·AC-1201.1 읽으면 섹션을 승인본 차례대로 그리고 readMonths를 쓰지 않는다', async () => {
     draw()
     await sectionsShown()
     expect(screen.queryByText('불러오는 중')).toBeNull()
     const order = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)
     expect(order).toEqual(SECTIONS)
+    expect(heading('처방 추세')).toBeNull()
     expect(pageText()).toContain('하루 평균 환자 수')
     expect(readMonths).not.toHaveBeenCalled()
   })
@@ -442,6 +462,7 @@ describe('AC-514.3 비트에서 불러오기', () => {
       to: R30.load.to,
       today: TODAY,
       closeToday: false,
+      groups: defsOf(SAVED_GROUP),
     })
     expect(saveStats).toHaveBeenCalledWith({ months: LOADED.months, days: LOADED.days, covered: LOADED.covered, source: 'bit' })
     await waitFor(() => expect(vi.mocked(readDays).mock.calls.length).toBeGreaterThan(reads))
@@ -574,7 +595,7 @@ describe('AC-514.4 파일 길', () => {
     fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
 
     await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
-    expect(saveStats).toHaveBeenCalledWith({ months: [], days: [FRESH_ROW], covered: { from: '2026-11-01', to: '2026-11-10' }, source: 'file' })
+    expect(saveStats).toHaveBeenCalledWith({ months: [], days: [{ ...FRESH_ROW, groups: [{ id: groupKey(SAVED_GROUP.codes), patients: 0, newPatients: 0, returning: 0 }] }], covered: { from: '2026-11-01', to: '2026-11-10' }, source: 'file' })
     await waitFor(() => expect(pageText()).toContain('33명'))
     expect(pageText()).not.toContain('77명')
     expect(pageText()).not.toContain('아직 저장된 통계가 없어요')
@@ -621,6 +642,7 @@ describe('AC-514.4 파일 길', () => {
     fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
     const button = screen.getByRole('button', { name: '파일 고르기' })
     expect(button.getAttribute('aria-disabled')).toBe('true')
+    await waitFor(() => expect(runAnalysis).toHaveBeenCalledTimes(1))
 
     await act(async () => finish({ files: [OK_REPORT], result: { quality: 'valid', skippedInvalidRows: 0 } as AnalysisResult }))
     await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
@@ -1220,15 +1242,15 @@ describe('AC-514.10 폭별 배치', () => {
     expect(group.parentElement?.className).toContain('max-md:flex-col')
   })
 
-  it('AC-514.10·AC-801.2 기다리는 칸은 섹션과 같은 12칸 배치이고 좁으면 모두 12칸이다', () => {
+  it('AC-514.10·AC-801.2·AC-1201.2 기다리는 칸은 섹션과 같은 12칸 배치이고 좁으면 모두 12칸이다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     const place = (name: string) => heading(name)?.closest('section')?.className ?? ''
     expect(place('기간 요약')).toContain('col-span-12')
     expect(place('환자 수 추이')).toContain('lg:col-span-8')
     expect(place('신환 재방문율')).toContain('lg:col-span-4')
-    expect(place('처방 추세')).toContain('lg:col-span-7')
-    expect(place('처방별 신환·재진')).toContain('lg:col-span-5')
+    expect(place('처방별 추세')).not.toContain('lg:')
+    expect(place('처방별 신환·재진')).not.toContain('lg:')
     expect(place('처방 골라 보기')).not.toContain('lg:')
     expect(place('원장님 보고 문장')).toContain('lg:col-span-7')
     expect(place('요일별 환자 수')).toContain('lg:col-span-5')
@@ -1598,7 +1620,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
   const WIDEST = { from: R12.previous.from, to: R12.current.to }
   const wideReads = () => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === WIDEST.from && range.to === WIDEST.to).length
 
-  it('AC-801.1 새 칸은 처방별 신환·재진 다음의 전체 폭이고 다른 일곱 칸의 배치는 그대로다', async () => {
+  it('AC-801.1·AC-1201.1 새 칸은 처방별 신환·재진 다음의 전체 폭이고, 처방별 추세·처방별 신환·재진은 전체 폭, 다른 다섯 칸의 배치는 그대로다', async () => {
     draw()
     await sectionsShown()
     const place = (name: string) => sectionOf(name).className
@@ -1610,12 +1632,14 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
       ['기간 요약', ['col-span-12']],
       ['환자 수 추이', ['col-span-12', 'lg:col-span-8']],
       ['신환 재방문율', ['col-span-12', 'lg:col-span-4', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
-      ['처방 추세', ['col-span-12', 'lg:col-span-7']],
-      ['처방별 신환·재진', ['col-span-12', 'lg:col-span-5', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
       ['원장님 보고 문장', ['col-span-12', 'lg:col-span-7']],
       ['요일별 환자 수', ['col-span-12', 'lg:col-span-5', 'lg:border-l', 'lg:border-line', 'lg:pl-6']],
     ]
     for (const [name, classes] of KEEP) for (const one of classes) expect(place(name).split(' ')).toContain(one)
+    for (const name of ['처방별 추세', '처방별 신환·재진']) {
+      expect(place(name).split(' '), name).toContain('col-span-12')
+      expect(place(name), name).not.toContain('lg:')
+    }
   })
 
   it('AC-801.2 기다리는 칸의 차례·자리가 그린 칸과 같다', async () => {
@@ -1638,9 +1662,15 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(picker().queryByRole('button')).toBeNull()
   })
 
-  it('AC-806.5 기간을 바꿔도 열린 줄과 그래프 모양이 그대로이고 새 칸(일→주)으로 그린다. 처방 추세 줄 열림과 서로 상관없다', async () => {
+  it('AC-806.5·AC-1201.1 기간을 바꿔도 열린 줄과 그래프 모양이 그대로이고 새 칸(일→주)으로 그린다. 처방별 추세 줄 열림과 서로 상관없다', async () => {
     vi.mocked(readRxPicks).mockResolvedValue([PICK])
-    answers(RX_DAYS)
+    // 고른 처방 줄과 같은 날에 저장된 묶음의 열쇠 줄도 있다(처방별 추세 줄이 열 수 있는 줄이 된다)
+    const counted = (ymd: string): DayPayload => ({ ...withRx(ymd), groups: [{ id: groupKey(SAVED_GROUP.codes), patients: 5, newPatients: 1, returning: 4 }] })
+    answers({
+      [R30.current.from]: read([counted('2026-11-10')], { latest: BIT_AT }),
+      [R90.current.from]: read([counted('2026-11-10')], { latest: BIT_AT }),
+    })
+    const treatment = (expanded: boolean) => within(sectionOf('처방별 추세')).getByRole('button', { name: new RegExp(SAVED_GROUP.name), expanded })
     draw()
     await sectionsShown()
     const row = await picker().findByRole('button', { name: new RegExp(NAME), expanded: false })
@@ -1654,14 +1684,14 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(rowIn(sectionOf('처방 골라 보기'), true)).toBeTruthy()
     expect(picker().getByRole('button', { name: '신환·재진 나눠 보기' }).getAttribute('aria-pressed')).toBe('true')
     expect(picker().getByRole('button', { name: '건수만' }).getAttribute('aria-pressed')).toBe('false')
-    // 처방 추세 줄은 닫혀 있고, 열어도 새 칸이 그대로다
-    expect(rowIn(sectionOf('처방 추세'), false)).toBeTruthy()
-    fireEvent.click(rowIn(sectionOf('처방 추세'), false))
-    expect(rowIn(sectionOf('처방 추세'), true)).toBeTruthy()
+    // 처방별 추세 줄은 닫혀 있고, 열어도 새 칸이 그대로다
+    expect(await waitFor(() => treatment(false))).toBeTruthy()
+    fireEvent.click(treatment(false))
+    expect(treatment(true)).toBeTruthy()
     expect(rowIn(sectionOf('처방 골라 보기'), true)).toBeTruthy()
     fireEvent.click(rowIn(sectionOf('처방 골라 보기'), true))
     expect(rowIn(sectionOf('처방 골라 보기'), false)).toBeTruthy()
-    expect(rowIn(sectionOf('처방 추세'), true)).toBeTruthy()
+    expect(treatment(true)).toBeTruthy()
   })
 
   it('AC-806.5 기간을 읽지 못했다가 [다시 읽기]로 돌아와도 열린 줄과 그래프 모양이 그대로다', async () => {
@@ -1797,5 +1827,69 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     await flush()
     expect(vi.mocked(readDays).mock.calls.length).toBe(before + 1)
     expect(wideReads()).toBe(0)
+  })
+})
+
+describe('AC-1205.7 불러올 때 묶음을 서버에서 다시 읽어 센다 (treatment-trend)', () => {
+  // 다른 기기에서 고친 묶음(지어낸 이름·코드)
+  const OTHER: RxGroup = { id: 'g1', name: '가짜 다른 기기 묶음', codes: ['B200', 'B201'], sortOrder: 0 }
+  const loadMessage = (sent: StatsWorkerRequest[]) => sent.find((message) => message.type === 'load')
+  // 처음 읽기가 상태에 들어가 칸에 저장된 묶음이 보일 때까지
+  const groupsShown = () => waitFor(() => expect(within(heading('처방별 추세')!.closest('section')!).getByText(SAVED_GROUP.name)).toBeTruthy())
+
+  it('AC-1205.7 [비트에서 불러오기]는 묶음 다시 읽기를 비트 요청과 함께 시작하고 비트 요청을 늦추지 않으며, 다시 읽은 묶음을 Worker에 넘긴다', async () => {
+    const { port, fake } = await drawReady()
+    await groupsShown()
+    expect(listStatsRxGroups).toHaveBeenCalledTimes(1)
+    let answer: (rows: RxGroup[]) => void = () => undefined
+    vi.mocked(listStatsRxGroups).mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    expect(listStatsRxGroups).toHaveBeenCalledTimes(2)
+    const request = finishStream(port) // 다시 읽기 답을 기다리지 않고 stats.rows가 이미 나갔다
+    await flush()
+    expect(loadMessage(fake.sent)).toBeUndefined()
+
+    await act(async () => answer([OTHER]))
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(loadMessage(fake.sent)).toEqual({ type: 'load', streamId: request.id, from: R30.load.from, to: R30.load.to, today: TODAY, closeToday: false, groups: defsOf(OTHER) })
+  })
+
+  it('AC-1205.7 비트 길: 다시 읽기가 실패하면 화면에 있는 묶음으로 세고 불러오기를 막지 않는다', async () => {
+    const { port, fake } = await drawReady()
+    await groupsShown()
+    vi.mocked(listStatsRxGroups).mockRejectedValueOnce(new Error('가짜 실패'))
+    const request = pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(listStatsRxGroups).toHaveBeenCalledTimes(2)
+    expect(loadMessage(fake.sent)).toMatchObject({ type: 'load', streamId: request.id, groups: defsOf(SAVED_GROUP) })
+    await loadIsFree()
+  })
+
+  it('AC-1205.7 파일을 넣으면 묶음을 서버에서 다시 읽어 그 묶음을 readFiles 셋째 인자로 넘긴다(Worker에는 열쇠·코드만)', async () => {
+    fileGoesWell()
+    draw()
+    await sectionsShown()
+    await groupsShown()
+    vi.mocked(listStatsRxGroups).mockResolvedValueOnce([OTHER])
+    fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(listStatsRxGroups).toHaveBeenCalledTimes(2)
+    expect(runAnalysis).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(runAnalysis).mock.calls[0]![1]).toEqual({ today: TODAY, groups: defsOf(OTHER) })
+    // 저장하는 일 줄에는 그 묶음 열쇠 줄이 있다(그날 없으면 0줄, AC-1205.3)
+    expect(vi.mocked(saveStats).mock.calls[0]![0].days).toEqual([{ ...FRESH_ROW, groups: [{ id: groupKey(OTHER.codes), patients: 0, newPatients: 0, returning: 0 }] }])
+  })
+
+  it('AC-1205.7 파일 길: 다시 읽기가 실패하면 화면에 있는 묶음으로 세고 파일 넣기를 막지 않는다', async () => {
+    fileGoesWell()
+    draw()
+    await sectionsShown()
+    await groupsShown()
+    vi.mocked(listStatsRxGroups).mockRejectedValueOnce(new Error('가짜 실패'))
+    fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(runAnalysis).mock.calls[0]![1]).toEqual({ today: TODAY, groups: defsOf(SAVED_GROUP) })
+    await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
   })
 })

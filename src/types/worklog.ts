@@ -36,8 +36,71 @@ export type WorklogCellKey = WorklogNumberKey | WorklogNoteKey | WorklogNameKey 
 export type WorklogDay = Record<WorklogCellKey, string>
 /** 저장에 넘기는 바뀐 칸만 */
 export type WorklogChanges = Partial<WorklogDay>
-/** 서버에서 읽은 하루: 칸 값 + 비트에서 불러온 칸 목록(bit_fields, design.md 20-4절) */
-export type WorklogSavedDay = { day: WorklogDay; bitFields: WorklogNumberKey[] }
+// 업무사항 글씨 크기(pt, 엑셀처럼). 그날 일지에 저장한다. 칸이 아니라 그날의 설정 하나다 (specs/worklog-memo-font)
+export const MEMO_FONT_PTS = [8, 9, 10, 11, 12, 14, 16] as const
+export type MemoFontPt = (typeof MEMO_FONT_PTS)[number]
+export const MEMO_FONT_DEFAULT: MemoFontPt = 11
+
+
+// 현금 시재(specs/worklog-cash-float design.md '규칙'). 칸 목록(32칸)에 넣지 않고 글씨 크기처럼 따로 나른다.
+// 장수는 권종마다 정수, 금액·합계는 저장하지 않고 계산한다
+export const CASH_PIECES = [50000, 10000, 5000, 1000, 500, 100, 50, 10] as const
+export type CashPiece = (typeof CASH_PIECES)[number]
+export type CashCountKey = `count${CashPiece}`
+export const CASH_COUNT_KEYS: readonly CashCountKey[] = CASH_PIECES.map((piece): CashCountKey => `count${piece}`)
+export type WorklogCash = Record<CashCountKey, number> & {
+  floatWon: number | null // 그날 쓴 시재(처음 장수를 적을 때 설정 금액). null = 아직 안 셈
+  refundCash: boolean // 환불을 현금으로 돌려줌
+  unpaidCash: boolean // 미수입금을 현금으로 받음
+  reason: string // 차이 이유, '' = 없음
+}
+export type WorklogCashKey = keyof WorklogCash
+/** 저장에 넘기는 바뀐 시재 칸만 */
+export type WorklogCashChanges = Partial<WorklogCash>
+/** 개인정보 모양이라 저장하지 않은 칸: 일지 칸 또는 시재 차이 이유 */
+export type WorklogBlockedKey = WorklogCellKey | 'cashReason'
+export const CASH_FLOAT_DEFAULT = 300_000 // 설정 줄이 없을 때 시재 금액
+export const CASH_FLOAT_MAX = 10_000_000
+export const CASH_COUNT_MAX = 9999 // 권종마다 장수(4자리)
+export const CASH_REASON_MAX = 200
+
+// 열쇠 → DB 칸(worklog_days). 차례는 장수(5만원권부터) · 시재 · 확인란 둘 · 이유
+export const WORKLOG_CASH_COLUMNS: Readonly<Record<WorklogCashKey, string>> = {
+  count50000: 'cash_count_50000',
+  count10000: 'cash_count_10000',
+  count5000: 'cash_count_5000',
+  count1000: 'cash_count_1000',
+  count500: 'cash_count_500',
+  count100: 'cash_count_100',
+  count50: 'cash_count_50',
+  count10: 'cash_count_10',
+  floatWon: 'cash_float',
+  refundCash: 'cash_refund_cash',
+  unpaidCash: 'cash_unpaid_cash',
+  reason: 'cash_reason',
+}
+
+/** 아직 안 센 날: 장수 0 · 시재 없음 · 확인란 꺼짐 · 이유 없음 */
+export function emptyWorklogCash(): WorklogCash {
+  return {
+    count50000: 0,
+    count10000: 0,
+    count5000: 0,
+    count1000: 0,
+    count500: 0,
+    count100: 0,
+    count50: 0,
+    count10: 0,
+    floatWon: null,
+    refundCash: false,
+    unpaidCash: false,
+    reason: '',
+  }
+}
+
+/** 서버에서 읽은 하루: 칸 값 + 비트에서 불러온 칸 목록(bit_fields, design.md 20-4절) + 업무사항 글씨 크기(없으면 11로 본다)
+ *  + 현금 시재(읽기는 늘 채운다. 없는 옛 모양은 빈 시재로 본다) */
+export type WorklogSavedDay = { day: WorklogDay; bitFields: WorklogNumberKey[]; memoFontPt?: MemoFontPt; cash?: WorklogCash }
 /** 칸 글자에서 읽은 숫자(합계 계산의 입력). 숫자로 읽히지 않은 칸은 null */
 export type WorklogNumbers = Record<WorklogNumberKey, number | null>
 export type WorklogTotals = { visits: number; received: number; spent: number; net: number }

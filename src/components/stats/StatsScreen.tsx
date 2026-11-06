@@ -7,17 +7,20 @@ import { ds } from '@/components/ui/classes'
 import { addDays, compareYmd, todayInKorea } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
+import type { DayPayload } from '@/types/payload'
 import type { RxSplitView, StatsChecks } from '@/types/stats'
 import { dayNumber, longDate, monthNumber, PERIOD_NAME, Section } from './sections/parts'
 import type { ReportData } from './sections/ReportSection'
 import { StatsSections } from './sections/StatsSections'
 import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type StatsJob } from './SourcePicker'
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
+import { useStatsRxGroups } from './useStatsRxGroups'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 import { COMPARE_NAME, DEFAULT_STATS_PERIOD, statsRange, type StatsPeriod, type StatsRange } from './view'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 둔다(AC-514.9).
-// 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다)
+// 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
+// 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
 
 const PERIODS: StatsPeriod[] = ['7d', '30d', '90d', '12m']
 const SOURCE_NAME = { bit: '비트 PC', file: '파일' } as const
@@ -37,12 +40,14 @@ const WAITING: { title: string; place: string }[] = [
   { title: '기간 요약', place: 'col-span-12' },
   { title: '환자 수 추이', place: 'col-span-12 lg:col-span-8' },
   { title: '신환 재방문율', place: `col-span-12 lg:col-span-4 ${SIDE}` },
-  { title: '처방 추세', place: 'col-span-12 lg:col-span-7' },
-  { title: '처방별 신환·재진', place: `col-span-12 lg:col-span-5 ${SIDE}` },
+  { title: '처방별 추세', place: 'col-span-12' },
+  { title: '처방별 신환·재진', place: 'col-span-12' },
   { title: '처방 골라 보기', place: 'col-span-12' },
   { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },
   { title: '요일별 환자 수', place: `col-span-12 lg:col-span-5 ${SIDE}` },
 ]
+
+const NO_DAYS: readonly DayPayload[] = []
 
 const CLOCK = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 const clockOf = (date: Date) => CLOCK.format(date)
@@ -175,6 +180,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const range = useMemo(() => statsRange(today, period), [today, period])
   const data = useStatsData(period, today)
   const { state, helloError, retry, load, split } = useStatsWorker()
+  const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
 
   const [job, setJob] = useState<StatsJob | null>(null)
   const [actionError, setActionError] = useState<ErrorCode | null>(null)
@@ -227,9 +233,11 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
     }
   }
 
+  // 묶음은 누를 때 서버에서 다시 읽는다(AC-1205.7). 비트 길은 기다리지 않고 넘겨 비트 요청과 함께 읽고, 파일 길은 읽은 뒤 Worker를 시작한다.
+  // forLoad는 거절하지 않고 5초 안에 늘 풀린다(실패·한도 넘김이면 화면의 묶음)
   const loadFromBit = (closeToday: boolean) =>
     void runJob('bit', async () => {
-      const view = await load({ range: range.load, today, closeToday })
+      const view = await load({ range: range.load, today, closeToday, groups: groups.forLoad() })
       setReport({ numbers: view.report, loadedAt: clockOf(new Date()), closedToday: closeToday })
       setLoads((n) => n + 1)
       if (view.quality !== 'valid' || view.months === null || view.days === null) {
@@ -241,7 +249,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
 
   const takeFiles = (files: File[]) =>
     void runJob('file', async () => {
-      const outcome = await readFiles(files, today)
+      const outcome = await readFiles(files, today, await groups.forLoad())
       setFileFailures(outcome.failures)
       if (outcome.incomplete !== null) setIncomplete({ kind: 'file', ...outcome.incomplete })
       if (outcome.save !== null) setSavedUnread(await data.save(outcome.save))
@@ -346,7 +354,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}
       {drawn !== null && (
         <div hidden={!showSections}>
-          <StatsSections input={drawn} saved={drawnSaved} split={answered?.view ?? null} report={report} hospitalName={hospitalName} revision={data.revision} />
+          <StatsSections input={drawn} saved={drawnSaved} split={answered?.view ?? null} report={report} hospitalName={hospitalName} groups={groups} revision={data.revision} />
         </div>
       )}
     </div>

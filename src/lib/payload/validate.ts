@@ -12,7 +12,7 @@ const MAX_TEXT = 100
 const MAX_RX = 5_000
 const MAX_GROUPS = 1_000
 const MAX_REGIONS = 2_000
-const GROUP_ID = /^[A-Za-z0-9-]{1,64}$/ // 나중 rx_groups.id(uuid)
+const GROUP_ID = /^[A-Za-z0-9-]{1,64}$/ // 묶음 열쇠(`t` + 16진수 16자리, treatment-trend)
 
 // 개인 연락처·식별 번호 모양 글자: 전화(붙임표·점·빈칸으로 나눈 것, 나누지 않은 01x 번호) ·
 // 숫자6-숫자7(앞 6자리가 월·일 모양, lib/parsers/bit와 같은 모양) · 메일 주소.

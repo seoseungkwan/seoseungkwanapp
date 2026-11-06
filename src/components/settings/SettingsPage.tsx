@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CashFloatSetting } from './CashFloatSetting'
 import { DxLinks } from './DxLinks'
 import { HospitalPhrases } from './HospitalPhrases'
 import { RuleSettings } from './RuleSettings'
@@ -27,6 +28,7 @@ export function SettingsPage() {
       <RuleSettings />
       <HospitalPhrases />
       <DxLinks />
+      <CashFloatSetting />
       {/* 뒤 TASK가 이 아래에 차례로 더한다: 문자 문구(TASK-25) · 백업(TASK-32) */}
     </div>
   )

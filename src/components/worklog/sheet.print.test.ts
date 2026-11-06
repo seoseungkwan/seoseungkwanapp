@@ -98,12 +98,13 @@ describe('AC-011.1: 인쇄 CSS는 A4 세로·여백 12mm에 엑셀 pt 값이다'
     expect(rule('.sheet')?.[name]).toBe(`${pt}pt`)
   })
 
-  it('AC-011.1: 제목·칸·날짜·업무사항·지출 비고 글자와 줄 높이가 그 변수를 쓴다', () => {
+  // 업무사항은 그날 고른 크기 비율이다(worklog-memo-font AC-1505.1). 기본 11이면 var(--c11)과 같다
+  it('AC-011.1·AC-1505.1: 제목·칸·날짜·업무사항·지출 비고 글자와 줄 높이가 그 변수를 쓴다', () => {
     const screen = screenRules()
     expect(screen.get('.sheet')?.['font-size']).toBe('var(--c)')
     expect(screen.get('.sheet .title')?.['font-size']).toBe('var(--t)')
     expect(screen.get('.sheet .date')?.['font-size']).toBe('var(--c14)')
-    expect(screen.get('.sheet .memo')?.['font-size']).toBe('var(--c11)')
+    expect(screen.get('.sheet .memo')?.['font-size']).toBe('calc(var(--c11) * var(--memo-pt, 11) / 11)')
     expect(screen.get('.sheet .small')?.['font-size']).toBe('var(--c10)')
     expect(screen.get('.sheet tr')?.height).toBe('var(--h40)')
     for (const [row, name] of Object.entries(ROW_VAR)) expect(screen.get(`.sheet .${row}`)?.height, row).toBe(`var(${name})`)
@@ -184,5 +185,68 @@ describe('AC-011.3: 양식만, 엑셀 모양으로 찍힌다', () => {
     expect(sheetTsx()).toContain('`${s.paper} border border-line`')
     expect(globalsCss()).toMatch(/@import\s+"tailwindcss\/utilities\.css"\s+layer\(utilities\)/)
     expect(sheetCss()).not.toMatch(/@layer\b/)
+  })
+})
+
+// ── 업무사항 글씨 크기 (specs/worklog-memo-font REQ-1505, design.md '양식'): 크기는 업무사항 칸(td)의 인라인 변수 --memo-pt(단위 없는 숫자)다.
+// 글씨는 calc(var(--c11) * var(--memo-pt, 11) / 11) 한 줄이고, 폰·인쇄 블록은 --c11만 바꾸므로 같은 비율로 찍힌다
+const MEMO_FONT_SIZE = 'calc(var(--c11) * var(--memo-pt, 11) / 11)'
+
+// 폰(767px 미만) 블록 안 규칙만
+function phoneRules() {
+  const css = sheetCss()
+  const block = printBlock(css)
+  const outside = block === null ? css : css.slice(0, block.start) + css.slice(block.end + 1)
+  const phone = /@media\s*\(\s*max-width:\s*767px\s*\)\s*\{/.exec(outside)
+  if (phone === null) return new Map<string, Record<string, string>>()
+  const open = phone.index + phone[0].length - 1
+  return rulesOf(outside.slice(open + 1, closingBrace(outside, open)))
+}
+// 화면·폰 블록 밖 규칙만(screenRules는 폰 블록을 덮어 합친다)
+function desktopRules() {
+  const css = sheetCss()
+  const block = printBlock(css)
+  const outside = block === null ? css : css.slice(0, block.start) + css.slice(block.end + 1)
+  const phone = /@media\s*\(\s*max-width:\s*767px\s*\)\s*\{/.exec(outside)
+  if (phone === null) return rulesOf(outside)
+  const open = phone.index + phone[0].length - 1
+  return rulesOf(outside.slice(0, phone.index) + outside.slice(closingBrace(outside, open) + 1))
+}
+
+describe('AC-1505.1·AC-1505.2: 업무사항 글씨는 고른 크기 비율이고 인쇄도 같다', () => {
+  it('AC-1505.1: 화면 업무사항 칸 글씨는 calc(var(--c11) * var(--memo-pt, 11) / 11)이고, 폰·인쇄 블록은 업무사항 글씨를 따로 정하지 않는다', () => {
+    expect(desktopRules().get('.sheet .memo')?.['font-size']).toBe(MEMO_FONT_SIZE)
+    expect(phoneRules().get('.sheet .memo')?.['font-size']).toBeUndefined()
+    expect(rule('.sheet .memo')?.['font-size']).toBeUndefined()
+  })
+
+  it('AC-1505.1: --c11은 화면 15px·폰 10px·인쇄 11pt 그대로라 11이면 지금과 같고, 다른 크기는 그 비율이다(16 → 약 21.8px·16pt)', () => {
+    const base = { screen: desktopRules().get('.sheet')?.['--c11'], phone: phoneRules().get('.sheet')?.['--c11'], print: rule('.sheet')?.['--c11'] }
+    expect(base).toEqual({ screen: '15px', phone: '10px', print: '11pt' })
+    const sized = (value: string | undefined, pt: number) => (Number.parseFloat(value ?? 'NaN') * pt) / 11
+    expect(sized(base.screen, 11)).toBe(15)
+    expect(sized(base.phone, 11)).toBe(10)
+    expect(sized(base.print, 11)).toBe(11)
+    expect(sized(base.screen, 16)).toBeCloseTo(21.8, 1)
+    expect(sized(base.print, 16)).toBe(16)
+  })
+
+  it('AC-1505.1: 칸 높이·안쪽 여백·줄 간격(1.35)은 크기와 상관없이 그대로다', () => {
+    expect(desktopRules().get('.sheet .memo textarea')).toMatchObject({ height: 'calc(var(--h28) * 3)', padding: '6px', 'line-height': '1.35' })
+    expect(phoneRules().get('.sheet .memo textarea')?.['line-height']).toBeUndefined()
+    expect(rule('.sheet .memo textarea')?.['line-height']).toBeUndefined()
+  })
+
+  it('AC-1505.2: 인쇄 .sheet의 --c11은 11pt 그대로이고, 업무사항 칸은 overflow: hidden이며 줄 높이 합은 634.5pt다', () => {
+    const printed = rule('.sheet') ?? {}
+    expect(printed['--c11']).toBe('11pt')
+    expect(rule('.sheet .memo textarea')).toEqual({ overflow: 'hidden' })
+    expect(sheetRowVars().reduce((sum, name) => sum + Number.parseFloat(printed[name] ?? 'NaN'), 0)).toBe(634.5)
+  })
+
+  it('AC-1505.2: 크기 변수 --memo-pt는 CSS가 정하지 않고(업무사항 칸의 인라인 값) 업무사항 글씨에서만 쓴다', () => {
+    const css = sheetCss()
+    expect(css).not.toMatch(/--memo-pt\s*:/)
+    expect([...css.matchAll(/var\(\s*--memo-pt\b/g)]).toHaveLength(1)
   })
 })

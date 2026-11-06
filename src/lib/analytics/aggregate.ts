@@ -139,11 +139,15 @@ function bucketIn(buckets: Map<string, BucketAcc>, key: string, rangeOf: (key: s
   return bucket
 }
 
-// 처방코드 → 그 코드가 든 그룹 자리들(한 그룹에 같은 코드가 두 번 있어도 한 번)
+// 묶음 코드 맞추기 열쇠: 대소문자를 가리지 않는다(화면의 codeKey와 같은 대문자, treatment-trend AC-1205.2).
+// 처방 줄(rx)은 코드 글자 그대로 따로 센다
+const groupCodeKey = (code: string) => code.toUpperCase()
+
+// 처방코드 열쇠 → 그 코드가 든 그룹 자리들(한 그룹에 같은 코드가 두 번, 대소문자만 달리 있어도 한 번)
 function groupsByCode(groups: readonly RxGroupDef[]): Map<string, number[]> {
   const byCode = new Map<string, number[]>()
   groups.forEach((group, at) => {
-    for (const code of new Set(group.codes)) {
+    for (const code of new Set(group.codes.map(groupCodeKey))) {
       const list = byCode.get(code)
       if (list === undefined) byCode.set(code, [at])
       else list.push(at)
@@ -186,6 +190,7 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
   const rxCodes = numbering()
   const regionNames = numbering()
   const groupsOf = groupsByCode(groups)
+  const groupsOfRx: (readonly number[])[] = [] // 처방 번호 → 그 코드가 든 그룹 자리들. 번호마다 한 번만 찾는다
   const firstNew = new Map<number, string>() // 환자 → 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄·첫 내원 접수 줄의 날)
   const visitDays = new Map<number, Set<string>>() // 환자 → 외래로 온 날(외래 줄·접수 줄)
   const rxDays = new Map<number, Map<number, BucketAcc[]>>() // 처방 번호 → (환자 → 그 처방을 외래로 받은 서로 다른 날의 일 칸). 진료 줄만
@@ -223,8 +228,12 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     // 같은 환자·같은 날·같은 처방 여러 줄 = 1건. 일 칸에 이미 있으면 주·월 칸에서도 그 날을 이미 셌다
     const newCase = trio[0].rx.get(rx)?.days.has(patient) !== true
     // 그룹도 같다: 같은 환자·같은 날에 그룹 코드 여러 줄 = 그 그룹의 하루
-    const inGroups = groupsOf.get(row.rxCode)
-    const newGroupDays = inGroups === undefined ? NO_GROUPS : inGroups.filter((at) => trio[0].groups.get(at)?.has(patient) !== true)
+    let inGroups = groupsOfRx[rx]
+    if (inGroups === undefined) {
+      inGroups = groupsOf.get(groupCodeKey(row.rxCode)) ?? NO_GROUPS
+      groupsOfRx[rx] = inGroups
+    }
+    const newGroupDays = inGroups === NO_GROUPS ? NO_GROUPS : inGroups.filter((at) => trio[0].groups.get(at)?.has(patient) !== true)
 
     noteVisit(patient, row.date, visit === NEW)
     if (newCase) {

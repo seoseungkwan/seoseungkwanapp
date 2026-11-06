@@ -889,6 +889,81 @@ describe('AC-006.3 처방코드 그룹 — 그룹 코드 중 하나라도 받은
   })
 })
 
+// ── 처방별 추세 묶음(treatment-trend) ─────────────────────
+
+describe('AC-1205.1 묶음 건 — 같은 환자·같은 날·같은 묶음 = 1건', () => {
+  it('AC-1205.1: 1번 환자가 같은 날 두 코드, 2번 환자가 한 코드 → 그날 2건. 1번 환자가 다른 날 또 받으면 그날도 1건', () => {
+    const agg = aggregate(
+      [
+        row({ patient: 1, date: MON, rxCode: 'MM101', firstVisit: true }),
+        row({ patient: 1, date: MON, rxCode: 'MM102', firstVisit: true }),
+        row({ patient: 2, date: MON, rxCode: 'MM102' }),
+        row({ patient: 1, date: TUE, rxCode: 'MM101' }),
+        row({ patient: 1, date: TUE, rxCode: 'MM102' }),
+      ],
+      [{ id: 'g-pair', codes: ['MM101', 'MM102'] }],
+    )
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-pair')).toEqual({
+      id: 'g-pair',
+      patients: 2,
+      newPatients: 1,
+      returning: 1,
+      followup: [2, 0, 0, 0],
+    })
+    expect(groupOf(bucketOf(agg, 'day', TUE), 'g-pair')).toMatchObject({ patients: 1, newPatients: 0, returning: 1 })
+  })
+})
+
+describe('AC-1205.2 묶음 코드 맞추기는 대소문자를 가리지 않는다', () => {
+  it('AC-1205.2: 묶음 코드 eswt1 · 줄 코드 ESWT1 → 같은 코드로 센다', () => {
+    const agg = aggregate([row({ patient: 1, rxCode: 'ESWT1' }), row({ patient: 2, rxCode: 'ESWT1' })], [{ id: 'g-eswt', codes: ['eswt1'] }])
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-eswt')?.patients).toBe(2)
+  })
+
+  it('AC-1205.2: 묶음 코드 ESWT1 · 줄 코드 eswt1 → 같은 코드로 센다', () => {
+    const agg = aggregate([row({ patient: 1, rxCode: 'eswt1' }), row({ patient: 2, rxCode: 'Eswt1' })], [{ id: 'g-eswt', codes: ['ESWT1'] }])
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-eswt')?.patients).toBe(2)
+  })
+
+  it('AC-1205.2: 같은 환자·같은 날 eswt1·ESWT1 두 줄 → 묶음은 1건(F/U 하루), 처방 줄 셈은 코드 글자 그대로 둘', () => {
+    const agg = aggregate([row({ patient: 1, rxCode: 'eswt1' }), row({ patient: 1, rxCode: 'ESWT1' })], [{ id: 'g-eswt', codes: ['ESWT1'] }])
+    const day = bucketOf(agg, 'day', MON)
+    expect(groupOf(day, 'g-eswt')).toEqual({ id: 'g-eswt', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] })
+    expect(day.rx.map((r) => r.code)).toEqual(['ESWT1', 'eswt1'])
+  })
+
+  it('AC-1205.2: 한 묶음에 대소문자만 다른 코드가 둘이어도 결과는 하나일 때와 같다', () => {
+    const rows = [row({ patient: 1, date: MON, rxCode: 'ESWT1' }), row({ patient: 1, date: WED, rxCode: 'eswt1' })]
+    const both = aggregate(rows, [{ id: 'g-eswt', codes: ['ESWT1', 'eswt1'] }])
+    expect(groupOf(bucketOf(both, 'week', MON), 'g-eswt')?.followup).toEqual([0, 1, 0, 0])
+    expect(both).toEqual(aggregate(rows, [{ id: 'g-eswt', codes: ['ESWT1'] }]))
+  })
+
+  it('AC-1205.2: 가짜 파일 — 소문자로 쓴 묶음은 대문자 묶음과 모든 칸이 같다(대문자 묶음은 위 기준 계산 시험이 못 박는다)', () => {
+    const { rows } = parsedOf(parseBitFile(new Uint8Array(readFileSync(join(FAKE_DIR, 'fake-utf8-bom.csv'))), createPatientIds()))
+    const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
+    const upper: RxGroupDef[] = [
+      { id: 'g-a', codes: codes.slice(0, 3) },
+      { id: 'g-b', codes: [codes[1], codes[4]] },
+    ]
+    const lower = upper.map((g) => ({ id: g.id, codes: g.codes.map((code) => code.toLowerCase()) }))
+    expect(lower[0].codes).not.toEqual(upper[0].codes) // 글자가 있는 코드라 실제로 소문자가 된다
+    const agg = aggregate(rows, lower)
+    expect(agg.month.every((b) => b.groups.length === 2)).toBe(true)
+    expect(agg).toEqual(aggregate(rows, upper))
+  })
+
+  it('AC-1205.2: 묶음을 주지 않으면 대소문자만 다른 줄 코드는 처방 줄에서 따로다(지금과 같음)', () => {
+    const agg = aggregate([row({ patient: 1, rxCode: 'eswt1' }), row({ patient: 2, rxCode: 'ESWT1' })])
+    const day = bucketOf(agg, 'day', MON)
+    expect(day.groups).toEqual([])
+    expect(day.rx.map((r) => [r.code, r.patients])).toEqual([
+      ['ESWT1', 1],
+      ['eswt1', 1],
+    ])
+  })
+})
+
 // ── 신환 재방문 ───────────────────────────────────────────
 
 // 2026-10-01(목) 신환 → 7일째 10-08, 14일째 10-15. 그 주 칸은 2026-09-28(월)

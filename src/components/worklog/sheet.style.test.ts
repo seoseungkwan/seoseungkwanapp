@@ -21,8 +21,9 @@ const FORBIDDEN: Array<[string, RegExp]> = [
 const forbiddenIn = (css: string) => FORBIDDEN.filter(([, pattern]) => pattern.test(css)).map(([name]) => name)
 
 const SHEET_COLORS = new Set(['--xl-ink', '--xl-lav', '--xl-gray', '--xl-focus', '--surface', '--muted', '--negative', '--negative-soft'])
-// 시안의 크기 변수(칸 글자·제목·줄 높이). 값은 이 파일 안에서 정한다
-const SIZE_VARS = new Set(['--c', '--c11', '--c10', '--c14', '--t', '--h1', '--h2', '--h3', '--h28', '--h40', '--h20'])
+// 시안의 크기 변수(칸 글자·제목·줄 높이). 값은 이 파일 안에서 정한다.
+// --memo-pt는 업무사항 글씨 크기(단위 없는 숫자, 업무사항 칸의 인라인 값, specs/worklog-memo-font AC-1505.2)다
+const SIZE_VARS = new Set(['--c', '--c11', '--c10', '--c14', '--t', '--h1', '--h2', '--h3', '--h28', '--h40', '--h20', '--memo-pt'])
 const FONT_NAMES = new Set(['Gulim', '굴림', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', 'sans-serif'])
 
 // var(--이름)의 이름 가운데 허용 목록 밖의 것
@@ -108,6 +109,19 @@ describe('AC-007.4: sheet.module.css — 색은 토큰 var()만, 글꼴은 시�
     expect(
       namedColorsIn('.a { border: 1px solid var(--xl-ink); background: transparent; box-shadow: inset 0 0 0 2px var(--xl-focus); outline: none; color: var(--muted); border-top-width: 2px; }'),
     ).toEqual([])
+  })
+})
+
+describe('AC-1505.2: 업무사항 글씨 크기 변수 --memo-pt', () => {
+  it('AC-1505.2: --memo-pt는 양식 CSS 허용 변수 목록에 들고, 양식 CSS가 실제로 쓴다(업무사항 글씨 calc)', () => {
+    expect(SIZE_VARS.has('--memo-pt')).toBe(true)
+    expect(badVarsIn('.a { font-size: calc(var(--c11) * var(--memo-pt, 11) / 11); }')).toEqual([])
+    expect(sheetCss()).toContain('var(--memo-pt, 11)')
+  })
+
+  it('AC-1505.2: 크기 변수가 하나 늘어도 색·글꼴 변수는 여전히 막힌다', () => {
+    expect(badVarsIn('.a { font-size: calc(var(--c11) * var(--memo-ptt, 11) / 11); }')).toEqual(['--memo-ptt'])
+    expect(badDeclaredVarsIn('.a { --memo-font: "Comic Sans"; }')).toEqual(['--memo-font'])
   })
 })
 

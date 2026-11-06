@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useBridge } from '@/components/claim/useBridge'
 import { isErrorCode } from '@/lib/errors'
+import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import { createStatsWorker, requestLoad, requestSplit } from '@/workers/statsClient'
@@ -48,12 +49,25 @@ export function useStatsWorker() {
   useEffect(() => () => worker.terminate(), [worker])
 
   const load = useCallback(
-    async ({ range, today, closeToday }: { range: DateRange; today: string; closeToday: boolean }) => {
+    async ({
+      range,
+      today,
+      closeToday,
+      groups,
+    }: {
+      range: DateRange
+      today: string
+      closeToday: boolean
+      groups?: Promise<readonly RxGroupDef[]> // 처방별 추세 묶음 다시 읽기(treatment-trend AC-1205.7). 없으면 []
+    }) => {
       const { from, to } = range
+      // 묶음은 비트 요청과 함께 읽고, 비트 요청(stats.rows)은 그것을 기다리지 않는다. 거절이면 묶음 없이 센다.
+      // 거절을 지금 받아 두어 비트 요청이 먼저 실패해도 처리되지 않은 거절이 남지 않는다
+      const defs = (groups ?? Promise.resolve([])).catch((): readonly RxGroupDef[] => [])
       // 시계는 이 요청이 끝날 때 멈춘다. 화면을 떠나면 useBridge가 연결을 닫아 요청이 끝나므로 시계가 남지 않는다
       const clock = setTimeout(close, STREAM_LIMIT_MS)
       const { id } = await stream('stats.rows', { from, to }).finally(() => clearTimeout(clock))
-      return requestLoad(worker.current(), { streamId: id, from, to, today, closeToday })
+      return requestLoad(worker.current(), { streamId: id, from, to, today, closeToday, groups: await defs })
     },
     [close, stream, worker],
   )

@@ -492,6 +492,77 @@ describe('AC-505.5 새로 불러오면 메모리가 바뀐다: 앞 일이 늦게
   })
 })
 
+describe('AC-1205.4 Worker 입구(createStatsHost.load)가 묶음을 세어 일 줄에 채운다', () => {
+  // 가짜 묶음 열쇠(t + 16자리). A는 두 코드, B는 한 코드
+  const A = 't00000000000000a1'
+  const B = 't00000000000000b2'
+  const GROUPS = [
+    { id: A, codes: ['MM042', 'B4001'] },
+    { id: B, codes: ['B4001'] },
+  ]
+  // 1번 환자가 9월 1일에 MM042와 B4001을 같이 받았다(묶음 A에는 1건)
+  const GROUP_ROWS = [...ROWS, [CHARTS[0], '20260901', 'B4001', '20260901']]
+  const none = (id: string) => ({ id, patients: 0, newPatients: 0, returning: 0 })
+
+  async function loadedWith(over: Partial<StatsLoadRequest>) {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', helperJson({ rows: GROUP_ROWS })).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', over))
+    expect(sent.map((m) => m.type)).toEqual(['loaded'])
+    const [reply] = sent
+    if (reply.type !== 'loaded') throw new Error('loaded가 아니다')
+    return { view: reply.view, sent }
+  }
+
+  it('AC-1205.4: host.load({ …, groups })의 loaded 답 days[].groups에 열쇠마다 한 줄. 같은 환자·같은 날 두 코드는 1, 그날 안 받은 묶음은 0줄', async () => {
+    const { view, sent } = await loadedWith({ groups: GROUPS })
+    expect(view.days?.map((day) => [day.day, day.groups])).toEqual([
+      [
+        '2026-09-01',
+        [
+          { id: A, patients: 2, newPatients: 2, returning: 0 },
+          { id: B, patients: 1, newPatients: 1, returning: 0 },
+        ],
+      ],
+      [
+        '2026-09-02',
+        [
+          { id: A, patients: 2, newPatients: 2, returning: 0 },
+          { id: B, patients: 1, newPatients: 1, returning: 0 },
+        ],
+      ],
+      ['2026-09-03', [{ id: A, patients: 1, newPatients: 1, returning: 0 }, none(B)]],
+      ['2026-10-05', [{ id: A, patients: 1, newPatients: 0, returning: 1 }, none(B)]],
+      ['2026-11-01', [{ id: A, patients: 1, newPatients: 0, returning: 1 }, none(B)]],
+    ])
+    for (const day of view.days ?? []) expect(validateDayPayload(day)).toEqual(day)
+    expectNoPatientData(sent)
+  })
+
+  it('AC-1205.4: 달 줄의 groups는 aggregate가 준 그대로다(그달 안 받은 묶음 줄을 채우지 않는다)', async () => {
+    const { view } = await loadedWith({ groups: GROUPS })
+    expect(view.months?.map((month) => [month.month, month.groups.map((g) => [g.id, g.patients, g.newPatients, g.returning])])).toEqual([
+      [
+        '2026-09',
+        [
+          [A, 5, 5, 0],
+          [B, 2, 2, 0],
+        ],
+      ],
+      ['2026-10', [[A, 1, 0, 1]]],
+      ['2026-11', [[A, 1, 0, 1]]],
+    ])
+    for (const month of view.months ?? []) expect(validateMonthPayload(month)).toEqual(month)
+  })
+
+  it('AC-1205.4: groups가 없으면 []로 보고 일 줄의 groups가 비어 있다', async () => {
+    const { view } = await loadedWith({})
+    expect(view.days?.length).toBeGreaterThan(0)
+    for (const day of view.days ?? []) expect(day.groups).toEqual([])
+    for (const month of view.months ?? []) expect(month.groups).toEqual([])
+  })
+})
+
 describe('AC-505.5 stats.worker.ts: 실제 포트(MessageChannel)로 이어 본다', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

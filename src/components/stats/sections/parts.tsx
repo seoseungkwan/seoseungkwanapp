@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useId, type ReactNode, type Ref } from 'react'
 import { formatDelta, type DeltaUnit } from '@/components/charts/format'
 import type { BarSeries } from '@/components/charts/StackedBarChart'
 import { patientTrend, type StatsInput, type StatsPeriod, type StatsRange } from '@/components/stats/view'
@@ -33,14 +33,32 @@ export function onlyThisMonthPartial(partialMonths: readonly string[], today: st
 }
 
 const SECTION = 'mt-12 min-w-0 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4'
+const HEADING = 'text-title font-semibold text-ink'
+// 코드로 초점을 옮기는 제목(headingRef): Tab 차례에는 들지 않고, 붙어 있는 띠에 가리지 않게 scroll-margin(AppShell main과 같은 값), 코드로 옮긴 초점이라 고리는 그리지 않는다
+const FOCUS_HEADING = `${HEADING} scroll-mt-25.5 focus:outline-none max-md:scroll-mt-23.5`
 
-// 섹션 틀: 위 1px line-strong + h2 + 옆 설명(small muted) + 오른쪽 단추. 차트 칸(col-span)은 놓는 쪽이 className으로 준다
-export function Section({ title, desc, action, className = '', children }: { title: string; desc?: string; action?: ReactNode; className?: string; children: ReactNode }) {
+// 섹션 틀: 위 1px line-strong + h2 + 옆 설명(small muted) + 오른쪽 단추. 차트 칸(col-span)은 놓는 쪽이 className으로 준다.
+// headingRef(선택, treatment-trend AC-1210.2): 칸 모습이 바뀔 때 제목에 초점을 주려고 h2를 넘긴다. 주지 않으면 마크업이 그대로다
+export function Section({
+  title,
+  desc,
+  action,
+  className = '',
+  headingRef,
+  children,
+}: {
+  title: string
+  desc?: string
+  action?: ReactNode
+  className?: string
+  headingRef?: Ref<HTMLHeadingElement>
+  children: ReactNode
+}) {
   const id = useId()
   return (
     <section aria-labelledby={id} className={`${SECTION} ${className}`}>
       <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1">
-        <h2 id={id} className="text-title font-semibold text-ink">
+        <h2 id={id} ref={headingRef} tabIndex={headingRef ? -1 : undefined} className={headingRef ? FOCUS_HEADING : HEADING}>
           {title}
         </h2>
         {desc && <span className="text-small text-muted">{desc}</span>}

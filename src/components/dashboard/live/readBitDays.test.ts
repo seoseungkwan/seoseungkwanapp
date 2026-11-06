@@ -154,7 +154,7 @@ describe('readBitDays', () => {
       expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
       const stream = t.port.sent[2]
       expect(stream.args).toEqual({ from: FROM, to: TODAY })
-      expect(t.loads).toEqual([{ type: 'load', streamId: stream.id, from: FROM, to: TODAY, today: TODAY, closeToday: false }])
+      expect(t.loads).toEqual([{ type: 'load', streamId: stream.id, from: FROM, to: TODAY, today: TODAY, closeToday: false, groups: [] }])
       t.expectClosed()
     })
   })

@@ -1,3 +1,4 @@
+import type { RxGroupDef } from './analysis'
 import type { ClinicReportNumbers } from './clinicReport'
 import type { DateRange } from './dates'
 import type { DayPayload, MonthPayload } from './payload'
@@ -36,8 +37,17 @@ export type RxSplitDay = { date: string; visits: number; patients: number; newPa
 // text는 첫 줄이 비어 있다: Worker에는 병원 이름이 가지 않는다(AC-505.7). 병원 이름을 넣은 글은 화면이 formatRxVisitSplit(병원 이름, split)로 만든다
 export type RxSplitView = { kind: 'none' } | { kind: 'split'; split: RxSplit; days: RxSplitDay[]; text: string; headline: string }
 
-// 화면 → Worker. 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id만 간다(AC-505.7). 조각은 통로 포트로 따로 온다
-export type StatsLoadRequest = { type: 'load'; streamId: string; from: string; to: string; today: string; closeToday: boolean }
+// 화면 → Worker. 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id와 묶음 열쇠·코드만 간다(AC-505.7, 묶음은 treatment-trend AC-1205.4).
+// 조각은 통로 포트로 따로 온다. groups는 선택 칸이고 없으면 []로 본다(requestLoad는 늘 배열을 싣는다). 묶음 이름은 가지 않는다(AC-1213.3)
+export type StatsLoadRequest = {
+  type: 'load'
+  streamId: string
+  from: string
+  to: string
+  today: string
+  closeToday: boolean
+  groups?: RxGroupDef[]
+}
 // split의 streamId는 통로 요청이 아니라 requestSplit이 정한 일 번호다. 답을 가려 받는 쓰임은 같다
 export type StatsSplitRequest = { type: 'split'; streamId: string; from: string; to: string }
 export type StatsWorkerRequest = { type: 'bridge-port' } | StatsLoadRequest | StatsSplitRequest

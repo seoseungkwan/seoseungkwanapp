@@ -12,13 +12,19 @@ let stopSession: (() => void) | null = null
 const signedOutListeners = new Set<() => void>()
 
 // 비트 칸 목록은 자동 저장이 바뀌었다고 넘길 때만 넷째 인자로 보낸다. 모르거나 안 바뀌었으면 인자 셋으로 불러
-// bit_fields 칸이 가지 않는다(저장된 비트 표시를 지우지 않는다, AC-017.7)
+// bit_fields 칸이 가지 않는다(저장된 비트 표시를 지우지 않는다, AC-017.7).
+// 업무사항 글씨 크기도 넘겨받을 때만 다섯째 인자로 보낸다(목록이 없으면 넷째는 undefined). 아니면 지금과 같은 인자 수다(worklog-memo-font AC-1508.8)
+// 현금 시재(바뀐 시재 칸)도 넘겨받을 때만 여섯째 인자로 보낸다(목록·크기가 없으면 그 자리는 undefined). 아니면 지금과 같은 인자 수다(worklog-cash-float AC-1609.6)
 export function worklogAutosave(): WorklogAutosave {
   autosave ??= createAutosave({
-    save: (ymd, changes, bitFields) =>
-      bitFields === undefined
-        ? saveWorklogDay(supabaseBrowser(), ymd, changes)
-        : saveWorklogDay(supabaseBrowser(), ymd, changes, bitFields),
+    save: (ymd, changes, bitFields, memoFontPt, cash) =>
+      cash !== undefined
+        ? saveWorklogDay(supabaseBrowser(), ymd, changes, bitFields, memoFontPt, cash)
+        : memoFontPt !== undefined
+          ? saveWorklogDay(supabaseBrowser(), ymd, changes, bitFields, memoFontPt)
+          : bitFields === undefined
+            ? saveWorklogDay(supabaseBrowser(), ymd, changes)
+            : saveWorklogDay(supabaseBrowser(), ymd, changes, bitFields),
   })
   return autosave
 }
