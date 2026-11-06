@@ -68,12 +68,26 @@ WHERE " + TodayScope + @"
 GROUP BY RTRIM(c.OcmComStt),RTRIM(c.OcmRsuYon)
 ORDER BY Status,Rsu";
 
+    /// <summary>
+    /// 상태 내력(AC-1401.19): 범위(@from~@to, 지난 30일) 외래 접수를 OcmComStt마다 세고, 그 가운데 수납 줄(OrcInf.OrcOcmNum)이 있는 접수와
+    /// 처방 줄(RxByStatus와 같은 조건)이 있는 접수를 따로 센다. 칸: Status, Visits, WithReceipt, WithRx.
+    /// </summary>
+    public const string StatusHistory = @"SELECT RTRIM(c.OcmComStt) Status,COUNT_BIG(*) Visits,COUNT_BIG(p.Hit) WithReceipt,COUNT_BIG(r.Hit) WithRx
+FROM dbo.OcmInf c
+OUTER APPLY (SELECT TOP 1 1 Hit FROM dbo.OrcInf o WHERE o.OrcOcmNum=c.OcmNum) p
+OUTER APPLY (SELECT TOP 1 1 Hit FROM dbo.OdrInf o WHERE o.OdrOcmNum=c.OcmNum
+  AND o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>'') r
+WHERE " + TodayScope + @"
+GROUP BY RTRIM(c.OcmComStt)
+ORDER BY Status";
+
     private static readonly Dictionary<string, SqlParam[]> Allowed = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
     {
         [StatusPairs] = TodayRange,
         [TableColumns] = new SqlParam[0],
         [LinkedColumns] = new SqlParam[0],
         [RxByStatus] = TodayRange,
+        [StatusHistory] = TodayRange,
     };
 
     /// <summary>확인 문장 전부.</summary>

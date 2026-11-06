@@ -10,7 +10,8 @@ namespace Precheck.Core.Reception.Check;
 /// <summary>
 /// 의원 PC 확인 명령의 차례(spec reception-phone design.md 1절, REQ-1401): ① 안내 + 엔터 ② 등록 확인 세션 ③ 상태 짝(AC-1401.2)
 /// ④ 칸 목록(AC-1401.3) ⑤ 비트 로그인(1일 때만, AC-1401.14) → 화면 83 하루 → 증상 찾기·이름 찾기(AC-1401.4·5) ⑥ 접수 메모(AC-1401.6)
-/// ⑦ 증상 글 찾기(AC-1401.17) ⑧ 모양(AC-1401.7) ⑨ 빠르기(AC-1401.8) ⑩ 끝: 경로를 콘솔에(메모장은 입구 ReceptionCheckEntry가 연다). 콘솔 단계 표시는 1/8~8/8.
+/// ⑦ 증상 글 찾기(AC-1401.17)·기록지 코드(AC-1401.18) ⑧ 기록지 코드 짝(AC-1401.18) ⑨ 상태 내력(AC-1401.19) ⑩ 모양(AC-1401.7) ⑪ 빠르기(AC-1401.8)
+/// ⑫ 끝: 경로를 콘솔에(메모장은 입구 ReceptionCheckEntry가 연다). 콘솔 단계 표시는 1/10~10/10, 머리 줄 빌드 표시는 판+check{CheckRound}(AC-1401.19).
 /// 보고서에는 CheckField로 거른 칸만 간다(AC-1401.10). 콘솔에도 숫자·걸러진 코드·시:분·안내 글만 쓴다.
 /// 시간 제한(AC-1401.11, 주입한 시계): 문장 하나 30초, 전체 15분. 전체 15분은 도우미가 일한 시간이고 사람이 답하는 시간
 /// (콘솔 입력·비트 로그인 창)은 세지 않는다. 넘거나 실패한 항목은 "실패(번호)"로 적고 다음 단계로 간다.
@@ -48,6 +49,12 @@ public sealed class CheckRunner
 
     /// <summary>증상 글 찾기가 세는 날 수: 오늘을 넣어 그 앞 14일(@from = 오늘-14일, @to = 내일).</summary>
     public const int SymptomDays = 14;
+
+    /// <summary>상태 내력이 세는 날 수: 오늘을 넣어 그 앞 30일(@from = 오늘-30일, @to = 내일, AC-1401.19).</summary>
+    public const int StatusDays = 30;
+
+    /// <summary>확인 판(AC-1401.19): 머리 줄 빌드 표시에 +check{n}으로 붙인다. 확인을 고칠 때마다 하나씩 올린다(도우미 판은 그대로).</summary>
+    public const int CheckRound = 4;
 
     /// <summary>@text로 보내는 친 글의 최대 글자 수(공백을 뺀 앞부분). 매개변수 VarChar(200)에 한글 두 바이트로 들어간다.</summary>
     private const int SymptomTextMax = 100;
@@ -134,7 +141,7 @@ public sealed class CheckRunner
 
         public void Run()
         {
-            Report.Header(started, owner.build);
+            Report.Header(started, owner.build == null ? null : owner.build + "+check" + CheckRound.ToString(CultureInfo.InvariantCulture));
             try
             {
                 Say("접수 현황 확인을 시작해요.");
@@ -143,13 +150,15 @@ public sealed class CheckRunner
                 Ask();
 
                 OpenSession();
-                Step("statusPairs", "2/8 오늘 접수 상태를 물어요.", StatusPairs);
-                Step("columns", "3/8 칸 목록을 읽고 있어요.", Columns);
-                Step("login", "4/8 비트 로그인 창(증상 화면)을 띄울지 물어요.", ScreenProbes, "symptom", "name");
-                Step("memo", "5/8 접수 메모를 견줘요.", Memo);
-                Step("symptomSearch", "6/8 지난 진료의 증상 글을 견줘요.", SymptomSearch);
-                Step("shape", "7/8 칸 모양을 보고 있어요.", Shapes);
-                Step("speed", "8/8 빠르기를 재고 있어요.", Speed);
+                Step("statusPairs", "2/10 오늘 접수 상태를 물어요.", StatusPairs);
+                Step("columns", "3/10 칸 목록을 읽고 있어요.", Columns);
+                Step("login", "4/10 비트 로그인 창(증상 화면)을 띄울지 물어요.", ScreenProbes, "symptom", "name");
+                Step("memo", "5/10 접수 메모를 견줘요.", Memo);
+                Step("symptomSearch", "6/10 지난 진료의 증상 글을 견줘요.", SymptomSearch, "symptomCode");
+                Step("sheetCodes", "7/10 증상 기록지 코드를 세고 있어요.", SheetCodes);
+                Step("statusHistory", "8/10 지난 30일 접수 상태를 세고 있어요.", StatusHistory);
+                Step("shape", "9/10 칸 모양을 보고 있어요.", Shapes);
+                Step("speed", "10/10 빠르기를 재고 있어요.", Speed);
                 Report.Line("done", CheckField.Number("ms", Milliseconds(Spent)));
             }
             finally
@@ -166,7 +175,7 @@ public sealed class CheckRunner
 
         private void OpenSession()
         {
-            Say("1/8 비트에 붙고 있어요.");
+            Say("1/10 비트에 붙고 있어요.");
             var t0 = owner.now();
             try
             {
@@ -514,6 +523,7 @@ public sealed class CheckRunner
             {
                 typed = null;
                 Report.Line("symptomSearch", CheckField.Skipped(null));
+                Report.Line("symptomCode", CheckField.Skipped(null));
                 return;
             }
             if (typed.Length > SymptomTextMax) typed = typed.Substring(0, SymptomTextMax);
@@ -534,7 +544,7 @@ public sealed class CheckRunner
                     if (Over)
                     {
                         Report.Line("symptom", CheckField.TimedOut("result"));
-                        return;
+                        break;
                     }
                     var col = CheckField.Column("col", table, column);
                     var visit = VisitColumn(schema, table);
@@ -554,12 +564,84 @@ public sealed class CheckRunner
                     Report.Line("symptom", col, CheckField.Number("rows", Cell(row!, 0)), CheckField.Number("nonEmpty", Cell(row!, 1)),
                         CheckField.Number("containing", Cell(row!, 2)), CheckField.Number("minLength", Cell(row!, 3)), CheckField.Number("maxLength", Cell(row!, 4)));
                 }
+                SymptomCodes(args);
             }
             finally
             {
                 args["@text"] = null; // 세기 뒤 바로 버린다(AC-1401.17)
             }
         }
+
+        /// <summary>⑦ 이어서(AC-1401.18): 같은 친 글(@text)로 EmrShtVal에 그 글이 든 줄을 기록지 코드(EmrShtTyp, EmrShtCod)마다 센다.</summary>
+        private void SymptomCodes(Dictionary<string, object?> args)
+        {
+            var visit = SheetVisit();
+            if (visit == null)
+            {
+                Report.Line("symptomCode", CheckField.Name("result", "missing"));
+                return;
+            }
+            var outcome = Query(ProbeSql.SheetHits(schema, visit), args);
+            if (!outcome.Ok)
+            {
+                Report.Line("symptomCode", outcome.Error!);
+                return;
+            }
+            if (outcome.Rows.Count == 0) Report.Line("symptomCode", CheckField.Number("codes", 0));
+            foreach (var row in outcome.Rows)
+                Report.Line("symptomCode", CheckField.Code("typ", Cell(row, 0)), CheckField.Code("cod", Cell(row, 1)), CheckField.Number("containing", Cell(row, 2)));
+        }
+
+        /// <summary>⑧ 기록지 코드 짝(AC-1401.18): 지난 14일 EmrInf 줄을 (EmrShtTyp, EmrShtCod)마다 줄 수·빈 글 아닌 줄·길이로, 많은 순 15개까지.</summary>
+        private void SheetCodes()
+        {
+            var visit = SheetVisit();
+            if (visit == null)
+            {
+                Report.Line("sheetCodes", CheckField.Name("result", "missing"));
+                return;
+            }
+            var outcome = Query(ProbeSql.SheetCodes(schema, visit), Days(SymptomDays));
+            if (!outcome.Ok)
+            {
+                Report.Line("sheetCodes", outcome.Error!);
+                return;
+            }
+            Report.Line("sheetCodes", CheckField.Number("days", SymptomDays));
+            foreach (var row in outcome.Rows)
+                Report.Line("sheetCode", CheckField.Code("typ", Cell(row, 0)), CheckField.Code("cod", Cell(row, 1)), CheckField.Number("rows", Cell(row, 2)),
+                    CheckField.Number("nonEmpty", Cell(row, 3)), CheckField.Number("minLength", Cell(row, 4)), CheckField.Number("maxLength", Cell(row, 5)));
+        }
+
+        /// <summary>⑨ 상태 내력(AC-1401.19): 지난 30일 외래 접수를 상태 코드마다 접수 수·수납 줄 있는 접수·처방 있는 접수로.</summary>
+        private void StatusHistory()
+        {
+            var outcome = Query(CheckSql.StatusHistory, Days(StatusDays));
+            if (!outcome.Ok)
+            {
+                Report.Line("statusHistory", outcome.Error!);
+                return;
+            }
+            Report.Line("statusHistory", CheckField.Number("days", StatusDays));
+            foreach (var row in outcome.Rows)
+                Report.Line("statusHistory", CheckField.Status("status", Cell(row, 0)), CheckField.Number("visits", Cell(row, 1)),
+                    CheckField.Number("withReceipt", Cell(row, 2)), CheckField.Number("withRx", Cell(row, 3)));
+        }
+
+        /// <summary>기록지 코드 틀의 내원번호 칸: 칸 목록에 EmrInf의 내원번호 칸과 EmrShtTyp·EmrShtCod·EmrShtVal이 모두 있을 때만, 아니면 null.</summary>
+        private string? SheetVisit()
+        {
+            var visit = VisitColumn(schema, ProbeSql.SheetTable);
+            return visit != null && ProbeSql.SheetColumns.All(column => schema.Has(ProbeSql.SheetTable, column)) ? visit : null;
+        }
+
+        /// <summary>그 앞 n일(@from = 오늘-n일, @to = 내일) + 등록 병원.</summary>
+        private Dictionary<string, object?> Days(int days) => new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["@from"] = Stamp(Today.AddDays(-days)),
+            ["@to"] = Stamp(Today.AddDays(1)),
+            ["@hospital"] = session!.Hospital,
+        };
 
         /// <summary>⑧ 모양(AC-1401.7): 오늘 접수 환자의 PbsInf 줄(300줄까지)과 오늘 OcmInf·OrcInf 줄, 칸마다 ColumnShape.</summary>
         private void Shapes()

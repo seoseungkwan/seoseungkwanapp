@@ -33,6 +33,7 @@ public sealed class CheckField
     // 값 목록 한 값: ASCII 글자·숫자 두 글자 이하(코드 모양)나 한글 완성형 한 글자(남·여). 두 글자 한글은 이름일 수 있어 막는다
     private static readonly Regex SmallValueShape = new Regex(@"^(?:[A-Za-z0-9]{1,2}|[\uAC00-\uD7A3])\z", RegexOptions.CultureInvariant);
     private static readonly Regex Space = new Regex(@"\s", RegexOptions.CultureInvariant);
+    private static readonly Regex CodeShape = new Regex(@"^(?:(?=[0-9]*[A-Za-z_])[A-Za-z0-9_]{1,16}|[0-9]{1,5})\z", RegexOptions.CultureInvariant);
 
     /// <summary>화면 83에서 도우미가 아는 칸 제목(GridRows 83의 칸). 코드의 글이라 보고서에 적어도 된다.</summary>
     private static readonly HashSet<string> ScreenTitles = new HashSet<string>(GridRows.Columns(StatsScreens.Symptoms), StringComparer.Ordinal);
@@ -62,6 +63,16 @@ public sealed class CheckField
     /// <summary>비트 상태·수납 코드: ^[A-Z0-9]{1,4}$ 모양 글자만.</summary>
     public static CheckField Status(string? key, object? value) =>
         new CheckField(key, value is string text && StatusShape.IsMatch(text) ? text : Unknown);
+
+    /// <summary>
+    /// 기록지 코드(EmrShtTyp·EmrShtCod, AC-1401.18): 영문·숫자·_ 1~16자이고 영문·_가 하나라도 있거나 숫자만 5자까지일 때만(정수 형은 숫자 글로).
+    /// 숫자만 6자 이상은 차트번호일 수 있어 ?다.
+    /// </summary>
+    public static CheckField Code(string? key, object? value)
+    {
+        var text = value is string raw ? raw : value is bool || value is double || value is float || value is decimal ? null : NumberText(value);
+        return new CheckField(key, text != null && CodeShape.IsMatch(text) ? text : Unknown);
+    }
 
     /// <summary>
     /// 모양 단계의 값 목록(AC-1401.7): 빈 값을 뺀 서로 다른 값이 1~4가지이고 모두 ASCII 글자·숫자 두 글자 이하나 한글 한 글자(앞뒤 공백은 뗀다)일 때만

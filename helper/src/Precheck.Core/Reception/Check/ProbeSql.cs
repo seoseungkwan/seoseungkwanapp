@@ -146,6 +146,68 @@ public static class ProbeSql
         return IsName(table) && IsName(text) && IsName(key) && sql == Count(table, key, text);
     }
 
+    /// <summary>기록지 코드 틀(AC-1401.18)의 표. 칸 이름(SheetColumns)은 고정이고 내원번호 칸만 같은 실행의 칸 목록에서 넣는다.</summary>
+    public const string SheetTable = "EmrInf";
+
+    /// <summary>기록지 코드 틀이 읽는 칸: 기록지 종류·코드·값(값은 세기만 한다).</summary>
+    public static readonly IReadOnlyList<string> SheetColumns = Array.AsReadOnly(new[] { "EmrShtTyp", "EmrShtCod", "EmrShtVal" });
+
+    // 기록지 코드 틀을 다시 풀 때 내원번호 칸 이름만 꺼낸다. 나머지 글은 다시 만들어 견준다
+    private static readonly Regex SheetKey = new Regex(@"\nWHERE t\.\[(?<k>[^\]]*)\] IN \(SELECT c\.OcmNum ", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// 증상 기록지 코드 세기(AC-1401.18): 그날 범위 접수에 붙은 EmrInf 줄 가운데 EmrShtVal(공백·CR·LF·탭을 뺌)에 @text가 든 줄을
+    /// (EmrShtTyp, EmrShtCod)마다 센다. 돌아오는 것은 (Typ, Cod, Containing) 많은 순 15줄까지이고 글 값은 돌아오지 않는다. 매개변수는 TextCountParameters.
+    /// </summary>
+    public static string SheetHits(ProbeSchema schema, string visitColumn)
+    {
+        RequireSheet(schema, visitColumn);
+        return Hits(visitColumn);
+    }
+
+    /// <summary>
+    /// 기록지 코드 짝(AC-1401.18): 그날 범위 접수에 붙은 EmrInf 줄을 (EmrShtTyp, EmrShtCod)마다 줄 수·빈 글 아닌 줄·빈 글 아닌 줄의 최소·최대 길이로 센다.
+    /// 줄 수 많은 순 15줄까지. 매개변수는 Parameters(@text 없음).
+    /// </summary>
+    public static string SheetCodes(ProbeSchema schema, string visitColumn)
+    {
+        RequireSheet(schema, visitColumn);
+        return Codes(visitColumn);
+    }
+
+    /// <summary>글자가 SheetHits로 만든 글과 똑같은가(이름 모양까지). 확인 모드 세션만 TextCountParameters와 함께 받는다.</summary>
+    public static bool IsSheetHits(string? sql) => SheetKeyOf(sql) is string key && sql == Hits(key);
+
+    /// <summary>글자가 SheetCodes로 만든 글과 똑같은가(이름 모양까지). 확인 모드 세션만 Parameters와 함께 받는다.</summary>
+    public static bool IsSheetCodes(string? sql) => SheetKeyOf(sql) is string key && sql == Codes(key);
+
+    private static string? SheetKeyOf(string? sql)
+    {
+        if (sql == null) return null;
+        var match = SheetKey.Match(sql);
+        return match.Success && IsName(match.Groups["k"].Value) ? match.Groups["k"].Value : null;
+    }
+
+    private static void RequireSheet(ProbeSchema schema, string visitColumn) =>
+        Require(schema, SheetTable, new[] { visitColumn }.Concat(SheetColumns).ToArray());
+
+    private const string SheetSelect =
+        "SELECT TOP 15 RTRIM(CAST(t.[EmrShtTyp] AS nvarchar(40))) Typ,RTRIM(CAST(t.[EmrShtCod] AS nvarchar(40))) Cod,";
+
+    private const string SheetGroup = "\nGROUP BY t.[EmrShtTyp],t.[EmrShtCod]";
+
+    private static string SheetFrom(string key) =>
+        "\nFROM dbo.[EmrInf] t\nCROSS APPLY (SELECT CAST(t.[EmrShtVal] AS nvarchar(max)) Val) v" + Within(key, "OcmNum");
+
+    private static string Hits(string key) =>
+        SheetSelect + "COUNT_BIG(*) Containing" + SheetFrom(key) + "\n AND CHARINDEX(@text," + Squeezed + ")>0" + SheetGroup
+        + "\nORDER BY Containing DESC,Typ,Cod";
+
+    private static string Codes(string key) =>
+        SheetSelect + "COUNT_BIG(*) Total,COUNT_BIG(CASE WHEN " + Filled + " THEN 1 END) NonEmpty,"
+        + "MIN(CASE WHEN " + Filled + " THEN LEN(v.Val) END) MinLength,MAX(CASE WHEN " + Filled + " THEN LEN(v.Val) END) MaxLength"
+        + SheetFrom(key) + SheetGroup + "\nORDER BY Total DESC,Typ,Cod";
+
     /// <summary>글자가 틀 세 가지 가운데 하나로 만든 글과 똑같은가(이름 모양까지). 이름이 그 실행의 답에 있었는지는 만들 때 본다.</summary>
     public static bool IsProbe(string? sql)
     {

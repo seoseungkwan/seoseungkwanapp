@@ -23,7 +23,7 @@ internal static class CheckFakes
     /// <summary>등록 병원 범위(가짜).</summary>
     internal const string Hospital = "9001";
 
-    /// <summary>4/8 로그인 단계의 묻는 글(AC-1401.14): 1이면 띄우고, 엔터·그 밖·입력 끝이면 건너뛴다.</summary>
+    /// <summary>4/10 로그인 단계의 묻는 글(AC-1401.14): 1이면 띄우고, 엔터·그 밖·입력 끝이면 건너뛴다.</summary>
     internal const string LoginQuestion = "비트 로그인 창을 띄울까요? 1 = 띄우기, 엔터 = 건너뛰기";
 
     internal static string Stamp(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "0000";
@@ -134,7 +134,7 @@ internal static class CheckFakes
 
     /// <summary>
     /// 가짜 비트 DB. 세션을 열 때마다 OpenTook만큼, 문장마다 Took(sql)만큼 시계를 민다. 답은 (문장, @from) → (문장) → 빈 줄 차례로 찾는다.
-    /// 확인 모드 세션처럼 CheckSql·ProbeSql(틀·증상 글 세기)·Sql 허용 목록과 매개변수 표(이름·int·글자 길이)를 보고, 어긋나면 InvalidOperationException.
+    /// 확인 모드 세션처럼 CheckSql·ProbeSql(틀·증상 글 세기·기록지 코드)·Sql 허용 목록과 매개변수 표(이름·int·글자 길이)를 보고, 어긋나면 InvalidOperationException.
     /// </summary>
     internal sealed class FakeDb
     {
@@ -199,6 +199,8 @@ internal static class CheckFakes
             if (CheckSql.IsAllowed(sql)) declared = CheckSql.ParametersOf(sql);
             else if (ProbeSql.IsProbe(sql)) declared = ProbeSql.Parameters;
             else if (ProbeSql.IsTextCount(sql)) declared = ProbeSql.TextCountParameters;
+            else if (ProbeSql.IsSheetHits(sql)) declared = ProbeSql.TextCountParameters;
+            else if (ProbeSql.IsSheetCodes(sql)) declared = ProbeSql.Parameters;
             else if (Sql.IsAllowed(sql)) declared = Sql.ParametersOf(sql);
             else throw new InvalidOperationException();
             if (args == null || args.Count != declared.Count) throw new InvalidOperationException();

@@ -253,18 +253,18 @@ public class CheckSymptomRunnerTests
         Assert.Contains(lines, l => l.StartsWith("speed name=TodayVisits ", StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "AC-1401.17 콘솔 단계 표시는 1/8~8/8이고 증상 글 찾기는 6/8(접수 메모 5/8 다음, 모양 7/8 앞)이다")]
+    [Fact(DisplayName = "AC-1401.17 콘솔 단계 표시는 1/10~10/10이고 증상 글 찾기는 6/10(접수 메모 5/10 다음, 기록지 코드 7/10 앞)이다")]
     public void StepNumbers()
     {
         using var h = WithCandidates();
 
         h.Run();
 
-        var steps = h.Console.Written.Where(l => Regex.IsMatch(l, @"^\d/\d ")).Select(l => l.Substring(0, 3)).ToArray();
-        Assert.Equal(new[] { "1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8" }, steps);
-        var six = h.Console.Written.FindIndex(l => l.StartsWith("6/8 ", StringComparison.Ordinal));
+        var steps = h.Console.Written.Where(l => Regex.IsMatch(l, @"^\d+/\d+ ")).Select(l => l.Split(' ')[0]).ToArray();
+        Assert.Equal(new[] { "1/10", "2/10", "3/10", "4/10", "5/10", "6/10", "7/10", "8/10", "9/10", "10/10" }, steps);
+        var six = h.Console.Written.FindIndex(l => l.StartsWith("6/10 ", StringComparison.Ordinal));
         var prompt = h.Console.Written.IndexOf(Prompt);
-        Assert.True(six >= 0 && prompt > six, "6/8 안내 뒤에 증상 글을 묻는다");
-        Assert.True(prompt < h.Console.Written.FindIndex(l => l.StartsWith("7/8 ", StringComparison.Ordinal)));
+        Assert.True(six >= 0 && prompt > six, "6/10 안내 뒤에 증상 글을 묻는다");
+        Assert.True(prompt < h.Console.Written.FindIndex(l => l.StartsWith("7/10 ", StringComparison.Ordinal)));
     }
 }

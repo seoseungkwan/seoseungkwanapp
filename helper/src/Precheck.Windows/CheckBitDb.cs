@@ -167,6 +167,14 @@ public sealed class CheckBitDb : IBitSession, ICheckSession
         {
             declared = ProbeSql.TextCountParameters;
         }
+        else if (ProbeSql.IsSheetHits(sql))
+        {
+            declared = ProbeSql.TextCountParameters;
+        }
+        else if (ProbeSql.IsSheetCodes(sql))
+        {
+            declared = ProbeSql.Parameters;
+        }
         else if (Sql.IsAllowed(sql))
         {
             ReadOnlyGuard.Require(sql, args);
