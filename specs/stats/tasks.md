@@ -169,15 +169,15 @@
 - TDD: required
 - 옛 시험은 통계 줄(href·ready·status·준비 중 목록·목차 옆 글)만 고친다. 개수는 숫자로 못 박지 않고 목록에서 센다(cross-branch C5). `titles.test.tsx`는 `/stats` 탭 이름 시험이 준비 중 자료를 가정할 때만 고친다. `dashboard/page.test.tsx`는 이 TASK에서 목차 옆 글(`INDEX_SIDE`)만 고친다. 같은 파일의 대시보드 읽기 시험은 TASK-16 몫이다
 
-## TASK-16: 대시보드가 저장된 통계 숫자를 읽음
+## TASK-16: 대시보드가 저장된 통계 숫자를 읽음 (30일 줄 · `toSummarySource`)
 - Step: Phase 4 · Step 3 · `dashboard-source`
-- AC: AC-516.1~AC-516.4
+- AC: AC-516.2, AC-516.4
 - REQ: REQ-516
-- Files: src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/summary/source.ts, src/components/dashboard/summary/source.test.ts, src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx, src/app/(app)/tabFrame.test.tsx
-- Tests: src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/summary/source.test.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/app/(app)/tabFrame.test.tsx
+- Files: src/components/dashboard/summary/source.ts, src/components/dashboard/summary/source.test.ts, src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- Tests: src/components/dashboard/summary/source.test.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - TDD: required
 - `components/dashboard/briefing/*`는 고치지 않는다(AC-516.3)
-- 읽기 실패 카드 글은 [다시 읽기]를 말하는데 이 화면에 단추가 없다. 다시 열 때 단추를 더하거나 번호를 나눈다(2026-11-02 사용자 결정 "통계 기본값대로"로 바뀐 글)
+- 2026-11-06 나눔: 이 TASK는 30일 줄(AC-516.2, AC-516.4의 30일 줄 기대값)과 `toSummarySource`만 한다. `wip-stats-dashboard-source` `5abd9db`의 이 여섯 파일을 지금 파일 위에 옮긴다. `dashboardSummarySource()`는 지우지 않는다(`dashboard/page.tsx`가 bit-dashboard TASK-8 전까지 쓴다). `LiveDashboard`·페이지(AC-516.1·AC-516.3, AC-516.4의 페이지 쪽)와 읽기 실패 카드의 [다시 읽기]는 `specs/bit-dashboard` TASK-8이 하고 그쪽 시험 이름에 이 AC ID를 함께 적는다
 
 ## TASK-17: 개인정보 E2E (실제 Supabase)
 - Step: Phase 4 · Step 4 · `stats-e2e`

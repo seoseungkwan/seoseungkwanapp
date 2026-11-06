@@ -46,14 +46,23 @@
 - Tests: src/components/dashboard/live/visitBasis.test.ts
 - TDD: required
 
-## TASK-8: 통계의 저장 숫자 읽기와 잇기 (`LiveDashboard`가 합쳐진 뒤)
+## TASK-8: 통계의 저장 숫자 읽기와 잇기 (`LiveDashboard`)
 - REQ: REQ-601
-- Files: src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx
-- Tests: src/components/dashboard/summary/LiveDashboard.test.tsx, src/app/(app)/dashboard/page.test.tsx
+- Files: src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx, src/app/(app)/tabFrame.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx
+- Tests: src/components/dashboard/summary/LiveDashboard.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx
 - TDD: required
+- AC-601.14·AC-601.19와 통계 AC-516.1·AC-516.3·AC-516.4(페이지 쪽)를 맞춘다. 시험 이름에 두 명세의 AC ID를 함께 적는다. `tabFrame.test.tsx`는 페이지가 바뀌어 꼭 필요할 때만 고친다
+- 통계 TASK-16과 동시에 돌 수 있다. 그 TASK의 여섯 파일(`source.ts`·`view.ts`·`DashboardAnalysis.tsx`와 그 시험)을 고치지 않고 `toSummarySource`는 design.md의 모양대로 부른다. GREEN 기록은 TASK-16의 `toSummarySource`가 작업 폴더에 생긴 뒤 한다
 
 ## TASK-9: 90일 그래프 아래 빈 곳 (공용 부품 `StackedBarChart`)
 - REQ: REQ-601
 - Files: src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - Tests: src/components/charts/StackedBarChart.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - TDD: required
+
+## TASK-10: 덜 끝난 지난 날의 보고 문장
+- REQ: REQ-605
+- Files: src/components/dashboard/summary/view.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/ReportBlock.tsx, src/components/dashboard/summary/ReportBlock.test.tsx
+- Tests: src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/ReportBlock.test.tsx
+- TDD: required
+- AC-605.9. 같은 `view.ts`·`view.test.ts`를 고치는 통계 TASK-16이 끝난 뒤에 한다. TASK-8과는 파일이 겹치지 않아 동시에 돌 수 있다

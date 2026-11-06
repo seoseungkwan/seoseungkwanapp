@@ -31,7 +31,8 @@ export function readBitDays(deps: { runtime: ChromeRuntimeLike | undefined; crea
 
 ### 화면
 - `src/components/dashboard/live/BitDashboard.tsx`('use client'): `{ today, initial: SummarySource }`. 상태는 `idle | reading | data | failed`이고 `initial`이 `data`면 그 숫자로 시작한다(AC-601.13). 효과 안에서 `chrome.runtime`이 있을 때만 읽기를 시작하고 `readBitDays`를 부른다. 효과를 정리할 때 읽기를 취소하고 그 답은 쓰지 않는다(AC-601.15). 서버가 그린 첫 모양은 `initial` 그대로다.
-- 통계의 `summary/LiveDashboard.tsx`와 역할을 나눈다. 그쪽은 저장 숫자를 읽고, 이쪽은 비트에서 읽어 화면을 고른다. 합치면 `LiveDashboard`가 읽은 값을 `BitDashboard`의 `initial`로 넘긴다(TASK-8). `initial`은 처음 그릴 때 한 번만 읽으므로, `LiveDashboard`는 저장 숫자 읽기가 끝난 뒤 `BitDashboard`를 처음 그린다. 통계의 `E-STATS-READ-FAILED` 카드는 `BitDashboard` 밖에서 그린다. 지금은 `dashboard/page.tsx`가 `dashboardSummarySource()`를 넘긴다.
+- `summary/LiveDashboard.tsx`('use client', TASK-8)가 저장 숫자를 읽고 `BitDashboard`가 비트에서 읽어 화면을 고른다. `dashboard/page.tsx`는 `<LiveDashboard today={todayInKorea()} />` 하나를 놓는다. `LiveDashboard`는 `readDays`를 10초(이 파일의 `SAVED_READ_TIMEOUT_MS = 10_000`)까지 기다린 뒤 `<BitDashboard key={round} today={today} initial={toSummarySource(result)} onBitLoaded={…} />`를 처음 그린다(`initial`은 처음 한 번만 읽는다). 실패·한도는 `toSummarySource(null)`이다. 그 전에는 `DashboardHome`을 `report={null}`, `DashboardAnalysis`의 `source={{ kind: 'none' }}`로 그린다. `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`(줄 없음·null → none)는 통계 TASK-16이 `source.ts`에 만든다.
+- `E-STATS-READ-FAILED` `ErrorCard`와 그 아래 [다시 읽기](`ds.button.secondarySmall`)는 `BitDashboard` 위에 그린다(시안에 없어 통계 탭의 같은 카드 모양을 따른다). [다시 읽기]가 `data`로 성공하면 `round`를 올려 `BitDashboard`를 새 `initial`로 다시 놓는다. 비트를 읽는 중이었다면 그 읽기는 처음부터 다시 돈다(받아들임. 카드는 비트 숫자가 오기 전에만 있어 받은 비트 숫자를 지우지 않는다). `BitDashboard`의 새 선택 prop `onBitLoaded?: () => void`는 비트 읽기가 `days`로 끝날 때 부른다.
 - `DashboardHome`은 `report`로 모양을 정하는 방식 그대로 두고, 선택 prop `dateLine`만 더한다(주면 날짜 글자 대신 그린다). `report` 자리에 읽는 중·실패 블록(`ReadStatus.tsx`, 둘 다 h1)을 넘긴다. 데이터가 있으면 `ReportBlock` + `ReadLine`(읽은 시각·[다시 읽기], 같은 파일)이고, 다시 읽기 실패면 `ReadLine`의 단추를 빼고 그 아래 오류 상자를 둔다.
 - [연결 확인]의 주소는 `/claim/setup?next=dashboard`다.
 - 사용자가 직접 누른 다시 읽기의 답이 `not-ready`면 AC-601.16 안내를 보인다. 열 때 저절로 읽은 첫 읽기는 조용히 둔다.
@@ -53,7 +54,7 @@ export function reportSentence(view: TodayView, dayLabel?: string): { first: str
 - `DateControl`: [이전 날] · 날짜 글자 위에 투명하게 겹친 `<input type="date" min max>` · [다음 날] · 오늘이 아닐 때 [오늘로]. 범위는 `addDays(today, -LOOKBACK_DAYS)` ~ `today`. 날짜 계산은 `lib/analytics/dates.ts`만 쓴다. 폰 폭에서 단추는 44px이다.
 - 월말 덧말(AC-605.8): `DateControl`이 `selected === today`일 때 `briefing/dateLine.ts`의 `dateLine(today).note`를 [다음 날] 뒤에 그린다. 글자 모양은 `DashboardHome`의 날짜 줄과 같고(small muted, "·" 좌우 8px), 줄이 넘치면 "·"와 덧말이 함께 내려간다. 시안 `.dp-n`을 따른다.
 - 넷째 칸의 증감·"변화 없음" 값은 시안 `.kpi-v.sm`대로 `text-metric`보다 작게 그린다(PC 20/36, 폰 16/32). 그대로 두면 좁은 폭에서 세모·"12명"·"(+21.8%)"가 세 줄로 꺾인다. 값이 없을 때의 글과 앞의 세 칸은 그대로다.
-- 지난 날짜도 `todayView(selected, days)`를 그대로 쓴다. `partial: false`라 저절로 끝난 날이 되고 7일 전과 견준다. 문장의 "오늘"만 `dayLabel`로 바꾼다.
+- 지난 날짜도 `todayView(selected, days)`를 그대로 쓴다. `partial: false`라 저절로 끝난 날이 되고 7일 전과 견준다. 문장의 "오늘"만 `dayLabel`로 바꾼다. 저장 숫자에는 `partial: true`인 지난 날이 있을 수 있어, `reportSentence`는 `dayLabel`이 있고 `state === 'open'`이면 AC-605.9의 두 줄을 `first`·`rest`로 돌려준다(TASK-10).
 - `ReportBlock`에 선택 prop `selected`를, `DashboardAnalysis`에 `day`를 더한다. 없으면 지금처럼 오늘이다. 자료 없는 지난 날짜는 AC-605.4 문구이고, 오늘 자료가 아직 없을 때는 지금 문구 그대로다.
 - 기간별 흐름은 `today`로만 계산해 고른 날과 상관없다. 날짜를 바꿔도 비트를 다시 읽지 않는다.
 
