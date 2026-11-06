@@ -505,6 +505,30 @@ describe('종류마다 따로', () => {
     expect(h.sent).toHaveLength(0)
   })
 
+  it('AC-2201.5 F/U·정기 주사 조각마다 끝에 도우미 83 총계 줄이 있어도 오류 없이 총계 줄 없는 답과 같은 보기 모양이다', async () => {
+    // 도우미가 보내는 총계 줄: 【 총 계 】 글자가 있던 No 칸은 빠지고 차트번호 칸에 건수만 남는다(patients-total-row)
+    const withTotal = (p: TargetsReply): TargetsReply => ({ ...p, chart: [...p.chart, p.chart[0].map((name) => (name === '차트번호' ? '1,295건' : ''))] })
+    const run = async (map: (p: TargetsReply) => TargetsReply) => {
+      const h = harness()
+      await loaded(h)
+      await h.pieces(FOLLOWUP.pieces.map(map))
+      await h.pieces(INJECTION.pieces.map(map))
+      const saves = h.sent.length
+      await h.build()
+      // 정기 주사가 멈추면 저장하지 않는다(그때는 views가 바로 온다)
+      if (h.sent.length > saves) h.sentOk(saves)
+      await until(() => h.all('views').length > 0, 'views')
+      return h.last('views')
+    }
+    const plain = await run((p) => p)
+    const totaled = await run(withTotal)
+    expect(totaled.codes).toEqual({})
+    expect('reasons' in totaled).toBe(false)
+    expect(totaled.followup?.rows).toHaveLength(7)
+    expect(totaled.recall?.rows).toHaveLength(6)
+    expect(totaled).toEqual(plain)
+  })
+
   describe('E-PATIENTS-SOURCE의 이유 낱말(patients-source-reason)', () => {
     it.each([
       ['visit-conflict', [['V9', '900101', '가상환자01', '1주 뒤 f/u', '2026-07-10'], ['V9', '900102', '가상환자02', '1주 뒤 f/u', '2026-07-10']]],

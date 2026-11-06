@@ -119,10 +119,30 @@ function joinTables(tables: readonly string[][][]): string[][] {
   return joined
 }
 
-// 그 기간에 진료가 없으면 표는 머리 줄뿐이다. 원본이 멈추는 'no-visits'(고른 파일에 자료 없음)와 달리 조각에서는 맞는 답이다
+// 도우미 83 표 끝의 총계 줄(patients-total-row). 비트 표에서 【 총 계 】 글자는 No 칸에 있는데 도우미가 그 칸을 고르지 않아,
+// 차트번호 칸의 건수(1,295건)만 남는다. 원본 prepareSchedule은 첫 칸이 【총계】일 때만 총계로 보므로 여기서 뺀다.
+// 좁게 본다: 건수 모양(원본 isChartSummaryRow와 같은 정규식)이고 다른 칸이 모두 비었을 때만. 아니면 원본처럼 멈춘다
+const TOTAL_COUNT = /^\d+(?:,\d{3})*건$/
+
+function isHelperTotalRow(row: readonly string[], chartColumn: number): boolean {
+  return (
+    chartColumn >= 0 &&
+    TOTAL_COUNT.test(String(row[chartColumn] ?? '').replace(/\s/g, '')) &&
+    row.every((value, index) => index === chartColumn || String(value ?? '').trim() === '')
+  )
+}
+
+// 머리 줄은 그대로 두고 총계 줄만 뺀다. 자리로 찾지 않는다(F/U는 조각을 이어 붙여 총계 줄이 가운데에도 있다)
+function dropHelperTotalRows(chart: string[][]): string[][] {
+  if (!chart.length) return chart
+  const chartColumn = chart[0].findIndex((cell) => headKey(cell) === '차트번호')
+  return [chart[0], ...chart.slice(1).filter((row) => !isHelperTotalRow(row, chartColumn))]
+}
+
+// 그 기간에 진료가 없으면 표는 머리 줄뿐이다(총계 줄만 있어도 같다). 원본이 멈추는 'no-visits'(고른 파일에 자료 없음)와 달리 조각에서는 맞는 답이다
 function scheduleOf(chart: string[][]): PreparedSchedule {
   try {
-    return prepareSchedule(chart)
+    return prepareSchedule(dropHelperTotalRows(chart))
   } catch (error) {
     if (error instanceof PatientsSourceError && error.reason === 'no-visits') return { visits: [], latest: Object.create(null) }
     throw error
