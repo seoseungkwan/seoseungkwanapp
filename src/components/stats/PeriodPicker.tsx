@@ -1,6 +1,7 @@
 'use client'
 
 import { useId, useRef, useState, type KeyboardEvent } from 'react'
+import { formatCount } from '@/components/charts/format'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { addDays, compareYmd } from '@/lib/analytics/dates'
@@ -283,9 +284,9 @@ function CustomPanel({ id, draft, lastDay, check, label, canApply, onDraft, onCl
         </div>
       </div>
       <div aria-live="polite" className="flex flex-col gap-2">
-        {label !== null && check.kind !== 'error' && (
+        {label !== null && check.kind !== 'error' && check.days !== undefined && (
           <p className="text-small text-ink-2">
-            고른 기간: {label} · {check.days}일
+            고른 기간: {label} · {formatCount(check.days)}일
           </p>
         )}
         {check.kind === 'warn' && (

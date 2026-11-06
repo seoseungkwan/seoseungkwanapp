@@ -424,7 +424,8 @@ describe('AC-1702.4: 판의 날짜 한도 오류 — 2020-01-01부터, 한 번�
     setDates('2021-11-05', '2026-11-05')
     fireEvent.click(panelUnit('월별'))
     expect(within(dialog()).queryByText('한 번에 5년까지 볼 수 있어요.')).toBeNull()
-    expect(within(dialog()).getByText('고른 기간: 2021년 11월 5일 – 2026년 11월 5일 · 1827일')).toBeTruthy()
+    // 날 수는 경고 글처럼 세 자리 쉼표다
+    expect(within(dialog()).getByText('고른 기간: 2021년 11월 5일 – 2026년 11월 5일 · 1,827일')).toBeTruthy()
     expect((applyButton() as HTMLButtonElement).disabled).toBe(false)
   })
 })
@@ -439,6 +440,15 @@ describe('AC-1702.3: 일별 92일 경고 — [주별로 보기]·[월별로 보�
     setDates('2026-08-05', '2026-11-05') // 93일
     expect(within(dialog()).getByText(WARN)).toBeTruthy()
     expect((applyButton() as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("AC-1702.3: 경고 글과 '고른 기간' 줄의 날 수는 같은 세 자리 쉼표 글이다(1,040일)", () => {
+    draw()
+    fireEvent.click(customButton())
+    fireEvent.click(panelUnit('일별'))
+    setDates('2024-01-01', '2026-11-05') // 366 + 365 + 309 = 1,040일
+    expect(within(dialog()).getByText('일별은 92일까지 볼 수 있어요. 고른 기간이 1,040일이라 주별이나 월별로 보면 한눈에 보여요.')).toBeTruthy()
+    expect(within(dialog()).getByText('고른 기간: 2024년 1월 1일 – 2026년 11월 5일 · 1,040일')).toBeTruthy()
   })
 
   it('AC-1702.3: 92일은 경고 없이 볼 수 있다', () => {
