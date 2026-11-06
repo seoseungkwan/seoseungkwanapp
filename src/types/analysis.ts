@@ -38,6 +38,11 @@ export type GroupStats = { id: string; patients: number; newPatients: number; re
 // within7 ≤ within14 ≤ within30 ≤ cohort, within30 + after30 ≤ cohort
 export type RevisitCounts = { cohort: number; within7: number; within14: number; within30: number; after30: number }
 
+// 같은 처방 재방문 원래 숫자(일 칸에만). starts = 이 날 그 처방을 새로 시작한 환자 수(앞 30일 동안 같은 처방 코드를 받지 않은 날),
+// back[k] = 그중 다음 날부터 7·14·30일째까지(양 끝 포함) 같은 처방을 또 받은 환자 수, more[k] = 그 창 안에 더 받은 서로 다른 날 수의 합.
+// 외래 진료 줄만 본다(접수 줄 아님). 덮은 기간과 상관없이 센 그대로('집계 중'은 toDayPayloads가 정한다). back[k] ≤ starts, back[k] ≤ more[k]
+export type RxAgain = { code: string; starts: number; back: [number, number, number]; more: [number, number, number] }
+
 export type BucketStats = {
   key: string // day: 'YYYY-MM-DD', week: 그 주 월요일 'YYYY-MM-DD', month: 'YYYY-MM'
   range: DateRange // 이 칸이 덮는 날(일=그날, 주=월~일, 월=1일~말일)
@@ -46,6 +51,7 @@ export type BucketStats = {
   regions: { name: string; patients: number }[] // 이름 순, null 주소는 '주소 없음'
   groups: GroupStats[] // id 순, 그 칸에 환자가 있는 그룹만
   revisit: RevisitCounts
+  again?: RxAgain[] // 일 칸에만 있다: 그날 시작이 있는 처방만, 처방코드 순(없으면 빈 목록). 주·달 칸에는 열쇠가 없다
 }
 
 // 각각 key 오름차순, 줄이 있는 칸만(도우미 길은 접수 줄만 있는 날의 칸도)

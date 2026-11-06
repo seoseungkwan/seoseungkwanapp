@@ -20,7 +20,7 @@ export type DashboardFeature = {
 
 // 탭 순서(대시보드 뺌). 설정은 설정 화면(/settings)으로 간다(precheck AC-012.6)
 export const DASHBOARD_FEATURES: readonly DashboardFeature[] = [
-  { name: '통계', desc: '환자 수 추이·신환 재방문율·처방 추세·요일별 환자 수', href: '/stats', status: 'connect-first' },
+  { name: '통계', desc: '환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // treatment-trend AC-1201.7
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
   { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },

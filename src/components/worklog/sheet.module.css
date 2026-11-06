@@ -147,8 +147,10 @@
   box-shadow: inset 0 0 0 2px var(--xl-focus);
 }
 
+/* 업무사항 글씨는 그날 고른 크기 비율이다(specs/worklog-memo-font AC-1505.1). --memo-pt는 업무사항 칸의 인라인 숫자(없으면 11).
+   폰·인쇄 블록은 --c11만 바꾸므로 같은 비율로 보이고 찍힌다 */
 .sheet .memo {
-  font-size: var(--c11);
+  font-size: calc(var(--c11) * var(--memo-pt, 11) / 11);
 }
 
 .sheet .memo textarea {

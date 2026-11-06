@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, eachDay } from '@/lib/analytics/dates'
 import { validateDayPayload, validateMonthPayload } from '@/lib/payload/validate'
-import type { DayPayload, MonthPayload } from '@/types/payload'
+import type { DayAgainPayload, DayPayload, MonthPayload } from '@/types/payload'
 import { StorageError, readCoverage, readDays, readMonths, saveStats, type SupabaseLike } from './stats'
 
 // 통계 숫자 저장·읽기(브라우저 → Supabase). 실제 Supabase에 붙지 않는다 — 가짜 클라이언트가 어느 표에 어떤 칸이
@@ -521,6 +521,104 @@ describe('AC-507.1 saveStats', () => {
 
     expect(error.code).toBe('E-STATS-SAVE-FAILED')
     expect(error.message).not.toContain('secret detail')
+  })
+})
+
+// 하루 줄 크기와 같은 처방 재방문(again, fu-rate). 처방 코드·숫자는 모두 지어낸 값이다
+describe('AC-1304 saveStats 하루 줄 크기와 again', () => {
+  const LIMIT = 65_536
+
+  // 시작 1명, 7·14·30일이 모두 센 처방 한 줄(검사를 지나는 가장 작은 숫자)
+  const againLine = (code: string): DayAgainPayload['rx'][number] => ({ code, starts: 1, back: [1, 1, 1], more: [1, 2, 3] })
+
+  const withoutAgain = (payload: DayPayload): DayPayload => {
+    const rest = { ...payload }
+    delete rest.again
+    return rest
+  }
+
+  // again 없이 표 기준 정확히 baseBytes인 날(지어낸 코드 C0000 …, 처방마다 환자 1명)에, 앞 처방 againRows개의 again을 붙인다
+  function dayWithAgain(baseBytes: number, againRows: number, day = '2026-09-30'): DayPayload {
+    const base = sized(baseBytes, 'a', (names) =>
+      dayPayload(day, { rx: names.map((name, i) => ({ ...rxRow(i, name), patients: 1 })) }),
+    )
+    return { ...base, again: { ready: [true, true, true], rx: base.rx.slice(0, againRows).map((line) => againLine(line.code)) } }
+  }
+
+  // again까지 표 기준 정확히 target바이트인 날. 코드 길이가 같아 again 칸 크기는 rx 줄 수와 상관없다
+  function dayWithAgainOfBytes(target: number, againRows: number): DayPayload {
+    const probe = dayWithAgain(10_000, againRows)
+    const day = dayWithAgain(target - (tableBytes(probe) - tableBytes(withoutAgain(probe))), againRows)
+    expect(tableBytes(day)).toBe(target)
+    return day
+  }
+
+  const smallDay = (day: string) => dayPayload(day, { again: { ready: [true, true, true], rx: [againLine('AA154')] } })
+
+  it.each<[string, () => DayPayload]>([
+    ['again까지 넣으면 한도보다 1바이트 큰 날', () => dayWithAgainOfBytes(LIMIT + 1, 3)],
+    ['처방이 많아(again 없이 약 51KB) 처방마다 again을 넣으면 한도를 넘는 날', () => dayWithAgain(51_000, 5_000)],
+  ])('AC-1304.1 %s은 again 없이 보내고, 다른 날은 again째 그대로 보낸다. 저장은 실패하지 않는다', async (_name, build) => {
+    const big = build()
+    expect(tableBytes(big)).toBeGreaterThan(LIMIT)
+    expect(tableBytes(withoutAgain(big))).toBeLessThanOrEqual(LIMIT)
+    const before = smallDay('2026-09-29')
+    const after = smallDay('2026-10-01')
+    const { client, calls } = fakeClient()
+    const result = await saveStats(saveInput({ days: [before, big, after] }), { client })
+
+    expect(result).toEqual({ saved: 4 })
+    expect(calls.map((c) => c.table)).toEqual(['stats_months', 'stats_days', 'stats_coverage'])
+    const rows = writesTo(calls, 'stats_days')[0].rows
+    expect(rows.map((row) => row.day)).toEqual(['2026-09-29', '2026-09-30', '2026-10-01'])
+    expect(rows[1]).toEqual({ day: '2026-09-30', partial: false, source: 'bit', payload: validateDayPayload(withoutAgain(big)) })
+    expect(rows[1].payload).not.toHaveProperty('again')
+    expect(tableBytes(rows[1].payload)).toBeLessThanOrEqual(LIMIT)
+    expect(rows[0].payload).toEqual(validateDayPayload(before))
+    expect((rows[0].payload as DayPayload).again).toEqual(before.again)
+    expect((rows[2].payload as DayPayload).again).toEqual(after.again)
+    expect(big.again).toBeDefined() // 넣은 값은 고치지 않는다
+  })
+
+  it('AC-1304.1 덜 끝난 날(partial)도 again만 빼고 그 줄의 partial은 그대로 보낸다', async () => {
+    // 덜 끝난 날은 창이 모두 아직이다(null이 1보다 길어 again 칸이 더 크다)
+    const pendingLine = (code: string): DayAgainPayload['rx'][number] => ({ code, starts: 1, back: [null, null, null], more: [null, null, null] })
+    const full = dayWithAgainOfBytes(LIMIT + 1, 3)
+    const big: DayPayload = { ...full, partial: true, again: { ready: [false, false, false], rx: full.rx.slice(0, 3).map((line) => pendingLine(line.code)) } }
+    expect(tableBytes(big)).toBeGreaterThan(LIMIT)
+    expect(tableBytes(withoutAgain(big))).toBeLessThanOrEqual(LIMIT)
+    const { client, calls } = fakeClient()
+    await saveStats(saveInput({ days: [big] }), { client })
+
+    const [row] = writesTo(calls, 'stats_days')[0].rows
+    expect(row.partial).toBe(true)
+    expect(row.payload).toEqual(validateDayPayload(withoutAgain(big)))
+  })
+
+  it('AC-1304.2 again을 빼도 한도를 넘는 날이 있으면 지금처럼 아무것도 보내지 않고 E-STATS-SAVE-FAILED다(클라이언트도 만들지 않는다)', async () => {
+    const tooBig = dayWithAgain(LIMIT + 1, 3)
+    expect(tableBytes(withoutAgain(tooBig))).toBe(LIMIT + 1)
+    const days = [smallDay('2026-09-29'), tooBig]
+
+    const { client, calls } = fakeClient()
+    const error = await failure(saveStats(saveInput({ days }), { client }))
+    expect(error.code).toBe('E-STATS-SAVE-FAILED')
+    expect(calls).toEqual([])
+
+    const noDeps = await failure(saveStats(saveInput({ days })))
+    expect(noDeps.code).toBe('E-STATS-SAVE-FAILED')
+    expect(supabaseBrowser).not.toHaveBeenCalled()
+  })
+
+  it('AC-1304.2 크기 안의 날은 again을 그대로 보낸다(again까지 표 기준 정확히 한도인 날)', async () => {
+    const fits = dayWithAgainOfBytes(LIMIT, 3)
+    const { client, calls } = fakeClient()
+    await saveStats(saveInput({ days: [fits] }), { client })
+
+    const [row] = writesTo(calls, 'stats_days')[0].rows
+    expect(row.payload).toEqual(validateDayPayload(fits))
+    expect((row.payload as DayPayload).again).toEqual(fits.again)
+    expect(tableBytes(row.payload)).toBe(LIMIT)
   })
 })
 

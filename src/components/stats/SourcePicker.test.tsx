@@ -17,7 +17,11 @@ vi.mock('@/workers/runAnalysis', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/workers/runAnalysis')>()),
   runAnalysis: vi.fn(),
 }))
-vi.mock('@/lib/payload/toMonthPayload', () => ({ toMonthPayload: vi.fn() }))
+// compareText 등 나머지는 진짜다(fillGroupCounts가 줄 차례에 쓴다)
+vi.mock('@/lib/payload/toMonthPayload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/payload/toMonthPayload')>()),
+  toMonthPayload: vi.fn(),
+}))
 vi.mock('@/lib/payload/toDayPayloads', () => ({ toDayPayloads: vi.fn() }))
 
 const TODAY = '2026-11-13'
@@ -344,5 +348,77 @@ describe('AC-514.4 파일 읽기', () => {
     expect(outcome.save).toBeNull()
     expect(outcome.incomplete).toEqual({ failedFiles: 1, skippedRows: 3 })
     expect(outcome.failures).toEqual([{ name: '가짜하나.xlsx', code: 'E-PARSE-EMPTY' }])
+  })
+})
+
+describe('AC-1205.5 파일 길에 묶음 넘기기', () => {
+  const MONTH = { month: '2026-10' } as MonthPayload
+  const VALID = { quality: 'valid', skippedInvalidRows: 0 } as AnalysisResult
+  // 묶음 열쇠는 treatment-trend AC-1206.1의 고정 값(t2538… = ESWT1·ESWT7, t0c99… = 도수)
+  const ESWT = 't2538e307d10103cb'
+  const MANUAL = 't0c99afbb8431612f'
+  const counted = { id: ESWT, patients: 2, newPatients: 1, returning: 1 }
+  const DAY = { day: '2026-10-05', groups: [counted] } as DayPayload
+  const report = okReport(0, { from: '2026-10-01', to: '2026-10-31' })
+
+  it('AC-1205.5 셋째 인자로 준 묶음이 runAnalysis에 { id, codes }로만 가고 저장할 일 줄은 fillGroupCounts를 거친다', async () => {
+    const file = fileNamed('가짜환자.xlsx')
+    vi.mocked(runAnalysis).mockResolvedValue({ files: [report], result: VALID })
+    vi.mocked(toMonthPayload).mockReturnValue([MONTH])
+    vi.mocked(toDayPayloads).mockReturnValue([DAY])
+    // 이름 칸이 붙어 와도 Worker로는 열쇠·처방 코드만 간다
+    const groups = [
+      { id: ESWT, codes: ['ESWT1', 'ESWT7'], name: '충격파' },
+      { id: MANUAL, codes: ['도수'], name: '도수치료' },
+    ]
+
+    const outcome = await readFiles([file], TODAY, groups)
+
+    expect(runAnalysis).toHaveBeenCalledWith([file], {
+      today: TODAY,
+      groups: [
+        { id: ESWT, codes: ['ESWT1', 'ESWT7'] },
+        { id: MANUAL, codes: ['도수'] },
+      ],
+    })
+    // 그날 아무도 안 받은 묶음은 0줄, 줄은 id 글자 차례
+    expect(outcome.save?.days).toEqual([
+      {
+        day: '2026-10-05',
+        groups: [
+          { id: MANUAL, patients: 0, newPatients: 0, returning: 0 },
+          { id: ESWT, patients: 2, newPatients: 1, returning: 1 },
+        ],
+      },
+    ])
+    expect(DAY.groups).toEqual([counted]) // 넣은 값은 그대로
+    expect(outcome.save?.months).toEqual([MONTH])
+    expect(JSON.stringify(outcome.save)).not.toContain('충격파')
+  })
+
+  it('AC-1205.5 묶음을 주지 않거나 빈 목록이면 지금과 같다(runAnalysis에 groups 칸이 없고 일 줄을 그대로 저장한다)', async () => {
+    const file = fileNamed('가짜환자.xlsx')
+    const plain = { day: '2026-10-05' } as DayPayload
+    vi.mocked(runAnalysis).mockResolvedValue({ files: [report], result: VALID })
+    vi.mocked(toMonthPayload).mockReturnValue([MONTH])
+    vi.mocked(toDayPayloads).mockReturnValue([plain])
+
+    for (const outcome of [await readFiles([file], TODAY), await readFiles([file], TODAY, [])]) {
+      expect(outcome.save?.days).toEqual([plain])
+      expect(outcome.save?.days[0]).toBe(plain)
+    }
+    expect(vi.mocked(runAnalysis).mock.calls.map(([, opts]) => opts)).toEqual([{ today: TODAY }, { today: TODAY }])
+    expect(vi.mocked(runAnalysis).mock.calls.every(([, opts]) => !('groups' in (opts ?? {})))).toBe(true)
+  })
+
+  it('AC-1205.5 묶음을 줘도 품질이 incomplete면 저장 모양이 없다', async () => {
+    vi.mocked(runAnalysis).mockResolvedValue({ files: [report], result: { quality: 'incomplete', skippedInvalidRows: 2 } as AnalysisResult })
+    vi.mocked(toMonthPayload).mockReturnValue(null)
+    vi.mocked(toDayPayloads).mockReturnValue(null)
+
+    const outcome = await readFiles([fileNamed('가짜환자.xlsx')], TODAY, [{ id: ESWT, codes: ['ESWT1', 'ESWT7'] }])
+
+    expect(outcome.save).toBeNull()
+    expect(outcome.incomplete).toEqual({ failedFiles: 0, skippedRows: 2 })
   })
 })

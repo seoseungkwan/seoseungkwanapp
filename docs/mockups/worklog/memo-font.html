@@ -1,0 +1,385 @@
+<title>업무사항 글씨 크기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  업무일지 '업무사항' 칸 글씨 크기 시안. 양식은 승인본 docs/mockups/worklog/bitfill.html · sheet.module.css 그대로이고,
+  더한 것은 날짜 줄의 [글씨 작게·크게] 단추, 잘림 안내 한 줄, 업무사항 칸 글씨 크기뿐이다.
+  글은 지어낸 예시다. 저장은 흉내만 내고 어디로도 보내지 않는다.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Gothic:wght@400;700&display=swap">
+<style>
+/* 배치: 위 상황 고르기 → [화면 틀 | 설명] 두 칸(좁으면 설명이 위) → 맨 아래 '제가 정한 부분'.
+   바깥 설명 쪽만 밝음/어두움을 따른다. 화면 틀 안은 실제 앱(밝은 화면만)과 엑셀 양식 색 그대로 고정 */
+:root {
+  --bg: #E9ECF1; --panel: #FFFFFF; --fg: #111827; --fg-2: #374151; --muted: #5F6672; --rule: #D3D8E0;
+  --chip: #EEF0F4; --tag-bg: #FEF3C7; --tag-fg: #92400E; --bezel: #2A2F37; --focus: #2563EB;
+  --app-canvas: #F7F8FA; --app-surface: #FFFFFF; --app-line: #E5E7EB; --app-line-strong: #D1D5DB;
+  --app-ink: #111827; --app-ink-2: #374151; --app-muted: #6B7280; --app-accent: #2563EB; --app-negative: #C2410C;
+  --xl-ink: #000000; --xl-lav: #CCCCFF; --xl-paper: #FFFFFF; --xl-focus: #107C41;
+  --shadow: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --xl-font: "Gulim", "굴림", "Nanum Gothic", "Apple SD Gothic Neo", sans-serif;
+  --xl-title: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171C; --panel: #1D2128; --fg: #E8EAEE; --fg-2: #C4C9D1; --muted: #9AA1AC; --rule: #343A45;
+    --chip: #2A2F38; --tag-bg: #4A3A12; --tag-fg: #F4D48A; --bezel: #454C58; --focus: #7AA7FF;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171C; --panel: #1D2128; --fg: #E8EAEE; --fg-2: #C4C9D1; --muted: #9AA1AC; --rule: #343A45;
+  --chip: #2A2F38; --tag-bg: #4A3A12; --tag-fg: #F4D48A; --bezel: #454C58; --focus: #7AA7FF;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/22px var(--font-ui); word-break: keep-all; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.page {
+  container: page / inline-size;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+  display: grid; gap: 20px;
+}
+.wrap { width: 100%; max-width: 1115px; margin: 0 auto; min-width: 0; }
+
+.head { display: grid; gap: 6px; }
+.eyebrow { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.head h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+.tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-fg); font-size: 12px; line-height: 18px; font-weight: 600; vertical-align: middle; letter-spacing: 0; }
+.head p.lead { margin: 0; max-width: 68ch; font-size: 14px; line-height: 22px; color: var(--fg-2); }
+
+.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.tab {
+  display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 10px;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--fg-2);
+  font-size: 13px; line-height: 18px; font-weight: 500; text-align: left; cursor: pointer;
+}
+.tab:hover { border-color: var(--muted); }
+.tab .no { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--chip); color: var(--fg); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tab[aria-selected="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.tab[aria-selected="true"] .no { background: var(--bg); color: var(--fg); }
+
+.layout { display: grid; grid-template-columns: 775px minmax(0, 1fr); gap: 24px; align-items: start; }
+.stage { display: grid; gap: 10px; min-width: 0; }
+.frame-label { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--fg-2); }
+.cut-note { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+
+.notes { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.notes h2 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--fg); text-wrap: balance; }
+.notes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: n; }
+.notes li { counter-increment: n; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14px; line-height: 22px; color: var(--fg); }
+.notes li::before { content: counter(n); display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--fg); border-radius: 50%; font-size: 12px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.notes .next { justify-self: start; min-height: 40px; padding: 0 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--chip); color: var(--fg); font-size: 14px; font-weight: 500; cursor: pointer; }
+.notes .next:hover { border-color: var(--muted); }
+
+.decided { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; gap: 10px; }
+.decided h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--fg); }
+.decided p { margin: 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.decided ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; line-height: 22px; color: var(--fg-2); max-width: 80ch; }
+.decided b { color: var(--fg); font-weight: 600; }
+.decided q { quotes: "“" "”"; color: var(--fg); font-weight: 500; }
+
+/* ---------- 화면 틀 (여기부터 실제 앱 모양) ---------- */
+.screen {
+  container: screen / inline-size;
+  color-scheme: light;
+  display: grid; gap: 12px; min-width: 0;
+  background: var(--app-canvas); color: var(--app-ink);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 16px;
+}
+.screen > * { min-width: 0; }
+.screen.phone { width: min(390px, 100%); justify-self: center; border: 6px solid var(--bezel); border-radius: 28px; padding: 20px 12px 24px; }
+
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.date-row, .tool-right { display: flex; align-items: center; gap: 8px; }
+.tool-right { min-width: 0; justify-content: flex-end; gap: 16px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+  height: 36px; padding: 0 16px; border: 1px solid var(--app-line-strong); border-radius: 4px;
+  background: var(--app-surface); color: var(--app-ink); font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.btn svg { width: 16px; height: 16px; }
+.btn:hover:not(:disabled) { background: var(--app-canvas); }
+.btn:disabled { color: var(--app-muted); background: var(--app-canvas); cursor: default; }
+.date-pick { width: 160px; height: 36px; padding: 0 12px; border: 1px solid var(--app-line-strong); border-radius: 4px; background: var(--app-surface); color: var(--app-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.status { margin: 0; min-width: 0; font-size: 13px; line-height: 20px; color: var(--app-ink-2); white-space: nowrap; }
+
+/* 새로 더함 ① 글씨 크기: 이름 + [가−] 숫자 [가+] */
+.fontctl { display: flex; align-items: center; gap: 6px; }
+.fontctl .lbl { font-size: 13px; line-height: 20px; color: var(--app-ink-2); white-space: nowrap; }
+.fontctl .btn { width: 36px; padding: 0; font-size: 14px; font-weight: 600; }
+.fontctl .btn .s { font-size: 11px; }
+.fontctl output { min-width: 34px; height: 36px; display: grid; place-items: center; border: 1px solid var(--app-line-strong); border-radius: 4px; background: var(--app-surface); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 새로 더함 ② 잘림 안내 한 줄 (날짜 줄 아래, 오류 상자가 아니다) */
+.notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 13px; line-height: 20px; color: var(--app-ink-2); }
+.notice svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--app-negative); }
+
+/* 엑셀 종이: 칸 너비·줄 높이·글꼴·색·선은 승인본 그대로 */
+.paper { background: var(--xl-paper); border: 1px solid var(--app-line); padding: 24px; overflow-x: auto; }
+.sheet {
+  --c: 17px; --c11: 15px; --c14: 19px; --t: 43px;
+  --h1: 53px; --h2: 24px; --h3: 45px; --h28: 28px; --h40: 40px;
+  --pt: 11;
+  --memo: calc(var(--c11) * var(--pt) / 11);
+  width: 689px; border-collapse: collapse; table-layout: fixed; font-family: var(--xl-font); font-weight: 700; font-size: var(--c); line-height: 1.25; color: var(--xl-ink); text-align: center;
+}
+.sheet td { border: 1px solid var(--xl-ink); padding: 0; font-weight: 700; vertical-align: middle; }
+.sheet tr { height: var(--h40); }
+.sheet .r1 { height: var(--h1); } .sheet .r2 { height: var(--h2); } .sheet .r3 { height: var(--h3); }
+.sheet .r28 { height: var(--h28); }
+.sheet .title { font-family: var(--xl-title); font-weight: 400; font-size: var(--t); letter-spacing: .35em; padding-left: .35em; white-space: nowrap; }
+.sheet .lav { background: var(--xl-lav); }
+.sheet .date { font-size: var(--c14); }
+.sheet tr:first-child > * { border-top-width: 2px; }
+.sheet .L { border-left-width: 2px; }
+.sheet .R { border-right-width: 2px; }
+.sheet input, .sheet textarea { display: block; width: 100%; height: 100%; border: 0; margin: 0; background: transparent; text-align: center; font-family: var(--xl-font); font-weight: 700; font-size: inherit; color: var(--xl-ink); padding: 0 4px; outline: none; }
+.sheet textarea:focus { box-shadow: inset 0 0 0 2px var(--xl-focus); }
+.sheet .memo { font-size: var(--memo); }
+.sheet .memo textarea { resize: none; height: calc(var(--h28) * 3); padding: 6px; line-height: 1.35; }
+.sheet .memo textarea[readonly] { cursor: default; }
+.sheet .print-cut textarea { overflow: hidden; }
+.sheet .torn td { height: 14px; border-bottom: 0; border-left: 0; border-right: 0; }
+
+/* 인쇄 미리보기: A4 세로 한 장의 윗부분 */
+.a4 { width: 100%; max-width: 794px; justify-self: center; background: var(--xl-paper); padding: 5.7% 5.7% 0; box-shadow: var(--shadow); border: 1px solid var(--app-line); }
+.a4 .paper { padding: 0; border: 0; overflow: visible; }
+.a4 .sheet { width: 100%; }
+.a4-foot { margin: 0; padding: 8px 0 12px; text-align: center; font-size: 12px; color: var(--app-muted); }
+
+@container screen (max-width: 738px) {
+  .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .date-row { gap: 6px; }
+  .date-pick { flex: 1; width: auto; min-width: 0; height: 44px; padding: 0 8px; }
+  .btn { height: 44px; padding: 0 12px; }
+  .btn .pc-only { display: none; }
+  .tool-right { justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+  .fontctl .btn, .fontctl output { height: 44px; }
+  .fontctl .btn { width: 44px; }
+  .paper { padding: 8px; }
+  .sheet { width: 100%; --c: 11px; --c11: 10px; --c14: 12px; --t: 24px; --h1: 38px; --h2: 18px; --h3: 30px; --h28: 22px; --h40: 30px; }
+}
+
+@container page (max-width: 1150px) {
+  .layout { grid-template-columns: minmax(0, 775px); justify-content: center; }
+  .notes { order: -1; }
+  .wrap { max-width: 775px; }
+}
+@container page (max-width: 480px) {
+  .screen { padding: 12px 8px; }
+  .screen.phone { padding: 16px 8px 20px; }
+  .head h1 { font-size: 21px; line-height: 28px; }
+  .tab { font-size: 12px; padding: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <header class="wrap head">
+    <p class="eyebrow">업무일지 · 화면 시안</p>
+    <h1>업무사항 글씨 크기<span class="tag">예시 글</span></h1>
+    <p class="lead">엑셀 업무일지 모양은 그대로 두고, 날짜 줄에 업무사항 글씨를 작게·크게 하는 단추만 더했어요. 바꾼 크기는 그날 일지에 저장돼서 다른 PC, 휴대폰, 인쇄에서도 같게 나와요. 글은 지어낸 예시이고 어디에도 저장되지 않아요.</p>
+  </header>
+
+  <div class="wrap tabs" role="tablist" aria-label="상황 고르기" id="tabs">
+    <button type="button" class="tab" role="tab" id="tab-pc" data-view="pc" aria-controls="panel"><span class="no">1</span>컴퓨터에서 고치기</button>
+    <button type="button" class="tab" role="tab" id="tab-phone" data-view="phone" aria-controls="panel"><span class="no">2</span>휴대폰에서 보기</button>
+    <button type="button" class="tab" role="tab" id="tab-print" data-view="print" aria-controls="panel"><span class="no">3</span>인쇄</button>
+  </div>
+
+  <div class="wrap layout" id="panel" role="tabpanel">
+    <section class="stage" aria-label="화면 예시">
+      <p class="frame-label" id="frame-label"></p>
+      <div class="screen" id="screen"></div>
+      <p class="cut-note">아래 수입·지출 칸은 바뀌는 게 없어서 그림에서 줄였어요.</p>
+    </section>
+    <aside class="notes" aria-live="polite">
+      <h2 id="note-title"></h2>
+      <ol id="note-list"></ol>
+      <button type="button" class="next" id="next"></button>
+    </aside>
+  </div>
+
+  <section class="wrap decided" aria-label="제가 정한 부분">
+    <h2>제가 정한 부분<span class="tag">봐 주세요</span></h2>
+    <p>다르게 하고 싶은 곳이 있으면 번호 없이 말로 알려 주시면 돼요.</p>
+    <ul>
+      <li>크기는 엑셀처럼 숫자로 골라요: <b>8 · 9 · 10 · 11 · 12 · 14 · 16</b>. 처음은 <b>11</b>(지금 크기)이에요.</li>
+      <li><b>[가−]</b>, <b>[가+]</b>를 누를 때마다 한 칸씩 바뀌고, 다른 칸처럼 누르자마자 저장돼요.</li>
+      <li>그날 일지에만 저장돼요. 다른 날은 따로예요. 새 날짜 일지는 11로 시작해요(전날 크기를 이어받지 않아요).</li>
+      <li>글이 칸보다 길면 날짜 줄 아래에 <q>업무사항 글이 칸보다 길어서 인쇄하면 아랫부분이 잘려요. 글씨를 줄이면 다 들어갈 수 있어요.</q>가 나와요. 다 들어가면 사라져요.</li>
+      <li>휴대폰은 지금처럼 보기만 해요. 단추는 없고, 저장된 크기로 보여요.</li>
+      <li>인쇄도 같은 크기로 찍혀요. 단추와 안내 줄은 인쇄되지 않아요.</li>
+      <li>비트에서 숫자를 불러와도 글씨 크기는 그대로예요.</li>
+    </ul>
+  </section>
+</div>
+
+<template id="sheet-tpl">
+  <table class="sheet" aria-label="업무일지">
+    <colgroup><col style="width:14.5%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:10.6%"><col style="width:8.4%"><col style="width:5.8%"><col style="width:12%"><col style="width:11.8%"><col style="width:15.7%"></colgroup>
+    <tr class="r1"><td colspan="9" class="title L R">업무일지</td></tr>
+    <tr class="r2"><td colspan="5" rowspan="2" class="lav date L">2026/11/05 목</td><td rowspan="2" class="lav">결<br><br>재</td><td class="lav">담&nbsp;&nbsp;&nbsp;&nbsp;당</td><td class="lav">팀&nbsp;&nbsp;&nbsp;&nbsp;장</td><td class="lav R">원&nbsp;&nbsp;&nbsp;&nbsp;장</td></tr>
+    <tr class="r3"><td class="lav"></td><td class="lav"></td><td class="lav R"></td></tr>
+    <tr class="r28"><td rowspan="3" class="L">환 자<br>현 황</td><td>외래</td><td></td><td></td><td colspan="2" rowspan="3">업무사항</td><td colspan="3" rowspan="3" class="memo R"><textarea id="memo" aria-label="업무사항" maxlength="2000" spellcheck="false"></textarea></td></tr>
+    <tr class="r28"><td>신 환</td><td>23</td><td class="lav">합&nbsp;&nbsp;계</td></tr>
+    <tr class="r28"><td>재 진</td><td>118</td><td class="lav">141</td></tr>
+    <tr class="torn"><td colspan="9"></td></tr>
+  </table>
+</template>
+
+<script>
+(() => {
+  const SIZES = [8, 9, 10, 11, 12, 14, 16]
+  const START = 11
+  const SAMPLE = '온열기 1대 고장, 내일 오전 AS 방문\n주사실 소모품 주문 완료\n오후 3시 직원 회의(11월 연차)\n청구 반송 2건 고쳐서 다시 보냄'
+
+  const ICON_LEFT = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>'
+  const ICON_RIGHT = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>'
+  const ICON_WARN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v3.8M8 10.9v.1"/></svg>'
+
+  const VIEWS = {
+    pc: {
+      label: '컴퓨터 · 업무일지 탭',
+      title: '컴퓨터에서 글씨 크기 바꾸기',
+      list: [
+        '날짜 줄 오른쪽에 <b>업무사항 글씨 [가−] 11 [가+]</b>가 생겨요.',
+        '지금 예시 글은 칸보다 길어서 아래에 잘림 안내가 떠 있어요. <b>[가−]</b>를 몇 번 눌러 줄여 보세요. 글이 칸에 다 들어가면 안내가 사라져요.',
+        '누르면 오른쪽에 <q>저장하는 중이에요</q> → <q>저장했어요</q>가 나와요. 다른 칸을 고칠 때와 같아요.',
+        '업무사항 칸에 글을 더 쓰거나 지워도 안내가 바로 따라 바뀌어요.',
+      ],
+      next: '다음: 휴대폰에서 보기',
+    },
+    phone: {
+      label: '휴대폰 · 업무일지 탭 (보기만)',
+      title: '휴대폰에서는 저장된 크기로 보여요',
+      list: [
+        '휴대폰은 지금처럼 보기만 해요. 글씨 단추와 안내 줄이 없어요.',
+        '1번 화면에서 고른 크기로 보여요. 1번에서 크기를 바꾸고 다시 와 보세요.',
+        '휴대폰 화면에 맞게 양식 전체가 작아지는 비율은 지금과 같아요.',
+      ],
+      next: '다음: 인쇄',
+    },
+    print: {
+      label: '인쇄 미리보기 · A4 윗부분',
+      title: '인쇄에도 같은 크기로 찍혀요',
+      list: [
+        '인쇄에는 양식만 나와요. 단추와 안내 줄은 찍히지 않아요.',
+        '업무사항은 칸 크기가 정해져 있어서 칸을 넘는 글은 잘려요. 지금 크기가 11이면 마지막 줄이 잘린 모습을 볼 수 있어요.',
+        '1번에서 안내가 사라질 때까지 줄이고 다시 오면 글이 다 들어간 모습이 보여요.',
+      ],
+      next: '처음으로: 컴퓨터에서 고치기',
+    },
+  }
+  const ORDER = ['pc', 'phone', 'print']
+
+  const state = { view: 'pc', pt: START, memo: SAMPLE, saving: 0 }
+  const $ = (id) => document.getElementById(id)
+  const screen = $('screen')
+
+  function sheetHtml() {
+    return document.getElementById('sheet-tpl').innerHTML
+  }
+
+  function toolbarHtml(view) {
+    const i = SIZES.indexOf(state.pt)
+    const right = view === 'phone'
+      ? '<p class="status">휴대폰에서는 보기만 할 수 있어요</p>'
+      : '<div class="fontctl" role="group" aria-label="업무사항 글씨 크기">' +
+          '<span class="lbl">업무사항 글씨</span>' +
+          '<button type="button" class="btn" id="smaller" aria-label="업무사항 글씨 작게"' + (i <= 0 ? ' disabled' : '') + '>가<span class="s">−</span></button>' +
+          '<output id="ptv" aria-live="polite">' + state.pt + '</output>' +
+          '<button type="button" class="btn" id="bigger" aria-label="업무사항 글씨 크게"' + (i >= SIZES.length - 1 ? ' disabled' : '') + '>가<span class="s">+</span></button>' +
+        '</div>' +
+        '<p class="status" id="status">' + statusText() + '</p>'
+    return '<div class="toolbar">' +
+      '<div class="date-row">' +
+        '<button type="button" class="btn" aria-label="전날">' + ICON_LEFT + '<span class="pc-only">전날</span></button>' +
+        '<input class="date-pick" type="date" value="2026-11-05" aria-label="날짜">' +
+        '<button type="button" class="btn" aria-label="다음 날"><span class="pc-only">다음 날</span>' + ICON_RIGHT + '</button>' +
+      '</div>' +
+      '<div class="tool-right">' + right + '</div>' +
+    '</div>'
+  }
+
+  function statusText() {
+    return state.saving ? '저장하는 중이에요' : '저장했어요'
+  }
+
+  function render() {
+    const v = state.view
+    $('frame-label').textContent = VIEWS[v].label
+    $('note-title').textContent = VIEWS[v].title
+    $('note-list').innerHTML = VIEWS[v].list.map((t) => '<li><span>' + t + '</span></li>').join('')
+    $('next').textContent = VIEWS[v].next
+    document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === v)))
+
+    screen.className = 'screen' + (v === 'phone' ? ' phone' : '')
+    if (v === 'print') {
+      screen.innerHTML = '<div class="a4"><div class="paper">' + sheetHtml() + '</div><p class="a4-foot">… 수입 · 지출 칸이 이어져요</p></div>'
+    } else {
+      screen.innerHTML = toolbarHtml(v) +
+        (v === 'pc' ? '<p class="notice" id="cut" hidden>' + ICON_WARN + '<span>업무사항 글이 칸보다 길어서 인쇄하면 아랫부분이 잘려요. 글씨를 줄이면 다 들어갈 수 있어요.</span></p>' : '') +
+        '<div class="paper">' + sheetHtml() + '</div>'
+    }
+
+    const memo = $('memo')
+    memo.value = state.memo
+    // 업무사항 글씨 = 지금 크기(11) 칸 글씨 × 고른 크기 / 11. 화면이 좁아 양식이 작아지면 같은 비율로 작아진다
+    screen.querySelector('.sheet').style.setProperty('--pt', String(state.pt))
+    if (v !== 'pc') memo.readOnly = true
+    if (v === 'print') memo.closest('td').classList.add('print-cut')
+    if (v === 'pc') {
+      memo.addEventListener('input', () => { state.memo = memo.value; save(); checkCut() })
+      memo.addEventListener('blur', () => { memo.scrollTop = 0 })
+      $('smaller').addEventListener('click', () => step(-1))
+      $('bigger').addEventListener('click', () => step(1))
+      checkCut()
+    }
+  }
+
+  // 칸보다 글이 길면 안내를 보인다(화면 칸과 인쇄 칸의 비율이 같아서 화면 칸으로 잰다)
+  function checkCut() {
+    const memo = $('memo'); const cut = $('cut')
+    if (!memo || !cut) return
+    cut.hidden = !(memo.scrollHeight > memo.clientHeight + 1)
+  }
+
+  let timer = 0
+  function save() {
+    state.saving = 1
+    const s = $('status'); if (s) s.textContent = statusText()
+    clearTimeout(timer)
+    timer = setTimeout(() => { state.saving = 0; const st = $('status'); if (st) st.textContent = statusText() }, 700)
+  }
+
+  function step(d) {
+    const i = SIZES.indexOf(state.pt) + d
+    if (i < 0 || i >= SIZES.length) return
+    state.pt = SIZES[i]
+    const keep = document.activeElement && document.activeElement.id
+    render()
+    save()
+    if (keep) { const el = $(keep); if (el && !el.disabled) el.focus() }
+  }
+
+  $('tabs').addEventListener('click', (e) => {
+    const t = e.target.closest('.tab'); if (!t) return
+    state.view = t.dataset.view; render()
+  })
+  $('next').addEventListener('click', () => {
+    state.view = ORDER[(ORDER.indexOf(state.view) + 1) % ORDER.length]; render()
+  })
+  window.addEventListener('resize', checkCut)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(checkCut)
+  render()
+})()
+</script>

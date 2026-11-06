@@ -3,7 +3,7 @@ import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { eachDay } from '@/lib/analytics/dates'
 import type { ConsumptionRow } from '@/types/consumption'
-import type { DayPayload, MonthPayload, RevisitPayload } from '@/types/payload'
+import { AGAIN_WINDOWS, type AgainWindow, type DayAgainPayload, type DayPayload, type MonthPayload, type RevisitPayload } from '@/types/payload'
 import { toDayPayloads } from './toDayPayloads'
 import { toMonthPayload } from './toMonthPayload'
 import { validateDayPayload, validateMonthPayload, validateRxPick } from './validate'
@@ -631,5 +631,312 @@ describe('AC-811.1 validateRxPick', () => {
     ['null 이름', { code: 'AA154', name: null }],
   ])('AC-811.1: %s은(는) 거부한다', (_, value) => {
     expect(validateRxPick(value)).toBeNull()
+  })
+})
+
+// ── 같은 처방 재방문(again) ────────────────────────────────
+// goodDay()의 처방: 643503420(환자 10명) · AA154(환자 2명). 숫자는 모두 지어낸 값이다
+
+function goodAgain(): DayAgainPayload {
+  return {
+    ready: [true, true, false],
+    rx: [
+      { code: '643503420', starts: 3, back: [1, 2, null], more: [2, 5, null] },
+      { code: 'AA154', starts: 1, back: [0, 0, null], more: [0, 0, null] },
+    ],
+  }
+}
+
+function goodAgainDay(): DayPayload {
+  return { ...goodDay(), again: goodAgain() }
+}
+
+function editedAgainDay(path: (string | number)[], value: unknown): unknown {
+  const payload: unknown = goodAgainDay()
+  let at = payload as Record<string | number, unknown>
+  for (const key of path.slice(0, -1)) at = at[key] as Record<string | number, unknown>
+  const last = path[path.length - 1]
+  if (value === REMOVE) delete at[last]
+  else at[last] = value
+  return payload
+}
+
+type AgainRowInput = { starts: unknown; back: unknown; more: unknown }
+
+// 처방 643503420(환자 10명) 한 줄만 있는 again. ready는 기본으로 세 창 모두 셀 수 있음
+function dayWithAgainRow(row: AgainRowInput, ready: unknown = [true, true, true]): unknown {
+  return { ...goodDay(), again: { ready, rx: [{ code: '643503420', ...row }] } }
+}
+
+// 처방 n개인 날과 그날 처방마다 시작 1명씩인 again
+function manyRxDay(rxCount: number, againCount: number): unknown {
+  const rx = Array.from({ length: rxCount }, (_, i) => ({ code: `X${i}`, name: '', type: '', patients: 1, newPatients: 0, returning: 1 }))
+  const againRx = Array.from({ length: againCount }, (_, i) => ({ code: `X${i}`, starts: 1, back: [0, 0, 0], more: [0, 0, 0] }))
+  return { ...goodDay(), rx, again: { ready: [true, true, true], rx: againRx } }
+}
+
+describe('AC-1303.1 again이 없으면 지금과 같고, 있으면 검사한 새 객체로 담는다', () => {
+  it('AC-1303.1: again이 없는 옛 줄은 지금처럼 통과하고 돌려준 객체에 again 열쇠가 없다', () => {
+    const output = validateDayPayload(goodDay())
+    expect(output).toStrictEqual(goodDay())
+    expect(Object.keys(output!)).not.toContain('again')
+  })
+
+  it('AC-1303.1: again이 undefined면 없는 것과 같다(JSON에 남지 않는 값)', () => {
+    const output = validateDayPayload({ ...goodDay(), again: undefined })
+    expect(output).toStrictEqual(goodDay())
+    expect(Object.keys(output!)).not.toContain('again')
+  })
+
+  it('AC-1303.1: again이 있으면 같은 내용으로 담는다', () => {
+    expect(validateDayPayload(goodAgainDay())).toStrictEqual(goodAgainDay())
+  })
+
+  it('AC-1303.1: 새 객체 — 돌려준 again.rx[0].back을 고쳐도 넣은 값이 그대로다', () => {
+    const input = goodAgainDay()
+    const output = validateDayPayload(input)!
+    expect(output.again).not.toBe(input.again)
+    expect(output.again!.ready).not.toBe(input.again!.ready)
+    expect(output.again!.rx).not.toBe(input.again!.rx)
+    expect(output.again!.rx[0]).not.toBe(input.again!.rx[0])
+    output.again!.rx[0].back[0] = 99
+    output.again!.rx[0].more[0] = 99
+    output.again!.ready[2] = true
+    output.again!.rx.pop()
+    expect(input).toStrictEqual(goodAgainDay())
+  })
+
+  it('AC-1303.1: 저장했다 읽어도(JSON) 그대로다', () => {
+    expect(validateDayPayload(JSON.parse(JSON.stringify(goodAgainDay())))).toStrictEqual(goodAgainDay())
+  })
+
+  it.each<[string, (string | number)[], unknown]>([
+    ['세 창 모두 셀 수 없음', ['again'], { ready: [false, false, false], rx: [{ code: 'AA154', starts: 2, back: [null, null, null], more: [null, null, null] }] }],
+    ['세 창 모두 셀 수 있음', ['again'], { ready: [true, true, true], rx: [{ code: 'AA154', starts: 2, back: [1, 1, 2], more: [1, 3, 6] }] }],
+    ['시작이 하나도 없는 날', ['again', 'rx'], []],
+    ['시작 = 그날 처방 환자 수', ['again', 'rx', 1, 'starts'], 2],
+  ])('AC-1303.1: 경계 %s → 통과', (_, path, value) => {
+    const payload = editedAgainDay(path, value)
+    expect(validateDayPayload(payload)).toStrictEqual(payload)
+  })
+
+  it('AC-1303.2: 일부인 날(partial)에 ready가 모두 false면 통과', () => {
+    const payload = {
+      ...goodDay(),
+      partial: true,
+      again: { ready: [false, false, false], rx: [{ code: '643503420', starts: 1, back: [null, null, null], more: [null, null, null] }] },
+    }
+    expect(validateDayPayload(payload)).toStrictEqual(payload)
+  })
+})
+
+describe('AC-1303.2 again 모양이 틀리면 날 줄 전체가 null', () => {
+  it.each<[string, unknown]>([
+    ['null', null],
+    ['글자', 'x'],
+    ['숫자', 42],
+    ['배열', [goodAgain()]],
+    ['빈 객체', {}],
+  ])('AC-1303.2: again이 %s → null', (_, again) => {
+    expect(validateDayPayload({ ...goodDay(), again })).toBeNull()
+  })
+
+  it.each<[string, (string | number)[], unknown]>([
+    // 열쇠
+    ['열쇠 밖 칸(날 수)', ['again', 'days'], 7],
+    ['열쇠 밖 칸(차트번호)', ['again', 'chartNo'], 'C-0001'],
+    ['ready 없음', ['again', 'ready'], REMOVE],
+    ['rx 없음', ['again', 'rx'], REMOVE],
+    // ready: 참·거짓 셋
+    ['ready 둘', ['again', 'ready'], [true, true]],
+    ['ready 넷', ['again', 'ready'], [true, true, false, false]],
+    ['ready 숫자', ['again', 'ready'], [1, 1, 0]],
+    ['ready에 null', ['again', 'ready'], [true, true, null]],
+    ['ready 글자', ['again', 'ready'], 'true'],
+    ['ready 객체', ['again', 'ready'], { 0: true, 1: true, 2: false }],
+    // rx 모양
+    ['rx 객체', ['again', 'rx'], {}],
+    ['rx null', ['again', 'rx'], null],
+  ])('AC-1303.2: %s → null', (_, path, value) => {
+    expect(validateDayPayload(editedAgainDay(path, value))).toBeNull()
+  })
+
+  // 뒤가 true면 앞도 true. 줄 숫자는 ready에 맞춰(숫자·null) 이 규칙 하나만 어긋나게 한다
+  it.each<[string, [boolean, boolean, boolean]]>([
+    ['[false, true, false]', [false, true, false]],
+    ['[true, false, true]', [true, false, true]],
+    ['[false, false, true]', [false, false, true]],
+    ['[false, true, true]', [false, true, true]],
+  ])('AC-1303.2: ready %s(뒤가 true인데 앞이 false) → null', (_, ready) => {
+    const count = (k: number) => (ready[k] ? 0 : null)
+    const row = { code: '643503420', starts: 1, back: [count(0), count(1), count(2)], more: [count(0), count(1), count(2)] }
+    expect(validateDayPayload({ ...goodDay(), again: { ready, rx: [row] } })).toBeNull()
+    expect(validateDayPayload({ ...goodDay(), again: { ready, rx: [] } })).toBeNull()
+  })
+
+  it.each<[string, unknown]>([
+    ['7일만', [true, false, false]],
+    ['7·14일', [true, true, false]],
+    ['세 창 모두', [true, true, true]],
+  ])('AC-1303.2: 일부인 날(partial)에 ready가 true(%s) → null', (_, ready) => {
+    const flags = ready as boolean[]
+    const count = (k: number) => (flags[k] ? 0 : null)
+    const payload = {
+      ...goodDay(),
+      partial: true,
+      again: { ready, rx: [{ code: '643503420', starts: 1, back: [count(0), count(1), count(2)], more: [count(0), count(1), count(2)] }] },
+    }
+    expect(validateDayPayload(payload)).toBeNull()
+  })
+})
+
+describe('AC-1303.3 again.rx 줄 검사', () => {
+  it.each<[string, (string | number)[], unknown]>([
+    // 네 열쇠만
+    ['열쇠 밖 칸(처방명)', ['again', 'rx', 0, 'name'], '가짜정 10mg'],
+    ['열쇠 밖 칸(환자 수)', ['again', 'rx', 0, 'patients'], 10],
+    ['열쇠 밖 칸(차트번호)', ['again', 'rx', 0, 'chartNo'], 'C-0001'],
+    ['열쇠 밖 칸(날짜 목록)', ['again', 'rx', 0, 'dates'], ['2026-09-03']],
+    ['code 없음', ['again', 'rx', 0, 'code'], REMOVE],
+    ['starts 없음', ['again', 'rx', 0, 'starts'], REMOVE],
+    ['back 없음', ['again', 'rx', 0, 'back'], REMOVE],
+    ['more 없음', ['again', 'rx', 0, 'more'], REMOVE],
+    ['줄이 null', ['again', 'rx', 0], null],
+    ['줄이 글자', ['again', 'rx', 0], '643503420'],
+    ['줄이 배열', ['again', 'rx', 0], ['643503420', 3]],
+    // 코드: 처방 코드 검사(isCode)
+    ['코드 빈 글자', ['again', 'rx', 0, 'code'], ''],
+    ['코드 101자', ['again', 'rx', 0, 'code'], long(101)],
+    ['코드 전화', ['again', 'rx', 0, 'code'], '010-1234-5678'],
+    ['코드 붙임표 주민번호', ['again', 'rx', 0, 'code'], idLike()],
+    ['코드 메일', ['again', 'rx', 0, 'code'], 'fake@example.com'],
+    ['코드 숫자', ['again', 'rx', 0, 'code'], 643503420],
+    // starts: 1 이상 정수
+    ['starts 0(back·more도 0)', ['again', 'rx', 1, 'starts'], 0],
+    ['starts 음수', ['again', 'rx', 0, 'starts'], -1],
+    ['starts 소수', ['again', 'rx', 0, 'starts'], 1.5],
+    ['starts 글자', ['again', 'rx', 0, 'starts'], '3'],
+    ['starts null', ['again', 'rx', 0, 'starts'], null],
+    // back·more: 길이 3 배열
+    ['back 둘', ['again', 'rx', 0, 'back'], [1, 2]],
+    ['back 넷', ['again', 'rx', 0, 'back'], [1, 2, null, null]],
+    ['back 글자', ['again', 'rx', 0, 'back'], '1,2'],
+    ['back null', ['again', 'rx', 0, 'back'], null],
+    ['more 둘', ['again', 'rx', 0, 'more'], [2, 5]],
+    ['more 객체', ['again', 'rx', 0, 'more'], { 0: 2, 1: 5, 2: null }],
+    // ready[k] true → 0 이상 정수 (goodAgain()의 ready = [true, true, false])
+    ['ready true인데 back null', ['again', 'rx', 0, 'back'], [null, 2, null]],
+    ['ready true인데 more null', ['again', 'rx', 0, 'more'], [2, null, null]],
+    ['back 음수', ['again', 'rx', 0, 'back'], [-1, 2, null]],
+    ['back 소수', ['again', 'rx', 0, 'back'], [1.5, 2, null]],
+    ['back에 글자', ['again', 'rx', 0, 'back'], ['1', 2, null]],
+    ['more 음수', ['again', 'rx', 0, 'more'], [2, -5, null]],
+    ['more 불리언', ['again', 'rx', 0, 'more'], [true, 5, null]],
+    // ready[k] false → null
+    ['ready false인데 back 숫자', ['again', 'rx', 0, 'back'], [1, 2, 2]],
+    ['ready false인데 more 숫자', ['again', 'rx', 0, 'more'], [2, 5, 5]],
+    ['ready false인데 back 0', ['again', 'rx', 1, 'back'], [0, 0, 0]],
+  ])('AC-1303.3: %s → null', (_, path, value) => {
+    expect(validateDayPayload(editedAgainDay(path, value))).toBeNull()
+  })
+
+  it('AC-1303.3: 줄 5,000개까지 통과한다', () => {
+    const payload = manyRxDay(5_000, 5_000)
+    expect(validateDayPayload(payload)).toStrictEqual(payload)
+  })
+
+  it('AC-1303.3: 줄이 5,000개를 넘으면 거부한다', () => {
+    expect(validateDayPayload(manyRxDay(5_000, 5_001))).toBeNull()
+  })
+})
+
+describe('AC-1303.4 숫자 관계', () => {
+  it.each<[string, AgainRowInput, unknown?]>([
+    ['back = starts(모든 창)', { starts: 3, back: [3, 3, 3], more: [3, 3, 3] }],
+    ['more = N × starts', { starts: 2, back: [2, 2, 2], more: [14, 28, 60] }],
+    ['아무도 다시 오지 않음', { starts: 1, back: [0, 0, 0], more: [0, 0, 0] }],
+    ['7 = 14 = 30', { starts: 3, back: [1, 1, 1], more: [2, 2, 2] }],
+    ['7일만 숫자, 7일 more = 7 × starts', { starts: 1, back: [1, null, null], more: [7, null, null] }, [true, false, false]],
+    ['7·14일만 숫자(30일과 견주지 않음)', { starts: 2, back: [2, 2, null], more: [3, 28, null] }, [true, true, false]],
+  ])('AC-1303.4: 경계 %s → 통과', (_, row, ready) => {
+    const payload = dayWithAgainRow(row, ready)
+    expect(validateDayPayload(payload)).toStrictEqual(payload)
+  })
+
+  it.each<[string, AgainRowInput, unknown?]>([
+    // back ≤ starts
+    ['7일 back > starts', { starts: 2, back: [3, 3, 3], more: [3, 3, 3] }],
+    ['14일 back > starts', { starts: 2, back: [2, 3, 3], more: [2, 3, 3] }],
+    ['30일 back > starts', { starts: 2, back: [2, 2, 3], more: [2, 2, 3] }],
+    ['7일만 숫자, back > starts', { starts: 1, back: [2, null, null], more: [2, null, null] }, [true, false, false]],
+    // back ≤ more
+    ['7일 more < back', { starts: 3, back: [2, 2, 2], more: [1, 2, 2] }],
+    ['14일 more < back', { starts: 3, back: [1, 2, 2], more: [1, 1, 2] }],
+    ['30일 more < back', { starts: 3, back: [1, 1, 3], more: [1, 1, 2] }],
+    // more ≤ N × starts
+    ['7일 more > 7 × starts', { starts: 1, back: [1, 1, 1], more: [8, 8, 8] }],
+    ['14일 more > 14 × starts', { starts: 1, back: [1, 1, 1], more: [7, 15, 15] }],
+    ['30일 more > 30 × starts', { starts: 1, back: [1, 1, 1], more: [7, 14, 31] }],
+    ['7일만 숫자, more > 7 × starts', { starts: 2, back: [1, null, null], more: [15, null, null] }, [true, false, false]],
+    // 7 ≤ 14 ≤ 30
+    ['back 7일 > 14일', { starts: 3, back: [2, 1, 2], more: [2, 2, 2] }],
+    ['back 14일 > 30일', { starts: 3, back: [1, 2, 1], more: [2, 2, 2] }],
+    ['back 7일 > 30일', { starts: 3, back: [2, 2, 1], more: [2, 2, 2] }],
+    ['more 7일 > 14일', { starts: 3, back: [1, 1, 1], more: [3, 2, 3] }],
+    ['more 14일 > 30일', { starts: 3, back: [1, 1, 1], more: [2, 3, 2] }],
+    ['7·14일만 숫자, back 7일 > 14일', { starts: 3, back: [2, 1, null], more: [3, 3, null] }, [true, true, false]],
+    ['7·14일만 숫자, more 7일 > 14일', { starts: 3, back: [1, 1, null], more: [3, 2, null] }, [true, true, false]],
+  ])('AC-1303.4: %s → null', (_, row, ready) => {
+    expect(validateDayPayload(dayWithAgainRow(row, ready))).toBeNull()
+  })
+})
+
+describe('AC-1303.5 그날 rx와 견준다', () => {
+  it.each<[string, (string | number)[], unknown]>([
+    ['그날 rx에 없는 코드', ['again', 'rx', 1, 'code'], 'ZZ999'],
+    ['대소문자만 다른 코드(같은 코드가 아니다)', ['again', 'rx', 1, 'code'], 'aa154'],
+    ['starts > 그 처방 환자 수', ['again', 'rx', 1, 'starts'], 3],
+    ['같은 코드 두 번', ['again', 'rx', 1, 'code'], '643503420'],
+  ])('AC-1303.5: %s → null', (_, path, value) => {
+    expect(validateDayPayload(editedAgainDay(path, value))).toBeNull()
+  })
+
+  it('AC-1303.5: 같은 코드 두 번(숫자까지 같아도) → null', () => {
+    const again = goodAgain()
+    expect(validateDayPayload({ ...goodDay(), again: { ...again, rx: [again.rx[0], again.rx[0]] } })).toBeNull()
+  })
+
+  it('AC-1303.5: 처방이 없는 날에 again 줄이 있으면 → null, 둘 다 없으면 통과', () => {
+    expect(validateDayPayload({ ...goodAgainDay(), rx: [] })).toBeNull()
+    const empty = { ...goodDay(), rx: [], again: { ready: [true, true, true], rx: [] } }
+    expect(validateDayPayload(empty)).toStrictEqual(empty)
+  })
+})
+
+describe('AC-1303.6 타입: AGAIN_WINDOWS · AgainWindow · DayAgainPayload, 달 숫자는 그대로', () => {
+  it('AC-1303.6: AGAIN_WINDOWS는 7·14·30이다', () => {
+    expect(AGAIN_WINDOWS).toStrictEqual([7, 14, 30])
+    const windows: readonly AgainWindow[] = AGAIN_WINDOWS
+    expect(windows).toHaveLength(3)
+  })
+
+  it('AC-1303.6: 타입 — AgainWindow는 세 값뿐, AGAIN_WINDOWS는 읽기 전용, DayPayload.again은 있어도 없어도 된다', () => {
+    // 아래 @ts-expect-error는 tsc가 증명한다(줄이 틀리지 않으면 tsc가 실패한다)
+    const win: AgainWindow = 14
+    // @ts-expect-error 7·14·30 밖의 날 수는 AgainWindow가 아니다
+    const outside: AgainWindow = 60
+    const neverCalled = () => {
+      // @ts-expect-error 읽기 전용이다
+      AGAIN_WINDOWS.push(60)
+    }
+    const old: DayPayload = goodDay() // again 없이
+    const withAgain: DayPayload = { ...goodDay(), again: goodAgain() }
+    const pending: DayAgainPayload = { ready: [false, false, false], rx: [{ code: 'AA154', starts: 1, back: [null, null, null], more: [null, null, null] }] }
+    expect([win, outside, typeof neverCalled, 'again' in old, withAgain.again, pending.ready]).toStrictEqual([14, 60, 'function', false, goodAgain(), [false, false, false]])
+  })
+
+  it('AC-1303.6: 달 숫자에는 again이 없다(정해진 열쇠 밖 → null), 지금 달 숫자는 그대로 통과', () => {
+    expect(validateMonthPayload({ ...good(), again: goodAgain() })).toBeNull()
+    expect(validateMonthPayload(good())).toStrictEqual(good())
   })
 })

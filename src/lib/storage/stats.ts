@@ -56,15 +56,30 @@ function jsonbText(value: unknown): string {
 }
 
 const UTF8 = new TextEncoder()
+const tableBytes = (value: unknown): number => UTF8.encode(jsonbText(value)).length
 
 // 표가 받지 않을 크기도 먼저 거른다. 앞 묶음을 저장한 뒤에야 그 줄이 든 묶음째 실패하지 않게
 function allChecked<P>(values: readonly unknown[], check: (value: unknown) => P | null, maxBytes: number): P[] {
   return values.map((value) => {
     const checked = check(value)
     if (checked === null) throw new Error('검사에 걸림')
-    if (UTF8.encode(jsonbText(checked)).length > maxBytes) throw new Error('표가 받지 않는 크기')
+    if (tableBytes(checked) > maxBytes) throw new Error('표가 받지 않는 크기')
     return checked
   })
+}
+
+// 날 줄이 표 크기를 넘고 again이 있으면 again을 뺀 줄을 보낸다(그날만 화면에서 '아직 셀 수 없는 날'이 된다).
+// 이 칸 때문에 지금 되던 저장이 깨지지 않게. 빼도 넘으면 allChecked가 지금처럼 던진다
+function fitDay(payload: DayPayload): DayPayload {
+  if (payload.again === undefined || tableBytes(payload) <= MAX_DAY_BYTES) return payload
+  const rest = { ...payload }
+  delete rest.again
+  return rest
+}
+
+function checkedDay(value: unknown): DayPayload | null {
+  const checked = validateDayPayload(value)
+  return checked === null ? null : fitDay(checked)
 }
 
 // 표가 받지 않을 기간을 먼저 거른다. 달·일 숫자를 보낸 뒤에야 덮은 기간 줄에서 실패하지 않게
@@ -102,7 +117,7 @@ export async function saveStats(
         source,
         payload,
       }))
-    const dayRows = allChecked(input.days, validateDayPayload, MAX_DAY_BYTES).map((payload) => ({
+    const dayRows = allChecked(input.days, checkedDay, MAX_DAY_BYTES).map((payload) => ({
       day: payload.day,
       partial: payload.partial,
       source,

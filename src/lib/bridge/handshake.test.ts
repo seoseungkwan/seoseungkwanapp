@@ -69,10 +69,11 @@ describe('AC-004.4 checkVersions', () => {
 })
 
 describe('AC-004.4 웹 versions.ts 값', () => {
-  // 도우미 0.3.0 = 대시보드·통계·매출 쪽 0.2.0과 청구 쪽 새 명령(입력·저장)을 합친 판. 청구 화면이 새 명령과 정해 둔 사유 글자에 기대므로 MIN도 함께 올린다
-  it('AC-004.4·AC-012.1·AC-604.1 지금 값은 도우미 최소·최신 0.3.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.3.0 = 대시보드·통계·매출 쪽 0.2.0과 청구 쪽 새 명령(입력·저장)을 합친 판. 청구 화면이 새 명령과 정해 둔 사유 글자에 기대므로 MIN도 함께 올렸다.
+  // 도우미 0.4.0 = 0.3.0 + 환자 탭 contact.targets. 0.3.0도 다른 화면은 그대로 쓰므로 MIN은 0.3.0에 두고 LATEST만 올린다("새 도우미가 있어요")
+  it('AC-004.4·AC-012.1·AC-604.1 지금 값은 도우미 최소 0.3.0·최신 0.4.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.3.0')
+    expect(LATEST_HELPER).toBe('0.4.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({

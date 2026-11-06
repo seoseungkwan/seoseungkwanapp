@@ -1,12 +1,20 @@
 import { WorklogStorageError } from '@/lib/storage/worklogDays'
 import {
+  emptyWorklogCash,
   emptyWorklogDay,
+  WORKLOG_CASH_COLUMNS,
   WORKLOG_CELL_KEYS,
+  type WorklogBlockedKey,
+  type WorklogCash,
+  type WorklogCashChanges,
+  type WorklogCashKey,
   type WorklogCellKey,
+  type MemoFontPt,
   type WorklogChanges,
   type WorklogDay,
   type WorklogNumberKey,
 } from '@/types/worklog'
+import { cashReasonBlocked, cashSaveValue } from './cashFloat'
 import { cellSaveText } from './cellText'
 import { blockedCellKeys } from './notes'
 
@@ -15,6 +23,10 @@ import { blockedCellKeys } from './notes'
 // 브라우저 저장소에 사본을 두지 않는다(plan.md §10). 저장 안 된 값은 조용히 잃지 않고 상태로 드러나며 hasUnsaved()가 참이다.
 // 비트 칸 목록(bitFields, design.md 20-4절)도 칸처럼 아는 값·최신 값을 들고 바뀌었을 때만(차례는 보지 않는다) save의 셋째 인자로 넘긴다.
 // 목록을 모르거나 안 바뀌었으면 인자 둘로 부른다: 저장이 bit_fields를 보내지 않아야 저장된 비트 표시가 지워지지 않는다(AC-017.7)
+// 업무사항 글씨 크기(memoFontPt, specs/worklog-memo-font)도 같은 규칙으로 아는 크기·최신 크기를 들고, 바뀌었을 때만 넷째 인자로 넘긴다.
+// 크기를 모르거나 안 바뀌었으면 인자 수가 지금과 같다(AC-1504.2). 크기는 칸 글자가 아니라 칸 차이 계산과 섞지 않는다
+// 현금 시재(cash, specs/worklog-cash-float)도 아는 시재·최신 시재를 들고, 칸마다 바뀐 것만 다섯째 인자로 넘긴다(두 PC가 다른 권종을 고쳐도 덮지 않게).
+// 시재를 모르거나 안 바뀌었으면 인자 수가 지금과 같다(AC-1604.2). 개인정보 모양 이유는 보내지 않고 막힌 칸 'cashReason'이다(AC-1604.4)
 
 /** 날짜 하나의 상태. pending = 타이머를 기다리는 중(묶기 800ms·실패 뒤 다시 하기) */
 export type DaySaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'offline' | 'failed' | 'blocked'
@@ -23,10 +35,16 @@ export type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'failed' | 'bl
 export type AutosaveSnapshot = {
   state: SaveState
   savedAt: Date | null
-  blocked: { ymd: string; fields: readonly WorklogCellKey[] } | null // 막힌 칸이 있는 가장 이른 날
+  blocked: { ymd: string; fields: readonly WorklogBlockedKey[] } | null // 막힌 칸이 있는 가장 이른 날
 }
 export type AutosaveOptions = {
-  save: (ymd: string, changes: WorklogChanges, bitFields?: readonly WorklogNumberKey[]) => Promise<void> // WorklogStorageError를 던진다
+  save: (
+    ymd: string,
+    changes: WorklogChanges,
+    bitFields?: readonly WorklogNumberKey[],
+    memoFontPt?: MemoFontPt,
+    cash?: WorklogCashChanges,
+  ) => Promise<void> // WorklogStorageError를 던진다
   delayMs?: number
   retryDelaysMs?: readonly number[]
   offlineRetryMs?: number
@@ -35,11 +53,13 @@ export type AutosaveOptions = {
   onChange?: (snapshot: AutosaveSnapshot) => void
 }
 
-/** 읽은 하루·저장 안 된 하루. 비트 칸 목록을 모르면(받은 적 없음) bitFields가 없다 */
-export type AutosaveDay = { day: WorklogDay; bitFields?: WorklogNumberKey[] }
+/** 읽은 하루·저장 안 된 하루. 비트 칸 목록·업무사항 글씨 크기·현금 시재를 모르면(받은 적 없음) 그 칸이 없다 */
+export type AutosaveDay = { day: WorklogDay; bitFields?: WorklogNumberKey[]; memoFontPt?: MemoFontPt; cash?: WorklogCash }
 
 type Listener = (snapshot: AutosaveSnapshot) => void
 type BitList = WorklogNumberKey[] | null // null = 모름
+type FontPt = MemoFontPt | null // null = 모름
+type Cash = WorklogCash | null // null = 모름
 type DayEntry = {
   state: DaySaveState
   settled: 'idle' | 'saved' // 보낼 칸이 없을 때 돌아갈 상태
@@ -49,6 +69,12 @@ type DayEntry = {
   knownBits: BitList // 서버에 있다고 아는 비트 칸 목록
   latestBits: BitList // 최신 목록
   sendingBits: BitList // 응답을 기다리는 목록
+  knownFont: FontPt // 서버에 있다고 아는 업무사항 글씨 크기
+  latestFont: FontPt // 최신 크기
+  sendingFont: FontPt // 응답을 기다리는 크기
+  knownCash: Cash // 서버에 있다고 아는 시재
+  latestCash: Cash // 최신 시재
+  sendingCash: WorklogCashChanges | null // 응답을 기다리는 시재 칸
   attempt: number // 실패 뒤 다시 한 횟수
   timer: ReturnType<typeof setTimeout> | null
   revision: number
@@ -58,8 +84,14 @@ type DayEntry = {
 const STATE_RANK: Readonly<Record<SaveState, number>> = { idle: 0, saved: 1, blocked: 2, saving: 3, offline: 4, failed: 5 }
 const UNSAVED_STATES: readonly DaySaveState[] = ['pending', 'saving', 'offline', 'failed', 'blocked']
 const RETRYABLE_STATES: readonly DaySaveState[] = ['failed', 'offline', 'pending']
+const CASH_KEYS = Object.keys(WORKLOG_CASH_COLUMNS) as WorklogCashKey[]
 
-function newEntry(known: WorklogDay, bits: readonly WorklogNumberKey[] | undefined): DayEntry {
+function newEntry(
+  known: WorklogDay,
+  bits: readonly WorklogNumberKey[] | undefined,
+  font?: MemoFontPt,
+  cash?: WorklogCash,
+): DayEntry {
   return {
     state: 'idle',
     settled: 'idle',
@@ -69,6 +101,12 @@ function newEntry(known: WorklogDay, bits: readonly WorklogNumberKey[] | undefin
     knownBits: bits ? [...bits] : null,
     latestBits: bits ? [...bits] : null,
     sendingBits: null,
+    knownFont: font ?? null,
+    latestFont: font ?? null,
+    sendingFont: null,
+    knownCash: cash ? { ...cash } : null,
+    latestCash: cash ? { ...cash } : null,
+    sendingCash: null,
     attempt: 0,
     timer: null,
     revision: 0,
@@ -89,8 +127,59 @@ function bitsToSend(entry: DayEntry): WorklogNumberKey[] | null {
   return [...latestBits]
 }
 
+// 보낼 크기: 최신 크기를 알고, 아는 크기와 다를 때만(모르는 아는 크기와는 늘 다르다). 아니면 null(보내지 않는다)
+function fontToSend(entry: DayEntry): FontPt {
+  const { latestFont, knownFont } = entry
+  return latestFont === null || latestFont === knownFont ? null : latestFont
+}
+
+// 시재 칸이 다른가: 보낼 값(cashSaveValue)으로 견준다. 이유는 다듬은 글로 견준다(개인정보 모양 글끼리도 서로 다르게 보려고)
+function cashDiffers(key: WorklogCashKey, latest: WorklogCash, known: WorklogCash): boolean {
+  if (key === 'reason') return latest.reason.trim() !== known.reason.trim()
+  return cashSaveValue(key, latest[key]) !== cashSaveValue(key, known[key])
+}
+
+// 보낼 시재: 최신 시재를 알 때, 아는 시재(모르면 빈 시재)와 다른 칸만. 보낼 수 없는 값(개인정보 모양 이유 등)은 빼고
+// 이유가 개인정보 모양이면 blocked가 참이다. 보낼 칸이 없으면 cash는 null(다섯째 인자를 넘기지 않는다)
+function splitCash(entry: DayEntry): { cash: WorklogCashChanges | null; blocked: boolean } {
+  const { latestCash } = entry
+  if (latestCash === null) return { cash: null, blocked: false }
+  const known = entry.knownCash ?? emptyWorklogCash()
+  const cash: Record<string, unknown> = {}
+  let blocked = false
+  for (const key of CASH_KEYS) {
+    if (!cashDiffers(key, latestCash, known)) continue
+    if (cashSaveValue(key, latestCash[key]) !== undefined) cash[key] = latestCash[key]
+    else if (key === 'reason' && cashReasonBlocked(latestCash.reason.trim())) blocked = true
+  }
+  return { cash: Object.keys(cash).length > 0 ? (cash as WorklogCashChanges) : null, blocked }
+}
+
+// 다시 읽은 시재 얹기: 최신 시재를 모르면 받은 값 그대로. 알면 보내는 중이거나 저장 안 된 칸은 두고 나머지 칸만 받은 값(AC-1604.3)
+function mergeServerCash(entry: DayEntry, incoming: WorklogCash): void {
+  const latest = entry.latestCash
+  if (latest === null) {
+    entry.knownCash = { ...incoming }
+    entry.latestCash = { ...incoming }
+    return
+  }
+  const known = { ...(entry.knownCash ?? emptyWorklogCash()) }
+  const next = { ...latest }
+  for (const key of CASH_KEYS) {
+    if ((entry.sendingCash !== null && key in entry.sendingCash) || cashDiffers(key, latest, known)) continue
+    Object.assign(known, { [key]: incoming[key] })
+    Object.assign(next, { [key]: incoming[key] })
+  }
+  entry.knownCash = known
+  entry.latestCash = next
+}
+
 function dayOf(entry: DayEntry): AutosaveDay {
-  return entry.latestBits === null ? { day: { ...entry.latest } } : { day: { ...entry.latest }, bitFields: [...entry.latestBits] }
+  const day: AutosaveDay = { day: { ...entry.latest } }
+  if (entry.latestBits !== null) day.bitFields = [...entry.latestBits]
+  if (entry.latestFont !== null) day.memoFontPt = entry.latestFont
+  if (entry.latestCash !== null) day.cash = { ...entry.latestCash }
+  return day
 }
 
 // 차이를 보낼 칸과 막힌 칸으로 나눈다. 막는 모양은 save 앞에서 뺀다:
@@ -103,6 +192,13 @@ function splitDifference(entry: DayEntry): { changes: WorklogChanges; blocked: W
   const blocked = blockedCellKeys(changes)
   for (const key of blocked) delete changes[key]
   return { changes, blocked }
+}
+
+// 막힌 칸: 칸 차례 뒤에 시재 이유
+function blockedOf(entry: DayEntry): WorklogBlockedKey[] {
+  const fields: WorklogBlockedKey[] = splitDifference(entry).blocked
+  if (splitCash(entry).blocked) fields.push('cashReason')
+  return fields
 }
 
 export function createAutosave(options: AutosaveOptions) {
@@ -127,7 +223,7 @@ export function createAutosave(options: AutosaveOptions) {
       const visible = entry.state === 'pending' ? 'saving' : entry.state
       if (STATE_RANK[visible] > STATE_RANK[state]) state = visible
       if (blocked && ymd >= blocked.ymd) continue
-      const fields = splitDifference(entry).blocked
+      const fields = blockedOf(entry)
       if (fields.length > 0) blocked = { ymd, fields }
     }
     return { state, savedAt, blocked }
@@ -160,24 +256,33 @@ export function createAutosave(options: AutosaveOptions) {
 
   function send(ymd: string, entry: DayEntry): void {
     disarm(entry)
-    const { changes, blocked } = splitDifference(entry)
+    const { changes } = splitDifference(entry)
     const bits = bitsToSend(entry)
-    if (Object.keys(changes).length === 0 && bits === null) {
+    const font = fontToSend(entry)
+    const { cash } = splitCash(entry)
+    if (Object.keys(changes).length === 0 && bits === null && font === null && cash === null) {
       entry.attempt = 0
-      entry.state = blocked.length > 0 ? 'blocked' : entry.settled
+      entry.state = blockedOf(entry).length > 0 ? 'blocked' : entry.settled
       notify()
       return
     }
     entry.state = 'saving'
     entry.sending = changes
     entry.sendingBits = bits
+    entry.sendingFont = font
+    entry.sendingCash = cash
     entry.revision += 1
     notify()
     const sentIn = generation
-    // async로 감싼다: save가 바로 던져도 실패로 다루려고. 목록이 없으면 셋째 인자를 넘기지 않는다
-    void (async () => (bits === null ? save(ymd, changes) : save(ymd, changes, bits)))().then(
+    // async로 감싼다: save가 바로 던져도 실패로 다루려고.
+    // 시재가 없으면 다섯째 인자를, 크기가 없으면 넷째 인자를, 목록이 없으면 셋째 인자를 넘기지 않는다
+    void (async () => {
+      if (cash !== null) return save(ymd, changes, bits ?? undefined, font ?? undefined, cash)
+      if (font !== null) return save(ymd, changes, bits ?? undefined, font)
+      return bits === null ? save(ymd, changes) : save(ymd, changes, bits)
+    })().then(
       () => {
-        if (sentIn === generation) succeeded(ymd, entry, changes, bits)
+        if (sentIn === generation) succeeded(ymd, entry, changes, bits, font, cash)
       },
       (err: unknown) => {
         if (sentIn === generation) failed(ymd, entry, err)
@@ -185,11 +290,22 @@ export function createAutosave(options: AutosaveOptions) {
     )
   }
 
-  function succeeded(ymd: string, entry: DayEntry, sent: WorklogChanges, sentBits: WorklogNumberKey[] | null): void {
+  function succeeded(
+    ymd: string,
+    entry: DayEntry,
+    sent: WorklogChanges,
+    sentBits: WorklogNumberKey[] | null,
+    sentFont: FontPt,
+    sentCash: WorklogCashChanges | null,
+  ): void {
     Object.assign(entry.known, sent)
     if (sentBits !== null) entry.knownBits = [...sentBits]
+    if (sentFont !== null) entry.knownFont = sentFont
+    if (sentCash !== null) entry.knownCash = { ...(entry.knownCash ?? emptyWorklogCash()), ...sentCash }
     entry.sending = null
     entry.sendingBits = null
+    entry.sendingFont = null
+    entry.sendingCash = null
     entry.attempt = 0
     entry.revision += 1
     entry.settled = 'saved'
@@ -201,6 +317,8 @@ export function createAutosave(options: AutosaveOptions) {
   function failed(ymd: string, entry: DayEntry, err: unknown): void {
     entry.sending = null
     entry.sendingBits = null
+    entry.sendingFont = null
+    entry.sendingCash = null
     entry.revision += 1
     if (err instanceof WorklogStorageError && err.kind === 'offline') {
       entry.attempt = 0
@@ -216,15 +334,17 @@ export function createAutosave(options: AutosaveOptions) {
     notify()
   }
 
-  // bitFields를 주지 않으면 최신 목록을 그대로 둔다(모르는 목록을 [](빈 목록)로 바꾸지 않는다)
-  function change(ymd: string, day: WorklogDay, bitFields?: readonly WorklogNumberKey[]): void {
+  function entryOf(ymd: string): DayEntry {
     let entry = days.get(ymd)
     if (!entry) {
       entry = newEntry(emptyWorklogDay(), undefined)
       days.set(ymd, entry)
     }
-    entry.latest = { ...day }
-    if (bitFields !== undefined) entry.latestBits = [...bitFields]
+    return entry
+  }
+
+  // 저장 중이 아니면 묶기 타이머를 다시 건다. 저장 중이면 끝난 뒤 남은 차이가 바로 간다
+  function schedule(ymd: string, entry: DayEntry): void {
     if (entry.state !== 'saving') {
       entry.attempt = 0
       entry.state = 'pending'
@@ -233,20 +353,46 @@ export function createAutosave(options: AutosaveOptions) {
     notify()
   }
 
+  // bitFields를 주지 않으면 최신 목록을 그대로 둔다(모르는 목록을 [](빈 목록)로 바꾸지 않는다). 크기는 건드리지 않는다(AC-1504.2)
+  function change(ymd: string, day: WorklogDay, bitFields?: readonly WorklogNumberKey[]): void {
+    const entry = entryOf(ymd)
+    entry.latest = { ...day }
+    if (bitFields !== undefined) entry.latestBits = [...bitFields]
+    schedule(ymd, entry)
+  }
+
+  // 업무사항 글씨 크기만 바꾼다. 칸 값·목록은 건드리지 않는다(날짜 칸이 없으면 빈 하루·모르는 목록·모르는 크기로 만든다)
+  function changeMemoFont(ymd: string, pt: MemoFontPt): void {
+    const entry = entryOf(ymd)
+    entry.latestFont = pt
+    schedule(ymd, entry)
+  }
+
+  // 현금 시재만 바꾼다. 칸 값·목록·크기는 건드리지 않는다(날짜 칸이 없으면 빈 하루·모르는 목록·모르는 크기·모르는 아는 시재로 만든다)
+  function changeCash(ymd: string, cash: WorklogCash): void {
+    const entry = entryOf(ymd)
+    entry.latestCash = { ...cash }
+    schedule(ymd, entry)
+  }
+
   // 타이머·상태를 건드리지 않는다. 보내는 중인 칸도 저장 안 된 칸이다:
   // 그 사이 되돌린 값이 곧 서버에 들어갈 값으로 바뀌면 되돌림을 잃는다.
   // 초점 칸의 known을 올리면 그 칸의 옛 화면 값이 차이가 되어 다른 PC 값을 덮으므로 올리지 않는다.
-  // 읽은 목록도 같다: 저장 안 된 목록(보내는 중 포함)이 아니면 아는 목록·최신 목록이 서버 목록이 된다. 목록을 받지 않으면 그대로 둔다
+  // 읽은 목록도 같다: 저장 안 된 목록(보내는 중 포함)이 아니면 아는 목록·최신 목록이 서버 목록이 된다. 목록을 받지 않으면 그대로 둔다.
+  // 읽은 크기(memoFontPt)도 목록과 같은 규칙이다(AC-1504.3).
+  // 읽은 시재(cash)는 칸과 같다: 최신 시재를 모르면 받은 값 그대로, 알면 보내는 중이거나 저장 안 된 시재 칸만 두고 나머지 칸이 받은 값이 된다(AC-1604.3)
   function serverDay(
     ymd: string,
     server: WorklogDay | null,
     focusKey: WorklogCellKey | null = null,
     bitFields?: readonly WorklogNumberKey[],
+    memoFontPt?: MemoFontPt,
+    cash?: WorklogCash,
   ): AutosaveDay {
     const incoming = server ?? emptyWorklogDay()
     const entry = days.get(ymd)
     if (!entry) {
-      const fresh = newEntry(incoming, bitFields)
+      const fresh = newEntry(incoming, bitFields, memoFontPt, cash)
       days.set(ymd, fresh)
       return dayOf(fresh)
     }
@@ -259,8 +405,14 @@ export function createAutosave(options: AutosaveOptions) {
       entry.knownBits = [...bitFields]
       entry.latestBits = [...bitFields]
     }
+    if (memoFontPt !== undefined && entry.sendingFont === null && fontToSend(entry) === null) {
+      entry.knownFont = memoFontPt
+      entry.latestFont = memoFontPt
+    }
+    if (cash !== undefined) mergeServerCash(entry, cash)
     return dayOf(entry)
   }
+
 
   function dispose(): void {
     generation += 1
@@ -272,6 +424,8 @@ export function createAutosave(options: AutosaveOptions) {
 
   return {
     change,
+    changeMemoFont,
+    changeCash,
     serverDay,
     revision(ymd: string): number {
       return days.get(ymd)?.revision ?? 0

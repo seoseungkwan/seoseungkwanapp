@@ -1,0 +1,442 @@
+<title>업무일지 현금 시재</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  업무일지 '현금 시재' 칸 시안. 엑셀 양식은 바꾸지 않고, 양식 아래에 시재 칸을 더한다.
+  숫자는 모두 지어낸 예시다. 저장은 흉내만 내고 어디로도 보내지 않는다.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* 배치: 위 상황 고르기 → [화면 틀 | 설명] 두 칸(좁으면 설명이 위) → 맨 아래 '제가 정한 부분'.
+   바깥 설명 쪽만 밝음/어두움을 따른다. 화면 틀 안은 실제 앱(밝은 화면만) 색 그대로 고정 */
+:root {
+  --bg: #E9ECF1; --panel: #FFFFFF; --fg: #111827; --fg-2: #374151; --muted: #5F6672; --rule: #D3D8E0;
+  --chip: #EEF0F4; --tag-bg: #FEF3C7; --tag-fg: #92400E; --bezel: #2A2F37; --focus: #2563EB;
+  --app-canvas: #F7F8FA; --app-surface: #FFFFFF; --app-line: #E5E7EB; --app-line-strong: #D1D5DB;
+  --app-ink: #111827; --app-ink-2: #374151; --app-muted: #6B7280; --app-accent: #2563EB;
+  --app-negative: #C2410C; --app-negative-bg: #FFF4ED; --app-positive: #15803D; --app-positive-bg: #F0FDF4;
+  --xl-ink: #000000; --xl-paper: #FFFFFF;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171C; --panel: #1D2128; --fg: #E8EAEE; --fg-2: #C4C9D1; --muted: #9AA1AC; --rule: #343A45;
+    --chip: #2A2F38; --tag-bg: #4A3A12; --tag-fg: #F4D48A; --bezel: #454C58; --focus: #7AA7FF;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171C; --panel: #1D2128; --fg: #E8EAEE; --fg-2: #C4C9D1; --muted: #9AA1AC; --rule: #343A45;
+  --chip: #2A2F38; --tag-bg: #4A3A12; --tag-fg: #F4D48A; --bezel: #454C58; --focus: #7AA7FF;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/22px var(--font-ui); word-break: keep-all; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.page {
+  container: page / inline-size;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+  display: grid; gap: 20px;
+}
+.wrap { width: 100%; max-width: 1115px; margin: 0 auto; min-width: 0; }
+.head { display: grid; gap: 6px; }
+.eyebrow { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.head h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+.tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-fg); font-size: 12px; line-height: 18px; font-weight: 600; vertical-align: middle; letter-spacing: 0; }
+.head p.lead { margin: 0; max-width: 68ch; font-size: 14px; line-height: 22px; color: var(--fg-2); }
+
+.tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.tab {
+  display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 10px;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--fg-2);
+  font-size: 13px; line-height: 18px; font-weight: 500; text-align: left; cursor: pointer;
+}
+.tab:hover { border-color: var(--muted); }
+.tab .no { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--chip); color: var(--fg); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tab[aria-selected="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.tab[aria-selected="true"] .no { background: var(--bg); color: var(--fg); }
+
+.layout { display: grid; grid-template-columns: 775px minmax(0, 1fr); gap: 24px; align-items: start; }
+.stage { display: grid; gap: 10px; min-width: 0; }
+.frame-label { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--fg-2); }
+
+.notes { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.notes h2 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--fg); text-wrap: balance; }
+.notes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: n; }
+.notes li { counter-increment: n; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14px; line-height: 22px; color: var(--fg); }
+.notes li::before { content: counter(n); display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--fg); border-radius: 50%; font-size: 12px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.notes .next { justify-self: start; min-height: 40px; padding: 0 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--chip); color: var(--fg); font-size: 14px; font-weight: 500; cursor: pointer; }
+.notes .next:hover { border-color: var(--muted); }
+
+.decided { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; gap: 10px; }
+.decided h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--fg); }
+.decided p { margin: 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.decided ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; line-height: 22px; color: var(--fg-2); max-width: 80ch; }
+.decided b { color: var(--fg); font-weight: 600; }
+
+/* ---------- 화면 틀 (실제 앱 모양) ---------- */
+.screen {
+  container: screen / inline-size;
+  color-scheme: light;
+  display: grid; gap: 12px; min-width: 0;
+  background: var(--app-canvas); color: var(--app-ink);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 16px;
+}
+.screen > * { min-width: 0; }
+.screen.phone { width: min(390px, 100%); justify-self: center; border: 6px solid var(--bezel); border-radius: 28px; padding: 20px 12px 24px; }
+
+/* 엑셀 양식 끝부분(그대로, 줄여서 보여 줌) */
+.paper-end { position: relative; background: var(--xl-paper); border: 1px solid var(--app-line); padding: 14px 16px 16px; display: grid; gap: 8px; }
+.paper-end::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 10px; background: linear-gradient(135deg, var(--app-canvas) 25%, transparent 25%) 0 0 / 12px 10px, linear-gradient(225deg, var(--app-canvas) 25%, transparent 25%) 0 0 / 12px 10px; }
+.paper-end .cap { margin: 0; font-size: 12px; line-height: 18px; color: var(--app-muted); }
+.paper-end dl { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 2px solid var(--xl-ink); }
+.paper-end dl > div { padding: 6px 8px; border-left: 1px solid var(--xl-ink); display: grid; gap: 2px; }
+.paper-end dl > div:first-child { border-left: 0; }
+.paper-end dt { font-size: 12px; line-height: 16px; font-weight: 700; color: var(--xl-ink); }
+.paper-end dd { margin: 0; font-size: 14px; line-height: 20px; font-weight: 700; color: var(--xl-ink); font-variant-numeric: tabular-nums; }
+
+/* 새로 더함: 현금 시재 칸 */
+.cash { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 4px; padding: 16px; display: grid; gap: 14px; }
+.cash-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.cash-head h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+.cash-head p { margin: 0; font-size: 13px; line-height: 20px; color: var(--app-muted); }
+.cash-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+
+.count { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.count caption { text-align: left; font-size: 13px; font-weight: 600; color: var(--app-ink-2); padding-bottom: 6px; }
+.count th, .count td { padding: 0 8px; height: 36px; border-bottom: 1px solid var(--app-line); text-align: right; }
+.count th { text-align: left; font-weight: 500; color: var(--app-ink-2); }
+.count thead th { height: 28px; font-size: 12px; color: var(--app-muted); font-weight: 500; }
+.count thead th:not(:first-child) { text-align: right; }
+.count input { width: 64px; height: 30px; padding: 0 8px; border: 1px solid var(--app-line-strong); border-radius: 4px; background: var(--app-surface); text-align: right; font-variant-numeric: tabular-nums; }
+.count input:focus { outline: 2px solid var(--app-accent); outline-offset: -1px; }
+.count input[readonly] { border-color: transparent; background: transparent; }
+.count tfoot th, .count tfoot td { border-bottom: 0; border-top: 2px solid var(--app-ink); font-weight: 600; color: var(--app-ink); }
+
+.calc { display: grid; gap: 0; align-content: start; }
+.calc .cap { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--app-ink-2); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; min-height: 36px; border-bottom: 1px solid var(--app-line); font-size: 14px; font-variant-numeric: tabular-nums; }
+.row .k { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; color: var(--app-ink-2); }
+.row .k small { font-size: 12px; color: var(--app-muted); }
+.row .v { white-space: nowrap; }
+.row.off .v { color: var(--app-muted); text-decoration: line-through; }
+.row.total { border-bottom: 0; border-top: 2px solid var(--app-ink); font-weight: 600; }
+.row.total .k { color: var(--app-ink); }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--app-ink); cursor: pointer; }
+.chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--app-accent); }
+.tlink { padding: 0; border: 0; background: none; color: var(--app-accent); font-size: 12px; cursor: pointer; text-underline-offset: 3px; }
+.tlink:hover { text-decoration: underline; }
+
+.result { display: grid; gap: 10px; padding: 12px 14px; border-radius: 4px; border: 1px solid var(--app-line); background: var(--app-canvas); }
+.result.ok { background: var(--app-positive-bg); border-color: #BBF7D0; }
+.result.bad { background: var(--app-negative-bg); border-color: #FED7AA; }
+.verdict { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.verdict b { font-size: 18px; line-height: 26px; font-weight: 700; }
+.result.ok .verdict b { color: var(--app-positive); }
+.result.bad .verdict b { color: var(--app-negative); }
+.verdict span { font-size: 13px; color: var(--app-ink-2); font-variant-numeric: tabular-nums; }
+.guess { display: grid; gap: 6px; }
+.guess p.cap { margin: 0; font-size: 13px; font-weight: 600; color: var(--app-ink); }
+.guess ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; line-height: 20px; color: var(--app-ink-2); }
+.guess .fix { margin-left: 6px; }
+.reason { display: grid; gap: 4px; }
+.reason label { font-size: 13px; font-weight: 500; color: var(--app-ink-2); }
+.reason textarea { min-height: 56px; resize: vertical; padding: 8px 10px; border: 1px solid var(--app-line-strong); border-radius: 4px; background: var(--app-surface); font-size: 14px; line-height: 20px; }
+.reason textarea[readonly] { background: var(--app-canvas); }
+.reason .hint { font-size: 12px; color: var(--app-muted); }
+.savebar { margin: 0; font-size: 13px; color: var(--app-ink-2); }
+
+/* 휴대폰: 결과만 */
+.mini { display: grid; gap: 4px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.mini .row { min-height: 32px; }
+
+/* 설정 칸 */
+.set { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: 4px; padding: 16px; display: grid; gap: 10px; max-width: 520px; }
+.set h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.set p { margin: 0; font-size: 13px; line-height: 20px; color: var(--app-ink-2); }
+.set .line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.set input { width: 140px; height: 36px; padding: 0 10px; border: 1px solid var(--app-line-strong); border-radius: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border: 1px solid var(--app-line-strong); border-radius: 4px; background: var(--app-surface); color: var(--app-ink); font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.btn.primary { background: var(--app-accent); border-color: var(--app-accent); color: #FFFFFF; }
+
+@container screen (max-width: 640px) {
+  .cash-body { grid-template-columns: minmax(0, 1fr); }
+  .paper-end dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .paper-end dl > div:nth-child(3) { border-left: 0; }
+  .paper-end dl > div:nth-child(n+3) { border-top: 1px solid var(--xl-ink); }
+  .count input { height: 40px; width: 72px; }
+}
+@container page (max-width: 1150px) {
+  .layout { grid-template-columns: minmax(0, 775px); justify-content: center; }
+  .notes { order: -1; }
+  .wrap { max-width: 775px; }
+}
+@container page (max-width: 820px) { .tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container page (max-width: 480px) {
+  .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .screen { padding: 12px 8px; }
+  .cash { padding: 12px; }
+  .head h1 { font-size: 21px; line-height: 28px; }
+}
+</style>
+
+<div class="page">
+  <header class="wrap head">
+    <p class="eyebrow">업무일지 · 화면 시안</p>
+    <h1>현금 시재<span class="tag">예시 숫자</span></h1>
+    <p class="lead">엑셀 업무일지 양식은 그대로 두고, 양식 아래에 마감 때 센 현금을 적는 칸을 더했어요. 장수를 적으면 있어야 할 돈과 맞는지 바로 보여 줘요. 숫자는 모두 지어낸 예시이고 어디에도 저장되지 않아요.</p>
+  </header>
+
+  <div class="wrap tabs" role="tablist" aria-label="상황 고르기" id="tabs">
+    <button type="button" class="tab" role="tab" data-view="short" aria-controls="panel"><span class="no">1</span>비트 PC · 모자랄 때</button>
+    <button type="button" class="tab" role="tab" data-view="ok" aria-controls="panel"><span class="no">2</span>비트 PC · 맞을 때</button>
+    <button type="button" class="tab" role="tab" data-view="other" aria-controls="panel"><span class="no">3</span>다른 PC</button>
+    <button type="button" class="tab" role="tab" data-view="phone" aria-controls="panel"><span class="no">4</span>휴대폰</button>
+    <button type="button" class="tab" role="tab" data-view="settings" aria-controls="panel"><span class="no">5</span>설정 · 시재 금액</button>
+  </div>
+
+  <div class="wrap layout" id="panel" role="tabpanel">
+    <section class="stage" aria-label="화면 예시">
+      <p class="frame-label" id="frame-label"></p>
+      <div class="screen" id="screen"></div>
+    </section>
+    <aside class="notes" aria-live="polite">
+      <h2 id="note-title"></h2>
+      <ol id="note-list"></ol>
+      <button type="button" class="next" id="next"></button>
+    </aside>
+  </div>
+
+  <section class="wrap decided" aria-label="제가 정한 부분">
+    <h2>제가 정한 부분<span class="tag">봐 주세요</span></h2>
+    <p>질문 때 정하지 않은 곳이에요. 다르게 하고 싶으면 말로 알려 주세요.</p>
+    <ul>
+      <li>장수 칸이 비어 있으면 0장으로 봐요. 한 칸도 안 적은 날은 결과 대신 <b>"장수를 적으면 맞는지 보여 드려요"</b>가 나와요.</li>
+      <li><b>현금으로 돌려줌</b>(환불)과 <b>현금으로 받음</b>(미수입금)은 그날 그 칸에 금액이 있을 때만 보여요. 처음에는 꺼져 있어요.</li>
+      <li>차이가 나면 아래에 <b>차이 이유</b> 칸이 생겨요. 안 적어도 저장돼요. 업무사항처럼 환자 이름과 차트번호는 적지 않아요.</li>
+      <li>비트 추측에는 이번에 환자 이름이 들어가지 않아요. 거스름돈 실수와 "일지와 비트 현금이 달라요" 두 가지예요. 같은 금액의 수납을 찾는 추측은 도우미 새 판과 함께 다음에 더해요.</li>
+      <li>그날 계산에 쓴 시재 금액은 그날 일지에 함께 저장돼요. 설정에서 바꿔도 이미 센 날은 그대로예요.</li>
+      <li>장수는 다른 칸처럼 적자마자 저장돼요. 인쇄에는 나오지 않아요.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const PIECES = [
+    { v: 50000, n: '5만원권' }, { v: 10000, n: '1만원권' }, { v: 5000, n: '5천원권' }, { v: 1000, n: '1천원권' },
+    { v: 500, n: '500원' }, { v: 100, n: '100원' }, { v: 50, n: '50원' }, { v: 10, n: '10원' },
+  ]
+  // 일지 숫자(예시): 현금수납 147,000 · 지출 현금 12,000 · 환불 8,000 · 미수입금 5,000. 비트 현금수납 142,000
+  const LOG = { cashIn: 147000, spendCash: 12000, refund: 8000, unpaidPaid: 5000 }
+  const BIT_CASH = 142000
+  const START = { float: 300000 }
+  // 모자랄 때: 430,000원 → 있어야 할 435,000원보다 5,000원 적음
+  const COUNTS_SHORT = [6, 11, 1, 10, 6, 20, 0, 0]
+  // 맞을 때: 435,000원
+  const COUNTS_OK = [6, 11, 2, 10, 6, 20, 0, 0]
+
+  const W = new Intl.NumberFormat('ko-KR')
+  const won = (n) => W.format(n) + '원'
+  const $ = (id) => document.getElementById(id)
+
+  const VIEWS = {
+    short: {
+      label: '비트 PC · 업무일지 탭 (양식 아래)',
+      title: '세어 본 돈이 모자랄 때',
+      list: [
+        '장수를 적으면 합계와 결과가 바로 바뀌어요. 장수를 바꿔 보세요.',
+        '있어야 할 돈은 시재 + 현금수납 − 지출 현금이에요. 환불은 <b>현금으로 돌려줌</b>을 눌렀을 때만 빼고, 미수입금은 <b>현금으로 받음</b>을 눌렀을 때만 더해요.',
+        '차이가 나면 비트 PC에서는 <b>이렇게 생겼을 수 있어요</b>에 추측이 나와요. 이 예시는 일지 현금수납이 비트보다 5,000원 많아서 생긴 차이예요. <b>[비트 숫자로 고치기]</b>를 눌러 보세요.',
+        '차이 이유는 적고 싶을 때만 적어요.',
+      ],
+      next: '다음: 맞을 때',
+    },
+    ok: {
+      label: '비트 PC · 업무일지 탭 (양식 아래)',
+      title: '세어 본 돈이 맞을 때',
+      list: ['맞으면 초록색으로 <b>맞아요</b>가 나오고, 추측과 이유 칸은 나오지 않아요.', '장수를 하나 바꾸면 바로 차이로 바뀌어요.'],
+      next: '다음: 다른 PC',
+    },
+    other: {
+      label: '다른 PC · 업무일지 탭',
+      title: '다른 PC에서도 적고 고칠 수 있어요',
+      list: ['장수 적기, 환불·미수입금 표시, 이유 적기는 비트 PC와 똑같이 돼요.', '비트 추측은 비트 PC에서만 나와요. 대신 <b>비트 PC에서 열면 무엇이 틀렸을지 추측해 드려요</b> 한 줄이 나와요.'],
+      next: '다음: 휴대폰',
+    },
+    phone: {
+      label: '휴대폰 · 업무일지 탭 (보기만)',
+      title: '휴대폰에서는 결과만 봐요',
+      list: ['결과, 세어 본 돈, 있어야 할 돈, 적어 둔 이유만 보여요.', '장수표와 비트 추측은 나오지 않고, 고칠 수 없어요.'],
+      next: '다음: 설정',
+    },
+    settings: {
+      label: '설정 탭',
+      title: '시재 금액은 설정에서 정해요',
+      list: ['처음은 300,000원이에요.', '바꾸면 그 뒤에 세는 날부터 새 금액을 써요. 이미 센 날은 그때 금액 그대로예요.'],
+      next: '처음으로: 모자랄 때',
+    },
+  }
+  const ORDER = ['short', 'ok', 'other', 'phone', 'settings']
+  const state = { view: 'short', counts: COUNTS_SHORT.slice(), refundCash: false, unpaidCash: false, cashIn: LOG.cashIn, reason: '', float: START.float, saving: 0 }
+
+  const counted = () => state.counts.reduce((t, c, i) => t + (c || 0) * PIECES[i].v, 0)
+  const expected = () => state.float + state.cashIn - LOG.spendCash - (state.refundCash ? LOG.refund : 0) + (state.unpaidCash ? LOG.unpaidPaid : 0)
+  const anyCount = () => state.counts.some((c) => c > 0)
+
+  function verdictHtml() {
+    if (!anyCount()) return '<div class="result"><p class="verdict"><b>장수를 적으면 맞는지 보여 드려요</b></p></div>'
+    const d = counted() - expected()
+    if (d === 0) return '<div class="result ok"><p class="verdict"><b>맞아요</b><span>세어 본 돈 ' + won(counted()) + ' · 있어야 할 돈 ' + won(expected()) + '</span></p></div>'
+    const word = d < 0 ? won(-d) + ' 모자라요' : won(d) + ' 많아요'
+    return '<div class="result bad"><p class="verdict"><b>' + word + '</b><span>세어 본 돈 ' + won(counted()) + ' · 있어야 할 돈 ' + won(expected()) + '</span></p>' + guessHtml(d) + reasonHtml(false) + '</div>'
+  }
+
+  function guessHtml(d) {
+    const v = state.view
+    if (v === 'phone') return ''
+    if (v === 'other') return '<div class="guess"><p class="cap">비트 PC에서 열면 무엇이 틀렸을지 추측해 드려요</p></div>'
+    const items = []
+    if (state.cashIn !== BIT_CASH) {
+      const gap = state.cashIn - BIT_CASH
+      items.push('일지 현금수납(' + won(state.cashIn) + ')이 비트(' + won(BIT_CASH) + ')보다 ' + won(Math.abs(gap)) + (gap > 0 ? ' 많아요.' : ' 적어요.') +
+        '<button type="button" class="tlink fix" id="fixbit">[비트 숫자로 고치기]</button>')
+    }
+    const a = Math.abs(d)
+    const bill = [50000, 10000, 5000, 1000].find((b) => a % b === 0 && a / b <= 2)
+    if (bill) {
+      const n = a / bill
+      const name = PIECES.find((p) => p.v === bill).n
+      items.push(name + ' ' + n + '장을 거스름돈으로 ' + (d < 0 ? '더' : '덜') + ' 줬을 수 있어요.')
+    }
+    if (!items.length) items.push('비트 기록으로는 이유를 찾지 못했어요. 영수증과 지출을 다시 봐 주세요.')
+    return '<div class="guess"><p class="cap">이렇게 생겼을 수 있어요</p><ul>' + items.map((t) => '<li>' + t + '</li>').join('') + '</ul></div>'
+  }
+
+  function reasonHtml() {
+    const ro = state.view === 'phone'
+    if (ro && !state.reason) return ''
+    return '<div class="reason"><label for="reason">차이 이유 (선택)</label><textarea id="reason" ' + (ro ? 'readonly' : 'placeholder="예: 택배비 영수증을 지출에 안 적었어요"') + '>' + esc(state.reason) + '</textarea>' +
+      (ro ? '' : '<span class="hint">환자 이름·차트번호는 적지 않아요</span>') + '</div>'
+  }
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+  function countTable() {
+    const rows = PIECES.map((p, i) => '<tr><th scope="row">' + p.n + '</th><td><input id="c' + i + '" inputmode="numeric" aria-label="' + p.n + ' 장수" value="' + (state.counts[i] || '') + '"></td><td id="s' + i + '">' + (state.counts[i] ? won(state.counts[i] * p.v) : '') + '</td></tr>').join('')
+    return '<table class="count"><caption>세어 본 현금</caption><thead><tr><th scope="col">종류</th><th scope="col">장수</th><th scope="col">금액</th></tr></thead><tbody>' + rows +
+      '</tbody><tfoot><tr><th scope="row" colspan="2">합계</th><td id="sum">' + won(counted()) + '</td></tr></tfoot></table>'
+  }
+
+  function calcHtml() {
+    return '<div class="calc"><p class="cap">있어야 할 돈</p>' +
+      '<div class="row"><span class="k">시재 <small>설정 금액</small></span><span class="v">' + won(state.float) + '</span></div>' +
+      '<div class="row"><span class="k">+ 현금수납 <small>일지</small></span><span class="v" id="cashin">' + won(state.cashIn) + '</span></div>' +
+      '<div class="row"><span class="k">− 지출 현금 <small>일지</small></span><span class="v">' + won(LOG.spendCash) + '</span></div>' +
+      '<div class="row' + (state.refundCash ? '' : ' off') + '"><span class="k">− 환불 <label class="chk"><input type="checkbox" id="refund"' + (state.refundCash ? ' checked' : '') + '>현금으로 돌려줌</label></span><span class="v">' + won(LOG.refund) + '</span></div>' +
+      '<div class="row' + (state.unpaidCash ? '' : ' off') + '"><span class="k">+ 미수입금 <label class="chk"><input type="checkbox" id="unpaid"' + (state.unpaidCash ? ' checked' : '') + '>현금으로 받음</label></span><span class="v">' + won(LOG.unpaidPaid) + '</span></div>' +
+      '<div class="row total"><span class="k">있어야 할 돈</span><span class="v" id="exp">' + won(expected()) + '</span></div></div>'
+  }
+
+  function paperEnd() {
+    return '<div class="paper-end"><p class="cap">▲ 엑셀 업무일지 양식 (바뀌지 않아요) · 시재 계산에 쓰는 칸</p><dl>' +
+      '<div><dt>현금수납</dt><dd id="pcash">' + won(state.cashIn) + '</dd></div>' +
+      '<div><dt>지출 현금</dt><dd>' + won(LOG.spendCash) + '</dd></div>' +
+      '<div><dt>환불</dt><dd>' + won(LOG.refund) + '</dd></div>' +
+      '<div><dt>미수입금</dt><dd>' + won(LOG.unpaidPaid) + '</dd></div></dl></div>'
+  }
+
+  function render() {
+    const v = state.view
+    $('frame-label').textContent = VIEWS[v].label
+    $('note-title').textContent = VIEWS[v].title
+    $('note-list').innerHTML = VIEWS[v].list.map((t) => '<li><span>' + t + '</span></li>').join('')
+    $('next').textContent = VIEWS[v].next
+    document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === v)))
+    const screen = $('screen')
+    screen.className = 'screen' + (v === 'phone' ? ' phone' : '')
+
+    if (v === 'settings') {
+      screen.innerHTML = '<div class="set"><h3>현금 시재</h3><p>마감 때 서랍에 남겨 두는 돈이에요. 업무일지의 시재 칸이 이 금액으로 계산해요.</p>' +
+        '<div class="line"><input id="float" inputmode="numeric" aria-label="시재 금액" value="' + W.format(state.float) + '"><span>원</span><button type="button" class="btn primary" id="savefloat">저장</button></div>' +
+        '<p id="floatmsg">이미 센 날은 그때 금액 그대로예요.</p></div>'
+      $('savefloat').addEventListener('click', () => {
+        const n = Number(String($('float').value).replace(/[^0-9]/g, ''))
+        if (!n) { $('floatmsg').textContent = '금액을 숫자로 적어 주세요.'; return }
+        state.float = n; $('float').value = W.format(n); $('floatmsg').textContent = '저장했어요. 이제부터 세는 날은 ' + won(n) + '으로 계산해요.'
+      })
+      return
+    }
+
+    if (v === 'phone') {
+      screen.innerHTML = paperEnd() +
+        '<div class="cash"><div class="cash-head"><h3>현금 시재</h3><p>휴대폰에서는 보기만 할 수 있어요</p></div>' +
+        '<div class="mini"><div class="row"><span class="k">세어 본 돈</span><span class="v">' + won(counted()) + '</span></div>' +
+        '<div class="row"><span class="k">있어야 할 돈</span><span class="v">' + won(expected()) + '</span></div></div>' + verdictHtml() + '</div>'
+      return
+    }
+
+    screen.innerHTML = paperEnd() +
+      '<div class="cash"><div class="cash-head"><h3>현금 시재</h3><p class="savebar" id="savebar">' + (state.saving ? '저장하는 중이에요' : '적으면 바로 저장돼요') + '</p></div>' +
+      '<div class="cash-body">' + countTable() + calcHtml() + '</div><div id="verdict">' + verdictHtml() + '</div></div>'
+    bind()
+  }
+
+  function refresh() {
+    PIECES.forEach((p, i) => { const s = $('s' + i); if (s) s.textContent = state.counts[i] ? won(state.counts[i] * p.v) : '' })
+    $('sum').textContent = won(counted())
+    $('exp').textContent = won(expected())
+    $('cashin').textContent = won(state.cashIn)
+    $('pcash').textContent = won(state.cashIn)
+    const keep = document.activeElement && document.activeElement.id === 'reason'
+    $('verdict').innerHTML = verdictHtml()
+    bindVerdict()
+    if (keep && $('reason')) { const r = $('reason'); r.focus(); r.setSelectionRange(r.value.length, r.value.length) }
+    save()
+  }
+
+  let timer = 0
+  function save() {
+    state.saving = 1
+    const b = $('savebar'); if (b) b.textContent = '저장하는 중이에요'
+    clearTimeout(timer)
+    timer = setTimeout(() => { state.saving = 0; const bb = $('savebar'); if (bb) bb.textContent = '저장했어요' }, 700)
+  }
+
+  function bindVerdict() {
+    const fix = $('fixbit'); if (fix) fix.addEventListener('click', () => { state.cashIn = BIT_CASH; refresh() })
+    const r = $('reason'); if (r && !r.readOnly) r.addEventListener('input', () => { state.reason = r.value; save() })
+  }
+
+  function bind() {
+    PIECES.forEach((_, i) => {
+      $('c' + i).addEventListener('input', (e) => {
+        const n = Number(String(e.target.value).replace(/[^0-9]/g, '')) || 0
+        e.target.value = n ? String(n) : ''
+        state.counts[i] = n
+        refresh()
+      })
+    })
+    $('refund').addEventListener('change', (e) => { state.refundCash = e.target.checked; render(); save() })
+    $('unpaid').addEventListener('change', (e) => { state.unpaidCash = e.target.checked; render(); save() })
+    bindVerdict()
+  }
+
+  function go(v) {
+    state.view = v
+    if (v === 'short') { state.counts = COUNTS_SHORT.slice(); state.cashIn = LOG.cashIn; state.refundCash = false; state.unpaidCash = false }
+    if (v === 'ok') { state.counts = COUNTS_OK.slice(); state.cashIn = LOG.cashIn; state.refundCash = false; state.unpaidCash = false; state.reason = '' }
+    if (v === 'other' || v === 'phone') { state.counts = COUNTS_SHORT.slice(); state.cashIn = LOG.cashIn; state.refundCash = false; state.unpaidCash = false; if (!state.reason) state.reason = '택배비 5,000원 영수증을 지출에 안 적었어요' }
+    render()
+  }
+
+  $('tabs').addEventListener('click', (e) => { const t = e.target.closest('.tab'); if (t) go(t.dataset.view) })
+  $('next').addEventListener('click', () => go(ORDER[(ORDER.indexOf(state.view) + 1) % ORDER.length]))
+  go('short')
+})()
+</script>

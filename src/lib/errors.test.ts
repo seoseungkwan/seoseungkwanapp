@@ -46,6 +46,8 @@ const ALL_CODES = [
   'E-STATS-READ-FAILED',
   'E-STATS-PICK-READ-FAILED',
   'E-STATS-PICK-SAVE-FAILED',
+  'E-STATS-GROUP-READ-FAILED',
+  'E-STATS-GROUP-SAVE-FAILED',
   'E-RULES-LOAD-FAILED',
   'E-SETTINGS-FAILED',
   'E-MEMO-NO-SETTINGS',
@@ -719,5 +721,29 @@ describe('AC-811.5 고른 처방 오류 번호', () => {
     expect(info.what).toBe('고른 처방을 저장하지 못했어요')
     expect(info.fix).toContain('[다시 저장]')
     expect(info.fix).toMatch(/계속되면 오류 번호를 .*알려 주세요\.$/)
+  })
+})
+
+// spec treatment-trend REQ-1203: 통계 처방별 추세 묶음 읽기·저장(lib/storage/statsRxGroups.ts)의 번호 둘
+describe('AC-1203.4 처방별 추세 묶음 오류 번호', () => {
+  it('AC-1203.4: 두 번호는 lib/errors.ts에 문구가 있는 번호다(번호 목록 ALL_CODES에 든다)', () => {
+    expect(isErrorCode('E-STATS-GROUP-READ-FAILED')).toBe(true)
+    expect(isErrorCode('E-STATS-GROUP-SAVE-FAILED')).toBe(true)
+    expect(ALL_CODES).toContain('E-STATS-GROUP-READ-FAILED')
+    expect(ALL_CODES).toContain('E-STATS-GROUP-SAVE-FAILED')
+  })
+
+  it('AC-1203.4: E-STATS-GROUP-READ-FAILED는 명세 글자 그대로다', () => {
+    expect(errorInfo('E-STATS-GROUP-READ-FAILED')).toEqual({
+      what: '처방별 추세 묶음을 읽지 못했어요',
+      fix: '[다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.',
+    })
+  })
+
+  it('AC-1203.4: E-STATS-GROUP-SAVE-FAILED는 명세 글자 그대로다', () => {
+    expect(errorInfo('E-STATS-GROUP-SAVE-FAILED')).toEqual({
+      what: '처방별 추세 묶음을 저장하지 못했어요',
+      fix: '인터넷 연결을 확인하고 [저장]을 다시 눌러 주세요. 계속되면 화면을 새로 열어 주세요.',
+    })
   })
 })

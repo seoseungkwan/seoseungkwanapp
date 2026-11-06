@@ -465,7 +465,7 @@
 - 랜딩 390px 전체 높이는 5화면(4,220px) 이하다
 
 ## 아이콘·로고
-- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 21개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck·logout·info·reload). `logout`은 계정 메뉴 [로그아웃]이 쓴다(ui-90 시안 그림). `info`·`reload`는 업무일지 비트 안내 줄·[지금 불러오기]가 쓴다(worklog 비트 표시 시안 그림)
+- **아이콘**: `src/components/common/Icon.tsx` 한 곳, 22개(shield·lock·clock·cal·upload·user·chev·check·x·arrow·arrowDown·monitor·server·sigma·doc·stop·copy·userCheck·logout·info·reload·alert). `logout`은 계정 메뉴 [로그아웃]이 쓴다(ui-90 시안 그림). `info`·`reload`는 업무일지 비트 안내 줄·[지금 불러오기]가 쓴다(worklog 비트 표시 시안 그림). `alert`는 업무일지 잘림 안내가 쓴다(worklog-memo-font 시안 그림)
   - viewBox `0 0 16 16`, `fill="none"`, `stroke="currentColor"`, 선 1.5, `aria-hidden="true"`. 크기는 `size`(12·14·16)
   - 꼭 필요한 곳에만 쓴다. 아이콘만 있는 단추에는 `aria-label`을 준다
 - **구글 G**: `src/components/common/GoogleMark.tsx`(48×48 viewBox, 상표 네 색). 구글 상표 색은 이 파일에만 있다
@@ -553,6 +553,7 @@
 | 7~16행·19~23행 높이 | 40 | 30 | 30 |
 | 17·18행 높이 | 20 | 15 | 15 |
 
+- **업무사항 글씨 크기**: 업무사항은 그날 고른 크기(8·9·10·11·12·14·16pt, 기본 11)이고 위 값 × 크기/11이다. 날짜 줄 아래 [가−]·[가+]로 고르고 그날 일지에 저장한다(specs/worklog-memo-font). 휴대폰은 보기만, 인쇄도 같은 크기
 - **인쇄**: A4 세로 한 장(`@page` 여백 12mm), 결재 칸 포함이다. 줄 높이 합 634.5pt가 인쇄 높이(273mm, 약 773.9pt) 안에 든다. 앱 틀·날짜 줄·저장 상태·오류 카드는 숨기고, 칸 색은 그대로 찍히게(`print-color-adjust: exact`) 하며, 흐린 안내 글은 투명하다. 업무사항·고친 항목 이름은 찍힌다
 - **휴대폰**: 터치 기기는 같은 양식을 화면 폭에 맞춰 보기만 한다. 칸을 고칠 수 없고 업무사항도 보인다 **(사용자, 2026-11-01)**. 좁은 PC 창은 그대로 고칠 수 있다
 - **숫자 칸**: 글자도 받는다. 치는 동안은 친 글자 그대로이고, 초점이 나가면 숫자만인 칸은 엑셀 모양으로 보인다. 글이 섞인 칸은 친 글자 그대로다

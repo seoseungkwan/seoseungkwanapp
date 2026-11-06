@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { useState, type ComponentProps } from 'react'
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import {
   CELL_MAX,
   emptyWorklogDay,
@@ -47,6 +47,7 @@ function setup(cells: Partial<WorklogDay> = {}, overrides: Partial<Props> = {}) 
     onCell: props.onCell as Mock,
     onFocusCell: props.onFocusCell as Mock,
     update: (next: Partial<Props>) => view.rerender(<WorklogSheet {...props} {...next} />),
+    unmount: view.unmount,
   }
 }
 
@@ -895,5 +896,216 @@ describe('AC-017.2: 비트 칸 표시', () => {
   it('AC-017.2·AC-011.3: 인쇄에는 표시가 없다(@media print에서 세모를 그리지 않는다)', () => {
     const printCss = css().slice(css().search(/@media\s+print\s*\{/))
     expect(printCss).toMatch(/\.sheet td\.bit::after\s*\{\s*content:\s*none;?\s*\}/)
+  })
+})
+
+// ── 업무사항 글씨 크기 (specs/worklog-memo-font REQ-1505, design.md '양식', 시안 docs/mockups/worklog/memo-font.html):
+// 업무사항 칸(td)의 인라인 변수 --memo-pt가 그날 고른 크기다. 글이 칸을 넘는지 재서 바뀔 때만 onMemoOverflow로 알린다.
+// jsdom은 크기를 재지 않으므로 textarea의 scrollHeight·clientHeight를 시험이 Object.defineProperty로 정한다
+const memoTd = () => field('memo').closest('td') as HTMLTableCellElement
+const SHORT_MEMO = '가상 업무사항'
+const LONG_MEMO = '가상 업무사항 한 줄\n'.repeat(8)
+
+describe('AC-1505.1: 업무사항 칸 글씨 크기 변수 --memo-pt', () => {
+  it('AC-1505.1: memoFontPt 14면 업무사항 칸(td)의 --memo-pt가 14다(단위 없는 숫자)', () => {
+    setup({ memo: SHORT_MEMO }, { memoFontPt: 14 })
+    expect(memoTd().classList.contains(s.memo)).toBe(true)
+    expect(memoTd().style.getPropertyValue('--memo-pt')).toBe('14')
+  })
+
+  it('AC-1505.1: memoFontPt가 없으면 11이다', () => {
+    setup({ memo: SHORT_MEMO })
+    expect(memoTd().style.getPropertyValue('--memo-pt')).toBe('11')
+  })
+
+  it('AC-1505.1: 크기가 바뀌면 그 값으로 다시 그린다(8 → 16)', () => {
+    const { update } = setup({ memo: SHORT_MEMO }, { memoFontPt: 8 })
+    expect(memoTd().style.getPropertyValue('--memo-pt')).toBe('8')
+    update({ memoFontPt: 16 })
+    expect(memoTd().style.getPropertyValue('--memo-pt')).toBe('16')
+  })
+
+  it('AC-1505.1: 크기 변수는 업무사항 칸 하나에만 있고, 다른 칸에는 인라인 스타일이 없다', () => {
+    setup({ memo: SHORT_MEMO, cashIn: '125000' }, { memoFontPt: 16 })
+    const styled = [...table().querySelectorAll<HTMLTableCellElement>('td[style]')]
+    expect(styled).toEqual([memoTd()])
+    expect(field('memo').hasAttribute('style')).toBe(false)
+  })
+})
+
+describe('AC-1505.3: 업무사항 글이 칸을 넘는지 재기', () => {
+  const box = { scroll: 0, client: 0 }
+  const fits = () => Object.assign(box, { scroll: 84, client: 84 })
+  const overflows = () => Object.assign(box, { scroll: 120, client: 84 })
+  const resize = () => act(() => void window.dispatchEvent(new Event('resize')))
+
+  beforeEach(() => {
+    fits()
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', { configurable: true, get: () => box.scroll })
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'clientHeight', { configurable: true, get: () => box.client })
+  })
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+    Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'clientHeight')
+    Reflect.deleteProperty(document, 'fonts')
+    vi.restoreAllMocks()
+  })
+
+  it('AC-1505.3: 글이 칸을 넘으면 onMemoOverflow(true)를 한 번 부른다', () => {
+    overflows()
+    const onMemoOverflow = vi.fn()
+    setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    expect(onMemoOverflow.mock.calls).toEqual([[true]])
+  })
+
+  it('AC-1505.3: 처음 잰 값은 들어가도 한 번 알린다(false), 그 뒤로는 바뀔 때만이다', () => {
+    const onMemoOverflow = vi.fn()
+    setup({ memo: SHORT_MEMO }, { onMemoOverflow })
+    expect(onMemoOverflow.mock.calls).toEqual([[false]])
+  })
+
+  it('AC-1505.3: 같은 값으로 다시 그려도(글·크기가 바뀌어도 여전히 넘침) 다시 부르지 않는다', () => {
+    overflows()
+    const onMemoOverflow = vi.fn()
+    const { update } = setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    update({})
+    update({ day: dayWith({ memo: `${LONG_MEMO}더` }) })
+    update({ memoFontPt: 12 })
+    resize()
+    expect(onMemoOverflow.mock.calls).toEqual([[true]])
+  })
+
+  it('AC-1505.3: 글이 줄어 칸에 들어가면 onMemoOverflow(false)를 부른다', () => {
+    overflows()
+    const onMemoOverflow = vi.fn()
+    const { update } = setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    fits()
+    update({ day: dayWith({ memo: SHORT_MEMO }) })
+    expect(onMemoOverflow.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('AC-1505.3: 업무사항 글이 바뀌면 다시 잰다', () => {
+    const onMemoOverflow = vi.fn()
+    const { update } = setup({ memo: SHORT_MEMO }, { onMemoOverflow })
+    overflows()
+    update({ day: dayWith({ memo: LONG_MEMO }) })
+    expect(onMemoOverflow.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('AC-1505.3: 크기(memoFontPt)가 바뀌면 다시 잰다', () => {
+    const onMemoOverflow = vi.fn()
+    const { update } = setup({ memo: LONG_MEMO }, { memoFontPt: 11, onMemoOverflow })
+    overflows()
+    update({ memoFontPt: 16 })
+    expect(onMemoOverflow.mock.calls).toEqual([[false], [true]])
+    fits()
+    update({ memoFontPt: 8 })
+    expect(onMemoOverflow.mock.calls).toEqual([[false], [true], [false]])
+  })
+
+  it('AC-1505.3: 창 크기가 바뀌면(window resize) 다시 잰다', () => {
+    const onMemoOverflow = vi.fn()
+    setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    overflows()
+    resize()
+    expect(onMemoOverflow.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('AC-1505.3: 넘음은 scrollHeight > clientHeight + 1이다(반올림 1px 여유)', () => {
+    Object.assign(box, { scroll: 85, client: 84 })
+    const onMemoOverflow = vi.fn()
+    setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    Object.assign(box, { scroll: 86, client: 84 })
+    resize()
+    expect(onMemoOverflow.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('AC-1505.3: 읽기 전용(터치 기기)이어도 잰다', () => {
+    overflows()
+    const onMemoOverflow = vi.fn()
+    setup({ memo: LONG_MEMO }, { readOnly: true, onMemoOverflow })
+    expect(onMemoOverflow.mock.calls).toEqual([[true]])
+  })
+
+  it('AC-1505.3: 화면이 내려가면 resize 듣기를 떼고, 그 뒤로는 부르지 않는다', () => {
+    const add = vi.spyOn(window, 'addEventListener')
+    const remove = vi.spyOn(window, 'removeEventListener')
+    const onMemoOverflow = vi.fn()
+    const { unmount } = setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    const listeners = add.mock.calls.filter(([type]) => type === 'resize').map(([, listener]) => listener)
+    expect(listeners.length).toBeGreaterThan(0)
+    unmount()
+    const removed = remove.mock.calls.filter(([type]) => type === 'resize').map(([, listener]) => listener)
+    for (const listener of listeners) expect(removed).toContain(listener)
+    overflows()
+    window.dispatchEvent(new Event('resize'))
+    expect(onMemoOverflow.mock.calls).toEqual([[false]])
+  })
+
+  it('AC-1505.3: 글꼴을 다 읽으면(document.fonts.ready) 다시 잰다', async () => {
+    let fontsLoaded = () => {}
+    const ready = new Promise<void>((resolve) => (fontsLoaded = resolve))
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { ready } })
+    const onMemoOverflow = vi.fn()
+    setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    overflows()
+    await act(async () => {
+      fontsLoaded()
+      await ready
+    })
+    expect(onMemoOverflow.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('AC-1505.3: 화면이 내려간 뒤 글꼴 읽기가 끝나도 부르지 않는다', async () => {
+    let fontsLoaded = () => {}
+    const ready = new Promise<void>((resolve) => (fontsLoaded = resolve))
+    Object.defineProperty(document, 'fonts', { configurable: true, value: { ready } })
+    const onMemoOverflow = vi.fn()
+    const { unmount } = setup({ memo: LONG_MEMO }, { onMemoOverflow })
+    unmount()
+    overflows()
+    fontsLoaded()
+    await ready
+    await Promise.resolve()
+    expect(onMemoOverflow.mock.calls).toEqual([[false]])
+  })
+
+  it('AC-1505.3: document.fonts가 없어도 던지지 않는다', () => {
+    Object.defineProperty(document, 'fonts', { configurable: true, value: undefined })
+    overflows()
+    const onMemoOverflow = vi.fn()
+    expect(() => setup({ memo: LONG_MEMO }, { onMemoOverflow })).not.toThrow()
+    expect(onMemoOverflow.mock.calls).toEqual([[true]])
+  })
+})
+
+describe('AC-1505.4: 새 prop 둘을 주지 않은 지금의 그리기는 그대로다', () => {
+  // 업무사항 칸의 크기 변수만 빼고 표 HTML을 비교한다
+  const tableWithoutMemoStyle = () => {
+    const copy = table().cloneNode(true) as HTMLTableElement
+    for (const td of copy.querySelectorAll('td[style]')) td.removeAttribute('style')
+    return copy.outerHTML
+  }
+  const FILLED: Partial<WorklogDay> = { memo: LONG_MEMO, cashIn: '125000', noteCash: '가상 비고', newPatients: '12', cardIn: EXCLUDED_TEXT }
+
+  it.each<[string, Partial<Props>]>([
+    ['쓰기', { readOnly: false }],
+    ['읽기 전용·빨간 칸·비트 표시', { readOnly: true, blockedCells: ['memo', 'cashIn'], bitFields: ['newPatients', 'cashIn'] }],
+  ])('AC-1505.4: %s — 크기·알림 prop을 주어도 업무사항 칸 크기 변수 말고는 칸·글자·aria-label·합친 칸이 같다', (_name, overrides) => {
+    setup(FILLED, overrides)
+    const before = tableWithoutMemoStyle()
+    cleanup()
+    setup(FILLED, { ...overrides, memoFontPt: 16, onMemoOverflow: vi.fn() })
+    expect(tableWithoutMemoStyle()).toBe(before)
+  })
+
+  it('AC-1505.4: onMemoOverflow가 없어도 넘치는 글을 잴 때 던지지 않는다', () => {
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', { configurable: true, get: () => 400 })
+    try {
+      expect(() => setup({ memo: LONG_MEMO })).not.toThrow()
+      expect(field('memo').value).toBe(LONG_MEMO)
+    } finally {
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+    }
   })
 })

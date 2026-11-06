@@ -492,6 +492,77 @@ describe('AC-505.5 새로 불러오면 메모리가 바뀐다: 앞 일이 늦게
   })
 })
 
+describe('AC-1205.4 Worker 입구(createStatsHost.load)가 묶음을 세어 일 줄에 채운다', () => {
+  // 가짜 묶음 열쇠(t + 16자리). A는 두 코드, B는 한 코드
+  const A = 't00000000000000a1'
+  const B = 't00000000000000b2'
+  const GROUPS = [
+    { id: A, codes: ['MM042', 'B4001'] },
+    { id: B, codes: ['B4001'] },
+  ]
+  // 1번 환자가 9월 1일에 MM042와 B4001을 같이 받았다(묶음 A에는 1건)
+  const GROUP_ROWS = [...ROWS, [CHARTS[0], '20260901', 'B4001', '20260901']]
+  const none = (id: string) => ({ id, patients: 0, newPatients: 0, returning: 0 })
+
+  async function loadedWith(over: Partial<StatsLoadRequest>) {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', helperJson({ rows: GROUP_ROWS })).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', over))
+    expect(sent.map((m) => m.type)).toEqual(['loaded'])
+    const [reply] = sent
+    if (reply.type !== 'loaded') throw new Error('loaded가 아니다')
+    return { view: reply.view, sent }
+  }
+
+  it('AC-1205.4: host.load({ …, groups })의 loaded 답 days[].groups에 열쇠마다 한 줄. 같은 환자·같은 날 두 코드는 1, 그날 안 받은 묶음은 0줄', async () => {
+    const { view, sent } = await loadedWith({ groups: GROUPS })
+    expect(view.days?.map((day) => [day.day, day.groups])).toEqual([
+      [
+        '2026-09-01',
+        [
+          { id: A, patients: 2, newPatients: 2, returning: 0 },
+          { id: B, patients: 1, newPatients: 1, returning: 0 },
+        ],
+      ],
+      [
+        '2026-09-02',
+        [
+          { id: A, patients: 2, newPatients: 2, returning: 0 },
+          { id: B, patients: 1, newPatients: 1, returning: 0 },
+        ],
+      ],
+      ['2026-09-03', [{ id: A, patients: 1, newPatients: 1, returning: 0 }, none(B)]],
+      ['2026-10-05', [{ id: A, patients: 1, newPatients: 0, returning: 1 }, none(B)]],
+      ['2026-11-01', [{ id: A, patients: 1, newPatients: 0, returning: 1 }, none(B)]],
+    ])
+    for (const day of view.days ?? []) expect(validateDayPayload(day)).toEqual(day)
+    expectNoPatientData(sent)
+  })
+
+  it('AC-1205.4: 달 줄의 groups는 aggregate가 준 그대로다(그달 안 받은 묶음 줄을 채우지 않는다)', async () => {
+    const { view } = await loadedWith({ groups: GROUPS })
+    expect(view.months?.map((month) => [month.month, month.groups.map((g) => [g.id, g.patients, g.newPatients, g.returning])])).toEqual([
+      [
+        '2026-09',
+        [
+          [A, 5, 5, 0],
+          [B, 2, 2, 0],
+        ],
+      ],
+      ['2026-10', [[A, 1, 0, 1]]],
+      ['2026-11', [[A, 1, 0, 1]]],
+    ])
+    for (const month of view.months ?? []) expect(validateMonthPayload(month)).toEqual(month)
+  })
+
+  it('AC-1205.4: groups가 없으면 []로 보고 일 줄의 groups가 비어 있다', async () => {
+    const { view } = await loadedWith({})
+    expect(view.days?.length).toBeGreaterThan(0)
+    for (const day of view.days ?? []) expect(day.groups).toEqual([])
+    for (const month of view.months ?? []) expect(month.groups).toEqual([])
+  })
+})
+
 describe('AC-505.5 stats.worker.ts: 실제 포트(MessageChannel)로 이어 본다', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -810,5 +881,44 @@ describe('AC-509.4 stats.worker.ts: split을 일에 잇는다', () => {
     await import('../stats.worker')
     scope.onmessage?.({ data: { type: 'split', streamId: 'q1', ...WHOLE }, ports: [] })
     expect(posted).toEqual([{ type: 'split-result', streamId: 'q1', view: { kind: 'none' } }])
+  })
+})
+
+// ── 같은 처방 재방문(again, fu-rate AC-1302.4) ──
+// 지어낸 환자 하나가 오늘 − 7일(10/25)에 MM042를 시작하고, 7일째인 오늘 또 받는다. 값은 모두 지어낸 것이다
+const AGAIN_START = addDays(TODAY, -7)
+const AGAIN_ROWS = [...ROWS, [chart(8), '20261025', 'MM042', '20250101'], [chart(8), '20261101', 'MM042', '20250101']]
+
+describe('AC-1302.4 loadJob: 날 줄마다 같은 처방 재방문(again)', () => {
+  it.each([false, true])('AC-1302.4: 오늘 진료 끝 %s → view.days의 날마다 again이 있고 validateDayPayload를 지난다', (closeToday) => {
+    const { view } = loadJob(helperJson({ rows: AGAIN_ROWS }), { ...OPTS, closeToday })
+    expect(view.days?.map((d) => d.day)).toEqual(['2026-09-01', '2026-09-02', '2026-09-03', '2026-10-05', AGAIN_START, TODAY])
+    for (const day of view.days ?? []) {
+      expect(day.again).toBeDefined()
+      expect(validateDayPayload(day)).toEqual(day)
+    }
+    // 9/1: 두 명이 MM042를 시작하고 다시 받지 않았다(CHARTS[0]의 10/5는 34일 뒤라 새 시작). 세 창 모두 끝났다
+    expect(dayOf(view, '2026-09-01')?.again).toEqual({
+      ready: [true, true, true],
+      rx: [{ code: 'MM042', starts: 2, back: [0, 0, 0], more: [0, 0, 0] }],
+    })
+  })
+
+  it('AC-1302.4: 오늘 진료 끝(closeToday true)이면 오늘 − 7일 시작의 7일 창이 숫자다(오늘 줄이 든다)', () => {
+    const { view } = loadJob(helperJson({ rows: AGAIN_ROWS }), { ...OPTS, closeToday: true })
+    expect(AGAIN_START).toBe('2026-10-25')
+    expect(dayOf(view, AGAIN_START)?.again).toEqual({
+      ready: [true, false, false],
+      rx: [{ code: 'MM042', starts: 1, back: [1, null, null], more: [1, null, null] }],
+    })
+  })
+
+  it('AC-1302.4: 끄면 오늘 − 7일 시작의 7일 창은 null이다(7일째인 오늘이 아직 집계 중)', () => {
+    const { view } = loadJob(helperJson({ rows: AGAIN_ROWS }), OPTS)
+    expect(dayOf(view, AGAIN_START)?.partial).toBe(false)
+    expect(dayOf(view, AGAIN_START)?.again).toEqual({
+      ready: [false, false, false],
+      rx: [{ code: 'MM042', starts: 1, back: [null, null, null], more: [null, null, null] }],
+    })
   })
 })

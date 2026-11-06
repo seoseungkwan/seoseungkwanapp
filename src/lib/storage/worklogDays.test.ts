@@ -4,7 +4,13 @@ import { fileURLToPath } from 'node:url'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  emptyWorklogCash,
   emptyWorklogDay,
+  MEMO_FONT_PTS,
+  type MemoFontPt,
+  type WorklogCash,
+  type WorklogCashChanges,
+  type WorklogCashKey,
   type WorklogCellKey,
   type WorklogChanges,
   type WorklogDay,
@@ -23,7 +29,11 @@ const VALUES =
   'memo,' +
   'name_total_fee,name_claim_amount,name_cash_in,name_card_in,name_transfer_in,name_local_currency_in,name_unpaid_new,name_unpaid_paid,' +
   'name_spend_cash,name_spend_card,name_spend_refund,name_spend_free'
-const SELECT = `${VALUES},bit_fields`
+// 현금 시재 12칸(specs/worklog-cash-float): 장수 5만원권부터 · 그날 시재 · 확인란 둘 · 이유
+const CASH =
+  'cash_count_50000,cash_count_10000,cash_count_5000,cash_count_1000,cash_count_500,cash_count_100,cash_count_50,cash_count_10,' +
+  'cash_float,cash_refund_cash,cash_unpaid_cash,cash_reason'
+const SELECT = `${VALUES},bit_fields,memo_font_pt,${CASH}`
 const PHONE = '010-0000-1234'
 const SECRET = 'secret detail'
 
@@ -123,9 +133,11 @@ function realClient(fakeFetch: typeof fetch) {
 async function savedRow(
   changes: WorklogChanges,
   bitFields?: readonly WorklogNumberKey[],
+  memoFontPt?: MemoFontPt,
+  cash?: WorklogCashChanges,
 ): Promise<Record<string, unknown> | undefined> {
   const { client, calls } = fakeClient()
-  await saveWorklogDay(client, YMD, changes, bitFields)
+  await saveWorklogDay(client, YMD, changes, bitFields, memoFontPt, cash)
   expect(calls.upsert.length).toBeLessThanOrEqual(1)
   return calls.upsert[0]?.row
 }
@@ -155,13 +167,14 @@ afterEach(() => {
 })
 
 describe('loadWorklogDay', () => {
-  it('AC-005.1·AC-016.1: 값 32칸과 bit_fields만 골라 그 날짜 줄 하나를 읽고 병원으로 거르지 않는다', async () => {
+  it('AC-005.1·AC-016.1·AC-1503.1·AC-1603.1: 값 32칸과 bit_fields·memo_font_pt·시재 12칸만 골라 그 날짜 줄 하나를 읽고 병원으로 거르지 않는다', async () => {
     const { client, calls } = fakeClient()
     await loadWorklogDay(client, YMD)
     expect(calls.from).toEqual(['worklog_days'])
     expect(calls.select).toEqual([SELECT])
     expect(VALUES.split(',')).toHaveLength(32)
-    expect(calls.select[0]?.split(',')).toEqual([...VALUES.split(','), 'bit_fields'])
+    expect(CASH.split(',')).toHaveLength(12)
+    expect(calls.select[0]?.split(',')).toEqual([...VALUES.split(','), 'bit_fields', 'memo_font_pt', ...CASH.split(',')])
     expect(calls.select[0]).not.toContain('hospital_id')
     expect(calls.eq).toEqual([['work_date', YMD]])
     expect(calls.maybeSingle).toBe(1)
@@ -170,7 +183,7 @@ describe('loadWorklogDay', () => {
 
   it('AC-005.1: 32칸 모두 제 열쇠의 글자로 바꾼다', async () => {
     const { client } = fakeClient({ ...OK, data: FULL_COLUMNS })
-    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: [] })
+    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: [], memoFontPt: 11, cash: emptyWorklogCash() })
   })
 
   it('AC-005.1: 서버 null은 빈 글자이고, 값이 있는 칸의 글자는 그대로다', async () => {
@@ -186,19 +199,26 @@ describe('loadWorklogDay', () => {
         cashIn: '12,000 별도',
       },
       bitFields: [],
+      memoFontPt: 11,
+      cash: emptyWorklogCash(),
     })
   })
 
   it('AC-005.1: 모든 칸이 null인 줄을 읽으면 emptyWorklogDay와 같다', async () => {
     const allNull = Object.fromEntries(SELECT.split(',').map((column) => [column, null]))
     const { client } = fakeClient({ ...OK, data: allNull })
-    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: emptyWorklogDay(), bitFields: [] })
+    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({
+      day: emptyWorklogDay(),
+      bitFields: [],
+      memoFontPt: 11,
+      cash: emptyWorklogCash(),
+    })
   })
 
   it('AC-005.1: 응답에 정한 칸 밖의 값이 섞여도 화면 모양에 넣지 않는다', async () => {
     const data = { ...FULL_COLUMNS, hospital_id: 'fake-hospital', updated_at: 'fake-time', work_date: YMD }
     const { client } = fakeClient({ ...OK, data })
-    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: [] })
+    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: [], memoFontPt: 11, cash: emptyWorklogCash() })
   })
 
   it('AC-005.1: 그 날짜 줄이 없으면 null이다', async () => {
@@ -519,6 +539,8 @@ describe('비트 칸 목록 bit_fields', () => {
     await expect(loadWorklogDay(client, YMD)).resolves.toEqual({
       day: FULL_DAY,
       bitFields: ['newPatients', 'cashIn', 'unpaidPaid'],
+      memoFontPt: 11,
+      cash: emptyWorklogCash(),
     })
   })
 
@@ -568,13 +590,18 @@ describe('비트 칸 목록 bit_fields', () => {
 
   it('AC-016.1: bit_fields가 없는 옛 줄은 빈 목록이다', async () => {
     const { client } = fakeClient({ ...OK, data: { ...FULL_COLUMNS } })
-    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: [] })
+    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: [], memoFontPt: 11, cash: emptyWorklogCash() })
   })
 
   it('AC-016.1: 진짜 클라이언트로도 bit_fields를 묻고 받은 목록을 열쇠 이름으로 돌려준다', async () => {
     const body = JSON.stringify({ ...FULL_COLUMNS, bit_fields: ['total_fee', 'spend_cash', 'total_fee'] })
     const fakeFetch = vi.fn<typeof fetch>(async () => new Response(body, { status: 200 }))
-    await expect(loadWorklogDay(realClient(fakeFetch), YMD)).resolves.toEqual({ day: FULL_DAY, bitFields: ['totalFee'] })
+    await expect(loadWorklogDay(realClient(fakeFetch), YMD)).resolves.toEqual({
+      day: FULL_DAY,
+      bitFields: ['totalFee'],
+      memoFontPt: 11,
+      cash: emptyWorklogCash(),
+    })
     const url = new URL(String(fakeFetch.mock.calls[0]?.[0]))
     expect(url.searchParams.get('select')?.split(',')).toContain('bit_fields')
   })
@@ -667,6 +694,488 @@ describe('비트 칸 목록 bit_fields', () => {
     const [input, init] = fakeFetch.mock.calls[0] ?? []
     expect(new URL(String(input)).searchParams.get('on_conflict')).toBe('hospital_id,work_date')
     expect(JSON.parse(String(init?.body))).toEqual({ work_date: YMD, ...ONE_COLUMN, bit_fields: ['claim_amount', 'card_in'] })
+  })
+})
+
+describe('업무사항 글씨 크기 memo_font_pt', () => {
+  // 타입을 넘어 온 값(목록 밖 숫자·글자 등)을 억지로 넣을 때만 쓴다
+  const oddPt = (value: unknown) => value as MemoFontPt
+
+  async function loadedPt(data: Record<string, unknown>) {
+    const { client } = fakeClient({ ...OK, data })
+    return (await loadWorklogDay(client, YMD))?.memoFontPt
+  }
+
+  it('AC-1503.1: 서버 값 14를 읽으면 day·bitFields와 함께 memoFontPt 14를 돌려준다', async () => {
+    const { client } = fakeClient({ ...OK, data: { ...FULL_COLUMNS, bit_fields: ['cash_in'], memo_font_pt: 14 } })
+    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({
+      day: FULL_DAY,
+      bitFields: ['cashIn'],
+      memoFontPt: 14,
+      cash: emptyWorklogCash(),
+    })
+  })
+
+  it.each(MEMO_FONT_PTS)('AC-1503.1: 목록 안 크기 %ipt는 그대로 읽는다', async (pt) => {
+    await expect(loadedPt({ ...FULL_COLUMNS, memo_font_pt: pt })).resolves.toBe(pt)
+  })
+
+  it.each<[string, unknown]>([
+    ['목록 밖 숫자 13', 13],
+    ['목록 밖 숫자 0', 0],
+    ['null', null],
+    ['글자 14', '14'],
+    ['소수 11.5', 11.5],
+    ['배열', [14]],
+  ])('AC-1503.1: 서버 값이 %s이면 11이다', async (_name, stored) => {
+    await expect(loadedPt({ ...FULL_COLUMNS, memo_font_pt: stored })).resolves.toBe(11)
+  })
+
+  it('AC-1503.1: memo_font_pt 칸이 없는 줄은 11이다', async () => {
+    await expect(loadedPt({ ...FULL_COLUMNS })).resolves.toBe(11)
+  })
+
+  it('AC-1503.1: 줄이 없으면 지금처럼 null이다(크기만 따로 돌려주지 않는다)', async () => {
+    const { client } = fakeClient()
+    await expect(loadWorklogDay(client, YMD)).resolves.toBeNull()
+  })
+
+  it('AC-1503.1: 진짜 클라이언트로도 memo_font_pt를 묻고 받은 크기를 돌려준다', async () => {
+    const body = JSON.stringify({ ...FULL_COLUMNS, bit_fields: null, memo_font_pt: 16 })
+    const fakeFetch = vi.fn<typeof fetch>(async () => new Response(body, { status: 200 }))
+    await expect(loadWorklogDay(realClient(fakeFetch), YMD)).resolves.toEqual({
+      day: FULL_DAY,
+      bitFields: [],
+      memoFontPt: 16,
+      cash: emptyWorklogCash(),
+    })
+    const url = new URL(String(fakeFetch.mock.calls[0]?.[0]))
+    expect(url.searchParams.get('select')?.split(',')).toContain('memo_font_pt')
+    expect(url.searchParams.get('select')).not.toContain('hospital_id')
+  })
+
+  it('AC-1503.2: 다섯째 인자 14를 주면 upsert 한 번에 받은 칸·bit_fields와 memo_font_pt: 14(숫자)가 함께 간다', async () => {
+    const { client, calls } = fakeClient()
+    await saveWorklogDay(client, YMD, ONE_CELL, ['cashIn'], 14)
+    expect(calls.upsert).toHaveLength(1)
+    expect(calls.upsert[0]?.row).toEqual({ work_date: YMD, ...ONE_COLUMN, bit_fields: ['cash_in'], memo_font_pt: 14 })
+    expect(calls.upsert[0]?.row.memo_font_pt).toBe(14)
+    expect(calls.upsert[0]?.options).toEqual({ onConflict: 'hospital_id,work_date' })
+  })
+
+  it.each(MEMO_FONT_PTS)('AC-1503.2: 목록 안 크기 %ipt는 숫자 그대로 보낸다', async (pt) => {
+    await expect(savedRow(ONE_CELL, undefined, pt)).resolves.toEqual({ work_date: YMD, ...ONE_COLUMN, memo_font_pt: pt })
+  })
+
+  it('AC-1503.2: 바뀐 칸이 없고 셋째가 undefined여도 다섯째만 주면 work_date와 memo_font_pt만 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    await saveWorklogDay(client, YMD, {}, undefined, 12)
+    expect(calls.from).toEqual(['worklog_days'])
+    expect(calls.upsert).toHaveLength(1)
+    expect(calls.upsert[0]?.row).toEqual({ work_date: YMD, memo_font_pt: 12 })
+    expect(calls.upsert[0]?.row).not.toHaveProperty('bit_fields')
+    expect(calls.upsert[0]?.row).not.toHaveProperty('hospital_id')
+  })
+
+  it('AC-1503.2: 막는 칸은 빼고, 남은 것이 크기뿐이면 work_date와 memo_font_pt만 보낸다', async () => {
+    const row = await savedRow({ memo: PHONE }, undefined, 9)
+    expect(row).toEqual({ work_date: YMD, memo_font_pt: 9 })
+    expect(JSON.stringify(row)).not.toContain(PHONE)
+  })
+
+  it('AC-1503.2: 크기만 주고 오프라인이면 부르지 않고 offline이다', async () => {
+    vi.stubGlobal('navigator', { onLine: false })
+    const { client, calls } = fakeClient()
+    const error = await caught(() => saveWorklogDay(client, YMD, {}, undefined, 14))
+    expect(error.kind).toBe('offline')
+    expect(calls.from).toEqual([])
+  })
+
+  it('AC-1503.2: 진짜 클라이언트로도 요청 한 번, 본문의 memo_font_pt는 숫자 14다', async () => {
+    const fakeFetch = vi.fn<typeof fetch>(async () => new Response(null, { status: 201 }))
+    await saveWorklogDay(realClient(fakeFetch), YMD, {}, undefined, 14)
+    expect(fakeFetch).toHaveBeenCalledTimes(1)
+    const [input, init] = fakeFetch.mock.calls[0] ?? []
+    expect(new URL(String(input)).searchParams.get('on_conflict')).toBe('hospital_id,work_date')
+    expect(JSON.parse(String(init?.body))).toEqual({ work_date: YMD, memo_font_pt: 14 })
+    expect(String(init?.body)).toContain('"memo_font_pt":14')
+  })
+
+  it('AC-1503.3: 다섯째 인자를 주지 않으면 memo_font_pt 칸을 보내지 않는다(기본값 11로 덮지 않는다)', async () => {
+    const { client, calls } = fakeClient()
+    await saveWorklogDay(client, YMD, ONE_CELL, ['cashIn'])
+    expect(calls.upsert[0]?.row).toEqual({ work_date: YMD, ...ONE_COLUMN, bit_fields: ['cash_in'] })
+    expect(calls.upsert[0]?.row).not.toHaveProperty('memo_font_pt')
+    await expect(savedRow(FULL_DAY)).resolves.not.toHaveProperty('memo_font_pt')
+  })
+
+  it('AC-1503.3: 다섯째가 undefined이면 준 것이 아니다', async () => {
+    const row = await savedRow(ONE_CELL, undefined, undefined)
+    expect(row).toEqual({ work_date: YMD, ...ONE_COLUMN })
+    expect(Object.keys(row ?? {})).not.toContain('memo_font_pt')
+  })
+
+  it.each<[string, unknown]>([
+    ['목록 밖 숫자 13', 13],
+    ['목록 밖 숫자 0', 0],
+    ['글자 14', '14'],
+    ['null', null],
+    ['소수 11.5', 11.5],
+    ['NaN', Number.NaN],
+  ])('AC-1503.3: 목록 밖 값(%s)은 memo_font_pt 칸을 보내지 않고 받은 칸은 그대로 보낸다', async (_name, value) => {
+    const row = await savedRow(ONE_CELL, ['cardIn'], oddPt(value))
+    expect(row).toEqual({ work_date: YMD, ...ONE_COLUMN, bit_fields: ['card_in'] })
+    expect(row).not.toHaveProperty('memo_font_pt')
+  })
+
+  it.each<[string, unknown]>([
+    ['목록 밖 숫자 13', 13],
+    ['글자 14', '14'],
+    ['null', null],
+  ])('AC-1503.3: 보낼 것이 목록 밖 크기(%s)뿐이면 네트워크를 부르지 않는다', async (_name, value) => {
+    vi.stubGlobal('navigator', { onLine: false })
+    const { client, calls } = fakeClient()
+    await expect(saveWorklogDay(client, YMD, {}, undefined, oddPt(value))).resolves.toBeUndefined()
+    expect(calls.from).toEqual([])
+    expect(calls.upsert).toEqual([])
+  })
+})
+
+describe('현금 시재 cash', () => {
+  // 칸이 뒤바뀌면 잡히도록 칸마다 다른 값이다(지어낸 숫자)
+  const CASH_CELLS: readonly (readonly [WorklogCashKey, string, number | boolean | string])[] = [
+    ['count50000', 'cash_count_50000', 11],
+    ['count10000', 'cash_count_10000', 12],
+    ['count5000', 'cash_count_5000', 13],
+    ['count1000', 'cash_count_1000', 14],
+    ['count500', 'cash_count_500', 15],
+    ['count100', 'cash_count_100', 16],
+    ['count50', 'cash_count_50', 17],
+    ['count10', 'cash_count_10', 18],
+    ['floatWon', 'cash_float', 250000],
+    ['refundCash', 'cash_refund_cash', true],
+    ['unpaidCash', 'cash_unpaid_cash', true],
+    ['reason', 'cash_reason', '가상 차이 이유'],
+  ]
+  const FULL_CASH = Object.fromEntries(CASH_CELLS.map(([key, , value]) => [key, value])) as WorklogCash
+  const FULL_CASH_COLUMNS = Object.fromEntries(CASH_CELLS.map(([, column, value]) => [column, value]))
+  const CASH_COLUMN_NAMES = CASH.split(',')
+  // 타입을 넘어 온 값(범위 밖 숫자·글자 등)을 억지로 넣을 때만 쓴다
+  const oddCash = (values: Record<string, unknown>) => values as unknown as WorklogCashChanges
+
+  async function loadedCash(data: Record<string, unknown>) {
+    const { client } = fakeClient({ ...OK, data })
+    return (await loadWorklogDay(client, YMD))?.cash
+  }
+
+  function cashColumnsIn(row: Record<string, unknown> | undefined): string[] {
+    return Object.keys(row ?? {}).filter((column) => CASH_COLUMN_NAMES.includes(column))
+  }
+
+  it('AC-1603.1: 읽은 시재 12칸을 제 열쇠의 값으로 바꿔 day·bitFields·memoFontPt와 함께 돌려준다', async () => {
+    const { client } = fakeClient({ ...OK, data: { ...FULL_COLUMNS, bit_fields: ['cash_in'], memo_font_pt: 12, ...FULL_CASH_COLUMNS } })
+    await expect(loadWorklogDay(client, YMD)).resolves.toEqual({
+      day: FULL_DAY,
+      bitFields: ['cashIn'],
+      memoFontPt: 12,
+      cash: FULL_CASH,
+    })
+  })
+
+  it('AC-1603.1: 시안 예시 장수·꺼진 확인란·빈 이유(null)를 그대로 읽는다', async () => {
+    const data = {
+      ...FULL_COLUMNS,
+      cash_count_50000: 6,
+      cash_count_10000: 11,
+      cash_count_5000: 1,
+      cash_count_1000: 10,
+      cash_count_500: 6,
+      cash_count_100: 20,
+      cash_count_50: 0,
+      cash_count_10: 0,
+      cash_float: 300000,
+      cash_refund_cash: false,
+      cash_unpaid_cash: false,
+      cash_reason: null,
+    }
+    await expect(loadedCash(data)).resolves.toEqual({
+      count50000: 6,
+      count10000: 11,
+      count5000: 1,
+      count1000: 10,
+      count500: 6,
+      count100: 20,
+      count50: 0,
+      count10: 0,
+      floatWon: 300000,
+      refundCash: false,
+      unpaidCash: false,
+      reason: '',
+    })
+  })
+
+  it('AC-1603.1: 범위 끝 값(장수 9999·시재 0과 10,000,000·이유 200자)은 그대로 읽는다', async () => {
+    const reason = '가'.repeat(200)
+    await expect(loadedCash({ ...FULL_COLUMNS, cash_count_10: 9999, cash_float: 0, cash_reason: reason })).resolves.toEqual({
+      ...emptyWorklogCash(),
+      count10: 9999,
+      floatWon: 0,
+      reason,
+    })
+    await expect(loadedCash({ ...FULL_COLUMNS, cash_float: 10_000_000 })).resolves.toEqual({
+      ...emptyWorklogCash(),
+      floatWon: 10_000_000,
+    })
+  })
+
+  it.each<[string, string, unknown]>([
+    ['음수 장수', 'cash_count_5000', -1],
+    ['5자리 장수', 'cash_count_5000', 10000],
+    ['소수 장수', 'cash_count_1000', 1.5],
+    ['글자 장수', 'cash_count_100', '3'],
+    ['null 장수', 'cash_count_50000', null],
+    ['참거짓 장수', 'cash_count_10', true],
+    ['음수 시재', 'cash_float', -1],
+    ['너무 큰 시재', 'cash_float', 10_000_001],
+    ['소수 시재', 'cash_float', 1.5],
+    ['글자 시재', 'cash_float', '300000'],
+    ['글자 확인란', 'cash_refund_cash', 'true'],
+    ['숫자 확인란', 'cash_unpaid_cash', 1],
+    ['null 확인란', 'cash_refund_cash', null],
+    ['201자 이유', 'cash_reason', '가'.repeat(201)],
+    ['숫자 이유', 'cash_reason', 5],
+    ['배열 이유', 'cash_reason', ['가상']],
+  ])('AC-1603.1: 범위 밖·모양이 틀린 값(%s)은 걸러 빈 시재 값이다', async (_name, column, stored) => {
+    await expect(loadedCash({ ...FULL_COLUMNS, [column]: stored })).resolves.toEqual(emptyWorklogCash())
+  })
+
+  it('AC-1603.1: 시재 칸이 없는 응답(새 칸 전의 줄)은 emptyWorklogCash()다', async () => {
+    await expect(loadedCash({ ...FULL_COLUMNS, bit_fields: ['cash_in'], memo_font_pt: 14 })).resolves.toEqual(emptyWorklogCash())
+  })
+
+  it('AC-1603.1: 열쇠 이름(count5000 등)으로 온 값은 DB 칸이 아니라 읽지 않는다', async () => {
+    const data = { ...FULL_COLUMNS, count5000: 3, floatWon: 300000, refundCash: true, reason: '가상' }
+    await expect(loadedCash(data)).resolves.toEqual(emptyWorklogCash())
+  })
+
+  it('AC-1603.1: 진짜 클라이언트로도 시재 12칸을 묻고 받은 값을 열쇠 이름으로 돌려준다', async () => {
+    const body = JSON.stringify({ ...FULL_COLUMNS, bit_fields: null, memo_font_pt: null, ...FULL_CASH_COLUMNS })
+    const fakeFetch = vi.fn<typeof fetch>(async () => new Response(body, { status: 200 }))
+    await expect(loadWorklogDay(realClient(fakeFetch), YMD)).resolves.toEqual({
+      day: FULL_DAY,
+      bitFields: [],
+      memoFontPt: 11,
+      cash: FULL_CASH,
+    })
+    const url = new URL(String(fakeFetch.mock.calls[0]?.[0]))
+    expect(url.searchParams.get('select')?.split(',').slice(-12)).toEqual(CASH_COLUMN_NAMES)
+    expect(url.searchParams.get('select')).not.toContain('hospital_id')
+  })
+
+  it('AC-1603.2: 여섯째 인자를 주면 upsert 한 번에 받은 칸·bit_fields·memo_font_pt와 받은 시재 칸만 함께 간다', async () => {
+    const { client, calls } = fakeClient()
+    await saveWorklogDay(client, YMD, ONE_CELL, ['cashIn'], 14, { count5000: 2, floatWon: 300000 })
+    expect(calls.from).toEqual(['worklog_days'])
+    expect(calls.upsert).toHaveLength(1)
+    expect(calls.upsert[0]?.row).toEqual({
+      work_date: YMD,
+      ...ONE_COLUMN,
+      bit_fields: ['cash_in'],
+      memo_font_pt: 14,
+      cash_count_5000: 2,
+      cash_float: 300000,
+    })
+    expect(calls.upsert[0]?.options).toEqual({ onConflict: 'hospital_id,work_date' })
+    expect(calls.select).toEqual([])
+  })
+
+  it.each(CASH_CELLS)('AC-1603.2: 시재 %s 하나만 주면 row는 정확히 work_date와 %s다', async (key, column, value) => {
+    await expect(savedRow({}, undefined, undefined, { [key]: value })).resolves.toEqual({ work_date: YMD, [column]: value })
+  })
+
+  it('AC-1603.2: 시재 12칸을 다 주면 work_date와 12칸, 장수·시재는 숫자·확인란은 참거짓·이유는 글이다', async () => {
+    const row = await savedRow({}, undefined, undefined, FULL_CASH)
+    expect(row).toEqual({ work_date: YMD, ...FULL_CASH_COLUMNS })
+    expect(Object.keys(row ?? {})).toHaveLength(13)
+    expect(row).not.toHaveProperty('hospital_id')
+    for (const [, column, value] of CASH_CELLS) expect(typeof row?.[column]).toBe(typeof value)
+  })
+
+  it('AC-1603.2: 꺼진 확인란(false)과 장수 0도 보낸다(지운 값이라 다른 PC 값을 덮어야 한다)', async () => {
+    await expect(savedRow({}, undefined, undefined, { refundCash: false, unpaidCash: false, count1000: 0 })).resolves.toEqual({
+      work_date: YMD,
+      cash_refund_cash: false,
+      cash_unpaid_cash: false,
+      cash_count_1000: 0,
+    })
+  })
+
+  it('AC-1603.2: 이유는 앞뒤 빈칸을 빼고 보낸다(가운데 빈칸·줄은 그대로)', async () => {
+    await expect(savedRow({}, undefined, undefined, { reason: '  가상 거스름돈\n실수 ' })).resolves.toEqual({
+      work_date: YMD,
+      cash_reason: '가상 거스름돈\n실수',
+    })
+  })
+
+  it.each([
+    ['빈 글자', ''],
+    ['빈칸뿐', '   '],
+    ['줄바꿈뿐', '\n \t'],
+  ])('AC-1603.2: 비운 이유(%s)는 null로 보낸다', async (_name, reason) => {
+    await expect(savedRow({}, undefined, undefined, { reason })).resolves.toEqual({ work_date: YMD, cash_reason: null })
+  })
+
+  it('AC-1603.2: 범위 끝 값(장수 9999·시재 0과 10,000,000·이유 200자)은 보낸다', async () => {
+    const reason = '가'.repeat(200)
+    await expect(savedRow({}, undefined, undefined, { count50: 9999, floatWon: 0, reason })).resolves.toEqual({
+      work_date: YMD,
+      cash_count_50: 9999,
+      cash_float: 0,
+      cash_reason: reason,
+    })
+    await expect(savedRow({}, undefined, undefined, { floatWon: 10_000_000 })).resolves.toEqual({ work_date: YMD, cash_float: 10_000_000 })
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['음수 장수', { count5000: -1 }],
+    ['5자리 장수', { count5000: 10000 }],
+    ['소수 장수', { count1000: 1.5 }],
+    ['NaN 장수', { count100: Number.NaN }],
+    ['글자 장수', { count10: '3' }],
+    ['null 장수', { count50000: null }],
+    ['음수 시재', { floatWon: -1 }],
+    ['너무 큰 시재', { floatWon: 10_000_001 }],
+    ['소수 시재', { floatWon: 1.5 }],
+    ['글자 시재', { floatWon: '300000' }],
+    ['글자 확인란', { refundCash: 'true' }],
+    ['숫자 확인란', { unpaidCash: 1 }],
+    ['null 확인란', { refundCash: null }],
+    ['201자 이유', { reason: '가'.repeat(201) }],
+    ['숫자 이유', { reason: 5 }],
+    ['null 이유', { reason: null }],
+  ])('AC-1603.2: 범위 밖·모양이 틀린 값(%s)은 그 칸을 보내지 않고 나머지는 보낸다', async (_name, values) => {
+    const row = await savedRow(ONE_CELL, undefined, undefined, oddCash({ count500: 3, ...values }))
+    expect(row).toEqual({ work_date: YMD, ...ONE_COLUMN, cash_count_500: 3 })
+  })
+
+  it.each([
+    ['전화', PHONE],
+    ['붙여 쓴 전화', '01000001234'],
+    ['주민번호', '900101-1234567'],
+    ['붙여 쓴 주민번호', '9001011234567'],
+    ['메일', 'a@b.co'],
+    ['글 속 전화', `가상 거스름돈 ${PHONE}`],
+    ['앞뒤 빈칸이 붙은 전화', ` ${PHONE} `],
+  ])('AC-1603.2: 이유에 %s 모양이 있으면 이유만 빼고 나머지 시재 칸을 보낸다', async (_shape, reason) => {
+    const row = await savedRow({}, undefined, undefined, { count5000: 2, reason })
+    expect(row).toEqual({ work_date: YMD, cash_count_5000: 2 })
+    expect(JSON.stringify(row)).not.toContain(reason.trim())
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['빈 객체', {}],
+    ['개인정보 모양 이유뿐', { reason: PHONE }],
+    ['범위 밖 값뿐', { count5000: -1, floatWon: 10_000_001, refundCash: 'true' }],
+    ['undefined 칸뿐', { count5000: undefined, reason: undefined }],
+    ['정한 칸 밖 열쇠뿐', { cash_count_5000: 2, count5: 1, hospital_id: 'fake-hospital' }],
+  ])('AC-1603.2: 보낼 시재 칸이 없고(%s) 다른 것도 없으면 오프라인이어도 네트워크를 부르지 않는다', async (_name, values) => {
+    vi.stubGlobal('navigator', { onLine: false })
+    const { client, calls } = fakeClient()
+    await expect(saveWorklogDay(client, YMD, {}, undefined, undefined, oddCash(values))).resolves.toBeUndefined()
+    expect(calls.from).toEqual([])
+    expect(calls.upsert).toEqual([])
+  })
+
+  it('AC-1603.2: 막는 일지 칸·개인정보 모양 이유를 빼고 남은 것이 장수뿐이면 work_date와 장수만 보낸다', async () => {
+    const row = await savedRow({ memo: PHONE }, undefined, undefined, { count1000: 4, reason: PHONE })
+    expect(row).toEqual({ work_date: YMD, cash_count_1000: 4 })
+    expect(JSON.stringify(row)).not.toContain(PHONE)
+  })
+
+  it('AC-1603.2: 바뀐 칸이 없고 셋~다섯째가 undefined여도 여섯째만 주면 work_date와 시재 칸만 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    await saveWorklogDay(client, YMD, {}, undefined, undefined, { count1000: 3, floatWon: 250000 })
+    expect(calls.from).toEqual(['worklog_days'])
+    expect(calls.upsert).toHaveLength(1)
+    expect(calls.upsert[0]?.row).toEqual({ work_date: YMD, cash_count_1000: 3, cash_float: 250000 })
+    expect(calls.upsert[0]?.row).not.toHaveProperty('bit_fields')
+    expect(calls.upsert[0]?.row).not.toHaveProperty('memo_font_pt')
+    expect(calls.upsert[0]?.row).not.toHaveProperty('hospital_id')
+    expect(calls.upsert[0]?.options).toEqual({ onConflict: 'hospital_id,work_date' })
+  })
+
+  it('AC-1603.2: 다른 열쇠를 억지로 섞어도 정한 시재 칸만 보내고 날짜를 덮어쓰지 못한다', async () => {
+    const mixed = oddCash({
+      count5000: 2,
+      cash_count_5000: 9,
+      count5: 1,
+      hospital_id: 'fake-hospital',
+      work_date: '1999-01-01',
+      updated_at: 'fake-time',
+    })
+    await expect(savedRow({}, undefined, undefined, mixed)).resolves.toEqual({ work_date: YMD, cash_count_5000: 2 })
+  })
+
+  it('AC-1603.2: 여섯째 인자를 주지 않으면 시재 칸을 하나도 보내지 않는다', async () => {
+    const { client, calls } = fakeClient()
+    await saveWorklogDay(client, YMD, ONE_CELL, ['cashIn'], 14)
+    expect(calls.upsert[0]?.row).toEqual({ work_date: YMD, ...ONE_COLUMN, bit_fields: ['cash_in'], memo_font_pt: 14 })
+    expect(cashColumnsIn(calls.upsert[0]?.row)).toEqual([])
+    expect(cashColumnsIn(await savedRow(FULL_DAY))).toEqual([])
+  })
+
+  it('AC-1603.2: 여섯째가 undefined이면 준 것이 아니다. 억지로 null을 주어도 시재 칸을 보내지 않는다', async () => {
+    await expect(savedRow(ONE_CELL, undefined, undefined, undefined)).resolves.toEqual({ work_date: YMD, ...ONE_COLUMN })
+    await expect(savedRow(ONE_CELL, undefined, undefined, null as unknown as WorklogCashChanges)).resolves.toEqual({
+      work_date: YMD,
+      ...ONE_COLUMN,
+    })
+  })
+
+  it('AC-1603.2: 여섯째 객체의 undefined 칸은 안 받은 칸이다', async () => {
+    await expect(savedRow(ONE_CELL, undefined, undefined, { count5000: 2, count1000: undefined, reason: undefined })).resolves.toEqual({
+      work_date: YMD,
+      ...ONE_COLUMN,
+      cash_count_5000: 2,
+    })
+  })
+
+  it('AC-1603.2: 시재 칸만 주고 오프라인이면 부르지 않고 offline이며 오류에 이유 글이 없다', async () => {
+    vi.stubGlobal('navigator', { onLine: false })
+    const { client, calls } = fakeClient()
+    const error = await caught(() => saveWorklogDay(client, YMD, {}, undefined, undefined, { reason: '가상 비밀 이유' }))
+    expect(error.kind).toBe('offline')
+    expect(JSON.stringify(error)).not.toContain('가상 비밀 이유')
+    expect(calls.from).toEqual([])
+  })
+
+  it('AC-1603.2: 시재만 보낸 저장이 실패하면 failed이고 오류에는 종류만 있다', async () => {
+    const { client } = fakeClient(failure(400))
+    const error = await caught(() => saveWorklogDay(client, YMD, {}, undefined, undefined, { count5000: 2 }))
+    expect(error.kind).toBe('failed')
+    expectNoSecret(error)
+  })
+
+  it('AC-1603.2: 진짜 클라이언트로도 요청 한 번, 본문은 work_date와 받은 시재 칸뿐이고 값의 모양이 그대로다', async () => {
+    const fakeFetch = vi.fn<typeof fetch>(async () => new Response(null, { status: 201 }))
+    await saveWorklogDay(realClient(fakeFetch), YMD, {}, undefined, undefined, {
+      count5000: 2,
+      floatWon: 300000,
+      refundCash: false,
+      reason: ' 가상 이유 ',
+    })
+    expect(fakeFetch).toHaveBeenCalledTimes(1)
+    const [input, init] = fakeFetch.mock.calls[0] ?? []
+    expect(new URL(String(input)).searchParams.get('on_conflict')).toBe('hospital_id,work_date')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      work_date: YMD,
+      cash_count_5000: 2,
+      cash_float: 300000,
+      cash_refund_cash: false,
+      cash_reason: '가상 이유',
+    })
+    expect(String(init?.body)).toContain('"cash_float":300000')
+    expect(String(init?.body)).toContain('"cash_refund_cash":false')
   })
 })
 

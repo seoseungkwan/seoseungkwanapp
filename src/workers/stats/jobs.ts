@@ -11,8 +11,10 @@ import {
   type RxSplitTotals,
 } from '@/lib/analytics/rxVisitSplit'
 import { createPatientIds } from '@/lib/parsers/bit'
+import { fillGroupCounts } from '@/lib/payload/groupCounts'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
+import type { RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { RxSplitLine, RxSplitView, StatsChecks, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
 import { createAssembler, StatsDataError } from './assemble'
@@ -32,14 +34,16 @@ export type StatsMemory = {
 
 const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
 
+// groups = 화면이 준 묶음 열쇠·코드(없으면 []). 일 줄에는 열쇠마다 한 줄을 채우고(그날 없으면 0줄, treatment-trend AC-1205.4),
+// 달 줄은 aggregate가 준 그대로 둔다
 export function loadJob(
   text: string,
-  opts: { from: string; to: string; today: string; closeToday: boolean },
+  opts: { from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[] },
 ): { view: StatsLoaded; memory: StatsMemory } {
-  const { from, to, today, closeToday } = opts
+  const { from, to, today, closeToday, groups = [] } = opts
   const data = parseStatsRows(text, { from, to })
   const ids = createPatientIds()
-  const aggregates = aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))
+  const aggregates = aggregate(toConsumptionRows(data, ids), groups, toPatientDays(data, ids))
 
   const { noChart, duplicate, noFirst } = data.summary
   const checks: StatsChecks = { noChart, duplicate, noFirst }
@@ -60,6 +64,7 @@ export function loadJob(
 
   // 끝나지 않은 오늘을 덮은 날로 저장하면 다음 날 그날이 휴진 0으로 읽힌다
   const lastDone = earlier(to, closeToday ? today : addDays(today, -1))
+  const days = toDayPayloads(result)
   const view: StatsLoaded = {
     range: { from, to },
     covered: compareYmd(from, lastDone) <= 0 ? { from, to: lastDone } : null,
@@ -67,7 +72,7 @@ export function loadJob(
     checks,
     // 도우미는 동네를 읽지 않는다. 모두 '주소 없음'이 된 칸을 저장하지 않는다
     months: toMonthPayload(result)?.map((month) => ({ ...month, regions: [] })) ?? null,
-    days: toDayPayloads(result),
+    days: days === null ? null : fillGroupCounts(days, groups.map((group) => group.id)),
     report: data.report,
   }
   const memory: StatsMemory = {
@@ -173,13 +178,13 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
       }
     },
 
-    async load({ streamId, from, to, today, closeToday }) {
+    async load({ streamId, from, to, today, closeToday, groups }) {
       latest = streamId
       let reply: StatsWorkerMessage
       try {
         const text = await textOf(streamId).promise
         if (latest !== streamId) return // 화면이 포기하고 새로 불렀다. 옛 자료로 메모리를 되돌리지 않는다
-        const loaded = loadJob(text, { from, to, today, closeToday })
+        const loaded = loadJob(text, { from, to, today, closeToday, groups: groups ?? [] })
         memory = loaded.memory
         reply = { type: 'loaded', streamId, view: loaded.view }
       } catch (e) {

@@ -8,7 +8,7 @@ import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import { CHART_NO_SIDE_SCROLL } from './parts'
 import { RxPickDetail, type RxPickMode } from './RxPickDetail'
-import { detailNote } from './RxTrendSection'
+import { detailNote } from './trendLabels'
 
 // 줄을 눌러 여는 그래프·자세히 (rx-picker REQ-806·807, AC-809.2 그래프 단추). 처방·일 줄은 이 파일 안에서만 지은 가짜다
 

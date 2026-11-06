@@ -181,6 +181,15 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '고른 처방을 저장하지 못했어요',
     fix: '[다시 저장]을 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.',
   },
+  // 통계 처방별 추세 묶음 읽기·저장(lib/storage/statsRxGroups.ts, spec treatment-trend AC-1203.4)
+  'E-STATS-GROUP-READ-FAILED': {
+    what: '처방별 추세 묶음을 읽지 못했어요',
+    fix: '[다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.',
+  },
+  'E-STATS-GROUP-SAVE-FAILED': {
+    what: '처방별 추세 묶음을 저장하지 못했어요',
+    fix: '인터넷 연결을 확인하고 [저장]을 다시 눌러 주세요. 계속되면 화면을 새로 열어 주세요.',
+  },
   // 점검 표(규칙·상병·약·처방코드)를 Worker가 불러오다 실패하거나 모양이 틀림(design.md 4-5, AC-007.5). 화면은 오류 카드와 [다시 불러오기](AC-013.5)
   'E-RULES-LOAD-FAILED': {
     what: '점검 규칙표를 불러오지 못해 점검을 시작하지 않았어요',
