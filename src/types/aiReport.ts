@@ -1,7 +1,7 @@
 // AI 월간 리포트(spec ai-report design.md '타입'). 서버·Claude에는 이 입력의 집계 숫자만 간다
 // ReportInput·ReportMetric은 열쇠 순서가 곧 지문이다(reportFingerprint가 JSON.stringify 순서를 본다) — 칸 차례를 바꾸지 않는다
 
-export type MetricKind = 'count' | 'rate' // count = 명, rate = 0~1 비율
+export type MetricKind = 'count' | 'visits' | 'rate' // count = 명(사람 수), visits = 건(접수 건수), rate = 0~1 비율
 
 export type ReportMetric = {
   id: string // 'total.newPatients' · 'group:<id>.patients' · 'rx:<code>' · 'region:<이름>' · 'revisit.within7'

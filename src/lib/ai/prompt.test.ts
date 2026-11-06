@@ -161,9 +161,55 @@ describe('systemPrompt', () => {
     expect(lines.slice(header + 1, index).some((line) => line.startsWith('['))).toBe(false)
   })
 
-  it("AC-508.4 지시문 판은 'ai-report-2'이고 지시문 글자에 들어가지 않는다", () => {
-    expect(PROMPT_VERSION).toBe('ai-report-2')
+  it("AC-508.4·AC-2004.3 지시문 판은 'ai-report-3'이고 지시문 글자에 들어가지 않는다", () => {
+    expect(PROMPT_VERSION).toBe('ai-report-3')
     expect(systemPrompt()).not.toContain(PROMPT_VERSION)
+  })
+})
+
+// 묶음 머리([…]) 아래 줄들(다음 머리 전까지)
+function section(header: string): string[] {
+  const lines = systemPrompt().split(/\r?\n/)
+  const start = lines.indexOf(header)
+  expect(start, header).toBeGreaterThanOrEqual(0)
+  const rest = lines.slice(start + 1)
+  const end = rest.findIndex((line) => line.startsWith('['))
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+describe('systemPrompt — 접수 건수와 덜 불러온 달 (spec ai-report-stats)', () => {
+  it('AC-2004.3 kind 설명 줄에 visits(접수 건수, 같은 분이 여러 번 오면 여러 건)·count(사람 수)·rate(0~1 비율)가 있다', () => {
+    const lines = section('[입력]').filter((line) => line.includes('kind가'))
+    expect(lines).toHaveLength(1)
+    const rule = lines[0]
+    expect(rule).toContain('kind가 visits면 접수 건수(같은 분이 한 달에 여러 번 오면 여러 건)')
+    expect(rule).toContain('count면 사람 수')
+    expect(rule).toContain('rate면 0~1 사이 비율입니다.')
+  })
+
+  it("AC-2004.3 [숫자 규칙] 안에 visits 지표는 사람 수가 아니라 '접수 건수가 늘었다'처럼 쓰라는 줄이 있다", () => {
+    const lines = section('[숫자 규칙]').filter((line) => line.includes('visits'))
+    expect(lines).toEqual([
+      "- kind가 visits인 지표(접수 건수·재진)는 사람 수가 아닙니다. '환자가 늘었다'·'환자 ○명'처럼 쓰지 않고 '접수 건수가 늘었다'·'재진 건수가 줄었다'처럼 씁니다.",
+    ])
+  })
+
+  it('AC-2005.2 [입력]의 partial 설명 줄은 고른 달 숫자가 그 달 전부가 아니라고(일부 날짜만 불러온 달도) 한다', () => {
+    const lines = section('[입력]').filter((line) => line.includes('partial'))
+    expect(lines).toEqual(['- partial이 true면 고른 달 숫자가 그 달 전부가 아닙니다(아직 끝나지 않았거나 일부 날짜만 불러온 달).'])
+    expect(lines[0]).toContain('그 달 전부가 아닙니다')
+    expect(lines[0]).toContain('일부 날짜만 불러온')
+  })
+
+  it('AC-2005.2 요약 첫 문장 줄은 진행 중이거나 일부 날짜만 불러온 달이라 숫자가 적게 보일 수 있다고 밝히게 한다', () => {
+    const lines = systemPrompt()
+      .split(/\r?\n/)
+      .filter((line) => line.includes('partial') && line.includes('요약'))
+    expect(lines).toEqual([
+      '- partial이 true면 요약 첫 문장에 아직 진행 중이거나 일부 날짜만 불러온 달이라 숫자가 적게 보일 수 있다고 밝힙니다. 값이 적다는 것만으로 줄었다고 단정하지 않습니다.',
+    ])
+    expect(lines[0]).toContain('진행 중')
+    expect(lines[0]).toContain('일부 날짜만 불러온')
   })
 })
 

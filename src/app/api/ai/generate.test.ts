@@ -425,3 +425,93 @@ describe('isReportStale', () => {
     expect(await isReportStale(MONTH, hash, async () => ({ ...base, prev: base.lastYear }))).toBe(true)
   })
 })
+
+// 덜 불러온(partial) 비교 달은 견주지 않는다(spec ai-report-stats REQ-2005). 검사는 통과한 달이다
+const asPartial = (value: unknown): unknown => ({ ...(value as Record<string, unknown>), partial: true })
+
+describe('비교 달이 덜 불러온 달이면 없는 달 (REQ-2005, REQ-2007)', () => {
+  const claudeInput = (deps: ReturnType<typeof setup>['deps']): ReportInput => {
+    const { user } = deps.callClaude.mock.calls[0][0]
+    return JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+  }
+
+  it('AC-2005.1 지난달 줄이 검사는 통과했지만 partial: true면 Claude 입력의 hasPrev가 false이고 지난달 값은 모두 null', async () => {
+    const base = fixtureMonths()
+    const months = { ...base, prev: asPartial(base.prev) }
+    expect(validateMonthPayload(months.prev)).not.toBeNull()
+    const { deps } = setup({ months })
+    const res = await generateReport(MONTH, deps)
+    expect(res.ok).toBe(true)
+    const input = claudeInput(deps)
+    expect(input.hasPrev).toBe(false)
+    expect(input.hasLastYear).toBe(true)
+    for (const metric of input.metrics) expect(metric.values.prev, metric.id).toBeNull()
+    expect(deps.callClaude.mock.calls[0][0].user).toBe(userMessage(inputOf({ ...base, prev: null })))
+  })
+
+  it('AC-2005.1 작년 같은 달 줄이 partial: true여도 같다(hasLastYear false, 작년 값 모두 null)', async () => {
+    const base = fixtureMonths()
+    const months = { ...base, lastYear: asPartial(base.lastYear) }
+    expect(validateMonthPayload(months.lastYear)).not.toBeNull()
+    const { deps } = setup({ months })
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    const input = claudeInput(deps)
+    expect(input.hasPrev).toBe(true)
+    expect(input.hasLastYear).toBe(false)
+    for (const metric of input.metrics) expect(metric.values.lastYear, metric.id).toBeNull()
+    expect(deps.callClaude.mock.calls[0][0].user).toBe(userMessage(inputOf({ ...base, lastYear: null })))
+  })
+
+  it('AC-2005.1 비교 달 둘 다 partial: false면 지금처럼 견준다', async () => {
+    const base = fixtureMonths()
+    const { deps } = setup({ months: base })
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    const input = claudeInput(deps)
+    expect(input.hasPrev).toBe(true)
+    expect(input.hasLastYear).toBe(true)
+    expect(input.metrics.find((m) => m.id === 'total.patients')?.values).toEqual({ selected: 2615, prev: 2480, lastYear: 2310 })
+  })
+
+  it('AC-2005.2 고른 달이 partial: true면 지금처럼 리포트를 만들고 Claude 입력의 partial이 true(비교 달은 그대로 견준다)', async () => {
+    const base = fixtureMonths()
+    const { deps } = setup({ months: { ...base, selected: asPartial(base.selected) } })
+    const res = await generateReport(MONTH, deps)
+    if (!res.ok) throw new Error('성공이어야 한다')
+    expect(res.report.partial).toBe(true)
+    const input = claudeInput(deps)
+    expect(input.partial).toBe(true)
+    expect(input.hasPrev).toBe(true)
+    expect(input.hasLastYear).toBe(true)
+  })
+
+  it('AC-2005.1 숫자 바뀜 비교도 같은 규칙: 저장 때 지난달이 partial: true였다가 지금 false면 지문이 달라 true', async () => {
+    const base = fixtureMonths()
+    const { deps } = setup({ months: { ...base, prev: asPartial(base.prev) } })
+    const res = await generateReport(MONTH, deps)
+    if (!res.ok) throw new Error('성공이어야 한다')
+    const hash = deps.saveReport.mock.calls[0][0].inputHash
+    // 지난달이 여전히 덜 불러온 달이면 같은 지문(false), 다 불러오면 견줄 수 있게 되어 지문이 달라진다(true)
+    expect(await isReportStale(MONTH, hash, async () => ({ ...base, prev: asPartial(base.prev) }))).toBe(false)
+    expect(await isReportStale(MONTH, hash, async () => base)).toBe(true)
+    // 지난달 없이 만든 리포트와 같은 지문이다
+    expect(hash).toBe(await reportFingerprint(inputOf({ ...base, prev: null })))
+  })
+
+  it('AC-2005.1 숫자 바뀜 비교: 작년 같은 달이 partial: true로 바뀌면 그 달은 없는 달이라 지문이 달라 true', async () => {
+    const base = fixtureMonths()
+    const { deps } = setup({ months: base })
+    const res = await generateReport(MONTH, deps)
+    if (!res.ok) throw new Error('성공이어야 한다')
+    const hash = deps.saveReport.mock.calls[0][0].inputHash
+    expect(await isReportStale(MONTH, hash, async () => ({ ...base, lastYear: asPartial(base.lastYear) }))).toBe(true)
+  })
+
+  it('AC-2007.1 고른 달 줄이 없으면 지금처럼 Claude를 부르지 않고 E-AI-NO-DATA(비교 달이 있어도)', async () => {
+    const { deps, order } = setup({ months: { ...fixtureMonths(), selected: null } })
+    expect(await generateReport(MONTH, deps)).toEqual({ ok: false, code: 'E-AI-NO-DATA' })
+    expect(order).toEqual(['loadMonths'])
+    expect(deps.callClaude).not.toHaveBeenCalled()
+    expect(deps.saveReport).not.toHaveBeenCalled()
+    expect(deps.addUsage).not.toHaveBeenCalled()
+  })
+})

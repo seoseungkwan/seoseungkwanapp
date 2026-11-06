@@ -339,12 +339,14 @@ describe('추가 상태', () => {
     emptyTitle('10월')
   })
 
-  it("AC-709.4 '달 지난 partial': 달이 끝나기 전에 만든 리포트에 '달 끝나기 전' 칩과 안내 상자", async () => {
+  it("AC-2008.3 '달 지난 partial': 덜 찬 숫자로 만든 지난 달 리포트에 '덜 찬 숫자' 칩과 통계 탭 다시 불러오기 안내 상자", async () => {
     serve({ [OCT]: viewOf(reportFor(OCT, { partial: true })) })
     await draw()
-    screen.getByText('달 끝나기 전')
-    screen.getByText('이 리포트는 10월이 끝나기 전에 만들었어요')
-    screen.getByText('숫자가 적게 잡혀 있을 수 있어요. [다시 분석]을 누르면 다 찬 숫자로 써요.')
+    screen.getByText('덜 찬 숫자')
+    screen.getByText('이 리포트는 10월 숫자가 다 차기 전에 만들었어요')
+    screen.getByText('숫자가 적게 잡혀 있을 수 있어요. 통계 탭에서 그 달을 다시 불러온 뒤 [다시 분석]을 눌러 주세요.')
+    expect(screen.queryByText('달 끝나기 전')).toBeNull()
+    expect(screen.queryByText(/끝나기 전에 만들었어요/)).toBeNull()
   })
 
   it("AC-711.4 '리포트 위 NO-DATA 오류': 옛 리포트가 그대로이고 그 위에 오류 상자, 통계 탭 빈 화면으로 안 간다", async () => {

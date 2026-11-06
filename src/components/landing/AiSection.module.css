@@ -13,7 +13,7 @@
   min-width: 0;
 }
 
-/* 머리 줄: "준비 중" 칩 + 어느 탭인지 */
+/* 머리 줄: 어느 탭인지 */
 .kick {
   display: flex;
   align-items: center;

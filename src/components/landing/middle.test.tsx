@@ -148,10 +148,11 @@ const openTags = (html: string) =>
 // 상자가 될 수 있는 태그(src/testing/boxes.ts BOX_TAGS와 같다)
 const BOX_TAGS = new Set(['div', 'section', 'article', 'ul', 'ol', 'li', 'dl', 'table', 'aside', 'form'])
 
-// section#ai(띠) > .wrap > .grid > 글(머리 칩 줄 · h2 · p) → 리포트 패널 → 약속 dl
-// (specs/ui-90 AC-421.4, 시안 docs/mockups/ui-90/entry/screens.mjs landingPC·landingPhone #ai — 휴대폰은 패널 뒤에 약속)
+// section#ai(띠) > .wrap > .grid > 글(머리 줄 · h2 · p) → 리포트 패널 → 약속 dl
+// (specs/ui-90 AC-421.4, 시안 docs/mockups/ui-90/entry/screens.mjs landingPC·landingPhone #ai — 휴대폰은 패널 뒤에 약속).
+// 머리 줄의 "준비 중" 칩은 뺐다(specs/ai-report-stats AC-2006.1)
 const AI_SHAPE =
-  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<p\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span>(<span\b[^>]*>)([^<]*)<\/span><\/p>(<h2\b[^>]*>)([^<]*)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<div\b[^>]*>)([\s\S]*?)<\/div>(<dl\b[^>]*>)([\s\S]*?)<\/dl><\/div><\/div><\/section>$/
+  /^(<section\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<div\b[^>]*>)(<p\b[^>]*>)(<span\b[^>]*>)([^<]*)<\/span><\/p>(<h2\b[^>]*>)([^<]*)<\/h2>(<p\b[^>]*>)([^<]*)<\/p><\/div>(<div\b[^>]*>)([\s\S]*?)<\/div>(<dl\b[^>]*>)([\s\S]*?)<\/dl><\/div><\/div><\/section>$/
 // 약속 하나: div(dt + dd)
 const POINT = /(<div\b[^>]*>)(<dt\b[^>]*>)([^<]*)<\/dt>(<dd\b[^>]*>)([^<]*)<\/dd><\/div>/g
 // 리포트 패널 안: 머리(h3 + 칩) + 항목 ol. 몸 두 칸·채팅 칸이 없다
@@ -174,7 +175,7 @@ const AI_ITEMS = [
 
 describe('AC-209.1·AC-421.4: AI 섹션의 짜임', () => {
   const parts = ai.match(AI_SHAPE)
-  const [, section, wrap, grid, text, kick, soon, soonIn, tab, tabIn, h2, h2In, lead, leadIn, report, reportIn, dl, dlIn] = parts ?? []
+  const [, section, wrap, grid, text, kick, tab, tabIn, h2, h2In, lead, leadIn, report, reportIn, dl, dlIn] = parts ?? []
   const points = [...(dlIn ?? '').matchAll(POINT)]
   const reportParts = (reportIn ?? '').match(REPORT_SHAPE)
   const [, head, h3, h3In, chip, chipIn, list, listIn] = reportParts ?? []
@@ -191,12 +192,14 @@ describe('AC-209.1·AC-421.4: AI 섹션의 짜임', () => {
     expect(classesOf(dl)).toEqual([aiStyles.points])
   })
 
-  it('AC-421.4: 머리 줄(p.kick)은 neutral 칩 "준비 중" + "AI 리포트 탭"(.tSmall .tab)이다', () => {
+  it('AC-2006.1: 머리 줄(p.kick)에는 칩이 없고 "AI 리포트 탭"(.tSmall .tab)만 있다. "준비 중"은 AI 칸 어디에도 없다', () => {
+    expect(parts, '머리 줄 p.kick 안은 span 하나').not.toBeNull()
     expect(classesOf(kick)).toEqual([aiStyles.kick])
-    expect(classesOf(soon)).toEqual([base.chip, base.chipNeutral])
-    expect(soonIn).toBe('준비 중')
     expect(classesOf(tab)).toEqual([base.tSmall, aiStyles.tab])
+    expect(classesOf(tab)).not.toContain(base.chip)
     expect(tabIn).toBe('AI 리포트 탭')
+    expect(textOf(ai)).not.toContain('준비 중')
+    expect(ai).not.toContain('준비 중')
   })
 
   it('AC-421.4: h2(.tHeading .title)는 "버튼 한 번이면 AI가 이번 달을 읽어 줘요"(태그 없음), 안내 p(.tLead .lead)는 시안 문구다', () => {

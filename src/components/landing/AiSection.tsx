@@ -22,8 +22,8 @@ const ITEMS = [
   },
 ]
 
-// AI 섹션(#ai, canvas 띠) (specs/b2b-redesign AC-209.1, specs/ui-90 AC-421.4, 시안 docs/mockups/ui-90/entry/screens.mjs landingPC·landingPhone #ai).
-// 아직 없는 AI 리포트 탭이라 머리에 "준비 중" 칩을 단다. 앱에 없는 채팅 칸은 없다.
+// AI 섹션(#ai, canvas 띠) (specs/b2b-redesign AC-209.1, specs/ui-90 AC-421.4, specs/ai-report-stats AC-2006.1, 시안 docs/mockups/ui-90/entry/screens.mjs landingPC·landingPhone #ai).
+// AI 리포트 탭을 소개한다. 앱에 없는 채팅 칸은 없다.
 // DOM 차례는 글 → 리포트 패널 → 약속이다(휴대폰은 이 차례로 쌓인다). 1024px 이상 12칸에서 글·약속은 1~4칸 두 줄, 패널은 5~12칸이고
 // 위에 맞춰 내용 높이만큼만 그린다(패널 아래 빈 공간 없음). 상자는 리포트 패널 하나다
 export default function AiSection() {
@@ -33,7 +33,6 @@ export default function AiSection() {
         <div className={`${base.grid} ${styles.layout}`}>
           <div className={styles.text}>
             <p className={styles.kick}>
-              <span className={`${base.chip} ${base.chipNeutral}`}>준비 중</span>
               <span className={`${base.tSmall} ${styles.tab}`}>AI 리포트 탭</span>
             </p>
             <h2 className={`${base.tHeading} ${styles.title}`}>버튼 한 번이면 AI가 이번 달을 읽어 줘요</h2>

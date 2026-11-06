@@ -4,7 +4,8 @@ import { validateMonthPayload } from '@/lib/payload/validate'
 import type { AiErrorCode, ReportInput, ReportMetric } from '@/types/aiReport'
 import type { ErrorCode } from '@/types/errors'
 import type { MonthPayload } from '@/types/payload'
-import { TOP_REGIONS, TOP_RX, UNNAMED_GROUP, buildReportInput, reportFingerprint, type ValidReportMonths } from './input'
+import { basisLine } from './basis'
+import { TOP_REGIONS, TOP_RX, buildReportInput, reportFingerprint, type ValidReportMonths } from './input'
 
 // 시험 자료는 여기서 손으로 만든 가짜 숫자다(처방코드는 FAKE-…). 쓰기 전에 validateMonthPayload를 통과하는지 본다
 
@@ -67,7 +68,7 @@ const selected = (): MonthPayload =>
     }),
   )
 
-// 지난달: FAKE-B02·g-beta·나동이 없다(→ 0). g-gamma는 이 달에만 있고 이름이 없다. FAKE-Z99는 고른 달에 없다(지표가 아니다)
+// 지난달: FAKE-B02·나동이 없다(→ 0). g-beta도 없다(묶음은 → null). g-gamma는 이 달에만 있고 이름이 없다(지표가 아니다). FAKE-Z99는 고른 달에 없다(지표가 아니다)
 const prev = (): MonthPayload =>
   valid(
     month({
@@ -80,7 +81,7 @@ const prev = (): MonthPayload =>
     }),
   )
 
-// 작년 같은 달: FAKE-B02·g-alpha·g-gamma·가동·다동이 없다(→ 0). 재방문 집단이 0명
+// 작년 같은 달: FAKE-B02·가동·다동이 없다(→ 0). g-alpha·g-gamma도 없다(묶음은 → null). 재방문 집단이 0명
 const lastYear = (): MonthPayload =>
   valid(
     month({
@@ -109,6 +110,13 @@ const count = (id: string, label: string, s: number | null, p: number | null, l:
   values: { selected: s, prev: p, lastYear: l },
 })
 
+const visits = (id: string, label: string, s: number | null, p: number | null, l: number | null): ReportMetric => ({
+  id,
+  label,
+  kind: 'visits',
+  values: { selected: s, prev: p, lastYear: l },
+})
+
 const rate = (id: string, label: string, s: number | null, p: number | null, l: number | null): ReportMetric => ({
   id,
   label,
@@ -134,7 +142,7 @@ describe('REQ-505 타입', () => {
 })
 
 describe('AC-505.1 buildReportInput: 고른 달·비교 달·지표마다 세 달 값', () => {
-  it('AC-505.1 세 달이 다 있으면 달·partial·비교 달·자료 여부와 지표마다 ID·이름·세 달 값이 있다', () => {
+  it('AC-505.1·AC-2004.1·AC-2003.2 세 달이 다 있으면 달·partial·비교 달·자료 여부와 지표마다 ID·이름·세 달 값이 있다', () => {
     const input = buildReportInput(allMonths())
     expect(input).toEqual({
       month: '2026-10',
@@ -144,20 +152,17 @@ describe('AC-505.1 buildReportInput: 고른 달·비교 달·지표마다 세 �
       hasPrev: true,
       hasLastYear: true,
       metrics: [
-        count('total.patients', '전체 환자', 120, 110, 100),
+        visits('total.patients', '접수 건수', 120, 110, 100),
         count('total.newPatients', '신환', 30, 25, 20),
-        count('total.returning', '재진', 85, 80, 75),
+        visits('total.returning', '재진', 85, 80, 75),
         rate('revisit.within7', '신환 7일 재방문율', null, 8 / 20, null),
         rate('revisit.within14', '신환 14일 재방문율', null, 11 / 20, null),
-        count('group:g-alpha.patients', "처방 그룹 '도수치료' 환자", 40, 35, 0),
-        count('group:g-alpha.newPatients', "처방 그룹 '도수치료' 신환", 8, 7, 0),
-        count('group:g-alpha.returning', "처방 그룹 '도수치료' 재진", 30, 25, 0),
-        count('group:g-beta.patients', "처방 그룹 '물리치료' 환자", 10, 0, 9),
-        count('group:g-beta.newPatients', "처방 그룹 '물리치료' 신환", 2, 0, 1),
-        count('group:g-beta.returning', "처방 그룹 '물리치료' 재진", 8, 0, 8),
-        count('group:g-gamma.patients', "처방 그룹 '이름 없는 그룹' 환자", 0, 6, 0),
-        count('group:g-gamma.newPatients', "처방 그룹 '이름 없는 그룹' 신환", 0, 1, 0),
-        count('group:g-gamma.returning', "처방 그룹 '이름 없는 그룹' 재진", 0, 5, 0),
+        count('group:g-alpha.patients', "처방 그룹 '도수치료' 환자", 40, 35, null),
+        count('group:g-alpha.newPatients', "처방 그룹 '도수치료' 신환", 8, 7, null),
+        count('group:g-alpha.returning', "처방 그룹 '도수치료' 재진", 30, 25, null),
+        count('group:g-beta.patients', "처방 그룹 '물리치료' 환자", 10, null, 9),
+        count('group:g-beta.newPatients', "처방 그룹 '물리치료' 신환", 2, null, 1),
+        count('group:g-beta.returning', "처방 그룹 '물리치료' 재진", 8, null, 8),
         count('rx:FAKE-B02', "처방 '가짜 처방 나' 환자", 50, 0, 0),
         count('rx:FAKE-A01', "처방 '가짜 처방 가' 환자", 20, 18, 12),
         count('rx:FAKE-C03', "처방 '가짜 처방 다' 환자", 20, 15, 9),
@@ -168,14 +173,14 @@ describe('AC-505.1 buildReportInput: 고른 달·비교 달·지표마다 세 �
     })
   })
 
-  it('AC-505.1 지난달 자료가 없으면 hasPrev false, 지난달 칸은 모두 null. 작년 같은 달에 없는 처방·그룹·동네는 0', () => {
+  it('AC-505.1·AC-2003.2 지난달 자료가 없으면 hasPrev false, 지난달 칸은 모두 null. 작년 같은 달에 없는 처방·동네는 0, 묶음은 null', () => {
     const input = buildReportInput({ ...allMonths(), prev: null })
     expect(input.prevMonth).toBe('2026-09')
     expect(input.hasPrev).toBe(false)
     expect(input.hasLastYear).toBe(true)
     for (const metric of input.metrics) expect(metric.values.prev, metric.id).toBeNull()
     expect(metricOf(input, 'rx:FAKE-B02').values).toEqual({ selected: 50, prev: null, lastYear: 0 })
-    expect(metricOf(input, 'group:g-alpha.patients').values).toEqual({ selected: 40, prev: null, lastYear: 0 })
+    expect(metricOf(input, 'group:g-alpha.patients').values).toEqual({ selected: 40, prev: null, lastYear: null })
     expect(metricOf(input, 'region:가동').values).toEqual({ selected: 30, prev: null, lastYear: 0 })
     expect(metricOf(input, 'total.patients').values).toEqual({ selected: 120, prev: null, lastYear: 100 })
     // 지난달에만 있던 그룹은 이제 어느 달에도 없다
@@ -220,9 +225,6 @@ describe('AC-505.2 지표 목록과 순서', () => {
       'group:g-beta.patients',
       'group:g-beta.newPatients',
       'group:g-beta.returning',
-      'group:g-gamma.patients',
-      'group:g-gamma.newPatients',
-      'group:g-gamma.returning',
       'rx:FAKE-B02',
       'rx:FAKE-A01',
       'rx:FAKE-C03',
@@ -269,7 +271,7 @@ describe('AC-505.2 지표 목록과 순서', () => {
         regions: [region('b동', 6), region('B동', 6)],
       }),
     )
-    const input = buildReportInput({ selected: mixed, prev: null, lastYear: null, groupNames: {} })
+    const input = buildReportInput({ selected: mixed, prev: null, lastYear: null, groupNames: { 'g-b': '가짜 묶음 비', 'G-a': '가짜 묶음 에이' } })
     expect(ids(input).filter((id) => id.startsWith('rx:'))).toEqual(['rx:FAKE-Z1', 'rx:FAKE-a1'])
     expect(ids(input).filter((id) => id.endsWith('.patients') && id.startsWith('group:'))).toEqual([
       'group:G-a.patients',
@@ -370,21 +372,105 @@ describe('AC-505.4 reportFingerprint', () => {
   })
 })
 
-describe('AC-505.5 그룹 이름이 없으면 "이름 없는 그룹"', () => {
-  it('AC-505.5 groupNames에 없는 그룹은 이름 자리에 "이름 없는 그룹"을 쓰고 자료 통째로 실패하지 않는다', () => {
-    expect(UNNAMED_GROUP).toBe('이름 없는 그룹')
+// 묶음은 지금 묶음(groupNames)만 쓴다(spec ai-report-stats REQ-2003). 처방을 바꾸기 전 열쇠·지운 묶음은 지표가 아니다
+describe('AC-2003.1 groupNames에 없는 열쇠는 지표가 아니다', () => {
+  it('AC-2003.1 groupNames에 없는 묶음(지난달에만 있는 g-gamma)은 지표가 없고 "이름 없는 그룹" 지표도 없다. 다른 묶음은 그대로다', () => {
     const input = buildReportInput(allMonths())
-    expect(metricOf(input, 'group:g-gamma.patients').label).toBe(`처방 그룹 '${UNNAMED_GROUP}' 환자`)
-    expect(metricOf(input, 'group:g-gamma.newPatients').label).toBe(`처방 그룹 '${UNNAMED_GROUP}' 신환`)
-    expect(metricOf(input, 'group:g-gamma.returning').label).toBe(`처방 그룹 '${UNNAMED_GROUP}' 재진`)
+    expect(ids(input).some((id) => id.startsWith('group:g-gamma.'))).toBe(false)
+    expect(input.metrics.some((m) => m.label.includes('이름 없는 그룹'))).toBe(false)
     expect(metricOf(input, 'group:g-alpha.patients').label).toBe("처방 그룹 '도수치료' 환자")
+    expect(metricOf(input, 'group:g-beta.patients').label).toBe("처방 그룹 '물리치료' 환자")
   })
 
-  it('AC-505.5 그룹 이름이 빈 글자이거나 id가 객체 기본 열쇠 이름(constructor)이어도 "이름 없는 그룹"', () => {
-    const odd = valid(month({ month: '2026-10', groups: [group('constructor', 3, 1, 2), group('g-empty', 2, 0, 2)] }))
-    const input = buildReportInput({ selected: odd, prev: null, lastYear: null, groupNames: { 'g-empty': '' } })
-    expect(metricOf(input, 'group:constructor.patients').label).toBe(`처방 그룹 '${UNNAMED_GROUP}' 환자`)
-    expect(metricOf(input, 'group:g-empty.patients').label).toBe(`처방 그룹 '${UNNAMED_GROUP}' 환자`)
+  it('AC-2003.1 묶음 처방을 바꾸기 전 열쇠는 세 달 어디에 있어도 지표가 아니다(지금 열쇠만 남는다)', () => {
+    const OLD = 't00000000000000aa'
+    const NOW = 't00000000000000bb'
+    const sel = valid(month({ month: '2026-10', groups: [group(NOW, 12, 2, 10), group(OLD, 3, 1, 2)] }))
+    const before = valid(month({ month: '2026-09', groups: [group(OLD, 9, 1, 8)] }))
+    const input = buildReportInput({ selected: sel, prev: before, lastYear: null, groupNames: { [NOW]: '도수치료' } })
+    expect(ids(input).filter((id) => id.startsWith('group:'))).toEqual([
+      `group:${NOW}.patients`,
+      `group:${NOW}.newPatients`,
+      `group:${NOW}.returning`,
+    ])
+  })
+
+  it('AC-2003.1 열쇠가 객체 기본 열쇠 이름(constructor·toString)이거나 이름이 빈 글자면 지표가 아니다', () => {
+    const odd = valid(
+      month({ month: '2026-10', groups: [group('constructor', 3, 1, 2), group('toString', 1, 0, 1), group('g-empty', 2, 0, 2), group('g-ok', 4, 1, 3)] }),
+    )
+    const input = buildReportInput({ selected: odd, prev: null, lastYear: null, groupNames: { 'g-empty': '', 'g-ok': '주사' } })
+    expect(ids(input).filter((id) => id.startsWith('group:'))).toEqual(['group:g-ok.patients', 'group:g-ok.newPatients', 'group:g-ok.returning'])
+  })
+})
+
+describe('AC-2003.2 지금 열쇠가 어떤 달 줄에 없으면 그 달은 null("자료 없음")', () => {
+  const KEY = 'g-alpha'
+  const names = { [KEY]: '도수치료' }
+  const withKey = (m: string) => valid(month({ month: m, groups: [group(KEY, 7, 2, 5)] }))
+  const without = (m: string) => valid(month({ month: m, groups: [group('g-other', 1, 0, 1)] }))
+
+  it('AC-2003.2 지난달 줄에 열쇠가 없으면 지난달 값은 0이 아니라 null이고 근거 줄은 "9월 자료 없음"', () => {
+    const input = buildReportInput({ selected: withKey('2026-10'), prev: without('2026-09'), lastYear: withKey('2025-10'), groupNames: names })
+    expect(input.hasPrev).toBe(true)
+    expect(metricOf(input, `group:${KEY}.patients`).values).toEqual({ selected: 7, prev: null, lastYear: 7 })
+    expect(metricOf(input, `group:${KEY}.newPatients`).values).toEqual({ selected: 2, prev: null, lastYear: 2 })
+    expect(metricOf(input, `group:${KEY}.returning`).values).toEqual({ selected: 5, prev: null, lastYear: 5 })
+    expect(basisLine(metricOf(input, `group:${KEY}.patients`), input)).toBe(
+      "근거 · 처방 그룹 '도수치료' 환자 9월 자료 없음 → 10월 7명 · 작년 10월 7명",
+    )
+  })
+
+  it('AC-2003.2 작년 같은 달 줄에 열쇠가 없으면 작년 값은 null이고 근거 줄은 "작년 10월 자료 없음"', () => {
+    const input = buildReportInput({ selected: withKey('2026-10'), prev: withKey('2026-09'), lastYear: without('2025-10'), groupNames: names })
+    expect(input.hasLastYear).toBe(true)
+    expect(metricOf(input, `group:${KEY}.patients`).values).toEqual({ selected: 7, prev: 7, lastYear: null })
+    expect(basisLine(metricOf(input, `group:${KEY}.patients`), input)).toBe(
+      "근거 · 처방 그룹 '도수치료' 환자 9월 7명 → 10월 7명 · 작년 10월 자료 없음",
+    )
+  })
+
+  it('AC-2003.2 고른 달 줄에 열쇠가 없고 비교 달에만 있으면 고른 달 값은 null이고 근거 줄은 "10월 자료 없음"', () => {
+    const input = buildReportInput({ selected: without('2026-10'), prev: withKey('2026-09'), lastYear: null, groupNames: names })
+    expect(metricOf(input, `group:${KEY}.patients`).values).toEqual({ selected: null, prev: 7, lastYear: null })
+    expect(basisLine(metricOf(input, `group:${KEY}.patients`), input)).toBe(
+      "근거 · 처방 그룹 '도수치료' 환자 9월 7명 → 10월 자료 없음 · 작년 10월 자료 없음",
+    )
+  })
+})
+
+describe('AC-2003.3 지금 열쇠가 세 달 어디에도 없으면 그 묶음 지표는 없다', () => {
+  it('AC-2003.3 groupNames에 있어도 세 달 줄 어디에도 없는 열쇠는 지표가 없다', () => {
+    const input = buildReportInput({ ...allMonths(), groupNames: { ...GROUP_NAMES, 'g-nowhere': '체외충격파' } })
+    expect(ids(input).some((id) => id.startsWith('group:g-nowhere.'))).toBe(false)
+    expect(ids(input).filter((id) => id.startsWith('group:'))).toHaveLength(6)
+  })
+})
+
+describe('AC-2003.4 처방·동네는 지금 규칙 그대로', () => {
+  it('AC-2003.4 자료가 있는 달에 그 처방·동네가 없으면 0, 달이 없으면 null', () => {
+    const input = buildReportInput({ ...allMonths(), lastYear: null })
+    expect(metricOf(input, 'rx:FAKE-B02').values).toEqual({ selected: 50, prev: 0, lastYear: null })
+    expect(metricOf(input, 'region:나동').values).toEqual({ selected: 30, prev: 0, lastYear: null })
+    expect(metricOf(input, 'rx:FAKE-A01').values).toEqual({ selected: 20, prev: 18, lastYear: null })
+  })
+})
+
+describe('AC-2004.1 접수 건수·재진은 visits, 신환은 count', () => {
+  it("AC-2004.1 total.patients는 '접수 건수', total.returning은 '재진'이고 둘 다 visits. total.newPatients는 '신환'·count", () => {
+    const input = buildReportInput(allMonths())
+    expect(metricOf(input, 'total.patients')).toEqual(visits('total.patients', '접수 건수', 120, 110, 100))
+    expect(metricOf(input, 'total.returning')).toEqual(visits('total.returning', '재진', 85, 80, 75))
+    expect(metricOf(input, 'total.newPatients')).toEqual(count('total.newPatients', '신환', 30, 25, 20))
+  })
+
+  it('AC-2004.1 묶음·처방·동네는 count, 재방문율은 rate 그대로이고 visits는 total.patients·total.returning 둘뿐이다', () => {
+    const input = buildReportInput(allMonths())
+    expect(input.metrics.filter((m) => m.kind === 'visits').map((m) => m.id)).toEqual(['total.patients', 'total.returning'])
+    for (const m of input.metrics) {
+      if (m.id.startsWith('group:') || m.id.startsWith('rx:') || m.id.startsWith('region:')) expect(m.kind, m.id).toBe('count')
+      if (m.id.startsWith('revisit.')) expect(m.kind, m.id).toBe('rate')
+    }
   })
 })
 

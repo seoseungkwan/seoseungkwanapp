@@ -11,7 +11,7 @@ src/
 │   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/notices 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
 │   ├── (app)/revenue/page.tsx  # 매출 화면 = components/revenue/RevenueScreen (specs/revenue)
 │   ├── (app)/patients/page.tsx # 환자 탭 = components/patients/PatientsEntry (specs/patients)
-│   └── api/ai/          # (예정) 유일한 서버 경로 (§5)
+│   └── api/ai/          # 유일한 서버 경로 (§5)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
@@ -64,7 +64,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 [매출] 비트 PC 도우미 읽기(`revenue.days`) → 확장 → lib/bridge → 집계만 → lib/storage → sales_days·sales_codes (2026-11-01 바뀜, specs/revenue)
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
 [업무일지] 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
-[AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기 → validate → Claude API
+[AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기(stats_months 세 달 + stats_rx_groups 묶음 이름, specs/ai-report-stats) → validate → Claude API
        → 답 검사(근거 숫자는 앱이 채움) → ai_reports 저장(그 달 덮어씀) → ai_usage 기록 → 화면(글자로만) (ADR-024)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
 [청구] (예정) 도우미(비트 DB·화면) → 확장 → lib/bridge(풀지 않음) → Worker → 화면(보기 모양, PC 메모리만)
