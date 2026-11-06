@@ -12,7 +12,7 @@
 - AC: AC-1701.5
 - Files: src/components/stats/view.ts, src/components/stats/view.test.ts
 - Tests: src/components/stats/view.test.ts
-- TDD: required — `StatsRange`에 `name`·`bucket`·`lastYear`, `previous`를 `CompareRange`(name·why)로, `period`를 `StatsPeriod | null`로. `PERIOD_NAME`을 이 파일에 둔다. 지금 `statsRange` 시험은 기대값을 바꾸지 않는다
+- TDD: required — `StatsRange`에 `name`·`bucket`·`lastYear`, `previous`를 `CompareRange`(name·why)로, `period`를 `StatsPeriod | null`로, `SummaryCell.key`에 `'lastYear'`를 더한다. `PERIOD_NAME`을 이 파일에 둔다. 지금 `statsRange` 시험은 기대값을 바꾸지 않는다
 
 ## TASK-2: 고른 기간 셈 (순수 모듈)
 - REQ: REQ-1701, REQ-1702, REQ-1707
@@ -23,14 +23,14 @@
 
 ## TASK-3: 화면 숫자에 고른 기간 잇기
 - REQ: REQ-1701, REQ-1704, REQ-1705
-- AC: AC-1701.5(`rangeOf`), AC-1704.1~AC-1704.3, AC-1704.5, AC-1705.1, AC-1705.4
-- Files: src/components/stats/view.ts, src/components/stats/view.test.ts, src/components/stats/rxPickView.ts, src/components/stats/rxPickView.test.ts, src/components/stats/treatmentView.ts, src/components/stats/treatmentView.test.ts
-- Tests: src/components/stats/view.test.ts, src/components/stats/rxPickView.test.ts, src/components/stats/treatmentView.test.ts
-- TDD: required — `rangeOf`·`readSpan`·`periodDesc`, `period === null` 갈래(`summaryCells`·`patientTrend`·처방 행 `lastYear`·`rxComparedCells`·`rxDetail` 칸), `rxPickTotal`·`rxPickCopyText` 비교마다, `treatmentRows`·`groupInput` 비교마다 세었는지. 빠른 단추 갈래 기대값은 그대로
+- AC: AC-1701.5(`rangeOf`), AC-1704.1~AC-1704.3, AC-1704.5, AC-1705.1, AC-1705.4(그래프 칸·같은 처방 재방문)
+- Files: src/components/stats/view.ts, src/components/stats/view.test.ts, src/components/stats/rxPickView.ts, src/components/stats/rxPickView.test.ts, src/components/stats/treatmentView.ts, src/components/stats/treatmentView.test.ts, src/components/stats/againView.ts, src/components/stats/againView.test.ts
+- Tests: src/components/stats/view.test.ts, src/components/stats/rxPickView.test.ts, src/components/stats/treatmentView.test.ts, src/components/stats/againView.test.ts
+- TDD: required — `rangeOf`·`readSpan`·`periodDesc`, `period === null` 갈래(`summaryCells`·`patientTrend`·처방 행 `lastYear`·`rxComparedCells`·`rxDetail` 칸), `rxPickTotal`·`rxPickCopyText` 비교마다, `treatmentRows`·`groupInput` 비교마다 세었는지, `againSpan`·`againBaseText` 고른 기간 규칙(AC-1705.4). 빠른 단추 갈래 기대값은 그대로. `useAgainDays.ts`는 바꾸지 않는다(고른 기간은 더 읽기가 없다)
 
 ## TASK-4: 저장된 숫자 읽기
 - REQ: REQ-1706
-- AC: AC-1706.1~AC-1706.3
+- AC: AC-1706.1~AC-1706.3(덮은 기간 자르기 포함)
 - Files: src/components/stats/useStatsData.ts, src/components/stats/useStatsData.test.ts
 - Tests: src/components/stats/useStatsData.test.ts
 - TDD: required — 인자를 `StatsChoice`로(빠른 단추 글자는 지금 부르는 모양 그대로 된다), `todayDone` 내보내기. `lib/storage/stats.ts`는 바꾸지 않는다
@@ -40,7 +40,7 @@
 - AC: AC-1702.1(▶ disabled), AC-1702.2·AC-1702.3(판 글), AC-1703.2, AC-1703.3, AC-1703.5, AC-1703.7
 - Files: src/components/stats/PeriodPicker.tsx, src/components/stats/PeriodPicker.test.tsx
 - Tests: src/components/stats/PeriodPicker.test.tsx
-- TDD: required — props만 받는다(`choice`·`lastDay`·`onChoose`). 단추 모양은 지금 기간 단추(`PERIOD_BUTTON`)와 같고 날짜 칸은 `ds.input`이다
+- TDD: required — props만 받는다(`choice`·`lastDay`·`onChoose`). 단추 모양 글(`PERIOD_GROUP`·`PERIOD_BUTTON`·`PERIOD_ON`·`PERIOD_OFF`)은 StatsScreen.tsx에서 이 파일로 옮겨 내보낸다(이 TASK는 복사해 두고, TASK-8이 StatsScreen.tsx의 것을 지우고 여기서 불러온다). 날짜 칸은 `ds.input`이다
 
 ## TASK-6: 위쪽 섹션과 보고 문장
 - REQ: REQ-1704, REQ-1707
@@ -61,7 +61,7 @@
 - AC: AC-1703.1, AC-1703.4, AC-1703.6, AC-1706.4, AC-1707.1(잇기), AC-1708.1
 - Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/StatsSections.tsx
 - Tests: src/components/stats/StatsScreen.test.tsx
-- TDD: required — 상태 `StatsChoice`(처음 '30d'), `range = rangeOf(today, choice, data.todayDone)`, 빠른 단추 옆에 `PeriodPicker`, 기간 글에 비교 둘, 불러오기는 `range.load`. `StatsSections`가 `pickReportText(range, summaryCells(input), 처방별 추세 1·2위)`를 보고 칸에, `name`을 처방별 신환·재진에 넘긴다. 보고 칸은 고르기에 들어오고 나갈 때 다시 그린다(key)
+- TDD: required — 상태 `StatsChoice`(처음 '30d'), `range = rangeOf(today, choice, data.todayDone)`, 빠른 단추 옆에 `PeriodPicker`, 단추 모양 글은 `PeriodPicker.tsx`에서 불러오고 이 파일의 것은 지운다, 기간 글에 비교 둘, 불러오기는 `range.load`. `StatsSections`가 `pickReportText(range, summaryCells(input), 처방별 추세 1·2위)`를 보고 칸에, `name`을 처방별 신환·재진에 넘긴다. 보고 칸은 고르기에 들어오고 나갈 때 다시 그린다(key)
 
 ## TASK-9: 막대 그림의 빈 칸 ('–'·앞으로 올 달)
 - REQ: REQ-1704
