@@ -378,3 +378,13 @@
 - Tests: helper/tests/reception-own-zip.test.ts, helper/tests/reception-install.test.ts
 - TDD: required
 - design.md 11절 '따로 설치'. 글자 시험: 네 파일(.cmd ASCII 한 줄·.ps1 UTF-8 BOM), 관리자 권한 명령 없음, 자기 폴더 `PrecheckReception\`만 덮어쓰고 지움, 도우미 없으면 멈춤, `PrecheckHelper` 끄기·덮어쓰기·크롬 등록 없음, 시작 항목·바로 가기 `--link` 짝, zip 단계의 `precheck-reception-<Version>.zip`과 artifact. `reception-install.test.ts`는 helper.yml 비교가 새 artifact 단계를 받아들이게만 고친다. 실제 설치는 의원 PC에서 본다
+
+## TASK-36: 상세는 오늘·지난번 증상만 (`detail.js`·`app.js`)
+- Step: Phase 5 · Step 3 · `detail-symptoms-only`
+- 병렬: 아니오 (TASK-35 뒤, 사용자 결정 2026-11-06)
+- AC: AC-1404.7, AC-1404.8, AC-1404.4, AC-1407.5, AC-1409.1, AC-1409.3
+- REQ: REQ-1404, REQ-1407, REQ-1409
+- Files: reception/www/detail.js, reception/www/app.js, reception/www/style.css, reception/tests/detail.test.ts, reception/tests/app.test.ts, reception/tests/layout.test.ts, reception/tests/fixtures.ts
+- Tests: reception/tests/detail.test.ts, reception/tests/app.test.ts, reception/tests/layout.test.ts
+- TDD: required
+- 도우미(C#)와 답 모양은 고치지 않는다. 승인 시안 Detail·Tablet에서 지난 진료 목록·처방·[더 보기]를 빼고 '지난번' 카드 하나만 두는 것이라 새 모양은 없다(사용자가 글로 정함). `detail.js`: 제목 글, `visits[0]` 카드(빈 증상 글), `updateTodaySym(host, k, todaySym)`. `app.js`: 폰·태블릿 같은 환자 가지에서 AC-1404.8 조건이면 `getHistory(k, 0)` 한 번(읽는 중이면 또 부르지 않음, 차례 번호로 늦은 답 버림), 성공하면 `updateTodaySym`, 실패하면 그대로. 가짜 `fetch`·가짜 시계로 시험(30초 전·뒤, 칸 바뀜, 처방 바뀜, 다른 환자, 숨김 뒤 늦은 답). 끝나면 메인 세션이 가짜 자료 화면 캡처를 사용자에게 보인다

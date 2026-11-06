@@ -106,8 +106,9 @@ Row = { "k": "3f9a…(16)", "lane": "wait|hold|pay|done", "pos": 1 | null, "lane
 ```
 - 한 번에 주는 수: `from=0`이면 5번, 그 뒤는 20번(`HistoryChunk.First = 5`, `HistoryChunk.Next = 20`). 첫 5는 승인 시안, 20은 37번 온 환자도 두 번 누르면 끝나고 답 하나가 작게 유지되는 값이다.
 - `total` = 앞선 완료 내원 수 + 1(오늘 접수), `first` = 가장 이른 완료 내원일(없으면 오늘). `more` = 아직 안 준 앞선 내원 수.
-- 상세는 그 환자 한 명만, 열 때·[더 보기] 때만 읽는다. 결과는 서버에 쌓지 않는다.
-- 오늘 카드의 상태·오늘 처방은 화면이 가진 `/api/board` 줄로 그리고(저절로 읽을 때마다 바뀜), 오늘 증상(`todaySym`)은 상세를 열 때 읽은 값이다.
+- 상세는 그 환자 한 명만, 열 때와 오늘 증상 다시 읽기(AC-1404.8) 때만 읽는다. 결과는 서버에 쌓지 않는다.
+- 오늘 카드의 상태·오늘 처방은 화면이 가진 `/api/board` 줄로 그리고(저절로 읽을 때마다 바뀜), 오늘 증상(`todaySym`)은 상세를 열 때 읽고, 열려 있는 동안 칸·오늘 처방이 바뀌거나 30초가 지나면 `from=0`을 다시 읽어 오늘 카드의 증상 줄만 바꾼다(AC-1404.8, `detail.js` `updateTodaySym`).
+- 화면은 답의 `visits[0]`(가장 최근 지난 완료 내원) 하나만 '지난번' 카드로 그린다: 날짜 글·N일 전·증상, 증상이 ""이면 "적힌 증상이 없어요"(AC-1404.7, 사용자 결정 2026-11-06). 처방 목록·둘째 이후 내원·[더 보기]는 그리지 않는다. 도우미 답 모양·쪽수는 바꾸지 않는다(가장 작은 바꿈, C# 그대로).
 
 ### 6. 엑스레이 'X-ray 완료' 표시 (`XrayMarks.cs`)
 ```csharp
@@ -160,7 +161,7 @@ public static class ReceptionPorts { public const int Http = 47200; }
 | `dom.js` | `el(tag, attrs, children)`: 글은 `textContent`만 |
 | `api.js` | `getBoard({ fresh })`·`getHistory(k, from)`·`setXray(k, on)`: 같은 주소, 5초 `AbortController`, 답 모양 검사 |
 | `board.js` | 목록(머리·[새로 고침] 단추·진료 순서·칸 넷·줄) 그리기. 단추는 `reading` 값으로 "새로 고침"/"읽는 중…"(`disabled`) |
-| `detail.js` | 상세(오늘 카드·지난 진료·더 보기·끝 줄) 그리기 |
+| `detail.js` | 상세(오늘 카드·지난번 증상·끝 줄) 그리기, 오늘 증상 줄만 바꾸기(`updateTodaySym`) |
 | `offline.js` | 지우기 + 연결 끊김 화면 |
 | `poll.js` | `every`초 고리(답의 값, 처음 연결 전에는 기본 5. 응답 뒤 다음 예약, 주입한 시계), `refreshNow()`(AC-1407.10: 도는 읽기가 있으면 그 뒤 `fresh` 한 번, 끝나면 `every`초 다시 예약), `pause()`·`resume()`(AC-1407.11) |
 | `alert.js` | 새 열쇠 찾기 + 떨기/삐 소리 + 첫 누름에 오디오 열기 |
