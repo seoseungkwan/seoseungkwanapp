@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
-import type { SummarySource } from '@/components/dashboard/summary/source'
+import type { OlderDays, SummarySource } from '@/components/dashboard/summary/source'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { nestedBoxes } from '@/testing/boxes'
@@ -1653,5 +1653,119 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
     // 기다리지 않고 본다: 다음 화면의 통로가 같은 순간에 열린다
     expect(t.port.disconnected).toBe(true)
     expect(t.worker.terminate).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1804.4: 기간을 골라도(옛 기간 포함) stats.rows를 다시 부르지 않는다 — 옛 기간은 older(저장 숫자)로만 받아 오고 서버 요청이 없다', async () => {
+    const t = await wire()
+    const read = vi.fn(async (range: { from: string; to: string }) => {
+      void range
+      return [] as readonly DayPayload[]
+    })
+    render(<BitDashboard today={TODAY} initial={NONE} older={{ from: '2026-07-25', read }} />)
+    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    const picker = () => within(flow()).getByRole('group', { name: '기간 골라 보기' })
+    const unit = (name: string) => within(within(picker()).getAllByRole('group', { name: '보는 단위' })[0]!).getByRole('button', { name })
+    fireEvent.click(unit('주별'))
+    fireEvent.click(unit('일별'))
+    for (let i = 0; i < 3; i++) fireEvent.click(within(picker()).getByRole('button', { name: '이전 달' }))
+    fireEvent.click(within(flow()).getByRole('button', { name: '최근 90일' }))
+    await act(async () => {})
+    expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
+    expect(t.loads).toHaveLength(1)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledWith({ from: '2026-07-01', to: '2026-07-31' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+// 대시보드 기간 고르기의 옛 기간 읽기 잇기 (dashboard-period REQ-1804·REQ-1805, design.md '데이터 흐름 (읽기)').
+// BitDashboard는 받은 older를 자기가 만드는 source({ kind: 'data', days, groups, older })에 넣는다(DashboardAnalysis에 새 prop이 없다).
+// 오늘 11월 2일, 손에 든 숫자의 첫날(오늘 − 100)은 7월 25일. 저장 숫자·비트 숫자 모두 오늘이 덜 끝나 끝난 날은 11월 1일이다
+describe('dashboard-period: 옛 기간 읽기를 source에 실어 넘긴다', () => {
+  function olderReader() {
+    const answers: Array<(rows: readonly DayPayload[] | null) => void> = []
+    const read = vi.fn((range: { from: string; to: string }) => {
+      void range
+      return new Promise<readonly DayPayload[] | null>((resolve) => answers.push(resolve))
+    })
+    const older: OlderDays = { from: '2026-07-25', read }
+    return { older, read, answers }
+  }
+  const picker = () => within(flow()).getByRole('group', { name: '기간 골라 보기' })
+  const unit = (name: string) => within(within(picker()).getAllByRole('group', { name: '보는 단위' })[0]!).getByRole('button', { name })
+  const stepBack = () => fireEvent.click(within(picker()).getByRole('button', { name: '이전 달' }))
+  // [일별] = 2026년 10월, ◀ 세 번 = 7월(7월 1일이 손에 든 숫자의 첫날 7월 25일보다 앞)
+  const toJuly = () => {
+    fireEvent.click(unit('일별'))
+    for (let i = 0; i < 3; i++) stepBack()
+  }
+  const rankSub = () => rankChart().children[2] as HTMLElement
+
+  it('AC-1804.2: 저장 숫자로 그린 화면 — 옛 기간(7월)을 고르면 받은 older로 그 기간을 한 번 읽고, 손에 든 기간(8월)은 읽지 않는다', async () => {
+    notBitPc()
+    const { older, read } = olderReader()
+    render(<BitDashboard today={TODAY} initial={SAVED} older={older} />)
+    fireEvent.click(unit('일별'))
+    stepBack()
+    stepBack()
+    expect(read).not.toHaveBeenCalled()
+    stepBack()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledWith({ from: '2026-07-01', to: '2026-07-31' })
+    expect(within(rankChart()).getByText('읽는 중')).toBeTruthy()
+  })
+
+  it('AC-1804.2: 비트 숫자가 온 뒤에도 같은 older로 읽고, 읽은 줄에 비트 숫자를 얹는다(같은 날은 비트 숫자)', async () => {
+    onBitPc()
+    const { older, read, answers } = olderReader()
+    render(<BitDashboard today={TODAY} initial={SAVED_KEYED} groups={GROUPS} older={older} />)
+    const bitJuly = [keyed(day('2026-07-30', 1, 1), 1, 1), ...BIT_KEYED]
+    await answer(days(bitJuly))
+    toJuly()
+    expect(read).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      answers[0]!([keyed(day('2026-07-10', 1, 1), 3, 0), keyed(day('2026-07-30', 9, 9), 50, 50)])
+    })
+    expect(rankSub().textContent).toBe('7월 1일 – 31일 · 자료 있는 2일')
+    expect(rankRows()).toEqual([
+      ['운동치료', '4건'],
+      ['체외충격파', '1건'],
+    ])
+  })
+
+  it('AC-1804.4: 기간을 골라도 비트 읽기(readBitDays)는 열 때 한 번뿐이다', async () => {
+    onBitPc()
+    const { older } = olderReader()
+    render(<BitDashboard today={TODAY} initial={SAVED} older={older} />)
+    await answer(days())
+    fireEvent.click(unit('월별'))
+    fireEvent.click(unit('주별'))
+    toJuly()
+    fireEvent.click(within(flow()).getByRole('button', { name: '최근 7일' }))
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1805.1: 기간을 골라도(옛 기간 읽기·실패 포함) 원장님 보고 문장·하루 날짜 고르기는 그대로다', async () => {
+    onBitPc()
+    const { older, answers } = olderReader()
+    render(<BitDashboard today={TODAY} initial={SAVED} older={older} />)
+    await answer(days())
+    const report = h1().textContent
+    const dateLine = screen.getByRole('group', { name: '날짜 고르기' }).outerHTML
+    toJuly()
+    await act(async () => {
+      answers[0]!(null)
+    })
+    expect(within(flow()).getByRole('alert')).toBeTruthy()
+    expect(h1().textContent).toBe(report)
+    expect(screen.getByRole('group', { name: '날짜 고르기' }).outerHTML).toBe(dateLine)
+  })
+
+  it('AC-1804.1: older를 주지 않으면 옛 기간도 읽지 않고 손에 든 숫자만 쓴다(자료 없음)', () => {
+    notBitPc()
+    render(<BitDashboard today={TODAY} initial={SAVED} />)
+    toJuly()
+    expect(within(rankChart()).getByText('자료 없음')).toBeTruthy()
+    expect(rankSub().textContent).toBe('7월 1일 – 31일')
   })
 })

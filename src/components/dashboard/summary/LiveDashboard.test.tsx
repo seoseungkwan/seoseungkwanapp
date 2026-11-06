@@ -673,7 +673,7 @@ describe('AC-601.14·AC-516.3: 저장 숫자를 읽는 곳은 한 곳이다', ()
   const appFiles = (dir: string) =>
     readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
       .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
-      .map((f) => join(dir, f))
+      .map((f) => join(dir, f).replace(/\\/g, '/')) // 윈도우의 '\'도 '/'로 견준다
   const isClient = (file: string) => /^\s*['"]use client['"]/.test(read(join(ROOT, file)))
   const LIVE = 'src/components/dashboard/summary/LiveDashboard.tsx'
 
@@ -710,5 +710,109 @@ describe('AC-601.14·AC-516.3: 저장 숫자를 읽는 곳은 한 곳이다', ()
     const text = code(read(join(ROOT, LIVE)))
     expect(text).toMatch(/\breadDashboardGroups\b/)
     expect(text).not.toMatch(/listStatsRxGroups|saveStatsRxGroups|stats_rx_groups|storage\/statsRxGroups|toDashboardGroups|suggest/i)
+  })
+
+  it('AC-1804.4: 옛 기간 읽기(older)도 여기 한 곳이 만들어 BitDashboard에 넘긴다 — 읽기는 같은 한도의 readDays 하나이고 새 표·RPC·서버 요청이 없다', () => {
+    const text = code(read(join(ROOT, LIVE)))
+    expect(text).toMatch(/<BitDashboard\b[^>]*\bolder=\{/)
+    expect(text).toMatch(/withinLimit\(\(\) => readDays\(range\)\)/)
+    expect(text).not.toMatch(/\.rpc\(|\.from\(['"]|saveStats|\bfetch\s*\(/)
+  })
+})
+
+// 대시보드 기간 고르기의 옛 기간 읽기 (dashboard-period REQ-1804·REQ-1805, design.md '데이터 흐름 (읽기)').
+// 오늘 11월 2일, 손에 든 숫자의 첫날(오늘 − LOOKBACK_DAYS)은 7월 25일. 저장 숫자·비트 숫자 모두 오늘이 덜 끝나 [일별]은 2026년 10월이고 ◀ 세 번이 7월이다
+describe('dashboard-period: 옛 기간은 LiveDashboard가 만든 older(readDays · 10초 한도)로 읽는다', () => {
+  const JULY = { from: '2026-07-01', to: '2026-07-31' }
+  const flowRegion = () => screen.getByRole('region', { name: '기간별 흐름' })
+  const picker = () => within(flowRegion()).getByRole('group', { name: '기간 골라 보기' })
+  const unit = (name: string) => within(within(picker()).getAllByRole('group', { name: '보는 단위' })[0]!).getByRole('button', { name })
+  const stepBack = () => fireEvent.click(within(picker()).getByRole('button', { name: '이전 달' }))
+  const toJuly = () => {
+    fireEvent.click(unit('일별'))
+    for (let i = 0; i < 3; i++) stepBack()
+  }
+  const rankSub = () => rankChart().children[2] as HTMLElement
+  const periodCard = () => within(flowRegion()).queryByRole('alert')
+  const periodRetry = () => within(flowRegion()).queryByRole('button', { name: /이 기간 다시 읽기|다시 읽는 중/ })
+
+  it('AC-1804.2: 저장 숫자로 그린 뒤 첫날이 오늘 − LOOKBACK_DAYS보다 앞인 7월을 고르면 readDays를 그 기간으로 한 번 더 부르고 읽은 줄로 그린다 — 손에 든 기간(9월·8월)은 읽지 않는다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    fireEvent.click(unit('일별'))
+    stepBack()
+    stepBack()
+    expect(readDays).toHaveBeenCalledTimes(1)
+    stepBack()
+    expect(readDays).toHaveBeenCalledTimes(2)
+    expect(savedReads[1]!.range).toEqual(JULY)
+    expect(within(rankChart()).getByText('읽는 중')).toBeTruthy()
+    await savedAnswer([day('2026-07-06', 1, 2), day('2026-07-20', 3, 4)], 1)
+    expect(rankSub().textContent).toBe('7월 1일 – 31일 · 자료 있는 2일')
+    expect(periodCard()).toBeNull()
+  })
+
+  it('AC-1804.2·AC-1804.3: 같은 10초 한도다 — 넘으면 고르기 아래 오류 카드(E-STATS-READ-FAILED)와 [이 기간 다시 읽기]이고, 늦게 온 답은 쓰지 않는다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    toJuly()
+    await wait(SAVED_READ_TIMEOUT_MS - 1)
+    expect(periodCard()).toBeNull()
+    await wait(1)
+    expect(periodCard()!.textContent).toContain('오류 번호 E-STATS-READ-FAILED')
+    expect(periodRetry()!.textContent).toBe('이 기간 다시 읽기')
+    await savedAnswer([day('2026-07-06', 1, 2)], 1)
+    expect(periodCard()).not.toBeNull()
+    expect(rankSub().textContent).toBe('7월 1일 – 31일')
+  })
+
+  it('AC-1804.3: 읽기가 던져도 같은 카드이고, [이 기간 다시 읽기]는 같은 기간을 readDays로 다시 읽어("다시 읽는 중"으로 막힘) 성공하면 카드가 없어진다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    toJuly()
+    await savedFail(1)
+    expect(periodCard()).not.toBeNull()
+    fireEvent.click(periodRetry()!)
+    expect(readDays).toHaveBeenCalledTimes(3)
+    expect(savedReads[2]!.range).toEqual(JULY)
+    expect(periodRetry()!.textContent).toBe('다시 읽는 중')
+    expect((periodRetry() as HTMLButtonElement).disabled).toBe(true)
+    await savedAnswer([day('2026-07-06', 1, 2)], 2)
+    expect(periodCard()).toBeNull()
+    expect(rankSub().textContent).toBe('7월 1일 – 31일 · 자료 있는 1일')
+  })
+
+  it('AC-1804.4: 비트 PC도 옛 기간은 저장 숫자로만 읽는다 — 비트 읽기는 열 때 한 번이고, 같은 날은 비트 숫자가 이기며, 서버 요청이 없다', async () => {
+    onBitPc()
+    vi.mocked(readDashboardGroups).mockResolvedValue(GROUPS)
+    draw()
+    await savedAnswer(SAVED_KEYED)
+    await bitAnswer(bitDays([keyed(day('2026-07-30', 1, 1), 1, 1), ...BIT_KEYED]))
+    toJuly()
+    expect(readDays).toHaveBeenCalledTimes(2)
+    expect(savedReads[1]!.range).toEqual(JULY)
+    await savedAnswer([keyed(day('2026-07-10', 1, 1), 3, 0), keyed(day('2026-07-30', 9, 9), 50, 50)], 1)
+    expect(rankRows()).toEqual([
+      ['운동치료', '4건'],
+      ['체외충격파', '1건'],
+    ])
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('AC-1805.1: 기간을 골라도(옛 기간 읽기 실패 포함) 원장님 보고 문장·하루 날짜 고르기는 그대로다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    const report = h1().textContent
+    const dateLine = screen.getByRole('group', { name: '날짜 고르기' }).outerHTML
+    toJuly()
+    await savedFail(1)
+    expect(periodCard()).not.toBeNull()
+    expect(h1().textContent).toBe(report)
+    expect(screen.getByRole('group', { name: '날짜 고르기' }).outerHTML).toBe(dateLine)
   })
 })
