@@ -29,11 +29,14 @@ export function comparisonAt(previous: readonly RxDetailPoint[], i: number): num
   return point === undefined || !point.covered ? null : point.count
 }
 
-// picked = 고른 기간(stats-period AC-1705.4). 회색 막대는 바로 전 기간이라 달 칸도 '비교 기간'이라고 쓴다(빠른 단추 12개월은 작년 같은 달)
+// picked = 고른 기간(stats-period AC-1705.4). 회색 막대는 바로 전 기간이라 달 칸도 '비교 기간'이라고 쓴다(빠른 단추 12개월은 작년 같은 달).
+// 끝나지 않은 달의 '…일까지'는 빠른 단추면 오늘, 고른 기간이면 그 칸의 끝(= 기간 끝, 끝난 날: 오늘 진료가 안 끝났으면 어제)이다
 export function detailNote(bucket: TrendBucket, current: readonly RxDetailPoint[], today: string, picked = false): string {
   if (bucket === 'day') return '하루씩 센 건수예요. 회색 막대는 비교 기간의 같은 차례 날이에요.'
   if (bucket === 'week') return '주는 월요일–일요일이에요. 기간 처음과 끝에 걸린 주는 일부 기간(빗금)이에요. 회색 막대는 비교 기간의 같은 차례 주예요.'
   const gray = picked ? '회색 막대는 비교 기간의 같은 차례 달이에요.' : '회색 막대는 작년 같은 달이에요.'
-  const partial = current.filter((point) => point.partial).map((point) => monthOf(point.start))
-  return onlyThisMonthPartial(partial, today) ? `빗금 칸은 아직 끝나지 않은 달이에요(${monthNumber(today)}월은 ${dayNumber(today)}일까지). ${gray}` : gray
+  const partial = current.filter((point) => point.partial)
+  if (!onlyThisMonthPartial(partial.map((point) => monthOf(point.start)), today)) return gray
+  const until = picked ? partial[0]!.end : today
+  return `빗금 칸은 아직 끝나지 않은 달이에요(${monthNumber(until)}월은 ${dayNumber(until)}일까지). ${gray}`
 }

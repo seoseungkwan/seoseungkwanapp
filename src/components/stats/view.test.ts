@@ -1619,6 +1619,24 @@ describe('AC-1704.3 patientTrend — 고른 기간', () => {
     expect(buckets[11]).toMatchObject({ key: '2026-12', label: '12월', rangeLabel: '2026년 12월', blank: 'future', values: [0, 0] })
   })
 
+  it("AC-1704.3 직접 날짜 월별은 고른 달까지만이고 앞으로 올 달('future') 칸이 없다(1월~12월은 해 고르기만)", () => {
+    const thisYear: StatsPick = { kind: 'custom', unit: 'month', from: '2026-06-01', to: '2026-11-05' }
+    const days = monthsFrom('2026-06', 6).flatMap((m) => monthRows(m))
+    const buckets = patientTrend(pickInput(thisYear, days, [{ from: '2026-06-01', to: '2026-11-05' }]))!
+    expect(buckets.map((b) => b.key)).toEqual(monthsFrom('2026-06', 6))
+    expect(buckets.some((b) => b.blank === 'future')).toBe(false)
+    // 해를 넘는 직접 날짜(작년 비교 없음)도 같다
+    const twoYears: StatsPick = { kind: 'custom', unit: 'month', from: '2025-06-01', to: '2026-11-05' }
+    const longDays = monthsFrom('2025-06', 18).flatMap((m) => monthRows(m))
+    const long = patientTrend(pickInput(twoYears, longDays, [{ from: '2025-06-01', to: '2026-11-05' }]))!
+    expect(long.map((b) => b.key)).toEqual(monthsFrom('2025-06', 18))
+    expect(long.some((b) => b.blank === 'future')).toBe(false)
+    // 1월 1일부터 고른 직접 날짜도 해 고르기가 아니다
+    const fromJanuary: StatsPick = { kind: 'custom', unit: 'month', from: '2026-01-01', to: '2026-11-05' }
+    const january = patientTrend(pickInput(fromJanuary, monthsFrom('2026-01', 11).flatMap((m) => monthRows(m)), [{ from: '2026-01-01', to: '2026-11-05' }]))!
+    expect(january.map((b) => b.key)).toEqual(monthsFrom('2026-01', 11))
+  })
+
   it('AC-1704.3 지난 해 월별은 12달이 모두 진짜 칸이다(앞으로 올 달이 없다)', () => {
     const days = monthsFrom('2025-01', 12).flatMap((m) => monthRows(m))
     const buckets = patientTrend(pickInput({ kind: 'year', year: '2025' }, days, [{ from: '2025-01-01', to: '2025-12-31' }]))!

@@ -351,4 +351,17 @@ describe('AC-1705.4: 고른 기간의 처방별 추세 열린 칸', () => {
     expect(previous[0]?.start).toBe('2026-09-01')
     expect(within(root).getByText(detailNote('day', current, P_TODAY, true))).toBeTruthy()
   })
+
+  it('AC-1705.4: 해 고르기의 끝나지 않은 달 글은 끝난 날까지다(오늘 진료가 안 끝났으면 어제 11월 5일, 끝났으면 오늘 6일)', () => {
+    const yearInput = (todayDone: boolean): StatsInput => ({
+      days: [day('2026-10-05', [[KEY, 100, 30]]), day('2026-11-02', [[KEY, 10, 3]])],
+      covered: [{ from: '2025-01-01', to: todayDone ? P_TODAY : '2026-11-05' }],
+      range: rangeOf(P_TODAY, { kind: 'year', year: '2026' }, todayDone),
+    })
+    const { root } = draw(yearInput(false))
+    expect(within(root).getByText('빗금 칸은 아직 끝나지 않은 달이에요(11월은 5일까지). 회색 막대는 비교 기간의 같은 차례 달이에요.')).toBeTruthy()
+    cleanup()
+    const { root: done } = draw(yearInput(true))
+    expect(within(done).getByText('빗금 칸은 아직 끝나지 않은 달이에요(11월은 6일까지). 회색 막대는 비교 기간의 같은 차례 달이에요.')).toBeTruthy()
+  })
 })

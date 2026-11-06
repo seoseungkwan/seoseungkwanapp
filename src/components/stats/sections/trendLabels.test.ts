@@ -112,4 +112,17 @@ describe('AC-1705.4·AC-1708.1: 글 함수는 기간 대신 칸(range.bucket)·g
     )
     expect(detailNote('day', [october], TODAY, true)).toBe('하루씩 센 건수예요. 회색 막대는 비교 기간의 같은 차례 날이에요.')
   })
+
+  it('AC-1705.4: 고른 기간의 끝나지 않은 달은 기간 끝(끝난 날)까지라고 쓴다 — 오늘 진료가 안 끝났으면 어제, 빠른 단추는 지금처럼 오늘', () => {
+    const october = point('2026-10-01', '2026-10-31')
+    const untilYesterday = point('2026-11-01', '2026-11-12', { partial: true })
+    expect(detailNote('month', [october, untilYesterday], TODAY, true)).toBe(
+      '빗금 칸은 아직 끝나지 않은 달이에요(11월은 12일까지). 회색 막대는 비교 기간의 같은 차례 달이에요.',
+    )
+    expect(detailNote('month', [october, untilYesterday], TODAY)).toBe('빗금 칸은 아직 끝나지 않은 달이에요(11월은 13일까지). 회색 막대는 작년 같은 달이에요.')
+    // 지난달에 끝난 직접 날짜의 잘린 달은 끝나지 않은 달이 아니다
+    expect(detailNote('month', [point('2026-09-01', '2026-09-30'), point('2026-10-01', '2026-10-20', { partial: true })], TODAY, true)).toBe(
+      '회색 막대는 비교 기간의 같은 차례 달이에요.',
+    )
+  })
 })

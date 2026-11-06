@@ -572,3 +572,55 @@ describe('AC-1705.2 처방별 추세 — 비교마다 그 묶음으로 세었는
     expect(ready(treatmentRows(year, [ESWT_GROUP])[0]!)).not.toHaveProperty('lastYearCompared')
   })
 })
+
+// 직접 날짜 183–365일은 바로 전 기간과 작년 기간이 겹친다. 2026-01-01~09-30(273일, 주별)
+// → 바로 전 2025-04-03~2025-12-31 · 작년 2025-01-01~2025-09-30 (겹친 날 2025-04-03~09-30). 덮은 기간 2025-01-01~2026-11-05
+describe('AC-1705.2 처방별 추세 — 두 비교 기간이 겹치는 직접 날짜', () => {
+  const P_TODAY = '2026-11-06'
+  const CUSTOM: StatsPick = { kind: 'custom', unit: 'week', from: '2026-01-01', to: '2026-09-30' }
+  const ESWT_GROUP = group('체외충격파', ESWT, 1)
+  const COVER: DateRange[] = [{ from: '2025-01-01', to: '2026-11-05' }]
+  const pickIn = (days: DayPayload[]): StatsInput => ({ days, covered: COVER, range: rangeOf(P_TODAY, CUSTOM, false) })
+  const keyed = (from: string, to: string, patients: number) => daysFrom(from, to, { groups: [line(ESWT_KEY, patients)] })
+  const DAYS = 273
+
+  it('AC-1705.2 기간이 겹친다(시험 전제: 바로 전 2025-04-03~12-31, 작년 2025-01-01~09-30)', () => {
+    const { previous, lastYear } = rangeOf(P_TODAY, CUSTOM, false)
+    expect([previous.from, previous.to]).toEqual(['2025-04-03', '2025-12-31'])
+    expect([lastYear?.from, lastYear?.to]).toEqual(['2025-01-01', '2025-09-30'])
+  })
+
+  it('AC-1705.2 작년 기간만 그 묶음으로 세지 않았으면 작년 칸만 –이고, 겹친 날도 센 바로 전 칸은 견준다', () => {
+    const days = [...daysFrom('2025-01-01', '2025-04-02'), ...keyed('2025-04-03', '2025-12-31', 1), ...keyed('2026-01-01', '2026-09-30', 2)]
+    const input = pickIn(days)
+    const item = ready(treatmentRows(input, [ESWT_GROUP])[0]!)
+    expect([item.compared, item.lastYearCompared]).toEqual([true, false])
+    expect(item.row).toMatchObject({ count: DAYS * 2, comparable: { current: DAYS * 2, previous: DAYS }, delta: compareNumbers(DAYS * 2, DAYS) })
+    expect(item.row.lastYear).toEqual({ previous: null, delta: { kind: 'unavailable' } })
+    expect(uncomparedNames([item])).toEqual([])
+    // 그래프 회색 막대(바로 전)는 겹친 날에도 모두 있다
+    expect(treatmentDetail(input, item).previous.every((point) => point.covered)).toBe(true)
+  })
+
+  it('AC-1705.2 바로 전 기간만 그 묶음으로 세지 않았으면 바로 전 칸만 –이고, 겹친 날도 센 작년 칸은 견준다', () => {
+    const days = [...keyed('2025-01-01', '2025-09-30', 3), ...daysFrom('2025-10-01', '2025-12-31'), ...keyed('2026-01-01', '2026-09-30', 2)]
+    const input = pickIn(days)
+    const item = ready(treatmentRows(input, [ESWT_GROUP])[0]!)
+    expect([item.compared, item.lastYearCompared]).toEqual([false, true])
+    expect(item.row).toMatchObject({ count: DAYS * 2, comparable: null, delta: { kind: 'unavailable' } })
+    expect(item.row.lastYear).toEqual({ previous: DAYS * 3, delta: compareNumbers(DAYS * 2, DAYS * 3) })
+    expect(uncomparedNames([item])).toEqual(['체외충격파'])
+    // 세지 않은 바로 전은 지금 규칙대로 그래프 회색 막대가 하나도 없다(작년과 겹친 날도)
+    expect(treatmentDetail(input, item).previous.some((point) => point.covered)).toBe(false)
+  })
+
+  it('AC-1705.2 groupInput은 세지 않은 비교 기간에서 센 다른 비교 기간과 겹친 날은 빼지 않는다', () => {
+    const input = pickIn([])
+    expect(groupInput(input, ESWT_KEY, '체외충격파', true, false).covered).toEqual([{ from: '2025-04-03', to: '2026-11-05' }])
+    expect(groupInput(input, ESWT_KEY, '체외충격파', false, true).covered).toEqual([
+      { from: '2025-01-01', to: '2025-09-30' },
+      { from: '2026-01-01', to: '2026-11-05' },
+    ])
+    expect(groupInput(input, ESWT_KEY, '체외충격파', false, false).covered).toEqual([{ from: '2026-01-01', to: '2026-11-05' }])
+  })
+})

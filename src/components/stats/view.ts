@@ -365,7 +365,12 @@ function weekBars(current: PeriodRange, lookup: DayLookup): BarBucket[] {
   })
 }
 
-// 달 칸: 기간 첫 달 ~ 끝 달. 끝 달 뒤로 그 해 12월까지는 앞으로 올 달(첫날이 오늘 이후)일 때만 빈 칸으로 잇는다(해 고르기의 1월~12월)
+// 해 고르기인지. 달 칸인 고른 기간은 해 고르기와 직접 날짜 월별뿐이다. 해 고르기는 작년 비교가 없고 한 해 안이며,
+// 직접 날짜는 한 해 안이면 늘 작년 비교가 있다(작년 기간이 고른 기간과 겹쳐 빠지려면 366일 이상이라 해를 넘는다, periodPick.ts customPickRange)
+const isYearPick = ({ current, lastYear }: StatsRange) => lastYear === null && current.from.endsWith('-01-01') && current.from.slice(0, 4) === current.to.slice(0, 4)
+
+// 달 칸: 기간 첫 달 ~ 끝 달. 해 고르기만 끝 달 뒤로 그 해 12월까지 앞으로 올 달(첫날이 오늘 이후)을 빈 칸으로 잇는다(1월~12월, AC-1704.3).
+// 직접 날짜 월별은 고른 달까지만이다
 function monthBars(range: StatsRange, lookup: DayLookup): BarBucket[] {
   const { current } = range
   const head = (month: string) => ({ key: month, label: `${Number(month.slice(5))}월`, rangeLabel: monthName(month) })
@@ -374,6 +379,7 @@ function monthBars(range: StatsRange, lookup: DayLookup): BarBucket[] {
     const whole = monthRange(month)
     bars.push(spanBar(head(month), { from: later(whole.from, current.from), to: earlier(whole.to, current.to) }, whole, lookup))
   }
+  if (!isYearPick(range)) return bars
   const yearEnd = `${current.to.slice(0, 4)}-12`
   for (let month = addMonths(monthOf(current.to), 1); compareYmd(month, yearEnd) <= 0 && compareYmd(`${month}-01`, range.load.to) >= 0; month = addMonths(month, 1)) {
     bars.push({ ...head(month), state: 'partial', values: [0, 0], blank: 'future' })
