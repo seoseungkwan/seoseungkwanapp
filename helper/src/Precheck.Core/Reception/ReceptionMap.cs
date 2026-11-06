@@ -43,8 +43,8 @@ public sealed class ColumnPlan
 
 /// <summary>
 /// 한 곳(spec reception-phone design.md 2절, REQ-1410): 비트 상태 코드 → 칸 표, 숨기는 OcmRsuYon 값, 이름·생년월일·성별·접수 메모·수납 시각·증상을 읽는 칸.
-/// 모르는 값은 추측하지 않는다. 의원 PC 확인 보고서(docs/reception/check-result.md)가 오기 전에는 표가 비어 있어 목록이 비고(AC-1410.1),
-/// 칸(Columns)이 null이라 칸을 읽는 문장은 돌지 않는다. 상태 표는 Phase 5 TASK-28, 칸은 TASK-29·30이 채운다.
+/// 모르는 값은 추측하지 않는다. 상태 표는 의원 PC 확인 보고서(docs/reception/check-result.md)의 답이 있는 코드만 담고(TASK-28),
+/// 답이 없는 칸은 Unconfirmed에 둔다. 다음 확인이 더 답하면 이 파일에서 다시 채운다. 칸(Columns)이 null이면 칸을 읽는 문장은 돌지 않는다(TASK-29·30이 채운다).
 /// 이미 아는 완료 코드는 지난 내원을 셀 때 쓰고, 오늘 줄을 칸에 나누는 일에는 확인 답(Statuses)만 쓴다.
 /// </summary>
 public static class ReceptionMap
@@ -52,14 +52,25 @@ public static class ReceptionMap
     /// <summary>이미 아는 완료 코드(원본 RxHistory·ClaimDates 조건, ReceptionSql의 완료 내원 조건과 같음).</summary>
     public static IReadOnlyList<string> KnownDoneCodes { get; } = new[] { "HN", "PN", "TN", "VN", "OE", "WN", "OB" };
 
-    // 상태 코드 → 칸. 확인 보고서의 상태 짝 답 그대로 채운다(TASK-28). 같은 코드를 두 번 적으면 형 초기화에서 멈춘다
-    private static readonly (string Code, Lane Lane)[] StatusTable = { };
+    // 상태 코드 → 칸. 확인 보고서(1·2회차)의 상태 짝 답 그대로(TASK-28). 답이 없는 코드(HN·VN·OE·OB·접수 취소 등)는 넣지 않는다.
+    // 같은 코드를 두 번 적으면 형 초기화에서 멈춘다
+    private static readonly (string Code, Lane Lane)[] StatusTable =
+    {
+        ("WR", Lane.Hidden), // 예약 대기(1회차: RsvInf 7줄·비트 예약 대기 7명)
+        ("WN", Lane.Wait),   // 진료대기(1·2회차 사람 답)
+        ("CN", Lane.Pay),    // 수납대기(2회차 사람 답)
+        ("TN", Lane.Pay),    // 수납대기(2회차 사람 답)
+        ("PN", Lane.Done),   // 수납완료(2회차 추정: 확인 도중 TN→PN과 오늘 수납 1줄)
+    };
 
-    /// <summary>상태 코드 → 칸. 채우기 전 비어 있다.</summary>
+    /// <summary>상태 코드 → 칸(확인 답이 있는 코드만).</summary>
     public static IReadOnlyDictionary<string, Lane> Statuses { get; } =
         StatusTable.ToDictionary(entry => entry.Code, entry => entry.Lane, StringComparer.Ordinal);
 
-    /// <summary>숨기는 OcmRsuYon 값. 채우기 전 비어 있다.</summary>
+    /// <summary>확인 답이 아직 없는 칸(비어 있어도 문제 아님, AC-1410.2). 진료보류는 1·2회차에 그 상태 환자가 없었다.</summary>
+    public static IReadOnlyCollection<Lane> Unconfirmed { get; } = Array.AsReadOnly(new[] { Lane.Hold });
+
+    /// <summary>숨기는 OcmRsuYon 값. 확인에서 오늘 줄이 모두 비어 있어 숨기는 값이 없다.</summary>
     public static IReadOnlyCollection<string> HiddenRsu { get; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>이름·생년월일·성별·접수 메모·수납 시각·증상을 읽는 칸. 채우기 전 null.</summary>
@@ -79,11 +90,13 @@ public static class ReceptionMap
 
     /// <summary>
     /// 상태 표의 문제 목록(AC-1410.2). 비어 있으면 문제 없음. 한 코드가 두 칸에 듦(대소문자·앞뒤 공백만 다른 열쇠),
-    /// 진료대기·진료보류·수납대기·끝남 가운데 코드가 없는 칸, 숨김이거나 표에 없는(곧 숨김) 아는 완료 코드를 알린다.
+    /// 진료대기·진료보류·수납대기·끝남 가운데 unconfirmed가 아닌데 코드가 없는 칸, unconfirmed인데 코드가 든 칸, 표에 든 숨김 아는 완료 코드를 알린다.
+    /// 확인 답이 없어 표에 없는 코드는 문제가 아니다(AC-1402.1대로 숨김 건수로만 센다).
     /// </summary>
-    public static IReadOnlyList<string> Validate(IReadOnlyDictionary<string, Lane> statuses)
+    public static IReadOnlyList<string> Validate(IReadOnlyDictionary<string, Lane> statuses, IReadOnlyCollection<Lane> unconfirmed)
     {
         if (statuses == null) throw new ArgumentNullException(nameof(statuses));
+        if (unconfirmed == null) throw new ArgumentNullException(nameof(unconfirmed));
         var problems = new List<string>();
 
         foreach (var group in statuses.GroupBy(entry => Normalize(entry.Key), StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
@@ -95,14 +108,20 @@ public static class ReceptionMap
 
         foreach (var lane in new[] { Lane.Wait, Lane.Hold, Lane.Pay, Lane.Done })
         {
-            if (!statuses.Values.Contains(lane)) problems.Add($"{NameOf(lane)} 칸에 코드가 없어요");
+            var has = statuses.Values.Contains(lane);
+            if (unconfirmed.Contains(lane))
+            {
+                if (has) problems.Add($"{NameOf(lane)} 칸은 아직 확인 안 됐는데 코드가 있어요");
+            }
+            else if (!has)
+            {
+                problems.Add($"{NameOf(lane)} 칸에 코드가 없어요");
+            }
         }
 
         foreach (var code in KnownDoneCodes)
         {
-            var found = statuses.Where(entry => Normalize(entry.Key) == code).Select(entry => entry.Value).ToArray();
-            if (found.Length == 0) problems.Add($"완료 코드 {code}가 표에 없어 숨김이 돼요");
-            else if (found.Contains(Lane.Hidden)) problems.Add($"완료 코드 {code}가 숨김이에요");
+            if (statuses.Any(entry => Normalize(entry.Key) == code && entry.Value == Lane.Hidden)) problems.Add($"완료 코드 {code}가 숨김이에요");
         }
 
         return problems;

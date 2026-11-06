@@ -13,8 +13,9 @@ namespace Precheck.Core.Tests.Reception.Map;
 
 /// <summary>
 /// 한 곳(ReceptionMap, design.md 2절).
-/// AC-1410.1 상태 표·숨기는 OcmRsuYon 값·읽는 칸이 이 파일 한 곳에만 있고, 채우기 전에는 비어 있다.
-/// AC-1410.2 Validate: 한 코드 두 칸 금지, 진료대기·진료보류·수납대기·끝남마다 코드 하나 이상, 아는 완료 코드는 숨김 아님.
+/// AC-1410.1 상태 표·숨기는 OcmRsuYon 값·읽는 칸이 이 파일 한 곳에만 있다.
+/// AC-1410.2 채운 표(TASK-28)는 확인 보고서 표와 같다. Validate: 한 코드 두 칸 금지, Unconfirmed가 아닌 칸마다 코드 하나 이상,
+/// Unconfirmed 칸은 비어 있음, 표에 든 아는 완료 코드는 숨김 아님(답 없는 코드는 표에 넣지 않는다).
 /// AC-1402.1 표에 있는 코드만 칸에 가고, 표에 없는 코드·숨김(접수 취소)·숨기는 OcmRsuYon 값의 줄은 어느 칸에도 가지 않는다.
 /// 상태 코드는 가짜(시험용 두 글자)와 이미 아는 완료 코드만 쓴다.
 /// </summary>
@@ -47,11 +48,37 @@ public class ReceptionMapTests
         Assert.Equal(new[] { "Wait", "Hold", "Pay", "Done", "Hidden" }, Enum.GetNames(typeof(Lane)));
     }
 
-    [Fact(DisplayName = "AC-1410.1 채우기 전에는 상태 표와 숨기는 OcmRsuYon 값이 비어 있다")]
-    public void EmptyBeforeFill()
+    [Fact(DisplayName = "AC-1410.2 채운 상태 표는 확인 보고서 표와 같다: WR 숨김, WN 진료대기, CN·TN 수납대기, PN 끝남, 진료보류는 아직 확인 안 됨")]
+    public void FilledTableMatchesReport()
     {
-        Assert.Empty(ReceptionMap.Statuses);
+        // docs/reception/check-result.md 1·2회차의 상태 짝 답(PN은 2회차에 TN→PN과 수납 1줄로 본 추정)
+        var report = Dict(("WR", Lane.Hidden), ("WN", Lane.Wait), ("CN", Lane.Pay), ("TN", Lane.Pay), ("PN", Lane.Done));
+        Assert.Equal(report.OrderBy(p => p.Key, StringComparer.Ordinal), ReceptionMap.Statuses.OrderBy(p => p.Key, StringComparer.Ordinal));
+        Assert.Equal(new[] { Lane.Hold }, ReceptionMap.Unconfirmed);
+        // OcmRsuYon은 오늘 줄 모두 비어 있어 숨기는 값이 없다
         Assert.Empty(ReceptionMap.HiddenRsu);
+    }
+
+    [Fact(DisplayName = "AC-1410.2 채운 표는 Validate(Statuses, Unconfirmed)로 문제가 없다")]
+    public void FilledTableHasNoProblems()
+    {
+        Assert.Empty(ReceptionMap.Validate(ReceptionMap.Statuses, ReceptionMap.Unconfirmed));
+    }
+
+    [Theory(DisplayName = "AC-1402.1 채운 표로 나누면 WN은 진료대기, CN·TN은 수납대기, PN은 끝남이고 WR(예약)과 답이 없는 코드는 어느 칸에도 가지 않는다")]
+    [InlineData("WN", Lane.Wait)]
+    [InlineData("CN", Lane.Pay)]
+    [InlineData("TN", Lane.Pay)]
+    [InlineData("PN", Lane.Done)]
+    [InlineData("WR", Lane.Hidden)]
+    [InlineData("HN", Lane.Hidden)]
+    [InlineData("VN", Lane.Hidden)]
+    [InlineData("OE", Lane.Hidden)]
+    [InlineData("OB", Lane.Hidden)]
+    [InlineData("ZZ", Lane.Hidden)]
+    public void FilledTableSplitsRows(string code, Lane lane)
+    {
+        Assert.Equal(lane, ReceptionMap.LaneOf(ReceptionMap.Statuses, ReceptionMap.HiddenRsu, code, ""));
     }
 
     [Fact(DisplayName = "AC-1410.1 진짜 표에 없는 코드는 어느 칸에도 가지 않는다(채우기 전에는 목록이 빈다)")]
@@ -93,7 +120,7 @@ public class ReceptionMapTests
             Assert.True(hits.Length == 1 && hits[0] == expected, $"{pattern}: {string.Join(", ", hits)}");
         }
 
-        // 상태 코드 글 → 칸 짝("HN" … Lane.Done)은 이 파일 말고는 어디에도 없다(채우기 전에는 이 파일에도 없다)
+        // 상태 코드 글 → 칸 짝("PN" … Lane.Done)은 이 파일 말고는 어디에도 없다
         var pairs = new Regex(@"(\[\s*""[A-Za-z0-9]{1,4}""\s*\]\s*=|\{\s*""[A-Za-z0-9]{1,4}""\s*,|\(\s*""[A-Za-z0-9]{1,4}""\s*,)\s*Lane\.");
         var outside = HitsOf(pairs).Where(hit => hit != expected).ToArray();
         Assert.True(outside.Length == 0, $"상태 코드 → 칸 글이 다른 파일에 있다: {string.Join(", ", outside)}");
@@ -101,71 +128,91 @@ public class ReceptionMapTests
 
     // ---- AC-1410.2 Validate ----------------------------------------------------------------------------
 
+    private static readonly Lane[] NoLanes = new Lane[0];
+
     [Fact(DisplayName = "AC-1410.2 칸마다 코드가 있고 아는 완료 코드가 숨김이 아닌 표는 문제가 없다")]
     public void GoodMapHasNoProblems()
     {
-        Assert.Empty(ReceptionMap.Validate(Dict(GoodPairs())));
+        Assert.Empty(ReceptionMap.Validate(Dict(GoodPairs()), NoLanes));
     }
 
-    [Theory(DisplayName = "AC-1410.2 진료대기·진료보류·수납대기·끝남 가운데 코드가 없는 칸이 있으면 그 칸을 알린다")]
+    [Theory(DisplayName = "AC-1410.2 진료대기·진료보류·수납대기·끝남 가운데 Unconfirmed가 아니면서 코드가 없는 칸이 있으면 그 칸을 알린다")]
     [InlineData(Lane.Wait, "진료대기")]
     [InlineData(Lane.Hold, "진료보류")]
     [InlineData(Lane.Pay, "수납대기")]
     [InlineData(Lane.Done, "끝남")]
     public void EmptyLaneIsProblem(Lane lane, string korean)
     {
-        // 그 칸 코드를 빼되 아는 완료 코드는 다른 보이는 칸으로 옮긴다(완료 코드 문제와 섞이지 않게)
-        var other = lane == Lane.Pay ? Lane.Done : Lane.Pay;
-        var pairs = GoodPairs().Select(p => p.Lane != lane ? p : KnownDone.Contains(p.Code) ? (p.Code, other) : (p.Code, Lane.Hidden)).ToArray();
-        var problems = ReceptionMap.Validate(Dict(pairs));
+        var problems = ReceptionMap.Validate(Dict(WithoutLane(lane)), NoLanes);
         Assert.Single(problems);
         Assert.Contains(korean, problems[0]);
     }
 
-    [Theory(DisplayName = "AC-1410.2 아는 완료 코드가 숨김이면 그 코드를 알린다")]
+    [Theory(DisplayName = "AC-1410.2 Unconfirmed(아직 확인 안 됨) 칸은 비어 있어도 문제가 없다")]
+    [InlineData(Lane.Wait)]
+    [InlineData(Lane.Hold)]
+    [InlineData(Lane.Pay)]
+    [InlineData(Lane.Done)]
+    public void UnconfirmedEmptyLaneIsFine(Lane lane)
+    {
+        Assert.Empty(ReceptionMap.Validate(Dict(WithoutLane(lane)), new[] { lane }));
+    }
+
+    [Fact(DisplayName = "AC-1410.2 Unconfirmed 칸에 코드가 있으면 그 칸을 알린다(아직 확인 안 된 칸은 비어 있다)")]
+    public void UnconfirmedLaneWithCodeIsProblem()
+    {
+        var problems = ReceptionMap.Validate(Dict(GoodPairs()), new[] { Lane.Hold });
+        Assert.Single(problems);
+        Assert.Contains("진료보류", problems[0]);
+    }
+
+    /// <summary>그 칸 코드를 빼되 아는 완료 코드는 다른 보이는 칸으로 옮긴다(완료 코드 문제와 섞이지 않게).</summary>
+    private static (string Code, Lane Lane)[] WithoutLane(Lane lane)
+    {
+        var other = lane == Lane.Pay ? Lane.Done : Lane.Pay;
+        return GoodPairs().Select(p => p.Lane != lane ? p : KnownDone.Contains(p.Code) ? (p.Code, other) : (p.Code, Lane.Hidden)).ToArray();
+    }
+
+    [Theory(DisplayName = "AC-1410.2 표에 든 아는 완료 코드가 숨김이면 그 코드를 알린다")]
     [InlineData("HN")] [InlineData("PN")] [InlineData("TN")] [InlineData("VN")] [InlineData("OE")] [InlineData("WN")] [InlineData("OB")]
     public void KnownDoneHiddenIsProblem(string code)
     {
         var pairs = GoodPairs().Select(p => p.Code == code ? (p.Code, Lane.Hidden) : p).ToArray();
-        var problems = ReceptionMap.Validate(Dict(pairs));
+        var problems = ReceptionMap.Validate(Dict(pairs), NoLanes);
         Assert.Single(problems);
         Assert.Contains(code, problems[0]);
     }
 
-    [Theory(DisplayName = "AC-1410.2 아는 완료 코드가 표에 없으면(곧 숨김) 그 코드를 알린다")]
-    [InlineData("HN")] [InlineData("OB")]
-    public void KnownDoneMissingIsProblem(string code)
+    [Theory(DisplayName = "AC-1410.2 확인 답이 없는 아는 완료 코드는 표에 넣지 않아도 문제가 없다(숨김 건수로만 센다)")]
+    [InlineData("HN")] [InlineData("VN")] [InlineData("OE")] [InlineData("OB")]
+    public void KnownDoneMissingIsFine(string code)
     {
-        var problems = ReceptionMap.Validate(Dict(GoodPairs().Where(p => p.Code != code).ToArray()));
-        Assert.Single(problems);
-        Assert.Contains(code, problems[0]);
+        Assert.Empty(ReceptionMap.Validate(Dict(GoodPairs().Where(p => p.Code != code).ToArray()), NoLanes));
     }
 
     [Fact(DisplayName = "AC-1410.2 확인에서 수납대기로 나온 완료 코드는 수납대기여도 문제가 없다")]
     public void KnownDoneAsPayIsFine()
     {
         var pairs = GoodPairs().Select(p => p.Code == "HN" ? (p.Code, Lane.Pay) : p).ToArray();
-        Assert.Empty(ReceptionMap.Validate(Dict(pairs)));
+        Assert.Empty(ReceptionMap.Validate(Dict(pairs), NoLanes));
     }
 
     [Fact(DisplayName = "AC-1410.2 한 코드가 두 칸에 들면(대소문자·앞뒤 공백만 다른 열쇠) 그 코드를 알린다")]
     public void OneCodeTwoLanesIsProblem()
     {
         var pairs = GoodPairs().Concat(new[] { ("a1 ", Lane.Pay) }).ToArray();
-        var problems = ReceptionMap.Validate(Dict(pairs));
+        var problems = ReceptionMap.Validate(Dict(pairs), NoLanes);
         Assert.Single(problems);
         Assert.Contains("A1", problems[0]);
     }
 
-    [Fact(DisplayName = "AC-1410.2 채우기 전 빈 표는 네 칸이 모두 비었고 완료 코드 일곱 개가 숨김이라고 알린다")]
+    [Fact(DisplayName = "AC-1410.2 빈 표는 Unconfirmed가 아닌 네 칸이 모두 비었다고만 알린다")]
     public void EmptyMapListsAllProblems()
     {
-        var problems = ReceptionMap.Validate(Dict());
+        var problems = ReceptionMap.Validate(Dict(), NoLanes);
         foreach (var name in new[] { "진료대기", "진료보류", "수납대기", "끝남" })
             Assert.Contains(problems, problem => problem.Contains(name));
-        foreach (var code in KnownDone)
-            Assert.Contains(problems, problem => problem.Contains(code));
-        Assert.Equal(4 + KnownDone.Length, problems.Count);
+        Assert.Equal(4, problems.Count);
     }
 
     [Fact(DisplayName = "AC-1410.2 아는 완료 코드 목록은 HN PN TN VN OE WN OB이다")]

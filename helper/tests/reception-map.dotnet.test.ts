@@ -1,4 +1,4 @@
-// 접수 현황 한 곳(ReceptionMap, TASK-7, REQ-1410·REQ-1402)의 C# 시험(helper/tests/Precheck.Core.Tests/Reception/ReceptionMap.test.cs)을 감싼다.
+// 접수 현황 한 곳(ReceptionMap, TASK-7·TASK-28, REQ-1410·REQ-1402)의 C# 시험(helper/tests/Precheck.Core.Tests/Reception/ReceptionMap.test.cs)을 감싼다.
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -27,11 +27,11 @@ function expectAc(ac: string) {
 }
 
 describe('REQ-1410·REQ-1402 한 곳 ReceptionMap (C# Precheck.Core.Tests.Reception.Map)', () => {
-  it('AC-1410.1 상태 표·숨기는 OcmRsuYon 값·읽는 칸이 ReceptionMap.cs 한 곳에만 있고, 채우기 전에는 비어 있어 목록이 비며 칸 문장이 없다', () => {
+  it('AC-1410.1 상태 표·숨기는 OcmRsuYon 값·읽는 칸이 ReceptionMap.cs 한 곳에만 있고, 칸이 채워지기 전에는 칸 문장이 없다', () => {
     expectAc('AC-1410.1')
   })
 
-  it('AC-1410.2 Validate는 한 코드 두 칸, 코드 없는 칸(진료대기·진료보류·수납대기·끝남), 숨김이 된 아는 완료 코드를 알린다', () => {
+  it('AC-1410.2 채운 표는 확인 보고서 표(WR 숨김·WN 진료대기·CN·TN 수납대기·PN 끝남, 진료보류 확인 안 됨)와 같고, Validate는 한 코드 두 칸, Unconfirmed가 아닌 빈 칸, 코드가 든 Unconfirmed 칸, 숨김이 된 아는 완료 코드를 알린다', () => {
     expectAc('AC-1410.2')
   })
 
