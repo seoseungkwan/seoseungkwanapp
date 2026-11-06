@@ -24,25 +24,25 @@
 - AC: AC-1801.3, AC-1801.4, AC-1802.1·AC-1802.2(칸 셈·눈금·dense), AC-1803.1, AC-1803.2
 - Files: src/components/dashboard/summary/flow.ts, src/components/dashboard/summary/flow.test.ts
 - Tests: src/components/dashboard/summary/flow.test.ts
-- TDD: required — `QUICK_CHOICE`·`todayFinished`·`flowOf`·`flowTrend`(빠른 단추 = `trendBuckets` 그대로, 고른 기간 = 통계 `patientTrend`에 `covered: [current]`)·`flowTicks`·`rankLine`. 통계에서는 `periodPick`(`pickRange`·`lastDayOf`·타입)과 `view`(`patientTrend`·타입)만 부른다. 날짜는 `lib/analytics/dates.ts`만
+- TDD: required — `QUICK_CHOICE`·`todayFinished`·`flowOf`·`flowTrend`(빠른 단추 = `trendBuckets` 그대로, 고른 기간 = 통계 `patientTrend`에 `covered: [current]`)·`flowTicks`·`flowDense`(빠른 단추 = `period !== 7`, 고른 기간 = 칸 7개 넘음)·`rankLine`. `Flow`는 짝 모양(빠른 단추 = period 일 수·range null, 고른 기간 = period null·range)이고, head·span 규칙은 design.md 인터페이스 주석 그대로(고른 기간 span = head, 빠른 단추 span = head + ' (어제까지)'). 통계에서는 `periodPick`(`pickRange`·`lastDayOf`·타입)과 `view`(`patientTrend`·타입)만 부른다. 날짜는 `lib/analytics/dates.ts`만. (끝남 01cecae. 이 커밋부터 `source.test.ts`의 '시험 밖 summary 파일 다섯' 시험이 실패하고 TASK-3에서 고친다)
 
 ## TASK-3: 옛 기간 읽기 훅
 - REQ: REQ-1804
 - AC: AC-1804.1, AC-1804.2(읽기 한 번·얹기·같은 키 안 읽음·앞 답 버림), AC-1804.3(실패·한도·다시 읽기 상태)
-- Files: src/components/dashboard/summary/usePeriodDays.ts, src/components/dashboard/summary/usePeriodDays.test.ts, src/components/dashboard/summary/source.ts
-- Tests: src/components/dashboard/summary/usePeriodDays.test.ts
-- TDD: required — `OlderDays` 타입은 `source.ts`에 더한다(다른 모양은 그대로). 읽기 함수는 주입받고 이 파일은 `lib/storage`를 부르지 않는다. `older`가 없거나 첫날 ≥ `older.from`이면 늘 `ready`(손에 든 숫자)
+- Files: src/components/dashboard/summary/usePeriodDays.ts, src/components/dashboard/summary/usePeriodDays.test.ts, src/components/dashboard/summary/source.ts, src/components/dashboard/summary/source.test.ts
+- Tests: src/components/dashboard/summary/usePeriodDays.test.ts, src/components/dashboard/summary/source.test.ts
+- TDD: required — `source.ts`에는 `OlderDays` 타입과 `SummarySource` data 모양의 선택 칸 `older?: OlderDays` 하나만 더한다(다른 모양은 그대로, design.md '`older`는 source 안으로'). `usePeriodDays.ts`는 읽기 함수를 주입받고 `lib/storage`를 부르지 않는다(`react`·`./source`·`@/lib/analytics/dates`·`@/types/payload`만). `older`가 없거나 첫날 ≥ `older.from`이면 늘 `ready`(손에 든 숫자). `source.test.ts`는 기대값을 두 곳만 고친다(이 기능에서 '지금 시험 기대값은 바꾸지 않는다'의 예외는 이 둘뿐): ① '시험 밖 summary 파일' 목록 다섯 → 일곱(`flow.ts`·`usePeriodDays.ts` 더함, 01cecae부터의 실패를 여기서 고친다) ② data 모양 글자 검사(지금 154행)에 `older?: OlderDays`를 더한 글자. 시험 이름의 AC는 그대로 두고 `older` 칸이 선택 칸인지(`RequiredKeys<Data>`가 그대로 `'kind' | 'days'`) 확인을 더할 수 있다
 
 ## TASK-4: 기간별 흐름 화면
 - REQ: REQ-1801, REQ-1802, REQ-1803, REQ-1804, REQ-1805
 - AC: AC-1801.1, AC-1801.2, AC-1801.4(머리 줄 글), AC-1801.5, AC-1802.1~AC-1802.5(그리기), AC-1803.1~AC-1803.3(날짜 줄), AC-1804.2(읽는 중 틀), AC-1804.3(오류 카드·단추), AC-1805.1(오늘 하루 분석), AC-1805.2
 - Files: src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - Tests: src/components/dashboard/summary/DashboardAnalysis.test.tsx
-- TDD: required — 상태 `FlowChoice`(처음 30), `older` prop, 빠른 단추 오른쪽 같은 줄 `PeriodPicker`(그래프 갈래에만, 묶음째 줄바꿈), `usePeriodDays` 상태별 그리기, 처방 상위 설명 아래 줄(`Chart`의 `sub`), 재방문율 줄 아래 글, 범례 '일부 기간'. AC-311.8 허락 목록에는 design.md '결정과 트레이드오프'의 줄만 더하고 `view.ts`가 `components/stats`를 부르지 않는다는 검사를 더한다. 지금 시험 기대값은 바꾸지 않는다
+- TDD: required — 상태 `FlowChoice`(처음 30), 새 prop 없이 `source.older`를 `usePeriodDays`에 넘김(AC-312.2의 DashboardAnalysis 선택 칸 검사는 그대로 통과), 빠른 단추 오른쪽 같은 줄 `PeriodPicker`(그래프 갈래에만, 묶음째 줄바꿈, 그 갈래 머리 줄에만 `md:items-end md:justify-end`, 고르기 감싸개 `max-md:order-4 max-md:w-full` — design.md '화면'), `usePeriodDays` 상태별 그리기, 처방 상위 설명 아래 줄(`Chart`의 `sub`), 재방문율 줄 아래 글, 범례 '일부 기간'. AC-311.8 허락 목록에는 design.md '결정과 트레이드오프'의 줄만 더하고 `view.ts`가 `components/stats`를 부르지 않는다는 검사를 더한다. 지금 시험 기대값은 바꾸지 않는다
 
 ## TASK-5: 읽기 잇기 (LiveDashboard → BitDashboard → DashboardAnalysis)
 - REQ: REQ-1804, REQ-1805
 - AC: AC-1804.2(`readDays` 범위·10초 한도), AC-1804.3(한도 = null), AC-1804.4, AC-1805.1(보고 문장·하루 날짜 고르기)
 - Files: src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx
 - Tests: src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx
-- TDD: required — LiveDashboard가 `older`(첫날 = 오늘 − `LOOKBACK_DAYS`, 읽기 = `withinLimit(() => readDays(range))`의 rows)를 만들어 BitDashboard에 넘기고, BitDashboard는 DashboardAnalysis에 그대로 넘긴다. `readBitDays`·`stats.rows` 범위는 바꾸지 않고, 고르기로 `stats.rows`를 부르지 않음을 시험한다. AC-311.8의 `LIVE_IMPORTS`는 그대로다(새 불러오기 없음)
+- TDD: required — LiveDashboard가 `older`(첫날 = 오늘 − `LOOKBACK_DAYS`, 읽기 = `withinLimit(() => readDays(range))`의 rows)를 만들어 BitDashboard에 넘기고, BitDashboard는 props `older?: OlderDays`로 받아 자기가 만드는 source(`{ kind: 'data', days, groups, older }`)에 넣는다(DashboardAnalysis에 새 prop을 주지 않는다). `readBitDays`·`stats.rows` 범위는 바꾸지 않고, 고르기로 `stats.rows`를 부르지 않음을 시험한다. AC-311.8의 `LIVE_IMPORTS`는 그대로다(새 불러오기 없음)
