@@ -41,6 +41,32 @@
 Gate 42 · TodayVisits 7 (8줄) · TodayRx 29 · PriorVisits 117 · PriorRx 76 · RxNames 1574 (546,073줄) · HistoryCount 14 · HistoryPage 56 · 전체 72초(사람이 답하는 시간 포함).
 → 오늘·지난 내원 읽기는 5초 간격에 충분히 빠르다. RxNames는 한 번만 읽어 두어야 한다.
 
-## 2회차 — 진료 시간 (대기·보류·수납대기·수납완료 환자가 있을 때)
+## 2회차 — 2026-11-06 09:00 KST (진료 시간)
 
-아직 안 함.
+비트확인3.zip(빌드 0.3.0, 커밋 88443a6)을 총괄 PC에서 돌림. 전체 86초(사람이 답하는 시간 포함). 4/8 로그인·이름 단계는 건너뜀.
+
+### 상태 코드 (OcmInf.OcmComStt)
+
+| 코드 | 처음(2/8) | 끝(rxByStatus) | 사람 답 | 칸 | 근거 |
+|---|---|---|---|---|---|
+| WR | 6 | 6 | 6 모름 | 숨김 | 1회차에서 예약으로 확인 |
+| WN | 2 | 2 | 1 진료대기 | 진료대기 | 1회차와 같음 |
+| CN | 1 | 1 | 3 수납대기 | 수납대기 | 사람 답. KnownDoneCodes에 없음(진료는 끝났고 수납 전이라 통계에 아직 안 들어가는 것과 맞음) |
+| TN | 1 | 0 | 3 수납대기 | 수납대기 | 사람 답 |
+| PN | 없음 | 1 (withRx=1) | 묻지 못함 | 수납완료 (추정) | 실행 도중 TN 1건이 사라지고 PN 1건이 생김. 오늘 OrcInf(수납) 1줄. PN은 KnownDoneCodes에 있음 |
+
+- 아직 모름: 진료보류, 접수 취소 코드(이번에도 그 상태 환자가 없었음). 모르는 코드는 명세(REQ-1410) 규칙대로 다룬다.
+- OcmRsuYon은 오늘 10줄 모두 비어 있음 → 수납 표시로 쓸 수 없다. 수납완료는 상태 코드(PN)와 OrcInf로 본다.
+
+### 칸
+
+| 쓰임 | 칸 | 근거 |
+|---|---|---|
+| 접수 메모 | OcmInf.OcmRefCmt | 2회차에도 이 칸만 `containing=1` |
+| 수납 시각 | OrcInf.OrcUpdDtm | char(12) yyyyMMddHHmm, 오늘 수납 1줄. 내원과는 OrcInf.OrcOcmNum으로 이어짐. OrcAccDte는 날짜(8자)뿐 |
+| 증상 | EmrInf.EmrShtVal | 친 증상 글이 이 칸 한 줄에서만 찾아짐(`containing=1`, 지난 14일 8,652줄 중 5,891줄이 차 있음, 길이 2~72자). EmrCCVal·EmrPIVal은 14일 동안 모두 비어 있음. 다만 EmrShtVal에는 여러 기록지 값이 함께 들어가고(EmrShtTyp·EmrShtCod로 나뉨) 어느 코드가 증상인지는 아직 모름 |
+
+### 속도 (ms)
+
+Gate 47 · TodayVisits 8 (10줄) · TodayRx 29 · PriorVisits 54 · PriorRx 7 · RxNames 1544 (546,073줄) · HistoryCount 0 · HistoryPage 1.
+→ 1회차와 같이 5초 간격에 충분하다.
