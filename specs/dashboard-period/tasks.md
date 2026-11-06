@@ -10,7 +10,7 @@
 ## 먼저 할 일 (코드 작업 아님, 끝나기 전에는 TASK를 시작하지 않는다)
 1. `feat-stats-period`의 TASK-8이 끝나고 검토를 통과하면 그 브랜치를 이 브랜치(`feat-dashboard-period`)에 합친다. `PeriodPicker.tsx`·`periodPick.ts`·`StackedBarChart`의 `blank`가 그 브랜치에만 있다
 2. 합친 뒤 `npm test`·`npm run lint`·`tsc`가 통과하는지 본다(합치기만 했으니 고칠 것이 없어야 한다)
-3. 고르기 줄 자리(머리 줄 바로 아래, PC는 오른쪽)를 사용자에게 사진이나 시안으로 확인받는다. 처방 상위 날짜 줄은 승인됨("설명 바로 아래")
+3. (끝남, 2026-11-06) 사용자 결정: 고르기는 빠른 단추와 같은 줄(통계 탭처럼), 처방 상위 날짜 줄은 "설명 바로 아래", 명세 내용 승인("이대로 만들어")
 
 ## TASK-1: 날 수와 뺀 날 (대시보드 view.ts)
 - REQ: REQ-1802, REQ-1803
@@ -38,7 +38,7 @@
 - AC: AC-1801.1, AC-1801.2, AC-1801.4(머리 줄 글), AC-1801.5, AC-1802.1~AC-1802.5(그리기), AC-1803.1~AC-1803.3(날짜 줄), AC-1804.2(읽는 중 틀), AC-1804.3(오류 카드·단추), AC-1805.1(오늘 하루 분석), AC-1805.2
 - Files: src/components/dashboard/summary/DashboardAnalysis.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - Tests: src/components/dashboard/summary/DashboardAnalysis.test.tsx
-- TDD: required — 상태 `FlowChoice`(처음 30), `older` prop, 머리 줄 아래 `PeriodPicker`(그래프 갈래에만), `usePeriodDays` 상태별 그리기, 처방 상위 설명 아래 줄(`Chart`의 `sub`), 재방문율 줄 아래 글, 범례 '일부 기간'. AC-311.8 허락 목록에는 design.md '결정과 트레이드오프'의 줄만 더하고 `view.ts`가 `components/stats`를 부르지 않는다는 검사를 더한다. 지금 시험 기대값은 바꾸지 않는다
+- TDD: required — 상태 `FlowChoice`(처음 30), `older` prop, 빠른 단추 오른쪽 같은 줄 `PeriodPicker`(그래프 갈래에만, 묶음째 줄바꿈), `usePeriodDays` 상태별 그리기, 처방 상위 설명 아래 줄(`Chart`의 `sub`), 재방문율 줄 아래 글, 범례 '일부 기간'. AC-311.8 허락 목록에는 design.md '결정과 트레이드오프'의 줄만 더하고 `view.ts`가 `components/stats`를 부르지 않는다는 검사를 더한다. 지금 시험 기대값은 바꾸지 않는다
 
 ## TASK-5: 읽기 잇기 (LiveDashboard → BitDashboard → DashboardAnalysis)
 - REQ: REQ-1804, REQ-1805
