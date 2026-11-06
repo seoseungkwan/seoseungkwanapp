@@ -38,17 +38,23 @@ export type ScheduleOptions = { includeCond: boolean; includePast: boolean; base
 export type VisitFilter = { kind: '' | VisitKind; from?: string; to?: string }
 export type PasteOptions = { from?: string; to?: string; withDate: boolean }
 
-// 원본이 멈추는 곳(throw new Error). 오류 번호는 모두 E-PATIENTS-SOURCE이고 이유는 이 목록뿐(환자 값을 싣지 않는다)
-export type PatientsSourceReason =
-  | 'header-missing'
-  | 'header-duplicate'
-  | 'row-unreadable'
-  | 'visit-number-empty'
-  | 'visit-conflict'
-  | 'no-visits'
-  | 'phone-column-missing'
-  | 'phone-column-duplicate'
-  | 'phone-conflict'
+// 원본이 멈추는 곳(throw new Error). 오류 번호는 모두 E-PATIENTS-SOURCE이고 이유는 이 목록뿐(환자 값을 싣지 않는다).
+// 화면은 오류 번호 줄에 이 낱말을 그대로 붙여 진단에 쓴다(patients-source-reason). 목록 밖 글은 그리지 않는다
+export const PATIENTS_SOURCE_REASONS = [
+  'header-missing',
+  'header-duplicate',
+  'row-unreadable',
+  'visit-number-empty',
+  'visit-conflict',
+  'no-visits',
+  'phone-column-missing',
+  'phone-column-duplicate',
+  'phone-conflict',
+] as const
+export type PatientsSourceReason = (typeof PATIENTS_SOURCE_REASONS)[number]
+
+export const isPatientsSourceReason = (x: unknown): x is PatientsSourceReason =>
+  typeof x === 'string' && (PATIENTS_SOURCE_REASONS as readonly string[]).includes(x)
 
 // ── 정기 주사 계산(lib/patients/recall.ts, 원본 revisit_source_boot.js 옮김) ─────────────
 
@@ -132,6 +138,8 @@ export type RecallFilters = { from: string | null; to: string | null; overdue: b
 export type PatientsRange = { from: string; to: string }
 export type TargetsKind = 'followup' | 'injection'
 export type ViewCodes = { followup?: string; recall?: string; store?: string }
+// E-PATIENTS-SOURCE로 멈춘 종류의 이유 낱말. 그런 종류가 없으면 views에 이 칸이 없다
+export type ViewReasons = { followup?: PatientsSourceReason; recall?: PatientsSourceReason }
 
 // 스트림이 거절되면 화면은 id를 모른다. 그때는 id 없이 받은 오류 번호(code)를 알린다
 export type PatientsScreenMessage =
@@ -162,7 +170,7 @@ export type PatientsWorkerMessage =
   | { type: 'plan'; followup: PatientsRange[]; recall: PatientsRange[] | null; code?: string }
   | { type: 'piece'; id: string | null; ok: boolean; code?: string }
   | { type: 'stored'; ok: boolean; code?: string; recall: PatientsRange[] }
-  | { type: 'views'; followup: FollowupView | null; recall: RecallView | null; counts: ContactCount | null; codes: ViewCodes }
+  | { type: 'views'; followup: FollowupView | null; recall: RecallView | null; counts: ContactCount | null; codes: ViewCodes; reasons?: ViewReasons }
   | FilteredFollowup
   | FilteredRecall
   | { type: 'marked'; key: string; ok: boolean; code?: string; counts: ContactCount | null }

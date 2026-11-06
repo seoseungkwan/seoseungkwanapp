@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { errorInfo } from '@/lib/errors'
-import type { ContactCount, FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView } from '@/types/patients'
+import type { ContactCount, FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView, ViewReasons } from '@/types/patients'
 import { PatientsScreen } from './PatientsScreen'
 import type { PatientsTool } from './tools'
 import type { PatientsBridge, PatientsWorkerHandle } from './usePatientsWorker'
@@ -206,6 +206,40 @@ describe('PatientsScreen: 오류는 그 도구에만 (AC-604.3)', () => {
     expect(screen.getByRole('alert').textContent).toBe('오류 번호 E-HELPER-NEW-CODE')
     expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
     expect(t.slot('followup')).toBeNull()
+  })
+
+  it('AC-2102.1: E-PATIENTS-SOURCE의 이유 낱말이 오면 도구마다 자기 이유를 번호 줄에 붙인다', async () => {
+    const t = setup('followup')
+    await t.toViews({
+      followup: null,
+      recall: null,
+      counts: null,
+      codes: { followup: 'E-PATIENTS-SOURCE', recall: 'E-PATIENTS-SOURCE' },
+      reasons: { followup: 'row-unreadable', recall: 'visit-conflict' },
+    })
+    const info = errorInfo('E-PATIENTS-SOURCE')
+    expect(screen.getByRole('alert').textContent).toContain(info.what)
+    expect(screen.getByText('오류 번호 E-PATIENTS-SOURCE (row-unreadable)')).toBeTruthy()
+    expect(screen.queryByText(/visit-conflict/)).toBeNull()
+
+    t.show('recall')
+    expect(screen.getByText('오류 번호 E-PATIENTS-SOURCE (visit-conflict)')).toBeTruthy()
+    expect(screen.queryByText(/row-unreadable/)).toBeNull()
+  })
+
+  it('AC-2102.2: 이유 칸에 정해 둔 낱말이 아닌 글이 오면 번호만 보이고 그 글은 화면 어디에도 없다', async () => {
+    const t = setup('followup')
+    await t.toViews({
+      followup: null,
+      recall: RECALL_VIEW,
+      counts: null,
+      codes: { followup: 'E-PATIENTS-SOURCE' },
+      reasons: { followup: '가상환자01 010-0000-0101' } as unknown as ViewReasons,
+    })
+    const lines = [...screen.getByRole('alert').querySelectorAll('p')].map((p) => p.textContent)
+    expect(lines[2]).toBe('오류 번호 E-PATIENTS-SOURCE')
+    expect(document.body.textContent).not.toContain('가상환자01')
+    expect(document.body.textContent).not.toContain('010-0000-0101')
   })
 
   it('AC-610.2: 저장 실패 번호(codes.store)만 왔으면 도구 오류가 아니다', async () => {

@@ -93,14 +93,15 @@ function LoadingView({ tool, progress }: { tool: ListTool; progress: ReadProgres
   )
 }
 
-function ErrorView({ tool, code, onReload }: { tool: ListTool; code: string; onReload(): void }) {
+function ErrorView({ tool, code, reason, onReload }: { tool: ListTool; code: string; reason?: string; onReload(): void }) {
   return (
     <>
       <ListHead tool={tool} />
       <div className="mt-4 max-w-180">
         {/* 도우미가 새로 준 번호는 errors.ts에 글이 없다 → 번호만 */}
         {isErrorCode(code) ? (
-          <ErrorCard code={code} />
+          // reason은 usePatientsWorker가 정해 둔 낱말 목록으로 거른 E-PATIENTS-SOURCE 이유뿐이다(patients-source-reason)
+          <ErrorCard code={code} detail={reason} />
         ) : (
           <p role="alert" className="rounded-control bg-negative-soft px-4 py-3 text-caption text-ink-2">
             오류 번호 {code}
@@ -141,7 +142,7 @@ function ToolState({ tool, load }: { tool: PatientsTool; load: PatientsWorkerApi
   if (tool === 'messages') return null
   if (load.status === 'loading') return <LoadingView tool={tool} progress={load.progress[tool]} />
   const code = load.views?.codes[tool]
-  if (code) return <ErrorView tool={tool} code={code} onReload={load.reload} />
+  if (code) return <ErrorView tool={tool} code={code} reason={load.views?.reasons?.[tool]} onReload={load.reload} />
   return <ToolSlot tool={tool} />
 }
 

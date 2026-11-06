@@ -2,7 +2,7 @@ import { isYmd } from '@/lib/analytics/dates'
 import { BridgeError, isErrorCode, isRecord } from '@/lib/bridge/protocol'
 import { RECALL_DEFAULTS } from '@/lib/patients/recall'
 import { PatientsSourceError } from '@/lib/patients/sourceError'
-import type { ContactStoreData, FollowupFilters, FollowupView, PatientsRange, PatientsWorkerMessage, RecallFilters, RecallHistory, RecallView, ViewCodes } from '@/types/patients'
+import type { ContactStoreData, FollowupFilters, FollowupView, PatientsRange, PatientsWorkerMessage, RecallFilters, RecallHistory, RecallView, ViewCodes, ViewReasons } from '@/types/patients'
 import { createAssembler, type AssembleResult } from './assemble'
 import {
   buildFollowup,
@@ -85,6 +85,8 @@ export function createHandler(deps: { post(message: unknown): void }) {
   // 이번 읽기에서 실패한 조각의 번호(새 읽기까지 남는다). 보기 모양의 번호(codes)는 build마다 여기서 시작한다
   let pieceCodes: Pick<ViewCodes, ViewKind> = {}
   let codes: ViewCodes = {}
+  // E-PATIENTS-SOURCE로 멈춘 종류의 이유 낱말(codes와 함께 비운다). 정해 둔 낱말뿐이라 환자 값이 없다
+  let reasons: ViewReasons = {}
   // 이 store에 fitStore가 뺀 기록 수(저장을 다시 읽거나 새 읽기면 0)
   let trimmed = 0
   // 이 store에 이미 합친 조각. 다시 build할 때 또 합치면 뺀 기록이 되살아나 다시 빠지면서 뺀 수가 두 번 세어진다
@@ -131,7 +133,15 @@ export function createHandler(deps: { post(message: unknown): void }) {
   const counts = () =>
     saveState === 'loaded' && today && views.followup?.marksLoaded && views.recall ? contactCounts(views.followup, views.recall, today) : null
 
-  const postViews = () => post({ type: 'views', followup: views.followup, recall: views.recall, counts: counts(), codes: { ...codes } })
+  const postViews = () =>
+    post({
+      type: 'views',
+      followup: views.followup,
+      recall: views.recall,
+      counts: counts(),
+      codes: { ...codes },
+      ...(Object.keys(reasons).length ? { reasons: { ...reasons } } : {}),
+    })
 
   const replyMark = (key: string, ok: boolean, code?: string) => post({ type: 'marked', key, ok, ...(ok ? {} : { code }), counts: counts() })
 
@@ -248,6 +258,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
     pieces = { followup: new Map(), recall: new Map() }
     pieceCodes = {}
     codes = {}
+    reasons = {}
     trimmed = 0
   }
 
@@ -318,6 +329,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
       return { view: { ...view, marksLoaded: !!loaded }, phones: followupPhones(list) }
     } catch (error) {
       codes.followup = codeOf(error)
+      if (error instanceof PatientsSourceError) reasons.followup = error.reason
       return none
     }
   }
@@ -346,6 +358,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
       return view
     } catch (error) {
       codes.recall = codeOf(error)
+      if (error instanceof PatientsSourceError) reasons.recall = error.reason
       return null
     }
   }
@@ -353,6 +366,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
   function runBuild(day: string) {
     today = day
     codes = { ...pieceCodes }
+    reasons = {}
     const followup = makeFollowup(day)
     views = { followup: followup.view, recall: makeRecall(day, followup.phones) }
     if (saveState === 'loaded' && historyDirty) {
