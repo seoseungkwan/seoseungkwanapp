@@ -34,7 +34,7 @@ import {
 
 // 대시보드 오늘 하루 분석 + 기간별 흐름 두 섹션 (tab-frame REQ-311, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장',
 // 시안 docs/mockups/dashboard-home/index.html + 메모 §3 '오늘 하루 분석'·'기간별 흐름', 문구는 메모 §4 그대로).
-// 상태는 기간 하나(처음 30일)뿐이다. 연결 전(자료 없음)에는 숫자를 지어내지 않는다(ui-90 REQ-414, 시안 docs/mockups/ui-90/app/gen.py dash_body):
+// 상태는 고른 것 하나(빠른 단추 또는 통계 탭 기간 고르기의 고른 기간, 처음 30일, dashboard-period)와 옛 기간 읽기(usePeriodDays)뿐이다. 연결 전(자료 없음)에는 숫자를 지어내지 않는다(ui-90 REQ-414, 시안 docs/mockups/ui-90/app/gen.py dash_body):
 //   오늘 하루 분석 = 칩 "비트 PC 연결 전" + 빈 숫자 칸 넷 + 안내 줄, 기간별 흐름 = "연결하면 생기는 것 4가지" 순서 목록 + 안내 줄(빈 그래프 틀·차트 부품 없음).
 // 연결 뒤 그래프는 차트 부품(components/charts)을 고치지 않고 불러 쓴다. 그래프는 움직이지 않는다 — 짧은 반응은 기간 단추와 '처방 상위' 머리 링크(ds.textButton)에만(150ms)
 
