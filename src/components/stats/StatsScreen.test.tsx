@@ -1893,3 +1893,238 @@ describe('AC-1205.7 불러올 때 묶음을 서버에서 다시 읽어 센다 (t
     await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
   })
 })
+
+describe('통계 화면에 기간 고르기 잇기 (stats-period TASK-8)', () => {
+  const unitGroup = () => screen.getAllByRole('group', { name: '보는 단위' })[0]!
+  const pressUnit = (name: '일별' | '주별' | '월별') => fireEvent.click(within(unitGroup()).getByRole('button', { name }))
+  const unitPressed = () => within(unitGroup()).getAllByRole('button').map((button) => button.getAttribute('aria-pressed'))
+  const customButton = () => within(screen.getByRole('group', { name: '기간 골라 보기' })).getByRole('button', { name: /^직접 날짜/ })
+  const reportButtons = () => within(screen.getByRole('group', { name: '보고 고르기' })).getAllByRole('button')
+  const KEY = groupKey(SAVED_GROUP.codes)
+  const withGroup = (row: DayPayload, patients: number): DayPayload => ({ ...row, groups: [{ id: KEY, patients, newPatients: 1, returning: patients - 1 }] })
+  // 10월: 하루 평균 42명(40·44명)·신환 4명·재진 80명, 9월: 39명, 작년 10월: 덮지 않음(자료 없음). 묶음 31건씩
+  const OCTOBER = {
+    '2026-10-01': read([withGroup(day('2026-10-05', 40), 31), withGroup(day('2026-10-06', 44), 31)], { latest: BIT_AT }),
+    '2026-09-01': read([withGroup(day('2026-09-10', 39), 20)], { latest: BIT_AT }),
+  }
+
+  it('AC-1703.1·AC-1708.1 처음 열면 [최근 30일]만 눌려 있고 [일별][주별][월별]·[직접 날짜]는 안 눌려 있으며 글은 지금과 같다', async () => {
+    draw()
+    await sectionsShown()
+    expect(screen.getByText('빠르게 보기')).toBeTruthy()
+    expect(screen.getByRole('group', { name: '기간 골라 보기' })).toBeTruthy()
+    expect(periodButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false', 'false'])
+    expect(unitPressed()).toEqual(['false', 'false', 'false'])
+    expect(customButton().getAttribute('aria-pressed')).toBe('false')
+    expect(pageText()).toContain('10월 14일 – 11월 12일 (어제까지)')
+    expect(pageText()).toContain('비교: 9월 14일 – 10월 13일 (지난 30일)')
+    expect(readDays).toHaveBeenCalledWith({ from: R30.current.from, to: R30.current.to })
+    expect(readDays).toHaveBeenCalledWith({ from: R30.previous.from, to: R30.previous.to })
+  })
+
+  it('AC-1703.1 고른 것은 브라우저 저장소·주소·서버에 쓰지 않는다', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const pushState = vi.spyOn(window.history, 'pushState')
+    const replaceState = vi.spyOn(window.history, 'replaceState')
+    draw()
+    await sectionsShown()
+    pressUnit('일별')
+    await sectionsShown()
+    pressUnit('월별')
+    await sectionsShown()
+    fireEvent.click(screen.getByRole('button', { name: '이전 해' }))
+    await sectionsShown()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(pushState).not.toHaveBeenCalled()
+    expect(replaceState).not.toHaveBeenCalled()
+    expect(saveStats).not.toHaveBeenCalled()
+    expect(saveStatsRxGroups).not.toHaveBeenCalled()
+  })
+
+  it('AC-1703.1·AC-1708.1 고르기에서 [최근 30일]로 돌아오면 고르기가 모두 풀리고 글이 지금과 같다', async () => {
+    draw()
+    await sectionsShown()
+    pressUnit('주별')
+    await sectionsShown()
+    expect(periodButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'false'])
+    expect(unitPressed()).toEqual(['false', 'true', 'false'])
+    pressPeriod('최근 30일')
+    await sectionsShown()
+    expect(periodButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false', 'false'])
+    expect(unitPressed()).toEqual(['false', 'false', 'false'])
+    expect(pageText()).toContain('10월 14일 – 11월 12일 (어제까지)')
+    expect(pageText()).toContain('비교: 9월 14일 – 10월 13일 (지난 30일)')
+    expect(pageText()).not.toContain('(바로 전 달)')
+  })
+
+  it('AC-1703.4 2026년 10월 일별은 기간 글 하나와 비교 둘이다', async () => {
+    draw()
+    await sectionsShown()
+    pressUnit('일별')
+    expect(pageText()).toContain('2026년 10월 1일 – 31일 · 일별')
+    expect(pageText()).toContain('비교: 9월 1일 – 30일 (바로 전 달) · 2025년 10월 1일 – 31일 (작년 같은 달)')
+    expect(pageText()).not.toContain('(지난 30일)')
+    await sectionsShown()
+    pressUnit('주별')
+    expect(pageText()).toContain('2026년 10월 1일 – 31일 · 주별')
+  })
+
+  it('AC-1703.4 끝나지 않은 달은 뒤에 (어제까지)이고 비교도 같은 날까지다', async () => {
+    draw()
+    await sectionsShown()
+    pressUnit('일별')
+    await sectionsShown()
+    fireEvent.click(screen.getByRole('button', { name: '다음 달' }))
+    expect(pageText()).toContain('2026년 11월 1일 – 12일 · 일별 (어제까지)')
+    expect(pageText()).toContain('비교: 10월 1일 – 12일 (바로 전 달 같은 날까지) · 2025년 11월 1일 – 12일 (작년 같은 날까지)')
+  })
+
+  it('AC-1703.4 해는 비교 하나이고, 끝나지 않은 해는 (어제까지)다', async () => {
+    draw()
+    await sectionsShown()
+    pressUnit('월별')
+    expect(pageText()).toContain('2026년 1월 1일 – 11월 12일 · 월별 (어제까지)')
+    expect(pageText()).toContain('비교: 2025년 1월 1일 – 11월 12일 (작년 같은 날까지)')
+    expect(pageText()).not.toContain('(작년 같은 날까지) ·')
+    await sectionsShown()
+    fireEvent.click(screen.getByRole('button', { name: '이전 해' }))
+    expect(pageText()).toContain('2025년 1월 1일 – 12월 31일 · 월별')
+    expect(pageText()).not.toContain('12월 31일 · 월별 (어제까지)')
+    expect(pageText()).toContain('비교: 2024년 1월 1일 – 12월 31일 (작년)')
+  })
+
+  it('AC-1703.4 오늘 진료 끝으로 저장했으면(덮은 기간에 오늘이 듦) 끝나지 않은 기간은 (오늘까지)다', async () => {
+    vi.mocked(readCoverage).mockResolvedValue([{ from: '2024-01-01', to: TODAY }])
+    draw()
+    await sectionsShown()
+    pressUnit('월별')
+    await sectionsShown()
+    expect(pageText()).toContain('2026년 1월 1일 – 11월 13일 · 월별 (오늘까지)')
+    expect(pageText()).toContain('비교: 2025년 1월 1일 – 11월 13일 (작년 같은 날까지)')
+  })
+
+  it('AC-1703.4 직접 날짜는 고른 날짜 그대로이고 비교 둘이다', async () => {
+    draw()
+    await sectionsShown()
+    fireEvent.click(customButton())
+    const panel = screen.getByRole('dialog', { name: '직접 날짜 고르기' })
+    fireEvent.change(within(panel).getByLabelText('시작 날짜'), { target: { value: '2026-10-03' } })
+    fireEvent.change(within(panel).getByLabelText('끝 날짜'), { target: { value: '2026-11-01' } })
+    fireEvent.click(within(panel).getByRole('button', { name: '주별' }))
+    fireEvent.click(within(panel).getByRole('button', { name: '이 기간 보기' }))
+    expect(customButton().getAttribute('aria-pressed')).toBe('true')
+    expect(pageText()).toContain('2026년 10월 3일 – 11월 1일 · 주별')
+    expect(pageText()).toContain('비교: 9월 3일 – 10월 2일 (바로 전 30일) · 2025년 10월 3일 – 11월 1일 (작년 같은 날짜)')
+    expect(pageText()).not.toContain('11월 1일 · 주별 (어제까지)')
+  })
+
+  it('AC-1703.6 고른 기간에서 [비트에서 불러오기]는 range.load 범위이고 처방별 신환·재진은 고른 기간(current)으로 묻는다', async () => {
+    const { port, fake } = await drawReady()
+    pressUnit('일별')
+    await sectionsShown()
+    const request = pressLoad(port)
+    expect(request.args).toEqual({ from: '2025-10-01', to: TODAY })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(fake.sent.find((message) => message.type === 'load')).toMatchObject({ type: 'load', from: '2025-10-01', to: TODAY, today: TODAY })
+    await waitFor(() => expect(fake.sent.at(-1)).toMatchObject({ type: 'split', from: '2026-10-01', to: '2026-10-31' }))
+    await screen.findByText('가짜처방')
+    const split = heading('처방별 신환·재진')!.closest('section')!
+    expect(split.textContent).toContain('처방마다 서로 다른 환자 수 · 2026년 10월')
+  })
+
+  it('AC-1703.6 빠른 단추의 처방별 신환·재진 설명은 지금과 같다(이름을 붙이지 않는다)', async () => {
+    const { port } = await drawReady()
+    pressLoad(port)
+    await screen.findByText('가짜처방')
+    const split = heading('처방별 신환·재진')!.closest('section')!
+    expect(split.textContent).toContain('처방마다 서로 다른 환자 수')
+    expect(split.textContent).not.toContain('처방마다 서로 다른 환자 수 · ')
+  })
+
+  it('AC-1706.5 고른 기간의 출처 줄은 자르지 않은 덮은 기간의 끝(data.coveredTo)으로 쓴다', async () => {
+    vi.mocked(readCoverage).mockResolvedValue([{ from: '2025-01-01', to: '2026-11-12' }])
+    answers({ ...SAVED_NOW, ...OCTOBER })
+    draw()
+    await sectionsShown()
+    pressUnit('일별')
+    await sectionsShown()
+    expect(pageText()).toContain('2026년 10월 1일 – 31일 · 일별')
+    expect(pageText()).toContain('자료: 비트 PC · 11월 13일 18:42 저장 · 어제(11월 12일)까지 끝난 날로 저장했어요')
+    expect(pageText()).not.toContain('10월 31일까지 끝난 날로 저장했어요')
+  })
+
+  it('AC-1707.1 고르기에 들어오면 [고른 기간 보고]가 맨 앞에 눌리고 저장된 숫자로 만든 글이며, 빠른 단추로 돌아오면 지금과 같다', async () => {
+    answers({ ...SAVED_NOW, ...OCTOBER })
+    draw()
+    await sectionsShown()
+    expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
+    pressUnit('일별')
+    await sectionsShown()
+    await waitFor(() => expect(reportButtons().map((button) => button.textContent)).toEqual(['고른 기간 보고', '오늘 일일보고', '어제 일일보고', '이번 달 월말보고', '지난달 월말보고']))
+    expect(reportButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false'])
+    const report = heading('원장님 보고 문장')!.closest('section')!
+    await waitFor(() =>
+      expect(report.textContent).toContain(
+        '2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 4명·재진 80명입니다. 하루 평균은 9월보다 3명(7.6%) 늘었습니다. 작년 10월은 자료가 없어 비교하지 않았습니다. 처방은 가짜 묶음 62건이 가장 많았습니다.',
+      ),
+    )
+
+    pressPeriod('최근 30일')
+    await sectionsShown()
+    expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
+    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(2)
+  })
+
+  it('AC-1707.1 보고 칸은 고르기에 들어오고 나갈 때 다시 그린다: 옛 넷에서 고른 것이 남지 않는다', async () => {
+    const { port } = await drawReady()
+    pressLoad(port)
+    await screen.findByText('가짜처방')
+    expect(reportButtons().map((button) => button.textContent)).toEqual(['오늘 일일보고', '어제 일일보고', '이번 달 월말보고', '지난달 월말보고'])
+    fireEvent.click(within(screen.getByRole('group', { name: '보고 고르기' })).getByRole('button', { name: '어제 일일보고' }))
+
+    pressUnit('일별')
+    await sectionsShown()
+    await waitFor(() => expect(reportButtons()[0]!.textContent).toBe('고른 기간 보고'))
+    expect(reportButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false'])
+
+    fireEvent.click(within(screen.getByRole('group', { name: '보고 고르기' })).getByRole('button', { name: '지난달 월말보고' }))
+    pressPeriod('최근 7일')
+    await sectionsShown()
+    await waitFor(() => expect(reportButtons()).toHaveLength(4))
+    expect(reportButtons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false'])
+  })
+
+  it('AC-1708.1 고른 기간이면 섹션 설명 끝에 이름이 붙고, 빠른 단추로 돌아오면 붙지 않는다', async () => {
+    answers({ ...SAVED_NOW, ...OCTOBER })
+    draw()
+    await sectionsShown()
+    pressUnit('주별')
+    await sectionsShown()
+    expect(heading('환자 수 추이')!.closest('section')!.textContent).toContain(' · 2026년 10월')
+    pressPeriod('최근 30일')
+    await sectionsShown()
+    expect(heading('환자 수 추이')!.closest('section')!.textContent).not.toContain(' · 2026년 10월')
+  })
+
+  it('AC-1706.4 고른 기간으로 읽고 불러와도 서버로 가는 것은 지금의 저장 모양뿐이고, 기간 고르기 파일은 서버·네트워크를 부르지 않는다', async () => {
+    const { port } = await drawReady()
+    pressUnit('일별')
+    await sectionsShown()
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    const sent = vi.mocked(saveStats).mock.calls[0]![0]
+    expect(Object.keys(sent).sort()).toEqual(['covered', 'days', 'months', 'source'])
+    expect(sent).toEqual({ months: LOADED.months, days: LOADED.days, covered: LOADED.covered, source: 'bit' })
+    expect(readMonths).not.toHaveBeenCalled()
+    for (const [range] of vi.mocked(readDays).mock.calls) expect(Object.keys(range).sort()).toEqual(['from', 'to'])
+    for (const [range] of vi.mocked(readCoverage).mock.calls) expect(Object.keys(range).sort()).toEqual(['from', 'to'])
+
+    const ROOT = process.cwd()
+    for (const name of ['StatsScreen.tsx', 'PeriodPicker.tsx', 'periodPick.ts', 'useStatsData.ts', 'view.ts', 'sections/StatsSections.tsx']) {
+      const text = readFileSync(join(ROOT, 'src/components/stats', name), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|\s)\/\/.*$/gm, '$1')
+      for (const word of ['supabase', 'fetch(', '.rpc(', '/api/', 'localStorage', 'sessionStorage']) expect(text, `${name}: ${word}`).not.toContain(word)
+    }
+  })
+})
