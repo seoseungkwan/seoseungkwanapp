@@ -26,10 +26,10 @@ export function lastDayOf(today: string, todayDone: boolean): string
 export function pickRange(today: string, pick: StatsPick, todayDone: boolean): StatsRange
 export function defaultPick(unit: PickUnit, lastDay: string): StatsPick // 일·주 = lastDay가 든 달의 앞 달, 월 = lastDay의 해
 export function stepPick(pick: StatsPick, dir: -1 | 1, lastDay: string): StatsPick | null // null = 못 감(▶ disabled)
-export function checkCustom(from: string, to: string, unit: PickUnit, lastDay: string): { kind: 'ok'; days: number } | { kind: 'error' | 'warn'; text: string; days?: number }
+export function checkCustom(from: string, to: string, unit: PickUnit, lastDay: string, todayDone = false): { kind: 'ok'; days: number } | { kind: 'error' | 'warn'; text: string; days?: number }
 export function pickReportText(range: StatsRange, cells: readonly SummaryCell[], top: readonly { name: string; count: number }[]): string | null
 
-// PeriodPicker.tsx (TASK-5): <PeriodPicker choice lastDay onChoose={(c: StatsChoice) => void} />
+// PeriodPicker.tsx (TASK-5): <PeriodPicker choice lastDay todayDone onChoose={(c: StatsChoice) => void} />
 ```
 - 날짜는 `lib/analytics/dates.ts`만 쓴다: 작년 같은 날 `addMonthsToDay(d, -12)`(2월 29일 → 28일), 바로 전 달 같은 날 `min(일, 그달 말일)`, 주 시작 `weekStartOf`. 직접 날짜의 바로 전 N일은 `comparisonRange(…, 'PreviousEqualDays')`
 - label: current는 늘 해를 붙인다('2026년 10월 1일 – 31일'). 비교 label은 오늘과 해가 다를 때만 해를 붙이고, 해를 넘는 기간은 양 끝에 붙인다

@@ -40,7 +40,7 @@
 - AC: AC-1702.1(▶ disabled), AC-1702.2·AC-1702.3(판 글), AC-1703.2, AC-1703.3, AC-1703.5, AC-1703.7
 - Files: src/components/stats/PeriodPicker.tsx, src/components/stats/PeriodPicker.test.tsx
 - Tests: src/components/stats/PeriodPicker.test.tsx
-- TDD: required — props만 받는다(`choice`·`lastDay`·`onChoose`). 단추 모양 글(`PERIOD_GROUP`·`PERIOD_BUTTON`·`PERIOD_ON`·`PERIOD_OFF`)은 StatsScreen.tsx에서 이 파일로 옮겨 내보낸다(이 TASK는 복사해 두고, TASK-8이 StatsScreen.tsx의 것을 지우고 여기서 불러온다). 날짜 칸은 `ds.input`이다
+- TDD: required — props만 받는다(`choice`·`lastDay`·`todayDone`·`onChoose`; `todayDone`은 checkCustom에 넘긴다). 단추 모양 글(`PERIOD_GROUP`·`PERIOD_BUTTON`·`PERIOD_ON`·`PERIOD_OFF`)은 StatsScreen.tsx에서 이 파일로 옮겨 내보낸다(이 TASK는 복사해 두고, TASK-8이 StatsScreen.tsx의 것을 지우고 여기서 불러온다). 날짜 칸은 `ds.input`이다
 
 ## TASK-6: 위쪽 섹션과 보고 문장
 - REQ: REQ-1704, REQ-1707
