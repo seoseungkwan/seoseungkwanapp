@@ -49,6 +49,8 @@ jobs:
 
       # precheck-helper-<Version>.zip = install.cmd·install.ps1·uninstall.ps1·host-manifest.json·README.md·reception-check.cmd·reception-check.ps1
       #   + app\(도우미 exe·설정·DLL + 접수 현황 PrecheckReception.exe·설정, 같은 DLL을 쓴다)
+      # precheck-reception-<Version>.zip = 접수 현황 따로 설치(공식 도우미는 그대로, specs/reception-phone/design.md 11절 TASK-35)
+      #   install-reception.cmd·.ps1·uninstall-reception.cmd·.ps1 + app\(PrecheckReception.exe·설정·DLL 한 벌)
       - name: zip 묶기
         run: |
           $props = [xml](Get-Content -Raw -LiteralPath 'helper/Directory.Build.props')
@@ -73,11 +75,25 @@ jobs:
           Compress-Archive -Path "$stage/*" -DestinationPath "dist/$zip"
           Get-ChildItem -LiteralPath $stage -Recurse -File | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }
           Write-Output "만든 zip: dist/$zip"
+          $receptionStage = Join-Path $env:RUNNER_TEMP 'precheck-reception'
+          $receptionApp = Join-Path $receptionStage 'app'
+          New-Item -ItemType Directory -Force -Path $receptionApp | Out-Null
+          Copy-Item -Path "$receptionBin/PrecheckReception.exe", "$receptionBin/PrecheckReception.exe.config", "$receptionBin/*.dll" -Destination $receptionApp
+          Copy-Item -LiteralPath 'helper/install/install-reception.cmd', 'helper/install/install-reception.ps1', 'helper/install/uninstall-reception.cmd', 'helper/install/uninstall-reception.ps1' -Destination $receptionStage
+          Compress-Archive -Path "$receptionStage/*" -DestinationPath "dist/precheck-reception-$version.zip"
+          Get-ChildItem -LiteralPath $receptionStage -Recurse -File | ForEach-Object { $_.FullName.Substring($receptionStage.Length + 1) }
+          Write-Output "만든 zip: dist/precheck-reception-$version.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: precheck-helper
           path: dist/precheck-helper-*.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precheck-reception
+          path: dist/precheck-reception-*.zip
           if-no-files-found: error
 
   # 크롬 확장 zip: 웹스토어에 올리는 것과 '압축 풀린 확장' 시험용(풀어서 그 폴더를 불러온다)

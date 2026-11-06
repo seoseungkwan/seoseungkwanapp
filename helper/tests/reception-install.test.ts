@@ -157,6 +157,19 @@ function packRun(): string {
   return lines.slice(start, end).join('\n')
 }
 
+/** needle이 든 단계 하나(`      - ` 줄부터 빈 줄·다음 단계·다음 일 전까지)와 그 바로 위 빈 줄을 뺀 줄들. 없으면 그대로 */
+function withoutStep(lines: string[], needle: string): string[] {
+  const at = lines.findIndex((l) => l.includes(needle))
+  if (at < 0) return lines
+  const stepStart = /^ {6}- /
+  let start = at
+  while (start > 0 && !stepStart.test(lines[start])) start--
+  if (start > 0 && lines[start - 1].trim() === '') start--
+  let end = at + 1
+  while (end < lines.length && lines[end].trim() !== '' && !stepStart.test(lines[end]) && !/^ {0,4}\S/.test(lines[end])) end++
+  return [...lines.slice(0, start), ...lines.slice(end)]
+}
+
 function isCodeLine(line: string): boolean {
   return line.trim() !== '' && !/^\s*#/.test(line)
 }
@@ -279,7 +292,8 @@ describe('REQ-1412 내보내기 (.github/workflows/helper.yml zip 단계)', () =
     expect(m, `zip 단계에 '${bin}' 자리가 없다`).not.toBeNull()
     const v = (m as RegExpExecArray)[1]
 
-    const copies = run.split('\n').filter((l) => /\bCopy-Item\b/.test(l) && l.includes(`$${v}/`))
+    // 도우미 zip의 app\로 가는 복사만 본다(따로 설치 zip의 $receptionApp 복사는 reception-own-zip.test.ts가 본다, TASK-35)
+    const copies = run.split('\n').filter((l) => /\bCopy-Item\b/.test(l) && l.includes(`$${v}/`) && /-Destination \$app\s*$/.test(l))
     expect(copies, '접수 현황 파일 복사는 한 줄이다').toHaveLength(1)
     expect(copies[0]).toContain(`"$${v}/${exe}"`)
     expect(copies[0]).toContain(`"$${v}/${exe}.config"`)
@@ -306,7 +320,8 @@ describe('REQ-1412 내보내기 (.github/workflows/helper.yml zip 단계)', () =
     const b = packRange(before)
     const a = packRange(after)
     expect(after.slice(0, a.start)).toEqual(before.slice(0, b.start))
-    expect(after.slice(a.end)).toEqual(before.slice(b.end))
+    // zip 단계 뒤에는 따로 설치 zip을 올리는 단계(artifact precheck-reception, TASK-35) 하나만 더 있다
+    expect(withoutStep(after.slice(a.end), 'name: precheck-reception')).toEqual(before.slice(b.end))
 
     const oldCode = before.slice(b.start, b.end).filter(isCodeLine)
     const newCode = after.slice(a.start, a.end).filter(isCodeLine)
