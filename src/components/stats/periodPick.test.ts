@@ -184,11 +184,24 @@ describe('AC-1702.1 끝난 마지막 날과 ◀▶', () => {
     expect(stepPick(october, 1, lastDayOf('2026-11-01', true))).toEqual({ ...october, month: '2026-11' })
   })
 
-  it('AC-1702.1 ◀는 늘 간다(해 경계 포함)', () => {
+  it('AC-1702.1 ◀는 해 경계를 넘어 간다', () => {
     expect(stepPick(october, -1, YESTERDAY)).toEqual({ ...october, month: '2026-09' })
     expect(stepPick({ kind: 'month', unit: 'day', month: '2026-01' }, -1, YESTERDAY)).toEqual({ kind: 'month', unit: 'day', month: '2025-12' })
     expect(stepPick({ kind: 'year', year: '2026' }, -1, YESTERDAY)).toEqual({ kind: 'year', year: '2025' })
-    expect(stepPick({ kind: 'year', year: '1990' }, -1, YESTERDAY)).toEqual({ kind: 'year', year: '1989' })
+  })
+
+  it('AC-1702.1 ◀는 2020년 1월(월별은 2020년)까지 가고 그 앞으로는 못 간다', () => {
+    expect(stepPick({ kind: 'month', unit: 'day', month: '2020-02' }, -1, YESTERDAY)).toEqual({ kind: 'month', unit: 'day', month: '2020-01' })
+    expect(stepPick({ kind: 'month', unit: 'week', month: '2021-01' }, -1, YESTERDAY)).toEqual({ kind: 'month', unit: 'week', month: '2020-12' })
+    expect(stepPick({ kind: 'month', unit: 'day', month: '2020-01' }, -1, YESTERDAY)).toBeNull()
+    expect(stepPick({ kind: 'month', unit: 'week', month: '2020-01' }, -1, YESTERDAY)).toBeNull()
+    expect(stepPick({ kind: 'year', year: '2021' }, -1, YESTERDAY)).toEqual({ kind: 'year', year: '2020' })
+    expect(stepPick({ kind: 'year', year: '2020' }, -1, YESTERDAY)).toBeNull()
+  })
+
+  it('AC-1702.1 2020년 1월·2020년에서도 ▶는 간다', () => {
+    expect(stepPick({ kind: 'month', unit: 'day', month: '2020-01' }, 1, YESTERDAY)).toEqual({ kind: 'month', unit: 'day', month: '2020-02' })
+    expect(stepPick({ kind: 'year', year: '2020' }, 1, YESTERDAY)).toEqual({ kind: 'year', year: '2021' })
   })
 })
 
@@ -245,6 +258,36 @@ describe('AC-1702.3 일별 92일 한도', () => {
   it('AC-1702.3 주별·월별은 400일도 된다', () => {
     expect(checkCustom('2025-10-02', '2026-11-05', 'week', YESTERDAY)).toEqual({ kind: 'ok', days: 400 })
     expect(checkCustom('2025-10-02', '2026-11-05', 'month', YESTERDAY)).toEqual({ kind: 'ok', days: 400 })
+  })
+})
+
+describe('AC-1702.4 고를 수 있는 날짜 한도 (2020-01-01부터, 한 번에 1827일까지)', () => {
+  const tooEarly = { kind: 'error', text: '2020년 1월 1일부터 고를 수 있어요.' }
+  const tooLong = { kind: 'error', text: '한 번에 5년까지 볼 수 있어요.' }
+
+  it('AC-1702.4 시작이 2020-01-01보다 앞이면 오류다', () => {
+    expect(checkCustom('2019-12-31', '2020-01-31', 'week', YESTERDAY)).toEqual(tooEarly)
+    expect(checkCustom('2019-12-31', '2019-12-31', 'day', YESTERDAY)).toEqual(tooEarly)
+    // 해를 한 자리씩 치는 동안의 먼 날짜(0202년)도 같은 오류다
+    expect(checkCustom('0202-10-01', '2026-10-31', 'month', YESTERDAY)).toEqual(tooEarly)
+  })
+
+  it('AC-1702.4 2020-01-01 시작은 된다', () => {
+    expect(checkCustom('2020-01-01', '2020-01-31', 'day', YESTERDAY)).toEqual({ kind: 'ok', days: 31 })
+  })
+
+  it('AC-1702.4 1827일(5년)을 넘으면 오류이고 1827일은 된다', () => {
+    // 2021-11-05 ~ 2026-11-05 = 1827일(2024 윤년 포함)
+    expect(checkCustom('2021-11-05', '2026-11-05', 'month', YESTERDAY)).toEqual({ kind: 'ok', days: 1827 })
+    expect(checkCustom('2021-11-04', '2026-11-05', 'month', YESTERDAY)).toEqual(tooLong)
+    expect(checkCustom('2021-11-04', '2026-11-05', 'week', YESTERDAY)).toEqual(tooLong)
+    // 2020-01-01 ~ 2024-12-31 = 1827일(2020·2024 윤년)
+    expect(checkCustom('2020-01-01', '2024-12-31', 'week', YESTERDAY)).toEqual({ kind: 'ok', days: 1827 })
+    expect(checkCustom('2020-01-01', '2025-01-01', 'week', YESTERDAY)).toEqual(tooLong)
+  })
+
+  it('AC-1702.4 일별로 1827일을 넘으면 92일 경고가 아니라 5년 오류다', () => {
+    expect(checkCustom('2021-11-04', '2026-11-05', 'day', YESTERDAY)).toEqual(tooLong)
   })
 })
 

@@ -18,6 +18,9 @@ export type CustomCheck = { kind: 'ok'; days: number } | { kind: 'error' | 'warn
 export type ReportRx = { name: string; count: number }
 
 const DAY_LIMIT = 92 // 직접 날짜 일별로 볼 수 있는 날 수
+const SPAN_LIMIT = 1827 // 직접 날짜 한 번에 볼 수 있는 날 수(5년)
+// 고를 수 있는 첫날(1월 1일). ◀는 이 날이 든 달·해까지, 직접 날짜는 이 날부터다. 판의 날짜 칸 min도 이 값이다
+export const FIRST_DAY = '2020-01-01'
 const CUSTOM_NAME = '직접 고른 기간'
 const LAST_YEAR_DATES = '작년 같은 날짜'
 const REPORT_RX = 2
@@ -133,15 +136,17 @@ export function defaultPick(unit: PickUnit, lastDay: string): StatsPick {
   return { kind: 'month', unit, month: addMonths(monthOf(lastDay), -1) }
 }
 
-// ◀▶ 한 칸. 첫날이 끝난 날보다 뒤인 달·해로는 못 간다(null = ▶ disabled). ◀는 늘 간다. 직접 날짜는 옮기지 않는다
+// ◀▶ 한 칸(null = 못 감, ◀▶ disabled). ▶는 첫날이 끝난 날보다 뒤인 달·해로, ◀는 FIRST_DAY가 든 달·해(2020년 1월·2020년)보다 앞으로 못 간다.
+// 직접 날짜는 옮기지 않는다
 export function stepPick(pick: StatsPick, dir: -1 | 1, lastDay: string): StatsPick | null {
   if (pick.kind === 'custom') return null
+  const blocked = (first: string) => (dir === 1 ? compareYmd(first, lastDay) > 0 : compareYmd(first, FIRST_DAY) < 0)
   if (pick.kind === 'month') {
     const month = addMonths(pick.month, dir)
-    return dir === 1 && compareYmd(`${month}-01`, lastDay) > 0 ? null : { ...pick, month }
+    return blocked(`${month}-01`) ? null : { ...pick, month }
   }
   const year = yearOf(addMonths(`${pick.year}-01`, dir * 12))
-  return dir === 1 && compareYmd(`${year}-01-01`, lastDay) > 0 ? null : { kind: 'year', year }
+  return blocked(`${year}-01-01`) ? null : { kind: 'year', year }
 }
 
 // 직접 날짜 판의 검사. error·warn이면 볼 수 없다. todayDone = 끝난 날(lastDay)이 오늘이다(글의 '오늘'·'어제')
@@ -149,7 +154,9 @@ export function checkCustom(from: string, to: string, unit: PickUnit, lastDay: s
   if (!isYmd(from) || !isYmd(to)) return { kind: 'error', text: '시작 날짜와 끝 날짜를 모두 골라 주세요.' }
   if (compareYmd(to, from) < 0) return { kind: 'error', text: '끝 날짜가 시작 날짜보다 앞이에요.' }
   if (compareYmd(to, lastDay) > 0) return { kind: 'error', text: `${todayDone ? '오늘' : '어제'}(${longDate(lastDay)})까지만 고를 수 있어요.` }
+  if (compareYmd(from, FIRST_DAY) < 0) return { kind: 'error', text: '2020년 1월 1일부터 고를 수 있어요.' }
   const days = diffDays(from, to) + 1
+  if (days > SPAN_LIMIT) return { kind: 'error', text: '한 번에 5년까지 볼 수 있어요.' }
   if (unit === 'day' && days > DAY_LIMIT) {
     return { kind: 'warn', text: `일별은 ${DAY_LIMIT}일까지 볼 수 있어요. 고른 기간이 ${formatCount(days)}일이라 주별이나 월별로 보면 한눈에 보여요.`, days }
   }
