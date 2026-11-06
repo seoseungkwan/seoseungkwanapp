@@ -3,7 +3,8 @@ import { ds } from '@/components/ui/classes'
 import type { MemoCompare, MemoTableRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
 
-// 메모 표(AC-018.1, Phase 0 목업 화면 4). 사람마다 체크는 없다(AC-018.26). 고친 줄의 '저장 안 됨'은 AC-018.17, 저장은 Worker가 한다(AC-018.2). 줄은 props로만 받는다
+// 메모 표(AC-018.1, Phase 0 목업 화면 4). 사람마다 체크는 없다(AC-018.26). 고친 줄의 '저장 안 됨'은 AC-018.17, 저장은 Worker가 한다(AC-018.2). 줄은 props로만 받는다.
+// 완료·같음 줄도 고칠 수 있다: 고치면 Worker가 완료를 푼다(AC-2201.1·AC-2202.1). 입력 중에만 막고, 막힌 칸은 읽기 전용 모양이다(AC-2201.2)
 
 const PAGE = 8
 const COMPARE_CHIP: Record<MemoCompare, string> = { 같음: ds.chip.positive, 다름: ds.chip.warning, '비트에 없음': ds.chip.neutral, '조회 못함': ds.chip.negative }
@@ -66,9 +67,9 @@ export function MemoTable({ rows, valueOf, onChange, onBlur, locked, showUnsaved
                       aria-label={`${row.name} 메모`}
                       rows={2}
                       maxLength={32000}
-                      readOnly={locked || row.done}
+                      readOnly={locked}
                       autoFocus={row.key === focusKey}
-                      className={`${ds.input} h-auto py-1.5 text-small`}
+                      className={`${locked ? ds.readonly : ds.input} h-auto py-1.5 text-small`}
                       value={valueOf(row.key, row.text)}
                       onChange={(event) => onChange(row.key, event.target.value)}
                       onBlur={() => onBlur(row.key)}
