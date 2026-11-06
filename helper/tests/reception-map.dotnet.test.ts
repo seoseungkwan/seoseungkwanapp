@@ -31,7 +31,7 @@ describe('REQ-1410·REQ-1402 한 곳 ReceptionMap (C# Precheck.Core.Tests.Recept
     expectAc('AC-1410.1')
   })
 
-  it('AC-1410.2 채운 표는 확인 보고서 표(WR 숨김·WN 진료대기·CN·TN 수납대기·PN 끝남, 진료보류 확인 안 됨)와 같고, Validate는 한 코드 두 칸, Unconfirmed가 아닌 빈 칸, 코드가 든 Unconfirmed 칸, 숨김이 된 아는 완료 코드를 알린다', () => {
+  it('AC-1410.2 채운 표는 확인 보고서 3회차 표(WR·CR·CN 숨김·WN 진료대기·HN 진료보류·TN 수납대기·PN 끝남, 확인 안 된 칸 없음)와 같고, Validate는 한 코드 두 칸, Unconfirmed가 아닌 빈 칸, 코드가 든 Unconfirmed 칸, 숨김이 된 아는 완료 코드를 알린다', () => {
     expectAc('AC-1410.2')
   })
 

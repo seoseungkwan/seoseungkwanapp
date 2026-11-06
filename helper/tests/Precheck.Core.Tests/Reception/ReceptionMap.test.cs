@@ -48,13 +48,15 @@ public class ReceptionMapTests
         Assert.Equal(new[] { "Wait", "Hold", "Pay", "Done", "Hidden" }, Enum.GetNames(typeof(Lane)));
     }
 
-    [Fact(DisplayName = "AC-1410.2 채운 상태 표는 확인 보고서 표와 같다: WR 숨김, WN 진료대기, CN·TN 수납대기, PN 끝남, 진료보류는 아직 확인 안 됨")]
+    [Fact(DisplayName = "AC-1410.2 채운 상태 표는 확인 보고서 3회차 표와 같다: WR·CR·CN 숨김, WN 진료대기, HN 진료보류, TN 수납대기, PN 끝남, 아직 확인 안 된 칸은 없음")]
     public void FilledTableMatchesReport()
     {
-        // docs/reception/check-result.md 1·2회차의 상태 짝 답(PN은 2회차에 TN→PN과 수납 1줄로 본 추정)
-        var report = Dict(("WR", Lane.Hidden), ("WN", Lane.Wait), ("CN", Lane.Pay), ("TN", Lane.Pay), ("PN", Lane.Done));
+        // docs/reception/check-result.md 3회차 30일 상태 내력(2회차 표를 고침: CN은 접수 취소, CR은 예약 취소, HN은 진료보류)
+        var report = Dict(
+            ("WR", Lane.Hidden), ("CR", Lane.Hidden), ("CN", Lane.Hidden),
+            ("WN", Lane.Wait), ("HN", Lane.Hold), ("TN", Lane.Pay), ("PN", Lane.Done));
         Assert.Equal(report.OrderBy(p => p.Key, StringComparer.Ordinal), ReceptionMap.Statuses.OrderBy(p => p.Key, StringComparer.Ordinal));
-        Assert.Equal(new[] { Lane.Hold }, ReceptionMap.Unconfirmed);
+        Assert.Empty(ReceptionMap.Unconfirmed);
         // OcmRsuYon은 오늘 줄 모두 비어 있어 숨기는 값이 없다
         Assert.Empty(ReceptionMap.HiddenRsu);
     }
@@ -65,13 +67,14 @@ public class ReceptionMapTests
         Assert.Empty(ReceptionMap.Validate(ReceptionMap.Statuses, ReceptionMap.Unconfirmed));
     }
 
-    [Theory(DisplayName = "AC-1402.1 채운 표로 나누면 WN은 진료대기, CN·TN은 수납대기, PN은 끝남이고 WR(예약)과 답이 없는 코드는 어느 칸에도 가지 않는다")]
+    [Theory(DisplayName = "AC-1402.1 채운 표로 나누면 WN은 진료대기, HN은 진료보류, TN은 수납대기, PN은 끝남이고 WR(예약)·CR(예약 취소)·CN(접수 취소)과 답이 없는 코드는 어느 칸에도 가지 않는다")]
     [InlineData("WN", Lane.Wait)]
-    [InlineData("CN", Lane.Pay)]
+    [InlineData("HN", Lane.Hold)]
     [InlineData("TN", Lane.Pay)]
     [InlineData("PN", Lane.Done)]
     [InlineData("WR", Lane.Hidden)]
-    [InlineData("HN", Lane.Hidden)]
+    [InlineData("CR", Lane.Hidden)]
+    [InlineData("CN", Lane.Hidden)]
     [InlineData("VN", Lane.Hidden)]
     [InlineData("OE", Lane.Hidden)]
     [InlineData("OB", Lane.Hidden)]

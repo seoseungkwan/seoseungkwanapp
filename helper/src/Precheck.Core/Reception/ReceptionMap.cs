@@ -52,23 +52,25 @@ public static class ReceptionMap
     /// <summary>이미 아는 완료 코드(원본 RxHistory·ClaimDates 조건, ReceptionSql의 완료 내원 조건과 같음).</summary>
     public static IReadOnlyList<string> KnownDoneCodes { get; } = new[] { "HN", "PN", "TN", "VN", "OE", "WN", "OB" };
 
-    // 상태 코드 → 칸. 확인 보고서(1·2회차)의 상태 짝 답 그대로(TASK-28). 답이 없는 코드(HN·VN·OE·OB·접수 취소 등)는 넣지 않는다.
+    // 상태 코드 → 칸. 확인 보고서 3회차(30일 상태 내력)의 답 그대로(TASK-28, 2회차 표를 고침). 답이 없는 코드(VN·OE·OB 등)는 넣지 않는다.
     // 같은 코드를 두 번 적으면 형 초기화에서 멈춘다
     private static readonly (string Code, Lane Lane)[] StatusTable =
     {
-        ("WR", Lane.Hidden), // 예약 대기(1회차: RsvInf 7줄·비트 예약 대기 7명)
-        ("WN", Lane.Wait),   // 진료대기(1·2회차 사람 답)
-        ("CN", Lane.Pay),    // 수납대기(2회차 사람 답)
-        ("TN", Lane.Pay),    // 수납대기(2회차 사람 답)
-        ("PN", Lane.Done),   // 수납완료(2회차 추정: 확인 도중 TN→PN과 오늘 수납 1줄)
+        ("WR", Lane.Hidden), // 예약(1회차: RsvInf 7줄·비트 예약 대기 7명)
+        ("CR", Lane.Hidden), // 예약 취소(3회차: 처방·수납 한 번도 없음)
+        ("CN", Lane.Hidden), // 접수 취소(3회차: 처방·수납 한 번도 없음, 2회차 수납대기 답은 잘못 고른 것)
+        ("WN", Lane.Wait),   // 진료대기(1·2·3회차)
+        ("HN", Lane.Hold),   // 진료보류(3회차)
+        ("TN", Lane.Pay),    // 진료 끝, 수납 전(3회차, 2회차 TN→PN과 맞음)
+        ("PN", Lane.Done),   // 수납완료(3회차 확정: 30일 2029건 모두 수납·처방 있음)
     };
 
     /// <summary>상태 코드 → 칸(확인 답이 있는 코드만).</summary>
     public static IReadOnlyDictionary<string, Lane> Statuses { get; } =
         StatusTable.ToDictionary(entry => entry.Code, entry => entry.Lane, StringComparer.Ordinal);
 
-    /// <summary>확인 답이 아직 없는 칸(비어 있어도 문제 아님, AC-1410.2). 진료보류는 1·2회차에 그 상태 환자가 없었다.</summary>
-    public static IReadOnlyCollection<Lane> Unconfirmed { get; } = Array.AsReadOnly(new[] { Lane.Hold });
+    /// <summary>확인 답이 아직 없는 칸(비어 있어도 문제 아님, AC-1410.2). 3회차에 네 칸 모두 답이 있어 비어 있다.</summary>
+    public static IReadOnlyCollection<Lane> Unconfirmed { get; } = Array.AsReadOnly(new Lane[0]);
 
     /// <summary>숨기는 OcmRsuYon 값. 확인에서 오늘 줄이 모두 비어 있어 숨기는 값이 없다.</summary>
     public static IReadOnlyCollection<string> HiddenRsu { get; } = new HashSet<string>(StringComparer.Ordinal);
