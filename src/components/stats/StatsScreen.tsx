@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { addDays, compareYmd, todayInKorea } from '@/lib/analytics/dates'
+import { addDays, compareYmd, monthRange, todayInKorea } from '@/lib/analytics/dates'
+import type { TrendBucket } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
@@ -16,23 +17,23 @@ import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type St
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
 import { useStatsRxGroups } from './useStatsRxGroups'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
-import { COMPARE_NAME, DEFAULT_STATS_PERIOD, statsRange, type StatsPeriod, type StatsRange } from './view'
+import { lastDayOf, type StatsChoice } from './periodPick'
+import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
+import { DEFAULT_STATS_PERIOD, rangeOf, type StatsPeriod, type StatsRange } from './view'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 둔다(AC-514.9).
 // 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
 // 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
+// 고른 기간(stats-period REQ-1703·REQ-1706): 상태는 StatsChoice 하나(처음 '30d', 저장하지 않음)이고 range = rangeOf(today, choice, data.todayDone)다.
+// 빠른 단추 옆에 PeriodPicker, 기간 글에 비교 둘, 불러오기는 range.load, 처방별 신환·재진은 range.current로 묻는다
 
 const PERIODS: StatsPeriod[] = ['7d', '30d', '90d', '12m']
 const SOURCE_NAME = { bit: '비트 PC', file: '파일' } as const
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.' // 사용자가 승인한 문장(AC-514.7). 시안에 없다
 const NOT_SAVED = '일부 기록을 확인하지 못해 저장하지 않았어요'
 
-// 기간 단추 모양은 대시보드 기간 단추와 같다(시안 .seg). 휴대폰은 넷이 같은 폭 44px
-const PERIOD_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:grid-cols-4'
-const PERIOD_BUTTON =
-  'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:px-1'
-const PERIOD_ON = 'bg-accent-soft font-semibold text-accent-strong'
-const PERIOD_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
+// 빠른 단추 모양(PERIOD_GROUP·PERIOD_BUTTON·PERIOD_ON·PERIOD_OFF)은 PeriodPicker.tsx에 있다: 대시보드 기간 단추와 같고(시안 .seg) 휴대폰은 넷이 같은 폭 44px
+const UNIT_NAME: Record<TrendBucket, string> = { day: '일별', week: '주별', month: '월별' }
 
 // 기다리는 칸은 StatsSections와 같은 자리다
 const SIDE = 'lg:border-l lg:border-line lg:pl-6'
@@ -111,17 +112,31 @@ function ErrorWithAction({ code, action, note }: { code: ErrorCode; action: Reac
   )
 }
 
-function RangeText({ range }: { range: StatsRange }) {
+// 끝나지 않은 달·해(끝난 날에서 잘림). 직접 날짜는 끝난 날까지만 고를 수 있어 늘 끝난 기간이다
+function isOpen(choice: StatsChoice, range: StatsRange): boolean {
+  if (typeof choice === 'string' || choice.kind === 'custom') return false
+  const end = choice.kind === 'month' ? monthRange(choice.month).to : `${choice.year}-12-31`
+  return range.current.to !== end
+}
+
+// 빠른 단추는 지금 글 그대로다(why = COMPARE_NAME). 고른 기간은 '{label} · 일별'(끝나지 않았으면 ' (어제까지)'·' (오늘까지)')과 비교마다 '{label} ({why})'(AC-1703.4)
+function RangeText({ range, open, todayDone }: { range: StatsRange; open: boolean; todayDone: boolean }) {
   const today = range.load.to
   const note = range.grain === 'month' ? `${monthNumber(today)}월은 ${dayNumber(today)}일까지` : '어제까지'
+  const compares = [range.previous, ...(range.lastYear === null ? [] : [range.lastYear])]
   return (
     <div className="flex flex-wrap gap-x-3 text-small text-muted">
-      <span>
-        <span className="font-semibold text-ink">{range.label}</span> ({note})
-      </span>
-      <span>
-        비교: {range.previous.label} ({COMPARE_NAME[range.period]})
-      </span>
+      {range.period !== null ? (
+        <span>
+          <span className="font-semibold text-ink">{range.label}</span> ({note})
+        </span>
+      ) : (
+        <span>
+          <span className="font-semibold text-ink">{range.label}</span>
+          {` · ${UNIT_NAME[range.bucket]}${open ? ` (${todayDone ? '오늘' : '어제'}까지)` : ''}`}
+        </span>
+      )}
+      <span>비교: {compares.map((compare) => `${compare.label} (${compare.why})`).join(' · ')}</span>
     </div>
   )
 }
@@ -133,15 +148,16 @@ function coverClause(to: string | undefined, today: string): string {
   return ` · ${longDate(to)}까지 끝난 날로 저장했어요`
 }
 
-// 출처 줄 글: 앞은 ink-2, 뒤는 muted. latest가 null이면(시각을 못 읽는 브라우저) 출처 줄만 없다
+// 출처 줄 글: 앞은 ink-2, 뒤는 muted. latest가 null이면(시각을 못 읽는 브라우저) 출처 줄만 없다.
+// '…까지 끝난 날로 저장했어요'는 자르지 않은 덮은 기간의 끝(coveredTo)이다: 고른 기간의 input.covered는 읽은 범위로 잘려 있다(AC-1706.5)
 function sourceLine(data: StatsData, today: string, notSaved: boolean): { main: string; rest: string } | null {
-  const { unsaved, saved, latest, input, justSaved } = data
+  const { unsaved, saved, latest, coveredTo, justSaved } = data
   if (unsaved !== null) return { main: `자료: ${SOURCE_NAME[unsaved]} · 방금 불러옴`, rest: ' · 아직 저장하지 못했어요' }
   if (!saved) return { main: '자료: ', rest: '아직 저장된 숫자가 없어요' }
   if (latest === null) return null
   const main = `자료: ${SOURCE_NAME[latest.source]} · ${stampOf(latest.at)} 저장`
   if (notSaved) return { main, rest: ' · 방금 불러온 숫자는 저장하지 않았어요' }
-  return { main: justSaved ? `${main} · 방금` : main, rest: coverClause(input?.covered.at(-1)?.to, today) }
+  return { main: justSaved ? `${main} · 방금` : main, rest: coverClause(coveredTo ?? undefined, today) }
 }
 
 function SourceLine({ data, today, notSaved }: { data: StatsData; today: string; notSaved: boolean }) {
@@ -176,9 +192,12 @@ function WaitingSections() {
 }
 
 export function StatsScreen({ hospitalName, today }: { hospitalName: string; today: string }) {
-  const [period, setPeriod] = useState<StatsPeriod>(DEFAULT_STATS_PERIOD)
-  const range = useMemo(() => statsRange(today, period), [today, period])
-  const data = useStatsData(period, today)
+  const [choice, setChoice] = useState<StatsChoice>(DEFAULT_STATS_PERIOD)
+  const data = useStatsData(choice, today)
+  // 끝나지 않은 기간은 끝난 날까지다: 오늘을 진료 끝으로 저장했으면(읽은 덮은 기간에 오늘이 듦) 오늘, 아니면 어제(AC-1706.2)
+  const { todayDone } = data
+  const range = useMemo(() => rangeOf(today, choice, todayDone), [today, choice, todayDone])
+  const lastDay = lastDayOf(today, todayDone)
   const { state, helloError, retry, load, split } = useStatsWorker()
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
 
@@ -338,15 +357,17 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line-strong pt-4 max-md:flex-col max-md:items-stretch">
+      {/* 빠른 단추 넷 옆에 기간 골라 보기. 고른 기간이면 빠른 단추는 모두 안 눌림이다(AC-1703.1·AC-1703.2) */}
+      <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-line-strong pt-4 max-md:flex-col max-md:items-stretch">
         <div role="group" aria-label="기간" className={PERIOD_GROUP}>
           {PERIODS.map((item) => (
-            <button key={item} type="button" aria-pressed={item === period} onClick={() => setPeriod(item)} className={`${PERIOD_BUTTON} ${item === period ? PERIOD_ON : PERIOD_OFF}`}>
+            <button key={item} type="button" aria-pressed={item === choice} onClick={() => setChoice(item)} className={`${PERIOD_BUTTON} ${item === choice ? PERIOD_ON : PERIOD_OFF}`}>
               {PERIOD_NAME[item]}
             </button>
           ))}
         </div>
-        <RangeText range={range} />
+        <PeriodPicker choice={choice} lastDay={lastDay} todayDone={todayDone} onChoose={setChoice} />
+        <RangeText range={range} open={isOpen(choice, range)} todayDone={todayDone} />
       </div>
       {showSections && (!readFailed || unsaved !== null) && <SourceLine data={data} today={today} notSaved={incomplete !== null} />}
 

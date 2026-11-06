@@ -8,10 +8,10 @@ import { savedNote } from '@/components/stats/treatmentEdit'
 import { staleNames, treatmentRows, uncomparedNames, type TreatmentRow } from '@/components/stats/treatmentView'
 import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
-import { rxComparedCells, type RxLine, type StatsInput } from '@/components/stats/view'
+import { periodDesc, rxComparedCells, type RxLine, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { RxGroup } from '@/types/rxGroups'
-import { EmptyNote, hasRows, NO_RANGE_DATA, PERIOD_NAME, Section, todayOf } from './parts'
+import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
 import { TreatmentDetail } from './TreatmentDetail'
 import { TreatmentGroupEditor } from './TreatmentGroupEditor'
 import { TreatmentTable, type ReadyTreatmentRow } from './TreatmentTable'
@@ -64,7 +64,7 @@ function BottomNotes({ input, rows }: { input: StatsInput; rows: readonly Treatm
   const { kept, dropped } = anyCompared ? rxComparedCells(input) : { kept: 0, dropped: false }
   return (
     <div className="mt-3 grid max-w-182 gap-1">
-      {dropped && kept >= 1 && <p className="text-small text-muted">{comparedNote(input.range.period, kept)}</p>}
+      {dropped && kept >= 1 && <p className="text-small text-muted">{comparedNote(input.range.grain, kept)}</p>}
       {uncompared.length > 0 && <p className="text-small text-muted">{`${joinNames(uncompared)} 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.`}</p>}
       {NOTES.map((note) => (
         <p key={note} className="text-small text-muted">
@@ -143,7 +143,7 @@ export function TreatmentTrendSection({
           groups={editing}
           lines={lines}
           counts={counts}
-          periodName={PERIOD_NAME[input.range.period]}
+          periodName={input.range.name}
           catalogState={catalog.state}
           onOpenCatalog={catalog.open}
           onRetryCatalog={catalog.retry}
@@ -179,7 +179,7 @@ export function TreatmentTrendSection({
   )
 
   return (
-    <Section title={TITLE} desc={DESC} action={editButton} className={`${className} ${PHONE_FULL_ACTION}`}>
+    <Section title={TITLE} desc={periodDesc(DESC, input.range)} action={editButton} className={`${className} ${PHONE_FULL_ACTION}`}>
       {note && (
         <p role="status" className="mt-2 text-small text-positive">
           {note}

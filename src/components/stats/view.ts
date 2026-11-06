@@ -1,13 +1,14 @@
 import { formatCount } from '@/components/charts/format'
 import type { BarBucket } from '@/components/charts/StackedBarChart'
-import { periodRange, trendBuckets, weekdayBuckets, type Period, type PeriodRange } from '@/components/dashboard/summary/view'
+import { longDate, periodRange, tickLabels, trendBuckets, weekdayBuckets, type Period, type PeriodRange } from '@/components/dashboard/summary/view'
 import { compareNumbers } from '@/lib/analytics/compare'
 import { isCovered } from '@/lib/analytics/coverage'
-import { addDays, addMonths, compareYmd, eachDay, monthOf, monthRange } from '@/lib/analytics/dates'
+import { addDays, addMonths, compareYmd, eachDay, monthOf, monthRange, weekStartOf } from '@/lib/analytics/dates'
 import { buildTrend, comparisonRange } from '@/lib/analytics/rxTrend'
 import type { Delta, TrendBucket, TrendPoint } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
+import { pickRange, type StatsChoice } from './periodPick'
 
 // 통계 화면의 숫자 (stats REQ-511, design.md TASK-11). 입력은 일 숫자와 덮은 기간뿐이고 저장된 달 줄은 읽지 않는다.
 // 순수 함수다. 날짜는 lib/analytics/dates.ts, 증감은 compareNumbers, 처방 건수는 buildTrend, 대시보드 view의 함수는 불러 쓰기만 한다.
@@ -16,13 +17,20 @@ import type { DayPayload } from '@/types/payload'
 export type StatsPeriod = '7d' | '30d' | '90d' | '12m'
 export const DEFAULT_STATS_PERIOD: StatsPeriod = '30d'
 
+// 비교 기간 하나. name = 칸 머리·글에 쓰는 이름('9월'·'지난 30일'), why = 괄호 안 까닭('바로 전 달'·빠른 단추는 name과 같다)
+export type CompareRange = PeriodRange & { name: string; why: string }
+
+// period null = 고른 기간(stats-period, periodPick.ts의 pickRange). 섹션은 기간 이름 표 대신 name·previous.name·bucket을 읽는다
 export type StatsRange = {
-  period: StatsPeriod
+  period: StatsPeriod | null
+  name: string // '최근 30일' · '2026년 10월'
   current: PeriodRange
-  previous: PeriodRange
+  previous: CompareRange
+  lastYear: CompareRange | null // 작년 같은 기간(고른 기간만). 빠른 단추·해 고르기는 null
   finishedCohort: DateRange | null // '30d'만: 오늘 − 60 ~ 오늘 − 31(previous와 같은 범위). 온 뒤 30일이 지난 가장 최근 신환
-  load: DateRange // 비교 기간 첫날이 든 달의 1일 ~ 오늘
+  load: DateRange // 가장 앞 비교 기간 첫날이 든 달의 1일 ~ 오늘
   grain: 'day' | 'month'
+  bucket: TrendBucket // 막대·처방 그래프 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
   label: string
 }
 
@@ -32,7 +40,7 @@ export type StatsInput = { days: readonly DayPayload[]; covered: readonly DateRa
 // 값이 null이면 화면의 값 자리는 "–"이고 아래 글(note)이 까닭이다. partial = '일부 기간' 표시.
 // 넷째 칸(compare)은 value가 늘 null이고 delta가 값이다(delta null = 비교할 자료가 없음)
 export type SummaryCell = {
-  key: 'average' | 'new' | 'returning' | 'compare'
+  key: 'average' | 'new' | 'returning' | 'compare' | 'lastYear' // lastYear = 둘째 비교 칸(고른 기간의 작년 같은 기간)
   label: string
   value: number | null
   note: string
@@ -49,6 +57,9 @@ export type FirstRevisit = { from: string; to: string; cohort: number; items: { 
 
 export type RevisitRates = { d7: StatsRateCell; d14: StatsRateCell; d30: StatsRateCell; d30Cohort: DateRange | null; firstRevisit: FirstRevisit | null }
 
+// 고른 기간의 작년 비교 하나(바로 전은 comparable·delta). previous null = 견줄 수 없음(delta unavailable)
+export type YearCompare = { previous: number | null; delta: Delta }
+
 export type RxTrendRow = {
   code: string
   name: string // 가장 최근 날의 이름
@@ -58,6 +69,7 @@ export type RxTrendRow = {
   partial: boolean // '12m'에서 건수에 덜 끝난 달이 들면 true('일부 기간' 표시)
   comparable: { current: number; previous: number } | null // 어느 한쪽이라도 덜 끝난 짝을 뺀 합. 남은 짝이 없으면 null
   delta: Delta // comparable이 null이면 { kind: 'unavailable' }
+  lastYear?: YearCompare // 고른 기간 + 작년 비교일 때만
 }
 
 export type RxLine = { code: string; name: string }
@@ -72,6 +84,7 @@ type Revisit = DayPayload['revisit']
 type RevisitKey = 'within7' | 'within14' | 'within30'
 
 const DAY_COUNT: Record<DayPeriod, Period> = { '7d': 7, '30d': 30, '90d': 90 }
+export const PERIOD_NAME: Record<StatsPeriod, string> = { '7d': '최근 7일', '30d': '최근 30일', '90d': '최근 90일', '12m': '최근 12개월' }
 export const COMPARE_NAME: Record<StatsPeriod, string> = { '7d': '지난 7일', '30d': '지난 30일', '90d': '지난 90일', '12m': '작년 같은 12달' }
 // 짝을 빼고 견줄 때의 비교 쪽 이름. COMPARE_NAME은 칸 수를 말해서('작년 같은 12달') 남은 칸 수와 어긋난다
 const PAIR_NAME: Record<StatsRange['grain'], string> = { day: '지난 기간', month: '작년' }
@@ -79,6 +92,9 @@ const AVERAGE_UNIT: Record<StatsRange['grain'], string> = { day: '하루', month
 const CELL_UNIT: Record<StatsRange['grain'], string> = { day: '일', month: '달' }
 const DETAIL_BUCKET: Record<StatsPeriod, TrendBucket> = { '7d': 'day', '30d': 'day', '90d': 'week', '12m': 'month' }
 const YEAR_MONTHS = 12
+const TICK_DAYS = 31 // 고른 기간 일별 눈금: 31일 이하는 30일 기간의 눈금(7일마다), 넘으면 90일 기간의 눈금(21일마다)
+const WEEK_LABEL_ALL = 6 // 주 칸이 이보다 많으면 날짜 글자를 세 칸마다(처방 그래프의 주 칸과 같다)
+const WEEK_LABEL_STEP = 3
 const TOP_RX = 5
 const TREND_CODE_LIMIT = 200 // buildTrend가 한 번에 받는 코드 수(넘으면 RangeError)
 // 점의 partial만 읽을 때 넘기는 코드. buildTrend는 코드가 0개면 RangeError이고 partial은 코드와 상관없다
@@ -105,13 +121,15 @@ function rowsIn(days: readonly DayPayload[], range: DateRange): DayPayload[] {
 
 // ── 기간 ────────────────────────────────────────────────
 
-function dayRanges(today: string, days: Period): Pick<StatsRange, 'current' | 'previous'> {
+type QuickRanges = { current: PeriodRange; previous: PeriodRange }
+
+function dayRanges(today: string, days: Period): QuickRanges {
   const current = periodRange(today, days)
   const { from, to } = comparisonRange(current.from, current.to, 'PreviousEqualDays')
   return { current, previous: { from, to, label: periodRange(current.from, days).label } } // periodRange(첫날, N) = 그 앞 N일
 }
 
-function yearRanges(today: string): Pick<StatsRange, 'current' | 'previous'> {
+function yearRanges(today: string): QuickRanges {
   const thisMonth = monthOf(today)
   const from = monthRange(addMonths(thisMonth, 1 - YEAR_MONTHS)).from
   const to = monthRange(thisMonth).to
@@ -128,13 +146,32 @@ export function statsRange(today: string, period: StatsPeriod): StatsRange {
   const { current, previous } = period === '12m' ? yearRanges(today) : dayRanges(today, DAY_COUNT[period])
   return {
     period,
+    name: PERIOD_NAME[period],
     current,
-    previous,
+    previous: { ...previous, name: COMPARE_NAME[period], why: COMPARE_NAME[period] },
+    lastYear: null,
     finishedCohort: period === '30d' ? { from: addDays(today, -60), to: addDays(today, -31) } : null,
     load: { from: monthRange(monthOf(previous.from)).from, to: today },
     grain: period === '12m' ? 'month' : 'day',
+    bucket: DETAIL_BUCKET[period],
     label: current.label,
   }
+}
+
+// 빠른 단추는 statsRange, 고른 기간은 pickRange(periodPick.ts는 이 파일에서 타입만 불러와 실행 순환이 없다)
+export function rangeOf(today: string, choice: StatsChoice, todayDone: boolean): StatsRange {
+  return typeof choice === 'string' ? statsRange(today, choice) : pickRange(today, choice, todayDone)
+}
+
+// 가장 앞 비교 첫날 ~ current 끝(저장하지 못한 숫자를 얹는 날, AC-1706.3)
+export function readSpan(range: StatsRange): DateRange {
+  const first = range.lastYear !== null && compareYmd(range.lastYear.from, range.previous.from) < 0 ? range.lastYear.from : range.previous.from
+  return { from: first, to: range.current.to }
+}
+
+// 섹션 설명. 고른 기간이면 끝에 ' · {name}', 빠른 단추면 그대로(AC-1704.4)
+export function periodDesc(desc: string, range: StatsRange): string {
+  return range.period === null ? `${desc} · ${range.name}` : desc
 }
 
 // ── 칸(일 기간은 날, 12개월은 달) ─────────────────────────
@@ -199,7 +236,7 @@ function compareCell(range: StatsRange, finished: readonly Cell[], comparedNow: 
   const note =
     comparedNow.length < finished.length
       ? `견준 ${formatCount(comparedNow.length)}${CELL_UNIT[range.grain]} 평균 · 이번 ${formatCount(now)}명 · ${PAIR_NAME[range.grain]} ${formatCount(before)}명`
-      : `${COMPARE_NAME[range.period]} ${AVERAGE_UNIT[range.grain]} 평균 ${formatCount(before)}명`
+      : `${range.previous.name} ${AVERAGE_UNIT[range.grain]} 평균 ${formatCount(before)}명`
   return { key: 'compare', label, value: null, note, partial: false, delta: compareNumbers(now, before) }
 }
 
@@ -207,6 +244,7 @@ function compareCell(range: StatsRange, finished: readonly Cell[], comparedNow: 
 // 두 기간의 자리 수는 같다(날 N개끼리, 달 12개끼리)
 export function summaryCells(input: StatsInput): SummaryCell[] {
   const { range } = input
+  if (range.period === null) return pickSummaryCells(input)
   const now = slotsOf(input, range.current)
   const before = slotsOf(input, range.previous)
   const paired = (_: Slot, i: number) => !now[i].unfinished && !before[i].unfinished
@@ -222,10 +260,42 @@ export function summaryCells(input: StatsInput): SummaryCell[] {
   ]
 }
 
+// 고른 기간의 비교 칸 하나. 날 수가 달라 짝 짓지 않고 기간마다 끝난 날 평균(버림)을 낸다.
+// 비교 기간에 끝나지 않은 날(줄 없고 덮지 않음, partial 줄)이 하루라도 있거나 진료한 날이 없으면 견주지 않는다(0이 아니다)
+function pickCompareCell(input: StatsInput, key: 'compare' | 'lastYear', span: CompareRange, average: number | null): SummaryCell {
+  const slots = slotsOf(input, span)
+  const before = slots.some((slot) => slot.unfinished) ? null : flooredAverage(cellsIn(slots))
+  const label = `${span.name}보다`
+  if (before === null) return { key, label, value: null, note: `${span.label} 자료가 없어요`, partial: false, delta: null }
+  return { key, label, value: null, note: `${span.label} 하루 평균 ${formatCount(before)}명`, partial: false, delta: average === null ? null : compareNumbers(average, before) }
+}
+
+// 고른 기간(AC-1704.1·AC-1704.2): 평균·신환·재진 + 비교마다 한 칸('compare' = 바로 전, 'lastYear' = 작년). 고른 기간은 늘 일 칸이다
+function pickSummaryCells(input: StatsInput): SummaryCell[] {
+  const { range } = input
+  const current = cellsIn(slotsOf(input, range.current))
+  const finished = current.filter((cell) => !cell.partial)
+  const average = flooredAverage(finished)
+  return [
+    { key: 'average', label: '하루 평균 환자 수', value: average, note: average === null ? NO_DATA : `진료한 날 ${formatCount(finished.length)}일 평균`, partial: false, delta: null },
+    totalCell('new', '신환', current, (cell) => cell.newPatients),
+    totalCell('returning', '재진', current, (cell) => cell.returning),
+    pickCompareCell(input, 'compare', range.previous, average),
+    ...(range.lastYear === null ? [] : [pickCompareCell(input, 'lastYear', range.lastYear, average)]),
+  ]
+}
+
+// 고른 기간에서 평균에 넣지 못한 끝나지 않은 날 수(줄 없고 덮지 않음, partial 줄). 빠른 단추는 0이다(기간 요약 설명 ' · 자료 없는 날 N일은 빼고 셌어요', AC-1704.2)
+export function missingDays(input: StatsInput): number {
+  if (input.range.period !== null) return 0
+  return slotsOf(input, input.range.current).filter((slot) => slot.unfinished).length
+}
+
 // ── 환자 수 추이 ──────────────────────────────────────────
 
 export function patientTrend(input: StatsInput): BarBucket[] | null {
   const { days, range } = input
+  if (range.period === null) return pickTrend(input)
   if (range.period !== '12m') return trendBuckets(days, range.current, DAY_COUNT[range.period])
   const cells = cellsIn(slotsOf(input, range.current))
   if (cells.length === 0) return null
@@ -236,6 +306,79 @@ export function patientTrend(input: StatsInput): BarBucket[] | null {
     state: cell.partial ? 'partial' : 'complete',
     values: [cell.newPatients, cell.returning],
   }))
+}
+
+// 고른 기간의 막대(AC-1704.3). 칸을 모두 만든다: 일별은 날마다(휴진한 날 = 줄 없고 덮은 날만 칸 없음), 주별은 월–일을 기간으로 자름,
+// 월별은 달마다(해 고르기는 1월~12월). 자료 없는 칸은 blank 'no-data'(0이 아니다), 앞으로 올 달은 blank 'future'다. 기간에 줄이 없으면 null
+function pickTrend({ days, covered, range }: StatsInput): BarBucket[] | null {
+  const rows = rowsIn(days, range.current)
+  if (rows.length === 0) return null
+  const merged = [...covered]
+  const lookup: DayLookup = { byDay: new Map(rows.map((row) => [row.day, row])), isIn: (day) => isCovered({ from: day, to: day }, merged) }
+  if (range.bucket === 'day') return dayBars(range.current, lookup)
+  return range.bucket === 'week' ? weekBars(range.current, lookup) : monthBars(range, lookup)
+}
+
+// 고른 기간 안 일 줄(날 → 줄)과 덮은 날인지
+type DayLookup = { byDay: ReadonlyMap<string, DayPayload>; isIn: (day: string) => boolean }
+
+function dayBars(current: PeriodRange, { byDay, isIn }: DayLookup): BarBucket[] {
+  const all = eachDay(current)
+  const ticks = new Map(tickLabels(current, all.length <= TICK_DAYS ? 30 : 90).map((tick) => [tick.day, tick.label]))
+  return all.flatMap((day): BarBucket[] => {
+    const row = byDay.get(day)
+    const head = { key: day, label: ticks.get(day) ?? '', rangeLabel: longDate(day) }
+    if (row === undefined) return isIn(day) ? [] : [{ ...head, state: 'partial', values: [0, 0], blank: 'no-data' }]
+    return [{ ...head, state: row.partial ? 'partial' : 'complete', values: [row.totals.newPatients, row.totals.returning] }]
+  })
+}
+
+// 칸 하나(주·달). 기간에 잘렸거나 덮지 않은 날·partial 줄이 들면 일부 기간이고, 줄이 하나도 없으면 자료 없음이다. 합에는 칸 안 줄을 모두 넣는다
+function spanBar(head: Pick<BarBucket, 'key' | 'label' | 'rangeLabel'>, clipped: DateRange, whole: DateRange, { byDay, isIn }: DayLookup): BarBucket {
+  const inside = eachDay(clipped)
+  const rows = inside.flatMap((day) => byDay.get(day) ?? [])
+  const cut = clipped.from !== whole.from || clipped.to !== whole.to
+  const settled = inside.every((day) => isIn(day) && byDay.get(day)?.partial !== true)
+  const state = cut || !settled ? 'partial' : 'complete'
+  if (rows.length === 0) return { ...head, state, values: [0, 0], blank: 'no-data' }
+  return { ...head, state, values: [sum(rows, (row) => row.totals.newPatients), sum(rows, (row) => row.totals.returning)] }
+}
+
+const later = (a: string, b: string) => (compareYmd(a, b) >= 0 ? a : b)
+const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
+const shortDate = (ymd: string) => `${Number(ymd.slice(5, 7))}.${Number(ymd.slice(8, 10))}`
+
+// '10월 1일 – 4일' · '9월 28일 – 10월 4일' · 하루면 '10월 1일'
+function spanText({ from, to }: DateRange): string {
+  if (from === to) return longDate(from)
+  return `${longDate(from)} – ${monthOf(from) === monthOf(to) ? `${Number(to.slice(8, 10))}일` : longDate(to)}`
+}
+
+function weekBars(current: PeriodRange, lookup: DayLookup): BarBucket[] {
+  const weeks: DateRange[] = []
+  for (let start = weekStartOf(current.from); compareYmd(start, current.to) <= 0; start = addDays(start, 7)) weeks.push({ from: start, to: addDays(start, 6) })
+  const step = weeks.length <= WEEK_LABEL_ALL ? 1 : WEEK_LABEL_STEP
+  return weeks.map((whole, i) => {
+    const clipped = { from: later(whole.from, current.from), to: earlier(whole.to, current.to) }
+    const head = { key: clipped.from, label: i % step === 0 ? shortDate(clipped.from) : '', rangeLabel: spanText(clipped) }
+    return spanBar(head, clipped, whole, lookup)
+  })
+}
+
+// 달 칸: 기간 첫 달 ~ 끝 달. 끝 달 뒤로 그 해 12월까지는 앞으로 올 달(첫날이 오늘 이후)일 때만 빈 칸으로 잇는다(해 고르기의 1월~12월)
+function monthBars(range: StatsRange, lookup: DayLookup): BarBucket[] {
+  const { current } = range
+  const head = (month: string) => ({ key: month, label: `${Number(month.slice(5))}월`, rangeLabel: monthName(month) })
+  const bars: BarBucket[] = []
+  for (let month = monthOf(current.from); compareYmd(`${month}-01`, current.to) <= 0; month = addMonths(month, 1)) {
+    const whole = monthRange(month)
+    bars.push(spanBar(head(month), { from: later(whole.from, current.from), to: earlier(whole.to, current.to) }, whole, lookup))
+  }
+  const yearEnd = `${current.to.slice(0, 4)}-12`
+  for (let month = addMonths(monthOf(current.to), 1); compareYmd(month, yearEnd) <= 0 && compareYmd(`${month}-01`, range.load.to) >= 0; month = addMonths(month, 1)) {
+    bars.push({ ...head(month), state: 'partial', values: [0, 0], blank: 'future' })
+  }
+  return bars
 }
 
 // ── 신환 재방문율 ─────────────────────────────────────────
@@ -337,7 +480,7 @@ function comparableOf(now: readonly TrendPoint[], before: readonly TrendPoint[])
   return { current: sum(pairs, (pair) => pair.current.count), previous: sum(pairs, (pair) => pair.previous.count) }
 }
 
-function rxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod): RxTrendRow {
+function rxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod | null): RxTrendRow {
   const comparable = comparableOf(now, before)
   return {
     ...line,
@@ -351,6 +494,32 @@ function rxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendP
   }
 }
 
+const finishedPoints = (points: readonly TrendPoint[]) => points.every((point) => !point.partial)
+
+// 고른 기간의 비교 하나: 두 기간의 점이 모두 끝났을 때만 비교 기간 전체 합과 견준다(AC-1705.1)
+function wholeCompare(count: number, nowDone: boolean, points: readonly TrendPoint[]): YearCompare {
+  if (!nowDone || !finishedPoints(points)) return { previous: null, delta: UNAVAILABLE }
+  const previous = sum(points, (point) => point.count)
+  return { previous, delta: compareNumbers(count, previous) }
+}
+
+// 고른 기간의 처방 줄. 짝을 짓지 않는다(날 수가 다르다). 바로 전은 comparable·delta, 작년은 lastYear(작년 비교가 있을 때만)
+function pickRxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendPoint[], yearAgo: readonly TrendPoint[] | null): RxTrendRow {
+  const count = sum(now, (point) => point.count)
+  const nowDone = finishedPoints(now)
+  const previous = wholeCompare(count, nowDone, before)
+  return {
+    ...line,
+    count,
+    newCount: sum(now, (point) => point.newCount),
+    returningCount: sum(now, (point) => point.returningCount),
+    partial: false,
+    comparable: previous.previous === null ? null : { current: count, previous: previous.previous },
+    delta: previous.delta,
+    ...(yearAgo === null ? {} : { lastYear: wholeCompare(count, nowDone, yearAgo) }),
+  }
+}
+
 // 증감은 표시 칸과 상관없이 12개월은 달끼리, 일 기간은 날끼리 짝 짓는다. 코드는 대소문자를 합쳐서 받아 나눠 부른다(한 코드가 두 묶음에 들어가면 두 줄이 된다)
 function trendRows({ days, covered, range }: StatsInput, lines: readonly RxLine[]): RxTrendRow[] {
   const bucket: TrendBucket = range.grain
@@ -359,7 +528,9 @@ function trendRows({ days, covered, range }: StatsInput, lines: readonly RxLine[
     const codes = part.map((line) => line.code)
     const now = pointsOf(range.current, codes)
     const before = pointsOf(range.previous, codes)
-    return part.map((line) => rxRow(line, now.get(line.code) ?? [], before.get(line.code) ?? [], range.period))
+    if (range.period !== null) return part.map((line) => rxRow(line, now.get(line.code) ?? [], before.get(line.code) ?? [], range.period))
+    const yearAgo = range.lastYear === null ? null : pointsOf(range.lastYear, codes)
+    return part.map((line) => pickRxRow(line, now.get(line.code) ?? [], before.get(line.code) ?? [], yearAgo === null ? null : (yearAgo.get(line.code) ?? [])))
   })
 }
 
@@ -387,7 +558,9 @@ export function rxPickRows(input: StatsInput, picks: readonly RxLine[]): RxPickR
 }
 
 // 증감을 견준 짝 수. partial은 처방과 상관없어 남은 짝은 모든 처방 줄에서 같으므로 줄마다 세지 않고 한 번만 센다
+// 고른 기간은 짝을 짓지 않아 '짝만 견줘요' 안내가 없다
 export function rxComparedCells({ days, covered, range }: StatsInput): { kept: number; dropped: boolean } {
+  if (range.period === null) return { kept: 0, dropped: false }
   const pointsOf = (span: DateRange) => buildTrend(days, covered, { from: span.from, to: span.to, bucket: range.grain, codes: [ANY_CODE] }).points
   const now = pointsOf(range.current)
   const kept = keptPairs(now, pointsOf(range.previous)).length
@@ -399,7 +572,7 @@ const overlaps = (a: DateRange, start: string, end: string) => compareYmd(a.from
 // 칸: 7·30일 = 일, 90일 = 주(월~일), 12개월 = 달. buildTrend의 점 그대로이고, 90일은 두 기간의 칸 수가 달라도 채우거나 자르지 않는다
 export function rxDetail({ days, covered, range }: StatsInput, code: string): { current: RxDetailPoint[]; previous: RxDetailPoint[] } {
   const pointsOf = (span: DateRange): RxDetailPoint[] =>
-    buildTrend(days, covered, { from: span.from, to: span.to, bucket: DETAIL_BUCKET[range.period], codes: [code] }).points.map((point) => ({
+    buildTrend(days, covered, { from: span.from, to: span.to, bucket: range.bucket, codes: [code] }).points.map((point) => ({
       ...point,
       covered: covered.some((part) => overlaps(part, point.start, point.end)),
     }))

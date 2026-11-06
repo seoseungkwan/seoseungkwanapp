@@ -7,7 +7,7 @@ import { rxCatalog, rxPeriodCounts, rxPickTotal } from '@/components/stats/rxPic
 import { useAgainDays } from '@/components/stats/useAgainDays'
 import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
 import { useRxPicks } from '@/components/stats/useRxPicks'
-import { codeKey, rxPickRows, type RxLine, type RxPickRow, type StatsInput } from '@/components/stats/view'
+import { codeKey, periodDesc, rxPickRows, type RxLine, type RxPickRow, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { ErrorCode } from '@/types/errors'
 import type { AgainWindow } from '@/types/payload'
@@ -113,7 +113,7 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
   }
 
   return (
-    <Section title={TITLE} desc={DESC} className={className}>
+    <Section title={TITLE} desc={periodDesc(DESC, input.range)} className={className}>
       <RxPickSearch
         catalog={lines}
         picks={shownPicks}

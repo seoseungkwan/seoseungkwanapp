@@ -38,6 +38,11 @@ export function againSpan(range: StatsRange, win: AgainWindow): AgainSpan {
   const from = range.current.from
   const to = lastDayOf(range)
   const days = diffDays(from, to) + 1
+  // 고른 기간은 옮기지 않는다(옮긴 범위는 읽지 않은 날일 수 있다). 센 시작일 = 첫날 ~ min(기간 끝, 어제 − 창). 비면 모든 날이 아직 셀 수 없음이다(AC-1705.4)
+  if (range.period === null) {
+    const latest = addDays(range.load.to, -1 - win)
+    return { from, to, days, shifted: false, countFrom: from, countTo: compareYmd(range.current.to, latest) <= 0 ? range.current.to : latest }
+  }
   const countTo = addDays(to, -win)
   const shifted = compareYmd(countTo, from) < 0
   return { from, to, days, shifted, countFrom: shifted ? addDays(countTo, 1 - days) : from, countTo }
@@ -132,8 +137,22 @@ function dateText(ymd: string, today: string): string {
   return ymd.slice(0, 4) === today.slice(0, 4) ? day : `${Number(ymd.slice(0, 4))}년 ${day}`
 }
 
-// 센 범위를 알리는 한 문장(앞·굵게·뒤). 기간 이름은 화면이 parts.tsx의 PERIOD_NAME에서 넘긴다(이 파일이 .tsx를 불러오지 않게)
-export function againBaseText(view: AgainView, range: StatsRange, periodName: string): { lead: string; strong: string; tail: string } {
+type BaseText = { lead: string; strong: string; tail: string }
+
+// 고른 기간의 글. 창은 어제 − 센 범위 끝이다(센 범위가 비었거나 기간 끝 무렵이 창 안일 때만 쓴다)
+function pickBaseText({ span, gapDays }: AgainView, range: StatsRange, periodName: string): BaseText {
+  const date = (ymd: string) => dateText(ymd, range.load.to)
+  const win = diffDays(span.countTo, addDays(range.load.to, -1))
+  if (compareYmd(span.countTo, span.from) < 0) return { lead: `${periodName}에 시작한 환자는 아직 ${win}일이 다 지나지 않아 셀 수 없어요.`, strong: '', tail: '' }
+  const gap = gapDays > 0 ? GAP_NOTE(gapDays) : ''
+  const strong = `${date(span.from)} – ${date(span.countTo)}`
+  if (span.countTo === span.to) return { lead: '', strong, tail: `에 시작한 환자로 셌어요.${gap}` }
+  return { lead: '', strong, tail: `에 시작한 환자로 셌어요. 시작하고 ${win}일이 안 지난 ${date(addDays(span.countTo, 1))} – ${date(span.to)}은 아직 셀 수 없어요.${gap}` }
+}
+
+// 센 범위를 알리는 한 문장(앞·굵게·뒤). 기간 이름은 화면이 넘긴다(빠른 단추는 parts.tsx의 PERIOD_NAME, 고른 기간은 range.name. 이 파일이 .tsx를 불러오지 않게)
+export function againBaseText(view: AgainView, range: StatsRange, periodName: string): BaseText {
+  if (range.period === null) return pickBaseText(view, range, periodName)
   const { span, gapDays } = view
   const date = (ymd: string) => dateText(ymd, range.load.to)
   const win = diffDays(span.countTo, span.to) // 센 범위 끝 = E − w

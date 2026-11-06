@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import type { StatsPick } from '@/components/stats/periodPick'
+import { rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import { RevisitSection } from './RevisitSection'
@@ -269,5 +270,32 @@ describe('AC-513.4: 신환 재방문율 빈 상태', () => {
   it('AC-513.4: 저장된 숫자는 있는데 이 기간 자료가 없으면 그 문구다(비교 기간에만 줄이 있어도)', () => {
     render(<RevisitSection input={inputOf([day('2026-09-15', [20, 5, 8, 10, 2])], '30d')} saved />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+  })
+})
+
+// ── 고른 기간 (stats-period REQ-1704). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1704.4·AC-1704.5: 고른 기간의 신환 재방문율', () => {
+  const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const pickOf = (days: DayPayload[]): StatsInput => ({ days, covered: [{ from: '2025-01-01', to: '2026-11-05' }], range: rangeOf('2026-11-06', OCT, false) })
+
+  it('AC-1704.4: 설명 끝에 " · {name}"이 붙는다', () => {
+    render(<RevisitSection input={pickOf([day('2026-10-05', [2, 1, 1])])} saved />)
+    expect(screen.getByText('처음 온 환자가 다시 온 비율 · 2026년 10월')).toBeTruthy()
+  })
+
+  it('AC-1704.5: current 날만 센다(바로 전 9월 줄은 넣지 않는다)', () => {
+    render(<RevisitSection input={pickOf([day('2026-09-07', [2, 2, 2]), day('2026-10-05', [2, 1, 1])])} saved />)
+    expect(row('7일 안에 다시 옴').textContent).toContain('50.0%')
+    expect(row('7일 안에 다시 옴').textContent).toContain('신환 2명 가운데 1명')
+  })
+
+  it('AC-1704.5: current에 줄이 없으면 지금처럼 "불러온 숫자에 이 기간 자료가 없어요."다', () => {
+    render(<RevisitSection input={pickOf([day('2026-09-07', [2, 2, 2])])} saved />)
+    expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+  })
+
+  it('AC-1704.5: 빼고 센 칸의 글은 "날"이다(고른 기간은 일 칸)', () => {
+    render(<RevisitSection input={pickOf([day('2026-10-05', [2, 1, 1]), day('2026-10-30', [2, null, null])])} saved />)
+    expect(row('7일 안에 다시 옴').textContent).toContain('온 뒤 7일이 안 된 날의 신환은 빼고 셌어요')
   })
 })

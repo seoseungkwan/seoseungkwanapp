@@ -3,7 +3,7 @@
 import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
 import { formatCount } from '@/components/charts/format'
 import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
-import { weekdayBars, type StatsRange } from '@/components/stats/view'
+import { periodDesc, weekdayBars, type StatsRange } from '@/components/stats/view'
 import { compareYmd, weekdayOf } from '@/lib/analytics/dates'
 import type { DayPayload } from '@/types/payload'
 import { DetailToggle, type DetailTable } from './DetailToggle'
@@ -73,7 +73,7 @@ export function WeekdaySection({ days, range, saved, className }: { days: readon
   return (
     <DetailToggle table={tableOf(buckets, daysPerWeekday(days, range))}>
       {({ button, panel }) => (
-        <Section title={TITLE} desc="하루 평균, 요일마다" action={button} className={className}>
+        <Section title={TITLE} desc={periodDesc('하루 평균, 요일마다', range)} action={button} className={className}>
           {buckets.some(isPartial) && (
             <div className="mt-2">
               <ChartLegend items={LEGEND_PARTIAL} />
