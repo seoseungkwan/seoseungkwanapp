@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorklogStorageError } from '@/lib/storage/worklogDays'
-import { emptyWorklogDay, type WorklogChanges, type WorklogDay, type WorklogNumberKey } from '@/types/worklog'
+import {
+  emptyWorklogCash,
+  emptyWorklogDay,
+  type WorklogCash,
+  type WorklogCashChanges,
+  type WorklogChanges,
+  type WorklogDay,
+  type WorklogNumberKey,
+} from '@/types/worklog'
 import { createAutosave, type AutosaveOptions, type AutosaveSnapshot } from './autosave'
 
 // 자동 저장 제어 (REQ-006, design.md 10절). 숫자와 글자는 모두 지어낸 것이다
@@ -1458,5 +1466,511 @@ describe('AC-1504.4 크기 저장의 성공·실패·저장 중 바뀜·dispose'
     expect(autosave.serverDay(YMD, null)).not.toHaveProperty('memoFontPt')
     await wait(60_000)
     expect(save).not.toHaveBeenCalled()
+  })
+})
+
+// 현금 시재 (specs/worklog-cash-float REQ-1604). 장수·금액·이유 글은 모두 지어낸 것이다
+const cashWith = (values: WorklogCashChanges): WorklogCash => ({ ...emptyWorklogCash(), ...values })
+const COUNTED = cashWith({ count5000: 2, floatWon: 300000 })
+
+describe('AC-1604.1 changeCash는 다른 칸처럼 묶어 바뀐 시재 칸만 저장한다', () => {
+  it('AC-1604.1: changeCash 뒤 800ms 조용하면 바뀐 시재 칸만 save의 다섯째 인자로 한 번 부르고 saving → saved(시각)다', async () => {
+    const at = new Date('2026-11-05T05:00:00.000Z')
+    const { autosave, save, calls } = harness({ now: () => at })
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    expect(autosave.snapshot().state).toBe('saving')
+    await wait(799)
+    expect(save).not.toHaveBeenCalled()
+    await wait(1)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    expect(calls[0].args).toBe(5)
+    await calls[0].succeed()
+    expect(autosave.snapshot()).toEqual({ state: 'saved', savedAt: at, blocked: null })
+    expect(autosave.hasUnsaved()).toBe(false)
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1604.1: 아는 시재와 다른 칸만 간다(같은 장수·같은 시재는 보내지 않는다)', async () => {
+    const { autosave, save } = harness()
+    const server = cashWith({ count50000: 6, count10000: 11, floatWon: 300000, reason: '가상 이유' })
+    autosave.serverDay(YMD, null, null, undefined, undefined, server)
+    autosave.changeCash(YMD, { ...server, count10000: 12, refundCash: true })
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count10000: 12, refundCash: true }])
+  })
+
+  it('AC-1604.1: 연달아 바꾸면 마지막 바뀜 뒤 800ms에 마지막 값의 차이만 한 번 간다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, cashWith({ count10000: 1, floatWon: 300000 }))
+    await wait(700)
+    autosave.changeCash(YMD, cashWith({ count5000: 2, floatWon: 300000 }))
+    await wait(799)
+    expect(save).not.toHaveBeenCalled()
+    await wait(1)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+  })
+
+  it('AC-1604.1: 칸·비트 칸 목록·크기·시재가 함께 바뀌면 한 번에 save(ymd, 바뀐 칸, 목록, 크기, 시재 칸)로 간다', async () => {
+    const { autosave, save, calls } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, [], 11, emptyWorklogCash())
+    autosave.change(YMD, { ...server, cardIn: '200000' }, ['cardIn'])
+    autosave.changeMemoFont(YMD, 16)
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toEqual([YMD, { cardIn: '200000' }, ['cardIn'], 16, { count5000: 2, floatWon: 300000 }])
+    expect(calls[0].args).toBe(5)
+  })
+
+  it('AC-1604.1: 칸과 시재만 바뀌면 목록·크기 자리는 undefined로 둔 다섯 인자다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, ['cashIn'], 11, emptyWorklogCash())
+    autosave.change(YMD, dayWith({ memo: '가상 메모' }))
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, { memo: '가상 메모' }, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    expect(calls[0].args).toBe(5)
+  })
+
+  it('AC-1604.1: 읽기 전 날(날짜 칸 없음)에 바꾸면 빈 시재와 견준 칸을 보내고 칸 값은 건드리지 않는다', async () => {
+    const { autosave, save } = harness()
+    autosave.changeCash(YMD, COUNTED)
+    expect(autosave.pendingDay(YMD)).toEqual({ day: emptyWorklogDay(), cash: COUNTED })
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+  })
+
+  it('AC-1604.1: 저장 중에 또 바꾸면 같은 날 동시 저장 없이 끝난 뒤 남은 칸만 바로 보낸다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    autosave.changeCash(YMD, { ...COUNTED, count1000: 3 })
+    await wait(60_000)
+    expect(save).toHaveBeenCalledTimes(1)
+    await calls[0].succeed()
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save.mock.calls[1]).toEqual([YMD, {}, undefined, undefined, { count1000: 3 }])
+    await calls[1].succeed()
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(autosave.snapshot().state).toBe('saved')
+  })
+
+  it('AC-1604.1: 보내는 중인 칸을 아는 값으로 되돌리면 끝난 뒤 되돌린 값을 보낸다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    autosave.changeCash(YMD, { ...COUNTED, count5000: 0 })
+    await calls[0].succeed()
+    expect(save.mock.calls[1]).toEqual([YMD, {}, undefined, undefined, { count5000: 0 }])
+  })
+
+  it('AC-1604.1: 성공하면 보낸 칸이 아는 시재가 되어 다음 저장에 다시 가지 않는다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    await calls[0].succeed()
+    autosave.changeCash(YMD, { ...COUNTED })
+    await wait(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    autosave.change(YMD, dayWith({ memo: '가상 메모' }))
+    await wait(800)
+    expect(calls[1]).toMatchObject({ changes: { memo: '가상 메모' }, args: 2 })
+  })
+
+  it('AC-1604.1: 실패하면 2초 뒤 같은 시재 칸을 다시 보내고, 다 실패하면 failed·hasUnsaved 참이다', async () => {
+    const { autosave, save, calls } = harness({ retryDelaysMs: [2000] })
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    await calls[0].fail(failedError())
+    expect(autosave.snapshot().state).toBe('saving')
+    expect(autosave.hasUnsaved()).toBe(true)
+    await wait(2000)
+    expect(save.mock.calls[1]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    await calls[1].fail(failedError())
+    expect(autosave.snapshot().state).toBe('failed')
+    expect(autosave.hasUnsaved()).toBe(true)
+  })
+
+  it('AC-1604.1: failed에서 retry()는 시재 칸을 바로 다시 보내고 성공하면 saved·hasUnsaved 거짓이다', async () => {
+    const { autosave, save, calls } = harness({ retryDelaysMs: [] })
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    await calls[0].fail(failedError())
+    expect(autosave.snapshot().state).toBe('failed')
+    autosave.retry()
+    expect(save.mock.calls[1]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    await calls[1].succeed()
+    expect(autosave.snapshot().state).toBe('saved')
+    expect(autosave.hasUnsaved()).toBe(false)
+  })
+
+  it('AC-1604.1: 실패해도 아는 시재가 그대로라 칸을 고친 다음 시도에 시재 칸을 다시 보낸다', async () => {
+    const { autosave, save, calls } = harness({ retryDelaysMs: [] })
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    await calls[0].fail(failedError())
+    autosave.change(YMD, dayWith({ memo: '가상 메모' }))
+    await wait(800)
+    expect(save.mock.calls[1]).toEqual([YMD, { memo: '가상 메모' }, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+  })
+
+  it('AC-1604.1: 끊기면 offline이고 15초 뒤·online()에 시재 칸을 다시 보낸다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    await calls[0].fail(offlineError())
+    expect(autosave.snapshot().state).toBe('offline')
+    expect(autosave.hasUnsaved()).toBe(true)
+    await wait(15000)
+    expect(save.mock.calls[1]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    await calls[1].fail(offlineError())
+    autosave.online()
+    expect(save.mock.calls[2]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    await calls[2].succeed()
+    expect(autosave.snapshot().state).toBe('saved')
+  })
+
+  it('AC-1604.1: flush()는 기다리지 않고 시재 저장을 바로 시작하고 그 타이머는 없어진다', () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    expect(autosave.hasUnsaved()).toBe(true)
+    autosave.flush()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('AC-1604.1: dispose하면 시재도 비운다(로그아웃)', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    autosave.dispose()
+    expect(autosave.pendingDay(YMD)).toBeNull()
+    expect(autosave.hasUnsaved()).toBe(false)
+    expect(autosave.serverDay(YMD, null)).not.toHaveProperty('cash')
+    await wait(60_000)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('AC-1604.1: 넘긴 시재를 밖에서 고쳐도 안쪽 시재는 바뀌지 않는다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    const cash = cashWith({ count5000: 2, floatWon: 300000 })
+    autosave.changeCash(YMD, cash)
+    cash.count5000 = 9
+    const pending = autosave.pendingDay(YMD)
+    expect(pending?.cash?.count5000).toBe(2)
+    if (pending?.cash) pending.cash.count5000 = 7
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+  })
+})
+
+describe('AC-1604.2 시재가 안 바뀌었거나 모르면 save 인자 수는 지금 그대로다', () => {
+  it('AC-1604.2: 바꿨다가 아는 시재로 되돌리면 save를 부르지 않고 읽기만 한 날은 idle로 돌아간다', async () => {
+    const { autosave, save } = harness()
+    const server = cashWith({ count1000: 4, floatWon: 300000 })
+    autosave.serverDay(YMD, null, null, undefined, undefined, server)
+    autosave.changeCash(YMD, { ...server, count1000: 5 })
+    autosave.changeCash(YMD, { ...server })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(autosave.snapshot().state).toBe('idle')
+    expect(autosave.hasUnsaved()).toBe(false)
+  })
+
+  it('AC-1604.2: 이유는 앞뒤 빈칸만 다르면 차이가 아니다(보낼 값으로 견준다)', async () => {
+    const { autosave, save } = harness()
+    const server = cashWith({ count1000: 4, floatWon: 300000, reason: '가상 이유' })
+    autosave.serverDay(YMD, null, null, undefined, undefined, server)
+    autosave.changeCash(YMD, { ...server, reason: ' 가상 이유 ' })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(autosave.snapshot().state).toBe('idle')
+  })
+
+  it('AC-1604.2: 시재를 아는 날에 change만 부르면 save는 인자 둘이다', async () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    autosave.serverDay(YMD, server, null, undefined, undefined, COUNTED)
+    autosave.change(YMD, { ...server, memo: '가상 메모' })
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, { memo: '가상 메모' })
+    expect(save.mock.calls[0]).toHaveLength(2)
+  })
+
+  it('AC-1604.2: 시재를 아는 날에 비트 채우기(change + 바뀐 목록)만 있으면 save는 인자 셋이다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, [], 14, COUNTED)
+    autosave.change(YMD, dayWith({ cashIn: '100000' }), ['cashIn'])
+    await wait(800)
+    expect(save).toHaveBeenCalledWith(YMD, { cashIn: '100000' }, ['cashIn'])
+    expect(save.mock.calls[0]).toHaveLength(3)
+  })
+
+  it('AC-1604.2: 시재를 아는 날에 changeMemoFont만 있으면 save는 인자 넷이다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, 11, COUNTED)
+    autosave.changeMemoFont(YMD, 12)
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, 12])
+    expect(save.mock.calls[0]).toHaveLength(4)
+  })
+
+  it('AC-1604.2: 시재를 모르는 날(여섯째 인자 없이 읽음)에 칸만 고치면 save는 인자 둘이고 돌려준 하루에 cash가 없다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null)
+    autosave.change(YMD, dayWith({ memo: '가상 메모' }))
+    expect(autosave.pendingDay(YMD)).not.toHaveProperty('cash')
+    await wait(800)
+    expect(save.mock.calls[0]).toHaveLength(2)
+  })
+
+  it('AC-1604.2: 시재를 보낸 뒤 칸·크기만 고친 다음 저장은 시재를 다시 보내지 않는다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, 11, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    await calls[0].succeed()
+    autosave.changeMemoFont(YMD, 12)
+    await wait(800)
+    expect(calls[1]).toMatchObject({ changes: {}, args: 4 })
+  })
+})
+
+describe('AC-1604.3 serverDay·pendingDay가 나르는 시재', () => {
+  it('AC-1604.3: 처음 읽으면 받은 시재가 돌려주는 하루의 cash이고, 시재를 받지 않으면 그 칸이 없다', () => {
+    const { autosave, save } = harness()
+    const server = dayWith({ cashIn: '100000' })
+    expect(autosave.serverDay(YMD, server, null, ['cashIn'], 14, COUNTED)).toEqual({
+      day: server,
+      bitFields: ['cashIn'],
+      memoFontPt: 14,
+      cash: COUNTED,
+    })
+    expect(autosave.serverDay('2026-10-07', server, null, undefined, undefined, COUNTED)).toEqual({ day: server, cash: COUNTED })
+    const plain = autosave.serverDay(OTHER, server, null, ['cashIn'], 14)
+    expect(plain).toEqual({ day: server, bitFields: ['cashIn'], memoFontPt: 14 })
+    expect(plain).not.toHaveProperty('cash')
+    expect(save).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('AC-1604.3: 다시 읽은 시재는 저장 안 된 칸이 없으면 아는 시재·최신 시재가 되고 저장을 부르지 않는다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    const other = cashWith({ count1000: 4, floatWon: 300000, unpaidCash: true, reason: '가상 다른 PC 이유' })
+    expect(autosave.serverDay(YMD, null, null, undefined, undefined, other).cash).toEqual(other)
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    autosave.changeCash(YMD, { ...other }) // 다른 PC가 센 값과 같으면 보낼 것이 없다
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('AC-1604.3: 저장 안 된 시재 칸은 다시 읽어도 그대로이고 나머지 칸은 서버 값이 되며, 저장 안 된 칸만 저장으로 간다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    const server = cashWith({ count5000: 7, count1000: 4, floatWon: 250000, reason: '가상 다른 PC 이유' })
+    expect(autosave.serverDay(YMD, null, null, undefined, undefined, server).cash).toEqual(
+      cashWith({ count5000: 2, count1000: 4, floatWon: 300000, reason: '가상 다른 PC 이유' }),
+    )
+    await wait(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+  })
+
+  it('AC-1604.3: 보내는 중인 시재 칸은 다시 읽어도 그대로이고, 저장이 끝난 뒤 읽으면 반영한다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    autosave.changeCash(YMD, emptyWorklogCash()) // 보내는 중에 되돌림: 아는 값과 같지만 서버에는 곧 2장이 들어간다
+    const merged = autosave.serverDay(YMD, null, null, undefined, undefined, cashWith({ count5000: 2, floatWon: 300000, count100: 3 }))
+    expect(merged.cash).toEqual(cashWith({ count100: 3 }))
+    await calls[0].succeed()
+    expect(calls[1].args).toBe(5)
+    expect(calls).toHaveLength(2)
+    await calls[1].succeed()
+    const later = autosave.serverDay(YMD, null, null, undefined, undefined, cashWith({ count10: 5 }))
+    expect(later.cash).toEqual(cashWith({ count10: 5 }))
+  })
+
+  it('AC-1604.3: 보내는 중 되돌린 칸은 끝난 뒤 되돌린 값으로 다시 간다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    await wait(800)
+    autosave.changeCash(YMD, emptyWorklogCash())
+    autosave.serverDay(YMD, null, null, undefined, undefined, cashWith({ count5000: 2, floatWon: 300000 }))
+    await calls[0].succeed()
+    expect(save.mock.calls[1]).toEqual([YMD, {}, undefined, undefined, { count5000: 0, floatWon: null }])
+  })
+
+  it('AC-1604.3: 다시 읽을 때 여섯째 인자가 없으면 아는 시재를 그대로 둔다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, 14, COUNTED)
+    expect(autosave.serverDay(YMD, dayWith({ cashIn: '100000' })).cash).toEqual(COUNTED)
+    expect(autosave.serverDay(YMD, null, null, ['cashIn'], 12).cash).toEqual(COUNTED)
+    autosave.changeCash(YMD, { ...COUNTED })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('AC-1604.3: 시재를 모르던 날(change로 생긴 날)에 시재를 읽으면 그대로 아는 시재가 된다', async () => {
+    const { autosave, save } = harness()
+    autosave.change(YMD, dayWith({ memo: '가상 메모' }))
+    expect(autosave.serverDay(YMD, null, null, undefined, undefined, COUNTED).cash).toEqual(COUNTED)
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, { memo: '가상 메모' }])
+  })
+
+  it('AC-1604.3: pendingDay는 최신 시재도 돌려주고, 시재를 모르는 날은 cash가 없다', () => {
+    const { autosave } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, COUNTED)
+    expect(autosave.pendingDay(YMD)).toEqual({ day: emptyWorklogDay(), cash: COUNTED })
+    autosave.change(OTHER, dayWith({ memo: '가상 메모' }), ['cashIn'])
+    expect(autosave.pendingDay(OTHER)).toEqual({ day: dayWith({ memo: '가상 메모' }), bitFields: ['cashIn'] })
+    expect(autosave.pendingDay(OTHER)).not.toHaveProperty('cash')
+  })
+
+  it('AC-1604.3: 시재를 아는 날에 칸을 고친 pendingDay는 아는 시재를 함께 돌려준다', () => {
+    const { autosave } = harness()
+    autosave.serverDay(YMD, null, null, ['cashIn'], 14, COUNTED)
+    autosave.change(YMD, dayWith({ cashIn: '100000' }))
+    expect(autosave.pendingDay(YMD)).toEqual({
+      day: dayWith({ cashIn: '100000' }),
+      bitFields: ['cashIn'],
+      memoFontPt: 14,
+      cash: COUNTED,
+    })
+  })
+
+  it('AC-1604.3: 돌려준 시재를 밖에서 고쳐도 안쪽 시재는 바뀌지 않는다', async () => {
+    const { autosave, save } = harness()
+    const server = cashWith({ count1000: 4, floatWon: 300000 })
+    const read = autosave.serverDay(YMD, null, null, undefined, undefined, server)
+    if (read.cash) read.cash.count1000 = 9
+    server.count1000 = 8
+    autosave.changeCash(YMD, cashWith({ count1000: 4, floatWon: 300000 }))
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-1604.4 개인정보 모양 차이 이유는 보내지 않고 막는다', () => {
+  it('AC-1604.4: 막힌 이유 + 장수면 장수만 저장하고 blocked이며 막힌 칸은 cashReason이고 시간이 지나도 다시 하지 않는다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count5000: 2, floatWon: 300000 }])
+    await calls[0].succeed()
+    expect(autosave.snapshot().state).toBe('blocked')
+    expect(autosave.snapshot().blocked).toEqual({ ymd: YMD, fields: ['cashReason'] })
+    expect(autosave.hasUnsaved()).toBe(true)
+    expect(autosave.pendingDay(YMD)?.cash?.reason).toBe(PHONE)
+    expect(vi.getTimerCount()).toBe(0)
+    await wait(3_600_000)
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1604.4: 막힌 이유뿐이면 save를 부르지 않고 blocked다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, COUNTED)
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(autosave.snapshot()).toEqual({ state: 'blocked', savedAt: null, blocked: { ymd: YMD, fields: ['cashReason'] } })
+    expect(autosave.hasUnsaved()).toBe(true)
+  })
+
+  it('AC-1604.4: 다른 막힌 칸이 있으면 함께 보인다(칸 차례 뒤에 cashReason)', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, COUNTED)
+    autosave.change(YMD, dayWith({ memo: PHONE, noteCash: 'a@b.co' }))
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(autosave.snapshot().blocked).toEqual({ ymd: YMD, fields: ['noteCash', 'memo', 'cashReason'] })
+  })
+
+  it('AC-1604.4: 이유를 고쳐 모양이 없어지면 바로 그 이유가 저장되고 풀린다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, COUNTED)
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    expect(autosave.snapshot().state).toBe('blocked')
+    autosave.changeCash(YMD, { ...COUNTED, reason: '가상 이유' })
+    await wait(800)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { reason: '가상 이유' }])
+    await calls[0].succeed()
+    expect(autosave.snapshot()).toMatchObject({ state: 'saved', blocked: null })
+    expect(autosave.hasUnsaved()).toBe(false)
+  })
+
+  it('AC-1604.4: 막힌 이유를 지워 아는 값으로 되돌리면 저장 없이 풀린다', async () => {
+    const { autosave, save } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, COUNTED)
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    autosave.changeCash(YMD, { ...COUNTED, reason: '' })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    expect(autosave.snapshot()).toMatchObject({ state: 'idle', blocked: null })
+    expect(autosave.hasUnsaved()).toBe(false)
+  })
+
+  it('AC-1604.4: 저장된 이유가 있는 날에 막힌 이유를 지우면 빈 이유가 바로 저장된다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, { ...COUNTED, reason: '가상 이유' })
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    expect(save).not.toHaveBeenCalled()
+    autosave.changeCash(YMD, { ...COUNTED, reason: '' })
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { reason: '' }])
+    await calls[0].succeed()
+    expect(autosave.snapshot()).toMatchObject({ state: 'saved', blocked: null })
+  })
+
+  it('AC-1604.4: 서버에 이미 있는 이유는 바뀌지 않았으면 막힌 칸이 아니다', async () => {
+    const { autosave, save, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, { ...COUNTED, reason: PHONE })
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE, count1000: 1 })
+    await wait(800)
+    expect(save.mock.calls[0]).toEqual([YMD, {}, undefined, undefined, { count1000: 1 }])
+    await calls[0].succeed()
+    expect(autosave.snapshot()).toMatchObject({ state: 'saved', blocked: null })
+  })
+
+  it('AC-1604.4: 저장이 끊겨도 막힌 이유는 빠진 채 다시 하고 막힌 칸 목록은 계속 보인다', async () => {
+    const { autosave, calls } = harness()
+    autosave.serverDay(YMD, null, null, undefined, undefined, emptyWorklogCash())
+    autosave.changeCash(YMD, { ...COUNTED, reason: PHONE })
+    await wait(800)
+    await calls[0].fail(offlineError())
+    expect(autosave.snapshot()).toMatchObject({ state: 'offline', blocked: { ymd: YMD, fields: ['cashReason'] } })
+    await wait(15_000)
+    expect(calls[1]).toMatchObject({ args: 5 })
+    expect(calls[1].changes).toEqual({})
+    await calls[1].succeed()
+    expect(autosave.snapshot().state).toBe('blocked')
   })
 })

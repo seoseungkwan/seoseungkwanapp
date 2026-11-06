@@ -7,6 +7,7 @@ import {
   WORKLOG_CELL_KEYS,
   WORKLOG_COLUMNS,
   type MemoFontPt,
+  type WorklogCash,
   type WorklogDay,
   type WorklogNumberKey,
   type WorklogSavedDay,
@@ -33,6 +34,7 @@ describe('크기 목록과 기본값', () => {
       day: WorklogDay
       bitFields: WorklogNumberKey[]
       memoFontPt?: MemoFontPt
+      cash?: WorklogCash // 현금 시재(specs/worklog-cash-float)
     }>()
     // 크기 칸이 없는 옛 모양도 그대로 WorklogSavedDay다(없으면 11로 본다)
     const old: WorklogSavedDay = { day: emptyWorklogDay(), bitFields: [] }

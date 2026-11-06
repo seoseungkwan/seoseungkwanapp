@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AutosaveDay } from '@/lib/worklog/autosave'
 import { BIT_FILL_KEYS, dropBitField } from '@/lib/worklog/bitFill'
 import {
+  emptyWorklogCash,
   emptyWorklogDay,
   MEMO_FONT_DEFAULT,
   type MemoFontPt,
+  type WorklogCash,
   type WorklogCellKey,
   type WorklogDay,
   type WorklogNumberKey,
@@ -20,14 +22,19 @@ import { worklogAutosave } from './worklogSession'
 // 모르면(읽기 전이고 자동 저장에도 없음) undefined다 — 모르는 목록을 빈 목록으로 저장해 표시를 지우지 않게.
 // 업무사항 글씨 크기(memoFontPt, specs/worklog-memo-font design.md '화면 잇기')도 날짜마다 든다. 읽은 크기는 serverDay 다섯째 인자로 넘기고(줄 없음·크기 없음 → 11)
 // 돌려받은 크기를 그린다. 날짜 칸을 새로 만드는 곳(slotOf·setCell·editBit)은 모두 크기를 이어 간다: 비트 채우기·칸 고치기가 크기를 떨어뜨리지 않게(AC-1508.5)
+// 현금 시재(cash, specs/worklog-cash-float design.md '화면 잇기')도 날짜마다 든다. 읽은 시재는 serverDay 여섯째 인자로 넘기고(줄 없음·cash 없음 → 빈 시재)
+// 돌려받은 시재를 그린다. 날짜 칸을 새로 만드는 곳(slotOf·setCell·setMemoFont·editBit)은 모두 시재를 이어 간다(AC-1609.4). setCash는 ready인 날만 바꾼다
 
 export type WorklogDayStatus = 'loading' | 'ready' | 'error'
-type Slot = { status: WorklogDayStatus; day: WorklogDay; bitFields?: WorklogNumberKey[]; memoFontPt?: MemoFontPt }
+type Slot = { status: WorklogDayStatus; day: WorklogDay; bitFields?: WorklogNumberKey[]; memoFontPt?: MemoFontPt; cash?: WorklogCash }
 type Slots = ReadonlyMap<string, Slot>
 /** 비트 맞춤(mergeBit·takeBitValue)이 돌려준 하루와 목록. null이면 바꾸지 않는다 */
 export type BitEdit = (day: WorklogDay, bitFields: readonly WorklogNumberKey[]) => { day: WorklogDay; bitFields: WorklogNumberKey[] } | null
 
-// 줄이 없는 날은 비트 칸도 없고(빈 목록) 크기는 11이다. 칸 값·목록·크기는 따로 serverDay에 넘긴다(AC-016.1·AC-1508.4)
+// 안 센 날의 화면 시재(바꾸지 않는다: 그린 값을 고칠 때는 새 시재를 만든다)
+const NO_CASH: WorklogCash = Object.freeze(emptyWorklogCash())
+
+// 줄이 없는 날은 비트 칸도 없고(빈 목록) 크기는 11이며 시재는 빈 시재다. 칸 값·목록·크기·시재는 따로 serverDay에 넘긴다(AC-016.1·AC-1508.4·AC-1609.1)
 const fromServer = (autosave: ReturnType<typeof worklogAutosave>, ymd: string, saved: WorklogSavedDay | null, focus: WorklogCellKey | null) =>
   autosave.serverDay(
     ymd,
@@ -35,13 +42,15 @@ const fromServer = (autosave: ReturnType<typeof worklogAutosave>, ymd: string, s
     focus,
     saved === null ? [] : saved.bitFields,
     saved?.memoFontPt ?? MEMO_FONT_DEFAULT,
+    saved?.cash ?? emptyWorklogCash(),
   )
 
-// 모르는 목록·크기는 칸을 두지 않는다
+// 모르는 목록·크기·시재는 칸을 두지 않는다
 function slotOf(status: WorklogDayStatus, shown: AutosaveDay): Slot {
   const slot: Slot = { status, day: shown.day }
   if (shown.bitFields !== undefined) slot.bitFields = shown.bitFields
   if (shown.memoFontPt !== undefined) slot.memoFontPt = shown.memoFontPt
+  if (shown.cash !== undefined) slot.cash = shown.cash
   return slot
 }
 
@@ -126,13 +135,13 @@ export function useWorklogDay(
   }, [update])
 
   // 사람이 고친 숫자 칸은 비트 칸이 아니다(dropBitField, AC-014.6). 목록을 모르면 목록 없이 돌려준다.
-  // 크기는 날짜 칸에 그대로 두고 돌려주지 않는다(칸 고치기 저장에는 크기가 없다, AC-1508.5)
+  // 크기·시재는 날짜 칸에 그대로 두고 돌려주지 않는다(칸 고치기 저장에는 크기·시재가 없다, AC-1508.5·AC-1609.4)
   const setCell = useCallback(
     (key: WorklogCellKey, value: string): AutosaveDay => {
       const slot: Slot = latest.current.get(ymd) ?? { status: 'loading', day: emptyWorklogDay() }
       const day = { ...slot.day, [key]: value }
       const bitFields = slot.bitFields && isBitKey(key) && slot.bitFields.includes(key) ? dropBitField(slot.bitFields, key) : slot.bitFields
-      put(ymd, slotOf(slot.status, { day, bitFields, memoFontPt: slot.memoFontPt }))
+      put(ymd, slotOf(slot.status, { day, bitFields, memoFontPt: slot.memoFontPt, cash: slot.cash }))
       return bitFields === undefined ? { day } : { day, bitFields }
     },
     [put, ymd],
@@ -149,6 +158,17 @@ export function useWorklogDay(
     [put, ymd],
   )
 
+  // 현금 시재도 그날 읽기가 끝난(ready) 날에만 바꾼다. 바꿨으면 참이다(그날 시재 붙이기·저장은 화면이 한다, AC-1609.2)
+  const setCash = useCallback(
+    (cash: WorklogCash): boolean => {
+      const slot = latest.current.get(ymd)
+      if (slot?.status !== 'ready') return false
+      put(ymd, { ...slot, cash })
+      return true
+    },
+    [put, ymd],
+  )
+
   // 비트 맞춤은 그날 읽기가 끝난(ready) 날에만, 목록을 아는 때만 최신 값에 적용한다(AC-017.8: 읽기 전 known은 빈 하루라 서버 값을 덮는다)
   const editBit = useCallback(
     (edit: BitEdit) => {
@@ -156,7 +176,7 @@ export function useWorklogDay(
       if (slot?.status !== 'ready' || slot.bitFields === undefined) return null
       const next = edit(slot.day, slot.bitFields)
       if (next === null) return null
-      put(ymd, slotOf('ready', { day: next.day, bitFields: next.bitFields, memoFontPt: slot.memoFontPt }))
+      put(ymd, slotOf('ready', { day: next.day, bitFields: next.bitFields, memoFontPt: slot.memoFontPt, cash: slot.cash }))
       return next
     },
     [put, ymd],
@@ -183,8 +203,10 @@ export function useWorklogDay(
     day: slot.day,
     bitFields: slot.bitFields,
     memoFontPt: slot.memoFontPt ?? MEMO_FONT_DEFAULT,
+    cash: slot.cash ?? NO_CASH,
     setCell,
     setMemoFont,
+    setCash,
     editBit,
     refresh,
     reload,

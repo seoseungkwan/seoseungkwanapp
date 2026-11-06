@@ -6,15 +6,18 @@ import { loadWorklogDay } from '@/lib/storage/worklogDays'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { SaveState } from '@/lib/worklog/autosave'
 import { mergeBit, takeBitValue, type BitMerge, type BitValues } from '@/lib/worklog/bitFill'
+import { hasCount, withFloatSnapshot } from '@/lib/worklog/cashFloat'
 import { dayAfterRollover } from '@/lib/worklog/days'
 import { stepMemoFont } from '@/lib/worklog/memoFont'
 import { blockedCellKeys } from '@/lib/worklog/notes'
-import type { WorklogCellKey, WorklogDay, WorklogNumberKey } from '@/types/worklog'
+import type { WorklogCash, WorklogCellKey, WorklogDay, WorklogNumberKey } from '@/types/worklog'
 import { BitNotice, BitSheetNotes } from './BitNotice'
+import { CashFloatBox, type CashGuessMode } from './CashFloatBox'
 import { useBitFill, type BitFillStatus } from './useBitFill'
+import { useCashFloatSetting } from './useCashFloatSetting'
 import { useWorklogDay, type WorklogDayStatus } from './useWorklogDay'
 import { WorklogSheet } from './WorklogSheet'
-import { WorklogToolbar, type ToolbarStatus } from './WorklogToolbar'
+import { statusText, WorklogToolbar, type ToolbarStatus } from './WorklogToolbar'
 import { onWorklogSignedOut, startWorklogSession, worklogAutosave } from './worklogSession'
 
 // 업무일지 화면 (specs/worklog REQ-010, design.md 11-3절). 날짜 줄과 양식을 잇고 읽기·자동 저장·다시 읽기·자정 넘김·로그아웃을 맞춘다.
@@ -25,6 +28,9 @@ import { onWorklogSignedOut, startWorklogSession, worklogAutosave } from './work
 // 저장에 넘기는 목록은 읽은 목록·mergeBit·takeBitValue·dropBitField가 돌려준 것뿐이다. 손으로 적은 칸은 덮지 않고 '다름'으로만 알린다.
 // 업무사항 글씨 크기(specs/worklog-memo-font REQ-1508): 날짜 줄 아래 [가−]·[가+]를 누를 때만 그날 크기를 바꿔 changeMemoFont로 넘긴다(읽기가 끝난 날, PC만).
 // 비트 채우기·칸 고치기는 크기를 넘기지 않는다. 잘림 안내는 양식이 잰 값(onMemoOverflow)으로 툴바가 그린다(터치 기기는 묶음·안내 없음)
+// 현금 시재(specs/worklog-cash-float REQ-1609, design.md '화면 잇기'): 양식·비트 설명 줄 아래 상자(인쇄 숨김). 장수·확인란·이유·[이 날만 고치기]는 그날 읽기가 끝난 PC에서만
+// 화면 시재를 바꿔 changeCash로 넘긴다(바뀐 시재 칸만 간다). 안 센 날 첫 장수에는 병원 설정 금액을 그날 시재로 붙이고, 설정을 모르면 세지 않는다.
+// 다른 저장(칸·비트·글씨 크기)은 시재를 넘기지 않는다. 추측은 비트 '다름' 목록과 같은 때(그날 답·읽을 수 있는 상태·그날 읽기가 끝남)만 이 PC의 비트 현금으로 한다
 
 const TOUCH_QUERY = '(hover: none) and (pointer: coarse)' // 보기만은 터치 기기로 정한다. 폭으로 정하면 반쪽 창·확대한 의원 PC가 막힌다
 const TODAY_CHECK_MS = 30_000
@@ -68,8 +74,13 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
   const focusCell = useRef<WorklogCellKey | null>(null)
   const rolloverFrom = useRef<string | null>(null) // 초점이 나가기를 기다리는 자정 넘김의 옛 오늘
   const focusKey = useCallback(() => focusCell.current, [])
-  const { status, day, bitFields, memoFontPt, setCell, setMemoFont, editBit, refresh, reload, clear } = useWorklogDay(ymd, loadDay, focusKey)
+  const { status, day, bitFields, memoFontPt, cash, setCell, setMemoFont, setCash, editBit, refresh, reload, clear } = useWorklogDay(
+    ymd,
+    loadDay,
+    focusKey,
+  )
   const readOnly = viewOnly || status !== 'ready'
+  const setting = useCashFloatSetting(!viewOnly) // 병원 시재 금액. 터치 기기는 읽지 않는다(그날 시재만 쓴다)
   const [memoOverflow, setMemoOverflow] = useState(false) // 업무사항 글이 칸을 넘는지(양식이 잰다)
   const bit = useBitFill({ ymd, today, readOnly: viewOnly })
   const bitHere = bit.ymd === ymd // 이 답이 고른 날의 것(날짜를 막 옮겼으면 아니다)
@@ -130,6 +141,15 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
     const next = stepMemoFont(memoFontPt, step)
     if (next === memoFontPt || !setMemoFont(next)) return
     autosave.changeMemoFont(ymd, next)
+  }
+
+  // 화면 시재를 바로 바꾸고 자동 저장으로 넘긴다(읽기가 끝난 날, PC만). 안 센 날 첫 장수에는 설정 금액을 그날 시재로 붙여 같은 저장에 보낸다.
+  // 설정을 모르는데 장수가 생기면(상자가 잠그지만) 시재 없이 센 날을 만들지 않는다(AC-1609.2)
+  function onCash(next: WorklogCash) {
+    if (readOnly) return
+    const snap = setting.status === 'ready' ? withFloatSnapshot(next, setting.won) : next
+    if (snap.floatWon === null && hasCount(snap)) return
+    if (setCash(snap)) autosave.changeCash(ymd, snap)
   }
 
   // 맞춤을 그날 최신 값·목록에 돌려 바뀌었을 때만 화면 값·목록을 바꾸고 자동 저장으로 넘긴다(읽기가 끝난 날만, editBit이 막는다).
@@ -207,12 +227,22 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
   const differs =
     status === 'ready' && bitHere && bitFields !== undefined && BIT_READABLE.includes(bit.status) ? mergeBit(day, bitFields, bit.values).differs : []
 
+  // 시재 추측(AC-1606.4): 비트를 읽을 수 있고 그날 읽기가 한 번이라도 끝났으면 이 PC의 비트 현금(확인 필요 날은 없음), 연결 안 됨·준비 전이면 다른 PC 줄
+  const guess: CashGuessMode = viewOnly
+    ? { kind: 'none' }
+    : bitHere && BIT_READABLE.includes(bit.status) && bit.lastReadAt !== null
+      ? { kind: 'bit', bitCashIn: bit.values.cashIn }
+      : bit.status === 'not-connected' || bit.status === 'setup-needed'
+        ? { kind: 'other-pc' }
+        : { kind: 'none' }
+  const toolbar = toolbarStatus(snapshot.state, status, viewOnly)
+
   return (
     <div className="mx-auto flex w-full max-w-184.25 flex-col gap-3">
       <WorklogToolbar
         ymd={ymd}
         today={today}
-        status={toolbarStatus(snapshot.state, status, viewOnly)}
+        status={toolbar}
         savedAt={snapshot.savedAt}
         blockedYmd={snapshot.blocked?.ymd ?? null}
         onDate={moveTo}
@@ -238,6 +268,20 @@ export function WorklogScreen({ initialToday }: { initialToday: string }) {
         />
       </div>
       <BitSheetNotes day={day} bitFields={bitFields ?? []} differs={differs} onTake={onTakeBit} />
+      {/* 날짜마다 새로 그린다: 저장하지 않은 [이 날만 고치기] 칸이 다른 날로 넘어가지 않게(AC-1605.8) */}
+      <CashFloatBox
+        key={ymd}
+        mode={viewOnly ? 'view' : readOnly ? 'locked' : 'edit'}
+        day={day}
+        cash={cash}
+        floatWon={cash.floatWon ?? setting.won}
+        floatSetting={setting.status}
+        guess={guess}
+        saveText={statusText(toolbar, snapshot.savedAt)}
+        onCash={onCash}
+        onTakeBitCash={() => onTakeBit('cashIn')}
+        onReloadFloat={setting.reload}
+      />
     </div>
   )
 }

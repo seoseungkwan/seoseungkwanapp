@@ -23,7 +23,7 @@ const CUT_TEXT = '업무사항 글이 칸보다 길어서 인쇄하면 아랫부
 // 보조 단추 정사각형(PC 36px, 768px 미만 44px). ds의 px-4·font-medium보다 이겨야 하므로 좌우 여백 0과 굵기(시안 600)는 !로 준다
 const FONT_STEP_BUTTON = `${ds.button.secondary} w-9 px-0! font-semibold! max-md:w-11`
 
-function statusText(status: ToolbarStatus, savedAt: Date | null): string {
+export function statusText(status: ToolbarStatus, savedAt: Date | null): string {
   const time = savedAt ? savedTimeText(savedAt) : null
   switch (status) {
     case 'loading':
