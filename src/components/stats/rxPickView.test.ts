@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { formatDelta } from '@/components/charts/format'
 import { compareNumbers } from '@/lib/analytics/compare'
-import { addMonths } from '@/lib/analytics/dates'
+import { addMonths, eachDay } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import {
@@ -18,7 +18,9 @@ import {
   rxPickTotal,
   searchCatalog,
 } from './rxPickView'
-import { rxPickRows, statsRange, type RxPickRow, type StatsInput, type StatsPeriod } from './view'
+import { rangeOf, rxPickRows, statsRange, type RxPickRow, type StatsInput, type StatsPeriod } from './view'
+import type { Delta } from '@/types/analysis'
+import type { StatsPick } from './periodPick'
 
 // 처방 골라 보기의 글자·찾기·복사 (rx-picker REQ-802·804·805·808). 일 줄과 처방 이름은 모두 이 파일에서 지어낸 값이다
 
@@ -376,5 +378,74 @@ describe('AC-511.7 소스 (rxPickView.ts도 같은 규칙)', () => {
     expect(source).not.toMatch(/react|supabase|fetch|localStorage|sessionStorage|indexedDB/i)
     expect(source).not.toMatch(/new Date|Date\.(UTC|now)/)
     expect(source).not.toContain('MonthPayload')
+  })
+})
+
+// ── 고른 기간 (stats-period TASK-3): 합계·[표 복사]의 비교마다. 오늘 2026-11-06, 10월 일별(9월 · 작년 10월과 견줌)
+describe('AC-1705.1·AC-1705.3 rxPickTotal·rxPickCopyText — 고른 기간의 비교마다', () => {
+  const P_TODAY = '2026-11-06'
+  const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const COVER: DateRange[] = [
+    { from: '2025-10-01', to: '2025-10-31' },
+    { from: '2026-09-01', to: '2026-11-05' },
+  ]
+  const each = (from: string, to: string, a: number, b: number) => eachDay({ from, to }).map((d) => day(d, [rx('A', a), rx('B', b)]))
+  // A: 작년 10월 3건 · 9월 1건 · 10월 2건, B: 날마다 1건
+  const DAYS = [...each('2025-10-01', '2025-10-31', 3, 1), ...each('2026-09-01', '2026-09-30', 1, 1), ...each('2026-10-01', '2026-10-31', 2, 1)]
+  const range = rangeOf(P_TODAY, OCT, false)
+  const LINES = [
+    { code: 'A', name: '처방 A' },
+    { code: 'B', name: '처방 B' },
+  ]
+  const rowsOf = (days = DAYS, covered = COVER, choice: StatsPick = OCT) => rxPickRows({ days, covered, range: rangeOf(P_TODAY, choice, false) }, LINES)
+  const deltaCell = (delta: Delta) => {
+    const view = formatDelta(delta, '건')
+    return `${view.dir === 'up' ? '▲ ' : view.dir === 'down' ? '▼ ' : ''}${view.text}`
+  }
+
+  it('AC-1705.1 합계 줄은 비교마다 더한다 — 바로 전은 comparable·delta, 작년은 lastYear', () => {
+    const total = rxPickTotal(rowsOf())!
+    expect(total).toMatchObject({ count: 93, comparable: { current: 93, previous: 60 }, delta: compareNumbers(93, 60) })
+    expect(total.lastYear).toEqual({ previous: 124, delta: compareNumbers(93, 124) })
+  })
+
+  it('AC-1705.1 작년을 견줄 수 없으면 합계의 작년은 previous null · 비교할 수 없음이다', () => {
+    const total = rxPickTotal(rowsOf(DAYS, [COVER[1]!]))!
+    expect(total.delta).toEqual(compareNumbers(93, 60))
+    expect(total.lastYear).toEqual({ previous: null, delta: { kind: 'unavailable' } })
+  })
+
+  it('AC-1705.1 빠른 단추 합계에는 lastYear가 없다', () => {
+    expect(rxPickTotal([row(), row({ code: 'B' })])).not.toHaveProperty('lastYear')
+  })
+
+  it("AC-1705.3 [표 복사] 둘째 줄은 '{name} ({label}) · 비교: {label} (바로 전 달) · {label} (작년 같은 달)'이다", () => {
+    const rows = rowsOf()
+    const lines = rxPickCopyText({ hospitalName: '○○의원', periodName: range.name, range, rows, total: rxPickTotal(rows) }).split('\n')
+    expect(lines[1]).toBe('2026년 10월 (2026년 10월 1일 – 31일) · 비교: 9월 1일 – 30일 (바로 전 달) · 2025년 10월 1일 – 31일 (작년 같은 달)')
+  })
+
+  it("AC-1705.3 머리 줄에 비교마다 '{name}'·'{name}보다'가 있고 줄마다 그 칸이 있다", () => {
+    const rows = rowsOf()
+    const lines = rxPickCopyText({ hospitalName: '○○의원', periodName: range.name, range, rows, total: rxPickTotal(rows) }).split('\n')
+    expect(lines[2]!.split('\t')).toEqual(['코드', '처방', '건수', '9월', '9월보다', '작년 10월', '작년 10월보다', '신환', '신환율', '재진', '재진율', '구분 없음'])
+    expect(lines[3]!.split('\t')).toEqual(['A', '처방 A', '62', '30', deltaCell(compareNumbers(62, 30)), '93', deltaCell(compareNumbers(62, 93)), '0', '0.0%', '62', '100.0%', '0'])
+    expect(lines[5]!.split('\t')).toEqual(['', '합계', '93', '60', deltaCell(compareNumbers(93, 60)), '124', deltaCell(compareNumbers(93, 124)), '0', '0.0%', '93', '100.0%', '0'])
+  })
+
+  it("AC-1705.3 견줄 수 없는 비교 칸은 '–'와 '비교할 수 없음'이다", () => {
+    const rows = rowsOf(DAYS, [COVER[1]!])
+    const cells = rxPickCopyText({ hospitalName: '○○의원', periodName: range.name, range, rows, total: null }).split('\n')[3]!.split('\t')
+    expect(cells.slice(3, 7)).toEqual(['30', deltaCell(compareNumbers(62, 30)), '–', '비교할 수 없음'])
+  })
+
+  it('AC-1705.3 해 고르기는 비교가 하나다(2024년)', () => {
+    const year: StatsPick = { kind: 'year', year: '2025' }
+    const yearRange = rangeOf(P_TODAY, year, false)
+    const rows = rowsOf(DAYS, [{ from: '2024-01-01', to: '2025-12-31' }], year)
+    const lines = rxPickCopyText({ hospitalName: '○○의원', periodName: yearRange.name, range: yearRange, rows, total: null }).split('\n')
+    expect(lines[1]).toBe('2025년 (2025년 1월 1일 – 12월 31일) · 비교: 2024년 1월 1일 – 12월 31일 (작년)')
+    expect(lines[2]!.split('\t')).toEqual(['코드', '처방', '건수', '2024년', '2024년보다', '신환', '신환율', '재진', '재진율', '구분 없음'])
+    expect(lines[3]!.split('\t')).toHaveLength(10)
   })
 })

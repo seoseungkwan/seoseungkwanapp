@@ -15,7 +15,8 @@ export const GROUP_KEY = /^t[0-9a-f]{16}$/
 export type TreatmentRow =
   | { kind: 'empty'; group: RxGroup } // 처방이 없는 묶음. 다시 불러오기 판단에 들지 않는다
   | { kind: 'stale'; group: RxGroup; key: string } // 고른 기간에 이 열쇠로 세지 않은 날이 있다: 다시 불러오면 보여요
-  | { kind: 'ready'; group: RxGroup; key: string; compared: boolean; row: RxPickRow } // compared 거짓 = 비교 기간에 세지 않은 날이 있어 견주지 않음
+  // compared 거짓 = 비교 기간에 세지 않은 날이 있어 견주지 않음. lastYearCompared는 작년 비교가 있는 고른 기간에만 있고, 거짓 = 작년 기간에 세지 않은 날이 있어 작년만 견주지 않음
+  | { kind: 'ready'; group: RxGroup; key: string; compared: boolean; lastYearCompared?: boolean; row: RxPickRow }
 
 // FNV-1a 64비트. 목표가 ES2017이라 BigInt 글자(…n) 대신 BigInt()로 만든다
 const FNV_OFFSET = BigInt('0xcbf29ce484222325')
@@ -68,14 +69,16 @@ function withoutRange(covered: readonly DateRange[], cut: DateRange): DateRange[
 }
 
 // 날마다 rx를 그 열쇠 줄 하나(없으면 빈 목록)로 바꾼 가상 일 줄. compared가 거짓이면 비교 기간을 덮은 기간에서 빼서
-// 비교 칸이 모두 덜 끝난 칸이 된다(comparable null → 비교할 수 없음, 그래프 비교 칸 covered 거짓)
-export function groupInput(input: StatsInput, key: string, name: string, compared: boolean): StatsInput {
+// 비교 칸이 모두 덜 끝난 칸이 된다(comparable null → 비교할 수 없음, 그래프 비교 칸 covered 거짓). lastYearCompared가 거짓이면 작년 기간도 뺀다(작년만 '–')
+export function groupInput(input: StatsInput, key: string, name: string, compared: boolean, lastYearCompared = true): StatsInput {
   const days = input.days.map((row) => {
     const line = row.groups.find((item) => item.id === key)
     const rx = line === undefined ? [] : [{ code: key, name, type: '', patients: line.patients, newPatients: line.newPatients, returning: line.returning }]
     return { ...row, rx }
   })
-  return { days, covered: compared ? input.covered : withoutRange(input.covered, input.range.previous), range: input.range }
+  const { previous, lastYear } = input.range
+  const withoutPrevious = compared ? input.covered : withoutRange(input.covered, previous)
+  return { days, covered: lastYearCompared || lastYear === null ? withoutPrevious : withoutRange(withoutPrevious, lastYear), range: input.range }
 }
 
 // 묶음마다 한 줄, sortOrder 차례(건수로 다시 줄 세우지 않는다). 어느 묶음에도 없는 처방은 줄이 아니다
@@ -85,8 +88,10 @@ export function treatmentRows(input: StatsInput, groups: readonly RxGroup[]): Tr
     const key = groupKey(group.codes)
     if (!keyedIn(input.days, input.range.current, key)) return { kind: 'stale', group, key }
     const compared = keyedIn(input.days, input.range.previous, key)
-    const [row] = rxPickRows(groupInput(input, key, group.name, compared), [{ code: key, name: group.name }])
-    return { kind: 'ready', group, key, compared, row }
+    const { lastYear } = input.range
+    const lastYearCompared = lastYear === null || keyedIn(input.days, lastYear, key)
+    const [row] = rxPickRows(groupInput(input, key, group.name, compared, lastYearCompared), [{ code: key, name: group.name }])
+    return { kind: 'ready', group, key, compared, ...(lastYear === null ? {} : { lastYearCompared }), row }
   })
 }
 

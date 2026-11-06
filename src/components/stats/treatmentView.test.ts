@@ -21,7 +21,9 @@ import {
   uncomparedNames,
   type TreatmentRow,
 } from './treatmentView'
-import { rxDetail, rxList, rxPickRows, statsRange, type RxDetailPoint, type RxTrendRow, type StatsInput, type StatsPeriod } from './view'
+import { rangeOf, rxDetail, rxList, rxPickRows, statsRange, type RxDetailPoint, type RxTrendRow, type StatsInput, type StatsPeriod } from './view'
+import { compareNumbers } from '@/lib/analytics/compare'
+import type { StatsPick } from './periodPick'
 
 // 처방별 추세 화면 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자').
 // 입력은 가짜 일 줄·덮은 기간·묶음뿐이다(모두 지어낸 값). 묶음 줄(groups)의 id는 groupKey(codes)다
@@ -511,5 +513,62 @@ describe('소스 규칙 (view.ts와 같음)', () => {
   it('AC-1207.2 순수 함수다(화면 라이브러리·서버·네트워크·브라우저 저장소·시계 없음)', () => {
     expect(source).not.toMatch(/react|supabase|fetch|localStorage|sessionStorage|indexedDB|document\.cookie|console|lib\/bridge/i)
     expect(source).not.toMatch(/new Date|Date\.(UTC|now)/)
+  })
+})
+
+// ── 고른 기간 (stats-period TASK-3 AC-1705.2): 비교마다 그 묶음으로 세었는지. 오늘 2026-11-06, 10월 일별(9월 · 작년 10월과 견줌)
+describe('AC-1705.2 처방별 추세 — 비교마다 그 묶음으로 세었는지', () => {
+  const P_TODAY = '2026-11-06'
+  const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const ESWT_GROUP = group('체외충격파', ESWT, 1)
+  const COVER: DateRange[] = [
+    { from: '2025-10-01', to: '2025-10-31' },
+    { from: '2026-09-01', to: '2026-11-05' },
+  ]
+  const pickIn = (days: DayPayload[], covered: DateRange[] = COVER): StatsInput => ({ days, covered, range: rangeOf(P_TODAY, OCT, false) })
+  const keyed = (from: string, to: string, patients: number) => daysFrom(from, to, { groups: [line(ESWT_KEY, patients)] })
+
+  it('AC-1705.2 작년 기간을 그 묶음으로 세지 않았으면 작년 칸만 견주지 않는다(lastYearCompared 거짓)', () => {
+    const days = [...daysFrom('2025-10-01', '2025-10-31'), ...keyed('2026-09-01', '2026-09-30', 1), ...keyed('2026-10-01', '2026-10-31', 2)]
+    const item = ready(treatmentRows(pickIn(days), [ESWT_GROUP])[0]!)
+    expect(item.compared).toBe(true)
+    expect(item.lastYearCompared).toBe(false)
+    expect(item.row).toMatchObject({ count: 62, comparable: { current: 62, previous: 30 }, delta: compareNumbers(62, 30) })
+    expect(item.row.lastYear).toEqual({ previous: null, delta: { kind: 'unavailable' } })
+  })
+
+  it('AC-1705.2 바로 전 기간을 세지 않았으면 바로 전 칸만 견주지 않는다', () => {
+    const days = [...keyed('2025-10-01', '2025-10-31', 3), ...daysFrom('2026-09-01', '2026-09-30'), ...keyed('2026-10-01', '2026-10-31', 2)]
+    const item = ready(treatmentRows(pickIn(days), [ESWT_GROUP])[0]!)
+    expect(item.compared).toBe(false)
+    expect(item.lastYearCompared).toBe(true)
+    expect(item.row).toMatchObject({ count: 62, comparable: null, delta: { kind: 'unavailable' } })
+    expect(item.row.lastYear).toEqual({ previous: 93, delta: compareNumbers(62, 93) })
+    expect(uncomparedNames([item])).toEqual(['체외충격파'])
+  })
+
+  it('AC-1705.2 두 비교 기간을 모두 세었으면 둘 다 견준다', () => {
+    const days = [...keyed('2025-10-01', '2025-10-31', 3), ...keyed('2026-09-01', '2026-09-30', 1), ...keyed('2026-10-01', '2026-10-31', 2)]
+    const item = ready(treatmentRows(pickIn(days), [ESWT_GROUP])[0]!)
+    expect([item.compared, item.lastYearCompared]).toEqual([true, true])
+    expect(item.row.delta).toEqual(compareNumbers(62, 30))
+    expect(item.row.lastYear).toEqual({ previous: 93, delta: compareNumbers(62, 93) })
+  })
+
+  it('AC-1705.2 groupInput은 세지 않은 비교 기간마다 그 기간을 덮은 기간에서 뺀다', () => {
+    const input = pickIn([])
+    expect(groupInput(input, ESWT_KEY, '체외충격파', true).covered).toEqual(COVER)
+    expect(groupInput(input, ESWT_KEY, '체외충격파', true, false).covered).toEqual([{ from: '2026-09-01', to: '2026-11-05' }])
+    expect(groupInput(input, ESWT_KEY, '체외충격파', false, true).covered).toEqual([
+      { from: '2025-10-01', to: '2025-10-31' },
+      { from: '2026-10-01', to: '2026-11-05' },
+    ])
+  })
+
+  it('AC-1705.2 빠른 단추와 해 고르기(작년 비교 없음)의 줄에는 lastYearCompared가 없다', () => {
+    const quick = ready(treatmentRows(input(today, '7d', daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(ESWT_KEY, 1)] }), bothWeeks), [ESWT_GROUP])[0]!)
+    expect(quick).not.toHaveProperty('lastYearCompared')
+    const year: StatsInput = { days: keyed('2025-01-01', '2025-12-31', 1), covered: [{ from: '2024-01-01', to: '2025-12-31' }], range: rangeOf(P_TODAY, { kind: 'year', year: '2025' }, false) }
+    expect(ready(treatmentRows(year, [ESWT_GROUP])[0]!)).not.toHaveProperty('lastYearCompared')
   })
 })

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { addDays, diffDays } from '@/lib/analytics/dates'
+import { addDays, diffDays, eachDay } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { AgainCounts, AgainWindow, DayAgainPayload, DayPayload } from '@/types/payload'
 import {
@@ -15,7 +15,8 @@ import {
   needsExtra,
   type AgainRow,
 } from './againView'
-import { statsRange, type StatsInput, type StatsPeriod, type StatsRange } from './view'
+import { rangeOf, statsRange, type StatsInput, type StatsPeriod, type StatsRange } from './view'
+import type { StatsPick } from './periodPick'
 
 // 같은 처방 재방문의 화면 숫자 (fu-rate REQ-1305). 날 줄·처방 코드·이름은 모두 이 파일에서 지어낸 값이다
 
@@ -376,5 +377,70 @@ describe('AC-1305.9 소스', () => {
   it('AC-1305.9 Date를 직접 만들지 않는다', () => {
     expect(source).not.toMatch(/\bDate\b/)
     expect(source).not.toMatch(/todayInKorea/)
+  })
+})
+
+// ── 고른 기간 (stats-period TASK-3 AC-1705.4): 옮기지 않는다. 센 시작일 = current 첫날 ~ min(current 끝, 어제 − 창). 오늘 2026-11-06
+describe('AC-1705.4 같은 처방 재방문 — 고른 기간은 옮기지 않는다', () => {
+  const P_TODAY = '2026-11-06'
+  const month = (m: string): StatsPick => ({ kind: 'month', unit: 'day', month: m })
+  const pr = (pick: StatsPick, todayDone = false) => rangeOf(P_TODAY, pick, todayDone)
+  const COVER: DateRange[] = [{ from: '2026-08-01', to: '2026-11-05' }]
+  const readyDays = (from: string, to: string) => eachDay({ from, to }).map((d) => day(d, { ready: READY_ALL, rx: [ag('T1', 2, [1, 1, 1], [1, 1, 1])] }))
+
+  it('AC-1705.4 9월 + 30일 창 → 9월 전체(09-01~09-30)를 센다', () => {
+    expect(againSpan(pr(month('2026-09')), 30)).toEqual({ from: '2026-09-01', to: '2026-09-30', days: 30, shifted: false, countFrom: '2026-09-01', countTo: '2026-09-30' })
+  })
+
+  it('AC-1705.4 10월 + 30일 창 → 10-01~10-06을 센다(어제 11-05 − 30일)', () => {
+    expect(againSpan(pr(month('2026-10')), 30)).toEqual({ from: '2026-10-01', to: '2026-10-31', days: 31, shifted: false, countFrom: '2026-10-01', countTo: '2026-10-06' })
+  })
+
+  it('AC-1705.4 11월 1–5일에 7일 창 → 센 범위가 비어 모든 날이 아직 셀 수 없음이다(옮기지 않는다)', () => {
+    const r = pr(month('2026-11'))
+    expect(againSpan(r, 7)).toEqual({ from: '2026-11-01', to: '2026-11-05', days: 5, shifted: false, countFrom: '2026-11-01', countTo: '2026-10-29' })
+    const view = againView({ days: readyDays('2026-11-01', '2026-11-05'), covered: COVER, range: r }, 7, [pick('T1')])
+    expect(view.strip).toEqual({ from: '2026-11-01', to: '2026-11-05', runs: runs([['no', 5]]), ok: 0, no: 5, out: 0 })
+    expect(view.gapDays).toBe(0)
+    expect(view.rows).toEqual([{ code: 'T1', name: '처방 T1', starts: 0, back: 0, more: 0, wait: 10 }])
+  })
+
+  it("AC-1705.4 센 범위가 비면 글은 '{name}에 시작한 환자는 아직 {창}일이 다 지나지 않아 셀 수 없어요.' 하나다", () => {
+    const r = pr(month('2026-11'))
+    const view = againView({ days: readyDays('2026-11-01', '2026-11-05'), covered: COVER, range: r }, 7, [])
+    expect(againBaseText(view, r, r.name)).toEqual({ lead: '2026년 11월에 시작한 환자는 아직 7일이 다 지나지 않아 셀 수 없어요.', strong: '', tail: '' })
+  })
+
+  it('AC-1705.4 오늘 진료가 끝나도(todayDone) 기간 끝은 어제에서 잘라 같은 범위다', () => {
+    expect(againSpan(pr(month('2026-11'), true), 7)).toEqual(againSpan(pr(month('2026-11')), 7))
+  })
+
+  it('AC-1705.4 기간 전체를 셌으면 글은 "{첫날} – {끝날}에 시작한 환자로 셌어요."다', () => {
+    const r = pr(month('2026-09'))
+    const view = againView({ days: readyDays('2026-09-01', '2026-09-30'), covered: COVER, range: r }, 30, [])
+    expect(againBaseText(view, r, r.name)).toEqual({ lead: '', strong: '9월 1일 – 9월 30일', tail: '에 시작한 환자로 셌어요.' })
+  })
+
+  it('AC-1705.4 기간 끝 무렵이 창 안이면 그 날들은 아직 셀 수 없다고 적는다', () => {
+    const r = pr(month('2026-10'))
+    const view = againView({ days: readyDays('2026-10-01', '2026-10-31'), covered: COVER, range: r }, 30, [pick('T1')])
+    expect(view.strip.runs).toEqual(runs([['ok', 6], ['no', 25]]))
+    expect(againBaseText(view, r, r.name)).toEqual({
+      lead: '',
+      strong: '10월 1일 – 10월 6일',
+      tail: '에 시작한 환자로 셌어요. 시작하고 30일이 안 지난 10월 7일 – 10월 31일은 아직 셀 수 없어요.',
+    })
+  })
+
+  it('AC-1705.4 더 읽기(againExtraSpan)는 지금처럼 최근 7일만이다 — 고른 기간은 null', () => {
+    for (const pick of [month('2026-10'), { kind: 'year', year: '2026' } as StatsPick, { kind: 'custom', unit: 'day', from: '2026-10-30', to: '2026-11-05' } as StatsPick]) {
+      expect(againExtraSpan(pr(pick))).toBeNull()
+      expect(needsExtra(pr(pick), 30)).toBe(false)
+    }
+  })
+
+  it('AC-1705.4 빠른 단추의 센 범위는 지금과 같다(기간 끝이 어제라 같은 값이다)', () => {
+    expect(againSpan(rangeOf(P_TODAY, '30d', true), 14)).toEqual(againSpan(statsRange(P_TODAY, '30d'), 14))
+    expect(againSpan(statsRange(P_TODAY, '90d'), 30)).toMatchObject({ shifted: false, countFrom: '2026-08-08', countTo: '2026-10-06' })
   })
 })

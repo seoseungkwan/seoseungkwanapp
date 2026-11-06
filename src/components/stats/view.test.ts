@@ -13,8 +13,12 @@ import {
   codeKey,
   COMPARE_NAME,
   DEFAULT_STATS_PERIOD,
+  missingDays,
   patientTrend,
   PERIOD_NAME,
+  periodDesc,
+  rangeOf,
+  readSpan,
   revisitRates,
   rxComparedCells,
   rxDetail,
@@ -27,6 +31,7 @@ import {
   type StatsPeriod,
   type SummaryCell,
 } from './view'
+import { pickRange, type StatsChoice, type StatsPick } from './periodPick'
 
 // buildTrend는 그대로 돌고 부른 횟수만 본다(AC-804.1)
 vi.mock('@/lib/analytics/rxTrend', async (importOriginal) => {
@@ -1382,5 +1387,367 @@ describe('AC-804 rxPickRows', () => {
 
   it('AC-802.12 codeKey는 코드를 대문자로 바꾸는 규칙이다', () => {
     expect(codeKey('aBc-1')).toBe('ABC-1')
+  })
+})
+
+// ── 고른 기간 (stats-period TASK-3, design.md '숫자'). 오늘은 2026-11-06(금), 오늘 진료가 끝나지 않았으면 끝난 날은 2026-11-05다.
+// 숫자는 모두 지어낸 것이다. 빠른 단추 갈래는 위 시험이 그대로 지킨다
+
+const P_TODAY = '2026-11-06'
+const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+const OCT_WEEK: StatsPick = { kind: 'month', unit: 'week', month: '2026-10' }
+const NOV: StatsPick = { kind: 'month', unit: 'day', month: '2026-11' }
+const pickInput = (pick: StatsChoice, days: DayPayload[], covered: DateRange[], todayDone = false): StatsInput => ({ days, covered, range: rangeOf(P_TODAY, pick, todayDone) })
+const isSunday = (ymd: string) => weekdayOf(ymd) === 7
+// 하루 환자 수 = 신환 + 재진
+const dayOf = (ymd: string, patients: number, o: DayOptions = {}) => day(ymd, { newPatients: 2, returning: patients - 2, ...o })
+const openDays = (from: string, to: string, patients: number, o: DayOptions = {}) => eachDay({ from, to }).filter((d) => !isSunday(d)).map((d) => dayOf(d, patients, o))
+// 세 기간(작년 10월 · 9월 · 10월)을 모두 덮음
+const THREE: DateRange[] = [
+  { from: '2025-10-01', to: '2025-10-31' },
+  { from: '2026-09-01', to: '2026-11-05' },
+]
+const octDays = () => [...openDays('2025-10-01', '2025-10-31', 44), ...openDays('2026-09-01', '2026-09-30', 39), ...openDays('2026-10-01', '2026-10-31', 42)]
+const workDays = (from: string, to: string) => eachDay({ from, to }).filter((d) => !isSunday(d)).length
+
+describe('AC-1701.5 rangeOf', () => {
+  it('AC-1701.5 빠른 단추는 todayDone과 상관없이 statsRange(today, p)와 같다', () => {
+    for (const p of ['7d', '30d', '90d', '12m'] as const) {
+      for (const done of [false, true]) expect(rangeOf(P_TODAY, p, done), `${p} ${done}`).toEqual(statsRange(P_TODAY, p))
+    }
+  })
+
+  it('AC-1701.5 고른 기간은 pickRange(today, pick, todayDone)이다', () => {
+    expect(rangeOf(P_TODAY, OCT, false)).toEqual(pickRange(P_TODAY, OCT, false))
+    expect(rangeOf(P_TODAY, NOV, false).current.to).toBe('2026-11-05')
+    expect(rangeOf(P_TODAY, NOV, true).current.to).toBe('2026-11-06')
+    const custom: StatsPick = { kind: 'custom', unit: 'week', from: '2026-10-03', to: '2026-11-01' }
+    expect(rangeOf(P_TODAY, custom, true)).toEqual(pickRange(P_TODAY, custom, true))
+  })
+})
+
+describe('AC-1706.3 readSpan', () => {
+  it('AC-1706.3 가장 앞 비교 첫날 ~ current 끝이다(10월 → 작년 10월 1일 ~ 10월 31일)', () => {
+    expect(readSpan(rangeOf(P_TODAY, OCT, false))).toEqual({ from: '2025-10-01', to: '2026-10-31' })
+    expect(readSpan(rangeOf(P_TODAY, { kind: 'year', year: '2025' }, false))).toEqual({ from: '2024-01-01', to: '2025-12-31' })
+  })
+
+  it('AC-1706.3 빠른 단추는 비교 첫날 ~ current 끝이다', () => {
+    const range = statsRange(P_TODAY, '30d')
+    expect(readSpan(range)).toEqual({ from: range.previous.from, to: range.current.to })
+  })
+})
+
+describe('AC-1704.4 periodDesc', () => {
+  it("AC-1704.4 고른 기간이면 설명 끝에 ' · {name}'이 붙는다", () => {
+    expect(periodDesc('신환·재진, 한 주씩', rangeOf(P_TODAY, OCT_WEEK, false))).toBe('신환·재진, 한 주씩 · 2026년 10월')
+    expect(periodDesc('요일 평균', rangeOf(P_TODAY, { kind: 'year', year: '2026' }, false))).toBe('요일 평균 · 2026년')
+  })
+
+  it('AC-1704.4 빠른 단추면 설명이 한 글자도 같다', () => {
+    for (const p of ['7d', '30d', '90d', '12m'] as const) expect(periodDesc('신환·재진, 하루씩', statsRange(P_TODAY, p))).toBe('신환·재진, 하루씩')
+  })
+})
+
+describe('AC-1704.1 summaryCells — 고른 기간', () => {
+  it("AC-1704.1 칸은 '하루 평균 환자 수'·'신환'·'재진'·'9월보다'·'작년 10월보다'다", () => {
+    const cells = summaryCells(pickInput(OCT, octDays(), THREE))
+    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'returning', 'compare', 'lastYear'])
+    expect(cells.map((cell) => cell.label)).toEqual(['하루 평균 환자 수', '신환', '재진', '9월보다', '작년 10월보다'])
+  })
+
+  it('AC-1704.1 하루 평균은 진료한 날 평균(버림)이고 신환·재진은 기간 합계다', () => {
+    const cells = summaryCells(pickInput(OCT, octDays(), THREE))
+    const work = workDays('2026-10-01', '2026-10-31')
+    expect(cellOf(cells, 'average')).toEqual({ key: 'average', label: '하루 평균 환자 수', value: 42, note: `진료한 날 ${work}일 평균`, partial: false, delta: null })
+    expect(cellOf(cells, 'new')).toMatchObject({ value: 2 * work, note: '기간 합계', partial: false })
+    expect(cellOf(cells, 'returning')).toMatchObject({ value: 40 * work, note: '기간 합계', partial: false })
+  })
+
+  it("AC-1704.1 비교 칸 글은 '{비교 label} 하루 평균 N명'이고 증감은 하루 평균끼리 compareNumbers다(날 수가 달라 짝 짓지 않는다)", () => {
+    const cells = summaryCells(pickInput(OCT, octDays(), THREE))
+    expect(cellOf(cells, 'compare')).toEqual({ key: 'compare', label: '9월보다', value: null, note: '9월 1일 – 30일 하루 평균 39명', partial: false, delta: compareNumbers(42, 39) })
+    expect(cellOf(cells, 'lastYear')).toEqual({
+      key: 'lastYear',
+      label: '작년 10월보다',
+      value: null,
+      note: '2025년 10월 1일 – 31일 하루 평균 44명',
+      partial: false,
+      delta: compareNumbers(42, 44),
+    })
+  })
+
+  it("AC-1704.1 비교 기간에 줄 없고 덮지 않은 날이 하루라도 있으면 그 비교는 value·delta null, '{label} 자료가 없어요'다(0이 아니다)", () => {
+    const days = octDays().filter((row) => row.day !== '2025-10-01')
+    const covered = [{ from: '2025-10-02', to: '2025-10-31' }, THREE[1]!]
+    const cells = summaryCells(pickInput(OCT, days, covered))
+    expect(cellOf(cells, 'lastYear')).toEqual({ key: 'lastYear', label: '작년 10월보다', value: null, note: '2025년 10월 1일 – 31일 자료가 없어요', partial: false, delta: null })
+    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(42, 39))
+  })
+
+  it('AC-1704.1 비교 기간에 partial 줄이 하루라도 있으면 그 비교도 자료가 없어요다', () => {
+    const days = octDays().map((row) => (row.day === '2026-09-10' ? { ...row, partial: true } : row))
+    const cells = summaryCells(pickInput(OCT, days, THREE))
+    expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '9월 1일 – 30일 자료가 없어요' })
+    expect(cellOf(cells, 'lastYear').delta).toEqual(compareNumbers(42, 44))
+  })
+
+  it('AC-1704.1 작년 기간을 불러온 적 없으면(줄 없고 덮지 않음) 자료가 없어요다. 덮였어도 진료한 날이 하루도 없으면 같다', () => {
+    const days = octDays().filter((row) => !row.day.startsWith('2025-'))
+    const unread = summaryCells(pickInput(OCT, days, [{ from: '2026-09-01', to: '2026-11-05' }]))
+    expect(cellOf(unread, 'lastYear')).toMatchObject({ value: null, delta: null, note: '2025년 10월 1일 – 31일 자료가 없어요' })
+    const empty = summaryCells(pickInput(OCT, days, THREE))
+    expect(cellOf(empty, 'lastYear')).toMatchObject({ value: null, delta: null, note: '2025년 10월 1일 – 31일 자료가 없어요' })
+  })
+
+  it('AC-1704.1 해 고르기는 비교 하나(2025년보다)라 칸이 넷이다', () => {
+    const days = [...openDays('2024-01-01', '2024-12-31', 30), ...openDays('2025-01-01', '2025-12-31', 33)]
+    const cells = summaryCells(pickInput({ kind: 'year', year: '2025' }, days, [{ from: '2024-01-01', to: '2025-12-31' }]))
+    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'returning', 'compare'])
+    expect(cellOf(cells, 'compare')).toMatchObject({ label: '2024년보다', note: '2024년 1월 1일 – 12월 31일 하루 평균 30명', delta: compareNumbers(33, 30) })
+  })
+
+  it('AC-1704.1 고른 기간에 자료가 없으면 평균은 자료 없음이고 비교 증감도 없다', () => {
+    const days = octDays().filter((row) => !row.day.startsWith('2026-10'))
+    const cells = summaryCells(pickInput(OCT, days, THREE))
+    expect(cellOf(cells, 'average')).toMatchObject({ value: null, note: '자료 없음' })
+    expect(cellOf(cells, 'compare').delta).toBeNull()
+    expect(cellOf(cells, 'lastYear').delta).toBeNull()
+  })
+})
+
+describe('AC-1704.2 끝나지 않은 기간은 같은 날까지 견준다', () => {
+  // 11월 1–5일 50명, 10월 1–5일 40명(그 뒤 100명), 작년 11월 1–5일 45명(그 뒤 200명). 일요일도 진료한 날로 둔다
+  const all = (from: string, to: string, patients: number) => eachDay({ from, to }).map((d) => dayOf(d, patients))
+  const days = [
+    ...all('2025-11-01', '2025-11-05', 45),
+    ...all('2025-11-06', '2025-11-30', 200),
+    ...all('2026-10-01', '2026-10-05', 40),
+    ...all('2026-10-06', '2026-10-31', 100),
+    ...all('2026-11-01', '2026-11-05', 50),
+  ]
+  const covered = [
+    { from: '2025-11-01', to: '2025-11-30' },
+    { from: '2026-10-01', to: '2026-11-05' },
+  ]
+
+  it('AC-1704.2 11월(1–5일까지 저장)은 10월 1–5일·작년 11월 1–5일의 하루 평균과 견준다', () => {
+    const cells = summaryCells(pickInput(NOV, days, covered))
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 50, note: '진료한 날 5일 평균' })
+    expect(cellOf(cells, 'compare')).toMatchObject({ label: '10월보다', note: '10월 1일 – 5일 하루 평균 40명', delta: compareNumbers(50, 40) })
+    expect(cellOf(cells, 'lastYear')).toMatchObject({ label: '작년 11월보다', note: '2025년 11월 1일 – 5일 하루 평균 45명', delta: compareNumbers(50, 45) })
+  })
+
+  it('AC-1704.2 고른 기간의 끝나지 않은 날(줄 없고 덮지 않음, partial 줄)은 평균에서 빼고 missingDays가 그 날 수다', () => {
+    const holes = days.filter((row) => row.day !== '2026-11-02' && row.day !== '2026-11-03').map((row) => (row.day === '2026-11-04' ? { ...row, partial: true } : row))
+    const cut = [{ from: '2025-11-01', to: '2025-11-30' }, { from: '2026-10-01', to: '2026-11-01' }, { from: '2026-11-04', to: '2026-11-05' }]
+    const input = pickInput(NOV, holes, cut)
+    expect(missingDays(input)).toBe(3)
+    expect(cellOf(summaryCells(input), 'average')).toMatchObject({ value: 50, note: '진료한 날 2일 평균' })
+  })
+
+  it('AC-1704.2 모두 끝난 기간·빠른 단추는 missingDays가 0이다', () => {
+    expect(missingDays(pickInput(NOV, days, covered))).toBe(0)
+    expect(missingDays({ days: [], covered: [], range: statsRange(P_TODAY, '30d') })).toBe(0)
+  })
+})
+
+describe('AC-1704.3 patientTrend — 고른 기간', () => {
+  it('AC-1704.3 일별은 날마다 한 칸이고 휴진한 날(줄 없고 덮은 날)만 칸이 없다', () => {
+    const days = openDays('2026-10-01', '2026-10-31', 42)
+    const buckets = patientTrend(pickInput(OCT, days, [{ from: '2026-10-01', to: '2026-10-31' }]))!
+    expect(buckets.map((b) => b.key)).toEqual(eachDay({ from: '2026-10-01', to: '2026-10-31' }).filter((d) => !isSunday(d)))
+    expect(buckets[0]).toEqual({ key: '2026-10-01', label: '10.1', rangeLabel: '10월 1일', state: 'complete', values: [2, 40] })
+    // 눈금 글자는 tickLabels 규칙(31일 이하는 30일 눈금: 7일마다)
+    expect(buckets.filter((b) => b.label !== '').map((b) => b.label)).toEqual(['10.1', '10.8', '10.15', '10.22', '10.29'])
+  })
+
+  it("AC-1704.3 일별에서 자료 없는 날(줄 없고 덮지 않음)은 칸이 남고 blank 'no-data'다. partial 줄은 일부 기간이다", () => {
+    const days = openDays('2026-10-01', '2026-10-31', 42)
+      .filter((row) => row.day !== '2026-10-15' && row.day !== '2026-10-16')
+      .map((row) => (row.day === '2026-10-20' ? { ...row, partial: true } : row))
+    const buckets = patientTrend(pickInput(OCT, days, [{ from: '2026-10-01', to: '2026-10-14' }, { from: '2026-10-17', to: '2026-10-31' }]))!
+    const at = (key: string) => buckets.find((b) => b.key === key)
+    expect(at('2026-10-15')).toEqual({ key: '2026-10-15', label: '10.15', rangeLabel: '10월 15일', state: 'partial', values: [0, 0], blank: 'no-data' })
+    expect(at('2026-10-16')).toMatchObject({ blank: 'no-data', values: [0, 0] })
+    expect(at('2026-10-20')).toMatchObject({ state: 'partial', values: [2, 40] })
+    expect(at('2026-10-20')!.blank).toBeUndefined()
+    expect(at('2026-10-18')).toBeUndefined() // 일요일 휴진
+  })
+
+  it('AC-1704.3 주별은 월–일 칸을 기간으로 자른 것이고 잘린 주는 partial이다(10월: 10-01~10-04, 10-26~10-31)', () => {
+    const days = eachDay({ from: '2026-10-01', to: '2026-10-31' }).map((d) => dayOf(d, 10))
+    const buckets = patientTrend(pickInput(OCT_WEEK, days, [{ from: '2026-10-01', to: '2026-10-31' }]))!
+    expect(buckets.map((b) => [b.key, b.rangeLabel, b.state, b.values])).toEqual([
+      ['2026-10-01', '10월 1일 – 4일', 'partial', [8, 32]],
+      ['2026-10-05', '10월 5일 – 11일', 'complete', [14, 56]],
+      ['2026-10-12', '10월 12일 – 18일', 'complete', [14, 56]],
+      ['2026-10-19', '10월 19일 – 25일', 'complete', [14, 56]],
+      ['2026-10-26', '10월 26일 – 31일', 'partial', [12, 48]],
+    ])
+    expect(buckets.map((b) => b.label)).toEqual(['10.1', '10.5', '10.12', '10.19', '10.26'])
+    expect(buckets.every((b) => b.blank === undefined)).toBe(true)
+  })
+
+  it("AC-1704.3 주별에서 덮지 않은 날이 든 주는 partial이고, 줄이 하나도 없는 주는 칸이 남고 blank 'no-data'다", () => {
+    const days = eachDay({ from: '2026-10-01', to: '2026-10-31' })
+      .filter((d) => d !== '2026-10-07' && !(d >= '2026-10-12' && d <= '2026-10-18'))
+      .map((d) => dayOf(d, 10))
+    const covered = [{ from: '2026-10-01', to: '2026-10-06' }, { from: '2026-10-08', to: '2026-10-11' }, { from: '2026-10-19', to: '2026-10-31' }]
+    const buckets = patientTrend(pickInput(OCT_WEEK, days, covered))!
+    expect(buckets.map((b) => [b.key, b.state, b.blank ?? null, b.values])).toEqual([
+      ['2026-10-01', 'partial', null, [8, 32]],
+      ['2026-10-05', 'partial', null, [12, 48]],
+      ['2026-10-12', 'partial', 'no-data', [0, 0]],
+      ['2026-10-19', 'complete', null, [14, 56]],
+      ['2026-10-26', 'partial', null, [12, 48]],
+    ])
+  })
+
+  it("AC-1704.3 월별은 1월~12월이고 끝나지 않은 달은 partial, 줄이 없는 달은 'no-data', 앞으로 올 달은 'future'다", () => {
+    const year: StatsPick = { kind: 'year', year: '2026' }
+    const months = monthsFrom('2026-04', 8) // 4월 ~ 11월
+    const days = months.flatMap((m) => monthRows(m))
+    const buckets = patientTrend(pickInput(year, days, [{ from: '2026-04-01', to: '2026-11-05' }]))!
+    expect(buckets.map((b) => b.key)).toEqual(monthsFrom('2026-01', 12))
+    expect(buckets.map((b) => b.label)).toEqual(['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'])
+    expect(buckets[0]).toEqual({ key: '2026-01', label: '1월', rangeLabel: '2026년 1월', state: 'partial', values: [0, 0], blank: 'no-data' })
+    expect(buckets.slice(0, 3).map((b) => b.blank)).toEqual(['no-data', 'no-data', 'no-data'])
+    expect(buckets[3]).toEqual({ key: '2026-04', label: '4월', rangeLabel: '2026년 4월', state: 'complete', values: [4, 16] })
+    expect(buckets[10]).toMatchObject({ key: '2026-11', state: 'partial', values: [4, 16] })
+    expect(buckets[10]!.blank).toBeUndefined()
+    expect(buckets[11]).toMatchObject({ key: '2026-12', label: '12월', rangeLabel: '2026년 12월', blank: 'future', values: [0, 0] })
+  })
+
+  it('AC-1704.3 지난 해 월별은 12달이 모두 진짜 칸이다(앞으로 올 달이 없다)', () => {
+    const days = monthsFrom('2025-01', 12).flatMap((m) => monthRows(m))
+    const buckets = patientTrend(pickInput({ kind: 'year', year: '2025' }, days, [{ from: '2025-01-01', to: '2025-12-31' }]))!
+    expect(buckets).toHaveLength(12)
+    expect(buckets.every((b) => b.state === 'complete' && b.blank === undefined)).toBe(true)
+  })
+
+  it('AC-1704.3 덮지 않은 날이 든 달도 partial이고 합에는 그 달 줄을 모두 넣는다', () => {
+    const days = monthsFrom('2025-01', 12).flatMap((m) => monthRows(m))
+    const buckets = patientTrend(pickInput({ kind: 'year', year: '2025' }, days, [{ from: '2025-01-01', to: '2025-06-20' }, { from: '2025-07-01', to: '2025-12-31' }]))!
+    expect(buckets[5]).toMatchObject({ key: '2025-06', state: 'partial', values: [4, 16] })
+    expect(buckets[6]).toMatchObject({ key: '2025-07', state: 'complete' })
+  })
+
+  it('AC-1704.3 고른 기간에 줄이 하나도 없으면 null이다(섹션이 자료 없음을 그린다)', () => {
+    expect(patientTrend(pickInput(OCT, openDays('2026-09-01', '2026-09-30', 39), THREE))).toBeNull()
+    expect(patientTrend(pickInput(OCT_WEEK, [], THREE))).toBeNull()
+    expect(patientTrend(pickInput({ kind: 'year', year: '2026' }, [], THREE))).toBeNull()
+  })
+
+  it('AC-1704.3 직접 날짜 일별 92일은 90일 눈금(21일마다)을 쓴다', () => {
+    const custom: StatsPick = { kind: 'custom', unit: 'day', from: '2026-08-06', to: '2026-11-05' }
+    const days = eachDay({ from: '2026-08-06', to: '2026-11-05' }).map((d) => dayOf(d, 10))
+    const buckets = patientTrend(pickInput(custom, days, [{ from: '2026-08-06', to: '2026-11-05' }]))!
+    expect(buckets).toHaveLength(92)
+    expect(buckets.filter((b) => b.label !== '').map((b) => b.key)).toEqual(['2026-08-06', '2026-08-27', '2026-09-17', '2026-10-08', '2026-10-29'])
+  })
+})
+
+describe('AC-1704.5 요일별·신환 재방문율은 current 날만 센다', () => {
+  const withRevisit = (rows: DayPayload[], within7: number) => rows.map((row) => ({ ...row, revisit: { ...row.revisit, cohort: 10, within7, within14: within7 } }))
+
+  it('AC-1704.5 요일별 환자 수는 고른 기간(10월)의 날만 센다 — 9월·작년 10월 줄은 들지 않는다', () => {
+    const days = octDays()
+    const range = rangeOf(P_TODAY, OCT, false)
+    expect(weekdayBars(days, range)).toEqual(weekdayBuckets(days.filter((row) => row.day.startsWith('2026-10')), range.current))
+  })
+
+  it('AC-1704.5 신환 재방문율은 고른 기간의 날만 센다', () => {
+    const days = [...withRevisit(openDays('2026-09-01', '2026-09-30', 39), 9), ...withRevisit(openDays('2026-10-01', '2026-10-31', 42), 3)]
+    const result = revisitRates(pickInput(OCT, days, THREE))
+    const work = workDays('2026-10-01', '2026-10-31')
+    expect(result.d7).toEqual(rate(3 * work, 10 * work, false))
+    expect(result.d14).toEqual(rate(3 * work, 10 * work, false))
+  })
+
+  it('AC-1704.5 고른 기간에 줄이 없으면 요일별은 null, 재방문율은 자료 없음이다', () => {
+    const input = pickInput(OCT, openDays('2026-09-01', '2026-09-30', 39), THREE)
+    expect(weekdayBars(input.days, input.range)).toBeNull()
+    expect(revisitRates(input).d7).toEqual({ kind: 'none' })
+  })
+})
+
+describe('AC-1705.1 처방 행 — 고른 기간의 비교마다', () => {
+  // 처방 A: 10월 날마다 2건, 9월 1건, 작년 10월 3건. 세 기간 모두 덮음(일요일도 진료)
+  const rxDays = () => [
+    ...eachDay({ from: '2025-10-01', to: '2025-10-31' }).map((d) => day(d, { rx: [rx('A', 3)] })),
+    ...eachDay({ from: '2026-09-01', to: '2026-09-30' }).map((d) => day(d, { rx: [rx('A', 1)] })),
+    ...eachDay({ from: '2026-10-01', to: '2026-10-31' }).map((d) => day(d, { rx: [rx('A', 2)] })),
+  ]
+  const A = [{ code: 'A', name: '처방 A' }]
+
+  it('AC-1705.1 건수는 current 합이고 바로 전(comparable·delta)과 작년(lastYear)을 비교 기간 전체 합과 견준다', () => {
+    const [row] = rxPickRows(pickInput(OCT, rxDays(), THREE), A)
+    expect(row).toMatchObject({ code: 'A', count: 62, comparable: { current: 62, previous: 30 }, delta: compareNumbers(62, 30) })
+    expect(row!.lastYear).toEqual({ previous: 93, delta: compareNumbers(62, 93) })
+  })
+
+  it('AC-1705.1 비교 기간의 처방 점이 하나라도 끝나지 않았으면 그 비교만 null·unavailable이다', () => {
+    const covered = [{ from: '2025-10-01', to: '2025-10-31' }, { from: '2026-09-02', to: '2026-11-05' }]
+    const [row] = rxPickRows(pickInput(OCT, rxDays(), covered), A)
+    expect(row).toMatchObject({ count: 62, comparable: null, delta: { kind: 'unavailable' } })
+    expect(row!.lastYear).toEqual({ previous: 93, delta: compareNumbers(62, 93) })
+  })
+
+  it('AC-1705.1 고른 기간의 점이 끝나지 않았으면(partial 줄) 두 비교 모두 견주지 않는다', () => {
+    const days = rxDays().map((row) => (row.day === '2026-10-10' ? { ...row, partial: true } : row))
+    const [row] = rxPickRows(pickInput(OCT, days, THREE), A)
+    expect(row).toMatchObject({ count: 62, comparable: null, delta: { kind: 'unavailable' } })
+    expect(row!.lastYear).toEqual({ previous: null, delta: { kind: 'unavailable' } })
+  })
+
+  it('AC-1705.1 작년 자료가 없으면(덮지 않음) 작년만 unavailable이다 — 0건과 견주지 않는다', () => {
+    const days = rxDays().filter((row) => !row.day.startsWith('2025-'))
+    const [row] = rxPickRows(pickInput(OCT, days, [THREE[1]!]), A)
+    expect(row!.delta).toEqual(compareNumbers(62, 30))
+    expect(row!.lastYear).toEqual({ previous: null, delta: { kind: 'unavailable' } })
+  })
+
+  it('AC-1705.1 처방 추세(rxList)도 같은 셈이다', () => {
+    const [row] = rxList(pickInput(OCT, rxDays(), THREE))!
+    expect(row).toMatchObject({ code: 'A', count: 62, comparable: { current: 62, previous: 30 } })
+    expect(row!.lastYear).toEqual({ previous: 93, delta: compareNumbers(62, 93) })
+  })
+
+  it('AC-1705.1 해 고르기(작년 비교 없음)와 빠른 단추에는 lastYear 칸이 없다', () => {
+    const yearDays = [...eachDay({ from: '2025-01-01', to: '2025-12-31' }).map((d) => day(d, { rx: [rx('A', 1)] }))]
+    // 2024년은 덮지 않아(불러온 적 없음) 견주지 않는다
+    const [yearRow] = rxPickRows(pickInput({ kind: 'year', year: '2025' }, yearDays, [{ from: '2025-01-01', to: '2025-12-31' }]), A)
+    expect(yearRow).not.toHaveProperty('lastYear')
+    expect(yearRow).toMatchObject({ count: 365, comparable: null, delta: { kind: 'unavailable' } })
+    const [quick] = rxPickRows(input(P_TODAY, '30d', rxDays(), THREE), A)
+    expect(quick).not.toHaveProperty('lastYear')
+  })
+
+  it('AC-1705.1 고른 기간의 rxComparedCells는 { kept: 0, dropped: false }다(짝만 견줘요 안내가 없다)', () => {
+    expect(rxComparedCells(pickInput(OCT, rxDays(), THREE))).toEqual({ kept: 0, dropped: false })
+    expect(rxComparedCells(pickInput(OCT, rxDays(), [{ from: '2026-10-05', to: '2026-10-31' }]))).toEqual({ kept: 0, dropped: false })
+  })
+})
+
+describe('AC-1705.4 rxDetail — 고른 기간의 그래프 칸은 range.bucket, 회색은 바로 전 기간', () => {
+  const days = [...daysFrom('2026-09-01', '2026-10-31', { rx: [rx('A', 1)] })]
+
+  it('AC-1705.4 10월 주별은 주 칸이고 비교(회색)는 9월의 주 칸이다', () => {
+    const { current, previous } = rxDetail(pickInput(OCT_WEEK, days, THREE), 'A')
+    expect(current.map((p) => [p.start, p.end, p.count])).toEqual([
+      ['2026-10-01', '2026-10-04', 4],
+      ['2026-10-05', '2026-10-11', 7],
+      ['2026-10-12', '2026-10-18', 7],
+      ['2026-10-19', '2026-10-25', 7],
+      ['2026-10-26', '2026-10-31', 6],
+    ])
+    expect(previous.map((p) => p.start)).toEqual(['2026-09-01', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28'])
+  })
+
+  it('AC-1705.4 10월 일별은 날 칸, 해는 달 칸이다', () => {
+    expect(rxDetail(pickInput(OCT, days, THREE), 'A').current).toHaveLength(31)
+    const year = rxDetail(pickInput({ kind: 'year', year: '2025' }, [], [{ from: '2024-01-01', to: '2025-12-31' }]), 'A')
+    expect(year.current.map((p) => p.start.slice(0, 7))).toEqual(monthsFrom('2025-01', 12))
   })
 })
