@@ -36,8 +36,8 @@ public sealed class RxItem
 
 /// <summary>
 /// 오늘 외래 접수 한 줄(비트 날 줄, design.md 3절). 상태로 거르지 않은 그대로이고, 칸 나누기·글 만들기는 BoardBuilder(TASK-11)가 한다.
-/// 이름·생년월일(또는 주민번호 앞 7글자)·성별·접수 메모·수납 시각은 의원 PC 확인 결과로 읽는 칸(REQ-1410, TASK-29)이라 지금은 null이다.
-/// 모르는 값은 지어내지 않고 null로 둔다(AC-1402.7).
+/// 이름·생년월일(yyyyMMdd)·성별(F/M)·접수 메모·수납 시각(yyyyMMddHHmm)은 의원 PC 확인 결과로 채운 칸(REQ-1410, TASK-29)에서 BoardReader가 읽는다.
+/// 찾지 못한 칸·줄이 없는 내원·빈 글은 지어내지 않고 null로 둔다(AC-1402.7).
 /// </summary>
 public sealed class VisitRow
 {

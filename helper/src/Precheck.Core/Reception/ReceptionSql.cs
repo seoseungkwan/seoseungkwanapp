@@ -6,8 +6,8 @@ namespace Precheck.Core.Reception;
 
 /// <summary>
 /// 접수 현황(spec reception-phone design.md 3절)이 비트 DB에 돌리는 문장 전부(AC-1403.1·AC-1403.7·AC-1404.6). 모두 매개변수를 받는 SELECT 하나다.
-/// 표·칸은 이 저장소의 다른 허용 문장(Sql·StatsSql·RevenueSql)이 이미 읽는 것뿐이다. 이름·메모·수납 시각·증상처럼 의원 PC 확인 결과로 채우는 칸은
-/// Phase 5에 따로 더한다(REQ-1410). 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
+/// 표·칸은 이 저장소의 다른 허용 문장(Sql·StatsSql·RevenueSql)이 이미 읽는 것과, 의원 PC 확인 결과로 채운 칸(ReceptionMap.Columns:
+/// 이름·생년월일·성별·접수 메모·수납 시각, TodayPeople·TodayMemos·TodayPaid, REQ-1410)뿐이다. 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
 /// 지난 내원의 완료 조건은 Sql.HistoryVisitSql, 처방 줄 조건은 Sql.HistoryCodeSql과 같다. SQL Server 2008 R2에서 돌도록 OFFSET·FETCH 없이 ROW_NUMBER()로 자르고,
 /// 차트번호는 함수 없이 견준다(색인을 쓰게, spec bit-read-speed와 같은 까닭). Sql.IsAllowed·Sql.ParametersOf가 Parameters 표를 묻는다.
 /// </summary>
@@ -90,6 +90,23 @@ WHERE c.OcmChtNum=@chart AND c.OcmAcpDtm<@before AND " + DoneVisit + @"
 SELECT H.OcmNum VisitId,LEFT(H.OcmAcpDtm,8) VisitDay,R.RxCode FROM H LEFT JOIN R ON R.OdrOcmNum=H.OcmNum
 WHERE H.Seq BETWEEN @first AND @last ORDER BY H.Seq,R.RxCode";
 
+    // ---- 의원 PC 확인 결과로 채운 칸(REQ-1410, ReceptionMap.Columns와 같은 이름, TASK-29) ----------------------------------
+
+    /// <summary>오늘 접수의 사람 칸: 이름(PbsPatNam)·생년월일(PbsBirDte, yyyyMMdd)·성별(PbsSexTyp, F/M). 차트번호(함수 없이)로 PbsInf에 잇는다. 주민번호는 읽지 않는다.</summary>
+    public const string TodayPeople = TodayCte + @"
+SELECT T.OcmNum VisitId,RTRIM(p.PbsPatNam) Name,RTRIM(p.PbsBirDte) BirthDate,RTRIM(p.PbsSexTyp) Sex FROM T
+JOIN dbo.PbsInf p ON p.PbsChtNum=T.OcmChtNum WHERE T.OcmChtNum<>''";
+
+    /// <summary>오늘 접수의 접수 메모(OcmRefCmt). text 형이어도 읽게 nvarchar(max)로 바꾼다.</summary>
+    public const string TodayMemos = @"SELECT c.OcmNum VisitId,RTRIM(CAST(c.OcmRefCmt AS nvarchar(max))) Memo FROM dbo.OcmInf c
+WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O'
+  AND " + InHospital;
+
+    /// <summary>오늘 접수의 수납 시각: 내원마다 가장 늦은 OrcInf.OrcUpdDtm(char 12, yyyyMMddHHmm) 하나(AC-1410.3). 수납 줄이 없는 내원은 줄이 없다.</summary>
+    public const string TodayPaid = TodayCte + @"
+SELECT r.OrcOcmNum VisitId,MAX(r.OrcUpdDtm) PaidAt FROM dbo.OrcInf r JOIN T ON T.OcmNum=r.OrcOcmNum
+GROUP BY r.OrcOcmNum";
+
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
@@ -110,5 +127,8 @@ WHERE H.Seq BETWEEN @first AND @last ORDER BY H.Seq,R.RxCode";
         [RxNames] = new SqlParam[0],
         [HistoryCount] = new[] { Chart, Before, Hospital },
         [HistoryPage] = new[] { Chart, Before, Hospital, First, Last },
+        [TodayPeople] = Today,
+        [TodayMemos] = Today,
+        [TodayPaid] = Today,
     };
 }

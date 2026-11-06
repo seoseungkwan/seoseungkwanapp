@@ -23,6 +23,7 @@ public class BoardReaderTests
     private static readonly string[] Order =
     {
         ReceptionSql.RxNames, ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.PriorVisits, ReceptionSql.PriorRx,
+        ReceptionSql.TodayPeople, ReceptionSql.TodayMemos, ReceptionSql.TodayPaid,
     };
 
     private static (string Code, string? Name)[] Rx(params (string Code, string? Name)[] items) => items;
@@ -103,11 +104,14 @@ public class BoardReaderTests
         Assert.Empty(third.LastRx);
     }
 
-    [Fact(DisplayName = "AC-1403.6 이름·생년월일·성별·접수 메모·수납 시각 칸은 처음부터 있고, 아직 읽는 문장이 없어 빈 값(null)이다")]
-    public void PersonColumnsEmpty()
+    [Fact(DisplayName = "AC-1402.7 칸이 채워지기 전(ColumnPlan 없음)에는 칸 문장을 돌리지 않고 이름·생년월일·성별·메모·수납 시각만 빈 값(null), 줄은 그대로다")]
+    public void PersonColumnsEmptyBeforeFill()
     {
         var db = BoardFake.Quiet(new FakeDb());
-        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, null);
+
+        Assert.Equal(Order.Take(5), db.Sqls);
+        Assert.Equal(new[] { "V1001", "V1002", "V1003" }, input.Visits.Select(row => row.VisitId));
         Assert.All(input.Visits, row =>
         {
             Assert.Null(row.Name);
@@ -117,6 +121,73 @@ public class BoardReaderTests
             Assert.Null(row.PaidAt);
         });
     }
+
+    [Fact(DisplayName = "AC-1402.7 찾지 못한 칸(ColumnPlan의 null)은 그 문장을 돌리지 않고 그 값만 비운다")]
+    public void MissingColumnsStayEmpty()
+    {
+        var db = BoardFake.Quiet(new FakeDb());
+        var plan = ReceptionMap.Columns!;
+        var partial = new ColumnPlan(plan.Name, plan.BirthDate, null, null, null, null);
+
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, partial);
+
+        Assert.Equal(Order.Take(6), db.Sqls);
+        var first = input.Visits[0];
+        Assert.Equal("가상환자01", first.Name);
+        Assert.Equal("19720304", first.BirthDate);
+        Assert.Null(first.Sex);
+        Assert.Null(first.Memo);
+        Assert.Null(input.Visits[1].PaidAt);
+    }
+
+    [Fact(DisplayName = "AC-1410.3 채운 칸(ReceptionMap.Columns)으로 이름·생년월일·성별·접수 메모·수납 시각을 읽어 줄에 붙인다(빈 글·줄 없는 내원은 null)")]
+    public void ReadsFilledColumns()
+    {
+        var db = BoardFake.Quiet(new FakeDb());
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+
+        Assert.Equal(Order, db.Sqls);
+        var (first, second, third) = (input.Visits[0], input.Visits[1], input.Visits[2]);
+        Assert.Equal(("가상환자01", "19720304", "F", "허리 통증 재진", (string?)null), (first.Name, first.BirthDate, first.Sex, first.Memo, first.PaidAt));
+        Assert.Equal(("가상환자02", "19900101", "M", (string?)null, "202611050945"), (second.Name, second.BirthDate, second.Sex, second.Memo, second.PaidAt));
+        Assert.Equal(((string?)null, (string?)null, (string?)null, (string?)null, (string?)null), (third.Name, third.BirthDate, third.Sex, third.Memo, third.PaidAt));
+    }
+
+    [Fact(DisplayName = "AC-1402.5 읽은 생년월일(yyyyMMdd)·성별(F/M)·지난 완료 내원 수로 정보 글이 '54세 · 여 · 재진' 모양이고, 모르는 값은 빼며 지난 내원이 없으면 신환이다")]
+    public void InfoFromReadColumns()
+    {
+        var board = BuildBoard();
+
+        Assert.Equal("54세 · 여 · 재진", Row(board, "900101").Info);
+        Assert.Equal("36세 · 남 · 재진", Row(board, "900102").Info);
+        Assert.Equal("신환", Row(board, "900103").Info);
+    }
+
+    [Fact(DisplayName = "AC-1410.5 [의원 PC] 휴대폰 줄의 이름·접수 메모·수납 시각 글은 비트에서 읽은 값 그대로다(실제 대조는 의원 PC)")]
+    public void BoardShowsReadValues()
+    {
+        var board = BuildBoard();
+
+        var first = Row(board, "900101");
+        Assert.Equal("가상환자01", first.Name);
+        Assert.Equal("허리 통증 재진", first.Memo);
+        var second = Row(board, "900102");
+        Assert.Equal("가상환자02", second.Name);
+        Assert.Equal("", second.Memo);
+        Assert.Equal("09:45 수납", second.Waited);
+        Assert.Equal("", Row(board, "900103").Name);
+    }
+
+    private static Board BuildBoard()
+    {
+        var db = BoardFake.Quiet(new FakeDb());
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+        var map = new Dictionary<string, Lane>(StringComparer.Ordinal) { ["S1"] = Lane.Wait, ["S2"] = Lane.Done };
+        return BoardBuilder.Build(input, map, new string[0], new Dictionary<string, string>(StringComparer.Ordinal), new VisitKeys(), Morning);
+    }
+
+    private static BoardRow Row(Board board, string chart) =>
+        board.Wait.Concat(board.Done).Single(row => row.Chart == chart);
 
     [Fact(DisplayName = "AC-1403.6 내원번호가 빈 줄은 빼고, 같은 내원은 한 줄, 모르는 내원의 처방·지난 내원 줄은 붙이지 않는다")]
     public void SkipsOddRows()
@@ -254,7 +325,7 @@ internal static class BoardFake
     public static object?[] Visit(string? id, string chart, string acceptedAt, string status, string rsu = "N") =>
         new object?[] { id, chart, acceptedAt, status, rsu };
 
-    /// <summary>오늘 접수 셋: V1001(오늘 처방 둘, 지난 내원 3번·그 처방 둘), V1002(오늘 처방 없음, 지난 내원 1번·처방 없음), V1003(첫 방문, 이름 없는 코드).</summary>
+    /// <summary>오늘 접수 셋: V1001(오늘 처방 둘, 지난 내원 3번·그 처방 둘, 메모), V1002(오늘 처방 없음, 지난 내원 1번·처방 없음, 수납 09:45), V1003(첫 방문, 이름 없는 코드, 사람 줄 없음).</summary>
     public static T Quiet<T>(T db) where T : FakeDb
     {
         db.Answer(ReceptionSql.RxNames, _ => new[]
@@ -283,6 +354,20 @@ internal static class BoardFake
             new object?[] { "V0901", "PT03" },
             new object?[] { "V0901", "PT01" },
         });
+        // 확인 결과로 채운 칸(이름·생년월일·성별, 접수 메모, 수납 시각). V1003은 PbsInf 줄이 없다
+        db.Answer(ReceptionSql.TodayPeople, _ => new[]
+        {
+            new object?[] { "V1001", "가상환자01", "19720304", "F" },
+            new object?[] { "V1002", "가상환자02", "19900101", "M" },
+            new object?[] { "V7777", "가상환자77", "19800101", "F" },
+        });
+        db.Answer(ReceptionSql.TodayMemos, _ => new[]
+        {
+            new object?[] { "V1001", "허리 통증 재진" },
+            new object?[] { "V1002", "   " },
+            new object?[] { "V1003", null },
+        });
+        db.Answer(ReceptionSql.TodayPaid, _ => new[] { new object?[] { "V1002", "202611050945" } });
         return db;
     }
 

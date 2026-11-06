@@ -30,6 +30,9 @@ public class ReceptionSqlTests
         ["RxNames"] = ReceptionSql.RxNames,
         ["HistoryCount"] = ReceptionSql.HistoryCount,
         ["HistoryPage"] = ReceptionSql.HistoryPage,
+        ["TodayPeople"] = ReceptionSql.TodayPeople,
+        ["TodayMemos"] = ReceptionSql.TodayMemos,
+        ["TodayPaid"] = ReceptionSql.TodayPaid,
     };
 
     // ---- 설계 표(design.md 3절) ----------------------------------------------------------------------
@@ -44,6 +47,9 @@ public class ReceptionSqlTests
         ["RxNames"] = new[] { "Code", "Name", "AdpDte" },
         ["HistoryCount"] = new[] { "Count", "FirstDay" },
         ["HistoryPage"] = new[] { "VisitId", "VisitDay", "RxCode" },
+        ["TodayPeople"] = new[] { "VisitId", "Name", "BirthDate", "Sex" },
+        ["TodayMemos"] = new[] { "VisitId", "Memo" },
+        ["TodayPaid"] = new[] { "VisitId", "PaidAt" },
     };
 
     private static readonly string[] TodayParams = { "@from", "@to", "@hospital" };
@@ -59,6 +65,9 @@ public class ReceptionSqlTests
         ["RxNames"] = new string[0],
         ["HistoryCount"] = HistoryParams,
         ["HistoryPage"] = HistoryParams.Concat(new[] { "@first", "@last" }).ToArray(),
+        ["TodayPeople"] = TodayParams,
+        ["TodayMemos"] = TodayParams,
+        ["TodayPaid"] = TodayParams,
     };
 
     private static readonly Dictionary<string, string> Kinds = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -155,12 +164,12 @@ public class ReceptionSqlTests
 
     // ---- AC-1403.1 읽기 문장 하나·허용 목록 --------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 7개이고 매개변수 표와 같으며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
+    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 10개(확인 칸 문장 셋 포함)이고 매개변수 표와 같으며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|OPENDATASOURCE|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR|DECLARE|SET)\b|xp_|sp_", RegexOptions.IgnoreCase);
         var all = All();
-        Assert.Equal(7, all.Values.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(10, all.Values.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(all.Values.OrderBy(sql => sql, StringComparer.Ordinal), Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
         foreach (var sql in all.Values)
         {
@@ -283,7 +292,7 @@ public class ReceptionSqlTests
         Assert.Contains(DoneVisit, Squash(Sql.HistoryVisitSql), StringComparison.Ordinal);
         Assert.Contains(RxRow, Squash(Sql.HistoryCodeSql), StringComparison.Ordinal);
 
-        foreach (var sql in new[] { TodayVisits, TodayRx })
+        foreach (var sql in new[] { TodayVisits, TodayRx, TodayPeople, TodayMemos, TodayPaid })
         {
             var squashed = Squash(sql);
             Assert.Contains("c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O' AND " + InHospital, squashed, StringComparison.Ordinal);
@@ -303,12 +312,15 @@ public class ReceptionSqlTests
         Assert.Contains("T.OcmAcpDtm AcceptedAt", Squash(TodayVisits), StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "AC-1403.1 읽는 표·칸은 이 저장소의 다른 허용 문장(Sql·StatsSql·RevenueSql)이 이미 읽는 것뿐이다(목록 대조)")]
+    [Fact(DisplayName = "AC-1403.1 읽는 표·칸은 이 저장소의 다른 허용 문장(Sql·StatsSql·RevenueSql)이 이미 읽는 것과 확인 결과로 채운 칸(ReceptionMap.Columns)뿐이다(목록 대조)")]
     public void ReadsOnlyColumnsAlreadyUsed()
     {
         var existingStatements = Sql.All.Concat(StatsSql.All).Concat(RevenueSql.Parameters.Keys).ToArray();
         var existing = new HashSet<string>(existingStatements.SelectMany(sql => BitName.Matches(sql).Cast<Match>().Select(m => m.Value)), StringComparer.Ordinal);
         var resultNames = new HashSet<string>(Columns.Values.SelectMany(names => names), StringComparer.Ordinal);
+        var filled = FilledColumns().SelectMany(c => new[] { c.Table, c.Column }).ToArray();
+        Assert.NotEmpty(filled);
+        existing.UnionWith(filled);
 
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var sql in All().Values)
@@ -321,7 +333,61 @@ public class ReceptionSqlTests
         foreach (var name in new[] { "OcmInf", "OcmChtNum", "OcmAcpDtm", "OcmComStt", "OcmRsuYon", "OdrInf", "OdrCod", "SeeMst", "SeeKorNam", "SeeAdpDte" }) Assert.Contains(name, used);
         Assert.Empty(used.Where(name => !existing.Contains(name)).OrderBy(name => name, StringComparer.Ordinal));
         Assert.Empty(used.Where(name => name.EndsWith("Inf", StringComparison.Ordinal) || name.EndsWith("Mst", StringComparison.Ordinal))
-            .Except(new[] { "OcmInf", "OdrInf", "DepMst", "SeeMst" }));
+            .Except(new[] { "OcmInf", "OdrInf", "DepMst", "SeeMst" }.Concat(FilledColumns().Select(c => c.Table))));
+    }
+
+    /// <summary>확인 결과로 채운 칸(ReceptionMap.Columns에서 찾은 것만).</summary>
+    private static ColumnRef[] FilledColumns()
+    {
+        var plan = ReceptionMap.Columns;
+        if (plan == null) return new ColumnRef[0];
+        return new[] { plan.Name, plan.BirthDate, plan.Sex, plan.Memo, plan.PaidAt, plan.Symptom }.Where(c => c != null).Select(c => c!).ToArray();
+    }
+
+    // ---- AC-1410.3 확인 결과로 채운 칸 문장 -----------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-1410.3 채운 칸(ReceptionMap.Columns)은 이름 PbsInf.PbsPatNam·생년월일 PbsBirDte·성별 PbsSexTyp·접수 메모 OcmInf.OcmRefCmt·수납 시각 OrcInf.OrcUpdDtm이고 증상은 아직 없다")]
+    public void FilledColumnsMatchReport()
+    {
+        var plan = ReceptionMap.Columns;
+        Assert.NotNull(plan);
+        string Of(ColumnRef? c) => c == null ? "" : c.Table + "." + c.Column;
+        Assert.Equal("PbsInf.PbsPatNam", Of(plan!.Name));
+        Assert.Equal("PbsInf.PbsBirDte", Of(plan.BirthDate));
+        Assert.Equal("PbsInf.PbsSexTyp", Of(plan.Sex));
+        Assert.Equal("OcmInf.OcmRefCmt", Of(plan.Memo));
+        Assert.Equal("OrcInf.OrcUpdDtm", Of(plan.PaidAt));
+        Assert.Null(plan.Symptom);
+    }
+
+    [Fact(DisplayName = "AC-1410.3 칸 문장(TodayPeople·TodayMemos·TodayPaid)은 허용 목록의 상수이고 채운 칸 이름 그대로 읽는다(사람은 차트번호로, 수납은 내원번호로 잇는다)")]
+    public void FilledStatementsReadPlanColumns()
+    {
+        var plan = ReceptionMap.Columns!;
+        foreach (var sql in new[] { TodayPeople, TodayMemos, TodayPaid }) Assert.True(Sql.IsAllowed(sql));
+
+        var people = Squash(TodayPeople);
+        Assert.Contains("SELECT T.OcmNum VisitId,RTRIM(p." + plan.Name!.Column + ") Name,RTRIM(p." + plan.BirthDate!.Column + ") BirthDate,RTRIM(p." + plan.Sex!.Column + ") Sex FROM T", people, StringComparison.Ordinal);
+        Assert.Contains("JOIN dbo." + plan.Name.Table + " p ON p.PbsChtNum=T.OcmChtNum WHERE T.OcmChtNum<>''", people, StringComparison.Ordinal);
+
+        var memos = Squash(TodayMemos);
+        Assert.StartsWith("SELECT c.OcmNum VisitId,RTRIM(CAST(c." + plan.Memo!.Column + " AS nvarchar(max))) Memo FROM dbo." + plan.Memo.Table + " c WHERE ", memos, StringComparison.Ordinal);
+
+        var paid = Squash(TodayPaid);
+        Assert.Contains("FROM dbo." + plan.PaidAt!.Table + " r JOIN T ON T.OcmNum=r.OrcOcmNum", paid, StringComparison.Ordinal);
+        Assert.Contains("r." + plan.PaidAt.Column, paid, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-1410.3 수납 시각은 내원마다 가장 늦은 OrcInf.OrcUpdDtm 하나다(MAX, 내원번호로 묶음)")]
+    public void PaidIsLatestPerVisit()
+    {
+        Assert.EndsWith("SELECT r.OrcOcmNum VisitId,MAX(r.OrcUpdDtm) PaidAt FROM dbo.OrcInf r JOIN T ON T.OcmNum=r.OrcOcmNum GROUP BY r.OrcOcmNum", Squash(TodayPaid), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-1410.3 주민번호 칸은 읽지 않는다(생년·성별은 생년월일·성별 칸으로, 주민번호 모양 칸을 읽을 때만 LEFT(…,7))")]
+    public void NoResidentNumber()
+    {
+        foreach (var sql in All().Values) Assert.DoesNotContain("ResNum", sql, StringComparison.Ordinal);
     }
 
     // ---- AC-1403.7 처방 이름표 ----------------------------------------------------------------------

@@ -10,7 +10,7 @@ namespace Precheck.Core.Reception;
 /// 오늘 접수 현황을 비트에서 한 번 읽는다(design.md 3절, REQ-1403). 등록 확인을 마친 세션(HospitalGate)에서 부른다.
 /// 이름표(그날 처음이면) → 오늘 접수 → 오늘 처방 → 지난 내원 → 지난 처방 차례로 ReceptionSql 문장만 ReadOnlyGuard를 지나 돌리고 날 줄(BoardInput)로 바꾼다.
 /// 읽기 한 번의 시간 제한은 8초다(AC-1403.4): 문장마다 남은 시간을 시간 제한으로 주고, 다 쓰면 다음 문장을 돌리지 않고 E-BIT-READ-FAILED.
-/// 하나라도 실패하면 예외가 올라가 일부만 주는 일이 없다(AC-1403.5). 이름·메모 같은 확인 칸은 아직 읽지 않는다(TASK-29).
+/// 하나라도 실패하면 예외가 올라가 일부만 주는 일이 없다(AC-1403.5). 그 뒤 확인 결과로 채운 칸(이름·생년월일·성별, 접수 메모, 수납 시각)을 읽는다(TASK-29).
 /// </summary>
 public static class BoardReader
 {
@@ -25,7 +25,15 @@ public static class BoardReader
     /// now의 날(yyyyMMdd 0000 ~ 다음 날 0000) 이 병원(hospitalScope) 외래 접수를 읽는다. clock은 8초 시간 제한을 재는 시계다.
     /// names(그날 이름표)를 주면 이름표를 다시 읽지 않고, null이면 먼저 읽는다(AC-1403.7).
     /// </summary>
-    public static BoardInput Read(IBitDb db, string hospitalScope, DateTime now, Func<DateTime> clock, IReadOnlyDictionary<string, string>? names = null)
+    public static BoardInput Read(IBitDb db, string hospitalScope, DateTime now, Func<DateTime> clock, IReadOnlyDictionary<string, string>? names = null) =>
+        Read(db, hospitalScope, now, clock, names, ReceptionMap.Columns);
+
+    /// <summary>
+    /// columns(확인 결과로 채운 칸, 보통 ReceptionMap.Columns)에 칸이 있을 때만 그 칸 문장을 돌린다: 이름·생년월일·성별 → TodayPeople,
+    /// 접수 메모 → TodayMemos, 수납 시각 → TodayPaid. 찾지 못한 칸(null)은 돌리지 않고 그 값만 비운다(AC-1402.7).
+    /// </summary>
+    public static BoardInput Read(
+        IBitDb db, string hospitalScope, DateTime now, Func<DateTime> clock, IReadOnlyDictionary<string, string>? names, ColumnPlan? columns)
     {
         if (db == null) throw new ArgumentNullException(nameof(db));
         if (clock == null) throw new ArgumentNullException(nameof(clock));
@@ -43,6 +51,11 @@ public static class BoardReader
         var todayRx = CodesBy(Query(db, ReceptionSql.TodayRx, today, clock, deadline));
         var prior = Prior(Query(db, ReceptionSql.PriorVisits, today, clock, deadline));
         var priorRx = CodesBy(Query(db, ReceptionSql.PriorRx, today, clock, deadline));
+        var people = columns?.Name != null || columns?.BirthDate != null || columns?.Sex != null
+            ? ByVisit(Query(db, ReceptionSql.TodayPeople, today, clock, deadline), 4)
+            : NoRows;
+        var memos = columns?.Memo != null ? ByVisit(Query(db, ReceptionSql.TodayMemos, today, clock, deadline), 2) : NoRows;
+        var paid = columns?.PaidAt != null ? ByVisit(Query(db, ReceptionSql.TodayPaid, today, clock, deadline), 2) : NoRows;
 
         var rows = visits.Select(visit =>
         {
@@ -50,6 +63,7 @@ public static class BoardReader
             var last = prior.TryGetValue(visit.Id, out var found) ? found : null;
             List<string?>? lastCodes = null;
             if (last?.VisitId != null) priorRx.TryGetValue(last.VisitId, out lastCodes);
+            var person = people.TryGetValue(visit.Id, out var p) ? p : null;
             return new VisitRow(
                 visit.Id,
                 visit.Chart,
@@ -60,7 +74,12 @@ public static class BoardReader
                 earlierCount: last?.Count ?? 0,
                 lastVisitId: last?.VisitId,
                 lastDay: last?.Day,
-                lastRx: RxItem.Of(lastCodes ?? Enumerable.Empty<string?>(), table));
+                lastRx: RxItem.Of(lastCodes ?? Enumerable.Empty<string?>(), table),
+                name: columns?.Name != null ? Id(person?[1]) : null,
+                birthDate: columns?.BirthDate != null ? Id(person?[2]) : null,
+                sex: columns?.Sex != null ? Id(person?[3]) : null,
+                memo: memos.TryGetValue(visit.Id, out var memo) ? Id(memo[1]) : null,
+                paidAt: paid.TryGetValue(visit.Id, out var paidRow) ? Id(paidRow[1]) : null);
         }).ToArray();
 
         return new BoardInput(Key(day), now, rows, table);
@@ -150,6 +169,20 @@ public static class BoardReader
             prior.Add(id, new PriorLine(Count(row[1]), Id(row[2]), Id(row[3])));
         }
         return prior;
+    }
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<object?>> NoRows = new Dictionary<string, IReadOnlyList<object?>>();
+
+    /// <summary>(내원번호, 값…) 줄 → 내원번호 → 그 줄. 내원번호가 빈 줄은 빼고 같은 내원은 처음 줄만.</summary>
+    private static IReadOnlyDictionary<string, IReadOnlyList<object?>> ByVisit(IReadOnlyList<IReadOnlyList<object?>> rows, int cells)
+    {
+        var byVisit = new Dictionary<string, IReadOnlyList<object?>>(StringComparer.Ordinal);
+        foreach (var row in Cells(rows, cells))
+        {
+            var id = Id(row[0]);
+            if (id != null && !byVisit.ContainsKey(id)) byVisit.Add(id, row);
+        }
+        return byVisit;
     }
 
     /// <summary>정해 둔 문장을 남은 시간 안에서 돌린다. 시간이 다 갔으면 돌리지 않고 시간 지남(E-BIT-READ-FAILED).</summary>
