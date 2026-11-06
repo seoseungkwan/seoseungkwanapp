@@ -1619,6 +1619,24 @@ describe('AC-1704.3 patientTrend — 고른 기간', () => {
     expect(buckets[11]).toMatchObject({ key: '2026-12', label: '12월', rangeLabel: '2026년 12월', blank: 'future', values: [0, 0] })
   })
 
+  it("AC-1704.3 직접 날짜 월별은 고른 기간의 달만 칸이다 — 이번 달에서 끝나도 앞으로 올 달('future') 칸이 없다. 해 고르기 2026년은 12월이 그대로 'future'다", () => {
+    const days = monthsFrom('2025-12', 12).flatMap((m) => monthRows(m)) // 2025년 12월 ~ 2026년 11월
+    const covered = [{ from: '2025-12-01', to: '2026-11-05' }]
+    // [최근 12개월]에서 연 [직접 날짜]의 처음 값(2025-12-01 ~ 2026-11-05 월별)
+    const year = patientTrend(pickInput({ kind: 'custom', unit: 'month', from: '2025-12-01', to: '2026-11-05' }, days, covered))!
+    expect(year.map((b) => b.key)).toEqual(monthsFrom('2025-12', 12))
+    expect(year.map((b) => b.label)).toEqual(['12월', '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월'])
+    expect(year.filter((b) => b.label === '12월')).toHaveLength(1)
+    expect(year.some((b) => b.blank === 'future')).toBe(false)
+    expect(year.at(-1)).toMatchObject({ key: '2026-11', state: 'partial', values: [4, 16] })
+    const half = patientTrend(pickInput({ kind: 'custom', unit: 'month', from: '2026-06-01', to: '2026-11-05' }, days, covered))!
+    expect(half.map((b) => b.key)).toEqual(monthsFrom('2026-06', 6))
+    expect(half.some((b) => b.blank === 'future')).toBe(false)
+    const picked = patientTrend(pickInput({ kind: 'year', year: '2026' }, days, covered))!
+    expect(picked.map((b) => b.key)).toEqual(monthsFrom('2026-01', 12))
+    expect(picked.at(-1)).toMatchObject({ key: '2026-12', label: '12월', blank: 'future', values: [0, 0] })
+  })
+
   it('AC-1704.3 지난 해 월별은 12달이 모두 진짜 칸이다(앞으로 올 달이 없다)', () => {
     const days = monthsFrom('2025-01', 12).flatMap((m) => monthRows(m))
     const buckets = patientTrend(pickInput({ kind: 'year', year: '2025' }, days, [{ from: '2025-01-01', to: '2025-12-31' }]))!

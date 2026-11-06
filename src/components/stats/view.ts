@@ -32,6 +32,9 @@ export type StatsRange = {
   grain: 'day' | 'month'
   bucket: TrendBucket // 막대·처방 그래프 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
   label: string
+  // 해 고르기만: 자르지 않은 그 해(1월 1일 ~ 12월 31일). 월별 막대는 끝 달 뒤로 이 끝 달까지 앞으로 올 달을 빈 칸으로 잇는다.
+  // 빠른 단추·달 고르기·직접 날짜는 없다(직접 날짜 월별은 고른 기간 밖 달을 잇지 않는다)
+  whole?: DateRange
 }
 
 // days·covered는 저장 모양과 readCoverage가 준 덮은 기간이다
@@ -309,7 +312,7 @@ export function patientTrend(input: StatsInput): BarBucket[] | null {
 }
 
 // 고른 기간의 막대(AC-1704.3). 칸을 모두 만든다: 일별은 날마다(휴진한 날 = 줄 없고 덮은 날만 칸 없음), 주별은 월–일을 기간으로 자름,
-// 월별은 달마다(해 고르기는 1월~12월). 자료 없는 칸은 blank 'no-data'(0이 아니다), 앞으로 올 달은 blank 'future'다. 기간에 줄이 없으면 null
+// 월별은 달마다(해 고르기는 1월~12월). 자료 없는 칸은 blank 'no-data'(0이 아니다), 해 고르기의 앞으로 올 달은 blank 'future'다. 기간에 줄이 없으면 null
 function pickTrend({ days, covered, range }: StatsInput): BarBucket[] | null {
   const rows = rowsIn(days, range.current)
   if (rows.length === 0) return null
@@ -365,7 +368,8 @@ function weekBars(current: PeriodRange, lookup: DayLookup): BarBucket[] {
   })
 }
 
-// 달 칸: 기간 첫 달 ~ 끝 달. 끝 달 뒤로 그 해 12월까지는 앞으로 올 달(첫날이 오늘 이후)일 때만 빈 칸으로 잇는다(해 고르기의 1월~12월)
+// 달 칸: 기간 첫 달 ~ 끝 달. 해 고르기(range.whole)만 끝 달 뒤로 그 해 12월까지, 앞으로 올 달(첫날이 오늘 이후)일 때 빈 칸으로 잇는다(1월~12월).
+// 직접 날짜 월별은 이번 달에서 끝나도 고른 기간 밖 달을 붙이지 않는다
 function monthBars(range: StatsRange, lookup: DayLookup): BarBucket[] {
   const { current } = range
   const head = (month: string) => ({ key: month, label: `${Number(month.slice(5))}월`, rangeLabel: monthName(month) })
@@ -374,8 +378,9 @@ function monthBars(range: StatsRange, lookup: DayLookup): BarBucket[] {
     const whole = monthRange(month)
     bars.push(spanBar(head(month), { from: later(whole.from, current.from), to: earlier(whole.to, current.to) }, whole, lookup))
   }
-  const yearEnd = `${current.to.slice(0, 4)}-12`
-  for (let month = addMonths(monthOf(current.to), 1); compareYmd(month, yearEnd) <= 0 && compareYmd(`${month}-01`, range.load.to) >= 0; month = addMonths(month, 1)) {
+  if (range.whole === undefined) return bars
+  const lastMonth = monthOf(range.whole.to)
+  for (let month = addMonths(monthOf(current.to), 1); compareYmd(month, lastMonth) <= 0 && compareYmd(`${month}-01`, range.load.to) >= 0; month = addMonths(month, 1)) {
     bars.push({ ...head(month), state: 'partial', values: [0, 0], blank: 'future' })
   }
   return bars

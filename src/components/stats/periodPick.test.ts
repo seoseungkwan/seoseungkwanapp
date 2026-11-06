@@ -102,6 +102,7 @@ describe('AC-1701.3 해 고르기', () => {
       grain: 'day',
       bucket: 'month',
       label: '2026년 1월 1일 – 11월 5일',
+      whole: { from: '2026-01-01', to: '2026-12-31' },
     })
   })
 
@@ -113,6 +114,14 @@ describe('AC-1701.3 해 고르기', () => {
     expect(range.lastYear).toBeNull()
     expect(range.bucket).toBe('month')
     expect(range.load).toEqual({ from: '2024-01-01', to: TODAY })
+  })
+
+  it('AC-1701.3 해 고르기만 자르지 않은 그 해(whole, 1월 1일 ~ 12월 31일)를 갖는다 — 달·직접 날짜는 whole이 없다(월별 막대가 고른 기간 밖 달을 잇지 않는다)', () => {
+    expect(pickRange(TODAY, { kind: 'year', year: '2025' }, false).whole).toEqual({ from: '2025-01-01', to: '2025-12-31' })
+    expect(pickRange(TODAY, { kind: 'year', year: '2026' }, true).whole).toEqual({ from: '2026-01-01', to: '2026-12-31' })
+    expect(pickRange(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, false).whole).toBeUndefined()
+    expect(pickRange(TODAY, { kind: 'custom', unit: 'month', from: '2025-12-01', to: '2026-11-05' }, false).whole).toBeUndefined()
+    expect(pickRange(TODAY, { kind: 'custom', unit: 'month', from: '2026-06-01', to: '2026-11-05' }, false)).not.toHaveProperty('whole')
   })
 
   it('AC-1701.3 오늘이 끝났으면 2026년은 오늘까지다', () => {

@@ -98,13 +98,15 @@ function yearPickRange(today: string, pick: Extract<StatsPick, { kind: 'year' }>
   const to = open ? lastDay : whole.to
   const before = yearOf(addMonths(`${pick.year}-01`, -12))
   const previousSpan = { from: `${before}-01-01`, to: open ? addMonthsToDay(to, -12) : `${before}-12-31` }
-  return rangeWith(today, {
+  const range = rangeWith(today, {
     name: yearName(pick.year),
     current: { from: whole.from, to },
     previous: compareOf(today, previousSpan, yearName(before), open ? '작년 같은 날까지' : '작년'),
     lastYear: null,
     bucket: 'month',
   })
+  // 월별 막대가 12월까지 앞으로 올 달을 잇도록 자르지 않은 해를 넘긴다(해 고르기만)
+  return { ...range, whole }
 }
 
 // 바로 전 N일과 작년 같은 날짜(2월 29일 → 28일). 작년 기간이 고른 기간과 하루라도 겹치면 작년 비교는 뺀다
