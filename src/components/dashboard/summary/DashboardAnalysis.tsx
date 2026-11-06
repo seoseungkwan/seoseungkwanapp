@@ -6,26 +6,27 @@ import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
 import { formatDelta, formatRate, percentOf } from '@/components/charts/format'
 import { KpiStat } from '@/components/charts/KpiStat'
 import { RankedBars } from '@/components/charts/RankedBars'
-import { StackedBarChart, type BarSeries } from '@/components/charts/StackedBarChart'
+import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
+import { ErrorCard } from '@/components/common/ErrorCard'
+import { PeriodPicker } from '@/components/stats/PeriodPicker'
 import { ds } from '@/components/ui/classes'
-import type { Delta } from '@/types/analysis'
+import type { Delta, TrendBucket } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
+import { flowDense, flowOf, flowTicks, flowTrend, rankLine, todayFinished, type Flow, type FlowChoice } from './flow'
 import { isConnected, type RxGroupLine, type SummarySource } from './source'
+import { usePeriodDays, type PeriodDays } from './usePeriodDays'
 import {
+  dayCount,
   DEFAULT_PERIOD,
   groupRank,
   longDate,
   PERIODS,
-  periodRange,
   revisitCohortCaption,
+  revisitSkipped,
   revisitView,
-  tickLabels,
   todayView,
-  trendBuckets,
   weekdayBuckets,
   type GroupRank,
-  type Period,
-  type PeriodRange,
   type RateCell,
   type RevisitCells,
   type TodayView,
@@ -68,6 +69,11 @@ const PERIOD_BUTTON =
   'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 const PERIOD_ON = 'bg-accent-soft font-semibold text-accent-strong'
 const PERIOD_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
+// 기간 고르기(dashboard-period, design.md '화면'): 그래프 갈래의 머리 줄에만 더한다. 768px 이상 아래 끝 맞춤(통계 탭 StatsScreen의 items-end처럼
+// 빠른 단추가 '기간 골라 보기' 이름 줄 아래 고르기 단추와 끝을 맞춘다) · 다음 줄로 넘어간 고르기 묶음은 오른쪽에 붙음. 768px 미만은 지금 클래스 그대로다
+const HEAD_WITH_PICKER = 'md:items-end md:justify-end'
+// 고르기 감싸개: 빠른 단추가 max-md:order-3이라 휴대폰에서 그 아래 줄 전체 폭으로 둔다
+const PICKER_WRAP = 'max-md:order-4 max-md:w-full'
 
 const TREND_SERIES: BarSeries[] = [
   { name: '신환', tone: 'accent' },
@@ -77,6 +83,11 @@ const TREND_LEGEND: LegendItem[] = [
   { label: '신환', mark: 'accent' },
   { label: '재진', mark: 'chart-3' },
 ]
+// 고른 기간에 '일부 기간' 칸(잘린 주·끝나지 않은 달·덜 끝난 줄)이 있을 때만(통계 탭 환자 수 추이와 같은 빗금). 빠른 단추 범례는 지금 그대로다
+const TREND_LEGEND_PARTIAL: LegendItem[] = [...TREND_LEGEND, { label: '일부 기간', mark: 'hatch' }]
+const TREND_DESC: Record<TrendBucket, string> = { day: '신환·재진, 하루씩', week: '신환·재진, 한 주씩', month: '신환·재진, 한 달씩' }
+const READING = '읽는 중' // 옛 기간을 읽는 동안 그래프 넷 가운데 글(AC-1804.2)
+const NO_ROWS: readonly DayPayload[] = []
 const WEEK_SERIES: BarSeries[] = [{ name: '환자 수', tone: 'accent' }]
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일'] as const
 const RANK_ROWS = [1, 2, 3, 4, 5] as const // 처방 상위 빈 줄 번호
@@ -134,14 +145,20 @@ export function DashboardAnalysis({
   gainsRevisitDesc,
   emptyCharts = false,
 }: DashboardAnalysisProps) {
-  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
+  // 고른 것 하나: 빠른 단추(처음 30일) 또는 통계 탭 기간 고르기의 고른 기간(dashboard-period). 저장하지 않아 새로 열면 늘 최근 30일이다(AC-1801.1)
+  const [choice, setChoice] = useState<FlowChoice>(DEFAULT_PERIOD)
   const todayId = useId()
   const flowId = useId()
   const gainsId = useId()
   const days = isConnected(source) ? source.days : null
-  // 묶음은 새 prop이 아니라 source 안으로 온다(탭 틀 AC-312.2, bit-dashboard design.md)
+  // 묶음·옛 기간 읽기는 새 prop이 아니라 source 안으로 온다(탭 틀 AC-312.2, bit-dashboard design.md, dashboard-period design.md)
   const groups = source.kind === 'data' ? source.groups : undefined
-  const range = periodRange(today, period)
+  const older = source.kind === 'data' ? source.older : undefined
+  const held = days ?? NO_ROWS
+  const todayDone = todayFinished(today, held)
+  const flow = flowOf(today, choice, todayDone)
+  const { state: period, retry } = usePeriodDays(held, flow.current, older)
+  const charts = days !== null || emptyCharts
   const past = day !== today
 
   return (
@@ -158,31 +175,34 @@ export function DashboardAnalysis({
       </section>
 
       <section aria-labelledby={flowId} className={SECTION}>
-        <div className={SECTION_HEAD}>
+        <div className={charts ? `${SECTION_HEAD} ${HEAD_WITH_PICKER}` : SECTION_HEAD}>
           <h2 id={flowId} className={SECTION_TITLE}>
             기간별 흐름
           </h2>
-          <span className="ml-auto whitespace-nowrap text-small text-muted">{range.label}</span>
+          <span className="ml-auto whitespace-nowrap text-small text-muted">{flow.head}</span>
           <div role="group" aria-label="기간" className={PERIOD_GROUP}>
             {PERIODS.map((p) => (
               <button
                 key={p}
                 type="button"
-                aria-pressed={p === period}
-                onClick={() => setPeriod(p)}
-                className={`${PERIOD_BUTTON} ${p === period ? PERIOD_ON : PERIOD_OFF}`}
+                aria-pressed={p === choice}
+                onClick={() => setChoice(p)}
+                className={`${PERIOD_BUTTON} ${p === choice ? PERIOD_ON : PERIOD_OFF}`}
               >
                 {`최근 ${p}일`}
               </button>
             ))}
           </div>
+          {/* 통계 탭 기간 고르기 그대로, 빠른 단추 바로 오른쪽 같은 줄(AC-1801.2). 그래프를 그리는 갈래에만 있다. 부품은 고른 기간만 돌려준다 */}
+          {charts && (
+            <div className={PICKER_WRAP}>
+              <PeriodPicker choice={flow.picker} lastDay={flow.lastDay} todayDone={todayDone} onChoose={(next) => typeof next !== 'string' && setChoice(next)} />
+            </div>
+          )}
         </div>
 
-        {days === null && !emptyCharts ? (
-          <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />
-        ) : (
-          <FlowCharts days={days ?? []} groups={groups} range={range} period={period} />
-        )}
+        {charts && period.kind === 'failed' && <PeriodReadFailed retrying={period.retrying} onRetry={retry} />}
+        {charts ? <FlowCharts flow={flow} period={period} groups={groups} /> : <Gains id={gainsId} title={gainsTitle} note={gainsNote} revisitDesc={gainsRevisitDesc} />}
       </section>
     </>
   )
@@ -211,39 +231,65 @@ function Gains({ id, title, note, revisitDesc }: { id: string; title: string; no
   )
 }
 
-// 연결 뒤 그래프 넷. 처방 상위는 통계 탭 묶음으로 센다(bit-dashboard REQ-606).
+// 옛 기간 읽기 실패(AC-1804.3): 고르기 아래 오류 카드 + 카드 밖 [이 기간 다시 읽기](LiveDashboard 오류 카드와 같은 모양, 폰 전체 폭).
+// 위쪽 [다시 읽기](비트·저장 숫자 전체)와 헷갈리지 않게 단추 이름이 '이 기간 다시 읽기'다. 새 오류 번호는 없다
+function PeriodReadFailed({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
+  return (
+    <div className="mb-6">
+      <ErrorCard code="E-STATS-READ-FAILED" />
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <button type="button" className={`${ds.button.secondarySmall} max-md:w-full`} disabled={retrying} onClick={onRetry}>
+          {retrying ? '다시 읽는 중' : '이 기간 다시 읽기'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// 연결 뒤 그래프 넷. 넷 모두 flow.current(센 기간)를 따르고, 처방 상위는 통계 탭 묶음으로 센다(bit-dashboard REQ-606).
+// 옛 기간을 읽는 중이면 빈 틀 가운데 '읽는 중'(숫자를 지어내지 않는다), 읽기 실패면 줄 없음('자료 없음')이다(dashboard-period AC-1804.2·AC-1804.3).
 // 1024px 이상 [추이 1~8 · 재방문율 9~12] / [요일별 1~6 · 처방 7~12], 768~1023px 추이 전체 / 반반 / 처방 전체, 폰 세로
-function FlowCharts({ days, groups, range, period }: { days: readonly DayPayload[]; groups: GroupLines; range: PeriodRange; period: Period }) {
+function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; groups: GroupLines }) {
+  const days = period.kind === 'ready' ? period.days : NO_ROWS
+  const reading = period.kind === 'reading'
+  const empty = reading ? READING : NO_DATA
+  const trend = reading ? null : flowTrend(days, flow)
+  // 빈 칸(자료 없음·앞으로 올 달)은 빗금 칸이 아니다(통계 탭 PatientTrendSection과 같다)
+  const partial = flow.period === null && trend !== null && trend.some((bucket) => !bucket.blank && bucket.state !== 'complete')
+  // 빠른 단추는 지금 그대로(30일만 30일 줄을 옮겨 '가장 최근 신환' 글). 고른 기간은 7·14·30일 줄 모두 고른 기간이고 뺀 날이 있으면 줄 아래 글
+  const cells = flow.period !== null ? revisitView(days, flow.current, flow.period) : revisitView(days, flow.current)
+  const skipped = flow.period === null ? revisitSkipped(days, flow.current) : null
   return (
     <div className="grid gap-y-8 md:grid-cols-2 md:gap-x-6 lg:grid-cols-12">
-      <Chart title="환자 수 추이" desc="신환·재진, 하루씩" aside={<ChartLegend items={TREND_LEGEND} />} className="md:col-span-2 lg:col-span-8">
-        <TrendBody days={days} range={range} period={period} />
+      <Chart title="환자 수 추이" desc={TREND_DESC[flow.bucket]} aside={<ChartLegend items={partial ? TREND_LEGEND_PARTIAL : TREND_LEGEND} />} className="md:col-span-2 lg:col-span-8">
+        <TrendBody buckets={trend} flow={flow} message={empty} />
       </Chart>
       <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className="lg:col-span-4 lg:border-l lg:border-line lg:pl-6">
-        <RevisitRows cells={revisitView(days, range, period)} />
+        <RevisitRows cells={cells} skipped={skipped} empty={empty} />
       </Chart>
       <Chart title="요일별 환자 수" desc="하루 평균, 요일마다" className="lg:col-span-6">
-        <WeekBody buckets={weekdayBuckets(days, range)} />
+        <WeekBody buckets={reading ? null : weekdayBuckets(days, flow.current)} message={empty} />
       </Chart>
       <Chart
         title="처방 상위"
         desc="통계 탭에서 묶은 치료 중 많이 한 순서예요"
+        sub={rankLine(flow, period.kind === 'ready' ? dayCount(days, flow.current) : null)}
         aside={<GroupsLink groups={groups} />}
         className="md:col-span-2 lg:col-span-6 lg:border-l lg:border-line lg:pl-6"
       >
-        <RankBody rank={groupRank(days, range, groups ?? [])} groups={groups} />
+        {reading ? <EmptyRank message={READING} /> : <RankBody rank={groupRank(days, flow.current, groups ?? [])} groups={groups} />}
       </Chart>
     </div>
   )
 }
 
-// 환자 수 추이: 자료가 있으면 하루 한 칸 쌓은 막대(30·90일은 막대 위 합계 없음), 기간 안 자료가 없으면 빈 틀 + "자료 없음" + 날짜 눈금
-function TrendBody({ days, range, period }: { days: readonly DayPayload[]; range: PeriodRange; period: Period }) {
-  const buckets = trendBuckets(days, range, period)
-  if (buckets === null) return <EmptyTrend message={NO_DATA} ticks={tickLabels(range, period)} />
+// 환자 수 추이: 자료가 있으면 칸마다 쌓은 막대(빠른 단추는 지금처럼 7일만 막대 위 합계, 고른 기간은 칸 7개 이하만),
+// 없으면(기간 안 자료 없음·읽는 중) 빈 틀 + 가운데 글 + 날짜 눈금(고른 기간의 주·달 칸은 눈금 없음)
+function TrendBody({ buckets, flow, message }: { buckets: BarBucket[] | null; flow: Flow; message: string }) {
+  if (buckets === null) return <EmptyTrend message={message} ticks={flowTicks(flow)} />
   return (
     <div className={`mt-3 ${CHART_NO_SIDE_SCROLL}`}>
-      <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={period !== 7} />
+      <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={flowDense(flow, buckets)} />
     </div>
   )
 }
@@ -308,8 +354,8 @@ function DeltaStat({ delta, weekday }: { delta: Delta; weekday: string }) {
   )
 }
 
-// 그래프 칸: 제목(h3 subtitle 600) + 옆 보조(범례) → 설명(small muted) → 그림. 이름은 제목이 준다
-function Chart({ title, desc, aside, className, children }: { title: string; desc: string; aside?: ReactNode; className: string; children: ReactNode }) {
+// 그래프 칸: 제목(h3 subtitle 600) + 옆 보조(범례) → 설명(small muted) → [설명 바로 아래 한 줄(sub, 같은 글자 + 고정폭 숫자)] → 그림. 이름은 제목이 준다
+function Chart({ title, desc, sub, aside, className, children }: { title: string; desc: string; sub?: string; aside?: ReactNode; className: string; children: ReactNode }) {
   const id = useId()
   return (
     <div role="group" aria-labelledby={id} className={`min-w-0 ${className}`}>
@@ -320,6 +366,7 @@ function Chart({ title, desc, aside, className, children }: { title: string; des
         {aside}
       </div>
       <p className="text-small text-muted">{desc}</p>
+      {sub !== undefined && <p className="text-small text-muted tabular-nums">{sub}</p>}
       {children}
     </div>
   )
@@ -358,17 +405,20 @@ function EmptyTrend({ message, ticks }: { message: string; ticks: { day: string;
 // 신환 재방문율 줄 셋(연결 뒤). 30일 줄도 7·14일과 같은 줄이고, 30일 기간에는 아래에 무엇을 셌는지 글을 붙인다(stats AC-516.2)
 const REVISIT_ROW = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-line py-3'
 
-function RevisitRows({ cells }: { cells: RevisitCells }) {
+// skipped(고른 기간만): 그 값이 null이라 뺀 날이 있는 줄. 비율 줄 아래에 무엇을 뺐는지 글을 붙인다(dashboard-period AC-1802.3).
+// empty: 'none' 칸의 아래 글('자료 없음', 옛 기간을 읽는 중이면 '읽는 중')
+function RevisitRows({ cells, skipped = null, empty = NO_DATA }: { cells: RevisitCells; skipped?: Record<'d7' | 'd14' | 'd30', boolean> | null; empty?: string }) {
+  const skipCaption = (key: 'd7' | 'd14' | 'd30', days: 7 | 14 | 30) => (skipped?.[key] && cells[key].kind === 'rate' ? `온 뒤 ${days}일이 안 된 날의 신환은 빼고 셌어요` : null)
   return (
     <div className="mt-2">
-      <RevisitRow name="7일 안에 다시 옴" cell={cells.d7} />
-      <RevisitRow name="14일 안에 다시 옴" cell={cells.d14} />
-      <RevisitRow name="30일 안에 다시 옴" cell={cells.d30} caption={cells.d30Cohort === null ? null : revisitCohortCaption(cells.d30Cohort)} />
+      <RevisitRow name="7일 안에 다시 옴" cell={cells.d7} empty={empty} caption={skipCaption('d7', 7)} />
+      <RevisitRow name="14일 안에 다시 옴" cell={cells.d14} empty={empty} caption={skipCaption('d14', 14)} />
+      <RevisitRow name="30일 안에 다시 옴" cell={cells.d30} empty={empty} caption={cells.d30Cohort === null ? skipCaption('d30', 30) : revisitCohortCaption(cells.d30Cohort)} />
     </div>
   )
 }
 
-function RevisitRow({ name, cell, caption = null }: { name: string; cell: RateCell; caption?: string | null }) {
+function RevisitRow({ name, cell, empty, caption = null }: { name: string; cell: RateCell; empty: string; caption?: string | null }) {
   return (
     <div className={REVISIT_ROW}>
       <span className="text-body text-ink-2">{name}</span>
@@ -380,7 +430,7 @@ function RevisitRow({ name, cell, caption = null }: { name: string; cell: RateCe
         <Dash />
       )}
       {cell.kind === 'none' ? (
-        <span className="col-span-2 text-caption text-muted">{NO_DATA}</span>
+        <span className="col-span-2 text-caption text-muted">{empty}</span>
       ) : (
         <RateBar value={cell.kind === 'rate' ? cell.value : null} />
       )}
@@ -400,8 +450,8 @@ function RateBar({ value }: { value: number | null }) {
   )
 }
 
-// 요일별 환자 수: 자료가 있으면 한 계열 막대, 기간 안 자료가 없으면 빈 막대 칸 7개(150px, 폰 110px) + 요일 글자 + "자료 없음"
-function WeekBody({ buckets }: { buckets: ReturnType<typeof weekdayBuckets> }) {
+// 요일별 환자 수: 자료가 있으면 한 계열 막대, 기간 안 자료가 없으면(읽는 중 포함) 빈 막대 칸 7개(150px, 폰 110px) + 요일 글자 + 가운데 글
+function WeekBody({ buckets, message = NO_DATA }: { buckets: ReturnType<typeof weekdayBuckets>; message?: string }) {
   if (buckets !== null) {
     return (
       <div className="mt-3">
@@ -419,7 +469,7 @@ function WeekBody({ buckets }: { buckets: ReturnType<typeof weekdayBuckets> }) {
           </span>
         ))}
       </div>
-      <Note>{NO_DATA}</Note>
+      <Note>{message}</Note>
     </div>
   )
 }

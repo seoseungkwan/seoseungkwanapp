@@ -5,18 +5,22 @@ import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChartLegend } from '@/components/charts/ChartLegend'
 import { KpiStat } from '@/components/charts/KpiStat'
 import { RankedBars } from '@/components/charts/RankedBars'
 import { StackedBarChart, type BarSeries } from '@/components/charts/StackedBarChart'
+import { ErrorCard } from '@/components/common/ErrorCard'
+import { PeriodPicker } from '@/components/stats/PeriodPicker'
+import type { StatsPick } from '@/components/stats/periodPick'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { isBorderBox, nestedBoxes } from '@/testing/boxes'
 import type { DayPayload, RevisitPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
-import type { RxGroupLine, SummarySource } from './source'
-import { groupRank, periodRange, tickLabels, trendBuckets, weekdayBuckets, type Period } from './view'
+import { flowOf, flowTrend } from './flow'
+import type { OlderDays, RxGroupLine, SummarySource } from './source'
+import { dayCount, groupRank, periodRange, tickLabels, trendBuckets, weekdayBuckets, type Period } from './view'
 
 // 오늘 하루 분석 · 기간별 흐름 (tab-frame REQ-311, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장', 시안 docs/mockups/dashboard-home/ + 메모 §3·§4).
 // jsdom은 CSS를 계산하지 않는다 → 정해 둔 클래스·글자·짜임을 본다. 차트 부품은 같은 props로 따로 그린 마크업과 견준다.
@@ -677,8 +681,8 @@ describe("기간별 흐름 — '처방 상위' = 통계 탭 묶음 (REQ-606)", (
   const NO_GROUPS = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.'
   const ALL_STALE = '통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.'
   const rank = () => chart('처방 상위')
-  // 그래프 칸 = 머리 줄(h3 · 링크) → 설명 → 몸
-  const body = () => rank().children[2] as HTMLElement
+  // 그래프 칸 = 머리 줄(h3 · 링크) → 설명 → 날짜 줄(dashboard-period AC-1803.1, 설명 바로 아래) → 몸
+  const body = () => rank().children[3] as HTMLElement
   const barRows = () =>
     Array.from(rank().querySelectorAll('ol[aria-label="처방 상위"] > li')).map((li) => [li.children[0]!.textContent, li.children[2]!.textContent])
   // ① 기간 안 자료 없음의 몸(tab-frame AC-311.4 그대로)을 따로 그려 가운데 글만 바꾼 마크업
@@ -977,7 +981,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
   const importsOf = (file: string) => [...code(file).matchAll(/^import\s[^'"]*?from\s+['"]([^'"]+)['"]/gm)].map((m) => m[1]!)
   const ALLOWED =
-    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view))$/
+    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view|flow|usePeriodDays))$/
 
   // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
   const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
@@ -992,7 +996,15 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'LiveDashboard.tsx: @/lib/storage/stats',
     'LiveDashboard.tsx: ./DashboardAnalysis',
   ]
-  const EXCEPTIONS = new Set([SOURCE_READ_TYPE, ...LIVE_IMPORTS])
+  // 대시보드 기간 고르기(dashboard-period AC-1805.2, design.md '결정과 트레이드오프'): 통계를 부르는 곳은 flow.ts(periodPick·view)와
+  // DashboardAnalysis.tsx(PeriodPicker) 둘뿐이고, 오류 카드는 옛 기간 읽기 실패 카드에만 쓴다
+  const PERIOD_IMPORTS = [
+    'DashboardAnalysis.tsx: @/components/common/ErrorCard',
+    'DashboardAnalysis.tsx: @/components/stats/PeriodPicker',
+    'flow.ts: @/components/stats/periodPick',
+    'flow.ts: @/components/stats/view',
+  ]
+  const EXCEPTIONS = new Set([SOURCE_READ_TYPE, ...LIVE_IMPORTS, ...PERIOD_IMPORTS])
   // 아래 글자 검사에서 LiveDashboard.tsx의 이 한 줄만 뺀다(briefing을 부르는 곳은 이 불러오기 하나뿐이어야 한다)
   const LIVE_HOME_IMPORT = "import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'"
 
@@ -1001,12 +1013,21 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     expect(all.length).toBeGreaterThan(0)
     expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && !EXCEPTIONS.has(entry))).toEqual([])
     // 허락한 줄은 실제로 있는 불러오기다(쓰지 않는 예외가 남지 않게)
-    expect(all).toEqual(expect.arrayContaining([SOURCE_READ_TYPE, ...LIVE_IMPORTS]))
+    expect(all).toEqual(expect.arrayContaining([SOURCE_READ_TYPE, ...LIVE_IMPORTS, ...PERIOD_IMPORTS]))
     for (const file of appFiles()) {
       const text = file === 'LiveDashboard.tsx' ? code(file).replace(LIVE_HOME_IMPORT, '') : code(file)
       expect(text, file).not.toMatch(/components\/shell|dashboard\/briefing|notReadyFeatures|supabase|@\/lib\/auth|AppShell/)
       expect(text, file).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|indexedDB|document\.cookie/)
     }
+  })
+
+  it('AC-1805.2: summary/view.ts는 components/stats를 부르지 않고(통계 view.ts가 이 파일을 불러 고리가 생긴다), 통계를 부르는 곳은 flow.ts(periodPick·view)와 DashboardAnalysis.tsx(PeriodPicker) 둘뿐이다', () => {
+    expect(importsOf('view.ts').filter((from) => from.includes('components/stats'))).toEqual([])
+    expect(code('view.ts')).not.toMatch(/components\/stats/)
+    const stats = appFiles().flatMap((file) => importsOf(file).flatMap((from) => (from.startsWith('@/components/stats') ? [`${file}: ${from}`] : [])))
+    expect(stats.sort()).toEqual(['DashboardAnalysis.tsx: @/components/stats/PeriodPicker', 'flow.ts: @/components/stats/periodPick', 'flow.ts: @/components/stats/view'])
+    // 새 파일 둘은 lib/storage를 부르지 않는다(옛 기간 읽기는 LiveDashboard가 만들어 source.older로 준다)
+    for (const file of ['flow.ts', 'usePeriodDays.ts', 'DashboardAnalysis.tsx']) expect(code(file), file).not.toMatch(/lib\/storage|\breadDays\b/)
   })
 
   it('AC-311.8: 날짜 계산은 lib/analytics/dates.ts, 증감은 compareNumbers — 화면 파일에서 Date를 쓰지 않는다', () => {
@@ -1154,5 +1175,484 @@ describe('고른 날 (day)', () => {
     await choose('최근 7일')
     view.rerender(<DashboardAnalysis today={LATER} day="2026-10-12" source={data(FULL_DAYS)} />)
     expect(pressed()).toEqual(['최근 7일'])
+  })
+})
+
+// 대시보드 기간 고르기 (dashboard-period REQ-1801~REQ-1805, design.md '화면 (DashboardAnalysis)'). 시험의 오늘은 2026-11-06(금), 어제는 11월 5일,
+// 손에 든 숫자의 첫날(오늘 − 100)은 7월 29일이다. 고르기 부품은 통계 탭 PeriodPicker 그대로이고, 숫자는 flow.ts·view.ts 함수와 견준다
+describe('기간 고르기 (dashboard-period)', () => {
+  const NOW = '2026-11-06'
+  const HELD_FROM = '2026-07-29'
+  const OFF_DAYS = ['2026-10-04', '2026-10-11', '2026-10-15', '2026-10-18', '2026-10-25'] // 일요일 넷과 15일
+  // 10월: 31일 가운데 26일, 11월: 2~5일 4일 + 오늘(덜 끝남). 날마다 묶음 열쇠 줄 셋. 9월·8월·7월에는 줄이 없다
+  const OCT = Array.from({ length: 31 }, (_, i) => addDays('2026-10-01', i)).filter((ymd) => !OFF_DAYS.includes(ymd))
+  const NOV = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05']
+  const NOW_DAYS = [
+    ...OCT.map((ymd) => day(ymd, { groups: keyed(2, 1, 0) })),
+    ...NOV.map((ymd) => day(ymd, { newPatients: 3, groups: keyed(1, 1, 1) })),
+    day(NOW, { partial: true, groups: keyed(9, 9, 9) }),
+  ]
+  const CLOSED_DAYS = [...NOW_DAYS.slice(0, -1), day(NOW, { groups: keyed(9, 9, 9) })]
+  const month = (m: string, unit: 'day' | 'week' = 'day'): StatsPick => ({ kind: 'month', unit, month: m })
+  const source = (o: { days?: DayPayload[]; groups?: readonly RxGroupLine[] | null; older?: OlderDays } = {}): SummarySource => ({
+    kind: 'data',
+    days: o.days ?? NOW_DAYS,
+    groups: o.groups === undefined ? LINES : o.groups,
+    ...(o.older === undefined ? {} : { older: o.older }),
+  })
+  const drawNow = (s: SummarySource = source()) => render(<DashboardAnalysis today={NOW} source={s} />)
+  const RANK_DESC_TEXT = RANK_DESC
+  const UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.'
+  const NO_GROUPS = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.'
+  const ALL_STALE = '통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.'
+
+  const flowHead = () => region('기간별 흐름').children[0] as HTMLElement
+  const headLabel = () => flowHead().children[1]!.textContent
+  const picker = () => screen.getByRole('group', { name: '기간 골라 보기' })
+  const units = () => within(within(picker()).getAllByRole('group', { name: '보는 단위' })[0]!).getAllByRole('button')
+  const unitPressed = () => units().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent)
+  const click = async (el: Element) => {
+    const user = userEvent.setup()
+    await user.click(el)
+  }
+  const pickUnit = (name: '일별' | '주별' | '월별') => click(units().find((b) => b.textContent === name)!)
+  const step = (name: '이전 달' | '다음 달' | '이전 해' | '다음 해') => click(within(picker()).getByRole('button', { name }))
+  const customButton = () => within(picker()).getByRole('button', { name: /직접 날짜/ })
+  const trendRoot = () => chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
+  const weekRoot = () => chart('요일별 환자 수').querySelector('table')!.parentElement!.parentElement!
+  const legend = () => Array.from(chart('환자 수 추이').querySelectorAll('ul li')).map((li) => li.textContent)
+  const rankSub = () => chart('처방 상위').children[2] as HTMLElement
+  const revisitRow = (name: string) => within(chart('신환 재방문율')).getByText(name).parentElement!
+  const withoutIds = (html: string) => html.replace(/ (?:id|aria-labelledby|aria-controls)="[^"]*"/g, '')
+  const DIR = join(process.cwd(), 'src/components/dashboard/summary')
+  const codeOf = (file: string) =>
+    readFileSync(join(DIR, file), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+  const flowOfPick = (pick: StatsPick | Period, days = NOW_DAYS) => flowOf(NOW, pick, days === CLOSED_DAYS)
+
+  // 옛 기간 읽기 가짜(LiveDashboard가 만드는 older 자리). answers[i] = i번째 읽기의 답을 푸는 함수
+  function olderReader() {
+    const answers: Array<(rows: readonly DayPayload[] | null) => void> = []
+    const read = vi.fn((range: { from: string; to: string }) => {
+      void range
+      return new Promise<readonly DayPayload[] | null>((resolve) => answers.push(resolve))
+    })
+    const older: OlderDays = { from: HELD_FROM, read }
+    return { older, read, answers }
+  }
+  const answer = async (resolve: (rows: readonly DayPayload[] | null) => void, rows: readonly DayPayload[] | null) => {
+    await act(async () => {
+      resolve(rows)
+    })
+  }
+  // 10월(일별)에서 ◀ 세 번 = 2026년 7월(손에 든 숫자의 첫날 7월 29일보다 앞)
+  const toJuly = async () => {
+    await pickUnit('일별')
+    for (let i = 0; i < 3; i++) await step('이전 달')
+  }
+
+  describe('자리와 처음 모양 (REQ-1801)', () => {
+    it('AC-1801.1: 처음 — [최근 30일]만 눌려 있고 고르기의 [일별][주별][월별]·[직접 날짜]는 안 눌림, 기간 글 "10월 7일 – 11월 5일", 그래프는 지금 함수 그대로', () => {
+      drawNow()
+      expect(pressed()).toEqual(['최근 30일'])
+      expect(units().map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([
+        ['일별', 'false'],
+        ['주별', 'false'],
+        ['월별', 'false'],
+      ])
+      expect(customButton().getAttribute('aria-pressed')).toBe('false')
+      expect(headLabel()).toBe('10월 7일 – 11월 5일')
+      const range = periodRange(NOW, 30)
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={trendBuckets(NOW_DAYS, range, 30)!} dense />))
+      expect(weekRoot().outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(NOW_DAYS, range)!} />))
+      expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={groupRank(NOW_DAYS, range, LINES)!.items} />))
+    })
+
+    it('AC-1801.1: 고른 것은 저장하지 않는다 — 고른 뒤 새로 그리면 다시 최근 30일이고, 화면 파일은 브라우저 저장소·주소·서버를 쓰지 않는다', async () => {
+      const first = drawNow()
+      await pickUnit('주별')
+      expect(pressed()).toEqual([])
+      first.unmount()
+      drawNow()
+      expect(pressed()).toEqual(['최근 30일'])
+      expect(headLabel()).toBe('10월 7일 – 11월 5일')
+      for (const file of ['DashboardAnalysis.tsx', 'flow.ts', 'usePeriodDays.ts']) {
+        expect(codeOf(file), file).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie|useRouter|useSearchParams|usePathname|history\.|location\.|\bfetch\s*\(|supabase/)
+      }
+    })
+
+    it('AC-1801.2: 그래프 갈래 — 머리 줄 안 빠른 단추 바로 다음(같은 줄)에 감싸개 하나, 그 안은 통계 탭 PeriodPicker 그대로(최근 30일 · 끝난 날 11월 5일)', () => {
+      drawNow()
+      const head = flowHead()
+      const quick = within(head).getByRole('group', { name: '기간' })
+      const wrap = quick.nextElementSibling!
+      expect(head.lastElementChild).toBe(wrap)
+      expect(wrap.children).toHaveLength(1)
+      expect(wrap.firstElementChild).toBe(picker())
+      expect(withoutIds(wrap.innerHTML)).toBe(withoutIds(markupOf(<PeriodPicker choice="30d" lastDay="2026-11-05" todayDone={false} onChoose={() => {}} />)))
+    })
+
+    it('AC-1801.2: 읽었는데 자료 없는 빈 틀(emptyCharts)에도 고르기가 있다', () => {
+      render(<DashboardAnalysis today={NOW} source={data([])} emptyChip="자료 없음" emptyText="자료 없음" emptyNote={null} emptyCharts />)
+      expect(picker()).toBeTruthy()
+      expect(within(chart('환자 수 추이')).getByText('자료 없음')).toBeTruthy()
+    })
+
+    it.each([
+      ['연결 전', {}],
+      ['처음 읽는 중', { emptyChip: '읽는 중', emptyText: '읽는 중', gainsTitle: '읽기가 끝나면 생기는 것 4가지' }],
+      ['처음 읽기 실패', { emptyChip: '읽지 못함', emptyText: '읽지 못했어요', emptyNote: null }],
+    ] as const)("AC-1801.2: %s('…생기는 것 4가지' 목록) — 고르기가 없고 머리 줄은 지금 클래스·짜임 그대로, 빠른 단추만 있다", (_, look) => {
+      render(<DashboardAnalysis today={NOW} source={NONE} {...look} />)
+      expect(screen.queryByRole('group', { name: '기간 골라 보기' })).toBeNull()
+      expect(classesOf(flowHead())).toEqual(tokens('mb-4 flex flex-wrap items-center gap-3'))
+      expect(flowHead().children).toHaveLength(3)
+      expect(periodButtons().map((b) => b.textContent)).toEqual(['최근 7일', '최근 30일', '최근 90일'])
+    })
+
+    it('AC-1801.2: [일별]을 누르면 2026년 10월 일별 — 빠른 단추는 모두 안 눌림. 그 뒤 [최근 7일]을 누르면 고르기가 풀리고 [최근 7일]만 눌린다', async () => {
+      drawNow()
+      await pickUnit('일별')
+      expect(pressed()).toEqual([])
+      expect(unitPressed()).toEqual(['일별'])
+      expect(within(picker()).getByText('2026년 10월')).toBeTruthy()
+      expect(headLabel()).toBe('10월 1일 – 31일')
+      await choose('최근 7일')
+      expect(pressed()).toEqual(['최근 7일'])
+      expect(unitPressed()).toEqual([])
+      expect(headLabel()).toBe('10월 30일 – 11월 5일')
+    })
+
+    it("AC-1801.3: 오늘 줄이 덜 끝났으면 끝난 날은 어제 — ▶는 11월까지이고 [직접 날짜] 판의 날짜 칸 max는 2026-11-05('어제(11월 5일)까지만…' 한도)", async () => {
+      drawNow()
+      await pickUnit('일별')
+      await step('다음 달')
+      expect(headLabel()).toBe('11월 1일 – 5일 (어제까지)')
+      expect(within(picker()).getByRole('button', { name: '다음 달' }).hasAttribute('disabled')).toBe(true)
+      await click(customButton())
+      const inputs = Array.from(within(picker()).getByRole('dialog').querySelectorAll('input[type="date"]'))
+      expect(inputs.map((input) => input.getAttribute('max'))).toEqual(['2026-11-05', '2026-11-05'])
+    })
+
+    it("AC-1801.3: 오늘 줄이 끝났으면(partial false) 끝난 날은 오늘 — 판의 max는 2026-11-06이고 끝나지 않은 달 글은 ' (오늘까지)'", async () => {
+      drawNow(source({ days: CLOSED_DAYS }))
+      await pickUnit('일별')
+      await step('다음 달')
+      expect(headLabel()).toBe('11월 1일 – 6일 (오늘까지)')
+      await click(customButton())
+      const inputs = Array.from(within(picker()).getByRole('dialog').querySelectorAll('input[type="date"]'))
+      expect(inputs.map((input) => input.getAttribute('max'))).toEqual(['2026-11-06', '2026-11-06'])
+    })
+
+    it("AC-1801.4: 머리 줄 기간 글 — 10월 '10월 1일 – 31일', 끝나지 않은 11월 '11월 1일 – 5일 (어제까지)', 해 2026년 '1월 1일 – 11월 5일 (어제까지)', 2025년 '2025년 1월 1일 – 12월 31일'. 글 칸 클래스는 지금 그대로", async () => {
+      drawNow()
+      await pickUnit('일별')
+      expect(headLabel()).toBe('10월 1일 – 31일')
+      await step('다음 달')
+      expect(headLabel()).toBe('11월 1일 – 5일 (어제까지)')
+      await pickUnit('월별')
+      expect(headLabel()).toBe('1월 1일 – 11월 5일 (어제까지)')
+      await step('이전 해')
+      expect(headLabel()).toBe('2025년 1월 1일 – 12월 31일')
+      expect(classesOf(flowHead().children[1]!)).toEqual(tokens('ml-auto whitespace-nowrap text-small text-muted'))
+    })
+
+    it('AC-1801.5: 768px 미만 — 빠른 단추는 지금처럼 다음 줄 전체 폭 세 칸, 고르기 감싸개는 그다음 줄 전체 폭, 부품은 통계 탭 휴대폰 규칙(44px, 판은 단추 아래 문서 흐름). 768px 이상은 머리 줄 오른쪽에 붙고 판은 뜬 판', async () => {
+      drawNow()
+      const head = flowHead()
+      // 고르기가 있는 갈래에만 768px 이상 아래 끝 맞춤·오른쪽 붙음을 더한다(지금 클래스는 그대로)
+      expect(classesOf(head)).toEqual(tokens('mb-4 flex flex-wrap items-center gap-3 md:items-end md:justify-end'))
+      hasAll(within(head).getByRole('group', { name: '기간' }), 'max-md:order-3 max-md:grid max-md:w-full max-md:grid-cols-3')
+      expect(classesOf(picker().parentElement!)).toEqual(['max-md:order-4', 'max-md:w-full'])
+      hasAll(picker(), 'relative max-md:w-full')
+      for (const b of units()) hasAll(b, 'max-md:h-11')
+      await click(customButton())
+      hasAll(within(picker()).getByRole('dialog'), 'absolute top-full max-md:static max-md:w-full')
+      expect(allClasses(region('기간별 흐름')).filter((t) => t.startsWith('overflow-x') || t.startsWith('overflow-auto'))).toEqual([])
+    })
+  })
+
+  describe('그래프 넷이 고른 기간을 따름 (REQ-1802)', () => {
+    it("AC-1802.1: 2026년 10월 일별 — 설명 '신환·재진, 하루씩', 자료 있는 날마다 한 칸(칸 7개 넘어 dense), 범례는 신환·재진뿐", async () => {
+      drawNow()
+      await pickUnit('일별')
+      const buckets = flowTrend(NOW_DAYS, flowOfPick(month('2026-10')))!
+      expect(buckets).toHaveLength(26)
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩')
+      expect(legend()).toEqual(['신환', '재진'])
+    })
+
+    it("AC-1802.1: 기간 안 줄이 없으면 빈 틀 + '자료 없음'이고 눈금은 일별일 때만 있다(8월 일별 7일마다, 주별은 없음)", async () => {
+      drawNow()
+      await pickUnit('일별')
+      await step('이전 달')
+      await step('이전 달')
+      expect(headLabel()).toBe('8월 1일 – 31일')
+      expect(within(chart('환자 수 추이')).getByText('자료 없음')).toBeTruthy()
+      expect(emptyTicks()).toEqual(['8.1', '8.8', '8.15', '8.22', '8.29'])
+      await pickUnit('주별')
+      expect(within(chart('환자 수 추이')).getByText('자료 없음')).toBeTruthy()
+      expect(emptyTicks()).toEqual([])
+    })
+
+    it("AC-1802.2: 2026년 10월 주별 — 설명 '신환·재진, 한 주씩', 월–일 주를 자른 다섯 칸(dense 아님), 잘린 주가 있어 범례에 '일부 기간'", async () => {
+      drawNow()
+      await pickUnit('주별')
+      const buckets = flowTrend(NOW_DAYS, flowOfPick(month('2026-10', 'week')))!
+      expect(buckets.map((b) => b.key)).toEqual(['2026-10-01', '2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26'])
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} />))
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 주씩')
+      expect(chart('환자 수 추이').querySelector('ul')!.outerHTML).toBe(
+        markupOf(
+          <ChartLegend
+            items={[
+              { label: '신환', mark: 'accent' },
+              { label: '재진', mark: 'chart-3' },
+              { label: '일부 기간', mark: 'hatch' },
+            ]}
+          />,
+        ),
+      )
+    })
+
+    it("AC-1802.2: 해 2026년 — 설명 '신환·재진, 한 달씩', 1월~12월 칸(11월 일부 기간, 12월 빈 칸, 줄 없는 달 '–'), 범례에 '일부 기간'", async () => {
+      drawNow()
+      await pickUnit('월별')
+      const buckets = flowTrend(NOW_DAYS, flowOfPick({ kind: 'year', year: '2026' }))!
+      expect(buckets.map((b) => b.label)).toEqual(['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'])
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 달씩')
+      expect(legend()).toEqual(['신환', '재진', '일부 기간'])
+    })
+
+    it("AC-1802.2: 빠른 단추 범례는 덜 끝난 날이 있어도 지금 그대로(신환·재진)", () => {
+      drawNow(source({ days: [...NOW_DAYS, day('2026-10-20', { partial: true })] }))
+      expect(legend()).toEqual(['신환', '재진'])
+    })
+
+    it("AC-1802.3: 고른 기간 — 7·14·30일 줄 모두 고른 기간의 날로 세고, 값이 없는 날을 뺀 줄 아래에 '온 뒤 N일이 안 된 날의 신환은 빼고 셌어요', '가장 최근 신환' 글은 없다", async () => {
+      const days = [
+        day('2026-10-05', { newPatients: 4, returning: 6, revisit: { cohort: 4, within7: 2, within14: 2, within30: 1 } }),
+        day('2026-10-20', { newPatients: 6, returning: 4, revisit: { cohort: 6, within7: 3, within14: null, within30: null } }),
+        day('2026-09-20', { revisit: { cohort: 100, within7: 100, within14: 100, within30: 100 } }),
+        day(NOW, { partial: true }),
+      ]
+      drawNow(source({ days }))
+      await pickUnit('일별')
+      const row7 = revisitRow('7일 안에 다시 옴')
+      expect(within(row7).getByText('50.0%')).toBeTruthy()
+      expect(within(row7).queryByText(/빼고 셌어요/)).toBeNull()
+      const row14 = revisitRow('14일 안에 다시 옴')
+      expect(within(row14).getByText('50.0%')).toBeTruthy()
+      const caption14 = within(row14).getByText('온 뒤 14일이 안 된 날의 신환은 빼고 셌어요')
+      hasAll(caption14, 'col-span-2 text-caption text-muted')
+      const row30 = revisitRow('30일 안에 다시 옴')
+      expect(within(row30).getByText('25.0%')).toBeTruthy()
+      expect(within(row30).getByText('온 뒤 30일이 안 된 날의 신환은 빼고 셌어요')).toBeTruthy()
+      expect(within(chart('신환 재방문율')).queryByText(/가장 최근 신환/)).toBeNull()
+    })
+
+    it("AC-1802.3: 고른 기간에 그 값이 모두 없으면 '집계 중'(빼고 셌다는 글 없음), 기간에 줄이 없으면 '자료 없음'. 빠른 단추에는 빼고 셌다는 글이 없다(지금 그대로)", async () => {
+      const days = [day('2026-10-20', { revisit: { cohort: 6, within7: 3, within14: 3, within30: null } }), day(NOW, { partial: true })]
+      drawNow(source({ days }))
+      expect(within(chart('신환 재방문율')).queryByText(/빼고 셌어요/)).toBeNull()
+      await pickUnit('일별')
+      expect(within(revisitRow('30일 안에 다시 옴')).getByText('집계 중')).toBeTruthy()
+      expect(within(chart('신환 재방문율')).queryByText(/빼고 셌어요/)).toBeNull()
+      await step('이전 달')
+      expect(within(revisitRow('7일 안에 다시 옴')).getByText('자료 없음')).toBeTruthy()
+    })
+
+    it('AC-1802.4: 고른 기간 — 요일별 환자 수·처방 상위는 고른 기간 안 날만 센다(weekdayBuckets·groupRank 그대로)', async () => {
+      drawNow()
+      await pickUnit('일별')
+      const { current } = flowOfPick(month('2026-10'))
+      expect(weekRoot().outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(NOW_DAYS, current)!} />))
+      const items = groupRank(NOW_DAYS, current, LINES)!.items
+      expect(items).toEqual([
+        { name: '운동치료', value: 52 },
+        { name: '체외충격파', value: 26 },
+        { name: '신경차단술', value: 0 },
+      ])
+      expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={items} />))
+    })
+
+    it.each([7, 30, 90] as const)('AC-1802.5: 빠른 단추(최근 %i일) — 그래프 넷이 지금 함수(trendBuckets·weekdayBuckets·groupRank, 7일만 합계)와 같은 마크업이다', async (period) => {
+      drawNow()
+      if (period !== 30) await choose(`최근 ${period}일`)
+      const range = periodRange(NOW, period)
+      expect(trendRoot().outerHTML).toBe(
+        markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={trendBuckets(NOW_DAYS, range, period)!} dense={period !== 7} />),
+      )
+      expect(weekRoot().outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(NOW_DAYS, range)!} />))
+      expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={groupRank(NOW_DAYS, range, LINES)!.items} />))
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩')
+    })
+  })
+
+  describe('처방 상위 날짜 줄 (REQ-1803)', () => {
+    it("AC-1803.1: 최근 30일 · 기간 안 자료 있는 날 25일 — 설명 바로 아래 한 줄(small muted tabular-nums) '10월 7일 – 11월 5일 (어제까지) · 자료 있는 25일'", () => {
+      drawNow()
+      const group = chart('처방 상위')
+      expect(group.children[1]!.textContent).toBe(RANK_DESC_TEXT)
+      expect(rankSub().tagName).toBe('P')
+      expect(classesOf(rankSub())).toEqual(['text-small', 'text-muted', 'tabular-nums'])
+      expect(rankSub().textContent).toBe('10월 7일 – 11월 5일 (어제까지) · 자료 있는 25일')
+    })
+
+    it.each([7, 90] as const)("AC-1803.1: 최근 %i일도 끝에 ' (어제까지)'가 붙은 같은 모양이다", async (period) => {
+      drawNow()
+      await choose(`최근 ${period}일`)
+      const range = periodRange(NOW, period)
+      expect(rankSub().textContent).toBe(`${range.label} (어제까지) · 자료 있는 ${dayCount(NOW_DAYS, range)}일`)
+    })
+
+    it("AC-1803.2: 2026년 10월 '10월 1일 – 31일 · 자료 있는 26일', 끝나지 않은 11월 '11월 1일 – 5일 (어제까지) · 자료 있는 4일' — 앞의 기간 글은 머리 줄 기간 글과 같다", async () => {
+      drawNow()
+      await pickUnit('일별')
+      expect(rankSub().textContent).toBe('10월 1일 – 31일 · 자료 있는 26일')
+      expect(rankSub().textContent!.startsWith(`${headLabel()} · `)).toBe(true)
+      await step('다음 달')
+      expect(rankSub().textContent).toBe('11월 1일 – 5일 (어제까지) · 자료 있는 4일')
+      expect(rankSub().textContent!.startsWith(`${headLabel()} · `)).toBe(true)
+    })
+
+    it("AC-1803.3: N은 같은 날 두 줄을 하루로 세고, 기간 안 줄이 없으면 날짜 줄은 '{기간 글}'뿐이고 가운데는 지금처럼 '자료 없음'이다", async () => {
+      drawNow(source({ days: [...NOW_DAYS, day('2026-10-02', { groups: keyed(2, 1, 0) })] }))
+      await pickUnit('일별')
+      expect(rankSub().textContent).toBe('10월 1일 – 31일 · 자료 있는 26일')
+      await step('이전 달')
+      expect(rankSub().textContent).toBe('9월 1일 – 30일')
+      expect(within(chart('처방 상위')).getByText('자료 없음')).toBeTruthy()
+    })
+
+    it.each([
+      ['묶음을 읽지 못함', null, UNREAD, '묶음 고치기'],
+      ['묶음 없음', [] as RxGroupLine[], NO_GROUPS, '묶음 만들기'],
+      ['다시 불러와야 함', [line('고주파', 7)], ALL_STALE, '묶음 고치기'],
+    ] as const)('AC-1803.3: %s에도 날짜 줄은 같은 규칙이고 가운데 글·링크는 지금 그대로다', async (_, groups, message, link) => {
+      drawNow(source({ groups }))
+      await pickUnit('일별')
+      expect(rankSub().textContent).toBe('10월 1일 – 31일 · 자료 있는 26일')
+      expect(within(chart('처방 상위')).getByText(message)).toBeTruthy()
+      expect(within(chart('처방 상위')).getByRole('link').textContent).toBe(link)
+    })
+  })
+
+  describe('옛 기간 읽기 (REQ-1804)', () => {
+    it('AC-1804.1: 첫날이 손에 든 숫자의 첫날(7월 29일)과 같거나 뒤면(빠른 단추 셋, 10월, 8월, 주별) 새로 읽지 않는다', async () => {
+      const { older, read } = olderReader()
+      drawNow(source({ older }))
+      for (const period of [7, 90, 30] as const) await choose(`최근 ${period}일`)
+      await pickUnit('일별')
+      await step('이전 달')
+      await step('이전 달')
+      expect(headLabel()).toBe('8월 1일 – 31일')
+      await pickUnit('주별')
+      expect(read).not.toHaveBeenCalled()
+    })
+
+    it("AC-1804.2: 첫날이 앞(2026년 7월)이면 그 기간을 한 번 읽고, 읽는 동안 그래프 넷은 빈 틀 가운데 '읽는 중'(숫자를 지어내지 않음), 날짜 줄은 '{기간 글}'뿐", async () => {
+      const { older, read } = olderReader()
+      drawNow(source({ older }))
+      await toJuly()
+      expect(headLabel()).toBe('7월 1일 – 31일')
+      expect(read).toHaveBeenCalledTimes(1)
+      expect(read).toHaveBeenCalledWith({ from: '2026-07-01', to: '2026-07-31' })
+      const section = region('기간별 흐름')
+      expect(section.querySelector('table')).toBeNull()
+      expect(section.querySelector('ol[aria-label]')).toBeNull()
+      expect(within(chart('환자 수 추이')).getByText('읽는 중')).toBeTruthy()
+      expect(emptyTicks()).toEqual(['7.1', '7.8', '7.15', '7.22', '7.29'])
+      expect(within(chart('요일별 환자 수')).getByText('읽는 중')).toBeTruthy()
+      expect(within(chart('처방 상위')).getByText('읽는 중')).toBeTruthy()
+      expect(rankSub().textContent).toBe('7월 1일 – 31일')
+      for (const name of ['7일 안에 다시 옴', '14일 안에 다시 옴', '30일 안에 다시 옴']) {
+        const row = revisitRow(name)
+        expect(within(row).getByText('–')).toBeTruthy()
+        expect(within(row).getByText('읽는 중')).toBeTruthy()
+      }
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('AC-1804.2: 다 읽으면 읽은 줄에 손에 든 숫자를 얹어 그리고, 같은 기간에서 단위만 바꾸면(일별 → 주별) 다시 읽지 않는다', async () => {
+      const { older, read, answers } = olderReader()
+      drawNow(source({ older }))
+      await toJuly()
+      const rows = [day('2026-07-06', { groups: keyed(1, 0, 0) }), day('2026-07-20', { groups: keyed(1, 0, 0) }), day('2026-07-29', { newPatients: 50, groups: keyed(1, 0, 0) })]
+      await answer(answers[0]!, rows)
+      const merged = [...rows, ...NOW_DAYS]
+      const flow = flowOfPick(month('2026-07'))
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={flowTrend(merged, flow)!} />))
+      expect(rankSub().textContent).toBe('7월 1일 – 31일 · 자료 있는 3일')
+      await pickUnit('주별')
+      expect(read).toHaveBeenCalledTimes(1)
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={flowTrend(merged, flowOfPick(month('2026-07', 'week')))!} />))
+    })
+
+    it("AC-1804.3: 읽기가 실패하거나 한도(null)면 고르기 아래 오류 카드(E-STATS-READ-FAILED)와 [이 기간 다시 읽기], 그래프 넷은 '자료 없음' 빈 틀", async () => {
+      const { older, answers } = olderReader()
+      drawNow(source({ older }))
+      await toJuly()
+      await answer(answers[0]!, null)
+      const section = region('기간별 흐름')
+      const block = section.children[1] as HTMLElement
+      expect(block.firstElementChild!.outerHTML).toBe(markupOf(<ErrorCard code="E-STATS-READ-FAILED" />))
+      const button = within(block).getByRole('button', { name: '이 기간 다시 읽기' })
+      hasAll(button, `${ds.button.secondarySmall} max-md:w-full`)
+      expect(button.hasAttribute('disabled')).toBe(false)
+      for (const name of ['환자 수 추이', '요일별 환자 수', '처방 상위']) expect(within(chart(name)).getByText('자료 없음')).toBeTruthy()
+      expect(section.querySelector('table')).toBeNull()
+      expect(rankSub().textContent).toBe('7월 1일 – 31일')
+    })
+
+    it("AC-1804.3: [이 기간 다시 읽기]를 누르면 같은 기간을 다시 읽고 그동안 '다시 읽는 중'으로 막히며, 성공하면 카드가 없어진다", async () => {
+      const { older, read, answers } = olderReader()
+      drawNow(source({ older }))
+      await toJuly()
+      await answer(answers[0]!, null)
+      await click(screen.getByRole('button', { name: '이 기간 다시 읽기' }))
+      expect(read).toHaveBeenCalledTimes(2)
+      expect(read).toHaveBeenLastCalledWith({ from: '2026-07-01', to: '2026-07-31' })
+      const busy = screen.getByRole('button', { name: '다시 읽는 중' })
+      expect(busy.hasAttribute('disabled')).toBe(true)
+      expect(screen.getByRole('alert')).toBeTruthy()
+      await answer(answers[1]!, [day('2026-07-06')])
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.queryByRole('button', { name: /다시 읽/ })).toBeNull()
+      expect(rankSub().textContent).toBe('7월 1일 – 31일 · 자료 있는 1일')
+    })
+
+    it("AC-1804.3: 읽었는데 줄이 없으면 카드 없이 '자료 없음'이다", async () => {
+      const { older, answers } = olderReader()
+      drawNow(source({ older }))
+      await toJuly()
+      await answer(answers[0]!, [])
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(within(chart('환자 수 추이')).getByText('자료 없음')).toBeTruthy()
+    })
+  })
+
+  describe('그대로인 것 (REQ-1805)', () => {
+    it('AC-1805.1: 기간을 골라도(옛 기간 읽는 중·실패 포함) 오늘 하루 분석은 고르기 전과 같다', async () => {
+      const { older, answers } = olderReader()
+      drawNow(source({ older }))
+      const before = region('오늘 하루 분석').outerHTML
+      await pickUnit('주별')
+      expect(region('오늘 하루 분석').outerHTML).toBe(before)
+      await toJuly()
+      expect(region('오늘 하루 분석').outerHTML).toBe(before)
+      await answer(answers[0]!, null)
+      expect(region('오늘 하루 분석').outerHTML).toBe(before)
+    })
+
+    it('AC-1805.1: 고른 날(지난 날짜)의 하루 분석도 기간 고르기와 상관없다', async () => {
+      render(<DashboardAnalysis today={NOW} day="2026-10-30" source={source()} />)
+      const before = region('10월 30일 하루 분석').outerHTML
+      await pickUnit('월별')
+      expect(region('10월 30일 하루 분석').outerHTML).toBe(before)
+    })
   })
 })
