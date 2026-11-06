@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
+import { isBlankMemo } from '@/lib/precheck/memoCompare'
 import type { InputTargets, LeftReason, TargetRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
 
 // 입력할 사람·빠지는 사람(AC-018.26, 입력 쪽 승인 목업). 목록은 Worker의 inputTargets가 정하고 여기는 props로만 그린다.
-// 사람마다 넣고 빼는 체크는 없다. [이 메모로 바꾸기]·[바꾸지 않기]는 AC-018.14, 줄 열기는 AC-018.27
+// 사람마다 넣고 빼는 체크는 없다. [이 메모로 바꾸기]·[바꾸지 않기]는 AC-018.14, 줄 열기는 AC-018.27.
+// 우리 메모 글이 있는 줄마다 [메모 고치기]가 있다(AC-2203.1): 완료한 사람을 고치면 Worker가 완료를 푼다(AC-2202.1)
 
 /** 빠지는 사람 묶음의 이름과 까닭(AC-018.26). 쓰다 멈춘 사람 줄(StuckBand)도 같은 글을 쓴다(AC-018.16) */
 export const LEFT_GROUPS: Record<LeftReason, { name: string; why: string }> = {
@@ -100,6 +102,34 @@ function Editor({ row, onDone }: { row: TargetRow; onDone(text: string): void })
   )
 }
 
+/** 우리 메모 글이 있는 줄인가: '메모 없음'과 같은 판단(inputPlan, AC-2203.1) */
+const editable = (row: TargetRow) => row.hasMemo && !isBlankMemo(row.text)
+
+/**
+ * 줄 아래 단추 줄: 있던 단추(children) 오른쪽에 [메모 고치기](AC-2203.4). 입력 중에만 막는다(AC-2203.3).
+ * 고치는 줄은 [메모 고치기] 자리에 칸이 열리고 있던 단추는 그대로다(AC-2203.2)
+ */
+function Actions({ row, editing, locked, onEdit, onEditDone, children }: { row: TargetRow; editing: string | null; locked: boolean; onEdit(key: string): void; onEditDone(key: string, text: string): void; children?: ReactNode }) {
+  const canEdit = editable(row)
+  const open = canEdit && editing === row.key
+  const button = canEdit && !open
+  return (
+    <>
+      {(children || button) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {children}
+          {button && (
+            <button type="button" className={ds.button.secondarySmall} disabled={locked} onClick={() => onEdit(row.key)}>
+              메모 고치기
+            </button>
+          )}
+        </div>
+      )}
+      {open && <Editor row={row} onDone={(text) => onEditDone(row.key, text)} />}
+    </>
+  )
+}
+
 export function MemoRows(props: MemoRowsProps) {
   const { targets, locked, reading, startBlocked = false, open, editing, card, onToggle, onApprove, onEdit, onEditDone, onHeldRetry } = props
   const { batch, left, problem } = targets
@@ -136,13 +166,13 @@ export function MemoRows(props: MemoRowsProps) {
                       {row.warned && <span className={ds.chip.neutral}>점검 경고 있음 · 입력은 돼요</span>}
                     </Head>
                     {isOpen ? <Opened row={row} card={card} /> : changing && <SideMemos row={row} />}
-                    {row.chip === '메모 바꿈' && (
-                      <div>
+                    <Actions row={row} editing={editing} locked={locked} onEdit={onEdit} onEditDone={onEditDone}>
+                      {row.chip === '메모 바꿈' && (
                         <button type="button" className={ds.button.secondarySmall} disabled={locked} onClick={() => onApprove(row.key, false)}>
                           바꾸지 않기
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </Actions>
                   </li>
                 )
               })}
@@ -185,24 +215,14 @@ export function MemoRows(props: MemoRowsProps) {
                             <span className="whitespace-pre-wrap break-words">{row.text}</span>
                           </div>
                         ) : null}
-                        {reason === 'diff' && (
-                          <div>
+                        {reason === 'manual' && <p className={sub}>{row.foundByPc ? '지난 입력 때 PC가 찾아냈어요.' : `같은 날 진료 ${row.sameDay}건`}</p>}
+                        <Actions row={row} editing={editing} locked={locked} onEdit={onEdit} onEditDone={onEditDone}>
+                          {reason === 'diff' && (
                             <button type="button" className={ds.button.secondarySmall} disabled={locked || reading} onClick={() => onApprove(row.key, true)}>
                               이 메모로 바꾸기
                             </button>
-                          </div>
-                        )}
-                        {(reason === 'mark' || reason === 'held') &&
-                          (editing === row.key ? (
-                            <Editor row={row} onDone={(text) => onEditDone(row.key, text)} />
-                          ) : (
-                            <div>
-                              <button type="button" className={ds.button.secondarySmall} disabled={locked} onClick={() => onEdit(row.key)}>
-                                메모 고치기
-                              </button>
-                            </div>
-                          ))}
-                        {reason === 'manual' && <p className={sub}>{row.foundByPc ? '지난 입력 때 PC가 찾아냈어요.' : `같은 날 진료 ${row.sameDay}건`}</p>}
+                          )}
+                        </Actions>
                       </li>
                     )
                   })}

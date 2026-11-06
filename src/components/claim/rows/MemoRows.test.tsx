@@ -138,7 +138,7 @@ describe('AC-018.14 다른 메모', () => {
     expect(on.onApprove).toHaveBeenCalledWith('d', false)
   })
 
-  it(`AC-018.14: '메모 바꿈' 줄에는 [바꾸지 않기]만 있고(묻지 않기가 켜져 있어도 같은 줄이다) 두 메모는 보인다`, () => {
+  it(`AC-018.14: '메모 바꿈' 줄에는 [바꾸지 않기]·[메모 고치기]만 있고(묻지 않기가 켜져 있어도 같은 줄이다) 두 메모는 보인다`, () => {
     show(targets({ batch: [row('d', { compare: '다름', inBit: '비트에 있는 글', replaces: '비트에 있는 글', chip: '메모 바꿈' })], replacing: 1 }))
     expect(screen.queryByRole('button', { name: '이 메모로 바꾸기' })).toBeNull()
     expect(screen.getByRole('button', { name: '바꾸지 않기' })).toBeTruthy()
@@ -159,6 +159,83 @@ describe('AC-018.14 다른 메모', () => {
     show(value, { locked: true })
     expect((screen.getByRole('button', { name: '이 메모로 바꾸기' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: '바꾸지 않기' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('REQ-2203 목록의 메모 줄마다 [메모 고치기]', () => {
+  const EDIT = '메모 고치기'
+  const all = () =>
+    targets({
+      batch: [row('a'), row('m', { compare: '다름', inBit: '비트 글 m', replaces: '비트 글 m', chip: '메모 바꿈' })],
+      left: [
+        { reason: 'done', rows: [row('d', { compare: '같음', inBit: '우리 메모 d', chip: null }), row('e', { text: ' 　', compare: '다름', inBit: '비트 글 e', chip: null })] },
+        { reason: 'nomemo', rows: [row('n', { hasMemo: false, text: '사람이 친 글', chip: null }), row('w', { text: '  ', chip: null })] },
+        { reason: 'mark', rows: [row('k', { text: '글 [부위 확인] 끝', unfinished: true, chip: null })] },
+        { reason: 'manual', rows: [row('u', { sameDay: 2, chip: null })] },
+        { reason: 'diff', rows: [row('f', { compare: '다름', inBit: '비트 글 f', chip: null })] },
+        { reason: 'unread', rows: [row('r', { compare: '조회 못함', chip: null })] },
+        { reason: 'held', rows: [row('h', { chip: null })] },
+      ],
+    })
+  const lineOf = (key: string) => screen.getByRole('button', { name: new RegExp(`가상환자${key}`) }).closest('li')!
+  const editIn = (key: string) => within(lineOf(key)).queryByRole('button', { name: EDIT }) as HTMLButtonElement | null
+
+  it('AC-2203.1: 우리 메모 글이 있는 줄마다 [메모 고치기]가 하나 있고, 메모 없음 줄과 글이 공백뿐인 줄에는 없다', () => {
+    show(all())
+    for (const key of ['a', 'm', 'd', 'k', 'u', 'f', 'r', 'h']) expect(within(lineOf(key)).getAllByRole('button', { name: EDIT }), key).toHaveLength(1)
+    for (const key of ['e', 'n', 'w']) expect(editIn(key), key).toBeNull()
+    expect(screen.getAllByRole('button', { name: EDIT })).toHaveLength(8)
+    expect(within(screen.getByRole('group', { name: '메모 없음' })).queryByRole('button', { name: EDIT })).toBeNull()
+  })
+
+  it('AC-2203.2: 누르면 onEdit이고, 고치는 줄은 [메모 고치기] 자리에 칸이 있으며 칸 밖을 누르면 onEditDone이다. 같은 줄의 다른 단추는 그대로다', async () => {
+    const user = userEvent.setup()
+    const on = show(all())
+    await user.click(editIn('d')!)
+    expect(on.onEdit).toHaveBeenCalledWith('d')
+    cleanup()
+    const edit = show(all(), { editing: 'd' })
+    expect(editIn('d')).toBeNull()
+    const box = within(lineOf('d')).getByRole('textbox', { name: '가상환자d 메모 고치기' }) as HTMLTextAreaElement
+    expect(box.value).toBe('우리 메모 d')
+    await user.type(box, ' 고침')
+    await user.tab()
+    expect(edit.onEditDone).toHaveBeenCalledWith('d', '우리 메모 d 고침')
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    cleanup()
+    show(all(), { editing: 'f' })
+    expect(within(lineOf('f')).getByRole('button', { name: '이 메모로 바꾸기' })).toBeTruthy()
+    expect(within(lineOf('f')).getByRole('textbox', { name: '가상환자f 메모 고치기' })).toBeTruthy()
+    expect(editIn('f')).toBeNull()
+    cleanup()
+    show(all(), { editing: 'm' })
+    expect(within(lineOf('m')).getByRole('button', { name: '바꾸지 않기' })).toBeTruthy()
+    expect(within(lineOf('m')).getByRole('textbox', { name: '가상환자m 메모 고치기' })).toBeTruthy()
+  })
+
+  it('AC-2203.3: 입력 중에는 모든 [메모 고치기]가 막히고, 비트 메모 읽는 중·startBlocked로는 막지 않는다', () => {
+    show(all(), { locked: true })
+    for (const button of screen.getAllByRole('button', { name: EDIT })) expect((button as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    show(all(), { reading: true, startBlocked: true })
+    for (const button of screen.getAllByRole('button', { name: EDIT })) expect((button as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('AC-2203.4: [메모 고치기]는 [바꾸지 않기]·[이 메모로 바꾸기]의 오른쪽 같은 줄이고, 있던 단추는 이름·막힘이 그대로다', () => {
+    show(all(), { reading: true, startBlocked: true })
+    for (const [key, name] of [
+      ['m', '바꾸지 않기'],
+      ['f', '이 메모로 바꾸기'],
+    ] as const) {
+      const other = within(lineOf(key)).getByRole('button', { name })
+      const edit = editIn(key)!
+      expect(edit.parentElement).toBe(other.parentElement)
+      expect(other.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    expect((within(lineOf('m')).getByRole('button', { name: '바꾸지 않기' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((within(lineOf('f')).getByRole('button', { name: '이 메모로 바꾸기' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '다시 하기 (1명)' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByRole('group', { name: '이미 입력됨' }).textContent).toContain('비트 메모가 우리 메모와 같아요. 다시 넣지 않아요.')
   })
 })
 
