@@ -3,8 +3,9 @@
 import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
 import { formatCount } from '@/components/charts/format'
 import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
-import { COLUMN_NAME, GRAIN_NAME } from '@/components/stats/rxPickView'
+import { COLUMN_NAME } from '@/components/stats/rxPickView'
 import { rxDetail, type RxDetailPoint, type RxLine, type StatsInput } from '@/components/stats/view'
+import type { TrendBucket } from '@/types/analysis'
 import { DetailToggle, type DetailTable } from './DetailToggle'
 import { CHART_NO_SIDE_SCROLL, Note, thinTotals, todayOf, TREND_SERIES } from './parts'
 import { comparisonAt, detailNote, longLabel, tickLabel } from './trendLabels'
@@ -35,11 +36,15 @@ const MODE_ON = 'bg-accent-soft font-semibold text-accent-strong'
 const MODE_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
 
 const gapOf = (point: RxDetailPoint) => point.count - point.newCount - point.returningCount
+// 칸 이름(range.bucket). trendLabels의 BUCKET_NAME과 같은 값이다. trendLabels에서 불러오는 줄은 AC-1201.6 시험이 글자 그대로 지킨다
+const GRAIN: Record<TrendBucket, '일' | '주' | '달'> = { day: '일', week: '주', month: '달' }
 
+// 칸은 range.bucket이고 회색 막대는 바로 전 기간이다. 표 비교 칸 이름은 빠른 단추면 지금 COLUMN_NAME, 고른 기간이면 range.previous.name(stats-period AC-1705.4)
 export function RxPickDetail({ line, input, mode, onMode }: { line: RxLine; input: StatsInput; mode: RxPickMode; onMode: (mode: RxPickMode) => void }) {
-  const { period } = input.range
+  const { period, bucket } = input.range
   const { current, previous } = rxDetail(input, line.code)
-  const grain = GRAIN_NAME[period]
+  const grain = GRAIN[bucket]
+  const compareName = period === null ? input.range.previous.name : COLUMN_NAME[period]
   const title = `${line.name} ${grain}별 건수`
   const split = mode === 'split'
   const anyGap = current.some((point) => gapOf(point) > 0)
@@ -50,8 +55,8 @@ export function RxPickDetail({ line, input, mode, onMode }: { line: RxLine; inpu
   const series: BarSeries[] = !split ? TOTAL_SERIES : showGap ? [...TREND_SERIES, { name: GAP_NAME, tone: 'hatch-warning' }] : TREND_SERIES
   const buckets: BarBucket[] = current.map((point, i) => ({
     key: point.start,
-    label: tickLabel(point, i, current.length, period),
-    rangeLabel: longLabel(point, period),
+    label: tickLabel(point, i, current.length, bucket),
+    rangeLabel: longLabel(point, bucket),
     state: point.partial ? 'partial' : 'complete',
     values: split ? [point.newCount, point.returningCount, gapOf(point)] : [point.count], // 계열 수만큼만 읽는다
     comparison: comparisonAt(previous, i),
@@ -64,11 +69,11 @@ export function RxPickDetail({ line, input, mode, onMode }: { line: RxLine; inpu
   ]
   const table: DetailTable = {
     caption: title,
-    columns: [grain === '일' ? '날짜' : grain, '건수', '신환', '재진', ...(anyGap ? [GAP_NAME] : []), COLUMN_NAME[period]],
+    columns: [grain === '일' ? '날짜' : grain, '건수', '신환', '재진', ...(anyGap ? [GAP_NAME] : []), compareName],
     rows: current.map((point, i) => {
       const comparison = comparisonAt(previous, i)
       return [
-        point.partial ? `${longLabel(point, period)} · 일부` : longLabel(point, period),
+        point.partial ? `${longLabel(point, bucket)} · 일부` : longLabel(point, bucket),
         <span key="count" className="font-semibold">
           {`${formatCount(point.count)}건`}
         </span>,
@@ -100,7 +105,7 @@ export function RxPickDetail({ line, input, mode, onMode }: { line: RxLine; inpu
           <div className={`mt-2 ${thinTotals(buckets.length)} ${CHART_NO_SIDE_SCROLL}`}>
             <StackedBarChart title={title} unit="건" series={series} buckets={buckets} compact hideZeroTotals />
           </div>
-          <Note>{`${detailNote(period, current, todayOf(input.range))}${showGap ? GAP_NOTE : ''}`}</Note>
+          <Note>{`${detailNote(bucket, current, todayOf(input.range), period === null)}${showGap ? GAP_NOTE : ''}`}</Note>
           <div className="mt-2">{button}</div>
           {panel}
         </>

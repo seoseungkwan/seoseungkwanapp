@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatClinicReport } from '@/lib/clinicReport/reportText'
 import type { ClinicReportMode, ClinicReportNumbers } from '@/types/clinicReport'
-import { ReportSection, type ReportData } from './ReportSection'
+import { ReportSection, type PickReport, type ReportData } from './ReportSection'
 
 // 원장님 보고 문장 (stats REQ-513 AC-513.6·513.8, 시안 notes.md §3). 숫자·병원 이름은 시험 안에서 지은 가짜다
 
@@ -233,5 +233,63 @@ describe('AC-513.8: 비트 PC에서 불러온 자료가 없을 때', () => {
     expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBe('true')
     pick('어제 일일보고')
     expect(screen.getByText('고생하셨습니다 !!')).toBeTruthy()
+  })
+})
+
+// ── 고른 기간 보고 (stats-period REQ-1707) ─────────────────
+describe('AC-1707.1·AC-1707.3·AC-1707.4: [고른 기간 보고]', () => {
+  const PICK_TEXT = '2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 120명·재진 980명입니다. 하루 평균은 9월보다 3명(7.6%) 늘었습니다.'
+  const PICK: PickReport = { label: '2026년 10월 1일 – 31일', text: PICK_TEXT }
+  const drawPick = (report: ReportData | null, pickReport: PickReport | null = PICK) =>
+    render(<ReportSection report={report} hospitalName={HOSPITAL} today={TODAY} saved pick={pickReport} />)
+  const buttonsOf = () => within(screen.getByRole('group', { name: '보고 고르기' })).getAllByRole('button')
+
+  it('AC-1707.1: 고르기에 들어오면 단추는 [고른 기간 보고]가 맨 앞인 다섯이고 [고른 기간 보고]가 눌려 있다', () => {
+    drawPick(data())
+    expect(buttonsOf().map((b) => b.textContent)).toEqual(['고른 기간 보고', '오늘 일일보고', '어제 일일보고', '이번 달 월말보고', '지난달 월말보고'])
+    expect(buttonsOf().map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false'])
+    expect(screen.getByText(PICK_TEXT)).toBeTruthy()
+  })
+
+  it('AC-1707.1: 옛 넷을 누르면 지금 글이고, [고른 기간 보고]로 돌아오면 고른 기간 글이다', () => {
+    drawPick(data())
+    pick('어제 일일보고')
+    expect(screen.queryByText(PICK_TEXT)).toBeNull()
+    expect(reportBox()).toBeTruthy()
+    pick('고른 기간 보고')
+    expect(screen.getByText(PICK_TEXT)).toBeTruthy()
+  })
+
+  it('AC-1707.1: pick이 null이면(빠른 단추) 넷뿐이고 지금과 같다', () => {
+    drawPick(data(), null)
+    expect(buttonsOf().map((b) => b.textContent)).toEqual(['오늘 일일보고', '어제 일일보고', '이번 달 월말보고', '지난달 월말보고'])
+  })
+
+  it('AC-1707.3: 고른 기간 글이 있으면 [복사]를 누를 수 있다', () => {
+    drawPick(data())
+    expect(screen.getByRole('button', { name: /복사/ }).getAttribute('aria-disabled')).toBeNull()
+  })
+
+  it('AC-1707.3: current 자료가 없으면 "{label}은 자료가 없어 보고 문장을 만들 수 없어요."이고 [복사]는 누를 수 없다', () => {
+    drawPick(data(), { label: '2026년 10월 1일 – 31일', text: null })
+    expect(screen.getByText('2026년 10월 1일 – 31일은 자료가 없어 보고 문장을 만들 수 없어요.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /복사/ }).getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('AC-1707.4: 비트에서 불러오지 않았어도(report null) [고른 기간 보고] 글은 저장된 숫자로 보이고 옛 넷은 "비트 PC에서 불러오면 보여요"다', () => {
+    drawPick(null)
+    expect(buttonsOf()).toHaveLength(5)
+    expect(screen.getByText(PICK_TEXT)).toBeTruthy()
+    expect(screen.queryByText('비트 PC에서 불러오면 보여요')).toBeNull()
+    pick('오늘 일일보고')
+    expect(screen.queryByText(PICK_TEXT)).toBeNull()
+    expect(screen.getByText('비트 PC에서 불러오면 보여요')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /복사/ }).getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('AC-1707.4: 비트 자료도 고른 기간도 없으면(report null, pick null) 지금처럼 안내 한 줄뿐이다', () => {
+    drawPick(null, null)
+    expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
+    expect(screen.getByText('비트 PC에서 불러오면 보여요')).toBeTruthy()
   })
 })

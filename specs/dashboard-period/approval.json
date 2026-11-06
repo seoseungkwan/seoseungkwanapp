@@ -1,0 +1,24 @@
+{
+  "status": "approved",
+  "feature": "dashboard-period",
+  "approved_at": "2026-11-06T05:45:37Z",
+  "approved_via": "user-prompt",
+  "session_id": "85714357-c326-40a4-8ee3-407d5bb46881",
+  "spec_sha256": "79cf992fb9c14d3ba6c2c8e42cf07563a791138209155575415e8207cc84b35a",
+  "scope": [
+    "src/components/dashboard/live/BitDashboard.test.tsx",
+    "src/components/dashboard/live/BitDashboard.tsx",
+    "src/components/dashboard/summary/DashboardAnalysis.test.tsx",
+    "src/components/dashboard/summary/DashboardAnalysis.tsx",
+    "src/components/dashboard/summary/LiveDashboard.test.tsx",
+    "src/components/dashboard/summary/LiveDashboard.tsx",
+    "src/components/dashboard/summary/flow.test.ts",
+    "src/components/dashboard/summary/flow.ts",
+    "src/components/dashboard/summary/source.test.ts",
+    "src/components/dashboard/summary/source.ts",
+    "src/components/dashboard/summary/usePeriodDays.test.ts",
+    "src/components/dashboard/summary/usePeriodDays.ts",
+    "src/components/dashboard/summary/view.test.ts",
+    "src/components/dashboard/summary/view.ts"
+  ]
+}

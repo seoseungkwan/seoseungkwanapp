@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { groupKey, treatmentRows, type TreatmentRow } from '@/components/stats/treatmentView'
-import { statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import type { StatsPick } from '@/components/stats/periodPick'
+import { rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
@@ -387,5 +388,64 @@ describe('AC-1212.1: 1024px 미만 쌓임', () => {
       const tokens = (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
       expect(tokens.filter((token) => OTHER_WIDTH.test(token))).toEqual([])
     }
+  })
+})
+
+// ── 고른 기간 (stats-period REQ-1705). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1705.2: 고른 기간의 처방별 추세 표', () => {
+  const P_TODAY = '2026-11-06'
+  const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const ALL_COVER: DateRange[] = [{ from: '2025-01-01', to: '2026-11-05' }]
+  // 충격파 이번 10월 120, 9월 50, 작년 10월 100
+  const THREE = [day('2025-10-06', [line(SHOCK_KEY, 100, 10)]), day('2026-09-07', [line(SHOCK_KEY, 50, 5)]), day('2026-10-05', [line(SHOCK_KEY, 120, 30)])]
+  const drawPick = (days: DayPayload[], pick: StatsPick = OCT, covered: DateRange[] = ALL_COVER) => {
+    const input: StatsInput = { days, covered, range: rangeOf(P_TODAY, pick, false) }
+    const rows = treatmentRows(input, [SHOCK])
+    return render(<TreatmentTable input={input} rows={rows} opened={new Set()} onToggle={() => {}} renderPanel={() => null} />)
+  }
+  const headTexts = (container: HTMLElement) => Array.from(headOf(container).children).map((cell) => cell.textContent)
+  // 줄 안 비교 칸: 휴대폰 이름표('{name}보다', 넓으면 화면 읽기에만)가 든 칸
+  const compareOf = (name: string) => within(rowOf('충격파')).getByText(`${name}보다`).parentElement!
+
+  it('AC-1705.2: 머리에 비교마다 "{name}보다"가 있다(9월보다·작년 10월보다)', () => {
+    const { container } = drawPick(THREE)
+    expect(headTexts(container)).toEqual(['묶음', '건수', '9월보다', '작년 10월보다', '신환', '재진', ''])
+    expect(headOf(container).classList.contains('lg:grid-cols-[minmax(200px,1fr)_84px_184px_184px_128px_128px_16px]')).toBe(true)
+  })
+
+  it('AC-1705.2: 해는 "2025년보다" 하나다', () => {
+    const { container } = drawPick([day('2025-03-02', [line(SHOCK_KEY, 40, 4)]), day('2026-03-02', [line(SHOCK_KEY, 60, 6)])], { kind: 'year', year: '2026' })
+    expect(headTexts(container)).toEqual(['묶음', '건수', '2025년보다', '신환', '재진', ''])
+    expect(headOf(container).classList.contains(COLUMNS)).toBe(true)
+  })
+
+  it('AC-1705.2: 견준 칸은 증감 글자이고, 작년 기간을 그 묶음으로 세지 않았으면 작년 칸만 "–"이며 표 아래 안내가 있다', () => {
+    const notKeyed = [day('2025-10-06', []), day('2026-09-07', [line(SHOCK_KEY, 50, 5)]), day('2026-10-05', [line(SHOCK_KEY, 120, 30)])]
+    drawPick(notKeyed)
+    expect(compareOf('9월').textContent).toContain('▲')
+    expect(compareOf('작년 10월').textContent).toBe('작년 10월보다–')
+    expect(screen.getByText('작년 10월: 자료가 없어요. 비트 PC에서 그 기간을 불러오면 보여요.')).toBeTruthy()
+    expect(screen.queryByText(/^9월: 자료가 없어요/)).toBeNull()
+  })
+
+  it('AC-1705.2: 작년 기간이 덮이지 않았으면(비트에서 불러온 적 없음) 그 칸이 "–"다', () => {
+    drawPick(THREE, OCT, [{ from: '2026-09-01', to: '2026-11-05' }])
+    expect(compareOf('작년 10월').textContent).toBe('작년 10월보다–')
+    expect(compareOf('9월').textContent).not.toContain('–')
+  })
+
+  it('AC-1705.2: 둘 다 견주면 표 아래 안내가 없다', () => {
+    drawPick(THREE)
+    expect(compareOf('작년 10월').textContent).toContain('▲')
+    expect(screen.queryByText(/자료가 없어요\. 비트 PC에서 그 기간을 불러오면 보여요\./)).toBeNull()
+  })
+})
+
+describe('AC-1705.5: 빠른 단추의 처방별 추세 표는 지금과 같다', () => {
+  it('AC-1705.5: 머리는 묶음·건수·"지난 30일보다"·신환·재진이고 칸 폭이 지금 그대로다', () => {
+    const { container } = draw(PLAIN, [SHOCK])
+    expect(Array.from(headOf(container).children).map((cell) => cell.textContent)).toEqual(['묶음', '건수', '지난 30일보다', '신환', '재진', ''])
+    expect(headOf(container).classList.contains(COLUMNS)).toBe(true)
+    expect(screen.queryByText(/자료가 없어요\. 비트 PC에서 그 기간을 불러오면 보여요\./)).toBeNull()
   })
 })

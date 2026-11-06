@@ -1,6 +1,7 @@
 # Step 3: dashboard-source
 
-> **TASK-16** 대시보드가 저장된 통계 숫자를 읽음 · **REQ-516** · AC-516.1 ~ AC-516.4
+> **TASK-16** 대시보드가 저장된 통계 숫자를 읽음 (30일 줄 · `toSummarySource`) · **REQ-516** · AC-516.2 · AC-516.4(30일 줄 쪽)
+> 2026-11-06 나눔: AC-516.1·AC-516.3과 `LiveDashboard`·페이지는 `specs/bit-dashboard` TASK-8(`phases/bit-dashboard-4-stats` step 1)이 같은 때 따로 한다. 아래 AC-516.1·516.3은 알고만 있고 이 step에서 만들지 않는다.
 > Phase 4 · 화면 `stats-4-screen` · Step 3 — `specs/stats/tasks.md`
 > 명세 `specs/stats/`가 승인된 뒤에만 시작한다(`python3 ~/.claude/harness/bin/sdd status stats`). 이 step은 TASK-16 하나만 한다. 다른 TASK의 일은 하지 않는다.
 
@@ -8,9 +9,9 @@
 
 전체 문장은 `/specs/stats/requirements.md`의 REQ-516(대시보드가 저장된 통계 숫자를 읽음)에 있다. 아래는 같은 글이다. 시험 이름에 이 AC ID를 넣는다.
 
-- **AC-516.1**: Given `/dashboard`, When 그리면, Then 브라우저에서 저장된 일 숫자(오늘 − 97일 ~ 오늘)를 `readDays`로 읽어 `{ kind: 'data', days }`를 만든다. 읽기 전·줄 없음은 지금 연결 전 모양이고, 읽기 실패는 연결 전 모양 + 오류 카드 한 줄(`E-STATS-READ-FAILED`)이다. 서버 코드(`*.server.ts`·페이지)는 통계 표를 읽지 않는다
+- **AC-516.1**: Given `/dashboard`, When 그리면, Then 브라우저에서 저장된 일 숫자(오늘 − `LOOKBACK_DAYS`일 ~ 오늘. 날짜 고르기와 같은 `components/dashboard/live/readBitDays.ts`의 상수)를 `readDays`로 읽어 `{ kind: 'data', days }`(줄 없음은 `{ kind: 'none' }`)를 만들고 `BitDashboard`의 처음 자료로 넘긴다. 연결 전·뒤 모양은 `BitDashboard`가 고르고, 읽는 동안·읽기 실패·기다리는 한도는 `specs/bit-dashboard` REQ-601(저장 숫자 읽기 줄)이 정한다(2026-11-06 사용자 결정). 서버 코드(`*.server.ts`·페이지)는 통계 표를 읽지 않는다
 - **AC-516.2**: Given 연결 뒤 가짜 자료, When 신환 재방문율을 그리면, Then 30일 줄도 7·14일과 같은 규칙(값이 null이 아닌 날들의 합 ÷ 집단 합, 모두 null이면 "집계 중", 분모 0이면 "자료 없음")이고 "30일 기록은 아직 모으지 않아요"가 없다. 대시보드의 30일 기간에서는 30일 줄이 오늘 − 60 ~ 오늘 − 31을 AC-511.4와 같은 규칙으로 세어(S6, 2026-11-01 사용자 결정 — 같은 이름의 줄이 통계 탭과 다르게 움직이지 않게. 모두 null이면 "집계 중", 분모가 0이거나 줄이 없으면 "자료 없음") 비율을 보이고 caption은 "{시작} – {끝}에 온 신환 {N}명 가운데 {K}명 · 온 뒤 30일이 지난 가장 최근 신환이에요"다. 날짜는 그 범위에서 30일 값이 숫자인 첫날과 끝날이다. 7·14일 줄은 고른 기간 그대로이고, 7일·90일 기간은 바뀌지 않는다. 시험: 오늘이 11월 13일인 30일 기간 — 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 보인다. 시험: 가장 새로운 날들이 null — 날짜가 숫자인 날까지로 줄어든다. 시험: 7일 기간 — 30일 줄이 "집계 중"이다
-- **AC-516.3**: Given 대시보드 브리핑 파일(`components/dashboard/briefing/*`), When 보면, Then 고치지 않았고 `'use client'`는 지금처럼 폰 아래 단추 파일 하나뿐이다. 읽기와 연결 전·뒤 고르기는 `components/dashboard/summary/`의 새 클라이언트 파일 하나가 한다
+- **AC-516.3**: Given 대시보드 브리핑 파일(`components/dashboard/briefing/*`), When 보면, Then 이 요구사항으로 고치지 않았고 `'use client'`는 지금처럼 폰 아래 단추 파일 하나뿐이다. 저장 숫자 읽기는 `components/dashboard/summary/`의 새 클라이언트 파일 하나(`LiveDashboard`)가 하고, 연결 전·뒤 고르기는 `BitDashboard`가 한다
 - **AC-516.4**: Given 지금 대시보드 시험(브리핑·분석·보고 문장·페이지), When 돌리면, Then 30일 줄 기대값과 페이지가 읽기 자리를 부르는 방식만 고치고 나머지는 그대로 통과한다
 
 ## 읽어야 할 파일
@@ -44,24 +45,16 @@
 이 목록에 있는 경로만 만들고 고칠 수 있다(glob 허용). 밖의 파일은 SDD 훅이 막는다.
 
 - Files:
-  - `src/components/dashboard/summary/LiveDashboard.tsx`
-  - `src/components/dashboard/summary/LiveDashboard.test.tsx`
   - `src/components/dashboard/summary/source.ts`
   - `src/components/dashboard/summary/source.test.ts`
   - `src/components/dashboard/summary/view.ts`
   - `src/components/dashboard/summary/view.test.ts`
   - `src/components/dashboard/summary/DashboardAnalysis.tsx`
   - `src/components/dashboard/summary/DashboardAnalysis.test.tsx`
-  - `src/app/(app)/dashboard/page.tsx`
-  - `src/app/(app)/dashboard/page.test.tsx`
-  - `src/app/(app)/tabFrame.test.tsx`
 - Tests:
-  - `src/components/dashboard/summary/LiveDashboard.test.tsx`
   - `src/components/dashboard/summary/source.test.ts`
   - `src/components/dashboard/summary/view.test.ts`
   - `src/components/dashboard/summary/DashboardAnalysis.test.tsx`
-  - `src/app/(app)/dashboard/page.test.tsx`
-  - `src/app/(app)/tabFrame.test.tsx`
 - TDD: required
 - 메모: `components/dashboard/briefing/*`는 고치지 않는다(AC-516.3)
 
@@ -73,21 +66,19 @@
 
 ## 작업
 
-### 1. 읽기 자리
-- `source.ts`: `dashboardSummarySource()` 대신 `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`(순수, 줄 없음·null → none). `isConnected`는 그대로
-- `LiveDashboard.tsx`(`'use client'`, 새 파일): `readDays({ from: addDays(today, −97), to: today })` → `toSummarySource` → `DashboardHome`(지금 props: `today`·`report`·`analysis`)을 그린다. 읽는 동안 분석 자리는 "불러오는 중", 실패는 연결 전 모양 + 오류 카드 한 줄(`E-STATS-READ-FAILED`)(AC-516.1)
-- `dashboard/page.tsx`: `LiveDashboard today={todayInKorea()}` 하나를 놓는다. 서버는 통계 표를 읽지 않는다
+### 1. 읽은 값 바꾸기 (`source.ts`)
+- 여섯 파일은 `git show 5abd9db:<경로>`(`wip-stats-dashboard-source`, 검토 전)를 지금 파일 위에 옮긴다. 그 커밋의 `LiveDashboard`·`page.tsx`는 쓰지 않는다
+- `source.ts`: `toSummarySource(result: Awaited<ReturnType<typeof readDays>> | null): SummarySource`를 더한다(순수, 줄 없음·null → none). `dashboardSummarySource()`와 `isConnected`는 그대로 둔다(`page.tsx`가 bit-dashboard TASK-8 전까지 쓴다). 이 모양은 TASK-8이 그대로 부르므로 바꾸지 않는다
 
 ### 2. 30일 줄 (`view.ts`·`DashboardAnalysis.tsx`)
 - `revisitView(days, range, period?)`는 `{ d7, d14, d30: RateCell, d30Cohort: { from, to, within, cohort } | null }`을 돌려준다. `rateOf`에 `within30`을 더한다(`within30`은 선택 칸이라 빠진 칸은 null로 친다). `RateCell`은 고치지 않는다(통계 view가 불러 쓴다, AC-511.7)
 - `period`가 30이면 30일 줄만 `addDays(range.from, −30)` ~ `addDays(range.from, −1)`(= 오늘 − 60 ~ 오늘 − 31)의 날로 센다. 비율이면 `d30Cohort`에 그 범위에서 30일 값이 숫자인 첫날·끝날과 `within`·`cohort` 합을 싣고, 그 밖은 null이다. `period`를 주지 않거나 7·90이면 30일 줄도 고른 기간 그대로다. 7·14일 줄은 늘 고른 기간이다
 - `DashboardAnalysis`는 `revisitView(days, range, period)`로 부르고 30일 줄을 7·14일과 같은 줄로 그린다. `d30Cohort`가 있으면 그 아래 AC-516.2의 caption({N} = `cohort`, {K} = `within`)을 붙인다. 글자는 `view.ts`에서 만든다(`longDate`·`formatCount`). "30일 기록은 아직 모으지 않아요"를 없앤다(AC-516.2)
-- 읽는 범위(`오늘 − 97 ~ 오늘`)가 이미 오늘 − 60까지 덮으므로 읽기는 고치지 않는다
+- 읽는 범위(오늘 − `LOOKBACK_DAYS` ~ 오늘, bit-dashboard TASK-8)가 이미 오늘 − 60까지 덮는다
 
 ### 3. 시험
-- `LiveDashboard.test.tsx`(가짜 `readDays`: 읽는 중·줄 없음·자료·실패), `source.test.ts`, `view.test.ts`·`DashboardAnalysis.test.tsx`(지금 시험은 30일 줄 기대값만 고친다), `page.test.tsx`·`tabFrame.test.tsx`(페이지가 `LiveDashboard`를 놓음, 연결 전 모양 그대로)
+- `source.test.ts`(`toSummarySource`: null·줄 없음 → none, 줄 있음 → data), `view.test.ts`·`DashboardAnalysis.test.tsx`(지금 시험은 30일 줄 기대값만 고친다)
 - AC-516.2(`view.test.ts`·`DashboardAnalysis.test.tsx`에 더한다): 오늘이 11월 13일인 30일 기간 — 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 caption에 보임, 가장 새로운 날들이 null — 날짜가 숫자인 날까지로 줄어듦, 7일 기간 — "집계 중", 모두 null — "집계 중", 분모 0·줄 없음 — "자료 없음", 7·14일 줄은 고른 기간 그대로, `within30`이 빠진 가짜 자료는 null로 침
-- AC-516.3: 브리핑 폴더의 `'use client'`가 하나뿐임(지금 `DashboardHome.test.tsx` 시험이 그대로 통과)
 
 ## TDD 순서
 
@@ -99,15 +90,12 @@
 ## Acceptance Criteria
 
 ```bash
-npx vitest run src/components/dashboard "src/app/(app)/dashboard" "src/app/(app)/tabFrame.test.tsx"
-npx vitest run src/components/stats src/lib/storage
+npx vitest run src/components/dashboard/summary/source.test.ts src/components/dashboard/summary/view.test.ts src/components/dashboard/summary/DashboardAnalysis.test.tsx src/components/stats/view.test.ts
 python3 ~/.claude/harness/bin/tdd-run TASK-16 --expect green
-npm run lint && npm test && npm run build
-python3 ~/.claude/harness/bin/verify
 ```
 
-- 위 커맨드가 모두 에러 없이 끝나야 한다. `verify`는 SDD 사후 점검 + lint → build → test를 한 번에 돈다
-- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-516.1 ~ AC-516.4이 이 TASK의 시험과 이어져 보여야 한다
+- 위 커맨드가 모두 에러 없이 끝나야 한다. 전체 `npm test`·`build`·`verify`는 돌리지 않는다(서버가 작고 TASK-8이 같은 때 돈다. 마지막에 시킨 쪽이 한 번 돈다)
+- `python3 ~/.claude/harness/bin/sdd status stats`에서 AC-516.2·AC-516.4가 이 TASK의 시험과 이어져 보여야 한다
 
 ## 검증 절차
 

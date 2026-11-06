@@ -2,6 +2,7 @@ import { addDays } from '@/lib/analytics/dates'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { connectScreenBridge, type ScreenBridge } from '@/lib/bridge/workerSink'
 import { isErrorCode } from '@/lib/errors'
+import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
@@ -28,7 +29,13 @@ function failureCode(e: unknown): ErrorCode {
   return isErrorCode(code) ? code : READ_FAILED
 }
 
-async function readThroughBridge(bridge: ScreenBridge, worker: StatsWorkerLike, today: string, deadline: number): Promise<ReadResult> {
+async function readThroughBridge(
+  bridge: ScreenBridge,
+  worker: StatsWorkerLike,
+  today: string,
+  groups: readonly RxGroupDef[],
+  deadline: number,
+): Promise<ReadResult> {
   const { state } = await bridge.hello()
   if (state === 'busy') return { kind: 'failed', code: IN_USE }
   if (state !== 'ready') return NOT_READY
@@ -38,7 +45,7 @@ async function readThroughBridge(bridge: ScreenBridge, worker: StatsWorkerLike, 
 
   const range = { from: addDays(today, -LOOKBACK_DAYS), to: today }
   const { id } = await bridge.stream('stats.rows', range)
-  const { days } = await requestLoad(worker, { streamId: id, ...range, today, closeToday: false }, { timeoutMs: deadline - Date.now() })
+  const { days } = await requestLoad(worker, { streamId: id, ...range, today, closeToday: false, groups }, { timeoutMs: deadline - Date.now() })
   return days === null ? { kind: 'failed', code: 'E-BIT-DATA-UNSURE' } : { kind: 'days', days }
 }
 
@@ -48,9 +55,12 @@ export async function readBitDays(deps: {
   today: string
   timeoutMs?: number
   signal?: AbortSignal
+  /** 통계 탭 묶음 정의(AC-606.7, groupDefs 결과). 주지 않으면 []. 열쇠·코드만 시작할 때 떠 두어 읽는 동안 바뀌어도 그대로 싣는다 */
+  groups?: readonly RxGroupDef[]
 }): Promise<ReadResult> {
   const { runtime, createWorker, today, timeoutMs = READ_TIMEOUT_MS, signal } = deps
   if (!runtime || signal?.aborted) return NOT_READY
+  const groups = (deps.groups ?? []).map(({ id, codes }) => ({ id, codes: [...codes] }))
 
   let worker: StatsWorkerLike | undefined
   let bridge: ScreenBridge | undefined
@@ -81,7 +91,7 @@ export async function readBitDays(deps: {
       }
       signal?.addEventListener('abort', onAbort, { once: true })
     })
-    return await Promise.race([readThroughBridge(bridge, worker, today, Date.now() + timeoutMs), expired, left])
+    return await Promise.race([readThroughBridge(bridge, worker, today, groups, Date.now() + timeoutMs), expired, left])
   } catch (e) {
     return { kind: 'failed', code: failureCode(e) }
   } finally {

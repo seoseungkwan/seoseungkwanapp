@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { DayPayload } from '@/types/payload'
 import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
@@ -126,13 +127,14 @@ function setup(
   const fake = fakeWorker(answer)
   const createWorker = vi.fn(() => fake.like)
   const read = (timeoutMs?: number, signal?: AbortSignal) => readBitDays({ runtime, createWorker, today: TODAY, timeoutMs, signal })
+  const readWithGroups = (groups: readonly RxGroupDef[] | undefined) => readBitDays({ runtime, createWorker, today: TODAY, groups })
   const commands = () => port.sent.map((request) => request.cmd)
   /** AC-601.8: 어느 길이든 통로를 닫고 Worker를 끝낸다 */
   const expectClosed = () => {
     expect(port.disconnected).toBe(true)
     expect(fake.worker.terminate).toHaveBeenCalledTimes(1)
   }
-  return { ...fake, port, read, commands, expectClosed, createWorker }
+  return { ...fake, port, read, readWithGroups, commands, expectClosed, createWorker }
 }
 
 afterEach(() => {
@@ -156,6 +158,71 @@ describe('readBitDays', () => {
       expect(stream.args).toEqual({ from: FROM, to: TODAY })
       expect(t.loads).toEqual([{ type: 'load', streamId: stream.id, from: FROM, to: TODAY, today: TODAY, closeToday: false, groups: [] }])
       t.expectClosed()
+    })
+  })
+
+  describe('AC-606.7 통계 탭 묶음 정의를 싣는다', () => {
+    // 지어낸 열쇠·코드. 열쇠 만들기·같은 열쇠 한 번은 groupDefs(TASK-14)가 맡고, 여기서는 받은 것을 그대로 싣는지만 본다
+    const GROUPS: RxGroupDef[] = [
+      { id: 't00000000000000a1', codes: ['FAKE-RX-01', 'FAKE-RX-02'] },
+      { id: 't00000000000000b2', codes: ['FAKE-RX-03'] },
+    ]
+
+    it('AC-606.7: groups를 주면 Worker load 요청에 그 { id, codes }가 그대로 실리고 나머지 읽기는 그대로다', async () => {
+      const t = setup()
+      await expect(t.readWithGroups(GROUPS)).resolves.toEqual({ kind: 'days', days: [DAY] })
+      expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
+      const stream = t.port.sent[2]
+      expect(stream.args).toEqual({ from: FROM, to: TODAY })
+      expect(t.loads).toEqual([
+        {
+          type: 'load',
+          streamId: stream.id,
+          from: FROM,
+          to: TODAY,
+          today: TODAY,
+          closeToday: false,
+          groups: [
+            { id: 't00000000000000a1', codes: ['FAKE-RX-01', 'FAKE-RX-02'] },
+            { id: 't00000000000000b2', codes: ['FAKE-RX-03'] },
+          ],
+        },
+      ])
+      t.expectClosed()
+    })
+
+    it.each<[string, (t: ReturnType<typeof setup>) => Promise<unknown>]>([
+      ['groups 칸이 없으면', (t) => t.read()],
+      ['groups가 undefined면', (t) => t.readWithGroups(undefined)],
+      ['groups가 빈 목록이면', (t) => t.readWithGroups([])],
+    ])('AC-606.7: %s load 요청에 groups: []를 싣는다', async (_name, run) => {
+      const t = setup()
+      await expect(run(t)).resolves.toEqual({ kind: 'days', days: [DAY] })
+      expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
+      expect(t.loads).toEqual([
+        { type: 'load', streamId: t.port.sent[2].id, from: FROM, to: TODAY, today: TODAY, closeToday: false, groups: [] },
+      ])
+      t.expectClosed()
+    })
+
+    it('AC-606.7: 읽기를 시작한 뒤 넘긴 목록을 바꿔도 load 요청은 시작할 때의 정의 그대로다', async () => {
+      const t = setup()
+      const groups: RxGroupDef[] = GROUPS.map(({ id, codes }) => ({ id, codes: [...codes] }))
+      const reading = t.readWithGroups(groups)
+      // load는 hello·bit.check·stats.rows 답을 기다린 뒤에 간다. 그 사이에 부른 쪽이 목록을 바꾼다
+      groups[0].codes.push('FAKE-RX-99')
+      groups.push({ id: 't00000000000000c3', codes: ['FAKE-RX-04'] })
+      await reading
+      expect(t.loads).toHaveLength(1)
+      expect(t.loads[0].groups).toEqual(GROUPS)
+    })
+
+    it('AC-606.7: 묶음 정의에 열쇠·코드 말고 다른 칸이 있어도 Worker로는 { id, codes }만 간다', async () => {
+      const t = setup()
+      const withName = [{ id: 't00000000000000a1', codes: ['FAKE-RX-01'], name: '가짜 묶음 이름' }]
+      await t.readWithGroups(withName)
+      expect(t.loads[0].groups).toStrictEqual([{ id: 't00000000000000a1', codes: ['FAKE-RX-01'] }])
+      expect(JSON.stringify(t.loads)).not.toContain('가짜 묶음 이름')
     })
   })
 

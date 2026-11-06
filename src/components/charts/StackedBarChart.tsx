@@ -12,7 +12,19 @@ import { niceScale } from './scale'
 export type BarSeries = { name: string; tone: 'accent' | 'chart-3' | 'hatch-warning' } // 첫 계열이 맨 위·범례 첫째
 // comparison: 칸마다 줄 수 있는 비교 기간 값(stats REQ-513 AC-513.2). 숫자면 쌓은 막대 왼쪽에 가는 faint 막대를 그리고 눈금에 넣는다. null·없음은 막대가 없다.
 // 숫자인 칸이 하나도 없으면 그림·표가 지금과 한 글자도 다르지 않다. 하나라도 있으면 화면 읽기 표에 "비교 기간" 칸 하나가 붙는다(null은 "–")
-export type BarBucket = { key: string; label: string; rangeLabel: string; state: BucketState; values: number[]; note?: string; comparison?: number | null }
+// blank: 빈 칸(stats-period AC-1704.3). 'no-data' = 자료 없는 칸이라 막대·합계 자리에 '–'(muted)이고 화면 읽기 표도 계열·합계·상태가 '–'다(0이 아니다).
+// 'future' = 앞으로 올 칸이라 아래 기간 글자만 있고 화면 읽기 표에 없다. 빈 칸의 값·비교 값은 그리지 않고 눈금·굵은 합계에 넣지 않는다.
+// 주지 않으면 지금 그림과 한 글자도 다르지 않다
+export type BarBucket = {
+  key: string
+  label: string
+  rangeLabel: string
+  state: BucketState
+  values: number[]
+  note?: string
+  comparison?: number | null
+  blank?: 'no-data' | 'future'
+}
 
 // dense: 칸이 많은 그림용. 막대 위 합계·상태 글자를 그리지 않는다(화면 읽기 표는 그대로, tab-frame REQ-314). 아래 날짜 글자는 부르는 쪽이 label로 고른다(빈 label = 빈칸)
 // thinLabels: 768px 미만에서 날짜 글자를 하나 걸러 보인다(0부터 홀수 번째 칸 글자만 max-md:invisible, 자리는 그대로. ui-90 AC-421.2).
@@ -62,12 +74,13 @@ function HatchLines({ color }: { color: string }) {
 export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false, thinLabels = false, hideZeroTotals = false }: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
-  const comparisons = buckets.flatMap((b) => (typeof b.comparison === 'number' ? [b.comparison] : []))
+  // 눈금·비교 막대·굵은 합계는 진짜 칸(blank 없음)만으로 잡는다
+  const comparisons = buckets.flatMap((b) => (!b.blank && typeof b.comparison === 'number' ? [b.comparison] : []))
   const compared = comparisons.length > 0
-  const scale = niceScale(Math.max(0, ...totals, ...comparisons))
+  const scale = niceScale(Math.max(0, ...totals.filter((_, i) => !buckets[i]!.blank), ...comparisons))
   // compact는 눈금 가운데 짝수 번째(0·400·800)만
   const ticks = compact ? scale.ticks.filter((_, i) => i % 2 === 0) : scale.ticks
-  const lastComplete = buckets.findLastIndex((b) => b.state === 'complete')
+  const lastComplete = buckets.findLastIndex((b) => b.state === 'complete' && !b.blank)
 
   return (
     <div>
@@ -96,17 +109,25 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
             <div className="absolute inset-0 flex">
               {buckets.map((bucket, i) => (
                 <div key={bucket.key} className={`flex h-full min-w-0 flex-1 items-end justify-center${compared ? ' gap-0.5' : ''}`}>
-                  {typeof bucket.comparison === 'number' && <div className="w-1/6 max-w-2.5 bg-faint" style={{ height: at(bucket.comparison, scale.max) }} />}
-                  <Bar
-                    bucket={bucket}
-                    series={series}
-                    total={totals[i]!}
-                    max={scale.max}
-                    width={size.bar}
-                    compact={compact}
-                    noLabel={dense || (hideZeroTotals && totals[i] === 0)}
-                    strong={i === lastComplete}
-                  />
+                  {bucket.blank === 'no-data' ? (
+                    <span className="mb-1 text-caption text-muted">–</span>
+                  ) : bucket.blank === 'future' ? null : (
+                    <>
+                      {typeof bucket.comparison === 'number' && (
+                        <div className="w-1/6 max-w-2.5 bg-faint" style={{ height: at(bucket.comparison, scale.max) }} />
+                      )}
+                      <Bar
+                        bucket={bucket}
+                        series={series}
+                        total={totals[i]!}
+                        max={scale.max}
+                        width={size.bar}
+                        compact={compact}
+                        noLabel={dense || (hideZeroTotals && totals[i] === 0)}
+                        strong={i === lastComplete}
+                      />
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -141,17 +162,21 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
             </tr>
           </thead>
           <tbody>
-            {buckets.map((bucket, i) => (
-              <tr key={bucket.key}>
-                <th scope="row">{bucket.rangeLabel}</th>
-                {series.map((_, j) => (
-                  <td key={j}>{formatCount(bucket.values[j] ?? 0)}</td>
-                ))}
-                <td>{formatCount(totals[i]!)}</td>
-                <td>{STATE_TEXT[bucket.state]}</td>
-                {compared && <td>{typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
-              </tr>
-            ))}
+            {buckets.map((bucket, i) => {
+              if (bucket.blank === 'future') return null
+              const noData = bucket.blank === 'no-data'
+              return (
+                <tr key={bucket.key}>
+                  <th scope="row">{bucket.rangeLabel}</th>
+                  {series.map((_, j) => (
+                    <td key={j}>{noData ? '–' : formatCount(bucket.values[j] ?? 0)}</td>
+                  ))}
+                  <td>{noData ? '–' : formatCount(totals[i]!)}</td>
+                  <td>{noData ? '–' : STATE_TEXT[bucket.state]}</td>
+                  {compared && <td>{!noData && typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

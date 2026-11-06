@@ -120,3 +120,48 @@ describe('basisLine — 근거 줄 (REQ-506)', () => {
     )
   })
 })
+
+// 접수 건수·재진(kind: 'visits')은 사람 수가 아니라 건수다(spec ai-report-stats REQ-2004)
+const visits = (label: string, selected: number | null, prev: number | null, lastYear: number | null): ReportMetric => ({
+  id: 'total.patients',
+  label,
+  kind: 'visits',
+  values: { selected, prev, lastYear },
+})
+
+describe('basisLine — 접수 건수는 "건" (REQ-2004)', () => {
+  it('AC-2004.2 visits 근거 줄은 "근거 · 접수 건수 9월 2,480건 → 10월 2,615건 · 작년 10월 2,310건"', () => {
+    expect(basisLine(visits('접수 건수', 2615, 2480, 2310), october())).toBe(
+      '근거 · 접수 건수 9월 2,480건 → 10월 2,615건 · 작년 10월 2,310건',
+    )
+  })
+
+  it('AC-2004.2 visits도 천 이상은 세 자리마다 쉼표, 천 미만·0은 쉼표 없이 "건"', () => {
+    expect(basisLine(visits('재진', 1234567, 999, 0), october())).toBe('근거 · 재진 9월 999건 → 10월 1,234,567건 · 작년 10월 0건')
+  })
+
+  it('AC-2004.2 visits 비교 달 자료가 없으면 "자료 없음"(지난달·작년 같은 달 둘 다)', () => {
+    expect(basisLine(visits('접수 건수', 2615, null, null), october({ hasPrev: false, hasLastYear: false }))).toBe(
+      '근거 · 접수 건수 9월 자료 없음 → 10월 2,615건 · 작년 10월 자료 없음',
+    )
+  })
+
+  it('AC-2004.2 visits 값이 null이면 그 달 자료가 있어도 "자료 없음"("집계 중"은 비율만)', () => {
+    expect(basisLine(visits('접수 건수', null, null, null), october())).toBe(
+      '근거 · 접수 건수 9월 자료 없음 → 10월 자료 없음 · 작년 10월 자료 없음',
+    )
+  })
+
+  it('AC-2004.2 visits도 고른 달이 1월이면 지난달은 "작년 12월"', () => {
+    expect(basisLine(visits('접수 건수', 2615, 2480, 2310), january)).toBe(
+      '근거 · 접수 건수 작년 12월 2,480건 → 1월 2,615건 · 작년 1월 2,310건',
+    )
+  })
+
+  it('AC-2004.2 count는 그대로 "명", rate는 그대로 "%"', () => {
+    expect(basisLine(count('신환', 2615, 2480, 2310), october())).toBe('근거 · 신환 9월 2,480명 → 10월 2,615명 · 작년 10월 2,310명')
+    expect(basisLine(rate({ selected: 0.5, prev: 0.25, lastYear: null }), october())).toBe(
+      '근거 · 신환 7일 재방문율 9월 25.0% → 10월 50.0% · 작년 10월 집계 중',
+    )
+  })
+})

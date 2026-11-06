@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SavedReport } from '@/types/aiReport'
+import { GROUP_KEY, groupKey } from '@/components/stats/treatmentView'
+import { validateMonthPayload } from '@/lib/payload/validate'
+import type { ReportInput, SavedReport } from '@/types/aiReport'
+import { generateReport, isReportStale, type GenerateDeps } from './generate'
 import { addUsage, loadReportMonths, readSavedReport, readUsage, saveReport } from './store'
 
 // 실제 Supabase에 붙지 않는다. 쓰기 시험의 가짜 클라이언트는 rpc 하나만 있고, 그 밖의 이름(from·auth·storage …)을 꺼내면
@@ -99,25 +102,7 @@ function expectNoConsole() {
   for (const s of consoleSpies) expect(s).not.toHaveBeenCalled()
 }
 
-describe('loadReportMonths (AC-511.6)', () => {
-  it('AC-511.6 loadReportMonths는 지금 늘 세 달 모두 없음이고 DB를 읽지 않는다', async () => {
-    const { client, rpc, touched } = fakeClient()
-    const months = await loadReportMonths(client, '2026-10')
-    expect(months).toEqual({ selected: null, prev: null, lastYear: null, groupNames: {} })
-    expect(rpc).not.toHaveBeenCalled()
-    expect(touched).toEqual([])
-  })
-
-  it('AC-511.6 다른 달도 늘 없음이고, 부를 때마다 새 값을 돌려준다(groupNames를 고쳐도 다음 값에 번지지 않는다)', async () => {
-    const { client, touched } = fakeClient()
-    const a = await loadReportMonths(client, '2026-11')
-    a.groupNames['g1'] = '도수치료'
-    const b = await loadReportMonths(client, '2020-01')
-    expect(b).toEqual({ selected: null, prev: null, lastYear: null, groupNames: {} })
-    expect(b).not.toBe(a)
-    expect(touched).toEqual([])
-  })
-})
+// loadReportMonths(통계 세 달·묶음 이름 읽기) 시험은 이 파일 끝 'loadReportMonths' 묶음에 있다(spec ai-report-stats REQ-2001·2002)
 
 describe('saveReport · addUsage 저장 쪽 (AC-511.2)', () => {
   it("AC-511.2 saveReport는 rpc('save_ai_report')를 한 번, 달·리포트·지문·모델 인자로 부르고 true", async () => {
@@ -160,10 +145,10 @@ describe('saveReport · addUsage 저장 쪽 (AC-511.2)', () => {
     const source = readFileSync(fileURLToPath(new URL('./store.ts', import.meta.url)), 'utf8')
     expect(source.split(/\r?\n/)[0]).toBe("import 'server-only'")
     expect(source).not.toMatch(/\.insert\s*\(|\.upsert\s*\(|\.update\s*\(|\.delete\s*\(/)
-    // from은 읽기 둘만 쓴다: 호출이 정확히 2개이고, 표 이름은 글자 그대로 ai_reports·ai_usage다
+    // from은 읽기 넷만 쓴다: 호출이 정확히 4개이고, 표 이름은 글자 그대로 ai_reports·ai_usage·stats_months·stats_rx_groups다
     const fromCalls = source.match(/\.from\s*\([^)]*\)?/g) ?? []
-    expect(fromCalls).toHaveLength(2)
-    expect([...fromCalls].sort()).toEqual([".from('ai_reports')", ".from('ai_usage')"])
+    expect(fromCalls).toHaveLength(4)
+    expect([...fromCalls].sort()).toEqual([".from('ai_reports')", ".from('ai_usage')", ".from('stats_months')", ".from('stats_rx_groups')"])
     expect(source).not.toMatch(/service[_-]?role|SERVICE_ROLE|createClient|createServerClient|supabaseServer/)
     expect(source).not.toMatch(/console\./)
     expect(source).not.toMatch(/fixtures|fake-ai/)
@@ -337,7 +322,7 @@ describe('readUsage (AC-704.3)', () => {
   })
 
   it('AC-704.3 이번 달은 인자로만 받는다(store.ts에서 오늘 날짜를 구하지 않는다)', () => {
-    expect(storeSource()).not.toMatch(/\bDate\b|analytics\/dates/)
+    expect(storeSource()).not.toMatch(/\bDate\b|todayInKorea|monthOf/)
   })
 
   it('AC-704.3 error가 있으면 줄이 없든 있든 정확히 failed이고 오류 글자가 답에 없다', async () => {
@@ -371,5 +356,352 @@ describe('readUsage (AC-704.3)', () => {
     ['data가 undefined', undefined],
   ])('AC-704.3 줄 모양이 틀리면(%s) 정확히 failed', async (_name, row) => {
     await expectFailed(rowClient(row).client)
+  })
+})
+
+// ---------- loadReportMonths: 통계 세 달 + 처방별 추세 묶음 이름 (spec ai-report-stats REQ-2001·2002·2007) ----------
+
+type Answer = () => RpcResult | Promise<RpcResult>
+
+// 통계 읽기 시험의 가짜 클라이언트. from('stats_months') → select → in, from('stats_rx_groups') → select 사슬만 있고
+// 사슬 끝은 then으로 답한다(묶음 읽기는 select 결과를 바로 기다린다). 표 이름·select 글자·in 인자를 남긴다.
+// 그 밖의 이름(eq·match·filter·rpc·insert …)·다른 표를 꺼내면 touched에 남기고 부르면 던진다 — 병원 조건·쓰기가 끼면 시험이 실패한다
+function fakeStatsClient(answers: { months?: Answer; groups?: Answer } = {}) {
+  const monthsAnswer = answers.months ?? (async () => ({ data: [], error: null }))
+  const groupsAnswer = answers.groups ?? (async () => ({ data: [], error: null }))
+  const from: unknown[][] = []
+  const select: unknown[][] = []
+  const inArgs: unknown[][] = []
+  const touched: string[] = []
+  const link = (methods: Record<string, (...args: unknown[]) => unknown>): unknown =>
+    new Proxy(
+      {},
+      {
+        get(_target, key) {
+          if (typeof key !== 'string') return undefined
+          touched.push(key)
+          return (
+            methods[key] ??
+            (() => {
+              throw new Error(`쓰면 안 되는 Supabase 메서드: ${key}`)
+            })
+          )
+        },
+      },
+    )
+  const answerWith = (answer: Answer) =>
+    link({
+      then: (resolve, reject) => {
+        let result: Promise<RpcResult>
+        try {
+          result = Promise.resolve(answer())
+        } catch (error) {
+          result = Promise.reject(error)
+        }
+        return result.then(resolve as (v: RpcResult) => unknown, reject as (e: unknown) => unknown)
+      },
+    })
+  const monthsTable = link({
+    select: (...args) => {
+      select.push(['stats_months', ...args])
+      return link({
+        in: (...args2) => {
+          inArgs.push(args2)
+          return answerWith(monthsAnswer)
+        },
+      })
+    },
+  })
+  const groupsTable = link({
+    select: (...args) => {
+      select.push(['stats_rx_groups', ...args])
+      return answerWith(groupsAnswer)
+    },
+  })
+  const client = link({
+    from: (...args) => {
+      from.push(args)
+      if (args[0] === 'stats_months') return monthsTable
+      if (args[0] === 'stats_rx_groups') return groupsTable
+      throw new Error(`읽으면 안 되는 표: ${String(args[0])}`)
+    },
+  }) as SupabaseClient
+  return { client, from, select, in: inArgs, touched }
+}
+
+const answer = (data: unknown): Answer => async () => ({ data, error: null })
+
+// 시험 안에서 만든 가짜 달 줄(fixtures를 읽지 않는다). 처방코드는 FAKE-…, 묶음 열쇠는 groupKey(코드)
+const MANUAL_CODES = ['FAKE-G1', 'FAKE-G2']
+const PT_CODES = ['FAKE-G3']
+const MANUAL_KEY = groupKey(MANUAL_CODES)
+const PT_KEY = groupKey(PT_CODES)
+
+function monthRow(month: string, patients: number, partial = false) {
+  return {
+    month,
+    payload: {
+      schemaVersion: 2,
+      quality: 'valid',
+      month,
+      partial,
+      totals: { patients, newPatients: 10, returning: patients - 12, unknown: 2 },
+      rx: [{ code: 'FAKE-R1', name: '가짜 처방', type: '가짜', patients: 5, newPatients: 1, returning: 4, followup: [5, 0, 0, 0] }],
+      groups: [
+        { id: MANUAL_KEY, patients: 8, newPatients: 2, returning: 6, followup: [8, 0, 0, 0] },
+        { id: PT_KEY, patients: 6, newPatients: 1, returning: 5, followup: [6, 0, 0, 0] },
+      ],
+      revisit: { cohort: 0, within7: 0, within14: 0 },
+      regions: [],
+    },
+  }
+}
+
+const GROUP_ROWS = [
+  { name: '도수치료', codes: ['fake-g2', 'FAKE-G1'], sort_order: 0 },
+  { name: '물리치료', codes: PT_CODES, sort_order: 1 },
+]
+
+const expectThrowsWithoutSecret = async (run: Promise<unknown>) => {
+  const error = await run.then(
+    () => null,
+    (e: unknown) => e,
+  )
+  expect(error, '던져야 한다').toBeInstanceOf(Error)
+  expect(String(error)).not.toContain(SECRET)
+  expect(JSON.stringify(error)).not.toContain(SECRET)
+  expectNoConsole()
+}
+
+describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
+  it('AC-2001.1 stats_months에서 고른 달·지난달·작년 같은 달을 읽기 한 번(select month, payload + in)으로 읽고 payload를 그대로 세 칸에 넣는다', async () => {
+    const sel = monthRow('2026-10', 120)
+    const prev = monthRow('2026-09', 110)
+    const lastYear = monthRow('2025-10', 100)
+    const fake = fakeStatsClient({ months: answer([prev, lastYear, sel]), groups: answer(GROUP_ROWS) })
+    const months = await loadReportMonths(fake.client, '2026-10')
+    expect(months.selected).toBe(sel.payload)
+    expect(months.prev).toBe(prev.payload)
+    expect(months.lastYear).toBe(lastYear.payload)
+    expect(fake.select.filter((s) => s[0] === 'stats_months')).toEqual([['stats_months', 'month, payload']])
+    expect(fake.in).toEqual([['month', ['2026-10', '2026-09', '2025-10']]])
+    expectNoConsole()
+  })
+
+  it('AC-2001.1 줄이 없는 달은 null이다(고른 달만 있음·아무 줄 없음)', async () => {
+    const sel = monthRow('2026-10', 120)
+    const only = await loadReportMonths(fakeStatsClient({ months: answer([sel]) }).client, '2026-10')
+    expect(only).toEqual({ selected: sel.payload, prev: null, lastYear: null, groupNames: {} })
+    const none = await loadReportMonths(fakeStatsClient({ months: answer([]) }).client, '2026-10')
+    expect(none).toEqual({ selected: null, prev: null, lastYear: null, groupNames: {} })
+  })
+
+  it('AC-2001.1 해가 바뀌는 달: 2026-01이면 지난달 2025-12·작년 같은 달 2025-01을 읽는다', async () => {
+    const sel = monthRow('2026-01', 50)
+    const prev = monthRow('2025-12', 40)
+    const lastYear = monthRow('2025-01', 30)
+    const fake = fakeStatsClient({ months: answer([sel, prev, lastYear]) })
+    const months = await loadReportMonths(fake.client, '2026-01')
+    expect(fake.in).toEqual([['month', ['2026-01', '2025-12', '2025-01']]])
+    expect(months.prev).toBe(prev.payload)
+    expect(months.lastYear).toBe(lastYear.payload)
+  })
+
+  it('AC-2001.2 병원 조건·쓰기·rpc·다른 표가 없다: from은 stats_months·stats_rx_groups 한 번씩, 꺼낸 이름은 from·select·in·then뿐', async () => {
+    const fake = fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer(GROUP_ROWS) })
+    await loadReportMonths(fake.client, '2026-10')
+    expect([...fake.from].sort()).toEqual([['stats_months'], ['stats_rx_groups']])
+    expect([...new Set(fake.touched)].sort()).toEqual(['from', 'in', 'select', 'then'])
+    expect(JSON.stringify({ from: fake.from, select: fake.select, in: fake.in })).not.toMatch(/hospital/)
+    expect(storeSource()).not.toContain('hospital_id')
+  })
+
+  it('AC-2001.3 받은 줄의 month가 세 달 밖이거나 글자가 아니면 버린다(다른 달 칸에 넣지 않는다)', async () => {
+    const sel = monthRow('2026-10', 120)
+    const outside = monthRow('2026-08', 90)
+    const numberMonth = { month: 202609, payload: monthRow('2026-09', 80).payload }
+    const noMonth = { payload: monthRow('2025-10', 70).payload }
+    const months = await loadReportMonths(fakeStatsClient({ months: answer([outside, numberMonth, noMonth, null, sel]) }).client, '2026-10')
+    expect(months).toEqual({ selected: sel.payload, prev: null, lastYear: null, groupNames: {} })
+  })
+
+  it('AC-2001.3 같은 달 줄이 둘이면 앞 줄을 쓴다', async () => {
+    const first = monthRow('2026-10', 120)
+    const second = monthRow('2026-10', 130)
+    const months = await loadReportMonths(fakeStatsClient({ months: answer([first, second]) }).client, '2026-10')
+    expect(months.selected).toBe(first.payload)
+  })
+
+  it.each<[string, Answer]>([
+    ['error가 있음', async () => ({ data: null, error: READ_ERROR })],
+    ['error와 줄이 같이 옴', async () => ({ data: [monthRow('2026-10', 120)], error: READ_ERROR })],
+    ['거절', async () => boom()],
+    ['바로 던짐', () => boom()],
+    ['답이 배열이 아님', answer({ month: '2026-10', payload: SECRET })],
+    ['답이 null', answer(null)],
+  ])('AC-2001.4 stats_months 읽기가 %s이면 던지고 오류 글에 받은 오류 내용이 없다', async (_name, months) => {
+    await expectThrowsWithoutSecret(loadReportMonths(fakeStatsClient({ months, groups: answer(GROUP_ROWS) }).client, '2026-10'))
+  })
+
+  it('AC-2001.4 from에서 던져도 던진다', async () => {
+    await expectThrowsWithoutSecret(loadReportMonths(fakeClient().client, '2026-10'))
+  })
+
+  it("AC-2001.4 읽기가 실패하면 리포트 만들기는 E-AI-FAILED('자료 없음'이 아님)이고 숫자 바뀜 비교는 false", async () => {
+    const failing = () => fakeStatsClient({ months: async () => ({ data: null, error: READ_ERROR }) }).client
+    const callClaude = vi.fn<GenerateDeps['callClaude']>()
+    const deps: GenerateDeps = {
+      loadMonths: (m) => loadReportMonths(failing(), m),
+      callClaude,
+      saveReport: async () => true,
+      addUsage: async () => true,
+      now: () => new Date('2026-11-02T01:02:03.000Z'),
+    }
+    await expect(generateReport('2026-10', deps)).resolves.toEqual({ ok: false, code: 'E-AI-FAILED' })
+    expect(callClaude).not.toHaveBeenCalled()
+    await expect(isReportStale('2026-10', 'a'.repeat(64), (m) => loadReportMonths(failing(), m))).resolves.toBe(false)
+  })
+
+  it('AC-2001.5 같은 달로 두 번 부르면 부를 때마다 새 값이다(첫 값의 groupNames를 고쳐도 둘째 값에 번지지 않는다)', async () => {
+    const fake = fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer(GROUP_ROWS) })
+    const a = await loadReportMonths(fake.client, '2026-10')
+    a.groupNames['t0000000000000000'] = '바꾼 이름'
+    a.groupNames[MANUAL_KEY] = '고친 이름'
+    const b = await loadReportMonths(fake.client, '2026-10')
+    expect(b).not.toBe(a)
+    expect(b.groupNames).not.toBe(a.groupNames)
+    expect(b.groupNames).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+  })
+})
+
+describe('loadReportMonths — 묶음 이름 (REQ-2002)', () => {
+  const namesOf = async (rows: unknown) => (await loadReportMonths(fakeStatsClient({ groups: answer(rows) }).client, '2026-10')).groupNames
+
+  it("AC-2002.1 stats_rx_groups를 select('name, codes, sort_order')로 읽어 처방이 든 묶음마다 groupKey(codes) → 이름", async () => {
+    const fake = fakeStatsClient({ groups: answer(GROUP_ROWS) })
+    const { groupNames } = await loadReportMonths(fake.client, '2026-10')
+    expect(fake.select.filter((s) => s[0] === 'stats_rx_groups')).toEqual([['stats_rx_groups', 'name, codes, sort_order']])
+    expect(groupNames).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+    for (const key of Object.keys(groupNames)) expect(key).toMatch(GROUP_KEY)
+  })
+
+  it('AC-2002.1 열쇠는 통계 탭과 같은 groupKey다: 코드 대소문자·차례가 달라도 같은 열쇠', async () => {
+    const names = await namesOf([{ name: '도수치료', codes: ['fake-g2', 'FAKE-G1', 'fake-G1'], sort_order: 0 }])
+    expect(Object.keys(names)).toEqual([groupKey(['FAKE-G1', 'FAKE-G2'])])
+    expect(Object.keys(names)).toEqual([MANUAL_KEY])
+  })
+
+  it('AC-2002.1 처방이 빈 묶음은 빠진다', async () => {
+    const names = await namesOf([{ name: '빈 묶음', codes: [], sort_order: 0 }, ...GROUP_ROWS])
+    expect(names).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+    expect(Object.values(names)).not.toContain('빈 묶음')
+  })
+
+  it('AC-2002.2 처방 모음이 같아 열쇠가 같은 묶음이 둘이면 sort_order가 작은 묶음의 이름(줄 차례와 상관없이)', async () => {
+    const names = await namesOf([
+      { name: '나중 이름', codes: ['FAKE-G3'], sort_order: 4 },
+      { name: '먼저 이름', codes: ['fake-g3'], sort_order: 1 },
+    ])
+    expect(names).toEqual({ [PT_KEY]: '먼저 이름' })
+  })
+
+  it('AC-2002.2 sort_order도 같으면 이름의 글자 코드 차례로 앞선 것(대문자가 소문자보다 앞, localeCompare가 아님)', async () => {
+    const names = await namesOf([
+      { name: 'b-묶음', codes: ['FAKE-G3'], sort_order: 2 },
+      { name: 'B-묶음', codes: ['FAKE-G3'], sort_order: 2 },
+    ])
+    expect(names).toEqual({ [PT_KEY]: 'B-묶음' })
+  })
+
+  it.each<[string, Answer]>([
+    ['error가 있음', async () => ({ data: null, error: READ_ERROR })],
+    ['error와 줄이 같이 옴', async () => ({ data: GROUP_ROWS, error: READ_ERROR })],
+    ['거절', async () => boom()],
+    ['바로 던짐', () => boom()],
+    ['답이 배열이 아님', answer({ name: SECRET, codes: [], sort_order: 0 })],
+    ['답이 null', answer(null)],
+    ['name이 글자가 아님', answer([{ name: 7, codes: ['FAKE-G1'], sort_order: 0 }])],
+    ['name이 없음', answer([{ codes: ['FAKE-G1'], sort_order: 0 }])],
+    ['codes가 배열이 아님', answer([{ name: '도수치료', codes: 'FAKE-G1', sort_order: 0 }])],
+    ['codes에 글자가 아닌 값', answer([{ name: '도수치료', codes: ['FAKE-G1', 3], sort_order: 0 }])],
+    ['codes가 null', answer([{ name: '도수치료', codes: null, sort_order: 0 }])],
+    ['sort_order가 정수가 아님', answer([{ name: '도수치료', codes: ['FAKE-G1'], sort_order: 1.5 }])],
+    ['sort_order가 글자', answer([{ name: '도수치료', codes: ['FAKE-G1'], sort_order: '0' }])],
+    ['줄이 null', answer([null])],
+  ])('AC-2002.3 stats_rx_groups 읽기가 %s이면 던지고(이름 없이 만들지 않는다) 오류 글에 받은 오류 내용이 없다', async (_name, groups) => {
+    await expectThrowsWithoutSecret(loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups }).client, '2026-10'))
+  })
+
+  it('AC-2002.4 돌려주는 값에는 열쇠와 이름만 있고 처방 코드 목록은 없다', async () => {
+    const months = await loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer(GROUP_ROWS) }).client, '2026-10')
+    expect(Object.keys(months)).toEqual(['selected', 'prev', 'lastYear', 'groupNames'])
+    const text = JSON.stringify(months.groupNames)
+    expect(text).not.toContain('codes')
+    for (const code of ['FAKE-G1', 'FAKE-G2', 'FAKE-G3', 'fake-g2']) expect(text).not.toContain(code)
+    expect(JSON.stringify(months)).not.toContain('"codes"')
+  })
+
+  it('AC-2002.5 연락처·식별 번호 모양 이름(010-1234-5678·메일 주소)의 묶음은 빠지고 다른 묶음은 그대로다', async () => {
+    const names = await namesOf([
+      { name: '010-1234-5678', codes: ['FAKE-P1'], sort_order: 0 },
+      { name: 'doctor@example.com', codes: ['FAKE-P2'], sort_order: 1 },
+      ...GROUP_ROWS,
+    ])
+    expect(names).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+    expect(JSON.stringify(names)).not.toMatch(/010-1234-5678|@/)
+  })
+
+  it('AC-2002.5 같은 열쇠의 앞 묶음 이름이 검사를 못 넘으면 그 묶음만 빠지고 다음 묶음 이름을 쓴다', async () => {
+    const names = await namesOf([
+      { name: '010-1234-5678', codes: ['FAKE-G3'], sort_order: 0 },
+      { name: '물리치료', codes: ['FAKE-G3'], sort_order: 1 },
+    ])
+    expect(names).toEqual({ [PT_KEY]: '물리치료' })
+  })
+})
+
+describe('generateReport에 loadReportMonths를 이어 부름 (REQ-2007)', () => {
+  const goodText = JSON.stringify({
+    summary: '접수 건수와 신환이 함께 늘었습니다.',
+    cards: [
+      { tag: 'up', text: '접수 건수가 지난달보다 늘었습니다.', metric: 'total.patients' },
+      { tag: 'up', text: '신환이 늘었습니다.', metric: 'total.newPatients' },
+      { tag: 'watch', text: '도수치료 묶음은 지켜볼 만합니다.', metric: `group:${MANUAL_KEY}.patients` },
+    ],
+  })
+
+  it('AC-2007.2 Claude 입력의 지표가 저장된 숫자에서 나오고(total.patients = 줄의 totals.patients), 입력 JSON에 codes가 없다', async () => {
+    const sel = monthRow('2026-10', 120)
+    const prev = monthRow('2026-09', 110)
+    const lastYear = monthRow('2025-10', 100)
+    for (const row of [sel, prev, lastYear]) expect(validateMonthPayload(row.payload), row.month).not.toBeNull()
+    const fake = fakeStatsClient({ months: answer([sel, prev, lastYear]), groups: answer(GROUP_ROWS) })
+    const callClaude = vi.fn<GenerateDeps['callClaude']>(async () => ({
+      ok: true as const,
+      text: goodText,
+      usage: { inputTokens: 1000, outputTokens: 500, model: 'claude-opus-5-5' },
+    }))
+    const deps: GenerateDeps = {
+      loadMonths: (m) => loadReportMonths(fake.client, m),
+      callClaude,
+      saveReport: async () => true,
+      addUsage: async () => true,
+      now: () => new Date('2026-11-02T01:02:03.000Z'),
+    }
+    const res = await generateReport('2026-10', deps)
+    expect(res.ok).toBe(true)
+    expect(callClaude).toHaveBeenCalledTimes(1)
+    const { user } = callClaude.mock.calls[0][0]
+    const input = JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+    const total = input.metrics.find((m) => m.id === 'total.patients')
+    expect(total?.values).toEqual({
+      selected: sel.payload.totals.patients,
+      prev: prev.payload.totals.patients,
+      lastYear: lastYear.payload.totals.patients,
+    })
+    expect(total?.label).toBe('접수 건수')
+    expect(input.metrics.find((m) => m.id === `group:${MANUAL_KEY}.patients`)?.label).toBe("처방 그룹 '도수치료' 환자")
+    expect(user).not.toContain('"codes"')
+    for (const code of ['FAKE-G1', 'FAKE-G2', 'FAKE-G3', 'fake-g2']) expect(user).not.toContain(code)
   })
 })

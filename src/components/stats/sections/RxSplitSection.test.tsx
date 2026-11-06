@@ -113,3 +113,21 @@ describe('AC-513.8: 비트 PC에서 불러온 자료가 없을 때', () => {
     expect(screen.queryByText('처방마다 서로 다른 환자 수')).toBeNull()
   })
 })
+
+// ── 고른 기간 (stats-period AC-1704.4) ─────────────────
+describe('AC-1704.4: 고른 기간의 처방별 신환·재진', () => {
+  it('AC-1704.4: 고른 기간 이름(name)을 받으면 설명 끝에 " · {name}"이 붙는다', () => {
+    render(<RxSplitSection view={view(3)} hospitalName={HOSPITAL} saved name="2026년 10월" />)
+    expect(screen.getByText('처방마다 서로 다른 환자 수 · 2026년 10월')).toBeTruthy()
+  })
+
+  it('AC-1704.4: 비트 자료가 없을 때 보이는 설명에도 붙는다', () => {
+    render(<RxSplitSection view={null} hospitalName={HOSPITAL} saved name="2026년 10월" />)
+    expect(screen.getByText('처방마다 서로 다른 환자 수 · 2026년 10월')).toBeTruthy()
+  })
+
+  it('AC-1704.4: name이 없거나 null이면(빠른 단추) 설명이 지금과 같다', () => {
+    render(<RxSplitSection view={view(3)} hospitalName={HOSPITAL} saved name={null} />)
+    expect(screen.getByText('처방마다 서로 다른 환자 수')).toBeTruthy()
+  })
+})

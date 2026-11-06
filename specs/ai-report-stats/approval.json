@@ -1,0 +1,32 @@
+{
+  "status": "approved",
+  "feature": "ai-report-stats",
+  "approved_at": "2026-11-06T05:11:00Z",
+  "approved_via": "user-prompt",
+  "session_id": "e94cf88a-472d-415a-b238-cdf26c1cd2cc",
+  "spec_sha256": "46b932a12f64c3b9b90da0bf87d21a8fa278047bf41e1eaabb732634a329f70f",
+  "scope": [
+    "docs/ADR.md",
+    "docs/ARCHITECTURE.md",
+    "docs/UI_GUIDE.md",
+    "src/app/api/ai/generate.test.ts",
+    "src/app/api/ai/generate.ts",
+    "src/app/api/ai/store.test.ts",
+    "src/app/api/ai/store.ts",
+    "src/components/ai-report/AiReportScreen.test.tsx",
+    "src/components/ai-report/ReportBody.test.tsx",
+    "src/components/landing/AiSection.module.css",
+    "src/components/landing/AiSection.tsx",
+    "src/components/landing/middle.test.tsx",
+    "src/lib/ai/basis.test.ts",
+    "src/lib/ai/basis.ts",
+    "src/lib/ai/input.test.ts",
+    "src/lib/ai/input.ts",
+    "src/lib/ai/prompt.test.ts",
+    "src/lib/ai/prompt.ts",
+    "src/lib/ai/reportScreen.test.ts",
+    "src/lib/ai/reportScreen.ts",
+    "src/lib/payload/validate.ts",
+    "src/types/aiReport.ts"
+  ]
+}

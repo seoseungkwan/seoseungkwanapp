@@ -14,10 +14,12 @@ function monthParts(month: string): [year: string, name: string] {
   return [year, `${Number(mm)}월`]
 }
 
-// 값 글자. null이면 숫자 지표는 '자료 없음', 비율은 그 달 자료가 있으면 '집계 중'(분모가 없거나 아직 셀 수 없음)
+// 값 글자. null이면 숫자 지표는 '자료 없음', 비율은 그 달 자료가 있으면 '집계 중'(분모가 없거나 아직 셀 수 없음).
+// 접수 건수·재진(visits)은 '건', 사람 수(count)는 '명'(spec ai-report-stats REQ-2004)
 function valueText(metric: ReportMetric, value: number | null, hasMonth: boolean): string {
   if (value === null) return metric.kind === 'rate' && hasMonth ? IN_PROGRESS : NO_DATA
-  return metric.kind === 'rate' ? `${formatRate(value)}%` : `${formatCount(value)}명`
+  if (metric.kind === 'rate') return `${formatRate(value)}%`
+  return metric.kind === 'visits' ? `${formatCount(value)}건` : `${formatCount(value)}명`
 }
 
 // '근거 · <이름> <지난달> <값> → <고른 달> <값> · <작년 같은 달> <값>'

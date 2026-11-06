@@ -147,19 +147,23 @@ describe('AC-709.4: 달이 끝나기 전 숫자로 만든 리포트', () => {
     screen.getByText('숫자가 적게 보일 수 있어요. 달이 끝난 뒤 다시 분석하면 다 찬 숫자로 써요.')
   })
 
-  it('AC-709.4: partial + 지난 달 → 칩 "달 끝나기 전"과 안내', () => {
+  it('AC-2008.3: partial + 지난 달 → warning 칩 "덜 찬 숫자"와 통계 탭에서 다시 불러오라는 안내, 옛 "달 끝나기 전" 글은 없다', () => {
     draw(reportState({ report: ENDED_PARTIAL_REPORT }))
-    expect(screen.getByText('달 끝나기 전').getAttribute('class')).toBe(ds.chip.warning)
-    screen.getByText('이 리포트는 10월이 끝나기 전에 만들었어요')
-    screen.getByText('숫자가 적게 잡혀 있을 수 있어요. [다시 분석]을 누르면 다 찬 숫자로 써요.')
+    expect(screen.getByText('덜 찬 숫자').getAttribute('class')).toBe(ds.chip.warning)
+    screen.getByText('이 리포트는 10월 숫자가 다 차기 전에 만들었어요')
+    screen.getByText('숫자가 적게 잡혀 있을 수 있어요. 통계 탭에서 그 달을 다시 불러온 뒤 [다시 분석]을 눌러 주세요.')
+    expect(screen.queryByText('달 끝나기 전')).toBeNull()
+    expect(screen.queryByText(/끝나기 전에 만들었어요/)).toBeNull()
   })
 
-  it('AC-709.4: partial false → 칩도 안내도 없다', () => {
+  it('AC-709.4·AC-2008.2: partial false → 칩도 안내도 없다', () => {
     draw(reportState())
     expect(screen.queryByText('진행 중')).toBeNull()
     expect(screen.queryByText('달 끝나기 전')).toBeNull()
+    expect(screen.queryByText('덜 찬 숫자')).toBeNull()
     expect(screen.queryByText(/아직 끝나지 않은 달/)).toBeNull()
     expect(screen.queryByText(/끝나기 전에 만들었어요/)).toBeNull()
+    expect(screen.queryByText(/다 차기 전에 만들었어요/)).toBeNull()
   })
 })
 

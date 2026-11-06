@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { addDays, compareYmd, todayInKorea } from '@/lib/analytics/dates'
+import { addDays, compareYmd, monthRange, todayInKorea } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
 import type { RxSplitView, StatsChecks } from '@/types/stats'
+import { lastDayOf, type StatsChoice } from './periodPick'
+import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
 import { dayNumber, longDate, monthNumber, PERIOD_NAME, Section } from './sections/parts'
 import type { ReportData } from './sections/ReportSection'
 import { StatsSections } from './sections/StatsSections'
@@ -16,10 +18,11 @@ import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type St
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
 import { useStatsRxGroups } from './useStatsRxGroups'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
-import { COMPARE_NAME, DEFAULT_STATS_PERIOD, statsRange, type StatsPeriod, type StatsRange } from './view'
+import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 둔다(AC-514.9).
 // 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
+// 기간은 빠른 단추 넷 또는 기간 골라 보기(stats-period REQ-1703)다. 고른 것은 상태에만 두고(처음은 최근 30일) range = rangeOf(today, choice, todayDone)
 // 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
 
 const PERIODS: StatsPeriod[] = ['7d', '30d', '90d', '12m']
@@ -27,12 +30,9 @@ const SOURCE_NAME = { bit: '비트 PC', file: '파일' } as const
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.' // 사용자가 승인한 문장(AC-514.7). 시안에 없다
 const NOT_SAVED = '일부 기록을 확인하지 못해 저장하지 않았어요'
 
-// 기간 단추 모양은 대시보드 기간 단추와 같다(시안 .seg). 휴대폰은 넷이 같은 폭 44px
-const PERIOD_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:grid-cols-4'
-const PERIOD_BUTTON =
-  'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:px-1'
-const PERIOD_ON = 'bg-accent-soft font-semibold text-accent-strong'
-const PERIOD_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
+// 빠른 단추 묶음 위의 이름(시안 BEpX6zDbmmBmvBhZqCKmno '빠르게 보기'). 단추 모양은 PeriodPicker.tsx의 것을 쓴다
+const QUICK_CAPTION = '빠르게 보기'
+const UNIT_NAME = { day: '일별', week: '주별', month: '월별' } as const
 
 // 기다리는 칸은 StatsSections와 같은 자리다
 const SIDE = 'lg:border-l lg:border-line lg:pl-6'
@@ -111,17 +111,27 @@ function ErrorWithAction({ code, action, note }: { code: ErrorCode; action: Reac
   )
 }
 
-function RangeText({ range }: { range: StatsRange }) {
+// 기간 글 뒤. 빠른 단추는 지금 글(' (어제까지)'·' (11월은 13일까지)'), 고른 기간은 ' · 일별'이고 끝나지 않은 달·해는 ' (어제까지)'(오늘 끝이면 ' (오늘까지)') (AC-1703.4)
+function rangeSuffix(range: StatsRange, choice: StatsChoice, todayDone: boolean): string {
   const today = range.load.to
-  const note = range.grain === 'month' ? `${monthNumber(today)}월은 ${dayNumber(today)}일까지` : '어제까지'
+  if (typeof choice === 'string') return range.grain === 'month' ? ` (${monthNumber(today)}월은 ${dayNumber(today)}일까지)` : ' (어제까지)'
+  const unit = UNIT_NAME[choice.kind === 'year' ? 'month' : choice.unit]
+  const end = choice.kind === 'month' ? monthRange(choice.month).to : choice.kind === 'year' ? `${choice.year}-12-31` : range.current.to
+  return range.current.to === end ? ` · ${unit}` : ` · ${unit} (${todayDone ? '오늘까지' : '어제까지'})`
+}
+
+// 비교 글. 빠른 단추·해는 하나, 달·직접 날짜는 바로 전 · 작년 같은 기간 둘이다
+const compareText = (range: StatsRange) =>
+  [range.previous, ...(range.lastYear === null ? [] : [range.lastYear])].map((span: CompareRange) => `${span.label} (${span.why})`).join(' · ')
+
+function RangeText({ range, choice, todayDone }: { range: StatsRange; choice: StatsChoice; todayDone: boolean }) {
   return (
-    <div className="flex flex-wrap gap-x-3 text-small text-muted">
-      <span>
-        <span className="font-semibold text-ink">{range.label}</span> ({note})
-      </span>
-      <span>
-        비교: {range.previous.label} ({COMPARE_NAME[range.period]})
-      </span>
+    <div className="mt-3 text-small text-muted">
+      <p>
+        <span className="font-semibold text-ink">{range.label}</span>
+        {rangeSuffix(range, choice, todayDone)}
+      </p>
+      <p>비교: {compareText(range)}</p>
     </div>
   )
 }
@@ -135,13 +145,14 @@ function coverClause(to: string | undefined, today: string): string {
 
 // 출처 줄 글: 앞은 ink-2, 뒤는 muted. latest가 null이면(시각을 못 읽는 브라우저) 출처 줄만 없다
 function sourceLine(data: StatsData, today: string, notSaved: boolean): { main: string; rest: string } | null {
-  const { unsaved, saved, latest, input, justSaved } = data
+  const { unsaved, saved, latest, coveredTo, justSaved } = data
   if (unsaved !== null) return { main: `자료: ${SOURCE_NAME[unsaved]} · 방금 불러옴`, rest: ' · 아직 저장하지 못했어요' }
   if (!saved) return { main: '자료: ', rest: '아직 저장된 숫자가 없어요' }
   if (latest === null) return null
   const main = `자료: ${SOURCE_NAME[latest.source]} · ${stampOf(latest.at)} 저장`
   if (notSaved) return { main, rest: ' · 방금 불러온 숫자는 저장하지 않았어요' }
-  return { main: justSaved ? `${main} · 방금` : main, rest: coverClause(input?.covered.at(-1)?.to, today) }
+  // 고른 기간은 읽은 덮은 기간을 잘라 쓰므로 자르기 전 끝(coveredTo)으로 적는다(AC-1706.5)
+  return { main: justSaved ? `${main} · 방금` : main, rest: coverClause(coveredTo ?? undefined, today) }
 }
 
 function SourceLine({ data, today, notSaved }: { data: StatsData; today: string; notSaved: boolean }) {
@@ -176,9 +187,10 @@ function WaitingSections() {
 }
 
 export function StatsScreen({ hospitalName, today }: { hospitalName: string; today: string }) {
-  const [period, setPeriod] = useState<StatsPeriod>(DEFAULT_STATS_PERIOD)
-  const range = useMemo(() => statsRange(today, period), [today, period])
-  const data = useStatsData(period, today)
+  const [choice, setChoice] = useState<StatsChoice>(DEFAULT_STATS_PERIOD)
+  const data = useStatsData(choice, today)
+  const { todayDone } = data
+  const range = useMemo(() => rangeOf(today, choice, todayDone), [today, choice, todayDone])
   const { state, helloError, retry, load, split } = useStatsWorker()
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
 
@@ -338,15 +350,24 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line-strong pt-4 max-md:flex-col max-md:items-stretch">
-        <div role="group" aria-label="기간" className={PERIOD_GROUP}>
-          {PERIODS.map((item) => (
-            <button key={item} type="button" aria-pressed={item === period} onClick={() => setPeriod(item)} className={`${PERIOD_BUTTON} ${item === period ? PERIOD_ON : PERIOD_OFF}`}>
-              {PERIOD_NAME[item]}
-            </button>
-          ))}
+      <div className="mt-6 border-t border-line-strong pt-4">
+        <div className="flex flex-wrap items-end gap-x-8 gap-y-4 max-md:flex-col max-md:items-stretch">
+          {/* 이름은 단추 위 한 줄(넓은 화면은 줄을 다 쓰고 단추가 다음 줄), 휴대폰은 둘이 세로로 쌓여 전체 폭이다 */}
+          <div className="flex flex-wrap max-md:flex-col max-md:items-stretch">
+            <p className="mb-1.5 w-full text-caption text-muted">
+              {QUICK_CAPTION}
+            </p>
+            <div role="group" aria-label="기간" className={PERIOD_GROUP}>
+              {PERIODS.map((item) => (
+                <button key={item} type="button" aria-pressed={item === choice} onClick={() => setChoice(item)} className={`${PERIOD_BUTTON} ${item === choice ? PERIOD_ON : PERIOD_OFF}`}>
+                  {PERIOD_NAME[item]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <PeriodPicker choice={choice} lastDay={lastDayOf(today, todayDone)} todayDone={todayDone} onChoose={setChoice} />
         </div>
-        <RangeText range={range} />
+        <RangeText range={range} choice={choice} todayDone={todayDone} />
       </div>
       {showSections && (!readFailed || unsaved !== null) && <SourceLine data={data} today={today} notSaved={incomplete !== null} />}
 

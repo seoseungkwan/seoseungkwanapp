@@ -7,7 +7,7 @@ import { createRef, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { groupKey } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
-import { statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import { rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { createRxGroupStore } from '@/lib/storage/rxGroups'
 import { readDays } from '@/lib/storage/stats'
@@ -728,5 +728,20 @@ describe('AC-1208.1·AC-1209.1·AC-1210.2: 상자 안 상자 없음', () => {
     await user.click(editButton())
     await user.click(within(groupAt(0)).getByRole('button', { name: '+ 처방 넣기' }))
     expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+// ── 고른 기간 (stats-period AC-1704.4) ─────────────────
+describe('AC-1704.4: 고른 기간의 처방별 추세', () => {
+  const pickInput = (): StatsInput => ({ days: ALL_READY, covered: WHOLE, range: rangeOf(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, false) })
+
+  it('AC-1704.4: 설명 끝에 " · {name}"이 붙는다', () => {
+    drawView(viewOf(), pickInput())
+    expect(screen.getByText(`${DESC} · 2026년 11월`)).toBeTruthy()
+  })
+
+  it('AC-1704.4: 빠른 단추일 때 설명은 지금과 같다', () => {
+    drawView(viewOf(), inputOf())
+    expect(screen.getByText(DESC)).toBeTruthy()
   })
 })

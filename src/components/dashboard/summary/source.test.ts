@@ -2,13 +2,15 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, expectTypeOf, it } from 'vitest'
+import type { readDays } from '@/lib/storage/stats'
 import type { DayPayload } from '@/types/payload'
 import type { DashboardAnalysis } from './DashboardAnalysis'
 import type { ReportBlock } from './ReportBlock'
-import { dashboardSummarySource, isConnected, type SummarySource } from './source'
+import { dashboardSummarySource, isConnected, toSummarySource, type OlderDays, type RxGroupLine, type SummarySource } from './source'
 
-// 자료 읽는 자리 (tab-frame REQ-312, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장'의 source.ts).
-// 지금은 늘 '자료 없음'이다. 진짜 읽기(저장 표·RLS·브라우저 읽기)는 다음 통계 명세가 이 함수 하나만 바꾼다
+// 자료 모양 한 곳 (tab-frame REQ-312, stats REQ-516, stats design.md 'TASK-16 대시보드 읽기').
+// dashboardSummarySource()는 지금처럼 늘 '자료 없음'이다(dashboard/page.tsx가 bit-dashboard TASK-8 전까지 쓴다).
+// toSummarySource는 브라우저가 읽은 결과를 자료 모양으로 바꾸는 순수 함수다. 읽는 쪽(LiveDashboard)은 bit-dashboard TASK-8 몫이다
 
 const DIR = join(process.cwd(), 'src/components/dashboard/summary')
 const read = (file: string) => readFileSync(join(DIR, file), 'utf8')
@@ -75,10 +77,38 @@ describe('dashboardSummarySource — 지금은 늘 자료 없음', () => {
     expect(dashboardSummarySource()).toEqual({ kind: 'none' })
   })
 
-  it('AC-312.1: source.ts는 Supabase·fetch·브라우저 저장소·서버 전용 파일을 쓰지 않고, 저장 모양 타입 하나만 불러온다', () => {
+  it('AC-312.1: source.ts는 Supabase·fetch·브라우저 저장소·서버 전용 파일을 쓰지 않고, 타입만 불러온다(읽기 함수는 타입으로만)', () => {
     const text = code(read('source.ts'))
     expect(text).not.toMatch(/supabase|\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|indexedDB|server-only|['"]use server['"]|next\/headers|cookies\(/)
-    expect(importsOf('source.ts')).toEqual([{ from: '@/types/payload', typeOnly: true }])
+    expect(importsOf('source.ts')).toEqual([
+      { from: '@/lib/storage/stats', typeOnly: true },
+      { from: '@/types/payload', typeOnly: true },
+    ])
+  })
+})
+
+describe('toSummarySource — 읽은 결과 → 자료 모양 (stats TASK-16)', () => {
+  type ReadResult = Awaited<ReturnType<typeof readDays>>
+  const result = (rows: DayPayload[], more: Partial<ReadResult> = {}): ReadResult => ({ rows, dropped: 0, latest: null, fromFile: false, ...more })
+
+  it('AC-516.1: 아직 읽은 결과가 없음(null)·줄 없음은 { kind: "none" }이다(연결 전과 같다)', () => {
+    expect(toSummarySource(null)).toEqual({ kind: 'none' })
+    expect(toSummarySource(result([]))).toEqual({ kind: 'none' })
+    // 걸러진 줄만 있어도 보일 줄이 없다
+    expect(toSummarySource(result([], { dropped: 3, fromFile: true, latest: { at: '2026-10-31T09:00:00Z', source: 'bit' } }))).toEqual({ kind: 'none' })
+  })
+
+  it('AC-516.1: 줄이 있으면 { kind: "data", days }(읽은 줄 그대로)를 만들고 연결 뒤로 친다', () => {
+    const rows = [fakeDay('2026-10-30'), fakeDay('2026-10-31')]
+    const source = toSummarySource(result(rows, { dropped: 1, fromFile: true }))
+    expect(source).toEqual({ kind: 'data', days: rows })
+    expect(isConnected(source)).toBe(true)
+    if (source.kind === 'data') expect(source.days).toBe(rows)
+  })
+
+  it('AC-516.1: 인자는 readDays가 돌려주는 결과 또는 null이고 SummarySource를 돌려준다(design.md TASK-16 모양)', () => {
+    expectTypeOf(toSummarySource).parameters.toEqualTypeOf<[ReadResult | null]>()
+    expectTypeOf(toSummarySource).returns.toEqualTypeOf<SummarySource>()
   })
 })
 
@@ -101,6 +131,39 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     expect(text).toMatch(/import type \{ DayPayload \} from '@\/types\/payload'/)
     expect(text).not.toMatch(/(?:type|interface)\s+DayPayload\b/)
     expectTypeOf<Extract<SummarySource, { kind: 'data' }>['days']>().toEqualTypeOf<readonly DayPayload[]>()
+  })
+
+  it('AC-606.1·AC-606.4·AC-606.5: data 모양에 선택 칸 groups가 붙는다(묶음 한 줄 = 이름·열쇠, [] 또는 없음 = 묶음 없음, null = 묶음을 읽지 못함)', () => {
+    expectTypeOf<RxGroupLine>().toEqualTypeOf<{ name: string; key: string }>()
+    type Data = Extract<SummarySource, { kind: 'data' }>
+    expectTypeOf<Data['groups']>().toEqualTypeOf<readonly RxGroupLine[] | null | undefined>()
+    expectTypeOf<RequiredKeys<Data>>().toEqualTypeOf<'kind' | 'days'>()
+    const days = [fakeDay('2026-10-31')]
+    const lines: readonly RxGroupLine[] = [{ name: '도수치료', key: 't0000000000000001' }]
+    const sources: SummarySource[] = [
+      { kind: 'data', days },
+      { kind: 'data', days, groups: lines },
+      { kind: 'data', days, groups: [] },
+      { kind: 'data', days, groups: null },
+    ]
+    // 연결 판정은 groups와 상관없이 days만 본다
+    for (const source of sources) expect(isConnected(source)).toBe(true)
+    expect(isConnected({ kind: 'data', days: [], groups: lines })).toBe(false)
+    // 타입만 더한다: 다시 정의한 묶음 모양은 이름·열쇠 두 칸이고, groups는 선택 칸이다
+    const text = code(read('source.ts'))
+    expect(text).toMatch(/export type RxGroupLine = \{ name: string; key: string \}/)
+    expect(text).toMatch(/\{ kind: 'data'; days: readonly DayPayload\[\]; groups\?: readonly RxGroupLine\[\] \| null; older\?: OlderDays \}/)
+  })
+
+  it('AC-1804.1·AC-1804.2: data 모양에 선택 칸 older(옛 기간 읽기: 손에 든 숫자의 첫날 · 기간 한 번 읽기, null = 실패·한도)가 붙는다. 필수 칸은 그대로 kind·days다', () => {
+    type Data = Extract<SummarySource, { kind: 'data' }>
+    expectTypeOf<Data['older']>().toEqualTypeOf<OlderDays | undefined>()
+    expectTypeOf<RequiredKeys<Data>>().toEqualTypeOf<'kind' | 'days'>()
+    expectTypeOf<OlderDays>().toEqualTypeOf<{ from: string; read: (range: { from: string; to: string }) => Promise<readonly DayPayload[] | null> }>()
+    const older: OlderDays = { from: '2026-07-29', read: async () => null }
+    // 연결 판정은 older와 상관없이 days만 본다
+    expect(isConnected({ kind: 'data', days: [fakeDay('2026-10-31')], older })).toBe(true)
+    expect(isConnected({ kind: 'data', days: [], older })).toBe(false)
   })
 
   it('AC-312.2: DashboardAnalysis의 필수 칸은 정확히 today·source이고, 나머지는 모두 선택이며 글자·참거짓 같은 화면 값뿐이다', () => {
@@ -146,8 +209,8 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
 })
 
 describe('예시 자료 없음 — 가짜 자료는 시험 파일 안에서만', () => {
-  it('AC-312.3: 시험 밖 summary 파일은 넷(자료 읽는 자리·계산·분석 화면·보고 문장)이다', () => {
-    expect(appFiles().sort()).toEqual(['DashboardAnalysis.tsx', 'ReportBlock.tsx', 'source.ts', 'view.ts'])
+  it('AC-312.3·AC-516.3: 시험 밖 summary 파일은 일곱(자료 모양·계산·분석 화면·보고 문장·저장 숫자 읽기 LiveDashboard·고른 기간 잇기 flow·옛 기간 읽기 usePeriodDays)이다', () => {
+    expect(appFiles().sort()).toEqual(['DashboardAnalysis.tsx', 'LiveDashboard.tsx', 'ReportBlock.tsx', 'flow.ts', 'source.ts', 'usePeriodDays.ts', 'view.ts'])
   })
 
   it('AC-312.3: 시험 밖 파일에 DayPayload 값을 만드는 코드(schemaVersion:)와 예시 숫자 자료가 없다', () => {

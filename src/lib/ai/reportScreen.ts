@@ -107,11 +107,12 @@ export function partialNotice(
 ): { chip: string; title: string; body: string } | null {
   if (!report.partial) return null
   const name = shortMonth(report.month)
+  // 지난 달인데 덜 찬 숫자: 통계 탭에서 그 달을 다시 불러오기 전에는 다시 분석해도 같은 숫자다(spec ai-report-stats REQ-2008)
   if (report.month < monthOf(today)) {
     return {
-      chip: '달 끝나기 전',
-      title: `이 리포트는 ${name}이 끝나기 전에 만들었어요`,
-      body: '숫자가 적게 잡혀 있을 수 있어요. [다시 분석]을 누르면 다 찬 숫자로 써요.',
+      chip: '덜 찬 숫자',
+      title: `이 리포트는 ${name} 숫자가 다 차기 전에 만들었어요`,
+      body: '숫자가 적게 잡혀 있을 수 있어요. 통계 탭에서 그 달을 다시 불러온 뒤 [다시 분석]을 눌러 주세요.',
     }
   }
   return {

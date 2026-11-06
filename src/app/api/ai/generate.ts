@@ -34,19 +34,24 @@ async function attempt(run: () => Promise<boolean>): Promise<boolean> {
 }
 
 // 세 달 읽기 → 검사 → 입력 → 지문. 리포트 만들기와 숫자 바뀜 비교가 함께 쓴다(따로 만들면 지문이 어긋난다, spec ai-report-screen design.md).
-// 받은 자료의 month가 요청한 달·한 달 전·12달 전과 맞는 것만 쓴다(안 맞는 비교 달은 없는 달). 고른 달을 못 쓰면 null, 던지는 것은 부르는 쪽이 받는다
+// 받은 자료의 month가 요청한 달·한 달 전·12달 전과 맞는 것만 쓴다(안 맞는 비교 달은 없는 달). 고른 달을 못 쓰면 null, 던지는 것은 부르는 쪽이 받는다.
+// 비교 달은 다 불러온 달(partial이 false)만 견준다 — 일부 날짜만 불러온 달과 견주면 "늘었다"가 틀린다(spec ai-report-stats REQ-2005). 고른 달은 partial이어도 쓴다
 async function currentInput(month: string, loadMonths: GenerateDeps['loadMonths']) {
   const checked = (value: unknown, expected: string) => {
     const payload = validateMonthPayload(value)
     return payload !== null && payload.month === expected ? payload : null
+  }
+  const compared = (value: unknown, expected: string) => {
+    const payload = checked(value, expected)
+    return payload !== null && payload.partial === false ? payload : null
   }
   const months = await loadMonths(month)
   const selected = checked(months.selected, month)
   if (selected === null) return null
   const input = buildReportInput({
     selected,
-    prev: checked(months.prev, addMonths(month, -1)),
-    lastYear: checked(months.lastYear, addMonths(month, -12)),
+    prev: compared(months.prev, addMonths(month, -1)),
+    lastYear: compared(months.lastYear, addMonths(month, -12)),
     groupNames: months.groupNames,
   })
   return { input, inputHash: await reportFingerprint(input) }

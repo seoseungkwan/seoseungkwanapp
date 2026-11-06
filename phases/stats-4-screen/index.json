@@ -23,8 +23,7 @@
     {
       "step": 3,
       "name": "dashboard-source",
-      "status": "blocked",
-      "blocked_reason": "user postponed 2026-11-01; overlaps bit-dashboard"
+      "status": "pending"
     },
     {
       "step": 4,

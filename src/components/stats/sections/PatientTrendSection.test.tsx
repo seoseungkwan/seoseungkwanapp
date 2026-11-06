@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
+import type { StatsPick } from '@/components/stats/periodPick'
+import { rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { addDays } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
@@ -275,5 +276,78 @@ describe('AC-513.13: 고른 기간에 덮이지 않은 날이 있을 때의 아�
     const { container } = render(<PatientTrendSection input={inputOf([], [{ from: '2026-10-20', to: '2026-11-12' }])} saved />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
     expect(container.textContent).not.toContain(NEW)
+  })
+})
+
+// ── 고른 기간 (stats-period REQ-1704). 오늘은 2026-11-06(금)이다 ─────────────────
+describe('AC-1704.3·AC-1704.4: 고른 기간의 환자 수 추이', () => {
+  const P_TODAY = '2026-11-06'
+  const OCT_DAY: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
+  const OCT_WEEK: StatsPick = { kind: 'month', unit: 'week', month: '2026-10' }
+  const YEAR: StatsPick = { kind: 'year', year: '2026' }
+  const pickOf = (pick: StatsPick, days: DayPayload[], covered: DateRange[], todayDone = false): StatsInput => ({ days, covered, range: rangeOf(P_TODAY, pick, todayDone) })
+  const OCT_ROWS = [day('2026-10-01', 2, 8), day('2026-10-05', 3, 7), day('2026-10-12', 1, 1), day('2026-10-19', 4, 4)]
+
+  it('AC-1704.4: 설명 끝에 " · {name}"이 붙고 칸 글은 bucket을 따른다(하루씩·한 주씩·한 달씩)', () => {
+    render(<PatientTrendSection input={pickOf(OCT_WEEK, OCT_ROWS, WHOLE)} saved />)
+    expect(screen.getByText('신환·재진, 한 주씩 · 2026년 10월')).toBeTruthy()
+    cleanup()
+    render(<PatientTrendSection input={pickOf(OCT_DAY, OCT_ROWS, WHOLE)} saved />)
+    expect(screen.getByText('신환·재진, 하루씩 · 2026년 10월')).toBeTruthy()
+    cleanup()
+    render(<PatientTrendSection input={pickOf(YEAR, OCT_ROWS, WHOLE)} saved />)
+    expect(screen.getByText('신환·재진, 한 달씩 · 2026년')).toBeTruthy()
+  })
+
+  it('AC-1704.3: 주별 [자세히] 표는 주 칸이고, 기간에 잘린 주는 "일부 기간", 자료 없는 주는 숫자가 "–"다(0이 아니다)', () => {
+    render(<PatientTrendSection input={pickOf(OCT_WEEK, OCT_ROWS, [{ from: '2026-10-01', to: '2026-10-25' }])} saved />)
+    const panel = detail()
+    expect(within(panel).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['주', '신환', '재진', '합계'])
+    expect(rowsOf(panel)).toEqual([
+      ['10월 1일 – 4일일부 기간', '2', '8', '10'],
+      ['10월 5일 – 11일', '3', '7', '10'],
+      ['10월 12일 – 18일', '1', '1', '2'],
+      ['10월 19일 – 25일', '4', '4', '8'],
+      ['10월 26일 – 31일', '–', '–', '–'],
+    ])
+    expect(screen.getByText("'–'는 자료가 없는 주예요.")).toBeTruthy()
+  })
+
+  it('AC-1704.3: 일별은 휴진한 날(줄 없고 덮은 날)만 칸이 없고, 자료 없는 날(줄 없고 덮지 않음)은 표에서 "–"다', () => {
+    render(<PatientTrendSection input={pickOf(OCT_DAY, [day('2026-10-01', 2, 8), day('2026-10-02', 1, 1)], [{ from: '2026-10-01', to: '2026-10-29' }])} saved />)
+    const panel = detail()
+    expect(within(panel).getAllByRole('columnheader')[0]!.textContent).toBe('날짜')
+    expect(rowsOf(panel)).toEqual([
+      ['10월 1일 (목)', '2', '8', '10'],
+      ['10월 2일 (금)', '1', '1', '2'],
+      ['10월 30일 (금)', '–', '–', '–'],
+      ['10월 31일 (토)', '–', '–', '–'],
+    ])
+    expect(screen.getByText("휴진한 날은 칸이 없어요. '–'는 자료가 없는 날이에요.")).toBeTruthy()
+  })
+
+  it('AC-1704.3: 일별에 자료 없는 날이 없으면 안내는 휴진 한 줄뿐이다', () => {
+    render(<PatientTrendSection input={pickOf(OCT_DAY, OCT_ROWS, WHOLE)} saved />)
+    expect(screen.getByText('휴진한 날은 칸이 없어요.')).toBeTruthy()
+    expect(screen.queryByText(/자료가 없는/)).toBeNull()
+  })
+
+  it('AC-1704.3: 월별 [자세히] 표는 달 칸이고, 앞으로 올 달은 표에 없으며, 줄이 없는 달은 "–"다', () => {
+    render(<PatientTrendSection input={pickOf(YEAR, [day('2026-03-02', 2, 8), day('2026-10-05', 3, 7)], [{ from: '2026-01-01', to: '2026-11-05' }])} saved />)
+    const panel = detail()
+    expect(within(panel).getAllByRole('columnheader')[0]!.textContent).toBe('달')
+    const rows = rowsOf(panel)
+    expect(rows).toHaveLength(11)
+    expect(rows[0]).toEqual(['2026년 1월', '–', '–', '–'])
+    expect(rows[2]).toEqual(['2026년 3월', '2', '8', '10'])
+    expect(rows[9]).toEqual(['2026년 10월', '3', '7', '10'])
+    expect(rows[10]).toEqual(['2026년 11월', '–', '–', '–'])
+    expect(rows.some(([first]) => first?.startsWith('2026년 12월'))).toBe(false)
+    expect(screen.getByText("'–'는 자료가 없는 달이에요.")).toBeTruthy()
+  })
+
+  it('AC-1704.3: 고른 기간에 줄이 없으면 지금 빈 글이다', () => {
+    render(<PatientTrendSection input={pickOf(OCT_DAY, [day('2026-09-07', 2, 8)], WHOLE)} saved />)
+    expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
   })
 })

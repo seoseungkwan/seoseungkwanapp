@@ -63,7 +63,7 @@ function isCode(value: unknown): value is string {
 }
 
 // 처방명·유형·동네 이름: 붙여 쓴 주민번호도 거부. 처방명·유형은 빈 글자일 수 있다(집계 필수값이 아니다)
-function isText(value: unknown, required = false): value is string {
+export function isText(value: unknown, required = false): value is string {
   return isShortText(value, required) && !hasContact(value) && !JOINED_NATIONAL_ID.test(value)
 }
 

@@ -4,9 +4,9 @@ import type { MonthPayload, RevisitPayload } from '@/types/payload'
 
 // AI에게 보낼 숫자 묶음(spec ai-report design.md '지표 목록'). 순수 함수만 — 네트워크·DB·SDK·node 모듈 없음.
 // 순서가 곧 지문이다: 지표 차례와 객체 열쇠 차례를 늘 같게 만들고, 정렬은 글자 코드 비교(a < b)로 한다(localeCompare는 실행 환경마다 다를 수 있다).
-// null과 0을 가른다: 달 자체가 없으면 null, 자료가 있는 달에 그 처방·그룹·동네가 없으면 0
+// null과 0을 가른다: 달 자체가 없으면 null, 자료가 있는 달에 그 처방·동네가 없으면 0.
+// 묶음은 지금 묶음(groupNames)만 쓰고, 그 달 줄에 그 열쇠가 없으면 null이다 — 달 줄만으로는 '0명'과 '그 묶음으로 세지 않음'을 가를 수 없다(spec ai-report-stats REQ-2003)
 
-export const UNNAMED_GROUP = '이름 없는 그룹'
 export const TOP_RX = 30
 export const TOP_REGIONS = 20
 
@@ -19,10 +19,11 @@ export type ValidReportMonths = {
 
 type Month = MonthPayload | null
 
+// 접수 건수(같은 분이 한 달에 여러 번 오면 여러 건)와 재진(= 접수 건수 − 신환)은 visits, 신환은 사람 수(spec ai-report-stats REQ-2004)
 const TOTALS = [
-  ['patients', '전체 환자'],
-  ['newPatients', '신환'],
-  ['returning', '재진'],
+  ['patients', '접수 건수', 'visits'],
+  ['newPatients', '신환', 'count'],
+  ['returning', '재진', 'visits'],
 ] as const
 
 const GROUP_FIELDS = [
@@ -38,7 +39,7 @@ function topBy<T extends { patients: number }>(items: readonly T[], keyOf: (item
   return [...items].sort((a, b) => b.patients - a.patients || byText(keyOf(a), keyOf(b))).slice(0, limit)
 }
 
-// 그 달 값: 달이 없으면 null, 있으면 pick(없는 항목은 pick이 0을 준다)
+// 그 달 값: 달이 없으면 null, 있으면 pick(없는 항목은 pick이 처방·동네는 0, 묶음은 null을 준다)
 function metric(id: string, label: string, kind: ReportMetric['kind'], months: readonly Month[], pick: (m: MonthPayload) => number | null): ReportMetric {
   const [selected, prev, lastYear] = months.map((m) => (m === null ? null : pick(m)))
   return { id, label, kind, values: { selected, prev, lastYear } }
@@ -49,9 +50,10 @@ function revisitRate(revisit: RevisitPayload, within: 'within7' | 'within14'): n
   return count === null || revisit.cohort === 0 ? null : count / revisit.cohort
 }
 
-function groupName(groupNames: Record<string, string>, id: string): string {
+// 지금 묶음의 이름. 자기 열쇠(Object.hasOwn)로 있고 빈 글자가 아닐 때만, 아니면 null(그 열쇠는 지표가 아니다)
+function currentGroupName(groupNames: Record<string, string>, id: string): string | null {
   const name = Object.hasOwn(groupNames, id) ? groupNames[id] : undefined
-  return typeof name === 'string' && name !== '' ? name : UNNAMED_GROUP
+  return typeof name === 'string' && name !== '' ? name : null
 }
 
 // 달마다 열쇠 → 항목 찾기표. 고른 달·비교 달 어디서든 (달, 열쇠)로 찾는다
@@ -66,20 +68,21 @@ export function buildReportInput(months: ValidReportMonths): ReportInput {
   const present = all.filter((m): m is MonthPayload => m !== null)
   const metrics: ReportMetric[] = []
 
-  for (const [field, label] of TOTALS) {
-    metrics.push(metric(`total.${field}`, label, 'count', all, (m) => m.totals[field]))
+  for (const [field, label, kind] of TOTALS) {
+    metrics.push(metric(`total.${field}`, label, kind, all, (m) => m.totals[field]))
   }
   for (const [within, days] of [['within7', 7], ['within14', 14]] as const) {
     metrics.push(metric(`revisit.${within}`, `신환 ${days}일 재방문율`, 'rate', all, (m) => revisitRate(m.revisit, within)))
   }
 
-  // 처방 그룹: 세 달에 나온 id의 합집합, id 순
+  // 처방 그룹: 세 달에 나온 id의 합집합 가운데 지금 묶음 이름이 있는 것만, id 순. 그 달 줄에 그 열쇠가 없으면 null
   const findGroup = lookup(all, (m) => m.groups, (g) => g.id)
   const groupIds = [...new Set(present.flatMap((m) => m.groups.map((g) => g.id)))].sort(byText)
   for (const id of groupIds) {
-    const name = groupName(groupNames, id)
+    const name = currentGroupName(groupNames, id)
+    if (name === null) continue
     for (const [field, label] of GROUP_FIELDS) {
-      metrics.push(metric(`group:${id}.${field}`, `처방 그룹 '${name}' ${label}`, 'count', all, (m) => findGroup(m, id)?.[field] ?? 0))
+      metrics.push(metric(`group:${id}.${field}`, `처방 그룹 '${name}' ${label}`, 'count', all, (m) => findGroup(m, id)?.[field] ?? null))
     }
   }
 

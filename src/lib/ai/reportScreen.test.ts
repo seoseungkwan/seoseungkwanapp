@@ -280,27 +280,44 @@ describe('partialNotice', () => {
     })
   })
 
-  it('AC-703.8 partial이고 그 달이 이미 지났으면 칩은 "달 끝나기 전"이고 끝나기 전에 만들었다는 안내다', () => {
-    expect(partialNotice({ month: '2026-11', partial: true }, '2026-12-05')).toEqual({
-      chip: '달 끝나기 전',
-      title: '이 리포트는 11월이 끝나기 전에 만들었어요',
-      body: '숫자가 적게 잡혀 있을 수 있어요. [다시 분석]을 누르면 다 찬 숫자로 써요.',
+  it('AC-2008.1 partial이고 그 달이 이미 지났으면 칩은 "덜 찬 숫자"이고 통계 탭에서 다시 불러온 뒤 [다시 분석]하라는 안내다', () => {
+    expect(partialNotice({ month: '2026-10', partial: true }, '2026-11-18')).toEqual({
+      chip: '덜 찬 숫자',
+      title: '이 리포트는 10월 숫자가 다 차기 전에 만들었어요',
+      body: '숫자가 적게 잡혀 있을 수 있어요. 통계 탭에서 그 달을 다시 불러온 뒤 [다시 분석]을 눌러 주세요.',
     })
   })
 
-  it('AC-703.8 안내의 달 자리에는 그 달 이름이 들어간다', () => {
+  it('AC-2008.1 해가 바뀌는 달(12월 리포트를 다음 해 1월에 봄)도 같은 안내다', () => {
+    expect(partialNotice({ month: '2026-12', partial: true }, '2027-01-05')).toEqual({
+      chip: '덜 찬 숫자',
+      title: '이 리포트는 12월 숫자가 다 차기 전에 만들었어요',
+      body: '숫자가 적게 잡혀 있을 수 있어요. 통계 탭에서 그 달을 다시 불러온 뒤 [다시 분석]을 눌러 주세요.',
+    })
+  })
+
+  it('AC-703.8·AC-2008.1 안내의 달 자리에는 그 달 이름이 들어간다(shortMonth)', () => {
     expect(partialNotice({ month: '2026-02', partial: true }, '2026-02-10')?.title).toBe(
       '2월은 아직 끝나지 않은 달이에요',
     )
-    expect(partialNotice({ month: '2026-10', partial: true }, '2026-11-18')?.title).toBe(
-      '이 리포트는 10월이 끝나기 전에 만들었어요',
+    expect(partialNotice({ month: '2026-11', partial: true }, '2026-12-05')?.title).toBe(
+      '이 리포트는 11월 숫자가 다 차기 전에 만들었어요',
     )
   })
 
-  it('AC-703.8 달의 마지막 날까지는 이번 달이고 다음 달 1일부터 지난 달이다', () => {
+  it('AC-703.8·AC-2008.1 달의 마지막 날까지는 이번 달이고 다음 달 1일부터 지난 달이다', () => {
     expect(partialNotice({ month: '2026-11', partial: true }, '2026-11-30')?.chip).toBe('진행 중')
-    expect(partialNotice({ month: '2026-11', partial: true }, '2026-12-01')?.chip).toBe('달 끝나기 전')
-    expect(partialNotice({ month: '2026-12', partial: true }, '2027-01-01')?.chip).toBe('달 끝나기 전')
+    expect(partialNotice({ month: '2026-11', partial: true }, '2026-12-01')?.chip).toBe('덜 찬 숫자')
+    expect(partialNotice({ month: '2026-12', partial: true }, '2027-01-01')?.chip).toBe('덜 찬 숫자')
+  })
+
+  it('AC-2008.2 이번 달 partial 안내와 partial false의 null은 그대로다', () => {
+    expect(partialNotice({ month: '2026-11', partial: true }, '2026-11-06')).toEqual({
+      chip: '진행 중',
+      title: '11월은 아직 끝나지 않은 달이에요',
+      body: '숫자가 적게 보일 수 있어요. 달이 끝난 뒤 다시 분석하면 다 찬 숫자로 써요.',
+    })
+    expect(partialNotice({ month: '2026-10', partial: false }, '2026-11-06')).toBeNull()
   })
 
   it('AC-703.8 partial이 false면 칩·안내가 없다', () => {

@@ -4,14 +4,17 @@ import { useId, useState, type ReactNode } from 'react'
 import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
 import { formatCount, percentOf } from '@/components/charts/format'
 import { Icon } from '@/components/common/Icon'
-import { addedRateText, COLUMN_NAME, GRAIN_NAME, pickComparedNote, rateText, rxPickCopyText } from '@/components/stats/rxPickView'
-import { codeKey, type RxPickRow, type StatsInput } from '@/components/stats/view'
+import { addedRateText, COLUMN_NAME, pickComparedNote, rateText, rxPickCopyText } from '@/components/stats/rxPickView'
+import { codeKey, type RxPickRow, type StatsInput, type StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import { DeltaText, PERIOD_NAME } from './parts'
+import type { Delta } from '@/types/analysis'
+import { DeltaText } from './parts'
+import { BUCKET_NAME } from './trendLabels'
 
 // 처방 골라 보기 표 (rx-picker REQ-805·808·809, AC-804.5·804.8, 시안 docs/mockups/rx-picker/index.html). props만 받는다.
 // 뜻 줄·칸 머리·줄·얇은 띠·합계·[표 복사]·안내. 숫자는 rxPickRows·rxPickTotal이 낸 값이고 줄을 눌러 여는 그래프는 renderPanel로 받는다.
-// 넓으면(1024px 이상) 칸, 좁으면 줄 하나가 여러 줄로 쌓인다. 합계 줄은 단추가 아니라서 줄 안 칸을 Cells 하나로 같이 쓴다
+// 넓으면(1024px 이상) 칸, 좁으면 줄 하나가 여러 줄로 쌓인다. 합계 줄은 단추가 아니라서 줄 안 칸을 Cells 하나로 같이 쓴다.
+// 고른 기간(stats-period AC-1705.3)은 지난 기간 건수·증감 두 칸 대신 비교마다 '{name}보다' 칸이고 견줄 수 없으면 '–'다. 빠른 단추는 지금 칸 그대로다
 
 const MEANING = '신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수'
 const GAP_NOTE = '구분 없음은 파일에 신환·재진이 아닌 다른 값(진찰료산정안함 같은 값)이 적힌 건이에요. 어느 쪽에도 넣지 않아서 두 비율을 더해도 100%가 안 돼요. 30 초진은 재진으로 세요. 이렇게 정하기 전에 저장한 날은 그 파일을 다시 넣어야 숫자가 바뀌어요.'
@@ -42,6 +45,28 @@ const NEW_PLACE = { pair: 'max-lg:col-start-1', count: 'lg:col-start-5', rate: '
 const RETURNING_PLACE = { pair: 'max-lg:col-[2/4] max-lg:justify-end', count: 'lg:col-start-7', rate: 'lg:col-start-8' }
 const CHEV_CELL = 'text-muted transition lg:col-start-9 lg:row-[1/span_3] max-lg:col-start-3 max-lg:row-start-1'
 const CODE = 'ml-1.5 whitespace-nowrap text-caption text-muted'
+// 고른 기간 + 작년 비교: 비교 칸 둘이 지난 기간 건수(104px)·증감(176px) 자리에 176px씩 든다. 비교가 하나(해)면 지금 칸 폭 그대로 두 자리를 다 쓴다
+const PICK_COLUMNS = 'grid w-full items-center gap-x-3 lg:grid-cols-[minmax(200px,1fr)_72px_176px_176px_64px_64px_64px_64px_16px] max-lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_16px] max-lg:gap-x-2 max-lg:gap-y-0.5'
+const PICK_COMPARE_ONE = 'text-small font-semibold lg:col-[3/5] lg:row-[1/span_3] max-lg:col-[2/4] max-lg:row-start-2 max-lg:text-right'
+const PICK_COMPARE_TWO = [
+  'text-small font-semibold lg:col-start-3 lg:row-[1/span_3] max-lg:col-[2/4] max-lg:row-start-2 max-lg:text-right',
+  'text-small font-semibold lg:col-start-4 lg:row-[1/span_3] max-lg:col-[2/4] max-lg:row-start-3 max-lg:text-right',
+] as const
+const COMPARE_LABEL = 'mr-1 font-normal text-muted lg:sr-only'
+const NO_VALUE = '–'
+const UNAVAILABLE: Delta = { kind: 'unavailable' }
+
+// 고른 기간의 비교 하나(바로 전 = comparable·delta, 작년 = lastYear). previous null = 견줄 수 없음
+type Compare = { name: string; previous: number | null; delta: Delta }
+
+const compareNames = (range: StatsRange) => [range.previous.name, ...(range.lastYear === null ? [] : [range.lastYear.name])]
+
+function comparesOf(row: RxPickRow, range: StatsRange): Compare[] {
+  return [
+    { name: range.previous.name, previous: row.comparable?.previous ?? null, delta: row.delta },
+    ...(range.lastYear === null ? [] : [{ name: range.lastYear.name, previous: row.lastYear?.previous ?? null, delta: row.lastYear?.delta ?? UNAVAILABLE }]),
+  ]
+}
 
 type Place = typeof NEW_PLACE
 
@@ -74,7 +99,19 @@ function Pair({ label, part, whole, place }: { label: string; part: number; whol
   )
 }
 
-function Cells({ row, head, columnName }: { row: RxPickRow; head: ReactNode; columnName: string }) {
+// 고른 기간의 비교 칸들. 좁으면 이름표가 보인다
+function PickCompares({ row, range }: { row: RxPickRow; range: StatsRange }) {
+  const compares = comparesOf(row, range)
+  return compares.map((compare, i) => (
+    <span key={compare.name} className={compares.length === 1 ? PICK_COMPARE_ONE : PICK_COMPARE_TWO[i]}>
+      <span className={COMPARE_LABEL}>{`${compare.name}보다`}</span>
+      {compare.previous === null ? NO_VALUE : <DeltaText delta={compare.delta} unit="건" />}
+    </span>
+  ))
+}
+
+// picked = 고른 기간(null = 빠른 단추, 지금 칸 그대로)
+function Cells({ row, head, columnName, picked }: { row: RxPickRow; head: ReactNode; columnName: string; picked: StatsRange | null }) {
   return (
     <>
       <span className={NAME_CELL}>{head}</span>
@@ -86,20 +123,28 @@ function Cells({ row, head, columnName }: { row: RxPickRow; head: ReactNode; col
         </span>
       )}
       <span className={COUNT_CELL}>{`${formatCount(row.count)}건`}</span>
-      <span className={PREVIOUS_CELL}>
-        <span className="lg:sr-only">{`${columnName} `}</span>
-        {row.comparable === null ? '–' : `${formatCount(row.comparable.previous)}건`}
-      </span>
-      <span className={DELTA_CELL}>
-        <DeltaText delta={row.delta} unit="건" />
-      </span>
+      {picked === null ? (
+        <>
+          <span className={PREVIOUS_CELL}>
+            <span className="lg:sr-only">{`${columnName} `}</span>
+            {row.comparable === null ? '–' : `${formatCount(row.comparable.previous)}건`}
+          </span>
+          <span className={DELTA_CELL}>
+            <DeltaText delta={row.delta} unit="건" />
+          </span>
+        </>
+      ) : (
+        <PickCompares row={row} range={picked} />
+      )}
       <Pair label="신환" part={row.newCount} whole={row.count} place={NEW_PLACE} />
       <Pair label="재진" part={row.returningCount} whole={row.count} place={RETURNING_PLACE} />
     </>
   )
 }
 
-function PickRow({ row, columnName, open, onToggle, renderPanel }: { row: RxPickRow; columnName: string; open: boolean; onToggle: () => void; renderPanel: (row: RxPickRow) => ReactNode }) {
+type RowProps = { row: RxPickRow; columnName: string; picked: StatsRange | null; columns: string; open: boolean; onToggle: () => void; renderPanel: (row: RxPickRow) => ReactNode }
+
+function PickRow({ row, columnName, picked, columns, open, onToggle, renderPanel }: RowProps) {
   const panelId = useId()
   const codeOnly = row.name === '' || row.name === row.code
   const head = codeOnly ? (
@@ -112,8 +157,8 @@ function PickRow({ row, columnName, open, onToggle, renderPanel }: { row: RxPick
   )
   return (
     <li>
-      <button type="button" aria-expanded={open} aria-controls={panelId} onClick={onToggle} className={`${COLUMNS} cursor-pointer border-b border-line py-3 text-left text-body text-ink transition hover:bg-canvas ${ds.focusRing}`}>
-        <Cells row={row} head={head} columnName={columnName} />
+      <button type="button" aria-expanded={open} aria-controls={panelId} onClick={onToggle} className={`${columns} cursor-pointer border-b border-line py-3 text-left text-body text-ink transition hover:bg-canvas ${ds.focusRing}`}>
+        <Cells row={row} head={head} columnName={columnName} picked={picked} />
         <Icon name="chev" size={16} className={`${CHEV_CELL} ${open ? 'rotate-180' : ''}`} />
       </button>
       <div id={panelId} hidden={!open} className="border-b border-line bg-canvas p-4 max-md:-mx-4 [&_th]:bg-canvas">
@@ -170,8 +215,9 @@ export function RxPickTable({
   renderPanel: (row: RxPickRow) => ReactNode
 }) {
   const { range } = input
-  const { period } = range
-  const columnName = COLUMN_NAME[period]
+  const picked = range.period === null ? range : null
+  const columnName = range.period === null ? range.previous.name : COLUMN_NAME[range.period]
+  const columns = picked !== null && picked.lastYear !== null ? PICK_COLUMNS : COLUMNS
   const anyGap = rows.some((row) => row.gapCount > 0)
   const compared = pickComparedNote(input)
   const legend: LegendItem[] = [
@@ -185,11 +231,19 @@ export function RxPickTable({
         <p className="text-small font-semibold text-ink">{MEANING}</p>
         <ChartLegend items={legend} />
       </div>
-      <div aria-hidden="true" className={`${COLUMNS} mt-2 h-9 border-b border-line text-small font-medium text-muted max-lg:hidden`}>
+      <div aria-hidden="true" className={`${columns} mt-2 h-9 border-b border-line text-small font-medium text-muted max-lg:hidden`}>
         <span>처방</span>
         <span className="text-right">건수</span>
-        <span className="text-right">{columnName}</span>
-        <span>증감</span>
+        {picked === null ? (
+          <>
+            <span className="text-right">{columnName}</span>
+            <span>증감</span>
+          </>
+        ) : (
+          compareNames(picked).map((name, _, all) => (
+            <span key={name} className={all.length === 1 ? 'col-span-2' : undefined}>{`${name}보다`}</span>
+          ))
+        )}
         <span className="text-right">신환</span>
         <span className="text-right">신환율</span>
         <span className="text-right">재진</span>
@@ -198,14 +252,15 @@ export function RxPickTable({
       </div>
       <ul className="list-none">
         {rows.map((row) => (
-          <PickRow key={row.code} row={row} columnName={columnName} open={opened.has(codeKey(row.code))} onToggle={() => onToggle(row.code)} renderPanel={renderPanel} />
+          <PickRow key={row.code} row={row} columnName={columnName} picked={picked} columns={columns} open={opened.has(codeKey(row.code))} onToggle={() => onToggle(row.code)} renderPanel={renderPanel} />
         ))}
         {total !== null && (
           <li>
-            <div className={`${COLUMNS} -mt-px border-t border-line-strong py-3 text-body text-ink`}>
+            <div className={`${columns} -mt-px border-t border-line-strong py-3 text-body text-ink`}>
               <Cells
                 row={total}
                 columnName={columnName}
+                picked={picked}
                 head={
                   <>
                     <span className="font-semibold">합계</span>
@@ -217,11 +272,11 @@ export function RxPickTable({
           </li>
         )}
       </ul>
-      <CopyTable text={rxPickCopyText({ hospitalName, periodName: PERIOD_NAME[period], range, rows, total })} />
+      <CopyTable text={rxPickCopyText({ hospitalName, periodName: range.name, range, rows, total })} />
       <div className="mt-3 grid max-w-160 gap-1 text-small text-muted">
         {anyGap && <p className="text-ink-2">{GAP_NOTE}</p>}
         {compared !== null && <p>{compared}</p>}
-        <p>{`줄을 누르면 그 처방의 ${GRAIN_NAME[period]}별 건수가 열려요.`}</p>
+        <p>{`줄을 누르면 그 처방의 ${BUCKET_NAME[range.bucket]}별 건수가 열려요.`}</p>
         <p>{COUNT_NOTE}</p>
         <p>{NEW_NOTE}</p>
         {total !== null && <p>{TOTAL_NOTE}</p>}
