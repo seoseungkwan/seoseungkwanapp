@@ -61,7 +61,7 @@ public static class ReceptionMap {
 | `TodayVisits` | `@from Char(12)`, `@to Char(12)`, `@hospital VarChar(32)` | VisitId, PatientId, AcceptedAt(원값), Status, Rsu | 오늘 외래 접수 전부(상태로 거르지 않음) |
 | `TodayRx` | 같음 | VisitId, RxCode | 오늘 접수의 처방(`HistoryCodeSql`의 처방 조건) |
 | `PriorVisits` | 같음 | TodayVisitId, EarlierCount, LastVisitId, LastDay | 오늘 접수마다 앞선 완료 내원 수와 가장 최근 것(`ROW_NUMBER()`, `c.OcmChtNum=t.OcmChtNum`) |
-| `PriorRx` | 같음 | LastVisitId, RxCode | 가장 최근 지난 내원의 처방 |
+| `PriorSymptoms` (TASK-37, `PriorRx` 대신) | 같음 | LastVisitId, Line | 가장 최근 지난 내원(`P.Seq=1`)의 증상 줄: `EmrInf`에서 `EmrOcmNum IN (SELECT P.OcmNum FROM P WHERE P.Seq=1)`·`EmrShtTyp='S'`·빈 글 아닌 `EmrShtVal`(`VisitSymptoms`와 같은 조건), `ORDER BY e.EmrOcmNum,e.EmrUpdDtm`. `IN`이라 같은 지난 내원이 오늘 접수 둘에 걸려도 줄이 겹치지 않는다 |
 | `RxNames` | 없음 | Code, Name, AdpDte | 처방 이름표. 코드마다 적용일이 가장 늦은 이름(`RevenueSql`과 같음). 하루 한 번 |
 | `HistoryCount` | `@chart VarChar(14)`, `@before VarChar(20)`, `@hospital` | Count, FirstDay | 이 접수보다 앞선 완료 내원 수·첫날 |
 | `HistoryPage` | `@chart`, `@before`, `@hospital`, `@first Int`, `@last Int` | VisitId, VisitDay, RxCode | 최근 순 `ROW_NUMBER()` 창 + 처방(LEFT JOIN) |
@@ -69,6 +69,7 @@ public static class ReceptionMap {
 - 모두 `Sql.IsAllowed`·`Sql.ParametersOf`에 더한다(지금의 Revenue·Stats처럼 `ReceptionSql.Parameters` 표를 `Sql`이 묻는다). 완료 내원 조건은 `HistoryVisitsCte`의 `OcmPatTyp='O' AND OcmRsuYon<>'O' AND OcmComStt IN (…)` + 병원 범위 그대로.
 - `@before`는 그 접수의 `OcmAcpDtm` 원값을 그대로 넘긴다(길이를 짐작하지 않는다). 시각 글은 앞 12글자(`yyyyMMddHHmm`)로 만든다.
 - `BoardReader.Read(IBitDb db, DateTime now) : BoardInput`: 위 문장을 차례로 돌려 줄 모양(`VisitRow`, `RxItem`)으로 바꾼다. 문장마다 시간 제한 8초.
+- 목록 줄의 '지난번' 증상(TASK-37, AC-1402.6): `PriorSymptoms`는 증상 칸(`ReceptionMap.Columns.Symptom`)이 있을 때만 돌리고(다른 칸 문장과 같음, 없으면 증상 없음), 줄마다 앞뒤 공백을 빼 내원마다 공백 하나로 잇는다(`HistoryReader`와 같은 규칙). `VisitRow.LastRx`는 `LastSymptom`(string?, 없으면 null)으로 바뀌고 `BoardBuilder`는 "지난번"일 때 그 글(없으면 "적힌 증상이 없어요")을 `rx`에 넣는다. 답 칸 이름(`rxLabel`·`rx`)과 화면 파일(board.js·api.js·app.js·detail.js)은 그대로다(글은 서버가 만들고 화면은 그대로 그린다). 확인 명령의 빠르기 목록(AC-1401.8)도 `PriorRx` 대신 `PriorSymptoms`를 잰다.
 - 간격 한 곳 `ReceptionTiming.cs`(AC-1403.9, TASK-31): `PollSeconds = 5`(화면이 저절로 다시 읽는 간격, `/api/board` 답의 `every`), `CacheSeconds = 4`(묶음). 사용자 결정 2026-11-05(10초 → 5초). 의원 PC 확인(AC-1403.10) 뒤 3초로 낮추면 `CacheSeconds`는 2로 한다(늘 간격보다 작게). 3배 쉼·실패 뒤 10초·`fresh` 2초는 그대로다.
 - `VisitRow`는 처음(TASK-12)부터 `Name`·`BirthDate`(또는 주민번호 앞 7글자)·`Sex`·`Memo`·`PaidAt` 칸을 빈 값(`null`) 허용으로 갖는다. 지금은 비어 있고, Phase 5(TASK-29)는 `BoardReader`에서 그 칸을 채우기만 한다(`BoardBuilder`는 고치지 않는다). TASK-11은 이 칸에 값이 있을 때와 없을 때를 모두 시험한다.
 - `BoardCache`: `Get(DateTime now, bool fresh = false) : BoardResult`(`ok + board` 또는 `unavailable`).
@@ -95,6 +96,7 @@ Row = { "k": "3f9a…(16)", "lane": "wait|hold|pay|done", "pos": 1 | null, "lane
         "rx": "체외충격파(ESWT7) · 도수치료 20분(DS20)", "xray": null | { "at": "10:55" | null } }
 ```
 - `every` = `ReceptionTiming.PollSeconds`(초). 볼 수 없을 때 503 `{ "state": "unavailable" }`. 글 규칙은 AC-1402.3~1402.6. `pos`는 진료 순서에만, `xray`는 진료보류에만 있다.
+- `rx`는 `rxLabel`이 "오늘"이면 오늘 처방, "지난번"이면 가장 최근 지난 내원의 증상 글(예: "오른쪽 어깨 통증 조금 줄었음", 없으면 "적힌 증상이 없어요"), "처방"이면 첫 방문 글이다(TASK-37, AC-1402.6).
 - 글은 서버(C#)가 만들고 화면은 그대로 그린다. 계산이 한 곳이고 C# 시험으로 거의 다 증명된다.
 - 기다린 분은 **모든 칸에서 접수 시각부터** 센다. 비트에 상태가 바뀐 시각 칸이 있는지 모르기 때문이다(확인 결과에 있으면 다시 정한다). 시안의 "보류 22분째"·"수납 6분째" 글 모양은 그대로다.
 

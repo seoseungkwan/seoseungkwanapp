@@ -388,3 +388,13 @@
 - Tests: reception/tests/detail.test.ts, reception/tests/app.test.ts, reception/tests/layout.test.ts
 - TDD: required
 - 도우미(C#)와 답 모양은 고치지 않는다. 승인 시안 Detail·Tablet에서 지난 진료 목록·처방·[더 보기]를 빼고 '지난번' 카드 하나만 두는 것이라 새 모양은 없다(사용자가 글로 정함). `detail.js`: 제목 글, `visits[0]` 카드(빈 증상 글), `updateTodaySym(host, k, todaySym)`. `app.js`: 폰·태블릿 같은 환자 가지에서 AC-1404.8 조건이면 `getHistory(k, 0)` 한 번(읽는 중이면 또 부르지 않음, 차례 번호로 늦은 답 버림), 성공하면 `updateTodaySym`, 실패하면 그대로. 가짜 `fetch`·가짜 시계로 시험(30초 전·뒤, 칸 바뀜, 처방 바뀜, 다른 환자, 숨김 뒤 늦은 답). 끝나면 메인 세션이 가짜 자료 화면 캡처를 사용자에게 보인다
+
+## TASK-37: 목록 줄의 '지난번'은 지난 증상 (`PriorSymptoms`)
+- Step: Phase 5 · Step 4 · `row-last-symptom`
+- 병렬: 아니오 (TASK-36 뒤, 사용자 결정 2026-11-06)
+- AC: AC-1402.6, AC-1407.2, AC-1403.1, AC-1410.4, AC-1401.8
+- REQ: REQ-1402, REQ-1407, REQ-1403, REQ-1410, REQ-1401
+- Files: helper/src/Precheck.Core/Reception/ReceptionSql.cs, helper/src/Precheck.Core/Reception/BoardReader.cs, helper/src/Precheck.Core/Reception/BoardInput.cs, helper/src/Precheck.Core/Reception/BoardBuilder.cs, helper/src/Precheck.Core/Reception/BoardModel.cs, helper/src/Precheck.Core/Reception/Check/CheckRunner.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionSql.test.cs, helper/tests/Precheck.Core.Tests/Reception/BoardReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/BoardBuilder.test.cs, helper/tests/Precheck.Core.Tests/Reception/HistoryReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/Check/CheckRunner.test.cs, helper/tests/reception-row-symptom.dotnet.test.ts, reception/tests/fixtures.ts, reception/tests/board.test.ts
+- Tests: helper/tests/reception-row-symptom.dotnet.test.ts, reception/tests/board.test.ts
+- TDD: required
+- design.md 3절·4절. `ReceptionSql.PriorRx`를 `PriorSymptoms`로 바꾼다(같은 `PriorCte`·같은 오늘 매개변수, 허용 목록 표도). `BoardReader`는 증상 칸이 있을 때만 그것을 돌려 지난 내원마다 공백 하나로 잇고, `VisitRow.LastRx` → `LastSymptom`. `BoardBuilder`의 "지난번" 글만 증상(없으면 "적힌 증상이 없어요")으로 바꾸고 "오늘"·"처방"(첫 방문) 글은 그대로. `BoardModel`은 `Rx` 설명 글만, `CheckRunner`는 빠르기 목록의 이름 하나만 바꾼다. 화면 파일(reception/www)은 고치지 않는다: 글을 그대로 그리므로 새 모양이 없다(사용자가 글로 정함). 시험의 가짜 줄(fixtures.ts 기본 줄·시안 줄의 '지난번' 글)만 증상 글로 바꾸고 board.test.ts가 그 글을 그대로 그림을 본다. 끝나면 메인 세션이 가짜 자료 화면 캡처를 사용자에게 보인다
