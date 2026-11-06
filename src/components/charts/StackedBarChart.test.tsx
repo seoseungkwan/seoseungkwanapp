@@ -838,7 +838,7 @@ describe('AC-806.7: StackedBarChart hideZeroTotals — 합계 0인 칸에는 막
 })
 
 // 빈 칸 blank (stats-period REQ-1704 AC-1704.3, design.md '숫자'·TASK-9). 고른 기간의 막대는 칸을 모두 만든다.
-// no-data = 자료 없는 칸: 막대·합계 자리에 '–'(muted)이고 화면 읽기 표도 '–'다(0이 아니다).
+// no-data = 자료 없는 칸: 막대·합계 자리에 '–'(muted)이고 화면 읽기 표도 계열·합계·상태가 '–'다(0이 아니다).
 // future = 앞으로 올 달: 달 글자만 있는 빈 칸이고 화면 읽기 표에 없다. 눈금은 진짜 칸만으로 잡는다. 지금 시험은 고치지 않고 여기에 더한다.
 // 예시 값은 지어낸 것이다
 describe('AC-1704.3: StackedBarChart blank — 자료 없는 칸은 "–", 앞으로 올 칸은 글자만, 주지 않으면 지금 그림 그대로', () => {
@@ -881,12 +881,21 @@ describe('AC-1704.3: StackedBarChart blank — 자료 없는 칸은 "–", 앞�
     expect(bars(figureOf(root)).map(styleOf)).toEqual(TOTALS.slice(0, 3).map((t) => `height:${pct(t, 800)}%`))
   })
 
-  it('AC-1704.3: 화면 읽기 표 — no-data 줄은 계열·합계가 "–"이고 future 줄은 없다', () => {
+  it('AC-1704.3: 화면 읽기 표 — no-data 줄은 계열·합계·상태가 "–"이고 future 줄은 없다', () => {
     const table = tableOf(chart({ buckets: BLANKS }).root)
     expect(rows(table)).toEqual([
       ...WEEKS.slice(0, 3).map(([, range, n, r]) => [range, String(n), String(r), String(n + r), '완료']),
-      ['자료 없는 주', '–', '–', '–', '일부 기간'],
+      ['자료 없는 주', '–', '–', '–', '–'],
     ])
+  })
+
+  it('AC-1704.3: 화면 읽기 표 — no-data 줄의 상태 칸은 칸의 state와 상관없이 "–"다(막대 자리처럼 상태 글이 없다)', () => {
+    for (const state of ['partial', 'complete', 'in-progress'] as const) {
+      const buckets = BLANKS.map((b) => (b.blank === 'no-data' ? { ...b, state } : b))
+      const table = tableOf(chart({ buckets }).root)
+      expect(rows(table)[3], state).toEqual(['자료 없는 주', '–', '–', '–', '–'])
+      expect(leafByText(table, '일부 기간'), state).toHaveLength(0)
+    }
   })
 
   it('AC-1704.3: 눈금은 진짜 칸만으로 잡는다 — 빈 칸의 값·비교 값이 커도 0·200·400·600·800이고 빈 칸에는 비교 막대가 없다', () => {
@@ -900,7 +909,7 @@ describe('AC-1704.3: StackedBarChart blank — 자료 없는 칸은 "–", 앞�
     expect(cellsOf(root)[4]!.children).toHaveLength(0)
     // 진짜 칸에 비교 값이 없으니 표에 "비교 기간" 칸도 없다
     expect(Array.from(tableOf(root).querySelectorAll('thead th')).map(textOf)).toEqual(['기간', '신환', '재진', '합계', '상태'])
-    expect(rows(tableOf(root))[3]).toEqual(['자료 없는 주', '–', '–', '–', '일부 기간'])
+    expect(rows(tableOf(root))[3]).toEqual(['자료 없는 주', '–', '–', '–', '–'])
   })
 
   it('AC-1704.3: 진짜 칸에 비교 값이 있으면 no-data 줄의 비교 기간 칸도 "–"다', () => {
@@ -908,7 +917,7 @@ describe('AC-1704.3: StackedBarChart blank — 자료 없는 칸은 "–", 앞�
     const { root } = chart({ buckets })
     expect(figureOf(root).querySelectorAll('.bg-faint')).toHaveLength(1)
     expect(rows(tableOf(root))).toHaveLength(4)
-    expect(rows(tableOf(root))[3]).toEqual(['자료 없는 주', '–', '–', '–', '일부 기간', '–'])
+    expect(rows(tableOf(root))[3]).toEqual(['자료 없는 주', '–', '–', '–', '–', '–'])
   })
 
   it('AC-1704.3: 굵은 합계는 마지막 진짜 완료 칸이다 — 뒤의 빈 칸이 complete여도 굵어지지 않는다', () => {
@@ -933,7 +942,7 @@ describe('AC-1704.3: StackedBarChart blank — 자료 없는 칸은 "–", 앞�
     expect(gridlines(figureOf(root))).toHaveLength(1)
     expect(bars(figureOf(root))).toHaveLength(0)
     expect(html).not.toMatch(/NaN|Infinity/)
-    expect(rows(tableOf(root))).toEqual([['자료 없는 주', '–', '–', '–', '일부 기간']])
+    expect(rows(tableOf(root))).toEqual([['자료 없는 주', '–', '–', '–', '–']])
   })
 
   it('AC-1704.3: blank를 주지 않거나 undefined면 마크업이 지금과 같다(sha256, 대시보드·미리보기 그대로)', async () => {

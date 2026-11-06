@@ -12,7 +12,7 @@ import { niceScale } from './scale'
 export type BarSeries = { name: string; tone: 'accent' | 'chart-3' | 'hatch-warning' } // 첫 계열이 맨 위·범례 첫째
 // comparison: 칸마다 줄 수 있는 비교 기간 값(stats REQ-513 AC-513.2). 숫자면 쌓은 막대 왼쪽에 가는 faint 막대를 그리고 눈금에 넣는다. null·없음은 막대가 없다.
 // 숫자인 칸이 하나도 없으면 그림·표가 지금과 한 글자도 다르지 않다. 하나라도 있으면 화면 읽기 표에 "비교 기간" 칸 하나가 붙는다(null은 "–")
-// blank: 빈 칸(stats-period AC-1704.3). 'no-data' = 자료 없는 칸이라 막대·합계 자리에 '–'(muted)이고 화면 읽기 표도 '–'다(0이 아니다).
+// blank: 빈 칸(stats-period AC-1704.3). 'no-data' = 자료 없는 칸이라 막대·합계 자리에 '–'(muted)이고 화면 읽기 표도 계열·합계·상태가 '–'다(0이 아니다).
 // 'future' = 앞으로 올 칸이라 아래 기간 글자만 있고 화면 읽기 표에 없다. 빈 칸의 값·비교 값은 그리지 않고 눈금·굵은 합계에 넣지 않는다.
 // 주지 않으면 지금 그림과 한 글자도 다르지 않다
 export type BarBucket = {
@@ -172,7 +172,7 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
                     <td key={j}>{noData ? '–' : formatCount(bucket.values[j] ?? 0)}</td>
                   ))}
                   <td>{noData ? '–' : formatCount(totals[i]!)}</td>
-                  <td>{STATE_TEXT[bucket.state]}</td>
+                  <td>{noData ? '–' : STATE_TEXT[bucket.state]}</td>
                   {compared && <td>{!noData && typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
                 </tr>
               )
