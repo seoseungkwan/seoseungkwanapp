@@ -13,7 +13,9 @@ import type {
   RecallView,
   TargetsKind,
   ViewCodes,
+  ViewReasons,
 } from '@/types/patients'
+import { isPatientsSourceReason } from '@/types/patients'
 
 // 환자 탭 Worker 흐름(design.md '데이터 흐름'·'Worker 메시지 약속'). 화면은 스트림의 {id}와 오류 번호만 Worker에 알리고, 조각·보낼 글자는 받지 않는다.
 // 흐름 한 번: store.load → stored → plan → F/U 조각 차례로 → 정기 주사 조각 차례로 → build → views. 종류마다 따로(AC-604.3): 한 종류가 실패하면 그 종류 읽기만 멈춘다.
@@ -39,7 +41,17 @@ export type PatientsWorkerHandle = WorkerLike & {
 }
 
 export type ReadProgress = { done: number; total: number }
-export type PatientsViews = { followup: FollowupView | null; recall: RecallView | null; codes: ViewCodes }
+export type PatientsViews = { followup: FollowupView | null; recall: RecallView | null; codes: ViewCodes; reasons?: ViewReasons }
+
+/** views 답의 이유 낱말 중 정해 둔 목록에 있는 것만 옮긴다(오류 번호 줄에 그대로 찍히는 글이라 목록 밖 글은 버린다). 하나도 없으면 undefined */
+function screenReasons(x: unknown): ViewReasons | undefined {
+  if (!x || typeof x !== 'object') return undefined
+  const { followup, recall } = x as Record<string, unknown>
+  const reasons: ViewReasons = {}
+  if (isPatientsSourceReason(followup)) reasons.followup = followup
+  if (isPatientsSourceReason(recall)) reasons.recall = recall
+  return Object.keys(reasons).length ? reasons : undefined
+}
 /** 도구가 Worker에 보내는 것(TASK-11~) */
 export type ToolRequest = Extract<PatientsScreenMessage, { type: 'filter' | 'mark' }>
 /** 도구가 Worker에게 받는 것(TASK-11~) */
@@ -230,7 +242,7 @@ export function usePatientsWorker(bridge: PatientsBridge, worker: PatientsWorker
           setLoaded((prev) => ({
             ...prev,
             status: 'done',
-            views: { followup: message.followup, recall: message.recall, codes: message.codes },
+            views: { followup: message.followup, recall: message.recall, codes: message.codes, reasons: screenReasons(message.reasons) },
             counts: message.counts,
           }))
           return

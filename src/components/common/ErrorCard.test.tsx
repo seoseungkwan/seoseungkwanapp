@@ -52,6 +52,18 @@ describe('ErrorCard', () => {
     expect(document.body.textContent).not.toContain('Error')
   })
 
+  it('AC-2102.3: 이유(detail)를 넘기지 않으면 번호 줄은 지금처럼 "오류 번호 <번호>"뿐이다', () => {
+    render(<ErrorCard code="E-PATIENTS-SOURCE" />)
+    const lines = [...screen.getByRole('alert').querySelectorAll('p')].map((p) => p.textContent)
+    expect(lines[2]).toBe('오류 번호 E-PATIENTS-SOURCE')
+  })
+
+  it('AC-2102.1: 이유를 넘기면 번호 줄 한 덩어리 글자 끝에 " (<이유>)"가 붙는다', () => {
+    render(<ErrorCard code="E-PATIENTS-SOURCE" detail="row-unreadable" />)
+    const number = within(screen.getByRole('alert')).getByText('오류 번호 E-PATIENTS-SOURCE (row-unreadable)')
+    expect(number.tagName).toBe('P')
+  })
+
   it('AC-012.2: 아이콘은 읽지 않는다(aria-hidden)', () => {
     render(<ErrorCard code="E-ADMIN-FAILED" />)
     const svg = screen.getByRole('alert').querySelector('svg')
