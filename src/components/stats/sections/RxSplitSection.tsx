@@ -31,12 +31,21 @@ const rowOf = (line: RxSplitLine) => [
   </span>,
 ]
 
-export function RxSplitSection({ view, hospitalName, saved, className }: { view: RxSplitView | null; hospitalName: string; saved: boolean; className?: string }) {
+type Props = {
+  view: RxSplitView | null
+  hospitalName: string
+  saved: boolean
+  name?: string | null // 고른 기간의 이름(stats-period AC-1704.4, 설명 끝 ' · {name}'). 빠른 단추는 주지 않는다(설명이 지금과 같다)
+  className?: string
+}
+
+export function RxSplitSection({ view, hospitalName, saved, name = null, className }: Props) {
   const [all, setAll] = useState(false)
   const tableId = useId()
+  const desc = name === null ? DESC : `${DESC} · ${name}`
   if (view === null) {
     return (
-      <Section title={TITLE} desc={saved ? DESC : undefined} className={className}>
+      <Section title={TITLE} desc={saved ? desc : undefined} className={className}>
         <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
       </Section>
     )
@@ -58,7 +67,7 @@ export function RxSplitSection({ view, hospitalName, saved, className }: { view:
   const { lines } = view.split
   const shown = all ? lines : lines.slice(0, SHOWN)
   return (
-    <Section title={TITLE} desc={DESC} className={className}>
+    <Section title={TITLE} desc={desc} className={className}>
       <p className="mt-2 text-body text-ink-2">{view.headline}</p>
       <div id={tableId} className={`mt-3 border-y border-line ${ds.table.wrap}`}>
         <NumberTable caption={`${TITLE} (명)`} columns={COLUMNS} rows={shown.map(rowOf)} />
