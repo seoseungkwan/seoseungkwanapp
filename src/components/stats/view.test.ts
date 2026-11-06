@@ -14,6 +14,7 @@ import {
   COMPARE_NAME,
   DEFAULT_STATS_PERIOD,
   patientTrend,
+  PERIOD_NAME,
   revisitRates,
   rxComparedCells,
   rxDetail,
@@ -168,6 +169,83 @@ describe('AC-511.1 statsRange', () => {
 
   it.each(['7d', '90d', '12m'] as const)('AC-511.1 %s의 finishedCohort는 null이다', (period) => {
     expect(statsRange('2026-11-13', period).finishedCohort).toBeNull()
+  })
+})
+
+describe('AC-1701.5 빠른 단추 넷의 넓힌 기간 모양', () => {
+  const periods: StatsPeriod[] = ['7d', '30d', '90d', '12m']
+
+  it('AC-1701.5 기간 이름은 view.ts에 있고 값은 지금 단추 글자 그대로다', () => {
+    expect(PERIOD_NAME).toEqual({ '7d': '최근 7일', '30d': '최근 30일', '90d': '최근 90일', '12m': '최근 12개월' })
+  })
+
+  it.each([
+    ['7d', '최근 7일', 'day'],
+    ['30d', '최근 30일', 'day'],
+    ['90d', '최근 90일', 'week'],
+    ['12m', '최근 12개월', 'month'],
+  ] as const)('AC-1701.5 %s의 새 칸: name·bucket·비교 이름, 작년 비교는 없다', (period, name, bucket) => {
+    const range = statsRange('2026-11-06', period)
+    expect(range.period).toBe(period)
+    expect(range.name).toBe(name)
+    expect(range.bucket).toBe(bucket)
+    expect(range.previous.name).toBe(COMPARE_NAME[period])
+    expect(range.previous.why).toBe(COMPARE_NAME[period])
+    expect(range.lastYear).toBeNull()
+  })
+
+  it('AC-1701.5 지금 있던 칸은 지금 값 그대로다(오늘 2026-11-06, 30d)', () => {
+    expect(statsRange('2026-11-06', '30d')).toEqual({
+      period: '30d',
+      name: '최근 30일',
+      current: { from: '2026-10-07', to: '2026-11-05', label: '10월 7일 – 11월 5일' },
+      previous: { from: '2026-09-07', to: '2026-10-06', label: '9월 7일 – 10월 6일', name: '지난 30일', why: '지난 30일' },
+      lastYear: null,
+      finishedCohort: { from: '2026-09-07', to: '2026-10-06' },
+      load: { from: '2026-09-01', to: '2026-11-06' },
+      grain: 'day',
+      bucket: 'day',
+      label: '10월 7일 – 11월 5일',
+    })
+  })
+
+  it('AC-1701.5 지금 있던 칸은 지금 값 그대로다(오늘 2026-11-06, 12m)', () => {
+    expect(statsRange('2026-11-06', '12m')).toEqual({
+      period: '12m',
+      name: '최근 12개월',
+      current: { from: '2025-12-01', to: '2026-11-30', label: '2025년 12월 – 2026년 11월' },
+      previous: { from: '2024-12-01', to: '2025-11-30', label: '2024년 12월 – 2025년 11월', name: '작년 같은 12달', why: '작년 같은 12달' },
+      lastYear: null,
+      finishedCohort: null,
+      load: { from: '2024-12-01', to: '2026-11-06' },
+      grain: 'month',
+      bucket: 'month',
+      label: '2025년 12월 – 2026년 11월',
+    })
+  })
+
+  it('AC-1701.5 어느 날·기간이든 previous에 name·why가 붙고 lastYear는 null이다', () => {
+    for (const today of eachDay({ from: '2027-12-20', to: '2028-03-10' })) {
+      for (const period of periods) {
+        const range = statsRange(today, period)
+        expect(Object.keys(range.previous).sort()).toEqual(['from', 'label', 'name', 'to', 'why'])
+        expect(range.lastYear).toBeNull()
+        expect(range.name).toBe(PERIOD_NAME[period])
+      }
+    }
+  })
+
+  it("AC-1701.5 기간 요약의 넷째 칸 글은 range.previous.name을 쓴다(빠른 단추는 COMPARE_NAME 그대로)", () => {
+    const base = statsRange('2026-11-13', '7d')
+    const range = { ...base, previous: { ...base.previous, name: '비교 이름' } }
+    const days = daysFrom('2026-10-30', '2026-11-12')
+    const cells = summaryCells({ days, covered: [{ from: '2026-10-30', to: '2026-11-12' }], range })
+    expect(cellOf(cells, 'compare').note).toBe('비교 이름 하루 평균 10명')
+  })
+
+  it("AC-1701.5 SummaryCell.key에 둘째 비교 칸 'lastYear'가 있다", () => {
+    const keys: SummaryCell['key'][] = ['average', 'new', 'returning', 'compare', 'lastYear']
+    expect(keys).toHaveLength(5)
   })
 })
 

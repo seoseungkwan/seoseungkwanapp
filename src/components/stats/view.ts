@@ -16,13 +16,20 @@ import type { DayPayload } from '@/types/payload'
 export type StatsPeriod = '7d' | '30d' | '90d' | '12m'
 export const DEFAULT_STATS_PERIOD: StatsPeriod = '30d'
 
+// 비교 기간 하나. name = 칸 머리·글에 쓰는 이름('9월'·'지난 30일'), why = 괄호 안 까닭('바로 전 달'·빠른 단추는 name과 같다)
+export type CompareRange = PeriodRange & { name: string; why: string }
+
+// period null = 고른 기간(stats-period, periodPick.ts의 pickRange). 섹션은 기간 이름 표 대신 name·previous.name·bucket을 읽는다
 export type StatsRange = {
-  period: StatsPeriod
+  period: StatsPeriod | null
+  name: string // '최근 30일' · '2026년 10월'
   current: PeriodRange
-  previous: PeriodRange
+  previous: CompareRange
+  lastYear: CompareRange | null // 작년 같은 기간(고른 기간만). 빠른 단추·해 고르기는 null
   finishedCohort: DateRange | null // '30d'만: 오늘 − 60 ~ 오늘 − 31(previous와 같은 범위). 온 뒤 30일이 지난 가장 최근 신환
-  load: DateRange // 비교 기간 첫날이 든 달의 1일 ~ 오늘
+  load: DateRange // 가장 앞 비교 기간 첫날이 든 달의 1일 ~ 오늘
   grain: 'day' | 'month'
+  bucket: TrendBucket // 막대·처방 그래프 칸: 7·30일 = 일, 90일 = 주, 12개월 = 달
   label: string
 }
 
@@ -32,7 +39,7 @@ export type StatsInput = { days: readonly DayPayload[]; covered: readonly DateRa
 // 값이 null이면 화면의 값 자리는 "–"이고 아래 글(note)이 까닭이다. partial = '일부 기간' 표시.
 // 넷째 칸(compare)은 value가 늘 null이고 delta가 값이다(delta null = 비교할 자료가 없음)
 export type SummaryCell = {
-  key: 'average' | 'new' | 'returning' | 'compare'
+  key: 'average' | 'new' | 'returning' | 'compare' | 'lastYear' // lastYear = 둘째 비교 칸(고른 기간의 작년 같은 기간)
   label: string
   value: number | null
   note: string
@@ -72,6 +79,7 @@ type Revisit = DayPayload['revisit']
 type RevisitKey = 'within7' | 'within14' | 'within30'
 
 const DAY_COUNT: Record<DayPeriod, Period> = { '7d': 7, '30d': 30, '90d': 90 }
+export const PERIOD_NAME: Record<StatsPeriod, string> = { '7d': '최근 7일', '30d': '최근 30일', '90d': '최근 90일', '12m': '최근 12개월' }
 export const COMPARE_NAME: Record<StatsPeriod, string> = { '7d': '지난 7일', '30d': '지난 30일', '90d': '지난 90일', '12m': '작년 같은 12달' }
 // 짝을 빼고 견줄 때의 비교 쪽 이름. COMPARE_NAME은 칸 수를 말해서('작년 같은 12달') 남은 칸 수와 어긋난다
 const PAIR_NAME: Record<StatsRange['grain'], string> = { day: '지난 기간', month: '작년' }
@@ -105,13 +113,15 @@ function rowsIn(days: readonly DayPayload[], range: DateRange): DayPayload[] {
 
 // ── 기간 ────────────────────────────────────────────────
 
-function dayRanges(today: string, days: Period): Pick<StatsRange, 'current' | 'previous'> {
+type QuickRanges = { current: PeriodRange; previous: PeriodRange }
+
+function dayRanges(today: string, days: Period): QuickRanges {
   const current = periodRange(today, days)
   const { from, to } = comparisonRange(current.from, current.to, 'PreviousEqualDays')
   return { current, previous: { from, to, label: periodRange(current.from, days).label } } // periodRange(첫날, N) = 그 앞 N일
 }
 
-function yearRanges(today: string): Pick<StatsRange, 'current' | 'previous'> {
+function yearRanges(today: string): QuickRanges {
   const thisMonth = monthOf(today)
   const from = monthRange(addMonths(thisMonth, 1 - YEAR_MONTHS)).from
   const to = monthRange(thisMonth).to
@@ -128,11 +138,14 @@ export function statsRange(today: string, period: StatsPeriod): StatsRange {
   const { current, previous } = period === '12m' ? yearRanges(today) : dayRanges(today, DAY_COUNT[period])
   return {
     period,
+    name: PERIOD_NAME[period],
     current,
-    previous,
+    previous: { ...previous, name: COMPARE_NAME[period], why: COMPARE_NAME[period] },
+    lastYear: null,
     finishedCohort: period === '30d' ? { from: addDays(today, -60), to: addDays(today, -31) } : null,
     load: { from: monthRange(monthOf(previous.from)).from, to: today },
     grain: period === '12m' ? 'month' : 'day',
+    bucket: DETAIL_BUCKET[period],
     label: current.label,
   }
 }
@@ -199,7 +212,7 @@ function compareCell(range: StatsRange, finished: readonly Cell[], comparedNow: 
   const note =
     comparedNow.length < finished.length
       ? `견준 ${formatCount(comparedNow.length)}${CELL_UNIT[range.grain]} 평균 · 이번 ${formatCount(now)}명 · ${PAIR_NAME[range.grain]} ${formatCount(before)}명`
-      : `${COMPARE_NAME[range.period]} ${AVERAGE_UNIT[range.grain]} 평균 ${formatCount(before)}명`
+      : `${range.previous.name} ${AVERAGE_UNIT[range.grain]} 평균 ${formatCount(before)}명`
   return { key: 'compare', label, value: null, note, partial: false, delta: compareNumbers(now, before) }
 }
 
@@ -226,7 +239,8 @@ export function summaryCells(input: StatsInput): SummaryCell[] {
 
 export function patientTrend(input: StatsInput): BarBucket[] | null {
   const { days, range } = input
-  if (range.period !== '12m') return trendBuckets(days, range.current, DAY_COUNT[range.period])
+  // 고른 기간(period null)의 칸은 TASK-3에서 더한다
+  if (range.period !== null && range.period !== '12m') return trendBuckets(days, range.current, DAY_COUNT[range.period])
   const cells = cellsIn(slotsOf(input, range.current))
   if (cells.length === 0) return null
   return cells.map((cell) => ({
@@ -337,7 +351,7 @@ function comparableOf(now: readonly TrendPoint[], before: readonly TrendPoint[])
   return { current: sum(pairs, (pair) => pair.current.count), previous: sum(pairs, (pair) => pair.previous.count) }
 }
 
-function rxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod): RxTrendRow {
+function rxRow(line: RxLine, now: readonly TrendPoint[], before: readonly TrendPoint[], period: StatsPeriod | null): RxTrendRow {
   const comparable = comparableOf(now, before)
   return {
     ...line,
@@ -399,7 +413,7 @@ const overlaps = (a: DateRange, start: string, end: string) => compareYmd(a.from
 // 칸: 7·30일 = 일, 90일 = 주(월~일), 12개월 = 달. buildTrend의 점 그대로이고, 90일은 두 기간의 칸 수가 달라도 채우거나 자르지 않는다
 export function rxDetail({ days, covered, range }: StatsInput, code: string): { current: RxDetailPoint[]; previous: RxDetailPoint[] } {
   const pointsOf = (span: DateRange): RxDetailPoint[] =>
-    buildTrend(days, covered, { from: span.from, to: span.to, bucket: DETAIL_BUCKET[range.period], codes: [code] }).points.map((point) => ({
+    buildTrend(days, covered, { from: span.from, to: span.to, bucket: range.bucket, codes: [code] }).points.map((point) => ({
       ...point,
       covered: covered.some((part) => overlaps(part, point.start, point.end)),
     }))
