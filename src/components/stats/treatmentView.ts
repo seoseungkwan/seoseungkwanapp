@@ -7,7 +7,7 @@ import { codeKey, rxDetail, rxPickRows, type RxDetailPoint, type RxPickRow, type
 
 // 처방별 추세의 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자'). view.ts와 같은 규칙의 순수 함수다.
 // 묶음 열쇠 = 처방 코드 모음의 지문(groupKey). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
-// 숫자는 묶음 줄을 "열쇠가 코드인 처방 줄"로 바꾼 가상 입력(groupInput)을 rxPickRows·rxDetail에 넘겨 낸다. 그래서 증감·짝 빼기·일부 기간이 처방 추세와 같다.
+// 숫자는 묶음 줄을 "열쇠가 코드인 처방 줄"로 바꾼 가상 입력(groupInput·treatmentDetail)을 rxPickRows·rxDetail에 넘겨 낸다. 그래서 증감·짝 빼기·일부 기간이 처방 추세와 같다.
 // 이름·sortOrder·제안 여부는 숫자에 쓰지 않는다. 숫자는 열쇠만 본다
 
 export const GROUP_KEY = /^t[0-9a-f]{16}$/
@@ -68,17 +68,31 @@ function withoutRange(covered: readonly DateRange[], cut: DateRange): DateRange[
   })
 }
 
-// 날마다 rx를 그 열쇠 줄 하나(없으면 빈 목록)로 바꾼 가상 일 줄. compared가 거짓이면 비교 기간을 덮은 기간에서 빼서
-// 비교 칸이 모두 덜 끝난 칸이 된다(comparable null → 비교할 수 없음, 그래프 비교 칸 covered 거짓). lastYearCompared가 거짓이면 작년 기간도 뺀다(작년만 '–')
-export function groupInput(input: StatsInput, key: string, name: string, compared: boolean, lastYearCompared = true): StatsInput {
-  const days = input.days.map((row) => {
+// 덮은 기간에서 세지 않은 비교 기간을 뺀다. keep(그 묶음으로 센 다른 비교 기간)과 겹친 날은 남긴다: 직접 날짜 183–365일은
+// 바로 전과 작년이 겹치는데, 겹친 날까지 빼면 센 비교도 '–'가 된다(stats-period AC-1705.2). 세지 않은 날은 늘 keep 밖에 있어 뺀 비교는 그대로 '–'다
+function withoutUncounted(covered: readonly DateRange[], cut: DateRange, keep: DateRange | null): DateRange[] {
+  const pieces = keep === null ? [cut] : withoutRange([cut], keep)
+  return pieces.reduce<DateRange[]>((rest, piece) => withoutRange(rest, piece), [...covered])
+}
+
+// 날마다 rx를 그 열쇠 줄 하나(없으면 빈 목록)로 바꾼 가상 일 줄
+function keyedDays(days: readonly DayPayload[], key: string, name: string): DayPayload[] {
+  return days.map((row) => {
     const line = row.groups.find((item) => item.id === key)
     const rx = line === undefined ? [] : [{ code: key, name, type: '', patients: line.patients, newPatients: line.newPatients, returning: line.returning }]
     return { ...row, rx }
   })
+}
+
+// 그 열쇠 줄만 남긴 가상 입력. compared가 거짓이면 비교 기간을 덮은 기간에서 빼서
+// 비교 칸이 모두 덜 끝난 칸이 된다(comparable null → 비교할 수 없음, 그래프 비교 칸 covered 거짓). lastYearCompared가 거짓이면 작년 기간도 뺀다(작년만 '–').
+// 고른 기간에서 두 비교가 겹치면 센 쪽의 날은 남긴다(withoutUncounted). 빠른 단추(작년 없음)는 바로 전 기간 전체를 뺀다(지금 규칙)
+export function groupInput(input: StatsInput, key: string, name: string, compared: boolean, lastYearCompared = true): StatsInput {
   const { previous, lastYear } = input.range
-  const withoutPrevious = compared ? input.covered : withoutRange(input.covered, previous)
-  return { days, covered: lastYearCompared || lastYear === null ? withoutPrevious : withoutRange(withoutPrevious, lastYear), range: input.range }
+  const yearCounted = lastYear === null || lastYearCompared
+  const withoutPrevious = compared ? input.covered : withoutUncounted(input.covered, previous, yearCounted ? lastYear : null)
+  const covered = yearCounted ? withoutPrevious : withoutUncounted(withoutPrevious, lastYear, compared ? previous : null)
+  return { days: keyedDays(input.days, key, name), covered, range: input.range }
 }
 
 // 묶음마다 한 줄, sortOrder 차례(건수로 다시 줄 세우지 않는다). 어느 묶음에도 없는 처방은 줄이 아니다
@@ -95,9 +109,11 @@ export function treatmentRows(input: StatsInput, groups: readonly RxGroup[]): Tr
   })
 }
 
-// 줄을 눌러 여는 그래프의 칸(처방 추세 rxDetail과 같은 칸: 7·30일 일, 90일 주, 12개월 달)
+// 줄을 눌러 여는 그래프의 칸(처방 추세 rxDetail과 같은 칸: 7·30일 일, 90일 주, 12개월 달).
+// 그래프는 바로 전만 그린다: 바로 전을 세지 않았으면 그 기간을 모두 빼서(작년과 겹친 날도) 회색 막대가 하나도 없다(지금 규칙)
 export function treatmentDetail(input: StatsInput, item: Extract<TreatmentRow, { kind: 'ready' }>): { current: RxDetailPoint[]; previous: RxDetailPoint[] } {
-  return rxDetail(groupInput(input, item.key, item.group.name, item.compared), item.key)
+  const covered = item.compared ? input.covered : withoutRange(input.covered, input.range.previous)
+  return rxDetail({ days: keyedDays(input.days, item.key, item.group.name), covered, range: input.range }, item.key)
 }
 
 // 처방 든 묶음 가운데 숨긴 것(줄 차례). all = 처방 든 묶음이 모두 숨김(처음 쓸 때 포함)
