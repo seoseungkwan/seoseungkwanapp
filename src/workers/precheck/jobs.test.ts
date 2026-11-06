@@ -3416,6 +3416,54 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       expect(rowOf(view, B.key)).toMatchObject({ text: 'B 완료 글', done: true })
       expect(keysIn(view, 'done')).toContain(B.key)
     })
+
+    it('AC-2202.3·AC-2202.6: 풀린 사람이 다시 완료되면 비교는 다시 받은 사본으로 한다(고치지 않은 완료 줄과 같다)', async () => {
+      const made = await ready(FINISHED)
+      await edit(made, A.key, '고친 글')
+      const run = await press(made)
+      await finish(made, run.ticket, { status: 'finished', results: [line(A, '완료', '바꿈(기존 메모 덮어씀)')] })
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: true, afterEntry: true, compare: '다름', inBit: '넣은 글' })
+      expect(keysIn(view, 'done')).toContain(A.key)
+    })
+
+    it('AC-2202.7: 첫 저장 답 전에 두 번 고친 뒤 저장이 실패하고 고친 메모를 남겨 다시 불러와도 풀린 채다', async () => {
+      const made = await ready(FINISHED)
+      await edit(made, A.key, '처음 고친 글')
+      await edit(made, A.key, '또 고친 글')
+      for (const save of sends(made, 'store.save')) await made.jobs.fromPort({ type: 'sent', ticket: save.ticket, ok: false, code: 'E-STORE-FAILED' })
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'loadStart', load: 2, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'm2', MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: 'm2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'b2', memosJson([memoRow(A, '넣은 글')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'b2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 's2', storeJson({ done: { [A.key]: '넣은 글' }, journal: { [A.key]: 'done' } }))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: 's2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ done: false, text: '또 고친 글', compare: '다름' })
+      expect(saves(made).filter((save) => save.month)).toEqual([{ month: '2026-10', drafts: { [A.key]: '또 고친 글' }, done: { [A.key]: false } }])
+    })
+
+    it('AC-2202.6: 저장 답 전에 다시 완료되면 남은 고친 글에 완료 풀림이 남지 않아, 고친 메모를 남겨 다시 불러와도 완료다', async () => {
+      const made = await ready(FINISHED)
+      await edit(made, A.key, '고친 글')
+      const run = await press(made)
+      await finish(made, run.ticket, { status: 'finished', results: [line(A, '완료', '바꿈(기존 메모 덮어씀)')] })
+      made.sent.length = 0
+      await made.jobs.fromScreen({ type: 'loadStart', load: 2, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'm2', MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: 'm2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 'b2', memosJson([memoRow(A, '고친 글')]))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'b2', load: 2 } satisfies PrecheckFromScreen)
+      await stream(made.jobs, 's2', storeJson({ drafts: { [A.key]: '고친 글' }, done: { [A.key]: '고친 글' }, journal: { [A.key]: 'done' } }))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: 's2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: true, text: '고친 글' })
+      expect(keysIn(view, 'done')).toContain(A.key)
+      for (const save of saves(made).filter((one) => one.month)) expect(save).toMatchObject({ done: { [A.key]: '고친 글' } })
+    })
   })
 
   // ── 건수(REQ-019): Worker가 언제 무엇을 화면에 보내나. 올리기는 useCountsUpload.test.ts ──

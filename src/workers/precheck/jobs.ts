@@ -724,6 +724,9 @@ export function createPrecheckJobs(deps: {
         resolved.add(key)
         work.done.add(key)
         work.released.delete(key) // 다시 넣었으니 다시 완료다(AC-2202.6)
+        // 저장 답을 못 받은 고친 글의 완료 풀림도 지운다: 남기면 고친 메모를 남겨 다시 불러올 때 다시 풀린다(AC-2202.6)
+        const kept = unsaved.get(key)
+        if (kept?.release) unsaved.set(key, { text: kept.text, month: kept.month })
         if (item && visit) {
           work.saved.set(key, work.saved.get(key) ?? item.memo)
           work.months.get(visit.month)?.done.set(key, item.memo)
