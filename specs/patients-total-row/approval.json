@@ -1,0 +1,13 @@
+{
+  "status": "approved",
+  "feature": "patients-total-row",
+  "approved_at": "2026-11-06T08:17:16Z",
+  "approved_via": "user-prompt",
+  "session_id": "c6b141a4-f240-43e6-b51e-f7f563a3a2e5",
+  "spec_sha256": "83090b33371f6d9ca3724f866c5eda77da2509e7ad9ce130d3e4b71ef2ccb207",
+  "scope": [
+    "src/workers/patients/handler.test.ts",
+    "src/workers/patients/jobs.test.ts",
+    "src/workers/patients/jobs.ts"
+  ]
+}
