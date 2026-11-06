@@ -393,6 +393,53 @@ describe('mergeRecall', () => {
   })
 })
 
+// 도우미가 보내는 83 표 끝 총계 줄(patients-total-row): 【 총 계 】 글자가 있던 No 칸은 도우미가 고르지 않아 빠지고, 차트번호 칸에 건수만 남는다
+const totalRow = (head: readonly string[], count: string) => head.map((name) => (name.replace(/\s/g, '') === '차트번호' ? count : ''))
+const withTotal = <P extends { chart: string[][] }>(piece: P, count = '1,295건'): P => ({ ...piece, chart: [...piece.chart, totalRow(piece.chart[0], count)] })
+const COUNTS = ['2건', '1,295건', ' 1,295 건 ', '7건']
+
+describe('도우미 83 표 끝 총계 줄(patients-total-row)', () => {
+  it('AC-2201.1 F/U 조각마다 끝에 총계 줄이 있어도 멈추지 않고 그 줄이 없는 조각과 같은 보기 모양이다', () => {
+    const totaled = FOLLOWUP.pieces.map((piece, i) => withTotal({ chart: piece.chart, rx: piece.rx }, COUNTS[i % COUNTS.length]))
+    expect(buildFollowup(totaled, noMarks(), TODAY)).toEqual(followupView())
+  })
+
+  it('AC-2201.2 정기 주사 달 조각마다 끝에 총계 줄이 있어도 그 줄이 없는 조각과 같은 기록으로 합친다', () => {
+    const totaled = ranged(INJECTION.pieces).map((piece, i) => withTotal(piece, COUNTS[i % COUNTS.length]))
+    expect(mergeRecall(empty(), totaled, RECALL_DEFAULTS, TODAY)).toEqual(firstHistory())
+  })
+
+  it('AC-2201.3 칸 차례가 달라도(차트번호가 셋째 칸) 머리 줄의 차트번호 칸을 보고 거른다', () => {
+    const order = ['환자명', '내원번호', '차트번호', '증상', '기록날짜']
+    const reorder = (chart: string[][]) => chart.map((row) => order.map((name) => row[CHART_HEAD.indexOf(name)]))
+    const moved = FOLLOWUP.pieces.map((piece) => ({ chart: reorder(piece.chart), rx: piece.rx }))
+    const totaled = moved.map((piece) => withTotal(piece))
+    expect(totaled[0].chart.at(-1)).toEqual(['', '', '1,295건', '', ''])
+    expect(buildFollowup(totaled, noMarks(), TODAY)).toEqual(buildFollowup(moved, noMarks(), TODAY))
+  })
+
+  it.each([
+    ['내원번호 칸에 글자', ['V9', '3건', '', '', '']],
+    ['환자명 칸에 글자', ['', '3건', '가상환자01', '', '']],
+    ['증상 칸에 글자', ['', '3건', '', '1주 뒤 f/u', '']],
+    ['기록날짜 칸에 글자', ['', '3건', '', '', '20261027']],
+    ['건수 모양 아님: 3명', ['', '3명', '', '', '']],
+    ['건수 모양 아님: 총 3건', ['', '총 3건', '', '', '']],
+    ['건수 모양 아님: 3', ['', '3', '', '', '']],
+    ['건수 모양 아님: 건', ['', '건', '', '', '']],
+  ])('AC-2201.4 총계와 닮았지만 다른 줄(%s)은 거르지 않고 원본처럼 멈춘다', (_name, row) => {
+    const pieces = FOLLOWUP.pieces.map((piece, i) => ({ chart: i === 0 ? [...piece.chart, row] : piece.chart, rx: piece.rx }))
+    let caught: unknown = null
+    try {
+      buildFollowup(pieces, noMarks(), TODAY)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(PatientsSourceError)
+    expect((caught as PatientsSourceError).reason).toBe('row-unreadable')
+  })
+})
+
 describe('buildRecall', () => {
   it('AC-604.3 줄 모양: 종류·이름·전화·마지막 주사·다음 예정일·상태·근거·연락함', () => {
     const view = recallView()
