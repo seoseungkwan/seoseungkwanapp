@@ -371,4 +371,37 @@ describe('AC-016.6·AC-016.7 visitMemos: 진료마다 비교 상태', () => {
     const memos = memosOf([])
     expect(visitMemos([visit('v1', '1')], [], { atLoad: memos, latest: memos, journal: none })).toEqual([])
   })
+
+  it('AC-2202.3: entered에 있는 사람은 받은 비트 메모 대신 그때 넣은 글과 견주어 메모 바꿈이 되고, 4,000자를 넘으면 조회 못함이다. 없는 사람은 지금 그대로다', () => {
+    // 받은 사본에는 v1·v2 줄이 없다(넣기 전에 비어 있었다)
+    const memos = memosOf([{ v: 'v3', p: '3', m: '비트 메모' }])
+    const entered = new Map([
+      ['v1', '넣은 글'],
+      ['v2', '글'.repeat(4001)],
+    ])
+    const views = [view('v1', '고친 글'), view('v2', '고친 글'), view('v3'), view('v4')]
+    const visits = [visit('v1', '1'), visit('v2', '2'), visit('v3', '3'), visit('v4', '4')]
+    const rows = visitMemos(visits, views, { atLoad: memos, latest: memos, journal: none, entered })
+    expect(rows.map((r) => r.compare)).toEqual(['다름', '조회 못함', '다름', '비트에 없음'])
+    expect(rows[0].inBit).toBe('넣은 글')
+    expect(replacesOf(rows[0])).toBe('넣은 글')
+    expect(rows[1]).not.toHaveProperty('inBit')
+    expect(rows[2].inBit).toBe('비트 메모')
+    const plan = inputPlan(rows)
+    expect(plan.batch.map((r) => [r.key, r.replaces])).toEqual([
+      ['v1', '넣은 글'],
+      ['v3', '비트 메모'],
+      ['v4', undefined],
+    ])
+    expect(plan.skipped).toEqual([{ key: 'v2', reason: '조회 못함' }])
+    // 넣은 글과 우리 글이 같으면 같음이다
+    expect(visitMemos([visit('v1', '1')], [view('v1', '넣은 글')], { atLoad: memos, latest: memos, journal: none, entered })[0].compare).toBe('같음')
+  })
+
+  it('AC-2202.3: entered는 받은 사본이 없거나 그 진료를 읽지 못했어도 넣은 글로 견준다(도우미가 저장 뒤 다시 읽어 확인한 글이다)', () => {
+    const entered = new Map([['v1', '넣은 글']])
+    const rows = visitMemos([visit('v1', '1'), visit('v2', '2')], [view('v1', '고친 글'), view('v2')], { atLoad: null, latest: null, journal: none, entered })
+    expect(rows.map((r) => r.compare)).toEqual(['다름', '조회 못함'])
+    expect(rows[0].inBit).toBe('넣은 글')
+  })
 })

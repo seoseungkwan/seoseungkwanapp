@@ -71,6 +71,18 @@ export type MemoSource = {
   approved?: ReadonlyMap<string, string>
   /** [바꾸지 않기]를 누른 사람의 내원번호(AC-018.14) */
   declined?: ReadonlySet<string>
+  /**
+   * 완료를 푼 사람 가운데 이 화면에서 비트 메모를 읽은 뒤 입력을 마친 사람: 내원번호 → 그때 넣은 글(AC-2202.3). 받은 사본은 입력 전 값이라 이 글과 견준다.
+   * 도우미가 저장 뒤 다시 읽어 확인한 글이고, 그새 바뀌었으면 replaces가 칸 글과 달라 도우미가 바꾸지 않는다(AC-037.1). 4,000자를 넘으면 읽지 못한 것이다(bitMemoOf와 같은 한도)
+   */
+  entered?: ReadonlyMap<string, string>
+}
+
+/** 그 진료를 견줄 비트 글. undefined면 읽지 못한 것이다(AC-016.6·AC-016.7·AC-2202.3) */
+function inBitOf(visit: Visit, source: MemoSource): string | undefined {
+  const entered = source.entered?.get(visit.key)
+  if (entered !== undefined) return entered.length <= MAX_BIT_MEMO ? entered : undefined
+  return bitMemoOf(source.atLoad, visit) === undefined ? undefined : bitMemoOf(source.latest, visit)
 }
 
 /**
@@ -83,7 +95,7 @@ export function visitMemos(visits: readonly Visit[], views: readonly VisitMemoVi
   for (const visit of visits) {
     const view = viewOf.get(visit.key)
     if (!view) continue
-    const inBit = bitMemoOf(source.atLoad, visit) === undefined ? undefined : bitMemoOf(source.latest, visit)
+    const inBit = inBitOf(visit, source)
     const compare = compareMemo(view.text, inBit)
     const row: VisitMemo = { key: visit.key, date: visit.date, text: view.text, hasMemo: view.hasMemo, unfinished: view.unfinished, compare }
     if (inBit !== undefined && (compare === '같음' || compare === '다름')) row.inBit = inBit
