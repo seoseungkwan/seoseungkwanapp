@@ -1,10 +1,11 @@
 {
   "status": "approved",
   "feature": "bit-dashboard",
-  "approved_at": "2026-11-02T09:26:00Z",
+  "approved_at": "2026-11-06T00:34:42Z",
   "approved_via": "user-prompt",
-  "session_id": "b32dcf32-1bc4-44ce-970c-b3327e854ec8",
-  "spec_sha256": "815ed11b01e5b78a70d86ecfba7f7f709a55939d55dbd9ca701d9abbdaa2cf4a",
+  "approved_by": "user",
+  "session_id": "7a84eb94-19a7-4935-8247-8a0e0c2dffb0",
+  "spec_sha256": "23bead4818a9476b6b253dec4cdd441dd0e16c8e93673ac489b9a661ca3447e9",
   "scope": [
     "helper/Directory.Build.props",
     "helper/tests/build.test.ts",
@@ -12,6 +13,7 @@
     "src/app/(app)/claim/setup/page.tsx",
     "src/app/(app)/dashboard/page.test.tsx",
     "src/app/(app)/dashboard/page.tsx",
+    "src/app/(app)/tabFrame.test.tsx",
     "src/app/globals.css",
     "src/app/globals.test.ts",
     "src/app/theme.test.ts",
