@@ -8,6 +8,7 @@ import {
   PERIODS,
   periodRange,
   reportSentence,
+  revisitCohortCaption,
   revisitView,
   tickLabels,
   todayView,
@@ -160,34 +161,124 @@ describe('trendBuckets — 환자 수 추이 칸', () => {
 
 describe('revisitView — 신환 재방문율 7·14일', () => {
   const MONTH = periodRange(TODAY, 30)
+  // 이 시험들의 가짜 자료에는 30일 값이 없다 → null로 친다(AC-516.2). 고친 것은 30일 칸 기대값뿐이다(AC-516.4)
+  const NO_D30 = { d30: { kind: 'in-progress' }, d30Cohort: null }
 
-  it('AC-311.5: Σwithin ÷ Σcohort, 그 값이 null인 날은 분자·분모 모두에서 뺀다(7일·14일 따로)', () => {
+  it('AC-311.5·AC-516.4: Σwithin ÷ Σcohort, 그 값이 null인 날은 분자·분모 모두에서 뺀다(7일·14일 따로)', () => {
     const days = [
       day('2026-10-10', { revisit: { cohort: 4, within7: 1, within14: 2 } }),
       day('2026-10-20', { revisit: { cohort: 6, within7: 3, within14: null } }),
       day('2026-10-29', { revisit: { cohort: 10, within7: null, within14: null } }),
     ]
-    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'rate', value: 4 / 10 }, d14: { kind: 'rate', value: 2 / 4 } })
+    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'rate', value: 4 / 10 }, d14: { kind: 'rate', value: 2 / 4 }, ...NO_D30 })
   })
 
-  it('AC-311.5: 모든 날이 null이면 집계 중(in-progress)', () => {
+  it('AC-311.5·AC-516.4: 모든 날이 null이면 집계 중(in-progress)', () => {
     const days = [day('2026-10-28', { revisit: { cohort: 3, within7: null, within14: null } })]
-    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'in-progress' }, d14: { kind: 'in-progress' } })
+    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'in-progress' }, d14: { kind: 'in-progress' }, ...NO_D30 })
   })
 
-  it('AC-311.5: 남은 분모가 0이면 자료 없음(none), 기간 안 날이 없어도 none', () => {
+  it('AC-311.5·AC-516.4: 남은 분모가 0이면 자료 없음(none), 기간 안 날이 없어도 none', () => {
     const days = [day('2026-10-28', { newPatients: 0, revisit: { cohort: 0, within7: 0, within14: 0 } })]
-    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'none' }, d14: { kind: 'none' } })
-    expect(revisitView([], MONTH)).toEqual({ d7: { kind: 'none' }, d14: { kind: 'none' } })
+    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'none' }, d14: { kind: 'none' }, ...NO_D30 })
+    expect(revisitView([], MONTH)).toEqual({ d7: { kind: 'none' }, d14: { kind: 'none' }, d30: { kind: 'none' }, d30Cohort: null })
   })
 
-  it('AC-311.6: 기간 밖 날(오늘·기간 앞)은 셈에 들지 않는다', () => {
+  it('AC-311.6·AC-516.4: 기간 밖 날(오늘·기간 앞)은 셈에 들지 않는다', () => {
     const days = [
       day('2026-10-15', { revisit: { cohort: 5, within7: 1, within14: 1 } }),
       day(TODAY, { revisit: { cohort: 100, within7: 100, within14: 100 } }),
       day('2026-09-01', { revisit: { cohort: 100, within7: 0, within14: 0 } }),
     ]
-    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'rate', value: 1 / 5 }, d14: { kind: 'rate', value: 1 / 5 } })
+    expect(revisitView(days, MONTH)).toEqual({ d7: { kind: 'rate', value: 1 / 5 }, d14: { kind: 'rate', value: 1 / 5 }, ...NO_D30 })
+  })
+})
+
+describe('revisitView — 신환 재방문율 30일 줄 (AC-516.2)', () => {
+  // 오늘 11월 13일: 30일 기간 = 10월 14일 ~ 11월 12일, 30일 줄이 세는 날 = 9월 14일(오늘 − 60) ~ 10월 13일(오늘 − 31)
+  const NOV = '2026-11-13'
+  const WEEK = periodRange(NOV, 7)
+  const MONTH = periodRange(NOV, 30)
+  const QUARTER = periodRange(NOV, 90)
+  const d30 = (ymd: string, cohort: number, within30: number | null) => day(ymd, { revisit: { cohort, within7: 0, within14: 0, within30 } })
+
+  it('AC-516.2: 30일 줄도 7·14일과 같은 규칙이다 — 값이 null이 아닌 날들의 합 ÷ 집단 합, period를 주지 않으면 고른 기간 그대로이고 d30Cohort는 null', () => {
+    const days = [d30('2026-10-20', 4, 1), d30('2026-10-25', 6, 3), d30('2026-11-01', 90, null)]
+    expect(revisitView(days, MONTH).d30).toEqual({ kind: 'rate', value: 4 / 10 })
+    expect(revisitView(days, MONTH).d30Cohort).toBeNull()
+  })
+
+  it('AC-516.2: within30이 빠진 가짜 자료는 null로 친다 — 숫자인 날만 세고, 모두 빠지면 집계 중', () => {
+    const missing = day('2026-10-20', { revisit: { cohort: 90, within7: 0, within14: 0 } })
+    expect(revisitView([missing, d30('2026-10-25', 5, 2)], MONTH).d30).toEqual({ kind: 'rate', value: 2 / 5 })
+    expect(revisitView([missing], MONTH).d30).toEqual({ kind: 'in-progress' })
+    expect(revisitView([missing], MONTH, 30).d30).toEqual({ kind: 'none' }) // 그 날은 고른 기간 안이라 30일 줄이 세는 날이 없다
+  })
+
+  it('AC-516.2: 오늘이 11월 13일인 30일 기간 — 30일 줄이 9월 14일 ~ 10월 13일을 세고 그 날짜를 보인다', () => {
+    const days = [
+      d30('2026-09-13', 100, 100), // 하루 앞: 세지 않는다
+      d30('2026-10-13', 6, 3),
+      d30('2026-09-14', 4, 1),
+      d30('2026-10-14', 100, 0), // 하루 뒤(고른 기간의 첫날): 세지 않는다
+    ]
+    const view = revisitView(days, MONTH, 30)
+    expect(view.d30).toEqual({ kind: 'rate', value: 4 / 10 })
+    expect(view.d30Cohort).toEqual({ from: '2026-09-14', to: '2026-10-13', within: 4, cohort: 10 })
+    expect(revisitCohortCaption(view.d30Cohort!)).toBe('9월 14일 – 10월 13일에 온 신환 10명 가운데 4명 · 온 뒤 30일이 지난 가장 최근 신환이에요')
+  })
+
+  it('AC-516.2: 가장 새로운 날들이 null — 날짜가 숫자인 날까지로 줄어든다(합도 그 날들만)', () => {
+    const days = [d30('2026-09-14', 50, null), d30('2026-09-20', 4, 2), d30('2026-10-01', 6, 1), d30('2026-10-10', 50, null), d30('2026-10-13', 50, null)]
+    const view = revisitView(days, MONTH, 30)
+    expect(view.d30).toEqual({ kind: 'rate', value: 3 / 10 })
+    expect(view.d30Cohort).toEqual({ from: '2026-09-20', to: '2026-10-01', within: 3, cohort: 10 })
+    expect(revisitCohortCaption(view.d30Cohort!)).toBe('9월 20일 – 10월 1일에 온 신환 10명 가운데 3명 · 온 뒤 30일이 지난 가장 최근 신환이에요')
+  })
+
+  it('AC-516.2: 7일 기간 — 30일 줄이 집계 중이다(고른 기간의 날은 온 지 30일이 안 됐다), 끝난 날을 가져다 세지 않는다', () => {
+    const days = [d30('2026-09-20', 4, 2), d30('2026-11-08', 3, null), d30('2026-11-10', 3, null)]
+    const view = revisitView(days, WEEK, 7)
+    expect(view.d30).toEqual({ kind: 'in-progress' })
+    expect(view.d30Cohort).toBeNull()
+  })
+
+  it('AC-516.2: 90일 기간은 바뀌지 않는다 — 30일 줄도 고른 기간 그대로 세고 caption 값이 없다', () => {
+    const days = [d30('2026-08-20', 4, 1), d30('2026-10-01', 6, 3), d30('2026-11-10', 5, null)]
+    const view = revisitView(days, QUARTER, 90)
+    expect(view.d30).toEqual({ kind: 'rate', value: 4 / 10 })
+    expect(view.d30Cohort).toBeNull()
+  })
+
+  it('AC-516.2: 30일 기간에 그 범위의 날이 모두 null이면 집계 중이고 d30Cohort는 null', () => {
+    const view = revisitView([d30('2026-09-20', 4, null), d30('2026-10-01', 6, null)], MONTH, 30)
+    expect(view.d30).toEqual({ kind: 'in-progress' })
+    expect(view.d30Cohort).toBeNull()
+  })
+
+  it('AC-516.2: 30일 기간에 분모가 0이거나 그 범위에 줄이 없으면 자료 없음이고 d30Cohort는 null', () => {
+    for (const days of [[d30('2026-09-20', 0, 0)], [], [d30('2026-10-20', 4, 1)]]) {
+      const view = revisitView(days, MONTH, 30)
+      expect(view.d30).toEqual({ kind: 'none' })
+      expect(view.d30Cohort).toBeNull()
+    }
+  })
+
+  it('AC-516.2: 30일 기간에서도 7·14일 줄은 고른 기간 그대로다 — 30일 줄이 세는 날은 7·14일 셈에 들지 않는다', () => {
+    const days = [
+      day('2026-09-20', { revisit: { cohort: 100, within7: 100, within14: 100, within30: 1 } }),
+      day('2026-10-20', { revisit: { cohort: 4, within7: 1, within14: 2, within30: null } }),
+    ]
+    const view = revisitView(days, MONTH, 30)
+    expect(view.d7).toEqual({ kind: 'rate', value: 1 / 4 })
+    expect(view.d14).toEqual({ kind: 'rate', value: 2 / 4 })
+    expect(view.d30).toEqual({ kind: 'rate', value: 1 / 100 })
+  })
+
+  it('AC-516.2: caption의 숫자는 formatCount 글자다(천 단위 쉼표)', () => {
+    expect(revisitCohortCaption({ from: '2026-09-14', to: '2026-09-14', within: 1200, cohort: 3400 })).toBe(
+      '9월 14일 – 9월 14일에 온 신환 3,400명 가운데 1,200명 · 온 뒤 30일이 지난 가장 최근 신환이에요',
+    )
   })
 })
 

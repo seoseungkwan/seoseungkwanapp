@@ -24,6 +24,10 @@ export type TodayView = { state: DayState; counts: TodayCounts | null; compare: 
 
 export type PeriodRange = { from: string; to: string; label: string } // to = 어제
 export type RateCell = { kind: 'rate'; value: number } | { kind: 'in-progress' } | { kind: 'none' } // value는 0~1
+// 30일 기간의 30일 줄이 센 신환: 30일 값이 숫자인 첫날·끝날과 그 날들의 합
+export type RevisitCohort = { from: string; to: string; within: number; cohort: number }
+export type RevisitCells = { d7: RateCell; d14: RateCell; d30: RateCell; d30Cohort: RevisitCohort | null }
+type RevisitKey = 'within7' | 'within14' | 'within30'
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일'] as const // weekdayOf 1=월 … 7=일
 const TOP_RX = 5
@@ -52,7 +56,7 @@ const sum = <T>(list: readonly T[], of: (item: T) => number) => list.reduce((tot
 const rowOn = (days: readonly DayPayload[], ymd: string) => days.findLast((d) => d.day === ymd) ?? null
 
 // 기간 안 날짜 자료만, 날짜 순(같은 날은 뒤의 것)
-function daysIn(days: readonly DayPayload[], range: PeriodRange): DayPayload[] {
+function daysIn(days: readonly DayPayload[], range: { from: string; to: string }): DayPayload[] {
   const byDay = new Map<string, DayPayload>()
   for (const d of days) if (compareYmd(d.day, range.from) >= 0 && compareYmd(d.day, range.to) <= 0) byDay.set(d.day, d)
   return [...byDay.values()].sort((a, b) => compareYmd(a.day, b.day))
@@ -106,20 +110,47 @@ export function trendBuckets(days: readonly DayPayload[], range: PeriodRange, pe
   }))
 }
 
+// N일 값이 숫자인 날. within30은 선택 칸이라 빠진 칸(undefined)도 null처럼 뺀다
+const countedRows = (rows: readonly DayPayload[], key: RevisitKey) => rows.filter((row) => (row.revisit[key] ?? null) !== null)
+
 // 신환 재방문율 N일 = Σwithin ÷ Σcohort. 그 값이 null(집계 중)인 날은 분자·분모 모두에서 뺀다
-function rateOf(rows: readonly DayPayload[], key: 'within7' | 'within14'): RateCell {
+function rateOf(rows: readonly DayPayload[], key: RevisitKey): RateCell {
   if (rows.length === 0) return NO_RATE
-  const counted = rows.filter((row) => row.revisit[key] !== null)
+  const counted = countedRows(rows, key)
   if (counted.length === 0) return IN_PROGRESS
   const cohort = sum(counted, (row) => row.revisit.cohort)
   if (cohort === 0) return NO_RATE
   return { kind: 'rate', value: sum(counted, (row) => row.revisit[key] ?? 0) / cohort }
 }
 
-// 30일 재방문은 저장 모양(RevisitPayload: 7·14일만)에 없어 셈하지 않는다(화면이 늘 '자료 없음')
-export function revisitView(days: readonly DayPayload[], range: PeriodRange): { d7: RateCell; d14: RateCell } {
+// 30일 기간의 날은 모두 온 지 30일이 안 되어 늘 집계 중이므로, 그 기간에서는 30일 줄만 오늘 − 60 ~ 오늘 − 31의 날로 센다(AC-516.2, 통계 탭 AC-511.4와 같은 규칙).
+// period를 주지 않거나 7·90이면 30일 줄도 고른 기간 그대로다. 7·14일 줄은 늘 고른 기간이다
+export function revisitView(days: readonly DayPayload[], range: PeriodRange, period?: Period): RevisitCells {
   const rows = daysIn(days, range)
-  return { d7: rateOf(rows, 'within7'), d14: rateOf(rows, 'within14') }
+  const rows30 = period === 30 ? daysIn(days, { from: addDays(range.from, -30), to: addDays(range.from, -1) }) : rows
+  const d30 = rateOf(rows30, 'within30')
+  return {
+    d7: rateOf(rows, 'within7'),
+    d14: rateOf(rows, 'within14'),
+    d30,
+    d30Cohort: period === 30 && d30.kind === 'rate' ? cohortOf(rows30) : null,
+  }
+}
+
+// 30일 값이 숫자인 날이 하나 이상일 때만 부른다(30일 줄이 비율일 때). rows는 날짜 순이다(daysIn)
+function cohortOf(rows: readonly DayPayload[]): RevisitCohort {
+  const counted = countedRows(rows, 'within30')
+  return {
+    from: counted[0]!.day,
+    to: counted.at(-1)!.day,
+    within: sum(counted, (row) => row.revisit.within30 ?? 0),
+    cohort: sum(counted, (row) => row.revisit.cohort),
+  }
+}
+
+// 30일 줄 아래 글(AC-516.2)
+export function revisitCohortCaption({ from, to, within, cohort }: RevisitCohort): string {
+  return `${longDate(from)} – ${longDate(to)}에 온 신환 ${formatCount(cohort)}명 가운데 ${formatCount(within)}명 · 온 뒤 30일이 지난 가장 최근 신환이에요`
 }
 
 // 요일별 환자 수: 월 → 일 가운데 자료 있는 요일만. 값 = 그 요일 자료 있는 날의 환자 수 평균(버림)

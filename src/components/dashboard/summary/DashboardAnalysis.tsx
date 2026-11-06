@@ -15,6 +15,7 @@ import {
   longDate,
   PERIODS,
   periodRange,
+  revisitCohortCaption,
   revisitView,
   tickLabels,
   todayView,
@@ -24,6 +25,7 @@ import {
   type Period,
   type PeriodRange,
   type RateCell,
+  type RevisitCells,
   type TodayView,
 } from './view'
 
@@ -207,7 +209,7 @@ function FlowCharts({ days, range, period }: { days: readonly DayPayload[]; rang
         <TrendBody days={days} range={range} period={period} />
       </Chart>
       <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className="lg:col-span-4 lg:border-l lg:border-line lg:pl-6">
-        <RevisitRows cells={revisitView(days, range)} />
+        <RevisitRows cells={revisitView(days, range, period)} />
       </Chart>
       <Chart title="요일별 환자 수" desc="하루 평균, 요일마다" className="lg:col-span-6">
         <WeekBody buckets={weekdayBuckets(days, range)} />
@@ -337,24 +339,20 @@ function EmptyTrend({ message, ticks }: { message: string; ticks: { day: string;
   )
 }
 
-// 신환 재방문율 줄 셋(연결 뒤). 30일은 저장 자료에 없어 늘 '자료 없음'
+// 신환 재방문율 줄 셋(연결 뒤). 30일 줄도 7·14일과 같은 줄이고, 30일 기간에는 아래에 무엇을 셌는지 글을 붙인다(stats AC-516.2)
 const REVISIT_ROW = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-line py-3'
 
-function RevisitRows({ cells }: { cells: { d7: RateCell; d14: RateCell } }) {
+function RevisitRows({ cells }: { cells: RevisitCells }) {
   return (
     <div className="mt-2">
       <RevisitRow name="7일 안에 다시 옴" cell={cells.d7} />
       <RevisitRow name="14일 안에 다시 옴" cell={cells.d14} />
-      <div className={REVISIT_ROW}>
-        <span className="text-body text-ink-2">30일 안에 다시 옴</span>
-        <span className="text-small text-muted">{NO_DATA}</span>
-        <span className="col-span-2 text-caption text-muted">30일 기록은 아직 모으지 않아요</span>
-      </div>
+      <RevisitRow name="30일 안에 다시 옴" cell={cells.d30} caption={cells.d30Cohort === null ? null : revisitCohortCaption(cells.d30Cohort)} />
     </div>
   )
 }
 
-function RevisitRow({ name, cell }: { name: string; cell: RateCell }) {
+function RevisitRow({ name, cell, caption = null }: { name: string; cell: RateCell; caption?: string | null }) {
   return (
     <div className={REVISIT_ROW}>
       <span className="text-body text-ink-2">{name}</span>
@@ -370,6 +368,7 @@ function RevisitRow({ name, cell }: { name: string; cell: RateCell }) {
       ) : (
         <RateBar value={cell.kind === 'rate' ? cell.value : null} />
       )}
+      {caption !== null && <span className="col-span-2 text-caption text-muted">{caption}</span>}
     </div>
   )
 }

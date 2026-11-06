@@ -577,7 +577,7 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
     expect(trendBuckets(FULL_DAYS, quarter, 90)!.map((b) => b.key)).toContain('2026-09-15')
   })
 
-  it('AC-311.5: 신환 재방문율 — 7·14일은 formatRate % + 비율 폭 막대, 30일은 늘 "자료 없음" + "30일 기록은 아직 모으지 않아요"(막대 없음)', () => {
+  it('AC-311.5·AC-516.2·AC-516.4: 신환 재방문율 — 7·14일은 formatRate % + 비율 폭 막대, 30일은 30일 값이 없는 자료라 "집계 중"(빈 막대)이고 "30일 기록은 아직 모으지 않아요"가 없다', () => {
     draw(data(FULL_DAYS))
     const group = chart('신환 재방문율')
     // 7일: (1 + 1 + 2) ÷ (2 + 3 + 5) = 40.0% · 14일: (1 + 3) ÷ (2 + 5) = 57.1%(버림)
@@ -589,9 +589,9 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
     const row14 = within(group).getByText('14일 안에 다시 옴').parentElement!
     expect(within(row14).getByText('57.1%')).toBeTruthy()
     const row30 = within(group).getByText('30일 안에 다시 옴').parentElement!
-    expect(within(row30).getByText('자료 없음')).toBeTruthy()
-    hasAll(within(row30).getByText('30일 기록은 아직 모으지 않아요'), 'text-caption text-muted')
-    expect(row30.querySelector('[aria-hidden="true"]')).toBeNull()
+    expect(within(row30).getByText('집계 중')).toBeTruthy()
+    expect(within(group).queryByText('30일 기록은 아직 모으지 않아요')).toBeNull()
+    expect(row30.querySelector('[aria-hidden="true"]')!.firstElementChild).toBeNull()
   })
 
   it('AC-311.5: 신환 재방문율 — 모든 날이 null이면 "집계 중", 분모가 0이면 "–" + "자료 없음"', () => {
@@ -634,6 +634,83 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
     expect(rows).toHaveLength(2)
     // 오늘 줄 없음 → 숫자 칸은 빈 상태, 그래프는 그린다
     expect(within(kpiCells()[0] as HTMLElement).getByText('자료 없음')).toBeTruthy()
+  })
+})
+
+describe('신환 재방문율 30일 줄 (AC-516.2)', () => {
+  // 오늘 11월 13일: 30일 기간 = 10월 14일 ~ 11월 12일, 30일 줄이 세는 날 = 9월 14일 ~ 10월 13일
+  const NOV = '2026-11-13'
+  const d30 = (ymd: string, cohort: number, within30: number | null) => day(ymd, { revisit: { cohort, within7: 0, within14: 0, within30 } })
+  const row30 = () => within(chart('신환 재방문율')).getByText('30일 안에 다시 옴').parentElement!
+  const OLD_NOTE = '30일 기록은 아직 모으지 않아요'
+  const CAPTION = /온 뒤 30일이 지난 가장 최근 신환이에요/
+
+  it('AC-516.2: 오늘이 11월 13일인 30일 기간 — 30일 줄이 9월 14일 ~ 10월 13일을 세어 비율·막대와 그 날짜의 caption을 보인다', () => {
+    draw(data([d30('2026-09-13', 100, 100), d30('2026-09-14', 4, 1), d30('2026-10-13', 6, 3), d30('2026-10-14', 100, 0)]), NOV)
+    const row = row30()
+    hasAll(within(row).getByText('40.0%'), 'text-subtitle font-semibold text-ink')
+    const fill = row.querySelector('[aria-hidden="true"]')!.firstElementChild as HTMLElement
+    expect(fill.style.width).toBe('40%')
+    const caption = within(row).getByText('9월 14일 – 10월 13일에 온 신환 10명 가운데 4명 · 온 뒤 30일이 지난 가장 최근 신환이에요')
+    hasAll(caption, 'col-span-2 text-caption text-muted')
+    expect(screen.queryByText(OLD_NOTE)).toBeNull()
+  })
+
+  it('AC-516.2: 가장 새로운 날들이 null — caption의 날짜가 숫자인 날까지로 줄어든다', () => {
+    draw(data([d30('2026-09-20', 4, 2), d30('2026-10-01', 6, 1), d30('2026-10-10', 50, null), d30('2026-10-13', 50, null)]), NOV)
+    expect(within(row30()).getByText('30.0%')).toBeTruthy()
+    expect(within(row30()).getByText('9월 20일 – 10월 1일에 온 신환 10명 가운데 3명 · 온 뒤 30일이 지난 가장 최근 신환이에요')).toBeTruthy()
+  })
+
+  it('AC-516.2: 7일 기간 — 30일 줄이 "집계 중"이고 caption이 없다', async () => {
+    draw(data([d30('2026-09-20', 4, 2), d30('2026-11-10', 3, null)]), NOV)
+    expect(within(row30()).getByText(CAPTION)).toBeTruthy()
+    await choose('최근 7일')
+    expect(within(row30()).getByText('집계 중')).toBeTruthy()
+    expect(within(row30()).queryByText(CAPTION)).toBeNull()
+  })
+
+  it('AC-516.2: 90일 기간 — 30일 줄도 고른 기간 그대로 세고 caption이 없다', async () => {
+    draw(data([d30('2026-08-20', 4, 1), d30('2026-10-01', 6, 3), d30('2026-11-10', 5, null)]), NOV)
+    await choose('최근 90일')
+    expect(within(row30()).getByText('40.0%')).toBeTruthy()
+    expect(within(row30()).queryByText(CAPTION)).toBeNull()
+  })
+
+  it('AC-516.2: 30일 기간에 그 범위가 모두 null이면 "집계 중"(caption 없음)', () => {
+    draw(data([d30('2026-09-20', 4, null)]), NOV)
+    expect(within(row30()).getByText('집계 중')).toBeTruthy()
+    expect(within(row30()).queryByText(CAPTION)).toBeNull()
+  })
+
+  it.each([
+    ['분모가 0', [d30('2026-09-20', 0, 0)]],
+    ['그 범위에 줄이 없음', [d30('2026-10-20', 4, 1)]],
+  ])('AC-516.2: 30일 기간에 %s이면 "–" + "자료 없음"이고 7·14일 줄과 같은 모양이다(caption 없음)', (_name, days) => {
+    draw(data(days), NOV)
+    expect(within(row30()).getByText('–')).toBeTruthy()
+    expect(within(row30()).getByText('자료 없음')).toBeTruthy()
+    expect(within(row30()).queryByText(CAPTION)).toBeNull()
+    expect(screen.queryByText(OLD_NOTE)).toBeNull()
+  })
+
+  it('AC-516.2: within30이 빠진 가짜 자료는 null로 친다 — "집계 중"', () => {
+    draw(data([day('2026-09-20', { revisit: { cohort: 4, within7: 1, within14: 1 } })]), NOV)
+    expect(within(row30()).getByText('집계 중')).toBeTruthy()
+  })
+
+  it('AC-516.2: 30일 기간의 7·14일 줄은 고른 기간 그대로다', () => {
+    draw(
+      data([
+        day('2026-09-20', { revisit: { cohort: 100, within7: 100, within14: 100, within30: 1 } }),
+        day('2026-10-20', { revisit: { cohort: 4, within7: 1, within14: 2, within30: null } }),
+      ]),
+      NOV,
+    )
+    const group = chart('신환 재방문율')
+    expect(within(within(group).getByText('7일 안에 다시 옴').parentElement!).getByText('25.0%')).toBeTruthy()
+    expect(within(within(group).getByText('14일 안에 다시 옴').parentElement!).getByText('50.0%')).toBeTruthy()
+    expect(within(row30()).getByText('1.0%')).toBeTruthy()
   })
 })
 
@@ -744,10 +821,13 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
   const ALLOWED =
     /^(?:react|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view))$/
 
+  // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
+  const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
+
   it('AC-311.8: 불러오는 곳은 react · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
     const all = appFiles().flatMap((file) => importsOf(file).map((from) => `${file}: ${from}`))
     expect(all.length).toBeGreaterThan(0)
-    expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!))).toEqual([])
+    expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && entry !== SOURCE_READ_TYPE)).toEqual([])
     for (const file of appFiles()) {
       const text = code(file)
       expect(text, file).not.toMatch(/components\/shell|dashboard\/briefing|notReadyFeatures|supabase|@\/lib\/auth|AppShell/)

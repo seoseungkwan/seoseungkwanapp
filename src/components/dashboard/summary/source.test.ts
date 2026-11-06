@@ -2,13 +2,15 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, expectTypeOf, it } from 'vitest'
+import type { readDays } from '@/lib/storage/stats'
 import type { DayPayload } from '@/types/payload'
 import type { DashboardAnalysis } from './DashboardAnalysis'
 import type { ReportBlock } from './ReportBlock'
-import { dashboardSummarySource, isConnected, type SummarySource } from './source'
+import { dashboardSummarySource, isConnected, toSummarySource, type SummarySource } from './source'
 
-// 자료 읽는 자리 (tab-frame REQ-312, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장'의 source.ts).
-// 지금은 늘 '자료 없음'이다. 진짜 읽기(저장 표·RLS·브라우저 읽기)는 다음 통계 명세가 이 함수 하나만 바꾼다
+// 자료 모양 한 곳 (tab-frame REQ-312, stats REQ-516, stats design.md 'TASK-16 대시보드 읽기').
+// dashboardSummarySource()는 지금처럼 늘 '자료 없음'이다(dashboard/page.tsx가 bit-dashboard TASK-8 전까지 쓴다).
+// toSummarySource는 브라우저가 읽은 결과를 자료 모양으로 바꾸는 순수 함수다. 읽는 쪽(LiveDashboard)은 bit-dashboard TASK-8 몫이다
 
 const DIR = join(process.cwd(), 'src/components/dashboard/summary')
 const read = (file: string) => readFileSync(join(DIR, file), 'utf8')
@@ -75,10 +77,38 @@ describe('dashboardSummarySource — 지금은 늘 자료 없음', () => {
     expect(dashboardSummarySource()).toEqual({ kind: 'none' })
   })
 
-  it('AC-312.1: source.ts는 Supabase·fetch·브라우저 저장소·서버 전용 파일을 쓰지 않고, 저장 모양 타입 하나만 불러온다', () => {
+  it('AC-312.1: source.ts는 Supabase·fetch·브라우저 저장소·서버 전용 파일을 쓰지 않고, 타입만 불러온다(읽기 함수는 타입으로만)', () => {
     const text = code(read('source.ts'))
     expect(text).not.toMatch(/supabase|\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|indexedDB|server-only|['"]use server['"]|next\/headers|cookies\(/)
-    expect(importsOf('source.ts')).toEqual([{ from: '@/types/payload', typeOnly: true }])
+    expect(importsOf('source.ts')).toEqual([
+      { from: '@/lib/storage/stats', typeOnly: true },
+      { from: '@/types/payload', typeOnly: true },
+    ])
+  })
+})
+
+describe('toSummarySource — 읽은 결과 → 자료 모양 (stats TASK-16)', () => {
+  type ReadResult = Awaited<ReturnType<typeof readDays>>
+  const result = (rows: DayPayload[], more: Partial<ReadResult> = {}): ReadResult => ({ rows, dropped: 0, latest: null, fromFile: false, ...more })
+
+  it('AC-516.1: 아직 읽은 결과가 없음(null)·줄 없음은 { kind: "none" }이다(연결 전과 같다)', () => {
+    expect(toSummarySource(null)).toEqual({ kind: 'none' })
+    expect(toSummarySource(result([]))).toEqual({ kind: 'none' })
+    // 걸러진 줄만 있어도 보일 줄이 없다
+    expect(toSummarySource(result([], { dropped: 3, fromFile: true, latest: { at: '2026-10-31T09:00:00Z', source: 'bit' } }))).toEqual({ kind: 'none' })
+  })
+
+  it('AC-516.1: 줄이 있으면 { kind: "data", days }(읽은 줄 그대로)를 만들고 연결 뒤로 친다', () => {
+    const rows = [fakeDay('2026-10-30'), fakeDay('2026-10-31')]
+    const source = toSummarySource(result(rows, { dropped: 1, fromFile: true }))
+    expect(source).toEqual({ kind: 'data', days: rows })
+    expect(isConnected(source)).toBe(true)
+    if (source.kind === 'data') expect(source.days).toBe(rows)
+  })
+
+  it('AC-516.1: 인자는 readDays가 돌려주는 결과 또는 null이고 SummarySource를 돌려준다(design.md TASK-16 모양)', () => {
+    expectTypeOf(toSummarySource).parameters.toEqualTypeOf<[ReadResult | null]>()
+    expectTypeOf(toSummarySource).returns.toEqualTypeOf<SummarySource>()
   })
 })
 
