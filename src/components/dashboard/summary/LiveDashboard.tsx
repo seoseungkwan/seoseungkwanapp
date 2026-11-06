@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
@@ -10,7 +10,7 @@ import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { readDays } from '@/lib/storage/stats'
 import { DashboardAnalysis } from './DashboardAnalysis'
-import { toSummarySource, type SummarySource } from './source'
+import { toSummarySource, type OlderDays, type SummarySource } from './source'
 
 // 대시보드가 저장 숫자를 먼저 읽어 BitDashboard에 넘김 (bit-dashboard AC-601.14·AC-601.19, stats AC-516.1·AC-516.3, design.md '### 화면').
 // 저장 숫자(오늘 − LOOKBACK_DAYS ~ 오늘)를 읽는 곳은 여기 한 곳이고, 연결 전·뒤 모양은 BitDashboard가 고른다.
@@ -37,6 +37,14 @@ function withinLimit<T>(read: () => Promise<T>): Promise<T | null> {
 
 /** 저장 숫자 한 번 읽기(AC-601.19) */
 const readSaved = (today: string) => withinLimit(() => readDays({ from: addDays(today, -LOOKBACK_DAYS), to: today }))
+
+/**
+ * 기간별 흐름의 옛 기간 읽기(dashboard-period REQ-1804). 손에 든 숫자의 첫날(오늘 − LOOKBACK_DAYS)보다 앞에서 시작하는 고른 기간만
+ * 그 기간의 저장 숫자를 같은 10초 한도로 한 번 읽어 줄만 넘긴다(null = 실패·한도). 받아 오기만 하고 아무것도 보내지 않는다
+ */
+function olderDays(today: string): OlderDays {
+  return { from: addDays(today, -LOOKBACK_DAYS), read: (range) => withinLimit(() => readDays(range)).then((result) => result?.rows ?? null) }
+}
 
 /** round: BitDashboard를 새 처음 자료로 다시 놓을 때 올린다. failed: 오류 카드. bitLoaded: 비트 숫자가 왔다(그 뒤 저장 숫자 답은 쓰지 않는다) */
 type Drawn = { initial: SummarySource; round: number; failed: boolean; retrying: boolean; bitLoaded: boolean }
@@ -76,6 +84,8 @@ export function LiveDashboard({ today }: { today: string }) {
   }, [today])
 
   const markBitLoaded = useCallback(() => setDrawn((current) => (current === null ? current : { ...current, bitLoaded: true })), [])
+  // 날짜가 바뀔 때만 새로 만든다(같은 객체라 기간별 흐름이 다시 그려져도 읽기를 다시 시작하지 않는다)
+  const older = useMemo(() => olderDays(today), [today])
 
   if (drawn === null || groups === undefined) {
     return <DashboardHome today={today} report={null} analysis={<DashboardAnalysis today={today} source={{ kind: 'none' }} />} />
@@ -100,7 +110,7 @@ export function LiveDashboard({ today }: { today: string }) {
           </div>
         </div>
       )}
-      <BitDashboard key={drawn.round} today={today} initial={drawn.initial} groups={groups} onBitLoaded={markBitLoaded} />
+      <BitDashboard key={drawn.round} today={today} initial={drawn.initial} groups={groups} older={older} onBitLoaded={markBitLoaded} />
     </>
   )
 }

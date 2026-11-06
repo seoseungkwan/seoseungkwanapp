@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
-import { isConnected, type SummarySource } from '@/components/dashboard/summary/source'
+import { isConnected, type OlderDays, type SummarySource } from '@/components/dashboard/summary/source'
 import type { ChromeRuntimeLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
@@ -76,16 +76,20 @@ function emptyLook(status: Status): EmptyLook {
 /**
  * onBitLoaded: 비트 읽기가 일 숫자(days, 빈 배열 포함)로 끝날 때 부른다. LiveDashboard가 저장 숫자 오류 카드를 거두는 때다(AC-601.19).
  * groups: 통계 탭 묶음. 주지 않으면 묶음 없음, null = 묶음을 읽지 못함(비트 읽기는 묶음 없이, 처방 상위는 AC-606.5 글)
+ * older: 기간별 흐름의 옛 기간 읽기(dashboard-period REQ-1804, LiveDashboard가 저장 숫자로 만든다). 받은 그대로 source 안에 넣는다.
+ * 비트 읽기(stats.rows, 오늘 − 100 ~ 오늘)는 지금처럼 열 때와 [다시 읽기]에만 하고, 기간을 골라도 하지 않는다(AC-1804.4)
  */
 export function BitDashboard({
   today,
   initial,
   groups = NO_GROUPS,
+  older,
   onBitLoaded,
 }: {
   today: string
   initial: SummarySource
   groups?: DashboardGroups | null
+  older?: OlderDays
   onBitLoaded?: () => void
 }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
@@ -123,7 +127,11 @@ export function BitDashboard({
     pressedNow.current = true
     setAttempt((n) => n + 1)
   }
-  const source: SummarySource = status.kind === 'data' ? { kind: 'data', days: status.days, groups: groups === null ? null : groups.lines } : { kind: 'none' }
+  // 묶음·옛 기간 읽기는 DashboardAnalysis의 새 prop이 아니라 source 안으로 간다(tab-frame AC-312.2)
+  const source: SummarySource =
+    status.kind === 'data'
+      ? { kind: 'data', days: status.days, groups: groups === null ? null : groups.lines, ...(older === undefined ? {} : { older }) }
+      : { kind: 'none' }
 
   return (
     <DashboardHome
