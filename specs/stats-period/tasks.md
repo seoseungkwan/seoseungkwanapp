@@ -30,10 +30,10 @@
 
 ## TASK-4: 저장된 숫자 읽기
 - REQ: REQ-1706
-- AC: AC-1706.1~AC-1706.3(덮은 기간 자르기 포함)
+- AC: AC-1706.1~AC-1706.3(덮은 기간 자르기 포함), AC-1706.5(`coveredTo` 내보내기)
 - Files: src/components/stats/useStatsData.ts, src/components/stats/useStatsData.test.ts
 - Tests: src/components/stats/useStatsData.test.ts
-- TDD: required — 인자를 `StatsChoice`로(빠른 단추 글자는 지금 부르는 모양 그대로 된다), `todayDone` 내보내기. `lib/storage/stats.ts`는 바꾸지 않는다
+- TDD: required — 인자를 `StatsChoice`로(빠른 단추 글자는 지금 부르는 모양 그대로 된다), `todayDone`·`coveredTo`(자르지 않은 덮은 기간의 끝) 내보내기. `lib/storage/stats.ts`는 바꾸지 않는다
 
 ## TASK-5: 기간 고르기 부품
 - REQ: REQ-1702, REQ-1703
@@ -58,7 +58,7 @@
 
 ## TASK-8: 통계 화면에 잇기
 - REQ: REQ-1703, REQ-1706, REQ-1707, REQ-1708
-- AC: AC-1703.1, AC-1703.4, AC-1703.6, AC-1706.4, AC-1707.1(잇기), AC-1708.1
+- AC: AC-1703.1, AC-1703.4, AC-1703.6, AC-1706.4, AC-1706.5(출처 줄은 `data.coveredTo`), AC-1707.1(잇기), AC-1708.1
 - Files: src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/sections/StatsSections.tsx
 - Tests: src/components/stats/StatsScreen.test.tsx
 - TDD: required — 상태 `StatsChoice`(처음 '30d'), `range = rangeOf(today, choice, data.todayDone)`, 빠른 단추 옆에 `PeriodPicker`, 단추 모양 글은 `PeriodPicker.tsx`에서 불러오고 이 파일의 것은 지운다, 기간 글에 비교 둘, 불러오기는 `range.load`. `StatsSections`가 `pickReportText(range, summaryCells(input), 처방별 추세 1·2위)`를 보고 칸에, `name`을 처방별 신환·재진에 넘긴다. 보고 칸은 고르기에 들어오고 나갈 때 다시 그린다(key)
