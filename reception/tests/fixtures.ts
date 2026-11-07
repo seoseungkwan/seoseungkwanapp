@@ -140,7 +140,31 @@ export interface FakeVisit {
   rx: FakeRx[]
 }
 
-/** `GET /api/visit/{k}/history?from=N` 200 답 */
+/** 종이 기록부 처방·원외처방 한 줄 (reception-paper design.md 2절) */
+export interface FakeOrder {
+  code: string
+  name: string
+  qty: string
+  tms: string
+  day: string
+}
+
+/** 상세 첫 쪽(from=0)의 종이 기록부 자료 `paper` (reception-paper design.md 2절, AC-1501.1) */
+export interface FakePaper {
+  res: string
+  addr: string
+  tel: string
+  cel: string
+  special: string
+  room: string
+  ins: string
+  sym: string
+  dx: { code: string; name: string; main: boolean }[]
+  rx: FakeOrder[]
+  out: FakeOrder[]
+}
+
+/** `GET /api/visit/{k}/history?from=N` 200 답. paper는 from=0 답에만 있다 */
 export interface FakeHistory {
   visits: FakeVisit[]
   next: number | null
@@ -148,6 +172,45 @@ export interface FakeHistory {
   first: string
   total: number
   todaySym: string
+  paper?: FakePaper
+}
+
+/**
+ * 종이 기록부 자료 하나(지어낸 가짜 사람). 주지 않은 칸은 진료 전 환자의 값이다(증상·상병·처방이 아직 없음).
+ * 주민번호는 앞 6자리만 온다(AC-1501.2)
+ */
+export function fakePaper(over: Partial<FakePaper> = {}): FakePaper {
+  return {
+    res: '720304-*******',
+    addr: '가상시 가상구 예시로 12 (가상맨션 101동 202호)',
+    tel: '',
+    cel: '010-0000-1234',
+    special: '가상 특이사항: 페니실린 알레르기',
+    room: '1진료실',
+    ins: '국민건강보험',
+    sym: '',
+    dx: [],
+    rx: [],
+    out: [],
+    ...over,
+  }
+}
+
+/** 진료가 끝난 날의 종이 기록부: 증상(sym)·주상병·처방·원외처방이 있다 */
+export function fakeTreatedPaper(sym: string, over: Partial<FakePaper> = {}): FakePaper {
+  return fakePaper({
+    sym,
+    dx: [
+      { code: 'M7581', name: '가상 어깨 병, 오른쪽', main: true },
+      { code: 'M5456', name: '가상 허리 긴장', main: false },
+    ],
+    rx: [
+      { code: 'MM015', name: '가상 표층열치료', qty: '1', tms: '1', day: '1' },
+      { code: 'LA272', name: '가상 신경차단', qty: '2.5', tms: '1', day: '1' },
+    ],
+    out: [{ code: '641901140', name: '가상정200mg', qty: '1', tms: '2', day: '7' }],
+    ...over,
+  })
 }
 
 /** 가짜 오늘: 2026년 11월 5일 (시험의 기기 날짜와 같게 둔다) */
@@ -196,12 +259,13 @@ export function fakeVisit(i: number): FakeVisit {
 
 /**
  * 지난 진료가 past번인 환자의 상세 한 쪽. from이 0이면 처음 5번, 그 뒤는 20번씩이다(AC-1404.1·1404.3).
- * 지난 진료가 없으면 처음 온 날은 오늘이고 모두 1번이다
+ * 지난 진료가 없으면 처음 온 날은 오늘이고 모두 1번이다. from이 0이면 종이 기록부 자료 paper가 붙는다(AC-1501.1):
+ * 주지 않으면 오늘 증상이 없을 때 진료 전, 있을 때 진료가 끝난 날의 것이다
  */
-export function fakeHistory(past: number, from = 0, todaySym = ''): FakeHistory {
+export function fakeHistory(past: number, from = 0, todaySym = '', paper?: FakePaper): FakeHistory {
   const end = Math.min(past, from + (from === 0 ? FIRST_PAGE : MORE_PAGE))
   const visits = Array.from({ length: Math.max(0, end - from) }, (_, j) => fakeVisit(from + j))
-  return {
+  const page: FakeHistory = {
     visits,
     next: end < past ? end : null,
     more: Math.max(0, past - end),
@@ -209,6 +273,8 @@ export function fakeHistory(past: number, from = 0, todaySym = ''): FakeHistory 
     total: past + 1,
     todaySym,
   }
+  if (from !== 0) return page
+  return { ...page, paper: paper ?? (todaySym === '' ? fakePaper() : fakeTreatedPaper(todaySym)) }
 }
 
 /** 가짜 도우미의 답: 상태 번호와 JSON 몸(없으면 몸 없음) */
@@ -224,8 +290,10 @@ export interface FakeServer {
   marks: Map<string, string>
   /** [X-ray 완료]를 받은 PC 시각 'HH:MM' */
   now: string
-  /** 오늘 증상을 정해 둔 환자: 열쇠 → todaySym(없으면 칸으로 정함). 상세가 열린 동안 바뀌는 증상 시험(AC-1404.8) */
+  /** 오늘 증상을 정해 둔 환자: 열쇠 → todaySym(없으면 칸으로 정함). 종이 기록부의 증상(paper.sym)도 이것이다(AC-1404.8) */
   syms: Map<string, string>
+  /** 종이 기록부를 통째로 정해 둔 환자: 열쇠 → paper(없으면 오늘 증상으로 정함). 상세가 열린 동안 바뀌는 종이 시험(AC-1502.4) */
+  papers: Map<string, FakePaper>
   /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
   answer: (method: string, url: string, body?: string | null) => FakeReply
 }
@@ -256,6 +324,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     marks,
     now,
     syms: new Map<string, string>(),
+    papers: new Map<string, FakePaper>(),
     answer(method, url, body) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
@@ -267,7 +336,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
         const row = rowsOfBoard(server.board).find((r) => r.k === history[1])
         const from = Number(params.get('from'))
         if (!row || !/^\d+$/.test(params.get('from') ?? '')) return { status: 404 }
-        return { status: 200, body: fakeHistory(pastOf(row), from, server.syms.get(row.k) ?? todaySymOf(row)) }
+        return { status: 200, body: fakeHistory(pastOf(row), from, server.syms.get(row.k) ?? todaySymOf(row), server.papers.get(row.k)) }
       }
       if (method === 'POST' && path === '/api/xray') {
         let ask: { k?: unknown; on?: unknown }

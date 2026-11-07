@@ -7,7 +7,7 @@
 //
 // 쓰는 법
 //   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists }
-//   getHistory(k, from, { signal })  → GET /api/visit/{k}/history?from=N 답 { visits, next, more, first, total, todaySym }
+//   getHistory(k, from, { signal })  → GET /api/visit/{k}/history?from=N 답 { visits, next, more, first, total, todaySym, paper(from=0만) }
 //   setXray(k, on, { signal })       → POST /api/xray { k, on } → 204
 //   실패는 모두 ApiError이고 reason은 'network'·'timeout'·'status'·'shape'·'aborted'·'input'(묻지 않음) 중 하나다
 
@@ -20,6 +20,10 @@ const LANES = ['wait', 'hold', 'pay', 'done']
 
 /** 줄의 글 칸 (BoardModel.cs WriteRow) */
 const ROW_TEXTS = ['laneLabel', 'chart', 'name', 'info', 'time', 'waited', 'memo', 'rxLabel', 'rx']
+
+/** 종이 기록부 자료의 글 칸과 처방 줄의 글 칸 (reception-paper design.md 2절) */
+const PAPER_TEXTS = ['res', 'addr', 'tel', 'cel', 'special', 'room', 'ins', 'sym']
+const ORDER_TEXTS = ['code', 'name', 'qty', 'tms', 'day']
 
 /** 화면용 열쇠: 16자리 소문자 16진수 (VisitKeys.cs) */
 const KEY = /^[0-9a-f]{16}$/
@@ -80,7 +84,7 @@ export function getHistory(k, from, { signal } = {}) {
     const res = await fetch(`/api/visit/${encodeURIComponent(k)}/history?from=${from}`, request(inner))
     if (res.status !== 200) throw new ApiError('status')
     const body = await bodyOf(res)
-    if (!isHistory(body)) throw new ApiError('shape')
+    if (!isHistory(body, from)) throw new ApiError('shape')
     return body
   })
 }
@@ -180,8 +184,11 @@ function isRow(r) {
   )
 }
 
-/** GET /api/visit/{k}/history 200 모양 (design.md 5절, HistoryBuilder.cs ToJson) */
-function isHistory(h) {
+/**
+ * GET /api/visit/{k}/history 200 모양 (design.md 5절, HistoryBuilder.cs ToJson). from=0 답은 paper가 있어야 한다(AC-1502.5).
+ * from>0 답에는 paper가 오지 않고(AC-1501.1) 화면도 쓰지 않아 보지 않는다
+ */
+function isHistory(h, from) {
   return (
     isObject(h) &&
     Array.isArray(h.visits) &&
@@ -190,8 +197,27 @@ function isHistory(h) {
     isCount(h.more) &&
     typeof h.first === 'string' &&
     isCount(h.total) &&
-    typeof h.todaySym === 'string'
+    typeof h.todaySym === 'string' &&
+    (from !== 0 || isPaper(h.paper))
   )
+}
+
+/** 종이 기록부 자료 (reception-paper design.md 2절): 글 칸 여덟, 상병 { code, name, main }, 처방·원외처방 { code, name, qty, tms, day } */
+function isPaper(p) {
+  return (
+    isObject(p) &&
+    PAPER_TEXTS.every((name) => typeof p[name] === 'string') &&
+    Array.isArray(p.dx) &&
+    p.dx.every((d) => isObject(d) && typeof d.code === 'string' && typeof d.name === 'string' && typeof d.main === 'boolean') &&
+    Array.isArray(p.rx) &&
+    p.rx.every(isOrder) &&
+    Array.isArray(p.out) &&
+    p.out.every(isOrder)
+  )
+}
+
+function isOrder(o) {
+  return isObject(o) && ORDER_TEXTS.every((name) => typeof o[name] === 'string')
 }
 
 function isVisit(v) {

@@ -203,11 +203,13 @@ function moreButton(root: ParentNode | null): HTMLButtonElement | null {
   return root?.querySelector<HTMLButtonElement>('button.more') ?? null
 }
 
-/** 가짜 판의 환자 글(이름·차트번호·메모·처방·정보) 모두 */
+/** 가짜 판의 환자 글(이름·차트번호·메모·처방·정보)과 상세 글(지난번 증상·종이 기록부의 사람 칸·특이사항·증상·처방) 모두 */
 function patientTexts(b: FakeBoard = fx.mockupBoard()): string[] {
   const out = new Set<string>()
   for (const row of Object.values(b.lists).flat()) for (const v of [row.name, row.chart, row.memo, row.rx, row.info]) if (v) out.add(v)
   for (let i = 0; i < 5; i += 1) out.add(fx.fakeVisit(i).sym)
+  const paper = fx.fakeTreatedPaper('오른쪽 어깨 통증 계속됨')
+  for (const v of [paper.res, paper.addr, paper.cel, paper.special, paper.sym, ...paper.dx.map((d) => d.name), ...paper.rx.map((r) => r.name)]) if (v) out.add(v)
   return [...out]
 }
 
@@ -215,7 +217,43 @@ function patientTexts(b: FakeBoard = fx.mockupBoard()): string[] {
 function expectNoPatient() {
   const text = document.body.textContent ?? ''
   for (const t of patientTexts()) expect(text, `화면에 ${t}`).not.toContain(t)
-  expect(document.querySelector('.row, .rows, .patient, .visit, .pane')).toBeNull()
+  expect(document.querySelector('.row, .rows, .patient, .visit, .pane, .paper')).toBeNull()
+}
+
+/** 종이 카드 (reception-paper AC-1502.1) */
+function paperOf(root: ParentNode | null | undefined): HTMLElement | null {
+  return root?.querySelector<HTMLElement>('article.paper') ?? null
+}
+
+/** 종이 카드의 오늘 증상 글(줄 바꿈 그대로). 증상 칸이 없거나 비었으면 null */
+function paperSym(root: ParentNode | null | undefined): string | null {
+  return paperOf(root)?.querySelector('.paper-sym > pre')?.textContent ?? null
+}
+
+/** 종이 카드 진료 칸(증상~원외처방 자리)의 칸 제목들 */
+function paperHeads(root: ParentNode | null | undefined): string[] {
+  return textsOf(paperOf(root) ?? document.createElement('div'), ':scope > .paper-body > .sec > .sec-h')
+}
+
+/** 특이사항 n줄 */
+function specialLines(n: number): string {
+  return Array.from({ length: n }, (_, i) => `가상 특이사항 ${i + 1}`).join('\n')
+}
+
+/**
+ * jsdom은 모양을 그리지 않는다: 글의 줄마다 perLine()글자씩 접어 센 줄 수 × 20px가 글 높이이고, 접힘(.clamp)이면 보이는 높이는
+ * 5줄까지다(detail.test.ts와 같은 흉내). perLine을 바꾸면 화면 폭이 바뀐 것과 같다
+ */
+function fakeHeights(perLine: () => number = () => Number.POSITIVE_INFINITY) {
+  const lines = (node: Element) =>
+    (node.textContent ?? '').split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / perLine())), 0)
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: function (this: HTMLElement) { return lines(this) * 20 } })
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get: function (this: HTMLElement) {
+      return (this.classList.contains('clamp') ? Math.min(lines(this), 5) : lines(this)) * 20
+    },
+  })
 }
 
 /** 화면의 주소는 같은 PC 길('/…')이나 '#…'뿐이다 (AC-1413.2) */
@@ -260,6 +298,8 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, 'vibrate')
   Reflect.deleteProperty(document, 'visibilityState')
   Reflect.deleteProperty(document, 'hidden')
+  Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight')
+  Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight')
   document.head.replaceChildren()
   document.body.replaceChildren()
   window.history.replaceState(null, '', '#')
@@ -341,7 +381,7 @@ describe('app.js 열기와 목록 (폰)', () => {
 })
 
 describe('app.js 폰 상세 (해시 길)', () => {
-  it('AC-1407.5: 폰에서 줄을 누르면 #/v/{열쇠}로 상세(오늘 카드·지난번 증상, AC-1404.7)가 열리고 [더 보기]는 없으며, [접수 현황]으로 돌아온다. 문서 제목은 늘 "접수 현황"이다', async () => {
+  it('AC-1407.5 · AC-1502.1: 폰에서 줄을 누르면 #/v/{열쇠}로 상세(종이 진료기록부·지난번 증상)가 열리고 [더 보기]는 없으며, [접수 현황]으로 돌아온다. 문서 제목은 늘 "접수 현황"이다', async () => {
     const app = await open()
     tile('진료대기').click()
     rowOf('가상환자02').querySelector<HTMLAnchorElement>('a.row-main')!.click()
@@ -353,8 +393,17 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(document.title).toBe(TITLE)
     expect(textOf(page, '.patient .detail-name')).toBe('가상환자02')
     expect(textOf(page, '.patient .memo')).toBe('메모 · 오른쪽 어깨 통증 심해짐')
-    expect(textOf(page, 'section.today .today-date')).toContain('11월 5일')
-    expect(textOf(page, 'section.today .today-state')).toBe('진료 전')
+    expect(page.querySelector('section.today')).toBeNull()
+    expect(textsOf(page, 'main.detail > h2.detail-heading')).toEqual(['오늘 진료기록부', '지난번 증상'])
+    const paper = paperOf(page)!
+    // 날짜는 기기 날짜, 차트번호·수진자명·재진은 목록 줄, 나머지는 상세 답의 paper
+    expect(textOf(paper, '.paper-head .paper-date')).toBe('2026-11-05')
+    expect(textsOf(paper, 'dl.kv > dd')).toEqual(['910234', '가상환자02 (F/54)', '720304-*******', '가상시 가상구 예시로 12 (가상맨션 101동 202호)', '—', '010-0000-1234'])
+    expect(textOf(paper, '.spc > p.spc-text')).toBe('가상 특이사항: 페니실린 알레르기')
+    expect(textsOf(paper, '.visit-line > span')).toEqual(['내원 : 20261105', '1진료실', '국민건강보험(재진)'])
+    // 진료대기이고 아직 아무것도 적히지 않았다
+    expect(paperHeads(page)).toEqual(['증상 · 상병 · 처방'])
+    expect(textOf(paper, '.paper-body .none')).toBe('아직 없어요. 진료가 끝나면 여기에 나와요.')
     expect(page.querySelectorAll('section.visit').length).toBe(1)
     expect(textOf(page, 'section.visit.is-last .last-badge')).toBe('지난번')
     expect(textOf(page, 'section.visit.is-last .visit-date')).toContain('10월 29일')
@@ -375,14 +424,15 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(document.title).toBe(TITLE)
   })
 
-  it('AC-1404.8: 상세가 열린 동안 그 환자 줄의 칸이 바뀌면 다음 읽기에 상세를 한 번 더 읽어 오늘 증상 줄만 바꾼다(지난번 카드 요소는 그대로). 그 뒤 같은 줄이면 다시 읽지 않는다', async () => {
+  it('AC-1404.8 · AC-1502.4: 상세가 열린 동안 그 환자 줄의 칸이 바뀌면 다음 읽기에 상세를 한 번 더 읽어 종이 카드를 새 paper로 바꾼다(지난번 카드 요소는 그대로). 그 뒤 같은 줄이면 다시 읽지 않는다', async () => {
     await open()
     tile('진료대기').click()
     rowOf('가상환자02').querySelector<HTMLAnchorElement>('a.row-main')!.click()
     await settle()
     const page = detailPage()!
     const last = page.querySelector('section.visit.is-last')
-    expect(page.querySelector('section.today > p.sym')).toBeNull()
+    expect(paperSym(page)).toBeNull()
+    expect(paperHeads(page)).toEqual(['증상 · 상병 · 처방'])
 
     // 진료를 받고 진료보류로 옮겼다: 오늘 증상이 생겼다
     const moved = (b: FakeBoard): FakeBoard => {
@@ -397,9 +447,11 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(boardReads().length).toBe(2)
     expect(historyReads()).toEqual([`/api/visit/${fx.fakeKey(2)}/history?from=0`, `/api/visit/${fx.fakeKey(2)}/history?from=0`])
     expect(detailPage()).toBe(page)
-    expect(textOf(page, 'section.today .today-state')).toBe('진료보류')
+    expect(textOf(page, '.patient .status-line > .status')).toBe('진료보류')
     expect(textOf(page, '.patient .memo')).toBe('메모 · 엑스레이 찍으러 감')
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 오른쪽 어깨 통증 계속됨')
+    expect(paperSym(page)).toBe('오른쪽 어깨 통증 계속됨')
+    expect(paperHeads(page)).toEqual(['증상', '상병', '처방', '원외처방'])
+    expect(textsOf(page, 'article.paper ul.dx > li > code')).toEqual(['M7581', 'M5456'])
     expect(page.querySelector('section.visit.is-last')).toBe(last)
     expect(document.title).toBe(TITLE)
 
@@ -407,24 +459,24 @@ describe('app.js 폰 상세 (해시 길)', () => {
     await wait(5000)
     expect(boardReads().length).toBe(3)
     expect(historyReads().length).toBe(2)
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 오른쪽 어깨 통증 계속됨')
+    expect(paperSym(page)).toBe('오른쪽 어깨 통증 계속됨')
   })
 
-  it('AC-1404.8: 칸·오늘 처방이 그대로면 마지막 상세 읽기에서 30초가 지나기 전에는 다시 읽지 않고, 지나면 한 번 읽어 새 오늘 증상으로 바꾼다. 오늘 처방 글이 바뀌어도 다시 읽는다', async () => {
+  it('AC-1404.8 · AC-1502.4: 칸·오늘 처방이 그대로면 마지막 상세 읽기에서 30초가 지나기 전에는 다시 읽지 않고, 지나면 한 번 읽어 종이 카드를 새 paper로 바꾼다. 오늘 처방 글이 바뀌어도 다시 읽는다', async () => {
     server.syms.set(fx.fakeKey(2), '어깨 아픔 1')
     await open({ hash: `#/v/${fx.fakeKey(2)}` })
     const page = detailPage()!
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 1')
+    expect(paperSym(page)).toBe('어깨 아픔 1')
     expect(historyReads().length).toBe(1)
 
     server.syms.set(fx.fakeKey(2), '어깨 아픔 2')
     await wait(25000)
     expect(boardReads().length).toBeGreaterThanOrEqual(5)
     expect(historyReads().length).toBe(1)
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 1')
+    expect(paperSym(page)).toBe('어깨 아픔 1')
     await wait(10000)
     expect(historyReads().length).toBe(2)
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 2')
+    expect(paperSym(page)).toBe('어깨 아픔 2')
 
     // 오늘 처방이 생겼다(칸은 그대로)
     const next = fx.mockupBoard('13:43:00')
@@ -433,12 +485,11 @@ describe('app.js 폰 상세 (해시 길)', () => {
     server.syms.set(fx.fakeKey(2), '어깨 아픔 3')
     await wait(5000)
     expect(historyReads().length).toBe(3)
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 3')
-    expect(textsOf(page, 'section.today li.rx-item')).toEqual(['체외충격파(ESWT7)'])
+    expect(paperSym(page)).toBe('어깨 아픔 3')
     expect(detailPage()).toBe(page)
   })
 
-  it('AC-1404.8: 다시 읽기는 한 번에 하나이고, 실패하면 오늘 증상을 그대로 두었다가 다음 읽기에 다시 보며, 기다리는 사이 목록으로 돌아가면 늦은 답을 그리지 않는다', async () => {
+  it('AC-1404.8 · AC-1502.4: 다시 읽기는 한 번에 하나이고, 실패하면 종이 카드를 그대로 두었다가 다음 읽기에 다시 보며, 기다리는 사이 목록으로 돌아가면 늦은 답을 그리지 않는다', async () => {
     server.syms.set(fx.fakeKey(2), '어깨 아픔 1')
     await open({ hash: `#/v/${fx.fakeKey(2)}` })
     const page = detailPage()!
@@ -454,10 +505,10 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(historyReads().length).toBe(2)
     held.fail()
     await settle()
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 1')
+    expect(paperSym(page)).toBe('어깨 아픔 1')
     await wait(5000)
     expect(historyReads().length).toBe(3)
-    expect(textOf(page, 'section.today > p.sym')).toBe('증상 · 어깨 아픔 2')
+    expect(paperSym(page)).toBe('어깨 아픔 2')
 
     // 기다리는 사이 [접수 현황]으로 돌아가면 늦은 답은 버린다
     server.syms.set(fx.fakeKey(2), '어깨 아픔 3')
@@ -471,6 +522,54 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(detailPage()).toBeNull()
     expect(document.body.textContent).not.toContain('어깨 아픔 3')
     expect(document.title).toBe(TITLE)
+  })
+
+  it('AC-1502.2 · AC-1502.4: 폰 상세의 긴 특이사항은 [전부 보기 ▾]로 펼치고, 저절로 다시 읽어 종이 카드가 새 paper로 바뀌어도 펼친 채다(머리·지난번 카드는 그대로)', async () => {
+    fakeHeights()
+    server.papers.set(fx.fakeKey(2), fx.fakeTreatedPaper('어깨 아픔 1', { special: specialLines(9) }))
+    await open({ hash: `#/v/${fx.fakeKey(2)}` })
+    const page = detailPage()!
+    const last = page.querySelector('section.visit.is-last')
+    const more = page.querySelector<HTMLButtonElement>('article.paper .spc > button.spc-more')!
+    expect(more.hidden).toBe(false)
+    expect(more.textContent).toBe('전부 보기 ▾')
+    more.click()
+    expect(page.querySelector('.spc > p.spc-text')?.classList.contains('clamp')).toBe(false)
+
+    server.papers.set(fx.fakeKey(2), fx.fakeTreatedPaper('어깨 아픔 2\n둘째 줄', { special: specialLines(11), room: '2진료실' }))
+    await wait(35000)
+    expect(historyReads().length).toBe(2)
+    expect(detailPage()).toBe(page)
+    expect(paperSym(page)).toBe('어깨 아픔 2\n둘째 줄')
+    expect(textOf(page, 'article.paper .spc > p.spc-text')).toBe(specialLines(11))
+    expect(page.querySelector('.spc > p.spc-text')?.classList.contains('clamp')).toBe(false)
+    expect(textOf(page, 'article.paper .spc > button.spc-more')).toBe('접기 ▴')
+    expect(textsOf(page, 'article.paper .visit-line > span')).toEqual(['내원 : 20261105', '2진료실', '국민건강보험(재진)'])
+    expect(page.querySelector('section.visit.is-last')).toBe(last)
+    expect(document.title).toBe(TITLE)
+  })
+
+  it('AC-1502.2: 화면 폭이 바뀌면(기기 돌림·창 크기) 특이사항 높이를 다시 재어, 접혀 5줄을 넘게 된 글에도 [전부 보기 ▾]가 생긴다', async () => {
+    let perLine = 100
+    fakeHeights(() => perLine)
+    server.papers.set(fx.fakeKey(2), fx.fakePaper({ special: specialLines(5) }))
+    await open({ hash: `#/v/${fx.fakeKey(2)}` })
+    const more = () => detailPage()!.querySelector<HTMLButtonElement>('article.paper .spc > button.spc-more')!
+    expect(more().hidden).toBe(true)
+
+    // 좁아져(세로로 돌림) 줄마다 둘로 접힌다: 10줄
+    perLine = 6
+    window.dispatchEvent(new Event('resize'))
+    expect(more().hidden).toBe(false)
+    expect(more().textContent).toBe('전부 보기 ▾')
+    more().click()
+    expect(more().textContent).toBe('접기 ▴')
+
+    // 다시 넓어지면 5줄 안이라 단추가 없고 접힌 모양(5줄)으로 돌아간다
+    perLine = 100
+    window.dispatchEvent(new Event('resize'))
+    expect(more().hidden).toBe(true)
+    expect(detailPage()!.querySelector('.spc > p.spc-text')?.classList.contains('clamp')).toBe(true)
   })
 
   it('AC-1407.5: 상세 주소(#/v/{열쇠})로 바로 열어도 그 상세를 읽어 그린다. 그날 판에 없는 열쇠면 목록이다. 신환은 첫 방문 글이다', async () => {
@@ -556,6 +655,43 @@ describe('app.js 태블릿 두 칸', () => {
     await wait(5000)
     expect(historyReads()).toEqual([`/api/visit/${fx.fakeKey(1)}/history?from=0`])
     expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자01')
+  })
+
+  it('AC-1502.2 · AC-1502.4: 태블릿 오른쪽 칸도 종이 카드이고 긴 특이사항에 [전부 보기 ▾]가 있다. 다시 읽기는 오른쪽 종이 카드를 바꾸고(펼침 그대로), 다른 환자를 고른 뒤 온 늦은 답은 버린다', async () => {
+    fakeHeights()
+    fakeMedia(true)
+    server.papers.set(fx.fakeKey(1), fx.fakePaper({ special: specialLines(8) }))
+    await open()
+    expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자01')
+    expect(paperOf(pane())).not.toBeNull()
+    expect(paperHeads(pane())).toEqual(['증상 · 상병 · 처방'])
+    const more = pane()!.querySelector<HTMLButtonElement>('article.paper .spc > button.spc-more')!
+    expect(more.hidden).toBe(false)
+    more.click()
+    expect(more.textContent).toBe('접기 ▴')
+
+    // 진료를 받아 수납대기로: 다음 읽기에 종이를 다시 읽는다(펼친 특이사항 그대로)
+    const base = fx.mockupBoard('13:42:20')
+    const row = { ...base.lists.wait[0]!, waited: '수납 1분째', rxLabel: '오늘', rx: '가상 표층열치료(MM015)' }
+    server.board = fx.boardOf({ wait: base.lists.wait.slice(1), hold: base.lists.hold, pay: [row, ...base.lists.pay], done: base.lists.done }, '13:42:20')
+    server.papers.set(fx.fakeKey(1), fx.fakeTreatedPaper('가상 진료 끝', { special: specialLines(8) }))
+    await wait(5000)
+    expect(historyReads().at(-1)).toBe(`/api/visit/${fx.fakeKey(1)}/history?from=0`)
+    expect(textOf(pane(), '.patient .status-line > .status')).toBe('수납대기')
+    expect(paperSym(pane())).toBe('가상 진료 끝')
+    expect(textOf(pane(), 'article.paper .spc > button.spc-more')).toBe('접기 ▴')
+
+    // 다시 읽는 사이 다른 환자를 고르면 늦은 답은 그 환자 칸에 그리지 않는다
+    server.papers.set(fx.fakeKey(1), fx.fakeTreatedPaper('늦은 답 증상'))
+    const late = hold(`/api/visit/${fx.fakeKey(1)}/`)
+    for (let i = 0; i < 8 && !late.asked(); i += 1) await wait(5000)
+    expect(late.asked()).toBe(true)
+    rowOf('가상환자02').querySelector<HTMLButtonElement>('button.row-main')!.click()
+    await settle()
+    late.answer()
+    await settle()
+    expect(textOf(pane(), '.patient .detail-name')).toBe('가상환자02')
+    expect(document.body.textContent).not.toContain('늦은 답 증상')
   })
 
   it('AC-1409.2 (돌림 AC-1409.5): 기기를 돌려도 고른 환자 그대로다: 태블릿 오른쪽 → 폰 상세(#/v/{열쇠}) → 다시 태블릿 오른쪽', async () => {
