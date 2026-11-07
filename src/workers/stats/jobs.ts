@@ -10,18 +10,45 @@ import {
   type RxSplitDayTotals,
   type RxSplitTotals,
 } from '@/lib/analytics/rxVisitSplit'
+import { doctorStats } from '@/lib/analytics/doctorStats'
+import { patientMix } from '@/lib/analytics/patientMix'
+import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
 import { fillGroupCounts } from '@/lib/payload/groupCounts'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import type { RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
-import type { RxSplitLine, RxSplitView, StatsChecks, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
+import type { DateRange } from '@/types/dates'
+import type {
+  BitSectionsView,
+  RxSplitLine,
+  RxSplitView,
+  StatsChecks,
+  StatsLoaded,
+  StatsLoadRequest,
+  StatsSectionsRequest,
+  StatsSplitRequest,
+  StatsWorkerMessage,
+} from '@/types/stats'
 import { createAssembler, StatsDataError } from './assemble'
-import { dashed, isRecord, parseStatsRows, toConsumptionRows, toPatientDays, toVisitRows, type StatsSummary, type VisitRow } from './helperData'
+import {
+  dashed,
+  isRecord,
+  parseStatsRows,
+  toConsumptionRows,
+  toFirstVisits,
+  toPatientDays,
+  toStatsExtra,
+  toVisitRows,
+  type StatsExtra,
+  type StatsSummary,
+  type VisitRow,
+} from './helperData'
 
 // 통계 Worker의 일 [환자 자료 구역]. 시험은 이 함수들을 바로 부른다(stats.worker.ts는 포트와 잇기만 한다).
-// 화면에는 StatsLoaded(숫자·처방코드·처방 이름·날짜)만 가고, 진료 줄은 memory로 Worker 안에만 남는다. 접수 줄은 세는 데만 쓰고 남기지 않는다
+// 화면에는 StatsLoaded(숫자·처방코드·처방 이름·날짜)만 가고, 진료 줄은 memory로 Worker 안에만 남는다. 접수 줄은 세는 데만 쓰고 남기지 않는다.
+// v3 답의 접수 줄·사람 표·원장님 표는 bit로 Worker 안에만 남고(저장·서버로 안 감), 화면에는 세 칸 보기(묶음 이름과 수)만 간다
 
 // 처방별 신환·재진(split 일)이 쓰는 값. Worker 밖으로 나가지 않는다. 다음 load가 덮어쓴다
 export type StatsMemory = {
@@ -32,6 +59,14 @@ export type StatsMemory = {
   names: ReadonlyMap<string, string>
 }
 
+// 비트 전용 세 칸(sections 일)이 쓰는 값. Worker 밖으로 나가지 않고 저장하지 않는다. 다음 load가 memory와 함께 덮어쓴다.
+// extra = v3 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null), first = 환자 → 첫 내원일(v2면 비어 있다)
+export type BitMemory = {
+  range: DateRange
+  extra: StatsExtra | null
+  first: ReadonlyMap<number, string>
+}
+
 const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
 
 // groups = 화면이 준 묶음 열쇠·코드(없으면 []). 일 줄에는 열쇠마다 한 줄을 채우고(그날 없으면 0줄, treatment-trend AC-1205.4),
@@ -39,7 +74,7 @@ const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
 export function loadJob(
   text: string,
   opts: { from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[] },
-): { view: StatsLoaded; memory: StatsMemory } {
+): { view: StatsLoaded; memory: StatsMemory; bit: BitMemory } {
   const { from, to, today, closeToday, groups = [] } = opts
   const data = parseStatsRows(text, { from, to })
   const ids = createPatientIds()
@@ -87,7 +122,10 @@ export function loadJob(
     })),
     names: new Map(data.codes),
   }
-  return { view, memory }
+  // 같은 ids로 바꾼다: 진료 줄·접수 줄·사람 표에서 같은 환자 = 같은 번호. view는 v2 답과 같다(AC-2708.1)
+  const extra = toStatsExtra(data, ids)
+  const bit: BitMemory = { range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids) }
+  return { view, memory, bit }
 }
 
 // 머리 글의 기간 합계 = 고른 기간 날 숫자의 합(불러온 범위 전체든 일부든, 미완성 불러오기든, AC-509.4).
@@ -105,10 +143,15 @@ function periodTotals(days: readonly RxSplitDayTotals[]): RxSplitTotals {
 const isPrescription = (line: RxSplitLine) => line.code !== ANY_CODE
 const biggestFirst = (a: RxSplitLine, b: RxSplitLine) => b.total - a.total || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
 
+// 기간이 맞는 날짜이고 불러온 범위 안에 다 들어가는지
+function isInside(range: DateRange, { from, to }: DateRange): boolean {
+  if (!isYmd(from) || !isYmd(to)) return false
+  return compareYmd(from, to) <= 0 && compareYmd(from, range.from) >= 0 && compareYmd(to, range.to) <= 0
+}
+
 // 화면이 기간을 주면 메모리의 진료 줄로 처방별 결과를 낸다. 결과에는 처방마다 수와 이름만 있다(AC-509.4)
 export function splitJob(memory: StatsMemory | null, { from, to }: { from: string; to: string }): RxSplitView {
-  if (memory === null || !isYmd(from) || !isYmd(to)) return { kind: 'none' }
-  if (compareYmd(from, to) > 0 || compareYmd(from, memory.range.from) < 0 || compareYmd(to, memory.range.to) > 0) return { kind: 'none' }
+  if (memory === null || !isInside(memory.range, { from, to })) return { kind: 'none' }
 
   const within = (day: string) => compareYmd(day, from) >= 0 && compareYmd(day, to) <= 0
   const rows = memory.rows.filter((row) => within(row.d))
@@ -130,6 +173,31 @@ export function splitJob(memory: StatsMemory | null, { from, to }: { from: strin
   }
 }
 
+// 화면이 고른 기간과 견줄 기간을 주면 메모리의 접수 줄로 세 칸 보기를 낸다. 결과에는 묶음 이름과 수만 있다(AC-2702.3·AC-2702.4).
+// 견줄 기간은 불러온 범위 안에 다 들어갈 때만 센다(일부만 걸치면 견주지 않는다, AC-2703.9). 시간대별·원장님별은 견주지 않는다(범위 밖)
+export function sectionsJob(bit: BitMemory | null, request: { from: string; to: string; previous?: DateRange | null }): BitSectionsView {
+  const { from, to } = request
+  if (bit === null || !isInside(bit.range, { from, to })) return { kind: 'none' }
+  const { extra, first } = bit
+  if (extra === null) return { kind: 'old-helper' }
+
+  const previous = request.previous ?? null
+  const input = {
+    from,
+    to,
+    previous: previous !== null && isInside(bit.range, previous) ? { from: previous.from, to: previous.to } : null,
+    visits: extra.visits,
+    people: extra.people,
+    first,
+  }
+  return {
+    kind: 'ready',
+    mix: { all: patientMix(input, 'all'), new: patientMix(input, 'new') },
+    hours: visitHours(extra.visits, from, to),
+    doctors: doctorStats({ from, to, visits: extra.visits, first, doctors: extra.doctors, doctorDays: extra.doctorDays }),
+  }
+}
+
 type PendingText = { promise: Promise<string>; resolve(text: string | Promise<string>): void; reject(reason: unknown): void }
 
 function pendingText(): PendingText {
@@ -148,11 +216,13 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
   fromBridge(message: unknown): void
   load(request: StatsLoadRequest): Promise<void>
   split(request: StatsSplitRequest): void
+  sections(request: StatsSectionsRequest): void
   memory(): StatsMemory | null
 } {
   const assembler = createAssembler()
   const texts = new Map<string, PendingText>()
   let memory: StatsMemory | null = null
+  let bit: BitMemory | null = null
   let latest: string | null = null
 
   const textOf = (id: string) => {
@@ -186,6 +256,7 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
         if (latest !== streamId) return // 화면이 포기하고 새로 불렀다. 옛 자료로 메모리를 되돌리지 않는다
         const loaded = loadJob(text, { from, to, today, closeToday, groups: groups ?? [] })
         memory = loaded.memory
+        bit = loaded.bit
         reply = { type: 'loaded', streamId, view: loaded.view }
       } catch (e) {
         if (latest !== streamId) return
@@ -200,6 +271,17 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
       let reply: StatsWorkerMessage
       try {
         reply = { type: 'split-result', streamId: request.streamId, view: splitJob(memory, request) }
+      } catch {
+        // 예외 메시지·스택에는 자료 조각이 섞일 수 있어 번호만 보낸다
+        reply = { type: 'failed', streamId: request.streamId, code: 'E-ANALYZE-FAILED' }
+      }
+      send(reply)
+    },
+
+    sections(request) {
+      let reply: StatsWorkerMessage
+      try {
+        reply = { type: 'sections-result', streamId: request.streamId, view: sectionsJob(bit, request) }
       } catch {
         // 예외 메시지·스택에는 자료 조각이 섞일 수 있어 번호만 보낸다
         reply = { type: 'failed', streamId: request.streamId, code: 'E-ANALYZE-FAILED' }

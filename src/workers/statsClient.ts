@@ -1,7 +1,16 @@
 import { isErrorCode } from '@/lib/errors'
 import type { RxGroupDef } from '@/types/analysis'
 import type { ErrorCode } from '@/types/errors'
-import type { RxSplitView, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
+import type { DateRange } from '@/types/dates'
+import type {
+  BitSectionsView,
+  RxSplitView,
+  StatsLoaded,
+  StatsLoadRequest,
+  StatsSectionsRequest,
+  StatsSplitRequest,
+  StatsWorkerMessage,
+} from '@/types/stats'
 import { AnalyzeError } from './runAnalysis'
 
 // 화면이 통계 Worker를 부르는 입구. Worker로는 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id와 묶음 열쇠·코드만 간다(묶음 이름은 안 감).
@@ -23,7 +32,7 @@ const callsOf = new WeakMap<WorkerLike, Map<string, Call>>()
 
 function ask<T>(
   worker: WorkerLike,
-  request: StatsLoadRequest | StatsSplitRequest,
+  request: StatsLoadRequest | StatsSplitRequest | StatsSectionsRequest,
   answerOf: (message: StatsWorkerMessage) => T | undefined,
   timeoutMs: number = STATS_TIMEOUT_MS,
 ): Promise<T> {
@@ -106,4 +115,25 @@ export function requestSplit(worker: WorkerLike, req: { from: string; to: string
   lastSplit += 1
   const request: StatsSplitRequest = { type: 'split', streamId: `split-${lastSplit}`, from, to }
   return ask(worker, request, (message) => (message.type === 'split-result' ? message.view : undefined), opts.timeoutMs)
+}
+
+let lastSections = 0
+
+// 기간을 바꿀 때마다 부른다(stats-bit-sections AC-2702.3). 고른 기간과 견줄 기간의 from·to만 간다(견줄 기간 이름 등은 안 감, 없으면 null).
+// 세 칸 보기는 Worker 메모리의 접수 줄로 만들어 묶음 이름과 수만 돌아온다. split과 따로 둔다: split 답 모양을 바꾸지 않으려고
+export function requestSections(
+  worker: WorkerLike,
+  req: { from: string; to: string; previous?: DateRange | null },
+  opts: { timeoutMs?: number } = {},
+): Promise<BitSectionsView> {
+  const { from, to, previous } = req
+  lastSections += 1
+  const request: StatsSectionsRequest = {
+    type: 'sections',
+    streamId: `sections-${lastSections}`,
+    from,
+    to,
+    previous: previous ? { from: previous.from, to: previous.to } : null,
+  }
+  return ask(worker, request, (message) => (message.type === 'sections-result' ? message.view : undefined), opts.timeoutMs)
 }

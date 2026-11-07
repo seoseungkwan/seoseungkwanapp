@@ -74,6 +74,13 @@ export type DoctorRow = {
 export type DoctorTable = { kind: 'table'; rows: DoctorRow[]; total: DoctorRow }
 export type DoctorsView = { kind: 'single' } | DoctorTable
 
+// 고른 기간의 세 칸 보기(AC-2702.1·AC-2702.3). none = 불러온 적 없음·고른 기간이 불러온 범위 밖, old-helper = 옛 도우미(v2) 답.
+// mix는 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 싣는다: 단추를 눌러도 Worker에 다시 묻지 않는다
+export type BitSectionsView =
+  | { kind: 'none' }
+  | { kind: 'old-helper' }
+  | { kind: 'ready'; mix: { all: PatientMix; new: PatientMix }; hours: VisitHours; doctors: DoctorsView }
+
 // 화면 → Worker. 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id와 묶음 열쇠·코드만 간다(AC-505.7, 묶음은 treatment-trend AC-1205.4).
 // 조각은 통로 포트로 따로 온다. groups는 선택 칸이고 없으면 []로 본다(requestLoad는 늘 배열을 싣는다). 묶음 이름은 가지 않는다(AC-1213.3)
 export type StatsLoadRequest = {
@@ -87,11 +94,14 @@ export type StatsLoadRequest = {
 }
 // split의 streamId는 통로 요청이 아니라 requestSplit이 정한 일 번호다. 답을 가려 받는 쓰임은 같다
 export type StatsSplitRequest = { type: 'split'; streamId: string; from: string; to: string }
-export type StatsWorkerRequest = { type: 'bridge-port' } | StatsLoadRequest | StatsSplitRequest
+// 세 칸 보기 묻기. streamId는 requestSections가 정한 일 번호다. previous = 견줄 기간(지금 통계 탭의 range.previous, from·to만). 없으면 null(AC-2703.9)
+export type StatsSectionsRequest = { type: 'sections'; streamId: string; from: string; to: string; previous: DateRange | null }
+export type StatsWorkerRequest = { type: 'bridge-port' } | StatsLoadRequest | StatsSplitRequest | StatsSectionsRequest
 
 // Worker → 화면. streamId는 화면이 준 요청 id를 돌려주는 것이다: 시간이 지나 포기한 앞 일의 늦은 답을 다음 일의 답으로 받지 않으려고.
 // code는 오류 번호뿐이다(예외 내용을 싣지 않는다)
 export type StatsWorkerMessage =
   | { type: 'loaded'; streamId: string; view: StatsLoaded }
   | { type: 'split-result'; streamId: string; view: RxSplitView }
+  | { type: 'sections-result'; streamId: string; view: BitSectionsView }
   | { type: 'failed'; streamId: string; code: string }

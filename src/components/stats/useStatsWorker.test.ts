@@ -6,7 +6,7 @@ import { MIN_HELPER } from '@/lib/bridge/versions'
 import { createStatsWorker } from '@/workers/statsClient'
 import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
-import type { RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
+import type { BitSectionsView, RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 
 // Worker 하나 + 통로 (stats REQ-514 AC-514.3·514.8, design.md TASK-14). 진짜 useBridge·requestLoad에 가짜 chrome.runtime·가짜 Worker만 넣는다.
@@ -606,5 +606,74 @@ describe('오류 번호', () => {
     expect(errorCodeOf(new Error('가짜 내용'))).toBe('E-ANALYZE-FAILED')
     expect(errorCodeOf({ code: '가짜 내용' })).toBe('E-ANALYZE-FAILED')
     expect(errorCodeOf(null)).toBe('E-ANALYZE-FAILED')
+  })
+})
+
+// stats-bit-sections: 고른 기간의 세 칸 보기(환자 구성·시간대별 접수·원장님별)는 Worker 메모리의 접수 줄로 센다
+describe('AC-2702.3 세 칸 보기 묻기', () => {
+  const PERIOD = { from: '2026-10-14', to: '2026-11-12' }
+  const PREVIOUS = { from: '2026-09-14', to: '2026-10-13' }
+
+  it('AC-2702.3 기간 바꿈의 세 칸 보기는 기간과 견줄 기간(from·to)만 Worker로 보내고 받은 보기를 돌려준다', async () => {
+    const { fake, view } = drawReady()
+    let answer: BitSectionsView | null = null
+    const previous = { ...PREVIOUS, name: '지난 30일', why: '지난 30일', label: '가짜' }
+    act(() => {
+      void view.result.current.sections({ ...PERIOD, previous }).then((result) => (answer = result))
+    })
+    const message = fake.sent.at(-1)
+    expect(message).toMatchObject({ type: 'sections', ...PERIOD, previous: PREVIOUS })
+    expect(Object.keys(message!).sort()).toEqual(['from', 'previous', 'streamId', 'to', 'type'])
+    fake.reply({ type: 'sections-result', streamId: (message as { streamId: string }).streamId, view: { kind: 'old-helper' } })
+    await waitFor(() => expect(answer).toEqual({ kind: 'old-helper' }))
+  })
+
+  it('AC-2702.3 견줄 기간 없이 물으면 previous: null이 간다', () => {
+    const { fake, view } = drawReady()
+    act(() => {
+      void view.result.current.sections(PERIOD).catch(() => undefined)
+    })
+    expect(fake.sent.at(-1)).toMatchObject({ type: 'sections', ...PERIOD, previous: null })
+  })
+
+  it('AC-2702.3 불러오기·처방별·세 칸이 통로 포트를 받은 그 Worker 하나를 쓴다', async () => {
+    const { fake, view, port } = drawReady()
+    act(() => {
+      void view.result.current.load({ range: RANGE, today: TODAY, closeToday: false })
+    })
+    const request = port.last()
+    act(() => port.reply({ v: 1, id: request.id, type: 'end', count: 0, bytes: 0, sha256: SHA }))
+    await waitFor(() => expect(fake.sent.some((message) => message.type === 'load')).toBe(true))
+    fake.reply({ type: 'loaded', streamId: request.id as string, view: VIEW })
+    act(() => {
+      void view.result.current.split(PERIOD)
+      void view.result.current.sections({ ...PERIOD, previous: PREVIOUS })
+    })
+    expect(fake.sent.map((message) => message.type)).toEqual(['bridge-port', 'load', 'split', 'sections'])
+    expect(createStatsWorker).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-2702.3 Worker를 못 만들어도 세 칸 묻기가 오류 번호로 끝난다', async () => {
+    const chrome = fakeChrome()
+    vi.mocked(createStatsWorker).mockImplementation(() => {
+      throw new Error('가짜 내용')
+    })
+    const view = renderHook(() => useStatsWorker())
+    const port = chrome.port()
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'result', data: HELLO }))
+    await waitFor(() => expect(view.result.current.state).toBe('ready'))
+    const failure: unknown = await view.result.current.sections(PERIOD).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(errorCodeOf(failure)).toBe('E-ANALYZE-FAILED')
+    view.unmount()
+  })
+
+  it('AC-2702.3 sections는 다시 그려도 같은 함수다(화면 effect가 기간이 바뀔 때만 다시 묻게)', () => {
+    const { view } = drawReady()
+    const first = view.result.current.sections
+    view.rerender()
+    expect(view.result.current.sections).toBe(first)
   })
 })

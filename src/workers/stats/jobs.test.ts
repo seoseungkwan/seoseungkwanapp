@@ -2,8 +2,16 @@ import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, monthOf } from '@/lib/analytics/dates'
 import { validateDayPayload, validateMonthPayload } from '@/lib/payload/validate'
-import type { RxSplitView, StatsLoaded, StatsLoadRequest, StatsSplitRequest, StatsWorkerMessage } from '@/types/stats'
-import { createStatsHost, loadJob, splitJob } from './jobs'
+import type {
+  BitSectionsView,
+  RxSplitView,
+  StatsLoaded,
+  StatsLoadRequest,
+  StatsSectionsRequest,
+  StatsSplitRequest,
+  StatsWorkerMessage,
+} from '@/types/stats'
+import { createStatsHost, loadJob, sectionsJob, splitJob } from './jobs'
 
 const TODAY = '2026-11-01'
 const YESTERDAY = '2026-10-31'
@@ -920,5 +928,320 @@ describe('AC-1302.4 loadJob: 날 줄마다 같은 처방 재방문(again)', () =
       ready: [false, false, false],
       rx: [{ code: 'MM042', starts: 1, back: [null, null, null], more: [null, null, null] }],
     })
+  })
+})
+
+// ── 비트 전용 세 칸(stats-bit-sections): 환자 구성 · 시간대별 접수 · 원장님별 ──
+// v3 답 = v2 열쇠 그대로 + 접수 줄·사람 줄·원장님 줄·날·원장님 금액. 생년월일·주소·이름·코드·금액은 모두 지어낸 값이다
+const DOCTOR_CODES = ['D9001', 'D9002']
+const RECEIPT_TIMES = ['0915', '0947', '1433', '1012', '1105', '1620', '0930']
+const PEOPLE: [string, string | null, string | null][] = [
+  [CHARTS[0], '19800505', '경기 수원시 영통구 매탄동'],
+  [CHARTS[1], '19920315', '경기 수원시 팔달구 인계동'],
+  [CHARTS[2], '20150720', '경기 용인시 기흥구 구갈동'],
+  [CHARTS[3], null, '경기 화성시 봉담읍'],
+  [CHARTS[4], '19551111', null],
+  [CHARTS[5], '19700101', '서울 강남구 역삼동'],
+]
+const V3_EXTRA = {
+  visits: [
+    [CHARTS[0], '20260901', '0915', '건강보험', 'D9001'],
+    [CHARTS[1], '20260901', '0947', '의료급여 1종', 'D9002'],
+    [CHARTS[2], '20260902', '1433', '건강보험', 'D9001'],
+    [CHARTS[3], '20260902', '1012', '차상위 1종', 'D9002'],
+    [CHARTS[4], '20260903', null, '자동차보험', 'D9001'],
+    [CHARTS[0], '20261005', '1105', '건강보험', 'D9001'],
+    [null, '20261005', '1620', null, null],
+    [CHARTS[5], '20261101', '0930', '건강보험', 'D9002'],
+  ],
+  people: PEOPLE,
+  doctors: [
+    ['D9001', '김가상'],
+    ['D9002', '이가상'],
+  ],
+  doctorDays: [
+    ['20260901', 'D9001', 120_000],
+    ['20260902', 'D9002', 80_000],
+    ['20261005', 'D9001', 30_000],
+  ],
+}
+const v3Json = (over: Record<string, unknown> = {}) => helperJson({ v: 3, ...V3_EXTRA, ...over })
+const OCTOBER_ON = { from: '2026-10-01', to: TODAY } // 불러온 범위의 일부
+const SEPTEMBER = { from: FROM, to: '2026-09-30' } // OCTOBER_ON의 견줄 기간(범위 안)
+
+function readyIn(view: BitSectionsView) {
+  if (view.kind !== 'ready') throw new Error('세 칸 보기가 없다')
+  return view
+}
+const rowOf = <T extends { label: string }>(rows: readonly T[], label: string) => rows.find((row) => row.label === label)
+const cellSum = (view: ReturnType<typeof readyIn>) => view.hours.rows.flatMap((row) => row.cells).reduce((sum, n) => sum + n, 0)
+
+describe('AC-2702.1·AC-2702.3 sectionsJob: 메모리의 접수 줄 → 세 칸 보기', () => {
+  it('AC-2702.3: 불러온 적이 없으면 none', () => {
+    expect(sectionsJob(null, WHOLE)).toEqual({ kind: 'none' })
+  })
+
+  it.each([
+    ['첫날이 범위 앞', { from: '2026-08-31', to: TODAY }],
+    ['끝날이 범위 뒤', { from: FROM, to: '2026-11-02' }],
+    ['둘 다 범위 밖', { from: '2026-01-01', to: '2026-01-31' }],
+    ['첫날이 끝날 뒤', { from: '2026-10-05', to: '2026-10-01' }],
+    ['없는 날', { from: '2026-09-31', to: '2026-10-01' }],
+  ])('AC-2702.3: 고른 기간이 불러온 범위 밖이면 none(v3·v2 모두): %s', (_name, range) => {
+    expect(sectionsJob(loadJob(v3Json(), OPTS).bit, range)).toEqual({ kind: 'none' })
+    expect(sectionsJob(loadJob(helperJson(), OPTS).bit, range)).toEqual({ kind: 'none' })
+  })
+
+  it('AC-2702.1: v2 답(옛 도우미)을 불러왔으면 범위 안 기간은 old-helper다', () => {
+    const { bit } = loadJob(helperJson(), OPTS)
+    expect(sectionsJob(bit, WHOLE)).toEqual({ kind: 'old-helper' })
+    expect(sectionsJob(bit, { ...OCTOBER_ON, previous: SEPTEMBER })).toEqual({ kind: 'old-helper' })
+  })
+
+  it('AC-2702.3: v3 답이면 ready이고 mix에 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 있다(단추를 눌러도 다시 묻지 않는다)', () => {
+    const view = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, WHOLE))
+    expect(Object.keys(view).sort()).toEqual(['doctors', 'hours', 'kind', 'mix'])
+    expect(Object.keys(view.mix).sort()).toEqual(['all', 'new'])
+    for (const mix of [view.mix.all, view.mix.new]) {
+      expect(mix.city.length).toBeGreaterThan(0)
+      expect(mix.town.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('AC-2702.3: 불러온 기간 전체 — 명은 서로 다른 환자, 건은 접수, 신환은 첫 내원이 기간 안인 환자만', () => {
+    const view = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, WHOLE))
+    const { mix, hours, doctors } = view
+    expect(mix.all.total).toEqual({ people: 6, visits: 8 })
+    expect(mix.new.total).toEqual({ people: 5, visits: 6 }) // 옛 환자(첫 내원 2025년)와 차트번호 없는 접수는 빠진다
+    expect(mix.all.compared).toBe(false)
+    expect(rowOf(mix.all.insurance, '차상위')?.people).toBe(1)
+    expect(rowOf(mix.all.city, '영통구')?.people).toBe(1)
+    expect(rowOf(mix.all.town, '매탄동')?.visits).toBe(2)
+    expect(hours.unknown).toBe(1)
+    expect(cellSum(view)).toBe(7)
+    if (doctors.kind !== 'table') throw new Error('원장님 표가 없다')
+    expect(doctors.total).toMatchObject({ patients: 6, newPatients: 5, visits: 8, amount: 230_000 })
+    expect(doctors.rows.map((row) => row.label)).toEqual(['김가상', '이가상', '진료의 미지정'])
+    expect(rowOf(doctors.rows, '김가상')).toMatchObject({ patients: 3, visits: 4, amount: 150_000 })
+  })
+
+  it('AC-2702.3: 불러온 범위의 일부를 고르면 그 기간 접수·수납만 센다', () => {
+    const view = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, OCTOBER_ON))
+    const { mix, hours, doctors } = view
+    expect(mix.all.total).toEqual({ people: 2, visits: 3 })
+    expect(mix.new.total).toEqual({ people: 0, visits: 0 })
+    expect(hours.unknown).toBe(0)
+    expect(cellSum(view)).toBe(3)
+    if (doctors.kind !== 'table') throw new Error('원장님 표가 없다')
+    expect(doctors.total).toMatchObject({ visits: 3, amount: 30_000 })
+  })
+
+  it('AC-2702.3·AC-2703.9: 견줄 기간이 불러온 범위 안이면 [전체]·[신환] 모두 지난 기간 명이 있다', () => {
+    const { mix } = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, { ...OCTOBER_ON, previous: SEPTEMBER }))
+    expect(mix.all.compared).toBe(true)
+    expect(mix.new.compared).toBe(true)
+    expect(rowOf(mix.all.age, '40대')).toMatchObject({ people: 1, previous: 1 })
+    expect(rowOf(mix.all.age, '50대')).toMatchObject({ people: 1, previous: 0 })
+    expect(rowOf(mix.all.age, '30대')).toMatchObject({ people: 0, previous: 1 })
+    expect(rowOf(mix.new.age, '40대')).toMatchObject({ people: 0, previous: 1 })
+    // 지금 기간 숫자는 견주지 않을 때와 같다
+    const alone = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, OCTOBER_ON))
+    expect(mix.all.total).toEqual(alone.mix.all.total)
+    expect(mix.all.age.map((row) => row.people)).toEqual(alone.mix.all.age.map((row) => row.people))
+  })
+
+  it.each([
+    ['견줄 기간이 없음', null],
+    ['앞이 범위 밖(일부만 걸침)', { from: '2026-08-01', to: '2026-09-30' }],
+    ['뒤가 범위 밖', { from: '2026-10-15', to: '2026-11-05' }],
+    ['첫날이 끝날 뒤', { from: '2026-09-30', to: '2026-09-01' }],
+    ['없는 날', { from: '2026-09-31', to: '2026-09-30' }],
+  ])('AC-2702.3·AC-2703.9: %s이면 지난 숫자가 없다(compared false, 줄마다 previous null)', (_name, previous) => {
+    const { mix } = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, { ...OCTOBER_ON, previous }))
+    for (const one of [mix.all, mix.new]) {
+      expect(one.compared).toBe(false)
+      for (const row of [...one.age, ...one.insurance, ...one.city, ...one.town]) expect(row.previous).toBeNull()
+    }
+  })
+
+  it('AC-2702.3: 고른 기간에 접수가 없어도 ready이고 숫자가 0이다(화면이 "접수가 없어요"를 보인다)', () => {
+    const { mix, hours } = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, { from: '2026-10-06', to: '2026-10-31' }))
+    expect(mix.all.total).toEqual({ people: 0, visits: 0 })
+    expect(hours.peak).toBeNull()
+  })
+})
+
+// 화면에 가도 되는 글자: 일 이름·번호·종류와 묶음 이름(연령대·보험·동네·원장님 이름)
+const AGE_LABELS = ['10세 미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80세 이상', '생년월일 없음']
+const INSURANCE_LABELS = ['건강보험', '의료급여 1종', '차상위', '자동차보험', '보험 모름']
+const PLACE_LABELS = ['영통구', '팔달구', '용인시 기흥구', '화성시', '강남구', '매탄동', '인계동', '구갈동', '봉담읍', '역삼동', '동 없는 주소', '주소 없음']
+const DOCTOR_LABELS = ['김가상', '이가상', '진료의 미지정', '합계']
+const KINDS = ['ready', 'none', 'old-helper', 'row', 'rest', 'noTown', 'table', 'single']
+
+// 값 자리의 글자만(열쇠는 뺀다)
+function valuesIn(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(valuesIn)
+  if (value !== null && typeof value === 'object') return Object.values(value).flatMap(valuesIn)
+  return []
+}
+
+const SECTIONS_FORBIDDEN_KEYS = ['p', 'd', 'h', 'ins', 'doc', 'birth', 'area', 'chart', 'first', 'doctorDays', 'extra', 'bit', 'patientDays']
+const dashedDay = (day: string) => `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}`
+
+function expectOnlyLabelsAndNumbers(sent: readonly StatsWorkerMessage[]) {
+  const json = JSON.stringify(sent)
+  for (const id of CHARTS) expect(json).not.toContain(id)
+  for (const [, birth, area] of PEOPLE) {
+    if (birth !== null) {
+      expect(json).not.toContain(birth)
+      expect(json).not.toContain(dashedDay(birth))
+    }
+    if (area !== null) expect(json).not.toContain(area)
+  }
+  for (const code of DOCTOR_CODES) expect(json).not.toContain(code)
+  for (const time of RECEIPT_TIMES) expect(json).not.toContain(`"${time}"`)
+  for (const key of SECTIONS_FORBIDDEN_KEYS) expect(keysIn(sent)).not.toContain(key)
+  const allowed = new Set([
+    'sections-result',
+    ...sent.map((message) => message.streamId),
+    ...KINDS,
+    ...AGE_LABELS,
+    ...INSURANCE_LABELS,
+    ...PLACE_LABELS,
+    ...DOCTOR_LABELS,
+  ])
+  expect(valuesIn(sent).filter((text) => !allowed.has(text) && !/^그 밖 \d+곳$/.test(text))).toEqual([])
+}
+
+type SectionsSpan = { from: string; to: string; previous?: { from: string; to: string } | null }
+const sectionsRequest = (streamId: string, span: SectionsSpan = WHOLE): StatsSectionsRequest => ({
+  type: 'sections',
+  streamId,
+  previous: null,
+  ...span,
+})
+
+describe('AC-2702.1·AC-2702.3 Worker 일: sections', () => {
+  async function loadedWith(id: string, text: string) {
+    const hosted = hostUnderTest()
+    bridgeMessages(id, text).forEach((m) => hosted.host.fromBridge(m))
+    await hosted.host.load(loadRequest(id))
+    hosted.sent.length = 0
+    return hosted
+  }
+
+  it('AC-2702.3: 불러오기 전이면 none을 받은 번호로 돌려준다', () => {
+    const { host, sent } = hostUnderTest()
+    host.sections(sectionsRequest('b1'))
+    expect(sent).toEqual([{ type: 'sections-result', streamId: 'b1', view: { kind: 'none' } }])
+  })
+
+  it('AC-2702.1: v2 답을 불러온 뒤면 old-helper', async () => {
+    const { host, sent } = await loadedWith('s1', helperJson())
+    host.sections(sectionsRequest('b1'))
+    expect(sent).toEqual([{ type: 'sections-result', streamId: 'b1', view: { kind: 'old-helper' } }])
+  })
+
+  it('AC-2702.3: v3 답을 불러온 뒤면 ready를 받은 번호로 보낸다', async () => {
+    const { host, sent } = await loadedWith('s1', v3Json())
+    host.sections(sectionsRequest('b1', { ...OCTOBER_ON, previous: SEPTEMBER }))
+    expect(sent).toHaveLength(1)
+    const [reply] = sent
+    if (reply.type !== 'sections-result') throw new Error('sections-result가 아니다')
+    expect(reply.streamId).toBe('b1')
+    expect(readyIn(reply.view).mix.all.compared).toBe(true)
+    expect(reply.view).toEqual(sectionsJob(loadJob(v3Json(), OPTS).bit, { ...OCTOBER_ON, previous: SEPTEMBER }))
+  })
+
+  it('AC-2702.1: 다음 load가 덮어쓴다(v3 뒤 v2면 old-helper). 실패한 불러오기는 앞 자료를 그대로 둔다', async () => {
+    const { host, sent } = await loadedWith('s1', v3Json())
+    bridgeMessages('s2', v3Json({ visits: [['x'], 1] })).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s2'))
+    host.sections(sectionsRequest('b1'))
+    bridgeMessages('s3', helperJson()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s3'))
+    host.sections(sectionsRequest('b2'))
+    expect(sent.map((m) => m.type)).toEqual(['failed', 'sections-result', 'loaded', 'sections-result'])
+    expect(sent.flatMap((m) => (m.type === 'sections-result' ? [m.view.kind] : []))).toEqual(['ready', 'old-helper'])
+  })
+
+  it('AC-2702.3: sections는 메모리를 바꾸지 않는다: 같은 기간을 또 물어도 같다', async () => {
+    const { host, sent } = await loadedWith('s1', v3Json())
+    host.sections(sectionsRequest('b1', OCTOBER_ON))
+    host.sections(sectionsRequest('b2', WHOLE))
+    host.sections(sectionsRequest('b3', OCTOBER_ON))
+    const views = sent.map((m) => (m.type === 'sections-result' ? m.view : null))
+    expect(views[2]).toEqual(views[0])
+    expect(views[1]).not.toEqual(views[0])
+  })
+
+  it('AC-2702.4: 계산이 터져도 번호만 보낸다', async () => {
+    const { host, sent } = await loadedWith('s1', v3Json())
+    const leak = `차트 ${chart(1)}`
+    const broken = {
+      type: 'sections',
+      streamId: 'b1',
+      to: TODAY,
+      previous: null,
+      get from(): string {
+        throw new Error(leak)
+      },
+    } as StatsSectionsRequest
+    host.sections(broken)
+    expect(sent).toEqual([{ type: 'failed', streamId: 'b1', code: 'E-ANALYZE-FAILED' }])
+  })
+})
+
+describe('AC-2702.4 화면에 가는 세 칸 보기에는 묶음 이름과 숫자뿐이다', () => {
+  it('AC-2702.4: sections-result를 JSON으로 펴도 차트번호·생년월일·주소 앞부분·접수 시각 줄·진료의 코드가 없다', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', v3Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1'))
+    sent.length = 0
+    host.sections(sectionsRequest('b1', WHOLE))
+    host.sections(sectionsRequest('b2', { ...OCTOBER_ON, previous: SEPTEMBER }))
+    expect(sent.map((m) => m.type)).toEqual(['sections-result', 'sections-result'])
+    expect(sent.every((m) => m.type === 'sections-result' && m.view.kind === 'ready')).toBe(true)
+    expectOnlyLabelsAndNumbers(sent)
+  })
+
+  it('AC-2702.4: 불러온 메시지(loaded)에는 새 자료가 하나도 없다', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', v3Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1'))
+    expect(sent.map((m) => m.type)).toEqual(['loaded'])
+    const json = JSON.stringify(sent)
+    for (const word of [...DOCTOR_CODES, '김가상', '이가상', '의료급여 1종', '자동차보험', '매탄동', '19800505', '1980-05-05']) {
+      expect(json).not.toContain(word)
+    }
+    expectNoPatientData(sent)
+  })
+})
+
+describe('AC-2708.1 저장 줄·AI 보고는 지금 그대로', () => {
+  it('AC-2708.1: v3 답으로 불러와도 화면이 저장·보고에 쓰는 값(loaded view)이 v2 답과 같고 열쇠 목록도 같다', () => {
+    const v2 = loadJob(helperJson(), OPTS).view
+    const v3 = loadJob(v3Json(), OPTS).view
+    expect(v3).toEqual(v2)
+    expect(Object.keys(v3).sort()).toEqual(['checks', 'covered', 'days', 'months', 'quality', 'range', 'report'])
+    const keyLists = (view: StatsLoaded) => ({
+      months: (view.months ?? []).map((month) => Object.keys(month).sort()),
+      days: (view.days ?? []).map((day) => Object.keys(day).sort()),
+      report: [...view.report.daily, ...view.report.monthly].map((set) => Object.keys(set).sort()),
+    })
+    expect(keyLists(v3)).toEqual(keyLists(v2))
+    for (const month of v3.months ?? []) expect(validateMonthPayload(month)).toEqual(month)
+    for (const day of v3.days ?? []) expect(validateDayPayload(day)).toEqual(day)
+  })
+
+  it('AC-2708.1: 처방별 메모리(StatsMemory)의 열쇠는 그대로이고, 세 칸 자료는 따로 Worker 안에만 있으며 차트번호 글자가 없다', () => {
+    const { memory, bit } = loadJob(v3Json(), OPTS)
+    expect(Object.keys(memory).sort()).toEqual(['days', 'names', 'range', 'rows', 'summary'])
+    if (bit === null || bit.extra === null) throw new Error('세 칸 자료가 없다')
+    expect(bit.range).toEqual({ from: FROM, to: TODAY })
+    expect(textsIn(bit.extra.visits).some((text) => CHARTS.some((id) => text.includes(id)))).toBe(false)
+    expect([...bit.extra.people.keys()].every((key) => typeof key === 'number')).toBe(true)
+    expect([...bit.first.keys()].every((key) => typeof key === 'number')).toBe(true)
   })
 })
