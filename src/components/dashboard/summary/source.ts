@@ -14,10 +14,11 @@ export type RxGroupLine = { name: string; key: string }
 export type OlderDays = { from: string; read: (range: { from: string; to: string }) => Promise<readonly DayPayload[] | null> }
 
 /**
- * groups: 처방 든 묶음(통계 탭 차례). [] = 묶음 없음, null = 묶음을 읽지 못함. 주지 않으면 []과 같다(toSummarySource는 넣지 않는다).
+ * groups: 처방 든 묶음(통계 탭 차례). [] = 묶음 없음, null = 묶음을 읽지 못함, 'pending' = 묶음을 아직 읽는 중(dashboard-ux AC-2701.2:
+ * 저장 숫자로 먼저 그리고 처방 상위만 "묶음을 읽는 중"이다). 주지 않으면 []과 같다(toSummarySource는 넣지 않는다).
  * older: 옛 기간 읽기. 주지 않으면 손에 든 숫자만 쓴다. 새 prop이 아니라 이 모양 안으로 온다(groups와 같은 길, tab-frame AC-312.2)
  */
-export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[]; groups?: readonly RxGroupLine[] | null; older?: OlderDays }
+export type SummarySource = { kind: 'none' } | { kind: 'data'; days: readonly DayPayload[]; groups?: readonly RxGroupLine[] | null | 'pending'; older?: OlderDays }
 
 // 처음 자료 자리: 늘 '자료 없음'(none)이다. dashboard/page.tsx가 브라우저 읽기(bit-dashboard TASK-8 LiveDashboard)로 바뀔 때까지 쓴다
 export function dashboardSummarySource(): SummarySource {

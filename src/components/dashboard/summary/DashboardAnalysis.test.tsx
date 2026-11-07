@@ -54,8 +54,8 @@ function day(ymd: string, o: DayOptions = {}): DayPayload {
   }
 }
 const data = (days: DayPayload[]): SummarySource => ({ kind: 'data', days })
-// 통계 탭 묶음까지 실은 자료(REQ-606). null = 묶음을 읽지 못함
-const grouped = (days: DayPayload[], groups: readonly RxGroupLine[] | null): SummarySource => ({ kind: 'data', days, groups })
+// 통계 탭 묶음까지 실은 자료(REQ-606). null = 묶음을 읽지 못함, 'pending' = 묶음을 읽는 중(dashboard-ux AC-2701.2)
+const grouped = (days: DayPayload[], groups: readonly RxGroupLine[] | null | 'pending'): SummarySource => ({ kind: 'data', days, groups })
 // 묶음 열쇠(treatment-trend groupKey 모양: 't' + 16진수 16자리)
 const key = (n: number) => `t${n.toString(16).padStart(16, '0')}`
 const line = (name: string, n: number): RxGroupLine => ({ name, key: key(n) })
@@ -740,6 +740,25 @@ describe("기간별 흐름 — '처방 상위' = 통계 탭 묶음 (REQ-606)", (
     expect(rank().textContent).not.toContain('건')
   })
 
+  it('AC-2701.2: 묶음을 읽는 중(groups "pending")이면 빈 줄 다섯 틀 가운데 "묶음을 읽는 중"(role=status)이고, 머리 링크·순위 막대·건수가 없다 — 다른 그래프는 저장 숫자로 그린다', () => {
+    // 처방 상위 밖 그래프 셋은 묶음이 있을 때와 같은 마크업이다(useId 값은 빼고 견준다)
+    const others = () =>
+      ['환자 수 추이', '신환 재방문율', '요일별 환자 수'].map((name) => chart(name).outerHTML.replace(/ (?:id|aria-labelledby|aria-describedby|aria-controls)="[^"]*"/g, ''))
+    draw(FULL)
+    const withGroups = others()
+    cleanup()
+    draw(grouped(FULL_DAYS, 'pending'))
+    expect(others()).toEqual(withGroups)
+    const note = within(rank()).getByRole('status')
+    expect(note.textContent).toBe('묶음을 읽는 중')
+    expect(note.closest('[aria-hidden="true"]')).toBeNull() // 화면 읽기가 읽는다
+    expect(rank().querySelectorAll('ol[aria-hidden="true"] > li')).toHaveLength(5)
+    // 숫자를 지어내지 않는다. 묶음이 있는지 모르니 [묶음 만들기]·[묶음 고치기]도 없다
+    expect(rank().querySelector('ol[aria-label]')).toBeNull()
+    expect(rank().textContent).not.toContain('건')
+    expect(within(rank()).queryByRole('link')).toBeNull()
+  })
+
   it('AC-606.1·AC-606.6: 셀 수 있는 묶음이 있으면 RankedBars("처방 상위" · "건") 하나 — 줄 이름은 묶음 이름, 값은 기간 안 열쇠 줄 patients의 합. 처방 코드 이름은 나오지 않는다', () => {
     draw(FULL)
     expect(body().tagName).toBe('DIV')
@@ -985,16 +1004,15 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
 
   // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
   const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
-  // LiveDashboard.tsx만 저장 숫자를 읽어 BitDashboard에 넘기고, 읽기 전에는 연결 전 모양(DashboardHome)을, 실패면 오류 카드를 그린다
-  // (bit-dashboard AC-601.14·AC-601.19, stats AC-516.3). 그 파일이 실제로 불러오는 것만 하나씩 허락한다
+  // LiveDashboard.tsx만 저장 숫자를 읽어 BitDashboard에 넘기고, 읽기 전에는 뼈대(DashboardSkeleton, dashboard-ux AC-2701.1)를, 실패면 오류 카드를 그린다
+  // (bit-dashboard AC-601.14·AC-601.19, stats AC-516.3). 그 파일이 실제로 불러오는 것만 하나씩 허락한다. 연결 전 모양(briefing)은 이제 부르지 않는다
   const LIVE_IMPORTS = [
     'LiveDashboard.tsx: @/components/common/ErrorCard',
-    'LiveDashboard.tsx: @/components/dashboard/briefing/DashboardHome',
     'LiveDashboard.tsx: @/components/dashboard/live/BitDashboard',
+    'LiveDashboard.tsx: @/components/dashboard/live/DashboardSkeleton',
     'LiveDashboard.tsx: @/components/dashboard/live/readBitDays',
     'LiveDashboard.tsx: @/components/dashboard/live/rxGroups',
     'LiveDashboard.tsx: @/lib/storage/stats',
-    'LiveDashboard.tsx: ./DashboardAnalysis',
   ]
   // 대시보드 기간 고르기(dashboard-period AC-1805.2, design.md '결정과 트레이드오프'): 통계를 부르는 곳은 flow.ts(periodPick·view)와
   // DashboardAnalysis.tsx(PeriodPicker) 둘뿐이고, 오류 카드는 옛 기간 읽기 실패 카드에만 쓴다
@@ -1005,17 +1023,15 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'flow.ts: @/components/stats/view',
   ]
   const EXCEPTIONS = new Set([SOURCE_READ_TYPE, ...LIVE_IMPORTS, ...PERIOD_IMPORTS])
-  // 아래 글자 검사에서 LiveDashboard.tsx의 이 한 줄만 뺀다(briefing을 부르는 곳은 이 불러오기 하나뿐이어야 한다)
-  const LIVE_HOME_IMPORT = "import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'"
 
-  it('AC-311.8·AC-606.6: 불러오는 곳은 react · next/link · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
+  it('AC-311.8·AC-606.6·AC-2701.1: 불러오는 곳은 react · next/link · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
     const all = appFiles().flatMap((file) => importsOf(file).map((from) => `${file}: ${from}`))
     expect(all.length).toBeGreaterThan(0)
     expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && !EXCEPTIONS.has(entry))).toEqual([])
     // 허락한 줄은 실제로 있는 불러오기다(쓰지 않는 예외가 남지 않게)
     expect(all).toEqual(expect.arrayContaining([SOURCE_READ_TYPE, ...LIVE_IMPORTS, ...PERIOD_IMPORTS]))
     for (const file of appFiles()) {
-      const text = file === 'LiveDashboard.tsx' ? code(file).replace(LIVE_HOME_IMPORT, '') : code(file)
+      const text = code(file)
       expect(text, file).not.toMatch(/components\/shell|dashboard\/briefing|notReadyFeatures|supabase|@\/lib\/auth|AppShell/)
       expect(text, file).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage|indexedDB|document\.cookie/)
     }

@@ -20,6 +20,7 @@ import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/
 import { createStatsWorker } from '@/workers/statsClient'
 import { BitDashboard } from './BitDashboard'
 import { DateControl } from './DateControl'
+import { StatusHeader } from './ReadStatus'
 import { readBitDays, type ReadResult, type StatsWorkerLike } from './readBitDays'
 import type { DashboardGroups } from './rxGroups'
 
@@ -92,6 +93,11 @@ const READ_H1 = '비트에서 오늘 숫자를 읽고 있어요'
 const READ_LEAD = '최근 100일 자료를 읽어요. 길면 3분쯤 걸려요. 다 읽을 때까지 이 화면을 열어 두세요.'
 const SAVED_KEPT = '아래 숫자는 저장해 둔 그대로예요.'
 const UNREADABLE = '이 PC에서 비트를 읽을 수 없어요. 연결을 확인해 주세요.'
+// 숫자가 있는 화면의 머리 줄(dashboard-ux AC-2701.3): h1 "대시보드" · 상태 표시 · 시각 글 · [다시 읽기]
+const HEADER_H1 = '대시보드'
+const READ_AT_342 = '비트에서 읽은 시각 오늘 오후 3:42'
+const READ_AT_345 = '비트에서 읽은 시각 오늘 오후 3:45'
+const READ_AT = /비트에서 읽은 시각/
 
 // ── 잡아 둔 읽기: 화면이 부른 차례대로 쌓이고, 시험이 답을 준다 ──
 type Read = { deps: Parameters<typeof readBitDays>[0]; resolve(result: ReadResult): void }
@@ -107,12 +113,17 @@ const NOT_READY: ReadResult = { kind: 'not-ready' }
 const onBitPc = () => vi.stubGlobal('chrome', { runtime: { connect: vi.fn() } })
 const notBitPc = () => vi.stubGlobal('chrome', undefined)
 const draw = (initial: SummarySource = NONE) => render(<BitDashboard today={TODAY} initial={initial} />)
-const drawWith = (initial: SummarySource, groups: DashboardGroups | null | undefined) =>
+const drawWith = (initial: SummarySource, groups: DashboardGroups | null | 'pending' | undefined) =>
   render(<BitDashboard today={TODAY} initial={initial} groups={groups} />)
 
 // ── 화면 읽기 도우미 ──
 const region = (name: string) => screen.getByRole('region', { name })
-const h1 = () => screen.getByRole('heading', { level: 1 })
+// 큰 문장 h1(연결 전·읽는 중·실패·보고 문장). 숫자가 있으면 머리 줄 h1 "대시보드"가 더 있어 빼고 본다(dashboard-ux AC-2701.3)
+const h1 = () => {
+  const found = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.textContent !== HEADER_H1)
+  expect(found).toHaveLength(1)
+  return found[0]!
+}
 const todaySection = () => region('오늘 하루 분석')
 const flow = () => region('기간별 흐름')
 const kpiCells = () => Array.from(todaySection().children[1]!.children)
@@ -188,7 +199,7 @@ afterEach(() => {
 })
 
 describe('서버가 그린 첫 모양', () => {
-  it('AC-601.6·AC-601.13: 서버 그림은 initial 그대로다 — 비트 PC에서도 읽는 중을 먼저 그리지 않는다', () => {
+  it('AC-601.6·AC-601.13·AC-2701.3: 서버 그림은 initial 그대로다 — 비트 PC에서도 읽는 중을 먼저 그리지 않는다(저장 숫자면 보고 문장 아래 머리 줄)', () => {
     onBitPc()
     expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={NONE} />)).toBe(
       renderToStaticMarkup(<DashboardHome today={TODAY} report={null} analysis={<DashboardAnalysis today={TODAY} source={NONE} />} />),
@@ -198,7 +209,12 @@ describe('서버가 그린 첫 모양', () => {
         <DashboardHome
           today={TODAY}
           dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
-          report={<ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />}
+          report={
+            <>
+              <ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />
+              <StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />
+            </>
+          }
           analysis={<DashboardAnalysis today={TODAY} source={SAVED} />}
         />,
       ),
@@ -319,23 +335,23 @@ describe('AC-601.2: 저장 숫자 없이 처음 읽는 중', () => {
 describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
   beforeEach(onBitPc)
 
-  it('AC-601.3: 보고 문장 아래에 "오늘 오후 3:42에 읽었어요"와 [다시 읽기]가 있다', async () => {
+  it('AC-601.3·AC-2701.3: 보고 문장 아래 머리 줄에 "비트에서 읽은 시각 오늘 오후 3:42"와 [다시 읽기]가 있다', async () => {
     draw()
     await answer(days())
-    const at = screen.getByText('오늘 오후 3:42에 읽었어요')
+    const at = screen.getByText(READ_AT_342)
     expectOrder(h1(), at, button('다시 읽기'), todaySection())
     hasAll(button('다시 읽기'), ds.button.secondarySmall)
     expect(region('오늘 브리핑').contains(at)).toBe(true)
   })
 
-  it('AC-601.3: 읽은 시각은 서울 시간대 PC에서 한국 시각이다', async () => {
+  it('AC-601.3·AC-2701.3: 읽은 시각은 서울 시간대 PC에서 한국 시각이다', async () => {
     vi.setSystemTime(new Date('2026-11-02T00:05:00Z'))
     draw()
     await answer(days())
-    expect(screen.getByText('오늘 오전 9:05에 읽었어요')).toBeTruthy()
+    expect(screen.getByText('비트에서 읽은 시각 오늘 오전 9:05')).toBeTruthy()
   })
 
-  it('AC-601.3: 읽은 시각은 그 PC 시간대와 상관없이 한국 시각이다 — 뉴욕 시간대 PC에서 불러도 같다', async () => {
+  it('AC-601.3·AC-2701.3: 비트에서 읽은 시각·서버 저장 시각은 그 PC 시간대와 상관없이 한국 시각이다 — 뉴욕 시간대 PC에서 불러도 같다', async () => {
     // vitest.config.ts가 시험 전체를 서울 시간대로 고정한다. 시각 서식(KOREA_TIME)은 ReadStatus를 불러올 때 한 번 만들어지므로, 시간대를 바꾼 뒤 모듈을 새로 부른다
     const at = new Date('2026-11-02T00:05:00Z')
     const seoul = process.env.TZ
@@ -343,9 +359,13 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     try {
       expect(at.getHours(), '이 PC 시계가 한국과 달라야 시험이 헛돌지 않는다').not.toBe(9)
       vi.resetModules()
-      const { ReadLine } = await import('./ReadStatus')
-      render(<ReadLine readAt={at.getTime()} reading={false} failed={false} onReread={() => {}} />)
-      expect(screen.getByText('오늘 오전 9:05에 읽었어요')).toBeTruthy()
+      const { StatusHeader: Header } = await import('./ReadStatus')
+      render(<Header readAt={at.getTime()} savedAt={null} reading={false} failed={false} onReread={() => {}} />)
+      expect(screen.getByText('비트에서 읽은 시각 오늘 오전 9:05')).toBeTruthy()
+      cleanup()
+      // 서버 저장 시각(updated_at): 뉴욕 11월 1일 오후 8:05 = 한국 11월 2일 오전 9:05
+      render(<Header readAt={null} savedAt="2026-11-02T00:05:00.000+00:00" reading={false} failed={false} onReread={() => {}} />)
+      expect(screen.getByText('서버에 마지막으로 저장된 시각 11월 2일 오전 9:05 · 날짜마다 저장된 때가 달라요')).toBeTruthy()
     } finally {
       process.env.TZ = seoul ?? 'Asia/Seoul'
       vi.resetModules()
@@ -361,7 +381,7 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     expect(readBitDays).toHaveBeenCalledTimes(2)
     expect(reads[1]!.deps.signal?.aborted).toBe(false)
     expectNumbersShown(64, 9, 55)
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expect((button('다시 읽는 중') as HTMLButtonElement).disabled).toBe(true)
     noButton('다시 읽기')
     noText(READ_H1)
@@ -376,7 +396,7 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     await answer(days(NEWER_DAYS))
 
     expectNumbersShown(70, 10, 60)
-    expect(screen.getByText('오늘 오후 3:45에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_345)).toBeTruthy()
     expect((button('다시 읽기') as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -388,9 +408,85 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     await answer(NOT_READY)
 
     expectNumbersShown(64, 9, 55)
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expect(button('다시 읽기')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+// 숫자가 있는 화면의 머리 줄 (dashboard-ux REQ-2701 AC-2701.3·AC-2701.4, design.md §2, 시안 docs/mockups/dashboard-ux/index.html head()).
+// "비트 연결됨"처럼 지금 연결돼 있다는 글은 쓰지 않는다(실시간 연결 확인이 없다). 시각 글은 비트에서 읽은 시각과 서버 저장 시각 중 하나만이다
+describe('AC-2701.3·AC-2701.4: 머리 줄 — 상태 표시 · 시각 글 · [다시 읽기]', () => {
+  const SAVED_AT = '2026-11-02T03:05:00.000+00:00' // 한국 낮 12시 5분(readDays latest.at)
+  const SAVED_TIME = '서버에 마지막으로 저장된 시각 11월 2일 오후 12:05 · 날짜마다 저장된 때가 달라요'
+  const header = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 }).parentElement as HTMLElement
+  const expectChip = (text: string, tone: string) => hasAll(within(header()).getByText(text), tone)
+  const neverConnected = () => expect(document.body.textContent).not.toMatch(/연결됨/)
+
+  it('AC-2701.3: 저장 숫자만 → 다시 읽는 중 → 비트에서 읽은 숫자 → 비트 읽기 실패로 상태 표시가 바뀌고, 시각 글은 비트 시각이 있으면 그것만, 없으면 서버 저장 시각(없으면 시각 글 없음)이다', async () => {
+    // 비트 PC가 아님: 저장 숫자만 · 서버 저장 시각 · 단추 없음
+    notBitPc()
+    render(<BitDashboard today={TODAY} initial={SAVED} savedAt={SAVED_AT} />)
+    expect(header().tagName).toBe('DIV')
+    expectChip('서버에 저장된 숫자', ds.chip.neutral)
+    expect(within(header()).getByText(SAVED_TIME)).toBeTruthy()
+    expect(within(header()).queryByRole('button')).toBeNull()
+    neverConnected()
+    cleanup()
+
+    // 저장 시각을 모르면(latest 없음) 시각 글을 지어내지 않는다
+    render(<BitDashboard today={TODAY} initial={SAVED} savedAt={null} />)
+    expectChip('서버에 저장된 숫자', ds.chip.neutral)
+    expect(header().textContent).not.toMatch(/시각/)
+    cleanup()
+
+    // 비트 PC: 열면 저장 숫자를 둔 채 다시 읽는 중 — 시각은 아직 서버 저장 시각
+    onBitPc()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    render(<BitDashboard today={TODAY} initial={SAVED} savedAt={SAVED_AT} />)
+    expectChip('비트에서 다시 읽는 중', ds.chip.accent)
+    expect(within(header()).getByText(SAVED_TIME)).toBeTruthy()
+    expect((within(header()).getByRole('button', { name: '다시 읽는 중' }) as HTMLButtonElement).disabled).toBe(true)
+
+    // 비트에서 읽음: 비트 시각만(서버 저장 시각과 함께 쓰지 않는다)
+    await answer(days())
+    expectChip('비트에서 읽은 숫자', ds.chip.positive)
+    expect(within(header()).getByText(READ_AT_342)).toBeTruthy()
+    expect(header().textContent).not.toContain('서버에 마지막으로 저장된 시각')
+    expect(within(header()).getByRole('button', { name: '다시 읽기' })).toBeTruthy()
+    neverConnected()
+
+    // 다시 읽기 실패: 상태 표시 "비트 읽기 실패", 시각은 읽은 그대로, 단추는 오류 상자가 맡는다
+    await user.click(button('다시 읽기'))
+    expectChip('비트에서 다시 읽는 중', ds.chip.accent)
+    await answer(failed('E-BIT-READ-FAILED'))
+    expectChip('비트 읽기 실패', ds.chip.negative)
+    expect(within(header()).getByText(READ_AT_342)).toBeTruthy()
+    expect(within(header()).queryByRole('button')).toBeNull()
+    neverConnected()
+  })
+
+  it('AC-2701.4: 다시 읽는 중·다시 읽기 실패에도 숫자 칸과 그래프의 숫자를 지우지 않고, 실패는 머리 줄 아래 오류 상자(글·번호·[다시 확인]·[연결 확인])다', async () => {
+    onBitPc()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    drawWith(SAVED_KEYED, GROUPS)
+    await answer(days(BIT_KEYED))
+    expectNumbersShown(64, 9, 55)
+    expect(rankRows()).toEqual(BIT_RANK)
+
+    await user.click(button('다시 읽기'))
+    expectNumbersShown(64, 9, 55)
+    expect(rankRows()).toEqual(BIT_RANK)
+
+    await answer(failed('E-BIT-READ-FAILED'))
+    expectNumbersShown(64, 9, 55)
+    expect(rankRows()).toEqual(BIT_RANK)
+    const box = screen.getByRole('alert')
+    expectOrder(header(), box, todaySection())
+    expect(within(box).getByText(errorInfo('E-BIT-READ-FAILED').what)).toBeTruthy()
+    expect(within(box).getByText('오류 번호 E-BIT-READ-FAILED')).toBeTruthy()
+    expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
+    expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
   })
 })
 
@@ -417,7 +513,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     await answer(NOT_READY)
 
     expectNumbersShown(64, 9, 55)
-    const at = screen.getByText('오늘 오후 3:42에 읽었어요')
+    const at = screen.getByText(READ_AT_342)
     const note = expectUnreadable()
     expectOrder(h1(), at, note, todaySection())
     expect(region('오늘 브리핑').contains(note)).toBe(true)
@@ -435,7 +531,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     await answer(NOT_READY)
 
     expectNumbersShown(64, 9, 55)
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expectUnreadable()
     noButton('다시 확인')
     expect(button('다시 읽기')).toBeTruthy()
@@ -450,7 +546,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
 
     expectNumbersShown(5, 2, 3)
     expectUnreadable()
-    noText(/에 읽었어요/)
+    noText(READ_AT)
     noText(CONNECT_H1)
   })
 
@@ -463,7 +559,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
 
     expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
     expectEmptyNumbers('자료 없음', '자료 없음')
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expectUnreadable()
     noText('비트 PC 연결 전')
   })
@@ -484,7 +580,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     await answer(days(NEWER_DAYS))
     noText(UNREADABLE)
     expectNumbersShown(70, 10, 60)
-    expect(screen.getByText('오늘 오후 3:45에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_345)).toBeTruthy()
   })
 
   it('AC-601.16·AC-601.5: 안내 뒤 다시 읽기가 실패하면 안내 없이 오류 상자만 나온다', async () => {
@@ -698,7 +794,7 @@ describe('AC-601.5·AC-601.12: 숫자가 있는 상태에서 다시 읽기 실�
   it('AC-601.5: 이전 숫자와 읽은 시각을 두고, 그 아래 오류 상자에 문구·번호·"아래 숫자는 …"·[다시 확인]·[연결 확인]', async () => {
     await failAfterRead('E-BIT-READ-FAILED')
     expectNumbersShown(64, 9, 55)
-    const at = screen.getByText('오늘 오후 3:42에 읽었어요')
+    const at = screen.getByText(READ_AT_342)
     const box = screen.getByRole('alert')
     expectOrder(h1(), at, box, todaySection())
     const { what, fix } = errorInfo('E-BIT-READ-FAILED')
@@ -788,7 +884,7 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
   it('AC-601.11: 읽은 시각과 [다시 읽기]가 있고, 기간별 흐름은 "연결하면·읽기가 끝나면" 글 없이 빈 그래프 틀이다', async () => {
     draw()
     await answer(days([]))
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expect(button('다시 읽기')).toBeTruthy()
     expect(within(flow()).queryByText(/생기는 것/)).toBeNull()
     expect(within(flow()).getByRole('heading', { level: 3, name: '환자 수 추이' })).toBeTruthy()
@@ -811,7 +907,7 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
     expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
     expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
   })
 })
 
@@ -823,7 +919,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     expectNumbersShown(5, 2, 3)
     noButton('다시 읽기')
     noButton('다시 읽는 중')
-    noText(/에 읽었어요/)
+    noText(READ_AT)
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -833,7 +929,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expectNumbersShown(5, 2, 3)
     expect((button('다시 읽는 중') as HTMLButtonElement).disabled).toBe(true)
-    noText(/에 읽었어요/)
+    noText(READ_AT)
     noText(READ_H1)
   })
 
@@ -842,7 +938,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     draw(SAVED)
     await answer(days())
     expectNumbersShown(64, 9, 55)
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expect(button('다시 읽기')).toBeTruthy()
   })
 
@@ -858,7 +954,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     expect(within(box).getByText('오류 번호 E-BIT-READ-FAILED')).toBeTruthy()
     expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
-    noText(/에 읽었어요/)
+    noText(READ_AT)
     noButton('다시 읽기')
   })
 
@@ -869,7 +965,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     expectNumbersShown(5, 2, 3)
     noButton('다시 읽기')
     noButton('다시 읽는 중')
-    noText(/에 읽었어요/)
+    noText(READ_AT)
     expect(screen.queryByRole('alert')).toBeNull()
     noText(CONNECT_H1)
     noText(UNREADABLE)
@@ -1083,10 +1179,12 @@ describe('모양 규칙', () => {
     ['처음 실패', failed('E-BIT-READ-FAILED'), []],
     ['다른 창 사용 중', failed('E-BIT-IN-USE'), []],
     ['숫자 있음', days(), []],
-  ])('AC-601.2·AC-601.4·AC-601.17: %s — h1은 하나, 상자 안 상자가 없고, 정해 둔 표시 밖의 움직임 클래스가 없다', async (_, result, marks) => {
+  ])('AC-601.2·AC-601.4·AC-601.17·AC-2701.3: %s — 큰 문장 h1은 하나(숫자가 있으면 머리 줄 h1 "대시보드"가 더 있다), 상자 안 상자가 없고, 정해 둔 표시 밖의 움직임 클래스가 없다', async (_, result, marks) => {
     const { container } = draw()
     if (result) await answer(result)
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    const headings = screen.getAllByRole('heading', { level: 1 }).map((heading) => heading.textContent)
+    expect(headings.filter((text) => text !== HEADER_H1)).toHaveLength(1)
+    expect(headings.filter((text) => text === HEADER_H1)).toHaveLength(result?.kind === 'days' ? 1 : 0)
     expect(nestedBoxes(container)).toEqual([])
     expect(container.innerHTML).not.toMatch(/\banimate-|overflow-hidden|rounded-full/)
     expect(motionMarks(container)).toEqual(marks)
@@ -1313,7 +1411,7 @@ describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
     fireEvent.click(button('오늘로'))
     expect(reads).toHaveLength(1)
     expect(readBitDays).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
   })
 
   it('AC-605.6: 기간별 흐름은 글자·고른 기간 모두 그대로다', async () => {
@@ -1337,7 +1435,7 @@ describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
     await answer(days([day(TODAY, 10, 60, true), day('2026-10-26', 8, 60), day('2026-10-19', 5, 50)]))
     expect(dateInput().value).toBe('2026-10-26')
     expect(h1().textContent).toBe('10월 26일 환자 68명이 왔습니다.')
-    expect(screen.getByText('오늘 오후 3:42에 읽었어요')).toBeTruthy()
+    expect(screen.getByText(READ_AT_342)).toBeTruthy()
   })
 
   it('AC-605.6: 다시 읽기가 실패해도 고른 날이 유지된다', async () => {

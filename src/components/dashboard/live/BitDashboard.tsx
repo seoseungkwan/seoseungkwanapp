@@ -10,17 +10,22 @@ import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
 import { createStatsWorker } from '@/workers/statsClient'
 import { DateControl, inDateRange } from './DateControl'
-import { BIT_IN_USE, ReadFailed, ReadingBlock, ReadLine, RereadAlert, UnreadableNote } from './ReadStatus'
+import { BIT_IN_USE, ReadFailed, ReadingBlock, RereadAlert, StatusHeader, UnreadableNote } from './ReadStatus'
 import { readBitDays, type ReadResult } from './readBitDays'
 import type { DashboardGroups } from './rxGroups'
 
 // 비트에서 읽어 대시보드를 그리는 화면 (bit-dashboard REQ-601, design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py state_body).
 // 서버가 그린 첫 모양은 initial 그대로이고, 효과 안에서 chrome.runtime이 있을 때만 읽는다. 화면 상태에는 일 숫자만 담고 서버로 아무것도 보내지 않는다(AC-601.9).
 // 고른 날은 여기 상태 하나다(design.md '### 날짜 고르기'). 주소·저장소에 두지 않아 새로 열면 오늘이고, 이미 읽은 숫자로 그려 비트를 다시 읽지 않는다(AC-605.6)
-// 통계 탭 묶음(groups)은 LiveDashboard가 읽어 넘긴다. 비트 읽기에 묶음 정의를 싣고(AC-606.7), 처방 상위는 그 묶음으로 센다(AC-606.1·AC-606.5)
+// 통계 탭 묶음(groups)은 LiveDashboard가 읽어 넘긴다. 비트 읽기에 묶음 정의를 싣고(AC-606.7), 처방 상위는 그 묶음으로 센다(AC-606.1·AC-606.5).
+// 묶음을 아직 읽는 중('pending')이면 저장 숫자로 먼저 그리고 비트 읽기만 묶음이 끝날 때까지 미룬다(dashboard-ux AC-2701.2).
+// 숫자가 있으면 머리 줄(StatusHeader)이 상태 표시·시각 글·[다시 읽기]를 맡는다(AC-2701.3). 지금 자리는 보고 문장 아래(차례 옮기기는 AC-2707.2)
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
+
+/** 비트 읽기에 실을 묶음 정의. 읽지 못함(null)·읽는 중은 빈 목록이다(읽는 중에는 읽기를 시작하지 않는다) */
+const defsOf = (groups: DashboardGroups | null | 'pending') => (groups === null || groups === 'pending' ? [] : groups.defs)
 
 type Status =
   | { kind: 'idle' } // 숫자 없음, 읽지도 않음: 연결 전 모양
@@ -75,7 +80,9 @@ function emptyLook(status: Status): EmptyLook {
 
 /**
  * onBitLoaded: 비트 읽기가 일 숫자(days, 빈 배열 포함)로 끝날 때 부른다. LiveDashboard가 저장 숫자 오류 카드를 거두는 때다(AC-601.19).
- * groups: 통계 탭 묶음. 주지 않으면 묶음 없음, null = 묶음을 읽지 못함(비트 읽기는 묶음 없이, 처방 상위는 AC-606.5 글)
+ * groups: 통계 탭 묶음. 주지 않으면 묶음 없음, null = 묶음을 읽지 못함(비트 읽기는 묶음 없이, 처방 상위는 AC-606.5 글),
+ * 'pending' = 묶음을 읽는 중(처방 상위는 "묶음을 읽는 중", 비트 읽기는 묶음이 끝날 때 한 번 시작한다. 그때 다시 놓지 않는다 — AC-2701.2).
+ * savedAt: 처음 자료(저장 숫자)의 마지막 저장 시각(readDays latest.at). 머리 줄 시각 글에 쓴다(AC-2701.3). 없으면 null
  * older: 기간별 흐름의 옛 기간 읽기(dashboard-period REQ-1804, LiveDashboard가 저장 숫자로 만든다). 받은 그대로 source 안에 넣는다.
  * 비트 읽기(stats.rows, 오늘 − 100 ~ 오늘)는 지금처럼 열 때와 [다시 읽기]에만 하고, 기간을 골라도 하지 않는다(AC-1804.4)
  */
@@ -83,12 +90,14 @@ export function BitDashboard({
   today,
   initial,
   groups = NO_GROUPS,
+  savedAt = null,
   older,
   onBitLoaded,
 }: {
   today: string
   initial: SummarySource
-  groups?: DashboardGroups | null
+  groups?: DashboardGroups | null | 'pending'
+  savedAt?: string | null
   older?: OlderDays
   onBitLoaded?: () => void
 }) {
@@ -98,15 +107,19 @@ export function BitDashboard({
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
   // 마지막으로 받은 onBitLoaded·묶음 정의. 읽기 효과의 의존에 넣지 않는다(부모가 다시 그려도 읽기를 다시 시작하지 않게)
   const bitLoaded = useRef(onBitLoaded)
-  const groupDefs = useRef(groups?.defs ?? [])
+  const groupDefs = useRef(defsOf(groups))
   useEffect(() => {
     bitLoaded.current = onBitLoaded
-    groupDefs.current = groups?.defs ?? []
+    groupDefs.current = defsOf(groups)
   })
+  // 묶음 읽기가 끝났다(왔음·읽지 못함·10초 한도). 끝나기 전에는 비트 읽기를 시작하지 않는다(묶음 정의를 실어야 한다, AC-606.7·AC-2701.2)
+  const groupsSettled = groups !== 'pending'
   // 연 채 날이 지나 고른 날이 범위 밖이 되면 오늘로 돌아간다(AC-605.5)
   const selected = picked !== null && inDateRange(picked, today) ? picked : today
 
   useEffect(() => {
+    // 묶음을 기다린다: 끝나면 이 효과가 다시 돌아 그때 한 번 읽는다
+    if (!groupsSettled) return
     // 저절로 읽은 답은 조용히 둔다(열 때·날짜가 바뀔 때, AC-601.13·AC-601.16)
     const pressed = pressedNow.current
     pressedNow.current = false
@@ -121,7 +134,7 @@ export function BitDashboard({
       if (result.kind === 'days') bitLoaded.current?.()
     })
     return () => leaving.abort()
-  }, [today, attempt])
+  }, [today, attempt, groupsSettled])
 
   const readAgain = () => {
     pressedNow.current = true
@@ -130,7 +143,7 @@ export function BitDashboard({
   // 묶음·옛 기간 읽기는 DashboardAnalysis의 새 prop이 아니라 source 안으로 간다(tab-frame AC-312.2)
   const source: SummarySource =
     status.kind === 'data'
-      ? { kind: 'data', days: status.days, groups: groups === null ? null : groups.lines, ...(older === undefined ? {} : { older }) }
+      ? { kind: 'data', days: status.days, groups: groups === null || groups === 'pending' ? groups : groups.lines, ...(older === undefined ? {} : { older }) }
       : { kind: 'none' }
 
   return (
@@ -146,7 +159,7 @@ export function BitDashboard({
           <>
             {/* key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다 */}
             <ReportBlock key={selected} today={today} days={status.days} selected={selected} />
-            <ReadLine readAt={status.readAt} reading={status.reading} failed={status.code !== null} onReread={readAgain} />
+            <StatusHeader readAt={status.readAt} savedAt={savedAt} reading={status.reading} failed={status.code !== null} onReread={readAgain} />
             {status.code !== null && <RereadAlert code={status.code} readAt={status.readAt} hasNumbers={status.days.length > 0} onRetry={readAgain} />}
             {status.unreadable && <UnreadableNote />}
           </>

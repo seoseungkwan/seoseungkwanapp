@@ -96,9 +96,11 @@ const NO_DATA = '자료 없음'
 const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.' // AC-606.5
 const NO_GROUPS = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.' // AC-606.4
 const RELOAD = '통계 탭에서 이 기간을 다시 불러와야 숫자가 나와요.' // AC-606.3
-/** source의 묶음: undefined·[] = 묶음 없음, null = 묶음을 읽지 못함 */
-type GroupLines = readonly RxGroupLine[] | null | undefined
-const noGroups = (groups: GroupLines) => groups !== null && (groups ?? []).length === 0
+const GROUPS_PENDING = '묶음을 읽는 중' // dashboard-ux AC-2701.2
+/** source의 묶음: undefined·[] = 묶음 없음, null = 묶음을 읽지 못함, 'pending' = 묶음을 읽는 중 */
+type GroupLines = readonly RxGroupLine[] | null | 'pending' | undefined
+type SettledGroups = Exclude<GroupLines, 'pending'>
+const noGroups = (groups: SettledGroups) => groups !== null && (groups ?? []).length === 0
 
 // 연결하면 생기는 것(시안 gains 글자 그대로): 연결 뒤 이 자리에 그려지는 그래프 넷의 이름·설명
 const GAINS = [
@@ -274,10 +276,17 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
         title="처방 상위"
         desc="통계 탭에서 묶은 치료 중 많이 한 순서예요"
         sub={rankLine(flow, period.kind === 'ready' ? dayCount(days, flow.current) : null)}
-        aside={<GroupsLink groups={groups} />}
+        aside={groups === 'pending' ? undefined : <GroupsLink groups={groups} />}
         className="md:col-span-2 lg:col-span-6 lg:border-l lg:border-line lg:pl-6"
       >
-        {reading ? <EmptyRank message={READING} /> : <RankBody rank={groupRank(days, flow.current, groups ?? [])} groups={groups} />}
+        {reading ? (
+          <EmptyRank message={READING} />
+        ) : groups === 'pending' ? (
+          // 묶음을 읽는 중(dashboard-ux AC-2701.2): 묶음이 있는지 모르니 숫자도 머리 링크도 없다. 묶음이 오면 이 칸만 바뀐다
+          <EmptyRank message={GROUPS_PENDING} live />
+        ) : (
+          <RankBody rank={groupRank(days, flow.current, groups ?? [])} groups={groups} />
+        )}
       </Chart>
     </div>
   )
@@ -372,10 +381,10 @@ function Chart({ title, desc, sub, aside, className, children }: { title: string
   )
 }
 
-// 빈 틀 가운데 문구(흰 바탕 좌우 12·위아래 4). 꾸밈 틀 밖 글자라 화면 읽기가 읽는다
-function Note({ children }: { children: ReactNode }) {
+// 빈 틀 가운데 문구(흰 바탕 좌우 12·위아래 4). 꾸밈 틀 밖 글자라 화면 읽기가 읽는다. role: 곧 바뀌는 글(읽는 중)이면 status
+function Note({ children, role }: { children: ReactNode; role?: 'status' }) {
   return (
-    <p className="absolute inset-0 flex items-center justify-center px-4 text-center">
+    <p role={role} className="absolute inset-0 flex items-center justify-center px-4 text-center">
       <span className="bg-surface px-3 py-1 text-small text-muted">{children}</span>
     </p>
   )
@@ -477,7 +486,7 @@ function WeekBody({ buckets, message = NO_DATA }: { buckets: ReturnType<typeof w
 // 처방 상위 머리 링크(AC-606.6): 묶음은 통계 탭 처방별 추세에서 고친다. 묶음 없음일 때만 [묶음 만들기], 읽지 못함은 [묶음 고치기].
 // 글자 단추 모양 그대로(폰 44px) + no-underline 하나: 앱에는 a 밑줄을 지우는 바탕 규칙이 없어 붙이지 않으면 늘 밑줄이다
 // (UI_GUIDE 글자 단추의 밑줄은 올림 반응뿐. CountsOnly·PatientsEntry 링크와 같다). 그래프가 아니라 AC-311.8 움직임 검사에서 이 링크만 뺀다
-function GroupsLink({ groups }: { groups: GroupLines }) {
+function GroupsLink({ groups }: { groups: SettledGroups }) {
   return (
     <Link href="/stats" className={`${ds.textButton} no-underline`}>
       {noGroups(groups) ? '묶음 만들기' : '묶음 고치기'}
@@ -488,7 +497,7 @@ function GroupsLink({ groups }: { groups: GroupLines }) {
 // 처방 상위 몸(bit-dashboard design.md '칸 그리기'), 이 차례로 고른다:
 // ① 기간 안 일 줄 없음 → 빈 줄 다섯 + "자료 없음" ② 묶음을 읽지 못함 ③ 묶음 없음 → 빈 줄 다섯 + 그 글
 // ④ 셀 수 있는 묶음이 있음 → 순위 막대("건") + 다시 불러와야 하는 묶음이 있으면 그 아래 한 줄 ⑤ 다시 불러와야 하는 묶음뿐 → 빈 줄 다섯 + 글
-function RankBody({ rank, groups }: { rank: GroupRank | null; groups: GroupLines }) {
+function RankBody({ rank, groups }: { rank: GroupRank | null; groups: SettledGroups }) {
   if (rank === null) return <EmptyRank message={NO_DATA} />
   if (groups === null) return <EmptyRank message={GROUPS_UNREAD} />
   if (noGroups(groups)) return <EmptyRank message={NO_GROUPS} />
@@ -501,8 +510,8 @@ function RankBody({ rank, groups }: { rank: GroupRank | null; groups: GroupLines
   )
 }
 
-// 처방 상위 빈 틀: 36px 빈 줄 다섯(번호 · 빈 칸 · "–", 꾸밈) + 가운데 글
-function EmptyRank({ message }: { message: string }) {
+// 처방 상위 빈 틀: 36px 빈 줄 다섯(번호 · 빈 칸 · "–", 꾸밈) + 가운데 글. live: 곧 바뀌는 글이라 role=status로 읽힌다
+function EmptyRank({ message, live = false }: { message: string; live?: boolean }) {
   return (
     <div className="relative mt-2">
       <ol aria-hidden="true">
@@ -514,7 +523,7 @@ function EmptyRank({ message }: { message: string }) {
           </li>
         ))}
       </ol>
-      <Note>{message}</Note>
+      <Note role={live ? 'status' : undefined}>{message}</Note>
     </div>
   )
 }

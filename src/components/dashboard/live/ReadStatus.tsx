@@ -17,13 +17,28 @@ const CONNECT_CHECK = '/claim/setup?next=dashboard'
 // 오류 번호가 없는 안내라 lib/errors.ts 틀(무엇이·고치기·번호)에 맞지 않아 여기 둔다(AC-601.16)
 const UNREADABLE = '이 PC에서 비트를 읽을 수 없어요. 연결을 확인해 주세요.'
 
-// 읽은 시각 "오후 3:42": 그 PC 시간대·언어와 상관없다(위쪽 띠 시계 kstNow와 같은 방식). 언어 자료가 모자라면 ko-KR은 "PM"을 준다
-const KOREA_TIME = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// 읽은 시각 "오후 3:42"·저장 시각 "11월 2일 오후 12:05": 그 PC 시간대·언어와 상관없다(위쪽 띠 시계 kstNow와 같은 방식). 언어 자료가 모자라면 ko-KR은 "PM"을 준다
+const KOREA_TIME = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
-function timeText(at: number): string {
-  const parts = Object.fromEntries(KOREA_TIME.formatToParts(at).map((p) => [p.type, p.value]))
+function koreaParts(at: number): Record<string, string> {
+  return Object.fromEntries(KOREA_TIME.formatToParts(at).map((p) => [p.type, p.value]))
+}
+
+function clockText(parts: Record<string, string>): string {
   const hour = Number(parts.hour)
   return `${hour < 12 ? '오전' : '오후'} ${hour % 12 || 12}:${parts.minute}`
+}
+
+function timeText(at: number): string {
+  return clockText(koreaParts(at))
+}
+
+/** 서버 저장 시각(readDays latest.at, ISO 글자) → "11월 2일 오후 12:05". 읽을 수 없는 값이면 null(시각을 지어내지 않는다) */
+function savedTimeText(at: string): string | null {
+  const time = Date.parse(at)
+  if (Number.isNaN(time)) return null
+  const parts = koreaParts(time)
+  return `${Number(parts.month)}월 ${Number(parts.day)}일 ${clockText(parts)}`
 }
 
 function Safe() {
@@ -71,19 +86,56 @@ export function ReadFailed({ code, onRetry }: { code: ErrorCode; onRetry(): void
   )
 }
 
-/** 보고 문장 아래 읽은 시각·[다시 읽기]. 읽은 적이 없으면(저장 숫자) 시각을 지어내지 않고, 읽는 중도 아니면 줄이 없다. 다시 읽기 실패면 단추를 뺀다 */
-export function ReadLine({ readAt, reading, failed, onReread }: { readAt: number | null; reading: boolean; failed: boolean; onReread(): void }) {
-  if (readAt === null && !reading) return null
+// 머리 줄 상태 표시(dashboard-ux AC-2701.3). "비트 연결됨"처럼 지금 연결돼 있다는 글은 쓰지 않는다: 실시간 연결 확인이 없어
+// 이 화면에서 비트 읽기가 성공했는지만 말한다(2026-11-07 사용자 결정). 색은 시안 head() 칩 그대로(보조·accent·positive·negative)
+function chipOf(readAt: number | null, reading: boolean, failed: boolean): { text: string; className: string } {
+  if (reading) return { text: '비트에서 다시 읽는 중', className: ds.chip.accent }
+  if (failed) return { text: '비트 읽기 실패', className: ds.chip.negative }
+  if (readAt !== null) return { text: '비트에서 읽은 숫자', className: ds.chip.positive }
+  return { text: '서버에 저장된 숫자', className: ds.chip.neutral }
+}
+
+// 시각 글: 비트에서 읽었으면 그 시각만, 아니면 서버에 마지막으로 저장된 시각(latest.at)만. 둘을 함께 쓰지 않는다.
+// latest.at은 가장 최근에 저장된 날 줄 하나의 시각이라 자료 전체가 그때 것이라고 하지 않는다("날짜마다 저장된 때가 달라요"). 둘 다 없으면 null
+function whenText(readAt: number | null, savedAt: string | null): string | null {
+  if (readAt !== null) return `비트에서 읽은 시각 오늘 ${timeText(readAt)}`
+  const saved = savedAt === null ? null : savedTimeText(savedAt)
+  return saved === null ? null : `서버에 마지막으로 저장된 시각 ${saved} · 날짜마다 저장된 때가 달라요`
+}
+
+/**
+ * 숫자가 있는 화면의 머리 줄(dashboard-ux AC-2701.3, 시안 docs/mockups/dashboard-ux/index.html head()): h1 "대시보드" · 상태 표시 · 시각 글 · [다시 읽기].
+ * readAt: 이 화면에서 비트에서 읽은 시각(없으면 null). savedAt: 저장 숫자의 마지막 저장 시각(readDays latest.at, 없으면 null).
+ * [다시 읽기]는 비트에서 읽었거나 읽는 중일 때만이고, 읽는 동안 "다시 읽는 중"으로 막히며, 다시 읽기 실패면 오류 상자(RereadAlert)의 단추가 맡아 뺀다
+ */
+export function StatusHeader({
+  readAt,
+  savedAt,
+  reading,
+  failed,
+  onReread,
+}: {
+  readAt: number | null
+  savedAt: string | null
+  reading: boolean
+  failed: boolean
+  onReread(): void
+}) {
+  const chip = chipOf(readAt, reading, failed)
+  const when = whenText(readAt, savedAt)
+  const canReread = (readAt !== null || reading) && !failed
   return (
-    <div className="mt-4 flex max-w-130 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-line pt-3">
-      {readAt !== null && (
-        <p className="flex items-center gap-1.5 text-small text-ink-2">
+    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-strong pb-4">
+      <h1 className="text-heading-m font-semibold text-ink max-md:text-title">대시보드</h1>
+      <span className={chip.className}>{chip.text}</span>
+      {when !== null && (
+        <p className="flex min-w-0 items-center gap-1.5 text-small text-ink-2">
           <Icon name="clock" size={14} className="shrink-0 text-muted" />
-          <span>{`오늘 ${timeText(readAt)}에 읽었어요`}</span>
+          <span>{when}</span>
         </p>
       )}
-      {!failed && (
-        <button type="button" className={ds.button.secondarySmall} disabled={reading} onClick={onReread}>
+      {canReread && (
+        <button type="button" className={`${ds.button.secondarySmall} ml-auto max-md:ml-0 max-md:w-full`} disabled={reading} onClick={onReread}>
           {reading && <span aria-hidden="true" className="bit-read-spin" />}
           {reading ? '다시 읽는 중' : '다시 읽기'}
         </button>

@@ -133,10 +133,10 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     expectTypeOf<Extract<SummarySource, { kind: 'data' }>['days']>().toEqualTypeOf<readonly DayPayload[]>()
   })
 
-  it('AC-606.1·AC-606.4·AC-606.5: data 모양에 선택 칸 groups가 붙는다(묶음 한 줄 = 이름·열쇠, [] 또는 없음 = 묶음 없음, null = 묶음을 읽지 못함)', () => {
+  it('AC-606.1·AC-606.4·AC-606.5·AC-2701.2: data 모양에 선택 칸 groups가 붙는다(묶음 한 줄 = 이름·열쇠, [] 또는 없음 = 묶음 없음, null = 묶음을 읽지 못함, "pending" = 묶음을 읽는 중)', () => {
     expectTypeOf<RxGroupLine>().toEqualTypeOf<{ name: string; key: string }>()
     type Data = Extract<SummarySource, { kind: 'data' }>
-    expectTypeOf<Data['groups']>().toEqualTypeOf<readonly RxGroupLine[] | null | undefined>()
+    expectTypeOf<Data['groups']>().toEqualTypeOf<readonly RxGroupLine[] | null | 'pending' | undefined>()
     expectTypeOf<RequiredKeys<Data>>().toEqualTypeOf<'kind' | 'days'>()
     const days = [fakeDay('2026-10-31')]
     const lines: readonly RxGroupLine[] = [{ name: '도수치료', key: 't0000000000000001' }]
@@ -145,6 +145,7 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
       { kind: 'data', days, groups: lines },
       { kind: 'data', days, groups: [] },
       { kind: 'data', days, groups: null },
+      { kind: 'data', days, groups: 'pending' },
     ]
     // 연결 판정은 groups와 상관없이 days만 본다
     for (const source of sources) expect(isConnected(source)).toBe(true)
@@ -152,7 +153,7 @@ describe('SummarySource · isConnected — 자료 모양과 연결 판정', () =
     // 타입만 더한다: 다시 정의한 묶음 모양은 이름·열쇠 두 칸이고, groups는 선택 칸이다
     const text = code(read('source.ts'))
     expect(text).toMatch(/export type RxGroupLine = \{ name: string; key: string \}/)
-    expect(text).toMatch(/\{ kind: 'data'; days: readonly DayPayload\[\]; groups\?: readonly RxGroupLine\[\] \| null; older\?: OlderDays \}/)
+    expect(text).toMatch(/\{ kind: 'data'; days: readonly DayPayload\[\]; groups\?: readonly RxGroupLine\[\] \| null \| 'pending'; older\?: OlderDays \}/)
   })
 
   it('AC-1804.1·AC-1804.2: data 모양에 선택 칸 older(옛 기간 읽기: 손에 든 숫자의 첫날 · 기간 한 번 읽기, null = 실패·한도)가 붙는다. 필수 칸은 그대로 kind·days다', () => {
