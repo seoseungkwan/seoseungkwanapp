@@ -10,6 +10,9 @@ namespace Precheck.Core.Reception;
 /// 이름·생년월일·성별·접수 메모·수납 시각·증상, TodayPeople·TodayMemos·TodayPaid·VisitSymptoms·PriorSymptoms, REQ-1410)뿐이다. 내원(OcmInf)은 읽는 곳마다 등록 병원 범위(DepMst.DepHspNum=@hospital) 안에서만 읽고, 처방(OdrInf)은 그 내원에 붙여서만 읽는다.
 /// 지난 내원의 완료 조건은 Sql.HistoryVisitSql, 처방 줄 조건은 Sql.HistoryCodeSql과 같다. SQL Server 2008 R2에서 돌도록 OFFSET·FETCH 없이 ROW_NUMBER()로 자르고,
 /// 차트번호는 함수 없이 견준다(색인을 쓰게, spec bit-read-speed와 같은 까닭). Sql.IsAllowed·Sql.ParametersOf가 Parameters 표를 묻는다.
+/// 상세의 종이 진료기록부 자료(spec reception-paper design.md 3절, AC-1501.8)도 여기 있다: PaperPerson(사람 줄·특이사항, 주민번호는 앞 6자리만)·
+/// PaperVisit(진료실·보험)·PaperSymptoms(증상 줄, 빈 줄 포함)·PaperDx(상병)·PaperOrders(처방 줄). 내원 쪽 넷은 VisitSymptoms의 오늘 쪽과 같은
+/// '그 접수'(같은 차트번호·OcmAcpDtm=@before 원값·외래·병원 범위) 하나만 읽고, 표·칸은 2026-11-07 의원 PC에서 확인한 것(design.md 1절)이다.
 /// </summary>
 public static class ReceptionSql
 {
@@ -129,6 +132,52 @@ SELECT V.OcmNum VisitId,CAST(e.EmrShtVal AS nvarchar(max)) Line FROM V JOIN dbo.
 WHERE e.EmrShtTyp='S' AND LEN(LTRIM(CAST(e.EmrShtVal AS nvarchar(max))))>0
 ORDER BY V.OcmNum,e.EmrUpdDtm";
 
+    // ---- 종이 진료기록부 자료(spec reception-paper design.md 3절, AC-1501.8, TASK-2) ------------------------------------
+
+    // 그 접수: 그 환자(@chart)의 그 접수(@before = 그 접수의 OcmAcpDtm 원값)·외래. VisitSymptoms의 오늘 쪽과 같은 조건(병원 범위는 따로 붙인다)
+    private const string ThisVisit = "c.OcmChtNum=@chart AND c.OcmAcpDtm=@before AND c.OcmPatTyp='O'";
+
+    // V: 병원 범위 안의 그 접수. 증상·상병·처방 줄은 V에 내원번호 칸으로 붙여서만 읽는다
+    private const string ThisVisitCte = @"WITH V AS (
+ SELECT c.OcmNum FROM dbo.OcmInf c
+ WHERE " + ThisVisit + @"
+   AND " + InHospital + @"
+)";
+
+    /// <summary>
+    /// 종이 사람 칸(AC-1501.2·1501.3): 차트번호(함수 없이)로 PbsInf 한 줄과 특이사항 PbsCmtInf.PbsSpcCmt(text, RTF 그대로, 없으면 NULL).
+    /// 주민번호는 LEFT(…,6)만 읽는다(7번째 글자부터는 도우미 메모리에도 오지 않는다, design.md 4절).
+    /// </summary>
+    public const string PaperPerson = @"SELECT LEFT(p.PbsResNum,6) ResFront,RTRIM(p.PbsDtlAdr) Addr,RTRIM(p.PbsAdrSta) AddrRest,RTRIM(p.PbsPhnNum) Phone,RTRIM(p.PbsCelPhn) Mobile,CAST(s.PbsSpcCmt AS varchar(max)) Special
+FROM dbo.PbsInf p LEFT JOIN dbo.PbsCmtInf s ON s.PbsChtNum=p.PbsChtNum
+WHERE p.PbsChtNum=@chart";
+
+    /// <summary>
+    /// 종이 내원내역(AC-1501.4): 그 접수 c의 진료실 = 접수 날 유효한 이 병원 DepMst 줄의 DepKorNam(이 JOIN이 병원 범위다),
+    /// 보험 = OcmInsCod의 InsMst 줄 중 InsAdpDte가 접수 날 이하인 가장 늦은 줄의 InsCodNam(같으면 이름 순, 없으면 NULL).
+    /// </summary>
+    public const string PaperVisit = @"SELECT c.OcmNum VisitId,RTRIM(d.DepKorNam) Room,RTRIM(i.InsCodNam) Insurance FROM dbo.OcmInf c
+JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte
+OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=LEFT(c.OcmAcpDtm,8) ORDER BY m.InsAdpDte DESC,m.InsCodNam) i
+WHERE " + ThisVisit;
+
+    /// <summary>종이 증상(AC-1501.5): 그 접수의 EmrInf 'S' 줄 전부. 빈 줄도 진짜 빈 줄이라 거르지 않는다(정리는 도우미가 한다). EmrShtSeq 순.</summary>
+    public const string PaperSymptoms = ThisVisitCte + @"
+SELECT e.EmrOcmNum VisitId,CAST(e.EmrShtVal AS nvarchar(max)) Line FROM dbo.EmrInf e JOIN V ON V.OcmNum=e.EmrOcmNum
+WHERE e.EmrShtTyp='S'
+ORDER BY e.EmrShtSeq";
+
+    /// <summary>종이 상병(AC-1501.6): 그 접수의 OicInf 줄(코드·이름·주상병 표시 OicIcdPri, '1'이면 주), OicSeq 순.</summary>
+    public const string PaperDx = ThisVisitCte + @"
+SELECT RTRIM(x.OicElcCod) Code,RTRIM(x.OicIcdNam) Name,RTRIM(ISNULL(x.OicIcdPri,'')) Pri FROM dbo.OicInf x JOIN V ON V.OcmNum=x.OicOcmNum
+ORDER BY x.OicSeq";
+
+    /// <summary>종이 처방·원외처방(AC-1501.7): 그 접수의 살아 있는 처방 줄(RxRow), OdrSeq 순. OutCod가 'XX'면 원외처방(나누기는 도우미가 한다).</summary>
+    public const string PaperOrders = ThisVisitCte + @"
+SELECT RTRIM(o.OdrCod) Code,RTRIM(o.OdrCodNam) Name,o.OdrQty Qty,o.OdrTms Tms,o.OdrDay Day,RTRIM(ISNULL(o.OdrOutCod,'')) OutCod FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum
+WHERE " + RxRow + @"
+ORDER BY o.OdrSeq";
+
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
@@ -138,6 +187,7 @@ ORDER BY V.OcmNum,e.EmrUpdDtm";
     private static readonly SqlParam Last = new SqlParam("@last", SqlParamKind.Int, 0);
 
     private static readonly SqlParam[] Today = { From, To, Hospital };
+    private static readonly SqlParam[] Visit = { Chart, Before, Hospital };
 
     /// <summary>문장 → 그 문장에 실제로 있는 매개변수(design.md 3절 표). ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.</summary>
     public static IReadOnlyDictionary<string, SqlParam[]> Parameters { get; } = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
@@ -153,5 +203,10 @@ ORDER BY V.OcmNum,e.EmrUpdDtm";
         [TodayMemos] = Today,
         [TodayPaid] = Today,
         [VisitSymptoms] = new[] { Chart, Before, Hospital, First, Last },
+        [PaperPerson] = new[] { Chart },
+        [PaperVisit] = Visit,
+        [PaperSymptoms] = Visit,
+        [PaperDx] = Visit,
+        [PaperOrders] = Visit,
     };
 }
