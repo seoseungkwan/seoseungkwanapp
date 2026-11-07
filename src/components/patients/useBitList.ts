@@ -95,9 +95,7 @@ export function useBitList({
       days.current[target] = today
       setStates((prev) => ({ ...prev, [target]: { phase: 'reading', ready: prev[target].ready } }))
       const live = () => mounted.current && !brokenRef.current && turns.current[target] === turn
-      // 명령 표(commands.json)는 kind 넷을 받는다. 화면 쪽 인자 모양(types/bridge.ts)은 아직 followup·injection 둘이라 여기서만 넓힌다
-      const args = { kind: KIND[target], ...RANGE[target](today) } as unknown as Parameters<PatientsBridge['stream']>[1]
-      stream('contact.targets', args).then(
+      stream('contact.targets', { kind: KIND[target], ...RANGE[target](today) }).then(
         ({ id }) => {
           if (live()) send({ type: 'list', tool: target, today, id })
         },

@@ -83,7 +83,14 @@ describe('/patients 페이지', () => {
   it('AC-610.5: 도구 링크의 주소에는 도구 이름만 있고, 주소로 받은 글자를 다시 쓰지 않는다', async () => {
     const { container } = await open('가상환자01 010-0000-0101')
     const links = within(await toolNav()).getAllByRole('link')
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/patients?tool=followup', '/patients?tool=recall', '/patients?tool=messages'])
+    // 도구 다섯 차례 (patients-bit-lists AC-2802.1·AC-2806.3)
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      '/patients?tool=followup',
+      '/patients?tool=reservations',
+      '/patients?tool=recall',
+      '/patients?tool=lapsed',
+      '/patients?tool=messages',
+    ])
     await waitFor(() => expect(screen.getByText('자료 없음')).toBeTruthy())
     expect(container.innerHTML).not.toContain('가상환자01')
     expect(container.innerHTML).not.toContain('010-0000-0101')

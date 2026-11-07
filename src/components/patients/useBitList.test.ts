@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -304,5 +306,16 @@ describe('보냄 표시 (AC-2803.8)', () => {
     expect(t.result.current.storeCode).toBe('E-STORE-FAILED')
     t.emit({ type: 'stored', ok: true, recall: [] })
     expect(t.result.current.storeCode).toBeNull()
+  })
+})
+
+describe('통로 타입 (AC-2801.5)', () => {
+  const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
+
+  it('AC-2801.5: bridge 타입의 contact.targets kind에 lapsed·reservation이 있고, useBitList는 타입을 속이지 않고 부른다', () => {
+    const kinds = source('src/types/bridge.ts').match(/'contact\.targets':\s*Period\s*&\s*\{\s*kind:\s*([^}]+)\}/)
+    expect(kinds?.[1]).toMatch(/'lapsed'/)
+    expect(kinds?.[1]).toMatch(/'reservation'/)
+    expect(source('src/components/patients/useBitList.ts')).not.toMatch(/as unknown as/)
   })
 })
