@@ -49,6 +49,13 @@ const STATUS_CLASS = { wait: 'status-wait', hold: 'status-hold', pay: 'status-pa
 
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
 
+/** 메모 상자의 이름표 (AC-1503.1, 승인 목업 Paper.html) */
+const MEMO_LABEL = '메모'
+
+/** 정보 글을 나누는 글과 신환 표시 글 (AC-1503.2) */
+const INFO_JOINER = ' · '
+const NEW_KIND = '신환'
+
 /**
  * 목록 화면을 host 안에 그린다.
  * @param {HTMLElement} host 화면 자리(#app)
@@ -165,10 +172,10 @@ function rowOf(row, lane, view, select) {
       ],
       textSpan('chart', row.chart),
       textSpan('name', row.name),
-      textSpan('info', row.info),
+      infoOf(row.info),
     ]),
     el('span', { class: 'row-time' }, [textSpan(null, row.time), el('span', { class: waitedClass(row) }, row.waited)]),
-    row.memo ? el('span', { class: 'memo' }, `메모 · ${row.memo}`) : null,
+    row.memo ? el('span', { class: 'memo' }, [el('span', { class: 'memo-label' }, MEMO_LABEL), row.memo]) : null,
     el('span', { class: 'rx-line' }, [el('span', { class: 'rx-label' }, row.rxLabel), el('span', { class: 'rx-text' }, row.rx)]),
   ]
   const main = tablet
@@ -183,6 +190,16 @@ function waitedClass(row) {
   if (row.long === true) return 'waited is-long'
   if (row.lane === 'done') return 'waited is-done'
   return 'waited'
+}
+
+/**
+ * 정보 글 span. 도우미(C# BoardBuilder)의 글은 " · "로 이은 조각이고 끝이 "신환"이나 "재진"이다. 끝 조각이 "신환"이면
+ * 글에서 그 조각(과 앞 " · ")을 빼고 바로 뒤에 신환 표시를 붙인다(AC-1503.2). 그 밖이면 글 그대로다
+ */
+function infoOf(info) {
+  const parts = typeof info === 'string' ? info.split(INFO_JOINER) : []
+  if (parts.at(-1) !== NEW_KIND) return textSpan('info', info)
+  return [textSpan('info', parts.slice(0, -1).join(INFO_JOINER)), el('span', { class: 'new-badge' }, NEW_KIND)]
 }
 
 /** 글이 있을 때만 span. 아직 못 읽은 칸("")은 그 칸만 비운다(AC-1402.7) */

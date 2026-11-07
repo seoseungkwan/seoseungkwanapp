@@ -103,6 +103,20 @@ function refreshOf(root: ParentNode): HTMLButtonElement | null {
   return root.querySelector<HTMLButtonElement>('header.top button.refresh')
 }
 
+/**
+ * 메모 상자(AC-1503.1)의 아이 마디: 요소는 '태그.class:글', 글 마디는 '#text:글'. 상자가 없으면 null.
+ * 메모 상자는 [span.memo-label "메모", 메모 글 마디] 둘뿐이다(이름표 뒤 " · " 없음, 환자 글은 글 마디로만)
+ */
+function memoOf(root: ParentNode | null | undefined): string[] | null {
+  const memo = root?.querySelector('.memo')
+  if (!memo) return null
+  return [...memo.childNodes].map((n) =>
+    n instanceof Element ? `${n.tagName.toLowerCase()}.${n.className}:${n.textContent}` : n.nodeType === Node.TEXT_NODE ? `#text:${n.textContent}` : `#${n.nodeName}`,
+  )
+}
+
+const memoBox = (text: string) => ['span.memo-label:메모', `#text:${text}`]
+
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
 const QUEUE_ORDER = ['가상환자01', '가상환자04', '가상환자05', '가상환자02', '가상환자03']
 
@@ -244,7 +258,7 @@ describe('board.js 목록 그리기', () => {
     expect(app.textContent).not.toContain('가상환자01')
   })
 
-  it('AC-1407.2: 진료 순서 줄은 순서 번호·상태 이름표·차트번호·이름·정보, 접수 시각·기다린 글(오래 기다림은 주황), 메모가 있을 때만 "메모 · …", 처방 이름표·처방 글이다', () => {
+  it('AC-1407.2 · AC-1503.1 · AC-1503.2: 진료 순서 줄은 순서 번호·상태 이름표·차트번호·이름·정보(신환이면 신환 표시), 접수 시각·기다린 글(오래 기다림은 주황), 메모가 있을 때만 메모 상자, 처방 이름표·처방 글이다', () => {
     const app = appHost()
     view.renderBoard(app, fx.mockupBoard())
     const rows = rowsOf(app)
@@ -257,8 +271,8 @@ describe('board.js 목록 그리기', () => {
     expect(shapeOf(longWait)).toEqual(['a.row-main'])
     const main = longWait.querySelector(':scope > .row-main')
     expect(shapeOf(main)).toEqual(['span.row-head', 'span.row-time', 'span.rx-line'])
-    expect(shapeOf(main?.querySelector('.row-head'))).toEqual(['span.pos', 'span.status.status-wait', 'span.chart', 'span.name', 'span.info'])
-    expect(textsOf(main!, '.row-head > span')).toEqual(['1', '진료대기', '910871', '가상환자01', '37세 · 남 · 신환'])
+    expect(shapeOf(main?.querySelector('.row-head'))).toEqual(['span.pos', 'span.status.status-wait', 'span.chart', 'span.name', 'span.info', 'span.new-badge'])
+    expect(textsOf(main!, '.row-head > span')).toEqual(['1', '진료대기', '910871', '가상환자01', '37세 · 남', '신환'])
     expect(shapeOf(main?.querySelector('.row-time'))).toEqual(['span', 'span.waited.is-long'])
     expect(textsOf(main!, '.row-time > span')).toEqual(['09:38 접수', '1시간 4분째 대기'])
     expect(main?.querySelector('.memo')).toBeNull()
@@ -272,23 +286,25 @@ describe('board.js 목록 그리기', () => {
     expect(textsOf(hold!, '.row-head > span')).toEqual(['2', '진료보류', '910502', '가상환자04', '45세 · 남 · 재진'])
     expect(hold?.querySelector('.waited')?.className).toBe('waited')
     expect(textOf(hold!, '.waited')).toBe('보류 22분째')
-    expect(textOf(hold!, '.memo')).toBe('메모 · 엑스레이 찍으러 감')
+    expect(memoOf(hold)).toEqual(memoBox('엑스레이 찍으러 감'))
     expect(textsOf(hold!, '.rx-line > span')).toEqual(['오늘', '엑스레이 촬영(XR2)'])
 
     // 메모는 있는 줄에만
-    expect(rows.map((r) => textOf(r, '.memo'))).toEqual([null, '메모 · 엑스레이 찍으러 감', null, '메모 · 오른쪽 어깨 통증 심해짐', '메모 · 보호자 동반'])
+    expect(rows.map((r) => memoOf(r))).toEqual([null, memoBox('엑스레이 찍으러 감'), null, memoBox('오른쪽 어깨 통증 심해짐'), memoBox('보호자 동반')])
   })
 
-  it('AC-1407.2: 칸 넷의 줄에는 순서 번호·상태 이름표가 없고, 끝남 줄의 기다린 글은 끝남 모양, 수납대기는 보통 모양이다', () => {
-    for (const lane of ['wait', 'hold', 'pay', 'done']) {
+  it('AC-1407.2 · AC-1503.2: 칸 넷의 줄에는 순서 번호·상태 이름표가 없고(신환 줄만 신환 표시), 끝남 줄의 기다린 글은 끝남 모양, 수납대기는 보통 모양이다', () => {
+    for (const lane of ['wait', 'hold', 'pay', 'done'] as const) {
       const app = appHost()
-      view.renderBoard(app, fx.mockupBoard(), { lane })
+      const fake = fx.mockupBoard()
+      view.renderBoard(app, fake, { lane })
       const rows = rowsOf(app)
       expect(rows.length, lane).toBeGreaterThan(0)
-      for (const row of rows) {
+      rows.forEach((row, i) => {
         expect(row.querySelector('.pos, .status'), lane).toBeNull()
-        expect(shapeOf(row.querySelector('.row-head')), lane).toEqual(['span.chart', 'span.name', 'span.info'])
-      }
+        const isNew = fake.lists[lane][i]!.info.endsWith(' · 신환')
+        expect(shapeOf(row.querySelector('.row-head')), lane).toEqual(['span.chart', 'span.name', 'span.info', ...(isNew ? ['span.new-badge'] : [])])
+      })
       const waited = rows.map((r) => r.querySelector('.waited')?.className)
       if (lane === 'wait') expect(waited).toEqual(['waited is-long', 'waited', 'waited'])
       if (lane === 'hold') expect(waited).toEqual(['waited', 'waited'])
@@ -314,7 +330,7 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(row, '.name')).toBe(name)
     expect(textOf(row, '.chart')).toBe(chart)
     expect(textOf(row, '.info')).toBe(info)
-    expect(textOf(row, '.memo')).toBe(`메모 · ${memo}`)
+    expect(memoOf(row)).toEqual(memoBox(memo))
     expect(textOf(row, '.rx-text')).toBe(rx)
     expect(textOf(row, '.rx-label')).toBe('<u>오늘</u>')
     expect(textOf(app, 'p.asof')).toBe('<b>13:42:10</b> 기준 · 5초마다 저절로 바뀌어요')
@@ -503,5 +519,83 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(app, '.queue-count')).toBe('0명')
     expect(textOf(app, 'h2.list-heading')).toBe('진료대기와 진료보류 · 접수한 순서')
     expect(rowsOf(app)).toEqual([])
+  })
+})
+
+describe('REQ-1503 메모 크게 · 신환 눈에 띄게 (board.js 목록 줄, 승인 목업 Paper.html)', () => {
+  it('AC-1503.1: 메모가 있는 줄의 메모 상자는 앞에 이름표 span.memo-label "메모"와 메모 글(글 마디)뿐이다. 폰·태블릿, 진료 순서·칸 넷 모두 같고 메모가 없는 줄에는 상자가 없다', () => {
+    for (const tablet of [false, true]) {
+      for (const lane of ['queue', 'wait', 'hold', 'pay', 'done'] as const) {
+        const app = appHost()
+        const fake = fx.mockupBoard()
+        view.renderBoard(app, fake, { lane, tablet })
+        const rows = rowsOf(app)
+        expect(rows.length, lane).toBe(fake.lists[lane].length)
+        rows.forEach((row, i) => {
+          const memo = fake.lists[lane][i]!.memo
+          expect(memoOf(row), `${lane} ${i}`).toEqual(memo === '' ? null : memoBox(memo))
+          if (memo !== '') expect(row.querySelector('.row-main > span.memo > span.memo-label'), `${lane} ${i}`).not.toBeNull()
+        })
+        app.remove()
+      }
+    }
+  })
+
+  it('AC-1503.1: 메모 글에 HTML을 넣어도 이름표 뒤 글 마디로만 들어간다', () => {
+    const memo = '<b>굵게</b> <img src=x onerror=alert(1)>'
+    const app = appHost()
+    view.renderBoard(app, fx.boardOf({ wait: [fx.fakeRow({ memo })] }))
+    expect(memoOf(rowsOf(app)[0])).toEqual(memoBox(memo))
+    expect(app.querySelector('.memo b, .memo img')).toBeNull()
+  })
+
+  it('AC-1503.2: 정보 글을 " · "로 나눈 마지막 조각이 "신환"이면 정보 글에서 " · 신환"을 빼고 정보 바로 뒤에 span.new-badge "신환"을 붙인다. "재진"이거나 그 밖이면 정보 글 그대로이고 표시가 없다', () => {
+    const cases: [string, string | null, boolean][] = [
+      ['37세 · 남 · 신환', '37세 · 남', true],
+      ['여 · 신환', '여', true],
+      ['54세 · 여 · 재진', '54세 · 여 · 재진', false],
+      ['신환 · 재진', '신환 · 재진', false],
+      ['54세 · 여 · 신환대기', '54세 · 여 · 신환대기', false],
+      ['54세 · 여 신환', '54세 · 여 신환', false],
+      ['<b>54세</b> · 신환', '<b>54세</b>', true],
+    ]
+    for (const tablet of [false, true]) {
+      for (const [info, shown, isNew] of cases) {
+        const app = appHost()
+        view.renderBoard(app, fx.boardOf({ wait: [fx.fakeRow({ info })] }), { tablet })
+        const head = rowsOf(app)[0]!.querySelector('.row-head')
+        expect(shapeOf(head), info).toEqual(['span.pos', 'span.status.status-wait', 'span.chart', 'span.name', 'span.info', ...(isNew ? ['span.new-badge'] : [])])
+        expect(textOf(head!, '.info'), info).toBe(shown)
+        if (isNew) {
+          expect(head!.querySelector('.info')?.nextElementSibling?.className, info).toBe('new-badge')
+          expect(textOf(head!, '.new-badge'), info).toBe('신환')
+        } else expect(head!.querySelector('.new-badge'), info).toBeNull()
+        expect(head!.querySelector('b'), info).toBeNull()
+        app.remove()
+      }
+    }
+  })
+
+  it('AC-1503.2: 정보 글이 "신환" 하나면 정보 칸 없이 표시만, 빈 정보("")면 둘 다 없다', () => {
+    const only = appHost()
+    view.renderBoard(only, fx.boardOf({ pay: [fx.fakeRow({ info: '신환' })] }), { lane: 'pay' })
+    expect(shapeOf(rowsOf(only)[0]!.querySelector('.row-head'))).toEqual(['span.chart', 'span.name', 'span.new-badge'])
+    const empty = appHost()
+    view.renderBoard(empty, fx.boardOf({ pay: [fx.fakeRow({ info: '' })] }), { lane: 'pay' })
+    expect(shapeOf(rowsOf(empty)[0]!.querySelector('.row-head'))).toEqual(['span.chart', 'span.name'])
+  })
+
+  it('AC-1503.2: 승인 판에서 신환 줄(가상환자01·가상환자07)에만 표시가 있고 진료 순서·줄 차례·처방 줄은 그대로다', () => {
+    const app = appHost()
+    view.renderBoard(app, fx.mockupBoard())
+    expect(namesOf(app)).toEqual(QUEUE_ORDER)
+    expect(rowsOf(app).map((r) => r.querySelector('.new-badge') !== null)).toEqual([true, false, false, false, false])
+    expect(rowsOf(app).map((r) => textOf(r, '.info'))).toEqual(['37세 · 남', '45세 · 남 · 재진', '58세 · 여 · 재진', '54세 · 여 · 재진', '71세 · 여 · 재진'])
+    expect(textsOf(rowsOf(app)[0]!, '.rx-line > span')).toEqual(['처방', '첫 방문이라 지난 처방이 없어요'])
+    view.renderBoard(app, fx.mockupBoard(), { lane: 'pay' })
+    expect(rowsOf(app).map((r) => [textOf(r, '.name'), textOf(r, '.info'), textOf(r, '.new-badge')])).toEqual([
+      ['가상환자06', '62세 · 여 · 재진', null],
+      ['가상환자07', '29세 · 남', '신환'],
+    ])
   })
 })

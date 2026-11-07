@@ -2,7 +2,8 @@
  * 접수 현황 화면의 색·글꼴·둥글기 한 곳 (AC-1407.7, design.md 10절).
  * 값은 승인된 의원 상표 시안 v12(docs/mockups/reception-phone/ Main·Detail·Offline·Tablet) 그대로다.
  * 다른 화면 파일(style.css·link.css·*.js·index.html)은 색·글꼴 글자를 쓰지 않고 여기 토큰을 var()로만 부른다.
- * 로고 노랑(--accent)은 채움으로만 쓴다(머리 밑줄·고른 칸·종이 카드 테두리·주상병 표시·순서 번호 글자). 상태 색은 노랑이 아니다.
+ * 로고 노랑(--accent)은 채움으로만 쓴다(머리 밑줄·고른 칸·종이 카드 테두리·주상병 표시·순서 번호 글자·메모 상자 왼쪽 줄). 상태 색은 노랑이 아니다.
+ * 상표 시안 밖의 색은 승인 목업 Paper.html(reception-paper, 2026-11-07)의 것만 쓴다(신환 표시 파랑).
  */
 
 /* 제목 글꼴: Black Han Sans(SIL OFL 1.1, fonts/OFL.txt)에서 KS X 1001 완성형 한글 2,350자 + 영문·숫자만 남긴 것.
@@ -19,7 +20,7 @@
   /* 바탕·면 */
   --ground: #F4F4F2;          /* 화면 바탕, 메모·증상 칸, 보통 기다림 칩 */
   --surface: #FFFFFF;         /* 머리·카드·단추 */
-  --surface-picked: #FCFBE3;  /* 태블릿에서 고른 줄 */
+  --surface-picked: #FCFBE3;  /* 태블릿에서 고른 줄, 메모 상자 (목업 Paper.html) */
 
   /* 글자 (숯색 단계) */
   --ink: #333432;             /* 본문 글자·숯색 채움(진료대기 이름표·순서 번호·X-ray 완료 단추) */
@@ -64,6 +65,11 @@
   --status-before-bg: var(--ground);   /* X-ray 전 */
   --status-before-fg: var(--ink-2);
   --status-before-line: var(--line-2);
+
+  /* 신환 표시 (사용자 결정 2026-11-07 "신환표시도 눈에띄게", 승인 목업 Paper.html .new-badge). 목록 줄·상세 머리의 정보 글 뒤.
+     상태 색·--accent와 다른 파랑 채움에 흰 글 */
+  --new: #1D4ED8;
+  --on-new: #FFFFFF;
 
   /* 종이 진료기록부 카드 (reception-paper, 승인 목업 Paper.html). 목업의 종이 글자 #1F1F1E는 상표 시안 색 모음(AC-1407.7) 밖이라
      가장 가까운 숯색을 쓴다. 그림자는 목업 그대로 */

@@ -56,17 +56,14 @@ function shapeOf(node: Element | null | undefined): string[] {
   return [...(node?.children ?? [])].map((c) => `${c.tagName.toLowerCase()}${c.className ? `.${c.className.split(' ').join('.')}` : ''}`)
 }
 
-/** 진료 순서(처음 고른 칸)에 보이는 환자 글 */
+/** 진료 순서(처음 고른 칸)에 보이는 환자 글. 정보는 화면에 보이는 조각(신환이면 " · 신환"을 뺀 글과 신환 표시, AC-1503.2) */
 function queueTexts(b: fx.FakeBoard): string[] {
-  return b.lists.queue.flatMap((row) => [row.name, row.chart, row.memo, row.rx, row.info]).filter(Boolean)
+  return b.lists.queue.flatMap(fx.rowTexts)
 }
 
-/** 가짜 판의 환자 글(이름·차트번호·메모·처방·정보) 모두 */
+/** 가짜 판의 환자 글(이름·차트번호·메모·처방·정보의 보이는 조각) 모두 */
 function patientTexts(b: fx.FakeBoard): string[] {
-  const out = new Set<string>()
-  for (const row of b.lists.queue.concat(b.lists.pay, b.lists.done))
-    for (const v of [row.name, row.chart, row.memo, row.rx, row.info]) if (v) out.add(v)
-  return [...out]
+  return [...new Set(b.lists.queue.concat(b.lists.pay, b.lists.done).flatMap(fx.rowTexts))]
 }
 
 /** 글 칸 사이 빈칸을 하나로 줄인 HTML(시안·index.html과 견주기) */

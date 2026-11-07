@@ -203,14 +203,24 @@ function moreButton(root: ParentNode | null): HTMLButtonElement | null {
   return root?.querySelector<HTMLButtonElement>('button.more') ?? null
 }
 
-/** 가짜 판의 환자 글(이름·차트번호·메모·처방·정보)과 상세 글(지난번 증상·종이 기록부의 사람 칸·특이사항·증상·처방) 모두 */
+/**
+ * 가짜 판의 환자 글(이름·차트번호·메모·처방·정보의 보이는 조각, AC-1503.2)과 상세 글(지난번 증상·종이 기록부의 사람 칸·특이사항·증상·처방) 모두
+ */
 function patientTexts(b: FakeBoard = fx.mockupBoard()): string[] {
   const out = new Set<string>()
-  for (const row of Object.values(b.lists).flat()) for (const v of [row.name, row.chart, row.memo, row.rx, row.info]) if (v) out.add(v)
+  for (const row of Object.values(b.lists).flat()) for (const v of fx.rowTexts(row)) out.add(v)
   for (let i = 0; i < 5; i += 1) out.add(fx.fakeVisit(i).sym)
   const paper = fx.fakeTreatedPaper('오른쪽 어깨 통증 계속됨')
   for (const v of [paper.res, paper.addr, paper.cel, paper.special, paper.sym, ...paper.dx.map((d) => d.name), ...paper.rx.map((r) => r.name)]) if (v) out.add(v)
   return [...out]
+}
+
+/** 머리 메모 상자(AC-1503.1): [이름표 span.memo-label 글, 이름표 뒤 글 마디]. 상자가 없으면 null */
+function memoOf(root: ParentNode | null | undefined): [string | null, string] | null {
+  const memo = root?.querySelector('.patient > .memo')
+  if (!memo) return null
+  const text = [...memo.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent ?? '')
+  return [memo.querySelector(':scope > span.memo-label')?.textContent ?? null, text.join('')]
 }
 
 /** 화면 어디에도 환자 글·줄·상세가 없다 */
@@ -392,7 +402,7 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(page).not.toBeNull()
     expect(document.title).toBe(TITLE)
     expect(textOf(page, '.patient .detail-name')).toBe('가상환자02')
-    expect(textOf(page, '.patient .memo')).toBe('메모 · 오른쪽 어깨 통증 심해짐')
+    expect(memoOf(page)).toEqual(['메모', '오른쪽 어깨 통증 심해짐'])
     expect(page.querySelector('section.today')).toBeNull()
     expect(textsOf(page, 'main.detail > h2.detail-heading')).toEqual(['오늘 진료기록부', '지난번 증상'])
     const paper = paperOf(page)!
@@ -448,7 +458,7 @@ describe('app.js 폰 상세 (해시 길)', () => {
     expect(historyReads()).toEqual([`/api/visit/${fx.fakeKey(2)}/history?from=0`, `/api/visit/${fx.fakeKey(2)}/history?from=0`])
     expect(detailPage()).toBe(page)
     expect(textOf(page, '.patient .status-line > .status')).toBe('진료보류')
-    expect(textOf(page, '.patient .memo')).toBe('메모 · 엑스레이 찍으러 감')
+    expect(memoOf(page)).toEqual(['메모', '엑스레이 찍으러 감'])
     expect(paperSym(page)).toBe('오른쪽 어깨 통증 계속됨')
     expect(paperHeads(page)).toEqual(['증상', '상병', '처방', '원외처방'])
     expect(textsOf(page, 'article.paper ul.dx > li > code')).toEqual(['M7581', 'M5456'])

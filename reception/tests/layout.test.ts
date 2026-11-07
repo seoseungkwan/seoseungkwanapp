@@ -654,3 +654,91 @@ describe('REQ-1502 종이 카드 모양 (style.css)', () => {
     expect(valueOf(css, '.spc-more', 'width')).toBe('100%')
   })
 })
+
+// ---- 메모 상자·신환 표시 모양 (reception-paper REQ-1503, 승인 목업 Paper.html .memo·.memo .lab·.new-badge) ----------------------
+
+/** style.css에서 쉼표 목록 중 하나라도 마지막 조각(공백 뒤)이 cls인 규칙들의 [고른 글, 선언들] (@media 안 포함, 뒤의 것이 이긴다) */
+function rulesEndingIn(css: string, cls: string): [string, [string, string][]][] {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const out: [string, [string, string][]][] = []
+  for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = m[1]!.split(',').map((s) => s.trim())
+    const hit = selectors.find((s) => s.split(/\s+|>/).filter(Boolean).pop() === cls)
+    if (!hit) continue
+    const decls: [string, string][] = []
+    for (const decl of m[2]!.split(';')) {
+      const colon = decl.indexOf(':')
+      if (colon > 0) decls.push([decl.slice(0, colon).trim(), decl.slice(colon + 1).trim()])
+    }
+    out.push([hit, decls])
+  }
+  return out
+}
+
+describe('REQ-1503 메모 상자·신환 표시 모양 (style.css)', () => {
+  it('AC-1503.1: 메모 상자는 글 16px·굵기 600·--ink, 바탕 --surface-picked, 왼쪽 4px --accent 줄(목업 둥글기·안 여백)이고, 이름표는 12px·굵기 600·--ink-3에 오른쪽 조금 띄운다', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8')
+    expect(valueOf(css, '.memo', 'display')).toBe('block')
+    expect(valueOf(css, '.memo', 'font-size')).toBe('16px')
+    expect(valueOf(css, '.memo', 'font-weight')).toBe('600')
+    expect(valueOf(css, '.memo', 'color')).toBe('var(--ink)')
+    expect(valueOf(css, '.memo', 'background')).toBe('var(--surface-picked)')
+    expect(valueOf(css, '.memo', 'border-left')).toBe('4px solid var(--accent)')
+    expect(valueOf(css, '.memo', 'border-radius')).toBe('var(--radius-s)')
+    expect(valueOf(css, '.memo', 'padding')).toBe('8px 10px')
+    expect(valueOf(css, '.memo-label', 'font-size')).toBe('12px')
+    expect(valueOf(css, '.memo-label', 'font-weight')).toBe('600')
+    expect(valueOf(css, '.memo-label', 'color')).toBe('var(--ink-3)')
+    expect(valueOf(css, '.memo-label', 'margin-right')).toBe('6px')
+  })
+
+  it('AC-1503.1: 목록 줄·폰 머리·태블릿 오른쪽 칸 어디서도 메모 상자의 글 크기·굵기·색·바탕·왼쪽 줄을 다른 값으로 덮지 않는다', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8')
+    const want: Record<string, string> = {
+      'font-size': '16px',
+      'font-weight': '600',
+      color: 'var(--ink)',
+      background: 'var(--surface-picked)',
+      'background-color': 'var(--surface-picked)',
+      'border-left': '4px solid var(--accent)',
+    }
+    const rules = rulesEndingIn(css, '.memo')
+    expect(rules.length).toBeGreaterThan(0)
+    for (const [selector, decls] of rules)
+      for (const [prop, value] of decls) if (prop in want) expect(value, `${selector} { ${prop} }`).toBe(want[prop])
+    // 이름표도 덮지 않는다
+    for (const [selector, decls] of rulesEndingIn(css, '.memo-label'))
+      for (const [prop, value] of decls) {
+        if (prop === 'font-size') expect(value, selector).toBe('12px')
+        if (prop === 'color') expect(value, selector).toBe('var(--ink-3)')
+      }
+  })
+
+  it('AC-1503.2: 신환 표시는 바탕 --new·글 --on-new·굵게(목업 13px·둥글기·안 여백)이다', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8')
+    expect(valueOf(css, '.new-badge', 'display')).toBe('inline-block')
+    expect(valueOf(css, '.new-badge', 'background')).toBe('var(--new)')
+    expect(valueOf(css, '.new-badge', 'color')).toBe('var(--on-new)')
+    expect(valueOf(css, '.new-badge', 'font-weight')).toBe('700')
+    expect(valueOf(css, '.new-badge', 'font-size')).toBe('13px')
+    expect(valueOf(css, '.new-badge', 'border-radius')).toBe('var(--radius-s)')
+    expect(valueOf(css, '.new-badge', 'padding')).toBe('1px 7px')
+    for (const [selector, decls] of rulesEndingIn(css, '.new-badge'))
+      for (const [prop, value] of decls) {
+        if (prop === 'background' || prop === 'background-color') expect(value, selector).toBe('var(--new)')
+        if (prop === 'color') expect(value, selector).toBe('var(--on-new)')
+      }
+  })
+
+  it('AC-1503.1 · AC-1503.2: 목록 줄과 머리(폰·태블릿)가 그리는 메모 이름표·신환 표시 class는 style.css에 모양이 있다', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const row = fx.fakeRow({ info: '37세 · 남 · 신환', memo: '가상 메모' })
+    const app = document.createElement('div')
+    document.body.appendChild(app)
+    boardJs.renderBoard(app, fx.boardOf({ wait: [row] }), { tablet: true, picked: row.k })
+    boardJs.fillPane(app, detailJs.detailPane(row, history(), { today: TODAY }))
+    expect(app.querySelectorAll('.memo-label').length).toBe(2)
+    expect(app.querySelectorAll('.new-badge').length).toBe(2)
+    for (const cls of ['memo', 'memo-label', 'new-badge']) expect(css, `.${cls}`).toMatch(new RegExp(`\.${cls}(?![\w-])`))
+  })
+})
