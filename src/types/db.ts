@@ -108,7 +108,7 @@ export type ContactCountRow = {
 export type MessageTemplateRow = {
   id: string
   hospital_id: string
-  kind: 'injection' | 'followup'
+  kind: 'injection' | 'followup' | 'reservation' // 예약 안내는 20261108000000_message_templates_reservation.sql부터
   name: string // 1~30자
   body: string // 1~2000자
   sort_order: number // 0~99

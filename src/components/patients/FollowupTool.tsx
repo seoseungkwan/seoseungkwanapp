@@ -42,7 +42,9 @@ const KINDS: readonly (readonly ['' | VisitKind, string])[] = [
   ['주사', '주사'],
   ['F/U', 'F/U'],
 ]
-const TEMPLATE_KINDS: readonly (readonly [TemplateKind, string])[] = [
+// F/U 명단은 주사 안내·진료 안내만 복사한다. 예약 안내는 예약 문자 명단에서만 쓴다(AC-2805.4)
+type FollowupTemplateKind = Exclude<TemplateKind, 'reservation'>
+const TEMPLATE_KINDS: readonly (readonly [FollowupTemplateKind, string])[] = [
   ['injection', '주사 안내'],
   ['followup', '진료 안내'],
 ]
@@ -174,7 +176,7 @@ export function FollowupTool({
   const [includePast, setIncludePast] = useState(false)
   const [kind, setKind] = useState<'' | VisitKind>('')
   const [withDate, setWithDate] = useState(true)
-  const [templateKind, setTemplateKind] = useState<TemplateKind>('injection')
+  const [templateKind, setTemplateKind] = useState<FollowupTemplateKind>('injection')
 
   const range = preset === 'custom' ? customRange(customFrom.valid, customTo.valid) : presetRange(preset, today)
   const { from, to } = range
@@ -330,7 +332,7 @@ export function FollowupTool({
                 unavailable={template ? undefined : NO_TEMPLATE}
                 onResult={setNotice}
               />
-              <Segments<TemplateKind> label="복사할 문구" options={TEMPLATE_KINDS} value={templateKind} onChange={setTemplateKind} />
+              <Segments<FollowupTemplateKind> label="복사할 문구" options={TEMPLATE_KINDS} value={templateKind} onChange={setTemplateKind} />
               <span className={RANGE}>문구 날짜 {dayLabel(from)}</span>
             </>
           )}

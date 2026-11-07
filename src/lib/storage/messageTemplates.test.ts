@@ -353,4 +353,19 @@ describe('AC-609.2 checkTemplate', () => {
   ])('AC-609.2: 종류 "%s"', (kind, expected) => {
     expect(checkTemplate(draft('이름', OK, kind))).toBe(expected)
   })
+
+  it.each([
+    ['reservation', null],
+    ['Reservation', 'kind'],
+    ['reservation ', 'kind'],
+    ['lapsed', 'kind'],
+  ])('AC-2805.1: 종류 "%s"(예약 안내는 받고 비슷한 다른 글은 막는다)', (kind, expected) => {
+    expect(checkTemplate(draft('이름', OK, kind))).toBe(expected)
+  })
+
+  it('AC-2805.1: 예약 안내 줄도 그대로 저장한다', async () => {
+    const { sb, calls } = fakeSb()
+    await saveTemplates(sb, [], [{ kind: 'reservation', name: '예약 안내', body: '글' } as TemplateDraft])
+    expect(writes(calls)[0]?.body).toEqual([{ kind: 'reservation', name: '예약 안내', body: '글', sort_order: 0 }])
+  })
 })
