@@ -18,6 +18,11 @@ const db = vi.hoisted(() => ({
   counts: [] as unknown[],
   failSettings: false,
   failCounts: false,
+  /** 완료 표시 표(claim-day-done). error면 그 답을 준다 */
+  closes: [] as unknown[],
+  closesError: null as null | { code: string; message: string; status: number },
+  /** 표마다 gte·lte로 물은 날짜 */
+  ranges: [] as { table: string; op: string; value: unknown }[],
   userId: 'user-1' as string | null,
   ruleReads: 0,
   /** 있으면 설정 표 읽기가 이것을 기다린다(건수 표는 그대로) */
@@ -31,14 +36,15 @@ vi.mock('@/lib/supabase/browser', () => ({
       if (table === 'claim_rule_settings') db.ruleReads += 1
       const answer = () => {
         if (table === 'claim_day_counts') return db.failCounts ? { data: null, error: { code: '500', message: 'x' }, status: 500 } : { data: db.counts, error: null, status: 200 }
+        if (table === 'claim_day_closes') return db.closesError ? { data: null, error: db.closesError, status: db.closesError.status } : { data: db.closes, error: null, status: 200 }
         if (db.failSettings) return { data: null, error: { message: 'x' } }
         return table === 'claim_rule_settings' ? { data: db.rules, error: null } : { data: db.hospital, error: null }
       }
-      const gate = table === 'claim_day_counts' ? null : db.settingsGate
+      const gate = table === 'claim_day_counts' || table === 'claim_day_closes' ? null : db.settingsGate
       const read = () => (gate ? gate.then(answer) : Promise.resolve(answer()))
       const query = {
-        gte: () => query,
-        lte: () => query,
+        gte: (_column: string, value: unknown) => (db.ranges.push({ table, op: 'gte', value }), query),
+        lte: (_column: string, value: unknown) => (db.ranges.push({ table, op: 'lte', value }), query),
         maybeSingle: read,
         then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => read().then(ok, no),
       }
@@ -191,6 +197,9 @@ beforeEach(() => {
   db.counts = COUNTS
   db.failSettings = false
   db.failCounts = false
+  db.closes = []
+  db.closesError = null
+  db.ranges = []
   db.userId = 'user-1'
   db.ruleReads = 0
   db.settingsGate = null
@@ -277,6 +286,93 @@ describe('AC-013.1 날짜 목록', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: '끝난 날짜 더 보기' }))
     expect(within(table).getByText('10/1 (목)')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '끝난 날짜 더 보기' })).toBeNull()
+  })
+})
+
+describe('claim-day-done: 비트 PC 화면도 완료로 바꾼 날을 끝난 날로 본다(REQ-2804)', () => {
+  const close = (visit_date: string) => ({ visit_date, closed_at: '2026-11-07T22:30:00+00:00' })
+  const listRows = async () => within(await screen.findByRole('table', { name: '진료한 날짜' })).getAllByRole('row').slice(1).map((r) => r.textContent ?? '')
+
+  it('AC-2804.4: 날짜 목록을 읽을 때 완료 표시도 읽어, 완료로 바꾼 날은 끝난 날 묶음에 완료로 든다', async () => {
+    db.closes = [close('2026-10-28')]
+    show()
+    const rows = await listRows()
+    const finishedAt = rows.indexOf('입력이 끝난 날짜')
+    const at = rows.findIndex((r) => r.includes('10/28 (수)'))
+    expect(finishedAt).toBeGreaterThan(-1)
+    expect(at).toBeGreaterThan(finishedAt)
+    expect(rows[at]).toContain('완료')
+    expect(screen.getByText('아직 입력 안 된 날짜 1일')).toBeTruthy()
+  })
+
+  it('AC-2804.4: 완료 표시는 건수와 같은 400일 범위로 읽는다', async () => {
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    const of = (table: string) => db.ranges.filter((r) => r.table === table).map((r) => [r.op, r.value])
+    expect(of('claim_day_closes')).toEqual(of('claim_day_counts'))
+    expect(of('claim_day_closes')).toHaveLength(2)
+  })
+
+  it('AC-2804.4: 완료로 바꾼 옛날 날은 claim.dates로 묻는 기간을 늘리지 않는다', async () => {
+    db.counts = [...COUNTS, { visit_date: '2026-06-02', visits: 9, need_memo: 3, entered: 1, needs_check: 0, skipped: 0, updated_at: '2026-06-02T01:00:00+00:00' }]
+    const { link } = show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(link.call).toHaveBeenCalledWith('claim.dates', expect.objectContaining({ from: '2026-06-02' }))
+    cleanup()
+    db.closes = [close('2026-06-02')]
+    const again = show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(again.link.call).toHaveBeenCalledWith('claim.dates', expect.objectContaining({ from: expect.any(String) }))
+    expect(again.link.call).not.toHaveBeenCalledWith('claim.dates', expect.objectContaining({ from: '2026-06-02' }))
+  })
+
+  it('AC-2804.4: 완료 표시만 못 읽으면 읽은 건수로 목록을 그리고, 건수를 못 읽었을 때와 같이 알린다', async () => {
+    db.closesError = { code: '500', message: 'x', status: 500 }
+    show()
+    const rows = await listRows()
+    expect(rows.find((r) => r.includes('10/28 (수)'))).toContain('진행중 2/7')
+    expect(rows.find((r) => r.includes('10/27 (화)'))).toContain('완료')
+    expect(screen.getByText('입력 건수를 읽지 못해 비트 자료만으로 보여요.')).toBeTruthy()
+  })
+
+  it('AC-2804.4: 완료 표시 표가 아직 없으면(마이그레이션 전) 완료 표시 없음이고 실패가 아니다', async () => {
+    db.closesError = { code: 'PGRST205', message: 'x', status: 404 }
+    show()
+    const rows = await listRows()
+    expect(rows.find((r) => r.includes('10/28 (수)'))).toContain('진행중 2/7')
+    expect(screen.queryByText('입력 건수를 읽지 못해 비트 자료만으로 보여요.')).toBeNull()
+  })
+
+  it('AC-2804.4: 창 초점이 돌아와 새로 읽을 때도 완료 표시를 읽는다', async () => {
+    show()
+    expect((await listRows()).find((r) => r.includes('10/28 (수)'))).toContain('진행중 2/7')
+    db.closes = [close('2026-10-28')]
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(screen.getByText('아직 입력 안 된 날짜 1일')).toBeTruthy())
+  })
+
+  it('AC-2804.4: 새로 읽을 때 완료 표시를 못 읽으면 보던 목록을 둔다', async () => {
+    db.closes = [close('2026-10-28')]
+    show()
+    await screen.findByText('아직 입력 안 된 날짜 1일')
+    db.closesError = { code: '500', message: 'x', status: 500 }
+    db.closes = []
+    window.dispatchEvent(new Event('focus'))
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(screen.getByText('아직 입력 안 된 날짜 1일')).toBeTruthy()
+    expect(screen.queryByText('입력 건수를 읽지 못해 비트 자료만으로 보여요.')).toBeNull()
+  })
+
+  it('AC-2804.5: 비트 PC 화면에는 완료로 고르기·[완료로 저장]·[되돌리기]가 없다', async () => {
+    db.closes = [close('2026-10-28')]
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(screen.queryByRole('button', { name: '완료로 저장' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '되돌리기' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /고르기$/ })).toBeNull()
+    expect(screen.queryByText(/완료로 바꾼 날/)).toBeNull()
   })
 })
 
