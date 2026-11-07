@@ -47,9 +47,9 @@
 ## TASK-5: Worker 일 sections와 통로
 - REQ: REQ-2702, REQ-2708
 - AC: AC-2702.1, AC-2702.3, AC-2702.4, AC-2708.1, AC-2708.2
-- Files: src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/types/stats.ts, src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts
+- Files: src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts, src/workers/stats.worker.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/types/stats.ts, src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts
 - Tests: src/workers/stats/jobs.test.ts, src/workers/statsClient.test.ts, src/components/stats/useStatsWorker.test.ts
-- TDD: required — none·old-helper·ready, 범위 밖, 견줄 기간이 범위 밖이면 지난 숫자 없음, 화면으로 가는 메시지를 JSON으로 펴서 차트번호·생년월일·주소 앞부분·진료의 코드가 없음, 저장 줄 열쇠 목록 그대로
+- TDD: required — 실제 Worker 입구(`stats.worker.ts`)가 sections 요청을 일에 잇는다(지금 split 잇기 시험처럼, 2026-11-08 구현 중 빠진 것을 찾아 더함), none·old-helper·ready, 범위 밖, 견줄 기간이 범위 밖이면 지난 숫자 없음, 화면으로 가는 메시지를 JSON으로 펴서 차트번호·생년월일·주소 앞부분·진료의 코드가 없음, 저장 줄 열쇠 목록 그대로
 - 차례: Phase 3 (TASK-3·TASK-4 뒤)
 
 ## TASK-6: 화면 세 칸
