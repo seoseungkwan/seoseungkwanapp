@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>접수 현황 · 종이 진료기록부 모양 목업</title>
+<!-- 목업(사용자 승인 전 시안). 환자는 모두 지어낸 가짜다. 색·글꼴은 reception/www/theme.css 그대로 -->
+<style>
+@font-face { font-family: "Black Han Sans"; src: url("../../../reception/www/fonts/title.woff2") format("woff2"); }
+:root {
+  --ground:#F4F4F2; --surface:#FFFFFF; --ink:#333432; --ink-2:#4A4A47; --ink-3:#5F5F5C; --ink-4:#6B6B67;
+  --line:#E4E4E0; --line-2:#CFCFCA; --accent:#DFDA06; --ok:#15803D; --ok-soft:#ECF7EF; --warn:#C2410C; --warn-soft:#FDF0EA;
+  --paper:#FFFFFF; --paper-ink:#1F1F1E;
+  --font-body:"Pretendard","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-title:"Black Han Sans",var(--font-body);
+  --font-mono:"D2Coding","Consolas","Menlo",monospace;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; background:#DADAD6; }
+body { font-family:var(--font-body); color:var(--ink); word-break:keep-all; font-variant-numeric:tabular-nums; }
+.phone { max-width:430px; margin:0 auto; min-height:100vh; background:var(--ground); display:flex; flex-direction:column; }
+.mock-note { background:var(--ink); color:var(--accent); font-size:12px; padding:6px 12px; text-align:center; }
+
+/* 머리 (지금 화면 그대로) */
+.top { background:var(--surface); border-bottom:4px solid var(--accent); padding:10px 16px 16px; display:flex; flex-direction:column; gap:10px; }
+.top-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.brand { font-family:var(--font-title); font-size:26px; line-height:1; }
+.brand b { font-weight:400; background:var(--accent); padding:0 2px; }
+.conn { font-size:13px; font-weight:600; color:var(--ok); background:var(--ok-soft); border-radius:6px; padding:5px 9px; }
+.page-title { margin:0; font-family:var(--font-title); font-weight:400; font-size:30px; }
+.sub { font-size:13px; color:var(--ink-3); }
+.back { min-height:44px; display:flex; align-items:center; gap:4px; font-size:15px; font-weight:600; color:var(--ink); text-decoration:none; }
+.back::before { content:"‹"; font-size:24px; line-height:1; margin-top:-2px; }
+.mark { font-family:var(--font-title); font-size:20px; }
+.who { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.who .chart { font-size:14px; color:var(--ink-4); }
+.who h1 { margin:0; font-family:var(--font-title); font-weight:400; font-size:28px; line-height:1.2; }
+.who .meta { font-size:14px; color:var(--ink-2); }
+.state { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2); }
+.tag { font-size:12px; font-weight:600; padding:2px 7px; border-radius:4px; border:1px solid transparent; }
+.tag.wait { background:var(--ink); color:var(--accent); }
+.tag.pay { background:var(--surface); color:var(--ink-2); border-color:var(--line-2); }
+.tag.done { background:var(--ok-soft); color:var(--ok); }
+.memo { font-size:13px; color:var(--ink-2); background:var(--ground); border-radius:4px; padding:8px 10px; }
+
+/* 목록 */
+.list { padding:16px; display:flex; flex-direction:column; gap:12px; }
+.list h2 { margin:0; font-size:15px; font-weight:600; color:var(--ink-2); }
+.row { display:block; text-decoration:none; color:inherit; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+.row:active { background:#FCFBE3; }
+.row .l1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.num { width:30px; height:30px; border-radius:4px; background:var(--ink); color:var(--accent); font-weight:700; display:grid; place-items:center; }
+.row .nm { font-family:var(--font-title); font-size:21px; }
+.row .l2 { margin-top:8px; font-size:13px; color:var(--ink-2); display:flex; gap:8px; align-items:center; }
+.chip { background:var(--ground); border-radius:4px; padding:3px 7px; font-weight:600; }
+.spc-flag { font-size:12px; font-weight:600; color:var(--warn); background:var(--warn-soft); border-radius:4px; padding:2px 6px; }
+.hint { font-size:12px; color:var(--ink-3); text-align:center; }
+
+/* 상세 */
+.detail { padding:16px 12px; display:flex; flex-direction:column; gap:12px; }
+.detail h2 { margin:0 4px; font-size:14px; font-weight:600; color:var(--ink-2); }
+
+/* 종이 진료기록부 */
+.paper { background:var(--paper); color:var(--paper-ink); border:2px solid var(--accent); border-radius:8px; padding:16px 14px 18px; box-shadow:0 1px 3px rgba(0,0,0,.08); font-size:14px; line-height:1.55; }
+.paper-head { display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid var(--paper-ink); padding-bottom:6px; margin-bottom:10px; }
+.paper-head .ttl { font-size:17px; font-weight:700; letter-spacing:1px; }
+.paper-head .dt { font-size:12px; color:var(--ink-3); }
+.kv { display:grid; grid-template-columns:5.2em 1fr; column-gap:6px; row-gap:2px; }
+.kv dt { color:var(--ink-3); white-space:nowrap; }
+.kv dt::after { content:" :"; }
+.kv dd { margin:0; overflow-wrap:anywhere; }
+.kv .empty { color:var(--line-2); }
+.rule { border:0; border-top:1px solid var(--paper-ink); margin:12px 0 10px; }
+.sec { margin-top:12px; }
+.sec-h { font-weight:700; margin-bottom:4px; }
+.sec-h::before { content:"<"; } .sec-h::after { content:">"; }
+.none { color:var(--ink-3); font-size:13px; }
+.spc { margin:0 0 4px; border:2px solid var(--warn); background:var(--warn-soft); border-radius:6px; padding:8px 10px; }
+.spc .sec-h { color:var(--warn); margin-bottom:2px; }
+.spc p { margin:0; white-space:pre-wrap; font-weight:600; }
+.spc p.clamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; line-clamp:5; overflow:hidden; }
+.spc .more { margin-top:6px; width:100%; min-height:40px; border:1px solid var(--warn); border-radius:6px; background:var(--surface); color:var(--warn); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+.spc.is-none { border:1px dashed var(--line-2); background:transparent; }
+.spc.is-none .sec-h { color:var(--ink-3); }
+.spc.is-none p { font-weight:400; color:var(--ink-3); }
+.visit-line { display:flex; flex-wrap:wrap; gap:4px 12px; }
+.sym { display:grid; grid-template-columns:auto 1fr; column-gap:10px; }
+.sym .d { color:var(--ink-3); font-size:13px; padding-top:1px; }
+.sym pre { margin:0; font-family:inherit; white-space:pre-wrap; overflow-wrap:anywhere; }
+.dx { margin:0; padding:0; list-style:none; }
+.dx li { display:grid; grid-template-columns:4.6em 1fr; column-gap:6px; }
+.dx code, .rx code { font-family:var(--font-mono); font-size:12.5px; color:var(--ink-2); }
+.dx .main::after { content:" 주"; font-size:11px; font-weight:700; color:var(--ink); background:var(--accent); border-radius:3px; padding:0 3px; margin-left:4px; vertical-align:1px; }
+table.rx { width:100%; border-collapse:collapse; font-size:13px; }
+.rx th { text-align:left; font-weight:600; color:var(--ink-3); font-size:12px; border-bottom:1px solid var(--paper-ink); padding:2px 3px 4px; }
+.rx td { padding:4px 3px; vertical-align:top; border-bottom:1px dotted var(--line-2); }
+.rx tr:last-child td { border-bottom:0; }
+.rx .n { text-align:right; white-space:nowrap; width:2.6em; }
+.rx th.n { text-align:right; }
+.rx .c { width:5.6em; white-space:nowrap; }
+
+/* 지난번 카드 (지금 화면 그대로) */
+.card { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+.card .h { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.card .h b { display:flex; align-items:center; gap:8px; font-size:15px; }
+.badge { font-size:12px; font-weight:600; padding:2px 6px; border-radius:4px; background:var(--ground); color:var(--ink-2); border:1px solid var(--line-2); }
+.ago { font-size:12px; color:var(--ink-4); }
+.card p { margin:0; font-size:14px; line-height:1.5; color:var(--ink-2); background:var(--ground); border-radius:4px; padding:6px 8px; }
+.end { font-size:12px; color:var(--ink-3); text-align:center; }
+.foot { padding:12px 16px 28px; font-size:12px; color:var(--ink-3); text-align:center; }
+</style>
+</head>
+<body>
+<div class="phone" id="app"></div>
+
+<script>
+// 지어낸 가짜 환자 셋: ① 진료 끝·특이사항 있음·신환 ② 진료 전·재진·특이사항 있음 ③ 수납완료·재진·특이사항 없음·원외처방 있음
+const P = [
+  {
+    k: 'a', order: 1, lane: 'pay', laneText: '수납대기', chart: '10501', name: '홍길동', age: 53, sex: '남', sexEn: 'M', kind: '신환',
+    when: '10:02 접수 · 수납 1시간 2분째', chip: '수납 1시간 2분째', memo: '오)무릎, 종아리가 굳는 느낌',
+    res: '730101-*******', addr: '경기도 성남시 중원구 예시로 12 (가나맨션)', tel: '', cel: '010-1234-5678',
+    spc: '페니실린 알레르기 (2019년 두드러기)\n당뇨약 복용 중 — 주사 전 혈당 확인\n고혈압약 아침 1알\n2024.3 오른쪽 무릎 관절경 수술(다른 병원)\n스테로이드 주사는 3개월에 1번까지만\n보호자: 딸 (연락은 이동전화로)\n물리치료 때 찜질이 뜨거우면 바로 말함\n체외충격파는 강도 낮게 시작\n2025.8 왼쪽 어깨 회전근개 부분 파열 진단\n오른쪽 무릎에 금속 있음 — 엑스레이 때 참고\n오전 진료 좋아함\n실비 서류 매번 요청 — 진단서·세부내역서',
+    day: '2026-11-07', room: '1진료실', ins: '국민건강보험(신환)',
+    sym: '양쪽 허벅지~종아리까지 쥐가 나는(또는 굳는?) 느낌\n→ 방사통으로 보임\n현재는 오른쪽만 증상 있음\n\n한 달 전부터 통증 시작\n\nxr: 무릎 이상 없음\nxr: L5-S1 좁아짐\n\nMBB L4,5 양쪽 + SNB 양쪽\n11.16 다시 봄, 많이 좋아지면 2차 주사',
+    dx: [['M5436', '좌골신경통, 요추부', true], ['M5456', '아래허리긴장, 요추부'], ['M1998', '상세불명의 관절증, 기타 부분']],
+    rx: [
+      ['G7204', '(Rt) knee AP/ Lat.', '1', '1', '1'], ['G7204', '(Lt) knee AP/ Lat.', '1', '1', '1'], ['G5601', '하지전장 1매', '1', '1', '1'],
+      ['G4502', 'L spine / AP/Lat', '1', '1', '1'], ['G5101', 'Pelvis / AP', '1', '1', '1'], ['LA358', '척수신경총 신경근', '1', '1', '1'],
+      ['LA272', '척수신경말초지차단', '2.5', '1', '1'], ['A15', '휴온스리도카인염산', '0.5', '1', '1'], ['A30', '리포라제주', '0.2', '1', '1'],
+      ['carm1', 'c-arm가이드', '0.1', '1', '1'], ['MM015', '표층열치료(심층열동시)', '1', '1', '1'], ['MM020', '심층열치료 [1일당]', '1', '1', '1'],
+      ['MM085', '재활저출력레이저치료', '1', '1', '1'], ['AL801', '외래환자 의약품관리료', '1', '1', '1'], ['AA154', '초진진찰료-의과의원', '1', '1', '1'],
+    ],
+    out: [],
+    last: null,
+  },
+  {
+    k: 'b', order: 2, lane: 'wait', laneText: '진료대기', chart: '6540', name: '김철수', age: 51, sex: '남', sexEn: 'M', kind: '재진',
+    when: '10:34 접수 · 30분째 대기', chip: '30분째 대기', memo: '체외충격파(3천 후 왼)족저',
+    res: '750312-*******', addr: '경기도 성남시 수정구 보기길 7', tel: '031-000-0000', cel: '010-2222-3333',
+    spc: '고혈압 · 와파린 복용(주사 시 지혈 오래)',
+    day: '2026-11-07', room: '1진료실', ins: '국민건강보험(재진)',
+    sym: '', dx: [], rx: [], out: [],
+    last: { date: '10월 31일', ago: '7일 전', sym: '왼쪽 족저근막염 많이 좋아졌다. 체외충격파 2차 1주 뒤, 체외충격파 후 다시 봄' },
+  },
+  {
+    k: 'c', order: 3, lane: 'done', laneText: '수납완료', chart: '11931', name: '이영희', age: 30, sex: '여', sexEn: 'F', kind: '재진',
+    when: '09:40 접수 · 10:21 수납', chip: '10:21 수납', memo: '허리 2차',
+    res: '960805-*******', addr: '경기도 성남시 중원구 예시로 40', tel: '', cel: '010-4444-5555',
+    spc: '',
+    day: '2026-11-07', room: '2진료실', ins: '국민건강보험(재진)',
+    sym: '허리 통증 조금 줄었음\n오른쪽 종아리 당김은 그대로\n\nMBB L4,5 양쪽 2차',
+    dx: [['M5456', '아래허리긴장, 요추부', true], ['M5136', '기타 추간판변성, 요추부']],
+    rx: [['LA358', '척수신경총 신경근', '1', '1', '1'], ['A15', '휴온스리도카인염산', '0.5', '1', '1'], ['carm1', 'c-arm가이드', '0.1', '1', '1'], ['MM015', '표층열치료(심층열동시)', '1', '1', '1'], ['AA254', '재진진찰료-의과의원', '1', '1', '1']],
+    out: [['641901140', '쎄레브렉스캡슐200mg', '1', '2', '7'], ['645102100', '에페리손정50mg', '1', '3', '7'], ['671803230', '알마겔정', '1', '3', '7']],
+    last: { date: '10월 31일', ago: '7일 전', sym: '허리통증(main), 오른쪽 종아리 쥐, 양쪽 무릎 통증. 허리는 이번 주부터 심해지기 시작' },
+  },
+]
+
+const app = document.getElementById('app')
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const NOTE = '<div class="mock-note">목업 · 가짜 환자 · 줄을 누르면 상세가 열려요</div>'
+
+function list() {
+  return NOTE + `
+  <header class="top">
+    <div class="top-row"><span class="brand">양지바른<b>정형외과</b></span><span class="conn">● 연결됨</span></div>
+    <h1 class="page-title">접수 현황</h1>
+    <span class="sub">11:04:15 기준 · 5초마다 저절로 바뀌어요</span>
+  </header>
+  <main class="list">
+    <h2>오늘 접수 · 누르면 진료기록부가 열려요</h2>
+    ${P.map(p => `
+    <a class="row" href="#/v/${p.k}">
+      <div class="l1"><span class="num">${p.order}</span><span class="tag ${p.lane}">${p.laneText}</span>
+        <span class="who"><span class="chart">${p.chart}</span></span><span class="nm">${esc(p.name)}</span>
+        <span class="meta" style="font-size:14px;color:var(--ink-2)">${p.age}세 · ${p.sex} · ${p.kind}</span></div>
+      <div class="l2">${esc(p.when.split(' · ')[0])}<span class="chip">${esc(p.chip)}</span></div>
+    </a>`).join('')}
+  </main>`
+}
+
+const kvRow = (k, v) => `<dt>${k}</dt><dd>${v ? esc(v) : '<span class="empty">—</span>'}</dd>`
+const rxTable = rows => rows.length === 0 ? '<div class="none">없어요</div>' : `
+  <table class="rx"><thead><tr><th>코드</th><th>명칭</th><th class="n">용량</th><th class="n">횟수</th><th class="n">일수</th></tr></thead>
+  <tbody>${rows.map(r => `<tr><td class="c"><code>${esc(r[0])}</code></td><td>${esc(r[1])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td></tr>`).join('')}</tbody></table>`
+
+function detail(p) {
+  const before = p.lane === 'wait' || p.lane === 'hold'
+  return NOTE + `
+  <header class="top">
+    <div class="top-row"><a class="back" href="#/">접수 현황</a><span class="mark">양지바른</span></div>
+    <div class="who"><span class="chart">${p.chart}</span><h1>${esc(p.name)}</h1><span class="meta">${p.age}세 · ${p.sex} · ${p.kind}</span></div>
+    <div class="state"><span class="tag ${p.lane}">${p.laneText}</span><span>${esc(p.when)}</span></div>
+    <div class="memo">메모 · ${esc(p.memo)}</div>
+  </header>
+  <main class="detail">
+    <h2>오늘 진료기록부</h2>
+    <article class="paper">
+      <div class="paper-head"><span class="ttl">외래진료기록부</span><span class="dt">${p.day}</span></div>
+      <dl class="kv">
+        ${kvRow('차트번호', p.chart)}
+        ${kvRow('수진자명', `${p.name} (${p.sexEn}/${p.age})`)}
+        ${kvRow('주민등록', p.res)}
+        ${kvRow('주&nbsp;&nbsp;&nbsp;&nbsp;소', p.addr)}
+        ${kvRow('전&nbsp;&nbsp;&nbsp;&nbsp;화', p.tel)}
+        ${kvRow('이동전화', p.cel)}
+      </dl>
+      <hr class="rule">
+      <div class="spc ${p.spc ? '' : 'is-none'}"><div class="sec-h">특이사항</div><p class="clamp">${p.spc ? esc(p.spc) : '적힌 특이사항이 없어요'}</p><button type="button" class="more" hidden>전부 보기 ▾</button></div>
+      <div class="sec"><div class="sec-h">내원내역</div>
+        <div class="visit-line"><span>내원 : ${p.day.replaceAll('-', '')}</span><span>${p.room}</span><span>${esc(p.ins)}</span></div></div>
+      ${before && !p.sym && !p.dx.length && !p.rx.length && !p.out.length
+        ? '<div class="sec"><div class="sec-h">증상 · 상병 · 처방</div><div class="none">아직 없어요. 진료가 끝나면 여기에 나와요.</div></div>' : `
+      <div class="sec"><div class="sec-h">증상</div>
+        ${p.sym ? `<div class="sym"><span class="d">${p.day.replaceAll('-', '')}</span><pre>${esc(p.sym)}</pre></div>` : '<div class="none">적힌 증상이 없어요</div>'}</div>
+      <div class="sec"><div class="sec-h">상병</div>
+        ${p.dx.length ? `<ul class="dx">${p.dx.map(d => `<li><code class="${d[2] ? 'main' : ''}">${d[0]}</code><span>${esc(d[1])}</span></li>`).join('')}</ul>` : '<div class="none">없어요</div>'}</div>
+      <div class="sec"><div class="sec-h">처방</div>${rxTable(p.rx)}</div>
+      <div class="sec"><div class="sec-h">원외처방</div>${rxTable(p.out)}</div>`}
+    </article>
+    <h2 style="margin-top:6px">지난번 증상</h2>
+    ${p.last ? `<section class="card"><div class="h"><b><span class="badge">지난번</span>${p.last.date}</b><span class="ago">${p.last.ago}</span></div><p>증상 · ${esc(p.last.sym)}</p></section>`
+             : '<section class="card"><p style="background:none;padding:0">첫 방문이라 지난 진료가 없어요.</p></section>'}
+  </main>
+  <footer class="foot">보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요</footer>`
+}
+
+function route() {
+  const m = location.hash.match(/^#\/v\/(\w+)$/)
+  const p = m && P.find(x => x.k === m[1])
+  app.innerHTML = p ? detail(p) : list()
+  window.scrollTo(0, 0)
+  // 특이사항이 5줄을 넘으면 [전부 보기]를 보인다. 누르면 펼치고 다시 누르면 접는다
+  const note = app.querySelector('.spc p.clamp'), more = app.querySelector('.spc .more')
+  if (note && more && note.scrollHeight > note.clientHeight + 1) {
+    more.hidden = false
+    more.onclick = () => {
+      const open = note.classList.toggle('clamp') === false
+      more.textContent = open ? '접기 ▴' : '전부 보기 ▾'
+    }
+  }
+  if (p && /open/.test(location.search) && more && !more.hidden) more.click()
+}
+addEventListener('hashchange', route)
+route()
+</script>
+</body>
+</html>

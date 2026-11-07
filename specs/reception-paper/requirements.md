@@ -1,0 +1,35 @@
+# 요구사항: 접수 현황 상세를 종이 진료기록부 모양으로 + 특이사항
+
+> 기능 ID: `reception-paper` · 형식: 요구사항은 `### REQ-1501: 제목`, 수용 기준은 `- AC-1501.1: Given/When/Then`.
+> 각 AC 는 테스트 하나 이상으로 검증되어야 하며, 테스트 이름에 AC ID 를 넣는다.
+
+## 배경 / 목표
+- 사용자 결정(2026-11-07): 접수 현황(spec `reception-phone`)에서 환자를 누르면 비트가 인쇄하는 '외래진료기록부' 종이 모양으로 오늘 진료를 보고, 그 환자의 특이사항도 본다. 클릭 목업 `docs/mockups/reception-phone/Paper.html` 승인(2026-11-07 "좋아").
+- 주민번호는 앞 6자리만(뒤는 `*******`), 주소·전화는 보인다(사용자 결정 2026-11-07). '지난번 증상' 카드는 종이 아래에 그대로 둔다. 목록 줄은 바꾸지 않는다(특이사항은 올해 온 환자 거의 모두에 있어 표시가 뜻이 없다).
+- 특이사항은 길다(올해 온 환자 중앙값 3줄, 10%는 13줄 넘음, 가장 긴 것 70줄 · 2026-11-07 의원 PC에서 길이만 셈). 처음엔 5줄만 보이고 [전부 보기]로 펼친다.
+- 이 명세는 `reception-phone` AC-1404.4·AC-1404.7의 '오늘 카드'를 종이 카드로 바꾼다. 나머지 reception-phone 규칙(의원 와이파이 안에서만, 폰에 남기지 않음, 숨기면 지움, 30초 다시 읽기 AC-1404.8)은 그대로다.
+
+## 요구사항
+
+### REQ-1501: 상세 답에 종이 기록부 자료 (도우미)
+- AC-1501.1: Given 오늘 접수 환자의 열쇠, When `GET /api/visit/{k}/history?from=0`을 읽으면, Then 답에 `paper` 칸(design.md 2절 모양)이 있고, `from`이 0보다 크면 `paper` 칸이 없다. 나머지 칸(`visits`·`next`·`more`·`first`·`total`·`todaySym`)은 그대로다
+- AC-1501.2: Given 그 환자의 PbsInf 줄, When paper 사람 칸을 만들면, Then `res`는 `LEFT(PbsResNum,6)`이 숫자 6자리일 때만 "NNNNNN-*******"이고 아니면 ""이며(문장은 주민번호 7번째 글자부터 읽지 않는다), `addr`는 PbsDtlAdr 뒤에 PbsAdrSta(비지 않았으면 공백 하나 사이), `tel`은 PbsPhnNum, `cel`은 PbsCelPhn이다. 모두 앞뒤 공백을 빼고 없으면 ""
+- AC-1501.3: Given PbsCmtInf.PbsSpcCmt(RTF 글), When `special`을 만들면, Then RTF를 보통 글로 바꾼다: `\par`·`\line`은 줄 바꿈("\n"), `\tab`은 공백, `\'hh` 바이트는 `\ansicpg`(없으면 949) 글자로, `\uN`은 그 글자(뒤 `\ucN`개 대체 글자는 버림), 글꼴표·색표·스타일표·info·`{\*…}` 묶음과 그림은 버린다. 그다음 줄 끝 공백을 빼고, 빈 줄이 둘 넘게 이어지면 하나로, 앞뒤 빈 줄을 뺀다. RTF가 아닌 글은 같은 정리만 한다. 줄이 없거나 비면 ""
+- AC-1501.4: Given 그 접수(같은 차트번호·OcmAcpDtm=@before·외래·병원 범위), When `room`·`ins`를 만들면, Then `room`은 접수 날 유효한 DepMst 줄의 DepKorNam, `ins`는 OcmInsCod의 InsMst 줄 중 InsAdpDte가 접수 날 이하인 가장 늦은 줄의 InsCodNam이다. 없으면 ""
+- AC-1501.5: Given 그 접수의 EmrInf 줄, When `sym`을 만들면, Then EmrShtTyp='S' 줄을 EmrShtSeq 순으로 "\n"으로 잇는다. 빈 줄도 줄로 지키되 빈 줄이 둘 넘게 이어지면 하나로, 줄 끝 공백과 앞뒤 빈 줄은 뺀다. 줄이 없으면 ""
+- AC-1501.6: Given 그 접수의 OicInf 줄, When `dx`를 만들면, Then OicSeq 순으로 `{code: OicElcCod, name: OicIcdNam, main: OicIcdPri가 '1'}`(앞뒤 공백 뺌)이다
+- AC-1501.7: Given 그 접수의 살아 있는 처방 줄(`ReceptionSql` RxRow 조건), When `rx`·`out`을 만들면, Then OdrSeq 순으로 OdrOutCod가 'XX'(원외처방, 교부번호 있음)면 `out`, 아니면 `rx`에 `{code, name, qty, tms, day}`를 넣는다. `code`는 OdrCod(앞뒤 공백 뺌, 대소문자 그대로), `name`은 OdrCodNam(비면 그날 이름표 이름, 그것도 없으면 ""), `qty`는 OdrQty를 소수 아래 0 없이("1"·"2.5"·"0.25", 비트 인쇄의 "0.####"), `tms`·`day`는 정수 글
+- AC-1501.8: Given 종이 자료 문장(`ReceptionSql`의 PaperPerson·PaperVisit·PaperSymptoms·PaperDx·PaperOrders), When 살피면, Then 모두 매개변수를 받는 SELECT 상수이고 `Sql.IsAllowed`가 받으며 정해 둔 매개변수 표와 함께만 `ReadOnlyGuard`를 지난다. 내원 문장은 병원 범위(`DepMst.DepHspNum=@hospital`) 조건이 있고, 차트번호는 함수 없이 견주며(`=@chart`), SQL Server 2008 R2에서 도는 글이다(`OFFSET`·`FETCH`·`STRING_AGG` 없음)
+- AC-1501.9: Given 상세 읽기 한 번(8초 제한, AC-1404.1), When 종이 자료 문장 중 하나라도 실패하거나 시간이 다 가면, Then 일부만 주지 않고 상세 전체가 503(볼 수 없음)이다. from>0 읽기는 종이 자료 문장을 돌리지 않는다
+
+### REQ-1502: 폰·태블릿 상세의 종이 카드 (화면)
+- AC-1502.1: Given 상세 답(from=0)과 목록 줄, When 상세(폰 화면·태블릿 오른쪽 칸)를 그리면, Then 머리(지금 그대로) 아래 제목 "오늘 진료기록부"와 종이 카드(승인 목업 Paper.html)를 그린다: 머리글 "외래진료기록부"·오늘 날짜(YYYY-MM-DD), 차트번호·수진자명 "이름 (M|F/나이)"·주민등록·주소·전화·이동전화(빈 값은 "—"), 특이사항 상자, `<내원내역>` "내원 : YYYYMMDD"·진료실·"보험(신환|재진)", `<증상>`(날짜와 줄 바꿈 그대로의 글), `<상병>`(코드·이름, main이면 '주' 표시), `<처방>`·`<원외처방>` 표(코드·명칭·용량·횟수·일수, 줄이 없으면 "없어요"). 그 아래 제목 "지난번 증상"과 지금의 '지난번' 카드(AC-1404.7 그대로, 없으면 "첫 방문이라 지난 진료가 없어요.")와 끝 줄. 지금의 오늘 카드는 없다
+- AC-1502.2: Given `special`, When 특이사항 상자를 그리면, Then ""이면 점선 상자에 "적힌 특이사항이 없어요"이고, 글이 그려진 높이로 5줄을 넘으면 5줄만 보이고 단추 [전부 보기 ▾]가 있으며 누르면 모두 보이고 단추가 [접기 ▴]로 바뀐다(다시 누르면 접힘). 5줄 이하면 단추가 없다
+- AC-1502.3: Given 줄의 칸이 진료대기·진료보류이고 `sym`·`dx`·`rx`·`out`이 모두 비었음, When 그리면, Then `<증상>`~`<원외처방>` 자리에 `<증상 · 상병 · 처방>` 제목과 "아직 없어요. 진료가 끝나면 여기에 나와요." 한 줄만 그린다. 그 밖의 칸에서 빈 증상은 "적힌 증상이 없어요", 빈 상병·처방은 "없어요"다
+- AC-1502.4: Given 상세가 열려 있음, When 저절로 다시 읽기(AC-1404.8 조건)의 답이 오면, Then 종이 카드 내용을 새 `paper`로 바꾸되 특이사항을 펼쳐 둔 상태는 지키고, 머리·지난번 카드는 AC-1404.8대로다. 환자 글은 글 마디로만 넣는다(`innerHTML` 없음, AC-1407.6)
+- AC-1502.5: Given 상세 답, When `api.js`가 모양을 검사하면, Then from=0 답에 `paper`가 없거나 칸 종류가 design.md 2절과 다르면 모양 틀림(AC-1407.4)이다
+
+## 범위 밖
+- 목록 줄 바꾸기(특이사항 표시 없음), 지난 내원의 종이 기록부, 용법 칸, 인쇄·내려받기
+- 특이사항·주소·전화 고치기(보기만)
+- 도우미 새 판 내기·설치(사용자가 말할 때만, reception-phone REQ-1412)
