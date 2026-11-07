@@ -10,8 +10,8 @@
 ## TASK-1: Worker가 F/U를 오늘 포함 30일 한 조각으로 읽는다
 - AC: AC-2401.1, AC-2401.2, AC-2401.3
 - REQ: REQ-2401
-- Files: src/workers/patients/plan.ts, src/workers/patients/plan.test.ts, src/workers/patients/handler.test.ts, src/workers/patients/jobs.test.ts, src/components/patients/usePatientsWorker.test.ts, fixtures/patients/make-fake-patients.ts, fixtures/patients/fake/targets-followup.json
-- Tests: src/workers/patients/plan.test.ts, src/workers/patients/handler.test.ts, src/workers/patients/jobs.test.ts
+- Files: src/workers/patients/plan.ts, src/workers/patients/plan.test.ts, src/workers/patients/handler.test.ts, src/workers/patients/jobs.test.ts, src/components/patients/usePatientsWorker.test.ts, fixtures/patients/make-fake-patients.ts, fixtures/patients/make-fake-patients.test.ts, fixtures/patients/fake/targets-followup.json
+- Tests: src/workers/patients/plan.test.ts, src/workers/patients/handler.test.ts, src/workers/patients/jobs.test.ts, fixtures/patients/make-fake-patients.test.ts
 - TDD: required
 - 할 일: design.md '구성 요소'의 `FOLLOWUP_DAYS`·가짜 F/U 조각 하나·시험 옮기기. 환자 자료 구역 울타리(네트워크·console·저장소 없음)를 지킨다
 

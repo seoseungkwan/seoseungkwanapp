@@ -763,7 +763,7 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   /* ---------- 상태 화면 (명단 도구 자리) ---------- */
   function listHead() { return S.tool === 'followup' ? head(FU_TITLE, FU_DESC) : head(RC_TITLE, RC_DESC); }
   function loadingView() {
-    var fu = S.tool === 'followup', total = fu ? 4 : 7, n = Math.min(S.tick + 1, total);
+    var fu = S.tool === 'followup', total = fu ? 1 : 7, n = Math.min(S.tick + 1, total);
     return listHead() + '<div class="ld" role="status"><p class="ld-t"><span>' + (fu ? '비트에서 F/U 명단을 읽는 중이에요' : '정기 주사 기록을 처음 읽는 중이에요') + '</span><span class="ld-n">' + n + '/' + total + (fu ? '' : ' 달') + '</span></p>' +
       '<p class="ld-s">' + (fu ? '최근 30일을 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' : '처음 한 번만 7개월치를 읽어요. 다음부터는 새로 생긴 달만 읽어서 빨라요. 다 읽을 때까지 이 창을 열어 두세요.') + '</p></div>';
   }

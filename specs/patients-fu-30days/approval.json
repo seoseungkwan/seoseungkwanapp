@@ -1,0 +1,21 @@
+{
+  "status": "approved",
+  "feature": "patients-fu-30days",
+  "approved_at": "2026-11-07T03:46:40Z",
+  "approved_via": "user-prompt",
+  "session_id": "708c3eec-0eb2-4ab2-88c7-af39198df55f",
+  "spec_sha256": "cbcbce20b6368654af3a959c92e662ee115ca0af5306cf0ea7119e10c2fa6ed9",
+  "scope": [
+    "docs/mockups/patients/index.html",
+    "fixtures/patients/fake/targets-followup.json",
+    "fixtures/patients/make-fake-patients.test.ts",
+    "fixtures/patients/make-fake-patients.ts",
+    "src/components/patients/PatientsScreen.test.tsx",
+    "src/components/patients/PatientsScreen.tsx",
+    "src/components/patients/usePatientsWorker.test.ts",
+    "src/workers/patients/handler.test.ts",
+    "src/workers/patients/jobs.test.ts",
+    "src/workers/patients/plan.test.ts",
+    "src/workers/patients/plan.ts"
+  ]
+}

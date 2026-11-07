@@ -22,7 +22,7 @@
 
 ## 범위 밖
 - 정기 주사 명단(읽는 달·규칙·36개월 쌓기)
-- 메모에 적은 날짜를 진료일부터 120일 안만 날짜로 보는 규칙(`lib/patients/followup.ts` `writtenDate`, AC-602.1). 원본 옮김이라 그대로 둔다
+- 메모에 적은 날짜를 진료일부터 120일 안만 날짜로 보는 규칙(`lib/patients/followup.ts` `writtenDate`, `specs/patients`의 602번 수용 기준). 원본 옮김이라 그대로 둔다
 - 도우미(`helper/`)·통로(`lib/bridge`)·확장. 웹이 묻는 기간만 바뀐다
 - 기간을 화면에서 고르게 하기
 - E2E(`e2e/patients`)는 고치지 않는다(가짜 조각 파일을 따라가므로 같이 맞춰진다)
