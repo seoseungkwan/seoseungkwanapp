@@ -1019,6 +1019,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
   const PERIOD_IMPORTS = [
     'DashboardAnalysis.tsx: @/components/common/ErrorCard',
     'DashboardAnalysis.tsx: @/components/stats/PeriodPicker',
+    'PeriodButtons.tsx: @/components/stats/PeriodPicker', // dashboard-ux AC-2703.2: 추이 조회 기간 묶음
     'flow.ts: @/components/stats/periodPick',
     'flow.ts: @/components/stats/view',
   ]
@@ -1037,11 +1038,16 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     }
   })
 
-  it('AC-1805.2: summary/view.ts는 components/stats를 부르지 않고(통계 view.ts가 이 파일을 불러 고리가 생긴다), 통계를 부르는 곳은 flow.ts(periodPick·view)와 DashboardAnalysis.tsx(PeriodPicker) 둘뿐이다', () => {
+  it('AC-1805.2·AC-2703.2: summary/view.ts는 components/stats를 부르지 않고(통계 view.ts가 이 파일을 불러 고리가 생긴다), 통계를 부르는 곳은 flow.ts(periodPick·view)와 DashboardAnalysis.tsx·PeriodButtons.tsx(PeriodPicker)뿐이다', () => {
     expect(importsOf('view.ts').filter((from) => from.includes('components/stats'))).toEqual([])
     expect(code('view.ts')).not.toMatch(/components\/stats/)
     const stats = appFiles().flatMap((file) => importsOf(file).flatMap((from) => (from.startsWith('@/components/stats') ? [`${file}: ${from}`] : [])))
-    expect(stats.sort()).toEqual(['DashboardAnalysis.tsx: @/components/stats/PeriodPicker', 'flow.ts: @/components/stats/periodPick', 'flow.ts: @/components/stats/view'])
+    expect(stats.sort()).toEqual([
+      'DashboardAnalysis.tsx: @/components/stats/PeriodPicker',
+      'PeriodButtons.tsx: @/components/stats/PeriodPicker',
+      'flow.ts: @/components/stats/periodPick',
+      'flow.ts: @/components/stats/view',
+    ])
     // 새 파일 둘은 lib/storage를 부르지 않는다(옛 기간 읽기는 LiveDashboard가 만들어 source.older로 준다)
     for (const file of ['flow.ts', 'usePeriodDays.ts', 'DashboardAnalysis.tsx']) expect(code(file), file).not.toMatch(/lib\/storage|\breadDays\b/)
   })
