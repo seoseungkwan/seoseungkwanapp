@@ -15,18 +15,22 @@ namespace Precheck.Core.Stats;
 ///   report{daily[], monthly[]} }. 보고 한 벌은 { ok:true, period, totalVisits, newPatients, returnPatients, totalAmount,
 ///   insurerAmount, noncoveredAmount, cashAmount, cardAmount, transferAmount, treatments{manual, eswt, carm, sono, cryo},
 ///   laCodes[{code, count}], financeUnconfirmed, financeUnconfirmedReason(확인 필요일 때만), notes[] } 또는 { ok:false, period, reason }.
+/// v3(stats-bit-sections AC-2701.1)는 v2 열쇠를 같은 차례·같은 값으로 쓴 뒤 비트 전용 세 칸 열쇠 넷을 이 차례로 더한다:
+///   visits[[차트번호|null, 진료일, 접수 시각 HHmm|null, 보험 이름|null, 진료의 코드|null]], people[[차트번호, 생년월일|null, 주소 앞부분|null]],
+///   doctors[[코드, 이름|null]], doctorDays[[수납일, 진료의 코드, 총진료비]].
 /// 줄은 객체보다 작은 배열이다. 다 만든 글자를 Chunker가 나눠 보낸다.
 /// </summary>
 public static class StatsPayload
 {
-    public const int Version = 2;
+    public const int Version = 3;
 
-    public static string Build(string from, string to, StatsRowsResult rows, StatsReportResult report)
+    public static string Build(string from, string to, StatsRowsResult rows, StatsReportResult report, StatsExtraResult extra)
     {
         if (from == null) throw new ArgumentNullException(nameof(from));
         if (to == null) throw new ArgumentNullException(nameof(to));
         if (rows == null) throw new ArgumentNullException(nameof(rows));
         if (report == null) throw new ArgumentNullException(nameof(report));
+        if (extra == null) throw new ArgumentNullException(nameof(extra));
 
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer, Envelope.WriterOptions))
@@ -97,9 +101,60 @@ public static class StatsPayload
             WriteSets(writer, "monthly", report.Monthly);
             writer.WriteEndObject();
 
+            WriteExtra(writer, extra);
+
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>v3 열쇠 넷(AC-2701.1·2701.3·2701.4·2701.5). 차트번호·이름 글은 v2와 같이 WriteText(없으면 null).</summary>
+    private static void WriteExtra(Utf8JsonWriter writer, StatsExtraResult extra)
+    {
+        writer.WriteStartArray("visits");
+        foreach (var visit in extra.Visits)
+        {
+            writer.WriteStartArray();
+            WriteText(writer, visit.Chart);
+            WriteText(writer, visit.Day);
+            WriteText(writer, visit.Time);
+            WriteText(writer, visit.Insurance);
+            WriteText(writer, visit.Doctor);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+
+        writer.WriteStartArray("people");
+        foreach (var person in extra.People)
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(person.Chart);
+            WriteText(writer, person.Birth);
+            WriteText(writer, person.Area);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+
+        writer.WriteStartArray("doctors");
+        foreach (var doctor in extra.Doctors)
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(doctor.Code);
+            WriteText(writer, doctor.Name);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+
+        writer.WriteStartArray("doctorDays");
+        foreach (var day in extra.DoctorDays)
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(day.Day);
+            writer.WriteStringValue(day.Doctor);
+            writer.WriteNumberValue(day.Amount);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
     }
 
     private static void WriteSets(Utf8JsonWriter writer, string name, IReadOnlyList<StatsReportSet> sets)
