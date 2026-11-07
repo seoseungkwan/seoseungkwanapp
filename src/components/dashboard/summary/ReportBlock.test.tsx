@@ -12,6 +12,8 @@ import { ReportBlock } from './ReportBlock'
 import { reportSentence, todayView } from './view'
 
 // 원장님 보고 문장 (tab-frame REQ-317, design.md '원장님 보고 문장'·'보고 문장 틀'·'복사'·'오늘 자료 없음(연결 뒤)', 메모 §3·§4).
+// dashboard-ux AC-2705.1이 바꾼 것: 이름 줄 "{오늘|M월 D일} 보고 문장" + 칩 "자동 집계 요약"(AI 요약과 구분), 문장은 h1이 아니라 body 크기 한 단락
+// (첫 문장 · 나머지 문장 두 조각). h1은 머리 줄 "대시보드" 하나라 이 블록에는 h1이 없다. [복사]·복사 결과·막힘 툴팁은 그대로다.
 // navigator.clipboard는 가짜(성공·실패·없음), 2초 뒤 되돌림은 가짜 시계로 본다. 가짜 DayPayload는 이 시험 파일 안에서만 만든다
 
 const TODAY = '2026-10-31' // 토요일
@@ -66,6 +68,16 @@ afterEach(() => {
 
 const draw = (days: readonly DayPayload[] = DAYS) => render(<ReportBlock today={TODAY} days={days} />)
 const copyButton = () => screen.getByRole('button')
+// 보고 문장 한 단락(AC-2705.1): 이름 줄 다음 단락. 첫 조각 = 첫 문장, 둘째 조각 = 나머지
+const sentence = (container: HTMLElement = document.body) => {
+  expect(container.querySelectorAll('h1')).toHaveLength(0)
+  const name = screen.getByText(/^(오늘|\d+월 \d+일) 보고 문장$/)
+  const paragraph = name.parentElement!.nextElementSibling!
+  expect(paragraph.tagName).toBe('P')
+  return paragraph
+}
+const firstOf = (container?: HTMLElement) => sentence(container).children[0]!
+const restOf = (container?: HTMLElement) => sentence(container).children[1]!
 const live = (container: HTMLElement) => {
   const el = container.querySelector('[aria-live="polite"]')
   if (!el) throw new Error('aria-live 자리가 없다')
@@ -78,33 +90,39 @@ const press = async () => {
 }
 
 describe('보고 문장 — 오늘 줄이 있음', () => {
-  it('AC-317.1: 머리 줄 "원장님 보고 문장"(small 600 ink) 왼쪽 · [복사] 오른쪽, 아래 1px line', () => {
+  it('AC-317.1·AC-2705.1: 머리 줄 "오늘 보고 문장"(small 600 ink) + 칩 "자동 집계 요약"(보조) 왼쪽 · [복사] 오른쪽, 아래 1px line', () => {
     draw()
-    const name = screen.getByText('원장님 보고 문장')
+    const name = screen.getByText('오늘 보고 문장')
     hasAll(name, 'text-small font-semibold text-ink')
+    const chip = screen.getByText('자동 집계 요약')
+    expect(chip.parentElement).toBe(name)
+    hasAll(chip, ds.chip.neutral)
     const head = name.parentElement!
     hasAll(head, 'mt-3 flex items-center justify-between gap-3 border-b border-line pb-2')
     expect(head.contains(copyButton())).toBe(true)
     expect(head.firstElementChild).toBe(name)
+    expect(screen.queryByText(/원장님 보고 문장|AI|Claude/)).toBeNull()
   })
 
-  it('AC-317.1: h1 = 첫 문장(display-m 600, 폰 heading-m, text-balance), 그 아래 나머지 문장(lead ink-2)', () => {
+  it('AC-2705.1: 문장은 h1이 아니라 body 크기 한 단락(ink-2) — 첫 문장 조각(600 ink) · 나머지 조각, display·lead 크기가 없다', () => {
     const { container } = draw()
-    const sentence = reportSentence(todayView(TODAY, DAYS))!
-    expect(sentence.full).toBe(FULL)
-    const h1s = container.querySelectorAll('h1')
-    expect(h1s).toHaveLength(1)
-    expect(h1s[0]!.textContent).toBe('오늘 환자 13명이 왔습니다.')
-    hasAll(h1s[0]!, 'mt-2 text-display-m font-semibold text-balance max-md:text-heading-m')
-    const rest = screen.getByText('신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')
-    hasAll(rest, 'mt-2 max-w-128 text-lead text-ink-2')
-    expect(rest.previousElementSibling).toBe(h1s[0])
+    const made = reportSentence(todayView(TODAY, DAYS))!
+    expect(made.full).toBe(FULL)
+    const paragraph = sentence(container)
+    expect(paragraph.textContent).toBe(FULL)
+    hasAll(paragraph, 'mt-2 text-body text-ink-2')
+    expect(paragraph.className).not.toMatch(/text-(display|heading|lead|title)/)
+    expect(paragraph.children).toHaveLength(2)
+    expect(firstOf(container).textContent).toBe('오늘 환자 13명이 왔습니다.')
+    hasAll(firstOf(container), 'font-semibold text-ink')
+    expect(restOf(container).textContent).toBe('신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')
+    expect(container.querySelectorAll('h1, h2, h3')).toHaveLength(0)
   })
 
-  it('AC-317.1: 덜 끝난 날은 "오늘 지금까지 …" 틀이다', () => {
+  it('AC-317.1·AC-2705.1: 덜 끝난 날은 "오늘 지금까지 …" 틀이다', () => {
     const { container } = draw([day(TODAY, { partial: true, newPatients: 1, returning: 2 })])
-    expect(container.querySelector('h1')!.textContent).toBe('오늘 지금까지 환자 3명이 왔습니다.')
-    expect(screen.getByText('신환 1명, 재진 2명입니다.')).toBeTruthy()
+    expect(firstOf(container).textContent).toBe('오늘 지금까지 환자 3명이 왔습니다.')
+    expect(restOf(container).textContent).toBe('신환 1명, 재진 2명입니다.')
   })
 
   it('AC-317.1: 안심 줄 "보고 문장은 숫자만 쓰고 환자 이름은 쓰지 않아요."(caption muted, 앞에 꾸밈 shield 14 positive)', () => {
@@ -216,13 +234,12 @@ describe('[복사]', () => {
 describe('연결 뒤 · 오늘 자료 없음', () => {
   const NO_TODAY = [day('2026-10-30'), day('2026-10-24')]
 
-  it('AC-317.3: h1 "오늘 받은 진료 자료가 아직 없어요" + 안내(lead ink-2)', () => {
+  it('AC-317.3·AC-2705.1: 한 단락 "오늘 받은 진료 자료가 아직 없어요"(600 ink) + 안내(body ink-2), h1이 없다', () => {
     const { container } = draw(NO_TODAY)
-    const h1s = container.querySelectorAll('h1')
-    expect(h1s).toHaveLength(1)
-    expect(h1s[0]!.textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
-    hasAll(h1s[0]!, 'text-display-m font-semibold text-balance max-md:text-heading-m')
-    hasAll(screen.getByText('오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.'), 'text-lead text-ink-2')
+    expect(firstOf(container).textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(restOf(container).textContent).toBe('오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.')
+    hasAll(sentence(container), 'text-body text-ink-2')
+    expect(screen.getByText('오늘 보고 문장')).toBeTruthy()
     expect(screen.getByText('보고 문장은 숫자만 쓰고 환자 이름은 쓰지 않아요.')).toBeTruthy()
   })
 
@@ -299,10 +316,11 @@ describe('고른 날 (selected)', () => {
   const NO_DATA_REST = '진료가 없었거나 비트에 접수 기록이 없는 날이에요.'
   const pick = (selected: string | undefined, days: readonly DayPayload[] = DAYS, today = LATER) => render(<ReportBlock today={today} days={days} selected={selected} />)
 
-  it('AC-605.2: 지난 날짜를 고르면 "{월}월 {일}일 환자 N명이 왔습니다."로 시작하고, 블록 안에 "오늘" 글자가 없다', () => {
+  it('AC-605.2·AC-2705.1: 지난 날짜를 고르면 이름 줄이 "10월 31일 보고 문장"이고 문장은 "{월}월 {일}일 환자 N명이 왔습니다."로 시작하며, 블록 안에 "오늘" 글자가 없다', () => {
     const { container } = pick(TODAY)
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('10월 31일 환자 13명이 왔습니다.')
-    expect(screen.getByText('신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')).toBeTruthy()
+    expect(screen.getByText('10월 31일 보고 문장')).toBeTruthy()
+    expect(firstOf(container).textContent).toBe('10월 31일 환자 13명이 왔습니다.')
+    expect(restOf(container).textContent).toBe('신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')
     expect(container.textContent).not.toContain('오늘')
   })
 
@@ -320,8 +338,8 @@ describe('고른 날 (selected)', () => {
     const writeText = vi.fn(() => Promise.resolve())
     setClipboard({ writeText })
     const { container } = pick('2026-10-29')
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(NO_DATA_FIRST)
-    expect(screen.getByText(NO_DATA_REST)).toBeTruthy()
+    expect(firstOf(container).textContent).toBe(NO_DATA_FIRST)
+    expect(restOf(container).textContent).toBe(NO_DATA_REST)
     expect(copyButton().getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(copyButton())
     expect(writeText).not.toHaveBeenCalled()
@@ -336,27 +354,25 @@ describe('고른 날 (selected)', () => {
 
   it('AC-605.4: 오늘 자료가 아직 없을 때는 고른 날이 오늘이어도 지금 문구 그대로다', () => {
     pick(LATER)
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
-    expect(screen.getByText('오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.')).toBeTruthy()
+    expect(firstOf().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(restOf().textContent).toBe('오늘 자료가 들어오면 이 자리에 보고 문장이 올라와요.')
     expect(screen.getByRole('tooltip', { hidden: true }).textContent).toBe('문장이 생기면 복사할 수 있어요')
   })
 
   it('AC-605.2: selected가 없거나 오늘이면 지금처럼 오늘 문장이다', () => {
     const none = pick(undefined, DAYS, TODAY)
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('오늘 환자 13명이 왔습니다.')
+    expect(firstOf().textContent).toBe('오늘 환자 13명이 왔습니다.')
     const html = none.container.innerHTML.replace(/_r_\w*_|:r\w*:|«r\w*»/g, '')
     none.unmount()
     const same = pick(TODAY, DAYS, TODAY)
     expect(same.container.innerHTML.replace(/_r_\w*_|:r\w*:|«r\w*»/g, '')).toBe(html)
   })
 
-  it('AC-605.9: 고른 지난 날이 partial: true면 h1 "{월}월 {일}일 환자 N명까지 확인됐어요.", 그 아래 줄 "그날 자료가 중간까지만 저장돼 있어요."', () => {
+  it('AC-605.9·AC-2705.1: 고른 지난 날이 partial: true면 첫 문장 "{월}월 {일}일 환자 N명까지 확인됐어요.", 이어서 "그날 자료가 중간까지만 저장돼 있어요."(한 단락)', () => {
     const { container } = pick(TODAY, [day(TODAY, { partial: true }), day('2026-10-24')])
-    const h1 = screen.getByRole('heading', { level: 1 })
-    expect(h1.textContent).toBe('10월 31일 환자 10명까지 확인됐어요.')
-    const rest = screen.getByText('그날 자료가 중간까지만 저장돼 있어요.')
-    hasAll(rest, 'mt-2 max-w-128 text-lead text-ink-2')
-    expect(rest.previousElementSibling).toBe(h1)
+    expect(firstOf(container).textContent).toBe('10월 31일 환자 10명까지 확인됐어요.')
+    expect(restOf(container).textContent).toBe('그날 자료가 중간까지만 저장돼 있어요.')
+    expect(restOf(container).previousElementSibling).toBe(firstOf(container))
     expect(container.textContent).not.toMatch(/신환|재진|지난주|오늘/)
   })
 
@@ -374,7 +390,7 @@ describe('고른 날 (selected)', () => {
 
   it('AC-605.9: 고른 날이 오늘이면 partial: true여도 지금처럼 "오늘 지금까지 …" 틀이다', () => {
     pick(TODAY, [day(TODAY, { partial: true, newPatients: 1, returning: 2 })], TODAY)
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('오늘 지금까지 환자 3명이 왔습니다.')
-    expect(screen.getByText('신환 1명, 재진 2명입니다.')).toBeTruthy()
+    expect(firstOf().textContent).toBe('오늘 지금까지 환자 3명이 왔습니다.')
+    expect(restOf().textContent).toBe('신환 1명, 재진 2명입니다.')
   })
 })

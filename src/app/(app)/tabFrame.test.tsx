@@ -9,8 +9,10 @@ import { setupSteps, type SetupInput } from '@/components/claim/setup/steps'
 import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
 import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
+import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { AppShell } from '@/components/shell/AppShell'
 import { MENU, MORE_MENU } from '@/components/shell/menu'
+import { todayInKorea } from '@/lib/analytics/dates'
 import { decideRoute } from '@/lib/auth/gate'
 import DashboardPage from './dashboard/page'
 
@@ -48,6 +50,11 @@ const plain = (html: string) =>
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+
+// 대시보드 연결 전 화면(dashboard-ux AC-2701.1): 서버 그림(DashboardPage)은 이제 저장 숫자를 읽는 동안의 뼈대라, 연결 전 브리핑은
+// 저장 숫자 읽기가 빈 줄로 끝난 뒤 LiveDashboard가 놓는 그림 — <BitDashboard initial={{ kind: 'none' }} />(오늘 한국 날짜) — 으로 본다.
+// 그 그림이 브라우저에서 페이지가 그리는 것과 같은지는 dashboard/page.test.tsx(AC-306.2·AC-2701.1)가 본다
+const beforeConnect = () => renderToStaticMarkup(<BitDashboard today={todayInKorea()} initial={{ kind: 'none' }} />)
 
 // 목차 상태(ui-90 AC-414.5): 준비 중(soon)이 아닌 칸 = 쓰는 화면이 있는 칸(connect-first · ready). 수는 목록에서 센다(spec revenue AC-010.1·patients AC-610.1, 다른 탭 명세도 같은 칸을 바꾼다)
 const READY = DASHBOARD_FEATURES.filter((f) => f.status !== 'soon')
@@ -105,7 +112,7 @@ describe('AC-515.5: 로그인하면 늘 대시보드가 첫 화면이다 (REQ-30
     }
   })
 
-  it('AC-301.3: 대시보드 페이지와 components/dashboard/**(시험 밖) 소스에 다른 주소로 보내는 코드가 없다', () => {
+  it('AC-301.3·AC-2704.7: 대시보드 페이지와 components/dashboard/**(시험 밖) 소스에 다른 주소로 보내는 코드가 없다 — 같은 주소 다시 읽기(location.reload())는 AI 요약의 로그인 끊김 한 곳뿐', () => {
     const dir = join(ROOT, 'src/components/dashboard')
     const files = [
       pageFile('/dashboard'),
@@ -118,8 +125,12 @@ describe('AC-515.5: 로그인하면 늘 대시보드가 첫 화면이다 (REQ-30
       expect(files.some((f) => f.endsWith(part)), part).toBe(true)
     }
     for (const file of files) {
-      expect(read(file), file).not.toMatch(/\bredirect\b|permanentRedirect|useRouter|router\.push|router\.replace|\blocation\./)
+      expect(read(file), file).not.toMatch(/\bredirect\b|permanentRedirect|useRouter|router\.push|router\.replace|\blocation\.(?!reload\(\))/)
     }
+    // 로그인이 끊긴 AI 답은 AI 리포트 화면과 같이 그 페이지를 다시 읽는다(dashboard-ux AC-2704.7). 주소는 바꾸지 않는다
+    expect(files.filter((file) => /\blocation\.reload\(\)/.test(read(file))).map((file) => file.slice(file.indexOf('src/')))).toEqual([
+      'src/components/dashboard/ai/useAiBrief.ts',
+    ])
   })
 })
 
@@ -215,10 +226,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
   // 설치·연결 확인 단계 이름은 입력과 상관없이 같다 → 아무 입력(연결 중)이나 준다
   const SETUP_INPUT: SetupInput = { state: 'connecting', hello: null, helloError: null, check: null, checkError: null, checking: false }
 
-  it('AC-307.7: 브리핑 연결 순서 이름 다섯 = setupSteps가 주는 title 다섯(순서·글자 그대로) — 768px 이상 목록과 768px 미만 접는 칸 둘 다', () => {
+  it('AC-307.7·AC-2701.1: 브리핑 연결 순서 이름 다섯 = setupSteps가 주는 title 다섯(순서·글자 그대로) — 768px 이상 목록과 768px 미만 접는 칸 둘 다', () => {
     const titles = setupSteps(SETUP_INPUT).map((s) => s.title)
     expect(titles).toHaveLength(5)
-    const briefing = /<section aria-label="오늘 브리핑"[^>]*>[\s\S]*?<\/section>/.exec(renderToStaticMarkup(<DashboardPage />))?.[0] ?? ''
+    const briefing = /<section aria-label="오늘 브리핑"[^>]*>[\s\S]*?<\/section>/.exec(beforeConnect())?.[0] ?? ''
     const lists = [...briefing.matchAll(/<ol\b[^>]*>([\s\S]*?)<\/ol>/g)].map((list) =>
       [...list[1]!.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((row) => plain(row[1]!)),
     )
@@ -227,7 +238,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     for (const rows of lists) expect(rows).toEqual(titles.map((title, i) => `${i + 1} ${title}`))
   })
 
-  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
+  it('AC-307.7·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5·AC-2701.1: 기능 수 글의 숫자 = DASHBOARD_FEATURES 개수 · 지금 쓸 수 있는 칸 수 · 연결하면 쓸 수 있는 칸 수 — 수는 목록에서 센다', () => {
     const total = DASHBOARD_FEATURES.length
     const now = featureCount('ready')
     const afterConnect = featureCount('connect-first')
@@ -236,7 +247,7 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(total).toBe(MENU.length - 1)
     expect(now + afterConnect).toBe(MENU.filter((m) => m.ready && m.label !== '대시보드').length)
     expect(now + afterConnect).toBe(READY.length)
-    const text = plain(renderToStaticMarkup(<DashboardPage />))
+    const text = plain(beforeConnect())
     expect([.../(\d+)개 가운데 (\d+)개는 지금, (\d+)개는 연결하면 쓸 수 있어요/.exec(text)!.slice(1)].map(Number)).toEqual([total, now, afterConnect])
     // 옛 기능 수 글 둘은 없다
     expect(text).not.toMatch(/기능 \d+개 가운데|개를 지금 쓸 수 있어요/)
@@ -303,15 +314,20 @@ describe('바탕 표시 지움 (ui-90 AC-404.2)', () => {
     expect(files.filter((f) => codeOf(f).includes('data-page-surface')).map((f) => f.slice(ROOT.length + 1))).toEqual([])
   })
 
-  it('AC-404.2: 대시보드를 그린 앱 틀 안에 data-page-surface 요소가 없다', () => {
+  it('AC-404.2·AC-2701.1: 대시보드를 그린 앱 틀 안에 data-page-surface 요소가 없다 — 서버 그림(뼈대)과 연결 전 화면 둘 다', () => {
     pathname.mockReturnValue('/dashboard')
-    const html = renderToStaticMarkup(
-      <AppShell hospitalName="가나 정형외과의원" email="manager@example.com" isAdmin={false}>
-        <DashboardPage />
-      </AppShell>,
-    )
-    expect(html).toContain('오늘 브리핑')
-    expect(html).not.toContain('data-page-surface')
+    const inShell = (page: ReactNode) =>
+      renderToStaticMarkup(
+        <AppShell hospitalName="가나 정형외과의원" email="manager@example.com" isAdmin={false}>
+          {page}
+        </AppShell>,
+      )
+    const server = inShell(<DashboardPage />)
+    expect(server).toContain('대시보드 숫자를 불러오고 있어요')
+    expect(server).not.toContain('data-page-surface')
+    const before = inShell(<BitDashboard today={todayInKorea()} initial={{ kind: 'none' }} />)
+    expect(before).toContain('오늘 브리핑')
+    expect(before).not.toContain('data-page-surface')
   })
 })
 

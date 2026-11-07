@@ -118,9 +118,17 @@ const drawWith = (initial: SummarySource, groups: DashboardGroups | null | 'pend
 
 // ── 화면 읽기 도우미 ──
 const region = (name: string) => screen.getByRole('region', { name })
-// 큰 문장 h1(연결 전·읽는 중·실패·보고 문장). 숫자가 있으면 머리 줄 h1 "대시보드"가 더 있어 빼고 본다(dashboard-ux AC-2701.3)
-const h1 = () => {
-  const found = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.textContent !== HEADER_H1)
+// 큰 문장: 연결 전·읽는 중·실패는 h1 하나(머리 줄 없음). 숫자가 있으면 h1은 머리 줄 "대시보드" 하나뿐이고(dashboard-ux AC-2701.3·AC-2705.1),
+// 큰 문장 자리는 보고 문장 한 단락(이름 줄 "{오늘|M월 D일} 보고 문장" 다음 단락)의 첫 문장 조각이다 — 보고 문장은 h1이 아니다
+const REPORT_NAME = /^(오늘|\d+월 \d+일) 보고 문장$/
+const bigLine = () => {
+  const found = screen.getAllByRole('heading', { level: 1 })
+  if (found.length === 1 && found[0]!.textContent === HEADER_H1) {
+    const paragraph = screen.getByText(REPORT_NAME).parentElement!.nextElementSibling!
+    expect(paragraph.tagName).toBe('P')
+    return paragraph.children[0]!
+  }
+  expect(found.map((heading) => heading.textContent).filter((text) => text === HEADER_H1)).toEqual([])
   expect(found).toHaveLength(1)
   return found[0]!
 }
@@ -167,10 +175,10 @@ const expectNumbersShown = (patients: number, newPatients: number, returning: nu
   expect(first!.textContent).toBe(`오늘 환자 수${patients}명`)
   expect(second!.textContent).toBe(`신환${newPatients}명`)
   expect(third!.textContent).toBe(`재진${returning}명`)
-  expect(h1().textContent).toBe(`오늘 지금까지 환자 ${patients}명이 왔습니다.`)
+  expect(bigLine().textContent).toBe(`오늘 지금까지 환자 ${patients}명이 왔습니다.`)
 }
 const expectBeforeConnect = () => {
-  expect(h1().textContent).toBe(CONNECT_H1)
+  expect(bigLine().textContent).toBe(CONNECT_H1)
   expect(within(todaySection()).getByText('비트 PC 연결 전')).toBeTruthy()
   for (const cell of kpiCells()) expect(within(cell as HTMLElement).getByText('연결하면 보여요')).toBeTruthy()
   expect(within(flow()).getByText('연결하면 생기는 것 4가지')).toBeTruthy()
@@ -276,7 +284,9 @@ describe('AC-601.1: 열면 저절로 읽는다', () => {
     await answer(days())
     expectNumbersShown(64, 9, 55)
     expect(screen.getByText('신환 9명, 재진 55명입니다.')).toBeTruthy()
-    expect(screen.getByText('원장님 보고 문장')).toBeTruthy()
+    // 보고 문장 이름 줄과 칩(AC-2705.1)
+    expect(screen.getByText('오늘 보고 문장')).toBeTruthy()
+    expect(screen.getByText('자동 집계 요약')).toBeTruthy()
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) {
       expect(within(flow()).getByRole('heading', { level: 3, name })).toBeTruthy()
     }
@@ -300,13 +310,13 @@ describe('AC-601.2: 저장 숫자 없이 처음 읽는 중', () => {
 
   it('AC-601.2: 큰 문장 자리에 읽는 중 h1·안내 문장과 진행 막대가 있고, 안심 줄이 그 아래다', () => {
     draw()
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
     const lead = screen.getByText(READ_LEAD)
     const bar = screen.getByRole('progressbar', { name: '비트 자료 읽는 중' })
     const safe = screen.getByText('환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 해요.')
-    expectOrder(h1(), lead, bar, safe)
-    expect(within(region('오늘 브리핑')).getByRole('heading', { level: 1 })).toBe(h1())
-    hasAll(h1(), 'text-display-m font-semibold text-ink max-md:text-heading-m')
+    expectOrder(bigLine(), lead, bar, safe)
+    expect(within(region('오늘 브리핑')).getByRole('heading', { level: 1 })).toBe(bigLine())
+    hasAll(bigLine(), 'text-display-m font-semibold text-ink max-md:text-heading-m')
     hasAll(lead, 'text-lead text-ink-2')
     // 값이 없으니 진행률을 지어내지 않는다(움직임은 AC-601.17)
     expect(bar.getAttribute('aria-valuenow')).toBeNull()
@@ -339,7 +349,7 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     draw()
     await answer(days())
     const at = screen.getByText(READ_AT_342)
-    expectOrder(h1(), at, button('다시 읽기'), todaySection())
+    expectOrder(bigLine(), at, button('다시 읽기'), todaySection())
     hasAll(button('다시 읽기'), ds.button.secondarySmall)
     expect(region('오늘 브리핑').contains(at)).toBe(true)
   })
@@ -515,7 +525,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     expectNumbersShown(64, 9, 55)
     const at = screen.getByText(READ_AT_342)
     const note = expectUnreadable()
-    expectOrder(h1(), at, note, todaySection())
+    expectOrder(bigLine(), at, note, todaySection())
     expect(region('오늘 브리핑').contains(note)).toBe(true)
     expect((button('다시 읽기') as HTMLButtonElement).disabled).toBe(false)
     noText(CONNECT_H1)
@@ -557,7 +567,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     await user.click(button('다시 읽기'))
     await answer(NOT_READY)
 
-    expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(bigLine().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
     expectEmptyNumbers('자료 없음', '자료 없음')
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expectUnreadable()
@@ -726,9 +736,9 @@ describe('AC-601.4·AC-601.12: 저장 숫자 없이 읽기 실패', () => {
       draw()
       await answer(failed(code))
       const { what, fix } = errorInfo(code)
-      expect(h1().textContent).toBe(what)
+      expect(bigLine().textContent).toBe(what)
       const number = screen.getByText(`오류 번호 ${code}`)
-      expectOrder(h1(), screen.getByText(fix), number, button('다시 확인'), link('연결 확인'))
+      expectOrder(bigLine(), screen.getByText(fix), number, button('다시 확인'), link('연결 확인'))
       expect(link('연결 확인').getAttribute('href')).toBe(CONNECT_CHECK)
       hasAll(button('다시 확인'), ds.button.primaryLarge)
       hasAll(link('연결 확인'), ds.button.googleLarge)
@@ -741,7 +751,8 @@ describe('AC-601.4·AC-601.12: 저장 숫자 없이 읽기 실패', () => {
     expectEmptyNumbers('읽지 못함', '읽지 못했어요')
     expect(within(todaySection()).queryByText(/읽기가 끝나면/)).toBeNull()
     expectGainsOfReading()
-    noText('원장님 보고 문장')
+    noText(REPORT_NAME)
+    noText('자동 집계 요약')
     noButton('다시 읽기')
   })
 
@@ -752,7 +763,7 @@ describe('AC-601.4·AC-601.12: 저장 숫자 없이 읽기 실패', () => {
     await user.click(button('다시 확인'))
 
     expect(readBitDays).toHaveBeenCalledTimes(2)
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
     await answer(days())
     expectNumbersShown(64, 9, 55)
   })
@@ -771,7 +782,7 @@ describe('AC-601.4·AC-601.12: 저장 숫자 없이 읽기 실패', () => {
   it('AC-601.12: 품질 incomplete(E-BIT-DATA-UNSURE)는 AC-601.4처럼 숫자 없이 문구·번호를 그린다', async () => {
     draw()
     await answer(failed('E-BIT-DATA-UNSURE'))
-    expect(h1().textContent).toBe('비트 자료로 신환을 확정할 수 없어요')
+    expect(bigLine().textContent).toBe('비트 자료로 신환을 확정할 수 없어요')
     expect(screen.getByText('오류 번호 E-BIT-DATA-UNSURE')).toBeTruthy()
     expect(link('연결 확인').getAttribute('href')).toBe(CONNECT_CHECK)
     expectEmptyNumbers('읽지 못함', '읽지 못했어요')
@@ -796,7 +807,7 @@ describe('AC-601.5·AC-601.12: 숫자가 있는 상태에서 다시 읽기 실�
     expectNumbersShown(64, 9, 55)
     const at = screen.getByText(READ_AT_342)
     const box = screen.getByRole('alert')
-    expectOrder(h1(), at, box, todaySection())
+    expectOrder(bigLine(), at, box, todaySection())
     const { what, fix } = errorInfo('E-BIT-READ-FAILED')
     expect(within(box).getByText(what)).toBeTruthy()
     expect(within(box).getByText(`아래 숫자는 오후 3:42에 읽은 그대로예요. ${fix}`)).toBeTruthy()
@@ -845,7 +856,7 @@ describe('AC-601.7: 다른 창이 통로를 쓰는 중', () => {
   it('AC-601.7: E-BIT-IN-USE 문구·번호와 [다시 확인]이 나오고 [연결 확인]은 없다. 칩 "기다리는 중", 숫자 칸 "아직 못 읽었어요"', async () => {
     draw()
     await answer(failed('E-BIT-IN-USE'))
-    expect(h1().textContent).toBe('다른 창이 비트 자료를 쓰고 있어요')
+    expect(bigLine().textContent).toBe('다른 창이 비트 자료를 쓰고 있어요')
     expect(screen.getByText('한 번에 한 창만 비트를 읽을 수 있어요. 그 창의 일이 끝나거나 창을 닫은 뒤 [다시 확인]을 눌러 주세요.')).toBeTruthy()
     expect(screen.getByText('오류 번호 E-BIT-IN-USE')).toBeTruthy()
     expect(button('다시 확인')).toBeTruthy()
@@ -863,7 +874,7 @@ describe('AC-601.10: 3분 제한', () => {
     draw()
     expect(reads[0]!.deps.timeoutMs).toBeUndefined()
     await answer(failed('E-BIT-READ-FAILED'))
-    expect(h1().textContent).toBe(errorInfo('E-BIT-READ-FAILED').what)
+    expect(bigLine().textContent).toBe(errorInfo('E-BIT-READ-FAILED').what)
     expect(screen.getByText('오류 번호 E-BIT-READ-FAILED')).toBeTruthy()
   })
 })
@@ -874,7 +885,7 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
   it('AC-601.11: 연결 전 모양으로 돌아가지 않고 보고 문장 자리에 "오늘 받은 진료 자료가 아직 없어요", 숫자 칸 "자료 없음"', async () => {
     draw()
     await answer(days([]))
-    expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(bigLine().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
     expectEmptyNumbers('자료 없음', '자료 없음')
     expect(screen.queryByRole('link', { name: '비트 PC 연결 시작' })).toBeNull()
     noText(CONNECT_H1)
@@ -906,7 +917,7 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
     expect(within(box).getByText('오류 번호 E-BIT-READ-FAILED')).toBeTruthy()
     expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
-    expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(bigLine().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
   })
 })
@@ -996,7 +1007,7 @@ describe('AC-601.15: 화면을 떠나면 그만둔다', () => {
     expect(reads[1]!.deps.signal?.aborted).toBe(false)
 
     await answer(days(), 0)
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
 
     await answer(days(NEWER_DAYS), 1)
     expectNumbersShown(70, 10, 60)
@@ -1009,7 +1020,7 @@ describe('AC-601.15: 화면을 떠나면 그만둔다', () => {
       </StrictMode>,
     )
     await answer(NOT_READY, 0)
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
   })
 
   it('AC-601.15: 떠난 뒤에 온 답은 무시한다(오류 없이 끝난다)', async () => {
@@ -1144,7 +1155,7 @@ describe('AC-606.7·AC-606.1·AC-606.5: 통계 탭 묶음(groups)', () => {
     drawWith(SAVED_KEYED, null)
     expect(within(rankChart()).getByText(GROUPS_UNREAD)).toBeTruthy()
     expect(rankChart().querySelector('ol[aria-label]')).toBeNull()
-    expect(h1().textContent).toBe('오늘 지금까지 환자 5명이 왔습니다.')
+    expect(bigLine().textContent).toBe('오늘 지금까지 환자 5명이 왔습니다.')
     await answer(days(BIT_KEYED))
     expectNumbersShown(64, 9, 55)
     expect(within(rankChart()).getByText(GROUPS_UNREAD)).toBeTruthy()
@@ -1179,12 +1190,13 @@ describe('모양 규칙', () => {
     ['처음 실패', failed('E-BIT-READ-FAILED'), []],
     ['다른 창 사용 중', failed('E-BIT-IN-USE'), []],
     ['숫자 있음', days(), []],
-  ])('AC-601.2·AC-601.4·AC-601.17·AC-2701.3: %s — 큰 문장 h1은 하나(숫자가 있으면 머리 줄 h1 "대시보드"가 더 있다), 상자 안 상자가 없고, 정해 둔 표시 밖의 움직임 클래스가 없다', async (_, result, marks) => {
+  ])('AC-601.2·AC-601.4·AC-601.17·AC-2701.3·AC-2705.1: %s — h1은 하나(숫자가 없으면 큰 문장, 숫자가 있으면 머리 줄 "대시보드"뿐 — 보고 문장은 h1이 아니다), 상자 안 상자가 없고, 정해 둔 표시 밖의 움직임 클래스가 없다', async (_, result, marks) => {
     const { container } = draw()
     if (result) await answer(result)
     const headings = screen.getAllByRole('heading', { level: 1 }).map((heading) => heading.textContent)
-    expect(headings.filter((text) => text !== HEADER_H1)).toHaveLength(1)
-    expect(headings.filter((text) => text === HEADER_H1)).toHaveLength(result?.kind === 'days' ? 1 : 0)
+    expect(headings).toHaveLength(1)
+    if (result?.kind === 'days') expect(headings).toEqual([HEADER_H1])
+    else expect(headings).not.toContain(HEADER_H1)
     expect(nestedBoxes(container)).toEqual([])
     expect(container.innerHTML).not.toMatch(/\banimate-|overflow-hidden|rounded-full/)
     expect(motionMarks(container)).toEqual(marks)
@@ -1237,7 +1249,7 @@ describe('AC-605.1·AC-605.7: 날짜 줄', () => {
   it('AC-605.1: 숫자를 읽으면 날짜 줄이 날짜 고르기이고 처음 고른 날은 오늘이다. 큰 문장보다 앞에 있다', async () => {
     await readDays()
     expectDateControl()
-    expectOrder(dateGroup(), h1())
+    expectOrder(dateGroup(), bigLine())
     expect(screen.getAllByText(TODAY_TEXT)).toHaveLength(1)
   })
 
@@ -1266,7 +1278,7 @@ describe('AC-605.1·AC-605.7: 날짜 줄', () => {
     await readDays([])
     expectDateControl()
     pickDay('2026-10-26')
-    expect(h1().textContent).toBe('이 날은 진료 자료가 없어요')
+    expect(bigLine().textContent).toBe('이 날은 진료 자료가 없어요')
     expect(kpiCellsOf('10월 26일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
   })
 
@@ -1293,7 +1305,7 @@ describe('AC-605.1·AC-605.7: 날짜 줄', () => {
     ],
   ])('AC-605.7: %s — 날짜 줄은 오늘 글자뿐이고 날짜 고르기가 없다', async (_, arrange, heading) => {
     await arrange()
-    expect(h1().textContent).toBe(heading)
+    expect(bigLine().textContent).toBe(heading)
     noDateGroup()
     noButton('이전 날')
     noButton('다음 날')
@@ -1312,7 +1324,7 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
     await readDays()
     pickDay('2026-10-26')
 
-    expect(h1().textContent).toBe(PAST_H1)
+    expect(bigLine().textContent).toBe(PAST_H1)
     expect(screen.getByText(PAST_REST)).toBeTruthy()
     expect(within(dateGroup()).getByText('10월 26일 월요일')).toBeTruthy()
     expect(dateInput().value).toBe('2026-10-26')
@@ -1327,7 +1339,7 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
   it('AC-605.3: 7일 전 자료가 없는 날은 넷째 칸이 "지난주 자료가 없어요"이고 문장에 비교가 없다', async () => {
     await readDays()
     pickDay('2026-10-25')
-    expect(h1().textContent).toBe('10월 25일 환자 3명이 왔습니다.')
+    expect(bigLine().textContent).toBe('10월 25일 환자 3명이 왔습니다.')
     expect(screen.getByText('신환 1명, 재진 2명입니다.')).toBeTruthy()
     expect(within(kpiCellsOf('10월 25일 하루 분석')[3] as HTMLElement).getByText('지난주 자료가 없어요')).toBeTruthy()
   })
@@ -1362,7 +1374,7 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
     await readDays()
     pickDay('2026-10-18')
 
-    expect(h1().textContent).toBe('이 날은 진료 자료가 없어요')
+    expect(bigLine().textContent).toBe('이 날은 진료 자료가 없어요')
     expect(screen.getByText('진료가 없었거나 비트에 접수 기록이 없는 날이에요.')).toBeTruthy()
     expect(kpiCellsOf('10월 18일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
     const copy = button('복사')
@@ -1395,10 +1407,10 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
     pickDay('2026-10-26')
     pickDay('2026-07-24')
     expect(dateInput().value).toBe('2026-10-26')
-    expect(h1().textContent).toBe(PAST_H1)
+    expect(bigLine().textContent).toBe(PAST_H1)
     pickDay('2026-11-03')
     expect(dateInput().value).toBe('2026-10-26')
-    expect(h1().textContent).toBe(PAST_H1)
+    expect(bigLine().textContent).toBe(PAST_H1)
   })
 })
 
@@ -1430,11 +1442,11 @@ describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
     expect(reads).toHaveLength(2)
     expect(button('다시 읽는 중')).toBeTruthy()
     expect(dateInput().value).toBe('2026-10-26')
-    expect(h1().textContent).toBe(PAST_H1)
+    expect(bigLine().textContent).toBe(PAST_H1)
 
     await answer(days([day(TODAY, 10, 60, true), day('2026-10-26', 8, 60), day('2026-10-19', 5, 50)]))
     expect(dateInput().value).toBe('2026-10-26')
-    expect(h1().textContent).toBe('10월 26일 환자 68명이 왔습니다.')
+    expect(bigLine().textContent).toBe('10월 26일 환자 68명이 왔습니다.')
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
   })
 
@@ -1445,7 +1457,7 @@ describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
     await answer(failed('E-BIT-READ-FAILED'))
     expect(screen.getByRole('alert')).toBeTruthy()
     expect(dateInput().value).toBe('2026-10-26')
-    expect(h1().textContent).toBe(PAST_H1)
+    expect(bigLine().textContent).toBe(PAST_H1)
   })
 
   it('AC-605.6: 대시보드를 새로 열면 오늘이다(주소·저장소에 두지 않는다)', async () => {
@@ -1491,7 +1503,7 @@ describe('AC-605.5: 화면을 연 채 날이 지나 고른 날이 범위 밖이 
     expect(within(dateGroup()).getByText('11월 5일 목요일')).toBeTruthy()
     noButton('오늘로')
     expect(nextDayButton().disabled).toBe(true)
-    expect(h1().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
+    expect(bigLine().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
     expect(todaySection()).toBeTruthy()
   })
 
@@ -1672,7 +1684,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
   it('AC-601.1·AC-601.8·AC-601.9: 열면 stats.rows(오늘 100일 전 ~ 오늘)를 Worker로 읽어 일 숫자만 그리고, 통로를 닫고 Worker를 끝내며, 서버 요청이 없다', async () => {
     const t = await wire()
     draw()
-    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    await screen.findByText('오늘 지금까지 환자 64명이 왔습니다.')
 
     expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
     expect(t.port.sent[2]!.args).toEqual({ from: '2026-07-25', to: TODAY })
@@ -1688,7 +1700,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
   it('AC-606.7: 불러오기 요청(requestLoad)에 받은 묶음 정의를 싣는다 — 다 읽은 비트 숫자로 처방 상위가 묶음 줄이다', async () => {
     const t = await wire({}, { ...VIEW, days: BIT_KEYED } as unknown as StatsLoaded)
     drawWith(NONE, GROUPS)
-    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    await screen.findByText('오늘 지금까지 환자 64명이 왔습니다.')
     expect(t.loads).toHaveLength(1)
     expect(t.loads[0]!.groups).toEqual(GROUPS.defs)
     expect(rankRows()).toEqual(BIT_RANK)
@@ -1697,7 +1709,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
   it('AC-606.7: 묶음이 없으면 불러오기 요청에 빈 목록을 싣는다', async () => {
     const t = await wire()
     draw()
-    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    await screen.findByText('오늘 지금까지 환자 64명이 왔습니다.')
     expect(t.loads[0]!.groups).toEqual([])
   })
 
@@ -1760,7 +1772,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
       return [] as readonly DayPayload[]
     })
     render(<BitDashboard today={TODAY} initial={NONE} older={{ from: '2026-07-25', read }} />)
-    await screen.findByRole('heading', { level: 1, name: '오늘 지금까지 환자 64명이 왔습니다.' })
+    await screen.findByText('오늘 지금까지 환자 64명이 왔습니다.')
     const picker = () => within(flow()).getByRole('group', { name: '기간 골라 보기' })
     const unit = (name: string) => within(within(picker()).getAllByRole('group', { name: '보는 단위' })[0]!).getByRole('button', { name })
     fireEvent.click(unit('주별'))
@@ -1848,14 +1860,14 @@ describe('dashboard-period: 옛 기간 읽기를 source에 실어 넘긴다', ()
     const { older, answers } = olderReader()
     render(<BitDashboard today={TODAY} initial={SAVED} older={older} />)
     await answer(days())
-    const report = h1().textContent
+    const report = bigLine().textContent
     const dateLine = screen.getByRole('group', { name: '날짜 고르기' }).outerHTML
     toJuly()
     await act(async () => {
       answers[0]!(null)
     })
     expect(within(flow()).getByRole('alert')).toBeTruthy()
-    expect(h1().textContent).toBe(report)
+    expect(bigLine().textContent).toBe(report)
     expect(screen.getByRole('group', { name: '날짜 고르기' }).outerHTML).toBe(dateLine)
   })
 

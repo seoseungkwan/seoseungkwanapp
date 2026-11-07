@@ -1,6 +1,6 @@
 import { formatCount } from '@/components/charts/format'
 import { addMonths, monthOf } from '@/lib/analytics/dates'
-import type { AiUsageView, ShownReport } from '@/types/aiReport'
+import type { AiUsageView, ReportCard, ShownReport } from '@/types/aiReport'
 import { TAG_LABEL } from './markdown'
 
 // AI 리포트 화면의 글자(spec ai-report-screen REQ-703, design.md '순수 함수').
@@ -78,6 +78,26 @@ export function madeAtText(createdAt: string, now: Date): string {
 // 모르는 모델(대신 답한 모델)은 받은 글자 그대로
 export function modelName(model: string): string {
   return model === OPUS_5_5 ? 'Claude Opus 5.5' : model
+}
+
+// 대시보드 AI 요약의 보조 표시(dashboard-ux AC-2704.2): Opus면 버전 없이 'Claude Opus 기반 분석', 대신 답한 모델이면 그 이름
+export function modelBasis(model: string): string {
+  return model.startsWith('claude-opus-') ? 'Claude Opus 기반 분석' : `${modelName(model)} 분석`
+}
+
+// ── 대시보드 요약 카드 묶음 ──────────────────────────────
+
+const CHANGE_MAX = 3
+const WATCH_MAX = 2
+const GUESS_MAX = 2
+
+// 대시보드 AI 요약의 카드 묶음 셋(dashboard-ux AC-2704.2): 핵심 변화(up·down 앞 3) · 주의할 지표(watch 앞 2) · 원인 짐작(guess 앞 2). 받은 차례 그대로
+export function briefGroups<T extends Pick<ReportCard, 'tag'>>(cards: readonly T[]): { change: T[]; watch: T[]; guess: T[] } {
+  return {
+    change: cards.filter((card) => card.tag === 'up' || card.tag === 'down').slice(0, CHANGE_MAX),
+    watch: cards.filter((card) => card.tag === 'watch').slice(0, WATCH_MAX),
+    guess: cards.filter((card) => card.tag === 'guess').slice(0, GUESS_MAX),
+  }
 }
 
 // ── 옆 칸 ────────────────────────────────────────────────

@@ -9,7 +9,8 @@ import { longDate, reportSentence, todayView } from './view'
 // 원장님 보고 문장 + [복사] — 연결 뒤 대시보드 큰 문장 자리 (tab-frame REQ-317, design.md '원장님 보고 문장'·'복사',
 // 시안 docs/mockups/dashboard-home/index.html 화면 3 + 메모 §3 '원장님 보고 문장', 문구는 메모 §4 그대로).
 // 문장은 view.ts의 reportSentence(오늘 줄의 totals만)로 만든다 — 환자 이름·차트번호·처방 이름은 쓰지 않는다.
-// 첫 문장이 이 화면의 h1이다(연결 뒤에는 대시보드 짜임이 h1을 그리지 않는다).
+// 이름 줄은 "{오늘|M월 D일} 보고 문장" + 칩 "자동 집계 요약"이다 — 계산 틀로 만든 문장이라 AI 요약("Claude Opus 기반 분석")과 구분한다(dashboard-ux AC-2705.1).
+// 문장은 h1이 아니라 body 크기 한 단락(첫 문장 조각 · 나머지 조각)이다. 숫자가 있는 화면의 h1은 머리 줄 "대시보드" 하나다(AC-2701.3).
 // 복사 결과 문구는 이 파일 안에 둔다(로그인 화면 [주소 복사]와 같은 방식, 오류 번호가 없는 안내라 lib/errors.ts 틀에 맞지 않는다).
 // selected(bit-dashboard AC-605.2·AC-605.4·AC-605.9)는 고른 날이다. 없으면 오늘이고, 지난 날짜면 문장의 "오늘"이 그 날 글자로 바뀐다.
 // 그 지난 날 줄이 덜 끝났으면 reportSentence가 "…명까지 확인됐어요." 두 줄을 주고, [복사]도 그 두 줄이다
@@ -72,7 +73,10 @@ export function ReportBlock({ today, days, selected = today }: { today: string; 
   return (
     <div>
       <div className="mt-3 flex items-center justify-between gap-3 border-b border-line pb-2">
-        <p className="text-small font-semibold text-ink">원장님 보고 문장</p>
+        <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-small font-semibold text-ink">
+          {`${past ? longDate(selected) : '오늘'} 보고 문장`}
+          <span className={ds.chip.neutral}>자동 집계 요약</span>
+        </p>
         <span className="group relative inline-flex shrink-0">
           <button
             type="button"
@@ -101,10 +105,10 @@ export function ReportBlock({ today, days, selected = today }: { today: string; 
         </span>
       </div>
 
-      <h1 className="mt-2 text-display-m font-semibold text-balance text-ink max-md:text-heading-m">
-        {shown.first}
-      </h1>
-      <p className="mt-2 max-w-128 text-lead text-ink-2">{shown.rest}</p>
+      {/* 한 단락: 첫 문장(600 ink) 다음에 나머지 문장. 큰 문장(h1·display)이 아니다 */}
+      <p className="mt-2 max-w-160 text-body text-ink-2">
+        <span className="font-semibold text-ink">{shown.first}</span> <span>{shown.rest}</span>
+      </p>
 
       <p className="mt-4 flex items-start gap-1.5 text-caption text-muted">
         <Icon name="shield" size={14} className="mt-px shrink-0 text-positive" />

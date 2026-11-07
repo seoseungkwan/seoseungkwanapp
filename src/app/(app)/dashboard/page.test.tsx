@@ -6,7 +6,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
+import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { DateControl } from '@/components/dashboard/live/DateControl'
+import { StatusHeader } from '@/components/dashboard/live/ReadStatus'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
@@ -17,7 +19,8 @@ import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
 
 // 자료 읽는 자리(브라우저의 저장 숫자 읽기 readDays)만 감싼다(AC-307.6, stats AC-516.4). 앱 코드에 시험용 길을 만들지 않는다.
-// 서버 그림(renderToStaticMarkup)은 읽기 전이라 늘 연결 전이고, 연결 뒤 짜임 시험만 브라우저에 그려 시험 안 가짜 자료를 돌려준다.
+// 서버 그림(renderToStaticMarkup)은 읽기 전이라 늘 뼈대(DashboardSkeleton, dashboard-ux AC-2701.1)다 — 연결 전 화면이 아니다.
+// 연결 전 짜임은 브라우저에 그려 저장 숫자 읽기가 빈 줄로 끝난 뒤를 보고, 연결 뒤 짜임은 시험 안 가짜 자료를 돌려준다.
 // 이 파일에는 chrome.runtime이 없어 비트는 읽지 않는다(비트 읽기는 BitDashboard.test.tsx, 읽기 차례·실패·한도는 LiveDashboard.test.tsx)
 vi.mock('@/lib/storage/stats', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/stats')>()
@@ -32,6 +35,8 @@ vi.mock('@/lib/storage/statsRxGroups', async (importOriginal) => {
 // /dashboard 페이지 (tab-frame REQ-306, design.md '대시보드 짜임'·'대시보드 페이지 조립'). 문지기와 앱 틀(위쪽 띠·탭·<main>)은 (app)/layout이 준다(layout.test.tsx).
 // 여기서는 오늘 한국 날짜로 대시보드(DashboardHome)를 그리는지, 자료 읽는 자리(저장 숫자 읽기) 하나로 연결 전·뒤 분석·보고 문장을 끼우는지 본다(AC-307.5·307.6)
 
+// 뼈대의 화면 읽기 글(AC-2701.1)
+const SKELETON_STATUS = '대시보드 숫자를 불러오고 있어요'
 // 화면 시험(jsdom)에서는 import.meta.url이 file: 주소가 아니라 저장소 뿌리에서 찾는다
 const SOURCE = readFileSync(join(process.cwd(), 'src/app/(app)/dashboard/page.tsx'), 'utf8')
 // 날짜 줄 글자: 그린 마크업의 첫 <p>(브리핑 왼쪽 칸 맨 위)
@@ -53,6 +58,12 @@ const drawInBrowser = async (iso: string, rows: DayPayload[]) => {
     view = render(<DashboardPage />)
   })
   return view.container.innerHTML
+}
+// 연결 전 대시보드: 브라우저에서 저장 숫자 읽기가 빈 줄로 끝난 뒤의 그림(AC-2701.1 — 읽는 동안은 뼈대다)
+const drawBeforeConnect = async (iso: string) => {
+  const html = await drawInBrowser(iso, [])
+  cleanup()
+  return html
 }
 // useId 값은 그린 차례마다 달라 빼고 견준다
 const withoutIds = (html: string) => html.replace(/\s(?:id|for|aria-labelledby|aria-describedby|aria-controls)="[^"]*"/g, '')
@@ -79,26 +90,37 @@ describe('/dashboard 화면', () => {
     process.env.TZ = originalTz
   })
 
-  it('AC-306.1: 날짜 줄은 지금의 한국 날짜 — "10월 29일 목요일"', () => {
-    expect(dateLineText(renderAt('2026-10-29T00:42:00Z'))).toBe('10월 29일 목요일')
-    expect(dateLineText(renderAt('2027-01-01T03:00:00Z'))).toBe('1월 1일 금요일')
+  it('AC-306.1·AC-2701.1: 날짜 줄은 지금의 한국 날짜 — "10월 29일 목요일"(저장 숫자 읽기가 빈 줄로 끝난 뒤 연결 전 화면)', async () => {
+    expect(dateLineText(await drawBeforeConnect('2026-10-29T00:42:00Z'))).toBe('10월 29일 목요일')
+    expect(dateLineText(await drawBeforeConnect('2027-01-01T03:00:00Z'))).toBe('1월 1일 금요일')
   })
 
-  it('AC-306.1: 한국 자정 경계 — 서버 시간대가 UTC여도 한국 날짜(todayInKorea)다', () => {
+  it('AC-306.1·AC-2701.1: 한국 자정 경계 — 서버 시간대가 UTC여도 한국 날짜(todayInKorea)를 LiveDashboard에 넘긴다(날짜 줄·저장 숫자 읽는 범위)', async () => {
     process.env.TZ = 'UTC'
     expect(new Date('2026-10-28T15:30:00Z').getHours()).toBe(15) // 이 시험 안에서 정말 UTC로 바뀌었다
-    expect(dateLineText(renderAt('2026-10-28T15:00:00Z'))).toBe('10월 29일 목요일')
-    expect(dateLineText(renderAt('2026-10-28T14:59:59Z'))).toBe('10월 28일 수요일')
+    vi.mocked(readDays).mockClear()
+    expect(dateLineText(await drawBeforeConnect('2026-10-28T15:00:00Z'))).toBe('10월 29일 목요일')
+    expect(dateLineText(await drawBeforeConnect('2026-10-28T14:59:59Z'))).toBe('10월 28일 수요일')
+    expect(vi.mocked(readDays).mock.calls.map(([range]) => range)).toEqual([
+      { from: addDays('2026-10-29', -LOOKBACK_DAYS), to: '2026-10-29' },
+      { from: addDays('2026-10-28', -LOOKBACK_DAYS), to: '2026-10-28' },
+    ])
   })
 
   it('AC-306.1: 날짜는 요청 때 계산한다 — 빌드 때 그린 날짜로 굳지 않는다(force-dynamic)', () => {
     expect(dynamic).toBe('force-dynamic')
   })
 
-  it('AC-306.2: 화면은 연결 전 대시보드 — <DashboardHome today="2026-10-29" report={null} analysis={<DashboardAnalysis today="2026-10-29" source={{ kind: "none" }} />} /> 그대로다', () => {
-    expect(renderAt('2026-10-29T00:42:00Z')).toBe(
-      renderToStaticMarkup(
-        <DashboardHome today="2026-10-29" report={null} analysis={<DashboardAnalysis today="2026-10-29" source={{ kind: 'none' }} />} />,
+  it('AC-306.2·AC-2701.1: 서버 그림은 뼈대(<DashboardSkeleton />) 그대로이고, 저장 숫자가 비면 브라우저 그림은 연결 전 대시보드 <DashboardHome today="2026-10-29" report={null} analysis={<DashboardAnalysis … source={{ kind: "none" }} />} /> 그대로다', async () => {
+    const server = renderAt('2026-10-29T00:42:00Z')
+    expect(server).toBe(renderToStaticMarkup(<DashboardSkeleton />))
+    expect(plain(server)).toBe(SKELETON_STATUS)
+    const browser = await drawBeforeConnect('2026-10-29T00:42:00Z')
+    expect(withoutIds(browser)).toBe(
+      withoutIds(
+        browserMarkupOf(
+          <DashboardHome today="2026-10-29" report={null} analysis={<DashboardAnalysis today="2026-10-29" source={{ kind: 'none' }} />} />,
+        ),
       ),
     )
   })
@@ -179,18 +201,23 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     vi.useRealTimers()
   })
 
-  it('AC-307.5·AC-516.1·AC-601.14: 서버 그림은 읽지 않고(연결 전), 브라우저에서 자료 읽는 자리를 한 번 읽는다. 줄이 없으면 연결 전 그대로다', async () => {
+  it('AC-307.5·AC-516.1·AC-601.14·AC-2701.1: 서버 그림은 읽지 않고(뼈대 — 연결 전 화면도 숫자도 없다), 브라우저에서 자료 읽는 자리를 한 번 읽는다. 줄이 없으면 연결 전 모양이다', async () => {
     const server = renderAt(AT_TODAY)
     expect(readDays).not.toHaveBeenCalled()
+    expect(server).toContain('role="status"')
+    expect(plain(server)).toBe(SKELETON_STATUS)
+    expect(h1Texts(server)).toEqual([])
+    expect(plain(server)).not.toMatch(/\d/)
+    expect(server).not.toContain('비트 PC 연결 시작')
     const browser = await drawInBrowser(AT_TODAY, [])
     expect(readDays).toHaveBeenCalledTimes(1)
     expect(readDays).toHaveBeenCalledWith({ from: addDays(TODAY, -LOOKBACK_DAYS), to: TODAY })
     expect(h1Texts(browser)).toEqual([H1])
-    expect(withoutIds(browser)).toBe(withoutIds(server))
+    expect(plain(browser)).not.toContain(SKELETON_STATUS)
   })
 
-  it('AC-307.5·AC-414.2: 위에서부터 날짜 줄 → 큰 문장 h1 → 연결 순서 → 연결하면 바로 쓸 수 있어요 → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', () => {
-    const html = renderAt(AT_TODAY)
+  it('AC-307.5·AC-414.2·AC-2701.1: 위에서부터 날짜 줄 → 큰 문장 h1 → 연결 순서 → 연결하면 바로 쓸 수 있어요 → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', async () => {
+    const html = await drawBeforeConnect(AT_TODAY)
     expect(dateLineText(html)).toBe('10월 31일 토요일 · 이번 달 마지막 날')
     expectAscending([
       ['날짜 줄', html.indexOf('<p')],
@@ -204,8 +231,8 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(hrefOf(html, '비트 PC 연결부터')).toBe('/claim/setup')
   })
 
-  it('AC-603.1: [비트 PC 연결 시작](위 단추·휴대폰 아래 단추) 두 곳의 주소는 /claim/setup?next=dashboard다', () => {
-    const html = renderAt(AT_TODAY)
+  it('AC-603.1·AC-2701.1: [비트 PC 연결 시작](위 단추·휴대폰 아래 단추) 두 곳의 주소는 /claim/setup?next=dashboard다', async () => {
+    const html = await drawBeforeConnect(AT_TODAY)
     const starts = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].filter((m) => plain(m[2]!) === '비트 PC 연결 시작')
     expect(starts).toHaveLength(2)
     for (const m of starts) expect(/\bhref="([^"]*)"/.exec(m[1]!)?.[1]).toBe('/claim/setup?next=dashboard')
@@ -216,12 +243,12 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(SOURCE).not.toMatch(/<BitDashboard\b|readBitDays|chrome/)
   })
 
-  it('AC-307.5·AC-414.7: h1은 큰 문장 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" 하나다', () => {
-    expect(h1Texts(renderAt(AT_TODAY))).toEqual([H1])
+  it('AC-307.5·AC-414.7·AC-2701.1: h1은 큰 문장 "비트 PC를 연결하면 오늘 숫자가 여기에 채워져요" 하나다', async () => {
+    expect(h1Texts(await drawBeforeConnect(AT_TODAY))).toEqual([H1])
   })
 
-  it('AC-307.5·AC-414.3·AC-414.4: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 넷 "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', () => {
-    const html = renderAt(AT_TODAY)
+  it('AC-307.5·AC-414.3·AC-414.4·AC-2701.1: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 넷 "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', async () => {
+    const html = await drawBeforeConnect(AT_TODAY)
     const text = plain(html)
     expect(countOf(text, '연결하면 보여요')).toBe(4)
     expect(text).toContain('비트 PC 연결 전')
@@ -229,15 +256,16 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(text).toContain(GAINS_TITLE)
     expect(text).toContain(GAINS_NOTE)
     expect(text).not.toContain('비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다')
-    // 연결 뒤에만 나오는 것: 보고 문장 · 연결 뒤 빈 값 글자 · 그래프 칸 · 차트 부품(쌓은 막대의 화면 읽기 표)
-    expect(text).not.toContain('원장님 보고 문장 ')
+    // 연결 뒤에만 나오는 것: 보고 문장(이름 줄·칩) · 머리 줄 · 연결 뒤 빈 값 글자 · 그래프 칸 · 차트 부품(쌓은 막대의 화면 읽기 표)
+    expect(text).not.toContain('보고 문장 자동 집계 요약')
+    expect(text).not.toContain('자동 집계 요약')
     expect(text).not.toContain('자료 없음')
     expect(html).not.toMatch(/<table\b/)
     expect(html).not.toMatch(/<h3\b/)
   })
 
-  it('AC-307.5·AC-414.7·AC-010.1·AC-606.6: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', () => {
-    let html = renderAt(AT_TODAY)
+  it('AC-307.5·AC-414.7·AC-010.1·AC-606.6·AC-2701.1: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', async () => {
+    let html = await drawBeforeConnect(AT_TODAY)
     // 번호 줄(연결 순서 두 벌 1~5 · 연결하면 생기는 것 1~4): 줄 맨 앞 번호 칸의 번호만 뺀다
     const lists = [...html.matchAll(/<ol\b[^>]*>[\s\S]*?<\/ol>/g)].map((m) => m[0])
     expect(lists).toHaveLength(3)
@@ -297,7 +325,7 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     vi.useRealTimers()
   })
 
-  it('AC-307.6·AC-605.1: 화면 = <DashboardHome dateLine={<DateControl … />} report={<ReportBlock … />} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', async () => {
+  it('AC-307.6·AC-605.1·AC-2701.3: 화면 = <DashboardHome dateLine={<DateControl … />} report={<><ReportBlock … /><StatusHeader … /></>} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', async () => {
     const html = withoutIds(await renderConnected())
     cleanup()
     expect(html).toBe(
@@ -306,7 +334,12 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
           <DashboardHome
             today={TODAY}
             dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
-            report={<ReportBlock today={TODAY} days={DAYS} />}
+            report={
+              <>
+                <ReportBlock today={TODAY} days={DAYS} />
+                <StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />
+              </>
+            }
             analysis={<DashboardAnalysis today={TODAY} source={SOURCE_DATA} />}
           />,
         ),
@@ -314,17 +347,16 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     )
   })
 
-  it('AC-307.6·AC-605.1: 위에서부터 날짜 고르기(오늘) → 원장님 보고 문장 · [복사] → h1 첫 문장 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', async () => {
+  it('AC-307.6·AC-605.1·AC-2705.1: 위에서부터 날짜 고르기(오늘) → 오늘 보고 문장 · 자동 집계 요약 · [복사] → 보고 문장 한 단락 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', async () => {
     const html = await renderConnected()
     const dateControl = html.indexOf('role="group" aria-label="날짜 고르기"')
     expect(dateControl).toBeGreaterThanOrEqual(0)
     expect(html).toContain(`value="${TODAY}"`)
     expectAscending([
       ['날짜 고르기', dateControl],
-      ['원장님 보고 문장', placeOf(html, 'p', '원장님 보고 문장')],
+      ['오늘 보고 문장', placeOf(html, 'p', '오늘 보고 문장 자동 집계 요약')],
       ['복사', placeOf(html, 'button', '복사')],
-      ['h1 첫 문장', placeOf(html, 'h1', '오늘 환자 13명이 왔습니다.')],
-      ['나머지 문장', placeOf(html, 'p', '신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')],
+      ['보고 문장 한 단락', placeOf(html, 'p', '오늘 환자 13명이 왔습니다. 신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')],
       ['지금 바로 쓸 수 있어요', placeOf(html, 'h2', '지금 바로 쓸 수 있어요')],
       ['사전점검', placeOf(html, 'p', '삭감 예방 사전점검')],
       ['사전점검 열기', placeOf(html, 'a', '사전점검 열기')],
@@ -344,8 +376,10 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     expect(html.match(/이번 달 마지막 날/g)).toHaveLength(1)
   })
 
-  it('AC-307.6: h1은 보고 문장의 첫 문장 하나다', async () => {
-    expect(h1Texts(await renderConnected())).toEqual(['오늘 환자 13명이 왔습니다.'])
+  it('AC-307.6·AC-2705.1: h1은 머리 줄 "대시보드" 하나다 — 보고 문장은 h1이 아니다', async () => {
+    const html = await renderConnected()
+    expect(h1Texts(html)).toEqual(['대시보드'])
+    expect(html).not.toMatch(/<h1\b[^>]*>[^<]*환자/)
   })
 
   it('AC-307.6·AC-414.2·AC-414.4: 연결 전 부품이 없다 — 큰 문장 · 주 단추 · 연결 순서 · 폰 아래 단추 · 연결하면 바로 쓸 수 있어요 줄 · 연결 전 빈 상태 · 연결하면 생기는 것', async () => {

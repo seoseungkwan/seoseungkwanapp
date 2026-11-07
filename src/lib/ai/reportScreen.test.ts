@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReportCard } from '@/types/aiReport'
 import {
+  briefGroups,
   canGoNext,
   canGoPrev,
   compareLine,
@@ -8,6 +9,7 @@ import {
   firstMonth,
   longMonth,
   madeAtText,
+  modelBasis,
   modelName,
   partialNotice,
   REPORT_FIRST_MONTH,
@@ -177,6 +179,50 @@ describe('modelName', () => {
       expect(modelName(model)).toBe(model)
     },
   )
+})
+
+// 대시보드 AI 요약의 보조 표시(dashboard-ux AC-2704.2): Opus면 버전 없이 "Claude Opus 기반 분석", 대신 답한 모델이면 그 이름
+describe('modelBasis', () => {
+  it.each([
+    ['claude-opus-5-5', 'Claude Opus 기반 분석'],
+    ['claude-opus-4-8', 'Claude Opus 기반 분석'],
+    ['claude-fable-5-1', 'claude-fable-5-1 분석'],
+    ['claude-opus', 'claude-opus 분석'], // 'claude-opus-'로 시작해야 Opus다
+    ['some-claude-opus-5', 'some-claude-opus-5 분석'],
+  ])('AC-2704.2 모델 "%s" → "%s"', (model, text) => {
+    expect(modelBasis(model)).toBe(text)
+  })
+})
+
+// 대시보드 AI 요약의 카드 묶음 셋(dashboard-ux AC-2704.2): 핵심 변화(up·down 앞 3) · 주의할 지표(watch 앞 2) · 원인 짐작(guess 앞 2), 받은 차례 그대로
+describe('briefGroups', () => {
+  const card = (tag: ReportCard['tag'], n: number): ReportCard => ({ tag, text: `가짜 ${tag} ${n}`, metric: `m${n}`, basis: `근거 ${n}` })
+
+  it('AC-2704.2 받은 차례를 지키며 up·down은 섞어 앞 3개, watch·guess는 앞 2개까지다', () => {
+    const cards = [
+      card('watch', 1),
+      card('down', 2),
+      card('guess', 3),
+      card('up', 4),
+      card('watch', 5),
+      card('up', 6),
+      card('guess', 7),
+      card('down', 8),
+      card('watch', 9),
+      card('guess', 10),
+    ]
+    const groups = briefGroups(cards)
+    expect(groups.change).toEqual([cards[1], cards[3], cards[5]])
+    expect(groups.watch).toEqual([cards[0], cards[4]])
+    expect(groups.guess).toEqual([cards[2], cards[6]])
+  })
+
+  it('AC-2704.2 카드가 없는 묶음은 빈 목록이다(받은 배열은 바꾸지 않는다)', () => {
+    const cards = [card('up', 1)]
+    expect(briefGroups(cards)).toEqual({ change: [cards[0]], watch: [], guess: [] })
+    expect(briefGroups([])).toEqual({ change: [], watch: [], guess: [] })
+    expect(cards).toHaveLength(1)
+  })
 })
 
 describe('usageText', () => {

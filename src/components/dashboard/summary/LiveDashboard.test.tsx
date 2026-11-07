@@ -156,9 +156,17 @@ const wait = (ms: number) =>
   })
 
 // ── 화면 읽기 도우미 ──
-// 큰 문장 h1(연결 전·읽는 중·보고 문장). 숫자가 있으면 머리 줄 h1 "대시보드"가 더 있어 빼고 본다(AC-2701.3)
-const h1 = () => {
-  const found = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.textContent !== HEADER_H1)
+// 큰 문장: 연결 전·읽는 중·실패는 h1 하나(머리 줄 없음). 숫자가 있으면 h1은 머리 줄 "대시보드" 하나뿐이고(dashboard-ux AC-2701.3·AC-2705.1),
+// 큰 문장 자리는 보고 문장 한 단락(이름 줄 "{오늘|M월 D일} 보고 문장" 다음 단락)의 첫 문장 조각이다 — 보고 문장은 h1이 아니다
+const REPORT_NAME = /^(오늘|\d+월 \d+일) 보고 문장$/
+const bigLine = () => {
+  const found = screen.getAllByRole('heading', { level: 1 })
+  if (found.length === 1 && found[0]!.textContent === HEADER_H1) {
+    const paragraph = screen.getByText(REPORT_NAME).parentElement!.nextElementSibling!
+    expect(paragraph.tagName).toBe('P')
+    return paragraph.children[0]!
+  }
+  expect(found.map((heading) => heading.textContent).filter((text) => text === HEADER_H1)).toEqual([])
   expect(found).toHaveLength(1)
   return found[0]!
 }
@@ -286,7 +294,7 @@ describe('AC-601.14·AC-516.1: 저장 숫자를 한 번 읽어 처음 자료로 
     notBitPc()
     const { container } = draw()
     await savedAnswer(SAVED_ROWS)
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expect(readBitDays).not.toHaveBeenCalled()
     expect(screen.queryByRole('alert')).toBeNull()
     const html = withoutIds(container.innerHTML)
@@ -301,10 +309,10 @@ describe('AC-601.14·AC-516.1: 저장 숫자를 한 번 읽어 처음 자료로 
     await savedAnswer(SAVED_ROWS)
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(bitReads[0]!.deps.today).toBe(TODAY)
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expect(screen.getByRole('button', { name: '다시 읽는 중' })).toBeTruthy()
     await bitAnswer(bitDays())
-    expect(h1().textContent).toBe(BIT_H1)
+    expect(bigLine().textContent).toBe(BIT_H1)
     expect(readDays).toHaveBeenCalledTimes(1)
   })
 
@@ -325,7 +333,7 @@ describe('AC-601.14·AC-516.1: 저장 숫자를 한 번 읽어 처음 자료로 
     notBitPc()
     const { container } = draw()
     await savedAnswer([])
-    expect(h1().textContent).toBe(CONNECT_H1)
+    expect(bigLine().textContent).toBe(CONNECT_H1)
     expect(savedCard()).toBeNull()
     const html = withoutIds(container.innerHTML)
     cleanup()
@@ -356,7 +364,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     await savedFail(0, failure)
     // 비트 읽기는 그대로 시작된다(저장 숫자 없이 처음 읽는 중)
     expect(readBitDays).toHaveBeenCalledTimes(1)
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
     // 카드: 무엇이 · 어떻게 고치나 · 번호 (새 번호 없음). 원래 오류 글은 보이지 않는다
     const card = savedCard()!
     expect(card).not.toBeNull()
@@ -368,14 +376,14 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     expect(retry.textContent).toBe('다시 읽기')
     expect((retry as HTMLButtonElement).disabled).toBe(false)
     expect((retry.getAttribute('class') ?? '').split(/\s+/)).toEqual(expect.arrayContaining(ds.button.secondarySmall.split(/\s+/).filter(Boolean)))
-    expectOrder(card, retry, screen.getByRole('region', { name: '오늘 브리핑' }), h1())
+    expectOrder(card, retry, screen.getByRole('region', { name: '오늘 브리핑' }), bigLine())
   })
 
   it('AC-601.19: 비트 PC가 아니어도 실패하면 연결 전 모양 위에 같은 카드다', async () => {
     notBitPc()
     draw()
     await savedFail()
-    expect(h1().textContent).toBe(CONNECT_H1)
+    expect(bigLine().textContent).toBe(CONNECT_H1)
     expect(savedCard()).not.toBeNull()
     expect(readBitDays).not.toHaveBeenCalled()
   })
@@ -389,7 +397,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     expect(savedCard()).toBeNull()
     await wait(1)
     expect(readBitDays).toHaveBeenCalledTimes(1)
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
     expect(savedCard()).not.toBeNull()
   })
 
@@ -398,7 +406,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     draw()
     await wait(SAVED_READ_TIMEOUT_MS)
     await savedAnswer(SAVED_ROWS, 0)
-    expect(h1().textContent).toBe(CONNECT_H1)
+    expect(bigLine().textContent).toBe(CONNECT_H1)
     expect(savedCard()).not.toBeNull()
   })
 
@@ -466,7 +474,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     expect(savedCard()).not.toBeNull()
     expect(retryButton().textContent).toBe('다시 읽기')
     expect((retryButton() as HTMLButtonElement).disabled).toBe(false)
-    expect(h1().textContent).toBe(CONNECT_H1)
+    expect(bigLine().textContent).toBe(CONNECT_H1)
   })
 
   it('AC-601.19: 다시 읽기도 같은 10초 한도다 — 넘으면 카드가 그대로고, 늦게 온 답은 쓰지 않는다', async () => {
@@ -481,18 +489,18 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     expect(savedCard()).not.toBeNull()
     await savedAnswer(SAVED_ROWS, 1)
     expect(savedCard()).not.toBeNull()
-    expect(h1().textContent).toBe(CONNECT_H1)
+    expect(bigLine().textContent).toBe(CONNECT_H1)
   })
 
   it('AC-601.19: 다시 읽기가 data로 성공하면 카드가 없어지고 BitDashboard가 그 숫자로 새로 그려진다(비트 읽기는 처음부터 다시)', async () => {
     onBitPc()
     draw()
     await savedFail()
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
     fireEvent.click(retryButton())
     await savedAnswer(SAVED_ROWS)
     expect(savedCard()).toBeNull()
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expect(bitReads[0]!.deps.signal?.aborted).toBe(true)
     expect(readBitDays).toHaveBeenCalledTimes(2)
     expect(screen.getByRole('button', { name: '다시 읽는 중' })).toBeTruthy()
@@ -519,7 +527,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     expect(savedCard()).toBeNull()
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(bitReads[0]!.deps.signal?.aborted).toBe(false)
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
   })
 
   it.each<[string, readonly DayPayload[]]>([
@@ -553,9 +561,9 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     fireEvent.click(screen.getByRole('button', { name: '다시 읽는 중' })) // 막혀 있다
     await bitAnswer(bitDays())
     expect(savedCard()).toBeNull()
-    expect(h1().textContent).toBe(BIT_H1)
+    expect(bigLine().textContent).toBe(BIT_H1)
     await savedAnswer(SAVED_ROWS, 1)
-    expect(h1().textContent).toBe(BIT_H1)
+    expect(bigLine().textContent).toBe(BIT_H1)
     expect(savedCard()).toBeNull()
     expect(readBitDays).toHaveBeenCalledTimes(1)
   })
@@ -568,7 +576,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     await bitAnswer(bitDays())
     await savedFail(1)
     expect(savedCard()).toBeNull()
-    expect(h1().textContent).toBe(BIT_H1)
+    expect(bigLine().textContent).toBe(BIT_H1)
   })
 })
 
@@ -588,7 +596,7 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     draw()
     await savedAnswer(SAVED_KEYED)
     // 숫자 칸·다른 그래프는 저장 숫자로 바로 그린다
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expect(screen.getByRole('region', { name: '오늘 하루 분석' }).children[1]!.children[0]!.textContent).toBe('오늘 환자 수5명')
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(screen.getByRole('group', { name })).toBeTruthy()
     expect(within(rankChart()).getByRole('status').textContent).toBe(GROUPS_PENDING)
@@ -599,12 +607,12 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
 
     // 지난 날을 고른 채로 묶음이 온다 → 다시 놓지 않아 고른 날·숫자가 그대로이고 처방 상위만 바뀐다
     fireEvent.click(within(screen.getByRole('group', { name: '날짜 고르기' })).getByRole('button', { name: '이전 날' }))
-    const picked = h1().textContent
+    const picked = bigLine().textContent
     expect(picked).not.toBe(SAVED_H1)
     const briefing = screen.getByRole('region', { name: '오늘 브리핑' })
     await groupAnswer(GROUPS)
     expect(screen.getByRole('region', { name: '오늘 브리핑' })).toBe(briefing)
-    expect(h1().textContent).toBe(picked)
+    expect(bigLine().textContent).toBe(picked)
     expect(within(rankChart()).queryByRole('status')).toBeNull()
     expect(rankRows()).toEqual(SAVED_RANK)
     expect(readBitDays).toHaveBeenCalledTimes(1)
@@ -621,7 +629,7 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     expectSkeleton()
     await savedAnswer(SAVED_KEYED)
     expect(readBitDays).toHaveBeenCalledTimes(1)
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
   })
 
   it('AC-606.8·AC-601.19·AC-2701.1: 두 읽기 모두 10초 안에 끝나지 않으면 한도에서 저장 숫자·묶음 없이 오류 카드와 함께 그린다 — 그 전까지는 뼈대다', async () => {
@@ -634,7 +642,7 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     await wait(1)
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(bitReads[0]!.deps.groups).toEqual([])
-    expect(h1().textContent).toBe(READ_H1)
+    expect(bigLine().textContent).toBe(READ_H1)
     expect(savedCard()).not.toBeNull()
   })
 
@@ -643,10 +651,10 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     vi.mocked(readDashboardGroups).mockResolvedValue(GROUPS)
     draw()
     await savedAnswer(SAVED_KEYED)
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expect(rankRows()).toEqual(SAVED_RANK)
     await bitAnswer(bitDays(BIT_KEYED))
-    expect(h1().textContent).toBe(BIT_H1)
+    expect(bigLine().textContent).toBe(BIT_H1)
     expect(rankRows()).toEqual(BIT_RANK)
     expect(readDashboardGroups).toHaveBeenCalledTimes(1)
     expect(fetch).not.toHaveBeenCalled()
@@ -708,14 +716,14 @@ describe('AC-606.5: 묶음 읽기 실패·10초 한도', () => {
       draw()
       await savedAnswer(SAVED_KEYED)
       await settle()
-      expect(h1().textContent).toBe(SAVED_H1)
+      expect(bigLine().textContent).toBe(SAVED_H1)
       expectGroupsUnread()
       for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(screen.getByRole('group', { name })).toBeTruthy()
       expect(screen.queryByRole('alert')).toBeNull()
       expect(readBitDays).toHaveBeenCalledTimes(1)
       expect(bitReads[0]!.deps.groups).toEqual([])
       await bitAnswer(bitDays(BIT_KEYED))
-      expect(h1().textContent).toBe(BIT_H1)
+      expect(bigLine().textContent).toBe(BIT_H1)
       expectGroupsUnread()
       expect(screen.queryByRole('alert')).toBeNull()
     },
@@ -728,12 +736,12 @@ describe('AC-606.5: 묶음 읽기 실패·10초 한도', () => {
     await savedAnswer(SAVED_KEYED)
     await wait(SAVED_READ_TIMEOUT_MS - 1)
     expect(readBitDays).not.toHaveBeenCalled()
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expect(within(rankChart()).getByRole('status').textContent).toBe(GROUPS_PENDING)
     await wait(1)
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(bitReads[0]!.deps.groups).toEqual([])
-    expect(h1().textContent).toBe(SAVED_H1)
+    expect(bigLine().textContent).toBe(SAVED_H1)
     expectGroupsUnread()
     await groupAnswer(GROUPS, 0)
     expectGroupsUnread()
@@ -899,12 +907,12 @@ describe('dashboard-period: 옛 기간은 LiveDashboard가 만든 older(readDays
     notBitPc()
     draw()
     await savedAnswer(SAVED_ROWS)
-    const report = h1().textContent
+    const report = bigLine().textContent
     const dateLine = screen.getByRole('group', { name: '날짜 고르기' }).outerHTML
     toJuly()
     await savedFail(1)
     expect(periodCard()).not.toBeNull()
-    expect(h1().textContent).toBe(report)
+    expect(bigLine().textContent).toBe(report)
     expect(screen.getByRole('group', { name: '날짜 고르기' }).outerHTML).toBe(dateLine)
   })
 })
