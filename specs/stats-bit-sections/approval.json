@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "stats-bit-sections",
-  "approved_at": "2026-11-07T20:05:30Z",
+  "approved_at": "2026-11-07T22:22:19Z",
   "approved_via": "user-prompt",
   "session_id": "a571c871-688c-4473-9da4-86412a235a6f",
-  "spec_sha256": "06dc619728f667cd16233217d09531a19312c36978adf1f544c1e032d60db3b5",
+  "spec_sha256": "5dacd57d2aecf96516b14ea6ef22940997afb2d33ba9a547a586ad49fee7a3e5",
   "scope": [
     "helper/src/Precheck.Core/Stats/StatsCommands.cs",
     "helper/src/Precheck.Core/Stats/StatsPayload.cs",
@@ -33,6 +33,7 @@
     "src/lib/analytics/visitHours.test.ts",
     "src/lib/analytics/visitHours.ts",
     "src/types/stats.ts",
+    "src/workers/stats.worker.ts",
     "src/workers/stats/helperData.test.ts",
     "src/workers/stats/helperData.ts",
     "src/workers/stats/jobs.test.ts",
