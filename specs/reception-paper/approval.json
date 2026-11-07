@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "reception-paper",
-  "approved_at": "2026-11-07T02:38:31Z",
+  "approved_at": "2026-11-07T02:50:42Z",
   "approved_via": "user-prompt",
   "session_id": "adfd39b2-747b-4fe0-a542-9b9292f37b01",
-  "spec_sha256": "ddbe31f437fadb6b90597806d1872237aeb667b76b80856ef6c538660dac1080",
+  "spec_sha256": "b096a98367549554a319a3192c57637b2fee85a27929622a005ce025757d9c77",
   "scope": [
     "helper/src/Precheck.Core/Precheck.Core.csproj",
     "helper/src/Precheck.Core/Reception/HistoryBuilder.cs",
@@ -25,11 +25,14 @@
     "helper/tests/reception-sql.dotnet.test.ts",
     "reception/tests/api.test.ts",
     "reception/tests/app.test.ts",
+    "reception/tests/board.test.ts",
     "reception/tests/detail.test.ts",
     "reception/tests/fixtures.ts",
     "reception/tests/layout.test.ts",
+    "reception/tests/shell.test.ts",
     "reception/www/api.js",
     "reception/www/app.js",
+    "reception/www/board.js",
     "reception/www/detail.js",
     "reception/www/style.css",
     "reception/www/theme.css"
