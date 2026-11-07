@@ -68,6 +68,24 @@ export function fakeRow(over: Partial<FakeRow> = {}): FakeRow {
   }
 }
 
+/**
+ * 줄 정보 글이 화면에 보이는 조각들(reception-paper AC-1503.2): " · "로 나눈 끝 조각이 "신환"이면 그 조각을 뺀 정보 글과
+ * 신환 표시 "신환" 둘, 아니면 정보 글 그대로 하나. 빈 조각은 뺀다
+ */
+export function shownInfo(info: string): string[] {
+  const parts = info.split(' · ')
+  const shown = parts.at(-1) === '신환' ? [parts.slice(0, -1).join(' · '), '신환'] : [info]
+  return shown.filter((text) => text !== '')
+}
+
+/**
+ * 줄 하나에서 화면(목록 줄)에 보이는 환자 글: 이름·차트번호·메모·처방·정보(보이는 조각, shownInfo). 빈 글은 뺀다.
+ * 화면에 보이는지·끊김/숨김 뒤 남지 않았는지 볼 때 쓴다(정보 글 원문 "37세 · 남 · 신환"은 화면에 한 덩이로 나오지 않는다)
+ */
+export function rowTexts(row: FakeRow): string[] {
+  return [row.name, row.chart, row.memo, row.rx, ...shownInfo(row.info)].filter((text) => text !== '')
+}
+
 /** 접수 시각 글("10:42 접수")의 시:분. 못 읽으면 맨 뒤로 */
 function timeOf(row: FakeRow): string {
   return /^\d\d:\d\d/.exec(row.time)?.[0] ?? '99:99'

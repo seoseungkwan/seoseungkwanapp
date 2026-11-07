@@ -11,16 +11,16 @@
  *            .picker > button.queue[aria-pressed] > span.queue-label + span.queue-count
  *                    > .tiles > button.tile[aria-pressed] > span.tile-count + span.tile-label
  *            main.list > h2.list-heading + .rows > .row(.is-picked) > (a 또는 button).row-main
- *                          > .row-head > span.pos + span.status.status-wait|hold|pay|done + span.chart + span.name + span.info
+ *                          > .row-head > span.pos + span.status.status-wait|hold|pay|done + span.chart + span.name + span.info + span.new-badge
  *                          > .row-time > span + span.waited(.is-long|.is-done)
- *                          > .memo   > .rx-line > span.rx-label + span.rx-text
+ *                          > .memo > span.memo-label + 글   > .rx-line > span.rx-label + span.rx-text
  *                        .row > .xray > span.xray-tag.is-before|is-done + button.btn-dark|btn-light
  *            aside.pane (태블릿 오른쪽, 아래 상세 내용 + p.pane-foot)
  *            footer.foot
  *   상세   .page.detail-page
  *            header.top.is-detail > .top-row > a.back + img.logo-mark
- *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info
- *                                            > .status-line > span.status… + span   > .memo
+ *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info + span.new-badge
+ *                                            > .status-line > span.status… + span   > .memo > span.memo-label + 글
  *            main.detail > h2.detail-heading + article.paper + h2.detail-heading + (section.visit.is-last | p.no-visits) + p.end-note
  *              article.paper (종이 진료기록부, reception-paper 승인 목업 Paper.html)
  *                > .paper-head > span.paper-title + span.paper-date
@@ -431,13 +431,37 @@ button.row-main {
   color: var(--status-done-fg);
 }
 
+/* 신환 표시 (reception-paper AC-1503.2, 승인 목업 Paper.html .new-badge): 정보 글 바로 뒤 */
+.new-badge {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 1px;
+  color: var(--on-new);
+  background: var(--new);
+  border-radius: var(--radius-s);
+  padding: 1px 7px;
+}
+
+/* 메모 상자 (reception-paper AC-1503.1, 승인 목업 Paper.html .memo·.memo .lab): 목록 줄·상세 머리(폰·태블릿) 모두 같은 크기 */
 .memo {
   display: block;
-  font-size: 13px;
-  color: var(--ink-2);
-  background: var(--ground);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface-picked);
+  border-left: 4px solid var(--accent);
   border-radius: var(--radius-s);
-  padding: 6px 8px;
+  padding: 8px 10px;
+}
+
+.memo-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-right: 6px;
 }
 
 .rx-line {
@@ -598,10 +622,6 @@ button.row-main {
 
 .status-line .status {
   font-size: 13px;
-}
-
-.patient .memo {
-  padding: 8px 10px;
 }
 
 .detail {
@@ -1187,7 +1207,7 @@ button.row-main {
     font-size: 15px;
   }
 
-  .pane .status-line, .pane .patient .memo {
+  .pane .status-line {
     font-size: 14px;
   }
 

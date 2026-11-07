@@ -1,5 +1,5 @@
 // 접수 현황 화면 뼈대(TASK-16, REQ-1407): 색·글꼴 한 곳(theme.css), 모양(style.css), 바깥 주소 없음, 제목 글꼴, 홈 화면 추가, [새로 고침] 단추 크기.
-// 화면 파일(reception/www/**)과 승인 시안(docs/mockups/reception-phone/*.dc.html)을 글자로 읽어 본다. 자료는 없다(뼈대만)
+// 화면 파일(reception/www/**)과 승인 시안(docs/mockups/reception-phone/*.dc.html, 2026-11-07 승인 목업 Paper.html)을 글자로 읽어 본다. 자료는 없다(뼈대만)
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +10,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const WWW = path.join(ROOT, 'reception', 'www')
 const MOCKUPS = path.join(ROOT, 'docs', 'mockups', 'reception-phone')
 const MOCKUP_PAGES = ['Main.dc.html', 'Detail.dc.html', 'Offline.dc.html', 'Tablet.dc.html']
+/** 종이 진료기록부 목업(reception-paper, 사용자 승인 2026-11-07). 상표 시안 v12 뒤에 승인된 색(신환 표시 파랑 등)을 더 담는다 */
+const PAPER_PAGE = 'Paper.html'
 /** 화면이 글자로 읽는 파일(그림·글꼴·사용 허락 글 말고) */
 const CODE_EXT = new Set(['.html', '.css', '.js', '.mjs', '.webmanifest', '.json', '.svg'])
 
@@ -52,9 +54,9 @@ function normalHex(hex: string): string {
   return `#${h}`
 }
 
-function mockupColors(): Set<string> {
+function mockupColors(pages: string[] = MOCKUP_PAGES): Set<string> {
   const all = new Set<string>()
-  for (const page of MOCKUP_PAGES) for (const c of hexColors(readFileSync(path.join(MOCKUPS, page), 'utf8'))) all.add(c)
+  for (const page of pages) for (const c of hexColors(readFileSync(path.join(MOCKUPS, page), 'utf8'))) all.add(c)
   return all
 }
 
@@ -267,11 +269,18 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
         for (const word of value.split(/[\s,()/]+/)) expect(named.test(word), `${rule.selector} { ${prop}: ${value} }`).toBe(false)
   })
 
-  it('AC-1407.7: theme.css의 색은 승인된 의원 상표 시안(v12 Main·Detail·Offline·Tablet)의 색과 똑같은 모음이다(빠진 색도 지어낸 색도 없음)', () => {
+  it('AC-1407.7 · AC-1503.2: theme.css의 색은 승인된 의원 상표 시안(v12 Main·Detail·Offline·Tablet)의 색을 모두 담고(빠진 색 없음), 그 밖의 색은 승인 목업 Paper.html에 있는 색뿐이다(지어낸 색 없음)', () => {
     const theme = new Set(hexColors(parseRules(read('theme.css')).filter((r) => r.selector === ':root').flatMap((r) => r.decls.map((d) => d[1])).join(' ')))
-    const mockup = mockupColors()
-    expect(mockup.size).toBeGreaterThan(10)
-    expect([...theme].sort()).toEqual([...mockup].sort())
+    const brand = mockupColors()
+    const paper = mockupColors([PAPER_PAGE])
+    expect(brand.size).toBeGreaterThan(10)
+    expect(paper.size).toBeGreaterThan(10)
+    for (const c of brand) expect(theme, `상표 시안 색 ${c}가 theme.css에 없다`).toContain(c)
+    for (const c of theme) expect(brand.has(c) || paper.has(c), `${c}는 승인 시안·목업에 없는 색이다`).toBe(true)
+    // 신환 표시 파랑은 Paper.html에서 왔다(상표 시안 v12에는 없다)
+    expect(paper.has('#1D4ED8')).toBe(true)
+    expect(brand.has('#1D4ED8')).toBe(false)
+    expect(theme.has('#1D4ED8')).toBe(true)
   })
 
   it('AC-1407.7: 바탕·숯색·강조색(로고 노랑)은 시안 값이다', () => {
@@ -296,6 +305,34 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     // style.css가 상태 토큰을 실제로 쓴다
     const style = read('style.css')
     for (const s of STATUSES) expect(style, `var(--status-${s}-bg)`).toContain(`var(--status-${s}-bg)`)
+  })
+
+  it('AC-1503.2: 신환 표시 색 --new(#1D4ED8, 목업 Paper.html)·--on-new(#FFFFFF)는 theme.css에 있고, 상태 색(채움·글·테두리)·강조색(--accent)과 다르다', () => {
+    const t = rootTokens()
+    expect(t.has('--new')).toBe(true)
+    expect(t.has('--on-new')).toBe(true)
+    const fill = resolve(t, 'var(--new)').toUpperCase()
+    const ink = resolve(t, 'var(--on-new)').toUpperCase()
+    expect(fill).toBe('#1D4ED8')
+    expect(ink).toBe('#FFFFFF')
+    const accent = resolve(t, 'var(--accent)').toUpperCase()
+    expect(fill).not.toBe(accent)
+    expect(ink).not.toBe(accent)
+    const status = (part: 'bg' | 'fg' | 'line') =>
+      [...t.keys()].filter((name) => name.startsWith('--status-') && name.endsWith(`-${part}`)).map((name) => [name, resolve(t, `var(${name})`).toUpperCase()] as const)
+    expect(status('bg').length).toBeGreaterThanOrEqual(STATUSES.length)
+    // 표시 바탕은 어느 상태의 채움·글·테두리와도 다르다
+    for (const [name, value] of [...status('bg'), ...status('fg'), ...status('line')]) expect(fill, name).not.toBe(value)
+    // 표시 글은 어느 상태의 글과도 다르다
+    for (const [name, value] of status('fg')) expect(ink, name).not.toBe(value)
+    // 채움·글 짝이 어느 상태 이름표·칩과도 같지 않다
+    for (const [name, bg] of status('bg')) {
+      const fg = t.get(name.replace(/-bg$/, '-fg'))
+      if (fg !== undefined) expect(`${fill}/${ink}`, name).not.toBe(`${bg}/${resolve(t, fg).toUpperCase()}`)
+    }
+    const style = stripComments(read('style.css'))
+    expect(style).toContain('var(--new)')
+    expect(style).toContain('var(--on-new)')
   })
 
   it('AC-1407.7: style.css는 theme.css에 있는 토큰만 쓰고, 폰 한 줄 흐름 + 태블릿 두 칸 모양을 함께 가진다', () => {

@@ -75,6 +75,10 @@ const SEX_LETTER = new Map([
 ])
 const KINDS = new Set(['신환', '재진'])
 
+/** 머리 메모 상자의 이름표와 신환 표시 글 (AC-1503.1·1503.2, board.js와 같다) */
+const MEMO_LABEL = '메모'
+const NEW_KIND = '신환'
+
 /** 상태 이름표 모양 (JSON lane → class, board.js와 같다) */
 const STATUS_CLASS = { wait: 'status-wait', hold: 'status-hold', pay: 'status-pay', done: 'status-done' }
 
@@ -168,16 +172,29 @@ export function fitSpecial(host) {
   setOpen(text, button, open && over)
 }
 
-/** 환자 칸: 차트번호·이름·정보, 상태 이름표 + "접수 시각 · 기다린 글", 메모(있을 때만). 못 읽은 칸("")은 그 칸만 비운다(AC-1402.7) */
+/**
+ * 환자 칸: 차트번호·이름·정보(+ 신환 표시), 상태 이름표 + "접수 시각 · 기다린 글", 메모 상자(있을 때만, 이름표 + 글).
+ * 못 읽은 칸("")은 그 칸만 비운다(AC-1402.7). 메모·신환 모양은 목록 줄(board.js)과 같다(AC-1503.1·1503.2)
+ */
 function patientOf(row, level) {
   return el('div', { class: 'patient', 'data-k': row.k }, [
-    el('div', { class: 'name-line' }, [textEl('span', 'chart', row.chart), textEl(`h${level}`, 'detail-name', row.name), textEl('span', 'info', row.info)]),
+    el('div', { class: 'name-line' }, [textEl('span', 'chart', row.chart), textEl(`h${level}`, 'detail-name', row.name), infoOf(row.info)]),
     el('div', { class: 'status-line' }, [
       el('span', { class: ['status', STATUS_CLASS[row.lane]].filter(Boolean).join(' ') }, row.laneLabel),
       el('span', null, [row.time, row.waited].filter(isText).join(' · ')),
     ]),
-    isText(row.memo) ? el('div', { class: 'memo' }, `메모 · ${row.memo}`) : null,
+    isText(row.memo) ? el('div', { class: 'memo' }, [el('span', { class: 'memo-label' }, MEMO_LABEL), row.memo]) : null,
   ])
+}
+
+/**
+ * 정보 글 span. 끝 조각이 "신환"이면 글에서 그 조각(과 앞 " · ")을 빼고 바로 뒤에 신환 표시를 붙인다(AC-1503.2). 그 밖이면 글 그대로다.
+ * 줄 정보 글은 바꾸지 않는다(종이 카드의 수진자명·신환/재진은 factsOf가 원래 글로 읽는다)
+ */
+function infoOf(info) {
+  const parts = isText(info) ? info.split(INFO_JOINER) : []
+  if (parts.at(-1) !== NEW_KIND) return textEl('span', 'info', info)
+  return [textEl('span', 'info', parts.slice(0, -1).join(INFO_JOINER)), el('span', { class: 'new-badge' }, NEW_KIND)]
 }
 
 /** 상세 몸(AC-1502.1): 제목·종이 카드·제목·지난번 카드(없으면 첫 방문 글)·끝 줄 */

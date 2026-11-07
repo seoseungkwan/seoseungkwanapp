@@ -311,6 +311,20 @@ function sectionOf(card: Element | null, head: string): Element | null {
   return [...(card?.querySelectorAll(':scope > .paper-body > .sec') ?? [])].find((s) => textOf(s, ':scope > .sec-h') === head) ?? null
 }
 
+/**
+ * 머리 메모 상자(AC-1503.1, .patient 바로 아래 .memo)의 아이 마디: 요소는 '태그.class:글', 글 마디는 '#text:글'. 상자가 없으면 null.
+ * 메모 상자는 [span.memo-label "메모", 메모 글 마디] 둘뿐이다(이름표 뒤 " · " 없음)
+ */
+function memoOf(root: ParentNode | null | undefined): string[] | null {
+  const memo = root?.querySelector('.patient > .memo')
+  if (!memo) return null
+  return [...memo.childNodes].map((n) =>
+    n instanceof Element ? `${n.tagName.toLowerCase()}.${n.className}:${n.textContent}` : n.nodeType === Node.TEXT_NODE ? `#text:${n.textContent}` : `#${n.nodeName}`,
+  )
+}
+
+const memoBox = (text: string) => ['span.memo-label:메모', `#text:${text}`]
+
 function specialOf(root: ParentNode | null | undefined) {
   const box = root?.querySelector<HTMLElement>('article.paper > .spc') ?? null
   return {
@@ -348,7 +362,7 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(textOf(patient, '.name-line > .info')).toBe('54세 · 여 · 재진')
     expect(shapeOf(patient?.querySelector('.status-line'))).toEqual(['span.status.status-wait', 'span'])
     expect(textsOf(patient!, '.status-line > span')).toEqual(['진료대기', '10:42 접수 · 18분째 대기'])
-    expect(textOf(patient, ':scope > .memo')).toBe('메모 · 오른쪽 어깨 통증 심해짐')
+    expect(memoOf(top)).toEqual(memoBox('오른쪽 어깨 통증 심해짐'))
 
     expect(textOf(page, 'main.detail > h2.detail-heading')).toBe(PAPER_HEADING)
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
@@ -396,7 +410,7 @@ describe('detail.js 상세 그리기 (폰)', () => {
     expect(app.querySelector('.page.board')).toBeNull()
     expect(app.querySelector('b, img:not(.logo-mark), i, u, s, em, script')).toBeNull()
     expect(textOf(app, '.detail-name')).toBe('<b>가상환자02</b>')
-    expect(textOf(app, '.patient > .memo')).toBe('메모 · <img src=x onerror=alert(1)>')
+    expect(memoOf(app)).toEqual(memoBox('<img src=x onerror=alert(1)>'))
     expect(textOf(lastOf(app), 'p.sym')).toBe('증상 · <i>밤에 아픔</i>')
     const card = paperOf(app)
     expect(specialOf(app).text?.textContent).toBe('<b>굵은 특이사항</b>')
@@ -865,5 +879,91 @@ describe('detail.js 상세 그리기 (태블릿 오른쪽 칸)', () => {
     view.fitSpecial(app)
     const short = specialOf(app.querySelector('aside.pane'))
     expect(short.button === null || short.button.hidden).toBe(true)
+  })
+})
+
+describe('REQ-1503 메모 크게 · 신환 눈에 띄게 (detail.js 머리, 승인 목업 Paper.html)', () => {
+  /** 그리는 곳 셋: 폰 상세, 태블릿 오른쪽 칸(detailPane), 목록 오른쪽 칸에 넣은 것(fillPane). 이름 제목 단계(h1|h2)와 함께 */
+  function headsOf(row: FakeRow): [string, Element | null, string][] {
+    const phone = appHost()
+    view.renderDetail(phone, row, mockupHistory(), { today: TODAY })
+    const nodes = view.detailPane(row, mockupHistory(), { today: TODAY })
+    const loose = document.createElement('div')
+    loose.append(...nodes)
+    const tab = appHost()
+    board.renderBoard(tab, fx.boardOf({ wait: [row] }), { tablet: true, picked: row.k })
+    board.fillPane(tab, view.detailPane(row, mockupHistory(), { today: TODAY }))
+    return [
+      ['폰', phone.querySelector('header.top .patient'), 'h1.detail-name'],
+      ['detailPane', loose.querySelector(':scope > .patient'), 'h2.detail-name'],
+      ['태블릿', tab.querySelector('aside.pane > .patient'), 'h2.detail-name'],
+    ]
+  }
+
+  it('AC-1503.1: 머리의 메모 상자(폰·태블릿 오른쪽 칸)는 앞에 이름표 span.memo-label "메모"와 메모 글(글 마디)뿐이고, 메모가 없으면 상자가 없다', () => {
+    for (const [where, patient] of headsOf(mockupRow())) {
+      expect(patient, where).not.toBeNull()
+      expect(memoOf(patient!.parentElement), where).toEqual(memoBox('오른쪽 어깨 통증 심해짐'))
+      expect(shapeOf(patient), where).toEqual(['div.name-line', 'div.status-line', 'div.memo'])
+    }
+    document.body.replaceChildren()
+    for (const [where, patient] of headsOf(mockupRow({ memo: '' }))) {
+      expect(patient, where).not.toBeNull()
+      expect(patient!.querySelector('.memo'), where).toBeNull()
+    }
+  })
+
+  it('AC-1503.1: updateDetail로 메모가 바뀌어도 같은 모양(이름표 + 글 마디)이고, 메모에 HTML을 넣어도 글자로만 보인다', () => {
+    const app = appHost()
+    view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY })
+    const memo = '<b>엑스레이</b> 찍으러 감 <img src=x onerror=alert(1)>'
+    expect(view.updateDetail(app, mockupRow({ memo }), { today: TODAY })).toBe(true)
+    expect(memoOf(app)).toEqual(memoBox(memo))
+    expect(app.querySelector('.memo b, .memo img')).toBeNull()
+    expect(view.updateDetail(app, mockupRow({ memo: '' }), { today: TODAY })).toBe(true)
+    expect(memoOf(app)).toBeNull()
+  })
+
+  it('AC-1503.2: 정보 글의 마지막 조각이 "신환"이면 머리(폰·태블릿 오른쪽 칸)의 정보 글에서 " · 신환"을 빼고 바로 뒤에 span.new-badge "신환"을 붙인다. 재진이면 그대로이고 표시가 없다', () => {
+    for (const [where, patient, name] of headsOf(mockupRow({ info: '37세 · 남 · 신환' }))) {
+      expect(shapeOf(patient?.querySelector('.name-line')), where).toEqual(['span.chart', name, 'span.info', 'span.new-badge'])
+      expect(textOf(patient, '.name-line > .info'), where).toBe('37세 · 남')
+      expect(textOf(patient, '.name-line > .new-badge'), where).toBe('신환')
+    }
+    document.body.replaceChildren()
+    for (const [where, patient, name] of headsOf(mockupRow())) {
+      expect(shapeOf(patient?.querySelector('.name-line')), where).toEqual(['span.chart', name, 'span.info'])
+      expect(textOf(patient, '.name-line > .info'), where).toBe('54세 · 여 · 재진')
+    }
+  })
+
+  it('AC-1503.2: 정보 글이 "신환" 하나면 표시만, 끝 조각이 "신환"이 아니면(신환대기·가운데 신환) 그대로다. updateDetail로 신환↔재진이 바뀌면 표시도 따른다', () => {
+    const cases: [string, string[], string | null][] = [
+      ['신환', ['span.chart', 'h1.detail-name', 'span.new-badge'], null],
+      ['54세 · 여 · 신환대기', ['span.chart', 'h1.detail-name', 'span.info'], '54세 · 여 · 신환대기'],
+      ['신환 · 재진', ['span.chart', 'h1.detail-name', 'span.info'], '신환 · 재진'],
+    ]
+    for (const [info, shape, shown] of cases) {
+      const app = appHost()
+      view.renderDetail(app, mockupRow({ info }), mockupHistory(), { today: TODAY })
+      expect(shapeOf(app.querySelector('.name-line')), info).toEqual(shape)
+      expect(textOf(app, '.name-line > .info'), info).toBe(shown)
+      app.remove()
+    }
+    const app = appHost()
+    view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY })
+    expect(app.querySelector('.new-badge')).toBeNull()
+    expect(view.updateDetail(app, mockupRow({ info: '54세 · 여 · 신환' }), { today: TODAY })).toBe(true)
+    expect(textsOf(app, '.name-line > span')).toEqual(['910234', '54세 · 여', '신환'])
+    expect(view.updateDetail(app, mockupRow(), { today: TODAY })).toBe(true)
+    expect(app.querySelector('.new-badge')).toBeNull()
+  })
+
+  it('AC-1503.2: 종이 카드는 그대로다(수진자명은 줄의 이름·성별·나이, <내원내역> 보험 뒤 신환)', () => {
+    const app = appHost()
+    view.renderDetail(app, mockupRow({ name: '가상환자01', info: '37세 · 남 · 신환' }), mockupHistory(), { today: TODAY })
+    expect(kvOf(paperOf(app))[1]).toEqual([KV_LABELS[1], '가상환자01 (M/37)'])
+    expect(textsOf(paperOf(app), '.visit-line > span').at(-1)).toBe('국민건강보험(신환)')
+    expect(paperOf(app)?.querySelector('.new-badge')).toBeNull()
   })
 })
