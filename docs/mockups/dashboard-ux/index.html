@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>대시보드 UI/UX · AI 경영 리포트 요약 시안 (dashboard-ux)</title>
+<style>
+@font-face{font-family:'Pretendard';font-weight:400;src:url(../../../src/app/fonts/Pretendard-Regular.subset.woff2) format('woff2')}
+@font-face{font-family:'Pretendard';font-weight:500;src:url(../../../src/app/fonts/Pretendard-Medium.subset.woff2) format('woff2')}
+@font-face{font-family:'Pretendard';font-weight:600;src:url(../../../src/app/fonts/Pretendard-SemiBold.subset.woff2) format('woff2')}
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--faint:#9CA3AF;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;--negative:#C2410C;--negative-soft:#FDF0EA;
+--warning:#B45309;--warning-soft:#FDF4E3;--chart-3:#8DB0F4;--r-control:4px;--r-float:8px;--elev-float:0 1px 2px rgb(17 24 39 / .06),0 6px 16px rgb(17 24 39 / .1)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:#E9ECF1;color:var(--ink);font-size:14px;line-height:22px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 시안 조작판 (화면 밖) */
+.ctl{position:relative;z-index:50;background:#1F2937;color:#F9FAFB;padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px}
+.ctl b{font-weight:600;margin-right:4px}
+.ctl select{font:inherit;padding:2px 4px;border-radius:4px}
+.ctl .note{color:#D1D5DB}
+.stage{padding:16px 0 48px;display:flex;justify-content:center}
+.frame{container-type:inline-size;background:var(--surface);width:1440px;min-height:900px;box-shadow:0 0 0 1px #CBD2DC;overflow:hidden}
+/* 앱 틀 */
+.band{border-bottom:1px solid var(--line)}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.band .wrap{height:56px;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:600}
+.logo i{width:24px;height:24px;border-radius:6px;background:var(--accent);display:inline-block}
+.band .right{display:flex;gap:16px;align-items:center;color:var(--ink-2);font-size:13px}
+.acct{width:32px;height:32px;border-radius:50%;background:var(--canvas);border:1px solid var(--line)}
+nav.tabs{position:relative;border-bottom:1px solid var(--line);display:flex}
+nav.tabs .strip{flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+nav.tabs .row{display:flex;height:44px;max-width:1280px;margin:0 auto;padding:0 24px}
+nav.tabs .row>:first-child{margin-left:-12px}
+.tab{position:relative;display:inline-flex;align-items:center;height:44px;padding:0 12px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.tab.on{font-weight:600;color:var(--ink)}
+.tab.on::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--accent)}
+.more{position:relative;display:inline-flex;align-items:center;gap:4px;height:44px;padding:0 12px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.more.on{font-weight:600;color:var(--ink)}
+.more.on::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--accent)}
+.more svg{transition:transform .15s}
+.more[aria-expanded=true] svg{transform:rotate(180deg)}
+.morewrap{position:relative;margin-left:auto}
+.morepanel{position:absolute;right:0;top:100%;margin-top:1px;width:320px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--elev-float);padding:4px 16px 12px;z-index:20}
+.morepanel .h{display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.morepanel ul{list-style:none}
+.morepanel a{display:flex;align-items:center;justify-content:space-between;gap:6px;height:44px;padding:0 4px;border-bottom:1px solid var(--line);font-weight:500}
+.morepanel a:last-child{border-bottom:0}
+.morepanel a.cur{font-weight:600;color:var(--accent-strong)}
+.morepanel a.soon{color:var(--ink-2)}
+.chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.chip.n{background:var(--canvas);color:var(--ink-2);border:1px solid var(--line)}
+.chip.p{background:var(--positive-soft);color:var(--positive)}
+.chip.ng{background:var(--negative-soft);color:var(--negative)}
+.chip.w{background:var(--warning-soft);color:var(--warning)}
+.chip.a{background:var(--accent-soft);color:var(--accent-strong)}
+main .wrap{padding-top:24px;padding-bottom:48px}
+/* 단추 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:600;white-space:nowrap}
+.btn.pri{background:var(--accent);color:#fff}
+.btn.sec{background:var(--surface);border:1px solid var(--line-strong);color:var(--ink)}
+.btn.sm{height:32px;padding:0 12px;font-size:13px}
+.btn[aria-busy=true]{opacity:.7;cursor:progress}
+.txtbtn{color:var(--accent-strong);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:4px;min-height:32px}
+/* 머리 줄 */
+.head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:16px;border-bottom:1px solid var(--line-strong)}
+.head h1{font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.01em}
+.head .when{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2)}
+.head .sp{margin-left:auto}
+.alert{margin-top:12px;display:flex;gap:8px;align-items:flex-start;border-radius:var(--r-control);background:var(--negative-soft);padding:12px 16px;max-width:640px}
+.alert b{color:var(--negative);font-weight:600;display:block}
+.alert small{display:block;font-size:12px;color:var(--ink-2);margin-top:4px}
+/* 구역 */
+.sec{margin-top:32px}
+.sec>.sh{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 16px;margin-bottom:12px}
+.sec h2{font-size:20px;line-height:28px;font-weight:600}
+.scope{display:flex;flex-direction:column;gap:4px}
+.scope .cap{font-size:12px;line-height:16px;color:var(--muted);font-weight:500}
+.scope .row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.scope .apply{font-size:12px;color:var(--muted)}
+.datebox{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 8px;border:1px solid var(--line-strong);border-radius:var(--r-control);font-weight:600}
+.step{display:grid;place-items:center;width:32px;height:32px;border-radius:var(--r-control);color:var(--ink-2)}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-control);overflow:hidden}
+.seg button{height:30px;padding:0 12px;font-size:13px;font-weight:500;color:var(--ink-2);border-left:1px solid var(--line-strong)}
+.seg button:first-child{border-left:0}
+.seg button.on{background:var(--accent-soft);color:var(--accent-strong);font-weight:600}
+.pick{position:relative}
+.pickbtn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--line-strong);border-radius:var(--r-control);font-size:13px;font-weight:500}
+.pickpanel{position:absolute;right:0;top:100%;margin-top:8px;width:400px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--elev-float);padding:16px;z-index:20;display:flex;flex-direction:column;gap:12px}
+.pickpanel .f{display:flex;gap:8px;align-items:flex-end}
+.pickpanel label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.pickpanel input{height:36px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 8px;font:inherit;color:var(--ink)}
+.pickpanel .act{display:flex;justify-content:flex-end;gap:8px}
+/* 숫자 칸 */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.kpi{padding:16px 20px;border-left:1px solid var(--line);min-width:0}
+.kpi:first-child{border-left:0;padding-left:0}
+.kpi .l{font-size:13px;color:var(--muted);height:28px}
+.kpi .v{font-size:28px;line-height:36px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi .v small{font-size:14px;font-weight:500;color:var(--muted);margin-left:2px}
+.kpi .d{font-size:13px;display:flex;gap:4px;align-items:center}
+.kpi .d.up{color:var(--positive)}
+.kpi .d .m{color:var(--muted)}
+.kpi .e{font-size:13px;color:var(--muted)}
+.stale-dim .v{color:var(--ink-2)}
+.say{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.say .t{min-width:0;flex:1 1 420px}
+.say .lab{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;font-weight:600}
+.say p{margin-top:4px;color:var(--ink-2);font-size:14px}
+/* AI 구역 */
+.ai{margin-top:32px;background:var(--canvas);border-radius:var(--r-float);padding:24px}
+.ai .top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-start;justify-content:space-between}
+.ai h2{font-size:20px;line-height:28px;font-weight:600}
+.ai .lede{margin-top:2px;font-size:14px;color:var(--ink-2)}
+.ai .meta{margin-top:12px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:13px;color:var(--muted)}
+.ai .meta b{color:var(--ink);font-weight:600}
+.ai .meta .dot{color:var(--faint)}
+.ai .model{display:inline-flex;align-items:center;gap:4px;color:var(--ink-2)}
+.ai .sum{margin-top:12px;font-size:20px;line-height:30px;font-weight:600;max-width:52em;text-wrap:pretty}
+.ai .cols{margin-top:20px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.ai .col h3{font-size:13px;line-height:20px;font-weight:600;color:var(--ink-2);padding-bottom:8px;border-bottom:1px solid var(--line-strong);display:flex;justify-content:space-between}
+.ai .col h3 span{font-weight:500;color:var(--muted)}
+.ai .card{padding:12px 0;border-bottom:1px solid var(--line)}
+.ai .card p{font-size:14px;line-height:22px;color:var(--ink);margin-top:6px}
+.ai .card .basis{font-size:12px;line-height:18px;color:var(--ink-2);margin-top:4px;font-variant-numeric:tabular-nums}
+.ai .foot{margin-top:16px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
+.ai .note{margin-top:12px;border-radius:var(--r-control);padding:10px 14px;font-size:13px;color:var(--ink-2)}
+.ai .note.w{background:var(--warning-soft)}
+.ai .note.w b{color:var(--warning)}
+.ai .note.ng{background:var(--negative-soft)}
+.ai .note.ng b{color:var(--negative)}
+.ai .note b{display:block;font-weight:600}
+.ai .empty h3{font-size:16px;line-height:24px;font-weight:600;margin-top:16px}
+.ai .empty p{margin-top:4px;color:var(--ink-2);max-width:40em}
+.ai .empty ul{margin-top:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;list-style:none}
+.ai .empty li{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-control);padding:10px 12px;font-size:13px;color:var(--ink-2)}
+.ai .empty li b{display:block;color:var(--ink);font-weight:600;font-size:14px}
+.ai .actions{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.ai .actions small{font-size:12px;color:var(--muted)}
+/* 그래프 */
+.grid2{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:32px 24px}
+.c8{grid-column:span 8}.c4{grid-column:span 4;border-left:1px solid var(--line);padding-left:24px}.c6{grid-column:span 6}.c6b{grid-column:span 6;border-left:1px solid var(--line);padding-left:24px}
+.ch{min-width:0}
+.ch .t{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;min-height:32px}
+.ch h3{font-size:16px;line-height:24px;font-weight:600}
+.ch .desc{font-size:13px;color:var(--muted)}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--ink-2)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px}
+.bars{margin-top:12px;position:relative;height:200px;display:flex;align-items:flex-end;gap:2px;padding-left:36px;border-bottom:1px solid var(--line-strong)}
+.bars .ax{position:absolute;left:0;top:0;bottom:0;width:32px;display:flex;flex-direction:column;justify-content:space-between;font-size:12px;color:var(--muted);text-align:right}
+.bars .gl{position:absolute;left:36px;right:0;height:1px;background:var(--line)}
+.bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;min-width:0;position:relative}
+.bar .a{background:var(--accent)}.bar .b{background:var(--chart-3)}
+.bar.part{border:1px solid var(--accent);background:repeating-linear-gradient(45deg,transparent 0 3px,var(--accent) 3px 4px)}
+.ticks{display:flex;justify-content:space-between;padding-left:36px;margin-top:6px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tbl-toggle{margin-top:8px}
+.tblwrap{margin-top:8px;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-control)}
+table.vt{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.vt caption{text-align:left;padding:8px 12px;font-size:12px;color:var(--muted);caption-side:top;background:var(--surface)}
+table.vt th,table.vt td{padding:6px 12px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
+table.vt th:first-child{text-align:left}
+table.vt thead th{position:sticky;top:0;background:var(--canvas);font-weight:600;color:var(--ink-2);border-top:0}
+table.vt td.mu{color:var(--muted)}
+.rev .r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;border-top:1px solid var(--line);padding:12px 0}
+.rev .r b{font-size:16px;font-weight:600}
+.rev .meter{grid-column:span 2;height:8px;border:1px solid var(--line);background:var(--canvas)}
+.rev .meter i{display:block;height:100%;background:var(--accent)}
+.rev .cap{grid-column:span 2;font-size:12px;color:var(--muted)}
+.week{margin-top:12px;height:150px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end}
+.week span{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--muted);height:100%;justify-content:flex-end}
+.week span i{display:block;width:60%;max-width:28px;background:var(--accent)}
+.rank li{display:flex;align-items:center;gap:12px;height:36px;border-top:1px solid var(--line);font-size:14px}
+.rank li .n{width:20px;font-size:12px;color:var(--muted);font-weight:600}
+.rank li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank li .bar2{flex:0 0 30%;height:8px;background:var(--canvas)}
+.rank li .bar2 i{display:block;height:100%;background:var(--accent)}
+.rank li b{font-variant-numeric:tabular-nums;font-weight:600;width:56px;text-align:right}
+.rank{list-style:none;margin-top:8px}
+/* 바로 가기 */
+.links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 24px;list-style:none;border-top:1px solid var(--line)}
+.links a{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
+.links a b{display:block;font-weight:600;font-size:16px}
+.links a span{font-size:13px;color:var(--muted)}
+/* 뼈대 */
+.sk{background:linear-gradient(90deg,#EEF0F3,#F5F6F8,#EEF0F3);border-radius:4px;display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* 연결 전 (지금 그대로) */
+.before h1{font-size:32px;line-height:40px;font-weight:600;letter-spacing:-.02em;max-width:480px;margin-top:12px}
+.before p.lead{margin-top:16px;max-width:512px;font-size:16px;line-height:24px;color:var(--ink-2)}
+.as-is{display:inline-block;margin-bottom:12px;font-size:12px;color:var(--warning);background:var(--warning-soft);padding:2px 8px;border-radius:4px}
+/* 폭 흉내 (컨테이너 질의 = 화면 폭) */
+@container (max-width:1023px){
+  .grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .c8{grid-column:span 2}.c4{grid-column:span 2;border-left:0;padding-left:0}.c6{grid-column:span 1}.c6b{grid-column:span 1}
+  .links{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container (max-width:767px){
+  .band .wrap{height:48px;padding:0 16px}
+  nav.tabs .row{padding:0 16px}
+  .wrap{padding:0 16px}
+  main .wrap{padding-top:16px}
+  .head h1{font-size:20px;line-height:28px}
+  .head .sp{margin-left:0;width:100%}
+  .head .sp .btn{width:100%;height:44px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi{padding:12px 16px}
+  .kpi:nth-child(3){border-left:0;padding-left:0;border-top:1px solid var(--line)}
+  .kpi:nth-child(4){border-top:1px solid var(--line)}
+  .say .btn{width:100%;height:44px}
+  .ai{padding:16px;margin-left:-4px;margin-right:-4px}
+  .ai .top .btn{width:100%;height:44px}
+  .ai .sum{font-size:18px;line-height:27px}
+  .ai .cols{grid-template-columns:1fr;gap:16px}
+  .ai .empty ul{grid-template-columns:1fr}
+  .ai .actions .btn{width:100%;height:44px}
+  .grid2{grid-template-columns:1fr}
+  .c8,.c4,.c6,.c6b{grid-column:span 1;border-left:0;padding-left:0}
+  .scope{width:100%}
+  .seg{display:grid;grid-template-columns:repeat(3,1fr);width:100%}
+  .seg button{height:44px}
+  .pick{width:100%}.pickbtn{width:100%;height:44px;justify-content:center}
+  .pickpanel{position:static;width:100%;margin-top:8px;box-shadow:none}
+  .step{width:44px;height:44px}.datebox{height:44px}
+  .morewrap{position:static}
+  .morepanel{position:absolute;left:0;right:0;width:auto;border-radius:0;border-left:0;border-right:0;padding:4px 16px 16px}
+  .morepanel ul{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+  .morepanel a:last-child{border-bottom:1px solid var(--line)}
+  .links{grid-template-columns:1fr}
+  .tbl-toggle .btn{width:100%;height:44px}
+  table.vt th,table.vt td{padding:6px 8px}
+  .bars{height:140px}
+}
+</style>
+</head>
+<body>
+<div class="ctl" role="region" aria-label="시안 조작판(앱 화면 밖)">
+  <span><b>화면 폭</b><select id="w"><option value="1440">1440</option><option value="1024">1024</option><option value="768">768</option><option value="390">390 (폰)</option><option value="720">1440 × 200% 확대(=720)</option></select></span>
+  <span><b>대시보드</b><select id="s">
+    <option value="ready">숫자 있음 · 비트에서 읽음</option>
+    <option value="saved">숫자 있음 · 저장된 숫자만</option>
+    <option value="rereading">다시 읽는 중(숫자 그대로)</option>
+    <option value="rereadfail">다시 읽기 실패(숫자 그대로)</option>
+    <option value="loading">처음 불러오는 중(뼈대)</option>
+    <option value="groups">처방 묶음만 아직 읽는 중</option>
+    <option value="before">연결 전(지금 그대로)</option>
+    <option value="savedfail">저장 숫자 읽기 실패</option>
+  </select></span>
+  <span><b>AI 요약</b><select id="a">
+    <option value="report">리포트 있음</option>
+    <option value="partial">리포트 있음 · 진행 중인 달</option>
+    <option value="stale">리포트 있음 · 숫자가 바뀜</option>
+    <option value="none">아직 없음</option>
+    <option value="busy">만드는 중</option>
+    <option value="fail">만들기 실패</option>
+    <option value="nodata">자료 부족</option>
+    <option value="loading">읽는 중</option>
+    <option value="readfail">읽기 실패</option>
+    <option value="other">다른 모델이 대신 답함</option>
+  </select></span>
+  <span><b>열기</b>
+    <label><input type="checkbox" id="m"> 더보기</label>
+    <label><input type="checkbox" id="p"> 기간 골라 보기</label>
+    <label><input type="checkbox" id="t"> 표로 보기</label>
+    <label><input type="checkbox" id="c"> 더보기 화면(업무일지)에 있음</label>
+  </span>
+  <span class="note">숫자·문장은 모두 지어낸 가짜 값이에요.</span>
+</div>
+<div class="stage"><div class="frame" id="frame"></div></div>
+<script>
+const $ = (id) => document.getElementById(id)
+const ICON = {
+  chev: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  left: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  right: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  arrow: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M9 4.5L12.5 8 9 11.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  clock: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v3.2l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  copy: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3 10V3h7" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  cal: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" stroke-width="1.4"/></svg>',
+  stop: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.5v4.2M8 10.6v.9" stroke="currentColor" stroke-width="1.6"/></svg>',
+  up: '<svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M4 1.2 7.4 6.8H.6z" fill="currentColor"/></svg>',
+  spark: '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z" fill="currentColor"/></svg>',
+}
+// 메뉴 (MENU 차례 그대로, primary 5개만 탭 줄)
+const MENU = [
+  ['대시보드', 1, 1], ['통계', 1, 1], ['청구', 1, 1], ['고시·공지', 0, 0], ['환자', 1, 1], ['매출', 1, 1], ['AI 리포트', 0, 1],
+  ['서식', 0, 0], ['직원', 0, 0], ['업무일지', 0, 1], ['재고', 0, 0], ['주소록', 0, 0], ['설정', 0, 1],
+]
+// 가짜 30일
+const days = []
+let seed = 7
+const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280)
+for (let i = 0; i < 30; i++) {
+  const d = new Date(2026, 9, 9 + i)
+  const sun = d.getDay() === 0
+  const n = sun ? 0 : Math.round(8 + rnd() * 8)
+  const r = sun ? 0 : Math.round(55 + rnd() * 30)
+  days.push({ d, n, r, state: i === 29 ? 'in' : 'done', none: i === 3 })
+}
+const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`
+const WD = ['일', '월', '화', '수', '목', '금', '토']
+
+function tabs() {
+  const inMore = $('c').checked
+  const open = $('m').checked
+  const primary = MENU.filter((m) => m[1])
+  const rest = MENU.filter((m) => !m[1])
+  const soon = rest.filter((m) => !m[2]).length
+  return `<nav class="tabs" aria-label="메뉴"><div class="strip"><div class="row">
+    ${primary.map((m) => `<a href="#" class="tab ${!inMore && m[0] === '대시보드' ? 'on' : ''}" ${!inMore && m[0] === '대시보드' ? 'aria-current="page"' : ''}>${m[0]}</a>`).join('')}
+  </div></div>
+  <div class="morewrap"><button class="more ${inMore ? 'on' : ''}" aria-expanded="${open}" aria-controls="morep">${inMore ? '더보기 · 업무일지' : '더보기'}${ICON.chev}</button>
+  ${open ? `<div class="morepanel" id="morep"><p class="h"><span>다른 메뉴 ${rest.length}개</span><span>준비 중 ${soon}개</span></p><ul>
+    ${rest.map((m) => `<li><a href="#" class="${inMore && m[0] === '업무일지' ? 'cur' : ''} ${m[2] ? '' : 'soon'}" ${inMore && m[0] === '업무일지' ? 'aria-current="page"' : ''}><span>${m[0]}</span>${m[2] ? '' : '<span class="chip n">준비 중</span>'}</a></li>`).join('')}
+  </ul></div>` : ''}</div></nav>`
+}
+
+function shell(body) {
+  return `<header class="band"><div class="wrap"><span class="logo"><i></i>서승관정형외과</span><span class="right"><span>11월 7일 (토) 오후 3:42</span><span class="acct"></span></span></div></header>${tabs()}<main><div class="wrap">${body}</div></main>`
+}
+
+function head(s) {
+  const chip = { ready: '<span class="chip p">비트 연결됨</span>', saved: '<span class="chip n">저장된 숫자</span>', rereading: '<span class="chip a">다시 읽는 중</span>', rereadfail: '<span class="chip ng">읽지 못함</span>', groups: '<span class="chip p">비트 연결됨</span>' }[s]
+  const when = { ready: '오늘 오후 3:42 비트에서 읽음', groups: '오늘 오후 3:42 비트에서 읽음', saved: '11월 7일 오후 12:05에 저장한 숫자', rereading: '오늘 오후 3:42 비트에서 읽음', rereadfail: '오늘 오후 3:42 비트에서 읽음' }[s]
+  const btn = s === 'rereading' ? `<button class="btn sec sm" disabled aria-busy="true">다시 읽는 중</button>` : s === 'rereadfail' ? '' : `<button class="btn sec sm">다시 읽기</button>`
+  return `<div class="head"><h1>대시보드</h1>${chip}<span class="when">${ICON.clock}<span>${when}</span></span><span class="sp">${btn}</span></div>
+  ${s === 'rereadfail' ? `<div class="alert" role="alert"><span style="color:var(--negative)">${ICON.stop}</span><div><b>비트 자료를 읽지 못했어요</b><span style="color:var(--ink-2)">아래 숫자는 오후 3:42에 읽은 그대로예요. 비트 PC 연결을 확인한 뒤 [다시 확인]을 눌러 주세요.</span><small>오류 번호 E-BIT-READ-FAILED</small><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri">다시 확인</button><a class="btn sec">연결 확인</a></div></div></div>` : ''}`
+}
+
+function daily(dim) {
+  return `<section class="sec" aria-labelledby="dh"><div class="sh"><h2 id="dh">일별 현황</h2>
+    <div class="scope" role="group" aria-labelledby="dcap"><span class="cap" id="dcap">일별 현황 기준일</span><span class="row">
+      <button class="step" aria-label="이전 날">${ICON.left}</button><label class="datebox">11월 7일 (토)${ICON.chev}</label><button class="step" aria-label="다음 날" disabled style="color:var(--line-strong)">${ICON.right}</button>
+      <span class="apply">· 숫자 4개와 보고 문장에 적용</span></span></div></div>
+    <div class="kpis ${dim ? 'stale-dim' : ''}">
+      <div class="kpi"><div class="l">오늘 환자 수</div><div class="v">86<small>명</small></div><div class="e">오늘 지금까지</div></div>
+      <div class="kpi"><div class="l">신환</div><div class="v">12<small>명</small></div></div>
+      <div class="kpi"><div class="l">재진</div><div class="v">74<small>명</small></div></div>
+      <div class="kpi"><div class="l">지난주 같은 요일보다</div><div class="v" style="font-size:20px">—</div><div class="e">오늘 진료가 끝나면 비교해요</div></div>
+    </div>
+    <div class="say"><div class="t"><p class="lab">오늘 보고 문장 <span class="chip n">숫자로 만든 문장 · AI 아님</span></p><p>오늘 지금까지 환자 86명이 왔습니다. 신환 12명, 재진 74명입니다.</p></div>
+      <button class="btn sec sm" style="min-width:112px">${ICON.copy}복사</button></div>
+  </section>`
+}
+
+const CARDS = {
+  change: [
+    ['up', '늘었음', '신환이 지난달보다 늘었고 작년 같은 달보다도 많습니다.', '신환 10월 214명 · 9월 188명 · 작년 10월 176명'],
+    ['down', '줄었음', '재진 접수 건수가 지난달보다 조금 줄었습니다.', '재진 접수 10월 1,742건 · 9월 1,810건'],
+    ['up', '늘었음', "처방 그룹 '도수치료' 환자가 지난달보다 크게 늘었습니다.", "'도수치료' 환자 10월 96명 · 9월 71명"],
+  ],
+  watch: [
+    ['watch', '살펴볼 것', '신환의 7일 안 재방문 비율이 지난달보다 낮습니다.', '7일 안 재방문 10월 31.2% · 9월 36.5%'],
+    ['watch', '살펴볼 것', '토요일 접수가 다른 요일보다 몰려 있습니다.', '토요일 하루 평균 10월 128건'],
+  ],
+  guess: [
+    ['guess', '추정', '신환이 늘어난 데에는 새로 시작한 야간 진료가 함께 작용한 것으로 보입니다.', '근거 지표: 신환'],
+  ],
+}
+const CHIP_CLASS = { up: 'p', down: 'ng', watch: 'w', guess: 'n' }
+function cardHtml(c) {
+  return `<li class="card"><span class="chip ${CHIP_CLASS[c[0]]}">${c[1]}</span><p>${c[2]}</p><p class="basis">${c[3]}</p></li>`
+}
+function aiTop(withLink) {
+  return `<div class="top"><div><h2 id="aih">우리 병원 AI 경영 리포트</h2><p class="lede">지난달 병원 숫자를 읽고 달라진 점과 살펴볼 지표를 짚어 드려요.</p></div>
+    ${withLink ? `<a href="#" class="btn pri">전체 리포트 보기${ICON.arrow}</a>` : `<a href="#" class="txtbtn">AI 리포트 화면으로${ICON.arrow}</a>`}</div>`
+}
+function ai(a) {
+  const meta = (model) => `<p class="meta"><b>분석 기간 2026년 10월</b><span>9월, 작년 10월과 견줘요</span><span class="dot">·</span><span>11월 1일 오전 9:12에 만들었어요</span><span class="dot">·</span><span class="model">${ICON.spark}${model}</span></p>`
+  if (a === 'loading') return `<section class="ai" aria-labelledby="aih" aria-busy="true">${aiTop(false)}<p class="sr" role="status">10월 AI 리포트를 읽고 있어요</p>
+      <div aria-hidden="true" style="margin-top:16px"><span class="sk" style="height:14px;width:40%"></span><span class="sk" style="height:22px;width:80%;margin-top:12px"></span>
+      <div class="cols">${[0, 1, 2].map(() => '<div><span class="sk" style="height:14px;width:50%"></span><span class="sk" style="height:56px;margin-top:12px"></span></div>').join('')}</div></div></section>`
+  if (a === 'readfail') return `<section class="ai" aria-labelledby="aih">${aiTop(false)}<div class="note ng" role="alert"><b>저장한 AI 리포트를 읽지 못했어요</b>[다시 읽기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요. <span style="color:var(--muted)">오류 번호 E-AI-READ</span></div><div class="actions"><button class="btn sec">다시 읽기</button><small>대시보드의 다른 숫자는 그대로 볼 수 있어요.</small></div></section>`
+  if (a === 'none' || a === 'busy' || a === 'fail') {
+    const busy = a === 'busy'
+    return `<section class="ai" aria-labelledby="aih">${aiTop(false)}
+      ${a === 'fail' ? `<div class="note ng" role="alert"><b>AI가 지금 바빠서 답하지 못했어요</b>1~2분 뒤 [다시 분석]을 눌러 주세요. <span style="color:var(--muted)">오류 번호 E-AI-BUSY</span></div>` : ''}
+      <div class="empty"><h3>${busy ? '10월 리포트를 만들고 있어요' : '10월 리포트를 아직 만들지 않았어요'}</h3>
+      <p>${busy ? '1분쯤 걸려요. 다 되면 이 자리에 요약이 나와요. 이 화면을 그대로 두셔도 되고, 다른 탭에 다녀오셔도 저장돼요.' : '10월 숫자를 9월·작년 10월과 견줘, 원장님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.'}</p>
+      ${busy ? '' : `<ul><li><b>핵심 변화</b>늘거나 준 지표</li><li><b>주의할 지표</b>살펴볼 만한 흐름</li><li><b>추정</b>원인 짐작은 짐작이라고 따로 표시</li></ul>`}</div>
+      <div class="actions">${busy ? `<button class="btn pri" aria-busy="true">만드는 중</button><small role="status">지금까지 12초</small>` : `<button class="btn pri">${a === 'fail' ? '다시 분석' : 'AI 리포트 만들기'}</button><small>병원 집계 숫자만 보내요. 환자 이름·차트번호는 보내지 않아요.</small>`}</div></section>`
+  }
+  if (a === 'nodata') return `<section class="ai" aria-labelledby="aih">${aiTop(false)}<div class="empty"><h3>이 달 통계가 아직 없어요</h3><p>통계 탭에서 그 달 비트 자료를 먼저 넣어 주세요. 10월 통계가 들어오면 이 자리에서 [AI 리포트 만들기]를 누를 수 있어요.</p></div><div class="actions"><a href="#" class="btn sec">통계 탭으로${ICON.arrow}</a><small>오류 번호 E-AI-NO-DATA</small></div></section>`
+  const model = a === 'other' ? 'claude-fable-5-1 분석' : 'Claude Opus 기반 분석'
+  return `<section class="ai" aria-labelledby="aih">${aiTop(true)}${meta(model)}
+    ${a === 'partial' ? `<div class="note w"><b>11월은 아직 끝나지 않은 달이에요</b>숫자가 적게 보일 수 있어요. 달이 끝난 뒤 다시 분석하면 다 찬 숫자로 써요.</div>` : ''}
+    ${a === 'stale' ? `<div class="note w"><b>이 리포트를 만든 뒤 숫자가 바뀌었어요</b>전체 리포트에서 [다시 분석]을 누르면 새 숫자로 다시 써요.</div>` : ''}
+    <p class="sum">10월은 신환이 늘고 재진 접수 건수는 조금 줄었습니다. 신환의 이른 재방문 비율은 살펴볼 만합니다.</p>
+    <div class="cols">
+      <div class="col"><h3>핵심 변화 <span>3개</span></h3><ul style="list-style:none">${CARDS.change.map(cardHtml).join('')}</ul></div>
+      <div class="col"><h3>주의할 지표 <span>2개</span></h3><ul style="list-style:none">${CARDS.watch.map(cardHtml).join('')}</ul></div>
+      <div class="col"><h3>원인 짐작 <span>추정 1개</span></h3><ul style="list-style:none">${CARDS.guess.map(cardHtml).join('')}</ul></div>
+    </div>
+    <p class="foot"><span>근거 줄의 숫자는 앱이 저장된 통계에서 붙였어요. AI 문장에는 숫자가 없어요.</span><span>'추정'은 자료에 없는 원인을 짐작한 글이라 확정된 사실이 아니에요.</span></p>
+  </section>`
+}
+
+function trendChart(groupsLoading, table) {
+  const max = 120
+  const bars = days.map((x) => x.none ? `<div class="bar" title=""><span style="text-align:center;color:var(--muted);font-size:12px">–</span></div>` :
+    x.state === 'in' ? `<div class="bar part" style="height:${((x.n + x.r) / max) * 100}%"></div>` :
+    `<div class="bar"><span class="a" style="height:${(x.n / max) * 200}px"></span><span class="b" style="height:${(x.r / max) * 200}px"></span></div>`).join('')
+  const rows = days.map((x) => `<tr><th scope="row">${x.d.getMonth() + 1}월 ${x.d.getDate()}일 (${WD[x.d.getDay()]})</th>${x.none ? '<td class="mu">자료 없음</td><td class="mu">자료 없음</td><td class="mu">자료 없음</td><td class="mu">–</td>' : `<td>${x.n}</td><td>${x.r}</td><td><b>${x.n + x.r}</b></td><td class="${x.state === 'in' ? '' : 'mu'}">${x.state === 'in' ? '집계 중' : '완료'}</td>`}</tr>`).join('')
+  return `<div class="ch c8" role="group" aria-labelledby="tt"><div class="t"><h3 id="tt">환자 수 추이</h3><span class="legend"><span><i style="background:var(--accent)"></i>신환</span><span><i style="background:var(--chart-3)"></i>재진</span><span><i style="border:1px solid var(--accent);background:repeating-linear-gradient(45deg,transparent 0 2px,var(--accent) 2px 3px)"></i>집계 중</span></span></div>
+    <p class="desc">신환·재진, 하루씩 · 단위 명 · 최근 30일(10월 9일 ~ 11월 7일)</p>
+    <div class="bars" aria-hidden="true"><span class="ax"><span>120</span><span>90</span><span>60</span><span>30</span><span>0</span></span>${[0, 25, 50, 75].map((p) => `<span class="gl" style="top:${p}%"></span>`).join('')}${bars}</div>
+    <div class="ticks" aria-hidden="true">${[0, 7, 14, 21, 29].map((i) => `<span>${fmt(days[i].d)}</span>`).join('')}</div>
+    <div class="tbl-toggle"><button class="btn sec sm" aria-expanded="${table}" aria-controls="tt-t">표로 보기${ICON.chev}</button></div>
+    ${table ? `<div class="tblwrap" id="tt-t"><table class="vt"><caption>환자 수 추이 · 하루씩 · 단위 명 · '자료 없음'은 그날 자료가 없다는 뜻이고 0과 달라요</caption><thead><tr><th scope="col">날짜</th><th scope="col">신환</th><th scope="col">재진</th><th scope="col">합계</th><th scope="col">상태</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+  </div>`
+}
+function revisit() {
+  const row = (n, v, cap) => `<div class="r"><span style="color:var(--ink-2)">${n}</span>${v === null ? '<span style="font-size:13px;color:var(--muted)">집계 중</span>' : `<b>${v}%</b>`}<span class="meter" aria-hidden="true">${v === null ? '' : `<i style="width:${v}%"></i>`}</span>${cap ? `<span class="cap">${cap}</span>` : ''}</div>`
+  return `<div class="ch c4 rev" role="group" aria-labelledby="rv"><div class="t"><h3 id="rv">신환 재방문율</h3></div><p class="desc">처음 온 환자가 다시 온 비율 · 최근 30일 신환 기준</p><div style="margin-top:8px">${row('7일 안에 다시 옴', 31.2)}${row('14일 안에 다시 옴', 44.8)}${row('30일 안에 다시 옴', null, '온 뒤 30일이 안 된 신환이 있어 아직 집계 중이에요')}</div></div>`
+}
+function week(table) {
+  const vals = [92, 81, 84, 79, 88, 128, 0]
+  const names = ['월', '화', '수', '목', '금', '토', '일']
+  return `<div class="ch c6" role="group" aria-labelledby="wk"><div class="t"><h3 id="wk">요일별 환자 수</h3></div><p class="desc">하루 평균, 요일마다 · 단위 명 · 최근 30일</p>
+    <div class="week" aria-hidden="true">${vals.map((v, i) => `<span><b style="font-size:12px;color:var(--ink-2)">${v}</b><i style="height:${(v / 130) * 110}px"></i>${names[i]}</span>`).join('')}</div>
+    <div class="tbl-toggle"><button class="btn sec sm" aria-expanded="${table}">표로 보기${ICON.chev}</button></div>
+    ${table ? `<div class="tblwrap"><table class="vt"><caption>요일별 환자 수 · 하루 평균 · 단위 명</caption><thead><tr><th scope="col">요일</th><th scope="col">하루 평균</th></tr></thead><tbody>${vals.map((v, i) => `<tr><th scope="row">${names[i]}요일</th><td>${v === 0 ? '0' : v}</td></tr>`).join('')}</tbody></table></div>` : ''}
+  </div>`
+}
+function rank(groupsLoading) {
+  if (groupsLoading) return `<div class="ch c6b" role="group" aria-labelledby="rk"><div class="t"><h3 id="rk">처방 상위</h3></div><p class="desc">통계 탭에서 묶은 치료 중 많이 한 순서예요 · 단위 건</p><div style="position:relative;margin-top:8px"><ol class="rank" aria-hidden="true">${[1, 2, 3, 4, 5].map((n) => `<li><span class="n">${n}</span><span class="nm"></span><b style="color:var(--muted)">–</b></li>`).join('')}</ol><p role="status" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="background:#fff;padding:4px 12px;font-size:13px;color:var(--muted)">묶음을 읽는 중</span></p></div></div>`
+  const items = [['도수치료', 412], ['체외충격파', 288], ['물리치료 기본', 1203], ['주사 — 관절강 내 아주 긴 이름의 처방 묶음이 들어가도 줄이 넘치지 않아요', 175], ['보조기', 64]].sort((a, b) => b[1] - a[1])
+  return `<div class="ch c6b" role="group" aria-labelledby="rk"><div class="t"><h3 id="rk">처방 상위</h3><a href="#" class="txtbtn">묶음 고치기</a></div><p class="desc">통계 탭에서 묶은 치료 중 많이 한 순서예요 · 단위 건 · 최근 30일</p><ol class="rank">${items.map((it, i) => `<li><span class="n">${i + 1}</span><span class="nm">${it[0]}</span><span class="bar2" aria-hidden="true"><i style="width:${(it[1] / 1203) * 100}%"></i></span><b>${it[1].toLocaleString()}</b></li>`).join('')}</ol></div>`
+}
+function flow(groupsLoading) {
+  const open = $('p').checked
+  return `<section class="sec" aria-labelledby="fh"><div class="sh" style="justify-content:space-between"><h2 id="fh">추이</h2>
+    <div class="scope" role="group" aria-labelledby="pcap" style="align-items:flex-end"><span class="cap" id="pcap">추이 조회 기간</span><span class="row" style="justify-content:flex-end">
+      <span class="seg"><button aria-pressed="false">최근 7일</button><button class="on" aria-pressed="true">최근 30일</button><button aria-pressed="false">최근 90일</button></span>
+      <span class="pick"><button class="pickbtn" aria-expanded="${open}">${ICON.cal}기간 골라 보기</button>
+      ${open ? `<div class="pickpanel" role="dialog" aria-label="기간 골라 보기"><b>기간 골라 보기</b><div class="f"><label>시작<input value="2026-08-01"></label><span style="padding-bottom:8px;color:var(--muted)">~</span><label>끝<input value="2026-10-31"></label></div><div class="act"><button class="btn sec">닫기</button><button class="btn pri">이 기간 보기</button></div></div>` : ''}</span>
+    </span><span class="apply">아래 그래프 4개에 적용 · 기준일과 따로예요</span></div></div>
+    <div class="grid2">${trendChart(groupsLoading, $('t').checked)}${revisit()}${week($('t').checked)}${rank(groupsLoading)}</div></section>`
+}
+function links() {
+  const L = [['삭감 예방 사전점검', '청구 탭 · 비트 PC 크롬에서 열려요'], ['통계', '기간별 환자·처방 통계'], ['환자', 'F/U 명단과 신환 출처'], ['매출', '일별·월별 매출'], ['업무일지', '오늘 마감과 메모'], ['AI 리포트', '달마다 보고 전체 보기']]
+  return `<section class="sec" aria-labelledby="lh"><div class="sh"><h2 id="lh" style="font-size:16px">바로 가기</h2></div><ul class="links">${L.map((l) => `<li><a href="#"><b>${l[0]}</b><span>${l[1]}</span></a></li>`).join('')}</ul></section>`
+}
+function skeleton() {
+  return `<div aria-busy="true"><p class="sr" role="status">대시보드 숫자를 불러오고 있어요</p><div aria-hidden="true">
+    <div class="head"><span class="sk" style="width:120px;height:28px"></span><span class="sk" style="width:220px;height:16px"></span></div>
+    <div class="sec"><span class="sk" style="width:140px;height:20px"></span><div class="kpis" style="margin-top:12px">${[0, 1, 2, 3].map(() => '<div class="kpi"><span class="sk" style="width:60%;height:14px"></span><span class="sk" style="width:40%;height:30px;margin-top:10px"></span></div>').join('')}</div><span class="sk" style="height:44px;margin-top:12px"></span></div>
+    <div class="ai"><span class="sk" style="width:260px;height:24px"></span><span class="sk" style="width:70%;height:20px;margin-top:16px"></span><div class="cols">${[0, 1, 2].map(() => '<span class="sk" style="height:80px"></span>').join('')}</div></div>
+    <div class="sec"><span class="sk" style="width:80px;height:24px"></span><div class="grid2" style="margin-top:12px"><span class="sk c8" style="height:240px"></span><span class="sk c4" style="height:240px;border:0;padding:0"></span></div></div>
+  </div></div>`
+}
+function before() {
+  return `<p class="as-is">연결 전 화면은 지금 그대로 둬요 (아래는 줄인 모습)</p><div class="before"><p style="font-size:13px;color:var(--muted)"><b style="color:var(--ink)">11월 7일 (토)</b></p><h1>비트 PC를 연결하면 오늘 숫자가 여기에 채워져요</h1><p class="lead">아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 자리에 오늘의 보고 문장이 올라와요.</p><div style="margin-top:24px"><a class="btn pri" style="height:44px;padding:0 20px">비트 PC 연결 시작${ICON.arrow}</a></div></div>`
+}
+function savedFail() {
+  return `<div class="alert" role="alert" style="margin-top:0"><span style="color:var(--negative)">${ICON.stop}</span><div><b>저장된 통계를 읽지 못했어요</b><span style="color:var(--ink-2)">잠시 뒤 [다시 읽기]를 눌러 주세요. 계속되면 오류 번호를 관리자에게 알려 주세요.</span><small>오류 번호 E-STATS-READ-FAILED</small><div style="margin-top:12px"><button class="btn sec sm">다시 읽기</button></div></div></div><div style="margin-top:24px">${before()}</div>`
+}
+function render() {
+  const s = $('s').value
+  const a = $('a').value
+  let body
+  if (s === 'loading') body = skeleton()
+  else if (s === 'before') body = before()
+  else if (s === 'savedfail') body = savedFail()
+  else body = head(s) + daily(s === 'rereading') + ai(a) + flow(s === 'groups') + links()
+  $('frame').innerHTML = shell(body)
+  $('frame').style.width = $('w').value + 'px'
+}
+for (const id of ['w', 's', 'a', 'm', 'p', 't', 'c']) $(id).addEventListener('change', render)
+document.addEventListener('click', (e) => {
+  const more = e.target.closest('.more')
+  if (more) { $('m').checked = !$('m').checked; render(); return }
+  const pick = e.target.closest('.pickbtn')
+  if (pick) { $('p').checked = !$('p').checked; render(); return }
+  const tb = e.target.closest('.tbl-toggle button')
+  if (tb) { $('t').checked = !$('t').checked; render() }
+})
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ($('m').checked || $('p').checked)) { $('m').checked = false; $('p').checked = false; render() } })
+render()
+</script>
+</body>
+</html>
