@@ -57,7 +57,7 @@
 - AC: AC-2706.1, AC-2706.2, AC-2706.3, AC-2706.4, AC-2706.5, AC-2706.6, AC-2707.1, AC-2707.2
 - Files: src/components/stats/sections/PatientMixSection.tsx, src/components/stats/sections/PatientMixSection.test.tsx, src/components/stats/sections/VisitHoursSection.tsx, src/components/stats/sections/VisitHoursSection.test.tsx, src/components/stats/sections/DoctorsSection.tsx, src/components/stats/sections/DoctorsSection.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx
 - Tests: src/components/stats/sections/PatientMixSection.test.tsx, src/components/stats/sections/VisitHoursSection.test.tsx, src/components/stats/sections/DoctorsSection.test.tsx, src/components/stats/StatsScreen.test.tsx
-- TDD: required — 시안 글·단추(aria-pressed)·견줘요 줄과 견주지 못함 줄·증감 표시·1인당 진료비 칸·세 상태 안내·한 분 안내·[자세히]·[표 복사] 글. StatsScreen 시험은 새 시험만 더한다(sections 묻기·넘기기)
+- TDD: required — 시안 글·단추(aria-pressed)·견줘요 줄과 견주지 못함 줄·증감 표시·1인당 진료비 칸·세 상태 안내·한 분 안내·[자세히]·[표 복사] 글. StatsScreen 시험은 새 시험(sections 묻기·넘기기)을 더하고, 칸 목록·안내 글 수를 세는 지금 시험만 새 값으로 고친다(AC-2708.3)
 - 차례: Phase 4
 
 ## Phase 5: 전체 검사·검토 (코드 작업 아님)

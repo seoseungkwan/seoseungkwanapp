@@ -14,12 +14,12 @@
 
 ### REQ-2701: 도우미가 stats.rows 답 v3에 접수 줄·사람 줄·원장님 자료를 싣는다
 - AC-2701.1: Given 기간 안 접수(지금 통계 `Visits` 조건 = 외래 · 상태 WN·HN·TN·PN · OcmRsuYon ≠ 'O' · 이 병원 진료실), When `stats.rows`를 부르면, Then 답의 `v`는 3이고 v2의 열쇠(`from`·`to`·`summary`·`days`·`patientDays`·`codes`·`rows`·`report`)는 값까지 지금과 같으며, 새 열쇠 `visits`는 접수마다 한 줄 `[차트번호|null, 진료일 YYYYMMDD, 접수 시각 HHmm|null, 보험 이름|null, 진료의 코드|null]`이다. 예약 대기(WR·NR)·예약 취소(CR)·접수 취소(CN) 접수는 없다. 접수 시각은 OcmAcpDtm의 9~12번째 글자이고 네 자리 숫자(0000~2359)가 아니면 null이다
-- AC-2701.2: Given 접수의 보험 코드(OcmInsCod), When 보험 이름을 정하면, Then InsMst에서 그 코드의 줄 중 InsAdpDte가 접수 날 이하인 가장 늦은 줄의 InsCodNam(같은 날이면 이름 차례 첫 줄, 앞뒤 빈칸 뺌)이고, 없으면 null이다(reception-paper `PaperVisit`과 같은 조건)
+- AC-2701.2: Given 접수의 보험 코드(OcmInsCod), When 보험 이름을 정하면, Then InsMst에서 그 코드의 줄 중 InsAdpDte가 접수 날 이하인 가장 늦은 줄의 InsCodNam(같은 날이면 이름 차례 첫 줄, 앞뒤 빈칸 뺌)이고, 없으면 null이다(reception-paper `PaperVisit`과 같은 조건) 보험 이름이 100자를 넘으면 도우미가 100자까지 자른다(웹 검사 한도와 같다. 한 줄 때문에 답 전체가 막히지 않게, 2026-11-08 검토)
 - AC-2701.3: Given 기간 안 차트번호가 있는 환자, When 답을 만들면, Then `people`은 환자마다 한 줄 `[차트번호, 생년월일 YYYYMMDD|null, 주소 앞부분|null]`이다. 생년월일은 PbsBirDte가 있는 날짜 8자리일 때만이다. 주소 앞부분은 PbsDtlAdr를 빈칸으로 나눈 앞 낱말 다섯 개까지이고, 숫자로 시작하는 낱말이 나오면 그 앞에서 멈추며, 80자를 넘으면 자르고, 남는 것이 없으면 null이다. 이름·전화·주민번호·상세주소(PbsAdrSta)·성별은 읽지 않는다
 - AC-2701.4: Given `visits`와 `doctorDays`에 나온 진료의 코드, When 답을 만들면, Then `doctors`는 코드마다 한 줄 `[코드, 이름|null]`이고 이름은 UidMst에서 그 코드의 UidExpDte가 가장 늦은 줄의 UidNam(앞뒤 빈칸 뺌, 40자까지)이다
 - AC-2701.5: Given 불러온 기간, When 답을 만들면, Then `doctorDays`는 `[수납일 YYYYMMDD, 진료의 코드, 총진료비]` 줄이다. 총진료비는 원래 도구 경영 통계의 원장님별 금액 규칙(일반 수납 FinanceNormal + 미수금 받은 것 FinanceReceivable, 수납 진료의 OrpDtrCod로 나눔)을 불러온 기간의 달마다(첫 달은 시작일부터, 끝 달은 끝 날까지) 돌려 수납일·진료의로 묶은 OrpTotAmt 합이고 원 단위 정수다. 금액이 0인 줄은 싣지 않는다
 - AC-2701.6: Given 새 SQL 문장, When 도우미가 돌리면, Then 모두 매개변수를 받는 SELECT 하나이고 읽기 전용 검사(`Sql.IsAllowed`)를 지나며 시간 제한은 통계 자료 SQL과 같다(150초)
-- AC-2701.7: Given 지금 도우미 C# 시험(`StatsRows`·`StatsSql`·`StatsReport`), When v3를 더한 뒤 돌리면, Then 기대값을 바꾸지 않고 통과한다. 원본과 견주는 SQL 사본 시험도 그대로다
+- AC-2701.7: Given 지금 도우미 C# 시험(`StatsRows`·`StatsSql`·`StatsReport`), When v3를 더한 뒤 돌리면, Then 기대값을 바꾸지 않고 통과한다. 원본과 견주는 SQL 사본 시험도 그대로다 다만 v·열쇠 목록을 보는 시험(`SendsOneJsonInChunks`·`PayloadVersionAndKeyOrder`)은 v3 값으로 고친다(AC-2701.1이 바꾸는 것)
 
 ### REQ-2702: Worker가 v2·v3 답을 받고 고른 기간의 세 칸 보기를 만든다
 - AC-2702.1: Given v2 답(옛 도우미), When 불러오면, Then 지금처럼 불러오고 저장하며 세 칸 보기는 `{ kind: 'old-helper' }`다
@@ -68,7 +68,7 @@
 ### REQ-2708: 서버·저장·울타리는 그대로
 - AC-2708.1: Given 세 칸 보기를 만든 불러오기, When 저장(`stats` 저장 줄)·AI 보고를 보내면, Then 보내는 모양은 지금과 같고 새 숫자·이름이 없다(저장 줄 열쇠 목록 시험)
 - AC-2708.2: Given 새 계산 파일(`lib/analytics/`)과 Worker 파일, When 울타리 시험(`src/guardrails.test.ts`)과 `npm run lint`를 돌리면, Then 통과한다(네트워크·console·저장소·React import 없음)
-- AC-2708.3: Given 지금 웹 시험, When 이 기능 뒤에 돌리면, Then 기대값을 바꾸지 않고 통과한다. 도우미 답 시험 자료에 v3 열쇠를 더한 새 시험만 더한다
+- AC-2708.3: Given 지금 웹 시험, When 이 기능 뒤에 돌리면, Then 기대값을 바꾸지 않고 통과한다. 도우미 답 시험 자료에 v3 열쇠를 더한 새 시험만 더한다 다만 통계 탭 칸 목록과 '비트 PC에서 불러오면 보여요' 글 수를 세는 `StatsScreen.test.tsx` 시험은 세 칸을 더한 값으로 고친다(AC-2706.1·2706.5가 바꾸는 것)
 
 ## 범위 밖
 - 세 칸 숫자를 서버에 저장하기(휴대폰·다른 PC에서 보기), AI 보고·보고 문장에 넣기
