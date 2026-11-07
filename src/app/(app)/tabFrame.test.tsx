@@ -10,7 +10,7 @@ import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
 import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { AppShell } from '@/components/shell/AppShell'
-import { MENU } from '@/components/shell/menu'
+import { MENU, MORE_MENU } from '@/components/shell/menu'
 import { decideRoute } from '@/lib/auth/gate'
 import DashboardPage from './dashboard/page'
 
@@ -177,8 +177,8 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(read(pageFile('/settings')), '/settings').toMatch(/from '@\/components\/settings\//)
   })
 
-  it('AC-515.4: 통계는 세 곳(menu · features · notReady)이 맞고 /stats 페이지는 StatsScreen이다', () => {
-    expect(MENU.find((m) => m.label === '통계')).toEqual({ label: '통계', path: '/stats', href: '/stats', ready: true })
+  it('AC-515.4·AC-2702.1: 통계는 세 곳(menu · features · notReady)이 맞고(주요 메뉴) /stats 페이지는 StatsScreen이다', () => {
+    expect(MENU.find((m) => m.label === '통계')).toEqual({ label: '통계', path: '/stats', href: '/stats', ready: true, primary: true })
     expect(DASHBOARD_FEATURES.find((f) => f.name === '통계')).toMatchObject({ href: '/stats', status: 'connect-first' })
     expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/stats')
     expect(read(pageFile('/stats'))).toMatch(/from '@\/components\/stats\/StatsScreen'/)
@@ -204,9 +204,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
   })
 
-  it('AC-010.1: [전체 메뉴]가 세는 준비 중 탭 수 = NOT_READY_FEATURES 수 = 목차의 준비 중 칸 수(매출이 빠진 수)', () => {
+  it('AC-010.1·AC-2702.2: [더보기] 판이 세는 준비 중 수 = NOT_READY_FEATURES 수 = 목차의 준비 중 칸 수(매출이 빠진 수) — 준비 중 탭은 모두 [더보기] 판에 있다', () => {
     const notReadyTabs = MENU.filter((m) => !m.ready)
     expect(notReadyTabs.map((m) => m.label as string)).not.toContain('매출')
+    expect(MORE_MENU.filter((m) => !m.ready)).toEqual(notReadyTabs)
     expect(notReadyTabs).toHaveLength(NOT_READY_FEATURES.length)
     expect(notReadyTabs).toHaveLength(featureCount('soon'))
   })

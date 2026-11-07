@@ -194,6 +194,10 @@ const DS_KEYS = [
   'table.check',
   'table.emptyRow',
   'layer',
+  'segment.group',
+  'segment.button',
+  'segment.on',
+  'segment.off',
 ] as const
 
 // ds의 끝 값 하나(없으면 빈 글자)
@@ -248,6 +252,20 @@ describe('AC-204.1·AC-204.2·AC-204.3·AC-204.4·AC-204.5: ds 키는 design.md 
     for (const [path, value] of DS_ALL()) {
       expect(tokens(value).filter((t) => OLD.test(parseClass(t).utility)), path).toEqual([])
     }
+  })
+})
+
+// ── dashboard-ux AC-2703.2·AC-2703.3 (design.md §8 'ds: segment'): 기간 단추 묶음 하나를 대시보드 추이 빠른 단추·통계 기간 고르기가 같이 쓴다
+describe('AC-2703.2·AC-2703.3: ds.segment — 기간 단추 묶음(group·button·on·off)', () => {
+  it('AC-2703.2·AC-2703.3: 값은 통계 기간 고르기 단추의 지금 모양 그대로이고, 휴대폰 칸 수(max-md:grid-cols-N)는 단추 수에 맞춰 놓는 자리가 준다', () => {
+    expect(ds.segment).toEqual({
+      group: 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full',
+      button:
+        'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:px-1',
+      on: 'bg-accent-soft font-semibold text-accent-strong',
+      off: 'font-medium text-ink-2 transition hover:bg-canvas',
+    })
+    expect(tokens(dsAt('segment.group')).filter((t) => /grid-cols-/.test(t))).toEqual([])
   })
 })
 
@@ -854,7 +872,7 @@ describe('AC-405.3: 규칙 — 불러오기 줄 예외는 LoadBar.tsx 한 파일
     for (const cls of ['duration-700', 'ease-out']) expect(ruleBreaks(cls), cls).toContain('짧은 반응 밖')
   })
 
-  it.each(['src/components/shell/TabBar.tsx', 'src/components/shell/AllMenu.tsx', 'src/components/ui/classes.ts', 'src/components/claim/x.tsx'])(
+  it.each(['src/components/shell/TabBar.tsx', 'src/components/shell/MoreMenu.tsx', 'src/components/ui/classes.ts', 'src/components/claim/x.tsx'])(
     'AC-405.3: 다른 파일(%s)의 duration-700·ease-out은 그대로 잡는다',
     (file) => {
       expect(fileBreaksIn(file, 'transition duration-700 ease-out')).toEqual(['duration-700 (짧은 반응 밖)', 'ease-out (짧은 반응 밖)'])

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
 import type { StatsChoice } from './periodPick'
 
@@ -14,10 +15,23 @@ const LAST_DAY = '2026-11-05'
 afterEach(cleanup)
 
 // 고른 것을 들고 있는 바깥(통계 화면 대신). onChoose를 부르면 그 값으로 다시 그린다
-function Harness({ initial, lastDay, todayDone, onChoose }: { initial: StatsChoice; lastDay: string; todayDone: boolean; onChoose: (c: StatsChoice) => void }) {
+function Harness({
+  initial,
+  lastDay,
+  todayDone,
+  onChoose,
+  align,
+}: {
+  initial: StatsChoice
+  lastDay: string
+  todayDone: boolean
+  onChoose: (c: StatsChoice) => void
+  align?: 'start' | 'end'
+}) {
   const [choice, setChoice] = useState<StatsChoice>(initial)
   return (
     <PeriodPicker
+      {...(align === undefined ? {} : { align })}
       choice={choice}
       lastDay={lastDay}
       todayDone={todayDone}
@@ -29,9 +43,9 @@ function Harness({ initial, lastDay, todayDone, onChoose }: { initial: StatsChoi
   )
 }
 
-function draw(initial: StatsChoice = '30d', over: { lastDay?: string; todayDone?: boolean } = {}) {
+function draw(initial: StatsChoice = '30d', over: { lastDay?: string; todayDone?: boolean; align?: 'start' | 'end' } = {}) {
   const onChoose = vi.fn()
-  const view = render(<Harness initial={initial} lastDay={over.lastDay ?? LAST_DAY} todayDone={over.todayDone ?? false} onChoose={onChoose} />)
+  const view = render(<Harness initial={initial} lastDay={over.lastDay ?? LAST_DAY} todayDone={over.todayDone ?? false} onChoose={onChoose} align={over.align} />)
   return { ...view, onChoose }
 }
 
@@ -577,5 +591,54 @@ describe('AC-1703.5: 768px 미만 — 한 줄씩 전체 폭·44px, 판은 단추
     expect(classesOf(panel.parentElement)).toContain('relative')
     // 판은 [직접 날짜] 뒤에 온다(문서 흐름에서 단추 바로 아래)
     expect(customButton().compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+// ── dashboard-ux REQ-2703 AC-2703.3: 판 맞춤(align)과 최대 너비(사용자 반영 ④: 어느 폭에서도 화면 가장자리에서 24px 안쪽)
+describe('AC-2703.3: 기간 고르기 판 맞춤 — 기본 왼쪽(통계 탭), align="end"면 768px 이상 오른쪽 끝 맞춤', () => {
+  // 지금(통계 탭) 판 클래스. 이 명세는 768px 이상 최대 너비(400px과 '화면 폭 − 48px' 중 작은 값)만 더한다
+  const START = 'absolute top-full left-0 z-30 mt-2 flex w-100 flex-col gap-3 rounded-float border border-line bg-surface p-4 md:shadow-float max-md:static max-md:w-full'
+  const MAX = 'md:max-w-[calc(100vw-3rem)]'
+  const sorted = (classes: string) => classes.split(/\s+/).filter(Boolean).sort()
+
+  it('AC-2703.3: align을 주지 않으면(통계 탭) 지금 그대로 왼쪽 맞춤(left-0)·400px이고 768px 이상 최대 너비만 더해진다. 768px 미만은 제자리(static) 전체 폭이다', () => {
+    draw()
+    fireEvent.click(customButton())
+    expect(classesOf(dialog()).sort()).toEqual(sorted(`${START} ${MAX}`))
+  })
+
+  it('AC-2703.3: align="start"는 주지 않은 것과 같다', () => {
+    draw('30d', { align: 'start' })
+    fireEvent.click(customButton())
+    expect(classesOf(dialog()).sort()).toEqual(sorted(`${START} ${MAX}`))
+  })
+
+  it('AC-2703.3: align="end"면 768px 이상에서 판이 오른쪽 끝에 맞춰(md:right-0 md:left-auto) 왼쪽으로 펼쳐지고 최대 너비는 같다. 768px 미만은 그대로 제자리 전체 폭이다', () => {
+    draw('30d', { align: 'end' })
+    fireEvent.click(customButton())
+    const panel = dialog()
+    expect(classesOf(panel).sort()).toEqual(sorted(`${START} ${MAX} md:right-0 md:left-auto`))
+    // 판의 기준은 부품 전체(relative)다 → 오른쪽 끝 = [직접 날짜] 쪽 끝
+    expect(classesOf(panel.parentElement)).toContain('relative')
+  })
+
+  it('AC-2703.3: align="end"여도 Esc·[닫기]는 판을 닫고 초점을 [직접 날짜]로 돌린다 — 고르지 않는다', () => {
+    const { onChoose } = draw('30d', { align: 'end' })
+    fireEvent.click(customButton())
+    fireEvent.keyDown(startInput(), { key: 'Escape' })
+    expect(queryDialog()).toBeNull()
+    expect(document.activeElement).toBe(customButton())
+    fireEvent.click(customButton())
+    fireEvent.click(closeButton())
+    expect(queryDialog()).toBeNull()
+    expect(document.activeElement).toBe(customButton())
+    expect(onChoose).not.toHaveBeenCalled()
+  })
+
+  it('AC-2703.3: 단추 모양 글(PERIOD_*·단위 묶음)은 ds.segment에서 온다 — 그려지는 클래스는 그대로다', () => {
+    expect(PERIOD_GROUP).toBe(`${ds.segment.group} max-md:grid-cols-4`)
+    expect([PERIOD_BUTTON, PERIOD_ON, PERIOD_OFF]).toEqual([ds.segment.button, ds.segment.on, ds.segment.off])
+    draw()
+    expect(classesOf(unitGroup()).sort()).toEqual(sorted(`${ds.segment.group} max-md:grid-cols-3`))
   })
 })
