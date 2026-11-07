@@ -68,3 +68,27 @@ describe('REQ-605 도우미 F/U·정기 주사 대상 읽기 (C# Precheck.Core.T
     expectAc('AC-605.4')
   })
 })
+
+// spec patients-bit-lists: 같은 contact.targets의 새 종류 둘(예약 · 장기 미방문). 비트 SQL은 가짜 DB 답이라 문장의 뜻은 글자로 못 박는다.
+// 실제 비트에서 숫자가 맞는지(내일 예약 수·지난 주 예약 수)는 새 도우미를 깐 뒤 의원 PC에서 본다(design.md '위험')
+describe('REQ-2801 도우미 예약·장기 미방문 읽기 (C# Precheck.Core.Tests.Contact.Read)', () => {
+  it('AC-2801.1 예약 {from, to}: from ≤ to·46일 이하·오늘−31일 ~ 오늘+14일이 아니면 비트를 건드리지 않고 E-HELPER-BAD-MESSAGE, 맞으면 등록 확인 뒤 SQL 하나로 {v:1, kind, from, to, today, rows}', () => {
+    expectAc('AC-2801.1')
+  })
+
+  it('AC-2801.2 예약 줄 [차트번호|null, 이름|null, 전화, 예약 시각, 상태, 예약 표시|null, 그날 옴 0|1, 그 뒤 처음 온 날|null], RsvInf 예약 줄 또는 WR·NR·CR', () => {
+    expectAc('AC-2801.2')
+  })
+
+  it('AC-2801.3 장기 미방문 {from, to}: to < 오늘·1,100일 이하, 2일 이상·마지막 내원 from~to 환자 줄 [차트번호, 이름, 전화, 마지막 내원일, 날 수, 예약 있음, 마지막 진료 처방 20개까지]', () => {
+    expectAc('AC-2801.3')
+  })
+
+  it('AC-2801.4 전화는 휴대전화 → 집 전화 → 빈 글(앞뒤 빈칸 뺌), 주민번호·주소·메모는 읽지 않는다', () => {
+    expectAc('AC-2801.4')
+  })
+
+  it('AC-2801.6 새 SQL은 매개변수를 받는 SELECT 하나이고 Sql.IsAllowed·ReadOnlyGuard를 지난다', () => {
+    expectAc('AC-2801.6')
+  })
+})
