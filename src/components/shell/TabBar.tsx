@@ -9,7 +9,9 @@ import { MoreMenu } from './MoreMenu'
 
 // 탭 줄 (tab-frame REQ-303, AC-008.7, b2b-redesign AC-218.2, ui-90 REQ-405, dashboard-ux REQ-2702, UI_GUIDE '앱 화면' 탭 줄·누른 탭 먼저).
 // 44px·흰 바탕·아래 1px 선. 위쪽 띠와 함께 AppShell의 붙는 묶음 안에 있다(이 nav 자신은 붙지 않는다).
-// nav 안: 탭 띠(첫 자식, 주요 메뉴 다섯) · [더보기] 단추와 판(MoreMenu, 모든 폭) · 불러오기 줄(LoadBar, 맨 끝).
+// nav 안: 탭 줄 감싸개(첫 자식 — 탭 띠(주요 메뉴 다섯) · [더보기] 단추와 판(MoreMenu, 모든 폭)) · 불러오기 줄(LoadBar, 맨 끝).
+// 탭 줄 감싸개는 1024px 이상 본문과 같은 1280 폭 가운데라 첫 탭 글자는 로고와, [더보기] 글자·판 끝은 본문 오른쪽 정렬선과 맞는다(dashboard-ux AC-2702.4).
+// 감싸개는 자리 기준(position)이 아니어서 768px 미만 판은 그대로 nav 기준 전체 폭이다.
 // 모두 자기 주소로 가는 링크다. 화면이 아직 없는 기능은 [더보기] 판에 있고, 준비 중임은 판의 칩과 그 주소의 준비 중 화면이 알린다.
 // 1024px 미만은 탭 띠만 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음, [더보기] 글자가 길어 넘칠 때). 띠 끝 흐림은 넣지 않는다(UI_GUIDE '탭 줄', 시안의 끝 흐림과 다르다)
 
@@ -117,26 +119,29 @@ export function TabBar() {
 
   return (
     <nav aria-label="메뉴" className="relative flex border-b border-line bg-surface">
-      {/* 탭 띠: 주요 메뉴 다섯(AC-2702.1). 1024px 미만은 이것만 옆으로 밀린다. 키보드 초점이 간 탭도 보이게 띠만 민다(ui-90 AC-416.5) */}
-      <div ref={stripRef} className="min-w-0 flex-1 max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]">
-        {/* 탭 줄 하나(감싸개를 더하지 않는다). 1024px 이상은 위쪽 띠 안쪽과 같은 1280 폭·좌우 24px로 가운데에 놓인다.
-            첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다(모든 폭, 시안의 폰 줄도 글자 16px로 맞음) */}
-        <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl [&>:first-child]:-ml-3">
-          {PRIMARY_MENU.map((item) => (
-            <TabLink
-              key={item.label}
-              label={item.label}
-              href={item.path}
-              current={current === item.label}
-              shown={pendingHref === null ? current === item.label : pendingHref === item.path}
-              pending={pendingHref === item.path}
-              onPress={press}
-              onFocus={(e) => revealInStrip(stripRef.current, e.currentTarget)}
-            />
-          ))}
+      {/* 탭 줄 감싸개(AC-2702.4): 1024px 이상 본문과 같은 1280 폭 가운데. position이 없어 폰 판의 기준은 nav 그대로다 */}
+      <div className="flex min-w-0 flex-1 lg:mx-auto lg:max-w-7xl">
+        {/* 탭 띠: 주요 메뉴 다섯(AC-2702.1). 1024px 미만은 이것만 옆으로 밀린다. 키보드 초점이 간 탭도 보이게 띠만 민다(ui-90 AC-416.5) */}
+        <div ref={stripRef} className="min-w-0 flex-1 max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]">
+          {/* 탭 줄 하나(감싸개를 더하지 않는다). 1024px 이상은 위쪽 띠 안쪽과 같은 1280 폭·좌우 24px로 가운데에 놓인다.
+              첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다(모든 폭, 시안의 폰 줄도 글자 16px로 맞음) */}
+          <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl [&>:first-child]:-ml-3">
+            {PRIMARY_MENU.map((item) => (
+              <TabLink
+                key={item.label}
+                label={item.label}
+                href={item.path}
+                current={current === item.label}
+                shown={pendingHref === null ? current === item.label : pendingHref === item.path}
+                pending={pendingHref === item.path}
+                onPress={press}
+                onFocus={(e) => revealInStrip(stripRef.current, e.currentTarget)}
+              />
+            ))}
+          </div>
         </div>
+        <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} />
       </div>
-      <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} />
       <LoadBar key={presses} active={pending !== null} />
     </nav>
   )

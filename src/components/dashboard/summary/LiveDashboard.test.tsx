@@ -320,7 +320,7 @@ describe('AC-601.14·AC-516.1: 저장 숫자를 한 번 읽어 처음 자료로 
     await act(async () => {})
     const html = withoutIds(container.innerHTML)
     cleanup()
-    expect(html).toBe(await settledMarkupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} />))
+    expect(html).toBe(await settledMarkupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} savedRefresh={{ refreshing: false, failed: false, onRefresh: () => {} }} />))
   })
 
   it('AC-601.14: 비트 PC면 저장 숫자 읽기가 끝난 뒤에야 비트를 읽고, 저장 숫자를 둔 채 "다시 읽는 중"이다', async () => {
@@ -331,7 +331,7 @@ describe('AC-601.14·AC-516.1: 저장 숫자를 한 번 읽어 처음 자료로 
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(bitReads[0]!.deps.today).toBe(TODAY)
     expect(bigLine().textContent).toBe(SAVED_H1)
-    expect(screen.getByRole('button', { name: '다시 읽는 중' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '비트에서 읽는 중' })).toBeTruthy()
     await bitAnswer(bitDays())
     expect(bigLine().textContent).toBe(BIT_H1)
     expect(readDays).toHaveBeenCalledTimes(1)
@@ -524,7 +524,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     expect(bigLine().textContent).toBe(SAVED_H1)
     expect(bitReads[0]!.deps.signal?.aborted).toBe(true)
     expect(readBitDays).toHaveBeenCalledTimes(2)
-    expect(screen.getByRole('button', { name: '다시 읽는 중' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '비트에서 읽는 중' })).toBeTruthy()
   })
 
   it('AC-601.19: 비트 PC가 아니면 다시 읽기로 받은 저장 숫자만 그린다', async () => {
@@ -537,7 +537,7 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     await act(async () => {})
     const html = withoutIds(container.innerHTML)
     cleanup()
-    expect(html).toBe(await settledMarkupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} />))
+    expect(html).toBe(await settledMarkupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} savedRefresh={{ refreshing: false, failed: false, onRefresh: () => {} }} />))
   })
 
   it('AC-601.19: 다시 읽기가 성공했는데 줄이 없으면 카드만 없어지고 BitDashboard를 다시 놓지 않는다', async () => {
@@ -602,6 +602,70 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
   })
 })
 
+// 저장된 숫자 새로고침 (dashboard-ux AC-2701.7·AC-2701.8, design.md §2 2026-11-08). 숫자가 있는 화면에서 저장 숫자를 손으로 다시 읽는 길
+describe('AC-2701.7·AC-2701.8: [저장된 숫자 새로고침] — 저장 숫자만 보이는 화면의 손으로 다시 읽기', () => {
+  const NEWER_SAVED_ROWS = [day('2026-10-26', 7, 60), day(TODAY, 4, 6, true)]
+  const NEWER_SAVED_H1 = '오늘 지금까지 환자 10명이 왔습니다.'
+  const SAVED_TIME_1205 = '서버에 마지막으로 저장된 시각 11월 2일 오후 12:05 · 날짜마다 저장된 때가 달라요'
+  const refreshButton = () => within(header()).getByRole('button', { name: /^저장된 숫자/ }) as HTMLButtonElement
+
+  it('AC-2701.8: 누르면 같은 범위로 저장 숫자만 다시 읽고(같은 틱 두 번도 하나) 그동안 숫자를 둔 채 두 단추가 막힌다. 성공하면 다시 놓지 않고 숫자·서버 저장 시각만 바뀌며 비트 읽기·AI 요약 읽기를 새로 하지 않는다', async () => {
+    onBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS, 0, '2026-11-02T03:05:00.000+00:00')
+    await bitAnswer({ kind: 'not-ready' }) // 저절로 읽은 비트는 조용히 끝남
+    const briefing = screen.getByRole('region', { name: '오늘 브리핑' })
+    const aiReads = vi.mocked(fetch).mock.calls.length
+    const button = refreshButton()
+    expect(button.textContent).toBe('저장된 숫자 새로고침')
+    act(() => {
+      button.click()
+      button.click()
+    })
+    expect(readDays).toHaveBeenCalledTimes(2)
+    expect(savedReads[1]!.range).toEqual(RANGE)
+    expect(refreshButton().textContent).toBe('저장된 숫자 읽는 중')
+    expect(refreshButton().disabled).toBe(true)
+    expect((within(header()).getByRole('button', { name: '비트에서 다시 읽기' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(bigLine().textContent).toBe(SAVED_H1)
+    await savedAnswer(NEWER_SAVED_ROWS, 1, '2026-11-02T05:30:00.000+00:00') // 한국 오후 2시 30분
+    expect(bigLine().textContent).toBe(NEWER_SAVED_H1)
+    expect(within(header()).getByText('서버에 마지막으로 저장된 시각 11월 2일 오후 2:30 · 날짜마다 저장된 때가 달라요')).toBeTruthy()
+    expect(screen.getByRole('region', { name: '오늘 브리핑' })).toBe(briefing)
+    expect(readBitDays).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(fetch).mock.calls.length).toBe(aiReads)
+    expect(refreshButton().textContent).toBe('저장된 숫자 새로고침')
+    expect(refreshButton().disabled).toBe(false)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-2701.8: 실패하면 위쪽 카드가 아니라 머리 줄 아래 오류 상자이고 숫자·상태 표시·저장 시각은 그대로다. 누르기 전에는 다시 부르지 않고, 상자의 [다시 읽기]로 다시 읽어 성공하면 상자가 없어진다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS, 0, '2026-11-02T03:05:00.000+00:00')
+    fireEvent.click(refreshButton())
+    await savedFail(1)
+    const box = screen.getByRole('alert')
+    expect(screen.getAllByRole('alert')).toEqual([box]) // 위쪽 카드(처음 읽기 실패용)는 없다
+    expectOrder(header(), box, screen.getByRole('region', { name: '오늘 하루 분석' }))
+    expect(within(box).getByText('오류 번호 E-STATS-READ-FAILED')).toBeTruthy()
+    expect(within(box).getByText(`아래 숫자는 전에 읽어 둔 그대로예요. ${READ_FAILED.fix}`)).toBeTruthy()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+    expect(within(header()).getByText('서버에 저장된 숫자')).toBeTruthy()
+    expect(within(header()).getByText(SAVED_TIME_1205)).toBeTruthy()
+    expect(within(header()).queryByRole('button', { name: /^저장된 숫자/ })).toBeNull()
+    await wait(SAVED_READ_TIMEOUT_MS * 2)
+    expect(readDays).toHaveBeenCalledTimes(2)
+    fireEvent.click(within(box).getByRole('button', { name: '다시 읽기' }))
+    expect(readDays).toHaveBeenCalledTimes(3)
+    expect((within(screen.getByRole('alert')).getByRole('button', { name: '다시 읽는 중' }) as HTMLButtonElement).disabled).toBe(true)
+    await savedAnswer(NEWER_SAVED_ROWS, 2)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(bigLine().textContent).toBe(NEWER_SAVED_H1)
+    expect(refreshButton().textContent).toBe('저장된 숫자 새로고침')
+  })
+})
+
 describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함께 한 번 읽는다', () => {
   it('AC-606.8: 서버 그림에서는 묶음을 읽지 않고, 브라우저에 붙으면 readDashboardGroups로 저장 숫자 읽기와 함께 한 번 읽는다', () => {
     onBitPc()
@@ -626,7 +690,7 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     expect(rankChart().querySelector('ol[aria-label]')).toBeNull()
     // 비트 읽기는 묶음 정의가 올 때까지 기다린다(AC-606.7)
     expect(readBitDays).not.toHaveBeenCalled()
-    expect(screen.queryByRole('button', { name: '다시 읽는 중' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '비트에서 읽는 중' })).toBeNull()
 
     // 지난 날을 고른 채로 묶음이 온다 → 다시 놓지 않아 고른 날·숫자가 그대로이고 처방 상위만 바뀐다
     fireEvent.click(within(screen.getByRole('group', { name: '날짜 고르기' })).getByRole('button', { name: '이전 날' }))
@@ -640,7 +704,7 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     expect(rankRows()).toEqual(SAVED_RANK)
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(bitReads[0]!.deps.groups).toEqual(GROUPS.defs)
-    expect(screen.getByRole('button', { name: '다시 읽는 중' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '비트에서 읽는 중' })).toBeTruthy()
   })
 
   it('AC-606.8·AC-2701.1: 묶음이 먼저 와도 저장 숫자 읽기가 끝나기 전에는 뼈대다', async () => {

@@ -103,10 +103,26 @@ function whenText(readAt: number | null, savedAt: string | null): string | null 
   return saved === null ? null : `서버에 마지막으로 저장된 시각 ${saved} · 날짜마다 저장된 때가 달라요`
 }
 
+/** 저장 숫자 새로고침(dashboard-ux AC-2701.7·AC-2701.8): LiveDashboard가 저장 숫자를 다시 읽는 중인지·실패했는지와 누름 */
+export type SavedRefresh = { refreshing: boolean; failed: boolean; onRefresh(): void }
+
+/** 머리 줄 읽기 단추 하나: 읽는 동안 도는 표시와 바뀐 글, 막힘 */
+function ReadButton({ label, busyLabel, busy, disabled, onClick }: { label: string; busyLabel: string; busy: boolean; disabled: boolean; onClick(): void }) {
+  return (
+    <button type="button" className={`${ds.button.secondarySmall} max-md:w-full`} disabled={disabled} onClick={onClick}>
+      {busy && <span aria-hidden="true" className="bit-read-spin" />}
+      {busy ? busyLabel : label}
+    </button>
+  )
+}
+
 /**
- * 숫자가 있는 화면의 머리 줄(dashboard-ux AC-2701.3, 시안 docs/mockups/dashboard-ux/index.html head()): h1 "대시보드" · 상태 표시 · 시각 글 · [다시 읽기].
+ * 숫자가 있는 화면의 머리 줄(dashboard-ux AC-2701.3, 시안 docs/mockups/dashboard-ux/index.html head()): h1 "대시보드" · 상태 표시 · 시각 글 · 읽기 단추(AC-2701.7).
  * readAt: 이 화면에서 비트에서 읽은 시각(없으면 null). savedAt: 저장 숫자의 마지막 저장 시각(readDays latest.at, 없으면 null).
- * [다시 읽기]는 비트에서 읽었거나 읽는 중일 때만이고, 읽는 동안 "다시 읽는 중"으로 막히며, 다시 읽기 실패면 오류 상자(RereadAlert)의 단추가 맡아 뺀다
+ * 읽기 단추는 두 일을 이름으로 나눈다(AC-2701.7): [저장된 숫자 새로고침](화면 숫자가 저장 숫자일 때, savedRefresh가 있을 때만)과
+ * [비트에서 다시 읽기](bitReadable — 이 브라우저에 chrome.runtime이 있을 때). 비트를 읽을 수 없으면 실행 단추 대신 연결 안내 링크다.
+ * 한쪽이 읽는 동안 둘 다 막힌다(AC-2701.8). 비트 다시 읽기 실패면 오류 상자(RereadAlert)의 [다시 확인]이, 저장 숫자 새로고침 실패면
+ * 오류 상자(SavedRefreshAlert)의 [다시 읽기]가 그 단추를 맡아 머리 줄에서 뺀다
  */
 export function StatusHeader({
   readAt,
@@ -114,16 +130,23 @@ export function StatusHeader({
   reading,
   failed,
   onReread,
+  bitReadable,
+  savedRefresh,
 }: {
   readAt: number | null
   savedAt: string | null
   reading: boolean
   failed: boolean
   onReread(): void
+  bitReadable: boolean
+  savedRefresh: SavedRefresh | null
 }) {
   const chip = chipOf(readAt, reading, failed)
   const when = whenText(readAt, savedAt)
-  const canReread = (readAt !== null || reading) && !failed
+  const refreshing = savedRefresh?.refreshing === true
+  const busy = reading || refreshing
+  const showSaved = savedRefresh !== null && readAt === null && !savedRefresh.failed
+  const showBit = bitReadable && !failed
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-heading-m font-semibold text-ink max-md:text-title">대시보드</h1>
@@ -134,12 +157,43 @@ export function StatusHeader({
           <span>{when}</span>
         </p>
       )}
-      {canReread && (
-        <button type="button" className={`${ds.button.secondarySmall} ml-auto max-md:ml-0 max-md:w-full`} disabled={reading} onClick={onReread}>
-          {reading && <span aria-hidden="true" className="bit-read-spin" />}
-          {reading ? '다시 읽는 중' : '다시 읽기'}
-        </button>
+      {(showSaved || showBit || !bitReadable) && (
+        <div className="ml-auto flex flex-wrap gap-2 max-md:ml-0 max-md:grid max-md:w-full">
+          {showSaved && (
+            <ReadButton label="저장된 숫자 새로고침" busyLabel="저장된 숫자 읽는 중" busy={refreshing} disabled={busy} onClick={savedRefresh.onRefresh} />
+          )}
+          {showBit && <ReadButton label="비트에서 다시 읽기" busyLabel="비트에서 읽는 중" busy={reading} disabled={busy} onClick={onReread} />}
+          {!bitReadable && (
+            <Link href={CONNECT_CHECK} className={`${ds.button.secondarySmall} no-underline max-md:w-full`}>
+              비트 PC 연결 안내
+            </Link>
+          )}
+        </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * 저장 숫자 새로고침 실패(dashboard-ux AC-2701.8): 머리 줄 아래 오류 상자. 화면 숫자는 전에 읽어 둔 그대로라고 밝히고,
+ * 글·번호는 lib/errors.ts의 E-STATS-READ-FAILED 그대로다(고치기 글이 말하는 [다시 읽기]가 이 상자의 단추). 누르기 전에는 다시 부르지 않는다
+ */
+export function SavedRefreshAlert({ refreshing, disabled, onRetry }: { refreshing: boolean; disabled: boolean; onRetry(): void }) {
+  const code: ErrorCode = 'E-STATS-READ-FAILED'
+  const { what, fix } = errorInfo(code)
+  return (
+    <div role="alert" className="mt-3 flex max-w-130 items-start gap-2 rounded-control bg-negative-soft px-4 py-3">
+      <Icon name="stop" className="mt-0.5 shrink-0 text-negative" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <p className="text-body font-semibold text-negative">{what}</p>
+        <p className="mt-0.5 text-body text-ink-2">{`아래 숫자는 전에 읽어 둔 그대로예요. ${fix}`}</p>
+        <p className="mt-1 text-caption text-ink-2">오류 번호 {code}</p>
+        <div className="mt-3 flex flex-wrap gap-2 max-md:grid">
+          <button type="button" className={ds.button.primary} disabled={disabled} onClick={onRetry}>
+            {refreshing ? '다시 읽는 중' : '다시 읽기'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -157,7 +211,20 @@ export function UnreadableNote() {
 }
 
 /** 읽은 적이 있는 상태에서 다시 읽기 실패: 그 아래 오류 상자. 저장 숫자에는 읽은 시각이 없어 "저장해 둔 그대로"라고 하고, 자료 없음 화면(빈 배열)에는 둘 숫자가 없어 그 문장을 뺀다 */
-export function RereadAlert({ code, readAt, hasNumbers, onRetry }: { code: ErrorCode; readAt: number | null; hasNumbers: boolean; onRetry(): void }) {
+export function RereadAlert({
+  code,
+  readAt,
+  hasNumbers,
+  onRetry,
+  disabled = false,
+}: {
+  code: ErrorCode
+  readAt: number | null
+  hasNumbers: boolean
+  onRetry(): void
+  /** 저장 숫자를 다시 읽는 동안 막는다(dashboard-ux AC-2701.8: 한쪽이 읽는 동안 다른 읽기를 시작하지 않는다) */
+  disabled?: boolean
+}) {
   const { what, fix } = errorInfo(code)
   const kept = readAt === null ? '아래 숫자는 저장해 둔 그대로예요.' : `아래 숫자는 ${timeText(readAt)}에 읽은 그대로예요.`
   return (
@@ -168,7 +235,7 @@ export function RereadAlert({ code, readAt, hasNumbers, onRetry }: { code: Error
         <p className="mt-0.5 text-body text-ink-2">{hasNumbers ? `${kept} ${fix}` : fix}</p>
         <p className="mt-1 text-caption text-ink-2">오류 번호 {code}</p>
         <div className="mt-3 flex flex-wrap gap-2 max-md:grid">
-          <button type="button" className={ds.button.primary} onClick={onRetry}>
+          <button type="button" className={ds.button.primary} disabled={disabled} onClick={onRetry}>
             다시 확인
           </button>
           <Link href={CONNECT_CHECK} className={`${ds.button.secondary} no-underline`}>

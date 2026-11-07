@@ -9,7 +9,8 @@ import { MORE_MENU, type MenuLabel } from './menu'
 // [더보기] (dashboard-ux REQ-2702 AC-2702.1~2702.5, design.md §3, 시안 docs/mockups/dashboard-ux .more·.morewrap·.morepanel).
 // 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 다섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
 // 지금 경로(또는 방금 누른 주소)가 판 안 항목이면 단추가 지금 탭 모양이고 글자가 "더보기 · {이름}"이다. 판 안 링크를 누르면 단추에 data-pending.
-// 판 자리: 768px 이상은 감싸개(relative) 오른쪽 끝에 맞춘 320px 떠 있는 판(화면 폭 − 좌우 24px을 넘지 않는다),
+// 판 자리: 768px 이상은 판 오른쪽 끝을 본문 오른쪽 정렬선에 맞춘 320px 떠 있는 판(화면 폭 − 좌우 24px을 넘지 않는다, AC-2702.4 2026-11-08).
+// 감싸개를 오른쪽 12px 띄워(md:mr-3) 단추 글자 끝(단추 안쪽 12px)이 그 선에 오고, 판은 감싸개 끝에서 12px 안쪽(md:right-3)이다.
 // 768px 미만은 감싸개가 static이라 판이 nav(relative) 기준으로 탭 줄 바로 아래 전체 폭 두 칸이다.
 // 판은 열릴 때만 그린다: 나타날 때만 흐림 → 보임(starting:, 기본 transition 150ms)이고 닫으면 바로 사라진다. 꺾쇠는 열린 동안 180° 돈다.
 // 닫힘: 단추 다시 누름 · Esc(초점은 단추로) · 판 안 링크 누름 · 판 밖 누름 · 경로 바뀜. 열 때 초점은 단추에 남는다(펼침 단추)
@@ -18,8 +19,8 @@ import { MORE_MENU, type MenuLabel } from './menu'
 const OTHERS = MORE_MENU.length
 const NOT_READY = MORE_MENU.filter((m) => !m.ready).length
 
-// 감싸개: 단추가 nav 높이만큼 늘어난다. 768px 미만은 static → 판의 기준이 nav가 된다
-const wrapClass = 'relative flex shrink-0 max-md:static'
+// 감싸개: 단추가 nav 높이만큼 늘어난다. 768px 미만은 static → 판의 기준이 nav가 된다(그 폭 배치는 그대로)
+const wrapClass = 'relative flex shrink-0 md:mr-3 max-md:static'
 // 단추: 탭과 같은 크기(44px·좌우 12px·body), 키보드 초점은 단추 안쪽 2px accent 고리(4px 모서리). 올림 글자색은 짧게 바뀐다
 const buttonBase =
   'relative inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap rounded-control px-3 text-body transition focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
@@ -30,7 +31,7 @@ const buttonCurrent = `${buttonBase} font-semibold text-ink after:absolute after
 // 판: surface·shadow-float(떠 있는 층). top-full은 nav 아래 1px 선 위에서 시작하므로 1px 내려(mt-px) 선이 보이게 한다.
 // 768px 이상 320px·8px 모서리·1px line 테두리·안쪽 위 4px·좌우 16px·아래 12px / 768px 미만 nav 전체 폭·아래 1px line·아래 16px
 const panelClass =
-  'absolute top-full right-0 mt-px border-line bg-surface px-4 pt-1 shadow-float transition starting:opacity-0 md:w-80 md:max-w-[calc(100vw-3rem)] md:rounded-float md:border md:pb-3 max-md:inset-x-0 max-md:border-b max-md:pb-4'
+  'absolute top-full right-0 mt-px md:right-3 border-line bg-surface px-4 pt-1 shadow-float transition starting:opacity-0 md:w-80 md:max-w-[calc(100vw-3rem)] md:rounded-float md:border md:pb-3 max-md:inset-x-0 max-md:border-b max-md:pb-4'
 // 목록: 위 1px line. 768px 이상 한 칸(마지막 항목 아래 선 없음), 미만 두 칸(칸 사이 16px)
 const listClass = 'grid list-none border-t border-line max-md:grid-cols-2 max-md:gap-x-4'
 const itemWrap = 'md:last:*:border-b-0'

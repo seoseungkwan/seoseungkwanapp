@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "dashboard-ux",
-  "approved_at": "2026-11-07T13:29:39Z",
+  "approved_at": "2026-11-07T20:03:47Z",
   "approved_via": "user-prompt",
-  "session_id": "adfd39b2-747b-4fe0-a542-9b9292f37b01",
-  "spec_sha256": "20922858188944f9239c4034fa2387877b51fdbc7b898c46a5745555a79b8125",
+  "session_id": "ca547c88-4e25-4267-ace7-944d2ab778dc",
+  "spec_sha256": "c37bfaf5e052c5e8ce4981aaef304842b9d2bf0948dde58e05918d534fb399c0",
   "scope": [
     "src/app/(app)/dashboard/**",
     "src/app/(app)/dashboard/page.test.tsx",

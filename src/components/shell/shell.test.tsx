@@ -84,8 +84,10 @@ const PRIMARY_PATHS = PATHS.filter(([label]) => PRIMARY.includes(label))
 const MORE_PATHS = PATHS.filter(([label]) => !PRIMARY.includes(label))
 
 const nav = () => screen.getByRole('navigation', { name: '메뉴' })
-// 탭 띠: nav의 첫 자식(1024px 미만 옆으로 밀림). [더보기] 감싸개(단추·판)와 불러오기 줄은 띠 밖, nav 안에 있다(AC-2702.1)
-const strip = () => nav().firstElementChild as HTMLElement
+// 탭 줄 감싸개: nav의 첫 자식. 탭 띠와 [더보기] 감싸개를 담고 1024px 이상은 본문과 같은 1280 폭 가운데다(dashboard-ux AC-2702.4)
+const line = () => nav().firstElementChild as HTMLElement
+// 탭 띠: 탭 줄 감싸개의 첫 자식(1024px 미만 옆으로 밀림). [더보기] 감싸개(단추·판)는 띠 밖 바로 다음, 불러오기 줄은 nav 끝이다(AC-2702.1)
+const strip = () => line().firstElementChild as HTMLElement
 // 탭 띠의 항목을 화면 순서대로(모두 링크. 단추가 끼면 AC-2702.1이 잡는다)
 const tabItems = () => Array.from(strip().querySelectorAll<HTMLElement>('a, button'))
 const tab = (name: string) => within(strip()).getByText(name, { selector: 'span[data-label]' }).parentElement as HTMLElement
@@ -330,9 +332,10 @@ describe('TabBar', () => {
     }
   })
 
-  it('AC-218.2·AC-2702.1: 탭 줄 — 탭 띠 안 줄 하나에 1280 폭·좌우 24px(폰 16px), 첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다. nav 자식은 탭 띠 · [더보기] 감싸개 · 불러오기 줄', () => {
+  it('AC-218.2·AC-2702.1·AC-2702.4: 탭 줄 — 탭 띠 안 줄 하나에 1280 폭·좌우 24px(폰 16px), 첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다. nav 자식은 탭 줄 감싸개(탭 띠 · [더보기] 감싸개) · 불러오기 줄', () => {
     render(<TabBar />)
-    expect(Array.from(nav().children)).toEqual([strip(), moreWrap(), loadBar()])
+    expect(Array.from(nav().children)).toEqual([line(), loadBar()])
+    expect(Array.from(line().children)).toEqual([strip(), moreWrap()])
     expect(strip().children).toHaveLength(1)
     const row = strip().firstElementChild as HTMLElement
     hasAll(row, 'flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl')
@@ -349,7 +352,7 @@ describe('TabBar', () => {
   const layout = ({ overflow, at = {} }: { overflow: boolean; at?: Record<string, number> }) => {
     const rect = (left: number, width: number) =>
       ({ left, right: left + width, top: 0, bottom: 50, width, height: 50, x: left, y: 0, toJSON: () => ({}) }) as DOMRect
-    const isStrip = (el: Element) => el.parentElement?.tagName === 'NAV' && el.parentElement.firstElementChild === el
+    const isStrip = (el: Element) => el === el.closest('nav')?.firstElementChild?.firstElementChild
     vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
       return isStrip(this) ? (overflow ? 1000 : 390) : 0
     })
@@ -358,7 +361,7 @@ describe('TabBar', () => {
     })
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       if (isStrip(this)) return rect(0, 390)
-      const stripEl = this.closest('nav')?.firstElementChild
+      const stripEl = this.closest('nav')?.firstElementChild?.firstElementChild
       if (this.tagName === 'A' && stripEl?.contains(this)) {
         const left = at[this.textContent ?? ''] ?? (this.getAttribute('aria-current') === 'page' ? 900 : 0)
         return rect(left - stripEl.scrollLeft, 80)
@@ -446,7 +449,9 @@ describe('MoreMenu', () => {
     expect(panel()).toBeNull()
     expect(strip().contains(button)).toBe(false)
     expect(strip().nextElementSibling).toBe(moreWrap())
-    expect(moreWrap().parentElement).toBe(nav())
+    // 감싸개는 탭 줄 감싸개(nav 첫 자식) 안이다(AC-2702.4: 1024px 이상 본문 1280 폭 안)
+    expect(moreWrap().parentElement).toBe(line())
+    expect(line().parentElement).toBe(nav())
     // 어느 폭에서도 숨기지 않는다(옛 [전체 메뉴]의 lg:hidden 같은 숨김 없음)
     for (const el of [moreWrap(), button]) expect(classesOf(el).filter((c) => /(?:^|:)(?:hidden|sr-only)$/.test(c))).toEqual([])
     hasAll(button, 'min-h-11 shrink-0 items-center whitespace-nowrap px-3 text-body')
@@ -663,13 +668,23 @@ describe('MoreMenu', () => {
     expect(panel()).toBeNull()
   })
 
-  it('AC-2702.4: 판 자리 — 768px 이상은 감싸개(relative) 오른쪽 끝에 맞춘 320px 떠 있는 판(화면 폭 − 좌우 24px을 넘지 않는다), 768px 미만은 감싸개가 static이라 nav 전체 폭(inset-x-0) 두 칸 판이다', async () => {
+  it('AC-2702.4: 판 자리 — 768px 이상은 오른쪽 끝을 본문 오른쪽 정렬선에 맞춘 320px 떠 있는 판(화면 폭 − 좌우 24px을 넘지 않는다), 768px 미만은 감싸개가 static이라 nav 전체 폭(inset-x-0) 두 칸 판이다', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(moreButton())
     const p = panel() as HTMLElement
     hasAll(moreWrap(), 'relative max-md:static')
     hasAll(p, 'absolute top-full right-0 border-line bg-surface shadow-float')
+    // 본문 오른쪽 정렬선(앱 틀 본문 max-w-7xl·좌우 24px): 탭 줄 감싸개가 1024px 이상 본문과 같은 1280 폭 가운데이고,
+    // [더보기] 감싸개를 오른쪽 12px 띄워(md:mr-3) 단추 글자 끝이, 판을 단추 끝에서 12px 안쪽(md:right-3)에 맞춰 판 끝이 그 선에 온다
+    hasAll(line(), 'flex min-w-0 flex-1 lg:mx-auto lg:max-w-7xl')
+    // 탭 줄 감싸개는 자리 기준이 아니다 → 768px 미만 판의 기준은 그대로 nav(relative)다
+    hasNone(line(), 'relative absolute fixed sticky')
+    hasAll(moreWrap(), 'md:mr-3')
+    hasAll(p, 'md:right-3')
+    // 768px 미만 배치는 그대로: 폰 쪽 여백·오른쪽 맞춤을 더하지 않는다
+    expect(classesOf(moreWrap()).filter((c) => /^(?:max-md:)?m[rx]-/.test(c))).toEqual([])
+    expect(classesOf(p).filter((c) => /^max-md:(?:right|left|m[rx])-/.test(c))).toEqual([])
     hasAll(p, 'md:w-80 md:max-w-[calc(100vw-3rem)] md:rounded-float md:border')
     hasAll(p, 'max-md:inset-x-0 max-md:border-b')
     // 옛 [전체 메뉴] 판처럼 1024px 이상에서 숨거나 왼쪽 끝에 붙지 않는다

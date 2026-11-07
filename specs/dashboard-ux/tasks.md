@@ -57,3 +57,21 @@
 - Files: src/components/ui/classes.ts, src/components/ui/classes.test.ts, src/components/dashboard/live/ReadStatus.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/common/NotFoundScreen.tsx, src/app/notFound.test.tsx, src/components/dashboard/imports.test.ts
 - Tests: src/components/ui/classes.test.ts, src/components/dashboard/live/BitDashboard.test.tsx, src/app/notFound.test.tsx, src/components/dashboard/imports.test.ts
 - TDD: required
+
+## TASK-7: 손으로 다시 읽기 — 저장된 숫자 새로고침 · 비트에서 다시 읽기 · 연결 안내
+- Step: Phase 5 · 트랙 A (2026-11-08 보완, TASK-8과 나란히)
+- AC: AC-2701.3, AC-2701.7, AC-2701.8
+- REQ: REQ-2701
+- Files: src/components/dashboard/live/ReadStatus.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.test.tsx
+- Tests: src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx
+- TDD: required
+- 단추 이름이 바뀐 앞 시험([다시 읽기] → [비트에서 다시 읽기])은 이름만 고치고 기대 뜻은 그대로 둔다
+
+## TASK-8: [더보기] 판을 본문 오른쪽 정렬선에 맞추기
+- Step: Phase 5 · 트랙 B (2026-11-08 보완, TASK-7과 나란히)
+- AC: AC-2702.4
+- REQ: REQ-2702
+- Files: src/components/shell/MoreMenu.tsx, src/components/shell/TabBar.tsx, src/components/shell/shell.test.tsx, src/app/(app)/tabFrame.test.tsx
+- Tests: src/components/shell/shell.test.tsx, src/app/(app)/tabFrame.test.tsx
+- TDD: required
+- 768px 미만 클래스는 바꾸지 않는다. 실제 자리는 로그인 없는 화면 확인 도구(Vite)로 1440·1024·768·390에서 본다

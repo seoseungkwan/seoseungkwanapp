@@ -96,11 +96,17 @@ const READ_H1 = '비트에서 오늘 숫자를 읽고 있어요'
 const READ_LEAD = '최근 100일 자료를 읽어요. 길면 3분쯤 걸려요. 다 읽을 때까지 이 화면을 열어 두세요.'
 const SAVED_KEPT = '아래 숫자는 저장해 둔 그대로예요.'
 const UNREADABLE = '이 PC에서 비트를 읽을 수 없어요. 연결을 확인해 주세요.'
-// 숫자가 있는 화면의 머리 줄(dashboard-ux AC-2701.3): h1 "대시보드" · 상태 표시 · 시각 글 · [다시 읽기]
+// 숫자가 있는 화면의 머리 줄(dashboard-ux AC-2701.3): h1 "대시보드" · 상태 표시 · 시각 글 · 읽기 단추(AC-2701.7)
 const HEADER_H1 = '대시보드'
 const READ_AT_342 = '비트에서 읽은 시각 오늘 오후 3:42'
 const READ_AT_345 = '비트에서 읽은 시각 오늘 오후 3:45'
 const READ_AT = /비트에서 읽은 시각/
+// 머리 줄 읽기 단추 둘과 연결 안내(AC-2701.7·AC-2701.8): 저장 숫자 다시 읽기와 비트 다시 읽기를 이름으로 나눈다
+const BIT_REREAD = '비트에서 다시 읽기'
+const BIT_READING = '비트에서 읽는 중'
+const SAVED_REFRESH = '저장된 숫자 새로고침'
+const SAVED_READING = '저장된 숫자 읽는 중'
+const CONNECT_GUIDE = '비트 PC 연결 안내'
 
 // ── 잡아 둔 읽기: 화면이 부른 차례대로 쌓이고, 시험이 답을 준다 ──
 type Read = { deps: Parameters<typeof readBitDays>[0]; resolve(result: ReadResult): void }
@@ -234,7 +240,7 @@ describe('서버가 그린 첫 모양', () => {
         <DashboardHome
           today={TODAY}
           dateLine={null}
-          report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />}
+          report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} bitReadable={false} savedRefresh={null} />}
           analysis={
             <>
               <DailySection
@@ -374,8 +380,8 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     draw()
     await answer(days())
     const at = screen.getByText(READ_AT_342)
-    expectOrder(at, button('다시 읽기'), todaySection(), bigLine())
-    hasAll(button('다시 읽기'), ds.button.secondarySmall)
+    expectOrder(at, button(BIT_REREAD), todaySection(), bigLine())
+    hasAll(button(BIT_REREAD), ds.button.secondarySmall)
     expect(region('오늘 브리핑').contains(at)).toBe(true)
   })
 
@@ -395,11 +401,11 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
       expect(at.getHours(), '이 PC 시계가 한국과 달라야 시험이 헛돌지 않는다').not.toBe(9)
       vi.resetModules()
       const { StatusHeader: Header } = await import('./ReadStatus')
-      render(<Header readAt={at.getTime()} savedAt={null} reading={false} failed={false} onReread={() => {}} />)
+      render(<Header readAt={at.getTime()} savedAt={null} reading={false} failed={false} onReread={() => {}} bitReadable savedRefresh={null} />)
       expect(screen.getByText('비트에서 읽은 시각 오늘 오전 9:05')).toBeTruthy()
       cleanup()
       // 서버 저장 시각(updated_at): 뉴욕 11월 1일 오후 8:05 = 한국 11월 2일 오전 9:05
-      render(<Header readAt={null} savedAt="2026-11-02T00:05:00.000+00:00" reading={false} failed={false} onReread={() => {}} />)
+      render(<Header readAt={null} savedAt="2026-11-02T00:05:00.000+00:00" reading={false} failed={false} onReread={() => {}} bitReadable savedRefresh={null} />)
       expect(screen.getByText('서버에 마지막으로 저장된 시각 11월 2일 오전 9:05 · 날짜마다 저장된 때가 달라요')).toBeTruthy()
     } finally {
       process.env.TZ = seoul ?? 'Asia/Seoul'
@@ -411,14 +417,14 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
 
     expect(readBitDays).toHaveBeenCalledTimes(2)
     expect(reads[1]!.deps.signal?.aborted).toBe(false)
     expectNumbersShown(64, 9, 55)
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
-    expect((button('다시 읽는 중') as HTMLButtonElement).disabled).toBe(true)
-    noButton('다시 읽기')
+    expect((button(BIT_READING) as HTMLButtonElement).disabled).toBe(true)
+    noButton(BIT_REREAD)
     noText(READ_H1)
   })
 
@@ -426,25 +432,25 @@ describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     vi.setSystemTime(AT_345)
     await answer(days(NEWER_DAYS))
 
     expectNumbersShown(70, 10, 60)
     expect(screen.getByText(READ_AT_345)).toBeTruthy()
-    expect((button('다시 읽기') as HTMLButtonElement).disabled).toBe(false)
+    expect((button(BIT_REREAD) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('AC-601.3·AC-601.16: 다시 읽기 답이 not-ready면 숫자·시각을 그대로 두고 단추가 돌아온다', async () => {
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
 
     expectNumbersShown(64, 9, 55)
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
-    expect(button('다시 읽기')).toBeTruthy()
+    expect(button(BIT_REREAD)).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
@@ -481,18 +487,18 @@ describe('AC-2701.3·AC-2701.4: 머리 줄 — 상태 표시 · 시각 글 · [�
     render(<BitDashboard today={TODAY} initial={SAVED} savedAt={SAVED_AT} />)
     expectChip('비트에서 다시 읽는 중', ds.chip.accent)
     expect(within(header()).getByText(SAVED_TIME)).toBeTruthy()
-    expect((within(header()).getByRole('button', { name: '다시 읽는 중' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(header()).getByRole('button', { name: BIT_READING }) as HTMLButtonElement).disabled).toBe(true)
 
     // 비트에서 읽음: 비트 시각만(서버 저장 시각과 함께 쓰지 않는다)
     await answer(days())
     expectChip('비트에서 읽은 숫자', ds.chip.positive)
     expect(within(header()).getByText(READ_AT_342)).toBeTruthy()
     expect(header().textContent).not.toContain('서버에 마지막으로 저장된 시각')
-    expect(within(header()).getByRole('button', { name: '다시 읽기' })).toBeTruthy()
+    expect(within(header()).getByRole('button', { name: BIT_REREAD })).toBeTruthy()
     neverConnected()
 
     // 다시 읽기 실패: 상태 표시 "비트 읽기 실패", 시각은 읽은 그대로, 단추는 오류 상자가 맡는다
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     expectChip('비트에서 다시 읽는 중', ds.chip.accent)
     await answer(failed('E-BIT-READ-FAILED'))
     expectChip('비트 읽기 실패', ds.chip.negative)
@@ -509,7 +515,7 @@ describe('AC-2701.3·AC-2701.4: 머리 줄 — 상태 표시 · 시각 글 · [�
     expectNumbersShown(64, 9, 55)
     expect(rankRows()).toEqual(BIT_RANK)
 
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     expectNumbersShown(64, 9, 55)
     expect(rankRows()).toEqual(BIT_RANK)
 
@@ -522,6 +528,153 @@ describe('AC-2701.3·AC-2701.4: 머리 줄 — 상태 표시 · 시각 글 · [�
     expect(within(box).getByText('오류 번호 E-BIT-READ-FAILED')).toBeTruthy()
     expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
+  })
+})
+
+// 손으로 다시 읽기 (dashboard-ux AC-2701.7·AC-2701.8, design.md §2 2026-11-08). 저장 숫자 새로고침은 LiveDashboard가 맡고(savedRefresh로 상태·누름을 넘김),
+// 여기서는 머리 줄 단추·연결 안내·오류 상자와, 새 처음 자료가 왔을 때 다시 놓지 않고 숫자만 바꾸는지를 본다
+describe('AC-2701.7·AC-2701.8: 손으로 다시 읽기 — 저장된 숫자 새로고침 · 비트에서 다시 읽기 · 연결 안내', () => {
+  const SAVED_AT = '2026-11-02T03:05:00.000+00:00' // 한국 낮 12시 5분
+  const SAVED_TIME = '서버에 마지막으로 저장된 시각 11월 2일 오후 12:05 · 날짜마다 저장된 때가 달라요'
+  const NEWER_SAVED: SummarySource = { kind: 'data', days: [day(TODAY, 4, 6, true)] } // 다시 읽은 저장 숫자(오늘 10명)
+  const NEWER_SAVED_AT = '2026-11-02T05:30:00.000+00:00' // 한국 오후 2시 30분
+  const header = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 }).parentElement as HTMLElement
+  const inHeader = (name: string) => within(header()).queryByRole('button', { name }) as HTMLButtonElement | null
+  const refresh = (over: { refreshing?: boolean; failed?: boolean } = {}, onRefresh: () => void = vi.fn()) => ({ refreshing: false, failed: false, onRefresh, ...over })
+  const drawSaved = (savedRefresh = refresh(), initial: SummarySource = SAVED, savedAt = SAVED_AT) =>
+    render(<BitDashboard today={TODAY} initial={initial} savedAt={savedAt} savedRefresh={savedRefresh} />)
+
+  it('AC-2701.7: 비트 PC에서 저절로 읽은 답이 not-ready로 조용히 끝나도 [비트에서 다시 읽기]가 남아 다시 시도할 수 있고, [저장된 숫자 새로고침]과 이름으로 나뉜다', async () => {
+    onBitPc()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    drawSaved()
+    await answer(NOT_READY)
+    expect(within(header()).getByText('서버에 저장된 숫자')).toBeTruthy()
+    const bit = inHeader(BIT_REREAD)!
+    const saved = inHeader(SAVED_REFRESH)!
+    expect(bit.disabled).toBe(false)
+    expect(saved.disabled).toBe(false)
+    hasAll(bit, ds.button.secondarySmall)
+    hasAll(saved, ds.button.secondarySmall)
+    expect(within(header()).queryByRole('link', { name: CONNECT_GUIDE })).toBeNull()
+    noText(UNREADABLE) // 저절로 읽은 답은 조용히 둔다(AC-601.16)
+    await user.click(bit)
+    expect(readBitDays).toHaveBeenCalledTimes(2)
+    expectNumbersShown(5, 2, 3)
+    await answer(NOT_READY)
+    expect(screen.getByRole('status').textContent).toContain(UNREADABLE) // 직접 누른 답은 안내
+    expect(inHeader(BIT_REREAD)!.disabled).toBe(false)
+  })
+
+  it('AC-2701.7: 비트를 읽을 수 없는 브라우저는 [비트에서 다시 읽기] 대신 "비트 PC 연결 안내" 링크이고 [저장된 숫자 새로고침]은 있다 — 서버 그림도 연결 안내다', () => {
+    notBitPc()
+    drawSaved()
+    expect(inHeader(BIT_REREAD)).toBeNull()
+    expect(inHeader(BIT_READING)).toBeNull()
+    const guide = within(header()).getByRole('link', { name: CONNECT_GUIDE })
+    expect(guide.getAttribute('href')).toBe(CONNECT_CHECK)
+    hasAll(guide, ds.button.secondarySmall)
+    expect(inHeader(SAVED_REFRESH)).toBeTruthy()
+    expect(readBitDays).not.toHaveBeenCalled()
+    cleanup()
+    // 서버는 chrome.runtime을 모른다 → 비트 PC에서도 서버 그림은 연결 안내이고, 붙은 뒤에 바꾼다
+    onBitPc()
+    const html = renderToStaticMarkup(<BitDashboard today={TODAY} initial={SAVED} savedRefresh={refresh()} />)
+    expect(html).toContain(CONNECT_GUIDE)
+    expect(html).not.toContain(BIT_REREAD)
+    expect(html).toContain(SAVED_REFRESH)
+  })
+
+  it('AC-2701.7: 비트에서 읽은 숫자가 화면에 있으면 [저장된 숫자 새로고침]이 없고, 비트 다시 읽기가 실패하면 [비트에서 다시 읽기] 대신 오류 상자의 [다시 확인]이 맡는다', async () => {
+    onBitPc()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    drawSaved()
+    await answer(days())
+    expect(inHeader(SAVED_REFRESH)).toBeNull()
+    await user.click(inHeader(BIT_REREAD)!)
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(within(header()).queryByRole('button')).toBeNull()
+    await user.click(within(screen.getByRole('alert')).getByRole('button', { name: '다시 확인' }))
+    expect(readBitDays).toHaveBeenCalledTimes(3)
+  })
+
+  it('AC-2701.8: 한쪽이 읽는 동안 두 단추가 모두 막히고(누른 단추 글이 바뀜) 숫자는 그대로다 — 같은 틱에 [비트에서 다시 읽기]를 두 번 눌러도 비트 읽기는 하나다', async () => {
+    onBitPc()
+    const { rerender } = drawSaved()
+    // 열 때 저절로 비트를 읽는 중: 비트 단추는 "비트에서 읽는 중"(도는 표시), 저장 숫자 단추도 막힘
+    expect(inHeader(BIT_READING)!.disabled).toBe(true)
+    hasAll(inHeader(BIT_READING)!.firstElementChild!, 'bit-read-spin')
+    expect(inHeader(SAVED_REFRESH)!.disabled).toBe(true)
+    await answer(NOT_READY)
+    // 저장 숫자를 다시 읽는 중: 저장 숫자 단추는 "저장된 숫자 읽는 중"(도는 표시), 비트 단추도 막힘. 숫자는 그대로
+    rerender(<BitDashboard today={TODAY} initial={SAVED} savedAt={SAVED_AT} savedRefresh={refresh({ refreshing: true })} />)
+    expect(inHeader(SAVED_READING)!.disabled).toBe(true)
+    hasAll(inHeader(SAVED_READING)!.firstElementChild!, 'bit-read-spin')
+    expect(inHeader(BIT_REREAD)!.disabled).toBe(true)
+    expectNumbersShown(5, 2, 3)
+    // 끝나면 둘 다 풀린다. 같은 틱에 두 번 눌러도 비트 읽기는 하나
+    rerender(<BitDashboard today={TODAY} initial={SAVED} savedAt={SAVED_AT} savedRefresh={refresh()} />)
+    const bit = inHeader(BIT_REREAD)!
+    act(() => {
+      fireEvent.click(bit)
+      fireEvent.click(bit)
+    })
+    expect(readBitDays).toHaveBeenCalledTimes(2)
+    expect(inHeader(BIT_READING)!.disabled).toBe(true)
+    expect(inHeader(SAVED_REFRESH)!.disabled).toBe(true)
+    expectNumbersShown(5, 2, 3)
+  })
+
+  it('AC-2701.8: 저장 숫자 새로고침이 성공하면(새 처음 자료) 화면을 다시 놓지 않고 숫자·서버 저장 시각만 바꾼다 — 고른 날 유지, 비트 읽기·AI 요약 읽기를 새로 하지 않는다', async () => {
+    notBitPc()
+    const { rerender } = drawSaved()
+    await act(async () => {}) // AI 요약의 저장 리포트 읽기(GET) 한 번
+    const aiReads = vi.mocked(fetch).mock.calls.length
+    expect(aiReads).toBe(1)
+    fireEvent.click(within(screen.getByRole('group', { name: '날짜 고르기' })).getByRole('button', { name: '이전 날' }))
+    const picked = bigLine().textContent
+    const briefing = region('오늘 브리핑')
+    rerender(<BitDashboard today={TODAY} initial={NEWER_SAVED} savedAt={NEWER_SAVED_AT} savedRefresh={refresh()} />)
+    await act(async () => {})
+    expect(region('오늘 브리핑')).toBe(briefing)
+    expect(bigLine().textContent).toBe(picked)
+    expect(within(header()).getByText('서버에 마지막으로 저장된 시각 11월 2일 오후 2:30 · 날짜마다 저장된 때가 달라요')).toBeTruthy()
+    expect(vi.mocked(fetch).mock.calls.length).toBe(aiReads)
+    expect(readBitDays).not.toHaveBeenCalled()
+    fireEvent.click(within(screen.getByRole('group', { name: '날짜 고르기' })).getByRole('button', { name: '다음 날' }))
+    expectNumbersShown(10, 4, 6)
+  })
+
+  it('AC-2701.8: 비트에서 읽은 숫자가 있으면 새 저장 숫자가 와도 비트 숫자를 그대로 둔다', async () => {
+    onBitPc()
+    const { rerender } = drawSaved()
+    await answer(days())
+    rerender(<BitDashboard today={TODAY} initial={NEWER_SAVED} savedAt={NEWER_SAVED_AT} savedRefresh={refresh()} />)
+    expectNumbersShown(64, 9, 55)
+    expect(within(header()).getByText(READ_AT_342)).toBeTruthy()
+  })
+
+  it('AC-2701.8: 새로고침이 실패하면 머리 줄 아래 오류 상자(E-STATS-READ-FAILED 글·번호·전에 읽어 둔 그대로·[다시 읽기])이고 상태 표시·시각 글·숫자는 그대로다 — [저장된 숫자 새로고침]은 상자의 [다시 읽기]가 맡는다', async () => {
+    notBitPc()
+    const onRefresh = vi.fn()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    const { rerender } = drawSaved(refresh({ failed: true }, onRefresh))
+    const box = screen.getByRole('alert')
+    expectOrder(header(), box, todaySection())
+    const info = errorInfo('E-STATS-READ-FAILED')
+    expect(within(box).getByText(info.what)).toBeTruthy()
+    expect(within(box).getByText(`아래 숫자는 전에 읽어 둔 그대로예요. ${info.fix}`)).toBeTruthy()
+    expect(within(box).getByText('오류 번호 E-STATS-READ-FAILED')).toBeTruthy()
+    expect(inHeader(SAVED_REFRESH)).toBeNull()
+    expect(within(header()).getByText('서버에 저장된 숫자')).toBeTruthy()
+    expect(within(header()).getByText(SAVED_TIME)).toBeTruthy()
+    expectNumbersShown(5, 2, 3)
+    expect(onRefresh).not.toHaveBeenCalled()
+    await user.click(within(box).getByRole('button', { name: '다시 읽기' }))
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    rerender(<BitDashboard today={TODAY} initial={SAVED} savedAt={SAVED_AT} savedRefresh={refresh({ failed: true, refreshing: true }, onRefresh)} />)
+    const busy = within(screen.getByRole('alert')).getByRole('button', { name: '다시 읽는 중' }) as HTMLButtonElement
+    expect(busy.disabled).toBe(true)
   })
 })
 
@@ -544,7 +697,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
 
     expectNumbersShown(64, 9, 55)
@@ -552,7 +705,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const note = expectUnreadable()
     expectOrder(at, note, todaySection(), bigLine())
     expect(region('오늘 브리핑').contains(note)).toBe(true)
-    expect((button('다시 읽기') as HTMLButtonElement).disabled).toBe(false)
+    expect((button(BIT_REREAD) as HTMLButtonElement).disabled).toBe(false)
     noText(CONNECT_H1)
   })
 
@@ -560,7 +713,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(failed('E-BIT-READ-FAILED'))
     await user.click(within(screen.getByRole('alert')).getByRole('button', { name: '다시 확인' }))
     await answer(NOT_READY)
@@ -569,7 +722,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
     expectUnreadable()
     noButton('다시 확인')
-    expect(button('다시 읽기')).toBeTruthy()
+    expect(button(BIT_REREAD)).toBeTruthy()
   })
 
   it('AC-601.16·AC-601.13: 저장 숫자 — 저절로 읽기 실패 뒤 [다시 확인]이 not-ready면 저장 숫자를 둔 채 안내가 나오고, 읽은 시각을 지어내지 않는다', async () => {
@@ -589,7 +742,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days([]))
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
 
     expect(bigLine().textContent).toBe('오늘 받은 진료 자료가 아직 없어요')
@@ -603,13 +756,13 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
     expectUnreadable()
 
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     noText(UNREADABLE)
-    expect((button('다시 읽는 중') as HTMLButtonElement).disabled).toBe(true)
+    expect((button(BIT_READING) as HTMLButtonElement).disabled).toBe(true)
 
     vi.setSystemTime(AT_345)
     await answer(days(NEWER_DAYS))
@@ -622,9 +775,9 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(failed('E-BIT-READ-FAILED'))
 
     noText(UNREADABLE)
@@ -652,7 +805,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     const { rerender } = draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(days(NEWER_DAYS))
 
     rerender(<BitDashboard today={NEXT_DAY} initial={NONE} />)
@@ -667,7 +820,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     const user = userEvent.setup({ advanceTimers: () => {} })
     const { rerender } = draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
 
     rerender(<BitDashboard today={NEXT_DAY} initial={NONE} />)
     expect(reads[1]!.deps.signal?.aborted).toBe(true)
@@ -685,11 +838,11 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     await answer(NOT_READY)
     noText(UNREADABLE)
 
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
     expectUnreadable()
 
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     noText(UNREADABLE)
     await answer(NOT_READY)
     expectUnreadable()
@@ -703,7 +856,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
       </StrictMode>,
     )
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(NOT_READY)
     expectUnreadable()
   })
@@ -724,20 +877,20 @@ describe('AC-601.17: 읽는 동안 움직이는 표시', () => {
     const user = userEvent.setup({ advanceTimers: () => {} })
     const { container } = draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
 
-    const reading = button('다시 읽는 중')
+    const reading = button(BIT_READING)
     const spin = reading.firstElementChild!
     hasAll(spin, 'bit-read-spin')
     expect(spin.getAttribute('aria-hidden')).toBe('true')
-    expect(reading.textContent).toBe('다시 읽는 중')
+    expect(reading.textContent).toBe(BIT_READING)
     expect(motionMarks(container)).toEqual(['bit-read-spin'])
     expect(screen.queryByRole('progressbar')).toBeNull()
   })
 
   it('AC-601.17: 저장 숫자를 둔 채 읽을 때도 [다시 읽는 중]에 도는 표시가 있다', () => {
     const { container } = draw(SAVED)
-    hasAll(button('다시 읽는 중').firstElementChild!, 'bit-read-spin')
+    hasAll(button(BIT_READING).firstElementChild!, 'bit-read-spin')
     expect(motionMarks(container)).toEqual(['bit-read-spin'])
   })
 
@@ -745,9 +898,9 @@ describe('AC-601.17: 읽는 동안 움직이는 표시', () => {
     const user = userEvent.setup({ advanceTimers: () => {} })
     const { container } = draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(days(NEWER_DAYS))
-    expect(button('다시 읽기').firstElementChild).toBeNull()
+    expect(button(BIT_REREAD).firstElementChild).toBeNull()
     expect(motionMarks(container)).toEqual([])
   })
 })
@@ -778,7 +931,7 @@ describe('AC-601.4·AC-601.12: 저장 숫자 없이 읽기 실패', () => {
     expectGainsOfReading()
     noText(REPORT_NAME)
     noText('자동 집계 요약')
-    noButton('다시 읽기')
+    noButton(BIT_REREAD)
   })
 
   it('AC-601.4: [다시 확인]을 누르면 다시 읽고, 읽는 중 모양으로 돌아간다', async () => {
@@ -821,7 +974,7 @@ describe('AC-601.5·AC-601.12: 숫자가 있는 상태에서 다시 읽기 실�
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     vi.setSystemTime(AT_345)
     await answer(failed(code))
     return user
@@ -844,8 +997,8 @@ describe('AC-601.5·AC-601.12: 숫자가 있는 상태에서 다시 읽기 실�
 
   it('AC-601.5: 이때 [다시 읽기]는 없다', async () => {
     await failAfterRead('E-BIT-READ-FAILED')
-    noButton('다시 읽기')
-    noButton('다시 읽는 중')
+    noButton(BIT_REREAD)
+    noButton(BIT_READING)
   })
 
   it('AC-601.5: 상자의 [다시 확인]은 숫자를 둔 채 다시 읽고, 그동안 상자는 사라진다', async () => {
@@ -853,7 +1006,7 @@ describe('AC-601.5·AC-601.12: 숫자가 있는 상태에서 다시 읽기 실�
     await user.click(within(screen.getByRole('alert')).getByRole('button', { name: '다시 확인' }))
     expect(readBitDays).toHaveBeenCalledTimes(3)
     expect(screen.queryByRole('alert')).toBeNull()
-    expect((button('다시 읽는 중') as HTMLButtonElement).disabled).toBe(true)
+    expect((button(BIT_READING) as HTMLButtonElement).disabled).toBe(true)
     expectNumbersShown(64, 9, 55)
   })
 
@@ -921,7 +1074,7 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
     draw()
     await answer(days([]))
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
-    expect(button('다시 읽기')).toBeTruthy()
+    expect(button(BIT_REREAD)).toBeTruthy()
     expect(within(flow()).queryByText(/생기는 것/)).toBeNull()
     expect(within(flow()).getByRole('heading', { level: 3, name: '환자 수 추이' })).toBeTruthy()
     expect(within(todaySection()).queryByText(/읽기가 끝나면|연결하면/)).toBeNull()
@@ -931,7 +1084,7 @@ describe('AC-601.11: 읽기는 성공했지만 일 숫자가 빈 배열', () => 
     const user = userEvent.setup({ advanceTimers: () => {} })
     draw()
     await answer(days([]))
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     await answer(failed('E-BIT-READ-FAILED'))
 
     const box = screen.getByRole('alert')
@@ -953,8 +1106,8 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     draw(SAVED)
     expect(readBitDays).not.toHaveBeenCalled()
     expectNumbersShown(5, 2, 3)
-    noButton('다시 읽기')
-    noButton('다시 읽는 중')
+    noButton(BIT_REREAD)
+    noButton(BIT_READING)
     noText(READ_AT)
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -964,7 +1117,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     draw(SAVED)
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expectNumbersShown(5, 2, 3)
-    expect((button('다시 읽는 중') as HTMLButtonElement).disabled).toBe(true)
+    expect((button(BIT_READING) as HTMLButtonElement).disabled).toBe(true)
     noText(READ_AT)
     noText(READ_H1)
   })
@@ -975,7 +1128,7 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     await answer(days())
     expectNumbersShown(64, 9, 55)
     expect(screen.getByText(READ_AT_342)).toBeTruthy()
-    expect(button('다시 읽기')).toBeTruthy()
+    expect(button(BIT_REREAD)).toBeTruthy()
   })
 
   it('AC-601.13: 실패하면 저장 숫자를 둔 채 AC-601.5의 오류 상자를 보인다. 읽은 적이 없으니 시각 대신 "저장해 둔 그대로"다', async () => {
@@ -991,16 +1144,16 @@ describe('AC-601.13: 처음 자료로 받은 저장 숫자', () => {
     expect(within(box).getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(within(box).getByRole('link', { name: '연결 확인' }).getAttribute('href')).toBe(CONNECT_CHECK)
     noText(READ_AT)
-    noButton('다시 읽기')
+    noButton(BIT_REREAD)
   })
 
-  it('AC-601.13: 비트 PC가 아니어서 답이 not-ready면 저장 숫자를 그대로 두고 아무것도 더하지 않는다', async () => {
+  it('AC-601.13·AC-2701.7: 비트 PC가 아니어서 답이 not-ready면 저장 숫자를 그대로 두고 안내·오류를 더하지 않는다 — [비트에서 다시 읽기]는 남아 다시 시도할 수 있다', async () => {
     onBitPc()
     draw(SAVED)
     await answer(NOT_READY)
     expectNumbersShown(5, 2, 3)
-    noButton('다시 읽기')
-    noButton('다시 읽는 중')
+    expect((button(BIT_REREAD) as HTMLButtonElement).disabled).toBe(false)
+    noButton(BIT_READING)
     noText(READ_AT)
     expect(screen.queryByRole('alert')).toBeNull()
     noText(CONNECT_H1)
@@ -1083,7 +1236,7 @@ describe('AC-601.19·AC-601.14: 비트 숫자가 오면 알린다(onBitLoaded)',
     const loaded = vi.fn()
     drawWith(loaded)
     await answer(days())
-    fireEvent.click(button('다시 읽기'))
+    fireEvent.click(button(BIT_REREAD))
     await answer(days(NEWER_DAYS))
     expect(loaded).toHaveBeenCalledTimes(2)
   })
@@ -1133,7 +1286,7 @@ describe('AC-606.7·AC-606.1·AC-606.5: 통계 탭 묶음(groups)', () => {
     expect(readBitDays).toHaveBeenCalledTimes(1)
     expect(reads[0]!.deps.groups).toEqual(GROUPS.defs)
     await answer(days(BIT_KEYED))
-    fireEvent.click(button('다시 읽기'))
+    fireEvent.click(button(BIT_REREAD))
     expect(readBitDays).toHaveBeenCalledTimes(2)
     expect(reads[1]!.deps.groups).toEqual(GROUPS.defs)
   })
@@ -1231,7 +1384,7 @@ describe('모양 규칙', () => {
     const user = userEvent.setup({ advanceTimers: () => {} })
     const { container } = draw()
     await answer(days())
-    await user.click(button('다시 읽기'))
+    await user.click(button(BIT_REREAD))
     expect(nestedBoxes(container)).toEqual([])
     expect(container.innerHTML).not.toMatch(/\banimate-|overflow-hidden|rounded-full/)
     expect(motionMarks(container)).toEqual(['bit-read-spin'])
@@ -1281,7 +1434,7 @@ describe('AC-605.1·AC-605.7: 날짜 줄', () => {
   it('AC-605.1: 다시 읽는 중에도 날짜 고르기가 있다', async () => {
     onBitPc()
     draw(SAVED)
-    expect(button('다시 읽는 중')).toBeTruthy()
+    expect(button(BIT_READING)).toBeTruthy()
     expectDateControl()
   })
 
@@ -1463,9 +1616,9 @@ describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
   it('AC-605.6: [다시 읽기] 동안과 그 뒤에도 고른 날이 유지되고, 새 숫자로 그린다', async () => {
     await readDays()
     pickDay('2026-10-26')
-    fireEvent.click(button('다시 읽기'))
+    fireEvent.click(button(BIT_REREAD))
     expect(reads).toHaveLength(2)
-    expect(button('다시 읽는 중')).toBeTruthy()
+    expect(button(BIT_READING)).toBeTruthy()
     expect(dateInput().value).toBe('2026-10-26')
     expect(bigLine().textContent).toBe(PAST_H1)
 
@@ -1478,7 +1631,7 @@ describe('AC-605.6: 날짜를 바꿔도 다시 읽지 않는다', () => {
   it('AC-605.6: 다시 읽기가 실패해도 고른 날이 유지된다', async () => {
     await readDays()
     pickDay('2026-10-26')
-    fireEvent.click(button('다시 읽기'))
+    fireEvent.click(button(BIT_REREAD))
     await answer(failed('E-BIT-READ-FAILED'))
     expect(screen.getByRole('alert')).toBeTruthy()
     expect(dateInput().value).toBe('2026-10-26')
@@ -1598,7 +1751,7 @@ describe('AC-605.8: 월말 덧말', () => {
   it('AC-605.8: 다시 읽는 중·다시 읽기 실패에도 붙는다', async () => {
     onBitPc()
     openMonthEnd({ kind: 'data', days: MONTH_END_DAYS })
-    expect(button('다시 읽는 중')).toBeTruthy()
+    expect(button(BIT_READING)).toBeTruthy()
     expect(note()).not.toBeNull()
     await answer(failed('E-BIT-READ-FAILED'))
     expect(screen.getByRole('alert')).toBeTruthy()

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { DailySection } from '@/components/dashboard/summary/DailySection'
@@ -13,7 +13,7 @@ import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
 import { createStatsWorker } from '@/workers/statsClient'
 import { DateControl, inDateRange } from './DateControl'
-import { BIT_IN_USE, ReadFailed, ReadingBlock, RereadAlert, StatusHeader, UnreadableNote } from './ReadStatus'
+import { BIT_IN_USE, ReadFailed, ReadingBlock, RereadAlert, SavedRefreshAlert, StatusHeader, UnreadableNote, type SavedRefresh } from './ReadStatus'
 import { readBitDays, type ReadResult } from './readBitDays'
 import type { DashboardGroups } from './rxGroups'
 
@@ -22,7 +22,8 @@ import type { DashboardGroups } from './rxGroups'
 // 고른 날은 여기 상태 하나다(design.md '### 날짜 고르기'). 주소·저장소에 두지 않아 새로 열면 오늘이고, 이미 읽은 숫자로 그려 비트를 다시 읽지 않는다(AC-605.6)
 // 통계 탭 묶음(groups)은 LiveDashboard가 읽어 넘긴다. 비트 읽기에 묶음 정의를 싣고(AC-606.7), 처방 상위는 그 묶음으로 센다(AC-606.1·AC-606.5).
 // 묶음을 아직 읽는 중('pending')이면 저장 숫자로 먼저 그리고 비트 읽기만 묶음이 끝날 때까지 미룬다(dashboard-ux AC-2701.2).
-// 숫자가 있으면 머리 줄(StatusHeader)이 상태 표시·시각 글·[다시 읽기]를 맡는다(AC-2701.3). 화면 차례는 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 요약 → 기간별 흐름이다(AC-2707.2)
+// 숫자가 있으면 머리 줄(StatusHeader)이 상태 표시·시각 글·읽기 단추([저장된 숫자 새로고침]·[비트에서 다시 읽기] 또는 연결 안내)를 맡는다(AC-2701.3·AC-2701.7).
+// 저장 숫자 새로고침은 LiveDashboard가 읽고(savedRefresh), 새 처음 자료가 오면 다시 놓지 않고 화면 숫자만 바꾼다(AC-2701.8). 화면 차례는 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 요약 → 기간별 흐름이다(AC-2707.2)
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
@@ -57,6 +58,17 @@ function chromeRuntime(): ChromeRuntimeLike | undefined {
   return (globalThis as { chrome?: { runtime?: ChromeRuntimeLike } }).chrome?.runtime
 }
 
+// 이 브라우저에서 비트를 읽을 수 있는지(chrome.runtime 있음, AC-2701.7). 서버 그림은 모르므로 false(연결 안내)이고 붙은 뒤에 바꾼다(어긋남 없음).
+// 페이지가 떠 있는 동안 확장이 생기거나 없어지는 것은 따라가지 않는다(새로 열면 다시 본다)
+const noSubscribe = () => () => {}
+const hasRuntime = () => chromeRuntime() !== undefined
+const serverHasRuntime = () => false
+
+/** 새 처음 자료(저장 숫자 새로고침 성공, AC-2701.8): 화면 숫자가 저장 숫자일 때만 그 숫자로 바꾼다. 비트에서 읽은 숫자는 그대로 둔다 */
+function adoptSaved(status: Status, initial: SummarySource): Status {
+  return status.kind === 'data' && status.readAt === null && isConnected(initial) ? { ...status, days: initial.days } : status
+}
+
 // 상태별 칩·숫자 칸 글(design.md '### 화면', 시안 today_sec·flow_empty)
 type EmptyLook = Pick<DashboardAnalysisProps, 'emptyChip' | 'emptyText' | 'emptyNote' | 'gainsTitle' | 'gainsNote' | 'gainsRevisitDesc' | 'emptyCharts'>
 const GAINS_OF_READING: EmptyLook = {
@@ -87,7 +99,9 @@ function emptyLook(status: Status): EmptyLook {
  * 'pending' = 묶음을 읽는 중(처방 상위는 "묶음을 읽는 중", 비트 읽기는 묶음이 끝날 때 한 번 시작한다. 그때 다시 놓지 않는다 — AC-2701.2).
  * savedAt: 처음 자료(저장 숫자)의 마지막 저장 시각(readDays latest.at). 머리 줄 시각 글에 쓴다(AC-2701.3). 없으면 null
  * older: 기간별 흐름의 옛 기간 읽기(dashboard-period REQ-1804, LiveDashboard가 저장 숫자로 만든다). 받은 그대로 source 안에 넣는다.
- * 비트 읽기(stats.rows, 오늘 − 100 ~ 오늘)는 지금처럼 열 때와 [다시 읽기]에만 하고, 기간을 골라도 하지 않는다(AC-1804.4)
+ * 비트 읽기(stats.rows, 오늘 − 100 ~ 오늘)는 지금처럼 열 때와 [비트에서 다시 읽기]에만 하고, 기간을 골라도 하지 않는다(AC-1804.4)
+ * savedRefresh: 저장 숫자 새로고침(LiveDashboard가 읽는 중·실패와 누름을 준다, AC-2701.7·AC-2701.8). 주지 않으면 그 단추가 없다.
+ * initial이 새 값으로 바뀌면(새로고침 성공) 다시 놓지 않고 화면 숫자만 바꾼다 — 고른 날·AI 요약이 그대로이고 비트 읽기를 새로 시작하지 않는다
  */
 export function BitDashboard({
   today,
@@ -96,6 +110,7 @@ export function BitDashboard({
   savedAt = null,
   older,
   onBitLoaded,
+  savedRefresh,
 }: {
   today: string
   initial: SummarySource
@@ -103,8 +118,16 @@ export function BitDashboard({
   savedAt?: string | null
   older?: OlderDays
   onBitLoaded?: () => void
+  savedRefresh?: SavedRefresh
 }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
+  // 새 처음 자료가 오면(저장 숫자 새로고침 성공) 그리는 중에 상태를 맞춘다 — 다시 놓지 않는다(AC-2701.8)
+  const [shownInitial, setShownInitial] = useState(initial)
+  if (shownInitial !== initial) {
+    setShownInitial(initial)
+    setStatus((current) => adoptSaved(current, initial))
+  }
+  const bitReadable = useSyncExternalStore(noSubscribe, hasRuntime, serverHasRuntime)
   const [attempt, setAttempt] = useState(0)
   const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
@@ -190,9 +213,28 @@ export function BitDashboard({
           <ReadFailed code={status.code} onRetry={readAgain} />
         ) : (
           <>
-            {/* 머리 줄(AC-2701.3): h1 "대시보드" · 상태 · 시각 · [다시 읽기]. 다시 읽기 실패·읽을 수 없음 안내는 바로 아래 */}
-            <StatusHeader readAt={status.readAt} savedAt={savedAt} reading={status.reading} failed={status.code !== null} onReread={readAgain} />
-            {status.code !== null && <RereadAlert code={status.code} readAt={status.readAt} hasNumbers={status.days.length > 0} onRetry={readAgain} />}
+            {/* 머리 줄(AC-2701.3·AC-2701.7): h1 "대시보드" · 상태 · 시각 · 읽기 단추. 다시 읽기 실패·새로고침 실패·읽을 수 없음 안내는 바로 아래 */}
+            <StatusHeader
+              readAt={status.readAt}
+              savedAt={savedAt}
+              reading={status.reading}
+              failed={status.code !== null}
+              onReread={readAgain}
+              bitReadable={bitReadable}
+              savedRefresh={savedRefresh ?? null}
+            />
+            {status.code !== null && (
+              <RereadAlert
+                code={status.code}
+                readAt={status.readAt}
+                hasNumbers={status.days.length > 0}
+                onRetry={readAgain}
+                disabled={savedRefresh?.refreshing === true}
+              />
+            )}
+            {savedRefresh?.failed === true && status.readAt === null && (
+              <SavedRefreshAlert refreshing={savedRefresh.refreshing} disabled={savedRefresh.refreshing || status.reading} onRetry={savedRefresh.onRefresh} />
+            )}
             {status.unreadable && <UnreadableNote />}
           </>
         )

@@ -18,6 +18,8 @@ import { toSummarySource, type OlderDays, type SummarySource } from './source'
 // 통계 탭 묶음(처방 상위, REQ-606)도 여기 한 곳이 화면을 열 때 한 번 읽어 BitDashboard에 넘긴다(AC-606.8). 저장 숫자가 오면 묶음을 기다리지 않고
 // BitDashboard를 놓고, 묶음은 읽는 동안 'pending'으로 넘긴다(처방 상위만 "묶음을 읽는 중", 비트 읽기는 묶음이 끝난 뒤 — AC-2701.2·AC-606.7).
 // [다시 읽기]와 날짜가 바뀔 때는 저장 숫자만 다시 읽고 묶음은 처음 값을 그대로 둔다(AC-606.5, design.md '처방 상위 = 통계 탭 묶음')
+// 숫자가 있는 화면의 [저장된 숫자 새로고침]도 같은 [다시 읽기]다(dashboard-ux AC-2701.7·AC-2701.8): 화면에 저장 숫자가 이미 있으면 성공해도 BitDashboard를
+// 다시 놓지 않고 새 처음 자료·저장 시각만 넘기며(고른 날·AI 요약 유지, 비트 읽기를 새로 시작하지 않음), 실패는 위쪽 카드가 아니라 머리 줄 아래 상자(BitDashboard)다
 // 늦게 온 답(떠난 뒤·날짜가 바뀐 뒤)은 상태를 바꾸지 않는다(AC-2701.6)
 
 export const SAVED_READ_TIMEOUT_MS = 10_000
@@ -59,10 +61,12 @@ function withAnswer(state: Drawn | null, result: SavedResult | null): Drawn {
   if (state === null) return { initial, savedAt, round: 0, failed: result === null, retrying: false, bitLoaded: false }
   if (state.bitLoaded) return { ...state, retrying: false }
   if (result === null) return { ...state, failed: true, retrying: false }
-  // 다시 읽기 성공: 카드를 거두고, 숫자가 있으면 그 숫자(와 저장 시각)로 BitDashboard를 새로 놓는다
-  return initial.kind === 'data'
-    ? { ...state, initial, savedAt, round: state.round + 1, failed: false, retrying: false }
-    : { ...state, failed: false, retrying: false }
+  if (initial.kind !== 'data') return { ...state, failed: false, retrying: false }
+  // 다시 읽기 성공: 카드를 거둔다. 화면에 저장 숫자가 이미 있으면 다시 놓지 않고 새 숫자·저장 시각만 넘긴다(AC-2701.8),
+  // 없었으면(처음 읽기 실패) 그 숫자로 BitDashboard를 새로 놓는다
+  return state.initial.kind === 'data'
+    ? { ...state, initial, savedAt, failed: false, retrying: false }
+    : { ...state, initial, savedAt, round: state.round + 1, failed: false, retrying: false }
 }
 
 export function LiveDashboard({ today }: { today: string }) {
@@ -115,10 +119,14 @@ export function LiveDashboard({ today }: { today: string }) {
     })
   }
 
+  // 저장 숫자를 손에 들고 있으면(toSummarySource는 줄이 있을 때만 data) 새로고침 단추·실패 상자는 머리 줄이 맡는다(AC-2701.7·AC-2701.8).
+  // 없으면(처음 읽기 실패) 위쪽 카드가 맡는다. 연결 판정은 하지 않는다(AC-601.14)
+  const showsSaved = drawn.initial.kind === 'data'
+
   return (
     <>
       {/* 오류 카드와 그 아래 [다시 읽기]: 시안에 없어 통계 탭의 같은 카드 모양(StatsScreen ErrorWithAction)을 따른다 */}
-      {drawn.failed && !drawn.bitLoaded && (
+      {drawn.failed && !drawn.bitLoaded && !showsSaved && (
         <div className="mt-4">
           <ErrorCard code="E-STATS-READ-FAILED" />
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -137,6 +145,7 @@ export function LiveDashboard({ today }: { today: string }) {
         groups={groups === undefined ? 'pending' : groups}
         older={older}
         onBitLoaded={markBitLoaded}
+        savedRefresh={showsSaved ? { refreshing: drawn.retrying, failed: drawn.failed, onRefresh: readAgain } : undefined}
       />
     </>
   )

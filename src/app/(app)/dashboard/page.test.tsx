@@ -343,7 +343,18 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
       <DashboardHome
         today={TODAY}
         dateLine={null}
-        report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />}
+        report={
+          // 비트를 읽을 수 없는 브라우저(chrome.runtime 없음) + 저장 숫자 새로고침(dashboard-ux AC-2701.7)
+          <StatusHeader
+            readAt={null}
+            savedAt={null}
+            reading={false}
+            failed={false}
+            onReread={() => {}}
+            bitReadable={false}
+            savedRefresh={{ refreshing: false, failed: false, onRefresh: () => {} }}
+          />
+        }
         analysis={
           <>
             <DailySection
