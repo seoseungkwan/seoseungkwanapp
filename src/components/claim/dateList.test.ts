@@ -299,3 +299,56 @@ describe('AC-013.2 [입력 안 된 날짜 모두]가 진짜 건수를 따른다'
     expect(unfinishedPeriod(rows)).toEqual({ from: '2026-09-11', to: '2026-10-15' })
   })
 })
+
+describe('claim-day-done: 완료 표시한 날은 끝난 날이다(REQ-2804)', () => {
+  const closed = new Set(['2026-10-27'])
+
+  it('AC-2804.1: 완료 표시 날은 남은 메모·진료 수와 상관없이 done이고 끝난 날 묶음에 들며 상태는 완료다', () => {
+    const rows = buildDateList(
+      [day('2026-10-24', 20), day('2026-10-27', 50), day('2026-10-28', 51)],
+      [count('2026-10-24', 2, 2, 20), count('2026-10-27', 53, 32, 49), count('2026-10-28', 7, 2, 51)],
+      closed,
+    )
+    expect(rows.map((r) => [r.date, r.done])).toEqual([
+      ['2026-10-28', false],
+      ['2026-10-27', true],
+      ['2026-10-24', true],
+    ])
+    const marked = rows.find((r) => r.date === '2026-10-27')!
+    expect(statusOf(marked)).toEqual({ label: '완료', tone: 'positive' })
+    // 숫자는 서버 건수 그대로다
+    expect([marked.needMemo, marked.entered, marked.left]).toEqual([53, 32, 21])
+  })
+
+  it('AC-2804.1: 건수를 아직 불러오지 않은 날도 완료 표시가 있으면 끝난 날이다', () => {
+    const [row] = buildDateList([day('2026-10-27', 50)], [], closed)
+    expect(row.done).toBe(true)
+  })
+
+  it('AC-2804.1: 완료 표시 없는 날은 지금 규칙 그대로다(세 번째 인자를 안 주면 지금과 같다)', () => {
+    const days = [day('2026-10-27', 50), day('2026-10-28', 51)]
+    const counts = [count('2026-10-27', 53, 32, 50), count('2026-10-28', 7, 7, 51)]
+    expect(buildDateList(days, counts, new Set(['2026-09-01']))).toEqual(buildDateList(days, counts))
+    expect(buildDateList(days, counts).map((r) => r.done)).toEqual([false, true])
+  })
+
+  it('AC-2804.2: 완료 표시 날은 남은 일 있는 더 옛날로 치지 않는다', () => {
+    const counts = [count('2026-07-01', 3, 1), count('2026-08-01', 3, 1)]
+    expect(listRange('2026-11-04', counts, new Set(['2026-07-01']))).toEqual({ from: '2026-08-01', to: '2026-11-04' })
+    expect(listRange('2026-11-04', counts, new Set(['2026-07-01', '2026-08-01']))).toEqual({ from: '2026-09-06', to: '2026-11-04' })
+    expect(listRange('2026-11-04', counts)).toEqual({ from: '2026-07-01', to: '2026-11-04' })
+  })
+
+  it('AC-2804.3: [입력 안 된 날짜 모두]·처음 기간에 완료 표시 날이 들지 않는다', () => {
+    const rows = buildDateList(
+      [day('2026-10-26', 30), day('2026-10-27', 50), day('2026-10-28', 51)],
+      [count('2026-10-26', 4, 1, 30), count('2026-10-27', 53, 32, 50), count('2026-10-28', 7, 2, 51)],
+      new Set(['2026-10-26']),
+    )
+    expect(unfinishedPeriod(rows)).toEqual({ from: '2026-10-27', to: '2026-10-28' })
+    expect(defaultPeriod(rows, '2026-11-08')).toEqual({ from: '2026-10-27', to: '2026-10-28' })
+    const allClosed = buildDateList([day('2026-10-27', 50)], [count('2026-10-27', 53, 32, 50)], closed)
+    expect(unfinishedPeriod(allClosed)).toBeNull()
+    expect(defaultPeriod(allClosed, '2026-11-08')).toEqual({ from: '2026-11-08', to: '2026-11-08' })
+  })
+})
