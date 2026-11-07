@@ -30,6 +30,8 @@ export type ErrorCode =
   | 'E-MEMO-NO-SETTINGS'
   // 입력 건수를 서버에 올리거나 읽지 못함(TASK-19)
   | 'E-COUNTS-FAILED'
+  // 날짜별 완료 표시를 저장·되돌리지 못함(lib/storage/claimDayCloses.ts, spec claim-day-done)
+  | 'E-DAYCLOSE-FAILED'
   // 비트 입력이 멈춘 번호(도우미 끝 JSON의 code, AC-018.21): 입력 멈춤 · 저장 안 한 처방 창 · 비트 화면 칸이 달라짐
   | 'E-INPUT-STOPPED' | 'E-BIT-UNSAVED-RX' | 'E-BIT-UI-CHANGED'
   // AI 리포트(spec ai-report design.md '오류 문구')
