@@ -29,6 +29,7 @@ export type BarBucket = {
 // dense: 칸이 많은 그림용. 막대 위 합계·상태 글자를 그리지 않는다(화면 읽기 표는 그대로, tab-frame REQ-314). 아래 날짜 글자는 부르는 쪽이 label로 고른다(빈 label = 빈칸)
 // thinLabels: 768px 미만에서 날짜 글자를 하나 걸러 보인다(0부터 홀수 번째 칸 글자만 max-md:invisible, 자리는 그대로. ui-90 AC-421.2).
 // hideZeroTotals: 합계 0인 칸은 막대 위 글자(합계·상태)를 그리지 않는다. 화면 읽기 표는 그대로다(rx-picker AC-806.7).
+// srTable: false면 화면 읽기 표(와 감싼 칸)를 그리지 않는다 — 부르는 쪽이 같은 숫자의 보이는 표(ChartTable)를 펼친 동안(dashboard-ux AC-2706.1, 두 번 읽히지 않게).
 // 주지 않으면 지금 그림과 한 글자도 다르지 않다
 type Props = {
   title: string
@@ -39,10 +40,12 @@ type Props = {
   dense?: boolean
   thinLabels?: boolean
   hideZeroTotals?: boolean
+  srTable?: boolean
 }
 
 const TONE: Record<BarSeries['tone'], string> = { accent: 'bg-accent', 'chart-3': 'bg-chart-3', 'hatch-warning': 'relative border border-warning bg-warning-soft' }
-const STATE_TEXT: Record<BucketState, string> = { complete: '완료', 'in-progress': '집계 중', partial: '일부 기간' }
+// 칸 상태 글. 보이는 표(ChartTable)도 같은 글을 쓴다
+export const STATE_TEXT: Record<BucketState, string> = { complete: '완료', 'in-progress': '집계 중', partial: '일부 기간' }
 
 // 그림 칸 높이(400px 이하 — 빗금 마지막 선 k = 440이 폭 40px까지 덮는다)·눈금 글자 칸 폭(기간 글자 줄도 같은 폭만큼 띄운다)·막대 최대 폭·단위 줄과 그림 칸 사이.
 // 띄우는 값은 간격 단계 안에서 고른다(UI_GUIDE '간격')
@@ -71,7 +74,17 @@ function HatchLines({ color }: { color: string }) {
   )
 }
 
-export function StackedBarChart({ title, unit, series, buckets, compact = false, dense = false, thinLabels = false, hideZeroTotals = false }: Props) {
+export function StackedBarChart({
+  title,
+  unit,
+  series,
+  buckets,
+  compact = false,
+  dense = false,
+  thinLabels = false,
+  hideZeroTotals = false,
+  srTable = true,
+}: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
   // 눈금·비교 막대·굵은 합계는 진짜 칸(blank 없음)만으로 잡는다
@@ -143,43 +156,45 @@ export function StackedBarChart({ title, unit, series, buckets, compact = false,
         </div>
       </div>
       {/* 표의 sr-only만으로는 1px 제한이 안 먹어 줄 수만큼 길어지고 쪽 아래에 빈 곳을 만든다. 감싼 칸이 잘라 준다(AC-601.18) */}
-      <div className="sr-only">
-        <table className="sr-only">
-          <caption>
-            {title} ({unit})
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">기간</th>
-              {series.map((s, i) => (
-                <th key={i} scope="col">
-                  {s.name}
-                </th>
-              ))}
-              <th scope="col">합계</th>
-              <th scope="col">상태</th>
-              {compared && <th scope="col">비교 기간</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {buckets.map((bucket, i) => {
-              if (bucket.blank === 'future') return null
-              const noData = bucket.blank === 'no-data'
-              return (
-                <tr key={bucket.key}>
-                  <th scope="row">{bucket.rangeLabel}</th>
-                  {series.map((_, j) => (
-                    <td key={j}>{noData ? '–' : formatCount(bucket.values[j] ?? 0)}</td>
-                  ))}
-                  <td>{noData ? '–' : formatCount(totals[i]!)}</td>
-                  <td>{noData ? '–' : STATE_TEXT[bucket.state]}</td>
-                  {compared && <td>{!noData && typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {srTable && (
+        <div className="sr-only">
+          <table className="sr-only">
+            <caption>
+              {title} ({unit})
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">기간</th>
+                {series.map((s, i) => (
+                  <th key={i} scope="col">
+                    {s.name}
+                  </th>
+                ))}
+                <th scope="col">합계</th>
+                <th scope="col">상태</th>
+                {compared && <th scope="col">비교 기간</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {buckets.map((bucket, i) => {
+                if (bucket.blank === 'future') return null
+                const noData = bucket.blank === 'no-data'
+                return (
+                  <tr key={bucket.key}>
+                    <th scope="row">{bucket.rangeLabel}</th>
+                    {series.map((_, j) => (
+                      <td key={j}>{noData ? '–' : formatCount(bucket.values[j] ?? 0)}</td>
+                    ))}
+                    <td>{noData ? '–' : formatCount(totals[i]!)}</td>
+                    <td>{noData ? '–' : STATE_TEXT[bucket.state]}</td>
+                    {compared && <td>{!noData && typeof bucket.comparison === 'number' ? formatCount(bucket.comparison) : '–'}</td>}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

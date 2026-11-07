@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { checkCustom, pickRange, type StatsPick } from '@/components/stats/periodPick'
 import { patientTrend } from '@/components/stats/view'
 import type { DayPayload } from '@/types/payload'
-import { flowDense, flowOf, flowTicks, flowTrend, QUICK_CHOICE, rankLine, todayFinished, type FlowChoice } from './flow'
+import { flowBasis, flowDense, flowOf, flowTicks, flowTrend, QUICK_CHOICE, rankLine, todayFinished, type FlowChoice } from './flow'
 import { PERIODS, periodRange, tickLabels, trendBuckets } from './view'
 
 // 대시보드 기간별 흐름의 고른 기간 잇기 (dashboard-period REQ-1801·REQ-1802·REQ-1803, design.md 'summary/flow.ts').
@@ -248,5 +248,19 @@ describe('rankLine — 처방 상위 날짜 줄 (AC-1803.1·AC-1803.2)', () => {
 
   it('AC-1803.2: 날 수는 천 단위 쉼표 글자다', () => {
     expect(rankLine(flow(custom('2021-01-01', '2025-12-31', 'month')), 1500)).toBe('2021년 1월 1일 – 2025년 12월 31일 · 자료 있는 1,500일')
+  })
+})
+
+// 그래프 설명 줄·표 캡션의 기간 기준 (dashboard-ux REQ-2706 AC-2706.3)
+describe('flowBasis — 기간 기준 글 (AC-2706.3)', () => {
+  it.each(PERIODS)("AC-2706.3: 빠른 단추 %i일은 '최근 N일'이다", (period) => {
+    expect(flowBasis(flow(period))).toBe(`최근 ${period}일`)
+  })
+
+  it('AC-2706.3: 고른 기간은 그 기간 글(머리 줄 기간 글 그대로)이다', () => {
+    expect(flowBasis(flow(month('2026-10')))).toBe('10월 1일 – 31일')
+    expect(flowBasis(flow(month('2026-11')))).toBe('11월 1일 – 5일 (어제까지)')
+    expect(flowBasis(flow(custom('2025-12-20', '2026-01-10')))).toBe('2025년 12월 20일 – 2026년 1월 10일')
+    for (const pick of [month('2026-10', 'week'), year('2026')]) expect(flowBasis(flow(pick))).toBe(flow(pick).head)
   })
 })

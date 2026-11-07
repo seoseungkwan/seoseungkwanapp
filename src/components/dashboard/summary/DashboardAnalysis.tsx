@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useId, useState, type ReactNode } from 'react'
 import { ChartLegend, type LegendItem } from '@/components/charts/ChartLegend'
-import { formatDelta, formatRate, percentOf } from '@/components/charts/format'
+import { DeltaText } from '@/components/charts/DeltaText'
+import { formatRate, percentOf } from '@/components/charts/format'
 import { KpiStat } from '@/components/charts/KpiStat'
 import { RankedBars } from '@/components/charts/RankedBars'
 import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
@@ -12,8 +13,9 @@ import { PeriodPicker } from '@/components/stats/PeriodPicker'
 import { ds } from '@/components/ui/classes'
 import type { Delta, TrendBucket } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import { flowDense, flowOf, flowTicks, flowTrend, rankLine, todayFinished, type Flow, type FlowChoice } from './flow'
+import { flowBasis, flowDense, flowOf, flowTicks, flowTrend, rankLine, todayFinished, type Flow, type FlowChoice } from './flow'
 import { isConnected, type RxGroupLine, type SummarySource } from './source'
+import { TableToggle } from './TableToggle'
 import { usePeriodDays, type PeriodDays } from './usePeriodDays'
 import {
   dayCount,
@@ -36,7 +38,7 @@ import {
 // 시안 docs/mockups/dashboard-home/index.html + 메모 §3 '오늘 하루 분석'·'기간별 흐름', 문구는 메모 §4 그대로).
 // 상태는 고른 것 하나(빠른 단추 또는 통계 탭 기간 고르기의 고른 기간, 처음 30일, dashboard-period)와 옛 기간 읽기(usePeriodDays)뿐이다. 연결 전(자료 없음)에는 숫자를 지어내지 않는다(ui-90 REQ-414, 시안 docs/mockups/ui-90/app/gen.py dash_body):
 //   오늘 하루 분석 = 칩 "비트 PC 연결 전" + 빈 숫자 칸 넷 + 안내 줄, 기간별 흐름 = "연결하면 생기는 것 4가지" 순서 목록 + 안내 줄(빈 그래프 틀·차트 부품 없음).
-// 연결 뒤 그래프는 차트 부품(components/charts)을 고치지 않고 불러 쓴다. 그래프는 움직이지 않는다 — 짧은 반응은 기간 단추와 '처방 상위' 머리 링크(ds.textButton)에만(150ms)
+// 연결 뒤 그래프는 차트 부품(components/charts)을 고치지 않고 불러 쓴다. 그래프는 움직이지 않는다 — 짧은 반응은 기간 단추와 '처방 상위' 머리 링크(ds.textButton)·[표로 보기] 단추(ds.button, dashboard-ux AC-2706.1)에만(150ms)
 
 const SECTION = 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4' // 메모 §3 '덩어리 사이'
 const SECTION_HEAD = 'mb-4 flex flex-wrap items-center gap-3'
@@ -86,6 +88,10 @@ const TREND_LEGEND: LegendItem[] = [
 // 고른 기간에 '일부 기간' 칸(잘린 주·끝나지 않은 달·덜 끝난 줄)이 있을 때만(통계 탭 환자 수 추이와 같은 빗금). 빠른 단추 범례는 지금 그대로다
 const TREND_LEGEND_PARTIAL: LegendItem[] = [...TREND_LEGEND, { label: '일부 기간', mark: 'hatch' }]
 const TREND_DESC: Record<TrendBucket, string> = { day: '신환·재진, 하루씩', week: '신환·재진, 한 주씩', month: '신환·재진, 한 달씩' }
+const WEEK_DESC = '하루 평균, 요일마다'
+// 표가 있는 두 그래프(환자 수 추이·요일별 환자 수)의 설명 줄·표 캡션 뒤에 붙는 단위와 기간 기준(dashboard-ux AC-2706.3)
+const UNIT = '단위 명'
+const withBasis = (text: string, flow: Flow) => `${text} · ${UNIT} · ${flowBasis(flow)}`
 const READING = '읽는 중' // 옛 기간을 읽는 동안 그래프 넷 가운데 글(AC-1804.2)
 const NO_ROWS: readonly DayPayload[] = []
 const WEEK_SERIES: BarSeries[] = [{ name: '환자 수', tone: 'accent' }]
@@ -263,14 +269,19 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
   const skipped = flow.period === null ? revisitSkipped(days, flow.current) : null
   return (
     <div className="grid gap-y-8 md:grid-cols-2 md:gap-x-6 lg:grid-cols-12">
-      <Chart title="환자 수 추이" desc={TREND_DESC[flow.bucket]} aside={<ChartLegend items={partial ? TREND_LEGEND_PARTIAL : TREND_LEGEND} />} className="md:col-span-2 lg:col-span-8">
+      <Chart
+        title="환자 수 추이"
+        desc={withBasis(TREND_DESC[flow.bucket], flow)}
+        aside={<ChartLegend items={partial ? TREND_LEGEND_PARTIAL : TREND_LEGEND} />}
+        className="md:col-span-2 lg:col-span-8"
+      >
         <TrendBody buckets={trend} flow={flow} message={empty} />
       </Chart>
       <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className="lg:col-span-4 lg:border-l lg:border-line lg:pl-6">
         <RevisitRows cells={cells} skipped={skipped} empty={empty} />
       </Chart>
-      <Chart title="요일별 환자 수" desc="하루 평균, 요일마다" className="lg:col-span-6">
-        <WeekBody buckets={reading ? null : weekdayBuckets(days, flow.current)} message={empty} />
+      <Chart title="요일별 환자 수" desc={withBasis(WEEK_DESC, flow)} className="lg:col-span-6">
+        <WeekBody buckets={reading ? null : weekdayBuckets(days, flow.current)} flow={flow} message={empty} />
       </Chart>
       <Chart
         title="처방 상위"
@@ -292,14 +303,18 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
   )
 }
 
-// 환자 수 추이: 자료가 있으면 칸마다 쌓은 막대(빠른 단추는 지금처럼 7일만 막대 위 합계, 고른 기간은 칸 7개 이하만),
-// 없으면(기간 안 자료 없음·읽는 중) 빈 틀 + 가운데 글 + 날짜 눈금(고른 기간의 주·달 칸은 눈금 없음)
+// 환자 수 추이: 자료가 있으면 칸마다 쌓은 막대(빠른 단추는 지금처럼 7일만 막대 위 합계, 고른 기간은 칸 7개 이하만) + 그 아래 [표로 보기](AC-2706.1),
+// 없으면(기간 안 자료 없음·읽는 중) 빈 틀 + 가운데 글 + 날짜 눈금(고른 기간의 주·달 칸은 눈금 없음). 표를 펼친 동안 그래프는 화면 읽기 표를 빼고 그린다
 function TrendBody({ buckets, flow, message }: { buckets: BarBucket[] | null; flow: Flow; message: string }) {
   if (buckets === null) return <EmptyTrend message={message} ticks={flowTicks(flow)} />
   return (
-    <div className={`mt-3 ${CHART_NO_SIDE_SCROLL}`}>
-      <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={flowDense(flow, buckets)} />
-    </div>
+    <TableToggle caption={withBasis('환자 수 추이', flow)} series={TREND_SERIES} buckets={buckets}>
+      {(open) => (
+        <div className={`mt-3 ${CHART_NO_SIDE_SCROLL}`}>
+          <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={flowDense(flow, buckets)} srTable={!open} />
+        </div>
+      )}
+    </TableToggle>
   )
 }
 
@@ -335,29 +350,17 @@ function TodayNumbers({ view, emptyText, past }: { view: TodayView | null; empty
 }
 
 // 넷째 칸의 값이 증감일 때. KpiStat의 값은 숫자 하나라 증감을 값으로 쓸 수 없어 같은 글자 단계로 따로 둔다:
-// 이름(small muted) → 값 줄(600: 화살표 꾸밈 + 화면 읽기 글자 + 증감 글자) → "지난주 {요일}요일"(small muted).
+// 이름(small muted) → 값 줄(600: DeltaText — 화살표 꾸밈 12px + 화면 읽기 글자 + 증감 글자, KpiStat 증감 줄과 같은 부품·색 규칙, dashboard-ux AC-2706.4) → "지난주 {요일}요일"(small muted).
 // 값 줄은 PC 20/36, 폰 16/32다(bit-dashboard design.md '### 날짜 고르기', 시안 .kpi-v.sm). metric(28)이면 좁은 폭에서 세 줄로 꺾이고, 글자 토큰의 줄 높이는 28·24라 줄 높이를 따로 준다
-const DELTA_ARROW = { up: 'M4 1.2 7.4 6.8H.6z', down: 'M4 6.8 7.4 1.2H.6z' } as const
-const DELTA_TONE = { up: 'text-positive', down: 'text-negative', flat: 'text-muted', none: 'text-muted' } as const
+const DELTA_VALUE = 'mt-1 flex flex-wrap items-center gap-x-1 text-title leading-9 font-semibold tabular-nums max-md:text-subtitle max-md:leading-8'
 
 function DeltaStat({ delta, weekday }: { delta: Delta; weekday: string }) {
-  const view = formatDelta(delta, '명')
-  const arrow = view.dir === 'up' || view.dir === 'down' ? DELTA_ARROW[view.dir] : null
   return (
     <div className="min-w-0">
       <div className="flex h-7 items-start">
         <span className="text-small text-muted">{LAST_WEEK_LABEL}</span>
       </div>
-      <p className={`mt-1 flex flex-wrap items-center gap-x-1 text-title leading-9 font-semibold tabular-nums max-md:text-subtitle max-md:leading-8 ${DELTA_TONE[view.dir]}`}>
-        {arrow && (
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 8 8" className="shrink-0">
-            <path d={arrow} fill="currentColor" />
-          </svg>
-        )}
-        {/* 낱말 사이 빈칸은 화면 읽기가 붙여 읽지 않게 둔다(KpiStat의 증감 줄과 같다) */}
-        {view.srText && <span className="sr-only">{view.srText}</span>}{' '}
-        <span>{view.text}</span>
-      </p>
+      <DeltaText delta={delta} unit="명" className={DELTA_VALUE} arrow={12} />
       <p className="text-small text-muted">{`지난주 ${weekday}요일`}</p>
     </div>
   )
@@ -459,13 +462,17 @@ function RateBar({ value }: { value: number | null }) {
   )
 }
 
-// 요일별 환자 수: 자료가 있으면 한 계열 막대, 기간 안 자료가 없으면(읽는 중 포함) 빈 막대 칸 7개(150px, 폰 110px) + 요일 글자 + 가운데 글
-function WeekBody({ buckets, message = NO_DATA }: { buckets: ReturnType<typeof weekdayBuckets>; message?: string }) {
+// 요일별 환자 수: 자료가 있으면 한 계열 막대 + 그 아래 [표로 보기](AC-2706.1), 기간 안 자료가 없으면(읽는 중 포함) 빈 막대 칸 7개(150px, 폰 110px) + 요일 글자 + 가운데 글
+function WeekBody({ buckets, flow, message = NO_DATA }: { buckets: ReturnType<typeof weekdayBuckets>; flow: Flow; message?: string }) {
   if (buckets !== null) {
     return (
-      <div className="mt-3">
-        <StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={buckets} />
-      </div>
+      <TableToggle caption={withBasis('요일별 환자 수', flow)} series={WEEK_SERIES} buckets={buckets}>
+        {(open) => (
+          <div className="mt-3">
+            <StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={buckets} srTable={!open} />
+          </div>
+        )}
+      </TableToggle>
     )
   }
   return (

@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
@@ -12,7 +12,8 @@ const DIR = 'src/components/charts'
 const chartSources = () =>
   readdirSync(join(ROOT, DIR))
     .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
-    .map((name) => relative(ROOT, join(ROOT, DIR, name)))
+    // 윈도우에서도 목록 글자는 '/'로 견준다(경로 구분자만 바꾼다)
+    .map((name) => relative(ROOT, join(ROOT, DIR, name)).split(sep).join('/'))
     .sort()
 
 const parse = (text: string, file: string) =>
@@ -131,7 +132,14 @@ function violations(text: string, file: string): string[] {
 describe('AC-205.8: 차트 폴더 소스 규칙 — 서버에서 그대로 그리고, 움직임·16진수 색·role="img"가 없고, 바깥에서는 타입만 불러온다', () => {
   it('AC-205.8: 검사할 파일이 있다(빈 검사가 아니다)', () => {
     expect(chartSources()).toEqual(
-      expect.arrayContaining(['src/components/charts/format.ts', 'src/components/charts/Sparkline.tsx', 'src/components/charts/KpiStat.tsx']),
+      expect.arrayContaining([
+        'src/components/charts/format.ts',
+        'src/components/charts/Sparkline.tsx',
+        'src/components/charts/KpiStat.tsx',
+        // dashboard-ux AC-2706.1·AC-2706.4: 보이는 표와 증감 글도 같은 규칙을 지킨다
+        'src/components/charts/ChartTable.tsx',
+        'src/components/charts/DeltaText.tsx',
+      ]),
     )
   })
 
@@ -143,8 +151,9 @@ describe('AC-205.8: 차트 폴더 소스 규칙 — 서버에서 그대로 그�
     }
   })
 
-  it('AC-205.8: 그리는 부품(*.tsx)마다 svg가 있으면 모두 aria-hidden이다 — Sparkline·KpiStat에 svg가 실제로 있다', () => {
-    for (const file of ['src/components/charts/Sparkline.tsx', 'src/components/charts/KpiStat.tsx']) {
+  // KpiStat 증감 줄의 화살표는 dashboard-ux AC-2706.4에서 DeltaText로 옮겼다(KpiStat은 DeltaText를 불러 그린다)
+  it('AC-205.8·AC-2706.4: 그리는 부품(*.tsx)마다 svg가 있으면 모두 aria-hidden이다 — Sparkline·DeltaText에 svg가 실제로 있다', () => {
+    for (const file of ['src/components/charts/Sparkline.tsx', 'src/components/charts/DeltaText.tsx']) {
       const source = parse(readFileSync(join(ROOT, file), 'utf8'), file)
       let svgs = 0
       walk(source, (node) => {
