@@ -27,7 +27,7 @@ const LIST_HEAD: Record<ListTool, { title: string; desc: string }> = {
 
 // 목업의 정기 주사 글 "처음 읽는 중…7개월치"는 쓰지 않는다: 화면은 첫 읽기인지 모르고, 읽는 달 수도 그때마다 다르다. 진행은 달로 보인다(AC-612.2)
 const LIST_LOADING: Record<ListTool, { title: string; unit: string; note: string }> = {
-  followup: { title: '비트에서 F/U 명단을 읽는 중이에요', unit: '', note: '최근 120일을 네 번에 나눠 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' },
+  followup: { title: '비트에서 F/U 명단을 읽는 중이에요', unit: '', note: '최근 30일을 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' },
   recall: { title: '정기 주사 기록을 읽는 중이에요', unit: ' 달', note: '다 읽을 때까지 이 창을 열어 두세요.' },
 }
 

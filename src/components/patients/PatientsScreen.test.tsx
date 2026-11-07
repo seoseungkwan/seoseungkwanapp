@@ -113,9 +113,16 @@ describe('PatientsScreen: 불러오는 중', () => {
     expect(screen.getByText('다시 오시기로 한 날이 다가온 분이에요. 오시기 전날 문자로 알려 드려요.')).toBeTruthy()
     const status = screen.getByRole('status')
     expect(status.textContent).toContain(FU_LOADING)
-    expect(status.textContent).toContain('최근 120일을 네 번에 나눠 읽어요. 다 읽을 때까지 이 창을 열어 두세요.')
     expect(status.textContent).not.toMatch(/\d+\/\d+/)
     expect(t.slot('followup')).toBeNull()
+  })
+
+  it('AC-2402.1: F/U 읽는 중 안내는 최근 30일을 말한다(120일·네 번 글자는 없다)', () => {
+    setup('followup')
+    const status = screen.getByRole('status')
+    expect(status.textContent).toContain('최근 30일을 읽어요. 다 읽을 때까지 이 창을 열어 두세요.')
+    expect(status.textContent).not.toContain('120일')
+    expect(status.textContent).not.toContain('네 번')
   })
 
   it('AC-610.2: F/U 진행은 몇 번째를 읽는지 "n/전체"로 올라간다', async () => {
