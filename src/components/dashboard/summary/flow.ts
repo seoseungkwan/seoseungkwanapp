@@ -87,6 +87,11 @@ export function flowDense(flow: Flow, buckets: readonly BarBucket[]): boolean {
   return flow.period !== null ? flow.period !== 7 : buckets.length > DENSE_OVER
 }
 
+// 그래프 설명 줄·보이는 표 캡션의 기간 기준(dashboard-ux AC-2706.3): 빠른 단추는 '최근 N일', 고른 기간은 머리 줄 기간 글 그대로
+export function flowBasis(flow: Flow): string {
+  return flow.period !== null ? `최근 ${flow.period}일` : flow.head
+}
+
 // 처방 상위 설명 아래 날짜 줄. count = 기간 안 자료 있는 날 수(dayCount). 0·null(줄 없음·읽는 중·실패)이면 기간 글뿐이다
 export function rankLine(flow: Flow, count: number | null): string {
   return count !== null && count >= 1 ? `${flow.span} · 자료 있는 ${formatCount(count)}일` : flow.span

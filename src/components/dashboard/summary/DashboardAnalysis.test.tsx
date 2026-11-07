@@ -7,6 +7,8 @@ import type { ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChartLegend } from '@/components/charts/ChartLegend'
+import { ChartTable } from '@/components/charts/ChartTable'
+import { DeltaText } from '@/components/charts/DeltaText'
 import { KpiStat } from '@/components/charts/KpiStat'
 import { RankedBars } from '@/components/charts/RankedBars'
 import { StackedBarChart, type BarSeries } from '@/components/charts/StackedBarChart'
@@ -20,7 +22,7 @@ import type { DayPayload, RevisitPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
 import { flowOf, flowTrend } from './flow'
 import type { OlderDays, RxGroupLine, SummarySource } from './source'
-import { dayCount, groupRank, periodRange, tickLabels, trendBuckets, weekdayBuckets, type Period } from './view'
+import { dayCount, groupRank, periodRange, tickLabels, todayView, trendBuckets, weekdayBuckets, type Period } from './view'
 
 // 오늘 하루 분석 · 기간별 흐름 (tab-frame REQ-311, design.md '오늘 하루 분석 · 기간별 흐름 · 보고 문장', 시안 docs/mockups/dashboard-home/ + 메모 §3·§4).
 // jsdom은 CSS를 계산하지 않는다 → 정해 둔 클래스·글자·짜임을 본다. 차트 부품은 같은 props로 따로 그린 마크업과 견준다.
@@ -497,14 +499,15 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
 })
 
 describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 모양 그대로)', () => {
-  it('AC-311.4·AC-606.6: 그래프 넷의 제목(h3)·설명이 이 차례다', () => {
+  // dashboard-ux AC-2706.3: 표가 있는 두 그래프의 설명 줄에 단위와 기간 기준(빠른 단추 = '최근 N일')이 붙는다
+  it('AC-311.4·AC-606.6·AC-2706.3: 그래프 넷의 제목(h3)·설명이 이 차례다', () => {
     draw(data(FULL_DAYS))
     const section = region('기간별 흐름')
     expect(within(section).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위'])
     const desc = [
-      ['환자 수 추이', '신환·재진, 하루씩'],
+      ['환자 수 추이', '신환·재진, 하루씩 · 단위 명 · 최근 30일'],
       ['신환 재방문율', '처음 온 환자가 다시 온 비율'],
-      ['요일별 환자 수', '하루 평균, 요일마다'],
+      ['요일별 환자 수', '하루 평균, 요일마다 · 단위 명 · 최근 30일'],
       ['처방 상위', RANK_DESC],
     ]
     for (const [name, text] of desc) {
@@ -1000,7 +1003,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
   const importsOf = (file: string) => [...code(file).matchAll(/^import\s[^'"]*?from\s+['"]([^'"]+)['"]/gm)].map((m) => m[1]!)
   const ALLOWED =
-    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view|flow|usePeriodDays))$/
+    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend|ChartTable|DeltaText)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view|flow|usePeriodDays|TableToggle))$/
 
   // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
   const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
@@ -1095,10 +1098,23 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     ['막대 + 다시 불러와야 하는 묶음 안내', grouped(FULL_DAYS, [...LINES, line('고주파', 7)])],
     ['묶음 없음', data(FULL_DAYS)],
     ['기간 안 자료 없음', grouped(EMPTY_RANGE_DAYS, LINES)],
-  ] as const)('AC-311.8·AC-606.6: 그래프는 움직이지 않는다(%s) — 그래프 칸 안에 transition 클래스가 없다. 처방 상위는 머리 링크(글자 단추, 그래프가 아니다)만 빼고 본다', (_, source) => {
+  ] as const)('AC-311.8·AC-606.6·AC-2706.1: 그래프는 움직이지 않는다(%s) — 그래프 칸 안에 transition 클래스가 없다. 처방 상위는 머리 링크, 환자 수 추이·요일별 환자 수는 [표로 보기] 단추(그래프가 아니다)만 빼고 본다', (caseName, source) => {
     draw(source)
     const moving = (root: Element) => allClasses(root).filter((t) => t.includes('transition'))
-    for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(moving(chart(name)), name).toEqual([])
+    expect(moving(chart('신환 재방문율')), '신환 재방문율').toEqual([])
+    // 빼는 것은 [표로 보기] 단추 하나(ds.button.secondarySmall + 폰 전체 폭)와 그 안 꺾쇠 아이콘(꾸밈)이다. 기간 안 자료가 없으면 단추가 없다
+    const TOGGLE_CLASSES = [...tokens(ds.button.secondarySmall), 'max-md:w-full']
+    for (const name of ['환자 수 추이', '요일별 환자 수']) {
+      const rest = chart(name).cloneNode(true) as HTMLElement
+      const toggles = Array.from(rest.querySelectorAll('button'))
+      expect(toggles, name).toHaveLength(caseName === '기간 안 자료 없음' ? 0 : 1)
+      for (const toggle of toggles) {
+        expect(classesOf(toggle), name).toEqual(TOGGLE_CLASSES)
+        expect(Array.from(toggle.querySelectorAll('[class]')).flatMap(classesOf).filter((t) => t.includes('transition')), name).toEqual([])
+        toggle.remove()
+      }
+      expect(moving(rest), name).toEqual([])
+    }
     const group = chart('처방 상위')
     // 빼는 것은 머리 줄의 링크 하나, 글자뿐인 ds.textButton + no-underline이다 — 그 밖의 것을 숨기지 않는다
     const links = within(group).getAllByRole('link')
@@ -1396,13 +1412,13 @@ describe('기간 고르기 (dashboard-period)', () => {
   })
 
   describe('그래프 넷이 고른 기간을 따름 (REQ-1802)', () => {
-    it("AC-1802.1: 2026년 10월 일별 — 설명 '신환·재진, 하루씩', 자료 있는 날마다 한 칸(칸 7개 넘어 dense), 범례는 신환·재진뿐", async () => {
+    it("AC-1802.1·AC-2706.3: 2026년 10월 일별 — 설명 '신환·재진, 하루씩 · 단위 명 · {기간 글}', 자료 있는 날마다 한 칸(칸 7개 넘어 dense), 범례는 신환·재진뿐", async () => {
       drawNow()
       await pickUnit('일별')
       const buckets = flowTrend(NOW_DAYS, flowOfPick(month('2026-10')))!
       expect(buckets).toHaveLength(26)
       expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
-      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩')
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩 · 단위 명 · 10월 1일 – 31일')
       expect(legend()).toEqual(['신환', '재진'])
     })
 
@@ -1419,13 +1435,13 @@ describe('기간 고르기 (dashboard-period)', () => {
       expect(emptyTicks()).toEqual([])
     })
 
-    it("AC-1802.2: 2026년 10월 주별 — 설명 '신환·재진, 한 주씩', 월–일 주를 자른 다섯 칸(dense 아님), 잘린 주가 있어 범례에 '일부 기간'", async () => {
+    it("AC-1802.2·AC-2706.3: 2026년 10월 주별 — 설명 '신환·재진, 한 주씩 · 단위 명 · {기간 글}', 월–일 주를 자른 다섯 칸(dense 아님), 잘린 주가 있어 범례에 '일부 기간'", async () => {
       drawNow()
       await pickUnit('주별')
       const buckets = flowTrend(NOW_DAYS, flowOfPick(month('2026-10', 'week')))!
       expect(buckets.map((b) => b.key)).toEqual(['2026-10-01', '2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26'])
       expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} />))
-      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 주씩')
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 주씩 · 단위 명 · 10월 1일 – 31일')
       expect(chart('환자 수 추이').querySelector('ul')!.outerHTML).toBe(
         markupOf(
           <ChartLegend
@@ -1439,13 +1455,27 @@ describe('기간 고르기 (dashboard-period)', () => {
       )
     })
 
-    it("AC-1802.2: 해 2026년 — 설명 '신환·재진, 한 달씩', 1월~12월 칸(11월 일부 기간, 12월 빈 칸, 줄 없는 달 '–'), 범례에 '일부 기간'", async () => {
+    it("AC-2706.1·AC-2706.3: 고른 기간(2026년 10월 주별)의 표 — 캡션의 기간 기준은 그 기간 글('환자 수 추이 · 단위 명 · 10월 1일 – 31일'), 주마다 한 줄 · 잘린 주는 '일부 기간'", async () => {
+      drawNow()
+      await pickUnit('주별')
+      const buckets = flowTrend(NOW_DAYS, flowOfPick(month('2026-10', 'week')))!
+      await click(within(chart('환자 수 추이')).getByRole('button', { name: '표로 보기' }))
+      const table = chart('환자 수 추이').querySelector('table')!
+      expect(table.closest('.sr-only')).toBeNull()
+      expect(table.parentElement!.outerHTML).toBe(markupOf(<ChartTable caption="환자 수 추이 · 단위 명 · 10월 1일 – 31일" series={TREND_SERIES} buckets={buckets} />))
+      expect(Array.from(table.querySelectorAll('tbody tr')).map((tr) => tr.lastElementChild!.textContent)).toEqual(
+        buckets.map((b) => (b.state === 'complete' ? '완료' : '일부 기간')),
+      )
+      expect(buckets.some((b) => b.state === 'partial')).toBe(true)
+    })
+
+    it("AC-1802.2·AC-2706.3: 해 2026년 — 설명 '신환·재진, 한 달씩 · 단위 명 · {기간 글}', 1월~12월 칸(11월 일부 기간, 12월 빈 칸, 줄 없는 달 '–'), 범례에 '일부 기간'", async () => {
       drawNow()
       await pickUnit('월별')
       const buckets = flowTrend(NOW_DAYS, flowOfPick({ kind: 'year', year: '2026' }))!
       expect(buckets.map((b) => b.label)).toEqual(['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'])
       expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
-      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 달씩')
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 달씩 · 단위 명 · 1월 1일 – 11월 5일 (어제까지)')
       expect(legend()).toEqual(['신환', '재진', '일부 기간'])
     })
 
@@ -1510,7 +1540,7 @@ describe('기간 고르기 (dashboard-period)', () => {
       )
       expect(weekRoot().outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(NOW_DAYS, range)!} />))
       expect(chart('처방 상위').querySelector('ol')!.outerHTML).toBe(markupOf(<RankedBars title="처방 상위" unit="건" items={groupRank(NOW_DAYS, range, LINES)!.items} />))
-      expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩')
+      expect(chart('환자 수 추이').children[1]!.textContent).toBe(`신환·재진, 하루씩 · 단위 명 · 최근 ${period}일`)
     })
   })
 
@@ -1586,6 +1616,8 @@ describe('기간 고르기 (dashboard-period)', () => {
       const section = region('기간별 흐름')
       expect(section.querySelector('table')).toBeNull()
       expect(section.querySelector('ol[aria-label]')).toBeNull()
+      // 읽는 동안에는 표로 볼 숫자가 없어 [표로 보기]도 없다(AC-2706.1)
+      expect(within(section).queryByRole('button', { name: '표로 보기' })).toBeNull()
       expect(within(chart('환자 수 추이')).getByText('읽는 중')).toBeTruthy()
       expect(emptyTicks()).toEqual(['7.1', '7.8', '7.15', '7.22', '7.29'])
       expect(within(chart('요일별 환자 수')).getByText('읽는 중')).toBeTruthy()
@@ -1676,5 +1708,80 @@ describe('기간 고르기 (dashboard-period)', () => {
       await pickUnit('월별')
       expect(region('10월 30일 하루 분석').outerHTML).toBe(before)
     })
+  })
+})
+
+// 그래프 표로 보기 · 상태 구분 · 증감 공통 (dashboard-ux REQ-2706, design.md §7, 시안 docs/mockups/dashboard-ux/index.html '표로 보기').
+// 표 부품(ChartTable)·단추(TableToggle)·증감 글(DeltaText)은 따로 시험한다 — 여기서는 대시보드에 꽂힌 자리와 글만 본다
+describe('표로 보기 · 증감 공통 (REQ-2706)', () => {
+  const MONTH = periodRange(TODAY, 30)
+  const toggleIn = (name: string) => within(chart(name)).queryByRole('button', { name: '표로 보기' })
+  // StackedBarChart 뿌리 = 그림(aria-hidden 고정폭 칸)의 부모
+  const pictureRoot = (name: string) => chart(name).querySelector('div[aria-hidden="true"].tabular-nums')!.parentElement!
+
+  it('AC-2706.1: 환자 수 추이·요일별 환자 수 그래프 아래에만 [표로 보기](aria-expanded="false" · 있는 칸을 가리키는 aria-controls)가 있고, 기간 안 자료가 없으면 없다', () => {
+    draw(FULL)
+    for (const name of ['환자 수 추이', '요일별 환자 수']) {
+      const b = toggleIn(name)!
+      expect(b.getAttribute('aria-expanded'), name).toBe('false')
+      expect(document.getElementById(b.getAttribute('aria-controls')!), name).not.toBeNull()
+      expect(pictureRoot(name).compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING, name).toBeTruthy()
+    }
+    for (const name of ['신환 재방문율', '처방 상위']) expect(toggleIn(name), name).toBeNull()
+    cleanup()
+    draw(EMPTY_RANGE)
+    expect(within(region('기간별 흐름')).queryByRole('button', { name: '표로 보기' })).toBeNull()
+  })
+
+  it('AC-2706.1·AC-2706.3: 환자 수 추이 [표로 보기]를 누르면 보이는 표(캡션 "환자 수 추이 · 단위 명 · 최근 30일", 칸마다 한 줄)가 펼쳐지고, 펼친 동안 화면 읽기 표는 없고 그림은 그대로다. 다시 누르면 지금 그대로다', async () => {
+    draw(FULL)
+    const buckets = trendBuckets(FULL_DAYS, MONTH, 30)!
+    const closed = markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />)
+    await userEvent.setup().click(toggleIn('환자 수 추이')!)
+    expect(toggleIn('환자 수 추이')!.getAttribute('aria-expanded')).toBe('true')
+    const tables = chart('환자 수 추이').querySelectorAll('table')
+    expect(tables).toHaveLength(1)
+    const table = tables[0]!
+    expect(table.closest('.sr-only')).toBeNull()
+    expect(table.parentElement!.parentElement!.id).toBe(toggleIn('환자 수 추이')!.getAttribute('aria-controls'))
+    expect(table.parentElement!.outerHTML).toBe(markupOf(<ChartTable caption="환자 수 추이 · 단위 명 · 최근 30일" series={TREND_SERIES} buckets={buckets} />))
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(buckets.length)
+    expect(pictureRoot('환자 수 추이').outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense srTable={false} />))
+    // 다른 그래프는 접힌 그대로(화면 읽기 표)
+    expect(chart('요일별 환자 수').querySelector('table')!.closest('.sr-only')).not.toBeNull()
+
+    await userEvent.setup().click(toggleIn('환자 수 추이')!)
+    expect(toggleIn('환자 수 추이')!.getAttribute('aria-expanded')).toBe('false')
+    expect(chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!.outerHTML).toBe(closed)
+    expect(chart('환자 수 추이').querySelectorAll('table')).toHaveLength(1)
+  })
+
+  it('AC-2706.1·AC-2706.3: 요일별 환자 수 표는 요일마다 한 줄이고, 캡션·설명 줄의 기간 기준은 누른 빠른 단추를 따른다(최근 90일)', async () => {
+    draw(FULL)
+    await choose('최근 90일')
+    const week = chart('요일별 환자 수')
+    expect(week.children[1]!.textContent).toBe('하루 평균, 요일마다 · 단위 명 · 최근 90일')
+    await userEvent.setup().click(toggleIn('요일별 환자 수')!)
+    const buckets = weekdayBuckets(FULL_DAYS, periodRange(TODAY, 90))!
+    const table = week.querySelector('table')!
+    expect(table.closest('.sr-only')).toBeNull()
+    expect(table.parentElement!.outerHTML).toBe(markupOf(<ChartTable caption="요일별 환자 수 · 단위 명 · 최근 90일" series={WEEK_SERIES} buckets={buckets} />))
+    expect(Array.from(table.querySelectorAll('tbody th')).map((th) => th.textContent)).toEqual(buckets.map((b) => b.rangeLabel))
+  })
+
+  it('AC-2706.4: "지난주 같은 요일보다" 값 줄은 DeltaText(화살표 12px 꾸밈 · 화면 읽기 글 · 증감 글)로 그리고, 보이는 글·화면 읽기 글은 그대로다', () => {
+    draw(data(FULL_DAYS))
+    const view = todayView(TODAY, FULL_DAYS)
+    if (view.compare.kind !== 'delta') throw new Error('증감 칸이 아니다')
+    const value = within(kpiCells()[3] as HTMLElement).getByText('3명 (+30.0%)').parentElement!
+    const host = document.createElement('div')
+    host.innerHTML = markupOf(<DeltaText delta={view.compare.delta} unit="명" className="" arrow={12} />)
+    expect(value.innerHTML).toBe(host.firstElementChild!.innerHTML)
+    expect(value.textContent).toBe('늘어남 3명 (+30.0%)')
+    hasAll(value, `${DELTA_VALUE} text-positive`)
+    // 화살표·색 규칙을 이 파일에 따로 두지 않는다
+    const source = readFileSync(join(process.cwd(), 'src/components/dashboard/summary/DashboardAnalysis.tsx'), 'utf8')
+    expect(source).toMatch(/^import \{ DeltaText \} from '@\/components\/charts\/DeltaText'$/m)
+    expect(source).not.toMatch(/<svg|text-positive|text-negative|formatDelta/)
   })
 })

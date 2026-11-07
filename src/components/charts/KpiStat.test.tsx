@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -379,5 +381,33 @@ describe('AC-314.1: KpiStat emptyText — 값이 null일 때 "–" 아래 글', 
       expect(now).not.toContain('text-faint')
       expect(await sha256(now.replace(DASH_NOW, DASH_BEFORE))).toBe(before)
     }
+  })
+})
+
+// ── 증감 줄을 DeltaText로 (dashboard-ux AC-2706.4, design.md §7). 증감 줄은 DeltaText가 그리고, 마크업은 옮기기 전과 한 글자도 같다.
+// 아래 글자는 옮기기 전 KpiStat이 그린 증감 줄(<p>) 그대로다(늘어남 기본 크기는 위 sha256 base도 본다)
+const DELTA_LINE_BEFORE: Array<[string, Partial<KpiStatProps>, string]> = [
+  ['늘어남', {}, '<p class="flex items-center gap-1 mt-1 text-small text-positive"><svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" class="shrink-0"><path d="M4 1.2 7.4 6.8H.6z" fill="currentColor"></path></svg><span class="sr-only">늘어남</span> <span class="tabular-nums">17명 (+2.4%)</span> <span class="ml-1 text-muted">그 전 주 대비</span></p>'],
+  ['줄어듦', { delta: { kind: 'change', diff: -12, pct: -2.19 } }, '<p class="flex items-center gap-1 mt-1 text-small text-negative"><svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" class="shrink-0"><path d="M4 6.8 7.4 1.2H.6z" fill="currentColor"></path></svg><span class="sr-only">줄어듦</span> <span class="tabular-nums">12명 (−2.1%)</span> <span class="ml-1 text-muted">그 전 주 대비</span></p>'],
+  ['변화 없음', { delta: { kind: 'change', diff: 0, pct: 0 } }, '<p class="flex items-center gap-1 mt-1 text-small text-muted"> <span class="tabular-nums">변화 없음</span> <span class="ml-1 text-muted">그 전 주 대비</span></p>'],
+  ['새로 생김', { delta: { kind: 'new' } }, '<p class="flex items-center gap-1 mt-1 text-small text-muted"> <span class="tabular-nums">새로 생김</span> <span class="ml-1 text-muted">그 전 주 대비</span></p>'],
+  ['작은 크기', { size: 'sm' }, '<p class="flex items-center gap-1 text-caption text-positive"><svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" class="shrink-0"><path d="M4 1.2 7.4 6.8H.6z" fill="currentColor"></path></svg><span class="sr-only">늘어남</span> <span class="tabular-nums">17명 (+2.4%)</span></p>'],
+  [
+    '%p · 비교 이름 없음',
+    { value: 131 / 714, format: 'percent', unit: '%', delta: { kind: 'change', diff: 131 / 714 - 126 / 697, pct: null }, deltaUnit: '%p', compareLabel: undefined },
+    '<p class="flex items-center gap-1 mt-1 text-small text-positive"><svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" class="shrink-0"><path d="M4 1.2 7.4 6.8H.6z" fill="currentColor"></path></svg><span class="sr-only">늘어남</span> <span class="tabular-nums">0.2%p</span></p>',
+  ],
+]
+
+describe('AC-2706.4: KpiStat 증감 줄 = DeltaText — 보이는 글·화면 읽기 글·마크업이 옮기기 전과 같다', () => {
+  it.each(DELTA_LINE_BEFORE)('AC-2706.4: %s 증감 줄 마크업이 옮기기 전과 한 글자도 같다', (_name, props, before) => {
+    expect(parts(kpi(props)).delta!.outerHTML).toBe(before)
+  })
+
+  it('AC-2706.4: KpiStat은 증감 줄을 DeltaText로 그린다(화살표 그림·색 규칙을 따로 두지 않는다)', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/charts/KpiStat.tsx'), 'utf8')
+    expect(source).toMatch(/^import \{ DeltaText \} from '\.\/DeltaText'$/m)
+    expect(source).toMatch(/<DeltaText\b/)
+    expect(source).not.toMatch(/<svg\b|text-positive|text-negative/)
   })
 })

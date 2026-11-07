@@ -953,3 +953,35 @@ describe('AC-1704.3: StackedBarChart blank — 자료 없는 칸은 "–", 앞�
     expect(leafByText(figureOf(chart().root), '–')).toHaveLength(0)
   })
 })
+
+// 화면 읽기 표 끄기 srTable (dashboard-ux REQ-2706 AC-2706.1, design.md §7). 보이는 표(ChartTable)를 펼친 동안 부르는 쪽이 false를 준다(두 번 읽히지 않게).
+// 기본 true라 통계 탭·미리보기 그림은 한 글자도 바뀌지 않는다(위 sha256 시험도 그대로 본다). 예시 값은 지어낸 것이다
+describe('AC-2706.1: StackedBarChart srTable — 기본은 지금 그대로, false면 화면 읽기 표만 없다', () => {
+  const MIXED: BarBucket[] = [
+    { ...BUCKETS[0]!, comparison: 500 },
+    BUCKETS[1]!,
+    { key: 'n', label: 'N', rangeLabel: '자료 없는 주', state: 'partial', values: [0, 0], blank: 'no-data' },
+    { key: 'f', label: 'F', rangeLabel: '앞으로 올 주', state: 'partial', values: [0, 0], blank: 'future' },
+  ]
+  const CASES: Array<[string, Partial<Parameters<typeof StackedBarChart>[0]>]> = [
+    ['기본', {}],
+    ['compact', { compact: true }],
+    ['dense · thinLabels · hideZeroTotals', { dense: true, thinLabels: true, hideZeroTotals: true }],
+    ['빈 칸 · 비교 값', { buckets: MIXED }],
+  ]
+  // 화면 읽기 표를 감싼 칸(<div class="sr-only"><table …>…</table></div>) 하나
+  const SR_BOX = /<div class="sr-only"><table class="sr-only">[\s\S]*<\/table><\/div>/
+
+  it.each(CASES)('AC-2706.1: %s — srTable을 주지 않은 것과 true는 마크업이 같다', (_name, props) => {
+    expect(chart({ ...props, srTable: true }).html).toBe(chart(props).html)
+  })
+
+  it.each(CASES)('AC-2706.1: %s — srTable false는 화면 읽기 표 칸 하나만 빠지고 그림은 한 글자도 같다', (_name, props) => {
+    const now = chart(props).html
+    expect(now.match(SR_BOX)).toHaveLength(1)
+    const off = chart({ ...props, srTable: false })
+    expect(off.html).toBe(now.replace(SR_BOX, ''))
+    expect(off.root.querySelector('table')).toBeNull()
+    expect(off.root.querySelector('.sr-only')).toBeNull()
+  })
+})
