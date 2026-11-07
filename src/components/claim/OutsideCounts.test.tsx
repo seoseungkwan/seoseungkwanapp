@@ -849,6 +849,52 @@ describe('claim-day-done 날짜를 골라 완료로 저장·되돌리기', () =>
     expect(doneSummary(panel)).toBe('완료로 바꾼 날 1')
   })
 
+  it('AC-2801.1: 휴대폰에서 상자 둘레 칸 전체(44px)를 눌러도 그 날이 골라진다', async () => {
+    const user = userEvent.setup()
+    render(<OutsideCounts />)
+    const panel = await memoPanel()
+    const cell = box(panel, '10/6 (화)').closest('td') as HTMLElement
+    const area = cell.querySelector('label') as HTMLLabelElement
+    expect(area).toBeTruthy()
+    expectClasses(area, 'absolute inset-0')
+    expect(area.htmlFor).toBe(box(panel, '10/6 (화)').id)
+    await user.click(area)
+    expect(box(panel, '10/6 (화)').checked).toBe(true)
+    expect(within(pickBar(panel)).getByText('1일 골랐어요')).toBeTruthy()
+  })
+
+  it('AC-2801.4: 알림의 날을 아래 칸에서 모두 되돌린 뒤 다른 창이 그 날을 다시 완료로 바꿔도, 옛 알림이 돌아오지 않고 고르기 줄이다', async () => {
+    const user = userEvent.setup()
+    render(<OutsideCounts />)
+    const panel = await memoPanel()
+    await saveTwo(user, panel)
+    await openDone(user, panel)
+    await user.click(undoButton(panel, '10/6 (화)'))
+    await user.click(undoButton(panel, '10/2 (금)'))
+    await waitFor(() => expect(listDates(panel)).toEqual(OCT_LEFT))
+    db.closes = [close('2026-10-06', AT_1107), close('2026-10-02', AT_1107)]
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(leftText(panel)).toBe('3일 남음'))
+    expect(within(pickBar(panel)).queryByText(/완료로 바꿨어요/)).toBeNull()
+    expect(within(pickBar(panel)).getByText('완료로 바꿀 날을 골라 주세요')).toBeTruthy()
+  })
+
+  it('AC-2801.2: 골라 둔 날이 다른 창에서 완료돼 목록에서 빠졌다가 되돌아오면 골라진 채로 돌아오지 않는다', async () => {
+    const user = userEvent.setup()
+    render(<OutsideCounts />)
+    const panel = await memoPanel()
+    await user.click(box(panel, '10/5 (월)'))
+    expect(within(pickBar(panel)).getByText('1일 골랐어요')).toBeTruthy()
+    db.closes = [close('2026-10-05', AT_1107)]
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(leftText(panel)).toBe('4일 남음'))
+    await openDone(user, panel)
+    await user.click(undoButton(panel, '10/5 (월)'))
+    await waitFor(() => expect(listDates(panel)).toEqual(OCT_LEFT))
+    expect(box(panel, '10/5 (월)').checked).toBe(false)
+    expect(within(pickBar(panel)).getByText('완료로 바꿀 날을 골라 주세요')).toBeTruthy()
+  })
+
   it('AC-2806.2: 화면은 환자 자료 구역(lib/precheck·lib/bridge·workers·components/claim/rows)을 불러오지 않는다', () => {
     const source = readFileSync(join(process.cwd(), 'src/components/claim/OutsideCounts.tsx'), 'utf8')
     const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1])

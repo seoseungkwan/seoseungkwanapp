@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
@@ -37,11 +37,14 @@ type Write = (dates: string[]) => Promise<void>
 function DayRow({ day, picked, locked, onPick }: { day: ClaimDayCount; picked: boolean; locked: boolean; onPick(date: string): void }) {
   const status = statusOf({ done: false, needMemo: day.need_memo, entered: day.entered })
   const label = dayLabel(day.visit_date)
+  const id = useId()
   return (
     <tr className={ds.table.row}>
-      <td className={ds.table.check}>
+      <td className={`${ds.table.check} relative`}>
+        {/* 휴대폰에서 상자 둘레 칸 전체(44px)를 눌러도 고르게 한다(UI_GUIDE 8). 이름은 상자의 aria-label이 맡는다 */}
+        <label htmlFor={id} aria-hidden="true" className="absolute inset-0 cursor-pointer" />
         <span className={ds.checkboxWrap}>
-          <input type="checkbox" aria-label={`${label} 고르기`} checked={picked} disabled={locked} onChange={() => onPick(day.visit_date)} className={ds.checkbox} />
+          <input id={id} type="checkbox" aria-label={`${label} 고르기`} checked={picked} disabled={locked} onChange={() => onPick(day.visit_date)} className={ds.checkbox} />
           <Icon name="check" className={ds.checkboxMark} />
         </span>
       </td>
@@ -133,6 +136,14 @@ function MemoPanel({ counts, closed, onClose, onReopen }: { counts: Counts; clos
   const chosen = days.map((day) => day.visit_date).filter((date) => picked.has(date))
   // 방금 저장한 날 가운데 아직 완료인 날. 아래 칸에서 하나씩 되돌리면 준다
   const undoable = justSaved.filter((date) => closedSet.has(date))
+  // 목록이 바뀌면(다시 읽기·저장·되돌리기) 보이지 않게 된 날은 고른 것에서 뺀다: 뒤에 되돌아와도 골라진 채로 오지 않게
+  const shownKey = days.map((day) => day.visit_date).join(' ')
+  const [shownBefore, setShownBefore] = useState(shownKey)
+  if (shownBefore !== shownKey) {
+    setShownBefore(shownKey)
+    const shown = new Set(days.map((day) => day.visit_date))
+    if ([...picked].some((date) => !shown.has(date))) setPicked(new Set([...picked].filter((date) => shown.has(date))))
+  }
 
   const pick = (date: string) => {
     setPicked((now) => {
@@ -165,6 +176,8 @@ function MemoPanel({ counts, closed, onClose, onReopen }: { counts: Counts; clos
     setFailed(false)
     try {
       await onReopen([...dates])
+      // 되돌린 날은 '방금 저장한 날'에서도 뺀다: 다른 창이 다시 완료로 바꿔도 옛 알림이 돌아오지 않게
+      setJustSaved((now) => now.filter((date) => !dates.includes(date)))
     } catch {
       setFailed(true)
     } finally {
