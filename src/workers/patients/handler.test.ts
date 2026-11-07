@@ -225,6 +225,21 @@ describe('전체 흐름', () => {
     expect(load.recall).toEqual(INJECTION.pieces.map((p) => ({ from: p.from, to: p.to })))
   })
 
+  it('AC-2401.3 plan 답의 F/U 조각은 오늘 포함 30일 하나이고, 그 조각으로 만든 F/U 보기 모양이 나온다', async () => {
+    const h = harness()
+    expect(h.plan().followup).toEqual([{ from: '2026-10-04', to: TODAY }])
+    await h.stored(FIRST)
+    await h.pieces(FOLLOWUP.pieces)
+    await h.pieces(INJECTION.pieces)
+    await h.build()
+    h.sentOk(0)
+    const views = h.last('views')
+    expect(views.codes).toEqual({})
+    expect(views.followup?.read).toEqual({ from: '2026-10-04', to: TODAY })
+    expect(views.followup?.rows.map((r) => r.chart)).toEqual(['900106', '900104', '900101', '900102', '900103', '900108', '900105'])
+    expect(views.followup?.undecided.map((r) => r.chart)).toEqual(['900107'])
+  })
+
   it('AC-604.3 store.load가 먼저 끝났으면 plan 답에 정기 주사 조각이 있다', async () => {
     const h = harness()
     const load = await h.stored(MARKED)
@@ -417,7 +432,7 @@ describe('종류마다 따로', () => {
   it('AC-604.3 F/U 조각을 다 안 부르고 build하면 F/U만 null(반쪽 자료를 쓰지 않는다)', async () => {
     const h = harness()
     await loaded(h)
-    await h.pieces(FOLLOWUP.pieces.slice(0, 3))
+    await h.pieces(FOLLOWUP.pieces.slice(0, -1)) // 마지막 F/U 조각을 부르지 않는다(조각이 하나면 하나도 안 부른다)
     await h.pieces(INJECTION.pieces)
     await h.build()
     h.sentOk(0)
@@ -441,7 +456,8 @@ describe('종류마다 따로', () => {
   it('AC-604.3 물어본 기간과 다른 답은 그 조각 실패(다른 달 자료를 쓰지 않는다)', async () => {
     const h = harness()
     await loaded(h)
-    const reply = await h.piece(FOLLOWUP.pieces[0], { kind: 'followup', from: FOLLOWUP.pieces[1].from, to: FOLLOWUP.pieces[1].to })
+    // 계획에 없는 기간(계획 바로 앞 30일)으로 물은 답
+    const reply = await h.piece(FOLLOWUP.pieces[0], { kind: 'followup', from: '2026-09-04', to: '2026-10-03' })
     expect(reply).toMatchObject({ ok: false, code: 'E-BRIDGE-BAD-REPLY' })
     await h.build()
     expect(h.last('views').codes.followup).toBe('E-BRIDGE-BAD-REPLY')
@@ -454,7 +470,7 @@ describe('종류마다 따로', () => {
   ])('AC-604.3 F/U 조각 모양이 틀리면(%s) 그 종류만 번호로 끝나고 Worker가 산다', async (_id, broken) => {
     const h = harness()
     await loaded(h)
-    const reply = await h.piece(broken(FOLLOWUP.pieces[3]))
+    const reply = await h.piece(broken(FOLLOWUP.pieces[FOLLOWUP.pieces.length - 1]))
     expect(reply).toMatchObject({ ok: false, code: 'E-BRIDGE-BAD-REPLY' })
     await h.pieces(INJECTION.pieces)
     await h.build()
@@ -570,7 +586,8 @@ describe('종류마다 따로', () => {
     it('AC-2101.3 E-PATIENTS-SOURCE가 아닌 오류만 있으면 views에 reasons 칸이 없다', async () => {
       const h = harness()
       await loaded(h)
-      await h.piece({ ...FOLLOWUP.pieces[3], chart: [['이름']] })
+      const reply = await h.piece({ ...FOLLOWUP.pieces[FOLLOWUP.pieces.length - 1], chart: [['이름']] })
+      expect(reply).toMatchObject({ ok: false, code: 'E-BRIDGE-BAD-REPLY' }) // 모양 틀린 조각으로 실패한다(조각이 안 온 것이 아니다)
       await h.pieces(INJECTION.pieces)
       await h.build()
       h.sentOk(0)
@@ -1703,8 +1720,8 @@ describe('이상한 값에도 멈추지 않는다', () => {
     const h = harness()
     h.plan()
     await h.stored(FIRST)
-    await h.pieces(FOLLOWUP.pieces.slice(0, 3))
-    const last = FOLLOWUP.pieces[3]
+    await h.pieces(FOLLOWUP.pieces.slice(0, -1))
+    const last = FOLLOWUP.pieces[FOLLOWUP.pieces.length - 1]
     h.handler.onScreen({ type: 'piece', id: 'late', kind: last.kind, from: last.from, to: last.to })
     h.handler.onScreen({ type: 'build', today: TODAY })
     await settle()

@@ -134,10 +134,10 @@ describe('make-fake-patients', () => {
     expect(records.every((r) => FAKE_NAME.test(r.name) && FAKE_CHART.test(r.chart) && notPhoneLike(r.phone))).toBe(true)
   })
 
-  it('AC-604.3 정기 주사·F/U 조각: 약속한 답 모양이고 이름·차트번호·전화가 가짜 모양뿐이다', () => {
+  it('AC-604.3·AC-2401.3 정기 주사 조각 여덟·F/U 30일 조각 하나: 약속한 답 모양이고 이름·차트번호·전화가 가짜 모양뿐이다', () => {
     const files = buildFakePatients()
     const pieces = [...files['targets-followup.json'].pieces, ...files['targets-injection.json'].pieces]
-    expect(files['targets-followup.json'].pieces).toHaveLength(4)
+    expect(files['targets-followup.json'].pieces).toHaveLength(1)
     expect(files['targets-injection.json'].pieces).toHaveLength(8)
     pieces.forEach((piece, index) => {
       expect(piece.v, `조각 ${index}`).toBe(1)

@@ -6,12 +6,12 @@ import type { PatientsRange } from '@/types/patients'
 
 export type Range = PatientsRange
 
-export const FOLLOWUP_DAYS = 120
+export const FOLLOWUP_DAYS = 30 // spec patients-fu-30days: 오늘 포함 30일(조각 한도 안이라 조각 하나)
 export const MAX_PIECE_DAYS = 31
 
 const firstOfMonth = (ymd: string) => monthRange(monthOf(ymd)).from
 
-// 오늘까지 120일을 31일 이하 조각으로, 오래된 것부터
+// 오늘 포함 FOLLOWUP_DAYS일을 31일 이하 조각으로, 오래된 것부터
 export function followupPlan(today: string): Range[] {
   const plan: Range[] = []
   let from = addDays(today, 1 - FOLLOWUP_DAYS)

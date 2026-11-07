@@ -256,10 +256,10 @@ describe('readStoreReply', () => {
 })
 
 describe('buildFollowup', () => {
-  it('AC-604.3 조각 넷을 머리 줄 한 번으로 이어 차례대로 줄을 만든다', () => {
+  it('AC-2401.3 오늘 포함 30일 조각 하나로 차례대로 줄을 만든다(마지막 내원만·지난 예정·조건부·전화 없음 사례 그대로)', () => {
     const view = followupView()
     expect(view.rows.map((r) => r.chart)).toEqual(['900106', '900104', '900101', '900102', '900103', '900108', '900105'])
-    expect(view.read).toEqual({ from: '2026-07-06', to: TODAY })
+    expect(view.read).toEqual({ from: '2026-10-04', to: TODAY })
     expect(view.base).toBe(TODAY)
     expect(view.phoneLoaded).toBe(true)
     expect(view.marksLoaded).toBe(true)
@@ -286,14 +286,14 @@ describe('buildFollowup', () => {
     expect(byChart(view.rows, '900105')).toMatchObject({ visitKind: '주사', site: '어깨', phone: '' })
   })
 
-  it('AC-604.3 날짜 미정 줄은 따로 모은다', () => {
+  it('AC-2401.3 날짜 미정 줄은 따로 모은다', () => {
     expect(followupView().undecided).toEqual([
       {
         key: 'f|V0201|900107|',
         chart: '900107',
         name: '가상환자07',
         phone: '010-0000-0107',
-        lastVisit: '2026-08-20',
+        lastVisit: '2026-10-20',
         nextLabel: '미정',
         evidence: '추후 재내원',
       },
@@ -315,7 +315,7 @@ describe('buildFollowup', () => {
 
   it('AC-604.3 모든 조각에 자료가 없으면 빈 명단이다(지어낸 줄 없음)', () => {
     const view = buildFollowup([{ chart: [CHART_HEAD], rx: [FU_RX_HEAD] }], noMarks(), TODAY)
-    expect(view).toEqual({ read: { from: '2026-07-06', to: TODAY }, base: '', rows: [], undecided: [], phoneLoaded: true, marksLoaded: true })
+    expect(view).toEqual({ read: { from: '2026-10-04', to: TODAY }, base: '', rows: [], undecided: [], phoneLoaded: true, marksLoaded: true })
   })
 
   it('AC-604.3 47 표에 전화 칸이 없으면 phoneLoaded false이고 전화는 빈 글자다', () => {
