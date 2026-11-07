@@ -378,7 +378,7 @@ function ai(a) {
     return `<section class="ai" aria-labelledby="aih">${aiTop(false)}
       ${a === 'fail' ? `<div class="note ng" role="alert"><b>AI가 지금 바빠서 답하지 못했어요</b>1~2분 뒤 [다시 분석]을 눌러 주세요. <span style="color:var(--muted)">오류 번호 E-AI-BUSY</span></div>` : ''}
       <div class="empty"><h3>${busy ? '10월 리포트를 만들고 있어요' : '10월 리포트를 아직 만들지 않았어요'}</h3>
-      <p>${busy ? '1분쯤 걸려요. 다 되면 이 자리에 요약이 나와요. 이 화면을 그대로 두셔도 되고, 다른 탭에 다녀오셔도 저장돼요.' : '10월 숫자를 9월·작년 10월과 견줘, 원장님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.'}</p>
+      <p>${busy ? '1분쯤 걸려요. 다 되면 이 자리에 요약이 나와요.' : '10월 숫자를 9월·작년 10월과 견줘, 원장님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.'}</p>
       ${busy ? '' : `<ul><li><b>핵심 변화</b>늘거나 준 지표</li><li><b>주의할 지표</b>살펴볼 만한 흐름</li><li><b>추정</b>원인 짐작은 짐작이라고 따로 표시</li></ul>`}</div>
       <div class="actions">${busy ? `<button class="btn pri" aria-busy="true">만드는 중</button><small role="status">지금까지 12초</small>` : `<button class="btn pri">${a === 'fail' ? '다시 분석' : 'AI 리포트 만들기'}</button><small>병원 집계 숫자만 보내요. 환자 이름·차트번호는 보내지 않아요.</small>`}</div></section>`
   }
