@@ -37,6 +37,43 @@ export type RxSplitDay = { date: string; visits: number; patients: number; newPa
 // text는 첫 줄이 비어 있다: Worker에는 병원 이름이 가지 않는다(AC-505.7). 병원 이름을 넣은 글은 화면이 formatRxVisitSplit(병원 이름, split)로 만든다
 export type RxSplitView = { kind: 'none' } | { kind: 'split'; split: RxSplit; days: RxSplitDay[]; text: string; headline: string }
 
+// ── 비트 전용 세 칸(stats-bit-sections): 환자 구성 · 시간대별 접수 · 원장님별 ──
+// 묶음 이름(연령대·보험·동네·원장님 이름)과 수뿐이다. 차트번호·생년월일·주소 앞부분·접수 줄·진료의 코드는 없다(AC-2702.4)
+
+// row = 보통 줄 · rest = '그 밖 N곳' · noTown = '동 없는 주소' · none = '생년월일 없음'·'주소 없음'. 증감은 row에만 있다(AC-2703.9)
+export type MixRowKind = 'row' | 'rest' | 'noTown' | 'none'
+// people = 명(서로 다른 환자) · visits = 건(접수) · share = people ÷ 묶음 전체 명(0~1) · previous = 견줄 기간의 명(견주지 않거나 row가 아니면 null)
+export type MixRow = { label: string; people: number; visits: number; share: number; kind: MixRowKind; previous: number | null }
+// compared = 견줄 기간도 세었는지. 줄은 화면에 보이는 차례다(연령대는 나이 차례, 나머지는 명이 큰 차례)
+export type PatientMix = {
+  total: { people: number; visits: number }
+  compared: boolean
+  age: MixRow[]
+  insurance: MixRow[]
+  city: MixRow[]
+  town: MixRow[]
+}
+// 증감 글자(DeltaView와 같은 모양). text에는 ▲▼가 없다: 화면이 dir로 붙인다(DeltaText와 같음)
+export type MixDelta = { dir: 'up' | 'down' | 'flat' | 'none'; text: string; srText: string }
+
+// 시간대별 접수. weekday 1=월 … 7=일, cells는 hours와 같은 차례의 접수 합계(평균은 화면이 openDays로 나눈다)
+export type VisitHourRow = { weekday: number; openDays: number; cells: number[] }
+export type VisitPeak = { weekday: number; hour: number; average: number }
+export type VisitHours = { hours: number[]; rows: VisitHourRow[]; unknown: number; peak: VisitPeak | null }
+
+// 원장님별. amount는 원 단위 정수, perVisit = 매출 ÷ 내원의 원 미만을 버린 값(내원 0이면 null), share = 매출 ÷ 합계 매출(합계 0이면 null)
+export type DoctorRow = {
+  label: string
+  patients: number
+  newPatients: number
+  visits: number
+  amount: number
+  perVisit: number | null
+  share: number | null
+}
+export type DoctorTable = { kind: 'table'; rows: DoctorRow[]; total: DoctorRow }
+export type DoctorsView = { kind: 'single' } | DoctorTable
+
 // 화면 → Worker. 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id와 묶음 열쇠·코드만 간다(AC-505.7, 묶음은 treatment-trend AC-1205.4).
 // 조각은 통로 포트로 따로 온다. groups는 선택 칸이고 없으면 []로 본다(requestLoad는 늘 배열을 싣는다). 묶음 이름은 가지 않는다(AC-1213.3)
 export type StatsLoadRequest = {
