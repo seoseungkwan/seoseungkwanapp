@@ -7,6 +7,7 @@ import { BridgeError } from '@/lib/bridge/protocol'
 import { errorInfo } from '@/lib/errors'
 import { settingsChanged, type SettingsBundle } from '@/lib/precheck/settingsChanged'
 import { readDayCounts, type ClaimDayCount } from '@/lib/storage/claimCounts'
+import { readClosedDays } from '@/lib/storage/claimDayCloses'
 import { readHospitalSettings, readRuleSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
@@ -113,6 +114,17 @@ function CountsFailedLine({ lastUploadedAt }: { lastUploadedAt: string | null })
   )
 }
 
+/** 건수와 완료 표시를 같은 400일(오늘 포함)로 함께 읽는다(claim-day-done AC-2804.4). 클라이언트를 못 만들어도 던지지 않게 약속 안에서 부른다 */
+function readCountsAndClosed(today: string) {
+  const from = addDays(today, -399)
+  return Promise.allSettled([
+    Promise.resolve().then(() => readDayCounts(supabaseBrowser(), from, today)),
+    Promise.resolve()
+      .then(() => readClosedDays(supabaseBrowser(), { from, to: today }))
+      .then((rows): ReadonlySet<string> => new Set(rows.map((row) => row.visit_date))),
+  ])
+}
+
 export function ClaimScreen({ channel, call, stream, onProgress }: { channel: ClaimChannel; call: UseBridge['call']; stream: UseBridge['stream']; onProgress?: UseBridge['onProgress'] }) {
   const [dates, setDates] = useState<DatesState>({ kind: 'loading' })
   const [period, setPeriod] = useState<DateRange>({ from: '', to: '' })
@@ -148,18 +160,21 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
     const ask = ++datesAsk.current
     const today = todayInKorea()
     let counts: ClaimDayCount[] = []
+    let closed: ReadonlySet<string> = new Set()
     let readFailed = false
     const mark = readMark()
-    try {
-      counts = await readDayCounts(supabaseBrowser(), addDays(today, -399), today)
+    // 건수와 완료 표시(claim-day-done)를 같은 400일로 함께 읽는다. 완료 표시만 못 읽으면 읽은 건수는 쓰고 완료 표시는 없음으로 본다(AC-2804.4)
+    const [countsRead, closedRead] = await readCountsAndClosed(today)
+    if (countsRead.status === 'fulfilled') {
+      counts = countsRead.value
       remember(counts, mark)
-    } catch {
-      readFailed = true
-    }
+    } else readFailed = true
+    if (closedRead.status === 'fulfilled') closed = closedRead.value
+    else readFailed = true
     try {
-      const { days } = await call('claim.dates', listRange(today, counts))
+      const { days } = await call('claim.dates', listRange(today, counts, closed))
       if (ask !== datesAsk.current) return
-      const rows = buildDateList(days, counts)
+      const rows = buildDateList(days, counts, closed)
       setDates({ kind: 'ready', rows, countsFailed: readFailed })
       setPeriod((now) => (now.from || now.to ? now : defaultPeriod(rows, today)))
     } catch (error) {
@@ -174,12 +189,16 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
     const today = todayInKorea()
     const mark = readMark()
     try {
-      const counts = await readDayCounts(supabaseBrowser(), addDays(today, -399), today)
+      const [countsRead, closedRead] = await readCountsAndClosed(today)
+      if (countsRead.status === 'rejected') throw countsRead.reason
+      const counts = countsRead.value
       remember(counts, mark)
+      if (closedRead.status === 'rejected') throw closedRead.reason // 완료 표시를 못 읽으면 보던 목록을 둔다
+      const closed = closedRead.value
       if (ask !== datesAsk.current || busy.current || !onScreen.current) return // 읽는 사이에 불러오기가 시작됐으면 더 묻지 않는다
-      const { days } = await call('claim.dates', listRange(today, counts))
+      const { days } = await call('claim.dates', listRange(today, counts, closed))
       if (ask !== datesAsk.current || busy.current || !onScreen.current) return
-      setDates({ kind: 'ready', rows: buildDateList(days, counts), countsFailed: false })
+      setDates({ kind: 'ready', rows: buildDateList(days, counts, closed), countsFailed: false })
     } catch {
       // 보던 목록을 그대로 둔다
     }
