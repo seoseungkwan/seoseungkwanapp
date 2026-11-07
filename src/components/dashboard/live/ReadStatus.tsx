@@ -75,8 +75,8 @@ export function ReadFailed({ code, onRetry }: { code: ErrorCode; onRetry(): void
           다시 확인
         </button>
         {code !== BIT_IN_USE && (
-          // 보조 큰 단추: ds에 이름이 따로 없어 같은 값(보조 색 × 큰 크기)인 googleLarge 묶음을 쓴다(NotFoundScreen과 같다)
-          <Link href={CONNECT_CHECK} className={`${ds.button.googleLarge} no-underline`}>
+          // 보조 큰 단추(ds.button.secondaryLarge, dashboard-ux AC-2707.5)
+          <Link href={CONNECT_CHECK} className={`${ds.button.secondaryLarge} no-underline`}>
             연결 확인
           </Link>
         )}

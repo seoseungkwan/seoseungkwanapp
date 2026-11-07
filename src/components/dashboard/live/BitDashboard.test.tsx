@@ -766,7 +766,7 @@ describe('AC-601.4·AC-601.12: 저장 숫자 없이 읽기 실패', () => {
       expectOrder(bigLine(), screen.getByText(fix), number, button('다시 확인'), link('연결 확인'))
       expect(link('연결 확인').getAttribute('href')).toBe(CONNECT_CHECK)
       hasAll(button('다시 확인'), ds.button.primaryLarge)
-      hasAll(link('연결 확인'), ds.button.googleLarge)
+      hasAll(link('연결 확인'), ds.button.secondaryLarge) // dashboard-ux AC-2707.5
     },
   )
 

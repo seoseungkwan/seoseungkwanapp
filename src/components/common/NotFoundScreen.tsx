@@ -61,8 +61,8 @@ function Outside() {
         <Link href="/" className={`${ds.button.primaryLarge} ${OUT_BUTTON} no-underline`}>
           처음 화면으로
         </Link>
-        {/* 보조 큰 단추: ds에 이름이 따로 없어 같은 값(보조 색 × 큰 크기)인 googleLarge 묶음을 쓴다 */}
-        <Link href="/login" className={`${ds.button.googleLarge} ${OUT_BUTTON} no-underline`}>
+        {/* 보조 큰 단추(ds.button.secondaryLarge, dashboard-ux AC-2707.5) */}
+        <Link href="/login" className={`${ds.button.secondaryLarge} ${OUT_BUTTON} no-underline`}>
           로그인
         </Link>
       </div>

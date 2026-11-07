@@ -66,7 +66,8 @@ export const ds = {
     accentOutlineSmall: `${dsButtonBase} ${dsSizeSmallBold} ${dsAccentOutlineTone}`, // 관리자 [승인]
     ghost: `${dsButtonBase} ${dsSize} ${dsGhostTone}`, // 글자만 기본 — 오류 화면 [로그아웃]
     ghostSmall: `${dsButtonBase} ${dsSizeGhost} ${dsGhostTone}`, // 승인 대기 위 줄 [로그아웃]
-    googleLarge: `${dsButtonBase} ${dsSizeLarge} ${dsSecondaryTone}`, // [구글로 시작하기] — 안에 GoogleMark 18
+    googleLarge: `${dsButtonBase} ${dsSizeLarge} ${dsSecondaryTone}`, // [구글로 시작하기] — 안에 GoogleMark 18. 로그인 카드만 쓴다(dashboard-ux AC-2707.5)
+    secondaryLarge: `${dsButtonBase} ${dsSizeLarge} ${dsSecondaryTone}`, // 보조 큰 단추(보조 색 × 큰 크기, dashboard-ux AC-2707.5): 연결 확인·로그인으로 같은 일반 용도
   },
 
   // 글자 단추·링크: 바탕 없음·accent·body 500 → 올림 밑줄(아래 3px), 색 150ms(transition). 휴대폰은 44px 높이

@@ -165,6 +165,7 @@ const DS_KEYS = [
   'button.ghost',
   'button.ghostSmall',
   'button.googleLarge',
+  'button.secondaryLarge',
   'textButton',
   'field',
   'label',
@@ -284,6 +285,7 @@ describe('AC-204.1: ds.button — 크기·종류·공통 모양', () => {
     'button.ghostSmall': { h: 'h-8', px: 'px-2', text: 'text-small', weight: 'font-medium' },
     'button.primaryLarge': { h: 'h-11', px: 'px-5', text: 'text-body', weight: 'font-semibold' },
     'button.googleLarge': { h: 'h-11', px: 'px-5', text: 'text-body', weight: 'font-semibold' },
+    'button.secondaryLarge': { h: 'h-11', px: 'px-5', text: 'text-body', weight: 'font-semibold' }, // dashboard-ux AC-2707.5
   }
 
   it('AC-204.1: 크기 표는 단추 키 전부를 덮는다', () => {
@@ -1330,5 +1332,15 @@ describe('AC-221.2·AC-204.7: 틀째 그린 앱 화면 전부에 상자 안 상�
     noNested('확인 창')
     // 빈 검사가 아니다: 확인 창은 테두리 상자다
     expect(Array.from(document.body.querySelectorAll('*')).some(isBorderBox)).toBe(true)
+  })
+})
+
+describe('보조 큰 단추 이름 (dashboard-ux AC-2707.5)', () => {
+  it('AC-2707.5: ds.button.secondaryLarge는 보조 색 × 큰 크기(googleLarge와 같은 값)이고, googleLarge는 로그인 카드의 구글 단추만 쓴다', () => {
+    expect(ds.button.secondaryLarge).toBe(ds.button.googleLarge)
+    const users = [...APP_DIRS.flatMap(walk), ...APP_FILES]
+      .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && f !== CLASSES_FILE && existsSync(join(ROOT, f)))
+      .filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('button.googleLarge'))
+    expect(users).toEqual(['src/components/auth/LoginCard.tsx'])
   })
 })
