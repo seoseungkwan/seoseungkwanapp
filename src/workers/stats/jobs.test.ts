@@ -1193,6 +1193,25 @@ describe('AC-2702.1·AC-2702.3 Worker 일: sections', () => {
   })
 })
 
+describe('AC-2702.3 stats.worker.ts: sections를 일에 잇는다', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  it('AC-2702.3: 화면의 sections → sections-result', SLOW, async () => {
+    const posted: StatsWorkerMessage[] = []
+    const scope = {
+      onmessage: null as ((event: { data: unknown; ports: readonly MessagePort[] }) => void) | null,
+      postMessage: (message: StatsWorkerMessage) => posted.push(message),
+    }
+    vi.stubGlobal('self', scope)
+    await import('../stats.worker')
+    scope.onmessage?.({ data: sectionsRequest('b1'), ports: [] })
+    expect(posted).toEqual([{ type: 'sections-result', streamId: 'b1', view: { kind: 'none' } }])
+  })
+})
+
 describe('AC-2702.4 화면에 가는 세 칸 보기에는 묶음 이름과 숫자뿐이다', () => {
   it('AC-2702.4: sections-result를 JSON으로 펴도 차트번호·생년월일·주소 앞부분·접수 시각 줄·진료의 코드가 없다', async () => {
     const { host, sent } = hostUnderTest()
