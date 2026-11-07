@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { NextRequest } from 'next/server'
 import type { ComponentType, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -10,7 +10,7 @@ import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
 import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { AppShell } from '@/components/shell/AppShell'
-import { MENU } from '@/components/shell/menu'
+import { MENU, MORE_MENU } from '@/components/shell/menu'
 import { decideRoute } from '@/lib/auth/gate'
 import DashboardPage from './dashboard/page'
 
@@ -111,7 +111,7 @@ describe('AC-515.5: 로그인하면 늘 대시보드가 첫 화면이다 (REQ-30
       pageFile('/dashboard'),
       ...readdirSync(dir, { recursive: true, encoding: 'utf8' })
         .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
-        .map((f) => join(dir, f)),
+        .map((f) => join(dir, f).split(sep).join('/')), // 윈도우에서도 '/'로 견준다
     ]
     // 옛 빈 자리 · 브리핑 · 분석 폴더가 모두 들었다
     for (const part of ['DashboardEmpty.tsx', 'briefing/DashboardHome.tsx', 'summary/DashboardAnalysis.tsx']) {
@@ -177,8 +177,8 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(read(pageFile('/settings')), '/settings').toMatch(/from '@\/components\/settings\//)
   })
 
-  it('AC-515.4: 통계는 세 곳(menu · features · notReady)이 맞고 /stats 페이지는 StatsScreen이다', () => {
-    expect(MENU.find((m) => m.label === '통계')).toEqual({ label: '통계', path: '/stats', href: '/stats', ready: true })
+  it('AC-515.4·AC-2702.1: 통계는 세 곳(menu · features · notReady)이 맞고(주요 메뉴) /stats 페이지는 StatsScreen이다', () => {
+    expect(MENU.find((m) => m.label === '통계')).toEqual({ label: '통계', path: '/stats', href: '/stats', ready: true, primary: true })
     expect(DASHBOARD_FEATURES.find((f) => f.name === '통계')).toMatchObject({ href: '/stats', status: 'connect-first' })
     expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/stats')
     expect(read(pageFile('/stats'))).toMatch(/from '@\/components\/stats\/StatsScreen'/)
@@ -204,9 +204,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
   })
 
-  it('AC-010.1: [전체 메뉴]가 세는 준비 중 탭 수 = NOT_READY_FEATURES 수 = 목차의 준비 중 칸 수(매출이 빠진 수)', () => {
+  it('AC-010.1·AC-2702.2: [더보기] 판이 세는 준비 중 수 = NOT_READY_FEATURES 수 = 목차의 준비 중 칸 수(매출이 빠진 수) — 준비 중 탭은 모두 [더보기] 판에 있다', () => {
     const notReadyTabs = MENU.filter((m) => !m.ready)
     expect(notReadyTabs.map((m) => m.label as string)).not.toContain('매출')
+    expect(MORE_MENU.filter((m) => !m.ready)).toEqual(notReadyTabs)
     expect(notReadyTabs).toHaveLength(NOT_READY_FEATURES.length)
     expect(notReadyTabs).toHaveLength(featureCount('soon'))
   })
@@ -293,7 +294,7 @@ describe('바탕 표시 지움 (ui-90 AC-404.2)', () => {
   const sources = (dir: string) =>
     readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
       .filter((f) => /\.(?:tsx?|css)$/.test(f) && !/\.test\.tsx?$/.test(f))
-      .map((f) => join(ROOT, dir, f))
+      .map((f) => join(ROOT, dir, f).split(sep).join('/'))
 
   it('AC-404.2: 시험 파일 밖 src/components/**·src/app/** 소스에 data-page-surface가 없다', () => {
     const files = [...sources('src/components'), ...sources('src/app')]

@@ -3,15 +3,15 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from 'react'
-import { AllMenu } from './AllMenu'
 import { LoadBar } from './LoadBar'
-import { MENU, currentMenuLabel } from './menu'
+import { MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
+import { MoreMenu } from './MoreMenu'
 
-// 탭 줄 (tab-frame REQ-303, AC-008.7, b2b-redesign AC-218.2, ui-90 REQ-416·REQ-405, UI_GUIDE '앱 화면' 탭 줄·[전체 메뉴]·누른 탭 먼저).
+// 탭 줄 (tab-frame REQ-303, AC-008.7, b2b-redesign AC-218.2, ui-90 REQ-405, dashboard-ux REQ-2702, UI_GUIDE '앱 화면' 탭 줄·누른 탭 먼저).
 // 44px·흰 바탕·아래 1px 선. 위쪽 띠와 함께 AppShell의 붙는 묶음 안에 있다(이 nav 자신은 붙지 않는다).
-// nav 안: 탭 띠(첫 자식) · [전체 메뉴] 단추와 판(AllMenu, 1024px 미만만) · 불러오기 줄(LoadBar, 맨 끝).
-// 13개 모두 자기 주소로 가는 링크다. 화면이 아직 없는 기능도 같은 모양이고, 준비 중임은 [전체 메뉴] 판의 칩과 그 주소의 준비 중 화면이 알린다.
-// 1024px 미만은 탭 띠만 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음). 띠 끝 흐림은 넣지 않는다(UI_GUIDE '탭 줄', 시안의 끝 흐림과 다르다)
+// nav 안: 탭 띠(첫 자식, 주요 메뉴 다섯) · [더보기] 단추와 판(MoreMenu, 모든 폭) · 불러오기 줄(LoadBar, 맨 끝).
+// 모두 자기 주소로 가는 링크다. 화면이 아직 없는 기능은 [더보기] 판에 있고, 준비 중임은 판의 칩과 그 주소의 준비 중 화면이 알린다.
+// 1024px 미만은 탭 띠만 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음, [더보기] 글자가 길어 넘칠 때). 띠 끝 흐림은 넣지 않는다(UI_GUIDE '탭 줄', 시안의 끝 흐림과 다르다)
 
 // 탭 공통: 모든 폭 44px·좌우 12px·body, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리). 올림 글자색은 짧게 바뀐다(transition 150ms, UI_GUIDE '짧은 반응 허용').
 // 굵기·글자색은 종류마다 하나씩 준다. 전역 a 규칙·브라우저 기본 밑줄에 기대지 않게 글자색·no-underline을 직접 준다
@@ -91,6 +91,9 @@ export function TabBar() {
   const [pending, setPending] = useState<{ href: string; from: string } | null>(null)
   if (pending !== null && pending.from !== pathname) setPending(null)
   const pendingHref = pending?.href ?? null
+  // 누른 주소의 탭 이름과, 지금 탭 모양으로 보일 이름(누른 탭이 있으면 그것, 없으면 지금 탭) — [더보기] 단추가 쓴다
+  const pendingLabel = pendingHref === null ? null : (MENU.find((item) => item.path === pendingHref)?.label ?? null)
+  const shownLabel = pendingHref === null ? current : pendingLabel
   // 누를 때마다 새 불러오기 줄을 그려 0에서 다시 차오르게 한다(LoadBar)
   const [presses, setPresses] = useState(0)
 
@@ -114,12 +117,12 @@ export function TabBar() {
 
   return (
     <nav aria-label="메뉴" className="relative flex border-b border-line bg-surface">
-      {/* 탭 띠: 1024px 미만은 이것만 옆으로 밀린다. 키보드 초점이 간 탭도 보이게 띠만 민다(ui-90 AC-416.5) */}
+      {/* 탭 띠: 주요 메뉴 다섯(AC-2702.1). 1024px 미만은 이것만 옆으로 밀린다. 키보드 초점이 간 탭도 보이게 띠만 민다(ui-90 AC-416.5) */}
       <div ref={stripRef} className="min-w-0 flex-1 max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]">
         {/* 탭 줄 하나(감싸개를 더하지 않는다). 1024px 이상은 위쪽 띠 안쪽과 같은 1280 폭·좌우 24px로 가운데에 놓인다.
             첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다(모든 폭, 시안의 폰 줄도 글자 16px로 맞음) */}
         <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl [&>:first-child]:-ml-3">
-          {MENU.map((item) => (
+          {PRIMARY_MENU.map((item) => (
             <TabLink
               key={item.label}
               label={item.label}
@@ -133,7 +136,7 @@ export function TabBar() {
           ))}
         </div>
       </div>
-      <AllMenu pathname={pathname} current={current} onPress={press} />
+      <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} />
       <LoadBar key={presses} active={pending !== null} />
     </nav>
   )

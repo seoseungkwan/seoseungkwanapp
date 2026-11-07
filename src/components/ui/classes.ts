@@ -124,4 +124,15 @@ export const ds = {
 
   // 떠 있는 층(계정 메뉴·확인 창): 8px 모서리. 그림자는 여기(와 툴팁)에만
   layer: 'rounded-float border border-line bg-surface shadow-float',
+
+  // 기간 단추 묶음(dashboard-ux AC-2703.2·AC-2707.4, 시안 .seg): 대시보드 추이 빠른 단추·통계 기간 고르기가 같이 쓴다. 값은 통계 기간 고르기 단추 그대로다.
+  // 묶음 32px(테두리 포함)·4px·1px line-strong, 휴대폰은 전체 폭 칸 나눔(칸 수 max-md:grid-cols-N은 단추 수에 맞춰 놓는 자리가 준다)·단추마다 44px.
+  // 눌린 것(aria-pressed) accent-soft · accent-strong 600. 올림 바탕만 짧게 바뀌고(transition), 눌린 단추에는 transition이 없어 눌린 표시가 바로 바뀐다
+  segment: {
+    group: 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full',
+    button:
+      'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:px-1',
+    on: 'bg-accent-soft font-semibold text-accent-strong',
+    off: 'font-medium text-ink-2 transition hover:bg-canvas',
+  },
 } as const

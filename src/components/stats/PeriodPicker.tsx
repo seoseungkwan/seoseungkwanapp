@@ -13,15 +13,15 @@ import { statsRange } from './view'
 // props만 받는다(고른 것은 저장하지 않는다). 판의 고치던 날짜·단위만 이 부품 안 상태다.
 // 휴대폰(768px 미만)은 한 줄씩 전체 폭·44px이고 판은 단추 바로 아래 문서 흐름 안이다(AC-1703.5)
 
-// 기간 단추 모양은 대시보드 기간 단추와 같다(시안 .seg). 휴대폰은 넷이 같은 폭 44px. 통계 화면 빠른 단추도 여기서 불러간다(TASK-8)
-export const PERIOD_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:grid-cols-4'
-export const PERIOD_BUTTON =
-  'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:px-1'
-export const PERIOD_ON = 'bg-accent-soft font-semibold text-accent-strong'
-export const PERIOD_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
+// 기간 단추 모양은 ds.segment 하나다(대시보드 추이 빠른 단추와 같다, dashboard-ux AC-2707.4). 휴대폰은 넷이 같은 폭 44px.
+// 통계 화면 빠른 단추도 여기서 불러간다(TASK-8). 그려지는 클래스는 옮기기 전과 같다
+export const PERIOD_GROUP = `${ds.segment.group} max-md:grid-cols-4`
+export const PERIOD_BUTTON = ds.segment.button
+export const PERIOD_ON = ds.segment.on
+export const PERIOD_OFF = ds.segment.off
 
 // 단위 셋 묶음(위쪽은 빠른 단추 묶음과 같은 모양, 휴대폰 세 칸). 판 안은 판 폭을 세 칸으로 나눈다
-const UNIT_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:grid-cols-3'
+const UNIT_GROUP = `${ds.segment.group} max-md:grid-cols-3`
 const PANEL_UNIT_GROUP = 'grid grid-cols-3 overflow-clip rounded-control border border-line-strong bg-surface'
 // ◀ 2026년 10월 ▶ : 테두리 한 상자(32px, 휴대폰 44px 전체 폭). 가운데 글은 고르는 중이면 진하게, 아니면 흐리게
 const STEP_BOX = 'inline-flex h-8 shrink-0 items-stretch overflow-clip rounded-control border border-line-strong bg-surface max-md:h-11 max-md:w-full'
@@ -35,9 +35,12 @@ const CUSTOM_BUTTON =
   'inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-control border px-3 text-small focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-md:h-11 max-md:w-full'
 const CUSTOM_ON = 'border-accent bg-accent-soft font-semibold text-accent-strong'
 const CUSTOM_OFF = 'border-line-strong bg-surface font-medium text-ink-2 transition hover:bg-canvas'
-// 판: 768px 이상은 단추 아래 뜬 판(층 모양), 미만은 문서 흐름 안 전체 폭
+// 판: 768px 이상은 단추 아래 뜬 판(층 모양), 미만은 문서 흐름 안 전체 폭.
+// 768px 이상 너비는 400px과 '화면 폭 − 좌우 24px씩' 중 작은 값이다(dashboard-ux AC-2703.3, 화면 가장자리에 닿지 않는다).
+// 기본은 부품 왼쪽 끝에 맞추고(통계 탭), align="end"면 오른쪽 끝에 맞춰 왼쪽으로 펼친다(대시보드 추이: 묶음이 오른쪽 끝에 있다)
 const PANEL =
-  'absolute top-full left-0 z-30 mt-2 flex w-100 flex-col gap-3 rounded-float border border-line bg-surface p-4 md:shadow-float max-md:static max-md:w-full'
+  'absolute top-full left-0 z-30 mt-2 flex w-100 flex-col gap-3 rounded-float border border-line bg-surface p-4 md:max-w-[calc(100vw-3rem)] md:shadow-float max-md:static max-md:w-full'
+const PANEL_END = `${PANEL} md:right-0 md:left-auto`
 
 const UNITS: { unit: PickUnit; name: string }[] = [
   { unit: 'day', name: '일별' },
@@ -46,7 +49,14 @@ const UNITS: { unit: PickUnit; name: string }[] = [
 ]
 
 type Draft = { from: string; to: string; unit: PickUnit }
-type Props = { choice: StatsChoice; lastDay: string; todayDone: boolean; onChoose: (choice: StatsChoice) => void }
+type Props = {
+  choice: StatsChoice
+  lastDay: string
+  todayDone: boolean
+  onChoose: (choice: StatsChoice) => void
+  /** 직접 날짜 판을 맞출 끝(768px 이상). 기본 start(왼쪽 끝) */
+  align?: 'start' | 'end'
+}
 
 type StepPick = Extract<StatsPick, { kind: 'month' | 'year' }>
 
@@ -80,7 +90,7 @@ function unitPick(choice: StatsChoice, unit: PickUnit, lastDay: string): StatsPi
   return choice.year === lastDay.slice(0, 4) ? defaultPick(unit, lastDay) : { kind: 'month', unit, month: `${choice.year}-12` }
 }
 
-export function PeriodPicker({ choice, lastDay, todayDone, onChoose }: Props) {
+export function PeriodPicker({ choice, lastDay, todayDone, onChoose, align = 'start' }: Props) {
   const today = todayDone ? lastDay : addDays(lastDay, 1)
   const captionId = useId()
   const panelId = useId()
@@ -216,6 +226,7 @@ export function PeriodPicker({ choice, lastDay, todayDone, onChoose }: Props) {
       {open && (
         <CustomPanel
           id={panelId}
+          className={align === 'end' ? PANEL_END : PANEL}
           draft={draft}
           lastDay={lastDay}
           check={check}
@@ -233,6 +244,7 @@ export function PeriodPicker({ choice, lastDay, todayDone, onChoose }: Props) {
 
 type PanelProps = {
   id: string
+  className: string
   draft: Draft
   lastDay: string
   check: ReturnType<typeof checkCustom>
@@ -246,10 +258,10 @@ type PanelProps = {
 
 // 직접 날짜 판(AC-1703.3). 날짜 칸은 FIRST_DAY(2020-01-01)~끝난 날이다. 오류·경고 동안 [이 기간 보기]는 disabled이고(날짜 한도 오류 AC-1702.4 포함),
 // 경고의 [주별로 보기]·[월별로 보기]는 판의 단위만 바꾼다
-function CustomPanel({ id, draft, lastDay, check, label, canApply, onDraft, onClose, onApply, onKeyDown }: PanelProps) {
+function CustomPanel({ id, className, draft, lastDay, check, label, canApply, onDraft, onClose, onApply, onKeyDown }: PanelProps) {
   const titleId = useId()
   return (
-    <div id={id} role="dialog" aria-labelledby={titleId} onKeyDown={onKeyDown} className={PANEL}>
+    <div id={id} role="dialog" aria-labelledby={titleId} onKeyDown={onKeyDown} className={className}>
       <p id={titleId} className={ds.panelTitle}>
         직접 날짜 고르기
       </p>
