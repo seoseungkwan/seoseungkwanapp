@@ -44,7 +44,7 @@
 - Step: Phase 2 (TASK-3 뒤, TASK-4와 나란히)
 - AC: AC-1503.1, AC-1503.2
 - REQ: REQ-1503
-- Files: reception/www/board.js, reception/www/detail.js, reception/www/style.css, reception/www/theme.css, reception/tests/board.test.ts, reception/tests/detail.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts, reception/tests/fixtures.ts
-- Tests: reception/tests/board.test.ts, reception/tests/detail.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts
+- Files: reception/www/board.js, reception/www/detail.js, reception/www/style.css, reception/www/theme.css, reception/tests/board.test.ts, reception/tests/detail.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts, reception/tests/fixtures.ts, reception/tests/app.test.ts, reception/tests/offline.test.ts, reception/tests/poll.test.ts
+- Tests: reception/tests/board.test.ts, reception/tests/detail.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts, reception/tests/app.test.ts, reception/tests/offline.test.ts, reception/tests/poll.test.ts
 - TDD: required
 - 목업 Paper.html의 `.memo`·`.memo .lab`·`.new-badge` 모양 그대로(파랑 #1D4ED8 · 흰 글). 도우미(C#)의 info 글은 바꾸지 않고 화면이 나눈다
