@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "reception-paper",
-  "approved_at": "2026-11-07T03:26:33Z",
+  "approved_at": "2026-11-07T04:27:22Z",
   "approved_via": "user-prompt",
   "session_id": "adfd39b2-747b-4fe0-a542-9b9292f37b01",
-  "spec_sha256": "bdbbf6cc08b6b1476f9c2a309a91a7169c23f06c83929fad8f151239e297c16f",
+  "spec_sha256": "c4793c7979b13643986bae6453c1b982da3c654fe44e4a2699b2a37a7676041c",
   "scope": [
     "helper/src/Precheck.Core/Precheck.Core.csproj",
     "helper/src/Precheck.Core/Reception/HistoryBuilder.cs",
@@ -23,6 +23,7 @@
     "helper/tests/reception-paper-sql.dotnet.test.ts",
     "helper/tests/reception-paper.dotnet.test.ts",
     "helper/tests/reception-sql.dotnet.test.ts",
+    "reception/tests/alert.test.ts",
     "reception/tests/api.test.ts",
     "reception/tests/app.test.ts",
     "reception/tests/board.test.ts",
