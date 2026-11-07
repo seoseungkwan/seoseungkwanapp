@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>환자 탭에 더하는 두 도구 — 예약 문자 명단 · 장기 미방문 명단 (시안)</title>
+<!--
+  specs/patients-reservations · specs/patients-lapsed 화면 시안. 환자 탭(docs/mockups/patients, 승인본)에 도구 둘을 더한다:
+  예약 문자 명단(비트 예약 대기 → 명단 복사 · 예약 안내 문구 복사, 아래에 지난 예약 중 안 오신 분)과 장기 미방문 명단.
+  한 파일: CSS·JS가 이 안에 있다. 바깥 글꼴·그림·주소를 부르지 않는다. 색·글자 값은 src/app/globals.css :root 그대로.
+  모양 이름은 환자 탭 목업과 같다: .btn-pri/.btn-sec/.btn-sm = ds.button · .tbtn = ds.textButton · .chip-n/-a/-w = ds.chip · .seg = 기간 단추 묶음 · .tb = ds.table.
+  사람 이름·전화·날짜·숫자는 모두 지어낸 예시다. 오늘 = 2026-11-06(금) 18:20. 어디로도 보내지 않는다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827;
+  --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3;
+  --r-control: 4px; --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
+  --ls-heading: -0.01em;
+  --font-ui: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --tag-bg: #FEF3C7; --tag-fg: #92400E; --page: #E9ECF1;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 14px/22px var(--font-ui); word-break: keep-all; overflow-wrap: break-word; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p, ul, ol, li { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- 시안 쪽 (앱 밖) ---------- */
+.doc { max-width: 1228px; margin: 0 auto; padding: 24px 24px 64px; }
+.doc-h { font-size: 22px; line-height: 30px; font-weight: 600; letter-spacing: var(--ls-heading); }
+.tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-fg); font-size: 12px; line-height: 18px; font-weight: 600; vertical-align: middle; }
+.doc-p { margin-top: 8px; color: var(--ink-2); max-width: 80ch; }
+.ctl { margin-top: 16px; display: grid; gap: 8px; }
+.ctl-r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ctl-k { width: 40px; flex: none; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.pick { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 13px; font-weight: 500; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.pick[aria-pressed=true] { border-color: var(--ink); background: var(--ink); color: #fff; }
+
+/* 앱 틀 */
+.frame { margin: 20px auto 0; width: 100%; max-width: 1180px; border: 1px solid var(--line-strong); border-radius: var(--r-float); overflow: hidden; background: var(--surface); transition: max-width .2s; }
+.frame.ph { max-width: 390px; }
+.bw-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.bw-url { flex: 1; min-width: 0; height: 26px; display: flex; align-items: center; padding: 0 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-control); font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw-url b { color: var(--ink); font-weight: 600; }
+
+/* ---------- 앱 화면 ---------- */
+.ui { background: var(--surface); color: var(--ink); text-align: left; }
+.ui button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; }
+.ic { flex: none; display: block; }
+.a-hdr { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 24px; border-bottom: 1px solid var(--line); }
+.is-ph .a-hdr { height: 48px; padding: 0 16px; }
+.clinic { font-size: 16px; line-height: 24px; font-weight: 600; white-space: nowrap; }
+.is-ph .clinic { font-size: 14px; }
+.a-tabs { display: flex; height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.a-tabs::-webkit-scrollbar { display: none; }
+.a-tab { position: relative; display: flex; align-items: center; padding: 0 12px; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.a-tab.on { color: var(--ink); font-weight: 600; }
+.a-tab.on::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.main { padding: 24px 24px 48px; }
+.is-ph .main { padding: 16px 16px 32px; }
+.pg-h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+
+/* 도구 단추 줄 */
+.tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.is-ph .tools { flex-wrap: nowrap; overflow-x: auto; margin: 12px -16px 0; padding: 4px 16px; scrollbar-width: none; }
+.is-ph .tools::-webkit-scrollbar { display: none; }
+.ui .tool { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.ui .tool .ic { color: var(--ink-2); }
+.ui .tool:hover { background: var(--canvas); }
+.ui .tool[aria-current=page] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.ui .tool[aria-current=page] .ic { color: var(--accent); }
+.is-ph .tool { height: 44px; }
+.new { outline: 2px dashed #F59E0B; outline-offset: 3px; border-radius: 6px; }
+.tbody { margin-top: 24px; }
+.is-ph .tbody { margin-top: 16px; }
+.tbody.new { outline-offset: 8px; }
+
+/* 단추 · 칩 · 입력 */
+.ui .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--r-control); font-size: 14px; line-height: 22px; font-weight: 500; white-space: nowrap; }
+.ui .btn-sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; }
+.is-ph .btn, .is-ph .btn-sm { height: 44px; }
+.ui .btn-pri { background: var(--accent); color: var(--surface); }
+.ui .btn-pri:not([aria-disabled=true]):hover { background: var(--accent-strong); }
+.ui .btn-sec { background: var(--surface); border-color: var(--line-strong); color: var(--ink); }
+.ui .btn-sec:not([aria-disabled=true]):hover { background: var(--canvas); }
+.ui .btn-sec .ic { color: var(--ink-2); }
+.ui .btn[aria-disabled=true] { opacity: .4; cursor: not-allowed; }
+.ui .tbtn { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--accent); text-underline-offset: 3px; white-space: nowrap; }
+.ui .tbtn:hover { text-decoration: underline; }
+.is-ph .tbtn { min-height: 44px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r-control); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.chip-n { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip-a { background: var(--accent-soft); color: var(--accent-strong); }
+.chip-w { background: var(--warning-soft); color: var(--warning); }
+.ui .inp { height: 44px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 14px; line-height: 22px; color: var(--ink); }
+.ui textarea.inp { height: auto; padding: 8px 12px; resize: vertical; }
+.ui .inp.dt { width: 160px; height: 36px; }
+.is-ph .inp.dt { width: 100%; height: 44px; }
+.cbw { position: relative; display: inline-flex; width: 16px; height: 16px; flex: none; }
+.ui .cb { -webkit-appearance: none; appearance: none; margin: 0; width: 16px; height: 16px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); cursor: pointer; }
+.ui .cb:checked { border-color: var(--accent); background: var(--accent); }
+.cbm { position: absolute; inset: 0; display: none; color: var(--surface); pointer-events: none; }
+.cb:checked + .cbm { display: block; }
+.ck { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.is-ph .ck { min-height: 44px; }
+.seg { display: inline-flex; flex: none; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); overflow: hidden; }
+.ui .seg button { height: 30px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--ink-2); }
+.ui .seg button + button { border-left: 1px solid var(--line-strong); }
+.ui .seg button:hover { background: var(--canvas); }
+.ui .seg button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.ui .seg button:focus-visible { outline-offset: -2px; }
+.is-ph .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+.ui.is-ph .seg button { height: 44px; padding: 0 6px; text-align: center; }
+
+/* 도구 머리 · 고르기 · 단추 줄 (FollowupTool과 같은 값) */
+.sh { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
+.sh-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.sh-d { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 52em; }
+.sum { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 8px; font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.sum b { color: var(--ink); font-weight: 600; }
+.flt { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.fg-k { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.rng { font-size: 13px; line-height: 20px; color: var(--muted); }
+.fhelp { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.is-ph .flt { display: grid; gap: 12px; }
+.is-ph .fg { display: grid; gap: 6px; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 16px; }
+.ag { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.is-ph .acts { display: grid; gap: 12px; }
+.is-ph .ag { display: grid; gap: 4px; }
+.is-ph .ag .btn { width: 100%; }
+.cst { min-height: 20px; margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.okt { display: inline-flex; align-items: center; gap: 4px; color: var(--positive); font-weight: 500; }
+
+/* 표 (ds.table) · 휴대폰 줄 */
+.tbw { min-width: 0; overflow-x: auto; margin-top: 12px; }
+.is-ph .tbw { display: none; }
+.tbw.narrow { max-width: 720px; }
+.tb { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.tb th { height: 40px; padding: 0 12px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.tb td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--ink); }
+.tb th:first-child, .tb td:first-child { padding-left: 20px; }
+.tb th:last-child, .tb td:last-child { padding-right: 20px; }
+.tb tbody tr:hover { background: var(--canvas); }
+.tb td.sub { color: var(--ink-2); }
+.tb td.num { text-align: right; } .tb th.num { text-align: right; }
+.tb td.empty { height: 48px; color: var(--muted); white-space: normal; }
+.na { color: var(--muted); }
+.came { color: var(--positive); font-weight: 500; }
+.pl { margin-top: 12px; border-top: 1px solid var(--line); }
+.is-pc .pl { display: none; }
+.pl > li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.pl > li.empty { padding: 16px 0; color: var(--muted); }
+.pl-1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pl-n { font-weight: 600; }
+.pl-2 { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.pl-3 { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.more { margin-top: 8px; }
+.note { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--muted); max-width: 60em; }
+.und { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+.und-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.ratio { margin-top: 12px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.ratio b { color: var(--ink); font-weight: 600; }
+.counts { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+
+/* 불러오는 중 · 도우미 업데이트 */
+.ld { margin-top: 16px; padding-top: 20px; border-top: 1px solid var(--line); }
+.ld-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.ld-s { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.notice { display: flex; gap: 8px; max-width: 720px; margin-top: 16px; padding: 12px 16px; border-radius: var(--r-control); background: var(--accent-soft); color: var(--ink); }
+.notice .ic { margin-top: 3px; color: var(--accent-strong); }
+.notice b { font-weight: 600; }
+.notice p + p { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.after { margin-top: 12px; }
+.same { margin-top: 16px; padding: 32px 20px; border: 1px dashed var(--line-strong); border-radius: var(--r-control); background: var(--canvas); color: var(--muted); text-align: center; }
+
+/* 문자 문구 (짧게) */
+.mhelp { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 52em; }
+.mg { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; margin-top: 16px; }
+.m-l { grid-column: 1 / 8; min-width: 0; }
+.m-r { grid-column: 9 / 13; min-width: 0; }
+.is-ph .mg { grid-template-columns: 1fr; row-gap: 32px; }
+.is-ph .m-l, .is-ph .m-r { grid-column: 1; }
+.mlist { border-top: 1px solid var(--line); }
+.mlist > li { display: grid; gap: 10px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.mlist > li.new { outline-offset: -2px; padding: 16px 8px; }
+.m-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.m-no { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.lab { display: block; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.help { font-size: 12px; line-height: 16px; color: var(--muted); margin-top: 6px; }
+.m-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; }
+.is-ph .m-add { display: grid; }
+.prev { margin-top: 6px; padding: 16px; border-radius: var(--r-control); background: var(--canvas); white-space: pre-wrap; color: var(--ink); }
+.ph-mark { background: var(--warning-soft); color: var(--warning); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1 class="doc-h">환자 탭에 더하는 두 도구 — 예약 문자 명단 · 장기 미방문 명단 (시안)<span class="tag">시안</span></h1>
+  <p class="doc-p">새 도우미가 비트 PC에서 예약 대기와 오래 안 오신 분을 읽어 와요. 도구를 처음 열 때 읽고, [다시 불러오기]를 누르면 다시 읽어요(저녁에 예약 대기를 채운 뒤 누르면 돼요).</p>
+  <p class="doc-p">주황 점선이 새로 생기는 곳이에요. F/U 명단 · 정기 주사 문자 명단은 지금 그대로예요. 이름 · 전화 · 날짜 · 숫자는 모두 지어낸 예시예요. 오늘을 2026년 11월 6일(금) 오후 6:20으로 놓고 그렸어요.</p>
+  <div class="ctl">
+    <div class="ctl-r"><span class="ctl-k">폭</span>
+      <button type="button" class="pick" data-w="pc" aria-pressed="true">PC</button>
+      <button type="button" class="pick" data-w="phone" aria-pressed="false">휴대폰</button>
+    </div>
+    <div class="ctl-r"><span class="ctl-k">상태</span>
+      <button type="button" class="pick" data-st="loaded" aria-pressed="true">불러온 뒤</button>
+      <button type="button" class="pick" data-st="loading" aria-pressed="false">읽는 중</button>
+      <button type="button" class="pick" data-st="empty" aria-pressed="false">예약 없음</button>
+      <button type="button" class="pick" data-st="update" aria-pressed="false">도우미 업데이트 필요</button>
+    </div>
+  </div>
+  <div class="frame" id="frame">
+    <div class="bw-bar"><span class="bw-url" id="url"></span></div>
+    <div class="ui is-pc" id="app"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 날짜 (오늘 = 2026-11-06 금요일) ---------- */
+  var TODAY = '2026-11-06';
+  var WD = ['일', '월', '화', '수', '목', '금', '토'];
+  function D(s) { var p = s.split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
+  function ymd(d) { return d.toISOString().slice(0, 10); }
+  function addDays(s, n) { var d = D(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); }
+  function diff(a, b) { return Math.round((D(a) - D(b)) / 86400000); }
+  function md(s) { var d = D(s); return (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 (' + WD[d.getUTCDay()] + ')'; }
+  function mdShort(s) { var d = D(s); return (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일'; }
+  function mdY(s) { var d = D(s); return (d.getUTCFullYear() !== 2026 ? d.getUTCFullYear() + '년 ' : '') + mdShort(s); }
+  function dateLine(s) { var d = D(s); return '* ' + (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일 ' + WD[d.getUTCDay()] + '요일 *'; }
+  function hm(t) { var h = +t.slice(0, 2), m = t.slice(3); return (h < 12 ? '오전 ' : '오후 ') + (h > 12 ? h - 12 : h) + ':' + m; }
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  var TOMORROW = addDays(TODAY, 1), AFTER = addDays(TODAY, 2);
+  var READ_AT = '11월 6일 오후 6:20에 읽음';
+
+  /* ---------- 아이콘 (components/common/Icon.tsx 그림) ---------- */
+  var IC = {
+    cal: '<rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1"/><path d="M2.25 6.5h11.5M5.5 1.75v3M10.5 1.75v3"/>',
+    rsv: '<rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1"/><path d="M2.25 6.5h11.5M5.5 1.75v3M10.5 1.75v3M6 10l1.5 1.5 3-3"/>',
+    clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.75V8l2.25 1.5"/>',
+    user: '<circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 14c.6-2.5 2.7-3.9 5.25-3.9s4.65 1.4 5.25 3.9"/>',
+    doc: '<path d="M4 1.75h5.25L12 4.5v9.75H4z"/><path d="M9.25 1.75V4.5H12M6 8h4M6 10.75h4"/>',
+    copy: '<rect x="5.25" y="5.25" width="8" height="8" rx="1"/><path d="M10.75 5.25V3.75a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1.5"/>',
+    check: '<path d="m3.5 8.25 2.9 2.9 6.1-6.65"/>',
+    monitor: '<rect x="1.75" y="2.75" width="12.5" height="8.5" rx="1"/><path d="M5.5 13.75h5M8 11.25v2.5"/>'
+  };
+  function ic(n, s) {
+    s = s || 16;
+    return '<svg class="ic" aria-hidden="true" width="' + s + '" height="' + s + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + IC[n] + '</svg>';
+  }
+  var CHECK = '<svg class="cbm" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 8.25 2.6 2.6 5.4-5.85"/></svg>';
+
+  /* ---------- 지어낸 자료 ---------- */
+  var SUR = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '류', '홍'];
+  var GIV = ['가상', '나래', '다솜', '라온', '마루', '바다', '사랑', '아름', '자람', '하늘'];
+  function nameOf(i) { return SUR[i % SUR.length] + GIV[Math.floor(i / SUR.length) % GIV.length]; }
+  function phoneOf(i) { return '010-0000-' + String(1000 + i).slice(-4); }
+
+  // 예약: 날짜 → [시각, 이름, 전화]
+  var RSV = {};
+  RSV[TOMORROW] = [['09:00', 0], ['09:30', 1], ['11:00', 2], ['14:00', 3, ''], ['15:00', 4], ['16:30', 5], ['17:00', 6], ['18:00', 7], ['18:30', 8]];
+  RSV[AFTER] = [];
+  RSV['2026-11-09'] = [['09:00', 9], ['10:30', 10], ['14:30', 11], ['16:00', 12], ['17:30', 13]];
+  function rsvRows(day) {
+    return (RSV[day] || []).map(function (r) { return { t: r[0], name: nameOf(r[1]), phone: r.length > 2 ? r[2] : phoneOf(200 + r[1]) }; });
+  }
+
+  // 지난 예약 중 안 오신 분: [날, 시각, 사람, 비트 표시(c 예약 취소 / w 예약 그대로), 그 뒤 온 날|null, 전화 없음]
+  var PAST = {
+    '7': { from: addDays(TODAY, -7), to: addDays(TODAY, -1), total: 52, missed: 7, rows: [
+      ['2026-11-05', '17:00', 21, 'c', null], ['2026-11-04', '15:00', 22, 'c', '2026-11-05'], ['2026-11-04', '09:30', 23, 'w', null],
+      ['2026-11-03', '18:30', 24, 'c', null, true], ['2026-11-02', '11:00', 25, 'c', '2026-11-04'], ['2026-10-31', '10:00', 26, 'c', null], ['2026-10-30', '16:30', 27, 'c', null]] },
+    '30': { from: addDays(TODAY, -30), to: addDays(TODAY, -1), total: 214, missed: 26, rows: [] }
+  };
+  (function () {
+    var base = PAST['7'].rows.slice(), extra = [
+      ['2026-10-29', '14:00', 28, 'c', '2026-10-31'], ['2026-10-28', '18:00', 29, 'c', null], ['2026-10-27', '09:00', 30, 'w', null], ['2026-10-24', '11:30', 31, 'c', null],
+      ['2026-10-23', '17:30', 32, 'c', '2026-10-27'], ['2026-10-22', '15:30', 33, 'c', null], ['2026-10-21', '10:00', 34, 'c', null], ['2026-10-20', '16:00', 35, 'c', null, true],
+      ['2026-10-17', '09:30', 36, 'c', '2026-10-20'], ['2026-10-16', '18:30', 37, 'c', null], ['2026-10-15', '14:30', 38, 'c', null], ['2026-10-14', '11:00', 39, 'c', '2026-10-15'],
+      ['2026-10-13', '17:00', 40, 'c', null], ['2026-10-10', '10:30', 41, 'c', null], ['2026-10-09', '16:30', 42, 'c', null], ['2026-10-08', '09:00', 43, 'c', null],
+      ['2026-10-08', '15:00', 44, 'c', '2026-10-13'], ['2026-10-07', '18:00', 45, 'c', null], ['2026-10-07', '11:30', 46, 'c', null]];
+    PAST['30'].rows = base.concat(extra);
+  })();
+  function pastRow(r) { return { day: r[0], t: r[1], name: nameOf(r[2]), phone: r[5] ? '' : phoneOf(300 + r[2]), mark: r[3], after: r[4] }; }
+
+  // 장기 미방문: 마지막 내원 구간
+  var BUCKETS = [
+    { id: '1-3', label: '1~3달', n: 128, from: '2026-08-07', to: '2026-10-06' },
+    { id: '3-6', label: '3~6달', n: 96, from: '2026-05-07', to: '2026-08-06' },
+    { id: '6-12', label: '6~12달', n: 141, from: '2025-11-07', to: '2026-05-06' },
+    { id: '12-24', label: '1~2년', n: 203, from: '2024-11-07', to: '2025-11-06' }
+  ];
+  var lapsedCache = {};
+  function lapsedRows(b) {
+    if (lapsedCache[b.id]) return lapsedCache[b.id];
+    var seed = b.n * 7 + 3, span = diff(b.to, b.from), rows = [];
+    function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+    for (var i = 0; i < b.n; i++) {
+      var off = Math.floor((i / b.n) * span + rnd() * 2);
+      var day = addDays(b.to, -Math.min(off, span));
+      rows.push({ name: nameOf(i * 3 + b.n), phone: rnd() < 0.06 ? '' : phoneOf(500 + i + b.n), last: day, visits: 2 + Math.floor(rnd() * rnd() * 30), rsv: rnd() < 0.07 });
+    }
+    rows.sort(function (a, c) { return a.last < c.last ? 1 : a.last > c.last ? -1 : 0; });
+    return (lapsedCache[b.id] = rows);
+  }
+
+  /* ---------- 상태 ---------- */
+  var S = { w: 'pc', st: 'loaded', tool: 'reservations', day: 'tomorrow', custom: '2026-11-09', withDate: true, past: '7', pastAll: false,
+    bucket: '1-3', lapsedAll: false, note: null, pastNote: null, lapsedNote: null, msgNote: null, reloading: false };
+  var TOOLS = [
+    ['followup', 'F/U 명단', 'cal', false], ['reservations', '예약 문자 명단', 'rsv', true], ['recall', '정기 주사 문자 명단', 'clock', false],
+    ['lapsed', '장기 미방문 명단', 'user', true], ['messages', '문자 문구', 'doc', false]
+  ];
+  function chosenDay() { return S.day === 'tomorrow' ? TOMORROW : S.day === 'after' ? AFTER : S.custom; }
+
+  /* ---------- 조각 ---------- */
+  function seg(name, opts, val) {
+    return '<div class="seg" role="group" aria-label="' + name + '">' + opts.map(function (o) {
+      return '<button type="button" data-seg="' + name + '" data-v="' + o[0] + '" aria-pressed="' + (o[0] === val) + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function check(id, label, on) {
+    return '<label class="ck"><span class="cbw"><input type="checkbox" class="cb" id="' + id + '"' + (on ? ' checked' : '') + '>' + CHECK + '</span>' + label + '</label>';
+  }
+  function copyBtn(id, label, disabled, small) {
+    return '<button type="button" class="btn btn-sec' + (small ? ' btn-sm' : '') + '" data-copy="' + id + '"' + (disabled ? ' aria-disabled="true"' : '') + '>' + ic('copy') + label + '</button>';
+  }
+  function noteLine(n) { return '<p class="cst" role="status">' + (n ? '<span class="okt">' + ic('check', 14) + esc(n) + '</span>' : '') + '</p>'; }
+  function phone(p) { return p ? esc(p) : '<span class="na">번호 없음</span>'; }
+  function head(title, desc, right) {
+    return '<div class="sh"><div><h2 class="sh-t">' + title + '</h2><p class="sh-d">' + desc + '</p></div>' + (right || '') + '</div>';
+  }
+  function sumRight(n) {
+    return '<p class="sum"><span><b>' + n + '</b> · ' + READ_AT + '</span><button type="button" class="tbtn" data-act="reload">다시 불러오기</button></p>';
+  }
+  function loading(title, desc, what) {
+    return head(title, desc) + '<div class="ld" role="status"><p class="ld-t">' + what + '</p><p class="ld-s">다 읽을 때까지 이 창을 열어 두세요.</p></div>';
+  }
+  function updateCard(title, desc) {
+    return head(title, desc) + '<div class="notice">' + ic('monitor') + '<div><p><b>도우미를 업데이트하면 보여요</b></p><p>새 도우미가 비트 예약과 오래 안 오신 분을 읽어 와요. 비트 PC 연결 화면에서 업데이트할 수 있어요.</p></div></div>' +
+      '<div class="after"><button type="button" class="btn btn-sec">' + ic('monitor') + '비트 PC 연결</button></div>';
+  }
+
+  /* ---------- 도구 A: 예약 문자 명단 ---------- */
+  var A_T = '예약 문자 명단', A_D = '비트 예약 대기에 올라간 분이에요. 오시기 전날 문자로 알려 드려요.';
+  function toolReservations() {
+    if (S.st === 'loading' || S.reloading) return loading(A_T, A_D, '비트에서 예약 명단을 읽는 중이에요');
+    if (S.st === 'update') return updateCard(A_T, A_D);
+    var day = chosenDay(), rows = S.st === 'empty' ? [] : rsvRows(day);
+    var h = head(A_T, A_D, sumRight(rows.length + '명'));
+    h += '<div class="flt"><div class="fg"><span class="fg-k">날짜</span>' + seg('날짜', [['tomorrow', '내일'], ['after', '모레'], ['custom', '직접']], S.day) +
+      '<span class="rng">' + md(day) + '</span></div>' +
+      (S.day === 'custom' ? '<div class="fg"><label class="fg-k" for="cday">예약 날짜</label><input id="cday" type="date" class="inp dt" value="' + S.custom + '" min="' + TOMORROW + '"></div>' : '') + '</div>';
+    var off = rows.length === 0;
+    h += '<div class="acts"><div class="ag">' + copyBtn('list', '명단 복사', off) + check('withDate', '날짜 제목 줄 넣기', S.withDate) + '</div>' +
+      '<div class="ag">' + copyBtn('tpl', '문구 복사', off) + '<span class="rng">문구 날짜 ' + md(day) + '</span></div></div>';
+    h += noteLine(S.note);
+    h += '<p class="fhelp">명단 넷째 칸은 예약 시각이에요(문구의 [*2*] 자리). 번호 없는 분은 복사에서 빠져요.</p>';
+    var empty = '이 날 예약하신 분이 없어요. 비트에 예약 대기를 채운 뒤 [다시 불러오기]를 눌러 주세요.';
+    h += '<div class="tbw narrow"><table class="tb"><thead><tr><th>예약 시각</th><th>이름</th><th>전화</th></tr></thead><tbody>' +
+      (off ? '<tr><td class="empty" colspan="3">' + empty + '</td></tr>' : rows.map(function (r) {
+        return '<tr><td>' + hm(r.t) + '</td><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td></tr>';
+      }).join('')) + '</tbody></table></div>';
+    h += '<ul class="pl">' + (off ? '<li class="empty">' + empty + '</li>' : rows.map(function (r) {
+      return '<li><p class="pl-n">' + esc(r.name) + '</p><p class="pl-2">' + hm(r.t) + ' · ' + phone(r.phone) + '</p></li>';
+    }).join('')) + '</ul>';
+    h += pastSection();
+    return h;
+  }
+  function pastSection() {
+    var P = PAST[S.past], rows = P.rows.map(pastRow), shown = S.pastAll ? rows : rows.slice(0, 10);
+    var pct = Math.floor(P.missed * 100 / P.total);
+    var h = '<section class="und" aria-labelledby="past-t"><h3 class="und-t" id="past-t">지난 예약 · 안 오신 분</h3>';
+    h += '<div class="flt" style="border-top:0;padding-top:0;margin-top:12px"><div class="fg"><span class="fg-k">기간</span>' +
+      seg('지난 기간', [['7', '지난 7일'], ['30', '지난 30일']], S.past) + '<span class="rng">' + mdShort(P.from) + ' ~ ' + mdShort(P.to) + '</span></div></div>';
+    h += '<p class="ratio">예약 <b>' + P.total + '건</b> 중 안 오신 분 <b>' + P.missed + '건 · ' + pct + '%</b></p>';
+    h += '<p class="note">예약한 날 진료 접수가 없는 분이에요. 비트는 미리 취소한 예약과 안 오신 예약을 똑같이 ‘예약 취소’로 바꿔서 함께 세요.</p>';
+    h += '<div class="acts" style="margin-top:12px"><div class="ag">' + copyBtn('past', '명단 복사', rows.length === 0, true) + '</div></div>' + noteLine(S.pastNote);
+    var mark = function (r) { return r.mark === 'c' ? '<span class="chip chip-n">예약 취소</span>' : '<span class="chip chip-w">예약 그대로</span>'; };
+    var after = function (r) { return r.after ? '<span class="came">' + mdShort(r.after) + '에 오심</span>' : '<span class="na">아직 안 오심</span>'; };
+    var empty = '이 기간에 안 오신 분이 없어요.';
+    h += '<div class="tbw"><table class="tb"><thead><tr><th>예약한 때</th><th>이름</th><th>전화</th><th>비트 표시</th><th>그 뒤</th></tr></thead><tbody>' +
+      (rows.length === 0 ? '<tr><td class="empty" colspan="5">' + empty + '</td></tr>' : shown.map(function (r) {
+        return '<tr><td>' + md(r.day) + ' ' + hm(r.t) + '</td><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td><td>' + mark(r) + '</td><td>' + after(r) + '</td></tr>';
+      }).join('')) + '</tbody></table></div>';
+    h += '<ul class="pl">' + shown.map(function (r) {
+      return '<li><div class="pl-1"><span class="pl-n">' + esc(r.name) + '</span>' + mark(r) + '</div><p class="pl-2">' + md(r.day) + ' ' + hm(r.t) + ' · ' + phone(r.phone) + '</p><p class="pl-3">' + after(r) + '</p></li>';
+    }).join('') + '</ul>';
+    if (rows.length > 10) h += '<p class="more"><button type="button" class="tbtn" data-act="pastAll" aria-expanded="' + S.pastAll + '">' + (S.pastAll ? '10건만 보기' : '모두 보기 (' + rows.length + '건)') + '</button></p>';
+    return h + '</section>';
+  }
+
+  /* ---------- 도구 B: 장기 미방문 명단 ---------- */
+  var B_T = '장기 미방문 명단', B_D = '두 번 이상 오셨는데 한동안 안 오신 분이에요. 전화나 문자로 안부를 여쭤 보세요.';
+  function toolLapsed() {
+    if (S.st === 'loading' || S.reloading) return loading(B_T, B_D, '비트에서 오래 안 오신 분을 찾는 중이에요');
+    if (S.st === 'update') return updateCard(B_T, B_D);
+    var b = BUCKETS.filter(function (x) { return x.id === S.bucket; })[0], rows = lapsedRows(b), shown = S.lapsedAll ? rows : rows.slice(0, 10);
+    var h = head(B_T, B_D, sumRight(b.n + '명'));
+    h += '<div class="flt"><div class="fg"><span class="fg-k">마지막 내원</span>' + seg('마지막 내원', BUCKETS.map(function (x) { return [x.id, x.label]; }), S.bucket) +
+      '<span class="rng">' + mdY(b.from) + ' ~ ' + mdY(b.to) + '에 마지막으로 오신 분</span></div></div>';
+    h += '<p class="counts">' + BUCKETS.map(function (x) { return x.label + ' ' + x.n + '명'; }).join(' · ') + '</p>';
+    h += '<div class="acts"><div class="ag">' + copyBtn('lapsed', '명단 복사', false) + '</div></div>' + noteLine(S.lapsedNote);
+    h += '<p class="fhelp">명단 넷째 칸은 마지막 내원 날짜예요. 번호 없는 분은 복사에서 빠져요.</p>';
+    var rsv = function (r) { return r.rsv ? '<span class="chip chip-a">예약 있음</span>' : ''; };
+    h += '<div class="tbw"><table class="tb"><thead><tr><th>이름</th><th>전화</th><th>마지막 내원</th><th class="num">내원 횟수</th><th>비고</th></tr></thead><tbody>' +
+      shown.map(function (r) {
+        return '<tr><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td><td>' + md(r.last) + ' · <span class="na">' + num(diff(TODAY, r.last)) + '일 전</span></td><td class="num">' + r.visits + '번</td><td>' + rsv(r) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    h += '<ul class="pl">' + shown.map(function (r) {
+      return '<li><div class="pl-1"><span class="pl-n">' + esc(r.name) + '</span>' + rsv(r) + '</div><p class="pl-2">마지막 내원 ' + md(r.last) + ' · ' + num(diff(TODAY, r.last)) + '일 전</p><p class="pl-3">' + phone(r.phone) + ' · ' + r.visits + '번 오심</p></li>';
+    }).join('') + '</ul>';
+    h += '<p class="more"><button type="button" class="tbtn" data-act="lapsedAll" aria-expanded="' + S.lapsedAll + '">' + (S.lapsedAll ? '10명만 보기' : '모두 보기 (' + b.n + '명)') + '</button></p>';
+    h += '<p class="note">내원 횟수는 진료 받은 날 수예요(같은 날 두 번 접수해도 한 번). 예약 대기·취소한 접수는 세지 않아요.</p>';
+    return h;
+  }
+
+  /* ---------- 문자 문구 (짧게, 예약 안내만 새로) ---------- */
+  var TPL = [
+    ['injection', '주사 안내', '[병원명 설정 필요]\n\n[*1*]님, 안녕하세요.\n병원명 설정 필요입니다.\n<<DATE>>\n[*2*] 주사 예정일입니다.\n병원에서 안내한 시간에 내원해 주세요.', false],
+    ['followup', '진료 안내', '[병원명 설정 필요]\n\n[*1*]님, 안녕하세요.\n병원명 설정 필요입니다.\n<<DATE>>\n[*2*] 진료 예정일입니다.\n예약 시간을 확인하고 내원해 주세요.', false],
+    ['reservation', '예약 안내', '[병원명 설정 필요]\n\n[*1*]님, 안녕하세요.\n<<DATE>>\n[*2*]에 예약되어 있어요.\n\n(원장님이 주실 문구로 바꿀 자리예요)', true]
+  ];
+  var KIND = { injection: '주사 안내', followup: '진료 안내', reservation: '예약 안내' };
+  function fill(body, day) { return body.split('\n').map(function (l) { return l.indexOf('<<DATE>>') >= 0 ? dateLine(day) : l; }).join('\n'); }
+  function toolMessages() {
+    var h = head('문자 문구', '명단과 함께 문자 프로그램에 붙여 넣을 안내 글이에요. 여기서 고치면 다른 PC와 휴대폰에서도 같은 글을 써요.',
+      '<button type="button" class="btn btn-pri" aria-disabled="true">저장</button>');
+    h += '<p class="mhelp">[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, <mark class="ph-mark">예약 안내는 예약 시각</mark>)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.</p>';
+    h += '<div class="mg"><div class="m-l"><ol class="mlist" aria-label="문구 목록">' + TPL.map(function (t, i) {
+      return '<li' + (t[3] ? ' class="new"' : '') + '><div class="m-top"><span class="m-no">' + (i + 1) + '번</span><span class="chip chip-n">' + KIND[t[0]] + '</span>' +
+        (t[3] ? '<span class="chip chip-w">자리만 잡아 둔 글</span>' : '') + '</div>' +
+        '<div><label class="lab" for="tn' + i + '">이름</label><input id="tn' + i + '" class="inp" value="' + t[1] + '" readonly></div>' +
+        '<div><label class="lab" for="tb' + i + '">내용</label><textarea id="tb' + i + '" class="inp" rows="' + (t[3] ? 7 : 5) + '" readonly>' + esc(t[2]) + '</textarea>' +
+        (t[3] ? '<p class="help">원장님이 문구를 주시면 이 글을 바꿔 넣어요. 처음 쓰는 의원에는 이 글이 기본 문구로 들어가요.</p>' : '') + '</div></li>';
+    }).join('') + '</ol>';
+    h += '<div class="m-add"><span class="fg-k">새 문구</span><div class="new" style="display:inline-flex">' + seg('새 문구 종류', [['injection', '주사 안내'], ['followup', '진료 안내'], ['reservation', '예약 안내']], 'reservation') + '</div>' +
+      '<button type="button" class="btn btn-sec">문구 더하기</button></div></div>';
+    h += '<div class="m-r"><label class="lab" for="mday">내원 날짜</label><input id="mday" type="date" class="inp" value="' + TOMORROW + '"><p class="help">처음에는 내일이에요. 문자는 오시기 전날 보내요.</p>' +
+      '<label class="lab" for="msel" style="margin-top:16px">미리 볼 문구</label><select id="msel" class="inp"><option>1번 · 주사 안내</option><option>2번 · 진료 안내</option><option selected>3번 · 예약 안내</option></select>' +
+      '<p class="lab" style="margin:16px 0 0">미리 보기</p><div class="prev">' + esc(fill(TPL[2][2], TOMORROW)) + '</div>' +
+      '<div style="margin-top:12px">' + copyBtn('msg', '문구 복사', false) + '</div>' + noteLine(S.msgNote) + '</div></div>';
+    return h;
+  }
+
+  /* ---------- 그리기 ---------- */
+  var app = document.getElementById('app'), frame = document.getElementById('frame'), url = document.getElementById('url');
+  function render() {
+    var ph = S.w === 'phone';
+    frame.className = 'frame' + (ph ? ' ph' : '');
+    app.className = 'ui ' + (ph ? 'is-ph' : 'is-pc');
+    url.innerHTML = 'seoseungkwanapp.vercel.app<b>/patients?tool=' + S.tool + '</b>';
+    var tabs = ['대시보드', '통계', '매출', '청구', '환자', '업무일지', '재고'].map(function (t) { return '<span class="a-tab' + (t === '환자' ? ' on' : '') + '">' + t + '</span>'; }).join('');
+    var tools = TOOLS.map(function (t) {
+      return '<button type="button" class="tool' + (t[3] ? ' new' : '') + '" data-tool="' + t[0] + '"' + (t[0] === S.tool ? ' aria-current="page"' : '') + '>' + ic(t[2]) + t[1] + '</button>';
+    }).join('');
+    var body, isNew = S.tool === 'reservations' || S.tool === 'lapsed';
+    if (S.tool === 'reservations') body = toolReservations();
+    else if (S.tool === 'lapsed') body = toolLapsed();
+    else if (S.tool === 'messages') body = toolMessages();
+    else body = head(S.tool === 'followup' ? 'F/U 명단' : '정기 주사 문자 명단', S.tool === 'followup' ? '다시 오시기로 한 날이 다가온 분이에요. 오시기 전날 문자로 알려 드려요.' : '연골주사 · 비타민D 주사처럼 때마다 맞는 주사의 다음 날짜가 다가온 분이에요.') +
+      '<div class="same">지금 그대로예요 (이 시안에서 바뀌지 않아요)</div>';
+    app.innerHTML = '<header class="a-hdr"><span class="clinic">예시정형외과의원</span></header><nav class="a-tabs" aria-label="탭">' + tabs + '</nav>' +
+      '<main class="main"><h1 class="pg-h1">환자</h1><div class="tools" role="group" aria-label="도구">' + tools + '</div>' +
+      '<div class="tbody' + (isNew ? ' new' : '') + '">' + body + '</div></main>';
+    var cur = app.querySelector('.tool[aria-current]'), row = app.querySelector('.tools');
+    if (ph && cur && row) row.scrollLeft = Math.max(0, cur.offsetLeft - row.offsetLeft - 16);
+  }
+
+  /* ---------- 누르기 ---------- */
+  function pressPick(attr, val) {
+    document.querySelectorAll('.pick[' + attr + ']').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === val)); });
+  }
+  document.querySelector('.ctl').addEventListener('click', function (e) {
+    var b = e.target.closest('.pick'); if (!b) return;
+    if (b.dataset.w) { S.w = b.dataset.w; pressPick('data-w', S.w); }
+    if (b.dataset.st) { S.st = b.dataset.st; pressPick('data-st', S.st); S.note = S.pastNote = S.lapsedNote = null; }
+    render();
+  });
+  app.addEventListener('click', function (e) {
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.tool) { S.tool = t.dataset.tool; S.note = S.pastNote = S.lapsedNote = S.msgNote = null; }
+    else if (t.dataset.seg === '날짜') { S.day = t.dataset.v; S.note = null; }
+    else if (t.dataset.seg === '지난 기간') { S.past = t.dataset.v; S.pastAll = false; S.pastNote = null; }
+    else if (t.dataset.seg === '마지막 내원') { S.bucket = t.dataset.v; S.lapsedAll = false; S.lapsedNote = null; }
+    else if (t.dataset.act === 'pastAll') S.pastAll = !S.pastAll;
+    else if (t.dataset.act === 'lapsedAll') S.lapsedAll = !S.lapsedAll;
+    else if (t.dataset.act === 'reload') { S.reloading = true; render(); setTimeout(function () { S.reloading = false; render(); }, 1200); return; }
+    else if (t.dataset.copy) {
+      if (t.getAttribute('aria-disabled') === 'true') return;
+      var day = chosenDay();
+      if (t.dataset.copy === 'list') { var n = rsvRows(day).filter(function (r) { return r.phone; }).length; S.note = '복사했어요 · ' + n + '명' + (S.withDate ? ' · 날짜 제목 줄 포함' : ''); }
+      if (t.dataset.copy === 'tpl') S.note = '복사했어요 · 예약 안내 · ' + md(day);
+      if (t.dataset.copy === 'past') S.pastNote = '복사했어요 · ' + PAST[S.past].rows.map(pastRow).filter(function (r) { return r.phone; }).length + '명';
+      if (t.dataset.copy === 'lapsed') { var b = BUCKETS.filter(function (x) { return x.id === S.bucket; })[0]; S.lapsedNote = '복사했어요 · ' + lapsedRows(b).filter(function (r) { return r.phone; }).length + '명'; }
+      if (t.dataset.copy === 'msg') S.msgNote = '복사했어요 · 예약 안내 · ' + md(TOMORROW);
+    } else return;
+    render();
+  });
+  app.addEventListener('change', function (e) {
+    if (e.target.id === 'withDate') { S.withDate = e.target.checked; S.note = null; render(); }
+    if (e.target.id === 'cday' && e.target.value) { S.custom = e.target.value; S.note = null; render(); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
