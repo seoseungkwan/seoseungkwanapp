@@ -70,6 +70,29 @@ interface OfflineJs {
   renderOffline: (host: HTMLElement, options?: { lastAt?: string | null }) => HTMLElement
 }
 
+interface FakeOrder {
+  code: string
+  name: string
+  qty: string
+  tms: string
+  day: string
+}
+
+/** 상세 첫 쪽의 종이 기록부 자료 (reception-paper design.md 2절) */
+interface FakePaper {
+  res: string
+  addr: string
+  tel: string
+  cel: string
+  special: string
+  room: string
+  ins: string
+  sym: string
+  dx: { code: string; name: string; main: boolean }[]
+  rx: FakeOrder[]
+  out: FakeOrder[]
+}
+
 interface FakeHistory {
   visits: { date: string; ago: string; sym: string; rx: { name: string; code: string }[] }[]
   next: number | null
@@ -77,6 +100,7 @@ interface FakeHistory {
   first: string
   total: number
   todaySym: string
+  paper: FakePaper
 }
 
 // 화면 파일은 빌드 없는 JS라 형 선언이 없다(design.md 결정 '화면은 빌드 없는 JS'). 경로를 값으로 두어 형 검사가 묻지 않게 한다
@@ -202,7 +226,20 @@ function history(over: Partial<FakeHistory> = {}): FakeHistory {
     more: 3,
     first: '2025년 5월 14일',
     total: 6,
-    todaySym: '왼쪽 무릎 통증 계속됨',
+    todaySym: '',
+    paper: {
+      res: '681120-*******',
+      addr: '가상시 가상구 보기길 7',
+      tel: '',
+      cel: '010-0000-5678',
+      special: '가상 특이사항',
+      room: '1진료실',
+      ins: '국민건강보험',
+      sym: '',
+      dx: [],
+      rx: [],
+      out: [],
+    },
     ...over,
   }
 }
@@ -253,7 +290,7 @@ describe('REQ-1409 폰/태블릿 판정', () => {
     expect(make({ matchMedia: throwing }).tablet()).toBe(false)
   })
 
-  it('AC-1409.1: 태블릿 모양이면 왼쪽은 목록(머리·칸·줄), 오른쪽은 고른 환자의 상세(AC-1404.7: 오늘 카드·지난번 증상, [더 보기] 없음)다', () => {
+  it('AC-1409.1 · AC-1502.1: 태블릿 모양이면 왼쪽은 목록(머리·칸·줄), 오른쪽은 고른 환자의 상세(종이 진료기록부 카드·지난번 증상, [더 보기] 없음)다', () => {
     const { layout } = tabletLayout()
     const board = fx.mockupBoard()
     const host = appHost()
@@ -270,7 +307,9 @@ describe('REQ-1409 폰/태블릿 판정', () => {
     const pane = page?.querySelector(':scope > aside.pane')
     expect(pane).not.toBeNull()
     expect(paneKey(host)).toBe(first(board.lists.queue).k)
-    expect(pane?.querySelector('section.today')).not.toBeNull()
+    expect(pane?.querySelector('section.today')).toBeNull()
+    expect(pane?.querySelectorAll('article.paper')).toHaveLength(1)
+    expect(pane?.querySelector('article.paper dl.kv dd')?.textContent).toBe(first(board.lists.queue).chart)
     expect(pane?.querySelectorAll('section.visit')).toHaveLength(1)
     expect(pane?.querySelector('section.visit.is-last p.sym')).not.toBeNull()
     expect(pane?.querySelector('button.more')).toBeNull()
@@ -379,7 +418,7 @@ describe('REQ-1409 태블릿에서 고르기', () => {
 })
 
 describe('REQ-1409 다시 읽기·끊김', () => {
-  it('AC-1409.3: 10초마다 다시 읽어도 고른 환자는 그대로이고(칸을 옮겨도) 오늘 카드만 새 자료로 바뀐다(지난 진료는 그대로)', () => {
+  it('AC-1409.3 · AC-1502.3: 10초마다 다시 읽어도 고른 환자는 그대로이고(칸을 옮겨도) 머리와 종이 카드의 칸 규칙만 새 줄을 따른다(지난 진료는 그대로)', () => {
     const { layout } = tabletLayout()
     const before = fx.mockupBoard()
     const host = appHost()
@@ -390,8 +429,10 @@ describe('REQ-1409 다시 읽기·끊김', () => {
     boardJs.renderBoard(host, before, layout.view())
     boardJs.fillPane(host, detailJs.detailPane(target, history(), { today: TODAY }))
     const visitsBefore = [...host.querySelectorAll('.page.board > aside.pane section.visit')]
-    const todayBefore = host.querySelector('.page.board > aside.pane section.today')
+    const paper = host.querySelector('.page.board > aside.pane article.paper')
     expect(visitsBefore).toHaveLength(1)
+    // 진료보류이고 아직 아무것도 적히지 않았다: <증상 · 상병 · 처방> 한 줄
+    expect([...(paper?.querySelectorAll('.paper-body .sec-h') ?? [])].map((n) => n.textContent)).toEqual(['증상 · 상병 · 처방'])
 
     // 다음 읽기: 그 환자가 진료를 마치고 수납대기로 옮겨 오늘 처방이 생겼다
     const moved: FakeRow = { ...target, lane: 'pay', waited: '수납 1분째', rxLabel: '오늘', rx: '체외충격파(ESWT7) · 주사(INJ1)', xray: null }
@@ -407,9 +448,9 @@ describe('REQ-1409 다시 읽기·끊김', () => {
 
     boardJs.renderBoard(host, after, layout.view())
     expect(detailJs.updateDetail(host, again.row as FakeRow, { today: TODAY })).toBe(true)
-    const todayAfter = host.querySelector('.page.board > aside.pane section.today')
-    expect(todayAfter).not.toBe(todayBefore)
-    expect(todayAfter?.textContent).toContain('주사')
+    expect(host.querySelector('.page.board > aside.pane .status-line > .status')?.textContent).toBe('수납대기')
+    expect(host.querySelector('.page.board > aside.pane article.paper')).toBe(paper)
+    expect([...(paper?.querySelectorAll('.paper-body .sec-h') ?? [])].map((n) => n.textContent)).toEqual(['증상', '상병', '처방', '원외처방'])
     const visitsAfter = [...host.querySelectorAll('.page.board > aside.pane section.visit')]
     expect(visitsAfter).toHaveLength(visitsBefore.length)
     expect(visitsAfter.every((visit, i) => visit === visitsBefore[i])).toBe(true)
@@ -541,5 +582,75 @@ describe('REQ-1409 기기 돌리기', () => {
     expect(changes).toEqual([{ tablet: false, picked: null }])
     layout.stop()
     expect(media.listeners.size).toBe(0)
+  })
+})
+
+// ---- 종이 카드 모양 (reception-paper REQ-1502, 승인 목업 Paper.html) ---------------------------------------------
+
+/** style.css에서 selector(쉼표 목록 중 하나와 똑같은 글)인 규칙들의 선언 [이름, 값] */
+function declsOf(css: string, selector: string): [string, string][] {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const out: [string, string][] = []
+  for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = m[1]!.split(',').map((s) => s.trim())
+    if (!selectors.includes(selector)) continue
+    for (const decl of m[2]!.split(';')) {
+      const colon = decl.indexOf(':')
+      if (colon > 0) out.push([decl.slice(0, colon).trim(), decl.slice(colon + 1).trim()])
+    }
+  }
+  return out
+}
+
+function valueOf(css: string, selector: string, prop: string): string | undefined {
+  return declsOf(css, selector).findLast(([p]) => p === prop)?.[1]
+}
+
+describe('REQ-1502 종이 카드 모양 (style.css)', () => {
+  it('AC-1502.1: 종이 카드가 쓰는 class는 모두 style.css에 모양이 있다(사람 칸·특이사항·내원내역·증상·상병·처방 표·진료 전 한 줄)', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const row = fx.fakeRow({ lane: 'pay' })
+    const order = { code: 'LA272', name: '가상 말초차단', qty: '2.5', tms: '1', day: '1' }
+    const treated = history({
+      paper: { ...history().paper, special: '가상 특이사항', sym: '가상 증상', dx: [{ code: 'M5436', name: '가상 병', main: true }], rx: [order], out: [order] },
+    })
+    const cards = [
+      detailJs.detailPane(row, treated, { today: TODAY }),
+      detailJs.detailPane(fx.fakeRow({ lane: 'wait' }), history({ paper: { ...history().paper, special: '' } }), { today: TODAY }),
+    ].map((nodes) => nodes.find((n): n is Element => n instanceof Element && n.matches('article.paper')))
+    const classes = new Set(cards.flatMap((card) => (card ? [card, ...card.querySelectorAll('*')] : []).flatMap((n) => [...n.classList])))
+    for (const cls of ['paper', 'kv', 'spc', 'is-none', 'sec-h', 'spc-text', 'paper-body', 'dx', 'main', 'rx', 'none']) expect(classes, cls).toContain(cls)
+    for (const cls of classes) expect(css, `.${cls}`).toMatch(new RegExp(`\.${cls}(?![\w-])`))
+  })
+
+  it('AC-1502.1: 종이 카드는 목업 모양이다: 흰 종이에 노란 테두리, 칸 제목은 <…>, 사람 칸 이름 뒤 " :", 빈 값은 흐린 글, 주상병은 "주" 표시, 증상은 받은 줄 바꿈 그대로', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8')
+    expect(valueOf(css, '.paper', 'background')).toBe('var(--paper)')
+    expect(valueOf(css, '.paper', 'border')).toBe('2px solid var(--accent)')
+    expect(valueOf(css, '.sec-h::before', 'content')).toBe('"<"')
+    expect(valueOf(css, '.sec-h::after', 'content')).toBe('">"')
+    expect(valueOf(css, '.kv dt::after', 'content')).toBe('" :"')
+    expect(valueOf(css, '.kv .empty', 'color')).toBe('var(--line-2)')
+    expect(valueOf(css, '.dx .main::after', 'content')).toBe('" 주"')
+    expect(valueOf(css, '.dx .main::after', 'background')).toBe('var(--accent)')
+    expect(valueOf(css, '.paper-sym pre', 'white-space')).toBe('pre-wrap')
+    expect(valueOf(css, '.paper .rx .n', 'text-align')).toBe('right')
+    // 지난번 증상 제목은 종이 아래 조금 띄운다(목업)
+    expect(valueOf(css, '.paper + .detail-heading', 'margin-top')).toBe('6px')
+  })
+
+  it('AC-1502.2: 특이사항 상자는 빨간 테두리(빈 것은 점선)이고, 글은 줄 바꿈 그대로이며 접히면(.clamp) 5줄만 보인다. [전부 보기] 단추는 누르는 곳 44px 이상이다', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8')
+    expect(valueOf(css, '.spc', 'border')).toBe('2px solid var(--warn)')
+    expect(valueOf(css, '.spc', 'background')).toBe('var(--warn-soft)')
+    expect(valueOf(css, '.spc.is-none', 'border')).toBe('1px dashed var(--line-2)')
+    expect(valueOf(css, '.spc-text', 'white-space')).toBe('pre-wrap')
+    expect(valueOf(css, '.spc-text.clamp', 'display')).toBe('-webkit-box')
+    expect(valueOf(css, '.spc-text.clamp', '-webkit-box-orient')).toBe('vertical')
+    expect(valueOf(css, '.spc-text.clamp', '-webkit-line-clamp')).toBe('5')
+    expect(valueOf(css, '.spc-text.clamp', 'line-clamp')).toBe('5')
+    expect(valueOf(css, '.spc-text.clamp', 'overflow')).toBe('hidden')
+    expect(Number.parseFloat(valueOf(css, '.spc-more', 'min-height') ?? '0')).toBeGreaterThanOrEqual(44)
+    expect(valueOf(css, '.spc-more', 'width')).toBe('100%')
   })
 })

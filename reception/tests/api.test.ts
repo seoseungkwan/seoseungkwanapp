@@ -86,7 +86,28 @@ async function reasonOf(p: Promise<unknown>): Promise<string> {
   }
 }
 
-/** 상세 답(design.md 5절, HistoryBuilder.cs ToJson). 가짜 자료 */
+/** 상세 첫 쪽의 종이 기록부 자료(reception-paper design.md 2절). 가짜 자료 */
+function fakePaper(over: Record<string, unknown> = {}) {
+  return {
+    res: '720304-*******',
+    addr: '가상시 가상구 예시로 12',
+    tel: '',
+    cel: '010-0000-1234',
+    special: '가상 특이사항\n둘째 줄',
+    room: '1진료실',
+    ins: '국민건강보험',
+    sym: '가상 증상\n\n가상 주사 1차',
+    dx: [
+      { code: 'M5436', name: '가상 좌골신경통', main: true },
+      { code: 'M5456', name: '가상 허리 긴장', main: false },
+    ],
+    rx: [{ code: 'LA272', name: '가상 말초차단', qty: '2.5', tms: '1', day: '1' }],
+    out: [{ code: '641901140', name: '가상정200mg', qty: '1', tms: '2', day: '7' }],
+    ...over,
+  }
+}
+
+/** 상세 답(design.md 5절, HistoryBuilder.cs ToJson). from=0 답에는 paper가 붙는다. 가짜 자료 */
 function fakeHistory(over: Record<string, unknown> = {}) {
   return {
     visits: [
@@ -98,6 +119,7 @@ function fakeHistory(over: Record<string, unknown> = {}) {
     first: '2024년 3월 12일',
     total: 37,
     todaySym: '',
+    paper: fakePaper(),
     ...over,
   }
 }
@@ -315,6 +337,51 @@ describe('api.js getHistory', () => {
     }
     fakeFetch(() => json(fakeHistory({ visits: [], next: null, more: 0, total: 1 })))
     await expect(api.getHistory(k, 0)).resolves.toMatchObject({ next: null })
+  })
+
+  it('AC-1502.5: from=0 답에 paper가 없거나 칸 종류가 design.md 2절과 다르면 모양 틀림(shape)이다', async () => {
+    const k = fx.fakeKey(2)
+    const bad: Array<[string, unknown]> = [
+      ['paper 없음', fakeHistory({ paper: undefined })],
+      ['paper null', fakeHistory({ paper: null })],
+      ['paper 글', fakeHistory({ paper: '종이' })],
+      ['paper 배열', fakeHistory({ paper: [] })],
+      ...['res', 'addr', 'tel', 'cel', 'special', 'room', 'ins', 'sym'].flatMap((name): Array<[string, unknown]> => [
+        [`${name} 없음`, fakeHistory({ paper: fakePaper({ [name]: undefined }) })],
+        [`${name} 숫자`, fakeHistory({ paper: fakePaper({ [name]: 7 }) })],
+        [`${name} null`, fakeHistory({ paper: fakePaper({ [name]: null }) })],
+      ]),
+      ...['dx', 'rx', 'out'].flatMap((name): Array<[string, unknown]> => [
+        [`${name} 없음`, fakeHistory({ paper: fakePaper({ [name]: undefined }) })],
+        [`${name} 배열 아님`, fakeHistory({ paper: fakePaper({ [name]: {} }) })],
+        [`${name} 줄이 글`, fakeHistory({ paper: fakePaper({ [name]: ['M5436'] }) })],
+        [`${name} 줄 null`, fakeHistory({ paper: fakePaper({ [name]: [null] }) })],
+      ]),
+      ['dx code 숫자', fakeHistory({ paper: fakePaper({ dx: [{ code: 5436, name: '가상 병', main: true }] }) })],
+      ['dx name 없음', fakeHistory({ paper: fakePaper({ dx: [{ code: 'M5436', main: true }] }) })],
+      ['dx main 글', fakeHistory({ paper: fakePaper({ dx: [{ code: 'M5436', name: '가상 병', main: '1' }] }) })],
+      ['dx main 없음', fakeHistory({ paper: fakePaper({ dx: [{ code: 'M5436', name: '가상 병' }] }) })],
+      ...['code', 'name', 'qty', 'tms', 'day'].flatMap((name): Array<[string, unknown]> => [
+        [`rx ${name} 숫자`, fakeHistory({ paper: fakePaper({ rx: [{ code: 'LA272', name: '가상', qty: '1', tms: '1', day: '1', [name]: 1 }] }) })],
+        [`out ${name} 없음`, fakeHistory({ paper: fakePaper({ out: [{ code: 'LA272', name: '가상', qty: '1', tms: '1', day: '1', [name]: undefined }] }) })],
+      ]),
+    ]
+    for (const [name, body] of bad) {
+      fakeFetch(() => json(body))
+      expect(await reasonOf(api.getHistory(k, 0)), name).toBe('shape')
+    }
+
+    // 빈 글·빈 배열은 맞는 모양이고(진료 전·특이사항 없음) 받은 그대로 돌려준다
+    const blank = fakeHistory({ paper: fakePaper({ res: '', addr: '', tel: '', cel: '', special: '', room: '', ins: '', sym: '', dx: [], rx: [], out: [] }) })
+    fakeFetch(() => json(blank))
+    await expect(api.getHistory(k, 0)).resolves.toEqual(blank)
+    const full = fakeHistory()
+    fakeFetch(() => json(full))
+    await expect(api.getHistory(k, 0)).resolves.toEqual(full)
+
+    // from>0 답에는 paper가 없다(AC-1501.1). 없어도 맞는 모양이다
+    fakeFetch(() => json(fakeHistory({ paper: undefined })))
+    await expect(api.getHistory(k, 5)).resolves.toMatchObject({ next: 5 })
   })
 
   it('AC-1413.2: 열쇠가 16자리 소문자 16진수가 아니거나 시작 위치가 0 이상의 정수가 아니면 묻지 않고 input 실패다', async () => {

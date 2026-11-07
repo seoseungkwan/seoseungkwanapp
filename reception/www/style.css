@@ -21,8 +21,14 @@
  *            header.top.is-detail > .top-row > a.back + img.logo-mark
  *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info
  *                                            > .status-line > span.status… + span   > .memo
- *            main.detail > h2.detail-heading + section.today + (section.visit.is-last | p.no-visits) + p.end-note
- *              section.today > .today-head > h3.today-date > span.today-badge … + span.today-state ; p.today-empty | p.sym | ul.rx-list
+ *            main.detail > h2.detail-heading + article.paper + h2.detail-heading + (section.visit.is-last | p.no-visits) + p.end-note
+ *              article.paper (종이 진료기록부, reception-paper 승인 목업 Paper.html)
+ *                > .paper-head > span.paper-title + span.paper-date
+ *                > dl.kv > (dt + dd[data-field] (> span.empty))…  > hr.rule
+ *                > .spc(.is-none) > .sec-h + p.spc-text(.clamp) + button.spc-more
+ *                > .sec > .sec-h + .visit-line > span…   (내원내역)
+ *                > .paper-body > .sec > .sec-h + (.none | .paper-sym > span.paper-sym-day + pre | ul.dx > li > code(.main) + span
+ *                                                 | table.rx > thead th(.n)… + tbody tr > td.c > code + td + td.n…)
  *              section.visit.is-last > .visit-head > h3.visit-date > span.last-badge … + span.visit-ago ; p.sym | p.sym-empty
  *            footer.foot
  *   끊김·불러오는 중  .page.off-page
@@ -612,50 +618,243 @@ button.row-main {
   color: var(--ink-2);
 }
 
-.today {
-  background: var(--surface);
+/* 종이 진료기록부 카드 (reception-paper AC-1502.1~1502.3, 승인 목업 Paper.html) */
+.paper {
+  background: var(--paper);
+  color: var(--paper-ink);
   border: 2px solid var(--accent);
   border-radius: var(--radius-m);
-  padding: 13px 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  padding: 16px 14px 18px;
+  box-shadow: var(--paper-shadow);
+  font-size: 14px;
+  line-height: 1.55;
   flex-shrink: 0;
 }
 
-.today-head {
+.paper-head {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  align-items: baseline;
+  border-bottom: 2px solid var(--paper-ink);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
 }
 
-.today-date {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ink);
+.paper-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1px;
 }
 
-.today-badge {
+.paper-date {
   font-size: 12px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: var(--radius-s);
-  background: var(--ink);
-  color: var(--accent);
-}
-
-.today-state {
-  font-size: 12px;
-  color: var(--ink-4);
-}
-
-.today-empty {
-  font-size: 14px;
   color: var(--ink-3);
+}
+
+.kv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 5.2em 1fr;
+  column-gap: 6px;
+  row-gap: 2px;
+}
+
+.kv dt {
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.kv dt::after {
+  content: " :";
+}
+
+.kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.kv .empty {
+  color: var(--line-2);
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--paper-ink);
+  margin: 12px 0 10px;
+}
+
+/* 칸(<내원내역>과 진료 칸 .paper-body 안의 <증상>…)마다 띄운다 */
+.paper > .sec, .paper-body > .sec {
+  margin-top: 12px;
+}
+
+.sec-h {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.sec-h::before {
+  content: "<";
+}
+
+.sec-h::after {
+  content: ">";
+}
+
+.paper .none {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* 특이사항 상자 (AC-1502.2): 접히면(.clamp) 5줄만, [전부 보기]는 높이를 잰 뒤 넘을 때만 보인다(detail.js fitSpecial) */
+.spc {
+  margin: 0 0 4px;
+  border: 2px solid var(--warn);
+  background: var(--warn-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.spc .sec-h {
+  color: var(--warn);
+  margin-bottom: 2px;
+}
+
+.spc-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.spc-text.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  overflow: hidden;
+}
+
+.spc-more {
+  margin-top: 6px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--warn);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.spc.is-none {
+  border: 1px dashed var(--line-2);
+  background: transparent;
+}
+
+.spc.is-none .sec-h {
+  color: var(--ink-3);
+}
+
+.spc.is-none .spc-text {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.visit-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.paper-sym {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+}
+
+.paper-sym-day {
+  color: var(--ink-3);
+  font-size: 13px;
+  padding-top: 1px;
+}
+
+.paper-sym pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dx {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dx li {
+  display: grid;
+  grid-template-columns: 4.6em 1fr;
+  column-gap: 6px;
+}
+
+.dx code, .paper .rx code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+/* 주상병 표시 */
+.dx .main::after {
+  content: " 주";
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--accent);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+
+.paper .rx {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.paper .rx th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-size: 12px;
+  border-bottom: 1px solid var(--paper-ink);
+  padding: 2px 3px 4px;
+}
+
+.paper .rx td {
+  padding: 4px 3px;
+  vertical-align: top;
+  border-bottom: 1px dotted var(--line-2);
+}
+
+.paper .rx tr:last-child td {
+  border-bottom: 0;
+}
+
+.paper .rx .n {
+  text-align: right;
+  white-space: nowrap;
+  width: 2.6em;
+}
+
+.paper .rx .c {
+  width: 5.6em;
+  white-space: nowrap;
+}
+
+/* 종이 아래 "지난번 증상" 제목 */
+.paper + .detail-heading {
+  margin-top: 6px;
 }
 
 .no-visits {
@@ -701,7 +900,7 @@ button.row-main {
   color: var(--ink-4);
 }
 
-/* 지난번 카드 (AC-1404.7): 오늘 카드의 [오늘] 이름표 짝, 증상이 없을 때 글 */
+/* 지난번 카드 (AC-1404.7): [지난번] 이름표, 증상이 없을 때 글 */
 .visit.is-last .visit-date {
   display: flex;
   align-items: center;
@@ -730,26 +929,6 @@ button.row-main {
   background: var(--ground);
   border-radius: var(--radius-s);
   padding: 6px 8px;
-}
-
-.rx-list {
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.rx-item {
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--ink);
-}
-
-.rx-code {
-  margin-left: 4px;
-  font-size: 13px;
-  color: var(--ink-4);
 }
 
 .more {
@@ -1014,15 +1193,6 @@ button.row-main {
 
   .pane .detail-heading {
     font-size: 15px;
-  }
-
-  .pane .today {
-    padding: 13px 17px;
-    gap: 8px;
-  }
-
-  .pane .today-date {
-    font-size: 16px;
   }
 
   .pane .visits {

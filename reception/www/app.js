@@ -6,7 +6,9 @@
 //   폰 상세 주소면 다시 보인 뒤 그 상세를 다시 읽는다(AC-1407.11). 끊김 뒤 돌아오면 목록이다(AC-1407.4)
 // - 상세 읽기는 차례 번호(ticket)로 늦은 답을 버린다: 숨김·끊김·다른 환자·돌림 때마다 번호가 바뀐다
 // - 상세가 열린 동안 읽기마다 그 환자 줄의 칸·오늘 처방이 마지막 상세 읽기 때와 다르거나 30초가 지났으면 상세를 한 번 더 읽어
-//   오늘 증상 줄만 바꾼다(AC-1404.8). 한 번에 하나만 읽고, 실패하면 그대로 두었다가 다음 읽기에 다시 본다
+//   종이 카드를 새 paper로 바꾼다(AC-1404.8·1502.4, 특이사항 펼침은 그대로). 한 번에 하나만 읽고, 실패하면 그대로 두었다가 다음 읽기에 다시 본다
+// - 태블릿 오른쪽 칸은 상세를 넣은 뒤 특이사항 높이를 잰다(detail.js fitSpecial, AC-1502.2). 폰 상세는 renderDetail이 스스로 잰다.
+//   화면 폭이 바뀌면(기기 돌림·창 크기) 글이 다시 접혀 높이가 바뀌므로 다시 잰다
 // - 문서 제목은 늘 "접수 현황"이다(환자 이름이 방문 기록에 남지 않게, AC-1407.5). 환자 자료는 메모리에만 있고 저장하지 않는다
 //
 // 쓰는 법
@@ -15,7 +17,7 @@
 import { createAlert } from './alert.js'
 import { getHistory, setXray } from './api.js'
 import { fillPane, renderBoard, setReading } from './board.js'
-import { detailPane, renderDetail, updateDetail, updateTodaySym } from './detail.js'
+import { detailPane, fitSpecial, renderDetail, updateDetail, updatePaper } from './detail.js'
 import { createLayout, findRow } from './layout.js'
 import { createPoll } from './poll.js'
 import { xrayBand } from './xray.js'
@@ -28,8 +30,8 @@ const DETAIL_ROUTE = /^#\/v\/([0-9a-f]{16})$/
 /** 폰 목록 길 */
 const LIST_ROUTE = '#/'
 
-/** 오늘 증상 다시 읽기: 칸·오늘 처방이 그대로여도 마지막 상세 읽기에서 이만큼 지나면 다시 읽는다(AC-1404.8) */
-const SYM_AGAIN_MS = 30_000
+/** 종이 다시 읽기: 칸·오늘 처방이 그대로여도 마지막 상세 읽기에서 이만큼 지나면 다시 읽는다(AC-1404.8) */
+const PAPER_AGAIN_MS = 30_000
 
 /**
  * 접수 현황 화면을 연다.
@@ -48,9 +50,9 @@ export function startApp() {
   /** 숨김으로 지우는 중인가(끊김 지우기와 나눈다) */
   let hiding = false
   /** 그린 상세의 마지막 상세 읽기: 그때 줄의 칸·오늘 처방 글과 시각. 그리기 전이면 null (AC-1404.8) */
-  let symMark = null
-  /** 오늘 증상 다시 읽는 중인가 */
-  let symBusy = false
+  let paperMark = null
+  /** 종이 다시 읽는 중인가 */
+  let paperBusy = false
 
   const notice = createAlert()
   const unlistenNotice = notice.listen(doc)
@@ -84,33 +86,33 @@ export function startApp() {
   /** 앞서 나간 상세 읽기를 버린다. 새 차례 번호를 돌려준다 */
   function dropDetail() {
     detailK = null
-    symMark = null
-    symBusy = false
+    paperMark = null
+    paperBusy = false
     ticket += 1
     return ticket
   }
 
   /** 상세를 읽어 그린 때의 줄을 적어 둔다 */
-  function markSym(row) {
-    symMark = { lane: row.lane, rx: rxOf(row), at: Date.now() }
+  function markPaper(row) {
+    paperMark = { lane: row.lane, rx: rxOf(row), at: Date.now() }
   }
 
-  /** 그린 상세 k의 줄이 바뀌었거나 30초가 지났으면 상세를 다시 읽어 오늘 증상 줄만 바꾼다(AC-1404.8) */
-  function refreshSym(k, row) {
-    if (symBusy || symMark === null || detailK !== k) return
-    if (symMark.lane === row.lane && symMark.rx === rxOf(row) && Date.now() - symMark.at < SYM_AGAIN_MS) return
+  /** 그린 상세 k의 줄이 바뀌었거나 30초가 지났으면 상세를 다시 읽어 종이 카드를 새 paper로 바꾼다(AC-1404.8·1502.4) */
+  function refreshPaper(k, row) {
+    if (paperBusy || paperMark === null || detailK !== k) return
+    if (paperMark.lane === row.lane && paperMark.rx === rxOf(row) && Date.now() - paperMark.at < PAPER_AGAIN_MS) return
     const mine = ticket
-    symBusy = true
+    paperBusy = true
     getHistory(k, 0, { signal: poll.signal() }).then(
       (history) => {
         if (mine !== ticket || detailK !== k) return
-        symBusy = false
-        updateTodaySym(host, k, history.todaySym)
-        markSym(row)
+        paperBusy = false
+        updatePaper(host, k, history.paper)
+        markPaper(row)
       },
       () => {
         /* 그대로 두고 다음 읽기에 다시 본다 */
-        if (mine === ticket) symBusy = false
+        if (mine === ticket) paperBusy = false
       },
     )
   }
@@ -137,12 +139,12 @@ export function startApp() {
     renderBoard(host, board, viewOf(reading))
   }
 
-  /** 폰 상세: 처음이면 상세를 읽어 그리고, 이미 그렸으면 머리와 오늘 카드만 바꾸고 오늘 증상을 다시 볼지 정한다(AC-1404.4·1404.8) */
+  /** 폰 상세: 처음이면 상세를 읽어 그리고, 이미 그렸으면 머리와 종이 카드의 줄 몫만 바꾸고 종이를 다시 읽을지 정한다(AC-1404.4·1404.8) */
   function phoneDetail(k, row, board) {
     layout.select(k, board)
     if (detailK === k) {
       updateDetail(host, row)
-      refreshSym(k, row)
+      refreshPaper(k, row)
       return
     }
     const mine = dropDetail()
@@ -153,7 +155,7 @@ export function startApp() {
         const now = findRow(poll.board(), k)
         if (now) {
           renderDetail(host, now, history)
-          markSym(now)
+          markPaper(now)
         }
         keepTitle()
       },
@@ -184,12 +186,12 @@ export function startApp() {
     showPane(picked)
   }
 
-  /** 오른쪽 칸: 고른 환자가 같으면 오늘 카드만 바꾸고 오늘 증상을 다시 볼지 정하며(AC-1409.3·1404.8), 다르면 상세를 새로 읽는다. 아무도 없으면 비운다 */
+  /** 오른쪽 칸: 고른 환자가 같으면 머리와 종이 카드의 줄 몫만 바꾸고 종이를 다시 읽을지 정하며(AC-1409.3·1404.8), 다르면 상세를 새로 읽는다. 아무도 없으면 비운다 */
   function showPane({ picked, row }) {
     if (picked === detailK) {
       if (row) {
         updateDetail(host, row)
-        refreshSym(picked, row)
+        refreshPaper(picked, row)
       }
       return
     }
@@ -203,7 +205,8 @@ export function startApp() {
         const now = findRow(poll.board(), picked)
         if (now) {
           fillPane(host, detailPane(now, history))
-          markSym(now)
+          fitSpecial(host)
+          markPaper(now)
         }
       },
       () => {
@@ -285,10 +288,16 @@ export function startApp() {
     if (doc.title !== TITLE) doc.title = TITLE
   }
 
+  /** 화면 폭이 바뀜: 그린 특이사항 높이를 다시 잰다(AC-1502.2). 상세가 없으면 아무것도 하지 않는다 */
+  function refit() {
+    fitSpecial(host)
+  }
+
   doc.addEventListener('visibilitychange', visibility)
   win.addEventListener('pagehide', hide)
   win.addEventListener('pageshow', show)
   win.addEventListener('hashchange', routed)
+  win.addEventListener('resize', refit)
   if (doc.visibilityState !== 'hidden') poll.start()
 
   return {
@@ -297,6 +306,7 @@ export function startApp() {
       win.removeEventListener('pagehide', hide)
       win.removeEventListener('pageshow', show)
       win.removeEventListener('hashchange', routed)
+      win.removeEventListener('resize', refit)
       unlistenNotice()
       layout.stop()
       hide()
@@ -304,7 +314,7 @@ export function startApp() {
   }
 }
 
-/** 줄의 오늘 처방 글(이름표 + 글). 바뀌면 오늘 증상을 다시 읽는다(AC-1404.8) */
+/** 줄의 오늘 처방 글(이름표 + 글). 바뀌면 종이를 다시 읽는다(AC-1404.8) */
 function rxOf(row) {
   return `${row.rxLabel ?? ''}|${row.rx ?? ''}`
 }
