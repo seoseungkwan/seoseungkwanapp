@@ -7,7 +7,7 @@
 > 시험 자료는 모두 지어낸 값이다. `helper/**`·`extension/**`·`src/lib/bridge/**`는 고치지 않는다. 지금 시험의 기대값은 바꾸지 않는다(AC-2603.3).
 
 ## 먼저 할 일 (코드 작업 아님)
-1. 사용자가 design.md '화면 목업'을 승인한다
+1. 사용자가 design.md '화면 목업'(`docs/mockups/precheck/memo-chart-lines.html`)을 승인한다
 2. 사용자가 `/sdd approve memo-chart-lines`를 입력한다
 
 ## TASK-1: 목록 줄에 증상 줄·처방내역 싣기 (Worker)
