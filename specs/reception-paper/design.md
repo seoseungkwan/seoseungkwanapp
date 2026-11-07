@@ -29,6 +29,7 @@
   - "그 접수"는 `VisitSymptoms`의 오늘 쪽과 같은 조건(c.OcmChtNum=@chart AND c.OcmAcpDtm=@before AND c.OcmPatTyp='O' AND InHospital).
 - `Precheck.Core/Reception/PaperReader.cs` — `PaperRecord`(2절 칸) · `PaperReader.Read(IBitDb db, string hospitalScope, VisitRow visit, BoardInput board, Func<DateTime> clock, DateTime deadline) → PaperRecord`(다섯 문장, 남은 시간 안에서, 칸 모자라면 읽기 실패) · `PaperRecord.WriteJson(Utf8JsonWriter)`.
 - `HistoryReader` — from==0일 때만 `PaperReader.Read`를 같은 deadline으로 부르고 `HistoryInput`/`VisitHistory`에 `Paper`(nullable)를 싣는다. `VisitHistory.ToJson`은 Paper가 있으면 `"paper"`를 쓴다.
+- 메모·신환(REQ-1503)은 화면만 바꾼다: `board.js` rowOf와 `detail.js` 머리가 `.memo`에 `span.memo-label`을 넣고, info 끝 조각 "신환"을 `span.new-badge`로 바꾼다. 색 토큰 `--new`·`--on-new`는 theme.css.
 - 화면 `reception/www/detail.js` — `paperCard(row, paper, options)`(목업 Paper.html 그대로, `el()`만), `renderDetail`·`detailPane`이 오늘 카드 대신 그린다. `updatePaper(host, k, paper)`가 `updateTodaySym`을 대신한다(펼침 상태 지킴). `app.js`는 AC-1404.8 다시 읽기 답을 `updatePaper`로 넘긴다. `api.js` `isHistory`는 from=0 답의 `paper` 모양을 본다. 모양은 `style.css`(색은 theme.css 토큰만).
 
 ## 4. 결정과 트레이드오프

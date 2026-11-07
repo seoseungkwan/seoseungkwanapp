@@ -41,7 +41,10 @@ body { font-family:var(--font-body); color:var(--ink); word-break:keep-all; font
 .tag.wait { background:var(--ink); color:var(--accent); }
 .tag.pay { background:var(--surface); color:var(--ink-2); border-color:var(--line-2); }
 .tag.done { background:var(--ok-soft); color:var(--ok); }
-.memo { font-size:13px; color:var(--ink-2); background:var(--ground); border-radius:4px; padding:8px 10px; }
+.memo { display:block; font-size:16px; font-weight:600; line-height:1.45; color:var(--ink); background:#FCFBE3; border-left:4px solid var(--accent); border-radius:4px; padding:8px 10px; }
+.memo .lab { font-size:12px; font-weight:600; color:var(--ink-3); margin-right:6px; }
+.row .memo { margin-top:10px; }
+.new-badge { display:inline-block; font-size:13px; font-weight:700; line-height:1.4; color:#FFFFFF; background:#1D4ED8; border-radius:4px; padding:1px 7px; letter-spacing:1px; vertical-align:2px; }
 
 /* 목록 */
 .list { padding:16px; display:flex; flex-direction:column; gap:12px; }
@@ -174,8 +177,9 @@ function list() {
     <a class="row" href="#/v/${p.k}">
       <div class="l1"><span class="num">${p.order}</span><span class="tag ${p.lane}">${p.laneText}</span>
         <span class="who"><span class="chart">${p.chart}</span></span><span class="nm">${esc(p.name)}</span>
-        <span class="meta" style="font-size:14px;color:var(--ink-2)">${p.age}세 · ${p.sex} · ${p.kind}</span></div>
+        <span class="meta" style="font-size:14px;color:var(--ink-2)">${p.age}세 · ${p.sex}${p.kind === '신환' ? '' : ' · 재진'}</span>${p.kind === '신환' ? '<span class="new-badge">신환</span>' : ''}</div>
       <div class="l2">${esc(p.when.split(' · ')[0])}<span class="chip">${esc(p.chip)}</span></div>
+      ${p.memo ? `<div class="memo"><span class="lab">메모</span>${esc(p.memo)}</div>` : ''}
     </a>`).join('')}
   </main>`
 }
@@ -190,9 +194,9 @@ function detail(p) {
   return NOTE + `
   <header class="top">
     <div class="top-row"><a class="back" href="#/">접수 현황</a><span class="mark">양지바른</span></div>
-    <div class="who"><span class="chart">${p.chart}</span><h1>${esc(p.name)}</h1><span class="meta">${p.age}세 · ${p.sex} · ${p.kind}</span></div>
+    <div class="who"><span class="chart">${p.chart}</span><h1>${esc(p.name)}</h1><span class="meta">${p.age}세 · ${p.sex}${p.kind === '신환' ? '' : ' · 재진'}</span>${p.kind === '신환' ? '<span class="new-badge">신환</span>' : ''}</div>
     <div class="state"><span class="tag ${p.lane}">${p.laneText}</span><span>${esc(p.when)}</span></div>
-    <div class="memo">메모 · ${esc(p.memo)}</div>
+    <div class="memo"><span class="lab">메모</span>${esc(p.memo)}</div>
   </header>
   <main class="detail">
     <h2>오늘 진료기록부</h2>
