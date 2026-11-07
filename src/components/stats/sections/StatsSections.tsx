@@ -5,6 +5,8 @@ import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { summaryCells, type StatsInput } from '@/components/stats/view'
 import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView } from '@/types/stats'
+import { DoctorsSection } from './DoctorsSection'
+import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 import { PatientTrendSection } from './PatientTrendSection'
 import { PeriodSummary } from './PeriodSummary'
 import { ReportSection, type PickReport, type ReportData } from './ReportSection'
@@ -13,12 +15,14 @@ import { RxPickerSection } from './RxPickerSection'
 import { RxSplitSection } from './RxSplitSection'
 import { todayOf } from './parts'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
+import { VisitHoursSection } from './VisitHoursSection'
 import { WeekdaySection } from './WeekdaySection'
 
 // 섹션 여덟을 승인본 차례·배치로 놓는다 (treatment-trend AC-1201.1이 rx-picker AC-801.1·stats AC-513.1을 대신한다, 시안 notes.md §2).
 // 1024px 이상 12칸(12 / 8·4 / 12 / 12 / 12 / 7·5), 오른쪽 칸은 왼쪽 1px line + 안쪽 24. 그보다 좁으면 모두 12칸이고 세로선이 없다.
 // 처방별 추세가 전체 폭이라 처방별 신환·재진도 옆 칸 없이 전체 폭이다.
-// 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다
+// 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다.
+// 여덟 칸 뒤에 비트 전용 세 칸(환자 구성 → 시간대별 접수 → 원장님별, 모두 12칸, stats-bit-sections AC-2706.1). 세 칸은 bit를 받을 때만 그린다(통계 화면은 늘 준다)
 
 const SIDE = 'lg:border-l lg:border-line lg:pl-6'
 const REPORT_RX = 2
@@ -46,9 +50,10 @@ type Props = {
   hospitalName: string
   groups: StatsRxGroupsView // 처방별 추세 묶음 훅 값(통계 화면이 한 번 부른다)
   revision?: number // 저장에 성공하거나 [다시 읽기]를 누를 때마다 는다. 처방 찾기 목록이 넓은 범위를 다시 읽는 때를 안다
+  bit?: BitSectionsShown // 비트 전용 세 칸 보기. null = 이 기기에서 불러오지 않음, 'waiting' = 이 기간 답을 기다림. 주지 않으면 세 칸이 없다
 }
 
-export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0 }: Props) {
+export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
   const name = input.range.period === null ? input.range.name : null
   return (
@@ -70,6 +75,13 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
         className="col-span-12 lg:col-span-7"
       />
       <WeekdaySection days={input.days} range={input.range} saved={saved} className={`col-span-12 lg:col-span-5 ${SIDE}`} />
+      {bit !== undefined && (
+        <>
+          <PatientMixSection view={bit} range={input.range} hospitalName={hospitalName} className="col-span-12" />
+          <VisitHoursSection view={bit} range={input.range} className="col-span-12" />
+          <DoctorsSection view={bit} range={input.range} hospitalName={hospitalName} className="col-span-12" />
+        </>
+      )}
     </div>
   )
 }
