@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>메모 입력 현황 — 날짜를 골라 완료로 저장 (claim-day-done 시안)</title>
+<!-- 2026-11-08 사용자가 두 방식(A 누르면 바로 저장 / B 골라서 저장) 가운데 B를 골랐다. 이 파일은 B만 남긴 시안이다.
+     실제 화면은 src/components/claim/OutsideCounts.tsx(밖에서 보는 건수, 휴대폰·집 PC). 숫자·날짜는 화면 사진의 건수만 옮겼다(환자 자료 없음) -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--faint:#9CA3AF;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;--negative:#C2410C;--negative-soft:#FDF0EA;
+--r-control:4px;--r-float:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:#E9ECF1;color:var(--ink);font-size:14px;line-height:22px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 시안 조작판 (실제 화면에는 없음) */
+.ctl{background:#1F2937;color:#F9FAFB;padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px}
+.ctl b{font-weight:600}
+.seg{display:inline-flex;border:1px solid #4B5563;border-radius:6px;overflow:hidden}
+.seg button{padding:4px 10px;color:#D1D5DB}
+.seg button.on{background:#F9FAFB;color:#111827;font-weight:600}
+.ctl label{display:inline-flex;gap:4px;align-items:center}
+.ctl .note{color:#D1D5DB;width:100%;font-size:12px;line-height:18px}
+.stage{padding:16px 0 64px;display:flex;justify-content:center}
+.frame{background:var(--canvas);width:390px;min-height:760px;box-shadow:0 0 0 1px #CBD2DC}
+.frame.pc{width:1024px}
+/* 앱 틀 (줄임) */
+.band{background:var(--surface);border-bottom:1px solid var(--line);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:600}
+.logo i{width:20px;height:20px;border-radius:5px;background:var(--accent);display:inline-block}
+.band small{color:var(--muted);font-size:12px}
+.tabs{background:var(--surface);border-bottom:1px solid var(--line);display:flex;padding:0 4px;height:42px;align-items:stretch}
+.tab{display:inline-flex;align-items:center;padding:0 12px;font-weight:500;color:var(--ink-2);position:relative}
+.tab.on{font-weight:600;color:var(--ink)}
+.tab.on::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--accent)}
+main{padding:16px}
+.frame.pc main{padding:24px}
+.stamp{font-size:13px;color:var(--ink-2);margin-bottom:12px}
+.stamp b{color:var(--ink);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float)}
+.phead{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 0}
+.phead h2{font-size:15px;font-weight:600}
+.count{font-size:12px;color:var(--muted)}
+.left{padding:10px 16px 0}
+.left b{font-size:22px;font-weight:600}
+.left small{font-size:13px;font-weight:400;margin-left:2px}
+/* 고르기 줄 */
+.pickbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 16px 0;padding:8px 10px;border-radius:var(--r-float);background:var(--accent-soft);color:var(--accent-strong);font-size:13px;font-weight:500;min-height:46px}
+.pickbar.saved{background:var(--positive-soft);color:var(--positive)}
+.alert{margin:8px 16px 0;padding:10px 12px;border-radius:var(--r-float);background:var(--negative-soft);color:var(--negative);font-size:13px;line-height:20px}
+.alert b{display:block;font-weight:600}
+.alert small{color:var(--ink-2)}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th{font-size:12px;font-weight:500;color:var(--muted);text-align:left;padding:8px 16px;border-bottom:1px solid var(--line)}
+th.num,td.num{text-align:right}
+td{padding:9px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.num{white-space:nowrap}
+.frame:not(.pc) td,.frame:not(.pc) th{padding-left:10px;padding-right:10px}
+.frame:not(.pc) td.pick{padding-right:0}
+.frame:not(.pc) td.act{padding-left:0}
+tr:last-child td{border-bottom:0}
+td .sub{display:block;font-size:12px;line-height:16px;color:var(--muted)}
+.frame:not(.pc) .pcOnly{display:none}
+.frame.pc .phoneOnly{display:none}
+td.act{text-align:right;width:1%;white-space:nowrap;padding-left:0}
+td.pick,th.pick{width:1%;padding-right:0}
+td.pick input{width:18px;height:18px;accent-color:var(--accent)}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.chip.n{background:var(--canvas);color:var(--ink-2);border:1px solid var(--line)}
+.chip.a{background:var(--accent-soft);color:var(--accent-strong)}
+.chip.p{background:var(--positive-soft);color:var(--positive)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 10px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:500;color:var(--ink-2)}
+.btn:hover{background:var(--canvas)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;height:32px}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.link{border:0;background:none;color:inherit;text-decoration:underline;padding:0 4px;height:auto}
+/* 완료로 바꾼 날 (접힘) */
+.donebox{border-top:1px solid var(--line)}
+.donebox summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;font-size:13px;font-weight:500;color:var(--ink-2)}
+.donebox summary::-webkit-details-marker{display:none}
+.donebox summary .arr{transition:transform .15s;color:var(--muted)}
+.donebox[open] summary .arr{transform:rotate(180deg)}
+.donebox .help{padding:0 16px 4px;font-size:12px;color:var(--muted)}
+.donebox table{margin-top:0}
+.empty{padding:6px 16px 14px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="ctl">
+  <b>시안 조작판</b>
+  <span>화면</span>
+  <span class="seg" id="segW"><button data-v="phone" class="on">휴대폰</button><button data-v="pc">PC</button></span>
+  <label><input type="checkbox" id="failNext"> 다음 저장·되돌리기를 실패로</label>
+  <button class="btn" style="height:26px;color:#111827" id="reset">처음으로</button>
+  <p class="note">날짜를 체크한 뒤 [완료로 저장]을 눌러야 저장돼요. 저장한 날은 목록에서 빠지고 'N일 남음'이 줄어요. 맨 아래 "완료로 바꾼 날"을 펼쳐 하나씩 되돌릴 수 있어요.</p>
+</div>
+<div class="stage">
+  <div class="frame" id="frame">
+    <div class="band"><span class="logo"><i></i>양지바른정형외과</span><small>11월 8일 (일)</small></div>
+    <div class="tabs"><span class="tab">대시보드</span><span class="tab">통계</span><span class="tab on">청구</span><span class="tab">환자</span><span class="tab">매출</span></div>
+    <main>
+      <p class="stamp">마지막으로 바뀐 시각 <b>11월 7일 (토) 15:44</b> · 비트 PC에서 올라옴</p>
+      <section class="panel">
+        <div class="phead"><h2>메모 입력 현황</h2><span class="count">날짜별</span></div>
+        <p class="left"><b id="leftN">0</b><small>일 남음</small></p>
+        <div class="pickbar" id="pickbar" role="status"></div>
+        <div class="alert" id="alert" role="alert" hidden><b>완료 표시를 저장하지 못했어요</b>고른 날짜는 그대로 있어요. 인터넷 연결을 확인하고 다시 눌러 주세요. <small>(E-DAYCLOSE-FAILED)</small></div>
+        <table aria-label="메모 입력 현황">
+          <thead><tr><th class="pick"><span hidden>고르기</span></th><th>날짜</th><th class="num pcOnly">메모 필요</th><th class="num pcOnly">입력함</th><th class="num phoneOnly">입력</th><th>상태</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <details class="donebox" id="donebox">
+          <summary><span>완료로 바꾼 날 <b id="doneN">0</b></span><span class="arr">▾</span></summary>
+          <p class="help">숫자는 비트에서 올라온 그대로예요. [되돌리기]를 누르면 위 목록으로 돌아가요.</p>
+          <table aria-label="완료로 바꾼 날"><tbody id="doneRows"></tbody></table>
+        </details>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+const START = [
+  ['2026-11-07','토',21,0,'11월 7일 (토) 15:28'],['2026-11-06','금',45,0,'11월 7일 (토) 13:30'],['2026-11-05','목',44,0,'11월 6일 (금) 13:34'],
+  ['2026-11-04','수',27,0,'11월 6일 (금) 13:34'],['2026-11-03','화',36,6,'11월 6일 (금) 13:34'],['2026-11-02','월',47,0,'11월 6일 (금) 13:34'],
+  ['2026-10-31','토',33,19,'11월 6일 (금) 13:34'],['2026-10-30','금',33,20,'11월 6일 (금) 13:44'],
+  ['2026-09-29','화',44,21,'11월 6일 (금) 16:23'],['2026-09-28','월',53,32,'11월 6일 (금) 16:23'],
+]
+const OTHER_LEFT = 39 // 시안에 그리지 않은 남은 날(그사이 날짜들)
+let days, done, picked, saving, lastSaved
+const $ = (id) => document.getElementById(id)
+const label = (d) => { const [, m, dd] = d[0].split('-'); return `${+m}/${+dd} (${d[1]})` }
+const chip = (d) => d[3] === 0 ? '<span class="chip n">입력 전</span>' : `<span class="chip a">진행중<span class="pcOnly">&nbsp;${d[3]}/${d[2]}</span></span>`
+const byDateDesc = (a, b) => (a[0] < b[0] ? 1 : -1)
+function reset() { days = START.map((d) => [...d]); done = []; picked = new Set(); saving = false; lastSaved = null; $('alert').hidden = true; render() }
+function render() {
+  $('leftN').textContent = days.length + OTHER_LEFT
+  $('doneN').textContent = done.length
+  const bar = $('pickbar')
+  bar.classList.toggle('saved', !!lastSaved && picked.size === 0)
+  if (lastSaved && picked.size === 0) {
+    bar.innerHTML = `<span>${lastSaved.length}일을 완료로 바꿨어요</span><button class="btn link" id="undoSaved">되돌리기</button>`
+  } else {
+    bar.innerHTML = `<span>${picked.size ? `${picked.size}일 골랐어요` : '완료로 바꿀 날을 골라 주세요'}</span><button class="btn primary" id="saveBtn" ${picked.size === 0 || saving ? 'disabled' : ''}>${saving ? '저장 중…' : '완료로 저장'}</button>`
+  }
+  $('rows').innerHTML = days.map((d) => `<tr data-k="${d[0]}">
+    <td class="pick"><input type="checkbox" aria-label="${label(d)} 고르기" ${picked.has(d[0]) ? 'checked' : ''} ${saving ? 'disabled' : ''}></td>
+    <td>${label(d)}<span class="sub">${d[4]}에 바뀜</span></td>
+    <td class="num pcOnly">${d[2]}</td><td class="num pcOnly">${d[3]}</td><td class="num phoneOnly">${d[3]} / ${d[2]}</td>
+    <td>${chip(d)}</td>
+  </tr>`).join('')
+  $('doneRows').innerHTML = done.length ? done.map((d) => `<tr>
+    <td>${label(d)}<span class="sub">완료로 바꿈 · 11월 8일 (일) 07:30</span></td>
+    <td class="num">${d[3]} / ${d[2]}</td>
+    <td><span class="chip p">완료</span></td>
+    <td class="act"><button class="btn" data-undo="${d[0]}">되돌리기</button></td></tr>`).join('')
+    : '<tr><td class="empty" style="border:0">아직 없어요</td></tr>'
+}
+const failing = () => { if ($('failNext').checked) { $('failNext').checked = false; return true } return false }
+function save() {
+  saving = true; $('alert').hidden = true; render()
+  setTimeout(() => {
+    saving = false
+    if (failing()) { $('alert').hidden = false; render(); return }
+    const keys = [...picked]
+    done = [...days.filter((d) => keys.includes(d[0])), ...done].sort(byDateDesc)
+    days = days.filter((d) => !keys.includes(d[0]))
+    picked = new Set(); lastSaved = keys; render()
+  }, 500)
+}
+function undo(keys) {
+  if (failing()) { $('alert').hidden = false; return }
+  $('alert').hidden = true
+  const back = done.filter((d) => keys.includes(d[0]))
+  done = done.filter((d) => !keys.includes(d[0]))
+  days = [...days, ...back].sort(byDateDesc)
+  if (lastSaved) lastSaved = lastSaved.filter((k) => !keys.includes(k))
+  if (lastSaved && !lastSaved.length) lastSaved = null
+  render()
+}
+$('rows').addEventListener('change', (e) => {
+  const tr = e.target.closest('tr'); if (!tr) return
+  e.target.checked ? picked.add(tr.dataset.k) : picked.delete(tr.dataset.k)
+  lastSaved = null; render()
+})
+$('pickbar').addEventListener('click', (e) => {
+  if (e.target.id === 'saveBtn') save()
+  if (e.target.id === 'undoSaved' && lastSaved) undo(lastSaved)
+})
+$('doneRows').addEventListener('click', (e) => { const b = e.target.closest('[data-undo]'); if (b) undo([b.dataset.undo]) })
+$('reset').addEventListener('click', reset)
+$('segW').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; [...$('segW').children].forEach((x) => x.classList.toggle('on', x === b)); $('frame').classList.toggle('pc', b.dataset.v === 'pc') })
+if (new URLSearchParams(location.search).get('w') === 'pc') $('segW').children[1].click()
+reset()
+</script>
+</body>
+</html>
