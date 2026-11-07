@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Precheck.Core.Bit;
 using Precheck.Core.Protocol;
 using Precheck.Core.Stats;
@@ -554,5 +555,185 @@ public class StatsExtraReadTests
             StatsSql.HistoryGuardSql, StatsSql.VisitRowsSql, StatsSql.PatientDaysSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql, StatsSql.CodeNamesSql,
         }, rig.Session.Sqls);
         Assert.DoesNotContain(rig.Session.Sqls, sql => StatsSql.Sections.Contains(sql));
+    }
+}
+
+/// <summary>
+/// REQ-2701 stats.rows 답 v3(TASK-2): v2 열쇠 뒤에 visits·people·doctors·doctorDays를 이 차례로 싣는다.
+/// 새 자료는 보고 네 벌을 읽은 뒤 같은 세션에서 읽고, 하나라도 막히면 반쪽 자료 없이 error만 간다.
+/// </summary>
+public class StatsExtraPayloadTests
+{
+    private const string September = "{\"from\":\"2026-09-01\",\"to\":\"2026-09-30\"}";
+
+    private static readonly string[] V2Keys = { "v", "from", "to", "summary", "days", "patientDays", "codes", "rows", "report" };
+
+    private static readonly string[] SectionOrder =
+    {
+        StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql, StatsSql.DoctorNamesSql,
+    };
+
+    private static string Reply(Rig rig) => StatsRowsTests.Assemble(StatsRowsTests.Handle(rig, September));
+
+    private static string[] Strings(JsonElement array) => array.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Null ? "null" : item.ToString()).ToArray();
+
+    private static string[][] Table(JsonElement array) => array.EnumerateArray().Select(Strings).ToArray();
+
+    [Fact(DisplayName = "AC-2701.1 stats.rows 답은 v 3이고 v2 열쇠 뒤에 visits·people·doctors·doctorDays를 이 차례로 싣는다")]
+    public void VersionAndKeys()
+    {
+        using var rig = StatsFake.Clinic();
+        var root = Json.Parse(Reply(rig));
+
+        Assert.Equal(3, root.GetProperty("v").GetInt32());
+        Assert.Equal(3, StatsPayload.Version);
+        Assert.Equal(V2Keys.Concat(new[] { "visits", "people", "doctors", "doctorDays" }), Json.Keys(root));
+        Assert.Equal(1, rig.Session.Disposed);
+    }
+
+    [Fact(DisplayName = "AC-2701.1 visits 줄은 다섯 칸 [차트번호|null, 진료일, 접수 시각|null, 보험 이름|null, 진료의 코드|null]이고 빈 칸은 JSON null이다")]
+    public void VisitsJson()
+    {
+        using var rig = StatsFake.Clinic();
+        var visits = Json.Parse(Reply(rig)).GetProperty("visits");
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(1), "20260901", "0905", "가짜보험 가", "D001" },
+            new[] { StatsFake.Chart(2), "20260902", "1430", "가짜보험 나", "D002" },
+            new[] { "null", "20260903", "0830", "null", "null" },
+        }, Table(visits));
+        Assert.All(visits.EnumerateArray(), line =>
+        {
+            Assert.Equal(5, line.GetArrayLength());
+            Assert.All(line.EnumerateArray(), cell => Assert.Contains(cell.ValueKind, new[] { JsonValueKind.String, JsonValueKind.Null }));
+        });
+        Assert.Equal(JsonValueKind.Null, visits[2][0].ValueKind);
+        Assert.Equal(JsonValueKind.Null, visits[2][3].ValueKind);
+        Assert.Equal(JsonValueKind.Null, visits[2][4].ValueKind);
+    }
+
+    [Fact(DisplayName = "AC-2701.1 접수 시각을 모르는 접수는 시각 칸이 JSON null이다")]
+    public void UnknownTimeIsNull()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.VisitLinesSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", "2400", "가짜보험 가", "D001" } });
+        var visits = Json.Parse(Reply(rig)).GetProperty("visits");
+        Assert.Equal(JsonValueKind.Null, Assert.Single(visits.EnumerateArray())[2].ValueKind);
+    }
+
+    [Fact(DisplayName = "AC-2701.3 people 줄은 세 칸 [차트번호, 생년월일|null, 주소 앞부분|null]이고 이름·전화·번지는 답에 없다")]
+    public void PeopleJson()
+    {
+        using var rig = StatsFake.Clinic();
+        var json = Reply(rig);
+        var people = Json.Parse(json).GetProperty("people");
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(1), "19800101", "가짜도 가짜시 가짜구 가짜동" },
+            new[] { StatsFake.Chart(2), "null", "null" },
+        }, Table(people));
+        Assert.All(people.EnumerateArray(), person =>
+        {
+            Assert.Equal(3, person.GetArrayLength());
+            Assert.Equal(JsonValueKind.String, person[0].ValueKind);
+        });
+        Assert.Equal(JsonValueKind.Null, people[1][1].ValueKind);
+        Assert.Equal(JsonValueKind.Null, people[1][2].ValueKind);
+
+        Assert.DoesNotContain(Fake.Name, json);
+        Assert.DoesNotContain(Fake.Phone, json);
+        Assert.DoesNotContain(StatsExtraFake.HouseNumber, json);
+        Assert.DoesNotContain("가짜빌라", json);
+    }
+
+    [Fact(DisplayName = "AC-2701.4 doctors 줄은 두 칸 [코드, 이름|null]이고 visits·doctorDays의 진료의 코드가 모두 있다")]
+    public void DoctorsJson()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.DoctorNamesSql, _ => new[] { new object?[] { "D001", " 가짜원장 가 ", "99991231" } });
+        var root = Json.Parse(Reply(rig));
+        var doctors = root.GetProperty("doctors");
+
+        Assert.Equal(new[]
+        {
+            new[] { "D001", "가짜원장 가" },
+            new[] { "D002", "null" },
+        }, Table(doctors));
+        Assert.Equal(JsonValueKind.Null, doctors[1][1].ValueKind);
+
+        var codes = doctors.EnumerateArray().Select(d => d[0].GetString()).ToArray();
+        Assert.All(root.GetProperty("visits").EnumerateArray().Where(v => v[4].ValueKind != JsonValueKind.Null), v => Assert.Contains(v[4].GetString(), codes));
+        Assert.All(root.GetProperty("doctorDays").EnumerateArray(), d => Assert.Contains(d[1].GetString(), codes));
+    }
+
+    [Fact(DisplayName = "AC-2701.5 doctorDays 줄은 [수납일, 진료의 코드, 총진료비(원 단위 정수)]이다")]
+    public void DoctorDaysJson()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.DoctorMoneyNormalSql, _ => new[]
+        {
+            new object?[] { "20260901", "D001", 50000.9m },
+            new object?[] { "20260905", "D002", -300.5m },
+        });
+        var days = Json.Parse(Reply(rig)).GetProperty("doctorDays");
+
+        Assert.Equal(new[]
+        {
+            new[] { "20260901", "D001", "50000" },
+            new[] { "20260901", "D002", "1000" },
+            new[] { "20260905", "D002", "-300" },
+        }, Table(days));
+        Assert.All(days.EnumerateArray(), day =>
+        {
+            Assert.Equal(3, day.GetArrayLength());
+            Assert.Equal(JsonValueKind.String, day[0].ValueKind);
+            Assert.Equal(JsonValueKind.String, day[1].ValueKind);
+            Assert.Equal(JsonValueKind.Number, day[2].ValueKind);
+            Assert.True(day[2].TryGetInt64(out _));
+        });
+    }
+
+    [Fact(DisplayName = "AC-2701.7 새 자료는 보고 네 벌을 읽은 뒤 같은 세션에서 읽고, 지금 읽기 차례(진료 줄 → … → 보고)는 그대로다")]
+    public void ReadAfterReport()
+    {
+        using var rig = StatsFake.Clinic();
+        Reply(rig);
+        var sqls = rig.Session.Sqls.ToList();
+
+        Assert.Equal(new[]
+        {
+            Sql.ScopesSql, Sql.InstitutionSql,
+            StatsSql.HistoryGuardSql, StatsSql.VisitRowsSql, StatsSql.PatientDaysSql, StatsSql.VisitSummarySql, StatsSql.VisitDaysSql, StatsSql.CodeNamesSql,
+            Sql.SnapshotStateSql,
+        }, sqls.Take(9));
+        var at = sqls.IndexOf(StatsSql.VisitLinesSql);
+        Assert.Equal(StatsSql.FinanceReceivableSql, sqls[at - 1]); // 보고 마지막 벌의 마지막 SQL
+        Assert.DoesNotContain(sqls.Take(at), sql => StatsSql.Sections.Contains(sql));
+        Assert.Equal(SectionOrder, sqls.Skip(at));
+        Assert.Equal(1, rig.Session.Disposed);
+    }
+
+    public static IEnumerable<object[]> EachSql() => Enumerable.Range(0, 5).Select(i => new object[] { i });
+
+    [Theory(DisplayName = "AC-2701.1 새 자료 SQL이 하나라도 실패하면 반쪽 자료 없이 E-BIT-READ-FAILED만 보낸다")]
+    [MemberData(nameof(EachSql))]
+    public void AnySectionSqlFails(int index)
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Fail(SectionOrder[index], BitErrors.ReadFailed);
+        StatsRowsTests.AssertOnlyError(StatsRowsTests.Handle(rig, September), "E-BIT-READ-FAILED");
+        Assert.Equal(1, rig.Session.Disposed);
+    }
+
+    [Fact(DisplayName = "AC-2701.1 접수 줄이 700,000줄을 넘으면 E-STATS-TOO-BIG만 보낸다(chunk 없음)")]
+    public void TooManyVisitLines()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.VisitLinesSql, _ => StatsExtraFake.ManyLines(StatsRows.MaxRows + 1));
+        StatsRowsTests.AssertOnlyError(StatsRowsTests.Handle(rig, September), "E-STATS-TOO-BIG");
+        Assert.DoesNotContain(StatsSql.PeopleSql, rig.Session.Sqls);
+        Assert.Equal(1, rig.Session.Disposed);
     }
 }
