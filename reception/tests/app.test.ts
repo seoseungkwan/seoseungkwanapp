@@ -208,7 +208,8 @@ function moreButton(root: ParentNode | null): HTMLButtonElement | null {
  */
 function patientTexts(b: FakeBoard = fx.mockupBoard()): string[] {
   const out = new Set<string>()
-  for (const row of Object.values(b.lists).flat()) for (const v of fx.rowTexts(row)) out.add(v)
+  // 처방 글(rx)은 목록 줄에 안 보여도(AC-1504.1) 받은 판에 있으니 함께 본다
+  for (const row of Object.values(b.lists).flat()) for (const v of [...fx.rowTexts(row), row.rx]) if (v) out.add(v)
   for (let i = 0; i < 5; i += 1) out.add(fx.fakeVisit(i).sym)
   const paper = fx.fakeTreatedPaper('오른쪽 어깨 통증 계속됨')
   for (const v of [paper.res, paper.addr, paper.cel, paper.special, paper.sym, ...paper.dx.map((d) => d.name), ...paper.rx.map((r) => r.name)]) if (v) out.add(v)

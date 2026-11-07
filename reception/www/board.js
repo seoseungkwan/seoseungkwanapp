@@ -160,7 +160,8 @@ function partsOf(host, tablet) {
   }
 }
 
-/** 줄 하나: 폰은 상세 링크, 태블릿은 고르는 단추. 진료 순서에서만 순서 번호·상태 이름표 */
+/** 줄 하나: 폰은 상세 링크, 태블릿은 고르는 단추. 진료 순서에서만 순서 번호·상태 이름표.
+ * 처방·증상 줄(rxLabel·rx)은 그리지 않는다: 누르면 종이 카드에 나온다(reception-paper AC-1504.1, 사용자 결정 2026-11-07) */
 function rowOf(row, lane, view, select) {
   const tablet = view.tablet === true
   const picked = tablet && row.k === view.picked
@@ -176,7 +177,6 @@ function rowOf(row, lane, view, select) {
     ]),
     el('span', { class: 'row-time' }, [textSpan(null, row.time), el('span', { class: waitedClass(row) }, row.waited)]),
     row.memo ? el('span', { class: 'memo' }, [el('span', { class: 'memo-label' }, MEMO_LABEL), row.memo]) : null,
-    el('span', { class: 'rx-line' }, [el('span', { class: 'rx-label' }, row.rxLabel), el('span', { class: 'rx-text' }, row.rx)]),
   ]
   const main = tablet
     ? el('button', { type: 'button', class: 'row-main', 'aria-pressed': pressed(picked), on: { click: () => select(row.k) } }, body)

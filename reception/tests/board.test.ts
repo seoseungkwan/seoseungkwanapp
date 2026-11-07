@@ -270,24 +270,21 @@ describe('board.js 목록 그리기', () => {
     const longWait = rows[0]
     expect(shapeOf(longWait)).toEqual(['a.row-main'])
     const main = longWait.querySelector(':scope > .row-main')
-    expect(shapeOf(main)).toEqual(['span.row-head', 'span.row-time', 'span.rx-line'])
+    expect(shapeOf(main)).toEqual(['span.row-head', 'span.row-time'])
     expect(shapeOf(main?.querySelector('.row-head'))).toEqual(['span.pos', 'span.status.status-wait', 'span.chart', 'span.name', 'span.info', 'span.new-badge'])
     expect(textsOf(main!, '.row-head > span')).toEqual(['1', '진료대기', '910871', '가상환자01', '37세 · 남', '신환'])
     expect(shapeOf(main?.querySelector('.row-time'))).toEqual(['span', 'span.waited.is-long'])
     expect(textsOf(main!, '.row-time > span')).toEqual(['09:38 접수', '1시간 4분째 대기'])
     expect(main?.querySelector('.memo')).toBeNull()
-    expect(shapeOf(main?.querySelector('.rx-line'))).toEqual(['span.rx-label', 'span.rx-text'])
-    expect(textsOf(main!, '.rx-line > span')).toEqual(['처방', '첫 방문이라 지난 처방이 없어요'])
 
     // 2번: 진료보류 · 메모 있음 · 오래 기다림 아님
     const hold = rows[1].querySelector(':scope > .row-main')
-    expect(shapeOf(hold)).toEqual(['span.row-head', 'span.row-time', 'span.memo', 'span.rx-line'])
+    expect(shapeOf(hold)).toEqual(['span.row-head', 'span.row-time', 'span.memo'])
     expect(shapeOf(hold?.querySelector('.row-head'))).toEqual(['span.pos', 'span.status.status-hold', 'span.chart', 'span.name', 'span.info'])
     expect(textsOf(hold!, '.row-head > span')).toEqual(['2', '진료보류', '910502', '가상환자04', '45세 · 남 · 재진'])
     expect(hold?.querySelector('.waited')?.className).toBe('waited')
     expect(textOf(hold!, '.waited')).toBe('보류 22분째')
     expect(memoOf(hold)).toEqual(memoBox('엑스레이 찍으러 감'))
-    expect(textsOf(hold!, '.rx-line > span')).toEqual(['오늘', '엑스레이 촬영(XR2)'])
 
     // 메모는 있는 줄에만
     expect(rows.map((r) => memoOf(r))).toEqual([null, memoBox('엑스레이 찍으러 감'), null, memoBox('오른쪽 어깨 통증 심해짐'), memoBox('보호자 동반')])
@@ -317,7 +314,7 @@ describe('board.js 목록 그리기', () => {
     }
   })
 
-  it('AC-1407.2: 환자 글(이름·차트번호·정보·메모·처방·기준 시각)에 <b>·<img onerror>를 넣어도 글자로만 보인다', () => {
+  it('AC-1407.2: 환자 글(이름·차트번호·정보·메모·기준 시각)에 <b>·<img onerror>를 넣어도 글자로만 보인다(처방 글은 그리지 않는다, AC-1504.1)', () => {
     const name = '<b>가상환자10</b>'
     const memo = '<img src=x onerror=alert(1)>'
     const rx = '<b>체외충격파(ESWT7)</b>'
@@ -331,8 +328,8 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(row, '.chart')).toBe(chart)
     expect(textOf(row, '.info')).toBe(info)
     expect(memoOf(row)).toEqual(memoBox(memo))
-    expect(textOf(row, '.rx-text')).toBe(rx)
-    expect(textOf(row, '.rx-label')).toBe('<u>오늘</u>')
+    expect(row.querySelector('.rx-line, .rx-label, .rx-text')).toBeNull()
+    expect(row.textContent).not.toContain(rx)
     expect(textOf(app, 'p.asof')).toBe('<b>13:42:10</b> 기준 · 5초마다 저절로 바뀌어요')
     expect(app.querySelector('b, i, u, script, img:not(.logo)')).toBeNull()
   })
@@ -347,17 +344,37 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(rows[0], '.chart')).toBe('912222')
     expect(textOf(rows[0], '.info')).toBe('54세 · 여 · 재진')
     expect(rows[0].querySelector('.memo')).toBeNull()
-    expect(textOf(rows[0], '.rx-text')).toBe('오른쪽 어깨 통증 조금 줄었음 밤에 아픔')
   })
 
-  it('AC-1407.2: 지난번 줄(AC-1402.6)은 이름표 "지난번"과 도우미가 준 지난 증상 글을 그대로 그리고, 증상이 없으면 받은 "적힌 증상이 없어요"를 그린다', () => {
+  it('AC-1504.1: 목록 줄(폰·태블릿, 진료 순서·칸 넷)에는 이름표 줄(오늘 처방·지난번 증상·첫 방문 글)이 없고 그 글도 보이지 않는다', () => {
+    const fake = fx.mockupBoard()
+    for (const tablet of [false, true])
+      for (const lane of [undefined, 'wait', 'hold', 'pay', 'done'] as const) {
+        const app = appHost()
+        view.renderBoard(app, fake, lane ? { lane, tablet } : { tablet })
+        const rows = rowsOf(app)
+        expect(rows.length, `${tablet} ${lane}`).toBeGreaterThan(0)
+        expect(app.querySelector('.rx-line, .rx-label, .rx-text'), `${tablet} ${lane}`).toBeNull()
+        const list = fake.lists[lane ?? 'queue']
+        rows.forEach((row, i) => {
+          const data = list[i]!
+          expect(row.textContent, `${tablet} ${lane} ${i}`).not.toContain(data.rx)
+          expect(textOf(row, '.name')).toBe(data.name)
+          expect(textOf(row, '.chart')).toBe(data.chart)
+        })
+        app.remove()
+      }
+  })
+
+  it('AC-1504.1: 이름표 줄을 빼도 정보·신환 표시·접수 시각·기다린 글·메모 상자는 그대로다', () => {
     const app = appHost()
     view.renderBoard(app, fx.mockupBoard())
     const rows = rowsOf(app)
-    expect(textsOf(rows[3], '.rx-line > span')).toEqual(['지난번', '오른쪽 어깨 통증 조금 줄었음 밤에 아픔'])
-    expect(textsOf(rows[4], '.rx-line > span')).toEqual(['지난번', '적힌 증상이 없어요'])
-    expect(textsOf(rows[0], '.rx-line > span')).toEqual(['처방', '첫 방문이라 지난 처방이 없어요'])
-    expect(textsOf(rows[1], '.rx-line > span')).toEqual(['오늘', '엑스레이 촬영(XR2)'])
+    expect(shapeOf(rows[0]!.querySelector('.row-main'))).toEqual(['span.row-head', 'span.row-time'])
+    expect(shapeOf(rows[3]!.querySelector('.row-main'))).toEqual(['span.row-head', 'span.row-time', 'span.memo'])
+    expect(textOf(rows[0]!, '.new-badge')).toBe('신환')
+    expect(textsOf(rows[0]!, '.row-time > span')).toEqual(['09:38 접수', '1시간 4분째 대기'])
+    expect(memoOf(rows[3])).toEqual(memoBox('오른쪽 어깨 통증 심해짐'))
   })
 
   it('AC-1407.2: 폰 줄은 상세로 가는 링크(#/v/열쇠)이고, 태블릿 줄은 고르는 단추(aria-pressed, 고른 줄 표시, onSelect(열쇠))다', () => {
@@ -585,13 +602,12 @@ describe('REQ-1503 메모 크게 · 신환 눈에 띄게 (board.js 목록 줄, �
     expect(shapeOf(rowsOf(empty)[0]!.querySelector('.row-head'))).toEqual(['span.chart', 'span.name'])
   })
 
-  it('AC-1503.2: 승인 판에서 신환 줄(가상환자01·가상환자07)에만 표시가 있고 진료 순서·줄 차례·처방 줄은 그대로다', () => {
+  it('AC-1503.2: 승인 판에서 신환 줄(가상환자01·가상환자07)에만 표시가 있고 진료 순서·줄 차례는 그대로다', () => {
     const app = appHost()
     view.renderBoard(app, fx.mockupBoard())
     expect(namesOf(app)).toEqual(QUEUE_ORDER)
     expect(rowsOf(app).map((r) => r.querySelector('.new-badge') !== null)).toEqual([true, false, false, false, false])
     expect(rowsOf(app).map((r) => textOf(r, '.info'))).toEqual(['37세 · 남', '45세 · 남 · 재진', '58세 · 여 · 재진', '54세 · 여 · 재진', '71세 · 여 · 재진'])
-    expect(textsOf(rowsOf(app)[0]!, '.rx-line > span')).toEqual(['처방', '첫 방문이라 지난 처방이 없어요'])
     view.renderBoard(app, fx.mockupBoard(), { lane: 'pay' })
     expect(rowsOf(app).map((r) => [textOf(r, '.name'), textOf(r, '.info'), textOf(r, '.new-badge')])).toEqual([
       ['가상환자06', '62세 · 여 · 재진', null],

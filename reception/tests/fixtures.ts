@@ -79,11 +79,12 @@ export function shownInfo(info: string): string[] {
 }
 
 /**
- * 줄 하나에서 화면(목록 줄)에 보이는 환자 글: 이름·차트번호·메모·처방·정보(보이는 조각, shownInfo). 빈 글은 뺀다.
+ * 줄 하나에서 화면(목록 줄)에 보이는 환자 글: 이름·차트번호·메모·정보(보이는 조각, shownInfo). 빈 글은 뺀다.
+ * 처방·증상 글(rx)은 목록 줄에 그리지 않는다(reception-paper AC-1504.1)
  * 화면에 보이는지·끊김/숨김 뒤 남지 않았는지 볼 때 쓴다(정보 글 원문 "37세 · 남 · 신환"은 화면에 한 덩이로 나오지 않는다)
  */
 export function rowTexts(row: FakeRow): string[] {
-  return [row.name, row.chart, row.memo, row.rx, ...shownInfo(row.info)].filter((text) => text !== '')
+  return [row.name, row.chart, row.memo, ...shownInfo(row.info)].filter((text) => text !== '')
 }
 
 /** 접수 시각 글("10:42 접수")의 시:분. 못 읽으면 맨 뒤로 */

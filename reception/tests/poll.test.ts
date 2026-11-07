@@ -176,9 +176,10 @@ function queueTexts(b: FakeBoard): string[] {
   return b.lists.queue.flatMap(fx.rowTexts)
 }
 
-/** 가짜 판의 환자 글(이름·차트번호·메모·처방·정보의 보이는 조각) 모두 */
+/** 가짜 판의 환자 글(이름·차트번호·메모·정보의 보이는 조각과 받은 처방 글) 모두 */
 function patientTexts(b: FakeBoard): string[] {
-  return [...new Set(b.lists.queue.concat(b.lists.pay, b.lists.done).flatMap(fx.rowTexts))]
+  // 처방 글(rx)은 목록 줄에 안 보여도(AC-1504.1) 받은 판에 있으니 지운 뒤 남지 않았는지 함께 본다
+  return [...new Set(b.lists.queue.concat(b.lists.pay, b.lists.done).flatMap((row) => [...fx.rowTexts(row), row.rx].filter((t) => t !== '')))]
 }
 
 /** 화면(DOM)과 고리 상태 어디에도 환자 글이 없다 */
