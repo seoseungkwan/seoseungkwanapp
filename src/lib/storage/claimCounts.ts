@@ -42,8 +42,8 @@ const NO_TABLE_CODES: ReadonlySet<unknown> = new Set(['PGRST205', '42P01'])
 
 type Reply<T> = { data: T[] | null; error: { code?: string } | null; status?: number }
 
-/** 표 하나 읽기. 표가 없으면 빈 목록, 그 밖의 실패는 CountsReadError */
-async function readRows<T>(read: () => PromiseLike<unknown>): Promise<T[]> {
+/** 표 하나 읽기. 표가 없으면 빈 목록, 그 밖의 실패는 CountsReadError. 완료 표시 읽기(claimDayCloses.ts)도 쓴다 */
+export async function readRows<T>(read: () => PromiseLike<unknown>): Promise<T[]> {
   let reply: Reply<T>
   try {
     reply = (await read()) as Reply<T>

@@ -65,6 +65,7 @@ const ALL_CODES = [
   'E-WORKLOG-LOAD-FAILED',
   'E-WORKLOG-NOTE-PRIVATE',
   'E-COUNTS-FAILED',
+  'E-DAYCLOSE-FAILED',
   'E-PATIENTS-TEMPLATES-READ',
   'E-PATIENTS-TEMPLATES-SAVE',
   'E-PATIENTS-COUNTS-READ',
@@ -744,6 +745,16 @@ describe('AC-1203.4 처방별 추세 묶음 오류 번호', () => {
     expect(errorInfo('E-STATS-GROUP-SAVE-FAILED')).toEqual({
       what: '처방별 추세 묶음을 저장하지 못했어요',
       fix: '인터넷 연결을 확인하고 [저장]을 다시 눌러 주세요. 계속되면 화면을 새로 열어 주세요.',
+    })
+  })
+})
+
+describe('AC-2801.5 완료 표시 저장·되돌리기 실패 문구(spec claim-day-done)', () => {
+  it('AC-2801.5: E-DAYCLOSE-FAILED는 명세 글자 그대로다(무엇이·어떻게 고치나·번호)', () => {
+    expect(isErrorCode('E-DAYCLOSE-FAILED')).toBe(true)
+    expect(errorInfo('E-DAYCLOSE-FAILED')).toEqual({
+      what: '완료 표시를 저장하지 못했어요',
+      fix: '고른 날짜는 그대로 있어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 처음 쓰는 거라면 서버 준비(마이그레이션)가 끝났는지 확인해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
     })
   })
 })

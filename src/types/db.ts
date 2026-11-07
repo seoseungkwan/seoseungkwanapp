@@ -97,6 +97,13 @@ export type ClaimMonthCountRow = {
   updated_at: string
 }
 
+/** 날짜별 완료 표시(spec claim-day-done, 20261108000000_claim_day_closes.sql). 넣기는 visit_date만, hospital_id·closed_at은 DB가 정한다. 글자 칸이 없다 */
+export type ClaimDayCloseRow = {
+  hospital_id: string
+  visit_date: string // YYYY-MM-DD
+  closed_at: string // 처음 완료로 바꾼 시각
+}
+
 /** 연락 남은 건수(design.md 8-2, TASK-26이 쓴다). 병원마다 한 줄, 글자 칸이 없다 */
 export type ContactCountRow = {
   hospital_id: string
