@@ -213,15 +213,16 @@ const MIX = {
     dong: [['매탄동', 24, 26], ['영통동', 19, 20], ['망포동', 14, 15], ['원천동', 12, 13], ['병점동', 9, 9], ['권선동', 8, 8], ['세류동', 7, 7], ['인계동', 6, 6], ['이의동', 5, 5], ['곡선동', 4, 4], ['그 밖 27곳', 41, 44, 'rest'], ['동 없는 주소', 37, 40, 'rest']],
   },
 }
-// 시간대별: 요일마다 문을 연 날 수와 시간별 접수 합계(8시~18시)
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+// 시간대별: 병원 접수 시간 8시~20시 고정, 월~일 고정. 요일마다 문을 연 날 수와 시간별 접수 합계
+const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 const HEAT = [
-  ['월', 4, [26, 57, 51, 42, 20, 8, 36, 38, 33, 30, 12]],
-  ['화', 4, [21, 47, 44, 37, 18, 6, 31, 32, 28, 26, 10]],
-  ['수', 4, [19, 44, 41, 35, 16, 6, 28, 31, 26, 24, 10]],
-  ['목', 4, [20, 45, 42, 36, 17, 6, 30, 32, 28, 25, 10]],
-  ['금', 4, [22, 50, 46, 39, 19, 7, 33, 34, 30, 28, 14]],
-  ['토', 5, [40, 66, 57, 41, 15, 3, 0, 0, 0, 0, 0]],
+  ['월', 4, [26, 57, 51, 42, 20, 8, 36, 38, 33, 30, 12, 6, 2]],
+  ['화', 4, [21, 47, 44, 37, 18, 6, 31, 32, 28, 26, 10, 5, 1]],
+  ['수', 4, [19, 44, 41, 35, 16, 6, 28, 31, 26, 24, 10, 5, 2]],
+  ['목', 4, [20, 45, 42, 36, 17, 6, 30, 32, 28, 25, 10, 4, 1]],
+  ['금', 4, [22, 50, 46, 39, 19, 7, 33, 34, 30, 28, 14, 7, 2]],
+  ['토', 5, [40, 66, 57, 41, 15, 3, 0, 0, 0, 0, 0, 0, 0]],
+  ['일', 0, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
 ]
 const DOCS = [['김원장', 702, 104, 1268, 48320500], ['이원장', 591, 82, 1042, 39871200]]
 const DOC_SUM = ['합계', 1248, 186, 2310, 88191700]
@@ -237,7 +238,7 @@ const ui = { st: 'loaded', who: 'all', place: 'gu', hourOpen: false }
 const $ = (id) => document.getElementById(id)
 const n = (x) => x.toLocaleString('ko-KR')
 const pct = (part, whole) => { const p = (part / whole) * 100; return p > 0 && p < 1 ? '1% 미만' : Math.round(p) + '%' }
-const avg = (sum, days) => Math.round((sum / days) * 10) / 10
+const avg = (sum, days) => (days > 0 ? Math.round((sum / days) * 10) / 10 : 0)
 const hourName = (h) => (h < 12 ? `오전 ${h}시` : h === 12 ? '낮 12시' : `오후 ${h - 12}시`)
 const CHEV = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>'
 
@@ -286,7 +287,7 @@ function renderHour() {
     `<div class="heat-wrap"><table class="heat"><caption style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">요일·시간마다 하루 평균 접수 (건)</caption>${head}${body}</table></div>` +
     '<div class="legend"><span>적음</span><i style="background:var(--chart-1)"></i><i style="background:var(--chart-2)"></i><i style="background:var(--chart-3)"></i><i style="background:var(--chart-4)"></i><i style="background:var(--chart-5)"></i><span>많음</span></div>' +
     `<div class="tot" id="hour-tot" ${ui.hourOpen ? '' : 'hidden'}>${totals}</div>` +
-    '<p class="note">접수 시각 기준이에요. 예약 대기·취소한 접수는 세지 않아요. 문을 연 날만 평균에 넣어요.</p>'
+    '<p class="note">병원 접수 시간(8시~20시) 기준이에요. 8시 전 접수는 8시 칸, 20시 넘은 접수는 20시 칸에 넣어요. 예약 대기·취소한 접수는 세지 않아요. 문을 연 날만 평균에 넣어요.</p>'
 }
 
 function renderDoc() {
