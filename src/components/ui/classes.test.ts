@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createElement as h, type ComponentType } from 'react'
@@ -59,7 +59,9 @@ function walk(dir: string): string[] {
   if (!existsSync(abs)) return []
   return readdirSync(abs).flatMap((name) => {
     const path = join(abs, name)
-    return statSync(path).isDirectory() ? walk(relative(ROOT, path)) : [relative(ROOT, path)]
+    // 윈도우에서도 목록 글자는 '/'로 견준다(경로 구분자만 바꾼다)
+    const rel = relative(ROOT, path).split(sep).join('/')
+    return statSync(path).isDirectory() ? walk(rel) : [rel]
   })
 }
 const allAppFiles = () => [...APP_DIRS.flatMap(walk), ...APP_FILES.filter((f) => existsSync(join(ROOT, f)))]

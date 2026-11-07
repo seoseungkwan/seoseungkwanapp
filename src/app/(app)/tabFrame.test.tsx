@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { NextRequest } from 'next/server'
 import type { ComponentType, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -111,7 +111,7 @@ describe('AC-515.5: 로그인하면 늘 대시보드가 첫 화면이다 (REQ-30
       pageFile('/dashboard'),
       ...readdirSync(dir, { recursive: true, encoding: 'utf8' })
         .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
-        .map((f) => join(dir, f)),
+        .map((f) => join(dir, f).split(sep).join('/')), // 윈도우에서도 '/'로 견준다
     ]
     // 옛 빈 자리 · 브리핑 · 분석 폴더가 모두 들었다
     for (const part of ['DashboardEmpty.tsx', 'briefing/DashboardHome.tsx', 'summary/DashboardAnalysis.tsx']) {
@@ -294,7 +294,7 @@ describe('바탕 표시 지움 (ui-90 AC-404.2)', () => {
   const sources = (dir: string) =>
     readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
       .filter((f) => /\.(?:tsx?|css)$/.test(f) && !/\.test\.tsx?$/.test(f))
-      .map((f) => join(ROOT, dir, f))
+      .map((f) => join(ROOT, dir, f).split(sep).join('/'))
 
   it('AC-404.2: 시험 파일 밖 src/components/**·src/app/** 소스에 data-page-surface가 없다', () => {
     const files = [...sources('src/components'), ...sources('src/app')]
