@@ -1264,3 +1264,32 @@ describe('AC-2708.1 저장 줄·AI 보고는 지금 그대로', () => {
     expect([...bit.first.keys()].every((key) => typeof key === 'number')).toBe(true)
   })
 })
+
+describe('AC-2708.2·AC-2708.3 울타리와 지금 시험 자료', () => {
+  // 새 계산·Worker 파일을 실제 eslint.config.mjs로 검사한다. 환자 자료 구역 규칙(네트워크·console·저장소·React import 막기)이 걸려 있다
+  const NEW_FILES = [
+    'src/lib/analytics/patientMix.ts',
+    'src/lib/analytics/visitHours.ts',
+    'src/lib/analytics/doctorStats.ts',
+    'src/workers/stats/helperData.ts',
+    'src/workers/stats/jobs.ts',
+    'src/workers/stats.worker.ts',
+  ]
+
+  it('AC-2708.2: 새 계산 파일과 Worker 파일은 lint 오류가 없다', { timeout: 60_000 }, async () => {
+    const { ESLint } = await import('eslint')
+    const results = await new ESLint({ cwd: process.cwd() }).lintFiles(NEW_FILES)
+    expect(results).toHaveLength(NEW_FILES.length)
+    const errors = results.flatMap((r) => r.messages.filter((m) => m.severity === 2).map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))
+    expect(errors).toEqual([])
+  })
+
+  it('AC-2708.3: v3 시험 자료는 지금 v2 시험 자료에 v와 새 열쇠 넷만 더한 것이다(지금 자료·기대값은 그대로)', () => {
+    const v2 = JSON.parse(helperJson()) as Record<string, unknown>
+    const v3 = JSON.parse(v3Json()) as Record<string, unknown>
+    expect(v2.v).toBe(2)
+    expect(v3.v).toBe(3)
+    expect(Object.keys(v3).filter((key) => !(key in v2)).sort()).toEqual(['doctorDays', 'doctors', 'people', 'visits'])
+    for (const key of Object.keys(v2)) if (key !== 'v') expect(v3[key]).toEqual(v2[key])
+  })
+})
