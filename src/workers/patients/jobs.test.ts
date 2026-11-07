@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { readLapsed } from '@/lib/patients/lapsed'
 import { RECALL_DEFAULTS, type RecallHistory, type RecallRecord } from '@/lib/patients/recall'
+import { readReservations } from '@/lib/patients/reservations'
 import { PatientsSourceError } from '@/lib/patients/sourceError'
-import type { ContactStoreData, FollowupFilters, FollowupRow, FollowupView, RecallFilters, RecallRow, RecallView } from '@/types/patients'
+import type { ContactStoreData, FollowupFilters, FollowupRow, FollowupView, RecallFilters, RecallRow, RecallView, ReservationFilters } from '@/types/patients'
 import type { StoreFile, TargetsFile, TargetsReply } from '../../../fixtures/patients/make-fake-patients'
 import {
   MAX_STORE_BYTES,
@@ -15,12 +17,15 @@ import {
   filterRecall,
   fitStore,
   followupPhones,
+  lapsedListView,
   markKey,
   mergeRecall,
   pruneMarks,
   readStore,
   readStoreReply,
   readTargets,
+  reservationsHead,
+  reservationsListView,
   setMark,
   storePayload,
 } from './jobs'
@@ -774,6 +779,175 @@ describe('pruneMarks', () => {
     const saved = JSON.parse(storePayload(fitStore({ ...store, marks: pruneMarks(store.marks, views, TODAY), recall: merged }).store)).contact
     expect(saved.marks).toEqual({ [tomorrow]: TODAY })
     expect(saved.recall.records.length).toBe(merged.records.length)
+  })
+})
+
+// ── 비트 명단: 예약 문자 명단 · 장기 미방문 명단(spec patients-bit-lists) ─────
+// 이름·전화·차트번호·날짜는 모두 지어낸 값이다. 오늘은 2026-11-02 월요일이다
+
+const BIT_TODAY = '2026-11-02'
+const RSV = readReservations({
+  v: 1,
+  kind: 'reservation',
+  from: '2026-10-03',
+  to: '2026-11-16',
+  today: BIT_TODAY,
+  rows: [
+    ['770001', '가상예약01', '010-0000-7701', '202611030900', 'WR', null, 0, null],
+    ['770002', '가상예약02', '010-0000-7702', '202611031430', 'WR', null, 0, null],
+    ['770003', '가상예약03', '', '202611031000', 'NR', null, 0, null],
+    ['770004', '가상예약04', '010-0000-7704', '202611040930', 'WR', null, 0, null],
+    ['770005', '가상예약05', '010-0000-7705', '202610301700', 'CR', null, 0, null],
+    ['770007', '가상예약07', '010-0000-7707', '202610291100', 'CR', null, 0, '20261031'],
+  ],
+})
+const LAP = readLapsed({
+  v: 1,
+  kind: 'lapsed',
+  from: '2024-11-03',
+  to: '2026-10-02',
+  today: BIT_TODAY,
+  rows: [
+    ['880001', '가상미방01', '010-0000-8801', '20260915', 5, 0, [['MM042', '도수치료 30분']]],
+    ['880002', '가상미방02', '', '20260820', 2, 1, [['X1', '물리치료']]],
+    ['880003', '가상미방03', '010-0000-8803', '20260301', 3, 0, []],
+  ],
+})
+const S1 = 's|770001|202611030900'
+const S2 = 's|770002|202611031430'
+const S3 = 's|770003|202611031000'
+const L1 = 'l|880001|20260915'
+const L2 = 'l|880002|20260820'
+const L3 = 'l|880003|20260301'
+const withoutKeys = (value: unknown) => JSON.stringify(value, (name, inner: unknown) => (name === 'key' || name === 'keys' ? undefined : inner))
+
+describe('pruneMarks: 예약·장기 미방문 표시 (AC-2806.4)', () => {
+  const none = { followup: null, recall: null }
+
+  it('AC-2806.4 s| 열쇠는 예약 날이 오늘−31일보다 앞이면 지우고 그날부터는 남긴다(차례가 붙은 열쇠·차트번호 없는 예약도 같다)', () => {
+    const marks = {
+      's|770001|202610010900': '2026-09-30', // 10월 1일 < 오늘−31일(10월 2일)
+      's|770002|202610020900': '2026-10-01',
+      's|770003|202611031000': BIT_TODAY,
+      's|770004|202609301000|2': '2026-09-29',
+      's||202610011100': '2026-09-30',
+      's||202611031100|2': BIT_TODAY,
+    }
+    expect(pruneMarks(marks, none, BIT_TODAY)).toEqual({
+      's|770002|202610020900': '2026-10-01',
+      's|770003|202611031000': BIT_TODAY,
+      's||202611031100|2': BIT_TODAY,
+    })
+  })
+
+  it('AC-2806.4 오늘을 모르면(빈 글) s| 열쇠를 날짜로 지우지 않는다', () => {
+    const marks = { 's|770001|202001010900': '2019-12-31' }
+    expect(pruneMarks(marks, none, '')).toEqual(marks)
+  })
+
+  it('AC-2806.4 l| 열쇠는 장기 미방문을 읽은 뒤 그 명단에 없으면 지운다(다시 왔다가 또 끊기면 새 열쇠)', () => {
+    const marks = { [L1]: '2026-10-20', [L3]: '2026-10-21', 'l|880001|20250101': '2025-02-01', 'l|880009|20260901': '2026-10-01' }
+    expect(pruneMarks(marks, { ...none, lapsed: LAP }, BIT_TODAY)).toEqual({ [L1]: '2026-10-20', [L3]: '2026-10-21' })
+  })
+
+  it('AC-2806.4 장기 미방문을 아직 못 읽었으면(null·없음) l| 열쇠는 그대로다', () => {
+    const marks = { 'l|880009|20260901': '2026-10-01' }
+    expect(pruneMarks(marks, { ...none, lapsed: null }, BIT_TODAY)).toEqual(marks)
+    expect(pruneMarks(marks, none, BIT_TODAY)).toEqual(marks)
+  })
+
+  it('AC-2806.4 F/U f|·정기 주사 r| 규칙은 그대로다(s|·l|가 섞여도)', () => {
+    const keyF = 'f|V1|900001|2026-11-03'
+    const keyR = 'r|vitamin-d|900001|2025-04-10'
+    const views = { followup: fuView([fuRow({ key: keyF })]), recall: rcView([rcRow({ key: keyR, due: '2025-04-10' })]), lapsed: LAP }
+    const marks = { [keyF]: BIT_TODAY, [keyR]: BIT_TODAY, 'f|V0|900001|2026-10-01': BIT_TODAY, 'r|vitamin-d|900001|2024-01-01': BIT_TODAY, [S1]: BIT_TODAY, [L1]: BIT_TODAY }
+    expect(pruneMarks(marks, views, BIT_TODAY)).toEqual({ [keyF]: BIT_TODAY, [keyR]: BIT_TODAY, [S1]: BIT_TODAY, [L1]: BIT_TODAY })
+    // 둘 다 없으면 f|·r|는 모두 그대로
+    expect(pruneMarks({ 'f|V0|900001|2026-10-01': BIT_TODAY, [S1]: BIT_TODAY }, none, BIT_TODAY)).toEqual({ 'f|V0|900001|2026-10-01': BIT_TODAY, [S1]: BIT_TODAY })
+  })
+})
+
+describe('예약 문자 명단 보기 모양 (AC-2802.2·AC-2802.7·AC-2803.8)', () => {
+  const filters = (over: Partial<ReservationFilters> = {}): ReservationFilters => ({
+    day: '2026-11-03',
+    withDate: false,
+    unsentOnly: true,
+    missedDays: 7,
+    notYetOnly: false,
+    ...over,
+  })
+
+  it('AC-2802.2 reservationsHead: 처음 고를 날과 내일·모레 인원수(그 날 문자 보낼 예약 수)', () => {
+    expect(reservationsHead(RSV, BIT_TODAY)).toEqual({ pick: { preset: 'tomorrow', day: '2026-11-03', note: null }, dayCounts: { tomorrow: 3, after: 1 } })
+  })
+
+  it('AC-2803.8 고른 날 줄의 보냄은 s| 표시로 맞추고, 복사 글과 그 글에 든 줄 열쇠(안 보낸 분만·번호 있는 분)를 함께 준다', () => {
+    const marks = { [S1]: '2026-11-01' }
+    const view = reservationsListView(RSV, BIT_TODAY, filters(), marks)
+    expect(view.marksLoaded).toBe(true)
+    expect(view.day).toBe('2026-11-03')
+    expect(view.rows.map((r) => [r.key, r.sent])).toEqual([
+      [S1, true],
+      [S3, false],
+      [S2, false],
+    ])
+    expect(view.copy).toEqual({ list: '가상예약02\t010-0000-7702\t가상예약02\t오후 2:30', keys: [S2] })
+    const all = reservationsListView(RSV, BIT_TODAY, filters({ unsentOnly: false, withDate: true }), marks)
+    expect(all.copy.keys).toEqual([S1, S2])
+    expect(all.copy.list.split('\n')[0]).toBe('2026-11-03 (화) — 2명\t\t\t')
+  })
+
+  it('AC-2803.8 표시를 못 불러왔으면(null) marksLoaded false이고 모두 안 보낸 분이다', () => {
+    const view = reservationsListView(RSV, BIT_TODAY, filters(), null)
+    expect(view.marksLoaded).toBe(false)
+    expect(view.rows.every((r) => !r.sent)).toBe(true)
+    expect(view.copy.keys).toEqual([S1, S2])
+  })
+
+  it('AC-2802.7 날을 모르면(null) 처음 고를 날로 거르고, 지난 예약 칸은 고른 기간·아직 안 오신 분만을 따른다', () => {
+    const week = reservationsListView(RSV, BIT_TODAY, filters({ day: null, notYetOnly: true }), {})
+    expect(week.day).toBe('2026-11-03')
+    expect(week.missed.range).toEqual({ from: '2026-10-26', to: '2026-11-01' })
+    expect(week.missed.summary).toEqual({ total: 2, missed: 2, percent: 100, notYet: 1 })
+    expect(week.missed.rows.map((r) => r.key)).toEqual(['s|770005|202610301700'])
+    expect(week.missed.copy).toEqual({ list: '가상예약05\t010-0000-7705\t가상예약05\t10월 30일', count: 1 })
+    const month = reservationsListView(RSV, BIT_TODAY, filters({ missedDays: 30 }), {})
+    expect(month.missed.range).toEqual({ from: '2026-10-03', to: '2026-11-01' })
+    expect(month.missed.rows.map((r) => r.key)).toEqual(['s|770005|202610301700', 's|770007|202610291100'])
+  })
+
+  it('AC-2802.7 화면 줄에는 차트번호 칸이 없다: 차트번호는 줄 열쇠 안에만 있다', () => {
+    const text = withoutKeys(reservationsListView(RSV, BIT_TODAY, filters({ missedDays: 30 }), {}))
+    for (const entry of RSV.rows) expect(text.includes(entry.chart as string)).toBe(false)
+  })
+})
+
+describe('장기 미방문 명단 보기 모양 (AC-2802.7·AC-2804.5)', () => {
+  const groups = [{ name: '도수치료', codes: ['MM042'] }]
+
+  it('AC-2804.5 연락함은 l| 표시로 맞추고 복사 글·복사한 수를 함께 준다(번호 없는 분은 빠진다)', () => {
+    const view = lapsedListView(LAP, BIT_TODAY, { bucket: '1-3', rx: { kind: 'all' }, groups }, { [L2]: '2026-10-20' })
+    expect(view.marksLoaded).toBe(true)
+    expect(view.rows.map((r) => [r.key, r.contacted, r.groups, r.rxNames])).toEqual([
+      [L1, false, ['도수치료'], []],
+      [L2, true, [], ['물리치료']],
+    ])
+    expect(view.counts).toEqual({ '1-3': 2, '3-6': 0, '6-12': 1, '12-24': 0 })
+    expect(view.range).toEqual({ from: '2026-08-03', to: '2026-10-02' })
+    expect(view.groupNames).toEqual(['도수치료'])
+    expect(view.copy).toEqual({ list: '가상미방01\t010-0000-8801\t가상미방01\t9월 15일', count: 1 })
+  })
+
+  it('AC-2804.5 표시를 못 불러왔으면(null) marksLoaded false이고 연락함은 모두 꺼져 있다. 묶음을 못 읽었으면(null) 처방 이름으로만', () => {
+    const view = lapsedListView(LAP, BIT_TODAY, { bucket: '1-3', rx: { kind: 'all' }, groups: null }, null)
+    expect(view.marksLoaded).toBe(false)
+    expect(view.rows.map((r) => r.contacted)).toEqual([false, false])
+    expect(view.rows[0].rxNames).toEqual(['도수치료 30분'])
+  })
+
+  it('AC-2802.7 화면 줄에는 차트번호 칸이 없다: 차트번호는 줄 열쇠 안에만 있다', () => {
+    const text = withoutKeys(lapsedListView(LAP, BIT_TODAY, { bucket: '6-12', rx: { kind: 'all' }, groups }, {}))
+    for (const entry of LAP.rows) expect(text.includes(entry.chart)).toBe(false)
   })
 })
 

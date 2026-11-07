@@ -199,10 +199,32 @@ export type ContactStoreData = {
 export type FollowupFilters = { kind: '' | VisitKind; from?: string; to?: string; includeCond: boolean; includePast: boolean }
 export type RecallFilters = { from: string | null; to: string | null; overdue: boolean }
 
+// 비트 명단 고르기(spec patients-bit-lists, 다시 읽지 않고 Worker가 거른다). day가 null이면 처음 고를 날(firstPick)
+export type ReservationFilters = { day: string | null; withDate: boolean; unsentOnly: boolean; missedDays: 7 | 30; notYetOnly: boolean }
+// groups는 화면이 읽은 통계 탭 '처방 추세' 묶음(못 읽었으면 null)
+export type LapsedListFilters = LapsedFilters & { groups: LapsedGroup[] | null }
+
+// ── 비트 명단 보기 모양(Worker → 화면). 줄 열쇠(key·keys) 밖에는 차트번호가 없다(AC-2802.7) ─────
+
+// 복사 글은 F/U·정기 주사 filtered와 같은 자리(copy.list)에 둔다. 그 두 도구의 다른 복사 칸은 없다(undefined)
+type ListCopy<T> = T & { listWithDate?: undefined; phones?: undefined; missingPhones?: undefined }
+// copy.keys는 복사 글에 든 줄의 열쇠(복사한 수 = keys.length). [보냄으로 표시 (N명)]이 이 열쇠로 mark-many를 보낸다(AC-2803.8).
+// count는 복사한 수(번호 없는 분은 빠진다). marksLoaded: 도우미 저장(contact.marks)을 불러왔는가. 아니면 보냄·연락함은 모두 꺼져 있고 표시는 막는다
+export type ReservationListView = {
+  day: string // 고른 날(받은 날이 없거나 틀리면 처음 고를 날)
+  rows: ReservationRow[]
+  copy: ListCopy<{ list: string; keys: string[] }>
+  missed: { range: PatientsRange; rows: MissedRow[]; summary: MissedSummary; copy: { list: string; count: number } }
+  marksLoaded: boolean
+}
+export type LapsedListView = LapsedView & { copy: ListCopy<{ list: string; count: number }>; marksLoaded: boolean }
+
 // ── Worker 메시지(design.md 'Worker 메시지 약속'). 화면으로 가는 메시지에는 조각·보낼 글자가 없다 ─────
 
 export type PatientsRange = { from: string; to: string }
 export type TargetsKind = 'followup' | 'injection'
+// 처음 열 때 한 번 읽는 비트 명단 도구(F/U·정기 주사 읽기와 따로다, AC-2802.2)
+export type BitListTool = 'reservations' | 'lapsed'
 export type ViewCodes = { followup?: string; recall?: string; store?: string }
 // E-PATIENTS-SOURCE로 멈춘 종류의 이유 낱말. 그런 종류가 없으면 views에 이 칸이 없다
 export type ViewReasons = { followup?: PatientsSourceReason; recall?: PatientsSourceReason }
@@ -217,6 +239,12 @@ export type PatientsScreenMessage =
   | { type: 'filter'; tool: 'followup'; filters: FollowupFilters }
   | { type: 'filter'; tool: 'recall'; filters: RecallFilters }
   | { type: 'mark'; key: string; on: boolean; today: string }
+  // 비트 명단: 화면이 contact.targets 스트림을 연 뒤 id(거절되면 code)와 그 기간을 정한 오늘을 알린다
+  | { type: 'list'; tool: BitListTool; today: string; id?: string; code?: string }
+  | { type: 'filter'; tool: 'reservations'; filters: ReservationFilters }
+  | { type: 'filter'; tool: 'lapsed'; filters: LapsedListFilters }
+  // [보냄으로 표시 (N명)]: 방금 복사한 줄(copy.keys)을 저장 한 번에 표시한다. 답은 열쇠마다 marked
+  | { type: 'mark-many'; keys: string[]; on: true; today: string }
 
 export type FilteredFollowup = {
   type: 'filtered'
@@ -232,6 +260,17 @@ export type FilteredRecall = {
   copy: { list: string; phones: string; missingPhones: number; listWithDate?: undefined }
 }
 
+// 비트 명단 고르기의 답: 그 도구의 보기 모양을 펼친 것. 읽은 명단이 있을 때만 온다(읽기 전·실패 뒤에는 답이 없다).
+// 저장을 불러오거나 못 불러왔을 때, 그 도구 표시를 저장했을 때 Worker가 마지막 고르기로 다시 보낸다
+export type FilteredReservations = { type: 'filtered'; tool: 'reservations' } & ReservationListView
+export type FilteredLapsed = { type: 'filtered'; tool: 'lapsed' } & LapsedListView
+
+// 비트 명단 읽기의 답(그 도구만). readAt은 다 읽은 때(ms), total은 읽은 줄 수. 예약은 처음 고를 날과 [내일]·[모레] 인원수를 함께 보낸다
+export type ListViewMessage =
+  | { type: 'list-view'; tool: 'reservations'; ok: true; readAt: number; total: number; pick: ReservationPick; dayCounts: { tomorrow: number; after: number } }
+  | { type: 'list-view'; tool: 'lapsed'; ok: true; readAt: number; total: number }
+  | { type: 'list-view'; tool: BitListTool; ok: false; code: string }
+
 export type PatientsWorkerMessage =
   | { type: 'plan'; followup: PatientsRange[]; recall: PatientsRange[] | null; code?: string }
   | { type: 'piece'; id: string | null; ok: boolean; code?: string }
@@ -239,4 +278,7 @@ export type PatientsWorkerMessage =
   | { type: 'views'; followup: FollowupView | null; recall: RecallView | null; counts: ContactCount | null; codes: ViewCodes; reasons?: ViewReasons }
   | FilteredFollowup
   | FilteredRecall
+  | FilteredReservations
+  | FilteredLapsed
+  | ListViewMessage
   | { type: 'marked'; key: string; ok: boolean; code?: string; counts: ContactCount | null }
