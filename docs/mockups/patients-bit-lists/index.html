@@ -201,13 +201,29 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 .is-ph .m-add { display: grid; }
 .prev { margin-top: 6px; padding: 16px; border-radius: var(--r-control); background: var(--canvas); white-space: pre-wrap; color: var(--ink); }
 .ph-mark { background: var(--warning-soft); color: var(--warning); }
+
+/* 보냄 · 연락함 표시 (FollowupRows TableMark · PhoneMark와 같은 모양) */
+.cst { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.tb th.mkc, .tb td.mkc { width: 96px; padding-right: 4px; }
+.mk { display: inline-flex; align-items: center; gap: 8px; }
+.mk-w { font-size: 13px; line-height: 20px; color: var(--ink-2); white-space: nowrap; }
+.pm { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding-left: 8px; cursor: pointer; }
+.pl-1.has-pm { margin: -8px 0 -4px; min-height: 44px; }
+.pl-1 .l { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.warnbox { max-width: 720px; margin-top: 12px; padding: 12px 16px; border-radius: var(--r-control); background: var(--warning-soft); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.warnbox b { font-weight: 600; color: var(--warning); }
+.warnbox p + p { margin-top: 2px; }
+.ui .inp.sel { width: 160px; height: 36px; padding: 0 8px; }
+.is-ph .inp.sel { width: 100%; height: 44px; }
+.ui .btn[aria-disabled=true] .ic { color: inherit; }
+.is-ph .sum, .is-ph .sum span { white-space: normal; }
 </style>
 </head>
 <body>
 <div class="doc">
   <h1 class="doc-h">환자 탭에 더하는 두 도구 — 예약 문자 명단 · 장기 미방문 명단 (시안)<span class="tag">시안</span></h1>
   <p class="doc-p">새 도우미가 비트 PC에서 예약 대기와 오래 안 오신 분을 읽어 와요. 도구를 처음 열 때 읽고, [다시 불러오기]를 누르면 다시 읽어요(저녁에 예약 대기를 채운 뒤 누르면 돼요).</p>
-  <p class="doc-p">주황 점선이 새로 생기는 곳이에요. F/U 명단 · 정기 주사 문자 명단은 지금 그대로예요. 이름 · 전화 · 날짜 · 숫자는 모두 지어낸 예시예요. 오늘을 2026년 11월 6일(금) 오후 6:20으로 놓고 그렸어요.</p>
+  <p class="doc-p">주황 점선이 새로 생기는 곳이에요. F/U 명단 · 정기 주사 문자 명단은 지금 그대로예요. 이름 · 전화 · 날짜 · 숫자는 모두 지어낸 예시예요. 오늘을 2026년 11월 6일(금) 오후 6:20으로 놓고 그렸어요. [토요일 저녁]은 오늘을 11월 7일(토) 오후 6:20으로 놓아요(내일 일요일은 예약이 없어 월요일이 먼저 골라져요).</p>
   <div class="ctl">
     <div class="ctl-r"><span class="ctl-k">폭</span>
       <button type="button" class="pick" data-w="pc" aria-pressed="true">PC</button>
@@ -216,6 +232,7 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
     <div class="ctl-r"><span class="ctl-k">상태</span>
       <button type="button" class="pick" data-st="loaded" aria-pressed="true">불러온 뒤</button>
       <button type="button" class="pick" data-st="loading" aria-pressed="false">읽는 중</button>
+      <button type="button" class="pick" data-st="sat" aria-pressed="false">토요일 저녁</button>
       <button type="button" class="pick" data-st="empty" aria-pressed="false">예약 없음</button>
       <button type="button" class="pick" data-st="update" aria-pressed="false">도우미 업데이트 필요</button>
     </div>
@@ -230,8 +247,8 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 (function () {
   'use strict';
 
-  /* ---------- 날짜 (오늘 = 2026-11-06 금요일) ---------- */
-  var TODAY = '2026-11-06';
+  /* ---------- 날짜 (오늘 = 2026-11-06 금요일, [토요일 저녁]은 2026-11-07 토요일) ---------- */
+  var TODAY = '2026-11-06', SAT_TODAY = '2026-11-07';
   var WD = ['일', '월', '화', '수', '목', '금', '토'];
   function D(s) { var p = s.split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
   function ymd(d) { return d.toISOString().slice(0, 10); }
@@ -244,8 +261,10 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   function hm(t) { var h = +t.slice(0, 2), m = t.slice(3); return (h < 12 ? '오전 ' : '오후 ') + (h > 12 ? h - 12 : h) + ':' + m; }
   function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-  var TOMORROW = addDays(TODAY, 1), AFTER = addDays(TODAY, 2);
-  var READ_AT = '11월 6일 오후 6:20에 읽음';
+  function today() { return S.st === 'sat' ? SAT_TODAY : TODAY; }
+  function tomorrow() { return addDays(today(), 1); }
+  function after2() { return addDays(today(), 2); }
+  function readAt() { return (S.st === 'sat' ? '11월 7일' : '11월 6일') + ' 오후 6:20에 읽음'; }
 
   /* ---------- 아이콘 (components/common/Icon.tsx 그림) ---------- */
   var IC = {
@@ -270,13 +289,35 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   function nameOf(i) { return SUR[i % SUR.length] + GIV[Math.floor(i / SUR.length) % GIV.length]; }
   function phoneOf(i) { return '010-0000-' + String(1000 + i).slice(-4); }
 
-  // 예약: 날짜 → [시각, 이름, 전화]
-  var RSV = {};
-  RSV[TOMORROW] = [['09:00', 0], ['09:30', 1], ['11:00', 2], ['14:00', 3, ''], ['15:00', 4], ['16:30', 5], ['17:00', 6], ['18:00', 7], ['18:30', 8]];
-  RSV[AFTER] = [];
-  RSV['2026-11-09'] = [['09:00', 9], ['10:30', 10], ['14:30', 11], ['16:00', 12], ['17:30', 13]];
+  // 예약: 상태 → 날짜 → [시각, 사람, 전화(빈 글 = 번호 없음)]. [토요일 저녁]에는 일요일이 비고 월요일에 아홉 분
+  var NINE = [['09:00', 0], ['09:30', 1], ['11:00', 2], ['14:00', 3, ''], ['15:00', 4], ['16:30', 5], ['17:00', 6], ['18:00', 7], ['18:30', 8]];
+  var RSV = {
+    loaded: { '2026-11-07': NINE, '2026-11-08': [], '2026-11-09': [['09:00', 9], ['10:30', 10], ['14:30', 11], ['16:00', 12], ['17:30', 13]] },
+    sat: { '2026-11-08': [], '2026-11-09': NINE, '2026-11-10': [['09:00', 9], ['10:30', 10], ['14:30', 11]] }
+  };
+  function rsvTable() { return S.st === 'empty' ? {} : S.st === 'sat' ? RSV.sat : RSV.loaded; }
+  function countOn(day) { return (rsvTable()[day] || []).length; }
   function rsvRows(day) {
-    return (RSV[day] || []).map(function (r) { return { t: r[0], name: nameOf(r[1]), phone: r.length > 2 ? r[2] : phoneOf(200 + r[1]) }; });
+    return (rsvTable()[day] || []).map(function (r) { return { key: day + '|' + r[0], t: r[0], name: nameOf(r[1]), phone: r.length > 2 ? r[2] : phoneOf(200 + r[1]) }; });
+  }
+  // 보냄 표시(도우미 저장, 줄 열쇠 = 차트|예약 시각). 처음에는 아침 세 분이 이미 보냄
+  var SENT = { loaded: { '2026-11-07|09:00': 1, '2026-11-07|09:30': 1, '2026-11-07|11:00': 1 }, sat: { '2026-11-09|09:00': 1, '2026-11-09|09:30': 1, '2026-11-09|11:00': 1 } };
+  function sentMap() { return S.st === 'sat' ? SENT.sat : SENT.loaded; }
+  // 복사할 줄: 번호 있는 분, [안 보낸 분만]이 켜져 있으면 아직 안 보낸 분만
+  function copyRows(rows) { var sent = sentMap(); return rows.filter(function (r) { return r.phone && (!S.unsentOnly || !sent[r.key]); }); }
+  // 처음 열 때 고르는 날: 내일 예약이 있으면 내일. 없으면 14일 안에서 예약이 있는 가장 가까운 날 — 모레면 [모레], 그 뒤면 [직접]에 그 날짜. 하나도 없으면 내일
+  function autoPick() {
+    S.autoNote = null;
+    if (countOn(tomorrow()) > 0) { S.day = 'tomorrow'; return; }
+    for (var i = 2; i <= 14; i++) {
+      var d = addDays(today(), i);
+      if (countOn(d) > 0) {
+        if (i === 2) S.day = 'after'; else { S.day = 'custom'; S.custom = d; }
+        S.autoNote = '내일은 예약이 없어 예약이 있는 가장 가까운 날(' + md(d) + ')을 먼저 골랐어요.';
+        return;
+      }
+    }
+    S.day = 'tomorrow';
   }
 
   // 지난 예약 중 안 오신 분: [날, 시각, 사람, 비트 표시(c 예약 취소 / w 예약 그대로), 그 뒤 온 날|null, 전화 없음]
@@ -304,6 +345,11 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
     { id: '6-12', label: '6~12달', n: 141, from: '2025-11-07', to: '2026-05-06' },
     { id: '12-24', label: '1~2년', n: 203, from: '2024-11-07', to: '2025-11-06' }
   ];
+  // 마지막 진료: 통계 '처방 추세' 묶음 이름(맞은 것), 묶음에 없으면 처방 이름 두 개까지(흐리게)
+  var GROUPS = ['도수치료', '체외충격파', '주사'];
+  var OTHER_RX = ['가상물리치료', '가상진통제', '가상근이완제', '가상온열치료', '가상파스'];
+  var GROUP_FILTER = ['전체'].concat(GROUPS, ['묶음 없음']);
+  var CONTACTED = {}; // 연락함 표시(도우미 저장, 줄 열쇠 = 차트|마지막 내원일)
   var lapsedCache = {};
   function lapsedRows(b) {
     if (lapsedCache[b.id]) return lapsedCache[b.id];
@@ -312,20 +358,28 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
     for (var i = 0; i < b.n; i++) {
       var off = Math.floor((i / b.n) * span + rnd() * 2);
       var day = addDays(b.to, -Math.min(off, span));
-      rows.push({ name: nameOf(i * 3 + b.n), phone: rnd() < 0.06 ? '' : phoneOf(500 + i + b.n), last: day, visits: 2 + Math.floor(rnd() * rnd() * 30), rsv: rnd() < 0.07 });
+      var g = rnd(), groups = g < 0.35 ? ['도수치료'] : g < 0.5 ? ['도수치료', '체외충격파'] : g < 0.62 ? ['체외충격파'] : g < 0.75 ? ['주사'] : [];
+      var a = Math.floor(rnd() * 5), c = (a + 1 + Math.floor(rnd() * 4)) % 5;
+      var key = b.id + '|' + i;
+      if (i % 16 === 3) CONTACTED[key] = 1;
+      rows.push({ key: key, name: nameOf(i * 3 + b.n), phone: rnd() < 0.06 ? '' : phoneOf(500 + i + b.n), last: day, visits: 2 + Math.floor(rnd() * rnd() * 30), rsv: rnd() < 0.07,
+        groups: groups, rx: groups.length ? [] : [OTHER_RX[a], OTHER_RX[c]] });
     }
-    rows.sort(function (a, c) { return a.last < c.last ? 1 : a.last > c.last ? -1 : 0; });
+    rows.sort(function (x, y) { return x.last < y.last ? 1 : x.last > y.last ? -1 : 0; });
     return (lapsedCache[b.id] = rows);
+  }
+  function lapsedFiltered(b) {
+    return lapsedRows(b).filter(function (r) { return S.lgrp === '전체' ? true : S.lgrp === '묶음 없음' ? r.groups.length === 0 : r.groups.indexOf(S.lgrp) >= 0; });
   }
 
   /* ---------- 상태 ---------- */
-  var S = { w: 'pc', st: 'loaded', tool: 'reservations', day: 'tomorrow', custom: '2026-11-09', withDate: true, past: '7', pastAll: false,
-    bucket: '1-3', lapsedAll: false, note: null, pastNote: null, lapsedNote: null, msgNote: null, reloading: false };
+  var S = { w: 'pc', st: 'loaded', tool: 'reservations', day: 'tomorrow', custom: '2026-11-09', withDate: true, unsentOnly: true, autoNote: null, toMark: null,
+    past: '7', pastAll: false, pastNotYet: true, bucket: '1-3', lgrp: '전체', lapsedAll: false, note: null, pastNote: null, lapsedNote: null, msgNote: null, reloading: false };
   var TOOLS = [
     ['followup', 'F/U 명단', 'cal', false], ['reservations', '예약 문자 명단', 'rsv', true], ['recall', '정기 주사 문자 명단', 'clock', false],
     ['lapsed', '장기 미방문 명단', 'user', true], ['messages', '문자 문구', 'doc', false]
   ];
-  function chosenDay() { return S.day === 'tomorrow' ? TOMORROW : S.day === 'after' ? AFTER : S.custom; }
+  function chosenDay() { return S.day === 'tomorrow' ? tomorrow() : S.day === 'after' ? after2() : S.custom; }
 
   /* ---------- 조각 ---------- */
   function seg(name, opts, val) {
@@ -344,8 +398,19 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   function head(title, desc, right) {
     return '<div class="sh"><div><h2 class="sh-t">' + title + '</h2><p class="sh-d">' + desc + '</p></div>' + (right || '') + '</div>';
   }
-  function sumRight(n) {
-    return '<p class="sum"><span><b>' + n + '</b> · ' + READ_AT + '</span><button type="button" class="tbtn" data-act="reload">다시 불러오기</button></p>';
+  // 머리 오른쪽 요약: <b>N명</b> · (남은 수) · 읽은 때 + [다시 불러오기]
+  function sumRight(n, rest) {
+    return '<p class="sum"><span><b>' + n + '</b>' + (rest ? ' · ' + rest : '') + ' · ' + readAt() + '</span><button type="button" class="tbtn" data-act="reload">다시 불러오기</button></p>';
+  }
+  // 표시 칸: 표는 상자 + 글자(표시된 줄만), 휴대폰은 글자 + 상자(글자 늘 있음) — FollowupRows TableMark·PhoneMark와 같다
+  function markBox(attr, key, on, label) {
+    return '<span class="cbw"><input type="checkbox" class="cb" ' + attr + '="' + esc(key) + '" aria-label="' + esc(label) + '"' + (on ? ' checked' : '') + '>' + CHECK + '</span>';
+  }
+  function tableMark(attr, key, on, word, name) {
+    return '<span class="mk">' + markBox(attr, key, on, name + ' ' + word) + (on ? '<span class="mk-w">' + word + '</span>' : '') + '</span>';
+  }
+  function phoneMark(attr, key, on, word, name) {
+    return '<label class="pm"><span class="mk-w">' + word + '</span>' + markBox(attr, key, on, name + ' ' + word) + '</label>';
   }
   function loading(title, desc, what) {
     return head(title, desc) + '<div class="ld" role="status"><p class="ld-t">' + what + '</p><p class="ld-s">다 읽을 때까지 이 창을 열어 두세요.</p></div>';
@@ -360,34 +425,55 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   function toolReservations() {
     if (S.st === 'loading' || S.reloading) return loading(A_T, A_D, '비트에서 예약 명단을 읽는 중이에요');
     if (S.st === 'update') return updateCard(A_T, A_D);
-    var day = chosenDay(), rows = S.st === 'empty' ? [] : rsvRows(day);
-    var h = head(A_T, A_D, sumRight(rows.length + '명'));
-    h += '<div class="flt"><div class="fg"><span class="fg-k">날짜</span>' + seg('날짜', [['tomorrow', '내일'], ['after', '모레'], ['custom', '직접']], S.day) +
+    var day = chosenDay(), rows = rsvRows(day), sent = sentMap();
+    var unsent = rows.filter(function (r) { return !sent[r.key]; }).length;
+    var h = head(A_T, A_D, sumRight(rows.length + '명', rows.length ? '아직 안 보낸 분 ' + unsent + '명' : ''));
+    var tl = '내일 · ' + countOn(tomorrow()) + '명', al = '모레 · ' + countOn(after2()) + '명';
+    h += '<div class="flt"><div class="fg"><span class="fg-k">날짜</span>' + seg('날짜', [['tomorrow', tl], ['after', al], ['custom', '직접']], S.day) +
       '<span class="rng">' + md(day) + '</span></div>' +
-      (S.day === 'custom' ? '<div class="fg"><label class="fg-k" for="cday">예약 날짜</label><input id="cday" type="date" class="inp dt" value="' + S.custom + '" min="' + TOMORROW + '"></div>' : '') + '</div>';
-    var off = rows.length === 0;
-    h += '<div class="acts"><div class="ag">' + copyBtn('list', '명단 복사', off) + check('withDate', '날짜 제목 줄 넣기', S.withDate) + '</div>' +
+      (S.day === 'custom' ? '<div class="fg"><label class="fg-k" for="cday">예약 날짜</label><input id="cday" type="date" class="inp dt" value="' + S.custom + '" min="' + tomorrow() + '" max="' + addDays(today(), 14) + '"></div>' : '') + '</div>';
+    if (S.autoNote) h += '<p class="fhelp">' + esc(S.autoNote) + '</p>';
+    var off = rows.length === 0, copyable = copyRows(rows);
+    // 번호 있는 분이 있는데 [안 보낸 분만]으로 복사할 분이 없음 = 모두 보냄
+    var allSent = !off && S.unsentOnly && copyable.length === 0 && rows.some(function (r) { return r.phone; });
+    h += '<div class="acts"><div class="ag">' + copyBtn('list', '명단 복사', off || copyable.length === 0) + check('unsentOnly', '안 보낸 분만', S.unsentOnly) + check('withDate', '날짜 제목 줄 넣기', S.withDate) + '</div>' +
       '<div class="ag">' + copyBtn('tpl', '문구 복사', off) + '<span class="rng">문구 날짜 ' + md(day) + '</span></div></div>';
-    h += noteLine(S.note);
-    h += '<p class="fhelp">명단 넷째 칸은 예약 시각이에요(문구의 [*2*] 자리). 번호 없는 분은 복사에서 빠져요.</p>';
+    h += rsvNoteLine(allSent);
+    h += '<p class="fhelp">명단 넷째 칸은 예약 시각이에요(문구의 [*2*] 자리). 번호 없는 분은 복사에서 빠져요. 문자를 보낸 뒤 [보냄으로 표시]를 눌러 두면 나중에 예약이 더 들어와도 안 보낸 분만 복사돼요.</p>';
+    var noPhone = rows.filter(function (r) { return !r.phone; });
+    if (noPhone.length) {
+      h += '<div class="warnbox" role="note"><p><b>번호 없는 ' + noPhone.length + '분은 문자가 안 가요. 전화로 알려 주세요.</b></p>' +
+        noPhone.map(function (r) { return '<p>' + esc(r.name) + ' · ' + hm(r.t) + '</p>'; }).join('') + '</div>';
+    }
     var empty = '이 날 예약하신 분이 없어요. 비트에 예약 대기를 채운 뒤 [다시 불러오기]를 눌러 주세요.';
-    h += '<div class="tbw narrow"><table class="tb"><thead><tr><th>예약 시각</th><th>이름</th><th>전화</th></tr></thead><tbody>' +
-      (off ? '<tr><td class="empty" colspan="3">' + empty + '</td></tr>' : rows.map(function (r) {
-        return '<tr><td>' + hm(r.t) + '</td><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td></tr>';
+    h += '<div class="tbw narrow"><table class="tb"><thead><tr><th class="mkc">보냄</th><th>예약 시각</th><th>이름</th><th>전화</th></tr></thead><tbody>' +
+      (off ? '<tr><td class="empty" colspan="4">' + empty + '</td></tr>' : rows.map(function (r) {
+        return '<tr><td class="mkc">' + tableMark('data-sent', r.key, !!sent[r.key], '보냄', r.name) + '</td><td>' + hm(r.t) + '</td><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td></tr>';
       }).join('')) + '</tbody></table></div>';
     h += '<ul class="pl">' + (off ? '<li class="empty">' + empty + '</li>' : rows.map(function (r) {
-      return '<li><p class="pl-n">' + esc(r.name) + '</p><p class="pl-2">' + hm(r.t) + ' · ' + phone(r.phone) + '</p></li>';
+      return '<li><div class="pl-1 has-pm"><span class="pl-n">' + esc(r.name) + '</span>' + phoneMark('data-sent', r.key, !!sent[r.key], '보냄', r.name) + '</div><p class="pl-2">' + hm(r.t) + ' · ' + phone(r.phone) + '</p></li>';
     }).join('')) + '</ul>';
     h += pastSection();
     return h;
   }
+  // 복사 알림 줄: 복사한 뒤에는 [보냄으로 표시 (N명)]이 붙는다. 모두 보냈으면 그 안내
+  function rsvNoteLine(allSent) {
+    if (S.note) {
+      var btn = S.toMark && S.toMark.length ? '<button type="button" class="btn btn-sec btn-sm" data-act="markSent">보냄으로 표시 (' + S.toMark.length + '명)</button>' : '';
+      var done = !btn && allSent ? '<span>모두 보냈어요. 새 예약이 들어오면 [다시 불러오기]를 눌러 주세요.</span>' : '';
+      return '<p class="cst" role="status"><span class="okt">' + ic('check', 14) + esc(S.note) + '</span>' + btn + done + '</p>';
+    }
+    return '<p class="cst" role="status">' + (allSent ? '모두 보냈어요. 새 예약이 들어오면 [다시 불러오기]를 눌러 주세요.' : '') + '</p>';
+  }
   function pastSection() {
-    var P = PAST[S.past], rows = P.rows.map(pastRow), shown = S.pastAll ? rows : rows.slice(0, 10);
-    var pct = Math.floor(P.missed * 100 / P.total);
+    var P = PAST[S.past], all = P.rows.map(pastRow), notYet = all.filter(function (r) { return !r.after; });
+    var rows = S.pastNotYet ? notYet : all, shown = S.pastAll ? rows : rows.slice(0, 10);
+    var pct = Math.round(P.missed * 100 / P.total), days = +S.past;
     var h = '<section class="und" aria-labelledby="past-t"><h3 class="und-t" id="past-t">지난 예약 · 안 오신 분</h3>';
     h += '<div class="flt" style="border-top:0;padding-top:0;margin-top:12px"><div class="fg"><span class="fg-k">기간</span>' +
-      seg('지난 기간', [['7', '지난 7일'], ['30', '지난 30일']], S.past) + '<span class="rng">' + mdShort(P.from) + ' ~ ' + mdShort(P.to) + '</span></div></div>';
-    h += '<p class="ratio">예약 <b>' + P.total + '건</b> 중 안 오신 분 <b>' + P.missed + '건 · ' + pct + '%</b></p>';
+      seg('지난 기간', [['7', '지난 7일'], ['30', '지난 30일']], S.past) + '<span class="rng">' + mdShort(addDays(today(), -days)) + ' ~ ' + mdShort(addDays(today(), -1)) + '</span></div>' +
+      '<div class="fg">' + check('pastNotYet', '아직 안 오신 분만', S.pastNotYet) + '</div></div>';
+    h += '<p class="ratio">예약 <b>' + P.total + '건</b> 중 안 오신 분 <b>' + P.missed + '건 · ' + pct + '%</b> · 아직 안 오신 분 <b>' + notYet.length + '명</b></p>';
     h += '<p class="note">예약한 날 진료 접수가 없는 분이에요. 비트는 미리 취소한 예약과 안 오신 예약을 똑같이 ‘예약 취소’로 바꿔서 함께 세요.</p>';
     h += '<div class="acts" style="margin-top:12px"><div class="ag">' + copyBtn('past', '명단 복사', rows.length === 0, true) + '</div></div>' + noteLine(S.pastNote);
     var mark = function (r) { return r.mark === 'c' ? '<span class="chip chip-n">예약 취소</span>' : '<span class="chip chip-w">예약 그대로</span>'; };
@@ -409,22 +495,29 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   function toolLapsed() {
     if (S.st === 'loading' || S.reloading) return loading(B_T, B_D, '비트에서 오래 안 오신 분을 찾는 중이에요');
     if (S.st === 'update') return updateCard(B_T, B_D);
-    var b = BUCKETS.filter(function (x) { return x.id === S.bucket; })[0], rows = lapsedRows(b), shown = S.lapsedAll ? rows : rows.slice(0, 10);
-    var h = head(B_T, B_D, sumRight(b.n + '명'));
+    var b = BUCKETS.filter(function (x) { return x.id === S.bucket; })[0], rows = lapsedFiltered(b), shown = S.lapsedAll ? rows : rows.slice(0, 10);
+    var notYet = rows.filter(function (r) { return !CONTACTED[r.key]; }).length;
+    var h = head(B_T, B_D, sumRight(rows.length + '명', '아직 연락 안 한 분 ' + notYet + '명'));
     h += '<div class="flt"><div class="fg"><span class="fg-k">마지막 내원</span>' + seg('마지막 내원', BUCKETS.map(function (x) { return [x.id, x.label]; }), S.bucket) +
-      '<span class="rng">' + mdY(b.from) + ' ~ ' + mdY(b.to) + '에 마지막으로 오신 분</span></div></div>';
-    h += '<p class="counts">' + BUCKETS.map(function (x) { return x.label + ' ' + x.n + '명'; }).join(' · ') + '</p>';
-    h += '<div class="acts"><div class="ag">' + copyBtn('lapsed', '명단 복사', false) + '</div></div>' + noteLine(S.lapsedNote);
+      '<span class="rng">' + mdY(b.from) + ' ~ ' + mdY(b.to) + '에 마지막으로 오신 분</span></div>' +
+      '<div class="fg"><label class="fg-k" for="lgrp">마지막 진료</label><select id="lgrp" class="inp sel">' +
+      GROUP_FILTER.map(function (g) { return '<option' + (g === S.lgrp ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select></div></div>';
+    h += '<p class="counts">' + BUCKETS.map(function (x) { return x.label + ' ' + lapsedFiltered(x).length + '명'; }).join(' · ') + '</p>';
+    h += '<p class="fhelp">마지막 진료는 통계 탭 ‘처방 추세’에서 만든 묶음 이름이에요. 묶음에 없는 처방은 이름을 두 개까지 흐리게 보여요.</p>';
+    h += '<div class="acts"><div class="ag">' + copyBtn('lapsed', '명단 복사', rows.length === 0) + '</div></div>' + noteLine(S.lapsedNote);
     h += '<p class="fhelp">명단 넷째 칸은 마지막 내원 날짜예요. 번호 없는 분은 복사에서 빠져요.</p>';
     var rsv = function (r) { return r.rsv ? '<span class="chip chip-a">예약 있음</span>' : ''; };
-    h += '<div class="tbw"><table class="tb"><thead><tr><th>이름</th><th>전화</th><th>마지막 내원</th><th class="num">내원 횟수</th><th>비고</th></tr></thead><tbody>' +
-      shown.map(function (r) {
-        return '<tr><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td><td>' + md(r.last) + ' · <span class="na">' + num(diff(TODAY, r.last)) + '일 전</span></td><td class="num">' + r.visits + '번</td><td>' + rsv(r) + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
-    h += '<ul class="pl">' + shown.map(function (r) {
-      return '<li><div class="pl-1"><span class="pl-n">' + esc(r.name) + '</span>' + rsv(r) + '</div><p class="pl-2">마지막 내원 ' + md(r.last) + ' · ' + num(diff(TODAY, r.last)) + '일 전</p><p class="pl-3">' + phone(r.phone) + ' · ' + r.visits + '번 오심</p></li>';
-    }).join('') + '</ul>';
-    h += '<p class="more"><button type="button" class="tbtn" data-act="lapsedAll" aria-expanded="' + S.lapsedAll + '">' + (S.lapsedAll ? '10명만 보기' : '모두 보기 (' + b.n + '명)') + '</button></p>';
+    var lastRx = function (r) { return r.groups.length ? esc(r.groups.join(' · ')) : '<span class="na">' + esc(r.rx.join(' · ')) + '</span>'; };
+    var empty = '이 기간에 마지막으로 오신 분이 없어요.';
+    h += '<div class="tbw"><table class="tb"><thead><tr><th class="mkc">연락함</th><th>이름</th><th>전화</th><th>마지막 내원</th><th>마지막 진료</th><th class="num">내원 횟수</th><th>비고</th></tr></thead><tbody>' +
+      (rows.length === 0 ? '<tr><td class="empty" colspan="7">' + empty + '</td></tr>' : shown.map(function (r) {
+        return '<tr><td class="mkc">' + tableMark('data-contact', r.key, !!CONTACTED[r.key], '연락함', r.name) + '</td><td>' + esc(r.name) + '</td><td class="sub">' + phone(r.phone) + '</td><td>' + md(r.last) + ' · <span class="na">' + num(diff(today(), r.last)) + '일 전</span></td><td>' + lastRx(r) + '</td><td class="num">' + r.visits + '번</td><td>' + rsv(r) + '</td></tr>';
+      }).join('')) + '</tbody></table></div>';
+    h += '<ul class="pl">' + (rows.length === 0 ? '<li class="empty">' + empty + '</li>' : shown.map(function (r) {
+      return '<li><div class="pl-1 has-pm"><span class="l"><span class="pl-n">' + esc(r.name) + '</span>' + rsv(r) + '</span>' + phoneMark('data-contact', r.key, !!CONTACTED[r.key], '연락함', r.name) + '</div>' +
+        '<p class="pl-2">마지막 내원 ' + md(r.last) + ' · ' + num(diff(today(), r.last)) + '일 전</p><p class="pl-2">마지막 진료 ' + lastRx(r) + '</p><p class="pl-3">' + phone(r.phone) + ' · ' + r.visits + '번 오심</p></li>';
+    }).join('')) + '</ul>';
+    if (rows.length > 10) h += '<p class="more"><button type="button" class="tbtn" data-act="lapsedAll" aria-expanded="' + S.lapsedAll + '">' + (S.lapsedAll ? '10명만 보기' : '모두 보기 (' + rows.length + '명)') + '</button></p>';
     h += '<p class="note">내원 횟수는 진료 받은 날 수예요(같은 날 두 번 접수해도 한 번). 예약 대기·취소한 접수는 세지 않아요.</p>';
     return h;
   }
@@ -450,9 +543,9 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
     }).join('') + '</ol>';
     h += '<div class="m-add"><span class="fg-k">새 문구</span><div class="new" style="display:inline-flex">' + seg('새 문구 종류', [['injection', '주사 안내'], ['followup', '진료 안내'], ['reservation', '예약 안내']], 'reservation') + '</div>' +
       '<button type="button" class="btn btn-sec">문구 더하기</button></div></div>';
-    h += '<div class="m-r"><label class="lab" for="mday">내원 날짜</label><input id="mday" type="date" class="inp" value="' + TOMORROW + '"><p class="help">처음에는 내일이에요. 문자는 오시기 전날 보내요.</p>' +
+    h += '<div class="m-r"><label class="lab" for="mday">내원 날짜</label><input id="mday" type="date" class="inp" value="' + tomorrow() + '"><p class="help">처음에는 내일이에요. 문자는 오시기 전날 보내요.</p>' +
       '<label class="lab" for="msel" style="margin-top:16px">미리 볼 문구</label><select id="msel" class="inp"><option>1번 · 주사 안내</option><option>2번 · 진료 안내</option><option selected>3번 · 예약 안내</option></select>' +
-      '<p class="lab" style="margin:16px 0 0">미리 보기</p><div class="prev">' + esc(fill(TPL[2][2], TOMORROW)) + '</div>' +
+      '<p class="lab" style="margin:16px 0 0">미리 보기</p><div class="prev">' + esc(fill(TPL[2][2], tomorrow())) + '</div>' +
       '<div style="margin-top:12px">' + copyBtn('msg', '문구 복사', false) + '</div>' + noteLine(S.msgNote) + '</div></div>';
     return h;
   }
@@ -488,33 +581,58 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   document.querySelector('.ctl').addEventListener('click', function (e) {
     var b = e.target.closest('.pick'); if (!b) return;
     if (b.dataset.w) { S.w = b.dataset.w; pressPick('data-w', S.w); }
-    if (b.dataset.st) { S.st = b.dataset.st; pressPick('data-st', S.st); S.note = S.pastNote = S.lapsedNote = null; }
+    // 상태를 바꾸면 도구를 처음 연 것으로 보고 날짜를 다시 고른다
+    if (b.dataset.st) { S.st = b.dataset.st; pressPick('data-st', S.st); S.note = S.pastNote = S.lapsedNote = null; S.toMark = null; autoPick(); }
     render();
   });
   app.addEventListener('click', function (e) {
     var t = e.target.closest('button'); if (!t) return;
-    if (t.dataset.tool) { S.tool = t.dataset.tool; S.note = S.pastNote = S.lapsedNote = S.msgNote = null; }
-    else if (t.dataset.seg === '날짜') { S.day = t.dataset.v; S.note = null; }
+    if (t.dataset.tool) { S.tool = t.dataset.tool; S.note = S.pastNote = S.lapsedNote = S.msgNote = null; S.toMark = null; }
+    else if (t.dataset.seg === '날짜') { S.day = t.dataset.v; S.note = null; S.toMark = null; S.autoNote = null; }
     else if (t.dataset.seg === '지난 기간') { S.past = t.dataset.v; S.pastAll = false; S.pastNote = null; }
     else if (t.dataset.seg === '마지막 내원') { S.bucket = t.dataset.v; S.lapsedAll = false; S.lapsedNote = null; }
     else if (t.dataset.act === 'pastAll') S.pastAll = !S.pastAll;
     else if (t.dataset.act === 'lapsedAll') S.lapsedAll = !S.lapsedAll;
     else if (t.dataset.act === 'reload') { S.reloading = true; render(); setTimeout(function () { S.reloading = false; render(); }, 1200); return; }
+    else if (t.dataset.act === 'markSent') {
+      var sent = sentMap(), n = S.toMark.length;
+      S.toMark.forEach(function (k) { sent[k] = 1; });
+      S.toMark = null; S.note = n + '명을 보냄으로 표시했어요';
+    }
     else if (t.dataset.copy) {
       if (t.getAttribute('aria-disabled') === 'true') return;
       var day = chosenDay();
-      if (t.dataset.copy === 'list') { var n = rsvRows(day).filter(function (r) { return r.phone; }).length; S.note = '복사했어요 · ' + n + '명' + (S.withDate ? ' · 날짜 제목 줄 포함' : ''); }
-      if (t.dataset.copy === 'tpl') S.note = '복사했어요 · 예약 안내 · ' + md(day);
-      if (t.dataset.copy === 'past') S.pastNote = '복사했어요 · ' + PAST[S.past].rows.map(pastRow).filter(function (r) { return r.phone; }).length + '명';
-      if (t.dataset.copy === 'lapsed') { var b = BUCKETS.filter(function (x) { return x.id === S.bucket; })[0]; S.lapsedNote = '복사했어요 · ' + lapsedRows(b).filter(function (r) { return r.phone; }).length + '명'; }
-      if (t.dataset.copy === 'msg') S.msgNote = '복사했어요 · 예약 안내 · ' + md(TOMORROW);
+      if (t.dataset.copy === 'list') {
+        var c = copyRows(rsvRows(day)), sm = sentMap();
+        S.note = '복사했어요 · ' + c.length + '명' + (S.unsentOnly ? ' · 안 보낸 분만' : '') + (S.withDate ? ' · 날짜 제목 줄 포함' : '');
+        S.toMark = c.filter(function (r) { return !sm[r.key]; }).map(function (r) { return r.key; });
+      }
+      if (t.dataset.copy === 'tpl') { S.note = '복사했어요 · 예약 안내 · ' + md(day); S.toMark = null; }
+      if (t.dataset.copy === 'past') {
+        var pr = PAST[S.past].rows.map(pastRow).filter(function (r) { return !S.pastNotYet || !r.after; });
+        S.pastNote = '복사했어요 · ' + pr.filter(function (r) { return r.phone; }).length + '명';
+      }
+      if (t.dataset.copy === 'lapsed') { var b = BUCKETS.filter(function (x) { return x.id === S.bucket; })[0]; S.lapsedNote = '복사했어요 · ' + lapsedFiltered(b).filter(function (r) { return r.phone; }).length + '명'; }
+      if (t.dataset.copy === 'msg') S.msgNote = '복사했어요 · 예약 안내 · ' + md(tomorrow());
     } else return;
     render();
   });
   app.addEventListener('change', function (e) {
-    if (e.target.id === 'withDate') { S.withDate = e.target.checked; S.note = null; render(); }
-    if (e.target.id === 'cday' && e.target.value) { S.custom = e.target.value; S.note = null; render(); }
+    var el = e.target;
+    if (el.id === 'withDate') { S.withDate = el.checked; S.note = null; S.toMark = null; render(); }
+    if (el.id === 'unsentOnly') { S.unsentOnly = el.checked; S.note = null; S.toMark = null; render(); }
+    if (el.id === 'cday' && el.value) { S.custom = el.value; S.note = null; S.toMark = null; S.autoNote = null; render(); }
+    if (el.id === 'pastNotYet') { S.pastNotYet = el.checked; S.pastAll = false; S.pastNote = null; render(); }
+    if (el.id === 'lgrp') { S.lgrp = el.value; S.lapsedAll = false; S.lapsedNote = null; render(); }
+    if (el.dataset.sent) {
+      var sent = sentMap();
+      if (el.checked) sent[el.dataset.sent] = 1; else delete sent[el.dataset.sent];
+      if (S.toMark) { S.toMark = S.toMark.filter(function (k) { return !sent[k]; }); if (!S.toMark.length) S.toMark = null; }
+      render();
+    }
+    if (el.dataset.contact) { if (el.checked) CONTACTED[el.dataset.contact] = 1; else delete CONTACTED[el.dataset.contact]; render(); }
   });
+  autoPick();
   render();
 })();
 </script>

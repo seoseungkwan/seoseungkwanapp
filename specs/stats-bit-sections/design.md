@@ -31,7 +31,7 @@
   도우미: v2 자료 + visits·people·doctors·doctorDays → v3 JSON → chunk … end
   → 확장 → lib/bridge → stats Worker (helperData.ts가 v2·v3 검사)
   Worker 메모리: 지금 진료 줄 + 접수 줄(VisitLine[]) · 사람 표 · 원장님 표 · 날·원장님 금액 (화면으로 안 감)
-화면 기간 바뀜 → requestSections {from,to} → Worker sectionsJob → { kind:'ready', mix, hours, doctors } (이름·숫자만)
+화면 기간 바뀜 → requestSections {from,to, prevFrom, prevTo}(견줄 기간 = 지금 통계 탭 range.previous) → Worker sectionsJob → { kind:'ready', mix, hours, doctors } (이름·숫자만)
   → PatientMixSection · VisitHoursSection · DoctorsSection
 서버·Supabase·AI 경로: 바뀌지 않음 (저장 줄은 지금 그대로)
 ```
@@ -61,9 +61,9 @@
   차트번호는 지금처럼 이 파일 안에서 메모리 번호로만 바뀐다
 - `src/workers/stats/jobs.ts`: 메모리에 `extra: StatsExtra | null`(v2면 null)과 첫 내원일 표를 둔다. `sectionsJob(memory, {from,to}): BitSectionsView` — 메모리 없음·범위 밖 `{kind:'none'}`, v2 `{kind:'old-helper'}`, 그 밖 아래 세 계산
 - `createStatsHost`에 `sections(request)` 하나 더(지금 `split`과 같은 차례·streamId 규칙)
-- `src/lib/analytics/patientMix.ts`: `patientMix(input: MixInput, who: 'all' | 'new'): PatientMix` — `MixInput = { from, to, visits, people, first: Map<number,string> }`. 연령 `ageBand(birth, day)`, 동네 `areaKeys(region) → { city: {key,label} | null; town: {key,label} | null }`(`toRegion` 결과에서), 1위 시·같은 이름 동 괄호 처리. 결과는 `{ total: {people, visits}, age: MixRow[], insurance: MixRow[], city: MixRow[], town: MixRow[] }`, `MixRow = { label: string; people: number; visits: number; share: number /* 0~1 */; kind: 'row' | 'rest' | 'noTown' | 'none' }`. Worker가 `all`·`new` 둘을 다 만들어 보낸다(단추를 눌러도 Worker에 다시 묻지 않음)
+- `src/lib/analytics/patientMix.ts`: `patientMix(input: MixInput, who: 'all' | 'new'): PatientMix` — `MixInput = { from, to, visits, people, first: Map<number,string> }`. 연령 `ageBand(birth, day)`, 동네 `areaKeys(region) → { city: {key,label} | null; town: {key,label} | null }`(`toRegion` 결과에서), 1위 시·같은 이름 동 괄호 처리. 결과는 `{ total: {people, visits}, age: MixRow[], insurance: MixRow[], city: MixRow[], town: MixRow[] }`, `MixRow = { label: string; people: number; visits: number; share: number /* 0~1 */; kind: 'row' | 'rest' | 'noTown' | 'none' }`. Worker가 `all`·`new` 둘을 다 만들어 보낸다(단추를 눌러도 Worker에 다시 묻지 않음). 견줄 기간이 메모리 범위 안이면 같은 함수로 지난 기간도 세어 `MixRow.previous: number | null`(지난 명)을 채우고, 증감 글은 화면 쪽 순수 함수 `mixDelta(row)`(▲▼·0%·새로·–)
 - `src/lib/analytics/visitHours.ts`: `visitHours(visits, from, to): VisitHours = { rows: { weekday: 1..7; openDays: number; cells: (number|null)[] /* 합계 */ }[]; hours: number[]; unknown: number; peak: { weekday, hour, average } | null }`. 평균·단계는 화면 쪽 순수 함수 `cellAverage`·`cellLevel`(같은 파일, 시험)
-- `src/lib/analytics/doctorStats.ts`: `doctorStats(input): DoctorRow[] + total` — `DoctorRow = { label; patients; newPatients; visits; amount; share: number | null }`, 한 분 이하면 `{ kind: 'single' }`
+- `src/lib/analytics/doctorStats.ts`: `doctorStats(input): DoctorRow[] + total` — `DoctorRow = { label; patients; newPatients; visits; amount; perVisit: number | null /* 원 미만 버림 */; share: number | null }`, 한 분 이하면 `{ kind: 'single' }`
 - `src/types/stats.ts`: `BitSectionsView = { kind: 'none' } | { kind: 'old-helper' } | { kind: 'ready'; mix: { all: PatientMix; new: PatientMix }; hours: VisitHours; doctors: DoctorsView }`, `StatsSectionsRequest = { type: 'sections'; streamId; from; to }`, 답 `{ type: 'sections-result'; streamId; view: BitSectionsView }`
 - `src/workers/statsClient.ts`: `requestSections(worker, {from,to})` (지금 `requestSplit`과 같은 모양, 따로 둔다 — 지금 시험의 split 답 모양을 바꾸지 않으려고)
 

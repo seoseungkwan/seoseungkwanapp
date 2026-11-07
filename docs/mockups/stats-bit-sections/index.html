@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>통계 탭에 더하는 세 칸 — 환자 구성 · 시간대별 접수 · 원장님별 (시안)</title>
 <!--
-  specs/stats-patient-mix · specs/stats-visit-hours · specs/stats-doctors 화면 시안 (한 파일).
+  specs/stats-bit-sections 화면 시안 (한 파일).
   통계 탭 맨 아래에 세 칸이 더해진다. 셋 다 '처방별 신환·재진'처럼 비트 PC에서 [비트에서 불러오기]를 한 화면에서만 숫자가 보인다.
   색·글자 크기는 앱 토큰(src/app/globals.css :root) 값을 옮겨 왔다. 칸 틀은 components/stats/sections/parts.tsx(Section·EmptyNote·Note)와 같다.
   이름·숫자는 모두 지어낸 예시다. 어디로도 보내지 않는다. 바깥 글꼴·그림·주소를 부르지 않는다.
@@ -98,7 +98,15 @@ button { font: inherit; color: inherit; }
 .ch h3 { font-size: var(--fs-subtitle); line-height: var(--lh-subtitle); font-weight: 600; }
 .frame.phone .ch .seg { width: auto; }
 .rows { margin-top: 8px; border-top: 1px solid var(--line); }
-.r { display: grid; grid-template-columns: 84px minmax(24px, 1fr) 58px 96px; gap: 2px 8px; align-items: center; min-height: 34px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-small); line-height: var(--lh-small); }
+.r { display: grid; grid-template-columns: 84px minmax(24px, 1fr) 56px 92px 44px; gap: 2px 6px; align-items: center; min-height: 34px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-small); line-height: var(--lh-small); }
+.cols.noprev .r { grid-template-columns: 84px minmax(24px, 1fr) 58px 96px; gap: 2px 8px; }
+.cols.noprev .r .dl { display: none; }
+/* 증감 (parts.tsx DeltaText: ▲ text-positive · ▼ text-negative · 변화 없음 text-muted) */
+.r .dl { text-align: right; white-space: nowrap; font-size: var(--fs-caption); line-height: var(--lh-caption); color: var(--muted); }
+.r .dl.up { color: var(--positive); }
+.r .dl.down { color: var(--negative); }
+.cmp { margin-top: 8px; font-size: var(--fs-small); line-height: var(--lh-small); color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .r .lb { color: var(--ink); overflow-wrap: anywhere; }
 .r .track { height: 8px; border-radius: 2px; background: var(--canvas); overflow: hidden; }
 .r .fill { height: 100%; border-radius: 2px; background: var(--accent); }
@@ -160,6 +168,7 @@ button { font: inherit; color: inherit; }
         <button type="button" data-st="notloaded" aria-pressed="false">이 기간 아직 안 불러옴</button>
         <button type="button" data-st="update" aria-pressed="false">도우미 업데이트 필요</button>
         <button type="button" data-st="onedoc" aria-pressed="false">원장님 한 분</button>
+        <button type="button" data-st="noprev" aria-pressed="false">지난 기간 자료 없음</button>
       </span>
     </div>
   </header>
@@ -213,6 +222,18 @@ const MIX = {
     dong: [['매탄동', 24, 26], ['영통동', 19, 20], ['망포동', 14, 15], ['원천동', 12, 13], ['병점동', 9, 9], ['권선동', 8, 8], ['세류동', 7, 7], ['인계동', 6, 6], ['이의동', 5, 5], ['곡선동', 4, 4], ['그 밖 27곳', 41, 44, 'rest'], ['동 없는 주소', 37, 40, 'rest']],
   },
 }
+// 지난 기간(같은 길이, 바로 앞 30일) 명. 지어낸 숫자: 줄 이름마다 정해 둔 비율로 만들고, 몇 줄만 손으로 정했다(0 = 지난 기간에 없던 줄 → '새로')
+const PREV_RATIO = [0.89, 1.05, 0.94, 1.12, 0.97, 0.86, 1.08, 1.0, 0.92, 1.15]
+const PREV_FIX = { new: { '곡선동': 0, '안산시 상록구': 0 }, all: { '산재보험': 14 } }
+function prevOf(who, label, people) {
+  const fix = PREV_FIX[who]
+  if (fix && label in fix) return fix[label]
+  let h = 0
+  for (const ch of label + who) h = (h * 31 + ch.charCodeAt(0)) % 9973
+  return Math.max(1, Math.round(people * PREV_RATIO[h % PREV_RATIO.length]))
+}
+const PREV_RANGE = '지난 30일(9월 9일 ~ 10월 8일)과 견줘요 · 명 기준'
+const NO_PREV = '지난 기간 자료가 없어 견주지 못해요. 지난 기간이 든 기간을 불러오면 보여요.'
 // 시간대별: 병원 접수 시간 8시~20시 고정, 월~일 고정. 요일마다 문을 연 날 수와 시간별 접수 합계
 const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 const HEAT = [
@@ -248,12 +269,24 @@ function seg(label, name, options, value) {
 }
 const emptyNote = ([title, body]) => `<p class="empty"><b>${title}</b> · ${body}</p>`
 
+// 증감 한 칸: (이번 − 지난) ÷ 지난, 백분율 정수 반올림. 지난 0이면 '새로', 같으면 '0%'. '그 밖'·'없음' 줄은 비운다
+function deltaHtml(label, people, rest) {
+  if (rest) return '<span class="dl"></span>'
+  const prev = prevOf(ui.who, label, people)
+  if (prev === 0) return '<span class="dl">새로<span class="sr"> 지난 기간에 없던 줄</span></span>'
+  const p = Math.round(((people - prev) / prev) * 100)
+  if (p === 0) return '<span class="dl">0%<span class="sr"> 변화 없음</span></span>'
+  return p > 0
+    ? `<span class="dl up"><span aria-hidden="true">▲</span>${p}%<span class="sr"> 늘어남</span></span>`
+    : `<span class="dl down"><span aria-hidden="true">▼</span>${-p}%<span class="sr"> 줄어듦</span></span>`
+}
+
 function rowsHtml(list, total) {
   const max = Math.max(...list.filter((r) => !r[3]).map((r) => r[1]))
   return '<ol class="rows">' + list.map(([label, people, visits, rest]) =>
     `<li class="r${rest ? ' rest' : ''}"><span class="lb">${label}</span>` +
     `<span class="track"><span class="fill" style="width:${Math.min(100, (people / max) * 100)}%;display:block"></span></span>` +
-    `<span class="num">${n(people)}명</span><span class="sub">${n(visits)}건 · ${pct(people, total)}</span></li>`).join('') + '</ol>'
+    `<span class="num">${n(people)}명</span><span class="sub">${n(visits)}건 · ${pct(people, total)}</span>${deltaHtml(label, people, rest)}</li>`).join('') + '</ol>'
 }
 
 function renderMix() {
@@ -261,7 +294,8 @@ function renderMix() {
   const d = MIX[ui.who]
   $('mix').innerHTML =
     `<div class="ctl">${seg('누구를 셀까', 'who', [['all', '전체'], ['new', '신환']], ui.who)}<span class="hint">명 = 서로 다른 환자 · 건 = 접수 건수 · ${ui.who === 'all' ? '전체' : '신환'} ${n(d.total)}명</span></div>` +
-    '<div class="cols">' +
+    `<p class="cmp">${ui.st === 'noprev' ? NO_PREV : PREV_RANGE}</p>` +
+    `<div class="cols${ui.st === 'noprev' ? ' noprev' : ''}">` +
     `<div class="col"><div class="ch"><h3>연령대</h3></div>${rowsHtml(d.age, d.total)}</div>` +
     `<div class="col"><div class="ch"><h3>보험</h3></div>${rowsHtml(d.ins, d.total)}</div>` +
     `<div class="col"><div class="ch"><h3>동네</h3>${seg('동네 단위', 'place', [['gu', '구·시'], ['dong', '동']], ui.place)}</div>${rowsHtml(d[ui.place], d.total)}</div>` +
@@ -295,13 +329,15 @@ function renderDoc() {
   if (ui.st === 'onedoc') return ($('doc').innerHTML = `<p class="empty">${ONE_DOC}</p>`)
   const total = DOC_SUM[4]
   const share = (amount) => { const p = (amount / total) * 100; return `<span class="share"><span class="track"><span class="fill" style="width:${p}%"></span></span>${p.toFixed(1)}%</span>` }
+  // 1인당 진료비 = 매출 ÷ 내원 건수, 원 미만 버림
+  const perVisit = (amount, visits) => (visits > 0 ? n(Math.floor(amount / visits)) + '원' : '–')
   const row = ([name, people, fresh, visits, amount], sum) =>
-    `<tr${sum ? ' class="sum"' : ''}><td>${name}</td><td>${n(people)}명</td><td>${n(fresh)}명</td><td>${n(visits)}건</td><td>${n(amount)}원</td><td>${sum ? '100%' : share(amount)}</td></tr>`
+    `<tr${sum ? ' class="sum"' : ''}><td>${name}</td><td>${n(people)}명</td><td>${n(fresh)}명</td><td>${n(visits)}건</td><td>${n(amount)}원</td><td>${perVisit(amount, visits)}</td><td>${sum ? '100%' : share(amount)}</td></tr>`
   $('doc').innerHTML =
     '<div class="doc-wrap"><table class="nt"><caption style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">원장님별 환자·신환·매출</caption>' +
-    '<thead><tr><th scope="col">원장님</th><th scope="col">실환자</th><th scope="col">신환</th><th scope="col">내원</th><th scope="col">매출</th><th scope="col">비중</th></tr></thead><tbody>' +
+    '<thead><tr><th scope="col">원장님</th><th scope="col">실환자</th><th scope="col">신환</th><th scope="col">내원</th><th scope="col">매출</th><th scope="col">1인당 진료비</th><th scope="col">비중</th></tr></thead><tbody>' +
     DOCS.map((d) => row(d, false)).join('') + row(DOC_SUM, true) + '</tbody></table></div>' +
-    '<div class="foot"><p class="note" style="margin:0">환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요.</p><button type="button" class="btn" data-copy>표 복사</button></div>'
+    '<div class="foot"><p class="note" style="margin:0">환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 1인당 진료비는 매출 ÷ 내원 건수예요.</p><button type="button" class="btn" data-copy>표 복사</button></div>'
 }
 
 function render() {

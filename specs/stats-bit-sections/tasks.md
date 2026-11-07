@@ -30,10 +30,10 @@
 
 ## TASK-3: 세 칸 계산 (순수 함수)
 - REQ: REQ-2703, REQ-2704, REQ-2705, REQ-2707
-- AC: AC-2703.1, AC-2703.2, AC-2703.3, AC-2703.4, AC-2703.5, AC-2703.6, AC-2703.7, AC-2703.8, AC-2704.1, AC-2704.2, AC-2704.3, AC-2704.4, AC-2705.1, AC-2705.2, AC-2705.3, AC-2705.4, AC-2705.5, AC-2707.1, AC-2707.2
+- AC: AC-2703.1, AC-2703.2, AC-2703.3, AC-2703.4, AC-2703.5, AC-2703.6, AC-2703.7, AC-2703.8, AC-2703.9, AC-2703.10, AC-2704.1, AC-2704.2, AC-2704.3, AC-2704.4, AC-2705.1, AC-2705.2, AC-2705.3, AC-2705.4, AC-2705.5, AC-2705.6, AC-2707.1, AC-2707.2
 - Files: src/lib/analytics/patientMix.ts, src/lib/analytics/patientMix.test.ts, src/lib/analytics/visitHours.ts, src/lib/analytics/visitHours.test.ts, src/lib/analytics/doctorStats.ts, src/lib/analytics/doctorStats.test.ts, src/types/stats.ts
 - Tests: src/lib/analytics/patientMix.test.ts, src/lib/analytics/visitHours.test.ts, src/lib/analytics/doctorStats.test.ts
-- TDD: required — 만 나이 경계(생일 전날·당일), 묶음 명 합 = 실환자, 1위 시 구 이름, 같은 이름 동 괄호, 그 밖·동 없는 주소·주소 없음, 1% 미만, 문 연 날 나누기, 월~일 일곱 줄·8~20시 고정·8시 전/21시 뒤 접수 접어 넣기, 보험·동네 많이 온 차례(연령대는 나이 차례), 시 이름(오전·낮·오후), 단계 ⌈⌉, 진료의 미지정, 매출만 있는 진료의, 합계 실환자 한 번, 한 분 이하, 복사 글
+- TDD: required — 만 나이 경계(생일 전날·당일), 묶음 명 합 = 실환자, 1위 시 구 이름, 같은 이름 동 괄호, 그 밖·동 없는 주소·주소 없음, 1% 미만, 문 연 날 나누기, 월~일 일곱 줄·8~20시 고정·8시 전/21시 뒤 접수 접어 넣기, 보험·동네 많이 온 차례(연령대는 나이 차례), 시 이름(오전·낮·오후), 단계 ⌈⌉, 진료의 미지정, 매출만 있는 진료의, 합계 실환자 한 번, 한 분 이하, 1인당 진료비 원 미만 버림·내원 0, 지난 기간 증감(▲▼·0%·새로·–·표시 없는 줄), 복사 글
 - 차례: Phase 1
 
 ## TASK-4: Worker가 v2·v3 답을 받는다
@@ -49,7 +49,7 @@
 - AC: AC-2702.1, AC-2702.3, AC-2702.4, AC-2708.1, AC-2708.2
 - Files: src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/types/stats.ts, src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts
 - Tests: src/workers/stats/jobs.test.ts, src/workers/statsClient.test.ts, src/components/stats/useStatsWorker.test.ts
-- TDD: required — none·old-helper·ready, 범위 밖, 화면으로 가는 메시지를 JSON으로 펴서 차트번호·생년월일·주소 앞부분·진료의 코드가 없음, 저장 줄 열쇠 목록 그대로
+- TDD: required — none·old-helper·ready, 범위 밖, 견줄 기간이 범위 밖이면 지난 숫자 없음, 화면으로 가는 메시지를 JSON으로 펴서 차트번호·생년월일·주소 앞부분·진료의 코드가 없음, 저장 줄 열쇠 목록 그대로
 - 차례: Phase 3 (TASK-3·TASK-4 뒤)
 
 ## TASK-6: 화면 세 칸
@@ -57,7 +57,7 @@
 - AC: AC-2706.1, AC-2706.2, AC-2706.3, AC-2706.4, AC-2706.5, AC-2706.6, AC-2707.1, AC-2707.2
 - Files: src/components/stats/sections/PatientMixSection.tsx, src/components/stats/sections/PatientMixSection.test.tsx, src/components/stats/sections/VisitHoursSection.tsx, src/components/stats/sections/VisitHoursSection.test.tsx, src/components/stats/sections/DoctorsSection.tsx, src/components/stats/sections/DoctorsSection.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx
 - Tests: src/components/stats/sections/PatientMixSection.test.tsx, src/components/stats/sections/VisitHoursSection.test.tsx, src/components/stats/sections/DoctorsSection.test.tsx, src/components/stats/StatsScreen.test.tsx
-- TDD: required — 시안 글·단추(aria-pressed)·세 상태 안내·한 분 안내·[자세히]·[표 복사] 글. StatsScreen 시험은 새 시험만 더한다(sections 묻기·넘기기)
+- TDD: required — 시안 글·단추(aria-pressed)·견줘요 줄과 견주지 못함 줄·증감 표시·1인당 진료비 칸·세 상태 안내·한 분 안내·[자세히]·[표 복사] 글. StatsScreen 시험은 새 시험만 더한다(sections 묻기·넘기기)
 - 차례: Phase 4
 
 ## Phase 5: 전체 검사·검토 (코드 작업 아님)

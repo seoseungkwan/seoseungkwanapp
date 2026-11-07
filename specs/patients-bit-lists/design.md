@@ -49,7 +49,7 @@
 - `src/lib/patients/reservations.ts`(새): `readReservations(json): ReservationData`(모양 검사, 틀리면 `E-BRIDGE-BAD-REPLY`), `upcoming(data, day): ReservationRow[]`, `missed(data, from, to): { total; missed: MissedRow[] }`, `timeLabel(yyyyMMddHHmm)`, `reservationPaste(rows, withDate, day)`, `missedPaste(rows)`
 - `src/lib/patients/lapsed.ts`(새): `readLapsed(json): LapsedData`, `monthsBack(today, k)`(`addMonthsToDay` 쓰기), `bucketOf(last, today)`, `lapsedView(data, bucket, today): { counts; range; rows: LapsedRow[] }`, `lapsedPaste(rows)`
 - 줄 열쇠는 `차트번호|예약 시각`(예약)·`차트번호`(장기 미방문). 화면 줄 모양 `ReservationRow = { key; time: string; name; phone }`, `MissedRow = { key; at: string; name; phone; mark: '예약 취소' | '예약 그대로'; after: string | null }`, `LapsedRow = { key; name; phone; last: string; daysAgo: number; visits: number; reserved: boolean }`
-- `src/workers/patients/handler.ts`: 메시지 둘 더 — 화면 → `{ type: 'list'; tool: 'reservations'|'lapsed'; id?: string; code?: string }`(스트림 id, 지금 'piece'처럼 포트에서 조각을 받음) · `{ type: 'filter'; tool: 'reservations'; filters: { day; missedDays: 7|30; withDate } }` · `{ type: 'filter'; tool: 'lapsed'; filters: { bucket } }`. Worker → `{ type: 'list-view'; tool; ok; code?; readAt; total }` · `{ type: 'filtered'; tool: 'reservations'; rows; missed; summary; copy }` · `{ type: 'filtered'; tool: 'lapsed'; rows; counts; range; copy }`. F/U·정기 주사 메시지는 바꾸지 않는다
+- `src/workers/patients/jobs.ts`: `pruneMarks`에 `s|`·`l|` 규칙. 표시 켜기·끄기는 지금 `mark` 메시지(`setMark`)를 그대로 쓰고, [보냄으로 표시]는 `{ type: 'mark-many'; keys; on: true; today }` 하나로 묶어 저장 한 번 — 화면 → `{ type: 'list'; tool: 'reservations'|'lapsed'; id?: string; code?: string }`(스트림 id, 지금 'piece'처럼 포트에서 조각을 받음) · `{ type: 'filter'; tool: 'reservations'; filters: { day; missedDays: 7|30; withDate } }` · `{ type: 'filter'; tool: 'lapsed'; filters: { bucket } }`. Worker → `{ type: 'list-view'; tool; ok; code?; readAt; total }` · `{ type: 'filtered'; tool: 'reservations'; rows; missed; summary; copy }` · `{ type: 'filtered'; tool: 'lapsed'; rows; counts; range; copy }`. F/U·정기 주사 메시지는 바꾸지 않는다
 - `src/types/patients.ts`: 위 모양, `PatientsTool`에 `reservations`·`lapsed`
 
 ### 화면
@@ -66,7 +66,7 @@
 - **예약 = WR·NR·CR 상태 또는 RsvInf 줄**: 온 예약은 상태가 WN 등으로 바뀌므로 RsvInf 줄로만 알 수 있다. 오지 않은 예약은 CR로 바뀐다(의원 PC 30일 내력). 미리 취소와 구별하지 못해 '안 오신 분'에 함께 세고 화면에 그렇게 알린다
 - **안 오심 = 그날 같은 차트로 센 접수가 없음**: 예약 줄 상태 대신 실제 접수로 본다 — 예약 줄이 그대로인데 따로 접수하고 온 분을 '안 옴'으로 세지 않으려고
 - **장기 미방문 1~3달 묶음 더함**: 사용자가 "한 달 넘게"를 골랐다. 원래 도구의 3·6·12달 경계는 그대로이고 2년 넘은 분은 뺀다(명단이 너무 길어짐)
-- **연락함 표시 없음**: F/U처럼 저장하려면 도우미 저장 칸과 시험이 는다. 첫판은 명단·복사까지(범위 밖)
+- **보냄·연락함 표시는 F/U 연락함 저장을 그대로 씀**(2026-11-07 사용자 결정): 도우미 저장(`contact.marks`)은 열쇠·날짜 표라 도우미를 고치지 않고 열쇠 앞글자만 더한다 — 예약 `s|차트번호|예약 시각`, 장기 미방문 `l|차트번호|마지막 내원일`. `pruneMarks`에 두 앞글자의 지우기 규칙(예약 날 31일 지남 · 장기 미방문 명단에 없음)을 더한다. 휴대폰 남은 건수는 `f|`·`r|`만 센다
 - **기본 예약 안내 문구**: 사용자가 양식을 주기로 했다. 받으면 `defaults.ts` 한 곳만 바꾸고(명세 AC-2805.3 글 고침 → 재승인), 이미 문구를 저장한 의원은 문자 문구 도구에서 직접 더한다
 
 ## 위험
