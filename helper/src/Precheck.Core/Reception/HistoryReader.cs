@@ -36,7 +36,8 @@ public sealed class HistoryVisit
 /// <summary>상세 한 번 읽은 날 줄(HistoryBuilder가 글로 바꾼다).</summary>
 public sealed class HistoryInput
 {
-    public HistoryInput(string day, int from, long earlierCount, string? firstDay, IReadOnlyList<HistoryVisit> visits, string? todaySymptom)
+    public HistoryInput(
+        string day, int from, long earlierCount, string? firstDay, IReadOnlyList<HistoryVisit> visits, string? todaySymptom, PaperRecord? paper = null)
     {
         Day = day ?? throw new ArgumentNullException(nameof(day));
         if (from < 0) throw new ArgumentOutOfRangeException(nameof(from));
@@ -46,6 +47,7 @@ public sealed class HistoryInput
         FirstDay = firstDay;
         Visits = visits ?? throw new ArgumentNullException(nameof(visits));
         TodaySymptom = todaySymptom;
+        Paper = paper;
     }
 
     /// <summary>오늘(yyyyMMdd, 접수 현황 날 줄의 날). 날짜 글·N일 전의 기준.</summary>
@@ -65,6 +67,9 @@ public sealed class HistoryInput
 
     /// <summary>오늘 접수의 증상 글(S 줄을 공백 하나로 이은 것). 줄이 없거나 증상 칸이 없으면 null.</summary>
     public string? TodaySymptom { get; }
+
+    /// <summary>오늘 접수의 종이 기록부 자료(spec reception-paper, PaperReader). 처음 쪽(from=0)만 있고 그 뒤 쪽은 null.</summary>
+    public PaperRecord? Paper { get; }
 }
 
 /// <summary>상세 답의 종류: 200(자료), 404(환자 자료 없음), 503(볼 수 없음).</summary>
@@ -98,8 +103,9 @@ public sealed class HistoryResult
 /// <summary>
 /// 상세 읽기(design.md 5절, REQ-1404): 줄을 누르거나 [더 보기]를 누를 때만 그 환자 한 명의 지난 완료 내원을 비트에서 읽는다. 결과는 서버에 쌓지 않는다.
 /// 열쇠(VisitKeys)·시작 위치가 틀리면 비트도 접수 현황도 읽지 않고 환자 자료 없음이다(AC-1404.5).
-/// 읽기는 등록 확인(HospitalGate)을 지난 세션에서 ReceptionSql.HistoryCount → HistoryPage → VisitSymptoms만 ReadOnlyGuard를 지나 돌린다.
-/// 읽기 한 번의 시간 제한은 8초이고(문장마다 남은 시간), 하나라도 실패하면 일부만 주지 않는다.
+/// 읽기는 등록 확인(HospitalGate)을 지난 세션에서 ReceptionSql.HistoryCount → HistoryPage → VisitSymptoms와, 처음 쪽(from=0)만 그 뒤에
+/// 종이 기록부 문장 다섯(PaperReader: PaperPerson → PaperVisit → PaperSymptoms → PaperDx → PaperOrders, spec reception-paper)만 ReadOnlyGuard를 지나 돌린다.
+/// 읽기 한 번의 시간 제한은 8초이고(문장마다 남은 시간), 하나라도 실패하면 일부만 주지 않는다(종이 문장도, AC-1501.9).
 /// </summary>
 public static class HistoryReader
 {
@@ -157,7 +163,8 @@ public static class HistoryReader
     /// 그날 접수(visit) 환자의 지난 완료 내원 한 쪽을 읽는다(AC-1404.1). 등록 확인을 마친 세션(db)과 등록 범위(hospitalScope)로 부른다.
     /// 수·첫날(HistoryCount)을 읽고, from이 그 수보다 작을 때만 최근 순 from+1 ~ from+HistoryChunk.SizeAt(from)번째(HistoryPage)를 읽는다.
     /// columns(보통 ReceptionMap.Columns)에 증상 칸이 있으면 같은 매개변수로 VisitSymptoms를 돌려 이 쪽 내원과 오늘 접수의 증상 글을 붙인다(AC-1410.4).
-    /// 처방 이름은 그날 이름표(board.RxNames)로 붙인다. 차트번호나 접수 시각이 비면 다른 환자를 읽지 않게 아무 문장도 돌리지 않는다.
+    /// from이 0일 때만 그 뒤에 같은 시간 제한으로 PaperReader.Read를 불러 종이 기록부 자료(Paper)를 싣는다(AC-1501.1). from&gt;0이면 종이 문장을 돌리지 않고 Paper는 null(AC-1501.9).
+    /// 처방 이름은 그날 이름표(board.RxNames)로 붙인다. 차트번호나 접수 시각이 비면 다른 환자를 읽지 않게 아무 문장도 돌리지 않는다(종이 자료는 빈 기록).
     /// </summary>
     public static HistoryInput Read(
         IBitDb db, string hospitalScope, BoardInput board, VisitRow visit, int from, Func<DateTime> clock, ColumnPlan? columns)
@@ -198,10 +205,13 @@ public static class HistoryReader
             }
         }
 
+        // 종이 기록부 자료는 처음 쪽만(같은 세션·같은 끝 시각). [더 보기]는 지난 내원만 더 읽는다
+        var paper = from == 0 ? PaperReader.Read(db, hospitalScope, visit, board, clock, deadline) : null;
+
         var visits = lines
             .Select(line => new HistoryVisit(line.VisitId, line.Day, RxItem.Of(line.Codes, board.RxNames), SymptomOf(symptoms, line.VisitId)))
             .ToArray();
-        return new HistoryInput(board.Day, from, count, firstDay, visits, SymptomOf(symptoms, visit.VisitId));
+        return new HistoryInput(board.Day, from, count, firstDay, visits, SymptomOf(symptoms, visit.VisitId), paper);
     }
 
     /// <summary>시작 위치 글(?from=N): 0 이상 int 범위의 아라비아 숫자 글자만(부호·공백·소수점·다른 숫자 글자 없음).</summary>
@@ -282,8 +292,8 @@ public static class HistoryReader
         return lines;
     }
 
-    /// <summary>정해 둔 문장을 남은 시간 안에서 돌린다. 시간이 다 갔으면 돌리지 않고 시간 지남(E-BIT-READ-FAILED).</summary>
-    private static IReadOnlyList<IReadOnlyList<object?>> Query(
+    /// <summary>정해 둔 문장을 남은 시간 안에서 돌린다. 시간이 다 갔으면 돌리지 않고 시간 지남(E-BIT-READ-FAILED). PaperReader도 쓴다.</summary>
+    internal static IReadOnlyList<IReadOnlyList<object?>> Query(
         IBitDb db, string sql, IReadOnlyDictionary<string, object?> args, Func<DateTime> clock, DateTime deadline)
     {
         var left = deadline - clock();
@@ -291,8 +301,8 @@ public static class HistoryReader
         return ReadOnlyGuard.Query(db, sql, args, left);
     }
 
-    /// <summary>줄마다 칸이 모자라면 지어내지 않고 읽기 실패로 본다.</summary>
-    private static IEnumerable<IReadOnlyList<object?>> Cells(IReadOnlyList<IReadOnlyList<object?>> rows, int cells)
+    /// <summary>줄마다 칸이 모자라면 지어내지 않고 읽기 실패로 본다. PaperReader도 쓴다.</summary>
+    internal static IEnumerable<IReadOnlyList<object?>> Cells(IReadOnlyList<IReadOnlyList<object?>> rows, int cells)
     {
         foreach (var row in rows)
         {
@@ -301,8 +311,8 @@ public static class HistoryReader
         }
     }
 
-    /// <summary>칸 글자 원값(DB NULL은 null). 글자가 아니면 문화권 없이 글자로.</summary>
-    private static string? Text(object? cell) =>
+    /// <summary>칸 글자 원값(DB NULL은 null). 글자가 아니면 문화권 없이 글자로. PaperReader도 쓴다.</summary>
+    internal static string? Text(object? cell) =>
         cell == null ? null : cell as string ?? Convert.ToString(cell, CultureInfo.InvariantCulture);
 
     /// <summary>번호·날 칸: 앞뒤 공백을 빼고, 비면 null.</summary>

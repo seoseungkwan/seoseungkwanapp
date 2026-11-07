@@ -7,6 +7,7 @@ using Precheck.Core.Bit;
 using Precheck.Core.Reception;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.Reception.Cache;
+using Precheck.Core.Tests.Reception.Paper;
 using Xunit;
 
 // 이 TASK의 시험만 한 거르기로 돌리려고 Detail 이름 공간에 둔다
@@ -18,6 +19,7 @@ namespace Precheck.Core.Tests.Reception.Detail;
 /// AC-1404.2·AC-1404.4·AC-1410.4 증상 글은 VisitSymptoms(HistoryPage와 같은 매개변수, 같은 시간 제한)가 준 그 내원의 S 줄을
 /// 비트가 준 차례대로 앞뒤 공백을 빼고 공백 하나로 이은 것이다(지난 내원마다 sym, 오늘 접수는 todaySym). 줄이 없으면 ""(칸 없음).
 /// AC-1404.5 그날 열쇠표에 없는 열쇠·모양이 틀린 열쇠·음수나 숫자 아닌 시작 위치는 비트를 읽지 않고 환자 자료 없음(404).
+/// from=0 읽기는 그 뒤에 종이 문장 다섯도 돈다(spec reception-paper, 시험은 PaperReader.test.cs). 여기서는 문장 차례·매개변수에만 넣어 센다.
 /// 가짜 DB·가짜 자료만 쓴다(차트번호 9로 시작하는 6자리, 내원번호 V+숫자, 처방 코드는 시안의 것).
 /// </summary>
 public class HistoryReaderTests
@@ -99,7 +101,7 @@ public class HistoryReaderTests
 
         var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, clock.Now);
 
-        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage, ReceptionSql.VisitSymptoms }, db.Sqls);
+        Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage, ReceptionSql.VisitSymptoms }.Concat(PaperFake.Sqls), db.Sqls);
         Assert.Equal(
             new Dictionary<string, object?> { ["@chart"] = "900101", ["@before"] = "20261105091230", ["@hospital"] = Synthetic.Scope },
             db.Calls[0].Args);
@@ -124,7 +126,10 @@ public class HistoryReaderTests
 
         DetailApi.Read(db, DetailFake.Board(visit), visit, 0, new CacheClock(Morning).Now);
 
-        Assert.All(db.Calls, call => Assert.Equal("20261105101500 ", call.Args["@before"]));
+        // 종이 사람 문장(PaperPerson)만 @before가 없다(그 환자 한 줄, 매개변수는 @chart 하나)
+        Assert.Equal(8, db.Calls.Count);
+        Assert.All(db.Calls.Where(call => call.Sql != ReceptionSql.PaperPerson), call => Assert.Equal("20261105101500 ", call.Args["@before"]));
+        Assert.False(db.Calls.Single(call => call.Sql == ReceptionSql.PaperPerson).Args.ContainsKey("@before"));
     }
 
     [Fact(DisplayName = "AC-1404.1 차트번호는 접수 현황 줄의 값 그대로(@chart, 앞 공백 포함) 넘긴다: 앞을 공백으로 채운 char(14) 번호도 지우지 않는다")]
@@ -135,7 +140,7 @@ public class HistoryReaderTests
 
         DetailApi.Read(db, DetailFake.Board(visit), visit, 0, new CacheClock(Morning).Now);
 
-        Assert.Equal(3, db.Calls.Count);
+        Assert.Equal(8, db.Calls.Count);
         Assert.All(db.Calls, call => Assert.Equal("        900101", call.Args["@chart"]));
     }
 
@@ -210,7 +215,7 @@ public class HistoryReaderTests
     [Fact(DisplayName = "AC-1404.1 쪽 줄은 내원마다 묶어 비트가 준 차례(최근 순) 그대로, 처방 없는 내원(RxCode NULL)은 빈 처방, 내원번호가 빈 줄은 버리고 한 쪽보다 많이 주지 않는다")]
     public void GroupsPageRows()
     {
-        var db = new FakeDb();
+        var db = PaperFake.Answer(new FakeDb());
         db.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { 9L, "20240312" } });
         db.Answer(ReceptionSql.HistoryPage, _ => new[]
         {
@@ -486,7 +491,8 @@ public class HistoryReaderTests
             var db = DetailFake.Answer(new FakeDb());
             var history = DetailApi.Read(db, DetailFake.Board(), DetailFake.Today(), 0, new CacheClock(Morning).Now, columns);
 
-            Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }, db.Sqls);
+            Assert.Equal(new[] { ReceptionSql.HistoryCount, ReceptionSql.HistoryPage }.Concat(PaperFake.Sqls), db.Sqls);
+            Assert.DoesNotContain(ReceptionSql.VisitSymptoms, db.Sqls);
             Assert.All(Syms(history), sym => Assert.Equal("", sym));
             Assert.Equal("", history.GetProperty("todaySym").GetString());
         }
@@ -586,6 +592,7 @@ public class HistoryReaderTests
 /// 오늘 접수 V1001(차트 900101, 2026-11-05 09:12:30 접수)의 앞선 완료 내원 36번: 최근 순 k번째는 내원번호 V(2000+k), 날짜는 2026-10-29에서 14일씩 앞.
 /// 처방: 1번째 ESWT7·DS20, 2번째 PT01·ESWT7, 3번째 없음, 4번째 ZZ9(이름표에 없음)·PT03, 나머지 PT01.
 /// 증상 줄(VisitSymptoms): 1번째 세 줄, 2번째 한 줄, 나머지 없음, 오늘 접수(같은 차트·같은 접수 시각) 두 줄.
+/// 종이 문장 다섯(from=0에서만 돈다)의 줄은 PaperFake가 준다.
 /// </summary>
 internal static class DetailFake
 {
@@ -667,14 +674,14 @@ internal static class DetailFake
         db.Answer(ReceptionSql.HistoryCount, _ => new[] { new object?[] { (long)earlier, earlier == 0 ? null : DayOf(earlier) } });
         db.Answer(ReceptionSql.HistoryPage, args => Page(args, earlier));
         db.Answer(ReceptionSql.VisitSymptoms, args => Symptoms(args, earlier));
-        return db;
+        return PaperFake.Answer(db);
     }
 }
 
 /// <summary>
 /// 의원 PC 확인 보고서의 칸 모양을 흉내 낸 가짜 비트(모두 지어낸 자료): OcmNum char(10)(값은 왼쪽, 뒤 공백), OcmChtNum char(14)(번호는 오른쪽, 앞 공백),
 /// OcmAcpDtm char(12). 문장마다 SQL Server처럼 답한다: 글자 칸 비교(=·&lt;)는 짧은 쪽 끝에 공백을 채워 견주고(끝 공백은 무시, 앞 공백은 글자),
-/// RTRIM은 끝 공백만, 내원번호(T.OcmNum·H.OcmNum)는 원값(뒤 공백 포함)으로 준다.
+/// RTRIM은 끝 공백만, 내원번호(T.OcmNum·H.OcmNum)는 원값(뒤 공백 포함)으로 준다. 종이 문장 다섯도 같은 견주기로 답한다.
 /// </summary>
 internal static class RealShapeBit
 {
@@ -730,6 +737,10 @@ internal static class RealShapeBit
     private static IEnumerable<Row> Window(IReadOnlyDictionary<string, object?> args) =>
         EarlierDone(args["@chart"], args["@before"]).Skip((int)args["@first"]! - 1).Take((int)args["@last"]! - (int)args["@first"]! + 1);
 
+    /// <summary>종이 문장의 '그 접수': 같은 차트번호·같은 접수 시각(둘 다 SQL Server 글자 비교).</summary>
+    private static IEnumerable<Row> ThisVisit(IReadOnlyDictionary<string, object?> args) =>
+        OcmInf.Where(c => Same(c.Chart, args["@chart"]) && Same(c.Accepted, args["@before"]));
+
     public static T Answer<T>(T db) where T : FakeDb
     {
         db.Answer(ReceptionSql.TodayVisits, args => OcmInf
@@ -760,6 +771,16 @@ internal static class RealShapeBit
                 .ToArray();
             return visits.SelectMany(id => EmrS.Where(e => Same(id, e.Visit)).Select(e => new object?[] { id, e.Line })).ToArray();
         });
+        // 종이 문장(spec reception-paper): 사람 줄은 그 차트번호, 내원·증상 줄은 그 접수만. 상병·처방 줄은 없다
+        db.Answer(ReceptionSql.PaperPerson, args => OcmInf.Any(c => Same(c.Chart, args["@chart"]))
+            ? new[] { new object?[] { "910203", "가상시 가상로 7", null, null, "010-0000-0003", null } }
+            : new object?[0][]);
+        db.Answer(ReceptionSql.PaperVisit, args => ThisVisit(args).Select(c => new object?[] { c.Id, "2진료실", "의료급여" }).ToArray());
+        db.Answer(ReceptionSql.PaperSymptoms, args => ThisVisit(args)
+            .SelectMany(c => EmrS.Where(e => Same(c.Id, e.Visit)).Select(e => new object?[] { c.Id, e.Line }))
+            .ToArray());
+        db.Answer(ReceptionSql.PaperDx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.PaperOrders, _ => new object?[0][]);
         return db;
     }
 }

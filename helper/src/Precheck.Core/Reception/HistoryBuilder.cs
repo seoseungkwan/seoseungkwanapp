@@ -47,7 +47,8 @@ public sealed class HistoryCard
 
 /// <summary>
 /// 휴대폰이 받는 상세 한 쪽(design.md 5절, `GET /api/visit/{k}/history?from=N` 200). 요청마다 HistoryBuilder가 만들고 서버에 쌓지 않는다.
-/// 오늘 카드의 상태·오늘 처방은 화면이 가진 접수 현황 줄로 그리고(10초마다 바뀜), 여기에는 오늘 증상(TodaySym)만 있다.
+/// 오늘 카드의 상태·오늘 처방은 화면이 가진 접수 현황 줄로 그리고(10초마다 바뀜), 여기에는 오늘 증상(TodaySym)과
+/// 처음 쪽(from=0)의 종이 기록부 자료(Paper, spec reception-paper)만 있다.
 /// </summary>
 public sealed class VisitHistory
 {
@@ -57,7 +58,7 @@ public sealed class VisitHistory
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
     };
 
-    public VisitHistory(IReadOnlyList<HistoryCard> visits, int? next, long more, string first, long total, string todaySym)
+    public VisitHistory(IReadOnlyList<HistoryCard> visits, int? next, long more, string first, long total, string todaySym, PaperRecord? paper = null)
     {
         Visits = visits ?? throw new ArgumentNullException(nameof(visits));
         if (more < 0) throw new ArgumentOutOfRangeException(nameof(more));
@@ -67,6 +68,7 @@ public sealed class VisitHistory
         First = first ?? "";
         Total = total;
         TodaySym = todaySym ?? "";
+        Paper = paper;
     }
 
     /// <summary>이번 쪽의 지난 내원(최근 순).</summary>
@@ -87,9 +89,13 @@ public sealed class VisitHistory
     /// <summary>오늘 접수의 증상 글. 없으면 "".</summary>
     public string TodaySym { get; }
 
+    /// <summary>오늘 접수의 종이 기록부 자료(spec reception-paper design.md 2절). 처음 쪽(from=0)만 있고, null이면 JSON에 paper 칸이 없다.</summary>
+    public PaperRecord? Paper { get; }
+
     /// <summary>
     /// 휴대폰에 보내는 JSON(design.md 5절):
     /// <c>{ "visits":[{date, ago, sym, rx:[{name, code}]}], "next", "more", "first", "total", "todaySym" }</c>.
+    /// Paper가 있으면(from=0) todaySym 뒤에 <c>"paper": {…}</c>(reception-paper design.md 2절)를 더 쓴다. 없으면 paper 칸이 없다.
     /// </summary>
     public string ToJson()
     {
@@ -122,6 +128,7 @@ public sealed class VisitHistory
             writer.WriteString("first", First);
             writer.WriteNumber("total", Total);
             writer.WriteString("todaySym", TodaySym);
+            Paper?.WriteJson(writer);
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
@@ -141,7 +148,7 @@ public static class HistoryBuilder
 
     /// <summary>
     /// 지난 진료 한 쪽(AC-1404.2·AC-1404.3): 내원마다 날짜 글·N일 전·증상·처방, 다음 시작 위치(next)·안 보인 수(more),
-    /// 처음 온 날(지난 내원이 없으면 오늘)·모두 N번(오늘 포함)·오늘 증상.
+    /// 처음 온 날(지난 내원이 없으면 오늘)·모두 N번(오늘 포함)·오늘 증상, 그리고 읽은 종이 기록부 자료(Paper, from=0만)를 그대로.
     /// </summary>
     public static VisitHistory Build(HistoryInput input)
     {
@@ -161,7 +168,7 @@ public static class HistoryBuilder
         var more = next == null ? 0 : input.EarlierCount - shown;
         var first = input.EarlierCount == 0 ? FullDate(today) : DayOf(input.FirstDay) is DateTime firstDay ? FullDate(firstDay) : "";
 
-        return new VisitHistory(cards, next, more, first, input.EarlierCount + 1, Clean(input.TodaySymptom));
+        return new VisitHistory(cards, next, more, first, input.EarlierCount + 1, Clean(input.TodaySymptom), input.Paper);
     }
 
     /// <summary>오늘 카드 제목 "M월 D일 · 오늘"(AC-1404.4). day는 yyyyMMdd.</summary>
