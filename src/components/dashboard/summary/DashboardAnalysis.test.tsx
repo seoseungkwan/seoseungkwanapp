@@ -74,7 +74,7 @@ const GAINS = [
   ['처방 상위', '통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요.'],
 ] as const
 const GAINS_NOTE = '연결한 뒤에는 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
-const TODAY_NOTE = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.'
+const TODAY_NOTE = '연결하면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.'
 // 연결 뒤인데 기간 안 날짜 자료가 없음(오늘 줄만): 그래프 칸은 빈 틀 + "자료 없음"
 const EMPTY_RANGE_DAYS = [day(TODAY, { rx: [rx('A1', '물리치료', 3)] })]
 const EMPTY_RANGE = data(EMPTY_RANGE_DAYS)
@@ -262,7 +262,7 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
 
 // 비트 읽기 상태 글 (bit-dashboard design.md '### 화면', 시안 docs/mockups/bit-dashboard/gen.py today_sec·flow_empty). 주지 않으면 위 연결 전 글 그대로다
 describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
-  const READ_NOTE = '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.'
+  const READ_NOTE = '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.'
   const READ_GAINS_TITLE = '읽기가 끝나면 생기는 것 4가지'
   const READ_GAINS_NOTE = '읽기가 끝나면 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
   const READ_REVISIT = '처음 온 환자가 7·14일 안에 다시 온 비율이에요.'

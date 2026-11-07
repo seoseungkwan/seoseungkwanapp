@@ -53,7 +53,7 @@ export function DailySection({
   day = today,
   emptyChip = '비트 PC 연결 전',
   emptyText = '연결하면 보여요',
-  emptyNote = '연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.',
+  emptyNote = '연결하면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.',
   dateLine,
   sentence,
 }: DailySectionProps) {

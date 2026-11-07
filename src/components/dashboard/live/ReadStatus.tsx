@@ -5,7 +5,7 @@ import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import type { ErrorCode } from '@/types/errors'
 
-// 대시보드 큰 문장 자리의 읽는 중·실패 블록과 읽은 시각 줄 (bit-dashboard AC-601.2~601.7·AC-601.16·AC-601.17, design.md '### 화면',
+// 대시보드 맨 위 자리의 읽는 중·실패 블록과 머리 줄(StatusHeader, dashboard-ux AC-2701.3) (bit-dashboard AC-601.2~601.7·AC-601.16·AC-601.17, design.md '### 화면',
 // 시안 docs/mockups/bit-dashboard/gen.py left_reading·left_fail·left_busy·read_line·left_reread_fail). 오류 문구·번호는 lib/errors.ts에서만 가져온다.
 // 움직이는 것은 막대와 도는 표시 둘뿐이고 움직임은 globals.css의 .bit-read-bar·.bit-read-spin이 맡는다(AC-601.17, UI_GUIDE '움직임 › 비트 읽는 표시'). Tailwind animate-*는 쓰지 않는다
 
@@ -125,7 +125,7 @@ export function StatusHeader({
   const when = whenText(readAt, savedAt)
   const canReread = (readAt !== null || reading) && !failed
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-strong pb-4">
+    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-heading-m font-semibold text-ink max-md:text-title">대시보드</h1>
       <span className={chip.className}>{chip.text}</span>
       {when !== null && (

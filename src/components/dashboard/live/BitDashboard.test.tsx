@@ -350,7 +350,7 @@ describe('AC-601.2: 저장 숫자 없이 처음 읽는 중', () => {
   it('AC-601.2: 오늘 하루 분석은 칩 "읽는 중" + 숫자 칸 넷 "읽는 중"이고 지어낸 값이 없다', () => {
     draw()
     expectEmptyNumbers('읽는 중', '읽는 중')
-    expect(within(todaySection()).getByText('읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.')).toBeTruthy()
+    expect(within(todaySection()).getByText('읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')).toBeTruthy()
     expect(within(todaySection()).queryByText(/^연결/)).toBeNull()
   })
 

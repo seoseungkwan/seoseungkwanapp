@@ -95,7 +95,7 @@ const mainLink = () => screen.getByRole('link', { name: '비트 PC 연결 시작
 const STEPS = ['크롬 확장 프로그램 설치', '도우미 설치', '연결', '비트 자료 읽기', '요양기관기호 확인']
 // 연결 전 문구 (AC-414.1·414.2·414.5, 시안 dash_body 글자 그대로)
 const H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
-const LEAD = '아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 자리에 오늘의 보고 문장이 올라와요.'
+const LEAD = '아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 화면에 오늘 숫자와 보고 문장이 채워져요.'
 const TRUST = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 해요.'
 const ROW_TITLE = '연결하면 바로 쓸 수 있어요'
 const ROW_SIDE = '삭감 예방 사전점검은 비트 PC를 연결한 뒤 열려요.'
@@ -583,7 +583,7 @@ describe('DashboardHome: 연결하면 바로 쓸 수 있어요 — 연결 전 �
   })
 })
 
-describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른쪽 칸 (AC-316.2)', () => {
+describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 바로 가기 자리 (AC-316.2·AC-2707.2)', () => {
   it('AC-316.2: 머리 "지금 바로 쓸 수 있어요"(small 600, 폰 title) · 오른쪽 "청구 탭"(muted), 아래 1px line-strong(폰 없음)', () => {
     renderAfter()
     const right = readyNow()
@@ -626,10 +626,10 @@ describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른�
 
   it('AC-316.2·AC-414.2: 옆 글("기능 12개 …" · "…연결한 뒤 열려요.")과 [비트 PC 연결부터]는 없다', () => {
     renderAfter()
-    noText(briefRight(), '기능 12개')
-    noText(briefRight(), '다른 하나는')
-    noText(briefRight(), ROW_SIDE)
-    noText(briefRight(), '비트 PC 연결부터')
+    noText(readyNow(), '기능 12개')
+    noText(readyNow(), '다른 하나는')
+    noText(readyNow(), ROW_SIDE)
+    noText(readyNow(), '비트 PC 연결부터')
   })
 
   it('AC-316.2: 머리 h2의 id는 useId로 만든다 — 두 벌을 함께 그려도 id가 겹치지 않는다(고정 id 없음)', () => {

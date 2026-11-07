@@ -6,7 +6,7 @@ import { ds } from '@/components/ui/classes'
 import type { DayPayload } from '@/types/payload'
 import { longDate, reportSentence, todayView } from './view'
 
-// 원장님 보고 문장 + [복사] — 연결 뒤 대시보드 큰 문장 자리 (tab-frame REQ-317, design.md '원장님 보고 문장'·'복사',
+// 원장님 보고 문장 + [복사] — 연결 뒤 일별 현황 숫자 칸 아래 한 단락(dashboard-ux AC-2705.1, 앞 tab-frame REQ-317, design.md '원장님 보고 문장'·'복사',
 // 시안 docs/mockups/dashboard-home/index.html 화면 3 + 메모 §3 '원장님 보고 문장', 문구는 메모 §4 그대로).
 // 문장은 view.ts의 reportSentence(오늘 줄의 totals만)로 만든다 — 환자 이름·차트번호·처방 이름은 쓰지 않는다.
 // 이름 줄은 "{오늘|M월 D일} 보고 문장" + 칩 "자동 집계 요약"이다 — 계산 틀로 만든 문장이라 AI 요약("Claude Opus 기반 분석")과 구분한다(dashboard-ux AC-2705.1).

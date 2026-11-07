@@ -322,7 +322,7 @@ function shell(body) {
 }
 
 function head(s) {
-  const chip = { ready: '<span class="chip p">비트 연결됨</span>', saved: '<span class="chip n">저장된 숫자</span>', rereading: '<span class="chip a">다시 읽는 중</span>', rereadfail: '<span class="chip ng">읽지 못함</span>', groups: '<span class="chip p">비트 연결됨</span>' }[s]
+  const chip = { ready: '<span class="chip p">비트에서 읽은 숫자</span>', saved: '<span class="chip n">저장된 숫자</span>', rereading: '<span class="chip a">다시 읽는 중</span>', rereadfail: '<span class="chip ng">읽지 못함</span>', groups: '<span class="chip p">비트에서 읽은 숫자</span>' }[s]
   const when = { ready: '오늘 오후 3:42 비트에서 읽음', groups: '오늘 오후 3:42 비트에서 읽음', saved: '11월 7일 오후 12:05에 저장한 숫자', rereading: '오늘 오후 3:42 비트에서 읽음', rereadfail: '오늘 오후 3:42 비트에서 읽음' }[s]
   const btn = s === 'rereading' ? `<button class="btn sec sm" disabled aria-busy="true">다시 읽는 중</button>` : s === 'rereadfail' ? '' : `<button class="btn sec sm">다시 읽기</button>`
   return `<div class="head"><h1>대시보드</h1>${chip}<span class="when">${ICON.clock}<span>${when}</span></span><span class="sp">${btn}</span></div>
@@ -340,7 +340,7 @@ function daily(dim) {
       <div class="kpi"><div class="l">재진</div><div class="v">74<small>명</small></div></div>
       <div class="kpi"><div class="l">지난주 같은 요일보다</div><div class="v" style="font-size:20px">—</div><div class="e">오늘 진료가 끝나면 비교해요</div></div>
     </div>
-    <div class="say"><div class="t"><p class="lab">오늘 보고 문장 <span class="chip n">숫자로 만든 문장 · AI 아님</span></p><p>오늘 지금까지 환자 86명이 왔습니다. 신환 12명, 재진 74명입니다.</p></div>
+    <div class="say"><div class="t"><p class="lab">오늘 보고 문장 <span class="chip n">자동 집계 요약</span></p><p>오늘 지금까지 환자 86명이 왔습니다. 신환 12명, 재진 74명입니다.</p></div>
       <button class="btn sec sm" style="min-width:112px">${ICON.copy}복사</button></div>
   </section>`
 }

@@ -255,7 +255,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     const text = plain(html)
     expect(countOf(text, '연결하면 보여요')).toBe(4)
     expect(text).toContain('비트 PC 연결 전')
-    expect(text).toContain('연결하면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.')
+    expect(text).toContain('연결하면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')
     expect(text).toContain(GAINS_TITLE)
     expect(text).toContain(GAINS_NOTE)
     expect(text).not.toContain('비트 PC를 연결하면 이 기간의 하루하루가 막대로 그려집니다')
@@ -364,7 +364,7 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     expect(html).toBe(withoutIds(container.innerHTML))
   })
 
-  it('AC-307.6·AC-605.1·AC-2705.1·AC-2707.2: 위에서부터 머리 줄 → 오늘 하루 분석 → 날짜 고르기(오늘) → 오늘 보고 문장 · 자동 집계 요약 · [복사] → 보고 문장 한 단락 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', async () => {
+  it('AC-307.6·AC-605.1·AC-2705.1·AC-2707.2: 위에서부터 머리 줄(대시보드) → 오늘 하루 분석(날짜 고르기 · 오늘 보고 문장 · 자동 집계 요약 · [복사] · 보고 문장 한 단락) → 기간별 흐름 → 지금 바로 쓸 수 있어요(사전점검 · [사전점검 열기] · [비트 PC 연결 다시 확인]) → 기능 목차', async () => {
     const html = await renderConnected()
     const dateControl = html.indexOf('role="group" aria-label="날짜 고르기"')
     expect(dateControl).toBeGreaterThanOrEqual(0)

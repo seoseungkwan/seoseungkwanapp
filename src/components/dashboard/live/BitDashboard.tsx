@@ -22,7 +22,7 @@ import type { DashboardGroups } from './rxGroups'
 // 고른 날은 여기 상태 하나다(design.md '### 날짜 고르기'). 주소·저장소에 두지 않아 새로 열면 오늘이고, 이미 읽은 숫자로 그려 비트를 다시 읽지 않는다(AC-605.6)
 // 통계 탭 묶음(groups)은 LiveDashboard가 읽어 넘긴다. 비트 읽기에 묶음 정의를 싣고(AC-606.7), 처방 상위는 그 묶음으로 센다(AC-606.1·AC-606.5).
 // 묶음을 아직 읽는 중('pending')이면 저장 숫자로 먼저 그리고 비트 읽기만 묶음이 끝날 때까지 미룬다(dashboard-ux AC-2701.2).
-// 숫자가 있으면 머리 줄(StatusHeader)이 상태 표시·시각 글·[다시 읽기]를 맡는다(AC-2701.3). 지금 자리는 보고 문장 아래(차례 옮기기는 AC-2707.2)
+// 숫자가 있으면 머리 줄(StatusHeader)이 상태 표시·시각 글·[다시 읽기]를 맡는다(AC-2701.3). 화면 차례는 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 요약 → 기간별 흐름이다(AC-2707.2)
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
@@ -68,7 +68,7 @@ const READING_LOOK: EmptyLook = {
   ...GAINS_OF_READING,
   emptyChip: '읽는 중',
   emptyText: '읽는 중',
-  emptyNote: '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 맨 위 큰 문장 자리에 올려요.',
+  emptyNote: '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.',
 }
 const FAILED_LOOK: EmptyLook = { ...GAINS_OF_READING, emptyChip: '읽지 못함', emptyText: '읽지 못했어요', emptyNote: null }
 const IN_USE_LOOK: EmptyLook = { ...GAINS_OF_READING, emptyChip: '기다리는 중', emptyText: '아직 못 읽었어요', emptyNote: null }

@@ -64,7 +64,7 @@ function CardGroup({ title, cards }: { title: string; cards: readonly ReportCard
   return (
     <div className="min-w-0">
       <h3 className="border-b border-line-strong pb-2 text-small font-semibold text-ink-2">{title}</h3>
-      <ul>
+      <ul className="list-none">
         {cards.map((card, index) => (
           // 받은 차례 그대로 그리기만 한다(같은 문장이 둘일 수 있어 순번을 쓴다)
           <li key={index} className="border-b border-line py-3">
@@ -142,7 +142,7 @@ function MakeBlock({
         <p className={STATE_LINE}>{`${name} 숫자를 ${compareMonths(month)}과 견줘, 원장님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.`}</p>
       )}
       {!busy && (
-        <ul className="mt-3 grid gap-3 md:grid-cols-3">
+        <ul className="mt-3 grid list-none gap-3 md:grid-cols-3">
           {GAINS.map((gain) => (
             <li key={gain.name} className="rounded-control bg-surface px-3 py-2 text-small text-ink-2">
               <span className="block text-body font-semibold text-ink">{gain.name}</span>
