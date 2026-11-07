@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ESLint } from 'eslint'
 import { describe, expect, it } from 'vitest'
 import { readLapsed } from '@/lib/patients/lapsed'
 import { RECALL_DEFAULTS, type RecallHistory, type RecallRecord } from '@/lib/patients/recall'
@@ -1117,5 +1118,24 @@ describe('fitStore · storePayload', () => {
     const store = setMark(readStore({}), '__proto__', true, TODAY)
     const text = storePayload(fitStore(store).store)
     expect(text).toContain('"__proto__":"2026-11-02"')
+  })
+})
+
+describe('울타리 (AC-2806.2)', () => {
+  // 새 계산·Worker·환자 줄 파일을 실제 eslint.config.mjs로 검사한다. 환자 자료 구역 규칙(네트워크·console·저장소·supabase 막기)이 걸려 있다
+  const NEW_FILES = [
+    'src/lib/patients/reservations.ts',
+    'src/lib/patients/lapsed.ts',
+    'src/workers/patients/jobs.ts',
+    'src/workers/patients/handler.ts',
+    'src/components/patients/rows/ReservationRows.tsx',
+    'src/components/patients/rows/LapsedRows.tsx',
+  ]
+
+  it('AC-2806.2: 새 rows 부품과 Worker·계산 파일은 lint 오류가 없다', { timeout: 60_000 }, async () => {
+    const results = await new ESLint({ cwd: ROOT }).lintFiles(NEW_FILES)
+    expect(results.map((r) => r.filePath.replaceAll('\\', '/').split('/src/')[1]).sort()).toEqual(NEW_FILES.map((f) => f.slice(4)).sort())
+    const errors = results.flatMap((r) => r.messages.filter((m) => m.severity === 2).map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))
+    expect(errors).toEqual([])
   })
 })

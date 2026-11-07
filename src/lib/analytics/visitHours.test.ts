@@ -24,6 +24,16 @@ const rowOf = (view: VisitHours, weekday: number) => {
 }
 const cellOf = (view: VisitHours, weekday: number, hour: number) => rowOf(view, weekday).cells[view.hours.indexOf(hour)]
 
+describe('AC-2704.5 [자세히] 합계 표의 바탕', () => {
+  it('AC-2704.5: 칸에는 평균이 아닌 접수 건수 합이, 요일 줄에는 문 연 날 수가 있어 합계 표(첫 칸 "월 (2일)")를 그대로 그릴 수 있다', () => {
+    const view = visitHours([...times(5, '2026-11-02', 9), at('2026-11-09', 9), at('2026-11-09', 14)], FROM, TO)
+    expect(rowOf(view, 1)).toMatchObject({ weekday: 1, openDays: 2 })
+    expect(cellOf(view, 1, 9)).toBe(6)
+    expect(cellOf(view, 1, 14)).toBe(1)
+    expect(view.rows.reduce((sum, row) => sum + row.cells.reduce((a, b) => a + b, 0), 0)).toBe(7)
+  })
+})
+
 describe('AC-2704.1 칸 = 그 요일·그 시 접수 합 ÷ 그 요일의 문 연 날 수', () => {
   it('AC-2704.1: 문 연 날은 기간 안에서 센 접수가 하나라도 있는 날이고, 칸에는 접수 합을 둔다', () => {
     const view = visitHours(
