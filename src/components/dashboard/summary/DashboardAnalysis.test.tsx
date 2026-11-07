@@ -453,7 +453,9 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
     const { container } = draw(NONE)
     const section = region('기간별 흐름')
     expect(within(section).queryAllByRole('heading', { level: 3 })).toEqual([])
-    expect(within(section).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['기간'])
+    // dashboard-ux AC-2703.2: 빠른 단추 묶음 '기간'은 '추이 조회 기간' 묶음(보이는 이름 줄로 이름) 안에 있다
+    const groupName = (g: Element) => g.getAttribute('aria-label') ?? document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent
+    expect(within(section).getAllByRole('group').map(groupName)).toEqual(['추이 조회 기간', '기간'])
     expect(section.querySelector('table')).toBeNull()
     expect(section.querySelector('ul')).toBeNull() // ChartLegend
     expect(section.querySelector('[aria-hidden="true"]')).toBeNull() // 빈 틀·눈금은 꾸밈(aria-hidden)이었다
@@ -474,6 +476,8 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
       GAINS_TITLE,
       ...GAINS.map(([, desc]) => desc),
       GAINS_NOTE,
+      '추이 조회 기간',
+      '아래 그래프 4개에 적용 · 기준일과 따로예요', // dashboard-ux AC-2703.2
     ].sort((a, b) => b.length - a.length)
     // 번호 상자 1~4는 덩어리째 뺀다
     const numbers = Array.from(gainsList().children).map((li) => li.children[0]!.textContent)
@@ -924,10 +928,11 @@ describe('짜임 — 폭별 칸 (AC-311.7)', () => {
     }
   })
 
-  it('AC-311.7: 기간 단추는 32px(폰은 단추마다 44px, 셋이 같은 폭으로 다음 줄 전체), 눌린 것은 accent-soft 바탕 accent-strong 600', () => {
+  it('AC-311.7·AC-2707.4: 기간 단추는 ds.segment — 32px(폰은 단추마다 44px, 셋이 같은 폭으로 전체 폭), 눌린 것은 accent-soft 바탕 accent-strong 600', () => {
     draw(NONE)
     const group = screen.getByRole('group', { name: '기간' })
-    hasAll(group, 'inline-flex overflow-clip rounded-control border border-line-strong bg-surface max-md:order-3 max-md:grid max-md:w-full max-md:grid-cols-3')
+    hasAll(group, `${ds.segment.group} max-md:grid-cols-3`)
+    hasAll(group, 'inline-flex overflow-clip rounded-control border border-line-strong bg-surface max-md:grid max-md:w-full max-md:grid-cols-3')
     for (const b of periodButtons()) hasAll(b, 'h-7.5 px-3 text-small max-md:h-11')
     const [b7, b30, b90] = periodButtons()
     hasAll(b30!, 'bg-accent-soft text-accent-strong font-semibold')
@@ -1003,7 +1008,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
   const importsOf = (file: string) => [...code(file).matchAll(/^import\s[^'"]*?from\s+['"]([^'"]+)['"]/gm)].map((m) => m[1]!)
   const ALLOWED =
-    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend|ChartTable|DeltaText)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view|flow|usePeriodDays|TableToggle))$/
+    /^(?:react|next\/link|@\/components\/charts\/(?:format|KpiStat|StackedBarChart|RankedBars|ChartLegend|ChartTable|DeltaText)|@\/components\/ui\/classes|@\/components\/common\/Icon|@\/lib\/analytics\/(?:dates|compare)|@\/types\/(?:payload|analysis)|\.\/(?:source|view|flow|usePeriodDays|TableToggle|DailySection|FlowSection|PeriodButtons))$/ // dashboard-ux AC-2707.4: 두 구역 파일과 추이 조회 기간 묶음
 
   // source.ts만 읽기 함수(readDays)의 결과 모양을 타입으로 불러온다(stats TASK-16 toSummarySource. source.test.ts가 typeOnly를 본다)
   const SOURCE_READ_TYPE = 'source.ts: @/lib/storage/stats'
@@ -1020,8 +1025,7 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
   // 대시보드 기간 고르기(dashboard-period AC-1805.2, design.md '결정과 트레이드오프'): 통계를 부르는 곳은 flow.ts(periodPick·view)와
   // DashboardAnalysis.tsx(PeriodPicker) 둘뿐이고, 오류 카드는 옛 기간 읽기 실패 카드에만 쓴다
   const PERIOD_IMPORTS = [
-    'DashboardAnalysis.tsx: @/components/common/ErrorCard',
-    'DashboardAnalysis.tsx: @/components/stats/PeriodPicker',
+    'FlowSection.tsx: @/components/common/ErrorCard', // dashboard-ux AC-2707.4: 기간별 흐름 구역으로 옮김
     'PeriodButtons.tsx: @/components/stats/PeriodPicker', // dashboard-ux AC-2703.2: 추이 조회 기간 묶음
     'flow.ts: @/components/stats/periodPick',
     'flow.ts: @/components/stats/view',
@@ -1041,12 +1045,21 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     }
   })
 
+  it('AC-2707.4: DashboardAnalysis는 DailySection·FlowSection으로 나뉘고, 기간 단추는 PeriodButtons(ds.segment), 그래프 넘침 보정은 ds.chartNoSideScroll 한 벌이다(통계 parts도 같은 값)', () => {
+    expect(importsOf('DashboardAnalysis.tsx')).toEqual(expect.arrayContaining(['./DailySection', './FlowSection']))
+    expect(importsOf('FlowSection.tsx')).toContain('./PeriodButtons')
+    for (const file of appFiles()) expect(code(file), file).not.toMatch(/\bPERIOD_(?:GROUP|BUTTON|ON|OFF)\b|CHART_NO_SIDE_SCROLL\s*=/)
+    expect(code('FlowSection.tsx')).toContain('ds.chartNoSideScroll')
+    const parts = readFileSync(join(process.cwd(), 'src/components/stats/sections/parts.tsx'), 'utf8')
+    expect(parts).toMatch(/export const CHART_NO_SIDE_SCROLL = ds\.chartNoSideScroll/)
+    expect(ds.chartNoSideScroll).toBe('relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0')
+  })
+
   it('AC-1805.2·AC-2703.2: summary/view.ts는 components/stats를 부르지 않고(통계 view.ts가 이 파일을 불러 고리가 생긴다), 통계를 부르는 곳은 flow.ts(periodPick·view)와 DashboardAnalysis.tsx·PeriodButtons.tsx(PeriodPicker)뿐이다', () => {
     expect(importsOf('view.ts').filter((from) => from.includes('components/stats'))).toEqual([])
     expect(code('view.ts')).not.toMatch(/components\/stats/)
     const stats = appFiles().flatMap((file) => importsOf(file).flatMap((from) => (from.startsWith('@/components/stats') ? [`${file}: ${from}`] : [])))
     expect(stats.sort()).toEqual([
-      'DashboardAnalysis.tsx: @/components/stats/PeriodPicker',
       'PeriodButtons.tsx: @/components/stats/PeriodPicker',
       'flow.ts: @/components/stats/periodPick',
       'flow.ts: @/components/stats/view',
@@ -1062,9 +1075,10 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
   })
 
   it('AC-311.8: 차트 부품은 @/components/charts/*에서 불러와 쓴다(이 폴더에 차트 부품을 다시 만들지 않는다)', () => {
-    const imports = importsOf('DashboardAnalysis.tsx')
+    // dashboard-ux AC-2707.4: 숫자 칸은 DailySection, 그래프는 FlowSection이 불러온다
+    const imports = [...importsOf('DailySection.tsx'), ...importsOf('FlowSection.tsx')]
     for (const part of ['KpiStat', 'StackedBarChart', 'RankedBars', 'ChartLegend']) expect(imports).toContain(`@/components/charts/${part}`)
-    expect(code('DashboardAnalysis.tsx')).toMatch(/^'use client'/)
+    for (const file of ['DashboardAnalysis.tsx', 'DailySection.tsx', 'FlowSection.tsx']) expect(code(file), file).toMatch(/^'use client'/)
   })
 
   it.each([
@@ -1320,15 +1334,13 @@ describe('기간 고르기 (dashboard-period)', () => {
       }
     })
 
-    it('AC-1801.2: 그래프 갈래 — 머리 줄 안 빠른 단추 바로 다음(같은 줄)에 감싸개 하나, 그 안은 통계 탭 PeriodPicker 그대로(최근 30일 · 끝난 날 11월 5일)', () => {
+    it('AC-1801.2·AC-2703.2: 그래프 갈래 — 추이 조회 기간 묶음 안 빠른 단추 바로 다음(같은 줄)에 통계 탭 PeriodPicker 그대로(오른쪽 맞춤 판, 최근 30일 · 끝난 날 11월 5일)', () => {
       drawNow()
       const head = flowHead()
-      const quick = within(head).getByRole('group', { name: '기간' })
-      const wrap = quick.nextElementSibling!
-      expect(head.lastElementChild).toBe(wrap)
-      expect(wrap.children).toHaveLength(1)
-      expect(wrap.firstElementChild).toBe(picker())
-      expect(withoutIds(wrap.innerHTML)).toBe(withoutIds(markupOf(<PeriodPicker choice="30d" lastDay="2026-11-05" todayDone={false} onChoose={() => {}} />)))
+      const outer = within(head).getByRole('group', { name: '추이 조회 기간' })
+      const quick = within(outer).getByRole('group', { name: '기간' })
+      expect(quick.nextElementSibling).toBe(picker())
+      expect(withoutIds(picker().outerHTML)).toBe(withoutIds(markupOf(<PeriodPicker align="end" choice="30d" lastDay="2026-11-05" todayDone={false} onChoose={() => {}} />)))
     })
 
     it('AC-1801.2: 읽었는데 자료 없는 빈 틀(emptyCharts)에도 고르기가 있다', () => {
@@ -1401,8 +1413,9 @@ describe('기간 고르기 (dashboard-period)', () => {
       const head = flowHead()
       // 고르기가 있는 갈래에만 768px 이상 아래 끝 맞춤·오른쪽 붙음을 더한다(지금 클래스는 그대로)
       expect(classesOf(head)).toEqual(tokens('mb-4 flex flex-wrap items-center gap-3 md:items-end md:justify-end'))
-      hasAll(within(head).getByRole('group', { name: '기간' }), 'max-md:order-3 max-md:grid max-md:w-full max-md:grid-cols-3')
-      expect(classesOf(picker().parentElement!)).toEqual(['max-md:order-4', 'max-md:w-full'])
+      hasAll(within(head).getByRole('group', { name: '기간' }), 'max-md:grid max-md:w-full max-md:grid-cols-3')
+      hasAll(within(head).getByRole('group', { name: '추이 조회 기간' }), 'max-md:w-full')
+      hasAll(picker().parentElement!, 'max-md:flex-col max-md:items-stretch')
       hasAll(picker(), 'relative max-md:w-full')
       for (const b of units()) hasAll(b, 'max-md:h-11')
       await click(customButton())
@@ -1780,7 +1793,7 @@ describe('표로 보기 · 증감 공통 (REQ-2706)', () => {
     expect(value.textContent).toBe('늘어남 3명 (+30.0%)')
     hasAll(value, `${DELTA_VALUE} text-positive`)
     // 화살표·색 규칙을 이 파일에 따로 두지 않는다
-    const source = readFileSync(join(process.cwd(), 'src/components/dashboard/summary/DashboardAnalysis.tsx'), 'utf8')
+    const source = readFileSync(join(process.cwd(), 'src/components/dashboard/summary/DailySection.tsx'), 'utf8') // dashboard-ux AC-2707.4
     expect(source).toMatch(/^import \{ DeltaText \} from '@\/components\/charts\/DeltaText'$/m)
     expect(source).not.toMatch(/<svg|text-positive|text-negative|formatDelta/)
   })

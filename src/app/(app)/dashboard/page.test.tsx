@@ -10,7 +10,10 @@ import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton
 import { DateControl } from '@/components/dashboard/live/DateControl'
 import { StatusHeader } from '@/components/dashboard/live/ReadStatus'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
+import { AiBrief } from '@/components/dashboard/ai/AiBrief'
+import { DailySection } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
+import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { SummarySource } from '@/components/dashboard/summary/source'
 import { addDays } from '@/lib/analytics/dates'
@@ -290,6 +293,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
       GAINS_TITLE,
       ...GAINS_DIGIT_DESC,
       GAINS_NOTE,
+      '아래 그래프 4개에 적용 · 기준일과 따로예요', // 추이 조회 기간 적용 글(dashboard-ux AC-2703.2) — 4는 그래프 수다
     ].sort((a, b) => b.length - a.length)
     let text = plain(html)
     for (const s of fixed) {
@@ -315,54 +319,68 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
   const DAYS: DayPayload[] = [day(TODAY, 4, 9), day('2026-10-30', 3, 7, true), day('2026-10-24', 2, 8)]
   const SOURCE_DATA: SummarySource = { kind: 'data', days: DAYS }
   // 자료 읽는 자리(브라우저의 저장 숫자 읽기)가 이번 한 번만 가짜 자료를 준다
-  const renderConnected = () => drawInBrowser(AT_TODAY, DAYS)
+  const renderConnected = async () => {
+    const html = await drawInBrowser(AT_TODAY, DAYS)
+    return html
+  }
+  // AI 요약(dashboard-ux AC-2704.1)의 저장 리포트 읽기에 주는 합성 답: 리포트 없음. 진짜 서버·유료 API에 닿지 않는다
+  const AI_EMPTY = { report: null, stale: false, usage: { calls: 0, tokens: 0, costMicroUsd: 0 } }
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(AI_EMPTY), { status: 200, headers: { 'Content-Type': 'application/json' } })))
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
-  it('AC-307.6·AC-605.1·AC-2701.3: 화면 = <DashboardHome dateLine={<DateControl … />} report={<><ReportBlock … /><StatusHeader … /></>} analysis={<DashboardAnalysis … source={가짜 자료} />} /> 그대로다', async () => {
+  it('AC-307.6·AC-605.1·AC-2701.3·AC-2707.2: 화면 = <DashboardHome dateLine={null} report={<StatusHeader … />} analysis={<>일별 현황(기준일 DateControl · 보고 문장 ReportBlock) · AI 요약 · 기간별 흐름</>} /> 그대로다', async () => {
     const html = withoutIds(await renderConnected())
     cleanup()
-    expect(html).toBe(
-      withoutIds(
-        browserMarkupOf(
-          <DashboardHome
-            today={TODAY}
-            dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
-            report={
-              <>
-                <ReportBlock today={TODAY} days={DAYS} />
-                <StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />
-              </>
-            }
-            analysis={<DashboardAnalysis today={TODAY} source={SOURCE_DATA} />}
-          />,
-        ),
-      ),
+    const { container } = render(
+      <DashboardHome
+        today={TODAY}
+        dateLine={null}
+        report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />}
+        analysis={
+          <>
+            <DailySection
+              today={TODAY}
+              source={SOURCE_DATA}
+              dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
+              sentence={<ReportBlock today={TODAY} days={DAYS} />}
+            />
+            <div className="mt-12 max-md:mt-8">
+              <AiBrief today={TODAY} />
+            </div>
+            <FlowSection today={TODAY} source={SOURCE_DATA} />
+          </>
+        }
+      />,
     )
+    await act(async () => {}) // AI 요약의 합성 답까지
+    expect(html).toBe(withoutIds(container.innerHTML))
   })
 
-  it('AC-307.6·AC-605.1·AC-2705.1: 위에서부터 날짜 고르기(오늘) → 오늘 보고 문장 · 자동 집계 요약 · [복사] → 보고 문장 한 단락 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', async () => {
+  it('AC-307.6·AC-605.1·AC-2705.1·AC-2707.2: 위에서부터 머리 줄 → 오늘 하루 분석 → 날짜 고르기(오늘) → 오늘 보고 문장 · 자동 집계 요약 · [복사] → 보고 문장 한 단락 → 지금 바로 쓸 수 있어요(사전점검 · [비트 PC 연결 다시 확인]) → 오늘 하루 분석 → 기간별 흐름 → 기능 목차', async () => {
     const html = await renderConnected()
     const dateControl = html.indexOf('role="group" aria-label="날짜 고르기"')
     expect(dateControl).toBeGreaterThanOrEqual(0)
     expect(html).toContain(`value="${TODAY}"`)
     expectAscending([
+      ['머리 줄 대시보드', placeOf(html, 'h1', '대시보드')],
+      ['오늘 하루 분석', placeOf(html, 'h2', '오늘 하루 분석')],
       ['날짜 고르기', dateControl],
       ['오늘 보고 문장', placeOf(html, 'p', '오늘 보고 문장 자동 집계 요약')],
       ['복사', placeOf(html, 'button', '복사')],
       ['보고 문장 한 단락', placeOf(html, 'p', '오늘 환자 13명이 왔습니다. 신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')],
+      ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
       ['지금 바로 쓸 수 있어요', placeOf(html, 'h2', '지금 바로 쓸 수 있어요')],
       ['사전점검', placeOf(html, 'p', '삭감 예방 사전점검')],
       ['사전점검 열기', placeOf(html, 'a', '사전점검 열기')],
       ['비트 PC 연결 다시 확인', placeOf(html, 'a', '비트 PC 연결 다시 확인')],
-      ['오늘 하루 분석', placeOf(html, 'h2', '오늘 하루 분석')],
-      ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
       ['기능 목차', placeOf(html, 'h2', '기능 목차')],
     ])
     expect(hrefOf(html, '사전점검 열기')).toBe('/claim')

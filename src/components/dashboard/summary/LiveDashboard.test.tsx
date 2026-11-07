@@ -205,7 +205,27 @@ const markupOf = (node: React.ReactElement) => {
   unmount()
   return html
 }
+// 숫자가 있는 화면은 AI 요약이 저장 리포트를 읽는다(합성 답, dashboard-ux AC-2704.1). 그 답까지 끝난 마크업
+const settledMarkupOf = async (node: React.ReactElement) => {
+  const { container, unmount } = render(node)
+  await act(async () => {})
+  const html = withoutIds(container.innerHTML)
+  unmount()
+  return html
+}
 const BEFORE_CONNECT = <DashboardHome today={TODAY} report={null} analysis={<DashboardAnalysis today={TODAY} source={NONE} />} />
+
+// 대시보드 AI 요약(dashboard-ux AC-2704.1)이 여는 저장 리포트 읽기(GET)에 주는 합성 답: 리포트 없음. 진짜 서버·유료 API에 닿지 않는다
+const AI_EMPTY = { report: null, stale: false, usage: { calls: 0, tokens: 0, costMicroUsd: 0 } }
+const aiRead = () => vi.fn(async () => new Response(JSON.stringify(AI_EMPTY), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+// 비트·저장 숫자를 서버로 보내지 않는다: 부른 요청은 AI 요약의 GET /api/ai/report?month=(몸통 없음)뿐이다
+const expectOnlyAiRead = () => {
+  for (const [url, init] of vi.mocked(fetch).mock.calls) {
+    expect(String(url)).toMatch(/^\/api\/ai\/report\?month=\d{4}-\d{2}$/)
+    expect((init as RequestInit | undefined)?.method).toBe('GET')
+    expect((init as RequestInit | undefined)?.body).toBeUndefined()
+  }
+}
 
 beforeEach(() => {
   savedReads.length = 0
@@ -230,7 +250,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   vi.setSystemTime(new Date('2026-11-02T06:42:00Z')) // 한국 오후 3시 42분
   // 쓰면 안 되는 길: 불리면 시험이 잡는다
-  vi.stubGlobal('fetch', vi.fn())
+  vi.stubGlobal('fetch', aiRead())
 })
 
 afterEach(() => {
@@ -297,9 +317,10 @@ describe('AC-601.14·AC-516.1: 저장 숫자를 한 번 읽어 처음 자료로 
     expect(bigLine().textContent).toBe(SAVED_H1)
     expect(readBitDays).not.toHaveBeenCalled()
     expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => {})
     const html = withoutIds(container.innerHTML)
     cleanup()
-    expect(html).toBe(markupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} />))
+    expect(html).toBe(await settledMarkupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} />))
   })
 
   it('AC-601.14: 비트 PC면 저장 숫자 읽기가 끝난 뒤에야 비트를 읽고, 저장 숫자를 둔 채 "다시 읽는 중"이다', async () => {
@@ -513,9 +534,10 @@ describe('AC-601.19: 저장 숫자 읽기 실패·10초 한도', () => {
     fireEvent.click(retryButton())
     await savedAnswer(SAVED_ROWS)
     expect(savedCard()).toBeNull()
+    await act(async () => {})
     const html = withoutIds(container.innerHTML)
     cleanup()
-    expect(html).toBe(markupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} />))
+    expect(html).toBe(await settledMarkupOf(<BitDashboard today={TODAY} initial={{ kind: 'data', days: SAVED_ROWS }} />))
   })
 
   it('AC-601.19: 다시 읽기가 성공했는데 줄이 없으면 카드만 없어지고 BitDashboard를 다시 놓지 않는다', async () => {
@@ -597,7 +619,8 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     await savedAnswer(SAVED_KEYED)
     // 숫자 칸·다른 그래프는 저장 숫자로 바로 그린다
     expect(bigLine().textContent).toBe(SAVED_H1)
-    expect(screen.getByRole('region', { name: '오늘 하루 분석' }).children[1]!.children[0]!.textContent).toBe('오늘 환자 수5명')
+    // 숫자 칸 줄은 기준일 묶음 다음 grid다(dashboard-ux AC-2703.1)
+    expect(screen.getByRole('region', { name: '오늘 하루 분석' }).querySelector(':scope > div.grid')!.children[0]!.textContent).toBe('오늘 환자 수5명')
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수']) expect(screen.getByRole('group', { name })).toBeTruthy()
     expect(within(rankChart()).getByRole('status').textContent).toBe(GROUPS_PENDING)
     expect(rankChart().querySelector('ol[aria-label]')).toBeNull()
@@ -657,7 +680,7 @@ describe('AC-606.8·AC-606.1: 통계 탭 묶음을 저장 숫자 읽기와 함�
     expect(bigLine().textContent).toBe(BIT_H1)
     expect(rankRows()).toEqual(BIT_RANK)
     expect(readDashboardGroups).toHaveBeenCalledTimes(1)
-    expect(fetch).not.toHaveBeenCalled()
+    expectOnlyAiRead()
   })
 
   it('AC-606.1·AC-606.8: 비트 PC가 아니면 저장 숫자와 묶음으로만 그린다', async () => {
@@ -900,7 +923,7 @@ describe('dashboard-period: 옛 기간은 LiveDashboard가 만든 older(readDays
       ['체외충격파', '1건'],
     ])
     expect(readBitDays).toHaveBeenCalledTimes(1)
-    expect(fetch).not.toHaveBeenCalled()
+    expectOnlyAiRead()
   })
 
   it('AC-1805.1: 기간을 골라도(옛 기간 읽기 실패 포함) 원장님 보고 문장·하루 날짜 고르기는 그대로다', async () => {

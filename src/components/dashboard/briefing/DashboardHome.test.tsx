@@ -81,6 +81,8 @@ const rootOf = (container: HTMLElement) => {
 const brief = () => screen.getByRole('region', { name: '오늘 브리핑' })
 const briefLeft = () => brief().children[0] as HTMLElement
 const briefRight = () => brief().children[1] as HTMLElement
+// 연결 뒤 지금 바로 묶음(dashboard-ux AC-2707.2): 브리핑 오른쪽 칸이 아니라 분석 아래·기능 목차 위의 바로 가기 자리다. ReadyNowSide 뿌리
+const readyNow = () => screen.getByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' }).parentElement!.parentElement as HTMLElement
 const dateLineEl = () => briefLeft().firstElementChild as HTMLElement
 // 섹션: h2 이름으로 찾은 section
 const sectionNamed = (name: string) => {
@@ -338,18 +340,19 @@ describe('DashboardHome: 연결 뒤 (AC-306.5)', () => {
     expect(container.querySelector('ol')).toBeNull()
     expect(container.querySelector('.sticky')).toBeNull()
     expect(container.querySelectorAll('[id="dashboard-connect-start"]')).toHaveLength(0)
-    // '지금 바로 쓸 수 있어요'는 브리핑 오른쪽 칸 안 하나뿐
+    // '지금 바로 쓸 수 있어요'는 하나뿐이고 브리핑 밖, 분석 아래 바로 가기 자리다(dashboard-ux AC-2707.2)
     const heads = screen.getAllByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' })
     expect(heads).toHaveLength(1)
-    expect(briefRight().contains(heads[0])).toBe(true)
+    expect(brief().contains(heads[0]!)).toBe(false)
+    expectOrder(screen.getByTestId('analysis'), heads[0]!)
   })
 
-  it('AC-306.5: 짜임 차례 — 브리핑(날짜·report | 지금 바로) → analysis 자리 → 기능 목차', () => {
+  it('AC-306.5·AC-2707.2: 짜임 차례 — 브리핑(날짜·report 한 칸) → analysis 자리 → 바로 가기(지금 바로) → 기능 목차', () => {
     const container = renderAfter()
     const root = rootOf(container)
-    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['section', 'section', 'section'])
-    expectOrder(brief(), screen.getByTestId('analysis'), sectionNamed('기능 목차'))
-    expectOrder(screen.getByTestId('report'), briefRight())
+    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['section', 'section', 'div', 'section'])
+    expect(brief().children).toHaveLength(1)
+    expectOrder(brief(), screen.getByTestId('analysis'), readyNow(), sectionNamed('기능 목차'))
   })
 })
 
@@ -388,9 +391,11 @@ describe('DashboardHome: 폭별 칸·바탕 (AC-306.6·AC-414.6)', () => {
     hasAll(briefRight(), 'max-md:mt-5')
   })
 
-  it('AC-306.6: 연결 뒤 오른쪽 칸 — 768~1023px 위 32px, 폰은 보고 문장 다음 위 1px line-strong + 위 32·16px로 나눈 덩어리', () => {
+  it('AC-306.6·AC-2707.2: 연결 뒤 바로 가기 자리 — 분석과 같은 덩어리 사이(위 48·1px line-strong·20, 폰 32·16), 글 폭은 520px까지', () => {
     renderAfter()
-    hasAll(briefRight(), 'mt-8 lg:mt-0 lg:col-span-4 lg:col-start-9 lg:pt-1 max-md:border-t max-md:border-line-strong max-md:pt-4')
+    const wrap = readyNow().parentElement as HTMLElement
+    hasAll(wrap, 'max-w-130')
+    hasAll(wrap.parentElement as HTMLElement, 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4')
   })
 
   it('AC-306.6: 가로로 밀리지 않는다 — 고정 폭·화면 폭 클래스·옆 밀기가 없다', () => {
@@ -581,7 +586,7 @@ describe('DashboardHome: 연결하면 바로 쓸 수 있어요 — 연결 전 �
 describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른쪽 칸 (AC-316.2)', () => {
   it('AC-316.2: 머리 "지금 바로 쓸 수 있어요"(small 600, 폰 title) · 오른쪽 "청구 탭"(muted), 아래 1px line-strong(폰 없음)', () => {
     renderAfter()
-    const right = briefRight()
+    const right = readyNow()
     const h2 = within(right).getByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' })
     hasAll(h2, 'text-small font-semibold text-ink max-md:text-title')
     const head = h2.parentElement as HTMLElement
@@ -591,7 +596,7 @@ describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른�
 
   it('AC-316.2·AC-414.2: "삭감 예방 사전점검" → 설명 + 둘째 줄 "…크롬에서 열려요."(small muted) → [사전점검 열기](/claim, 보조) + [비트 PC 연결 다시 확인](/claim/setup, 글자 단추)', () => {
     renderAfter()
-    const right = briefRight()
+    const right = readyNow()
     const name = byText(right, '삭감 예방 사전점검')
     hasAll(name, 'text-subtitle font-semibold text-ink')
     const desc = byText(right, DESC, 'p')
@@ -612,8 +617,8 @@ describe('DashboardHome: 지금 바로 쓸 수 있어요 — 연결 뒤 오른�
 
   it('AC-316.2: 768px 미만은 두 단추가 전체 폭으로 쌓인다', () => {
     renderAfter()
-    const open = within(briefRight()).getByRole('link', { name: '사전점검 열기' })
-    const recheck = within(briefRight()).getByRole('link', { name: '비트 PC 연결 다시 확인' })
+    const open = within(readyNow()).getByRole('link', { name: '사전점검 열기' })
+    const recheck = within(readyNow()).getByRole('link', { name: '비트 PC 연결 다시 확인' })
     hasAll(open.parentElement as HTMLElement, 'max-md:grid max-md:gap-1')
     hasAll(open, 'max-md:w-full')
     hasAll(recheck, 'max-md:w-full max-md:justify-center')

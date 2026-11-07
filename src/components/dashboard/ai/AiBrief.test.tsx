@@ -221,7 +221,7 @@ describe('통계 없음·읽는 중·읽기 실패 (AC-2704.6·AC-2704.7)', () =
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('AC-2704.7: 읽는 중은 aria-hidden 뼈대 + role=status "10월 AI 리포트를 읽고 있어요"(숫자 없음), 읽기 실패는 E-AI-READ 상자 + [다시 읽기] — 누를 때만 다시 GET', async () => {
+  it('AC-2704.7: 읽는 중은 aria-hidden 뼈대 + role=status "10월 AI 리포트를 읽고 있어요"(숫자 없음), 읽기 실패는 E-AI-READ 상자 + [리포트 다시 읽기](대시보드 [다시 읽기]와 다른 이름) — 누를 때만 다시 GET', async () => {
     const get = later()
     answerGet.mockReturnValueOnce(get.promise)
     answerGet.mockImplementationOnce(() => jsonAnswer(viewOf(REPORT)))
@@ -239,7 +239,7 @@ describe('통계 없음·읽는 중·읽기 실패 (AC-2704.6·AC-2704.7)', () =
     expectErrorCard('E-AI-READ')
     await advance(10 * 60_000)
     expect(gets()).toHaveLength(1)
-    await press(button('다시 읽기'))
+    await press(button('리포트 다시 읽기'))
     expect(gets()).toHaveLength(2)
     screen.getByText(REPORT.summary)
     expect(posts()).toHaveLength(0)

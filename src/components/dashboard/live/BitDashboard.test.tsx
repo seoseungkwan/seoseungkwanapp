@@ -7,7 +7,10 @@ import { StrictMode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
+import { AiBrief } from '@/components/dashboard/ai/AiBrief'
+import { DailySection } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
+import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { OlderDays, SummarySource } from '@/components/dashboard/summary/source'
 import { ds } from '@/components/ui/classes'
@@ -134,7 +137,9 @@ const bigLine = () => {
 }
 const todaySection = () => region('오늘 하루 분석')
 const flow = () => region('기간별 흐름')
-const kpiCells = () => Array.from(todaySection().children[1]!.children)
+// 숫자 칸 줄: 일별 현황 구역의 바로 아래 grid(기준일 묶음 다음, dashboard-ux AC-2703.1)
+const kpiRow = (section: Element) => section.querySelector(':scope > div.grid')!
+const kpiCells = () => Array.from(kpiRow(todaySection()).children)
 const button = (name: string) => screen.getByRole('button', { name })
 const noButton = (name: string) => expect(screen.queryByRole('button', { name })).toBeNull()
 const link = (name: string) => screen.getByRole('link', { name })
@@ -185,6 +190,18 @@ const expectBeforeConnect = () => {
   expect(link('비트 PC 연결 시작').getAttribute('href')).toBe(CONNECT_CHECK)
 }
 
+// 대시보드 AI 요약(dashboard-ux AC-2704.1)이 여는 저장 리포트 읽기(GET)에 주는 합성 답: 리포트 없음. 진짜 서버·유료 API에 닿지 않는다
+const AI_EMPTY = { report: null, stale: false, usage: { calls: 0, tokens: 0, costMicroUsd: 0 } }
+const aiRead = () => vi.fn(async () => new Response(JSON.stringify(AI_EMPTY), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+// 비트·저장 숫자를 서버로 보내지 않는다: 부른 요청은 AI 요약의 GET /api/ai/report?month=(몸통 없음)뿐이다
+const expectOnlyAiRead = () => {
+  for (const [url, init] of vi.mocked(fetch).mock.calls) {
+    expect(String(url)).toMatch(/^\/api\/ai\/report\?month=\d{4}-\d{2}$/)
+    expect((init as RequestInit | undefined)?.method).toBe('GET')
+    expect((init as RequestInit | undefined)?.body).toBeUndefined()
+  }
+}
+
 beforeEach(() => {
   reads.length = 0
   vi.mocked(readBitDays).mockReset()
@@ -197,7 +214,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(AT_342)
   // 쓰면 안 되는 길: 불리면 시험이 잡는다
-  vi.stubGlobal('fetch', vi.fn())
+  vi.stubGlobal('fetch', aiRead())
 })
 
 afterEach(() => {
@@ -207,7 +224,7 @@ afterEach(() => {
 })
 
 describe('서버가 그린 첫 모양', () => {
-  it('AC-601.6·AC-601.13·AC-2701.3: 서버 그림은 initial 그대로다 — 비트 PC에서도 읽는 중을 먼저 그리지 않는다(저장 숫자면 보고 문장 아래 머리 줄)', () => {
+  it('AC-601.6·AC-601.13·AC-2701.3·AC-2707.2: 서버 그림은 initial 그대로다 — 비트 PC에서도 읽는 중을 먼저 그리지 않는다(저장 숫자면 머리 줄 → 일별 현황(기준일·보고 문장) → AI 요약 → 기간별 흐름)', () => {
     onBitPc()
     expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={NONE} />)).toBe(
       renderToStaticMarkup(<DashboardHome today={TODAY} report={null} analysis={<DashboardAnalysis today={TODAY} source={NONE} />} />),
@@ -216,14 +233,22 @@ describe('서버가 그린 첫 모양', () => {
       renderToStaticMarkup(
         <DashboardHome
           today={TODAY}
-          dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
-          report={
+          dateLine={null}
+          report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />}
+          analysis={
             <>
-              <ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />
-              <StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} />
+              <DailySection
+                today={TODAY}
+                source={SAVED}
+                dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
+                sentence={<ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />}
+              />
+              <div className="mt-12 max-md:mt-8">
+                <AiBrief today={TODAY} />
+              </div>
+              <FlowSection today={TODAY} source={SAVED} />
             </>
           }
-          analysis={<DashboardAnalysis today={TODAY} source={SAVED} />}
         />,
       ),
     )
@@ -290,9 +315,9 @@ describe('AC-601.1: 열면 저절로 읽는다', () => {
     for (const name of ['환자 수 추이', '신환 재방문율', '요일별 환자 수', '처방 상위']) {
       expect(within(flow()).getByRole('heading', { level: 3, name })).toBeTruthy()
     }
-    // 연결 뒤 모양: 연결 전 부품이 없고 오른쪽 칸은 지금 바로 묶음이다
+    // 연결 뒤 모양: 연결 전 부품이 없고, 지금 바로 묶음은 기간별 흐름 아래 바로 가기 자리다(dashboard-ux AC-2707.2)
     expect(screen.queryByRole('link', { name: '비트 PC 연결 시작' })).toBeNull()
-    expect(within(region('오늘 브리핑')).getByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' })).toBeTruthy()
+    expectOrder(flow(), screen.getByRole('heading', { level: 2, name: '지금 바로 쓸 수 있어요' }))
   })
 
   it('AC-601.1: 다시 그려져도 다시 읽지 않는다', async () => {
@@ -345,11 +370,11 @@ describe('AC-601.2: 저장 숫자 없이 처음 읽는 중', () => {
 describe('AC-601.3: 읽기 끝 — 읽은 시각과 [다시 읽기]', () => {
   beforeEach(onBitPc)
 
-  it('AC-601.3·AC-2701.3: 보고 문장 아래 머리 줄에 "비트에서 읽은 시각 오늘 오후 3:42"와 [다시 읽기]가 있다', async () => {
+  it('AC-601.3·AC-2701.3·AC-2707.2: 맨 위 머리 줄에 "비트에서 읽은 시각 오늘 오후 3:42"와 [다시 읽기]가 있고, 보고 문장은 그 아래 일별 현황 안이다', async () => {
     draw()
     await answer(days())
     const at = screen.getByText(READ_AT_342)
-    expectOrder(bigLine(), at, button('다시 읽기'), todaySection())
+    expectOrder(at, button('다시 읽기'), todaySection(), bigLine())
     hasAll(button('다시 읽기'), ds.button.secondarySmall)
     expect(region('오늘 브리핑').contains(at)).toBe(true)
   })
@@ -525,7 +550,7 @@ describe('AC-601.16: 숫자가 있는 화면에서 직접 눌렀는데 이 PC에
     expectNumbersShown(64, 9, 55)
     const at = screen.getByText(READ_AT_342)
     const note = expectUnreadable()
-    expectOrder(bigLine(), at, note, todaySection())
+    expectOrder(at, note, todaySection(), bigLine())
     expect(region('오늘 브리핑').contains(note)).toBe(true)
     expect((button('다시 읽기') as HTMLButtonElement).disabled).toBe(false)
     noText(CONNECT_H1)
@@ -807,7 +832,7 @@ describe('AC-601.5·AC-601.12: 숫자가 있는 상태에서 다시 읽기 실�
     expectNumbersShown(64, 9, 55)
     const at = screen.getByText(READ_AT_342)
     const box = screen.getByRole('alert')
-    expectOrder(bigLine(), at, box, todaySection())
+    expectOrder(at, box, todaySection(), bigLine())
     const { what, fix } = errorInfo('E-BIT-READ-FAILED')
     expect(within(box).getByText(what)).toBeTruthy()
     expect(within(box).getByText(`아래 숫자는 오후 3:42에 읽은 그대로예요. ${fix}`)).toBeTruthy()
@@ -1315,7 +1340,7 @@ describe('AC-605.1·AC-605.7: 날짜 줄', () => {
   })
 })
 
-const kpiCellsOf = (title: string) => Array.from(region(title).children[1]!.children)
+const kpiCellsOf = (title: string) => Array.from(kpiRow(region(title)).children)
 
 describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
   afterEach(() => setClipboard(undefined))
@@ -1692,7 +1717,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
     expectNumbersShown(64, 9, 55)
     expect(document.body.textContent).not.toContain(String(REPORT_MARK))
     expect(document.body.textContent).not.toContain('987,654,321')
-    expect(fetch).not.toHaveBeenCalled()
+    expectOnlyAiRead()
     expect(t.port.disconnected).toBe(true)
     expect(t.worker.terminate).toHaveBeenCalledTimes(1)
   })
@@ -1784,7 +1809,7 @@ describe('끝까지 잇기 (진짜 readBitDays)', () => {
     expect(t.loads).toHaveLength(1)
     expect(read).toHaveBeenCalledTimes(1)
     expect(read).toHaveBeenCalledWith({ from: '2026-07-01', to: '2026-07-31' })
-    expect(fetch).not.toHaveBeenCalled()
+    expectOnlyAiRead()
   })
 })
 
@@ -1877,5 +1902,47 @@ describe('dashboard-period: 옛 기간 읽기를 source에 실어 넘긴다', ()
     toJuly()
     expect(within(rankChart()).getByText('자료 없음')).toBeTruthy()
     expect(rankSub().textContent).toBe('7월 1일 – 31일')
+  })
+})
+
+describe('dashboard-ux 화면 통합 (TASK-5)', () => {
+  const ORDER = ['대시보드', '오늘 하루 분석', '우리 병원 AI 경영 리포트', '기간별 흐름', '지금 바로 쓸 수 있어요']
+
+  it('AC-2707.2: 숫자가 있으면 차례가 머리 줄(h1 대시보드) → 오늘 하루 분석(기준일·숫자 칸·보고 문장) → AI 경영 리포트 → 기간별 흐름 → 바로 가기(지금 바로 쓸 수 있어요)이고 h1은 하나다', () => {
+    notBitPc()
+    draw(SAVED)
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([HEADER_H1])
+    const shown = screen.getAllByRole('heading').map((h) => h.textContent ?? '')
+    expect(shown.filter((text) => ORDER.some((name) => text.startsWith(name)))).toEqual(ORDER.map((name) => expect.stringMatching(new RegExp(`^${name}`))))
+    const daily = screen.getByRole('region', { name: '오늘 하루 분석' })
+    expect(within(daily).getByRole('group', { name: '일별 현황 기준일' })).toBeTruthy()
+    expect(within(daily).getByText('오늘 환자 수')).toBeTruthy()
+    expect(within(daily).getByText(REPORT_NAME)).toBeTruthy()
+  })
+
+  it('AC-2703.1: 기준일 묶음 "일별 현황 기준일" 안에 날짜 고르기와 적용 글 "숫자 4개와 보고 문장에 적용"이 있다', () => {
+    notBitPc()
+    draw(SAVED)
+    const group = screen.getByRole('group', { name: '일별 현황 기준일' })
+    expect(within(group).getByRole('group', { name: '날짜 고르기' })).toBeTruthy()
+    expect(within(group).getByText('숫자 4개와 보고 문장에 적용')).toBeTruthy()
+  })
+
+  it('AC-2707.1: 연결 전에는 지금 화면 그대로 — 머리 줄·AI 요약이 없고 AI 리포트를 읽지 않는다', () => {
+    notBitPc()
+    draw(NONE)
+    expectBeforeConnect()
+    expect(screen.queryByRole('heading', { name: HEADER_H1 })).toBeNull()
+    expect(screen.queryByText('우리 병원 AI 경영 리포트')).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('AC-2707.3: AI 요약 구역은 토큰만으로 강조한다 — canvas 바탕·float 모서리, 그라데이션·그림자·임의 색 없음', () => {
+    notBitPc()
+    draw(SAVED)
+    const box = screen.getByRole('region', { name: /^우리 병원 AI 경영 리포트/ })
+    expect(box.className).toMatch(/\bbg-canvas\b/)
+    expect(box.className).toMatch(/\brounded-float\b/)
+    expect(box.outerHTML).not.toMatch(/gradient|shadow|bg-\[|from-|via-/)
   })
 })

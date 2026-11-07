@@ -135,4 +135,8 @@ export const ds = {
     on: 'bg-accent-soft font-semibold text-accent-strong',
     off: 'font-medium text-ink-2 transition hover:bg-canvas',
   },
+
+  // 막대 그래프를 감싸는 칸(dashboard-ux AC-2707.4): 칸이 날짜 글자보다 좁아도 글자가 오른쪽으로 넘쳐 휴대폰 쪽이 옆으로 밀리지 않게 한다(tab-frame AC-311.7).
+  // 대시보드 추이와 통계 탭 그래프(stats/sections/parts.tsx CHART_NO_SIDE_SCROLL)가 같이 쓴다
+  chartNoSideScroll: 'relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0',
 } as const

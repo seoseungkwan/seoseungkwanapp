@@ -78,6 +78,28 @@ function BigSentence() {
 export function DashboardHome({ today, report, analysis, dateLine: dateControl }: DashboardHomeProps) {
   // undefined도 연결 전이다(tab-frame 남은 일)
   const connected = report != null
+  if (connected) {
+    // 연결 뒤(dashboard-ux AC-2707.2): 머리 줄(report) → 분석(일별 현황 · AI 요약 · 기간별 흐름, analysis) → 바로 가기(삭감 예방 사전점검) → 기능 목차.
+    // 지금 바로 묶음은 브리핑 오른쪽 칸에서 맨 아래 바로 가기 자리로 옮겼다(글 그대로)
+    return (
+      <div className="pt-2 pb-4 max-md:pt-1 max-md:pb-0">
+        <section aria-label="오늘 브리핑">
+          {/* 한 칸(전체 폭): 날짜 줄 → report(머리 줄). 숫자가 없는 읽는 중·실패는 오늘 날짜 줄(AC-605.7)이고, 숫자가 있으면 날짜 고르기가 일별 현황 기준일 묶음으로 가서 null을 받는다 */}
+          <div>
+            {dateControl === undefined ? <DateLine today={today} /> : dateControl}
+            {report}
+          </div>
+        </section>
+        {analysis}
+        <div className="mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4">
+          <div className="max-w-130">
+            <ReadyNowSide />
+          </div>
+        </div>
+        <FeatureIndex connected />
+      </div>
+    )
+  }
   return (
     // 본문 여백: 앱 틀 안쪽(24·48, 폰 16·32)에 더해 위 32·아래 64(폰 20·32). 폰 연결 전은 아래 단추가 본문 끝을 덮는다
     <div className="pt-2 pb-4 max-md:pt-1 max-md:pb-0">

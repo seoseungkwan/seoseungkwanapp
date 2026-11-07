@@ -200,6 +200,7 @@ const DS_KEYS = [
   'segment.button',
   'segment.on',
   'segment.off',
+  'chartNoSideScroll',
 ] as const
 
 // ds의 끝 값 하나(없으면 빈 글자)

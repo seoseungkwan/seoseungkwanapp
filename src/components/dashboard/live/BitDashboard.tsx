@@ -1,8 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState, type ComponentProps } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
-import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
+import { DailySection } from '@/components/dashboard/summary/DailySection'
+import { DashboardAnalysis, type DashboardAnalysisProps } from '@/components/dashboard/summary/DashboardAnalysis'
+import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import { isConnected, type OlderDays, type SummarySource } from '@/components/dashboard/summary/source'
 import type { ChromeRuntimeLike } from '@/types/bridge'
@@ -55,7 +58,7 @@ function chromeRuntime(): ChromeRuntimeLike | undefined {
 }
 
 // 상태별 칩·숫자 칸 글(design.md '### 화면', 시안 today_sec·flow_empty)
-type EmptyLook = Partial<ComponentProps<typeof DashboardAnalysis>>
+type EmptyLook = Pick<DashboardAnalysisProps, 'emptyChip' | 'emptyText' | 'emptyNote' | 'gainsTitle' | 'gainsNote' | 'gainsRevisitDesc' | 'emptyCharts'>
 const GAINS_OF_READING: EmptyLook = {
   gainsTitle: '읽기가 끝나면 생기는 것 4가지',
   gainsNote: '읽기가 끝나면 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.',
@@ -146,10 +149,40 @@ export function BitDashboard({
       ? { kind: 'data', days: status.days, groups: groups === null || groups === 'pending' ? groups : groups.lines, ...(older === undefined ? {} : { older }) }
       : { kind: 'none' }
 
+  // 숫자가 있는 화면(dashboard-ux AC-2707.2): 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 경영 리포트 요약 → 기간별 흐름.
+  // AI 요약은 일 숫자가 하나라도 있을 때만 놓는다(AC-2704.1: 연결 전·뼈대·읽는 중에는 읽지 않는다)
+  const look = emptyLook(status)
+  const { emptyChip, emptyText, emptyNote, ...flowLook } = look
+  const analysis =
+    status.kind === 'data' ? (
+      <>
+        <DailySection
+          today={today}
+          day={selected}
+          source={source}
+          emptyChip={emptyChip}
+          emptyText={emptyText}
+          emptyNote={emptyNote}
+          dateLine={<DateControl today={today} selected={selected} onChange={(day) => setPicked(day === today ? null : day)} />}
+          // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다
+          sentence={<ReportBlock key={selected} today={today} days={status.days} selected={selected} />}
+        />
+        {status.days.length > 0 && (
+          <div className="mt-12 max-md:mt-8">
+            <AiBrief today={today} />
+          </div>
+        )}
+        <FlowSection today={today} source={source} {...flowLook} />
+      </>
+    ) : (
+      <DashboardAnalysis today={today} day={selected} source={source} {...look} />
+    )
+
   return (
     <DashboardHome
       today={today}
-      dateLine={status.kind === 'data' ? <DateControl today={today} selected={selected} onChange={(day) => setPicked(day === today ? null : day)} /> : undefined}
+      // 숫자가 있으면 날짜 고르기는 일별 현황 기준일 묶음 안이다(AC-2703.1) — 맨 위 날짜 줄을 그리지 않는다
+      dateLine={status.kind === 'data' ? null : undefined}
       report={
         status.kind === 'idle' ? null : status.kind === 'reading' ? (
           <ReadingBlock />
@@ -157,15 +190,14 @@ export function BitDashboard({
           <ReadFailed code={status.code} onRetry={readAgain} />
         ) : (
           <>
-            {/* key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다 */}
-            <ReportBlock key={selected} today={today} days={status.days} selected={selected} />
+            {/* 머리 줄(AC-2701.3): h1 "대시보드" · 상태 · 시각 · [다시 읽기]. 다시 읽기 실패·읽을 수 없음 안내는 바로 아래 */}
             <StatusHeader readAt={status.readAt} savedAt={savedAt} reading={status.reading} failed={status.code !== null} onReread={readAgain} />
             {status.code !== null && <RereadAlert code={status.code} readAt={status.readAt} hasNumbers={status.days.length > 0} onRetry={readAgain} />}
             {status.unreadable && <UnreadableNote />}
           </>
         )
       }
-      analysis={<DashboardAnalysis today={today} day={selected} source={source} {...emptyLook(status)} />}
+      analysis={analysis}
     />
   )
 }

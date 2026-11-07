@@ -195,7 +195,7 @@ function Body({ state, month, today, onCreate, onRetryRead }: { state: AiBriefSt
           </div>
           <div className={ACTIONS}>
             <button type="button" onClick={onRetryRead} className={`${ds.button.secondary} max-md:w-full`}>
-              다시 읽기
+              리포트 다시 읽기
             </button>
             <span className={SMALL_NOTE}>대시보드의 다른 숫자는 그대로 볼 수 있어요.</span>
           </div>

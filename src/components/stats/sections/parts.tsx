@@ -110,4 +110,4 @@ export const thinTotals = (cells: number) => (cells >= 13 ? 'max-md:[&_.text-ink
 // 날짜 글자(.text-center): 글자가 칸보다 넓으면 text-center여도 오른쪽으로만 넘친다. 세로 flex 가운데 정렬은 제 칸 가운데에서 양쪽으로 넘쳐 쪽 여백 16px 안에 든다.
 // 화면 읽기 표(sr-only): 줄을 못 바꾸는 표는 width: 1px를 넘어 글자만큼 넓어지고, 보이지 않아도 쪽을 민다. 오른쪽 끝을 이 칸에 맞춰 왼쪽으로 넘긴다(왼쪽 넘침은 스크롤이 안 생긴다).
 // 표를 줄바꿈시키지 않는다: 글자마다 줄이 바뀌면 표가 수천 px로 길어져 쪽이 아래로 늘어난다
-export const CHART_NO_SIDE_SCROLL = 'relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0'
+export const CHART_NO_SIDE_SCROLL = ds.chartNoSideScroll // 대시보드와 같은 한 벌(dashboard-ux AC-2707.4)
