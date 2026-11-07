@@ -966,6 +966,16 @@ describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeo
   /** m05: 어깨 SSNB 하나 */
   const PLAIN = 'm05'
 
+  it('AC-2603.3: 줄 종류를 받는 넷째 인자를 줘도 메모 보기 모양·값은 주지 않을 때와 같고, 진료마다 증상 줄 수만큼 종류가 담긴다', async () => {
+    const month = memo()
+    const tables = await tablesValue()
+    const kinds = new Map<string, readonly string[]>()
+    const withKinds = memoViews(month, tables, { phrases: ourClinicPhrases() }, kinds)
+    expect(withKinds).toEqual(memoViews(month, tables, { phrases: ourClinicPhrases() }))
+    expect([...kinds.keys()]).toEqual(month.visits.map((visit) => visit.key))
+    for (const visit of month.visits) expect(kinds.get(visit.key)).toHaveLength(visit.lines.length)
+  })
+
   it('AC-014.5: 진료마다 메모 초안(fullText)이 있고 고친 메모가 없으면 고쳤다고 하지 않는다', async () => {
     const month = memo()
     const views = memoViews(month, await tablesValue(), { phrases: ourClinicPhrases() })
@@ -1823,6 +1833,72 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     for (const row of raw.history) if (row.v === B.key) row.p = A.chart
     return JSON.stringify(raw)
   })()
+
+  describe('AC-2601 목록 줄에 증상 줄과 처방내역을 싣는다', () => {
+    /** A의 증상을 머리말 줄 둘로, 처방을 기타(총투여량 빈칸)·약제·시술·시술·같은 시술·비급여 기타 차례로 바꾼 가짜 달 */
+    const CHART_MONTH = (() => {
+      const raw = JSON.parse(MEMO_MONTH) as { s83: Record<string, string>[]; s47: Record<string, string>[]; counts: Record<string, number> }
+      const [first, second] = raw.s83.filter((row) => row['내원번호'] === A.key)
+      first['증상'] = 'S) (R) shoulder pain' // 메모 분석은 '(R)'을 'Rt'로 고쳐 읽지만 목록에는 원문이 간다
+      second['증상'] = 'P) Rt SSNB ANB'
+      const rx = (code: string, name: string, qty: string, pay = '급여') => ({ 처방코드: code, 처방명칭: name, 차트번호: A.chart, 처방일자: '20261012', 급여구분: pay, 수량: qty })
+      raw.s47 = [
+        ...raw.s47.filter((row) => row['차트번호'] !== A.chart),
+        rx('AA157', '가상진찰료', ''),
+        rx('A15', '리도카인주', '0.2'),
+        rx('LA247', 'LA247', '1'),
+        rx('LA346', 'LA346', '1'),
+        rx('LA247', 'LA247', '1'),
+        rx('SONO9', '가상비급여초음파', '1', '비급여'),
+      ]
+      raw.counts.s47 = raw.s47.length
+      return JSON.stringify(raw)
+    })()
+    const targetOf = (view: MemoScreenView, key: string) => [...view.targets.batch, ...view.targets.left.flatMap((group) => group.rows)].find((row) => row.key === key)
+
+    it('AC-2601.1: 증상 줄은 원문을 같은 차례로 담고 줄마다 메모 분석이 본 종류가 붙는다', async () => {
+      const row = targetOf(await viewOf(await ready({ month: CHART_MONTH })), A.key)
+      expect(row?.chartLines).toEqual([
+        { kind: 'subj', text: '(R) shoulder pain' },
+        { kind: 'proc', text: 'Rt SSNB ANB' },
+      ])
+    })
+
+    it('AC-2601.1: 모든 목록 줄에 증상 줄이 있고 종류는 일곱 가지 가운데 하나 또는 null이다', async () => {
+      const view = await viewOf(await ready())
+      const rows = [...view.targets.batch, ...view.targets.left.flatMap((group) => group.rows)]
+      expect(rows.length).toBeGreaterThan(0)
+      for (const row of rows) {
+        expect(row.chartLines.length).toBeGreaterThan(0)
+        for (const line of row.chartLines) expect(['subj', 'exam', 'dx', 'img', 'proc', 'rx', 'plan', null]).toContain(line.kind)
+      }
+    })
+
+    it('AC-2601.2·AC-2601.3: 처방내역은 합치지 않고 시술 → 약제 → 기타, 같은 종류 안은 표 차례이고 총투여량 빈칸은 null', async () => {
+      const row = targetOf(await viewOf(await ready({ month: CHART_MONTH })), A.key)
+      expect(row?.rxRows).toEqual([
+        { kind: 'proc', code: 'LA247', name: 'LA247', short: 'SSNB', qty: 1, benefit: true },
+        { kind: 'proc', code: 'LA346', name: 'LA346', short: 'ANB', qty: 1, benefit: true },
+        { kind: 'proc', code: 'LA247', name: 'LA247', short: 'SSNB', qty: 1, benefit: true },
+        { kind: 'drug', code: 'A15', name: '리도카인주', short: '리도카인', qty: 0.2, benefit: true },
+        { kind: 'other', code: 'AA157', name: '가상진찰료', short: '', qty: null, benefit: true },
+        { kind: 'other', code: 'SONO9', name: '가상비급여초음파', short: '', qty: 1, benefit: false },
+      ])
+    })
+
+    it('AC-2603.1: 비트 입력 묶음과 저장에는 증상·처방 글이 없고 칸은 지금 그대로다', async () => {
+      const made = await ready({ month: CHART_MONTH })
+      expect(targetOf(await viewOf(made), A.key)?.chartLines.length).toBe(2)
+      const { payload } = await press(made)
+      expect(payload?.items.length).toBeGreaterThan(0)
+      for (const item of payload!.items) for (const key of Object.keys(item)) expect(['visitKey', 'chart', 'name', 'date', 'memo', 'replaces', 'checkedByHand']).toContain(key)
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      const [save] = sends(made, 'store.save')
+      expect(Object.keys(JSON.parse(save.payload)).sort()).toEqual(['done', 'drafts', 'month'])
+      const everything = made.sent.map((m) => JSON.stringify(m)).join('\n')
+      for (const text of ['chartLines', 'rxRows', '(R) shoulder pain', '가상진찰료', '가상비급여초음파']) expect(everything).not.toContain(text)
+    })
+  })
 
   describe('AC-018.3 묶음은 Worker가 만들어 포트로 보낸다', () => {
     it('AC-018.3·AC-018.26: 목록의 입력할 사람과 묶음이 같고(500명 이하) 화면 메시지에는 묶음 글자가 없다', async () => {

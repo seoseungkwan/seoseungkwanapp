@@ -26,6 +26,8 @@ const row = (key: string, over: Partial<TargetRow> = {}): TargetRow => ({
   sameDay: 1,
   foundByPc: false,
   chip: '새 메모',
+  chartLines: [],
+  rxRows: [],
   ...over,
 })
 const targets = (over: Partial<InputTargets> = {}): InputTargets => ({ problem: null, range: { from: '2026-10-28', to: '2026-10-28' }, code: null, batch: [], left: [], chips: [], typedOverChip: false, replacing: 0, ...over })
@@ -300,5 +302,133 @@ describe('AC-018.27 열고 접기', () => {
   it('AC-018.25: 우리 메모가 없으면 없다고 쓴다', () => {
     show(targets({ left: [{ reason: 'nomemo', rows: [row('a', { text: '', hasMemo: false, chip: null })] }] }), { open: new Set(['a']) })
     expect(screen.getByText('우리 메모가 없어요.')).toBeTruthy()
+  })
+})
+
+describe('REQ-2602 열린 줄의 증상·처방내역', () => {
+  // 모두 지어낸 차트 글과 처방이다
+  const LINES: TargetRow['chartLines'] = [
+    { kind: 'subj', text: '가상 왼쪽 통증' },
+    { kind: 'exam', text: 'Td(+): 가상 부위' },
+    { kind: 'dx', text: '가상 진단 글' },
+    { kind: 'img', text: 'sono: 가상 소견' },
+    { kind: 'proc', text: '가상시술 가 나' },
+    { kind: 'rx', text: 'med' },
+    { kind: 'plan', text: '1주 뒤 가상 계획' },
+    { kind: null, text: '머리말 없는 가상 줄' },
+  ]
+  const RX: TargetRow['rxRows'] = [
+    { kind: 'proc', code: 'LA901', name: '가상신경차단술-가', short: 'GNB', qty: 2, benefit: true },
+    { kind: 'proc', code: 'LA902', name: '가상신경차단술-나', short: '', qty: 1, benefit: true },
+    { kind: 'drug', code: 'A901', name: '가상주사_(20mL)', short: '가상약', qty: 0.2, benefit: true },
+    { kind: 'other', code: 'B901', name: '가상관절주', short: '', qty: null, benefit: false },
+    { kind: 'other', code: 'B901', name: '가상관절주', short: '', qty: 3, benefit: true },
+  ]
+  const full = (key: string, over: Partial<TargetRow> = {}) => row(key, { chartLines: LINES, rxRows: RX, ...over })
+  const lineOf = (key: string) => screen.getByRole('button', { name: new RegExp(`가상환자${key}`) }).closest('li')!
+  const chartIn = (key: string) => within(lineOf(key)).queryByRole('region', { name: '증상 · 차트 원문' })
+  const rxIn = (key: string) => within(lineOf(key)).queryByRole('region', { name: '처방내역' })
+
+  it('AC-2602.1: 열린 줄에 증상 · 차트 원문 N줄이 한 줄에 하나씩 이름표와 함께, 종류 없는 줄은 글만, 종류마다 바탕색', () => {
+    show(targets({ batch: [full('a')], left: [{ reason: 'mark', rows: [full('k', { chip: null, unfinished: true })] }] }), { open: new Set(['a', 'k']) })
+    for (const key of ['a', 'k']) {
+      const section = chartIn(key)!
+      expect(section, key).toBeTruthy()
+      expect(section.textContent).toContain('증상 · 차트 원문')
+      expect(section.textContent).toContain('8줄')
+      const items = within(section).getAllByRole('listitem')
+      expect(items.map((item) => item.textContent)).toEqual([
+        '호소가상 왼쪽 통증',
+        '검사Td(+): 가상 부위',
+        '진단가상 진단 글',
+        '영상sono: 가상 소견',
+        '시술가상시술 가 나',
+        '처치med',
+        '계획1주 뒤 가상 계획',
+        '머리말 없는 가상 줄',
+      ])
+      const tint = (index: number) => items[index].className.split(/\s+/).filter((name) => name.startsWith('bg-'))
+      expect(tint(0)).toEqual(['bg-surface'])
+      expect(tint(1)).toEqual(['bg-canvas'])
+      expect(tint(2)).toEqual(['bg-accent-soft'])
+      expect(tint(3)).toEqual(['bg-accent-soft'])
+      expect(tint(4)).toEqual(['bg-negative-soft'])
+      for (const index of [5, 6, 7]) expect(tint(index)).toEqual(['bg-surface'])
+    }
+  })
+
+  it('AC-2602.2: 처방내역 N줄 · 시술 M이 한 줄에 하나씩(종류·코드·이름 짧은이름·×총투여량·급여/비급여), 모르면 ×?, 아래에 총투여량 안내', () => {
+    show(targets({ batch: [full('a')] }), { open: new Set(['a']) })
+    const section = rxIn('a')!
+    expect(section).toBeTruthy()
+    expect(section.textContent).toContain('처방내역')
+    expect(section.textContent).toContain('5줄 · 시술 2')
+    const items = within(section).getAllByRole('listitem')
+    expect(items).toHaveLength(5)
+    const parts = (index: number) => [...items[index].children].map((child) => child.textContent)
+    expect(parts(0)).toEqual(['시술', 'LA901', '가상신경차단술-가 GNB', '×2', '급여'])
+    expect(parts(1)).toEqual(['시술', 'LA902', '가상신경차단술-나', '×1', '급여'])
+    expect(parts(2)).toEqual(['약제', 'A901', '가상주사_(20mL) 가상약', '×0.2', '급여'])
+    expect(parts(3)).toEqual(['기타', 'B901', '가상관절주', '×?', '비급여'])
+    expect(parts(4)).toEqual(['기타', 'B901', '가상관절주', '×3', '급여'])
+    expect(within(items[0]).getByText('GNB').tagName).toBe('B')
+    const tint = (index: number) => items[index].className.split(/\s+/).filter((name) => name.startsWith('bg-'))
+    expect(tint(0)).toEqual(['bg-negative-soft'])
+    expect(tint(1)).toEqual(['bg-negative-soft'])
+    expect(tint(2)).toEqual(['bg-accent-soft'])
+    expect(tint(3)).toEqual(['bg-surface'])
+    expect(section.textContent).toContain('×숫자는 총투여량이에요.')
+    expect(section.textContent).not.toContain('처방내역이 없어요.')
+  })
+
+  it('AC-2602.2: 처방이 없으면 처방내역이 없어요.', () => {
+    show(targets({ batch: [full('a', { rxRows: [] })] }), { open: new Set(['a']) })
+    const section = rxIn('a')!
+    expect(section.textContent).toContain('처방내역이 없어요.')
+    expect(within(section).queryAllByRole('listitem')).toHaveLength(0)
+  })
+
+  it('AC-2602.3: 열린 줄의 머리 둘째 줄은 차트 N뿐이고, 닫힌 줄의 머리는 지금 그대로다', () => {
+    show(targets({ batch: [full('a'), full('b')] }), { open: new Set(['a']) })
+    const opened = screen.getByRole('button', { name: /가상환자a/ })
+    expect(opened.textContent).toContain('차트 9a')
+    expect(opened.textContent).not.toContain('처방')
+    expect(opened.textContent).not.toContain('가상시술 가')
+    expect(screen.getByRole('button', { name: /가상환자b/ }).textContent).toContain('차트 9b · 처방 가상시술 가')
+  })
+
+  it('AC-2602.4: 닫힌 줄은 어느 묶음이든 증상·처방내역 칸이 없고, 지금 보이던 칸은 그대로다', () => {
+    const value = targets({
+      batch: [full('a'), full('m', { compare: '다름', inBit: '비트 글 m', replaces: '비트 글 m', chip: '메모 바꿈' })],
+      left: [
+        { reason: 'done', rows: [full('d', { chip: null })] },
+        { reason: 'nomemo', rows: [full('n', { hasMemo: false, chip: null })] },
+        { reason: 'mark', rows: [full('k', { text: '글 [부위 확인] 끝', unfinished: true, chip: null })] },
+        { reason: 'manual', rows: [full('u', { sameDay: 2, chip: null })] },
+        { reason: 'diff', rows: [full('f', { compare: '다름', inBit: '비트 글 f', chip: null })] },
+        { reason: 'unread', rows: [full('r', { compare: '조회 못함', chip: null })] },
+        { reason: 'held', rows: [full('h', { chip: null })] },
+      ],
+    })
+    show(value)
+    expect(screen.queryAllByRole('region', { name: '증상 · 차트 원문' })).toHaveLength(0)
+    expect(screen.queryAllByRole('region', { name: '처방내역' })).toHaveLength(0)
+    const list = screen.getByRole('region', { name: '입력할 사람과 빠지는 사람' })
+    expect(list.textContent).not.toContain('가상 왼쪽 통증')
+    expect(list.textContent).not.toContain('×숫자는 총투여량이에요.')
+    expect(within(lineOf('m')).getByText('비트 글 m')).toBeTruthy()
+    expect(within(lineOf('f')).getByText('비트 글 f')).toBeTruthy()
+    expect(lineOf('k').textContent).toContain('[부위 확인]')
+    for (const key of ['a', 'm', 'd', 'n', 'k', 'u', 'f', 'r', 'h']) expect(screen.getByRole('button', { name: new RegExp(`가상환자${key}`) }).textContent, key).toContain(`차트 9${key} · 처방 가상시술 가`)
+  })
+
+  it('AC-2603.2: 증상·처방은 props로만 받고 새 불러오기가 없다(정한 것만, 네트워크·저장소·console·supabase 없음)', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/claim/rows/MemoRows.tsx'), 'utf-8')
+    const imports = [...source.matchAll(/^import\s[^;]*?from\s+'([^']+)'/gm)].map((match) => match[1])
+    expect(imports).toEqual(['react', '@/components/ui/classes', '@/lib/precheck/memoCompare', '@/types/precheck', '../dateList'])
+    expect(source).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|console|supabase)\b/)
+    expect(source).not.toMatch(/\bimport\(/)
+    expect(source).toMatch(/row\.chartLines/)
+    expect(source).toMatch(/row\.rxRows/)
   })
 })

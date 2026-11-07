@@ -25,6 +25,8 @@ const visit = (key: string, over: Partial<TargetVisit> = {}): TargetVisit => ({
   rx: ['LA358'],
   rxNames: ['가상시술 가'],
   warned: false,
+  chartLines: [],
+  rxRows: [],
   ...over,
 })
 const context = (over: Partial<TargetContext> = {}): TargetContext => ({

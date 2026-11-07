@@ -278,8 +278,14 @@ export type ClaimView = Omit<CheckView, 'visits'> & { visits: ClaimVisitView[]; 
 export type InputSelection = { mode: 'code' | 'date'; from: string; to: string; typed: string; chip: string; kind: 'day' | 'range'; day: string; rangeFrom: string; rangeTo: string }
 /** 빠지는 까닭(AC-018.26): 이미 입력됨 · 메모 없음 · 확인 표시 · 직접 입력 · 다른 메모 · 읽지 못함 · 지난번 건너뜀 */
 export type LeftReason = 'done' | 'nomemo' | 'mark' | 'manual' | 'diff' | 'unread' | 'held'
-/** 대상 고르기에 넣는 진료 한 줄: 비교 상태 + 차트번호·이름·처방 코드·처방 이름·규칙 경고 있음 */
-export type TargetVisit = VisitMemo & { chart: string; name: string; rx: readonly string[]; rxNames: readonly string[]; warned: boolean }
+/** 증상 줄 종류: 메모 분석(memo/engine analyze의 k)이 본 것. 호소·검사·진단·영상·시술·처치·계획 */
+export type ChartLineKind = 'subj' | 'exam' | 'dx' | 'img' | 'proc' | 'rx' | 'plan'
+/** 메모 목록에서 보이는 증상 한 줄(AC-2601.1): 원문(Visit.lines)과 종류. 종류를 모르면 null */
+export type ChartLine = { kind: ChartLineKind | null; text: string }
+/** 메모 목록에서 보이는 처방 한 줄(AC-2601.2): 코드 사전 종류(시술·약제·기타)·짧은 이름·총투여량(못 읽으면 null)·급여 */
+export type RxRow = { kind: 'proc' | 'drug' | 'other'; code: string; name: string; short: string; qty: number | null; benefit: boolean }
+/** 대상 고르기에 넣는 진료 한 줄: 비교 상태 + 차트번호·이름·처방 코드·처방 이름·규칙 경고 있음 + 열린 줄에 보일 증상·처방내역(화면에만, 보내지 않는다) */
+export type TargetVisit = VisitMemo & { chart: string; name: string; rx: readonly string[]; rxNames: readonly string[]; warned: boolean; chartLines: readonly ChartLine[]; rxRows: readonly RxRow[] }
 /** 목록 한 줄. sameDay는 같은 사람 같은 날 진료 수, foundByPc는 도우미가 찾아낸 직접 입력(AC-018.13). chip은 입력할 사람에게만 있다 */
 export type TargetRow = TargetVisit & { replaces?: string; sameDay: number; foundByPc: boolean; chip: '새 메모' | '메모 바꿈' | null }
 export type CodeChip = { code: string; name: string; count: number }

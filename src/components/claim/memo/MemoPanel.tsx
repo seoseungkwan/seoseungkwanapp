@@ -272,15 +272,23 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
     else setExcelError(answer.code)
   }
 
-  const toggle = (key: string) => {
-    if (open.has(key)) {
-      const next = new Set(open)
-      next.delete(key)
-      setOpen(next)
-      return
-    }
+  const openRow = (key: string) => {
+    if (open.has(key)) return
     setOpen(new Set(open).add(key))
     if (!locked) bit.readOnce() // 처음 열 때 저절로 읽는다(AC-018.27)
+  }
+
+  const toggle = (key: string) => {
+    if (!open.has(key)) return openRow(key)
+    const next = new Set(open)
+    next.delete(key)
+    setOpen(next)
+  }
+
+  /** [메모 고치기]는 그 줄도 열어 증상·처방내역을 보며 고치게 한다(AC-2602.5). 열린 줄은 그대로 둔다 */
+  const editRow = (key: string) => {
+    setEditing(key)
+    openRow(key)
   }
 
   const card = (row: TargetRow) => {
@@ -392,7 +400,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
                 channel.tell({ type: 'memoApprove', visitKey, approved })
                 void refreshRef.current()
               }}
-              onEdit={setEditing}
+              onEdit={editRow}
               onEditDone={(key, text) => {
                 setEditing(null)
                 drafts.change(key, text)

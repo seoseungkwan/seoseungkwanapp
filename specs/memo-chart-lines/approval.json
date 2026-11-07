@@ -1,0 +1,18 @@
+{
+  "status": "approved",
+  "feature": "memo-chart-lines",
+  "approved_at": "2026-11-07T05:14:44Z",
+  "approved_via": "user-prompt",
+  "session_id": "30e8e02e-819c-4d2a-8224-06bb6d1fb05f",
+  "spec_sha256": "d5e450525adef97671b647b40baed7e0aeafd77005253ad52b5a3cd28c10d5e6",
+  "scope": [
+    "src/components/claim/memo/MemoPanel.test.tsx",
+    "src/components/claim/memo/MemoPanel.tsx",
+    "src/components/claim/rows/MemoRows.test.tsx",
+    "src/components/claim/rows/MemoRows.tsx",
+    "src/lib/precheck/inputTargets.test.ts",
+    "src/types/precheck.ts",
+    "src/workers/precheck/jobs.test.ts",
+    "src/workers/precheck/jobs.ts"
+  ]
+}

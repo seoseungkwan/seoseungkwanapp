@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { isBlankMemo } from '@/lib/precheck/memoCompare'
-import type { InputTargets, LeftReason, TargetRow } from '@/types/precheck'
+import type { ChartLine, ChartLineKind, InputTargets, LeftReason, RxRow, TargetRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
 
 // 입력할 사람·빠지는 사람(AC-018.26, 입력 쪽 승인 목업). 목록은 Worker의 inputTargets가 정하고 여기는 props로만 그린다.
 // 사람마다 넣고 빼는 체크는 없다. [이 메모로 바꾸기]·[바꾸지 않기]는 AC-018.14, 줄 열기는 AC-018.27.
 // 우리 메모 글이 있는 줄마다 [메모 고치기]가 있다(AC-2203.1): 완료한 사람을 고치면 Worker가 완료를 푼다(AC-2202.1)
+// 열린 줄에는 증상 · 차트 원문과 처방내역(×총투여량)이 한 줄씩 보인다(AC-2602.1·AC-2602.2). 둘 다 Worker가 보낸 줄(props)이다
 
 /** 빠지는 사람 묶음의 이름과 까닭(AC-018.26). 쓰다 멈춘 사람 줄(StuckBand)도 같은 글을 쓴다(AC-018.16) */
 export const LEFT_GROUPS: Record<LeftReason, { name: string; why: string }> = {
@@ -23,6 +24,24 @@ const memoBox = 'flex min-w-0 flex-col gap-0.5 rounded-control border border-lin
 const boxName = 'font-medium not-italic text-muted'
 const sub = 'text-caption text-muted'
 const rowLine = 'flex flex-col gap-1.5 border-t border-line py-2'
+
+/** 증상 줄 이름표(메모 분석의 줄 종류)와 바탕색. 바탕색이 없는 종류는 흰 바탕이다(AC-2602.1) */
+const LINE_LABEL: Record<ChartLineKind, string> = { subj: '호소', exam: '검사', dx: '진단', img: '영상', proc: '시술', rx: '처치', plan: '계획' }
+const LINE_TINT: Partial<Record<ChartLineKind, string>> = { exam: 'bg-canvas', dx: 'bg-accent-soft', img: 'bg-accent-soft', proc: 'bg-negative-soft' }
+/** 처방 종류 이름과 바탕색(AC-2602.2) */
+const RX_LABEL: Record<RxRow['kind'], string> = { proc: '시술', drug: '약제', other: '기타' }
+const RX_TINT: Partial<Record<RxRow['kind'], string>> = { proc: 'bg-negative-soft', drug: 'bg-accent-soft' }
+
+const secTitle = 'text-small font-semibold text-ink'
+const secCount = 'text-caption font-normal text-muted'
+const lineList = 'flex list-none flex-col overflow-clip rounded-control border border-line'
+const lineItem = 'border-t border-line px-2 py-0.5 text-caption first:border-t-0'
+const chartItem = `${lineItem} grid grid-cols-[2.25rem_minmax(0,1fr)] items-baseline gap-2`
+// 처방 한 줄은 두 줄 모양이다: 종류 · 코드 · ×총투여량 · 급여 / 이름. 처방내역 칸은 1024px 이상에서 왼쪽 420px 칸 옆 반쪽이라 가장 좁아져
+// 이름을 같은 줄에 두면 글자마다 줄이 바뀐다. 총투여량 칸은 보통 3rem으로 줄을 맞추고, 긴 소수는 칸이 늘어 옆 칸을 덮지 않는다
+const rxItem = `${lineItem} grid grid-cols-[2rem_minmax(0,1fr)_minmax(3rem,auto)_2.75rem] items-baseline gap-x-2`
+const rxName = 'col-span-3 col-start-2 row-start-2 min-w-0 break-words text-ink'
+const kindName = 'whitespace-nowrap text-muted'
 
 export type MemoRowsProps = {
   targets: InputTargets
@@ -53,7 +72,8 @@ function Head({ row, no, open, onToggle, children }: { row: TargetRow; no?: numb
         </span>
         <span className={sub}>
           차트 {row.chart}
-          {row.rxNames.length > 0 && ` · 처방 ${row.rxNames.join(', ')}`}
+          {/* 열린 줄은 아래 처방내역에 한 줄씩 있어 머리에서 뺀다(AC-2602.3) */}
+          {!open && row.rxNames.length > 0 && ` · 처방 ${row.rxNames.join(', ')}`}
         </span>
       </span>
       <span className="shrink-0 text-caption font-medium text-accent">{open ? '접기' : '메모 보기'}</span>
@@ -77,16 +97,82 @@ function SideMemos({ row }: { row: TargetRow }) {
   )
 }
 
-/** 열린 줄: 우리 메모와 비트 메모 카드(AC-018.25·AC-018.27) */
+/** 증상 · 차트 원문: 한 줄에 하나씩, 앞에 이름표. 종류가 없는 줄은 글만(AC-2602.1) */
+function ChartLines({ lines }: { lines: readonly ChartLine[] }) {
+  return (
+    <section aria-label="증상 · 차트 원문" className="flex min-w-0 flex-col gap-1">
+      <h4 className={secTitle}>
+        증상 · 차트 원문 <span className={secCount}>{lines.length}줄</span>
+      </h4>
+      <ul className={lineList}>
+        {lines.map((line, index) => (
+          <li key={index} className={`${chartItem} ${(line.kind && LINE_TINT[line.kind]) || 'bg-surface'}`}>
+            <span className={kindName}>{line.kind ? LINE_LABEL[line.kind] : ''}</span>
+            <span className="min-w-0 whitespace-pre-wrap break-words text-ink">{line.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** 처방내역: 한 줄에 하나씩 종류·코드·이름 짧은이름·×총투여량·급여/비급여(AC-2602.2). 차례는 Worker가 정했다 */
+function RxRows({ rows }: { rows: readonly RxRow[] }) {
+  const procs = rows.filter((row) => row.kind === 'proc').length
+  return (
+    <section aria-label="처방내역" className="flex min-w-0 flex-col gap-1">
+      <h4 className={secTitle}>
+        처방내역{' '}
+        <span className={secCount}>
+          {rows.length}줄 · 시술 {procs}
+        </span>
+      </h4>
+      {rows.length === 0 ? (
+        <p className="text-caption text-muted">처방내역이 없어요.</p>
+      ) : (
+        <>
+          <ul className={lineList}>
+            {rows.map((row, index) => (
+              <li key={index} className={`${rxItem} ${RX_TINT[row.kind] ?? 'bg-surface'}`}>
+                <span className={kindName}>{RX_LABEL[row.kind]}</span>
+                <span className="break-all font-semibold text-ink">{row.code}</span>
+                <span className={rxName}>
+                  {row.name}
+                  {row.short && (
+                    <>
+                      {' '}
+                      <b className="font-semibold">{row.short}</b>
+                    </>
+                  )}
+                </span>
+                <span className={`whitespace-nowrap text-right tabular-nums ${row.qty === null ? 'text-warning' : 'text-ink-2'}`}>×{row.qty === null ? '?' : row.qty}</span>
+                <span className="whitespace-nowrap text-right text-ink-2">{row.benefit ? '급여' : '비급여'}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-caption text-muted">×숫자는 총투여량이에요.</p>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** 열린 줄: 우리 메모와 비트 메모 카드(AC-018.25·AC-018.27), 그 아래 증상 · 차트 원문과 처방내역(AC-2602.1·AC-2602.2) */
 function Opened({ row, card }: { row: TargetRow; card: MemoRowsProps['card'] }) {
   return (
-    <div className="grid gap-2 md:grid-cols-2">
-      <div className={memoBox}>
-        <i className={boxName}>우리 메모</i>
-        {row.text.trim() ? <span className="whitespace-pre-wrap break-words">{row.text}</span> : <span className="text-muted">우리 메모가 없어요.</span>}
+    <>
+      <div className="grid gap-2 md:grid-cols-2">
+        <div className={memoBox}>
+          <i className={boxName}>우리 메모</i>
+          {row.text.trim() ? <span className="whitespace-pre-wrap break-words">{row.text}</span> : <span className="text-muted">우리 메모가 없어요.</span>}
+        </div>
+        {card(row)}
       </div>
-      {card(row)}
-    </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <ChartLines lines={row.chartLines} />
+        <RxRows rows={row.rxRows} />
+      </div>
+    </>
   )
 }
 

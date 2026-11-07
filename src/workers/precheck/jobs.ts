@@ -9,7 +9,7 @@ import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { Outcome } from '@/types/parse'
-import type { BitMemos, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, SavedRuleSettings, StuckPerson, StuckView, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
+import type { BitMemos, ChartLine, ChartLineKind, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, RxRow, SavedRuleSettings, StuckPerson, StuckView, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
@@ -19,6 +19,9 @@ import { loadTables as defaultLoadTables } from './tables'
 
 const PARTIAL = { ok: false, code: 'E-CLAIM-PARTIAL' } as const
 const GRADE_ORDER: readonly Grade[] = ['확인필요', '알림', '참고']
+/** 메모 목록 열린 줄에 이름표가 붙는 증상 줄 종류(AC-2601.1)와 처방내역 차례(AC-2601.2) */
+const LINE_KINDS: ReadonlySet<string> = new Set<ChartLineKind>(['subj', 'exam', 'dx', 'img', 'proc', 'rx', 'plan'])
+const RX_ORDER: Record<RxRow['kind'], number> = { proc: 0, drug: 1, other: 2 }
 
 /** 다 모은 claim.month 글자 → ClaimMonth. JSON은 여기서 한 번만 푼다. 틀리면(잘린 글자·모양·줄 수) E-CLAIM-PARTIAL */
 export function loadMonth(text: string): Outcome<ClaimMonth> {
@@ -125,13 +128,15 @@ export function ruleList(tables: Tables): RuleSummary[] {
  * 진료마다 메모(TASK-14). 설정 줄이 없거나 검사를 지나지 못하면 메모를 만들지 않는다. 기본값으로 대신 만들지 않는다(AC-014.8).
  * 사람이 고쳤거나 완료한 메모는 그대로 두고 빠진 문장만 알린다(AC-014.4). 손대지 않은 메모는 저장하지 않으므로 늘 지금 설정으로 새로 만든다(AC-014.11, 원본 protectWork)
  */
-export function memoViews(month: ClaimMonth, tables: Tables, input: MemoInput): MemoViews {
+export function memoViews(month: ClaimMonth, tables: Tables, input: MemoInput, kinds?: Map<string, readonly string[]>): MemoViews {
   const checked = validatePhrases(input.phrases)
   if (!checked.ok) return { memoBlocked: 'E-MEMO-NO-SETTINGS', memos: [] }
   const engine = createMemoEngine(checked.value, tables)
   return {
     memoBlocked: null,
     memos: engine.analyzeMonth(month).map((visit) => {
+      // 증상 줄마다 메모 분석이 본 종류(AC-2601.1). 메모 목록의 열린 줄에 보인다
+      kinds?.set(visit.key, visit.items.map((item) => item.k))
       const saved = input.saved?.get(visit.key)
       const text = saved ?? engine.fullText(visit)
       return { visitKey: visit.key, text, edited: saved !== undefined, missing: engine.savedMemoMissing(saved, visit), hasMemo: visit.memos.length > 0, unfinished: unfinished(text) }
@@ -318,6 +323,7 @@ export function createPrecheckJobs(deps: {
   let memoContext: { tables: Tables; settings: CheckSettings; visible: DateRange; codes: Pick<Phrases, 'CODEMAP' | 'CODEMAP_DEL'> | null } | null = null
   /** 메모 결과 캐시: 고를 때마다 메모를 다시 만들지 않게. 고친 글이나 설정이 바뀌면 지운다 */
   let viewsCache: MemoViews | null = null
+  let kindsCache: Map<string, readonly string[]> = new Map()
 
   // ── 메모 칸(TASK-18). 모두 Worker 메모리에만 있다 ──
   /** 직접 확인 기록이 남은 사람의 승인: 내원번호 → 승인한 비트 글(AC-018.14). 풀 때는 지운다: visitMemos는 글이 같으면 다시 승인으로 치므로 남기면 X→Y→X에 되살아난다 */
@@ -452,8 +458,17 @@ export function createPrecheckJobs(deps: {
 
   function currentViews(): MemoViews {
     if (!current || !memoContext) return { memoBlocked: null, memos: [] }
-    viewsCache ??= memoViews(current, memoContext.tables, { phrases: memoContext.settings.phrases, saved: work.saved })
+    if (!viewsCache) {
+      kindsCache = new Map()
+      viewsCache = memoViews(current, memoContext.tables, { phrases: memoContext.settings.phrases, saved: work.saved }, kindsCache)
+    }
     return viewsCache
+  }
+
+  /** 증상 줄 종류는 메모 보기와 함께 만들고 함께 버린다(AC-2601.1) */
+  function lineKinds(): ReadonlyMap<string, readonly string[]> {
+    currentViews()
+    return kindsCache
   }
 
   /** 코드 사전 찾기(원본 cm: 글자 그대로 → 대문자 → 소문자). 병원 문구의 CODEMAP을 쓰고, 지운 코드는 없는 코드다 */
@@ -482,11 +497,38 @@ export function createPrecheckJobs(deps: {
 
   const rxNamesOf = (visit: Visit) => [...new Set(visit.rx.map((line) => line.name))]
 
+  /** 열린 줄의 증상 줄(AC-2601.1): 원문 그대로, 종류는 메모 분석의 것. 모르는 종류는 null */
+  const chartLinesOf = (visit: Visit, kinds: readonly string[] | undefined): ChartLine[] =>
+    visit.lines.map((text, index) => {
+      const kind = kinds?.[index]
+      return { kind: kind !== undefined && LINE_KINDS.has(kind) ? (kind as ChartLineKind) : null, text }
+    })
+
+  /** 열린 줄의 처방내역(AC-2601.2·AC-2601.3): 합치지 않고 시술 → 약제 → 기타. sort는 안정 정렬이라 같은 종류 안은 47 표 차례 그대로다 */
+  function rxRowsOf(visit: Visit): RxRow[] {
+    const rows = visit.rx.map((line): RxRow => {
+      const info = codeInfo(line.code)
+      const kind = info?.k === 'proc' ? 'proc' : info?.k === 'drug' ? 'drug' : 'other'
+      return { kind, code: line.code, name: line.name, short: info?.n ?? '', qty: line.qty, benefit: line.benefit }
+    })
+    return rows.sort((a, b) => RX_ORDER[a.kind] - RX_ORDER[b.kind])
+  }
+
   function targetVisits(rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>): TargetVisit[] {
     const warned = new Set(lastCheck?.view.visits.filter((visit) => visit.findings.length > 0).map((visit) => visit.key))
+    const kinds = lineKinds()
     return rows.map((row) => {
       const visit = visitOf.get(row.key)!
-      return { ...row, chart: visit.chart, name: visit.name, rx: visit.rx.map((line) => line.code), rxNames: rxNamesOf(visit), warned: warned.has(row.key) }
+      return {
+        ...row,
+        chart: visit.chart,
+        name: visit.name,
+        rx: visit.rx.map((line) => line.code),
+        rxNames: rxNamesOf(visit),
+        warned: warned.has(row.key),
+        chartLines: chartLinesOf(visit, kinds.get(row.key)),
+        rxRows: rxRowsOf(visit),
+      }
     })
   }
 

@@ -32,7 +32,7 @@ vi.mock('@/lib/supabase/browser', () => ({
 }))
 
 const PERIOD = { from: '2026-10-28', to: '2026-10-29' }
-const row = (key: string, over: Partial<TargetRow> = {}): TargetRow => ({ key, date: '2026-10-28', text: `우리 메모 ${key}`, hasMemo: true, unfinished: false, compare: '비트에 없음', chart: `9${key}`, name: `가상환자${key}`, rx: ['LA358'], rxNames: ['가상시술 가'], warned: false, sameDay: 1, foundByPc: false, chip: '새 메모', ...over })
+const row = (key: string, over: Partial<TargetRow> = {}): TargetRow => ({ key, date: '2026-10-28', text: `우리 메모 ${key}`, hasMemo: true, unfinished: false, compare: '비트에 없음', chart: `9${key}`, name: `가상환자${key}`, rx: ['LA358'], rxNames: ['가상시술 가'], warned: false, chartLines: [{ kind: 'subj', text: `가상 증상 ${key}` }], rxRows: [{ kind: 'proc', code: 'LA358', name: '가상시술 가', short: '', qty: 1, benefit: true }], sameDay: 1, foundByPc: false, chip: '새 메모', ...over })
 const tableRow = (key: string, over: Partial<MemoTableRow> = {}): MemoTableRow => ({ key, date: '2026-10-28', text: `우리 메모 ${key}`, hasMemo: true, unfinished: false, compare: '비트에 없음', chart: `9${key}`, name: `가상환자${key}`, rxNames: ['가상시술 가'], edited: false, missing: [], done: false, unsaved: false, afterEntry: false, ...over })
 const memoView = (over: Partial<MemoScreenView> = {}): MemoScreenView => ({
   period: PERIOD,
@@ -739,6 +739,34 @@ describe('AC-018.22 묻지 않기 띠', () => {
     const { user, worker } = await toMemo(view)
     await user.click(screen.getByRole('button', { name: '바꾸지 않기' }))
     expect(worker.of('memoApprove').at(-1)).toMatchObject({ visitKey: 'd', approved: false })
+  })
+})
+
+describe('AC-2602.5 [메모 고치기]가 줄도 연다', () => {
+  it('AC-2602.5·AC-018.27: 닫힌 줄에서 [메모 고치기]를 누르면 고치는 칸과 함께 그 줄이 열려 증상·처방내역이 보이고, 줄을 처음 열 때처럼 비트 메모를 한 번 읽는다', async () => {
+    const link = bridge()
+    const { user } = await toMemo(memoView(), link)
+    const memoCalls = () => link.stream.mock.calls.filter(([cmd]) => cmd === 'claim.memos').length
+    const before = memoCalls()
+    const head = screen.getByRole('button', { name: /가상환자a/ })
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('region', { name: '증상 · 차트 원문' })).toBeNull()
+    await user.click(screen.getAllByRole('button', { name: '메모 고치기' })[0])
+    expect(screen.getByRole('textbox', { name: '가상환자a 메모 고치기' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /가상환자a/ }).getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('region', { name: '증상 · 차트 원문' }).textContent).toContain('가상 증상 a')
+    expect(screen.getByRole('region', { name: '처방내역' }).textContent).toContain('가상시술 가')
+    expect(screen.getByRole('button', { name: /가상환자b/ }).getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => expect(memoCalls()).toBe(before + 1))
+  })
+
+  it('AC-2602.5: 이미 열린 줄에서 [메모 고치기]를 눌러도 열린 채다', async () => {
+    const { user } = await toMemo(memoView())
+    await user.click(screen.getByRole('button', { name: /가상환자a/ }))
+    expect(screen.getByRole('button', { name: /가상환자a/ }).getAttribute('aria-expanded')).toBe('true')
+    await user.click(screen.getAllByRole('button', { name: '메모 고치기' })[0])
+    expect(screen.getByRole('textbox', { name: '가상환자a 메모 고치기' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /가상환자a/ }).getAttribute('aria-expanded')).toBe('true')
   })
 })
 
