@@ -316,4 +316,169 @@ public class StatsSqlTests
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.VisitRowsSql + " ", VisitArgs())).Code);
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.CodeNamesSql, VisitArgs())).Code);
     }
+
+    // ---- stats-bit-sections: 비트 전용 세 칸 문장 다섯(REQ-2701) ------------------------------------
+
+    // 새 SELECT 글(공백을 한 칸으로 줄인 글 기준). 앞의 Visits 부분은 접수 줄 SQL과 같은 원본 사본 글이다
+    private const string VisitLinesSelect = "SELECT v.PatientId,v.VisitDay,SUBSTRING(c.OcmAcpDtm,9,4) VisitTime,RTRIM(i.InsCodNam) Insurance,NULLIF(RTRIM(c.OcmDtrCod),'') DoctorId"
+        + " FROM PeriodVisits v JOIN dbo.OcmInf c ON c.OcmNum=v.VisitId"
+        + " OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=v.VisitDay ORDER BY m.InsAdpDte DESC,m.InsCodNam) i"
+        + " ORDER BY v.PatientId,v.VisitDay,VisitTime";
+
+    // reception-paper PaperVisit과 같은 보험 이름 고르기(접수 날은 VisitDay = LEFT(c.OcmAcpDtm,8))
+    private const string InsuranceApply = "OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=v.VisitDay ORDER BY m.InsAdpDte DESC,m.InsCodNam) i";
+
+    private const string PeopleSelect = "SELECT p.PatientId,b.PbsBirDte,b.PbsDtlAdr FROM Patients p LEFT JOIN dbo.PbsInf b ON NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId ORDER BY p.PatientId";
+
+    private static readonly string DoctorNamesText = "SELECT RTRIM(u.UidCod) Code,RTRIM(u.UidNam) Name,u.UidExpDte FROM dbo.UidMst u WHERE RTRIM(u.UidCod) IN ("
+        + string.Join(",", Enumerable.Range(0, 50).Select(i => "@d" + i)) + ") ORDER BY Code,u.UidExpDte";
+
+    // 원래 도구 BusinessStats.ByDoctor와 같은 두 곳: NativeRows 줄 머리에 칸을 더하고, 끝 SELECT SUM(…) … ; 를 묶음 SELECT로
+    private const string MoneyRowStart = "SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpTotAmt";
+    private const string MoneyRowStartByDoctorDay = "SELECT p.OrpOcmNum,p.OrpChtNum,RTRIM(p.OrpDtrCod) DoctorId,LEFT(p.OrpAccDte,8) PaidDay,p.OrpTotAmt";
+    private const string MoneyTail = "SELECT PaidDay,DoctorId,SUM(OrpTotAmt) FROM NativeRows GROUP BY PaidDay,DoctorId";
+
+    /// <summary>원본 사본의 Visits 부분(연결 조건 한 가지만 바꾼 글, 공백을 한 칸으로 줄인 글).</summary>
+    private static string VisitsOfCopy()
+    {
+        var original = Squash(FirstVisitJoin.ApplyTo(RowsOriginal, ReadOriginal(RowsOriginal)));
+        return original.Substring(0, original.IndexOf(OrdersStart, StringComparison.Ordinal));
+    }
+
+    private static Dictionary<string, object?> MoneyArgs() =>
+        Args(("@day", "20260901"), ("@nextDay", "20261001"), ("@hospital", "SYNTHETIC"));
+
+    private static Dictionary<string, object?> NameArgs(string code) =>
+        Enumerable.Range(0, 50).ToDictionary(i => "@d" + i, _ => (object?)code);
+
+    [Fact(DisplayName = "AC-2701.1 접수 줄 SQL은 원본 사본의 Visits 부분(공백만 다름) 뒤에 접수 시각(OcmAcpDtm 9~12번째 글자)·보험 이름·진료의 코드를 읽는 정해 둔 SELECT를 이은 글이다")]
+    public void VisitLinesIsVisitsPlusSelect()
+    {
+        Assert.Equal(VisitsOfCopy() + " " + VisitLinesSelect, Squash(StatsSql.VisitLinesSql));
+        Assert.DoesNotContain("OdrInf", StatsSql.VisitLinesSql);
+    }
+
+    [Fact(DisplayName = "AC-2701.2 보험 이름은 InsMst에서 그 코드의 줄 중 InsAdpDte가 접수 날 이하인 가장 늦은 줄(같은 날이면 이름 차례 첫 줄) 하나를 OUTER APPLY로 고른다")]
+    public void InsuranceIsLatestApplicableRow()
+    {
+        Assert.Equal(1, Count(Squash(StatsSql.VisitLinesSql), InsuranceApply));
+        Assert.Contains("RTRIM(i.InsCodNam) Insurance", StatsSql.VisitLinesSql);
+    }
+
+    [Fact(DisplayName = "AC-2701.3 사람 줄 SQL은 원본 사본의 Visits 부분 뒤에 정해 둔 SELECT를 이은 글이고 환자 표에서는 차트번호·생년월일·주소(PbsDtlAdr)만 읽는다")]
+    public void PeopleIsVisitsPlusSelect()
+    {
+        var sql = StatsSql.PeopleSql;
+        Assert.Equal(VisitsOfCopy() + " " + PeopleSelect, Squash(sql));
+
+        // 이름·전화·주민번호·상세주소(PbsAdrSta)·성별 칸은 읽지 않는다
+        var columns = Regex.Matches(sql, @"\bPbs[A-Za-z]+").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(new[] { "PbsBirDte", "PbsChtNum", "PbsDtlAdr", "PbsInf" }, columns);
+        Assert.DoesNotContain("PbsAdrSta", sql);
+        Assert.DoesNotContain("PbsSexTyp", sql);
+    }
+
+    [Fact(DisplayName = "AC-2701.4 원장님 이름 SQL은 UidMst에서 코드 50자리(@d0~@d49) 안의 줄을 코드·UidExpDte 차례로 읽는다")]
+    public void DoctorNamesIsFixedText()
+    {
+        // 코드 자리는 열 개씩 줄을 바꿔 적었다(줄바꿈 뒤 빈칸만 뺀다)
+        Assert.Equal(DoctorNamesText, Squash(StatsSql.DoctorNamesSql).Replace(", @d", ",@d"));
+        Assert.Equal(50, StatsSql.DoctorCodeSlots);
+    }
+
+    public static IEnumerable<object[]> MoneyPairs() => new[]
+    {
+        new object[] { "report-finance-normal.sql", "normal" },
+        new object[] { "report-finance-receivable.sql", "receivable" },
+    };
+
+    [Theory(DisplayName = "AC-2701.5 날·원장님 금액 SQL은 원본 FinanceNormal·FinanceReceivable 사본에서 NativeRows 줄에 진료의·수납일 칸을 더하고 끝 SELECT를 수납일·진료의 묶음 합으로 바꾼 두 곳만 다르다")]
+    [MemberData(nameof(MoneyPairs))]
+    public void MoneyIsFinanceByDoctorDay(string file, string kind)
+    {
+        var sql = kind == "normal" ? StatsSql.DoctorMoneyNormalSql : StatsSql.DoctorMoneyReceivableSql;
+        var original = Squash(FirstVisitJoin.ApplyTo(file, ReadOriginal(file)));
+        Assert.Equal(1, Count(original, MoneyRowStart));
+        var last = original.LastIndexOf("SELECT SUM(", StringComparison.Ordinal);
+        Assert.EndsWith("FROM NativeRows;", original);
+
+        var expected = original.Substring(0, last).Replace(MoneyRowStart, MoneyRowStartByDoctorDay) + MoneyTail;
+        Assert.Equal(expected, Squash(sql));
+        Assert.EndsWith(MoneyTail, Squash(sql));
+        Assert.Equal(1, Count(Squash(sql), MoneyRowStartByDoctorDay));
+    }
+
+    [Fact(DisplayName = "AC-2701.6 새 문장 다섯은 모두 매개변수를 받는 SELECT 하나(; · 주석 · 쓰기·실행 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 지나며 청구 Sql.All에는 없다")]
+    public void SectionStatementsAreGuardedSelects()
+    {
+        var readable = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "dbo.OcmInf", "dbo.DepMst", "dbo.InsMst", "dbo.PbsInf", "dbo.UidMst", "dbo.OrcInf", "dbo.OrpInf", "dbo.IrcInf", "dbo.DtlMst",
+        };
+        var sections = new[] { StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorNamesSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql };
+        Assert.Equal(sections.OrderBy(sql => sql, StringComparer.Ordinal), StatsSql.Sections.OrderBy(sql => sql, StringComparer.Ordinal));
+
+        foreach (var sql in StatsSql.Sections)
+        {
+            AssertSingleSelect(sql, sql);
+            foreach (Match table in Regex.Matches(sql, @"dbo\.[A-Za-z]+")) Assert.Contains(table.Value, readable);
+            Assert.True(StatsSql.IsAllowed(sql));
+            Assert.True(Sql.IsAllowed(sql));
+            Assert.Same(StatsSql.ParametersOf(sql), Sql.ParametersOf(sql));
+            Assert.DoesNotContain(sql, Sql.All);
+
+            // 문장에 나오는 @이름 = 매개변수 표의 이름
+            var used = Regex.Matches(sql, @"@[A-Za-z][A-Za-z0-9]*").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal);
+            Assert.Equal(StatsSql.ParametersOf(sql).Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal), used);
+
+            // 고친 글은 막는다
+            Assert.False(Sql.IsAllowed(sql + " "));
+        }
+
+        ReadOnlyGuard.Require(StatsSql.VisitLinesSql, VisitArgs());
+        ReadOnlyGuard.Require(StatsSql.PeopleSql, VisitArgs());
+        ReadOnlyGuard.Require(StatsSql.DoctorMoneyNormalSql, MoneyArgs());
+        ReadOnlyGuard.Require(StatsSql.DoctorMoneyReceivableSql, MoneyArgs());
+        ReadOnlyGuard.Require(StatsSql.DoctorNamesSql, NameArgs("D001"));
+    }
+
+    [Fact(DisplayName = "AC-2701.6 새 문장 매개변수 표: 접수·사람 줄은 @from·@to Char(12)·@hospital VarChar(32), 금액은 @day·@nextDay Char(8)·@hospital VarChar(32), 이름은 @d0~@d49 VarChar(40)")]
+    public void SectionParameterTables()
+    {
+        string Shape(string sql) => string.Join(" ", StatsSql.ParametersOf(sql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")"));
+
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(StatsSql.VisitLinesSql));
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(StatsSql.PeopleSql));
+        Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(StatsSql.DoctorMoneyNormalSql));
+        Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(StatsSql.DoctorMoneyReceivableSql));
+        Assert.Equal(string.Join(" ", Enumerable.Range(0, 50).Select(i => "@d" + i + ":VarChar(40)")), Shape(StatsSql.DoctorNamesSql));
+
+        // 이름 SQL: 빈 자리 NULL·41자 코드·모자란 자리는 관문이 막는다
+        var withNull = NameArgs("D001");
+        withNull["@d49"] = null;
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.DoctorNamesSql, withNull)).Code);
+        var tooLong = NameArgs("D001");
+        tooLong["@d0"] = new string('D', 41);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.DoctorNamesSql, tooLong)).Code);
+        var missing = NameArgs("D001");
+        missing.Remove("@d49");
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.DoctorNamesSql, missing)).Code);
+        // 금액 SQL에 기간(@from) 매개변수는 없다
+        var withFrom = MoneyArgs();
+        withFrom["@from"] = "202609010000";
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.DoctorMoneyNormalSql, withFrom)).Code);
+    }
+
+    [Fact(DisplayName = "AC-2701.7 새 문장은 StatsSql.Sections에만 있고 지금 통계 SQL 목록(StatsSql.All)과 그 문장 글은 그대로다")]
+    public void SectionsAreSeparateFromAll()
+    {
+        Assert.Equal(5, StatsSql.Sections.Count);
+        Assert.Empty(StatsSql.Sections.Intersect(StatsSql.All));
+        Assert.Equal(14, StatsSql.All.Count);
+        // 금액 SQL은 보고 금액 SQL 글을 고치지 않고 따로 만든 글이다
+        Assert.EndsWith("FROM NativeRows;", Squash(StatsSql.FinanceNormalSql));
+        Assert.EndsWith("FROM NativeRows;", Squash(StatsSql.FinanceReceivableSql));
+        Assert.Equal(1, Count(Squash(StatsSql.FinanceNormalSql), MoneyRowStart));
+        Assert.Equal(1, Count(Squash(StatsSql.FinanceReceivableSql), MoneyRowStart));
+    }
 }
