@@ -91,4 +91,12 @@ describe('REQ-2801 도우미 예약·장기 미방문 읽기 (C# Precheck.Core.T
   it('AC-2801.6 새 SQL은 매개변수를 받는 SELECT 하나이고 Sql.IsAllowed·ReadOnlyGuard를 지난다', () => {
     expectAc('AC-2801.6')
   })
+
+  it('AC-2801.5 contact.targets kind 넷이 맞는 처리기로: reservation·lapsed는 명단 SQL 답을 chunk … end로, 모르는 kind는 지금처럼 막힘', () => {
+    expectAc('AC-2801.5')
+  })
+
+  it('AC-2806.3 followup·injection은 지금 그대로 83·47 표를 읽고 명단 SQL은 돌리지 않는다', () => {
+    expectAc('AC-2806.3')
+  })
 })

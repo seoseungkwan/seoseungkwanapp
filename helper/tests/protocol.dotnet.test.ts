@@ -52,6 +52,11 @@ describe('REQ-001 도우미 메시지 틀 (C# Precheck.Core.Tests.Protocol)', ()
   it('AC-001.6 표준 출력은 메시지 틀만, 진단 기록은 시각·명령 이름·오류 번호만(가짜 환자 글자 없음)', () => {
     expectAc('AC-001.6')
   })
+
+  // spec patients-bit-lists: 명령 이름은 그대로, contact.targets kind 값만 더한다
+  it('AC-2801.5 contact.targets kind는 followup·injection·lapsed·reservation(1,100일 한도 그대로), 그 밖은 E-HELPER-BAD-MESSAGE', () => {
+    expectAc('AC-2801.5')
+  })
 })
 
 // 감싸개 공용 잠금 폴더(runDotnet.ts): 잡은 프로세스가 죽었거나, pid 파일 없이 오래 남은 폴더는 버린다.

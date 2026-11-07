@@ -205,6 +205,35 @@ public class CommandTableTests
         Assert.Equal(expected, Check("contact.targets", args));
     }
 
+    [Theory(DisplayName = "AC-2801.5 contact.targets kind에 lapsed·reservation을 더했다(1,100일 한도 그대로), 글자가 다르면 E-HELPER-BAD-MESSAGE")]
+    [InlineData("lapsed", "2024-10-31", "2026-09-30", null)]
+    [InlineData("lapsed", "2023-10-26", "2026-10-29", null)]                            // 1,100일
+    [InlineData("lapsed", "2023-10-25", "2026-10-29", "E-HELPER-BAD-MESSAGE")]          // 1,101일
+    [InlineData("reservation", "2026-09-30", "2026-11-13", null)]
+    [InlineData("Reservation", "2026-09-30", "2026-11-13", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("reservations", "2026-09-30", "2026-11-13", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("lapsed ", "2024-10-31", "2026-09-30", "E-HELPER-BAD-MESSAGE")]
+    public void ContactTargetsListKinds(string kind, string from, string to, string? expected)
+    {
+        var args = "{\"kind\":\"" + kind + "\",\"from\":\"" + from + "\",\"to\":\"" + to + "\"}";
+        Assert.Equal(expected, Check("contact.targets", args));
+    }
+
+    [Fact(DisplayName = "AC-2801.5 commands.json의 contact.targets kind 값은 followup·injection·lapsed·reservation 넷이고 명령 이름·칸은 그대로다")]
+    public void ContactTargetsKindValues()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllBytes(Repo.PathOf("src", "lib", "bridge", "commands.json")));
+        var targets = doc.RootElement.GetProperty("commands").GetProperty("contact.targets");
+        var args = targets.GetProperty("args");
+        Assert.Equal(new[] { "kind", "from", "to" }, args.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal("enum", args.GetProperty("kind").GetProperty("type").GetString());
+        Assert.Equal(new[] { "followup", "injection", "lapsed", "reservation" }, args.GetProperty("kind").GetProperty("values").EnumerateArray().Select(v => v.GetString()).ToArray());
+        Assert.True(targets.GetProperty("patient").GetBoolean());
+        Assert.Equal(1100, targets.GetProperty("maxDays").GetInt32());
+        Assert.True(Table.Has("contact.targets"));
+        Assert.True(Table.IsPatient("contact.targets"));
+    }
+
     [Fact(DisplayName = "AC-001.2 contact.targets에 kind가 없으면 E-HELPER-BAD-MESSAGE")]
     public void ContactTargetsNeedsKind()
     {
