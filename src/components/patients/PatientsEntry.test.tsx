@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useBridge } from '@/components/claim/useBridge'
 import { PROTOCOL } from '@/lib/bridge/protocol'
-import { LATEST_HELPER, MIN_EXTENSION } from '@/lib/bridge/versions'
+import { LATEST_HELPER, LIST_HELPER, MIN_EXTENSION } from '@/lib/bridge/versions'
 import { errorInfo } from '@/lib/errors'
 import { readContactCount } from '@/lib/storage/contactCounts'
 import type { BridgeState } from '@/types/bridge'
@@ -70,10 +70,10 @@ class FakeWorker {
   }
 }
 
-function withState(state: BridgeState, helloError: string | null = null) {
+function withState(state: BridgeState, helloError: string | null = null, helperVersion?: string) {
   bridge.mockReturnValue({
     state,
-    hello: null,
+    hello: helperVersion ? { state, helperVersion, extensionVersion: MIN_EXTENSION, helperUpdateAvailable: false } : null,
     helloError,
     helperUpdateAvailable: false,
     call,
@@ -120,7 +120,9 @@ describe('PatientsEntry: 틀', () => {
     ['no-helper', 'messages', '문자 문구'],
     ['busy', 'recall', '정기 주사 문자 명단'],
     ['connecting', 'followup', 'F/U 명단'],
-  ])('AC-610.2: 상태 %s에서도 h1 "환자"와 도구 단추 줄이 있고 고른 도구 %s에 aria-current', (state, tool, label) => {
+    ['ready', 'reservations', '예약 문자 명단'],
+    ['no-extension', 'lapsed', '장기 미방문 명단'],
+  ])('AC-610.2·AC-2802.1·AC-2806.3: 상태 %s에서도 h1 "환자"와 도구 단추 줄(다섯)이 있고 고른 도구 %s에 aria-current', (state, tool, label) => {
     withState(state)
     render(<PatientsEntry tool={tool} />)
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['환자'])
@@ -131,9 +133,59 @@ describe('PatientsEntry: 틀', () => {
         .map((a) => [a.textContent, a.getAttribute('href')]),
     ).toEqual([
       ['F/U 명단', '/patients?tool=followup'],
+      ['예약 문자 명단', '/patients?tool=reservations'],
       ['정기 주사 문자 명단', '/patients?tool=recall'],
+      ['장기 미방문 명단', '/patients?tool=lapsed'],
       ['문자 문구', '/patients?tool=messages'],
     ])
+  })
+})
+
+describe('PatientsEntry: 비트 명단 두 도구 (AC-2802)', () => {
+  const targets = () => stream.mock.calls.filter(([cmd]) => cmd === 'contact.targets')
+
+  it.each<[PatientsTool, string, string]>([
+    ['reservations', '예약 문자 명단', 'reservation'],
+    ['lapsed', '장기 미방문 명단', 'lapsed'],
+  ])('AC-2802.2: 연결되고 도우미가 새 버전이면 %s를 처음 열 때 그 종류만 읽는다(store.load도 한 번)', (tool, title, kind) => {
+    withState('ready', null, LIST_HELPER)
+    render(<PatientsEntry tool={tool} />)
+    expect(heading2(title)).toBeTruthy()
+    expect(targets().map(([, args]) => (args as { kind: string }).kind)).toEqual([kind])
+    expect(stream.mock.calls.filter(([cmd]) => cmd === 'store.load')).toHaveLength(1)
+  })
+
+  it('AC-2802.2: 다른 도구로 들어오면 새 도구는 읽지 않는다', () => {
+    withState('ready', null, LIST_HELPER)
+    const { rerender } = render(<PatientsEntry tool="followup" />)
+    rerender(<PatientsEntry tool="recall" />)
+    rerender(<PatientsEntry tool="messages" />)
+    expect(targets()).toEqual([])
+  })
+
+  it('AC-2802.5: hello의 도우미 버전이 낮으면 새 도구는 업데이트 안내이고 읽지 않는다', () => {
+    withState('ready', null, '0.0.1')
+    render(<PatientsEntry tool="reservations" />)
+    expect(screen.getByText('도우미를 업데이트하면 보여요')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '비트 PC 연결' }).getAttribute('href')).toBe('/claim/setup')
+    expect(targets()).toEqual([])
+  })
+
+  it.each<[PatientsTool, string]>([
+    ['reservations', '예약 문자 명단'],
+    ['lapsed', '장기 미방문 명단'],
+  ])('AC-610.4: 연결 중이면 %s도 도구 머리와 연결 확인 중 글이다', (tool, title) => {
+    withState('connecting')
+    render(<PatientsEntry tool={tool} />)
+    expect(heading2(title)).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toBe('비트 PC 연결을 확인하는 중이에요')
+    expect(stream).not.toHaveBeenCalled()
+  })
+
+  it('AC-610.4: 연결이 안 됐으면 새 도구도 연결 안내다', () => {
+    withState('no-helper')
+    render(<PatientsEntry tool="lapsed" />)
+    expect(heading2(CONNECT_TITLE)).toBeTruthy()
   })
 })
 
