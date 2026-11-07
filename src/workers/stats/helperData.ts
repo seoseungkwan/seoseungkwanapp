@@ -1,4 +1,6 @@
 import { addDays, addMonths, isYmd, monthOf } from '@/lib/analytics/dates'
+import type { DoctorDay } from '@/lib/analytics/doctorStats'
+import type { Person, VisitLine } from '@/lib/analytics/patientMix'
 import type { PatientDay } from '@/types/analysis'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { ConsumptionRow, PatientIds } from '@/types/consumption'
@@ -23,10 +25,25 @@ const REPORT_AMOUNTS = [
 const TREATMENTS = ['manual', 'eswt', 'carm', 'sono', 'cryo'] as const
 const SUMMARY_KEYS = ['visits', 'patients', 'newPatients', 'noChart', 'duplicate', 'noFirst'] as const
 const TOP_KEYS = ['v', 'from', 'to', 'summary', 'days', 'patientDays', 'codes', 'rows', 'report']
+// v3(stats-bit-sections AC-2701.1)는 v2 열쇠를 그대로 두고 이 넷을 더한다
+const V3_KEYS = ['visits', 'people', 'doctors', 'doctorDays']
+const MAX_DOCTORS = 1_000
+const MAX_INSURANCE = 100 // 보험 이름 한도(비트 InsCodNam보다 넉넉하게)
+const MAX_AREA = 80 // 주소 앞부분은 도우미가 80자에서 자른다(AC-2701.3)
+const MAX_DOCTOR_NAME = 40 // 원장님 이름은 도우미가 40자까지 보낸다(AC-2701.4)
+const RECEIPT_TIME = /^\d{4}$/ // HHmm, 0000~2359(AC-2701.1). 접수 시는 앞 두 자리
+const LAST_TIME = 2359
 
 export type StatsSummary = Record<(typeof SUMMARY_KEYS)[number], number>
+// v3 새 열쇠 넷, 검사한 그대로(차트번호 글자가 있다. Worker 메모리로는 toStatsExtra를 거쳐 번호로만 간다). 날짜는 YYYYMMDD
+export type StatsRowsExtra = {
+  visits: [chart: string | null, day: string, time: string | null, insurance: string | null, doctor: string | null][]
+  people: [chart: string, birth: string | null, area: string | null][]
+  doctors: [code: string, name: string | null][]
+  doctorDays: [day: string, doctor: string, amount: number][]
+}
 export type StatsRowsData = {
-  v: 2
+  v: 2 | 3
   from: string // YYYY-MM-DD, 요청과 같다
   to: string
   summary: StatsSummary
@@ -35,6 +52,15 @@ export type StatsRowsData = {
   codes: [code: string, name: string][]
   rows: [chart: string, day: string, code: string, first: string | null][] // 날짜는 YYYYMMDD
   report: { daily: ClinicReportNumbers[]; monthly: ClinicReportNumbers[] }
+  extra?: StatsRowsExtra // v3에만
+}
+
+// 비트 전용 세 칸의 Worker 메모리 모양(design.md). p는 진료 줄과 같은 PatientIds 번호, 날짜는 YYYY-MM-DD
+export type StatsExtra = {
+  visits: VisitLine[]
+  people: Map<number, Person>
+  doctors: Map<string, string | null>
+  doctorDays: DoctorDay[]
 }
 
 // 진료 줄 한 칸(처방별 신환·재진 계산용, Worker 메모리에만). f = 첫 내원일, 없으면 ''(어떤 날과도 같지 않고 어떤 기간 첫날보다 앞이라 신환이 아니다)
@@ -193,6 +219,78 @@ function checkNoFirst(firsts: Firsts, noFirst: number): void {
   if (withoutFirst > noFirst) bad()
 }
 
+// ── v3 새 열쇠 넷 (AC-2702.2) ─────────────────────────────
+
+function listOf(x: unknown, max: number): unknown[] {
+  if (!Array.isArray(x) || x.length > max) bad()
+  return x
+}
+
+function cellsOf(x: unknown, count: number): unknown[] {
+  if (!Array.isArray(x) || x.length !== count) bad()
+  return x
+}
+
+const isText = (x: unknown, max: number): x is string => typeof x === 'string' && x.length <= max
+const isReceiptTime = (x: unknown) => typeof x === 'string' && RECEIPT_TIME.test(x) && Number(x) <= LAST_TIME
+const inRange = (day: string, { from, to }: DayRules) => day >= from && day <= to
+
+// 원장님 줄: 코드는 한 줄씩. 돌려주는 값은 아는 코드 모음
+function checkDoctors(list: unknown): Set<string> {
+  const codes = new Set<string>()
+  for (const line of listOf(list, MAX_DOCTORS)) {
+    const [code, name] = cellsOf(line, 2)
+    if (!isCode(code) || codes.has(code)) bad()
+    if (name !== null && !isText(name, MAX_DOCTOR_NAME)) bad()
+    codes.add(code)
+  }
+  return codes
+}
+
+// 사람 줄: 환자(앞뒤 공백을 뺀 차트번호)마다 한 줄. 돌려주는 값은 아는 환자 모음(PatientIds와 같은 열쇠)
+function checkPeople(list: unknown, { isDay }: DayRules): Set<string> {
+  const charts = new Set<string>()
+  for (const line of listOf(list, MAX_STATS_ROWS)) {
+    const [chart, birth, area] = cellsOf(line, 3)
+    if (typeof chart !== 'string') bad()
+    const person = chart.trim()
+    if (person === '' || charts.has(person)) bad()
+    if (birth !== null && !isDay(birth)) bad()
+    if (area !== null && !isText(area, MAX_AREA)) bad()
+    charts.add(person)
+  }
+  return charts
+}
+
+// 접수 줄: 차트번호는 사람 줄에, 진료의 코드는 원장님 줄에 있어야 한다
+function checkVisitLines(list: unknown, rules: DayRules, charts: Set<string>, doctors: Set<string>): void {
+  for (const line of listOf(list, MAX_STATS_ROWS)) {
+    const [chart, day, time, insurance, doctor] = cellsOf(line, 5)
+    if (chart !== null && (typeof chart !== 'string' || !charts.has(chart.trim()))) bad()
+    if (!rules.isDay(day) || !inRange(day, rules)) bad()
+    if (time !== null && !isReceiptTime(time)) bad()
+    if (insurance !== null && !isText(insurance, MAX_INSURANCE)) bad()
+    if (doctor !== null && !(isCode(doctor) && doctors.has(doctor))) bad()
+  }
+}
+
+// 날·원장님 금액: 수납일은 불러온 기간 안, 금액은 지금 보고 금액과 같은 한도(음수 = 환불)
+function checkDoctorDays(list: unknown, rules: DayRules, doctors: Set<string>): void {
+  for (const line of listOf(list, MAX_STATS_ROWS)) {
+    const [day, doctor, amount] = cellsOf(line, 3)
+    if (!rules.isDay(day) || !inRange(day, rules)) bad()
+    if (!isCode(doctor) || !doctors.has(doctor) || !isAmount(amount)) bad()
+  }
+}
+
+function checkExtra(value: Fields, rules: DayRules): StatsRowsExtra {
+  const doctors = checkDoctors(value.doctors)
+  const charts = checkPeople(value.people, rules)
+  checkVisitLines(value.visits, rules, charts, doctors)
+  checkDoctorDays(value.doctorDays, rules, doctors)
+  return { visits: value.visits, people: value.people, doctors: value.doctors, doctorDays: value.doctorDays } as StatsRowsExtra
+}
+
 export function parseStatsRows(text: string, req: { from: string; to: string }): StatsRowsData {
   let value: unknown
   try {
@@ -200,7 +298,8 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
   } catch {
     bad() // 파서 예외 글에는 자료 조각이 들어 있다
   }
-  if (!isRecord(value) || !hasExactly(value, TOP_KEYS) || value.v !== 2) bad()
+  if (!isRecord(value) || (value.v !== 2 && value.v !== 3)) bad()
+  if (!hasExactly(value, value.v === 3 ? [...TOP_KEYS, ...V3_KEYS] : TOP_KEYS)) bad()
   if (value.from !== req.from || value.to !== req.to) bad()
 
   const { summary, days, codes } = value
@@ -219,12 +318,15 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
   const rowFirsts = checkRows(value.rows, rules)
   const receipts = checkPatientDays(value.patientDays, rules)
   checkReport(value.report, req.to)
+  const extra = value.v === 3 ? checkExtra(value, rules) : null
 
   // 모양을 다 본 뒤에 대조한다: 모양이 틀린 답이 '접수가 바뀌었어요'로 보이지 않게
-  const data = value as unknown as StatsRowsData
-  checkAgreement(data.rows, rowFirsts, receipts)
-  checkNoFirst(receipts.firsts, data.summary.noFirst)
-  return data
+  const v2 = value as unknown as StatsRowsData
+  checkAgreement(v2.rows, rowFirsts, receipts)
+  checkNoFirst(receipts.firsts, v2.summary.noFirst)
+  if (extra === null) return v2
+  const data = Object.fromEntries(TOP_KEYS.map((key) => [key, value[key]])) as unknown as StatsRowsData
+  return { ...data, extra }
 }
 
 // 지금 파서가 내는 모양 그대로: 첫 내원일 = 진료일이면 신환, 외래만 읽었고, 동네·유형은 도우미가 읽지 않는다
@@ -262,4 +364,34 @@ export function toVisitRows(data: StatsRowsData, ids: PatientIds): VisitRow[] {
     c: code,
     f: first === null ? '' : dateOf(first),
   }))
+}
+
+// v3 새 자료 → Worker 메모리 모양. v2면 null. ids는 진료 줄·접수 줄과 같은 것을 넘긴다(같은 환자 = 같은 번호).
+// 차트번호 없는 접수는 p = -1, 접수 시는 HHmm의 앞 두 자리
+export function toStatsExtra(data: StatsRowsData, ids: PatientIds): StatsExtra | null {
+  const { extra } = data
+  if (extra === undefined) return null
+  const dateOf = dashedMemo()
+  return {
+    visits: extra.visits.map(([chart, day, time, ins, doc]) => ({
+      p: chart === null ? -1 : ids.idOf(chart),
+      d: dateOf(day),
+      h: time === null ? null : Number(time.slice(0, 2)),
+      ins,
+      doc,
+    })),
+    people: new Map(extra.people.map(([chart, birth, area]) => [ids.idOf(chart), { birth: birth === null ? null : dateOf(birth), area }])),
+    doctors: new Map(extra.doctors),
+    doctorDays: extra.doctorDays.map(([day, doc, amount]) => ({ d: dateOf(day), doc, amount })),
+  }
+}
+
+// 환자 → 첫 내원일(YYYY-MM-DD, 접수 줄 patientDays의 것). 첫 내원을 못 찾은 환자는 넣지 않는다(신환이 아니다)
+export function toFirstVisits(data: StatsRowsData, ids: PatientIds): Map<number, string> {
+  const dateOf = dashedMemo()
+  const firsts = new Map<number, string>()
+  for (const [chart, , , first] of data.patientDays) {
+    if (first !== null) firsts.set(ids.idOf(chart), dateOf(first))
+  }
+  return firsts
 }
