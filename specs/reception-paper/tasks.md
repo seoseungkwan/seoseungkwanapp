@@ -48,3 +48,12 @@
 - Tests: reception/tests/board.test.ts, reception/tests/detail.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts, reception/tests/app.test.ts, reception/tests/offline.test.ts, reception/tests/poll.test.ts
 - TDD: required
 - 목업 Paper.html의 `.memo`·`.memo .lab`·`.new-badge` 모양 그대로(파랑 #1D4ED8 · 흰 글). 도우미(C#)의 info 글은 바꾸지 않고 화면이 나눈다
+
+## TASK-6: 목록 줄에서 이름표 줄 빼기 (`board.js`)
+- Step: Phase 3 (TASK-5 뒤, 혼자)
+- AC: AC-1504.1
+- REQ: REQ-1504
+- Files: reception/www/board.js, reception/www/style.css, reception/tests/board.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts, reception/tests/fixtures.ts, reception/tests/app.test.ts, reception/tests/offline.test.ts, reception/tests/poll.test.ts, reception/tests/alert.test.ts
+- Tests: reception/tests/board.test.ts, reception/tests/layout.test.ts, reception/tests/shell.test.ts, reception/tests/app.test.ts, reception/tests/offline.test.ts, reception/tests/poll.test.ts, reception/tests/alert.test.ts
+- TDD: required
+- 화면만 바꾼다(도우미 C#·답 모양 그대로). 쓰지 않게 된 `.rx-line`·`.rx-label`·`.rx-text` 모양은 지운다. "화면에 보이는 환자 글" 시험 도우미(fixtures `rowTexts`)는 줄에 보이는 글만 센다
