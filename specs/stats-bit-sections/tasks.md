@@ -30,7 +30,7 @@
 
 ## TASK-3: 세 칸 계산 (순수 함수)
 - REQ: REQ-2703, REQ-2704, REQ-2705, REQ-2707
-- AC: AC-2703.1, AC-2703.2, AC-2703.3, AC-2703.4, AC-2703.5, AC-2703.6, AC-2703.7, AC-2703.8, AC-2703.9, AC-2703.10, AC-2704.1, AC-2704.2, AC-2704.3, AC-2704.4, AC-2705.1, AC-2705.2, AC-2705.3, AC-2705.4, AC-2705.5, AC-2705.6, AC-2707.1, AC-2707.2
+- AC: AC-2703.1, AC-2703.2, AC-2703.3, AC-2703.4, AC-2703.5, AC-2703.6, AC-2703.7, AC-2703.8, AC-2703.9, AC-2704.1, AC-2704.2, AC-2704.3, AC-2704.4, AC-2705.1, AC-2705.2, AC-2705.3, AC-2705.4, AC-2705.5, AC-2705.6, AC-2707.1, AC-2707.2
 - Files: src/lib/analytics/patientMix.ts, src/lib/analytics/patientMix.test.ts, src/lib/analytics/visitHours.ts, src/lib/analytics/visitHours.test.ts, src/lib/analytics/doctorStats.ts, src/lib/analytics/doctorStats.test.ts, src/types/stats.ts
 - Tests: src/lib/analytics/patientMix.test.ts, src/lib/analytics/visitHours.test.ts, src/lib/analytics/doctorStats.test.ts
 - TDD: required — 만 나이 경계(생일 전날·당일), 묶음 명 합 = 실환자, 1위 시 구 이름, 같은 이름 동 괄호, 그 밖·동 없는 주소·주소 없음, 1% 미만, 문 연 날 나누기, 월~일 일곱 줄·8~20시 고정·8시 전/21시 뒤 접수 접어 넣기, 보험·동네 많이 온 차례(연령대는 나이 차례), 시 이름(오전·낮·오후), 단계 ⌈⌉, 진료의 미지정, 매출만 있는 진료의, 합계 실환자 한 번, 한 분 이하, 1인당 진료비 원 미만 버림·내원 0, 지난 기간 증감(▲▼·0%·새로·–·표시 없는 줄), 복사 글
