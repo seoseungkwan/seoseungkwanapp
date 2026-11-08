@@ -2,7 +2,9 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { addDays, todayInKorea } from '@/lib/analytics/dates'
 import { ourClinicPhrases } from '@/lib/precheck/memo'
+import type { DayPayload } from '@/types/payload'
 import { HospitalPhrases } from './HospitalPhrases'
 
 // 설정의 '병원 문구' 칸(AC-018.7·AC-018.18, memo-settings REQ-3007). 실제 DB에 붙지 않는다
@@ -21,11 +23,35 @@ vi.mock('@/lib/supabase/browser', () => ({
   }),
 }))
 
+// 처방코드 묶음이 읽는 통계 날별 처방(memo-settings design.md §3). 집계뿐이고 코드·이름은 가짜다
+const stats = vi.hoisted(() => ({ fail: false, rows: [] as unknown[], calls: 0 }))
+vi.mock('@/lib/storage/stats', () => ({
+  readDays: () => {
+    stats.calls += 1
+    return stats.fail ? Promise.reject(new Error('x')) : Promise.resolve({ rows: stats.rows, dropped: 0, latest: null, fromFile: false })
+  },
+}))
+function statsDay(date: string, rx: [code: string, name: string, type: string][]): DayPayload {
+  return {
+    schemaVersion: 2,
+    quality: 'valid',
+    day: date,
+    partial: false,
+    totals: {} as DayPayload['totals'],
+    rx: rx.map(([code, name, type]) => ({ code, name, type, patients: 1, newPatients: 0, returning: 1 })),
+    groups: [],
+    revisit: { cohort: 0, within7: null, within14: null },
+  }
+}
+
 beforeEach(() => {
   db.row = { phrases: ourClinicPhrases(), dx_links: [] }
   db.failRead = false
   db.failWrite = false
   db.upserts = []
+  stats.fail = false
+  stats.rows = []
+  stats.calls = 0
 })
 afterEach(cleanup)
 
@@ -296,6 +322,65 @@ describe('AC-018.7 병원 문구', () => {
     await user.click(screen.getByRole('button', { name: '메모 만들기' }))
     const preview = await screen.findByRole('region', { name: '시험한 메모' })
     expect(preview.textContent).toContain('MBB')
+  })
+})
+
+describe('AC-3004 처방코드 묶음', () => {
+  it('AC-3004.5: 통계를 못 읽으면 사전 코드와 안내·[다시 읽기]이고, 다시 읽으면 처방된 코드가 나온다', async () => {
+    const user = userEvent.setup()
+    stats.fail = true
+    render(<HospitalPhrases />)
+    await screen.findByLabelText('줄 앞 기호')
+    await openTab(user, '처방코드')
+    expect(await screen.findByText('통계를 읽지 못했어요')).toBeTruthy()
+    expect(screen.queryByLabelText('AA254 구분')).toBeNull()
+    stats.fail = false
+    stats.rows = [statsDay(addDays(todayInKorea(), -1), [['AA254', '재진진찰료', '진찰']])]
+    await user.click(screen.getByRole('button', { name: '다시 읽기' }))
+    expect(await screen.findByLabelText('AA254 구분')).toBeTruthy()
+    expect(screen.queryByText('통계를 읽지 못했어요')).toBeNull()
+    expect(stats.calls).toBe(2)
+  })
+
+  it('AC-3004.3: 묶음 단추에 정하지 않은 새 코드 수가 보이고, 코드를 고쳐 저장하면 CODEMAP[코드]와 memoRules.order에 들어간다', async () => {
+    const user = userEvent.setup()
+    stats.rows = [statsDay(addDays(todayInKorea(), -1), [['AA254', '재진진찰료', '진찰'], ['KK090', '관절강내주사', '처치']])]
+    render(<HospitalPhrases />)
+    await screen.findByLabelText('줄 앞 기호')
+    await user.click(await screen.findByRole('tab', { name: '처방코드 새 코드 1개' }))
+    await user.selectOptions(screen.getByLabelText('AA254 구분'), 'proc')
+    expect(screen.getByRole('tab', { name: '처방코드' })).toBeTruthy()
+    await user.type(screen.getByLabelText('KK090 줄 순서'), '1')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    const diff = await screen.findByRole('region', { name: '바뀐 부분' })
+    expect(within(diff).getByRole('row', { name: 'AA254 · 구분 (없음) 시술' })).toBeTruthy()
+    expect(within(diff).getByRole('row', { name: 'KK090 · 줄 순서 (없음) 1' })).toBeTruthy()
+    await user.click(within(diff).getByRole('button', { name: '이대로 저장' }))
+    await waitFor(() => expect(db.upserts).toHaveLength(1))
+    expect(savedPhrases().CODEMAP.AA254).toEqual({ n: '재진진찰료', k: 'proc', rg: null })
+    expect(savedPhrases().memoRules).toEqual({ order: { KK090: 1 } })
+  })
+})
+
+describe('AC-3007.4 메모 시험 묶음', () => {
+  it('AC-3007.4: 차트 글·처방을 바꿔 메모를 만들고, 그 글은 묶음을 옮겨도 남지만 저장하지 않는다', async () => {
+    const user = userEvent.setup()
+    render(<HospitalPhrases />)
+    await screen.findByLabelText('줄 앞 기호')
+    await openTab(user, '메모 시험')
+    const chart = screen.getByLabelText(/차트 글/)
+    await user.clear(chart)
+    await user.type(chart, 'Rt knee IA triam')
+    await user.clear(screen.getByLabelText(/처방/))
+    await user.type(screen.getByLabelText(/처방/), 'KK090 1')
+    await user.click(screen.getByRole('button', { name: '메모 만들기' }))
+    expect((await screen.findByRole('region', { name: '시험한 메모' })).textContent).toContain('IA injection of')
+    await openTab(user, '기본')
+    await openTab(user, '메모 시험')
+    expect((screen.getByLabelText(/차트 글/) as HTMLTextAreaElement).value).toBe('Rt knee IA triam')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(await screen.findByText('바뀐 것이 없어요')).toBeTruthy()
+    expect(db.upserts).toEqual([])
   })
 })
 

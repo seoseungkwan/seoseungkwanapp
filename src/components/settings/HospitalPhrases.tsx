@@ -1,12 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { useRxCatalog } from '@/components/stats/useRxCatalog'
 import { ds } from '@/components/ui/classes'
+import { todayInKorea } from '@/lib/analytics/dates'
 import { validatePhrases, type PhraseDiffRow, type PhraseError, type Phrases } from '@/lib/precheck/memo'
 import { readHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import { buildCodeRows } from './codeCatalog'
 import { BasicTab } from './phrases/BasicTab'
+import { CodesTab, undecidedCodes } from './phrases/CodesTab'
 import { ErrorList } from './phrases/fields'
 import { withPhraseChanges } from './phrases/merge'
 import { ProcTab } from './phrases/ProcTab'
@@ -15,10 +19,12 @@ import { RulesTab } from './phrases/RulesTab'
 import { SaveDiff } from './phrases/SaveDiff'
 import { saveDiffRows } from './phrases/saveDiffRows'
 import { TryTab } from './phrases/TryTab'
+import { TRY_CHART, TRY_RX, type TryText } from './phrases/tryVisit'
 
 // 설정의 '병원 문구' 칸(AC-018.7·AC-018.18·AC-018.19, memo-settings REQ-3007·시안 docs/mockups/memo-settings). 저장하는 값의 모양은 AC-014.3 + memoRules 그대로다(묶음은 화면 배치일 뿐이다).
 // 묶음 단추 여섯 개(기본 · 시술별 문구와 약 · 처방코드 · 표기 규칙 · 사유 문장 · 메모 시험)와 아래 저장 줄 하나. 고치는 값(draft)·읽은 값(opened)·저장·비교 상태는 여기 하나에 둔다.
 // [저장]은 바로 쓰지 않고 바뀐 부분 표를 보인 뒤 [이대로 저장]에 쓴다(AC-3007.5). 쓸 때는 고친 칸만 그때 읽은 값에 얹는다(AC-3007.6).
+// 처방코드 묶음의 목록은 통계에 저장된 날별 처방(집계)을 찾기 목록과 같은 길(useRxCatalog)로 한 번 읽어 만든다. 메모 시험 글은 화면 상태에만 둔다(AC-3007.4).
 // 병원 설정 줄이 없거나 검사를 지나지 못하면 파란 안내뿐이고 저장 단추가 없다(AC-018.18): 기본값으로 대신 저장하면 막음이 풀린다. Worker 답 없이 같은 판단을 한다. 환자 자료가 오지 않는다
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'blocked' } | { kind: 'ready' }
@@ -79,8 +85,13 @@ export function HospitalPhrases() {
   const [saving, setSaving] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
   const [savedNote, setSavedNote] = useState(false)
+  const [tryText, setTryText] = useState<TryText>({ chart: TRY_CHART, rx: TRY_RX })
   /** 마지막으로 서버와 맞춘 값: 열 때 읽은 값, 저장한 뒤에는 저장한 값. 무엇을 고쳤는지 이것과 견준다 */
   const opened = useRef<Phrases | null>(null)
+  /** opened를 그리기에 쓰는 사본(처방코드 묶음의 '새 코드'는 저장된 사전에 없는 코드다) */
+  const [saved, setSaved] = useState<Phrases | null>(null)
+  const [today] = useState(todayInKorea)
+  const catalog = useRxCatalog(today, 0)
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
   const baseId = useId()
   const tabId = (key: Tab) => `${baseId}-tab-${key}`
@@ -96,6 +107,7 @@ export function HospitalPhrases() {
         return
       }
       opened.current = checked.value
+      setSaved(checked.value)
       setDraft(checked.value)
       setLoad({ kind: 'ready' })
     } catch {
@@ -106,6 +118,14 @@ export function HospitalPhrases() {
   useEffect(() => {
     void read()
   }, [read])
+
+  const { open: openCatalog } = catalog
+  useEffect(() => {
+    if (load.kind === 'ready') openCatalog()
+  }, [load.kind, openCatalog])
+
+  const recentRows = useMemo(() => (saved && catalog.state === 'ready' ? buildCodeRows(catalog.days, saved, today, 'recent') : []), [saved, catalog.state, catalog.days, today])
+  const newCodes = draft ? undecidedCodes(recentRows, draft).length : 0
 
   /** 묶음이 고친 값. 열려 있던 비교 표는 옛 값이라 닫는다 */
   const update = (next: Phrases) => {
@@ -172,6 +192,7 @@ export function HospitalPhrases() {
       }
       await writeHospitalSettings(sb, { phrases: merged.value, dxLinks: now.dxLinks })
       opened.current = merged.value
+      setSaved(merged.value)
       // 저장하는 동안 더 고친 것은 남긴다
       setDraft((current) => (current ? withPhraseChanges(merged.value, sent, current) : current))
       setSavedNote(true)
@@ -229,6 +250,15 @@ export function HospitalPhrases() {
                   className={on ? tabCurrent : tabIdle}
                 >
                   {t.label}
+                  {t.key === 'codes' && newCodes > 0 && (
+                    <>
+                      {' '}
+                      <span aria-hidden="true" className={ds.chip.warning}>
+                        새 {newCodes}
+                      </span>
+                      <span className="sr-only">새 코드 {newCodes}개</span>
+                    </>
+                  )}
                 </button>
               )
             })}
@@ -236,10 +266,10 @@ export function HospitalPhrases() {
           <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
             {tab === 'basic' && <BasicTab draft={draft} errors={errors} onChange={update} />}
             {tab === 'proc' && <ProcTab draft={draft} errors={errors} onChange={update} />}
-            {tab === 'codes' && <p className={ds.help}>처방코드 목록은 다음 단계에서 이 자리에 생겨요.</p>}
+            {tab === 'codes' && <CodesTab draft={draft} saved={saved ?? draft} errors={errors} onChange={update} days={catalog.days} state={catalog.state} today={today} onRetry={catalog.retry} />}
             {tab === 'rules' && <RulesTab draft={draft} errors={errors} onChange={update} />}
             {tab === 'reason' && <ReasonTab draft={draft} errors={errors} onChange={update} />}
-            {tab === 'try' && <TryTab draft={draft} />}
+            {tab === 'try' && <TryTab draft={draft} text={tryText} onText={setTryText} />}
           </div>
           {confirm && <SaveDiff rows={confirm.rows} busy={saving} onConfirm={() => void save(confirm.value)} onCancel={() => setConfirm(null)} />}
           {errors.length > 0 && (
