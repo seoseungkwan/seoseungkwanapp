@@ -21,8 +21,12 @@ const IA_SET_CODES = /^(LA274|LA272)$/i
 /** IA 줄 부위로 읽는 관절(AC-3001.1). 척추·늑골·상지는 IA 부위가 아니다 */
 const IA_REGIONS = ['shoulder', 'knee', 'ankle', 'elbow', 'wrist', 'hip', 'hand', 'foot']
 const IA_WORD = /\bIA\b|관절강|관절내|intra.?artic|injection/i
-const FIXED_FALLBACK = [{ token: 'C-arm', text: 'C-arm guide 하에', on: true }, { token: 'Sono', text: 'Sono guide 하에', on: true }, { token: '시행함', text: '시행함', on: true }]
-const SITE_FALLBACK: Record<string, string> = { cervical: 'C', lumbar: 'L', shoulder: 'shoulder', knee: 'knee', ankle: 'ankle', elbow: 'elbow', wrist: 'wrist', hand: 'hand', hip: 'hip', chest: 'rib', foot: 'foot', upper: 'upper extremity' }
+/** 연골주사 날 일반 IA 줄로 고를 차트 줄의 IA 말(AC-3001.2). 'injection'만 있는 줄은 다른 시술 줄이라 고르지 않는다 */
+const IA_LINE_WORD = /\bIA\b|관절강|관절내|intra.?artic/i
+/** fixedPhrases 칸이 없을 때 쓰는 고정 멘트. 설정 화면도 이 값을 보인다(phrases/constants.ts가 다시 내보냄) */
+export const FIXED_FALLBACK: readonly { token: string; text: string; on: boolean }[] = [{ token: 'C-arm', text: 'C-arm guide 하에', on: true }, { token: 'Sono', text: 'Sono guide 하에', on: true }, { token: '시행함', text: '시행함', on: true }]
+/** siteNames 칸이 없을 때 쓰는 부위 영어 표기. 설정 화면도 이 값을 보인다 */
+export const SITE_FALLBACK: Readonly<Record<string, string>> = { cervical: 'C', lumbar: 'L', shoulder: 'shoulder', knee: 'knee', ankle: 'ankle', elbow: 'elbow', wrist: 'wrist', hand: 'hand', hip: 'hip', chest: 'rib', foot: 'foot', upper: 'upper extremity' }
 const LEVEL_NOTATION_SUFFIX = '(?![A-Za-z0-9.])'
 
 const text = (value: unknown) => String(value ?? '')
@@ -1234,7 +1238,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       if (/아라간/.test(t)) {
         const sd = /양|both/i.test(t) ? '양측' : /\bRt\b/i.test(t) ? '우측' : /\bLt\b/i.test(t) ? '좌측' : ''
         const cha = (t.match(/(\d+)\s*차/) || [])[1]
-        push(renderQuantityProcedure('IA', TPL.ara, { 좌우: sd, 회차: cha || '', 부위: regionName || MISS_SITE }, qmap), true)
+        // {약제}는 비운다: 원본은 이 자리에 연골주사 날 afterProc 약(연골주사약은 빠짐)을 넣었는데, 그 일반 약은 이제 일반 IA 줄에만 놓이거나
+        // [약 확인]으로 남는다(AC-3001.3). 일반 약이 없는 날은 원본과 같다(골든 cartilage-words)
+        push(renderQuantityProcedure('IA', TPL.ara, { 좌우: sd, 회차: cha || '', 부위: regionName || MISS_SITE, 약제: '' }, qmap), true)
         return
       }
       const units = splitProcs(t)
@@ -1313,7 +1319,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const tpl = TPL.iaEtc
     const plan = drugPlan(v)
     if (!tpl || !iaBound(plan).length || kneeSetSkips(v, false)) return []
-    const chart = (v.items || []).filter((i) => i.k === 'proc' && IA_WORD.test(i.raw || i.t) && !CARTILAGE_NAME.test(i.raw || i.t))
+    const chart = (v.items || []).filter((i) => i.k === 'proc' && IA_LINE_WORD.test(i.raw || i.t) && !CARTILAGE_NAME.test(i.raw || i.t))
     if (!chart.length) return []
     const ia = v.rx.find((x) => upper(x.code) === 'KK090')!
     const name = cm(ia.code)?.n || 'IA'

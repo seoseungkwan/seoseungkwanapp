@@ -77,6 +77,31 @@ describe('REQ-3001 IA 부위·아라간 날 일반 약', () => {
     p.procedureDrugs.KK090.트리암 = { use: 'exclude' }
     expect(memo(['Rt knee 아라간 2차'], [rx('KK090'), rx('A49'), rx('A21')], p)).toBe('◈우측 슬관절 강내 연골주사 2회차')
   })
+
+  // 마지막 검토 F1: 'injection'만 있는 줄은 IA 줄이 아니다(design.md 'IA 말이 있고 아라간이 없는 줄')
+  it.each([
+    ['SSNB injection(다른 시술 줄)', ['Rt knee 아라간 2차', 'Rt shoulder SSNB injection'], [rx('KK090'), rx('A49'), rx('A21'), rx('LA247')]],
+    ['TPI injection(코드 없는 줄)', ['Rt knee 아라간 2차', 'Rt shoulder TPI injection'], [rx('KK090'), rx('A49'), rx('A21')]],
+    ['MBB injection(다른 시술 줄)', ['Rt knee 아라간 2차', 'MBB L4,5 both injection'], [rx('KK090'), rx('A49'), rx('A21'), rx('LA358')]],
+  ])('AC-3001.2 AC-3001.3: 아라간 날 %s은 일반 IA 줄로 보지 않아 IA 줄을 지어내지 않고 [약 확인: 트리암]을 남긴다', (_, lines, rows) => {
+    const out = memo(lines, rows)
+    expect(out).not.toContain('IA injection of')
+    expect(out).toContain('[약 확인: 트리암]')
+    expect(unfinished(out)).toBe(true)
+  })
+
+  // 마지막 검토 F2: 차트로 만든 연골주사 줄의 {약제}에는 일반 약(트리암)이 들어가지 않는다
+  it('AC-3001.2 AC-3001.3: 연골주사 문구에 {약제}가 있어도 일반 약은 연골주사 줄에 들어가지 않는다', () => {
+    const p = ourClinicPhrases()
+    p.TPL.ara = '{좌우} 슬관절 강내 연골주사 {회차}회차{약제}'
+    const alone = memo(['Rt knee 아라간 2차'], [rx('KK090'), rx('A49'), rx('A21')], p)
+    expect(alone.split('\n')[0]).not.toContain('triam')
+    expect(alone).toContain('[약 확인: 트리암]')
+    const withIa = memo(['Rt knee 아라간 2차', 'Lt knee IA triam'], [rx('KK090', 2), rx('A49'), rx('A21')], p)
+    expect(withIa.match(/triam/g)).toHaveLength(1)
+    expect(withIa).toContain('◈IA injection of - knee(triam)')
+    expect(unfinished(withIa)).toBe(false)
+  })
 })
 
 describe('REQ-3002 시술 2개 이상인 날의 약(넣기인 시술이 하나뿐이면 그 시술 줄에)', () => {

@@ -1,4 +1,4 @@
-import type { DrugPlace, PhraseTemplates } from '@/lib/precheck/memo'
+import { FIXED_FALLBACK as ENGINE_FIXED, SITE_FALLBACK as ENGINE_SITE, type DrugPlace, type PhraseTemplates } from '@/lib/precheck/memo'
 
 // '병원 문구' 묶음들이 같이 쓰는 이름과 처음 값(memo-settings design.md §4). 병원 값이 아니다
 
@@ -19,15 +19,11 @@ export const REGIONS: readonly { key: string; ko: string }[] = [
 ]
 export const regionKo = (key: unknown): string => REGIONS.find((r) => r.key === key)?.ko ?? String(key)
 
-/** 엔진 SITE_FALLBACK과 같다: siteNames 칸이 없을 때 메모가 쓰는 부위 영어 표기 */
-export const SITE_FALLBACK: Readonly<Record<string, string>> = { cervical: 'C', lumbar: 'L', shoulder: 'shoulder', knee: 'knee', ankle: 'ankle', elbow: 'elbow', wrist: 'wrist', hand: 'hand', hip: 'hip', chest: 'rib', foot: 'foot', upper: 'upper extremity' }
+/** 엔진의 SITE_FALLBACK 그대로: siteNames 칸이 없을 때 메모가 쓰는 부위 영어 표기(두 벌로 두지 않는다) */
+export const SITE_FALLBACK: Readonly<Record<string, string>> = ENGINE_SITE
 
-/** 엔진 FIXED_FALLBACK과 같다: fixedPhrases 칸이 없을 때 메모가 쓰는 고정 멘트 */
-export const FIXED_FALLBACK: NonNullable<PhraseTemplates['fixedPhrases']> = [
-  { token: 'C-arm', text: 'C-arm guide 하에', on: true },
-  { token: 'Sono', text: 'Sono guide 하에', on: true },
-  { token: '시행함', text: '시행함', on: true },
-]
+/** 엔진의 FIXED_FALLBACK 사본(값은 엔진에서 온다): fixedPhrases 칸이 없을 때 메모가 쓰는 고정 멘트 */
+export const FIXED_FALLBACK: NonNullable<PhraseTemplates['fixedPhrases']> = ENGINE_FIXED.map((phrase) => ({ ...phrase }))
 /** 지금 메모가 쓰는 고정 멘트(칸이 없으면 처음 멘트) */
 export const fixedOf = (tpl: PhraseTemplates): NonNullable<PhraseTemplates['fixedPhrases']> => (Array.isArray(tpl.fixedPhrases) ? tpl.fixedPhrases : FIXED_FALLBACK)
 /** 검사가 받는 고정 멘트 수 */
