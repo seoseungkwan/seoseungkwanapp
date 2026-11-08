@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
-import { isBlankMemo } from '@/lib/precheck/memoCompare'
 import type { DateRange } from '@/types/dates'
 import type { InputResultView, InputSelection, InputWhat, MemoScreenView, TargetRow } from '@/types/precheck'
 import { ClaimError, SetupLink } from '../ClaimError'
@@ -19,6 +18,7 @@ import { copyText } from './copyMemo'
 import { defaultSelection, InputMode } from './InputMode'
 import { InputResults } from './InputResults'
 import { canCopy, copyStatus, keepOrFirst, listGroups, neighbor, positionOf, showCounts } from './memoSplit'
+import { useFitHeight } from './useFitHeight'
 import { useMemoDrafts } from './useMemoDrafts'
 import { useSplitKeys } from './useSplitKeys'
 
@@ -31,11 +31,15 @@ import { useSplitKeys } from './useSplitKeys'
 export type InputStage = 'pick' | 'wait' | 'run' | 'result'
 
 const WAIT_NOTE = '[취소]를 누르거나 창을 닫거나 5분이 지나면 아무것도 넣지 않아요.'
-const LEAVE_NOTE = '다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 메모 표에 보여요.'
+/** 메모 표가 없어져 끝은 '환자 목록에 보여요.'다(AC-3107.1) */
+const LEAVE_NOTE = '다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 환자 목록에 보여요.'
 const BAND = 'flex flex-col gap-1 rounded-control bg-warning-soft px-4 py-3'
 /** 보일 사람이 없을 때 왼쪽 글(AC-3101.7). 조건 안내가 있으면 그 글이 먼저다 */
 const EMPTY: Record<Show, string> = { all: '이 조건에 맞는 진료가 없어요.', todo: '모두 완료했어요.', done: '완료한 환자가 없어요.' }
-/** 두 칸 높이(AC-3101.1): 1024px 이상에서 화면 높이 - 위에 붙는 띠·탭 줄(102px)과 아래 여백. 각 칸이 따로 스크롤되어 페이지가 목록 길이만큼 늘지 않는다 */
+/**
+ * 두 칸(AC-3101.1). 1024px 이상의 높이는 useFitHeight가 두 칸 위 끝을 재어 정한다(창 높이 − 위 끝 − 16px, 가장 작게 20rem).
+ * 잴 수 없을 때만 이 class의 예전 높이(화면 높이 − 위에 붙는 띠·탭 줄과 아래 여백)다. 각 칸이 따로 스크롤되어 페이지가 목록 길이만큼 늘지 않는다
+ */
 const SPLIT = 'grid min-w-0 overflow-clip rounded-control border border-line bg-surface lg:h-[max(30rem,calc(100dvh-8.5rem))] lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]'
 
 export type MemoPanelProps = {
@@ -126,6 +130,9 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   const copyingRef = useRef(false)
   const shownRef = useRef<string | null>(null)
   const detailRef = useRef<HTMLElement>(null)
+  const splitRef = useRef<HTMLDivElement>(null)
+  /** 두 칸 높이(AC-3101.1): 두 칸이 보이는 동안(보기가 왔고 결과 화면이 아님) 1024px 이상이면 위 끝을 재어 정한다 */
+  const fitHeight = useFitHeight(splitRef, view !== null && stage !== 'result')
   const selectionRef = useRef(selection)
   selectionRef.current = selection
   const latestAsk = useRef(0)
@@ -422,7 +429,8 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
     const row: TargetRow = { ...shownRow, text: textOf(shownRow) }
     const place = positionOf(targets, key)
     const tableRow = view.table.find((item) => item.key === key)
-    const isEditing = editing === key && row.hasMemo && !isBlankMemo(row.text)
+    // 우리 메모가 있는 사람이면 글이 비어도 고치는 칸을 연다(AC-3105.2). 복사는 canCopy가 빈 글이면 막는다
+    const isEditing = editing === key && row.hasMemo
     const before = row.text
     return (
       <MemoDetail
@@ -575,8 +583,8 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
             )}
             <InputMode visible={visible} selection={selection} onSelection={setSelection} problem={targets.problem} chips={targets.chips} typedOverChip={targets.typedOverChip} locked={locked} />
           </section>
-          {/* 두 칸(AC-3101.1): 1024px 이상 나란히(왼쪽 360px), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
-          <div className={SPLIT}>
+          {/* 두 칸(AC-3101.1): 1024px 이상 나란히(왼쪽 360px)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
+          <div ref={splitRef} className={SPLIT} style={fitHeight === undefined ? undefined : { height: fitHeight }}>
             <div className="flex min-h-0 min-w-0 flex-col border-line max-lg:max-h-[40dvh] max-lg:border-b lg:border-r">
               <MemoList groups={groups} counts={showCounts(targets)} show={show} selectedKey={shownKey} failed={failed} empty={targets.problem ?? EMPTY[show]} onShow={changeShow} onPick={pick} />
             </div>

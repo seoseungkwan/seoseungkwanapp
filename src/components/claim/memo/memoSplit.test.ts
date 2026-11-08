@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { InputTargets, LeftReason, MemoCompare, TargetRow } from '@/types/precheck'
 import { canCopy, copyStatus, keepOrFirst, listGroups, neighbor, positionOf, showCounts } from './memoSplit'
 
-// 두 칸 보기의 목록 펼치기·옮기기·상태 줄 고르기(AC-3101.2·AC-3101.5·AC-3101.6·AC-3101.8·AC-3102.2·AC-3103.5~AC-3103.8). 순수 함수다. 이름·차트는 지어낸 것이다
+// 두 칸 보기의 목록 펼치기·옮기기·상태 줄 고르기(AC-3101.2·AC-3101.3·AC-3101.5·AC-3101.6·AC-3101.8·AC-3102.2·AC-3103.5~AC-3103.8). 순수 함수다. 이름·차트는 지어낸 것이다
 
 const row = (key: string, over: Partial<TargetRow> = {}): TargetRow => ({
   key,
@@ -66,6 +66,16 @@ describe('AC-3101.5·AC-3101.6 전체·미완료·완료 보기', () => {
     expect(keysOf(todo)).toEqual(['a', 'c', 'f', 'h', 'g', 'j', 'i', 'e'])
     expect(todo[0]).toMatchObject({ id: 'batch', total: 3 })
     expect(keysOf(listGroups(SAMPLE, 'done', null))).toEqual(['b', 'd'])
+  })
+
+  it('AC-3101.3: 입력할 사람 줄의 번호(no)는 보기로 거르기 전 차례이고 positionOf의 i와 같다. 다른 묶음 줄에는 번호가 없다', () => {
+    const nos = (groups: ReturnType<typeof listGroups>) => groups.flatMap((group) => group.rows.map((item) => [item.key, item.no]))
+    expect(nos(listGroups(SAMPLE, 'all', null)).slice(0, 4)).toEqual([['a', 1], ['b', 2], ['c', 3], ['f', undefined]])
+    expect(nos(listGroups(SAMPLE, 'todo', null)).slice(0, 2)).toEqual([['a', 1], ['c', 3]])
+    expect(nos(listGroups(SAMPLE, 'done', null))).toEqual([['b', 2], ['d', undefined]])
+    expect(nos(listGroups(SAMPLE, 'todo', 'b')).slice(0, 3)).toEqual([['a', 1], ['b', 2], ['c', 3]])
+    for (const key of ['a', 'b', 'c']) expect(listGroups(SAMPLE, 'all', null)[0].rows.find((item) => item.key === key)?.no).toBe(positionOf(SAMPLE, key)?.index)
+    expect(listGroups(SAMPLE, 'all', null).slice(1).flatMap((group) => group.rows).every((item) => !('no' in item))).toBe(true)
   })
 
   it('AC-3101.6: 머물 사람(stayKey)은 보기에 맞지 않아도 남는다', () => {

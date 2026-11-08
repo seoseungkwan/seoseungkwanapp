@@ -7,9 +7,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import type { TargetRow } from '@/types/precheck'
 import { BATCH_NAME, LEFT_GROUPS, LIST_ORDER } from './leftGroups'
-import { MemoList, RowTags, type ListGroup, type Show } from './MemoList'
+import { MemoList, RowTags, type ListGroup, type ListRow, type Show } from './MemoList'
 
 // 왼쪽 환자 목록(memo-split REQ-3101, 시안 4의 .listpane). 줄은 props로만 받는다. 이름·차트·글은 모두 지어낸 것이다
 
@@ -17,7 +16,7 @@ afterEach(cleanup)
 
 /** A → 9001, B → 9002 … */
 const chartOf = (key: string) => `9${String(key.charCodeAt(0) - 64).padStart(3, '0')}`
-const row = (key: string, over: Partial<TargetRow> = {}): TargetRow => ({
+const row = (key: string, over: Partial<ListRow> = {}): ListRow => ({
   key,
   date: '2026-11-02',
   text: `◈가상 메모 ${key}`,
@@ -37,8 +36,14 @@ const row = (key: string, over: Partial<TargetRow> = {}): TargetRow => ({
   rxRows: [{ kind: 'proc', code: 'LA901', name: '가상신경차단술', short: 'GNB', qty: 2, benefit: true }],
   ...over,
 })
-const group = (id: ListGroup['id'], rows: TargetRow[], total = rows.length): ListGroup => ({ id, name: id === 'batch' ? BATCH_NAME : LEFT_GROUPS[id].name, rows, total })
-const left = (key: string, over: Partial<TargetRow> = {}) => row(key, { chip: null, ...over })
+/** 묶음 하나. 입력할 사람 줄에는 memoSplit.listGroups처럼 거르기 전 차례(no)를 싣는다(따로 준 no가 있으면 그것) */
+const group = (id: ListGroup['id'], rows: ListRow[], total = rows.length): ListGroup => ({
+  id,
+  name: id === 'batch' ? BATCH_NAME : LEFT_GROUPS[id].name,
+  rows: id === 'batch' ? rows.map((item, index) => ({ no: index + 1, ...item })) : rows,
+  total,
+})
+const left = (key: string, over: Partial<ListRow> = {}) => row(key, { chip: null, ...over })
 
 type Props = Parameters<typeof MemoList>[0]
 function show(groups: ListGroup[], over: Partial<Props> = {}) {
@@ -126,6 +131,13 @@ describe('REQ-3101 왼쪽 환자 목록', () => {
     expect(lineOf('A').textContent).toBe('1가상환자A11/2 (월)9001새 메모')
     expect(lineOf('B').textContent).toBe('2가상환자B11/2 (월)9002! 메모 바꿈')
     expect(lineOf('K').textContent).toBe('가상환자K11/2 (월)9011! 확인 필요')
+    expect(lineOf('L').textContent).toBe('가상환자L11/2 (월)9012완료')
+  })
+
+  it('AC-3101.3: 보기로 걸러도 번호는 줄이 가진 거르기 전 차례(no) 그대로다(보이는 차례로 다시 세지 않는다)', () => {
+    show([group('batch', [row('B', { no: 2 }), row('E', { no: 5 })], 6), group('done', [left('L', { done: true, compare: '같음' })], 3)], { show: 'done' })
+    expect(lineOf('B').textContent).toBe('2가상환자B11/2 (월)9002새 메모')
+    expect(lineOf('E').textContent).toBe('5가상환자E11/2 (월)9005새 메모')
     expect(lineOf('L').textContent).toBe('가상환자L11/2 (월)9012완료')
   })
 

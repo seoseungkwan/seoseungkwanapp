@@ -6,11 +6,14 @@ import { dayLabel } from '../dateList'
 
 // 왼쪽 환자 목록(memo-split REQ-3101, 승인 시안 4의 .listpane). 묶음·차례·보기 거르기는 화면(memoSplit)이 정하고 여기는 props로만 그린다.
 // 줄에는 환자 정보만(번호·이름·진료일·차트번호·상태 표) 있다. 차트 원문·처방·메모 글은 오른쪽 상세(MemoDetail)에만 있다(AC-3101.3).
+// 번호는 보이는 차례로 세지 않고 줄이 가진 거르기 전 차례(no)를 쓴다: [미완료]·[완료]로 걸러도 오른쪽 머리의 {i}와 같다
 // 상태 표는 색만으로 알리지 않고 늘 글자를 같이 쓴다. 완료·복사 실패의 기호는 청구 화면 규칙대로 공용 Icon(check·x)이다(ui-90 AC-408.2)
 
 export type Show = 'all' | 'todo' | 'done'
+/** 목록 줄 하나. no는 입력할 사람 묶음의 거르기 전 차례(1부터, 상세 머리의 {i}와 같다). 다른 묶음에는 없다(AC-3101.3) */
+export type ListRow = TargetRow & { no?: number }
 /** 목록 묶음 하나. rows는 보기로 거른 뒤의 사람, total은 거르기 전 그 묶음의 사람 수(머리의 'n / 전체명') */
-export type ListGroup = { id: 'batch' | LeftReason; name: string; rows: TargetRow[]; total: number }
+export type ListGroup = { id: 'batch' | LeftReason; name: string; rows: ListRow[]; total: number }
 
 const SHOWS: readonly (readonly [Show, string])[] = [
   ['all', '전체'],
@@ -98,13 +101,13 @@ export function MemoList(props: {
                 <span className="font-normal text-muted">{group.rows.length === group.total ? `${group.total}명` : `${group.rows.length} / ${group.total}명`}</span>
               </h3>
               <ol className="flex list-none flex-col">
-                {group.rows.map((row, index) => {
+                {group.rows.map((row) => {
                   const on = row.key === selectedKey
                   const small = on ? 'text-ink-2' : 'text-muted'
                   return (
                     <li key={row.key}>
                       <button type="button" ref={on ? selected : undefined} aria-current={on ? 'true' : 'false'} className={`${rowButton} ${on ? rowOn : rowOff}`} onClick={() => onPick(row.key)}>
-                        <span className={`w-5 shrink-0 text-right text-caption tabular-nums ${small}`}>{group.id === 'batch' ? index + 1 : ''}</span>
+                        <span className={`w-5 shrink-0 text-right text-caption tabular-nums ${small}`}>{group.id === 'batch' ? row.no : null}</span>
                         <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
                           <span className={`whitespace-nowrap text-body text-ink ${on ? 'font-semibold' : 'font-medium'}`}>{row.name}</span>
                           <span className={`whitespace-nowrap text-caption ${small}`}>{dayLabel(row.date)}</span>

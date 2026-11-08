@@ -222,18 +222,37 @@ describe('AC-3105.2 단추 줄', () => {
     expect(screen.queryByRole('button', { name: '완료 풀기' })).toBeNull()
   })
 
-  it('AC-3105.2: 오른쪽 [메모 고치기]는 우리 메모 글이 있을 때만 있고 누르면 onEdit, 입력 중이면 막힌다', async () => {
+  it('AC-3105.2: 오른쪽 [메모 고치기]는 우리 메모가 있는 사람에게 있고 누르면 onEdit, 입력 중이면 막힌다. 메모가 없는 사람에게는 없다', async () => {
     const { on } = show()
     await userEvent.setup().click(button('메모 고치기'))
     expect(on.onEdit).toHaveBeenCalledTimes(1)
     cleanup()
     show({ locked: true, status: 'locked', copyDisabled: true })
     expect(button('메모 고치기').disabled).toBe(true)
-    for (const over of [{ hasMemo: false, text: '' }, { hasMemo: true, text: '   \n ' }]) {
-      cleanup()
-      show({ row: row({ ...over, chip: null }), group: 'nomemo', groupName: '메모 없음', status: 'none', copyDisabled: true })
-      expect(screen.queryByRole('button', { name: '메모 고치기' })).toBeNull()
-    }
+    cleanup()
+    show({ row: row({ hasMemo: false, text: '', chip: null }), group: 'nomemo', groupName: '메모 없음', status: 'none', copyDisabled: true })
+    expect(screen.queryByRole('button', { name: '메모 고치기' })).toBeNull()
+  })
+
+  it("AC-3105.2: 글을 다 지워 '메모 없음'으로 간 사람(우리 메모는 있고 글이 빔)도 [메모 고치기]가 있어 다시 쓸 수 있다. 복사는 막힌 채다", async () => {
+    const user = userEvent.setup()
+    const blank = { row: row({ hasMemo: true, text: '   \n ', chip: null }), group: 'nomemo', groupName: '메모 없음', status: 'none', copyDisabled: true } as const
+    const { on } = show(blank)
+    expect(copyButton().disabled).toBe(true)
+    expect(screen.getByRole('group', { name: '우리 메모' }).textContent).toBe('우리 메모우리 메모가 없어요.')
+    const edit = button('메모 고치기')
+    expect(edit.disabled).toBe(false)
+    await user.click(edit)
+    expect(on.onEdit).toHaveBeenCalledTimes(1)
+    cleanup()
+    // 고치는 칸이 열리고 쓴 글로 칸 밖에서 onEditDone을 부른다
+    const editing = show({ ...blank, row: row({ hasMemo: true, text: '', chip: null }), editing: true, status: 'editing' })
+    const box = screen.getByRole('textbox', { name: '가상환자A 우리 메모 고치기' }) as HTMLTextAreaElement
+    expect(box.value).toBe('')
+    expect(document.activeElement).toBe(box)
+    await user.type(box, '◈가상 새 글')
+    await user.tab()
+    expect(editing.on.onEditDone).toHaveBeenCalledWith('◈가상 새 글')
   })
 
   it('AC-3105.2: [바꾸지 않기]는 입력할 사람 가운데 메모 바꿈에만 있고 누르면 onApprove(false), 입력 중이면 막힌다', async () => {
@@ -522,7 +541,7 @@ describe('AC-3107.3 환자 줄 울타리', () => {
   it('AC-3107.3: 상세 파일은 정한 것만 불러오고 네트워크·저장소·console·supabase·클립보드가 없다(줄은 props로만 받는다)', () => {
     const text = readFileSync(join(process.cwd(), 'src/components/claim/rows/MemoDetail.tsx'), 'utf-8')
     const imports = [...text.matchAll(/^import\s[^;]*?from\s+'([^']+)'/gm)].map((match) => match[1])
-    expect(imports).toEqual(['react', '@/components/common/Icon', '@/components/ui/classes', '@/lib/precheck/memoCompare', '@/types/precheck', '../dateList', './leftGroups', './MemoList'])
+    expect(imports).toEqual(['react', '@/components/common/Icon', '@/components/ui/classes', '@/types/precheck', '../dateList', './leftGroups', './MemoList'])
     expect(text).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|console|supabase|navigator|clipboard|execCommand)\b/)
     expect(text).not.toMatch(/\bimport\(/)
     expect(text).toMatch(/row\.chartLines/)

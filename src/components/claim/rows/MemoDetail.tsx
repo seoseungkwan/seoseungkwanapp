@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { isBlankMemo } from '@/lib/precheck/memoCompare'
 import type { ChartLine, ChartLineKind, MemoTableRow, RxRow, TargetRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
 import { LEFT_GROUPS } from './leftGroups'
@@ -201,8 +200,8 @@ export function MemoDetail(props: {
 }) {
   const { row, group, groupName, position, tableRow, canPrev, canNext, onPrev, onNext, status, copying, failed, copyDisabled, undoDisabled } = props
   const { editing, locked, reading, startBlocked, showUnsaved, heldCount, card, onCopy, onUndone, onEdit, onEditDone, onApprove, onHeldRetry } = props
-  // 우리 메모 글이 있는 사람인가: '메모 없음'과 같은 판단(inputPlan, AC-2203.1)
-  const editable = row.hasMemo && !isBlankMemo(row.text)
+  // 우리 메모가 있는 사람이면 고칠 수 있다. 글을 다 지워 '메모 없음'으로 간 사람도 다시 쓸 수 있다(AC-3105.2). 복사는 화면이 빈 글이면 막는다(canCopy)
+  const editable = row.hasMemo
   const label = copying ? '복사 중…' : row.done ? '다시 복사' : '복사(완료)'
   const journal = !row.done && tableRow?.lastJournal !== undefined ? JOURNAL_TEXT[tableRow.lastJournal] : undefined
   const hasText = row.text.trim() !== ''

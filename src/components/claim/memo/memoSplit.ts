@@ -4,13 +4,16 @@ import type { CopyStatus } from '../rows/MemoDetail'
 import type { ListGroup, Show } from '../rows/MemoList'
 import { BATCH_NAME, LEFT_GROUPS, LIST_ORDER } from '../rows/leftGroups'
 
-// 두 칸 보기의 목록 펼치기·옮기기·상태 줄 고르기(AC-3101.2·AC-3101.5·AC-3101.6·AC-3101.8·AC-3102.2·AC-3103.5~AC-3103.8, design.md memo-split).
+// 두 칸 보기의 목록 펼치기·옮기기·상태 줄 고르기(AC-3101.2·AC-3101.3·AC-3101.5·AC-3101.6·AC-3101.8·AC-3102.2·AC-3103.5~AC-3103.8, design.md memo-split).
 // 묶음·까닭·차례는 Worker의 inputTargets가 정했다. 여기는 그 결과를 목록 차례로 펼치고 걸러 보기만 한다. 순수 함수다
 
-/** 묶음 전체(보기로 거르기 전): 입력할 사람 먼저, 그다음 LIST_ORDER(AC-3101.2) */
+/**
+ * 묶음 전체(보기로 거르기 전): 입력할 사람 먼저, 그다음 LIST_ORDER(AC-3101.2).
+ * 입력할 사람 줄에는 거르기 전 차례(no, 1부터)를 싣는다: 보기로 걸러도 목록 번호가 상세 머리의 {i}(positionOf)와 같다(AC-3101.3)
+ */
 function allGroups(targets: InputTargets): ListGroup[] {
   const groups: ListGroup[] = []
-  if (targets.batch.length > 0) groups.push({ id: 'batch', name: BATCH_NAME, rows: targets.batch, total: targets.batch.length })
+  if (targets.batch.length > 0) groups.push({ id: 'batch', name: BATCH_NAME, rows: targets.batch.map((row, index) => ({ ...row, no: index + 1 })), total: targets.batch.length })
   for (const reason of LIST_ORDER) {
     const rows = targets.left.find((group) => group.reason === reason)?.rows ?? []
     if (rows.length > 0) groups.push({ id: reason, name: LEFT_GROUPS[reason].name, rows, total: rows.length })

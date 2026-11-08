@@ -209,7 +209,7 @@ afterEach(() => {
 })
 
 describe('REQ-3101 두 칸 보기', () => {
-  it('AC-3101.1: 메모 칸은 위 도구 줄과 그 아래 두 칸(왼쪽 환자 목록 | 오른쪽 고른 환자 메모)이다. 1024px 이상 나란히(왼쪽 360px)·좁으면 위아래이고, 두 칸은 각자 스크롤되며 높이가 화면 높이로 정해진다', async () => {
+  it('AC-3101.1: 메모 칸은 위 도구 줄과 그 아래 두 칸(왼쪽 환자 목록 | 오른쪽 고른 환자 메모)이다. 1024px 이상 나란히(왼쪽 360px)·좁으면 위아래이고, 두 칸은 각자 스크롤되며 위 끝을 잴 수 없으면 예전 높이(화면 높이 - 8.5rem)다', async () => {
     await toMemo()
     const bar = toolbar()
     const left = list()
@@ -226,9 +226,61 @@ describe('REQ-3101 두 칸 보기', () => {
     expect(left.querySelector('.overflow-y-auto')).not.toBeNull()
     expect(rowOf('가상환자a').getAttribute('aria-current')).toBe('true')
     expect(shown()).toBe('가상환자a')
+    expect(split.style.height).toBe('') // jsdom은 위 끝을 재지 못한다(모두 0): 예전 높이 class가 맡는다
   })
 
-  it('AC-3101.5: 처음에는 [전체]가 눌려 있고, [미완료]·[완료]를 누르면 그 줄만 남고 맨 위 사람이 골라진다. 수는 고른 조건 안의 사람 수다', async () => {
+  describe('AC-3101.1 한 화면 높이', () => {
+    const own = (name: 'innerWidth' | 'innerHeight') => Object.getOwnPropertyDescriptor(window, name)
+    const saved = { innerWidth: own('innerWidth'), innerHeight: own('innerHeight') }
+    const setWindow = (width: number, height: number) => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+      Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: height })
+    }
+    /** 모든 상자의 위 끝을 top으로 잰다(jsdom은 배치를 하지 않는다) */
+    const at = { top: 0 }
+    beforeEach(() => {
+      at.top = 0
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ x: 0, y: at.top, top: at.top, left: 0, right: 1200, bottom: at.top + 400, width: 1200, height: 400, toJSON: () => ({}) }))
+    })
+    afterEach(() => {
+      vi.restoreAllMocks()
+      for (const name of ['innerWidth', 'innerHeight'] as const) {
+        const descriptor = saved[name]
+        if (descriptor) Object.defineProperty(window, name, descriptor)
+        else Reflect.deleteProperty(window, name)
+      }
+    })
+
+    it('AC-3101.1: 1440×900 창에서 처음 열면 두 칸 높이는 창 높이 - 두 칸 위 끝 - 16px라 두 칸 아래 끝이 창 안에 들어온다', async () => {
+      setWindow(1440, 900)
+      at.top = 262
+      await toMemo()
+      const split = detail().parentElement!
+      expect(split.style.height).toBe('622px')
+      expect(at.top + parseFloat(split.style.height)).toBeLessThanOrEqual(900 - 16)
+    })
+
+    it('AC-3101.1: 창 크기가 바뀌면 다시 맞춘다', async () => {
+      setWindow(1440, 900)
+      at.top = 262
+      await toMemo()
+      const split = detail().parentElement!
+      setWindow(1440, 1000)
+      await act(async () => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      expect(split.style.height).toBe('722px')
+    })
+
+    it('AC-3101.1: 1024px보다 좁으면 높이를 정하지 않는다(위아래로 쌓인다)', async () => {
+      setWindow(800, 900)
+      at.top = 262
+      await toMemo()
+      expect(detail().parentElement!.style.height).toBe('')
+    })
+  })
+
+  it('AC-3101.5: 처음에는 [전체]가 눌려 있고, [미완료]·[완료]를 누르면 그 줄만 남는다. 고른 사람이 거기 없으면 맨 위 사람이 골라진다. 수는 고른 조건 안의 사람 수다', async () => {
     const view = memoView()
     view.targets = { ...view.targets, batch: [row('a'), row('b', { done: true })], left: [{ reason: 'done', rows: [row('c', { done: true, compare: '같음', chip: null })] }, { reason: 'nomemo', rows: [row('d', { hasMemo: false, text: '', chip: null })] }] }
     const { user } = await toMemo(view)
@@ -243,6 +295,49 @@ describe('REQ-3101 두 칸 보기', () => {
     await user.click(within(shows).getByRole('button', { name: '미완료 2' }))
     expect(rowNames()).toEqual(['가상환자a', '가상환자d'])
     await waitFor(() => expect(shown()).toBe('가상환자a'))
+  })
+
+  it('AC-3101.5·AC-3101.8: [미완료]·[완료]를 눌러도 고른 사람이 남은 줄에 있으면 맨 위로 가지 않고 그 사람 그대로다', async () => {
+    const view = memoView()
+    view.targets = { ...view.targets, batch: [row('a'), row('b', { done: true }), row('c')], left: [{ reason: 'done', rows: [row('d', { done: true, compare: '같음', chip: null })] }] }
+    const { user } = await toMemo(view)
+    const shows = within(list()).getByRole('group', { name: '완료로 골라 보기' })
+    await user.click(rowOf('가상환자d'))
+    expect(shown()).toBe('가상환자d')
+    await user.click(within(shows).getByRole('button', { name: '완료 2' }))
+    expect(rowNames()).toEqual(['가상환자b', '가상환자d'])
+    await settle()
+    expect(shown()).toBe('가상환자d')
+    expect(rowOf('가상환자d').getAttribute('aria-current')).toBe('true')
+    expect(rowOf('가상환자b').getAttribute('aria-current')).toBe('false')
+    await user.click(within(shows).getByRole('button', { name: '전체 4' }))
+    await user.click(rowOf('가상환자c'))
+    await user.click(within(shows).getByRole('button', { name: '미완료 2' }))
+    expect(rowNames()).toEqual(['가상환자a', '가상환자c'])
+    await settle()
+    expect(shown()).toBe('가상환자c')
+    expect(rowOf('가상환자c').getAttribute('aria-current')).toBe('true')
+  })
+
+  it('AC-3101.3·AC-3105.1: [미완료]·[완료]로 걸러도 입력할 사람 줄 번호는 거르기 전 차례 그대로이고 오른쪽 머리의 {i}와 같다', async () => {
+    const view = memoView()
+    view.targets = { ...view.targets, batch: [row('a'), row('b', { done: true }), row('c')], left: [{ reason: 'done', rows: [row('d', { done: true, compare: '같음', chip: null })] }] }
+    const { user } = await toMemo(view)
+    const shows = within(list()).getByRole('group', { name: '완료로 골라 보기' })
+    const numberOf = (name: string) => rowOf(name).firstElementChild!.textContent
+    const head = () => within(detail()).getByText(/^입력할 사람 \d+ \/ \d+$/).textContent
+    expect(['가상환자a', '가상환자b', '가상환자c', '가상환자d'].map(numberOf)).toEqual(['1', '2', '3', ''])
+    await user.click(within(shows).getByRole('button', { name: '완료 2' }))
+    expect(rowNames()).toEqual(['가상환자b', '가상환자d'])
+    expect(numberOf('가상환자b')).toBe('2')
+    expect(numberOf('가상환자d')).toBe('')
+    await waitFor(() => expect(shown()).toBe('가상환자b'))
+    expect(head()).toBe('입력할 사람 2 / 3')
+    await user.click(within(shows).getByRole('button', { name: '미완료 2' }))
+    expect(rowNames()).toEqual(['가상환자a', '가상환자c'])
+    expect(['가상환자a', '가상환자c'].map(numberOf)).toEqual(['1', '3'])
+    await user.click(rowOf('가상환자c'))
+    expect(head()).toBe('입력할 사람 3 / 3')
   })
 
   it('AC-3101.6: [미완료] 보기에서 고른 사람을 복사(완료)해도 다른 사람으로 옮길 때까지 목록에 남고, 옮긴 뒤에는 빠진다', async () => {
@@ -679,6 +774,39 @@ describe('REQ-3105 오른쪽 상세', () => {
     expect(screen.queryByRole('textbox', { name: /우리 메모 고치기/ })).toBeNull()
   })
 
+  it("AC-3105.2·AC-3105.4: 글을 다 지워 '메모 없음'으로 간 사람(우리 메모는 있고 글이 빔)도 [메모 고치기]로 고치는 칸이 열리고, 글을 쓰고 칸 밖을 누르면 editMemo가 간다. 복사는 막힌 채다", async () => {
+    const view = memoView()
+    view.targets = { ...view.targets, left: [{ reason: 'nomemo', rows: [row('e', { hasMemo: true, text: '', chip: null })] }] }
+    const { user, worker } = await toMemo(live(view))
+    await user.click(rowOf('가상환자e'))
+    expect(shown()).toBe('가상환자e')
+    expect(copyButton().disabled).toBe(true)
+    expect(statusLine().textContent).toBe('우리 메모가 없어 복사할 게 없어요.')
+    await user.click(within(detail()).getByRole('button', { name: '메모 고치기' }))
+    const box = screen.getByRole('textbox', { name: '가상환자e 우리 메모 고치기' }) as HTMLTextAreaElement
+    expect(document.activeElement).toBe(box)
+    expect(box.value).toBe('')
+    expect(copyButton().disabled).toBe(true)
+    await user.type(box, '다시 쓴 메모 e')
+    await user.tab()
+    await waitFor(() => expect(worker.of('editMemo')).toEqual([{ type: 'editMemo', visitKey: 'e', text: '다시 쓴 메모 e' }]))
+    expect(screen.queryByRole('textbox', { name: /우리 메모 고치기/ })).toBeNull()
+    await waitFor(() => expect(ourMemo()).toBe('다시 쓴 메모 e'))
+  })
+
+  it('AC-3105.2: 지운 글을 고치는 칸에서 빈 채로 나가면 보내지 않고 복사도 막힌 채다', async () => {
+    const view = memoView()
+    view.targets = { ...view.targets, left: [{ reason: 'nomemo', rows: [row('e', { hasMemo: true, text: '', chip: null })] }] }
+    const { user, worker } = await toMemo(live(view))
+    await user.click(rowOf('가상환자e'))
+    await user.click(within(detail()).getByRole('button', { name: '메모 고치기' }))
+    await user.tab()
+    await settle()
+    expect(worker.of('editMemo')).toEqual([])
+    expect(copyButton().disabled).toBe(true)
+    expect(within(detail()).getByRole('button', { name: '메모 고치기' })).toBeTruthy()
+  })
+
   it('AC-3105.6: 점검 결과의 [메모 확인에서 고치기]로 오면 그 사람이 골라지고 고치는 칸이 열려 초점이 있다', async () => {
     const claim: ClaimView = { ...VIEW, visits: [visit('a'), { ...visit('b'), memo: { visitKey: 'b', text: '우리 메모 b', edited: false, missing: [], hasMemo: true, unfinished: false } }] }
     const worker = fakeWorker(() => memoView(), claim)
@@ -842,7 +970,7 @@ describe('AC-018.3 [비트에 입력]', () => {
     expect(screen.getByText('누르면 PC 확인 창 없이 바로 시작해요. 다른 메모 1명은 우리 메모로 바뀌고, 원래 메모는 기록에 남아요.')).toBeTruthy()
   })
 
-  it('AC-018.3: 누른 뒤 확인 기다리는 중 안내와 묶음의 수가 보이고, 진행이 오면 숫자가 되며 화면에 이름이 없다', async () => {
+  it('AC-018.3·AC-3107.1: 누른 뒤 확인 기다리는 중 안내와 묶음의 수가 보이고, 진행이 오면 숫자가 되며 화면에 이름이 없다. 안내 글 끝은 "…환자 목록에 보여요."다', async () => {
     const { user, worker } = await toMemo()
     await user.click(inputButton())
     const wait = await screen.findByRole('status', { name: '입력 진행' })
@@ -850,13 +978,14 @@ describe('AC-018.3 [비트에 입력]', () => {
     expect(wait.textContent).toContain('PC 화면의 확인 창에서 [확인]을 눌러 주세요')
     expect(wait.textContent).toContain('[취소]를 누르거나 창을 닫거나 5분이 지나면 아무것도 넣지 않아요.')
     expect(wait.textContent).toContain('0 / 2명')
-    expect(wait.textContent).toContain('다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 메모 표에 보여요.')
+    expect(wait.textContent).toContain('다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 환자 목록에 보여요.')
+    expect(wait.textContent).not.toContain('메모 표')
     expect(worker.of('buildInputBatch').at(-1)).toMatchObject({ what: 'selection' })
     await act(async () => progress.fn?.({ id: 'x', done: 1, total: 3 }))
     const run = screen.getByRole('status', { name: '입력 진행' })
     expect(run.textContent).toContain('입력 중')
     expect(run.textContent).toContain('1 / 3명')
-    expect(run.textContent).toContain('다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 메모 표에 보여요.')
+    expect(run.textContent).toContain('다른 탭으로 옮겨도 입력은 PC에서 계속돼요. 결과는 끝난 뒤 [자료 불러오기]를 누르면 환자 목록에 보여요.')
     expect(run.textContent).not.toContain('가상환자')
     expect(run.textContent).not.toContain('지금:')
   })
