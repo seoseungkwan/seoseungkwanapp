@@ -26,6 +26,8 @@ export type TargetContext = {
   foundByPc: ReadonlySet<string>
   /** 처방코드 사전(CODEMAP) 찾기. 코드 단추는 k가 proc인 코드만 보인다 */
   codeInfo(code: string): { k: string; n: string } | null
+  /** 자리를 지킬 사람: 이 불러오기에서 복사로 새로 완료했다. 완료가 아닌 것처럼 묶음을 정하고 done만 켠다(AC-3104.4) */
+  keep?: ReadonlySet<string>
 }
 
 const GROUP_ORDER: readonly LeftReason[] = ['done', 'nomemo', 'mark', 'manual', 'diff', 'unread', 'held']
@@ -43,10 +45,19 @@ function dateProblem(from: string, to: string, visible: DateRange): string | nul
   return null
 }
 
-/** 빠지는 까닭 하나(AC-018.26의 차례: 완료 > 메모 없음 > 직접 입력 > 확인 표시 > 조회 못함 > 다른 메모 > 지난번 건너뜀). 없으면 입력할 사람이다 */
-function reasonOf(visit: TargetVisit, sameDay: number, context: TargetContext): { reason: LeftReason | null; replaces?: string } {
+/**
+ * 빠지는 까닭 하나(AC-018.26의 차례: 완료 > 메모 없음 > 직접 입력 > 확인 표시 > 조회 못함 > 다른 메모 > 지난번 건너뜀). 없으면 입력할 사람이다.
+ * done은 완료인가(AC-3104.4). 자리를 지킬 사람(keep)은 완료여도 완료를 빼고 까닭을 본다
+ */
+function reasonOf(visit: TargetVisit, sameDay: number, context: TargetContext): { reason: LeftReason | null; replaces?: string; done: boolean } {
   const plan = inputPlan([visit])
-  if (context.done.has(visit.key) || plan.done.length > 0) return { reason: 'done' }
+  const done = context.done.has(visit.key) || plan.done.length > 0
+  if (done && !context.keep?.has(visit.key)) return { reason: 'done', done }
+  const found = reasonAfterDone(visit, sameDay, context, plan)
+  return { ...found, done }
+}
+
+function reasonAfterDone(visit: TargetVisit, sameDay: number, context: TargetContext, plan: ReturnType<typeof inputPlan>): { reason: LeftReason | null; replaces?: string } {
   const skipped = plan.skipped[0]?.reason
   if (skipped === '메모 없음') return { reason: 'nomemo' }
   if (sameDay > 1 || context.foundByPc.has(visit.key)) return { reason: 'manual' }
@@ -99,8 +110,8 @@ export function inputTargets(visits: readonly TargetVisit[], selection: InputSel
   const groups = new Map<LeftReason, TargetRow[]>()
   for (const visit of pool) {
     const count = sameDay.get(`${visit.chart}|${visit.date}`) ?? 1
-    const { reason, replaces } = reasonOf(visit, count, context)
-    const row: TargetRow = { ...visit, sameDay: count, foundByPc: context.foundByPc.has(visit.key), chip: null }
+    const { reason, replaces, done } = reasonOf(visit, count, context)
+    const row: TargetRow = { ...visit, sameDay: count, foundByPc: context.foundByPc.has(visit.key), chip: null, done }
     if (reason) {
       groups.set(reason, [...(groups.get(reason) ?? []), row])
       continue
@@ -114,13 +125,16 @@ export function inputTargets(visits: readonly TargetVisit[], selection: InputSel
     return rows ? [{ reason, rows }] : []
   })
 
-  const result: InputTargets = { problem: null, range, code, batch, left, chips: chipsOf(visits, context), typedOverChip: typed !== '' && selection.chip !== '', replacing: batch.filter((row) => row.compare === '다름').length }
-  if (batch.length > MAX_BATCH) return { ...result, problem: `한 번에 ${MAX_BATCH}명까지만 넣을 수 있어요. 기간을 줄여 주세요.`, batch: [], replacing: 0 }
-  if (batch.length > 0) return result
+  // 넣을 사람은 입력할 사람 가운데 완료가 아닌 줄이다: 자리를 지키는 완료 줄은 세지 않는다(AC-3104.5)
+  const sendable = batch.filter((row) => !row.done)
+  const result: InputTargets = { problem: null, range, code, batch, left, chips: chipsOf(visits, context), typedOverChip: typed !== '' && selection.chip !== '', replacing: sendable.filter((row) => row.compare === '다름').length }
+  if (sendable.length > MAX_BATCH) return { ...result, problem: `한 번에 ${MAX_BATCH}명까지만 넣을 수 있어요. 기간을 줄여 주세요.`, batch: [], replacing: 0 }
+  if (sendable.length > 0) return result
 
-  // 0명일 때 안내(AC-018.23)
+  // 0명일 때 안내(AC-018.23). 자리를 지키는 완료 줄도 완료로 친다(AC-3104.5)
+  const doneHere = new Set(batch.filter((row) => row.done).map((row) => row.key))
   const open = pool.filter((visit) => {
-    const reason = groups.get('done')?.some((row) => row.key === visit.key) || groups.get('nomemo')?.some((row) => row.key === visit.key)
+    const reason = doneHere.has(visit.key) || groups.get('done')?.some((row) => row.key === visit.key) || groups.get('nomemo')?.some((row) => row.key === visit.key)
     return !reason
   })
   const span = range.from === range.to ? short(range.from) : spanText(range)

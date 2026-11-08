@@ -416,3 +416,63 @@ describe('AC-035.8·AC-018.16 도우미 결과 이유의 글자 약속', () => {
     }
   })
 })
+
+describe('AC-3104.4·AC-3104.5 완료 줄과 복사로 완료한 사람의 자리', () => {
+  const doneOf = (rows: readonly { key: string; done: boolean }[]) => Object.fromEntries(rows.map((row) => [row.key, row.done]))
+
+  it('AC-3104.4: 줄마다 완료(done)가 실린다: 완료 표시·비교 같음은 켜지고 나머지는 꺼진다', () => {
+    const result = inputTargets([visit('go'), visit('mark', { unfinished: true }), visit('done'), visit('same', { compare: '같음', inBit: '메모 same' })], byRange(), context({ done: new Set(['done']) }))
+    expect(doneOf(result.batch)).toEqual({ go: false })
+    expect(doneOf(result.left.flatMap((group) => group.rows))).toEqual({ mark: false, done: true, same: true })
+  })
+
+  it('AC-3104.4: 자리를 지킬 사람(keep)은 완료여도 같은 묶음·같은 차례에 있고 done이 켜진다', () => {
+    const visits = [visit('a', { date: '2099-03-02' }), visit('b', { date: '2099-03-03' }), visit('c', { date: '2099-03-04' }), visit('d', { compare: '다름', inBit: '비트 글', declined: true })]
+    const result = inputTargets(visits, byRange(), context({ done: new Set(['b', 'd']), keep: new Set(['b', 'd']) }))
+    expect(keys(result.batch)).toEqual(['a', 'b', 'c'])
+    expect(doneOf(result.batch)).toEqual({ a: false, b: true, c: false })
+    expect(result.batch[1]?.chip).toBe('새 메모')
+    expect(groupOf(result, 'diff')).toEqual(['d'])
+    expect(result.left.find((group) => group.reason === 'diff')?.rows[0]?.done).toBe(true)
+    expect(groupOf(result, 'done')).toEqual([])
+  })
+
+  it('AC-3104.4: keep인데 비트 메모가 같아져도(비교 같음) 입력할 사람 자리에 남고 done이 켜진다', () => {
+    const result = inputTargets([visit('a'), visit('b', { compare: '같음', inBit: '메모 b' })], byRange(), context({ done: new Set(['b']), keep: new Set(['b']) }))
+    expect(keys(result.batch)).toEqual(['a', 'b'])
+    expect(result.batch[1]?.done).toBe(true)
+  })
+
+  it('AC-3104.4: keep이 없으면 완료한 사람은 지금처럼 이미 입력됨이다', () => {
+    const result = inputTargets([visit('a'), visit('b')], byRange(), context({ done: new Set(['b']) }))
+    expect(keys(result.batch)).toEqual(['a'])
+    expect(groupOf(result, 'done')).toEqual(['b'])
+  })
+
+  it('AC-3104.4: keep에 있어도 완료가 아니면 보통 규칙이고 done이 꺼진다', () => {
+    const result = inputTargets([visit('a'), visit('m', { unfinished: true })], byRange(), context({ keep: new Set(['a', 'm']) }))
+    expect(doneOf(result.batch)).toEqual({ a: false })
+    expect(groupOf(result, 'mark')).toEqual(['m'])
+  })
+
+  it('AC-3104.5: 다른 메모가 바뀌는 수(replacing)는 완료 줄을 빼고 센다', () => {
+    const visits = [visit('ok', { compare: '다름', inBit: '비트', approved: '비트' }), visit('ok2', { compare: '다름', inBit: '비트', approved: '비트' })]
+    const result = inputTargets(visits, byRange(), context({ done: new Set(['ok']), keep: new Set(['ok']) }))
+    expect(keys(result.batch)).toEqual(['ok', 'ok2'])
+    expect(result.replacing).toBe(1)
+  })
+
+  it('AC-3104.5: 입력할 사람이 모두 완료면 0명 안내이고 줄은 목록에 남는다', () => {
+    const result = inputTargets([visit('a'), visit('b', { hasMemo: false })], byRange(), context({ done: new Set(['a']), keep: new Set(['a']) }))
+    expect(result.problem).toBe('03/02 ~ 03/07에 입력할 환자가 없습니다. (완료한 환자와 메모가 없는 환자는 뺍니다)')
+    expect(keys(result.batch)).toEqual(['a'])
+    expect(result.replacing).toBe(0)
+  })
+
+  it('AC-3104.5: 500명 한도는 완료 줄을 빼고 센다', () => {
+    const many = Array.from({ length: MAX_BATCH + 1 }, (_, i) => visit(`p${i}`, { chart: `8${i}` }))
+    const result = inputTargets(many, byRange(), context({ done: new Set(['p0']), keep: new Set(['p0']) }))
+    expect(result.problem).toBeNull()
+    expect(result.batch).toHaveLength(MAX_BATCH + 1)
+  })
+})

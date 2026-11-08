@@ -286,8 +286,11 @@ export type ChartLine = { kind: ChartLineKind | null; text: string }
 export type RxRow = { kind: 'proc' | 'drug' | 'other'; code: string; name: string; short: string; qty: number | null; benefit: boolean }
 /** 대상 고르기에 넣는 진료 한 줄: 비교 상태 + 차트번호·이름·처방 코드·처방 이름·규칙 경고 있음 + 열린 줄에 보일 증상·처방내역(화면에만, 보내지 않는다) */
 export type TargetVisit = VisitMemo & { chart: string; name: string; rx: readonly string[]; rxNames: readonly string[]; warned: boolean; chartLines: readonly ChartLine[]; rxRows: readonly RxRow[] }
-/** 목록 한 줄. sameDay는 같은 사람 같은 날 진료 수, foundByPc는 도우미가 찾아낸 직접 입력(AC-018.13). chip은 입력할 사람에게만 있다 */
-export type TargetRow = TargetVisit & { replaces?: string; sameDay: number; foundByPc: boolean; chip: '새 메모' | '메모 바꿈' | null }
+/**
+ * 목록 한 줄. sameDay는 같은 사람 같은 날 진료 수, foundByPc는 도우미가 찾아낸 직접 입력(AC-018.13). chip은 입력할 사람에게만 있다.
+ * done은 완료(완료 표시·입력 기록 done, 또는 비트 메모가 우리 메모와 같음, AC-3104.4). 복사로 완료해 자리를 지키는 줄은 입력할 사람에 있어도 done이 켜져 있고 입력 묶음에는 들지 않는다
+ */
+export type TargetRow = TargetVisit & { replaces?: string; sameDay: number; foundByPc: boolean; chip: '새 메모' | '메모 바꿈' | null; done: boolean }
 export type CodeChip = { code: string; name: string; count: number }
 /** 고른 조건의 결과(AC-018.26). problem은 고르는 즉시 보이는 안내(AC-018.9~AC-018.11·AC-018.20·AC-018.23), code는 묶음과 함께 보낼 코드(날짜별은 null), replacing은 입력할 사람 가운데 다른 메모가 바뀌는 수 */
 export type InputTargets = { problem: string | null; range: DateRange | null; code: string | null; batch: TargetRow[]; left: { reason: LeftReason; rows: TargetRow[] }[]; chips: CodeChip[]; typedOverChip: boolean; replacing: number }
@@ -376,6 +379,10 @@ export type PrecheckFromScreen =
   | { type: 'editMemo'; visitKey: string; text: string }
   | { type: 'memoApprove'; visitKey: string; approved: boolean }
   | { type: 'memoSaveRetry' }
+  /** 우리 메모를 클립보드에 복사했다: 그 글이 지금 우리 메모와 같으면 완료로 둔다(AC-3104.1) */
+  | { type: 'memoCopied'; visitKey: string; text: string }
+  /** [완료 풀기]: 완료 표시로 된 완료를 푼다(AC-3104.2) */
+  | { type: 'memoUndone'; visitKey: string }
   | { type: 'storeBlock' }
   | { type: 'buildInputBatch'; run: number; what: InputWhat; selection: InputSelection }
   | { type: 'inputExcel'; ask: number }
