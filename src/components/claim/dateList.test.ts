@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addDays } from '@/lib/analytics/dates'
 import type { ClaimDayCount } from '@/lib/storage/claimCounts'
 import type { DayCount } from '@/types/bridge'
-import { buildDateList, checkPeriod, dayLabel, defaultPeriod, listRange, monthsIn, periodSummary, readRange, statusOf, toggleDay, unfinishedPeriod, weekPeriod } from './dateList'
+import { buildDateList, checkPeriod, closablePeriodDates, dayLabel, defaultPeriod, listRange, monthsIn, periodSummary, readRange, statusOf, toggleDay, unfinishedPeriod, weekPeriod } from './dateList'
 
 // 날짜 목록(REQ-013, design.md 6-4)과 기간 계산. 숫자와 날짜뿐이다(환자 글자 없음)
 
@@ -40,12 +40,12 @@ describe('AC-013.1 buildDateList', () => {
 
   it('AC-013.1: 날마다 진료 수·남은 수·마지막으로 바뀐 시각이 있다', () => {
     const [row] = buildDateList([day('2026-10-28', 51, 3)], [count('2026-10-28', 7, 2, 51, '2026-10-28T07:41:00+00:00')])
-    expect(row).toEqual({ date: '2026-10-28', visits: 51, memoInBit: 3, needMemo: 7, entered: 2, left: 5, done: false, updatedAt: '2026-10-28T07:41:00+00:00' })
+    expect(row).toEqual({ date: '2026-10-28', visits: 51, memoInBit: 3, needMemo: 7, entered: 2, left: 5, done: false, updatedAt: '2026-10-28T07:41:00+00:00', closedAt: null })
   })
 
   it('AC-013.1: 아직 불러오지 않은 날은 건수·시각이 비어 있고 덜 끝난 날이다', () => {
     const [row] = buildDateList([day('2026-10-29', 49, 1)], [])
-    expect(row).toEqual({ date: '2026-10-29', visits: 49, memoInBit: 1, needMemo: null, entered: null, left: null, done: false, updatedAt: null })
+    expect(row).toEqual({ date: '2026-10-29', visits: 49, memoInBit: 1, needMemo: null, entered: null, left: null, done: false, updatedAt: null, closedAt: null })
   })
 
   it('AC-013.1: 메모 필요가 0인 날은 다 끝난 날이다', () => {
@@ -350,5 +350,39 @@ describe('claim-day-done: 완료 표시한 날은 끝난 날이다(REQ-2804)', (
     const allClosed = buildDateList([day('2026-10-27', 50)], [count('2026-10-27', 53, 32, 50)], closed)
     expect(unfinishedPeriod(allClosed)).toBeNull()
     expect(defaultPeriod(allClosed, '2026-11-08')).toEqual({ from: '2026-11-08', to: '2026-11-08' })
+  })
+})
+
+describe('claim-day-done-pc: 줄에 바꾼 시각을 싣고 고른 기간의 덜 끝난 날을 센다', () => {
+  const AT = '2026-11-07T22:30:00+00:00'
+
+  it('AC-2902.1: 완료 표시를 날짜→바꾼 시각 Map으로 주면 그 줄의 closedAt이 그 시각이고 끝난 날이다. 다른 줄은 null이다', () => {
+    const rows = buildDateList([day('2026-10-27', 50), day('2026-10-28', 51)], [count('2026-10-27', 53, 32, 50), count('2026-10-28', 7, 2, 51)], new Map([['2026-10-27', AT]]))
+    const marked = rows.find((r) => r.date === '2026-10-27')!
+    expect([marked.done, marked.closedAt]).toEqual([true, AT])
+    expect(rows.find((r) => r.date === '2026-10-28')!.closedAt).toBeNull()
+  })
+
+  it('AC-2902.1: Set으로 주거나 주지 않으면 closedAt은 모두 null이고 끝난 날 규칙은 같다', () => {
+    const days = [day('2026-10-27', 50)]
+    const counts = [count('2026-10-27', 53, 32, 50)]
+    expect(buildDateList(days, counts, new Set(['2026-10-27']))[0]).toMatchObject({ done: true, closedAt: null })
+    expect(buildDateList(days, counts)[0]).toMatchObject({ done: false, closedAt: null })
+  })
+
+  it('AC-2902.1: listRange도 Map을 받아 완료 표시 날을 남은 일로 치지 않는다', () => {
+    const counts = [count('2026-07-01', 3, 1), count('2026-08-01', 3, 1)]
+    expect(listRange('2026-11-04', counts, new Map([['2026-07-01', AT]]))).toEqual({ from: '2026-08-01', to: '2026-11-04' })
+  })
+
+  it('AC-2901.1: closablePeriodDates는 고른 기간 안의 덜 끝난 날만 목록 차례로 준다(끝난 날·기간 밖 날 없음)', () => {
+    const rows = buildDateList(
+      [day('2026-10-19', 85), day('2026-10-20', 89), day('2026-10-21', 58), day('2026-10-22', 85), day('2026-10-26', 86)],
+      [count('2026-10-19', 41, 21, 85), count('2026-10-20', 39, 39, 89), count('2026-10-21', 19, 8, 58), count('2026-10-22', 40, 20, 85), count('2026-10-26', 47, 22, 86)],
+      new Map([['2026-10-21', AT]]),
+    )
+    expect(closablePeriodDates(rows, { from: '2026-10-19', to: '2026-10-24' })).toEqual(['2026-10-19', '2026-10-22'])
+    expect(closablePeriodDates(rows, { from: '2026-10-20', to: '2026-10-21' })).toEqual([])
+    expect(closablePeriodDates(rows, { from: '', to: '' })).toEqual([])
   })
 })

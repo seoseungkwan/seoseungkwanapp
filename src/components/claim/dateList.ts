@@ -25,13 +25,18 @@ export type DateRow = {
   /** 다 끝난 날: 남은 메모가 없고 올린 진료 수가 claim.dates와 같다(오후에 온 환자, AC-013.1). 또는 사람이 완료로 바꾼 날(claim-day-done AC-2804.1) */
   done: boolean
   updatedAt: string | null
+  /** 사람이 완료로 바꾼 시각(claim_day_closes.closed_at). 바꾸지 않은 날은 null(claim-day-done-pc AC-2902.1) */
+  closedAt: string | null
 }
+
+/** 완료 표시: 날짜 모음(Set) 또는 날짜→바꾼 시각(Map). 끝난 날 규칙은 has만 본다 */
+export type ClosedDays = ReadonlySet<string> | ReadonlyMap<string, string>
 
 /**
  * 진료 0건인 날을 빼고 ① 덜 끝난 날(메모 필요 > 입력, 진료 수가 다름, 또는 아직 불러오지 않은 날)을 오래된 날부터 ② 다 끝난 날을 최근 날부터(AC-013.1).
  * closed: 사람이 완료로 바꾼 날짜(claim_day_closes). 숫자와 상관없이 끝난 날이다(AC-2804.1)
  */
-export function buildDateList(days: readonly DayCount[], counts: readonly ClaimDayCount[], closed: ReadonlySet<string> = new Set()): DateRow[] {
+export function buildDateList(days: readonly DayCount[], counts: readonly ClaimDayCount[], closed: ClosedDays = new Set()): DateRow[] {
   const countOf = new Map(counts.map((count) => [count.visit_date, count]))
   const rows = days
     .filter((day) => day.visits > 0)
@@ -47,6 +52,7 @@ export function buildDateList(days: readonly DayCount[], counts: readonly ClaimD
         left,
         done: closed.has(day.date) || (left === 0 && count?.visits === day.visits),
         updatedAt: count?.updated_at ?? null,
+        closedAt: closed instanceof Map ? (closed.get(day.date) ?? null) : null,
       }
     })
   const unfinished = rows.filter((row) => !row.done).sort((a, b) => compareYmd(a.date, b.date))
@@ -55,7 +61,7 @@ export function buildDateList(days: readonly DayCount[], counts: readonly ClaimD
 }
 
 /** claim.dates로 물을 기간: 최근 60일 + 서버 건수에 남은 일이 있는 더 옛날(design.md 15절). 400일을 넘지 않는다. 완료로 바꾼 날은 남은 일로 치지 않는다(AC-2804.2) */
-export function listRange(today: string, counts: readonly ClaimDayCount[], closed: ReadonlySet<string> = new Set()): DateRange {
+export function listRange(today: string, counts: readonly ClaimDayCount[], closed: ClosedDays = new Set()): DateRange {
   const oldestAllowed = addDays(today, 1 - MAX_LIST_DAYS)
   const recent = addDays(today, 1 - LIST_DAYS)
   const oldestLeft = counts
@@ -118,6 +124,11 @@ export function toggleDay(period: DateRange, date: string): DateRange {
 }
 
 export const inPeriod = (date: string, { from, to }: DateRange) => Boolean(from && to) && compareYmd(date, from) >= 0 && compareYmd(date, to) <= 0
+
+/** 고른 기간 안의 덜 끝난 날, 목록 차례 그대로(claim-day-done-pc AC-2901.1). [고른 날 완료로 저장]이 보낼 날짜다 */
+export function closablePeriodDates(rows: readonly DateRow[], period: DateRange): string[] {
+  return rows.filter((row) => !row.done && inPeriod(row.date, period)).map((row) => row.date)
+}
 
 /** 고른 기간 요약: 진료한 날·환자·메모 필요(불러온 날이 없으면 null), 달마다 날 수 */
 export function periodSummary(rows: readonly DateRow[], period: DateRange) {
