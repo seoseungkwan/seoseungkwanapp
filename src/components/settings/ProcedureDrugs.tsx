@@ -6,6 +6,7 @@ import type { DrugPlace, MemoCode, PhraseError, ProcedureDrugs as Value } from '
 
 // 설정의 '시술별 약' 칸(AC-018.19, 설정 쪽 승인 목업 '시술별 문구와 약'). 시술마다 약 이름으로 넣기·빼기와 자리를 고른다. 국소마취제·연골주사약도 같다. 환자 자료가 아니다.
 // 값의 모양은 AC-014.9 그대로다: 시술(대문자 코드) → 약 이름 → {use, place?, label?}. 없는 칸은 아직 정하지 않은 것이다
+// 시술 2개 이상인 날의 약(memo-settings REQ-3002, AC-3002.6): 넣기인 시술이 하나뿐이면 그 시술 줄에 넣는다. 켜기 칸 값은 memoRules.singleOwnerDrug(부르는 쪽이 준다)
 
 const PLACES: { value: DrugPlace; label: string }[] = [
   { value: 'afterProc', label: '시술 뒤' },
@@ -16,7 +17,23 @@ const PLACES: { value: DrugPlace; label: string }[] = [
 const th = 'h-10 whitespace-nowrap border-b border-line px-2 text-left font-medium text-muted first:pl-0 last:pr-0'
 const td = 'border-b border-line px-2 py-2 first:pl-0 last:pr-0 text-ink'
 
-export function ProcedureDrugs({ codes, value, errors, disabled = false, onChange }: { codes: Readonly<Record<string, MemoCode>>; value: Value; errors: readonly PhraseError[]; disabled?: boolean; onChange(next: Value): void }) {
+export function ProcedureDrugs({
+  codes,
+  value,
+  errors,
+  disabled = false,
+  singleOwnerDrug,
+  onSingleOwnerDrugChange,
+  onChange,
+}: {
+  codes: Readonly<Record<string, MemoCode>>
+  value: Value
+  errors: readonly PhraseError[]
+  disabled?: boolean
+  singleOwnerDrug: boolean
+  onSingleOwnerDrugChange(next: boolean): void
+  onChange(next: Value): void
+}) {
   const procedures = Object.entries(codes).filter(([, row]) => row.k === 'proc')
   const drugNames = [...new Set(Object.values(codes).filter((row) => row.k === 'drug').map((row) => row.n))]
   const [picked, setPicked] = useState(procedures[0]?.[0] ?? '')
@@ -25,6 +42,7 @@ export function ProcedureDrugs({ codes, value, errors, disabled = false, onChang
   const choices = value[procKey] ?? {}
   const names = [...new Set([...drugNames, ...Object.keys(choices)])]
   const selectId = useId()
+  const singleOwnerHelpId = useId()
 
   const set = (drug: string, next: Value[string][string]) => onChange({ ...value, [procKey]: { ...choices, [drug]: next } })
   const listed = errors.filter((error) => error.path.startsWith('procedureDrugs'))
@@ -98,7 +116,15 @@ export function ProcedureDrugs({ codes, value, errors, disabled = false, onChang
       ))}
       <p className={ds.help}>병원 설정과 실제로 쓴 시술이 다른 날에는 메모가 틀릴 수 있어요</p>
       <p className={ds.help}>바꾸면 다음에 만드는 메모부터 바뀌어요</p>
-      <p className={ds.help}>같은 날 시술이 2개 이상이면 약을 자동으로 넣지 않아요. [약 확인]을 남겨 어느 시술에 쓴 약인지 사람이 확인해요. 그날 모든 시술에서 빼기로 정한 약만 그대로 빼요.</p>
+      <div className="flex flex-col gap-1">
+        <label className="inline-flex cursor-pointer items-start gap-2 text-small text-ink">
+          <input type="checkbox" className="mt-1" checked={singleOwnerDrug} disabled={disabled} aria-describedby={singleOwnerHelpId} onChange={(event) => onSingleOwnerDrugChange(event.target.checked)} />
+          <span>시술이 2개 이상인 날, &apos;넣기&apos;인 시술이 하나뿐이면 그 시술 줄에 자동으로 넣기</span>
+        </label>
+        <p id={singleOwnerHelpId} className={`${ds.help} pl-6`}>
+          넣기인 시술이 2곳 이상이거나 아직 안 정한 시술이 있으면 [약 확인]을 남겨요. 모든 시술에서 빼기면 빼요. 끄면 시술이 2개 이상인 날은 늘 [약 확인]을 남겨요.
+        </p>
+      </div>
     </div>
   )
 }

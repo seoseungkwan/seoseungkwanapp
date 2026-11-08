@@ -1,120 +1,64 @@
 'use client'
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
-import { createMemoEngine, validatePhrases, type PhraseError, type Phrases, type PhraseTemplates } from '@/lib/precheck/memo'
+import { validatePhrases, type PhraseDiffRow, type PhraseError, type Phrases } from '@/lib/precheck/memo'
 import { readHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import type { Visit } from '@/types/precheck'
-import { ProcedureDrugs } from './ProcedureDrugs'
+import { BasicTab } from './phrases/BasicTab'
+import { ErrorList } from './phrases/fields'
+import { withPhraseChanges } from './phrases/merge'
+import { ProcTab } from './phrases/ProcTab'
+import { ReasonTab } from './phrases/ReasonTab'
+import { RulesTab } from './phrases/RulesTab'
+import { SaveDiff } from './phrases/SaveDiff'
+import { saveDiffRows } from './phrases/saveDiffRows'
+import { TryTab } from './phrases/TryTab'
 
-// 설정의 '병원 문구' 칸(AC-018.7·AC-018.18·AC-018.19, 설정 쪽 승인 목업). 세 묶음: 메모 모양 · 시술별 문구와 약 · 사유 문장. 저장하는 값의 모양은 AC-014.3 그대로다(묶음은 화면 배치일 뿐이다).
-// 목업의 '변경 기록'·'가입 보기 글'은 범위 밖이라 만들지 않는다. 목업의 보기(1·2·3) 고르기는 가입 질문의 보기가 아직 없어 만들지 않는다. 기능만 맞추고 모양은 다듬지 않았다.
+// 설정의 '병원 문구' 칸(AC-018.7·AC-018.18·AC-018.19, memo-settings REQ-3007·시안 docs/mockups/memo-settings). 저장하는 값의 모양은 AC-014.3 + memoRules 그대로다(묶음은 화면 배치일 뿐이다).
+// 묶음 단추 여섯 개(기본 · 시술별 문구와 약 · 처방코드 · 표기 규칙 · 사유 문장 · 메모 시험)와 아래 저장 줄 하나. 고치는 값(draft)·읽은 값(opened)·저장·비교 상태는 여기 하나에 둔다.
+// [저장]은 바로 쓰지 않고 바뀐 부분 표를 보인 뒤 [이대로 저장]에 쓴다(AC-3007.5). 쓸 때는 고친 칸만 그때 읽은 값에 얹는다(AC-3007.6).
 // 병원 설정 줄이 없거나 검사를 지나지 못하면 파란 안내뿐이고 저장 단추가 없다(AC-018.18): 기본값으로 대신 저장하면 막음이 풀린다. Worker 답 없이 같은 판단을 한다. 환자 자료가 오지 않는다
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'blocked' } | { kind: 'ready' }
-type Key = keyof PhraseTemplates
+type Tab = 'basic' | 'proc' | 'codes' | 'rules' | 'reason' | 'try'
 
-/** [메모 시험해 보기]의 가짜 진료(AC-018.7). 환자 자료가 아니다 */
-const FAKE_VISIT: Visit = {
-  key: 'fake',
-  chart: '1',
-  date: '2026-01-05',
-  month: '2026-01',
-  name: '가짜 진료',
-  lines: ['LBP', 'MBB L4,5 both'],
-  hints: [null, null],
-  rx: [{ code: 'LA358', name: 'LA358', qty: 2, benefit: true, pay: '급여' }],
-  dx: [],
-  memosInBit: [],
-}
-
-const SHAPE_SELECTS: { key: Key; label: string; options: { value: string; label: string }[] }[] = [
-  { key: 'sideStyle', label: '좌우 표기', options: [{ value: 'Rt', label: 'Rt·Lt·both' }, { value: 'upper', label: 'RT·LT·BOTH' }, { value: 'dot', label: 'Rt.·Lt.·Both' }, { value: 'bil', label: 'Rt·Lt·Bil' }, { value: 'ko', label: '우측·좌측·양측' }, { value: 'koShort', label: '우·좌·양' }] },
-  { key: 'cartilageSideLang', label: '연골주사 좌우 표기', options: [{ value: 'ko', label: '한글' }, { value: 'en', label: '영어' }] },
-  { key: 'levelSep', label: '레벨 이어 쓰기', options: [{ value: 'comma', label: '쉼표' }, { value: 'dash', label: '붙임표' }, { value: 'repeat', label: '글자 반복' }] },
-  { key: 'lineJoin', label: '줄 나눔', options: [{ value: 'lines', label: '줄마다 나누기' }, { value: 'oneLine', label: '한 줄로 이어쓰기' }] },
-  { key: 'drugWrap', label: '약 모양', options: [{ value: 'paren', label: '괄호' }, { value: 'plain', label: '괄호 없음' }] },
-]
-const PROC_TEXTS: { key: Key; label: string }[] = [
-  { key: 'main', label: '기본 시술 문구' },
-  { key: 'mainCentral', label: 'Central 시술 문구' },
-  { key: 'mainPeripheral', label: 'Peripheral 시술 문구' },
-  { key: 'cpb', label: '경부 CPB' },
-  { key: 'snb', label: 'SNB 문구' },
-  { key: 'icnb', label: 'ICNB' },
-  { key: 'ara', label: '연골주사' },
-  { key: 'klg', label: 'K-L grade' },
-  { key: 'iaAra', label: '연골주사 포함 IA' },
-  { key: 'iaEtc', label: '일반 IA' },
-  { key: 'ts', label: '건초내주사' },
-]
-const REASON_TEXTS: { key: Key; label: string }[] = [
-  { key: 'itv', label: '주사 간격 사유' },
-  { key: 'ia2', label: '2부위 시술 사유' },
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'basic', label: '기본' },
+  { key: 'proc', label: '시술별 문구와 약' },
+  { key: 'codes', label: '처방코드' },
+  { key: 'rules', label: '표기 규칙' },
+  { key: 'reason', label: '사유 문장' },
+  { key: 'try', label: '메모 시험' },
 ]
 
-function TextField({ label, value, error, rows, onChange }: { label: string; value: string; error?: string; rows?: number; onChange(value: string): void }) {
-  const id = useId()
-  return (
-    <div className={ds.field}>
-      <label className={ds.label} htmlFor={id}>
-        {label}
-      </label>
-      {rows ? (
-        <textarea id={id} rows={rows} className={`${ds.input} h-auto py-2`} value={value} aria-invalid={error ? true : undefined} onChange={(event) => onChange(event.target.value)} />
-      ) : (
-        <input id={id} className={ds.input} autoComplete="off" value={value} aria-invalid={error ? true : undefined} onChange={(event) => onChange(event.target.value)} />
-      )}
-      {error && <p className={ds.fieldError}>{error}</p>}
-    </div>
-  )
-}
+const BASIC_KEYS = ['mark', 'sideStyle', 'cartilageSideLang', 'levelSep', 'lineJoin', 'drugWrap', 'drugUnit', 'drugQty']
+const PROC_KEYS = ['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb', 'icnb', 'ara', 'klg', 'iaAra', 'iaEtc', 'ts', 'byProc', 'byRegion', 'fixedPhrases']
+const RULE_KEYS = ['sideMode', 'sideSpread', 'splitCpb', 'splitSnb', 'splitEach', 'kneeSetSkipIa', 'rename', 'sideByCode', 'siteNames']
+const REASON_KEYS = ['itv', 'ia2', 'intervalDays']
 
-function SelectField({ label, value, options, error, onChange }: { label: string; value: string; options: { value: string; label: string }[]; error?: string; onChange(value: string): void }) {
-  const id = useId()
-  return (
-    <div className={ds.field}>
-      <label className={ds.label} htmlFor={id}>
-        {label}
-      </label>
-      <select id={id} className={ds.input} value={value} aria-invalid={error ? true : undefined} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error && <p className={ds.fieldError}>{error}</p>}
-    </div>
-  )
-}
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-
-/** 표 하나에서 before와 after가 다른 칸만 base에 얹는다. 지운 칸은 지운다 */
-function withChanges<T>(base: Readonly<Record<string, T>>, before: Readonly<Record<string, T>>, after: Readonly<Record<string, T>>): Record<string, T> {
-  const merged = { ...base }
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (same(before[key], after[key])) continue
-    if (Object.hasOwn(after, key)) merged[key] = after[key]
-    else delete merged[key]
+/** 틀린 칸이 있는 묶음. 화면에 칸이 없는 경로면 null(아래 요약에 글로 보인다) */
+function tabOf(path: string): Tab | null {
+  const [head, key] = path.split('.')
+  if (head === 'TPL') {
+    if (BASIC_KEYS.includes(key)) return 'basic'
+    if (PROC_KEYS.includes(key)) return 'proc'
+    if (RULE_KEYS.includes(key)) return 'rules'
+    if (REASON_KEYS.includes(key)) return 'reason'
+    return null
   }
-  return merged
+  if (head === 'procedureDrugs' || path === 'memoRules.singleOwnerDrug') return 'proc'
+  if (head === 'CODEMAP' || head === 'CODEMAP_DEL' || key === 'order') return 'codes'
+  if (head === 'memoRules') return 'rules'
+  return null
 }
 
-/**
- * before → after로 고친 칸만 now에 얹는다(AC-018.7, 규칙 설정의 withRulesFrom과 같은 생각): 고칠 수 있는 칸은 문구(TPL)와 시술별 약(시술마다)뿐이고,
- * 나머지(코드 사전 등)와 고치지 않은 칸은 그때 읽은 값 그대로다. 그동안 다른 PC가 고친 문구를 덮지 않는다
- */
-function withPhraseChanges(now: Phrases, before: Phrases, after: Phrases): Phrases {
-  return {
-    ...now,
-    TPL: withChanges<unknown>(now.TPL, before.TPL, after.TPL) as PhraseTemplates,
-    procedureDrugs: withChanges(now.procedureDrugs, before.procedureDrugs, after.procedureDrugs),
-  }
-}
+// 화면 안 탭(관리자 화면과 같은 모양): 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 지금 탭은 ink 600 + 아래 2px accent 밑줄
+const tabBase =
+  'relative inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body first:-ml-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
+const tabIdle = `${tabBase} font-medium text-ink-2 hover:text-ink`
+const tabCurrent = `${tabBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
 
 /** 처음 질문 안내(AC-018.18): 파란 안내이고 오류 번호가 없다. 설정의 칸은 목업대로 둘째 줄이 없다 */
 function FirstQuestion({ label }: { label: string }) {
@@ -129,12 +73,18 @@ export function HospitalPhrases() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
   const [draft, setDraft] = useState<Phrases | null>(null)
   const [errors, setErrors] = useState<PhraseError[]>([])
+  const [tab, setTab] = useState<Tab>('basic')
+  const [confirm, setConfirm] = useState<{ rows: PhraseDiffRow[]; value: Phrases } | null>(null)
+  const [nothing, setNothing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
   const [savedNote, setSavedNote] = useState(false)
-  const [preview, setPreview] = useState<string | null>(null)
   /** 마지막으로 서버와 맞춘 값: 열 때 읽은 값, 저장한 뒤에는 저장한 값. 무엇을 고쳤는지 이것과 견준다 */
   const opened = useRef<Phrases | null>(null)
+  const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({})
+  const baseId = useId()
+  const tabId = (key: Tab) => `${baseId}-tab-${key}`
+  const panelId = `${baseId}-panel`
 
   const read = useCallback(async () => {
     setLoad({ kind: 'loading' })
@@ -157,21 +107,53 @@ export function HospitalPhrases() {
     void read()
   }, [read])
 
-  const errorOf = (path: string) => errors.find((error) => error.path === path)?.message
-  const setTpl = (key: Key, value: unknown) => {
+  /** 묶음이 고친 값. 열려 있던 비교 표는 옛 값이라 닫는다 */
+  const update = (next: Phrases) => {
     setSavedNote(false)
-    setDraft((now) => (now ? { ...now, TPL: { ...now.TPL, [key]: value } } : now))
+    setNothing(false)
+    setConfirm(null)
+    setDraft(next)
   }
 
-  async function save() {
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = TABS.findIndex((t) => t.key === tab)
+    const last = TABS.length - 1
+    const moves: Record<string, number> = { ArrowRight: at === last ? 0 : at + 1, ArrowLeft: at === 0 ? last : at - 1, Home: 0, End: last }
+    if (!(event.key in moves)) return
+    event.preventDefault()
+    const key = TABS[moves[event.key]].key
+    setTab(key)
+    tabRefs.current[key]?.focus()
+  }
+
+  /** [저장]: 검사하고, 바뀐 칸이 있으면 비교 표를 연다(AC-3007.5) */
+  function askSave() {
     if (!draft || !opened.current || saving) return
-    const sent = draft
+    setSavedNote(false)
+    setNothing(false)
+    const checked = validatePhrases(draft)
+    if (!checked.ok) {
+      setErrors(checked.errors)
+      setConfirm(null)
+      const first = checked.errors.map((error) => tabOf(error.path)).find((key) => key !== null)
+      if (first) setTab(first)
+      return
+    }
+    setErrors([])
+    const rows = saveDiffRows(opened.current, checked.value)
+    if (rows.length === 0) setNothing(true)
+    else setConfirm({ rows, value: draft })
+  }
+
+  /** [이대로 저장] */
+  async function save(sent: Phrases) {
+    if (!opened.current || saving) return
+    setConfirm(null)
     const checked = validatePhrases(sent)
     if (!checked.ok) {
       setErrors(checked.errors)
       return
     }
-    setErrors([])
     setSaving(true)
     setSaveFailed(false)
     try {
@@ -200,17 +182,7 @@ export function HospitalPhrases() {
     }
   }
 
-  function tryMemo() {
-    if (!draft) return
-    const checked = validatePhrases(draft)
-    if (!checked.ok) {
-      setErrors(checked.errors)
-      setPreview(null)
-      return
-    }
-    setErrors([])
-    setPreview(createMemoEngine(checked.value, {}).fullText(FAKE_VISIT))
-  }
+  const unplaced = errors.filter((error) => tabOf(error.path) === null)
 
   return (
     <section aria-labelledby="hospital-phrases-title" className={`${ds.panel} flex flex-col gap-4 p-5 max-md:p-4`}>
@@ -238,66 +210,52 @@ export function HospitalPhrases() {
       )}
       {load.kind === 'ready' && draft && (
         <>
-          <div role="group" aria-label="메모 모양" className="flex flex-col gap-3">
-            <h3 className="text-body font-semibold text-ink">메모 모양</h3>
-            <TextField label="줄 앞 기호" value={String(draft.TPL.mark ?? '')} error={errorOf('TPL.mark')} onChange={(value) => setTpl('mark', value)} />
-            <div className="grid gap-3 md:grid-cols-2">
-              {SHAPE_SELECTS.map(({ key, label, options }) => (
-                <SelectField key={key} label={label} value={String(draft.TPL[key] ?? options[0].value)} options={options} error={errorOf(`TPL.${String(key)}`)} onChange={(value) => setTpl(key, value)} />
-              ))}
-              <TextField label="약 양 단위" value={String(draft.TPL.drugUnit ?? '')} error={errorOf('TPL.drugUnit')} onChange={(value) => setTpl('drugUnit', value)} />
+          <div role="tablist" aria-label="병원 문구 묶음" onKeyDown={onTabKeyDown} className="flex flex-wrap border-b border-line">
+            {TABS.map((t) => {
+              const on = t.key === tab
+              return (
+                <button
+                  key={t.key}
+                  ref={(element) => {
+                    tabRefs.current[t.key] = element
+                  }}
+                  type="button"
+                  role="tab"
+                  id={tabId(t.key)}
+                  aria-selected={on}
+                  aria-controls={panelId}
+                  tabIndex={on ? 0 : -1}
+                  onClick={() => setTab(t.key)}
+                  className={on ? tabCurrent : tabIdle}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+          <div role="tabpanel" id={panelId} aria-labelledby={tabId(tab)}>
+            {tab === 'basic' && <BasicTab draft={draft} errors={errors} onChange={update} />}
+            {tab === 'proc' && <ProcTab draft={draft} errors={errors} onChange={update} />}
+            {tab === 'codes' && <p className={ds.help}>처방코드 목록은 다음 단계에서 이 자리에 생겨요.</p>}
+            {tab === 'rules' && <RulesTab draft={draft} errors={errors} onChange={update} />}
+            {tab === 'reason' && <ReasonTab draft={draft} errors={errors} onChange={update} />}
+            {tab === 'try' && <TryTab draft={draft} />}
+          </div>
+          {confirm && <SaveDiff rows={confirm.rows} busy={saving} onConfirm={() => void save(confirm.value)} onCancel={() => setConfirm(null)} />}
+          {errors.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <p className={ds.fieldError}>틀린 칸이 {errors.length}개 있어요. 칸 아래 글을 보고 고쳐 주세요.</p>
+              <ErrorList errors={unplaced} />
             </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 text-small text-ink">
-              <input type="checkbox" checked={draft.TPL.drugQty === true} onChange={(event) => setTpl('drugQty', event.target.checked)} />
-              양도 쓰기 (비트 처방의 투여량)
-            </label>
-          </div>
-          <div role="group" aria-label="시술별 문구와 약" className="flex flex-col gap-3">
-            <h3 className="text-body font-semibold text-ink">시술별 문구와 약</h3>
-            <div className="grid gap-3 md:grid-cols-2">
-              {PROC_TEXTS.map(({ key, label }) => (
-                <TextField key={key} label={label} value={String(draft.TPL[key] ?? '')} error={errorOf(`TPL.${String(key)}`)} onChange={(value) => setTpl(key, value)} />
-              ))}
-            </div>
-            <ProcedureDrugs
-              codes={draft.CODEMAP}
-              value={draft.procedureDrugs}
-              errors={errors}
-              onChange={(next) => {
-                setSavedNote(false)
-                setDraft({ ...draft, procedureDrugs: next })
-              }}
-            />
-          </div>
-          <div role="group" aria-label="사유 문장" className="flex flex-col gap-3">
-            <h3 className="text-body font-semibold text-ink">사유 문장</h3>
-            {REASON_TEXTS.map(({ key, label }) => (
-              <TextField key={key} rows={2} label={label} value={String(draft.TPL[key] ?? '')} error={errorOf(`TPL.${String(key)}`)} onChange={(value) => setTpl(key, value)} />
-            ))}
-            <TextField
-              label="주사 간격 일수"
-              value={draft.TPL.intervalDays === undefined || Number.isNaN(draft.TPL.intervalDays) ? '' : String(draft.TPL.intervalDays)}
-              error={errorOf('TPL.intervalDays')}
-              onChange={(value) => setTpl('intervalDays', value.trim() === '' ? undefined : Number(value))}
-            />
-          </div>
-          {errors.length > 0 && <p className={ds.fieldError}>틀린 칸이 {errors.length}개 있어요. 칸 아래 글을 보고 고쳐 주세요.</p>}
+          )}
           {saveFailed && <ErrorCard code="E-SETTINGS-FAILED" />}
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className={ds.button.primary} aria-busy={saving || undefined} onClick={() => void save()}>
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+            <button type="button" className={ds.button.primary} aria-busy={saving || undefined} onClick={askSave}>
               {saveFailed ? '다시 저장' : '저장'}
             </button>
-            <button type="button" className={ds.button.secondary} onClick={tryMemo}>
-              메모 시험해 보기
-            </button>
+            {nothing && <span role="status" className="text-small text-ink-2">바뀐 것이 없어요</span>}
             {savedNote && <span role="status" className="text-small text-ink-2">저장했어요. 다음에 만드는 메모부터 바뀌어요.</span>}
           </div>
-          {preview !== null && (
-            <section aria-label="시험한 메모" className="flex flex-col gap-1 rounded-control bg-canvas px-3 py-2">
-              <p className="text-caption text-muted">가짜 진료 한 건으로 만든 메모예요.</p>
-              <p className="whitespace-pre-wrap break-words text-small text-ink">{preview}</p>
-            </section>
-          )}
         </>
       )}
     </section>
