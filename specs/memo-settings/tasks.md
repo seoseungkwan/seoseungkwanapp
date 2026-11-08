@@ -8,10 +8,10 @@
 2. 사용자가 `/sdd approve memo-settings`를 입력한다
 
 ## TASK-1: 설정 값 모양 memoRules·검사·비교 이름표
-- REQ: REQ-3006
+- REQ: REQ-3006, REQ-3008
 - Files: src/lib/precheck/memo/types.ts, src/lib/precheck/memo/phrases.ts, src/lib/precheck/memo/phrases.test.ts, src/lib/precheck/memo/index.ts
 - Tests: src/lib/precheck/memo/phrases.test.ts
-- TDD: required — `validateMemoRules`(맞는 값·틀린 값 경로·없어도 지남), `diffPhrases` 새 이름표. 골든 phrases-engine은 그대로 통과
+- TDD: required — `validateMemoRules`(맞는 값·틀린 값 경로·없어도 지남), `diffPhrases` 새 이름표, `allowedTokens`(AC-3008.1: 칸별 허용 항목·고정 멘트 포함이 검사와 같다). 골든 phrases-engine은 그대로 통과
 - 차례: Phase 1
 
 ## TASK-2: 처방코드 목록 만들기(통계 날별 처방)
@@ -42,11 +42,11 @@
 - TDD: required — AC-3004.1, AC-3005.1~3005.2
 - 차례: Phase 2-가 (TASK-4 뒤)
 
-## TASK-6: 설정 화면 묶음 나누기·표기 규칙·시술 문구·저장 전 비교
-- REQ: REQ-3002, REQ-3007
+## TASK-6: 설정 화면 묶음 나누기·표기 규칙·시술 문구·{항목} 칸·저장 전 비교
+- REQ: REQ-3002, REQ-3007, REQ-3008
 - Files: src/components/settings/HospitalPhrases.tsx, src/components/settings/HospitalPhrases.test.tsx, src/components/settings/ProcedureDrugs.tsx, src/components/settings/ProcedureDrugs.test.tsx, src/components/settings/phrases/**
 - Tests: src/components/settings/HospitalPhrases.test.tsx, src/components/settings/ProcedureDrugs.test.tsx, src/components/settings/phrases/**
-- TDD: required — AC-3002.6, AC-3007.1·3007.2·3007.3·3007.5·3007.6
+- TDD: required — AC-3002.6, AC-3007.1·3007.2·3007.3·3007.5·3007.6, AC-3008.1~3008.3(`tokenPieces.ts` 순수 시험 + `TemplateField` 화면 시험)
 - 차례: Phase 2-나 (TASK-1 뒤, 엔진과 함께)
 
 ## TASK-7: 처방코드 묶음·메모 시험 묶음

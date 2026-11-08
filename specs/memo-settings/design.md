@@ -39,6 +39,8 @@ export function buildCodeRows(days: readonly DayPayload[], phrases: Pick<Phrases
 - 새 파일: `phrases/BasicTab.tsx`(메모 모양), `phrases/ProcTab.tsx`(시술 문구·byProc·byRegion·fixedPhrases + ProcedureDrugs), `phrases/CodesTab.tsx`(처방코드), `phrases/RulesTab.tsx`(표기 규칙), `phrases/ReasonTab.tsx`(사유), `phrases/TryTab.tsx`(메모 시험), `phrases/SaveDiff.tsx`(전·후 표). 각 탭은 `draft`와 `onChange(next: Phrases)`만 받는다.
 - 메모 시험 처방 글 읽기 `parseRxText('LA358 2\nA21')`는 `phrases/tryVisit.ts`(순수)에. 만든 가짜 진료는 화면 상태에만 둔다.
 - `ProcedureDrugs.tsx`: 아래 안내 글을 새 규칙으로 바꾸고 `singleOwnerDrug` 켜기 칸(props로 값·onChange)을 더한다.
+- `phrases/TemplateField.tsx`(REQ-3008): 틀 글 칸 하나 = 글 칸 + '자동 채움 넣기' 단추(`allowedTokens(path, draft)`, 커서 자리에 `setRangeText`) + 조각 줄(`/(\{[^{}]*\}|\s+)/`로 나눈 낱말·{항목}, {항목}에 ◀ ▶ ×) + 보기 한 줄(`createMemoEngine(draft,{}).fill(글, 보기 값)`). 조각 옮기기는 순수 함수 `phrases/tokenPieces.ts`(`pieces(text)`, `moveToken(text, index, -1|1)`, `removeToken(text, index)`)로 둔다. 모든 틀 칸(지금 11개·byProc·byRegion·사유·코드별 memo)이 이 칸을 쓴다.
+- `phrases.ts`에 `allowedTokens(path: string, phrases: Phrases): string[]`을 내보낸다(지금 안쪽 `tokens()`를 그대로 쓴다).
 
 ## 5. 위험
 - 실제 메모가 첫날 `[코드 확인]`으로 많이 걸릴 수 있다 → 처방코드 묶음 맨 위에 새 코드 수와 '새 코드 모두 제외'.

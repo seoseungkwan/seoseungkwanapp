@@ -57,6 +57,16 @@ tr.isnew td{background:#FFFBF3}
 .diff.on{display:flex}
 .ok{color:var(--positive);font-size:13px;display:none}.ok.on{display:inline}
 .note{background:#1F2937;color:#F9FAFB;padding:10px 16px;font-size:13px}
+.tf{display:flex;flex-direction:column;gap:6px;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.tok{display:inline-flex;align-items:center;height:26px;padding:0 8px;border-radius:999px;border:1px solid #C7D8FB;background:var(--accent-soft);color:var(--accent-strong);font-size:12px;font-weight:500}
+.tok.mine{border-color:#F3D19C;background:var(--warn-soft);color:var(--warn)}
+.pieces{gap:4px}
+.pc{display:inline-flex;align-items:center;height:26px;padding:0 6px;border-radius:var(--r-control);background:var(--canvas);border:1px solid var(--line);font-size:12px}
+.pc.t{background:#fff;border-color:var(--accent);color:var(--accent-strong);font-weight:600;gap:2px}
+.pc.t button{width:18px;height:18px;border-radius:3px;color:var(--ink-2);font-size:11px}
+.pc.t button:hover:not(:disabled){background:var(--accent-soft)}
+.pc.t button:disabled{opacity:.3;cursor:default}
+.ex{font-size:13px;color:var(--ink-2)}.ex span{color:var(--ink);font-weight:500}
 </style>
 </head>
 <body>
@@ -95,12 +105,19 @@ tr.isnew td{background:#FFFBF3}
   <!-- 시술별 문구와 약 -->
   <div class="pane" id="proc">
     <div class="group"><h3>시술 문구</h3>
-      <div class="grid">
-        <div class="field"><label>기본 시술 문구</label><input class="input" value="{시술}"></div>
-        <div class="field"><label>일반 IA</label><input class="input" value="IA injection of - {부위}{약제}"></div>
-        <div class="field"><label>건초내주사</label><input class="input" value="{부위} 건초내주사 시행{약제}"></div>
-        <div class="field"><label>연골주사</label><input class="input" value="{좌우} 슬관절 강내 연골주사 {회차}회차"></div>
-      </div><p class="muted">… 경부 CPB · SNB · ICNB · K-L grade 등 지금 칸 11개 그대로</p>
+      <div class="tf" data-tokens="좌우,한글방향,영문방향,레벨,부위,시술,약제,투여량,코드,처방명">
+        <div class="field"><label>일반 IA</label><input class="input tfin" value="IA injection of - {부위}{약제}"></div>
+        <div class="row tokrow"><span class="muted">자동 채움 넣기</span></div>
+        <div class="row pieces"></div>
+        <div class="ex">보기: <span></span></div>
+      </div>
+      <div class="tf" data-tokens="좌우,한글방향,영문방향,레벨,부위,시술,약제,회차,코드">
+        <div class="field"><label>연골주사</label><input class="input tfin" value="{좌우} 슬관절 강내 연골주사 {회차}회차"></div>
+        <div class="row tokrow"><span class="muted">자동 채움 넣기</span></div>
+        <div class="row pieces"></div>
+        <div class="ex">보기: <span></span></div>
+      </div>
+      <p class="muted">… 기본 시술 · 경부 CPB · SNB · ICNB · 건초내주사 등 모든 문구 칸이 같은 모양이에요. 글을 직접 고쳐도 되고, 단추를 누르면 글쓰기 표시가 있는 자리에 들어가요. ◀ ▶로 {항목} 자리를 바꿔요.</p>
     </div>
     <div class="group"><h3>시술 이름별 문구 <span class="muted">— 이름이 긴 것부터 먼저 맞춰요</span></h3>
       <table><tr><th>시술 이름</th><th>문구</th><th></th></tr>
@@ -112,12 +129,9 @@ tr.isnew td{background:#FFFBF3}
         <div class="field"><label>무릎</label><input class="input"></div><div class="field"><label>어깨</label><input class="input"></div><div class="field"><label>허리</label><input class="input"></div>
       </div><p class="muted">… 12개 부위</p>
     </div>
-    <div class="group"><h3>고정 멘트 <span class="muted">— 문구에 {단추 이름}으로 넣어요</span></h3>
-      <table><tr><th>켜기</th><th>단추 이름</th><th>들어갈 글</th><th></th></tr>
-        <tr><td><input type="checkbox" checked></td><td><input class="input" value="C-arm"></td><td><input class="input" value="C-arm guide 하에"></td><td><button class="btn small">지우기</button></td></tr>
-        <tr><td><input type="checkbox" checked></td><td><input class="input" value="Sono"></td><td><input class="input" value="Sono guide 하에"></td><td><button class="btn small">지우기</button></td></tr>
-        <tr><td><input type="checkbox" checked></td><td><input class="input" value="시행함"></td><td><input class="input" value="시행함"></td><td><button class="btn small">지우기</button></td></tr>
-      </table><div><button class="btn small">+ 멘트 더하기</button></div>
+    <div class="group"><h3>고정 멘트 <span class="muted">— 내가 만드는 {항목}. 문구 칸에 {단추 이름}을 넣으면 이 글이 그대로 들어가요. 끄면 빈칸이 돼요</span></h3>
+      <table id="fixed"><tr><th>켜기</th><th>단추 이름</th><th>들어갈 글</th><th></th></tr></table>
+      <div><button class="btn small" id="addFixed">+ 멘트 더하기</button> <span class="muted">더하거나 이름을 바꾸면 위 모든 칸의 '자동 채움 넣기' 단추에 바로 생겨요 (30개까지)</span></div>
     </div>
     <div class="group"><h3>시술별 약</h3>
       <div class="field" style="max-width:320px"><label>고칠 시술</label><select class="input"><option>IA (KK090)</option></select></div>
@@ -217,6 +231,45 @@ document.getElementById('cancel').onclick=()=>d.classList.remove('on')
 document.getElementById('confirm').onclick=()=>{d.classList.remove('on');ok.classList.add('on')}
 document.getElementById('make').onclick=()=>{document.getElementById('memoOut').style.display='block'}
 document.getElementById('allSkip').onclick=()=>document.querySelectorAll('select.k').forEach(s=>s.value='제외')
+// ── {항목} 칸: 자동 채움 넣기 · ◀ ▶ × · 보기 ──
+const fixed=[{token:'C-arm',text:'C-arm guide 하에',on:true},{token:'Sono',text:'Sono guide 하에',on:true},{token:'시행함',text:'시행함',on:true}]
+const SAMPLE={좌우:'Rt',한글방향:'우측',영문방향:'Rt',레벨:'4,5',부위:'knee',시술:'MBB L4,5',약제:'(triam)',회차:'2',투여량:'1',코드:'KK090',처방명:'관절강내주사'}
+const split=t=>t.split(/(\{[^{}]*\}|\s+)/).filter(x=>x!=='')
+const isTok=x=>/^\{[^{}]*\}$/.test(x),isSp=x=>/^\s+$/.test(x)
+function fillEx(t){let s=t;fixed.forEach(f=>s=s.split('{'+f.token+'}').join(f.on?f.text:''));Object.entries(SAMPLE).forEach(([k,v])=>s=s.split('{'+k+'}').join(v));return s.replace(/\{[^{}]*\}/g,'').replace(/\s{2,}/g,' ').trim()}
+function move(t,i,dir){const p=split(t);let j=i+dir;while(j>=0&&j<p.length&&isSp(p[j]))j+=dir;if(j<0||j>=p.length)return t;[p[i],p[j]]=[p[j],p[i]];return p.join('')}
+function drawTf(tf){
+  const input=tf.querySelector('.tfin'),row=tf.querySelector('.tokrow'),pcs=tf.querySelector('.pieces')
+  row.querySelectorAll('button').forEach(b=>b.remove())
+  const toks=[...tf.dataset.tokens.split(',').map(t=>[t,false]),...fixed.filter(f=>f.token).map(f=>[f.token,true])]
+  toks.forEach(([t,mine])=>{const b=document.createElement('button');b.className='tok'+(mine?' mine':'');b.textContent='{'+t+'}';b.onmousedown=e=>e.preventDefault()
+    b.onclick=()=>{const s=input.selectionStart??input.value.length,e=input.selectionEnd??s;input.setRangeText('{'+t+'}',s,e,'end');input.focus();redraw(tf)};row.append(b)})
+  redraw(tf)
+}
+function redraw(tf){
+  const input=tf.querySelector('.tfin'),pcs=tf.querySelector('.pieces'),p=split(input.value)
+  pcs.innerHTML=''
+  const nonSp=p.map((x,i)=>isSp(x)?-1:i).filter(i=>i>=0)
+  p.forEach((x,i)=>{if(isSp(x))return;const s=document.createElement('span');s.className='pc'+(isTok(x)?' t':'')
+    if(isTok(x)){const l=document.createElement('button');l.textContent='◀';l.disabled=i===nonSp[0];l.onclick=()=>{input.value=move(input.value,i,-1);redraw(tf)}
+      const r=document.createElement('button');r.textContent='▶';r.disabled=i===nonSp[nonSp.length-1];r.onclick=()=>{input.value=move(input.value,i,1);redraw(tf)}
+      const x2=document.createElement('button');x2.textContent='×';x2.onclick=()=>{const q=split(input.value);q.splice(i,1);input.value=q.join('').replace(/\s{2,}/g,' ');redraw(tf)}
+      s.append(l,document.createTextNode(x),r,x2)}else s.textContent=x
+    pcs.append(s)})
+  tf.querySelector('.ex span').textContent=fillEx(input.value)||'(빈 줄)'
+}
+function drawFixed(){
+  const tb=document.getElementById('fixed');tb.querySelectorAll('tr.f').forEach(r=>r.remove())
+  fixed.forEach((f,i)=>{const tr=document.createElement('tr');tr.className='f'
+    tr.innerHTML=`<td><input type="checkbox" ${f.on?'checked':''}></td><td><input class="input" value="${f.token}"></td><td><input class="input" value="${f.text}"></td><td><button class="btn small">지우기</button></td>`
+    const [on,tok,txt]=tr.querySelectorAll('input')
+    on.onchange=()=>{f.on=on.checked;tfs.forEach(redraw)};tok.onchange=()=>{f.token=tok.value.trim();tfs.forEach(drawTf)};txt.oninput=()=>{f.text=txt.value;tfs.forEach(redraw)}
+    tr.querySelector('button').onclick=()=>{fixed.splice(i,1);drawFixed();tfs.forEach(drawTf)};tb.append(tr)})
+}
+const tfs=[...document.querySelectorAll('.tf')]
+tfs.forEach(tf=>{tf.querySelector('.tfin').oninput=()=>redraw(tf);drawTf(tf)})
+drawFixed()
+document.getElementById('addFixed').onclick=()=>{let n=fixed.length+1;while(fixed.some(f=>f.token==='멘트'+n))n++;fixed.push({token:'멘트'+n,text:'',on:true});drawFixed();tfs.forEach(drawTf)}
 document.getElementById('all').onclick=e=>{e.target.textContent='최근 3개월만';document.querySelector('#codes .muted').textContent='저장된 통계 전체 기간의 코드 186개'}
 </script>
 </body>
