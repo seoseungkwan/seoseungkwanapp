@@ -43,18 +43,19 @@ export type MonthSections = {
 | 파일 | 일 |
 |---|---|
 | `supabase/migrations/20261109000000_stats_month_sections.sql` | `alter table stats_months add column sections jsonb` + check(값이 있으면 객체·`v`=1·`month`·`partial`이 줄과 같음·크기 ≤ 65,536, `is true`로 감쌈) + `grant insert (sections), update (sections)` |
-| `src/lib/payload/toMonthSections.ts` (새) | `toMonthSections(input): MonthSections[]` — 달 줄 목록(달·partial)과 비트 기억(`BitMemory`의 visits·people·first·doctors·doctorDays), 불러온 범위(오늘까지)를 받아 달마다 셈 기간을 정하고 `patientMix(…, 'all')`·`visitHours`·`doctorStats`를 부른 뒤 저장 모양으로 줄인다. 이름이 `isText`를 못 넘는 줄은 뺀다 |
-| `src/lib/payload/validate.ts` | `validateMonthSections(value): MonthSections \| null` — 열쇠 목록·`v`·달 글자·배열 길이(age 10, openDays·weekdays 7, hours 13, insurance·town·doctors 한도)·수(0 이상 정수, 금액은 안전 정수)·이름(`isText(…, true)`) |
+| `src/lib/payload/toMonthSections.ts` (새) | `toMonthSections(input): MonthSections[]` — 달 줄 목록(달·partial)과 비트 기억(`BitMemory`의 visits·people·first·doctors·doctorDays), 불러온 범위(오늘까지)를 받아 달마다 셈 기간을 정하고 `patientMix(…, 'all')`·`visitHours`·`doctorStats`를 부른 뒤 저장 모양으로 줄인다. 이름이 `isText`를 못 넘는 줄은 뺀다. 보험의 '보험 모름' 줄(화면은 보통 줄로 그린다)도 뺀다. 원장님 줄은 이름이 진료의 표에 있는 줄(과 '진료의 미지정')만 넣는다 — 이름이 없어 코드로 보이는 줄은 뺀다. 같은 이름이 둘 이상인 보험·동네·원장님 줄은 모두 뺀다 |
+| `src/lib/payload/validate.ts` | `validateMonthSections(value): MonthSections \| null` — 열쇠 목록·`v`·달 글자·배열 길이(age 10, openDays·weekdays 7, hours 13, insurance·town·doctors 한도)·수(0 이상 정수, 금액은 안전 정수)·이름(`isText(…, true)`)·묶음 안 이름 겹침 없음·셈이 늘 지키는 관계(연령대 명의 합 = 실환자, 보험·동네 명 ≤ 실환자, 요일 합 = 시간 합, 한 요일 문 연 날 ≤ 5이고 접수가 있을 때만 문 연 날 > 0, 원장님 신환 ≤ 실환자). 금액은 안전 정수(환불로 음수 가능) |
 | `src/workers/stats/jobs.ts` | `loadJob`이 `view.sections`를 만든다: v3이고 `view.months`가 있으면 `toMonthSections`, 아니면 `null` |
-| `src/types/stats.ts` | `StatsLoaded.sections: MonthSections[] \| null` |
+| `src/types/stats.ts` | `StatsLoaded.sections?: MonthSections[] \| null` — 선택 칸. v3 답이면 늘 있고(못 만들면 `null`), v2 답이면 열쇠가 없다(화면 값을 만드는 지금 시험 자료 `StatsLoaded`가 고치지 않고 그대로 맞게, 2026-11-08 구현 중 고침) |
 | `src/components/stats/StatsScreen.tsx` | 비트 저장에 `sections: view.sections`를 더한다(글자 한 군데, 화면 모양 바뀜 없음). 파일 저장 값(`outcome.save`)은 그대로 |
 | `src/lib/storage/stats.ts` | `saveStats` 입력에 `sections?: MonthSections[] \| null`. 달 줄마다 같은 달 sections를 `validateMonthSections` + 크기 검사로 고르고, 못 넘거나 없으면 `null`. 파일 출처는 늘 `null` |
-| `src/app/api/ai/store.ts` | `select('month, payload, sections')`, `ReportMonths`에 `sections: { selected, prev, lastYear }`(unknown) |
+| `src/app/api/ai/store.ts` | `select('month, payload, sections')`, `ReportMonths`에 `sections?: { selected, prev, lastYear }`(unknown). loadReportMonths는 늘 채운다(없는 달은 `null`). 타입만 선택 칸이다 — 지금 시험의 `ReportMonths` 가짜 값이 그대로 맞게 |
 | `src/app/api/ai/generate.ts` | `currentInput`이 sections를 검사(`validateMonthSections` + 달 같음)하고, 비교 달은 그 달 payload를 견줄 때만 쓴다 |
-| `src/lib/ai/input.ts` | `ValidReportMonths.sections`. 고른 달에 sections가 있을 때만 세 칸 지표를 지금 지표 뒤에 더한다 |
+| `src/lib/ai/input.ts` | `ValidReportMonths.sections?`(선택 칸, 없으면 세 달 모두 없음). 고른 달에 sections가 있을 때만 세 칸 지표를 지금 지표 뒤에 더한다 |
 | `src/types/aiReport.ts` | `MetricKind`에 `'won' \| 'average'` |
 | `src/lib/ai/basis.ts` | `won` → `formatCount(값)원`, `average` → 0이면 `0건`, 아니면 `averageText(값)건` |
-| `src/lib/ai/prompt.ts` | 새 kind 설명과 쓰는 규칙(AC-2905.2) |
+| `src/lib/ai/prompt.ts` | 새 kind 설명과 쓰는 규칙(AC-2905.2). 지금 kind 설명 줄·이름 줄에 이어 쓴다(지시문 판 `ai-report-3`은 그대로 — 지문에 들지 않는다) |
+| `src/lib/ai/output.ts` | 숫자 규칙의 이름 예외 `NAME_LABELS`에 새 이름 지표 모양(`age:`·`insurance:`·`town:`·`hour:`·`doctor:`)을 더한다(AC-2905.4). 지표 ID 검사는 그대로 |
 
 ## 결정과 이유
 - **새 칸(`sections`)을 둔다, payload 안에 넣지 않는다.** payload는 `schemaVersion: 2` 모양을 통계 탭·대시보드·AI가 함께 엄하게 검사한다. 열쇠를 더하면 옛 검사가 줄 전체를 버린다. 새 칸은 그 검사들을 건드리지 않는다.
