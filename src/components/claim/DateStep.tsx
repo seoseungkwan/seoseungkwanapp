@@ -34,8 +34,10 @@ export type CloseState = { saving: boolean; reopening: ReadonlySet<string>; just
 // 고르기 줄: 44px 이상, 저장 전은 옅은 파랑·저장 뒤 알림은 옅은 초록(시안 claim-day-done-pc 나)
 const CLOSE_BAR = 'mx-5 mb-2 flex min-h-11 items-center justify-between gap-2 rounded-control px-3 py-1 text-small font-medium max-md:mx-4'
 
-function CloseBar({ rows, period, close, onCloseDates, onReopen }: { rows: readonly DateRow[]; period: DateRange; close: CloseState; onCloseDates(dates: string[]): void; onReopen(dates: string[]): void }) {
+function CloseBar({ rows, period, readFailed, close, onCloseDates, onReopen }: { rows: readonly DateRow[]; period: DateRange; readFailed: boolean; close: CloseState; onCloseDates(dates: string[]): void; onReopen(dates: string[]): void }) {
   const dates = closablePeriodDates(rows, period)
+  // 불러올 수 없는 기간(35일 넘음 등)이거나 건수·완료 표시를 못 읽어 끝난 날을 모를 때는 보내지 않는다
+  const unsafe = checkPeriod(period) !== null || readFailed
   return (
     <>
       {close.justSaved.length > 0 ? (
@@ -49,7 +51,7 @@ function CloseBar({ rows, period, close, onCloseDates, onReopen }: { rows: reado
       ) : (
         <div aria-live="polite" className={`${CLOSE_BAR} bg-accent-soft text-accent-strong`}>
           <span>고른 기간에서 아직 입력 안 된 날 {dates.length}일</span>
-          <button type="button" disabled={close.saving || close.blocked || dates.length === 0} onClick={() => onCloseDates(dates)} className={ds.button.primarySmall}>
+          <button type="button" disabled={close.saving || close.blocked || unsafe || dates.length === 0} onClick={() => onCloseDates(dates)} className={ds.button.primarySmall}>
             {close.saving ? '저장 중…' : '고른 날 완료로 저장'}
           </button>
         </div>
@@ -306,7 +308,7 @@ export function DateStep({
         {dates.kind === 'ready' && (
           <div className="flex flex-col">
             {dates.countsFailed && <p className={`${ds.help} px-5 pb-2 max-md:px-4`}>입력 건수를 읽지 못해 비트 자료만으로 보여요.</p>}
-            <CloseBar rows={rows} period={period} close={close} onCloseDates={onCloseDates} onReopen={onReopen} />
+            <CloseBar rows={rows} period={period} readFailed={dates.countsFailed} close={close} onCloseDates={onCloseDates} onReopen={onReopen} />
             <DateTable rows={rows} period={period} onToggle={(date) => onPeriod(toggleDay(period, date))} close={close} onReopen={onReopen} />
           </div>
         )}

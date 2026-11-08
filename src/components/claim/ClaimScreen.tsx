@@ -211,8 +211,11 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
 
   // 고른 기간의 날짜를 완료로 저장·되돌리기(claim-day-done-pc). 성공하면 목록을 다시 읽어 줄이 묶음을 옮긴다
   const [close, setClose] = useState<Omit<CloseState, 'blocked'>>({ saving: false, reopening: new Set(), justSaved: [], failed: false })
+  const periodNow = useRef(period)
+  periodNow.current = period
   const closeDates = async (dates: string[]) => {
     if (dates.length === 0 || busy.current) return
+    const asked = periodNow.current // 저장하는 사이에 기간을 바꾸면 끝난 뒤 옛 기간의 알림을 띄우지 않는다
     setClose((now) => ({ ...now, saving: true, failed: false }))
     try {
       await closeDays(supabaseBrowser(), dates)
@@ -221,7 +224,7 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
       return
     }
     await refreshDates()
-    setClose((now) => ({ ...now, saving: false, justSaved: dates }))
+    setClose((now) => ({ ...now, saving: false, justSaved: periodNow.current === asked ? dates : now.justSaved }))
   }
   const reopenDates = async (dates: string[]) => {
     if (dates.length === 0 || busy.current) return
@@ -460,7 +463,10 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
           onCloseDates={(dates) => void closeDates(dates)}
           onReopen={(dates) => void reopenDates(dates)}
           loading={run.kind === 'loading' ? run.step : null}
-          onLoad={() => void load(period)}
+          onLoad={() => {
+            setClose((now) => ({ ...now, justSaved: [], failed: false })) // 불러오기를 시작하면 저장 알림을 거둔다
+            void load(period)
+          }}
           onStop={() => {
             channel.drop({ keepEdits: true })
             setRun({ kind: 'idle' })

@@ -541,6 +541,49 @@ describe('claim-day-done-pc: 비트 PC 화면에서 고른 기간의 날짜를 �
     expect(finished).toEqual(['10/28 (수)', '10/27 (화)', '10/24 (토)'])
   })
 
+  it('AC-2901.1: 고른 기간이 불러올 수 없는 기간(35일 넘음)이면 [고른 날 완료로 저장]도 막힌다', async () => {
+    const user = userEvent.setup()
+    const days = [{ date: '2026-09-01', visits: 9, memoInBit: 0 }, ...DAYS]
+    db.counts = [...COUNTS, { visit_date: '2026-09-01', visits: 9, need_memo: 3, entered: 1, needs_check: 0, skipped: 0, updated_at: '2026-09-01T01:00:00+00:00' }]
+    show(fakeWorker(), bridge({ dates: () => Promise.resolve({ days }) }))
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect(saveButton().disabled).toBe(false)
+    await user.click(screen.getByRole('checkbox', { name: '10월 29일' })) // 9/1~10/29: 59일
+    await waitFor(() => expect(saveButton().disabled).toBe(true))
+  })
+
+  it('AC-2901.1: 건수나 완료 표시를 읽지 못해 비트 자료만으로 보이면 [고른 날 완료로 저장]이 막힌다(끝난 날·이미 바꾼 날을 보낼 수 있어서)', async () => {
+    db.closesError = { code: '500', message: 'x', status: 500 }
+    show()
+    await screen.findByText('입력 건수를 읽지 못해 비트 자료만으로 보여요.')
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  it('AC-2901.4: 저장하는 사이에 기간을 바꾸면 끝난 뒤 옛 기간의 알림을 띄우지 않는다', async () => {
+    const user = userEvent.setup()
+    let open = () => {}
+    db.writeGate = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(saveButton())
+    await user.click(screen.getByRole('checkbox', { name: '10월 27일' }))
+    await act(async () => open())
+    await waitFor(() => expect(saveButton().textContent).toBe('고른 날 완료로 저장'))
+    expect(screen.queryByText('2일을 완료로 바꿨어요')).toBeNull()
+  })
+
+  it('AC-2901.4: [자료 불러오기]를 누르면 저장 알림을 거둔다', async () => {
+    const user = userEvent.setup()
+    show(fakeWorker(), bridge({ month: () => new Promise(() => {}) }))
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(saveButton())
+    await screen.findByText('2일을 완료로 바꿨어요')
+    await user.click(screen.getByRole('button', { name: '자료 불러오기' }))
+    await waitFor(() => expect(screen.queryByText('2일을 완료로 바꿨어요')).toBeNull())
+  })
+
   it('AC-2901.6: 자료를 불러오는 중에는 [고른 날 완료로 저장]과 [되돌리기]가 막힌다', async () => {
     const user = userEvent.setup()
     db.closes = [close('2026-10-24')]
