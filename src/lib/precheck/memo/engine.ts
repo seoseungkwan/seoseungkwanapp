@@ -462,7 +462,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (t.includes('{약제}')) drugTokenUsed = true
     const side = sideKey(vars['좌우'])
     const extra: Record<string, unknown> = { 한글방향: ({ Rt: '우측', Lt: '좌측', both: '양측' } as Record<string, string>)[side] || '', 영문방향: side }
-    if (!Object.hasOwn(vars, '약제') && FILL_VISIT) extra['약제'] = drugTxt(FILL_VISIT)
+    // 연골주사 날에는 틀이 {약제}를 스스로 채우지 않는다: 그날 일반 약은 일반 IA 줄(araEtcLine이 약제를 넘김)에만 놓이거나 [약 확인]으로 남는다(AC-3001.3).
+    // 연골주사·부위별·Peripheral·시술 이름별·코드별 메모 문구 어느 틀로 와도 같다
+    if (!Object.hasOwn(vars, '약제') && FILL_VISIT) extra['약제'] = iaKind(FILL_VISIT) === 'ara' ? '' : drugTxt(FILL_VISIT)
     fixedPhrases().forEach((p) => {
       if (p && p.token) extra[p.token] = p.on === false ? '' : String(p.text || '')
     })

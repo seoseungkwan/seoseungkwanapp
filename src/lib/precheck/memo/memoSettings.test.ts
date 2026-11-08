@@ -102,6 +102,29 @@ describe('REQ-3001 IA 부위·아라간 날 일반 약', () => {
     expect(withIa).toContain('◈IA injection of - knee(triam)')
     expect(unfinished(withIa)).toBe(false)
   })
+
+  // 재검토: 연골주사 줄이 다른 틀(부위별·Peripheral·시술 이름별)을 거치거나 코드별 메모 문구에 {약제}가 있어도 같다
+  it.each([
+    ['부위별 문구', (p: Phrases) => void (p.TPL.byRegion = { knee: '{시술}{약제}' })],
+    ['Peripheral 시술 문구', (p: Phrases) => void (p.TPL.mainPeripheral = '{시술}{약제}')],
+    ['시술 이름별 문구', (p: Phrases) => void (p.TPL.byProc = { 연골주사: '{시술}{약제}' })],
+  ])('AC-3001.2 AC-3001.3: %s에 {약제}가 있어도 일반 약은 연골주사 줄에 들어가지 않는다', (_, patch) => {
+    const p = clinic(patch)
+    const alone = memo(['Rt knee 아라간 2차'], [rx('KK090'), rx('A49'), rx('A21')], p)
+    expect(alone.split('\n')[0]).toContain('연골주사')
+    expect(alone.split('\n')[0]).not.toContain('triam')
+    expect(alone).toContain('[약 확인: 트리암]')
+    const withIa = memo(['Rt knee 아라간 2차', 'Lt knee IA triam'], [rx('KK090', 2), rx('A49'), rx('A21')], p)
+    expect(withIa.match(/triam/g)).toHaveLength(1)
+    expect(withIa).toContain('◈IA injection of - knee(triam)')
+  })
+
+  it('AC-3001.3: 연골주사 날 코드별 메모 문구의 {약제}에도 일반 약이 들어가지 않는다', () => {
+    const p = clinic((q) => void (q.CODEMAP.HA280 = { ...q.CODEMAP.HA280, memo: '관절조영 시행{약제}' }))
+    const out = memo(['Rt knee 아라간 2차'], [rx('KK090'), rx('A49'), rx('A21'), rx('HA280')], p)
+    expect(out).not.toContain('triam')
+    expect(out).toContain('[약 확인: 트리암]')
+  })
 })
 
 describe('REQ-3002 시술 2개 이상인 날의 약(넣기인 시술이 하나뿐이면 그 시술 줄에)', () => {
