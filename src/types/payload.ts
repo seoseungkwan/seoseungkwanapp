@@ -49,3 +49,26 @@ export type DayPayload = {
   revisit: RevisitPayload
   again?: DayAgainPayload // 선택 칸. 없으면 이 기능 전에 저장한 날(0이 아니라 '셀 수 없음'). 버전을 올리지 않는다
 }
+
+// 통계 탭 비트 전용 세 칸(환자 구성 · 시간대별 접수 · 원장님별)의 달 합계. stats_months 줄의 sections 칸에 둔다(spec stats-bit-ai REQ-2901·REQ-2902).
+// 묶음 이름과 수, 원장님 이름·매출뿐이다. 차트번호·생년월일·주소 앞부분·접수 줄·진료의 코드는 없다. lib/payload/validate.ts(validateMonthSections)가 기준이다.
+// 비트(v3 도우미)로 불러온 달만 있다. 파일로 불러온 달·옛 도우미(v2) 달·이 기능 전에 저장한 달은 칸이 비었다(null)
+export type MonthSections = {
+  v: 1
+  month: string // 'YYYY-MM' (그 달 줄과 같다)
+  partial: boolean // 그 달 줄과 같다
+  mix: {
+    people: number // 그 달 실환자(차트번호 있는 서로 다른 환자) = 연령대 명의 합
+    age: Array<{ name: string; people: number }> // 연령대 열 줄, 화면 차례(10세 미만 … 80세 이상, 생년월일 없음), 0명 줄 포함
+    insurance: Array<{ name: string; people: number }> // 보통 줄 · 5명 이상, 명이 큰 차례
+    town: Array<{ name: string; people: number }> // [동] 보통 줄 · 5명 이상, 명이 큰 차례(많아야 10)
+  }
+  hours: {
+    openDays: number[] // 7칸 월~일, 그 요일의 문 연 날 수
+    weekdays: number[] // 7칸 월~일, 그 요일 접수 합
+    hours: number[] // 13칸 8~20시, 그 시 접수 합(8시 전은 8시·21시 뒤는 20시 칸)
+    unknown: number // 접수 시각을 모르는 건수
+  }
+  // 화면 차례. 원장님이 한 분이라 화면이 표를 그리지 않으면(single) []. amount = 수납일 기준 총진료비 합(원, 환불이면 음수도)
+  doctors: Array<{ name: string; patients: number; newPatients: number; amount: number }>
+}

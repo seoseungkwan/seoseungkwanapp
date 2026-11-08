@@ -188,3 +188,58 @@ internal static class RepoFiles
 
     public static JsonElement Json(params string[] parts) => Protocol.Json.Parse(File.ReadAllText(Path(parts), Encoding.UTF8));
 }
+
+/// <summary>
+/// contact.targets 예약·장기 미방문(spec patients-bit-lists REQ-2801)의 가짜 비트 SQL 답. 모두 지어낸 것이다: 이름 '가상환자NN',
+/// 차트번호 9로 시작하는 6자리, 전화 010-0000-NNNN·02-0000-NNNN, 처방코드 A49·B12·C01·R01…, 처방 이름 '가짜주사약'.
+/// 줄 모양은 ListSql 문장의 칸 차례 그대로다(비트 char 칸처럼 뒤에 빈칸이 붙은 값도 섞는다).
+/// </summary>
+internal static class ListData
+{
+    /// <summary>ReservationsSql 한 줄: 차트번호·이름·휴대전화·집 전화·예약 시각·상태·예약 표시·그날 옴·그 뒤 처음 온 날.</summary>
+    public static object?[] Reservation(string? chart, string? name, string? cell, string? home, string? at, string? status, string? rsv, object? came, string? after) =>
+        new object?[] { chart, name, cell, home, at, status, rsv, came, after };
+
+    /// <summary>LapsedSql 한 줄: 차트번호·이름·휴대전화·집 전화·마지막 내원일·진료 받은 날 수·예약 있음·처방코드·처방 이름(처방 하나에 한 줄).</summary>
+    public static object?[] Lapsed(string chart, string? name, string? cell, string? home, string last, object days, object reserved, string? code, string? rxName) =>
+        new object?[] { chart, name, cell, home, last, days, reserved, code, rxName };
+
+    public static DateTime Day(string ymd) => DateTime.ParseExact(ymd, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+}
+
+/// <summary>가짜 비트(Rig, 등록됨) + 예약·장기 미방문 SQL 답. Build를 바로 부르고 답 JSON을 돌려준다(명령 연결은 ContactRig).</summary>
+internal sealed class ListRig : IDisposable
+{
+    public ListRig(bool registered = true)
+    {
+        Rig = registered ? new Rig().Registered() : new Rig();
+    }
+
+    public Rig Rig { get; }
+
+    public FakeSession Db => Rig.Session;
+
+    /// <summary>비트(설치 위치·DB·통계 화면·비트 로그인 창)를 건드렸나.</summary>
+    public bool BitTouched => Rig.Locator.Calls > 0 || Rig.Connector.Opened.Count > 0 || Rig.Screens.Calls.Count > 0 || Rig.Screens.MenuReads.Count > 0 || Rig.Login.Calls.Count > 0;
+
+    public ListRig Reservations(params object?[][] rows)
+    {
+        Db.Answer(ListSql.ReservationsSql, _ => rows);
+        return this;
+    }
+
+    public ListRig Lapsed(params object?[][] rows)
+    {
+        Db.Answer(ListSql.LapsedSql, _ => rows);
+        return this;
+    }
+
+    public JsonElement Reservation(string from, string to) => Protocol.Json.Parse(ReservationTargets.Build(Rig.Services, ListData.Day(from), ListData.Day(to)));
+
+    public JsonElement LapsedList(string from, string to) => Protocol.Json.Parse(LapsedTargets.Build(Rig.Services, ListData.Day(from), ListData.Day(to)));
+
+    /// <summary>답 rows의 줄마다 칸을 JSON 글자로(같은 모양인지 견줄 때).</summary>
+    public static string[] Rows(JsonElement json) => json.GetProperty("rows").EnumerateArray().Select(Replies.Canon).ToArray();
+
+    public void Dispose() => Rig.Dispose();
+}

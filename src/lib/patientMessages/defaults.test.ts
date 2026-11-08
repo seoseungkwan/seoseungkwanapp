@@ -23,6 +23,9 @@ const golden = JSON.parse(
 // Postgres char_length처럼 글자 수를 센다(표 제약과 같은 기준)
 const charLength = (text: string) => [...text].length
 
+// 원본에서 옮긴 두 문구. 예약 안내(reservation)는 원본에 없는 새 문구다(spec patients-bit-lists AC-2805.3)
+const FROM_ORIGINAL = DEFAULT_TEMPLATES.filter(({ kind }) => kind !== 'reservation')
+
 describe('AC-608.2 DEFAULT_TEMPLATES: 원본 TPLS와 같다 (골든)', () => {
   it('AC-608.2 골든 머리에 원본 파일과 커밋을 적어 둔다', () => {
     expect(golden.source).toBe('seoseungkwan/shared@2a1069b')
@@ -32,13 +35,13 @@ describe('AC-608.2 DEFAULT_TEMPLATES: 원본 TPLS와 같다 (골든)', () => {
   })
 
   it('AC-608.2 이름·글이 순서까지 원본 그대로다', () => {
-    expect(DEFAULT_TEMPLATES.map(({ name, body }) => ({ name, body }))).toEqual(
+    expect(FROM_ORIGINAL.map(({ name, body }) => ({ name, body }))).toEqual(
       golden.TPLS.map(({ name, text }) => ({ name, body: text })),
     )
   })
 
   it('AC-608.2 jusa는 injection(0) 주사 안내, jinryo는 followup(1) 진료 안내', () => {
-    expect(DEFAULT_TEMPLATES.map(({ kind, name, sort_order }) => ({ kind, name, sort_order }))).toEqual([
+    expect(FROM_ORIGINAL.map(({ kind, name, sort_order }) => ({ kind, name, sort_order }))).toEqual([
       { kind: 'injection', name: '주사 안내', sort_order: 0 },
       { kind: 'followup', name: '진료 안내', sort_order: 1 },
     ])
@@ -62,9 +65,24 @@ describe('AC-608.2 DEFAULT_TEMPLATES: 원본 TPLS와 같다 (골든)', () => {
   })
 })
 
+describe('AC-2805.3 기본 문구는 셋(주사 안내 · 진료 안내 · 예약 안내)', () => {
+  it('AC-2805.3: 원본 두 문구 뒤에 예약 안내(reservation, 순서 2)가 있다', () => {
+    expect(DEFAULT_TEMPLATES.map(({ kind, name, sort_order }) => ({ kind, name, sort_order }))).toEqual([
+      { kind: 'injection', name: '주사 안내', sort_order: 0 },
+      { kind: 'followup', name: '진료 안내', sort_order: 1 },
+      { kind: 'reservation', name: '예약 안내', sort_order: 2 },
+    ])
+  })
+
+  it('AC-2805.3: 예약 안내 기본 글은 사용자가 양식을 주기 전의 자리 글이다', () => {
+    const reservation = DEFAULT_TEMPLATES.find(({ kind }) => kind === 'reservation')
+    expect(reservation?.body).toBe('[병원명 설정 필요]\n\n[*1*]님, 안녕하세요.\n<<DATE>>\n[*2*]에 예약되어 있어요.\n\n문의: 전화번호 설정 필요')
+  })
+})
+
 describe('AC-608.2 DEFAULT_TEMPLATES: 표 제약 안이다', () => {
   it.each(DEFAULT_TEMPLATES.map((template) => [template.name, template] as const))(
-    'AC-608.2 %s: 이름 1~30자, 글 1~2000자, 순서 0~99, 종류는 둘 중 하나',
+    'AC-608.2 AC-2805.1 %s: 이름 1~30자, 글 1~2000자, 순서 0~99, 종류는 셋 중 하나',
     (_name, template) => {
       expect(charLength(template.name)).toBeGreaterThanOrEqual(1)
       expect(charLength(template.name)).toBeLessThanOrEqual(30)
@@ -73,7 +91,7 @@ describe('AC-608.2 DEFAULT_TEMPLATES: 표 제약 안이다', () => {
       expect(Number.isInteger(template.sort_order)).toBe(true)
       expect(template.sort_order).toBeGreaterThanOrEqual(0)
       expect(template.sort_order).toBeLessThanOrEqual(99)
-      expect(['injection', 'followup']).toContain(template.kind)
+      expect(['injection', 'followup', 'reservation']).toContain(template.kind)
     },
   )
 

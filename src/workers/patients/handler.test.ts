@@ -1823,3 +1823,502 @@ describe('이상한 값에도 멈추지 않는다', () => {
     expect(h.last('piece')).toEqual({ type: 'piece', id: 'x', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
   })
 })
+
+// ── 비트 명단: 예약 문자 명단 · 장기 미방문 명단(spec patients-bit-lists TASK-4) ─────
+// 이름·전화·차트번호·날짜는 모두 지어낸 값이다. 오늘(TODAY)은 2026-11-02 월요일이다
+
+type Harness = ReturnType<typeof harness>
+type BitTool = 'reservations' | 'lapsed'
+
+const RSV_RANGE = { from: '2026-10-03', to: '2026-11-16' } // 오늘−30일 ~ 오늘+14일
+const LAPSED_RANGE = { from: '2024-11-03', to: '2026-10-02' } // 24달 전 다음 날 ~ 1달 전
+const RSV_ROWS = [
+  ['770001', '가상예약01', '010-0000-7701', '202611030900', 'WR', null, 0, null],
+  ['770002', '가상예약02', '010-0000-7702', '202611031430', 'WR', null, 0, null],
+  ['770003', '가상예약03', '', '202611031000', 'NR', null, 0, null],
+  ['770004', '가상예약04', '010-0000-7704', '202611040930', 'WR', null, 0, null],
+  ['770005', '가상예약05', '010-0000-7705', '202610301700', 'CR', null, 0, null],
+  ['770006', '가상예약06', '010-0000-7706', '202610281000', 'WN', 'OS', 1, null],
+  ['770007', '가상예약07', '010-0000-7707', '202610291100', 'CR', null, 0, '20261031'],
+]
+const LAPSED_ROWS = [
+  ['880001', '가상미방01', '010-0000-8801', '20260915', 5, 0, [['MM042', '도수치료 30분']]],
+  ['880002', '가상미방02', '010-0000-8802', '20260820', 2, 1, []],
+  ['880003', '가상미방03', '010-0000-8803', '20260301', 3, 0, [['INJ1', null]]],
+]
+const RESERVATIONS = { v: 1, kind: 'reservation', ...RSV_RANGE, today: TODAY, rows: RSV_ROWS }
+const LAPSED = { v: 1, kind: 'lapsed', ...LAPSED_RANGE, today: TODAY, rows: LAPSED_ROWS }
+const BIT_CHARTS = [...RSV_ROWS, ...LAPSED_ROWS].map((row) => row[0] as string)
+
+const KEY_S1 = 's|770001|202611030900'
+const KEY_S2 = 's|770002|202611031430'
+const KEY_S3 = 's|770003|202611031000'
+const KEY_L1 = 'l|880001|20260915'
+const KEY_L2 = 'l|880002|20260820'
+
+const RSV_FILTERS = { day: '2026-11-03', withDate: true, unsentOnly: true, missedDays: 7, notYetOnly: true }
+const LAPSED_FILTERS = { bucket: '1-3', rx: { kind: 'all' }, groups: [{ name: '도수치료', codes: ['MM042'] }] }
+const EMPTY_STORE = { v: 1, marks: {}, recall: { from: null, readThrough: null, records: [] } }
+
+// 도구를 처음 열 때: 화면이 스트림을 열고(조각은 포트로 온다) {type: 'list', tool, id, today}를 보낸다
+async function list(h: Harness, tool: BitTool, reply: unknown, today = TODAY) {
+  const id = h.newId()
+  const before = h.all('list-view').length
+  h.deliver(id, reply)
+  h.handler.onScreen({ type: 'list', tool, id, today })
+  await until(() => h.all('list-view').length > before, 'list-view')
+  return h.last('list-view')
+}
+
+function filteredOf<T extends BitTool>(h: Harness, tool: T) {
+  const found = h.all('filtered').filter((m): m is Extract<PatientsWorkerMessage, { type: 'filtered'; tool: T }> => m.tool === tool)
+  if (!found.length) throw new Error(`filtered 없음: ${tool}`)
+  return found[found.length - 1]
+}
+const filteredCount = (h: Harness, tool: BitTool) => h.all('filtered').filter((m) => m.tool === tool).length
+const rsvView = (h: Harness) => filteredOf(h, 'reservations')
+const lapsedView = (h: Harness) => filteredOf(h, 'lapsed')
+
+// 차트번호는 줄 열쇠(key·keys) 안에만 있다. 열쇠와 읽은 시각(숫자)을 뺀 글자에는 차트번호가 없다(AC-2802.7)
+function expectNoChartText(posted: readonly unknown[]) {
+  posted.forEach((message, index) => {
+    const text = JSON.stringify(message, (name, inner: unknown) => (name === 'key' || name === 'keys' || name === 'readAt' ? undefined : inner))
+    for (const chart of BIT_CHARTS) expect(text.includes(chart), `메시지 ${index}`).toBe(false)
+  })
+}
+// 화면에 간 줄 열쇠를 모은다
+function keysIn(value: unknown, into: string[] = []): string[] {
+  if (Array.isArray(value)) value.forEach((inner) => keysIn(inner, into))
+  else if (value && typeof value === 'object') {
+    for (const [name, inner] of Object.entries(value)) {
+      if (name === 'key' && typeof inner === 'string') into.push(inner)
+      else if (name === 'keys' && Array.isArray(inner)) into.push(...(inner as string[]))
+      else keysIn(inner, into)
+    }
+  }
+  return into
+}
+
+describe('비트 명단 읽기 (AC-2802.2·AC-2802.6)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-2802.2 예약 list: 오늘로 정한 기간(오늘−30일 ~ 오늘+14일) 답을 읽어 처음 고를 날·내일·모레 인원수·읽은 시각·줄 수를 보낸다', async () => {
+    const h = harness()
+    const before = Date.now()
+    const view = await list(h, 'reservations', RESERVATIONS)
+    expect(view).toEqual({
+      type: 'list-view',
+      tool: 'reservations',
+      ok: true,
+      readAt: expect.any(Number),
+      total: 7,
+      pick: { preset: 'tomorrow', day: '2026-11-03', note: null },
+      dayCounts: { tomorrow: 3, after: 1 },
+    })
+    const readAt = (view as { readAt: number }).readAt
+    expect(readAt >= before && readAt <= Date.now()).toBe(true)
+  })
+
+  it('AC-2802.2 장기 미방문 list: 24달 전 다음 날 ~ 1달 전 답을 읽는다. 물어본 기간과 다른 답은 그 도구만 E-BRIDGE-BAD-REPLY', async () => {
+    const h = harness()
+    expect(await list(h, 'lapsed', LAPSED)).toEqual({ type: 'list-view', tool: 'lapsed', ok: true, readAt: expect.any(Number), total: 3 })
+    expect(await list(h, 'reservations', { ...RESERVATIONS, from: '2026-10-04' })).toEqual({ type: 'list-view', tool: 'reservations', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    expect(await list(h, 'lapsed', { ...LAPSED, to: '2026-10-01' })).toEqual({ type: 'list-view', tool: 'lapsed', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    // 다른 종류의 답(장기 미방문 자리에 예약 답)도 쓰지 않는다
+    expect(await list(h, 'lapsed', RESERVATIONS)).toMatchObject({ ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-2802.2 새 도구 읽기는 F/U·정기 주사 읽기와 따로다: plan·저장 전에도 읽고, 끝나지 않은 명단이 F/U build를 기다리게 하지 않는다', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const h = harness()
+    expect(await list(h, 'lapsed', LAPSED)).toMatchObject({ ok: true })
+    h.handler.onScreen({ type: 'list', tool: 'reservations', id: 'slow-list', today: TODAY })
+    await h.open()
+    expect(h.last('views').followup).not.toBeNull()
+    expect(h.last('views').recall).not.toBeNull()
+    expect(h.all('list-view')).toHaveLength(1)
+    // 오지 않는 명단은 그 도구만 번호로 끝낸다
+    await vi.advanceTimersByTimeAsync(60_000)
+    await until(() => h.all('list-view').length === 2, 'list-view')
+    expect(h.last('list-view')).toEqual({ type: 'list-view', tool: 'reservations', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-2802.2 F/U [다시 불러오기](reload)는 읽어 둔 새 도구 명단을 지우지 않는다', async () => {
+    const h = harness()
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'reload' })
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(rsvView(h).rows.map((r) => r.key)).toEqual([KEY_S1, KEY_S3, KEY_S2])
+  })
+
+  it('AC-2802.6 답 모양이 틀리면 그 도구만 실패한다: 다른 새 도구·F/U·정기 주사는 그대로이고 번호만 간다', async () => {
+    const h = harness()
+    await h.open()
+    const views = h.all('views').length
+    expect(await list(h, 'lapsed', LAPSED)).toMatchObject({ ok: true })
+    const broken = { ...RESERVATIONS, rows: [['770001', '가상예약01', '010-0000-7701', '2026-11-03 09:00', 'WR', null, 0, null]] }
+    const bad = await list(h, 'reservations', broken)
+    expect(bad).toEqual({ type: 'list-view', tool: 'reservations', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    expectCodesOnly(bad)
+    expectNoChartText([bad])
+
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: LAPSED_FILTERS })
+    expect(lapsedView(h).rows.map((r) => r.key)).toEqual([KEY_L1, KEY_L2])
+    // 읽은 명단이 없으면 고르기 답이 없다(지어낸 줄 없음)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(filteredCount(h, 'reservations')).toBe(0)
+    expect(h.all('views')).toHaveLength(views)
+    h.handler.onScreen({ type: 'filter', tool: 'followup', filters: { kind: '', includeCond: false, includePast: false, from: '2026-11-03', to: '2026-11-03' } })
+    const followup = h.last('filtered')
+    expect(followup.tool === 'followup' && followup.rows.map((r) => r.key)).toEqual([KEY_A, KEY_B])
+  })
+
+  it('AC-2802.6 스트림이 거절되면 화면이 알린 번호, 도우미 abort는 그 번호, 번호 모양이 아니면 E-BRIDGE-BAD-REPLY', async () => {
+    const h = harness()
+    h.handler.onScreen({ type: 'list', tool: 'lapsed', today: TODAY, code: 'E-BRIDGE-DISCONNECTED' })
+    expect(h.last('list-view')).toEqual({ type: 'list-view', tool: 'lapsed', ok: false, code: 'E-BRIDGE-DISCONNECTED' })
+    h.handler.onScreen({ type: 'list', tool: 'lapsed', today: TODAY, code: '가상미방01' })
+    expect(h.last('list-view')).toEqual({ type: 'list-view', tool: 'lapsed', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    h.handler.onPort({ type: 'abort', id: 'helper-no', code: 'E-HELPER-BAD-MESSAGE' })
+    h.handler.onScreen({ type: 'list', tool: 'reservations', id: 'helper-no', today: TODAY })
+    await until(() => h.all('list-view').length === 3, 'list-view')
+    expect(h.last('list-view')).toEqual({ type: 'list-view', tool: 'reservations', ok: false, code: 'E-HELPER-BAD-MESSAGE' })
+  })
+
+  it('AC-2802.6 읽기가 실패하면 그 도구의 앞 명단을 버린다: 고르기 답이 없고 그 줄 표시는 거절한다', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(filteredCount(h, 'reservations')).toBe(1)
+    expect(await list(h, 'reservations', { ...RESERVATIONS, v: 2 })).toMatchObject({ ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(filteredCount(h, 'reservations')).toBe(1)
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    expect(h.last('marked')).toEqual({ type: 'marked', key: KEY_S1, ok: false, code: 'E-BRIDGE-REJECTED', counts: null })
+    expect(h.sent).toHaveLength(0)
+  })
+
+  it('AC-2802.6 같은 도구를 잇따라 읽으면 마지막 읽기만 답한다(앞 읽기의 늦은 답은 쓰지 않는다)', async () => {
+    const h = harness()
+    h.handler.onScreen({ type: 'list', tool: 'reservations', id: 'first', today: TODAY })
+    expect(await list(h, 'reservations', { ...RESERVATIONS, rows: RSV_ROWS.slice(0, 2) })).toMatchObject({ ok: true, total: 2 })
+    h.deliver('first', RESERVATIONS)
+    await settle()
+    await sleep(50)
+    expect(h.all('list-view')).toHaveLength(1)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(rsvView(h).rows.map((r) => r.key)).toEqual([KEY_S1, KEY_S2])
+  })
+
+  it('AC-2802.6 모양이 틀린 list·filter·mark-many 메시지에도 던지지 않고, 오늘이 날짜가 아니면 번호로 답한다', async () => {
+    const h = harness()
+    for (const message of [
+      { type: 'list' },
+      { type: 'list', tool: 'other', id: 'q', today: TODAY },
+      { type: 'list', tool: 'lapsed', id: 3, today: TODAY },
+      { type: 'mark-many' },
+      { type: 'mark-many', keys: 'x', on: true, today: TODAY },
+      { type: 'filter', tool: 'lapsed', filters: 'x' },
+      { type: 'filter', tool: 'reservations' },
+    ]) {
+      expect(() => h.handler.onScreen(message)).not.toThrow()
+    }
+    // 읽은 명단이 없으면 고르기 답이 없다
+    expect(filteredCount(h, 'reservations')).toBe(0)
+    expect(filteredCount(h, 'lapsed')).toBe(0)
+    expect(await list(h, 'lapsed', LAPSED, '어제')).toEqual({ type: 'list-view', tool: 'lapsed', ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    expect(h.sent).toHaveLength(0)
+  })
+})
+
+describe('비트 명단 고르기 (AC-2802.7)', () => {
+  it('AC-2802.7 예약 filter: 고른 날 줄·복사 글과 그 글의 줄 열쇠·지난 예약 중 안 오신 분·표시를 불러왔는지', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    const view = rsvView(h)
+    expect(view.day).toBe('2026-11-03')
+    expect(view.rows).toEqual([
+      { key: KEY_S1, time: '오전 9:00', name: '가상예약01', phone: '010-0000-7701', sent: false },
+      { key: KEY_S3, time: '오전 10:00', name: '가상예약03', phone: '', sent: false },
+      { key: KEY_S2, time: '오후 2:30', name: '가상예약02', phone: '010-0000-7702', sent: false },
+    ])
+    expect(view.copy).toEqual({
+      list: '2026-11-03 (화) — 2명\t\t\t\n가상예약01\t010-0000-7701\t가상예약01\t오전 9:00\n가상예약02\t010-0000-7702\t가상예약02\t오후 2:30',
+      keys: [KEY_S1, KEY_S2],
+    })
+    expect(view.missed.range).toEqual({ from: '2026-10-26', to: '2026-11-01' })
+    expect(view.missed.summary).toEqual({ total: 3, missed: 2, percent: 67, notYet: 1 })
+    expect(view.missed.rows.map((r) => r.key)).toEqual(['s|770005|202610301700'])
+    expect(view.missed.copy).toEqual({ list: '가상예약05\t010-0000-7705\t가상예약05\t10월 30일', count: 1 })
+    expect(view.marksLoaded).toBe(true)
+  })
+
+  it('AC-2802.7 장기 미방문 filter: 화면이 실어 보낸 처방 추세 묶음으로 고른 묶음·마지막 진료의 줄·건수·기간·복사 글', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'lapsed', LAPSED)
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: { ...LAPSED_FILTERS, rx: { kind: 'group', name: '도수치료' } } })
+    const view = lapsedView(h)
+    expect(view.rows.map((r) => [r.key, r.groups, r.daysAgo, r.visits, r.reserved, r.contacted])).toEqual([[KEY_L1, ['도수치료'], 48, 5, false, false]])
+    expect(view.counts).toEqual({ '1-3': 1, '3-6': 0, '6-12': 0, '12-24': 0 })
+    expect(view.range).toEqual({ from: '2026-08-03', to: '2026-10-02' })
+    expect(view.groupNames).toEqual(['도수치료'])
+    expect(view.copy).toEqual({ list: '가상미방01\t010-0000-8801\t가상미방01\t9월 15일', count: 1 })
+    expect(view.marksLoaded).toBe(true)
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: { bucket: '6-12', rx: { kind: 'none' }, groups: null } })
+    expect(lapsedView(h).rows.map((r) => [r.key, r.rxNames])).toEqual([['l|880003|20260301', ['INJ1']]])
+  })
+
+  it('AC-2802.7 고른 값 모양이 틀리면 기본값(처음 고를 날·지난 7일·켜짐·1~3달·전체·묶음 없음)으로 거른다', async () => {
+    const h = harness()
+    await list(h, 'reservations', RESERVATIONS)
+    await list(h, 'lapsed', LAPSED)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: { day: '내일', missedDays: 3, withDate: 'x', unsentOnly: 1 } })
+    const rsv = rsvView(h)
+    expect(rsv.day).toBe('2026-11-03')
+    expect(rsv.missed.range).toEqual({ from: '2026-10-26', to: '2026-11-01' })
+    expect(rsv.missed.rows).toHaveLength(1)
+    expect(rsv.copy.list.startsWith('2026-11-03 (화) — 2명')).toBe(true)
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: { bucket: '2-4', rx: { kind: 'group' }, groups: 'x' } })
+    const lapsed = lapsedView(h)
+    expect(lapsed.rows.map((r) => r.key)).toEqual([KEY_L1, KEY_L2])
+    expect(lapsed.rows[0].groups).toEqual([])
+    expect(lapsed.rows[0].rxNames).toEqual(['도수치료 30분'])
+  })
+
+  it('AC-2802.7 화면으로 가는 메시지(list-view·filtered·marked)에 차트번호 글자가 없다: 차트번호는 줄 열쇠 안에만 있다', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'reservations', RESERVATIONS)
+    await list(h, 'lapsed', LAPSED)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: { ...RSV_FILTERS, missedDays: 30, notYetOnly: false } })
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: LAPSED_FILTERS })
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: { ...LAPSED_FILTERS, bucket: '6-12' } })
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    h.sentOk(0)
+    h.handler.onScreen({ type: 'mark-many', keys: [KEY_S2], on: true, today: TODAY })
+    h.sentOk(1)
+    h.handler.onScreen({ type: 'mark', key: KEY_L1, on: true, today: TODAY })
+    h.sentFail(2, 'E-STORE-FAILED')
+    const failed = await list(h, 'lapsed', { ...LAPSED, rows: [['880001', '가상미방01', '010-0000-8801', '20260915', 1, 0, []]] })
+    expect(failed).toMatchObject({ ok: false, code: 'E-BRIDGE-BAD-REPLY' })
+    expectCodesOnly(failed)
+
+    expect([...new Set(h.posted.map((m) => m.type))].sort()).toEqual(['filtered', 'list-view', 'marked', 'stored'])
+    expectNoChartText(h.posted)
+    expectNoRawText(h.posted)
+    // 화면에 간 열쇠는 읽은 줄의 열쇠뿐이다
+    const known = new Set([...RSV_ROWS.map((row) => `s|${row[0]}|${row[3]}`), ...LAPSED_ROWS.map((row) => `l|${row[0]}|${row[3]}`)])
+    const keys = keysIn(h.posted)
+    expect(keys.length).toBeGreaterThan(0)
+    for (const key of keys) expect(known.has(key), key).toBe(true)
+  })
+})
+
+describe('비트 명단 표시 (AC-2803.8·AC-2804.5·AC-2806.1·AC-2806.3·AC-2806.4)', () => {
+  it('AC-2803.8 보냄 표시: s| 열쇠를 F/U와 같은 저장(contact.marks)에 표시한 날로 남기고, 저장되면 고른 날 줄이 보냄으로 다시 온다', async () => {
+    const h = harness()
+    await h.open()
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    const saves = h.sent.length
+    const before = filteredCount(h, 'reservations')
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    expect(h.sent).toHaveLength(saves + 1)
+    expect(h.sent[saves].cmd).toBe('store.save')
+    expect(h.saved(saves).contact.marks).toEqual({ [KEY_S1]: TODAY })
+    await settle()
+    expect(h.all('marked')).toHaveLength(0)
+    expect(filteredCount(h, 'reservations')).toBe(before)
+
+    h.sentOk(saves)
+    expect(h.last('marked')).toEqual({ type: 'marked', key: KEY_S1, ok: true, counts: { followup_left: 2, injection_left: 3 } })
+    expect(filteredCount(h, 'reservations')).toBe(before + 1)
+    const view = rsvView(h)
+    expect(rowOf(view.rows, KEY_S1).sent).toBe(true)
+    expect(view.copy.keys).toEqual([KEY_S2])
+
+    // 끄면 지운다
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: false, today: TODAY })
+    expect(h.saved(saves + 1).contact.marks).toEqual({})
+    h.sentOk(saves + 1)
+    expect(rowOf(rsvView(h).rows, KEY_S1).sent).toBe(false)
+  })
+
+  it('AC-2803.8 다시 불러와도 남는다: 저장한 글자를 새로 불러오고 명단을 다시 읽어도 보냄이다', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    h.sentOk(0)
+    const saved = h.saved(0).contact
+    h.handler.onScreen({ type: 'reload' })
+    await h.stored(saved)
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(rowOf(rsvView(h).rows, KEY_S1).sent).toBe(true)
+  })
+
+  it('AC-2803.8 [보냄으로 표시 (N명)]: mark-many는 방금 복사한 줄 열쇠를 저장 한 번에 표시하고 열쇠마다 marked로 답한다', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    const keys = rsvView(h).copy.keys
+    expect(keys).toEqual([KEY_S1, KEY_S2])
+    h.handler.onScreen({ type: 'mark-many', keys, on: true, today: TODAY })
+    expect(h.sent).toHaveLength(1)
+    expect(h.saved(0).contact.marks).toEqual({ [KEY_S1]: TODAY, [KEY_S2]: TODAY })
+    await settle()
+    expect(h.all('marked')).toHaveLength(0)
+    h.sentOk(0)
+    expect(h.all('marked').map((m) => [m.key, m.ok])).toEqual([
+      [KEY_S1, true],
+      [KEY_S2, true],
+    ])
+    expect(h.sent).toHaveLength(1)
+    const view = rsvView(h)
+    expect(view.rows.filter((r) => r.sent).map((r) => r.key)).toEqual([KEY_S1, KEY_S2])
+    expect(view.copy).toEqual({ list: '', keys: [] })
+  })
+
+  it('AC-2803.8 mark-many 저장이 실패하면 열쇠마다 그 번호로 답하고 표시는 그대로다', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    const before = filteredCount(h, 'reservations')
+    h.handler.onScreen({ type: 'mark-many', keys: [KEY_S1, KEY_S2], on: true, today: TODAY })
+    h.sentFail(0, 'E-STORE-FAILED')
+    expect(h.all('marked')).toEqual([
+      { type: 'marked', key: KEY_S1, ok: false, code: 'E-STORE-FAILED', counts: null },
+      { type: 'marked', key: KEY_S2, ok: false, code: 'E-STORE-FAILED', counts: null },
+    ])
+    expect(filteredCount(h, 'reservations')).toBe(before)
+    h.handler.onScreen({ type: 'mark', key: KEY_S3, on: true, today: TODAY })
+    expect(h.saved(1).contact.marks).toEqual({ [KEY_S3]: TODAY })
+  })
+
+  it('AC-2803.8 mark-many: 저장을 못 불러왔으면 그 번호, 모르는 열쇠·F/U 열쇠·on이 true가 아님·날짜 아님은 거절하고 저장하지 않는다', async () => {
+    const h = harness()
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'mark-many', keys: [KEY_S1], on: true, today: TODAY })
+    expect(h.last('marked')).toEqual({ type: 'marked', key: KEY_S1, ok: false, code: 'E-STORE-FAILED', counts: null })
+    await h.stored(FIRST)
+    for (const over of [
+      { keys: [KEY_S1, 's|770001|202611039999'] },
+      { keys: [KEY_S1, KEY_A] },
+      { keys: [KEY_S1, '__proto__'] },
+      { on: false },
+      { today: '어제' },
+    ]) {
+      const replies = h.all('marked').length
+      h.handler.onScreen({ type: 'mark-many', keys: [KEY_S1], on: true, today: TODAY, ...over })
+      const answered = h.all('marked').slice(replies)
+      expect(answered.map((m) => m.key)).toEqual('keys' in over ? over.keys : [KEY_S1])
+      for (const m of answered) expect(m).toMatchObject({ ok: false, code: 'E-BRIDGE-REJECTED' })
+    }
+    h.handler.onScreen({ type: 'mark-many', keys: [], on: true, today: TODAY })
+    expect(h.sent).toHaveLength(0)
+  })
+
+  it('AC-2803.8 저장을 못 불러왔으면 고르기 답은 marksLoaded false이고 보냄은 모두 꺼져 있다. 저장을 불러오거나 못 불러오면 Worker가 고른 값으로 다시 보낸다', async () => {
+    const h = harness()
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'filter', tool: 'reservations', filters: RSV_FILTERS })
+    expect(rsvView(h).marksLoaded).toBe(false)
+    expect(rsvView(h).rows.some((r) => r.sent)).toBe(false)
+    const before = filteredCount(h, 'reservations')
+    await h.stored({ ...EMPTY_STORE, marks: { [KEY_S1]: '2026-11-01' } })
+    expect(filteredCount(h, 'reservations')).toBe(before + 1)
+    expect(rsvView(h).marksLoaded).toBe(true)
+    expect(rowOf(rsvView(h).rows, KEY_S1).sent).toBe(true)
+    await h.storedAbort('E-STORE-FAILED')
+    expect(filteredCount(h, 'reservations')).toBe(before + 2)
+    expect(rsvView(h).marksLoaded).toBe(false)
+    expect(rowOf(rsvView(h).rows, KEY_S1).sent).toBe(false)
+  })
+
+  it('AC-2804.5 연락함 표시: l| 열쇠를 같은 저장에 표시한 날로 남기고 저장되면 그 줄이 연락함으로 다시 온다', async () => {
+    const h = harness()
+    await h.stored(FIRST)
+    await list(h, 'lapsed', LAPSED)
+    h.handler.onScreen({ type: 'filter', tool: 'lapsed', filters: LAPSED_FILTERS })
+    expect(lapsedView(h).marksLoaded).toBe(true)
+    h.handler.onScreen({ type: 'mark', key: KEY_L1, on: true, today: TODAY })
+    expect(h.saved(0).contact.marks).toEqual({ [KEY_L1]: TODAY })
+    h.sentOk(0)
+    expect(h.last('marked')).toEqual({ type: 'marked', key: KEY_L1, ok: true, counts: null })
+    const view = lapsedView(h)
+    expect(rowOf(view.rows, KEY_L1).contacted).toBe(true)
+    expect(rowOf(view.rows, KEY_L2).contacted).toBe(false)
+    // 읽은 명단에 없는 l| 열쇠는 거절한다
+    h.handler.onScreen({ type: 'mark', key: 'l|880001|20250101', on: true, today: TODAY })
+    expect(h.last('marked')).toMatchObject({ key: 'l|880001|20250101', ok: false, code: 'E-BRIDGE-REJECTED' })
+    expect(h.sent).toHaveLength(1)
+  })
+
+  it('AC-2806.4 저장 글자를 만들 때 지난 예약(s|, 예약 날이 오늘−31일 앞)과 장기 미방문 명단에 없는 l| 표시를 지운다. 장기 미방문을 읽기 전에는 l| 표시를 그대로 둔다', async () => {
+    const h = harness()
+    await h.stored({
+      ...EMPTY_STORE,
+      marks: { 's|770009|202610010900': '2026-09-30', 's|770005|202610301700': '2026-10-29', 'l|880009|20250101': '2025-02-01', [KEY_L1]: '2026-10-20' },
+    })
+    await list(h, 'reservations', RESERVATIONS)
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    expect(h.saved(0).contact.marks).toEqual({ 's|770005|202610301700': '2026-10-29', 'l|880009|20250101': '2025-02-01', [KEY_L1]: '2026-10-20', [KEY_S1]: TODAY })
+    h.sentOk(0)
+    await list(h, 'lapsed', LAPSED)
+    h.handler.onScreen({ type: 'mark', key: KEY_S2, on: true, today: TODAY })
+    expect(h.saved(1).contact.marks).toEqual({ 's|770005|202610301700': '2026-10-29', [KEY_L1]: '2026-10-20', [KEY_S1]: TODAY, [KEY_S2]: TODAY })
+  })
+
+  it('AC-2806.1 새 도구 표시는 휴대폰 남은 건수(contact_counts)를 바꾸지 않고 F/U·정기 주사 views를 다시 보내지 않는다', async () => {
+    const h = harness()
+    await h.open()
+    const counts = h.last('views').counts
+    expect(counts).toEqual({ followup_left: 2, injection_left: 3 })
+    const views = h.all('views').length
+    await list(h, 'reservations', RESERVATIONS)
+    await list(h, 'lapsed', LAPSED)
+    const saves = h.sent.length
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    h.sentOk(saves)
+    h.handler.onScreen({ type: 'mark-many', keys: [KEY_S2], on: true, today: TODAY })
+    h.sentOk(saves + 1)
+    h.handler.onScreen({ type: 'mark', key: KEY_L1, on: true, today: TODAY })
+    h.sentOk(saves + 2)
+    expect(h.all('marked').map((m) => m.counts)).toEqual([counts, counts, counts])
+    expect(h.all('views')).toHaveLength(views)
+    // F/U 표시는 지금처럼 views와 줄어든 건수를 보낸다
+    h.handler.onScreen({ type: 'mark', key: KEY_A, on: true, today: TODAY })
+    h.sentOk(saves + 3)
+    expect(h.all('views')).toHaveLength(views + 1)
+    expect(h.last('marked')).toEqual({ type: 'marked', key: KEY_A, ok: true, counts: { followup_left: 1, injection_left: 3 } })
+  })
+
+  it('AC-2806.3 F/U·정기 주사 표시는 지금처럼 저장되고 s|·l| 표시를 지우지 않는다', async () => {
+    const h = harness()
+    await h.open()
+    await list(h, 'reservations', RESERVATIONS)
+    await list(h, 'lapsed', LAPSED)
+    const saves = h.sent.length
+    h.handler.onScreen({ type: 'mark', key: KEY_S1, on: true, today: TODAY })
+    h.sentOk(saves)
+    h.handler.onScreen({ type: 'mark', key: KEY_L1, on: true, today: TODAY })
+    h.sentOk(saves + 1)
+    h.handler.onScreen({ type: 'mark', key: KEY_A, on: true, today: TODAY })
+    h.handler.onScreen({ type: 'mark', key: KEY_C, on: true, today: TODAY })
+    h.sentOk(saves + 2)
+    h.sentOk(saves + 3)
+    expect(h.saved(saves + 3).contact.marks).toEqual({ [KEY_S1]: TODAY, [KEY_L1]: TODAY, [KEY_A]: TODAY, [KEY_C]: TODAY })
+    expect(rowOf(h.last('views').followup!.rows, KEY_A).contacted).toBe(true)
+    expect(rowOf(h.last('views').recall!.rows, KEY_C).contacted).toBe(true)
+    expect(h.last('views').counts).toEqual({ followup_left: 1, injection_left: 2 })
+  })
+})

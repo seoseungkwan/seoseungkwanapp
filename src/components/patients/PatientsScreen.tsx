@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
@@ -7,29 +8,46 @@ import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { isErrorCode } from '@/lib/errors'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import type { BitListTool } from '@/types/patients'
 import { FollowupTool } from './FollowupTool'
+import { LapsedTool } from './LapsedTool'
 import { RecallTool } from './RecallTool'
+import { ReservationTool } from './ReservationTool'
 import type { PatientsTool } from './tools'
+import { useBitList, type BitListState } from './useBitList'
 import { useCountsUpload } from './useCountsUpload'
 import { usePatientsWorker, type PatientsBridge, type PatientsWorkerApi, type PatientsWorkerHandle, type ReadProgress } from './usePatientsWorker'
 
 // 비트 PC의 환자 탭(AC-610, 목업 listHead·loadingView·errorView). 불러오는 중(진행)·오류·도구 자리를 그리고 도구 몸통을 자리(ToolSlot)에 넣는다(F/U는 TASK-11, 정기 주사는 TASK-12). 문자 문구 도구는 연결 상태와 상관없이 살아 있어야 해서 이 화면 밖(PatientsEntry)에 있다(AC-613.5).
 // 도구를 바꿔도 다시 읽지 않는다(이 컴포넌트는 도구가 바뀌어도 그대로 있고, 읽기는 usePatientsWorker 한 곳). 한 종류가 실패하면 그 도구만 오류다(AC-604.3).
 // 화면에 오는 것은 Worker가 만든 보기 모양·오류 번호뿐이다. 오류 글은 lib/errors.ts에서만 가져온다(건수 올리기 실패 줄만 목업 글이다)
-// 남은 건수는 usePatientsWorker의 counts(views·marked 중 나중에 온 것)를 올린다(AC-614). 다시 읽는 동안 늦게 온 marked가 남아 있을 수 있어 두 명단의 보기 모양이 다 있을 때만 넘긴다
+// 남은 건수는 usePatientsWorker의 counts(views·marked 중 나중에 온 것)를 올린다(AC-614). 다시 읽는 동안 늦게 온 marked가 남아 있을 수 있어 두 명단의 보기 모양이 다 있을 때만 넘긴다.
+// 비트 명단 두 도구(예약 문자 명단 · 장기 미방문 명단, spec patients-bit-lists)는 들어올 때 읽지 않고 처음 열 때 그 도구만 읽는다(useBitList, AC-2802.2).
+// 읽는 중·도우미 업데이트 안내·오류는 여기서 그리고, 다 읽은 뒤에는 다시 읽는 동안·실패한 뒤에도 도구를 숨겨 두기만 해 고른 것을 잃지 않는다(AC-2802.4)
 
 type ListTool = Exclude<PatientsTool, 'messages'>
+// 들어올 때 함께 읽는 두 도구(usePatientsWorker)
+type EntryTool = 'followup' | 'recall'
 
 const LIST_HEAD: Record<ListTool, { title: string; desc: string }> = {
   followup: { title: 'F/U 명단', desc: '다시 오시기로 한 날이 다가온 분이에요. 오시기 전날 문자로 알려 드려요.' },
+  reservations: { title: '예약 문자 명단', desc: '비트 예약 대기에 올라간 분이에요. 오시기 전날 문자로 알려 드려요.' },
   recall: { title: '정기 주사 문자 명단', desc: '연골주사 · 비타민D 주사처럼 때마다 맞는 주사의 다음 날짜가 다가온 분이에요.' },
+  lapsed: { title: '장기 미방문 명단', desc: '두 번 이상 오셨는데 한동안 안 오신 분이에요. 전화나 문자로 안부를 여쭤 보세요.' },
 }
 
 // 목업의 정기 주사 글 "처음 읽는 중…7개월치"는 쓰지 않는다: 화면은 첫 읽기인지 모르고, 읽는 달 수도 그때마다 다르다. 진행은 달로 보인다(AC-612.2)
-const LIST_LOADING: Record<ListTool, { title: string; unit: string; note: string }> = {
+const LIST_LOADING: Record<EntryTool, { title: string; unit: string; note: string }> = {
   followup: { title: '비트에서 F/U 명단을 읽는 중이에요', unit: '', note: '최근 30일을 읽어요. 다 읽을 때까지 이 창을 열어 두세요.' },
   recall: { title: '정기 주사 기록을 읽는 중이에요', unit: ' 달', note: '다 읽을 때까지 이 창을 열어 두세요.' },
 }
+
+// 비트 명단 읽는 중 글(AC-2802.3, 시안 loading)
+const BIT_LOADING: Record<BitListTool, string> = {
+  reservations: '비트에서 예약 명단을 읽는 중이에요',
+  lapsed: '비트에서 오래 안 오신 분을 찾는 중이에요',
+}
+const KEEP_OPEN = '다 읽을 때까지 이 창을 열어 두세요.'
 
 // 불러오는 중 줄: 위 1px line + 20(목업 .ld)
 const loadingBox = 'mt-4 border-t border-line pt-5'
@@ -71,7 +89,7 @@ export function ConnectingView({ tool }: { tool: ListTool }) {
   )
 }
 
-function LoadingView({ tool, progress }: { tool: ListTool; progress: ReadProgress }) {
+function LoadingView({ tool, progress }: { tool: EntryTool; progress: ReadProgress }) {
   const { title, unit, note } = LIST_LOADING[tool]
   return (
     <>
@@ -118,6 +136,50 @@ function ErrorView({ tool, code, reason, onReload }: { tool: ListTool; code: str
   )
 }
 
+/** 비트 명단 읽는 중(AC-2802.3). 진행 숫자는 없다(도우미가 한 번에 보낸다) */
+function BitLoadingView({ tool }: { tool: BitListTool }) {
+  return (
+    <>
+      <ListHead tool={tool} />
+      <div role="status" className={loadingBox}>
+        <p className="text-subtitle font-semibold text-ink">{BIT_LOADING[tool]}</p>
+        <p className="mt-1 max-w-150 text-small text-muted">{KEEP_OPEN}</p>
+      </div>
+    </>
+  )
+}
+
+/** 도우미가 이 묶음보다 낮을 때(AC-2802.5, 시안 updateCard). 읽지 않는다 */
+function UpdateHelperView({ tool }: { tool: BitListTool }) {
+  return (
+    <>
+      <ListHead tool={tool} />
+      <div className="mt-4 flex max-w-180 gap-2 rounded-control bg-accent-soft px-4 py-3 text-ink">
+        <Icon name="monitor" className="mt-0.5 shrink-0 text-accent-strong" />
+        <div>
+          <p>
+            <b className="font-semibold">도우미를 업데이트하면 보여요</b>
+          </p>
+          <p className="mt-0.5 text-small text-ink-2">새 도우미가 비트 예약과 오래 안 오신 분을 읽어 와요. 비트 PC 연결 화면에서 업데이트할 수 있어요.</p>
+        </div>
+      </div>
+      <div className="mt-3">
+        <Link href="/claim/setup" className={`${ds.button.secondary} no-underline max-md:w-full`}>
+          <Icon name="monitor" className="text-ink-2" />
+          비트 PC 연결
+        </Link>
+      </div>
+    </>
+  )
+}
+
+/** 비트 명단 도구의 다 읽기 전·실패 자리. 실패는 F/U 오류와 같은 카드다(AC-2802.6) */
+function BitState({ tool, state, onReload }: { tool: BitListTool; state: BitListState<unknown>; onReload(): void }) {
+  if (state.phase === 'old-helper') return <UpdateHelperView tool={tool} />
+  if (state.phase === 'failed') return <ErrorView tool={tool} code={state.code ?? 'E-BRIDGE-BAD-REPLY'} onReload={onReload} />
+  return <BitLoadingView tool={tool} />
+}
+
 /** 건수 올리기 실패 줄(AC-614.4, 목업 page .up·errLine). 글과 번호뿐이라 환자 값이 그려질 길이 없다 */
 function CountsFailedLine({ code, onRetry }: { code: string; onRetry(): void }) {
   return (
@@ -137,17 +199,30 @@ function CountsFailedLine({ code, onRetry }: { code: string; onRetry(): void }) 
   )
 }
 
-// 지금 도구의 불러오는 중·오류·빈 자리. 문자 문구는 이 화면이 그리지 않는다
+// 지금 도구의 불러오는 중·오류·빈 자리. 문자 문구는 이 화면이 그리지 않고, 비트 명단 두 도구는 BitState가 그린다
 function ToolState({ tool, load }: { tool: PatientsTool; load: PatientsWorkerApi }) {
-  if (tool === 'messages') return null
+  if (tool !== 'followup' && tool !== 'recall') return null
   if (load.status === 'loading') return <LoadingView tool={tool} progress={load.progress[tool]} />
   const code = load.views?.codes[tool]
   if (code) return <ErrorView tool={tool} code={code} reason={load.views?.reasons?.[tool]} onReload={load.reload} />
   return <ToolSlot tool={tool} />
 }
 
-export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; bridge: PatientsBridge; worker: PatientsWorkerHandle }) {
+export function PatientsScreen({
+  tool,
+  bridge,
+  worker,
+  helperVersion,
+}: {
+  tool: PatientsTool
+  bridge: PatientsBridge
+  worker: PatientsWorkerHandle
+  /** hello의 도우미 버전. 비트 명단 두 도구가 읽을 수 있는지 본다(AC-2802.5) */
+  helperVersion?: string
+}) {
   const load = usePatientsWorker(bridge, worker)
+  const bits = useBitList({ stream: bridge.stream, worker, tool, helperVersion, renew: load.reload })
+  const { reservations, lapsed } = bits
   const views = load.status === 'done' ? load.views : null
   const followup = views && !views.codes.followup ? views.followup : null
   const recall = views && !views.codes.recall ? views.recall : null
@@ -183,6 +258,38 @@ export function PatientsScreen({ tool, bridge, worker }: { tool: PatientsTool; b
             head={(summary) => <ListHead tool="recall" right={summary} />}
           />
         </ToolSlot>
+      )}
+      {reservations.ready && (
+        <ToolSlot tool="reservations" hidden={tool !== 'reservations' || reservations.phase !== 'ready'}>
+          <ReservationTool
+            read={reservations.ready}
+            storeCode={bits.storeCode}
+            active={tool === 'reservations' && reservations.phase === 'ready'}
+            post={load.post}
+            listen={load.listen}
+            markMany={bits.markMany}
+            reload={() => bits.reload('reservations')}
+            reloadStore={load.reload}
+            head={(summary) => <ListHead tool="reservations" right={summary} />}
+          />
+        </ToolSlot>
+      )}
+      {lapsed.ready && (
+        <ToolSlot tool="lapsed" hidden={tool !== 'lapsed' || lapsed.phase !== 'ready'}>
+          <LapsedTool
+            read={lapsed.ready}
+            storeCode={bits.storeCode}
+            active={tool === 'lapsed' && lapsed.phase === 'ready'}
+            post={load.post}
+            listen={load.listen}
+            reload={() => bits.reload('lapsed')}
+            reloadStore={load.reload}
+            head={(summary) => <ListHead tool="lapsed" right={summary} />}
+          />
+        </ToolSlot>
+      )}
+      {(tool === 'reservations' || tool === 'lapsed') && bits[tool].phase !== 'ready' && (
+        <BitState tool={tool} state={bits[tool]} onReload={() => bits.reload(tool)} />
       )}
       {!(followup && tool === 'followup') && !(recall && tool === 'recall') && <ToolState tool={tool} load={load} />}
     </>

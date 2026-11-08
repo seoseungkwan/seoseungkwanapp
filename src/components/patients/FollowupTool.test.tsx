@@ -814,6 +814,33 @@ describe('AC-611.4 [문구 복사]', () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith('첫째 글')
   })
 
+  it('AC-2805.4: 복사할 문구 고르기는 주사 안내 · 진료 안내 둘뿐이다(예약 안내 문구가 있어도). 예약 안내 문구를 복사하지 않는다', async () => {
+    const { user, writeText } = setupUser()
+    const reservation = { id: 'r', kind: 'reservation', name: '예약 알림', body: '예약 글\n<<DATE>>', sort_order: 0 }
+    sb.result = { data: [reservation, { ...TPL_INJECTION, sort_order: 1 }, { ...TPL_FOLLOWUP, sort_order: 2 }], error: null }
+    setup()
+    await flush()
+    expect(group('복사할 문구').getAllByRole('button').map((b) => b.textContent)).toEqual(['주사 안내', '진료 안내'])
+    await user.click(button('문구 복사'))
+    expect(writeText).toHaveBeenLastCalledWith(fillTemplate(TPL_INJECTION.body, TOMORROW))
+    await user.click(group('복사할 문구').getByRole('button', { name: '진료 안내' }))
+    await user.click(button('문구 복사'))
+    expect(writeText).toHaveBeenLastCalledWith(fillTemplate(TPL_FOLLOWUP.body, TOMORROW))
+    expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('예약 글'))
+  })
+
+  it('AC-2805.4: 기본 문구를 쓸 때도 고르기는 둘뿐이고 예약 안내 기본 글을 복사하지 않는다', async () => {
+    const { user, writeText } = setupUser()
+    sb.result = { data: [], error: null }
+    setup()
+    await flush()
+    expect(group('복사할 문구').getAllByRole('button').map((b) => b.textContent)).toEqual(['주사 안내', '진료 안내'])
+    await user.click(group('복사할 문구').getByRole('button', { name: '진료 안내' }))
+    await user.click(button('문구 복사'))
+    const followup = DEFAULT_TEMPLATES.find((t) => t.kind === 'followup')!
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(fillTemplate(followup.body, TOMORROW))
+  })
+
   it('AC-611.4 읽기는 됐고 줄이 없을 때만 기본 문구를 쓴다', async () => {
     const { user, writeText } = setupUser()
     sb.result = { data: [], error: null }

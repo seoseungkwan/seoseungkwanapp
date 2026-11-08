@@ -19,12 +19,14 @@ import { TEMPLATE_KIND_LABEL, useTemplates, type DraftRow, type TemplateField } 
 
 const TITLE = '문자 문구'
 const DESC = '명단과 함께 문자 프로그램에 붙여 넣을 안내 글이에요. 여기서 고치면 다른 PC와 휴대폰에서도 같은 글을 써요.'
-const HELP = '[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.'
+const HELP =
+  '[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, 예약 안내는 예약 시각)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.'
 const COPY_BLOCKED = '복사하지 못했어요. 미리 보기 글을 골라 두었어요. 골라 둔 글을 오른쪽 클릭해 [복사]를 눌러 주세요.'
 const FIELD_ERROR: Record<TemplateField, string> = { name: '이름을 1~30자로 적어 주세요.', body: '내용을 1~2000자로 적어 주세요.' }
 const ADD_KINDS: readonly (readonly [TemplateKind, string])[] = [
   ['injection', TEMPLATE_KIND_LABEL.injection],
   ['followup', TEMPLATE_KIND_LABEL.followup],
+  ['reservation', TEMPLATE_KIND_LABEL.reservation],
 ]
 
 // 입력란과 같은 모양인데 높이만 줄 수(rows)로 정한다(목업 textarea.inp)

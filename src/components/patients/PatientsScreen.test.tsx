@@ -2,8 +2,12 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { BridgeError } from '@/lib/bridge/protocol'
+import { LIST_HELPER } from '@/lib/bridge/versions'
 import { errorInfo } from '@/lib/errors'
-import type { ContactCount, FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView, ViewReasons } from '@/types/patients'
+import { readReservations } from '@/lib/patients/reservations'
+import type { ContactCount, FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView, ReservationFilters, ViewReasons } from '@/types/patients'
+import { reservationsHead, reservationsListView } from '@/workers/patients/jobs'
 import { PatientsScreen } from './PatientsScreen'
 import type { PatientsTool } from './tools'
 import type { PatientsBridge, PatientsWorkerHandle } from './usePatientsWorker'
@@ -57,12 +61,12 @@ const flush = () =>
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 
-function setup(tool: PatientsTool) {
-  const streams: { cmd: string; ok(id: string): void }[] = []
+function setup(tool: PatientsTool, options: { helperVersion?: string } = {}) {
+  const streams: { cmd: string; args: Record<string, unknown>; ok(id: string): void; fail(code: string): void }[] = []
   const stream = vi.fn(
-    (cmd: string) =>
-      new Promise((resolve) => {
-        streams.push({ cmd, ok: (id) => resolve({ id, count: 1 }) })
+    (cmd: string, args: Record<string, unknown>) =>
+      new Promise((resolve, reject) => {
+        streams.push({ cmd, args, ok: (id) => resolve({ id, count: 1 }), fail: (code) => reject(new BridgeError(code)) })
       }),
   )
   const posted: ({ type: string } & Record<string, unknown>)[] = []
@@ -79,7 +83,7 @@ function setup(tool: PatientsTool) {
     removeEventListener: (type, listener) => void of(type).delete(listener),
   }
   const bridge = { stream: stream as unknown as PatientsBridge['stream'] }
-  const view = render(<PatientsScreen tool={tool} bridge={bridge} worker={worker} />)
+  const view = render(<PatientsScreen tool={tool} bridge={bridge} worker={worker} helperVersion={options.helperVersion} />)
   const fire = async (event: Event) => {
     act(() => {
       for (const listener of [...of(event.type)]) listener(event)
@@ -100,7 +104,7 @@ function setup(tool: PatientsTool) {
     await reply({ type: 'plan', followup: [], recall: [] })
     await reply({ type: 'views', ...message })
   }
-  const show = (next: PatientsTool) => view.rerender(<PatientsScreen tool={next} bridge={bridge} worker={worker} />)
+  const show = (next: PatientsTool) => view.rerender(<PatientsScreen tool={next} bridge={bridge} worker={worker} helperVersion={options.helperVersion} />)
   const slot = (name: PatientsTool) => view.container.querySelector<HTMLElement>(`[data-tool-slot="${name}"]`)
   const storeLoads = () => stream.mock.calls.filter(([cmd]) => cmd === 'store.load').length
   return { ...view, stream, streams, posted, reply, emitError, emitMessageError, answer, toViews, show, slot, storeLoads }
@@ -1069,5 +1073,174 @@ describe('PatientsScreen: 남은 건수 올리기 (AC-614)', () => {
     await t.toViews({ followup: FU, recall: null, counts: null, codes: { recall: 'E-BIT-READ-FAILED' } })
     expect(retryButton()).toBeNull()
     expect(sb.upserts).toHaveLength(1)
+  })
+})
+
+describe('PatientsScreen: 비트 명단 두 도구 (AC-2802)', () => {
+  // 오늘은 2026-11-06(금) 한국 오후 6:20(시안과 같은 날)
+  const NOW = Date.UTC(2026, 10, 6, 9, 20)
+  const TODAY = '2026-11-06'
+  const RSV_LOADING = '비트에서 예약 명단을 읽는 중이에요'
+  const LAPSED_LOADING = '비트에서 오래 안 오신 분을 찾는 중이에요'
+  const KEEP_OPEN = '다 읽을 때까지 이 창을 열어 두세요.'
+  const RSV_DESC = '비트 예약 대기에 올라간 분이에요. 오시기 전날 문자로 알려 드려요.'
+  const LAPSED_DESC = '두 번 이상 오셨는데 한동안 안 오신 분이에요. 전화나 문자로 안부를 여쭤 보세요.'
+  const DATA = readReservations({ v: 1, kind: 'reservation', from: '2026-10-07', to: '2026-11-20', today: TODAY, rows: [['C-1', '김가상', '010-0000-1200', '202611070900', 'WR', null, 0, null]] })
+
+  const targets = (t: ReturnType<typeof setup>, kind: string) => t.streams.filter((s) => s.cmd === 'contact.targets' && s.args.kind === kind)
+  const lists = (t: ReturnType<typeof setup>) => t.posted.filter((m) => m.type === 'list')
+  const rsvFilters = (t: ReturnType<typeof setup>) => t.posted.flatMap((m) => (m.type === 'filter' && m.tool === 'reservations' ? [m.filters as ReservationFilters] : []))
+  const statusLines = () => [...screen.getByRole('status').querySelectorAll('p')].map((p) => p.textContent)
+  const listView = (t: ReturnType<typeof setup>, readAt = NOW) =>
+    t.reply({ type: 'list-view', tool: 'reservations', ok: true, readAt, total: DATA.rows.length, ...reservationsHead(DATA, TODAY) })
+  const filtered = (t: ReturnType<typeof setup>, marks: Record<string, string> | null = {}) =>
+    t.reply({ type: 'filtered', tool: 'reservations', ...reservationsListView(DATA, TODAY, rsvFilters(t).at(-1)!, marks) })
+  const toTool = async (t: ReturnType<typeof setup>) => {
+    targets(t, 'reservation').at(-1)!.ok('s1')
+    await flush()
+    await listView(t)
+    await filtered(t)
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-2802.2·AC-2802.3: 들어올 때는 새 도구를 읽지 않는다. 예약 문자 명단을 처음 열면 F/U 읽기를 기다리지 않고 그 도구만 읽고, 머리 아래 읽는 중 글이다', () => {
+    const t = setup('followup', { helperVersion: LIST_HELPER })
+    expect(t.stream.mock.calls.map(([cmd]) => cmd)).toEqual(['store.load'])
+    t.show('reservations')
+    expect(targets(t, 'reservation').map((s) => s.args)).toEqual([{ kind: 'reservation', from: '2026-10-07', to: '2026-11-20' }])
+    expect(targets(t, 'lapsed')).toEqual([])
+    expect(screen.getByRole('heading', { level: 2, name: '예약 문자 명단' })).toBeTruthy()
+    expect(screen.getByText(RSV_DESC)).toBeTruthy()
+    expect(statusLines()).toEqual([RSV_LOADING, KEEP_OPEN])
+    expect(screen.queryByText(FU_LOADING)).toBeNull()
+  })
+
+  it('AC-2802.3: 장기 미방문 명단 — 24달 전 다음 날 ~ 1달 전을 읽고, 읽는 중 글이다', () => {
+    const t = setup('lapsed', { helperVersion: LIST_HELPER })
+    expect(targets(t, 'lapsed').map((s) => s.args)).toEqual([{ kind: 'lapsed', from: '2024-11-07', to: '2026-10-06' }])
+    expect(screen.getByRole('heading', { level: 2, name: '장기 미방문 명단' })).toBeTruthy()
+    expect(screen.getByText(LAPSED_DESC)).toBeTruthy()
+    expect(statusLines()).toEqual([LAPSED_LOADING, KEEP_OPEN])
+  })
+
+  it('AC-2802.2: 다른 도구로 갔다 와도 다시 읽지 않는다. F/U 도구는 자기 읽는 중 글이다', async () => {
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    t.show('followup')
+    expect(screen.getByRole('status').textContent).toContain(FU_LOADING)
+    t.show('reservations')
+    await toTool(t)
+    t.show('lapsed')
+    t.show('reservations')
+    expect(targets(t, 'reservation')).toHaveLength(1)
+    expect(t.storeLoads()).toBe(1)
+  })
+
+  it('AC-2802.4: 다 읽으면 도구가 들어가 처음 고른 날을 묻고, 머리 오른쪽에 N명 · …에 읽음 + [다시 불러오기]. 누르면 그 도구만 다시 읽고 고른 날짜는 그대로다', async () => {
+    const user = userEvent.setup()
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    targets(t, 'reservation')[0]!.ok('s1')
+    await flush()
+    expect(lists(t)).toEqual([{ type: 'list', tool: 'reservations', today: TODAY, id: 's1' }])
+    expect(t.slot('reservations')).toBeNull()
+    await listView(t)
+    expect(rsvFilters(t)).toEqual([{ day: '2026-11-07', withDate: true, unsentOnly: true, missedDays: 7, notYetOnly: true }])
+    await filtered(t)
+    const slot = within(t.slot('reservations')!)
+    expect(t.slot('reservations')!.textContent).toContain('1명 · 아직 안 보낸 분 1명 · 11월 6일 오후 6:20에 읽음')
+
+    await user.click(slot.getByRole('button', { name: '모레 · 0명' }))
+    await filtered(t)
+    t.posted.length = 0
+    await user.click(slot.getByRole('button', { name: '다시 불러오기' }))
+    expect(statusLines()).toEqual([RSV_LOADING, KEEP_OPEN])
+    expect(targets(t, 'reservation')).toHaveLength(2)
+    // F/U 읽기는 건드리지 않는다
+    expect(t.posted).toEqual([])
+    expect(t.storeLoads()).toBe(1)
+
+    targets(t, 'reservation')[1]!.ok('s2')
+    await flush()
+    expect(lists(t)).toEqual([{ type: 'list', tool: 'reservations', today: TODAY, id: 's2' }])
+    await listView(t, NOW + 60_000)
+    expect(rsvFilters(t).at(-1)).toMatchObject({ day: '2026-11-08' })
+    await filtered(t)
+    expect(slot.getByRole('button', { name: '모레 · 0명' }).getAttribute('aria-pressed')).toBe('true')
+    expect(t.slot('reservations')!.textContent).toContain('11월 6일 오후 6:21에 읽음')
+  })
+
+  it.each<[PatientsTool, string]>([
+    ['reservations', '예약 문자 명단'],
+    ['lapsed', '장기 미방문 명단'],
+  ])('AC-2802.5: 도우미 버전이 낮으면 %s는 읽지 않고 업데이트 안내 + [비트 PC 연결]이다', (tool, title) => {
+    const t = setup(tool, { helperVersion: '0.0.1' })
+    expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
+    expect(screen.getByText('도우미를 업데이트하면 보여요')).toBeTruthy()
+    expect(screen.getByText('새 도우미가 비트 예약과 오래 안 오신 분을 읽어 와요. 비트 PC 연결 화면에서 업데이트할 수 있어요.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '비트 PC 연결' }).getAttribute('href')).toBe('/claim/setup')
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(t.stream.mock.calls.map(([cmd]) => cmd)).toEqual(['store.load'])
+  })
+
+  it('AC-2802.6: 읽기가 실패하면 F/U 오류처럼 오류 카드(errors.ts 글·번호) + [다시 불러오기]이고 다른 도구는 그대로 쓸 수 있다', async () => {
+    const user = userEvent.setup()
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    await t.reply({ type: 'list-view', tool: 'reservations', ok: false, code: 'E-BIT-READ-FAILED' })
+    const info = errorInfo('E-BIT-READ-FAILED')
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain(info.what)
+    expect(alert.textContent).toContain(info.fix)
+    expect(alert.textContent).toContain('오류 번호 E-BIT-READ-FAILED')
+    expect(screen.getByText('다른 도구는 그대로 쓸 수 있어요.')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: '예약 문자 명단' })).toBeTruthy()
+
+    t.show('followup')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('status').textContent).toContain(FU_LOADING)
+    t.show('reservations')
+    await user.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    expect(targets(t, 'reservation')).toHaveLength(2)
+    expect(screen.getByRole('status').textContent).toContain(RSV_LOADING)
+    expect(t.storeLoads()).toBe(1)
+  })
+
+  it('AC-2802.6: errors.ts에 없는 번호는 번호만 보인다', async () => {
+    const t = setup('lapsed', { helperVersion: LIST_HELPER })
+    await t.reply({ type: 'list-view', tool: 'lapsed', ok: false, code: 'E-HELPER-NEW-CODE' })
+    expect(screen.getByRole('alert').textContent).toBe('오류 번호 E-HELPER-NEW-CODE')
+  })
+
+  it('AC-2802.6: Worker가 error를 내면 연 새 도구도 E-ANALYZE-FAILED 카드다', async () => {
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    await t.emitError()
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-ANALYZE-FAILED')
+    expect(screen.queryByText(RSV_LOADING)).toBeNull()
+  })
+
+  it('AC-2803.8: store.load가 실패하면(stored 번호) 예약 도구의 보냄이 막히고 그 번호의 안내 줄이다', async () => {
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    t.streams.find((s) => s.cmd === 'store.load')!.ok('store-1')
+    await flush()
+    await t.reply({ type: 'stored', ok: false, code: 'E-STORE-BROKEN', recall: [] })
+    targets(t, 'reservation')[0]!.ok('s1')
+    await flush()
+    await listView(t)
+    await filtered(t, null)
+    const slot = within(t.slot('reservations')!)
+    expect((slot.getAllByRole('checkbox', { name: '김가상 보냄' })[0] as HTMLInputElement).disabled).toBe(true)
+    expect(slot.getByText('오류 번호 E-STORE-BROKEN')).toBeTruthy()
+    expect(slot.getByText(/^보냄 표시를 불러오지 못해 \[보냄\]을 쓸 수 없어요\./)).toBeTruthy()
+  })
+
+  it('AC-2802.7: 새 도구 화면에 차트번호 글자가 없다', async () => {
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    await toTool(t)
+    expect(t.container.innerHTML).not.toMatch(/C-1\b/)
   })
 })

@@ -13,9 +13,9 @@ import { nestedBoxes } from '@/testing/boxes'
 import type { AnalysisResult, FileReport } from '@/types/analyze'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
-import type { DayPayload } from '@/types/payload'
+import type { DayPayload, MonthSections } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
-import type { RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
+import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { StatsScreen } from './StatsScreen'
@@ -68,7 +68,10 @@ const LOAD = '비트에서 불러오기'
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
-const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수']
+// 여덟 칸 뒤에 비트 전용 세 칸(stats-bit-sections AC-2706.1)
+const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방별 추세', '처방별 신환·재진', '처방 골라 보기', '원장님 보고 문장', '요일별 환자 수', '환자 구성', '시간대별 접수', '원장님별']
+// 이 기기에서 불러오기 전 "비트 PC에서 불러오면 보여요" 칸: 처방별 신환·재진 · 보고 문장 + 비트 전용 세 칸(AC-2706.5)
+const BIT_ONLY_COUNT = 5
 // 서버에 저장된 처방별 추세 묶음 하나(지어낸 이름·코드)와 Worker로 가는 그 정의(열쇠·코드만)
 const SAVED_GROUP: RxGroup = { id: 'g0', name: '가짜 묶음', codes: ['A100'], sortOrder: 0 }
 const defsOf = (group: RxGroup) => [{ id: groupKey(group.codes), codes: group.codes }]
@@ -352,7 +355,7 @@ describe('AC-514.1 첫 그림', () => {
     expect(await screen.findByText('아직 저장된 통계가 없어요')).toBeTruthy()
     expect(screen.getByText('비트 PC에서 [비트에서 불러오기]를 누르거나, 비트에서 내보낸 파일을 넣으면 숫자가 채워져요. 한 번 저장하면 휴대폰에서도 볼 수 있어요.')).toBeTruthy()
     expect(pageText()).toContain('숫자를 불러오면 이 기간의 평균 환자 수와 신환·재진이 보여요.')
-    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(2)
+    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(BIT_ONLY_COUNT)
     expect(pageText()).toContain('자료: 아직 저장된 숫자가 없어요')
   })
 
@@ -471,7 +474,7 @@ describe('AC-514.3 비트에서 불러오기', () => {
 
   it('AC-514.3 끝나면 처방별 신환·재진과 보고 문장이 생긴다', async () => {
     const { port } = await drawReady()
-    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(2)
+    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(BIT_ONLY_COUNT)
     pressLoad(port)
     expect(await screen.findByText('가짜처방')).toBeTruthy()
     await sectionsShown()
@@ -657,7 +660,7 @@ describe('AC-514.5 연결 상태', () => {
     expect(screen.queryByRole('button', { name: LOAD })).toBeNull()
     expect(screen.getByRole('button', { name: '파일 고르기' })).toBeTruthy()
     expect(pageText()).toContain('하루 평균 환자 수')
-    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(2)
+    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(BIT_ONLY_COUNT)
   })
 
   it('AC-514.5 도우미가 없으면 안내와 /claim/setup 링크다', async () => {
@@ -2072,7 +2075,7 @@ describe('통계 화면에 기간 고르기 잇기 (stats-period TASK-8)', () =>
     pressPeriod('최근 30일')
     await sectionsShown()
     expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
-    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(2)
+    expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(BIT_ONLY_COUNT)
   })
 
   it('AC-1707.1 보고 칸은 고르기에 들어오고 나갈 때 다시 그린다: 옛 넷에서 고른 것이 남지 않는다', async () => {
@@ -2126,5 +2129,165 @@ describe('통계 화면에 기간 고르기 잇기 (stats-period TASK-8)', () =>
         .replace(/(^|\s)\/\/.*$/gm, '$1')
       for (const word of ['supabase', 'fetch(', '.rpc(', '/api/', 'localStorage', 'sessionStorage']) expect(text, `${name}: ${word}`).not.toContain(word)
     }
+  })
+})
+
+// ── stats-bit-sections: 비트 전용 세 칸(환자 구성·시간대별 접수·원장님별)을 묻고 넘긴다. 이름·숫자는 지어낸 것이다 ──
+const BIT_TITLES = ['환자 구성', '시간대별 접수', '원장님별']
+const BIT_ROW = { label: '30대', people: 2, visits: 3, share: 1, kind: 'row' as const, previous: 1 }
+const BIT_MIX: PatientMix = {
+  total: { people: 2, visits: 3 },
+  compared: true,
+  age: [BIT_ROW],
+  insurance: [{ ...BIT_ROW, label: '가짜보험' }],
+  city: [{ ...BIT_ROW, label: '가짜구' }],
+  town: [{ ...BIT_ROW, label: '가짜동' }],
+}
+const BIT_HOURS = {
+  hours: Array.from({ length: 13 }, (_, i) => 8 + i),
+  rows: Array.from({ length: 7 }, (_, i) => ({ weekday: i + 1, openDays: i === 0 ? 1 : 0, cells: Array.from({ length: 13 }, (_, h) => (i === 0 && h === 1 ? 3 : 0)) })),
+  unknown: 0,
+  peak: { weekday: 1, hour: 9, average: 3 },
+}
+const BIT_DOCTOR = { label: '가짜원장', patients: 1, newPatients: 1, visits: 2, amount: 30000, perVisit: 15000, share: 0.6 }
+const BIT_READY: BitSectionsView = {
+  kind: 'ready',
+  mix: { all: BIT_MIX, new: BIT_MIX },
+  hours: BIT_HOURS,
+  doctors: {
+    kind: 'table',
+    rows: [BIT_DOCTOR, { ...BIT_DOCTOR, label: '나가짜원장', newPatients: 0, visits: 1, amount: 20000, perVisit: 20000, share: 0.4 }],
+    total: { ...BIT_DOCTOR, label: '합계', patients: 2, visits: 3, amount: 50000, perVisit: 16666, share: 1 },
+  },
+}
+
+// fakeWorker에 세 칸 답을 더한다. answer가 null이면 답하지 않는다(기다리는 중)
+function bitWorker(answer: (message: StatsSectionsRequest) => StatsWorkerMessage | null) {
+  const fake = fakeWorker()
+  const base = fake.worker.postMessage.getMockImplementation()!
+  fake.worker.postMessage.mockImplementation((message: StatsWorkerRequest) => {
+    base(message)
+    if (message.type !== 'sections') return
+    const data = answer(message)
+    if (data !== null) queueMicrotask(() => fake.worker.onmessage?.({ data } as MessageEvent<StatsWorkerMessage>))
+  })
+  return fake
+}
+const sectionsSent = (sent: StatsWorkerRequest[]) => sent.filter((message) => message.type === 'sections')
+const bitSection = (name: string) => heading(name)!.closest('section')!
+
+async function loadedWithBit(answer: (message: StatsSectionsRequest) => StatsWorkerMessage | null) {
+  const port = fakeChrome()
+  const fake = bitWorker(answer)
+  draw()
+  sayHello(port)
+  await sectionsShown()
+  pressLoad(port)
+  await screen.findByText('가짜처방')
+  await sectionsShown()
+  return { port, fake }
+}
+
+describe('AC-2706.1 stats-bit-sections: 통계 화면이 세 칸을 묻고 넘긴다', () => {
+  it('AC-2706.1·AC-2706.5 여덟 칸 뒤에 환자 구성·시간대별 접수·원장님별이 12칸 폭이고, 이 기기에서 불러오기 전에는 Worker에 묻지 않고 비트 PC 안내다', async () => {
+    const { fake } = await drawReady()
+    expect(
+      screen
+        .getAllByRole('heading', { level: 2 })
+        .map((node) => node.textContent)
+        .slice(-3),
+    ).toEqual(BIT_TITLES)
+    for (const name of BIT_TITLES) {
+      expect(bitSection(name).className, name).toMatch(/(^| )col-span-12( |$)/)
+      expect(bitSection(name).className, name).not.toContain('lg:')
+      expect(bitSection(name).textContent, name).toContain('비트 PC에서 불러오면 보여요')
+    }
+    pressPeriod('최근 90일')
+    await sectionsShown()
+    expect(sectionsSent(fake.sent)).toEqual([])
+  })
+
+  it('AC-2706.1 읽는 동안 기다리는 칸에도 세 칸이 같은 자리에 있다', () => {
+    vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
+    draw()
+    for (const name of BIT_TITLES) {
+      expect(bitSection(name).textContent, name).toContain('불러오는 중')
+      expect(bitSection(name).className, name).toMatch(/(^| )col-span-12( |$)/)
+    }
+  })
+
+  it('AC-2706.1 불러오면 고른 기간과 견줄 기간(range.previous)으로 묻고 답을 세 칸에 넘긴다', async () => {
+    const { fake } = await loadedWithBit((message) => ({ type: 'sections-result', streamId: message.streamId, view: BIT_READY }))
+    expect(sectionsSent(fake.sent)).toEqual([
+      { type: 'sections', streamId: expect.any(String), from: R30.current.from, to: R30.current.to, previous: { from: R30.previous.from, to: R30.previous.to } },
+    ])
+    expect(await screen.findByText('명 = 서로 다른 환자 · 건 = 접수 건수 · 전체 2명')).toBeTruthy()
+    expect(bitSection('환자 구성').textContent).toContain('어떤 분들이 오시는지 · 최근 30일')
+    expect(bitSection('시간대별 접수').textContent).toContain('가장 붐비는 때는 월요일 오전 9시예요 · 하루 평균 3.0건')
+    expect(within(bitSection('원장님별')).getByRole('table').textContent).toContain('나가짜원장')
+  })
+
+  it('AC-2706.1 기간을 바꾸면 다시 묻고 다시 불러오지 않는다. 12개월의 끝은 불러온 끝(오늘)에서 자른다', async () => {
+    const { port, fake } = await loadedWithBit((message) => ({ type: 'sections-result', streamId: message.streamId, view: BIT_READY }))
+    pressPeriod('최근 12개월')
+    await waitFor(() =>
+      expect(sectionsSent(fake.sent).at(-1)).toMatchObject({ from: R12.current.from, to: TODAY, previous: { from: R12.previous.from, to: R12.previous.to } }),
+    )
+    expect(sectionsSent(fake.sent)).toHaveLength(2)
+    expect(port.sent.filter((message) => message.cmd === 'stats.rows')).toHaveLength(1)
+    expect(await screen.findByText('어떤 분들이 오시는지 · 최근 12개월')).toBeTruthy()
+  })
+
+  it.each<[string, BitSectionsView, string]>([
+    ['none', { kind: 'none' }, '이 기간은 아직 불러오지 않았어요'],
+    ['old-helper', { kind: 'old-helper' }, '도우미를 업데이트하면 보여요'],
+  ])('AC-2706.5 Worker가 %s로 답하면 세 칸 모두 그 안내다', async (_name, view, title) => {
+    await loadedWithBit((message) => ({ type: 'sections-result', streamId: message.streamId, view }))
+    await waitFor(() => expect(bitSection('환자 구성').textContent).toContain(title))
+    for (const name of BIT_TITLES) expect(bitSection(name).textContent, name).toContain(title)
+  })
+
+  it('AC-2706.1 세 칸 답을 기다리는 동안 다른 칸은 그대로 그리고 세 칸은 제목·설명만이다', async () => {
+    await loadedWithBit(() => null)
+    expect(screen.getByText('가짜처방')).toBeTruthy()
+    expect(bitSection('환자 구성').textContent).toBe('환자 구성어떤 분들이 오시는지 · 최근 30일')
+    expect(bitSection('원장님별').textContent).toBe('원장님별원장님마다 환자·신환·매출 · 최근 30일')
+  })
+
+  it('AC-2706.1 세 칸 답이 실패하면 오류 카드 하나(번호만)이고 세 칸은 숫자 없이 비트 PC 안내다', async () => {
+    await loadedWithBit((message) => ({ type: 'failed', streamId: message.streamId, code: 'E-ANALYZE-FAILED' }))
+    await waitFor(() => expect(screen.getAllByRole('alert').filter((card) => card.textContent?.includes('오류 번호 E-ANALYZE-FAILED'))).toHaveLength(1))
+    expect(bitSection('환자 구성').textContent).toContain('비트 PC에서 불러오면 보여요')
+  })
+})
+
+// ── 비트 저장에 세 칸 합계(sections)를 싣기 (spec stats-bit-ai AC-2902.2) ──
+describe('AC-2902.2 통계 화면 비트 저장', () => {
+  const SECTIONS: MonthSections[] = [
+    {
+      v: 1,
+      month: '2026-11',
+      partial: true,
+      mix: { people: 0, age: [], insurance: [], town: [] },
+      hours: { openDays: [0, 0, 0, 0, 0, 0, 0], weekdays: [0, 0, 0, 0, 0, 0, 0], hours: Array(13).fill(0), unknown: 0 },
+      doctors: [{ name: '김가상', patients: 0, newPatients: 0, amount: 0 }],
+    },
+  ]
+
+  it('AC-2902.2 비트에서 불러오면 Worker가 준 sections를 달·일 숫자와 함께 저장에 그대로 넘긴다(화면 모양은 그대로)', async () => {
+    const port = fakeChrome()
+    fakeWorker({ ...LOADED, sections: SECTIONS })
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(saveStats).mock.calls[0][0]).toStrictEqual({
+      months: LOADED.months,
+      days: LOADED.days,
+      covered: LOADED.covered,
+      source: 'bit',
+      sections: SECTIONS,
+    })
   })
 })

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using Precheck.Core.Bit;
 
 namespace Precheck.Core.Stats;
@@ -11,7 +13,7 @@ namespace Precheck.Core.Stats;
 /// 예외 하나: 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
 /// PatientDaysSql만 원본에 없는 새 문장이다(Visits 글은 위 예외 말고 원본 그대로, 뒤의 SELECT만 새로 씀, AC-503.5).
 /// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 목록도 보므로 ReadOnlyGuard를 지난다.
-/// 청구 목록 Sql.All에는 넣지 않는다.
+/// 청구 목록 Sql.All에는 넣지 않는다. 비트 전용 세 칸(stats-bit-sections) 새 문장 다섯은 All이 아니라 Sections 목록에 있다.
 /// </summary>
 public static class StatsSql
 {
@@ -353,6 +355,71 @@ SELECT (SELECT COUNT_BIG(*)-COUNT(DISTINCT OrpOcmNum) FROM NativeRows)
 )
 SELECT COUNT_BIG(*)-COUNT(DISTINCT OrpOcmNum) FROM NativeRows;";
 
+    // ---- 비트 전용 세 칸(stats-bit-sections, REQ-2701): 원본에 없는 새 문장 다섯. 목록은 Sections(All은 지금 그대로) ----
+
+    /// <summary>
+    /// 접수 줄 [차트번호, 진료일, 접수 시각 HHmm, 보험 이름, 진료의 코드], 접수마다 한 줄(AC-2701.1). Visits 글 뒤에 이 SELECT를 이었다.
+    /// 접수 시각은 원래 도구 VisitHours처럼 OcmAcpDtm 9~12번째 글자, 진료의는 DoctorStats처럼 OcmDtrCod.
+    /// 보험 이름은 reception-paper PaperVisit과 같은 조건: 그 코드의 InsMst 줄 중 InsAdpDte가 접수 날 이하인 가장 늦은 줄(같으면 이름 차례 첫 줄, AC-2701.2).
+    /// </summary>
+    public const string VisitLinesSql = Visits + @"
+SELECT v.PatientId,v.VisitDay,SUBSTRING(c.OcmAcpDtm,9,4) VisitTime,RTRIM(i.InsCodNam) Insurance,NULLIF(RTRIM(c.OcmDtrCod),'') DoctorId
+FROM PeriodVisits v JOIN dbo.OcmInf c ON c.OcmNum=v.VisitId
+OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=v.VisitDay ORDER BY m.InsAdpDte DESC,m.InsCodNam) i
+ORDER BY v.PatientId,v.VisitDay,VisitTime";
+
+    /// <summary>
+    /// 사람 줄 [차트번호, 생년월일, 주소], 기간 환자마다(AC-2701.3). 원래 도구 PatientMix의 연결 그대로이고 성별 칸만 뺐다.
+    /// 환자 표에서 읽는 칸은 이 셋뿐이다(이름·전화·주민번호·상세주소 PbsAdrSta·성별 없음). 주소는 StatsExtra.AddressHead가 앞부분만 남긴다.
+    /// </summary>
+    public const string PeopleSql = Visits + @"
+SELECT p.PatientId,b.PbsBirDte,b.PbsDtlAdr
+FROM Patients p LEFT JOIN dbo.PbsInf b ON NULLIF(RTRIM(b.PbsChtNum),'')=p.PatientId
+ORDER BY p.PatientId";
+
+    /// <summary>원장님 이름 SQL의 코드 자리 수(@d0~@d49). 코드가 더 많으면 나눠 부른다.</summary>
+    public const int DoctorCodeSlots = 50;
+
+    /// <summary>
+    /// 원장님 이름 [코드, 이름, 적용 끝 날짜](AC-2701.4). 원래 도구 DoctorStats.NamesSql처럼 코드·UidExpDte 차례라 코드마다 마지막 줄이 가장 늦은 줄이다.
+    /// 코드는 매개변수 50자리로만 받는다(관문은 NULL 값을 받지 않아 빈 자리는 그 묶음의 첫 코드로 채운다).
+    /// </summary>
+    public const string DoctorNamesSql = @"SELECT RTRIM(u.UidCod) Code,RTRIM(u.UidNam) Name,u.UidExpDte
+FROM dbo.UidMst u
+WHERE RTRIM(u.UidCod) IN (@d0,@d1,@d2,@d3,@d4,@d5,@d6,@d7,@d8,@d9,
+                          @d10,@d11,@d12,@d13,@d14,@d15,@d16,@d17,@d18,@d19,
+                          @d20,@d21,@d22,@d23,@d24,@d25,@d26,@d27,@d28,@d29,
+                          @d30,@d31,@d32,@d33,@d34,@d35,@d36,@d37,@d38,@d39,
+                          @d40,@d41,@d42,@d43,@d44,@d45,@d46,@d47,@d48,@d49)
+ORDER BY Code,u.UidExpDte";
+
+    // 원래 도구 BusinessStats.ByDoctor가 바꾸는 NativeRows 줄 머리와 끝 SELECT
+    private const string FinanceRowStart = "SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpTotAmt";
+    private const string FinanceRowStartByDoctorDay = "SELECT p.OrpOcmNum,p.OrpChtNum,RTRIM(p.OrpDtrCod) DoctorId,LEFT(p.OrpAccDte,8) PaidDay,p.OrpTotAmt";
+    private const string FinanceTotal = "SELECT SUM(";
+    private const string FinanceTotalEnd = "FROM NativeRows;";
+    private const string FinanceByDoctorDay = "SELECT PaidDay,DoctorId,SUM(OrpTotAmt) FROM NativeRows GROUP BY PaidDay,DoctorId";
+
+    /// <summary>
+    /// 정상수납 날·원장님 금액 [수납일, 진료의 코드, 총진료비](AC-2701.5). FinanceNormalSql 글에서 원래 도구 BusinessStats.ByDoctor와 같은 두 곳만 바꿨다:
+    /// NativeRows 줄에 진료의(OrpDtrCod)·수납일(OrpAccDte 앞 8자) 칸을 더하고, 끝 SELECT를 수납일·진료의로 묶은 OrpTotAmt 합으로.
+    /// </summary>
+    public static readonly string DoctorMoneyNormalSql = ByDoctorDay(FinanceNormalSql);
+
+    /// <summary>미수입금 날·원장님 금액: FinanceReceivableSql 글에서 DoctorMoneyNormalSql과 같은 두 곳만 바꿨다.</summary>
+    public static readonly string DoctorMoneyReceivableSql = ByDoctorDay(FinanceReceivableSql);
+
+    /// <summary>보고 금액 SQL 글을 날·원장님 묶음으로 바꾼다. 바꿀 자리가 정확히 한 군데씩이 아니면(원본 글이 바뀜) 멈춘다.</summary>
+    private static string ByDoctorDay(string sql)
+    {
+        var row = sql.IndexOf(FinanceRowStart, StringComparison.Ordinal);
+        if (row < 0 || sql.IndexOf(FinanceRowStart, row + 1, StringComparison.Ordinal) >= 0) throw new InvalidOperationException("finance SQL row list changed");
+        var text = sql.Replace(FinanceRowStart, FinanceRowStartByDoctorDay);
+        var total = text.LastIndexOf(FinanceTotal, StringComparison.Ordinal);
+        if (total < 0 || !text.Substring(total).TrimEnd().EndsWith(FinanceTotalEnd, StringComparison.Ordinal)) throw new InvalidOperationException("finance SQL total changed");
+        return text.Substring(0, total) + FinanceByDoctorDay;
+    }
+
     // 원본 RxVisitSplit.Command: @from·@to Char(12) yyyyMMdd0000(끝은 다음 날 0시), @hospital VarChar(32)
     private static readonly SqlParam[] VisitParams =
     {
@@ -397,16 +464,33 @@ SELECT COUNT_BIG(*)-COUNT(DISTINCT OrpOcmNum) FROM NativeRows;";
         [ReceivableMultiplicitySql] = new[] { ReportDay, ReportNextDay, ReportHospital },
     };
 
-    /// <summary>통계 SQL 목록(이 클래스의 SQL 상수 전부).</summary>
+    // 원장님 이름 코드 자리: 진료의 코드는 Worker 처방코드와 같은 40자 한도(src/workers/stats/helperData.ts isCode)
+    private static readonly SqlParam[] DoctorCodeParams =
+        Enumerable.Range(0, DoctorCodeSlots).Select(i => new SqlParam("@d" + i.ToString(CultureInfo.InvariantCulture), SqlParamKind.VarChar, 40)).ToArray();
+
+    private static readonly Dictionary<string, SqlParam[]> SectionsAllowed = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
+    {
+        [VisitLinesSql] = VisitParams,
+        [PeopleSql] = VisitParams,
+        [DoctorNamesSql] = DoctorCodeParams,
+        [DoctorMoneyNormalSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+        [DoctorMoneyReceivableSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+    };
+
+    /// <summary>지금 통계 SQL 목록(stats.rows v2까지의 문장, 원본 사본과 견주는 것들). 비트 전용 세 칸 문장은 Sections.</summary>
     public static IReadOnlyCollection<string> All => Allowed.Keys;
 
-    /// <summary>글자가 통계 SQL과 똑같은가(대소문자·공백까지).</summary>
-    public static bool IsAllowed(string? sql) => sql != null && Allowed.ContainsKey(sql);
+    /// <summary>비트 전용 세 칸 문장 목록(REQ-2701). All과 겹치지 않는다.</summary>
+    public static IReadOnlyCollection<string> Sections => SectionsAllowed.Keys;
+
+    /// <summary>글자가 통계 SQL(All 또는 Sections)과 똑같은가(대소문자·공백까지).</summary>
+    public static bool IsAllowed(string? sql) => sql != null && (Allowed.ContainsKey(sql) || SectionsAllowed.ContainsKey(sql));
 
     /// <summary>문장이 받는 매개변수 표. 목록 밖이면 BitException(E-BIT-READ-FAILED).</summary>
     public static IReadOnlyList<SqlParam> ParametersOf(string sql)
     {
-        if (sql == null || !Allowed.TryGetValue(sql, out var parameters)) throw new BitException(BitErrors.ReadFailed);
-        return parameters;
+        if (sql != null && Allowed.TryGetValue(sql, out var parameters)) return parameters;
+        if (sql != null && SectionsAllowed.TryGetValue(sql, out var sections)) return sections;
+        throw new BitException(BitErrors.ReadFailed);
     }
 }

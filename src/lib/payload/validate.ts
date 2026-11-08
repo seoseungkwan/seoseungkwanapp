@@ -1,6 +1,6 @@
 import { isMonth, isYmd } from '@/lib/analytics/dates'
 import type { FollowUp, Totals } from '@/types/analysis'
-import { AGAIN_WINDOWS, type AgainCounts, type DayAgainPayload, type DayPayload, type MonthPayload, type RevisitPayload } from '@/types/payload'
+import { AGAIN_WINDOWS, type AgainCounts, type DayAgainPayload, type DayPayload, type MonthPayload, type MonthSections, type RevisitPayload } from '@/types/payload'
 import type { RxPick } from '@/types/rxPicks'
 
 // 저장 전·읽은 뒤에 쓰는 검사. 병원 계정(서버)에 들어가는 모양의 기준이다.
@@ -261,4 +261,83 @@ export function validateRxPick(value: unknown): RxPick | null {
   const { code, name } = o
   if (!isCode(code) || !isText(name) || CONTROL.test(code) || CONTROL.test(name)) return null
   return { code, name }
+}
+
+// ── 통계 비트 세 칸 달 합계(sections, spec stats-bit-ai AC-2902.2·AC-2903.2) ──
+// 저장 전(lib/storage)과 AI 서버가 읽은 뒤(app/api/ai) 같은 검사를 쓴다. 셈이 늘 지키는 관계도 본다:
+// 연령대 명의 합 = 실환자, 요일 합 = 시간 합, 그 요일 접수가 있으면(그때만) 문 연 날이 있다, 원장님 신환 ≤ 실환자
+const SECTIONS_KEYS = ['v', 'month', 'partial', 'mix', 'hours', 'doctors']
+const MIX_KEYS = ['people', 'age', 'insurance', 'town']
+const HOURS_KEYS = ['openDays', 'weekdays', 'hours', 'unknown']
+const PEOPLE_KEYS = ['name', 'people']
+const DOCTOR_KEYS = ['name', 'patients', 'newPatients', 'amount']
+const AGE_ROWS = 10 // 연령대 아홉 묶음 + 생년월일 없음
+const WEEK_DAYS = 7
+const HOUR_CELLS = 13 // 8~20시
+const MAX_WEEKDAY_IN_MONTH = 5 // 한 달에 같은 요일은 많아야 다섯 번
+const MAX_INSURANCE = 100
+const MAX_TOWNS = 10 // 화면 [동]의 보통 줄 수
+const MAX_DOCTORS = 100
+
+type Named = { name: string }
+
+// 이름이 겹치면 AI 지표 ID가 겹친다
+const hasUniqueNames = (rows: readonly Named[]) => new Set(rows.map((row) => row.name)).size === rows.length
+const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)
+
+function peopleRowOf(value: unknown, minPeople: number): { name: string; people: number } | null {
+  const o = exactly(value, PEOPLE_KEYS)
+  if (o === null) return null
+  const { name, people } = o
+  return isText(name, true) && isCount(people) && people >= minPeople ? { name, people } : null
+}
+
+function countsOfLength(value: unknown, length: number): number[] | null {
+  return Array.isArray(value) && value.length === length && value.every(isCount) ? [...value] : null
+}
+
+function mixOf(value: unknown): MonthSections['mix'] | null {
+  const o = exactly(value, MIX_KEYS)
+  if (o === null || !isCount(o.people)) return null
+  const people = o.people
+  const age = listOf(o.age, AGE_ROWS, (item) => peopleRowOf(item, 0))
+  const insurance = listOf(o.insurance, MAX_INSURANCE, (item) => peopleRowOf(item, MIN_REGION_PATIENTS))
+  const town = listOf(o.town, MAX_TOWNS, (item) => peopleRowOf(item, MIN_REGION_PATIENTS))
+  if (age === null || insurance === null || town === null) return null
+  if (age.length !== AGE_ROWS || sum(age.map((row) => row.people)) !== people) return null
+  if (![age, insurance, town].every(hasUniqueNames)) return null
+  if (![...insurance, ...town].every((row) => row.people <= people)) return null
+  return { people, age, insurance, town }
+}
+
+function hoursOf(value: unknown): MonthSections['hours'] | null {
+  const o = exactly(value, HOURS_KEYS)
+  if (o === null || !isCount(o.unknown)) return null
+  const openDays = countsOfLength(o.openDays, WEEK_DAYS)
+  const weekdays = countsOfLength(o.weekdays, WEEK_DAYS)
+  const hours = countsOfLength(o.hours, HOUR_CELLS)
+  if (openDays === null || weekdays === null || hours === null) return null
+  if (sum(weekdays) !== sum(hours)) return null
+  const fits = openDays.every((days, i) => days <= MAX_WEEKDAY_IN_MONTH && (days > 0) === (weekdays[i] > 0))
+  return fits ? { openDays, weekdays, hours, unknown: o.unknown } : null
+}
+
+function doctorOf(value: unknown): MonthSections['doctors'][number] | null {
+  const o = exactly(value, DOCTOR_KEYS)
+  if (o === null) return null
+  const { name, patients, newPatients, amount } = o
+  if (!isText(name, true) || !isCount(patients) || !isCount(newPatients) || !Number.isSafeInteger(amount)) return null
+  return newPatients <= patients ? { name, patients, newPatients, amount: amount as number } : null
+}
+
+export function validateMonthSections(value: unknown): MonthSections | null {
+  const o = exactly(value, SECTIONS_KEYS)
+  if (o === null || o.v !== 1) return null
+  const { month, partial } = o
+  if (typeof month !== 'string' || !isMonth(month) || typeof partial !== 'boolean') return null
+  const mix = mixOf(o.mix)
+  const hours = hoursOf(o.hours)
+  const doctors = listOf(o.doctors, MAX_DOCTORS, doctorOf)
+  if (mix === null || hours === null || doctors === null || !hasUniqueNames(doctors)) return null
+  return { v: 1, month, partial, mix, hours, doctors }
 }

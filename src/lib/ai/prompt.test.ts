@@ -298,3 +298,56 @@ describe('reportJsonSchema', () => {
     expect(second).toStrictEqual(expected)
   })
 })
+
+describe('systemPrompt — 통계 비트 세 칸 지표 (spec stats-bit-ai)', () => {
+  const lines = () => systemPrompt().split(/\r?\n/)
+
+  it('AC-2905.2 [입력]의 kind 설명 줄(한 줄 그대로)에 won = 원장님 매출(수납일 기준 총진료비 합, 원)·average = 문 연 날 하루 평균 접수 건수가 있다', () => {
+    const kindLines = section('[입력]').filter((line) => line.includes('kind가'))
+    expect(kindLines).toHaveLength(1)
+    expect(kindLines[0]).toContain('won이면 원장님 매출(수납일 기준 총진료비 합, 원)')
+    expect(kindLines[0]).toContain('average면 문 연 날 하루 평균 접수 건수')
+    // 지금 설명은 그대로
+    expect(kindLines[0]).toContain('rate면 0~1 사이 비율입니다.')
+  })
+
+  it('AC-2905.2 원장님 실환자는 원장님끼리 겹칠 수 있어 더해 전체 환자라고 쓰지 않는다는 줄이 하나 있다', () => {
+    const rules = lines().filter((line) => line.includes('원장님 실환자'))
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toContain('겹칠 수 있')
+    expect(rules[0]).toMatch(/더해[^.]*전체 환자[^.]*쓰지 않습니다/)
+  })
+
+  it("AC-2905.2 보험·동네는 5명 이상 묶음만 있어 null이면 '5명 미만이거나 자료 없음'이라 비교하지 않는다는 줄이 하나 있다", () => {
+    const rules = lines().filter((line) => line.includes('5명 미만이거나 자료 없음'))
+    expect(rules).toHaveLength(1)
+    for (const word of ['보험', '동네', '5명 이상', 'null', '비교하지 않습니다']) expect(rules[0]).toContain(word)
+  })
+
+  it('AC-2905.2 매출 금액과 하루 평균을 지어내지 않는다는 줄이 하나 있다', () => {
+    const rules = lines().filter((line) => line.includes('매출') && line.includes('평균') && line.includes('지어내지 않습니다'))
+    expect(rules).toHaveLength(1)
+  })
+
+  it('AC-2905.2 새 규칙 줄은 [숫자 규칙] 뒤, [원인 짐작] 앞에 있다(이름 줄·숫자 금지 줄 차례는 그대로)', () => {
+    const all = lines()
+    const numbers = all.indexOf('[숫자 규칙]')
+    const guess = all.indexOf('[원인 짐작]')
+    for (const word of ['원장님 실환자', '5명 미만이거나 자료 없음']) {
+      const index = all.findIndex((line) => line.includes(word))
+      expect(index, word).toBeGreaterThan(numbers)
+      expect(index, word).toBeLessThan(guess)
+    }
+  })
+
+  it('AC-2905.4 자료에 있는 이름 줄은 연령대·보험 이름·시간대·원장님 이름도 든다(지금 처방명·그룹명·동네 이름은 그대로)', () => {
+    const all = lines()
+    const rule = all.find((line) => line.includes('자료에 있는 이름') && line.includes('글자 그대로'))
+    expect(rule).toBeDefined()
+    for (const word of ['처방명', '그룹명', '동네 이름', '연령대', '보험 이름', '시간대', '원장님 이름']) expect(rule).toContain(word)
+  })
+
+  it('AC-2905.2 지시문 판은 그대로 ai-report-3이다(지시문을 고쳐도 지문이 바뀌지 않는다)', () => {
+    expect(PROMPT_VERSION).toBe('ai-report-3')
+  })
+})

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { TemplateKind } from '@/lib/patientMessages/defaults'
+import { TEMPLATE_KINDS, type TemplateKind } from '@/lib/patientMessages/defaults'
 import type { ErrorCode } from '@/types/errors'
 
 // 문자 문구 읽기·저장(브라우저 → Supabase RLS, ADR-004). 문구의 원본은 서버다(ADR-021).
@@ -35,7 +35,8 @@ const fits = (text: string, max: number) => text.trim() !== '' && [...text].leng
 export function checkTemplate(t: TemplateDraft): 'name' | 'body' | 'kind' | null {
   if (!fits(t.name, NAME_MAX)) return 'name'
   if (!fits(t.body, BODY_MAX)) return 'body'
-  if (t.kind !== 'injection' && t.kind !== 'followup') return 'kind'
+  // DB kind 제약과 같은 셋(주사 안내 · 진료 안내 · 예약 안내)만 보낸다
+  if (!(TEMPLATE_KINDS as readonly string[]).includes(t.kind)) return 'kind'
   return null
 }
 

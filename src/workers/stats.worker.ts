@@ -22,5 +22,7 @@ scope.onmessage = (event) => {
     void host.load(message)
   } else if (message.type === 'split') {
     host.split(message)
+  } else if (message.type === 'sections') {
+    host.sections(message)
   }
 }

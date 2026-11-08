@@ -35,7 +35,7 @@ const READ_ERROR: ErrorCode = 'E-PATIENTS-TEMPLATES-READ'
 const SAVE_ERROR: ErrorCode = 'E-PATIENTS-TEMPLATES-SAVE'
 
 /** 종류 이름(목업 KIND). 새 줄의 처음 이름도 이것으로 짓는다 */
-export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = { injection: '주사 안내', followup: '진료 안내' }
+export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = { injection: '주사 안내', followup: '진료 안내', reservation: '예약 안내' }
 
 const BLANK: Omit<Model, 'state'> = { saved: [], draft: [], usingDefaults: false, loadError: null, saveError: null, saving: false, justSaved: false, tried: false }
 const LOADING: Model = { ...BLANK, state: 'loading' }
