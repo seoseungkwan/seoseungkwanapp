@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>비트에 입력 — 환자별 두 칸 보기 (시안 4)</title>
+<!--
+  청구 '비트에 입력' 환자별 두 칸 보기 시안 4. 왼쪽 환자 목록 → 오른쪽 상세, ↑↓ 옮기기, C·초록 단추 = 우리 메모 복사하고 완료.
+  색 역할: 바탕 흰색 · 구획 옅은 회색과 구분선 / 파랑 = 고른 환자·지금 위치 / 초록 = 완료 단추·완료 상태 / 주황 = 확인 필요 / 오류 = 기존 오류색.
+  색은 앱 토큰(src/app/globals.css :root)만 쓴다. 이름·차트·글은 모두 지어낸 값이다. 어디로도 보내지 않는다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --negative: #C2410C; --negative-soft: #FDF0EA; --warning: #B45309; --warning-soft: #FDF4E3;
+  --positive: #15803D; --positive-soft: #ECF7EF; --r: 4px; --r-float: 8px;
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --mono: "D2Coding", "Consolas", "Malgun Gothic", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button, textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 시안 머리(앱 밖) */
+.mhead { max-width: 1282px; margin: 0 auto; padding: 20px 8px 12px; display: grid; gap: 8px; }
+.mhead h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.mhead p { margin: 0; font-size: 13px; line-height: 20px; max-width: 92ch; }
+.bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; padding: 5px 12px; cursor: pointer; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.stage { padding: 0 8px 24px; overflow-x: auto; }
+.frame { width: 1280px; height: 780px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-float); overflow: hidden; }
+
+/* 앱 */
+.app { height: 100%; display: flex; flex-direction: column; }
+.topbar { flex: none; display: flex; align-items: center; gap: 16px; height: 48px; padding: 0 20px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.topbar .brand { font-weight: 700; color: var(--ink); font-size: 14px; }
+.topbar b { color: var(--ink); font-weight: 600; }
+.toolbar { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 20px; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.sumrow { display: flex; align-items: center; gap: 12px; }
+.sum { font-size: 13px; color: var(--ink-2); }
+.sum b { font-size: 18px; line-height: 26px; color: var(--ink); font-weight: 700; margin-right: 2px; }
+.sum .ok { color: var(--positive); font-weight: 600; }
+.sum .dot { color: var(--muted); margin: 0 4px; }
+.sp { flex: 1; }
+.moderow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.moderow .ml { font-weight: 600; color: var(--ink); }
+.moderow .radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.moderow .radio input { accent-color: var(--accent); }
+.moderow .vsep { width: 1px; height: 18px; background: var(--line-strong); }
+.moderow .tin { width: 110px; height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 12px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.btn.go { height: 38px; padding: 0 16px; border-color: var(--positive); background: var(--positive); color: #fff; font-size: 14px; font-weight: 700; }
+.btn.go:disabled { opacity: .45; }
+kbd { display: inline-block; min-width: 18px; padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 3px; background: var(--surface); font: 600 11px/15px var(--ui); text-align: center; color: var(--ink-2); }
+.btn.go kbd { background: rgb(255 255 255 / .18); border-color: rgb(255 255 255 / .55); color: #fff; }
+
+/* 작은 표 */
+.badge { display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 6px; border-radius: var(--r); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge.done { background: var(--positive-soft); color: var(--positive); }
+.badge.warn { background: var(--warning-soft); color: var(--warning); }
+.badge.err { background: var(--negative-soft); color: var(--negative); }
+.badge.plain { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-weight: 400; }
+
+/* 두 칸 */
+.split { flex: 1; min-height: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); }
+.listpane { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+.listtop { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.listtop .seg button { padding: 4px 12px; font-size: 12px; }
+.listwrap { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ghead { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 14px; background: var(--canvas); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ghead .c { font-weight: 400; color: var(--muted); }
+ol { list-style: none; margin: 0; padding: 0; }
+.item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 14px 6px 11px; border-left: 3px solid transparent; border-bottom: 1px solid var(--line); cursor: pointer; }
+.item:hover { background: var(--canvas); }
+.item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.item.sel { background: var(--accent-soft); border-left-color: var(--accent-strong); }
+.item .no { width: 18px; flex: none; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.item .mid { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.item .nm { font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.item.sel .nm { font-weight: 700; }
+.item.sel .day, .item.sel .cno, .item.sel .no { color: var(--ink-2); } /* 연한 파랑 위 작은 글자는 더 진하게(읽기 쉽게) */
+.item .day, .item .cno { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.item .tags { display: flex; gap: 4px; flex: none; }
+.empty { margin: 0; padding: 20px 16px; font-size: 13px; color: var(--muted); }
+
+.detail { min-height: 0; overflow-y: auto; padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+.dhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dhead .pos { font-size: 12px; font-weight: 600; color: var(--accent-strong); }
+.dhead .who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; }
+.dhead .who .nm { font-size: 22px; line-height: 30px; font-weight: 700; color: var(--ink); }
+.dhead .facts { margin-top: 2px; font-size: 14px; color: var(--ink-2); }
+.dhead .facts .k { color: var(--muted); margin-right: 4px; }
+.dhead .facts .sep { color: var(--line-strong); margin: 0 8px; }
+.nav { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.nav .btns { display: flex; gap: 6px; }
+.nav .hint { font-size: 12px; color: var(--muted); }
+
+.actionbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r-float); }
+.status { flex-basis: 100%; margin: 0; display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.status .ic { font-weight: 700; }
+.status.done { color: var(--positive); }
+.status.warn { color: var(--warning); }
+.status.err { color: var(--negative); }
+.status b { font-weight: 600; }
+
+.memos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.box { min-height: 112px; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 10px 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r-float); }
+.box .bt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.box .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; color: var(--ink); }
+.box .none { font-size: 13px; color: var(--muted); }
+.box .meta { margin-top: auto; font-size: 12px; color: var(--muted); }
+.box textarea { width: 100%; min-height: 76px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--surface); font-size: 14px; line-height: 22px; resize: vertical; }
+
+.facts2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; }
+.sec { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sec h4 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.sec h4 span { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
+.tbl { width: 100%; border-collapse: collapse; border: 1px solid var(--line); font-size: 13px; line-height: 19px; table-layout: fixed; }
+.tbl th { padding: 5px 8px; background: var(--canvas); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--muted); text-align: left; white-space: nowrap; }
+.tbl td { padding: 5px 8px; border-top: 1px solid var(--line); vertical-align: top; color: var(--ink-2); }
+.tbl .k { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.tbl tr.proc .k { color: var(--ink); font-weight: 600; }
+.tbl .x { font-family: var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.tbl .code { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.tbl .name { color: var(--ink); overflow-wrap: anywhere; }
+.tbl .name .short { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl .ctr { text-align: center; white-space: nowrap; }
+.help { margin: 0; font-size: 12px; line-height: 16px; color: var(--muted); }
+
+.notes { max-width: 1282px; margin: 0 auto; padding: 0 8px 40px; font-size: 13px; }
+.notes h2 { font-size: 15px; margin: 0 0 6px; color: var(--ink); }
+.notes ul { padding-left: 20px; margin: 0 0 12px; }
+.notes li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<header class="mhead">
+  <h1>비트에 입력 · 환자별 두 칸 보기 (시안 4 · 색과 안내 다듬기)</h1>
+  <p>이름과 글은 모두 지어낸 것이에요. 왼쪽에서 환자를 고르고, <kbd>↑</kbd> <kbd>↓</kbd> 로 옮기고, <kbd>C</kbd> 나 초록 [복사(완료)] 단추로 우리 메모를 복사하고 완료해요.</p>
+  <div class="bar">
+    보는 크기
+    <div class="seg" id="fitMode">
+      <button data-fit="fit" aria-pressed="true">화면에 맞추기</button>
+      <button data-fit="real" aria-pressed="false">실제 크기</button>
+    </div>
+    <span>휴대폰에서는 두 손가락으로 벌려 보세요. 키보드가 없으면 화면의 [↑ 앞 사람]·[↓ 다음 사람]·초록 단추를 눌러 보세요.</span>
+  </div>
+</header>
+
+<div class="stage"><div class="frame" id="frame"></div></div>
+
+<section class="notes">
+  <h2>색은 이렇게 써요</h2>
+  <ul>
+    <li>바탕은 흰색, 구획(위 도구 줄 · 목록 묶음 이름 · 메모 칸 · 표 머리)은 옅은 회색과 구분선.</li>
+    <li><b style="color:var(--accent-strong)">파랑</b> = 고른 환자와 지금 위치(목록 줄, 오른쪽 위 '입력할 사람 2 / 10'), 고른 단추.</li>
+    <li><b style="color:var(--positive)">초록</b> = 완료 단추와 완료 표시(✓ 완료). <b style="color:var(--warning)">주황</b> = 확인이 필요한 것(메모 바꿈, 지금 메모와 다름, 확인 표시). 복사 실패는 기존 오류색과 ✕ 표시.</li>
+    <li>색만으로 알리지 않게 늘 글자(✓ 완료, ! 확인 필요, ✕ 복사 못 함)를 같이 써요.</li>
+  </ul>
+  <h2>움직임</h2>
+  <ul>
+    <li>초록 단추 또는 <kbd>C</kbd>: 우리 메모를 복사하고, 복사에 성공했을 때만 완료로 바꿔요. 확인 창은 없어요. 사람을 옮기기만 해서는 완료되지 않아요.</li>
+    <li>알림은 아래에 잠깐 떴다 사라지는 대신, 초록 단추 바로 밑 <b>상태 줄</b> 한 곳에만 나와요. 그 사람에게 계속 알아야 할 것(확인 표시, 복사 실패)은 거기 남고, 다른 사람으로 옮기면 그 사람의 상태로 바뀌어요.</li>
+    <li>잘못 눌렀으면 [완료 풀기]. 완료는 저장되어 다시 열어도 남아요. [입력 시작](자동 입력)은 완료한 사람을 빼요.</li>
+    <li>입력 방식(처방코드별·날짜별)과 왼쪽 위 [전체 · 미완료 · 완료]는 시안 3 그대로예요. 메모를 고치는 동안에는 ↑↓·C가 글 칸 안에서만 쓰여요.</li>
+  </ul>
+</section>
+
+<script>
+'use strict'
+// ── 지어낸 자료 ─────────────────────────────────────────────
+const CODES = {
+  LA358: { n: 'MBB', bit: '신경차단술-척추후지내측지', k: 'proc' },
+  LA248: { n: 'ICNB', bit: '신경차단술-늑간신경', k: 'proc' },
+  KK060: { n: '관절강내주사', bit: '관절강내주사', k: 'proc' },
+  KK062: { n: '건초내주사', bit: '건초내주사', k: 'proc' },
+  A21: { n: '트리암', bit: '트리암시놀론주 40mg', k: 'drug' },
+  A30: { n: '히알', bit: '히알루론산나트륨주', k: 'drug' },
+  A15: { n: '리도카인', bit: '리도카인주 2%', k: 'drug' },
+  AA154: { n: '재진', bit: '재진진찰료', k: 'other' },
+  XR21: { n: 'L-spine', bit: '요추 AP/Lat', k: 'other' },
+  XR34: { n: 'Shoulder', bit: '견관절 AP/Lat', k: 'other' },
+  US11: { n: '초음파', bit: '근골격 초음파', k: 'other' },
+  PT01: { n: '물리치료', bit: '표층열치료', k: 'other' },
+  MM101: { n: '도수치료', bit: '도수치료', k: 'other', nb: true },
+  ESW1: { n: '충격파', bit: '체외충격파', k: 'other', nb: true },
+}
+const L = (k, t) => [k, t]
+const P = [
+  { g: 'batch', date: '2026-11-02', chart: '9001', name: '가상환자A', chip: '새 메모', ours: '◈MBB Lt L3,4,5 (3 level)\n◈요추 후관절 증후군 상병으로 시행함', bit: null,
+    lines: [L('subj', '허리 아픔 2주, 앉았다 일어날 때 심함'), L('exam', 'Td(+) L4-5 facet, SLR (-/-)'), L('img', 'xr: L4-5 DSN'), L('dx', 'L-spine facet syndrome'), L('proc', 'MBB Lt L3,4,5'), L('plan', '1주 뒤 f/u')],
+    rx: [['AA154', 1], ['LA358', 3], ['A15', 0.6], ['XR21', 1], ['PT01', 1]] },
+  { g: 'batch', date: '2026-11-02', chart: '9002', name: '가상환자B', chip: '메모 바꿈', ours: '◈Rt shoulder 관절강내주사 시행(triam)', bit: '◈shoulder 관절강내주사 시행',
+    lines: [L('subj', 'Rt shoulder pain 1달, 밤에 더 아픔'), L('exam', 'Neer(+) Hawkins(+) painful arc(+)'), L('img', 'sono: SSP tendinosis, SASD effusion'), L('dx', 'Rt shoulder impingement syndrome'), L('proc', 'IA Rt shoulder (triam)'), L('plan', '2주 뒤 재평가')],
+    rx: [['AA154', 1], ['KK060', 1], ['A21', 1], ['A15', 0.4], ['US11', 1], ['XR34', 1]] },
+  { g: 'batch', date: '2026-11-03', chart: '9003', name: '가상환자C', chip: '새 메모', ours: '◈Rt 3rd finger 건초내주사 시행(triam)', bit: null,
+    lines: [L('subj', '오른손 셋째 손가락 걸림, 아침에 심함'), L('exam', 'triggering(+) Rt 3rd, A1 pulley Td(+)'), L('dx', 'trigger finger Rt 3rd'), L('proc', '건초내주사 Rt 3rd A1 pulley (triam)'), L('plan', '3주 뒤')],
+    rx: [['AA154', 1], ['KK062', 1], ['A21', 1]] },
+  { g: 'batch', date: '2026-11-03', chart: '9004', name: '가상환자D', chip: '새 메모', ours: '◈Lt knee 관절강내주사 2/5회 시행(hyal)', bit: null,
+    lines: [L('subj', '양쪽 무릎 아픔, 계단 내려갈 때'), L('img', 'xr: Bil. knee OA (KL 3)'), L('dx', 'Bil. knee OA'), L('proc', 'IA Lt knee (hyal) 2/5'), L('plan', '1주 뒤 3/5')],
+    rx: [['AA154', 1], ['KK060', 1], ['A30', 1]] },
+  { g: 'batch', date: '2026-11-04', chart: '9005', name: '가상환자E', chip: '새 메모', ours: '◈ICNB Rt 3 level', bit: null,
+    lines: [L('subj', '오른쪽 갈비 아픔, 3일 전 부딪힘'), L('exam', 'Td(+) Rt rib 8-9'), L('img', 'xr: no def. fx'), L('dx', 'Rt rib contusion'), L('proc', 'ICNB Rt 8,9,10'), L('plan', '1주 뒤 2차 주사')],
+    rx: [['AA154', 1], ['LA248', 3], ['A15', 0.6]] },
+  { g: 'batch', date: '2026-11-04', chart: '9006', name: '가상환자F', chip: '새 메모', ours: '◈MBB Rt C5,6,7 (3 level)', bit: null,
+    lines: [L('subj', '목 뒤 뻐근, 오른팔 저림 1주'), L('exam', 'Spurling(+) Rt'), L('dx', 'C-spine HIVD 의심'), L('proc', 'MBB Rt C5,6,7'), L('plan', 'MRI 권함')],
+    rx: [['AA154', 1], ['LA358', 3], ['A15', 0.6]] },
+  { g: 'batch', date: '2026-11-05', chart: '9007', name: '가상환자G', chip: '새 메모', ours: '◈도수치료 시행', bit: null,
+    lines: [L('subj', '허리 뻐근, 오래 앉으면 심함'), L('rx', '도수치료 30분'), L('plan', '주 2회')],
+    rx: [['AA154', 1], ['MM101', 1], ['PT01', 1]] },
+  { g: 'batch', date: '2026-11-05', chart: '9008', name: '가상환자H', chip: '메모 바꿈', ours: '◈Rt elbow 건초내주사 시행(triam)', bit: '◈Rt elbow 건초내주사 시행',
+    lines: [L('subj', '오른 팔꿈치 바깥쪽 아픔, 물건 들 때'), L('exam', 'Td(+) Rt LE, Cozen(+)'), L('dx', 'Rt lateral epicondylitis'), L('proc', '건초내주사 Rt LE (triam) + ESWT'), L('plan', '2주 뒤')],
+    rx: [['AA154', 1], ['KK062', 1], ['A21', 0.5], ['ESW1', 1]] },
+  { g: 'batch', date: '2026-11-06', chart: '9009', name: '가상환자I', chip: '새 메모', ours: '◈Lt ankle sprain, splint 적용', bit: null,
+    lines: [L('subj', '어제 왼발목 접질림'), L('exam', 'ATFL Td(+), swelling(+)'), L('img', 'xr: no fx'), L('dx', 'Lt ankle sprain'), L('rx', 'splint, med 5일')],
+    rx: [['AA154', 1], ['PT01', 1]] },
+  { g: 'batch', date: '2026-11-06', chart: '9010', name: '가상환자J', chip: '새 메모', ours: '◈MBB Lt L4,5 (2 level)\n◈Lt SIJ 관절강내주사 시행(triam)', bit: null,
+    lines: [L('subj', '허리·왼쪽 엉덩이 아픔'), L('exam', 'Td(+) L4-5, Lt SIJ'), L('dx', 'L-spine facet syn., Lt SIJ dysfunction'), L('proc', 'MBB Lt L4,5 + IA Lt SIJ (triam)'), L('plan', '2주 뒤')],
+    rx: [['AA154', 1], ['LA358', 2], ['KK060', 1], ['A21', 1], ['A15', 0.6]] },
+  { g: 'mark', date: '2026-11-03', chart: '9011', name: '가상환자K', ours: '◈[약 확인] Rt knee 관절강내주사 시행', bit: null,
+    lines: [L('subj', 'Rt knee 아픔, 붓기'), L('dx', 'Rt knee OA'), L('proc', 'IA Rt knee')],
+    rx: [['AA154', 1], ['KK060', 1], ['A30', 1]] },
+  { g: 'done', date: '2026-11-02', chart: '9012', name: '가상환자L', ours: '◈MBB Rt L4,5 (2 level)', bit: '◈MBB Rt L4,5 (2 level)',
+    lines: [L('subj', '허리 아픔, 오른쪽'), L('dx', 'L-spine facet syndrome'), L('proc', 'MBB Rt L4,5')],
+    rx: [['AA154', 1], ['LA358', 2], ['A15', 0.4]] },
+  { g: 'done', date: '2026-11-04', chart: '9013', name: '가상환자M', ours: '◈Lt shoulder 관절강내주사 시행(triam)', bit: '◈Lt shoulder 관절강내주사 시행(triam)',
+    lines: [L('subj', 'Lt shoulder 아픔, 팔 올릴 때'), L('dx', 'Lt frozen shoulder'), L('proc', 'IA Lt shoulder (triam)')],
+    rx: [['AA154', 1], ['KK060', 1], ['A21', 1]] },
+  { g: 'nomemo', date: '2026-11-05', chart: '9014', name: '가상환자N', ours: '', bit: null,
+    lines: [L('subj', '약만 타러 옴'), L('rx', 'med 7일')],
+    rx: [['AA154', 1]] },
+]
+const GROUPS = [
+  { g: 'batch', name: '입력할 사람' },
+  { g: 'mark', name: '확인 필요' },
+  { g: 'done', name: '이미 입력됨' },
+  { g: 'nomemo', name: '메모 없음' },
+]
+const LINE_LABEL = { subj: '호소', exam: '검사', dx: '진단', img: '영상', proc: '시술', rx: '처치', plan: '계획' }
+const RX_LABEL = { proc: '시술', drug: '약제', other: '기타' }
+const RX_ORDER = { proc: 0, drug: 1, other: 2 }
+const ORDER = GROUPS.flatMap(({ g }) => P.map((p, i) => [p, i]).filter(([p]) => p.g === g).map(([, i]) => i))
+const CHIP_CODES = ['LA358', 'KK060', 'KK062', 'LA248', 'ESW1', 'MM101']
+
+// ── 상태 ─────────────────────────────────────────────
+// selP: 고른 환자(P 번호). done: 완료(C·초록 단추로 복사했거나 지난 자동 입력, 저장된다고 본다. L·M은 지난 입력으로 완료)
+// justCopied·reopened: 지금 보는 환자에게만 붙는 잠깐 상태, 환자를 바꾸면 지운다(앞 사람 알림이 남지 않게)
+// copyFail: 복사 실패한 환자들. 그 환자에게 계속 남고(목록 표·상태 줄), 그 환자 복사가 성공하면 지운다
+const state = { fit: 'fit', selP: 0, editing: null, done: new Set([11, 12]), justCopied: null, reopened: null, copyFail: new Set(), mode: 'date', code: '', typed: '', show: 'all' }
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const WD = ['일', '월', '화', '수', '목', '금', '토']
+const day = (ymd) => { const d = new Date(ymd + 'T00:00:00'); return `${d.getMonth() + 1}/${d.getDate()} (${WD[d.getDay()]})` }
+const sortedRx = (p) => p.rx.map(([code, qty]) => ({ code, qty, ...CODES[code] })).sort((a, b) => RX_ORDER[a.k] - RX_ORDER[b.k])
+const groupName = (g) => GROUPS.find((x) => x.g === g).name
+const compareOf = (p) => (p.bit === null ? '비트에 없음' : p.bit === p.ours ? '같음' : '다름')
+const hasMark = (text) => /\[[^\]]*확인[^\]]*\]/.test(text)
+const wantCode = () => state.typed.trim().toUpperCase() || state.code
+const passCode = (i) => state.mode === 'date' || (wantCode() !== '' && P[i].rx.some(([c]) => c === wantCode()))
+const passShow = (i) => state.show === 'all' || (state.show === 'done') === state.done.has(i)
+/** 왼쪽에 보이는 차례. 지금 보는 사람은 완료해도 다른 사람으로 옮길 때까지 '미완료' 목록에 남는다 */
+const vis = () => ORDER.filter((i) => passCode(i) && (passShow(i) || i === state.selP))
+/** 코드 단추: 입력할 사람 중 완료와 메모 없는 사람을 뺀 수, 많은 차례 */
+const codeChips = () => CHIP_CODES.map((code) => ({ code, n: CODES[code].n, count: P.filter((p, i) => p.g === 'batch' && !state.done.has(i) && p.ours.trim() && p.rx.some(([c]) => c === code)).length })).sort((a, b) => b.count - a.count)
+/** 복사할 수 없는 까닭(늘 남는 경고). 없으면 '' */
+const blockedWhy = (p) => (!p.ours.trim() ? 'none' : hasMark(p.ours) ? 'mark' : '')
+
+/** 환자를 바꾼다: 앞 사람의 잠깐 상태(방금 복사함·완료 풀림)와 고치던 칸을 지운다. 복사 실패는 그 환자에게 남는다 */
+function select(i) { if (state.selP !== i) { state.justCopied = null; state.reopened = null } state.selP = i; state.editing = null }
+function ensureSel() { const v = vis(); if (!v.includes(state.selP)) select(v[0] ?? null) }
+
+// ── 그리기 ─────────────────────────────────────────────
+/** 목록 줄과 상세 머리에 같이 쓰는 작은 표(완료는 초록, 확인이 필요한 것은 주황) */
+function tags(p, i) {
+  const out = []
+  if (state.copyFail.has(i)) out.push('<span class="badge err">✕ 복사 못 함</span>')
+  if (state.done.has(i)) out.push('<span class="badge done">✓ 완료</span>')
+  if (hasMark(p.ours)) out.push('<span class="badge warn">! 확인 필요</span>')
+  else if (p.g === 'batch' && p.chip === '메모 바꿈') out.push('<span class="badge warn">! 메모 바꿈</span>')
+  else if (p.g === 'batch') out.push('<span class="badge plain">새 메모</span>')
+  return out.join('')
+}
+function bitBox(p) {
+  // '다름'은 머리의 '! 메모 바꿈'과 같은 사실이라 여기서는 주황을 겹쳐 쓰지 않는다
+  const c = compareOf(p)
+  const badge = `<span class="badge plain">${c === '다름' ? '지금 메모와 다름' : c === '같음' ? '지금 메모와 같음' : '비트에 없음'}</span>`
+  const body = p.bit === null ? '<span class="none">비트에 저장된 청구메모가 없어요.</span>' : `<span class="txt">${esc(p.bit)}</span>`
+  return `<div class="box"><span class="bt">비트에 저장된 청구메모 ${badge}</span>${body}<span class="meta">11/1~11/7 · 58건 · 13:33에 불러옴</span></div>`
+}
+function oursBox(p, i) {
+  const body = state.editing === i
+    ? `<textarea id="ed" aria-label="${esc(p.name)} 우리 메모 고치기">${esc(p.ours)}</textarea>`
+    : p.ours.trim() ? `<span class="txt">${esc(p.ours)}</span>` : '<span class="none">우리 메모가 없어요.</span>'
+  return `<div class="box"><span class="bt">우리 메모</span>${body}</div>`
+}
+/** 초록 단추 줄과 그 사람의 상태 줄(알림은 여기 한 곳) */
+function actionBar(p, i) {
+  const done = state.done.has(i)
+  const why = blockedWhy(p)
+  const editing = state.editing === i
+  let status
+  if (editing) status = '<p class="status" data-status>우리 메모를 고치는 중이에요. 칸 밖을 누르면 반영돼요.</p>'
+  else if (state.copyFail.has(i)) status = done
+    ? '<p class="status err" data-status role="alert"><span class="ic">✕</span><span><b>다시 복사하지 못했어요.</b> 완료는 그대로예요. 다시 눌러 주세요.</span></p>'
+    : '<p class="status err" data-status role="alert"><span class="ic">✕</span><span><b>복사하지 못했어요.</b> 완료로 바뀌지 않았어요. 다시 눌러 주세요.</span></p>'
+  else if (state.reopened === i) status = '<p class="status warn" data-status><span class="ic">!</span><span><b>메모를 고쳐서 완료가 풀렸어요.</b> 고친 메모를 다시 복사(완료)해 주세요.</span></p>'
+  else if (why === 'mark') status = '<p class="status warn" data-status><span class="ic">!</span><span><b>확인 표시가 남아 있어 복사할 수 없어요.</b> [메모 고치기]로 표시를 지운 뒤 눌러 주세요.</span></p>'
+  else if (why === 'none') status = '<p class="status" data-status>우리 메모가 없어 복사할 게 없어요.</p>'
+  else if (done && state.justCopied === i) status = '<p class="status done" data-status role="status"><span class="ic">✓</span><span><b>복사했고 완료했어요.</b> 비트 메모 칸에 붙여 넣으세요.</span></p>'
+  else if (done) status = '<p class="status done" data-status><span class="ic">✓</span><span><b>완료한 환자예요.</b> 다시 복사해도 완료는 그대로예요.</span></p>'
+  else status = '<p class="status" data-status>누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.</p>'
+  const right = []
+  if (p.ours.trim() && !editing) right.push('<button class="btn sm" data-act="edit">메모 고치기</button>')
+  if (p.g === 'batch' && p.chip === '메모 바꿈') right.push('<button class="btn sm" title="시안에서는 눌러도 그대로예요. 실제로는 지금처럼 동작해요">바꾸지 않기</button>')
+  return `<div class="actionbar">
+      <button class="btn go" data-act="copy" ${why || editing ? 'disabled' : ''}><kbd>C</kbd> ${done ? '다시 복사' : '복사(완료)'}</button>
+      ${done ? '<button class="btn" data-act="undone">완료 풀기</button>' : ''}
+      <span class="sp"></span>${right.join('')}
+      ${status}
+    </div>`
+}
+function facts(p) {
+  const rx = sortedRx(p)
+  const procs = rx.filter((r) => r.k === 'proc').length
+  return `<div class="facts2">
+      <section class="sec"><h4>증상 · 차트 원문<span>${p.lines.length}줄</span></h4>
+        <table class="tbl"><colgroup><col style="width:44px"><col></colgroup><tbody>
+          ${p.lines.map(([k, t]) => `<tr class="${k}"><td class="k">${LINE_LABEL[k] ?? ''}</td><td class="x">${esc(t)}</td></tr>`).join('')}
+        </tbody></table>
+      </section>
+      <section class="sec"><h4>처방내역<span>${rx.length}줄 · 시술 ${procs}</span></h4>
+        <table class="tbl"><colgroup><col style="width:44px"><col style="width:64px"><col><col style="width:64px"><col style="width:56px"></colgroup>
+          <thead><tr><th>종류</th><th>코드</th><th>처방명</th><th class="num">총투여량</th><th class="ctr">급여</th></tr></thead>
+          <tbody>${rx.map((r) => `<tr class="${r.k}"><td class="k">${RX_LABEL[r.k]}</td><td class="code">${r.code}</td><td class="name">${esc(r.bit)}<span class="short">${esc(r.n)}</span></td><td class="num">×${r.qty}</td><td class="ctr">${r.nb ? '비급여' : '급여'}</td></tr>`).join('')}</tbody>
+        </table>
+      </section>
+    </div>`
+}
+
+function view() {
+  const v = vis()
+  const coded = ORDER.filter(passCode)
+  const batchCoded = coded.filter((i) => P[i].g === 'batch')
+  const doneN = batchCoded.filter((i) => state.done.has(i)).length
+  const leftN = coded.length - batchCoded.length
+  const counts = { all: coded.length, todo: coded.filter((i) => !state.done.has(i)).length, done: coded.filter((i) => state.done.has(i)).length }
+
+  const list = !coded.length
+    ? `<p class="empty">${state.mode !== 'code' ? '이 기간에 진료가 없어요.' : wantCode() === '' ? '처방코드를 넣거나 위 코드 단추를 고르면 그 처방이 있는 환자만 여기에 나와요.' : `${esc(wantCode())} 처방이 있는 환자가 없어요. 코드를 다시 확인해 주세요.`}</p>`
+    : !v.length
+      ? `<p class="empty">${state.show === 'done' ? '완료한 환자가 없어요.' : '모두 완료했어요.'}</p>`
+      : GROUPS.map(({ g, name }) => {
+          const all = coded.filter((i) => P[i].g === g)
+          const rows = v.filter((i) => P[i].g === g)
+          if (!rows.length) return ''
+          return `<div role="group" aria-label="${name}">
+            <div class="ghead">${name}<span class="c">${rows.length === all.length ? `${all.length}명` : `${rows.length} / ${all.length}명`}</span></div>
+            <ol>${rows.map((i) => {
+              const p = P[i]
+              return `<li><button class="item${state.selP === i ? ' sel' : ''}" data-pick="${i}" aria-current="${state.selP === i ? 'true' : 'false'}">
+                <span class="no">${g === 'batch' ? all.indexOf(i) + 1 : ''}</span>
+                <span class="mid"><span class="nm">${p.name}</span><span class="day">${day(p.date)}</span><span class="cno">${p.chart}</span></span>
+                <span class="tags">${tags(p, i)}</span>
+              </button></li>`
+            }).join('')}</ol></div>`
+        }).join('')
+
+  let detail
+  if (state.selP === null) detail = `<p class="empty">${v.length ? '왼쪽에서 환자를 고르면 메모가 여기에 나와요.' : '목록에 보여 줄 환자가 없어요.'}</p>`
+  else {
+    const i = state.selP
+    const p = P[i]
+    const inGroup = coded.filter((j) => P[j].g === p.g)
+    const pos = v.indexOf(i)
+    detail = `
+      <div class="dhead">
+        <div>
+          <div class="pos">${groupName(p.g)} ${inGroup.indexOf(i) + 1} / ${inGroup.length}</div>
+          <div class="who"><span class="nm">${p.name}</span>${tags(p, i)}</div>
+          <div class="facts"><span class="k">진료일</span>${day(p.date)}<span class="sep">|</span><span class="k">차트</span>${p.chart}</div>
+        </div>
+        <div class="nav">
+          <div class="btns"><button class="btn sm" data-nav="-1" ${pos <= 0 ? 'disabled' : ''}>↑ 앞 사람</button><button class="btn sm" data-nav="1" ${pos === v.length - 1 ? 'disabled' : ''}>↓ 다음 사람</button></div>
+          <span class="hint">키보드 <kbd>↑</kbd> <kbd>↓</kbd></span>
+        </div>
+      </div>
+      ${actionBar(p, i)}
+      <div class="memos">${oursBox(p, i)}${bitBox(p)}</div>
+      ${facts(p)}`
+  }
+
+  const modeRow = `<div class="moderow">
+    <span class="ml">입력 방식</span>
+    <label class="radio"><input type="radio" name="mode" value="code" ${state.mode === 'code' ? 'checked' : ''}> 처방코드별</label>
+    <label class="radio"><input type="radio" name="mode" value="date" ${state.mode === 'date' ? 'checked' : ''}> 날짜별</label>
+    <span class="vsep"></span>
+    ${state.mode === 'code'
+      ? `<input id="typed" class="tin" placeholder="예: LA358" autocomplete="off" spellcheck="false" value="${esc(state.typed)}" aria-label="처방코드 넣기">
+         <span style="color:var(--muted)">또는</span>
+         ${codeChips().map((c) => `<button class="btn sm" data-code="${c.code}" aria-pressed="${!state.typed.trim() && state.code === c.code}"><b>${c.code}</b> ${esc(c.n)} · ${c.count}건</button>`).join('')}`
+      : '<span style="color:var(--muted)">11/1 (일) ~ 11/7 (토) 전체 · 하루만 고를 수도 있어요</span>'}
+  </div>`
+
+  return `<div class="app">
+    <div class="topbar"><span class="brand">의원 업무</span><span>청구 › 날짜 고르기 › 메모 › <b>비트에 입력</b></span></div>
+    <div class="toolbar">
+      <div class="sumrow">
+        <span class="sum"><b>${batchCoded.length}명</b> 입력해요<span class="dot">·</span>그중 <span class="ok">✓ 완료 ${doneN}명</span><span class="dot">·</span>빠지는 사람 ${leftN}명</span>
+        <span class="sp"></span>
+        <button class="btn">비트 메모 전체 불러오기</button>
+        <button class="btn" ${batchCoded.length - doneN ? '' : 'disabled'}>입력 시작 (${batchCoded.length - doneN}명)</button>
+      </div>
+      ${modeRow}
+    </div>
+    <div class="split">
+      <aside class="listpane" aria-label="환자 목록">
+        <div class="listtop">보기
+          <div class="seg" role="group" aria-label="완료로 골라 보기">${[['all', '전체'], ['todo', '미완료'], ['done', '완료']].map(([k, l]) => `<button data-show="${k}" aria-pressed="${state.show === k}">${l} ${counts[k]}</button>`).join('')}</div>
+        </div>
+        <div class="listwrap" id="list">${list}</div>
+      </aside>
+      <section class="detail" id="detail" aria-label="고른 환자 메모">${detail}</section>
+    </div></div>`
+}
+
+const frame = document.getElementById('frame')
+function render(keepScroll = true) {
+  const list = document.getElementById('list')
+  const top = list ? list.scrollTop : 0
+  const typing = document.activeElement?.id === 'typed'
+  frame.innerHTML = view()
+  const nl = document.getElementById('list')
+  if (keepScroll) nl.scrollTop = top
+  nl.querySelector('.item.sel')?.scrollIntoView({ block: 'nearest' })
+  if (typing) { const t = document.getElementById('typed'); t.focus(); t.setSelectionRange(t.value.length, t.value.length) }
+  const ed = document.getElementById('ed')
+  if (ed) {
+    ed.focus()
+    ed.addEventListener('blur', () => {
+      // 고친 환자(i)에게만 저장. 글이 바뀌었으면 지금 사이트처럼 완료를 풀고(AC-2202.1과 같게) '복사했어요'를 지운다.
+      // 다시 그리기는 한 박자 늦춘다: 칸 밖을 누른 그 클릭(다른 환자·다음 사람)이 먼저 먹히게
+      const i = state.editing
+      if (i !== null && ed.value !== P[i].ours) {
+        P[i].ours = ed.value
+        if (state.done.delete(i)) state.reopened = i
+        state.justCopied = null
+      }
+      state.editing = null
+      setTimeout(() => render(), 0)
+    })
+  }
+  fit()
+}
+function goTo(i) { select(i); render(); document.getElementById('detail').scrollTop = 0 }
+function refilter() { select(null); ensureSel(); render(false); document.getElementById('detail').scrollTop = 0 }
+function move(d) {
+  const v = vis()
+  const next = v[v.indexOf(state.selP) + d]
+  if (next !== undefined) goTo(next)
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true } catch {
+    try {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.append(ta); ta.select()
+      const ok = document.execCommand('copy'); ta.remove(); return ok
+    } catch { return false }
+  }
+}
+/** 초록 단추·C: 우리 메모를 복사하고, 성공했을 때만 완료. 확인 창 없음. 누른 환자(i)에게만 결과를 붙인다 */
+async function copyAndDone() {
+  const i = state.selP
+  if (i === null || state.editing === i || blockedWhy(P[i])) return render()
+  const ok = await copyText(P[i].ours)
+  // 결과는 누른 환자(i)에게 붙는다. 그새 다른 환자로 옮겼어도 실패는 i의 목록 표·상태 줄에 남는다
+  if (ok) { state.done.add(i); state.copyFail.delete(i); if (state.reopened === i) state.reopened = null; if (state.selP === i) state.justCopied = i }
+  else { state.copyFail.add(i); if (state.justCopied === i) state.justCopied = null }
+  render()
+}
+
+frame.addEventListener('click', (e) => {
+  const t = e.target.closest('button')
+  if (!t || t.disabled) return
+  if (t.dataset.pick !== undefined) goTo(Number(t.dataset.pick))
+  else if (t.dataset.nav) move(Number(t.dataset.nav))
+  else if (t.dataset.show) { state.show = t.dataset.show; refilter() }
+  else if (t.dataset.code) { state.typed = ''; state.code = state.code === t.dataset.code ? '' : t.dataset.code; refilter() }
+  else if (t.dataset.act === 'copy') copyAndDone()
+  else if (t.dataset.act === 'undone') { state.done.delete(state.selP); state.justCopied = null; render() }
+  else if (t.dataset.act === 'edit') { state.editing = state.selP; state.justCopied = null; render() }
+})
+frame.addEventListener('change', (e) => { if (e.target.name === 'mode') { state.mode = e.target.value; refilter() } })
+frame.addEventListener('input', (e) => { if (e.target.id === 'typed') { state.typed = e.target.value; select(null); ensureSel(); render(false) } })
+document.addEventListener('keydown', (e) => {
+  // 글 칸 안에서는 옮기지도 복사하지도 않는다. 입력 방식 동그라미에 초점이 있어도 ↑↓는 환자를 옮긴다(방식이 바뀌지 않게)
+  if (e.target.closest && e.target.closest('textarea, select, input:not([type="radio"])')) return
+  if (e.ctrlKey || e.metaKey || e.altKey) return // Ctrl+C는 보통 복사
+  if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+  else if (e.code === 'KeyC' && !e.repeat) { e.preventDefault(); copyAndDone() } // 한글 자판(ㅊ)이어도 같은 자리 키
+})
+document.getElementById('fitMode').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  state.fit = b.dataset.fit
+  for (const x of document.querySelectorAll('#fitMode button')) x.setAttribute('aria-pressed', String(x === b))
+  fit()
+})
+function fit() { frame.style.zoom = state.fit === 'fit' ? String(Math.min(1, (document.documentElement.clientWidth - 16) / 1282)) : '1' }
+addEventListener('resize', fit)
+render(false)
+</script>
+</body>
+</html>
