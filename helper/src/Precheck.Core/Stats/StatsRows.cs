@@ -385,6 +385,9 @@ public static class StatsExtra
     /// <summary>원장님 이름 길이 한도(Worker MAX_DOCTOR_NAME과 같다).</summary>
     private const int MaxNameLength = 40;
 
+    /// <summary>보험 이름 길이 한도(Worker MAX_INSURANCE와 같다). 긴 이름 한 줄 때문에 답 전체가 막히지 않게 자른다(AC-2701.2).</summary>
+    private const int MaxInsuranceLength = 100;
+
     private const int MaxAddressWords = 5;
 
     private const int MaxAddressLength = 80;
@@ -416,7 +419,7 @@ public static class StatsExtra
         {
             visits.Add(new StatsVisitLine(
                 OrNull(Text(StatsRows.Cell(row, 0))), Text(StatsRows.Cell(row, 1)), ReceiptTime(StatsRows.Cell(row, 2)),
-                OrNull(Text(StatsRows.Cell(row, 3))), Code(StatsRows.Cell(row, 4))));
+                Cut(OrNull(Text(StatsRows.Cell(row, 3))), MaxInsuranceLength), Code(StatsRows.Cell(row, 4))));
         }
 
         var personRows = ReadOnlyGuard.Query(db, StatsSql.PeopleSql, visitArgs, StatsSql.DataTimeout);
@@ -539,7 +542,7 @@ public static class StatsExtra
                 var code = Text(StatsRows.Cell(row, 0));
                 var name = OrNull(Text(StatsRows.Cell(row, 1)));
                 if (code == null || !codes.Contains(code)) continue;
-                names[code] = name != null && name.Length > MaxNameLength ? name.Substring(0, MaxNameLength) : name;
+                names[code] = Cut(name, MaxNameLength);
             }
         }
         return list.Select(code => new StatsDoctor(code, names.TryGetValue(code, out var name) ? name : null)).ToList();
@@ -609,4 +612,6 @@ public static class StatsExtra
     private static string? Text(object? value) => value == null ? null : Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim();
 
     private static string? OrNull(string? text) => string.IsNullOrEmpty(text) ? null : text;
+
+    private static string? Cut(string? text, int max) => text != null && text.Length > max ? text.Substring(0, max) : text;
 }

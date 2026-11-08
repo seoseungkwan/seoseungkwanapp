@@ -208,6 +208,18 @@ public class StatsExtraReadTests
         Assert.Equal(expected, Assert.Single(Read(db).Visits).Insurance);
     }
 
+    [Theory(DisplayName = "AC-2701.2 보험 이름이 100자를 넘으면 100자까지 자르고(웹 검사 한도와 같다), 100자까지는 그대로다")]
+    [InlineData(100, 100)]
+    [InlineData(101, 100)]
+    [InlineData(150, 100)]
+    public void LongInsuranceName(int length, int expectedLength)
+    {
+        var name = new string('보', length);
+        var db = Db();
+        OneVisit(db, StatsFake.Chart(1), "20260901", "0905", name, "D001");
+        Assert.Equal(name.Substring(0, expectedLength), Assert.Single(Read(db).Visits).Insurance);
+    }
+
     // ---- AC-2701.3 사람 줄 ------------------------------------------------------------------------
 
     [Fact(DisplayName = "AC-2701.3 사람 줄은 환자마다 [차트번호, 생년월일|null, 주소 앞부분|null]이고 번지·DB가 더 준 칸(이름·전화)은 싣지 않는다")]
