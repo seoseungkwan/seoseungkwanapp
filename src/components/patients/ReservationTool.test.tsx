@@ -76,6 +76,8 @@ function setup(options: SetupOptions = {}) {
   const d = options.data ?? DATA
   let marks = options.marks === undefined ? { ...MARKS } : options.marks
   let read = readOf(d, today)
+  // 켜면 Worker가 고르기에 바로 답하지 않는다(답이 늦게 오는 사이를 본다)
+  let held = false
   const listeners = new Set<(message: ToolReply) => void>()
   const posted: ToolRequest[] = []
   const reply = (message: ToolReply) => {
@@ -84,7 +86,7 @@ function setup(options: SetupOptions = {}) {
   const answer = (filters: ReservationFilters) => ({ type: 'filtered' as const, tool: 'reservations' as const, ...reservationsListView(d, today, filters, marks) })
   const post = (message: ToolRequest) => {
     posted.push(message)
-    if (message.type === 'filter' && message.tool === 'reservations') reply(answer(message.filters))
+    if (!held && message.type === 'filter' && message.tool === 'reservations') reply(answer(message.filters))
   }
   const listen = (listener: (message: ToolReply) => void) => {
     listeners.add(listener)
@@ -119,6 +121,9 @@ function setup(options: SetupOptions = {}) {
     send: (message: ToolReply) => act(() => reply(message)),
     /** 저장 뒤 Worker가 마지막 고르기로 다시 보내는 filtered */
     resend: () => act(() => reply(answer(filters().at(-1)!))),
+    hold: (on: boolean) => void (held = on),
+    /** 그 고르기에 대한 Worker 답(늦게 온 답) */
+    answerFor: (f: ReservationFilters) => act(() => reply(answer(f))),
     setMarks: (next: Record<string, string> | null) => void (marks = next),
     /** [다시 불러오기] 뒤 새 list-view */
     setRead(next: ReservationsRead) {
@@ -275,6 +280,28 @@ describe('AC-2803.2 명단 복사', () => {
     await user.click(listCopy())
     expect(writeText).not.toHaveBeenCalled()
     expect(mainStatus().textContent).toBe(NO_PHONES)
+  })
+
+  it('AC-2803.2: 날짜를 바꾼 뒤 그 날의 명단이 오기 전에는 [명단 복사]가 눌리지 않는다. 앞 날 명단이 늦게 와도 복사하지 않는다', async () => {
+    const { user, writeText } = setupUser()
+    const d = data([R('C-1001', '김가상', '010-0000-1201', '202611070900'), R('C-1006', '강바다', '010-0000-1205', '202611081030')])
+    const t = setup({ data: d, marks: {} })
+    const tomorrow = t.lastFilter()
+    expect(tomorrow.day).toBe(TOMORROW)
+    expect(listCopy().getAttribute('aria-disabled')).toBeNull()
+    t.hold(true)
+    await user.click(button('모레 · 1명'))
+    expect(t.lastFilter().day).toBe(AFTER)
+    // 저장 뒤 Worker가 다시 보낸 앞 날(내일) 명단이 모레 답보다 먼저 온다
+    t.answerFor(tomorrow)
+    expect(listCopy().getAttribute('aria-disabled')).toBe('true')
+    await user.click(listCopy())
+    expect(writeText).not.toHaveBeenCalled()
+    // 모레 명단이 오면 다시 눌리고 모레 명단을 복사한다
+    t.answerFor(t.lastFilter())
+    expect(listCopy().getAttribute('aria-disabled')).toBeNull()
+    await user.click(listCopy())
+    expect(writeText).toHaveBeenCalledWith(reservationsListView(d, TODAY, t.lastFilter(), {}).copy.list)
   })
 
   it('AC-2803.2: 안 보낸 분만인데 모두 보냈으면 단추가 눌리지 않고 모두 보냈어요 안내가 있다', async () => {

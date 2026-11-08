@@ -179,6 +179,52 @@ public class ListTargetsTests
         }, ListRig.Rows(json));
     }
 
+    [Fact(DisplayName = "AC-2801.2 예약 시각이 12자리 ASCII 숫자가 아니거나 시 0~23·분 0~59가 아닌 줄은 건너뛰고 나머지 줄은 그대로 싣는다")]
+    public void ReservationRowsSkipBadTime()
+    {
+        using var rig = new ListRig();
+        rig.Reservations(
+            ListData.Reservation("900001", "가상환자01", "010-0000-0001", null, "202610200000", "WR", null, 0, null),
+            ListData.Reservation("900002", "가상환자02", "010-0000-0002", null, "20261020090", "WR", null, 0, null),
+            ListData.Reservation("900003", "가상환자03", "010-0000-0003", null, "2026102009000", "WR", null, 0, null),
+            ListData.Reservation("900004", "가상환자04", "010-0000-0004", null, "20261020090A", "WR", null, 0, null),
+            ListData.Reservation("900005", "가상환자05", "010-0000-0005", null, "202610202400", "WR", null, 0, null),
+            ListData.Reservation("900006", "가상환자06", "010-0000-0006", null, "202610201060", "WR", null, 0, null),
+            ListData.Reservation("900007", "가상환자07", "010-0000-0007", null, "２０２６１０２００９００", "WR", null, 0, null),
+            ListData.Reservation("900008", "가상환자08", "010-0000-0008", null, null, "WR", null, 0, null),
+            ListData.Reservation("900009", "가상환자09", "010-0000-0009", null, "", "WR", null, 0, null),
+            ListData.Reservation("900010", "가상환자10", "010-0000-0010", null, " 202610202359 ", "NR", null, 1, null));
+        var json = rig.Reservation("2026-09-30", "2026-11-13");
+
+        Assert.Equal(new[]
+        {
+            "[\"900001\",\"가상환자01\",\"010-0000-0001\",\"202610200000\",\"WR\",null,0,null]",
+            "[\"900010\",\"가상환자10\",\"010-0000-0010\",\"202610202359\",\"NR\",null,1,null]",
+        }, ListRig.Rows(json));
+    }
+
+    [Fact(DisplayName = "AC-2801.2 예약 시각이나 그 뒤 처음 온 날이 없는 날(13월·32일·00일·평년 2월 29일)인 줄은 건너뛴다. 윤년 2월 29일은 있는 날이다")]
+    public void ReservationRowsSkipImpossibleDay()
+    {
+        using var rig = new ListRig();
+        rig.Reservations(
+            ListData.Reservation("900001", "가상환자01", "010-0000-0001", null, "202610320900", "WR", null, 0, null),
+            ListData.Reservation("900002", "가상환자02", "010-0000-0002", null, "202611000900", "WR", null, 0, null),
+            ListData.Reservation("900003", "가상환자03", "010-0000-0003", null, "202613010900", "WR", null, 0, null),
+            ListData.Reservation("900004", "가상환자04", "010-0000-0004", null, "202602290900", "WR", null, 0, null),
+            ListData.Reservation("900005", "가상환자05", "010-0000-0005", null, "202402291000", "WR", null, 0, null),
+            ListData.Reservation("900006", "가상환자06", "010-0000-0006", null, "202610200900", "CR", null, 0, "20261032"),
+            ListData.Reservation("900007", "가상환자07", "010-0000-0007", null, "202610200900", "CR", null, 0, "2026103"),
+            ListData.Reservation("900008", "가상환자08", "010-0000-0008", null, "202610200900", "CR", null, 0, "20261022"));
+        var json = rig.Reservation("2026-09-30", "2026-11-13");
+
+        Assert.Equal(new[]
+        {
+            "[\"900005\",\"가상환자05\",\"010-0000-0005\",\"202402291000\",\"WR\",null,0,null]",
+            "[\"900008\",\"가상환자08\",\"010-0000-0008\",\"202610200900\",\"CR\",null,0,\"20261022\"]",
+        }, ListRig.Rows(json));
+    }
+
     [Fact(DisplayName = "AC-2801.2 예약 SQL: 이 병원 외래 접수 중 RsvInf 예약 줄(RsvDivTyp 'R'·빈 값) 또는 WR·NR·CR, 그날 옴·그 뒤 처음 온 날(오늘까지)은 같은 차트번호의 센 접수")]
     public void ReservationSqlConditions()
     {

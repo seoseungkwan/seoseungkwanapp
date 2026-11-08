@@ -358,6 +358,8 @@ export function ReservationTool({
   )
 
   const rows = listed?.rows ?? []
+  // 받은 명단이 지금 고른 날의 것일 때만 복사한다. 날짜를 바꾼 뒤 저장 뒤 다시 온 앞 날 명단이 먼저 와도 복사하지 않는다(AC-2803.2)
+  const listedToday = listed?.day === day
   const marksBlocked = !listed?.marksLoaded
   const copyKeys = listed?.copy.keys ?? []
   const sentKeys = new Set(rows.filter((row) => row.sent).map((row) => row.key))
@@ -449,7 +451,7 @@ export function ReservationTool({
           <CopyButton
             text={listText}
             label="명단 복사"
-            disabled={waiting || rows.length === 0 || allSent}
+            disabled={waiting || !listedToday || rows.length === 0 || allSent}
             doneText={`복사했어요 · ${copyKeys.length}명${unsentOnly ? ' · 안 보낸 분만' : ''}${withDate ? ' · 날짜 제목 줄 포함' : ''}`}
             // 줄은 있는데 복사 글이 비었으면 모두 번호 없는 분이다. 빈 글로 클립보드를 덮어쓰지 않는다
             unavailable={listText ? undefined : NO_PHONES}

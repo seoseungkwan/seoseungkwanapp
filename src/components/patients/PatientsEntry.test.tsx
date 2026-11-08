@@ -141,6 +141,50 @@ describe('PatientsEntry: 틀', () => {
   })
 })
 
+describe('AC-2802.1 휴대폰 도구 단추 줄 밀기', () => {
+  const box = (left: number, width: number) => ({ left, right: left + width, top: 0, bottom: 44, width, height: 44, x: left, y: 0, toJSON: () => ({}) }) as DOMRect
+  let spies: { mockRestore: () => void }[] = []
+
+  /** 휴대폰 폭 줄(nav)이 navLeft부터 360px이고 단추는 하나에 150px. 넷째 단추(장기 미방문)는 450~600 */
+  function phoneRow(navLeft = 0) {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollLeft', 'set')
+    spies = [
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.tagName === 'NAV') return box(navLeft, 360)
+        const row = this.parentElement?.tagName === 'NAV' ? [...this.parentElement.children] : null
+        return row ? box(row.indexOf(this) * 150, 150) : box(0, 0)
+      }),
+      scrolled,
+    ]
+    return scrolled
+  }
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore()
+    spies = []
+  })
+
+  it('AC-2802.1: 고른 도구 단추가 줄 오른쪽 밖에 있으면 그 단추가 보이게(여백 16px) 줄만 민다', () => {
+    withState('ready')
+    const scrolled = phoneRow()
+    render(<PatientsEntry tool="lapsed" />)
+    expect(scrolled).toHaveBeenCalledWith(600 - 360 + 16)
+  })
+
+  it('AC-2802.1: 고른 도구 단추가 줄 왼쪽 밖에 있으면 왼쪽으로 민다', () => {
+    withState('ready')
+    const scrolled = phoneRow(100)
+    render(<PatientsEntry tool="followup" />)
+    expect(scrolled).toHaveBeenCalledWith(0 - 100 - 16)
+  })
+
+  it('AC-2802.1: 고른 도구 단추가 이미 보이면 줄을 밀지 않는다', () => {
+    withState('ready')
+    const scrolled = phoneRow()
+    render(<PatientsEntry tool="reservations" />)
+    expect(scrolled).not.toHaveBeenCalled()
+  })
+})
+
 describe('PatientsEntry: 비트 명단 두 도구 (AC-2802)', () => {
   const targets = () => stream.mock.calls.filter(([cmd]) => cmd === 'contact.targets')
 

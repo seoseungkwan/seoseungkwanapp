@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Precheck.Core.Bit;
 using Precheck.Core.Claim;
 using Precheck.Core.Protocol;
@@ -56,6 +57,10 @@ public static class ReservationTargets
         {
             foreach (var row in rows)
             {
+                // 예약 시각·그 뒤 처음 온 날이 이상한 줄 하나 때문에 명단 전체가 막히지 않게 그 줄만 건너뛴다(AC-2801.2)
+                if (!IsCalendar(ClaimText.Cell(row, 4), "yyyyMMddHHmm")) continue;
+                var cameAfter = ListSql.Optional(row, 8);
+                if (cameAfter != null && !IsCalendar(cameAfter, "yyyyMMdd")) continue;
                 writer.WriteStartArray();
                 ListSql.Text(writer, ListSql.Optional(row, 0));   // 차트번호(없으면 null)
                 ListSql.Text(writer, ListSql.Optional(row, 1));   // 이름 PbsPatNam
@@ -64,9 +69,22 @@ public static class ReservationTargets
                 ListSql.Text(writer, ClaimText.Cell(row, 5));     // 상태 OcmComStt
                 ListSql.Text(writer, ListSql.Optional(row, 6));   // 예약 표시 RsvSts
                 writer.WriteNumberValue(ListSql.Flag(row, 7));    // 그날 옴
-                ListSql.Text(writer, ListSql.Optional(row, 8));   // 그 뒤 처음 온 날
+                ListSql.Text(writer, cameAfter);                  // 그 뒤 처음 온 날
                 writer.WriteEndArray();
             }
         });
+    }
+
+    /// <summary>
+    /// format 길이의 ASCII 숫자이고 달력에 있는 날(시 0~23·분 0~59)일 때만 참. 웹(reservations.ts의 compactToYmd·시각 검사)이 막는 값을 미리 거른다.
+    /// </summary>
+    private static bool IsCalendar(string text, string format)
+    {
+        if (text.Length != format.Length) return false;
+        foreach (var ch in text)
+        {
+            if (ch < '0' || ch > '9') return false;
+        }
+        return DateTime.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
     }
 }

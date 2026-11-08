@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "patients-bit-lists",
-  "approved_at": "2026-11-07T23:01:30Z",
+  "approved_at": "2026-11-08T00:46:02Z",
   "approved_via": "user-prompt",
-  "session_id": "a571c871-688c-4473-9da4-86412a235a6f",
-  "spec_sha256": "9234fe7d1aa55f5dbbd6eae84792efd5aa814334bf385fb0791101331dfbb99b",
+  "session_id": "f11b1d87-8864-4ad8-bfef-196fea8d6812",
+  "spec_sha256": "307e398a36a9e1aa9c9eceb16b5183312eaf41c47b7caa3b12af24346035b6bb",
   "scope": [
     "helper/Directory.Build.props",
     "helper/src/Precheck.Core/Bit/Sql.cs",
@@ -32,6 +32,7 @@
     "src/components/patients/ReservationTool.test.tsx",
     "src/components/patients/ReservationTool.tsx",
     "src/components/patients/ToolRow.test.tsx",
+    "src/components/patients/ToolRow.tsx",
     "src/components/patients/rows/LapsedRows.test.tsx",
     "src/components/patients/rows/LapsedRows.tsx",
     "src/components/patients/rows/ReservationRows.test.tsx",
