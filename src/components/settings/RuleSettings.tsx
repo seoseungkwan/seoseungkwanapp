@@ -252,7 +252,8 @@ function RuleRow({
             </option>
           ))}
         </select>
-        <span className={ds.help}>기본: {GRADE_LABEL[rule.grade]}</span>
+        {/* 칸이 줄바꿈 안 함(dsCell)이라 줄 안 글자로 두면 상자 옆으로 넘쳐 옆 칸과 겹친다: 상자 아래 자기 줄로(AC-3201.1) */}
+        <span className={`mt-1 block ${ds.help}`}>기본: {GRADE_LABEL[rule.grade]}</span>
       </td>
       <td className={cellSub}>{rule.basis.map((b) => b.number).join(' · ')}</td>
       <td className={`${ds.table.tdSub} ${cellPhone}`}>

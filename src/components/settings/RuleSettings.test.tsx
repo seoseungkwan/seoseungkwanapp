@@ -184,6 +184,20 @@ describe('AC-012.6 규칙 목록', () => {
     expect(within(ruleRow('MT-03')).getByText('기본: 참고')).toBeTruthy()
   })
 
+  it("AC-3201.1: 등급 칸 '기본: …' 글은 고르는 상자 뒤 자기 줄(블록, mt-1)이라 옆 칸으로 넘치지 않는다", async () => {
+    await renderReady()
+    const help = within(ruleRow('LA-01')).getByText('기본: 확인 필요')
+    const classes = help.className.split(/\s+/)
+    expect(classes).toContain('block')
+    expect(classes).toContain('mt-1')
+    // 같은 칸 안에서 고르는 상자 다음에 온다
+    const box = gradeBox('LA-01')
+    expect(help.parentElement).toBe(box.parentElement)
+    expect(box.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 글은 그대로
+    expect(within(ruleRow('MT-03')).getByText('기본: 참고').className.split(/\s+/)).toContain('block')
+  })
+
   it('AC-012.6: 표 머리 칸마다 이름이 있다(빈 칸 없음)', async () => {
     await renderReady()
     expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['켜기', '규칙', '묶음', '등급', '고시 근거', '바꾼 날', '기본값'])

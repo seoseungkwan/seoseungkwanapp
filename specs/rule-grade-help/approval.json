@@ -1,0 +1,12 @@
+{
+  "status": "approved",
+  "feature": "rule-grade-help",
+  "approved_at": "2026-11-08T11:40:39Z",
+  "approved_via": "user-prompt",
+  "session_id": "a1c4184d-4426-4dc6-b969-b86124d961bf",
+  "spec_sha256": "ef783311dae36b659260d1cbfedc243a252a9d4cfb83fab3f15cb7d0b90d9d4e",
+  "scope": [
+    "src/components/settings/RuleSettings.test.tsx",
+    "src/components/settings/RuleSettings.tsx"
+  ]
+}
