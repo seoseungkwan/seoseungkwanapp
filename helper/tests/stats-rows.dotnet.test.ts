@@ -63,3 +63,33 @@ describe('REQ-503 도우미 통계 줄 읽기 stats.rows (C# Precheck.Core.Tests
     expectAc('AC-503.5')
   })
 })
+
+describe('REQ-2701 도우미가 stats.rows 답 v3에 접수 줄·사람 줄·원장님 자료를 싣는다 (C# Precheck.Core.Tests.Stats)', () => {
+  it('AC-2701.1 접수 줄 visits는 접수마다 [차트번호|null, 진료일, 접수 시각 HHmm|null, 보험 이름|null, 진료의 코드|null]이고 v2 열쇠는 그대로다', () => {
+    expectAc('AC-2701.1')
+  })
+
+  it('AC-2701.2 보험 이름은 InsMst에서 InsAdpDte가 접수 날 이하인 가장 늦은 줄의 InsCodNam(앞뒤 빈칸 뺌), 없으면 null', () => {
+    expectAc('AC-2701.2')
+  })
+
+  it('AC-2701.3 사람 줄 people은 환자마다 [차트번호, 생년월일|null, 주소 앞부분|null]이고 이름·전화·주민번호·상세주소·성별은 읽지 않는다', () => {
+    expectAc('AC-2701.3')
+  })
+
+  it('AC-2701.4 원장님 줄 doctors는 코드마다 [코드, 이름|null], 이름은 UidExpDte가 가장 늦은 줄의 UidNam(40자까지)', () => {
+    expectAc('AC-2701.4')
+  })
+
+  it('AC-2701.5 날·원장님 금액 doctorDays는 달마다 정상수납 + 미수입금을 수납일·진료의로 묶은 총진료비(원 단위 정수, 0원 줄 없음)', () => {
+    expectAc('AC-2701.5')
+  })
+
+  it('AC-2701.6 새 SQL은 모두 매개변수를 받는 SELECT 하나이고 Sql.IsAllowed를 지나며 150초 제한이다', () => {
+    expectAc('AC-2701.6')
+  })
+
+  it('AC-2701.7 지금 C# 시험(StatsRows·StatsSql·StatsReport)과 원본 SQL 사본 대조 시험은 기대값을 바꾸지 않고 통과한다', () => {
+    expectAc('AC-2701.7')
+  })
+})

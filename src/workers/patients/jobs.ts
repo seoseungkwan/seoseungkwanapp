@@ -1,8 +1,10 @@
 import { addDays, isYmd } from '@/lib/analytics/dates'
 import { BridgeError, isRecord } from '@/lib/bridge/protocol'
 import { baseDate, passFilters, pasteRows, phoneColumn, phoneOf, preparePhones, prepareSchedule, scheduleRows, undecidedRows, visitKind } from '@/lib/patients/followup'
+import { lapsedPaste, lapsedView } from '@/lib/patients/lapsed'
 import { ingestRecall, prepareRx, recallCompute, recallCopyLines, recallCoverage, recallPhones, recallSelect, recallStatus, validateHistory } from '@/lib/patients/recall'
 import type { RecallItem, RecallRule } from '@/lib/patients/recall'
+import { copyRows, countOn, firstPick, missed, missedPaste, missedRange, reservationPaste, upcoming } from '@/lib/patients/reservations'
 import { PatientsSourceError } from '@/lib/patients/sourceError'
 import type {
   ChartVisit,
@@ -11,11 +13,18 @@ import type {
   FollowupFilters,
   FollowupRow,
   FollowupView,
+  LapsedData,
+  LapsedListFilters,
+  LapsedListView,
   PreparedSchedule,
   RecallFilters,
   RecallHistory,
   RecallRow,
   RecallView,
+  ReservationData,
+  ReservationFilters,
+  ReservationListView,
+  ReservationPick,
   TargetsKind,
   UndecidedRow,
 } from '@/types/patients'
@@ -165,15 +174,40 @@ export function setMark(store: ContactStoreData, key: string, on: boolean, today
   return { ...store, marks }
 }
 
-// 보기 모양이 있는 종류는 그 보기 모양의 줄 열쇠에 있는 표시만 남긴다. 보기 모양이 없는 종류는 그대로.
-// 날짜로 표시를 지우지 않는다(연락한 환자가 '미연락'으로 돌아온다, AC-604.7)
-export function pruneMarks(marks: Marks, views: { followup: FollowupView | null; recall: RecallView | null }, today: string): Marks {
-  void today // 약속한 모양이라 받기만 한다(날짜는 보지 않는다)
+// 예약 보냄 표시(s|)는 예약 날이 오늘에서 이만큼 전보다 앞이면 지운다(AC-2806.4. 예약은 오늘−30일부터 읽는다)
+export const RESERVATION_MARK_DAYS = 31
+const COMPACT_DAY = /^\d{8}$/
+
+// s|차트번호|예약 시각(yyyyMMddHHmm)[|차례]의 예약 날 YYYYMMDD. 모양이 다르면 null
+function reservationDayOf(key: string): string | null {
+  const day = (key.split('|')[2] ?? '').slice(0, 8)
+  return COMPACT_DAY.test(day) ? day : null
+}
+
+// F/U(f|)·정기 주사(r|): 보기 모양이 있는 종류는 그 보기 모양의 줄 열쇠에 있는 표시만 남긴다. 보기 모양이 없는 종류는 그대로.
+// 날짜로 지우지 않는다(연락한 환자가 '미연락'으로 돌아온다, AC-604.7).
+// 예약(s|)은 예약 날이 오늘−31일보다 앞이면 지운다(오늘을 모르면 그대로). 장기 미방문(l|)은 읽은 명단(lapsed)이 있으면 그 명단의 열쇠만 남긴다(AC-2806.4)
+export function pruneMarks(
+  marks: Marks,
+  views: { followup: FollowupView | null; recall: RecallView | null; lapsed?: Pick<LapsedData, 'rows'> | null },
+  today: string,
+): Marks {
   const shown = new Set<string>()
   for (const row of views.followup?.rows ?? []) shown.add(row.key)
   for (const row of views.recall?.rows ?? []) shown.add(row.key)
+  const lapsedKeys = views.lapsed ? new Set(views.lapsed.rows.map((row) => row.key)) : null
+  const oldest = isYmd(today) ? addDays(today, -RESERVATION_MARK_DAYS).replace(/-/g, '') : null
   const kept = newTable()
   for (const key of Object.keys(marks)) {
+    if (key.startsWith('s|')) {
+      const day = reservationDayOf(key)
+      if (!oldest || !day || day >= oldest) kept[key] = marks[key]
+      continue
+    }
+    if (key.startsWith('l|')) {
+      if (!lapsedKeys || lapsedKeys.has(key)) kept[key] = marks[key]
+      continue
+    }
     const view = key.startsWith('f|') ? views.followup : key.startsWith('r|') ? views.recall : null
     if (!view || shown.has(key)) kept[key] = marks[key]
   }
@@ -365,9 +399,38 @@ export function filterRecall(view: RecallView, f: RecallFilters, today: string):
   }
 }
 
+// ── 비트 명단: 예약 문자 명단 · 장기 미방문 명단(spec patients-bit-lists) ─────
+// 계산은 lib/patients/reservations.ts·lapsed.ts가 하고 여기서는 화면 보기 모양으로 잇기만 한다.
+// marks가 null이면 저장을 못 불러온 것이다: 표시는 모두 꺼져 있고 marksLoaded false
+
+/** 읽은 뒤 한 번: 처음 고를 날과 [내일]·[모레] 단추의 인원수(그 날 문자 보낼 예약 수) */
+export function reservationsHead(data: ReservationData, today: string): { pick: ReservationPick; dayCounts: { tomorrow: number; after: number } } {
+  return { pick: firstPick(data, today), dayCounts: { tomorrow: countOn(data, addDays(today, 1)), after: countOn(data, addDays(today, 2)) } }
+}
+
+export function reservationsListView(data: ReservationData, today: string, f: ReservationFilters, marks: Marks | null): ReservationListView {
+  const day = f.day ?? firstPick(data, today).day
+  const rows = upcoming(data, day, marks ?? newTable())
+  const copied = copyRows(rows, f.unsentOnly)
+  const range = missedRange(today, f.missedDays)
+  const away = missed(data, range, f.notYetOnly)
+  return {
+    day,
+    rows,
+    copy: { list: reservationPaste(copied, f.withDate, day), keys: copied.map((row) => row.key) },
+    missed: { range, rows: away.rows, summary: away.summary, copy: { list: missedPaste(away.rows), count: away.rows.filter((row) => row.phone).length } },
+    marksLoaded: marks !== null,
+  }
+}
+
+export function lapsedListView(data: LapsedData, today: string, f: LapsedListFilters, marks: Marks | null): LapsedListView {
+  const view = lapsedView(data, { bucket: f.bucket, rx: f.rx }, f.groups, marks ?? newTable(), today)
+  return { ...view, copy: { list: lapsedPaste(view.rows), count: view.rows.filter((row) => row.phone).length }, marksLoaded: marks !== null }
+}
+
 // ── 건수 ────────────────────────────────────────────────
 
-// 늘 정수 둘. null(보기 모양 없음·연락 표시 못 불러옴)은 handler가 정한다
+// 늘 정수 둘. null(보기 모양 없음·연락 표시 못 불러옴)은 handler가 정한다. 비트 명단 표시(s|·l|)는 세지 않는다(AC-2806.1)
 export function contactCounts(fu: FollowupView, rc: RecallView, today: string): ContactCount {
   const tomorrow = addDays(today, 1)
   return {

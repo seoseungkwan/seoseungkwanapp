@@ -105,7 +105,7 @@
       "patient": true,
       "maxDays": 1100,
       "args": {
-        "kind": { "type": "enum", "values": ["followup", "injection"] },
+        "kind": { "type": "enum", "values": ["followup", "injection", "lapsed", "reservation"] },
         "from": { "type": "date" },
         "to": { "type": "date" }
       }

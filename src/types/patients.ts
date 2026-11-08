@@ -120,6 +120,72 @@ export type RecallCoverage = {
 export type RecallView = { rows: RecallRow[]; coverage: RecallCoverage }
 export type ContactCount = { followup_left: number; injection_left: number }
 
+// ── 비트 명단: 예약 문자 명단 · 장기 미방문 명단(lib/patients/reservations.ts·lapsed.ts, spec patients-bit-lists) ─────
+// 도우미 contact.targets {kind:'reservation'|'lapsed'} 답을 읽은 모양(…Entry·…Data)은 Worker 메모리에만 있다(차트번호 포함).
+// 화면 줄(…Row)에는 차트번호 칸이 없다. 차트번호는 줄 열쇠(key) 안에만 있고, 줄 열쇠가 곧 도우미 저장(contact.marks)의 표시 열쇠다(AC-2802.7·2803.8·2804.5)
+
+// 예약 하나(AC-2801.2). key는 s|차트번호|예약 시각(차트번호가 없으면 빈 글). 같은 열쇠가 또 오면 뒤에 |2·|3을 붙인다
+export type ReservationEntry = {
+  key: string
+  chart: string | null
+  name: string // 없으면 ''
+  phone: string // 없으면 ''
+  at: string // 예약 시각 yyyyMMddHHmm(도우미 글 그대로)
+  day: string // 예약 날 YYYY-MM-DD
+  status: string // 비트 접수 상태(OcmComStt): WR·NR(예약 대기)·CR(예약 취소)·WN 등
+  rsv: string | null // 비트 예약 표시(RsvSts): OC·OS 등
+  came: boolean // 그날 같은 차트로 센 접수가 있음
+  cameAfter: string | null // 예약 날 다음 날부터 오늘까지 처음 온 날 YYYY-MM-DD
+}
+export type ReservationData = { from: string; to: string; today: string; rows: ReservationEntry[] }
+
+// 고른 날 예약 줄(AC-2803.1). time은 '오전 9:00' 글, sent는 보냄 표시가 있음
+export type ReservationRow = { key: string; time: string; name: string; phone: string; sent: boolean }
+// 처음 고를 날(AC-2803.0). note는 내일이 아닌 날을 골랐을 때의 안내 글
+export type ReservationPick = { preset: 'tomorrow' | 'after' | 'custom'; day: string; note: string | null }
+export type MissedMark = '예약 취소' | '예약 그대로'
+// 지난 예약 중 안 오신 분 줄(AC-2803.5). day는 예약 날, after는 그 뒤 처음 온 날(YYYY-MM-DD)
+export type MissedRow = { key: string; day: string; time: string; name: string; phone: string; mark: MissedMark; after: string | null }
+// 예약 N건(total) 중 안 오신 분 M건(missed) · P%(percent) · 아직 안 오신 분 K명(notYet). 아직 안 오신 분만 거르기와 상관없다(AC-2803.6)
+export type MissedSummary = { total: number; missed: number; percent: number; notYet: number }
+
+// 장기 미방문 환자 하나(AC-2801.3). key는 l|차트번호|마지막 내원일(YYYYMMDD, 도우미 글 그대로). 다시 왔다가 또 끊기면 새 열쇠다
+export type LapsedRx = { code: string; name: string | null }
+export type LapsedEntry = {
+  key: string
+  chart: string
+  name: string // 없으면 ''
+  phone: string // 없으면 ''
+  last: string // 마지막 내원일 YYYY-MM-DD
+  visits: number // 진료 받은 날 수
+  reserved: boolean // 오늘 이후 예약 대기가 있음
+  rx: LapsedRx[] // 마지막 진료 처방(처음 나온 차례, 20개까지)
+}
+export type LapsedData = { from: string; to: string; today: string; rows: LapsedEntry[] }
+
+// 마지막 내원 묶음: 1~3달 · 3~6달 · 6~12달 · 1~2년(AC-2804.1)
+export type LapsedBucket = '1-3' | '3-6' | '6-12' | '12-24'
+// 통계 탭 '처방 추세' 묶음(stats_rx_groups)의 이름·코드. 화면이 읽어 그대로 넘긴다(AC-2804.6)
+export type LapsedGroup = { name: string; codes: readonly string[] }
+// 마지막 진료 고르기(AC-2804.7): 전체 · 묶음 이름 하나 · 묶음 없음
+export type LapsedRxPick = { kind: 'all' } | { kind: 'group'; name: string } | { kind: 'none' }
+export type LapsedFilters = { bucket: LapsedBucket; rx: LapsedRxPick }
+// 표 줄(AC-2804.3). groups는 겹치는 묶음 이름(묶음 차례), 없으면 rxNames에 처방 이름 두 개까지(AC-2804.6)
+export type LapsedRow = {
+  key: string
+  name: string
+  phone: string
+  last: string // YYYY-MM-DD
+  daysAgo: number
+  visits: number
+  reserved: boolean
+  contacted: boolean
+  groups: string[]
+  rxNames: string[]
+}
+// counts는 고른 마지막 진료 기준 묶음마다 사람 수, range는 고른 묶음의 기간, groupNames는 고른 기간 줄에 나온 묶음 이름(묶음 차례)
+export type LapsedView = { rows: LapsedRow[]; counts: Record<LapsedBucket, number>; range: { from: string; to: string }; groupNames: string[] }
+
 // ── 연락 저장(contact.dat 안쪽, Worker가 만들고 읽는다. design.md 'contact 안쪽 모양') ─────
 
 export type ContactStoreData = {
@@ -133,10 +199,32 @@ export type ContactStoreData = {
 export type FollowupFilters = { kind: '' | VisitKind; from?: string; to?: string; includeCond: boolean; includePast: boolean }
 export type RecallFilters = { from: string | null; to: string | null; overdue: boolean }
 
+// 비트 명단 고르기(spec patients-bit-lists, 다시 읽지 않고 Worker가 거른다). day가 null이면 처음 고를 날(firstPick)
+export type ReservationFilters = { day: string | null; withDate: boolean; unsentOnly: boolean; missedDays: 7 | 30; notYetOnly: boolean }
+// groups는 화면이 읽은 통계 탭 '처방 추세' 묶음(못 읽었으면 null)
+export type LapsedListFilters = LapsedFilters & { groups: LapsedGroup[] | null }
+
+// ── 비트 명단 보기 모양(Worker → 화면). 줄 열쇠(key·keys) 밖에는 차트번호가 없다(AC-2802.7) ─────
+
+// 복사 글은 F/U·정기 주사 filtered와 같은 자리(copy.list)에 둔다. 그 두 도구의 다른 복사 칸은 없다(undefined)
+type ListCopy<T> = T & { listWithDate?: undefined; phones?: undefined; missingPhones?: undefined }
+// copy.keys는 복사 글에 든 줄의 열쇠(복사한 수 = keys.length). [보냄으로 표시 (N명)]이 이 열쇠로 mark-many를 보낸다(AC-2803.8).
+// count는 복사한 수(번호 없는 분은 빠진다). marksLoaded: 도우미 저장(contact.marks)을 불러왔는가. 아니면 보냄·연락함은 모두 꺼져 있고 표시는 막는다
+export type ReservationListView = {
+  day: string // 고른 날(받은 날이 없거나 틀리면 처음 고를 날)
+  rows: ReservationRow[]
+  copy: ListCopy<{ list: string; keys: string[] }>
+  missed: { range: PatientsRange; rows: MissedRow[]; summary: MissedSummary; copy: { list: string; count: number } }
+  marksLoaded: boolean
+}
+export type LapsedListView = LapsedView & { copy: ListCopy<{ list: string; count: number }>; marksLoaded: boolean }
+
 // ── Worker 메시지(design.md 'Worker 메시지 약속'). 화면으로 가는 메시지에는 조각·보낼 글자가 없다 ─────
 
 export type PatientsRange = { from: string; to: string }
 export type TargetsKind = 'followup' | 'injection'
+// 처음 열 때 한 번 읽는 비트 명단 도구(F/U·정기 주사 읽기와 따로다, AC-2802.2)
+export type BitListTool = 'reservations' | 'lapsed'
 export type ViewCodes = { followup?: string; recall?: string; store?: string }
 // E-PATIENTS-SOURCE로 멈춘 종류의 이유 낱말. 그런 종류가 없으면 views에 이 칸이 없다
 export type ViewReasons = { followup?: PatientsSourceReason; recall?: PatientsSourceReason }
@@ -151,6 +239,12 @@ export type PatientsScreenMessage =
   | { type: 'filter'; tool: 'followup'; filters: FollowupFilters }
   | { type: 'filter'; tool: 'recall'; filters: RecallFilters }
   | { type: 'mark'; key: string; on: boolean; today: string }
+  // 비트 명단: 화면이 contact.targets 스트림을 연 뒤 id(거절되면 code)와 그 기간을 정한 오늘을 알린다
+  | { type: 'list'; tool: BitListTool; today: string; id?: string; code?: string }
+  | { type: 'filter'; tool: 'reservations'; filters: ReservationFilters }
+  | { type: 'filter'; tool: 'lapsed'; filters: LapsedListFilters }
+  // [보냄으로 표시 (N명)]: 방금 복사한 줄(copy.keys)을 저장 한 번에 표시한다. 답은 열쇠마다 marked
+  | { type: 'mark-many'; keys: string[]; on: true; today: string }
 
 export type FilteredFollowup = {
   type: 'filtered'
@@ -166,6 +260,17 @@ export type FilteredRecall = {
   copy: { list: string; phones: string; missingPhones: number; listWithDate?: undefined }
 }
 
+// 비트 명단 고르기의 답: 그 도구의 보기 모양을 펼친 것. 읽은 명단이 있을 때만 온다(읽기 전·실패 뒤에는 답이 없다).
+// 저장을 불러오거나 못 불러왔을 때, 그 도구 표시를 저장했을 때 Worker가 마지막 고르기로 다시 보낸다
+export type FilteredReservations = { type: 'filtered'; tool: 'reservations' } & ReservationListView
+export type FilteredLapsed = { type: 'filtered'; tool: 'lapsed' } & LapsedListView
+
+// 비트 명단 읽기의 답(그 도구만). readAt은 다 읽은 때(ms), total은 읽은 줄 수. 예약은 처음 고를 날과 [내일]·[모레] 인원수를 함께 보낸다
+export type ListViewMessage =
+  | { type: 'list-view'; tool: 'reservations'; ok: true; readAt: number; total: number; pick: ReservationPick; dayCounts: { tomorrow: number; after: number } }
+  | { type: 'list-view'; tool: 'lapsed'; ok: true; readAt: number; total: number }
+  | { type: 'list-view'; tool: BitListTool; ok: false; code: string }
+
 export type PatientsWorkerMessage =
   | { type: 'plan'; followup: PatientsRange[]; recall: PatientsRange[] | null; code?: string }
   | { type: 'piece'; id: string | null; ok: boolean; code?: string }
@@ -173,4 +278,7 @@ export type PatientsWorkerMessage =
   | { type: 'views'; followup: FollowupView | null; recall: RecallView | null; counts: ContactCount | null; codes: ViewCodes; reasons?: ViewReasons }
   | FilteredFollowup
   | FilteredRecall
+  | FilteredReservations
+  | FilteredLapsed
+  | ListViewMessage
   | { type: 'marked'; key: string; ok: boolean; code?: string; counts: ContactCount | null }

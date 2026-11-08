@@ -172,15 +172,17 @@ describe('MessagesTool: 처음 열기 (AC-613.1)', () => {
     expect(screen.getByRole('option', { name: '1번 · 이름 없음' })).toBeTruthy()
   })
 
-  it('AC-613.1: [*1*]·[*2*]와 날짜 줄 설명이 있다', async () => {
+  it('AC-613.1 AC-2805.2: [*1*]·[*2*](예약 안내는 예약 시각)와 날짜 줄 설명이 있다', async () => {
     await open()
-    expect(screen.getByText('[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.')).toBeTruthy()
+    expect(
+      screen.getByText('[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, 예약 안내는 예약 시각)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.'),
+    ).toBeTruthy()
   })
 
-  it('AC-613.1: 저장한 줄이 없을 때만 기본 문구와 원본 안내를 보이고, [저장]이 바로 눌린다', async () => {
+  it('AC-613.1 AC-2805.3: 저장한 줄이 없을 때만 기본 문구(셋)와 원본 안내를 보이고, [저장]이 바로 눌린다', async () => {
     await open(fakeServer([]))
-    expect(names().map((box) => box.value)).toEqual(['주사 안내', '진료 안내'])
-    expect(screen.getByText('처음이라 기본 문구 2개를 넣어 뒀어요.')).toBeTruthy()
+    expect(names().map((box) => box.value)).toEqual(['주사 안내', '진료 안내', '예약 안내'])
+    expect(screen.getByText('처음이라 기본 문구 3개를 넣어 뒀어요.')).toBeTruthy()
     expect(screen.getByText('사용 전 병원명·연락처·진료시간을 수정하세요. [저장]을 누르면 우리 의원 문구로 남아요.')).toBeTruthy()
     expect(saveButton().getAttribute('aria-disabled')).toBeNull()
     expect(screen.getByText(CHANGED)).toBeTruthy()
@@ -321,6 +323,30 @@ describe('MessagesTool: 고치고 저장 (AC-613.2)', () => {
     expect(server.inserts).toEqual([[{ kind: 'followup', name: '새 진료 안내', body: '새 글', sort_order: 2 }]])
     // 저장해도 고른 줄이 그대로다
     expect((screen.getByLabelText('미리 볼 문구') as HTMLSelectElement).selectedOptions[0]?.textContent).toBe('3번 · 새 진료 안내')
+  })
+
+  it('AC-2805.2: [새 문구] 종류는 주사 안내 · 진료 안내 · 예약 안내이고, 예약 안내를 더하면 칩이 예약 안내인 줄이 reservation으로 저장된다', async () => {
+    const { server } = await open()
+    const kinds = within(screen.getByRole('group', { name: '새 문구 종류' })).getAllByRole('button')
+    expect(kinds.map((kind) => kind.textContent)).toEqual(['주사 안내', '진료 안내', '예약 안내'])
+    fireEvent.click(button('예약 안내'))
+    expect(button('예약 안내').getAttribute('aria-pressed')).toBe('true')
+    await press('문구 더하기')
+    expect(names()[2]?.value).toBe('새 예약 안내')
+    const items = within(screen.getByRole('list', { name: '문구 목록' })).getAllByRole('listitem')
+    expect(within(items[2]!).getByText('예약 안내')).toBeTruthy()
+    type(bodies()[2]!, '[*1*]님, [*2*]에 예약되어 있어요.\n<<DATE>>')
+    await press(/^저장/)
+    expect(server.inserts).toEqual([[{ kind: 'reservation', name: '새 예약 안내', body: '[*1*]님, [*2*]에 예약되어 있어요.\n<<DATE>>', sort_order: 2 }]])
+  })
+
+  it('AC-2805.2: 저장한 예약 안내 줄의 칩은 예약 안내다', async () => {
+    const reservation: MessageTemplate = { id: 'r', kind: 'reservation', name: '예약 알림', body: '[*1*]님, [*2*]에 예약이에요.', sort_order: 2 }
+    await open(fakeServer([INJECTION, FOLLOWUP, reservation]))
+    const items = within(screen.getByRole('list', { name: '문구 목록' })).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    expect(within(items[2]!).getByText('3번')).toBeTruthy()
+    expect(within(items[2]!).getByText('예약 안내')).toBeTruthy()
   })
 
   it('AC-613.2: 줄이 없을 때 빈 글에 번호(1.)가 붙지 않고 글자는 14/22다(목업 .mlist > li.empty)', async () => {

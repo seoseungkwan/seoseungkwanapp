@@ -4,7 +4,7 @@ import { costMicroUsd } from '@/lib/ai/cost'
 import { parseAiReport } from '@/lib/ai/output'
 import { reportJsonSchema, systemPrompt, userMessage } from '@/lib/ai/prompt'
 import { addMonths } from '@/lib/analytics/dates'
-import { validateMonthPayload } from '@/lib/payload/validate'
+import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { AiErrorCode, AiUsage, SavedReport } from '@/types/aiReport'
 import type { callClaude } from './claude'
 import type { ReportMonths } from './store'
@@ -35,7 +35,8 @@ async function attempt(run: () => Promise<boolean>): Promise<boolean> {
 
 // 세 달 읽기 → 검사 → 입력 → 지문. 리포트 만들기와 숫자 바뀜 비교가 함께 쓴다(따로 만들면 지문이 어긋난다, spec ai-report-screen design.md).
 // 받은 자료의 month가 요청한 달·한 달 전·12달 전과 맞는 것만 쓴다(안 맞는 비교 달은 없는 달). 고른 달을 못 쓰면 null, 던지는 것은 부르는 쪽이 받는다.
-// 비교 달은 다 불러온 달(partial이 false)만 견준다 — 일부 날짜만 불러온 달과 견주면 "늘었다"가 틀린다(spec ai-report-stats REQ-2005). 고른 달은 partial이어도 쓴다
+// 비교 달은 다 불러온 달(partial이 false)만 견준다 — 일부 날짜만 불러온 달과 견주면 "늘었다"가 틀린다(spec ai-report-stats REQ-2005). 고른 달은 partial이어도 쓴다.
+// 세 칸(sections)은 validateMonthSections를 넘고 그 달과 같은 달일 때만 쓰고, 비교 달은 그 달 줄을 견줄 때만 쓴다. 못 넘으면 그 달 세 칸만 없는 것이다(spec stats-bit-ai AC-2903.2)
 async function currentInput(month: string, loadMonths: GenerateDeps['loadMonths']) {
   const checked = (value: unknown, expected: string) => {
     const payload = validateMonthPayload(value)
@@ -45,14 +46,28 @@ async function currentInput(month: string, loadMonths: GenerateDeps['loadMonths'
     const payload = checked(value, expected)
     return payload !== null && payload.partial === false ? payload : null
   }
+  const sectionsOf = (value: unknown, expected: string) => {
+    const sections = validateMonthSections(value)
+    return sections !== null && sections.month === expected ? sections : null
+  }
   const months = await loadMonths(month)
   const selected = checked(months.selected, month)
   if (selected === null) return null
+  const prevMonth = addMonths(month, -1)
+  const lastYearMonth = addMonths(month, -12)
+  const prev = compared(months.prev, prevMonth)
+  const lastYear = compared(months.lastYear, lastYearMonth)
+  const sections = months.sections
   const input = buildReportInput({
     selected,
-    prev: compared(months.prev, addMonths(month, -1)),
-    lastYear: compared(months.lastYear, addMonths(month, -12)),
+    prev,
+    lastYear,
     groupNames: months.groupNames,
+    sections: {
+      selected: sectionsOf(sections?.selected, month),
+      prev: prev === null ? null : sectionsOf(sections?.prev, prevMonth),
+      lastYear: lastYear === null ? null : sectionsOf(sections?.lastYear, lastYearMonth),
+    },
   })
   return { input, inputHash: await reportFingerprint(input) }
 }

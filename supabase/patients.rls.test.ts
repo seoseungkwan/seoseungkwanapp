@@ -5,7 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 // 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 migration 파일을 그대로 실행하고 RLS를 확인한다.
 // Supabase 흉내와 사용자 바꾸기는 rls.test.ts와 같다. 실제 Supabase에는 붙지 않는다
-const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf-8')
+// 윈도 작업 폴더는 git이 줄 끝을 CRLF로 바꿔 둔다. 운영자가 붙이는 글과 같게 LF로 읽는다(글자 비교 시험이 PC마다 같게)
+const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf-8').replace(/\r\n/g, '\n')
 const AUTH_MIGRATION = read('./migrations/20261028000000_auth.sql')
 const PATIENTS_MIGRATION = read('./migrations/20261101000300_patients.sql')
 // 라이브 줄(청구 사전점검)이 운영에 먼저 넣는 두 파일. 읽기만 한다(AC-607.5)
@@ -828,5 +829,157 @@ describe('AC-607.5 라이브 precheck migration이 두 표를 먼저 만든 DB�
     } finally {
       await operator(onTop)
     }
+  })
+})
+
+// 문자 문구 '예약 안내' 종류(spec patients-bit-lists REQ-2805). 위 시험들은 20261101000300만 붙인 DB를 그대로 보고,
+// 여기서는 그 뒤에 이 바꿈(20261108000000)까지 붙인 새 DB를 따로 만든다. 실제 Supabase에는 붙지 않는다
+describe('AC-2805.1 message_templates kind에 reservation을 더하는 바꿈', SLOW, () => {
+  const LIVE = [PRECHECK_SETTINGS_MIGRATION, PRECHECK_COUNTS_MIGRATION]
+  const KIND_CHECK = 'message_templates_kind_check'
+  let RESERVATION_MIGRATION = ''
+  let after: PGlite
+  let withAfter: Record<string, string> = {}
+
+  // 새 DB에 사용자·병원을 넣는다(A·B 승인, C 승인 대기)
+  async function seedHospitals(target: PGlite) {
+    const hospital: Record<string, string> = {}
+    await operator(target)
+    for (const [user, status] of [
+      [A, 'approved'],
+      [B, 'approved'],
+      [C, 'pending'],
+    ]) {
+      await target.query('insert into auth.users (id, email) values ($1, $2)', [user, EMAIL[user]])
+      const [row] = await rows(
+        `insert into public.hospitals (owner_id, name, applicant_name, email, status)
+         values ($1, '가짜병원', '홍길동', $2, $3) returning id`,
+        [user, EMAIL[user], status],
+        target,
+      )
+      hospital[user] = row.id as string
+    }
+    return hospital
+  }
+
+  const withoutKindCheck = (shape: Awaited<ReturnType<typeof tableShape>>) => ({
+    ...shape,
+    constraints: shape.constraints.filter((row) => row.conname !== KIND_CHECK),
+  })
+  const kindChecks = (target: PGlite) =>
+    rows(
+      `select conname, pg_get_constraintdef(oid) as def from pg_constraint
+       where conrelid = '${TEMPLATES}'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%kind%'`,
+      [],
+      target,
+    )
+
+  beforeAll(async () => {
+    RESERVATION_MIGRATION = read('./migrations/20261108000000_message_templates_reservation.sql')
+    after = await freshDb([PATIENTS_MIGRATION, RESERVATION_MIGRATION])
+    withAfter = await seedHospitals(after)
+  }, 60_000)
+
+  afterAll(async () => {
+    if (after) await after.close()
+  })
+
+  beforeEach(async () => {
+    if (!after) return
+    await operator(after)
+    await after.exec(`truncate ${TEMPLATES}`)
+  })
+
+  it('AC-2805.1: 승인된 병원은 예약 안내(reservation) 문구를 넣고, 다른 종류에서 예약 안내로 고칠 수 있다', async () => {
+    await become(A, after)
+    expect(await rows(INSERT_TEMPLATE, ['reservation', '예약 안내', '[*1*]님 [*2*]에 예약', 2], after)).toEqual([
+      { hospital_id: withAfter[A], kind: 'reservation', name: '예약 안내', body: '[*1*]님 [*2*]에 예약', sort_order: 2 },
+    ])
+    await after.query(INSERT_TEMPLATE, ['injection', '주사 안내', '글', 0])
+    expect(await rows(`update ${TEMPLATES} set kind = 'reservation' where name = '주사 안내' returning kind`, [], after)).toEqual([{ kind: 'reservation' }])
+    await operator(after)
+  })
+
+  it('AC-2805.1: 주사 안내·진료 안내는 그대로 된다', async () => {
+    await become(A, after)
+    await after.query(INSERT_TEMPLATE, ['injection', '주사 안내', '글', 0])
+    await after.query(INSERT_TEMPLATE, ['followup', '진료 안내', '글', 1])
+    expect(await rows(`select kind from ${TEMPLATES} order by sort_order`, [], after)).toEqual([{ kind: 'injection' }, { kind: 'followup' }])
+    await operator(after)
+  })
+
+  it.each(['jusa', 'Reservation', 'reservation ', '', 'lapsed'])('AC-2805.1: kind "%s"는 넣기·고치기 모두 막힌다', async (kind) => {
+    await become(A, after)
+    await expect(after.query(INSERT_TEMPLATE, [kind, '이름', '글', 0])).rejects.toThrow(CHECK)
+    await after.query(INSERT_TEMPLATE, ['reservation', '예약 안내', '글', 0])
+    await expect(after.query(`update ${TEMPLATES} set kind = $1`, [kind])).rejects.toThrow(CHECK)
+    await operator(after)
+    expect(await rows(`select kind from ${TEMPLATES}`, [], after)).toEqual([{ kind: 'reservation' }])
+  })
+
+  it('AC-2805.1: kind 제약은 하나이고 세 종류만 받는다', async () => {
+    expect(await kindChecks(after)).toEqual([
+      { conname: KIND_CHECK, def: expect.stringMatching(/^CHECK \(\(kind = ANY \(ARRAY\['injection'::text, 'followup'::text, 'reservation'::text\]\)\)\)$/) },
+    ])
+  })
+
+  it('AC-2805.1: kind 제약 말고는 칸·제약·표와 칸 권한·RLS·정책·트리거·공용 함수가 이 바꿈 전과 같다', async () => {
+    expect(withoutKindCheck(await tableShape(after))).toEqual(withoutKindCheck(await tableShape(db)))
+    expect(await functionBodies(after)).toEqual(await functionBodies(db))
+    expect((await shape(after)).grants).toEqual((await shape(db)).grants)
+  })
+
+  it('AC-2805.1: RLS는 그대로다: anon은 못 넣고, 승인 대기 병원은 못 넣으며, B는 A의 예약 안내를 못 보고 못 고친다', async () => {
+    await becomeAnon(after)
+    await expect(after.query(INSERT_TEMPLATE, ['reservation', '이름', '글', 0])).rejects.toThrow(DENIED)
+    await become(C, after)
+    await expect(after.query(INSERT_TEMPLATE, ['reservation', '이름', '글', 0])).rejects.toThrow(NOT_MY_ROW)
+    await become(A, after)
+    await after.query(INSERT_TEMPLATE, ['reservation', 'A 예약', '글', 0])
+    await become(B, after)
+    expect(await rows(`select id from ${TEMPLATES}`, [], after)).toEqual([])
+    expect(await rows(`update ${TEMPLATES} set name = '바꿈' returning id`, [], after)).toEqual([])
+    await operator(after)
+    expect(await rows(`select hospital_id, name from ${TEMPLATES}`, [], after)).toEqual([{ hospital_id: withAfter[A], name: 'A 예약' }])
+  })
+
+  it('AC-2805.1: 이미 있던 문구 줄은 그대로 남는다', async () => {
+    await inFreshDb([PATIENTS_MIGRATION], async (fresh) => {
+      const hospital = await seedHospitals(fresh)
+      await fresh.query(
+        `insert into ${TEMPLATES} (hospital_id, kind, name, body, sort_order) values ($1, 'injection', '주사', '글 하나', 0), ($1, 'followup', '진료', '글 둘', 1)`,
+        [hospital[A]],
+      )
+      await fresh.exec(RESERVATION_MIGRATION)
+      expect(await rows(`select kind, name, body, sort_order from ${TEMPLATES} order by sort_order`, [], fresh)).toEqual([
+        { kind: 'injection', name: '주사', body: '글 하나', sort_order: 0 },
+        { kind: 'followup', name: '진료', body: '글 둘', sort_order: 1 },
+      ])
+    })
+  })
+
+  it('AC-2805.1: 라이브 차례(auth → precheck 둘 → patients → 이 바꿈)에도 오류 없이 붙고 예약 안내가 들어간다', async () => {
+    await inFreshDb([...LIVE, PATIENTS_MIGRATION, RESERVATION_MIGRATION], async (live) => {
+      expect(withoutKindCheck(await tableShape(live))).toEqual(withoutKindCheck(await tableShape(after)))
+      expect(await kindChecks(live)).toEqual(await kindChecks(after))
+      const hospital = await seedHospitals(live)
+      await become(A, live)
+      expect(await rows(INSERT_TEMPLATE, ['reservation', '예약 안내', '글', 0], live)).toEqual([
+        { hospital_id: hospital[A], kind: 'reservation', name: '예약 안내', body: '글', sort_order: 0 },
+      ])
+      await operator(live)
+    })
+  })
+
+  it('AC-2805.1: 두 번 붙여도 오류가 없고 모양이 같다', async () => {
+    await inFreshDb([PATIENTS_MIGRATION, RESERVATION_MIGRATION, RESERVATION_MIGRATION], async (twice) => {
+      expect(await tableShape(twice)).toEqual(await tableShape(after))
+    })
+  })
+
+  it('AC-2805.1: 바꿈 파일은 kind 제약만 고친다(권한·정책·트리거·함수·표를 만들거나 지우지 않는다)', () => {
+    const sql = RESERVATION_MIGRATION.replace(/--.*$/gm, '')
+    expect(sql).toContain(KIND_CHECK)
+    expect(sql).not.toMatch(/\b(grant|revoke|policy|trigger|function|create\s+table|drop\s+table|insert|update|delete)\b/i)
   })
 })

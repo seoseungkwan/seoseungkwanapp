@@ -431,6 +431,9 @@ function fakeStatsClient(answers: { months?: Answer; groups?: Answer } = {}) {
 
 const answer = (data: unknown): Answer => async () => ({ data, error: null })
 
+// 세 칸이 없는 세 달(spec stats-bit-ai AC-2906.3 ②: 답 전체를 견주는 시험에 더하는 값)
+const NO_SECTIONS = { selected: null, prev: null, lastYear: null }
+
 // 시험 안에서 만든 가짜 달 줄(fixtures를 읽지 않는다). 처방코드는 FAKE-…, 묶음 열쇠는 groupKey(코드)
 const MANUAL_CODES = ['FAKE-G1', 'FAKE-G2']
 const PT_CODES = ['FAKE-G3']
@@ -474,7 +477,7 @@ const expectThrowsWithoutSecret = async (run: Promise<unknown>) => {
 }
 
 describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
-  it('AC-2001.1 stats_months에서 고른 달·지난달·작년 같은 달을 읽기 한 번(select month, payload + in)으로 읽고 payload를 그대로 세 칸에 넣는다', async () => {
+  it('AC-2001.1 stats_months에서 고른 달·지난달·작년 같은 달을 읽기 한 번(select month, payload, sections + in)으로 읽고 payload를 그대로 세 칸에 넣는다', async () => {
     const sel = monthRow('2026-10', 120)
     const prev = monthRow('2026-09', 110)
     const lastYear = monthRow('2025-10', 100)
@@ -483,7 +486,7 @@ describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
     expect(months.selected).toBe(sel.payload)
     expect(months.prev).toBe(prev.payload)
     expect(months.lastYear).toBe(lastYear.payload)
-    expect(fake.select.filter((s) => s[0] === 'stats_months')).toEqual([['stats_months', 'month, payload']])
+    expect(fake.select.filter((s) => s[0] === 'stats_months')).toEqual([['stats_months', 'month, payload, sections']])
     expect(fake.in).toEqual([['month', ['2026-10', '2026-09', '2025-10']]])
     expectNoConsole()
   })
@@ -491,9 +494,9 @@ describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
   it('AC-2001.1 줄이 없는 달은 null이다(고른 달만 있음·아무 줄 없음)', async () => {
     const sel = monthRow('2026-10', 120)
     const only = await loadReportMonths(fakeStatsClient({ months: answer([sel]) }).client, '2026-10')
-    expect(only).toEqual({ selected: sel.payload, prev: null, lastYear: null, groupNames: {} })
+    expect(only).toEqual({ selected: sel.payload, prev: null, lastYear: null, groupNames: {}, sections: NO_SECTIONS })
     const none = await loadReportMonths(fakeStatsClient({ months: answer([]) }).client, '2026-10')
-    expect(none).toEqual({ selected: null, prev: null, lastYear: null, groupNames: {} })
+    expect(none).toEqual({ selected: null, prev: null, lastYear: null, groupNames: {}, sections: NO_SECTIONS })
   })
 
   it('AC-2001.1 해가 바뀌는 달: 2026-01이면 지난달 2025-12·작년 같은 달 2025-01을 읽는다', async () => {
@@ -522,7 +525,7 @@ describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
     const numberMonth = { month: 202609, payload: monthRow('2026-09', 80).payload }
     const noMonth = { payload: monthRow('2025-10', 70).payload }
     const months = await loadReportMonths(fakeStatsClient({ months: answer([outside, numberMonth, noMonth, null, sel]) }).client, '2026-10')
-    expect(months).toEqual({ selected: sel.payload, prev: null, lastYear: null, groupNames: {} })
+    expect(months).toEqual({ selected: sel.payload, prev: null, lastYear: null, groupNames: {}, sections: NO_SECTIONS })
   })
 
   it('AC-2001.3 같은 달 줄이 둘이면 앞 줄을 쓴다', async () => {
@@ -634,7 +637,7 @@ describe('loadReportMonths — 묶음 이름 (REQ-2002)', () => {
 
   it('AC-2002.4 돌려주는 값에는 열쇠와 이름만 있고 처방 코드 목록은 없다', async () => {
     const months = await loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer(GROUP_ROWS) }).client, '2026-10')
-    expect(Object.keys(months)).toEqual(['selected', 'prev', 'lastYear', 'groupNames'])
+    expect(Object.keys(months)).toEqual(['selected', 'prev', 'lastYear', 'groupNames', 'sections'])
     const text = JSON.stringify(months.groupNames)
     expect(text).not.toContain('codes')
     for (const code of ['FAKE-G1', 'FAKE-G2', 'FAKE-G3', 'fake-g2']) expect(text).not.toContain(code)
@@ -703,5 +706,31 @@ describe('generateReport에 loadReportMonths를 이어 부름 (REQ-2007)', () =>
     expect(input.metrics.find((m) => m.id === `group:${MANUAL_KEY}.patients`)?.label).toBe("처방 그룹 '도수치료' 환자")
     expect(user).not.toContain('"codes"')
     for (const code of ['FAKE-G1', 'FAKE-G2', 'FAKE-G3', 'fake-g2']) expect(user).not.toContain(code)
+  })
+})
+
+// ── 세 칸(sections) 읽기 (spec stats-bit-ai AC-2903.1) ──
+describe('loadReportMonths — 세 칸 sections (AC-2903.1)', () => {
+  it('AC-2903.1 같은 읽기 한 번에 sections도 읽고, 세 달마다 검사하지 않고 그대로 넘긴다(칸이 없거나 null인 달은 null)', async () => {
+    const odd = { anything: '검사는 generate.ts가 한다' }
+    const sel = { ...monthRow('2026-10', 120), sections: odd }
+    const prev = { ...monthRow('2026-09', 110), sections: null }
+    const lastYear = monthRow('2025-10', 100) // sections 칸이 없음
+    const fake = fakeStatsClient({ months: answer([sel, prev, lastYear]), groups: answer(GROUP_ROWS) })
+    const months = await loadReportMonths(fake.client, '2026-10')
+    expect(months.sections?.selected).toBe(odd)
+    expect(months.sections).toEqual({ selected: odd, prev: null, lastYear: null })
+    expect(fake.select.filter((s) => s[0] === 'stats_months')).toEqual([['stats_months', 'month, payload, sections']])
+    expect(fake.from.filter((f) => f[0] === 'stats_months')).toHaveLength(1)
+    expectNoConsole()
+  })
+
+  it('AC-2903.1 sections는 그 달 줄의 것이다(같은 달 줄이 둘이면 payload와 같은 앞 줄, 세 달 밖 줄의 sections는 버린다)', async () => {
+    const first = { ...monthRow('2026-10', 120), sections: { from: 'first' } }
+    const second = { ...monthRow('2026-10', 130), sections: { from: 'second' } }
+    const outside = { ...monthRow('2026-08', 90), sections: { from: 'outside' } }
+    const months = await loadReportMonths(fakeStatsClient({ months: answer([outside, first, second]) }).client, '2026-10')
+    expect(months.selected).toBe(first.payload)
+    expect(months.sections).toEqual({ selected: { from: 'first' }, prev: null, lastYear: null })
   })
 })

@@ -4,7 +4,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
 import type { MessageTemplate } from '@/lib/storage/messageTemplates'
-import { useTemplates } from './useTemplates'
+import { TEMPLATE_KIND_LABEL, useTemplates } from './useTemplates'
 
 // 문구 상태(AC-613.1·613.2·613.4·613.6). 진짜 readTemplates·saveTemplates에 메모리 속 가짜 서버를 물린다: 일부만 저장된 뒤의 값까지 서버 쪽에서 본다
 
@@ -277,8 +277,7 @@ describe('useTemplates: 고치기·검사 (AC-613.2)', () => {
     expect(server.rows.map(({ name }) => name)).toEqual(DEFAULT_TEMPLATES.map(({ name }) => name))
     expect(result.current.usingDefaults).toBe(false)
     act(() => {
-      result.current.remove(0)
-      result.current.remove(0)
+      for (let i = 0; i < DEFAULT_TEMPLATES.length; i++) result.current.remove(0)
     })
     await act(() => result.current.save())
     expect(server.rows).toEqual([])
@@ -754,5 +753,39 @@ describe('useTemplates: 쓰기는 됐고 다시 읽기만 실패 (AC-613.6)', ()
     expect(result.current.draft.map(({ id }) => id)).toEqual(['a', 'server-1'])
     expect(result.current.changed).toBe(false)
     expect(server.rows).toHaveLength(2)
+  })
+})
+
+describe('useTemplates: 예약 안내 종류 (AC-2805.2·2805.3)', () => {
+  const R: MessageTemplate = { id: 'r', kind: 'reservation', name: '예약 알림', body: '예약 글', sort_order: 2 }
+
+  it('AC-2805.2: 종류 이름은 주사 안내 · 진료 안내 · 예약 안내다', () => {
+    expect(TEMPLATE_KIND_LABEL).toEqual({ injection: '주사 안내', followup: '진료 안내', reservation: '예약 안내' })
+  })
+
+  it('AC-2805.2: 예약 안내를 더하면 이름이 새 예약 안내이고, 저장하면 reservation으로 간다', async () => {
+    const server = fakeServer([A, B])
+    const { result } = await open(server)
+    act(() => void result.current.add('reservation'))
+    expect(result.current.draft[2]).toMatchObject({ kind: 'reservation', name: '새 예약 안내', body: '' })
+    act(() => result.current.edit(2, { body: '예약 글' }))
+    await act(() => result.current.save())
+    expect(server.inserts).toEqual([[{ kind: 'reservation', name: '새 예약 안내', body: '예약 글', sort_order: 2 }]])
+    expect(result.current.saveError).toBeNull()
+  })
+
+  it('AC-2805.2: 저장한 예약 안내 줄을 그대로 읽는다', async () => {
+    const { result } = await open(fakeServer([A, B, R]))
+    expect(texts(result.current.draft)).toEqual(texts([A, B, R]))
+    expect(result.current.usingDefaults).toBe(false)
+  })
+
+  it('AC-2805.3: 저장한 줄이 없으면 기본 문구 셋(주사 안내 · 진료 안내 · 예약 안내)을 쓴다', async () => {
+    const { result } = await open(fakeServer())
+    expect(result.current.draft.map(({ kind, name }) => [kind, name])).toEqual([
+      ['injection', '주사 안내'],
+      ['followup', '진료 안내'],
+      ['reservation', '예약 안내'],
+    ])
   })
 })

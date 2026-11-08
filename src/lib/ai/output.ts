@@ -27,11 +27,17 @@ const ANY_LETTER = /\p{L}/u
 // 글자 앞뒤에서 뗄 것: 빈칸과 폭 없는 글자(U+200B~U+200D·U+2060·U+FEFF)
 const EDGE_BLANK = /[\s\u200B-\u200D\u2060\uFEFF]/
 
-// 지표 ID 앞글자별 label 모양(input.ts가 만드는 모양 그대로). 가운데가 이름이다
+// 지표 ID 앞글자별 label 모양(input.ts가 만드는 모양 그대로). 가운데가 이름이다.
+// 세 칸 지표의 숫자 든 이름('40대'·'의료급여 1종'·'매탄1동'·'오전 9시'·원장님 이름)도 같은 예외다(spec stats-bit-ai AC-2905.4). 요일 이름에는 숫자가 없다
 const NAME_LABELS: ReadonlyArray<{ id: string; head: string; tails: readonly string[] }> = [
   { id: 'group:', head: "처방 그룹 '", tails: ["' 환자", "' 신환", "' 재진"] },
   { id: 'rx:', head: "처방 '", tails: ["' 환자"] },
   { id: 'region:', head: "동네 '", tails: ["' 환자"] },
+  { id: 'age:', head: "연령대 '", tails: ["' 환자"] },
+  { id: 'insurance:', head: "보험 '", tails: ["' 환자"] },
+  { id: 'town:', head: "동네 '", tails: ["' 환자"] },
+  { id: 'hour:', head: "'", tails: ["' 하루 평균 접수"] },
+  { id: 'doctor:', head: "원장님 '", tails: ["' 실환자", "' 신환", "' 매출"] },
 ]
 
 // label에서 이름을 꺼낸다. 앞뒤 정해진 길이로 뗀다 — 이름에 따옴표가 있어도 되게 가운데 따옴표를 찾지 않는다. 모양이 안 맞으면 null

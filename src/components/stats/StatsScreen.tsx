@@ -8,7 +8,7 @@ import { addDays, compareYmd, monthRange, todayInKorea } from '@/lib/analytics/d
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
-import type { RxSplitView, StatsChecks } from '@/types/stats'
+import type { BitSectionsView, RxSplitView, StatsChecks } from '@/types/stats'
 import { lastDayOf, type StatsChoice } from './periodPick'
 import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
 import { dayNumber, longDate, monthNumber, PERIOD_NAME, Section } from './sections/parts'
@@ -45,6 +45,9 @@ const WAITING: { title: string; place: string }[] = [
   { title: '처방 골라 보기', place: 'col-span-12' },
   { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },
   { title: '요일별 환자 수', place: `col-span-12 lg:col-span-5 ${SIDE}` },
+  { title: '환자 구성', place: 'col-span-12' },
+  { title: '시간대별 접수', place: 'col-span-12' },
+  { title: '원장님별', place: 'col-span-12' },
 ]
 
 const NO_DAYS: readonly DayPayload[] = []
@@ -66,6 +69,8 @@ function splitSpan(range: StatsRange): DateRange {
 // 처방별 답. 어느 불러오기의 어느 기간 답인지 함께 둔다: 앞 기간·앞 불러오기의 숫자를 지금 숫자처럼 쓰지 않으려고.
 // 실패도 답이다(view null + 번호). 답이 오기 전까지 화면은 "불러오는 중"이다
 type SplitAnswer = DateRange & { loads: number; view: RxSplitView | null; error: ErrorCode | null }
+// 비트 전용 세 칸 답(stats-bit-sections). 처방별 답처럼 어느 불러오기·어느 기간·어느 견줄 기간의 답인지 함께 둔다
+type BitAnswer = DateRange & { loads: number; prevFrom: string; prevTo: string; view: BitSectionsView | null; error: ErrorCode | null }
 
 // 저장하지 않은 불러오기의 안내. 비트는 확인 건수와 "처방별·보고는 방금 불러온 숫자", 파일은 건수만이다
 type Incomplete = { kind: 'bit'; checks: StatsChecks } | ({ kind: 'file' } & FileIncomplete)
@@ -191,7 +196,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const data = useStatsData(choice, today)
   const { todayDone } = data
   const range = useMemo(() => rangeOf(today, choice, todayDone), [today, choice, todayDone])
-  const { state, helloError, retry, load, split } = useStatsWorker()
+  const { state, helloError, retry, load, split, sections } = useStatsWorker()
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
 
   const [job, setJob] = useState<StatsJob | null>(null)
@@ -200,11 +205,38 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const [incomplete, setIncomplete] = useState<Incomplete | null>(null)
   const [report, setReport] = useState<ReportData | null>(null)
   const [splitAnswer, setSplitAnswer] = useState<SplitAnswer | null>(null)
+  const [bitAnswer, setBitAnswer] = useState<BitAnswer | null>(null)
   const [loads, setLoads] = useState(0) // 비트에서 불러온 횟수. 0이면 Worker 메모리에 진료 줄이 없다
   const [savedUnread, setSavedUnread] = useState(false) // 방금 저장에 성공했고 그 뒤 아직 읽기에 성공하지 못했다(AC-514.11)
   const working = useRef(false)
 
   const { from: splitFrom, to: splitTo } = splitSpan(range)
+  const { from: prevFrom, to: prevTo } = range.previous
+  // 세 칸(환자 구성·시간대별 접수·원장님별)도 처방별과 같은 때(불러오기 횟수·기간·견줄 기간이 바뀔 때) 묻는다. 끝은 처방별처럼 불러온 끝에서 자른다.
+  // 견줄 기간은 range.previous 그대로다(Worker가 범위 안일 때만 센다). 처방별 묻기보다 먼저 둔다: 같은 때 묻는 처방별이 마지막 요청으로 남는다
+  useEffect(() => {
+    if (loads === 0) return
+    let current = true
+    const asked = { loads, from: splitFrom, to: splitTo, prevFrom, prevTo }
+    sections({ from: splitFrom, to: splitTo, previous: { from: prevFrom, to: prevTo } }).then(
+      (view) => {
+        if (current) setBitAnswer({ ...asked, view, error: null })
+      },
+      (error: unknown) => {
+        if (current) setBitAnswer({ ...asked, view: null, error: errorCodeOf(error) })
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [loads, sections, splitFrom, splitTo, prevFrom, prevTo])
+  const bitAnswered =
+    bitAnswer !== null && bitAnswer.loads === loads && bitAnswer.from === splitFrom && bitAnswer.to === splitTo && bitAnswer.prevFrom === prevFrom && bitAnswer.prevTo === prevTo
+      ? bitAnswer
+      : null
+  // 이 기기에서 불러오지 않았으면 null, 이 기간 답을 기다리는 동안은 'waiting'(세 칸만 제목·설명. 다른 칸은 기다리지 않는다)
+  const bit = loads === 0 ? null : bitAnswered === null ? 'waiting' : bitAnswered.view
+
   useEffect(() => {
     if (loads === 0) return
     let current = true
@@ -256,7 +288,10 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         setIncomplete({ kind: 'bit', checks: view.checks })
         return
       }
-      setSavedUnread(await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit' }))
+      // 세 칸 합계(sections)는 Worker 값 그대로 넘긴다. 검사·크기는 saveStats가 달 줄마다 본다(spec stats-bit-ai AC-2902.2).
+      // 옛 도우미(v2) 답이라 Worker 값에 열쇠가 없으면 넘기지 않는다(saveStats는 없는 것을 null로 보낸다)
+      const sections = view.sections === undefined ? {} : { sections: view.sections }
+      setSavedUnread(await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit', ...sections }))
     })
 
   const takeFiles = (files: File[]) =>
@@ -305,7 +340,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         <span>환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.</span>
       </p>
 
-      {[actionError, answered?.error ?? null].map(
+      {/* 세 칸 답의 오류는 처방별 답과 번호가 다를 때만 더한다(같은 번호 카드가 둘이지 않게) */}
+      {[actionError, answered?.error ?? null, bitAnswered?.error != null && bitAnswered.error !== answered?.error ? bitAnswered.error : null].map(
         (code, i) =>
           code !== null && (
             <div key={i} className="mt-4">
@@ -375,7 +411,16 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}
       {drawn !== null && (
         <div hidden={!showSections}>
-          <StatsSections input={drawn} saved={drawnSaved} split={answered?.view ?? null} report={report} hospitalName={hospitalName} groups={groups} revision={data.revision} />
+          <StatsSections
+            input={drawn}
+            saved={drawnSaved}
+            split={answered?.view ?? null}
+            report={report}
+            hospitalName={hospitalName}
+            groups={groups}
+            revision={data.revision}
+            bit={bit}
+          />
         </div>
       )}
     </div>

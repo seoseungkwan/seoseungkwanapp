@@ -1,11 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { mergeRanges } from '@/lib/analytics/coverage'
 import { diffDays, isYmd } from '@/lib/analytics/dates'
-import { validateDayPayload, validateMonthPayload } from '@/lib/payload/validate'
+import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { StatsCoverageRow, StatsDayRow } from '@/types/db'
 import type { DateRange } from '@/types/dates'
-import type { DayPayload, MonthPayload } from '@/types/payload'
+import type { DayPayload, MonthPayload, MonthSections } from '@/types/payload'
 
 // 통계 숫자 저장·읽기(브라우저 → Supabase, ADR-004). 서버로 가는 값은 검사한 저장 모양·덮은 기간(날짜 둘)·출처뿐이다.
 // hospital_id는 보내지 않는다 — DB 기본값이 정하고 권한이 막는다(AC-506.2).
@@ -32,6 +32,7 @@ const PAGE_ROWS = 1000 // Supabase가 한 번에 주는 줄 수 기본값. 넘�
 const MAX_COVERED_SPAN = 800 // stats_coverage 제약(to_day - from_day < 800)과 같다. 양 끝을 합쳐 800일까지
 const MAX_MONTH_BYTES = 1_048_576 // stats_months 제약(octet_length(payload::text) <= 1048576)과 같다
 const MAX_DAY_BYTES = 65_536 // stats_days 제약(octet_length(payload::text) <= 65536)과 같다
+const MAX_SECTIONS_BYTES = 65_536 // stats_months.sections 제약(octet_length(sections::text) <= 65536)과 같다
 
 // 어디서 실패하든(검사·클라이언트 만들기·보내기·읽기) 번호 하나로 바꾼다. 원래 오류는 버린다
 async function attempt<T>(code: StorageErrorCode, work: () => Promise<T>): Promise<T> {
@@ -99,8 +100,27 @@ async function upsertInBatches(client: SupabaseLike, table: string, onConflict: 
   }
 }
 
+// 달 줄 → 같은 달의 세 칸 합계(spec stats-bit-ai AC-2902.2). 검사(validateMonthSections)를 넘고 달·partial이 그 줄과 같고
+// 표 한도 안일 때만 그 값, 아니면 null — 옛 값이 남지 않게 늘 칸을 보낸다. 세 칸 때문에 달·일 저장이 실패하지 않게 던지지 않는다.
+// 같은 달이 둘이면 앞 것을 쓴다
+function monthSectionsPicker(sections: unknown): (payload: MonthPayload) => MonthSections | null {
+  const byMonth = new Map<string, unknown>()
+  if (Array.isArray(sections)) {
+    for (const item of sections) {
+      const month = typeof item === 'object' && item !== null ? (item as { month?: unknown }).month : undefined
+      if (typeof month === 'string' && !byMonth.has(month)) byMonth.set(month, item)
+    }
+  }
+  return (payload) => {
+    const checked = validateMonthSections(byMonth.get(payload.month))
+    if (checked === null || checked.month !== payload.month || checked.partial !== payload.partial) return null
+    return tableBytes(checked) <= MAX_SECTIONS_BYTES ? checked : null
+  }
+}
+
+// sections = 비트 저장의 달마다 세 칸 합계(통계 화면이 Worker 값을 그대로 넘긴다). 파일 저장이면 무시하고 늘 null을 보낸다(AC-2902.3)
 export async function saveStats(
-  input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange | null; source: StatsSource },
+  input: { months: MonthPayload[]; days: DayPayload[]; covered: DateRange | null; source: StatsSource; sections?: MonthSections[] | null },
   deps?: Deps,
 ): Promise<{ saved: number }> {
   return attempt('E-STATS-SAVE-FAILED', async () => {
@@ -109,6 +129,7 @@ export async function saveStats(
     if (!isSource(source)) throw new Error('출처가 아님')
     // 파일의 덜 덮인 달 줄은 검사만 하고 보내지 않는다. 그 줄에는 그 파일 하나가 든 숫자만 있고, 달 줄을 읽는 곳은 feat-ai-report뿐이다.
     // 통계 화면의 달 칸은 일 숫자의 합이다. 비트의 덜 덮인 달 줄은 보낸다
+    const sectionsOf = monthSectionsPicker(source === 'bit' ? input.sections : null)
     const monthRows = allChecked(input.months, validateMonthPayload, MAX_MONTH_BYTES)
       .filter((payload) => source !== 'file' || !payload.partial)
       .map((payload) => ({
@@ -116,6 +137,7 @@ export async function saveStats(
         partial: payload.partial,
         source,
         payload,
+        sections: sectionsOf(payload),
       }))
     const dayRows = allChecked(input.days, checkedDay, MAX_DAY_BYTES).map((payload) => ({
       day: payload.day,

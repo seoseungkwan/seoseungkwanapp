@@ -6,7 +6,7 @@ import { isErrorCode } from '@/lib/errors'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
-import { createStatsWorker, requestLoad, requestSplit } from '@/workers/statsClient'
+import { createStatsWorker, requestLoad, requestSections, requestSplit } from '@/workers/statsClient'
 
 // 통계 Worker 하나와 통로 (stats REQ-514, design.md TASK-14). 조각은 통로 포트로 Worker에만 가고(lib/bridge/workerSink.ts), 화면은 숫자만 받는다.
 // 진료 줄은 Worker 메모리에 남아 기간을 바꿀 때마다 처방별 신환·재진을 다시 센다. 화면을 떠나면 Worker를 끝낸다
@@ -74,5 +74,12 @@ export function useStatsWorker() {
 
   const split = useCallback(async ({ from, to }: DateRange) => requestSplit(worker.current(), { from, to }), [worker])
 
-  return { state, helloError, retry, load, split }
+  // 세 칸 보기(stats-bit-sections): 고른 기간과 견줄 기간(range.previous)의 from·to만 Worker로 간다. 답은 묶음 이름과 수뿐이다
+  const sections = useCallback(
+    async ({ from, to, previous }: DateRange & { previous?: DateRange | null }) =>
+      requestSections(worker.current(), { from, to, previous: previous ?? null }),
+    [worker],
+  )
+
+  return { state, helloError, retry, load, split, sections }
 }

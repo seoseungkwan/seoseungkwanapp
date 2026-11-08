@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, eachDay } from '@/lib/analytics/dates'
-import { validateDayPayload, validateMonthPayload } from '@/lib/payload/validate'
-import type { DayAgainPayload, DayPayload, MonthPayload } from '@/types/payload'
+import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
+import type { DayAgainPayload, DayPayload, MonthPayload, MonthSections } from '@/types/payload'
 import { StorageError, readCoverage, readDays, readMonths, saveStats, type SupabaseLike } from './stats'
 
 // 통계 숫자 저장·읽기(브라우저 → Supabase). 실제 Supabase에 붙지 않는다 — 가짜 클라이언트가 어느 표에 어떤 칸이
@@ -214,10 +214,11 @@ describe('AC-507.1 saveStats', () => {
     const [monthRow] = writesTo(calls, 'stats_months')[0].rows
     const [dayRow] = writesTo(calls, 'stats_days')[0].rows
     const [coverageRow] = writesTo(calls, 'stats_coverage')[0].rows
-    expect(Object.keys(monthRow).sort()).toEqual(['month', 'partial', 'payload', 'source'])
+    // stats-bit-ai AC-2906.3 ①: 달 줄에는 sections 칸이 더해진다(파일 저장이라 null, AC-2902.3)
+    expect(Object.keys(monthRow).sort()).toEqual(['month', 'partial', 'payload', 'sections', 'source'])
     expect(Object.keys(dayRow).sort()).toEqual(['day', 'partial', 'payload', 'source'])
     expect(Object.keys(coverageRow).sort()).toEqual(['from_day', 'source', 'to_day'])
-    expect(monthRow).toEqual({ month: '2026-09', partial: false, source: 'file', payload: validateMonthPayload(monthPayload('2026-09')) })
+    expect(monthRow).toEqual({ month: '2026-09', partial: false, source: 'file', payload: validateMonthPayload(monthPayload('2026-09')), sections: null })
     expect(dayRow).toEqual({ day: '2026-09-30', partial: false, source: 'file', payload: validateDayPayload(dayPayload('2026-09-30')) })
     expect(coverageRow).toEqual({ from_day: '2026-09-01', to_day: '2026-09-30', source: 'file' })
   })
@@ -394,7 +395,7 @@ describe('AC-507.1 saveStats', () => {
 
     const [call] = writesTo(calls, 'stats_months')
     expect(call.rows.map((row) => row.month)).toEqual(['2026-08'])
-    expect(call.rows[0]).toEqual({ month: '2026-08', partial: false, source: 'file', payload: validateMonthPayload(monthPayload('2026-08')) })
+    expect(call.rows[0]).toEqual({ month: '2026-08', partial: false, source: 'file', payload: validateMonthPayload(monthPayload('2026-08')), sections: null })
   })
 
   it('AC-507.1 비트의 덜 덮인 달 줄은 보낸다', async () => {
@@ -981,5 +982,104 @@ describe('AC-507.2 readCoverage', () => {
 
     expect(error.code).toBe('E-STATS-READ-FAILED')
     expect(error.cause).toBeUndefined()
+  })
+})
+
+// ── 달 줄에 세 칸 합계(sections)를 함께 싣기 (spec stats-bit-ai AC-2902.2·AC-2902.3) ──
+// 이름은 모두 지어낸 것이다. 시험마다 새로 만든다
+function sectionsFor(month: string, over: Partial<MonthSections> = {}): MonthSections {
+  return {
+    v: 1,
+    month,
+    partial: false,
+    mix: {
+      people: 6,
+      age: ['10세 미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80세 이상', '생년월일 없음'].map((name, i) => ({ name, people: i === 4 ? 6 : 0 })),
+      insurance: [{ name: '건강보험', people: 6 }],
+      town: [{ name: '가짜동', people: 5 }],
+    },
+    hours: { openDays: [1, 0, 0, 0, 0, 0, 0], weekdays: [6, 0, 0, 0, 0, 0, 0], hours: [0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], unknown: 0 },
+    doctors: [
+      { name: '김가상', patients: 4, newPatients: 1, amount: 123_000 },
+      { name: '이가상', patients: 2, newPatients: 0, amount: -1_000 },
+    ],
+    ...over,
+  }
+}
+
+// 검사는 넘지만 표 한도(65,536바이트)를 넘는 sections: 100자 이름의 보험 100줄 + 원장님 100줄
+function hugeSections(month: string): MonthSections {
+  const name = (i: number) => `${String(i).padStart(3, '0')}${'가'.repeat(97)}`
+  const base = sectionsFor(month)
+  return {
+    ...base,
+    mix: { ...base.mix, people: 5, age: base.mix.age.map((row, i) => ({ ...row, people: i === 4 ? 5 : 0 })), insurance: Array.from({ length: 100 }, (_, i) => ({ name: name(i), people: 5 })), town: [] },
+    doctors: Array.from({ length: 100 }, (_, i) => ({ name: name(i), patients: 1, newPatients: 0, amount: 0 })),
+  }
+}
+
+describe('AC-2902.2 비트 저장: 달 줄마다 같은 달의 sections를 검사해 싣는다', () => {
+  it('AC-2902.2 달 줄마다 같은 달 sections를 검사한 새 값으로 싣는다(넘긴 차례와 상관없이)', async () => {
+    const { client, calls } = fakeClient()
+    const months = [monthPayload('2026-08'), monthPayload('2026-09', { partial: true })]
+    const sections = [sectionsFor('2026-09', { partial: true }), sectionsFor('2026-08')]
+    await saveStats(saveInput({ months, sections }), { client })
+
+    const rows = writesTo(calls, 'stats_months')[0].rows
+    expect(rows.map((row) => [row.month, row.sections])).toEqual([
+      ['2026-08', sectionsFor('2026-08')],
+      ['2026-09', sectionsFor('2026-09', { partial: true })],
+    ])
+    expect(rows[0].sections).not.toBe(sections[1])
+    expect(Object.keys(rows[0]).sort()).toEqual(['month', 'partial', 'payload', 'sections', 'source'])
+  })
+
+  it('AC-2902.2 그 달 sections가 없거나 검사·크기에 걸리면 그 줄만 sections: null이고 달·일 저장은 그대로 된다', async () => {
+    const { client, calls } = fakeClient()
+    const months = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].map((month) => monthPayload(month))
+    const sections = [
+      { ...sectionsFor('2026-05'), v: 2 }, // 검사에 걸림
+      hugeSections('2026-06'), // 표가 받지 않는 크기
+      sectionsFor('2026-07', { partial: true }), // 달 줄과 partial이 다름(표가 받지 않는다)
+      sectionsFor('2026-09'),
+    ]
+    const result = await saveStats(saveInput({ months, sections }), { client })
+
+    const rows = writesTo(calls, 'stats_months')[0].rows
+    expect(rows.map((row) => [row.month, row.sections === null ? null : (row.sections as MonthSections).month])).toEqual([
+      ['2026-05', null],
+      ['2026-06', null],
+      ['2026-07', null],
+      ['2026-08', null], // 그 달 sections가 없다
+      ['2026-09', '2026-09'],
+    ])
+    expect(writesTo(calls, 'stats_days')[0].rows).toHaveLength(1)
+    expect(writesTo(calls, 'stats_coverage')).toHaveLength(1)
+    expect(result).toEqual({ saved: 6 })
+  })
+
+  it('AC-2902.2 크기 검사는 표가 재는 바이트다: 큰 sections가 정말 65,536바이트를 넘는다', () => {
+    const json = JSON.stringify(hugeSections('2026-06'))
+    expect(utf8Bytes(json) + (json.match(/[,:]/g) ?? []).length).toBeGreaterThan(65_536)
+    expect(validateMonthSections(hugeSections('2026-06'))).not.toBeNull()
+  })
+
+  it('AC-2902.2 sections를 넘기지 않거나 null이거나 배열이 아니면 모든 달 줄이 sections: null이다(옛 값이 남지 않게)', async () => {
+    for (const sections of [undefined, null, 'x', { month: '2026-09' }]) {
+      const { client, calls } = fakeClient()
+      await saveStats(saveInput({ sections }), { client })
+      expect(writesTo(calls, 'stats_months')[0].rows.map((row) => row.sections), String(sections)).toEqual([null])
+    }
+  })
+})
+
+describe('AC-2902.3 파일 저장: 달 줄은 늘 sections: null', () => {
+  it('AC-2902.3 파일로 불러온 저장은 sections를 넘겨도 null로 보내고, 덜 덮인 파일 달 줄은 지금처럼 보내지 않는다', async () => {
+    const { client, calls } = fakeClient()
+    const months = [monthPayload('2026-08'), monthPayload('2026-09', { partial: true })]
+    await saveStats(saveInput({ source: 'file', months, sections: [sectionsFor('2026-08'), sectionsFor('2026-09', { partial: true })] }), { client })
+
+    const rows = writesTo(calls, 'stats_months')[0].rows
+    expect(rows.map((row) => [row.month, row.sections])).toEqual([['2026-08', null]])
   })
 })

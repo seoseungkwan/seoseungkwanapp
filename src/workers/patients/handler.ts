@@ -1,8 +1,28 @@
 import { isYmd } from '@/lib/analytics/dates'
 import { BridgeError, isErrorCode, isRecord } from '@/lib/bridge/protocol'
+import { LAPSED_BUCKETS, lapsedRange, readLapsed } from '@/lib/patients/lapsed'
 import { RECALL_DEFAULTS } from '@/lib/patients/recall'
+import { readReservations, reservationRange } from '@/lib/patients/reservations'
 import { PatientsSourceError } from '@/lib/patients/sourceError'
-import type { ContactStoreData, FollowupFilters, FollowupView, PatientsRange, PatientsWorkerMessage, RecallFilters, RecallHistory, RecallView, ViewCodes, ViewReasons } from '@/types/patients'
+import type {
+  BitListTool,
+  ContactStoreData,
+  FollowupFilters,
+  FollowupView,
+  LapsedData,
+  LapsedGroup,
+  LapsedListFilters,
+  LapsedRxPick,
+  PatientsRange,
+  PatientsWorkerMessage,
+  RecallFilters,
+  RecallHistory,
+  RecallView,
+  ReservationData,
+  ReservationFilters,
+  ViewCodes,
+  ViewReasons,
+} from '@/types/patients'
 import { createAssembler, type AssembleResult } from './assemble'
 import {
   buildFollowup,
@@ -12,10 +32,13 @@ import {
   filterRecall,
   fitStore,
   followupPhones,
+  lapsedListView,
   mergeRecall,
   pruneMarks,
   readStoreReply,
   readTargets,
+  reservationsHead,
+  reservationsListView,
   setMark,
   storePayload,
   withMarks,
@@ -24,7 +47,9 @@ import { followupPlan, recallPlan } from './plan'
 
 // 환자 탭 Worker 메시지(design.md 'Worker 메시지 약속') [환자 자료 구역]. patients.worker.ts가 잇기만 하고 시험은 이 함수를 바로 부른다.
 // 화면으로 가는 것은 보기 모양·복사 글·건수·오류 번호뿐이다. 조각 글자와 store.save 글자는 포트로만 오간다(AC-604.4).
-// 오류 글은 싣지 않는다(번호만). 어떤 답이 틀려도 그 종류만 실패하고 Worker는 산다
+// 오류 글은 싣지 않는다(번호만). 어떤 답이 틀려도 그 종류만 실패하고 Worker는 산다.
+// 비트 명단(예약 문자 명단 · 장기 미방문 명단, spec patients-bit-lists)은 도구를 처음 열 때 list로 따로 읽는다: F/U 읽기(plan·build·reload)를
+// 기다리지도 기다리게 하지도 않는다(AC-2802.2). 보냄·연락함 표시는 F/U와 같은 저장 줄·같은 contact.marks에 s|·l| 열쇠로 둔다(AC-2803.8·2804.5)
 
 const BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
 const STORE_FAILED = 'E-STORE-FAILED'
@@ -38,13 +63,25 @@ const RULES = RECALL_DEFAULTS
 type Port = { postMessage(message: unknown): void }
 type Piece = { range: PatientsRange; chart: string[][]; rx: string[][] }
 type ViewKind = 'followup' | 'recall'
-type Job = { kind: 'mark'; key: string; on: boolean; today: string } | { kind: 'history'; cycle: number }
+// marks: [보냄으로 표시 (N명)](mark-many)의 열쇠 여럿. 저장 한 번에 넣고 열쇠마다 marked로 답한다
+type Job =
+  | { kind: 'mark'; key: string; on: boolean; today: string }
+  | { kind: 'marks'; keys: string[]; on: boolean; today: string }
+  | { kind: 'history'; cycle: number }
 // base: 글자를 만들 때의 메모리 기록. 답을 기다리는 사이 build가 기록을 합쳤으면 그 답으로 되돌리지 않는다
 type Flight = { ticket: number; batch: Job[]; store: ContactStoreData; base: RecallHistory; trimmed: number; epoch: number }
+// 읽은 비트 명단과 그 기간을 정한 오늘(화면이 list에 실어 보낸 날)
+type Listed<D> = { data: D; day: string }
 
 const rangeKey = (from: string, to: string) => `${from}|${to}`
 const isDay = (x: unknown): x is string => typeof x === 'string' && isYmd(x)
 const noop = () => {}
+const jobKeys = (job: Job): string[] => (job.kind === 'mark' ? [job.key] : job.kind === 'marks' ? job.keys : [])
+
+const BIT_LIST_TOOLS: readonly BitListTool[] = ['reservations', 'lapsed']
+// 예약 보냄 s|차트번호|예약 시각, 장기 미방문 연락함 l|차트번호|마지막 내원일
+const LIST_PREFIX: Record<BitListTool, string> = { reservations: 's|', lapsed: 'l|' }
+const isListKey = (key: string) => BIT_LIST_TOOLS.some((tool) => key.startsWith(LIST_PREFIX[tool]))
 
 // 번호가 있는 오류는 그 번호, 나머지는 글(환자 값이 섞일 수 있다)을 버리고 기본 번호
 function codeOf(error: unknown, fallback = BAD_REPLY): string {
@@ -70,6 +107,41 @@ function recallFilters(x: unknown): RecallFilters {
     to: typeof f.to === 'string' ? f.to : null,
     overdue: f.overdue === true,
   }
+}
+
+// 비트 명단 고르기. 켜고 끄는 칸은 화면 처음 값(켜짐)이 기본이다(AC-2803.2·2803.5)
+const flag = (x: unknown) => (typeof x === 'boolean' ? x : true)
+
+function reservationFilters(x: unknown): ReservationFilters {
+  const f = isRecord(x) ? x : {}
+  return {
+    day: isDay(f.day) ? f.day : null,
+    withDate: flag(f.withDate),
+    unsentOnly: flag(f.unsentOnly),
+    missedDays: f.missedDays === 30 ? 30 : 7,
+    notYetOnly: flag(f.notYetOnly),
+  }
+}
+
+function rxPick(x: unknown): LapsedRxPick {
+  if (isRecord(x) && x.kind === 'none') return { kind: 'none' }
+  if (isRecord(x) && x.kind === 'group' && typeof x.name === 'string') return { kind: 'group', name: x.name }
+  return { kind: 'all' }
+}
+
+// 처방 추세 묶음(화면이 읽어 실어 보낸 이름·코드)은 글자 칸만 옮긴다. 배열이 아니면 못 읽은 것(null)
+function rxGroups(x: unknown): LapsedGroup[] | null {
+  if (!Array.isArray(x)) return null
+  return x.flatMap((group: unknown): LapsedGroup[] => {
+    if (!isRecord(group) || typeof group.name !== 'string' || !Array.isArray(group.codes)) return []
+    const codes: unknown[] = group.codes
+    return codes.every((code): code is string => typeof code === 'string') ? [{ name: group.name, codes: [...codes] }] : []
+  })
+}
+
+function lapsedFilters(x: unknown): LapsedListFilters {
+  const f = isRecord(x) ? x : {}
+  return { bucket: LAPSED_BUCKETS.find((b) => b.id === f.bucket)?.id ?? LAPSED_BUCKETS[0].id, rx: rxPick(f.rx), groups: rxGroups(f.groups) }
 }
 
 export function createHandler(deps: { post(message: unknown): void }) {
@@ -109,6 +181,14 @@ export function createHandler(deps: { post(message: unknown): void }) {
   let flight: Flight | null = null
   let tickets = 0
 
+  // 비트 명단(AC-2802.2): 도구마다 마지막으로 읽은 명단. F/U 읽기(cycle·reload)와 따로라 F/U [다시 불러오기]로 지우지 않는다.
+  // 읽기가 실패하면 그 도구의 앞 명단을 버린다(지난 명단의 줄을 표시하거나 l| 표시를 지우는 데 쓰지 않는다)
+  const lists: { reservations: Listed<ReservationData> | null; lapsed: Listed<LapsedData> | null } = { reservations: null, lapsed: null }
+  // 도구마다 읽기 차례. 앞 읽기의 늦은 답은 쓰지 않는다
+  const listAsked: Record<BitListTool, number> = { reservations: 0, lapsed: 0 }
+  // 도구마다 화면이 마지막으로 보낸 고르기. 표시가 바뀌면(저장·불러오기) 이것으로 다시 보낸다
+  const listFilters: { reservations: ReservationFilters | null; lapsed: LapsedListFilters | null } = { reservations: null, lapsed: null }
+
   // 진행 중인 take. build는 이것들이 끝난 뒤에 만든다
   const working = new Set<Promise<unknown>>()
   const track = (job: Promise<unknown>) => {
@@ -145,12 +225,41 @@ export function createHandler(deps: { post(message: unknown): void }) {
 
   const replyMark = (key: string, ok: boolean, code?: string) => post({ type: 'marked', key, ok, ...(ok ? {} : { code }), counts: counts() })
 
+  // ── 비트 명단 보기 모양 ───────────────────────────────
+
+  // 저장을 못 불러왔으면 null(표시는 모두 꺼져 있고 막는다)
+  const loadedMarks = () => (saveState === 'loaded' && store ? store.marks : null)
+
+  // 그 도구의 마지막 고르기로 보기 모양을 보낸다. 읽은 명단이나 고르기가 없으면 보내지 않는다(지어낸 줄 없음).
+  // 만들다 던지면 그 도구만 읽기 실패로 답한다(저장 줄은 멈추지 않는다)
+  function postList(tool: BitListTool) {
+    try {
+      if (tool === 'reservations') {
+        const f = listFilters.reservations
+        const read = lists.reservations
+        if (f && read) post({ type: 'filtered', tool, ...reservationsListView(read.data, read.day, f, loadedMarks()) })
+      } else {
+        const f = listFilters.lapsed
+        const read = lists.lapsed
+        if (f && read) post({ type: 'filtered', tool, ...lapsedListView(read.data, read.day, f, loadedMarks()) })
+      }
+    } catch {
+      lists[tool] = null
+      post({ type: 'list-view', tool, ok: false, code: BAD_REPLY })
+    }
+  }
+
+  const postLists = () => BIT_LIST_TOOLS.forEach(postList)
+
+  // 저장 줄에서 지울 표시를 가릴 오늘. F/U 읽기 전이면 비트 명단을 읽은 날
+  const markDay = () => today ?? lists.reservations?.day ?? lists.lapsed?.day ?? ''
+
   // ── 저장 줄 ───────────────────────────────────────────
 
   function failQueued(code: string) {
     const jobs = queue
     queue = []
-    for (const job of jobs) if (job.kind === 'mark') replyMark(job.key, false, code)
+    for (const job of jobs) for (const key of jobKeys(job)) replyMark(key, false, code)
   }
 
   function pump() {
@@ -163,8 +272,11 @@ export function createHandler(deps: { post(message: unknown): void }) {
     flight = { ticket, batch, store, base: store.recall, trimmed: 0, epoch }
     try {
       let current = store
-      for (const job of batch) if (job.kind === 'mark') current = setMark(current, job.key, job.on, job.today)
-      const fit = fitStore({ ...current, marks: pruneMarks(current.marks, views, today ?? '') })
+      for (const job of batch) {
+        if (job.kind === 'mark') current = setMark(current, job.key, job.on, job.today)
+        else if (job.kind === 'marks') for (const key of job.keys) current = setMark(current, key, job.on, job.today)
+      }
+      const fit = fitStore({ ...current, marks: pruneMarks(current.marks, { ...views, lapsed: lists.lapsed?.data ?? null }, markDay()) })
       flight = { ...flight, store: fit.store, trimmed: fit.trimmed }
       if (!port) throw new BridgeError(DISCONNECTED)
       port.postMessage({ type: 'send', ticket, cmd: 'store.save', payload: storePayload(fit.store) })
@@ -198,12 +310,14 @@ export function createHandler(deps: { post(message: unknown): void }) {
       delete codes.store
       refreshViews(sameHistory ? done.trimmed : 0)
     }
-    const marks = done.batch.filter((job) => job.kind === 'mark')
+    const keys = done.batch.flatMap(jobKeys)
     const history = done.batch.filter((job) => job.kind === 'history')
     if (current && !ok && history.length) codes.store = code
-    for (const job of marks) replyMark(job.key, ok, code)
+    for (const key of keys) replyMark(key, ok, code)
     const owedBuild = current && history.some((job) => job.cycle === cycle)
-    if (owedBuild || (current && ok && marks.length)) postViews()
+    // 비트 명단 표시(s|·l|)만 바뀌었으면 F/U·정기 주사 보기 모양은 그대로라 views를 다시 보내지 않는다(AC-2806.1)
+    if (owedBuild || (current && ok && keys.some((key) => !isListKey(key)))) postViews()
+    if (current && ok) for (const tool of BIT_LIST_TOOLS) if (keys.some((key) => key.startsWith(LIST_PREFIX[tool]))) postList(tool)
     pump()
   }
 
@@ -222,10 +336,12 @@ export function createHandler(deps: { post(message: unknown): void }) {
     failQueued(STORE_FAILED)
   }
 
+  // 저장을 불러오거나 못 불러오면 비트 명단의 표시(보냄·연락함·막힘)가 바뀌므로 마지막 고르기로 다시 보낸다
   function failLoad(code: string) {
     saveState = 'failed'
     storeCode = code
     post({ type: 'stored', ok: false, code, recall: [] })
+    postLists()
   }
 
   function onStored(m: Record<string, unknown>) {
@@ -244,6 +360,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
           // 옛 저장으로 만든 보기 모양으로 새 저장의 표시를 지우지 않는다(build가 새로 만들 때까지 없는 것으로 친다)
           views = { followup: null, recall: null }
           post({ type: 'stored', ok: true, recall: planned.recall ?? [] })
+          postLists()
         } catch (error) {
           failLoad(codeOf(error))
         }
@@ -392,6 +509,42 @@ export function createHandler(deps: { post(message: unknown): void }) {
       .catch(noop)
   }
 
+  // ── 비트 명단 읽기(AC-2802.2·2802.6) ──────────────────
+
+  // 화면이 그 도구의 contact.targets 스트림을 연 뒤 보낸다. 기간은 오늘(today)로 정한 것이어야 한다(reservationRange·lapsedRange).
+  // working에 넣지 않는다: F/U build가 이 읽기를 기다리지 않는다. 틀린 답은 그 도구만 실패한다
+  function onList(m: Record<string, unknown>) {
+    const tool = m.tool === 'reservations' || m.tool === 'lapsed' ? m.tool : null
+    if (!tool) return
+    const asked = ++listAsked[tool]
+    const fail = (code: string) => {
+      if (asked !== listAsked[tool]) return
+      lists[tool] = null
+      post({ type: 'list-view', tool, ok: false, code })
+    }
+    const { id, today: day } = m
+    // 스트림이 거절되면 화면은 id 없이 받은 번호를 알린다(번호 모양일 때만 믿는다)
+    if (typeof id !== 'string' || m.code !== undefined) return fail(isErrorCode(m.code) ? m.code : BAD_REPLY)
+    void takeInTime(id).then((result) => {
+      if (asked !== listAsked[tool]) return // 그 사이 같은 도구를 다시 읽기 시작했다. 그쪽이 답한다
+      if (!result.ok) return fail(result.code)
+      if (!isDay(day)) return fail(BAD_REPLY)
+      try {
+        if (tool === 'reservations') {
+          const data = readReservations(result.json, reservationRange(day))
+          lists.reservations = { data, day }
+          post({ type: 'list-view', tool, ok: true, readAt: Date.now(), total: data.rows.length, ...reservationsHead(data, day) })
+        } else {
+          const data = readLapsed(result.json, lapsedRange(day))
+          lists.lapsed = { data, day }
+          post({ type: 'list-view', tool, ok: true, readAt: Date.now(), total: data.rows.length })
+        }
+      } catch (error) {
+        fail(codeOf(error))
+      }
+    })
+  }
+
   // ── 고르기·표시 ───────────────────────────────────────
 
   function onFilter(m: Record<string, unknown>) {
@@ -401,11 +554,20 @@ export function createHandler(deps: { post(message: unknown): void }) {
     } else if (m.tool === 'recall') {
       const out = views.recall && today ? filterRecall(views.recall, recallFilters(m.filters), today) : { rows: [], copy: { list: '', phones: '', missingPhones: 0 } }
       post({ type: 'filtered', tool: 'recall', ...out })
+    } else if (m.tool === 'reservations') {
+      listFilters.reservations = reservationFilters(m.filters)
+      postList('reservations')
+    } else if (m.tool === 'lapsed') {
+      listFilters.lapsed = lapsedFilters(m.filters)
+      postList('lapsed')
     }
   }
 
-  // 지금 보기 모양에 있는 줄만 표시할 수 있다. 그 종류의 보기 모양이 없으면 표시는 그대로 두는 규칙이라 받는다
+  // 지금 보기 모양에 있는 줄만 표시할 수 있다. 그 종류의 보기 모양이 없으면 표시는 그대로 두는 규칙이라 받는다.
+  // 비트 명단은 읽은 명단에 있는 줄만 받는다(못 읽었으면 거절)
   function knownKey(key: string): boolean {
+    if (key.startsWith('s|')) return !!lists.reservations?.data.rows.some((row) => row.key === key)
+    if (key.startsWith('l|')) return !!lists.lapsed?.data.rows.some((row) => row.key === key)
     const view = key.startsWith('f|') ? views.followup : key.startsWith('r|') ? views.recall : undefined
     if (view === undefined) return false
     return view === null || view.rows.some((row) => row.key === key)
@@ -417,6 +579,22 @@ export function createHandler(deps: { post(message: unknown): void }) {
     if (saveState !== 'loaded') return replyMark(replyKey, false, storeCode ?? STORE_FAILED)
     if (typeof key !== 'string' || typeof on !== 'boolean' || !isDay(day) || !knownKey(key)) return replyMark(replyKey, false, REJECTED)
     queue.push({ kind: 'mark', key, on, today: day })
+    pump()
+  }
+
+  // [보냄으로 표시 (N명)](AC-2803.8): 비트 명단 줄 열쇠 여럿을 저장 한 번에 켠다. 하나라도 받을 수 없으면 모두 거절하고 열쇠마다 답한다
+  function onMarkMany(m: Record<string, unknown>) {
+    const { keys, on, today: day } = m
+    if (!Array.isArray(keys)) return
+    const asked: unknown[] = keys
+    if (!asked.every((key): key is string => typeof key === 'string')) return
+    const unique = [...new Set(asked)]
+    const failAll = (code: string) => {
+      for (const key of unique) replyMark(key, false, code)
+    }
+    if (saveState !== 'loaded') return failAll(storeCode ?? STORE_FAILED)
+    if (!unique.length || on !== true || !isDay(day) || !unique.every((key) => isListKey(key) && knownKey(key))) return failAll(REJECTED)
+    queue.push({ kind: 'marks', keys: unique, on: true, today: day })
     pump()
   }
 
@@ -441,6 +619,10 @@ export function createHandler(deps: { post(message: unknown): void }) {
         return onFilter(message)
       case 'mark':
         return onMark(message)
+      case 'list':
+        return onList(message)
+      case 'mark-many':
+        return onMarkMany(message)
     }
   }
 

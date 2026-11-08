@@ -11,7 +11,15 @@ import { readGrid } from '@/lib/parsers/common'
 import type { Aggregates } from '@/types/analysis'
 import type { Cell } from '@/types/parse'
 import { StatsDataError } from './assemble'
-import { MAX_STATS_ROWS, parseStatsRows, toConsumptionRows, toPatientDays, toVisitRows } from './helperData'
+import {
+  MAX_STATS_ROWS,
+  parseStatsRows,
+  toConsumptionRows,
+  toFirstVisits,
+  toPatientDays,
+  toStatsExtra,
+  toVisitRows,
+} from './helperData'
 
 const FROM = '2026-09-01'
 const TO = '2026-11-01'
@@ -680,5 +688,244 @@ describe('AC-505.3 파일 길과 도우미 길의 결과가 같다(동네 빼고
     expect(fromFile.month.reduce((sum, bucket) => sum + bucket.totals.returning, 0)).toBeGreaterThan(100)
     expect(fromFile.month.reduce((sum, bucket) => sum + bucket.revisit.cohort, 0)).toBeGreaterThan(100)
     expect(withoutRegions(fromHelper)).toEqual(withoutRegions(fromFile))
+  })
+})
+
+// ── v3 답(stats-bit-sections): v2 열쇠 그대로 + visits·people·doctors·doctorDays ──
+// 접수 줄 [차트번호|null, 진료일, 접수 시각 HHmm|null, 보험 이름|null, 진료의 코드|null] · 사람 줄 [차트번호, 생년월일|null, 주소 앞부분|null]
+// 원장님 줄 [코드, 이름|null] · 날·원장님 금액 [수납일, 진료의 코드, 총진료비]. 이름·주소·금액은 모두 지어낸 값이다
+
+const goodV3 = () => ({
+  ...good(),
+  v: 3,
+  visits: [
+    [chart(1), '20260901', '0930', '건강보험', 'D01'],
+    [chart(1), '20260902', null, null, null],
+    [null, '20260902', '1405', '자동차보험', 'D01'],
+  ],
+  people: [[chart(1), '19800505', '경기 수원시 영통구 가람동']],
+  doctors: [
+    ['D01', '김가상'],
+    ['D02', null],
+  ],
+  doctorDays: [
+    ['20260901', 'D01', 120_000],
+    ['20260902', 'D02', -5_000],
+  ],
+})
+
+// goodV3()의 한 자리만 바꾼 JSON 글자
+function changedV3(path: ReadonlyArray<string | number>, value: unknown): string {
+  const draft = goodV3() as unknown
+  let at = draft as Record<string | number, unknown>
+  for (const key of path.slice(0, -1)) at = at[key] as Record<string | number, unknown>
+  const last = path[path.length - 1]
+  if (value === DROP) Reflect.deleteProperty(at, last)
+  else at[last] = value
+  return JSON.stringify(draft)
+}
+
+describe('AC-2702.1 v2 답(옛 도우미)은 지금처럼 받는다', () => {
+  it('AC-2702.1: v2 답에는 새 자료가 없고 toStatsExtra는 null이다', () => {
+    const data = parseStatsRows(JSON.stringify(good()), REQ)
+    expect(data.v).toBe(2)
+    expect(data.extra).toBeUndefined()
+    expect(toStatsExtra(data, createPatientIds())).toBeNull()
+  })
+
+  it.each(['visits', 'people', 'doctors', 'doctorDays'] as const)('AC-2702.1: v2 답에 v3 열쇠(%s)가 있으면 모르는 열쇠라 E-BRIDGE-BAD-REPLY다', (key) => {
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...good(), [key]: goodV3()[key] }), REQ))).toBe(BAD_REPLY)
+  })
+})
+
+describe('AC-2708.3 v3 답의 v2 열쇠는 v2 답과 같게 읽힌다', () => {
+  it('AC-2708.3: v2 열쇠의 값과 진료 줄·접수 줄 바꾸기 결과가 v2 답과 같다', () => {
+    const v2 = parseStatsRows(JSON.stringify(good()), REQ)
+    const v3 = parseStatsRows(JSON.stringify(goodV3()), REQ)
+    const { extra, v, ...rest } = v3
+    expect(v).toBe(3)
+    expect(extra).toBeDefined()
+    expect({ v: 2, ...rest }).toEqual(v2)
+    expect(toConsumptionRows(v3, createPatientIds())).toEqual(toConsumptionRows(v2, createPatientIds()))
+    expect(toPatientDays(v3, createPatientIds())).toEqual(toPatientDays(v2, createPatientIds()))
+    expect(toVisitRows(v3, createPatientIds())).toEqual(toVisitRows(v2, createPatientIds()))
+  })
+})
+
+describe('AC-2702.2 v3 새 열쇠 넷의 모양', () => {
+  it('AC-2702.2: 맞는 v3 답은 받고 toStatsExtra가 메모리 번호·YYYY-MM-DD·접수 시로 바꾼다(차트번호 글자는 남지 않는다)', () => {
+    const data = parseStatsRows(JSON.stringify(goodV3()), REQ)
+    const ids = createPatientIds()
+    const one = ids.idOf(chart(1))
+    const extra = toStatsExtra(data, ids)
+    if (extra === null) throw new Error('v3 자료가 없어요')
+    expect(extra.visits).toEqual([
+      { p: one, d: '2026-09-01', h: 9, ins: '건강보험', doc: 'D01' },
+      { p: one, d: '2026-09-02', h: null, ins: null, doc: null },
+      { p: -1, d: '2026-09-02', h: 14, ins: '자동차보험', doc: 'D01' },
+    ])
+    expect([...extra.people]).toEqual([[one, { birth: '1980-05-05', area: '경기 수원시 영통구 가람동' }]])
+    expect([...extra.doctors]).toEqual([
+      ['D01', '김가상'],
+      ['D02', null],
+    ])
+    expect(extra.doctorDays).toEqual([
+      { d: '2026-09-01', doc: 'D01', amount: 120_000 },
+      { d: '2026-09-02', doc: 'D02', amount: -5_000 },
+    ])
+    expect(JSON.stringify({ visits: extra.visits, people: [...extra.people] })).not.toContain(chart(1))
+  })
+
+  it('AC-2702.2: 차트번호 앞뒤 공백은 같은 환자다(접수 줄·사람 줄·진료 줄이 같은 번호)', () => {
+    const draft = goodV3()
+    draft.visits[0][0] = ` ${chart(1)} `
+    draft.people[0][0] = `${chart(1)} `
+    const ids = createPatientIds()
+    const data = parseStatsRows(JSON.stringify(draft), REQ)
+    const extra = toStatsExtra(data, ids)
+    const patient = toVisitRows(data, ids)[0].p
+    expect(extra?.visits[0].p).toBe(patient)
+    expect([...(extra?.people.keys() ?? [])]).toEqual([patient])
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['접수 시각 0000', ['visits', 0, 2], '0000'],
+    ['접수 시각 2359', ['visits', 0, 2], '2359'],
+    ['보험 이름 빈 글자', ['visits', 0, 3], ''],
+    ['보험 이름 100자', ['visits', 0, 3], '가'.repeat(100)],
+    ['원장님 코드 40자', ['doctors', 2], ['D'.repeat(40), null]],
+    ['생년월일 없음', ['people', 0, 1], null],
+    ['주소 앞부분 없음', ['people', 0, 2], null],
+    ['주소 앞부분 80자', ['people', 0, 2], '가'.repeat(80)],
+    ['원장님 이름 40자', ['doctors', 0, 1], '가'.repeat(40)],
+    ['접수 줄에 없는 환자의 사람 줄', ['people', 1], [chart(2), null, null]],
+    ['금액 +10^14', ['doctorDays', 0, 2], AMOUNT_LIMIT],
+    ['금액 -10^14', ['doctorDays', 0, 2], -AMOUNT_LIMIT],
+    ['금액 0', ['doctorDays', 0, 2], 0],
+    ['수납일 기간 끝날', ['doctorDays', 0, 0], '20261101'],
+  ])('AC-2702.2: 받는다: %s', (_name, path, value) => {
+    expect(() => parseStatsRows(changedV3(path, value), REQ)).not.toThrow()
+  })
+
+  it('AC-2702.2: 받는다: 새 열쇠 넷이 모두 빈 배열', () => {
+    const text = JSON.stringify({ ...goodV3(), visits: [], people: [], doctors: [], doctorDays: [] })
+    expect(toStatsExtra(parseStatsRows(text, REQ), createPatientIds())).toEqual({ visits: [], people: new Map(), doctors: new Map(), doctorDays: [] })
+  })
+
+  it('AC-2702.2: 접수 시각의 앞 두 자리가 접수 시다', () => {
+    const extra = toStatsExtra(parseStatsRows(changedV3(['visits', 0, 2], '2359'), REQ), createPatientIds())
+    expect(extra?.visits[0].h).toBe(23)
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['새 열쇠 doctorDays가 없음', ['doctorDays'], DROP],
+    ['새 열쇠 people이 없음', ['people'], DROP],
+    ['모르는 열쇠가 더 있음', ['extra'], 1],
+    ['접수 줄 목록이 배열이 아님', ['visits'], {}],
+    ['접수 줄 목록이 null', ['visits'], null],
+    ['접수 줄이 객체', ['visits', 0], { chart: chart(1) }],
+    ['접수 줄이 4칸', ['visits', 0], [chart(1), '20260901', '0930', '건강보험']],
+    ['접수 줄이 6칸', ['visits', 0], [chart(1), '20260901', '0930', '건강보험', 'D01', '가짜']],
+    ['접수 줄 차트번호가 숫자', ['visits', 0, 0], Number(chart(1))],
+    ['접수 줄 차트번호가 빔', ['visits', 0, 0], ''],
+    ['접수 줄 차트번호가 공백뿐', ['visits', 0, 0], '   '],
+    ['접수 줄 차트번호가 사람 줄에 없음', ['visits', 0, 0], chart(2)],
+    ['접수 줄 진료일 모양', ['visits', 0, 1], '2026-09-01'],
+    ['접수 줄 진료일이 없는 날', ['visits', 0, 1], '20260230'],
+    ['접수 줄 진료일이 null', ['visits', 0, 1], null],
+    ['접수 줄 진료일이 기간 앞', ['visits', 0, 1], '20260831'],
+    ['접수 줄 진료일이 기간 뒤', ['visits', 0, 1], '20261102'],
+    ['접수 시각이 세 자리', ['visits', 0, 2], '930'],
+    ['접수 시각이 다섯 자리', ['visits', 0, 2], '09300'],
+    ['접수 시각이 2400', ['visits', 0, 2], '2400'],
+    ['접수 시각이 숫자', ['visits', 0, 2], 930],
+    ['접수 시각에 쌍점', ['visits', 0, 2], '09:3'],
+    ['접수 시각이 빈 글자', ['visits', 0, 2], ''],
+    ['보험 이름이 숫자', ['visits', 0, 3], 1],
+    ['보험 이름이 101자', ['visits', 0, 3], '가'.repeat(101)],
+    ['접수 줄 진료의 코드가 원장님 줄에 없음', ['visits', 0, 4], 'D09'],
+    ['접수 줄 진료의 코드가 빔', ['visits', 0, 4], ''],
+    ['접수 줄 진료의 코드가 숫자', ['visits', 0, 4], 1],
+    ['사람 줄 목록이 배열이 아님', ['people'], {}],
+    ['사람 줄이 2칸', ['people', 0], [chart(1), '19800505']],
+    ['사람 줄이 4칸', ['people', 0], [chart(1), '19800505', null, '가짜']],
+    ['사람 줄 차트번호가 null', ['people', 0, 0], null],
+    ['사람 줄 차트번호가 빔', ['people', 0, 0], ''],
+    ['사람 줄 차트번호가 공백뿐', ['people', 0, 0], '  '],
+    ['같은 환자 두 줄(앞뒤 공백만 다름)', ['people', 1], [` ${chart(1)}`, null, null]],
+    ['생년월일 모양', ['people', 0, 1], '1980-05-05'],
+    ['생년월일이 없는 날', ['people', 0, 1], '19800230'],
+    ['생년월일이 숫자', ['people', 0, 1], 19800505],
+    ['주소 앞부분이 81자', ['people', 0, 2], '가'.repeat(81)],
+    ['주소 앞부분이 숫자', ['people', 0, 2], 1],
+    ['원장님 줄 목록이 배열이 아님', ['doctors'], {}],
+    ['원장님 줄이 1칸', ['doctors', 0], ['D01']],
+    ['원장님 줄이 3칸', ['doctors', 0], ['D01', '김가상', '가짜']],
+    ['원장님 코드가 빔', ['doctors', 1, 0], ''],
+    ['원장님 코드가 41자', ['doctors', 1, 0], 'D'.repeat(41)],
+    ['원장님 코드가 숫자', ['doctors', 1, 0], 2],
+    ['원장님 이름이 41자', ['doctors', 0, 1], '가'.repeat(41)],
+    ['원장님 이름이 숫자', ['doctors', 0, 1], 1],
+    ['같은 원장님 코드 두 줄', ['doctors', 1, 0], 'D01'],
+    ['금액 줄 목록이 배열이 아님', ['doctorDays'], {}],
+    ['금액 줄이 2칸', ['doctorDays', 0], ['20260901', 'D01']],
+    ['금액 줄이 4칸', ['doctorDays', 0], ['20260901', 'D01', 1, 2]],
+    ['수납일 모양', ['doctorDays', 0, 0], '2026-09-01'],
+    ['수납일이 없는 날', ['doctorDays', 0, 0], '20260931'],
+    ['수납일이 기간 앞', ['doctorDays', 0, 0], '20260831'],
+    ['수납일이 기간 뒤', ['doctorDays', 0, 0], '20261102'],
+    ['금액 진료의 코드가 원장님 줄에 없음', ['doctorDays', 0, 1], 'D09'],
+    ['금액 진료의 코드가 null', ['doctorDays', 0, 1], null],
+    ['금액이 소수', ['doctorDays', 0, 2], 0.5],
+    ['금액이 글자', ['doctorDays', 0, 2], '120000'],
+    ['금액이 null', ['doctorDays', 0, 2], null],
+    ['금액이 10^14를 넘음', ['doctorDays', 0, 2], AMOUNT_LIMIT + 1],
+    ['금액이 -10^14 아래', ['doctorDays', 0, 2], -(AMOUNT_LIMIT + 1)],
+  ])('AC-2702.2: E-BRIDGE-BAD-REPLY: %s', (_name, path, value) => {
+    expect(codeOf(() => parseStatsRows(changedV3(path, value), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-2702.2: 새 열쇠 모양이 틀린 데다 두 배열이 어긋나도 모양을 먼저 봐서 E-BRIDGE-BAD-REPLY다', () => {
+    const text = JSON.stringify({ ...goodV3(), patientDays: [], doctorDays: [['20260901', 'D09', 1]] })
+    expect(codeOf(() => parseStatsRows(text, REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-2702.2: 새 열쇠가 맞고 두 배열이 어긋나면 지금처럼 E-STATS-CHANGED다', () => {
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...goodV3(), patientDays: [] }), REQ))).toBe(CHANGED)
+  })
+
+  it('AC-2702.2: 접수 줄 수는 700,000까지 받고 하나 넘으면 거절한다', SLOW, () => {
+    const line = [chart(1), '20260901', '0930', '건강보험', 'D01']
+    const full = toStatsExtra(parseStatsRows(changedV3(['visits'], Array(MAX_STATS_ROWS).fill(line)), REQ), createPatientIds())
+    expect(full?.visits).toHaveLength(MAX_STATS_ROWS)
+    expect(codeOf(() => parseStatsRows(changedV3(['visits'], Array(MAX_STATS_ROWS + 1).fill(line)), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-2702.2: 오류에 자료가 섞이지 않는다', () => {
+    let error: unknown
+    try {
+      parseStatsRows(changedV3(['visits', 0, 0], chart(7)), REQ)
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(StatsDataError)
+    expect((error as Error).message).toBe(BAD_REPLY)
+    expect(String((error as Error).stack)).not.toContain(chart(7))
+  })
+})
+
+describe('AC-2702.2 toFirstVisits: 접수 줄의 첫 내원일 표', () => {
+  it('AC-2702.2: 환자 → 첫 내원일(YYYY-MM-DD)이고 첫 내원을 못 찾은 환자는 없다', () => {
+    const data = parseStatsRows(
+      JSON.stringify({
+        ...goodV3(),
+        summary: { ...good().summary, noFirst: 1 },
+        patientDays: [...good().patientDays, [chart(3), '20260903', 1, null]],
+      }),
+      REQ,
+    )
+    const ids = createPatientIds()
+    const one = ids.idOf(chart(1))
+    expect([...toFirstVisits(data, ids)]).toEqual([[one, '2026-09-01']])
   })
 })

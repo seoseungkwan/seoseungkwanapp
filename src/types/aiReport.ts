@@ -1,10 +1,11 @@
 // AI 월간 리포트(spec ai-report design.md '타입'). 서버·Claude에는 이 입력의 집계 숫자만 간다
 // ReportInput·ReportMetric은 열쇠 순서가 곧 지문이다(reportFingerprint가 JSON.stringify 순서를 본다) — 칸 차례를 바꾸지 않는다
 
-export type MetricKind = 'count' | 'visits' | 'rate' // count = 명(사람 수), visits = 건(접수 건수), rate = 0~1 비율
+// count = 명(사람 수), visits = 건(접수 건수), rate = 0~1 비율, won = 원 단위 정수 금액(원장님 매출), average = 문 연 날 하루 평균 접수 건수(소수 둘째 자리에서 반올림해 첫째 자리까지)
+export type MetricKind = 'count' | 'visits' | 'rate' | 'won' | 'average'
 
 export type ReportMetric = {
-  id: string // 'total.newPatients' · 'group:<id>.patients' · 'rx:<code>' · 'region:<이름>' · 'revisit.within7'
+  id: string // 'total.newPatients' · 'group:<id>.patients' · 'rx:<code>' · 'region:<이름>' · 'revisit.within7' · 'age:<이름>' · 'insurance:<이름>' · 'town:<이름>' · 'weekday:<1~7>' · 'hour:<8~20>' · 'doctor:<이름>.amount'
   label: string // '신환' · "처방 그룹 '도수치료' 환자" …
   kind: MetricKind
   values: { selected: number | null; prev: number | null; lastYear: number | null } // null = 그 달 자료 없음(비율은 집계 중일 수도)
