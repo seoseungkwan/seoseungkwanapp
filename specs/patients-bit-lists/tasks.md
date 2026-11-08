@@ -62,9 +62,9 @@
 ## TASK-7: 도우미 릴리스 (이 묶음 한 번)
 - REQ: REQ-2802
 - AC: AC-2802.5
-- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts
-- Tests: src/lib/bridge/handshake.test.ts
-- TDD: required — 도우미 버전 = `LATEST_HELPER` = 새 도구가 보는 `LIST_HELPER`(지금 시험이 같은지 본다). `MIN_HELPER`는 그대로
+- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/input-wiring.dotnet.test.ts
+- Tests: src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/input-wiring.dotnet.test.ts
+- TDD: required — 도우미 버전 = `LATEST_HELPER` = 새 도구가 보는 `LIST_HELPER`(지금 시험이 같은지 본다). `MIN_HELPER`는 그대로. 판을 글자로 못 박은 지금 시험 둘(`client.test.ts`의 hello 도우미 판 = 최신이라 알림 없음, `input-wiring.dotnet.test.ts` AC-035.7 릴리스 판)도 새 판으로 고친다 — 0.4.0 릴리스(251e1c3)도 같은 둘을 고쳤다(2026-11-08 구현 중 고침)
 - 차례: Phase 4 — 두 명세의 도우미 TASK가 모두 끝나고 사용자가 "만들어"라고 한 뒤에만. 옆 창의 도우미 바꿈과 버전을 합친다. 빌드는 GitHub Actions(`helper.yml`), 설치 안내는 그 뒤
 - 배포 순서(2026-11-08 검토): ① Supabase SQL Editor에 `20261108000000_message_templates_reservation.sql`을 붙인다 → ② 이 갈래의 웹을 배포한다 → ③ 그 뒤에만 도우미 새 버전을 만들어 의원 PC에 깐다(지금 사이트의 옛 웹은 v3 통계 답을 통째로 막는다). 같은 커밋에서 도우미 버전·`LATEST_HELPER`·`LIST_HELPER`를 같은 값으로 맞춘다
 
