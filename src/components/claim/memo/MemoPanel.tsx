@@ -37,7 +37,7 @@ const BAND = 'flex flex-col gap-1 rounded-control bg-warning-soft px-4 py-3'
 /** 보일 사람이 없을 때 왼쪽 글(AC-3101.7). 조건 안내가 있으면 그 글이 먼저다 */
 const EMPTY: Record<Show, string> = { all: '이 조건에 맞는 진료가 없어요.', todo: '모두 완료했어요.', done: '완료한 환자가 없어요.' }
 /**
- * 두 칸(AC-3101.1). 1024px 이상의 높이는 useFitHeight가 두 칸 위 끝을 재어 정한다(창 높이 − 위 끝 − 16px, 가장 작게 20rem).
+ * 두 칸(AC-3101.1). lg(64rem, 보통 1024px) 이상의 높이는 useFitHeight가 두 칸 위 끝을 재어 정한다(창 높이 − 위 끝 − 16px, 가장 작게 20rem).
  * 잴 수 없을 때만 이 class의 예전 높이(화면 높이 − 위에 붙는 띠·탭 줄과 아래 여백)다. 각 칸이 따로 스크롤되어 페이지가 목록 길이만큼 늘지 않는다
  */
 const SPLIT = 'grid min-w-0 overflow-clip rounded-control border border-line bg-surface lg:h-[max(30rem,calc(100dvh-8.5rem))] lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]'
@@ -131,7 +131,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   const shownRef = useRef<string | null>(null)
   const detailRef = useRef<HTMLElement>(null)
   const splitRef = useRef<HTMLDivElement>(null)
-  /** 두 칸 높이(AC-3101.1): 두 칸이 보이는 동안(보기가 왔고 결과 화면이 아님) 1024px 이상이면 위 끝을 재어 정한다 */
+  /** 두 칸 높이(AC-3101.1): 두 칸이 보이는 동안(보기가 왔고 결과 화면이 아님) lg(64rem) 이상이면 위 끝을 재어 정한다 */
   const fitHeight = useFitHeight(splitRef, view !== null && stage !== 'result')
   const selectionRef = useRef(selection)
   selectionRef.current = selection
@@ -583,10 +583,11 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
             )}
             <InputMode visible={visible} selection={selection} onSelection={setSelection} problem={targets.problem} chips={targets.chips} typedOverChip={targets.typedOverChip} locked={locked} />
           </section>
-          {/* 두 칸(AC-3101.1): 1024px 이상 나란히(왼쪽 360px)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
+          {/* 두 칸(AC-3101.1): lg(64rem) 이상 나란히(왼쪽 360px)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
           <div ref={splitRef} className={SPLIT} style={fitHeight === undefined ? undefined : { height: fitHeight }}>
             <div className="flex min-h-0 min-w-0 flex-col border-line max-lg:max-h-[40dvh] max-lg:border-b lg:border-r">
-              <MemoList groups={groups} counts={showCounts(targets)} show={show} selectedKey={shownKey} failed={failed} empty={targets.problem ?? EMPTY[show]} onShow={changeShow} onPick={pick} />
+              {/* 맞춘 높이를 주면 높이가 맞춰진 뒤 고른 줄이 보이게 목록을 한 번 더 움직인다(AC-3101.4: 점검 결과에서 온 아래쪽 사람이 숨지 않는다) */}
+              <MemoList groups={groups} counts={showCounts(targets)} show={show} selectedKey={shownKey} failed={failed} empty={targets.problem ?? EMPTY[show]} fitHeight={fitHeight} onShow={changeShow} onPick={pick} />
             </div>
             <section ref={detailRef} aria-label="고른 환자 메모" className="min-h-0 min-w-0 overflow-y-auto overscroll-contain px-5 py-4 max-md:px-4">
               {detail}

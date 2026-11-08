@@ -146,6 +146,21 @@ async function toMemo(view: ScreenView | MemoScreenView = memoView(), link = bri
   await screen.findByRole('region', { name: '입력 방식' })
   return { worker, channel, link, user, ...made }
 }
+/** 점검 결과에서 가상환자b의 [메모 확인에서 고치기]를 눌러 메모 칸으로 온다(AC-3105.6). 메모 칸은 그때마다 새로 그려진다 */
+async function fromCheck() {
+  const claim: ClaimView = { ...VIEW, visits: [visit('a'), { ...visit('b'), memo: { visitKey: 'b', text: '우리 메모 b', edited: false, missing: [], hasMemo: true, unfinished: false } }] }
+  const worker = fakeWorker(() => memoView(), claim)
+  const link = bridge()
+  render(<ClaimScreen channel={claimChannel(worker)} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} />)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
+  await user.click(await screen.findByRole('button', { name: '경고 없음 2' }))
+  await user.click(screen.getByRole('button', { name: '가상환자b' }))
+  expect(screen.getByText('메모 초안')).toBeTruthy()
+  await user.click(screen.getByRole('button', { name: '메모 확인에서 고치기' }))
+  const box = await screen.findByRole('textbox', { name: '가상환자b 우리 메모 고치기' })
+  return { worker, link, user, box }
+}
 const inputButton = (n = 2) => screen.getByRole('button', { name: `비트에 입력 (${n}명)` }) as HTMLButtonElement
 const lastRun = (worker: ReturnType<typeof fakeWorker>) => worker.of('buildInputBatch').at(-1)!.run
 const done = async (worker: ReturnType<typeof fakeWorker>, result: InputResultView) => {
@@ -229,7 +244,7 @@ describe('REQ-3101 두 칸 보기', () => {
     expect(split.style.height).toBe('') // jsdom은 위 끝을 재지 못한다(모두 0): 예전 높이 class가 맡는다
   })
 
-  describe('AC-3101.1 한 화면 높이', () => {
+  describe('AC-3101.1·AC-3101.4 한 화면 높이', () => {
     const own = (name: 'innerWidth' | 'innerHeight') => Object.getOwnPropertyDescriptor(window, name)
     const saved = { innerWidth: own('innerWidth'), innerHeight: own('innerHeight') }
     const setWindow = (width: number, height: number) => {
@@ -241,14 +256,34 @@ describe('REQ-3101 두 칸 보기', () => {
     beforeEach(() => {
       at.top = 0
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ x: 0, y: at.top, top: at.top, left: 0, right: 1200, bottom: at.top + 400, width: 1200, height: 400, toJSON: () => ({}) }))
+      // jsdom에는 matchMedia가 없다: CSS lg(64rem, 브라우저 기본 글자 16px)를 창 너비로 판정한다
+      Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: (query: string) => ({ media: query, matches: query === '(min-width: 64rem)' && window.innerWidth >= 64 * 16 }) })
     })
     afterEach(() => {
       vi.restoreAllMocks()
+      Reflect.deleteProperty(window, 'matchMedia')
+      delete (Element.prototype as Partial<Element>).scrollIntoView
       for (const name of ['innerWidth', 'innerHeight'] as const) {
         const descriptor = saved[name]
         if (descriptor) Object.defineProperty(window, name, descriptor)
         else Reflect.deleteProperty(window, name)
       }
+    })
+
+    it('AC-3101.4·AC-3105.6: 점검 결과의 [메모 확인에서 고치기]로 오면 두 칸 높이를 맞춘 뒤에 고른 줄이 보이게 목록을 움직인다(맞추기 전 높이로만 움직이면 아래쪽 줄이 목록 밖으로 숨는다)', async () => {
+      setWindow(1440, 900)
+      at.top = 262
+      /** scrollIntoView를 부른 줄과 그때 두 칸 높이(style.height) */
+      const calls: [Element, string][] = []
+      Element.prototype.scrollIntoView = function (this: Element) {
+        const split = this.closest('section[aria-label="환자 목록"]')!.parentElement!.parentElement!
+        calls.push([this, split.style.height])
+      }
+      await fromCheck()
+      await settle()
+      expect(detail().parentElement!.style.height).toBe('622px')
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls.at(-1)).toEqual([rowOf('가상환자b'), '622px'])
     })
 
     it('AC-3101.1: 1440×900 창에서 처음 열면 두 칸 높이는 창 높이 - 두 칸 위 끝 - 16px라 두 칸 아래 끝이 창 안에 들어온다', async () => {
@@ -808,17 +843,7 @@ describe('REQ-3105 오른쪽 상세', () => {
   })
 
   it('AC-3105.6: 점검 결과의 [메모 확인에서 고치기]로 오면 그 사람이 골라지고 고치는 칸이 열려 초점이 있다', async () => {
-    const claim: ClaimView = { ...VIEW, visits: [visit('a'), { ...visit('b'), memo: { visitKey: 'b', text: '우리 메모 b', edited: false, missing: [], hasMemo: true, unfinished: false } }] }
-    const worker = fakeWorker(() => memoView(), claim)
-    const link = bridge()
-    render(<ClaimScreen channel={claimChannel(worker)} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} />)
-    const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
-    await user.click(await screen.findByRole('button', { name: '경고 없음 2' }))
-    await user.click(screen.getByRole('button', { name: '가상환자b' }))
-    expect(screen.getByText('메모 초안')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: '메모 확인에서 고치기' }))
-    const box = await screen.findByRole('textbox', { name: '가상환자b 우리 메모 고치기' })
+    const { link, box } = await fromCheck()
     expect(document.activeElement).toBe(box)
     expect(shown()).toBe('가상환자b')
     expect(rowOf('가상환자b').getAttribute('aria-current')).toBe('true')

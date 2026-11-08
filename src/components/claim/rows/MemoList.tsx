@@ -66,17 +66,21 @@ export function MemoList(props: {
   failed: ReadonlySet<string>
   /** 보일 사람이 없을 때의 까닭 글(AC-3101.7). 어느 글인지는 화면이 정한다 */
   empty: string
+  /** 두 칸에 맞춘 높이(useFitHeight, 예: '622px'). 맞추기 전·좁은 창이면 없다 */
+  fitHeight?: string
   onShow(show: Show): void
   onPick(key: string): void
 }) {
-  const { counts, show, selectedKey, failed, empty, onShow, onPick } = props
+  const { counts, show, selectedKey, failed, empty, fitHeight, onShow, onPick } = props
   const groups = props.groups.filter((group) => group.rows.length > 0)
   const selected = useRef<HTMLButtonElement>(null)
 
-  // 고른 사람이 바뀔 때만 그 줄이 보이게 목록을 움직인다. 메모 보기를 다시 받아도(같은 사람) 목록 스크롤은 그대로다(AC-3101.4·AC-3101.8)
+  // 고른 사람이 바뀔 때와 두 칸 높이가 맞춰지거나 바뀔 때만 그 줄이 보이게 목록을 움직인다(AC-3101.4).
+  // 처음 열 때(점검 결과에서 온 사람 등) 높이는 이 움직임 뒤에 맞춰져 목록이 줄어든다: 줄어든 높이로 한 번 더 움직여야 아래쪽 줄이 숨지 않는다.
+  // 메모 보기를 다시 받아도(같은 사람·같은 높이) 목록 스크롤은 그대로다(AC-3101.8). nearest라 이미 보이는 줄이면 움직이지 않는다
   useEffect(() => {
     selected.current?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedKey])
+  }, [selectedKey, fitHeight])
 
   return (
     <section aria-label="환자 목록" className="flex min-h-0 min-w-0 flex-col">

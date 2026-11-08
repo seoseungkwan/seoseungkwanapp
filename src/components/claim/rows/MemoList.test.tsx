@@ -229,6 +229,20 @@ describe('REQ-3101 왼쪽 환자 목록', () => {
       view.rerender(<MemoList {...props} groups={SAMPLE()} selectedKey="L" />)
       expect(calls).toHaveLength(2)
     })
+
+    it('AC-3101.4: 두 칸 높이(fitHeight)가 맞춰지거나 바뀌면 그 높이로 고른 줄이 보이게 다시 움직이고, 같은 높이로 다시 그리면 움직이지 않는다', () => {
+      const { view, props } = show(SAMPLE(), { selectedKey: 'L' })
+      expect(calls).toHaveLength(1)
+      view.rerender(<MemoList {...props} fitHeight="622px" />)
+      expect(calls).toHaveLength(2)
+      expect(calls[1]).toEqual([lineOf('L'), { block: 'nearest' }])
+      // 메모 보기를 다시 받아도 높이가 같으면 목록 스크롤은 그대로다(AC-3101.8)
+      view.rerender(<MemoList {...props} groups={SAMPLE()} fitHeight="622px" />)
+      expect(calls).toHaveLength(2)
+      view.rerender(<MemoList {...props} groups={SAMPLE()} fitHeight="722px" />)
+      expect(calls).toHaveLength(3)
+      expect(calls[2]).toEqual([lineOf('L'), { block: 'nearest' }])
+    })
   })
 
   it('AC-3101.4: scrollIntoView가 없는 환경에서도 고른 줄을 그린다', () => {
