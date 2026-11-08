@@ -37,7 +37,7 @@
 - AC: AC-2904.1, AC-2904.2, AC-2904.3, AC-2904.4, AC-2904.5, AC-2905.1, AC-2905.2, AC-2905.3, AC-2905.4
 - Files: src/types/aiReport.ts, src/lib/ai/input.ts, src/lib/ai/input.test.ts, src/lib/ai/basis.ts, src/lib/ai/basis.test.ts, src/lib/ai/prompt.ts, src/lib/ai/prompt.test.ts, src/lib/ai/output.ts, src/lib/ai/output.test.ts
 - Tests: src/lib/ai/input.test.ts, src/lib/ai/basis.test.ts, src/lib/ai/prompt.test.ts, src/lib/ai/output.test.ts
-- TDD: required — sections 없는 고른 달은 지금 입력·지문과 글자 그대로 같음, 지표 차례·ID·이름·kind, 보험 상위 10·동네 모두, 비교 달 값(sections 없음 null·보험/동네 줄 없음 null·원장님 줄 없음 0), 평균 나누기와 둘째 자리 반올림·나누는 수 0이면 null, 근거 줄 `12,345,000원`·`14.3건`·`0건`·`자료 없음`, 지시문 새 규칙 글, 새 지표 ID를 쓴 카드는 받고 없는 ID는 버림, 새 이름 지표의 숫자 든 이름('40대'·'오전 9시'·'의료급여 1종')을 쓴 카드는 받고 그 밖의 숫자는 버림(AC-2905.4)
+- TDD: required — sections 없는 고른 달은 지금 입력·지문과 글자 그대로 같음, 지표 차례·ID·이름·kind, 보험 상위 10·동네 모두, 비교 달 값(sections 없음 null·보험/동네 줄 없음 null·원장님 줄 없음 0·그 달 원장님 줄이 하나도 없으면 null), 평균 나누기와 둘째 자리 반올림·나누는 수 0이면 null, 근거 줄 `12,345,000원`·`14.3건`·`0건`·`자료 없음`, 지시문 새 규칙 글, 새 지표 ID를 쓴 카드는 받고 없는 ID는 버림, 새 이름 지표의 숫자 든 이름('40대'·'오전 9시'·'의료급여 1종')을 쓴 카드는 받고 그 밖의 숫자는 버림(AC-2905.4)
 
 ## TASK-6: AI 서버가 sections 읽기
 - REQ: REQ-2903, REQ-2906
