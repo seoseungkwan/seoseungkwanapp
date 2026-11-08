@@ -1,7 +1,7 @@
 import { ds } from '@/components/ui/classes'
 import type { StuckPerson, StuckView } from '@/types/precheck'
 import { dayLabel } from '../dateList'
-import { LEFT_GROUPS } from './MemoRows'
+import { LEFT_GROUPS } from './leftGroups'
 
 // 쓰다 멈춘 사람 띠(AC-018.16, 빠진 화면 승인 목업 1번). 화면 맨 위 띠 하나이고 단추는 띠에 하나씩이며 쓰다 멈춘 사람 모두에게 한 번에 적용된다.
 // 하나만 눌릴 때는 그 단추를 파랗게 한다. 자리 채움 값은 Worker가 도우미에 보낼 때만 쓰고 여기 오지 않는다(AC-018.15)
