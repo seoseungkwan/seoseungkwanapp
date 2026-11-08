@@ -17,13 +17,19 @@ const CODES: Record<string, MemoCode> = {
   B20: { n: '아라간', k: 'drug', rg: null, cartilage: true },
   C30: { n: '덱사', k: 'drug', rg: null },
 }
-function Harness({ start, onChange }: { start: Value; onChange?: (next: Value) => void }) {
+function Harness({ start, onChange, onSingleOwner }: { start: Value; onChange?: (next: Value) => void; onSingleOwner?: (next: boolean) => void }) {
   const [value, setValue] = useState(start)
+  const [singleOwner, setSingleOwner] = useState(true)
   return (
     <ProcedureDrugs
       codes={CODES}
       value={value}
       errors={[]}
+      singleOwnerDrug={singleOwner}
+      onSingleOwnerDrugChange={(next) => {
+        setSingleOwner(next)
+        onSingleOwner?.(next)
+      }}
       onChange={(next) => {
         setValue(next)
         onChange?.(next)
@@ -60,7 +66,30 @@ describe('AC-018.19 시술별 약', () => {
   })
 
   it('AC-018.19: 틀린 칸의 글을 보인다', () => {
-    render(<ProcedureDrugs codes={CODES} value={{}} errors={[{ path: 'procedureDrugs.LA358.리도카인.place', message: '약을 넣을 자리를 골라 주세요.' }]} onChange={() => {}} />)
+    render(<ProcedureDrugs codes={CODES} value={{}} errors={[{ path: 'procedureDrugs.LA358.리도카인.place', message: '약을 넣을 자리를 골라 주세요.' }]} singleOwnerDrug onSingleOwnerDrugChange={() => {}} onChange={() => {}} />)
     expect(screen.getByText('약을 넣을 자리를 골라 주세요.')).toBeTruthy()
+  })
+})
+
+describe('AC-3002.6 시술 2개 이상인 날의 약', () => {
+  const NAME = "시술이 2개 이상인 날, '넣기'인 시술이 하나뿐이면 그 시술 줄에 자동으로 넣기"
+
+  it('AC-3002.6: 안내 글이 새 규칙을 말하고 옛 규칙 글은 없다', () => {
+    render(<Harness start={{}} />)
+    const box = screen.getByRole('checkbox', { name: NAME })
+    const help = document.getElementById(box.getAttribute('aria-describedby') ?? '')
+    expect(help?.textContent).toBe('넣기인 시술이 2곳 이상이거나 아직 안 정한 시술이 있으면 [약 확인]을 남겨요. 모든 시술에서 빼기면 빼요. 끄면 시술이 2개 이상인 날은 늘 [약 확인]을 남겨요.')
+    expect(screen.queryByText(/약을 자동으로 넣지 않아요/)).toBeNull()
+  })
+
+  it('AC-3002.6: 켜고 끄는 칸이 값을 따르고 누르면 알린다', async () => {
+    const user = userEvent.setup()
+    const onSingleOwner = vi.fn()
+    render(<Harness start={{}} onSingleOwner={onSingleOwner} />)
+    const box = screen.getByRole('checkbox', { name: NAME }) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    await user.click(box)
+    expect(onSingleOwner).toHaveBeenLastCalledWith(false)
+    expect(box.checked).toBe(false)
   })
 })
