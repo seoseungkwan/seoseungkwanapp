@@ -73,8 +73,8 @@ export type ClaimChannel = {
   ask<A extends Answer>(message: Asked): Promise<A>
   /** 입력 묶음을 시킨다. 시작 답과 끝 답을 함께 기다린다 */
   startInput(run: number, what: InputWhat, selection: InputSelection): { started: Promise<Extract<PrecheckToScreen, { type: 'inputStart' }>>; finished: Promise<Extract<PrecheckToScreen, { type: 'inputDone' }>> }
-  /** 답이 없는 메시지(editMemo·memoApprove·memoSaveRetry) */
-  tell(message: Extract<PrecheckFromScreen, { type: 'editMemo' | 'memoApprove' | 'memoSaveRetry' }>): void
+  /** 답이 없는 메시지(editMemo·memoApprove·memoSaveRetry·memoCopied·memoUndone) */
+  tell(message: Extract<PrecheckFromScreen, { type: 'editMemo' | 'memoApprove' | 'memoSaveRetry' | 'memoCopied' | 'memoUndone' }>): void
   /** 저장 결과(memoSave)를 듣는다 */
   onSave(fn: (answer: MemoSaveAnswer) => void): () => void
   /** 입력 중인가. 입력하는 동안 떠나면 결과가 오지 않으므로 맡긴 결과를 버린다(AC-013.6) */

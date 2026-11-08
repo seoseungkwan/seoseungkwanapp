@@ -3544,6 +3544,210 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
     })
   })
 
+  // ── 복사(완료)·완료 풀기(REQ-3104): 화면이 클립보드에 복사한 뒤 알린다. 완료 저장 자리는 자동 입력 '완료'와 같은 달 칸 done이다 ──
+  describe('REQ-3104 복사로 완료·완료 풀기', () => {
+    const copied = (made: Made, key: string, text: string) => made.jobs.fromScreen({ type: 'memoCopied', visitKey: key, text } satisfies PrecheckFromScreen)
+    const undone = (made: Made, key: string) => made.jobs.fromScreen({ type: 'memoUndone', visitKey: key } satisfies PrecheckFromScreen)
+    const edit = (made: Made, key: string, text: string) => made.jobs.fromScreen({ type: 'editMemo', visitKey: key, text } satisfies PrecheckFromScreen)
+    const saves = (made: Made) => sends(made, 'store.save').map((m) => JSON.parse(m.payload) as Record<string, unknown>)
+    /** 목록에서 그 사람의 자리: 묶음(입력할 사람은 'batch')·그 안의 차례·줄의 done */
+    const placeOf = (view: MemoScreenView, key: string) => {
+      const groups = [{ group: 'batch', rows: view.targets.batch }, ...view.targets.left.map((left) => ({ group: left.reason as string, rows: left.rows }))]
+      for (const { group, rows } of groups) {
+        const index = rows.findIndex((row) => row.key === key)
+        if (index >= 0) return { group, index, done: rows[index].done }
+      }
+      return null
+    }
+    /** 다시 [자료 불러오기]: 도우미가 그 PC에 둔 달 칸을 store.load로 돌려준다 */
+    const reloadAll = async (made: Made, load: number, store: Partial<StoreMonthJson>, bit: MemoRowRaw[] = []) => {
+      await made.jobs.fromScreen({ type: 'loadStart', load, keepEdits: true } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `m${load}`, MEMO_MONTH)
+      await made.jobs.fromScreen({ type: 'month', id: `m${load}`, load } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `b${load}`, memosJson(bit))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: `b${load}`, load } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `s${load}`, storeJson(store))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'store', id: `s${load}`, load } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: load, load, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+    }
+
+    it('AC-3104.1: 지금 우리 메모와 같은 글을 복사하면 자동 입력 완료처럼 완료로 두고 그 달 칸 done에 그 글을 실어 store.save로 보낸다(화면에는 아무것도 보내지 않는다)', async () => {
+      const made = await ready({ store: { drafts: { other: '파일 글' }, done: { older: '완료 글' } } })
+      const text = rowOf(await viewOf(made), A.key).text
+      made.posts.length = 0
+      await copied(made, A.key, text)
+      expect(saves(made)).toEqual([{ month: '2026-10', drafts: { other: '파일 글' }, done: { older: '완료 글', [A.key]: text } }])
+      expect(made.posts).toEqual([]) // 날짜별 건수도 다시 보내지 않는다(범위 밖)
+      expect(rowOf(await viewOf(made), A.key)).toMatchObject({ done: true, text })
+    })
+
+    it('AC-3104.4: 복사로 새로 완료한 사람은 메모 보기를 다시 만들어도 완료 전과 같은 묶음·같은 차례에 있고 줄에 done이 켜져 있다', async () => {
+      const made = await ready({ bit: [memoRow(B, '비트 글')] })
+      const before = await viewOf(made)
+      expect(placeOf(before, A.key)).toMatchObject({ group: 'batch', done: false })
+      expect(before.targets.batch.find((row) => row.key === B.key)).toMatchObject({ chip: '메모 바꿈', done: false })
+      await copied(made, A.key, rowOf(before, A.key).text)
+      await copied(made, B.key, rowOf(before, B.key).text)
+      const view = await viewOf(made)
+      expect(batchKeys(view)).toEqual(batchKeys(before))
+      expect(placeOf(view, A.key)).toEqual({ ...placeOf(before, A.key)!, done: true })
+      expect(placeOf(view, B.key)).toEqual({ ...placeOf(before, B.key)!, done: true })
+      expect(view.targets.batch.find((row) => row.key === B.key)?.chip).toBe('메모 바꿈')
+      expect(keysIn(view, 'done')).not.toEqual(expect.arrayContaining([A.key]))
+      expect(keysIn(view, 'done')).not.toEqual(expect.arrayContaining([B.key]))
+      expect(rowOf(view, A.key).done).toBe(true)
+      expect(rowOf(view, B.key).done).toBe(true)
+    })
+
+    it('AC-3104.1: 복사한 글이 지금 우리 메모와 다르거나, 확인 표시가 남았거나, 빈 메모·메모 없는 진료·없는 진료면 아무것도 바꾸지 않고 보내지 않는다', async () => {
+      const made = await ready({ store: { drafts: { [B.key]: '[부위 확인] 글', [C.key]: ' ', [NO_MEMO]: '사람이 친 글' } } })
+      const before = await viewOf(made)
+      const text = rowOf(before, A.key).text
+      expect(rowOf(before, B.key)).toMatchObject({ unfinished: true })
+      await copied(made, A.key, `${text} 더한 글`) // 화면이 쥔 글이 Worker의 글과 다르다
+      await copied(made, B.key, '[부위 확인] 글')
+      await copied(made, C.key, ' ')
+      await copied(made, NO_MEMO, '사람이 친 글')
+      await copied(made, 'gone', '글')
+      expect(made.sent).toEqual([])
+      const view = await viewOf(made)
+      for (const key of [A.key, B.key, C.key, NO_MEMO]) expect(rowOf(view, key).done).toBe(false)
+      expect(placeOf(view, A.key)).toEqual(placeOf(before, A.key))
+      expect(keysIn(view, 'mark')).toContain(B.key)
+      expect(keysIn(view, 'nomemo')).toEqual(expect.arrayContaining([C.key, NO_MEMO]))
+      expect(itemIn(await press(made), A.key)).toMatchObject({ memo: text })
+    })
+
+    it('AC-3104.1·AC-3104.4: 이미 완료한 사람(완료 표시·비교 같음·복사로 완료)을 다시 복사하면 바꾸지 않고 보내지 않으며 자리도 그대로다', async () => {
+      const auto = rowOf(await viewOf(await ready()), C.key).text
+      const made = await ready({ bit: [memoRow(C, auto)], store: { done: { [A.key]: '완료 글' } } })
+      const before = await viewOf(made)
+      expect(placeOf(before, A.key)).toMatchObject({ group: 'done', done: true })
+      expect(placeOf(before, C.key)).toMatchObject({ group: 'done', done: true })
+      await copied(made, A.key, '완료 글')
+      await copied(made, C.key, auto)
+      expect(made.sent).toEqual([])
+      const between = await viewOf(made)
+      expect(placeOf(between, A.key)).toEqual(placeOf(before, A.key))
+      expect(placeOf(between, C.key)).toEqual(placeOf(before, C.key))
+      // 복사로 완료한 B를 다시 복사해도 한 번만 보낸다
+      const text = rowOf(before, B.key).text
+      await copied(made, B.key, text)
+      expect(saves(made)).toHaveLength(1)
+      made.sent.length = 0
+      await copied(made, B.key, text)
+      expect(made.sent).toEqual([])
+      expect(placeOf(await viewOf(made), B.key)).toEqual({ ...placeOf(before, B.key)!, done: true })
+    })
+
+    it('AC-3104.1: 고쳐 완료를 푼 사람을 저장 답 전에 복사로 다시 완료하면 남은 고친 글에 완료 풀림이 남지 않아, 고친 메모를 남겨 다시 불러와도 완료다', async () => {
+      const made = await ready({ bit: [memoRow(A, '넣은 글')], store: { done: { [A.key]: '넣은 글' }, journal: { [A.key]: 'done' } } })
+      await edit(made, A.key, '고친 글')
+      expect(rowOf(await viewOf(made), A.key).done).toBe(false)
+      await copied(made, A.key, '고친 글')
+      expect(saves(made).at(-1)).toMatchObject({ done: { [A.key]: '고친 글' } })
+      for (const save of sends(made, 'store.save')) await made.jobs.fromPort({ type: 'sent', ticket: save.ticket, ok: false, code: 'E-STORE-FAILED' })
+      await reloadAll(made, 2, { done: { [A.key]: '넣은 글' }, journal: { [A.key]: 'done' } }, [memoRow(A, '넣은 글')])
+      const view = await viewOf(made)
+      expect(rowOf(view, A.key)).toMatchObject({ done: true, text: '고친 글' })
+      expect(keysIn(view, 'done')).toContain(A.key)
+    })
+
+    it('AC-3104.2: [완료 풀기]는 복사로 한 완료와 불러온 완료 표시를 고쳐 푼 것처럼 푼다: 그 달 칸 done에 false를 두어 store.save로 보내고 다시 입력할 사람이다', async () => {
+      const made = await ready({ store: { drafts: { other: '파일 글' }, done: { [C.key]: 'C 완료 글' } } })
+      const before = await viewOf(made)
+      expect(placeOf(before, C.key)).toMatchObject({ group: 'done', done: true })
+      const text = rowOf(before, A.key).text
+      await copied(made, A.key, text)
+      made.sent.length = 0
+      made.posts.length = 0
+      await undone(made, A.key)
+      expect(saves(made)).toEqual([{ month: '2026-10', drafts: { other: '파일 글' }, done: { [A.key]: false, [C.key]: 'C 완료 글' } }])
+      made.sent.length = 0
+      await undone(made, C.key)
+      expect(saves(made)).toEqual([{ month: '2026-10', drafts: { other: '파일 글' }, done: { [A.key]: false, [C.key]: false } }])
+      expect(made.posts).toEqual([])
+      const view = await viewOf(made)
+      expect(placeOf(view, A.key)).toEqual(placeOf(before, A.key))
+      expect(rowOf(view, A.key).done).toBe(false)
+      expect(placeOf(view, C.key)).toMatchObject({ group: 'batch', done: false })
+      expect((await press(made)).payload?.items.map((item) => item.visitKey)).toEqual(expect.arrayContaining([A.key, C.key]))
+    })
+
+    it('AC-3104.2·AC-3104.3: 비교가 같음이라 완료인 사람과 완료가 아닌 사람은 [완료 풀기]를 받아도 아무것도 하지 않는다', async () => {
+      const auto = rowOf(await viewOf(await ready()), C.key).text
+      const made = await ready({ bit: [memoRow(A, '넣은 글'), memoRow(C, auto)], store: { done: { [A.key]: '넣은 글' }, journal: { [A.key]: 'done' } } })
+      const before = await viewOf(made)
+      expect(rowOf(before, A.key)).toMatchObject({ compare: '같음', done: true })
+      expect(rowOf(before, C.key)).toMatchObject({ compare: '같음', done: true })
+      await undone(made, A.key) // 완료 표시도 있지만 비트 메모가 같아 풀어도 다시 완료다
+      await undone(made, C.key)
+      await undone(made, B.key)
+      await undone(made, 'gone')
+      expect(made.sent).toEqual([])
+      const view = await viewOf(made)
+      expect(placeOf(view, A.key)).toEqual(placeOf(before, A.key))
+      expect(placeOf(view, C.key)).toEqual(placeOf(before, C.key))
+      expect(placeOf(view, B.key)).toEqual(placeOf(before, B.key))
+    })
+
+    it('AC-3104.2·AC-3104.4: 복사로 완료한 뒤 [완료 풀기]를 하면 자리 지키기도 풀린다: 그 뒤 자동 입력으로 완료되면 이미 입력됨에 든다', async () => {
+      const made = await ready()
+      await copied(made, A.key, rowOf(await viewOf(made), A.key).text)
+      await undone(made, A.key)
+      const run = await press(made)
+      expect(itemIn(run, A.key)).toBeDefined()
+      await finish(made, run.ticket, { status: 'finished', results: [line(A, '완료', '입력')] })
+      expect(placeOf(await viewOf(made), A.key)).toMatchObject({ group: 'done', done: true })
+    })
+
+    it('AC-3104.5: 복사로 완료한 사람은 보기에서 자리를 지켜도 [비트에 입력] 묶음에 들지 않고, 바뀌는 다른 메모 수에서도 빠진다', async () => {
+      const made = await ready({ bit: [memoRow(B, '비트 글')] })
+      const before = await viewOf(made)
+      expect(before.targets.replacing).toBeGreaterThan(0)
+      await copied(made, A.key, rowOf(before, A.key).text)
+      await copied(made, B.key, rowOf(before, B.key).text)
+      const view = await viewOf(made)
+      expect(batchKeys(view)).toEqual(batchKeys(before))
+      expect(view.targets.replacing).toBe(before.targets.replacing - 1)
+      const { payload } = await press(made)
+      const rest = batchKeys(before).filter((key) => key !== A.key && key !== B.key)
+      expect(payload?.items.map((item) => item.visitKey)).toEqual(rest)
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', ok: true, count: rest.length })
+    })
+
+    it('AC-3104.5: 입력할 사람을 모두 복사로 완료하면 0명 안내가 나오고 [비트에 입력]은 묶음을 보내지 않는다', async () => {
+      const first = await viewOf(await ready())
+      const others = first.table.filter((row) => ![A.key, B.key, C.key].includes(row.key)).map((row) => row.key)
+      const made = await ready({ store: { done: Object.fromEntries(others.map((key) => [key, true])) } })
+      const before = await viewOf(made)
+      expect(batchKeys(before)).toEqual([A.key, B.key, C.key])
+      for (const key of [A.key, B.key, C.key]) await copied(made, key, rowOf(before, key).text)
+      const view = await viewOf(made)
+      expect(batchKeys(view)).toEqual([A.key, B.key, C.key])
+      expect(view.targets.problem).toBe('10/12에 입력할 환자가 없습니다. (완료한 환자와 메모가 없는 환자는 뺍니다)')
+      const { payload } = await press(made)
+      expect(payload).toBeNull()
+      expect(made.posts.at(-1)).toMatchObject({ type: 'inputStart', ok: false })
+    })
+
+    it('AC-3104.7·AC-3104.4: 복사로 한 완료는 다시 [자료 불러오기]를 해도 남고(도우미가 그 PC에 둔 달 칸), 새 불러오기에서는 자리 지키기를 잊고 이미 입력됨에 든다', async () => {
+      const made = await ready()
+      const before = await viewOf(made)
+      const text = rowOf(before, A.key).text
+      await copied(made, A.key, text)
+      expect(sends(made, 'store.save')).toHaveLength(1)
+      const [save] = saves(made) as { drafts: Record<string, string>; done: Record<string, string | boolean> }[]
+      await made.jobs.fromPort({ type: 'sent', ticket: sends(made, 'store.save')[0].ticket, ok: true })
+      expect(placeOf(await viewOf(made), A.key)).toEqual({ ...placeOf(before, A.key)!, done: true })
+      await reloadAll(made, 2, { drafts: save.drafts, done: save.done }) // 도우미가 저장해 둔 그대로 돌려준다
+      const view = await viewOf(made)
+      expect(placeOf(view, A.key)).toMatchObject({ group: 'done', done: true })
+      expect(rowOf(view, A.key)).toMatchObject({ done: true, text })
+      expect(batchKeys(view)).not.toContain(A.key)
+    })
+  })
+
   // ── 건수(REQ-019): Worker가 언제 무엇을 화면에 보내나. 올리기는 useCountsUpload.test.ts ──
   describe('AC-019 날짜별 건수', () => {
     const countsIn = (posts: readonly PrecheckToScreen[]) => posts.flatMap((m) => (m.type === 'dayCounts' ? [m.rows] : []))
