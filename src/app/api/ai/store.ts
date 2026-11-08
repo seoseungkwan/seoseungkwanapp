@@ -13,12 +13,15 @@ import type { AiUsage, AiUsageView, SavedReport } from '@/types/aiReport'
 // 오류 내용은 버린다(숫자·글자가 섞일 수 있다). 쓰기 실패는 false로만 알리고 흐름(generate.ts)이 E-AI-FAILED로 바꾼다.
 // 리포트·사용량 읽기 실패는 'failed'로만, 통계 숫자 읽기 실패는 고정 글의 던짐으로만 알린다
 
-// 세 달은 unknown이다 — DB에서 읽은 것도 믿지 않는다. 검사는 generate.ts가 validateMonthPayload로 한다
+// 세 달은 unknown이다 — DB에서 읽은 것도 믿지 않는다. 검사는 generate.ts가 validateMonthPayload로 한다.
+// sections(세 칸 달 합계, spec stats-bit-ai AC-2903.1)도 unknown 그대로 넘기고 generate.ts가 validateMonthSections로 검사한다.
+// loadReportMonths는 sections를 늘 채운다(없는 달은 null). 타입만 선택 칸이다 — 이 칸이 없는 값은 세 달 모두 없음으로 본다
 export type ReportMonths = {
   selected: unknown | null
   prev: unknown | null
   lastYear: unknown | null
   groupNames: Record<string, string>
+  sections?: { selected: unknown | null; prev: unknown | null; lastYear: unknown | null }
 }
 
 // 고정 오류 글. 받은 오류 내용은 담지 않는다
@@ -28,7 +31,7 @@ const GROUPS_SHAPE_FAILED = 'stats groups shape failed'
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 // 통계 탭이 저장한 숫자(spec ai-report-stats REQ-2001·2002). 읽기 둘을 함께 보낸다:
-// ① stats_months의 고른 달·지난달·작년 같은 달 줄(payload는 검사하지 않고 그대로 넘긴다 — generate.ts가 validateMonthPayload로 검사한다)
+// ① stats_months의 고른 달·지난달·작년 같은 달 줄(payload·sections는 검사하지 않고 그대로 넘긴다 — generate.ts가 검사한다)
 // ② stats_rx_groups의 처방별 추세 묶음 → groupKey(codes) → 이름(처방 코드는 여기서 버린다)
 // 읽기가 error를 돌려주거나 던지거나 답 모양이 다르면 고정 글로 던진다(generateReport는 E-AI-FAILED, isReportStale은 false로 바꾼다).
 // 달 계산은 addMonths만 쓴다(오늘 날짜를 구하지 않는다). 부를 때마다 새 값을 돌려준다(groupNames를 고쳐도 다음 부름에 번지지 않게)
@@ -38,7 +41,7 @@ export async function loadReportMonths(supabase: SupabaseClient, month: string):
   let groupRows: unknown
   try {
     const [months, groups] = await Promise.all([
-      supabase.from('stats_months').select('month, payload').in('month', wanted),
+      supabase.from('stats_months').select('month, payload, sections').in('month', wanted),
       supabase.from('stats_rx_groups').select('name, codes, sort_order'),
     ])
     if (months.error || groups.error) throw new Error(STATS_READ_FAILED)
@@ -48,19 +51,29 @@ export async function loadReportMonths(supabase: SupabaseClient, month: string):
     throw new Error(STATS_READ_FAILED)
   }
   const [selected, prev, lastYear] = monthsIn(monthRows, wanted)
-  return { selected, prev, lastYear, groupNames: groupNamesOf(groupRows) }
+  return {
+    selected: selected.payload,
+    prev: prev.payload,
+    lastYear: lastYear.payload,
+    groupNames: groupNamesOf(groupRows),
+    sections: { selected: selected.sections, prev: prev.sections, lastYear: lastYear.sections },
+  }
 }
 
-// 달 줄 → 세 칸(wanted 차례). month가 세 달 가운데 하나인 글자인 줄만 그 달 칸에 넣고, 같은 달이 둘이면 앞 줄을 쓴다. 없는 달은 null
-function monthsIn(rows: unknown, wanted: readonly string[]): unknown[] {
+type MonthCells = { payload: unknown; sections: unknown }
+const NO_MONTH: MonthCells = { payload: null, sections: null }
+
+// 달 줄 → 세 칸(wanted 차례). month가 세 달 가운데 하나인 글자인 줄만 그 달 칸에 넣고, 같은 달이 둘이면 앞 줄을 쓴다.
+// 없는 달은 payload·sections 모두 null, 줄에 칸이 없거나 null이면 그 칸만 null
+function monthsIn(rows: unknown, wanted: readonly string[]): MonthCells[] {
   if (!Array.isArray(rows)) throw new Error(STATS_READ_FAILED)
-  const found = new Map<string, unknown>()
+  const found = new Map<string, MonthCells>()
   for (const row of rows) {
     if (typeof row !== 'object' || row === null) continue
-    const { month, payload } = row as Record<string, unknown>
-    if (typeof month === 'string' && wanted.includes(month) && !found.has(month)) found.set(month, payload ?? null)
+    const { month, payload, sections } = row as Record<string, unknown>
+    if (typeof month === 'string' && wanted.includes(month) && !found.has(month)) found.set(month, { payload: payload ?? null, sections: sections ?? null })
   }
-  return wanted.map((m) => (found.has(m) ? found.get(m) : null))
+  return wanted.map((m) => found.get(m) ?? NO_MONTH)
 }
 
 type GroupRow = { name: string; codes: string[]; sortOrder: number }

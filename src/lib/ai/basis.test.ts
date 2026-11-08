@@ -165,3 +165,40 @@ describe('basisLine — 접수 건수는 "건" (REQ-2004)', () => {
     )
   })
 })
+
+// 원장님 매출(won)·하루 평균 접수(average) 근거 줄 (spec stats-bit-ai AC-2905.1). 글자는 통계 화면 원장님별·시간대별 접수와 같다
+describe('basisLine — 원장님 매출·하루 평균 (AC-2905.1)', () => {
+  const won = (values: Values): ReportMetric => ({ id: 'doctor:김가상.amount', label: "원장님 '김가상' 매출", kind: 'won', values })
+  const average = (values: Values): ReportMetric => ({ id: 'weekday:1', label: "요일 '월' 하루 평균 접수", kind: 'average', values })
+
+  it('AC-2905.1 won은 formatCount(값)원이다(세 자리마다 쉼표, 0이면 0원)', () => {
+    expect(basisLine(won({ selected: 12345000, prev: 11000000, lastYear: 0 }), october())).toBe(
+      "근거 · 원장님 '김가상' 매출 9월 11,000,000원 → 10월 12,345,000원 · 작년 10월 0원",
+    )
+  })
+
+  it('AC-2905.1 won이 음수(환불이 더 많은 달)면 통계 화면과 같은 빼기 기호(−)다', () => {
+    expect(basisLine(won({ selected: -50000, prev: 0, lastYear: 3000 }), october())).toBe(
+      "근거 · 원장님 '김가상' 매출 9월 0원 → 10월 −50,000원 · 작년 10월 3,000원",
+    )
+  })
+
+  it('AC-2905.1 average는 averageText(값)건이다(소수 한 자리로 반올림: 14.29 → 14.3건, 8.33 → 8.3건, 10 → 10.0건)', () => {
+    expect(basisLine(average({ selected: 14.29, prev: 8.33, lastYear: 10 }), october())).toBe(
+      "근거 · 요일 '월' 하루 평균 접수 9월 8.3건 → 10월 14.3건 · 작년 10월 10.0건",
+    )
+  })
+
+  it("AC-2905.1 average가 0이면 '0건'이다(화면 칸의 '–'가 아니다)", () => {
+    expect(basisLine(average({ selected: 0.43, prev: 0, lastYear: 0 }), october())).toBe("근거 · 요일 '월' 하루 평균 접수 9월 0건 → 10월 0.4건 · 작년 10월 0건")
+  })
+
+  it("AC-2905.1 won·average가 null이면 그 달 자료가 있어도 '자료 없음'이다(비율의 '집계 중'이 아니다)", () => {
+    expect(basisLine(won({ selected: 12345000, prev: null, lastYear: null }), october())).toBe(
+      "근거 · 원장님 '김가상' 매출 9월 자료 없음 → 10월 12,345,000원 · 작년 10월 자료 없음",
+    )
+    expect(basisLine(average({ selected: null, prev: null, lastYear: 7.5 }), october())).toBe(
+      "근거 · 요일 '월' 하루 평균 접수 9월 자료 없음 → 10월 자료 없음 · 작년 10월 7.5건",
+    )
+  })
+})

@@ -1,11 +1,11 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { isErrorCode } from '@/lib/errors'
-import { validateMonthPayload } from '@/lib/payload/validate'
-import type { AiErrorCode, ReportInput, ReportMetric } from '@/types/aiReport'
+import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
+import type { AiErrorCode, MetricKind, ReportInput, ReportMetric } from '@/types/aiReport'
 import type { ErrorCode } from '@/types/errors'
-import type { MonthPayload } from '@/types/payload'
+import type { MonthPayload, MonthSections } from '@/types/payload'
 import { basisLine } from './basis'
-import { TOP_REGIONS, TOP_RX, buildReportInput, reportFingerprint, type ValidReportMonths } from './input'
+import { TOP_INSURANCE, TOP_REGIONS, TOP_RX, buildReportInput, reportFingerprint, type ValidReportMonths } from './input'
 
 // 시험 자료는 여기서 손으로 만든 가짜 숫자다(처방코드는 FAKE-…). 쓰기 전에 validateMonthPayload를 통과하는지 본다
 
@@ -525,5 +525,321 @@ describe('AC-505.6 처방 이름이 빈 글자이거나 빈칸뿐이면 지표 �
   it('AC-505.6 이름이 전각 빈칸과 탭뿐이어도 코드를 쓴다', () => {
     const input = buildReportInput(only(withRxName('\u3000\t')))
     expect(metricOf(input, 'rx:FAKE-X09').label).toBe("처방 'FAKE-X09' 환자")
+  })
+})
+
+// ── 통계 비트 세 칸 지표 (spec stats-bit-ai REQ-2904) ──
+// 시험 자료는 손으로 만든 가짜 숫자다(원장님 이름도 가짜). 쓰기 전에 validateMonthSections를 통과하는지 본다
+
+type PeopleRow = { name: string; people: number }
+type SectionsFields = {
+  month: string
+  partial?: boolean
+  age: number[]
+  insurance?: PeopleRow[]
+  town?: PeopleRow[]
+  openDays: number[]
+  weekdays: number[]
+  hours: number[]
+  doctors?: MonthSections['doctors']
+}
+
+const AGE_NAMES = ['10세 미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80세 이상', '생년월일 없음']
+const WEEKDAY_IDS = [1, 2, 3, 4, 5, 6, 7].map((day) => `weekday:${day}`)
+const HOUR_IDS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((hour) => `hour:${hour}`)
+const sumOf = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)
+
+function sections(fields: SectionsFields): MonthSections {
+  const value: MonthSections = {
+    v: 1,
+    month: fields.month,
+    partial: fields.partial ?? false,
+    mix: {
+      people: sumOf(fields.age),
+      age: AGE_NAMES.map((name, i) => ({ name, people: fields.age[i] })),
+      insurance: fields.insurance ?? [],
+      town: fields.town ?? [],
+    },
+    hours: { openDays: fields.openDays, weekdays: fields.weekdays, hours: fields.hours, unknown: 2 },
+    doctors: fields.doctors ?? [],
+  }
+  const checked = validateMonthSections(value)
+  if (checked === null) throw new Error(`시험 세 칸 자료가 검사를 통과하지 못함: ${fields.month}`)
+  return checked
+}
+
+// 고른 달: 보험·동네는 일부러 명 큰 차례가 아니게 둔다. 일요일은 문을 안 열었다(→ null). 화·수는 문 연 날이 셋이라 나누어떨어지지 않는다. 문 연 날 합 23
+const SELECTED_SECTIONS: SectionsFields = {
+  month: '2026-10',
+  partial: true,
+  age: [2, 3, 5, 10, 20, 25, 15, 10, 5, 5],
+  insurance: [
+    { name: '의료급여 1종', people: 10 },
+    { name: '건강보험', people: 80 },
+  ],
+  town: [
+    { name: '매탄1동', people: 12 },
+    { name: '원천동', people: 30 },
+  ],
+  openDays: [4, 3, 3, 4, 5, 4, 0],
+  weekdays: [40, 25, 29, 20, 50, 16, 0],
+  hours: [0, 30, 40, 20, 10, 0, 20, 30, 20, 10, 0, 0, 0],
+  doctors: [
+    { name: '김가상', patients: 60, newPatients: 10, amount: 12345000 },
+    { name: '이가상', patients: 50, newPatients: 8, amount: 9800000 },
+  ],
+}
+
+// 지난달: '의료급여 1종'·'매탄1동' 줄이 없다(5명 미만이거나 없음 → null). '이가상' 줄이 없다(→ 0). '영통동'은 이 달에만 있다(지표가 아니다). 문 연 날 합 24
+const PREV_SECTIONS: SectionsFields = {
+  month: '2026-09',
+  age: [1, 2, 4, 9, 18, 22, 14, 9, 4, 7],
+  insurance: [{ name: '건강보험', people: 75 }],
+  town: [
+    { name: '원천동', people: 25 },
+    { name: '영통동', people: 10 },
+  ],
+  openDays: [4, 4, 4, 4, 4, 4, 0],
+  weekdays: [30, 30, 30, 30, 30, 10, 0],
+  hours: [0, 20, 30, 20, 10, 0, 20, 30, 20, 10, 0, 0, 0],
+  doctors: [{ name: '김가상', patients: 55, newPatients: 9, amount: 11000000 }],
+}
+
+// 작년 같은 달은 달 줄(payload)은 있어도 세 칸이 없다(이 기능 전에 저장했거나 파일로 불러온 달 → null)
+const withSections = (over: Partial<NonNullable<ValidReportMonths['sections']>> = {}): ValidReportMonths => ({
+  ...allMonths(),
+  sections: { selected: sections(SELECTED_SECTIONS), prev: sections(PREV_SECTIONS), lastYear: null, ...over },
+})
+
+// 세 칸 지표 = 지금 지표(sections 없이 만든 것) 뒤에 더한 것
+const sectionMetrics = (input: ReportInput): ReportMetric[] => input.metrics.slice(buildReportInput(allMonths()).metrics.length)
+
+const won = (id: string, label: string, s: number | null, p: number | null, l: number | null): ReportMetric => ({
+  id,
+  label,
+  kind: 'won',
+  values: { selected: s, prev: p, lastYear: l },
+})
+
+const average = (id: string, label: string, s: number | null, p: number | null, l: number | null): ReportMetric => ({
+  id,
+  label,
+  kind: 'average',
+  values: { selected: s, prev: p, lastYear: l },
+})
+
+describe('AC-2904.1 고른 달에 세 칸이 없으면 지표와 지문이 이 기능 전과 같다', () => {
+  it('AC-2904.1 sections 칸이 없으면 세 칸 지표(age·insurance·town·weekday·hour·doctor)가 하나도 없다', () => {
+    const added = ids(buildReportInput(allMonths())).filter((id) => /^(age|insurance|town|weekday|hour|doctor):/.test(id))
+    expect(added).toEqual([])
+  })
+
+  it('AC-2904.1 고른 달 sections가 null이면 비교 달에 세 칸이 있어도 입력 글자와 지문이 sections 없이 만든 것과 같다', async () => {
+    const before = buildReportInput(allMonths())
+    const input = buildReportInput(withSections({ selected: null }))
+    expect(JSON.stringify(input)).toBe(JSON.stringify(before))
+    expect(await reportFingerprint(input)).toBe(await reportFingerprint(before))
+  })
+})
+
+describe('AC-2904.2 고른 달에 세 칸이 있으면 지금 지표 뒤에 차례대로 더한다', () => {
+  it('AC-2904.2 지금 지표는 그대로 앞에 있고, 그 뒤가 연령대 열·보험(명 큰 차례)·동네(명 큰 차례)·요일 일곱·시간 열셋·원장님(고른 달 차례, 실환자·신환·매출) 차례다', () => {
+    const before = buildReportInput(allMonths())
+    const input = buildReportInput(withSections())
+    expect({ ...input, metrics: input.metrics.slice(0, before.metrics.length) }).toEqual(before)
+    expect(sectionMetrics(input).map((m) => m.id)).toEqual([
+      ...AGE_NAMES.map((name) => `age:${name}`),
+      'insurance:건강보험',
+      'insurance:의료급여 1종',
+      'town:원천동',
+      'town:매탄1동',
+      ...WEEKDAY_IDS,
+      ...HOUR_IDS,
+      'doctor:김가상.patients',
+      'doctor:김가상.newPatients',
+      'doctor:김가상.amount',
+      'doctor:이가상.patients',
+      'doctor:이가상.newPatients',
+      'doctor:이가상.amount',
+    ])
+  })
+
+  it('AC-2904.2·AC-2904.3·AC-2904.4 지표마다 이름·kind·세 달 값이 맞다(작년 같은 달은 세 칸이 없어 모두 null)', () => {
+    expect(sectionMetrics(buildReportInput(withSections()))).toEqual([
+      count('age:10세 미만', "연령대 '10세 미만' 환자", 2, 1, null),
+      count('age:10대', "연령대 '10대' 환자", 3, 2, null),
+      count('age:20대', "연령대 '20대' 환자", 5, 4, null),
+      count('age:30대', "연령대 '30대' 환자", 10, 9, null),
+      count('age:40대', "연령대 '40대' 환자", 20, 18, null),
+      count('age:50대', "연령대 '50대' 환자", 25, 22, null),
+      count('age:60대', "연령대 '60대' 환자", 15, 14, null),
+      count('age:70대', "연령대 '70대' 환자", 10, 9, null),
+      count('age:80세 이상', "연령대 '80세 이상' 환자", 5, 4, null),
+      count('age:생년월일 없음', "연령대 '생년월일 없음' 환자", 5, 7, null),
+      count('insurance:건강보험', "보험 '건강보험' 환자", 80, 75, null),
+      count('insurance:의료급여 1종', "보험 '의료급여 1종' 환자", 10, null, null),
+      count('town:원천동', "동네 '원천동' 환자", 30, 25, null),
+      count('town:매탄1동', "동네 '매탄1동' 환자", 12, null, null),
+      // 요일 = 그 요일 접수 합 ÷ 그 요일 문 연 날 수(25÷3 = 8.333… → 8.3, 29÷3 = 9.666… → 9.7). 일요일은 문 연 날이 없어 null
+      average('weekday:1', "요일 '월' 하루 평균 접수", 10, 7.5, null),
+      average('weekday:2', "요일 '화' 하루 평균 접수", 8.3, 7.5, null),
+      average('weekday:3', "요일 '수' 하루 평균 접수", 9.7, 7.5, null),
+      average('weekday:4', "요일 '목' 하루 평균 접수", 5, 7.5, null),
+      average('weekday:5', "요일 '금' 하루 평균 접수", 10, 7.5, null),
+      average('weekday:6', "요일 '토' 하루 평균 접수", 4, 2.5, null),
+      average('weekday:7', "요일 '일' 하루 평균 접수", null, null, null),
+      // 시간 = 그 시 접수 합 ÷ 일곱 요일 문 연 날 수의 합(고른 달 23, 지난달 24). 30÷23 = 1.304… → 1.3, 10÷24 = 0.416… → 0.4, 30÷24 = 1.25 → 1.3
+      average('hour:8', "'오전 8시' 하루 평균 접수", 0, 0, null),
+      average('hour:9', "'오전 9시' 하루 평균 접수", 1.3, 0.8, null),
+      average('hour:10', "'오전 10시' 하루 평균 접수", 1.7, 1.3, null),
+      average('hour:11', "'오전 11시' 하루 평균 접수", 0.9, 0.8, null),
+      average('hour:12', "'낮 12시' 하루 평균 접수", 0.4, 0.4, null),
+      average('hour:13', "'오후 1시' 하루 평균 접수", 0, 0, null),
+      average('hour:14', "'오후 2시' 하루 평균 접수", 0.9, 0.8, null),
+      average('hour:15', "'오후 3시' 하루 평균 접수", 1.3, 1.3, null),
+      average('hour:16', "'오후 4시' 하루 평균 접수", 0.9, 0.8, null),
+      average('hour:17', "'오후 5시' 하루 평균 접수", 0.4, 0.4, null),
+      average('hour:18', "'오후 6시' 하루 평균 접수", 0, 0, null),
+      average('hour:19', "'오후 7시' 하루 평균 접수", 0, 0, null),
+      average('hour:20', "'오후 8시' 하루 평균 접수", 0, 0, null),
+      count('doctor:김가상.patients', "원장님 '김가상' 실환자", 60, 55, null),
+      count('doctor:김가상.newPatients', "원장님 '김가상' 신환", 10, 9, null),
+      won('doctor:김가상.amount', "원장님 '김가상' 매출", 12345000, 11000000, null),
+      count('doctor:이가상.patients', "원장님 '이가상' 실환자", 50, 0, null),
+      count('doctor:이가상.newPatients', "원장님 '이가상' 신환", 8, 0, null),
+      won('doctor:이가상.amount', "원장님 '이가상' 매출", 9800000, 0, null),
+    ])
+  })
+
+  it('AC-2904.2 보험은 고른 달 명 큰 차례 상위 TOP_INSURANCE(10)줄이고 같은 명이면 이름 글자 차례, 동네는 고른 달 줄 모두(명 큰 차례)', () => {
+    expect(TOP_INSURANCE).toBe(10)
+    const insurance = [
+      ['보험 하', 5],
+      ['보험 타', 12],
+      ['보험 가', 20],
+      ['보험 차', 12],
+      ['보험 나', 19],
+      ['보험 다', 18],
+      ['보험 자', 12],
+      ['보험 라', 17],
+      ['보험 마', 16],
+      ['보험 바', 15],
+      ['보험 사', 14],
+      ['보험 아', 13],
+    ].map(([name, people]) => ({ name: String(name), people: Number(people) }))
+    const town = ['가동', '나동', '다동', '라동', '마동', '바동', '사동', '아동', '자동', '차동'].map((name, i) => ({ name, people: 5 + i }))
+    const input = buildReportInput(withSections({ selected: sections({ ...SELECTED_SECTIONS, insurance, town }) }))
+    const idsOf = (head: string) => ids(input).filter((id) => id.startsWith(head))
+    expect(idsOf('insurance:')).toEqual(['가', '나', '다', '라', '마', '바', '사', '아', '자', '차'].map((name) => `insurance:보험 ${name}`))
+    expect(idsOf('town:')).toEqual(['차동', '자동', '아동', '사동', '바동', '마동', '라동', '다동', '나동', '가동'].map((name) => `town:${name}`))
+  })
+
+  it('AC-2904.2 보험·동네 줄 차례가 달라도 지표 차례와 지문이 같다', async () => {
+    const reversed = sections({ ...SELECTED_SECTIONS, insurance: [...(SELECTED_SECTIONS.insurance ?? [])].reverse(), town: [...(SELECTED_SECTIONS.town ?? [])].reverse() })
+    const a = buildReportInput(withSections())
+    const b = buildReportInput(withSections({ selected: reversed }))
+    expect(b).toEqual(a)
+    expect(await reportFingerprint(b)).toBe(await reportFingerprint(a))
+  })
+
+  it('AC-2904.2 고른 달 원장님 줄이 없으면(한 분만 진료) 원장님 지표가 없고 다른 세 칸 지표는 그대로다', () => {
+    const input = buildReportInput(withSections({ selected: sections({ ...SELECTED_SECTIONS, doctors: [] }) }))
+    expect(ids(input).filter((id) => id.startsWith('doctor:'))).toEqual([])
+    expect(ids(input).filter((id) => id.startsWith('hour:'))).toEqual(HOUR_IDS)
+  })
+
+  it('AC-2904.2 입력 열쇠 차례는 지금과 같다(지문이 JSON.stringify 차례를 본다)', () => {
+    const input = buildReportInput(withSections())
+    expect(Object.keys(input)).toEqual(['month', 'partial', 'prevMonth', 'lastYearMonth', 'hasPrev', 'hasLastYear', 'metrics'])
+    for (const metric of input.metrics) {
+      expect(Object.keys(metric), metric.id).toEqual(['id', 'label', 'kind', 'values'])
+      expect(Object.keys(metric.values), metric.id).toEqual(['selected', 'prev', 'lastYear'])
+    }
+  })
+})
+
+describe('AC-2904.3 비교 달 값', () => {
+  it('AC-2904.3 비교 달에 세 칸이 없으면(null) 그 달 값은 연령대·보험·동네·요일·시간·원장님 모두 null이다', () => {
+    const added = sectionMetrics(buildReportInput(withSections({ prev: null })))
+    expect(added.length).toBeGreaterThan(0)
+    for (const metric of added) {
+      expect(metric.values.prev, metric.id).toBeNull()
+      expect(metric.values.lastYear, metric.id).toBeNull()
+    }
+  })
+
+  it('AC-2904.3 세 칸이 있는 비교 달에 그 보험·동네 줄이 없으면 0이 아니라 null, 그 원장님 줄이 없으면 0이다', () => {
+    const input = buildReportInput(withSections())
+    expect(metricOf(input, 'insurance:의료급여 1종').values.prev).toBeNull()
+    expect(metricOf(input, 'town:매탄1동').values.prev).toBeNull()
+    for (const field of ['patients', 'newPatients', 'amount']) expect(metricOf(input, `doctor:이가상.${field}`).values.prev).toBe(0)
+  })
+
+  it('AC-2904.3 비교 달 원장님 줄이 하나도 없으면(그 달 한 분만 진료) 원장님 지표는 0이 아니라 null이다', () => {
+    const input = buildReportInput(withSections({ prev: sections({ ...PREV_SECTIONS, doctors: [] }) }))
+    for (const name of ['김가상', '이가상']) {
+      for (const field of ['patients', 'newPatients', 'amount']) expect(metricOf(input, `doctor:${name}.${field}`).values.prev).toBeNull()
+    }
+    // 원장님 밖 지표는 그대로 그 달 값이다
+    expect(metricOf(input, 'insurance:건강보험').values.prev).toBe(75)
+  })
+
+  it('AC-2904.3 연령대는 늘 그 달 값이다(0명 줄은 null이 아니라 0)', () => {
+    const input = buildReportInput(withSections({ prev: sections({ ...PREV_SECTIONS, age: [0, 3, 4, 9, 18, 22, 14, 9, 4, 7] }) }))
+    expect(metricOf(input, 'age:10세 미만').values).toEqual({ selected: 2, prev: 0, lastYear: null })
+  })
+
+  it('AC-2904.3 작년 같은 달에 세 칸이 있으면 지난달과 같은 규칙으로 그 달 값을 쓴다', () => {
+    const input = buildReportInput(withSections({ prev: null, lastYear: sections({ ...PREV_SECTIONS, month: '2025-10' }) }))
+    expect(metricOf(input, 'age:40대').values).toEqual({ selected: 20, prev: null, lastYear: 18 })
+    expect(metricOf(input, 'insurance:의료급여 1종').values).toEqual({ selected: 10, prev: null, lastYear: null })
+    expect(metricOf(input, 'doctor:이가상.amount').values).toEqual({ selected: 9800000, prev: null, lastYear: 0 })
+    expect(metricOf(input, 'weekday:6').values).toEqual({ selected: 4, prev: null, lastYear: 2.5 })
+  })
+})
+
+describe('AC-2904.4 하루 평균 접수', () => {
+  it('AC-2904.4 요일 = 그 요일 접수 합 ÷ 그 요일 문 연 날 수이고 소수 둘째 자리에서 반올림해 첫째 자리까지 남긴다(25÷3 → 8.3, 29÷3 → 9.7)', () => {
+    const input = buildReportInput(withSections())
+    expect(metricOf(input, 'weekday:2').values.selected).toBe(8.3)
+    expect(metricOf(input, 'weekday:3').values.selected).toBe(9.7)
+  })
+
+  it('AC-2904.4 시간 = 그 시 접수 합 ÷ 일곱 요일 문 연 날 수의 합(40÷23 = 1.739… → 1.7, 30÷24 = 1.25 → 1.3)', () => {
+    expect(metricOf(buildReportInput(withSections()), 'hour:10').values).toEqual({ selected: 1.7, prev: 1.3, lastYear: null })
+  })
+
+  it('AC-2904.4·AC-2905.1 AI에게 주는 평균과 근거 줄 글자는 진짜 평균을 한 번만 반올림한 값이다(6÷11 = 0.545… → 0.5건, 2÷3 = 0.666… → 0.7)', () => {
+    const odd = sections({ ...SELECTED_SECTIONS, openDays: [3, 2, 2, 2, 2, 0, 0], weekdays: [2, 1, 1, 1, 1, 0, 0], hours: [6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] })
+    const input = buildReportInput(withSections({ selected: odd, prev: null }))
+    expect(metricOf(input, 'hour:8').values.selected).toBe(0.5)
+    expect(metricOf(input, 'weekday:1').values.selected).toBe(0.7)
+    expect(basisLine(metricOf(input, 'hour:8'), input)).toBe("근거 · '오전 8시' 하루 평균 접수 9월 자료 없음 → 10월 0.5건 · 작년 10월 자료 없음")
+  })
+
+  it('AC-2904.4 나누는 수가 0이면 null이다(문을 안 연 요일, 문 연 날이 하나도 없는 달의 요일·시간)', () => {
+    const closed = sections({ ...PREV_SECTIONS, openDays: [0, 0, 0, 0, 0, 0, 0], weekdays: [0, 0, 0, 0, 0, 0, 0], hours: Array(13).fill(0), doctors: [] })
+    const input = buildReportInput(withSections({ prev: closed }))
+    for (const id of [...WEEKDAY_IDS, ...HOUR_IDS]) expect(metricOf(input, id).values.prev, id).toBeNull()
+    expect(metricOf(input, 'weekday:7').values.selected).toBeNull()
+    // 연령대·보험은 문 연 날과 상관없이 그 달 값이다
+    expect(metricOf(input, 'age:40대').values.prev).toBe(18)
+  })
+})
+
+describe('AC-2904.5 지표 종류', () => {
+  it('AC-2904.5 MetricKind는 count·visits·rate에 won·average가 더해진 다섯이고, 세 칸 입력은 다섯을 모두 쓴다', () => {
+    expectTypeOf<MetricKind>().toEqualTypeOf<'count' | 'visits' | 'rate' | 'won' | 'average'>()
+    const kinds = new Set(buildReportInput(withSections()).metrics.map((m) => m.kind))
+    expect([...kinds].sort()).toEqual(['average', 'count', 'rate', 'visits', 'won'])
+  })
+
+  it('AC-2904.5 매출은 won, 하루 평균은 average, 연령대·보험·동네·원장님 실환자·신환은 count다', () => {
+    const input = buildReportInput(withSections())
+    const kindOf = (id: string) => metricOf(input, id).kind
+    expect(kindOf('doctor:김가상.amount')).toBe('won')
+    expect(kindOf('weekday:1')).toBe('average')
+    expect(kindOf('hour:9')).toBe('average')
+    for (const id of ['age:40대', 'insurance:건강보험', 'town:원천동', 'doctor:김가상.patients', 'doctor:김가상.newPatients']) expect(kindOf(id), id).toBe('count')
   })
 })

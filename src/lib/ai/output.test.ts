@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { validateMonthPayload } from '@/lib/payload/validate'
+import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { ReportInput, ReportMetric } from '@/types/aiReport'
-import type { MonthPayload } from '@/types/payload'
+import type { MonthPayload, MonthSections } from '@/types/payload'
 import { basisLine } from './basis'
 import { buildReportInput } from './input'
 import { CARD_TEXT_MAX, MAX_CARDS, MIN_CARDS, SUMMARY_MAX, hasForbiddenNumber, parseAiReport } from './output'
@@ -550,5 +550,111 @@ describe('parseAiReport — __proto__ 열쇠 (AC-507.9)', () => {
     ['metric 자리에', [CARD_TAG, CARD_TEXT, `"__proto__":${json('total.patients')}`]],
   ])('AC-507.9 카드 안에 "__proto__" 열쇠가 있으면 null: %s', (_name, fields) => {
     expect(parseAiReport(cardsWith(fields), INPUT)).toBeNull()
+  })
+})
+
+// ── 통계 비트 세 칸 지표 (spec stats-bit-ai AC-2905.3·AC-2905.4) ──
+// 고른 달에 세 칸이 있는 입력. 원장님 이름에도 숫자를 넣었다(가짜 이름)
+const AGE_NAMES = ['10세 미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80세 이상', '생년월일 없음']
+
+function sectionsOf(): MonthSections {
+  const value: MonthSections = {
+    v: 1,
+    month: '2026-10',
+    partial: false,
+    mix: {
+      people: 100,
+      age: AGE_NAMES.map((name) => ({ name, people: name === '40대' ? 55 : 5 })),
+      insurance: [
+        { name: '건강보험', people: 80 },
+        { name: '의료급여 1종', people: 10 },
+      ],
+      town: [{ name: '매탄1동', people: 12 }],
+    },
+    hours: { openDays: [4, 4, 4, 4, 4, 0, 0], weekdays: [20, 20, 20, 20, 20, 0, 0], hours: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0], unknown: 0 },
+    doctors: [{ name: '박가상2', patients: 40, newPatients: 5, amount: 3000000 }],
+  }
+  const checked = validateMonthSections(value)
+  if (checked === null) throw new Error('시험 세 칸 자료가 검사를 통과하지 못함')
+  return checked
+}
+
+const SECTIONS_INPUT: ReportInput = buildReportInput({
+  selected: month({ month: '2026-10', totals: { patients: 100, newPatients: 20, returning: 80, unknown: 0 } }),
+  prev: null,
+  lastYear: null,
+  groupNames: {},
+  sections: { selected: sectionsOf(), prev: null, lastYear: null },
+})
+
+const sectionsMetric = (id: string): ReportMetric => {
+  const found = SECTIONS_INPUT.metrics.find((m) => m.id === id)
+  if (found === undefined) throw new Error(`지표가 없음: ${id}`)
+  return found
+}
+const sectionsBasis = (c: Card) => ({ tag: c.tag, text: c.text, metric: c.metric, basis: basisLine(sectionsMetric(c.metric), SECTIONS_INPUT) })
+
+describe('parseAiReport — 세 칸 지표 ID (AC-2905.3)', () => {
+  it('AC-2905.3 시험 입력의 새 지표 이름은 정해진 모양이다', () => {
+    expect(sectionsMetric('age:40대').label).toBe("연령대 '40대' 환자")
+    expect(sectionsMetric('insurance:의료급여 1종').label).toBe("보험 '의료급여 1종' 환자")
+    expect(sectionsMetric('town:매탄1동').label).toBe("동네 '매탄1동' 환자")
+    expect(sectionsMetric('weekday:1').label).toBe("요일 '월' 하루 평균 접수")
+    expect(sectionsMetric('hour:9').label).toBe("'오전 9시' 하루 평균 접수")
+    expect(sectionsMetric('doctor:박가상2.patients').label).toBe("원장님 '박가상2' 실환자")
+    expect(sectionsMetric('doctor:박가상2.newPatients').label).toBe("원장님 '박가상2' 신환")
+    expect(sectionsMetric('doctor:박가상2.amount').label).toBe("원장님 '박가상2' 매출")
+  })
+
+  it('AC-2905.3 새 지표 ID(연령대·보험·동네·요일·시간·원장님)를 쓴 카드는 받고 근거 줄을 붙인다', () => {
+    const cards = [
+      card('age:생년월일 없음', '생년월일 없는 환자를 살펴볼 만합니다.', 'watch'),
+      card('insurance:건강보험', '건강보험 환자가 대부분입니다.', 'watch'),
+      card('weekday:1', '월요일 접수가 붐빕니다.', 'watch'),
+      card('doctor:박가상2.amount', '원장님 매출은 계절 영향으로 보입니다.', 'guess'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, cards), SECTIONS_INPUT)?.cards).toEqual(cards.map(sectionsBasis))
+  })
+
+  it('AC-2905.3 입력에 없는 새 지표 ID를 쓴 카드는 빠진다(요일 8·시간 7·없는 원장님·없는 연령대·없는 동네·없는 보험)', () => {
+    const good = [card('weekday:1', '월요일이 붐빕니다.', 'watch'), card('weekday:2', '화요일이 붐빕니다.', 'watch'), card('weekday:3', '수요일이 붐빕니다.', 'watch')]
+    const bad = ['weekday:8', 'hour:7', 'hour:21', 'doctor:없는분.amount', 'doctor:박가상2', 'age:90대', 'town:없는동', 'insurance:없는보험'].map((id) => card(id, '살펴볼 만합니다.', 'watch'))
+    expect(parseAiReport(answer(SUMMARY, [...bad, ...good]), SECTIONS_INPUT)?.cards).toEqual(good.map(sectionsBasis))
+  })
+})
+
+describe('parseAiReport — 세 칸 지표 이름 안의 숫자 (AC-2905.4)', () => {
+  it('AC-2905.4 숫자가 든 새 이름(연령대·보험·동네·시간·원장님)을 글자 그대로 쓴 카드는 받는다', () => {
+    const cards = [
+      card('age:40대', '40대 환자가 가장 많습니다.', 'watch'),
+      card('age:10세 미만', '10세 미만 환자는 적습니다.', 'watch'),
+      card('insurance:의료급여 1종', '의료급여 1종 환자를 살펴볼 만합니다.', 'watch'),
+      card('town:매탄1동', '매탄1동 환자가 꾸준합니다.', 'watch'),
+      card('hour:9', '오전 9시 접수가 붐빕니다.', 'watch'),
+      card('doctor:박가상2.patients', '박가상2 원장님 실환자가 꾸준합니다.', 'watch'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, cards), SECTIONS_INPUT)?.cards).toEqual(cards.map(sectionsBasis))
+  })
+
+  it('AC-2905.4 요약도 새 이름을 글자 그대로 쓰면 통과한다', () => {
+    const cards = [card('age:40대', '첫째 카드입니다.'), card('hour:9', '둘째 카드입니다.'), card('weekday:1', '셋째 카드입니다.')]
+    const report = parseAiReport(answer('10월은 40대와 오전 9시 접수가 눈에 띄었습니다.', cards), SECTIONS_INPUT)
+    expect(report?.summary).toBe('10월은 40대와 오전 9시 접수가 눈에 띄었습니다.')
+  })
+
+  it("AC-2905.4 이름을 줄이거나 이름 밖 숫자를 쓴 카드는 버린다('9시'만·'1종'만·'3명'·'4%')", () => {
+    const good = [card('age:40대', '40대 환자가 많습니다.', 'watch'), card('hour:9', '오전 9시가 붐빕니다.', 'watch'), card('weekday:1', '월요일이 붐빕니다.', 'watch')]
+    const bad = [
+      card('hour:9', '9시 접수가 붐빕니다.', 'watch'),
+      card('insurance:의료급여 1종', '1종 환자가 늘었습니다.'),
+      card('age:40대', '40대 환자가 3명 늘었습니다.'),
+      card('doctor:박가상2.amount', '박가상2 원장님 매출이 4% 늘었습니다.'),
+    ]
+    expect(parseAiReport(answer(SUMMARY, [...bad, ...good]), SECTIONS_INPUT)?.cards).toEqual(good.map(sectionsBasis))
+  })
+
+  it('AC-2905.4 hasForbiddenNumber: 새 이름도 이름 목록으로 주면 지우고, 주지 않으면 지금처럼 걸린다', () => {
+    expect(hasForbiddenNumber('오전 9시 접수가 붐빕니다.', ['오전 9시'])).toBe(false)
+    expect(hasForbiddenNumber('오전 9시 접수가 붐빕니다.')).toBe(true)
   })
 })

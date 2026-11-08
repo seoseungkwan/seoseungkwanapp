@@ -6,7 +6,7 @@ import { buildReportInput, reportFingerprint } from '@/lib/ai/input'
 import { parseAiReport } from '@/lib/ai/output'
 import { reportJsonSchema, systemPrompt, userMessage } from '@/lib/ai/prompt'
 import { addMonths } from '@/lib/analytics/dates'
-import { validateMonthPayload } from '@/lib/payload/validate'
+import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { AiErrorCode, AiUsage, ReportInput } from '@/types/aiReport'
 import type { ClaudeResult } from './claude'
 import { generateReport, isReportStale, type GenerateDeps } from './generate'
@@ -513,5 +513,162 @@ describe('비교 달이 덜 불러온 달이면 없는 달 (REQ-2005, REQ-2007)'
     expect(deps.callClaude).not.toHaveBeenCalled()
     expect(deps.saveReport).not.toHaveBeenCalled()
     expect(deps.addUsage).not.toHaveBeenCalled()
+  })
+})
+
+// ── 세 칸(sections) 읽기와 검사 (spec stats-bit-ai REQ-2903·AC-2906.2) ──
+// DB에서 읽은 sections는 unknown이다. 시험 자료는 손으로 만든 가짜 숫자이고 원장님 이름도 가짜다
+const AGE_NAMES = ['10세 미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80세 이상', '생년월일 없음']
+
+function sectionsRow(month: string, doctor = 60): Record<string, unknown> {
+  return {
+    v: 1,
+    month,
+    partial: false,
+    mix: {
+      people: 100,
+      age: AGE_NAMES.map((name) => ({ name, people: name === '40대' ? 55 : 5 })),
+      insurance: [
+        { name: '건강보험', people: 80 },
+        { name: '의료급여 1종', people: 10 },
+      ],
+      town: [{ name: '매탄1동', people: 12 }],
+    },
+    hours: { openDays: [4, 4, 4, 4, 4, 0, 0], weekdays: [20, 20, 20, 20, 20, 0, 0], hours: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0], unknown: 0 },
+    doctors: [
+      { name: '김가상', patients: doctor, newPatients: 5, amount: 12345000 },
+      { name: '이가상', patients: 30, newPatients: 3, amount: 6000000 },
+    ],
+  }
+}
+
+const withSections = (sections: { selected: unknown; prev: unknown; lastYear: unknown }, base: ReportMonths = fixtureMonths()): ReportMonths => ({ ...base, sections })
+
+const ALL_SECTIONS = () => ({ selected: sectionsRow('2026-10'), prev: sectionsRow('2026-09', 50), lastYear: sectionsRow('2025-10', 40) })
+
+// Claude에게 간 입력(<data> 안 JSON)
+const sentInput = (deps: ReturnType<typeof setup>['deps']): ReportInput => {
+  const { user } = deps.callClaude.mock.calls[0][0]
+  return JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+}
+
+const SECTION_ID = /^(age|insurance|town|weekday|hour|doctor):/
+const sectionIds = (input: ReportInput) => input.metrics.map((m) => m.id).filter((id) => SECTION_ID.test(id))
+const valueOf = (input: ReportInput, id: string) => input.metrics.find((m) => m.id === id)?.values
+
+describe('세 칸 sections 검사 (REQ-2903)', () => {
+  it('AC-2903.2 세 달 sections가 검사를 넘고 그 달과 같은 달이면 Claude 입력이 그 sections로 만든 입력과 같다', async () => {
+    const { deps } = setup({ months: withSections(ALL_SECTIONS()) })
+    const res = await generateReport(MONTH, deps)
+    expect(res.ok).toBe(true)
+    const base = fixtureMonths()
+    const expected = buildReportInput({
+      selected: validateMonthPayload(base.selected)!,
+      prev: validateMonthPayload(base.prev),
+      lastYear: validateMonthPayload(base.lastYear),
+      groupNames: base.groupNames,
+      sections: {
+        selected: validateMonthSections(sectionsRow('2026-10')),
+        prev: validateMonthSections(sectionsRow('2026-09', 50)),
+        lastYear: validateMonthSections(sectionsRow('2025-10', 40)),
+      },
+    })
+    expect(deps.callClaude.mock.calls[0][0].user).toBe(userMessage(expected))
+    expect(valueOf(sentInput(deps), 'doctor:김가상.patients')).toEqual({ selected: 60, prev: 50, lastYear: 40 })
+    if (!res.ok) throw new Error('성공이어야 한다')
+    expect(res.report.inputHash).toBe(await reportFingerprint(expected))
+  })
+
+  it.each<[string, unknown]>([
+    ['모르는 열쇠가 있음', { ...sectionsRow('2026-10'), chart: 'C-0001234' }],
+    ['v가 2', { ...sectionsRow('2026-10'), v: 2 }],
+    ['다른 달', sectionsRow('2026-09')],
+    ['글자', '{"v":1}'],
+    ['null', null],
+  ])('AC-2903.2·AC-2904.1 고른 달 sections가 %s이면 그 달 sections만 없고 리포트는 만든다 — 입력과 지문이 sections 없을 때와 같다', async (_name, selected) => {
+    const { deps } = setup({ months: withSections({ ...ALL_SECTIONS(), selected }) })
+    const res = await generateReport(MONTH, deps)
+    expect(res.ok).toBe(true)
+    const plain = inputOf(fixtureMonths())
+    expect(deps.callClaude.mock.calls[0][0].user).toBe(userMessage(plain))
+    if (!res.ok) throw new Error('성공이어야 한다')
+    expect(res.report.inputHash).toBe(await reportFingerprint(plain))
+  })
+
+  it.each<[string, unknown]>([
+    ['검사를 못 넘음', { ...sectionsRow('2026-09'), mix: 'x' }],
+    ['다른 달(작년 같은 달 것)', sectionsRow('2025-10')],
+  ])('AC-2903.2 지난달 sections가 %s이면 지난달 세 칸 값만 null이고 고른 달·작년 값은 그대로다', async (_name, prev) => {
+    const { deps } = setup({ months: withSections({ ...ALL_SECTIONS(), prev }) })
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    const input = sentInput(deps)
+    expect(input.hasPrev).toBe(true)
+    expect(valueOf(input, 'doctor:김가상.patients')).toEqual({ selected: 60, prev: null, lastYear: 40 })
+    expect(valueOf(input, 'age:40대')).toEqual({ selected: 55, prev: null, lastYear: 55 })
+  })
+
+  it('AC-2903.2 비교 달 줄이 덜 불러온 달(partial)이면 그 달 sections가 맞아도 쓰지 않는다', async () => {
+    const base = fixtureMonths()
+    const { deps } = setup({ months: withSections(ALL_SECTIONS(), { ...base, prev: asPartial(base.prev) }) })
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    const input = sentInput(deps)
+    expect(input.hasPrev).toBe(false)
+    expect(valueOf(input, 'doctor:김가상.patients')).toEqual({ selected: 60, prev: null, lastYear: 40 })
+  })
+
+  it('AC-2903.2 비교 달 줄(payload)이 없거나 검사를 못 넘으면 그 달 sections가 맞아도 쓰지 않는다', async () => {
+    const { deps } = setup({ months: withSections(ALL_SECTIONS(), { ...fixtureMonths(), prev: null, lastYear: { month: '2025-10', broken: true } }) })
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    const input = sentInput(deps)
+    expect(valueOf(input, 'doctor:김가상.patients')).toEqual({ selected: 60, prev: null, lastYear: null })
+    expect(valueOf(input, 'weekday:1')).toEqual({ selected: 5, prev: null, lastYear: null })
+  })
+
+  it('AC-2903.2 loadMonths 답에 sections 칸이 없으면(옛 모양) 세 칸 지표 없이 지금처럼 만든다', async () => {
+    const { deps } = setup()
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    expect(sectionIds(sentInput(deps))).toEqual([])
+    expect(deps.callClaude.mock.calls[0][0].user).toBe(userMessage(inputOf(fixtureMonths())))
+  })
+
+  it('AC-2903.2·AC-2904.1 숫자 바뀜 비교: 세 칸이 없는 달은 지문이 지금과 같아 false, 고른 달에 세 칸이 생기면 true', async () => {
+    const { deps } = setup()
+    const res = await generateReport(MONTH, deps)
+    if (!res.ok) throw new Error('성공이어야 한다')
+    const hash = res.report.inputHash
+    const none = withSections({ selected: null, prev: null, lastYear: null })
+    expect(await isReportStale(MONTH, hash, async () => none)).toBe(false)
+    expect(await isReportStale(MONTH, hash, async () => withSections(ALL_SECTIONS()))).toBe(true)
+  })
+
+  it('AC-2903.3 세 칸 숫자는 loadMonths(DB에서 읽은 값)에서만 온다: generateReport는 달과 deps만 받고 loadMonths를 그 달로 한 번 부른다', async () => {
+    expect(generateReport.length).toBe(2)
+    const { deps } = setup({ months: withSections(ALL_SECTIONS()) })
+    await generateReport(MONTH, deps)
+    expect(deps.loadMonths).toHaveBeenCalledTimes(1)
+    expect(deps.loadMonths).toHaveBeenCalledWith(MONTH)
+    expect(valueOf(sentInput(deps), 'doctor:김가상.amount')).toEqual({ selected: 12345000, prev: 12345000, lastYear: 12345000 })
+  })
+})
+
+describe('Claude 요청 몸에 환자 정보가 없다 (AC-2906.2)', () => {
+  it('AC-2906.2 sections가 있는 달로 만든 요청 몸에는 묶음 이름·원장님 이름·수만 있고 차트번호·생년월일·주소 앞부분·접수 줄이 없다', async () => {
+    // 지난달 sections에 환자 정보 칸을 섞으면 검사가 그 달 sections를 통째로 버린다
+    const leaked = { ...sectionsRow('2026-09'), rows: [['C-0001234', '1980-01-02', '경기도 수원시 영통구', '202609011030']] }
+    const { deps } = setup({ months: withSections({ ...ALL_SECTIONS(), prev: leaked }) })
+    expect((await generateReport(MONTH, deps)).ok).toBe(true)
+    const body = JSON.stringify(deps.callClaude.mock.calls[0][0])
+    for (const word of ['C-0001234', '1980-01-02', '수원시', '영통구', '202609011030', '"rows"', 'chart']) expect(body, word).not.toContain(word)
+    // 세 칸 지표 이름은 sections의 묶음 이름·원장님 이름·요일·시간뿐이다
+    const input = sentInput(deps)
+    const names = new Set([...AGE_NAMES, '건강보험', '의료급여 1종', '매탄1동', '김가상', '이가상'])
+    for (const id of sectionIds(input)) {
+      const name = id.replace(SECTION_ID, '').replace(/\.(patients|newPatients|amount)$/, '')
+      if (/^(weekday|hour):/.test(id)) expect(name, id).toMatch(/^\d{1,2}$/)
+      else expect(names.has(name), id).toBe(true)
+    }
+    for (const metric of input.metrics) {
+      for (const value of Object.values(metric.values)) expect(value === null || typeof value === 'number', metric.id).toBe(true)
+    }
   })
 })

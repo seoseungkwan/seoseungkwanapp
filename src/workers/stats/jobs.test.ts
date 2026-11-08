@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, monthOf } from '@/lib/analytics/dates'
-import { validateDayPayload, validateMonthPayload } from '@/lib/payload/validate'
+import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type {
   BitSectionsView,
   RxSplitView,
@@ -1225,23 +1225,28 @@ describe('AC-2702.4 화면에 가는 세 칸 보기에는 묶음 이름과 숫�
     expectOnlyLabelsAndNumbers(sent)
   })
 
-  it('AC-2702.4: 불러온 메시지(loaded)에는 새 자료가 하나도 없다', async () => {
+  // stats-bit-ai AC-2906.3 ④: 새 자료 가운데 sections(원장님 이름·5명 이상 보험·동네 이름·수)만 실린다. 그 밖은 지금처럼 없다
+  it('AC-2702.4·AC-2906.3: 불러온 메시지(loaded)의 새 자료는 sections뿐이고 진료의 코드·생년월일·주소·5명 미만 묶음 이름은 없다', async () => {
     const { host, sent } = hostUnderTest()
     bridgeMessages('s1', v3Json()).forEach((m) => host.fromBridge(m))
     await host.load(loadRequest('s1'))
     expect(sent.map((m) => m.type)).toEqual(['loaded'])
     const json = JSON.stringify(sent)
-    for (const word of [...DOCTOR_CODES, '김가상', '이가상', '의료급여 1종', '자동차보험', '매탄동', '19800505', '1980-05-05']) {
+    for (const word of [...DOCTOR_CODES, '의료급여 1종', '자동차보험', '매탄동', '19800505', '1980-05-05']) {
       expect(json).not.toContain(word)
     }
+    const withoutSections = sent.map((m) => (m.type === 'loaded' ? { ...m, view: { ...m.view, sections: undefined } } : m))
+    for (const word of ['김가상', '이가상']) expect(JSON.stringify(withoutSections)).not.toContain(word)
     expectNoPatientData(sent)
   })
 })
 
 describe('AC-2708.1 저장 줄·AI 보고는 지금 그대로', () => {
-  it('AC-2708.1: v3 답으로 불러와도 화면이 저장·보고에 쓰는 값(loaded view)이 v2 답과 같고 열쇠 목록도 같다', () => {
+  // stats-bit-ai AC-2906.3 ③: v3 화면 값에는 sections 열쇠 하나만 더 있고 나머지는 v2 답과 글자 그대로 같다
+  it('AC-2708.1·AC-2906.3: v3 답으로 불러와도 화면이 저장·보고에 쓰는 값(loaded view)이 sections 하나 빼고 v2 답과 같다', () => {
     const v2 = loadJob(helperJson(), OPTS).view
-    const v3 = loadJob(v3Json(), OPTS).view
+    const { sections, ...v3 } = loadJob(v3Json(), OPTS).view
+    expect(sections).not.toBeNull()
     expect(v3).toEqual(v2)
     expect(Object.keys(v3).sort()).toEqual(['checks', 'covered', 'days', 'months', 'quality', 'range', 'report'])
     const keyLists = (view: StatsLoaded) => ({
@@ -1291,5 +1296,82 @@ describe('AC-2708.2·AC-2708.3 울타리와 지금 시험 자료', () => {
     expect(v3.v).toBe(3)
     expect(Object.keys(v3).filter((key) => !(key in v2)).sort()).toEqual(['doctorDays', 'doctors', 'people', 'visits'])
     for (const key of Object.keys(v2)) if (key !== 'v') expect(v3[key]).toEqual(v2[key])
+  })
+})
+
+// ── 통계 비트 세 칸의 달 합계(sections, spec stats-bit-ai REQ-2901) ──
+describe('AC-2901.1·AC-2901.6 loadJob: v3 답이면 달 줄마다 같은 달의 sections', () => {
+  const sectionsOf = (view: StatsLoaded) => {
+    if (!view.sections) throw new Error('sections가 없다')
+    return view.sections
+  }
+
+  it('AC-2901.1: 달 줄마다 같은 차례로 하나씩이고 month·partial이 그 달 줄과 같으며 저장 검사를 넘는다', () => {
+    const { view } = loadJob(v3Json(), OPTS)
+    const sections = sectionsOf(view)
+    expect(sections.map(({ month, partial }) => ({ month, partial }))).toEqual((view.months ?? []).map(({ month, partial }) => ({ month, partial })))
+    expect(sections.map((s) => s.month)).toEqual(['2026-09', '2026-10', '2026-11'])
+    for (const s of sections) expect(validateMonthSections(s)).toStrictEqual(s)
+  })
+
+  it('AC-2901.1·AC-2901.2·AC-2901.3·AC-2901.4: 9월 sections는 화면 세 칸과 같은 셈이다(5명 미만 보험·동네 없음, 원장님 둘)', () => {
+    const [september, october, november] = sectionsOf(loadJob(v3Json(), OPTS).view)
+    expect(september.mix.people).toBe(5)
+    expect(september.mix.age.filter((row) => row.people > 0)).toEqual([
+      { name: '10대', people: 1 },
+      { name: '30대', people: 1 },
+      { name: '40대', people: 1 },
+      { name: '70대', people: 1 },
+      { name: '생년월일 없음', people: 1 },
+    ])
+    expect(september.mix.insurance).toEqual([])
+    expect(september.mix.town).toEqual([])
+    // 9월 1일(화) 9시 두 건 · 2일(수) 10시·14시 · 3일(목)은 시각 모름 한 건뿐이라 문 연 날이 아니다
+    expect(september.hours).toEqual({
+      openDays: [0, 1, 1, 0, 0, 0, 0],
+      weekdays: [0, 2, 2, 0, 0, 0, 0],
+      hours: [0, 2, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+      unknown: 1,
+    })
+    expect(september.doctors).toEqual([
+      { name: '김가상', patients: 3, newPatients: 3, amount: 120_000 },
+      { name: '이가상', patients: 2, newPatients: 2, amount: 80_000 },
+    ])
+    // 10월·11월은 접수한 원장님이 한 분이라 화면이 표를 그리지 않는다(single)
+    expect(october.doctors).toEqual([])
+    expect(november.doctors).toEqual([])
+    expect(november.mix.people).toBe(1)
+  })
+
+  it('AC-2901.6: v2 답(옛 도우미)이면 화면 값에 sections 열쇠가 없다', () => {
+    const { view } = loadJob(helperJson(), OPTS)
+    expect('sections' in view).toBe(false)
+  })
+
+  it('AC-2901.6: 확인 건수가 있어 달 줄이 없으면(incomplete) sections도 null이다', () => {
+    const summary = { visits: 7, patients: 6, newPatients: 5, noChart: 1, duplicate: 0, noFirst: 0 }
+    const { view } = loadJob(v3Json({ summary }), OPTS)
+    expect(view.months).toBeNull()
+    expect(view.sections).toBeNull()
+  })
+
+  it('AC-2901.7: sections를 JSON으로 펴도 차트번호·생년월일·주소 앞부분·접수 시각·진료의 코드·5명 미만 묶음 이름이 없다', () => {
+    const sections = sectionsOf(loadJob(v3Json(), OPTS).view)
+    const json = JSON.stringify(sections)
+    for (const word of [...CHARTS, ...DOCTOR_CODES, ...RECEIPT_TIMES, '19800505', '1980-05-05', '수원시', '매탄동', '의료급여 1종', '자동차보험']) {
+      expect(json).not.toContain(word)
+    }
+    expectNoPatientData(sections)
+  })
+})
+
+describe('AC-2906.1 새 파일 울타리', () => {
+  it('AC-2906.1: 새 계산 파일(toMonthSections)과 고친 Worker 파일은 lint 오류가 없다', { timeout: 60_000 }, async () => {
+    const files = ['src/lib/payload/toMonthSections.ts', 'src/lib/payload/validate.ts', 'src/workers/stats/jobs.ts']
+    const { ESLint } = await import('eslint')
+    const results = await new ESLint({ cwd: process.cwd() }).lintFiles(files)
+    expect(results).toHaveLength(files.length)
+    const errors = results.flatMap((r) => r.messages.filter((m) => m.severity === 2).map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))
+    expect(errors).toEqual([])
   })
 })

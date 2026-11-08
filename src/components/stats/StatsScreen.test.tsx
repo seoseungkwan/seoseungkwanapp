@@ -13,7 +13,7 @@ import { nestedBoxes } from '@/testing/boxes'
 import type { AnalysisResult, FileReport } from '@/types/analyze'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
-import type { DayPayload } from '@/types/payload'
+import type { DayPayload, MonthSections } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { runAnalysis } from '@/workers/runAnalysis'
@@ -2258,5 +2258,36 @@ describe('AC-2706.1 stats-bit-sections: 통계 화면이 세 칸을 묻고 넘�
     await loadedWithBit((message) => ({ type: 'failed', streamId: message.streamId, code: 'E-ANALYZE-FAILED' }))
     await waitFor(() => expect(screen.getAllByRole('alert').filter((card) => card.textContent?.includes('오류 번호 E-ANALYZE-FAILED'))).toHaveLength(1))
     expect(bitSection('환자 구성').textContent).toContain('비트 PC에서 불러오면 보여요')
+  })
+})
+
+// ── 비트 저장에 세 칸 합계(sections)를 싣기 (spec stats-bit-ai AC-2902.2) ──
+describe('AC-2902.2 통계 화면 비트 저장', () => {
+  const SECTIONS: MonthSections[] = [
+    {
+      v: 1,
+      month: '2026-11',
+      partial: true,
+      mix: { people: 0, age: [], insurance: [], town: [] },
+      hours: { openDays: [0, 0, 0, 0, 0, 0, 0], weekdays: [0, 0, 0, 0, 0, 0, 0], hours: Array(13).fill(0), unknown: 0 },
+      doctors: [{ name: '김가상', patients: 0, newPatients: 0, amount: 0 }],
+    },
+  ]
+
+  it('AC-2902.2 비트에서 불러오면 Worker가 준 sections를 달·일 숫자와 함께 저장에 그대로 넘긴다(화면 모양은 그대로)', async () => {
+    const port = fakeChrome()
+    fakeWorker({ ...LOADED, sections: SECTIONS })
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(saveStats).mock.calls[0][0]).toStrictEqual({
+      months: LOADED.months,
+      days: LOADED.days,
+      covered: LOADED.covered,
+      source: 'bit',
+      sections: SECTIONS,
+    })
   })
 })

@@ -17,6 +17,7 @@ import { createPatientIds } from '@/lib/parsers/bit'
 import { fillGroupCounts } from '@/lib/payload/groupCounts'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
+import { toMonthSections } from '@/lib/payload/toMonthSections'
 import type { RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { DateRange } from '@/types/dates'
@@ -125,6 +126,24 @@ export function loadJob(
   // 같은 ids로 바꾼다: 진료 줄·접수 줄·사람 표에서 같은 환자 = 같은 번호. view는 v2 답과 같다(AC-2708.1)
   const extra = toStatsExtra(data, ids)
   const bit: BitMemory = { range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids) }
+  // v3 답이면 달 줄마다 같은 달의 세 칸 합계를 싣는다(묶음 이름과 수만, spec stats-bit-ai AC-2901.1). 달 줄이 없으면(incomplete) null.
+  // v2 답이면 열쇠를 두지 않는다(AC-2901.6) — 화면 값이 지금과 글자 그대로 같다
+  if (extra !== null) {
+    view.sections =
+      view.months === null
+        ? null
+        : toMonthSections({
+            months: view.months,
+            from,
+            to,
+            today,
+            visits: extra.visits,
+            people: extra.people,
+            first: bit.first,
+            doctors: extra.doctors,
+            doctorDays: extra.doctorDays,
+          })
+  }
   return { view, memory, bit }
 }
 

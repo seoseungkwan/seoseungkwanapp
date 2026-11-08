@@ -1,7 +1,7 @@
 import type { RxGroupDef } from './analysis'
 import type { ClinicReportNumbers } from './clinicReport'
 import type { DateRange } from './dates'
-import type { DayPayload, MonthPayload } from './payload'
+import type { DayPayload, MonthPayload, MonthSections } from './payload'
 
 // 화면 ↔ 통계 Worker가 주고받는 모양. 화면이 받는 값에는 차트번호·환자 번호·진료 줄·접수 줄이 없다(AC-505.5)
 
@@ -17,6 +17,9 @@ export type StatsLoaded = {
   checks: StatsChecks
   months: MonthPayload[] | null // incomplete면 null
   days: DayPayload[] | null // incomplete면 null
+  // 달 줄마다 같은 달의 세 칸 합계(spec stats-bit-ai AC-2901.1). v3 답이면 늘 있고 incomplete면 null, v2 답이면 열쇠가 없다(AC-2901.6).
+  // 묶음 이름과 수, 원장님 이름·매출뿐이다. 통계 탭이 비트 저장에 함께 싣는다
+  sections?: MonthSections[] | null
   report: { daily: ClinicReportNumbers[]; monthly: ClinicReportNumbers[] }
 }
 

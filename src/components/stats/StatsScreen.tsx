@@ -288,7 +288,10 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         setIncomplete({ kind: 'bit', checks: view.checks })
         return
       }
-      setSavedUnread(await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit' }))
+      // 세 칸 합계(sections)는 Worker 값 그대로 넘긴다. 검사·크기는 saveStats가 달 줄마다 본다(spec stats-bit-ai AC-2902.2).
+      // 옛 도우미(v2) 답이라 Worker 값에 열쇠가 없으면 넘기지 않는다(saveStats는 없는 것을 null로 보낸다)
+      const sections = view.sections === undefined ? {} : { sections: view.sections }
+      setSavedUnread(await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit', ...sections }))
     })
 
   const takeFiles = (files: File[]) =>

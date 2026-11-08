@@ -3,10 +3,10 @@ import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { eachDay } from '@/lib/analytics/dates'
 import type { ConsumptionRow } from '@/types/consumption'
-import { AGAIN_WINDOWS, type AgainWindow, type DayAgainPayload, type DayPayload, type MonthPayload, type RevisitPayload } from '@/types/payload'
+import { AGAIN_WINDOWS, type AgainWindow, type DayAgainPayload, type DayPayload, type MonthPayload, type MonthSections, type RevisitPayload } from '@/types/payload'
 import { toDayPayloads } from './toDayPayloads'
 import { toMonthPayload } from './toMonthPayload'
-import { validateDayPayload, validateMonthPayload, validateRxPick } from './validate'
+import { validateDayPayload, validateMonthPayload, validateMonthSections, validateRxPick } from './validate'
 
 // 주민번호 모양은 소스에 통째로 쓰지 않는다(검문소가 막는다) — 조각을 이어 만든다
 const idLike = () => ['900101', '1234567'].join('-')
@@ -939,4 +939,191 @@ describe('AC-1303.6 타입: AGAIN_WINDOWS · AgainWindow · DayAgainPayload, 달
     expect(validateMonthPayload({ ...good(), again: goodAgain() })).toBeNull()
     expect(validateMonthPayload(good())).toStrictEqual(good())
   })
+})
+
+// ── 세 칸 합계(sections) 검사 (spec stats-bit-ai AC-2902.2·AC-2903.2) ──
+// 이름은 모두 지어낸 것이다. 시험마다 새로 만든다
+function goodSections(): MonthSections {
+  return {
+    v: 1,
+    month: '2026-10',
+    partial: false,
+    mix: {
+      people: 40,
+      age: [
+        { name: '10세 미만', people: 1 },
+        { name: '10대', people: 2 },
+        { name: '20대', people: 3 },
+        { name: '30대', people: 4 },
+        { name: '40대', people: 10 },
+        { name: '50대', people: 8 },
+        { name: '60대', people: 6 },
+        { name: '70대', people: 4 },
+        { name: '80세 이상', people: 0 },
+        { name: '생년월일 없음', people: 2 },
+      ],
+      insurance: [
+        { name: '건강보험', people: 30 },
+        { name: '의료급여', people: 5 },
+      ],
+      town: [
+        { name: '가상동', people: 12 },
+        { name: '나무동 (가상시 다구)', people: 5 },
+      ],
+    },
+    hours: {
+      openDays: [4, 4, 5, 5, 4, 4, 0],
+      weekdays: [30, 20, 25, 22, 18, 10, 0],
+      hours: [5, 15, 20, 18, 2, 10, 12, 11, 9, 8, 6, 4, 5],
+      unknown: 3,
+    },
+    doctors: [
+      { name: '김가상', patients: 25, newPatients: 4, amount: 1_234_560 },
+      { name: '이가상', patients: 20, newPatients: 0, amount: -3_000 },
+    ],
+  }
+}
+
+const SECTIONS_REMOVE = Symbol('remove')
+
+// goodSections()의 path 자리를 value로 바꾼(SECTIONS_REMOVE면 지운) 값
+function editedSections(path: (string | number)[], value: unknown): unknown {
+  const copy = goodSections() as unknown as Record<string | number, unknown>
+  let at = copy
+  for (const key of path.slice(0, -1)) at = at[key] as Record<string | number, unknown>
+  const last = path[path.length - 1]
+  if (value === SECTIONS_REMOVE) {
+    if (Array.isArray(at)) at.splice(last as number, 1)
+    else delete at[last]
+  } else at[last] = value
+  return copy
+}
+
+describe('AC-2902.2·AC-2903.2 validateMonthSections: 맞는 값은 새 객체로 돌려준다', () => {
+  it('AC-2902.2 맞는 세 칸 합계는 같은 값의 새 객체다(안쪽 줄도 새 객체)', () => {
+    const value = goodSections()
+    const checked = validateMonthSections(value)
+    expect(checked).toStrictEqual(goodSections())
+    expect(checked).not.toBe(value)
+    expect(checked?.mix).not.toBe(value.mix)
+    expect(checked?.mix.age[0]).not.toBe(value.mix.age[0])
+    expect(checked?.hours.hours).not.toBe(value.hours.hours)
+    expect(checked?.doctors[0]).not.toBe(value.doctors[0])
+  })
+
+  it('AC-2903.2 덜 덮인 달·빈 보험·빈 동네·원장님 없음(한 분)·접수 0건 달도 받는다', () => {
+    const empty: MonthSections = {
+      v: 1,
+      month: '2026-11',
+      partial: true,
+      mix: { people: 0, age: goodSections().mix.age.map(({ name }) => ({ name, people: 0 })), insurance: [], town: [] },
+      hours: { openDays: [0, 0, 0, 0, 0, 0, 0], weekdays: [0, 0, 0, 0, 0, 0, 0], hours: Array(13).fill(0), unknown: 0 },
+      doctors: [],
+    }
+    expect(validateMonthSections(empty)).toStrictEqual(empty)
+  })
+
+  it('AC-2903.2 금액은 원 단위 안전 정수다(환불로 0·음수도 된다)', () => {
+    for (const amount of [0, -1, Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]) {
+      expect(validateMonthSections(editedSections(['doctors', 0, 'amount'], amount)), String(amount)).not.toBeNull()
+    }
+  })
+
+  it('AC-2903.2 줄 수 한도까지는 받는다: 보험 100줄 · 동네 10줄 · 원장님 100줄', () => {
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `가상${i}`, people: 5 }))
+    expect(validateMonthSections(editedSections(['mix', 'insurance'], rows(100)))).not.toBeNull()
+    expect(validateMonthSections(editedSections(['mix', 'town'], rows(10)))).not.toBeNull()
+    const doctors = Array.from({ length: 100 }, (_, i) => ({ name: `가상${i}`, patients: 1, newPatients: 0, amount: 0 }))
+    expect(validateMonthSections(editedSections(['doctors'], doctors))).not.toBeNull()
+  })
+})
+
+describe('AC-2902.2·AC-2903.2 validateMonthSections: 하나라도 어긋나면 null', () => {
+  const cases: Array<[string, unknown]> = [
+    ['객체가 아님(배열)', []],
+    ['객체가 아님(null)', null],
+    ['객체가 아님(글자)', '{}'],
+    ['모르는 열쇠', { ...goodSections(), extra: 1 }],
+    ['열쇠 빠짐(doctors)', editedSections(['doctors'], SECTIONS_REMOVE)],
+    ['v가 2', editedSections(['v'], 2)],
+    ['v가 글자', editedSections(['v'], '1')],
+    ['달 글자 틀림(13월)', editedSections(['month'], '2026-13')],
+    ['달 글자 틀림(날짜)', editedSections(['month'], '2026-10-01')],
+    ['partial이 글자', editedSections(['partial'], 'false')],
+    ['mix 모르는 열쇠', editedSections(['mix', 'city'], [])],
+    ['mix 열쇠 빠짐', editedSections(['mix', 'town'], SECTIONS_REMOVE)],
+    ['연령대 아홉 줄', editedSections(['mix', 'age', 9], SECTIONS_REMOVE)],
+    ['연령대 열한 줄', editedSections(['mix', 'age', 10], { name: '90대', people: 0 })],
+    ['연령대 합이 실환자와 다름', editedSections(['mix', 'age', 0, 'people'], 2)],
+    ['연령대 줄 모르는 열쇠', editedSections(['mix', 'age', 0, 'visits'], 1)],
+    ['연령대 이름이 같은 줄', editedSections(['mix', 'age', 1, 'name'], '10세 미만')],
+    ['보험 4명 줄', editedSections(['mix', 'insurance', 1, 'people'], 4)],
+    ['보험이 실환자보다 많음', editedSections(['mix', 'insurance', 0, 'people'], 41)],
+    ['보험 이름이 같은 줄', editedSections(['mix', 'insurance', 1, 'name'], '건강보험')],
+    ['보험 101줄', editedSections(['mix', 'insurance'], Array.from({ length: 101 }, (_, i) => ({ name: `가상${i}`, people: 5 })))],
+    ['동네 4명 줄', editedSections(['mix', 'town', 1, 'people'], 4)],
+    ['동네 11줄', editedSections(['mix', 'town'], Array.from({ length: 11 }, (_, i) => ({ name: `가상${i}동`, people: 5 })))],
+    ['동네 이름이 같은 줄', editedSections(['mix', 'town', 1, 'name'], '가상동')],
+    ['문 연 날 여섯 칸', editedSections(['hours', 'openDays', 6], SECTIONS_REMOVE)],
+    ['문 연 날 여덟 칸', editedSections(['hours', 'openDays', 7], 0)],
+    ['요일 합 여섯 칸', editedSections(['hours', 'weekdays', 6], SECTIONS_REMOVE)],
+    ['시간 열두 칸', editedSections(['hours', 'hours', 12], SECTIONS_REMOVE)],
+    ['시간 열네 칸', editedSections(['hours', 'hours', 13], 0)],
+    ['한 요일 문 연 날이 6일(한 달에 많아야 5번)', editedSections(['hours', 'openDays', 0], 6)],
+    ['요일 합과 시간 합이 다름', editedSections(['hours', 'hours', 0], 6)],
+    ['접수가 있는데 문 연 날 0', editedSections(['hours', 'openDays', 0], 0)],
+    ['문 열었는데 접수 0', editedSections(['hours', 'openDays', 6], 1)],
+    ['hours 모르는 열쇠', editedSections(['hours', 'cells'], [])],
+    ['원장님 101줄', editedSections(['doctors'], Array.from({ length: 101 }, (_, i) => ({ name: `가상${i}`, patients: 1, newPatients: 0, amount: 0 })))],
+    ['원장님 신환이 실환자보다 많음', editedSections(['doctors', 1, 'newPatients'], 21)],
+    ['원장님 이름이 같은 줄', editedSections(['doctors', 1, 'name'], '김가상')],
+    ['원장님 줄 모르는 열쇠', editedSections(['doctors', 0, 'visits'], 3)],
+    ['원장님 줄 열쇠 빠짐', editedSections(['doctors', 0, 'amount'], SECTIONS_REMOVE)],
+  ]
+  it.each(cases)('AC-2902.2 %s', (_, value) => {
+    expect(validateMonthSections(value)).toBeNull()
+  })
+
+  // 수: 0 이상 안전 정수(금액만 음수 가능)
+  const counts: Array<(string | number)[]> = [
+    ['mix', 'people'],
+    ['mix', 'age', 4, 'people'],
+    ['mix', 'insurance', 0, 'people'],
+    ['mix', 'town', 0, 'people'],
+    ['hours', 'openDays', 0],
+    ['hours', 'weekdays', 0],
+    ['hours', 'hours', 0],
+    ['hours', 'unknown'],
+    ['doctors', 0, 'patients'],
+    ['doctors', 0, 'newPatients'],
+  ]
+  for (const path of counts) {
+    it(`AC-2902.2 ${path.join('.')}이 음수·소수·안전 정수 밖·글자·NaN이면 null`, () => {
+      for (const bad of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '3', Number.NaN, null]) {
+        expect(validateMonthSections(editedSections(path, bad)), String(bad)).toBeNull()
+      }
+    })
+  }
+
+  it('AC-2902.2 금액이 소수·안전 정수 밖·글자면 null', () => {
+    for (const bad of [0.5, Number.MAX_SAFE_INTEGER + 1, -Number.MAX_SAFE_INTEGER - 1, '1000', Number.NaN, null]) {
+      expect(validateMonthSections(editedSections(['doctors', 0, 'amount'], bad)), String(bad)).toBeNull()
+    }
+  })
+
+  // 묶음 이름: isText(…, true)를 넘어야 한다(연락처·식별 번호 모양·메일·100자 넘음·빈 글자·글자 아님)
+  const names: Array<(string | number)[]> = [
+    ['mix', 'age', 0, 'name'],
+    ['mix', 'insurance', 0, 'name'],
+    ['mix', 'town', 0, 'name'],
+    ['doctors', 0, 'name'],
+  ]
+  for (const path of names) {
+    it(`AC-2903.2 ${path.join('.')}이 isText를 못 넘거나 빈 이름이면 null`, () => {
+      for (const bad of ['', '010-1234-5678', idLike(), joinedIdLike(), 'a@b.co', long(101), 3, null]) {
+        expect(validateMonthSections(editedSections(path, bad)), String(bad)).toBeNull()
+      }
+      expect(validateMonthSections(editedSections(path, long(100)))).not.toBeNull()
+    })
+  }
 })
