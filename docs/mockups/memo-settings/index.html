@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설정 · 병원 문구 — 청구메모 설정 확장 (memo-settings 시안)</title>
+<!-- 2026-11-08 memo-settings 시안. 메디코어 설정 창처럼 묶음 단추로 나눈다. 코드·이름·숫자는 가짜(환자 자료 없음) -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;--warn:#B45309;--warn-soft:#FEF3E2;--r-control:4px;--r-float:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:#E9ECF1;color:var(--ink);font-size:14px;line-height:22px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+.stage{padding:16px 0 48px;display:flex;justify-content:center}
+.frame{background:var(--surface);width:1200px;box-shadow:0 0 0 1px #CBD2DC}
+.band{border-bottom:1px solid var(--line);height:52px;display:flex;align-items:center;padding:0 24px;gap:8px;font-weight:600}
+.band i{width:20px;height:20px;border-radius:5px;background:var(--accent)}
+main{padding:20px 24px 32px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:20px;font-weight:600}
+.sub{display:flex;border-bottom:1px solid var(--line)}
+.sub a{padding:8px 12px;color:var(--ink-2);text-decoration:none;font-weight:500}.sub a.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px var(--accent)}
+.panel{border:1px solid var(--line);border-radius:var(--r-float);padding:20px;display:flex;flex-direction:column;gap:14px}
+.panel h2{font-size:15px;font-weight:600}
+.help{font-size:13px;color:var(--ink-2)}
+.muted{color:var(--muted);font-size:12px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs button{padding:8px 12px;color:var(--ink-2);font-weight:500}
+.tabs button.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px var(--accent)}
+.tabs .cnt{display:inline-flex;margin-left:4px;padding:0 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:12px}
+.pane{display:none;flex-direction:column;gap:14px}.pane.on{display:flex}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:13px;font-weight:500;color:var(--ink-2)}
+.input{height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:#fff;width:100%}
+textarea.input{height:auto;padding:8px 10px}
+.chk{display:flex;align-items:flex-start;gap:8px;font-size:14px}.chk input{margin-top:4px;accent-color:var(--accent)}
+.chk small{display:block;color:var(--muted);font-size:12px}
+.group{border:1px solid var(--line);border-radius:var(--r-float);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.group h3{font-size:14px;font-weight:600}
+.new{background:var(--accent-soft);border-color:#C7D8FB}
+.btn{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:#fff;font-size:13px;font-weight:500;color:var(--ink-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.small{height:28px;padding:0 8px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-weight:500;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+td .input{height:30px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.chip.w{background:var(--warn-soft);color:var(--warn)}.chip.n{background:var(--canvas);color:var(--ink-2);border:1px solid var(--line)}
+tr.isnew td{background:#FFFBF3}
+.memo{white-space:pre-wrap;background:var(--canvas);border-radius:var(--r-control);padding:10px 12px;font-size:13px}
+.savebar{border-top:1px solid var(--line);padding-top:14px;display:flex;gap:8px;align-items:center}
+.diff{border:1px solid var(--accent);border-radius:var(--r-float);padding:14px 16px;display:none;flex-direction:column;gap:10px;background:#FBFCFF}
+.diff.on{display:flex}
+.ok{color:var(--positive);font-size:13px;display:none}.ok.on{display:inline}
+.note{background:#1F2937;color:#F9FAFB;padding:10px 16px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="note"><b>시안</b> · 위 묶음 단추를 눌러 보세요. 저장 단추를 누르면 '바뀐 부분 비교'가 나옵니다. 숫자·코드는 가짜입니다.</div>
+<div class="stage"><div class="frame">
+<div class="band"><i></i>의원 업무 도구</div>
+<main>
+<h1>설정</h1>
+<nav class="sub"><a class="on">청구·연락</a><a>비트 PC 연결</a></nav>
+
+<section class="panel">
+  <div><h2>병원 문구</h2><p class="help">청구메모에 들어가는 말을 우리 병원에 맞게 고쳐요. 저장하기 전까지 실제 메모는 바뀌지 않아요.</p></div>
+  <div class="tabs" role="tablist">
+    <button class="on" data-t="basic">기본</button>
+    <button data-t="proc">시술별 문구와 약</button>
+    <button data-t="codes">처방코드<span class="cnt">새 7</span></button>
+    <button data-t="rules">표기 규칙</button>
+    <button data-t="reason">사유 문장</button>
+    <button data-t="try">메모 시험</button>
+  </div>
+
+  <!-- 기본 -->
+  <div class="pane on" id="basic">
+    <div class="field" style="max-width:280px"><label>줄 앞 기호</label><input class="input" value="◈"></div>
+    <div class="grid">
+      <div class="field"><label>좌우 표기</label><select class="input"><option>Rt·Lt·both</option></select></div>
+      <div class="field"><label>연골주사 좌우 표기</label><select class="input"><option>한글</option></select></div>
+      <div class="field"><label>레벨 이어 쓰기</label><select class="input"><option>쉼표</option></select></div>
+      <div class="field"><label>줄 나눔</label><select class="input"><option>줄마다 나누기</option></select></div>
+      <div class="field"><label>약 모양</label><select class="input"><option>괄호</option></select></div>
+      <div class="field"><label>약 양 단위</label><input class="input"></div>
+    </div>
+    <label class="chk"><input type="checkbox">양도 쓰기 (비트 처방의 투여량)</label>
+  </div>
+
+  <!-- 시술별 문구와 약 -->
+  <div class="pane" id="proc">
+    <div class="group"><h3>시술 문구</h3>
+      <div class="grid">
+        <div class="field"><label>기본 시술 문구</label><input class="input" value="{시술}"></div>
+        <div class="field"><label>일반 IA</label><input class="input" value="IA injection of - {부위}{약제}"></div>
+        <div class="field"><label>건초내주사</label><input class="input" value="{부위} 건초내주사 시행{약제}"></div>
+        <div class="field"><label>연골주사</label><input class="input" value="{좌우} 슬관절 강내 연골주사 {회차}회차"></div>
+      </div><p class="muted">… 경부 CPB · SNB · ICNB · K-L grade 등 지금 칸 11개 그대로</p>
+    </div>
+    <div class="group"><h3>시술 이름별 문구 <span class="muted">— 이름이 긴 것부터 먼저 맞춰요</span></h3>
+      <table><tr><th>시술 이름</th><th>문구</th><th></th></tr>
+        <tr><td style="width:180px"><input class="input" value="SSNB"></td><td><input class="input" value="{C-arm} {좌우} SSNB {시행함}"></td><td style="width:60px"><button class="btn small">지우기</button></td></tr>
+      </table><div><button class="btn small">+ 이름 더하기</button></div>
+    </div>
+    <div class="group"><h3>부위별 문구 <span class="muted">— 비워 두면 기본 시술 문구</span></h3>
+      <div class="grid3">
+        <div class="field"><label>무릎</label><input class="input"></div><div class="field"><label>어깨</label><input class="input"></div><div class="field"><label>허리</label><input class="input"></div>
+      </div><p class="muted">… 12개 부위</p>
+    </div>
+    <div class="group"><h3>고정 멘트 <span class="muted">— 문구에 {단추 이름}으로 넣어요</span></h3>
+      <table><tr><th>켜기</th><th>단추 이름</th><th>들어갈 글</th><th></th></tr>
+        <tr><td><input type="checkbox" checked></td><td><input class="input" value="C-arm"></td><td><input class="input" value="C-arm guide 하에"></td><td><button class="btn small">지우기</button></td></tr>
+        <tr><td><input type="checkbox" checked></td><td><input class="input" value="Sono"></td><td><input class="input" value="Sono guide 하에"></td><td><button class="btn small">지우기</button></td></tr>
+        <tr><td><input type="checkbox" checked></td><td><input class="input" value="시행함"></td><td><input class="input" value="시행함"></td><td><button class="btn small">지우기</button></td></tr>
+      </table><div><button class="btn small">+ 멘트 더하기</button></div>
+    </div>
+    <div class="group"><h3>시술별 약</h3>
+      <div class="field" style="max-width:320px"><label>고칠 시술</label><select class="input"><option>IA (KK090)</option></select></div>
+      <table><tr><th>약 이름</th><th>넣기·빼기</th><th>자리</th></tr>
+        <tr><td>트리암</td><td><label><input type="radio" name="a" checked> 넣기</label> &nbsp;<label><input type="radio" name="a"> 빼기</label></td><td><select class="input" style="width:140px"><option>시술 뒤</option></select></td></tr>
+        <tr><td>덱사</td><td><label><input type="radio" name="b" checked> 넣기</label> &nbsp;<label><input type="radio" name="b"> 빼기</label></td><td><select class="input" style="width:140px"><option>시술 뒤</option></select></td></tr>
+        <tr><td>아라간</td><td><label><input type="radio" name="c"> 넣기</label> &nbsp;<label><input type="radio" name="c" checked> 빼기</label></td><td><select class="input" style="width:140px" disabled><option>시술 뒤</option></select></td></tr>
+      </table>
+      <label class="chk"><input type="checkbox" checked><span>시술이 2개 이상인 날, '넣기'인 시술이 하나뿐이면 그 시술 줄에 자동으로 넣기<small>넣기인 시술이 2곳 이상이거나 아직 안 정한 시술이 있으면 [약 확인]을 남겨요. 모든 시술에서 빼기면 빼요.</small></span></label>
+    </div>
+  </div>
+
+  <!-- 처방코드 -->
+  <div class="pane" id="codes">
+    <div class="group new"><div class="row" style="justify-content:space-between">
+      <span><b>새 코드 7개</b> — 아직 정하지 않아 메모에 <b>[코드 확인: 이름]</b>이 남아요.</span>
+      <button class="btn small" id="allSkip">새 코드 모두 제외</button></div></div>
+    <div class="row"><input class="input" style="max-width:280px" placeholder="코드나 이름으로 찾기"><span class="muted">최근 3개월에 처방된 코드 42개</span><button class="btn small" id="all">전체 보기</button></div>
+    <table id="codeTable">
+      <tr><th>코드</th><th>비트 이름 · 종류</th><th>마지막 처방</th><th>메모에 쓸 이름</th><th>구분</th><th>부위</th><th>코드별 메모 문구</th><th>순서</th></tr>
+      <tr class="isnew"><td>AA254 <span class="chip w">새 코드</span></td><td>재진진찰료 · 진찰</td><td>11-07</td><td><input class="input" placeholder="재진진찰료"></td><td><select class="input k"><option>정하기</option><option>시술</option><option>약</option><option>문구</option><option>검사</option><option>제외</option></select></td><td><select class="input"><option>자동</option></select></td><td><input class="input"></td><td><input class="input" style="width:52px"></td></tr>
+      <tr class="isnew"><td>A55 <span class="chip w">새 코드</span></td><td>소론도정 · 약</td><td>11-06</td><td><input class="input" placeholder="소론도정"></td><td><select class="input k"><option>정하기</option><option>시술</option><option>약</option><option>문구</option><option>검사</option><option>제외</option></select></td><td><select class="input"><option>자동</option></select></td><td><input class="input"></td><td><input class="input" style="width:52px"></td></tr>
+      <tr><td>KK090</td><td>관절강내주사 · 처치</td><td>11-07</td><td><input class="input" value="IA"></td><td><select class="input"><option>시술</option></select></td><td><select class="input"><option>자동</option></select></td><td><input class="input"></td><td><input class="input" style="width:52px" value="1"></td></tr>
+      <tr><td>LA358</td><td>척추후관절 신경차단 · 처치</td><td>11-07</td><td><input class="input" value="MBB"></td><td><select class="input"><option>시술</option></select></td><td><select class="input"><option>자동</option></select></td><td><input class="input"></td><td><input class="input" style="width:52px"></td></tr>
+      <tr><td>A21</td><td>트리암주 · 주사약</td><td>11-07</td><td><input class="input" value="트리암"></td><td><select class="input"><option>약</option></select></td><td><select class="input"><option>자동</option></select></td><td><input class="input"></td><td><input class="input" style="width:52px"></td></tr>
+      <tr><td>HA280</td><td>관절조영술 · 처치</td><td>10-29</td><td><input class="input" value="관절조영술"></td><td><select class="input"><option>문구</option></select></td><td><select class="input"><option>자동</option></select></td><td><input class="input" value="관절조영 시행"></td><td><input class="input" style="width:52px"></td></tr>
+    </table>
+    <p class="muted">순서: 번호를 넣은 코드의 줄이 번호 작은 차례로 먼저 오고, 번호 없는 줄은 차트에 적힌 차례로 그 뒤에 와요. 목록은 통계에 저장된 처방에서 모아요(한 번도 처방하지 않은 코드는 없어요).</p>
+  </div>
+
+  <!-- 표기 규칙 -->
+  <div class="pane" id="rules">
+    <div class="grid">
+      <div class="field"><label>좌우 기본 표기</label><select class="input"><option>총투여량 1.5 이상만 both</option><option>차트 Lt/Rt/both 그대로</option></select></div>
+      <div class="field"><label>앞에 한 번 적힌 좌우</label><select class="input"><option>뒤 시술 모두에 적용</option><option>바로 옆 시술만</option></select></div>
+    </div>
+    <div class="group"><h3>켜고 끄기</h3>
+      <label class="chk"><input type="checkbox" checked>경추 CPB 따로 쓰기</label>
+      <label class="chk"><input type="checkbox" checked>요추 SNB 따로 쓰기</label>
+      <label class="chk"><input type="checkbox" checked>시술 줄 나누기</label>
+      <label class="chk"><input type="checkbox" checked>무릎 세트(FNB·SNB + IA)면 IA 줄 생략</label>
+      <label class="chk"><input type="checkbox"><span>무릎 세트 날에 트리암·덱사가 있으면 IA 줄 쓰기<small>끄면 지금처럼 IA 줄을 생략하고 [약 확인]을 남겨요</small></span></label>
+      <label class="chk"><input type="checkbox"><span>IA·건초내주사 줄에 좌우 넣기<small>켜면 IA injection of - <b>Rt</b> knee(triam)</small></span></label>
+    </div>
+    <div class="group"><h3>코드별 좌우</h3>
+      <table><tr><th>코드</th><th>좌우</th><th></th></tr><tr><td style="width:160px"><input class="input" value="LA247"></td><td><select class="input"><option>좌우 안 씀</option><option>1.5 이상만 both</option><option>차트 그대로</option></select></td><td style="width:60px"><button class="btn small">지우기</button></td></tr></table>
+      <div><button class="btn small">+ 코드 더하기</button></div></div>
+    <div class="group"><h3>부위 영어 표기</h3><div class="grid3">
+      <div class="field"><label>무릎</label><input class="input" value="knee"></div><div class="field"><label>어깨</label><input class="input" value="shoulder"></div><div class="field"><label>발목</label><input class="input" value="ankle"></div>
+    </div><p class="muted">… 12개 부위</p></div>
+    <div class="field"><label>표기 바꾸기 <span class="muted">(한 줄에 하나: 찾을 표기 &gt; 바꿀 표기)</span></label><textarea class="input" rows="2">C-MBB &gt; MBB C</textarea></div>
+  </div>
+
+  <!-- 사유 문장 -->
+  <div class="pane" id="reason">
+    <div class="field"><label>주사 간격 사유</label><textarea class="input" rows="2">환자 스케쥴상 다른 날 내원이 어려워 금일 주사시행.</textarea></div>
+    <div class="field"><label>2부위 시술 사유</label><textarea class="input" rows="2">환자 스케쥴상 주1회 내원 밖에 안되어 당일 주사치료 2부위 시행함.</textarea></div>
+    <div class="field" style="max-width:200px"><label>주사 간격 일수</label><input class="input" value="7"></div>
+  </div>
+
+  <!-- 메모 시험 -->
+  <div class="pane" id="try">
+    <div class="grid">
+      <div class="field"><label>차트 글 <span class="muted">(한 줄에 하나)</span></label><textarea class="input" rows="5">MBB L4,5 both
+Rt knee IA triam</textarea></div>
+      <div class="field"><label>처방 <span class="muted">(한 줄에 "코드 수량")</span></label><textarea class="input" rows="5">LA358 2
+KK090 1
+A21 1</textarea></div>
+    </div>
+    <div><button class="btn primary" id="make">메모 만들기</button> <span class="muted">저장하지 않은 지금 고친 값으로 만들어요. 이 글은 저장하지 않아요.</span></div>
+    <div class="memo" id="memoOut" style="display:none">◈MBB L4,5 both
+◈IA injection of - knee(triam)
+
+환자 스케쥴상 주1회 내원 밖에 안되어 당일 주사치료 2부위 시행함.</div>
+  </div>
+
+  <div class="diff" id="diff">
+    <b>바뀐 부분을 확인해 주세요</b>
+    <table><tr><th>칸</th><th>전</th><th>후</th></tr>
+      <tr><td>KK090 · 아라간</td><td>넣기 · 시술 뒤</td><td>빼기</td></tr>
+      <tr><td>AA254 · 구분</td><td>(없음)</td><td>제외</td></tr>
+      <tr><td>KK090 · 줄 순서</td><td>(없음)</td><td>1</td></tr>
+      <tr><td>IA·건초내주사 줄에 좌우 넣기</td><td>끔</td><td>켬</td></tr>
+    </table>
+    <div class="row"><button class="btn primary" id="confirm">이대로 저장</button><button class="btn" id="cancel">더 고치기</button></div>
+  </div>
+  <div class="savebar"><button class="btn primary" id="save">저장</button><span class="ok" id="ok">저장했어요. 다음에 만드는 메모부터 바뀌어요.</span></div>
+</section>
+<section class="panel"><h2>상병 연결 · 시재금 …</h2><p class="muted">지금 그대로</p></section>
+</main>
+</div></div>
+<script>
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===b.dataset.t))})
+const d=document.getElementById('diff'),ok=document.getElementById('ok')
+document.getElementById('save').onclick=()=>{d.classList.add('on');ok.classList.remove('on')}
+document.getElementById('cancel').onclick=()=>d.classList.remove('on')
+document.getElementById('confirm').onclick=()=>{d.classList.remove('on');ok.classList.add('on')}
+document.getElementById('make').onclick=()=>{document.getElementById('memoOut').style.display='block'}
+document.getElementById('allSkip').onclick=()=>document.querySelectorAll('select.k').forEach(s=>s.value='제외')
+document.getElementById('all').onclick=e=>{e.target.textContent='최근 3개월만';document.querySelector('#codes .muted').textContent='저장된 통계 전체 기간의 코드 186개'}
+</script>
+</body>
+</html>
