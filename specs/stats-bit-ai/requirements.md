@@ -1,0 +1,58 @@
+# 요구사항: 통계 비트 세 칸을 AI 리포트에
+
+> 기능 ID: `stats-bit-ai` · 형식: 요구사항은 `### REQ-2901: 제목`, 수용 기준은 `- AC-2901.1: Given/When/Then`.
+> 각 AC 는 테스트 하나 이상으로 검증되어야 하며, 테스트 이름에 AC ID 를 넣는다.
+> 번호는 2901부터다(가장 큰 것이 patients-bit-lists의 REQ-2806).
+
+## 배경 / 목표
+- 통계 탭의 비트 전용 세 칸(환자 구성 · 시간대별 접수 · 원장님별, spec `stats-bit-sections`)은 의원 PC 브라우저 Worker 안에서만 셈하고 저장하지 않는다. AI 리포트는 서버가 DB(`stats_months`)에서 읽은 숫자만 쓰므로(CLAUDE.md, `plan.md §6-2`) 세 칸을 보지 못한다.
+- 사용자 결정(2026-11-08): 세 칸도 AI가 분석하게 한다("해줘"). 원장님 이름은 그대로 보낸다("이름 그대로"). 원장님별 매출도 넣는다("매출까지 넣기"). 지금 AI 리포트는 돈 숫자를 하나도 보지 않으므로 매출은 새로 가는 숫자다.
+- 그래서 통계 탭이 비트에서 불러올 때 **달마다 세 칸의 합계 숫자**(이하 `sections`)를 만들어 그 달 줄(`stats_months`)에 함께 저장하고, AI 서버가 그 숫자를 읽어 지표로 더한다.
+- 지키는 규칙: 환자 정보(차트번호·생년월일·주소 앞부분·접수 줄)는 서버·Claude로 가지 않는다. 서버에는 묶음 이름과 수만 간다. AI 경로는 브라우저가 보낸 숫자를 쓰지 않고 서버가 사용자 세션으로 DB에서 읽어 검사한 값만 쓴다. 금액은 원 단위 정수다.
+- 작은 묶음: 보험·동네 묶음은 지금 동네 저장 규칙(`MonthPayload.regions` 5명 이상만)과 같이 **5명 이상인 묶음만** 저장한다. 연령대는 열 묶음이 늘 같고 넓어 모두 저장한다. 원장님은 직원이라 모두 저장한다.
+
+## 요구사항
+
+### REQ-2901: 통계 탭이 불러온 달마다 세 칸 합계를 만든다
+- AC-2901.1: Given 새 도우미(v3) 답으로 통계를 불러옴, When Worker load 일이 달 줄(`months`)을 만들면, Then 달 줄마다 같은 달의 `sections` `{ v: 1, month, partial, mix, hours, doctors }`를 함께 만든다. 그 달의 셈 기간은 그 달과 불러온 범위(오늘까지)가 겹치는 날이고(달 줄 숫자와 같은 날들), `partial`은 같은 달 줄의 `partial`과 같다
+- AC-2901.2: Given 달의 셈 기간, When `mix`를 만들면, Then 통계 화면 환자 구성 [전체]와 같은 셈(`patientMix`)으로 `people`(그 달 실환자) · `age`(연령대 열 줄 `{ name, people }`, 화면 차례, 0명 줄 포함) · `insurance`(보험 묶음 중 보통 줄이고 5명 이상인 줄, 명이 큰 차례) · `town`([동] 묶음 중 보통 줄이고 5명 이상인 줄, 화면 이름 그대로, 명이 큰 차례. 화면처럼 많아야 10줄)이다. `그 밖 N곳`·`동 없는 주소`·`주소 없음`·`보험 모름` 같은 보통 줄이 아닌 줄은 넣지 않는다
+- AC-2901.3: Given 달의 셈 기간, When `hours`를 만들면, Then 통계 화면 시간대별 접수와 같은 셈(`visitHours`)으로 `openDays`(월~일 일곱 칸, 그 요일의 문 연 날 수) · `weekdays`(월~일 일곱 칸, 그 요일 접수 합) · `hours`(8시~20시 열세 칸, 그 시 접수 합, 8시 전은 8시·21시 뒤는 20시 칸) · `unknown`(접수 시각을 모르는 건수)이다
+- AC-2901.4: Given 달의 셈 기간, When `doctors`를 만들면, Then 통계 화면 원장님별 줄(`doctorStats`)마다 `{ name, patients, newPatients, amount }`(화면 이름·실환자·신환·매출 원 단위 정수)이고 화면 차례다. 원장님이 한 분이라 화면이 표를 그리지 않는 경우(`single`)는 `[]`이다
+- AC-2901.5: Given 묶음 이름(보험 이름·동네 이름·원장님 이름), When `sections`를 만들면, Then 지금 통계 숫자 글자 검사(`validate.ts`의 `isText`)를 못 넘는 이름의 줄은 넣지 않는다(연락처·식별 번호 모양 이름은 서버로 가지 않는다)
+- AC-2901.6: Given 옛 도우미(v2) 답으로 불러옴, When 달 줄을 만들면, Then `sections`는 없다(`null`). 파일로 불러온 달도 `sections`가 없다
+- AC-2901.7: Given 만든 `sections`, When JSON으로 펴서 보면, Then 묶음 이름과 수뿐이고 차트번호·생년월일·주소 앞부분·접수 시각 줄·진료의 코드가 없다(이름 없는 진료의를 코드로 보이는 화면 규칙 AC-2705.3·AC-2702.4는 그대로다)
+
+### REQ-2902: 그 달 줄에 sections를 저장한다
+- AC-2902.1: Given 새 마이그레이션, When 적용하면, Then `stats_months`에 `sections jsonb` 칸(빈 값 허용)이 있고, 값이 있으면 객체이고 `v`가 1이며 `month`·`partial`이 그 줄의 `month`·`partial`과 같고 글자 크기가 65,536바이트 이하일 때만 받는다. 로그인 사용자의 넣기·고치기 권한에 `sections`가 더해지고 RLS(내 병원 줄만)·완전한 줄 지키기 트리거는 그대로다
+- AC-2902.2: Given 비트로 불러온 저장, When `saveStats`가 달 줄을 보내면, Then 줄마다 같은 달의 `sections`를 검사(`validateMonthSections`)해 함께 보내고, 그 달 `sections`가 없거나 검사·크기에 걸리면 그 줄은 `sections: null`로 보낸다(옛 값이 남지 않게). 이 때문에 달·일 숫자 저장이 실패하지는 않는다
+- AC-2902.3: Given 파일로 불러온 저장, When `saveStats`가 달 줄을 보내면, Then 줄마다 `sections: null`이다
+- AC-2902.4: Given 완전한 달 줄(`partial` false)이 있음, When 같은 달의 덜 덮인 줄을 저장하면, Then 지금처럼 옛 줄이 남고 `sections`도 옛 값이다
+- AC-2902.5: Given 다른 병원·로그인 안 한 사용자, When `stats_months`의 `sections`를 읽거나 쓰면, Then 지금 달 줄처럼 막힌다. 제약에 어긋나는 `sections`(`v`가 1이 아님, `month`·`partial`이 줄과 다름, 크기 넘음, 객체가 아님)는 DB가 받지 않는다
+
+### REQ-2903: AI 서버가 sections를 읽고 검사한다
+- AC-2903.1: Given 사용자 세션과 달 `M`, When `loadReportMonths`가 세 달을 읽으면, Then 지금과 같은 읽기 한 번에 `select('month, payload, sections')`로 읽고, 세 달마다 `sections`를 검사하지 않고 그대로 넘긴다(없으면 `null`)
+- AC-2903.2: Given 읽은 `sections`, When 리포트 입력을 만들면, Then `validateMonthSections`를 넘고 `month`가 그 달과 같을 때만 쓴다. 비교 달(지난달·작년 같은 달)은 지금 규칙대로 그 달 줄을 견줄 때만(다 불러온 달) 그 `sections`도 쓴다. 검사를 못 넘으면 그 달 `sections`만 없는 것으로 보고 리포트는 계속 만든다
+- AC-2903.3: Given AI 리포트 요청, When 서버가 받으면, Then 요청 몸의 숫자는 쓰지 않는다(지금 규칙 그대로)
+
+### REQ-2904: AI 입력에 세 칸 지표를 더한다
+- AC-2904.1: Given 고른 달에 `sections`가 없음, When `buildReportInput`을 부르면, Then 지표 목록과 지문은 이 기능 전과 같다(이미 만든 리포트가 '숫자가 바뀌었어요'가 되지 않는다)
+- AC-2904.2: Given 고른 달에 `sections`가 있음, When `buildReportInput`을 부르면, Then 지금 지표 뒤에 이 차례로 더한다: 연령대 열 줄 `age:<이름>`(이름 "연령대 '40대' 환자", count) → 보험 고른 달 상위 10줄 `insurance:<이름>`("보험 '건강보험' 환자", count) → 동네 고른 달 줄 모두 `town:<이름>`("동네 '매탄동' 환자", count) → 요일 월~일 `weekday:<1~7>`("요일 '월' 하루 평균 접수", average) → 시간 8~20시 `hour:<8~20>`("'오전 9시' 하루 평균 접수", average) → 원장님마다(고른 달 차례) `doctor:<이름>.patients`·`.newPatients`·`.amount`("원장님 '김가상' 실환자"·"… 신환" count, "… 매출" won)
+- AC-2904.3: Given 각 지표의 지난달·작년 같은 달 값, When 정하면, Then 그 달 `sections`가 없으면 `null`이다. `sections`가 있는 달에 그 보험·동네 줄이 없으면 `null`(5명 미만이거나 없음), 그 원장님 줄이 없으면 0, 연령대는 늘 그 달 값이다
+- AC-2904.4: Given 요일·시간 지표, When 값을 정하면, Then 요일 = 그 요일 접수 합 ÷ 그 요일 문 연 날 수, 시간 = 그 시 접수 합 ÷ 일곱 요일 문 연 날 수의 합이고 소수 둘째 자리에서 반올림한 수다. 나누는 수가 0이면 `null`이다
+- AC-2904.5: Given 지표 종류, When `MetricKind`를 보면, Then 지금 `count`·`visits`·`rate`에 `won`(원 단위 정수 금액)과 `average`(하루 평균 접수 건수)가 더해진다
+
+### REQ-2905: 근거 줄과 지시문
+- AC-2905.1: Given `won` 지표, When 근거 줄을 만들면, Then 값은 통계 화면 원장님별과 같은 `formatCount(값)원`이다(예 `12,345,000원`). `average` 지표는 통계 화면 시간대별 접수와 같은 `averageText(값)`에 `건`을 붙이고(예 `14.3건`) 0이면 `0건`이다. `null`은 지금처럼 `자료 없음`이다
+- AC-2905.2: Given 지시문, When 보면, Then `won`은 원장님 매출(수납일 기준 총진료비 합, 원)이고 `average`는 문 연 날 하루 평균 접수 건수라는 설명, 원장님 실환자는 원장님끼리 겹칠 수 있어 더해 전체 환자라고 쓰지 않는다는 규칙, 보험·동네는 5명 이상 묶음만 있어 `null`이면 '5명 미만이거나 자료 없음'이라 비교하지 않는다는 규칙, 금액·평균을 지어내지 않는다는 규칙이 있다
+- AC-2905.3: Given Claude 답의 카드, When 검사하면, Then 지금처럼 입력 지표에 있는 지표 ID만 받는다(새 지표도 같은 검사)
+
+### REQ-2906: 울타리와 지금 동작은 그대로
+- AC-2906.1: Given 새 파일(`lib/payload`·`lib/analytics`·Worker), When 울타리 시험(`src/guardrails.test.ts`)과 `npm run lint`를 돌리면, Then 통과한다
+- AC-2906.2: Given `sections`가 있는 달로 만든 Claude 요청, When 몸을 JSON으로 보면, Then 묶음 이름·원장님 이름·수뿐이고 차트번호·생년월일·주소 앞부분·접수 줄이 없다
+- AC-2906.3: Given 지금 시험, When 이 기능 뒤에 돌리면, Then 기대값을 바꾸지 않고 통과한다. 다만 `stats_months`에 보내는 줄 모양을 글자 그대로 보는 저장 시험과 `loadReportMonths`의 select 글을 보는 시험은 `sections`를 더한 값으로 고친다(AC-2902.2·2903.1이 바꾸는 것)
+
+## 범위 밖
+- 휴대폰·다른 PC 통계 화면에서 저장된 세 칸 보기(세 칸은 고른 기간마다 셈이라 달 합계로 못 그린다)
+- 이미 저장된 달에 세 칸 채우기 — 그 달을 통계 탭에서 비트로 다시 불러와야 생긴다
+- 원장님이 한 분인 병원의 매출 지표, 환자 구성 [신환] 기준, 시간대 요일×시간 칸 하나하나
+- AI 리포트 화면 모양 바꾸기(새 근거 줄 글자만 더해진다), 파일로 불러온 달의 세 칸
