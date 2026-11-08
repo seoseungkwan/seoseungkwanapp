@@ -14,7 +14,7 @@ import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
 // 청구 Worker가 하는 일(design.md 6-2) [환자 자료 구역]. 시험은 이 파일을 바로 부른다(입구 precheck.worker.ts는 메시지만 잇는다).
-// 통로 포트: chunk·end·abort → assemble로 모은다. sent → 설정 사본·달 칸 저장·입력 묶음의 답. 화면: loadStart(번호 load로 새 불러오기 시작, 옛 달을 버림) · month(그 불러오기의 id를 점검용 모양으로) · loadPart(claim.memos·store.load의 id를 받아 둠) · memoReloadStart(비트 메모 다시 불러오기 번호 run) · ruleList(설정 화면용 규칙 목록) · check(점검) · excel(엑셀 바이트) · memoView·editMemo·memoApprove·memoSaveRetry·storeBlock·buildInputBatch·inputExcel(메모 칸, TASK-18). 화면이 지킬 약속은 types/precheck.ts.
+// 통로 포트: chunk·end·abort → assemble로 모은다. sent → 설정 사본·달 칸 저장·입력 묶음의 답. 화면: loadStart(번호 load로 새 불러오기 시작, 옛 달을 버림) · month(그 불러오기의 id를 점검용 모양으로) · loadPart(claim.memos·store.load의 id를 받아 둠) · memoReloadStart(비트 메모 다시 불러오기 번호 run) · ruleList(설정 화면용 규칙 목록) · check(점검) · excel(엑셀 바이트) · memoView·editMemo·memoApprove·memoSaveRetry·storeBlock·buildInputBatch·inputExcel(메모 칸, TASK-18) · memoCopied·memoUndone(복사로 완료·완료 풀기, REQ-3104). 화면이 지킬 약속은 types/precheck.ts.
 // 화면으로 보내는 것은 진료 수·진료 달·오류 번호·규칙 목록·loadPart의 성패·날짜별 건수(날짜와 정수)와, check·memoView의 보기 모양·입력 결과·엑셀의 바이트뿐이다. 조각 글자·풀린 자료·도우미에 보낼 글자(묶음·저장 글자)는 Worker 밖으로 화면에 내보내지 않는다(design.md 5절, AC-004.11)
 
 const PARTIAL = { ok: false, code: 'E-CLAIM-PARTIAL' } as const
@@ -343,6 +343,8 @@ export function createPrecheckJobs(deps: {
   const afterEntry = new Map<string, string | null>()
   /** 이번 입력 결과가 완료가 아닌 사람: 내원번호 → 결과(날짜별 건수의 재료, AC-019.3). 새 [자료 불러오기]부터는 입력 기록이 대신한다 */
   const inputOutcomes = new Map<string, string>()
+  /** 이 불러오기에서 복사로 새로 완료한 사람(AC-3104.4). 메모 보기에서만 완료 전 묶음·차례를 지키고 입력 묶음에는 들지 않는다. 새 loadStart가 비운다 */
+  const copiedNow = new Set<string>()
   /**
    * 마지막 답의 unconfirmed(AC-035.4). 날짜를 아는 유일한 자리라 [자료 불러오기]로 지우지 않는다: 띠가 그 날을 불러오라고 한 뒤에도 날짜가 있어야 한다(AC-018.16).
    * keepEdits 없는 loadStart(떠날 때, 사람이나 기관기호가 다를 때)는 지운다: 다른 의원의 사람을 띠에 보이지 않는다
@@ -542,8 +544,9 @@ export function createPrecheckJobs(deps: {
     return keys
   }
 
-  function targetsFor(selection: InputSelection, rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>, visible: DateRange): InputTargets {
-    return inputTargets(targetVisits(rows, visitOf), selection, { visible, done: finishedKeys(), held, foundByPc, codeInfo })
+  /** keep은 메모 보기에만 넘긴다(복사로 완료한 사람의 자리, AC-3104.4). 입력 묶음은 keep 없이 불러 완료한 사람이 '이미 입력됨'으로 빠진다(AC-3104.5) */
+  function targetsFor(selection: InputSelection, rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>, visible: DateRange, keep?: ReadonlySet<string>): InputTargets {
+    return inputTargets(targetVisits(rows, visitOf), selection, { visible, done: finishedKeys(), held, foundByPc, codeInfo, keep })
   }
 
   /** 지금 쓰다 멈춘 사람인가(AC-018.16): 입력 기록 사본의 writing·writeUnconfirmed이거나 마지막 답의 unconfirmed·이번 답의 줄로 안 사람 */
@@ -596,7 +599,7 @@ export function createPrecheckJobs(deps: {
     const { rows, visitOf, views } = memoRows()
     const blocked = views.memoBlocked
     const bit = { has: bitMemos !== null, count: bitMemos?.rows.size ?? 0, period: bitMemos?.period ?? null }
-    const targets = targetsFor(selection, rows, visitOf, visible)
+    const targets = targetsFor(selection, rows, visitOf, visible, copiedNow)
     const viewOf = new Map(views.memos.map((view) => [view.visitKey, view]))
     const finished = finishedKeys()
     return {
@@ -656,10 +659,12 @@ export function createPrecheckJobs(deps: {
       return row && visit && !row.declined ? [itemOf(row, visit)] : []
     })
     if (what === 'selection') {
-      if (stuckView(rows, visitOf, visible) || targets.batch.length === 0) return null
+      // 완료 줄은 보내지 않는다. keep 없이 불러 batch에 완료 줄이 없지만 겹으로 지킨다(AC-3104.5)
+      const sendable = targets.batch.filter((row) => !row.done)
+      if (stuckView(rows, visitOf, visible) || sendable.length === 0) return null
       const preLeft = targets.left.flatMap((group) => (group.reason === 'done' || group.reason === 'nomemo' ? [] : group.rows.map((row) => ({ reason: group.reason, row: { key: row.key, date: row.date, month: visitOf.get(row.key)!.month, name: row.name, chart: row.chart, text: row.text, ...(row.inBit === undefined ? {} : { inBit: row.inBit }) } }))))
       const uncounted = targets.left.reduce((sum, group) => sum + (group.reason === 'done' || group.reason === 'nomemo' ? group.rows.length : 0), 0)
-      return { items: plain(targets.batch.map((row) => row.key)), code: targets.code, placeholders: none, preLeft, uncounted }
+      return { items: plain(sendable.map((row) => row.key)), code: targets.code, placeholders: none, preLeft, uncounted }
     }
     if (what === 'held') {
       const keys = targets.left.find((group) => group.reason === 'held')?.rows.map((row) => row.key) ?? []
@@ -990,6 +995,7 @@ export function createPrecheckJobs(deps: {
         foundByPc.clear()
         afterEntry.clear()
         inputOutcomes.clear()
+        copiedNow.clear() // 새 불러오기에서는 복사로 한 완료도 지금 규칙대로 '이미 입력됨'에 든다(AC-3104.4)
         lastInput = null
         savingMonths.clear()
         // 저장하지 못한 고친 메모는 메모리에만 있다. [자료 불러오기]·[멈추기]로 지우면 옛 글이 비트에 들어가고(AC-018.2) "고친 메모는 이 화면에 그대로 있어요"가 거짓이 된다(AC-018.17)
@@ -1087,6 +1093,35 @@ export function createPrecheckJobs(deps: {
         work.months.get(visit.month)?.drafts.set(visit.key, m.text)
         unsaved.set(visit.key, release ? { text: m.text, month: visit.month, release: true } : { text: m.text, month: visit.month })
         viewsCache = null
+        markMonth(visit.month)
+        saveMonth(visit.month)
+      } else if (m.type === 'memoCopied' && typeof m.visitKey === 'string' && typeof m.text === 'string') {
+        // 화면이 우리 메모를 클립보드에 복사했다(AC-3104.1). 그 글이 지금 우리 메모일 때만 완료로 둔다: 다르면 엉뚱한 글이 완료로 언다.
+        // 이미 완료면(다시 복사, 비교 '같음' 포함) 바꾸지 않고 보내지 않는다. 날짜별 건수는 보내지 않는다(범위 밖)
+        const key = m.visitKey
+        const visit = current?.visits.find((row) => row.key === key)
+        const memo = visit ? currentViews().memos.find((view) => view.visitKey === key) : undefined
+        if (!visit || !memo || memo.text !== m.text || !memo.hasMemo || isBlankMemo(memo.text) || memo.unfinished || finishedKeys().has(key)) return
+        if (memoRows().rows.find((row) => row.key === key)?.compare === '같음') return
+        // 자동 입력이 '완료'로 끝난 사람과 같다(applyInputResults)
+        work.done.add(key)
+        work.released.delete(key)
+        const kept = unsaved.get(key)
+        if (kept?.release) unsaved.set(key, { text: kept.text, month: kept.month })
+        work.saved.set(key, work.saved.get(key) ?? m.text)
+        work.months.get(visit.month)?.done.set(key, m.text)
+        copiedNow.add(key)
+        viewsCache = null
+        markMonth(visit.month)
+        saveMonth(visit.month)
+      } else if (m.type === 'memoUndone' && typeof m.visitKey === 'string') {
+        // [완료 풀기](AC-3104.2): 완료 표시로 된 완료만 고쳐 푼 것처럼 푼다. 비교 '같음'은 풀어도 다시 완료라 그대로다(AC-3104.3)
+        const key = m.visitKey
+        const visit = current?.visits.find((row) => row.key === key)
+        if (!visit || !finishedKeys().has(key)) return
+        if (memoRows().rows.find((row) => row.key === key)?.compare === '같음') return
+        releaseDone(key, visit.month)
+        copiedNow.delete(key)
         markMonth(visit.month)
         saveMonth(visit.month)
       } else if (m.type === 'memoApprove' && typeof m.visitKey === 'string') {
