@@ -3,7 +3,7 @@
 > 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- AC:`, `- Files:`(수정 범위), `- Tests:`, `- TDD: required|exempt`, `- 차례:`.
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다.
 >
-> **할 순서**: Phase 1(TASK-1 ‖ TASK-2) → Phase 2(TASK-3 ‖ TASK-4, 그다음 TASK-5 ‖ TASK-6) → Phase 3(TASK-7). 같은 Phase 안에서 파일이 겹치지 않는 것은 일꾼 둘까지 동시에(각자 worktree).
+> **할 순서**: Phase 1(TASK-1 ‖ TASK-2) → Phase 2(TASK-3 ‖ TASK-4, 그다음 TASK-5 ‖ TASK-6) → Phase 3(TASK-7) → Phase 4(TASK-8, 마지막 검토에서 나온 고칠 점). 같은 Phase 안에서 파일이 겹치지 않는 것은 일꾼 둘까지 동시에(각자 worktree).
 > 검토는 끝에 한 번(전체 시험·lint·build·1440px 화면 사진 포함). 도우미·확장·서버·DB·`OutsideCounts`·`ResultStep`은 고치지 않는다.
 
 ## 먼저 할 일 (코드 작업 아님)
@@ -65,3 +65,11 @@
 - Tests: src/components/claim/memo/MemoPanel.test.tsx
 - TDD: required — 가짜 Worker·가짜 클립보드로: 처음 맨 위 사람·[전체], 줄 누름·↑↓, 처음 고를 때만 claim.memos 한 번, C·단추 → 클립보드 글·`memoCopied` 보냄·상태 줄, 실패면 보내지 않음·'✕ 복사 못 함' 남음, 느린 복사 중 옮겨도 누른 사람에게, [완료 풀기] → `memoUndone`, 고치면 '완료가 풀렸어요', `focusKey`·[먼저 고치기]는 그 사람 고치는 칸, [비트에 입력 (N명)]은 완료 뺀 수, 메모 표 없음. AC-3107.2의 대신하는 시험은 새 AC 이름으로 바꾸고, `MemoRows`·`MemoTable` 파일과 시험은 지운다(`git rm`)
 - 차례: Phase 3 (TASK-1~TASK-6 뒤)
+
+## TASK-8: 마지막 검토 뒤 고치기 — 빈 메모 다시 쓰기·목록 번호·한 화면 높이·안내 글
+- REQ: REQ-3101, REQ-3105, REQ-3107
+- AC: AC-3101.1, AC-3101.3, AC-3101.5, AC-3105.2, AC-3107.1
+- Files: src/components/claim/memo/MemoPanel.tsx, src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/memoSplit.ts, src/components/claim/memo/memoSplit.test.ts, src/components/claim/memo/useFitHeight.ts, src/components/claim/memo/useFitHeight.test.tsx, src/components/claim/rows/MemoList.tsx, src/components/claim/rows/MemoList.test.tsx, src/components/claim/rows/MemoDetail.tsx, src/components/claim/rows/MemoDetail.test.tsx
+- Tests: src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/memoSplit.test.ts, src/components/claim/memo/useFitHeight.test.tsx, src/components/claim/rows/MemoList.test.tsx, src/components/claim/rows/MemoDetail.test.tsx
+- TDD: required — (1) `hasMemo`이고 글이 빈 사람에게 [메모 고치기]가 있고 고치는 칸이 열리며 글을 쓰고 나가면 `editMemo`가 간다(`MemoDetail.test`의 '빈 글이면 단추 없음' 시험은 이 AC로 바꾼다). 복사 단추는 여전히 막힘 (2) [미완료]·[완료] 보기에서 목록 번호가 거르기 전 차례이고 오른쪽 머리 {i}와 같다 (3) `useFitHeight`: 위 끝·창 높이로 높이를 셈, 최소 20rem, 창 크기 바뀌면 다시 셈, lg 미만은 없음 (4) 입력 진행 칸 안내 글이 '…환자 목록에 보여요.' (5) AC-3101.5 시험에 '고른 사람이 남아 있으면 그대로' 경우를 더한다
+- 차례: Phase 4 (TASK-7 뒤)

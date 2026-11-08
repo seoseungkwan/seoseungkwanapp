@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "memo-split",
-  "approved_at": "2026-11-08T06:56:10Z",
+  "approved_at": "2026-11-08T09:13:44Z",
   "approved_via": "user-prompt",
-  "session_id": "9551e352-70fe-470d-b008-581ca8bd5b91",
-  "spec_sha256": "150dbf6b16b76ec6e9bf04661457344d5843f115ef2c65bf864a4ba78f3cc6f2",
+  "session_id": "a1c4184d-4426-4dc6-b969-b86124d961bf",
+  "spec_sha256": "9cb82500cf2fb14d1cc0d7b208f1504605858a44855f8ced0cf45aa2e54eddd8",
   "scope": [
     "src/components/claim/claimLoad.ts",
     "src/components/claim/memo/InputMode.test.tsx",
@@ -15,6 +15,8 @@
     "src/components/claim/memo/copyMemo.ts",
     "src/components/claim/memo/memoSplit.test.ts",
     "src/components/claim/memo/memoSplit.ts",
+    "src/components/claim/memo/useFitHeight.test.tsx",
+    "src/components/claim/memo/useFitHeight.ts",
     "src/components/claim/memo/useSplitKeys.test.tsx",
     "src/components/claim/memo/useSplitKeys.ts",
     "src/components/claim/rows/MemoDetail.test.tsx",

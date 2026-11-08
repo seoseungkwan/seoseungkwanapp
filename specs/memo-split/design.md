@@ -7,7 +7,7 @@
 
 ## 화면 목업
 - `docs/mockups/memo-split/index.html`(시안 4). 실제 화면은 `ds.*`·토큰으로 같은 모양: 초록 단추는 `positive` 바탕, 고른 줄은 `accent-soft` 바탕 + 왼쪽 3px `accent-strong` 선, 확인 필요는 `warning`, 복사 실패는 `negative`. 작은 상태 표는 `ds.chip.*` 크기(글자 + 기호)
-- 두 칸 높이: `lg` 이상에서 `h-[max(30rem,calc(100dvh-<위 머리 높이>))]` 고정, 각 칸 `overflow-y-auto` + `overscroll-contain`. `lg` 미만은 위아래(목록 `max-h-[40dvh]`)
+- 두 칸 높이: `lg` 이상에서 두 칸 바깥 상자의 위 끝(`getBoundingClientRect().top + scrollY`)을 재어 `max(20rem, innerHeight − 위 끝 − 16px)`로 둔다(창 `resize`와 도구 줄 `ResizeObserver`로 다시 잼, 잴 수 없으면 예전 `max(30rem,calc(100dvh-8.5rem))`). 재는 일은 `useFitHeight.ts` 훅 하나, 각 칸 `overflow-y-auto` + `overscroll-contain`. `lg` 미만은 위아래(목록 `max-h-[40dvh]`)
 
 ## 구성 요소 / 인터페이스
 
@@ -71,6 +71,8 @@ export type TargetContext = { …지금 칸; /** 자리를 지킬 사람: 완료
   /** targets → 목록 묶음(입력할 사람 먼저, 그다음 LIST_ORDER). 보기로 거르되 stayKey는 남긴다(AC-3101.6) */
   export function listGroups(targets: InputTargets, show: Show, stayKey: string | null): ListGroup[]
   export function showCounts(targets: InputTargets): Record<Show, number>
+  /** 목록 줄 번호: 입력할 사람 묶음의 거르기 전 차례(1부터, positionOf의 i와 같음). 다른 묶음은 없음 */
+  // ListGroup 줄마다 no?: number 를 싣는다(AC-3101.3)
   /** 보이는 차례의 앞·뒤 사람. 없으면 null */
   export function neighbor(groups: ListGroup[], key: string, step: 1 | -1): string | null
   /** 고를 사람: 지금 사람이 있으면 그대로, 아니면 맨 위(AC-3101.8) */
@@ -79,6 +81,8 @@ export type TargetContext = { …지금 칸; /** 자리를 지킬 사람: 완료
   export const canCopy = (row: TargetRow) => row.hasMemo && !isBlankMemo(row.text) && !row.unfinished
   ```
   `copyStatus` 차례: editing > locked > stuck > failed(완료면 failedAgain) > reopened > mark > none > copied(완료이고 방금) > done > ready
+- `useFitHeight.ts`: `(ref, enabled) => string | undefined` — 위 '두 칸 높이' 규칙의 높이(px)를 돌려준다. `lg` 미만·`enabled` 아님이면 undefined
+- [메모 고치기]·고치는 칸은 `row.hasMemo`면 글이 비어도 연다(AC-3105.2). 복사(`canCopy`)는 그대로 빈 글이면 막힌다
 - `useSplitKeys.ts`: `document` keydown 하나. `enabled`(고르기 단계·알림 창 없음)일 때만. 글 칸·글자 칸(동그라미 제외)·select·Ctrl/Alt/⌘면 그냥 둔다. `ArrowUp/Down` → `onMove(±1)` + `preventDefault`. `event.code === 'KeyC' && !event.repeat` → `onCopy()` + `preventDefault`
 - `InputMode.tsx`: 같은 이름·동작을 한 줄 모양으로(`flex flex-wrap`). `BitMemoButton` 자리는 도구 줄로 옮긴다(children 없앰). `defaultSelection(visible)` = `{ mode: 'date', kind: 'range', rangeFrom: visible.from, rangeTo: visible.to, … }`
 - `MemoPanel.tsx`: 새 상태 `selectedKey`·`show`(처음 'all')·`stayKey`(미완료·완료 보기에서 고른 채 완료가 바뀐 사람)·`failed: Set`·`copying: string | null`·`justCopied: string | null`·`reopened: string | null`·`picked`(사람이 처음 골랐나, AC-3102.5). `open` 상태는 없앤다
