@@ -1,0 +1,29 @@
+{
+  "status": "approved",
+  "feature": "memo-settings",
+  "approved_at": "2026-11-08T01:43:08Z",
+  "approved_via": "user-prompt",
+  "session_id": "5bf1cebe-ff9b-4cd5-b654-652f6f477ae1",
+  "spec_sha256": "e8a0e0779afef37324251728b8fa1c3c411c97bf44833c664a0ec2ea46ddb493",
+  "scope": [
+    "fixtures/precheck/golden/memo-*.json",
+    "scripts/precheck/golden/memo.mjs",
+    "src/components/settings/HospitalPhrases.test.tsx",
+    "src/components/settings/HospitalPhrases.tsx",
+    "src/components/settings/ProcedureDrugs.test.tsx",
+    "src/components/settings/ProcedureDrugs.tsx",
+    "src/components/settings/codeCatalog.test.ts",
+    "src/components/settings/codeCatalog.ts",
+    "src/components/settings/phrases/**",
+    "src/lib/precheck/memo/*.test.ts",
+    "src/lib/precheck/memo/drugs.test.ts",
+    "src/lib/precheck/memo/engine.ts",
+    "src/lib/precheck/memo/golden.test.ts",
+    "src/lib/precheck/memo/index.ts",
+    "src/lib/precheck/memo/memoSettings.test.ts",
+    "src/lib/precheck/memo/phrases.test.ts",
+    "src/lib/precheck/memo/phrases.ts",
+    "src/lib/precheck/memo/types.ts",
+    "src/workers/precheck/jobs.test.ts"
+  ]
+}
