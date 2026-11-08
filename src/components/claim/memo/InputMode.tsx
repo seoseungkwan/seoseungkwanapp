@@ -51,7 +51,7 @@ export function InputMode({ visible, selection, onSelection, problem, chips, typ
   const help = [MODE_HELP[selection.mode], ...(selection.mode === 'code' ? [CHIP_HELP] : []), PREP[selection.mode]]
   return (
     <section aria-label="입력 방식" className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         <span className="whitespace-nowrap text-small font-semibold text-ink">입력 방식</span>
         <div role="radiogroup" aria-label="입력 방식 고르기" className="flex items-center gap-3">
           <label className={radio}>
