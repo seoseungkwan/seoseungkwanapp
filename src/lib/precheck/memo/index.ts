@@ -6,7 +6,7 @@ import type { MemoParts, MemoTables, MemoVisit, Phrases, Region } from './types'
 
 export * from './types'
 export { createMemoEngine, unfinished, type MemoEngine } from './engine'
-export { defaultPhrases, diffPhrases, migratePhrases, ourClinicPhrases, validatePhrases } from './phrases'
+export { allowedTokens, defaultPhrases, diffPhrases, migratePhrases, ourClinicPhrases, validatePhrases } from './phrases'
 export { defaultDictionary, dictionaryTerms, normalizeDictionary } from './dictionary'
 
 /** 한 달 진료를 분석한다(원본 analyze·applyRx·computeIntervals). 내원 간격은 여기서만 계산된다 */

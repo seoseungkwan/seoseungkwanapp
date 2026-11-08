@@ -1,6 +1,6 @@
 import defaults from './defaults.json'
 import ourClinic from './ourClinic.json'
-import type { MemoCode, PhraseCheck, PhraseDiff, PhraseError, Phrases, ProcedureDrugs } from './types'
+import type { MemoCode, PhraseCheck, PhraseDiff, PhraseDiffRow, PhraseError, Phrases, ProcedureDrugs } from './types'
 
 // 병원 문구 값(원본 tools/claim_hospital_settings.js의 defaults·validate·diff·migrateSideConfig, AC-014.3).
 // 원본 칸(TPL·CODEMAP·CODEMAP_DEL)은 원본과 같은 결과를 낸다(골든). 시술별 약(procedureDrugs)은 원본에 없어 따로 검사한다(design.md 19-3)
@@ -71,6 +71,11 @@ type Rec = Record<string, unknown>
 function fixedTokens(data: Rec): string[] {
   const list = Array.isArray((data.TPL as Rec | undefined)?.fixedPhrases) ? ((data.TPL as Rec).fixedPhrases as unknown[]) : fixedFallback
   return list.map((row) => String((row as Rec | null)?.token || '')).filter((token) => token && !reservedTokens.has(token))
+}
+
+/** 문구 칸 하나(경로: 'TPL.main'·'TPL.byProc.이름'·'CODEMAP.코드.memo' 등)에 쓸 수 있는 {항목}. 검사(validatePhrases)가 허용하는 것과 같다. 틀 칸이 아니면 빈 목록이다(AC-3008.1) */
+export function allowedTokens(path: string, phrases: Phrases): string[] {
+  return tokens(path, phrases as unknown as Rec)
 }
 
 function tokens(path: string, data: Rec): string[] {
@@ -335,6 +340,30 @@ function validateDrugs(value: unknown): PhraseError[] {
   return errors
 }
 
+const RULE_FLAGS = ['singleOwnerDrug', 'iaSide', 'kneeSetIaWithDrug']
+const RULE_KEYS = [...RULE_FLAGS, 'order']
+
+/** 메모 규칙 칸 검사(원본에 없는 칸. memo-settings design.md §1). 칸이 없으면 지난다 */
+function validateMemoRules(value: unknown): PhraseError[] {
+  if (value === undefined) return []
+  const errors: PhraseError[] = []
+  const err = (path: string, message: string) => errors.push({ path, message })
+  if (!plain(value)) return [{ path: 'memoRules', message: '메모 규칙 형식을 확인해 주세요.' }]
+  if (Object.keys(value).some((key) => !RULE_KEYS.includes(key))) err('memoRules', '알 수 없는 메모 규칙 항목입니다.')
+  for (const key of RULE_FLAGS) if (value[key] !== undefined && typeof value[key] !== 'boolean') err(`memoRules.${key}`, '켜기·끄기 값을 확인해 주세요.')
+  if (value.order !== undefined) {
+    const order = value.order
+    if (!plain(order) || Object.keys(order).length > 12000) err('memoRules.order', '줄 순서는 코드마다 번호 하나씩, 12000개까지 적어 주세요.')
+    else {
+      for (const [code, rank] of Object.entries(order)) {
+        if (!validCode(code) || code !== code.toUpperCase()) err(`memoRules.order.${code}`, '처방코드 형식을 확인해 주세요.')
+        else if (!Number.isInteger(rank) || (rank as number) < 1 || (rank as number) > 999) err(`memoRules.order.${code}`, '줄 순서는 1~999 사이의 숫자로 적어 주세요.')
+      }
+    }
+  }
+  return errors
+}
+
 /**
  * 메모에 쓸 수 있는 문구 값인지 본다. 옛 좌우 규칙은 먼저 2로 바꾼다(원본 apply·preview 흐름). 틀리면 어느 칸인지 돌려준다.
  * 줄이 없거나 빈 {}이거나 약 칸이 없으면 ok가 거짓이고, 부르는 쪽은 메모를 만들지 않는다(AC-014.8)
@@ -346,10 +375,10 @@ export function validatePhrases(input: unknown): PhraseCheck {
   } catch (error) {
     return { ok: false, errors: [{ path: '설정', message: (error as Error).message }] }
   }
-  const { procedureDrugs, ...original } = migrated as Rec
+  const { procedureDrugs, memoRules, ...original } = migrated as Rec
   const errors = validateOriginal(original)
   if (errors.length === 1 && errors[0].path === '설정' && errors[0].message === '설정 형식을 확인해 주세요.') return { ok: false, errors }
-  errors.push(...validateDrugs(procedureDrugs))
+  errors.push(...validateDrugs(procedureDrugs), ...validateMemoRules(memoRules))
   return errors.length ? { ok: false, errors } : { ok: true, value: migrated as Phrases }
 }
 
@@ -366,13 +395,49 @@ const labels: Record<string, string> = {
 
 const lookup = (table: Record<string, string>, value: unknown, fallback: string) => (typeof value === 'string' && Object.hasOwn(table, value) ? table[value] : fallback)
 
-/** 원본 diff: 두 값의 다른 칸을 이름표와 함께. 약 칸도 같은 길로 보인다(이름표가 없어 경로로 보인다) */
+/** 메모 규칙 켜기·끄기 칸: 이름표와 칸이 없을 때의 값(AC-3006.2) */
+const RULE_FLAG_LABELS: Record<string, { label: string; unset: boolean }> = {
+  singleOwnerDrug: { label: '시술 2개 이상인 날 넣기 시술이 하나면 약 넣기', unset: true },
+  iaSide: { label: 'IA·건초내주사 줄에 좌우 넣기', unset: false },
+  kneeSetIaWithDrug: { label: '무릎 세트 날 약이 있으면 IA 줄 쓰기', unset: false },
+}
+
+/** 메모 규칙 칸 한 줄(원본에 없는 칸이라 원본 diff 모양 밖이다). 보이는 값이 같으면(없음 ↔ 처음 값) 줄을 내지 않는다 */
+function memoRuleRow(path: string, a: unknown, b: unknown): PhraseDiffRow | null {
+  const key = path.slice('memoRules.'.length)
+  let label: string
+  let shown: (value: unknown) => string
+  if (key.startsWith('order.')) {
+    label = `${key.slice('order.'.length)} · 줄 순서`
+    shown = (value) => (value === undefined ? '(없음)' : typeof value === 'number' ? String(value) : JSON.stringify(value))
+  } else if (Object.hasOwn(RULE_FLAG_LABELS, key)) {
+    const flag = RULE_FLAG_LABELS[key]
+    label = flag.label
+    shown = (value) => ((value === undefined ? flag.unset : value) === true ? '켬' : value === undefined || value === false ? '끔' : JSON.stringify(value))
+  } else {
+    label = path
+    shown = (value) => (value === undefined ? '(없음)' : JSON.stringify(value))
+  }
+  const row = { path, label, before: shown(a), after: shown(b) }
+  return row.before === row.after ? null : row
+}
+
+/** 원본 diff: 두 값의 다른 칸을 이름표와 함께. 약 칸도 같은 길로 보인다(이름표가 없어 경로로 보인다). 메모 규칙 칸은 쉬운 이름표로 칸마다(줄 순서는 코드마다) 보인다 */
 export function diffPhrases(before: Phrases, after: Phrases): PhraseDiff {
   const result: PhraseDiff = []
   function walk(a: unknown, b: unknown, path: string) {
     if (JSON.stringify(a) === JSON.stringify(b)) return
     if (plain(a) && plain(b)) {
       for (const key of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) walk(a[key], b[key], path ? `${path}.${key}` : key)
+      return
+    }
+    if ((path === 'memoRules' || path === 'memoRules.order') && (a === undefined || plain(a)) && (b === undefined || plain(b))) {
+      walk(a ?? {}, b ?? {}, path)
+      return
+    }
+    if (path.startsWith('memoRules.')) {
+      const row = memoRuleRow(path, a, b)
+      if (row) result.push(row)
       return
     }
     const sideCode = path.startsWith('TPL.sideByCode.')
