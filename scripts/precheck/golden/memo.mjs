@@ -8,15 +8,19 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FILE, SOURCE, args, lines, loadOriginal } from './original.mjs'
 
-const AMBIGUOUS = '시술 종류가 둘 이상인 날의 주사약(design.md 19-4, AC-014.10, 2026-11-01 사용자 결정): 원본은 약을 줄에 그대로 쓰거나(기본 사전) 비우고 검토로 돌린다(ambiguousDrug). 우리는 어느 시술 약인지 모르므로 넣지 않고 [약 확인: 약 이름]을 남긴다. 모든 시술에서 빼기면 뺀다'
-const CARTILAGE = '시술 종류가 둘 이상인 날의 연골주사 줄(design.md 19-4, AC-014.10, 2026-11-01 사용자 결정): 원본 cartilageLine은 이런 날에도 연골주사 줄을 쓴다. 우리는 쓰지 않고 [약 확인: 약 이름]을 남긴다. K-L grade 줄은 약 글이 아니라 그대로 둔다'
+const AMBIGUOUS = '시술 종류가 둘 이상인 날의 주사약(design.md 19-4, AC-014.10을 memo-settings REQ-3002가 대신함): 원본은 약을 줄에 그대로 쓰거나(기본 사전) 비우고 검토로 돌린다(ambiguousDrug). 우리는 그 약이 넣기인 시술이 2곳 이상이거나 정하지 않은 시술이 있으면(memoRules.singleOwnerDrug가 false면 늘) 어느 시술 약인지 모르므로 넣지 않고 [약 확인: 약 이름]을 남긴다(AC-3002.2). 모든 시술에서 빼기면 뺀다. 넣기인 시술이 하나뿐인 날은 singleOwnerDrug를 본다'
+const CARTILAGE = '시술 종류가 둘 이상인 날의 연골주사 줄(design.md 19-4, AC-014.10을 memo-settings REQ-3002가 대신함): 원본 cartilageLine은 이런 날에도 연골주사 줄을 쓴다. 우리는 연골주사약이 넣기인 시술이 2곳 이상이거나 정하지 않은 시술이 있으면(singleOwnerDrug가 false면 늘) 쓰지 않고 [약 확인: 약 이름]을 남긴다. KK090에서만 넣기면 원본처럼 쓴다(AC-3002.4). K-L grade 줄은 약 글이 아니라 그대로 둔다'
+const SINGLE_OWNER = '시술 종류가 둘 이상인 날 약이 넣기인 시술이 하나뿐인 날(memo-settings REQ-3002, 2026-11-08 사용자 결정, memoRules.singleOwnerDrug 처음 값 켬): 그 약을 그 시술 줄의 고른 자리에 넣는다(IA·건초내주사는 그 줄 {약제}, 그 밖의 시술은 그 시술 줄 끝·아래 줄). 우리 병원 값(KK090·KK062만 넣기)이면 원본과 같은 글이다. 그 시술 줄이 메모에 없으면(무릎 세트 날 IA 줄 생략 등) 원본은 약을 쓰지 않지만 우리는 [약 확인: 약 이름]을 남긴다(AC-3002.3). memoRules.kneeSetIaWithDrug를 켜면 IA 줄을 그 약과 함께 쓴다(AC-3003.2)'
+const MEMO_RULES = '원본에 없는 메모 규칙 칸(memo-settings memoRules: singleOwnerDrug·iaSide·kneeSetIaWithDrug·order): 처음 값(칸 없음)이면 singleOwnerDrug만 켜지고(SINGLE_OWNER) 나머지는 원본과 같은 글이다. 켠 글은 원본 결과와 견줄 수 없어 memoSettings.test.ts가 본다'
 const IA_REGION = 'IA 줄 부위(memo-settings AC-3001.1, 2026-11-08 사용자 결정): 원본 iaLines는 어깨·무릎만 부위로 읽어 발목·고관절·팔꿈치·손목 IA를 [부위 확인]으로 쓴다. 우리는 관절 부위(어깨·무릎·발목·팔꿈치·손목·고관절·손·발)를 영어 이름으로 쓴다. 가짜 자료의 IA는 어깨·무릎뿐이라 글이 같다'
 const ARA_ETC_IA = '연골주사 날의 일반 약(memo-settings AC-3001.2·3001.3): 원본은 연골주사 날 연골주사 줄만 써서 넣기인 트리암·덱사가 표시 없이 사라진다. 우리는 아라간이 아닌 IA 차트 줄이 있으면 그 부위로 일반 IA 줄(iaEtc)을 하나 더 쓰고(KK090 수량은 연골주사와 나눠 양측 근거로 보지 않는다), 없으면 [약 확인: 약 이름]을 남긴다. 가짜 자료의 연골주사 날에는 일반 약이 없어 글이 같다'
 const KNOWN_DIFFS = [
   { where: 'ambiguousDrug', why: AMBIGUOUS },
   { where: 'cartilageLine', why: CARTILAGE },
+  { where: 'singleOwnerDrug', why: SINGLE_OWNER },
   { where: 'iaRegion', why: IA_REGION },
   { where: 'araEtcIa', why: ARA_ETC_IA },
+  { where: 'memoRules', why: MEMO_RULES },
   { where: 'drugTxt·iaLines 약 고르기', why: '원본은 약 이름 글자(리도카인·ARA_RE)·코드 표(DRUG_EN)·TPL.drugLocal로 고른다. 우리는 procedureDrugs만 본다(AC-014.7·014.9). 우리 병원 값은 같은 글이 나오게 채웠다(시술 종류가 하나인 날은 이 골든이 같음을 본다)' },
   { where: '넣기인데 틀에 {약제}가 없을 때', why: '원본은 {약제}가 없는 틀이면 약을 쓰지 않는다. 우리는 넣기를 고른 약을 첫 시술 줄의 {시술} 바로 뒤에 쓴다(AC-014.9 고른 자리에 넣는다). 연골주사 날만 원본처럼 {약제}가 없으면 쓰지 않는다. 우리 병원 값은 {약제}가 있는 틀의 시술만 넣기라 글이 같다. 원본에 없는 자리 afterEnding·ownLine(◈약: 이름)도 원본 결과와 견줄 수 없어 drugs.test.ts가 본다' },
   { where: '연골주사약 안 정함', why: '원본에는 없는 설정이다. 시술 종류가 하나인 날에도 안 정했으면 연골주사 줄 대신 [약 확인]을 남긴다(AC-014.9: 안 정한 약은 넣거나 빼지 않고 표시를 남긴다. 연골주사약도 같다). 빼기는 약 이름만 빼는 값이고 연골주사 줄은 시술 줄이라 원본처럼 쓴다(clinic-memo-samples.md 보기 1: 연골주사약 처음 값이 빼기여도 그 줄이 있다). 우리 병원 값은 KK090에서 넣기라 원본과 같다' },
@@ -29,17 +33,13 @@ const KNOWN_DIFFS = [
 ]
 
 /**
- * 일부러 원본과 다른 진료(우리 병원 설정 기준). ours는 약 규칙 표(design.md 19-4)대로 손으로 적은 글이다.
- * 여기 없는 진료는 원본과 글자까지 같아야 한다. 있는데 같으면 golden.test.ts가 실패한다
+ * 일부러 원본과 다른 진료(우리 병원 설정 기준). ours는 약 규칙 표(design.md 19-4, memo-settings design.md 2절)대로 손으로 적은 글이다.
+ * 여기 없는 진료는 원본과 글자까지 같아야 한다. 있는데 같으면 golden.test.ts가 실패한다.
+ * k01·k02·k04·k05(약이 넣기인 시술이 하나뿐인 날)는 memo-settings REQ-3002부터 원본과 같아 뺐다
  */
-const REASON_2 = '환자 스케쥴상 주1회 내원 밖에 안되어 당일 주사치료 2부위 시행함. 환자 증상 호소 심해 치료 요하는 상태임'
 const DIFF_CASES = {
   'claim-month-memo.json': [
-    { id: 'k01', where: 'ambiguousDrug', ours: `◈SSNB\n\n◈IA injection of - shoulder\n[약 확인: 트리암]\n\n${REASON_2}` },
-    { id: 'k02', where: 'cartilageLine', ours: `◈SSNB\n[약 확인: 아라간]\n\n${REASON_2}` },
-    { id: 'k03', where: 'ambiguousDrug', ours: '◈FNB\n◈SNB\n[약 확인: 트리암]' },
-    { id: 'k04', where: 'cartilageLine', ours: `◈SSNB\n[약 확인: 아라간]\n\n${REASON_2}` },
-    { id: 'k05', where: 'ambiguousDrug', ours: `◈MBB L4,5 Rt\n◈3rd finger 건초내주사 시행\n[약 확인: 덱사]\n\n${REASON_2}` },
+    { id: 'k03', where: 'singleOwnerDrug', ours: '◈FNB\n◈SNB\n[약 확인: 트리암]' },
   ],
   'claim-month-rules-v1-v18.json': [],
   'claim-month-dx-check.json': [],
@@ -197,7 +197,8 @@ write('memo-full-dx-check.json', fullGolden('claim-month-dx-check.json'))
 
 // ── 설정을 바꾼 글 ─────────────────────────────────────
 
-const SKIP_DRUGS = DIFF_CASES['claim-month-memo.json'].map((c) => c.id)
+// 시술 2개 이상인 날의 약 사례는 memo-full-default가 본다. 설정 사례 골든은 이 다섯을 빼고 만들었다(memo-settings REQ-3002 전의 DIFF_CASES)
+const SKIP_DRUGS = ['k01', 'k02', 'k03', 'k04', 'k05']
 const ALL_INCLUDE = (() => {
   const procs = ['LA247', 'LA248', 'LA251', 'LA272', 'LA274', 'LA321', 'LA346', 'LA347', 'LA354', 'LA357', 'LA358', 'KK090', 'KK061', 'KK062', 'LA232']
   const include = { use: 'include', place: 'afterProc' }

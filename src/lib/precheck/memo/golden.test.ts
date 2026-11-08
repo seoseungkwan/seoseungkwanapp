@@ -271,22 +271,29 @@ describe('AC-014.14 시술 종류가 0이고 약이 있는 진료', () => {
   })
 })
 
-describe('AC-014.7 AC-014.10 일부러 다른 것(knownDiffs)은 적은 만큼만 다르다', () => {
+describe('AC-014.7 AC-3002.3 일부러 다른 것(knownDiffs)은 적은 만큼만 다르다', () => {
   const phrases = ourClinicPhrases()
   const byId = new Map(analyzeMonth(month, phrases, tables).map((v) => [v.key, v]))
-  const allowed = ['ambiguousDrug', 'cartilageLine']
+  const diffIds = new Set(fullGolden.knownDiffCases.map((c) => c.id))
+  // memo-settings design.md 2절의 where만 쓴다. 옛 ambiguousDrug·cartilageLine 사례(k01·k02·k04·k05)는 REQ-3002부터 원본과 같다
+  const allowed = ['singleOwnerDrug']
 
-  it('AC-014.10: 시술 종류가 둘 이상인 날의 주사약과 연골주사 줄만 적혀 있다', () => {
+  it('AC-3002.3: 시술 2개 이상인 날 약을 놓을 시술 줄이 없는 사례만 적혀 있다', () => {
     const wheres = fullGolden.knownDiffCases.map((c) => c.where)
     expect(new Set(wheres)).toEqual(new Set(allowed))
     for (const where of allowed) expect(fullGolden.knownDiffs.map((d) => d.where)).toContain(where)
   })
 
-  it.each(fullGolden.knownDiffCases)('AC-014.10: 진료 $id($where)은 원본과 정말 다르고 적어 둔 글과 같다', ({ id, ours, original }) => {
+  it.each(fullGolden.knownDiffCases)('AC-3002.3: 진료 $id($where)은 원본과 정말 다르고 적어 둔 글과 같다', ({ id, ours, original }) => {
     expect(fullGolden.visits.find((v) => v.id === id)!.fullText).toBe(original)
     expect(ours).not.toBe(original)
     expect(unfinished(ours)).toBe(true)
     expect(fullText(byId.get(id)!, phrases, tables)).toBe(ours)
+  })
+
+  it.each(['k01', 'k02', 'k04', 'k05'])('AC-3002.1 AC-3002.4: 약이 넣기인 시술이 하나뿐인 날 %s는 이제 원본과 글자까지 같다', (id) => {
+    expect(diffIds.has(id)).toBe(false)
+    expect(fullText(byId.get(id)!, phrases, tables)).toBe(fullGolden.visits.find((v) => v.id === id)!.fullText)
   })
 })
 

@@ -98,10 +98,13 @@ export const unfinished = (memo: unknown) => /\[[^\]\n]*(?:확인|미확인|미�
 
 type Rule = { code: string; names: string[]; codes: string[]; quantity: number | null; mode: string; procedureType: string; conflict: boolean; omit: boolean; preserve: boolean; side: string }
 type Renderer = (template: string, vars: Record<string, unknown>) => string
-/** name은 메모에 쓰는 표기(label), drug는 코드 표의 약 이름([약 확인: 이름]에 쓴다) */
-type DrugItem = { name: string; qty: number | null; drug: string }
+/**
+ * name은 메모에 쓰는 표기(label), drug는 코드 표의 약 이름([약 확인: 이름]에 쓴다).
+ * owner: 시술 2개 이상인 날 그 약이 넣기인 시술 키(procKeys 모양, REQ-3002). 주인 약은 그 시술 줄에만 놓인다. cartilage: 연골주사약(연골주사 줄에 놓인다)
+ */
+type DrugItem = { name: string; qty: number | null; drug: string; owner?: string; cartilage?: boolean }
 type DrugPlan = {
-  decisions: Map<string, { use: 'include' | 'exclude' | 'check'; place?: DrugPlace }>
+  decisions: Map<string, { use: 'include' | 'exclude' | 'check'; place?: DrugPlace; owner?: string }>
   /** 틀의 {약제} 자리(없으면 {시술} 바로 뒤)에 넣을 약. 연골주사 날의 연골주사약은 그 자리에 넣지 않는다(원본 cartilageLine처럼 연골주사 줄이 있다) */
   afterProc: DrugItem[]
   afterEnding: DrugItem[]
@@ -377,7 +380,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return template.includes('{시술}') ? template.replace('{시술}', '{시술}{약제}') : `${template}{약제}`
   }
 
-  function renderQuantityProcedure(procedure: unknown, template0: unknown, vars: Record<string, unknown>, qmap: QuantityMap | null | undefined, renderer: Renderer = fill, exactCode?: unknown): string {
+  /** siteSide: {부위}에 붙은 차트 좌우를 떼지 않는다(memoRules.iaSide, AC-3003.1). 그 좌우가 있으면 수량 양측을 더 붙이지 않는다 */
+  function renderQuantityProcedure(procedure: unknown, template0: unknown, vars: Record<string, unknown>, qmap: QuantityMap | null | undefined, renderer: Renderer = fill, exactCode?: unknown, siteSide = false): string {
     const allMatches = matchingRules(procedure, qmap, exactCode)
     const matches = allMatches.filter((rule) => !rule.preserve)
     const values = { ...vars }
@@ -398,7 +402,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       if (!others.length) {
         const sides = new Set(matches.map((rule) => rule.side))
         values['좌우'] = matches.some((rule) => rule.procedureType === 'level') ? '' : sides.size === 1 ? [...sides][0] : ''
-        if (values['부위']) values['부위'] = text(values['부위']).replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '')
+        if (values['부위'] && !siteSide) values['부위'] = text(values['부위']).replace(new RegExp(`^\\s*${SIDE_WORD}\\s*`, 'i'), '')
       }
     }
     const charted = sideTokens(procedure)
@@ -414,7 +418,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       shaped = shaped.split(`{${key}}`).join(marker)
     }
     const rendered = renderer(shaped, values)
-    let output = quantitySideText(rendered, qmap, exactCode, !markers.length)
+    const sitedSide = siteSide && sideTokens(values['부위']).length > 0
+    let output = quantitySideText(rendered, qmap, exactCode, !markers.length && !sitedSide)
     const counts = (value: string) => {
       const found: Record<string, number> = {}
       for (const word of text(value).match(/\b(?:both|Rt|Lt)\b/gi) || []) {
@@ -429,7 +434,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (markers.length) output = output.replace(/(^|[^A-Za-z가-힣])(?:\b(?:both|Rt|Lt|right|left)\b|양측|양쪽|우측|좌측)(?=$|[^A-Za-z가-힣])/gi, '$1')
     for (const [marker, value] of markers) output = output.split(marker).join(value)
     output = output.replace(/\s{2,}/g, ' ')
-    if (!markers.length && output.trim() && matches.length && matches.every((rule) => rule.side === 'both') && !/\bboth\b|양측/i.test(output)) output += ' both'
+    if (!markers.length && !sitedSide && output.trim() && matches.length && matches.every((rule) => rule.side === 'both') && !/\bboth\b|양측/i.test(output)) output += ' both'
     return output.trim()
   }
 
@@ -923,9 +928,18 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return Object.hasOwn(drugs, proc) && Object.hasOwn(drugs[proc], name) ? drugs[proc][name] : undefined
   }
 
+  /** 둘 이상인 날: 넣기인 시술이 딱 하나이고 나머지가 모두 빼기면 그 시술(REQ-3002). 하나라도 안 정했거나 넣기가 둘 이상이면 없다 */
+  function soleOwner(keys: string[], choices: (DrugChoice | undefined)[]): string | null {
+    if (phrases.memoRules?.singleOwnerDrug === false) return null
+    if (!choices.every((choice) => choice?.use === 'include' || choice?.use === 'exclude')) return null
+    const owners = keys.filter((_, index) => choices[index]!.use === 'include')
+    return owners.length === 1 ? owners[0] : null
+  }
+
   /**
    * 그날 처방의 약을 시술별 약 설정으로 나눈다. 시술 종류가 0이면 약 글도 표시도 없다(AC-014.14). 부위 메모가 없는 날도 쓸 줄이 없어 원본처럼 빈 글이다(AC-014.5).
-   * 하나: 넣기는 자리에, 빼기는 빼고, 안 정했으면 표시. 둘 이상: 모두 빼기일 때만 빼고 나머지는 표시, 자동으로 넣지 않는다(AC-014.10).
+   * 하나: 넣기는 자리에, 빼기는 빼고, 안 정했으면 표시. 둘 이상: 모두 빼기면 빼고, 넣기인 시술이 하나뿐이면 그 시술 줄에(owner, REQ-3002), 나머지는 표시(AC-3002.2).
+   * memoRules.singleOwnerDrug가 false면 옛 규칙(AC-014.10)대로 둘 이상인 날은 자동으로 넣지 않는다(AC-3002.5).
    * 설정에 적힌 값만 본다. 이름·역할로 짐작하지 않는다(AC-014.9)
    */
   function drugPlan(v: MemoVisit): DrugPlan {
@@ -945,13 +959,17 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
           if (keys.length === 1) {
             const [choice] = choices
             decision = !choice ? { use: 'check' } : choice.use === 'exclude' ? { use: 'exclude' } : { use: 'include', place: choice.place ?? 'afterProc' }
-          } else decision = choices.every((choice) => choice?.use === 'exclude') ? { use: 'exclude' } : { use: 'check' }
+          } else if (choices.every((choice) => choice?.use === 'exclude')) decision = { use: 'exclude' }
+          else {
+            const owner = soleOwner(keys, choices)
+            decision = owner ? { use: 'include', place: choiceOf(owner, name)!.place ?? 'afterProc', owner } : { use: 'check' }
+          }
           plan.decisions.set(name, decision)
           if (decision.use === 'check') plan.checks.push(drugCheck(name))
         }
         if (decision.use !== 'include') continue
-        const label = (keys.length === 1 && choiceOf(keys[0], name)?.label) || name
-        const item = { name: label, qty: row.qty, drug: name }
+        const label = (keys.length === 1 && choiceOf(keys[0], name)?.label) || (decision.owner && choiceOf(decision.owner, name)?.label) || name
+        const item: DrugItem = { name: label, qty: row.qty, drug: name, ...(decision.owner ? { owner: decision.owner } : {}), ...(isCartilageDrug(row) ? { cartilage: true } : {}) }
         if (decision.place === 'afterEnding') plan.afterEnding.push(item)
         else if (decision.place === 'ownLine') plan.ownLine.push(item)
         else if (!(ara && isCartilageDrug(row))) plan.afterProc.push(item)
@@ -989,7 +1007,20 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (!list.length) return ''
     return TPL.drugWrap === 'plain' ? ` ${list.join(', ')}` : `(${list.join(', ')})`
   }
-  const drugTxt = (v: MemoVisit) => formatDrugs(drugPlan(v).afterProc)
+  /** 주인 없는 약(시술 하나인 날). 이 약만 틀의 {약제}·첫 시술 줄 자리에 들어간다 */
+  const free = (items: DrugItem[]) => items.filter((item) => !item.owner)
+  const ownedBy = (items: DrugItem[], key: string) => items.filter((item) => item.owner === key)
+  const drugTxt = (v: MemoVisit) => formatDrugs(free(drugPlan(v).afterProc))
+  /** IA 줄에 놓을 연골주사 아닌 약: 시술 하나인 날의 afterProc, 또는 주인이 KK090인 약(자리 무관) */
+  function iaBound(plan: DrugPlan): DrugItem[] {
+    const owned = [...plan.afterProc, ...plan.afterEnding, ...plan.ownLine].filter((item) => item.owner === 'KK090' && !item.cartilage)
+    return [...free(plan.afterProc), ...owned]
+  }
+  /** 무릎 세트 날(FNB·SNB + IA)에 IA 줄을 생략하는가. kneeSetIaWithDrug가 참이고 IA 줄에 놓을 약이 있으면 쓴다(AC-3003.2) */
+  function kneeSetSkips(v: MemoVisit, raw: boolean): boolean {
+    if (TPL.kneeSetSkipIa === false || !v.rx.some((x) => IA_SET_CODES.test(String(x.code)))) return false
+    return raw || phrases.memoRules?.kneeSetIaWithDrug !== true || !iaBound(drugPlan(v)).length
+  }
 
   // ── 부위 찾기(원본 siteOf. 수량은 부위 근거가 아니라 0으로 부른다) ─────────────
 
@@ -1125,12 +1156,35 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
 
   // ── 줄 만들기 ──────────────────────────────────────────
 
-  /** fullText가 어느 줄이 시술 줄인지 알게 적어 둔다(끝맺음 뒤·따로 한 줄 약의 자리) */
-  let procOut = new Set<string>()
-  const procLine = (line: string) => {
-    procOut.add(line)
+  /**
+   * fullText가 어느 줄이 시술 줄이고 어느 코드의 줄인지 알게 적어 둔다(줄 꼬리표, memo-settings design.md 2절).
+   * 끝맺음 뒤·따로 한 줄 약의 자리, 주인 약의 자리(REQ-3002), 줄 순서(REQ-3005)가 이것을 본다. 연골주사 줄은 따로 적는다(연골주사약만 그 줄에 놓인다)
+   */
+  let procOut = new Map<string, Set<string>>()
+  let cartilageOut = new Set<string>()
+  function procLine(line: string, codes: Iterable<string>, cartilage = false): string {
+    const tags = procOut.get(line) ?? new Set<string>()
+    for (const code of codes) if (code) tags.add(code)
+    procOut.set(line, tags)
+    if (cartilage) cartilageOut.add(line)
     return line
   }
+  /** 처방 코드 하나의 꼬리표: 그 코드, 표준 코드(procKeys 모양), 기본 코드 */
+  function codeTags(code: unknown): string[] {
+    const row = cm(code)
+    return [...new Set([upper(code), upper(row?.standardCode || code), procedureBase(code)].filter(Boolean))]
+  }
+  /** 시술 글에 이름이 든 처방 시술의 꼬리표(procedureCodeVars와 같은 처방 모음에서 찾는다) */
+  function lineCodes(p: unknown, qmap: QuantityMap | null | undefined): string[] {
+    const up = upper(p)
+    return procPool(qmap)
+      .filter((code) => {
+        const row = hasCode(code) ? CODEMAP[code] : null
+        return !!row && row.k === 'proc' && (procNamed(row.n, up) || procNamed(row.templateKey, up))
+      })
+      .flatMap(codeTags)
+  }
+  const IA_TAGS = ['KK090']
 
   function splitProcs(t: string): { c: string; sd: string | null }[] | null {
     const raw = String(t || '').trim().split(/[\s,，]+/).filter(Boolean)
@@ -1155,8 +1209,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return units
   }
 
-  function procLines(list: string[] | undefined, qmap: QuantityMap | null | undefined, icSide: string | undefined, regionName: string): string[] {
-    const out: string[] = []
+  /** cartilage: 차트의 아라간 글로 만든 연골주사 줄 */
+  type ProcText = { t: string; cartilage: boolean }
+  function procLines(list: string[] | undefined, qmap: QuantityMap | null | undefined, icSide: string | undefined, regionName: string): ProcText[] {
+    const out: ProcText[] = []
+    const push = (t: string, cartilage = false) => out.push({ t, cartilage })
     ;(list || []).forEach((t) => {
       if (/아라간/.test(t) && /[,，]/.test(t)) {
         const ps = t.split(/[,，]/).map((x) => x.trim()).filter(Boolean)
@@ -1171,19 +1228,19 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       if (/아라간/.test(t)) {
         const sd = /양|both/i.test(t) ? '양측' : /\bRt\b/i.test(t) ? '우측' : /\bLt\b/i.test(t) ? '좌측' : ''
         const cha = (t.match(/(\d+)\s*차/) || [])[1]
-        out.push(renderQuantityProcedure('IA', TPL.ara, { 좌우: sd, 회차: cha || '', 부위: regionName || MISS_SITE }, qmap))
+        push(renderQuantityProcedure('IA', TPL.ara, { 좌우: sd, 회차: cha || '', 부위: regionName || MISS_SITE }, qmap), true)
         return
       }
       const units = splitProcs(t)
       if (units) {
         const parts = units.map((u) => sideFix(`${u.c}${u.sd ? ` ${u.sd}` : ''}`.trim(), qmap)).filter(Boolean)
-        if (TPL.splitEach) parts.forEach((x) => out.push(x))
-        else out.push(parts.join(' '))
+        if (TPL.splitEach) parts.forEach((x) => push(x))
+        else push(parts.join(' '))
         return
       }
-      out.push(sideFix(t, qmap))
+      push(sideFix(t, qmap))
     })
-    return out.filter(Boolean).map((x) => applyRename(icnbFix(x, icSide))).filter(Boolean)
+    return out.filter((x) => x.t).map((x) => ({ ...x, t: applyRename(icnbFix(x.t, icSide)) })).filter((x) => x.t)
   }
 
   /** 원본 compose(규칙 단계 CL은 늘 0이다: 상세 모드는 옮기지 않는다) */
@@ -1201,13 +1258,23 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       진단: '',
       영상: '',
     }
-    const mains = procLines(m.procList, m.rxQty, m.icnbSide, m.ko).map((p) => renderQuantityProcedure(p, tplForProc(p, m.rg, m.rxQty), { ...vars, 시술: p }, m.rxQty))
+    const mains = procLines(m.procList, m.rxQty, m.icnbSide, m.ko).map(({ t: p, cartilage }) => ({
+      line: renderQuantityProcedure(p, tplForProc(p, m.rg, m.rxQty), { ...vars, 시술: p }, m.rxQty),
+      codes: cartilage ? IA_TAGS : lineCodes(p, m.rxQty),
+      cartilage,
+    }))
     const cpbSide = m.cpbTxt ? (m.cpbTxt.match(/\b(both|Rt|Lt)\b/i) || [])[1] : null
     const cpbKo = ({ both: '양측', rt: '우측', lt: '좌측' } as Record<string, string>)[String(cpbSide).toLowerCase()] || m.side || ''
     const cpbLine = m.cpbTxt ? renderQuantityProcedure(m.cpbTxt, TPL.cpb, { ...vars, 좌우: cpbKo, 시술: applyRename(sideFix(m.cpbTxt, m.rxQty)) }, m.rxQty) : null
     const snbLine = m.snbSide ? renderQuantityProcedure(m.snbSeg || 'SNB', TPL.snb, { ...vars, 좌우: m.snbSide, 시술: applyRename(m.snbSeg || 'SNB both') }, m.rxQty) : null
     const klgLine = m.rg === 'knee' && m.araV && TPL.klg && (m.kl1 || m.kl2) ? fill(TPL.klg, { KL1: m.kl1 || '', KL2: m.kl2 || '' }) : null
-    const lines = [...mains, cpbLine, snbLine].filter((x): x is string => !!x).map((x) => procLine(markOf() + x))
+    const lines = [
+      ...mains,
+      { line: cpbLine, codes: lineCodes(m.cpbTxt, m.rxQty), cartilage: false },
+      { line: snbLine, codes: lineCodes(m.snbSeg || 'SNB', m.rxQty), cartilage: false },
+    ]
+      .filter((x): x is { line: string; codes: string[]; cartilage: boolean } => !!x.line)
+      .map((x) => procLine(markOf() + x.line, x.codes, x.cartilage))
     if (klgLine) lines.push(markOf() + klgLine)
     return lines.join('\n')
   }
@@ -1223,15 +1290,23 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   /** 이번 글에서 자리에 넣은 약. 놓을 줄이 없던 약은 [약 확인]으로 돌린다(AC-3001.3) */
   let placedDrugs = new Set<DrugItem>()
 
+  /** IA·건초내주사 줄 {부위}에 차트 좌우를 쓰는가(AC-3003.1) */
+  const iaSide = () => phrases.memoRules?.iaSide === true
+  /** IA·건초내주사 줄 {약제}의 약: 주인 없는 약 + 그 시술이 주인인 약(REQ-3002) */
+  const slotDrugs = (plan: DrugPlan, owner: string) => [...free(plan.afterProc), ...ownedBy(plan.afterProc, owner)]
+  /** 그 줄을 썼고 틀에 {약제}가 있으면 그 약은 놓였다. 아니면 [약 확인]으로 돌아간다 */
+  function placeSlot(line: string, tpl: string, items: DrugItem[]) {
+    if (line && tpl.includes('{약제}')) items.forEach((item) => placedDrugs.add(item))
+  }
+
   /**
-   * 연골주사 날의 일반 IA 줄(AC-3001.2): 넣기인 일반 약(afterProc)이 있으면 아라간이 아닌 IA 차트 줄의 부위로 iaEtc 줄을 하나 더 쓴다.
+   * 연골주사 날의 일반 IA 줄(AC-3001.2): IA 줄에 놓을 일반 약이 있으면 아라간이 아닌 IA 차트 줄의 부위로 iaEtc 줄을 하나 더 쓴다.
    * KK090 수량은 연골주사와 나눠 쓰므로 양측 근거로 보지 않는다(수량 1로 본다). 그런 줄이 없으면 약은 fullTextBody가 [약 확인]으로 돌린다(AC-3001.3)
    */
   function araEtcLine(v: MemoVisit): string[] {
     const tpl = TPL.iaEtc
-    const items = drugPlan(v).afterProc
-    if (!tpl || !items.length) return []
-    if (TPL.kneeSetSkipIa !== false && v.rx.some((x) => IA_SET_CODES.test(String(x.code)))) return []
+    const plan = drugPlan(v)
+    if (!tpl || !iaBound(plan).length || kneeSetSkips(v, false)) return []
     const chart = (v.items || []).filter((i) => i.k === 'proc' && IA_WORD.test(i.raw || i.t) && !CARTILAGE_NAME.test(i.raw || i.t))
     if (!chart.length) return []
     const ia = v.rx.find((x) => upper(x.code) === 'KK090')!
@@ -1239,11 +1314,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const one = Object.create(null) as QuantityMap
     addQuantity(one, name, 1, ia.code)
     const site = siteOf({ items: chart, memos: [] }, IA_WORD, IA_REGIONS)
-    const drugs = [...new Set(items.map((item) => item.name))]
-    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: `(${drugs.join(', ')})`, 투여량: '', 부위: site || MISS_SITE }, one, fill, ia.code)
-    if (!line) return []
-    items.forEach((item) => placedDrugs.add(item))
-    return [markOf() + line]
+    const slot = slotDrugs(plan, 'KK090')
+    const drugs = [...new Set(slot.map((item) => item.name))]
+    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: '', 부위: site || MISS_SITE }, one, fill, ia.code, iaSide())
+    placeSlot(line, tpl, slot)
+    return line ? [markOf() + line] : []
   }
 
   function iaLinesOf(v: MemoVisit, raw: boolean): string[] {
@@ -1253,17 +1328,22 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (!k) return []
     const tpl = TPL.iaEtc
     if (!tpl) return []
-    const l = v.rx
-    if (TPL.kneeSetSkipIa !== false && l.some((x) => IA_SET_CODES.test(String(x.code)))) return []
-    const ia = l.find((x) => upper(x.code) === 'KK090')!
-    const drugs = raw ? [] : [...new Set(drugPlan(v).afterProc.map((item) => item.name))]
+    if (kneeSetSkips(v, raw)) return []
+    const ia = v.rx.find((x) => upper(x.code) === 'KK090')!
+    const slot = raw ? [] : slotDrugs(drugPlan(v), 'KK090')
+    const drugs = [...new Set(slot.map((item) => item.name))]
     const site = siteOf(v, IA_WORD, IA_REGIONS)
     const qty = ia.qty ?? 0
     const iaVars = { 좌우: qty >= 2 ? ' - both' : '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: ia.qty || '', 부위: site || MISS_SITE }
-    const line = renderQuantityProcedure(cm(ia.code)?.n || 'IA', tpl, iaVars, v.rxQty, fill, ia.code)
+    const line = renderQuantityProcedure(cm(ia.code)?.n || 'IA', tpl, iaVars, v.rxQty, fill, ia.code, !raw && iaSide())
+    placeSlot(line, tpl, slot)
     return line ? [markOf() + line] : []
   }
-  const iaLines = (v: MemoVisit) => iaLinesOf(v, false).map(procLine)
+  /** fullText의 IA 줄: 꼬리표 KK090, 연골주사 줄은 따로 적는다 */
+  function iaLines(v: MemoVisit): string[] {
+    if (iaKind(v) !== 'ara') return iaLinesOf(v, false).map((line) => procLine(line, IA_TAGS))
+    return [...cartilageLine(v, false).map((line) => procLine(line, IA_TAGS, true)), ...araEtcLine(v).map((line) => procLine(line, IA_TAGS))]
+  }
 
   function noteLines(v: MemoVisit): string[] {
     const araVisit = iaKind(v) === 'ara'
@@ -1283,7 +1363,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       if (!line || seen.has(line)) return
       if (araVisit && /\bIA\b/i.test(line)) return
       seen.add(line)
-      out.push(o.k === 'proc' ? procLine(markOf() + line) : markOf() + line)
+      out.push(o.k === 'proc' ? procLine(markOf() + line, codeTags(code)) : markOf() + line)
     })
     return out
   }
@@ -1297,14 +1377,18 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return v.rxAdd
       .filter((a: RxAddition) => !((a.name === 'IA' || upper(a.code) === 'KK090') && hasIaLine))
       .map((a) => {
+        const tags = codeTags(a.code)
         if (upper(a.code) === 'KK062' && TPL.ts) {
           const s = siteOf(v, /건초|tendon\s*sheath|trigger\s*finger|방아쇠|quervain|tenosyn|\bTS\b|\bSTI\b/i, null, true)
-          return procLine(markOf() + renderQuantityProcedure(a.name, TPL.ts, { 부위: s || MISS_SITE, 좌우: '', 약제: drugTxt(v) }, v.rxQty, fill, a.code))
+          const slot = slotDrugs(drugPlan(v), 'KK062')
+          const line = renderQuantityProcedure(a.name, TPL.ts, { 부위: s || MISS_SITE, 좌우: '', 약제: formatDrugs(slot) }, v.rxQty, fill, a.code, iaSide())
+          placeSlot(line, TPL.ts, slot)
+          return procLine(markOf() + line, tags)
         }
         const txt = applyRename(icnbFix(sideFix(a.name, v.rxQty), icS))
-        if (a.name === 'SNB') return procLine(markOf() + renderQuantityProcedure(txt, tplForProc(txt, null, v.rxQty), { ...empty, 시술: txt }, v.rxQty))
+        if (a.name === 'SNB') return procLine(markOf() + renderQuantityProcedure(txt, tplForProc(txt, null, v.rxQty), { ...empty, 시술: txt }, v.rxQty), tags)
         const ko = a.rg ? siteName(a.rg, RGKO[a.rg]) : ''
-        return procLine(markOf() + renderQuantityProcedure(txt, tplForProc(txt, a.rg, v.rxQty), { ...empty, 부위: ko, 시술: txt }, v.rxQty))
+        return procLine(markOf() + renderQuantityProcedure(txt, tplForProc(txt, a.rg, v.rxQty), { ...empty, 부위: ko, 시술: txt }, v.rxQty), tags)
       })
   }
 
@@ -1388,26 +1472,54 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return [procs.length ? (mark ? mark : '') + procs.join(', ') : '', ...lines.filter(sentence)].filter(Boolean).join(' ')
   }
 
-  /** 끝맺음 뒤·따로 한 줄 약을 마지막 시술 줄에 붙인다. 시술 줄이 없으면 쓸 자리가 없어 쓰지 않는다 */
+  /** IA·건초내주사 시술이 주인인 afterProc 약은 그 줄 {약제}에만 놓인다(그 줄을 만들 때 넣었다) */
+  const SLOT_OWNERS = new Set(['KK090', 'KK062'])
+
+  /**
+   * 끝맺음 뒤·따로 한 줄 약을 놓는다. 주인 없는 약(시술 하나인 날)은 마지막 시술 줄에, 시술 줄이 없으면 쓸 자리가 없어 쓰지 않는다.
+   * 주인 약(REQ-3002)은 꼬리표가 주인 시술인 첫 줄에(연골주사약은 연골주사 줄, 그 밖의 약은 연골주사 아닌 줄): afterProc·afterEnding은 그 줄 끝, ownLine은 그 줄 바로 아래.
+   * 자리는 모두 원래 줄에서 찾은 뒤 한 번에 붙인다
+   */
   function placeDrugs(base: string, plan: DrugPlan): string {
-    if (!plan.afterEnding.length && !plan.ownLine.length) return base
     const lines = base.split('\n')
-    let at = -1
-    for (let i = lines.length - 1; i >= 0 && at < 0; i--) if (procOut.has(lines[i])) at = i
-    if (at < 0) return base
-    if (plan.afterEnding.length) lines[at] = `${lines[at]} ${formatDrugs(plan.afterEnding).trim()}`
-    if (plan.ownLine.length) lines.splice(at + 1, 0, `${markOf()}약: ${drugNames(plan.ownLine).join(', ')}`)
-    return lines.join('\n')
+    const slots = new Map<number, { proc: DrugItem[]; ending: DrugItem[]; own: DrugItem[] }>()
+    const put = (at: number, key: 'proc' | 'ending' | 'own', items: DrugItem[]) => {
+      if (at < 0 || !items.length) return
+      const slot = slots.get(at) ?? { proc: [], ending: [], own: [] }
+      slot[key].push(...items)
+      slots.set(at, slot)
+      items.forEach((item) => placedDrugs.add(item))
+    }
+    let last = -1
+    for (let i = lines.length - 1; i >= 0 && last < 0; i--) if (procOut.has(lines[i])) last = i
+    put(last, 'ending', free(plan.afterEnding))
+    put(last, 'own', free(plan.ownLine))
+    const ownerLine = (item: DrugItem) => lines.findIndex((line) => !!procOut.get(line)?.has(item.owner!) && cartilageOut.has(line) === !!item.cartilage)
+    for (const item of plan.afterProc) if (item.owner && !SLOT_OWNERS.has(item.owner) && !placedDrugs.has(item)) put(ownerLine(item), 'proc', [item])
+    for (const item of plan.afterEnding) if (item.owner) put(ownerLine(item), 'ending', [item])
+    for (const item of plan.ownLine) if (item.owner) put(ownerLine(item), 'own', [item])
+    if (!slots.size) return base
+    return lines
+      .flatMap((line, at) => {
+        const slot = slots.get(at)
+        if (!slot) return [line]
+        let out = line + formatDrugs(slot.proc)
+        if (slot.ending.length) out += ` ${formatDrugs(slot.ending).trim()}`
+        return slot.own.length ? [out, `${markOf()}약: ${drugNames(slot.own).join(', ')}`] : [out]
+      })
+      .join('\n')
   }
 
-  /** 놓을 줄이 없던 약의 표시. 연골주사 날 넣기인 일반 약은 일반 IA 줄에만 놓인다(AC-3001.3) */
+  /** 놓을 줄이 없던 약의 표시: 연골주사 날 넣기인 일반 약(일반 IA 줄에만 놓인다, AC-3001.3)과 주인 약(AC-3002.3) */
   function unplacedChecks(v: MemoVisit, plan: DrugPlan): string[] {
-    const lost = iaKind(v) === 'ara' ? plan.afterProc.filter((item) => !placedDrugs.has(item)) : []
+    const owned = [...plan.afterProc, ...plan.afterEnding, ...plan.ownLine].filter((item) => item.owner)
+    const lost = [...(iaKind(v) === 'ara' ? free(plan.afterProc) : []), ...owned].filter((item) => !placedDrugs.has(item))
     return [...new Set(lost.map((item) => drugCheck(item.drug)))].filter((mark) => !plan.checks.includes(mark))
   }
 
   function fullTextBody(v: MemoVisit): string {
-    procOut = new Set()
+    procOut = new Map()
+    cartilageOut = new Set()
     placedDrugs = new Set()
     const seen = new Set<string>()
     const slot = drugTxt(v)
@@ -1447,8 +1559,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       drugTokenUsed = false
       drugSlotOpen = false
       const first = fullTextBody(v)
-      if (!drugPlan(v).afterProc.length || drugTokenUsed || iaKind(v) === 'ara') return first
-      // 넣을 약이 있는데 {약제} 자리가 어느 틀에도 없었다: 첫 시술 줄의 {시술} 바로 뒤를 자리로 삼아 다시 쓴다(AC-014.9)
+      if (!free(drugPlan(v).afterProc).length || drugTokenUsed || iaKind(v) === 'ara') return first
+      // 넣을 약이 있는데 {약제} 자리가 어느 틀에도 없었다: 첫 시술 줄의 {시술} 바로 뒤를 자리로 삼아 다시 쓴다(AC-014.9). 주인 약은 이 자리에 오지 않는다(REQ-3002)
       drugSlotOpen = true
       const second = fullTextBody(v)
       drugSlotOpen = false

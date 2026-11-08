@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RxLine, Visit } from '@/types/precheck'
-import { createMemoEngine, fullText, ourClinicPhrases, prepareVisit, unfinished, validatePhrases, type DrugChoice, type Phrases, type ProcedureDrugs } from './index'
+import { createMemoEngine, fullText, ourClinicPhrases, prepareVisit, unfinished, validatePhrases, type DrugChoice, type MemoRules, type Phrases, type ProcedureDrugs } from './index'
 
 // 약 규칙(design.md 19-4). 원본과 일부러 다른 곳이 있어 표마다 시험을 적는다. 이 표가 clinic-memo-plan.md의 옛 글보다 앞선다
 
@@ -12,16 +12,20 @@ const OWN_LINE: DrugChoice = { use: 'include', place: 'ownLine' }
 const rx = (code: string, qty: number | null = 1): RxLine => ({ code, name: code, qty, benefit: true, pay: '급여' })
 const rxNoPay = (code: string): RxLine => ({ code, name: code, qty: 1, benefit: false, pay: '비급여' })
 const visit = (lines: string[], rows: RxLine[]): Visit => ({ key: 't1', chart: '900001', date: '2026-10-12', month: '2026-10', name: '가상환자01', lines, hints: lines.map(() => null), rx: rows, dx: [], memosInBit: [] })
-function phrases(procedureDrugs: ProcedureDrugs, patch: Record<string, unknown> = {}): Phrases {
+/** AC-014.10(시술 2개 이상인 날은 늘 [약 확인])은 memo-settings REQ-3002가 대신했다. 옛 규칙은 memoRules.singleOwnerDrug=false로 남는다(AC-3002.5) */
+const OLD_RULE: MemoRules = { singleOwnerDrug: false }
+function phrases(procedureDrugs: ProcedureDrugs, patch: Record<string, unknown> = {}, memoRules?: MemoRules): Phrases {
   const value = ourClinicPhrases()
   value.procedureDrugs = procedureDrugs
   Object.assign(value.TPL, patch)
+  if (memoRules) value.memoRules = memoRules
   return value
 }
-const text = (lines: string[], rows: RxLine[], procedureDrugs: ProcedureDrugs, patch: Record<string, unknown> = {}) => {
-  const p = phrases(procedureDrugs, patch)
+const text = (lines: string[], rows: RxLine[], procedureDrugs: ProcedureDrugs, patch: Record<string, unknown> = {}, memoRules?: MemoRules) => {
+  const p = phrases(procedureDrugs, patch, memoRules)
   return fullText(prepareVisit(visit(lines, rows), p, NO_TABLES), p, NO_TABLES)
 }
+const oldText = (lines: string[], rows: RxLine[], procedureDrugs: ProcedureDrugs, patch: Record<string, unknown> = {}) => text(lines, rows, procedureDrugs, patch, OLD_RULE)
 
 const SHOULDER_IA = ['Rt shoulder pain', 'Rt shoulder IA']
 
@@ -224,23 +228,23 @@ describe('AC-014.7 연골주사약을 알아보는 길(병원 코드 글자를 �
   })
 })
 
-describe('AC-014.10 시술 종류가 둘 이상인 진료', () => {
+describe('AC-014.10 시술 종류가 둘 이상인 진료(옛 규칙: memoRules.singleOwnerDrug=false, AC-3002.5)', () => {
   const lines = ['Rt shoulder pain', 'Rt SSNB IA']
   const rows = [rx('LA247'), rx('KK090'), rx('A21')]
   const REASON = '환자 스케쥴상 주1회 내원 밖에 안되어 당일 주사치료 2부위 시행함. 환자 증상 호소 심해 치료 요하는 상태임'
 
   it('AC-014.10: 한 시술만 넣기여도 그 시술에 넣지 않고 [약 확인]이다', () => {
-    const out = text(lines, rows, { KK090: { 트리암: INCLUDE }, LA247: { 트리암: EXCLUDE } })
+    const out = oldText(lines, rows, { KK090: { 트리암: INCLUDE }, LA247: { 트리암: EXCLUDE } })
     expect(out).toBe(`◈SSNB\n\n◈IA injection of - shoulder\n[약 확인: 트리암]\n\n${REASON}`)
   })
 
   it('AC-014.10: 한 시술이라도 안 정했으면 [약 확인]이다', () => {
-    const out = text(lines, rows, { KK090: { 트리암: EXCLUDE } })
+    const out = oldText(lines, rows, { KK090: { 트리암: EXCLUDE } })
     expect(out).toBe(`◈SSNB\n\n◈IA injection of - shoulder\n[약 확인: 트리암]\n\n${REASON}`)
   })
 
   it('AC-014.10: 모든 시술에서 빼기일 때만 뺀다', () => {
-    const out = text(lines, rows, { KK090: { 트리암: EXCLUDE }, LA247: { 트리암: EXCLUDE } })
+    const out = oldText(lines, rows, { KK090: { 트리암: EXCLUDE }, LA247: { 트리암: EXCLUDE } })
     expect(out).toBe(`◈SSNB\n\n◈IA injection of - shoulder\n\n${REASON}`)
   })
 
@@ -248,30 +252,30 @@ describe('AC-014.10 시술 종류가 둘 이상인 진료', () => {
   const araRows = [rx('KK090'), rx('A49'), rx('LA247')]
 
   it('AC-014.10: 연골주사약 한 시술만 넣기: 연골주사 줄을 쓰지 않고 [약 확인]이다', () => {
-    const out = text(ara, araRows, { KK090: { 아라간: INCLUDE }, LA247: { 아라간: EXCLUDE } })
+    const out = oldText(ara, araRows, { KK090: { 아라간: INCLUDE }, LA247: { 아라간: EXCLUDE } })
     expect(out).toContain('[약 확인: 아라간]')
     expect(out).not.toContain('연골주사')
   })
 
   it('AC-014.10: 연골주사약 한 시술이라도 안 정함: [약 확인]이다', () => {
-    const out = text(ara, araRows, { KK090: { 아라간: EXCLUDE } })
+    const out = oldText(ara, araRows, { KK090: { 아라간: EXCLUDE } })
     expect(out).toContain('[약 확인: 아라간]')
     expect(out).not.toContain('연골주사')
   })
 
   it('AC-014.10: 연골주사약 모든 시술에서 빼기: 약 이름만 빼고 연골주사 줄은 쓴다', () => {
-    const out = text(ara, araRows, { KK090: { 아라간: EXCLUDE }, LA247: { 아라간: EXCLUDE } })
+    const out = oldText(ara, araRows, { KK090: { 아라간: EXCLUDE }, LA247: { 아라간: EXCLUDE } })
     expect(out).toBe(`◈우측 슬관절 강내 연골주사 2회차\n\n◈SSNB\n\n${REASON}`)
   })
 
   it('AC-014.10: 국소마취제도 같다', () => {
     const lido = [rx('LA247'), rx('KK090'), rx('A15')]
-    expect(text(lines, lido, { KK090: { 리도카인: INCLUDE }, LA247: { 리도카인: EXCLUDE } })).toContain('[약 확인: 리도카인]')
-    expect(text(lines, lido, { KK090: { 리도카인: EXCLUDE }, LA247: { 리도카인: EXCLUDE } })).not.toContain('리도카인')
+    expect(oldText(lines, lido, { KK090: { 리도카인: INCLUDE }, LA247: { 리도카인: EXCLUDE } })).toContain('[약 확인: 리도카인]')
+    expect(oldText(lines, lido, { KK090: { 리도카인: EXCLUDE }, LA247: { 리도카인: EXCLUDE } })).not.toContain('리도카인')
   })
 
   it('AC-014.10: 시술 종류는 코드로 센다(같은 코드 두 줄은 한 종류)', () => {
-    expect(text(['Rt shoulder pain', 'Rt shoulder IA'], [rx('KK090'), rx('KK090'), rx('A21')], { KK090: { 트리암: INCLUDE } })).toBe('◈IA injection of - shoulder(트리암)')
+    expect(oldText(['Rt shoulder pain', 'Rt shoulder IA'], [rx('KK090'), rx('KK090'), rx('A21')], { KK090: { 트리암: INCLUDE } })).toBe('◈IA injection of - shoulder(트리암)')
   })
 })
 
@@ -299,8 +303,8 @@ describe('AC-014.5 AC-014.9 한 줄 문장 틀(sentence)을 쓰는 설정', () =
     expect(unfinished(out)).toBe(true)
   })
 
-  it('AC-014.10: 문장 틀이어도 시술 종류가 둘 이상인 날의 [약 확인]이 남는다', () => {
-    const out = text(['Rt shoulder pain', 'Rt SSNB IA'], [rx('LA247'), rx('KK090'), rx('A21')], { KK090: { 트리암: INCLUDE }, LA247: { 트리암: EXCLUDE } }, SENTENCE)
+  it('AC-014.10: 문장 틀이어도 시술 종류가 둘 이상인 날의 [약 확인]이 남는다(옛 규칙)', () => {
+    const out = oldText(['Rt shoulder pain', 'Rt SSNB IA'], [rx('LA247'), rx('KK090'), rx('A21')], { KK090: { 트리암: INCLUDE }, LA247: { 트리암: EXCLUDE } }, SENTENCE)
     expect(out).toContain('[약 확인: 트리암]')
     expect(unfinished(out)).toBe(true)
   })
@@ -363,10 +367,14 @@ describe('AC-014.12 약 이름에 줄바꿈이 있는 설정', () => {
     expect(unfinished(out)).toBe(true)
   })
 
-  it('AC-014.10: 시술 종류가 둘 이상인 날도 표시는 한 줄이고 unfinished가 참이다', () => {
-    const out = memo(withName({ KK090: {}, LA247: {} }, '새\n약'), ['Rt shoulder pain', 'Rt SSNB IA'], [rx('LA247'), rx('KK090'), rx('X9')])
-    expect(out).toContain('[약 확인: 새 약]')
-    expect(unfinished(out)).toBe(true)
+  it('AC-014.10: 시술 종류가 둘 이상인 날도 표시는 한 줄이고 unfinished가 참이다(새 규칙·옛 규칙 모두)', () => {
+    for (const memoRules of [undefined, OLD_RULE]) {
+      const p = withName({ KK090: {}, LA247: {} }, '새\n약')
+      if (memoRules) p.memoRules = memoRules
+      const out = memo(p, ['Rt shoulder pain', 'Rt SSNB IA'], [rx('LA247'), rx('KK090'), rx('X9')])
+      expect(out).toContain('[약 확인: 새 약]')
+      expect(unfinished(out)).toBe(true)
+    }
   })
 
   it('AC-014.12: 한 줄 잇기·문장 틀에서도 표시가 끊기지 않는다', () => {
