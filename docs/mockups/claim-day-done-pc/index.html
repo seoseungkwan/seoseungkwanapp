@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>비트 PC 청구 화면 — 날짜를 완료로 바꾸기 (claim-day-done-pc 시안)</title>
+<!-- 2026-11-08 사용자 요청: 비트 PC 청구 화면(DateStep)에서도 완료로 바꾸기. 두 방식(가: 줄 끝 [완료로] 바로 저장 / 나: 체크 칸으로 고른 기간을 한꺼번에) 비교용.
+     숫자·날짜는 화면 사진의 건수만 옮겼다(환자 자료 없음) -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;--r-control:4px;--r-float:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:#E9ECF1;color:var(--ink);font-size:14px;line-height:22px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.ctl{background:#1F2937;color:#F9FAFB;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px}
+.seg{display:inline-flex;border:1px solid #4B5563;border-radius:6px;overflow:hidden}
+.seg button{padding:4px 10px;color:#D1D5DB}
+.seg button.on{background:#F9FAFB;color:#111827;font-weight:600}
+.ctl .note{color:#D1D5DB;width:100%;font-size:12px}
+.stage{padding:16px 0 48px;display:flex;justify-content:center}
+.frame{background:var(--surface);width:1200px;box-shadow:0 0 0 1px #CBD2DC}
+.band{border-bottom:1px solid var(--line);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:600}.logo i{width:20px;height:20px;border-radius:5px;background:var(--accent)}
+.tabs{border-bottom:1px solid var(--line);display:flex;padding:0 12px;height:42px}
+.tab{display:inline-flex;align-items:center;padding:0 12px;font-weight:500;color:var(--ink-2);position:relative}
+.tab.on{font-weight:600;color:var(--ink)}.tab.on::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--accent)}
+main{padding:20px 24px 32px}
+.panel{border:1px solid var(--line);border-radius:var(--r-float)}
+.phead{display:flex;justify-content:space-between;align-items:center;padding:14px 20px}
+.phead h2{font-size:15px;font-weight:600}
+.period{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 20px 12px;font-size:13px;color:var(--ink-2)}
+.period b{color:var(--ink)}
+table{width:100%;border-collapse:collapse}
+th{font-size:12px;font-weight:500;color:var(--muted);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+th.num,td.num{text-align:right}
+td.check{width:40px;padding-left:20px}
+td.check input{width:16px;height:16px;accent-color:var(--accent)}
+td.sub{color:var(--muted);font-size:13px}
+td.act{text-align:right;white-space:nowrap;width:1%}
+.group td{background:var(--canvas);font-size:13px;font-weight:500;color:var(--ink-2);padding:8px 20px}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.chip.n{background:var(--canvas);color:var(--ink-2);border:1px solid var(--line)}
+.chip.a{background:var(--accent-soft);color:var(--accent-strong)}
+.chip.p{background:var(--positive-soft);color:var(--positive)}
+.btn{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:500;color:var(--ink-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;height:32px;padding:0 12px}
+.btn.load{height:36px;padding:0 16px}
+.btn:disabled{opacity:.45;cursor:default}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 20px 12px;padding:8px 12px;border-radius:var(--r-float);background:var(--accent-soft);color:var(--accent-strong);font-size:13px;font-weight:500}
+.bar[hidden]{display:none}
+.bar.saved{background:var(--positive-soft);color:var(--positive)}
+.bar .link{text-decoration:underline;color:inherit}
+.foot{padding:10px 20px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+tr.mine td{background:#FBFDFB}
+</style>
+</head>
+<body>
+<div class="ctl">
+  <b>시안 조작판</b>
+  <span class="seg" id="seg"><button data-v="ga" class="on">가: 줄 끝 [완료로] (바로 저장)</button><button data-v="na">나: 체크 칸으로 고른 기간을 한꺼번에</button></span>
+  <button class="btn" style="height:26px;color:#111827" id="reset">처음으로</button>
+  <p class="note" id="note"></p>
+</div>
+<div class="stage"><div class="frame">
+  <div class="band"><span class="logo"><i></i>양지바른정형외과</span><small style="color:var(--muted)">2026년 11월 8일 (일)</small></div>
+  <div class="tabs"><span class="tab">대시보드</span><span class="tab">통계</span><span class="tab on">청구</span><span class="tab">환자</span><span class="tab">매출</span></div>
+  <main>
+    <section class="panel">
+      <div class="phead"><h2>진료한 날짜</h2><span style="font-size:13px;color:var(--ink-2)" id="leftN"></span></div>
+      <div class="period">기간 <b id="periodText">10/19 (월) ~ 10/24 (토)</b> <button class="btn">입력 안 된 날짜 모두</button><button class="btn">이번 주</button><button class="btn primary load">자료 불러오기</button></div>
+      <div class="bar" id="bar"></div>
+      <table aria-label="진료한 날짜">
+        <thead><tr><th></th><th>날짜</th><th class="num">진료 환자</th><th class="num">메모 필요</th><th class="num">입력함</th><th>상태</th><th></th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="foot">일요일·휴진일처럼 진료가 없는 날은 목록에 나오지 않아요.</div>
+    </section>
+  </main>
+</div></div>
+<script>
+const START = [
+  ['2026-10-19','월',85,41,21,'11월 6일 (금) 13:34'],['2026-10-20','화',89,39,22,'11월 6일 (금) 13:34'],['2026-10-21','수',58,19,8,'11월 6일 (금) 13:34'],
+  ['2026-10-22','목',85,40,20,'11월 6일 (금) 13:44'],['2026-10-23','금',74,38,18,'11월 6일 (금) 13:34'],['2026-10-24','토',52,30,18,'11월 6일 (금) 13:34'],
+  ['2026-10-26','월',86,47,22,'11월 6일 (금) 13:44'],['2026-10-27','화',85,38,22,'11월 6일 (금) 13:34'],['2026-11-02','월',92,47,0,'11월 6일 (금) 13:34'],
+  ['2026-11-03','화',81,36,6,'11월 6일 (금) 13:34'],
+]
+const DONE_BY_NUMBERS = [['2026-10-17','토',60,30,30,'11월 6일 (금) 13:34']]
+const PERIOD = ['2026-10-19','2026-10-24']
+let mode = 'ga', closed, lastSaved
+const $ = (id) => document.getElementById(id)
+const label = (d) => { const [, m, dd] = d[0].split('-'); return `${+m}/${+dd} (${d[1]})` }
+const inPeriod = (d) => d[0] >= PERIOD[0] && d[0] <= PERIOD[1]
+const chip = (d) => d[4] === 0 ? '<span class="chip n">입력 전</span>' : `<span class="chip a">진행중 ${d[4]}/${d[3]}</span>`
+function reset() { closed = new Map(); lastSaved = null; render() }
+function row(d, finished) {
+  const mine = closed.has(d[0])
+  const st = finished ? '<span class="chip p">완료</span>' : chip(d)
+  const sub = mine ? `완료로 바꿈 · ${closed.get(d[0])}` : `${d[5]}에 바뀜`
+  let act = ''
+  if (mine) act = `<button class="btn" data-undo="${d[0]}">되돌리기</button>`
+  else if (!finished && mode === 'ga') act = `<button class="btn" data-close="${d[0]}">완료로</button>`
+  return `<tr class="${mine ? 'mine' : ''}"><td class="check"><input type="checkbox" aria-label="${label(d)} 기간에 넣기" ${inPeriod(d) ? 'checked' : ''}></td>
+    <td>${label(d)}</td><td class="num">${d[2]}명</td><td class="num">${d[3]}명</td><td class="num">${d[4]}명</td><td>${st}</td><td class="sub">${sub}</td><td class="act">${act}</td></tr>`
+}
+function render() {
+  const open = START.filter((d) => !closed.has(d[0]))
+  const fin = [...START.filter((d) => closed.has(d[0])), ...DONE_BY_NUMBERS].sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  $('leftN').textContent = `아직 입력 안 된 날짜 ${open.length}일`
+  $('rows').innerHTML = `<tr class="group"><td colspan="8">아직 입력 안 된 날짜</td></tr>${open.map((d) => row(d, false)).join('')}
+    <tr class="group"><td colspan="8">입력이 끝난 날짜</td></tr>${fin.map((d) => row(d, true)).join('')}`
+  const bar = $('bar')
+  const inSel = open.filter(inPeriod)
+  if (mode === 'na') {
+    bar.hidden = false
+    bar.className = 'bar' + (lastSaved ? ' saved' : '')
+    bar.innerHTML = lastSaved
+      ? `<span>${lastSaved.length}일을 완료로 바꿨어요</span><button class="link" id="undoAll">되돌리기</button>`
+      : `<span>고른 기간에서 아직 입력 안 된 날 <b>${inSel.length}일</b></span><button class="btn primary" id="closeSel" ${inSel.length ? '' : 'disabled'}>고른 날 완료로 저장</button>`
+  } else bar.hidden = true
+  $('note').textContent = mode === 'ga'
+    ? '가: "아직 입력 안 된 날짜" 줄 끝 [완료로]를 누르면 바로 저장되고 그 줄이 "입력이 끝난 날짜"로 내려가요. 손으로 바꾼 줄에는 [되돌리기]가 있어요. 앞 체크 칸은 지금처럼 불러올 기간 고르기예요.'
+    : '나: 지금 체크 칸으로 기간을 고르면, 위 줄에 그 기간의 아직 입력 안 된 날 수가 나오고 [고른 날 완료로 저장]으로 한꺼번에 바꿔요. 되돌리기는 가와 같아요. (체크 칸이 기간 고르기와 완료 고르기를 같이 해요)'
+}
+$('rows').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-close]'); const u = e.target.closest('[data-undo]')
+  if (c) { closed.set(c.dataset.close, '11월 8일 (일) 10:05'); render() }
+  if (u) { closed.delete(u.dataset.undo); if (lastSaved) { lastSaved = lastSaved.filter((k) => k !== u.dataset.undo); if (!lastSaved.length) lastSaved = null } render() }
+})
+$('bar').addEventListener('click', (e) => {
+  if (e.target.id === 'closeSel') { const keys = START.filter((d) => !closed.has(d[0]) && inPeriod(d)).map((d) => d[0]); keys.forEach((k) => closed.set(k, '11월 8일 (일) 10:05')); lastSaved = keys; render() }
+  if (e.target.id === 'undoAll') { lastSaved.forEach((k) => closed.delete(k)); lastSaved = null; render() }
+})
+$('seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; [...$('seg').children].forEach((x) => x.classList.toggle('on', x === b)); mode = b.dataset.v; lastSaved = null; render() })
+$('reset').addEventListener('click', reset)
+const q = new URLSearchParams(location.search); if (q.get('mode') === 'na') mode = 'na'
+;[...$('seg').children].forEach((x) => x.classList.toggle('on', x.dataset.v === mode))
+reset()
+</script>
+</body>
+</html>
