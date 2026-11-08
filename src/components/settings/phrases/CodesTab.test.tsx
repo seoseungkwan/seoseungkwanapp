@@ -41,14 +41,13 @@ function Harness({ days = DAYS, state = 'ready', onRetry = () => {} }: { days?: 
   latest = draft
   return <CodesTab draft={draft} saved={saved} errors={[]} onChange={setDraft} days={days} state={state} today={TODAY} onRetry={onRetry} />
 }
-const table = () => screen.getByRole('table', { name: '처방코드 목록' })
-const codeOf = (row: HTMLElement) => within(row).getAllByRole('cell')[0].textContent?.replace('새 코드', '').trim()
+// 줄·칸은 역할(role) 찾기 대신 tbody의 tr·td로 센다: 역할 찾기는 44줄 표에서 느려 전체 시험을 함께 돌리면 5초를 넘는다.
+// 표의 역할·이름표는 AC-3004.2 첫 시험이 따로 확인한다
+const table = () => screen.getByLabelText('처방코드 목록')
+const cellsOf = (row: HTMLElement) => row.querySelectorAll(':scope > td')
+const codeOf = (row: HTMLElement) => cellsOf(row)[0].textContent?.replace('새 코드', '').trim()
 /** 코드 줄(머리 줄과 코드별 메모 문구를 고치는 줄은 뺀다) */
-const codeRows = () =>
-  within(table())
-    .getAllByRole('row')
-    .slice(1)
-    .filter((row) => within(row).getAllByRole('cell').length > 1)
+const codeRows = () => [...table().querySelectorAll<HTMLElement>(':scope > tbody > tr')].filter((row) => cellsOf(row).length > 1)
 const rowOf = (code: string) => {
   const row = codeRows().find((r) => codeOf(r) === code)
   if (!row) throw new Error(`${code} 줄이 없다`)
@@ -60,6 +59,7 @@ describe('AC-3004.2 처방코드 목록 화면', () => {
   it('AC-3004.2: 최근 3개월 코드와 사전 코드가 새 코드 먼저 보이고, 줄마다 비트 이름·종류·마지막 처방일·새 코드 표시가 있다', async () => {
     const user = userEvent.setup()
     render(<Harness />)
+    expect(screen.getByRole('table', { name: '처방코드 목록' })).toBe(table())
     const shown = codes()
     expect(shown.slice(0, 2)).toEqual(['A55', 'AA254'])
     expect(shown).toHaveLength(DICTIONARY + 2)
