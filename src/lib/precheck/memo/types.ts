@@ -89,8 +89,20 @@ export type DrugChoice = { use: 'include' | 'exclude'; place?: DrugPlace; label?
 /** 시술(원본 procKeys, 대문자 코드) → 약 이름(CODEMAP의 n) → 넣기·빼기. 없는 칸은 아직 정하지 않은 것이다(design.md 19-4) */
 export type ProcedureDrugs = Record<string, Record<string, DrugChoice>>
 
-/** 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 */
-export type Phrases = { TPL: PhraseTemplates; CODEMAP: Record<string, MemoCode>; CODEMAP_DEL: string[]; procedureDrugs: ProcedureDrugs }
+/** 원본에 없는 메모 규칙(memo-settings design.md §1). 칸이 없으면 괄호 안 값이다 */
+export type MemoRules = {
+  /** 시술 2개 이상인 날, 넣기인 시술이 하나뿐이면 그 시술 줄에 약을 넣는다(없으면 true, REQ-3002) */
+  singleOwnerDrug?: boolean
+  /** IA·건초내주사 줄의 {부위}에 차트 좌우를 쓴다(없으면 false, AC-3003.1) */
+  iaSide?: boolean
+  /** 무릎 세트 날에 IA 줄에 놓을 약이 있으면 IA 줄을 쓴다(없으면 false, AC-3003.2) */
+  kneeSetIaWithDrug?: boolean
+  /** 코드(대문자) → 줄 순서 1~999. 번호 있는 코드의 줄이 먼저 온다(없으면 차트 순서, REQ-3005) */
+  order?: Record<string, number>
+}
+
+/** 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 + 메모 규칙 */
+export type Phrases = { TPL: PhraseTemplates; CODEMAP: Record<string, MemoCode>; CODEMAP_DEL: string[]; procedureDrugs: ProcedureDrugs; memoRules?: MemoRules }
 
 export type PhraseError = { path: string; message: string }
 export type PhraseCheck = { ok: true; value: Phrases } | { ok: false; errors: PhraseError[] }

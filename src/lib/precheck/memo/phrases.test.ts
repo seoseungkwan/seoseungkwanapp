@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultPhrases, diffPhrases, migratePhrases, ourClinicPhrases, validatePhrases, type Phrases } from './index'
+import { allowedTokens, defaultPhrases, diffPhrases, migratePhrases, ourClinicPhrases, validatePhrases, type Phrases } from './index'
 
 // 병원 문구 검사·기본값·차이. 원본 칸이 원본과 같은지는 golden.test.ts가 본다. 원본에 없는 약 칸(procedureDrugs)을 여기서 본다(design.md 19-3)
 
@@ -123,5 +123,126 @@ describe('AC-014.3 diffPhrases', () => {
 describe('AC-014.3 설정 크기', () => {
   it('AC-014.3: 우리 병원 값은 DB 칸 한도(262144바이트) 안이다', () => {
     expect(Buffer.byteLength(JSON.stringify(ourClinicPhrases()), 'utf-8')).toBeLessThan(262144)
+  })
+})
+
+// ── memo-settings TASK-1: memoRules 검사·비교 이름표·칸별 {항목} ─────────────────────
+
+const withRules = (memoRules: unknown) => ({ ...ourClinicPhrases(), memoRules }) as Phrases
+
+describe('AC-3006.1 memoRules 검사', () => {
+  it('AC-3006.1: memoRules가 없어도 지난다', () => {
+    expect(validatePhrases(ourClinicPhrases()).ok).toBe(true)
+  })
+
+  it.each([
+    ['빈 칸', {}],
+    ['참거짓 셋', { singleOwnerDrug: false, iaSide: true, kneeSetIaWithDrug: true }],
+    ['줄 순서', { order: { KK090: 1, LA358: 999, 'LA-1': 5 } }],
+    ['빈 줄 순서', { order: {} }],
+  ])('AC-3006.1: 받는 값: %s', (_name, rules) => {
+    const result = validatePhrases(withRules(rules))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.memoRules).toEqual(rules)
+  })
+
+  it.each([
+    ['배열', [], 'memoRules'],
+    ['글자', 'x', 'memoRules'],
+    ['null', null, 'memoRules'],
+    ['모르는 칸', { extra: true }, 'memoRules'],
+    ['singleOwnerDrug가 글자', { singleOwnerDrug: 'yes' }, 'memoRules.singleOwnerDrug'],
+    ['iaSide가 숫자', { iaSide: 1 }, 'memoRules.iaSide'],
+    ['kneeSetIaWithDrug가 null', { kneeSetIaWithDrug: null }, 'memoRules.kneeSetIaWithDrug'],
+    ['줄 순서가 배열', { order: [] }, 'memoRules.order'],
+    ['줄 순서 0', { order: { KK090: 0 } }, 'memoRules.order.KK090'],
+    ['줄 순서 1000', { order: { KK090: 1000 } }, 'memoRules.order.KK090'],
+    ['줄 순서 소수', { order: { KK090: 1.5 } }, 'memoRules.order.KK090'],
+    ['줄 순서가 글자', { order: { KK090: '1' } }, 'memoRules.order.KK090'],
+    ['소문자 코드', { order: { kk090: 1 } }, 'memoRules.order.kk090'],
+    ['틀린 코드', { order: { ' KK090': 1 } }, 'memoRules.order. KK090'],
+  ])('AC-3006.1: 거절하는 값: %s', (_name, rules, path) => {
+    const result = validatePhrases(withRules(rules))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.map((e) => e.path)).toContain(path)
+  })
+
+  it('AC-3006.1: 위험한 코드 이름을 거절한다', () => {
+    expect(validatePhrases(withRules(JSON.parse('{"order":{"__proto__":1}}'))).ok).toBe(false)
+  })
+
+  it('AC-3006.1: memoRules가 있어도 원본 칸 검사 결과는 그대로다', () => {
+    const value = withRules({ iaSide: true, order: { KK090: 1 } })
+    value.TPL.main = '{없는말}'
+    expect(validatePhrases(value)).toEqual({ ok: false, errors: [{ path: 'TPL.main', message: '지원하지 않는 항목 {없는말}입니다. 이 항목의 삽입 버튼을 사용해 주세요.' }] })
+  })
+})
+
+describe('AC-3006.2 diffPhrases의 memoRules 이름표', () => {
+  it.each([
+    ['iaSide', { iaSide: true }, 'IA·건초내주사 줄에 좌우 넣기', '끔', '켬'],
+    ['kneeSetIaWithDrug', { kneeSetIaWithDrug: true }, '무릎 세트 날 약이 있으면 IA 줄 쓰기', '끔', '켬'],
+    ['singleOwnerDrug', { singleOwnerDrug: false }, '시술 2개 이상인 날 넣기 시술이 하나면 약 넣기', '켬', '끔'],
+  ])('AC-3006.2: %s 켜기·끄기는 쉬운 이름표와 켬·끔으로 보인다(칸이 없으면 처음 값)', (key, rules, label, before, after) => {
+    expect(diffPhrases(ourClinicPhrases(), withRules(rules))).toEqual([{ path: `memoRules.${key}`, label, before, after }])
+  })
+
+  it('AC-3006.2: 줄 순서는 코드마다 "코드 · 줄 순서"로 보인다', () => {
+    const before = withRules({ order: { LA358: 2 } })
+    const after = withRules({ order: { KK090: 1, LA358: 3 } })
+    expect(diffPhrases(before, after)).toEqual([
+      { path: 'memoRules.order.KK090', label: 'KK090 · 줄 순서', before: '(없음)', after: '1' },
+      { path: 'memoRules.order.LA358', label: 'LA358 · 줄 순서', before: '2', after: '3' },
+    ])
+    expect(diffPhrases(withRules({ order: { KK090: 1 } }), ourClinicPhrases())).toEqual([{ path: 'memoRules.order.KK090', label: 'KK090 · 줄 순서', before: '1', after: '(없음)' }])
+  })
+})
+
+describe('AC-3008.1 allowedTokens: 칸마다 쓸 수 있는 {항목}은 검사와 같다', () => {
+  const TEMPLATE_PATHS = ['TPL.main', 'TPL.mainCentral', 'TPL.mainPeripheral', 'TPL.cpb', 'TPL.snb', 'TPL.icnb', 'TPL.ara', 'TPL.klg', 'TPL.iaAra', 'TPL.iaEtc', 'TPL.ts', 'TPL.itv', 'TPL.ia2', 'TPL.sentence', 'TPL.byProc.SSNB', 'TPL.byRegion.knee', 'CODEMAP.KK090.memo', 'CODEMAP.KK090.cartilageMemo']
+  const UNIVERSE = ['좌우', '한글방향', '영문방향', '레벨', '부위', '시술', '약제', 'KLG', '검사', '기간', '진단', '영상', '회차', 'KL1', 'KL2', '투여량', '코드', '처방명', '표기', '골절', '시술목록', 'C-arm', 'Sono', '시행함', '없는말']
+  /** 칸 하나에 글을 넣은 설정 */
+  function put(path: string, text: string): Phrases {
+    const value = ourClinicPhrases()
+    const [group, ...rest] = path.split('.')
+    if (group === 'TPL' && rest.length === 2) (value.TPL as Record<string, Record<string, string>>)[rest[0]] = { [rest[1]]: text }
+    else if (group === 'TPL') (value.TPL as Record<string, string>)[rest[0]] = text
+    else (value.CODEMAP[rest[0]] as Record<string, unknown>)[rest[1]] = text
+    return value
+  }
+
+  it.each(TEMPLATE_PATHS)('AC-3008.1: %s: 단추 항목은 모두 검사를 지나고, 단추에 없는 항목은 그 칸 오류다', (path) => {
+    const allowed = allowedTokens(path, ourClinicPhrases())
+    expect(allowed.length).toBeGreaterThan(10)
+    expect(validatePhrases(put(path, allowed.map((t) => `{${t}}`).join(' '))).ok).toBe(true)
+    for (const token of UNIVERSE.filter((t) => !allowed.includes(t))) {
+      const result = validatePhrases(put(path, `{${token}}`))
+      expect(result.ok, token).toBe(false)
+      if (!result.ok) expect(result.errors.map((e) => e.path)).toContain(path)
+    }
+  })
+
+  it('AC-3008.1: 칸마다 더 쓰는 항목이 다르다', () => {
+    const our = ourClinicPhrases()
+    expect(allowedTokens('TPL.ara', our)).toContain('회차')
+    expect(allowedTokens('TPL.main', our)).not.toContain('회차')
+    expect(allowedTokens('TPL.iaEtc', our)).toEqual(expect.arrayContaining(['투여량', '코드', '처방명']))
+    expect(allowedTokens('CODEMAP.KK090.memo', our)).toEqual(expect.arrayContaining(['투여량', '코드', '표기', '골절']))
+    expect(allowedTokens('TPL.sentence', our)).toContain('시술목록')
+    expect(allowedTokens('TPL.rename', our)).toEqual([])
+  })
+
+  it('AC-3008.1: 병원이 만든 고정 멘트가 단추에 들어가고, 더하거나 이름을 바꾸면 바로 바뀐다', () => {
+    const our = ourClinicPhrases()
+    expect(allowedTokens('TPL.main', our)).toEqual(expect.arrayContaining(['C-arm', 'Sono', '시행함']))
+    our.TPL.fixedPhrases = [
+      { token: '초음파', text: '초음파 유도하', on: true },
+      { token: '끈멘트', text: 'x', on: false },
+    ]
+    expect(allowedTokens('TPL.main', our)).toEqual(expect.arrayContaining(['초음파', '끈멘트']))
+    expect(allowedTokens('TPL.main', our)).not.toContain('C-arm')
+    our.TPL.fixedPhrases[0].token = '유도'
+    expect(allowedTokens('TPL.byRegion.knee', our)).toContain('유도')
+    expect(allowedTokens('TPL.byRegion.knee', our)).not.toContain('초음파')
   })
 })
