@@ -7,15 +7,15 @@ import { BridgeError } from '@/lib/bridge/protocol'
 import { errorInfo } from '@/lib/errors'
 import { settingsChanged, type SettingsBundle } from '@/lib/precheck/settingsChanged'
 import { readDayCounts, type ClaimDayCount } from '@/lib/storage/claimCounts'
-import { readClosedDays } from '@/lib/storage/claimDayCloses'
+import { closeDays, readClosedDays, reopenDays } from '@/lib/storage/claimDayCloses'
 import { readHospitalSettings, readRuleSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
 import type { CheckSettings } from '@/types/precheck'
 import { ClaimError, ExcelError, SetupLink } from './ClaimError'
 import { pressClaimLoad, runClaimCheck, runClaimExcel, type CheckedClaim, type ClaimChannel, type ClaimOwner, type ClaimPage } from './claimLoad'
-import { buildDateList, dayLabel, defaultPeriod, listRange } from './dateList'
-import { DateStep, type DatesState, type LoadingStep } from './DateStep'
+import { buildDateList, dayLabel, defaultPeriod, listRange, type ClosedDays } from './dateList'
+import { DateStep, type CloseState, type DatesState, type LoadingStep } from './DateStep'
 import { MemoPanel, type InputStage } from './memo/MemoPanel'
 import { StoreBlockedCard } from './memo/StoreBlockedCard'
 import { ResultStep } from './ResultStep'
@@ -121,7 +121,8 @@ function readCountsAndClosed(today: string) {
     Promise.resolve().then(() => readDayCounts(supabaseBrowser(), from, today)),
     Promise.resolve()
       .then(() => readClosedDays(supabaseBrowser(), { from, to: today }))
-      .then((rows): ReadonlySet<string> => new Set(rows.map((row) => row.visit_date))),
+      // 날짜 → 바꾼 시각: 줄에 '완료로 바꿈 · 시각'을 싣는다(claim-day-done-pc AC-2902.1)
+      .then((rows): ClosedDays => new Map(rows.map((row) => [row.visit_date, row.closed_at]))),
   ])
 }
 
@@ -160,7 +161,7 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
     const ask = ++datesAsk.current
     const today = todayInKorea()
     let counts: ClaimDayCount[] = []
-    let closed: ReadonlySet<string> = new Set()
+    let closed: ClosedDays = new Map()
     let readFailed = false
     const mark = readMark()
     // 건수와 완료 표시(claim-day-done)를 같은 400일로 함께 읽는다. 완료 표시만 못 읽으면 읽은 건수는 쓰고 완료 표시는 없음으로 본다(AC-2804.4)
@@ -207,6 +208,34 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
   useEffect(() => {
     void loadDates()
   }, [loadDates])
+
+  // 고른 기간의 날짜를 완료로 저장·되돌리기(claim-day-done-pc). 성공하면 목록을 다시 읽어 줄이 묶음을 옮긴다
+  const [close, setClose] = useState<Omit<CloseState, 'blocked'>>({ saving: false, reopening: new Set(), justSaved: [], failed: false })
+  const closeDates = async (dates: string[]) => {
+    if (dates.length === 0 || busy.current) return
+    setClose((now) => ({ ...now, saving: true, failed: false }))
+    try {
+      await closeDays(supabaseBrowser(), dates)
+    } catch {
+      setClose((now) => ({ ...now, saving: false, failed: true })) // 목록·기간은 그대로(AC-2901.5)
+      return
+    }
+    await refreshDates()
+    setClose((now) => ({ ...now, saving: false, justSaved: dates }))
+  }
+  const reopenDates = async (dates: string[]) => {
+    if (dates.length === 0 || busy.current) return
+    setClose((now) => ({ ...now, reopening: new Set([...now.reopening, ...dates]), failed: false }))
+    const done = (now: Omit<CloseState, 'blocked'>) => new Set([...now.reopening].filter((date) => !dates.includes(date)))
+    try {
+      await reopenDays(supabaseBrowser(), dates)
+    } catch {
+      setClose((now) => ({ ...now, reopening: done(now), failed: true }))
+      return
+    }
+    await refreshDates()
+    setClose((now) => ({ ...now, reopening: done(now), justSaved: now.justSaved.filter((date) => !dates.includes(date)) }))
+  }
 
   // 건수를 올렸으면 날짜 목록을 다시 묻는다
   const seenUploads = useRef(uploads)
@@ -423,7 +452,13 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
         <DateStep
           dates={dates}
           period={period}
-          onPeriod={setPeriod}
+          onPeriod={(next) => {
+            setPeriod(next)
+            setClose((now) => ({ ...now, justSaved: [], failed: false })) // 기간을 바꾸면 알림을 거둔다(AC-2901.4)
+          }}
+          close={{ ...close, blocked: busy.current }}
+          onCloseDates={(dates) => void closeDates(dates)}
+          onReopen={(dates) => void reopenDates(dates)}
           loading={run.kind === 'loading' ? run.step : null}
           onLoad={() => void load(period)}
           onStop={() => {

@@ -23,6 +23,11 @@ const db = vi.hoisted(() => ({
   closesError: null as null | { code: string; message: string; status: number },
   /** 표마다 gte·lte로 물은 날짜 */
   ranges: [] as { table: string; op: string; value: unknown }[],
+  /** 보낸 쓰기(claim-day-done-pc). 성공하면 claim_day_closes는 서버처럼 바뀐다 */
+  writes: [] as { table: string; method: string; payload: unknown; options: unknown; filters: unknown[][] }[],
+  writeFail: false,
+  /** 있으면 쓰기가 이것을 기다린다 */
+  writeGate: null as Promise<void> | null,
   userId: 'user-1' as string | null,
   ruleReads: 0,
   /** 있으면 설정 표 읽기가 이것을 기다린다(건수 표는 그대로) */
@@ -48,7 +53,29 @@ vi.mock('@/lib/supabase/browser', () => ({
         maybeSingle: read,
         then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => read().then(ok, no),
       }
-      return { select: () => query }
+      const write = (method: string, payload: unknown, options: unknown, filters: unknown[][]) => {
+        db.writes.push({ table, method, payload, options, filters })
+        const answer = () => {
+          if (db.writeFail) return { error: { code: '500', message: 'x' } }
+          if (table === 'claim_day_closes' && method === 'upsert') {
+            for (const { visit_date } of payload as { visit_date: string }[]) {
+              if (!(db.closes as { visit_date: string }[]).some((c) => c.visit_date === visit_date)) db.closes = [...db.closes, { visit_date, closed_at: '2026-11-08T01:05:00+00:00' }]
+            }
+          }
+          if (table === 'claim_day_closes' && method === 'delete') {
+            const gone = filters[0][2] as string[]
+            db.closes = (db.closes as { visit_date: string }[]).filter((c) => !gone.includes(c.visit_date))
+          }
+          return { error: null }
+        }
+        const gate = db.writeGate
+        return { then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => (gate ? gate.then(answer) : Promise.resolve().then(answer)).then(ok, no) }
+      }
+      return {
+        select: () => query,
+        upsert: (rows: unknown, options: unknown) => write('upsert', rows, options, []),
+        delete: () => ({ in: (column: string, values: unknown) => write('delete', null, null, [['in', column, values]]) }),
+      }
     },
   }),
 }))
@@ -200,6 +227,9 @@ beforeEach(() => {
   db.closes = []
   db.closesError = null
   db.ranges = []
+  db.writes = []
+  db.writeFail = false
+  db.writeGate = null
   db.userId = 'user-1'
   db.ruleReads = 0
   db.settingsGate = null
@@ -365,14 +395,160 @@ describe('claim-day-done: 비트 PC 화면도 완료로 바꾼 날을 끝난 날
     expect(screen.queryByText('입력 건수를 읽지 못해 비트 자료만으로 보여요.')).toBeNull()
   })
 
-  it('AC-2804.5: 비트 PC 화면에는 완료로 고르기·[완료로 저장]·[되돌리기]가 없다', async () => {
+  it('AC-2903.2: 비트 PC 화면에는 휴대폰용 체크 칸(… 고르기)·"완료로 바꾼 날" 접는 칸이 없다(claim-day-done AC-2804.5를 대신한다)', async () => {
     db.closes = [close('2026-10-28')]
     show()
     await screen.findByRole('table', { name: '진료한 날짜' })
-    expect(screen.queryByRole('button', { name: '완료로 저장' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '되돌리기' })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: /고르기$/ })).toBeNull()
     expect(screen.queryByText(/완료로 바꾼 날/)).toBeNull()
+  })
+})
+
+describe('claim-day-done-pc: 비트 PC 화면에서 고른 기간의 날짜를 완료로 저장(REQ-2901·2902·2903)', () => {
+  const close = (visit_date: string, closed_at = '2026-11-07T22:30:00+00:00') => ({ visit_date, closed_at })
+  const bar = async () => (await screen.findByText(/^고른 기간에서 아직 입력 안 된 날|일을 완료로 바꿨어요$/)).parentElement as HTMLElement
+  const saveButton = () => screen.getByRole('button', { name: /^(고른 날 완료로 저장|저장 중…)$/ }) as HTMLButtonElement
+  const table = () => screen.getByRole('table', { name: '진료한 날짜' })
+  const rowOf = (label: string) => within(table()).getAllByRole('row').find((r) => (r.textContent ?? '').includes(label)) as HTMLElement
+  const groupOf = (label: string) => {
+    const texts = within(table()).getAllByRole('row').map((r) => r.textContent ?? '')
+    const at = texts.findIndex((t) => t.includes(label))
+    const finishedAt = texts.indexOf('입력이 끝난 날짜')
+    return finishedAt > -1 && at > finishedAt ? 'finished' : 'unfinished'
+  }
+
+  it('AC-2901.1: 표 위 고르기 줄에 고른 기간의 아직 입력 안 된 날 수와 [고른 날 완료로 저장]이 있다. 0일이면 단추가 막힌다', async () => {
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    expect((await bar()).textContent).toContain('고른 기간에서 아직 입력 안 된 날 2일')
+    expect(saveButton().disabled).toBe(false)
+    cleanup()
+    db.closes = [close('2026-10-28'), close('2026-10-29')]
+    show()
+    await screen.findByText('아직 입력 안 된 날짜 0일')
+    expect((await bar()).textContent).toContain('고른 기간에서 아직 입력 안 된 날 0일')
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  it('AC-2901.2: 체크 칸으로 기간을 바꾸면 날 수가 바로 바뀐다', async () => {
+    const user = userEvent.setup()
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(screen.getByRole('checkbox', { name: '10월 29일' }))
+    expect((await bar()).textContent).toContain('고른 기간에서 아직 입력 안 된 날 1일')
+  })
+
+  it('AC-2901.3·AC-2903.1: [고른 날 완료로 저장]은 claim_day_closes에 고른 기간의 덜 끝난 날만 visit_date 하나씩 한 번 보낸다. 기다리는 동안 "저장 중…"으로 막힌다', async () => {
+    const user = userEvent.setup()
+    let open = () => {}
+    db.writeGate = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(screen.getByRole('checkbox', { name: '10월 27일' })) // 끝난 날을 기간에 넣어도 보내지 않는다
+    await user.click(saveButton())
+    expect(saveButton().textContent).toBe('저장 중…')
+    expect(saveButton().disabled).toBe(true)
+    expect(db.writes).toHaveLength(1)
+    expect(db.writes[0].table).toBe('claim_day_closes')
+    expect(db.writes[0].method).toBe('upsert')
+    expect(db.writes[0].payload).toEqual([{ visit_date: '2026-10-28' }, { visit_date: '2026-10-29' }])
+    await act(async () => open())
+  })
+
+  it('AC-2901.4·AC-2902.1: 저장이 성공하면 다시 읽어 그 날들이 끝난 날로 내려가고 "완료로 바꿈 · 시각"·[되돌리기]가 있다. 알림 줄은 "2일을 완료로 바꿨어요"와 [되돌리기]다', async () => {
+    const user = userEvent.setup()
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(saveButton())
+    await screen.findByText('2일을 완료로 바꿨어요')
+    await waitFor(() => expect(screen.getByText('아직 입력 안 된 날짜 0일')).toBeTruthy())
+    expect(groupOf('10/28 (수)')).toBe('finished')
+    expect(rowOf('10/28 (수)').textContent).toContain('완료로 바꿈 · 11월 8일 (일) 10:05')
+    expect(rowOf('10/28 (수)').textContent).toContain('7명') // 숫자는 그대로
+    expect(within(rowOf('10/28 (수)')).getByRole('button', { name: '10/28 (수) 되돌리기' })).toBeTruthy()
+    // 숫자로 끝난 날에는 [되돌리기]가 없다
+    expect(within(rowOf('10/27 (화)')).queryByRole('button')).toBeNull()
+  })
+
+  it('AC-2901.4: 알림의 [되돌리기]는 방금 바꾼 날을 지우는 요청 하나이고, 기간을 바꾸면 알림이 사라진다', async () => {
+    const user = userEvent.setup()
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(saveButton())
+    await screen.findByText('2일을 완료로 바꿨어요')
+    await user.click(within(await bar()).getByRole('button', { name: '되돌리기' }))
+    await waitFor(() => expect(screen.getByText('아직 입력 안 된 날짜 2일')).toBeTruthy())
+    expect(db.writes.map((w) => [w.table, w.method])).toEqual([
+      ['claim_day_closes', 'upsert'],
+      ['claim_day_closes', 'delete'],
+    ])
+    expect((db.writes[1].filters[0][2] as string[]).slice().sort()).toEqual(['2026-10-28', '2026-10-29'])
+    await user.click(saveButton())
+    await screen.findByText('2일을 완료로 바꿨어요')
+    await user.click(screen.getByRole('checkbox', { name: '10월 27일' })) // 끝난 날은 앞 3줄만 보인다
+    await waitFor(() => expect(screen.queryByText('2일을 완료로 바꿨어요')).toBeNull())
+    expect((await bar()).textContent).toContain('고른 기간에서 아직 입력 안 된 날')
+  })
+
+  it('AC-2901.5: 저장이 실패하면 목록·기간은 그대로이고 E-DAYCLOSE-FAILED 안내가 보이며, 다시 누르면 안내가 사라진다', async () => {
+    const user = userEvent.setup()
+    db.writeFail = true
+    show()
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(saveButton())
+    const card = await screen.findByRole('alert')
+    expect(card.textContent).toContain('E-DAYCLOSE-FAILED')
+    expect(screen.getByText('아직 입력 안 된 날짜 2일')).toBeTruthy()
+    expect(saveButton().disabled).toBe(false)
+    db.writeFail = false
+    await user.click(saveButton())
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    await screen.findByText('2일을 완료로 바꿨어요')
+  })
+
+  it('AC-2902.2: 끝난 날 줄의 [되돌리기]는 그 날짜 하나를 지우고, 다시 읽어 아직 입력 안 된 날짜로 돌아간다', async () => {
+    const user = userEvent.setup()
+    db.closes = [close('2026-10-28')]
+    show()
+    await screen.findByText('아직 입력 안 된 날짜 1일')
+    expect(groupOf('10/28 (수)')).toBe('finished')
+    await user.click(within(rowOf('10/28 (수)')).getByRole('button', { name: '10/28 (수) 되돌리기' }))
+    await waitFor(() => expect(screen.getByText('아직 입력 안 된 날짜 2일')).toBeTruthy())
+    expect(groupOf('10/28 (수)')).toBe('unfinished')
+    expect(db.writes).toHaveLength(1)
+    expect(db.writes[0]).toMatchObject({ table: 'claim_day_closes', method: 'delete', filters: [['in', 'visit_date', ['2026-10-28']]] })
+  })
+
+  it('AC-2902.2: 되돌리기가 실패하면 그 줄은 끝난 날에 그대로이고 E-DAYCLOSE-FAILED 안내다', async () => {
+    const user = userEvent.setup()
+    db.closes = [close('2026-10-28')]
+    db.writeFail = true
+    show()
+    await screen.findByText('아직 입력 안 된 날짜 1일')
+    await user.click(within(rowOf('10/28 (수)')).getByRole('button', { name: '10/28 (수) 되돌리기' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('E-DAYCLOSE-FAILED')
+    expect(groupOf('10/28 (수)')).toBe('finished')
+  })
+
+  it('AC-2902.3: 완료 표시 날도 끝난 날 묶음의 같은 차례(최근 날부터)다', async () => {
+    db.closes = [close('2026-10-28')]
+    show()
+    await screen.findByText('아직 입력 안 된 날짜 1일')
+    const texts = within(table()).getAllByRole('row').map((r) => r.textContent ?? '')
+    const finished = texts.slice(texts.indexOf('입력이 끝난 날짜') + 1).map((t) => t.match(/^\d+\/\d+ \(.\)/)?.[0])
+    expect(finished).toEqual(['10/28 (수)', '10/27 (화)', '10/24 (토)'])
+  })
+
+  it('AC-2901.6: 자료를 불러오는 중에는 [고른 날 완료로 저장]과 [되돌리기]가 막힌다', async () => {
+    const user = userEvent.setup()
+    db.closes = [close('2026-10-24')]
+    show(fakeWorker(), bridge({ month: () => new Promise(() => {}) }))
+    await screen.findByRole('table', { name: '진료한 날짜' })
+    await user.click(screen.getByRole('button', { name: '자료 불러오기' }))
+    await waitFor(() => expect(saveButton().disabled).toBe(true))
+    expect((within(rowOf('10/24 (토)')).getByRole('button', { name: '10/24 (토) 되돌리기' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
 

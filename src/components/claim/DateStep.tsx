@@ -1,12 +1,13 @@
 'use client'
 
 import { useId, useState } from 'react'
+import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import { ClaimError, SetupLink } from './ClaimError'
-import { checkPeriod, dayLabel, inPeriod, periodSummary, statusOf, toggleDay, unfinishedPeriod, weekPeriod, type DateRow } from './dateList'
+import { checkPeriod, closablePeriodDates, dayLabel, inPeriod, periodSummary, statusOf, toggleDay, unfinishedPeriod, weekPeriod, type DateRow } from './dateList'
 import { checkedAtText } from './setup/checkedAt'
 import type { LoadStep } from './claimLoad'
 
@@ -27,7 +28,42 @@ const groupRow = 'h-10 border-b border-line bg-canvas px-5 text-small font-mediu
 const numHead = `${ds.table.th} text-right`
 const dayName = (ymd: string) => `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8))}일`
 
-function DayRow({ row, period, onToggle }: { row: DateRow; period: DateRange; onToggle(date: string): void }) {
+/** 고른 기간의 날짜를 완료로(claim-day-done-pc). 상태는 ClaimScreen이 갖고 여기는 그리기만 한다. blocked: 불러오기·입력 중이라 막음(AC-2901.6) */
+export type CloseState = { saving: boolean; reopening: ReadonlySet<string>; justSaved: readonly string[]; failed: boolean; blocked: boolean }
+
+// 고르기 줄: 44px 이상, 저장 전은 옅은 파랑·저장 뒤 알림은 옅은 초록(시안 claim-day-done-pc 나)
+const CLOSE_BAR = 'mx-5 mb-2 flex min-h-11 items-center justify-between gap-2 rounded-control px-3 py-1 text-small font-medium max-md:mx-4'
+
+function CloseBar({ rows, period, close, onCloseDates, onReopen }: { rows: readonly DateRow[]; period: DateRange; close: CloseState; onCloseDates(dates: string[]): void; onReopen(dates: string[]): void }) {
+  const dates = closablePeriodDates(rows, period)
+  return (
+    <>
+      {close.justSaved.length > 0 ? (
+        // role="status"는 진행 표시(LoadingBox)가 쓴다. 이 줄은 aria-live로만 읽힌다
+        <div aria-live="polite" className={`${CLOSE_BAR} bg-positive-soft text-positive`}>
+          <span>{close.justSaved.length}일을 완료로 바꿨어요</span>
+          <button type="button" disabled={close.blocked || close.justSaved.some((date) => close.reopening.has(date))} onClick={() => onReopen([...close.justSaved])} className={ds.textButton}>
+            되돌리기
+          </button>
+        </div>
+      ) : (
+        <div aria-live="polite" className={`${CLOSE_BAR} bg-accent-soft text-accent-strong`}>
+          <span>고른 기간에서 아직 입력 안 된 날 {dates.length}일</span>
+          <button type="button" disabled={close.saving || close.blocked || dates.length === 0} onClick={() => onCloseDates(dates)} className={ds.button.primarySmall}>
+            {close.saving ? '저장 중…' : '고른 날 완료로 저장'}
+          </button>
+        </div>
+      )}
+      {close.failed && (
+        <div className="px-5 pb-2 max-md:px-4">
+          <ErrorCard code="E-DAYCLOSE-FAILED" />
+        </div>
+      )}
+    </>
+  )
+}
+
+function DayRow({ row, period, onToggle, close, onReopen }: { row: DateRow; period: DateRange; onToggle(date: string): void; close: CloseState; onReopen(dates: string[]): void }) {
   const status = statusOf(row)
   return (
     <tr className={ds.table.row}>
@@ -44,12 +80,24 @@ function DayRow({ row, period, onToggle }: { row: DateRow; period: DateRange; on
       <td className={ds.table.td}>
         <span className={STATUS_CHIP[status.tone]}>{status.label}</span>
       </td>
-      <td className={ds.table.tdSub}>{row.updatedAt ? `${checkedAtText(new Date(row.updatedAt))}에 바뀜` : row.memoInBit > 0 ? `비트 메모 ${row.memoInBit}건` : ''}</td>
+      {row.closedAt ? (
+        // 사람이 완료로 바꾼 날: 안내 칸에 바꾼 시각과 줄 끝 [되돌리기](AC-2902.1). 칸을 더하지 않고 안내 칸 안 오른쪽에 둔다
+        <td className={ds.table.tdSub}>
+          <span className="flex items-center justify-between gap-3">
+            <span>완료로 바꿈 · {checkedAtText(new Date(row.closedAt))}</span>
+            <button type="button" aria-label={`${dayLabel(row.date)} 되돌리기`} disabled={close.blocked || close.reopening.has(row.date)} onClick={() => onReopen([row.date])} className={ds.button.secondarySmall}>
+              되돌리기
+            </button>
+          </span>
+        </td>
+      ) : (
+        <td className={ds.table.tdSub}>{row.updatedAt ? `${checkedAtText(new Date(row.updatedAt))}에 바뀜` : row.memoInBit > 0 ? `비트 메모 ${row.memoInBit}건` : ''}</td>
+      )}
     </tr>
   )
 }
 
-function DateTable({ rows, period, onToggle }: { rows: readonly DateRow[]; period: DateRange; onToggle(date: string): void }) {
+function DateTable({ rows, period, onToggle, close, onReopen }: { rows: readonly DateRow[]; period: DateRange; onToggle(date: string): void; close: CloseState; onReopen(dates: string[]): void }) {
   const [allFinished, setAllFinished] = useState(false)
   const unfinished = rows.filter((row) => !row.done)
   const finished = rows.filter((row) => row.done)
@@ -86,7 +134,7 @@ function DateTable({ rows, period, onToggle }: { rows: readonly DateRow[]; perio
               </tr>
             )}
             {unfinished.map((row) => (
-              <DayRow key={row.date} row={row} period={period} onToggle={onToggle} />
+              <DayRow key={row.date} row={row} period={period} onToggle={onToggle} close={close} onReopen={onReopen} />
             ))}
             {finished.length > 0 && (
               <tr>
@@ -96,7 +144,7 @@ function DateTable({ rows, period, onToggle }: { rows: readonly DateRow[]; perio
               </tr>
             )}
             {shownFinished.map((row) => (
-              <DayRow key={row.date} row={row} period={period} onToggle={onToggle} />
+              <DayRow key={row.date} row={row} period={period} onToggle={onToggle} close={close} onReopen={onReopen} />
             ))}
           </tbody>
         </table>
@@ -219,7 +267,13 @@ export function DateStep({
   onLoad,
   onStop,
   onRetryDates,
+  close,
+  onCloseDates,
+  onReopen,
 }: {
+  close: CloseState
+  onCloseDates(dates: string[]): void
+  onReopen(dates: string[]): void
   dates: DatesState
   period: DateRange
   onPeriod(next: DateRange): void
@@ -252,7 +306,8 @@ export function DateStep({
         {dates.kind === 'ready' && (
           <div className="flex flex-col">
             {dates.countsFailed && <p className={`${ds.help} px-5 pb-2 max-md:px-4`}>입력 건수를 읽지 못해 비트 자료만으로 보여요.</p>}
-            <DateTable rows={rows} period={period} onToggle={(date) => onPeriod(toggleDay(period, date))} />
+            <CloseBar rows={rows} period={period} close={close} onCloseDates={onCloseDates} onReopen={onReopen} />
+            <DateTable rows={rows} period={period} onToggle={(date) => onPeriod(toggleDay(period, date))} close={close} onReopen={onReopen} />
           </div>
         )}
       </section>
