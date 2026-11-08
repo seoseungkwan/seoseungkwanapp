@@ -154,7 +154,7 @@ export function CodesTab({
                       <ErrorList errors={errorsUnder(errors, `CODEMAP.${row.code}`)} />
                     </td>
                     <td className={td}>
-                      <select aria-label={`${row.code} 구분`} className={ds.input} value={entry?.k ?? ''} onChange={(event) => setKind(row, event.target.value)}>
+                      <select aria-label={`${row.code} 구분`} className={`${ds.input} min-w-24`} value={entry?.k ?? ''} onChange={(event) => setKind(row, event.target.value)}>
                         {/* 저장된 사전에 없는 코드는 '정하기'로 되돌릴 수 있다(사전에서 빠진다) */}
                         {(!Object.hasOwn(saved.CODEMAP, row.code) || !KINDS.some((kind) => kind.value === entry?.k)) && <option value="">정하기</option>}
                         {KINDS.map((kind) => (
@@ -165,7 +165,7 @@ export function CodesTab({
                       </select>
                     </td>
                     <td className={td}>
-                      <select aria-label={`${row.code} 부위`} className={ds.input} value={entry?.rg ?? ''} onChange={(event) => edit(row, { rg: event.target.value || null })}>
+                      <select aria-label={`${row.code} 부위`} className={`${ds.input} min-w-32`} value={entry?.rg ?? ''} onChange={(event) => edit(row, { rg: event.target.value || null })}>
                         <option value="">자동</option>
                         {REGIONS.map((region) => (
                           <option key={region.key} value={region.key}>
@@ -185,7 +185,7 @@ export function CodesTab({
                     <td className={td}>
                       <input
                         aria-label={`${row.code} 줄 순서`}
-                        className={`${ds.input} w-16`}
+                        className={`${ds.input} max-w-20`}
                         inputMode="numeric"
                         autoComplete="off"
                         value={rank === undefined || Number.isNaN(rank) ? '' : String(rank)}
