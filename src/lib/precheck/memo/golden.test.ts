@@ -94,6 +94,10 @@ const monthOf = (fake: string) => shapeClaimMonth(readJson(`fixtures/precheck/fa
 const month = monthOf(fullGolden.fake)
 const our = ourClinicPhrases()
 
+/** 설정 사례 골든은 원본 결과뿐이다. 기본 골든에 codeCheck로 적은 진료는 [코드 확인] 표시(앞의 줄바꿈·쉼표·칸 하나와 함께)를 떼고 견준다 */
+const CODE_MARK = /(?:\n|, | )?\[코드 확인: [^\]\n]*\]/g
+const codeMarks = new Map(fullGolden.knownDiffCases.filter((c) => c.where === 'codeCheck').map((c) => [c.id, c.ours.match(/\[코드 확인: [^\]\n]*\]/g) ?? []]))
+
 /** 원본 기본 문구 + 약 칸은 우리 병원 값(원본 칸은 같다. 약 칸 없이는 메모를 만들지 않는다, AC-014.8) */
 function withPatch(scenario: Scenario): Phrases {
   const value = structuredClone(our)
@@ -271,20 +275,22 @@ describe('AC-014.14 시술 종류가 0이고 약이 있는 진료', () => {
   })
 })
 
-describe('AC-014.7 AC-3002.3 일부러 다른 것(knownDiffs)은 적은 만큼만 다르다', () => {
+/** memo-settings design.md 2절의 where만 쓴다. 옛 ambiguousDrug·cartilageLine 사례(k01·k02·k04·k05)는 REQ-3002부터 원본과 같다 */
+const ALLOWED_DIFFS = ['singleOwnerDrug', 'codeCheck']
+
+describe('AC-014.7 AC-3002.3 AC-3004.1 일부러 다른 것(knownDiffs)은 적은 만큼만 다르다', () => {
   const phrases = ourClinicPhrases()
   const byId = new Map(analyzeMonth(month, phrases, tables).map((v) => [v.key, v]))
   const diffIds = new Set(fullGolden.knownDiffCases.map((c) => c.id))
-  // memo-settings design.md 2절의 where만 쓴다. 옛 ambiguousDrug·cartilageLine 사례(k01·k02·k04·k05)는 REQ-3002부터 원본과 같다
-  const allowed = ['singleOwnerDrug']
+  const allowed = ALLOWED_DIFFS
 
-  it('AC-3002.3: 시술 2개 이상인 날 약을 놓을 시술 줄이 없는 사례만 적혀 있다', () => {
+  it('AC-3002.3 AC-3004.1: 시술 2개 이상인 날 약을 놓을 시술 줄이 없는 사례와 사전에 없는 코드 사례만 적혀 있다', () => {
     const wheres = fullGolden.knownDiffCases.map((c) => c.where)
     expect(new Set(wheres)).toEqual(new Set(allowed))
     for (const where of allowed) expect(fullGolden.knownDiffs.map((d) => d.where)).toContain(where)
   })
 
-  it.each(fullGolden.knownDiffCases)('AC-3002.3: 진료 $id($where)은 원본과 정말 다르고 적어 둔 글과 같다', ({ id, ours, original }) => {
+  it.each(fullGolden.knownDiffCases)('AC-3002.3 AC-3004.1: 진료 $id($where)은 원본과 정말 다르고 적어 둔 글과 같다', ({ id, ours, original }) => {
     expect(fullGolden.visits.find((v) => v.id === id)!.fullText).toBe(original)
     expect(ours).not.toBe(original)
     expect(unfinished(ours)).toBe(true)
@@ -307,6 +313,14 @@ describe.each(dataGoldens)('AC-014.5 AC-014.6 다른 가짜 자료도 원본과 
     expect(golden.visits.map((v) => v.id)).toEqual(data.visits.map((v) => v.key))
   })
 
+  it('AC-3004.1: 적어 둔 다른 사례는 정해 둔 where이고 원본과 정말 다르다', () => {
+    for (const c of golden.knownDiffCases) {
+      expect(ALLOWED_DIFFS, c.id).toContain(c.where)
+      expect(c.ours, c.id).not.toBe(c.original)
+      expect(unfinished(c.ours), c.id).toBe(true)
+    }
+  })
+
   it.each(golden.visits.map((v) => ({ id: v.id, want: v.fullText })))('AC-014.5: 진료 $id', ({ id, want }) => {
     const diff = diffs.get(id)
     if (diff) expect(diff.original).toBe(want)
@@ -324,6 +338,14 @@ describe('AC-014.5 AC-014.7 설정을 바꿔도 원본과 같다', () => {
     }
   })
 
+  it('AC-3004.1: 표시만 떼고 견주는 진료는 기본 골든에 codeCheck로 적은 진료뿐이다', () => {
+    expect([...codeMarks.keys()].length).toBeGreaterThan(0)
+    for (const [id, marks] of codeMarks) {
+      expect(marks.length, id).toBeGreaterThan(0)
+      expect(scenarioGolden.scenarios.some((s) => s.visits.some((v) => v.id === id)), id).toBe(true)
+    }
+  })
+
   describe.each(scenarioGolden.scenarios)('$name ($acs)', (scenario) => {
     const phrases = withPatch(scenario)
     const scenarioTables = { dictionary: scenario.dictionary }
@@ -331,7 +353,12 @@ describe('AC-014.5 AC-014.7 설정을 바꿔도 원본과 같다', () => {
     it.each(scenario.visits.map((v) => ({ id: v.id, want: v.fullText, memos: v.memos })))('AC-014.5 진료 $id', ({ id, want, memos }) => {
       const visit = byId.get(id)!
       expect(visit.memos.map((m) => m.rg)).toEqual(memos)
-      expect(fullText(visit, phrases, scenarioTables)).toBe(want)
+      const out = fullText(visit, phrases, scenarioTables)
+      const marks = codeMarks.get(id)
+      if (!marks) return expect(out).toBe(want)
+      // [코드 확인](AC-3004.1)은 원본에 없다: 그 표시가 있고, 표시를 떼면 원본과 글자까지 같다
+      for (const mark of marks) expect(out).toContain(mark)
+      expect(out.replace(CODE_MARK, '')).toBe(want)
     })
   })
 })

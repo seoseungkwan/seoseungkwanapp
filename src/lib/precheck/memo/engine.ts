@@ -1157,17 +1157,23 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   // ── 줄 만들기 ──────────────────────────────────────────
 
   /**
-   * fullText가 어느 줄이 시술 줄이고 어느 코드의 줄인지 알게 적어 둔다(줄 꼬리표, memo-settings design.md 2절).
-   * 끝맺음 뒤·따로 한 줄 약의 자리, 주인 약의 자리(REQ-3002), 줄 순서(REQ-3005)가 이것을 본다. 연골주사 줄은 따로 적는다(연골주사약만 그 줄에 놓인다)
+   * fullText가 어느 줄이 시술 줄이고(procOut) 어느 코드의 줄인지(lineTags, 줄 꼬리표, memo-settings design.md 2절) 알게 적어 둔다.
+   * 끝맺음 뒤·따로 한 줄 약의 자리와 [코드 확인]은 시술 줄을, 주인 약의 자리(REQ-3002)는 시술 줄의 꼬리표를, 줄 순서(REQ-3005)는 모든 줄의 꼬리표를 본다.
+   * 코드별 메모 줄(시술 아닌 코드)은 꼬리표만 있다. 연골주사 줄은 따로 적는다(연골주사약만 그 줄에 놓인다)
    */
-  let procOut = new Map<string, Set<string>>()
+  let procOut = new Set<string>()
+  let lineTags = new Map<string, Set<string>>()
   let cartilageOut = new Set<string>()
-  function procLine(line: string, codes: Iterable<string>, cartilage = false): string {
-    const tags = procOut.get(line) ?? new Set<string>()
+  function tagLine(line: string, codes: Iterable<string>): string {
+    const tags = lineTags.get(line) ?? new Set<string>()
     for (const code of codes) if (code) tags.add(code)
-    procOut.set(line, tags)
-    if (cartilage) cartilageOut.add(line)
+    lineTags.set(line, tags)
     return line
+  }
+  function procLine(line: string, codes: Iterable<string>, cartilage = false): string {
+    procOut.add(line)
+    if (cartilage) cartilageOut.add(line)
+    return tagLine(line, codes)
   }
   /** 처방 코드 하나의 꼬리표: 그 코드, 표준 코드(procKeys 모양), 기본 코드 */
   function codeTags(code: unknown): string[] {
@@ -1363,7 +1369,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       if (!line || seen.has(line)) return
       if (araVisit && /\bIA\b/i.test(line)) return
       seen.add(line)
-      out.push(o.k === 'proc' ? procLine(markOf() + line, codeTags(code)) : markOf() + line)
+      out.push(o.k === 'proc' ? procLine(markOf() + line, codeTags(code)) : tagLine(markOf() + line, codeTags(code)))
     })
     return out
   }
@@ -1478,10 +1484,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   /**
    * 끝맺음 뒤·따로 한 줄 약을 놓는다. 주인 없는 약(시술 하나인 날)은 마지막 시술 줄에, 시술 줄이 없으면 쓸 자리가 없어 쓰지 않는다.
    * 주인 약(REQ-3002)은 꼬리표가 주인 시술인 첫 줄에(연골주사약은 연골주사 줄, 그 밖의 약은 연골주사 아닌 줄): afterProc·afterEnding은 그 줄 끝, ownLine은 그 줄 바로 아래.
-   * 자리는 모두 원래 줄에서 찾은 뒤 한 번에 붙인다
+   * 자리는 모두 원래 줄에서 찾은 뒤 한 번에 붙인다. 원래 줄마다 [그 줄, 붙은 ◈약: 줄]을 돌려준다(줄 순서가 함께 옮긴다)
    */
-  function placeDrugs(base: string, plan: DrugPlan): string {
-    const lines = base.split('\n')
+  function placeDrugs(lines: string[], plan: DrugPlan): string[][] {
     const slots = new Map<number, { proc: DrugItem[]; ending: DrugItem[]; own: DrugItem[] }>()
     const put = (at: number, key: 'proc' | 'ending' | 'own', items: DrugItem[]) => {
       if (at < 0 || !items.length) return
@@ -1494,20 +1499,57 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     for (let i = lines.length - 1; i >= 0 && last < 0; i--) if (procOut.has(lines[i])) last = i
     put(last, 'ending', free(plan.afterEnding))
     put(last, 'own', free(plan.ownLine))
-    const ownerLine = (item: DrugItem) => lines.findIndex((line) => !!procOut.get(line)?.has(item.owner!) && cartilageOut.has(line) === !!item.cartilage)
+    const ownerLine = (item: DrugItem) => lines.findIndex((line) => procOut.has(line) && !!lineTags.get(line)?.has(item.owner!) && cartilageOut.has(line) === !!item.cartilage)
     for (const item of plan.afterProc) if (item.owner && !SLOT_OWNERS.has(item.owner) && !placedDrugs.has(item)) put(ownerLine(item), 'proc', [item])
     for (const item of plan.afterEnding) if (item.owner) put(ownerLine(item), 'ending', [item])
     for (const item of plan.ownLine) if (item.owner) put(ownerLine(item), 'own', [item])
-    if (!slots.size) return base
-    return lines
-      .flatMap((line, at) => {
-        const slot = slots.get(at)
-        if (!slot) return [line]
-        let out = line + formatDrugs(slot.proc)
-        if (slot.ending.length) out += ` ${formatDrugs(slot.ending).trim()}`
-        return slot.own.length ? [out, `${markOf()}약: ${drugNames(slot.own).join(', ')}`] : [out]
-      })
+    return lines.map((line, at) => {
+      const slot = slots.get(at)
+      if (!slot) return [line]
+      let out = line + formatDrugs(slot.proc)
+      if (slot.ending.length) out += ` ${formatDrugs(slot.ending).trim()}`
+      return slot.own.length ? [out, `${markOf()}약: ${drugNames(slot.own).join(', ')}`] : [out]
+    })
+  }
+
+  /** 줄 순서 번호(REQ-3005): 그 줄 꼬리표 코드 중 가장 작은 memoRules.order 번호. 없으면 null */
+  function rankOf(line: string): number | null {
+    const order = phrases.memoRules?.order
+    if (!order) return null
+    const ranks = [...(lineTags.get(line) ?? [])].filter((code) => Object.hasOwn(order, code) && Number.isInteger(order[code])).map((code) => order[code])
+    return ranks.length ? Math.min(...ranks) : null
+  }
+  /**
+   * 본문 줄 순서(REQ-3005): 번호 있는 줄이 하나라도 있으면 번호 있는 줄을 번호 작은 차례로 먼저, 나머지는 원래 차례로 둔다(안정 정렬).
+   * 붙은 ◈약: 줄은 함께 옮기고, 정렬하면 빈 줄 구분은 없앤다. 번호 있는 줄이 없으면 지금 그대로다(AC-3005.1)
+   */
+  function orderLines(groups: string[][], ranks: (number | null)[]): string {
+    if (!ranks.some((rank) => rank !== null)) return groups.map((group) => group.join('\n')).join('\n')
+    const rankAt = (at: number) => ranks[at] ?? Number.POSITIVE_INFINITY
+    return groups
+      .map((group, at) => ({ group, at }))
+      .filter(({ group }) => group[0].trim())
+      .sort((a, b) => (rankAt(a.at) === rankAt(b.at) ? a.at - b.at : rankAt(a.at) - rankAt(b.at)))
+      .flatMap(({ group }) => group)
       .join('\n')
+  }
+
+  const isDeleted = (code: unknown) => [text(code), upper(code), text(code).toLowerCase()].some((key) => deleted.has(key))
+  /**
+   * 사전에 없는 처방코드(AC-3004.1): 그날 메모에 시술 줄이 있으면 급여 처방 중 사전(CODEMAP)에도 지운 코드(CODEMAP_DEL)에도 없는 코드마다 한 번 [코드 확인: 처방 이름].
+   * 이름은 줄바꿈·괄호 없이 한 줄로 쓴다(unfinished 정규식이 줄과 ]를 넘지 않는다, AC-014.12)
+   */
+  function codeChecks(v: MemoVisit, hasProcLine: boolean): string[] {
+    if (!v.memos.length || !hasProcLine) return []
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const row of v.rx) {
+      const key = upper(row.code).trim()
+      if (!key || row.benefit === false || cm(row.code) || isDeleted(row.code) || seen.has(key)) continue
+      seen.add(key)
+      out.push(`[코드 확인: ${text(row.name).replace(/[[\]]/g, '').replace(/\s+/g, ' ').trim() || key}]`)
+    }
+    return out
   }
 
   /** 놓을 줄이 없던 약의 표시: 연골주사 날 넣기인 일반 약(일반 IA 줄에만 놓인다, AC-3001.3)과 주인 약(AC-3002.3) */
@@ -1518,7 +1560,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   }
 
   function fullTextBody(v: MemoVisit): string {
-    procOut = new Map()
+    procOut = new Set()
+    lineTags = new Map()
     cartilageOut = new Set()
     placedDrugs = new Set()
     const seen = new Set<string>()
@@ -1538,8 +1581,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const noteB = noteLines(v).filter(filled).filter(uniq).join('\n')
     const procB = [regionBlock, rxB, noteB].filter(filled).join('\n')
     const plan = drugPlan(v)
-    const base = placeDrugs([procB, iaB].filter(filled).join('\n\n'), plan)
-    const checks = [...plan.checks, ...unplacedChecks(v, plan)]
+    const lines = [procB, iaB].filter(filled).join('\n\n').split('\n')
+    const ranks = lines.map(rankOf)
+    const base = orderLines(placeDrugs(lines, plan), ranks)
+    // 확인 표시 자리: [약 확인] → 놓을 줄이 없던 약 → [코드 확인]. 사유 문장은 그 뒤다
+    const checks = [...plan.checks, ...unplacedChecks(v, plan), ...codeChecks(v, lines.some((line) => procOut.has(line)))]
     const pl = patientLines(v)
     const body = formatLevels(base)
     if (String(TPL.sentence || '').trim()) {

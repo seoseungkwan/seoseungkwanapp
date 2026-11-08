@@ -996,12 +996,14 @@ describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeo
   })
 
   it('AC-014.12: 확인 표시가 남은 메모를 알린다(고친 메모도 고친 글로 본다)', async () => {
+    // k03: 무릎 세트 날 IA 줄 생략이라 트리암을 놓을 줄이 없어 [약 확인]이 남는다(memo-settings AC-3002.3). k01은 REQ-3002부터 표시가 없다
     const month = memo()
     const tables = await tablesValue()
     const auto = memoViews(month, tables, { phrases: ourClinicPhrases() })
-    expect(auto.memos.find((m) => m.visitKey === 'k01')!.unfinished).toBe(true)
-    const fixed = memoViews(month, tables, { phrases: ourClinicPhrases(), saved: new Map([['k01', '◈고쳐서 확인 표시를 지움(가상)']]) })
-    expect(fixed.memos.find((m) => m.visitKey === 'k01')!.unfinished).toBe(false)
+    expect(auto.memos.find((m) => m.visitKey === 'k03')!.unfinished).toBe(true)
+    expect(auto.memos.find((m) => m.visitKey === 'k01')!.unfinished).toBe(false)
+    const fixed = memoViews(month, tables, { phrases: ourClinicPhrases(), saved: new Map([['k03', '◈고쳐서 확인 표시를 지움(가상)']]) })
+    expect(fixed.memos.find((m) => m.visitKey === 'k03')!.unfinished).toBe(false)
     const left = memoViews(month, tables, { phrases: ourClinicPhrases(), saved: new Map([[PLAIN, '◈[약 확인: 트리암]']]) })
     expect(left.memos.find((m) => m.visitKey === PLAIN)!.unfinished).toBe(true)
   })

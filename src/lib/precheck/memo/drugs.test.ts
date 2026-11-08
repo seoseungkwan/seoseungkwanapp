@@ -195,8 +195,10 @@ describe('AC-014.9 시술 종류가 하나인 진료', () => {
     expect(text(SHOULDER_IA, [rx('KK090'), rx('A21'), rx('A21')], { KK090: {} })).toBe('◈IA injection of - shoulder\n[약 확인: 트리암]')
   })
 
-  it('AC-014.9: 처방 코드 표에 없는 코드는 약으로 보지 않는다', () => {
-    expect(text(SHOULDER_IA, [rx('KK090'), rx('X1')], { KK090: {} })).toBe('◈IA injection of - shoulder')
+  it('AC-014.9 AC-3004.1: 처방 코드 표에 없는 코드는 약으로 보지 않는다(약 표시 없이 [코드 확인]만 남는다)', () => {
+    const out = text(SHOULDER_IA, [rx('KK090'), rx('X1')], { KK090: {} })
+    expect(out).toBe('◈IA injection of - shoulder\n[코드 확인: X1]')
+    expect(out).not.toContain('[약 확인')
   })
 
   it('AC-014.9: 사유 문장은 표시 뒤에 한 줄 띄워 온다', () => {

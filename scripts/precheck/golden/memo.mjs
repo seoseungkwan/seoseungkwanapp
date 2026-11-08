@@ -11,7 +11,8 @@ import { FILE, SOURCE, args, lines, loadOriginal } from './original.mjs'
 const AMBIGUOUS = '시술 종류가 둘 이상인 날의 주사약(design.md 19-4, AC-014.10을 memo-settings REQ-3002가 대신함): 원본은 약을 줄에 그대로 쓰거나(기본 사전) 비우고 검토로 돌린다(ambiguousDrug). 우리는 그 약이 넣기인 시술이 2곳 이상이거나 정하지 않은 시술이 있으면(memoRules.singleOwnerDrug가 false면 늘) 어느 시술 약인지 모르므로 넣지 않고 [약 확인: 약 이름]을 남긴다(AC-3002.2). 모든 시술에서 빼기면 뺀다. 넣기인 시술이 하나뿐인 날은 singleOwnerDrug를 본다'
 const CARTILAGE = '시술 종류가 둘 이상인 날의 연골주사 줄(design.md 19-4, AC-014.10을 memo-settings REQ-3002가 대신함): 원본 cartilageLine은 이런 날에도 연골주사 줄을 쓴다. 우리는 연골주사약이 넣기인 시술이 2곳 이상이거나 정하지 않은 시술이 있으면(singleOwnerDrug가 false면 늘) 쓰지 않고 [약 확인: 약 이름]을 남긴다. KK090에서만 넣기면 원본처럼 쓴다(AC-3002.4). K-L grade 줄은 약 글이 아니라 그대로 둔다'
 const SINGLE_OWNER = '시술 종류가 둘 이상인 날 약이 넣기인 시술이 하나뿐인 날(memo-settings REQ-3002, 2026-11-08 사용자 결정, memoRules.singleOwnerDrug 처음 값 켬): 그 약을 그 시술 줄의 고른 자리에 넣는다(IA·건초내주사는 그 줄 {약제}, 그 밖의 시술은 그 시술 줄 끝·아래 줄). 우리 병원 값(KK090·KK062만 넣기)이면 원본과 같은 글이다. 그 시술 줄이 메모에 없으면(무릎 세트 날 IA 줄 생략 등) 원본은 약을 쓰지 않지만 우리는 [약 확인: 약 이름]을 남긴다(AC-3002.3). memoRules.kneeSetIaWithDrug를 켜면 IA 줄을 그 약과 함께 쓴다(AC-3003.2)'
-const MEMO_RULES = '원본에 없는 메모 규칙 칸(memo-settings memoRules: singleOwnerDrug·iaSide·kneeSetIaWithDrug·order): 처음 값(칸 없음)이면 singleOwnerDrug만 켜지고(SINGLE_OWNER) 나머지는 원본과 같은 글이다. 켠 글은 원본 결과와 견줄 수 없어 memoSettings.test.ts가 본다'
+const MEMO_RULES = '원본에 없는 메모 규칙 칸(memo-settings memoRules: singleOwnerDrug·iaSide·kneeSetIaWithDrug·order): 처음 값(칸 없음)이면 singleOwnerDrug만 켜지고(SINGLE_OWNER) 나머지는 원본과 같은 글이다(order가 없으면 차트 순서, AC-3005.1). 켠 글은 원본 결과와 견줄 수 없어 memoSettings.test.ts가 본다'
+const CODE_CHECK = '처방코드 사전에 없는 급여 코드(memo-settings AC-3004.1, 2026-11-08 사용자 결정): 원본은 사전에 없는 코드를 메모에서 그냥 지나친다. 우리는 그날 메모에 시술 줄이 있으면 사전(CODEMAP)에도 지운 코드(CODEMAP_DEL)에도 없는 급여 코드마다 한 번 [코드 확인: 처방 이름]을 확인 표시 자리([약 확인] 옆, 사유 문장 앞)에 남긴다. 설정 처방코드 묶음에서 그 코드를 정하면(제외 포함) 사라진다. 비급여 줄·시술 줄이 없는 날은 표시가 없다. 설정 사례 골든(memo-full-settings)은 codeCheck로 적은 진료만 이 표시를 떼고 원본과 견준다'
 const IA_REGION = 'IA 줄 부위(memo-settings AC-3001.1, 2026-11-08 사용자 결정): 원본 iaLines는 어깨·무릎만 부위로 읽어 발목·고관절·팔꿈치·손목 IA를 [부위 확인]으로 쓴다. 우리는 관절 부위(어깨·무릎·발목·팔꿈치·손목·고관절·손·발)를 영어 이름으로 쓴다. 가짜 자료의 IA는 어깨·무릎뿐이라 글이 같다'
 const ARA_ETC_IA = '연골주사 날의 일반 약(memo-settings AC-3001.2·3001.3): 원본은 연골주사 날 연골주사 줄만 써서 넣기인 트리암·덱사가 표시 없이 사라진다. 우리는 아라간이 아닌 IA 차트 줄이 있으면 그 부위로 일반 IA 줄(iaEtc)을 하나 더 쓰고(KK090 수량은 연골주사와 나눠 양측 근거로 보지 않는다), 없으면 [약 확인: 약 이름]을 남긴다. 가짜 자료의 연골주사 날에는 일반 약이 없어 글이 같다'
 const KNOWN_DIFFS = [
@@ -20,6 +21,7 @@ const KNOWN_DIFFS = [
   { where: 'singleOwnerDrug', why: SINGLE_OWNER },
   { where: 'iaRegion', why: IA_REGION },
   { where: 'araEtcIa', why: ARA_ETC_IA },
+  { where: 'codeCheck', why: CODE_CHECK },
   { where: 'memoRules', why: MEMO_RULES },
   { where: 'drugTxt·iaLines 약 고르기', why: '원본은 약 이름 글자(리도카인·ARA_RE)·코드 표(DRUG_EN)·TPL.drugLocal로 고른다. 우리는 procedureDrugs만 본다(AC-014.7·014.9). 우리 병원 값은 같은 글이 나오게 채웠다(시술 종류가 하나인 날은 이 골든이 같음을 본다)' },
   { where: '넣기인데 틀에 {약제}가 없을 때', why: '원본은 {약제}가 없는 틀이면 약을 쓰지 않는다. 우리는 넣기를 고른 약을 첫 시술 줄의 {시술} 바로 뒤에 쓴다(AC-014.9 고른 자리에 넣는다). 연골주사 날만 원본처럼 {약제}가 없으면 쓰지 않는다. 우리 병원 값은 {약제}가 있는 틀의 시술만 넣기라 글이 같다. 원본에 없는 자리 afterEnding·ownLine(◈약: 이름)도 원본 결과와 견줄 수 없어 drugs.test.ts가 본다' },
@@ -40,8 +42,11 @@ const KNOWN_DIFFS = [
 const DIFF_CASES = {
   'claim-month-memo.json': [
     { id: 'k03', where: 'singleOwnerDrug', ours: '◈FNB\n◈SNB\n[약 확인: 트리암]' },
+    { id: 'm55', where: 'codeCheck', ours: '◈우측 슬관절 강내 연골주사 2회차\n[코드 확인: 가상히알주]' },
   ],
-  'claim-month-rules-v1-v18.json': [],
+  'claim-month-rules-v1-v18.json': [
+    { id: 'v4', where: 'codeCheck', ours: '◈IA injection of - knee(triam)\n[코드 확인: 표층열]' },
+  ],
   'claim-month-dx-check.json': [],
 }
 

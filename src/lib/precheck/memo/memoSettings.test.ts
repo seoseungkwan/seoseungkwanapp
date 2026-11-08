@@ -241,3 +241,106 @@ describe('REQ-3003 고르는 칸 두 개(처음 값 = 지금 동작)', () => {
     expect(memo(KNEE_SET, KNEE_SET_RX, clinic(undefined, { kneeSetIaWithDrug: true }))).toBe('◈FNB\n◈SNB')
   })
 })
+
+describe('REQ-3004 AC-3004.1 사전에 없는 처방코드의 [코드 확인]', () => {
+  /** 비트 처방 이름이 따로 있는 줄 */
+  const named = (code: string, name: string, benefit = true): RxLine => ({ code, name, qty: 1, benefit, pay: benefit ? '급여' : '비급여' })
+  const KNEE_IA = ['Rt knee IA']
+
+  it('AC-3004.1: 시술 줄이 있는 날 사전에 없는 급여 코드마다 [코드 확인: 처방 이름]을 남기고 unfinished가 참이다', () => {
+    const out = memo(KNEE_IA, [rx('KK090'), rx('A21'), named('MM010', '표층열')])
+    expect(out).toBe('◈IA injection of - knee(triam)\n[코드 확인: 표층열]')
+    expect(unfinished(out)).toBe(true)
+  })
+
+  it('AC-3004.1: 코드마다 한 번, 처방 차례대로', () => {
+    const rows = [named('MM010', '표층열'), rx('KK090'), named('MM020', '심층열'), named('MM010', '표층열'), rx('A21')]
+    expect(memo(KNEE_IA, rows)).toBe('◈IA injection of - knee(triam)\n[코드 확인: 표층열]\n[코드 확인: 심층열]')
+  })
+
+  it('AC-3004.1: 확인 표시 자리([약 확인] 옆)에 두고 사유 문장은 그 뒤다', () => {
+    const p = clinic((value) => {
+      delete value.procedureDrugs.KK090.트리암
+    })
+    expect(memo(['Rt shoulder pain', 'Rt shoulder IA'], [rx('KK090'), rx('A21'), named('MM010', '표층열')], p)).toBe('◈IA injection of - shoulder\n[약 확인: 트리암]\n[코드 확인: 표층열]')
+    expect(memo(['Rt shoulder pain', 'Rt SSNB IA'], [rx('LA247'), rx('KK090'), named('MM010', '표층열')])).toBe(`◈SSNB\n\n◈IA injection of - shoulder\n[코드 확인: 표층열]\n\n${REASON}`)
+  })
+
+  it('AC-3004.1: 한 줄 잇기·문장 틀에서도 표시가 한 줄로 남는다', () => {
+    for (const patch of [{ lineJoin: 'oneLine' }, { sentence: '{시술목록} {시행함}' }]) {
+      const out = memo(KNEE_IA, [rx('KK090'), named('MM010', '표\n층]열')], clinic((value) => Object.assign(value.TPL, patch)))
+      expect(out).toContain('[코드 확인: 표 층열]')
+      expect(unfinished(out)).toBe(true)
+    }
+  })
+
+  it('AC-3004.1: 시술 줄이 없는 날은 표시가 없다', () => {
+    expect(memo(['물리치료만'], [named('MM010', '표층열')])).toBe('')
+    expect(memo(['관절조영'], [named('HA280', '관절조영술'), named('MM010', '표층열')])).toBe('◈관절조영 시행')
+  })
+
+  it('AC-3004.1: 비급여 줄·사전에 있는 코드·지운 코드는 표시가 없다', () => {
+    expect(memo(KNEE_IA, [rx('KK090'), rx('A21'), named('MM010', '표층열', false)])).toBe('◈IA injection of - knee(triam)')
+    expect(memo(KNEE_IA, [rx('KK090'), rx('A21'), named('KK010', '근주'), named('D3065', 'HbA1c')])).toBe('◈IA injection of - knee(triam)')
+    const deleted = clinic((value) => {
+      value.CODEMAP_DEL = ['HA280']
+    })
+    expect(memo(KNEE_IA, [rx('KK090'), rx('A21'), named('HA280', '관절조영술')], deleted)).toBe('◈IA injection of - knee(triam)')
+  })
+
+  it('AC-3004.1: 사전에 넣으면(제외 skip이어도) 표시가 사라진다', () => {
+    const skip = clinic((value) => {
+      value.CODEMAP.MM010 = { n: '표층열', k: 'skip', rg: null }
+    })
+    expect(memo(KNEE_IA, [rx('KK090'), rx('A21'), named('MM010', '표층열')], skip)).toBe('◈IA injection of - knee(triam)')
+  })
+})
+
+describe('REQ-3005 메모 줄 순서(memoRules.order)', () => {
+  const SSNB_IA = ['Rt shoulder pain', 'Rt SSNB IA']
+  const SSNB_IA_RX = [rx('LA247'), rx('KK090'), rx('A21')]
+  const ordered = (order: Record<string, number>, patch?: (p: Phrases) => void) => clinic(patch, { order })
+
+  it('AC-3005.1: order가 없거나 비었으면 지금과 같다(차트 순서)', () => {
+    const now = memo(SSNB_IA, SSNB_IA_RX)
+    expect(now).toBe(`◈SSNB\n\n◈IA injection of - shoulder(triam)\n\n${REASON}`)
+    for (const memoRules of [{}, { order: {} }]) expect(memo(SSNB_IA, SSNB_IA_RX, clinic(undefined, memoRules))).toBe(now)
+  })
+
+  it('AC-3005.1: 번호 있는 코드의 줄이 그날 없으면 지금과 같다', () => {
+    expect(memo(SSNB_IA, SSNB_IA_RX, ordered({ LA358: 1 }))).toBe(memo(SSNB_IA, SSNB_IA_RX))
+  })
+
+  it('AC-3005.2: 번호 있는 코드의 줄이 먼저 오고 빈 줄 구분은 없앤다. 사유 문장은 맨 끝이다', () => {
+    expect(memo(SSNB_IA, SSNB_IA_RX, ordered({ KK090: 1 }))).toBe(`◈IA injection of - shoulder(triam)\n◈SSNB\n\n${REASON}`)
+  })
+
+  it('AC-3005.2: 번호 작은 차례로, 번호 없는 줄은 그 뒤에 원래 차례로', () => {
+    const lines = ['MBB L4,5 Rt', 'Rt shoulder pain', 'Rt SSNB IA']
+    const rows = [rx('LA358'), rx('LA247'), rx('KK090'), rx('A21')]
+    expect(memo(lines, rows)).toBe(`◈MBB L4,5 Rt\n\n◈SSNB\n\n◈IA injection of - shoulder(triam)\n\n${REASON}`)
+    expect(memo(lines, rows, ordered({ KK090: 1, LA247: 2 }))).toBe(`◈IA injection of - shoulder(triam)\n◈SSNB\n◈MBB L4,5 Rt\n\n${REASON}`)
+    expect(memo(lines, rows, ordered({ LA358: 5, KK090: 3 }))).toBe(`◈IA injection of - shoulder(triam)\n◈MBB L4,5 Rt\n◈SSNB\n\n${REASON}`)
+  })
+
+  it('AC-3005.2: 그 줄 바로 아래 붙은 ◈약: 줄은 함께 움직인다', () => {
+    const p = ordered({ KK090: 1 }, (value) => {
+      value.procedureDrugs.LA247.트리암 = { use: 'include', place: 'ownLine' }
+      value.procedureDrugs.KK090.트리암 = EXCLUDE
+    })
+    expect(memo(SSNB_IA, SSNB_IA_RX, p)).toBe(`◈IA injection of - shoulder\n◈SSNB\n◈약: 트리암\n\n${REASON}`)
+  })
+
+  it('AC-3005.2: 확인 표시는 늘 맨 끝이다', () => {
+    const p = ordered({ KK090: 1 }, (value) => {
+      value.procedureDrugs.LA247.트리암 = INCLUDE
+    })
+    expect(memo(SSNB_IA, [...SSNB_IA_RX, { code: 'MM010', name: '표층열', qty: 1, benefit: true, pay: '급여' }], p)).toBe(`◈IA injection of - shoulder\n◈SSNB\n[약 확인: 트리암]\n[코드 확인: 표층열]\n\n${REASON}`)
+  })
+
+  it('AC-3005.2: 코드별 메모 줄(memo)도 그 코드 번호로 옮긴다', () => {
+    const rows = [rx('LA247'), rx('HA280')]
+    expect(memo(['Rt shoulder pain', 'Rt SSNB'], rows)).toBe('◈SSNB\n◈관절조영 시행')
+    expect(memo(['Rt shoulder pain', 'Rt SSNB'], rows, ordered({ HA280: 1 }))).toBe('◈관절조영 시행\n◈SSNB')
+  })
+})
