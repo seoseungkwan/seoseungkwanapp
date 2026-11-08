@@ -1,0 +1,15 @@
+{
+  "status": "approved",
+  "feature": "claim-day-done-pc",
+  "approved_at": "2026-11-08T00:52:07Z",
+  "approved_via": "user-prompt",
+  "session_id": "d10742a8-9afd-4d2e-a570-0ca944d75021",
+  "spec_sha256": "fd069bfe2638b71674b45ed21d8383b18338fc5767f31d0bb5102bb52d00e1ce",
+  "scope": [
+    "src/components/claim/ClaimScreen.test.tsx",
+    "src/components/claim/ClaimScreen.tsx",
+    "src/components/claim/DateStep.tsx",
+    "src/components/claim/dateList.test.ts",
+    "src/components/claim/dateList.ts"
+  ]
+}
