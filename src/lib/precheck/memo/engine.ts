@@ -18,6 +18,9 @@ const TEMPLATE_TOKENS = ['좌우', '한글방향', '영문방향', '레벨', '�
 const LEVEL_CODES = new Set(['LA248', 'LA354', 'LA355', 'LA356', 'LA358', 'LA359'])
 const CARTILAGE_NAME = /아라간|히알|하이알|hyal|연골\s*주사/i
 const IA_SET_CODES = /^(LA274|LA272)$/i
+/** IA 줄 부위로 읽는 관절(AC-3001.1). 척추·늑골·상지는 IA 부위가 아니다 */
+const IA_REGIONS = ['shoulder', 'knee', 'ankle', 'elbow', 'wrist', 'hip', 'hand', 'foot']
+const IA_WORD = /\bIA\b|관절강|관절내|intra.?artic|injection/i
 const FIXED_FALLBACK = [{ token: 'C-arm', text: 'C-arm guide 하에', on: true }, { token: 'Sono', text: 'Sono guide 하에', on: true }, { token: '시행함', text: '시행함', on: true }]
 const SITE_FALLBACK: Record<string, string> = { cervical: 'C', lumbar: 'L', shoulder: 'shoulder', knee: 'knee', ankle: 'ankle', elbow: 'elbow', wrist: 'wrist', hand: 'hand', hip: 'hip', chest: 'rib', foot: 'foot', upper: 'upper extremity' }
 const LEVEL_NOTATION_SUFFIX = '(?![A-Za-z0-9.])'
@@ -95,7 +98,8 @@ export const unfinished = (memo: unknown) => /\[[^\]\n]*(?:확인|미확인|미�
 
 type Rule = { code: string; names: string[]; codes: string[]; quantity: number | null; mode: string; procedureType: string; conflict: boolean; omit: boolean; preserve: boolean; side: string }
 type Renderer = (template: string, vars: Record<string, unknown>) => string
-type DrugItem = { name: string; qty: number | null }
+/** name은 메모에 쓰는 표기(label), drug는 코드 표의 약 이름([약 확인: 이름]에 쓴다) */
+type DrugItem = { name: string; qty: number | null; drug: string }
 type DrugPlan = {
   decisions: Map<string, { use: 'include' | 'exclude' | 'check'; place?: DrugPlace }>
   /** 틀의 {약제} 자리(없으면 {시술} 바로 뒤)에 넣을 약. 연골주사 날의 연골주사약은 그 자리에 넣지 않는다(원본 cartilageLine처럼 연골주사 줄이 있다) */
@@ -911,6 +915,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
 
   // ── 약 규칙(design.md 19-4, 원본과 일부러 다르다) ───────────────────────
 
+  // 표시는 늘 한 줄이다: unfinished 정규식은 줄을 넘지 않아 줄이 나뉘면 표시가 있어도 입력 대상이 된다(AC-014.12). 이름의 줄바꿈은 원본 검사를 지나므로(AC-014.3) 여기서 편다
+  const drugCheck = (name: string) => `[약 확인: ${name.replace(/\s+/g, ' ').trim()}]`
   const planCache = new WeakMap<object, DrugPlan>()
   const choiceOf = (proc: string, name: string): DrugChoice | undefined => {
     const drugs = phrases.procedureDrugs
@@ -941,12 +947,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
             decision = !choice ? { use: 'check' } : choice.use === 'exclude' ? { use: 'exclude' } : { use: 'include', place: choice.place ?? 'afterProc' }
           } else decision = choices.every((choice) => choice?.use === 'exclude') ? { use: 'exclude' } : { use: 'check' }
           plan.decisions.set(name, decision)
-          // 표시는 늘 한 줄이다: unfinished 정규식은 줄을 넘지 않아 줄이 나뉘면 표시가 있어도 입력 대상이 된다(AC-014.12). 이름의 줄바꿈은 원본 검사를 지나므로(AC-014.3) 여기서 편다
-          if (decision.use === 'check') plan.checks.push(`[약 확인: ${name.replace(/\s+/g, ' ').trim()}]`)
+          if (decision.use === 'check') plan.checks.push(drugCheck(name))
         }
         if (decision.use !== 'include') continue
         const label = (keys.length === 1 && choiceOf(keys[0], name)?.label) || name
-        const item = { name: label, qty: row.qty }
+        const item = { name: label, qty: row.qty, drug: name }
         if (decision.place === 'afterEnding') plan.afterEnding.push(item)
         else if (decision.place === 'ownLine') plan.ownLine.push(item)
         else if (!(ara && isCartilageDrug(row))) plan.afterProc.push(item)
@@ -1215,9 +1220,36 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return compose(iaKind(v) === 'ara' && (usesOwnTemplate(v) || cartilageHeld(v)) ? withoutLegacyCartilage(m) : m)
   }
 
+  /** 이번 글에서 자리에 넣은 약. 놓을 줄이 없던 약은 [약 확인]으로 돌린다(AC-3001.3) */
+  let placedDrugs = new Set<DrugItem>()
+
+  /**
+   * 연골주사 날의 일반 IA 줄(AC-3001.2): 넣기인 일반 약(afterProc)이 있으면 아라간이 아닌 IA 차트 줄의 부위로 iaEtc 줄을 하나 더 쓴다.
+   * KK090 수량은 연골주사와 나눠 쓰므로 양측 근거로 보지 않는다(수량 1로 본다). 그런 줄이 없으면 약은 fullTextBody가 [약 확인]으로 돌린다(AC-3001.3)
+   */
+  function araEtcLine(v: MemoVisit): string[] {
+    const tpl = TPL.iaEtc
+    const items = drugPlan(v).afterProc
+    if (!tpl || !items.length) return []
+    if (TPL.kneeSetSkipIa !== false && v.rx.some((x) => IA_SET_CODES.test(String(x.code)))) return []
+    const chart = (v.items || []).filter((i) => i.k === 'proc' && IA_WORD.test(i.raw || i.t) && !CARTILAGE_NAME.test(i.raw || i.t))
+    if (!chart.length) return []
+    const ia = v.rx.find((x) => upper(x.code) === 'KK090')!
+    const name = cm(ia.code)?.n || 'IA'
+    const one = Object.create(null) as QuantityMap
+    addQuantity(one, name, 1, ia.code)
+    const site = siteOf({ items: chart, memos: [] }, IA_WORD, IA_REGIONS)
+    const drugs = [...new Set(items.map((item) => item.name))]
+    const line = renderQuantityProcedure(name, tpl, { 좌우: '', 약제: `(${drugs.join(', ')})`, 투여량: '', 부위: site || MISS_SITE }, one, fill, ia.code)
+    if (!line) return []
+    items.forEach((item) => placedDrugs.add(item))
+    return [markOf() + line]
+  }
+
   function iaLinesOf(v: MemoVisit, raw: boolean): string[] {
     const k = iaKind(v)
-    if (k === 'ara') return cartilageLine(v, raw)
+    // raw는 원본 그대로 줄이 있는지만 볼 때라 약 계획을 읽지 않는다
+    if (k === 'ara') return [...cartilageLine(v, raw), ...(raw ? [] : araEtcLine(v))]
     if (!k) return []
     const tpl = TPL.iaEtc
     if (!tpl) return []
@@ -1225,7 +1257,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (TPL.kneeSetSkipIa !== false && l.some((x) => IA_SET_CODES.test(String(x.code)))) return []
     const ia = l.find((x) => upper(x.code) === 'KK090')!
     const drugs = raw ? [] : [...new Set(drugPlan(v).afterProc.map((item) => item.name))]
-    const site = siteOf(v, /\bIA\b|관절강|관절내|intra.?artic|injection/i, ['shoulder', 'knee'])
+    const site = siteOf(v, IA_WORD, IA_REGIONS)
     const qty = ia.qty ?? 0
     const iaVars = { 좌우: qty >= 2 ? ' - both' : '', 약제: drugs.length ? `(${drugs.join(', ')})` : '', 투여량: ia.qty || '', 부위: site || MISS_SITE }
     const line = renderQuantityProcedure(cm(ia.code)?.n || 'IA', tpl, iaVars, v.rxQty, fill, ia.code)
@@ -1368,8 +1400,15 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return lines.join('\n')
   }
 
+  /** 놓을 줄이 없던 약의 표시. 연골주사 날 넣기인 일반 약은 일반 IA 줄에만 놓인다(AC-3001.3) */
+  function unplacedChecks(v: MemoVisit, plan: DrugPlan): string[] {
+    const lost = iaKind(v) === 'ara' ? plan.afterProc.filter((item) => !placedDrugs.has(item)) : []
+    return [...new Set(lost.map((item) => drugCheck(item.drug)))].filter((mark) => !plan.checks.includes(mark))
+  }
+
   function fullTextBody(v: MemoVisit): string {
     procOut = new Set()
+    placedDrugs = new Set()
     const seen = new Set<string>()
     const slot = drugTxt(v)
     const uniq = (line: string) => {
@@ -1388,12 +1427,13 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const procB = [regionBlock, rxB, noteB].filter(filled).join('\n')
     const plan = drugPlan(v)
     const base = placeDrugs([procB, iaB].filter(filled).join('\n\n'), plan)
+    const checks = [...plan.checks, ...unplacedChecks(v, plan)]
     const pl = patientLines(v)
     const body = formatLevels(base)
     if (String(TPL.sentence || '').trim()) {
-      return gapify([styleSides(sentenceMemo(v, body, [])), ...plan.checks, ...pl].filter((x) => String(x).trim()).join(TPL.lineJoin === 'oneLine' ? ' ' : '\n'))
+      return gapify([styleSides(sentenceMemo(v, body, [])), ...checks, ...pl].filter((x) => String(x).trim()).join(TPL.lineJoin === 'oneLine' ? ' ' : '\n'))
     }
-    const styled = [styleSides(body), ...plan.checks].filter(Boolean).join('\n')
+    const styled = [styleSides(body), ...checks].filter(Boolean).join('\n')
     const memo = pl.length ? `${styled}\n\n${pl.join('\n')}` : styled
     return gapify(TPL.lineJoin === 'oneLine' ? oneLineMemo(memo) : memo)
   }
