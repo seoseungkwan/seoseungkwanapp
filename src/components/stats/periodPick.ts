@@ -34,7 +34,7 @@ const monthName = (month: string) => `${yearName(yearOf(month))} ${monthNumber(m
 
 // 기간 글. withYear면 첫날 앞에 해를 붙이고, 해를 넘는 기간은 늘 양 끝에 붙인다.
 // '2026년 10월 1일 – 31일' · '9월 3일 – 10월 2일' · '2025년 12월 20일 – 2026년 1월 10일'
-function spanLabel({ from, to }: DateRange, withYear: boolean): string {
+export function spanLabel({ from, to }: DateRange, withYear: boolean): string {
   if (yearOf(from) !== yearOf(to)) return `${yearName(yearOf(from))} ${longDate(from)} – ${yearName(yearOf(to))} ${longDate(to)}`
   const head = `${withYear ? `${yearName(yearOf(from))} ` : ''}${longDate(from)}`
   if (from === to) return head
@@ -168,7 +168,7 @@ export function checkCustom(from: string, to: string, unit: PickUnit, lastDay: s
 // ── 고른 기간 보고 ────────────────────────────────────────
 
 // 끝 글자에 받침이 있는지(조사 '은/는'·'과/와'). 한글이 아니면 받침이 있다고 본다
-function hasFinal(word: string): boolean {
+export function hasFinal(word: string): boolean {
   const code = word.charCodeAt(word.length - 1) - 0xac00
   return code < 0 || code > 11171 || code % 28 !== 0
 }
