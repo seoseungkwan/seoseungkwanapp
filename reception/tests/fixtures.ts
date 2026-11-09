@@ -34,6 +34,143 @@ export interface FakeBoard {
   every: number
   counts: Record<FakeList, number>
   lists: Record<FakeList, FakeRow[]>
+  /** 어레인지 표 (reception-arrange design.md 7절). 옛 도우미 답에는 없다 */
+  arrange?: FakeArrange
+}
+
+// ---- 어레인지 표 (reception-arrange, design.md 7절 ArrangeBuilder 답 모양) ----------------------------------
+
+/** 어레인지 칸 (JSON 이름) */
+export type FakeCol = 'xray' | 'sono' | 'carm' | 'pt' | 'ds' | 'eswt' | 'trac'
+
+/** 칸 일곱 (표 차례) */
+export const ARRANGE_COLS: FakeCol[] = ['xray', 'sono', 'carm', 'pt', 'ds', 'eswt', 'trac']
+
+/** 칸 하나: st 준비(todo)·준비완료(ready)·완료(done), at 처방(넣은) 시각·준비완료 시각·완료 시각(비트 처방 시각을 모르면 null), ord SONO·C-ARM 순서 */
+export interface FakeCell {
+  st: 'todo' | 'ready' | 'done'
+  det: string
+  part: string | null
+  at: string | null
+  ord: number | null
+  manual: boolean
+}
+
+/** 어레인지 줄 하나. 이름·차트번호·정보·메모·상태·접수 시각은 같은 k의 목록 줄에 있다 */
+export interface FakeArrangeRow {
+  k: string
+  away: string | null
+  ptf: { st: 'up' | 'down'; at: string } | null
+  last: string
+  cells: Record<FakeCol, FakeCell | null>
+  allDone: boolean
+}
+
+export interface FakeArrange {
+  rows: FakeArrangeRow[]
+  ended: { k: string; endedAt: string }[]
+}
+
+/** 칸 하나. 주지 않은 값은 처방에서 온 준비 칸이다 */
+export function fakeCell(over: Partial<FakeCell> = {}): FakeCell {
+  return { st: 'todo', det: '', part: null, at: '10:30', ord: null, manual: false, ...over }
+}
+
+/** 어레인지 줄 하나: 주지 않은 칸은 없음(null), allDone은 칸이 하나 이상이고 모두 완료일 때 true (AC-3305.8) */
+export function arrangeRow(
+  k: string,
+  cells: Partial<Record<FakeCol, Partial<FakeCell>>> = {},
+  over: Partial<Omit<FakeArrangeRow, 'cells' | 'allDone'>> = {},
+): FakeArrangeRow {
+  const all = Object.fromEntries(ARRANGE_COLS.map((col) => [col, cells[col] ? fakeCell(cells[col]) : null])) as Record<FakeCol, FakeCell | null>
+  const present = Object.values(all).filter((cell): cell is FakeCell => cell !== null)
+  return { k, away: null, ptf: null, last: '', ...over, cells: all, allDone: present.length > 0 && present.every((cell) => cell.st === 'done') }
+}
+
+/** 판에 어레인지 표를 얹은 사본 */
+export function withArrange(board: FakeBoard, arrange: FakeArrange): FakeBoard {
+  return { ...board, arrange }
+}
+
+/** 어레인지 시안(Arrange.html)의 환자 a~j 자리의 화면 열쇠. 이름은 가상환자21~30 */
+export const ARRANGE_KEYS = {
+  a: fakeKey(21),
+  b: fakeKey(22),
+  c: fakeKey(23),
+  d: fakeKey(24),
+  e: fakeKey(25),
+  f: fakeKey(26),
+  g: fakeKey(27),
+  h: fakeKey(28),
+  i: fakeKey(29),
+  j: fakeKey(30),
+} as const
+
+/**
+ * 어레인지 승인 시안(docs/mockups/reception-arrange/Arrange.html)과 같은 모양의 판(11:04:15 기준, 지어낸 가짜 환자):
+ * 표에 8명(접수 순 a~h), 오늘 치료 종료 2명(종료 늦은 순 j·i). 목록 칸은 진료대기 f·g·h, 진료보류 c·d·e, 수납대기 b, 수납완료 a·i·j다.
+ * a 모든 칸 끝남(allDone) · b C-ARM 준비완료(1번)·PT·견인 · c 신환 X-RAY 끝남·SONO 부위 없음(1번)·PT ICE·충격파 2부위 ·
+ * d 자리비움 10:50·X-RAY 직접 넣음 끝남·도수 30분 · e C-ARM 준비(2번)·PT·견인 목 · f PT 먼저 올라감 10:40 ·
+ * g PT 먼저 내려옴 10:58·SONO 직접 넣음(2번) · h 신환 칸 없음
+ */
+export function arrangeMockupBoard(at = '11:04:15'): FakeBoard {
+  const K = ARRANGE_KEYS
+  const row = (n: number, info: string, time: string, memo = '') =>
+    fakeRow({ k: fakeKey(n), chart: `9100${n}`, name: `가상환자${n}`, info, time: `${time} 접수`, waited: '', memo, rxLabel: '', rx: '' })
+  const board = boardOf(
+    {
+      wait: [row(26, '71세 · 남 · 재진', '10:31'), row(27, '45세 · 남 · 재진', '10:44', '실비 서류'), row(28, '26세 · 여 · 신환', '10:58', '오른 손목 처음')],
+      hold: [row(23, '38세 · 여 · 신환', '09:40', '오른 어깨 처음'), row(24, '29세 · 남 · 재진', '10:02', '왼 발목 삠'), row(25, '52세 · 여 · 재진', '10:15', '목·어깨 뻐근')],
+      pay: [row(22, '47세 · 남 · 재진', '09:25', '허리 C-arm 2차')],
+      done: [row(21, '64세 · 여 · 재진', '09:12', '오른 무릎 주사 2차'), row(30, '61세 · 여 · 재진', '09:08'), row(29, '58세 · 남 · 재진', '09:05')],
+    },
+    at,
+  )
+  return withArrange(board, {
+    rows: [
+      arrangeRow(
+        K.a,
+        {
+          xray: { st: 'done', at: '09:35' },
+          sono: { st: 'done', part: '오른 무릎', at: '09:55' },
+          pt: { st: 'done', det: 'HP', at: '10:10', manual: true },
+        },
+        { last: 'Rt knee pain\n계단·앉았다 일어날 때 심함\n\nxr: OA gr.2' },
+      ),
+      arrangeRow(
+        K.b,
+        {
+          carm: { st: 'ready', part: '허리 L4-5', at: '11:01', ord: 1 },
+          pt: { det: 'HP', at: '10:20', manual: true },
+          trac: { det: '허리', at: '10:20', manual: true },
+        },
+        { last: 'LBP with Rt buttock pain\n2주 전부터' },
+      ),
+      arrangeRow(K.c, {
+        xray: { st: 'done', at: '10:12' },
+        sono: { at: '10:30', ord: 1 },
+        pt: { det: 'ICE', at: '10:31', manual: true },
+        eswt: { det: '2부위', at: '10:31', manual: true },
+      }),
+      arrangeRow(K.d, { xray: { st: 'done', at: '10:28', manual: true }, ds: { det: '30분', at: '10:35', manual: true } }, { away: '10:50', last: 'Rt wrist pain\n운동 뒤' }),
+      arrangeRow(
+        K.e,
+        {
+          carm: { part: '목 C5-6', at: '10:42', ord: 2 },
+          pt: { det: 'HP', at: '10:42', manual: true },
+          trac: { det: '목', at: '10:50', manual: true },
+        },
+        { last: 'neck pain 1달' },
+      ),
+      arrangeRow(K.f, {}, { ptf: { st: 'up', at: '10:40' }, last: 'Lt knee pain\n붓기 있음' }),
+      arrangeRow(K.g, { sono: { part: '왼 어깨', at: '11:02', ord: 2, manual: true } }, { ptf: { st: 'down', at: '10:58' }, last: 'Lt shoulder pain\n팔 뒤로 돌릴 때' }),
+      arrangeRow(K.h),
+    ],
+    ended: [
+      { k: K.j, endedAt: '10:40' },
+      { k: K.i, endedAt: '10:15' },
+    ],
+  })
 }
 
 const LANE_LABEL: Record<FakeLane, string> = { wait: '진료대기', hold: '진료보류', pay: '수납대기', done: '수납완료' }
@@ -232,6 +369,35 @@ export function fakeTreatedPaper(sym: string, over: Partial<FakePaper> = {}): Fa
   })
 }
 
+/**
+ * 직전 진료기록부 `GET /api/visit/{k}/prev`의 prev (reception-arrange design.md 9절): 지난 내원 하나의 날짜(yyyy-MM-dd)·N일 전·
+ * 진료실·보험·증상·상병·처방·원외처방. 사람 칸(주민번호·주소·전화)·특이사항은 없다. 주지 않은 칸은 시안 환자 a의 지어낸 가짜 값이다
+ */
+export interface FakePrev {
+  date: string
+  ago: string
+  room: string
+  ins: string
+  sym: string
+  dx: { code: string; name: string; main: boolean }[]
+  rx: FakeOrder[]
+  out: FakeOrder[]
+}
+
+export function fakePrev(over: Partial<FakePrev> = {}): FakePrev {
+  return {
+    date: '2026-10-26',
+    ago: '14일 전',
+    room: '1진료실',
+    ins: '국민건강보험',
+    sym: 'Rt knee pain\n계단·앉았다 일어날 때 심함\n\nxr: OA gr.2',
+    dx: [{ code: 'M1716', name: '가상 무릎관절증', main: true }],
+    rx: [{ code: 'G7204', name: '가상 무릎 촬영', qty: '1', tms: '1', day: '1' }],
+    out: [{ code: '641901140', name: '가상정200mg', qty: '1', tms: '2', day: '7' }],
+    ...over,
+  }
+}
+
 /** 가짜 오늘: 2026년 11월 5일 (시험의 기기 날짜와 같게 둔다) */
 export const FAKE_TODAY = { year: 2026, month: 11, day: 5 }
 
@@ -313,8 +479,100 @@ export interface FakeServer {
   syms: Map<string, string>
   /** 종이 기록부를 통째로 정해 둔 환자: 열쇠 → paper(없으면 오늘 증상으로 정함). 상세가 열린 동안 바뀌는 종이 시험(AC-1502.4) */
   papers: Map<string, FakePaper>
+  /** 직전 진료기록부를 정해 둔 환자: 열쇠 → prev(없으면 신환은 null, 재진은 fakePrev()) (reception-arrange) */
+  prevs: Map<string, FakePrev | null>
   /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
   answer: (method: string, url: string, body?: string | null) => FakeReply
+}
+
+/** 어레인지 쓰기 몸 (reception-arrange design.md 8절) */
+interface FakeArrangeAsk {
+  k?: unknown
+  op?: unknown
+  col?: unknown
+  v?: unknown
+}
+
+/** 세 단계 칸(준비 → 준비완료 → 완료)과 직접 칸 */
+const THREE_STEP = new Set<FakeCol>(['sono', 'carm'])
+const DIRECT = new Set<FakeCol>(['pt', 'ds', 'eswt', 'trac'])
+
+/**
+ * 가짜 도우미의 어레인지 쓰기(design.md 8절 op 표의 줄기만): 판의 arrange를 그 자리에서 바꾼다. 시각은 now다.
+ * 칸이 없는 칸에 step·set·part, 빈 칸 아닌 칸에 add면 404·400처럼 false. 끝난 줄을 다시 넣으면 빼 두었던 줄(없으면 빈 줄)을 접수 순 자리에 넣는다
+ */
+function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask: FakeArrangeAsk, now: string): number {
+  const arrange = board.arrange
+  if (!arrange || typeof ask.k !== 'string' || typeof ask.op !== 'string') return 400
+  const k = ask.k
+  const row = arrange.rows.find((r) => r.k === k)
+  const ended = arrange.ended.some((e) => e.k === k)
+  if (!row && !ended) return 404
+  const col = ARRANGE_COLS.find((c) => c === ask.col)
+  const v = typeof ask.v === 'string' ? ask.v : undefined
+  const cell = row && col ? row.cells[col] : null
+  const settle = () => {
+    if (!row) return
+    const present = Object.values(row.cells).filter((c): c is FakeCell => c !== null)
+    row.allDone = present.length > 0 && present.every((c) => c.st === 'done')
+  }
+  switch (ask.op) {
+    case 'step':
+      if (!cell) return 404
+      if (cell.st === 'done') return 400
+      cell.st = cell.st === 'todo' && THREE_STEP.has(col!) ? 'ready' : 'done'
+      cell.at = now
+      if (cell.st === 'done') cell.ord = null
+      break
+    case 'set':
+      if (!cell) return 404
+      if (v !== 'todo' && v !== 'ready' && v !== 'done') return 400
+      cell.st = v
+      if (v !== 'todo') cell.at = now
+      if (v === 'done') cell.ord = null
+      break
+    case 'add':
+      if (!row || !col || cell || v === undefined) return 400
+      row.cells[col] = fakeCell({
+        det: DIRECT.has(col) ? v : '',
+        part: THREE_STEP.has(col) && v !== '부위는 나중에' ? v : null,
+        at: now,
+        manual: true,
+      })
+      break
+    case 'remove':
+      if (!row || !col || !cell?.manual) return 400
+      row.cells[col] = null
+      break
+    case 'part':
+      if (!cell) return 404
+      if (!THREE_STEP.has(col!) || v === undefined) return 400
+      cell.part = v
+      break
+    case 'away':
+      if (!row || (v !== 'on' && v !== 'off')) return 400
+      row.away = v === 'on' ? now : null
+      break
+    case 'ptf':
+      if (!row || (v !== 'up' && v !== 'down' && v !== 'off')) return 400
+      row.ptf = v === 'off' ? null : { st: v, at: now }
+      break
+    case 'end':
+      if (v === 'on' && row) {
+        stash.set(k, row)
+        arrange.rows = arrange.rows.filter((r) => r.k !== k)
+        arrange.ended = [{ k, endedAt: now }, ...arrange.ended.filter((e) => e.k !== k)]
+      } else if (v === 'off' && ended) {
+        arrange.ended = arrange.ended.filter((e) => e.k !== k)
+        const time = (key: string) => timeOf(Object.values(board.lists).flat().find((r) => r.k === key) ?? fakeRow({ time: '' }))
+        arrange.rows = [...arrange.rows, stash.get(k) ?? arrangeRow(k)].sort((a, b) => time(a.k).localeCompare(time(b.k)))
+      } else return 400
+      break
+    default:
+      return 400
+  }
+  settle()
+  return 204
 }
 
 /** 신환은 지난 진료가 없고, 재진은 36번(승인 시안: 모두 37번) */
@@ -332,23 +590,42 @@ function rowsOfBoard(board: FakeBoard): FakeRow[] {
 }
 
 /**
- * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray.
+ * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray,
+ * 그리고 어레인지(reception-arrange design.md 8·9절): POST /api/arrange(판의 arrange를 바꾸고 204) · GET /api/visit/{k}/prev.
  * 다른 길·그날 판에 없는 열쇠·모양이 틀린 값은 404, 진료보류가 아닌 줄의 표시는 400이다
  */
 export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): FakeServer {
   const marks = new Map<string, string>()
   for (const row of rowsOfBoard(board)) if (row.xray?.at) marks.set(row.k, row.xray.at)
+  /** 치료 종료로 뺀 어레인지 줄(다시 넣기에 돌려준다) */
+  const stash = new Map<string, FakeArrangeRow>()
   const server: FakeServer = {
     board,
     marks,
     now,
     syms: new Map<string, string>(),
     papers: new Map<string, FakePaper>(),
+    prevs: new Map<string, FakePrev | null>(),
     answer(method, url, body) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
       if (method === 'GET' && path === '/api/board' && (query === '' || query === 'fresh=1')) {
         return { status: 200, body: withMarks(server.board, server.marks) }
+      }
+      const prev = /^\/api\/visit\/([0-9a-f]{16})\/prev$/.exec(path)
+      if (method === 'GET' && prev && query === '') {
+        const row = rowsOfBoard(server.board).find((r) => r.k === prev[1])
+        if (!row) return { status: 404 }
+        return { status: 200, body: { prev: server.prevs.has(row.k) ? server.prevs.get(row.k) : pastOf(row) === 0 ? null : fakePrev() } }
+      }
+      if (method === 'POST' && path === '/api/arrange') {
+        let ask: FakeArrangeAsk
+        try {
+          ask = JSON.parse(body ?? '') as FakeArrangeAsk
+        } catch {
+          return { status: 400 }
+        }
+        return { status: applyArrange(server.board, stash, ask, server.now) }
       }
       const history = /^\/api\/visit\/([0-9a-f]{16})\/history$/.exec(path)
       if (method === 'GET' && history) {

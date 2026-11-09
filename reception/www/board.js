@@ -14,8 +14,12 @@
 //     view.onSelect(k)   태블릿 줄을 누름. 그 자리에서 고른 줄 표시를 바꾼 뒤 부른다
 //     view.onRefresh()   [새로 고침]을 누름. 그 자리에서 "읽는 중…"·disabled로 바꾼 뒤 한 번 부른다(읽는 동안 더 누르지 못한다)
 //     view.xray(row)     엑스레이 칸이 있는 줄(진료보류)의 아래 띠 요소(xray.js). 없으면 띠 없음
-//   setReading(host, reading)  [새로 고침] 단추만 바꾼다
+//     view.tab           고른 탭 'board'|'arrange'(기본 'board'). 머리의 탭 단추 [접수 현황]·[어레인지 N명] (reception-arrange AC-3308.1)
+//     view.onTab(tab)    탭 단추를 누름('board'|'arrange'). 해시 길은 app.js가 바꾼다
+//   setReading(host, reading)  [새로 고침] 단추만 바꾼다(목록·어레인지 어느 머리든)
 //   fillPane(host, nodes)      태블릿 오른쪽 칸의 내용을 바꾼다(아래 글은 그대로). null이면 비운다
+//   topOf(board, view)         머리(header.top) 안 요소들: 상표 줄 · 탭 단추 · (접수 현황 탭만) 제목·기준 글. 어레인지 화면(arrange.js)이 함께 쓴다
+//   refreshText(every)         "N초마다 저절로 바뀌어요"(every가 양의 정수가 아니면 숫자 없이)
 
 import { clear, el, svg } from './dom.js'
 
@@ -30,8 +34,14 @@ const TILES = [
   ['done', '수납완료'],
 ]
 
+/** 머리 탭: [탭 이름, 글] (reception-arrange AC-3308.1, 승인 시안 Arrange.html) */
+const TABS = [
+  ['board', '접수 현황'],
+  ['arrange', '어레인지'],
+]
+
 /** 머리의 바뀜 글: every(초, 양의 정수)면 "N초마다 저절로 바뀌어요" (AC-1407.1) */
-function refreshText(every) {
+export function refreshText(every) {
   return Number.isSafeInteger(every) && every > 0 ? `${every}초마다 저절로 바뀌어요` : '저절로 바뀌어요'
 }
 
@@ -78,16 +88,7 @@ export function renderBoard(host, board, view = {}) {
     if (typeof view.onSelect === 'function') view.onSelect(k)
   }
 
-  replace(parts.top, [
-    el('div', { class: 'top-row' }, [
-      el('img', { class: 'logo', src: '/logo-wordmark.png', alt: '양지바른정형외과' }),
-      el('div', { class: 'top-status' }, [el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
-    ]),
-    el('div', { class: 'title-block' }, [
-      el('h1', { class: 'top-title' }, '접수 현황'),
-      el('p', { class: 'asof' }, `${board.at} 기준 · ${refreshText(board.every)}`),
-    ]),
-  ])
+  replace(parts.top, topOf(board, { ...view, tab: view.tab === 'arrange' ? 'arrange' : 'board' }))
 
   replace(parts.picker, [
     el('button', { type: 'button', class: 'queue', 'aria-pressed': pressed(lane === 'queue'), on: { click: () => pick('queue') } }, [
@@ -116,9 +117,56 @@ export function renderBoard(host, board, view = {}) {
   return parts.page
 }
 
+/**
+ * 머리(header.top) 안 요소들: 상표 줄(로고 · 연결됨 + [새로 고침]), 그 아래 탭 단추 [접수 현황]·[어레인지 N명](AC-3308.1),
+ * 접수 현황 탭이면 그 아래 제목 "접수 현황"·기준 글. 어레인지 탭은 기준 글을 표 위 줄에 따로 그린다(시안 Arrange.html).
+ * N은 판의 arrange.rows 수(옛 도우미 답처럼 없으면 0)다. 고른 탭은 aria-pressed="true"이고 누르면 view.onTab(탭)만 부른다
+ * @param {{ at: string, every?: number, arrange?: { rows?: object[] } }} board
+ * @param {{ tab?: string, reading?: boolean, onRefresh?: Function, onTab?: Function }} [view]
+ * @returns {HTMLElement[]}
+ */
+export function topOf(board, view = {}) {
+  const tab = view.tab === 'arrange' ? 'arrange' : 'board'
+  return [
+    el('div', { class: 'top-row' }, [
+      el('img', { class: 'logo', src: '/logo-wordmark.png', alt: '양지바른정형외과' }),
+      el('div', { class: 'top-status' }, [el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
+    ]),
+    tabsOf(board, tab, view),
+    tab === 'board'
+      ? el('div', { class: 'title-block' }, [
+          el('h1', { class: 'top-title' }, '접수 현황'),
+          el('p', { class: 'asof' }, `${board.at} 기준 · ${refreshText(board.every)}`),
+        ])
+      : null,
+  ].filter(Boolean)
+}
+
+/** 탭 단추 둘. [어레인지]에는 표에 있는 사람 수 "N명" */
+function tabsOf(board, tab, view) {
+  const rows = board?.arrange?.rows
+  const count = Array.isArray(rows) ? rows.length : 0
+  return el(
+    'nav',
+    { class: 'tabs' },
+    TABS.map(([key, label]) =>
+      el(
+        'button',
+        {
+          type: 'button',
+          class: 'tab',
+          'aria-pressed': pressed(tab === key),
+          on: { click: () => (typeof view.onTab === 'function' ? view.onTab(key) : undefined) },
+        },
+        [label, key === 'arrange' ? el('span', { class: 'tab-n' }, `${count}명`) : null],
+      ),
+    ),
+  )
+}
+
 /** [새로 고침] 단추만 "새로 고침" ↔ "읽는 중…"(disabled)으로 바꾼다 */
 export function setReading(host, reading) {
-  const button = host.querySelector('.page.board button.refresh')
+  const button = host.querySelector('.page header.top button.refresh')
   if (button) showReading(button, reading === true)
 }
 

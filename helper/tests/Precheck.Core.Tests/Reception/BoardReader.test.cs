@@ -22,7 +22,7 @@ public class BoardReaderTests
 
     private static readonly string[] Order =
     {
-        ReceptionSql.RxNames, ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.PriorVisits, ReceptionSql.PriorSymptoms,
+        ReceptionSql.RxNames, ReceptionSql.TodayVisits, ReceptionSql.TodayRx, ReceptionSql.TodayOrderTimes, ReceptionSql.PriorVisits, ReceptionSql.PriorSymptoms,
         ReceptionSql.TodayPeople, ReceptionSql.TodayMemos, ReceptionSql.TodayPaid,
     };
 
@@ -129,7 +129,8 @@ public class BoardReaderTests
         var db = BoardFake.Quiet(new FakeDb());
         var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, null);
 
-        Assert.Equal(OrderWithoutSymptoms().Take(4), db.Sqls);
+        // 기본 문장 다섯: 이름표·오늘 접수·오늘 처방·오늘 처방 시각(reception-arrange AC-3303.3)·지난 내원
+        Assert.Equal(OrderWithoutSymptoms().Take(5), db.Sqls);
         Assert.Equal(new[] { "V1001", "V1002", "V1003" }, input.Visits.Select(row => row.VisitId));
         Assert.All(input.Visits, row =>
         {
@@ -151,7 +152,7 @@ public class BoardReaderTests
 
         var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now, null, partial);
 
-        Assert.Equal(OrderWithoutSymptoms().Take(5), db.Sqls);
+        Assert.Equal(OrderWithoutSymptoms().Take(6), db.Sqls);
         var first = input.Visits[0];
         Assert.Equal("가상환자01", first.Name);
         Assert.Equal("19720304", first.BirthDate);
@@ -423,6 +424,8 @@ internal static class BoardFake
             new object?[] { "V1003", "ZZ9" },
             new object?[] { "V1003", "XR2" },
         });
+        // 오늘 처방 시각(spec reception-arrange AC-3303.3). 시각을 보는 시험은 BoardOrders.test.cs가 따로 답을 준다
+        db.Answer(ReceptionSql.TodayOrderTimes, _ => new object?[0][]);
         db.Answer(ReceptionSql.PriorVisits, _ => new[]
         {
             new object?[] { "V1001", 3L, "V0901", "20261029" },

@@ -228,8 +228,14 @@ function ksx1001Hangul(): Set<number> {
 
 const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const BODY_FONT = '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif'
-/** 제목 글꼴을 쓰는 곳: 머리 제목(목록·연결 끊김)과 환자 이름 제목(상세·태블릿 오른쪽) */
-const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name']
+/**
+ * 제목 글꼴을 쓰는 곳: 머리 제목(목록·연결 끊김)과 환자 이름 제목(상세·태블릿 오른쪽),
+ * 그리고 어레인지 승인 시안(Arrange.html, reception-arrange)의 머리 탭 단추(.view-btn → .tab)와 표의 환자 이름(.nm → .arr-name)
+ */
+const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name', '.tab', '.arr-name']
+/** 어레인지 승인 시안(docs/mockups/reception-arrange/Arrange.html, 2026-11-09)이 더한 색 여섯 (reception-arrange AC-3308.12) */
+const ARRANGE_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
+const ARRANGE_TOKENS = ['--sono-head', '--sono-col', '--carm-head', '--carm-col', '--ptup-bg', '--ptup-fg']
 const STATUSES = ['wait', 'hold', 'pay', 'done', 'long', 'xray']
 const TABLET = '(min-width: 1000px) and (orientation: landscape)'
 
@@ -269,14 +275,20 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
         for (const word of value.split(/[\s,()/]+/)) expect(named.test(word), `${rule.selector} { ${prop}: ${value} }`).toBe(false)
   })
 
-  it('AC-1407.7 · AC-1503.2: theme.css의 색은 승인된 의원 상표 시안(v12 Main·Detail·Offline·Tablet)의 색을 모두 담고(빠진 색 없음), 그 밖의 색은 승인 목업 Paper.html에 있는 색뿐이다(지어낸 색 없음)', () => {
+  it('AC-1407.7 · AC-1503.2 · AC-3308.12: theme.css의 색은 승인된 의원 상표 시안(v12 Main·Detail·Offline·Tablet)의 색을 모두 담고(빠진 색 없음), 그 밖의 색은 승인 목업 Paper.html의 색과 어레인지 시안 Arrange.html의 새 칸 색 여섯뿐이다(지어낸 색 없음)', () => {
     const theme = new Set(hexColors(parseRules(read('theme.css')).filter((r) => r.selector === ':root').flatMap((r) => r.decls.map((d) => d[1])).join(' ')))
     const brand = mockupColors()
     const paper = mockupColors([PAPER_PAGE])
     expect(brand.size).toBeGreaterThan(10)
     expect(paper.size).toBeGreaterThan(10)
+    // 어레인지 새 색: theme.css의 그 토큰 여섯 값이고 모두 Arrange.html에 있다
+    const t = rootTokens()
+    const arrangeSheet = new Set(hexColors(readFileSync(ARRANGE_PAGE, 'utf8')))
+    const arrange = new Set(ARRANGE_TOKENS.map((name) => normalHex(t.get(name) ?? '#000')))
+    for (const name of ARRANGE_TOKENS) expect(t.has(name), `${name}가 theme.css에 없다`).toBe(true)
+    for (const c of arrange) expect(arrangeSheet.has(c), `${c}는 어레인지 시안에 없는 색이다`).toBe(true)
     for (const c of brand) expect(theme, `상표 시안 색 ${c}가 theme.css에 없다`).toContain(c)
-    for (const c of theme) expect(brand.has(c) || paper.has(c), `${c}는 승인 시안·목업에 없는 색이다`).toBe(true)
+    for (const c of theme) expect(brand.has(c) || paper.has(c) || arrange.has(c), `${c}는 승인 시안·목업에 없는 색이다`).toBe(true)
     // 신환 표시 파랑은 Paper.html에서 왔다(상표 시안 v12에는 없다)
     expect(paper.has('#1D4ED8')).toBe(true)
     expect(brand.has('#1D4ED8')).toBe(false)

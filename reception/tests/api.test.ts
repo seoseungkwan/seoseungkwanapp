@@ -479,3 +479,145 @@ describe('api.js 같은 PC에만 묻는다', () => {
     }
   })
 })
+
+// ---- 어레인지 (reception-arrange design.md 7·8·9절, TASK-11) --------------------------------------------------
+
+interface ArrangeApi {
+  setArrange?: (k: string, op: string, col?: string, v?: string, options?: { signal?: AbortSignal }) => Promise<void>
+  getPrev?: (k: string, options?: { signal?: AbortSignal }) => Promise<unknown>
+}
+
+/** 아직 없으면(RED) 늘 실패하는 대역 */
+function arrangeApi(): Required<ArrangeApi> {
+  const more = api as unknown as ArrangeApi
+  const fail = () => Promise.reject(new Error('없음'))
+  return { setArrange: more.setArrange ?? fail, getPrev: more.getPrev ?? fail }
+}
+
+describe('api.js getBoard의 어레인지 자료', () => {
+  it('AC-3308.1: 판의 arrange(rows·ended)는 모양이 맞으면 그대로 돌려주고, 없으면(옛 도우미) 맞는 모양으로 그대로 받는다(화면이 빈 표로 본다)', async () => {
+    const board = fx.arrangeMockupBoard()
+    fakeFetch(() => json(board))
+    await expect(api.getBoard()).resolves.toEqual(board)
+    fakeFetch(() => json(fx.mockupBoard()))
+    await expect(api.getBoard()).resolves.toEqual(fx.mockupBoard())
+    // 빈 표도 맞는 모양이다
+    fakeFetch(() => json(fx.withArrange(fx.mockupBoard(), { rows: [], ended: [] })))
+    await expect(api.getBoard()).resolves.toMatchObject({ arrange: { rows: [], ended: [] } })
+  })
+
+  it('AC-3308.1: arrange 모양이 틀리면(줄 열쇠·칸 단계·칸 이름 모양·자리비움·PT 먼저·끝난 줄 시각·allDone) shape 실패다', async () => {
+    const bad: Array<(b: ReturnType<typeof fx.arrangeMockupBoard>) => void> = [
+      (b) => ((b.arrange as unknown as Record<string, unknown>).rows = 'x'),
+      (b) => ((b.arrange!.rows[0] as unknown as Record<string, unknown>).k = 'V1234'),
+      (b) => ((b.arrange!.rows[0]!.cells.xray as unknown as Record<string, unknown>).st = 'gone'),
+      (b) => ((b.arrange!.rows[0]!.cells.xray as unknown as Record<string, unknown>).manual = 'no'),
+      (b) => ((b.arrange!.rows[0]!.cells.xray as unknown as Record<string, unknown>).at = 935),
+      (b) => ((b.arrange!.rows[1]!.cells.carm as unknown as Record<string, unknown>).ord = 0),
+      (b) => ((b.arrange!.rows[1]!.cells.carm as unknown as Record<string, unknown>).part = 3),
+      (b) => ((b.arrange!.rows[0] as unknown as Record<string, unknown>).away = '오늘'),
+      (b) => ((b.arrange!.rows[5] as unknown as Record<string, unknown>).ptf = { st: 'left', at: '10:40' }),
+      (b) => ((b.arrange!.rows[0] as unknown as Record<string, unknown>).allDone = 1),
+      (b) => ((b.arrange!.rows[0] as unknown as Record<string, unknown>).last = null),
+      (b) => ((b.arrange!.ended[0] as unknown as Record<string, unknown>).endedAt = 1040),
+      (b) => ((b.arrange!.rows[0]!.cells as unknown as Record<string, unknown>).xray = 'done'),
+    ]
+    for (const [i, change] of bad.entries()) {
+      const board = fx.arrangeMockupBoard()
+      change(board)
+      fakeFetch(() => json(board))
+      expect(await reasonOf(api.getBoard()), String(i)).toBe('shape')
+    }
+  })
+})
+
+describe('api.js getBoard의 어레인지 칸 시각', () => {
+  it('AC-3308.1: 칸 시각을 모르는 칸(at null, 비트 처방 시각이 빈 줄)이 있어도 판을 그대로 받는다(한 줄 때문에 끊김 화면이 되지 않는다)', async () => {
+    const board = fx.arrangeMockupBoard()
+    board.arrange!.rows[0]!.cells.xray!.at = null
+    fakeFetch(() => json(board))
+    await expect(api.getBoard()).resolves.toEqual(board)
+  })
+})
+
+describe('api.js setArrange', () => {
+  it('AC-3308.5: setArrange(k, op, col, v)는 POST /api/arrange 하나를 X-Reception: 1·Content-Type: application/json·몸 { k, op, col?, v? }(256바이트 이하)로 보내고 204면 끝난다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const k = fx.fakeKey(23)
+    await expect(arrangeApi().setArrange(k, 'step', 'sono')).resolves.toBeUndefined()
+    await arrangeApi().setArrange(k, 'part', 'carm', '오른 무릎')
+    await arrangeApi().setArrange(k, 'away', undefined, 'on')
+    expect(calls.map((c) => c.url)).toEqual(['/api/arrange', '/api/arrange', '/api/arrange'])
+    expect(calls.map((c) => JSON.parse(String(c.init.body)))).toEqual([
+      { k, op: 'step', col: 'sono' },
+      { k, op: 'part', col: 'carm', v: '오른 무릎' },
+      { k, op: 'away', v: 'on' },
+    ])
+    for (const { init } of calls) {
+      expect(init.method).toBe('POST')
+      expect(new Headers(init.headers).get('X-Reception')).toBe('1')
+      expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+      expect(new TextEncoder().encode(String(init.body)).length).toBeLessThanOrEqual(256)
+      expect(init.credentials).toBe('omit')
+      expect(init.mode).toBe('same-origin')
+    }
+  })
+
+  it('AC-3308.9: 204가 아니면(200·400·404·503) status, 연결 안 됨은 network, 5초 넘으면 timeout 실패다', async () => {
+    const k = fx.fakeKey(23)
+    for (const status of [200, 400, 404, 503]) {
+      fakeFetch(() => Promise.resolve(new Response(status === 200 ? '{}' : null, { status })))
+      expect(await reasonOf(arrangeApi().setArrange(k, 'step', 'sono')), String(status)).toBe('status')
+    }
+    fakeFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    expect(await reasonOf(arrangeApi().setArrange(k, 'step', 'sono'))).toBe('network')
+    fakeFetch(never)
+    const seen = watch(arrangeApi().setArrange(k, 'step', 'sono'))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((seen.error as ApiErrorLike)?.reason).toBe('timeout')
+  })
+
+  it('AC-3308.9: 열쇠·op·칸 모양이 틀리거나 v가 글이 아니거나 몸이 256바이트를 넘으면 보내지 않고 input 실패다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const k = fx.fakeKey(23)
+    expect(await reasonOf(arrangeApi().setArrange('V1234', 'step', 'sono'))).toBe('input')
+    expect(await reasonOf(arrangeApi().setArrange(k, 'jump', 'sono'))).toBe('input')
+    expect(await reasonOf(arrangeApi().setArrange(k, 'step', 'mri'))).toBe('input')
+    expect(await reasonOf(arrangeApi().setArrange(k, 'part', 'sono', 3 as unknown as string))).toBe('input')
+    expect(await reasonOf(arrangeApi().setArrange(k, 'part', 'sono', '가'.repeat(80)))).toBe('input')
+    expect(calls).toEqual([])
+  })
+})
+
+describe('api.js getPrev', () => {
+  it('AC-3309.1: getPrev(k)는 GET /api/visit/{열쇠}/prev 하나를 묻고 prev(지난 내원이 없으면 null)를 돌려준다', async () => {
+    const prev = fx.fakePrev()
+    fakeFetch(() => json({ prev }))
+    await expect(arrangeApi().getPrev(fx.fakeKey(21))).resolves.toEqual(prev)
+    fakeFetch(() => json({ prev: null }))
+    await expect(arrangeApi().getPrev(fx.fakeKey(23))).resolves.toBeNull()
+    expect(calls.map((c) => c.url)).toEqual([`/api/visit/${fx.fakeKey(21)}/prev`, `/api/visit/${fx.fakeKey(23)}/prev`])
+    expect(calls.every((c) => (c.init.method ?? 'GET') === 'GET' && c.init.credentials === 'omit')).toBe(true)
+  })
+
+  it('AC-3309.5: 200이 아니거나 모양이 틀린 답(prev 없음·날짜·글 칸·상병·처방 모양)은 실패다. 열쇠 모양이 틀리면 묻지 않는다', async () => {
+    const k = fx.fakeKey(21)
+    fakeFetch(() => json({ prev: null }, 503))
+    expect(await reasonOf(arrangeApi().getPrev(k))).toBe('status')
+    for (const body of [
+      {},
+      { prev: 'x' },
+      { prev: { ...fx.fakePrev(), date: 20261026 } },
+      { prev: { ...fx.fakePrev(), sym: null } },
+      { prev: { ...fx.fakePrev(), dx: [{ code: 'M1', name: '가상' }] } },
+      { prev: { ...fx.fakePrev(), rx: [{ code: 'G1', name: '가상' }] } },
+      { prev: { ...fx.fakePrev(), out: 'x' } },
+    ]) {
+      fakeFetch(() => json(body))
+      expect(await reasonOf(arrangeApi().getPrev(k)), JSON.stringify(body)).toBe('shape')
+    }
+    calls = []
+    expect(await reasonOf(arrangeApi().getPrev('V1234'))).toBe('input')
+    expect(calls).toEqual([])
+  })
+})

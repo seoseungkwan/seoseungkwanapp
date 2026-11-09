@@ -748,6 +748,7 @@ internal static class RealShapeBit
             .Select(c => new object?[] { c.Id, c.Chart.TrimEnd(' '), c.Accepted, c.Status, "" })
             .ToArray());
         db.Answer(ReceptionSql.TodayRx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.TodayOrderTimes, _ => new object?[0][]);
         db.Answer(ReceptionSql.PriorVisits, args => OcmInf
             .Where(t => Compare(t.Accepted, (string)args["@from"]!) >= 0 && Compare(t.Accepted, (string)args["@to"]!) < 0 && t.Chart.Trim().Length > 0)
             .Select(t => (Today: t, Earlier: EarlierDone(t.Chart, t.Accepted).ToArray()))

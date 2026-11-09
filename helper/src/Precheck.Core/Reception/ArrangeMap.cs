@@ -63,8 +63,8 @@ public sealed class ArrangeRule
 /// <summary>
 /// 한 곳(spec reception-arrange design.md 2절, REQ-3301): 처방 코드·이름 → 처방 칸 규칙, 처방을 보지 않는 직접 칸,
 /// 확인 답이 아직 없는 칸, SONO·C-ARM 부위를 읽는 비트 칸.
-/// 모르는 값은 추측하지 않는다. 규칙은 통계 도구가 이미 쓰는 코드(SONO1·CARM1)만 두고, X-RAY 코드와 부위 칸은
-/// 의원 PC 확인 보고서(REQ-3302)의 답이 온 뒤 이 파일에서 채운다(REQ-3311).
+/// 모르는 값은 추측하지 않는다. 처음에는 통계 도구가 이미 쓰는 코드(SONO1·CARM1)만 두었고, 의원 PC 확인 보고서
+/// (REQ-3302, 4회차 2026-11-09 build=0.4.0+check5, docs/reception/check-result.md)의 코드 표와 그것을 본 사용자 결정(2026-11-09)으로 채웠다(REQ-3311).
 /// PT·도수·충격파·견인은 사용자 결정(2026-11-09)으로 처방을 보지 않는 직접 칸이라 규칙이 없다.
 /// </summary>
 public static class ArrangeMap
@@ -72,18 +72,31 @@ public static class ArrangeMap
     /// <summary>처방 칸 규칙. 차례대로 보고 처음 맞는 규칙 하나를 쓴다.</summary>
     public static IReadOnlyList<ArrangeRule> Rules { get; } = Array.AsReadOnly(new[]
     {
+        // X-RAY: 단순촬영 G 코드(보고서의 '부위 N매' 38개가 모두 G1~G8로 시작하는 숫자 4자리, 전척추만 세부 3자리가 더 붙은 7자리).
+        // G0400(C-Arm형 영상증폭장치이용료)처럼 G0으로 시작하는 코드는 촬영이 아니라 들지 않는다
+        ArrangeRule.CodePattern(@"^G[1-8][0-9]{3}([0-9]{3})?$", ArrangeCol.Xray),
         ArrangeRule.Code("SONO1", ArrangeCol.Sono),
+        // 사용자 결정(2026-11-09): 이름 없는 SONO, 급여 초음파(흉부 EB422·견관절 EB466), 관절조영(HA280)도 SONO 칸에 적는다
+        ArrangeRule.Code("SONO", ArrangeCol.Sono),
+        ArrangeRule.Code("EB422", ArrangeCol.Sono),
+        ArrangeRule.Code("EB466", ArrangeCol.Sono),
+        ArrangeRule.Code("HA280", ArrangeCol.Sono),
         ArrangeRule.Code("CARM1", ArrangeCol.Carm),
+        // 사용자 결정(2026-11-09): C-Arm형 영상증폭장치이용료도 C-ARM 칸에 적는다
+        ArrangeRule.Code("G0400", ArrangeCol.Carm),
     });
 
     /// <summary>처방을 보지 않고 표시(직접 넣기)로만 생기는 칸.</summary>
     public static IReadOnlyCollection<ArrangeCol> ManualOnly { get; } =
         Array.AsReadOnly(new[] { ArrangeCol.Pt, ArrangeCol.Ds, ArrangeCol.Eswt, ArrangeCol.Trac });
 
-    /// <summary>확인 답이 아직 없어 규칙이 없는 처방 칸. 그동안 이 칸은 직접 넣는다.</summary>
-    public static IReadOnlyCollection<ArrangeCol> Unconfirmed { get; } = Array.AsReadOnly(new[] { ArrangeCol.Xray });
+    /// <summary>확인 답이 아직 없어 규칙이 없는 처방 칸(그동안 그 칸은 직접 넣는다). 4회차 보고서로 X-RAY를 채워 지금은 없다.</summary>
+    public static IReadOnlyCollection<ArrangeCol> Unconfirmed { get; } = Array.AsReadOnly(new ArrangeCol[0]);
 
-    /// <summary>SONO·C-ARM 부위를 읽는 OdrInf 칸 이름. 모르면 null이고 부위 문장은 돌지 않는다(AC-3303.2).</summary>
+    /// <summary>
+    /// SONO·C-ARM 부위를 읽는 OdrInf 칸 이름. 모르면 null이고 부위 문장은 돌지 않는다(AC-3303.2).
+    /// 4회차 보고서(arrangePart, SONO1·CARM1 줄 1149개)에서 값이 여럿인 글자 칸은 번호·시각·코드·사용자 칸뿐이라 부위 칸 근거가 없다. 부위는 직접 고른다.
+    /// </summary>
     public static string? PartColumn { get; } = null;
 
     /// <summary>칸의 JSON 이름.</summary>

@@ -12,13 +12,22 @@ namespace Precheck.Core.Tests.Reception.ArrangeMapping;
 /// <summary>
 /// 처방 → 어레인지 칸 지도 한 곳(ArrangeMap, spec reception-arrange design.md 2절, REQ-3301).
 /// AC-3301.1 규칙·직접 칸·확인 안 된 칸·부위 칸이 ArrangeMap.cs 한 곳에만 있다.
-/// AC-3301.2 확인 전 지도는 SONO1 → sono, CARM1 → carm뿐이고 X-RAY는 Unconfirmed, 어떤 코드도 직접 칸에 들지 않는다.
+/// AC-3301.2 확인 전 지도(이미 아는 SONO1 → sono, CARM1 → carm뿐, X-RAY는 Unconfirmed)로 나누는 규칙, 어떤 코드도 직접 칸에 들지 않는다.
 /// AC-3301.4 Validate: 한 규칙 두 칸 금지, Unconfirmed 칸·직접 칸에 규칙 금지.
-/// 확인 뒤에 쓸 규칙 모양(X-ray ^G\d{4}$ 등)은 가짜 지도로만 증명한다.
+/// 지도는 TASK-12에서 의원 PC 보고서로 채웠다(ArrangeFill.test.cs, REQ-3311). 여기서 확인 전 모양은 BeforeCheck()로 증명한다.
 /// </summary>
 public class ArrangeMapTests
 {
     private static readonly ArrangeCol[] NoCols = new ArrangeCol[0];
+
+    /// <summary>확인 전 지도(spec design.md 2절의 처음 규칙): 통계 도구가 이미 쓰는 SONO1·CARM1뿐이고 X-RAY는 Unconfirmed.</summary>
+    private static ArrangeRule[] BeforeCheck() => new[]
+    {
+        ArrangeRule.Code("SONO1", ArrangeCol.Sono),
+        ArrangeRule.Code("CARM1", ArrangeCol.Carm),
+    };
+
+    private static readonly ArrangeCol[] BeforeCheckUnconfirmed = { ArrangeCol.Xray };
 
     /// <summary>시험용 가짜 지도(확인 뒤 모양): X-ray는 G 네 자리, SONO·C-ARM은 코드, 이름에 '초음파'가 들면 SONO.</summary>
     private static ArrangeRule[] FakeRules() => new[]
@@ -41,12 +50,11 @@ public class ArrangeMapTests
             Enum.GetValues(typeof(ArrangeCol)).Cast<ArrangeCol>().Select(ArrangeMap.KeyOf));
     }
 
-    [Fact(DisplayName = "AC-3301.1 직접 칸(ManualOnly)은 pt·ds·eswt·trac, 확인 안 된 칸(Unconfirmed)은 xray, 부위 칸(PartColumn)은 아직 모름(null)")]
-    public void ListsBeforeCheck()
+    [Fact(DisplayName = "AC-3301.1 직접 칸(ManualOnly)은 pt·ds·eswt·trac이고, 확인 안 된 칸(Unconfirmed)은 처방 칸(xray·sono·carm) 가운데에만 있다")]
+    public void Lists()
     {
         Assert.Equal(new[] { ArrangeCol.Pt, ArrangeCol.Ds, ArrangeCol.Eswt, ArrangeCol.Trac }, ArrangeMap.ManualOnly.OrderBy(c => c));
-        Assert.Equal(new[] { ArrangeCol.Xray }, ArrangeMap.Unconfirmed.OrderBy(c => c));
-        Assert.Null(ArrangeMap.PartColumn);
+        Assert.All(ArrangeMap.Unconfirmed, col => Assert.Contains(col, new[] { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm }));
     }
 
     [Fact(DisplayName = "AC-3301.1 ArrangeCol·ArrangeRule·ArrangeMap과 처방 코드 SONO1·CARM1 글은 접수 현황 코드에서 ArrangeMap.cs 한 곳에만 있다")]
@@ -75,13 +83,14 @@ public class ArrangeMapTests
 
     // ---- AC-3301.2 확인 전 지도 -------------------------------------------------------------------------
 
-    [Theory(DisplayName = "AC-3301.2 확인 전 지도로 나누면 SONO1은 sono, CARM1은 carm(앞뒤 공백·소문자도)")]
+    [Theory(DisplayName = "AC-3301.2 확인 전 지도와 지금 지도로 나누면 SONO1은 sono, CARM1은 carm(앞뒤 공백·소문자도)")]
     [InlineData("SONO1", ArrangeCol.Sono)]
     [InlineData(" sono1 ", ArrangeCol.Sono)]
     [InlineData("CARM1", ArrangeCol.Carm)]
     [InlineData("carm1  ", ArrangeCol.Carm)]
     public void KnownCodes(string code, ArrangeCol col)
     {
+        Assert.Equal(col, ArrangeMap.Match(BeforeCheck(), code, null));
         Assert.Equal(col, ArrangeMap.Match(code, null));
         Assert.Equal(col, ArrangeMap.Match(ArrangeMap.Rules, code, "아무 이름"));
     }
@@ -98,14 +107,14 @@ public class ArrangeMapTests
     [InlineData("", null)]
     public void OtherCodesGoNowhere(string code, string? name)
     {
-        Assert.Null(ArrangeMap.Match(code, name));
+        Assert.Null(ArrangeMap.Match(BeforeCheck(), code, name));
     }
 
-    [Fact(DisplayName = "AC-3301.2 확인 전 지도의 규칙은 SONO1 → sono, CARM1 → carm 둘뿐이고 어느 규칙도 xray·직접 칸을 가리키지 않는다")]
-    public void RulesBeforeCheck()
+    [Fact(DisplayName = "AC-3301.2 확인 전 지도는 Validate 문제가 없고, 지금 지도의 어느 규칙도 직접 칸(pt·ds·eswt·trac)을 가리키지 않는다")]
+    public void RulesNeverManual()
     {
-        Assert.Equal(new[] { ArrangeCol.Sono, ArrangeCol.Carm }, ArrangeMap.Rules.Select(rule => rule.Col));
-        Assert.DoesNotContain(ArrangeMap.Rules, rule => rule.Col == ArrangeCol.Xray || ArrangeMap.ManualOnly.Contains(rule.Col));
+        Assert.Empty(ArrangeMap.Validate(BeforeCheck(), BeforeCheckUnconfirmed));
+        Assert.DoesNotContain(ArrangeMap.Rules, rule => ArrangeMap.ManualOnly.Contains(rule.Col));
     }
 
     [Theory(DisplayName = "AC-3301.2 가짜 지도(확인 뒤 모양)로 나누면 G 네 자리는 xray, 이름 규칙·코드 포함 규칙도 맞고, 처음 맞는 규칙 하나만 쓴다")]

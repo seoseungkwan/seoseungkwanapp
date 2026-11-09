@@ -133,8 +133,17 @@ public sealed class PaperRecord
         writer.WriteString("room", Room);
         writer.WriteString("ins", Ins);
         writer.WriteString("sym", Sym);
+        WriteDx(writer, Dx);
+        WriteOrders(writer, "rx", Rx);
+        WriteOrders(writer, "out", Out);
+        writer.WriteEndObject();
+    }
+
+    /// <summary><c>"dx": [{code, name, main}]</c>. 직전 기록부(PrevPaper)도 같은 모양으로 쓴다.</summary>
+    internal static void WriteDx(Utf8JsonWriter writer, IReadOnlyList<PaperDiagnosis> diagnoses)
+    {
         writer.WriteStartArray("dx");
-        foreach (var dx in Dx)
+        foreach (var dx in diagnoses)
         {
             writer.WriteStartObject();
             writer.WriteString("code", dx.Code);
@@ -143,12 +152,10 @@ public sealed class PaperRecord
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
-        WriteOrders(writer, "rx", Rx);
-        WriteOrders(writer, "out", Out);
-        writer.WriteEndObject();
     }
 
-    private static void WriteOrders(Utf8JsonWriter writer, string name, IReadOnlyList<PaperOrder> orders)
+    /// <summary><c>"{name}": [{code, name, qty, tms, day}]</c>. 직전 기록부(PrevPaper)도 같은 모양으로 쓴다.</summary>
+    internal static void WriteOrders(Utf8JsonWriter writer, string name, IReadOnlyList<PaperOrder> orders)
     {
         writer.WriteStartArray(name);
         foreach (var order in orders)
@@ -216,14 +223,7 @@ public static class PaperReader
         // 사람 줄·내원 줄은 첫 줄만(내원 줄은 겹친 DepMst 줄 때문에 여럿일 수 있다). 없으면 ""
         var who = people.FirstOrDefault();
         var at = visits.FirstOrDefault();
-        var rx = new List<PaperOrder>();
-        var outside = new List<PaperOrder>();
-        foreach (var row in orders)
-        {
-            var order = Order(row, board.RxNames);
-            if (string.Equals(Trimmed(row[5]), OutsideCode, StringComparison.Ordinal)) outside.Add(order);
-            else rx.Add(order);
-        }
+        var (rx, outside) = Orders(orders, board.RxNames);
 
         return new PaperRecord(
             Res(who?[0]),
@@ -233,14 +233,36 @@ public static class PaperReader
             RtfText.ToPlain(HistoryReader.Text(who?[5])),
             Trimmed(at?[1]),
             Trimmed(at?[2]),
-            RtfText.Tidy(string.Join("\n", symptoms.Select(row => HistoryReader.Text(row[1]) ?? ""))),
-            diagnoses.Select(row => new PaperDiagnosis(Trimmed(row[0]), Trimmed(row[1]), Trimmed(row[2]) == MainDx)).ToArray(),
-            rx.ToArray(),
-            outside.ToArray());
+            Symptom(symptoms.Select(row => row[1])),
+            Diagnoses(diagnoses),
+            rx,
+            outside);
     }
 
-    /// <summary>줄을 모두 받아 두고(칸이 모자란 줄이 하나라도 있으면 읽기 실패) 비트가 준 차례 그대로 준다.</summary>
-    private static IReadOnlyList<IReadOnlyList<object?>> Cells(IReadOnlyList<IReadOnlyList<object?>> rows, int cells) =>
+    /// <summary>증상 줄 칸들 → 비트 차례대로 "\n"으로 이어 줄마다 정리한 글(RtfText.Tidy). 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static string Symptom(IEnumerable<object?> lines) =>
+        RtfText.Tidy(string.Join("\n", lines.Select(cell => HistoryReader.Text(cell) ?? "")));
+
+    /// <summary>상병 줄(Code, Name, Pri) → 상병(비트 차례, Pri가 '1'이면 주상병). 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static PaperDiagnosis[] Diagnoses(IEnumerable<IReadOnlyList<object?>> rows) =>
+        rows.Select(row => new PaperDiagnosis(Trimmed(row[0]), Trimmed(row[1]), Trimmed(row[2]) == MainDx)).ToArray();
+
+    /// <summary>처방 줄(Code, Name, Qty, Tms, Day, OutCod) → 처방과 원외처방(OutCod 'XX')으로 나눈다(비트 차례). 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static (PaperOrder[] Rx, PaperOrder[] Out) Orders(IEnumerable<IReadOnlyList<object?>> rows, IReadOnlyDictionary<string, string> names)
+    {
+        var rx = new List<PaperOrder>();
+        var outside = new List<PaperOrder>();
+        foreach (var row in rows)
+        {
+            var order = Order(row, names);
+            if (string.Equals(Trimmed(row[5]), OutsideCode, StringComparison.Ordinal)) outside.Add(order);
+            else rx.Add(order);
+        }
+        return (rx.ToArray(), outside.ToArray());
+    }
+
+    /// <summary>줄을 모두 받아 두고(칸이 모자란 줄이 하나라도 있으면 읽기 실패) 비트가 준 차례 그대로 준다. 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static IReadOnlyList<IReadOnlyList<object?>> Cells(IReadOnlyList<IReadOnlyList<object?>> rows, int cells) =>
         HistoryReader.Cells(rows, cells).ToArray();
 
     /// <summary>주민번호 앞 6자리(LEFT(PbsResNum,6))가 아라비아 숫자 6자리일 때만 "NNNNNN-*******". 그 밖은 "".</summary>
@@ -294,6 +316,6 @@ public static class PaperReader
         return value.ToString(NumberFormat, CultureInfo.InvariantCulture);
     }
 
-    /// <summary>글 칸: 앞뒤 공백을 빼고, NULL이면 "".</summary>
-    private static string Trimmed(object? cell) => HistoryReader.Text(cell)?.Trim() ?? "";
+    /// <summary>글 칸: 앞뒤 공백을 빼고, NULL이면 "". 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static string Trimmed(object? cell) => HistoryReader.Text(cell)?.Trim() ?? "";
 }

@@ -612,3 +612,89 @@ describe('alert.js 진짜 기기 (의원 PC)', () => {
     expect(beeps(ios.made[0])).toHaveLength(2)
   })
 })
+
+// ---- 처방 나옴 알림 (reception-arrange REQ-3310, design.md 10절 alert.js checkRx) ----------------------------------
+
+describe('alert.js 처방 나옴 찾기 (checkRx)', () => {
+  interface RxAlert extends Alert {
+    checkRx?: (board: FakeBoard, info: DrawInfo, on: boolean, options?: { quiet?: boolean }) => string[]
+  }
+  const K = fx.ARRANGE_KEYS
+  /** checkRx가 아직 없으면(RED) 늘 빈 목록인 대역으로 시험마다 실패를 보인다 */
+  const rxOf = (alert: RxAlert) => (board: FakeBoard, info: DrawInfo, on: boolean, options?: { quiet?: boolean }) =>
+    typeof alert.checkRx === 'function' ? alert.checkRx(board, info, on, options) : ['checkRx 없음']
+  const make = (deps: AlertDeps = { navigator: galaxy() }) => {
+    const alert = alertJs.createAlert(deps) as RxAlert
+    return { alert, checkRx: rxOf(alert) }
+  }
+  /** 판에서 열쇠 k 줄의 칸 col을 바꾼 사본 */
+  const withCell = (board: FakeBoard, k: string, col: fx.FakeCol, cell: Partial<fx.FakeCell> | null): FakeBoard => {
+    const next = structuredClone(board)
+    const row = next.arrange!.rows.find((r) => r.k === k)!
+    row.cells[col] = cell === null ? null : fx.fakeCell(cell)
+    return next
+  }
+
+  it('AC-3310.1: 어레인지가 보이고 앞 읽기가 성공했을 때 처방에서 온 칸이 늘면(칸 없던 줄에 처음 생김 포함) 그 줄들의 열쇠를 주고 한 번만 알린다', () => {
+    const nav = galaxy()
+    const { checkRx } = make({ navigator: nav })
+    const base = fx.arrangeMockupBoard()
+    expect(checkRx(base, FIRST, true)).toEqual([])
+    const more = withCell(withCell(base, K.f, 'xray', {}), K.e, 'sono', { part: '목' })
+    expect(checkRx(more, NEXT, true)).toEqual([K.e, K.f])
+    expect(nav.vibrate).toHaveBeenCalledTimes(1)
+    expect(nav.vibrate).toHaveBeenLastCalledWith([200, 100, 200])
+    // 같은 판을 다시 읽으면 늘지 않았다
+    expect(checkRx(more, NEXT, true)).toEqual([])
+    // 칸이 단계만 바뀌거나(준비 → 완료) 빠지면 알리지 않는다
+    expect(checkRx(withCell(withCell(more, K.f, 'xray', { st: 'done' }), K.b, 'carm', null), NEXT, true)).toEqual([])
+    expect(nav.vibrate).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-3310.1: 직접 넣은 칸(manual)이 늘거나, 앞 읽기에 없던 줄(새 접수·다시 넣기)은 처방 나옴이 아니다', () => {
+    const nav = galaxy()
+    const { checkRx } = make({ navigator: nav })
+    const base = fx.arrangeMockupBoard()
+    checkRx(base, FIRST, true)
+    expect(checkRx(withCell(base, K.h, 'pt', { det: 'HP', manual: true }), NEXT, true)).toEqual([])
+    const fresh = structuredClone(base)
+    fresh.arrange!.rows.push(fx.arrangeRow(K.j, { sono: {} }))
+    expect(checkRx(fresh, NEXT, true)).toEqual([])
+    expect(nav.vibrate).not.toHaveBeenCalled()
+  })
+
+  it('AC-3310.3: 처음·끊김 뒤·다시 보인 뒤 첫 읽기(info.first), 기준이 없을 때(forget 뒤), [접수 현황] 탭이 보일 때(on=false)는 알리지 않고 그 판이 기준이 된다', () => {
+    const nav = galaxy()
+    const { alert, checkRx } = make({ navigator: nav })
+    const base = fx.arrangeMockupBoard()
+    const more = withCell(base, K.f, 'xray', {})
+    expect(checkRx(base, NEXT, true)).toEqual([])
+    expect(checkRx(more, FIRST, true)).toEqual([])
+    // 접수 현황 탭: 늘어도 알리지 않고 기준만 바뀐다
+    const most = withCell(more, K.h, 'carm', {})
+    expect(checkRx(most, NEXT, false)).toEqual([])
+    expect(checkRx(most, NEXT, true)).toEqual([])
+    alert.forget()
+    expect(checkRx(withCell(most, K.g, 'xray', {}), NEXT, true)).toEqual([])
+    expect(nav.vibrate).not.toHaveBeenCalled()
+    // 어레인지 자료가 없는 판(옛 도우미)도 던지지 않는다
+    expect(checkRx(fx.mockupBoard(), NEXT, true)).toEqual([])
+  })
+
+  it('AC-3310.1: quiet이면 열쇠는 주되 울리지 않는다(같은 읽기에 새 접수 알림이 이미 울렸을 때 한 번만 알린다). 아이폰 모양은 새 접수와 같은 삐다', () => {
+    const nav = galaxy()
+    const { checkRx } = make({ navigator: nav })
+    const base = fx.arrangeMockupBoard()
+    checkRx(base, FIRST, true)
+    expect(checkRx(withCell(base, K.f, 'xray', {}), NEXT, true, { quiet: true })).toEqual([K.f])
+    expect(nav.vibrate).not.toHaveBeenCalled()
+
+    const ios = iphone()
+    const phone = make({ navigator: ios.navigator, AudioContext: ios.AudioContext })
+    stops.push(phone.alert.listen(document))
+    ios.tap()
+    phone.checkRx(base, FIRST, true)
+    expect(phone.checkRx(withCell(base, K.f, 'xray', {}), NEXT, true)).toEqual([K.f])
+    expect(beeps(ios.made[0])).toHaveLength(2)
+  })
+})

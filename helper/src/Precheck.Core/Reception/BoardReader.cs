@@ -8,7 +8,7 @@ namespace Precheck.Core.Reception;
 
 /// <summary>
 /// 오늘 접수 현황을 비트에서 한 번 읽는다(design.md 3절, REQ-1403). 등록 확인을 마친 세션(HospitalGate)에서 부른다.
-/// 이름표(그날 처음이면) → 오늘 접수 → 오늘 처방 → 지난 내원 → 지난 증상(증상 칸이 있을 때) 차례로 ReceptionSql 문장만 ReadOnlyGuard를 지나 돌리고 날 줄(BoardInput)로 바꾼다.
+/// 이름표(그날 처음이면) → 오늘 접수 → 오늘 처방 → 오늘 처방 시각(어레인지) → 지난 내원 → 지난 증상(증상 칸이 있을 때) 차례로 ReceptionSql 문장만 ReadOnlyGuard를 지나 돌리고 날 줄(BoardInput)로 바꾼다.
 /// 읽기 한 번의 시간 제한은 8초다(AC-1403.4): 문장마다 남은 시간을 시간 제한으로 주고, 다 쓰면 다음 문장을 돌리지 않고 E-BIT-READ-FAILED.
 /// 하나라도 실패하면 예외가 올라가 일부만 주는 일이 없다(AC-1403.5). 그 뒤 확인 결과로 채운 칸(이름·생년월일·성별, 접수 메모, 수납 시각)을 읽는다(TASK-29).
 /// </summary>
@@ -49,6 +49,8 @@ public static class BoardReader
         var table = names ?? Names(Query(db, ReceptionSql.RxNames, NoArgs, clock, deadline));
         var visits = Visits(Query(db, ReceptionSql.TodayVisits, today, clock, deadline));
         var todayRx = CodesBy(Query(db, ReceptionSql.TodayRx, today, clock, deadline));
+        // 어레인지 칸의 처방 시각(spec reception-arrange AC-3303.3). 부위 칸(ArrangeMap.PartColumn)을 모르는 동안은 부위 문장이 없다(AC-3303.2)
+        var orders = OrdersBy(Query(db, ReceptionSql.TodayOrderTimes, today, clock, deadline));
         var prior = Prior(Query(db, ReceptionSql.PriorVisits, today, clock, deadline));
         var priorSymptoms = columns?.Symptom != null ? Symptoms(Query(db, ReceptionSql.PriorSymptoms, today, clock, deadline)) : NoSymptoms;
         var people = columns?.Name != null || columns?.BirthDate != null || columns?.Sex != null
@@ -79,7 +81,8 @@ public static class BoardReader
                 birthDate: columns?.BirthDate != null ? Id(person?[2]) : null,
                 sex: columns?.Sex != null ? Id(person?[3]) : null,
                 memo: memos.TryGetValue(visit.Id, out var memo) ? Id(memo[1]) : null,
-                paidAt: paid.TryGetValue(visit.Id, out var paidRow) ? Id(paidRow[1]) : null);
+                paidAt: paid.TryGetValue(visit.Id, out var paidRow) ? Id(paidRow[1]) : null,
+                orders: orders.TryGetValue(visit.Id, out var visitOrders) ? visitOrders : null);
         }).ToArray();
 
         return new BoardInput(Key(day), now, rows, table);
@@ -166,6 +169,41 @@ public static class BoardReader
             list.Add(Text(row[1]));
         }
         return codes;
+    }
+
+    /// <summary>
+    /// 처방 시각 줄(VisitId, RxCode, FirstAt 원값) → 내원번호 → 처방(코드·"HH:MM"·부위 null), 시각·코드 순. 빈 내원번호·빈 코드 줄은 버리고
+    /// 같은 내원·코드는 처음 줄만. 시각은 OdrDtm 앞 12글자(yyyyMMddHHmm)의 시:분이고 모양이 틀리면 null이다.
+    /// </summary>
+    private static Dictionary<string, IReadOnlyList<OrderItem>> OrdersBy(IReadOnlyList<IReadOnlyList<object?>> rows)
+    {
+        var byVisit = new Dictionary<string, List<OrderItem>>(StringComparer.Ordinal);
+        foreach (var row in Cells(rows, 3))
+        {
+            var id = Id(row[0]);
+            var code = Id(row[1])?.ToUpperInvariant();
+            if (id == null || code == null) continue;
+            if (!byVisit.TryGetValue(id, out var list)) byVisit.Add(id, list = new List<OrderItem>());
+            if (list.Any(order => order.Code == code)) continue;
+            list.Add(new OrderItem(code, HourMinute(Text(row[2])), null));
+        }
+        return byVisit.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<OrderItem>)pair.Value.OrderBy(o => o.At ?? "99:99", StringComparer.Ordinal).ThenBy(o => o.Code, StringComparer.Ordinal).ToArray(),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>yyyyMMddHHmm…(앞 12글자가 숫자) → "HH:MM". 시·분이 범위 밖이거나 모양이 틀리면 null.</summary>
+    private static string? HourMinute(string? stamp)
+    {
+        if (stamp == null || stamp.Length < 12) return null;
+        for (var i = 0; i < 12; i++)
+        {
+            if (stamp[i] < '0' || stamp[i] > '9') return null;
+        }
+        var hour = (stamp[8] - '0') * 10 + (stamp[9] - '0');
+        var minute = (stamp[10] - '0') * 10 + (stamp[11] - '0');
+        return hour <= 23 && minute <= 59 ? stamp.Substring(8, 2) + ":" + stamp.Substring(10, 2) : null;
     }
 
     /// <summary>지난 내원 줄(TodayVisitId, EarlierCount, LastVisitId, LastDay) → 오늘 내원번호 → 앞선 내원 수·가장 최근 것.</summary>

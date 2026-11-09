@@ -19,6 +19,10 @@
 //   updatePaper(host, k, paper) → true|false                         종이 다시 읽기(AC-1404.8)의 답. 그린 상세가 k 환자면 종이 카드의 paper 몫을
 //                                                                    새 paper로 바꾸고 특이사항을 펼쳐 둔 상태는 지킨다(AC-1502.4)
 //   fitSpecial(host)                                                 그린 특이사항 높이를 재어 [전부 보기]를 보이거나 숨긴다
+//   paperCard(row, paper, options) → article.paper                   오늘 종이 카드 하나(상세와 같은 모양). 어레인지 기록부 화면(charts.js)이 쓴다.
+//                                                                    options.open이면 특이사항을 펼친 채 그린다
+//   recordOf(paper, { kind, day, lane }) → 요소 배열                   종이 카드의 <내원내역> 칸과 진료 칸(<증상>~<원외처방>).
+//                                                                    직전 진료기록부(charts.js, 사람 칸·특이사항 없음)가 같은 모양으로 쓴다
 //     row                  지금 목록 줄(board.lists 안의 그 열쇠 줄)
 //     history              getHistory(k, 0) 답 { visits, next, more, first, total, todaySym, paper }
 //     options.today        오늘(Date). 없으면 지금 기기 날짜
@@ -213,8 +217,30 @@ function historyOf(row, history, options, level) {
 // 카드 요소의 data-lane·data-kind·data-day는 줄 몫(칸·신환/재진)과 날짜다(환자를 알아볼 글이 아니다). updatePaper가 paper 몫을
 // 다시 그릴 때 이것으로 칸 규칙·보험 뒤 신환/재진·날짜를 정한다. 차트번호·수진자명 칸은 updateDetail만 바꾼다
 
+/**
+ * 오늘 종이 카드 하나(상세 화면·태블릿 오른쪽 칸과 같은 모양, AC-1502.1). 어레인지 기록부 화면의 "오늘 진료기록부"가 쓴다(AC-3309.1)
+ * @param {object} row 목록 줄 @param {object} paper 상세 답의 paper
+ * @param {{ today?: Date, open?: boolean }} [options] open이면 특이사항을 펼친 채
+ * @returns {HTMLElement} article.paper
+ */
+export function paperCard(row, paper, options = {}) {
+  return paperOf(row, paper, dayOf(options), options.open === true)
+}
+
+/**
+ * 종이 카드의 <내원내역> 칸과 진료 칸(<증상>·<상병>·<처방>·<원외처방>). 사람 칸·특이사항은 없다.
+ * 직전 진료기록부(charts.js)가 오늘 카드와 같은 모양으로 쓴다(AC-3309.1)
+ * @param {{ room: string, ins: string, sym: string, dx: object[], rx: object[], out: object[] }} paper
+ * @param {{ kind?: string, day: string, lane?: string }} options kind 신환|재진(보험 뒤 괄호, 모르면 ''), day 'YYYYMMDD',
+ *   lane 진료 전 칸이면 빈 진료 칸을 한 줄로(AC-1502.3). 모르면 ''
+ * @returns {HTMLElement[]}
+ */
+export function recordOf(paper, { kind = '', day, lane = '' }) {
+  return [sectionOf(VISIT_HEAD, visitLineOf(paper, kind, day)), bodyOf(lane, paper, day)]
+}
+
 /** 종이 카드: 머리글·사람 칸·줄·특이사항 상자·<내원내역>·진료 칸(증상~원외처방 자리) */
-function paperOf(row, paper, day) {
+function paperOf(row, paper, day, open = false) {
   const facts = factsOf(row)
   return el('article', { class: 'paper', 'data-lane': row.lane, 'data-kind': facts.kind, 'data-day': day.compact }, [
     el('div', { class: 'paper-head' }, [el('span', { class: 'paper-title' }, PAPER_TITLE), el('span', { class: 'paper-date' }, day.dashed)]),
@@ -224,9 +250,8 @@ function paperOf(row, paper, day) {
       PERSON.flatMap(([label, key]) => [el('dt', null, label), valueOf(key, key === 'chart' ? row.chart : key === 'who' ? facts.who : paper[key])]),
     ),
     el('hr', { class: 'rule' }),
-    specialOf(paper.special, false),
-    sectionOf(VISIT_HEAD, visitLineOf(paper, facts.kind, day.compact)),
-    bodyOf(row.lane, paper, day.compact),
+    specialOf(paper.special, open),
+    ...recordOf(paper, { kind: facts.kind, day: day.compact, lane: row.lane }),
   ])
 }
 

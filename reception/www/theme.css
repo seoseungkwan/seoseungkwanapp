@@ -3,7 +3,8 @@
  * 값은 승인된 의원 상표 시안 v12(docs/mockups/reception-phone/ Main·Detail·Offline·Tablet) 그대로다.
  * 다른 화면 파일(style.css·link.css·*.js·index.html)은 색·글꼴 글자를 쓰지 않고 여기 토큰을 var()로만 부른다.
  * 로고 노랑(--accent)은 채움으로만 쓴다(머리 밑줄·고른 칸·종이 카드 테두리·주상병 표시·순서 번호 글자·메모 상자 왼쪽 줄). 상태 색은 노랑이 아니다.
- * 상표 시안 밖의 색은 승인 목업 Paper.html(reception-paper, 2026-11-07)의 것만 쓴다(신환 표시 파랑).
+ * 상표 시안 밖의 색은 승인 목업 Paper.html(reception-paper, 2026-11-07)의 것(신환 표시 파랑)과
+ * 어레인지 승인 시안 Arrange.html(reception-arrange, 2026-11-09)의 칸 색 여섯(SONO·C-ARM·PT 먼저)만 쓴다.
  */
 
 /* 제목 글꼴: Black Han Sans(SIL OFL 1.1, fonts/OFL.txt)에서 KS X 1001 완성형 한글 2,350자 + 영문·숫자만 남긴 것.
@@ -76,6 +77,15 @@
   --paper: var(--surface);
   --paper-ink: var(--ink);
   --paper-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+  /* 어레인지 표 (reception-arrange, 승인 시안 Arrange.html 2026-11-09, AC-3308.12). 종이 어레인지 표의 SONO 노랑·C-ARM 민트 칸 색
+     (머리 · 칸)과 [PT 먼저] 올라감 보라(자리비움 주황·신환 파랑과 다른 색) 여섯만 더한다 */
+  --sono-head: #F3DC8A;
+  --sono-col: #FBF4D6;
+  --carm-head: #9FDCC6;
+  --carm-col: #E2F5EE;
+  --ptup-bg: #F1EAFB;
+  --ptup-fg: #6B21A8;
 
   /* 글꼴: 본문은 기기 글꼴(바깥 주소 없음), 제목만 품은 글꼴 (AC-1407.8). 종이 카드의 코드(상병·처방)는 기기 고정폭 글꼴 */
   --font-body: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;

@@ -882,6 +882,52 @@ describe('detail.js 상세 그리기 (태블릿 오른쪽 칸)', () => {
   })
 })
 
+describe('detail.js 종이 카드 나눠 쓰기 (reception-arrange 기록부 화면)', () => {
+  interface Shared {
+    paperCard?: (row: FakeRow, paper: FakePaper, options?: { today?: Date; open?: boolean }) => HTMLElement
+    recordOf?: (paper: Omit<FakePaper, 'res' | 'addr' | 'tel' | 'cel' | 'special'>, options: { kind?: string; day: string; lane?: string }) => Node[]
+  }
+  let shared: Shared
+  beforeAll(async () => {
+    shared = (await import(/* @vite-ignore */ DETAIL_JS)) as Shared
+  })
+
+  it('AC-3309.1: paperCard(줄, paper, { today })는 상세의 오늘 종이 카드와 한 글자도 같다(모양 그대로)', () => {
+    expect(typeof shared.paperCard).toBe('function')
+    for (const [row, paper] of [
+      [mockupRow(), treatedPaper()],
+      [mockupRow({ lane: 'wait', laneLabel: '진료대기' }), blankPaper()],
+      [mockupRow({ info: '37세 · 남 · 신환' }), treatedPaper({ special: '' })],
+    ] as const) {
+      const pane = view.detailPane(row, mockupHistory({ paper }), { today: TODAY })
+      const card = pane.find((n): n is HTMLElement => n instanceof HTMLElement && n.matches('article.paper'))
+      expect(shared.paperCard!(row, paper, { today: TODAY }).outerHTML).toBe(card?.outerHTML)
+    }
+  })
+
+  it('AC-3309.1: paperCard(…, { open: true })는 특이사항을 펼친 채(접힘 없음·[접기 ▴]) 그린다', () => {
+    const card = shared.paperCard!(mockupRow(), treatedPaper({ special: specialLines(8) }), { today: TODAY, open: true })
+    expect(card.querySelector('.spc-text')?.classList.contains('clamp')).toBe(false)
+    expect(card.querySelector('.spc-more')?.getAttribute('aria-expanded')).toBe('true')
+    expect(card.querySelector('.spc-more')?.textContent).toBe(FOLD)
+  })
+
+  it('AC-3309.1: recordOf(paper, { day })는 종이 카드의 <내원내역>과 진료 칸(<증상>·<상병>·<처방>·<원외처방>)이고 사람 칸·특이사항은 없다', () => {
+    expect(typeof shared.recordOf).toBe('function')
+    const paper = treatedPaper({ ins: '국민건강보험' })
+    const nodes = shared.recordOf!(paper, { day: '20261026' })
+    const wrap = document.createElement('div')
+    wrap.append(...nodes)
+    expect(shapeOf(wrap)).toEqual(['div.sec', 'div.paper-body'])
+    expect(textsOf(wrap, ':scope > .sec > .visit-line > span')).toEqual(['내원 : 20261026', paper.room, '국민건강보험'])
+    expect(textsOf(wrap, '.paper-body > .sec > .sec-h')).toEqual(['증상', '상병', '처방', '원외처방'])
+    expect(wrap.querySelector('dl.kv, .spc')).toBeNull()
+    // 오늘 카드의 같은 부분과 같은 모양이다
+    const card = shared.paperCard!(mockupRow({ info: '' }), paper, { today: new Date(2026, 9, 26) })
+    expect(wrap.querySelector('.paper-body')?.outerHTML).toBe(card.querySelector(':scope > .paper-body')?.outerHTML)
+  })
+})
+
 describe('REQ-1503 메모 크게 · 신환 눈에 띄게 (detail.js 머리, 승인 목업 Paper.html)', () => {
   /** 그리는 곳 셋: 폰 상세, 태블릿 오른쪽 칸(detailPane), 목록 오른쪽 칸에 넣은 것(fillPane). 이름 제목 단계(h1|h2)와 함께 */
   function headsOf(row: FakeRow): [string, Element | null, string][] {

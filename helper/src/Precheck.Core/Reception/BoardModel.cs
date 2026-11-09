@@ -179,7 +179,13 @@ public sealed class Board
     /// every는 화면이 저절로 다시 읽는 간격(초, ReceptionTiming.PollSeconds, AC-1403.9).
     /// 줄 칸 차례: k, lane, pos, laneLabel, chart, name, info, time, waited, long, memo, rxLabel, rx, xray.
     /// </summary>
-    public string ToJson()
+    public string ToJson() => ToJson(null);
+
+    /// <summary>
+    /// ToJson()에 어레인지 자료를 끝에 더한 것(spec reception-arrange AC-3305.1): <c>"arrange": { "rows": [...], "ended": [...] }</c>.
+    /// arrange가 null이면 ToJson()과 한 글자도 같다.
+    /// </summary>
+    public string ToJson(Arrange? arrange)
     {
         var lists = new (string Name, IReadOnlyList<BoardRow> Rows)[]
         {
@@ -203,9 +209,85 @@ public sealed class Board
                 writer.WriteEndArray();
             }
             writer.WriteEndObject();
+            if (arrange != null) WriteArrange(writer, arrange);
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>
+    /// arrange 칸(design.md 7절): 줄 { k, away, ptf{st,at}|null, last, cells{xray…trac: {st,det,part,at,ord,manual}|null}, allDone },
+    /// 종료 줄 { k, endedAt }.
+    /// </summary>
+    private static void WriteArrange(Utf8JsonWriter writer, Arrange arrange)
+    {
+        writer.WriteStartObject("arrange");
+        writer.WriteStartArray("rows");
+        foreach (var row in arrange.Rows)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("k", row.Key);
+            WriteTextOrNull(writer, "away", row.Away);
+            if (row.Ptf == null)
+            {
+                writer.WriteNull("ptf");
+            }
+            else
+            {
+                writer.WriteStartObject("ptf");
+                writer.WriteString("st", row.Ptf.St);
+                writer.WriteString("at", row.Ptf.At);
+                writer.WriteEndObject();
+            }
+            writer.WriteString("last", row.Last);
+            writer.WriteStartObject("cells");
+            foreach (ArrangeCol col in Enum.GetValues(typeof(ArrangeCol)))
+            {
+                if (!row.Cells.TryGetValue(col, out var cell))
+                {
+                    writer.WriteNull(ArrangeMap.KeyOf(col));
+                    continue;
+                }
+                writer.WriteStartObject(ArrangeMap.KeyOf(col));
+                writer.WriteString("st", StepWire(cell.St));
+                writer.WriteString("det", cell.Det);
+                WriteTextOrNull(writer, "part", cell.Part);
+                WriteTextOrNull(writer, "at", cell.At);
+                if (cell.Ord is int ord) writer.WriteNumber("ord", ord);
+                else writer.WriteNull("ord");
+                writer.WriteBoolean("manual", cell.Manual);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndObject();
+            writer.WriteBoolean("allDone", row.AllDone);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        writer.WriteStartArray("ended");
+        foreach (var ended in arrange.Ended)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("k", ended.Key);
+            writer.WriteString("endedAt", ended.EndedAt);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    /// <summary>화면에 가는 단계 글: todo·ready·done(gone 칸은 만들지 않는다).</summary>
+    private static string StepWire(ArrangeStep step) => step switch
+    {
+        ArrangeStep.Todo => "todo",
+        ArrangeStep.Ready => "ready",
+        ArrangeStep.Done => "done",
+        _ => throw new ArgumentOutOfRangeException(nameof(step)),
+    };
+
+    private static void WriteTextOrNull(Utf8JsonWriter writer, string name, string? text)
+    {
+        if (text == null) writer.WriteNull(name);
+        else writer.WriteString(name, text);
     }
 
     private static void WriteRow(Utf8JsonWriter writer, BoardRow row)

@@ -14,6 +14,9 @@ interface View {
   onSelect?: (k: string) => void
   onRefresh?: () => void
   xray?: (row: FakeRow) => Node | null
+  /** 고른 탭 'board'|'arrange' (reception-arrange AC-3308.1) */
+  tab?: string
+  onTab?: (tab: string) => void
 }
 
 interface BoardJs {
@@ -130,7 +133,8 @@ describe('board.js 목록 그리기', () => {
     expect(shapeOf(page)).toEqual(['header.top', 'div.picker', 'main.list', 'footer.foot'])
 
     const top = page.querySelector('header.top')
-    expect(shapeOf(top)).toEqual(['div.top-row', 'div.title-block'])
+    // 상표 줄 아래 탭 단추 [접수 현황]·[어레인지 N명] (reception-arrange AC-3308.1)
+    expect(shapeOf(top)).toEqual(['div.top-row', 'nav.tabs', 'div.title-block'])
     expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['img.logo', 'div.top-status'])
     const logo = top?.querySelector('.top-row > img.logo')
     expect(logo?.getAttribute('src')).toBe('/logo-wordmark.png')
@@ -520,6 +524,38 @@ describe('board.js 목록 그리기', () => {
     expect(labelOf(refreshOf(app))).toBe('새로 고침')
     refreshOf(app)?.click()
     expect(onRefresh).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-3308.1: 상표 줄 아래 탭 단추 둘 [접수 현황]·[어레인지 N명](진짜 button, N = arrange.rows 수, 고른 것 aria-pressed)이 있고 처음(view.tab 없음)은 [접수 현황]이다. 누르면 onTab(탭)을 부른다', () => {
+    const app = appHost()
+    const onTab = vi.fn()
+    const page = view.renderBoard(app, fx.arrangeMockupBoard(), { onTab })
+    const nav = page.querySelector(':scope > header.top > nav.tabs')
+    expect(nav?.previousElementSibling?.className).toBe('top-row')
+    const tabs = [...(nav?.querySelectorAll<HTMLButtonElement>(':scope > button.tab') ?? [])]
+    expect(tabs.map((t) => [t.tagName, t.getAttribute('type'), t.textContent])).toEqual([
+      ['BUTTON', 'button', '접수 현황'],
+      ['BUTTON', 'button', '어레인지8명'],
+    ])
+    expect(shapeOf(tabs[1])).toEqual(['span.tab-n'])
+    expect(textOf(tabs[1]!, '.tab-n')).toBe('8명')
+    expect(tabs.map((t) => t.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
+    tabs[1]!.click()
+    expect(onTab).toHaveBeenLastCalledWith('arrange')
+    tabs[0]!.click()
+    expect(onTab).toHaveBeenLastCalledWith('board')
+    expect(onTab).toHaveBeenCalledTimes(2)
+    // 다시 그리면 건수가 바뀌고, view.tab이 arrange면 [어레인지]가 골라져 있다
+    const fewer = fx.arrangeMockupBoard()
+    fewer.arrange!.rows = fewer.arrange!.rows.slice(0, 3)
+    view.renderBoard(app, fewer, { tab: 'arrange' })
+    expect(textsOf(app, 'nav.tabs > button.tab')).toEqual(['접수 현황', '어레인지3명'])
+    expect([...app.querySelectorAll('nav.tabs > button.tab')].map((t) => t.getAttribute('aria-pressed'))).toEqual(['false', 'true'])
+    // 어레인지 자료가 없는 판(옛 도우미)은 0명
+    view.renderBoard(app, fx.mockupBoard())
+    expect(textOf(app, 'nav.tabs .tab-n')).toBe('0명')
+    // 탭은 문서 제목을 건드리지 않는다(AC-1407.5)
+    expect(document.title).toBe('')
   })
 
   it('AC-1407.10: "HH:MM:SS 기준"은 받은 답의 at으로 그리고 휴대폰 시계를 쓰지 않는다(같은 at이면 그대로)', () => {

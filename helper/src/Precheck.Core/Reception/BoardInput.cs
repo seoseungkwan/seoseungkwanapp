@@ -35,6 +35,27 @@ public sealed class RxItem
 }
 
 /// <summary>
+/// 오늘 처방 하나의 시각(spec reception-arrange design.md 5절, AC-3303.3): 코드(대문자), 가장 이른 처방 시각 "HH:MM"(모양이 틀린 원값이면 null),
+/// SONO·C-ARM 부위(지도의 PartColumn을 모르면 null). 어레인지 칸 나누기는 ArrangeBuilder가 한다.
+/// </summary>
+public sealed class OrderItem
+{
+    public OrderItem(string code, string? at, string? part)
+    {
+        if (string.IsNullOrEmpty(code)) throw new ArgumentException("처방 코드가 비었다", nameof(code));
+        Code = code;
+        At = at;
+        Part = part;
+    }
+
+    public string Code { get; }
+
+    public string? At { get; }
+
+    public string? Part { get; }
+}
+
+/// <summary>
 /// 오늘 외래 접수 한 줄(비트 날 줄, design.md 3절). 상태로 거르지 않은 그대로이고, 칸 나누기·글 만들기는 BoardBuilder(TASK-11)가 한다.
 /// 이름·생년월일(yyyyMMdd)·성별(F/M)·접수 메모·수납 시각(yyyyMMddHHmm)은 의원 PC 확인 결과로 채운 칸(REQ-1410, TASK-29)에서 BoardReader가 읽는다.
 /// 찾지 못한 칸·줄이 없는 내원·빈 글은 지어내지 않고 null로 둔다(AC-1402.7).
@@ -42,6 +63,8 @@ public sealed class RxItem
 public sealed class VisitRow
 {
     private static readonly IReadOnlyList<RxItem> NoRx = new RxItem[0];
+
+    private static readonly IReadOnlyList<OrderItem> NoOrders = new OrderItem[0];
 
     public VisitRow(
         string visitId,
@@ -58,7 +81,8 @@ public sealed class VisitRow
         string? birthDate = null,
         string? sex = null,
         string? memo = null,
-        string? paidAt = null)
+        string? paidAt = null,
+        IReadOnlyList<OrderItem>? orders = null)
     {
         if (string.IsNullOrEmpty(visitId)) throw new ArgumentException("내원번호가 비었다", nameof(visitId));
         if (earlierCount < 0) throw new ArgumentOutOfRangeException(nameof(earlierCount));
@@ -77,6 +101,7 @@ public sealed class VisitRow
         Sex = sex;
         Memo = memo;
         PaidAt = paidAt;
+        Orders = orders ?? NoOrders;
     }
 
     /// <summary>내원번호(OcmNum). 휴대폰에는 가지 않고 VisitKeys 열쇠로 바뀐다(AC-1402.9).</summary>
@@ -120,6 +145,9 @@ public sealed class VisitRow
 
     /// <summary>수납 시각 원값. 모르면 null(끝남 줄은 "끝남"만).</summary>
     public string? PaidAt { get; }
+
+    /// <summary>오늘 처방마다 가장 이른 처방 시각(시각·코드 순, AC-3303.3). 없으면 빈 목록.</summary>
+    public IReadOnlyList<OrderItem> Orders { get; }
 }
 
 /// <summary>

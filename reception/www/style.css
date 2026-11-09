@@ -35,6 +35,24 @@
  *            header.top.is-offline > h1.off-title + span.conn.is-off
  *            main.off > img.off-logo + h2.off-heading + p.off-lead + p.off-sub + .off-status
  *            footer.foot
+ *   머리 탭 (목록·어레인지 머리, reception-arrange AC-3308.1)
+ *            header.top > .top-row + nav.tabs > button.tab[aria-pressed] (> span.tab-n) (+ 목록은 .title-block)
+ *   어레인지  .page.arrange (reception-arrange, 승인 시안 Arrange.html)
+ *            header.top > .top-row + nav.tabs
+ *            .sub-line > span.asof + span.legend > span.lg.todo|ready|done|manual|away|ptup
+ *            p.howto · .wrap > table.arr > thead th.c-…(> span.sm) + tbody tr(.away)(.flash)[data-k]
+ *              td.c-t > button.t-btn > span.t-time + span.away-tag
+ *              td.c-nm > button.nm-btn > span.l1 > span.chart + span.status… + span.rx-new
+ *                                      > span.l2 > span.arr-name + span.meta + span.new-badge + span.open
+ *                      + button.ptf-btn.none|up|down
+ *              td.c-xray|sono|carm|pt|ds|eswt|trac > .cell.empty|todo|ready|done(.manual)
+ *                 > span.plus | span.ord + span.mn + span.st + (span.det(.sm) | button.part-btn)
+ *              td.c-memo > .arr-memo + .lastsym > span.lastsym-label + 글
+ *              td.c-end > button.end-btn(.is-go)
+ *            p.empty-note · section.ended > button.ended-h + (ul.ended-list > li > span.e-t + span.e-n + span.e-c + button.restore | p.empty-note)
+ *            footer.foot
+ *            .sheet-back > .sheet[role=dialog] > .sheet-h > span.sheet-title + span.sheet-sub ; .opts(.many) > button.opt ; button.sheet-x
+ *            .toast[role=status] > span.toast-text + button.toast-undo
  */
 
 /* ---- 바탕 ---------------------------------------------------------------------------------------- */
@@ -88,8 +106,9 @@ button:disabled {
   flex-direction: column;
 }
 
-/* 제목 글꼴은 머리 제목과 환자 이름 제목에만 (AC-1407.8). 없는 글자는 본문 글꼴로 떨어진다 */
-.top-title, .off-title, .off-heading, .detail-name {
+/* 제목 글꼴은 머리 제목과 환자 이름 제목에만 (AC-1407.8). 없는 글자는 본문 글꼴로 떨어진다.
+   어레인지 시안(Arrange.html)의 머리 탭 단추와 표의 환자 이름도 제목 글꼴이다(reception-arrange) */
+.top-title, .off-title, .off-heading, .detail-name, .tab, .arr-name {
   margin: 0;
   font-family: var(--font-title), var(--font-body);
   font-weight: var(--title-weight);
@@ -1046,6 +1065,851 @@ button.row-main {
   left: 20px;
 }
 
+/* ---- 머리 탭 [접수 현황]·[어레인지 N명] (reception-arrange AC-3308.1, 시안 Arrange.html .views·.view-btn) ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+/* 제목 글꼴은 맨 위 제목 규칙이 준다. 고른 탭은 숯색 글에 숯색 밑줄(머리 노랑 밑줄 위에 겹친다) */
+.tab {
+  min-height: 48px;
+  padding: 8px 10px 10px;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  margin-bottom: -4px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 19px;
+}
+
+.tab[aria-pressed="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.tab-n {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--ink);
+  color: var(--accent);
+  border-radius: var(--radius-s);
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: 3px;
+}
+
+/* 목록 머리(폰)는 밑줄 없이 칸 띠가 이어 붙는다: 탭 밑줄을 머리 안에 둔다 */
+.board .tab {
+  margin-bottom: 0;
+}
+
+/* ---- 어레인지 표 (reception-arrange REQ-3308, 승인 시안 Arrange.html) --------------------------------------------- */
+
+.arrange > .top {
+  padding: 10px 16px 0;
+  gap: 8px;
+}
+
+.sub-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 16px 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.legend {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lg {
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-s);
+  padding: 2px 7px;
+  border: 2px solid transparent;
+}
+
+.lg.todo {
+  background: var(--surface);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.lg.ready {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--accent);
+}
+
+.lg.done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.lg.manual {
+  background: var(--surface);
+  border: 2px dashed var(--ink-3);
+  color: var(--ink-2);
+}
+
+.lg.away {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.lg.ptup {
+  background: var(--ptup-bg);
+  color: var(--ptup-fg);
+}
+
+.howto {
+  margin: 0 16px 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+/* 표는 옆으로 밀린다(폰). 접수·성함 칸은 왼쪽에 붙어 있다(AC-3308.10) */
+.wrap {
+  overflow-x: auto;
+  margin: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.arr {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  min-width: 1040px;
+  table-layout: fixed;
+}
+
+.arr th {
+  background: var(--ground);
+  font-size: 15px;
+  font-weight: 800;
+  padding: 8px 4px;
+  border-bottom: 2px solid var(--ink);
+  border-right: 1px solid var(--line);
+  text-align: center;
+  vertical-align: bottom;
+  line-height: 1.2;
+}
+
+.arr th .sm {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.arr th.c-sono {
+  background: var(--sono-head);
+}
+
+.arr th.c-carm {
+  background: var(--carm-head);
+}
+
+.arr td {
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  padding: 4px;
+  vertical-align: middle;
+  background: var(--surface);
+}
+
+.arr td.c-sono {
+  background: var(--sono-col);
+}
+
+.arr td.c-carm {
+  background: var(--carm-col);
+}
+
+.arr td.c-memo {
+  padding: 6px 8px;
+}
+
+.arr th:last-child, .arr td:last-child {
+  border-right: 0;
+}
+
+.arr tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.arr .c-t, .arr .c-nm {
+  position: sticky;
+  z-index: 2;
+}
+
+/* 칸 폭: 폰(시안 is-phone). 태블릿 값은 아래 두 칸 질의 안 */
+.arr .c-t {
+  left: 0;
+  width: 62px;
+}
+
+.arr .c-nm {
+  left: 62px;
+  width: 118px;
+  box-shadow: 2px 0 0 var(--line-2);
+}
+
+.arr .c-xray {
+  width: 74px;
+}
+
+.arr .c-sono, .arr .c-carm {
+  width: 118px;
+}
+
+.arr .c-pt, .arr .c-ds, .arr .c-trac {
+  width: 66px;
+}
+
+.arr .c-eswt {
+  width: 70px;
+}
+
+.arr .c-end {
+  width: 64px;
+}
+
+/* 자리비움: 줄 앞쪽(접수·성함) 주황 · 처방 나옴: 노랑으로 세 번 반짝(AC-3310.2) */
+.arr tr.away td.c-t, .arr tr.away td.c-nm {
+  background: var(--warn-soft);
+}
+
+.arr tr.away td.c-t {
+  box-shadow: inset 4px 0 0 var(--warn);
+}
+
+.arr tr.flash td {
+  animation: arr-flash 1.2s ease-in-out 3;
+}
+
+@keyframes arr-flash {
+  50% {
+    background-color: var(--accent);
+  }
+}
+
+/* 접수 칸 */
+.t-btn {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: center;
+}
+
+.t-btn:hover {
+  background: var(--ground);
+}
+
+.t-time {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.away-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--warn);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+/* 성함 칸: 기록부 여는 단추 + 그 아래 [PT 먼저] */
+.nm-btn {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.nm-btn:hover {
+  background: var(--surface-picked);
+}
+
+.nm-btn .l1 {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.nm-btn .l2 {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.nm-btn .chart {
+  font-size: 12px;
+}
+
+.nm-btn .status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+}
+
+.arr-name {
+  font-size: 18px;
+  line-height: 1.15;
+  text-decoration: underline dotted var(--line-2);
+  text-underline-offset: 4px;
+}
+
+.nm-btn .meta {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.nm-btn .new-badge {
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.nm-btn .open {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink-3);
+  margin-left: auto;
+}
+
+.rx-new {
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--accent);
+  color: var(--ink);
+  border-radius: var(--radius-s);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.ptf-btn {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 2px 6px 4px;
+  min-height: 30px;
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+}
+
+.ptf-btn.none {
+  background: var(--surface);
+  color: var(--ink-3);
+  border: 1px dashed var(--line-2);
+}
+
+.ptf-btn.up {
+  background: var(--ptup-bg);
+  color: var(--ptup-fg);
+  border: 1px solid var(--ptup-fg);
+}
+
+.ptf-btn.down {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border: 1px solid var(--ok-soft);
+}
+
+/* 치료 칸 (AC-3308.4): 준비 숯색 테두리 · 준비완료 숯색 채움 · 완료 초록 옅은 채움 · 직접 넣음 점선 */
+.cell {
+  box-sizing: border-box;
+  position: relative;
+  min-height: 64px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 16px 4px 6px;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  border: 2px solid transparent;
+  line-height: 1.25;
+}
+
+.cell.empty .plus {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--line-2);
+}
+
+.cell.empty:hover {
+  background: var(--ground);
+}
+
+.cell.todo {
+  background: var(--surface);
+  border-color: var(--ink);
+}
+
+.cell.ready {
+  background: var(--ink);
+  color: var(--accent);
+  border-color: var(--ink);
+}
+
+.cell.done {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: var(--ok-soft);
+}
+
+.cell.manual {
+  border-style: dashed;
+}
+
+.cell.ready.manual {
+  border-color: var(--accent);
+}
+
+.cell.done.manual {
+  border-color: var(--ok);
+}
+
+.cell .st {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cell.todo .st {
+  color: var(--ink-3);
+}
+
+.cell .det {
+  font-size: 16px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.cell .det.sm {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cell .ord {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--ink);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.cell.ready .ord {
+  background: var(--accent);
+  color: var(--ink);
+}
+
+.cell .mn {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
+.cell.ready .mn {
+  color: var(--accent);
+}
+
+.cell.done .mn {
+  color: var(--ok);
+}
+
+.part-btn {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--warn);
+  background: var(--surface);
+  border: 1px dashed var(--warn);
+  border-radius: var(--radius-s);
+  padding: 3px 6px;
+  min-height: 30px;
+  margin-top: 2px;
+}
+
+/* 비고 칸: 메모 상자(목록 .memo보다 작게, 시안 .memo) + 지난번 증상 두 줄 */
+.arr-memo {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--surface-picked);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-s);
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+}
+
+.lastsym {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.lastsym-label {
+  font-weight: 700;
+  color: var(--ink-2);
+  margin-right: 4px;
+}
+
+/* [치료 종료]: 모든 칸이 끝나면 노랑 채움 */
+.end-btn {
+  width: 100%;
+  min-height: 56px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.end-btn.is-go {
+  background: var(--accent);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.empty-note {
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 14px;
+  padding: 20px;
+}
+
+/* 오늘 치료 종료 (접기) */
+.ended {
+  margin: 12px;
+}
+
+.ended-h {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 10px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ended-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+.ended-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.ended-list li:last-child {
+  border-bottom: 0;
+}
+
+.e-t {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.e-n {
+  font-weight: 700;
+}
+
+.e-c {
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
+.restore {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* 고르기 창: 어두운 바탕은 숯색 겹(::before)의 비침이다(새 색 없음). 폰은 아래에 붙는다 */
+.sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+
+.sheet-back::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  opacity: 0.35;
+}
+
+.sheet {
+  position: relative;
+  box-sizing: border-box;
+  width: min(460px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.sheet-h {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sheet-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sheet-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.opts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.opts.many {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.opt {
+  min-height: 52px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--ground);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.opt:active {
+  background: var(--surface-picked);
+}
+
+.sheet-x {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* 되돌리기 띠 (5초) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 90;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 8px 8px 16px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: var(--paper-shadow);
+  font-size: 15px;
+}
+
+.toast-text {
+  overflow-wrap: anywhere;
+}
+
+.toast-undo {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ---- 기록부 화면 (reception-arrange REQ-3309, 시안 Arrange.html chartPage): 폰은 위아래, 태블릿은 오늘 | 직전 두 칸 ---------- */
+
+/* 긴 이름·글이 폰 폭을 넘지 않게 */
+.charts-page {
+  overflow-wrap: anywhere;
+}
+
+.top.chart-top {
+  padding: 8px 8px 14px;
+  gap: 8px;
+}
+
+.who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 8px;
+}
+
+.who .meta {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.chart-top .memo {
+  margin: 0 8px;
+}
+
+.charts {
+  flex-grow: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  padding: 16px 12px;
+}
+
+/* 두 칸(태블릿)일 때 한 칸이 넓은 표에 밀려 늘어나지 않게 */
+.chart-today, .chart-prev {
+  min-width: 0;
+}
+
+.charts-h {
+  margin: 0 4px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.h-dt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+/* 직전 종이·첫 방문 카드는 회색 테두리(오늘 종이는 노랑) */
+.paper.past {
+  border-color: var(--line-2);
+}
+
+.paper.none-card {
+  border-color: var(--line-2);
+  color: var(--ink-3);
+}
+
+.chart-note {
+  padding: 16px;
+  font-size: 14px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+.chart-note.is-error {
+  color: var(--warn);
+}
+
 /* ---- 태블릿 두 칸 (승인 태블릿 시안 1194×834) ------------------------------------------------------------- */
 
 @media (min-width: 1000px) and (orientation: landscape) {
@@ -1090,6 +1954,75 @@ button.row-main {
 
   .board .top-status {
     order: 4;
+  }
+
+  /* 머리 탭은 한 줄 머리 아래 둘째 줄. 고른 탭 밑줄이 머리 노랑 밑줄 위에 겹친다(어레인지 머리와 같다) */
+  .board > .top {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-bottom: 0;
+  }
+
+  .board .tabs {
+    order: 5;
+    flex-basis: 100%;
+  }
+
+  .board .tab {
+    margin-bottom: -4px;
+  }
+
+  .tab {
+    font-size: 22px;
+    padding: 8px 14px 10px;
+  }
+
+  /* 어레인지 표 (AC-3308.10): 표 폭 1180px 이상, 칸 폭은 시안 is-tablet 값 */
+  .arr {
+    min-width: 1180px;
+  }
+
+  .arr .c-t {
+    width: 76px;
+  }
+
+  .arr .c-nm {
+    left: 76px;
+    width: 156px;
+    box-shadow: none;
+  }
+
+  .arr .c-xray {
+    width: 84px;
+  }
+
+  .arr .c-sono, .arr .c-carm {
+    width: 136px;
+  }
+
+  .arr .c-pt, .arr .c-ds, .arr .c-trac {
+    width: 76px;
+  }
+
+  .arr .c-eswt {
+    width: 80px;
+  }
+
+  .arr .c-end {
+    width: 72px;
+  }
+
+  .arr-name {
+    font-size: 21px;
+  }
+
+  .sheet-back {
+    align-items: center;
+  }
+
+  /* 기록부 화면 (AC-3309.2): 왼쪽 오늘 | 오른쪽 직전 */
+  .charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* 왼쪽 칸: 진료 순서·칸 넷·칸 제목은 그대로, 줄만 따로 굴러간다 */

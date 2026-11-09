@@ -192,8 +192,8 @@ public static class HistoryBuilder
     private static string DateText(DateTime? day, DateTime today) =>
         day is DateTime known ? (known.Year == today.Year ? ShortDate(known) : FullDate(known)) : "";
 
-    /// <summary>"N일 전", 같은 날이면 "오늘". 모르거나 오늘보다 뒤면 "".</summary>
-    private static string AgoText(DateTime? day, DateTime today)
+    /// <summary>"N일 전", 같은 날이면 "오늘". 모르거나 오늘보다 뒤면 "". 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static string AgoText(DateTime? day, DateTime today)
     {
         if (!(day is DateTime known)) return "";
         var days = (today - known).Days;
@@ -206,8 +206,8 @@ public static class HistoryBuilder
 
     private static string FullDate(DateTime day) => day.Year.ToString(CultureInfo.InvariantCulture) + "년 " + ShortDate(day);
 
-    /// <summary>비트 날 글(yyyyMMdd, 앞뒤 공백 무시) → 날. 모양이 틀리면 null.</summary>
-    private static DateTime? DayOf(string? text)
+    /// <summary>비트 날 글(yyyyMMdd, 앞뒤 공백 무시) → 날. 모양이 틀리면 null. 직전 기록부(PrevPaperReader)도 쓴다.</summary>
+    internal static DateTime? DayOf(string? text)
     {
         if (text == null) return null;
         return DateTime.TryParseExact(text.Trim(), DayFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var day) ? day : (DateTime?)null;

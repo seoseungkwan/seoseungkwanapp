@@ -17,7 +17,12 @@
 //   createPoll({ …, draw: (board, info) => { notice.check(board, info); … }, wipe: () => { notice.forget(); … } })
 //   notice.check(board, info) → boolean     새 접수를 알렸으면 true. info는 poll.js draw의 info({ first })
 //   notice.unlock()                         소리 열기. 누름 안에서 불러야 한다(listen이 부른다)
-//   notice.forget()                         앞 열쇠 모음 버리기(다음 읽기가 기준이 된다)
+//   notice.forget()                         앞 열쇠 모음·앞 처방 칸 수 버리기(다음 읽기가 기준이 된다)
+//   notice.checkRx(board, info, on, { quiet }) → 열쇠 배열   처방 나옴(reception-arrange REQ-3310). 판의 arrange 줄마다 처방에서 온 칸
+//                                           (manual:false) 수를 바로 앞 읽기와 견주어 늘어난 줄의 열쇠를 판 차례로 준다(칸 없던 줄에 처음 생김 포함).
+//                                           앞 읽기에 없던 줄(새 접수·다시 넣기)·직접 넣은 칸은 세지 않는다. on(어레인지 탭이 보임)이 아니거나
+//                                           info.first·기준 없음이면 알리지 않고 그 판이 기준이 된다(AC-3310.3). 늘어난 줄이 있으면 새 접수와
+//                                           같은 떨기·소리로 한 번 알린다. quiet면(같은 읽기에 새 접수 알림이 이미 울림) 열쇠만 주고 울리지 않는다
 
 /** 떨기 무늬(ms): 떨기 · 쉼 · 떨기 (AC-1408.3) */
 export const VIBRATE_PATTERN = Object.freeze([200, 100, 200])
@@ -42,6 +47,19 @@ function keysOf(board) {
   return keys
 }
 
+/** 판의 어레인지 줄마다 처방에서 온 칸(manual:false) 수: 열쇠 → 수 (판 차례) */
+function rxCountsOf(board) {
+  const counts = new Map()
+  const rows = board && typeof board === 'object' ? board.arrange?.rows : null
+  if (!Array.isArray(rows)) return counts
+  for (const row of rows) {
+    if (!row || typeof row.k !== 'string') continue
+    const cells = row.cells && typeof row.cells === 'object' ? Object.values(row.cells) : []
+    counts.set(row.k, cells.filter((cell) => cell && typeof cell === 'object' && cell.manual === false).length)
+  }
+  return counts
+}
+
 /**
  * 새 접수 알림을 만든다.
  * @param {{ navigator?: { vibrate?: Function }, AudioContext?: Function }} [deps] 바꿔 끼우기(기본은 브라우저 것)
@@ -52,6 +70,8 @@ export function createAlert({
 } = {}) {
   /** 앞 읽기의 열쇠 모음. null이면 기준이 없다 */
   let seen = null
+  /** 앞 읽기의 줄마다 처방 칸 수(checkRx). null이면 기준이 없다 */
+  let rxSeen = null
   /** 첫 누름에 만든 오디오. 그 전에는 null(소리 없음) */
   let audio = null
 
@@ -69,6 +89,17 @@ export function createAlert({
       }
     }
     return false
+  }
+
+  function checkRx(board, info, on, { quiet = false } = {}) {
+    const counts = rxCountsOf(board)
+    const before = rxSeen
+    rxSeen = counts
+    if (on !== true || info?.first === true || before === null) return []
+    const keys = []
+    for (const [k, n] of counts) if (before.has(k) && n > before.get(k)) keys.push(k)
+    if (keys.length > 0 && quiet !== true) ring()
+    return keys
   }
 
   function ring() {
@@ -134,7 +165,8 @@ export function createAlert({
 
   function forget() {
     seen = null
+    rxSeen = null
   }
 
-  return { check, unlock, listen, forget }
+  return { check, checkRx, unlock, listen, forget }
 }

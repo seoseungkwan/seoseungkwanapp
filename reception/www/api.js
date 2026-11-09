@@ -6,9 +6,13 @@
 //   Origin 머리는 브라우저가 붙인다(같은 곳 방식). 쿠키는 보내지 않고 되돌림(redirect)은 따라가지 않는다
 //
 // 쓰는 법
-//   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists }
+//   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists, arrange }
+//                                      arrange(reception-arrange design.md 7절)는 있으면 모양을 보고, 없으면(옛 도우미) 그대로 받는다
+//                                      (그리는 쪽 arrange.js·alert.js·board.js가 빈 표로 본다)
 //   getHistory(k, from, { signal })  → GET /api/visit/{k}/history?from=N 답 { visits, next, more, first, total, todaySym, paper(from=0만) }
 //   setXray(k, on, { signal })       → POST /api/xray { k, on } → 204
+//   setArrange(k, op, col, v, { signal }) → POST /api/arrange { k, op, col?, v? } → 204 (reception-arrange design.md 8절. col·v는 없으면 뺀다)
+//   getPrev(k, { signal })           → GET /api/visit/{k}/prev 답의 prev(지난 내원이 없으면 null) (reception-arrange design.md 9절)
 //   실패는 모두 ApiError이고 reason은 'network'·'timeout'·'status'·'shape'·'aborted'·'input'(묻지 않음) 중 하나다
 
 /** 답(몸까지)을 기다리는 가장 긴 시간 (AC-1407.4) */
@@ -36,6 +40,21 @@ const MARK_AT = /^\d\d:\d\d$/
 
 /** PC가 정한 저절로 다시 읽는 간격 every(초)가 들어야 할 범위 (AC-1407.4). 간격 자체는 PC 한 곳(ReceptionTiming)이 정한다 */
 const EVERY_RANGE = { min: 2, max: 60 }
+
+/** 어레인지 칸·칸 단계·쓰기 이름 (reception-arrange design.md 7·8절) */
+const ARRANGE_COLS = ['xray', 'sono', 'carm', 'pt', 'ds', 'eswt', 'trac']
+const ARRANGE_STEPS = ['todo', 'ready', 'done']
+const ARRANGE_OPS = ['step', 'set', 'add', 'remove', 'part', 'away', 'ptf', 'end']
+const PTF_STEPS = ['up', 'down']
+
+/** 쓰기 몸 한도(도우미 HttpRequestReader와 같다) */
+const BODY_MAX = 256
+
+/** 직전 진료기록부 날짜 "yyyy-MM-dd" */
+const DAY = /^\d{4}-\d\d-\d\d$/
+
+/** 직전 진료기록부의 글 칸 (design.md 9절) */
+const PREV_TEXTS = ['date', 'ago', 'room', 'ins', 'sym']
 
 const MESSAGES = {
   network: '접수 현황 PC에 연결하지 못했어요',
@@ -109,6 +128,48 @@ export function setXray(k, on, { signal } = {}) {
 }
 
 /**
+ * 어레인지 표시 하나를 쓴다(reception-arrange design.md 8절). 204면 끝난다. 글(v)이 고르기 목록에 있는지는 도우미가 본다(400).
+ * @param {string} k 화면용 열쇠 @param {string} op step·set·add·remove·part·away·ptf·end
+ * @param {string} [col] 칸(xray·sono·carm·pt·ds·eswt·trac) @param {string} [v] 글
+ */
+export function setArrange(k, op, col, v, { signal } = {}) {
+  if (!isKey(k) || !ARRANGE_OPS.includes(op)) return Promise.reject(new ApiError('input'))
+  if ((col !== undefined && !ARRANGE_COLS.includes(col)) || (v !== undefined && typeof v !== 'string')) return Promise.reject(new ApiError('input'))
+  const ask = { k, op }
+  if (col !== undefined) ask.col = col
+  if (v !== undefined) ask.v = v
+  const body = JSON.stringify(ask)
+  if (new TextEncoder().encode(body).length > BODY_MAX) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch(
+      '/api/arrange',
+      request(inner, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Reception': '1' },
+        body,
+      }),
+    )
+    if (res.status !== 204) throw new ApiError('status')
+  })
+}
+
+/**
+ * 오늘 접수한 환자의 직전 내원 종이 기록부를 읽는다(reception-arrange design.md 9절).
+ * @param {string} k 화면용 열쇠
+ * @returns {Promise<object | null>} prev(지난 내원이 없으면 null)
+ */
+export function getPrev(k, { signal } = {}) {
+  if (!isKey(k)) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch(`/api/visit/${encodeURIComponent(k)}/prev`, request(inner))
+    if (res.status !== 200) throw new ApiError('status')
+    const body = await bodyOf(res)
+    if (!isObject(body) || !(body.prev === null || isPrev(body.prev))) throw new ApiError('shape')
+    return body.prev
+  })
+}
+
+/**
  * run(안쪽 signal)을 5초 안에, 밖 signal이 끊기기 전에 끝낸다. 늦게 온 답·실패는 버린다.
  * 실패는 ApiError로 바꾼다(그 밖의 떨어짐은 연결 안 됨).
  */
@@ -164,7 +225,67 @@ function isBoard(b) {
   if (!isObject(b) || b.state !== 'ok' || typeof b.at !== 'string' || !AT.test(b.at)) return false
   if (!isEvery(b.every)) return false
   if (!isObject(b.counts) || !isObject(b.lists)) return false
+  if (b.arrange !== undefined && !isArrange(b.arrange)) return false
   return LISTS.every((name) => isCount(b.counts[name]) && Array.isArray(b.lists[name]) && b.lists[name].every(isRow))
+}
+
+/** 판의 arrange 모양 (reception-arrange design.md 7절, ArrangeBuilder) */
+function isArrange(a) {
+  return (
+    isObject(a) &&
+    Array.isArray(a.rows) &&
+    a.rows.every(isArrangeRow) &&
+    Array.isArray(a.ended) &&
+    a.ended.every((e) => isObject(e) && isKey(e.k) && isMark(e.endedAt))
+  )
+}
+
+/** 어레인지 줄 { k, away, ptf, last, cells, allDone } */
+function isArrangeRow(r) {
+  return (
+    isObject(r) &&
+    isKey(r.k) &&
+    (r.away === null || isMark(r.away)) &&
+    (r.ptf === null || (isObject(r.ptf) && PTF_STEPS.includes(r.ptf.st) && isMark(r.ptf.at))) &&
+    typeof r.last === 'string' &&
+    isObject(r.cells) &&
+    ARRANGE_COLS.every((col) => r.cells[col] === undefined || r.cells[col] === null || isCell(r.cells[col])) &&
+    typeof r.allDone === 'boolean'
+  )
+}
+
+/** 칸 { st, det, part, at, ord, manual } */
+function isCell(c) {
+  return (
+    isObject(c) &&
+    ARRANGE_STEPS.includes(c.st) &&
+    typeof c.det === 'string' &&
+    (c.part === null || typeof c.part === 'string') &&
+    // 비트 처방 시각이 빈 줄이면 시각을 모른다(null). 그 한 칸 때문에 판 전체를 버리지 않는다
+    (c.at === null || typeof c.at === 'string') &&
+    (c.ord === null || (isCount(c.ord) && c.ord > 0)) &&
+    typeof c.manual === 'boolean'
+  )
+}
+
+/** 직전 종이 { date, ago, room, ins, sym, dx, rx, out } (design.md 9절, 칸 모양은 reception-paper paper와 같다) */
+function isPrev(p) {
+  return (
+    isObject(p) &&
+    PREV_TEXTS.every((name) => typeof p[name] === 'string') &&
+    DAY.test(p.date) &&
+    Array.isArray(p.dx) &&
+    p.dx.every((d) => isObject(d) && typeof d.code === 'string' && typeof d.name === 'string' && typeof d.main === 'boolean') &&
+    Array.isArray(p.rx) &&
+    p.rx.every(isOrder) &&
+    Array.isArray(p.out) &&
+    p.out.every(isOrder)
+  )
+}
+
+/** 표시 시각 "HH:MM" */
+function isMark(at) {
+  return typeof at === 'string' && MARK_AT.test(at)
 }
 
 /** 읽기 간격(초): 2~60 정수. 없거나 그 밖이면 모양이 틀린 답이다 (AC-1407.4) */

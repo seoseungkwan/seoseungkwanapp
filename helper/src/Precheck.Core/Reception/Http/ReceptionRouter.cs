@@ -16,7 +16,10 @@ namespace Precheck.Core.Reception.Http;
 /// 차례: 보낸 쪽이 사설 주소인가 → Host가 이 PC 주소:문인가(아니면 403) → OPTIONS는 405 → 정해 둔 길.
 /// - GET /api/board → BoardCache.Get() → BoardBuilder 판 JSON(200). GET /api/board?fresh=1만 fresh로 넘긴다(AC-1403.8). 다른 질의 글은 404.
 /// - GET /api/visit/{k}/history?from=N → HistoryReader.Get(200·404·503). 틀린 열쇠·시작 위치는 비트를 읽지 않고 404(AC-1404.5).
+/// - GET /api/visit/{k}/prev(질의 글 없음) → PrevPaperReader.Get(200 {"prev"}·404·503, spec reception-arrange AC-3307.1·3307.3).
 /// - POST /api/xray {k, on} → 쓰기 검사(아니면 403) → 몸 모양(아니면 400) → 그날 열쇠·오늘 진료보류 줄(아니면 404) → XrayMarks.Set → 204(AC-1405.5).
+/// - POST /api/arrange {k, op, col?, v?}(어레인지 표시를 넘겼을 때만) → 쓰기 검사·몸 모양·그날 네 칸 줄 → ArrangeWrite → 204(spec reception-arrange AC-3306.1).
+///   이때 GET /api/board 답에는 arrange 칸이 더 있다(AC-3305.1).
 /// - GET /link(주소 보내기 화면, LinkPage)는 이 PC 자신(루프백)만. 다른 곳에는 없는 길이다(404, AC-1406.8). /qr 길은 없다(QR 없음).
 /// - 그 밖은 화면 파일(StaticFiles, 질의 글 없이 GET만). 어디에도 없으면 404, 있는 길에 다른 방법이면 405(Allow).
 /// 비트를 볼 수 없으면 503 {"state":"unavailable"}(환자 자료 없음). 기록에는 오류 번호만 남긴다(AC-1406.7).
@@ -26,9 +29,11 @@ public sealed class ReceptionRouter
     private const string BoardPath = "/api/board";
     private const string FreshQuery = "fresh=1";
     private const string XrayPath = "/api/xray";
+    private const string ArrangePath = "/api/arrange";
     private const string LinkPath = "/link";
     private const string VisitPrefix = "/api/visit/";
     private const string HistorySuffix = "/history";
+    private const string PrevSuffix = "/prev";
     private const string FromPrefix = "from=";
     private const string Get = "GET";
     private const string Post = "POST";
@@ -48,6 +53,8 @@ public sealed class ReceptionRouter
     private readonly IReadOnlyDictionary<string, Lane> statuses;
     private readonly HashSet<string> hiddenRsu;
     private readonly Func<HttpResponse>? linkPage;
+    private readonly ArrangeMarks? arrangeMarks;
+    private readonly IReadOnlyList<ArrangeRule> arrangeMap;
 
     /// <param name="services">상세 읽기의 등록 확인·비트 연결(HistoryReader).</param>
     /// <param name="board">접수 현황 캐시(같은 시계로 만든 것).</param>
@@ -60,6 +67,8 @@ public sealed class ReceptionRouter
     /// <param name="statuses">상태 코드 → 칸. 없으면 ReceptionMap.Statuses.</param>
     /// <param name="hiddenRsu">숨기는 OcmRsuYon 값. 없으면 ReceptionMap.HiddenRsu.</param>
     /// <param name="linkPage">이 PC 자신의 GET /link 답(LinkPage.For). 없으면 /link는 404.</param>
+    /// <param name="arrangeMarks">어레인지 표시(spec reception-arrange). 없으면 /api/arrange는 404이고 판에 arrange 칸이 없다.</param>
+    /// <param name="arrangeMap">처방 → 어레인지 칸 지도. 없으면 ArrangeMap.Rules.</param>
     public ReceptionRouter(
         BitServices services,
         BoardCache board,
@@ -71,7 +80,9 @@ public sealed class ReceptionRouter
         Func<DateTime>? clock = null,
         IReadOnlyDictionary<string, Lane>? statuses = null,
         IEnumerable<string>? hiddenRsu = null,
-        Func<HttpResponse>? linkPage = null)
+        Func<HttpResponse>? linkPage = null,
+        ArrangeMarks? arrangeMarks = null,
+        IReadOnlyList<ArrangeRule>? arrangeMap = null)
     {
         this.services = services ?? throw new ArgumentNullException(nameof(services));
         this.board = board ?? throw new ArgumentNullException(nameof(board));
@@ -84,6 +95,8 @@ public sealed class ReceptionRouter
         this.statuses = statuses ?? ReceptionMap.Statuses;
         this.hiddenRsu = new HashSet<string>(hiddenRsu ?? ReceptionMap.HiddenRsu, StringComparer.Ordinal);
         this.linkPage = linkPage;
+        this.arrangeMarks = arrangeMarks;
+        this.arrangeMap = arrangeMap ?? ArrangeMap.Rules;
     }
 
     /// <summary>요청 하나의 답. client는 보낸 쪽 주소, port는 서버가 듣는 문(Host 검사, 보통 47200). 던지지 않는다.</summary>
@@ -120,6 +133,11 @@ public sealed class ReceptionRouter
             if (r.Method != Post) return HttpResponse.NotAllowed(Post);
             return r.Query == null ? Xray(r) : NotFound();
         }
+        if (r.Path == ArrangePath && arrangeMarks != null)
+        {
+            if (r.Method != Post) return HttpResponse.NotAllowed(Post);
+            return r.Query == null ? Arrange(r, arrangeMarks) : NotFound();
+        }
         if (r.Path == LinkPath)
         {
             // 이 PC 자신이 아니면 /link는 없는 길이다(AC-1406.8)
@@ -127,10 +145,15 @@ public sealed class ReceptionRouter
             if (r.Method != Get) return HttpResponse.NotAllowed(Get);
             return r.Query == null ? linkPage() : NotFound();
         }
-        if (TryHistoryKey(r.Path, out var key))
+        if (TryVisitKey(r.Path, HistorySuffix, out var key))
         {
             if (r.Method != Get) return HttpResponse.NotAllowed(Get);
             return History(key, r.Query);
+        }
+        if (TryVisitKey(r.Path, PrevSuffix, out var prevKey))
+        {
+            if (r.Method != Get) return HttpResponse.NotAllowed(Get);
+            return r.Query == null ? Prev(prevKey) : NotFound();
         }
 
         var file = files.Get(r.Path);
@@ -143,8 +166,62 @@ public sealed class ReceptionRouter
     {
         var result = board.Get(fresh);
         if (!result.IsOk) return Unavailable(result.Error);
-        var built = BoardBuilder.Build(result.Input!, statuses, hiddenRsu, marks.Today(), keys, clock());
-        return HttpResponse.Json(built.ToJson());
+        var xray = marks.Today();
+        var built = BoardBuilder.Build(result.Input!, statuses, hiddenRsu, xray, keys, clock());
+        if (arrangeMarks == null) return HttpResponse.Json(built.ToJson());
+        var arrange = ArrangeBuilder.Build(result.Input!, statuses, hiddenRsu, arrangeMap, arrangeMarks.Today(), xray, keys);
+        return HttpResponse.Json(built.ToJson(arrange));
+    }
+
+    /// <summary>
+    /// POST /api/arrange(spec reception-arrange AC-3306.1): 쓰기 검사(403) → 몸 모양(400) → 그날 열쇠·오늘 판의 네 칸 줄(404) →
+    /// 지금 판으로 그 줄의 칸 상태(치료 종료한 줄도 칸을 본다) → ArrangeWrite → X-RAY 완료는 XrayMarks, 나머지는 ArrangeMarks → 204.
+    /// 비트를 볼 수 없거나 표시를 쓰지 못하면 503. 기록에는 오류 번호만 간다(AC-3306.6).
+    /// </summary>
+    private HttpResponse Arrange(HttpRequest r, ArrangeMarks store)
+    {
+        if (!ClientGuard.WriteOk(r))
+        {
+            log?.Note(ReceptionErrors.BadWrite);
+            return HttpResponse.Empty(403);
+        }
+        if (!ArrangeWrite.TryParse(r.Body, out var op)) return HttpResponse.Empty(400);
+
+        var now = clock();
+        var found = keys.Find(DayOf(now), op.Key);
+        if (found == null) return NotFound();
+        var current = board.Get();
+        if (!current.IsOk) return Unavailable(current.Error);
+        var input = current.Input!;
+        if (!string.Equals(input.Day, found.Day, StringComparison.Ordinal)) return NotFound();
+        var visit = input.Visits.FirstOrDefault(row => string.Equals(row.VisitId, found.VisitId, StringComparison.Ordinal));
+        if (visit == null || ReceptionMap.LaneOf(statuses, hiddenRsu, visit.Status, visit.Rsu) == Lane.Hidden) return NotFound();
+
+        var single = new BoardInput(input.Day, input.ReadAt, new[] { visit }, input.RxNames);
+        var xray = marks.Today();
+        var hhmm = now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        ArrangeWriteResult? result = null;
+        try
+        {
+            // 같은 줄에 쓰기가 한꺼번에 와도 잃지 않게, 잠금 안에서 받은 지금 표시로 칸을 만들고 바꾼다(design.md 6절).
+            // 바꿀 것이 없거나(X-RAY 완료만) 받지 않는 쓰기(400·404)는 지금 표시를 그대로 돌려준다
+            store.Update(visit.VisitId, mark =>
+            {
+                // 치료 종료한 줄도 칸을 알아야 해서(다시 넣기·되돌리기) 종료 시각을 뺀 표시로 그 줄을 만든다
+                var open = new Dictionary<string, VisitMark>(StringComparer.Ordinal);
+                if (mark != null) open[visit.VisitId] = mark.WithEnded(null);
+                var row = ArrangeBuilder.Build(single, statuses, hiddenRsu, arrangeMap, open, xray, keys).Rows.FirstOrDefault();
+                result = ArrangeWrite.Apply(op, mark, row?.Cells ?? new Dictionary<ArrangeCol, ArrangeCell>(), hhmm);
+                return result.Status == 204 && result.ChangesMarks ? result.Next : mark;
+            });
+            if (result == null || result.Status != 204) return HttpResponse.Empty(result?.Status ?? 500);
+            if (result.Xray.HasValue) marks.Set(visit.VisitId, result.Xray.Value);
+        }
+        catch (HelperException e)
+        {
+            return Unavailable(e.Code);
+        }
+        return HttpResponse.Empty(204);
     }
 
     private HttpResponse History(string key, string? query)
@@ -155,6 +232,21 @@ public sealed class ReceptionRouter
         {
             case HistoryState.Ok:
                 return HttpResponse.Json(result.History!.ToJson());
+            case HistoryState.NotFound:
+                return NotFound();
+            default:
+                return Unavailable(result.Error);
+        }
+    }
+
+    /// <summary>GET /api/visit/{k}/prev(AC-3307.1·3307.3): 직전 기록부 JSON(200), 틀린 열쇠 404, 볼 수 없으면 503.</summary>
+    private HttpResponse Prev(string key)
+    {
+        var result = PrevPaperReader.Get(services, keys, () => board.Get(), key, clock);
+        switch (result.State)
+        {
+            case HistoryState.Ok:
+                return HttpResponse.Json(PrevPaper.ToJson(result.Prev));
             case HistoryState.NotFound:
                 return NotFound();
             default:
@@ -228,13 +320,13 @@ public sealed class ReceptionRouter
         }
     }
 
-    /// <summary>/api/visit/{k}/history 모양이면 그 사이 글(빈 글 포함, '/' 없음)</summary>
-    private static bool TryHistoryKey(string path, out string key)
+    /// <summary>/api/visit/{k}{suffix}(/history·/prev) 모양이면 그 사이 글(빈 글 포함, '/' 없음)</summary>
+    private static bool TryVisitKey(string path, string suffix, out string key)
     {
         key = "";
-        if (path.Length < VisitPrefix.Length + HistorySuffix.Length) return false;
-        if (!path.StartsWith(VisitPrefix, StringComparison.Ordinal) || !path.EndsWith(HistorySuffix, StringComparison.Ordinal)) return false;
-        var middle = path.Substring(VisitPrefix.Length, path.Length - VisitPrefix.Length - HistorySuffix.Length);
+        if (path.Length < VisitPrefix.Length + suffix.Length) return false;
+        if (!path.StartsWith(VisitPrefix, StringComparison.Ordinal) || !path.EndsWith(suffix, StringComparison.Ordinal)) return false;
+        var middle = path.Substring(VisitPrefix.Length, path.Length - VisitPrefix.Length - suffix.Length);
         if (middle.IndexOf('/') >= 0) return false;
         key = middle;
         return true;

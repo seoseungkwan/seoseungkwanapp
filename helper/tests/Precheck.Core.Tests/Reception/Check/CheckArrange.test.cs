@@ -229,7 +229,8 @@ public class CheckArrangeRunnerTests
         Assert.Equal(new[]
         {
             "arrangeCode code=SONO1 name=어깨 초음파 visits=40 rows=44 col=sono",
-            "arrangeCode code=G1234 name=흉부 X-ray 2매 visits=30 rows=30 col=-",
+            // 지금 지도(TASK-12에서 4회차 보고서로 채움)는 G + 숫자 4자리 촬영 코드를 X-RAY에 넣는다
+            "arrangeCode code=G1234 name=흉부 X-ray 2매 visits=30 rows=30 col=xray",
             "arrangeCode code=CARM1 name=C-ARM 투시 visits=12 rows=12 col=carm",
             "arrangeCode code=도수 name=도수치료 30분 visits=9 rows=9 col=-",
             "arrangeCode code=NONAME1 name=? visits=2 rows=3 col=-",
