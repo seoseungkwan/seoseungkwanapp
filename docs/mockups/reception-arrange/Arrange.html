@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" id="vp" content="width=device-width, initial-scale=1">
+<title>접수 현황 · 어레인지 목업</title>
+<!-- 목업(사용자 승인 전 시안, 2026-11-09). 환자는 모두 지어낸 가짜다. 처방 코드도 예시다.
+     색은 reception/www/theme.css 값 그대로 + 종이 어레인지 표의 SONO(노랑)·C-ARM(민트) 칸 색 둘을 새로 제안한다 -->
+<style>
+:root {
+  --ground:#F4F4F2; --surface:#FFFFFF; --surface-picked:#FCFBE3;
+  --ink:#333432; --ink-2:#4A4A47; --ink-3:#5F5F5C; --ink-4:#6B6B67; --on-ink:#FFFFFF;
+  --line:#E4E4E0; --line-2:#CFCFCA; --accent:#DFDA06;
+  --ok:#15803D; --ok-soft:#ECF7EF; --warn:#C2410C; --warn-soft:#FDF0EA;
+  --new:#1D4ED8; --on-new:#FFFFFF;
+  --paper:#FFFFFF; --paper-ink:#333432;
+  /* 새로 제안: 종이 어레인지 표의 칸 색 */
+  --sono-head:#F3DC8A; --sono-col:#FBF4D6;
+  --carm-head:#9FDCC6; --carm-col:#E2F5EE;
+  /* 새로 제안: 물리치료 먼저 올라감 (자리비움 주황·신환 파랑과 다른 보라) */
+  --ptup-bg:#F1EAFB; --ptup-fg:#6B21A8;
+  --font-body:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-title:"Black Han Sans","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --font-mono:"D2Coding","Consolas","Menlo",monospace;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; }
+body { background:var(--ground); font-family:var(--font-body); color:var(--ink); word-break:keep-all; font-variant-numeric:tabular-nums; -webkit-text-size-adjust:100%; }
+body.force-phone { background:#DADAD6; }
+body.force-phone #app { max-width:430px; margin:0 auto; background:var(--ground); min-height:100vh; box-shadow:0 0 0 1px var(--line-2); }
+button { -webkit-tap-highlight-color:transparent; }
+
+/* 목업 띠 */
+#mock { position:sticky; top:0; z-index:70; background:var(--ink); color:var(--accent); font-size:12px; padding:6px 8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; }
+#mock button { font:inherit; font-size:12px; color:var(--accent); background:transparent; border:1px solid var(--accent); border-radius:4px; padding:5px 8px; cursor:pointer; }
+#mock button[aria-pressed="true"] { background:var(--accent); color:var(--ink); font-weight:700; }
+#mock .grp { display:inline-flex; gap:3px; align-items:center; }
+
+/* 머리 */
+.top { background:var(--surface); border-bottom:4px solid var(--accent); padding:10px 16px 0; }
+.top-row { display:flex; align-items:center; gap:8px; }
+.sp { flex:1; }
+.brand { font-family:var(--font-title); font-size:24px; line-height:1; }
+.brand b { font-weight:400; background:var(--accent); padding:0 2px; }
+.conn { font-size:13px; font-weight:600; color:var(--ok); background:var(--ok-soft); border-radius:6px; padding:5px 9px; white-space:nowrap; }
+.refresh { font:inherit; font-size:14px; font-weight:600; min-height:44px; padding:0 12px; border:1px solid var(--line-2); border-radius:6px; background:var(--surface); color:var(--ink); white-space:nowrap; }
+.is-phone .brand { font-size:19px; }
+.is-phone .view-btn { font-size:19px; padding:8px 10px 10px; }
+.views { display:flex; gap:4px; margin-top:8px; }
+.view-btn { font-family:var(--font-title); font-size:22px; padding:8px 14px 10px; border:0; background:transparent; color:var(--ink-3); border-bottom:4px solid transparent; margin-bottom:-4px; min-height:48px; cursor:pointer; }
+.view-btn[aria-pressed="true"] { color:var(--ink); border-bottom-color:var(--ink); }
+.view-btn .n { font-family:var(--font-body); font-size:13px; font-weight:700; background:var(--ink); color:var(--accent); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:3px; }
+
+/* 어레인지 위 줄 */
+.sub-line { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 16px 4px; font-size:13px; color:var(--ink-3); }
+.legend { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.lg { font-size:12px; font-weight:700; border-radius:4px; padding:2px 7px; border:2px solid transparent; }
+.lg.todo { background:var(--surface); border-color:var(--ink); color:var(--ink); }
+.lg.ready { background:var(--ink); border-color:var(--ink); color:var(--accent); }
+.lg.done { background:var(--ok-soft); color:var(--ok); }
+.lg.manual { background:var(--surface); border:2px dashed var(--ink-3); color:var(--ink-2); }
+.lg.away { background:var(--warn-soft); color:var(--warn); }
+.howto { margin:0 16px 10px; font-size:13px; color:var(--ink-2); line-height:1.5; }
+
+/* 표 */
+.wrap { overflow-x:auto; margin:0 12px; border:1px solid var(--line-2); border-radius:8px; background:var(--surface); }
+table.arr { border-collapse:separate; border-spacing:0; width:100%; table-layout:fixed; }
+.arr th { background:var(--ground); font-size:15px; font-weight:800; padding:8px 4px; border-bottom:2px solid var(--ink); border-right:1px solid var(--line); text-align:center; vertical-align:bottom; line-height:1.2; }
+.arr th .sm { display:block; font-size:11px; font-weight:600; color:var(--ink-3); margin-top:2px; }
+.arr th.c-sono { background:var(--sono-head); }
+.arr th.c-carm { background:var(--carm-head); }
+.arr td { border-bottom:1px solid var(--line); border-right:1px solid var(--line); padding:4px; vertical-align:middle; background:var(--surface); }
+.arr td.c-sono { background:var(--sono-col); }
+.arr td.c-carm { background:var(--carm-col); }
+.arr td.c-memo { padding:6px 8px; }
+.arr th:last-child, .arr td:last-child { border-right:0; }
+.arr tr:last-child td { border-bottom:0; }
+.arr .c-t, .arr .c-nm { position:sticky; z-index:2; }
+.arr .c-t { left:0; }
+.is-tablet table.arr { min-width:1180px; }
+.is-tablet .arr .c-nm { left:76px; }
+.is-tablet .c-t { width:76px; } .is-tablet .c-nm { width:156px; } .is-tablet .c-xray { width:84px; }
+.is-tablet .c-sono, .is-tablet .c-carm { width:136px; } .is-tablet .c-pt, .is-tablet .c-ds, .is-tablet .c-trac { width:76px; }
+.is-tablet .c-eswt { width:80px; } .is-tablet .c-end { width:72px; }
+.is-phone table.arr { min-width:1040px; }
+.is-phone .arr .c-nm { left:62px; box-shadow:2px 0 0 var(--line-2); }
+.is-phone .c-t { width:62px; } .is-phone .c-nm { width:118px; } .is-phone .c-xray { width:74px; }
+.is-phone .c-sono, .is-phone .c-carm { width:118px; } .is-phone .c-pt, .is-phone .c-ds, .is-phone .c-trac { width:66px; }
+.is-phone .c-eswt { width:70px; } .is-phone .c-end { width:64px; }
+
+/* 자리비움 · 새 처방 반짝 */
+tr.away td.c-t, tr.away td.c-nm { background:var(--warn-soft); }
+tr.away td.c-t { box-shadow:inset 4px 0 0 var(--warn); }
+tr.flash td { animation:flash 1.2s ease-in-out 3; }
+@keyframes flash { 50% { background-color:var(--accent); } }
+
+/* 접수 칸 */
+.t-btn { all:unset; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; min-height:64px; cursor:pointer; border-radius:6px; text-align:center; }
+.t-btn:hover { background:var(--ground); }
+.t-btn .t { font-size:17px; font-weight:800; }
+.t-btn .away-tag { font-size:11px; font-weight:800; color:var(--warn); line-height:1.3; margin-top:2px; }
+
+/* 성함 칸 */
+.nm-btn { all:unset; box-sizing:border-box; display:flex; flex-direction:column; gap:2px; width:100%; padding:6px; cursor:pointer; border-radius:6px; }
+.nm-btn:hover { background:var(--surface-picked); }
+.nm-btn .l1 { display:flex; gap:5px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--ink-4); }
+.nm-btn .l2 { display:flex; gap:5px; align-items:baseline; flex-wrap:wrap; }
+.nm-btn .nm { font-family:var(--font-title); font-size:21px; line-height:1.15; color:var(--ink); text-decoration:underline dotted var(--line-2); text-underline-offset:4px; }
+.is-phone .nm-btn .nm { font-size:18px; }
+.nm-btn .meta { font-size:13px; color:var(--ink-2); white-space:nowrap; }
+.nm-btn .open { font-size:18px; font-weight:700; color:var(--ink-3); margin-left:auto; }
+.ptf-btn { font:inherit; font-size:12px; font-weight:700; margin:2px 6px 4px; min-height:30px; padding:2px 8px; border-radius:4px; cursor:pointer; white-space:nowrap; }
+.ptf-btn.none { background:var(--surface); color:var(--ink-3); border:1px dashed var(--line-2); }
+.ptf-btn.up { background:var(--ptup-bg); color:var(--ptup-fg); border:1px solid var(--ptup-fg); }
+.ptf-btn.down { background:var(--ok-soft); color:var(--ok); border:1px solid var(--ok-soft); }
+.lg.ptup { background:var(--ptup-bg); color:var(--ptup-fg); }
+.rx-new { font-size:11px; font-weight:800; background:var(--accent); color:var(--ink); border-radius:4px; padding:1px 5px; white-space:nowrap; }
+.tag { font-size:11px; font-weight:700; padding:1px 6px; border-radius:4px; border:1px solid transparent; white-space:nowrap; }
+.tag.wait { background:var(--ink); color:var(--accent); }
+.tag.hold { background:var(--surface); color:var(--ink); border-color:var(--ink); }
+.tag.pay { background:var(--surface); color:var(--ink-2); border-color:var(--line-2); }
+.tag.done { background:var(--ok-soft); color:var(--ok); }
+.new-badge { display:inline-block; font-size:12px; font-weight:700; line-height:1.4; color:var(--on-new); background:var(--new); border-radius:4px; padding:0 6px; letter-spacing:1px; }
+
+/* 치료 칸 */
+.cell { position:relative; min-height:64px; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:16px 4px 6px; cursor:pointer; text-align:center; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; border:2px solid transparent; line-height:1.25; }
+.cell.empty .plus { font-size:24px; line-height:1; color:var(--line-2); }
+.cell.empty:hover { background:rgba(0,0,0,.04); }
+.cell.todo { background:var(--surface); border-color:var(--ink); }
+.cell.ready { background:var(--ink); color:var(--accent); border-color:var(--ink); }
+.cell.done { background:var(--ok-soft); color:var(--ok); border-color:var(--ok-soft); }
+.cell.manual { border-style:dashed; }
+.cell.ready.manual { border-color:var(--accent); }
+.cell.done.manual { border-color:var(--ok); }
+.cell .st { font-size:12px; font-weight:700; }
+.cell.todo .st { color:var(--ink-3); }
+.cell .det { font-size:16px; font-weight:800; }
+.cell .det.sm { font-size:12px; font-weight:600; }
+.cell .ord { position:absolute; top:3px; left:3px; font-size:11px; font-weight:800; background:var(--ink); color:var(--accent); border-radius:3px; padding:1px 4px; }
+.cell.ready .ord { background:var(--accent); color:var(--ink); }
+.cell .mn { position:absolute; top:3px; right:4px; font-size:10px; font-weight:700; color:var(--ink-3); }
+.cell.ready .mn { color:var(--accent); }
+.cell.done .mn { color:var(--ok); }
+.part-btn { font:inherit; font-size:12px; font-weight:700; color:var(--warn); background:var(--surface); border:1px dashed var(--warn); border-radius:4px; padding:3px 6px; min-height:30px; cursor:pointer; margin-top:2px; }
+
+/* 비고 칸 */
+.memo { font-size:14px; font-weight:700; line-height:1.4; color:var(--ink); background:var(--surface-picked); border-left:4px solid var(--accent); border-radius:4px; padding:4px 8px; }
+.memo .lab { font-size:12px; font-weight:600; color:var(--ink-3); margin-right:6px; }
+.memo.big { font-size:16px; padding:8px 10px; }
+.lastsym { margin-top:4px; font-size:12.5px; line-height:1.4; color:var(--ink-3); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.lastsym b { color:var(--ink-2); margin-right:4px; }
+
+/* 치료 종료 */
+.end-btn { font:inherit; font-size:13px; font-weight:700; width:100%; min-height:56px; border:1px solid var(--line-2); background:var(--surface); color:var(--ink-2); border-radius:6px; cursor:pointer; line-height:1.25; }
+.end-btn.is-go { background:var(--accent); color:var(--ink); border-color:var(--ink); }
+.ended { margin:12px; }
+.ended-h { all:unset; cursor:pointer; font-size:15px; font-weight:700; color:var(--ink-2); padding:10px 4px; min-height:44px; display:flex; align-items:center; }
+.ended ul { list-style:none; margin:0; padding:0; background:var(--surface); border:1px solid var(--line); border-radius:8px; }
+.ended li { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--line); font-size:14px; }
+.ended li:last-child { border-bottom:0; }
+.ended .e-t { color:var(--ink-3); font-size:13px; }
+.ended .e-c { color:var(--ink-4); font-size:12px; }
+.restore { margin-left:auto; font:inherit; font-size:14px; font-weight:700; min-height:40px; padding:0 12px; border:1px solid var(--ink); border-radius:6px; background:var(--surface); color:var(--ink); cursor:pointer; }
+.empty-note { text-align:center; color:var(--ink-3); font-size:14px; padding:20px; }
+.rec-ph { margin:24px 16px; padding:24px; background:var(--surface); border:1px dashed var(--line-2); border-radius:8px; text-align:center; color:var(--ink-2); }
+.rec-ph .sm { font-size:13px; color:var(--ink-3); }
+.foot { padding:12px 16px 28px; font-size:12px; color:var(--ink-3); text-align:center; }
+
+/* 고르기 창 */
+.sheet-back { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:80; padding:12px; }
+.is-phone .sheet-back { align-items:flex-end; }
+.sheet { background:var(--surface); border-radius:12px; padding:16px; width:min(460px, 100%); max-height:85vh; overflow:auto; }
+.sheet-h b { font-size:18px; }
+.sheet-h span { display:block; font-size:13px; color:var(--ink-3); margin-top:2px; }
+.opts { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; margin:14px 0; }
+.opts.many { grid-template-columns:repeat(3, 1fr); }
+.opt { font:inherit; font-size:16px; font-weight:700; min-height:52px; border:1px solid var(--line-2); border-radius:8px; background:var(--ground); color:var(--ink); cursor:pointer; }
+.opt:active { background:var(--surface-picked); }
+.sheet-x { font:inherit; width:100%; min-height:48px; border:0; border-radius:8px; background:var(--ink); color:var(--on-ink); font-weight:700; cursor:pointer; }
+
+/* 되돌리기 띠 · 알림 */
+.toast { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); background:var(--ink); color:var(--on-ink); border-radius:10px; padding:8px 8px 8px 16px; display:flex; gap:12px; align-items:center; z-index:90; font-size:15px; box-shadow:0 4px 14px rgba(0,0,0,.2); width:max-content; max-width:calc(100% - 24px); }
+.toast button { font:inherit; font-weight:800; color:var(--accent); background:transparent; border:1px solid var(--accent); border-radius:6px; min-height:40px; padding:0 12px; cursor:pointer; white-space:nowrap; }
+.alert { position:fixed; top:48px; left:50%; transform:translateX(-50%); background:var(--accent); color:var(--ink); border:2px solid var(--ink); border-radius:10px; padding:10px 16px; font-size:16px; font-weight:700; z-index:95; box-shadow:0 4px 14px rgba(0,0,0,.2); width:max-content; max-width:calc(100% - 24px); }
+.alert .buzz { font-size:12px; font-weight:500; margin-left:6px; }
+
+/* 진료기록부 화면 */
+.chart-top { padding-bottom:14px; display:flex; flex-direction:column; gap:8px; }
+.back { all:unset; cursor:pointer; font-size:16px; font-weight:700; min-height:44px; display:flex; align-items:center; }
+.who { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.who h1 { margin:0; font-family:var(--font-title); font-weight:400; font-size:28px; line-height:1.2; }
+.chart-no { font-size:13px; color:var(--ink-4); }
+.who .meta { font-size:14px; color:var(--ink-2); }
+.state { display:flex; gap:8px; align-items:center; font-size:13px; color:var(--ink-2); }
+.charts { display:grid; grid-template-columns:1fr; gap:16px; padding:16px 12px; }
+.is-tablet .charts { grid-template-columns:1fr 1fr; align-items:start; }
+.charts h2 { margin:0 4px 8px; font-size:15px; font-weight:700; color:var(--ink-2); display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.h-dt { font-size:13px; font-weight:500; color:var(--ink-3); }
+
+/* 종이 진료기록부 (승인 목업 Paper.html 그대로) */
+.paper { background:var(--paper); color:var(--paper-ink); border:2px solid var(--accent); border-radius:8px; padding:16px 14px 18px; box-shadow:0 1px 3px rgba(0,0,0,.08); font-size:14px; line-height:1.55; }
+.paper.past { border-color:var(--line-2); }
+.paper.none-card { border-color:var(--line-2); color:var(--ink-3); }
+.paper-head { display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid var(--paper-ink); padding-bottom:6px; margin-bottom:10px; }
+.paper-head .ttl { font-size:17px; font-weight:700; letter-spacing:1px; }
+.paper-head .dt { font-size:12px; color:var(--ink-3); }
+.kv { display:grid; grid-template-columns:5.2em 1fr; column-gap:6px; row-gap:2px; margin:0; }
+.kv dt { color:var(--ink-3); white-space:nowrap; }
+.kv dt::after { content:" :"; }
+.kv dd { margin:0; overflow-wrap:anywhere; }
+.rule { border:0; border-top:1px solid var(--paper-ink); margin:12px 0 10px; }
+.sec { margin-top:12px; }
+.sec-h { font-weight:700; margin-bottom:4px; }
+.sec-h::before { content:"<"; } .sec-h::after { content:">"; }
+.none { color:var(--ink-3); font-size:13px; }
+.spc { margin:0 0 4px; border:2px solid var(--warn); background:var(--warn-soft); border-radius:6px; padding:8px 10px; }
+.spc .sec-h { color:var(--warn); margin-bottom:2px; }
+.spc p { margin:0; white-space:pre-wrap; font-weight:600; }
+.visit-line { display:flex; flex-wrap:wrap; gap:4px 12px; }
+.sym { display:grid; grid-template-columns:auto 1fr; column-gap:10px; }
+.sym .d { color:var(--ink-3); font-size:13px; padding-top:1px; }
+.sym pre { margin:0; font-family:inherit; white-space:pre-wrap; overflow-wrap:anywhere; }
+.dx { margin:0; padding:0; list-style:none; }
+.dx li { display:grid; grid-template-columns:4.6em 1fr; column-gap:6px; }
+.dx code, .rx code { font-family:var(--font-mono); font-size:12.5px; color:var(--ink-2); }
+.dx .main::after { content:" 주"; font-size:11px; font-weight:700; color:var(--ink); background:var(--accent); border-radius:3px; padding:0 3px; margin-left:4px; vertical-align:1px; }
+table.rx { width:100%; border-collapse:collapse; font-size:13px; }
+.rx th { text-align:left; font-weight:600; color:var(--ink-3); font-size:12px; border-bottom:1px solid var(--paper-ink); padding:2px 3px 4px; }
+.rx td { padding:4px 3px; vertical-align:top; border-bottom:1px dotted var(--line-2); }
+.rx tr:last-child td { border-bottom:0; }
+.rx .n { text-align:right; white-space:nowrap; width:2.6em; }
+.rx th.n { text-align:right; }
+.rx .c { width:5.6em; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div id="mock"></div>
+<div id="app"></div>
+<div id="sheet"></div>
+<div id="toast"></div>
+<div id="alert"></div>
+
+<script>
+const $ = s => document.querySelector(s)
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const TODAY = '2026-11-09'
+const START = 11 * 60 + 4
+let clock = START
+const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+const stamp = () => fmt(++clock)
+
+const COLS = [
+  { k: 'xray', h: 'X-RAY', sub: '', name: 'X-RAY' },
+  { k: 'sono', h: 'SONO', sub: '부위·준비·순서', three: true, name: 'SONO' },
+  { k: 'carm', h: 'C-ARM', sub: '부위·준비·순서', three: true, name: 'C-ARM' },
+  { k: 'pt', h: 'PT', sub: 'ICE·HP', opts: ['ICE', 'HP'], name: 'PT' },
+  { k: 'ds', h: '도수', sub: '30·50분', opts: ['30분', '50분'], name: '도수' },
+  { k: 'eswt', h: '충격파', sub: '부위 수', opts: ['1부위', '2부위', '3부위', '4부위'], name: '충격파' },
+  { k: 'trac', h: '견인', sub: '목·허리', opts: ['목', '허리'], name: '견인' },
+]
+const COL = Object.fromEntries(COLS.map(c => [c.k, c]))
+const PARTS = ['목', '등', '허리', '오른 어깨', '왼 어깨', '양 어깨', '팔꿈치', '손목', '고관절', '오른 무릎', '왼 무릎', '양 무릎', '발목', '발바닥', '기타']
+const LANE = { wait: '진료대기', hold: '진료보류', pay: '수납대기', done: '수납완료' }
+const AA254 = ['AA254', '재진진찰료-의과의원', '1', '1', '1']
+const HP = ['MM015', '표층열치료(심층열동시)', '1', '1', '1']
+
+// 지어낸 가짜 환자. 접수한 순서. ptf: PT 먼저 { st: up|down, at }. cells: 칸마다 { st: todo(준비)|ready(준비완료)|done(완료), det, part, rxAt(처방 시각), readyAt, doneAt, manual(직접 넣음) }
+const INIT = () => [
+  { k: 'i', t: '09:05', chart: '5120', name: '조영길', age: 58, sex: '남', sx: 'M', kind: '재진', lane: 'done', memo: '', res: '680211-*******', cel: '010-0000-5120', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: { pt: { st: 'done', det: 'HP', rxAt: '09:20', doneAt: '09:50' }, eswt: { st: 'done', det: '1부위', rxAt: '09:20', doneAt: '10:05' } }, today: null, last: null, ended: true, endedAt: '10:15' },
+  { k: 'j', t: '09:08', chart: '6631', name: '배정희', age: 61, sex: '여', sx: 'F', kind: '재진', lane: 'done', memo: '', res: '650930-*******', cel: '010-0000-6631', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: { xray: { st: 'done', det: '', rxAt: '09:22', doneAt: '09:30' }, carm: { st: 'done', part: '허리 L5-S1', rxAt: '09:35', readyAt: '10:20', doneAt: '10:32' } }, today: null, last: null, ended: true, endedAt: '10:40' },
+  { k: 'a', t: '09:12', chart: '8812', name: '한미숙', age: 64, sex: '여', sx: 'F', kind: '재진', lane: 'done', memo: '오른 무릎 주사 2차', res: '620415-*******', cel: '010-0000-8812', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: { xray: { st: 'done', det: '', rxAt: '09:28', doneAt: '09:35' }, sono: { st: 'done', part: '오른 무릎', rxAt: '09:40', readyAt: '09:48', doneAt: '09:55' }, pt: { st: 'done', det: 'HP', rxAt: '09:40', doneAt: '10:10' } },
+    today: { sym: 'Rt knee pain 조금 나아짐\n계단 내려갈 때 아직 아픔\n\nxr: OA gr.2 그대로\n\nUSG guided inj. Rt knee 2차\n2주 뒤 다시 봄', dx: [['M1716', '무릎관절증, 일측성 원발성', true], ['M2556', '관절통, 하퇴']],
+      rx: [['G7204', '(Rt) knee AP/ Lat.', '1', '1', '1'], ['SONO1', '초음파 유도 주사', '1', '1', '1'], ['A15', '휴온스리도카인염산', '0.5', '1', '1'], HP, AA254] },
+    last: { date: '2026-10-26', ago: '14일 전', room: '1진료실', ins: '국민건강보험(재진)', sym: 'Rt knee pain\n계단·앉았다 일어날 때 심함\n\nxr: OA gr.2\n\nUSG guided inj. Rt knee 1차', dx: [['M1716', '무릎관절증, 일측성 원발성', true]],
+      rx: [['G7204', '(Rt) knee AP/ Lat.', '1', '1', '1'], ['SONO1', '초음파 유도 주사', '1', '1', '1'], HP, AA254] } },
+  { k: 'b', t: '09:25', chart: '10233', name: '박민수', age: 47, sex: '남', sx: 'M', kind: '재진', lane: 'pay', memo: '허리 C-arm 2차', res: '790603-*******', cel: '010-0000-0233', room: '2진료실', ins: '국민건강보험(재진)', spc: '와파린 복용 중 — 주사 뒤 지혈 오래',
+    cells: { carm: { st: 'ready', part: '허리 L4-5', rxAt: '10:20', readyAt: '11:01' }, pt: { st: 'todo', det: 'HP', rxAt: '10:20' }, trac: { st: 'todo', det: '허리', rxAt: '10:20' } },
+    today: { sym: '허리 통증 1차 뒤 50% 좋아짐\nRt 엉덩이 당김 남음\n\nTFESI L4-5 Rt 2차 (C-arm)\n견인 허리', dx: [['M5136', '기타 추간판변성, 요추부', true], ['M5456', '아래허리긴장, 요추부']],
+      rx: [['LA358', '척수신경총 신경근', '1', '1', '1'], ['carm1', 'c-arm가이드', '0.1', '1', '1'], ['A15', '휴온스리도카인염산', '0.5', '1', '1'], HP, ['MM042', '골반견인', '1', '1', '1'], AA254] },
+    last: { date: '2026-11-02', ago: '7일 전', room: '2진료실', ins: '국민건강보험(재진)', sym: 'LBP with Rt buttock pain\n2주 전부터\n\nxr: L4-5 좁아짐\n\nTFESI L4-5 Rt 1차 (C-arm)', dx: [['M5136', '기타 추간판변성, 요추부', true]],
+      rx: [['G4502', 'L spine / AP/Lat', '1', '1', '1'], ['LA358', '척수신경총 신경근', '1', '1', '1'], ['carm1', 'c-arm가이드', '0.1', '1', '1'], HP, AA254] } },
+  { k: 'c', t: '09:40', chart: '11950', name: '최은정', age: 38, sex: '여', sx: 'F', kind: '신환', lane: 'hold', memo: '오른 어깨 처음', res: '880112-*******', cel: '010-0000-1950', room: '1진료실', ins: '국민건강보험(신환)', spc: '',
+    cells: { xray: { st: 'done', det: '', rxAt: '10:05', doneAt: '10:12' }, sono: { st: 'todo', part: null, rxAt: '10:30' }, pt: { st: 'todo', det: 'ICE', rxAt: '10:30' }, eswt: { st: 'todo', det: '2부위', rxAt: '10:30' } },
+    today: { sym: 'Rt shoulder pain 3주\n팔 올릴 때 아픔, 밤에 심함\n\nxr: n-s\n\nUSG: SSP tendinopathy 의심\nUSG guided inj.\nESWT 2부위, ice', dx: [['M7510', '회전근개 증후군, 어깨부분', true]],
+      rx: [['G3302', '(Rt) Shoulder / AP/Lat', '1', '1', '1'], ['SONO1', '초음파 유도 주사', '1', '1', '1'], ['ESWT2', '체외충격파 2부위', '1', '1', '1'], ['CRYO', '한랭치료', '1', '1', '1'], ['AA154', '초진진찰료-의과의원', '1', '1', '1']] },
+    last: null },
+  { k: 'd', t: '10:02', chart: '9921', name: '강지훈', age: 29, sex: '남', sx: 'M', kind: '재진', lane: 'hold', memo: '왼 발목 삠', res: '970724-*******', cel: '010-0000-9921', room: '2진료실', ins: '국민건강보험(재진)', spc: '', away: '10:50',
+    cells: { xray: { st: 'done', det: '', rxAt: '10:22', doneAt: '10:28' }, ds: { st: 'todo', det: '30분', rxAt: '10:35' } },
+    today: { sym: 'Lt ankle sprain 3일 전 축구\n붓기 줄었음\n\nxr: fx (-)\n\n도수 30분', dx: [['S9340', '발목의 염좌', true]],
+      rx: [['G8104', '(Lt) ankle AP/Lat', '1', '1', '1'], ['도수', '도수치료 30분', '1', '1', '1'], AA254] },
+    last: { date: '2025-12-01', ago: '343일 전', room: '2진료실', ins: '국민건강보험(재진)', sym: 'Rt wrist pain\n운동 뒤\n\nxr: n-s\nice', dx: [['S6350', '손목의 염좌', true]],
+      rx: [['G6204', '(Rt) wrist AP/Lat', '1', '1', '1'], ['CRYO', '한랭치료', '1', '1', '1'], AA254] } },
+  { k: 'e', t: '10:15', chart: '7710', name: '윤서연', age: 52, sex: '여', sx: 'F', kind: '재진', lane: 'hold', memo: '목·어깨 뻐근', res: '740318-*******', cel: '010-0000-7710', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: { carm: { st: 'todo', part: '목 C5-6', rxAt: '10:42' }, pt: { st: 'todo', det: 'HP', rxAt: '10:42' }, trac: { st: 'todo', det: '목', rxAt: '10:50', manual: true } },
+    today: { sym: 'neck pain, 양쪽 승모 뻐근\nRt arm 저림 가끔\n\nxr: C5-6 좁아짐\n\nCESI C5-6 (C-arm)', dx: [['M5422', '경추통, 경부', true], ['M5012', '경추간판장애, 신경뿌리병증 동반']],
+      rx: [['LA358', '척수신경총 신경근', '1', '1', '1'], ['carm1', 'c-arm가이드', '0.1', '1', '1'], HP, AA254] },
+    last: { date: '2026-10-19', ago: '21일 전', room: '1진료실', ins: '국민건강보험(재진)', sym: 'neck pain 1달\n\nxr: C5-6 좁아짐\nmed, PT', dx: [['M5422', '경추통, 경부', true]],
+      rx: [['G4104', 'C spine AP/Lat./Both oblique', '1', '1', '1'], HP, AA254] } },
+  { k: 'f', t: '10:31', chart: '3302', name: '임태호', age: 71, sex: '남', sx: 'M', kind: '재진', lane: 'wait', memo: '', res: '550902-*******', cel: '010-0000-3302', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: {}, today: null, ptf: { st: 'up', at: '10:40' },
+    last: { date: '2026-10-28', ago: '12일 전', room: '1진료실', ins: '국민건강보험(재진)', sym: 'Lt knee pain\n붓기 있음\n\nxr: OA gr.3\n\nIA inj. Lt knee', dx: [['M1716', '무릎관절증, 일측성 원발성', true]],
+      rx: [['G7204', '(Lt) knee AP/ Lat.', '1', '1', '1'], HP, AA254] } },
+  { k: 'g', t: '10:44', chart: '10877', name: '오준혁', age: 45, sex: '남', sx: 'M', kind: '재진', lane: 'wait', memo: '실비 서류', res: '810505-*******', cel: '010-0000-0877', room: '2진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: {}, today: null, ptf: { st: 'down', at: '10:58' },
+    pendingToday: { sym: 'Lt shoulder pain 조금 나아짐\n\nUSG guided inj. Lt shoulder (SASD)\n도수 50분, ESWT 1부위', dx: [['M7510', '회전근개 증후군, 어깨부분', true]],
+      rx: [['SONO1', '초음파 유도 주사', '1', '1', '1'], ['도수', '도수치료 50분', '1', '1', '1'], ['ESWT1', '체외충격파 1부위', '1', '1', '1'], AA254] },
+    last: { date: '2026-11-05', ago: '4일 전', room: '2진료실', ins: '국민건강보험(재진)', sym: 'Lt shoulder pain\n팔 뒤로 돌릴 때\n\nUSG: SSP partial tear 의심\n도수 50분 + ESWT', dx: [['M7510', '회전근개 증후군, 어깨부분', true]],
+      rx: [['도수', '도수치료 50분', '1', '1', '1'], ['ESWT1', '체외충격파 1부위', '1', '1', '1'], AA254] } },
+  { k: 'h', t: '10:58', chart: '12004', name: '신하늘', age: 26, sex: '여', sx: 'F', kind: '신환', lane: 'wait', memo: '오른 손목 처음', res: '000814-*******', cel: '010-0000-2004', room: '1진료실', ins: '국민건강보험(신환)', spc: '',
+    cells: {}, today: null, last: null },
+]
+
+let P = INIT()
+const S = { view: 'arr', layout: 'auto', chart: null, sheet: null, endedOpen: false, backY: 0 }
+let undoSnap = null, toastTimer = null, alertTimer = null
+const mq = matchMedia('(min-width: 1000px) and (orientation: landscape)')
+const isTablet = () => S.layout === 'tablet' || (S.layout === 'auto' && mq.matches)
+const findP = k => P.find(x => x.k === k)
+
+function orderOf(col, p) {
+  const q = P.filter(x => !x.ended && x.cells[col] && x.cells[col].st !== 'done')
+    .sort((a, b) => a.cells[col].rxAt.localeCompare(b.cells[col].rxAt))
+  const i = q.indexOf(p)
+  return i < 0 ? null : i + 1
+}
+const oneLine = s => String(s).split('\n').map(x => x.trim()).filter(Boolean).join(' / ')
+
+/* ---------- 그리기 ---------- */
+function renderMock() {
+  const L = { auto: '자동', tablet: '태블릿', phone: '폰' }
+  $('#mock').innerHTML = `<span>목업 · 가짜 환자 · 칸을 눌러 보세요</span>
+    <button type="button" data-act="sim-rx">처방 나오는 모습</button>
+    <button type="button" data-act="sim-new">새 접수 모습</button>
+    <span class="grp">모양 ${Object.keys(L).map(l => `<button type="button" data-act="layout" data-v="${l}" aria-pressed="${S.layout === l}">${L[l]}</button>`).join('')}</span>
+    <button type="button" data-act="reset">처음으로</button>`
+}
+
+function header() {
+  const n = P.filter(p => !p.ended).length
+  return `<header class="top">
+    <div class="top-row"><span class="brand">양지바른<b>정형외과</b></span><span class="sp"></span><span class="conn">● 연결됨</span><button type="button" class="refresh">↻ 새로 고침</button></div>
+    <nav class="views">
+      <button type="button" class="view-btn" data-act="view" data-v="rec" aria-pressed="${S.view === 'rec'}">접수 현황</button>
+      <button type="button" class="view-btn" data-act="view" data-v="arr" aria-pressed="${S.view === 'arr'}">어레인지<span class="n">${n}명</span></button>
+    </nav>
+  </header>`
+}
+
+function detHtml(p, c, v) {
+  if (c.three) return v.part ? `<span class="det">${esc(v.part)}</span>`
+    : `<button type="button" class="part-btn" data-act="part" data-k="${p.k}" data-col="${c.k}">부위 고르기</button>`
+  return v.det ? `<span class="det">${esc(v.det)}</span>` : ''
+}
+
+function cellTd(p, c) {
+  const v = p.cells[c.k]
+  const base = `role="button" tabindex="0" data-act="cell" data-k="${p.k}" data-col="${c.k}"`
+  if (!v) return `<td class="c-${c.k}"><div class="cell empty" ${base} aria-label="${esc(p.name)} ${c.name} 넣기"><span class="plus">+</span></div></td>`
+  const ord = c.three && v.st !== 'done' ? orderOf(c.k, p) : null
+  let inner = ''
+  if (v.st === 'todo') inner = `<span class="st">준비</span>${detHtml(p, c, v)}`
+  if (v.st === 'ready') inner = `<span class="st">준비완료 ${v.readyAt}</span>${detHtml(p, c, v)}`
+  if (v.st === 'done') inner = `<span class="st">✓ ${v.doneAt}</span>${v.part || v.det ? `<span class="det sm">${esc(v.part || v.det)}</span>` : ''}`
+  return `<td class="c-${c.k}"><div class="cell ${v.st}${v.manual ? ' manual' : ''}" ${base}>${ord ? `<span class="ord">${ord}번</span>` : ''}${v.manual ? '<span class="mn">직접</span>' : ''}${inner}</div></td>`
+}
+
+function row(p) {
+  const list = Object.values(p.cells)
+  const allDone = list.length > 0 && list.every(c => c.st === 'done')
+  return `<tr class="${p.away ? 'away' : ''} ${p.flash ? 'flash' : ''}">
+    <td class="c-t"><button type="button" class="t-btn" data-act="away" data-k="${p.k}" aria-label="${esc(p.name)} 자리비움 ${p.away ? '풀기' : '표시'}">
+      <span class="t">${p.t}</span>${p.away ? `<span class="away-tag">자리비움<br>${p.away}</span>` : ''}</button></td>
+    <td class="c-nm"><button type="button" class="nm-btn" data-act="chart" data-k="${p.k}">
+      <span class="l1"><span>${p.chart}</span><span class="tag ${p.lane}">${LANE[p.lane]}</span>${p.newRx ? '<span class="rx-new">처방 나옴</span>' : ''}</span>
+      <span class="l2"><span class="nm">${esc(p.name)}</span><span class="meta">${p.age} · ${p.sex}</span>${p.kind === '신환' ? '<span class="new-badge">신환</span>' : ''}<span class="open" aria-hidden="true">›</span></span></button>
+      <button type="button" class="ptf-btn ${p.ptf ? p.ptf.st : 'none'}" data-act="ptf" data-k="${p.k}">${!p.ptf ? 'PT 먼저' : p.ptf.st === 'up' ? `↑ PT 올라감 ${p.ptf.at}` : `↓ 내려옴 ${p.ptf.at}`}</button></td>
+    ${COLS.map(c => cellTd(p, c)).join('')}
+    <td class="c-memo">${p.memo ? `<div class="memo">${esc(p.memo)}</div>` : ''}${p.last ? `<div class="lastsym"><b>지난번</b>${esc(oneLine(p.last.sym))}</div>` : '<div class="lastsym">첫 방문이라 지난 증상이 없어요</div>'}</td>
+    <td class="c-end"><button type="button" class="end-btn${allDone ? ' is-go' : ''}" data-act="end" data-k="${p.k}">치료<br>종료</button></td>
+  </tr>`
+}
+
+function arrange() {
+  const active = P.filter(p => !p.ended), ended = P.filter(p => p.ended)
+  return `<div class="sub-line"><span>11:04:15 기준 · 5초마다 저절로 바뀌어요</span>
+      <span class="legend"><span class="lg todo">준비</span><span class="lg ready">준비완료</span><span class="lg done">✓ 완료</span><span class="lg manual">직접 넣음</span><span class="lg away">자리비움</span><span class="lg ptup">↑ PT 먼저</span></span></div>
+    <p class="howto">치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). 빈 칸을 누르면 직접 넣어요.<br>접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.</p>
+    <div class="wrap"><table class="arr">
+      <thead><tr><th class="c-t">접수<span class="sm">누르면 자리비움</span></th><th class="c-nm">성함</th>
+        ${COLS.map(c => `<th class="c-${c.k}">${c.h}${c.sub ? `<span class="sm">${c.sub}</span>` : ''}</th>`).join('')}
+        <th class="c-memo">비고<span class="sm">접수 메모 · 지난번 증상</span></th><th class="c-end"></th></tr></thead>
+      <tbody>${active.map(row).join('')}</tbody>
+    </table></div>
+    ${active.length === 0 ? '<p class="empty-note">지금 안내할 환자가 없어요</p>' : ''}
+    <section class="ended">
+      <button type="button" class="ended-h" data-act="ended-toggle" aria-expanded="${S.endedOpen}">오늘 치료 종료 ${ended.length}명 ${S.endedOpen ? '▴' : '▾'}</button>
+      ${S.endedOpen ? (ended.length ? `<ul>${ended.map(p => `<li><span class="e-t">${p.endedAt} 종료</span><b>${esc(p.name)}</b><span class="e-c">${p.chart}</span><button type="button" class="restore" data-act="restore" data-k="${p.k}">다시 넣기</button></li>`).join('')}</ul>` : '<p class="empty-note">아직 없어요</p>') : ''}
+    </section>`
+}
+
+const kv = (k, v) => `<dt>${k}</dt><dd>${esc(v)}</dd>`
+const rxTable = rows => rows.length === 0 ? '<div class="none">없어요</div>' : `
+  <table class="rx"><thead><tr><th>코드</th><th>명칭</th><th class="n">용량</th><th class="n">횟수</th><th class="n">일수</th></tr></thead>
+  <tbody>${rows.map(r => `<tr><td class="c"><code>${esc(r[0])}</code></td><td>${esc(r[1])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td></tr>`).join('')}</tbody></table>`
+
+function visitBody(v, date, pending) {
+  const ymd = date.replaceAll('-', '')
+  const head = `<div class="sec"><div class="sec-h">내원내역</div><div class="visit-line"><span>내원 : ${ymd}</span><span>${esc(v.room)}</span><span>${esc(v.ins)}</span></div></div>`
+  if (pending) return head + '<div class="sec"><div class="sec-h">증상 · 상병 · 처방</div><div class="none">아직 없어요. 진료가 끝나면 여기에 나와요.</div></div>'
+  return head + `
+    <div class="sec"><div class="sec-h">증상</div>${v.sym ? `<div class="sym"><span class="d">${ymd}</span><pre>${esc(v.sym)}</pre></div>` : '<div class="none">적힌 증상이 없어요</div>'}</div>
+    <div class="sec"><div class="sec-h">상병</div>${v.dx && v.dx.length ? `<ul class="dx">${v.dx.map(d => `<li><code class="${d[2] ? 'main' : ''}">${esc(d[0])}</code><span>${esc(d[1])}</span></li>`).join('')}</ul>` : '<div class="none">없어요</div>'}</div>
+    <div class="sec"><div class="sec-h">처방</div>${rxTable(v.rx || [])}</div>`
+}
+
+function chartPage(p) {
+  const today = `<article class="paper"><div class="paper-head"><span class="ttl">외래진료기록부</span><span class="dt">${TODAY}</span></div>
+      <dl class="kv">${kv('차트번호', p.chart)}${kv('수진자명', `${p.name} (${p.sx}/${p.age})`)}${kv('주민등록', p.res)}${kv('이동전화', p.cel)}</dl><hr class="rule">
+      ${p.spc ? `<div class="spc"><div class="sec-h">특이사항</div><p>${esc(p.spc)}</p></div>` : ''}
+      ${visitBody({ room: p.room, ins: p.ins, ...(p.today || {}) }, TODAY, !p.today)}</article>`
+  const past = p.last
+    ? `<article class="paper past"><div class="paper-head"><span class="ttl">외래진료기록부</span><span class="dt">${p.last.date}</span></div>${visitBody(p.last, p.last.date, false)}</article>`
+    : '<div class="paper none-card">첫 방문이라 직전 기록부가 없어요.</div>'
+  return `<header class="top chart-top">
+      <div class="top-row"><button type="button" class="back" data-act="chart-close">‹ 어레인지</button><span class="sp"></span><span class="conn">● 연결됨</span></div>
+      <div class="who"><span class="chart-no">${p.chart}</span><h1>${esc(p.name)}</h1><span class="meta">${p.age}세 · ${p.sex} · ${p.kind}</span>${p.kind === '신환' ? '<span class="new-badge">신환</span>' : ''}</div>
+      <div class="state"><span class="tag ${p.lane}">${LANE[p.lane]}</span><span>${p.t} 접수</span></div>
+      ${p.memo ? `<div class="memo big"><span class="lab">메모</span>${esc(p.memo)}</div>` : ''}
+    </header>
+    <main class="charts">
+      <section><h2>오늘 진료기록부 <span class="h-dt">${TODAY}</span></h2>${today}</section>
+      <section><h2>직전 진료기록부 ${p.last ? `<span class="h-dt">${p.last.date} · ${p.last.ago}</span>` : ''}</h2>${past}</section>
+    </main>
+    <footer class="foot">보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요</footer>`
+}
+
+function sheetHtml() {
+  const s = S.sheet
+  return `<div class="sheet-back" data-act="sheet-close"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(s.title)}" data-act="noop">
+    <div class="sheet-h"><b>${esc(s.title)}</b><span>${esc(s.sub)}</span></div>
+    <div class="opts${s.options.length > 6 ? ' many' : ''}">${s.options.map((o, i) => `<button type="button" class="opt" data-act="pick" data-i="${i}">${esc(o)}</button>`).join('')}</div>
+    <button type="button" class="sheet-x" data-act="sheet-close">닫기</button></div></div>`
+}
+
+function render() {
+  const tablet = isTablet()
+  const vp = $('#vp'), want = S.layout === 'tablet' ? 'width=1280' : 'width=device-width, initial-scale=1'
+  if (vp.content !== want) vp.content = want
+  document.body.classList.toggle('is-tablet', tablet)
+  document.body.classList.toggle('is-phone', !tablet)
+  document.body.classList.toggle('force-phone', S.layout === 'phone')
+  const w = $('.wrap'), sl = w ? w.scrollLeft : 0, y = scrollY
+  renderMock()
+  $('#app').innerHTML = S.chart ? chartPage(findP(S.chart))
+    : header() + (S.view === 'arr' ? arrange()
+      : '<div class="rec-ph"><p>지금 쓰는 <b>접수 현황</b> 화면 그대로예요.</p><p class="sm">목업에서는 생략했어요. 위의 <b>어레인지</b>를 눌러 보세요.</p></div>')
+      + '<footer class="foot">표시(준비완료·완료·자리비움·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요</footer>'
+  const w2 = $('.wrap')
+  if (w2) w2.scrollLeft = sl
+  if (!S.chart) scrollTo(0, y)
+  $('#sheet').innerHTML = S.sheet ? sheetHtml() : ''
+}
+
+/* ---------- 동작 ---------- */
+function snap() { undoSnap = JSON.stringify(P) }
+function toast(msg) {
+  $('#toast').innerHTML = `<div class="toast" role="status"><span>${esc(msg)}</span><button type="button" data-act="undo">되돌리기</button></div>`
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { $('#toast').innerHTML = ''; undoSnap = null }, 5000)
+}
+function alertBanner(msg, buzz = true) {
+  $('#alert').innerHTML = `<div class="alert" role="alert">알림 · ${esc(msg)}${buzz ? '<span class="buzz">(태블릿이 떨리거나 삐 소리)</span>' : ''}</div>`
+  if (buzz && navigator.vibrate) navigator.vibrate([200, 100, 200])
+  clearTimeout(alertTimer)
+  alertTimer = setTimeout(() => { $('#alert').innerHTML = '' }, 4000)
+}
+function flash(k) {
+  findP(k).flash = true
+  setTimeout(() => { const q = findP(k); if (q) { q.flash = false; render() } }, 3600)
+}
+function openSheet(title, sub, options, onPick) { S.sheet = { title, sub, options, onPick }; render() }
+
+function tapCell(p, k) {
+  const c = COL[k], v = p.cells[k]
+  p.newRx = false
+  if (!v) {
+    const options = k === 'xray' ? ['X-ray 찍기'] : c.three ? [...PARTS, '부위는 나중에'] : c.opts
+    return openSheet(`${c.name} 직접 넣기`, `${p.name} · 처방에 없어도 넣을 수 있어요`, options, label => {
+      snap()
+      p.cells[k] = { st: 'todo', manual: true, rxAt: stamp(), det: c.three || k === 'xray' ? '' : label, part: c.three && label !== '부위는 나중에' ? label : null }
+      toast(`${p.name} · ${c.name} 직접 넣었어요`)
+      render()
+    })
+  }
+  if (v.st === 'done') {
+    const options = ['준비로 되돌리기', c.three ? '준비완료로 되돌리기' : null, v.manual ? '칸에서 빼기' : null].filter(Boolean)
+    return openSheet(`${c.name} · 완료`, `${p.name} · ${v.doneAt}에 완료로 바꿨어요`, options, label => {
+      snap()
+      if (label === '준비로 되돌리기') { v.st = 'todo'; delete v.readyAt; delete v.doneAt }
+      if (label === '준비완료로 되돌리기') { v.st = 'ready'; delete v.doneAt; v.readyAt = v.readyAt || stamp() }
+      if (label === '칸에서 빼기') delete p.cells[k]
+      toast(`${p.name} · ${c.name} ${label.replace('되돌리기', '되돌렸어요').replace('칸에서 빼기', '칸에서 뺐어요')}`)
+      render()
+    })
+  }
+  snap()
+  if (v.st === 'todo' && c.three) { v.st = 'ready'; v.readyAt = stamp(); toast(`${p.name} · ${c.name} 준비완료로 바꿨어요`) }
+  else { v.st = 'done'; v.doneAt = stamp(); toast(`${p.name} · ${c.name} 완료로 바꿨어요`) }
+  render()
+}
+
+function openPart(p, c) {
+  openSheet(`${c.name} 부위 고르기`, `${p.name} · 비트에 부위가 없어서 골라요`, PARTS, label => {
+    snap()
+    p.cells[c.k].part = label
+    toast(`${p.name} · ${c.name} 부위: ${label}`)
+    render()
+  })
+}
+
+function simRx() {
+  const p = findP('g')
+  if (!p || p.ended || Object.keys(p.cells).length) return alertBanner('이미 보여 드렸어요 · [처음으로]를 누르면 다시 볼 수 있어요', false)
+  const t = stamp()
+  p.cells = { sono: { st: 'todo', part: '왼 어깨', rxAt: t }, ds: { st: 'todo', det: '50분', rxAt: t }, eswt: { st: 'todo', det: '1부위', rxAt: t } }
+  p.today = p.pendingToday
+  p.lane = 'hold'
+  p.newRx = true
+  flash(p.k)
+  alertBanner(`처방이 나왔어요 — ${p.name}`)
+  render()
+}
+
+function simNew() {
+  if (findP('n')) return alertBanner('이미 보여 드렸어요 · [처음으로]를 누르면 다시 볼 수 있어요', false)
+  P.push({ k: 'n', t: stamp(), chart: '12011', name: '김도윤', age: 33, sex: '남', sx: 'M', kind: '신환', lane: 'wait', memo: '허리 삐끗 (어제)', res: '930227-*******', cel: '010-0000-2011', room: '2진료실', ins: '국민건강보험(신환)', spc: '', cells: {}, today: null, last: null })
+  flash('n')
+  alertBanner('새 접수 — 김도윤')
+  render()
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]')
+  if (!b) return
+  const { act, k, col, v, i } = b.dataset
+  const p = k ? findP(k) : null
+  switch (act) {
+    case 'noop': return
+    case 'view': S.view = v; break
+    case 'layout': S.layout = v; break
+    case 'sim-rx': S.view = 'arr'; S.chart = null; S.sheet = null; render(); return simRx()
+    case 'sim-new': S.view = 'arr'; S.chart = null; S.sheet = null; render(); return simNew()
+    case 'reset': P = INIT(); clock = START; Object.assign(S, { view: 'arr', chart: null, sheet: null, endedOpen: false }); $('#toast').innerHTML = ''; undoSnap = null; break
+    case 'cell': return tapCell(p, col)
+    case 'part': return openPart(p, COL[col])
+    case 'away': snap(); p.away = p.away ? null : stamp(); toast(p.away ? `${p.name} · 자리비움 ${p.away}` : `${p.name} · 자리비움 풀었어요`); break
+    case 'ptf': {
+      snap()
+      const next = !p.ptf ? { st: 'up', at: stamp() } : p.ptf.st === 'up' ? { st: 'down', at: stamp() } : null
+      p.ptf = next
+      toast(!next ? `${p.name} · PT 먼저 표시를 지웠어요` : next.st === 'up' ? `${p.name} · PT 먼저 올라갔어요` : `${p.name} · PT 끝나고 내려왔어요`)
+      break
+    }
+    case 'end': snap(); p.ended = true; p.endedAt = stamp(); toast(`${p.name} 님을 표에서 뺐어요`); break
+    case 'restore': snap(); p.ended = false; toast(`${p.name} 님을 표에 다시 넣었어요`); break
+    case 'ended-toggle': S.endedOpen = !S.endedOpen; break
+    case 'chart': p.newRx = false; S.backY = scrollY; S.chart = k; render(); scrollTo(0, 0); return
+    case 'chart-close': S.chart = null; render(); scrollTo(0, S.backY); return
+    case 'pick': { const s = S.sheet; S.sheet = null; return s.onPick(s.options[+i]) }
+    case 'sheet-close': S.sheet = null; break
+    case 'undo':
+      if (undoSnap) { P = JSON.parse(undoSnap); undoSnap = null }
+      $('#toast').innerHTML = ''
+      break
+  }
+  render()
+})
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.cell')) { e.preventDefault(); e.target.click() }
+  if (e.key === 'Escape' && S.sheet) { S.sheet = null; render() }
+})
+mq.addEventListener('change', render)
+render()
+</script>
+</body>
+</html>
