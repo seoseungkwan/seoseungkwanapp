@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { mergeRanges } from '@/lib/analytics/coverage'
@@ -16,11 +16,14 @@ import type { BridgeState } from '@/types/bridge'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import { runAnalysis } from '@/workers/runAnalysis'
+import { LOAD_SPANS, loadHint, planLoad, type LoadSpan } from './loadPlan'
 import { longDate } from './sections/parts'
 import type { SaveInput } from './useStatsData'
+import type { StatsRange } from './view'
 
 // 자료 고르기 (stats REQ-514 AC-514.3·514.4·514.5·514.8, 시안 notes.md §3 '자료 고르기').
-// 왼쪽 비트 칸은 연결 상태마다 다르고, 오른쪽 파일 칸은 언제나 있다. 파일 이름은 화면에만 보이고 Worker·서버로 가지 않는다
+// 왼쪽 비트 칸은 연결 상태마다 다르고, 오른쪽 파일 칸은 언제나 있다. 파일 이름은 화면에만 보이고 Worker·서버로 가지 않는다.
+// 비트 칸 위쪽의 '불러올 기간'(stats-load-range REQ-3301, 시안 docs/mockups/stats-load-range)은 화면을 열 때마다 [지금 보는 기간]이고 어디에도 기억하지 않는다
 
 // 파일 길의 덮은 기간 상한. stats_coverage 제약(양 끝을 합쳐 800일)을 넘으면 saveStats가 아무것도 보내지 않아 [다시 저장]도 끝없이 실패한다
 const MAX_COVERED_DAYS = 800
@@ -96,12 +99,39 @@ function ConnectionStopped({ code, onRetry }: { code: ErrorCode; onRetry(): void
   )
 }
 
-function BitLoad({ today, job, onLoad }: { today: string; job: Props['job']; onLoad(closeToday: boolean): void }) {
+// 불러올 기간을 고르는 줄. 일이 있으면 네 단추가 막힌다(고른 것은 그대로)
+function SpanPicker({ span, job, onPick }: { span: LoadSpan; job: Props['job']; onPick(span: LoadSpan): void }) {
+  return (
+    <div className="basis-full flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <span className="text-small font-semibold text-ink">불러올 기간</span>
+      <div role="group" aria-label="불러올 기간" className={`${ds.segment.group} max-md:grid-cols-2`}>
+        {LOAD_SPANS.map(({ span: value, name }) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={span === value}
+            disabled={job !== null}
+            className={`${ds.segment.button} ${span === value ? ds.segment.on : ds.segment.off}`}
+            onClick={() => onPick(value)}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BitLoad({ today, range, job, onLoad }: { today: string; range: StatsRange; job: Props['job']; onLoad: Props['onLoad'] }) {
   const [closeToday, setCloseToday] = useState(false)
+  const [span, setSpan] = useState<LoadSpan>('view')
+  // 계획은 안내 줄에만 쓴다. 누르면 고른 것만 넘기고 화면이 같은 함수로 다시 세운다
+  const hint = useMemo(() => loadHint(today, range, planLoad(today, range, span)), [today, range, span])
   const date = longDate(today)
   return (
     <>
-      <button type="button" aria-disabled={job !== null || undefined} className={ds.button.primary} onClick={job === null ? () => onLoad(closeToday) : undefined}>
+      <SpanPicker span={span} job={job} onPick={setSpan} />
+      <button type="button" aria-disabled={job !== null || undefined} className={ds.button.primary} onClick={job === null ? () => onLoad(closeToday, span) : undefined}>
         <Icon name="monitor" />
         {job === 'bit' ? '불러오는 중' : '비트에서 불러오기'}
       </button>
@@ -114,6 +144,7 @@ function BitLoad({ today, job, onLoad }: { today: string; job: Props['job']; onL
         </span>
         오늘 진료 끝
       </label>
+      <p className={`basis-full ${HINT}`}>{hint}</p>
       <p className={`basis-full ${HINT}`}>
         {closeToday ? `켜고 불러오면 오늘(${date}) 숫자도 끝난 날로 저장해요. 진료가 다 끝난 뒤에 켜 주세요.` : `꺼 두면 오늘(${date})은 진료 중이라, 어제까지만 끝난 날로 저장해요.`}
       </p>
@@ -121,8 +152,8 @@ function BitLoad({ today, job, onLoad }: { today: string; job: Props['job']; onL
   )
 }
 
-function BitCell({ state, helloError, today, job, onRetry, onLoad }: Omit<Props, 'onFiles'>) {
-  if (state === 'ready') return <BitLoad today={today} job={job} onLoad={onLoad} />
+function BitCell({ state, helloError, today, range, job, onRetry, onLoad }: Omit<Props, 'onFiles' | 'progress'>) {
+  if (state === 'ready') return <BitLoad today={today} range={range} job={job} onLoad={onLoad} />
   if (state === 'no-extension') {
     return (
       <Message title="비트 PC의 크롬에서 불러올 수 있어요">
@@ -155,13 +186,15 @@ type Props = {
   state: BridgeState
   helloError: string | null
   today: string
-  job: StatsJob | null // 다른 일을 하는 동안 불러오기·파일을 막는다
+  range: StatsRange // 지금 보는 기간(불러올 기간 안내 줄의 계획)
+  job: StatsJob | null // 다른 일을 하는 동안 불러오기·파일·불러올 기간을 막는다
+  progress: string | null // 나눠 읽는 중 줄(조각이 둘 이상일 때 화면이 준다). null이면 지금 글
   onRetry(): void
-  onLoad(closeToday: boolean): void
+  onLoad(closeToday: boolean, span: LoadSpan): void
   onFiles(files: File[]): void
 }
 
-export function SourcePicker({ onFiles, ...rest }: Props) {
+export function SourcePicker({ onFiles, progress, ...rest }: Props) {
   const { job } = rest
   const input = useRef<HTMLInputElement>(null)
 
@@ -203,7 +236,7 @@ export function SourcePicker({ onFiles, ...rest }: Props) {
       {(job === 'bit' || job === 'file') && (
         <p className="mt-3 flex items-center gap-2 text-body text-ink-2">
           <Icon name="clock" className="shrink-0 text-accent" />
-          <span>{WORKING[job]}</span>
+          <span>{job === 'bit' && progress !== null ? progress : WORKING[job]}</span>
         </p>
       )}
     </>

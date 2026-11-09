@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import { diffDays } from '@/lib/analytics/dates'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
@@ -10,6 +11,7 @@ import type { BridgeState } from '@/types/bridge'
 import type { DayPayload, MonthPayload } from '@/types/payload'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { fileCovered, readFiles, SourcePicker } from './SourcePicker'
+import { statsRange } from './view'
 
 // 자료 고르기 (stats REQ-514 AC-514.3·514.4·514.5·514.8, 시안 notes.md §3). 파일 이름·숫자는 모두 가짜다
 
@@ -27,13 +29,32 @@ vi.mock('@/lib/payload/toDayPayloads', () => ({ toDayPayloads: vi.fn() }))
 const TODAY = '2026-11-13'
 const YESTERDAY = '2026-11-12'
 const LOAD = '비트에서 불러오기'
+const RANGE = statsRange(TODAY, '30d') // 불러올 범위 2026-09-01 ~ 11-13
 
 const onLoad = vi.fn()
 const onFiles = vi.fn()
 const onRetry = vi.fn()
 
-function draw(state: BridgeState = 'ready', over: { job?: 'bit' | 'file' | 'save' | null; helloError?: string | null } = {}) {
-  return render(<SourcePicker state={state} helloError={over.helloError ?? null} today={TODAY} job={over.job ?? null} onRetry={onRetry} onLoad={onLoad} onFiles={onFiles} />)
+type Over = { job?: 'bit' | 'file' | 'save' | null; helloError?: string | null; progress?: string | null }
+
+function picker(state: BridgeState = 'ready', over: Over = {}) {
+  return (
+    <SourcePicker
+      state={state}
+      helloError={over.helloError ?? null}
+      today={TODAY}
+      range={RANGE}
+      job={over.job ?? null}
+      progress={over.progress ?? null}
+      onRetry={onRetry}
+      onLoad={onLoad}
+      onFiles={onFiles}
+    />
+  )
+}
+
+function draw(state: BridgeState = 'ready', over: Over = {}) {
+  return render(picker(state, over))
 }
 
 const fileNamed = (name: string) => new File(['가짜'], name)
@@ -72,13 +93,13 @@ describe('AC-514.3·514.8 비트 PC', () => {
   it('AC-514.8 끄고 누르면 onLoad(false), 켜고 누르면 안내가 바뀌고 onLoad(true)', () => {
     draw()
     fireEvent.click(screen.getByRole('button', { name: LOAD }))
-    expect(onLoad).toHaveBeenLastCalledWith(false)
+    expect(onLoad).toHaveBeenLastCalledWith(false, 'view')
 
     fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
     expect(screen.getByText('켜고 불러오면 오늘(11월 13일) 숫자도 끝난 날로 저장해요. 진료가 다 끝난 뒤에 켜 주세요.')).toBeTruthy()
     expect(screen.queryByText(/꺼 두면/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: LOAD }))
-    expect(onLoad).toHaveBeenLastCalledWith(true)
+    expect(onLoad).toHaveBeenLastCalledWith(true, 'view')
   })
 
   it('AC-514.3 불러오는 동안 단추는 막히고 "불러오는 중"이며 읽는 중 안내가 보이고, 눌러도 다시 부르지 않는다', () => {
@@ -420,5 +441,174 @@ describe('AC-1205.5 파일 길에 묶음 넘기기', () => {
 
     expect(outcome.save).toBeNull()
     expect(outcome.incomplete).toEqual({ failedFiles: 0, skippedRows: 2 })
+  })
+})
+
+// ── 불러올 기간 (stats-load-range REQ-3301·AC-3303.4, 시안 docs/mockups/stats-load-range) ──
+
+const SPAN_NAMES = ['지금 보는 기간', '최근 1년', '최근 2년', '2020년부터 전부']
+const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
+const classesOf = (el: Element | null | undefined) => tokens(el?.getAttribute('class') ?? '')
+const spanGroup = () => screen.getByRole('group', { name: '불러올 기간' })
+const spanButton = (name: string) => within(spanGroup()).getByRole('button', { name }) as HTMLButtonElement
+const pressed = () => within(spanGroup()).getAllByRole('button').map((button) => button.getAttribute('aria-pressed'))
+// 시험의 오늘은 2026-11-13이고 지금 보는 기간은 최근 30일이다(명세 예시의 11월 9일 대신 이 파일의 오늘로 같은 규칙)
+const HINTS = [
+  '지금 보는 기간(최근 30일)과 비교할 지난 30일이 든 9월 1일 – 11월 13일을 읽어요. 빨리 끝나요.',
+  '2025년 12월 1일 – 2026년 11월 13일(1년)을 읽어요. 30초쯤 걸려요.',
+  '2024년 12월 1일 – 2026년 11월 13일(2년)을 읽어요. 1분쯤 걸려요.',
+  '2020년 1월 1일 – 2026년 11월 13일을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
+]
+const CLOSE_OFF = '꺼 두면 오늘(11월 13일)은 진료 중이라, 어제까지만 끝난 날로 저장해요.'
+
+describe('AC-3301.1 불러올 기간 묶음 단추', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it("AC-3301.1 [비트에서 불러오기] 위 한 줄(basis-full)에 굵은 '불러올 기간' 글과 묶음이 있고 단추는 차례로 넷이다", () => {
+    draw()
+    const group = spanGroup()
+    expect(within(group).getAllByRole('button').map((button) => button.textContent)).toEqual(SPAN_NAMES)
+    const title = screen.getByText('불러올 기간')
+    expect(classesOf(title)).toEqual(expect.arrayContaining(['text-small', 'font-semibold', 'text-ink']))
+    const row = group.parentElement
+    expect(title.parentElement).toBe(row)
+    expect(classesOf(row)).toContain('basis-full')
+    const load = screen.getByRole('button', { name: LOAD })
+    expect(row!.compareDocumentPosition(load) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-3301.1 화면을 열면 [지금 보는 기간]만 aria-pressed="true"이고, 다시 열어도 그렇다', () => {
+    const first = draw()
+    expect(pressed()).toEqual(['true', 'false', 'false', 'false'])
+    fireEvent.click(spanButton('2020년부터 전부'))
+    first.unmount()
+    draw()
+    expect(pressed()).toEqual(['true', 'false', 'false', 'false'])
+  })
+
+  it('AC-3301.1 다른 단추를 누르면 그것만 눌린다', () => {
+    draw()
+    fireEvent.click(spanButton('최근 2년'))
+    expect(pressed()).toEqual(['false', 'false', 'true', 'false'])
+    fireEvent.click(spanButton('최근 1년'))
+    expect(pressed()).toEqual(['false', 'true', 'false', 'false'])
+  })
+
+  it('AC-3301.1 ds.segment 모양: 묶음은 ds.segment.group + max-md:grid-cols-2(768px 미만 두 칸씩 두 줄), 눌린 것은 on, 나머지는 off', () => {
+    draw()
+    expect(classesOf(spanGroup()).sort()).toEqual(tokens(`${ds.segment.group} max-md:grid-cols-2`).sort())
+    fireEvent.click(spanButton('최근 1년'))
+    expect(classesOf(spanButton('최근 1년')).sort()).toEqual(tokens(`${ds.segment.button} ${ds.segment.on}`).sort())
+    for (const name of ['지금 보는 기간', '최근 2년', '2020년부터 전부']) {
+      expect(classesOf(spanButton(name)).sort()).toEqual(tokens(`${ds.segment.button} ${ds.segment.off}`).sort())
+    }
+  })
+
+  it('AC-3301.1 고른 것은 브라우저 저장소·서버에 쓰지 않는다', () => {
+    const stored = vi.spyOn(Storage.prototype, 'setItem')
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    draw()
+    for (const name of SPAN_NAMES) fireEvent.click(spanButton(name))
+    expect(stored).not.toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('AC-3301.1 상자 안 상자가 없다(묶음은 띠 안의 상자 하나)', () => {
+    const { container } = draw()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+describe('AC-3301.2 일이 있으면 막힘 · onLoad(오늘 진료 끝, 고른 것)', () => {
+  it.each(['bit', 'file', 'save'] as const)('AC-3301.2 일(%s)이 있으면 네 단추가 disabled이고 눌러도 고른 것이 바뀌지 않는다', (job) => {
+    draw('ready', { job })
+    for (const name of SPAN_NAMES) expect(spanButton(name).disabled).toBe(true)
+    fireEvent.click(spanButton('최근 1년'))
+    expect(pressed()).toEqual(['true', 'false', 'false', 'false'])
+  })
+
+  it('AC-3301.2 일이 끝나면 다시 누를 수 있고 고른 것은 그대로다', () => {
+    const { rerender } = draw()
+    fireEvent.click(spanButton('2020년부터 전부'))
+    rerender(picker('ready', { job: 'bit' }))
+    expect(spanButton('최근 1년').disabled).toBe(true)
+    fireEvent.click(spanButton('최근 1년'))
+    expect(pressed()).toEqual(['false', 'false', 'false', 'true'])
+    rerender(picker('ready', { job: null }))
+    for (const name of SPAN_NAMES) expect(spanButton(name).disabled).toBe(false)
+    expect(pressed()).toEqual(['false', 'false', 'false', 'true'])
+  })
+
+  it("AC-3301.2 [비트에서 불러오기]를 누르면 onLoad(오늘 진료 끝, 고른 것)이고 고른 것은 'view'·'1y'·'2y'·'all'이다", () => {
+    draw()
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    expect(onLoad).toHaveBeenLastCalledWith(false, 'view')
+    fireEvent.click(spanButton('최근 1년'))
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    expect(onLoad).toHaveBeenLastCalledWith(false, '1y')
+    fireEvent.click(spanButton('최근 2년'))
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    expect(onLoad).toHaveBeenLastCalledWith(false, '2y')
+    fireEvent.click(spanButton('2020년부터 전부'))
+    fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+    fireEvent.click(screen.getByRole('button', { name: LOAD }))
+    expect(onLoad).toHaveBeenLastCalledWith(true, 'all')
+    expect(onLoad).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('AC-3301.3 단추 아래 안내 줄', () => {
+  it('AC-3301.3 고른 것마다 읽을 날짜와 걸리는 때를 말한다', () => {
+    draw()
+    SPAN_NAMES.forEach((name, i) => {
+      fireEvent.click(spanButton(name))
+      expect(screen.getByText(HINTS[i])).toBeTruthy()
+      for (const other of HINTS.filter((_, j) => j !== i)) expect(screen.queryByText(other)).toBeNull()
+    })
+  })
+
+  it("AC-3301.3 안내 줄은 basis-full text-small text-ink-2이고 [비트에서 불러오기] 뒤, '오늘 진료 끝' 안내 바로 위에 있다", () => {
+    draw()
+    const hint = screen.getByText(HINTS[0])
+    expect(hint.tagName).toBe('P')
+    expect(classesOf(hint).sort()).toEqual(['basis-full', 'text-small', 'text-ink-2'].sort())
+    expect(hint.nextElementSibling?.textContent).toBe(CLOSE_OFF)
+    const load = screen.getByRole('button', { name: LOAD })
+    expect(load.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('AC-3303.4 나눠 읽는 중 줄', () => {
+  const PROGRESS = '비트 PC에서 읽는 중이에요 (2/4 · 2022년 12월 – 2024년 11월). 다 끝날 때까지 이 창을 닫지 마세요.'
+
+  it('AC-3303.4 비트 일 중 progress가 있으면 읽는 중 줄이 그 글이다', () => {
+    draw('ready', { job: 'bit', progress: PROGRESS })
+    expect(screen.getByText(PROGRESS)).toBeTruthy()
+    expect(screen.queryByText('비트 PC에서 읽는 중이에요. 기간이 길면 1분쯤 걸려요.')).toBeNull()
+  })
+
+  it('AC-3303.4 progress가 없으면 지금 글이다', () => {
+    draw('ready', { job: 'bit', progress: null })
+    expect(screen.getByText('비트 PC에서 읽는 중이에요. 기간이 길면 1분쯤 걸려요.')).toBeTruthy()
+  })
+
+  it('AC-3303.4 파일을 읽는 중이면 progress가 있어도 파일 글이다', () => {
+    draw('ready', { job: 'file', progress: PROGRESS })
+    expect(screen.getByText('파일을 이 PC 안에서 읽는 중이에요.')).toBeTruthy()
+    expect(screen.queryByText(PROGRESS)).toBeNull()
+  })
+
+  it("AC-3303.4 나눠 읽는 동안 [비트에서 불러오기]('불러오는 중')·[파일 고르기]·불러올 기간 단추가 막힌다", () => {
+    draw('ready', { job: 'bit', progress: PROGRESS })
+    const load = screen.getByRole('button', { name: '불러오는 중' })
+    expect(load.getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBe('true')
+    for (const name of SPAN_NAMES) expect(spanButton(name).disabled).toBe(true)
+    fireEvent.click(load)
+    expect(onLoad).not.toHaveBeenCalled()
   })
 })
