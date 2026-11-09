@@ -2,7 +2,7 @@
 
 import { formatCount, formatRate } from '@/components/charts/format'
 import { InlineBar } from '@/components/charts/InlineBar'
-import { periodDesc, revisitRates, type FirstRevisit, type RevisitRates, type StatsInput, type StatsPeriod, type StatsRateCell } from '@/components/stats/view'
+import { periodDesc, revisitRates, type FirstRevisit, type FirstRevisitKey, type RevisitRates, type StatsInput, type StatsPeriod, type StatsRateCell } from '@/components/stats/view'
 import { compareYmd } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
@@ -10,7 +10,8 @@ import { EmptyNote, hasRows, longDate, NO_RANGE_DATA, Note, Section, yearMonth }
 
 // 신환 재방문율 + 첫 재방문까지 날수 (stats REQ-513 AC-513.1·513.3·513.4·513.10, AC-511.4, 시안 notes.md §3 '신환 재방문율').
 // 날짜는 revisitRates의 d30Cohort·firstRevisit의 from·to를 그대로, 숫자는 비율 칸의 within·cohort를 쓴다.
-// 첫 재방문은 first.items 차례 그대로 그린다(시안 .rk). 막대 폭은 다섯 가운데 가장 큰 값 대비이고 '아직 다시 안 옴'만 막대가 line-strong이다
+// 첫 재방문은 first.items 차례 그대로 그린다(시안 .rk). 막대 폭은 다섯 가운데 가장 큰 값 대비이고 '아직 다시 안 옴'만 막대가 line-strong이다.
+// 합친 넷(stats-load-range AC-3306.2)이면 넷 가운데 가장 큰 값 대비, 합친 줄만 line-strong이고 '30일 넘어 다시 옴' 끝날 안내는 없다
 
 const TITLE = '신환 재방문율'
 const DESC = '처음 온 환자가 다시 온 비율'
@@ -74,13 +75,16 @@ function lastDay({ covered, days }: StatsInput): string | null {
   return ends.reduce<string | null>((latest, day) => (latest === null || compareYmd(day, latest) > 0 ? day : latest), null)
 }
 
+// '아직 다시 안 옴'과 그것을 품은 합친 줄(stats-load-range AC-3306.2)만 막대가 line-strong이다
+const notBack = (key: FirstRevisitKey) => key === 'never' || key === 'after30OrNever'
+
 // 줄 = 이름 · 막대 · 값 + 몫. 값 칸은 최소 폭을 둬서 막대 길이를 줄끼리 견줄 수 있게 한다. 이름은 자르지 않는다
 function FirstRevisitList({ first }: { first: FirstRevisit }) {
   const max = Math.max(...first.items.map((item) => item.count))
   return (
     <ol aria-label={FIRST_TITLE} className="mt-2">
       {first.items.map((item) => (
-        <li key={item.key} className={`grid min-h-9 grid-cols-[112px_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-line ${item.key === 'never' ? '[&_.bg-accent]:bg-line-strong' : ''}`}>
+        <li key={item.key} className={`grid min-h-9 grid-cols-[112px_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-line ${notBack(item.key) ? '[&_.bg-accent]:bg-line-strong' : ''}`}>
           <span className="text-small text-ink-2">{item.label}</span>
           <span className="min-w-0 [&>span]:w-full">
             <InlineBar current={item.count} previous={null} max={max} />
@@ -111,7 +115,8 @@ function FirstRevisitBlock({ rates, input }: { rates: RevisitRates; input: Stats
       </>
     )
   }
-  const end = lastDay(input)
+  // 끝날 안내는 '30일 넘어 다시 옴' 줄이 있을 때만이다(합친 넷이면 그 줄이 없다, AC-3306.2)
+  const end = first.items.some((item) => item.key === 'after30') ? lastDay(input) : null
   return (
     <>
       {heading}

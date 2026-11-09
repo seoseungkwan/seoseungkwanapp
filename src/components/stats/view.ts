@@ -55,7 +55,8 @@ export type SummaryCell = {
 export type StatsRateCell = { kind: 'rate'; value: number; within: number; cohort: number; excluded: boolean } | { kind: 'in-progress' } | { kind: 'none' }
 
 // 원본 CohortMonthResult의 네 칸 + 아직 다시 안 옴. 다섯의 합 = cohort. from·to = 센 칸의 첫날·끝날
-export type FirstRevisitKey = 'within7' | 'days8to14' | 'days15to30' | 'after30' | 'never'
+// after30을 셀 수 없는 줄이 들면 뒤 둘을 after30OrNever 하나로 합친 넷이다(stats-load-range AC-3306.1). 넷의 합도 cohort
+export type FirstRevisitKey = 'within7' | 'days8to14' | 'days15to30' | 'after30' | 'never' | 'after30OrNever'
 export type FirstRevisit = { from: string; to: string; cohort: number; items: { key: FirstRevisitKey; label: string; count: number }[] }
 
 export type RevisitRates = { d7: StatsRateCell; d14: StatsRateCell; d30: StatsRateCell; d30Cohort: DateRange | null; firstRevisit: FirstRevisit | null }
@@ -414,7 +415,9 @@ function rateOf(units: readonly RevisitUnit[], key: RevisitKey): StatsRateCell {
   return { kind: 'rate', value: within / cohort, within, cohort, excluded: counted.length < units.length }
 }
 
-// 30일 값이 숫자인 칸들로 센다. 그런 칸이 없거나 신환이 0명이면 null(30일 줄이 '집계 중'이거나 '자료 없음'이다)
+// 30일 값이 숫자인 칸들로 센다. 그런 칸이 없거나 신환이 0명이면 null(30일 줄이 '집계 중'이거나 '자료 없음'이다).
+// 센 칸에 after30이 null(없음 포함)인 줄이 하나라도 들면 — 나눠 읽기의 옛 조각(stats-load-range AC-3302.7) — '30일 넘어 다시 옴'과
+// '아직 다시 안 옴'을 나눌 수 없어 '30일 넘어 다시 왔거나 아직 안 옴'(집단 − 30일 안) 하나로 합친다(AC-3306.1). null을 0으로 치지 않는다
 function firstRevisitOf(units: readonly RevisitUnit[]): FirstRevisit | null {
   const counted = countedUnits(units, 'within30')
   const revisits = revisitsIn(counted)
@@ -423,18 +426,19 @@ function firstRevisitOf(units: readonly RevisitUnit[]): FirstRevisit | null {
   const within7 = sumOf(revisits, 'within7')
   const within14 = sumOf(revisits, 'within14')
   const within30 = sumOf(revisits, 'within30')
+  const head: FirstRevisit['items'] = [
+    { key: 'within7', label: '7일 안', count: within7 },
+    { key: 'days8to14', label: '8~14일', count: within14 - within7 },
+    { key: 'days15to30', label: '15~30일', count: within30 - within14 },
+  ]
+  const range = { from: counted[0].from, to: counted[counted.length - 1].to, cohort }
+  if (revisits.some((revisit) => (revisit.after30 ?? null) === null)) {
+    return { ...range, items: [...head, { key: 'after30OrNever', label: '30일 넘어 다시 왔거나 아직 안 옴', count: cohort - within30 }] }
+  }
   const after30 = sumOf(revisits, 'after30')
   return {
-    from: counted[0].from,
-    to: counted[counted.length - 1].to,
-    cohort,
-    items: [
-      { key: 'within7', label: '7일 안', count: within7 },
-      { key: 'days8to14', label: '8~14일', count: within14 - within7 },
-      { key: 'days15to30', label: '15~30일', count: within30 - within14 },
-      { key: 'after30', label: '30일 넘어 다시 옴', count: after30 },
-      { key: 'never', label: '아직 다시 안 옴', count: cohort - within30 - after30 },
-    ],
+    ...range,
+    items: [...head, { key: 'after30', label: '30일 넘어 다시 옴', count: after30 }, { key: 'never', label: '아직 다시 안 옴', count: cohort - within30 - after30 }],
   }
 }
 

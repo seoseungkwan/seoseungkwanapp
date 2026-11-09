@@ -258,6 +258,63 @@ describe('AC-513.3: 신환 재방문율 [자세히]', () => {
   })
 })
 
+// stats-load-range REQ-3306: 센 날에 after30이 null인 줄이 들면 '30일 넘어 다시 옴'과 '아직 다시 안 옴'을 합친 넷이다
+describe('AC-3306.2: 합친 넷의 첫 재방문까지 날수', () => {
+  // DAYS_30에서 10월 12일만 after30이 null: 7일 안 11 · 8~14일 6 · 15~30일 8 · 합친 줄 50 − 25 = 25
+  const MERGED_30 = [day('2026-09-15', [20, 5, 8, 10, 2]), day('2026-10-12', [30, 6, 9, 15, null]), day('2026-10-13', [5, 1, 2, null, null]), day('2026-11-02', [10, 3, 4])]
+  const MERGED = '30일 넘어 다시 왔거나 아직 안 옴'
+  const list = () => screen.getByRole('list', { name: '첫 재방문까지 날수' })
+  const items = () => within(list()).getAllByRole('listitem')
+  const widths = () => items().map((item) => (item.querySelector('.bg-accent') as HTMLElement).style.width)
+
+  it('AC-3306.2: 목록은 네 줄이고 차례는 7일 안 · 8~14일 · 15~30일 · 30일 넘어 다시 왔거나 아직 안 옴이다', () => {
+    render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
+    expect(items().map((item) => item.textContent)).toEqual(['7일 안11명22.0%', '8~14일6명12.0%', '15~30일8명16.0%', `${MERGED}25명50.0%`])
+  })
+
+  it('AC-3306.2: 줄 모양은 그대로이고 이름을 자르지 않는다', () => {
+    render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
+    expect(list().querySelector('.truncate')).toBeNull()
+    for (const item of items()) expect(item.className).toContain('grid-cols-[112px_minmax(0,1fr)_auto]')
+  })
+
+  it('AC-3306.2: 합친 줄의 막대만 line-strong이다', () => {
+    render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
+    expect(items().map((item) => item.className.includes('[&_.bg-accent]:bg-line-strong'))).toEqual([false, false, false, true])
+  })
+
+  it('AC-3306.2: 막대 폭은 넷 가운데 가장 큰 값 대비다', () => {
+    const { unmount } = render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
+    expect(widths()).toEqual(['44%', '24%', '32%', '100%'])
+    unmount()
+    // 7일 안 50 · 8~14일 5 · 15~30일 25 · 합친 줄 20 — 가장 큰 값이 합친 줄이 아니다
+    render(<RevisitSection input={inputOf([day('2026-10-01', [100, 50, 55, 80, null]), day('2026-11-02', [10, 3, 4])], '30d')} saved />)
+    expect(widths()).toEqual(['100%', '10%', '50%', '40%'])
+  })
+
+  it("AC-3306.2: '30일 넘어 다시 옴'은 불러온 자료 끝날… 안내가 없다", () => {
+    render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
+    expect(screen.queryByText(/'30일 넘어 다시 옴'은 불러온 자료 끝날/)).toBeNull()
+    // 목록 바로 뒤가 [자세히] 표 자리다(안내 줄이 끼지 않는다)
+    expect(list().nextElementSibling!.id).toBe(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls'))
+  })
+
+  it('AC-3306.2: [자세히] 표의 첫 재방문 줄도 넷이다', () => {
+    render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
+    fireEvent.click(screen.getByRole('button', { name: '자세히' }))
+    const rows = within(screen.getByRole('table', { name: '신환 재방문율' }))
+      .getAllByRole('row')
+      .slice(1)
+      .map((tr) => within(tr).getAllByRole('cell').map((td) => td.textContent))
+    expect(rows.slice(3)).toEqual([
+      ['첫 재방문 7일 안', '11명', '50명', '22.0%'],
+      ['첫 재방문 8~14일', '6명', '50명', '12.0%'],
+      ['첫 재방문 15~30일', '8명', '50명', '16.0%'],
+      [`첫 재방문 ${MERGED}`, '25명', '50명', '50.0%'],
+    ])
+  })
+})
+
 describe('AC-513.4: 신환 재방문율 빈 상태', () => {
   it('AC-513.4: 저장된 숫자가 없으면 줄·[자세히] 없이 시안 문구다', () => {
     render(<RevisitSection input={inputOf([], '30d', [])} saved={false} />)

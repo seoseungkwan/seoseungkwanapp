@@ -865,6 +865,115 @@ describe('AC-511.4 revisitRates', () => {
   })
 })
 
+// stats-load-range REQ-3306: 옛 조각은 after30을 null로 저장한다. 센 단위에 그런 줄이 들면 '30일 넘어 다시 옴'과 '아직 다시 안 옴'을 합친다
+describe('AC-3306.1 첫 재방문까지 날수 — after30이 null인 줄이 들면 합친 넷', () => {
+  const today = '2026-11-13'
+  const first: Partial<RevisitPayload> = { cohort: 40, within7: 12, within14: 20, within30: 24, after30: 3 }
+  const second = (after30: number | null): Partial<RevisitPayload> => ({ cohort: 10, within7: 1, within14: 2, within30: 2, after30 })
+  const MERGED = [
+    { key: 'within7', label: '7일 안', count: 13 },
+    { key: 'days8to14', label: '8~14일', count: 9 },
+    { key: 'days15to30', label: '15~30일', count: 4 },
+    { key: 'after30OrNever', label: '30일 넘어 다시 왔거나 아직 안 옴', count: 24 },
+  ]
+
+  it('AC-3306.1 센 날 둘 가운데 둘째 after30이 null → 넷이고 넷째 key가 after30OrNever, 수 = 집단 − 30일 안, 합 = 집단', () => {
+    const result = revisitRates(input(today, '90d', [day('2026-09-01', { revisit: first }), day('2026-09-02', { revisit: second(null) })], []))
+    expect(result.firstRevisit!.items).toEqual(MERGED)
+    expect(result.firstRevisit!.items.reduce((total, item) => total + item.count, 0)).toBe(50)
+  })
+
+  it('AC-3306.1 from·to·cohort는 다섯일 때와 같다', () => {
+    const merged = revisitRates(input(today, '90d', [day('2026-09-01', { revisit: first }), day('2026-09-02', { revisit: second(null) })], []))
+    const five = revisitRates(input(today, '90d', [day('2026-09-01', { revisit: first }), day('2026-09-02', { revisit: second(1) })], []))
+    expect(merged.firstRevisit).toMatchObject({ from: '2026-09-01', to: '2026-09-02', cohort: 50 })
+    expect({ ...merged.firstRevisit, items: [] }).toEqual({ ...five.firstRevisit, items: [] })
+  })
+
+  it('AC-3306.1 둘째 after30이 1이면 지금처럼 다섯이다(null을 0으로 치지 않는다)', () => {
+    const result = revisitRates(input(today, '90d', [day('2026-09-01', { revisit: first }), day('2026-09-02', { revisit: second(1) })], []))
+    expect(firstCounts(result)).toEqual([
+      ['7일 안', 13],
+      ['8~14일', 9],
+      ['15~30일', 4],
+      ['30일 넘어 다시 옴', 4],
+      ['아직 다시 안 옴', 20],
+    ])
+  })
+
+  it('AC-3306.1 after30 열쇠가 없는 줄(within30은 숫자)도 null로 쳐 넷이다', () => {
+    const noKey = { ...day('2026-09-02'), revisit: { cohort: 10, within7: 1, within14: 2, within30: 2 } }
+    const result = revisitRates(input(today, '90d', [day('2026-09-01', { revisit: first }), noKey], []))
+    expect(result.firstRevisit!.items).toEqual(MERGED)
+  })
+
+  it('AC-3306.1 30일 값이 null인 날(센 단위 밖)의 after30 null로는 합치지 않는다', () => {
+    const days = [
+      day('2026-09-01', { revisit: first }),
+      day('2026-09-02', { revisit: second(1) }),
+      day('2026-11-02', { revisit: { cohort: 100, within7: 50, within14: 60, within30: null, after30: null } }),
+    ]
+    const result = revisitRates(input(today, '90d', days, []))
+    expect(result.firstRevisit!.items.map((item) => item.key)).toEqual(['within7', 'days8to14', 'days15to30', 'after30', 'never'])
+  })
+
+  it('AC-3306.1 d7·d14·d30·d30Cohort는 after30과 상관없이 같다', () => {
+    const pick = ({ d7, d14, d30, d30Cohort }: ReturnType<typeof revisitRates>) => ({ d7, d14, d30, d30Cohort })
+    const days90 = (after30: number | null) => [day('2026-09-01', { revisit: first }), day('2026-09-02', { revisit: second(after30) }), day('2026-11-02', { revisit: { cohort: 5, within7: 1, within14: 2 } })]
+    expect(pick(revisitRates(input(today, '90d', days90(null), [])))).toEqual(pick(revisitRates(input(today, '90d', days90(1), []))))
+    // 30d는 d30Cohort가 날짜다
+    const days30 = (after30: number | null) => [
+      ...daysFrom('2026-09-14', '2026-10-13', { revisit: { cohort: 2, within7: 1, within14: 1, within30: 1, after30 } }),
+      ...daysFrom('2026-10-14', '2026-11-12', { revisit: { cohort: 3, within7: 2, within14: 2, within30: null, after30: null } }),
+    ]
+    const merged = revisitRates(input(today, '30d', days30(null), []))
+    expect(merged.d30Cohort).toEqual({ from: '2026-09-14', to: '2026-10-13' })
+    expect(merged.firstRevisit!.items.map((item) => item.key)).toEqual(['within7', 'days8to14', 'days15to30', 'after30OrNever'])
+    expect(pick(merged)).toEqual(pick(revisitRates(input(today, '30d', days30(0), []))))
+  })
+
+  describe('12개월(달 단위)도 같은 규칙', () => {
+    const september: Partial<RevisitPayload> = { cohort: 10, within7: 2, within14: 4, within30: 6, after30: 1 }
+    const octoberDone: Partial<RevisitPayload> = { cohort: 10, within7: 3, within14: 5, within30: 7, after30: 0 }
+    const octoberOpen: Partial<RevisitPayload> = { cohort: 10, within7: 3, within14: 5, within30: null, after30: null }
+
+    it('AC-3306.1 센 달의 줄 하나라도 after30이 null이면 넷이다', () => {
+      const days = [
+        day('2026-09-05', { revisit: september }),
+        day('2026-09-20', { revisit: { ...september, after30: null } }),
+        day('2026-10-05', { revisit: octoberDone }),
+        day('2026-10-20', { revisit: octoberOpen }),
+      ]
+      const result = revisitRates(input(today, '12m', days, []))
+      expect(result.firstRevisit).toMatchObject({ from: '2026-09-01', to: '2026-09-30', cohort: 20 })
+      expect(result.firstRevisit!.items).toEqual([
+        { key: 'within7', label: '7일 안', count: 4 },
+        { key: 'days8to14', label: '8~14일', count: 4 },
+        { key: 'days15to30', label: '15~30일', count: 4 },
+        { key: 'after30OrNever', label: '30일 넘어 다시 왔거나 아직 안 옴', count: 8 },
+      ])
+      expect(result.d30).toEqual(rate(12, 20, true))
+    })
+
+    it('AC-3306.1 센 단위 밖 달(30일 값이 null인 날이 든 달)의 after30 null로는 합치지 않는다', () => {
+      const days = [
+        day('2026-09-05', { revisit: september }),
+        day('2026-09-20', { revisit: september }),
+        day('2026-10-05', { revisit: { ...octoberDone, after30: null } }),
+        day('2026-10-20', { revisit: octoberOpen }),
+      ]
+      const result = revisitRates(input(today, '12m', days, []))
+      expect(firstCounts(result)).toEqual([
+        ['7일 안', 4],
+        ['8~14일', 4],
+        ['15~30일', 4],
+        ['30일 넘어 다시 옴', 2],
+        ['아직 다시 안 옴', 6],
+      ])
+    })
+  })
+})
+
 describe('AC-511.5 weekdayBars', () => {
   it.each([
     ['7d', 7],
