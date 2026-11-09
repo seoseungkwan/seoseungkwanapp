@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { addDays, compareYmd } from '@/lib/analytics/dates'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
@@ -13,9 +14,10 @@ import { nestedBoxes } from '@/testing/boxes'
 import type { AnalysisResult, FileReport } from '@/types/analyze'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
+import type { DateRange } from '@/types/dates'
 import type { DayPayload, MonthSections } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
-import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
+import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsLoadRequest, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { StatsScreen } from './StatsScreen'
@@ -2289,5 +2291,529 @@ describe('AC-2902.2 통계 화면 비트 저장', () => {
       source: 'bit',
       sections: SECTIONS,
     })
+  })
+})
+
+// ── 불러올 기간을 나눠 차례로 읽고 저장·멈춤·이어서 (stats-load-range TASK-5, REQ-3303) ──
+// 오늘은 이 파일의 TODAY(2026-11-13)이고 '최근 30일'을 보는 중이다. 2020년부터 전부는 2년씩 넷(keepAt 0)이다(loadPlan.ts planLoad)
+describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어서', () => {
+  const YESTERDAY = '2026-11-12'
+  const ALL = '2020년부터 전부'
+  const RESUME = '이어서 불러오기'
+  const OTHER_VISITS = 4321 // 첫 불러오기 말고 다른 답의 보고 숫자(보고 문장은 첫 조각 답으로만 정한다)
+  // 넷의 read(새것부터, 이웃 조각 쪽으로 한 달씩 더 읽는다)
+  const ALL_READS: DateRange[] = [
+    { from: '2024-11-01', to: TODAY },
+    { from: '2022-11-01', to: '2024-12-31' },
+    { from: '2020-11-01', to: '2022-12-31' },
+    { from: '2020-01-01', to: '2020-12-31' },
+  ]
+  // 넷이 저장할 것(partSave): 아래 답의 날 줄(read 첫날·40일 뒤·끝날) 가운데 save 안의 날, 덮은 기간은 save와 겹친 곳
+  const ALL_SAVES = [
+    { days: ['2024-12-11', TODAY], covered: { from: '2024-12-01', to: YESTERDAY } },
+    { days: ['2022-12-11'], covered: { from: '2022-12-01', to: '2024-11-30' } },
+    { days: ['2020-12-11'], covered: { from: '2020-12-01', to: '2022-11-30' } },
+    { days: ['2020-01-01', '2020-02-10'], covered: { from: '2020-01-01', to: '2020-11-30' } },
+  ]
+  const ALL_MONTHS = ['2024년 12월 – 2026년 11월', '2022년 12월 – 2024년 11월', '2020년 12월 – 2022년 11월', '2020년 1월 – 2020년 11월']
+  const progress = (k: number, n: number, months: string) => `비트 PC에서 읽는 중이에요 (${k}/${n} · ${months}). 다 끝날 때까지 이 창을 닫지 마세요.`
+  const DONE = ['2020년 1월 1일 – 2026년 11월 12일을 저장했어요.', '이제 위쪽 기간 고르기에서 2020년부터 어느 달·해든 볼 수 있어요.']
+  const PRIVACY = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.'
+
+  type Answer = (nth: number, message: StatsLoadRequest) => StatsWorkerMessage | null
+
+  const todayReport = (visits: number): ClinicReportNumbers => {
+    const base = numbers(TODAY)
+    return base.ok ? { ...base, totalVisits: visits } : base
+  }
+
+  // 읽은 범위로 만든 답: 날 줄은 read 첫날·40일 뒤·끝날, 덮은 기간은 끝난 마지막 날(어제)까지. 보고 숫자는 첫 불러오기만 120명
+  function viewOf({ from, to }: DateRange, nth: number): StatsLoaded {
+    return {
+      range: { from, to },
+      covered: { from, to: compareYmd(to, YESTERDAY) > 0 ? YESTERDAY : to },
+      quality: 'valid',
+      checks: { noChart: 0, duplicate: 0, noFirst: 0 },
+      months: [],
+      days: [day(from), day(addDays(from, 40)), day(to)],
+      report: { daily: [todayReport(nth === 0 ? 120 : OTHER_VISITS)], monthly: [numbers('2026-11')] },
+    }
+  }
+  const incompleteOf = (message: StatsLoadRequest, nth: number): StatsWorkerMessage => ({
+    type: 'loaded',
+    streamId: message.streamId,
+    view: { ...viewOf(message, nth), quality: 'incomplete', checks: { noChart: 2, duplicate: 0, noFirst: 0 }, months: null, days: null },
+  })
+
+  // 불러오기 답을 몇 번째 불러오기(nth, 0부터)인지로 고르는 가짜 Worker. answer가 null이면 읽은 범위의 기본 답이다
+  function partsWorker(answer: Answer = () => null) {
+    const fake = fakeWorker()
+    let nth = 0
+    fake.worker.postMessage.mockImplementation((message: StatsWorkerRequest) => {
+      fake.sent.push(message)
+      const reply = (data: StatsWorkerMessage) => queueMicrotask(() => fake.worker.onmessage?.({ data } as MessageEvent<StatsWorkerMessage>))
+      if (message.type === 'load') {
+        const at = nth++
+        reply(answer(at, message) ?? { type: 'loaded', streamId: message.streamId, view: viewOf(message, at) })
+      }
+      if (message.type === 'split') reply({ type: 'split-result', streamId: message.streamId, view: SPLIT })
+    })
+    return fake
+  }
+
+  async function readyWith(answer?: Answer) {
+    const port = fakeChrome()
+    const fake = partsWorker(answer)
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    return { port, fake }
+  }
+
+  const rowsSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'stats.rows')
+  const loadsSent = (sent: StatsWorkerRequest[]) => sent.filter((message): message is StatsLoadRequest => message.type === 'load')
+  const splitsSent = (sent: StatsWorkerRequest[]) => sent.filter((message) => message.type === 'split')
+  const pickSpan = (name: string) => fireEvent.click(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name }))
+  const pressStart = () => fireEvent.click(screen.getByRole('button', { name: LOAD }))
+  const closeToday = () => fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+  const reportText = () => heading('원장님 보고 문장')!.closest('section')!.textContent ?? ''
+  const boxOf = (text: string) => screen.getByText(text).closest('[role="status"]') as HTMLElement
+  const failRows = (port: FakePort, code = 'E-STATS-TOO-BIG') => act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code }))
+  const cardsWith = (code: string) => screen.queryAllByRole('alert').filter((card) => card.textContent?.includes(code))
+
+  // k번째(1부터) 요청이 나오기를 기다려 끝낸다. 요청은 앞 조각 저장이 끝난 뒤에 나온다
+  async function finishPart(port: FakePort, k: number) {
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(k))
+    return finishStream(port)
+  }
+
+  async function finishAll(port: FakePort, from = 1, to = ALL_READS.length) {
+    for (let k = from; k <= to; k++) await finishPart(port, k)
+  }
+
+  // 2024년(월별)을 고른다: 월별(올해) → 이전 해 두 번
+  async function pickYear2024() {
+    fireEvent.click(within(screen.getAllByRole('group', { name: '보는 단위' })[0]!).getByRole('button', { name: '월별' }))
+    await sectionsShown()
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(screen.getByRole('button', { name: '이전 해' }))
+      await sectionsShown()
+    }
+    expect(pageText()).toContain('2024년 1월 1일 – 12월 31일 · 월별')
+  }
+
+  it('AC-3303.1 지금 보는 기간(처음 값)은 지금과 같다: 요청 하나 · keep 칸 없음 · 누른 closeToday · Worker 값 그대로 저장 · 끝난 상자 없음', async () => {
+    const { port, fake } = await drawReady()
+    closeToday()
+    pressStart()
+    expect(pageText()).toContain('비트 PC에서 읽는 중이에요. 기간이 길면 1분쯤 걸려요.')
+    const request = finishStream(port)
+    expect(request.args).toEqual({ from: R30.load.from, to: TODAY })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    const loads = loadsSent(fake.sent)
+    expect(loads).toEqual([{ type: 'load', streamId: request.id, from: R30.load.from, to: TODAY, today: TODAY, closeToday: true, groups: defsOf(SAVED_GROUP) }])
+    expect('keep' in loads[0]!).toBe(false)
+    expect(vi.mocked(saveStats).mock.calls[0]![0]).toStrictEqual({ months: LOADED.months, days: LOADED.days, covered: LOADED.covered, source: 'bit' })
+    await loadIsFree()
+    await sectionsShown()
+    await waitFor(() => expect(pageText()).toContain('18:42 저장 · 방금'))
+    expect(rowsSent(port)).toHaveLength(1)
+    expect(pageText()).not.toContain('을 저장했어요.')
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+  })
+
+  it.each([
+    ['최근 1년', '2025-12-01'],
+    ['최근 2년', '2024-12-01'],
+  ])('AC-3303.1 %s도 한 번에 읽는 길이면 요청 하나 · keep 칸 없음 · 끝난 상자 없음', async (name, from) => {
+    const { port, fake } = await drawReady()
+    pickSpan(name)
+    const request = pressLoad(port)
+    expect(request.args).toEqual({ from, to: TODAY })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    await loadIsFree()
+    const loads = loadsSent(fake.sent)
+    expect(loads).toHaveLength(1)
+    expect('keep' in loads[0]!).toBe(false)
+    expect(loads[0]).toMatchObject({ from, to: TODAY, closeToday: false })
+    expect(rowsSent(port)).toHaveLength(1)
+    expect(pageText()).not.toContain('을 저장했어요.')
+  })
+
+  it('AC-3303.2 2020년부터 전부는 넷을 새것부터 읽고, 다음 요청은 앞 조각의 저장이 끝난 뒤에야 보낸다', async () => {
+    const { port } = await readyWith()
+    const saves: (() => void)[] = []
+    vi.mocked(saveStats).mockImplementation(() => new Promise((resolve) => void saves.push(() => resolve({ saved: 1 }))))
+    pickSpan(ALL)
+    pressStart()
+    for (const [k, read] of ALL_READS.entries()) {
+      await waitFor(() => expect(rowsSent(port)).toHaveLength(k + 1))
+      expect(finishStream(port).args).toEqual(read)
+      await waitFor(() => expect(saves).toHaveLength(k + 1))
+      await flush()
+      expect(rowsSent(port)).toHaveLength(k + 1) // 이 조각의 저장이 끝나기 전에는 다음 조각을 묻지 않는다
+      await act(async () => saves[k]!())
+    }
+    await loadIsFree()
+    expect(rowsSent(port)).toHaveLength(ALL_READS.length)
+  })
+
+  it('AC-3303.2 closeToday는 첫 조각만 누른 값, keep은 keepAt(첫) 조각만 칸이 없고 나머지는 false, 조각마다 partSave 값으로 한 번씩 저장하고 묶음은 누를 때 한 번 읽는다', async () => {
+    const { port, fake } = await readyWith()
+    await waitFor(() => expect(listStatsRxGroups).toHaveBeenCalledTimes(1))
+    closeToday()
+    pickSpan(ALL)
+    pressStart()
+    const ids: unknown[] = []
+    for (let k = 1; k <= ALL_READS.length; k++) ids.push((await finishPart(port, k)).id)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(ALL_READS.length))
+    await loadIsFree()
+
+    const loads = loadsSent(fake.sent)
+    expect(loads).toEqual(
+      ALL_READS.map((read, k) => ({ type: 'load', streamId: ids[k], ...read, today: TODAY, closeToday: k === 0, groups: defsOf(SAVED_GROUP), ...(k === 0 ? {} : { keep: false }) })),
+    )
+    expect('keep' in loads[0]!).toBe(false)
+    expect(vi.mocked(saveStats).mock.calls.map(([input]) => input)).toStrictEqual(
+      ALL_SAVES.map(({ days, covered }) => ({ months: [], days: days.map((ymd) => day(ymd)), covered, source: 'bit' })),
+    )
+    expect(listStatsRxGroups).toHaveBeenCalledTimes(2)
+    // 오늘 진료 끝으로 눌렀으니 저장한 끝날은 오늘이다(AC-3303.5)
+    expect(await screen.findByText('2020년 1월 1일 – 2026년 11월 13일을 저장했어요.')).toBeTruthy()
+  })
+
+  it('AC-3303.3 최근 30일 + 전부: 보고 문장은 첫 조각 답이고, 처방별 신환·재진과 세 칸은 첫 조각(keepAt) 뒤 한 번만 최근 30일로 묻는다', async () => {
+    const { port, fake } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(ALL_READS.length))
+    await loadIsFree()
+    await sectionsShown()
+    expect(await screen.findByText('가짜처방')).toBeTruthy()
+
+    const splits = splitsSent(fake.sent)
+    expect(splits).toHaveLength(1)
+    expect(splits[0]).toMatchObject({ from: R30.current.from, to: R30.current.to })
+    expect(sectionsSent(fake.sent)).toHaveLength(1)
+    expect(sectionsSent(fake.sent)[0]).toMatchObject({ from: R30.current.from, to: R30.current.to })
+    expect(fake.sent.indexOf(splits[0]!)).toBeGreaterThan(fake.sent.indexOf(loadsSent(fake.sent)[0]!))
+    expect(reportText()).toContain('120명')
+    expect(reportText()).not.toContain('4,321')
+  })
+
+  it('AC-3303.3 2024년(월별) + 지금 보는 기간: 조각 둘이고 keep은 둘째만 칸이 없으며, 처방별·세 칸은 둘째 조각을 읽은 뒤 2024년으로 묻는다', async () => {
+    const { port, fake } = await readyWith()
+    await pickYear2024()
+    pressStart()
+    expect((await finishPart(port, 1)).args).toEqual({ from: '2024-11-01', to: TODAY })
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(2))
+    expect(splitsSent(fake.sent)).toEqual([]) // 첫 조각(keep: false)을 읽은 뒤에는 묻지 않는다
+    expect(sectionsSent(fake.sent)).toEqual([])
+    expect(finishStream(port).args).toEqual({ from: '2023-01-01', to: '2024-12-31' })
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(2))
+    await loadIsFree()
+
+    const loads = loadsSent(fake.sent)
+    expect(loads.map((message) => ('keep' in message ? message.keep : '칸 없음'))).toEqual([false, '칸 없음'])
+    await waitFor(() => expect(splitsSent(fake.sent)).toHaveLength(1))
+    const split = splitsSent(fake.sent)[0]!
+    expect(split).toMatchObject({ from: '2024-01-01', to: '2024-12-31' })
+    expect(sectionsSent(fake.sent)[0]).toMatchObject({ from: '2024-01-01', to: '2024-12-31' })
+    expect(fake.sent.indexOf(split)).toBeGreaterThan(fake.sent.indexOf(loads[1]!))
+    expect(await screen.findByText('가짜처방')).toBeTruthy()
+    await sectionsShown()
+    // 고른 기간이면 보고 칸은 [고른 기간 보고]가 먼저다(AC-1707.1). 불러온 보고 문장은 [오늘 일일보고]에 있다
+    fireEvent.click(within(screen.getByRole('group', { name: '보고 고르기' })).getByRole('button', { name: '오늘 일일보고' }))
+    expect(reportText()).toContain('120명')
+    expect(reportText()).not.toContain('4,321')
+    expect(boxOf('2023년 1월 1일 – 2026년 11월 12일을 저장했어요.').textContent).toContain('이제 위쪽 기간 고르기에서 2023년부터 어느 달·해든 볼 수 있어요.')
+  })
+
+  it('AC-3303.4 나눠 읽는 동안 읽는 중 줄은 (k/N · 그 조각의 달)이고, 다 끝날 때까지 불러오기·파일·불러올 기간 단추가 막힌다', async () => {
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    for (const [k, months] of ALL_MONTHS.entries()) {
+      await waitFor(() => expect(rowsSent(port)).toHaveLength(k + 1))
+      expect(pageText()).toContain(progress(k + 1, 4, months))
+      expect(pageText()).not.toContain('기간이 길면 1분쯤 걸려요.')
+      expect(screen.getByRole('button', { name: '불러오는 중' }).getAttribute('aria-disabled')).toBe('true')
+      expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBe('true')
+      for (const button of within(screen.getByRole('group', { name: '불러올 기간' })).getAllByRole('button')) expect((button as HTMLButtonElement).disabled).toBe(true)
+      finishStream(port)
+    }
+    await loadIsFree()
+    expect(pageText()).not.toContain('비트 PC에서 읽는 중이에요')
+  })
+
+  it('AC-3303.5 넷을 다 저장하면 띠 아래·개인정보 안내 줄 위 상자(role=status)에 저장한 날짜(해를 넘으면 양 끝에 해)와 볼 수 있는 해가 있다', async () => {
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port)
+    const first = await screen.findByText(DONE[0]!)
+    const box = boxOf(DONE[0]!)
+    expect(box.textContent).toBe(DONE.join(''))
+    expect(first.className).toContain('font-semibold')
+    expect(screen.getByText(DONE[1]!).className).toContain('text-small')
+    expect(screen.getByRole('button', { name: '파일 고르기' }).compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(box.compareDocumentPosition(screen.getByText(PRIVACY)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+    await loadIsFree()
+  })
+
+  it('AC-3303.6 셋째 조각에서 통로가 끊기면 앞 둘은 저장된 채 멈추고, 상자에 번호와 [이어서 불러오기]가 있으며 오류 카드·넷째 요청은 없다', async () => {
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    act(() => port.fireDisconnect())
+
+    const box = await waitFor(() => boxOf('4번 가운데 2번째까지 저장하고 멈췄어요.'))
+    expect(box.textContent).toContain('2022년 12월 – 2026년 11월은 저장됐어요. 남은 2020년 1월 – 2022년 11월은 [이어서 불러오기]로 읽어요. (오류 번호 E-BRIDGE-DISCONNECTED)')
+    expect(within(box).getByRole('button', { name: RESUME })).toBeTruthy()
+    expect(screen.getByText('4번 가운데 2번째까지 저장하고 멈췄어요.').className).toContain('font-semibold')
+    expect(box.compareDocumentPosition(screen.getByText(PRIVACY)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await flush()
+    expect(saveStats).toHaveBeenCalledTimes(2)
+    expect(rowsSent(port)).toHaveLength(3)
+    expect(cardsWith('E-BRIDGE-DISCONNECTED')).toEqual([])
+    expect(pageText()).not.toContain('을 저장했어요.')
+  })
+
+  it.each<[string, string, Answer, (port: FakePort) => unknown]>([
+    ['통로', 'E-STATS-TOO-BIG', () => null, (port) => failRows(port)],
+    ['Worker', 'E-ANALYZE-FAILED', (nth, message) => (nth === 2 ? { type: 'failed', streamId: message.streamId, code: 'E-ANALYZE-FAILED' } : null), (port) => finishStream(port)],
+  ])('AC-3303.6 셋째 조각의 %s 오류 번호(%s)는 멈춤 상자에만 있고 오류 카드가 없으며 넷째를 읽지 않는다', async (_name, code, answer, failThird) => {
+    const { port } = await readyWith(answer)
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    failThird(port)
+
+    const box = await waitFor(() => boxOf('4번 가운데 2번째까지 저장하고 멈췄어요.'))
+    expect(box.textContent).toContain(`남은 2020년 1월 – 2022년 11월은 [이어서 불러오기]로 읽어요. (오류 번호 ${code})`)
+    await loadIsFree()
+    await flush()
+    expect(saveStats).toHaveBeenCalledTimes(2)
+    expect(rowsSent(port)).toHaveLength(3)
+    expect(cardsWith(code)).toEqual([])
+  })
+
+  it('AC-3303.6 둘째 조각 저장이 실패하면 멈춤 상자(E-STATS-SAVE-FAILED)와 [다시 저장] 카드가 함께 있고 셋째를 읽지 않는다', async () => {
+    vi.mocked(saveStats).mockResolvedValueOnce({ saved: 1 }).mockRejectedValueOnce(new Error('가짜 실패'))
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+
+    const box = await waitFor(() => boxOf('4번 가운데 1번째까지 저장하고 멈췄어요.'))
+    expect(box.textContent).toContain('2024년 12월 – 2026년 11월은 저장됐어요. 남은 2020년 1월 – 2024년 11월은 [이어서 불러오기]로 읽어요. (오류 번호 E-STATS-SAVE-FAILED)')
+    expect(within(box).getByRole('button', { name: RESUME })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: '다시 저장' })).toBeTruthy()
+    expect(cardsWith('E-STATS-SAVE-FAILED')).toHaveLength(1)
+    await loadIsFree()
+    await flush()
+    expect(saveStats).toHaveBeenCalledTimes(2)
+    expect(rowsSent(port)).toHaveLength(2)
+  })
+
+  it('AC-3303.7 둘째 조각이 확인 필요면 저장하지 않고 멈추며, 상자에 확인 건수 글이 있고 확인 카드·"저장하지 않았어요" 출처 줄은 없다', async () => {
+    const { port } = await readyWith((nth, message) => (nth === 1 ? incompleteOf(message, nth) : null))
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+
+    const box = await waitFor(() => boxOf('4번 가운데 1번째까지 저장하고 멈췄어요.'))
+    expect(box.textContent).toContain(
+      '2024년 12월 – 2026년 11월은 저장됐어요. 남은 2020년 1월 – 2024년 11월은 [이어서 불러오기]로 읽어요. 차트번호 없는 내원 2건이 있어요. 비트에서 이 기록을 고친 뒤 다시 불러와 주세요.',
+    )
+    expect(box.textContent).not.toContain('오류 번호')
+    await loadIsFree()
+    await sectionsShown()
+    expect(pageText()).not.toContain('일부 기록을 확인하지 못해 저장하지 않았어요')
+    expect(pageText()).not.toContain('방금 불러온 숫자는 저장하지 않았어요')
+    expect(saveStats).toHaveBeenCalledTimes(1)
+    expect(rowsSent(port)).toHaveLength(2)
+  })
+
+  it.each<[string, { answer?: Answer; before?: () => void; fail?: (port: FakePort) => unknown; shown: () => Promise<unknown> }]>([
+    ['읽기 실패', { fail: (port) => failRows(port), shown: async () => expect(cardsWith('오류 번호 E-STATS-TOO-BIG')).toHaveLength(1) }],
+    [
+      '확인 필요',
+      {
+        answer: (nth, message) => (nth === 0 ? incompleteOf(message, nth) : null),
+        shown: async () => {
+          await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
+          expect(pageText()).toContain('처방별 신환·재진과 보고 문장은 방금 불러온 숫자예요.')
+          expect(pageText()).toContain('차트번호 없는 내원 2건이 있어요. 비트에서 이 기록을 고친 뒤 다시 불러와 주세요.')
+        },
+      },
+    ],
+    ['저장 실패', { before: () => vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패')), shown: () => screen.findByRole('button', { name: '다시 저장' }) }],
+  ])('AC-3303.8 첫 조각의 %s는 지금과 같은 카드이고 다음 조각을 읽지 않으며 멈춘 상자·[이어서 불러오기]가 없다', async (_name, { answer, before, fail, shown }) => {
+    before?.()
+    const { port } = await readyWith(answer)
+    pickSpan(ALL)
+    pressStart()
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(1))
+    if (fail) fail(port)
+    else finishStream(port)
+    await waitFor(shown)
+    await loadIsFree()
+    await flush()
+    expect(rowsSent(port)).toHaveLength(1)
+    expect(pageText()).not.toContain('저장하고 멈췄어요')
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+  })
+
+  it('AC-3303.9 [이어서 불러오기]는 남은 조각(셋째부터)만 같은 차례·keep false·closeToday false로 읽고, 보고 문장은 그대로이며 끝나면 처음 누를 때의 끝날로 다 끝난 상자다', async () => {
+    const { port, fake } = await readyWith()
+    closeToday()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    failRows(port)
+    await waitFor(() => boxOf('4번 가운데 2번째까지 저장하고 멈췄어요.'))
+    await loadIsFree()
+    await sectionsShown()
+    expect(reportText()).toContain('120명')
+    const splits = splitsSent(fake.sent).length
+    const loadsBefore = loadsSent(fake.sent).length
+
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(4))
+    expect(pageText()).toContain(progress(3, 4, ALL_MONTHS[2]!))
+    expect(screen.queryByRole('button', { name: RESUME })?.getAttribute('aria-disabled') ?? 'true').toBe('true')
+    expect(screen.getByRole('button', { name: '불러오는 중' }).getAttribute('aria-disabled')).toBe('true')
+    expect(finishStream(port).args).toEqual(ALL_READS[2])
+    expect((await finishPart(port, 5)).args).toEqual(ALL_READS[3])
+
+    expect(await screen.findByText('2020년 1월 1일 – 2026년 11월 13일을 저장했어요.')).toBeTruthy()
+    await loadIsFree()
+    const resumed = loadsSent(fake.sent).slice(loadsBefore)
+    expect(resumed.map(({ from, to, closeToday: close, keep }) => ({ from, to, closeToday: close, keep }))).toEqual([
+      { ...ALL_READS[2], closeToday: false, keep: false },
+      { ...ALL_READS[3], closeToday: false, keep: false },
+    ])
+    expect(vi.mocked(saveStats).mock.calls.map(([input]) => input.covered)).toEqual(ALL_SAVES.map(({ covered }) => covered))
+    expect(rowsSent(port)).toHaveLength(5)
+    await sectionsShown()
+    expect(reportText()).toContain('120명')
+    expect(reportText()).not.toContain('4,321')
+    expect(splitsSent(fake.sent)).toHaveLength(splits)
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+  })
+
+  it('AC-3303.9 이어서 읽다 또 멈추면 새 수로 멈춤 상자이고, 다시 [이어서 불러오기]로 남은 하나만 읽는다', async () => {
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    failRows(port)
+    await waitFor(() => boxOf('4번 가운데 2번째까지 저장하고 멈췄어요.'))
+    await loadIsFree()
+
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    await finishPart(port, 4)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(5))
+    failRows(port, 'E-BIT-READ-FAILED')
+    const box = await waitFor(() => boxOf('4번 가운데 3번째까지 저장하고 멈췄어요.'))
+    expect(box.textContent).toContain('2020년 12월 – 2026년 11월은 저장됐어요. 남은 2020년 1월 – 2020년 11월은 [이어서 불러오기]로 읽어요. (오류 번호 E-BIT-READ-FAILED)')
+    expect(pageText()).not.toContain('2번째까지 저장하고 멈췄어요')
+    await loadIsFree()
+
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    expect((await finishPart(port, 6)).args).toEqual(ALL_READS[3])
+    expect(await screen.findByText(DONE[0]!)).toBeTruthy()
+    await loadIsFree()
+    expect(saveStats).toHaveBeenCalledTimes(4)
+    expect(rowsSent(port)).toHaveLength(6)
+  })
+
+  it('AC-3303.9 다른 일([다시 저장])을 하는 동안 [이어서 불러오기]는 aria-disabled이고 눌러도 읽지 않으며, 끝나면 다시 누를 수 있다', async () => {
+    vi.mocked(saveStats).mockResolvedValueOnce({ saved: 1 }).mockRejectedValueOnce(new Error('가짜 실패'))
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => boxOf('4번 가운데 1번째까지 저장하고 멈췄어요.'))
+    await loadIsFree()
+
+    let finishSave: () => void = () => undefined
+    vi.mocked(saveStats).mockImplementationOnce(() => new Promise((resolve) => (finishSave = () => resolve({ saved: 1 }))))
+    fireEvent.click(await screen.findByRole('button', { name: '다시 저장' }))
+    const resume = screen.getByRole('button', { name: RESUME })
+    expect(resume.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(resume)
+    await flush()
+    expect(rowsSent(port)).toHaveLength(2)
+
+    await act(async () => finishSave())
+    await waitFor(() => expect(screen.getByRole('button', { name: RESUME }).getAttribute('aria-disabled')).toBeNull())
+    expect(boxOf('4번 가운데 1번째까지 저장하고 멈췄어요.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    expect((await finishPart(port, 3)).args).toEqual(ALL_READS[1])
+  })
+
+  it('AC-3303.9 끝난 상자는 다음 [비트에서 불러오기]를 시작할 때 사라진다', async () => {
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port)
+    await screen.findByText(DONE[0]!)
+    await loadIsFree()
+
+    pickSpan('지금 보는 기간')
+    pressStart()
+    expect(screen.queryByText(DONE[0]!)).toBeNull()
+    finishStream(port)
+    await loadIsFree()
+    expect(screen.queryByText(DONE[0]!)).toBeNull()
+  })
+
+  it('AC-3303.9 멈춘 상자는 파일 읽기를 시작할 때 사라진다', async () => {
+    fileGoesWell()
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    failRows(port)
+    await waitFor(() => boxOf('4번 가운데 2번째까지 저장하고 멈췄어요.'))
+    await loadIsFree()
+
+    fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
+    expect(screen.queryByText('4번 가운데 2번째까지 저장하고 멈췄어요.')).toBeNull()
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(3))
+    await loadIsFree()
+    expect(screen.queryByText('4번 가운데 2번째까지 저장하고 멈췄어요.')).toBeNull()
+  })
+
+  it('AC-3303.9 화면을 다시 열면 멈춘 상자는 없다(기억하지 않는다)', async () => {
+    const { port } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    failRows(port)
+    await waitFor(() => boxOf('4번 가운데 2번째까지 저장하고 멈췄어요.'))
+    await loadIsFree()
+    cleanup()
+
+    const again = fakeChrome()
+    partsWorker()
+    draw()
+    sayHello(again)
+    await sectionsShown()
+    expect(pageText()).not.toContain('저장하고 멈췄어요')
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+    expect(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name: '지금 보는 기간' }).getAttribute('aria-pressed')).toBe('true')
   })
 })

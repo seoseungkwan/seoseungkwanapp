@@ -8,7 +8,8 @@ import { addDays, compareYmd, monthRange, todayInKorea } from '@/lib/analytics/d
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
-import type { BitSectionsView, RxSplitView, StatsChecks } from '@/types/stats'
+import type { BitSectionsView, RxSplitView, StatsChecks, StatsLoaded } from '@/types/stats'
+import { doneText, partSave, planLoad, progressText, stoppedText, type LoadPlan, type LoadSpan } from './loadPlan'
 import { lastDayOf, type StatsChoice } from './periodPick'
 import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
 import { dayNumber, longDate, monthNumber, PERIOD_NAME, Section } from './sections/parts'
@@ -99,6 +100,26 @@ function IncompleteCard({ note, latest }: { note: Incomplete; latest: SavedLates
         <p className="mt-0.5 text-body text-ink-2">{incompleteLine(note)}</p>
         {parts.length > 0 && <p className="mt-1 text-body text-ink-2">{parts.join(' ')}</p>}
       </div>
+    </div>
+  )
+}
+
+// 끝난·멈춘 나눠 읽기(stats-load-range AC-3303.5·AC-3303.6). done = 저장한 조각 수, savedTo = 처음 누를 때의 저장한 끝날,
+// stop = 멈춘 까닭 글('(오류 번호 …)' 또는 확인 건수 글), null이면 다 끝남. 화면 상태에만 두고 기억하지 않는다
+type LoadRun = { plan: LoadPlan; done: number; savedTo: string; stop: string | null }
+
+// 띠 아래 상자(시안 docs/mockups/stats-load-range #result). 조각이 둘 이상일 때만 그린다. 멈춤은 [이어서 불러오기]가 남은 조각을 읽는다
+function LoadRunBox({ run, busy, onResume }: { run: LoadRun; busy: boolean; onResume(): void }) {
+  const [title, line] = run.stop === null ? doneText(run.plan, run.savedTo) : stoppedText(run.plan, run.done, run.stop)
+  return (
+    <div role="status" className="mt-3 text-body">
+      <p className="font-semibold text-ink">{title}</p>
+      <p className="mt-0.5 text-small text-ink-2">{line}</p>
+      {run.stop !== null && (
+        <button type="button" aria-disabled={busy || undefined} className={`mt-2 ${ds.button.secondary}`} onClick={busy ? undefined : onResume}>
+          이어서 불러오기
+        </button>
+      )}
     </div>
   )
 }
@@ -208,6 +229,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const [bitAnswer, setBitAnswer] = useState<BitAnswer | null>(null)
   const [loads, setLoads] = useState(0) // 비트에서 불러온 횟수. 0이면 Worker 메모리에 진료 줄이 없다
   const [savedUnread, setSavedUnread] = useState(false) // 방금 저장에 성공했고 그 뒤 아직 읽기에 성공하지 못했다(AC-514.11)
+  const [partAt, setPartAt] = useState<{ plan: LoadPlan; at: number } | null>(null) // 나눠 읽는 중인 조각(읽는 중 줄, AC-3303.4)
+  const [run, setRun] = useState<LoadRun | null>(null) // 끝난·멈춘 나눠 읽기(상자·이어서, AC-3303.5 ~ AC-3303.9)
   const working = useRef(false)
 
   const { from: splitFrom, to: splitTo } = splitSpan(range)
@@ -266,6 +289,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       setFileFailures([])
       setIncomplete(null)
       setSavedUnread(false)
+      setRun(null)
     }
     try {
       await work()
@@ -277,22 +301,54 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
     }
   }
 
-  // 묶음은 누를 때 서버에서 다시 읽는다(AC-1205.7). 비트 길은 기다리지 않고 넘겨 비트 요청과 함께 읽고, 파일 길은 읽은 뒤 Worker를 시작한다.
-  // forLoad는 거절하지 않고 5초 안에 늘 풀린다(실패·한도 넘김이면 화면의 묶음)
-  const loadFromBit = (closeToday: boolean) =>
-    void runJob('bit', async () => {
-      const view = await load({ range: range.load, today, closeToday, groups: groups.forLoad() })
-      setReport({ numbers: view.report, loadedAt: clockOf(new Date()), closedToday: closeToday })
-      setLoads((n) => n + 1)
-      if (view.quality !== 'valid' || view.months === null || view.days === null) {
-        setIncomplete({ kind: 'bit', checks: view.checks })
-        return
+  // 비트 불러오기는 불러올 기간의 계획(planLoad) 조각을 새것부터 하나씩 읽고 저장한다(stats-load-range REQ-3303). 조각이 하나면 지금 그대로다.
+  // 처음 누를 때(start 0)와 [이어서 불러오기](멈춘 조각부터, closeToday false)가 같이 쓴다. 일은 처음부터 끝까지 'bit' 하나다.
+  // 묶음은 누를 때 한 번 서버에서 다시 읽어 모든 조각이 같이 쓴다(AC-1205.7). 비트 요청은 그것을 기다리지 않는다.
+  // forLoad는 거절하지 않고 5초 안에 늘 풀린다(실패·한도 넘김이면 화면의 묶음).
+  // 첫 조각의 읽기 실패(runJob의 오류 카드)·확인 필요·저장 실패는 지금과 같고, 둘째부터는 다음 조각을 읽지 않고 멈춤 상자다
+  async function readParts(plan: LoadPlan, start: number, closeToday: boolean, savedTo: string) {
+    const groupDefs = groups.forLoad()
+    const stop = (done: number, reason: string) => setRun({ plan, done, savedTo, stop: reason })
+    try {
+      for (let i = start; i < plan.parts.length; i++) {
+        const part = plan.parts[i]!
+        if (plan.parts.length > 1) setPartAt({ plan, at: i })
+        let view: StatsLoaded
+        try {
+          // keep은 keepAt 조각만 참이라 메시지에 칸이 없다: 그 조각의 진료 줄이 Worker 메모리에 남아 처방별·세 칸이 그것으로 답한다
+          view = await load({ range: part.read, today, closeToday: i === 0 && closeToday, keep: i === plan.keepAt, groups: groupDefs })
+        } catch (error) {
+          if (i === 0) throw error
+          return stop(i, `(오류 번호 ${errorCodeOf(error)})`)
+        }
+        // 보고 문장은 오늘에 끝나는 첫 조각의 숫자다. 처방별·세 칸은 keepAt 조각을 읽은 뒤 한 번 묻는다
+        if (i === 0) setReport({ numbers: view.report, loadedAt: clockOf(new Date()), closedToday: closeToday })
+        if (i === plan.keepAt) setLoads((n) => n + 1)
+        if (view.quality !== 'valid' || view.months === null || view.days === null) {
+          if (i === 0) return setIncomplete({ kind: 'bit', checks: view.checks })
+          return stop(i, incompleteLine({ kind: 'bit', checks: view.checks }))
+        }
+        // 이 조각이 저장할 달·날·세 칸 합계·덮은 기간만(partSave). 조각이 하나면 Worker 값 그대로다(세 칸 합계 검사·크기는 saveStats, AC-2902.2)
+        const saved = await data.save(partSave(view, part))
+        setSavedUnread(saved)
+        if (!saved) return i === 0 ? undefined : stop(i, '(오류 번호 E-STATS-SAVE-FAILED)')
       }
-      // 세 칸 합계(sections)는 Worker 값 그대로 넘긴다. 검사·크기는 saveStats가 달 줄마다 본다(spec stats-bit-ai AC-2902.2).
-      // 옛 도우미(v2) 답이라 Worker 값에 열쇠가 없으면 넘기지 않는다(saveStats는 없는 것을 null로 보낸다)
-      const sections = view.sections === undefined ? {} : { sections: view.sections }
-      setSavedUnread(await data.save({ months: view.months, days: view.days, covered: view.covered, source: 'bit', ...sections }))
-    })
+      setRun({ plan, done: plan.parts.length, savedTo, stop: null })
+    } finally {
+      setPartAt(null)
+    }
+  }
+
+  const loadFromBit = (closeToday: boolean, span: LoadSpan) => {
+    const plan = planLoad(today, range, span)
+    void runJob('bit', () => readParts(plan, 0, closeToday, lastDayOf(today, closeToday)))
+  }
+
+  const resumeLoad = () => {
+    if (run === null || run.stop === null) return
+    const { plan, done, savedTo } = run
+    void runJob('bit', () => readParts(plan, done, false, savedTo))
+  }
 
   const takeFiles = (files: File[]) =>
     void runJob('file', async () => {
@@ -327,7 +383,9 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         state={state}
         helloError={helloError}
         today={today}
+        range={range}
         job={job}
+        progress={partAt !== null && job === 'bit' ? progressText(partAt.plan, partAt.at) : null}
         onRetry={() => {
           setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
           retry()
@@ -335,6 +393,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         onLoad={loadFromBit}
         onFiles={takeFiles}
       />
+      {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null} onResume={resumeLoad} />}
       <p className="mt-3 flex max-w-160 items-start gap-1.5 text-small text-muted">
         <Icon name="shield" size={14} className="mt-0.5 shrink-0 text-positive" />
         <span>환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.</span>
