@@ -1,11 +1,12 @@
 {
   "status": "approved",
   "feature": "reception-arrange",
-  "approved_at": "2026-11-09T03:02:42Z",
+  "approved_at": "2026-11-09T06:46:03Z",
   "approved_via": "user-prompt",
-  "session_id": "3e239a17-6dd3-4181-b156-937b936c9e08",
-  "spec_sha256": "8ed27632d6024a5c80107567b9ce738869a12a0d77641c4d2f0818590734b946",
+  "session_id": "22380ce0-4a86-4a0d-bdca-3217bc6c715d",
+  "spec_sha256": "8372baf44978bca36a6ecdd32fa416518552943aa5cc2d5dac48ac269ea10aa2",
   "scope": [
+    "docs/mockups/reception-arrange/Arrange.html",
     "docs/reception/check-result.md",
     "helper/src/Precheck.Core/Reception/ArrangeBuilder.cs",
     "helper/src/Precheck.Core/Reception/ArrangeMap.cs",

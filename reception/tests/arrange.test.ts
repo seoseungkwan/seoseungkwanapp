@@ -464,6 +464,27 @@ describe('REQ-3308 어레인지 표', () => {
 // ---- 칸 (AC-3308.4) -----------------------------------------------------------------------------------
 
 describe('REQ-3308 치료 칸 그리기', () => {
+  it('AC-3308.14: 접수 칸은 접수 시각 아래 목록 줄의 기다린 글이고(진료보류 "보류 N째"는 "N째 대기"), long이면 주황, 자리비움은 그 아래다. 글이 비면 없다', () => {
+    const board = fx.arrangeMockupBoard()
+    const setList = (k: string, patch: { waited: string; long: boolean }) => {
+      for (const rows of Object.values(board.lists)) for (const r of rows) if (r.k === k) Object.assign(r, patch)
+    }
+    setList(K.d, { waited: '보류 1시간 2분째', long: true })
+    setList(K.f, { waited: '33분째 대기', long: false })
+    setList(K.b, { waited: '수납 1시간 39분째', long: false })
+    setList(K.a, { waited: '09:40 수납', long: false })
+    const { page } = draw(board)
+    const t = (name: string) => trOf(page, name).querySelector('td.c-t > button.t-btn')!
+
+    expect(shapeOf(t('가상환자24'))).toEqual(['span.t-time', 'span.wt.is-long', 'span.away-tag'])
+    expect(textOf(t('가상환자24'), '.wt')).toBe('1시간 2분째 대기')
+    expect(shapeOf(t('가상환자26'))).toEqual(['span.t-time', 'span.wt'])
+    expect(textOf(t('가상환자26'), '.wt')).toBe('33분째 대기')
+    expect(textOf(t('가상환자22'), '.wt')).toBe('수납 1시간 39분째')
+    expect(textOf(t('가상환자21'), '.wt')).toBe('09:40 수납')
+    expect(shapeOf(t('가상환자23'))).toEqual(['span.t-time'])
+  })
+
   it('AC-3308.4: 빈 칸은 "+", 준비(todo)는 "준비"와 글, 준비완료(ready)는 "준비완료 HH:MM"과 부위, 완료(done)는 "✓ HH:MM"과 작은 글이다', () => {
     const { page } = draw()
     const empty = cellOf(page, '가상환자28', 'xray')

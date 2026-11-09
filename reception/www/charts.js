@@ -89,6 +89,8 @@ function headOf(row) {
     el('div', { class: 'state' }, [
       el('span', { class: ['status', STATUS_CLASS[row.lane]].filter(Boolean).join(' ') }, row.laneLabel),
       el('span', null, isText(row.time) ? row.time : ''),
+      waitedText(row) ? el('span', { class: 'sep' }, '·') : null,
+      waitedSpan(row),
     ]),
     isText(row.memo) ? el('div', { class: 'memo' }, [el('span', { class: 'memo-label' }, MEMO_LABEL), row.memo]) : null,
   ]
@@ -140,6 +142,25 @@ function textEl(tag, className, text) {
 function replace(node, children) {
   clear(node)
   for (const child of [children].flat()) if (child !== null && child !== undefined && child !== false) node.append(child)
+}
+
+/** 목록 줄 기다린 글의 진료보류 모양 "보류 {시간}째" */
+const HOLD_WAITED = /^보류 (.+)째$/
+
+/**
+ * 기다린 글(AC-3308.14·AC-3309.6): 같은 k 목록 줄의 waited 그대로, 진료보류 "보류 {시간}째"만 "{시간}째 대기"로.
+ * 시간 글은 목록 그대로라 목록 화면과 숫자가 늘 같다. 없으면 ""
+ */
+export function waitedText(row) {
+  const text = isText(row?.waited) ? row.waited : ''
+  const hold = HOLD_WAITED.exec(text)
+  return hold ? `${hold[1]}째 대기` : text
+}
+
+/** 기다린 글 span: 목록 줄 long(진료대기·진료보류 60분 이상)이면 주황(wt is-long). 글이 없으면 null */
+export function waitedSpan(row) {
+  const text = waitedText(row)
+  return text ? el('span', { class: row.long === true ? 'wt is-long' : 'wt' }, text) : null
 }
 
 function isText(value) {

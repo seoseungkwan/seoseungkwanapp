@@ -33,6 +33,7 @@
 
 import { clear, el } from './dom.js'
 import { refreshText, topOf } from './board.js'
+import { waitedSpan } from './charts.js'
 
 /** SONO·C-ARM 부위 목록 (design.md 4절, 시안 그대로) */
 export const PARTS = Object.freeze(['목', '등', '허리', '오른 어깨', '왼 어깨', '양 어깨', '팔꿈치', '손목', '고관절', '오른 무릎', '왼 무릎', '양 무릎', '발목', '발바닥', '기타'])
@@ -366,6 +367,7 @@ function awayOf(row, list, act) {
   const time = typeof list.time === 'string' ? (TIME.exec(list.time)?.[0] ?? list.time) : ''
   return el('button', { type: 'button', class: 't-btn', on: { click: () => act.call('onAway', row.k, row.away ? 'off' : 'on') } }, [
     el('span', { class: 't-time' }, time),
+    waitedSpan(list),
     row.away ? el('span', { class: 'away-tag' }, ['자리비움', el('br'), row.away]) : null,
   ])
 }

@@ -129,6 +129,15 @@ public static class ArrangeWrite {
 - 칸 눌러 바로 그리기(낙관적): 화면이 다음 단계를 먼저 그리고, 답이 204가 아니면 마지막 판 값으로 되그린다(AC-3308.9). 같은 칸에 나가 있는 쓰기가 있으면 누름을 버린다(`xray.js`의 `pressing`과 같은 방식).
 - 되돌리기: 띠의 [되돌리기]는 서버에 '앞 단계로 set'(칸), `away`/`end`의 반대(on↔off), `add`의 반대 `remove`, `part`의 반대(앞 부위로 `part`, 앞 부위가 없었으면 보내지 않고 띠에 되돌리기를 그리지 않음)를 보낸다.
 
+### 10-1. 기다린 시간 (2026-11-09 사용자 요청, AC-3308.14·AC-3309.6)
+
+- 서버는 고치지 않는다. 목록 줄(`/api/board`의 `lists`)에 이미 있는 `waited`(BoardBuilder `WaitedOf`의 글)와 `long`(진료대기·진료보류 60분 이상)을 같은 `k`로 찾아 그대로 쓴다. 그래서 목록 화면과 글·주황 기준이 늘 같다.
+- 진료보류 줄은 목록 글 "보류 {시간}째"를 "{시간}째 대기"로 바꿔 쓴다(`waitText(list)` 하나, 시간 글은 목록 그대로라 숫자가 늘 같다). 이 모양이 아니면 목록 글 그대로 쓴다.
+- `arrange.js` `awayOf`: 접수 시각 `span.t-time` 아래 `span.wt`(long이면 `wt is-long`). 자리비움 표시는 그 아래.
+- `charts.js` 머리: "HH:MM 접수" 뒤 `·`와 `span.wt`(같은 규칙). 판이 새로 오면 머리를 다시 그린다(지금 `redrawChart` 그대로).
+- 색은 새로 만들지 않는다: `.wt`는 `--ink-2`, `.wt.is-long`은 `--warn`(AC-3308.12의 새 색 여섯 그대로).
+- 시안 `docs/mockups/reception-arrange/Arrange.html`에 같은 모양을 더했다(사용자 승인 받을 것).
+
 ## 11. 데이터 흐름
 ```
 [태블릿] 5초마다 GET /api/board ─→ Router → BoardCache(비트 SELECT: TodayVisits·TodayRx·TodayOrderTimes·…)

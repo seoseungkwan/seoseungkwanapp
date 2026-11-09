@@ -112,3 +112,12 @@
 - Tests: helper/tests/reception-arrange-fill.dotnet.test.ts, helper/tests/reception-arrange-map.dotnet.test.ts
 - TDD: required
 - 보고서의 코드 표에서 근거가 있는 규칙만 채운다(AC-3311.1). `PartColumn`을 채울 근거가 있으면 `ReceptionSql.TodayOrderParts`·`BoardReader`의 그 한 문장을 더하고, 없으면 두 파일은 고치지 않는다. AC-3311.3은 [의원 PC]
+
+## TASK-13: 기다린 시간 보이기 (어레인지 표 접수 칸 · 기록부 머리)
+- Step: Phase 4 (2026-11-09 사용자 요청, TASK-9·10 뒤)
+- AC: AC-3308.14, AC-3309.6
+- REQ: REQ-3308, REQ-3309
+- Files: reception/www/arrange.js, reception/www/charts.js, reception/www/style.css, reception/tests/arrange.test.ts, reception/tests/charts.test.ts, reception/tests/fixtures.ts, docs/mockups/reception-arrange/Arrange.html
+- Tests: reception/tests/arrange.test.ts, reception/tests/charts.test.ts
+- TDD: required
+- 서버(C#)는 고치지 않는다. 목록 줄의 `waited`·`long`을 그대로 쓴다(design.md 10-1). 새 색 없음

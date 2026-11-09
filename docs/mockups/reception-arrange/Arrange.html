@@ -99,6 +99,9 @@ tr.flash td { animation:flash 1.2s ease-in-out 3; }
 .t-btn:hover { background:var(--ground); }
 .t-btn .t { font-size:17px; font-weight:800; }
 .t-btn .away-tag { font-size:11px; font-weight:800; color:var(--warn); line-height:1.3; margin-top:2px; }
+/* 새로 제안(11-09): 기다린 시간 — 목록 화면의 글 그대로, 60분 넘게 기다리면(진료대기·진료보류) 주황 */
+.t-btn .wt { font-size:11px; font-weight:700; color:var(--ink-2); line-height:1.3; margin-top:1px; }
+.wt.is-long { color:var(--warn); font-weight:800; }
 
 /* 성함 칸 */
 .nm-btn { all:unset; box-sizing:border-box; display:flex; flex-direction:column; gap:2px; width:100%; padding:6px; cursor:pointer; border-radius:6px; }
@@ -248,6 +251,16 @@ const START = 11 * 60 + 4
 let clock = START
 const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 const stamp = () => fmt(++clock)
+// 기다린 시간(접수 때부터): 진료대기·진료보류 "N분째 대기"(목록은 보류를 "보류 N분째"로 쓰지만 여기서는 대기로), 수납대기 "수납 N분째", 수납완료 "수납완료"
+const toMin = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+const span = m => m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? ` ${m % 60}분` : ''}`
+function waitedOf(p) {
+  const m = Math.max(0, clock - toMin(p.t))
+  if (p.lane === 'done') return { text: '수납완료', long: false }
+  const text = p.lane === 'wait' || p.lane === 'hold' ? `${span(m)}째 대기` : `수납 ${span(m)}째`
+  return { text, long: (p.lane === 'wait' || p.lane === 'hold') && m >= 60 }
+}
+const waitedHtml = p => { const w = waitedOf(p); return `<span class="wt${w.long ? ' is-long' : ''}">${w.text}</span>` }
 
 const COLS = [
   { k: 'xray', h: 'X-RAY', sub: '', name: 'X-RAY', auto: true },
@@ -372,7 +385,7 @@ function row(p) {
   const allDone = list.length > 0 && list.every(c => c.st === 'done')
   return `<tr class="${p.away ? 'away' : ''} ${p.flash ? 'flash' : ''}">
     <td class="c-t"><button type="button" class="t-btn" data-act="away" data-k="${p.k}" aria-label="${esc(p.name)} 자리비움 ${p.away ? '풀기' : '표시'}">
-      <span class="t">${p.t}</span>${p.away ? `<span class="away-tag">자리비움<br>${p.away}</span>` : ''}</button></td>
+      <span class="t">${p.t}</span>${waitedHtml(p)}${p.away ? `<span class="away-tag">자리비움<br>${p.away}</span>` : ''}</button></td>
     <td class="c-nm"><button type="button" class="nm-btn" data-act="chart" data-k="${p.k}">
       <span class="l1"><span>${p.chart}</span><span class="tag ${p.lane}">${LANE[p.lane]}</span>${p.newRx ? '<span class="rx-new">처방 나옴</span>' : ''}</span>
       <span class="l2"><span class="nm">${esc(p.name)}</span><span class="meta">${p.age} · ${p.sex}</span>${p.kind === '신환' ? '<span class="new-badge">신환</span>' : ''}<span class="open" aria-hidden="true">›</span></span></button>
@@ -427,7 +440,7 @@ function chartPage(p) {
   return `<header class="top chart-top">
       <div class="top-row"><button type="button" class="back" data-act="chart-close">‹ 어레인지</button><span class="sp"></span><span class="conn">● 연결됨</span></div>
       <div class="who"><span class="chart-no">${p.chart}</span><h1>${esc(p.name)}</h1><span class="meta">${p.age}세 · ${p.sex} · ${p.kind}</span>${p.kind === '신환' ? '<span class="new-badge">신환</span>' : ''}</div>
-      <div class="state"><span class="tag ${p.lane}">${LANE[p.lane]}</span><span>${p.t} 접수</span></div>
+      <div class="state"><span class="tag ${p.lane}">${LANE[p.lane]}</span><span>${p.t} 접수</span><span>·</span>${waitedHtml(p)}</div>
       ${p.memo ? `<div class="memo big"><span class="lab">메모</span>${esc(p.memo)}</div>` : ''}
     </header>
     <main class="charts">

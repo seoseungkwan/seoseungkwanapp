@@ -117,6 +117,17 @@ describe('REQ-3309 기록부 화면 (charts.js)', () => {
     expect(document.title).toBe('')
   })
 
+  it('AC-3309.6: 머리의 "HH:MM 접수" 뒤에 "·"와 기다린 글이 있고(진료보류 "보류 N째"는 "N째 대기"), long이면 주황(wt is-long)이며 판이 새로 오면 새 값이다', () => {
+    const { app, page } = draw({ ...C(), waited: '보류 1시간 4분째', long: true }, TODAY_HISTORY(), null)
+    const state = () => page.querySelector('header.top .state')!
+    expect(shapeOf(state())).toEqual(['span.status.status-hold', 'span', 'span.sep', 'span.wt.is-long'])
+    expect(textsOf(page, '.state > span')).toEqual(['진료보류', '09:40 접수', '·', '1시간 4분째 대기'])
+
+    charts.renderCharts(app, { ...C(), lane: 'wait', laneLabel: '진료대기', waited: '18분째 대기', long: false }, TODAY_HISTORY(), null, { today: TODAY })
+    expect(shapeOf(state())).toEqual(['span.status.status-wait', 'span', 'span.sep', 'span.wt'])
+    expect(textsOf(page, '.state > span')).toEqual(['진료대기', '09:40 접수', '·', '18분째 대기'])
+  })
+
   it('AC-3309.1: "오늘 진료기록부 YYYY-MM-DD" 아래 오늘 종이는 detail.js paperCard 그대로이고(사람 칸·특이사항 포함), "직전 진료기록부 {날짜} · {N일 전}" 아래 직전 종이가 있다', () => {
     const history = TODAY_HISTORY()
     const { page } = draw(A(), history, fx.fakePrev())
