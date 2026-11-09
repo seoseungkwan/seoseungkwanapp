@@ -66,7 +66,7 @@ public static class ArrangeMap {
 public enum ArrangeStep { Todo, Ready, Done, Gone }
 public sealed class CellMark { ArrangeStep St; bool Manual; string Det; string? Part; string? ReadyAt; string? DoneAt; string? AddedAt; }
 public sealed class PtFirst { string St; /* "up"|"down" */ string At; }   // PT 먼저
-public sealed class VisitMark { IReadOnlyDictionary<ArrangeCol, CellMark> Cells; string? Away; PtFirst? Ptf; string? EndedAt; }
+public sealed class VisitMark { IReadOnlyDictionary<ArrangeCol, CellMark> Cells; string? Away; PtFirst? Ptf; string? EndedAt; bool Kept; /* 수납완료 줄을 다시 넣음(10-2) */ }
 public sealed class ArrangeMarks {
     public ArrangeMarks(IStoreFolder folder, IProtector protector, Func<DateTime> now, Action<string>? report = null);
     public IReadOnlyDictionary<string, VisitMark> Today();             // 내원번호 → 표시
@@ -74,7 +74,7 @@ public sealed class ArrangeMarks {
 }
 ```
 - 파일 `data\reception-arrange.dat`, 머리 `PRECHECK-STORE-1\n` + `IProtector`(윈도우 DPAPI CurrentUser). 임시 파일 → `File.Replace`, 잠금 하나, 1MB 한도, 날 바뀌면 비움, 모양 틀리면 빈 표시 + 오류 번호(`XrayMarks`와 같은 규칙. 두 파일은 따로 둔다: X-ray 표시는 지금 화면도 쓰고, 날짜·모양 규칙이 같아도 서로 깨뜨리지 않게).
-- 글 칸은 4절 표의 글과 "HH:MM" 시각만 받는다(AC-3304.4). JSON 칸 이름: `cells`(칸 이름 → `{st, manual, det, part, readyAt, doneAt, addedAt}`), `away`, `endedAt`.
+- 글 칸은 4절 표의 글과 "HH:MM" 시각만 받는다(AC-3304.4). JSON 칸 이름: `cells`(칸 이름 → `{st, manual, det, part, readyAt, doneAt, addedAt}`), `away`, `endedAt`, 그리고 `kept`(참일 때만 `true`로 쓴다. 없으면 거짓 — 이 고침 전 판이 쓴 오늘 파일도 그대로 읽힌다, AC-3304.5).
 
 ## 7. 어레인지 자료 (`ArrangeBuilder.cs`, `BoardModel.cs`)
 ```csharp
@@ -89,7 +89,8 @@ public static class ArrangeBuilder {
   "rows": [ { "k": "…16", "away": "10:50" | null, "ptf": { "st": "up|down", "at": "10:40" } | null, "last": "지난번 증상 글" | "",
               "cells": { "xray": Cell | null, "sono": Cell | null, "carm": …, "pt": …, "ds": …, "eswt": …, "trac": … },
               "allDone": false } ],
-  "ended": [ { "k": "…16", "endedAt": "10:40" } ] }
+  "ended": [ { "k": "…16", "endedAt": "10:40", "paid": false },          // [치료 종료]
+             { "k": "…17", "endedAt": "10:52" | null, "paid": true } ] }  // 수납완료로 저절로(10-2)
 Cell = { "st": "todo|ready|done", "det": "HP", "part": "오른 어깨" | null, "at": "10:30", "ord": 1 | null, "manual": false }
 ```
 - 칸 하나 만들기: ① 오늘 처방(`VisitRow.Orders`)을 `ArrangeMap.Match`로 처방 칸(xray·sono·carm)마다 모은다(가장 이른 시각, 첫 부위). 직접 칸(pt·ds·eswt·trac)은 처방을 보지 않는다 ② 표시가 `Gone`이면 칸 없음 ③ 표시가 있으면 단계·시각·부위·글을 덮는다(직접 넣은 칸은 표시만으로 생긴다: `at` = `AddedAt`) ④ X-RAY는 `xray`(XrayMarks)에 그 내원이 있으면 `done`·`at` = 그 시각(처방·표시가 없어도 칸이 생김, AC-3305.6). `at`은 단계에 따라 처방(넣은) 시각·`ReadyAt`·`DoneAt`.
@@ -104,7 +105,7 @@ public static class ArrangeWrite {
 }
 ```
 - 라우터: `POST /api/arrange` → `ClientGuard.WriteOk`(403) → `TryParse`(400) → 그날 열쇠 + 오늘 판의 네 칸 줄(404) → 지금 판 자료로 그 줄의 칸 상태(`ArrangeBuilder`와 같은 계산) → `ArrangeWrite.Apply` → X-RAY 끝남·되돌리기는 `XrayMarks.Set`(AC-3306.4), 나머지는 `ArrangeMarks.Update` → 204. 화면은 204 뒤 바로 `/api/board`를 다시 읽는다(지금 X-ray와 같음).
-- `op` 표: `step`(todo→ready(SONO·C-ARM)/done, ready→done) · `set` v=todo|ready|done(앞으로·뒤로 모두, 뒤로 가면 뒤 단계 시각을 지우고 ready로 갈 때 `ReadyAt`은 남김) · `add` v=4절 목록(빈 칸만, 아니면 400) · `remove`(직접 넣은 칸만 `Gone`이 아니라 표시 지움; 처방 칸은 400) · `part` v=부위 목록(SONO·C-ARM만) · `away` v=on|off · `ptf` v=up|down|off(PT 먼저: 시각은 서버, off는 지움) · `end` v=on|off.
+- `op` 표: `step`(todo→ready(SONO·C-ARM)/done, ready→done) · `set` v=todo|ready|done(앞으로·뒤로 모두, 뒤로 가면 뒤 단계 시각을 지우고 ready로 갈 때 `ReadyAt`은 남김) · `add` v=4절 목록(빈 칸만, 아니면 400) · `remove`(직접 넣은 칸만 `Gone`이 아니라 표시 지움; 처방 칸은 400) · `part` v=부위 목록(SONO·C-ARM만) · `away` v=on|off · `ptf` v=up|down|off(PT 먼저: 시각은 서버, off는 지움) · `end` v=on|off(off는 수납완료 줄이면 `kept`도 남김, 10-2).
 - 몸 256바이트 한도는 지금 `HttpRequestReader` 그대로(가장 긴 몸 `{"k":"…16","op":"part","col":"carm","v":"오른 무릎"}`도 안에 든다).
 - 라우터 생성자에 `ArrangeMarks? arrangeMarks = null`, `IReadOnlyList<ArrangeRule>? arrangeMap = null`을 끝 선택 인자로 더한다(없으면 `/api/arrange`는 404, `arrange` 칸 없음 → 지금 라우터 시험 그대로). `Precheck.Reception/ReceptionServices.cs`가 진짜 저장소(`data\`)·DPAPI·`ArrangeMap.Rules`로 만든다.
 
@@ -138,6 +139,14 @@ public static class ArrangeWrite {
 - 색은 새로 만들지 않는다: `.wt`는 `--ink-2`, `.wt.is-long`은 `--warn`(AC-3308.12의 새 색 여섯 그대로).
 - 시안 `docs/mockups/reception-arrange/Arrange.html`에 같은 모양을 더했다(사용자 승인 받을 것).
 
+### 10-2. 수납완료 줄 저절로 빼기 (2026-11-10 사용자 고침, AC-3304.5·AC-3305.10·AC-3306.7·AC-3308.15)
+
+- 서버(`ArrangeBuilder.Build`): 줄마다 칸(`ReceptionMap.LaneOf`)을 본다. ① `EndedAt`이 있으면 지금처럼 `ended`(`paid: false`) ② 아니고 끝남 칸(수납완료)이며 `Kept`가 아니면 `ended`에 `{ endedAt: BoardBuilder.ClockOf(visit.PaidAt), paid: true }`(목록 줄 "HH:MM 수납"과 같은 계산, `ClockOf`를 internal로) ③ 나머지는 `rows`. `ended`는 `endedAt ?? ""`로 늦은 순(null은 맨 뒤). `ArrangeEnded(key, string? endedAt, bool paid)` — null은 `paid`일 때만.
+- 쓰기(`ReceptionRouter` 어레인지 쓰기): 그 줄 칸 계산에 쓰는 표시를 `(mark ?? 빈 표시).WithEnded(null).WithKept(true)`로 열어 둔다(저절로 빠진 줄도 칸이 만들어져 다른 쓰기가 표에 있는 줄과 같게 돈다). `ArrangeWrite.Apply(…, bool paid)`에 그 접수가 지금 끝남 칸인지 넘기고, `end` off는 `paid`면 `WithEnded(null).WithKept(true)`, 아니면 `WithEnded(null)`. `end` on은 `WithEnded(hhmm)`만.
+- 저장(`ArrangeMarks`): 내원 칸 넷 + `kept`(참일 때만). 읽을 때 칸 넷이거나(거짓) 다섯이고 `kept`가 JSON `true`여야 한다. `IsEmpty`는 `!Kept`도 본다(`kept`만 있는 표시를 지우지 않게).
+- 화면: `api.js`의 `ended` 줄 검사에 `paid`(참·거짓·없음)와 null `endedAt`(`paid`일 때만)을 더한다. `arrange.js` `endedOf`의 시각 글: `paid`면 "HH:MM 수납"·"수납완료", 아니면 "HH:MM 종료". [치료 종료]의 바로 그리기 줄은 `paid: false`. 새 색·새 단추 없음.
+- 시안 `Arrange.html`: 끝난 줄 하나를 수납완료로 빠진 줄("10:52 수납")로 바꾼다(사용자 승인 받을 것).
+
 ## 11. 데이터 흐름
 ```
 [태블릿] 5초마다 GET /api/board ─→ Router → BoardCache(비트 SELECT: TodayVisits·TodayRx·TodayOrderTimes·…)
@@ -154,7 +163,7 @@ public static class ArrangeWrite {
 - **X-RAY 끝남 = 지금 'X-ray 완료'.** 한 환자의 엑스레이가 두 군데에서 다르게 보이지 않게 같은 파일을 쓴다. 지금 진료보류 줄의 [X-ray 완료]·[표시 취소]도 그대로 돈다.
 - **되돌리기는 반대 쓰기.** 서버에 '되돌리기 기록'을 두지 않고 화면이 앞 값을 알고 반대 `op`를 보낸다. 5초 안에 다른 기기가 같은 칸을 바꿨으면 마지막 쓰기가 이긴다(한 사람이 쓰는 표라 드물다).
 - **'처방 나옴'은 화면이 판을 견주어 정한다.** 서버는 칸만 주고, 화면이 앞 읽기와 견준다(새 접수 알림과 같은 길). 그래서 처음 열 때·끊김 뒤에는 알리지 않는다.
-- **줄은 자동으로 빠지지 않는다.** 사용자 결정. 수납완료 줄도 [치료 종료] 전까지 남는다. 끝난 칸이 모두 끝나면 [치료 종료] 단추만 노랗게 해 알려 준다.
+- **수납완료 줄은 저절로 빠진다(2026-11-10 고침).** 처음엔 "자동으로 빼지 않음"이었으나 사용자가 바꿨다("수납 완료되면 자동으로 그 목록에서 없애 주고 싶은데", 남은 칸이 있어도 바로 — "남은 치료 없을 때만"을 권했으나 사용자가 "수납완료면 바로"를 골랐다). 수납 먼저 하고 치료받는 환자는 [오늘 치료 종료]에서 [다시 넣기]로 되살리고, 그러면 그날은 다시 빠지지 않는다. 수납 전 줄은 지금처럼 끝난 칸이 모두 끝나면 [치료 종료] 단추만 노랗게 해 알려 준다.
 - **직전 기록부는 따로 길.** 오늘 종이(`history?from=0`)는 30초마다 다시 읽히므로, 바뀌지 않는 직전 종이를 거기 넣으면 비트 읽기가 쓸데없이 는다. 기록부를 열 때 한 번만 읽는다.
 - **확인 전에는 아는 코드만.** X-ray를 `G`로 시작하는 코드로 두는 것은 그럴듯하지만 이 의원 비트에서 본 적이 없다. 보고서 한 번으로 정하고 그 전에는 비워 둔다(그동안 X-RAY 칸은 직접 넣는다).
 - **PT·도수·충격파·견인은 직접 칸.** 사용자 결정(2026-11-09). 처방 코드·30/50분·부위 수를 비트에서 찾지 않아도 되어 확인 단계와 지도가 작아진다.

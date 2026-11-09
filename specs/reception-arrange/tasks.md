@@ -121,3 +121,21 @@
 - Tests: reception/tests/arrange.test.ts, reception/tests/charts.test.ts
 - TDD: required
 - 서버(C#)는 고치지 않는다. 목록 줄의 `waited`·`long`을 그대로 쓴다(design.md 10-1). 새 색 없음
+
+## TASK-14: 수납완료 줄 저절로 빼기 (서버)
+- Step: Phase 4 (2026-11-10 사용자 고침 "수납 완료되면 자동으로 그 목록에서 없애 주고 싶은데", TASK-13 뒤)
+- AC: AC-3304.5, AC-3305.2, AC-3305.9, AC-3305.10, AC-3306.7
+- REQ: REQ-3304, REQ-3305, REQ-3306
+- Files: helper/src/Precheck.Core/Reception/ArrangeMarks.cs, helper/src/Precheck.Core/Reception/ArrangeBuilder.cs, helper/src/Precheck.Core/Reception/ArrangeWrite.cs, helper/src/Precheck.Core/Reception/BoardBuilder.cs, helper/src/Precheck.Core/Reception/BoardModel.cs, helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs, helper/tests/Precheck.Core.Tests/Reception/ArrangeAutoEnd.test.cs, helper/tests/Precheck.Core.Tests/Reception/ArrangeBuilder.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ArrangeRoute.test.cs, helper/tests/reception-arrange-autoend.dotnet.test.ts, helper/tests/reception-arrange-board.dotnet.test.ts
+- Tests: helper/tests/reception-arrange-autoend.dotnet.test.ts, helper/tests/reception-arrange-board.dotnet.test.ts
+- TDD: required
+- design.md 10-2. 새 시험은 `ArrangeAutoEnd` 이름 공간 한 파일(가짜 상태 표·가짜 내원·임시 폴더 저장소·`ArrangeRig`에 상태 표를 넘기는 선택 인자). 지금 시험 가운데 바뀐 AC의 것(AC-3305.2 끝남 칸 줄, AC-3305.9 모양)만 고친다
+
+## TASK-15: 수납완료로 빠진 줄 보이기 (화면)
+- Step: Phase 4 (TASK-14 뒤)
+- AC: AC-3308.15
+- REQ: REQ-3308
+- Files: reception/www/api.js, reception/www/arrange.js, reception/tests/api.test.ts, reception/tests/arrange.test.ts, reception/tests/fixtures.ts, docs/mockups/reception-arrange/Arrange.html
+- Tests: reception/tests/arrange.test.ts, reception/tests/api.test.ts
+- TDD: required
+- design.md 10-2. 새 색·새 단추 없음. [치료 종료] 바로 그리기 시험(AC-3308.8)의 끝난 줄 모양에 `paid: false`가 더해진다

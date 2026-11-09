@@ -774,6 +774,38 @@ describe('REQ-3308 칸 누르기', () => {
     expect(view.CHOICES.carm).toEqual([...view.PARTS, LATER])
   })
 
+  it('AC-3308.15: [오늘 치료 종료]의 수납완료로 빠진 줄은 "HH:MM 수납"(시각이 없으면 "수납완료"), [치료 종료]로 뺀 줄은 "HH:MM 종료"이고 [다시 넣기]는 둘 다 onRestore(열쇠)다', () => {
+    const base = fx.arrangeMockupBoard()
+    const board = fx.withArrange(base, {
+      rows: base.arrange!.rows,
+      ended: [
+        { k: K.j, endedAt: '10:52', paid: true },
+        { k: K.i, endedAt: '10:15', paid: false },
+        { k: K.h, endedAt: null, paid: true },
+      ],
+    })
+    const onRestore = vi.fn()
+    const { page } = draw(board, { onRestore, endedOpen: true })
+    expect(textOf(page, 'section.ended > button.ended-h')).toBe('오늘 치료 종료 3명 ▴')
+    const items = [...page.querySelectorAll('section.ended > ul.ended-list > li')]
+    expect(items.map((li) => textsOf(li, ':scope > span.e-t'))).toEqual([['10:52 수납'], ['10:15 종료'], ['수납완료']])
+    items[2]!.querySelector<HTMLButtonElement>('button.restore')!.click()
+    expect(onRestore).toHaveBeenLastCalledWith(K.h)
+    items[0]!.querySelector<HTMLButtonElement>('button.restore')!.click()
+    expect(onRestore).toHaveBeenLastCalledWith(K.j)
+  })
+
+  it('AC-3308.15: [치료 종료]를 누르면 바로 그리는 끝난 줄은 paid: false이고, 수납완료로 빠진 줄의 [다시 넣기]도 같은 end off·띠를 준다', () => {
+    const base = fx.arrangeMockupBoard()
+    const board = fx.withArrange(base, { rows: base.arrange!.rows, ended: [{ k: K.j, endedAt: null, paid: true }] })
+    const end = view.planOf(board, { k: K.a, op: 'end', v: 'on' })
+    expect(end.board.arrange!.ended[0]).toEqual({ k: K.a, endedAt: '11:04', paid: false })
+    const back = view.planOf(board, { k: K.j, op: 'end', v: 'off' })
+    expect(back.board.arrange!.ended).toEqual([])
+    expect(back.toast).toBe('가상환자30 님을 표에 다시 넣었어요')
+    expect(back.undo).toEqual({ k: K.j, op: 'end', v: 'on' })
+  })
+
   it('AC-3308.8: 접수 칸은 onAway(열쇠, on|off), [치료 종료]는 onEnd(열쇠), [다시 넣기]는 onRestore(열쇠)를 부른다', () => {
     const onAway = vi.fn()
     const onEnd = vi.fn()
@@ -802,7 +834,7 @@ describe('REQ-3308 칸 누르기', () => {
     expect(off.undo).toEqual({ k: K.d, op: 'away', v: 'on' })
     const end = view.planOf(board, { k: K.a, op: 'end', v: 'on' })
     expect(arrRow(end.board, K.a)).toBeNull()
-    expect(end.board.arrange!.ended[0]).toEqual({ k: K.a, endedAt: '11:04' })
+    expect(end.board.arrange!.ended[0]).toEqual({ k: K.a, endedAt: '11:04', paid: false })
     expect(end.toast).toBe('가상환자21 님을 표에서 뺐어요')
     expect(end.undo).toEqual({ k: K.a, op: 'end', v: 'off' })
     const back = view.planOf(board, { k: K.j, op: 'end', v: 'off' })

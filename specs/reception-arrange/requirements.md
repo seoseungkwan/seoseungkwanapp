@@ -9,7 +9,7 @@
 - 의원은 종이 '어레인지 표'(접수시간/자리비움 · 성함 · X-RAY · SONO · C-ARM(1과/2과) · PT(ICE,HP) · 도수(30/50분) · 충격파(몇 부위) · 견인(목,허리) · 비고, 한 장 15줄)를 클립보드에 끼워 쓴다. 이것을 접수 현황 화면(의원 PC의 `PrecheckReception.exe`가 직원 와이파이로 내주는 폰·태블릿 화면, reception-phone · reception-paper) 안의 **새 탭 [어레인지]**로 옮긴다.
 - 사용자 결정(2026-11-09 인터뷰, 메모 `reception-arrange-plan`):
   - 쓰는 사람은 **어레인지 담당**(환자를 각 치료로 안내하는 사람) 한 명이고 기기는 **태블릿 가로**다. 그래도 직원 와이파이의 폰이면 누구나 보고 누를 수 있다(잠금 없음 그대로).
-  - 줄은 **접수할 때 생기고 접수 순서**로 쌓인다. **[치료 종료]를 눌러야만** 표에서 빠진다(수납완료여도 저절로 빼지 않음). 실수로 뺀 줄은 되돌린다.
+  - 줄은 **접수할 때 생기고 접수 순서**로 쌓인다. **[치료 종료]를 누르거나 수납완료가 되면** 표에서 빠진다(2026-11-10 사용자 고침 "수납 완료되면 자동으로 그 목록에서 없애 주고 싶은데", 남은 칸이 있어도 바로 — 처음 결정 "수납완료여도 저절로 빼지 않음"을 바꿈, AC-3305.10). 실수로 뺀 줄은 되돌린다. 수납완료 줄을 [다시 넣기]하면 그날은 다시 저절로 빠지지 않는다.
   - **X-RAY·SONO·C-ARM 칸**은 **비트 처방이 나오면 '준비'가 저절로** 들어오고, 끝나면 담당이 눌러 **'완료'**로 바꾼다. **SONO·C-ARM만 '준비 → 준비완료 → 완료' 세 단계**다(각 방 담당이 말로 "준비됐어요"를 알리면 어레인지 담당이 '준비완료'를 누른다). 단계 이름은 사용자 결정(2026-11-09 "해야함이 아니라 준비 준비완료 완료로"). 처방에 없어도 빈 칸을 눌러 **직접 넣는다**.
   - **PT·도수·충격파·견인 칸**은 처방으로 채우지 않는 **직접 칸**이다: 빈 칸을 눌러 고르고(ICE·HP / 30분·50분 / 1~4부위 / 목·허리) 다시 누르면 '완료'(사용자 결정 2026-11-09 "PT 도수 충격파 견인은 그냥 지워, 칸만 두고 내가 쓸 수 있게" → "고르기 + 완료 표시").
   - **물리치료를 먼저 하는 환자**: 성함 칸 아래 따로 단추 **[PT 먼저]**를 누르면 '↑ PT 올라감 HH:MM', 다시 누르면 '↓ 내려옴 HH:MM', 한 번 더 누르면 표시를 지운다(사용자 결정 2026-11-09 "성함 옆 따로 단추").
@@ -47,17 +47,19 @@
 - AC-3304.2: Given 내원 하나의 표시, When 담으면, Then 칸마다 `{ st: "todo|ready|done|gone", manual: bool, det: 글, part: 글|null, readyAt: "HH:MM"|null, doneAt: "HH:MM"|null, addedAt: "HH:MM"|null }`, 그리고 `away: "HH:MM"|null`, `ptf: { st: "up"|"down", at: "HH:MM" }|null`(PT 먼저), `endedAt: "HH:MM"|null`만 담는다. 이름·차트번호·메모·증상은 담지 않는다
 - AC-3304.3: Given 파일의 날이 오늘이 아님, When 읽으면, Then 빈 표시다(날이 바뀌면 지운다). 파일이 1MB를 넘거나 모양이 틀리면 빈 표시로 읽고 기록에 오류 번호만 남긴다
 - AC-3304.4: Given 글 칸(`det`·`part`), When 쓰면, Then 칸마다 정해 둔 고르기 목록(design.md 4절)의 글만 받는다. 다른 글은 쓰지 않는다
+- AC-3304.5: Given 수납완료 줄을 [다시 넣기]한 표시(AC-3306.7), When 담으면, Then 내원 표시에 `kept: true`를 더한다(참일 때만 쓰고, 거짓이면 칸이 없다). `kept`만 있는 표시도 빈 표시가 아니다. `kept`가 없는 내원(이 고침 전 판이 쓴 오늘 파일)은 `kept` 거짓으로 읽고, `kept`가 `true`가 아닌 값이면 모양이 틀린 파일이다(AC-3304.3)
 
 ### REQ-3305: 어레인지 자료 만들기 (`/api/board`에 더함)
 - AC-3305.1: Given 판 자료·지도·어레인지 표시·X-ray 표시, When `/api/board` 답을 만들면, Then 답에 `arrange: { rows: [ArrangeRow], ended: [ArrangeEnded] }`가 더 있고 지금 칸(`lists`·`counts`)은 그대로다
-- AC-3305.2: Given 오늘 접수, When 줄을 고르면, Then 진료대기·진료보류·수납대기·끝남 칸에 드는 접수만(숨김·취소는 빼고), 접수 시각 빠른 순(같으면 내원번호 순)이다. `endedAt`이 있는 접수는 `rows`가 아니라 `ended`(종료 시각 늦은 순)에 간다
+- AC-3305.2: Given 오늘 접수, When 줄을 고르면, Then 진료대기·진료보류·수납대기·끝남 칸에 드는 접수만(숨김·취소는 빼고), 접수 시각 빠른 순(같으면 내원번호 순)이다. `endedAt`이 있는 접수와 저절로 빠지는 수납완료 접수(AC-3305.10)는 `rows`가 아니라 `ended`(시각 늦은 순)에 간다
 - AC-3305.3: Given 한 줄, When 만들면, Then `ArrangeRow = { k, away: "HH:MM"|null, ptf: { st: "up"|"down", at: "HH:MM" }|null, last: 글, cells: { xray|sono|carm|pt|ds|eswt|trac: Cell|null }, allDone: bool }`이다. `last`는 가장 최근 지난 완료 내원의 증상 글(없으면 ""). 이름·차트번호·정보·메모·상태·접수 시각은 화면이 같은 `k`의 목록 줄에서 가져온다(다시 넣지 않는다)
 - AC-3305.4: Given 칸 하나, When 만들면, Then `Cell = { st: "todo|ready|done", det, part, at, ord, manual }`이다: 처방에서 온 칸은 `st` 기본 "todo", `at`은 처방 시각, 표시가 있으면 표시의 단계·시각(`ready`면 `readyAt`, `done`이면 `doneAt`)을 쓴다. 직접 넣은 칸은 `manual: true`이고 `at`은 넣은 시각이다. 표시가 `gone`이면 칸이 없다(null). 직접 칸(pt·ds·eswt·trac)은 처방을 보지 않고 표시로만 생기며 늘 `manual: true`다
 - AC-3305.5: Given SONO·C-ARM 칸, When 순서를 매기면, Then `rows`에 있고 끝나지 않은(todo·ready) 칸을 처방(또는 직접 넣은) 시각 빠른 순(같으면 접수 순)으로 1부터 `ord`를 준다. 다른 칸·끝난 칸의 `ord`는 null이다
 - AC-3305.6: Given X-RAY 칸, When 만들면, Then 처방이나 직접 넣음이 있고 그 내원에 X-ray 완료 표시(`XrayMarks`)가 있으면 `st: "done"`, `at`은 그 표시 시각이다. 처방이 없어도 X-ray 완료 표시가 있으면 끝난 X-RAY 칸이 있다
 - AC-3305.7: Given 부위, When SONO·C-ARM 칸을 만들면, Then 표시의 `part`가 있으면 그것, 없으면 비트 부위(AC-3303.2), 둘 다 없으면 null이다. 다른 칸의 `part`는 null이다
 - AC-3305.8: Given 줄의 칸이 하나 이상이고 모두 "done", When `allDone`을 정하면, Then true다. 칸이 없거나 하나라도 끝나지 않았으면 false다
-- AC-3305.9: Given `ArrangeEnded`, When 만들면, Then `{ k, endedAt }`만이다
+- AC-3305.9: Given `ArrangeEnded`, When 만들면, Then `{ k, endedAt, paid }`만이다. [치료 종료]로 뺀 줄은 `paid: false`이고 `endedAt`은 누른 시각 "HH:MM"이다(수납완료여도 누른 것이 먼저면 이것)
+- AC-3305.10: Given 수납완료(끝남 칸) 접수(2026-11-10 사용자 고침, 남은 칸이 있어도 바로), When 줄을 고르면, Then `endedAt`이 없고 `kept`(AC-3304.5)가 아니면 `rows`가 아니라 `ended`에 `{ k, endedAt: 수납 시각 "HH:MM"(목록 줄 "HH:MM 수납"과 같은 값, 모르면 null), paid: true }`로 간다. `ended` 순서는 시각 늦은 순이고 시각이 없는 줄은 맨 뒤다. 빠진 줄의 SONO·C-ARM 칸은 순서(AC-3305.5)를 받지 않는다. `kept`인 수납완료 접수는 `rows`에 그대로 있다
 
 ### REQ-3306: 어레인지 쓰기 길 (`POST /api/arrange`)
 - AC-3306.1: Given `POST /api/arrange` 몸 `{ "k": 열쇠, "op": 이름, "col"?: 칸, "v"?: 글 }`(바른 UTF-8 JSON, 칸은 이것뿐, 같은 칸 두 번 없음, 256바이트 이하), When 받으면, Then 쓰기 검사(`ClientGuard.WriteOk`: 같은 출처·`X-Reception`·JSON)를 지나야 하고, 아니면 403, 몸 모양이 틀리면 400, 그날 열쇠가 아니거나 그 접수가 오늘 판의 네 칸에 없으면 404, 쓰면 204다. 비트를 볼 수 없으면 503이다
@@ -66,6 +68,7 @@
 - AC-3306.4: Given X-RAY 칸의 끝남·되돌리기, When 처리하면, Then `XrayMarks.Set(내원번호, on)`을 쓴다(진료보류가 아니어도 된다). 지금 `POST /api/xray`(진료보류만)는 그대로다
 - AC-3306.5: Given 같은 칸에 처방도 없고 표시도 없음, When `step`·`set`·`part`를 받으면, Then 404다(없는 칸)
 - AC-3306.6: Given 쓰기, When 기록하면, Then `logs\reception-*.log`에는 오류 번호만 남는다(열쇠·칸·글 없음)
+- AC-3306.7: Given `end` off([다시 넣기]·[치료 종료]의 되돌리기), When 그 접수가 지금 수납완료(끝남 칸)면, Then `endedAt`을 지우고 `kept: true`를 남겨 그날 다시 저절로 빠지지 않는다. 수납완료가 아니면 `endedAt`만 지운다(나중에 수납완료가 되면 빠진다). `end` on은 `endedAt`만 쓴다. 저절로 빠진 줄에 오는 다른 쓰기(칸·부위·자리비움·PT 먼저)도 표에 있는 줄과 같은 칸 계산으로 204·400·404다
 
 ### REQ-3307: 직전 진료기록부 (`GET /api/visit/{k}/prev`)
 - AC-3307.1: Given 그날 열쇠, When `GET /api/visit/{k}/prev`를 받으면, Then 그 접수의 가장 최근 지난 완료 내원(`VisitRow.LastVisitId`) 하나의 종이 자료 `{ "prev": { date: "yyyy-MM-dd", ago: "N일 전", room, ins, sym, dx: [...], rx: [...], out: [...] } }`(칸 모양은 reception-paper `paper`와 같음)를 200으로 준다. 지난 내원이 없으면 `{ "prev": null }`(200)이다
@@ -87,6 +90,7 @@
 - AC-3308.11: Given 저절로 다시 읽기, When 새 판을 그리면, Then 어레인지 탭·옆으로 민 위치·세로 위치·열린 고르기 창·[오늘 치료 종료] 펼침을 지킨다. 고르기 창의 줄이 판에서 사라지면 창을 닫는다
 - AC-3308.12: Given 색, When 살피면, Then 새 색은 `theme.css` `:root`의 `--sono-head`·`--sono-col`·`--carm-head`·`--carm-col`·`--ptup-bg`·`--ptup-fg` 여섯뿐이고(시안 값), 다른 화면 파일에는 색 글자가 없다(AC-1407.7 그대로)
 - AC-3308.14: Given 줄 하나(2026-11-09 사용자 요청 "대기시간도 볼 수 있게"), When 그리면, Then 접수 칸의 접수 시각 바로 아래에 같은 `k` 목록 줄의 기다린 글(`waited`, 접수 현황 목록의 글: "N분째 대기"·"수납 N분째"·"HH:MM 수납"·"수납완료")이 있다. 진료보류 줄은 목록의 "보류 N째"를 "N째 대기"로 바꿔 쓴다(시간은 목록과 같고 접수 때부터 잰 것, 사용자 확인 2026-11-09 "보류가 아니라 대기"). 목록 화면의 글은 그대로다. 그리고 목록 줄의 `long`(진료대기·진료보류 60분 이상)이 참이면 주황(`--warn`)이다. 글이 비면 그리지 않는다. 자리비움 표시는 그 아래 그대로다
+- AC-3308.15: Given [오늘 치료 종료] 펼침(2026-11-10 수납완료 저절로 빼기), When 끝난 줄을 그리면, Then `paid`면 "HH:MM 수납"(시각이 null이면 "수납완료"), 아니면 지금처럼 "HH:MM 종료"다. [다시 넣기]는 둘 다 `end` off다. 저절로 빠진 줄에는 되돌리기 띠가 없다. 판의 `ended` 줄 모양은 `paid`가 참·거짓(없으면 거짓)이고, `endedAt`은 "HH:MM"이며 `paid`일 때만 null도 받는다. [치료 종료]를 누르면 바로 그리는 끝난 줄은 `paid: false`다
 - AC-3308.13: Given 성함 칸의 [PT 먼저] 단추, When 그리고 누르면, Then 표시가 없으면 점선 테두리 "PT 먼저", `ptf.st`가 up이면 보라(`--ptup-*`) "↑ PT 올라감 HH:MM", down이면 초록 옅은 채움 "↓ 내려옴 HH:MM"이다. 누르면 없음 → up → down → 없음 차례로 `ptf`(v = up·down·off)를 보내고, 띠 "{이름} · PT 먼저 올라갔어요"·"{이름} · PT 끝나고 내려왔어요"·"{이름} · PT 먼저 표시를 지웠어요"와 [되돌리기](앞 값으로 `ptf`)가 5초 보인다. 이 단추는 기록부를 열지 않는다
 
 ### REQ-3309: 기록부 보기 (성함 누름)

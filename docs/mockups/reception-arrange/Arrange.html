@@ -282,8 +282,8 @@ const INIT = () => [
   { k: 'i', t: '09:05', chart: '5120', name: '조영길', age: 58, sex: '남', sx: 'M', kind: '재진', lane: 'done', memo: '', res: '680211-*******', cel: '010-0000-5120', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
     cells: { pt: { st: 'done', det: 'HP', rxAt: '09:20', doneAt: '09:50' }, eswt: { st: 'done', det: '1부위', rxAt: '09:20', doneAt: '10:05' } }, today: null, last: null, ended: true, endedAt: '10:15' },
   { k: 'j', t: '09:08', chart: '6631', name: '배정희', age: 61, sex: '여', sx: 'F', kind: '재진', lane: 'done', memo: '', res: '650930-*******', cel: '010-0000-6631', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
-    cells: { xray: { st: 'done', det: '', rxAt: '09:22', doneAt: '09:30' }, carm: { st: 'done', part: '허리 L5-S1', rxAt: '09:35', readyAt: '10:20', doneAt: '10:32' } }, today: null, last: null, ended: true, endedAt: '10:40' },
-  { k: 'a', t: '09:12', chart: '8812', name: '한미숙', age: 64, sex: '여', sx: 'F', kind: '재진', lane: 'done', memo: '오른 무릎 주사 2차', res: '620415-*******', cel: '010-0000-8812', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
+    cells: { xray: { st: 'done', det: '', rxAt: '09:22', doneAt: '09:30' }, carm: { st: 'done', part: '허리 L5-S1', rxAt: '09:35', readyAt: '10:20', doneAt: '10:32' } }, today: null, last: null, ended: true, paid: true, endedAt: '10:52' },
+  { k: 'a', t: '09:12', chart: '8812', name: '한미숙', age: 64, sex: '여', sx: 'F', kind: '재진', lane: 'pay', memo: '오른 무릎 주사 2차', res: '620415-*******', cel: '010-0000-8812', room: '1진료실', ins: '국민건강보험(재진)', spc: '',
     cells: { xray: { st: 'done', det: '', rxAt: '09:28', doneAt: '09:35' }, sono: { st: 'done', part: '오른 무릎', rxAt: '09:40', readyAt: '09:48', doneAt: '09:55' }, pt: { st: 'done', det: 'HP', rxAt: '09:40', doneAt: '10:10' } },
     today: { sym: 'Rt knee pain 조금 나아짐\n계단 내려갈 때 아직 아픔\n\nxr: OA gr.2 그대로\n\nUSG guided inj. Rt knee 2차\n2주 뒤 다시 봄', dx: [['M1716', '무릎관절증, 일측성 원발성', true], ['M2556', '관절통, 하퇴']],
       rx: [['G7204', '(Rt) knee AP/ Lat.', '1', '1', '1'], ['SONO1', '초음파 유도 주사', '1', '1', '1'], ['A15', '휴온스리도카인염산', '0.5', '1', '1'], HP, AA254] },
@@ -410,7 +410,7 @@ function arrange() {
     ${active.length === 0 ? '<p class="empty-note">지금 안내할 환자가 없어요</p>' : ''}
     <section class="ended">
       <button type="button" class="ended-h" data-act="ended-toggle" aria-expanded="${S.endedOpen}">오늘 치료 종료 ${ended.length}명 ${S.endedOpen ? '▴' : '▾'}</button>
-      ${S.endedOpen ? (ended.length ? `<ul>${ended.map(p => `<li><span class="e-t">${p.endedAt} 종료</span><b>${esc(p.name)}</b><span class="e-c">${p.chart}</span><button type="button" class="restore" data-act="restore" data-k="${p.k}">다시 넣기</button></li>`).join('')}</ul>` : '<p class="empty-note">아직 없어요</p>') : ''}
+      ${S.endedOpen ? (ended.length ? `<ul>${ended.map(p => `<li><span class="e-t">${p.paid ? (p.endedAt ? p.endedAt + ' 수납' : '수납완료') : p.endedAt + ' 종료'}</span><b>${esc(p.name)}</b><span class="e-c">${p.chart}</span><button type="button" class="restore" data-act="restore" data-k="${p.k}">다시 넣기</button></li>`).join('')}</ul>` : '<p class="empty-note">아직 없어요</p>') : ''}
     </section>`
 }
 
@@ -578,7 +578,7 @@ document.addEventListener('click', e => {
       break
     }
     case 'end': snap(); p.ended = true; p.endedAt = stamp(); toast(`${p.name} 님을 표에서 뺐어요`); break
-    case 'restore': snap(); p.ended = false; toast(`${p.name} 님을 표에 다시 넣었어요`); break
+    case 'restore': snap(); p.ended = false; if (p.paid) { p.paid = false; p.kept = true }; toast(`${p.name} 님을 표에 다시 넣었어요`); break
     case 'ended-toggle': S.endedOpen = !S.endedOpen; break
     case 'chart': p.newRx = false; S.backY = scrollY; S.chart = k; render(); scrollTo(0, 0); return
     case 'chart-close': S.chart = null; render(); scrollTo(0, S.backY); return

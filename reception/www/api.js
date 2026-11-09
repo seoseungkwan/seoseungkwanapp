@@ -236,8 +236,15 @@ function isArrange(a) {
     Array.isArray(a.rows) &&
     a.rows.every(isArrangeRow) &&
     Array.isArray(a.ended) &&
-    a.ended.every((e) => isObject(e) && isKey(e.k) && isMark(e.endedAt))
+    a.ended.every(isEnded)
   )
+}
+
+/** 끝난 줄 { k, endedAt, paid }: paid는 참·거짓·없음, endedAt은 "HH:MM"이고 수납완료로 빠진 줄(paid)만 null도 된다(AC-3308.15) */
+function isEnded(e) {
+  if (!isObject(e) || !isKey(e.k)) return false
+  if (e.paid !== undefined && typeof e.paid !== 'boolean') return false
+  return isMark(e.endedAt) || (e.paid === true && e.endedAt === null)
 }
 
 /** 어레인지 줄 { k, away, ptf, last, cells, allDone } */

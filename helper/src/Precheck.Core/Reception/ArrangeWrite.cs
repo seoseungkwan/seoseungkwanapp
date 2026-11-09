@@ -127,8 +127,9 @@ public static class ArrangeWrite
     /// <summary>
     /// 쓰기 하나를 계산한다. current는 그 내원의 지금 어레인지 표시(없으면 null), cells는 지금 판으로 만든 그 줄의 칸(없는 칸은 빠짐).
     /// 칸·글이 op에 맞지 않으면 400, 처방도 표시도 없는 칸의 step·set·part·remove는 404(AC-3306.5).
+    /// paid는 그 접수가 지금 수납완료(끝남 칸)인지: end off면 kept를 남겨 그날 다시 저절로 빠지지 않게 한다(AC-3306.7).
     /// </summary>
-    public static ArrangeWriteResult Apply(ArrangeOp op, VisitMark? current, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string hhmm)
+    public static ArrangeWriteResult Apply(ArrangeOp op, VisitMark? current, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string hhmm, bool paid = false)
     {
         if (op == null) throw new ArgumentNullException(nameof(op));
         if (cells == null) throw new ArgumentNullException(nameof(cells));
@@ -141,7 +142,7 @@ public static class ArrangeWrite
             case Away:
                 return OnOff(op.V, () => mark.WithAway(hhmm), () => mark.WithAway(null));
             case End:
-                return OnOff(op.V, () => mark.WithEnded(hhmm), () => mark.WithEnded(null));
+                return OnOff(op.V, () => mark.WithEnded(hhmm), () => paid ? mark.WithEnded(null).WithKept(true) : mark.WithEnded(null));
             case PtFirstOp:
                 if (op.V == "up" || op.V == "down") return ArrangeWriteResult.Marks(mark.WithPtf(new PtFirst(op.V, hhmm)));
                 return op.V == "off" ? ArrangeWriteResult.Marks(mark.WithPtf(null)) : ArrangeWriteResult.Refused(400);

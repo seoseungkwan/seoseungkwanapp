@@ -40,7 +40,7 @@ describe('REQ-3305·REQ-3301 어레인지 자료 만들기 (C# Precheck.Core.Tes
     ['AC-3305.6', 'X-RAY 칸과 X-ray 완료 표시'],
     ['AC-3305.7', 'SONO·C-ARM 부위는 표시 → 비트 → null'],
     ['AC-3305.8', 'allDone'],
-    ['AC-3305.9', 'ended = { k, endedAt }'],
+    ['AC-3305.9', 'ended = { k, endedAt, paid }'],
   ] as const) {
     it(`${ac} ${what}`, () => {
       expectAc(ac)

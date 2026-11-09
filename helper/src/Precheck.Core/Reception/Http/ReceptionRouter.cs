@@ -195,7 +195,9 @@ public sealed class ReceptionRouter
         var input = current.Input!;
         if (!string.Equals(input.Day, found.Day, StringComparison.Ordinal)) return NotFound();
         var visit = input.Visits.FirstOrDefault(row => string.Equals(row.VisitId, found.VisitId, StringComparison.Ordinal));
-        if (visit == null || ReceptionMap.LaneOf(statuses, hiddenRsu, visit.Status, visit.Rsu) == Lane.Hidden) return NotFound();
+        var lane = visit == null ? Lane.Hidden : ReceptionMap.LaneOf(statuses, hiddenRsu, visit.Status, visit.Rsu);
+        if (visit == null || lane == Lane.Hidden) return NotFound();
+        var paid = lane == Lane.Done;
 
         var single = new BoardInput(input.Day, input.ReadAt, new[] { visit }, input.RxNames);
         var xray = marks.Today();
@@ -207,11 +209,14 @@ public sealed class ReceptionRouter
             // 바꿀 것이 없거나(X-RAY 완료만) 받지 않는 쓰기(400·404)는 지금 표시를 그대로 돌려준다
             store.Update(visit.VisitId, mark =>
             {
-                // 치료 종료한 줄도 칸을 알아야 해서(다시 넣기·되돌리기) 종료 시각을 뺀 표시로 그 줄을 만든다
-                var open = new Dictionary<string, VisitMark>(StringComparer.Ordinal);
-                if (mark != null) open[visit.VisitId] = mark.WithEnded(null);
+                // 표에서 빠진 줄(치료 종료·수납완료로 저절로)도 칸을 알아야 해서(다시 넣기·되돌리기·늦게 온 쓰기),
+                // 종료 시각을 빼고 다시 넣은(kept) 표시로 그 줄을 만든다(AC-3306.7)
+                var open = new Dictionary<string, VisitMark>(StringComparer.Ordinal)
+                {
+                    [visit.VisitId] = (mark ?? new VisitMark()).WithEnded(null).WithKept(true),
+                };
                 var row = ArrangeBuilder.Build(single, statuses, hiddenRsu, arrangeMap, open, xray, keys).Rows.FirstOrDefault();
-                result = ArrangeWrite.Apply(op, mark, row?.Cells ?? new Dictionary<ArrangeCol, ArrangeCell>(), hhmm);
+                result = ArrangeWrite.Apply(op, mark, row?.Cells ?? new Dictionary<ArrangeCol, ArrangeCell>(), hhmm, paid);
                 return result.Status == 204 && result.ChangesMarks ? result.Next : mark;
             });
             if (result == null || result.Status != 204) return HttpResponse.Empty(result?.Status ?? 500);

@@ -532,6 +532,30 @@ describe('api.js getBoard의 어레인지 자료', () => {
 })
 
 describe('api.js getBoard의 어레인지 칸 시각', () => {
+  it('AC-3308.15: 끝난 줄의 paid(참·거짓·없음)를 받고, 시각이 null인 끝난 줄은 paid일 때만 받는다. paid가 참·거짓이 아니면 shape 실패다', async () => {
+    const base = fx.arrangeMockupBoard()
+    const good = fx.withArrange(base, {
+      rows: base.arrange!.rows,
+      ended: [
+        { k: fx.ARRANGE_KEYS.j, endedAt: '10:52', paid: true },
+        { k: fx.ARRANGE_KEYS.i, endedAt: null, paid: true },
+        { k: fx.ARRANGE_KEYS.h, endedAt: '10:15', paid: false },
+      ],
+    })
+    fakeFetch(() => json(good))
+    await expect(api.getBoard()).resolves.toEqual(good)
+    const bad: Array<fx.FakeArrange["ended"]> = [
+      [{ k: fx.ARRANGE_KEYS.j, endedAt: null, paid: false }],
+      [{ k: fx.ARRANGE_KEYS.j, endedAt: null }],
+      [{ k: fx.ARRANGE_KEYS.j, endedAt: '10:52', paid: 'yes' as unknown as boolean }],
+      [{ k: fx.ARRANGE_KEYS.j, endedAt: '수납', paid: true }],
+    ]
+    for (const [i, ended] of bad.entries()) {
+      fakeFetch(() => json(fx.withArrange(base, { rows: base.arrange!.rows, ended })))
+      expect(await reasonOf(api.getBoard()), String(i)).toBe('shape')
+    }
+  })
+
   it('AC-3308.1: 칸 시각을 모르는 칸(at null, 비트 처방 시각이 빈 줄)이 있어도 판을 그대로 받는다(한 줄 때문에 끊김 화면이 되지 않는다)', async () => {
     const board = fx.arrangeMockupBoard()
     board.arrange!.rows[0]!.cells.xray!.at = null

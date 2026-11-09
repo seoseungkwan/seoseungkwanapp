@@ -238,7 +238,7 @@ export function planOf(board, ask) {
       if (ask.v === 'on' && row) {
         const next = {
           rows: arrange.rows.filter((item) => item.k !== k),
-          ended: [{ k, endedAt: stamp }, ...arrange.ended.filter((item) => item.k !== k)],
+          ended: [{ k, endedAt: stamp, paid: false }, ...arrange.ended.filter((item) => item.k !== k)],
         }
         return made({ ...board, arrange: next }, `${name} 님을 표에서 뺐어요`, { k, op: 'end', v: 'off' })
       }
@@ -482,7 +482,13 @@ function oneLine(text) {
 
 // ---- 오늘 치료 종료 ----------------------------------------------------------------------------------------
 
-/** [오늘 치료 종료 N명 ▾|▴] + (펼치면) 끝난 줄: 종료 시각·이름·차트번호·[다시 넣기] 또는 "아직 없어요" */
+/** 끝난 줄의 시각 글: 수납완료로 저절로 빠진 줄은 "HH:MM 수납"·"수납완료", [치료 종료]로 뺀 줄은 "HH:MM 종료"(AC-3308.15) */
+function endedText(item) {
+  if (item.paid === true) return typeof item.endedAt === 'string' ? `${item.endedAt} 수납` : '수납완료'
+  return `${item.endedAt} 종료`
+}
+
+/** [오늘 치료 종료 N명 ▾|▴] + (펼치면) 끝난 줄: 종료·수납 시각·이름·차트번호·[다시 넣기] 또는 "아직 없어요" */
 function endedOf(ended, lists, open, act) {
   const items = ended.filter((item) => lists.has(item.k))
   return [
@@ -498,7 +504,7 @@ function endedOf(ended, lists, open, act) {
           items.map((item) => {
             const list = lists.get(item.k)
             return el('li', null, [
-              el('span', { class: 'e-t' }, `${item.endedAt} 종료`),
+              el('span', { class: 'e-t' }, endedText(item)),
               el('span', { class: 'e-n' }, typeof list.name === 'string' ? list.name : ''),
               el('span', { class: 'e-c' }, typeof list.chart === 'string' ? list.chart : ''),
               el('button', { type: 'button', class: 'restore', on: { click: () => act.call('onRestore', item.k) } }, '다시 넣기'),

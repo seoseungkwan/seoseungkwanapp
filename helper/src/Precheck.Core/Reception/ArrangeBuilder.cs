@@ -64,18 +64,26 @@ public sealed class ArrangeRow
     public bool AllDone => Cells.Count > 0 && Cells.Values.All(cell => cell.St == ArrangeStep.Done);
 }
 
-/// <summary>[치료 종료]로 표에서 뺀 줄(AC-3305.9).</summary>
+/// <summary>
+/// 표에서 빠진 줄(AC-3305.9·AC-3305.10): [치료 종료]로 뺀 줄(paid 거짓, 누른 시각) 또는 수납완료로 저절로 빠진 줄(paid 참, 수납 시각·모르면 null).
+/// </summary>
 public sealed class ArrangeEnded
 {
-    public ArrangeEnded(string key, string endedAt)
+    public ArrangeEnded(string key, string? endedAt, bool paid = false)
     {
         Key = key ?? throw new ArgumentNullException(nameof(key));
-        EndedAt = endedAt ?? throw new ArgumentNullException(nameof(endedAt));
+        if (endedAt == null && !paid) throw new ArgumentNullException(nameof(endedAt));
+        EndedAt = endedAt;
+        Paid = paid;
     }
 
     public string Key { get; }
 
-    public string EndedAt { get; }
+    /// <summary>"HH:MM". 수납완료로 빠졌고 수납 시각을 모르면 null.</summary>
+    public string? EndedAt { get; }
+
+    /// <summary>수납완료로 저절로 빠짐.</summary>
+    public bool Paid { get; }
 }
 
 /// <summary>`/api/board` 답의 arrange(AC-3305.1).</summary>
@@ -98,6 +106,7 @@ public sealed class Arrange
 /// ③ 표시가 있으면 단계·시각·부위·글을 덮는다(직접 넣은 칸은 표시만으로 생김, 직접 칸 pt·ds·eswt·trac은 표시로만, 늘 manual)
 /// ④ X-RAY는 X-ray 완료 표시가 있으면 완료·그 시각(처방·표시가 없어도 직접 칸으로 생김, AC-3305.6).
 /// 처방이 사라진 처방 칸(직접 넣지 않음)의 표시는 칸을 만들지 않는다.
+/// 줄 고르기: [치료 종료] 시각이 있거나, 수납완료(끝남 칸)인데 다시 넣지(kept) 않았으면 rows가 아니라 ended다(AC-3305.2·AC-3305.10).
 /// </summary>
 public static class ArrangeBuilder
 {
@@ -130,18 +139,25 @@ public static class ArrangeBuilder
 
         var hidden = new HashSet<string>(hiddenRsu, StringComparer.Ordinal);
         var visits = input.Visits
-            .Where(visit => ReceptionMap.LaneOf(statuses, hidden, visit.Status, visit.Rsu) != Lane.Hidden)
-            .OrderBy(visit => visit, AcceptedOrder.Instance)
+            .Select(visit => (Visit: visit, Lane: ReceptionMap.LaneOf(statuses, hidden, visit.Status, visit.Rsu)))
+            .Where(item => item.Lane != Lane.Hidden)
+            .OrderBy(item => item.Visit, AcceptedOrder.Instance)
             .ToArray();
 
         var live = new List<(VisitRow Visit, Dictionary<ArrangeCol, Built> Cells, VisitMark? Mark)>();
         var ended = new List<ArrangeEnded>();
-        foreach (var visit in visits)
+        foreach (var (visit, lane) in visits)
         {
             marks.TryGetValue(visit.VisitId, out var mark);
             if (mark?.EndedAt != null)
             {
                 ended.Add(new ArrangeEnded(keys.KeyOf(input.Day, visit.VisitId), mark.EndedAt));
+                continue;
+            }
+            if (lane == Lane.Done && mark?.Kept != true)
+            {
+                // 수납완료는 남은 칸이 있어도 바로 뺀다(2026-11-10 사용자 고침). 시각은 목록 줄 "HH:MM 수납"과 같은 계산
+                ended.Add(new ArrangeEnded(keys.KeyOf(input.Day, visit.VisitId), BoardBuilder.ClockOf(visit.PaidAt), paid: true));
                 continue;
             }
             live.Add((visit, CellsOf(visit, mark, map, input.RxNames, xray), mark));
@@ -170,7 +186,8 @@ public static class ArrangeBuilder
             return new ArrangeRow(keys.KeyOf(input.Day, entry.Visit.VisitId), entry.Mark?.Away, entry.Mark?.Ptf, Clean(entry.Visit.LastSymptom) ?? "", cells);
         }).ToArray();
 
-        return new Arrange(rows, ended.OrderByDescending(e => e.EndedAt, StringComparer.Ordinal).ToArray());
+        // 시각 늦은 순, 수납 시각을 모르는 줄(null)은 맨 뒤
+        return new Arrange(rows, ended.OrderByDescending(e => e.EndedAt ?? "", StringComparer.Ordinal).ToArray());
     }
 
     /// <summary>만든 칸과 순서를 매길 시각(처방 또는 직접 넣은 시각).</summary>

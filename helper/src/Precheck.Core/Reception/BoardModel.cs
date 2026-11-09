@@ -217,7 +217,7 @@ public sealed class Board
 
     /// <summary>
     /// arrange 칸(design.md 7절): 줄 { k, away, ptf{st,at}|null, last, cells{xray…trac: {st,det,part,at,ord,manual}|null}, allDone },
-    /// 종료 줄 { k, endedAt }.
+    /// 종료 줄 { k, endedAt("HH:MM", 수납완료로 빠졌고 시각을 모르면 null), paid }(AC-3305.9·AC-3305.10).
     /// </summary>
     private static void WriteArrange(Utf8JsonWriter writer, Arrange arrange)
     {
@@ -268,7 +268,9 @@ public sealed class Board
         {
             writer.WriteStartObject();
             writer.WriteString("k", ended.Key);
-            writer.WriteString("endedAt", ended.EndedAt);
+            if (ended.EndedAt == null) writer.WriteNull("endedAt");
+            else writer.WriteString("endedAt", ended.EndedAt);
+            writer.WriteBoolean("paid", ended.Paid);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();

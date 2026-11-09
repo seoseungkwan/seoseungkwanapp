@@ -108,16 +108,19 @@ public class ArrangeBuilderTests
 
     // ---- AC-3305.2 줄 고르기·차례 -------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3305.2 진료대기·진료보류·수납대기·끝남 칸의 접수만, 접수 빠른 순(같으면 내원번호 순, V9 다음 V10)이고 숨김·취소 줄은 없다")]
+    [Fact(DisplayName = "AC-3305.2 진료대기·진료보류·수납대기·끝남 칸의 접수만, 접수 빠른 순(같으면 내원번호 순, V9 다음 V10)이고 숨김·취소 줄은 없다. 끝남(수납완료) 줄은 저절로 ended에 간다(AC-3305.10)")]
     public void RowsInAcceptedOrder()
     {
         var scene = new Scene().Add(
             Visit("V10", "QC", "0900"), Visit("V9", "QD", "0900"), Visit("V3", "QA", "0830"),
-            Visit("V4", "QB", "0950"), Visit("V5", "QX", "0800"), Visit("V6", "QA", "0805", rsu: "Z9"), Visit("V7", "WEIRD", "0801"));
+            Visit("V4", "QB", "0950"), Visit("V5", "QX", "0800"), Visit("V6", "QA", "0805", rsu: "Z9"), Visit("V7", "WEIRD", "0801"),
+            Visit("V8", "QD", "0901"));
+        scene.With("V8", new VisitMark(kept: true));
 
-        var rows = scene.Build().Rows.Select(r => r.Key).ToArray();
+        var arrange = scene.Build();
 
-        Assert.Equal(new[] { "V3", "V9", "V10", "V4" }.Select(scene.Key), rows);
+        Assert.Equal(new[] { "V3", "V10", "V8", "V4" }.Select(scene.Key), arrange.Rows.Select(r => r.Key));
+        Assert.Equal(new[] { scene.Key("V9") }, arrange.Ended.Select(e => e.Key));
     }
 
     [Fact(DisplayName = "AC-3305.2 endedAt이 있는 접수는 rows가 아니라 ended에 가고, ended는 종료 시각 늦은 순이다")]
@@ -129,7 +132,7 @@ public class ArrangeBuilderTests
         var arrange = scene.Build();
 
         Assert.Equal(new[] { scene.Key("V2") }, arrange.Rows.Select(r => r.Key));
-        Assert.Equal(new[] { (scene.Key("V3"), "10:45"), (scene.Key("V1"), "10:20"), (scene.Key("V4"), "10:20") }, arrange.Ended.Select(e => (e.Key, e.EndedAt)));
+        Assert.Equal(new (string, string?)[] { (scene.Key("V3"), "10:45"), (scene.Key("V1"), "10:20"), (scene.Key("V4"), "10:20") }, arrange.Ended.Select(e => (e.Key, e.EndedAt)));
     }
 
     // ---- AC-3305.3 줄 모양 --------------------------------------------------------------------------
@@ -347,7 +350,7 @@ public class ArrangeBuilderTests
 
     // ---- AC-3305.9 ended -----------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3305.9 ended 줄은 { k, endedAt }뿐이다")]
+    [Fact(DisplayName = "AC-3305.9 ended 줄은 { k, endedAt, paid }뿐이고 [치료 종료]로 뺀 줄은 paid: false다")]
     public void EndedShape()
     {
         var scene = new Scene().Add(Visit("V1", "QA", "0900", null, "지난 증상", Order("SONO1", "09:10")));
@@ -355,8 +358,9 @@ public class ArrangeBuilderTests
 
         var ended = scene.Json().GetProperty("arrange").GetProperty("ended")[0];
 
-        Assert.Equal(new[] { "k", "endedAt" }, ended.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "k", "endedAt", "paid" }, ended.EnumerateObject().Select(p => p.Name));
         Assert.Equal(scene.Key("V1"), ended.GetProperty("k").GetString());
         Assert.Equal("10:00", ended.GetProperty("endedAt").GetString());
+        Assert.False(ended.GetProperty("paid").GetBoolean());
     }
 }

@@ -62,18 +62,19 @@ public sealed class PtFirst
     public string At { get; }
 }
 
-/// <summary>내원 하나의 어레인지 표시(AC-3304.2): 칸마다 표시, 자리비움 시각, PT 먼저, 치료 종료 시각. 이름·차트번호·메모·증상은 없다.</summary>
+/// <summary>내원 하나의 어레인지 표시(AC-3304.2·AC-3304.5): 칸마다 표시, 자리비움 시각, PT 먼저, 치료 종료 시각, 수납완료 줄을 다시 넣음. 이름·차트번호·메모·증상은 없다.</summary>
 public sealed class VisitMark
 {
     private static readonly IReadOnlyDictionary<ArrangeCol, CellMark> NoCells =
         new ReadOnlyDictionary<ArrangeCol, CellMark>(new Dictionary<ArrangeCol, CellMark>());
 
-    public VisitMark(IReadOnlyDictionary<ArrangeCol, CellMark>? cells = null, string? away = null, PtFirst? ptf = null, string? endedAt = null)
+    public VisitMark(IReadOnlyDictionary<ArrangeCol, CellMark>? cells = null, string? away = null, PtFirst? ptf = null, string? endedAt = null, bool kept = false)
     {
         Cells = cells == null || cells.Count == 0 ? NoCells : new ReadOnlyDictionary<ArrangeCol, CellMark>(cells.ToDictionary(p => p.Key, p => p.Value));
         Away = away;
         Ptf = ptf;
         EndedAt = endedAt;
+        Kept = kept;
     }
 
     public IReadOnlyDictionary<ArrangeCol, CellMark> Cells { get; }
@@ -86,8 +87,11 @@ public sealed class VisitMark
     /// <summary>[치료 종료] 시각.</summary>
     public string? EndedAt { get; }
 
+    /// <summary>수납완료 줄을 [다시 넣기]함: 그날 다시 저절로 빠지지 않는다(AC-3305.10·AC-3306.7).</summary>
+    public bool Kept { get; }
+
     /// <summary>표시가 하나도 없다(저장할 때 그 내원을 지운다).</summary>
-    public bool IsEmpty => Cells.Count == 0 && Away == null && Ptf == null && EndedAt == null;
+    public bool IsEmpty => Cells.Count == 0 && Away == null && Ptf == null && EndedAt == null && !Kept;
 
     /// <summary>그 칸만 바꾼(null이면 지운) 새 표시.</summary>
     public VisitMark WithCell(ArrangeCol col, CellMark? cell)
@@ -95,14 +99,16 @@ public sealed class VisitMark
         var cells = Cells.ToDictionary(p => p.Key, p => p.Value);
         if (cell == null) cells.Remove(col);
         else cells[col] = cell;
-        return new VisitMark(cells, Away, Ptf, EndedAt);
+        return new VisitMark(cells, Away, Ptf, EndedAt, Kept);
     }
 
-    public VisitMark WithAway(string? away) => new VisitMark(Cells, away, Ptf, EndedAt);
+    public VisitMark WithAway(string? away) => new VisitMark(Cells, away, Ptf, EndedAt, Kept);
 
-    public VisitMark WithPtf(PtFirst? ptf) => new VisitMark(Cells, Away, ptf, EndedAt);
+    public VisitMark WithPtf(PtFirst? ptf) => new VisitMark(Cells, Away, ptf, EndedAt, Kept);
 
-    public VisitMark WithEnded(string? endedAt) => new VisitMark(Cells, Away, Ptf, endedAt);
+    public VisitMark WithEnded(string? endedAt) => new VisitMark(Cells, Away, Ptf, endedAt, Kept);
+
+    public VisitMark WithKept(bool kept) => new VisitMark(Cells, Away, Ptf, EndedAt, kept);
 }
 
 /// <summary>
@@ -165,7 +171,7 @@ public static class ArrangeChoices
 /// <summary>
 /// 어레인지 표시 저장(spec reception-arrange design.md 6절, REQ-3304). 비트에는 쓰지 않고 총괄 PC의 저장 폴더 파일 하나에만 둔다.
 /// 파일 `reception-arrange.dat` = 머리 `PRECHECK-STORE-1\n` + IProtector(윈도우 DPAPI CurrentUser)로 감싼
-/// JSON `{ "day": "yyyyMMdd", "visits": { "<내원번호>": { "cells": {…}, "away", "ptf", "endedAt" } } }`.
+/// JSON `{ "day": "yyyyMMdd", "visits": { "<내원번호>": { "cells": {…}, "away", "ptf", "endedAt"[, "kept": true] } } }`(kept는 참일 때만, AC-3304.5).
 /// 규칙은 XrayMarks와 같다(두 파일은 서로 깨뜨리지 않게 따로 둔다): 잠금 하나로 한 번에 하나, 임시 파일 → 바꾸기, 처음 한 번 읽어 메모리에,
 /// 날이 다르면 비움, 1MB를 넘거나 모양이 틀리면 빈 표시 + 기록에 E-STORE-BROKEN 한 번. 글 칸은 고르기 목록의 글과 "HH:MM"만 받는다(AC-3304.4).
 /// 기록(report)에는 오류 번호만 간다.
@@ -182,6 +188,7 @@ public sealed class ArrangeMarks
     private const string AwayField = "away";
     private const string PtfField = "ptf";
     private const string EndedField = "endedAt";
+    private const string KeptField = "kept";
     private const string StField = "st";
     private const string AtField = "at";
     private const string ManualField = "manual";
@@ -192,6 +199,7 @@ public sealed class ArrangeMarks
     private const string AddedField = "addedAt";
 
     private static readonly string[] VisitFields = { CellsField, AwayField, PtfField, EndedField };
+    private static readonly string[] KeptVisitFields = { CellsField, AwayField, PtfField, EndedField, KeptField };
     private static readonly string[] CellFields = { StField, ManualField, DetField, PartField, ReadyField, DoneField, AddedField };
     private static readonly string[] PtfFields = { StField, AtField };
     private static readonly string[] PtfSteps = { "up", "down" };
@@ -421,7 +429,10 @@ public sealed class ArrangeMarks
 
     private static VisitMark? ParseVisit(JsonElement value)
     {
-        if (!HasExactly(value, VisitFields)) return null;
+        // kept는 참일 때만 쓴다: 없으면 거짓(이 고침 전 파일도 그대로), 있으면 JSON true여야 한다(AC-3304.5)
+        var kept = HasExactly(value, KeptVisitFields);
+        if (!kept && !HasExactly(value, VisitFields)) return null;
+        if (kept && value.GetProperty(KeptField).ValueKind != JsonValueKind.True) return null;
         var cellsValue = value.GetProperty(CellsField);
         if (cellsValue.ValueKind != JsonValueKind.Object) return null;
         var cells = new Dictionary<ArrangeCol, CellMark>();
@@ -442,7 +453,7 @@ public sealed class ArrangeMarks
             if (!TextOrNull(ptfValue.GetProperty(StField), out var st) || !TextOrNull(ptfValue.GetProperty(AtField), out var at) || st == null || at == null) return null;
             ptf = new PtFirst(st, at);
         }
-        return new VisitMark(cells, away, ptf, ended);
+        return new VisitMark(cells, away, ptf, ended, kept);
     }
 
     private static CellMark? ParseCell(JsonElement value)
@@ -570,6 +581,7 @@ public sealed class ArrangeMarks
                         writer.WriteEndObject();
                     }
                     WriteTextOrNull(writer, EndedField, visit.Value.EndedAt);
+                    if (visit.Value.Kept) writer.WriteBoolean(KeptField, true);
                     writer.WriteEndObject();
                 }
                 writer.WriteEndObject();

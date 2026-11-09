@@ -138,8 +138,8 @@ public static class BoardBuilder
         return rest == 0 ? hours : hours + " " + rest.ToString(CultureInfo.InvariantCulture) + "분";
     }
 
-    /// <summary>수납 시각 원값 → "HH:MM". yyyyMMddHHmm…·"yyyy-MM-dd HH:mm…"·"HH:mm"·"HHmm"을 읽고 아니면 null.</summary>
-    private static string? ClockOf(string? raw)
+    /// <summary>수납 시각 원값 → "HH:MM". yyyyMMddHHmm…·"yyyy-MM-dd HH:mm…"·"HH:mm"·"HHmm"을 읽고 아니면 null. 어레인지 수납완료 줄(AC-3305.10)도 쓴다.</summary>
+    internal static string? ClockOf(string? raw)
     {
         var text = raw?.Trim();
         if (string.IsNullOrEmpty(text)) return null;

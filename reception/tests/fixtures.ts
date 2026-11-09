@@ -68,7 +68,7 @@ export interface FakeArrangeRow {
 
 export interface FakeArrange {
   rows: FakeArrangeRow[]
-  ended: { k: string; endedAt: string }[]
+  ended: { k: string; endedAt: string | null; paid?: boolean }[]
 }
 
 /** 칸 하나. 주지 않은 값은 처방에서 온 준비 칸이다 */

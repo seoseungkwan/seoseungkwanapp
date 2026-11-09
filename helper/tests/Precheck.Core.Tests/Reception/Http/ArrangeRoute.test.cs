@@ -212,7 +212,7 @@ internal sealed class ArrangeRig : IDisposable
     private readonly TempFolder data = new TempFolder();
     private readonly TempFolder logs = new TempFolder();
 
-    public ArrangeRig(bool registered = true)
+    public ArrangeRig(bool registered = true, IReadOnlyDictionary<string, Lane>? statuses = null)
     {
         Bit = new Rig();
         if (registered) Bit.Registered();
@@ -233,7 +233,7 @@ internal sealed class ArrangeRig : IDisposable
         ArrangeMarks = new ArrangeMarks(new StoreFolder(data.Path), Bit.Protector, Clock.Now, Log.Note);
         Router = new ReceptionRouter(
             Bit.Services, Cache, XrayMarks, Keys, new StaticFiles(new FakeStatic()), () => new[] { ServeRig.ThisPc }, Log, Clock.Now,
-            ServeRig.Statuses, new string[0], null, ArrangeMarks, FakeMap);
+            statuses ?? ServeRig.Statuses, new string[0], null, ArrangeMarks, FakeMap);
     }
 
     public Rig Bit { get; }
