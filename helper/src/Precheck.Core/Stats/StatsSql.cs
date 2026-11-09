@@ -11,6 +11,8 @@ namespace Precheck.Core.Stats;
 /// (seoseungkwan/shared@2a1069b YangjiBareun_사전점검/vendor/drbit_export/)에서 그대로 옮겼다. 공백만 다를 수 있고
 /// 사본은 helper/tests/Precheck.Core.Tests/Stats/original-sql/*.sql, 시험이 비교한다(AC-503.2·AC-504.4).
 /// 예외 하나: 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
+/// 예외 둘: 접수 줄·기간 합계·날짜별 세 문장은 첫 내원 잇기만 LEFT HASH JOIN이다. 힌트 없이는 긴 기간에서 FirstVisits를
+/// 접수 줄마다 다시 계산해 시간 제한을 넘었다(spec helper-stats-speed, AC-3401.3). 결과의 뜻은 같고 차례만 정한다.
 /// PatientDaysSql만 원본에 없는 새 문장이다(Visits 글은 위 예외 말고 원본 그대로, 뒤의 SELECT만 새로 씀, AC-503.5).
 /// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 목록도 보므로 ReadOnlyGuard를 지난다.
 /// 청구 목록 Sql.All에는 넣지 않는다. 비트 전용 세 칸(stats-bit-sections) 새 문장 다섯은 All이 아니라 Sections 목록에 있다.
@@ -59,7 +61,7 @@ ORDER BY o.PatientId,o.VisitDay,o.Code";
     /// </summary>
     public const string PatientDaysSql = Visits + @"
 SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay
-FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId
+FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId
 WHERE v.PatientId IS NOT NULL
 GROUP BY v.PatientId,v.VisitDay,f.FirstDtm
 ORDER BY v.PatientId,v.VisitDay";
@@ -71,13 +73,13 @@ SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
        (SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from),
        (SELECT COUNT_BIG(*) FROM PeriodVisits WHERE PatientId IS NULL),
        (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),
-       (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)";
+       (SELECT COUNT_BIG(*) FROM Patients p LEFT HASH JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)";
 
     /// <summary>원본 RxVisitSplit DaysSql: 날짜별 내원, 실환자, 그날 첫 내원한 환자.</summary>
     public const string VisitDaysSql = Visits + @"
 SELECT v.VisitDay,COUNT_BIG(*) Visits,COUNT(DISTINCT v.PatientId) Patients,
        COUNT(DISTINCT CASE WHEN LEFT(f.FirstDtm,8)=v.VisitDay THEN v.PatientId END) NewPatients
-FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId
+FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId
 GROUP BY v.VisitDay
 ORDER BY v.VisitDay";
 

@@ -1,0 +1,20 @@
+{
+  "status": "approved",
+  "feature": "helper-stats-speed",
+  "approved_at": "2026-11-09T05:59:42Z",
+  "approved_via": "user-prompt",
+  "session_id": "307adf79-c7e9-4e07-8df8-5f00c95ce4a0",
+  "spec_sha256": "ba89932bf8a6e9e93f365225d2051e5a4dea097a1d2d8537f2feda1005f7ec42",
+  "scope": [
+    "helper/Directory.Build.props",
+    "helper/src/Precheck.Core/Stats/StatsSql.cs",
+    "helper/tests/Precheck.Core.Tests/HelperStatsSpeed/HelperStatsSpeedSql.test.cs",
+    "helper/tests/Precheck.Core.Tests/Stats/StatsSql.test.cs",
+    "helper/tests/helper-stats-speed.dotnet.test.ts",
+    "helper/tests/input-wiring.dotnet.test.ts",
+    "src/components/dashboard/live/visitBasis.test.ts",
+    "src/lib/bridge/client.test.ts",
+    "src/lib/bridge/handshake.test.ts",
+    "src/lib/bridge/versions.ts"
+  ]
+}

@@ -6,12 +6,14 @@ using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Precheck.Core.Stats;
 using Precheck.Core.Tests.BitReadSpeed;
+using Precheck.Core.Tests.HelperStatsSpeed;
 using Xunit;
 
 namespace Precheck.Core.Tests.Stats;
 
 /// <summary>
 /// AC-1001.3 사본은 고치지 않는다. 첫 내원 연결 조건 글 하나(FirstVisitJoin)만 바꾼 사본과 견주고, 아래 "공백만 다르다"는 그 바꾼 사본 기준이다.
+/// AC-3401.3 기간 합계·날짜별 사본은 그 위에 첫 내원 잇기 글 하나(FirstVisitHash)를 해시 잇기로 더 바꾼 글과 견주고, 접수 줄 SELECT도 해시 잇기다.
 /// AC-503.2 통계 SQL(StatsSql)은 원본 문장 사본(original-sql/*.sql)과 공백만 다르다. 진료 줄 SQL만 원본 RowsSql에서
 /// 처방 코드 거르기 한 덩어리를 뺐다. 모두 매개변수를 받는 SELECT이고 ReadOnlyGuard를 지난다. 청구 Sql.All은 그대로다.
 /// AC-504.4 보고 SQL도 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로). @daily는 Char(1)로 관문을 지난다.
@@ -51,7 +53,7 @@ public class StatsSqlTests
     private const string OrdersStart = ", Orders AS (";
 
     // AC-503.5의 SELECT 글(공백을 한 칸으로 줄인 글 기준)
-    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
+    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
 
     private static readonly string[] Constants =
     {
@@ -115,12 +117,12 @@ public class StatsSqlTests
     private static Dictionary<string, object?> CodeArgs() =>
         Args(("@from", "20260901"), ("@to", "20260930"), ("@priorFrom", "20260901"), ("@priorTo", "20260930"));
 
-    [Fact(DisplayName = "AC-503.2 AC-1001.3 기간 합계·날짜별·처방 이름·과거 자료 확인 SQL은 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르다")]
+    [Fact(DisplayName = "AC-503.2 AC-1001.3 AC-3401.3 기간 합계·날짜별·처방 이름·과거 자료 확인 SQL은 연결 조건 한 가지(기간 합계·날짜별은 첫 내원 해시 잇기까지 두 가지)만 바꾼 원본 사본과 공백만 다르다")]
     public void ConstantsMatchOriginalCopies()
     {
         var files = Directory.GetFiles(OriginalDirectory(), "*.sql").Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
         Assert.Equal(Originals.Keys.Concat(ReportOriginals.Keys).Append(RowsOriginal).OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
-        foreach (var pair in Originals) Assert.Equal(Squash(FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key))), Squash(pair.Value));
+        foreach (var pair in Originals) Assert.Equal(Squash(FirstVisitHash.ApplyTo(pair.Key, FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key)))), Squash(pair.Value));
     }
 
     [Fact(DisplayName = "AC-503.2 AC-1001.3 진료 줄 SQL은 연결 조건 한 가지만 바꾼 원본 Visits + RowsSql에서 처방 코드 거르기 한 덩어리만 뺀 글이다")]
@@ -142,7 +144,7 @@ public class StatsSqlTests
         Assert.DoesNotContain("@eswt", StatsSql.VisitRowsSql);
     }
 
-    [Fact(DisplayName = "AC-503.5 AC-1001.3 접수 줄 SQL은 연결 조건 한 가지만 바꾼 원본 사본의 Visits 부분(공백만 다름) 뒤에 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
+    [Fact(DisplayName = "AC-503.5 AC-1001.3 AC-3401.3 접수 줄 SQL은 연결 조건 한 가지만 바꾼 원본 사본의 Visits 부분(공백만 다름) 뒤에 첫 내원을 해시 잇기로 잇는 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
     public void PatientDaysIsVisitsPlusSelect()
     {
         var original = Squash(FirstVisitJoin.ApplyTo(RowsOriginal, ReadOriginal(RowsOriginal)));

@@ -275,7 +275,8 @@ describe('AC-602.3 접수취소', () => {
   })
 
   it('AC-602.3 SQL 글: 숫자를 만드는 접수 줄 SQL은 Visits 글 뒤에 이어져 이 PeriodVisits에서 센다', () => {
-    expect(patientDaysSql()).toContain('FROM PeriodVisits v LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId')
+    // AC-3401.1 첫 내원은 해시 잇기로 한 번만 만든다(helper-stats-speed). 세는 줄은 그대로 PeriodVisits다
+    expect(patientDaysSql()).toContain('FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId')
   })
 
   it('AC-602.3 SQL 글: FirstVisits도 같은 외래 상태 조건으로 가장 이른 접수를 고르고, 기간 앞까지 본다', () => {
