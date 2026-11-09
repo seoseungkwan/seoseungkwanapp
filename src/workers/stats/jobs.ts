@@ -51,7 +51,7 @@ import {
 // 화면에는 StatsLoaded(숫자·처방코드·처방 이름·날짜)만 가고, 진료 줄은 memory로 Worker 안에만 남는다. 접수 줄은 세는 데만 쓰고 남기지 않는다.
 // v3 답의 접수 줄·사람 표·원장님 표는 bit로 Worker 안에만 남고(저장·서버로 안 감), 화면에는 세 칸 보기(묶음 이름과 수)만 간다
 
-// 처방별 신환·재진(split 일)이 쓰는 값. Worker 밖으로 나가지 않는다. 다음 load가 덮어쓴다
+// 처방별 신환·재진(split 일)이 쓰는 값. Worker 밖으로 나가지 않는다. 다음 load가 덮어쓴다(keep: false인 load는 덮지 않는다)
 export type StatsMemory = {
   range: { from: string; to: string }
   rows: VisitRow[]
@@ -267,15 +267,18 @@ export function createStatsHost(send: (message: StatsWorkerMessage) => void): {
       }
     },
 
-    async load({ streamId, from, to, today, closeToday, groups }) {
+    async load({ streamId, from, to, today, closeToday, groups, keep }) {
       latest = streamId
       let reply: StatsWorkerMessage
       try {
         const text = await textOf(streamId).promise
         if (latest !== streamId) return // 화면이 포기하고 새로 불렀다. 옛 자료로 메모리를 되돌리지 않는다
         const loaded = loadJob(text, { from, to, today, closeToday, groups: groups ?? [] })
-        memory = loaded.memory
-        bit = loaded.bit
+        // keep: false = 나눠 읽기의 다른 조각. 답만 보내고 처방별·세 칸은 앞서 남긴 조각으로 답한다(AC-3304.1)
+        if (keep !== false) {
+          memory = loaded.memory
+          bit = loaded.bit
+        }
         reply = { type: 'loaded', streamId, view: loaded.view }
       } catch (e) {
         if (latest !== streamId) return

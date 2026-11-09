@@ -1375,3 +1375,103 @@ describe('AC-2906.1 새 파일 울타리', () => {
     expect(errors).toEqual([])
   })
 })
+
+describe('AC-3304.1 keep: false면 Worker 메모리를 바꾸지 않는다(나눠 읽기의 다른 조각)', () => {
+  const A_TODAY = '2026-11-09'
+  const A = { from: FROM, to: A_TODAY } // 지금 보는 기간을 담는 조각
+  const B = { from: '2024-11-01', to: '2024-12-31' } // 옛 조각
+  const A_TEXT = v3Json({ to: A_TODAY, report: reportOf(A_TODAY), days: SPLIT_DAYS })
+  const B_ROWS = [
+    [CHARTS[0], '20241105', 'MM042', '20241105'],
+    [CHARTS[1], '20241210', 'B4001', '20241210'],
+  ]
+  const B_TEXT = helperJson(
+    {
+      from: B.from,
+      rows: B_ROWS,
+      days: [
+        ['20241105', 1, 1, 1],
+        ['20241210', 1, 1, 1],
+      ],
+      summary: { visits: 2, patients: 2, newPatients: 2, noChart: 0, duplicate: 0, noFirst: 0 },
+    },
+    B.to,
+  )
+  const IN_A = { from: '2026-09-02', to: '2026-10-05' }
+  const splitRequest = (streamId: string, range: { from: string; to: string }): StatsSplitRequest => ({ type: 'split', streamId, ...range })
+
+  async function loadInto(host: ReturnType<typeof hostUnderTest>['host'], id: string, text: string, over: Partial<StatsLoadRequest>) {
+    bridgeMessages(id, text).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest(id, { today: A_TODAY, ...over }))
+  }
+
+  // A 안 기간·B에만 있는 기간을 split·sections로 차례대로 묻고 답만 돌려준다
+  function ask(hosted: ReturnType<typeof hostUnderTest>) {
+    hosted.sent.length = 0
+    hosted.host.split(splitRequest('q1', A))
+    hosted.host.split(splitRequest('q2', IN_A))
+    hosted.host.sections(sectionsRequest('b1', { ...OCTOBER_ON, previous: SEPTEMBER }))
+    hosted.host.sections(sectionsRequest('b2', A))
+    hosted.host.split(splitRequest('q3', B))
+    hosted.host.sections(sectionsRequest('b3', B))
+    return hosted.sent.map((m) => (m.type === 'split-result' || m.type === 'sections-result' ? m.view : m))
+  }
+
+  it('AC-3304.1: B를 keep: false로 불러오면 B의 loaded 답은 지금처럼 오고, split·sections는 A의 메모리로 답한다', async () => {
+    const hosted = hostUnderTest()
+    await loadInto(hosted.host, 'a', A_TEXT, A)
+    const before = ask(hosted)
+    expect(before.slice(0, 4).map((view) => ('kind' in view ? view.kind : view.type))).toEqual(['split', 'split', 'ready', 'ready'])
+
+    hosted.sent.length = 0
+    await loadInto(hosted.host, 'b', B_TEXT, { ...B, keep: false })
+    expect(hosted.sent).toHaveLength(1)
+    const [reply] = hosted.sent
+    if (reply.type !== 'loaded') throw new Error('loaded가 아니다')
+    expect(reply.streamId).toBe('b')
+    // B의 범위·달·날·확인 건수는 keep 없이 불러올 때와 같다
+    expect(reply.view).toEqual(loadJob(B_TEXT, { ...B, today: A_TODAY, closeToday: false }).view)
+    expect(reply.view.range).toEqual(B)
+    expect(reply.view.months?.map((month) => month.month)).toEqual(['2024-11', '2024-12'])
+    expect(reply.view.days?.length).toBeGreaterThan(0)
+    expect(reply.view.checks).toEqual({ noChart: 0, duplicate: 0, noFirst: 0 })
+    expectNoPatientData(hosted.sent)
+
+    // A 안 기간은 B 전과 같은 답, B에만 있는 기간은 none
+    const after = ask(hosted)
+    expect(after.slice(0, 4)).toEqual(before.slice(0, 4))
+    expect(after.slice(4)).toEqual([{ kind: 'none' }, { kind: 'none' }])
+    expect(hosted.host.memory()?.range).toEqual(A)
+  })
+
+  it('AC-3304.1: 그 뒤 C를 keep 없이 불러오면 지금처럼 C로 바뀐다', async () => {
+    const hosted = hostUnderTest()
+    await loadInto(hosted.host, 'a', A_TEXT, A)
+    await loadInto(hosted.host, 'b', B_TEXT, { ...B, keep: false })
+    await loadInto(hosted.host, 'c', B_TEXT, B)
+    expect(hosted.sent.map((m) => [m.type, m.streamId])).toEqual([
+      ['loaded', 'a'],
+      ['loaded', 'b'],
+      ['loaded', 'c'],
+    ])
+
+    const views = ask(hosted)
+    // A 기간은 이제 범위 밖, C(옛 도우미 v2 답) 기간은 처방별 결과와 old-helper
+    expect(views.slice(0, 4)).toEqual([{ kind: 'none' }, { kind: 'none' }, { kind: 'none' }, { kind: 'none' }])
+    expect(views.slice(4).map((view) => ('kind' in view ? view.kind : view.type))).toEqual(['split', 'old-helper'])
+    expect(hosted.host.memory()?.range).toEqual(B)
+  })
+
+  it('AC-3304.1: keep: true는 keep 없음과 같다(메모리를 바꾼다). keep: false로 실패한 불러오기도 메모리를 그대로 둔다', async () => {
+    const kept = hostUnderTest()
+    await loadInto(kept.host, 'a', A_TEXT, A)
+    await loadInto(kept.host, 'b', B_TEXT, { ...B, keep: true })
+    expect(kept.host.memory()?.range).toEqual(B)
+
+    const failed = hostUnderTest()
+    await loadInto(failed.host, 'a', A_TEXT, A)
+    await loadInto(failed.host, 'b', helperJson({ v: 1 }), { ...B, keep: false })
+    expect(failed.sent.map((m) => m.type)).toEqual(['loaded', 'failed'])
+    expect(failed.host.memory()?.range).toEqual(A)
+  })
+})
