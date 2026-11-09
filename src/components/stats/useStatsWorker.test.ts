@@ -396,6 +396,40 @@ describe('AC-1205.4·AC-1205.7 묶음 넘기기', () => {
   })
 })
 
+// stats-load-range: 나눠 읽기의 다른 조각은 keep: false로 Worker 메모리를 바꾸지 않는다(AC-3304.1). 입구는 false일 때만 칸을 싣는다
+describe('AC-3304.2 load의 keep', () => {
+  const NOW = { type: 'load', from: RANGE.from, to: RANGE.to, today: TODAY, closeToday: false, groups: [] }
+
+  async function loadMessage(over: { keep?: boolean }) {
+    const { fake, view, port } = drawReady()
+    act(() => {
+      void view.result.current.load({ range: RANGE, today: TODAY, closeToday: false, ...over })
+    })
+    const request = port.last()
+    expect(request.cmd).toBe('stats.rows')
+    expect(request.args).toEqual(RANGE) // 도우미 요청에는 keep이 가지 않는다
+    act(() => port.reply({ v: 1, id: request.id, type: 'end', count: 0, bytes: 0, sha256: SHA }))
+    await waitFor(() => expect(fake.sent.some((message) => message.type === 'load')).toBe(true))
+    const message = fake.sent.at(-1)
+    fake.reply({ type: 'loaded', streamId: request.id as string, view: VIEW })
+    return { message, streamId: request.id as string }
+  }
+
+  it('AC-3304.2: keep: false를 주면 Worker load 메시지에 keep: false가 있다', async () => {
+    const { message, streamId } = await loadMessage({ keep: false })
+    expect(message).toEqual({ ...NOW, streamId, keep: false })
+  })
+
+  it.each([
+    ['keep: true', { keep: true }],
+    ['keep 없음', {}],
+  ])('AC-3304.2: %s이면 Worker load 메시지에 keep 칸이 없다(지금 모양 그대로)', async (_name, over) => {
+    const { message, streamId } = await loadMessage(over)
+    expect(message).toEqual({ ...NOW, streamId })
+    expect('keep' in message!).toBe(false)
+  })
+})
+
 describe('AC-514.12 답 없이 멈춘 불러오기', () => {
   const LIMIT_MS = 1_200_000
   const CHART = '가짜-차트번호-0001'

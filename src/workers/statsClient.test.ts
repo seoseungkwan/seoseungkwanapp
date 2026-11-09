@@ -228,6 +228,28 @@ describe('AC-1205.4·AC-1213.3 requestLoad — 묶음은 열쇠와 코드만 간
   })
 })
 
+describe('AC-3304.2 requestLoad — keep: false만 메시지에 싣는다', () => {
+  const NOW = { type: 'load', streamId: REQ.streamId, from: REQ.from, to: REQ.to, today: REQ.today, closeToday: REQ.closeToday, groups: [] }
+
+  it('AC-3304.2: keep: false를 주면 load 메시지에 keep: false가 있다', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, keep: false })
+    expect(fake.sent).toEqual([{ ...NOW, keep: false }])
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it.each([
+    ['keep: true', { keep: true }],
+    ['keep 없음', {}],
+  ])('AC-3304.2: %s이면 keep 칸이 없다(지금 메시지 모양 그대로)', (_name, over) => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, ...over })
+    expect(fake.sent).toEqual([NOW])
+    expect('keep' in (fake.sent[0] as Record<string, unknown>)).toBe(false)
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+})
+
 const RANGE = { from: '2026-10-01', to: '2026-10-31' }
 const SPLIT_VIEW: RxSplitView = {
   kind: 'split',
