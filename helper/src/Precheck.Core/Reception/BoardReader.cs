@@ -64,7 +64,8 @@ public static class BoardReader
             todayRx.TryGetValue(visit.Id, out var codes);
             var last = prior.TryGetValue(visit.Id, out var found) ? found : null;
             string? lastSymptom = null;
-            if (last?.VisitId != null) priorSymptoms.TryGetValue(last.VisitId, out lastSymptom);
+            // 증상 표의 열쇠는 앞뒤 공백을 뺀 내원번호다(지난 내원번호는 앞 공백을 둔 원값)
+            if (last?.VisitId != null) priorSymptoms.TryGetValue(last.VisitId.Trim(), out lastSymptom);
             var person = people.TryGetValue(visit.Id, out var p) ? p : null;
             return new VisitRow(
                 visit.Id,
@@ -214,7 +215,10 @@ public static class BoardReader
         {
             var id = Id(row[0]);
             if (id == null || prior.ContainsKey(id)) continue;
-            prior.Add(id, new PriorLine(Count(row[1]), Id(row[2]), Id(row[3])));
+            // 지난 내원번호는 직전 기록부(PrevPaperReader)가 @visit으로 비트에 다시 넘기므로, 차트번호처럼 오른쪽 공백만 뺀 원값으로 둔다
+            // (char(10) 칸이 번호 앞을 공백으로 채우면 앞 공백까지 지운 글로는 c.OcmNum=@visit이 그 내원을 못 찾는다)
+            var last = Chart(row[2]);
+            prior.Add(id, new PriorLine(Count(row[1]), last.Length == 0 ? null : last, Id(row[3])));
         }
         return prior;
     }

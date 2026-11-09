@@ -125,7 +125,7 @@ public sealed class VisitRow
     /// <summary>이 접수보다 앞선 이 병원 완료 외래 내원 수. 0이면 신환·첫 방문.</summary>
     public long EarlierCount { get; }
 
-    /// <summary>가장 최근 지난 완료 내원의 내원번호. 없으면 null.</summary>
+    /// <summary>가장 최근 지난 완료 내원의 내원번호(오른쪽 공백만 뺀 원값, 앞 공백은 그대로 — 직전 기록부가 @visit으로 다시 넘긴다). 없으면 null.</summary>
     public string? LastVisitId { get; }
 
     /// <summary>가장 최근 지난 완료 내원의 날짜(yyyyMMdd). 없으면 null.</summary>

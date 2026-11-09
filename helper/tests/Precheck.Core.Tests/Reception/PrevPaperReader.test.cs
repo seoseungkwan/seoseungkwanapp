@@ -112,6 +112,38 @@ public class PrevPaperReaderTests
         Assert.Equal(("체외충격파", "2.5"), (prev.Rx[1].Name, prev.Rx[1].Qty));
     }
 
+    /// <summary>SQL Server의 글자 비교: 짧은 쪽 끝에 공백을 채워 견준다(끝 공백은 무시, 앞 공백은 글자).</summary>
+    private static bool SqlSame(string stored, object? value)
+    {
+        if (!(value is string text)) return false;
+        var width = Math.Max(stored.Length, text.Length);
+        return string.CompareOrdinal(stored.PadRight(width), text.PadRight(width)) == 0;
+    }
+
+    [Fact(DisplayName = "AC-3307.1 [회귀] 내원번호 칸(char 10)이 번호 앞을 공백으로 채워도, 접수 현황이 재진인 환자는 직전 기록부를 찾고(@visit은 앞 공백 그대로) 지난번 증상도 그대로다")]
+    public void LeftPaddedVisitNumber()
+    {
+        var stored = "V0901".PadLeft(10);
+        var db = BoardFake.Quiet(new FakeDb());
+        db.Answer(ReceptionSql.PriorVisits, _ => new[] { new object?[] { "V1001", 3L, stored, "20261029" } });
+        db.Answer(ReceptionSql.PriorSymptoms, _ => new[] { new object?[] { stored, "허리 통증" } });
+        db.Answer(ReceptionSql.PrevPaperVisit, args => SqlSame(stored, args["@visit"])
+            ? new[] { new object?[] { "20261029", "1진료실", "건강보험" } }
+            : new object?[0][]);
+        db.Answer(ReceptionSql.PrevPaperSymptoms, args => SqlSame(stored, args["@visit"]) ? new[] { new object?[] { "허리 통증" } } : new object?[0][]);
+        db.Answer(ReceptionSql.PrevPaperDx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.PrevPaperOrders, _ => new object?[0][]);
+
+        var board = BoardReader.Read(db, Synthetic.Scope, Today, new CacheClock(Today).Now);
+        var visit = board.Visits.Single(v => v.VisitId == "V1001");
+        Assert.Equal("허리 통증", visit.LastSymptom);
+
+        var prev = PrevPaperReader.Read(db, Synthetic.Scope, visit, board, Today, new CacheClock(Today).Now, Today.AddSeconds(8));
+
+        Assert.NotNull(prev);
+        Assert.Equal(("2026-10-29", "허리 통증"), (prev!.Date, prev.Sym));
+    }
+
     [Fact(DisplayName = "AC-3307.3 문장이 실패하거나 칸이 모자라면 일부만 주지 않고 E-BIT-READ-FAILED가 올라간다")]
     public void Failures()
     {
