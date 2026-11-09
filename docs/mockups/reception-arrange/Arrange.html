@@ -250,9 +250,9 @@ const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60
 const stamp = () => fmt(++clock)
 
 const COLS = [
-  { k: 'xray', h: 'X-RAY', sub: '', name: 'X-RAY' },
-  { k: 'sono', h: 'SONO', sub: '부위·준비·순서', three: true, name: 'SONO' },
-  { k: 'carm', h: 'C-ARM', sub: '부위·준비·순서', three: true, name: 'C-ARM' },
+  { k: 'xray', h: 'X-RAY', sub: '', name: 'X-RAY', auto: true },
+  { k: 'sono', h: 'SONO', sub: '부위·준비·순서', three: true, name: 'SONO', auto: true },
+  { k: 'carm', h: 'C-ARM', sub: '부위·준비·순서', three: true, name: 'C-ARM', auto: true },
   { k: 'pt', h: 'PT', sub: 'ICE·HP', opts: ['ICE', 'HP'], name: 'PT' },
   { k: 'ds', h: '도수', sub: '30·50분', opts: ['30분', '50분'], name: '도수' },
   { k: 'eswt', h: '충격파', sub: '부위 수', opts: ['1부위', '2부위', '3부위', '4부위'], name: '충격파' },
@@ -364,7 +364,7 @@ function cellTd(p, c) {
   if (v.st === 'todo') inner = `<span class="st">준비</span>${detHtml(p, c, v)}`
   if (v.st === 'ready') inner = `<span class="st">준비완료 ${v.readyAt}</span>${detHtml(p, c, v)}`
   if (v.st === 'done') inner = `<span class="st">✓ ${v.doneAt}</span>${v.part || v.det ? `<span class="det sm">${esc(v.part || v.det)}</span>` : ''}`
-  return `<td class="c-${c.k}"><div class="cell ${v.st}${v.manual ? ' manual' : ''}" ${base}>${ord ? `<span class="ord">${ord}번</span>` : ''}${v.manual ? '<span class="mn">직접</span>' : ''}${inner}</div></td>`
+  return `<td class="c-${c.k}"><div class="cell ${v.st}${v.manual && c.auto ? ' manual' : ''}" ${base}>${ord ? `<span class="ord">${ord}번</span>` : ''}${v.manual && c.auto ? '<span class="mn">직접</span>' : ''}${inner}</div></td>`
 }
 
 function row(p) {
@@ -387,7 +387,7 @@ function arrange() {
   const active = P.filter(p => !p.ended), ended = P.filter(p => p.ended)
   return `<div class="sub-line"><span>11:04:15 기준 · 5초마다 저절로 바뀌어요</span>
       <span class="legend"><span class="lg todo">준비</span><span class="lg ready">준비완료</span><span class="lg done">✓ 완료</span><span class="lg manual">직접 넣음</span><span class="lg away">자리비움</span><span class="lg ptup">↑ PT 먼저</span></span></div>
-    <p class="howto">치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). 빈 칸을 누르면 직접 넣어요.<br>접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.</p>
+    <p class="howto">치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고, PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요.<br>접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.</p>
     <div class="wrap"><table class="arr">
       <thead><tr><th class="c-t">접수<span class="sm">누르면 자리비움</span></th><th class="c-nm">성함</th>
         ${COLS.map(c => `<th class="c-${c.k}">${c.h}${c.sub ? `<span class="sm">${c.sub}</span>` : ''}</th>`).join('')}
@@ -496,7 +496,7 @@ function tapCell(p, k) {
     })
   }
   if (v.st === 'done') {
-    const options = ['준비로 되돌리기', c.three ? '준비완료로 되돌리기' : null, v.manual ? '칸에서 빼기' : null].filter(Boolean)
+    const options = ['준비로 되돌리기', c.three ? '준비완료로 되돌리기' : null, v.manual || !c.auto ? '칸에서 빼기' : null].filter(Boolean)
     return openSheet(`${c.name} · 완료`, `${p.name} · ${v.doneAt}에 완료로 바꿨어요`, options, label => {
       snap()
       if (label === '준비로 되돌리기') { v.st = 'todo'; delete v.readyAt; delete v.doneAt }
@@ -525,7 +525,7 @@ function simRx() {
   const p = findP('g')
   if (!p || p.ended || Object.keys(p.cells).length) return alertBanner('이미 보여 드렸어요 · [처음으로]를 누르면 다시 볼 수 있어요', false)
   const t = stamp()
-  p.cells = { sono: { st: 'todo', part: '왼 어깨', rxAt: t }, ds: { st: 'todo', det: '50분', rxAt: t }, eswt: { st: 'todo', det: '1부위', rxAt: t } }
+  p.cells = { sono: { st: 'todo', part: '왼 어깨', rxAt: t } }
   p.today = p.pendingToday
   p.lane = 'hold'
   p.newRx = true

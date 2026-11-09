@@ -12,7 +12,7 @@
 - Files: helper/src/Precheck.Core/Reception/ArrangeMap.cs, helper/tests/Precheck.Core.Tests/Reception/ArrangeMap.test.cs, helper/tests/reception-arrange-map.dotnet.test.ts
 - Tests: helper/tests/reception-arrange-map.dotnet.test.ts
 - TDD: required
-- C# 시험 이름 공간 `Precheck.Core.Tests.Reception.ArrangeMapping`. 확인 전 규칙은 design.md 2절의 다섯 개뿐. 가짜 지도(시험용 규칙 목록)로 `Match`의 칸 글 규칙(Fixed·FromName·FromQty·FromTms)도 증명한다
+- C# 시험 이름 공간 `Precheck.Core.Tests.Reception.ArrangeMapping`. 확인 전 규칙은 design.md 2절의 둘(SONO1·CARM1)뿐. 가짜 지도(시험용 규칙 목록, X-ray `^G\d{4}$`)로 `Match`·`ManualOnly`를 증명한다
 
 ## TASK-2: 의원 PC 확인 한 단계 (처방 코드 표 · 부위 칸 찾기)
 - Step: Phase 1 (TASK-1 뒤)
