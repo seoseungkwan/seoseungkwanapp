@@ -325,6 +325,34 @@ describe('AC-505.3 재방문율: 집계 중이거나 집단이 0명이면 null',
   })
 })
 
+// stats-load-range REQ-3306: 나눠 읽기의 옛 조각은 after30을 null로 저장한다. AI 입력은 after30을 읽지 않아 지어낸 숫자가 없다
+describe('AC-3306.3 AI 입력은 after30을 쓰지 않는다', () => {
+  type After30 = (n: number) => number | null
+  // 세 달 모두 within7·14·30이 숫자다. after30만 숫자(n) 또는 null
+  const monthsWith = (after30: After30): ValidReportMonths => ({
+    selected: valid({ ...selected(), revisit: { cohort: 20, within7: 6, within14: 9, within30: 12, after30: after30(3) } }),
+    prev: valid({ ...prev(), revisit: { cohort: 20, within7: 8, within14: 11, within30: 14, after30: after30(2) } }),
+    lastYear: valid({ ...lastYear(), revisit: { cohort: 10, within7: 2, within14: 4, within30: 5, after30: after30(1) } }),
+    groupNames: { ...GROUP_NAMES },
+  })
+  const counted = () => buildReportInput(monthsWith((n) => n))
+  const unknown = () => buildReportInput(monthsWith(() => null))
+
+  it('AC-3306.3 세 달 줄의 after30이 null이든 숫자든 입력(지표 ID·이름·세 달 값·차례)과 지문이 같다', async () => {
+    expect(unknown()).toEqual(counted())
+    expect(ids(unknown())).toEqual(ids(counted()))
+    expect(await reportFingerprint(unknown())).toBe(await reportFingerprint(counted()))
+  })
+
+  it("AC-3306.3 after30이나 '30일 넘어'를 뜻하는 지표가 없고, 재방문 지표는 7·14일 둘뿐이다", () => {
+    const input = unknown()
+    expect(ids(input).filter((id) => id.includes('after30'))).toEqual([])
+    expect(input.metrics.filter((m) => m.label.includes('30일 넘어'))).toEqual([])
+    expect(ids(input).filter((id) => id.startsWith('revisit.'))).toEqual(['revisit.within7', 'revisit.within14'])
+    expect(metricOf(input, 'revisit.within7')).toEqual(rate('revisit.within7', '신환 7일 재방문율', 0.3, 0.4, 0.2))
+  })
+})
+
 describe('AC-505.4 reportFingerprint', () => {
   const HEX64 = /^[0-9a-f]{64}$/
 
