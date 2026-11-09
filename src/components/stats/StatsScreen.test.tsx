@@ -445,7 +445,7 @@ describe('AC-514.2 기간 단추', () => {
 })
 
 describe('AC-514.3 비트에서 불러오기', () => {
-  it('AC-514.3 불러올 범위로 통로 → Worker → 저장 → 표에서 다시 읽기, 그동안 단추는 막힌다', async () => {
+  it('AC-514.3·AC-3305.2 불러올 범위로 통로 → Worker → 저장 → 표에서 다시 읽기, 그동안 단추는 막힌다', async () => {
     const { port, fake } = await drawReady()
     const reads = vi.mocked(readDays).mock.calls.length
 
@@ -2694,7 +2694,7 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     fireEvent.click(screen.getByRole('button', { name: RESUME }))
     await waitFor(() => expect(rowsSent(port)).toHaveLength(4))
     expect(pageText()).toContain(progress(3, 4, ALL_MONTHS[2]!))
-    expect(screen.queryByRole('button', { name: RESUME })?.getAttribute('aria-disabled') ?? 'true').toBe('true')
+    expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
     expect(screen.getByRole('button', { name: '불러오는 중' }).getAttribute('aria-disabled')).toBe('true')
     expect(finishStream(port).args).toEqual(ALL_READS[2])
     expect((await finishPart(port, 5)).args).toEqual(ALL_READS[3])
@@ -2765,6 +2765,45 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     expect(boxOf('4번 가운데 1번째까지 저장하고 멈췄어요.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: RESUME }))
     expect((await finishPart(port, 3)).args).toEqual(ALL_READS[1])
+  })
+
+  it('AC-3303.10 셋째 조각에서 끊겨 멈춘 뒤 연결이 ready가 아니면 [이어서 불러오기]는 aria-disabled이고 눌러도 읽지 않으며, [다시 확인]으로 ready가 되면 남은 셋째부터 읽는다', async () => {
+    const { port, fake } = await readyWith()
+    pickSpan(ALL)
+    pressStart()
+    await finishAll(port, 1, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    act(() => port.fireDisconnect())
+    const STOPPED = '4번 가운데 2번째까지 저장하고 멈췄어요.'
+    await waitFor(() => boxOf(STOPPED))
+    await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
+    const loadsBefore = loadsSent(fake.sent).length
+    const boxText = boxOf(STOPPED).textContent
+
+    // 끊김('disconnected'): 막혀 있고 눌러도 요청·일이 없으며 상자 글은 그대로다
+    const resume = screen.getByRole('button', { name: RESUME })
+    expect(resume.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(resume)
+    await flush()
+    expect(rowsSent(port)).toHaveLength(3)
+    expect(loadsSent(fake.sent)).toHaveLength(loadsBefore)
+    expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull()
+    expect(boxOf(STOPPED).textContent).toBe(boxText)
+
+    // 연결 확인 중('connecting')도 막혀 있다
+    fireEvent.click(screen.getByRole('button', { name: '다시 확인' }))
+    expect(screen.getByRole('button', { name: RESUME }).getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    await flush()
+    expect(rowsSent(port)).toHaveLength(3)
+
+    // 'ready'가 되면 풀리고, 누르면 넷째 요청이 셋째 조각의 read다
+    sayHello(port)
+    await screen.findByRole('button', { name: LOAD })
+    await waitFor(() => expect(screen.getByRole('button', { name: RESUME }).getAttribute('aria-disabled')).toBeNull())
+    expect(boxOf(STOPPED).textContent).toBe(boxText)
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    expect((await finishPart(port, 4)).args).toEqual(ALL_READS[2])
   })
 
   it('AC-3303.9 끝난 상자는 다음 [비트에서 불러오기]를 시작할 때 사라진다', async () => {

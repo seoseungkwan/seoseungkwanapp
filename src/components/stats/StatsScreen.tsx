@@ -393,7 +393,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         onLoad={loadFromBit}
         onFiles={takeFiles}
       />
-      {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null} onResume={resumeLoad} />}
+      {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10) */}
+      {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null || state !== 'ready'} onResume={resumeLoad} />}
       <p className="mt-3 flex max-w-160 items-start gap-1.5 text-small text-muted">
         <Icon name="shield" size={14} className="mt-0.5 shrink-0 text-positive" />
         <span>환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.</span>
