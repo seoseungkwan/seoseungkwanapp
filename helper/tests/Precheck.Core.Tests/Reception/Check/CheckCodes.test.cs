@@ -305,7 +305,7 @@ public class CheckCodesRunnerTests
         Assert.Contains(lines, l => l.StartsWith("speed name=TodayVisits ", StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "AC-1401.19 보고서 첫 줄은 build=도우미 판+check4이고 콘솔 단계 표시는 1/10~10/10(7/10 기록지 코드, 8/10 상태 내력)이다")]
+    [Fact(DisplayName = "AC-1401.19 보고서 첫 줄은 build=도우미 판+check{CheckRound}이고 콘솔 단계 표시는 1/11~11/11(7/11 기록지 코드, 8/11 상태 내력, 어레인지 단계 10/11은 reception-arrange AC-3302.1)이다")]
     public void HeaderAndSteps()
     {
         using var h = WithEmr();
@@ -317,11 +317,11 @@ public class CheckCodesRunnerTests
         }
         var lines = Harness.Lines(File.ReadAllText(path).TrimStart('﻿'));
 
-        Assert.Equal("reception-check started=2026-11-05T10:03 build=0.3.0+check4", lines[0]);
+        Assert.Equal("reception-check started=2026-11-05T10:03 build=0.3.0+check5", lines[0]);
         var steps = h.Console.Written.Where(l => Regex.IsMatch(l, @"^\d+/\d+ ")).Select(l => l.Split(' ')[0]).ToArray();
-        Assert.Equal(new[] { "1/10", "2/10", "3/10", "4/10", "5/10", "6/10", "7/10", "8/10", "9/10", "10/10" }, steps);
-        Assert.Contains(h.Console.Written, l => l.StartsWith("7/10 ", StringComparison.Ordinal) && l.Contains("기록지"));
-        Assert.Contains(h.Console.Written, l => l.StartsWith("8/10 ", StringComparison.Ordinal) && l.Contains("30일"));
+        Assert.Equal(new[] { "1/11", "2/11", "3/11", "4/11", "5/11", "6/11", "7/11", "8/11", "9/11", "10/11", "11/11" }, steps);
+        Assert.Contains(h.Console.Written, l => l.StartsWith("7/11 ", StringComparison.Ordinal) && l.Contains("기록지"));
+        Assert.Contains(h.Console.Written, l => l.StartsWith("8/11 ", StringComparison.Ordinal) && l.Contains("30일"));
     }
 
     [Fact(DisplayName = "AC-1401.10 기록지 코드·상태 내력 답이 모두 센티널이어도 보고서·콘솔 기록에 센티널이 없다")]

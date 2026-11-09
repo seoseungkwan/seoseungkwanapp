@@ -159,17 +159,17 @@ public class CheckSqlTests
         Assert.DoesNotContain("OcmChtNum", text, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "AC-1401.8 옛 자료 따로 있음은 이미 허용된 StatsSql.HistoryGuardSql로 읽는다(매개변수 없음), 확인 문장은 다섯 개뿐이다")]
+    [Fact(DisplayName = "AC-1401.8 옛 자료 따로 있음은 이미 허용된 StatsSql.HistoryGuardSql로 읽는다(매개변수 없음), 확인 문장은 여섯 개뿐이다(어레인지 코드 표는 reception-arrange AC-3302.2)")]
     public void HistoryGuardIsAlreadyAllowed()
     {
         Assert.True(Sql.IsAllowed(StatsSql.HistoryGuardSql));
         Assert.Empty(Sql.ParametersOf(StatsSql.HistoryGuardSql));
         Assert.Equal(
-            new[] { CheckSql.StatusPairs, CheckSql.TableColumns, CheckSql.LinkedColumns, CheckSql.RxByStatus, CheckSql.StatusHistory }.OrderBy(x => x, StringComparer.Ordinal),
+            new[] { CheckSql.StatusPairs, CheckSql.TableColumns, CheckSql.LinkedColumns, CheckSql.RxByStatus, CheckSql.StatusHistory, CheckSql.ArrangeCodes }.OrderBy(x => x, StringComparer.Ordinal),
             CheckSql.All.OrderBy(x => x, StringComparer.Ordinal));
     }
 
-    [Fact(DisplayName = "AC-1401.9 CheckSql.IsAllowed는 확인 문장 다섯 개만 받고, 도우미 문장·고친 글·빈 값은 받지 않으며 ParametersOf는 E-BIT-READ-FAILED")]
+    [Fact(DisplayName = "AC-1401.9 CheckSql.IsAllowed는 확인 문장 여섯 개만 받고, 도우미 문장·고친 글·빈 값은 받지 않으며 ParametersOf는 E-BIT-READ-FAILED")]
     public void CheckSqlAllowsOnlyItsStatements()
     {
         foreach (var sql in CheckSql.All)

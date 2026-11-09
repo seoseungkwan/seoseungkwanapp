@@ -6,7 +6,7 @@ namespace Precheck.Core.Reception.Check;
 
 /// <summary>
 /// 의원 PC 확인 명령(--reception-check)만 돌리는 고정 문장(spec reception-phone design.md 1절, AC-1401.2·3·8).
-/// 모두 SELECT 하나이고 자료 값은 상태·수납 코드·시:분·건수만 읽는다(차트번호·이름·메모 글을 읽지 않는다).
+/// 모두 SELECT 하나이고 자료 값은 상태·수납 코드·처방 코드·시:분·건수만 읽는다(차트번호·이름·메모 글을 읽지 않는다).
 /// 도우미 허용 목록(Sql.IsAllowed)에는 넣지 않는다: 확인 모드 세션(Precheck.Windows.CheckBitDb)만
 /// CheckSql.IsAllowed || ProbeSql.IsProbe || Sql.IsAllowed 로 받는다(AC-1401.9).
 /// </summary>
@@ -81,6 +81,21 @@ WHERE " + TodayScope + @"
 GROUP BY RTRIM(c.OcmComStt)
 ORDER BY Status";
 
+    /// <summary>살아 있는 처방 줄(o) 조건(Sql.HistoryCodeSql·RxByStatus와 같은 글).</summary>
+    internal const string RxRow = "o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>''";
+
+    /// <summary>
+    /// 어레인지 처방 코드 표(spec reception-arrange AC-3302.2): 범위(@from~@to, 지난 30일) 이 병원 외래 접수의 처방 줄을 코드(대문자)마다
+    /// 내원 수·처방 줄 수로 세어 내원 수 많은 순(같으면 코드 순) 200줄까지. 칸: Code, Visits, RxRows. 코드는 코드 사전(OdrCod)의 글이고
+    /// 보고서에는 CheckField.RxCode로 거른 것만 간다. 이름은 같은 실행에서 ReceptionSql.RxNames로 붙인다(CheckRunner).
+    /// </summary>
+    public const string ArrangeCodes = @"SELECT TOP 200 UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(DISTINCT o.OdrOcmNum) Visits,COUNT_BIG(*) RxRows
+FROM dbo.OdrInf o JOIN dbo.OcmInf c ON c.OcmNum=o.OdrOcmNum
+WHERE " + TodayScope + @"
+  AND " + RxRow + @"
+GROUP BY UPPER(RTRIM(o.OdrCod))
+ORDER BY Visits DESC,Code";
+
     private static readonly Dictionary<string, SqlParam[]> Allowed = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
     {
         [StatusPairs] = TodayRange,
@@ -88,6 +103,7 @@ ORDER BY Status";
         [LinkedColumns] = new SqlParam[0],
         [RxByStatus] = TodayRange,
         [StatusHistory] = TodayRange,
+        [ArrangeCodes] = TodayRange,
     };
 
     /// <summary>확인 문장 전부.</summary>

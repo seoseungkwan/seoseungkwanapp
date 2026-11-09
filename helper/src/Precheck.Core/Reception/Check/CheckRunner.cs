@@ -10,8 +10,9 @@ namespace Precheck.Core.Reception.Check;
 /// <summary>
 /// 의원 PC 확인 명령의 차례(spec reception-phone design.md 1절, REQ-1401): ① 안내 + 엔터 ② 등록 확인 세션 ③ 상태 짝(AC-1401.2)
 /// ④ 칸 목록(AC-1401.3) ⑤ 비트 로그인(1일 때만, AC-1401.14) → 화면 83 하루 → 증상 찾기·이름 찾기(AC-1401.4·5) ⑥ 접수 메모(AC-1401.6)
-/// ⑦ 증상 글 찾기(AC-1401.17)·기록지 코드(AC-1401.18) ⑧ 기록지 코드 짝(AC-1401.18) ⑨ 상태 내력(AC-1401.19) ⑩ 모양(AC-1401.7) ⑪ 빠르기(AC-1401.8)
-/// ⑫ 끝: 경로를 콘솔에(메모장은 입구 ReceptionCheckEntry가 연다). 콘솔 단계 표시는 1/10~10/10, 머리 줄 빌드 표시는 판+check{CheckRound}(AC-1401.19).
+/// ⑦ 증상 글 찾기(AC-1401.17)·기록지 코드(AC-1401.18) ⑧ 기록지 코드 짝(AC-1401.18) ⑨ 상태 내력(AC-1401.19) ⑩ 모양(AC-1401.7)
+/// ⑪ 어레인지 처방 코드·부위 칸(spec reception-arrange AC-3302.1~5) ⑫ 빠르기(AC-1401.8)
+/// ⑬ 끝: 경로를 콘솔에(메모장은 입구 ReceptionCheckEntry가 연다). 콘솔 단계 표시는 1/11~11/11, 머리 줄 빌드 표시는 판+check{CheckRound}(AC-1401.19·AC-3302.1).
 /// 보고서에는 CheckField로 거른 칸만 간다(AC-1401.10). 콘솔에도 숫자·걸러진 코드·시:분·안내 글만 쓴다.
 /// 시간 제한(AC-1401.11, 주입한 시계): 문장 하나 30초, 전체 15분. 전체 15분은 도우미가 일한 시간이고 사람이 답하는 시간
 /// (콘솔 입력·비트 로그인 창)은 세지 않는다. 넘거나 실패한 항목은 "실패(번호)"로 적고 다음 단계로 간다.
@@ -54,7 +55,10 @@ public sealed class CheckRunner
     public const int StatusDays = 30;
 
     /// <summary>확인 판(AC-1401.19): 머리 줄 빌드 표시에 +check{n}으로 붙인다. 확인을 고칠 때마다 하나씩 올린다(도우미 판은 그대로).</summary>
-    public const int CheckRound = 4;
+    public const int CheckRound = 5;
+
+    /// <summary>어레인지 처방 코드 표·부위 칸 찾기가 세는 날 수: 오늘을 넣어 그 앞 30일(@from = 오늘-30일, @to = 내일, spec reception-arrange AC-3302.2).</summary>
+    public const int ArrangeDays = 30;
 
     /// <summary>@text로 보내는 친 글의 최대 글자 수(공백을 뺀 앞부분). 매개변수 VarChar(200)에 한글 두 바이트로 들어간다.</summary>
     private const int SymptomTextMax = 100;
@@ -150,15 +154,16 @@ public sealed class CheckRunner
                 Ask();
 
                 OpenSession();
-                Step("statusPairs", "2/10 오늘 접수 상태를 물어요.", StatusPairs);
-                Step("columns", "3/10 칸 목록을 읽고 있어요.", Columns);
-                Step("login", "4/10 비트 로그인 창(증상 화면)을 띄울지 물어요.", ScreenProbes, "symptom", "name");
-                Step("memo", "5/10 접수 메모를 견줘요.", Memo);
-                Step("symptomSearch", "6/10 지난 진료의 증상 글을 견줘요.", SymptomSearch, "symptomCode");
-                Step("sheetCodes", "7/10 증상 기록지 코드를 세고 있어요.", SheetCodes);
-                Step("statusHistory", "8/10 지난 30일 접수 상태를 세고 있어요.", StatusHistory);
-                Step("shape", "9/10 칸 모양을 보고 있어요.", Shapes);
-                Step("speed", "10/10 빠르기를 재고 있어요.", Speed);
+                Step("statusPairs", "2/11 오늘 접수 상태를 물어요.", StatusPairs);
+                Step("columns", "3/11 칸 목록을 읽고 있어요.", Columns);
+                Step("login", "4/11 비트 로그인 창(증상 화면)을 띄울지 물어요.", ScreenProbes, "symptom", "name");
+                Step("memo", "5/11 접수 메모를 견줘요.", Memo);
+                Step("symptomSearch", "6/11 지난 진료의 증상 글을 견줘요.", SymptomSearch, "symptomCode");
+                Step("sheetCodes", "7/11 증상 기록지 코드를 세고 있어요.", SheetCodes);
+                Step("statusHistory", "8/11 지난 30일 접수 상태를 세고 있어요.", StatusHistory);
+                Step("shape", "9/11 칸 모양을 보고 있어요.", Shapes);
+                Step("arrangeCodes", "10/11 어레인지 처방 코드를 세고 있어요.", ArrangeCodes, "arrangePart");
+                Step("speed", "11/11 빠르기를 재고 있어요.", Speed);
                 Report.Line("done", CheckField.Number("ms", Milliseconds(Spent)));
             }
             finally
@@ -175,7 +180,7 @@ public sealed class CheckRunner
 
         private void OpenSession()
         {
-            Say("1/10 비트에 붙고 있어요.");
+            Say("1/11 비트에 붙고 있어요.");
             var t0 = owner.now();
             try
             {
@@ -626,6 +631,83 @@ public sealed class CheckRunner
             foreach (var row in outcome.Rows)
                 Report.Line("statusHistory", CheckField.Status("status", Cell(row, 0)), CheckField.Number("visits", Cell(row, 1)),
                     CheckField.Number("withReceipt", Cell(row, 2)), CheckField.Number("withRx", Cell(row, 3)));
+        }
+
+        /// <summary>
+        /// ⑪ 어레인지 처방 코드(AC-3302.2·3): 지난 30일 코드마다 코드·코드 사전 이름·내원 수·처방 줄 수·지금 지도(ArrangeMap)가 넣는 칸.
+        /// 코드 사전(RxNames)은 코드 줄이 있을 때만 한 번 읽고, 실패하면 arrangeNames에 적고 이름은 ?로 둔다. 이어서 부위 칸 찾기(AC-3302.4).
+        /// </summary>
+        private void ArrangeCodes()
+        {
+            var args = Days(ArrangeDays);
+            var outcome = Query(CheckSql.ArrangeCodes, args);
+            if (!outcome.Ok)
+            {
+                Report.Line("arrangeCodes", outcome.Error!);
+            }
+            else
+            {
+                Report.Line("arrangeCodes", CheckField.Number("days", ArrangeDays), CheckField.Number("codes", outcome.Rows.Count));
+                var names = outcome.Rows.Count > 0 ? RxNames() : new Dictionary<string, string?>(StringComparer.Ordinal);
+                foreach (var row in outcome.Rows)
+                {
+                    var code = Cell(row, 0) as string;
+                    string? name = null;
+                    if (code != null) names.TryGetValue(code, out name);
+                    var col = code == null ? null : ArrangeMap.Match(code, name);
+                    Report.Line("arrangeCode", CheckField.RxCode("code", code), CheckField.RxName("name", name),
+                        CheckField.Number("visits", Cell(row, 1)), CheckField.Number("rows", Cell(row, 2)), CheckField.Arrange("col", col));
+                }
+            }
+            ArrangeParts(args);
+        }
+
+        /// <summary>코드 사전: 코드(UPPER(RTRIM)) → 이름. 실패하면 arrangeNames 줄을 적고 빈 사전.</summary>
+        private Dictionary<string, string?> RxNames()
+        {
+            var names = new Dictionary<string, string?>(StringComparer.Ordinal);
+            var outcome = Query(ReceptionSql.RxNames, NoArgs());
+            if (!outcome.Ok)
+            {
+                Report.Line("arrangeNames", outcome.Error!);
+                return names;
+            }
+            foreach (var row in outcome.Rows)
+            {
+                if (Cell(row, 0) is string code && !names.ContainsKey(code)) names.Add(code, Cell(row, 1) as string);
+            }
+            return names;
+        }
+
+        /// <summary>
+        /// ⑪ 이어서 부위 칸 찾기(AC-3302.4·5): 칸 목록의 OdrInf 글자형 칸마다 SONO1·CARM1 처방 줄의 빈 글 아닌 줄 수·서로 다른 값 수(숫자만).
+        /// 칸 하나가 실패·시간 넘음이면 그 줄에 적고 다음 칸으로, 전체 시간이 지나면 한 줄 적고 멈춘다.
+        /// </summary>
+        private void ArrangeParts(Dictionary<string, object?> args)
+        {
+            var columns = schema.TextColumns(ProbeSql.OrderTable);
+            if (columns.Count == 0)
+            {
+                Report.Line("arrangePart", CheckField.Number("columns", 0));
+                return;
+            }
+            foreach (var column in columns)
+            {
+                if (Over)
+                {
+                    Report.Line("arrangePart", CheckField.TimedOut("result"));
+                    return;
+                }
+                var col = CheckField.Column("column", ProbeSql.OrderTable, column);
+                var outcome = Query(ProbeSql.OrderTextCount(schema, column), args);
+                if (!outcome.Ok)
+                {
+                    Report.Line("arrangePart", col, outcome.Error!);
+                    continue;
+                }
+                var row = outcome.Rows.Count > 0 ? outcome.Rows[0] : null;
+                Report.Line("arrangePart", col, CheckField.Number("filled", Cell(row!, 0)), CheckField.Number("distinct", Cell(row!, 1)));
+            }
         }
 
         /// <summary>기록지 코드 틀의 내원번호 칸: 칸 목록에 EmrInf의 내원번호 칸과 EmrShtTyp·EmrShtCod·EmrShtVal이 모두 있을 때만, 아니면 null.</summary>

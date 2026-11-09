@@ -412,6 +412,12 @@ public class CheckRunnerSentinelTests
         h.Screen.Day(Today.AddDays(-1), rows);
     }
 
+    /// <summary>
+    /// 어레인지 코드 표(reception-arrange AC-3302.3)는 코드 사전의 처방 코드·이름(환자 자료 아님)을 정해 둔 모양이면 그대로 적는 단계라
+    /// 모든 칸 센티널 DB에서는 코드 줄을 비운다. 그 단계의 숫자 칸·모양 틀린 코드·부위 칸 센티널은 CheckArrangeRunnerTests.SentinelsNotWritten이 본다.
+    /// </summary>
+    private static void NoArrangeCodes(Harness h) => h.Db.Answer(CheckSql.ArrangeCodes);
+
     private static void Answers(Harness h) =>
         h.Console.Answer = last => last == LoginQuestion ? "1" : last.Contains("메모 글") || last.Contains("증상 글(") ? Sentinels.KoreanName : last.Contains("번호를 쳐") ? "6" : "";
 
@@ -421,6 +427,7 @@ public class CheckRunnerSentinelTests
         using var h = new Harness();
         h.Db.Clear();
         h.Db.Fallback = (sql, args) => SentinelRows(6);
+        NoArrangeCodes(h);
         SentinelScreen(h);
         Answers(h);
 
@@ -439,6 +446,7 @@ public class CheckRunnerSentinelTests
     {
         using var h = new Harness();
         h.Db.Fallback = (sql, args) => SentinelRows(sql.StartsWith("SELECT TOP 300", StringComparison.Ordinal) ? 1 : 6);
+        NoArrangeCodes(h);
         SentinelScreen(h);
         Answers(h);
 
@@ -481,7 +489,7 @@ public class CheckRunnerSentinelTests
 /// <summary>시간 제한·실패·단계 순서(AC-1401.11): 문장 30초·전체 15분(주입한 시계), 실패(번호)로 적고 다음 단계, 줄마다 디스크, 끝나면 경로를 콘솔에.</summary>
 public class CheckRunnerLimitTests
 {
-    [Fact(DisplayName = "AC-1401.11 단계 순서: 머리 줄 → 등록 확인 → 상태 짝 → 칸 목록 → 로그인·화면 83 → 메모 → 증상 글 찾기·기록지 코드 → 기록지 코드 짝 → 상태 내력 → 모양 → 빠르기 → 끝(AC-1401.3·AC-1401.7 줄 포함)")]
+    [Fact(DisplayName = "AC-1401.11 단계 순서: 머리 줄 → 등록 확인 → 상태 짝 → 칸 목록 → 로그인·화면 83 → 메모 → 증상 글 찾기·기록지 코드 → 기록지 코드 짝 → 상태 내력 → 모양 → 어레인지 처방 코드·부위 칸(reception-arrange AC-3302.1) → 빠르기 → 끝(AC-1401.3·AC-1401.7 줄 포함)")]
     public void StepOrder()
     {
         using var h = new Harness();
@@ -496,7 +504,7 @@ public class CheckRunnerLimitTests
         var labels = lines.Skip(1).Select(l => l.Split(' ')[0]).Distinct().ToArray();
         Assert.Equal(new[]
         {
-            "session", "statusPairs", "columns", "column", "linkedTables", "linkedTable", "login", "symptom", "name", "memo", "symptomSearch", "symptomCode", "sheetCodes", "statusHistory", "shape", "speed", "rxByStatus", "historyGuard", "done",
+            "session", "statusPairs", "columns", "column", "linkedTables", "linkedTable", "login", "symptom", "name", "memo", "symptomSearch", "symptomCode", "sheetCodes", "statusHistory", "shape", "arrangeCodes", "arrangePart", "speed", "rxByStatus", "historyGuard", "done",
         }, labels);
 
         Assert.Contains("session ms=40", lines);
@@ -617,7 +625,7 @@ public class CheckLoginRunnerTests
         Assert.Empty(h.Screen.Asked);
         Assert.Contains("symptom 건너뜀", lines);
         Assert.Contains("name 건너뜀", lines);
-        Assert.Contains(h.Console.Written, l => l.StartsWith("5/10 ", StringComparison.Ordinal));
+        Assert.Contains(h.Console.Written, l => l.StartsWith("5/11 ", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("speed name=TodayVisits ", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("done ", StringComparison.Ordinal));
     }

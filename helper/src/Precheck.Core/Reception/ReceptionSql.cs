@@ -178,6 +178,50 @@ SELECT RTRIM(o.OdrCod) Code,RTRIM(o.OdrCodNam) Name,o.OdrQty Qty,o.OdrTms Tms,o.
 WHERE " + RxRow + @"
 ORDER BY o.OdrSeq";
 
+    // ---- 어레인지 탭(spec reception-arrange design.md 5절, AC-3303.1·AC-3307.2, TASK-3) ------------------------------------
+
+    /// <summary>
+    /// 오늘 처방 시각(AC-3303.1): 오늘 접수(T)의 살아 있는 처방 줄(RxRow)을 내원·코드(UPPER(RTRIM), TodayRx와 같은 모양)마다 한 줄로 묶어
+    /// 가장 이른 처방 시각 MIN(o.OdrDtm)(원값)을 준다. 칸 나누기는 도우미(ArrangeMap)가 한다.
+    /// </summary>
+    public const string TodayOrderTimes = TodayCte + @"
+SELECT o.OdrOcmNum VisitId,UPPER(RTRIM(o.OdrCod)) RxCode,MIN(o.OdrDtm) FirstAt FROM dbo.OdrInf o JOIN T ON T.OcmNum=o.OdrOcmNum
+WHERE " + RxRow + @"
+GROUP BY o.OdrOcmNum,UPPER(RTRIM(o.OdrCod))";
+
+    // 그 지난 내원: 그 환자(@chart)의 내원번호 @visit(목록 줄의 LastVisitId)인 끝난 외래 내원. 차트번호도 함께 견주어 다른 환자 내원은 읽지 않는다
+    private const string PrevVisit = "c.OcmNum=@visit AND c.OcmChtNum=@chart AND " + DoneVisit;
+
+    // V: 병원 범위 안의 그 지난 내원. 증상·상병·처방 줄은 V에 내원번호 칸으로 붙여서만 읽는다
+    private const string PrevVisitCte = @"WITH V AS (
+ SELECT c.OcmNum FROM dbo.OcmInf c
+ WHERE " + PrevVisit + @"
+   AND " + InHospital + @"
+)";
+
+    /// <summary>직전 종이 내원내역(AC-3307.2): 그 지난 내원의 날(yyyyMMdd)·진료실·보험. 진료실 JOIN(병원 범위)·보험 OUTER APPLY는 PaperVisit과 같은 글.</summary>
+    public const string PrevPaperVisit = @"SELECT LEFT(c.OcmAcpDtm,8) Day,RTRIM(d.DepKorNam) Room,RTRIM(i.InsCodNam) Ins FROM dbo.OcmInf c
+JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte
+OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=LEFT(c.OcmAcpDtm,8) ORDER BY m.InsAdpDte DESC,m.InsCodNam) i
+WHERE " + PrevVisit;
+
+    /// <summary>직전 종이 증상: 그 지난 내원의 EmrInf 'S' 줄 전부(빈 줄 포함), EmrShtSeq 순(PaperSymptoms와 같은 줄).</summary>
+    public const string PrevPaperSymptoms = PrevVisitCte + @"
+SELECT CAST(e.EmrShtVal AS nvarchar(max)) Line FROM dbo.EmrInf e JOIN V ON V.OcmNum=e.EmrOcmNum
+WHERE e.EmrShtTyp='S'
+ORDER BY e.EmrShtSeq";
+
+    /// <summary>직전 종이 상병: PaperDx와 같은 줄, 그 지난 내원의 것.</summary>
+    public const string PrevPaperDx = PrevVisitCte + @"
+SELECT RTRIM(x.OicElcCod) Code,RTRIM(x.OicIcdNam) Name,RTRIM(ISNULL(x.OicIcdPri,'')) Pri FROM dbo.OicInf x JOIN V ON V.OcmNum=x.OicOcmNum
+ORDER BY x.OicSeq";
+
+    /// <summary>직전 종이 처방·원외처방: PaperOrders와 같은 줄, 그 지난 내원의 것.</summary>
+    public const string PrevPaperOrders = PrevVisitCte + @"
+SELECT RTRIM(o.OdrCod) Code,RTRIM(o.OdrCodNam) Name,o.OdrQty Qty,o.OdrTms Tms,o.OdrDay Day,RTRIM(ISNULL(o.OdrOutCod,'')) OutCod FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum
+WHERE " + RxRow + @"
+ORDER BY o.OdrSeq";
+
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
@@ -186,8 +230,12 @@ ORDER BY o.OdrSeq";
     private static readonly SqlParam First = new SqlParam("@first", SqlParamKind.Int, 0);
     private static readonly SqlParam Last = new SqlParam("@last", SqlParamKind.Int, 0);
 
+    // 지난 내원번호(목록 줄의 LastVisitId 글). OcmNum 칸 형을 몰라도 SQL Server가 칸 형으로 바꿔 견준다(숫자 칸이면 글 → 숫자)
+    private static readonly SqlParam VisitNumber = new SqlParam("@visit", SqlParamKind.VarChar, 20);
+
     private static readonly SqlParam[] Today = { From, To, Hospital };
     private static readonly SqlParam[] Visit = { Chart, Before, Hospital };
+    private static readonly SqlParam[] Prev = { Chart, VisitNumber, Hospital };
 
     /// <summary>문장 → 그 문장에 실제로 있는 매개변수(design.md 3절 표). ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.</summary>
     public static IReadOnlyDictionary<string, SqlParam[]> Parameters { get; } = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
@@ -208,5 +256,10 @@ ORDER BY o.OdrSeq";
         [PaperSymptoms] = Visit,
         [PaperDx] = Visit,
         [PaperOrders] = Visit,
+        [TodayOrderTimes] = Today,
+        [PrevPaperVisit] = Prev,
+        [PrevPaperSymptoms] = Prev,
+        [PrevPaperDx] = Prev,
+        [PrevPaperOrders] = Prev,
     };
 }

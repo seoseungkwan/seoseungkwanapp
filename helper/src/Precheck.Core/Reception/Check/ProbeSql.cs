@@ -208,10 +208,41 @@ public static class ProbeSql
         + "MIN(CASE WHEN " + Filled + " THEN LEN(v.Val) END) MinLength,MAX(CASE WHEN " + Filled + " THEN LEN(v.Val) END) MaxLength"
         + SheetFrom(key) + SheetGroup + "\nORDER BY Total DESC,Typ,Cod";
 
-    /// <summary>글자가 틀 세 가지 가운데 하나로 만든 글과 똑같은가(이름 모양까지). 이름이 그 실행의 답에 있었는지는 만들 때 본다.</summary>
+    /// <summary>부위 칸 찾기 틀(OrderTextCount)의 표.</summary>
+    public const string OrderTable = "OdrInf";
+
+    // 부위 칸 찾기 틀을 다시 풀 때 칸 이름만 꺼낸다. 나머지 글은 다시 만들어 견준다
+    private static readonly Regex OrderColumn = new Regex(@"CAST\(o\.\[(?<c>[^\]]*)\] AS nvarchar\(4000\)\)", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// SONO·C-ARM 부위 칸 찾기(spec reception-arrange AC-3302.4): 범위(@from~@to) 이 병원 외래 접수의 SONO1·CARM1 처방 줄(RxRow)에서
+    /// OdrInf 글자형 칸 하나를 앞뒤 공백을 뺀 글로 보고 빈 글 아닌 줄 수(Filled)·서로 다른 값 수(Kinds)만 센다. 값은 돌아오지 않는다.
+    /// 칸은 같은 실행의 칸 목록(ProbeSchema)에 있는 OdrInf 글자형 칸만. 코드 둘은 지금 지도(ArrangeMap)가 sono·carm에 넣는 코드다. 매개변수는 Parameters.
+    /// </summary>
+    public static string OrderTextCount(ProbeSchema schema, string column)
+    {
+        Require(schema, OrderTable, column);
+        if (!schema.TextColumns(OrderTable).Contains(column)) throw Blocked();
+        return OrderCount(column);
+    }
+
+    private static string OrderCount(string column) =>
+        "SELECT COUNT_BIG(CASE WHEN LEN(v.Val)>0 THEN 1 END) Filled,COUNT_BIG(DISTINCT NULLIF(v.Val,N'')) Kinds"
+        + "\nFROM dbo.OdrInf o JOIN dbo.OcmInf c ON c.OcmNum=o.OdrOcmNum"
+        + "\nCROSS APPLY (SELECT LTRIM(RTRIM(CAST(o.[" + column + "] AS nvarchar(4000)))) Val) v"
+        + "\nWHERE " + CheckSql.TodayScope
+        + "\n  AND " + CheckSql.RxRow
+        + "\n  AND UPPER(RTRIM(o.OdrCod)) IN ('SONO1','CARM1')";
+
+    /// <summary>
+    /// 글자가 찾기 틀 세 가지(VisitLinked·ChartLinked·Sample)나 부위 칸 찾기 틀(OrderTextCount) 가운데 하나로 만든 글과 똑같은가(이름 모양까지).
+    /// 이름이 그 실행의 답에 있었는지는 만들 때 본다. 모두 Parameters를 받는다.
+    /// </summary>
     public static bool IsProbe(string? sql)
     {
         if (sql == null) return false;
+        var order = OrderColumn.Match(sql);
+        if (order.Success && IsName(order.Groups["c"].Value) && sql == OrderCount(order.Groups["c"].Value)) return true;
         var match = Head.Match(sql);
         if (!match.Success) return false;
         var table = match.Groups["t"].Value;

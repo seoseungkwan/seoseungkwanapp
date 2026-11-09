@@ -1,5 +1,6 @@
 // 의원 PC 확인 명령의 확인 고침 3(TASK-34, REQ-1401)의 C# 시험을 감싼다: 증상 기록지 코드(symptomCode·sheetCode, AC-1401.18),
-// 지난 30일 상태 내력(statusHistory)·첫 줄 build=판+check4·단계 1/10~10/10(AC-1401.19), 틀 받기(AC-1401.9), 센티널 없음(AC-1401.10).
+// 지난 30일 상태 내력(statusHistory)·첫 줄 build=판+check{CheckRound}·단계 1/11~11/11(AC-1401.19, 어레인지 단계로 바뀜 reception-arrange AC-3302.1),
+// 틀 받기(AC-1401.9), 센티널 없음(AC-1401.10).
 // 가짜 DB·단계 차례를 바꿨으므로 확인 폴더(Precheck.Core.Tests.Reception.Check)의 시험을 모두 돌린다.
 // 윈도우 세션(CheckBitDb)은 글자로 보고, 여기서 buildDotnet으로 도우미가 net48로 컴파일되는지 본다. 실제 값은 의원 PC(AC-1401.13).
 import path from 'node:path'
@@ -35,7 +36,7 @@ describe('REQ-1401 확인 고침 3: 증상 기록지 코드·상태 내력 (C# P
     expectAc('AC-1401.18')
   })
 
-  it('AC-1401.19 지난 30일 상태마다 접수·수납 줄 있음·처방 있음(statusHistory), 첫 줄 build=판+check4, 단계 1/10~10/10', () => {
+  it('AC-1401.19 지난 30일 상태마다 접수·수납 줄 있음·처방 있음(statusHistory), 첫 줄 build=판+check5, 단계 1/11~11/11', () => {
     expectAc('AC-1401.19')
   })
 

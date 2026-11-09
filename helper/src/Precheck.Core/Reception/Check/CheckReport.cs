@@ -33,6 +33,12 @@ public sealed class CheckField
     // 값 목록 한 값: ASCII 글자·숫자 두 글자 이하(코드 모양)나 한글 완성형 한 글자(남·여). 두 글자 한글은 이름일 수 있어 막는다
     private static readonly Regex SmallValueShape = new Regex(@"^(?:[A-Za-z0-9]{1,2}|[\uAC00-\uD7A3])\z", RegexOptions.CultureInvariant);
     private static readonly Regex Space = new Regex(@"\s", RegexOptions.CultureInvariant);
+    private static readonly Regex RxCodeShape = new Regex(@"^[0-9A-Za-z가-힣_]{1,16}\z", RegexOptions.CultureInvariant);
+
+    private static readonly Regex RxNameShape = new Regex(@"^[0-9A-Za-z가-힣 ()\[\]/.,·+\-%]{1,40}\z", RegexOptions.CultureInvariant);
+
+    private static readonly Regex Letter = new Regex(@"[A-Za-z가-힣]", RegexOptions.CultureInvariant);
+
     private static readonly Regex CodeShape = new Regex(@"^(?:(?=[0-9]*[A-Za-z_])[A-Za-z0-9_]{1,16}|[0-9]{1,5})\z", RegexOptions.CultureInvariant);
 
     /// <summary>화면 83에서 도우미가 아는 칸 제목(GridRows 83의 칸). 코드의 글이라 보고서에 적어도 된다.</summary>
@@ -73,6 +79,23 @@ public sealed class CheckField
         var text = value is string raw ? raw : value is bool || value is double || value is float || value is decimal ? null : NumberText(value);
         return new CheckField(key, text != null && CodeShape.IsMatch(text) ? text : Unknown);
     }
+
+    /// <summary>처방 코드(spec reception-arrange AC-3302.3): 글자 형이고 ^[0-9A-Za-z가-힣_]{1,16}$일 때만 그대로, 아니면 ?.</summary>
+    public static CheckField RxCode(string? key, object? value) =>
+        new CheckField(key, value is string text && RxCodeShape.IsMatch(text) ? text : Unknown);
+
+    /// <summary>
+    /// 코드 사전의 처방 이름(AC-3302.3): 앞뒤 공백을 뗀 글이 ^[0-9A-Za-z가-힣 ()\[\]/.,·+\-%]{1,40}$이고 영문·한글이 하나 이상일 때만, 아니면 ?.
+    /// 글자가 없는 값(전화번호·번호 모양)은 이름이 아니라 적지 않는다.
+    /// </summary>
+    public static CheckField RxName(string? key, object? value)
+    {
+        var text = (value as string)?.Trim();
+        return new CheckField(key, text != null && RxNameShape.IsMatch(text) && Letter.IsMatch(text) ? text : Unknown);
+    }
+
+    /// <summary>어레인지 칸(AC-3302.2): 지도가 넣는 칸의 JSON 이름(xray…), 없으면 -.</summary>
+    public static CheckField Arrange(string? key, ArrangeCol? col) => new CheckField(key, col.HasValue ? ArrangeMap.KeyOf(col.Value) : "-");
 
     /// <summary>
     /// 모양 단계의 값 목록(AC-1401.7): 빈 값을 뺀 서로 다른 값이 1~4가지이고 모두 ASCII 글자·숫자 두 글자 이하나 한글 한 글자(앞뒤 공백은 뗀다)일 때만

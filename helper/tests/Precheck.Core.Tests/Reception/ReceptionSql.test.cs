@@ -171,14 +171,19 @@ public class ReceptionSqlTests
     /// <summary>매개변수 표에 함께 있는 종이 기록부 문장 다섯(spec reception-paper AC-1501.8, 시험은 PaperSql.test.cs).</summary>
     private static readonly string[] PaperStatements = { PaperPerson, PaperVisit, PaperSymptoms, PaperDx, PaperOrders };
 
-    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 11개(확인 칸 문장 넷 포함)이고 매개변수 표는 이 11개와 종이 기록부 문장 다섯(spec reception-paper)뿐이며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
+    /// <summary>매개변수 표에 함께 있는 어레인지 문장 다섯(spec reception-arrange AC-3303.1·AC-3307.2, 시험은 ArrangeSql.test.cs).</summary>
+    private static readonly string[] ArrangeStatements = { TodayOrderTimes, PrevPaperVisit, PrevPaperSymptoms, PrevPaperDx, PrevPaperOrders };
+
+    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 11개(확인 칸 문장 넷 포함)이고 매개변수 표는 이 11개와 종이 기록부 문장 다섯(spec reception-paper)·어레인지 문장 다섯(spec reception-arrange)뿐이며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|OPENDATASOURCE|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR|DECLARE|SET)\b|xp_|sp_", RegexOptions.IgnoreCase);
         var all = All();
         Assert.Equal(11, all.Values.Distinct(StringComparer.Ordinal).Count());
         Assert.Empty(PaperStatements.Intersect(all.Values, StringComparer.Ordinal));
-        Assert.Equal(all.Values.Concat(PaperStatements).OrderBy(sql => sql, StringComparer.Ordinal), Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
+        Assert.Empty(ArrangeStatements.Intersect(all.Values.Concat(PaperStatements), StringComparer.Ordinal));
+        Assert.Equal(5, ArrangeStatements.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(all.Values.Concat(PaperStatements).Concat(ArrangeStatements).OrderBy(sql => sql, StringComparer.Ordinal), Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
         foreach (var sql in all.Values)
         {
             Assert.True(sql.StartsWith("SELECT ", StringComparison.Ordinal) || sql.StartsWith("WITH ", StringComparison.Ordinal));
