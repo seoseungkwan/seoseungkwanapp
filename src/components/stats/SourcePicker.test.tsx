@@ -446,7 +446,7 @@ describe('AC-1205.5 파일 길에 묶음 넘기기', () => {
 
 // ── 불러올 기간 (stats-load-range REQ-3301·AC-3303.4, 시안 docs/mockups/stats-load-range) ──
 
-const SPAN_NAMES = ['지금 보는 기간', '최근 1년', '최근 2년', '2020년부터 전부']
+const SPAN_NAMES = ['지금 보는 기간', '최근 1년', '최근 2년', '전체 기간']
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 const classesOf = (el: Element | null | undefined) => tokens(el?.getAttribute('class') ?? '')
 const spanGroup = () => screen.getByRole('group', { name: '불러올 기간' })
@@ -480,10 +480,19 @@ describe('AC-3301.1 불러올 기간 묶음 단추', () => {
     expect(row!.compareDocumentPosition(load) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it("AC-3301.1 넷째 단추 이름은 '전체 기간'이고, 어느 것을 골라도 화면에 '2020년부터 전부'라는 글이 없다", () => {
+    const { container } = draw()
+    expect(spanButton('전체 기간')).toBeTruthy()
+    for (const name of SPAN_NAMES) {
+      fireEvent.click(spanButton(name))
+      expect(container.textContent).not.toContain('2020년부터 전부')
+    }
+  })
+
   it('AC-3301.1 화면을 열면 [지금 보는 기간]만 aria-pressed="true"이고, 다시 열어도 그렇다', () => {
     const first = draw()
     expect(pressed()).toEqual(['true', 'false', 'false', 'false'])
-    fireEvent.click(spanButton('2020년부터 전부'))
+    fireEvent.click(spanButton('전체 기간'))
     first.unmount()
     draw()
     expect(pressed()).toEqual(['true', 'false', 'false', 'false'])
@@ -502,7 +511,7 @@ describe('AC-3301.1 불러올 기간 묶음 단추', () => {
     expect(classesOf(spanGroup()).sort()).toEqual(tokens(`${ds.segment.group} max-md:grid-cols-2`).sort())
     fireEvent.click(spanButton('최근 1년'))
     expect(classesOf(spanButton('최근 1년')).sort()).toEqual(tokens(`${ds.segment.button} ${ds.segment.on}`).sort())
-    for (const name of ['지금 보는 기간', '최근 2년', '2020년부터 전부']) {
+    for (const name of ['지금 보는 기간', '최근 2년', '전체 기간']) {
       expect(classesOf(spanButton(name)).sort()).toEqual(tokens(`${ds.segment.button} ${ds.segment.off}`).sort())
     }
   })
@@ -533,7 +542,7 @@ describe('AC-3301.2 일이 있으면 막힘 · onLoad(오늘 진료 끝, 고른 
 
   it('AC-3301.2 일이 끝나면 다시 누를 수 있고 고른 것은 그대로다', () => {
     const { rerender } = draw()
-    fireEvent.click(spanButton('2020년부터 전부'))
+    fireEvent.click(spanButton('전체 기간'))
     rerender(picker('ready', { job: 'bit' }))
     expect(spanButton('최근 1년').disabled).toBe(true)
     fireEvent.click(spanButton('최근 1년'))
@@ -553,7 +562,7 @@ describe('AC-3301.2 일이 있으면 막힘 · onLoad(오늘 진료 끝, 고른 
     fireEvent.click(spanButton('최근 2년'))
     fireEvent.click(screen.getByRole('button', { name: LOAD }))
     expect(onLoad).toHaveBeenLastCalledWith(false, '2y')
-    fireEvent.click(spanButton('2020년부터 전부'))
+    fireEvent.click(spanButton('전체 기간'))
     fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
     fireEvent.click(screen.getByRole('button', { name: LOAD }))
     expect(onLoad).toHaveBeenLastCalledWith(true, 'all')

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import commands from '@/lib/bridge/commands.json'
-import { addDays, addMonths, diffDays, monthOf, monthRange } from '@/lib/analytics/dates'
+import { addDays, addMonths, compareYmd, diffDays, monthOf, monthRange } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload, MonthPayload, MonthSections } from '@/types/payload'
 import type { StatsLoaded } from '@/types/stats'
-import { MAX_READ_DAYS, doneText, loadHint, monthsLabel, partSave, planLoad, progressText, stoppedText, type LoadPart, type LoadSpan } from './loadPlan'
+import { LOAD_SPANS, MAX_READ_DAYS, doneText, loadHint, monthsLabel, partSave, planLoad, progressText, stoppedText, type LoadPart, type LoadSpan } from './loadPlan'
 import { pickRange } from './periodPick'
 import { statsRange, type StatsRange } from './view'
 
@@ -21,8 +21,16 @@ const days = (span: DateRange) => diffDays(span.from, span.to) + 1
 const saves = (parts: readonly LoadPart[]) => parts.map((part) => part.save)
 const reads = (parts: readonly LoadPart[]) => parts.map((part) => part.read)
 
+describe('AC-3301.1 불러올 기간 단추 이름', () => {
+  it("AC-3301.1 LOAD_SPANS는 차례로 지금 보는 기간 · 최근 1년 · 최근 2년 · 전체 기간이고 '2020년부터 전부'라는 이름은 없다", () => {
+    expect(LOAD_SPANS.map(({ span }) => span)).toEqual(SPANS)
+    expect(LOAD_SPANS.map(({ name }) => name)).toEqual(['지금 보는 기간', '최근 1년', '최근 2년', '전체 기간'])
+    expect(LOAD_SPANS.some(({ name }) => name.includes('2020년부터'))).toBe(false)
+  })
+})
+
 describe('AC-3302.1 읽을 전체 기간(whole)', () => {
-  it('AC-3302.1 최근 30일: 지금 보는 기간은 range.load, 1년·2년은 11·23달 전 달 1일, 전부는 2020-01-01부터 오늘까지', () => {
+  it('AC-3302.1 최근 30일: 지금 보는 기간은 range.load, 1년·2년은 11·23달 전 달 1일, 전체 기간은 이름을 바꿔도 2020-01-01부터 오늘까지', () => {
     expect(recent30.load).toEqual({ from: '2026-09-01', to: TODAY })
     expect(planLoad(TODAY, recent30, 'view').whole).toEqual(recent30.load)
     expect(SPANS.map((span) => planLoad(TODAY, recent30, span).whole)).toEqual([
@@ -76,7 +84,7 @@ describe('AC-3302.2 800일 이하는 한 번에', () => {
 })
 
 describe('AC-3302.3 800일을 넘으면 24달씩 새것부터', () => {
-  it('AC-3302.3 최근 30일 + 전부: save 넷', () => {
+  it('AC-3302.3 최근 30일 + 전체 기간: save 넷', () => {
     expect(saves(planLoad(TODAY, recent30, 'all').parts)).toEqual([
       { from: '2024-12-01', to: '2026-11-09' },
       { from: '2022-12-01', to: '2024-11-30' },
@@ -93,14 +101,26 @@ describe('AC-3302.3 800일을 넘으면 24달씩 새것부터', () => {
   })
 })
 
-describe('AC-3302.4 read는 이웃 조각 쪽으로 한 달씩 더한 것', () => {
-  it('AC-3302.4 최근 30일 + 전부: read 넷', () => {
+describe('AC-3302.4 read는 이웃 조각 쪽으로 31일씩 더한 것', () => {
+  it('AC-3302.4 최근 30일 + 전체 기간: read 넷', () => {
     expect(reads(planLoad(TODAY, recent30, 'all').parts)).toEqual([
-      { from: '2024-11-01', to: '2026-11-09' },
-      { from: '2022-11-01', to: '2024-12-31' },
-      { from: '2020-11-01', to: '2022-12-31' },
+      { from: '2024-10-31', to: '2026-11-09' },
+      { from: '2022-10-31', to: '2024-12-31' },
+      { from: '2020-10-31', to: '2022-12-31' },
       { from: '2020-01-01', to: '2020-12-31' },
     ])
+  })
+
+  it('AC-3302.4 2월 예: 오늘 2027-01-15 + 전체 기간의 둘째 read는 2023-01-01 ~ 2025-03-03 (한 달씩이면 2월 28일에 끝나 1월 말 날의 30일 창이 잘렸다)', () => {
+    const today = '2027-01-15'
+    const second = planLoad(today, statsRange(today, '30d'), 'all').parts[1]
+    expect(second).toEqual({ save: { from: '2023-02-01', to: '2025-01-31' }, read: { from: '2023-01-01', to: '2025-03-03' } })
+  })
+
+  it('AC-3302.4 2월 예: 오늘 2027-02-10 + 전체 기간의 첫 read는 2025-01-29부터 (한 달씩이면 2월 1일부터라 3월 초 날의 앞 30일이 잘렸다)', () => {
+    const today = '2027-02-10'
+    const first = planLoad(today, statsRange(today, '30d'), 'all').parts[0]
+    expect(first).toEqual({ save: { from: '2025-03-01', to: today }, read: { from: '2025-01-29', to: today } })
   })
 
   it('AC-3302.4 2026 ~ 2032년 모든 오늘 × 네 단추 × load 첫날 셋: read ≤ 800일, save ≤ 731일, save는 whole을 빈틈·겹침 없이 잇는다', () => {
@@ -126,9 +146,17 @@ describe('AC-3302.4 read는 이웃 조각 쪽으로 한 달씩 더한 것', () =
             // 달 경계: 가장 새 조각만 오늘에 끝나고 가장 옛 조각만 whole 첫날에 시작한다
             if (i > 0) check(save.to === monthRange(monthOf(save.to)).to, `save ${i} 끝이 말일이 아님`)
             if (i < oldest) check(save.from === monthRange(monthOf(save.from)).from, `save ${i} 첫날이 1일이 아님`)
-            // 이웃 쪽으로 한 달씩
-            if (i > 0) check(read.to === monthRange(addMonths(monthOf(save.to), 1)).to, `read ${i} 끝`)
-            if (i < oldest) check(read.from === monthRange(addMonths(monthOf(save.from), -1)).from, `read ${i} 첫날`)
+            // 이웃 쪽으로 31일씩: 30일 창을 늘 다 담고, 이웃 달도 늘 통째로 담는다
+            if (i > 0) {
+              check(read.to === addDays(save.to, 31), `read ${i} 끝 ${read.to} ≠ save 끝 + 31일`)
+              check(diffDays(save.to, read.to) >= 30, `read ${i} 끝이 save 끝 + 30일보다 앞`)
+              check(compareYmd(read.to, monthRange(addMonths(monthOf(save.to), 1)).to) >= 0, `read ${i} 끝이 다음 달 말일보다 앞`)
+            }
+            if (i < oldest) {
+              check(read.from === addDays(save.from, -31), `read ${i} 첫날 ${read.from} ≠ save 첫날 − 31일`)
+              check(diffDays(read.from, save.from) >= 30, `read ${i} 첫날이 save 첫날 − 30일보다 뒤`)
+              check(compareYmd(read.from, monthRange(addMonths(monthOf(save.from), -1)).from) <= 0, `read ${i} 첫날이 앞 달 1일보다 뒤`)
+            }
           })
           checked++
         }
@@ -139,15 +167,25 @@ describe('AC-3302.4 read는 이웃 조각 쪽으로 한 달씩 더한 것', () =
   }, 30_000)
 })
 
-describe('AC-3302.5 keepAt = 지금 보는 기간을 다 담는 가장 새 조각', () => {
-  it('AC-3302.5 최근 30일 + 전부 → 0', () => {
+describe('AC-3302.5 keepAt = 비교 범위를 다 담는 가장 새 조각, 없으면 지금 범위, 그것도 없으면 0', () => {
+  it('AC-3302.5 최근 30일 + 전체 기간 → 0 (첫 read가 비교할 지난 30일까지 담음)', () => {
     expect(planLoad(TODAY, recent30, 'all').keepAt).toBe(0)
   })
 
-  it('AC-3302.5 2025년(월별) + 지금 보는 기간 → 0 (첫 read 2024-11-01 ~)', () => {
+  it('AC-3302.5 2025년(월별) + 지금 보는 기간 → 0 (비교할 2024년을 다 담는 read가 없어, 2025년을 다 담는 첫 조각 · 첫 read 2024-10-31 ~)', () => {
     const plan = planLoad(TODAY, yearPick('2025'), 'view')
-    expect(plan.parts[0].read).toEqual({ from: '2024-11-01', to: TODAY })
+    expect(plan.parts[0].read).toEqual({ from: '2024-10-31', to: TODAY })
+    expect(plan.parts.some(({ read }) => read.from <= '2024-01-01' && read.to >= '2025-12-31')).toBe(false)
     expect(plan.keepAt).toBe(0)
+  })
+
+  it('AC-3302.5 2024년 11월(일별) + 지금 보는 기간 → 1 (첫 read 2024-10-31 ~ 은 11월만 담고, 둘째 read 2023-11-01 ~ 2024-12-31이 비교할 10월·작년 11월까지 담음)', () => {
+    const plan = planLoad(TODAY, monthPick('2024-11'), 'view')
+    expect(plan.parts.map(({ read }) => read)).toEqual([
+      { from: '2024-10-31', to: TODAY },
+      { from: '2023-11-01', to: '2024-12-31' },
+    ])
+    expect(plan.keepAt).toBe(1)
   })
 
   it('AC-3302.5 2024년(월별) + 지금 보는 기간 → 1 (둘째 read 2023-01-01 ~ 2024-12-31)', () => {
@@ -156,7 +194,7 @@ describe('AC-3302.5 keepAt = 지금 보는 기간을 다 담는 가장 새 조�
     expect(plan.keepAt).toBe(1)
   })
 
-  it('AC-3302.5 직접 날짜 2024-06-01 ~ 2025-03-31(주별) + 지금 보는 기간 → 0 (어느 read도 다 담지 못함)', () => {
+  it('AC-3302.5 직접 날짜 2024-06-01 ~ 2025-03-31(주별) + 지금 보는 기간 → 0 (어느 read도 비교 범위도 지금 범위도 다 담지 못함)', () => {
     const range = pickRange(TODAY, { kind: 'custom', unit: 'week', from: '2024-06-01', to: '2025-03-31' }, false)
     const plan = planLoad(TODAY, range, 'view')
     expect(plan.parts.length).toBeGreaterThan(1)
@@ -173,8 +211,11 @@ describe('AC-3302.5 keepAt = 지금 보는 기간을 다 담는 가장 새 조�
 
 // ── partSave ────────────────────────────────────────────
 
-const monthRow = (month: string) => ({ month, partial: false }) as unknown as MonthPayload
-const dayRow = (day: string) => ({ day, partial: false }) as unknown as DayPayload
+// 재방문 칸은 Worker 값(after30 숫자). 가장 새 조각이 아닌 조각은 after30만 null로 보낸다(AC-3302.7)
+const REVISIT = { cohort: 5, within7: 1, within14: 2, within30: 3, after30: 1 }
+const UNSURE = { ...REVISIT, after30: null }
+const monthRow = (month: string, revisit: object = REVISIT) => ({ month, partial: false, revisit }) as unknown as MonthPayload
+const dayRow = (day: string, revisit: object = REVISIT) => ({ day, partial: false, revisit }) as unknown as DayPayload
 const sectionRow = (month: string) => ({ v: 1, month, partial: false }) as unknown as MonthSections
 
 function loaded(read: DateRange, extra: Partial<StatsLoaded> = {}): StatsLoaded {
@@ -191,15 +232,15 @@ function loaded(read: DateRange, extra: Partial<StatsLoaded> = {}): StatsLoaded 
 }
 
 describe('AC-3302.6 partSave는 save 안의 줄만 저장한다', () => {
-  const part = planLoad(TODAY, recent30, 'all').parts[1] // save 2022-12-01 ~ 2024-11-30, read 2022-11-01 ~ 2024-12-31
+  const part = planLoad(TODAY, recent30, 'all').parts[1] // save 2022-12-01 ~ 2024-11-30, read 2022-10-31 ~ 2024-12-31
   const months = ['2022-11', '2022-12', '2023-06', '2024-11', '2024-12']
   const dayList = ['2022-11-30', '2022-12-01', '2023-06-15', '2024-11-30', '2024-12-01']
 
-  it('AC-3302.6 달·날·세 칸은 save 안의 것만, covered는 save와 겹친 구간, source bit', () => {
-    const view = loaded(part.read, { months: months.map(monthRow), days: dayList.map(dayRow), sections: months.map(sectionRow) })
+  it('AC-3302.6 달·날·세 칸은 save 안의 것만, covered는 save와 겹친 구간, source bit (둘째 조각이라 달·날 줄의 after30은 null, AC-3302.7)', () => {
+    const view = loaded(part.read, { months: months.map((month) => monthRow(month)), days: dayList.map((ymd) => dayRow(ymd)), sections: months.map(sectionRow) })
     expect(partSave(view, part)).toEqual({
-      months: ['2022-12', '2023-06', '2024-11'].map(monthRow),
-      days: ['2022-12-01', '2023-06-15', '2024-11-30'].map(dayRow),
+      months: ['2022-12', '2023-06', '2024-11'].map((month) => monthRow(month, UNSURE)),
+      days: ['2022-12-01', '2023-06-15', '2024-11-30'].map((ymd) => dayRow(ymd, UNSURE)),
       sections: ['2022-12', '2023-06', '2024-11'].map(sectionRow),
       covered: { from: '2022-12-01', to: '2024-11-30' },
       source: 'bit',
@@ -226,11 +267,59 @@ describe('AC-3302.6 partSave는 save 안의 줄만 저장한다', () => {
     const [only] = planLoad(TODAY, recent30, 'view').parts
     const view = loaded(only.read, {
       covered: { from: '2026-09-01', to: '2026-11-08' },
-      months: ['2026-09', '2026-10', '2026-11'].map(monthRow),
-      days: ['2026-09-01', '2026-10-15', '2026-11-09'].map(dayRow),
+      months: ['2026-09', '2026-10', '2026-11'].map((month) => monthRow(month)),
+      days: ['2026-09-01', '2026-10-15', '2026-11-09'].map((ymd) => dayRow(ymd)),
       sections: ['2026-09', '2026-10', '2026-11'].map(sectionRow),
     })
     expect(partSave(view, only)).toEqual({ months: view.months, days: view.days, covered: view.covered, sections: view.sections, source: 'bit' })
+  })
+})
+
+describe("AC-3302.7 가장 새 조각이 아닌 조각은 '30일 넘어 다시 옴'(after30)을 null로 보낸다", () => {
+  // 조각의 save 첫 달·끝 달 줄과 첫날·끝날 줄(모두 save 안이라 걸러지지 않는다)
+  const monthsOf = ({ save }: LoadPart) => [monthOf(save.from), monthOf(save.to)]
+  const daysOf = ({ save }: LoadPart) => [save.from, save.to]
+  const viewFor = (part: LoadPart) =>
+    loaded(part.read, {
+      months: monthsOf(part).map((month) => monthRow(month)),
+      days: daysOf(part).map((ymd) => dayRow(ymd)),
+      sections: monthsOf(part).map(sectionRow),
+    })
+  const revisits = (input: ReturnType<typeof partSave>) => [...input.months, ...input.days].map((row) => row.revisit)
+
+  it('AC-3302.7 최근 30일 + 전체 기간: 첫 조각 줄은 after30이 Worker 값, 둘째 ~ 넷째 조각 줄은 null이고 cohort·within7·14·30·다른 칸·세 칸·covered는 그대로', () => {
+    const { parts } = planLoad(TODAY, recent30, 'all')
+    expect(parts).toHaveLength(4)
+    parts.forEach((part, i) => {
+      const view = viewFor(part)
+      const revisit = i === 0 ? REVISIT : UNSURE
+      expect(partSave(view, part)).toEqual({
+        months: monthsOf(part).map((month) => monthRow(month, revisit)),
+        days: daysOf(part).map((ymd) => dayRow(ymd, revisit)),
+        sections: monthsOf(part).map(sectionRow),
+        covered: part.save,
+        source: 'bit',
+      })
+      // Worker 답은 바꾸지 않는다
+      expect([...view.months!, ...view.days!].map((row) => row.revisit)).toEqual([REVISIT, REVISIT, REVISIT, REVISIT])
+    })
+  })
+
+  it('AC-3302.7 2025년 8월 일별 + 지금 보는 기간(조각 둘): 둘째(2024-08-01 ~ 11-30)의 줄은 null, 첫 조각은 Worker 값', () => {
+    const { parts } = planLoad(TODAY, monthPick('2025-08'), 'view')
+    expect(saves(parts)).toEqual([
+      { from: '2024-12-01', to: TODAY },
+      { from: '2024-08-01', to: '2024-11-30' },
+    ])
+    expect(revisits(partSave(viewFor(parts[0]), parts[0]))).toEqual([REVISIT, REVISIT, REVISIT, REVISIT])
+    expect(revisits(partSave(viewFor(parts[1]), parts[1]))).toEqual([UNSURE, UNSURE, UNSURE, UNSURE])
+  })
+
+  it('AC-3302.7 조각 하나인 계획(지금 보는 기간 · 최근 2년)은 after30도 Worker 값 그대로다', () => {
+    for (const span of ['view', '2y'] as const) {
+      const [only] = planLoad(TODAY, recent30, span).parts
+      expect(revisits(partSave(viewFor(only), only))).toEqual([REVISIT, REVISIT, REVISIT, REVISIT])
+    }
   })
 })
 
@@ -280,7 +369,7 @@ describe('AC-3301.4 다른 기간의 안내 줄 규칙', () => {
     expect(hint(recent30, '2y')).toMatch(/1분쯤 걸려요\.$/)
   })
 
-  it("AC-3301.4 '한 번 저장한 달은 남으니…'는 2020년부터 전부일 때만 붙는다", () => {
+  it("AC-3301.4 '한 번 저장한 달은 남으니…'는 전체 기간일 때만 붙는다", () => {
     expect(hint(yearPick('2020'), 'all')).toBe(
       '2019년 1월 1일 – 2026년 11월 9일을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
     )
@@ -305,7 +394,7 @@ describe('AC-3303.4 읽는 중 줄의 달 글', () => {
 })
 
 describe('AC-3303.5 다 저장한 상자 글', () => {
-  it('AC-3303.5 최근 30일 + 전부, 끝난 날 어제: 해를 넘으면 양 끝에 해', () => {
+  it('AC-3303.5 최근 30일 + 전체 기간, 끝난 날 어제: 해를 넘으면 양 끝에 해', () => {
     expect(doneText(planLoad(TODAY, recent30, 'all'), '2026-11-08')).toEqual([
       '2020년 1월 1일 – 2026년 11월 8일을 저장했어요.',
       '이제 위쪽 기간 고르기에서 2020년부터 어느 달·해든 볼 수 있어요.',
