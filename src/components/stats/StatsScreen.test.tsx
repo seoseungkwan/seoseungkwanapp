@@ -2295,24 +2295,25 @@ describe('AC-2902.2 통계 화면 비트 저장', () => {
 })
 
 // ── 불러올 기간을 나눠 차례로 읽고 저장·멈춤·이어서 (stats-load-range TASK-5, REQ-3303) ──
-// 오늘은 이 파일의 TODAY(2026-11-13)이고 '최근 30일'을 보는 중이다. 2020년부터 전부는 2년씩 넷(keepAt 0)이다(loadPlan.ts planLoad)
+// 오늘은 이 파일의 TODAY(2026-11-13)이고 '최근 30일'을 보는 중이다. 전체 기간은 2년씩 넷(keepAt 0)이다(loadPlan.ts planLoad)
 describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어서', () => {
   const YESTERDAY = '2026-11-12'
-  const ALL = '2020년부터 전부'
+  const ALL = '전체 기간'
   const RESUME = '이어서 불러오기'
   const OTHER_VISITS = 4321 // 첫 불러오기 말고 다른 답의 보고 숫자(보고 문장은 첫 조각 답으로만 정한다)
-  // 넷의 read(새것부터, 이웃 조각 쪽으로 한 달씩 더 읽는다)
+  // 넷의 read(새것부터, 이웃 조각 쪽으로 31일씩 더 읽는다)
   const ALL_READS: DateRange[] = [
-    { from: '2024-11-01', to: TODAY },
-    { from: '2022-11-01', to: '2024-12-31' },
-    { from: '2020-11-01', to: '2022-12-31' },
+    { from: '2024-10-31', to: TODAY },
+    { from: '2022-10-31', to: '2024-12-31' },
+    { from: '2020-10-31', to: '2022-12-31' },
     { from: '2020-01-01', to: '2020-12-31' },
   ]
-  // 넷이 저장할 것(partSave): 아래 답의 날 줄(read 첫날·40일 뒤·끝날) 가운데 save 안의 날, 덮은 기간은 save와 겹친 곳
+  // 넷이 저장할 것(partSave): 아래 답의 날 줄(read 첫날·40일 뒤·끝날) 가운데 save 안의 날, 덮은 기간은 save와 겹친 곳.
+  // 둘째 ~ 넷째(가장 새 조각이 아님)는 날 줄의 after30이 null이다(AC-3302.7)
   const ALL_SAVES = [
-    { days: ['2024-12-11', TODAY], covered: { from: '2024-12-01', to: YESTERDAY } },
-    { days: ['2022-12-11'], covered: { from: '2022-12-01', to: '2024-11-30' } },
-    { days: ['2020-12-11'], covered: { from: '2020-12-01', to: '2022-11-30' } },
+    { days: ['2024-12-10', TODAY], covered: { from: '2024-12-01', to: YESTERDAY } },
+    { days: ['2022-12-10'], covered: { from: '2022-12-01', to: '2024-11-30' } },
+    { days: ['2020-12-10'], covered: { from: '2020-12-01', to: '2022-11-30' } },
     { days: ['2020-01-01', '2020-02-10'], covered: { from: '2020-01-01', to: '2020-11-30' } },
   ]
   const ALL_MONTHS = ['2024년 12월 – 2026년 11월', '2022년 12월 – 2024년 11월', '2020년 12월 – 2022년 11월', '2020년 1월 – 2020년 11월']
@@ -2440,7 +2441,7 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     expect(pageText()).not.toContain('을 저장했어요.')
   })
 
-  it('AC-3303.2 2020년부터 전부는 넷을 새것부터 읽고, 다음 요청은 앞 조각의 저장이 끝난 뒤에야 보낸다', async () => {
+  it('AC-3303.2 전체 기간은 넷을 새것부터 읽고, 다음 요청은 앞 조각의 저장이 끝난 뒤에야 보낸다', async () => {
     const { port } = await readyWith()
     const saves: (() => void)[] = []
     vi.mocked(saveStats).mockImplementation(() => new Promise((resolve) => void saves.push(() => resolve({ saved: 1 }))))
@@ -2475,14 +2476,19 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     )
     expect('keep' in loads[0]!).toBe(false)
     expect(vi.mocked(saveStats).mock.calls.map(([input]) => input)).toStrictEqual(
-      ALL_SAVES.map(({ days, covered }) => ({ months: [], days: days.map((ymd) => day(ymd)), covered, source: 'bit' })),
+      ALL_SAVES.map(({ days, covered }, k) => ({
+        months: [],
+        days: days.map((ymd) => (k === 0 ? day(ymd) : { ...day(ymd), revisit: { ...day(ymd).revisit, after30: null } })),
+        covered,
+        source: 'bit',
+      })),
     )
     expect(listStatsRxGroups).toHaveBeenCalledTimes(2)
     // 오늘 진료 끝으로 눌렀으니 저장한 끝날은 오늘이다(AC-3303.5)
     expect(await screen.findByText('2020년 1월 1일 – 2026년 11월 13일을 저장했어요.')).toBeTruthy()
   })
 
-  it('AC-3303.3 최근 30일 + 전부: 보고 문장은 첫 조각 답이고, 처방별 신환·재진과 세 칸은 첫 조각(keepAt) 뒤 한 번만 최근 30일로 묻는다', async () => {
+  it('AC-3303.3 최근 30일 + 전체 기간: 보고 문장은 첫 조각 답이고, 처방별 신환·재진과 세 칸은 첫 조각(keepAt) 뒤 한 번만 최근 30일로 묻는다', async () => {
     const { port, fake } = await readyWith()
     pickSpan(ALL)
     pressStart()
@@ -2506,7 +2512,7 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     const { port, fake } = await readyWith()
     await pickYear2024()
     pressStart()
-    expect((await finishPart(port, 1)).args).toEqual({ from: '2024-11-01', to: TODAY })
+    expect((await finishPart(port, 1)).args).toEqual({ from: '2024-10-31', to: TODAY })
     await waitFor(() => expect(rowsSent(port)).toHaveLength(2))
     expect(splitsSent(fake.sent)).toEqual([]) // 첫 조각(keep: false)을 읽은 뒤에는 묻지 않는다
     expect(sectionsSent(fake.sent)).toEqual([])
