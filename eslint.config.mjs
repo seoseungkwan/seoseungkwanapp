@@ -38,6 +38,10 @@ const CLIENT_IMPORT_SYNTAX = { selector: 'ImportExpression[source.value=/(^|\\/)
 const EXTENSION_STORAGE_MESSAGE = '크롬 확장은 chrome.storage·브라우저 저장소를 쓸 수 없다(도우미 답이 확장 안에 남는다)'
 const EXTENSION_NETWORK_MESSAGE = '크롬 확장은 네트워크를 쓸 수 없다(도우미 답은 그 웹 연결로만 간다)'
 const EXTENSION_CONSOLE_MESSAGE = '크롬 확장은 console을 쓸 수 없다(도우미 답이 로그에 남는다)'
+// ERP 마감일지 확장(AC-3601.5): 설정만 chrome.storage.local에 둔다. 도우미 답이 웹 저장소·로그·네트워크로 새지 않게
+const ERP_EXTENSION_NETWORK_MESSAGE = 'ERP 확장은 네트워크를 쓸 수 없다(도우미 답은 ERP 화면 칸으로만 간다)'
+const ERP_EXTENSION_STORAGE_MESSAGE = 'ERP 확장은 웹 저장소를 쓸 수 없다(설정은 chrome.storage.local에만, 도우미 답은 저장하지 않는다)'
+const ERP_EXTENSION_CONSOLE_MESSAGE = 'ERP 확장은 console을 쓸 수 없다(도우미 답이 로그에 남는다)'
 // 통계 저장(AC-507.3): 검사한 저장 모양만 다룬다. 환자 줄을 읽거나 만드는 코드를 부르지 못한다
 const STATS_STORAGE_IMPORT_MESSAGE =
   '통계 저장(lib/storage/stats.ts)은 lib/parsers·lib/bridge·workers를 import할 수 없고, lib/analytics는 dates·coverage만 쓴다'
@@ -323,7 +327,7 @@ function bridgeSyntax({ declaresExtensionId }) {
 
 const eslintConfig = [
   {
-    ignores: ['.next/', 'node_modules/', '.claude/', 'scripts/', 'phases/', 'next-env.d.ts', 'extension/dist/'],
+    ignores: ['.next/', 'node_modules/', '.claude/', 'scripts/', 'phases/', 'next-env.d.ts', 'extension/dist/', 'extension-erp/dist/'],
   },
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
@@ -427,6 +431,26 @@ const eslintConfig = [
           message: EXTENSION_STORAGE_MESSAGE,
         },
         CLIENT_IMPORT_SYNTAX,
+      ],
+      'no-console': 'error',
+    },
+  },
+  {
+    // ERP 마감일지 확장(AC-3601.5): 시험 파일·하위 폴더도 같은 규칙 아래. chrome.storage(설정)는 된다
+    files: ['extension-erp/src/**'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...NETWORK.map((name) => ({ name, message: ERP_EXTENSION_NETWORK_MESSAGE })),
+        ...STORAGE.map((name) => ({ name, message: ERP_EXTENSION_STORAGE_MESSAGE })),
+        { name: 'console', message: ERP_EXTENSION_CONSOLE_MESSAGE },
+      ],
+      // window·self·globalThis·navigator 등 어느 객체를 거쳐도 막는다
+      'no-restricted-properties': [
+        'error',
+        ...[...NETWORK, 'sendBeacon'].map((property) => ({ property, message: ERP_EXTENSION_NETWORK_MESSAGE })),
+        ...STORAGE.map((property) => ({ property, message: ERP_EXTENSION_STORAGE_MESSAGE })),
+        { property: 'console', message: ERP_EXTENSION_CONSOLE_MESSAGE },
       ],
       'no-console': 'error',
     },
