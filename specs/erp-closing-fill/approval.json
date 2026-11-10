@@ -1,11 +1,12 @@
 {
   "status": "approved",
   "feature": "erp-closing-fill",
-  "approved_at": "2026-11-10T06:28:08Z",
+  "approved_at": "2026-11-10T07:01:22Z",
   "approved_via": "user-prompt",
   "session_id": "7dfccf16-a5c0-48d3-a66c-5cbc7f5d8080",
-  "spec_sha256": "8417c09e20b8192e43f5a096fbeb8c1d4e36ba88a470416465fe9fe939785f7d",
+  "spec_sha256": "4b577b123d150d3ce449a8e58821b27a381be2bd27c67ef15a5574aeb41b9269",
   "scope": [
+    ".gitignore",
     "eslint.config.mjs",
     "extension-erp/README.md",
     "extension-erp/manifest.json",
@@ -58,6 +59,7 @@
     "package.json",
     "specs/erp-closing-fill/notes/check-2026-11-09.md",
     "specs/erp-closing-fill/notes/erp-screen-check.md",
+    "src/b2b-merge.test.ts",
     "src/lib/bridge/client.test.ts",
     "src/lib/bridge/commands.json",
     "src/lib/bridge/handshake.test.ts",

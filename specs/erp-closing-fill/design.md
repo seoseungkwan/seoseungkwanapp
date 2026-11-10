@@ -72,7 +72,7 @@ type ClosingDay = {
 ## 4. 새 확장 `extension-erp/`
 | 파일 | 하는 일 | TASK |
 |---|---|---|
-| `manifest.json` | MV3, 'ERP 마감일지 채우기' 0.1.0, permissions [nativeMessaging, storage], background `background.js`(module), content_scripts [{ matches [`https://erp.minesolution.com/*`], js [`content.js`] }], web_accessible_resources [{ resources [`main.js`·`cells.js`·`fill.js`·`panel.js`·`types.js`], matches 같은 하나 }], options_page `options.html`, key | 1 |
+| `manifest.json` | MV3, 'ERP 마감일지 채우기' 0.1.0, permissions [nativeMessaging, storage], background `background.js`(module), content_scripts [{ matches [`https://erp.minesolution.com/*`], js [`content.js`] }], web_accessible_resources [{ resources [`main.js`·`cells.js`·`fill.js`·`panel.js`·`settings.js`·`types.js`], matches 같은 하나 }], options_page `options.html`, key | 1 |
 | `src/types.ts` | 2절 답 모양·`GROUP_KEYS`(2절 차례)·`RSV_ROWS`·`HOST_NAME`·`Settings`·설정 이름 | 1 |
 | `src/settings.ts` | `DEFAULTS`, `load()`/`save()`, `toGroups(settings)`(코드 있는 항목만 GROUP_KEYS 차례), `search(codes, text)` | 5 |
 | `options.html`·`src/options.ts` | 설정 화면(목업대로) | 5 |

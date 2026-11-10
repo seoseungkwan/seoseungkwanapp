@@ -11,9 +11,9 @@
 ## TASK-1: 새 확장 틀 — 이름표(ID)·권한·답 모양
 - REQ: REQ-3601
 - AC: AC-3601.1, AC-3601.5
-- Files: extension-erp/manifest.json, extension-erp/tsconfig.json, extension-erp/src/types.ts, extension-erp/src/manifest.test.ts, vitest.config.ts, eslint.config.mjs, tsconfig.json, package.json
+- Files: extension-erp/manifest.json, extension-erp/tsconfig.json, extension-erp/src/types.ts, extension-erp/src/manifest.test.ts, vitest.config.ts, eslint.config.mjs, tsconfig.json, package.json, src/b2b-merge.test.ts, .gitignore
 - Tests: extension-erp/src/manifest.test.ts
-- TDD: required — RSA 2048 열쇠를 새로 만들어 공개키(DER base64)만 manifest `key`에 넣는다(개인키는 저장하지 않음). 시험: MV3·이름·permissions가 정확히 [nativeMessaging, storage]·content_scripts와 web_accessible_resources의 matches가 `https://erp.minesolution.com/*` 하나·host_permissions·externally_connectable 없음·key로 계산한 ID가 32자 a~p·`HOST_NAME`이 commands.json hostName과 같음·`GROUP_KEYS`가 design.md 2절 차례·`extension-erp/src/*.ts`(시험 제외)에 fetch·XMLHttpRequest·WebSocket·console·localStorage·sessionStorage 없음. vitest include에 `extension-erp/**/*.test.ts`, 루트 tsconfig exclude와 eslint(dist 무시, extension-erp/src에 네트워크·console·웹 저장소 금지)에 extension-erp, package.json에 `ext-erp:build`(tsc + manifest·options.html 복사)
+- TDD: required — RSA 2048 열쇠를 새로 만들어 공개키(DER base64)만 manifest `key`에 넣는다(개인키는 저장소에 넣지 않음). 시험: MV3·이름·permissions가 정확히 [nativeMessaging, storage]·content_scripts와 web_accessible_resources의 matches가 `https://erp.minesolution.com/*` 하나·host_permissions·externally_connectable 없음·key로 계산한 ID가 32자 a~p·`HOST_NAME`이 commands.json hostName과 같음·`GROUP_KEYS`가 design.md 2절 차례·`extension-erp/src/*.ts`(시험 제외)에 fetch·XMLHttpRequest·WebSocket·console·localStorage·sessionStorage 없음. vitest include에 `extension-erp/**/*.test.ts`, 루트 tsconfig exclude와 eslint(dist 무시, extension-erp/src에 네트워크·console·웹 저장소 금지)에 extension-erp, package.json에 `ext-erp:build`(tsc + manifest·options.html 복사)
 - 차례: Phase 0
 
 ## TASK-2: 도우미 — 새 확장 허용과 부른 쪽마다 명령 나눔
