@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
-using Precheck.Core.Stats;
 
 namespace Erp.Core.Closing;
 
@@ -50,8 +49,8 @@ public sealed class ClosingCodesResult
 
 /// <summary>
 /// closing.codes(REQ-3602, design.md 3-2·3-3): 어제까지 365일 동안 이 병원 외래 진료에 나온 처방 코드를 진료 수 차례로 2,000개까지,
-/// 이름은 비트 코드표 첫 줄. 코드 목록은 새 문장 없이 Sql.TrendTotalsSql(진료 수)·StatsSql.CodeNamesSql(이름)을 쓰고, 예약 메모 목록은 ClosingSql.MemoKindsSql.
-/// 환자 줄은 읽지 않는다(코드·이름·수만).
+/// 이름은 비트 코드표 첫 줄. 코드·진료 수·이름은 문장 하나 ClosingSql.CodeListSql(50초, TASK-16 AC-3616.3)로 읽고, 예약 메모 목록은 ClosingSql.MemoKindsSql(15초).
+/// 환자 줄은 읽지 않는다(코드·이름·수만). 예약 메모 번호 규칙 MemoKind는 closing.day 예약 표(ClosingDay)도 같이 쓴다(AC-3616.1).
 /// </summary>
 public static class ClosingCodes
 {
@@ -68,7 +67,7 @@ public static class ClosingCodes
         @"(?:[\u0000-\u001F\u007F-\u009F\u2028\u2029]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF])+",
         RegexOptions.CultureInvariant);
 
-    // 비트 예약 메모 코드 'Memo14' → 예약의 RsvRefMem '14'
+    // 비트 예약 메모 코드 'Memo14' → 예약의 RsvRefMem '14'(대소문자 무시). 예약 표의 옛 줄도 'Memo1' 꼴이다(AC-3616.1)
     private static readonly Regex MemoNumber = new Regex(@"^Memo([0-9]+)\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly IReadOnlyDictionary<string, object?> NoValues = new Dictionary<string, object?>();
@@ -80,59 +79,53 @@ public static class ClosingCodes
         var first = end.AddDays(-Days);
         var last = end.AddDays(-1);
 
-        // Sql.TrendTotalsSql: 반열린 기간(@from 0시 ≤ 접수 시각 < 오늘 0시), 원본 RxDiagnosisTrend.Command처럼 Char(12)
-        var totalArgs = new Dictionary<string, object?>(StringComparer.Ordinal)
+        // CodeListSql: 반열린 기간(@from 0시 ≤ 접수 시각 < 오늘 0시) Char(12)와 코드표 줄을 고를 첫날·마지막 날 Char(8)(design.md 3-2)
+        var listArgs = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["@from"] = Key(first) + "0000",
             ["@to"] = Key(end) + "0000",
+            ["@first"] = Key(first),
+            ["@last"] = Key(last),
             ["@hospital"] = hospitalScope,
         };
 
-        // StatsSql.CodeNamesSql: 원본 TrendDataSource.LoadCodesForRange처럼 비교 기간 = 같은 기간, Char(8)이고 끝은 마지막 날(StatsRows.Read와 같음)
-        var nameArgs = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["@from"] = Key(first),
-            ["@to"] = Key(last),
-            ["@priorFrom"] = Key(first),
-            ["@priorTo"] = Key(last),
-        };
-
-        var totals = ClosingRead.Query(db, Sql.TrendTotalsSql, totalArgs, Sql.TrendTimeout);
-        var catalog = ClosingRead.Query(db, StatsSql.CodeNamesSql, nameArgs, Sql.TrendTimeout);
-        var memos = ClosingRead.Query(db, ClosingSql.MemoKindsSql, NoValues);
-        return new ClosingCodesResult(Codes(totals, Names(catalog)), Kinds(memos));
+        var list = ClosingRead.Query(db, ClosingSql.CodeListSql, listArgs, ClosingSql.CodesTimeout);
+        var memos = ClosingRead.Query(db, ClosingSql.MemoKindsSql, NoValues, Sql.MetaTimeout);
+        return new ClosingCodesResult(Codes(list), Kinds(memos));
     }
 
-    /// <summary>코드마다(앞뒤 공백을 뺀 대문자) 원본 정렬의 첫 줄 이름(StatsRows.CodeNames와 같은 고르기).</summary>
-    private static Dictionary<string, string?> Names(IReadOnlyList<IReadOnlyList<object?>> catalog)
+    /// <summary>
+    /// 예약 메모 번호 하나(AC-3616.1): 앞뒤 공백을 떼고, 'Memo'+숫자(대소문자 무시)면 숫자만 남긴다. 다른 꼴('A1'·'MemoA'·'Memo 1')은 앞뒤 공백만 뗀다.
+    /// closing.codes kinds와 closing.day reservations.kinds가 같은 번호가 되도록 둘 다 이 함수를 쓴다.
+    /// </summary>
+    public static string MemoKind(string? raw)
     {
-        var names = new Dictionary<string, string?>(StringComparer.Ordinal);
-        foreach (var row in catalog)
-        {
-            if (row == null || row.Count < 2) throw ClosingRead.ReadFailed();
-            var code = ClosingDay.NormalCode(ClosingRead.Text(row[0]));
-            if (code.Length == 0 || names.ContainsKey(code)) continue;
-            names.Add(code, CleanName(ClosingRead.Text(row[1])));
-        }
-        return names;
+        var kind = (raw ?? "").Trim();
+        var number = MemoNumber.Match(kind);
+        return number.Success ? number.Groups[1].Value : kind;
     }
 
-    /// <summary>공백을 떼어 같아진 코드는 진료 수를 더해 한 줄, 빈 코드는 뺀다. 진료 수 많은 차례(같으면 코드 글자 차례)로 2,000개까지.</summary>
-    private static IReadOnlyList<ClosingCode> Codes(IReadOnlyList<IReadOnlyList<object?>> totals, Dictionary<string, string?> names)
+    /// <summary>
+    /// CodeListSql 줄 [코드, 진료 수, 이름]: 공백을 떼어 같아진 코드는 진료 수를 더해 한 줄(이름은 먼저 있는 것), 빈 코드는 뺀다.
+    /// 진료 수 많은 차례(같으면 코드 글자 차례)로 2,000개까지. 이름은 revenue.days 규칙으로 지운다(CleanName).
+    /// </summary>
+    private static IReadOnlyList<ClosingCode> Codes(IReadOnlyList<IReadOnlyList<object?>> list)
     {
         var merged = new Dictionary<string, ClosingCode>(StringComparer.Ordinal);
-        foreach (var row in totals)
+        foreach (var row in list)
         {
-            if (row == null || row.Count < 2) throw ClosingRead.ReadFailed();
+            if (row == null || row.Count < 3) throw ClosingRead.ReadFailed();
             var code = ClosingDay.NormalCode(ClosingRead.Text(row[0]));
             var visits = ClosingRead.Number(row[1]);
+            var name = CleanName(ClosingRead.Text(row[2]));
             if (code.Length == 0) continue;
             if (merged.TryGetValue(code, out var same))
             {
                 same.Visits += visits;
+                same.Name ??= name;
                 continue;
             }
-            merged[code] = new ClosingCode { Code = code, Name = names.TryGetValue(code, out var name) ? name : null, Visits = visits };
+            merged[code] = new ClosingCode { Code = code, Name = name, Visits = visits };
         }
         return merged.Values
             .OrderByDescending(code => code.Visits)
@@ -149,9 +142,7 @@ public static class ClosingCodes
         foreach (var row in memos)
         {
             if (row == null || row.Count < 2) throw ClosingRead.ReadFailed();
-            var kind = ClosingRead.Text(row[0]) ?? "";
-            var number = MemoNumber.Match(kind);
-            if (number.Success) kind = number.Groups[1].Value;
+            var kind = MemoKind(ClosingRead.Text(row[0]));
             if (kind.Length == 0 || !seen.Add(kind)) continue;
             kinds.Add(new ClosingMemoKind { Kind = kind, Name = CleanName(ClosingRead.Text(row[1])) });
         }

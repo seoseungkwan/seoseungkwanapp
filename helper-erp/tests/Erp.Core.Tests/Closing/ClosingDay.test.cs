@@ -867,6 +867,61 @@ public class ClosingDayTests
         Assert.Contains("r.RsvDtm>=@from AND r.RsvDtm<@to", kinds, StringComparison.Ordinal);
     }
 
+    // ---- AC-3616.1 예약 메모 'Memo' 번호 합치기(TASK-16, '2번빼고 고쳐' 11번) ------------------------------
+
+    private static long[] Four(ClosingReservationKind kind) => new[] { kind.Total, kind.Visited, kind.Changed, kind.Canceled };
+
+    [Fact(DisplayName = "AC-3616.1 예약 메모 'Memo1'·'memo1'·' 1 '·'1' 네 줄 → '1' 한 줄에 total·visited·changed·canceled 합, 'A1'·'MemoA'·'Memo 1' 같은 다른 꼴은 그대로, 번호 글자 차례")]
+    public void MergesMemoNumbers()
+    {
+        var rig = new DayRig();
+        rig.Db.Answer(ClosingSql.ReservationKindsSql, _ => new[]
+        {
+            new object?[] { "", 1L, 0L, 0L, 1L },
+            new object?[] { "1", 4L, 3L, 1L, 1L },
+            new object?[] { " 1 ", 3L, 2L, 0L, 1L },
+            new object?[] { "14", 2L, 2L, 0L, 0L },
+            new object?[] { "A1", 6L, 5L, 0L, 0L },
+            new object?[] { "Memo 1", 9L, 9L, 0L, 0L },
+            new object?[] { "Memo1", 1L, 1L, 0L, 0L },
+            new object?[] { "Memo14", 7L, 6L, 1L, 0L },
+            new object?[] { "MemoA", 8L, 8L, 0L, 0L },
+            new object?[] { "memo1", 2L, 1L, 1L, 0L },
+            new object?[] { "MEMO2", 5L, 4L, 0L, 1L },
+        });
+        var kinds = rig.Read().Reservations.Kinds;
+
+        Assert.Equal(new[] { "", "1", "14", "2", "A1", "Memo 1", "MemoA" }, kinds.Select(kind => kind.Kind));
+        Assert.Equal(new long[] { 1, 0, 0, 1 }, Four(kinds[0]));
+        Assert.Equal(new long[] { 4 + 3 + 1 + 2, 3 + 2 + 1 + 1, 1 + 0 + 0 + 1, 1 + 1 + 0 + 0 }, Four(kinds[1]));
+        Assert.Equal(new long[] { 2 + 7, 2 + 6, 0 + 1, 0 }, Four(kinds[2]));
+        Assert.Equal(new long[] { 5, 4, 0, 1 }, Four(kinds[3]));
+        Assert.Equal(new long[] { 6, 5, 0, 0 }, Four(kinds[4]));
+        Assert.Equal(new long[] { 9, 9, 0, 0 }, Four(kinds[5]));
+        Assert.Equal(new long[] { 8, 8, 0, 0 }, Four(kinds[6]));
+    }
+
+    [Fact(DisplayName = "AC-3616.1 예약 메모 번호 규칙은 closing.codes kinds와 같다(같은 메모 글자 → 같은 번호), 예약 환자 수는 그대로")]
+    public void MemoNumbersMatchCodeKinds()
+    {
+        var raws = new[] { "Memo1", "memo14", " Memo20 ", "22", "A1", "MemoA", "Memo 1", "MEMO007" };
+
+        var rig = new DayRig();
+        rig.Db.Answer(ClosingSql.ReservationKindsSql, _ => raws.Select(raw => new object?[] { raw, 1L, 1L, 0L, 0L }).ToArray());
+        RevenueFake.Row(rig.Db, ClosingSql.ReservationPatientsSql, 8L);
+        var reservations = rig.Read().Reservations;
+
+        var codes = ClosingFake.Quiet();
+        codes.Answer(ClosingSql.MemoKindsSql, _ => raws.Select(raw => new object?[] { raw, "이름" }).ToArray());
+        var kinds = ClosingCodes.Read(codes, Synthetic.Scope, ClosingFake.Day).Kinds;
+
+        Assert.Equal(
+            kinds.Select(kind => kind.Kind).OrderBy(kind => kind, StringComparer.Ordinal),
+            reservations.Kinds.Select(kind => kind.Kind));
+        Assert.Equal(new[] { "007", "1", "14", "20", "22", "A1", "Memo 1", "MemoA" }, reservations.Kinds.Select(kind => kind.Kind));
+        Assert.Equal(8L, reservations.Patients);
+    }
+
     // ---- AC-3605.2 주사 ----------------------------------------------------------------------------
 
     [Fact(DisplayName = "AC-3605.2 injection 묶음이 없으면 injection null이고 HistoryGuard 한 번(revenue.days 안)뿐, InjectionFirstSql은 부르지 않는다")]
@@ -932,7 +987,7 @@ public class ClosingDayTests
     // ---- AC-3606.1 실패면 일부만 답하지 않는다 ---------------------------------------------------------------
 
     public static IEnumerable<object?[]> DayStatements() =>
-        ClosingFake.Statements.Where(sql => sql != ClosingSql.MemoKindsSql)
+        ClosingFake.Statements.Where(sql => sql != ClosingSql.MemoKindsSql && sql != ClosingFake.CodeListSql)
             .Concat(new[] { RevenueSql.FinanceNormal, RevenueSql.FinanceReceivable, RevenueSql.Patients })
             .Select(sql => new object?[] { sql });
 

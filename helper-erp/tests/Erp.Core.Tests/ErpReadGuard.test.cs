@@ -41,7 +41,8 @@ public class ErpReadGuardTests
     [Fact(DisplayName = "AC-3606.1 마감일지 문장은 ErpReadGuard만 받고(기존 Sql.IsAllowed는 모름) 매개변수 표는 ClosingSql.Parameters 그대로다")]
     public void ClosingStatementsPass()
     {
-        Assert.Equal(8, ClosingSql.Parameters.Count);
+        Assert.Equal(9, ClosingSql.Parameters.Count);
+        Assert.True(ClosingSql.Parameters.ContainsKey(ClosingFake.CodeListSql));
         foreach (var pair in ClosingSql.Parameters)
         {
             Assert.True(ErpReadGuard.IsAllowed(pair.Key));
@@ -193,7 +194,7 @@ public class ErpReadGuardTests
         }
     }
 
-    [Fact(DisplayName = "AC-3606.1 closing.day·closing.codes 계산이 DB에 보낸 문장은 하나도 빠짐없이 ErpReadGuard가 받는 문장·매개변수다(마감일지 문장 여덟 모두 돎)")]
+    [Fact(DisplayName = "AC-3606.1 closing.day·closing.codes 계산이 DB에 보낸 문장은 하나도 빠짐없이 ErpReadGuard가 받는 문장·매개변수다(마감일지 문장 아홉 모두 돎)")]
     public void ClosingReadsPassTheGuard()
     {
         var rig = new DayRig()
@@ -208,8 +209,6 @@ public class ErpReadGuardTests
         });
 
         var codesDb = ClosingFake.Quiet();
-        codesDb.Answer(Sql.TrendTotalsSql, _ => new object?[0][]);
-        codesDb.Answer(StatsSql.CodeNamesSql, _ => new object?[0][]);
         var codes = new GuardCheckingDb(codesDb);
         ClosingCodes.Read(codes, Synthetic.Scope, ClosingFake.Day);
 

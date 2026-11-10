@@ -248,10 +248,10 @@ describe('AC-3611.1 Erp.Core 틀', () => {
 })
 
 describe('AC-3610.1 ERP 도우미 판', () => {
-  it('AC-3610.1: helper-erp/Directory.Build.props 한 곳에서 0.1.0, Product는 ERP 도우미, 나머지 설정은 기존 도우미와 같다', () => {
+  it('AC-3610.1: helper-erp/Directory.Build.props 한 곳에서 판을 정하고(TASK-16에서 0.2.0), Product는 ERP 도우미, 나머지 설정은 기존 도우미와 같다', () => {
     const erp = read(path.join(ERP, 'Directory.Build.props'))
     const helper = read(path.join(HELPER, 'Directory.Build.props'))
-    expect(property(erp, 'Version')).toBe('0.1.0')
+    expect(property(erp, 'Version')).toBe('0.2.0')
     expect(property(erp, 'Product')).toBe('Seoseungkwan ERP Helper')
     for (const name of ['Company', 'LangVersion', 'Nullable', 'Deterministic', 'TreatWarningsAsErrors', 'IncludeSourceRevisionInInformationalVersion']) {
       expect(property(erp, name), name).toBe(property(helper, name))
@@ -262,6 +262,14 @@ describe('AC-3610.1 ERP 도우미 판', () => {
     }
     // 기존 도우미 판은 그대로다
     expect(property(helper, 'Version')).toBe('0.5.1')
+  })
+
+  it('AC-3610.4: 이 묶음(TASK-15~19)의 ERP 도우미 판은 0.2.0이고, 기존 도우미 판 0.5.1·웹 LATEST_HELPER 0.5.1·MIN_HELPER 0.3.0은 그대로다', () => {
+    expect(property(read(path.join(ERP, 'Directory.Build.props')), 'Version')).toBe('0.2.0')
+    expect(property(read(path.join(HELPER, 'Directory.Build.props')), 'Version')).toBe('0.5.1')
+    const versions = read(path.join(ROOT, 'src', 'lib', 'bridge', 'versions.ts'))
+    expect(versions).toMatch(/export const LATEST_HELPER = '0\.5\.1'/)
+    expect(versions).toMatch(/export const MIN_HELPER = '0\.3\.0'/)
   })
 })
 

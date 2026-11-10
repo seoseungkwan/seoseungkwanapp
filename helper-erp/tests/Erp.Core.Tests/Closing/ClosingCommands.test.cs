@@ -69,8 +69,15 @@ public class ClosingCommandsTests
 
     private static readonly string Usual = DayArgs(ClosingFake.DayText, G("carm", "CARM1"), G("pt", "MM010"), G("ptVisit", "AA222"));
 
-    /// <summary>CodeNamesSql 한 줄: 코드·이름 뒤 칸들(원본 차례).</summary>
-    private static object?[] CodeName(string code, string? name) => new object?[] { code, name, "", "20200101", "99991231", "1", "", false };
+    /// <summary>도우미 PC 오늘: 마감 일자(2026-11-09) 다음 날. 마감 일자가 오늘보다 뒤면 E-CLOSING-FUTURE-DATE(TASK-16)라 시험 PC 날짜를 정해 둔다.</summary>
+    private static readonly DateTime Today = ClosingFake.Day.AddDays(1);
+
+    /// <summary>오늘보다 뒤 날짜 오류 번호(design.md 2절, TASK-16).</summary>
+    private const string FutureDate = "E-CLOSING-FUTURE-DATE";
+
+    /// <summary>CodeListSql 한 줄: 코드·진료 수·이름(TASK-16).</summary>
+    private static object?[] CodeRow(string code, long visits, string? name, params object?[] extra) =>
+        new object?[] { code, visits, name }.Concat(extra).ToArray();
 
     /// <summary>
     /// 등록된 PC. 그날 진료 둘: 신환 V001(씨암 줄 30,000) · 재진 V002(물리치료내원 AA222 줄 0 · 물리치료 MM010 두 줄 20,000).
@@ -78,7 +85,7 @@ public class ClosingCommandsTests
     /// </summary>
     private static Rig Ready()
     {
-        var rig = new Rig().Registered();
+        var rig = new Rig { Today = Today }.Registered();
         var db = rig.Session;
         ClosingFake.Quiet(db);
         db.Answer(ClosingSql.DayVisitsSql, _ => new[]
@@ -92,12 +99,11 @@ public class ClosingCommandsTests
             new object?[] { "V002", "AA222", 1L, 0m },
             new object?[] { "V002", "MM010", 2L, 20000m },
         });
-        db.Answer(Sql.TrendTotalsSql, _ => new[]
+        db.Answer(ClosingFake.CodeListSql, _ => new[]
         {
-            new object?[] { "CARM1", 12L, Fake.Chart },
-            new object?[] { "sono1 ", 7L, Fake.Name },
+            CodeRow("CARM1", 12L, "C-arm 유도", Fake.Chart),
+            CodeRow("sono1 ", 7L, "비급여초음파", Fake.Name),
         });
-        db.Answer(StatsSql.CodeNamesSql, _ => new[] { CodeName("CARM1", "C-arm 유도"), CodeName("SONO1", "비급여초음파") });
         db.Answer(ClosingSql.MemoKindsSql, _ => new[] { new object?[] { "Memo1", "충격파", Fake.Chart } });
         return rig;
     }
@@ -114,6 +120,11 @@ public class ClosingCommandsTests
 
     private static IEnumerable<string> ReadStatements() =>
         ClosingFake.Statements.Concat(RevenueFake.EightStatements).Concat(new[] { RevenueSql.HistoryGuard, Sql.TrendTotalsSql, StatsSql.CodeNamesSql });
+
+    /// <summary>등록 저장소 폴더의 파일 이름과 바이트(읽기만 해도 깨진 파일을 옆으로 옮기므로, 그대로면 닿지 않은 것이다).</summary>
+    private static string[] StoreFiles(Rig rig) =>
+        System.IO.Directory.GetFiles(rig.Folder).Select(file => System.IO.Path.GetFileName(file) + ":" + Convert.ToBase64String(System.IO.File.ReadAllBytes(file)))
+            .OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
     // ---- 이어 붙이기(AC-3603.1·AC-3601.3) ---------------------------------------------------------
 
@@ -161,9 +172,9 @@ public class ClosingCommandsTests
         Assert.Equal("충격파", kind.GetProperty("name").GetString());
 
         Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql }, rig.Session.Sqls.Take(2));
-        var totals = Assert.Single(rig.Session.Calls, call => call.Sql == Sql.TrendTotalsSql);
-        Assert.Equal("202610300000", totals.Args["@to"]);
-        Assert.Equal(Synthetic.Scope, totals.Args["@hospital"]);
+        var list = Assert.Single(rig.Session.Calls, call => call.Sql == ClosingFake.CodeListSql);
+        Assert.Equal("202611100000", list.Args["@to"]);
+        Assert.Equal(Synthetic.Scope, list.Args["@hospital"]);
         Assert.Equal(1, rig.Session.Disposed);
         Assert.Equal(("closing.codes", (string?)null), Assert.Single(outcome.Log));
     }
@@ -226,13 +237,13 @@ public class ClosingCommandsTests
         Assert.Empty(rig.Connector.Opened);
     }
 
-    [Fact(DisplayName = "AC-3603.1 9999-12-31은 명령 표를 지나도 도우미가 멈추지 않고 E-HELPER-BAD-MESSAGE 하나, 마감 문장은 돌리지 않음")]
+    [Fact(DisplayName = "AC-3603.1 9999-12-31은 명령 표를 지나도 도우미가 멈추지 않고 오류 하나(오늘보다 뒤라 E-CLOSING-FUTURE-DATE), 마감 문장은 돌리지 않음")]
     public void LastDateIsOneError()
     {
         using var rig = Ready();
         var outcome = Handle(rig, "closing.day", DayArgs("9999-12-31", G("carm", "CARM1")));
 
-        Assert.Equal(ErrorCodes.BadMessage, ErrorOf(outcome));
+        Assert.Equal(FutureDate, ErrorOf(outcome));
         Assert.DoesNotContain(rig.Session.Sqls, ReadStatements().Contains);
         Assert.Equal(rig.Connector.Opened.Count, rig.Session.Disposed);
     }
@@ -339,6 +350,73 @@ public class ClosingCommandsTests
         Assert.Equal(("closing.day", (string?)ErrorCodes.BadMessage), Assert.Single(outcome.Log));
     }
 
+    // ---- 오늘 뒤 날짜(AC-3616.2·AC-3612.1, TASK-16) ------------------------------------------------------
+
+    [Fact(DisplayName = "AC-3616.2 date가 services.Today()보다 하루 뒤면 E-CLOSING-FUTURE-DATE 하나: 등록 저장소·비트 설치 찾기·DB에 한 번도 닿지 않고 기록은 (closing.day, 번호)뿐")]
+    public void FutureDateRefusedBeforeAnything()
+    {
+        using var rig = Ready();
+        rig.Today = ClosingFake.Day.AddDays(-1);
+        // 등록 파일을 깨 둔다: 저장소가 한 번이라도 읽었다면 E-STORE-…로 답하거나 깨진 파일을 옆으로 옮겼을 것이다
+        System.IO.File.WriteAllBytes(rig.Store.FilePath, new byte[] { 1, 2, 3 });
+        var before = StoreFiles(rig);
+
+        var outcome = Handle(rig, "closing.day", Usual);
+
+        Assert.Equal(FutureDate, ErrorOf(outcome));
+        Assert.Equal(before, StoreFiles(rig));
+        Assert.Equal(0, rig.Locator.Calls);
+        Assert.Empty(rig.Connector.Opened);
+        Assert.Empty(rig.Session.Calls);
+        Assert.Equal(("closing.day", (string?)FutureDate), Assert.Single(outcome.Log));
+        var line = ErpLogLine.Format(new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.FromHours(9)), "closing.day", FutureDate);
+        Assert.Equal(new[] { "2026-11-10T09:00:00.000+09:00", "closing.day", FutureDate }, line.Split(' '));
+    }
+
+    [Fact(DisplayName = "AC-3616.2 등록 안 된 PC라도 오늘보다 뒤 날짜는 등록 확인보다 먼저 E-CLOSING-FUTURE-DATE, 날짜가 맞으면 지금처럼 E-BIT-NOT-REGISTERED")]
+    public void FutureDateBeforeRegistration()
+    {
+        using var rig = new Rig { Today = ClosingFake.Day.AddDays(-1) };
+        ClosingFake.Quiet(rig.Session);
+
+        Assert.Equal(FutureDate, ErrorOf(Handle(rig, "closing.day", Usual)));
+        rig.Today = ClosingFake.Day;
+        Assert.Equal("E-BIT-NOT-REGISTERED", ErrorOf(Handle(rig, "closing.day", Usual)));
+        Assert.Empty(rig.Connector.Opened);
+    }
+
+    public static IEnumerable<object[]> ReadableDays()
+    {
+        yield return new object[] { "오늘", ClosingFake.Day };
+        yield return new object[] { "오늘 밤 11시 59분(시각은 보지 않음)", ClosingFake.Day.AddHours(23).AddMinutes(59) };
+        yield return new object[] { "어제가 마감 일자", ClosingFake.Day.AddDays(1) };
+        yield return new object[] { "한 달 뒤", ClosingFake.Day.AddDays(30) };
+    }
+
+    [Theory(DisplayName = "AC-3616.2 마감 일자가 오늘·어제·더 지난 날이면 그대로 읽어 result 하나(오늘 시각은 보지 않고 날짜만 견줌)")]
+    [MemberData(nameof(ReadableDays))]
+    public void TodayAndPastAreRead(string why, DateTime today)
+    {
+        using var rig = Ready();
+        rig.Today = today;
+        var outcome = Handle(rig, "closing.day", Usual);
+
+        Assert.True(One(outcome, "result").GetProperty("data").GetProperty("date").GetString() == ClosingFake.DayText, why);
+        Assert.Contains(ClosingSql.DayVisitsSql, rig.Session.Sqls);
+        Assert.Equal(("closing.day", (string?)null), Assert.Single(outcome.Log));
+    }
+
+    [Fact(DisplayName = "AC-3616.2 오늘 밤 11시 59분이어도 다음 날 날짜는 E-CLOSING-FUTURE-DATE, closing.codes는 날짜 검사가 없다")]
+    public void NextDayAtMidnightIsFuture()
+    {
+        using var rig = Ready();
+        rig.Today = ClosingFake.Day.AddDays(-1).AddHours(23).AddMinutes(59);
+
+        Assert.Equal(FutureDate, ErrorOf(Handle(rig, "closing.day", Usual)));
+        Assert.Empty(rig.Connector.Opened);
+        One(Handle(rig, "closing.codes", "{}"), "result");
+    }
+
     // ---- 부른 쪽(AC-3601.3) ------------------------------------------------------------------------
 
     [Fact(DisplayName = "AC-3601.3 기존 도우미(웹 명령 표)는 closing.*를 모른다: 처리기를 붙일 수 없고 부르면 E-HELPER-UNKNOWN-COMMAND, 비트를 열지 않음")]
@@ -368,7 +446,7 @@ public class ClosingCommandsTests
     [Fact(DisplayName = "AC-3606.3 등록 안 된 PC는 두 명령 모두 revenue.days와 같은 번호(E-BIT-NOT-REGISTERED)로 막히고 비트를 열지 않음")]
     public void NotRegisteredLikeRevenue()
     {
-        using var rig = new Rig();
+        using var rig = new Rig { Today = Today };
         ClosingFake.Quiet(rig.Session);
 
         var revenue = ErrorOf(HandleWeb(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}"));
@@ -381,7 +459,7 @@ public class ClosingCommandsTests
     [Fact(DisplayName = "AC-3606.3 등록과 다른 병원이면 두 명령 모두 revenue.days와 같은 번호(E-BIT-HOSPITAL-MISMATCH), 읽기 문장은 돌리지 않고 세션은 닫음")]
     public void HospitalMismatchLikeRevenue()
     {
-        using var rig = new Rig().Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
+        using var rig = new Rig { Today = Today }.Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
         ClosingFake.Quiet(rig.Session);
 
         var revenue = ErrorOf(HandleWeb(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}"));
@@ -398,7 +476,7 @@ public class ClosingCommandsTests
         yield return new object?[] { "closing.codes", null, null };
         yield return new object?[] { "closing.day", ClosingSql.DayVisitsSql, BitErrors.ReadFailed };
         yield return new object?[] { "closing.day", RevenueSql.FinanceNormal, BitErrors.ReadFailed };
-        yield return new object?[] { "closing.codes", Sql.TrendTotalsSql, BitErrors.ReadFailed };
+        yield return new object?[] { "closing.codes", ClosingFake.CodeListSql, BitErrors.ReadFailed };
         yield return new object?[] { "closing.codes", ClosingSql.MemoKindsSql, BitErrors.ReadFailed };
     }
 

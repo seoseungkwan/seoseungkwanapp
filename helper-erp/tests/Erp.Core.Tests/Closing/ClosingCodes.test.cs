@@ -9,71 +9,83 @@ using Xunit;
 
 namespace Erp.Core.Tests.Closing;
 
-/// <summary>REQ-3602 ClosingCodes.Read: 1년 처방 코드(Sql.TrendTotalsSql)·코드표 이름(StatsSql.CodeNamesSql)·예약 메모 목록(ClosingSql.MemoKindsSql). 값은 지어낸 것이다.</summary>
+/// <summary>
+/// REQ-3602 ClosingCodes.Read: 1년 처방 코드·진료 수·코드표 이름(ClosingSql.CodeListSql 문장 하나, TASK-16)·예약 메모 목록(ClosingSql.MemoKindsSql).
+/// 값은 지어낸 것이다. 가짜 DB의 코드 목록 한 줄은 CodeListSql 결과 칸 [코드, 진료 수, 이름] 그대로다.
+/// </summary>
 public class ClosingCodesTests
 {
     private static readonly DateTime Today = new DateTime(2026, 11, 10);
 
-    /// <summary>CodeNamesSql 한 줄: 코드·이름 뒤 칸들(원본 차례).</summary>
-    private static object?[] Name(string code, string? name) => new object?[] { code, name, "", "20200101", "99991231", "1", "", false };
+    /// <summary>CodeListSql 한 줄: 코드·진료 수·이름(코드표에 없으면 null).</summary>
+    private static object?[] Code(string? code, object visits, string? name = null) => new object?[] { code, visits, name };
 
-    private static FakeDb Db(object?[][] totals, object?[][]? names = null, object?[][]? kinds = null)
+    private static FakeDb Db(object?[][] codes, object?[][]? kinds = null)
     {
         var db = new FakeDb();
-        db.Answer(Sql.TrendTotalsSql, _ => totals);
-        db.Answer(StatsSql.CodeNamesSql, _ => names ?? new object?[0][]);
+        db.Answer(ClosingFake.CodeListSql, _ => codes);
         db.Answer(ClosingSql.MemoKindsSql, _ => kinds ?? new object?[0][]);
         return db;
     }
 
     private static ClosingCodesResult Read(FakeDb db) => ClosingCodes.Read(db, Synthetic.Scope, Today);
 
-    // ---- AC-3602.1 ----------------------------------------------------------------------------
+    // ---- AC-3616.3 문장 하나 ---------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3602.1 TrendTotalsSql은 어제까지 365일(@from = 365일 전 0시, @to = 오늘 0시)·범위로, CodeNamesSql은 같은 기간 Char 8로, 둘 다 Sql.TrendTimeout")]
+    [Fact(DisplayName = "AC-3616.3 ClosingCodes.Read는 CodeListSql(어제까지 365일: @from·@to Char 12 0시, @first·@last Char 8 첫날·마지막 날, @hospital 범위, 50초)·MemoKindsSql(15초) 둘만 부르고 TrendTotalsSql·CodeNamesSql은 부르지 않는다")]
     public void ReadsYearBeforeToday()
     {
         var db = Db(new object?[0][]);
         Read(db);
 
-        var totals = Assert.Single(db.Calls, call => call.Sql == Sql.TrendTotalsSql);
-        Assert.Equal("202511100000", totals.Args["@from"]);
-        Assert.Equal("202611100000", totals.Args["@to"]);
-        Assert.Equal(Synthetic.Scope, totals.Args["@hospital"]);
-        Assert.Equal(Sql.TrendTimeout, totals.Timeout);
+        Assert.Equal(new[] { ClosingFake.CodeListSql, ClosingSql.MemoKindsSql }, db.Sqls);
+        Assert.DoesNotContain(Sql.TrendTotalsSql, db.Sqls);
+        Assert.DoesNotContain(StatsSql.CodeNamesSql, db.Sqls);
 
-        var names = Assert.Single(db.Calls, call => call.Sql == StatsSql.CodeNamesSql);
-        Assert.Equal("20251110", names.Args["@from"]);
-        Assert.Equal("20261109", names.Args["@to"]);
-        Assert.Equal("20251110", names.Args["@priorFrom"]);
-        Assert.Equal("20261109", names.Args["@priorTo"]);
-        Assert.Equal(Sql.TrendTimeout, names.Timeout);
+        var list = db.Calls[0];
+        Assert.Equal(
+            new Dictionary<string, object?>
+            {
+                ["@from"] = "202511100000",
+                ["@to"] = "202611100000",
+                ["@first"] = "20251110",
+                ["@last"] = "20261109",
+                ["@hospital"] = Synthetic.Scope,
+            },
+            list.Args);
+        Assert.Equal(TimeSpan.FromSeconds(50), list.Timeout);
 
-        var kinds = Assert.Single(db.Calls, call => call.Sql == ClosingSql.MemoKindsSql);
+        var kinds = db.Calls[1];
         Assert.Empty(kinds.Args);
-        Assert.Equal(3, db.Calls.Count);
+        Assert.Equal(TimeSpan.FromSeconds(15), kinds.Timeout);
+        Assert.Equal(Sql.MetaTimeout, kinds.Timeout);
     }
 
-    [Fact(DisplayName = "AC-3602.1 codes = 앞뒤 공백 없는 대문자 코드·코드표 첫 줄 이름(대소문자 무시, 없으면 null)·진료 수, 진료 수 많은 차례(같으면 코드 차례)")]
+    [Fact(DisplayName = "AC-3616.3 시간 제한: 접속 10초 + 등록 확인 15초 × 2 + 코드 목록 50초 + 메모 목록 15초 = 105초로 확장이 기다리는 120초보다 짧다")]
+    public void TimeoutsFitExtensionWait()
+    {
+        var db = Db(new object?[0][]);
+        Read(db);
+
+        var total = TimeSpan.FromSeconds(Sql.ConnectTimeoutSeconds) + Sql.MetaTimeout + Sql.MetaTimeout
+            + db.Calls.Aggregate(TimeSpan.Zero, (sum, call) => sum + call.Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(105), total);
+        Assert.True(total < TimeSpan.FromSeconds(120));
+    }
+
+    // ---- AC-3602.1 ----------------------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-3602.1 codes = 앞뒤 공백 없는 대문자 코드·코드표 이름(없으면 null)·진료 수, 진료 수 많은 차례(같으면 코드 차례)")]
     public void ListsCodesByVisits()
     {
-        var db = Db(
-            new[]
-            {
-                new object?[] { "SONO1", 1143L },
-                new object?[] { "CARM1", 1102L },
-                new object?[] { "ESWT7", 36 },
-                new object?[] { "AA222", 36L },
-                new object?[] { "NONAME", 5L },
-            },
-            new[]
-            {
-                Name("carm1", "C-arm 유도"),
-                Name("CARM1", "두 번째 줄은 쓰지 않음"),
-                Name("SONO1 ", "비급여초음파"),
-                Name("ESWT7", "체외충격파(2000타)"),
-                Name("AA222", "재진진찰료"),
-            });
+        var db = Db(new[]
+        {
+            Code("SONO1", 1143L, "비급여초음파"),
+            Code("CARM1", 1102L, "C-arm 유도"),
+            Code("ESWT7", 36, "체외충격파(2000타)"),
+            Code("AA222", 36L, "재진진찰료"),
+            Code("NONAME", 5L),
+        });
         var codes = Read(db).Codes;
 
         Assert.Equal(new[] { "SONO1", "CARM1", "AA222", "ESWT7", "NONAME" }, codes.Select(code => code.Code));
@@ -81,39 +93,41 @@ public class ClosingCodesTests
         Assert.Equal(new[] { "비급여초음파", "C-arm 유도", "재진진찰료", "체외충격파(2000타)", null }, codes.Select(code => code.Name));
     }
 
-    [Fact(DisplayName = "AC-3602.1 앞뒤 공백·대소문자를 맞춰 같아진 코드는 진료 수를 더해 한 줄, 빈 코드는 뺀다")]
+    [Fact(DisplayName = "AC-3602.1 앞뒤 공백·대소문자를 맞춰 같아진 코드는 진료 수를 더해 한 줄(이름은 먼저 있는 것), 빈 코드는 뺀다")]
     public void MergesSameCodes()
     {
         var db = Db(new[]
         {
-            new object?[] { " MM010", 10L },
-            new object?[] { "mm010", 5L },
-            new object?[] { "  ", 99L },
-            new object?[] { null, 99L },
-            new object?[] { "도수", 7L },
+            Code(" MM010", 10L),
+            Code("mm010", 5L, "물리치료"),
+            Code("  ", 99L, "빈칸"),
+            Code(null, 99L, "없음"),
+            Code("도수", 7L, "도수치료"),
         });
         var codes = Read(db).Codes;
 
         Assert.Equal(new[] { "MM010", "도수" }, codes.Select(code => code.Code));
         Assert.Equal(new long[] { 15, 7 }, codes.Select(code => code.Visits));
+        Assert.Equal(new[] { "물리치료", "도수치료" }, codes.Select(code => code.Name));
     }
 
     [Fact(DisplayName = "AC-3602.1 codes는 진료 수 많은 차례로 2,000개까지")]
     public void KeepsTwoThousand()
     {
-        var rows = Enumerable.Range(0, 2100).Select(i => new object?[] { "C" + i.ToString("0000"), (long)(i + 1) }).ToArray();
+        var rows = Enumerable.Range(0, 2100).Select(i => Code("C" + i.ToString("0000"), (long)(i + 1), "이름" + i)).ToArray();
         var codes = Read(Db(rows)).Codes;
 
         Assert.Equal(2000, ClosingCodes.MaxCodes);
         Assert.Equal(2000, codes.Count);
         Assert.Equal("C2099", codes[0].Code);
         Assert.Equal(101L, codes[codes.Count - 1].Visits);
+        Assert.Equal("이름2099", codes[0].Name);
     }
 
     [Fact(DisplayName = "AC-3602.1 kinds = 비트 예약 메모 목록 차례 그대로, 'Memo'+숫자는 숫자만, 다른 꼴은 앞뒤 공백만 뗀다")]
     public void ListsMemoKinds()
     {
-        var db = Db(new object?[0][], kinds: new[]
+        var db = Db(new object?[0][], new[]
         {
             new object?[] { "Memo1", "체외충격파" },
             new object?[] { "Memo14", "도수30분(호)" },
@@ -132,8 +146,8 @@ public class ClosingCodesTests
     public void AnswerShape()
     {
         var db = Db(
-            new[] { new object?[] { "CARM1", 3L } },
-            kinds: new[] { new object?[] { "Memo1", "체외충격파" } });
+            new[] { Code("CARM1", 3L) },
+            new[] { new object?[] { "Memo1", "체외충격파" } });
         var data = ClosingFake.DataOf(Read(db));
 
         Assert.Equal(ClosingFake.Sorted("codes", "kinds"), ClosingFake.Keys(data));
@@ -149,15 +163,16 @@ public class ClosingCodesTests
     [Fact(DisplayName = "AC-3602.1 읽기가 실패하면 일부만 답하지 않고 E-BIT-READ-FAILED")]
     public void ReadFailureFailsWhole()
     {
-        foreach (var sql in new[] { Sql.TrendTotalsSql, StatsSql.CodeNamesSql, ClosingSql.MemoKindsSql })
+        foreach (var sql in new[] { ClosingFake.CodeListSql, ClosingSql.MemoKindsSql })
         {
-            var db = Db(new[] { new object?[] { "CARM1", 3L } });
+            var db = Db(new[] { Code("CARM1", 3L) });
             db.Fail(sql, BitErrors.ReadFailed);
             Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => Read(db)).Code);
         }
-        var shortRow = Db(new[] { new object?[] { "CARM1" } });
+        // CodeListSql 결과는 [코드, 진료 수, 이름] 세 칸이다. 이름 칸이 빠진 줄도 지어내지 않는다
+        var shortRow = Db(new[] { new object?[] { "CARM1", 3L } });
         Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => Read(shortRow)).Code);
-        var notNumber = Db(new[] { new object?[] { "CARM1", "많음" } });
+        var notNumber = Db(new[] { Code("CARM1", "많음") });
         Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => Read(notNumber)).Code);
     }
 
@@ -180,8 +195,7 @@ public class ClosingCodesTests
     public void CleansNames(string raw, string? expected)
     {
         var db = Db(
-            new[] { new object?[] { "CARM1", 3L } },
-            new[] { Name("CARM1", raw) },
+            new[] { Code("CARM1", 3L, raw) },
             new[] { new object?[] { "Memo1", raw } });
         var result = Read(db);
 
@@ -204,8 +218,7 @@ public class ClosingCodesTests
         foreach (var (raw, expected) in cases)
         {
             var db = Db(
-                new[] { new object?[] { "CARM1", 3L } },
-                new[] { Name("CARM1", raw) },
+                new[] { Code("CARM1", 3L, raw) },
                 new[] { new object?[] { "Memo1", raw } });
             var result = Read(db);
             Assert.Equal(expected, Assert.Single(result.Codes).Name);

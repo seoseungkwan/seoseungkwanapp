@@ -662,26 +662,33 @@ public static class ClosingDay
         return injection;
     }
 
-    // ---- 예약(AC-3605.1) ---------------------------------------------------------------------------
+    // ---- 예약(AC-3605.1·AC-3616.1) -------------------------------------------------------------------
 
+    /// <summary>
+    /// 예약 메모 번호마다 네 수. 번호는 closing.codes kinds와 같은 규칙(ClosingCodes.MemoKind: 앞뒤 공백 뗌, 'Memo'+숫자 → 숫자)으로 바꾸고,
+    /// 같은 번호가 된 줄('Memo1'·'memo1'·'1')은 네 수를 더해 한 줄로 한다(AC-3616.1). 빈 번호도 한 줄. 번호 글자 차례(Ordinal).
+    /// 확장(cells.ts)은 글자가 같은 번호만 더하므로 도우미에서 맞춘다. 문장은 그대로다.
+    /// </summary>
     private static ClosingReservations ReadReservations(IBitDb db, IReadOnlyDictionary<string, object?> values)
     {
-        var kinds = new List<ClosingReservationKind>();
+        var kinds = new Dictionary<string, ClosingReservationKind>(StringComparer.Ordinal);
         foreach (var row in ClosingRead.Query(db, ClosingSql.ReservationKindsSql, values))
         {
             if (row == null || row.Count < 5) throw ClosingRead.ReadFailed();
-            kinds.Add(new ClosingReservationKind
+            var key = ClosingCodes.MemoKind(ClosingRead.Text(row[0]));
+            if (!kinds.TryGetValue(key, out var kind))
             {
-                Kind = ClosingRead.Text(row[0]) ?? "",
-                Total = ClosingRead.Number(row[1]),
-                Visited = ClosingRead.Number(row[2]),
-                Changed = ClosingRead.Number(row[3]),
-                Canceled = ClosingRead.Number(row[4]),
-            });
+                kind = new ClosingReservationKind { Kind = key };
+                kinds.Add(key, kind);
+            }
+            kind.Total += ClosingRead.Number(row[1]);
+            kind.Visited += ClosingRead.Number(row[2]);
+            kind.Changed += ClosingRead.Number(row[3]);
+            kind.Canceled += ClosingRead.Number(row[4]);
         }
         return new ClosingReservations
         {
-            Kinds = kinds,
+            Kinds = kinds.Values.OrderBy(kind => kind.Kind, StringComparer.Ordinal).ToList(),
             Patients = ClosingRead.Number(ClosingRead.Row(db, ClosingSql.ReservationPatientsSql, values, 1)[0]),
         };
     }

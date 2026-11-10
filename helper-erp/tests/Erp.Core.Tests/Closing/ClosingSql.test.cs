@@ -41,10 +41,10 @@ public class ClosingSqlTests
 
     // ---- AC-3606.1 읽기 문장 하나·허용 표 ------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3606.1 새 문장 8개(design.md 3-2)는 모두 읽기 문장 하나다(SELECT·WITH 시작, WITH면 ') SELECT ', ;·주석·쓰기 낱말 없음)")]
+    [Fact(DisplayName = "AC-3606.1 새 문장 9개(design.md 3-2, TASK-16 CodeListSql 포함)는 모두 읽기 문장 하나다(SELECT·WITH 시작, WITH면 ') SELECT ', ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
-        Assert.Equal(8, ClosingFake.Statements.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(9, ClosingFake.Statements.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(
             ClosingFake.Statements.OrderBy(sql => sql, StringComparer.Ordinal),
             ClosingSql.Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
@@ -59,7 +59,7 @@ public class ClosingSqlTests
         }
     }
 
-    [Fact(DisplayName = "AC-3606.1 매개변수 표 = 문장 속 @이름, design.md 3-2 그대로(@day·@nextDay Char 8, @from·@to Char 12, @hospital VarChar 32, 주사 코드 @c0~@c19 VarChar 20, 메모 목록은 없음)")]
+    [Fact(DisplayName = "AC-3606.1 매개변수 표 = 문장 속 @이름, design.md 3-2 그대로(@day·@nextDay Char 8, @from·@to Char 12, @hospital VarChar 32, 주사 코드 @c0~@c19 VarChar 20, 메모 목록은 없음, 코드 목록 @first·@last Char 8)")]
     public void ParameterTableMatchesStatements()
     {
         foreach (var sql in ClosingFake.Statements)
@@ -78,6 +78,7 @@ public class ClosingSqlTests
         Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(ClosingSql.ReservationKindsSql));
         Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(ClosingSql.ReservationPatientsSql));
         Assert.Equal("", Shape(ClosingSql.MemoKindsSql));
+        Assert.Equal("@from:Char(12) @to:Char(12) @first:Char(8) @last:Char(8) @hospital:VarChar(32)", Shape(ClosingFake.CodeListSql));
     }
 
     [Fact(DisplayName = "AC-3606.1 ErpReadGuard는 새 문장을 정해 둔 매개변수와 함께 통과시키고 ParametersOf는 이 표를 돌려준다(기존 Sql.IsAllowed는 모른다)")]
@@ -174,8 +175,6 @@ public class ClosingSqlTests
             ClosingFake.Group("injection", "KK090"),
             ClosingFake.Group("ptVisit", "AA222"));
         var codes = ClosingFake.Quiet();
-        codes.Answer(Sql.TrendTotalsSql, _ => new object?[0][]);
-        codes.Answer(StatsSql.CodeNamesSql, _ => new object?[0][]);
         ClosingCodes.Read(codes, Synthetic.Scope, ClosingFake.Day);
 
         foreach (var call in rig.Db.Calls.Concat(codes.Calls))
@@ -183,8 +182,8 @@ public class ClosingSqlTests
             Assert.True(ErpReadGuard.IsAllowed(call.Sql));
             ErpReadGuard.Require(call.Sql, call.Args);
         }
-        foreach (var sql in ClosingFake.Statements.Where(sql => sql != ClosingSql.MemoKindsSql)) Assert.Contains(sql, rig.Db.Sqls);
-        Assert.Contains(ClosingSql.MemoKindsSql, codes.Sqls);
+        foreach (var sql in ClosingFake.Statements.Where(sql => sql != ClosingSql.MemoKindsSql && sql != ClosingFake.CodeListSql)) Assert.Contains(sql, rig.Db.Sqls);
+        Assert.Equal(new[] { ClosingFake.CodeListSql, ClosingSql.MemoKindsSql }, codes.Sqls);
     }
 
     [Fact(DisplayName = "AC-3606.1 진료 문장은 모두 같은 진료 조건(외래·접수취소 아님·상태 7개·병원 범위)과 처방 조건(OdrDelFlg·OdrCanYon·OdrOutCod)을 쓴다")]
@@ -205,6 +204,58 @@ public class ClosingSqlTests
         Assert.Contains("c.OcmAcpDtm<@from AND " + visit, injection, StringComparison.Ordinal);
         Assert.Equal(2, Regex.Matches(injection, Regex.Escape(scope)).Count);
         Assert.Equal(2, Regex.Matches(injection, Regex.Escape("UPPER(RTRIM(o.OdrCod)) IN (" + string.Join(",", CodeSlots) + ")")).Count);
+    }
+
+    // ---- AC-3616.3 코드 목록 문장 하나(TASK-16, design.md 3-2 CodeListSql) -----------------------------------
+
+    [Fact(DisplayName = "AC-3616.3 CodeListSql은 ClosingSql.Parameters에 있고 ErpReadGuard를 지나며(기존 Sql.IsAllowed는 모름) 매개변수가 @from·@to Char 12 · @first·@last Char 8 · @hospital VarChar 32다")]
+    public void CodeListIsInTheTable()
+    {
+        var sql = ClosingFake.CodeListSql;
+        Assert.True(ClosingSql.Parameters.ContainsKey(sql));
+        Assert.True(ErpReadGuard.IsAllowed(sql));
+        Assert.False(Sql.IsAllowed(sql));
+        Assert.Equal("@from:Char(12) @to:Char(12) @first:Char(8) @last:Char(8) @hospital:VarChar(32)", Shape(sql));
+        ErpReadGuard.Require(sql, new Dictionary<string, object?>
+        {
+            ["@from"] = "202511100000",
+            ["@to"] = "202611100000",
+            ["@first"] = "20251110",
+            ["@last"] = "20261109",
+            ["@hospital"] = Synthetic.Scope,
+        });
+    }
+
+    [Fact(DisplayName = "AC-3616.3 CodeListSql은 SELECT 하나이고 진료·처방 조건이 Sql.TrendCte의 V·R과 같으며(코드는 UPPER(LTRIM(RTRIM()))), 이름은 그 1년에 쓴 코드의 코드표 줄 가운데 CodeNamesSql 차례 첫 줄이다")]
+    public void CodeListMatchesTrendConditions()
+    {
+        var text = Squash(ClosingFake.CodeListSql);
+        var trend = Squash(Sql.TrendTotalsSql);
+
+        Assert.StartsWith("WITH V AS ( SELECT c.OcmNum FROM dbo.OcmInf c WHERE ", text, StringComparison.Ordinal);
+        // V: Sql.TrendCte의 V와 글자까지 같다
+        var visits = trend.Substring(0, trend.IndexOf("), R AS (", StringComparison.Ordinal));
+        Assert.StartsWith(visits + "), R AS (", text, StringComparison.Ordinal);
+        // R: 처방 조건은 같고 코드는 앞뒤 공백을 모두 뗀 대문자
+        Assert.Contains(
+            "R AS ( SELECT DISTINCT o.OdrOcmNum VisitId,UPPER(LTRIM(RTRIM(o.OdrCod))) RxCode FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum "
+            + "WHERE o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>'' )",
+            text, StringComparison.Ordinal);
+        Assert.Contains("T AS (SELECT RxCode,COUNT_BIG(*) Visits FROM R GROUP BY RxCode)", text, StringComparison.Ordinal);
+        // 이름: 그 1년에 쓴 코드의 코드표 줄만, CodeNamesSql과 같은 차례(코드 → 마지막 날에 쓰이는 줄 → 시작일·끝일 늦은 차례 → 이름·종류·청구코드)의 첫 줄
+        Assert.Contains(
+            "FROM dbo.SeeMst s WHERE s.SeeOdrCod<>'' AND s.SeeAdpDte<=@last AND s.SeeExpDte>=@first AND UPPER(LTRIM(RTRIM(s.SeeOdrCod))) IN (SELECT RxCode FROM T)",
+            text, StringComparison.Ordinal);
+        Assert.Contains(
+            "ROW_NUMBER() OVER (PARTITION BY UPPER(LTRIM(RTRIM(s.SeeOdrCod))) ORDER BY s.SeeOdrCod, CASE WHEN @last BETWEEN s.SeeAdpDte AND s.SeeExpDte THEN 0 ELSE 1 END,"
+            + "s.SeeAdpDte DESC,s.SeeExpDte DESC,s.SeeKorNam,s.SeeMdcTyp,s.SeeElcCod) Pick",
+            text, StringComparison.Ordinal);
+        Assert.Contains("SeeAdpDte DESC, SeeExpDte DESC, SeeKorNam, SeeMdcTyp, SeeElcCod", Squash(StatsSql.CodeNamesSql), StringComparison.Ordinal);
+        Assert.EndsWith(") SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick=1", text, StringComparison.Ordinal);
+        // 환자 표·차트번호는 읽지 않는다
+        Assert.DoesNotContain("Pbs", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("ChtNum", text, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(text, @"\bSELECT T\.").Cast<Match>());
     }
 
     // ---- AC-3604.3 처방 줄 금액(TASK-14, 기본값 (사)) ------------------------------------------------
@@ -270,6 +321,7 @@ public class ClosingSqlTests
         yield return new object?[] { ClosingSql.ReservationKindsSql, "SELECT Kind,COUNT_BIG(*) Total,SUM(Visited) Visited,SUM(Changed) Changed,SUM(Canceled) Canceled FROM R GROUP BY Kind ORDER BY Kind" };
         yield return new object?[] { ClosingSql.ReservationPatientsSql, "SELECT COUNT(DISTINCT NULLIF(RTRIM(r.RsvChtNum),'')) FROM dbo.RsvInf r " };
         yield return new object?[] { ClosingSql.MemoKindsSql, "SELECT RTRIM(DtlCod),RTRIM(DtlCodNam) FROM dbo.DtlMst WHERE DtlTblCod='RESERVMEMO' ORDER BY DtlDspSeq,DtlCod" };
+        yield return new object?[] { ClosingFake.CodeListSql, "SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick=1" };
     }
 
     [Theory(DisplayName = "AC-3606.2 결과 칸에 차트번호·생년월일이 그대로 나오지 않는다(진료번호·그날 번호·만 나이·수·합만)")]

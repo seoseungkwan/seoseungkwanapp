@@ -7,19 +7,25 @@ using Precheck.Core.Bit;
 namespace Erp.Core.Closing;
 
 /// <summary>
-/// ERP 마감일지 두 명령(closing.codes·closing.day, spec erp-closing-fill design.md 3-2)이 비트 DB에 돌리는 새 SELECT 여덟. 원본에 없는 문장이다.
+/// ERP 마감일지 두 명령(closing.codes·closing.day, spec erp-closing-fill design.md 3-2)이 비트 DB에 돌리는 새 SELECT 아홉. 원본에 없는 문장이다.
 /// 진료 조건은 모두 Sql.TrendCte의 V와 같다: 외래(OcmPatTyp='O')·접수취소 아님(OcmRsuYon≠'O')·끝난 상태 7개·병원 범위(DepMst, RevenueSql과 같음).
 /// 처방 조건은 OdrDelFlg='N'·OdrCanYon='N'·OdrOutCod≠'99'.
 /// 환자 표(PbsInf)에서는 차트번호·생년월일만 쓰고, 이름·전화·주민번호·주소·메모 칸은 읽지 않는다. 차트번호·생년월일은 결과 칸으로 내지 않고
 /// 그날 안에서만 쓰는 번호(DENSE_RANK)·만 나이·센 수로 바꿔 낸다(AC-3606.2).
 /// 모두 매개변수를 받는 SELECT 하나다. ERP 읽기 관문(Erp.Core.ErpReadGuard)이 이 표(Parameters)를 본다. 기존 관문(Bit/Sql.cs·ReadOnlyGuard)은
 /// 고치지 않으므로 이 문장을 모른다(청구 Sql.All에도 없다, AC-3606.1).
-/// closing.codes의 코드 목록은 새 문장 없이 Sql.TrendTotalsSql·StatsSql.CodeNamesSql을 쓴다.
+/// closing.codes의 코드 목록은 CodeListSql 문장 하나다(TASK-16. 전에는 Sql.TrendTotalsSql·StatsSql.CodeNamesSql 두 문장으로 코드표 39만 줄을 받았다).
 /// </summary>
 public static class ClosingSql
 {
     /// <summary>마감일지 문장 시간 제한: RevenueDays와 같다(원본 OperationalReportData.Command CommandTimeout=90).</summary>
     public static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// closing.codes 코드 목록(CodeListSql) 시간 제한 50초(TASK-16, requirements 기본값 (하)). 접속 10초 + 등록 확인 15초 × 2 + 50 + 메모 목록 15초 = 105초라
+    /// 확장이 기다리는 120초보다 먼저 도우미가 스스로 끝낸다(design.md 3-3).
+    /// </summary>
+    public static readonly TimeSpan CodesTimeout = TimeSpan.FromSeconds(50);
 
     /// <summary>주사 처음 문장의 코드 자리 수(@c0~@c19 = 묶음 코드 최대 20개). 빈 자리는 첫 코드로 채운다(관문은 NULL 값을 받지 않는다).</summary>
     public const int CodeSlots = 20;
@@ -134,14 +140,44 @@ FROM R GROUP BY Kind ORDER BY Kind";
     public const string ReservationPatientsSql = @"SELECT COUNT(DISTINCT NULLIF(RTRIM(r.RsvChtNum),''))
  " + ReservationScope;
 
-    /// <summary>비트 예약 메모 목록 DtlMst RESERVMEMO [코드('Memo'+번호), 이름], 보이는 차례. 번호만 남기기는 ClosingCodes가 한다.</summary>
+    /// <summary>비트 예약 메모 목록 DtlMst RESERVMEMO [코드('Memo'+번호), 이름], 보이는 차례. 번호만 남기기는 ClosingCodes.MemoKind가 한다.</summary>
     public const string MemoKindsSql = "SELECT RTRIM(DtlCod),RTRIM(DtlCodNam) FROM dbo.DtlMst WHERE DtlTblCod='RESERVMEMO' ORDER BY DtlDspSeq,DtlCod";
+
+    /// <summary>
+    /// closing.codes 코드 목록 [코드, 진료 수, 이름](TASK-16, design.md 3-2 글 그대로). @from·@to = 어제까지 365일 반열린 기간 0시(Char 12),
+    /// @first·@last = 그 기간 첫날·마지막 날(Char 8). 진료·처방 조건은 Sql.TrendCte의 V·R과 같고 코드는 앞뒤 공백을 뗀 대문자다.
+    /// 이름은 그 1년에 쓴 코드의 비트 코드표(SeeMst) 줄만 읽어 StatsSql.CodeNamesSql과 같은 차례의 첫 줄을 고른다(없으면 NULL).
+    /// 환자 표·차트번호는 읽지 않는다. 합치기·진료 수 차례·2,000개·이름 지우기는 ClosingCodes가 한다.
+    /// </summary>
+    public const string CodeListSql = @"WITH V AS (
+ SELECT c.OcmNum FROM dbo.OcmInf c
+ WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O' AND c.OcmRsuYon<>'O'
+   AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+), R AS (
+ SELECT DISTINCT o.OdrOcmNum VisitId,UPPER(LTRIM(RTRIM(o.OdrCod))) RxCode FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum
+ WHERE o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>''
+), T AS (SELECT RxCode,COUNT_BIG(*) Visits FROM R GROUP BY RxCode),
+N AS (
+ SELECT UPPER(LTRIM(RTRIM(s.SeeOdrCod))) Code,s.SeeKorNam Name,
+  ROW_NUMBER() OVER (PARTITION BY UPPER(LTRIM(RTRIM(s.SeeOdrCod))) ORDER BY s.SeeOdrCod,
+   CASE WHEN @last BETWEEN s.SeeAdpDte AND s.SeeExpDte THEN 0 ELSE 1 END,s.SeeAdpDte DESC,s.SeeExpDte DESC,s.SeeKorNam,s.SeeMdcTyp,s.SeeElcCod) Pick
+ FROM dbo.SeeMst s
+ WHERE s.SeeOdrCod<>'' AND s.SeeAdpDte<=@last AND s.SeeExpDte>=@first
+   AND UPPER(LTRIM(RTRIM(s.SeeOdrCod))) IN (SELECT RxCode FROM T)
+)
+SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick=1";
 
     private static readonly SqlParam Day = new SqlParam("@day", SqlParamKind.Char, 8);
     private static readonly SqlParam NextDay = new SqlParam("@nextDay", SqlParamKind.Char, 8);
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
+
+    // 코드 목록 기간 첫날·마지막 날(CodeListSql 코드표 줄 고르기)
+    private static readonly SqlParam First = new SqlParam("@first", SqlParamKind.Char, 8);
+    private static readonly SqlParam Last = new SqlParam("@last", SqlParamKind.Char, 8);
 
     // 주사 코드 자리: commands.json closing.day codes의 한 코드 최대 20자
     private static readonly SqlParam[] Codes =
@@ -158,5 +194,6 @@ FROM R GROUP BY Kind ORDER BY Kind";
         [ReservationKindsSql] = new[] { From, To, Hospital },
         [ReservationPatientsSql] = new[] { From, To, Hospital },
         [MemoKindsSql] = new SqlParam[0],
+        [CodeListSql] = new[] { From, To, First, Last, Hospital },
     };
 }

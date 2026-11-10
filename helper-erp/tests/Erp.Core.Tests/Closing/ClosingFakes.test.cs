@@ -23,7 +23,10 @@ internal static class ClosingFake
     public const string NextDayKey = "20261110";
     public const string DayText = "2026-11-09";
 
-    /// <summary>마감일지 문장 여덟(design.md 3-2).</summary>
+    /// <summary>closing.codes 코드 목록 문장(TASK-16, design.md 3-2 CodeListSql).</summary>
+    public const string CodeListSql = ClosingSql.CodeListSql;
+
+    /// <summary>마감일지 문장 아홉(design.md 3-2).</summary>
     public static readonly string[] Statements =
     {
         ClosingSql.DayVisitsSql,
@@ -34,6 +37,7 @@ internal static class ClosingFake
         ClosingSql.ReservationKindsSql,
         ClosingSql.ReservationPatientsSql,
         ClosingSql.MemoKindsSql,
+        CodeListSql,
     };
 
     /// <summary>revenue.days 문장은 RevenueFake 기본 하루, 마감 문장은 빈 답·0.</summary>
@@ -48,6 +52,7 @@ internal static class ClosingFake
         fake.Answer(ClosingSql.ReservationKindsSql, _ => new object?[0][]);
         RevenueFake.Row(fake, ClosingSql.ReservationPatientsSql, 0L);
         fake.Answer(ClosingSql.MemoKindsSql, _ => new object?[0][]);
+        fake.Answer(CodeListSql, _ => new object?[0][]);
         return fake;
     }
 
