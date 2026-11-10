@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- ERP 마감일지 도우미 실행 프로그램(spec erp-closing-fill design.md 3-1·3-4, AC-3611.1). 크롬이 켜는 네이티브 메시징 도우미(윈도우, .NET Framework 4.8).
+       표준 입출력 고리·등록 모드·ERP 비트 읽기·진단 기록만 두고, 마감일지 일은 Erp.Core가 한다.
+       기존 도우미 부품(Precheck.Core·Precheck.Windows)은 고치지도 복사하지도 않고 프로젝트 참조로만 쓴다. 빌드 설정은 기존 도우미 실행 프로그램(helper/src의 exe 프로젝트)과 같다 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>Erp.Helper</RootNamespace>
+    <AssemblyName>SeoseungkwanErpHelper</AssemblyName>
+    <!-- 비트 DLL이 32비트라 exe도 32비트로 돈다(기존 도우미와 같다, CLR 머리 32BITREQUIRED).
+         Platform·Platforms·OutputPath는 쓰지 않는다: 출력이 bin/x86/...로 옮겨 helper-erp.yml의 zip 자리(bin/Release/net48)와 어긋난다 -->
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 리눅스·Actions에서 net48을 빌드하려고(빌드에만 쓰고 결과물에는 들어가지 않는다) -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 윈도우 기본 탑재 .NET Framework 어셈블리: ErpBitDb의 SqlClient -->
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Erp.Core/Erp.Core.csproj" />
+    <ProjectReference Include="../../../helper/src/Precheck.Core/Precheck.Core.csproj" />
+    <ProjectReference Include="../../../helper/src/Precheck.Windows/Precheck.Windows.csproj" />
+  </ItemGroup>
+
+  <!-- SeoseungkwanErpHelper.exe.config의 <startup>: 기존 도우미 실행 프로그램 프로젝트와 글자 그대로 같다(useLegacyV2RuntimeActivationPolicy="true", sku 4.8).
+       비트 DLL이 옛 런타임(v2)용 혼합 어셈블리를 불러도 4.x 런타임에서 돌게 한다.
+       App.config 파일을 따로 두지 않고 빌드 때 obj/에 쓴다. 빌드가 여기에 바인딩 리디렉트(System.Text.Json 등)를 더해
+       bin/Release/net48/SeoseungkwanErpHelper.exe.config를 만들고, helper-erp.yml이 zip의 app\에, install.ps1이 설치 폴더에 함께 옮긴다 -->
+  <PropertyGroup>
+    <StartupAppConfigXml><![CDATA[<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <startup useLegacyV2RuntimeActivationPolicy="true">
+    <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8" />
+  </startup>
+</configuration>]]></StartupAppConfigXml>
+  </PropertyGroup>
+
+  <!-- PrepareForBuild가 $(AppConfig)를 읽기 전에 쓴다 -->
+  <Target Name="WriteStartupAppConfig" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <AppConfig>$(IntermediateOutputPath)startup.App.config</AppConfig>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(AppConfig)" Lines="$(StartupAppConfigXml)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(AppConfig)" />
+    </ItemGroup>
+  </Target>
+</Project>
