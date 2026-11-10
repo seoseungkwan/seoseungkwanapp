@@ -5,7 +5,7 @@ namespace Precheck.Core.Protocol;
 
 /// <summary>
 /// 도우미의 표준 입출력 고리. Program.Main은 표준 입력·출력과 기록만 넘긴다.
-/// origin이 우리 두 확장이 아니면 하나도 읽지 않고 끝 (AC-001.3) → 메시지를 차례로 부른 쪽 구역으로 처리 (AC-3601.3) →
+/// origin이 우리 확장이 아니면 하나도 읽지 않고 끝 (AC-001.3) → 메시지를 차례로 처리 →
 /// 표준 입력이 닫히면 끝, 길이 0·틀린 봉투는 답하고 계속, 64MiB 넘는 길이·끊긴 틀은 끝 (AC-001.1).
 /// 출력에는 메시지 틀만 쓴다 (AC-001.6).
 /// </summary>
@@ -22,8 +22,7 @@ public static class MessageLoop
         if (input == null) throw new ArgumentNullException(nameof(input));
         if (dispatcher == null) throw new ArgumentNullException(nameof(dispatcher));
 
-        var caller = OriginGuard.CallerOf(args, table);
-        if (caller == null)
+        if (!OriginGuard.IsAllowed(args, table))
         {
             log?.Invoke(null, ErrorCodes.Rejected);
             return ExitRejected;
@@ -53,7 +52,7 @@ public static class MessageLoop
                 }
 
                 if (message == null) return ExitOk;
-                dispatcher.Handle(message, sink, caller.Value);
+                dispatcher.Handle(message, sink);
             }
         }
         catch (CommandCrashedException)

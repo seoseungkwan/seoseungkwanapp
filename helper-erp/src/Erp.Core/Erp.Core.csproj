@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- ERP 도우미의 플랫폼과 상관없는 부분(spec erp-closing-fill design.md 3-1, AC-3611.1): 마감일지 문장·계산(Closing/*)·ERP 명령 표·ERP 읽기 관문.
+       기존 도우미 부품(Precheck.Core)은 고치지도 복사하지도 않고 프로젝트 참조로만 쓴다. 이 PC·서버에서도 dotnet test로 시험한다 -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Erp.Core</RootNamespace>
+    <AssemblyName>Erp.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 기존 Precheck.Core와 같은 판 -->
+    <PackageReference Include="System.Text.Json" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../helper/src/Precheck.Core/Precheck.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ERP 명령 표 원본 하나: ERP 도우미와 새 확장 시험이 같은 파일을 읽는다(design.md 2절). 기존 표(commands.json)와 이름이 겹치지 않게 싣는다 -->
+    <EmbeddedResource Include="../../commands.json" LogicalName="erp-commands.json" />
+  </ItemGroup>
+</Project>

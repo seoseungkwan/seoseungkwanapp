@@ -1,0 +1,40 @@
+{
+  "protocol": 1,
+  "hostName": "com.seoseungkwan.erp_helper",
+  "origin": "https://erp.minesolution.com",
+  "extensionId": "lkancaiekmoieooheifdimahhkejfmjc",
+  "extensionKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvYrFyRZ1ktvwDcaAzvWcP9sVW1Ic2Ua6pNcg5dBDV/DGfBdZPqgQcBFdQPc8iH59pRqCM3Y4fjkcu9Ir+zjHAacdaytx8q2oyec7DaoPmD1lExMJw1bdwM/PJrDMkwbvpjaEHikE89Du/pdu+SaHQBwxDPwpjz12Lc8irfiIzcRe3OqY8MeIoBqXXjiVV4VFfb3sf/3U9AkxXMro3stSy2A3WzpJQG3lhrUeHO5d/fvmvWFLQFVU42azMoRldW84ARQ7XzAO1bIOmzqpiQIreMT+iMt+Ql5HunpgSnWp59gkgtjz/JW/qt5NewVNSD38y1s9VlfnQfWDjOdMv2Au/wIDAQAB",
+  "commands": {
+    "closing.codes": {
+      "patient": false,
+      "args": {}
+    },
+    "closing.day": {
+      "patient": false,
+      "args": {
+        "date": { "type": "date" },
+        "groups": {
+          "type": "array",
+          "min": 0,
+          "max": 19,
+          "items": {
+            "type": "object",
+            "fields": {
+              "key": {
+                "type": "enum",
+                "values": ["carm", "sono", "arthro", "manual", "eswt", "pt", "etc1", "etc2", "etc3", "etc4",
+                  "manualConsult", "lipus", "nail", "ct", "surgery", "eswtStd", "eswtRadial", "injection", "ptVisit"]
+              },
+              "codes": {
+                "type": "array",
+                "min": 1,
+                "max": 20,
+                "items": { "type": "string", "min": 1, "max": 20, "pattern": "^\\S{1,20}$" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

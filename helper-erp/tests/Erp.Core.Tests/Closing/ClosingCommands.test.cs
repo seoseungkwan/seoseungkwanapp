@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using Erp.Core;
+using Erp.Core.Closing;
 using Precheck.Core.Bit;
-using Precheck.Core.Closing;
 using Precheck.Core.Protocol;
 using Precheck.Core.Revenue;
 using Precheck.Core.Stats;
@@ -13,15 +14,20 @@ using Precheck.Core.Tests.Protocol;
 using Precheck.Core.Tests.Revenue;
 using Xunit;
 
-namespace Precheck.Core.Tests.Closing;
+namespace Erp.Core.Tests.Closing;
 
 /// <summary>
-/// TASK-6 closing.codes·closing.day 처리기(design.md 3-4): 실린 명령 표·Caller.Erp로 Dispatcher에 붙여 관문 → 읽기 → result 하나.
-/// 막히면 error 하나, 진단 기록은 명령 이름·오류 번호뿐. 진료번호·코드·금액은 지어낸 것이고 차트번호·이름은 가짜 글자다.
+/// TASK-6 closing.codes·closing.day 처리기(design.md 3-4): ERP 도우미에 실린 명령 표(ErpCommandTable)로 기존 Dispatcher에 붙여 관문 → 읽기 → result 하나.
+/// 막히면 error 하나, 진단 기록은 명령 이름·오류 번호뿐. 기존 도우미(웹 명령 표 commands.json)는 closing.*를 모른다(TASK-11).
+/// 진료번호·코드·금액은 지어낸 것이고 차트번호·이름은 가짜 글자다.
 /// </summary>
 public class ClosingCommandsTests
 {
-    private static readonly CommandTable Table = CommandTable.LoadEmbedded();
+    /// <summary>ERP 도우미 명령 표(helper-erp/commands.json).</summary>
+    private static readonly CommandTable Table = ErpCommandTable.Load();
+
+    /// <summary>기존 도우미 명령 표(src/lib/bridge/commands.json, 1a721ef 그대로). revenue.days와 같은 번호인지 견줄 때만 쓴다.</summary>
+    private static readonly CommandTable WebTable = CommandTable.LoadEmbedded();
 
     private const string BirthDate = "19860101";
 
@@ -34,15 +40,24 @@ public class ClosingCommandsTests
         public string Text => string.Concat(Sink.Messages.Select(Encoding.UTF8.GetString));
     }
 
-    /// <summary>도우미처럼 hello·revenue.days·closing.*를 모두 붙인 Dispatcher로 메시지 하나를 처리한다.</summary>
-    private static Outcome Handle(Rig rig, string cmd, string args, Caller caller = Caller.Erp)
+    /// <summary>ERP 도우미처럼 ERP 명령 표에 closing.*만 붙인 Dispatcher로 메시지 하나를 처리한다(hello는 붙이지 않는다).</summary>
+    private static Outcome Handle(Rig rig, string cmd, string args)
     {
         var outcome = new Outcome();
         var dispatcher = new Dispatcher(Table, (name, code) => outcome.Log.Add((name, code)));
-        Hello.Register(dispatcher, Table);
-        RevenueCommands.Register(dispatcher, rig.Services);
         ClosingCommands.Register(dispatcher, rig.Services);
-        dispatcher.Handle(Encoding.UTF8.GetBytes(Requests.Envelope(cmd, args)), outcome.Sink, caller);
+        dispatcher.Handle(Encoding.UTF8.GetBytes(Requests.Envelope(cmd, args)), outcome.Sink);
+        return outcome;
+    }
+
+    /// <summary>기존 도우미처럼 웹 명령 표에 hello·revenue.days를 붙인 Dispatcher로 메시지 하나를 처리한다.</summary>
+    private static Outcome HandleWeb(Rig rig, string cmd, string args)
+    {
+        var outcome = new Outcome();
+        var dispatcher = new Dispatcher(WebTable, (name, code) => outcome.Log.Add((name, code)));
+        Hello.Register(dispatcher, WebTable);
+        RevenueCommands.Register(dispatcher, rig.Services);
+        dispatcher.Handle(Encoding.UTF8.GetBytes(Requests.Envelope(cmd, args)), outcome.Sink);
         return outcome;
     }
 
@@ -221,23 +236,25 @@ public class ClosingCommandsTests
 
     // ---- 부른 쪽(AC-3601.3) ------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3601.3 기존 확장(Caller.Web)이 closing.*를 부르면 처리기가 붙어 있어도 E-HELPER-UNKNOWN-COMMAND, 비트를 열지 않음")]
+    [Fact(DisplayName = "AC-3601.3 기존 도우미(웹 명령 표)는 closing.*를 모른다: 처리기를 붙일 수 없고 부르면 E-HELPER-UNKNOWN-COMMAND, 비트를 열지 않음")]
     public void WebCannotCallClosing()
     {
         using var rig = Ready();
 
-        Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(Handle(rig, "closing.day", Usual, Caller.Web)));
-        Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(Handle(rig, "closing.codes", "{}", Caller.Web)));
+        Assert.Throws<ArgumentException>(() => ClosingCommands.Register(new Dispatcher(WebTable), rig.Services));
+        Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(HandleWeb(rig, "closing.day", Usual)));
+        Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(HandleWeb(rig, "closing.codes", "{}")));
         Assert.Empty(rig.Connector.Opened);
     }
 
-    [Fact(DisplayName = "AC-3601.3 새 확장(Caller.Erp)이 revenue.days·hello를 부르면 처리기가 붙어 있어도 E-HELPER-UNKNOWN-COMMAND, 비트를 열지 않음")]
+    [Fact(DisplayName = "AC-3601.3 ERP 도우미에 revenue.days·hello·claim.month를 부르면 E-HELPER-UNKNOWN-COMMAND, 비트를 열지 않음")]
     public void ErpCannotCallWebCommands()
     {
         using var rig = Ready();
 
         Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(Handle(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}")));
         Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(Handle(rig, "hello", "{}")));
+        Assert.Equal(ErrorCodes.UnknownCommand, ErrorOf(Handle(rig, "claim.month", "{\"month\":\"2026-10\"}")));
         Assert.Empty(rig.Connector.Opened);
     }
 
@@ -249,7 +266,7 @@ public class ClosingCommandsTests
         using var rig = new Rig();
         ClosingFake.Quiet(rig.Session);
 
-        var revenue = ErrorOf(Handle(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}", Caller.Web));
+        var revenue = ErrorOf(HandleWeb(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}"));
         Assert.Equal("E-BIT-NOT-REGISTERED", revenue);
         Assert.Equal(revenue, ErrorOf(Handle(rig, "closing.day", Usual)));
         Assert.Equal(revenue, ErrorOf(Handle(rig, "closing.codes", "{}")));
@@ -262,7 +279,7 @@ public class ClosingCommandsTests
         using var rig = new Rig().Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution));
         ClosingFake.Quiet(rig.Session);
 
-        var revenue = ErrorOf(Handle(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}", Caller.Web));
+        var revenue = ErrorOf(HandleWeb(rig, "revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}"));
         Assert.Equal("E-BIT-HOSPITAL-MISMATCH", revenue);
         Assert.Equal(revenue, ErrorOf(Handle(rig, "closing.day", Usual)));
         Assert.Equal(revenue, ErrorOf(Handle(rig, "closing.codes", "{}")));
@@ -295,7 +312,8 @@ public class ClosingCommandsTests
         var (name, logged) = Assert.Single(outcome.Log);
         Assert.Equal(cmd, name);
         Assert.Equal(code, logged);
-        var line = LogLine.Format(new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.FromHours(9)), name, logged);
+        // ERP 도우미 기록 줄(ErpLogLine: 기존 LogLine과 같은 모양, 명령 이름은 ERP 명령 표로 본다)
+        var line = ErpLogLine.Format(new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.FromHours(9)), name, logged);
         Assert.Equal(new[] { "2026-11-10T09:00:00.000+09:00", cmd, code ?? "-" }, line.Split(' '));
         Assert.DoesNotContain(Fake.Chart, line);
         Assert.DoesNotContain(Fake.Name, line);

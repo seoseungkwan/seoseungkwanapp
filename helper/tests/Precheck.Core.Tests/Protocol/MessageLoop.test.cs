@@ -22,10 +22,7 @@ public class MessageLoopTests
         public byte[] Output { get; set; } = new byte[0];
     }
 
-    private static Outcome Run(Action<Dispatcher>? register, params byte[][] frames) =>
-        RunFrom(Requests.Allowed(Table), register, frames);
-
-    private static Outcome RunFrom(string origin, Action<Dispatcher>? register, params byte[][] frames)
+    private static Outcome Run(Action<Dispatcher>? register, params byte[][] frames)
     {
         var outcome = new Outcome();
         var input = new MemoryStream(Frames.Concat(frames));
@@ -36,7 +33,7 @@ public class MessageLoopTests
         Precheck.Core.Protocol.Hello.Register(dispatcher, Table);
         register?.Invoke(dispatcher);
 
-        outcome.Code = MessageLoop.Run(new[] { origin, "--parent-window=0" }, input, output, Table, dispatcher, log);
+        outcome.Code = MessageLoop.Run(new[] { Requests.Allowed(Table), "--parent-window=0" }, input, output, Table, dispatcher, log);
 
         outcome.InputPosition = input.Position;
         outcome.Output = output.ToArray();
@@ -211,76 +208,5 @@ public class MessageLoopTests
             Assert.DoesNotMatch(@"\.(Message|StackTrace)\b", source);
             Assert.DoesNotMatch(@"\b(Trace|Debug)\s*\.\s*Write", source);
         }
-    }
-
-    // ---- AC-3601.3 부른 쪽(origin)마다 명령 나눔 (spec erp-closing-fill, design.md 3-1) ----------------------------
-
-    private static string ErpOrigin => "chrome-extension://"
-        + (Table.ErpExtensionId ?? throw new InvalidOperationException("명령 표에 erp 구역이 없다")) + "/";
-
-    private const string ClosingDayArgs =
-        "{\"date\":\"2026-11-09\",\"groups\":[{\"key\":\"carm\",\"codes\":[\"CARM1\"]},{\"key\":\"ptVisit\",\"codes\":[\"AA222\"]}]}";
-
-    private const string October = "{\"from\":\"2026-10-01\",\"to\":\"2026-10-31\"}";
-
-    /// <summary>두 구역의 명령에 모두 처리기를 붙인다. 불린 명령 이름을 차례로 모은다.</summary>
-    private static Action<Dispatcher> RegisterAll(List<string> handled) => dispatcher =>
-    {
-        foreach (var name in Table.Names.Where(n => n != "hello").Concat(Table.ErpNames))
-        {
-            dispatcher.Register(name, (request, sink) =>
-            {
-                handled.Add(request.Cmd);
-                sink.Send(Envelope.Result(request.Id, new { ok = true }));
-            });
-        }
-    };
-
-    [Fact(DisplayName = "AC-3601.3 새 확장 origin으로 켜면 closing.codes·closing.day만 처리하고 hello·claim.month·revenue.days는 E-HELPER-UNKNOWN-COMMAND(처리기를 부르지 않음)")]
-    public void ErpOriginHandlesOnlyClosingCommands()
-    {
-        var handled = new List<string>();
-
-        var outcome = RunFrom(ErpOrigin, RegisterAll(handled),
-            HelloFrame("e-1"),
-            Frames.Frame(Requests.Envelope("claim.month", October, "e-2")),
-            Frames.Frame(Requests.Envelope("revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}", "e-3")),
-            Frames.Frame(Requests.Envelope("bit.check", "{}", "e-4")),
-            Frames.Frame(Requests.Envelope("closing.codes", "{}", "e-5")),
-            Frames.Frame(Requests.Envelope("closing.day", ClosingDayArgs, "e-6")),
-            Frames.Frame(Requests.Envelope("closing.day", "{\"date\":\"2026-11-09\"}", "e-7")));
-
-        Assert.Equal(0, outcome.Code);
-        Assert.Equal(new[] { "error", "error", "error", "error", "result", "result", "error" }, outcome.Replies.Select(Type).ToArray());
-        Assert.Equal(new[] { "e-1", "e-2", "e-3", "e-4", "e-5", "e-6", "e-7" },
-            outcome.Replies.Select(r => r.GetProperty("id").GetString()).ToArray());
-        foreach (var i in new[] { 0, 1, 2, 3 }) Assert.Equal("E-HELPER-UNKNOWN-COMMAND", Code(outcome.Replies[i]));
-        Assert.Equal("E-HELPER-BAD-MESSAGE", Code(outcome.Replies[6]));
-        Assert.Equal(new[] { "closing.codes", "closing.day" }, handled.ToArray());
-
-        Assert.Contains(outcome.Log, line => line.EndsWith(" hello E-HELPER-UNKNOWN-COMMAND", StringComparison.Ordinal));
-        Assert.Contains(outcome.Log, line => line.EndsWith(" closing.codes -", StringComparison.Ordinal));
-        Assert.Contains(outcome.Log, line => line.EndsWith(" closing.day -", StringComparison.Ordinal));
-        Assert.Contains(outcome.Log, line => line.EndsWith(" closing.day E-HELPER-BAD-MESSAGE", StringComparison.Ordinal));
-    }
-
-    [Fact(DisplayName = "AC-3601.3 기존 확장 origin이면 지금 명령은 그대로이고 closing.*는 처리기가 있어도 E-HELPER-UNKNOWN-COMMAND")]
-    public void WebOriginKeepsCommandsAndBlocksClosing()
-    {
-        var handled = new List<string>();
-
-        var outcome = Run(RegisterAll(handled),
-            Frames.Frame(Requests.Envelope("closing.codes", "{}", "w-1")),
-            Frames.Frame(Requests.Envelope("closing.day", ClosingDayArgs, "w-2")),
-            HelloFrame("w-3"),
-            Frames.Frame(Requests.Envelope("claim.dates", October, "w-4")),
-            Frames.Frame(Requests.Envelope("revenue.days", "{\"from\":\"2026-11-09\",\"to\":\"2026-11-09\"}", "w-5")));
-
-        Assert.Equal(0, outcome.Code);
-        Assert.Equal(new[] { "error", "error", "result", "result", "result" }, outcome.Replies.Select(Type).ToArray());
-        Assert.Equal("E-HELPER-UNKNOWN-COMMAND", Code(outcome.Replies[0]));
-        Assert.Equal("E-HELPER-UNKNOWN-COMMAND", Code(outcome.Replies[1]));
-        Assert.Equal(HelperVersion.Value, outcome.Replies[2].GetProperty("data").GetProperty("helperVersion").GetString());
-        Assert.Equal(new[] { "claim.dates", "revenue.days" }, handled.ToArray());
     }
 }

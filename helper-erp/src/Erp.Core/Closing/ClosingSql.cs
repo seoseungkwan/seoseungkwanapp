@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Precheck.Core.Bit;
 
-namespace Precheck.Core.Closing;
+namespace Erp.Core.Closing;
 
 /// <summary>
 /// ERP 마감일지 두 명령(closing.codes·closing.day, spec erp-closing-fill design.md 3-2)이 비트 DB에 돌리는 새 SELECT 여덟. 원본에 없는 문장이다.
@@ -12,7 +12,8 @@ namespace Precheck.Core.Closing;
 /// 처방 조건은 OdrDelFlg='N'·OdrCanYon='N'·OdrOutCod≠'99'.
 /// 환자 표(PbsInf)에서는 차트번호·생년월일만 쓰고, 이름·전화·주민번호·주소·메모 칸은 읽지 않는다. 차트번호·생년월일은 결과 칸으로 내지 않고
 /// 그날 안에서만 쓰는 번호(DENSE_RANK)·만 나이·센 수로 바꿔 낸다(AC-3606.2).
-/// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 표도 보므로 ReadOnlyGuard를 지난다(청구 Sql.All에는 없다, AC-3606.1).
+/// 모두 매개변수를 받는 SELECT 하나다. ERP 읽기 관문(Erp.Core.ErpReadGuard)이 이 표(Parameters)를 본다. 기존 관문(Bit/Sql.cs·ReadOnlyGuard)은
+/// 고치지 않으므로 이 문장을 모른다(청구 Sql.All에도 없다, AC-3606.1).
 /// closing.codes의 코드 목록은 새 문장 없이 Sql.TrendTotalsSql·StatsSql.CodeNamesSql을 쓴다.
 /// </summary>
 public static class ClosingSql

@@ -7,7 +7,7 @@ using Precheck.Core.Bit;
 using Precheck.Core.Protocol;
 using Precheck.Core.Revenue;
 
-namespace Precheck.Core.Closing;
+namespace Erp.Core.Closing;
 
 /// <summary>closing.day args의 묶음 하나(design.md 2절): key는 GroupKeys 가운데 하나, codes는 1~20개.</summary>
 public sealed class ClosingGroup
@@ -223,7 +223,8 @@ public sealed class ClosingWarnings
 /// <summary>
 /// closing.day 계산(spec erp-closing-fill design.md 3-3). 금액은 revenue.days 그날 값(RevenueDays.Read) 위에 미수입금 나눔을 더하고,
 /// 사람 수는 그날 진료 줄(ClosingSql.DayVisitsSql·DayCodesSql)을 도우미 안에서 센다. 진료번호·그날 번호는 답에 싣지 않는다(숫자만, AC-3606.2).
-/// 모든 읽기는 ReadOnlyGuard를 지난다. 하나라도 실패하면 예외가 올라가 일부만 답하는 일이 없다.
+/// 마감일지 읽기는 모두 ERP 읽기 관문(ErpReadGuard)을 지난다(그날 매출 RevenueDays.Read는 기존 계산 그대로 기존 관문으로 읽는다).
+/// 하나라도 실패하면 예외가 올라가 일부만 답하는 일이 없다.
 /// </summary>
 public static class ClosingDay
 {
@@ -646,17 +647,17 @@ internal static class ClosingRead
     /// <summary>웹이 받는 가장 큰 정수(Number.isSafeInteger). 넘는 금액은 지어낸 값이 되지 않게 읽기 실패로 본다.</summary>
     private const long MaxSafeInteger = 9007199254740991L;
 
-    /// <summary>정해 둔 문장을 그 문장 매개변수 표(Sql.ParametersOf)에 있는 값만 골라 관문으로 돌린다.</summary>
+    /// <summary>정해 둔 문장을 그 문장 매개변수 표(ErpReadGuard.ParametersOf)에 있는 값만 골라 ERP 읽기 관문으로 돌린다.</summary>
     public static IReadOnlyList<IReadOnlyList<object?>> Query(
         IBitDb db, string sql, IReadOnlyDictionary<string, object?> values, TimeSpan? timeout = null)
     {
         var args = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var parameter in Sql.ParametersOf(sql))
+        foreach (var parameter in ErpReadGuard.ParametersOf(sql))
         {
             if (!values.TryGetValue(parameter.Name, out var value)) throw ReadFailed();
             args[parameter.Name] = value;
         }
-        return ReadOnlyGuard.Query(db, sql, args, timeout ?? ClosingSql.ReadTimeout);
+        return ErpReadGuard.Query(db, sql, args, timeout ?? ClosingSql.ReadTimeout);
     }
 
     /// <summary>합계 문장의 답은 늘 한 줄이다. 줄·칸이 모자라면 지어내지 않고 읽기 실패로 본다.</summary>

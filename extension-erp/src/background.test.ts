@@ -1,11 +1,18 @@
 // TASK-7 REQ-3609 AC-3609.6: 새 확장 서비스 워커(도우미 통로)를 가짜 chrome(runtime.onMessage·connectNative)으로 시험한다.
 // 자료는 모두 가짜다(환자 정보 없음)
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import commands from '../../src/lib/bridge/commands.json'
 import { COMMANDS, PROTOCOL, REPLY_TIMEOUT_MS, startBackground, type BackgroundChrome, type NativePortLike } from './background'
 import { HOST_NAME } from './types'
 
 const OUR_ID = 'lkancaiekmoieooheifdimahhkejfmjc'
+const ERP_TABLE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'helper-erp', 'commands.json')
+
+/** ERP 도우미 명령 표(helper-erp/commands.json, TASK-11). 없으면 그 시험만 실패하게 시험 안에서 읽는다 */
+const erpTable = () =>
+  JSON.parse(readFileSync(ERP_TABLE, 'utf8')) as { protocol: number; hostName: string; commands: Record<string, unknown> }
 const ID_SHAPE = /^[A-Za-z0-9-]{1,64}$/
 const DAY_ARGS = { date: '2026-11-09', groups: [{ key: 'carm', codes: ['CARM1'] }] }
 
@@ -94,14 +101,15 @@ afterEach(() => {
 })
 
 describe('AC-3609.6 도우미 통로: 이름표·명령', () => {
-  it('AC-3609.6: 도우미 이름은 commands.json hostName, 봉투 판(v)은 commands.json protocol이다', () => {
-    expect(HOST_NAME).toBe(commands.hostName)
-    expect(PROTOCOL).toBe(commands.protocol)
+  it('AC-3609.6: 도우미 이름은 ERP 명령 표(helper-erp/commands.json) hostName, 봉투 판(v)은 그 표 protocol이다', () => {
+    const table = erpTable()
+    expect(HOST_NAME).toBe(table.hostName)
+    expect(PROTOCOL).toBe(table.protocol)
   })
 
-  it('AC-3609.6: 받는 명령은 closing.codes·closing.day 둘뿐이고 commands.json erp 구역 명령과 같다', () => {
+  it('AC-3609.6: 받는 명령은 closing.codes·closing.day 둘뿐이고 ERP 명령 표의 명령과 같다', () => {
     expect([...COMMANDS]).toEqual(['closing.codes', 'closing.day'])
-    expect(Object.keys(commands.erp.commands).sort()).toEqual([...COMMANDS].sort())
+    expect(Object.keys(erpTable().commands).sort()).toEqual([...COMMANDS].sort())
   })
 
   it('AC-3609.6: 답 기다리는 시간은 120초다', () => {

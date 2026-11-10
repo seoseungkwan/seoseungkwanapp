@@ -1,7 +1,7 @@
 // 새 확장 'ERP 마감일지 채우기'가 쓰는 이름표와 도우미 답 모양(design.md 2절·4절). 도우미 C# 모델 칸 이름도 같다
 
-/** 도우미 이름(기존 확장과 같은 도우미, src/lib/bridge/commands.json hostName) */
-export const HOST_NAME = 'com.seoseungkwan.precheck'
+/** ERP 도우미 이름(기존 도우미와 따로인 ERP 전용 도우미, helper-erp/commands.json hostName) */
+export const HOST_NAME = 'com.seoseungkwan.erp_helper'
 
 /** 설정을 두는 chrome.storage.local 칸 이름. 도우미 답은 저장하지 않는다 */
 export const SETTINGS_KEY = 'erpClosing'
@@ -75,7 +75,7 @@ export type Settings = {
   reservations: Partial<Record<RsvRow, string[]>>
 }
 
-/** 새 확장이 도우미에 보내는 명령 둘(commands.json erp 구역) */
+/** 새 확장이 ERP 도우미에 보내는 명령 둘(helper-erp/commands.json commands) */
 export type ClosingCommand = 'closing.codes' | 'closing.day'
 export type ClosingDayArgs = { date: string; groups: { key: GroupKey; codes: string[] }[] }
 

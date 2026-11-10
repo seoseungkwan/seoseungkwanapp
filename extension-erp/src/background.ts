@@ -2,13 +2,13 @@
 // - 같은 확장(ERP 화면의 내용 스크립트·설정 화면)이 보낸 { cmd: closing.codes | closing.day, args }만 받는다
 // - 요청마다 도우미 연결을 하나 열어 { v: 1, id, cmd, args }를 보내고, 그 요청의 result·error 하나를 받으면 닫는다.
 //   답은 { type: 'result', data } | { type: 'error', code }로 돌려준다. 답은 고치지도 쌓아 두지도 않는다
-// - 도우미가 없거나 옛 도우미가 새 확장 ID를 거절해 끊기면 E-HELPER-MISSING, 120초 안에 답이 없으면 E-HELPER-TIMEOUT
+// - ERP 도우미(com.seoseungkwan.erp_helper)가 없거나 등록되지 않아 연결이 끊기면 E-HELPER-MISSING, 120초 안에 답이 없으면 E-HELPER-TIMEOUT
 // - { open: 'options' }는 설정 화면만 연다(내용 스크립트는 확장 화면을 직접 열 수 없다). 도우미는 켜지 않는다
 import { HOST_NAME, type ClosingCommand } from './types.js'
 
-/** 도우미 봉투 판(src/lib/bridge/commands.json protocol) */
+/** 도우미 봉투 판(helper-erp/commands.json protocol) */
 export const PROTOCOL = 1
-/** 도우미에 넘기는 명령은 이 둘뿐이다(commands.json erp 구역) */
+/** 도우미에 넘기는 명령은 이 둘뿐이다(helper-erp/commands.json commands) */
 export const COMMANDS: readonly ClosingCommand[] = ['closing.codes', 'closing.day']
 /** 도우미 답을 기다리는 가장 긴 시간 */
 export const REPLY_TIMEOUT_MS = 120_000

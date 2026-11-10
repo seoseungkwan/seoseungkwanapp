@@ -6,12 +6,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ESLint } from 'eslint'
 import { beforeAll, describe, expect, it } from 'vitest'
-import commands from '../../src/lib/bridge/commands.json'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const EXT = path.join(ROOT, 'extension-erp')
 const SRC = path.join(EXT, 'src')
 const MANIFEST = path.join(EXT, 'manifest.json')
+// ERP 도우미 명령 표(ERP 도우미에 실림, TASK-11). 기존 확장 manifest는 ID가 다른지 견줄 때만 본다
+const ERP_TABLE = path.join(ROOT, 'helper-erp', 'commands.json')
+const OLD_MANIFEST = path.join(ROOT, 'extension', 'manifest.json')
 const DESIGN = path.join(ROOT, 'specs', 'erp-closing-fill', 'design.md')
 const ERP_MATCH = 'https://erp.minesolution.com/*'
 // ESLint 설정 읽기·tsc가 느린 PC에서도 흔들리지 않게
@@ -100,7 +102,7 @@ describe('AC-3601.1 extension-erp/manifest.json', () => {
     expect(url.host).toBe('erp.minesolution.com')
   })
 
-  it('AC-3601.1: key는 RSA 2048 공개 열쇠이고, 그것으로 계산한 ID는 32자 a~p이며 기존 확장 ID와 다르다', () => {
+  it('AC-3601.1: key는 RSA 2048 공개 열쇠이고, 그것으로 계산한 ID는 32자 a~p이며 ERP 명령 표 extensionId와 같고 기존 확장 ID와 다르다', () => {
     const key = String(readJson(MANIFEST).key ?? '')
     const pub = createPublicKey({ key: Buffer.from(key, 'base64'), format: 'der', type: 'spki' })
     expect(pub.asymmetricKeyType).toBe('rsa')
@@ -109,15 +111,21 @@ describe('AC-3601.1 extension-erp/manifest.json', () => {
     expect(pub.export({ format: 'der', type: 'spki' }).toString('base64')).toBe(key)
     const id = extensionIdFromKey(key)
     expect(id).toMatch(/^[a-p]{32}$/)
-    expect(id).not.toBe(commands.extensionId)
-    expect(key).not.toBe(commands.extensionKey)
+    const erp = readJson(ERP_TABLE)
+    expect(id).toBe(erp.extensionId)
+    expect(key).toBe(erp.extensionKey)
+    const oldKey = String(readJson(OLD_MANIFEST).key ?? '')
+    expect(id).not.toBe(extensionIdFromKey(oldKey))
+    expect(key).not.toBe(oldKey)
   })
 })
 
 describe('AC-3601.1 extension-erp/src/types.ts 이름표·차례', () => {
-  it('AC-3601.1: HOST_NAME은 commands.json hostName과 같다', async () => {
+  it('AC-3601.1: HOST_NAME은 ERP 명령 표 helper-erp/commands.json hostName(com.seoseungkwan.erp_helper)과 같다', async () => {
     const { HOST_NAME } = await loadTypes()
-    expect(HOST_NAME).toBe(commands.hostName)
+    const erp = readJson(ERP_TABLE)
+    expect(erp.hostName).toBe('com.seoseungkwan.erp_helper')
+    expect(HOST_NAME).toBe(erp.hostName)
   })
 
   it('AC-3601.1: GROUP_KEYS는 design.md 2절 묶음 key 19개 차례 그대로다', async () => {
@@ -238,7 +246,7 @@ describe('AC-3601.5 새 확장 코드: 네트워크·console·웹 저장소 없�
     const code = [
       "export const load = () => chrome.storage.local.get('erpClosing')",
       "export const save = (v: unknown) => chrome.storage.local.set({ erpClosing: v })",
-      "export const open = () => chrome.runtime.connectNative('com.seoseungkwan.precheck')",
+      "export const open = () => chrome.runtime.connectNative('com.seoseungkwan.erp_helper')",
       "export const cell = () => document.querySelector('input')",
     ].join('\n')
     const [result] = await eslint.lintText(code, { filePath: PROBE })
