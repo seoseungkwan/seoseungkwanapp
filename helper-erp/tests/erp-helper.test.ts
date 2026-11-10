@@ -567,7 +567,10 @@ describe('AC-3611.5 설치·지우기(helper-erp/install)', () => {
       const text = read(rel)
       for (const old of OLD_NAMES) expect(text, `${rel}: ${old}`).not.toContain(old)
     }
-    expect(filesUnder(INSTALL).sort()).toEqual([INSTALL_CMD, INSTALL_PS1, MANIFEST, UNINSTALL_PS1].sort())
+    // 설치 안내 README.md(TASK-8)는 사람이 읽는 글이라 기존 도우미와 따로라는 것을 이름으로 적는다 → 이름 검사에서 뺀다
+    expect(filesUnder(INSTALL).sort()).toEqual(
+      [INSTALL_CMD, INSTALL_PS1, MANIFEST, UNINSTALL_PS1, `${INSTALL}/README.md`].sort(),
+    )
   })
 
   it('AC-3611.5: 기존 helper/install 파일은 운영(1a721ef) 그대로다', () => {
