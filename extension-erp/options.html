@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERP 마감일지 채우기 · 설정</title>
+<!-- 확장 설정 화면(design.md 4절). 글·배치는 승인된 목업 docs/mockups/erp-closing-fill/ ⑫~⑮ 그대로. 토큰 값은 docs/UI_GUIDE.md -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;
+--negative:#C2410C;--negative-soft:#FDF0EA;--warning:#B45309;--r-control:4px;--r-float:8px;
+--shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+.nw{white-space:nowrap}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--canvas);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
+.btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn-2:hover{background:var(--canvas)}
+.btn-1{background:var(--accent);color:var(--surface)}
+.btn-1:hover{background:var(--accent-strong)}
+
+.opt{background:var(--surface);min-height:100vh}
+.opt-top{border-bottom:1px solid var(--line)}
+.opt-top .in{max-width:1000px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:10px}
+.opt-top i{width:20px;height:20px;border-radius:5px;background:var(--accent);flex:none}
+.opt-top h1{font-size:18px;font-weight:600}
+.opt main{max-width:1000px;margin:0 auto;padding:20px 24px 120px;display:flex;flex-direction:column;gap:16px}
+.lead-p{color:var(--ink-2)}
+.notice{border-radius:var(--r-control);padding:10px 14px;color:var(--ink-2)}
+.notice.first{background:var(--accent-soft)}
+.notice.first b{color:var(--accent-strong);font-weight:600}
+.notice.err{background:var(--negative-soft)}
+.notice.err b{color:var(--negative);font-weight:600}
+.notice.ok{color:var(--muted);padding:0;font-size:13px}
+.osec{border-top:1px solid var(--line-strong);padding-top:14px}
+.osec>h2{font-size:16px;font-weight:600}
+.osec>p{margin-top:2px;font-size:13px;color:var(--ink-2)}
+.orow{display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 20px;padding:12px 0;border-bottom:1px solid var(--line)}
+.orow:last-child{border-bottom:0}
+.oname b{font-weight:600;color:var(--ink)}
+.oname small{display:block;font-size:12px;line-height:17px;color:var(--muted);margin-top:2px}
+.opick{display:flex;flex-direction:column;gap:8px;min-width:0}
+
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 2px 0 9px;border:1px solid var(--line-strong);border-radius:var(--r-control);background:var(--surface);max-width:100%}
+.chip b{font-weight:600;color:var(--ink);white-space:nowrap}
+.chip .cn{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip .cn.gone{color:var(--warning)}
+.chip button{width:26px;height:26px;border-radius:3px;color:var(--muted);font-size:16px;flex:none}
+.chip button:hover{background:var(--canvas);color:var(--ink)}
+.none{font-size:13px;color:var(--muted)}
+.pickline{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;min-height:34px}
+.find{position:relative;flex:0 1 280px;min-width:200px}
+.find input,.etc input,.opick select{width:100%;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:var(--surface)}
+.find input:focus,.etc input:focus,.opick select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.find input:disabled,.opick select:disabled{background:var(--canvas);color:var(--muted)}
+.dd{position:absolute;left:0;width:max(100%,400px);max-width:calc(100vw - 32px);top:calc(100% + 4px);z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);max-height:300px;overflow:auto;padding:4px}
+.dd button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;padding:7px 10px;border-radius:var(--r-control)}
+.dd button:hover:not(:disabled){background:var(--accent-soft)}
+.dd button b{font-weight:600;color:var(--ink)}
+.dd button span{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd button em{font-style:normal;font-size:12px;color:var(--muted);white-space:nowrap}
+.dd button:disabled{cursor:default}
+.dd button:disabled b,.dd button:disabled span{color:var(--muted)}
+.dd .empty{padding:8px 10px;color:var(--muted);font-size:13px}
+.etc{display:flex;align-items:center;gap:8px;max-width:420px}
+.etc span{font-size:13px;color:var(--ink-2);white-space:nowrap}
+.etc input{max-width:240px}
+.opick select{flex:0 1 240px;min-width:200px}
+.savebar{position:sticky;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line)}
+.savebar .in{max-width:1000px;margin:0 auto;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.status{font-size:14px;color:var(--ink-2)}
+.status.saved{color:var(--positive);font-weight:500}
+.status.saved::before{content:'✓ '}
+.status.dirty{color:var(--warning)}
+.savebar .acts{display:flex;gap:8px;margin-left:auto}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+/* 좁은 창 */
+@media (max-width:720px){
+  .orow{grid-template-columns:minmax(0,1fr)}
+  .etc{max-width:none}
+  .find,.opick select{flex:1 1 100%}
+}
+@media (max-width:600px){
+  .opt main,.opt-top .in,.savebar .in{padding-left:16px;padding-right:16px}
+  .savebar .acts{width:100%}
+  .savebar .acts .btn{flex:1}
+}
+</style>
+<script type="module" src="options.js"></script>
+</head>
+<body>
+<div class="opt">
+  <div class="opt-top"><div class="in"><i></i><h1>ERP 마감일지 채우기 · 설정</h1></div></div>
+  <main id="optMain"></main>
+  <div class="savebar"><div class="in">
+    <p class="status" id="optStatus" role="status"></p>
+    <div class="acts">
+      <button type="button" class="btn btn-2" id="optReset">처음 값으로</button>
+      <button type="button" class="btn btn-1" id="optSave">저장</button>
+    </div>
+  </div></div>
+</div>
+</body>
+</html>
