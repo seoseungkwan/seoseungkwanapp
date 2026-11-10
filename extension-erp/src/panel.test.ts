@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 // TASK-7 REQ-3609: ERP 화면 오른쪽 아래 [비트 값 채우기] 단추와 결과 안내(panel.ts). 글은 승인된 목업
 // docs/mockups/erp-closing-fill/ ①~⑪과 design.md 5절 그대로다. 숫자는 가짜(환자 정보 없음)
+// TASK-17 REQ-3612~3614: 새 보기(future·진료 0건·읽기 전용·이미 적힌 칸 묻기·되돌린 뒤)·맞춰 볼 숫자·까닭별 칸·[지난 결과]·Esc·오류 표 글.
+// 이 글들은 목업 승인 없이(사용자 자동 승인) design.md 5-1·5-2 글 그대로 만든다
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { sampleDay } from './__tests__/erpPage'
-import { HELD_SALES } from './cells'
+import { sampleDay, settingsFirst } from './__tests__/erpPage'
+import { HELD_SALES, planCells, type Where } from './cells'
 import type { FillResult } from './fill'
-import { createDock, HOST_ID, OVERLAP_TEXT, TEXT, warningLines, type Dock, type View } from './panel'
+import { createDock, FLOW_TEXT, HOST_ID, OVERLAP_TEXT, placeLine, SKIP_TEXT, TEXT, warningLines, type Dock, type View } from './panel'
 import type { ClosingDay, OverlapChoice } from './types'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -39,19 +41,37 @@ function quietDay(): ClosingDay {
   day.money.refund = 0
   return day
 }
-const result = (o: Partial<FillResult> = {}): FillResult => ({ filled: 93, missing: [], unpicked: 38, unknown: 0, held: 0, ...o })
-const done = (o: { day?: ClosingDay; result?: Partial<FillResult> } = {}): View => ({
+/** 처음 값 설정에서 고르지 않아 건너뛴 38칸 자리 */
+const UNPICKED: Where[] = planCells(sampleDay(), settingsFirst())
+  .filter((p) => p.why === 'unpicked')
+  .map((p) => p.where)
+const result = (o: Partial<FillResult> = {}): FillResult => ({
+  filled: 93,
+  kept: 0,
+  skipped: [],
+  unpicked: UNPICKED,
+  noName: [],
+  unknown: 0,
+  held: 0,
+  undo: [],
+  ...o,
+})
+const done = (o: { day?: ClosingDay; result?: Partial<FillResult>; canUndo?: boolean } = {}): View => ({
   kind: 'done',
   date: '2026-11-09',
   result: result(o.result),
   day: o.day ?? quietDay(),
+  ...(o.canUndo === undefined ? {} : { canUndo: o.canUndo }),
 })
+/** 맞춰 볼 숫자 블록(quietDay) */
+const CHECK = ['비트와 맞춰 볼 숫자', '외래 총매출 11,668,530원', '진료수납액 5,571,630원', '환자 합계 84명', '비트 화면의 같은 숫자와 먼저 견주어 보세요.']
 
 let dock: Dock | null = null
 function open() {
   const onFill = vi.fn()
   const onOpenSettings = vi.fn()
-  dock = createDock(document, { onFill, onOpenSettings })
+  const onUndo = vi.fn()
+  dock = createDock(document, { onFill, onOpenSettings, onUndo })
   document.body.append(dock.host)
   const shadow = dock.host.shadowRoot
   if (!shadow) throw new Error('shadowRoot 없음')
@@ -60,7 +80,10 @@ function open() {
   const button = () => $<HTMLButtonElement>('.fill-btn') as HTMLButtonElement
   const panel = () => $<HTMLElement>('.panel') as HTMLElement
   const body = () => $<HTMLElement>('.panel .pb') as HTMLElement
-  return { dock, shadow, $, $$, button, panel, body, onFill, onOpenSettings }
+  const last = () => $<HTMLButtonElement>('.last') as HTMLButtonElement
+  const acts = () => $$('.acts button').map(text)
+  const act = (label: string) => $$('.acts button').find((b) => text(b) === label) as HTMLButtonElement
+  return { dock, shadow, $, $$, button, panel, body, last, acts, act, onFill, onOpenSettings, onUndo }
 }
 
 afterEach(() => {
@@ -116,13 +139,15 @@ describe('AC-3609.1 단추', () => {
 })
 
 describe('AC-3609.4 채운 뒤 안내', () => {
-  it("AC-3609.4: '{날짜} 비트 값으로 {N}칸을 채웠어요. 저장은 하지 않았어요.' · 건너뛴 칸 수 · 끝 줄 · [설정 열기]", () => {
+  it("AC-3609.4 AC-3613.1: 맞춰 볼 숫자 → '{날짜} 비트 값으로 {N}칸을 채웠어요. 저장은 하지 않았어요.' · 건너뛴 칸 · 끝 줄 · [설정 열기]", () => {
     const p = open()
     p.dock.show(done())
     expect(p.panel().hidden).toBe(false)
     expect(p.panel().getAttribute('role')).toBe('status')
     expect(text(p.$('.pt'))).toBe('비트 값 채우기')
     expect(p.$('.x')?.getAttribute('aria-label')).toBe('안내 닫기')
+    expect([...(p.$('.check')?.children ?? [])].map(text)).toEqual(CHECK)
+    expect(text(p.$('.check .h'))).toBe('비트와 맞춰 볼 숫자')
     expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
     expect(p.$('.lead')?.classList.contains('err')).toBe(false)
     const blocks = p.$$('.blk')
@@ -132,53 +157,104 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     expect(text(blocks[0].querySelector('.small'))).toBe('설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.')
     expect(p.$('.warns')).toBeNull()
     expect(text(p.$('.end'))).toBe(END)
-    const acts = p.$$('.acts button')
-    expect(acts.map(text)).toEqual(['설정 열기'])
-    // 차례: 머리글 → 못 찾은 칸 → 건너뛴 칸 → 경고 → 끝 줄 → [설정 열기]
-    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk', 'end', 'acts'])
+    expect(p.acts()).toEqual(['설정 열기'])
+    // 차례(design.md 5-1): 맞춰 볼 숫자 → 머리글 → 넣지 않은 칸 → 경고 → 끝 줄 → [되돌리기]·[설정 열기]
+    expect([...p.body().children].map((c) => c.className)).toEqual(['check', 'lead', 'blk', 'end', 'acts'])
   })
 
-  it('AC-3609.4: 못 찾은 칸이 있으면 갯수와 목록, 직접 넣으라는 글이 건너뛴 칸 앞에 있다', () => {
+  it('AC-3613.2: 넣지 않은 칸은 까닭별 묶음(찾지 못함 → 치료사별 → 읽기 전용 → 이름 빈 기타 줄 → 고르지 않음) 차례로 제목 · 짧은 줄 이름 · 할 일이다', () => {
     const p = open()
-    const missing = ['업무일지 1 › 진료 · 치료현황 › 도수치료', '업무일지 1 › 진료 · 치료현황 › 충격파(체충)']
-    p.dock.show(done({ result: { filled: 91, missing } }))
-    expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 91칸을 채웠어요. 저장은 하지 않았어요.')
-    const [miss, skip] = p.$$('.blk')
-    expect(text(miss.querySelector('.h'))).toBe('못 찾은 칸 2칸')
-    expect([...miss.querySelectorAll('li')].map(text)).toEqual(missing)
-    expect(text(miss.querySelector('.small'))).toBe('ERP 화면에서 찾지 못해 그대로 둔 칸이에요. 직접 넣어 주세요.')
-    expect(text(skip.querySelector('p'))).toBe('고르지 않아 건너뛴 칸 38칸')
+    const skipped: FillResult['skipped'] = [
+      { where: { j: 1, box: '진료 · 치료현황', row: '도수치료' }, skip: 'therapist' },
+      { where: { j: 2, field: 'ESWT Radial' }, skip: 'notFound' },
+      { where: { j: 1, box: '외래 수입', row: '감액' }, skip: 'locked' },
+      { where: { j: 2, card: '예약', row: '경과', col: '내원' }, skip: 'notFound' },
+      { where: { j: 2, card: '예약', row: '경과', col: '취소' }, skip: 'notFound' },
+    ]
+    const noName: Where[] = [
+      { j: 2, card: '치료별 신환/90일초진/재진 건수', row: '기타2', col: '신환' },
+      { j: 2, card: '치료별 매출', row: '기타2', col: '금액(원)' },
+    ]
+    p.dock.show(done({ result: { filled: 86, skipped, noName } }))
+    const blocks = p.$$('.blk')
+    expect(blocks.map((b) => [text(b.querySelector('.h')), text(b.querySelector('.rows')), text(b.querySelector('.small'))])).toEqual([
+      ['화면에서 찾지 못한 칸 3칸', 'ESWT Radial · 예약 경과', 'ERP 화면에서 찾지 못해 그대로 둔 칸이에요. 직접 넣어 주세요.'],
+      ['치료사별 입력 줄 1칸', '치료현황 도수치료', '치료사별로 넣는 줄이라 그대로 두었어요. 치료사별 칸에 직접 넣어 주세요.'],
+      ['읽기 전용 칸 1칸', '외래 수입 감액', '잠긴 칸이라 그대로 두었어요.'],
+      [
+        'ERP 줄 이름이 빈 기타 줄 2칸',
+        '치료별 건수 기타2 · 치료별 매출 기타2',
+        '설정 화면에서 그 기타 줄의 ERP 줄 이름을 업무일지 2 줄 이름과 똑같이 넣어 주세요.',
+      ],
+      ['고르지 않아 건너뛴 칸 38칸', placeLine(UNPICKED), '설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.'],
+    ])
+  })
+
+  it("AC-3613.2: 짧은 줄 이름은 같은 줄을 한 번만, 10줄까지 쓰고 넘으면 ' 외 {K}줄'이다", () => {
+    const rows = ['10대미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80대', '90대', '100대', '110대']
+    const many: Where[] = rows.flatMap((row) =>
+      ['신환', '재진'].map((col): Where => ({ j: 2, card: '연령별 신환/90일초진/재진', row, col })),
+    )
+    expect(placeLine(many)).toBe(
+      '연령별 10대미만 · 연령별 10대 · 연령별 20대 · 연령별 30대 · 연령별 40대 · 연령별 50대 · 연령별 60대 · 연령별 70대 · 연령별 80대 · 연령별 90대 외 2줄',
+    )
+    expect(placeLine(many.slice(0, 20))).not.toContain('외')
+    expect(placeLine([])).toBe('')
+    // 처음 값 설정의 고르지 않은 38칸: 같은 줄은 한 번
+    expect(placeLine(UNPICKED)).toBe(
+      '치료현황 도수상담 · 치료현황 리푸스 · 치료현황 손발톱케어 · 치료현황 CT · 치료현황 수술 · 예약 주사 · 예약 경과 · 예약 진료예약 · 예약 기타(수액,드레싱등) · 치료별 건수 기타2 외 10줄',
+    )
+  })
+
+  it("AC-3612.3: [빈 칸만]으로 그대로 둔 칸이 있으면 머리글 다음에 '이미 적힌 {K}칸은 그대로 두었어요.'", () => {
+    const p = open()
+    p.dock.show(done({ result: { filled: 91, kept: 2 } }))
+    expect(text(p.$('.kept'))).toBe('이미 적힌 2칸은 그대로 두었어요.')
+    expect([...p.body().children].map((c) => c.className)).toEqual(['check', 'lead', 'kept', 'blk', 'end', 'acts'])
+    p.dock.show(done())
+    expect(p.$('.kept')).toBeNull()
+  })
+
+  it('AC-3612.4: 되돌릴 수 있으면 [되돌리기]가 [설정 열기] 앞에 있고 누르면 onUndo를 부른다', () => {
+    const p = open()
+    p.dock.show(done({ canUndo: true }))
+    expect(p.acts()).toEqual(['되돌리기', '설정 열기'])
+    p.act('되돌리기').click()
+    expect(p.onUndo).toHaveBeenCalledTimes(1)
+    expect(p.onOpenSettings).not.toHaveBeenCalled()
+    p.dock.show(done({ canUndo: false }))
+    expect(p.acts()).toEqual(['설정 열기'])
   })
 
   it('AC-3609.4: 건너뛴 칸이 없으면 그 줄을 보이지 않는다', () => {
     const p = open()
-    p.dock.show(done({ result: { unpicked: 0, filled: 131 } }))
+    p.dock.show(done({ result: { unpicked: [], filled: 131 } }))
     expect(p.$$('.blk')).toHaveLength(0)
     expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 131칸을 채웠어요. 저장은 하지 않았어요.')
   })
 
   it("AC-3609.4: 보류 칸이 있으면(held > 0) 고르지 않은 칸 줄 바로 아래에 '씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.' 한 줄", () => {
     const p = open()
-    const missing = ['업무일지 1 › 진료 · 치료현황 › 도수치료']
+    const missing: FillResult['skipped'] = [{ where: { j: 1, box: '진료 · 치료현황', row: '도수치료' }, skip: 'notFound' }]
     const day = quietDay()
     day.warnings.unpaidVisits = 1
-    withHeld(() => p.dock.show(done({ day, result: { filled: 90, missing, held: 2 } })))
+    withHeld(() => p.dock.show(done({ day, result: { filled: 90, skipped: missing, held: 2 } })))
     const blocks = p.$$('.blk')
     expect(blocks).toHaveLength(3)
     expect(text(blocks[1].querySelector('p'))).toBe('고르지 않아 건너뛴 칸 38칸')
     expect(text(blocks[2])).toBe(HELD)
     expect(blocks[2].classList.contains('held')).toBe(true)
-    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk', 'blk', 'blk held', 'warns', 'end', 'acts'])
+    expect([...p.body().children].map((c) => c.className)).toEqual(['check', 'lead', 'blk', 'blk', 'blk held', 'warns', 'end', 'acts'])
     // 보류 칸은 채운 칸·못 찾은 칸·고르지 않은 칸 수에 들지 않는다
     expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 90칸을 채웠어요. 저장은 하지 않았어요.')
-    expect(text(blocks[0].querySelector('.h'))).toBe('못 찾은 칸 1칸')
+    expect(text(blocks[0].querySelector('.h'))).toBe('화면에서 찾지 못한 칸 1칸')
   })
 
   it('AC-3609.4: 고르지 않은 칸이 없어도 보류 줄은 보이고, 보류 칸이 없으면(held 0) 보류 줄이 없다', () => {
     const p = open()
-    withHeld(() => p.dock.show(done({ result: { unpicked: 0, filled: 129, held: 2 } })))
+    withHeld(() => p.dock.show(done({ result: { unpicked: [], filled: 129, held: 2 } })))
     expect(p.$$('.blk').map(text)).toEqual([HELD])
-    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk held', 'end', 'acts'])
+    expect([...p.body().children].map((c) => c.className)).toEqual(['check', 'lead', 'blk held', 'end', 'acts'])
     p.dock.show(done({ result: { held: 0 } }))
     expect(p.$$('.held')).toHaveLength(0)
     expect(p.body().textContent).not.toContain('치료별 매출은 채우지 않았어요')
@@ -258,7 +334,7 @@ describe('AC-3609.7 함께 있는 진료 묻기(design.md 5절)', () => {
       const p = open()
       p.dock.show({ ...done(), overlap: { visits: 9, choice } } as View)
       expect(text(p.$('.ovl')), choice).toBe(line)
-      expect([...p.body().children].map((c) => c.className), choice).toEqual(['lead', 'ovl', 'blk', 'end', 'acts'])
+      expect([...p.body().children].map((c) => c.className), choice).toEqual(['check', 'lead', 'ovl', 'blk', 'end', 'acts'])
       p.dock.host.remove()
     }
     const p = open()
@@ -329,7 +405,7 @@ describe('AC-3609.4 경고 줄(design.md 5절)', () => {
     day.money.refund = 33_000
     p.dock.show(done({ day }))
     expect(p.$$('.warns li').map(text)).toEqual([W.moneyUnconfirmed, W.unpaidVisits(2), W.refund('33,000')])
-    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk', 'warns', 'end', 'acts'])
+    expect([...p.body().children].map((c) => c.className)).toEqual(['check', 'lead', 'blk', 'warns', 'end', 'acts'])
   })
 })
 
@@ -357,60 +433,259 @@ describe('AC-3609.2·3609.3·3609.5 안내 글', () => {
     expect([...p.body().children].map(text)).toEqual(['읽는 동안 마감 일자가 바뀌어 채우지 않았어요. 다시 눌러 주세요.'])
   })
 
-  it.each<[string, View, string]>([
-    ['ERP 도우미 없음', { kind: 'errHelper' }, 'ERP 도우미를 설치해 주세요.'],
-    ['이 PC 등록 안 됨', { kind: 'errNotRegistered' }, '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.'],
-    ['도우미 오류 번호', { kind: 'errBit', code: 'E-BIT-READ-FAILED' }, '비트에서 읽지 못했어요 (E-BIT-READ-FAILED)'],
-    ['120초', { kind: 'errTimeout' }, '도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.'],
-  ])("AC-3609.5: %s 이면 오류 머리글과 '아무 칸도 바꾸지 않았어요.'이고 [설정 열기]는 없다", (_name, view, lead) => {
+  it.each<[string, string, string]>([
+    ['E-HELPER-MISSING', 'ERP 도우미가 이 PC에 없어요.', 'ERP 도우미를 설치해 주세요. 받은 zip을 풀고 install.cmd를 두 번 누르면 돼요.'],
+    [
+      'E-BIT-NOT-REGISTERED',
+      '이 PC가 아직 등록되지 않았어요.',
+      'ERP 도우미 설치 파일을 다시 실행해 주세요(비트 로그인 → PC 확인 창 [확인]).',
+    ],
+    ['E-BIT-READ-FAILED', '비트 자료를 읽지 못했어요.', '잠시 뒤 다시 해 주세요. 계속되면 이 번호를 알려 주세요.'],
+    ['E-HELPER-TIMEOUT', '도우미가 답하지 않아요(120초).', '잠시 뒤 다시 해 주세요.'],
+    ['E-NEW-THING', '비트에서 읽지 못했어요.', '잠시 뒤 다시 해 주세요. 계속되면 이 번호를 알려 주세요.'],
+  ])("AC-3609.5 AC-3614.1: 오류 %s 이면 굵은 '무엇이' · '어떻게' · 작은 줄 '아무 칸도 바꾸지 않았어요. (번호 …)'이고 [설정 열기]는 없다", (code, what, how) => {
     const p = open()
-    p.dock.show(view)
-    expect(text(p.$('.lead'))).toBe(lead)
+    p.dock.show({ kind: 'err', code })
+    expect(text(p.$('.lead'))).toBe(what)
     expect(p.$('.lead')?.classList.contains('err')).toBe(true)
-    expect([...p.body().children].map(text)).toEqual([lead, '아무 칸도 바꾸지 않았어요.'])
+    expect([...p.body().children].map(text)).toEqual([what, how, `아무 칸도 바꾸지 않았어요. (번호 ${code})`])
+    expect([...p.body().children].map((c) => c.className)).toEqual(['lead err', '', 'small'])
     expect(p.$$('.acts')).toHaveLength(0)
   })
 
-  it('AC-3609.5: 오류 번호는 줄바꿈 없는 글자로만 그린다(HTML로 읽지 않는다)', () => {
+  it('AC-3614.1: 오류 번호 모양이 아닌 글은 보이지 않고 E-BRIDGE-BAD-REPLY다(HTML로 읽지 않는다)', () => {
     const p = open()
-    p.dock.show({ kind: 'errBit', code: '<img src=x>' })
-    expect(p.$('.lead img')).toBeNull()
-    expect(text(p.$('.lead .nw'))).toBe('(<img src=x>)')
+    p.dock.show({ kind: 'err', code: '<img src=x>' })
+    expect(p.$('img')).toBeNull()
+    expect(p.body().textContent).not.toContain('<img')
+    expect(text(p.$('.small'))).toBe('아무 칸도 바꾸지 않았어요. (번호 E-BRIDGE-BAD-REPLY)')
+    expect(text(p.$('.lead'))).toBe('도우미 답의 모양이 맞지 않아 쓰지 않았어요.')
   })
 
   it('AC-3609.5: 다음 안내를 보이면 앞 안내 글은 남지 않는다', () => {
     const p = open()
     p.dock.show(done())
-    p.dock.show({ kind: 'errTimeout' })
+    p.dock.show({ kind: 'err', code: 'E-HELPER-TIMEOUT' })
     expect(p.$$('.blk')).toHaveLength(0)
     expect(p.$$('.end')).toHaveLength(0)
-    expect(text(p.$('.lead'))).toBe('도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.')
+    expect(p.$$('.check')).toHaveLength(0)
+    expect(text(p.$('.lead'))).toBe('도우미가 답하지 않아요(120초).')
+  })
+})
+
+describe('AC-3612.1·3612.4·3612.5 멈춤·되돌림 안내(design.md 5-1)', () => {
+  it.each<[string, View, string[]]>([
+    [
+      '오늘보다 뒤',
+      { kind: 'future', date: '2026-11-11' },
+      ['마감 일자(2026-11-11)가 오늘보다 뒤예요.', '날짜를 확인해 주세요.', '아무 칸도 바꾸지 않았어요.'],
+    ],
+    ['읽기 전용', { kind: 'readOnly' }, ['이 화면은 읽기 전용이라 채울 수 없어요(본사 열람 등).', '아무 칸도 바꾸지 않았어요.']],
+    [
+      '되돌린 뒤',
+      { kind: 'undone', restored: 1234, gone: 0 },
+      ['되돌렸어요. 1,234칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.'],
+    ],
+    [
+      '되돌린 뒤(못 돌린 칸 있음)',
+      { kind: 'undone', restored: 90, gone: 3 },
+      ['되돌렸어요. 90칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.', '화면이 바뀌어 3칸은 되돌리지 못했어요.'],
+    ],
+    ['날짜가 바뀐 뒤 되돌리기', { kind: 'undoDateChanged' }, ['마감 일자가 바뀌어 되돌리지 않았어요.', '아무 칸도 바꾸지 않았어요.']],
+  ])('AC-3612.1·3612.4·3612.5: %s 안내 글(굵은 줄 → 보통 줄 → 작은 줄)', (_name, view, want) => {
+    const p = open()
+    p.dock.show(view)
+    expect([...p.body().children].map(text)).toEqual(want)
+    expect(p.$('.lead')?.classList.contains('err')).toBe(false)
+    expect(p.$$('.acts')).toHaveLength(0)
+    const last = p.body().lastElementChild
+    if (want.at(-1) === '아무 칸도 바꾸지 않았어요.') expect(last?.className).toBe('small')
+  })
+})
+
+describe('AC-3612.2 진료 0건 묻기(askZero)', () => {
+  const ZERO = [
+    '2026-11-09에는 비트 진료가 한 건도 없어요.',
+    '마감 일자가 맞는지 확인해 주세요. 맞으면 [그래도 채우기]로 채울 수 있어요(쉬는 날 예약 칸 등).',
+    '아직 아무 칸도 바꾸지 않았어요.',
+  ]
+
+  it('AC-3612.2: 글 셋과 [그래도 채우기]·[안내 닫기], [안내 닫기]가 먼저 포커스를 받는다', () => {
+    const p = open()
+    void p.dock.askZero('2026-11-09')
+    expect(p.panel().hidden).toBe(false)
+    expect([...p.body().children].filter((c) => c.tagName === 'P').map(text)).toEqual(ZERO)
+    expect(p.acts()).toEqual(['그래도 채우기', '안내 닫기'])
+    expect(p.shadow.activeElement).toBe(p.act('안내 닫기'))
+  })
+
+  it('AC-3612.2: [그래도 채우기]는 true, [안내 닫기]·×·hide()·Esc는 false로 끝난다', async () => {
+    const p = open()
+    const go = p.dock.askZero('2026-11-09')
+    p.act('그래도 채우기').click()
+    await expect(go).resolves.toBe(true)
+    const closed = p.dock.askZero('2026-11-09')
+    p.act('안내 닫기').click()
+    await expect(closed).resolves.toBe(false)
+    expect(p.panel().hidden).toBe(true)
+    const x = p.dock.askZero('2026-11-09')
+    p.$<HTMLButtonElement>('.x')?.click()
+    await expect(x).resolves.toBe(false)
+    const hidden = p.dock.askZero('2026-11-09')
+    p.dock.hide()
+    await expect(hidden).resolves.toBe(false)
+    const esc = p.dock.askZero('2026-11-09')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await expect(esc).resolves.toBe(false)
+  })
+})
+
+describe('AC-3612.3 이미 적힌 칸 묻기(askWritten)', () => {
+  const places: Where[] = [
+    { j: 1, box: '환자현황', row: '신환' },
+    { j: 2, card: '예약', row: '경과', col: '내원' },
+    { j: 2, card: '예약', row: '경과', col: '취소' },
+  ]
+
+  it("AC-3612.3: '이미 적힌 칸 {N}개가 비트 값으로 바뀌어요.' · '바뀌는 칸: …' · 안내 · [바꾸기] [빈 칸만](먼저 포커스) [안내 닫기]", () => {
+    const p = open()
+    void p.dock.askWritten(places)
+    expect([...p.body().children].filter((c) => c.tagName === 'P').map(text)).toEqual([
+      '이미 적힌 칸 3개가 비트 값으로 바뀌어요.',
+      '바뀌는 칸: 환자현황 신환 · 예약 경과',
+      '[빈 칸만]을 누르면 적힌 칸은 그대로 두고 빈 칸만 채워요.',
+    ])
+    expect(p.acts()).toEqual(['바꾸기', '빈 칸만', '안내 닫기'])
+    expect(p.shadow.activeElement).toBe(p.act('빈 칸만'))
+  })
+
+  it("AC-3612.3: [바꾸기]는 'all', [빈 칸만]은 'empty', [안내 닫기]·×·다른 안내는 null", async () => {
+    const p = open()
+    const all = p.dock.askWritten(places)
+    p.act('바꾸기').click()
+    await expect(all).resolves.toBe('all')
+    const empty = p.dock.askWritten(places)
+    p.act('빈 칸만').click()
+    await expect(empty).resolves.toBe('empty')
+    const closed = p.dock.askWritten(places)
+    p.act('안내 닫기').click()
+    await expect(closed).resolves.toBeNull()
+    expect(p.panel().hidden).toBe(true)
+    const replaced = p.dock.askWritten(places)
+    const stale = p.act('바꾸기')
+    p.dock.show({ kind: 'dateChanged' })
+    await expect(replaced).resolves.toBeNull()
+    // 떨어진 앞 단추는 다음 묻기를 끝내지 않는다
+    const next = p.dock.askWritten(places)
+    stale.click()
+    p.act('빈 칸만').click()
+    await expect(next).resolves.toBe('empty')
+  })
+
+  it('AC-3612.3: 숫자는 쉼표로 쓴다', () => {
+    const p = open()
+    const many: Where[] = Array.from({ length: 1234 }, () => places[0])
+    void p.dock.askWritten(many)
+    expect(text(p.$('.lead'))).toBe('이미 적힌 칸 1,234개가 비트 값으로 바뀌어요.')
+    expect(text(p.$$('.pb > p')[1])).toBe('바뀌는 칸: 환자현황 신환')
+  })
+})
+
+describe('AC-3613.3 [지난 결과]·Esc', () => {
+  it('AC-3613.3: [지난 결과]는 지난 결과가 있고 안내가 닫혀 있을 때만 보이고, 누르면 그 안내를 다시 연다', () => {
+    const p = open()
+    expect(p.last().hidden).toBe(true)
+    expect(p.last().classList.contains('btn-2')).toBe(true)
+    expect(text(p.last())).toBe('지난 결과')
+    const view = done({ canUndo: true })
+    p.dock.setLast(view)
+    expect(p.last().hidden).toBe(false)
+    p.dock.show(view)
+    expect(p.last().hidden).toBe(true)
+    p.$<HTMLButtonElement>('.x')?.click()
+    expect(p.last().hidden).toBe(false)
+    p.last().click()
+    expect(p.panel().hidden).toBe(false)
+    expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
+    expect(p.acts()).toEqual(['되돌리기', '설정 열기'])
+    expect(p.last().hidden).toBe(true)
+    expect(p.onFill).not.toHaveBeenCalled()
+    p.dock.hide()
+    p.dock.setLast(null)
+    expect(p.last().hidden).toBe(true)
+  })
+
+  it('AC-3613.3: 읽는 중엔 [지난 결과]가 막힌다', () => {
+    const p = open()
+    p.dock.setLast(done())
+    p.dock.setReading(true)
+    expect(p.last().hidden).toBe(false)
+    expect(p.last().disabled).toBe(true)
+    p.last().click()
+    expect(p.panel().hidden).toBe(true)
+    p.dock.setReading(false)
+    expect(p.last().disabled).toBe(false)
+  })
+
+  it('AC-3613.3: 안내가 열려 있을 때 문서의 Esc가 안내를 닫고, preventDefault·stopPropagation 하지 않는다', () => {
+    const p = open()
+    const seen: string[] = []
+    const onWindow = (e: KeyboardEvent) => seen.push(e.key)
+    window.addEventListener('keydown', onWindow)
+    try {
+      p.dock.show(done())
+      const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      document.body.dispatchEvent(esc)
+      expect(p.panel().hidden).toBe(true)
+      expect(esc.defaultPrevented).toBe(false)
+      expect(seen).toEqual(['Escape'])
+      // 닫혀 있으면 아무 일도 없다
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      expect(p.panel().hidden).toBe(true)
+      // 다른 키는 닫지 않는다
+      p.dock.show(done())
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))
+      expect(p.panel().hidden).toBe(false)
+    } finally {
+      window.removeEventListener('keydown', onWindow)
+    }
+  })
+
+  it('AC-3613.3: 겹친 진료 묻기도 Esc로 닫히면 null이다', async () => {
+    const p = open()
+    const answer = p.dock.askOverlap({ visits: 1, carm: 1, sono: 1 })
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await expect(answer).resolves.toBeNull()
+  })
+
+  it('AC-3613.3: 화면에서 뗀 안내는 Esc를 받지 않는다', () => {
+    const p = open()
+    p.dock.show(done())
+    p.dock.host.remove()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(p.panel().hidden).toBe(false)
   })
 })
 
 describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
-  /** 기본값 (바): 목업과 다르게 바꾼 두 줄(ERP 도우미 없음·이 PC 등록 안 됨). 명세 글이 이긴다 */
-  const CHANGED_FROM_MOCKUP: string[] = ['helperMissing', 'notRegistered']
-
-  it('AC-3609.4: 고정 글은 기본값 (바)의 두 줄 말고 모두 목업 파일에 그대로 있다', () => {
+  it('AC-3609.4: 목업에서 온 고정 글(TEXT)은 모두 목업 파일에 그대로 있다', () => {
     for (const [name, value] of Object.entries(TEXT)) {
-      if (typeof value === 'string' && !CHANGED_FROM_MOCKUP.includes(name)) expect(MOCKUP, name).toContain(value)
+      if (typeof value === 'string') expect(MOCKUP, name).toContain(value)
     }
   })
 
-  it('AC-3609.5: 기본값 (바)의 두 줄은 requirements (바) 글 그대로이고 옛 글은 쓰지 않는다', () => {
-    expect(TEXT.helperMissing).toBe('ERP 도우미를 설치해 주세요.')
-    expect(TEXT.notRegistered).toBe('이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.')
+  it('AC-3609.5: 기본값 (바)의 두 줄은 오류 표의 무엇이·어떻게로 나뉘어 남고(AC-3609.5) 옛 글은 쓰지 않는다', () => {
     const defaultBa = REQUIREMENTS.split('\n').find((line) => line.startsWith('- (바)')) ?? ''
-    // AC-3609.5는 2026-11-10 22시 오류 표(design.md 5-2, TASK-17)로 바뀌어 이 두 줄을 따옴표로 갖지 않고 '(바)의 두 줄'로 가리킨다.
-    // 오류 글을 표 글로 바꾸는 일은 TASK-17이 한다
     const ac = REQUIREMENTS.split('\n').find((line) => line.startsWith('- AC-3609.5:')) ?? ''
-    expect(ac).toContain('(바)의 두 줄')
-    for (const name of CHANGED_FROM_MOCKUP) {
-      const value = TEXT[name as keyof typeof TEXT]
-      expect(defaultBa, name).toContain(`'${String(value)}'`)
-    }
-    expect(Object.values(TEXT)).not.toContain('도우미를 새 판으로 설치해 주세요.')
+    expect(ac).toContain('(바)의 두 줄과 120초 줄은 표의 무엇이·어떻게로 나뉘어 남는다')
+    expect(defaultBa).toContain("'ERP 도우미를 설치해 주세요.'")
+    const p = open()
+    p.dock.show({ kind: 'err', code: 'E-HELPER-MISSING' })
+    expect(p.body().textContent).toContain('ERP 도우미를 설치해 주세요.')
+    p.dock.show({ kind: 'err', code: 'E-BIT-NOT-REGISTERED' })
+    expect(p.body().textContent).toContain('이 PC가 아직 등록되지 않았어요.')
+    expect(p.body().textContent).toContain('ERP 도우미 설치 파일을 다시 실행해 주세요')
+    expect(JSON.stringify(TEXT)).not.toContain('도우미를 새 판으로 설치해 주세요.')
   })
 
   it("AC-3609.4: 보류 줄은 requirements 기본값 (아)·design.md 5절 글 그대로이고, 미수납 경고는 '치료별 매출이 적게 나왔을 수 있어요.'를 뗀 새 글이다", () => {
@@ -425,12 +700,44 @@ describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
     expect(warningLines(day).join('')).not.toContain('치료별 매출이 적게 나왔을 수 있어요')
   })
 
-  it('AC-3609.4: 경고 고정 글은 design.md 5절에, 처음 안내·날짜 글은 requirements AC-3609.2·3609.3·(바)에 그대로 있다', () => {
+  it('AC-3609.4: 경고 고정 글은 design.md 5절에, 처음 안내·날짜 글은 requirements AC-3609.2·3609.3에 그대로 있다', () => {
     for (const line of [W.moneyUnconfirmed, W.splitUnconfirmed, W.noHistory, W.inpatient, END]) expect(DESIGN).toContain(line)
-    // 120초 글(TEXT.timeout)은 AC-3609.5가 오류 표(TASK-17)로 바뀌어 requirements에서 빠졌다. 지금 글은 목업에 그대로 있다(위 시험)
-    for (const value of [TEXT.first, TEXT.noDate, TEXT.dateChanged, TEXT.helperMissing, TEXT.notRegistered]) {
-      expect(REQUIREMENTS).toContain(value)
+    for (const value of [TEXT.first, TEXT.noDate, TEXT.dateChanged]) expect(REQUIREMENTS).toContain(value)
+  })
+
+  it('AC-3612.1~3613.2: 새 안내 글(FLOW_TEXT)은 design.md 5-1 글 그대로다({} 자리 채움)', () => {
+    const section = DESIGN.slice(DESIGN.indexOf('### 5-1 '), DESIGN.indexOf('### 5-2 '))
+    const quoted = (t: string) => expect(section, t).toContain(`'${t}'`)
+    quoted(FLOW_TEXT.future('{날짜}'))
+    quoted(FLOW_TEXT.futureHow)
+    quoted(FLOW_TEXT.untouched)
+    quoted(FLOW_TEXT.zero('{날짜}'))
+    quoted(FLOW_TEXT.zeroHow)
+    quoted(FLOW_TEXT.zeroUntouched)
+    quoted(FLOW_TEXT.readOnly)
+    quoted(FLOW_TEXT.ask(7).replace('7', '{N}'))
+    quoted(FLOW_TEXT.askHelp)
+    expect(section).toContain(`'${FLOW_TEXT.askRows('')}{`)
+    quoted(FLOW_TEXT.checkTitle)
+    quoted(FLOW_TEXT.checkTotal(7).replace('7', '{money.total}'))
+    quoted(FLOW_TEXT.checkReceived(7).replace('7', '{money.received}'))
+    quoted(FLOW_TEXT.checkPatients(7).replace('7', '{patients.total}'))
+    quoted(FLOW_TEXT.checkHelp)
+    quoted(FLOW_TEXT.kept(7).replace('7', '{K}'))
+    quoted(FLOW_TEXT.undone(7).replace('7', '{N}'))
+    quoted(FLOW_TEXT.undoneGone(7).replace('7', '{K}'))
+    quoted(FLOW_TEXT.undoDateChanged)
+    expect(section).toContain(`' 외 {K}줄'`)
+    expect(FLOW_TEXT.more(7)).toBe(' 외 7줄')
+    for (const label of [FLOW_TEXT.goAnyway, FLOW_TEXT.replace, FLOW_TEXT.emptyOnly, FLOW_TEXT.undo, FLOW_TEXT.last, TEXT.close]) {
+      expect(section, label).toContain(`[${label}]`)
     }
-    expect(MOCKUP).toContain(TEXT.timeout)
+    for (const [kind, { title, help }] of Object.entries(SKIP_TEXT)) {
+      quoted(title)
+      expect(section, kind).toContain(`'${title}' · '${help}'`)
+    }
+    expect(Object.keys(SKIP_TEXT)).toEqual(['notFound', 'therapist', 'locked', 'noName', 'unpicked'])
+    // 오류 안내 작은 줄(5-2 머리)
+    expect(DESIGN).toContain(`'${FLOW_TEXT.errUntouched('{번호}')}'`)
   })
 })

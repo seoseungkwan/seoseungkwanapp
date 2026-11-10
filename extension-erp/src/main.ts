@@ -1,11 +1,15 @@
-// ERP 마감일지 화면(`/h/closing`) 쪽 흐름(design.md 1절·4절, REQ-3609). content.ts가 import()로 불러 startPage()를 부른다
+// ERP 마감일지 화면(`/h/closing`) 쪽 흐름(design.md 1절·4절 '채우기 흐름', REQ-3609·3612·3613). content.ts가 import()로 불러 startPage()를 부른다
 // - 주소가 /h/closing이고 '마감 일자'가 있을 때만 오른쪽 아래에 단추를 붙인다. 화면 안 이동(주소만 바뀜)은 0.5초마다 보고 안다
-// - 누르면: 마감 일자 읽기 → 설정(저장한 적 없으면 설정 화면 열기) → 서비스 워커에 closing.day(120초) → 날짜가 그대로면
-//   (씨암·SONO가 함께 있는 진료가 있으면 먼저 묻고 → 누를 때 날짜 다시 확인 → 고른 것을 설정 overlap에 기억, TASK-15)
-//   cells.ts 칸 계획대로 fill.ts가 채우고 panel.ts가 안내한다. 오류·날짜 바뀜·묻기 닫음이면 어느 칸도 바꾸지 않는다. 저장은 사용자가 누른다
-// - 도우미 답은 이 흐름 안에서만 쓰고 어디에도 두지 않는다
+// - 누르면: 마감 일자 읽기 → 오늘(이 PC 날짜)보다 뒤면 멈춤(도우미 안 부름) → 설정(저장한 적 없으면 설정 화면 열기) →
+//   서비스 워커에 closing.day(120초) → 오류면 errors.ts 글 → 날짜가 그대로인지 → 진료 0건이면 멈추고 묻기([그래도 채우기]) →
+//   씨암·SONO가 함께 있는 진료 묻기(고른 것을 설정 overlap에 기억, TASK-15) → 칸 계획 → 이미 적힌 칸 세기 → 모두 잠김이면 읽기 전용 →
+//   적힌 칸이 있으면 묻기([바꾸기]·[빈 칸만]) → 누를 때마다 날짜 다시 확인 → 채움 → 안내. 오류·날짜 바뀜·묻기 닫음이면 어느 칸도 바꾸지 않는다
+// - [되돌리기]·[지난 결과]의 기억(넣은 칸과 넣기 전 글자, 마지막 안내)은 이 화면 기억(startPage 안 변수)에만 두고
+//   되돌린 뒤·다음 채우기·화면 떠남 때 지운다. 도우미 답과 이 기억은 어디에도 저장하지 않는다(chrome.storage에 쓰는 것은 overlap 선택뿐)
+// - 저장은 사용자가 누른다
 import { planCells } from './cells.js'
-import { fillAll } from './fill.js'
+import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HELPER_TIMEOUT } from './errors.js'
+import { fillAll, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
 import { load, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
@@ -21,16 +25,6 @@ const DATE_LABEL = '마감 일자'
 const YEAR_PICKER = '연도 선택'
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/
 const TODAY = /(\d{4}-\d{2}-\d{2})\s*\(오늘\)/
-/** 서비스 워커가 120초를 넘겼을 때 주는 번호(background.ts) */
-const E_HELPER_TIMEOUT = 'E-HELPER-TIMEOUT'
-const E_HELPER_MISSING = 'E-HELPER-MISSING'
-/** ERP 도우미가 이 PC 등록을 찾지 못함(설치 때 등록을 취소했거나 못 한 때, AC-3606.3) */
-const E_BIT_NOT_REGISTERED = 'E-BIT-NOT-REGISTERED'
-const E_BRIDGE_BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
-/** 서비스 워커에 닿지 못함(확장을 다시 읽어 이 화면의 내용 스크립트가 끊긴 때 등) */
-const E_BRIDGE_DISCONNECTED = 'E-BRIDGE-DISCONNECTED'
-/** 도우미 오류 번호 모양(src/lib/bridge/protocol.ts와 같음). 아니면 글을 보이지 않고 E-BRIDGE-BAD-REPLY */
-const ERROR_CODE = /^E-[A-Z0-9]+(?:-[A-Z0-9]+)*$/
 
 const tidy = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim()
 
@@ -116,12 +110,15 @@ export function readDay(data: unknown, date: string): ClosingDay | null {
 
 type Outcome = { kind: 'day'; day: ClosingDay } | { kind: 'view'; view: View }
 
-const errorView = (code: unknown): View => {
-  if (code === E_HELPER_MISSING) return { kind: 'errHelper' }
-  if (code === E_BIT_NOT_REGISTERED) return { kind: 'errNotRegistered' }
-  if (code === E_HELPER_TIMEOUT) return { kind: 'errTimeout' }
-  return { kind: 'errBit', code: typeof code === 'string' && ERROR_CODE.test(code) ? code : E_BRIDGE_BAD_REPLY }
+/** 이 PC 오늘(브라우저 지역 날짜 'YYYY-MM-DD', 기본값 (카)) */
+function today(now: Date = new Date()): string {
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`
 }
+
+/** 도우미·서비스 워커 오류 번호 → 안내. 도우미가 오늘 뒤 날짜라고 하면 확장의 같은 멈춤 글(AC-3612.1) */
+const errorView = (code: unknown, date: string): View =>
+  code === E_CLOSING_FUTURE_DATE ? { kind: 'future', date } : { kind: 'err', code: typeof code === 'string' ? code : E_BRIDGE_BAD_REPLY }
 
 async function askDay(date: string, settings: Settings): Promise<Outcome> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -132,14 +129,14 @@ async function askDay(date: string, settings: Settings): Promise<Outcome> {
   try {
     reply = await Promise.race([chrome.runtime.sendMessage({ cmd: 'closing.day', args: { date, groups: toGroups(settings) } }), late])
   } catch {
-    return { kind: 'view', view: { kind: 'errBit', code: E_BRIDGE_DISCONNECTED } }
+    return { kind: 'view', view: { kind: 'err', code: E_BRIDGE_DISCONNECTED } }
   } finally {
     clearTimeout(timer)
   }
-  if (reply === 'late') return { kind: 'view', view: { kind: 'errTimeout' } }
-  if (isRecord(reply) && reply.type === 'error') return { kind: 'view', view: errorView(reply.code) }
+  if (reply === 'late') return { kind: 'view', view: { kind: 'err', code: E_HELPER_TIMEOUT } }
+  if (isRecord(reply) && reply.type === 'error') return { kind: 'view', view: errorView(reply.code, date) }
   const day = isRecord(reply) && reply.type === 'result' ? readDay(reply.data, date) : null
-  return day ? { kind: 'day', day } : { kind: 'view', view: { kind: 'errBit', code: E_BRIDGE_BAD_REPLY } }
+  return day ? { kind: 'day', day } : { kind: 'view', view: { kind: 'err', code: E_BRIDGE_BAD_REPLY } }
 }
 
 /** 설정 화면은 서비스 워커가 연다(내용 스크립트는 확장 화면을 열 수 없다) */
@@ -151,13 +148,23 @@ function openSettings(): void {
   }
 }
 
+/** 마지막 채우기의 화면 기억: 채운 날짜·넣은 칸과 넣기 전 글자·그 안내 */
+type Memory = { date: string; undo: UndoEntry[]; view: Extract<View, { kind: 'done' }> }
+
 /** ERP 화면에서 단추를 붙이고 지킨다. stop()은 단추를 떼고 보기를 멈춘다 */
 export function startPage(doc: Document = document): { stop(): void } {
   doc.getElementById(HOST_ID)?.remove() // 앞서 붙은 것(확장을 다시 읽은 뒤 등)
   /** 화면을 떠날 때마다 1씩: 떠나기 전에 시작한 읽기의 답은 버린다 */
   let visit = 0
   let busy = false
-  const dock: Dock = createDock(doc, { onFill: () => void run(), onOpenSettings: openSettings })
+  /** [되돌리기]·[지난 결과] 기억(이 화면에만) */
+  let memory: Memory | null = null
+  const dock: Dock = createDock(doc, { onFill: () => void run(), onOpenSettings: openSettings, onUndo: () => void undo() })
+
+  const remember = (next: Memory | null) => {
+    memory = next
+    dock.setLast(next ? next.view : null)
+  }
 
   async function run() {
     if (busy) return
@@ -169,13 +176,23 @@ export function startPage(doc: Document = document): { stop(): void } {
       dock.show({ kind: 'errDate' })
       return
     }
+    if (date > today()) {
+      dock.show({ kind: 'future', date })
+      return
+    }
+    /** 누른 뒤 마감 일자가 바뀌었으면 알리고 true(AC-3609.3) */
+    const moved = () => {
+      if (readDate(doc) === date) return false
+      dock.show({ kind: 'dateChanged' })
+      return true
+    }
     busy = true
     try {
       let settings: Settings | null
       try {
         settings = await load()
       } catch {
-        if (still()) dock.show({ kind: 'errBit', code: E_BRIDGE_DISCONNECTED })
+        if (still()) dock.show({ kind: 'err', code: E_BRIDGE_DISCONNECTED })
         return
       }
       if (!still()) return
@@ -192,21 +209,19 @@ export function startPage(doc: Document = document): { stop(): void } {
         dock.show(outcome.view)
         return
       }
-      if (readDate(doc) !== date) {
-        dock.show({ kind: 'dateChanged' })
-        return
-      }
+      if (moved()) return
       const day = outcome.day
+      // 진료 0건인 날(AC-3612.2): 멈추고, [그래도 채우기]면 날짜를 다시 보고 이어 간다
+      if (day.patients.total === 0) {
+        const go = await dock.askZero(date)
+        if (!still() || !go || moved()) return
+      }
       // 씨암·SONO가 함께 있는 진료(AC-3609.7): 채우기 전에 묻고, 누를 때 날짜를 다시 보고, 고른 것을 기억한 뒤 그대로 채운다
       const overlap = day.overlap && day.overlap.visits > 0 ? day.overlap : null
       let choice: OverlapChoice | undefined
       if (overlap) {
         const picked = await dock.askOverlap({ visits: overlap.visits, carm: overlap.carm, sono: overlap.sono, last: settings.overlap })
-        if (!still() || picked === null) return
-        if (readDate(doc) !== date) {
-          dock.show({ kind: 'dateChanged' })
-          return
-        }
+        if (!still() || picked === null || moved()) return
         choice = picked
         try {
           await saveOverlap(picked)
@@ -215,9 +230,35 @@ export function startPage(doc: Document = document): { stop(): void } {
         }
         if (!still()) return
       }
-      const result = await fillAll(doc, planCells(day, settings, choice))
+      const plan = planCells(day, settings, choice)
+      // 이미 적힌 칸(AC-3612.3)·읽기 전용 화면(AC-3612.5). 세는 동안 업무일지 1 탭을 잠깐 바꿨다 돌아올 수 있다
+      const seen = await survey(doc, plan)
       if (!still()) return
-      dock.show({ kind: 'done', date, result, day, ...(overlap && choice ? { overlap: { visits: overlap.visits, choice } } : {}) })
+      if (seen.fillable === 0 && seen.locked > 0) {
+        dock.show({ kind: 'readOnly' })
+        return
+      }
+      let mode: FillMode = 'all'
+      if (seen.written.length > 0) {
+        const answer = await dock.askWritten(seen.written)
+        if (!still() || answer === null) return
+        mode = answer
+      }
+      if (moved()) return
+      // 다음 채우기: 앞 기억을 지우고 이번 것만 둔다
+      remember(null)
+      const result = await fillAll(doc, plan, mode)
+      if (!still()) return
+      const view: Memory['view'] = {
+        kind: 'done',
+        date,
+        result,
+        day,
+        canUndo: result.undo.length > 0,
+        ...(overlap && choice ? { overlap: { visits: overlap.visits, choice } } : {}),
+      }
+      remember({ date, undo: result.undo, view })
+      dock.show(view)
     } finally {
       if (still()) {
         busy = false
@@ -226,9 +267,30 @@ export function startPage(doc: Document = document): { stop(): void } {
     }
   }
 
+  /** [되돌리기](AC-3612.4): 채울 때와 같은 마감 일자일 때만 넣은 칸을 넣기 전 글자로 돌리고 기억을 지운다 */
+  async function undo() {
+    if (busy || !memory) return
+    const mine = visit
+    const kept = memory
+    if (readDate(doc) !== kept.date) {
+      dock.show({ kind: 'undoDateChanged' })
+      return
+    }
+    busy = true
+    try {
+      const { restored, gone } = await undoAll(doc, kept.undo)
+      if (mine !== visit) return
+      remember(null)
+      dock.show({ kind: 'undone', restored, gone })
+    } finally {
+      if (mine === visit) busy = false
+    }
+  }
+
   function leave() {
     visit += 1
     busy = false
+    remember(null)
     dock.setReading(false)
     dock.hide()
     dock.host.remove()

@@ -42,11 +42,11 @@ function codeFiles(): string[] {
 }
 
 describe('AC-3601.1 extension-erp/manifest.json', () => {
-  it("AC-3601.1: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.1.0이다", () => {
+  it("AC-3601.1 AC-3610.4: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.2.0이다(ERP 도우미 0.2.0과 같이 올림, 기본값 (파))", () => {
     const m = readJson(MANIFEST)
     expect(m.manifest_version).toBe(3)
     expect(m.name).toBe('ERP 마감일지 채우기')
-    expect(m.version).toBe('0.1.0')
+    expect(m.version).toBe('0.2.0')
     expect(String(m.description ?? '').trim()).not.toBe('')
   })
 
@@ -93,9 +93,12 @@ describe('AC-3601.1 extension-erp/manifest.json', () => {
     expect(readJson(MANIFEST).content_scripts).toEqual([{ matches: [ERP_MATCH], js: ['content.js'] }])
   })
 
-  it('AC-3601.1: 내용 스크립트가 불러오는 모듈 파일(web_accessible_resources)도 같은 주소 하나에만 연다', () => {
+  it('AC-3601.1: 내용 스크립트가 불러오는 모듈 파일(web_accessible_resources, 오류 글 errors.js 포함)도 같은 주소 하나에만 연다', () => {
     expect(readJson(MANIFEST).web_accessible_resources).toEqual([
-      { resources: ['main.js', 'cells.js', 'fill.js', 'panel.js', 'settings.js', 'types.js'], matches: [ERP_MATCH] },
+      {
+        resources: ['main.js', 'cells.js', 'fill.js', 'panel.js', 'settings.js', 'types.js', 'errors.js'],
+        matches: [ERP_MATCH],
+      },
     ])
     const url = new URL(ERP_MATCH.slice(0, -1))
     expect(url.protocol).toBe('https:')
@@ -215,9 +218,9 @@ describe('AC-3601.5 새 확장 코드: 네트워크·console·웹 저장소 없�
     return result.messages.filter((m) => m.severity === 2).map((m) => m.ruleId)
   }
 
-  it('AC-3601.5: extension-erp/src 코드(시험 빼고)에 fetch·XMLHttpRequest·WebSocket·console·localStorage·sessionStorage가 없다', () => {
+  it('AC-3601.5: extension-erp/src 코드(시험 빼고, errors.ts 포함)에 fetch·XMLHttpRequest·WebSocket·console·localStorage·sessionStorage가 없다', () => {
     const files = codeFiles()
-    expect(files).toEqual(expect.arrayContaining(['types.ts']))
+    expect(files).toEqual(expect.arrayContaining(['types.ts', 'errors.ts', 'fill.ts', 'main.ts', 'panel.ts', 'background.ts']))
     for (const file of files) {
       const code = readFileSync(path.join(SRC, file), 'utf8')
       expect(code, file).not.toMatch(/\b(?:fetch|XMLHttpRequest|WebSocket|console|localStorage|sessionStorage)\b/)

@@ -31,8 +31,10 @@ export type ErpPageOptions = {
   spaced?: boolean
   /** 1 탭을 누른 뒤 칸이 생기기까지(ms, 기본 0 = 다음 마이크로태스크). 'never'면 끝내 안 생김 */
   w1Delay?: number | 'never'
-  /** 처음 기억 값(칸 코드 → 글자). 금액칸은 쉼표 없는 숫자 */
+  /** 처음 기억 값(칸 코드 → 글자, 손으로 적은 칸). 금액칸은 쉼표 없는 숫자로 주면 화면엔 쉼표와 함께 보인다 */
   values?: Record<string, string>
+  /** 이 칸 코드들의 입력칸만 읽기 전용(readonly)으로 둔다(화면 일부만 잠긴 경우) */
+  lockedKeys?: string[]
 }
 
 export type ErpPage = {
@@ -45,6 +47,8 @@ export type ErpPage = {
   clicks: string[]
   /** select change 이벤트(칸 코드) */
   changes: string[]
+  /** ERP 쪽(window)까지 올라온 keydown의 key(ERP 화면 단축키가 그대로 받는지 본다) */
+  keys: string[]
   /** 업무일지 2 영역이 input 이벤트를 받아 '고침 있음'이 켜졌는가 */
   readonly w2Dirty: boolean
   tab(): Tab
@@ -255,6 +259,7 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     badges: false,
     spaced: false,
     w1Delay: 0 as number | 'never',
+    lockedKeys: [] as string[],
     ...options,
   }
   const keys = allKeys(opts.therapists)
@@ -265,6 +270,8 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
   const log: ErpPage['log'] = []
   const clicks: string[] = []
   const changes: string[] = []
+  const keyLog: string[] = []
+  const locked = new Set(opts.lockedKeys)
   const registry = new Map<HTMLInputElement | HTMLTextAreaElement, Binding>()
   let tab: Tab = opts.tab
   let w2Dirty = false
@@ -318,6 +325,7 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     })
     registry.set(el, b)
     el.value = display(b)
+    if (locked.has(key)) el.readOnly = true
     return el
   }
 
@@ -771,6 +779,8 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     true,
   )
 
+  doc.defaultView?.addEventListener('keydown', (e) => keyLog.push(e.key))
+
   doc.body.append(root)
 
   const live = (key: string) => [...registry].filter(([el, b]) => b.key === key && el.isConnected).map(([el]) => el)
@@ -780,6 +790,7 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     log,
     clicks,
     changes,
+    keys: keyLog,
     get w2Dirty() {
       return w2Dirty
     },

@@ -1,7 +1,8 @@
 // 도우미 답 + 설정 → ERP 마감일지 칸 계획(design.md 4절 칸 표 그대로, REQ-3608). 화면은 보지 않는다
 // 칸 이름은 ERP 화면 글자 그대로(notes/erp-closing-fields.md 3·4절). 값은 쉼표 없는 정수 글자이고,
-// 코드를 고르지 않은 묶음은 'unpicked', 비트에서 셀 수 없는 값(null)은 'unknown', 보류 묶음(HELD_SALES)의 치료별 매출은 'held'로
-// 값 없이 둔다(그 칸은 건드리지 않는다). 씨암·SONO가 함께 있는 진료는 작성자가 고른 대로 치료별 매출 두 칸을 나눈다(TASK-15)
+// 코드를 고르지 않은 묶음은 'unpicked', 비트에서 셀 수 없는 값(null)은 'unknown', 보류 묶음(HELD_SALES)의 치료별 매출은 'held',
+// 코드를 골랐는데 ERP 줄 이름이 빈 기타 줄은 'noName'(TASK-17, 조용히 빠지지 않게 따로 알린다)으로 값 없이 둔다(그 칸은 건드리지 않는다).
+// 씨암·SONO가 함께 있는 진료는 작성자가 고른 대로 치료별 매출 두 칸을 나눈다(TASK-15)
 import {
   GROUP_NAMES,
   RSV_NAMES,
@@ -22,7 +23,7 @@ export type Where =
   | { j: 2; card: string; row: string; col: string }
   | { j: 2; field: string }
 
-export type Planned = { where: Where; value: string | null; why?: 'unpicked' | 'unknown' | 'held' }
+export type Planned = { where: Where; value: string | null; why?: 'unpicked' | 'unknown' | 'held' | 'noName' }
 
 /**
  * 치료별 매출을 채우지 않고 보류하는 묶음(requirements 기본값 (아)). 이 묶음의 치료별 매출 칸은 코드를 골랐으면 held(ERP 칸 그대로,
@@ -30,9 +31,6 @@ export type Planned = { where: Where; value: string | null; why?: 'unpicked' | '
  * 씨암·SONO 보류는 TASK-15에서 끝났다(이미 정한 것 10: 매출 규칙으로 센다). 다시 보류할 묶음이 생기면 이 한 곳에 넣는다
  */
 export const HELD_SALES: GroupKey[] = []
-
-/** 업무일지 2 낱칸이 있는 묶음 제목(못 찾은 칸 글에 쓴다) */
-export const FIELD_CARD = '운영 지표(치료사별·금액)'
 
 const PATIENT_ROWS: [string, keyof ClosingDay['patients']][] = [
   ['신환', 'new'],
@@ -110,6 +108,12 @@ const SALES_ROWS: [string, GroupKey][] = [
   ['물리치료', 'pt'],
 ]
 
+/**
+ * 업무일지 2 치료별 건수·치료별 매출의 고정 줄 이름(같은 이름은 한 번, design.md 4절 차례). 기타 이름이 이 이름이면 그 고정 줄에
+ * 기타 값이 들어가므로 설정 화면 [저장]이 막는다(TASK-18, AC-3615.7)
+ */
+export const ETC_CLASH_ROWS: readonly string[] = Object.freeze([...new Set([...COUNT_ROWS, ...SALES_ROWS].map(([row]) => row))])
+
 const tidy = (text: string) => text.replace(/\s+/g, ' ').trim()
 
 /** 쉼표 없는 정수 글자. 원 미만은 버린다(반올림 없음). 숫자가 아니면 null */
@@ -128,16 +132,20 @@ export function planCells(answer: ClosingDay, settings: Settings, choice?: Overl
   const picked = (key: GroupKey) => (settings.picks[key] ?? []).some((code) => code.trim() !== '')
   const group = (key: GroupKey) => answer.groups.find((g) => g.key === key)
 
-  /** 칸 하나. 고르지 않았으면 unpicked, 값이 없으면 unknown */
-  const put = (where: Where, value: number | null | undefined, isPicked = true) => {
+  /** 칸 하나. 고르지 않았으면 unpicked(또는 이름 빈 기타 줄이면 noName), 값이 없으면 unknown */
+  const put = (where: Where, value: number | null | undefined, isPicked: boolean | 'noName' = true) => {
+    if (isPicked === 'noName') return plan.push({ where, value: null, why: 'noName' })
     if (!isPicked) return plan.push({ where, value: null, why: 'unpicked' })
     const text = digits(value)
     plan.push(text === null ? { where, value: null, why: 'unknown' } : { where, value: text })
   }
-  /** 기타 줄: ERP 줄 이름 = 설정의 기타 이름. 이름이 비면 기본 이름(기타N) 줄로 적고 건너뛴다 */
-  const etcRow = (key: EtcKey) => {
+  /**
+   * 기타 줄: ERP 줄 이름 = 설정의 기타 이름. 고르지 않았으면 unpicked, 골랐는데 이름이 비면 기본 이름(기타N) 줄로 적고 noName
+   */
+  const etcRow = (key: EtcKey): { row: string; ok: boolean | 'noName' } => {
     const name = tidy(settings.etcNames?.[key] ?? '')
-    return { row: name || GROUP_NAMES[key], ok: name !== '' && picked(key) }
+    if (!picked(key)) return { row: name || GROUP_NAMES[key], ok: false }
+    return name === '' ? { row: GROUP_NAMES[key], ok: 'noName' } : { row: name, ok: true }
   }
 
   // 업무일지 1
@@ -162,7 +170,7 @@ export function planCells(answer: ClosingDay, settings: Settings, choice?: Overl
 
   // 업무일지 2 치료별 신환/90일초진/재진 건수
   const countCard = '치료별 신환/90일초진/재진 건수'
-  const counts: { row: string; key: GroupKey; ok: boolean }[] = [
+  const counts: { row: string; key: GroupKey; ok: boolean | 'noName' }[] = [
     ...COUNT_ROWS.map(([row, key]) => ({ row, key, ok: picked(key) })),
     ...ETC_KEYS.map((key) => ({ key, ...etcRow(key) })),
   ]
@@ -187,7 +195,7 @@ export function planCells(answer: ClosingDay, settings: Settings, choice?: Overl
   put({ j: 2, field: '신환주사건수' }, answer.injection?.newLines, injection)
 
   // 업무일지 2 치료별 매출(보류 묶음은 골랐어도 held, 씨암·SONO는 함께 있는 진료 선택대로)
-  const sales: { row: string; key: GroupKey; ok: boolean }[] = [
+  const sales: { row: string; key: GroupKey; ok: boolean | 'noName' }[] = [
     ...SALES_ROWS.map(([row, key]) => ({ row, key, ok: picked(key) })),
     ...ETC_KEYS.map((key) => ({ key, ...etcRow(key) })),
   ]
@@ -202,7 +210,7 @@ export function planCells(answer: ClosingDay, settings: Settings, choice?: Overl
   for (const { row, key, ok } of sales) {
     const where: Where = { j: 2, card: '치료별 매출', row, col: '금액(원)' }
     const total = group(key)?.total
-    if (ok && HELD_SALES.includes(key)) plan.push({ where, value: null, why: 'held' })
+    if (ok === true && HELD_SALES.includes(key)) plan.push({ where, value: null, why: 'held' })
     else put(where, typeof total === 'number' ? total - minus(key) : total, ok)
   }
 
