@@ -41,10 +41,11 @@ describe('AC-3505.1: 안내문 SVG 틀 — 794×1123, 테마 그림, 차례', ()
     expect(all(svg, 'svg')).toHaveLength(0) // 안에 svg가 또 없다
   })
 
-  it('AC-3505.1: 테마 그림은 /poster/themes/<열쇠>.svg를 0,0에 794×1123으로 깐다', () => {
+  it('AC-3505.1·AC-3602.1: 테마 그림(첫 image)은 /poster/themes/<열쇠>.svg를 0,0에 794×1123으로 깔고, image는 테마 그림과 로고 둘뿐이다', () => {
     for (const theme of ['children', 'm05', 'chuseok'] as const) {
       const images = all(draw(CHILDREN, theme), 'image')
-      expect(images, theme).toHaveLength(1)
+      expect(images, theme).toHaveLength(2)
+      expect(images[1].getAttribute('href'), theme).toBe('/poster/logo.png')
       expect(attrs(images[0], ['href', 'x', 'y', 'width', 'height']), theme).toEqual({
         href: `/poster/themes/${theme}.svg`,
         x: '0',
@@ -56,10 +57,38 @@ describe('AC-3505.1: 안내문 SVG 틀 — 794×1123, 테마 그림, 차례', ()
     }
   })
 
-  it('AC-3505.1·AC-3510.2: 자식 차례는 <style> → <defs> → <image> → 글자·카드다(테마 그림이 맨 아래)', () => {
+  it('AC-3505.1·AC-3510.2·AC-3602.1: 자식 차례는 <style> → <defs> → <image> → 글자·카드 → 로고 <image>다(테마 그림이 맨 아래, 로고가 맨 위)', () => {
     const names = [...draw(CHILDREN).children].map((el) => el.localName)
     expect(names.slice(0, 3)).toEqual(['style', 'defs', 'image'])
-    expect(names.slice(3).every((n) => n === 'text' || n === 'g' || n === 'path')).toBe(true)
+    expect(names.at(-1)).toBe('image')
+    expect(names.slice(3, -1).every((n) => n === 'text' || n === 'g' || n === 'path')).toBe(true)
+  })
+})
+
+describe('AC-3602.1: 병원 로고 — 맨 아래 가운데, 받침·필터 없이 그대로 (specs/forms-logo)', () => {
+  const LOGO_ATTRS = { href: '/poster/logo.png', x: '227', y: '1011', width: '340', height: '58' }
+  const days = (n: number) => Array.from({ length: n }, (_, i) => card(`2027-05-${String(10 + i).padStart(2, '0')}`, `학회${i + 1}`))
+
+  it('AC-3602.1: 카드 1~4장·여러 테마에서 마지막 자식은 /poster/logo.png를 227,1011에 340×58로 그린 image 하나다', () => {
+    for (const n of [1, 2, 3, 4])
+      for (const theme of ['children', 'm11', 'christmas'] as const) {
+        const svg = draw({ year: 2027, month: 5, cards: days(n), theme: null }, theme)
+        const last = svg.lastElementChild
+        expect(last?.localName, `${n}장 ${theme}`).toBe('image')
+        expect(attrs(last!, Object.keys(LOGO_ATTRS)), `${n}장 ${theme}`).toEqual(LOGO_ATTRS)
+        expect(all(svg, 'image').filter((el) => el.getAttribute('href') === '/poster/logo.png'), `${n}장 ${theme}`).toHaveLength(1)
+        cleanup()
+      }
+  })
+
+  it('AC-3602.1: 로고에는 filter·opacity·clip이 없고, 로고 뒤 받침 rect도 없다(rect는 카드 수만큼뿐)', () => {
+    for (const n of [1, 4]) {
+      const svg = draw({ year: 2027, month: 5, cards: days(n), theme: null })
+      const logo = svg.lastElementChild!
+      for (const name of ['filter', 'opacity', 'clip-path', 'mask', 'style']) expect(logo.getAttribute(name), name).toBeNull()
+      expect(all(svg, 'rect'), `${n}장`).toHaveLength(n)
+      cleanup()
+    }
   })
 })
 

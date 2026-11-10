@@ -1,5 +1,7 @@
-// 서식 탭 휴진 안내 그림 파일(PNG) 만들기 (specs/forms design.md 7절 '그림 파일', AC-3506.2·3506.3).
-// SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림과 글꼴 두 개를 data: 주소로 넣은 SVG 글을 쓴다.
+import { LOGO } from './layout'
+
+// 서식 탭 휴진 안내 그림 파일(PNG) 만들기 (specs/forms design.md 7절 '그림 파일', AC-3506.2·3506.3; 로고는 specs/forms-logo 5절).
+// SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림·글꼴 두 개·병원 로고를 data: 주소로 넣은 SVG 글을 쓴다.
 // 그림은 blob: 주소라 CSP(img-src 'self' data: blob:)를 바꾸지 않는다. 실패는 false — 화면이 E-FORMS-IMAGE-FAILED를 보인다
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -11,6 +13,7 @@ const THEME_HREF = /(\s(?:xlink:)?href=)(["'])\/poster\/themes\/[a-z0-9]+\.svg\2
 const PNG_REVOKE_MS = 10_000 // 내려받기가 시작된 뒤 PNG 주소를 거둔다
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+const LOGO_HREF = new RegExp(`(\\s(?:xlink:)?href=)(["'])${escapeRegExp(LOGO.href)}\\2`, 'g')
 const fontUrl = (path: string) => new RegExp(`url\\(\\s*(["']?)${escapeRegExp(path)}\\1\\s*\\)`, 'g')
 
 function base64(bytes: Uint8Array): string {
@@ -40,13 +43,15 @@ function sizeRoot(svg: string): string {
   })
 }
 
-// 순수: 안내문 SVG 글에서 테마 그림·글꼴 주소를 data: 주소로 바꾸고 width/height를 1588×2246으로 둔다
-export function svgForImage(svg: string, assets: { theme: string; bold: Uint8Array; black: Uint8Array }): string {
+// 순수: 안내문 SVG 글에서 테마 그림·글꼴·로고 주소를 data: 주소로 바꾸고 width/height를 1588×2246으로 둔다
+export function svgForImage(svg: string, assets: { theme: string; bold: Uint8Array; black: Uint8Array; logo: Uint8Array }): string {
   const theme = `data:image/svg+xml;base64,${base64(new TextEncoder().encode(assets.theme))}`
   const bold = `url(data:font/woff2;base64,${base64(assets.bold)})`
   const black = `url(data:font/woff2;base64,${base64(assets.black)})`
+  const logo = `data:image/png;base64,${base64(assets.logo)}`
   return sizeRoot(svg)
     .replace(THEME_HREF, (_, attr: string, quote: string) => `${attr}${quote}${theme}${quote}`)
+    .replace(LOGO_HREF, (_, attr: string, quote: string) => `${attr}${quote}${logo}${quote}`)
     .replace(fontUrl(FONT_URLS.bold), () => bold)
     .replace(fontUrl(FONT_URLS.black), () => black)
 }
@@ -110,10 +115,15 @@ export async function downloadPosterPng(svg: SVGSVGElement, fileName: string): P
     const href = svg.querySelector('image')?.getAttribute('href') ?? ''
     const themePath = THEME_PATH.test(href) ? href : null
     if (!themePath) return false
-    const [theme, bold, black] = await Promise.all([readText(themePath), readBytes(FONT_URLS.bold), readBytes(FONT_URLS.black)])
-    if (theme === null || !bold || !black) return false
-    const text = svgForImage(new XMLSerializer().serializeToString(svg), { theme, bold, black })
-    if (text.includes('/poster/')) return false // 바깥 주소가 남으면 그림에 테마·글꼴이 빠진다
+    const [theme, bold, black, logo] = await Promise.all([
+      readText(themePath),
+      readBytes(FONT_URLS.bold),
+      readBytes(FONT_URLS.black),
+      readBytes(LOGO.href),
+    ])
+    if (theme === null || !bold || !black || !logo) return false
+    const text = svgForImage(new XMLSerializer().serializeToString(svg), { theme, bold, black, logo })
+    if (text.includes('/poster/')) return false // 바깥 주소가 남으면 그림에 테마·글꼴·로고가 빠진다
     const png = await drawPng(text)
     if (!png) return false
     saveFile(png, fileName)

@@ -1,0 +1,19 @@
+{
+  "status": "approved",
+  "feature": "forms-logo",
+  "approved_at": "2026-11-10T08:03:23Z",
+  "approved_via": "user-prompt",
+  "session_id": "4565154b-fc7a-447b-b235-39aef4f24627",
+  "spec_sha256": "f092ac1d533553b055dbaa712baaaa49f29b03fc08907ee1071d80c635d26117",
+  "scope": [
+    "public/poster/logo.png",
+    "src/components/forms/FormsScreen.test.tsx",
+    "src/components/forms/Poster.test.tsx",
+    "src/components/forms/Poster.tsx",
+    "src/lib/forms/assets.test.ts",
+    "src/lib/forms/layout.test.ts",
+    "src/lib/forms/layout.ts",
+    "src/lib/forms/png.test.ts",
+    "src/lib/forms/png.ts"
+  ]
+}

@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { POSTER, layoutPoster } from '@/lib/forms/layout'
+import { LOGO, POSTER, layoutPoster } from '@/lib/forms/layout'
 import { themeOf } from '@/lib/forms/themes'
 import type { ClosureNotice, ThemeId } from '@/types/forms'
 
@@ -7,7 +7,8 @@ import type { ClosureNotice, ThemeId } from '@/types/forms'
 // 기준 그림은 승인 테마 시안 docs/mockups/forms/themes.html의 poster()다 — 자리·크기·굵기·색·자간·그림자·띠 모양을 그대로 옮겼다.
 // 안내문 그림 안의 색(강조색·글자색·흰색·그림자)과 글꼴(PosterPretendard 700·900)은 인쇄물이라 앱 토큰·굵기 규칙의 예외다(ADR-028).
 // 그 값은 이 파일 안에서만 쓴다. 앱 화면 쪽은 토큰만 쓴다.
-// 병원 정보(이름·전화·주소)는 넣지 않는다. 글자는 React가 이스케이프하고 HTML을 넣지 않는다
+// 글자로 된 병원 정보(이름·전화·주소)는 넣지 않는다 — 병원 로고 그림 하나만 맨 아래에 둔다(specs/forms-logo).
+// 글자는 React가 이스케이프하고 HTML을 넣지 않는다
 
 const FONT = 'PosterPretendard' // 이 이름은 src/components/forms 안에서만 쓴다(AC-3510.2)
 // 그림 파일(lib/forms/png.ts)이 이 주소들을 data: 주소로 바꾼다
@@ -93,6 +94,8 @@ export function Poster({ notice, theme }: { notice: ClosureNotice; theme: ThemeI
           </PosterText>,
         ]
       })}
+      {/* 병원 로고: 카드 다음 맨 위에, 받침·필터 없이 그대로(사용자 선택 ①) */}
+      <image href={LOGO.href} x={LOGO.x} y={LOGO.y} width={LOGO.width} height={LOGO.height} />
     </svg>
   )
 }

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { inflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 
 // 서식 탭 안내문 그림 파일에 넣는 글꼴·테마 그림(specs/forms TASK-6, design.md 4절 끝 '그림 파일 규칙').
@@ -120,5 +121,69 @@ describe('AC-3504.5: public/poster/themes/의 테마 그림 23개', () => {
     const copy = textBytes(themeRel(key))
     const approved = textBytes(`${MOCKUP_THEME_DIR}/${key}.svg`)
     expect(sha256(copy)).toBe(sha256(approved))
+  })
+})
+
+// ---------- 병원 로고 (specs/forms-logo REQ-3601, design.md 2절) ----------
+
+const LOGO_FILE = 'public/poster/logo.png'
+const MOCKUP_LOGO_FILE = 'docs/mockups/forms/logo.png'
+const LOGO_SHA256 = 'd4a83c51a9bd9e41637ab3462577d693668cbccae2b36c1f47f8acd117e5f67c' // design.md 2절
+const LOGO_BYTES_MAX = 200_000
+
+// PNG(8비트 RGBA, 겹치지 않은 줄)를 점 단위 알파로 푼다 — 시험만 쓰는 작은 풀이(꾸러미를 더하지 않는다)
+function pngInfo(buf: Buffer) {
+  const width = buf.readUInt32BE(16)
+  const height = buf.readUInt32BE(20)
+  const [bitDepth, colorType, , , interlace] = [buf[24], buf[25], buf[26], buf[27], buf[28]]
+  const idat: Buffer[] = []
+  for (let at = 8; at < buf.length; ) {
+    const length = buf.readUInt32BE(at)
+    if (buf.toString('latin1', at + 4, at + 8) === 'IDAT') idat.push(buf.subarray(at + 8, at + 8 + length))
+    at += 12 + length
+  }
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * 4
+  const pixels = Buffer.alloc(stride * height)
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)]
+    for (let x = 0; x < stride; x++) {
+      const value = raw[y * (stride + 1) + 1 + x]
+      const left = x >= 4 ? pixels[y * stride + x - 4] : 0
+      const up = y > 0 ? pixels[(y - 1) * stride + x] : 0
+      const upLeft = x >= 4 && y > 0 ? pixels[(y - 1) * stride + x - 4] : 0
+      const paeth = () => {
+        const p = left + up - upLeft
+        const [pa, pb, pc] = [Math.abs(p - left), Math.abs(p - up), Math.abs(p - upLeft)]
+        return pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft
+      }
+      const predictor = [0, left, up, (left + up) >> 1, paeth()][filter]
+      pixels[y * stride + x] = (value + predictor) & 0xff
+    }
+  }
+  const alpha = (x: number, y: number) => pixels[(y * width + x) * 4 + 3]
+  return { width, height, bitDepth, colorType, interlace, alpha }
+}
+
+describe('AC-3601.1·AC-3601.2: public/poster/logo.png 병원 로고', () => {
+  it('AC-3601.1: PNG이고 1033×175, 8비트 RGBA(알파 칸 있음), 200,000바이트 이하다', () => {
+    const buf = bytes(LOGO_FILE)
+    expect([...buf.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    const info = pngInfo(buf)
+    expect([info.width, info.height]).toEqual([1033, 175])
+    expect([info.bitDepth, info.colorType, info.interlace]).toEqual([8, 6, 0])
+    expect(buf.length).toBeLessThanOrEqual(LOGO_BYTES_MAX)
+  })
+
+  it('AC-3601.1: 네 귀퉁이 점은 투명(알파 0)이고, 가운데 줄에는 불투명한 점이 있다(빈 그림이 아니다)', () => {
+    const { width, height, alpha } = pngInfo(bytes(LOGO_FILE))
+    for (const [x, y] of [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]]) expect(alpha(x, y), `${x},${y}`).toBe(0)
+    const middle = Array.from({ length: width }, (_, x) => alpha(x, Math.floor(height / 2)))
+    expect(middle.filter((a) => a === 255).length).toBeGreaterThan(100)
+  })
+
+  it('AC-3601.2: 승인 시안 docs/mockups/forms/logo.png와 바이트가 같다(sha256, design.md 2절 값)', () => {
+    expect(sha256(bytes(MOCKUP_LOGO_FILE))).toBe(LOGO_SHA256)
+    expect(sha256(bytes(LOGO_FILE))).toBe(LOGO_SHA256)
   })
 })

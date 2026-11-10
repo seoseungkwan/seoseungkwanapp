@@ -303,6 +303,17 @@ describe('AC-3506.1·AC-3506.2·AC-3506.3: 뽑기', () => {
     expect(screen.getByRole('heading', { level: 1, name: '서식' }).closest('.print\\:hidden')).not.toBeNull()
   })
 
+  it('AC-3603.3: 인쇄 면(인쇄 사본)에도 미리보기와 같은 병원 로고 image가 맨 위에 있다', async () => {
+    await readyScreen()
+    const logoOf = (svg: Element | null | undefined) => {
+      const last = svg?.lastElementChild
+      return last?.localName === 'image' ? ['href', 'x', 'y', 'width', 'height'].map((n) => last.getAttribute(n)) : null
+    }
+    const copy = document.querySelector('[data-print-copy]')?.querySelector('svg')
+    expect(logoOf(poster())).toEqual(['/poster/logo.png', '227', '1011', '340', '58'])
+    expect(logoOf(copy)).toEqual(logoOf(poster()))
+  })
+
   it('AC-3506.2: [그림 파일]은 미리보기 그림을 휴진안내_2027-05.png로 내려받는다', async () => {
     const user = await readyScreen()
     await user.click(button('그림 파일'))

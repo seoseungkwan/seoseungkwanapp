@@ -9,6 +9,8 @@ export const POSTER = { width: 794, height: 1123, cx: 397 } as const
 export const TEXT_AREA = { left: 24, right: 770, top: 80, bottom: 960 } as const
 export const MIN_FONT = 18
 const CARD_PADDING = 32 // 카드 폭 − 안쪽 폭(양옆 16)
+// 병원 로고(가로형 1033×175): 맨 아래 가운데, 아래 끝에서 54 위. 카드 수와 상관없이 같은 자리 (specs/forms-logo design.md 3절)
+export const LOGO = { href: '/poster/logo.png', x: 227, y: 1011, width: 340, height: 58 } as const
 
 type Shape = { w: number; gap: number; headH: number; bodyH: number; rows: number[]; cols: number; fonts: [number, number, number] }
 // 카드 수 → 폭·사이·띠·몸통·줄 y·한 줄 칸 수·처음 글자 크기(날짜·이름·아래 글)

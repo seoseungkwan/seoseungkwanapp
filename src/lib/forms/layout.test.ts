@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ClosureNotice, NoticeCard } from '@/types/forms'
-import { MIN_FONT, POSTER, TEXT_AREA, fitSize, layoutPoster, textWidth } from './layout'
+import { LOGO, MIN_FONT, POSTER, TEXT_AREA, fitSize, layoutPoster, textWidth } from './layout'
 
 // 서식 탭 휴진 안내 그림의 배치와 글자 크기 맞추기 (specs/forms REQ-3505, design.md 5절, TASK-3).
 // 자리 값은 승인 시안(794×1123)을 브라우저에서 잰 값(design.md 5절 표)
@@ -115,5 +115,23 @@ describe('AC-3503.6: 카드는 시작 날짜 차례로 그린다', () => {
     const cards = [card('2027-05-24', '부처님오신날'), card('2027-05-05', '어린이날'), card('2027-05-15', '학회')]
     expect(layoutPoster(noticeOf(cards)).cards.map((c) => c.name.text)).toEqual(['어린이날', '학회', '부처님오신날'])
     expect(layoutPoster(noticeOf(cards)).cards.map((c) => c.date.text)).toEqual(['5월 5일(수)', '5월 15일(토)', '5월 24일(월)'])
+  })
+})
+
+describe('AC-3602.2: 병원 로고 자리 (specs/forms-logo design.md 3절)', () => {
+  it('AC-3602.2: 로고는 /poster/logo.png, 맨 아래 가운데 340×58(원본 1033×175 비율), 아래 끝에서 54 위', () => {
+    expect(LOGO).toEqual({ href: '/poster/logo.png', x: 227, y: 1011, width: 340, height: 58 })
+    expect(LOGO.x + LOGO.width / 2).toBe(POSTER.cx)
+    expect(LOGO.height).toBe(Math.round((LOGO.width * 175) / 1033))
+    expect(POSTER.height - (LOGO.y + LOGO.height)).toBe(54)
+  })
+
+  it('AC-3602.2: 카드 1~4장 어느 배치에서도 로고는 카드 아래 끝보다 아래에서 시작하고 종이 안에서 끝난다', () => {
+    for (const n of [1, 2, 3, 4]) {
+      const { cards } = layoutPoster(noticeOf(days(n)))
+      const bottom = Math.max(...cards.map((c) => c.y + c.headH + c.bodyH))
+      expect(bottom, `${n}장`).toBeLessThan(LOGO.y)
+      expect(LOGO.y + LOGO.height, `${n}장`).toBeLessThanOrEqual(POSTER.height)
+    }
   })
 })
