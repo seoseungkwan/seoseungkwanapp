@@ -3,5 +3,5 @@
   "description": "청구 사전점검 도우미",
   "path": "__HELPER_EXE__",
   "type": "stdio",
-  "allowed_origins": ["chrome-extension://cmnefbmfclmjkfbnjnbfnlndlpjnihka/"]
+  "allowed_origins": ["chrome-extension://cmnefbmfclmjkfbnjnbfnlndlpjnihka/", "chrome-extension://lkancaiekmoieooheifdimahhkejfmjc/"]
 }
