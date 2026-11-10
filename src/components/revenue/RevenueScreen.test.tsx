@@ -1760,4 +1760,155 @@ describe('revenue-load-range 매출 가져올 기간 (이 파일의 오늘 2026-
     expect(screen.queryByText('OLD01')).toBeNull()
     expect(screen.queryByText('옛 달에만 있는 처방')).toBeNull()
   })
+
+  it('AC-3502.3·AC-3501.1·AC-3503.1·AC-3504.1 고른 기간을 가져온 뒤 옛 달 다시 읽기만 실패하면 다 가져옴 알림·칸이 없고 끝 달 글은 최근 13달 첫 달이며, 옛 달을 보고 있었으면 고른 달이 그 달로 당겨진다', async () => {
+    const { store } = setup({ rows: WITH_AUG })
+    const load = store.loadRevenue.getMockImplementation()!
+    let failOlder = false
+    store.loadRevenue.mockImplementation((from, to) => (failOlder && from === OLDER[0] ? Promise.reject(coded('E-PAGE-FAILED')) : load(from, to)))
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await screen.findByText('· 2025년 8월부터 넘겨 볼 수 있어요')
+    for (let i = 0; i < 14; i += 1) await user.click(previousButton())
+    expect(screen.getByText('2025년 8월')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '최근 2년' }))
+
+    failOlder = true
+    const reads = store.loadRevenue.mock.calls.length
+    await user.click(screen.getByRole('button', { name: LOAD }))
+    await waitFor(() => expect(store.loadRevenue.mock.calls.slice(reads)).toEqual([RECENT, OLDER]))
+    await settle()
+    expect(screen.queryByText(/달을 가져왔어요\./)).toBeNull()
+    expect(screen.queryByText(/단추로 .*까지 넘겨 볼 수 있어요/)).toBeNull()
+    expect(screen.queryByRole('group', PANEL)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('· 2025년 10월부터 넘겨 볼 수 있어요')).toBeTruthy()
+    expect(screen.getByText('2025년 10월')).toBeTruthy()
+    expect(previousButton().disabled).toBe(true)
+  })
+
+  it('AC-3503.1·AC-3503.3·AC-3504.1 옛 달을 보다가 제목 줄 [다시 가져오기] 뒤 옛 달 다시 읽기가 실패하면 고른 달이 최근 13달 첫 달로 당겨지고 [지난달]이 막히며 사라진 칸을 가리키는 글이 없다', async () => {
+    const { store, bridge } = setup({ rows: WITH_AUG })
+    const load = store.loadRevenue.getMockImplementation()!
+    let failOlder = false
+    store.loadRevenue.mockImplementation((from, to) => (failOlder && from === OLDER[0] ? Promise.reject(coded('E-PAGE-FAILED')) : load(from, to)))
+    render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await screen.findByText('· 2025년 8월부터 넘겨 볼 수 있어요')
+    for (let i = 0; i < 13; i += 1) await user.click(previousButton())
+    expect(screen.getByText('2025년 9월')).toBeTruthy()
+    expect(screen.getByText(NOT_FETCHED)).toBeTruthy()
+    // 날 줄이 있는 옛 달(2025-08)에서 제목 줄의 [다시 가져오기]
+    await user.click(previousButton())
+    expect(screen.getByText('2025년 8월')).toBeTruthy()
+
+    failOlder = true
+    const reads = store.loadRevenue.mock.calls.length
+    await user.click(screen.getByRole('button', { name: '다시 가져오기' }))
+    await waitFor(() => expect(store.loadRevenue.mock.calls.slice(reads)).toEqual([RECENT, OLDER]))
+    await settle()
+    expect(monthsCalled(bridge.call)).toEqual(['2025-08'])
+    expect(screen.getByText('2025년 10월')).toBeTruthy()
+    expect(previousButton().disabled).toBe(true)
+    expect(screen.getByText('· 2025년 10월부터 넘겨 볼 수 있어요')).toBeTruthy()
+    expect(screen.queryByText(NOT_FETCHED)).toBeNull()
+    expect(screen.queryByRole('group', PANEL)).toBeNull()
+  })
+
+  const STOPPED = '가져온 2달(2024년 12월 – 2025년 9월)은 저장됐어요. 연결한 뒤 [전체 기간]을 다시 고르고 [비트에서 가져오기]를 누르면 남은 3달만 읽어요.'
+
+  /** [전체 기간]을 가져오다 셋째 달에서 끊긴다: 진짜 통로처럼 상태를 먼저 끊김으로 바꾼다(기다리던 요청의 거절은 부른 쪽이 한다) */
+  async function disconnectAtThird() {
+    let count = 0
+    const held: ((error: Error) => void)[] = []
+    const made = setup({
+      rows: GAPPY,
+      call: (_cmd, range) => {
+        count += 1
+        return count <= 2
+          ? Promise.resolve(answerOf(range))
+          : new Promise((_resolve, reject) => {
+              held.push(reject)
+            })
+      },
+    })
+    const { rerender } = render(<RevenueScreen />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '전체 기간' }))
+    await user.click(screen.getByRole('button', { name: LOAD }))
+    await waitFor(() => expect(held).toHaveLength(1))
+    made.bridge.state = 'disconnected'
+    rerender(<RevenueScreen />)
+    const reconnect = async () => {
+      made.bridge.state = 'connecting'
+      rerender(<RevenueScreen />)
+      made.bridge.state = 'ready'
+      rerender(<RevenueScreen />)
+    }
+    return { ...made, rerender, user, held, reconnect }
+  }
+  const alertHas = (code: string) => waitFor(() => expect(screen.getByRole('alert').textContent).toContain(`오류 번호 ${code}`))
+
+  it('AC-3502.4 멈춤 줄은 그 끊김의 오류 카드에만 있다: 다시 연결한 차례의 처음 읽기가 E-PAGE-FAILED면 그 오류 카드 아래에 멈춤 줄이 없다', async () => {
+    const { store, user, held, reconnect } = await disconnectAtThird()
+    held[0]!(coded('E-BRIDGE-DISCONNECTED'))
+    expect(await screen.findByText(STOPPED)).toBeTruthy()
+
+    store.loadRevenue.mockRejectedValueOnce(coded('E-PAGE-FAILED'))
+    await user.click(screen.getByRole('button', { name: '다시 확인' }))
+    await reconnect()
+    await alertHas('E-PAGE-FAILED')
+    await settle()
+    expect(screen.queryByText(STOPPED)).toBeNull()
+  })
+
+  it('AC-3502.4 멈춤 줄은 그 끊김의 오류 카드에만 있다: 다시 연결한 차례의 저절로 가져오기가 다시 끊겨도 그 오류 카드 아래에 멈춤 줄이 없다', async () => {
+    const { bridge, store, rerender, user, held, reconnect } = await disconnectAtThird()
+    held[0]!(coded('E-BRIDGE-DISCONNECTED'))
+    expect(await screen.findByText(STOPPED)).toBeTruthy()
+
+    // 다시 연결하면 최근 달(2026-10)이 빠져 있어 저절로 가져온다
+    const load = store.loadRevenue.getMockImplementation()!
+    store.loadRevenue.mockImplementation(async (from, to) => {
+      const rows = await load(from, to)
+      return from === RECENT[0] ? { ...rows, days: rows.days.filter((row) => monthOf(row.date) !== '2026-10') } : rows
+    })
+    const again = heldCall()
+    bridge.call.mockImplementation(again.call)
+    await user.click(screen.getByRole('button', { name: '다시 확인' }))
+    await reconnect()
+    await waitFor(() => expect(again.rejects).toHaveLength(1))
+    expect(screen.queryByText(STOPPED)).toBeNull()
+
+    bridge.state = 'disconnected'
+    rerender(<RevenueScreen />)
+    again.rejects[0]!(coded('E-BRIDGE-DISCONNECTED'))
+    await alertHas('E-BRIDGE-DISCONNECTED')
+    await settle()
+    expect(screen.queryByText(STOPPED)).toBeNull()
+  })
+
+  it('AC-3502.4 끊겨 멈춘 가져오기가 다시 연결된 뒤에야 끝나도(앞 차례가 늦게 끝남) 새 차례의 오류 카드 아래에 멈춤 줄을 두지 않는다', async () => {
+    const { store, held, reconnect } = await disconnectAtThird()
+    await settle()
+    // 앞 차례가 멈춘 뒤 최근 13달을 다시 읽는 것을 잡아 둔다
+    const load = store.loadRevenue.getMockImplementation()!
+    let releaseLate: (() => void) | null = null
+    store.loadRevenue.mockImplementationOnce(
+      (from, to) =>
+        new Promise((resolve) => {
+          releaseLate = () => void load(from, to).then(resolve)
+        }),
+    )
+    held[0]!(coded('E-BRIDGE-DISCONNECTED'))
+    await waitFor(() => expect(releaseLate).not.toBeNull())
+
+    store.loadRevenue.mockRejectedValueOnce(coded('E-PAGE-FAILED'))
+    await reconnect()
+    await alertHas('E-PAGE-FAILED')
+    releaseLate!()
+    await settle()
+    await alertHas('E-PAGE-FAILED')
+    expect(screen.queryByText(STOPPED)).toBeNull()
+  })
 })

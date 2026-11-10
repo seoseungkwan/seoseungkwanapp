@@ -68,6 +68,9 @@ async function readOlder(store: Store, before: string): Promise<Older> {
   }
 }
 
+/** 멈춤 줄은 새 가져오기·다시 연결한 차례가 시작되면 지운다. 다 가져옴 알림은 다음 [비트에서 가져오기]까지 둔다(AC-3502.3) */
+const dropStopped = (run: RangeRun | null) => (run?.outcome === 'stopped' ? null : run)
+
 /** 날 줄 가운데 가장 옛 날의 달과 floor 가운데 이른 달 */
 function earliestMonth(days: Saved['days'], floor: string): string {
   let first = floor
@@ -170,7 +173,7 @@ export function RevenueScreen() {
    * 차례(generation)와 따로 센다: [다시 가져오기]가 차례를 넘겨도 열 때 시작한 옛 달 읽기는 버리지 않는다(버리면 다시 열 때까지 칸이 없다)
    */
   const olderTurn = useRef(0)
-  /** 고른 기간 가져오기를 마지막으로 시작한 차례. 그 차례의 끝만 rangeRun에 둔다 */
+  /** 고른 기간 가져오기를 마지막으로 시작한 차례. 그 차례의 끝만 rangeRun에 둔다(연결된 새 차례가 시작되면 그 차례로 바꿔 앞 가져오기의 늦은 끝을 버린다) */
   const rangeOwner = useRef(0)
   const editGroupsRef = useRef<HTMLButtonElement>(null)
   /** 편집 화면을 보여 준 적이 있고 아직 돌아오지 않았다. 처음 그릴 때는 초점을 옮기지 않으려고 둔다 */
@@ -178,6 +181,15 @@ export function RevenueScreen() {
 
   const connected = bridgeState === 'ready'
   const run = `${bridgeState}:${attempt}`
+
+  // 옛 달을 읽지 못하면 넘겨 볼 끝 달은 최근 13달 첫 달이다. 그보다 옛 달을 보고 있었으면 그 달로 당긴다(AC-3503.1)
+  const takeOlder = useCallback(
+    (next: Older) => {
+      setOlder(next)
+      if (next === 'failed') setMonth((current) => (current < oldest ? oldest : current))
+    },
+    [oldest],
+  )
 
   // plan = 읽을 달 차례. onProgress의 month는 막 끝낸 달이라 '읽는 중' 글자에는 plan의 다음 달을 쓴다
   const pull = useCallback(
@@ -213,11 +225,11 @@ export function RevenueScreen() {
       extra.onEnd?.(result, handled)
       if (!isLive()) return
       if (rows) setSaved(rows)
-      if (olderNext && olderTurn.current === turn) setOlder(olderNext)
+      if (olderNext && olderTurn.current === turn) takeOlder(olderNext)
       setSync(next)
       setSettled(doneRun)
     },
-    [call, today, oldest, latest, olderEnd],
+    [call, today, oldest, latest, olderEnd, takeOlder],
   )
 
   // 창 전체가 밀리는 화면이라 편집 화면이 내려가도 스크롤이 제자리다. 돌아오면 초점으로 [묶음 고치기]가 있는 덩어리까지 데려간다(AC-014.5의 다시 그린 숫자가 화면 밖이지 않게)
@@ -241,7 +253,12 @@ export function RevenueScreen() {
       return
     }
     setSync(IDLE)
-    if (connected) setFetchOpen(true)
+    if (connected) {
+      setFetchOpen(true)
+      // 다시 연결됐으니 앞선 멈춤 줄은 지나간 일이다(끊겨 오류 화면이 되는 차례에는 그 줄이 보여야 하니 지우지 않는다, AC-3502.4)
+      rangeOwner.current = live
+      setRangeRun(dropStopped)
+    }
     void readGroups().then((next) => {
       if (isLive()) setGroups(next)
     })
@@ -264,19 +281,20 @@ export function RevenueScreen() {
       // 첫 그림과 저절로 가져오기는 이 읽기를 기다리지 않는다(AC-3504.1)
       const turn = ++olderTurn.current
       void readOlder(store, olderEnd).then((next) => {
-        if (olderTurn.current === turn) setOlder(next)
+        if (olderTurn.current === turn) takeOlder(next)
       })
       if (!connected) return
       const savedDays = new Set(rows.days.map((row) => row.date))
       const plan = planFetch(today, savedDays).map((range) => monthOf(range.from))
       await pull({ savedDays }, plan, [], isLive, run)
     })()
-  }, [bridgeState, connected, run, today, oldest, latest, olderEnd, pull])
+  }, [bridgeState, connected, run, today, oldest, latest, olderEnd, pull, takeOlder])
 
   // 옛 달이 든 달을 다시 읽으면 옛 달도 다시 읽는다(최근 13달만 다시 읽으면 그 달이 계속 비어 보인다)
   function refetch(months: string[]) {
     generation.current += 1
     const live = generation.current
+    setRangeRun(dropStopped)
     const keep = (sync.failed ?? []).filter((item) => !months.includes(item.month))
     void pull({ months }, months, keep, () => generation.current === live, run, { older: months.some((item) => item < oldest) })
   }
@@ -399,7 +417,8 @@ export function RevenueScreen() {
     const hint = spanHint(span, today, missing.length)
     return <LoadRangePanel spans={SPAN_NAMES} selected={span} onSelect={selectSpan} hint={hint.text} disabled={hint.disabled} onLoad={() => loadSpan(missing)} />
   }
-  const done = rangeRun?.outcome === 'done' ? doneNotice(rangeRun.months, firstShown) : null
+  // 옛 달을 다시 읽지 못했으면 칸처럼 알림도 없다(그 끝 달 글이 틀린다, AC-3503.1)
+  const done = rangeRun?.outcome === 'done' && olderRows ? doneNotice(rangeRun.months, firstShown) : null
   const rangeBlock = (
     <>
       {rangePanel()}
