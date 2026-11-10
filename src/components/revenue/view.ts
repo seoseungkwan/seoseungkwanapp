@@ -1,6 +1,6 @@
 import { formatCount, formatRate } from '@/components/charts/format'
 import { niceScale } from '@/components/charts/scale'
-import { addMonths, todayInKorea } from '@/lib/analytics/dates'
+import { addMonths, compareYmd, monthOf, todayInKorea } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
 import { compare, firstMonth, monthSeries, perVisit, periodsFor, sumPeriod, type MonthPoint, type PeriodSum } from '@/lib/revenue/summary'
 import type { SyncResult } from '@/lib/revenue/sync'
@@ -36,6 +36,8 @@ export type RevenueSync = {
   month?: string
   /** syncRevenue의 stopped */
   code?: string
+  /** 가져오는 중 본문. 고른 기간을 가져올 때 range.ts fetchingBody 글을 준다(없으면 화면을 열 때의 저절로 가져오기 글) */
+  body?: string
 } & Partial<Pick<SyncResult, 'failed' | 'helperOld' | 'extensionOld'>>
 
 export type RevenueViewInput = {
@@ -121,7 +123,8 @@ export type RevenueView =
 // ── 글자 ─────────────────────────────────────────────────
 
 const monthName = (month: string) => `${Number(month.slice(5, 7))}월`
-const fullMonthName = (month: string) => `${Number(month.slice(0, 4))}년 ${monthName(month)}`
+/** 'YYYY년 M월'(range.ts도 같이 쓴다) */
+export const fullMonthName = (month: string) => `${Number(month.slice(0, 4))}년 ${monthName(month)}`
 const dayNumber = (ymd: string) => Number(ymd.slice(8, 10))
 const countText = (n: number) => `${formatCount(n)}건`
 const shareText = (part: number, whole: number) => (whole > 0 ? `${formatRate(part / whole)}%` : DASH)
@@ -196,15 +199,33 @@ type Context = {
   prev: PeriodSum
   lastYear: PeriodSum
   series: MonthPoint[]
+  /** 막대 제목의 기간: '최근 13달' 또는 '2020년 3월 – 2021년 3월' */
+  seriesName: string
 }
 
 // 확인 필요한 날이 있는데 아는 금액 합이 0이면 세지 못한 것이지 0원이 아니다(AC-008.4).
 // 쉬는 날은 unconfirmed가 아니라 sum.days에 들어서 days로는 가려낼 수 없다(일요일이 있는 달). 이 값이 null이 아니면 days는 1 이상이다
 const knownTotal = (sum: Sum) => (sum.total === 0 && sum.uncheckedDays.length > 0 ? null : sum.total)
 
+/** 최근 13달의 첫 달. 이보다 이른 달이 '옛날 달'이다 */
+const recentStart = (today: string) => addMonths(firstMonth(today), -12)
+const isOldMonth = (month: string, today: string) => compareYmd(month, recentStart(today)) < 0
+
+/** 최근 13달(그 첫 달 ~ 최근 달) 코드 줄의 코드 */
+const recentCodes = (codes: RevenueViewInput['codes'], today: string) =>
+  codes.filter((row) => compareYmd(row.month, recentStart(today)) >= 0 && compareYmd(row.month, firstMonth(today)) <= 0).map((row) => row.code)
+
+/** 막대 13달의 끝 달: 고른 달이 옛날 달이면 그 달, 아니면 최근 달(AC-3503.2) */
+const seriesEnd = (month: string, today: string) => (isOldMonth(month, today) ? month : firstMonth(today))
+
+function seriesNameOf(month: string, today: string): string {
+  const end = seriesEnd(month, today)
+  return end === firstMonth(today) ? '최근 13달' : `${fullMonthName(addMonths(end, -12))} – ${fullMonthName(end)}`
+}
+
 // 그런 달은 자료 없는 달처럼 그린다. 기간은 monthSeries와 같다(그 달 1일 ~ 말일과 어제 가운데 이른 날). 나눔 칸은 summary.ts가 이미 null로 준다
-function seriesOf(days: RevenueDayRow[], today: string): MonthPoint[] {
-  return monthSeries(days, firstMonth(today), today).map((point) => {
+function seriesOf(days: RevenueDayRow[], today: string, month: string): MonthPoint[] {
+  return monthSeries(days, seriesEnd(month, today), today).map((point) => {
     const sum = sumPeriod(days, periodsFor(point.month, today).current)
     return sum && knownTotal(sum) === null ? { ...point, total: null } : point
   })
@@ -254,7 +275,7 @@ const STACK_LEGEND: LegendItem[] = [
 // ── 덩어리 ───────────────────────────────────────────────
 
 function trendBlock(context: Context): TrendView {
-  const { now, before, lastYearLabel, sum, prev, lastYear, series } = context
+  const { now, before, lastYearLabel, sum, prev, lastYear, series, seriesName } = context
   const total = knownTotal(sum)
   const unchecked = sum.uncheckedDays
   return {
@@ -281,7 +302,7 @@ function trendBlock(context: Context): TrendView {
           },
     ],
     chart: barChart(context, {
-      title: '달마다 매출 · 최근 13달',
+      title: `달마다 매출 · ${seriesName}`,
       legend: BAR_LEGEND,
       unit: '(만 원)',
       divisor: WON_PER_MAN,
@@ -378,7 +399,7 @@ function splitBlock(context: Context): SplitView {
 }
 
 function treatmentsBlock(input: RevenueViewInput, now: string): TreatmentsView {
-  const { codes, groups, month } = input
+  const { codes, groups, month, today } = input
   const head = { title: '치료별 매출', editLabel: '묶음 고치기' }
   const basis = `${now} · 처방한 날 기준`
   if (groups === 'load-failed') {
@@ -394,7 +415,8 @@ function treatmentsBlock(input: RevenueViewInput, now: string): TreatmentsView {
     }
   }
   const suggested = groups.length === 0
-  const used = suggested ? suggestGroups(codes.map((row) => row.code)) : groups
+  // 제안 묶음은 최근 13달 코드 줄로만 만든다(옛 달 코드 줄이 합쳐져도, AC-3504.2)
+  const used = suggested ? suggestGroups(recentCodes(codes, today)) : groups
   const totals = groupTreatments(
     codes.filter((row) => row.month === month),
     used,
@@ -428,7 +450,7 @@ function treatmentsBlock(input: RevenueViewInput, now: string): TreatmentsView {
 }
 
 function perVisitBlock(context: Context): PerVisitView {
-  const { now, before, lastYearLabel, sum, prev, lastYear, series } = context
+  const { now, before, lastYearLabel, sum, prev, lastYear, series, seriesName } = context
   const nowValue = perVisit(sum)
   return {
     title: '건당 진료비',
@@ -444,7 +466,7 @@ function perVisitBlock(context: Context): PerVisitView {
         : { name: `${now} 접수 건수`, value: countText(sum.visits), sub: `${before} ${countOrDash(prev?.visits ?? null)}`, tone: 'ink', srText: '' },
     ],
     chart: barChart(context, {
-      title: '달마다 건당 진료비 · 최근 13달',
+      title: `달마다 건당 진료비 · ${seriesName}`,
       legend: [],
       unit: '(천 원)',
       divisor: WON_PER_CHEON,
@@ -497,13 +519,13 @@ const CONNECT_NEEDED: RevenueView = {
   safe: SAFE,
 }
 
-function fetchingView({ done, total, month }: RevenueSync): RevenueView {
+function fetchingView({ done, total, month, body }: RevenueSync): RevenueView {
   const count = done ?? 0
   return {
     state: 'fetching',
     title: TITLE,
     heading: '비트에서 매출을 가져오고 있어요',
-    body: '처음 한 번은 최근 13달을 읽느라 몇 분 걸려요. 이 창을 닫지 말아 주세요. 다음부터는 새로 생긴 날만 읽어요.',
+    body: body ?? '처음 한 번은 최근 13달을 읽느라 몇 분 걸려요. 이 창을 닫지 말아 주세요. 다음부터는 새로 생긴 날만 읽어요.',
     // 몇 달을 읽을지 아직 모르면 숫자를 지어내지 않는다
     progress: total
       ? {
@@ -538,6 +560,7 @@ function failedOf(failed: SyncResult['failed'] | undefined): FailedNotice | null
 }
 
 const EMPTY_NOTE = '그래프는 자료가 있는 달만 그려요. 숫자를 지어 넣지 않아요.'
+const NOT_FETCHED_NOTE = "이 달은 아직 비트에서 가져오지 않았어요. 위 '가져올 기간'에서 이 달이 든 기간을 고르고 [비트에서 가져오기]를 누르면 채워져요."
 
 function emptyMonth(month: string, note: string): EmptyMonth {
   const now = monthName(month)
@@ -559,7 +582,8 @@ function blocksOf(input: RevenueViewInput, periods: ReturnType<typeof periodsFor
     sum,
     prev: sumPeriod(days, periods.lastMonth),
     lastYear: sumPeriod(days, periods.lastYear),
-    series: seriesOf(days, today),
+    series: seriesOf(days, today, month),
+    seriesName: seriesNameOf(month, today),
   }
   return { trend: trendBlock(context), split: splitBlock(context), treatments: treatmentsBlock(input, now), perVisit: perVisitBlock(context) }
 }
@@ -597,8 +621,14 @@ export function buildRevenueView(input: RevenueViewInput): RevenueView {
 
   const failed = failedOf(sync.failed)
   if (blocks === null) {
-    // 이 PC가 방금 읽은 달이라 "기록이 없어요"라고 말할 수 있다. 읽지 못한 달은 그렇게 말하지 않는다
-    const note = failed?.list.includes(month) ? '이 달은 가져오지 못했어요. 숫자를 지어 넣지 않아요.' : `이 달에는 비트에 수납 기록이 없어요. ${EMPTY_NOTE}`
+    // 이 PC가 방금 읽은 달이라 "기록이 없어요"라고 말할 수 있다. 읽지 못한 달은 그렇게 말하지 않는다.
+    // 날 줄이 하나도 없는 옛날 달은 아직 가져오지 않은 달이다(가져온 달은 쉬는 날도 줄이 있다, AC-3503.3)
+    const notFetched = isOldMonth(month, today) && !days.some((row) => monthOf(row.date) === month)
+    const note = failed?.list.includes(month)
+      ? '이 달은 가져오지 못했어요. 숫자를 지어 넣지 않아요.'
+      : notFetched
+        ? NOT_FETCHED_NOTE
+        : `이 달에는 비트에 수납 기록이 없어요. ${EMPTY_NOTE}`
     return { state: 'empty', title: TITLE, period, failed, empty: emptyMonth(month, note) }
   }
   return {
