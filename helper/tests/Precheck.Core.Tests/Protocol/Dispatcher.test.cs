@@ -241,4 +241,97 @@ public class DispatcherTests
 
         Assert.Throws<ArgumentException>(() => dispatcher.Register("nope", (request, sink) => { }));
     }
+
+    // ---- AC-3601.3 부른 쪽마다 명령 나눔 (spec erp-closing-fill, design.md 3-1) ------------------------------------
+
+    private const string ClosingDayArgs = "{\"date\":\"2026-11-09\",\"groups\":[{\"key\":\"carm\",\"codes\":[\"CARM1\"]}]}";
+
+    private static JsonElement HandleOne(Dispatcher dispatcher, string envelopeJson, Caller caller)
+    {
+        var sink = new ListSink();
+        dispatcher.Handle(Encoding.UTF8.GetBytes(envelopeJson), sink, caller);
+        return Assert.Single(sink.Replies);
+    }
+
+    [Fact(DisplayName = "AC-3601.3 closing.*에 처리기를 붙일 수 있다(Register는 두 구역을 다 본다)")]
+    public void RegisterAcceptsErpCommands()
+    {
+        var dispatcher = new Dispatcher(Table);
+
+        dispatcher.Register("closing.codes", (request, sink) => { });
+        dispatcher.Register("closing.day", (request, sink) => { });
+    }
+
+    [Fact(DisplayName = "AC-3601.3 Handle(message, sink, Caller.Erp)는 closing.* 처리기를 검사를 마친 Request로 한 번 부르고 result 하나로 답한다")]
+    public void ErpCallerReachesClosingHandlers()
+    {
+        var log = new System.Collections.Generic.List<string>();
+        var dispatcher = new Dispatcher(Table, (cmd, code) => log.Add((cmd ?? "-") + " " + (code ?? "-")));
+        Request? seen = null;
+        dispatcher.Register("closing.day", (request, sink) =>
+        {
+            seen = request;
+            sink.Send(Envelope.Result(request.Id, new { date = "2026-11-09" }));
+        });
+        dispatcher.Register("closing.codes", (request, sink) => sink.Send(Envelope.Result(request.Id, new { codes = new object[0], kinds = new object[0] })));
+
+        var day = HandleOne(dispatcher, Requests.Envelope("closing.day", ClosingDayArgs, id: "cd-1"), Caller.Erp);
+        var codes = HandleOne(dispatcher, Requests.Envelope("closing.codes", "{}", id: "cc-1"), Caller.Erp);
+
+        Assert.NotNull(seen);
+        Assert.Equal("CARM1", seen!.Args.GetProperty("groups")[0].GetProperty("codes")[0].GetString());
+        Assert.Equal("result", day.GetProperty("type").GetString());
+        Assert.Equal("cd-1", day.GetProperty("id").GetString());
+        Assert.Equal("result", codes.GetProperty("type").GetString());
+        Assert.Equal(new[] { "closing.day -", "closing.codes -" }, log.ToArray());
+    }
+
+    [Fact(DisplayName = "AC-3601.3 Caller.Erp로 commands 구역 명령(hello 포함)을 보내면 처리기를 부르지 않고 E-HELPER-UNKNOWN-COMMAND")]
+    public void ErpCallerCannotUseWebCommands()
+    {
+        var dispatcher = new Dispatcher(Table);
+        var handled = 0;
+        foreach (var name in Table.Names) dispatcher.Register(name, (request, sink) => handled++);
+
+        foreach (var name in Table.Names)
+        {
+            AssertError(HandleOne(dispatcher, Requests.Envelope(name, "{}", id: "x-" + name.Replace(".", "-")), Caller.Erp), "x-" + name.Replace(".", "-"), "E-HELPER-UNKNOWN-COMMAND");
+        }
+        AssertError(HandleOne(dispatcher, Requests.Envelope("claim.month", October, id: "cm-1"), Caller.Erp), "cm-1", "E-HELPER-UNKNOWN-COMMAND");
+        AssertError(HandleOne(dispatcher, Requests.Envelope("hello", "{}", id: "h-9"), Caller.Erp), "h-9", "E-HELPER-UNKNOWN-COMMAND");
+        Assert.Equal(0, handled);
+    }
+
+    [Fact(DisplayName = "AC-3601.3 두 인자 Handle·Caller.Web으로 closing.*를 보내면 처리기가 있어도 E-HELPER-UNKNOWN-COMMAND, 지금 명령은 그대로")]
+    public void WebCallerCannotUseClosingCommands()
+    {
+        var dispatcher = new Dispatcher(Table);
+        var handled = 0;
+        dispatcher.Register("closing.codes", (request, sink) => handled++);
+        dispatcher.Register("closing.day", (request, sink) => handled++);
+        Hello.Register(dispatcher, Table);
+
+        AssertError(HandleOne(dispatcher, Requests.Envelope("closing.codes", "{}", id: "w-1")), "w-1", "E-HELPER-UNKNOWN-COMMAND");
+        AssertError(HandleOne(dispatcher, Requests.Envelope("closing.day", ClosingDayArgs, id: "w-2")), "w-2", "E-HELPER-UNKNOWN-COMMAND");
+        AssertError(HandleOne(dispatcher, Requests.Envelope("closing.codes", "{}", id: "w-3"), Caller.Web), "w-3", "E-HELPER-UNKNOWN-COMMAND");
+        AssertError(HandleOne(dispatcher, Requests.Envelope("closing.day", ClosingDayArgs, id: "w-4"), Caller.Web), "w-4", "E-HELPER-UNKNOWN-COMMAND");
+        Assert.Equal(0, handled);
+
+        Assert.Equal("result", HandleOne(dispatcher, Requests.Envelope("hello", "{}", id: "w-5"), Caller.Web).GetProperty("type").GetString());
+        Assert.Equal("result", HandleOne(dispatcher, Requests.Envelope("hello", "{}", id: "w-6")).GetProperty("type").GetString());
+    }
+
+    [Fact(DisplayName = "AC-3601.3 Caller.Erp도 v·칸 검사는 같다: 틀린 v·틀린 args는 처리기를 부르지 않고 E-HELPER-BAD-MESSAGE")]
+    public void ErpCallerStillValidates()
+    {
+        var dispatcher = new Dispatcher(Table);
+        var handled = 0;
+        dispatcher.Register("closing.day", (request, sink) => handled++);
+
+        AssertError(HandleOne(dispatcher, Requests.Envelope("closing.day", ClosingDayArgs, id: "b-1", v: 2), Caller.Erp), "b-1", "E-HELPER-BAD-MESSAGE");
+        AssertError(HandleOne(dispatcher, Requests.Envelope("closing.day", "{\"date\":\"2026-11-09\",\"groups\":[{\"key\":\"x\",\"codes\":[\"A\"]}]}", id: "b-2"), Caller.Erp),
+            "b-2", "E-HELPER-BAD-MESSAGE");
+        AssertError(HandleOne(dispatcher, "{\"v\":1,\"id\":", Caller.Erp), "", "E-HELPER-BAD-MESSAGE");
+        Assert.Equal(0, handled);
+    }
 }

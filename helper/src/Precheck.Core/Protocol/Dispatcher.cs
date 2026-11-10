@@ -23,19 +23,23 @@ public sealed class Dispatcher
         this.log = log;
     }
 
-    /// <summary>표에 있는 명령에만 처리기를 붙인다.</summary>
+    /// <summary>표에 있는 명령(commands·erp 두 구역)에만 처리기를 붙인다.</summary>
     public void Register(string cmd, Action<Request, IReplySink> handler)
     {
         if (!table.Has(cmd)) throw new ArgumentException("명령 표에 없는 이름이다", nameof(cmd));
         handlers[cmd] = handler ?? throw new ArgumentNullException(nameof(handler));
     }
 
+    /// <summary>기존 확장(Caller.Web)이 보낸 메시지로 처리한다.</summary>
+    public void Handle(byte[] message, IReplySink sink) => Handle(message, sink, Caller.Web);
+
     /// <summary>
+    /// 부른 쪽(caller) 구역에 없는 명령은 처리기가 있어도 E-HELPER-UNKNOWN-COMMAND다 (AC-3601.3).
     /// 처리기가 HelperException(오류 번호)을 던지면 그 번호로 답한다.
     /// 다른 예외(처리기 버그)는 기록한 뒤 CommandCrashedException으로 올려 도우미를 끝낸다: 크롬 연결이 끊겨 웹은
     /// E-BRIDGE-DISCONNECTED로 멈추고, end를 받지 못한 환자 자료는 버린다.
     /// </summary>
-    public void Handle(byte[] message, IReplySink sink)
+    public void Handle(byte[] message, IReplySink sink, Caller caller)
     {
         if (sink == null) throw new ArgumentNullException(nameof(sink));
 
@@ -55,7 +59,7 @@ public sealed class Dispatcher
         try
         {
             if (request.V != table.Protocol) throw new ProtocolException(ErrorCodes.BadMessage, request.Id);
-            table.Validate(request);
+            table.Validate(request, caller);
             if (!handlers.TryGetValue(request.Cmd, out var handler)) throw new ProtocolException(ErrorCodes.UnknownCommand, request.Id);
             handler(request, MustChunk(request.Cmd) ? new NoResultSink(sink) : sink);
         }
