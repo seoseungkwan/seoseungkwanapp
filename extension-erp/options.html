@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP 마감일지 채우기 · 설정</title>
-<!-- 확장 설정 화면(design.md 4절). 글·배치는 승인된 목업 docs/mockups/erp-closing-fill/ ⑫~⑮ 그대로. 토큰 값은 docs/UI_GUIDE.md -->
+<!-- 확장 설정 화면(design.md 4절). 글·배치는 승인된 목업 docs/mockups/erp-closing-fill/ ⑫~⑮ 그대로. 토큰 값은 docs/UI_GUIDE.md
+     TASK-18의 받는 중 줄·새 처음 코드 줄·저장 바 위 알림 상자(#optAsk)·저장 실패 글은 design.md 5-3 글 그대로 -->
 <style>
 :root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
 --accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;
@@ -34,7 +35,12 @@ button{background:none;border:0;cursor:pointer}
 .notice.first b{color:var(--accent-strong);font-weight:600}
 .notice.err{background:var(--negative-soft)}
 .notice.err b{color:var(--negative);font-weight:600}
-.notice.ok{color:var(--muted);padding:0;font-size:13px}
+.notice.ok,.notice.wait{color:var(--muted);padding:0;font-size:13px}
+/* 맨 위 '새 처음 코드' 줄(TASK-18): 글 두 줄 + 오른쪽 [더하기] */
+.notice.fresh{background:var(--accent-soft);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 16px;align-items:center}
+.notice.fresh p{grid-column:1}
+.notice.fresh b{color:var(--accent-strong);font-weight:600}
+.notice.fresh .btn{grid-column:2;grid-row:1 / span 2}
 .osec{border-top:1px solid var(--line-strong);padding-top:14px}
 .osec>h2{font-size:16px;font-weight:600}
 .osec>p{margin-top:2px;font-size:13px;color:var(--ink-2)}
@@ -87,6 +93,15 @@ button{background:none;border:0;cursor:pointer}
 .status.saved{color:var(--positive);font-weight:500}
 .status.saved::before{content:'✓ '}
 .status.dirty{color:var(--warning)}
+.status.failed{font-weight:600}
+/* 저장 바 바로 위 알림 상자(TASK-18): 처방 없는 코드 묻기 · [처음 값으로] 묻기 · 겹침 막는 글 */
+.askbox{border-bottom:1px solid var(--line);background:var(--canvas)}
+.askbox .msg{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 420px}
+.askbox .msg b{font-weight:600;color:var(--warning)}
+.askbox .msg p{color:var(--ink-2)}
+.askbox.block{background:var(--negative-soft)}
+.askbox.block .msg p{color:var(--ink)}
+.askbox.block .msg b{color:var(--negative)}
 .savebar .acts{display:flex;gap:8px;margin-left:auto}
 .foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
 
@@ -108,7 +123,9 @@ button{background:none;border:0;cursor:pointer}
 <div class="opt">
   <div class="opt-top"><div class="in"><i></i><h1>ERP 마감일지 채우기 · 설정</h1></div></div>
   <main id="optMain"></main>
-  <div class="savebar"><div class="in">
+  <div class="savebar">
+  <div class="askbox" id="optAsk" role="alert" hidden></div>
+  <div class="in">
     <p class="status" id="optStatus" role="status"></p>
     <div class="acts">
       <button type="button" class="btn btn-2" id="optReset">처음 값으로</button>

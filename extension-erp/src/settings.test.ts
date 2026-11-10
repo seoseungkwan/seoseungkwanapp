@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULTS,
+  DEFAULTS_VERSION,
   MAX_CODES,
   MAX_ETC_NAME,
   MAX_PREFIXES,
@@ -12,15 +13,20 @@ import {
   cleanCode,
   cleanEtcName,
   cleanPrefix,
+  conflicts,
   defaults,
   load,
+  newDefaultCodes,
   normalize,
+  resetCodes,
   save,
   saveOverlap,
   search,
   toGroups,
+  unusedCodes,
   without,
 } from './settings'
+import { ETC_CLASH_ROWS } from './cells'
 import { GROUP_KEYS, SETTINGS_KEY } from './types'
 import type { ClosingCodes, Settings } from './types'
 
@@ -58,6 +64,8 @@ const FIRST: Settings = {
   reservations: {},
   // 기본값 (자): 씨암·SONO 매출 규칙 처음 값은 앞글자 LA · 더 셀 코드 없음(TASK-15)
   amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
+  // 처음 값 판(TASK-18, 기본값 (타)): 물리치료 MM085·MM080·MM020 · 크라이오 CRYO3을 더한 판 2
+  defaultsSeen: 2,
 }
 
 /** 매출 규칙 처음 값(기본값 (자)) */
@@ -119,6 +127,7 @@ describe('AC-3607.3 저장·불러오기 (chrome.storage.local erpClosing 한 �
       etcNames: { etc1: '크라이오', etc2: '핫팩', etc3: '', etc4: '' },
       reservations: { manual: ['14', '20', '22'], eswt: ['1'] },
       amounts: FIRST_AMOUNTS(),
+      defaultsSeen: 2,
     }
     expect(data[SETTINGS_KEY]).toEqual(expected)
     // 칸 차례도 정해 둔 대로(묶음은 GROUP_KEYS 차례)
@@ -152,6 +161,7 @@ describe('AC-3607.3 저장·불러오기 (chrome.storage.local erpClosing 한 �
       etcNames: { etc1: '', etc2: '크라이오', etc3: '', etc4: '' },
       reservations: { manual: ['14'] },
       amounts: FIRST_AMOUNTS(),
+      defaultsSeen: 1,
     })
   })
 })
@@ -410,5 +420,205 @@ describe('AC-3609.7 saveOverlap: ERP 화면이 고른 겹친 진료 선택만 �
     const { local } = fakeStorage()
     await saveOverlap('carm')
     expect(local.set).not.toHaveBeenCalled()
+  })
+})
+
+/** 이미 저장한 설정(처음 값 판 1 때): 물리치료 3개·크라이오 CRYO 하나, defaultsSeen 칸 없음 */
+const OLD_SAVED = {
+  v: 1,
+  picks: {
+    carm: ['CARM1'],
+    sono: ['SONO1'],
+    arthro: ['HA280'],
+    manual: ['도수', 'MA4'],
+    eswt: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'],
+    pt: ['MM010', 'MM015', 'MM011'],
+    etc1: ['CRYO'],
+    ptVisit: ['AA222'],
+  },
+  etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
+  reservations: { manual: ['14'] },
+}
+
+describe('AC-3615.6 처음 값 판 defaultsSeen·새 처음 코드', () => {
+  it('AC-3615.6: DEFAULTS_VERSION은 2이고 defaults()·DEFAULTS의 defaultsSeen도 2다', () => {
+    expect(DEFAULTS_VERSION).toBe(2)
+    expect(defaults().defaultsSeen).toBe(2)
+    expect(DEFAULTS.defaultsSeen).toBe(2)
+  })
+
+  it('AC-3615.6: normalize는 defaultsSeen을 1 이상 정수로 둔다(없거나 틀리면 1)', () => {
+    const base = { v: 1, picks: {}, etcNames: {}, reservations: {} }
+    expect(normalize(base)?.defaultsSeen).toBe(1)
+    const cases: [unknown, number][] = [[1, 1], [2, 2], [3, 3], [0, 1], [-2, 1], [1.5, 1], ['2', 1], [Number.NaN, 1], [null, 1], [Infinity, 1]]
+    for (const [raw, want] of cases) {
+      expect(normalize({ ...base, defaultsSeen: raw })?.defaultsSeen, String(raw)).toBe(want)
+    }
+  })
+
+  it('AC-3615.6: save()는 defaultsSeen을 DEFAULTS_VERSION(2)으로 쓴다(새 처음 코드를 더하지 않고 저장해도)', async () => {
+    const { data } = fakeStorage({ [SETTINGS_KEY]: OLD_SAVED })
+    const screen = normalize(OLD_SAVED) as Settings
+    expect(screen.defaultsSeen).toBe(1)
+    const saved = await save(screen)
+    expect(saved.defaultsSeen).toBe(2)
+    expect((data[SETTINGS_KEY] as Settings).defaultsSeen).toBe(2)
+    expect((data[SETTINGS_KEY] as Settings).picks.pt).toEqual(['MM010', 'MM015', 'MM011'])
+  })
+
+  it('AC-3615.6: newDefaultCodes는 defaultsSeen < 2일 때 처음 값 코드 가운데 저장값 그 항목에 없는 코드를 GROUP_KEYS 차례로 준다', () => {
+    const saved = normalize(OLD_SAVED) as Settings
+    expect(newDefaultCodes(saved)).toEqual([
+      { key: 'pt', codes: ['MM085', 'MM080', 'MM020'] },
+      { key: 'etc1', codes: ['CRYO3'] },
+    ])
+  })
+
+  it('AC-3615.6: defaultsSeen이 2면(이미 [저장]함) 없고, 처음 값 코드가 다 있으면 없다', () => {
+    expect(newDefaultCodes(normalize({ ...OLD_SAVED, defaultsSeen: 2 }) as Settings)).toEqual([])
+    expect(newDefaultCodes(normalize({ ...defaults(), defaultsSeen: 1 }) as Settings)).toEqual([])
+  })
+})
+
+describe('AC-3615.5 [처음 값으로] resetCodes', () => {
+  it('AC-3615.5: picks·amounts만 처음 값이고 etcNames·reservations·overlap·defaultsSeen은 그대로다', () => {
+    const before: Settings = {
+      v: 1,
+      picks: { manual: ['MA4'], surgery: ['OP1'] },
+      etcNames: { etc1: '핫팩', etc2: '견인', etc3: '', etc4: '' },
+      reservations: { manual: ['14', '20'], eswt: ['1'] },
+      amounts: { carm: { prefixes: ['KK'], codes: ['LA358'] }, sono: { prefixes: [], codes: [] } },
+      overlap: 'sono',
+      defaultsSeen: 1,
+    }
+    const copy = JSON.parse(JSON.stringify(before))
+    const got = resetCodes(before)
+    expect(got).toEqual({
+      v: 1,
+      picks: defaults().picks,
+      etcNames: { etc1: '핫팩', etc2: '견인', etc3: '', etc4: '' },
+      reservations: { manual: ['14', '20'], eswt: ['1'] },
+      amounts: defaults().amounts,
+      overlap: 'sono',
+      defaultsSeen: 1,
+    })
+    // 받은 설정은 바꾸지 않고, 돌려준 값을 고쳐도 처음 값·받은 값이 바뀌지 않는다
+    expect(before).toEqual(copy)
+    got.picks.carm?.push('X1')
+    got.amounts.carm.prefixes.push('ZZ')
+    got.reservations.manual?.push('99')
+    got.etcNames.etc1 = '바꿈'
+    expect(DEFAULTS).toEqual(FIRST)
+    expect(before).toEqual(copy)
+  })
+})
+
+describe('AC-3615.4 처방 없는 코드 unusedCodes (기본값 (타))', () => {
+  const LIST: ClosingCodes['codes'] = [
+    { code: 'CARM1', name: '씨암 영상 유도', visits: 6410 },
+    { code: 'SONO1', name: '비급여초음파', visits: 6820 },
+    { code: 'HA280', name: '관절조영', visits: 84 },
+    { code: '도수', name: '도수치료', visits: 326 },
+    { code: 'ESWT7', name: null, visits: 2180 },
+    { code: 'ESWT10', name: null, visits: 176 },
+    { code: 'ESWT12', name: null, visits: 214 },
+    { code: 'ESWT17', name: null, visits: 25 },
+    { code: 'MM010', name: null, visits: 5960 },
+    { code: 'MM015', name: null, visits: 5720 },
+    { code: 'MM011', name: null, visits: 4310 },
+    { code: 'CRYO', name: null, visits: 940 },
+    { code: 'LA358', name: null, visits: 2 },
+  ]
+
+  it('AC-3615.4: 처음 저장이면(저장값 없음) 고른 코드 가운데 목록에 없는 것 모두를 GROUP_KEYS 차례로 센다', () => {
+    expect(unusedCodes(defaults(), null, LIST)).toEqual([
+      { key: 'pt', code: 'MM085' },
+      { key: 'pt', code: 'MM080' },
+      { key: 'pt', code: 'MM020' },
+      { key: 'etc1', code: 'CRYO3' },
+      { key: 'ptVisit', code: 'AA222' },
+    ])
+  })
+
+  it('AC-3615.4: 저장값 그 항목에 이미 있던 코드는 목록에 없어도 세지 않는다(AA222 그대로 둠)', () => {
+    const saved = normalize(OLD_SAVED) as Settings
+    const screen = normalize(OLD_SAVED) as Settings
+    expect(unusedCodes(screen, saved, LIST)).toEqual([])
+    // 새로 고른 코드만 센다(다른 항목에 있던 코드도 이 항목에는 새 코드)
+    screen.picks.pt = [...(screen.picks.pt ?? []), 'MM085']
+    screen.picks.surgery = ['AA222', 'CARM1']
+    expect(unusedCodes(screen, saved, LIST)).toEqual([
+      { key: 'pt', code: 'MM085' },
+      { key: 'surgery', code: 'AA222' },
+    ])
+  })
+
+  it('AC-3615.4: 씨암·SONO 매출 규칙의 더 셀 코드도 새로 고른 것을 센다(앞글자는 코드가 아니라 세지 않음)', () => {
+    const saved = normalize({
+      ...OLD_SAVED,
+      amounts: { carm: { prefixes: ['LA'], codes: ['OLD9'] }, sono: { prefixes: ['LA'], codes: [] } },
+    }) as Settings
+    const screen = JSON.parse(JSON.stringify(saved)) as Settings
+    screen.amounts.carm = { prefixes: ['LA', 'ZZ'], codes: ['OLD9', 'LA358', 'NEW1'] }
+    screen.amounts.sono = { prefixes: ['LA'], codes: ['NEW2'] }
+    expect(unusedCodes(screen, saved, LIST)).toEqual([
+      { key: 'carm', code: 'NEW1' },
+      { key: 'sono', code: 'NEW2' },
+    ])
+  })
+
+  it('AC-3615.4: 코드는 대문자로 견준다(목록 CRYO = 고른 cryo)', () => {
+    const screen = normalize({ v: 1, picks: { etc2: ['cryo', 'Mm010'] }, etcNames: {}, reservations: {} }) as Settings
+    expect(unusedCodes(screen, null, LIST)).toEqual([])
+  })
+})
+
+describe('AC-3615.7 겹침 conflicts', () => {
+  const withNames = (names: Partial<Settings['etcNames']>, reservations: Settings['reservations'] = {}): Settings => ({
+    ...defaults(),
+    etcNames: { etc1: '', etc2: '', etc3: '', etc4: '', ...names },
+    reservations,
+  })
+
+  it('AC-3615.7: 고정 줄 이름은 cells.ts ETC_CLASH_ROWS(업무일지 2 치료별 건수·치료별 매출 줄 이름)다', () => {
+    expect([...ETC_CLASH_ROWS]).toEqual(['씨암(주사)', 'SONO(주사)', '관절조영', '도수', '충격파', '씨암', 'SONO', '물리치료'])
+  })
+
+  it("AC-3615.7: 기타 이름이 고정 줄 이름과 같으면(앞뒤 빈칸 떼고·빈칸 하나로·영문 대소문자 무시) 막는다. '도수2'는 된다", () => {
+    expect(conflicts(withNames({ etc2: '도수' }))).toEqual([{ kind: 'fixedName', etc: 'etc2', name: '도수' }])
+    expect(conflicts(withNames({ etc1: 'sono' }))).toEqual([{ kind: 'fixedName', etc: 'etc1', name: 'sono' }])
+    expect(conflicts(withNames({ etc3: ' 도수 ' }))).toEqual([{ kind: 'fixedName', etc: 'etc3', name: '도수' }])
+    expect(conflicts(withNames({ etc4: 'Sono(주사)' }))).toEqual([{ kind: 'fixedName', etc: 'etc4', name: 'Sono(주사)' }])
+    expect(conflicts(withNames({ etc2: '도수2', etc3: '크라이오 2', etc4: '물리 치료' }))).toEqual([])
+    expect(conflicts(defaults())).toEqual([])
+  })
+
+  it('AC-3615.7: 두 기타 줄 이름이 같으면 막는다(빈 이름끼리는 겹침이 아님)', () => {
+    expect(conflicts(withNames({ etc1: '크라이오', etc3: '크라이오' }))).toEqual([
+      { kind: 'sameName', etcs: ['etc1', 'etc3'], name: '크라이오' },
+    ])
+    expect(conflicts(withNames({ etc1: 'Hot Pack', etc2: 'hot   pack', etc4: ' HOT PACK ' }))).toEqual([
+      { kind: 'sameName', etcs: ['etc1', 'etc2', 'etc4'], name: 'Hot Pack' },
+    ])
+    expect(conflicts(withNames({}))).toEqual([])
+  })
+
+  it('AC-3615.7: 같은 예약 메모 번호가 두 줄 이상에 있으면 막는다(줄은 RSV_ROWS 차례)', () => {
+    expect(conflicts(withNames({ etc1: '크라이오' }, { manual: ['14', '20'], eswt: ['1', '14'], etc: ['14'] }))).toEqual([
+      { kind: 'sameMemo', memo: '14', rows: ['manual', 'eswt', 'etc'] },
+    ])
+    expect(conflicts(withNames({ etc1: '크라이오' }, { manual: ['14', '20'], eswt: ['1'] }))).toEqual([])
+  })
+
+  it('AC-3615.7: 겹친 것은 모두 준다(고정 줄 이름 → 같은 기타 이름 → 예약 메모 차례)', () => {
+    const got = conflicts(
+      withNames({ etc1: '충격파', etc2: '핫팩', etc3: '핫팩' }, { injection: ['2'], followup: ['3'], clinic: ['2'], etc: ['3'] }),
+    )
+    expect(got).toEqual([
+      { kind: 'fixedName', etc: 'etc1', name: '충격파' },
+      { kind: 'sameName', etcs: ['etc2', 'etc3'], name: '핫팩' },
+      { kind: 'sameMemo', memo: '2', rows: ['injection', 'clinic'] },
+      { kind: 'sameMemo', memo: '3', rows: ['followup', 'etc'] },
+    ])
   })
 })

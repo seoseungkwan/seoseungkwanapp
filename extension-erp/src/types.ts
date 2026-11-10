@@ -86,7 +86,8 @@ export type OverlapChoice = 'carm' | 'sono' | 'both'
 
 /**
  * 설정 모양(design.md 4절). picks = 묶음마다 고른 처방 코드, reservations = 예약 줄마다 고른 예약 메모 번호,
- * amounts = 씨암·SONO 매출 규칙(TASK-15), overlap = 지난번 고른 함께 있는 진료 선택(ERP 화면이 saveOverlap으로만 쓴다)
+ * amounts = 씨암·SONO 매출 규칙(TASK-15), overlap = 지난번 고른 함께 있는 진료 선택(ERP 화면이 saveOverlap으로만 쓴다),
+ * defaultsSeen = 마지막 [저장] 때의 처음 값 판(TASK-18, settings.ts DEFAULTS_VERSION. 선택 칸이고 normalize가 늘 채운다 — 없으면 1)
  */
 export type Settings = {
   v: 1
@@ -95,6 +96,7 @@ export type Settings = {
   reservations: Partial<Record<RsvRow, string[]>>
   amounts: Record<AmountKey, AmountRule>
   overlap?: OverlapChoice
+  defaultsSeen?: number
 }
 
 /** 새 확장이 ERP 도우미에 보내는 명령 둘(helper-erp/commands.json commands) */
