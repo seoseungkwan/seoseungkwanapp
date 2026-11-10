@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시안 — 매출 가져올 기간</title>
+<link rel="stylesheet" href="file:///C:/Users/tjtmd/Desktop/seoseungkwanapp-split/.next/static/css/0f9e5190508923fc.css">
+<link rel="stylesheet" href="file:///C:/Users/tjtmd/Desktop/seoseungkwanapp-split/.next/static/css/5f8fa8e72395295b.css">
+<link rel="stylesheet" href="file:///C:/Users/tjtmd/Desktop/seoseungkwanapp-split/.next/static/css/b4549193828ed77f.css">
+<style>
+  .mock-bar { font: 13px/1.4 sans-serif; background: #fff8d6; border-bottom: 1px solid #e5d58a; padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .mock-bar button { border: 1px solid #c9b860; background: #fff; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  .mock-bar button[aria-pressed="true"] { background: #e9d877; font-weight: 600; }
+  [hidden] { display: none !important; }
+  @layer base { button { border: 0 solid; background-color: transparent; font: inherit; color: inherit; } }
+  .new { outline: 2px dashed #e0a100; outline-offset: 6px; border-radius: 6px; }
+  .same { opacity: .55; }
+  button:disabled { opacity: .45; cursor: default; }
+</style>
+</head>
+<body class="bg-canvas">
+<div class="mock-bar">
+  <b>시안 상태</b>
+  <button data-state="idle" aria-pressed="true">① 평소</button>
+  <button data-state="working">② 가져오는 중</button>
+  <button data-state="done">③ 다 가져옴</button>
+  <button data-state="stopped">④ 중간에 멈춤</button>
+  <button data-state="old">⑤ 옛날 달 보기</button>
+  <button data-state="gap">⑥ 못 가져온 달</button>
+  <span style="margin-left:12px;color:#7a6a10">점선 = 새로 생기거나 바뀌는 곳 · 흐린 곳 = 지금 그대로 · 오늘 2026년 11월 10일이라고 친 예시</span>
+</div>
+
+<div class="mx-auto max-w-[1200px] px-8 py-8">
+  <div class="rounded-card border border-line bg-surface p-6">
+
+    <!-- 제목 줄 (지금 그대로) -->
+    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2" id="titleRow">
+      <h1 class="text-title font-semibold text-ink">매출</h1>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 same">
+        <p class="text-small text-muted">🕑 <span id="meta">11월 10일 오전 9:12에 비트에서 가져왔어요</span></p>
+        <button type="button" class="inline-flex items-center rounded-control border h-8 px-3 text-small font-medium border-line-strong bg-surface text-ink">다시 가져오기</button>
+      </div>
+    </div>
+
+    <!-- 기간 줄: 한 달씩 넘기기 (지금 그대로, 넘길 수 있는 끝만 바뀜) -->
+    <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2" id="periodRow">
+      <div class="inline-flex items-stretch rounded-control border border-line-strong">
+        <button type="button" id="prev" class="h-9 w-9 cursor-pointer" aria-label="지난달">‹</button>
+        <span class="flex items-center justify-center border-x border-line-strong px-4 text-body font-semibold whitespace-nowrap text-ink" id="monthLabel">2026년 11월</span>
+        <button type="button" id="next" class="h-9 w-9 cursor-pointer" aria-label="다음 달">›</button>
+      </div>
+      <span class="text-small text-muted" id="monthNote">11월 1일 – 9일 · 수납한 날 기준</span>
+      <span class="new text-small text-muted" id="boundNote"></span>
+    </div>
+
+    <!-- 새로 생기는 칸: 가져올 기간 (비트 PC가 연결된 때만) -->
+    <div class="new mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-control bg-canvas px-5 py-4" id="picker">
+      <span class="text-small font-semibold text-ink">가져올 기간</span>
+      <div role="group" aria-label="가져올 기간" class="inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface" id="spans">
+        <button type="button" data-span="1y" class="h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0">최근 1년</button>
+        <button type="button" data-span="2y" class="h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0">최근 2년</button>
+        <button type="button" data-span="all" class="h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0">전체 기간</button>
+      </div>
+      <button type="button" id="load" class="inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border h-9 px-4 text-body font-medium border-transparent bg-accent text-surface">비트에서 가져오기</button>
+      <p class="basis-full text-small text-ink-2" id="spanHint"></p>
+    </div>
+
+    <!-- 다 가져온 뒤 알림 -->
+    <div role="status" class="new mt-4 rounded-control bg-positive-soft px-4 py-3 text-body text-ink-2" id="doneBox" hidden>
+      <p><strong class="font-semibold text-ink">2020년 1월 – 2025년 10월의 70달을 가져왔어요.</strong></p>
+      <p>이제 기간 줄의 ‹ 단추로 2020년 1월까지 넘겨 볼 수 있어요.</p>
+    </div>
+
+    <!-- 그래프 덩어리 -->
+    <section class="mt-12 border-t border-line-strong pt-5" id="blocks">
+      <div class="same">
+        <h2 class="text-title font-semibold text-ink" id="kpiTitle">2026년 11월 매출</h2>
+        <div class="mt-2 grid grid-cols-2 border-b border-line md:grid-cols-4" id="kpis"></div>
+      </div>
+      <div class="mt-6">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <h3 class="text-subtitle font-semibold text-ink"><span class="new" id="chartTitle">달마다 매출 · 최근 13달</span></h3>
+          <p class="flex flex-wrap gap-x-4 gap-y-1 text-small text-ink-2 same">
+            <span class="inline-flex items-center gap-1.5"><span class="size-2.5 shrink-0 bg-accent"></span>고른 달</span>
+            <span class="inline-flex items-center gap-1.5"><span class="size-2.5 shrink-0 bg-faint"></span>작년 같은 달</span>
+          </p>
+        </div>
+        <div class="mt-3 flex h-50 items-end gap-1 border-b border-line-strong" id="bars"></div>
+        <div class="flex gap-1" id="barLabels"></div>
+      </div>
+      <p class="mt-8 text-small text-muted same">급여·비급여·기타 · 치료별 매출 · 건당 진료비 덩어리는 지금 그대로예요(건당 진료비 막대도 위 막대처럼 고른 달까지 13달).</p>
+    </section>
+
+    <!-- 가져오는 중 (지금 화면과 같은 모양, 글만 기간에 맞춤) -->
+    <div role="status" class="mt-6 pb-2" id="working" hidden>
+      <h2 class="text-title font-semibold text-ink md:text-heading-m">비트에서 매출을 가져오고 있어요</h2>
+      <p class="new mt-2 max-w-144 text-lead text-ink-2">2020년 1월 – 2026년 11월 가운데 아직 안 가져온 70달을 읽어요. <span class="time-all"></span> 다 끝날 때까지 이 창을 닫지 말아 주세요.</p>
+      <div class="mt-5 max-w-130">
+        <p class="flex flex-wrap justify-between gap-x-3 text-body text-ink-2">
+          <span>70달 가운데 <strong class="font-semibold text-ink">12달</strong>을 가져왔어요</span>
+          <span class="text-muted">2024년 10월 읽는 중</span>
+        </p>
+        <div class="mt-2 h-2 overflow-clip rounded-control bg-line"><div class="h-full bg-accent" style="width:17%"></div></div>
+      </div>
+      <p class="mt-4 text-small text-muted same">다 가져오면 그래프 4가지가 한 번에 그려져요.</p>
+    </div>
+
+    <!-- 중간에 멈춤 (지금 오류 카드 + 새 줄 하나) -->
+    <div class="mt-6" id="stopped" hidden>
+      <div class="rounded-control border border-line-strong px-5 py-4 same">
+        <p class="text-body font-semibold text-ink">비트 PC와 연결이 끊겼어요</p>
+        <p class="mt-1 text-body text-ink-2">비트 PC에서 도우미가 켜져 있는지 보고 [다시 확인]을 눌러 주세요. (오류 번호 E-BRIDGE-DISCONNECTED)</p>
+        <button type="button" class="mt-3 inline-flex items-center rounded-control border h-9 px-4 text-body font-medium border-line-strong bg-surface text-ink">다시 확인</button>
+      </div>
+      <p class="new mt-3 text-body text-ink-2">가져온 12달(2024년 11월 – 2025년 10월)은 저장됐어요. 연결한 뒤 [전체 기간]을 다시 고르고 [비트에서 가져오기]를 누르면 남은 58달만 읽어요.</p>
+    </div>
+
+    <!-- 못 가져온 달 (자료 없는 달 덩어리, 글만 다름) -->
+    <section class="mt-12 border-t border-line-strong pt-5" id="gap" hidden>
+      <h2 class="text-title font-semibold text-ink">자료가 없어요</h2>
+      <div class="mt-2 grid grid-cols-2 border-b border-line md:grid-cols-4 same" id="blankKpis"></div>
+      <p class="new mt-4 text-small text-ink-2">이 달은 아직 비트에서 가져오지 않았어요. 위 '가져올 기간'에서 이 달이 든 기간을 고르고 [비트에서 가져오기]를 누르면 채워져요.</p>
+    </section>
+
+    <p class="mt-8 border-t border-line pt-4 text-small text-muted same">🛡 환자 개인정보는 이 PC 밖으로 나가지 않아요. 날짜별 합계 금액만 저장해요.</p>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id)
+// 한 달 읽는 데 걸리는 어림(초). 2026-11-10 이 PC에서 잰 값: 자료 있는 달 8~19초(대개 9초), 빈 달 2초 + 저장
+const SEC_PER_MONTH = 10
+const minutes = (n) => { const m = Math.ceil((n * SEC_PER_MONTH) / 60); return m <= 1 ? '1분 안에 끝나요.' : `${m}분쯤 걸려요.` }
+const HINT = {
+  '1y': () => '최근 1년(2025년 11월 – 2026년 11월, 13달)은 다 가져와 있어요. 화면을 열 때마다 새로 생긴 날을 저절로 가져와요.',
+  '2y': () => `2024년 11월 – 2026년 11월(2년) 가운데 아직 안 가져온 12달을 가져와요. ${minutes(12)}`,
+  'all': () => `2020년 1월 – 2026년 11월 가운데 아직 안 가져온 70달을 가져와요. ${minutes(70)} 한 번 가져온 달은 남으니 처음 한 번만 하면 돼요.`,
+  'allDone': () => '2020년 1월 – 2026년 11월은 다 가져와 있어요.',
+}
+let span = '1y'
+let state = 'idle'
+
+const KPI = (names, values) => names.map((n, i) => `<div class="py-4 pr-4"><p class="text-small text-muted">${n}</p><p class="mt-1 text-heading-m font-semibold tabular-nums">${values[i]}</p></div>`).join('')
+const monthName = (ym) => `${+ym.slice(5)}월`
+const addMonths = (ym, k) => { const t = +ym.slice(0, 4) * 12 + (+ym.slice(5) - 1) + k; return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}` }
+const fullName = (ym) => `${ym.slice(0, 4)}년 ${+ym.slice(5)}월`
+
+function drawBars(lastMonth, selected) {
+  const values = [61, 58, 66, 70, 64, 59, 72, 68, 75, 71, 69, 74, 30]
+  const months = Array.from({ length: 13 }, (_, i) => addMonths(lastMonth, i - 12))
+  $('bars').innerHTML = months.map((m, i) => {
+    const kind = m === selected ? 'bg-accent' : m === addMonths(selected, -12) ? 'bg-faint' : 'bg-chart-2'
+    const v = lastMonth === '2026-11' ? values[i] : values[(i + 5) % 12] - 12
+    return `<div class="flex h-full min-w-0 flex-1 items-end justify-center"><div class="w-1/2 max-w-10 ${kind}" style="height:${v}%"></div></div>`
+  }).join('')
+  $('barLabels').innerHTML = months.map((m, i) => `<div class="min-w-0 flex-1 text-center text-caption whitespace-nowrap text-muted"><p class="mt-1.5 ${m === selected ? 'font-semibold text-ink' : ''}">${monthName(m)}</p><p>${i === 0 || m.endsWith('-01') ? m.slice(0, 4) + '년' : '&nbsp;'}</p></div>`).join('')
+}
+
+function render() {
+  document.querySelectorAll('.mock-bar [data-state]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.state === state)))
+  const busy = state === 'working', stop = state === 'stopped'
+  const loadedAll = state === 'done' || state === 'old' || state === 'gap'
+  const month = state === 'old' ? '2021-03' : state === 'gap' ? '2022-06' : '2026-11'
+
+  $('titleRow').querySelector('div').hidden = busy || stop
+  $('periodRow').hidden = busy || stop
+  $('picker').hidden = busy || stop
+  $('working').hidden = !busy
+  $('stopped').hidden = !stop
+  $('doneBox').hidden = state !== 'done'
+  $('blocks').hidden = busy || stop || state === 'gap'
+  $('gap').hidden = state !== 'gap'
+  document.querySelectorAll('.time-all').forEach((el) => (el.textContent = minutes(70)))
+
+  $('monthLabel').textContent = fullName(month)
+  $('monthNote').textContent = month === '2026-11' ? '11월 1일 – 9일 · 수납한 날 기준' : `${monthName(month)} 1일 – ${month === '2021-03' ? 31 : 30}일 · 수납한 날 기준`
+  $('prev').disabled = !loadedAll && month === '2026-11' ? false : month === '2020-01'
+  $('next').disabled = month === '2026-11'
+  $('boundNote').textContent = loadedAll ? '· 2020년 1월부터 넘겨 볼 수 있어요' : '· 2025년 11월부터 넘겨 볼 수 있어요'
+
+  document.querySelectorAll('#spans button').forEach((b) => {
+    const on = b.dataset.span === span
+    b.setAttribute('aria-pressed', String(on))
+    b.className = 'h-7.5 cursor-pointer border-l border-line-strong px-3 text-small first:border-l-0 ' + (on ? 'bg-accent-soft font-semibold text-accent-strong' : 'font-medium text-ink-2')
+  })
+  const nothing = span === '1y' || (loadedAll && span !== '1y')
+  $('spanHint').textContent = loadedAll && span !== '1y' ? HINT.allDone() : HINT[span]()
+  $('load').disabled = nothing
+
+  $('kpiTitle').textContent = `${fullName(month)} 매출`
+  $('kpis').innerHTML = KPI([`${monthName(month)} 매출`, `${monthName(addMonths(month, -1))}보다`, `작년 ${monthName(month)}보다`, '건당 진료비'], month === '2026-11' ? ['2,184만', '▲ 3.1%', '▲ 7.4%', '41,200원'] : ['1,962만', '▲ 5.0%', '▼ 2.2%', '38,900원'])
+  $('blankKpis').innerHTML = KPI([`${monthName(month)} 매출`, `${monthName(addMonths(month, -1))}보다`, `작년 ${monthName(month)}보다`, '건당 진료비'], ['–', '–', '–', '–'])
+  $('chartTitle').textContent = month === '2026-11' ? '달마다 매출 · 최근 13달' : `달마다 매출 · ${fullName(addMonths(month, -12))} – ${fullName(month)}`
+  drawBars(month === '2026-11' ? '2026-11' : month, month)
+}
+
+document.querySelectorAll('.mock-bar [data-state]').forEach((b) => b.addEventListener('click', () => { state = b.dataset.state; if (state === 'done') span = 'all'; render() }))
+document.querySelectorAll('#spans button').forEach((b) => b.addEventListener('click', () => { span = b.dataset.span; render() }))
+$('load').addEventListener('click', () => { state = 'working'; render() })
+render()
+</script>
+</body>
+</html>

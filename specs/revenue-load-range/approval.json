@@ -1,0 +1,22 @@
+{
+  "status": "approved",
+  "feature": "revenue-load-range",
+  "approved_at": "2026-11-10T01:10:59Z",
+  "approved_via": "user-prompt",
+  "session_id": "4e71697e-8951-4871-b7a1-40cbc51f68c7",
+  "spec_sha256": "b6b04bb5b9ba6e5771330ce1bf92d40761fe748ea90ad8b44565534fa979dc97",
+  "scope": [
+    "src/components/revenue/RevenueRange.test.tsx",
+    "src/components/revenue/RevenueRange.tsx",
+    "src/components/revenue/RevenueScreen.test.tsx",
+    "src/components/revenue/RevenueScreen.tsx",
+    "src/components/revenue/RevenueStates.tsx",
+    "src/components/revenue/parts.test.tsx",
+    "src/components/revenue/range.test.ts",
+    "src/components/revenue/range.ts",
+    "src/components/revenue/view.test.ts",
+    "src/components/revenue/view.ts",
+    "src/lib/revenue/sync.test.ts",
+    "src/lib/revenue/sync.ts"
+  ]
+}

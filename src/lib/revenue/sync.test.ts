@@ -1,10 +1,10 @@
 // 매출 가져오기 계획과 차례(TASK-7, REQ-007 · AC-007.1·AC-007.3). 숫자는 모두 가짜고, call·store도 가짜다
 import { describe, expect, it, vi } from 'vitest'
-import { eachDay, monthRange } from '@/lib/analytics/dates'
+import { addMonths, eachDay, monthOf, monthRange } from '@/lib/analytics/dates'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { RevenueStoreError, type RevenueStore } from '@/lib/storage/revenue'
 import type { RevenueDaysResult } from '@/types/revenue'
-import { planFetch, syncRevenue } from './sync'
+import { ALL_FROM_MONTH, planFetch, spanMonths, syncRevenue } from './sync'
 
 const NOTHING_SAVED: ReadonlySet<string> = new Set()
 const daysOfMonth = (month: string) => eachDay(monthRange(month))
@@ -281,5 +281,99 @@ describe('AC-007.3 syncRevenue', () => {
     const result = await syncRevenue({ call, store, today: NOV_1, savedDays: new Set(THIRTEEN.flatMap(daysOfMonth)) })
     expect(call).not.toHaveBeenCalled()
     expect(result).toEqual(CLEAN)
+  })
+})
+
+// 매출 가져올 기간(spec revenue-load-range TASK-1). 오늘 2026-11-10 → 최근 달 2026-11(어제 11월 9일까지)
+const TODAY = '2026-11-10'
+const monthsBack = (from: string, count: number) => Array.from({ length: count }, (_, back) => addMonths(from, -back))
+const monthsOf = (ranges: { from: string }[]) => ranges.map((range) => monthOf(range.from))
+// 최근 13달(2026-11 ~ 2025-11)이 다 저장된 날. 2026-11은 어제까지
+const RECENT_13_SAVED = new Set([...eachDay({ from: '2026-11-01', to: '2026-11-09' }), ...monthsBack('2026-10', 12).flatMap(daysOfMonth)])
+
+describe('AC-3501.3 planFetch 달 수 인자', () => {
+  it('AC-3501.3 planFetch(today, saved, 25)는 2026-11 ~ 2024-11 25달 가운데 빠진 달만 새 달부터 돌려준다', () => {
+    const saved = new Set([...daysOfMonth('2026-05'), ...daysOfMonth('2025-01')])
+    const plan = planFetch(TODAY, saved, 25)
+    expect(monthsOf(plan)).toEqual(monthsBack('2026-11', 25).filter((month) => month !== '2026-05' && month !== '2025-01'))
+    expect(plan[0]).toEqual({ from: '2026-11-01', to: '2026-11-09' })
+    expect(plan.at(-1)).toEqual({ from: '2024-11-01', to: '2024-11-30' })
+  })
+
+  it('AC-3501.3 셋째 인자가 없으면 지금처럼 최근 13달이다', () => {
+    expect(planFetch(TODAY, NOTHING_SAVED)).toEqual(planFetch(TODAY, NOTHING_SAVED, 13))
+    expect(monthsOf(planFetch(TODAY, NOTHING_SAVED))).toEqual(monthsBack('2026-11', 13))
+  })
+
+  it('AC-3501.3 날 줄이 다 있는 달은 빠지고, 최근 13달이 다 있으면 25달 가운데 남은 12달만이다', () => {
+    expect(monthsOf(planFetch(TODAY, RECENT_13_SAVED, 25))).toEqual(monthsBack('2025-10', 12))
+  })
+
+  it('AC-3501.3 전체 기간(83달)이면 최근 13달이 다 있을 때 2025-10 ~ 2020-01 70달이 남는다', () => {
+    const plan = planFetch(TODAY, RECENT_13_SAVED, spanMonths('all', TODAY))
+    expect(plan).toHaveLength(70)
+    expect(plan[0]).toEqual({ from: '2025-10-01', to: '2025-10-31' })
+    expect(plan.at(-1)).toEqual({ from: '2020-01-01', to: '2020-01-31' })
+  })
+})
+
+describe('AC-3501.2 spanMonths', () => {
+  it('AC-3501.2 최근 1년 13달, 최근 2년 25달, 전체 기간은 2020-01 ~ 2026-11 83달이다', () => {
+    expect(spanMonths('1y', TODAY)).toBe(13)
+    expect(spanMonths('2y', TODAY)).toBe(25)
+    expect(spanMonths('all', TODAY)).toBe(83)
+  })
+
+  it('AC-3501.2 전체 기간의 첫 달은 ALL_FROM_MONTH(2020-01)다', () => {
+    expect(ALL_FROM_MONTH).toBe('2020-01')
+    expect(monthsOf(planFetch(TODAY, NOTHING_SAVED, spanMonths('all', TODAY))).at(-1)).toBe(ALL_FROM_MONTH)
+  })
+
+  it('AC-3501.2 오늘이 1일이면 최근 달이 지난달이라 전체 기간은 2020-01 ~ 2026-10 82달이다', () => {
+    expect(spanMonths('all', '2026-11-01')).toBe(82)
+    expect(spanMonths('1y', '2026-11-01')).toBe(13)
+    expect(spanMonths('2y', '2026-11-01')).toBe(25)
+  })
+
+  it('AC-3501.2 해의 첫날에도 지난해 12월까지 센다(2020-01 ~ 2025-12 = 72달)', () => {
+    expect(spanMonths('all', '2026-01-01')).toBe(72)
+  })
+})
+
+describe('AC-3502.1 고른 기간 가져오기', () => {
+  it('AC-3502.1 planFetch로 고른 기간의 달 목록을 months로 주면 새 달부터 한 번씩 차례로 부르고, 달마다 1일 ~ 말일(어제를 넘지 않음)이다', async () => {
+    const saved = new Set([...daysOfMonth('2026-10'), ...daysOfMonth('2025-06')])
+    const months = monthsOf(planFetch(TODAY, saved, 25))
+    const { call, store, log } = fakes()
+    const result = await syncRevenue({ call, store, today: TODAY, months })
+    const expected = monthsBack('2026-11', 25).filter((month) => month !== '2026-10' && month !== '2025-06')
+    expect(log).toEqual(expected.flatMap((month) => [`call ${month}`, `save ${month}`]))
+    expect(call.mock.calls[0]).toEqual([{ from: '2026-11-01', to: '2026-11-09' }])
+    expect(call.mock.calls.slice(1).map(([args]) => args)).toEqual(expected.slice(1).map((month) => monthRange(month)))
+    expect(result).toEqual(CLEAN)
+  })
+
+  it('AC-3502.1 이미 다 저장된 달은 부르지 않는다(최근 13달이 다 있으면 최근 2년은 2025-10 ~ 2024-11만)', async () => {
+    const months = monthsOf(planFetch(TODAY, RECENT_13_SAVED, spanMonths('2y', TODAY)))
+    const { call, store } = fakes()
+    await syncRevenue({ call, store, today: TODAY, months })
+    expect(call.mock.calls.map(([args]) => monthOf(args.from))).toEqual(monthsBack('2025-10', 12))
+  })
+})
+
+describe('AC-3502.5 멈춘 뒤 다시 계획하기', () => {
+  it('AC-3502.5 전체 기간 70달 가운데 앞 12달을 저장하고 멈췄다면, 다시 계획하면 남은 58달(2024-10 ~ 2020-01)만이다', async () => {
+    const span = spanMonths('all', TODAY)
+    const first = monthsOf(planFetch(TODAY, RECENT_13_SAVED, span))
+    expect(first).toHaveLength(70)
+    const { call, store, savedMonths } = fakes({ '2024-10': new BridgeError('E-BRIDGE-DISCONNECTED') })
+    const result = await syncRevenue({ call, store, today: TODAY, months: first })
+    expect(result.stopped).toBe('E-BRIDGE-DISCONNECTED')
+    expect(savedMonths()).toEqual(monthsBack('2025-10', 12))
+
+    const savedNow = new Set([...RECENT_13_SAVED, ...savedMonths().flatMap(daysOfMonth)])
+    const again = monthsOf(planFetch(TODAY, savedNow, span))
+    expect(again).toEqual(monthsBack('2024-10', 58))
+    expect(again.at(-1)).toBe('2020-01')
   })
 })

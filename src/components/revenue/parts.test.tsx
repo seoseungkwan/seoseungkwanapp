@@ -223,6 +223,22 @@ describe('AC-009.1 제목 줄·달 고르기·상태 부품', () => {
     expect(screen.getByText('10월 1일 – 31일 · 수납한 날 기준')).toBeTruthy()
   })
 
+  it('AC-3503.1 달 고르기: bound가 있으면 기간 글 바로 옆에 text-small text-muted로 그 글이 있다', () => {
+    const bound = '· 예시 2020년 1월부터 넘겨 볼 수 있어요'
+    render(<PeriodRow period={{ label: '2026년 11월', note: '11월 1일 – 9일 · 수납한 날 기준' }} bound={bound} canPrevious canNext={false} onPrevious={() => {}} onNext={() => {}} />)
+    const line = screen.getByText(bound)
+    expect(classesOf(line)).toEqual(expect.arrayContaining(['text-small', 'text-muted']))
+    expect(line.previousElementSibling?.textContent).toBe('11월 1일 – 9일 · 수납한 날 기준')
+  })
+
+  it('AC-3503.1 달 고르기: bound가 없으면 지금 그대로(달 상자와 기간 글 둘뿐)', () => {
+    const { container } = render(<PeriodRow period={{ label: '2026년 11월', note: '11월 1일 – 9일 · 수납한 날 기준' }} canPrevious canNext onPrevious={() => {}} onNext={() => {}} />)
+    const row = container.firstElementChild!
+    expect(row.children).toHaveLength(2)
+    expect(row.lastElementChild?.textContent).toBe('11월 1일 – 9일 · 수납한 날 기준')
+    expect(screen.queryByText(/넘겨 볼 수 있어요/)).toBeNull()
+  })
+
   it('AC-009.5 가져오는 중: 정적인 진행 막대(폭 %), 몇 달인지 모르면 숫자를 지어내지 않는다', () => {
     const { container, rerender } = render(<Fetching view={stateOf('fetching', { sync: { state: 'running', done: 4, total: 13, month: '2026-02' } })} />)
     expect(screen.getByRole('status').textContent).toContain('13달 가운데 4달을 가져왔어요')

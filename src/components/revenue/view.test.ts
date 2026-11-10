@@ -478,7 +478,8 @@ describe('AC-008.2 보기 상태는 여덟 가지 가운데 하나다', () => {
   })
 
   it('AC-008.2 AC-008.4 empty: 고른 달 자료 없음, 칸 넷은 "–"와 "자료 없음"', () => {
-    const built = view({ month: '2024-10' })
+    // 이 PC가 읽었고 수납 기록이 없던 달(쉬는 날 줄만 있음). 날 줄이 하나도 없는 옛 달은 AC-3503.3 글이다
+    const built = view({ month: '2024-10', days: [...ALL_ROWS, ...eachDay(monthRange('2024-10')).map(restDay)] })
     if (built.state !== 'empty') throw new Error(built.state)
     expect(built.period).toEqual({ label: '2024년 10월', note: '10월 1일 – 31일 · 수납한 날 기준' })
     expect(built.empty.heading).toBe('자료 없음')
@@ -818,5 +819,202 @@ describe('AC-008.1 가짜 자료 밖의 글자', () => {
     const before = JSON.stringify(groups)
     view({ groups })
     expect(JSON.stringify(groups)).toBe(before)
+  })
+})
+
+// ── 매출 가져올 기간(spec revenue-load-range TASK-2) ──────────────────
+// 이 파일의 오늘 2026-11-01 → 최근 달 2026-10, 최근 13달의 첫 달 2025-10. 옛 달 2020-03 ~ 2021-03은 따로 가져온 줄이다
+
+// 한 달 줄: 1일에 금액·건수가 다 있고 나머지는 쉬는 날
+function dataMonth(month: string, total: number, noncovered: number, other: number, visits: number): RevenueDayRow[] {
+  const covered = total - noncovered - other
+  const insurer = Math.floor(covered * 0.75)
+  return eachDay(monthRange(month)).map((date, i) =>
+    i > 0 ? restDay(date) : { ...restDay(date), visits, total, insurer, copay: covered - insurer, noncovered, otherTotal: other, cash: total },
+  )
+}
+
+const OLD_MONTHS = ['2020-03', '2020-04', '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10', '2020-11', '2020-12', '2021-01', '2021-02', '2021-03']
+const OLD_ROWS = [
+  ...dataMonth('2020-03', 150_000_000, 60_000_000, 3_000_000, 2_500),
+  ...OLD_MONTHS.slice(1, 11).flatMap((month) => dataMonth(month, 110_000_000, 44_000_000, 2_200_000, 2_200)),
+  ...dataMonth('2021-02', 100_000_000, 40_000_000, 2_000_000, 2_500),
+  ...dataMonth('2021-03', 120_000_000, 48_000_000, 2_400_000, 2_400),
+]
+const WITH_OLD = [...OLD_ROWS, ...ALL_ROWS]
+const OLD_MONTH = '2021-03'
+const NO_RECORD_NOTE = '이 달에는 비트에 수납 기록이 없어요. 그래프는 자료가 있는 달만 그려요. 숫자를 지어 넣지 않아요.'
+
+describe('AC-3503.2 옛날 달의 막대는 고른 달까지 13달이다', () => {
+  it('AC-3503.2 고른 달이 2021-03이면 매출 막대와 표는 2020-03 ~ 2021-03이고 제목에 그 기간이 있다', () => {
+    const { trend } = blocks({ days: WITH_OLD, month: OLD_MONTH })
+    const chart = trend.chart!
+    expect(chart.title).toBe('달마다 매출 · 2020년 3월 – 2021년 3월')
+    expect(chart.columns.map((column) => column.month)).toEqual(OLD_MONTHS)
+    expect(chart.columns[12]).toMatchObject({ month: OLD_MONTH, label: '3월', kind: 'selected' })
+    expect(chart.columns[0]).toMatchObject({ month: '2020-03', kind: 'last-year', year: '2020년' })
+    expect(chart.columns[10]).toMatchObject({ month: '2021-01', label: '1월', year: '2021년' })
+    expect(chart.table.rows.map((row) => row[0])).toEqual(OLD_MONTHS)
+    expect(tableRow(chart.table.rows, OLD_MONTH)).toEqual([OLD_MONTH, '120,000,000원'])
+  })
+
+  it('AC-3503.2 건당 진료비 막대와 표도 같은 13달이고 제목에 그 기간이 있다', () => {
+    const { perVisit, split } = blocks({ days: WITH_OLD, month: OLD_MONTH })
+    expect(perVisit.chart!.title).toBe('달마다 건당 진료비 · 2020년 3월 – 2021년 3월')
+    expect(perVisit.chart!.columns.map((column) => column.month)).toEqual(OLD_MONTHS)
+    expect(perVisit.chart!.table.rows.map((row) => row[0])).toEqual(OLD_MONTHS)
+    expect(tableRow(perVisit.chart!.table.rows, OLD_MONTH)).toEqual([OLD_MONTH, '50,000원', '2,400건'])
+    expect(split.chart!.columns.map((column) => column.month)).toEqual(OLD_MONTHS)
+    expect(split.chart!.table.rows.map((row) => row[0])).toEqual(OLD_MONTHS)
+  })
+
+  it('AC-3503.2 고른 달이 최근 13달의 첫 달이면 막대·표·제목은 지금처럼 최근 13달이다', () => {
+    const { trend, perVisit } = blocks({ days: WITH_OLD, month: '2025-10' })
+    expect(trend.chart!.title).toBe('달마다 매출 · 최근 13달')
+    expect(perVisit.chart!.title).toBe('달마다 건당 진료비 · 최근 13달')
+    expect(trend.chart!.columns.map((column) => column.month)).toEqual(MONTHS)
+    expect(trend.chart!.table.rows.map((row) => row[0])).toEqual(MONTHS)
+    expect(trend.chart!.columns[0]).toMatchObject({ month: '2025-10', kind: 'selected' })
+  })
+
+  it('AC-3503.2 고른 달이 최근 13달의 첫 달보다 한 달 앞이면 그 달이 끝 달이다', () => {
+    const days = [...WITH_OLD, ...dataMonth('2025-09', 140_000_000, 56_000_000, 2_800_000, 2_600)]
+    const { trend, perVisit } = blocks({ days, month: '2025-09' })
+    expect(trend.chart!.title).toBe('달마다 매출 · 2024년 9월 – 2025년 9월')
+    expect(perVisit.chart!.title).toBe('달마다 건당 진료비 · 2024년 9월 – 2025년 9월')
+    expect(trend.chart!.columns.at(-1)).toMatchObject({ month: '2025-09', kind: 'selected' })
+    expect(trend.chart!.columns[0]).toMatchObject({ month: '2024-09', kind: 'last-year' })
+  })
+})
+
+describe('AC-3503.4 옛날 달은 지금 규칙 그대로 그 달들의 자료로 그린다', () => {
+  const oldCodes = [
+    ...CODES,
+    code('도수', '도수치료', 400, 16_000_000, OLD_MONTH),
+    code('ESWT1', '체외충격파 1부위', 100, 4_000_000, OLD_MONTH),
+    code('AA154', '재진 진찰료', 1_000, 10_000_000, OLD_MONTH),
+    code('도수', '도수치료', 999, 999_999_999, '2021-02'),
+  ]
+  const built = blocks({ days: WITH_OLD, codes: oldCodes, month: OLD_MONTH })
+
+  it('AC-3503.4 매출 칸과 지난달·작년 같은 달 비교는 2021-03·2021-02·2020-03 자료다', () => {
+    const { kpis } = built.trend
+    expect(kpi(kpis, '3월 매출')).toMatchObject({ value: '1억 2,000만 원', sub: '하루 평균 387만 원' })
+    expect(kpi(kpis, '2월보다')).toMatchObject({ value: '+20.0%', tone: 'up', sub: '2월 1억 원' })
+    expect(kpi(kpis, '작년 3월보다')).toMatchObject({ value: '−20.0%', tone: 'down', sub: '2020년 3월 1억 5,000만 원' })
+  })
+
+  it('AC-3503.4 급여 나눔은 그 달 자료이고 지난달과 견준다', () => {
+    const { split } = built
+    expect(split.sub).toBe('3월 비급여 몫 40.0% · 기타 몫 2.0%')
+    expect(split.rows[0]).toMatchObject({ name: '급여', amount: '6,960만 원', delta: { dir: 'up', text: '+20.0%' } })
+  })
+
+  it('AC-3503.4 치료별 매출은 그 달의 코드 줄로 센다(다른 달 코드는 넣지 않는다)', () => {
+    const { treatments } = built
+    if (treatments.kind !== 'rows') throw new Error(treatments.kind)
+    expect(treatments.sub).toBe('3월 · 처방한 날 기준 · 내가 만든 묶음')
+    expect(treatments.rows.map((row) => [row.name, row.amount, row.detail])).toEqual([
+      ['도수치료', '1,600만 원', '400건'],
+      ['체외충격파', '400만 원', '100건'],
+      ['그 밖 처방', '1,000만 원', '진찰료·약·검사 등'],
+    ])
+  })
+
+  it('AC-3503.4 건당 진료비와 접수 건수는 그 달 자료이고 지난달·작년 같은 달과 견준다', () => {
+    const { kpis } = built.perVisit
+    expect(kpi(kpis, '3월 건당 진료비')).toMatchObject({ value: '50,000원', sub: '매출 ÷ 접수 2,400건' })
+    expect(kpi(kpis, '2월보다')).toMatchObject({ value: '+25.0%', tone: 'up', sub: '2월 40,000원' })
+    expect(kpi(kpis, '작년 3월보다')).toMatchObject({ value: '−16.6%', tone: 'down', sub: '2020년 3월 60,000원' })
+    expect(kpi(kpis, '3월 접수 건수')).toMatchObject({ value: '2,400건', sub: '2월 2,500건' })
+  })
+})
+
+describe('AC-3503.3 아직 가져오지 않은 옛날 달', () => {
+  const NOT_FETCHED = "이 달은 아직 비트에서 가져오지 않았어요. 위 '가져올 기간'에서 이 달이 든 기간을 고르고 [비트에서 가져오기]를 누르면 채워져요."
+
+  it('AC-3503.3 연결된 PC에서 날 줄이 하나도 없는 옛 달이면 새 글이고, 제목·숫자 칸은 지금 그대로다', () => {
+    const built = view({ days: WITH_OLD, month: '2024-03' })
+    if (built.state !== 'empty') throw new Error(built.state)
+    expect(built.empty.note).toBe(NOT_FETCHED)
+    expect(built.empty.heading).toBe('자료 없음')
+    expect(built.empty.kpis.map((item) => [item.name, item.value, item.sub])).toEqual([
+      ['3월 매출', '–', '자료 없음'],
+      ['2월보다', '–', '자료 없음'],
+      ['작년 3월보다', '–', '자료 없음'],
+      ['건당 진료비', '–', '자료 없음'],
+    ])
+    expect(built.failed).toBeNull()
+  })
+
+  it('AC-3503.3 최근 13달의 첫 달보다 한 달 앞(2025-09)도 옛 달이다', () => {
+    const built = view({ month: '2025-09' })
+    if (built.state !== 'empty') throw new Error(built.state)
+    expect(built.empty.note).toBe(NOT_FETCHED)
+  })
+
+  it('AC-3503.3 읽지 못한 달 목록에 있으면 지금 글이다', () => {
+    const failed = [{ month: '2024-03', code: 'E-BIT-READ-FAILED' }]
+    const built = view({ days: WITH_OLD, month: '2024-03', sync: { state: 'idle', failed } })
+    if (built.state !== 'empty') throw new Error(built.state)
+    expect(built.empty.note).toBe('이 달은 가져오지 못했어요. 숫자를 지어 넣지 않아요.')
+  })
+
+  it('AC-3503.3 옛 달이라도 날 줄이 있으면(읽었고 수납 기록이 없던 달) 지금 글이다', () => {
+    const built = view({ days: [...WITH_OLD, ...eachDay(monthRange('2024-03')).map(restDay)], month: '2024-03' })
+    if (built.state !== 'empty') throw new Error(built.state)
+    expect(built.empty.note).toBe(NO_RECORD_NOTE)
+  })
+
+  it('AC-3503.3 최근 13달 안의 빈 달은 지금 글이다', () => {
+    const days = ALL_ROWS.filter((row) => !row.date.startsWith('2026-03'))
+    const built = view({ days, month: '2026-03' })
+    if (built.state !== 'empty') throw new Error(built.state)
+    expect(built.empty.note).toBe(NO_RECORD_NOTE)
+  })
+
+  it('AC-3503.3 연결 안 된 PC는 옛 달이라도 지금 글이다', () => {
+    const built = view({ days: WITH_OLD, bridge: 'none', month: '2024-03' })
+    if (built.state !== 'saved-only') throw new Error(built.state)
+    expect(built.empty?.note).toBe('그래프는 자료가 있는 달만 그려요. 숫자를 지어 넣지 않아요.')
+  })
+})
+
+describe('AC-3502.2 고른 기간을 가져오는 동안의 본문', () => {
+  const BODY = '2020년 1월 – 2026년 10월 가운데 아직 안 가져온 69달을 읽어요. 12분쯤 걸려요. 다 끝날 때까지 이 창을 닫지 말아 주세요.'
+
+  it('AC-3502.2 sync.body가 있으면 본문이 그 글이고 진행 줄은 지금 그대로다', () => {
+    const built = view({ sync: { state: 'running', done: 12, total: 69, month: '2024-09', body: BODY } })
+    if (built.state !== 'fetching') throw new Error(built.state)
+    expect(built.body).toBe(BODY)
+    expect(built.heading).toBe('비트에서 매출을 가져오고 있어요')
+    expect(built.note).toBe('다 가져오면 그래프 4가지가 한 번에 그려져요.')
+    expect(built.progress).toMatchObject({ lead: '69달 가운데 ', strong: '12달', rest: '을 가져왔어요', reading: '2024년 9월 읽는 중' })
+  })
+
+  it('AC-3502.2 sync.body가 없으면(화면을 열 때의 저절로 가져오기) 지금 글 그대로다', () => {
+    const built = view({ sync: { state: 'running', done: 1, total: 13 } })
+    if (built.state !== 'fetching') throw new Error(built.state)
+    expect(built.body).toBe('처음 한 번은 최근 13달을 읽느라 몇 분 걸려요. 이 창을 닫지 말아 주세요. 다음부터는 새로 생긴 날만 읽어요.')
+  })
+})
+
+describe('AC-3504.2 제안 묶음은 최근 13달 코드 줄로만 만든다', () => {
+  it('AC-3504.2 옛 달에만 있는 코드(ESWT3)는 제안 묶음에 들지 않아 옛 달을 골라도 그 밖 처방으로 센다', () => {
+    const codes = [...CODES, code('도수', '도수치료', 400, 16_000_000, OLD_MONTH), code('ESWT3', '체외충격파 3부위', 50, 3_000_000, OLD_MONTH)]
+    const { treatments } = blocks({ days: WITH_OLD, codes, groups: [], month: OLD_MONTH })
+    if (treatments.kind !== 'rows') throw new Error(treatments.kind)
+    expect(treatments.chip).toBe('제안 묶음 · 아직 저장 안 함')
+    expect(treatments.rows.map((row) => [row.name, row.amount])).toEqual([
+      ['도수치료', '1,600만 원'],
+      ['그 밖 처방', '300만 원'],
+    ])
+  })
+
+  it('AC-3504.2 최근 13달의 코드는 옛 달을 골라도 제안 묶음에 든다', () => {
+    const codes = [...CODES, code('ESWT1', '체외충격파 1부위', 30, 1_200_000, OLD_MONTH)]
+    const { treatments } = blocks({ days: WITH_OLD, codes, groups: [], month: OLD_MONTH })
+    if (treatments.kind !== 'rows') throw new Error(treatments.kind)
+    expect(treatments.rows.map((row) => [row.name, row.amount])).toEqual([['체외충격파', '120만 원']])
   })
 })

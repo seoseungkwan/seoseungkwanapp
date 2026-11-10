@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useBridge } from '@/components/claim/useBridge'
 import { addMonths, monthOf, todayInKorea } from '@/lib/analytics/dates'
 import { firstMonth } from '@/lib/revenue/summary'
-import { planFetch, syncRevenue, type SyncResult } from '@/lib/revenue/sync'
+import { ALL_FROM_MONTH, planFetch, spanMonths, syncRevenue, type FetchSpan, type SyncResult } from '@/lib/revenue/sync'
 import { createRevenueStore } from '@/lib/storage/revenue'
 import { createRxGroupStore } from '@/lib/storage/rxGroups'
 import { supabaseBrowser } from '@/lib/supabase/browser'
@@ -12,8 +12,10 @@ import type { BridgeState } from '@/types/bridge'
 import type { RxGroup } from '@/types/rxGroups'
 import { GroupEditor } from './groups/GroupEditor'
 import { knownCodes } from './groups/known'
+import { boundText, doneNotice, fetchingBody, spanHint, SPAN_NAMES, stoppedLine } from './range'
 import { PageTitle } from './RevenueParts'
 import { RevenuePerVisit } from './RevenuePerVisit'
+import { LoadRangePanel, RangeDoneNotice, RangeStoppedLine } from './RevenueRange'
 import { RevenueSplit } from './RevenueSplit'
 import { BusyNotice, ConnectNeeded, EmptyMonthBlock, FailedBanner, Fetching, PeriodRow, RevenueError, SafeLine, SaveFailedCard, SavedNotice, TitleRow, UpgradeNeeded } from './RevenueStates'
 import { RevenueTreatments } from './RevenueTreatments'
@@ -26,6 +28,8 @@ import { buildRevenueView, type FailedNotice, type PeriodView, type RevenueBlock
 // 통로를 부르는 것은 상태가 ready일 때뿐이다: 연결 중에도 E-BRIDGE-REJECTED가 와서 옛 확장으로 잘못 알게 된다.
 // 비트 PC인데 "연결되어 있지 않아요"라고 말하지 않는 두 경우: 이 화면의 가져오기가 도중에 끊겼을 때(오류 카드), 다른 창이 통로를 쓰는 중일 때(E-BRIDGE-BUSY)
 // 묶음 고치기(TASK-14)는 view.ts의 보기 상태가 아니라 이 화면의 상태(editing)다. 통로 상태와 상관없이 그 화면을 그대로 둔다(고치던 것을 잃지 않게, 서버 표만 쓴다)
+// 가져올 기간(revenue-load-range TASK-4, design.md 4절): 최근 13달 읽기가 끝난 뒤 옛 달(ALL_FROM_MONTH ~ 최근 13달 첫 달의 앞 달)을 기다리지 않고 따로 읽어 합쳐 그린다.
+// 옛 달을 다 읽기 전·읽지 못했을 때는 칸이 없고 넘겨 볼 끝 달은 최근 13달 첫 달이다(오류 카드 없음). 묶음 고치기의 처방 목록은 지금처럼 최근 13달 코드 줄로만(AC-3504.2)
 
 const TITLE = '매출'
 const MONTHS_SHOWN = 13
@@ -40,8 +44,42 @@ type Saved = Awaited<ReturnType<ReturnType<typeof createRevenueStore>['loadReven
 type Groups = RxGroup[] | 'load-failed'
 type Failed = SyncResult['failed']
 type Range = { months: string[] } | { savedDays: ReadonlySet<string> }
+type Store = ReturnType<typeof createRevenueStore>
+type Older = Saved | 'failed'
+/** 고른 기간을 가져온 차례: months = 가져온(실패하지 않은) 달, total = 가져오려던 달 수 */
+type RangeRun = { span: FetchSpan; months: string[]; total: number; outcome: 'done' | 'stopped' }
+type PullExtra = {
+  /** 가져오는 중 본문(고른 기간). 없으면 저절로 가져오기 글 */
+  body?: string
+  /** 끝난 뒤 옛 달도 다시 읽는다 */
+  older?: boolean
+  /** 다 끝났을 때. 앞 차례가 됐어도 부른다(끊겨 멈춘 가져오기는 새 차례가 시작된 뒤에 끝난다). handled = 다룬 달 수 */
+  onEnd?(result: SyncResult, handled: number): void
+}
 
 const revenueStore = () => createRevenueStore(supabaseBrowser())
+
+// 읽지 못하면 칸·옛 달 넘기기만 없다(첫 그림과 오류 카드는 최근 13달 읽기가 정한다)
+async function readOlder(store: Store, before: string): Promise<Older> {
+  try {
+    return await store.loadRevenue(ALL_FROM_MONTH, before)
+  } catch {
+    return 'failed'
+  }
+}
+
+/** 멈춤 줄은 새 가져오기·다시 연결한 차례가 시작되면 지운다. 다 가져옴 알림은 다음 [비트에서 가져오기]까지 둔다(AC-3502.3) */
+const dropStopped = (run: RangeRun | null) => (run?.outcome === 'stopped' ? null : run)
+
+/** 날 줄 가운데 가장 옛 날의 달과 floor 가운데 이른 달 */
+function earliestMonth(days: Saved['days'], floor: string): string {
+  let first = floor
+  for (const row of days) {
+    const month = monthOf(row.date)
+    if (month < first) first = month
+  }
+  return first
+}
 
 // 읽기 실패를 빈 목록으로 바꾸면 제안 묶음으로 잘못 보인다
 async function readGroups(): Promise<Groups> {
@@ -105,8 +143,15 @@ export function RevenueScreen() {
   const [today] = useState(() => todayInKorea())
   const latest = firstMonth(today)
   const oldest = addMonths(latest, 1 - MONTHS_SHOWN)
+  /** 옛 달 읽기의 끝 달(최근 13달 첫 달의 앞 달) */
+  const olderEnd = addMonths(oldest, -1)
   const [month, setMonth] = useState(latest)
   const [saved, setSaved] = useState<Saved | null>(null)
+  /** 옛 달 읽기(REQ-3504). null = 아직 읽는 중 */
+  const [older, setOlder] = useState<Older | null>(null)
+  const [span, setSpan] = useState<FetchSpan>('1y')
+  /** 고른 기간을 가져온 마지막 차례. [비트에서 가져오기]를 누르면 지운다 */
+  const [rangeRun, setRangeRun] = useState<RangeRun | null>(null)
   const [groups, setGroups] = useState<Groups | null>(null)
   const [groupsBusy, setGroupsBusy] = useState(false)
   /** 고치기 시작할 때 읽은 묶음. null이면 편집 중이 아니다 */
@@ -123,6 +168,13 @@ export function RevenueScreen() {
   const [fetchOpen, setFetchOpen] = useState(false)
   /** 지금 차례. 지난 차례의 답은 버린다 */
   const generation = useRef(0)
+  /**
+   * 옛 달 읽기는 마지막에 시작한 읽기의 답만 둔다(지난 읽기가 늦게 끝나도 새 답을 덮지 않는다).
+   * 차례(generation)와 따로 센다: [다시 가져오기]가 차례를 넘겨도 열 때 시작한 옛 달 읽기는 버리지 않는다(버리면 다시 열 때까지 칸이 없다)
+   */
+  const olderTurn = useRef(0)
+  /** 고른 기간 가져오기를 마지막으로 시작한 차례. 그 차례의 끝만 rangeRun에 둔다(연결된 새 차례가 시작되면 그 차례로 바꿔 앞 가져오기의 늦은 끝을 버린다) */
+  const rangeOwner = useRef(0)
   const editGroupsRef = useRef<HTMLButtonElement>(null)
   /** 편집 화면을 보여 준 적이 있고 아직 돌아오지 않았다. 처음 그릴 때는 초점을 옮기지 않으려고 둔다 */
   const leftForEditor = useRef(false)
@@ -130,12 +182,23 @@ export function RevenueScreen() {
   const connected = bridgeState === 'ready'
   const run = `${bridgeState}:${attempt}`
 
+  // 옛 달을 읽지 못하면 넘겨 볼 끝 달은 최근 13달 첫 달이다. 그보다 옛 달을 보고 있었으면 그 달로 당긴다(AC-3503.1)
+  const takeOlder = useCallback(
+    (next: Older) => {
+      setOlder(next)
+      if (next === 'failed') setMonth((current) => (current < oldest ? oldest : current))
+    },
+    [oldest],
+  )
+
   // plan = 읽을 달 차례. onProgress의 month는 막 끝낸 달이라 '읽는 중' 글자에는 plan의 다음 달을 쓴다
   const pull = useCallback(
-    async (range: Range, plan: string[], keep: Failed, isLive: () => boolean, doneRun: string) => {
+    async (range: Range, plan: string[], keep: Failed, isLive: () => boolean, doneRun: string, extra: PullExtra = {}) => {
       const store = revenueStore()
+      const { body } = extra
       setFetchOpen(true)
-      setSync({ state: 'running', done: 0, total: plan.length, month: plan[0] })
+      setSync({ state: 'running', done: 0, total: plan.length, month: plan[0], body })
+      let handled = 0
       const result = await syncRevenue({
         // 앞 차례는 새 연결로 읽지 않는다(도우미는 한 번에 한 명령씩, 같은 달을 두 번 읽지 않게)
         call: (args) => (isLive() ? call('revenue.days', args) : Promise.reject(Object.assign(new Error(DISCONNECTED), { code: DISCONNECTED }))),
@@ -143,7 +206,8 @@ export function RevenueScreen() {
         today,
         ...range,
         onProgress: ({ done, total }) => {
-          if (isLive()) setSync({ state: 'running', done, total, month: plan[done] })
+          handled = done
+          if (isLive()) setSync({ state: 'running', done, total, month: plan[done], body })
         },
       })
       // 끊겨서 멈춘 것 말고는 가져오기가 끝난 것이다. 앞 차례는 새 차례의 표시를 건드리지 않는다
@@ -155,12 +219,17 @@ export function RevenueScreen() {
       } catch {
         if (next.state === 'idle' && !next.helperOld && !next.extensionOld) next = LOAD_ERROR
       }
+      // 앞 차례는 옛 달을 읽지 않는다: 새 차례가 이미 둘 다 읽고 있고, 여기서 세면 그 읽기의 답이 버려진다
+      const turn = extra.older && isLive() ? ++olderTurn.current : null
+      const olderNext = turn === null ? null : await readOlder(store, olderEnd)
+      extra.onEnd?.(result, handled)
       if (!isLive()) return
       if (rows) setSaved(rows)
+      if (olderNext && olderTurn.current === turn) takeOlder(olderNext)
       setSync(next)
       setSettled(doneRun)
     },
-    [call, today, oldest, latest],
+    [call, today, oldest, latest, olderEnd, takeOlder],
   )
 
   // 창 전체가 밀리는 화면이라 편집 화면이 내려가도 스크롤이 제자리다. 돌아오면 초점으로 [묶음 고치기]가 있는 덩어리까지 데려간다(AC-014.5의 다시 그린 숫자가 화면 밖이지 않게)
@@ -184,14 +253,20 @@ export function RevenueScreen() {
       return
     }
     setSync(IDLE)
-    if (connected) setFetchOpen(true)
+    if (connected) {
+      setFetchOpen(true)
+      // 다시 연결됐으니 앞선 멈춤 줄은 지나간 일이다(끊겨 오류 화면이 되는 차례에는 그 줄이 보여야 하니 지우지 않는다, AC-3502.4)
+      rangeOwner.current = live
+      setRangeRun(dropStopped)
+    }
     void readGroups().then((next) => {
       if (isLive()) setGroups(next)
     })
     void (async () => {
+      const store = revenueStore()
       let rows: Saved
       try {
-        rows = await revenueStore().loadRevenue(oldest, latest)
+        rows = await store.loadRevenue(oldest, latest)
       } catch {
         // 저장된 날을 모르면 빠진 달을 셀 수 없다(13달을 모두 다시 읽지 않는다)
         if (isLive()) {
@@ -203,18 +278,51 @@ export function RevenueScreen() {
       }
       if (!isLive()) return
       setSaved(rows)
+      // 첫 그림과 저절로 가져오기는 이 읽기를 기다리지 않는다(AC-3504.1)
+      const turn = ++olderTurn.current
+      void readOlder(store, olderEnd).then((next) => {
+        if (olderTurn.current === turn) takeOlder(next)
+      })
       if (!connected) return
       const savedDays = new Set(rows.days.map((row) => row.date))
       const plan = planFetch(today, savedDays).map((range) => monthOf(range.from))
       await pull({ savedDays }, plan, [], isLive, run)
     })()
-  }, [bridgeState, connected, run, today, oldest, latest, pull])
+  }, [bridgeState, connected, run, today, oldest, latest, olderEnd, pull, takeOlder])
 
+  // 옛 달이 든 달을 다시 읽으면 옛 달도 다시 읽는다(최근 13달만 다시 읽으면 그 달이 계속 비어 보인다)
   function refetch(months: string[]) {
     generation.current += 1
     const live = generation.current
+    setRangeRun(dropStopped)
     const keep = (sync.failed ?? []).filter((item) => !months.includes(item.month))
-    void pull({ months }, months, keep, () => generation.current === live, run)
+    void pull({ months }, months, keep, () => generation.current === live, run, { older: months.some((item) => item < oldest) })
+  }
+
+  // 고른 기간의 남은 달(planFetch 차례 = 새 달부터)만 읽는다. 멈춘 뒤 다시 누르면 저장된 달은 건너뛴다(AC-3502.5)
+  function loadSpan(months: string[]) {
+    generation.current += 1
+    const live = generation.current
+    rangeOwner.current = live
+    const chosen = span
+    setRangeRun(null)
+    const keep = (sync.failed ?? []).filter((item) => !months.includes(item.month))
+    void pull({ months }, months, keep, () => generation.current === live, run, {
+      body: fetchingBody(chosen, today, months.length),
+      older: true,
+      onEnd: (result, handled) => {
+        // 끊겨 멈추면 이 차례는 이미 지나 있다(새 차례가 시작됐다). 그래도 그때까지 가져온 달은 멈춤 줄로 알린다
+        if (rangeOwner.current !== live || result.helperOld || result.extensionOld) return
+        const failed = new Set(result.failed.map((item) => item.month))
+        const fetched = months.slice(0, handled).filter((item) => !failed.has(item))
+        setRangeRun({ span: chosen, months: fetched, total: months.length, outcome: result.stopped ? 'stopped' : 'done' })
+      },
+    })
+  }
+
+  function selectSpan(key: string) {
+    const picked = SPAN_NAMES.find((item) => item.key === key)
+    if (picked) setSpan(picked.key)
   }
 
   function retryAfterError() {
@@ -274,9 +382,15 @@ export function RevenueScreen() {
   const needsRows = kind !== 'helper-old' && shown.state === 'idle' && !shown.helperOld && !shown.extensionOld
   if (needsRows && (saved === null || groups === null)) return <PageTitle>{TITLE}</PageTitle>
 
+  // 옛 달을 다 읽었을 때만 합쳐 그리고 그 달까지 넘긴다(읽는 중·실패면 최근 13달만, AC-3503.1)
+  const olderRows = older === null || older === 'failed' ? null : older
+  const days = olderRows ? [...olderRows.days, ...(saved?.days ?? [])] : (saved?.days ?? [])
+  const codes = olderRows ? [...olderRows.codes, ...(saved?.codes ?? [])] : (saved?.codes ?? [])
+  const firstShown = olderRows ? earliestMonth(days, oldest) : oldest
+
   const view = buildRevenueView({
-    days: saved?.days ?? [],
-    codes: saved?.codes ?? [],
+    days,
+    codes,
     groups: groups ?? [],
     fetchedAt: saved?.fetchedAt ?? null,
     month,
@@ -286,8 +400,33 @@ export function RevenueScreen() {
   })
 
   const periodRow = (period: PeriodView) => (
-    <PeriodRow period={period} canPrevious={month > oldest} canNext={month < latest} onPrevious={() => setMonth(addMonths(month, -1))} onNext={() => setMonth(addMonths(month, 1))} />
+    <PeriodRow
+      period={period}
+      bound={boundText(firstShown)}
+      canPrevious={month > firstShown}
+      canNext={month < latest}
+      onPrevious={() => setMonth(addMonths(month, -1))}
+      onNext={() => setMonth(addMonths(month, 1))}
+    />
   )
+
+  // 가져올 기간 칸(연결된 PC·옛 달을 읽은 뒤, AC-3501.1)과 그 아래 다 가져옴 알림(AC-3502.3)
+  const rangePanel = () => {
+    if (!connected || olderRows === null) return null
+    const missing = planFetch(today, new Set(days.map((row) => row.date)), spanMonths(span, today)).map((range) => monthOf(range.from))
+    const hint = spanHint(span, today, missing.length)
+    return <LoadRangePanel spans={SPAN_NAMES} selected={span} onSelect={selectSpan} hint={hint.text} disabled={hint.disabled} onLoad={() => loadSpan(missing)} />
+  }
+  // 옛 달을 다시 읽지 못했으면 칸처럼 알림도 없다(그 끝 달 글이 틀린다, AC-3503.1)
+  const done = rangeRun?.outcome === 'done' && olderRows ? doneNotice(rangeRun.months, firstShown) : null
+  const rangeBlock = (
+    <>
+      {rangePanel()}
+      {done && <RangeDoneNotice lead={done.lead} rest={done.rest} />}
+    </>
+  )
+  // 멈춤 줄(AC-3502.4): 남은 달 = 가져오려던 달 − 가져온 달(읽지 못한 달도 남은 달이다)
+  const stopped = rangeRun?.outcome === 'stopped' ? stoppedLine(rangeRun.span, rangeRun.months, rangeRun.total - rangeRun.months.length) : null
 
   // 저장 실패는 오류 카드 + [다시 저장]이고, 알림 줄은 읽지 못한 달이 있을 때만이다(AC-009.4)
   const failedItems = shown.failed ?? []
@@ -309,12 +448,18 @@ export function RevenueScreen() {
     case 'extension-old':
       return <UpgradeNeeded view={view} />
     case 'error':
-      return <RevenueError view={view} onRetry={retryAfterError} />
+      return (
+        <>
+          <RevenueError view={view} onRetry={retryAfterError} />
+          {stopped && <RangeStoppedLine text={stopped} />}
+        </>
+      )
     case 'empty':
       return (
         <div>
           <PageTitle>{view.title}</PageTitle>
           {periodRow(view.period)}
+          {rangeBlock}
           {notices(view.failed)}
           <EmptyMonthBlock empty={view.empty} />
         </div>
@@ -324,6 +469,7 @@ export function RevenueScreen() {
         <div>
           <TitleRow header={view.header} onRefresh={() => refetch([month])} />
           {periodRow(view.period)}
+          {rangeBlock}
           {notices(view.failed)}
           <Blocks blocks={view.blocks} {...groupProps} />
           <SafeLine text={view.safe} />
