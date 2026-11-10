@@ -8,6 +8,9 @@ import { firstMonth } from './summary'
 // 도우미는 한 번에 한 명령씩 처리하고 비트 DB에 부담을 주므로 달은 늘 차례로 가져온다.
 
 const MONTHS_TO_FETCH = 13
+/** 가져올 기간(spec revenue-load-range): 최근 1년(13달)·최근 2년(25달)·전체 기간(ALL_FROM_MONTH부터) */
+export type FetchSpan = '1y' | '2y' | 'all'
+export const ALL_FROM_MONTH = '2020-01'
 /** 그 달만 실패로 치고 다음 달을 계속하는 번호: 읽기·검사·저장 오류 */
 const MONTH_ONLY_CODES: ReadonlySet<string> = new Set(['E-BIT-READ-FAILED', 'E-BRIDGE-BAD-REPLY', 'E-REVENUE-SAVE-FAILED'])
 const HELPER_OLD_CODE = 'E-HELPER-UNKNOWN-COMMAND'
@@ -24,12 +27,23 @@ function dueRange(month: string, today: string): DateRange {
   return { from, to: compareYmd(to, yesterday) <= 0 ? to : yesterday }
 }
 
-/** 어제가 속한 달부터 거꾸로 13달 가운데 와야 할 날이 하나라도 없는 달. 최근 달부터, 달마다 전체 기간(코드 합계가 달 전체여야 해서) */
-export function planFetch(today: string, savedDays: ReadonlySet<string>): DateRange[] {
+/** 어제가 속한 달부터 거꾸로 months달(기본 13달) 가운데 와야 할 날이 하나라도 없는 달. 최근 달부터, 달마다 전체 기간(코드 합계가 달 전체여야 해서) */
+export function planFetch(today: string, savedDays: ReadonlySet<string>, months: number = MONTHS_TO_FETCH): DateRange[] {
   const latest = firstMonth(today)
-  return Array.from({ length: MONTHS_TO_FETCH }, (_, back) => dueRange(addMonths(latest, -back), today)).filter((range) =>
+  return Array.from({ length: months }, (_, back) => dueRange(addMonths(latest, -back), today)).filter((range) =>
     eachDay(range).some((day) => !savedDays.has(day)),
   )
+}
+
+/** 고른 기간의 달 수(최근 달 포함). 전체 기간은 ALL_FROM_MONTH ~ 최근 달(오늘이 1일이면 지난달) */
+export function spanMonths(span: FetchSpan, today: string): number {
+  if (span === '1y') return MONTHS_TO_FETCH
+  if (span === '2y') return 25
+  // 날짜 계산은 dates.ts로만: 최근 달에서 한 달씩 거꾸로 세어 ALL_FROM_MONTH까지('YYYY-MM'은 글자 순서가 곧 달 순서)
+  const latest = firstMonth(today)
+  let count = 1
+  while (addMonths(latest, -count) >= ALL_FROM_MONTH) count++
+  return count
 }
 
 export type SyncResult = { stopped: string | null; failed: { month: string; code: string }[]; helperOld: boolean; extensionOld: boolean }
