@@ -338,15 +338,24 @@ describe('AC-3609.5 오류 때 칸 그대로', () => {
     return lead()
   }
 
-  it("AC-3609.5: 도우미가 없거나 옛 판이라 거절되면(E-HELPER-MISSING) '도우미를 새 판으로 설치해 주세요.'", async () => {
-    expect(await failsWith(fail('E-HELPER-MISSING'))).toBe('도우미를 새 판으로 설치해 주세요.')
+  it("AC-3609.5: ERP 도우미가 없어 연결이 끊기면(E-HELPER-MISSING) 'ERP 도우미를 설치해 주세요.'", async () => {
+    expect(await failsWith(fail('E-HELPER-MISSING'))).toBe('ERP 도우미를 설치해 주세요.')
   })
 
-  it("AC-3609.5: 도우미 오류 번호면 '비트에서 읽지 못했어요 ({번호})'", async () => {
+  it("AC-3609.5: 이 PC가 등록되지 않았으면(E-BIT-NOT-REGISTERED) '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.'", async () => {
+    expect(await failsWith(fail('E-BIT-NOT-REGISTERED'))).toBe(
+      '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.',
+    )
+  })
+
+  it("AC-3609.5: 그 밖의 도우미 오류 번호면 '비트에서 읽지 못했어요 ({번호})'", async () => {
     expect(await failsWith(fail('E-BIT-READ-FAILED'))).toBe('비트에서 읽지 못했어요 (E-BIT-READ-FAILED)')
     handle?.stop()
     document.body.innerHTML = ''
     expect(await failsWith(fail('E-HELPER-UNKNOWN-COMMAND'))).toBe('비트에서 읽지 못했어요 (E-HELPER-UNKNOWN-COMMAND)')
+    handle?.stop()
+    document.body.innerHTML = ''
+    expect(await failsWith(fail('E-BIT-HOSPITAL-MISMATCH'))).toBe('비트에서 읽지 못했어요 (E-BIT-HOSPITAL-MISMATCH)')
   })
 
   it("AC-3609.5: 서비스 워커가 120초를 넘겨 E-HELPER-TIMEOUT으로 답하면 '도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.'", async () => {

@@ -23,6 +23,8 @@ const TODAY = /(\d{4}-\d{2}-\d{2})\s*\(오늘\)/
 /** 서비스 워커가 120초를 넘겼을 때 주는 번호(background.ts) */
 const E_HELPER_TIMEOUT = 'E-HELPER-TIMEOUT'
 const E_HELPER_MISSING = 'E-HELPER-MISSING'
+/** ERP 도우미가 이 PC 등록을 찾지 못함(설치 때 등록을 취소했거나 못 한 때, AC-3606.3) */
+const E_BIT_NOT_REGISTERED = 'E-BIT-NOT-REGISTERED'
 const E_BRIDGE_BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
 /** 서비스 워커에 닿지 못함(확장을 다시 읽어 이 화면의 내용 스크립트가 끊긴 때 등) */
 const E_BRIDGE_DISCONNECTED = 'E-BRIDGE-DISCONNECTED'
@@ -113,6 +115,7 @@ type Outcome = { kind: 'day'; day: ClosingDay } | { kind: 'view'; view: View }
 
 const errorView = (code: unknown): View => {
   if (code === E_HELPER_MISSING) return { kind: 'errHelper' }
+  if (code === E_BIT_NOT_REGISTERED) return { kind: 'errNotRegistered' }
   if (code === E_HELPER_TIMEOUT) return { kind: 'errTimeout' }
   return { kind: 'errBit', code: typeof code === 'string' && ERROR_CODE.test(code) ? code : E_BRIDGE_BAD_REPLY }
 }

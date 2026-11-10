@@ -1,5 +1,6 @@
 // ERP 마감일지 화면 오른쪽 아래의 [비트 값 채우기] 단추와 결과 안내(REQ-3609, design.md 5절).
 // 글·모양은 승인된 목업 docs/mockups/erp-closing-fill/ ①~⑪ 그대로다(목업의 노란 띠·점선 표시는 앱에 없다).
+// 다만 requirements 기본값 (바)대로 'ERP 도우미 없음'(helperMissing)·'이 PC 등록 안 됨'(notRegistered) 두 줄은 명세 글을 쓴다.
 // - ERP 화면 글꼴·색이 스며들거나 우리 모양이 ERP를 건드리지 않게 그림자 뿌리 안에 그린다. ERP 뿌리(div#root) 밖 body 끝에 붙는다
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·칸 이름만 보이고 환자 정보는 없다
 import type { FillResult } from './fill.js'
@@ -21,7 +22,8 @@ export const TEXT = {
   end: '확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.',
   first: '처음 한 번 설정 화면에서 코드를 확인하고 [저장]을 눌러 주세요.',
   firstHelp: '설정 화면을 새 탭으로 열었어요. 아무 칸도 바꾸지 않았어요.',
-  helperMissing: '도우미를 새 판으로 설치해 주세요.',
+  helperMissing: 'ERP 도우미를 설치해 주세요.',
+  notRegistered: '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.',
   bitFailed: '비트에서 읽지 못했어요',
   timeout: '도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.',
   untouched: '아무 칸도 바꾸지 않았어요.',
@@ -52,6 +54,7 @@ export type View =
   | { kind: 'done'; date: string; result: FillResult; day: ClosingDay }
   | { kind: 'first' }
   | { kind: 'errHelper' }
+  | { kind: 'errNotRegistered' }
   | { kind: 'errBit'; code: string }
   | { kind: 'errTimeout' }
   | { kind: 'errDate' }
@@ -191,6 +194,8 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
         return [lead(TEXT.first), small(TEXT.firstHelp), settingsButton()]
       case 'errHelper':
         return [lead(TEXT.helperMissing, true), small(TEXT.untouched)]
+      case 'errNotRegistered':
+        return [lead(TEXT.notRegistered, true), small(TEXT.untouched)]
       case 'errBit':
         return [lead(h('span', {}, `${TEXT.bitFailed} `, h('span', { class: 'nw' }, `(${view.code})`)), true), small(TEXT.untouched)]
       case 'errTimeout':

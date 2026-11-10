@@ -235,7 +235,8 @@ describe('AC-3609.2·3609.3·3609.5 안내 글', () => {
   })
 
   it.each<[string, View, string]>([
-    ['도우미 없음·옛 판', { kind: 'errHelper' }, '도우미를 새 판으로 설치해 주세요.'],
+    ['ERP 도우미 없음', { kind: 'errHelper' }, 'ERP 도우미를 설치해 주세요.'],
+    ['이 PC 등록 안 됨', { kind: 'errNotRegistered' }, '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.'],
     ['도우미 오류 번호', { kind: 'errBit', code: 'E-BIT-READ-FAILED' }, '비트에서 읽지 못했어요 (E-BIT-READ-FAILED)'],
     ['120초', { kind: 'errTimeout' }, '도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.'],
   ])("AC-3609.5: %s 이면 오류 머리글과 '아무 칸도 바꾸지 않았어요.'이고 [설정 열기]는 없다", (_name, view, lead) => {
@@ -265,15 +266,31 @@ describe('AC-3609.2·3609.3·3609.5 안내 글', () => {
 })
 
 describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
-  it('AC-3609.4: 고정 글은 모두 목업 파일에 그대로 있다', () => {
+  /** 기본값 (바): 목업과 다르게 바꾼 두 줄(ERP 도우미 없음·이 PC 등록 안 됨). 명세 글이 이긴다 */
+  const CHANGED_FROM_MOCKUP: string[] = ['helperMissing', 'notRegistered']
+
+  it('AC-3609.4: 고정 글은 기본값 (바)의 두 줄 말고 모두 목업 파일에 그대로 있다', () => {
     for (const [name, value] of Object.entries(TEXT)) {
-      if (typeof value === 'string') expect(MOCKUP, name).toContain(value)
+      if (typeof value === 'string' && !CHANGED_FROM_MOCKUP.includes(name)) expect(MOCKUP, name).toContain(value)
     }
+  })
+
+  it('AC-3609.5: 기본값 (바)의 두 줄은 requirements (바)·AC-3609.5 글 그대로이고 옛 글은 쓰지 않는다', () => {
+    expect(TEXT.helperMissing).toBe('ERP 도우미를 설치해 주세요.')
+    expect(TEXT.notRegistered).toBe('이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.')
+    const defaultBa = REQUIREMENTS.split('\n').find((line) => line.startsWith('- (바)')) ?? ''
+    const ac = REQUIREMENTS.split('\n').find((line) => line.startsWith('- AC-3609.5:')) ?? ''
+    for (const name of CHANGED_FROM_MOCKUP) {
+      const value = TEXT[name as keyof typeof TEXT]
+      expect(defaultBa, name).toContain(`'${String(value)}'`)
+      expect(ac, name).toContain(`'${String(value)}'`)
+    }
+    expect(Object.values(TEXT)).not.toContain('도우미를 새 판으로 설치해 주세요.')
   })
 
   it('AC-3609.4: 경고 고정 글은 design.md 5절에, 오류·처음 안내 글은 requirements AC-3609.2·3609.3·3609.5에 그대로 있다', () => {
     for (const line of [W.moneyUnconfirmed, W.splitUnconfirmed, W.noHistory, W.inpatient, END]) expect(DESIGN).toContain(line)
-    for (const value of [TEXT.first, TEXT.noDate, TEXT.dateChanged, TEXT.helperMissing, TEXT.timeout]) {
+    for (const value of [TEXT.first, TEXT.noDate, TEXT.dateChanged, TEXT.helperMissing, TEXT.notRegistered, TEXT.timeout]) {
       expect(REQUIREMENTS).toContain(value)
     }
   })
