@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ERRORS, OTHER } from './errors'
 import { startOptions } from './options'
 import { GROUP_KEYS, GROUP_NAMES, RSV_NAMES, RSV_ROWS, SETTINGS_KEY } from './types'
 import type { ClosingCodes, Settings } from './types'
@@ -21,6 +22,8 @@ const SAMPLE: [string, string, number][] = [
   ['.', '도수상담', 128], ['HA280', '관절조영', 84], ['ESWT17', '체외충격파(6000타)', 25], ['MA4', '도수치료(30분) 비급여', 11],
   // 가운데 빈칸 코드(AC-3607.7)·씨암·SONO 매출 규칙에 더할 만한 코드(AC-3607.6)
   ['PROLO C', '증식치료(C)', 4], ['LA358', '주사 시술', 2],
+  // 2026-11-10 밤에 더한 처음 코드(TASK-14). 이 목록에 있으니 처음 [저장]에 '처방 없는 코드' 묻기(AC-3615.4)가 나오지 않는다
+  ['MM085', '간섭파전류치료', 40], ['MM080', '경피적전기신경자극치료', 30], ['MM020', '견인치료', 20], ['CRYO3', '크라이오(냉동치료) 2', 10],
 ]
 const CODES: ClosingCodes = {
   codes: [
@@ -78,6 +81,22 @@ const chipText = (key: string, code: string) =>
   parts([...row(key).querySelectorAll('.chip')].find((c) => text(c.querySelector('b')) === code))
 const status = () => text($('#optStatus'))
 const flush = () => new Promise((r) => setTimeout(r, 0))
+/** 저장 바 바로 위 알림 상자(묻기·막는 글)의 글 줄과 단추 */
+const askLines = () => [...document.querySelectorAll('#optAsk .msg > *')].map(text)
+const askButtons = () => [...document.querySelectorAll('#optAsk .acts button')].map(text)
+const askHidden = () => $('#optAsk').hidden
+const askButton = (name: string) => $<HTMLButtonElement>(`#optAsk [data-ask="${name}"]`)
+/** 탭을 닫거나 새로고침할 때(beforeunload) 크롬 나가기 확인 창이 뜨는지(막았는지) */
+function leaveBlocked(): boolean {
+  const event = new Event('beforeunload', { cancelable: true })
+  window.dispatchEvent(event)
+  return event.defaultPrevented
+}
+/** 도우미 목록에서 몇 코드를 뺀 답 */
+const listWithout = (...drop: string[]) => ({
+  type: 'result',
+  data: { ...CODES, codes: CODES.codes.filter((c) => !drop.includes(c.code)) },
+})
 
 function type(input: HTMLInputElement, value: string) {
   input.value = value
@@ -144,7 +163,10 @@ describe('AC-3607.1 화면 차례와 글', () => {
     await open()
     const secs = $$('.osec').map((s) => [text(s.querySelector('h2')), text(s.querySelector(':scope > p'))])
     expect(secs).toEqual([
-      ['치료별 건수 · 매출', '그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그 환자들의 그날 총진료비 합을 매출로 채워요.'],
+      [
+        '치료별 건수 · 매출',
+        "그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그날 고른 코드 처방 줄의 금액 합을 매출로 채워요. 씨암 · SONO 매출은 그 줄의 '매출로 셀 코드'로 세요.",
+      ],
       ['진료 · 치료현황만', '고른 코드를 받은 환자 수를 업무일지 1 진료 · 치료현황에 채워요.'],
       ['운영 지표', '주사1회환자는 그날 고른 주사를 맞았고 그 전 비트 기록에 고른 주사가 없는 환자예요.'],
       ['환자현황', '고른 코드를 받은 환자(신환 · 90일초진 아님)를 물리치료내원으로 세고, 재진 · 진찰료 산정안함에서 빼요.'],
@@ -406,6 +428,7 @@ describe('AC-3607.3 저장·처음 값으로', () => {
       etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
       reservations: { eswt: ['1'] },
       amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
+      defaultsSeen: 2,
     })
     expect(status()).toBe('저장했어요.')
     expect($('#optStatus').classList.contains('saved')).toBe(true)
@@ -425,9 +448,10 @@ describe('AC-3607.3 저장·처음 값으로', () => {
     expect(status()).toBe('저장했어요.')
   })
 
-  it('AC-3607.3: [처음 값으로]는 화면만 처음 값으로 바꾸고 저장하지 않는다', async () => {
+  it('AC-3607.3 AC-3615.5: [처음 값으로] → [바꾸기]는 화면의 고른 코드만 처음 값으로 바꾸고 저장하지 않는다(예약 메모는 그대로)', async () => {
     const { data, local } = await open({ stored: SAVED })
     $('#optReset').click()
+    askButton('reset').click()
     await flush()
     expect(chipCodes('manual')).toEqual(['도수'])
     expect(chipCodes('eswt')).toEqual(['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'])
@@ -435,7 +459,7 @@ describe('AC-3607.3 저장·처음 값으로', () => {
     expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
     expect(chipCodes('etc1')).toEqual(['CRYO', 'CRYO3'])
     expect(chipCodes('manualConsult')).toEqual([])
-    expect($('[data-rsv="manual"]').querySelectorAll('.chip')).toHaveLength(0)
+    expect([...$('[data-rsv="manual"]').querySelectorAll('.chip b')].map(text)).toEqual(['14번', '20번', '22번'])
     expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
     expect($('#optStatus').classList.contains('dirty')).toBe(true)
     expect(local.set).not.toHaveBeenCalled()
@@ -464,8 +488,8 @@ describe('AC-3607.4 도우미에서 코드 목록을 받지 못했을 때·목�
     })
     const err = $('.notice.err')
     expect(text(err.querySelector('b'))).toBe('도우미에서 코드 목록을 받지 못했어요 (E-HELPER-MISSING)')
-    expect(text(err)).toContain(
-      '고른 코드는 그대로 두고 저장할 수 있어요. 코드를 새로 찾으려면 도우미를 켠 뒤 이 화면을 다시 열어 주세요.',
+    expect(parts(err)).toBe(
+      '도우미에서 코드 목록을 받지 못했어요 (E-HELPER-MISSING) ERP 도우미가 이 PC에 없어요. ERP 도우미를 설치해 주세요. 받은 zip을 풀고 install.cmd를 두 번 누르면 돼요. 고른 코드는 그대로 두고 저장할 수 있어요. 고친 뒤 이 화면을 새로고침(F5)하면 목록을 다시 받아요.',
     )
     expect($$('.notice.ok')).toHaveLength(0)
     expect(chipText('eswt', 'ESWT7')).toBe('ESWT7 ×')
@@ -642,5 +666,384 @@ describe('AC-3607.7 가운데 빈칸 코드 고르기', () => {
     expect((data[SETTINGS_KEY] as Settings).picks.manual).toEqual(['도수', 'PROLO C'])
     expect(chipCodes('manual')).toEqual(['도수', 'PROLO C'])
     expect(chipText('manual', 'PROLO C')).toBe('PROLO C 증식치료(C) ×')
+  })
+})
+
+describe('AC-3607.4 AC-3614.1 코드 목록 오류 줄은 errors.ts 글', () => {
+  const TAIL = '고른 코드는 그대로 두고 저장할 수 있어요. 고친 뒤 이 화면을 새로고침(F5)하면 목록을 다시 받아요.'
+
+  it("AC-3607.4 AC-3614.1: 번호마다 굵은 줄 · '{무엇이} {어떻게}' · 끝 줄이고 '도우미를 켠 뒤'는 없다", async () => {
+    for (const [code, said] of Object.entries(ERRORS)) {
+      await open({ reply: { type: 'error', code } })
+      const err = $('.notice.err')
+      expect(parts(err), code).toBe(`도우미에서 코드 목록을 받지 못했어요 (${code}) ${said.what} ${said.how} ${TAIL}`)
+      expect(text(err), code).not.toContain('도우미를 켠 뒤')
+    }
+  })
+
+  it("AC-3614.1: 표에 없는 번호는 '그 밖' 글, 번호 모양이 아니면 E-BRIDGE-BAD-REPLY 글이다", async () => {
+    await open({ reply: { type: 'error', code: 'E-SOMETHING-NEW' } })
+    expect(parts($('.notice.err'))).toBe(`도우미에서 코드 목록을 받지 못했어요 (E-SOMETHING-NEW) ${OTHER.what} ${OTHER.how} ${TAIL}`)
+    await open({ reply: { type: 'error', code: 'bad code' } })
+    const bad = ERRORS['E-BRIDGE-BAD-REPLY']
+    expect(parts($('.notice.err'))).toBe(`도우미에서 코드 목록을 받지 못했어요 (E-BRIDGE-BAD-REPLY) ${bad.what} ${bad.how} ${TAIL}`)
+  })
+})
+
+describe('AC-3615.1 코드 목록을 받는 동안', () => {
+  /** 답을 시험이 정할 때까지 붙잡아 두는 도우미 */
+  function holdReply() {
+    let settle: { ok: (v: unknown) => void; fail: (e: unknown) => void } = { ok: () => {}, fail: () => {} }
+    const reply = () =>
+      new Promise((ok, fail) => {
+        settle = { ok, fail }
+      })
+    return { reply, settle: () => settle }
+  }
+
+  it("AC-3615.1: 받는 동안 '코드 목록을 받는 중이에요(30초쯤).'가 보이고, 받으면 받은 줄로 바뀐다", async () => {
+    const held = holdReply()
+    fakeChrome({ reply: held.reply })
+    mountPage()
+    const started = startOptions()
+    await flush()
+    expect(text($('.notice.wait'))).toBe('코드 목록을 받는 중이에요(30초쯤).')
+    expect($$('.notice.ok')).toHaveLength(0)
+    expect($$('.notice.err')).toHaveLength(0)
+    // 받는 중에도 고른 코드는 보인다(이름 없이)
+    expect(chipText('carm', 'CARM1')).toBe('CARM1 ×')
+    held.settle().ok({ type: 'result', data: CODES })
+    await started
+    expect($$('.notice.wait')).toHaveLength(0)
+    expect(text($('.notice.ok'))).toBe('비트에서 최근 1년 처방 코드 1,284개와 예약 메모 6개를 받았어요.')
+  })
+
+  it('AC-3615.1 AC-3607.4: 못 받으면 받는 중 줄이 오류 줄로 바뀐다', async () => {
+    const held = holdReply()
+    fakeChrome({ reply: held.reply })
+    mountPage()
+    const started = startOptions()
+    await flush()
+    expect($$('.notice.wait')).toHaveLength(1)
+    held.settle().fail(new Error('Could not establish connection. Receiving end does not exist.'))
+    await started
+    expect($$('.notice.wait')).toHaveLength(0)
+    expect(text($('.notice.err b'))).toBe('도우미에서 코드 목록을 받지 못했어요 (E-HELPER-MISSING)')
+  })
+})
+
+describe('AC-3615.2 저장하지 않은 바꿈이 있으면 닫을 때 묻는다(beforeunload)', () => {
+  it('AC-3615.2: 바꾼 것이 없으면 막지 않고, 바꾸면 막고, 저장하면 다시 막지 않는다', async () => {
+    await open({ stored: SAVED })
+    expect(leaveBlocked()).toBe(false)
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    expect(leaveBlocked()).toBe(true)
+    $('#optSave').click()
+    await flush()
+    expect(status()).toBe('저장했어요.')
+    expect(leaveBlocked()).toBe(false)
+  })
+
+  it('AC-3615.2: 처음 열어 저장한 적이 없어도 바꾼 것이 없으면 막지 않는다. [처음 값으로] → [바꾸기]는 바꾼 것이다', async () => {
+    await open()
+    expect(status()).toBe('아직 한 번도 저장하지 않았어요.')
+    expect(leaveBlocked()).toBe(false)
+    $('#optReset').click()
+    expect(leaveBlocked()).toBe(false)
+    askButton('reset').click()
+    expect(leaveBlocked()).toBe(true)
+  })
+})
+
+describe('AC-3615.3 저장 실패', () => {
+  it('AC-3615.3: chrome.storage가 쓰지 못하면 저장 실패 글이고 바꾼 것·저장하지 않음 상태가 그대로다', async () => {
+    const { data, local } = await open({ stored: SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    local.set.mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'))
+    $('#optSave').click()
+    await flush()
+    expect(local.set).toHaveBeenCalledTimes(1)
+    expect(status()).toBe('저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.')
+    expect($('#optStatus').classList.contains('dirty')).toBe(true)
+    expect($('#optStatus').classList.contains('saved')).toBe(false)
+    expect($<HTMLInputElement>('[data-etc="etc2"]').value).toBe('핫팩')
+    expect(leaveBlocked()).toBe(true)
+    expect(data[SETTINGS_KEY]).toEqual(SAVED)
+    // 크롬 오류 글은 보이지 않는다
+    expect(document.body.textContent).not.toContain('QUOTA')
+    // 다시 누르면 쓴다
+    $('#optSave').click()
+    await flush()
+    expect(status()).toBe('저장했어요.')
+    expect((data[SETTINGS_KEY] as Settings).etcNames.etc2).toBe('핫팩')
+    expect(leaveBlocked()).toBe(false)
+  })
+
+  it('AC-3615.3: 처음 저장이 실패해도 처음 안내와 실패 글이 남는다', async () => {
+    const { data, local } = await open()
+    local.set.mockRejectedValueOnce(new Error('IO error'))
+    $('#optSave').click()
+    await flush()
+    expect(status()).toBe('저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.')
+    expect($$('.notice.first')).toHaveLength(1)
+    expect(data[SETTINGS_KEY]).toBeUndefined()
+  })
+})
+
+describe('AC-3615.4 [저장] 때 최근 1년에 처방이 없는 코드 묻기', () => {
+  const NOTE = '다른 의원 코드거나 잘못 고른 코드면 그 칸은 매일 0이 돼요.'
+
+  it('AC-3615.4: 처음 저장이면 고른 코드 모두를 보고, 목록에 없는 코드 N개를 묻는다. [돌아가기]는 쓰지 않는다', async () => {
+    const { local } = await open({ reply: listWithout('CRYO3', 'AA222') })
+    expect(askHidden()).toBe(true)
+    $('#optSave').click()
+    await flush()
+    expect(askHidden()).toBe(false)
+    expect(askLines()).toEqual(['최근 1년에 처방이 없는 코드 2개 — 맞나요?', '기타1 CRYO3 · 물리치료내원 AA222', NOTE])
+    expect(askButtons()).toEqual(['그대로 저장', '돌아가기'])
+    expect(document.activeElement).toBe(askButton('back'))
+    expect(local.set).not.toHaveBeenCalled()
+    askButton('back').click()
+    await flush()
+    expect(askHidden()).toBe(true)
+    expect(local.set).not.toHaveBeenCalled()
+    expect(status()).toBe('아직 한 번도 저장하지 않았어요.')
+  })
+
+  it('AC-3615.4: [그대로 저장]이면 쓴다', async () => {
+    const { data, local } = await open({ reply: listWithout('CRYO3', 'AA222') })
+    $('#optSave').click()
+    await flush()
+    askButton('keep').click()
+    await flush()
+    expect(local.set).toHaveBeenCalledTimes(1)
+    expect((data[SETTINGS_KEY] as Settings).picks.ptVisit).toEqual(['AA222'])
+    expect((data[SETTINGS_KEY] as Settings).picks.etc1).toEqual(['CRYO', 'CRYO3'])
+    expect(askHidden()).toBe(true)
+    expect(status()).toBe('저장했어요.')
+  })
+
+  it('AC-3615.4: 저장값에 있던 코드(AA222·ESWT22)는 목록에 없어도 묻지 않는다', async () => {
+    const { data, local } = await open({ stored: SAVED, reply: listWithout('AA222') })
+    expect(chipText('ptVisit', 'AA222')).toBe('AA222 (최근 1년 처방 없음) ×')
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    $('#optSave').click()
+    await flush()
+    expect(askHidden()).toBe(true)
+    expect(local.set).toHaveBeenCalledTimes(1)
+    expect((data[SETTINGS_KEY] as Settings).etcNames.etc2).toBe('핫팩')
+  })
+
+  it('AC-3615.4: 새로 더한 코드(새 처음 코드 [더하기]·[처음 값으로])가 목록에 없으면 그것만 묻는다', async () => {
+    const { local } = await open({ stored: SAVED, reply: listWithout('AA222', 'CRYO3', 'MM020') })
+    $('[data-fresh]').click()
+    $('#optSave').click()
+    await flush()
+    expect(askLines()).toEqual(['최근 1년에 처방이 없는 코드 2개 — 맞나요?', '물리치료 MM020 · 기타1 CRYO3', NOTE])
+    expect(local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3615.4: 코드 목록을 받지 못했으면 묻지 않고 쓴다', async () => {
+    const { local } = await open({ reply: { type: 'error', code: 'E-HELPER-MISSING' } })
+    $('#optSave').click()
+    await flush()
+    expect(askHidden()).toBe(true)
+    expect(local.set).toHaveBeenCalledTimes(1)
+    expect(status()).toBe('저장했어요.')
+  })
+})
+
+describe('AC-3615.5 [처음 값으로]는 먼저 묻는다', () => {
+  const STORED: Settings = {
+    ...SAVED,
+    etcNames: { etc1: '크라이오', etc2: '핫팩', etc3: '', etc4: '' },
+    amounts: { carm: { prefixes: ['KK'], codes: ['LA358'] }, sono: { prefixes: [], codes: [] } },
+    overlap: 'sono',
+  }
+  const prefixChips = (key: string) => [...$(`[data-amount="${key}"]`).querySelectorAll('[data-prefixes] .chip b')].map(text)
+  const extraChips = (key: string) => [...$(`[data-amount="${key}"]`).querySelectorAll('[data-extras] .chip b')].map(text)
+
+  it('AC-3615.5: 묻는 글과 [바꾸기]·[그만두기]가 나오고, 아직 아무것도 바꾸지 않는다. [그만두기]면 그대로다', async () => {
+    const { local } = await open({ stored: STORED })
+    $('#optReset').click()
+    expect(askLines()).toEqual([
+      '고른 코드와 씨암·SONO 매출 규칙을 처음 값으로 바꿀까요?',
+      '예약 메모 번호와 기타 줄 이름은 그대로 둬요. 바꾼 뒤 [저장]을 눌러야 저장돼요.',
+    ])
+    expect(askButtons()).toEqual(['바꾸기', '그만두기'])
+    expect(document.activeElement).toBe(askButton('cancel'))
+    expect(chipCodes('manual')).toEqual(['도수', 'MA4'])
+    expect(status()).toBe('저장했어요.')
+    askButton('cancel').click()
+    expect(askHidden()).toBe(true)
+    expect(chipCodes('manual')).toEqual(['도수', 'MA4'])
+    expect(prefixChips('carm')).toEqual(['KK+숫자'])
+    expect(status()).toBe('저장했어요.')
+    expect(local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3615.5: [바꾸기]면 고른 코드·매출 규칙만 처음 값이고 기타 줄 이름·예약 메모·저장된 overlap은 그대로, 저장은 [저장]으로', async () => {
+    const { data, local } = await open({ stored: STORED })
+    $('#optReset').click()
+    askButton('reset').click()
+    expect(askHidden()).toBe(true)
+    expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
+    expect(prefixChips('carm')).toEqual(['LA+숫자'])
+    expect(extraChips('carm')).toEqual([])
+    expect(prefixChips('sono')).toEqual(['LA+숫자'])
+    expect($<HTMLInputElement>('[data-etc="etc2"]').value).toBe('핫팩')
+    expect([...$('[data-rsv="eswt"]').querySelectorAll('.chip b')].map(text)).toEqual(['1번'])
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    expect(local.set).not.toHaveBeenCalled()
+    $('#optSave').click()
+    await flush()
+    expect(data[SETTINGS_KEY]).toEqual({
+      v: 1,
+      picks: {
+        carm: ['CARM1'],
+        sono: ['SONO1'],
+        arthro: ['HA280'],
+        manual: ['도수'],
+        eswt: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'],
+        pt: ['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'],
+        etc1: ['CRYO', 'CRYO3'],
+        ptVisit: ['AA222'],
+      },
+      etcNames: { etc1: '크라이오', etc2: '핫팩', etc3: '', etc4: '' },
+      reservations: { manual: ['14', '20', '22'], eswt: ['1'] },
+      amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
+      overlap: 'sono',
+      defaultsSeen: 2,
+    })
+  })
+})
+
+describe('AC-3615.6 새 처음 코드', () => {
+  const freshLines = () => [...$('.notice.fresh').querySelectorAll('p')].map(text)
+
+  it("AC-3615.6: 저장값에 defaultsSeen이 없고(1) 처음 값 코드가 빠졌으면 맨 위에 '새 처음 코드' 줄과 [더하기]가 있다", async () => {
+    await open({ stored: SAVED })
+    expect($('#optMain').firstElementChild).toBe($('.notice.fresh'))
+    expect(freshLines()).toEqual([
+      '새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 기타1 CRYO3',
+      '[더하기]를 누르면 화면에 더해요. [저장]을 눌러야 저장돼요.',
+    ])
+    expect(text($('[data-fresh]'))).toBe('더하기')
+    expect(status()).toBe('저장했어요.')
+  })
+
+  it('AC-3615.6: [더하기]는 화면에 더하고(저장은 안 함) 줄이 사라지며, [저장]하면 defaultsSeen 2로 써서 다시 열어도 안 나온다', async () => {
+    const { data, local } = await open({ stored: SAVED })
+    $('[data-fresh]').click()
+    expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
+    expect(chipCodes('etc1')).toEqual(['CRYO', 'CRYO3'])
+    expect($$('.notice.fresh')).toHaveLength(0)
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    expect(local.set).not.toHaveBeenCalled()
+    $('#optSave').click()
+    await flush()
+    const saved = data[SETTINGS_KEY] as Settings
+    expect(saved.defaultsSeen).toBe(2)
+    expect(saved.picks.pt).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
+    await open({ stored: saved })
+    expect($$('.notice.fresh')).toHaveLength(0)
+  })
+
+  it('AC-3615.6: 더하지 않고 [저장]해도 defaultsSeen 2로 써서 다시 나오지 않는다', async () => {
+    const { data } = await open({ stored: SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    $('#optSave').click()
+    await flush()
+    expect($$('.notice.fresh')).toHaveLength(0)
+    const saved = data[SETTINGS_KEY] as Settings
+    expect(saved.defaultsSeen).toBe(2)
+    expect(saved.picks.pt).toEqual(['MM010', 'MM015', 'MM011'])
+    await open({ stored: saved })
+    expect($$('.notice.fresh')).toHaveLength(0)
+  })
+
+  it('AC-3615.6: 저장한 적이 없거나 defaultsSeen이 2면 나오지 않는다', async () => {
+    await open()
+    expect($$('.notice.fresh')).toHaveLength(0)
+    await open({ stored: { ...SAVED, defaultsSeen: 2 } })
+    expect($$('.notice.fresh')).toHaveLength(0)
+  })
+
+  it('AC-3615.6: [더하기]도 항목마다 20개까지만 더한다', async () => {
+    const nineteen = Array.from({ length: 19 }, (_, i) => `Z${String(i).padStart(4, '0')}`)
+    await open({ stored: { ...SAVED, picks: { ...SAVED.picks, pt: nineteen } } })
+    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM010·MM015·MM011·MM085·MM080·MM020 · 기타1 CRYO3')
+    $('[data-fresh]').click()
+    expect(chipCodes('pt')).toEqual([...nineteen, 'MM010'])
+    expect(chipCodes('etc1')).toEqual(['CRYO', 'CRYO3'])
+  })
+})
+
+describe('AC-3615.7 [저장] 때 겹침 막기', () => {
+  const FIXED = (n: number, name: string) => `기타${n} 줄 이름 ‘${name}’은 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.`
+  const END = '저장하지 않았어요.'
+
+  it("AC-3615.7: 기타 이름이 업무일지 2 고정 줄 이름('도수'·'sono'·' 도수 ')이면 쓰지 않고 막는 글을 보인다", async () => {
+    for (const [typed, shown] of [['도수', '도수'], ['sono', 'sono'], [' 도수 ', '도수']]) {
+      const { local } = await open({ stored: SAVED })
+      type($<HTMLInputElement>('[data-etc="etc2"]'), typed)
+      $('#optSave').click()
+      await flush()
+      expect(askLines(), typed).toEqual([FIXED(2, shown), END])
+      expect(askButtons(), typed).toEqual([])
+      expect(local.set, typed).not.toHaveBeenCalled()
+      expect(status(), typed).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    }
+  })
+
+  it("AC-3615.7: '도수2'는 저장된다", async () => {
+    const { data } = await open({ stored: SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '도수2')
+    $('#optSave').click()
+    await flush()
+    expect(askHidden()).toBe(true)
+    expect((data[SETTINGS_KEY] as Settings).etcNames.etc2).toBe('도수2')
+  })
+
+  it('AC-3615.7: 두 기타 줄 이름이 같거나 같은 예약 메모 번호가 두 줄에 있으면 겹친 것마다 한 줄 + 저장하지 않았어요', async () => {
+    const { local } = await open({ stored: SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    type($<HTMLInputElement>('[data-etc="etc3"]'), '핫팩')
+    choose($<HTMLSelectElement>('[data-radd="eswt"]'), '14')
+    $('#optSave').click()
+    await flush()
+    expect(askLines()).toEqual([
+      '기타2·기타3 줄 이름이 ‘핫팩’으로 같아요. 서로 다르게 넣어 주세요.',
+      '예약 메모 14번이 도수·충격파 줄에 함께 있어요. 한 줄에만 두세요.',
+      END,
+    ])
+    expect(local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3615.7: 겹침 검사가 처방 없는 코드 묻기보다 먼저이고, 고치면 그다음 묻기가 나온다', async () => {
+    const { local } = await open({ reply: listWithout('AA222') })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '물리치료')
+    $('#optSave').click()
+    await flush()
+    expect(askLines()).toEqual([FIXED(2, '물리치료'), END])
+    // 이름을 고치면 막는 글은 닫힌다
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    expect(askHidden()).toBe(true)
+    $('#optSave').click()
+    await flush()
+    expect(askLines()[0]).toBe('최근 1년에 처방이 없는 코드 1개 — 맞나요?')
+    expect(local.set).not.toHaveBeenCalled()
+  })
+})
+
+describe("AC-3615.8 '치료별 건수 · 매출' 안내 글", () => {
+  it("AC-3615.8: 매출은 고른 코드 처방 줄 금액 합이라 쓰고 '총진료비'는 쓰지 않는다", async () => {
+    await open()
+    const about = text($$('.osec')[0].querySelector(':scope > p'))
+    expect(about).toBe(
+      "그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그날 고른 코드 처방 줄의 금액 합을 매출로 채워요. 씨암 · SONO 매출은 그 줄의 '매출로 셀 코드'로 세요.",
+    )
+    expect(document.body.textContent).not.toContain('총진료비')
   })
 })

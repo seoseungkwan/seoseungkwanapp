@@ -3,7 +3,27 @@
 // 고른 것은 chrome.storage.local erpClosing 한 칸에만 둔다. 도우미 답은 저장하지 않는다
 // 도우미가 준 코드 이름은 글자(textContent)로만 그린다
 // 씨암·SONO 줄 아래 '매출로 셀 코드' 줄(TASK-15)은 design.md 4절 글 그대로다(목업 없이 명세 글로 만듦)
-import { addCode, addKind, addPrefix, defaults, load, MAX_CODES, MAX_PREFIXES, save, search, without } from './settings.js'
+// TASK-18(design.md 5-3 글 그대로, 사용자가 목업 승인을 기다리지 말라고 함): 받는 중 줄 · 닫을 때 묻기(beforeunload) · 저장 실패 글 ·
+// [저장] 차례(겹침 막기 → 처방 없는 코드 묻기 → 쓰기) · [처음 값으로] 묻기 · 새 처음 코드 줄. 묻는 글은 저장 바 바로 위 알림 상자(#optAsk)
+// 코드 목록 오류 줄은 errors.ts 한 곳의 글만 쓴다(AC-3614.1)
+import { E_BRIDGE_BAD_REPLY, E_HELPER_MISSING, explain } from './errors.js'
+import {
+  addCode,
+  addKind,
+  addPrefix,
+  conflicts,
+  defaults,
+  load,
+  MAX_CODES,
+  MAX_PREFIXES,
+  newDefaultCodes,
+  resetCodes,
+  save,
+  search,
+  unusedCodes,
+  without,
+} from './settings.js'
+import type { Conflict } from './settings.js'
 import { AMOUNT_KEYS, GROUP_NAMES, RSV_NAMES, RSV_ROWS } from './types.js'
 import type { AmountKey, ClosingCodes, EtcKey, GroupKey, RsvRow, Settings } from './types.js'
 
@@ -11,7 +31,8 @@ import type { AmountKey, ClosingCodes, EtcKey, GroupKey, RsvRow, Settings } from
 const SECTIONS: { title: string; about: string; rows: [GroupKey, string][] }[] = [
   {
     title: '치료별 건수 · 매출',
-    about: '그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그 환자들의 그날 총진료비 합을 매출로 채워요.',
+    about:
+      "그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그날 고른 코드 처방 줄의 금액 합을 매출로 채워요. 씨암 · SONO 매출은 그 줄의 '매출로 셀 코드'로 세요.",
     rows: [
       ['carm', '업무일지 1 씨암 · 업무일지 2 씨암(주사) 건수 · 매출'],
       ['sono', '업무일지 1 SONO · 업무일지 2 SONO(주사) 건수 · 매출'],
@@ -72,20 +93,59 @@ const AMOUNT = {
 }
 const isAmountKey = (key: string | undefined): key is AmountKey => (AMOUNT_KEYS as readonly string[]).includes(key ?? '')
 
-const MISSING = 'E-HELPER-MISSING'
-const BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
-/** 도우미 오류 번호 모양(src/lib/bridge/protocol.ts와 같음). 아니면 글을 보이지 않고 BAD_REPLY */
-const ERROR_CODE = /^E-[A-Z0-9]+(?:-[A-Z0-9]+)*$/
+/** 설정 화면 글(design.md 5-3) */
+const TEXT = {
+  loading: '코드 목록을 받는 중이에요(30초쯤).',
+  codesFailed: '도우미에서 코드 목록을 받지 못했어요 ',
+  codesFailedTail: '고른 코드는 그대로 두고 저장할 수 있어요. 고친 뒤 이 화면을 새로고침(F5)하면 목록을 다시 받아요.',
+  saveFailed: '저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.',
+  unused: (n: number) => `최근 1년에 처방이 없는 코드 ${count(n)}개 — 맞나요?`,
+  unusedNote: '다른 의원 코드거나 잘못 고른 코드면 그 칸은 매일 0이 돼요.',
+  keep: '그대로 저장',
+  back: '돌아가기',
+  reset: '고른 코드와 씨암·SONO 매출 규칙을 처음 값으로 바꿀까요?',
+  resetNote: '예약 메모 번호와 기타 줄 이름은 그대로 둬요. 바꾼 뒤 [저장]을 눌러야 저장돼요.',
+  doReset: '바꾸기',
+  cancel: '그만두기',
+  fresh: '새 처음 코드가 있어요:',
+  freshNote: '[더하기]를 누르면 화면에 더해요. [저장]을 눌러야 저장돼요.',
+  freshAdd: '더하기',
+  blocked: '저장하지 않았어요.',
+}
+
+/** 겹침 막는 글 한 줄(design.md 5-3) */
+function conflictLine(c: Conflict): string {
+  if (c.kind === 'fixedName') {
+    return `${GROUP_NAMES[c.etc]} 줄 이름 ‘${c.name}’은 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.`
+  }
+  if (c.kind === 'sameName') {
+    return `${c.etcs.map((etc) => GROUP_NAMES[etc]).join('·')} 줄 이름이 ‘${c.name}’으로 같아요. 서로 다르게 넣어 주세요.`
+  }
+  return `예약 메모 ${c.memo}번이 ${c.rows.map((row) => RSV_NAMES[row]).join('·')} 줄에 함께 있어요. 한 줄에만 두세요.`
+}
 
 type Codes =
   | { status: 'loading' }
   | { status: 'ok'; list: ClosingCodes['codes']; names: Map<string, string | null>; kinds: ClosingCodes['kinds'] }
   | { status: 'error'; code: string }
 
+/** 저장 바 바로 위 알림 상자: 처방 없는 코드 묻기 · [처음 값으로] 묻기 · 겹침 막는 글 */
+type Ask =
+  | { kind: 'unused'; items: { key: GroupKey; code: string }[] }
+  | { kind: 'reset' }
+  | { kind: 'blocked'; conflicts: Conflict[] }
+
 type Page = {
   settings: Settings
+  /** 지금 저장돼 있는 설정(처방 없는 코드 묻기가 '새로 고른 코드'를 가리는 데 쓴다). 저장한 적이 없으면 null */
+  saved: Settings | null
   everSaved: boolean
   dirty: boolean
+  /** 마지막 [저장]이 chrome.storage 오류로 쓰지 못했다(다음 [저장]까지 상태 줄에 실패 글) */
+  saveFailed: boolean
+  /** 새 처음 코드(AC-3615.6). [더하기]·[저장] 뒤엔 빈 목록 */
+  fresh: { key: GroupKey; codes: string[] }[]
+  ask: Ask | null
   /** 바꿀 때마다 1씩: 저장하는 동안 또 바꿨는지 본다 */
   rev: number
   codes: Codes
@@ -98,6 +158,9 @@ type Page = {
 let page: Page
 let main: HTMLElement
 let stop: AbortController | null = null
+
+/** 설정 복사본(화면이 고치는 값과 저장값이 한 객체를 나눠 쓰지 않게) */
+const copyOf = (settings: Settings): Settings => JSON.parse(JSON.stringify(settings)) as Settings
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -122,21 +185,18 @@ function readCodes(data: unknown): ClosingCodes | null {
   return { codes, kinds }
 }
 
-/** 서비스 워커에 closing.codes를 묻는다. 답이 없거나 연결이 없으면 E-HELPER-MISSING */
+/** 서비스 워커에 closing.codes를 묻는다. 답이 없거나 연결이 없으면 E-HELPER-MISSING, 번호 모양이 아니면 E-BRIDGE-BAD-REPLY(errors.ts) */
 async function askCodes(): Promise<Codes> {
   let reply: unknown
   try {
     reply = await chrome.runtime.sendMessage({ cmd: 'closing.codes', args: {} })
   } catch {
-    return { status: 'error', code: MISSING }
+    return { status: 'error', code: E_HELPER_MISSING }
   }
-  if (reply === undefined || reply === null) return { status: 'error', code: MISSING }
-  if (isRecord(reply) && reply.type === 'error') {
-    const code = typeof reply.code === 'string' && ERROR_CODE.test(reply.code) ? reply.code : BAD_REPLY
-    return { status: 'error', code }
-  }
+  if (reply === undefined || reply === null) return { status: 'error', code: E_HELPER_MISSING }
+  if (isRecord(reply) && reply.type === 'error') return { status: 'error', code: explain(reply.code).code }
   const data = isRecord(reply) && reply.type === 'result' ? readCodes(reply.data) : null
-  if (!data) return { status: 'error', code: BAD_REPLY }
+  if (!data) return { status: 'error', code: E_BRIDGE_BAD_REPLY }
   return { status: 'ok', list: data.codes, names: new Map(data.codes.map((c) => [c.code, c.name])), kinds: data.kinds }
 }
 
@@ -166,18 +226,35 @@ function byId(id: string): HTMLElement {
   return found
 }
 
-function helperNotice(): HTMLElement | null {
+/** 코드 목록 줄: 받는 중 → 받은 줄 | 오류 줄(굵은 줄 · errors.ts '{무엇이} {어떻게}' · 끝 줄) */
+function helperNotice(): HTMLElement {
   const codes = page.codes
-  if (codes.status === 'loading') return null
+  if (codes.status === 'loading') return h('p', { class: 'notice wait' }, TEXT.loading)
   if (codes.status === 'ok') {
     return h('p', { class: 'notice ok' }, `비트에서 최근 1년 처방 코드 ${count(codes.list.length)}개와 예약 메모 ${count(codes.kinds.length)}개를 받았어요.`)
   }
+  const said = explain(codes.code)
   return h(
-    'p',
+    'div',
     { class: 'notice err' },
-    h('b', {}, '도우미에서 코드 목록을 받지 못했어요 ', h('span', { class: 'nw' }, `(${codes.code})`)),
-    h('br'),
-    '고른 코드는 그대로 두고 저장할 수 있어요. 코드를 새로 찾으려면 도우미를 켠 뒤 이 화면을 다시 열어 주세요.',
+    h('b', {}, TEXT.codesFailed, h('span', { class: 'nw' }, `(${said.code})`)),
+    h('p', {}, `${said.what} ${said.how}`),
+    h('p', {}, TEXT.codesFailedTail),
+  )
+}
+
+/** 맨 위 '새 처음 코드' 줄(AC-3615.6). 이미 화면에 있는 코드는 빼고, 남은 것이 없으면 없다 */
+function freshNotice(): HTMLElement | null {
+  const items = page.fresh
+    .map(({ key, codes }) => ({ key, codes: codes.filter((code) => !(page.settings.picks[key] ?? []).includes(code)) }))
+    .filter((item) => item.codes.length > 0)
+  if (items.length === 0) return null
+  return h(
+    'div',
+    { class: 'notice fresh' },
+    h('p', {}, h('b', {}, TEXT.fresh), ' ', items.map(({ key, codes }) => `${GROUP_NAMES[key]} ${codes.join('·')}`).join(' · ')),
+    h('p', {}, TEXT.freshNote),
+    h('button', { type: 'button', class: 'btn btn-2', 'data-fresh': '' }, TEXT.freshAdd),
   )
 }
 
@@ -403,6 +480,7 @@ function focusTarget(): { selector: string; start: number | null; end: number | 
 
 function renderMain(focus = focusTarget()) {
   const parts: Child[] = [
+    freshNotice(),
     !page.everSaved && h('p', { class: 'notice first' }, h('b', {}, FIRST), ' 지금 들어 있는 코드는 처음 값이에요.'),
     h('p', { class: 'lead-p' }, LEAD),
     helperNotice(),
@@ -430,13 +508,61 @@ function renderMain(focus = focusTarget()) {
 
 function renderStatus() {
   const status = byId('optStatus')
+  if (page.saveFailed) {
+    // 저장 실패(AC-3615.3): 주의 색 글. 크롬 오류 글은 보이지 않는다
+    status.className = 'status dirty failed'
+    status.textContent = TEXT.saveFailed
+    return
+  }
   status.className = 'status' + (page.dirty ? ' dirty' : page.everSaved ? ' saved' : '')
   status.textContent = page.dirty ? '바꾼 것을 아직 저장하지 않았어요.' : page.everSaved ? '저장했어요.' : '아직 한 번도 저장하지 않았어요.'
 }
 
+/** 저장 바 바로 위 알림 상자를 그린다. focus = 먼저 포커스를 받을 단추(data-ask) */
+function renderAsk(focus?: string) {
+  const box = byId('optAsk')
+  const ask = page.ask
+  box.hidden = ask === null
+  box.className = 'askbox' + (ask?.kind === 'blocked' ? ' block' : '')
+  if (!ask) {
+    box.replaceChildren()
+    return
+  }
+  const button = (name: string, label: string) => h('button', { type: 'button', class: 'btn btn-2', 'data-ask': name }, label)
+  let lines: HTMLElement[]
+  let buttons: HTMLElement[] = []
+  if (ask.kind === 'unused') {
+    lines = [
+      h('b', {}, TEXT.unused(ask.items.length)),
+      h('p', {}, ask.items.map(({ key, code }) => `${GROUP_NAMES[key]} ${code}`).join(' · ')),
+      h('p', {}, TEXT.unusedNote),
+    ]
+    buttons = [button('keep', TEXT.keep), button('back', TEXT.back)]
+  } else if (ask.kind === 'reset') {
+    lines = [h('b', {}, TEXT.reset), h('p', {}, TEXT.resetNote)]
+    buttons = [button('reset', TEXT.doReset), button('cancel', TEXT.cancel)]
+  } else {
+    lines = [...ask.conflicts.map((c) => h('p', {}, conflictLine(c))), h('b', {}, TEXT.blocked)]
+  }
+  box.replaceChildren(h('div', { class: 'in' }, h('div', { class: 'msg' }, ...lines), buttons.length > 0 && h('div', { class: 'acts' }, ...buttons)))
+  if (focus) box.querySelector<HTMLElement>(`[data-ask="${focus}"]`)?.focus()
+}
+
+function showAsk(ask: Ask, focus?: string) {
+  page.ask = ask
+  renderAsk(focus)
+}
+
+function closeAsk() {
+  page.ask = null
+  renderAsk()
+}
+
+/** 화면 값을 바꿨다: 저장 안 함 상태로, 열린 묻기·막는 글은 지난 값이라 닫는다 */
 function changed() {
   page.dirty = true
   page.rev += 1
+  if (page.ask) closeAsk()
   renderStatus()
 }
 
@@ -550,9 +676,23 @@ function onAmountClick(target: Element): boolean {
   return false
 }
 
+/** 새 처음 코드 [더하기]: 화면에 더한다(항목마다 20개까지, 저장은 [저장]) */
+function addFresh() {
+  for (const { key, codes } of page.fresh) {
+    page.settings.picks[key] = codes.reduce<string[]>((list, code) => addCode(list, code), page.settings.picks[key] ?? [])
+  }
+  page.fresh = []
+  changed()
+  renderMain()
+}
+
 function onClick(event: Event) {
   const target = event.target
   if (!(target instanceof Element)) return
+  if (target.closest('[data-fresh]')) {
+    addFresh()
+    return
+  }
   if (onAmountClick(target)) return
   const add = target.closest<HTMLElement>('[data-add]')
   const key = target.closest<HTMLElement>('[data-row]')?.dataset.row as GroupKey | undefined
@@ -579,17 +719,41 @@ function onClick(event: Event) {
   }
 }
 
-async function onSave() {
+/** [저장] 차례(design.md 4절): 겹침이면 막는 글(쓰지 않음) → 코드 목록을 받았고 처방 없는 새 코드가 있으면 묻기 → 쓰기 */
+function onSave() {
+  const found = conflicts(page.settings)
+  if (found.length > 0) {
+    showAsk({ kind: 'blocked', conflicts: found })
+    return
+  }
+  if (page.codes.status === 'ok') {
+    const items = unusedCodes(page.settings, page.saved, page.codes.list)
+    if (items.length > 0) {
+      showAsk({ kind: 'unused', items }, 'back')
+      return
+    }
+  }
+  void write()
+}
+
+/** chrome.storage에 쓴다. 못 쓰면 저장 실패 글이고 화면의 바꾼 것·저장 안 함 상태는 그대로다(AC-3615.3) */
+async function write() {
+  closeAsk()
+  page.saveFailed = false
   const rev = page.rev
   let saved: Settings
   try {
     saved = await save(page.settings)
   } catch {
-    return // 쓰지 못하면 '바꾼 것을 아직 저장하지 않았어요.'가 남는다
+    page.saveFailed = true
+    renderStatus()
+    return
   }
   page.everSaved = true
+  page.saved = saved
+  page.fresh = [] // defaultsSeen이 지금 판으로 쓰였다
   if (page.rev === rev) {
-    page.settings = saved
+    page.settings = copyOf(saved)
     page.dirty = false
   }
   page.open = null
@@ -597,12 +761,37 @@ async function onSave() {
   renderStatus()
 }
 
+/** [처음 값으로]: 먼저 묻는다(AC-3615.5) */
 function onReset() {
-  page.settings = defaults()
-  page.open = null
-  page.drafts = {}
-  changed()
-  renderMain()
+  showAsk({ kind: 'reset' }, 'cancel')
+}
+
+function onAskClick(event: Event) {
+  const name = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-ask]')?.dataset.ask : undefined
+  if (name === 'keep') {
+    void write()
+  } else if (name === 'back') {
+    closeAsk()
+    byId('optSave').focus()
+  } else if (name === 'reset') {
+    // 고른 코드·매출 규칙만 처음 값(기타 줄 이름·예약 메모·overlap·defaultsSeen은 그대로), 저장은 [저장]
+    closeAsk()
+    page.settings = resetCodes(page.settings)
+    page.open = null
+    page.drafts = {}
+    changed()
+    renderMain()
+  } else if (name === 'cancel') {
+    closeAsk()
+    byId('optReset').focus()
+  }
+}
+
+/** 저장하지 않은 바꿈이 있으면 탭을 닫거나 새로고침할 때 크롬 나가기 확인 창을 띄운다(AC-3615.2, 창 글은 크롬 것) */
+function onLeave(event: BeforeUnloadEvent) {
+  if (!page.dirty) return
+  event.preventDefault()
+  event.returnValue = ''
 }
 
 /** 설정 화면을 연다. 저장한 설정(없으면 처음 값)을 그리고, 도우미 코드 목록이 오면 다시 그린다 */
@@ -615,9 +804,13 @@ export async function startOptions(): Promise<void> {
   const codes = askCodes()
   const stored = await load().catch(() => null)
   page = {
-    settings: stored ?? defaults(),
+    settings: stored ? copyOf(stored) : defaults(),
+    saved: stored,
     everSaved: stored !== null,
     dirty: false,
+    saveFailed: false,
+    fresh: stored ? newDefaultCodes(stored) : [],
+    ask: null,
     rev: 0,
     codes: { status: 'loading' },
     open: null,
@@ -628,8 +821,10 @@ export async function startOptions(): Promise<void> {
   main.addEventListener('change', onChange, { signal })
   main.addEventListener('click', onClick, { signal })
   main.addEventListener('keydown', onKeydown, { signal })
-  byId('optSave').addEventListener('click', () => void onSave(), { signal })
+  byId('optSave').addEventListener('click', onSave, { signal })
   byId('optReset').addEventListener('click', onReset, { signal })
+  byId('optAsk').addEventListener('click', onAskClick, { signal })
+  window.addEventListener('beforeunload', onLeave, { signal })
   document.addEventListener(
     'click',
     (event) => {
@@ -646,6 +841,7 @@ export async function startOptions(): Promise<void> {
   )
   renderMain()
   renderStatus()
+  renderAsk()
 
   const got = await codes
   if (signal.aborted) return
