@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-closing-fill",
-  "approved_at": "2026-11-10T14:11:40Z",
+  "approved_at": "2026-11-10T14:33:16Z",
   "approved_via": "auto",
   "session_id": "81f40a65-8944-4188-b6d0-80ee9b36878e",
-  "spec_sha256": "1b2a4a4bb770e0307599ce3d6bd1b1bb522829a44e23a89c397d93d7330f03c6",
+  "spec_sha256": "e934c768061d325142b891f82aedc2ae03b06c8afaf7622e48663c7535ac1b1e",
   "scope": [
     ".github/workflows/helper-erp.yml",
     ".gitignore",
@@ -54,6 +54,7 @@
     "helper-erp/tests/Erp.Core.Tests/Closing/ClosingFakes.test.cs",
     "helper-erp/tests/Erp.Core.Tests/Closing/ClosingSql.test.cs",
     "helper-erp/tests/Erp.Core.Tests/ErpCommandTable.test.cs",
+    "helper-erp/tests/Erp.Core.Tests/ErpProtocol.test.cs",
     "helper-erp/tests/Erp.Core.Tests/ErpReadGuard.test.cs",
     "helper-erp/tests/erp-closing.dotnet.test.ts",
     "helper-erp/tests/erp-core.dotnet.test.ts",

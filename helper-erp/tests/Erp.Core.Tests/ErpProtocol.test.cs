@@ -8,7 +8,6 @@ using Erp.Core.Closing;
 using Erp.Core.Tests.Closing;
 using Precheck.Core.Protocol;
 using Precheck.Core.Revenue;
-using Precheck.Core.Stats;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.Protocol;
 using Xunit;
@@ -37,13 +36,14 @@ public class ErpProtocolTests
         public byte[] Output { get; set; } = new byte[0];
     }
 
-    /// <summary>등록된 PC: 마감일지·매출 문장은 가짜 기본 답, 1년 코드 목록·코드 이름은 빈 답.</summary>
+    /// <summary>
+    /// 등록된 PC: 마감일지·매출 문장은 가짜 기본 답, 1년 코드 목록(CodeListSql)은 빈 답(ClosingFake.Quiet).
+    /// 도우미 PC 오늘은 마감 일자(2026-11-09) 다음 날이다(오늘보다 뒤 날짜는 E-CLOSING-FUTURE-DATE, TASK-16).
+    /// </summary>
     private static Rig Ready()
     {
-        var rig = new Rig().Registered();
+        var rig = new Rig { Today = ClosingFake.Day.AddDays(1) }.Registered();
         ClosingFake.Quiet(rig.Session);
-        rig.Session.Answer(Precheck.Core.Bit.Sql.TrendTotalsSql, _ => new object?[0][]);
-        rig.Session.Answer(StatsSql.CodeNamesSql, _ => new object?[0][]);
         return rig;
     }
 
