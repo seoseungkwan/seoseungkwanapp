@@ -1,0 +1,96 @@
+# ERP 마감일지 도우미(윈도우) 시험·빌드·zip (specs/erp-closing-fill/design.md 3-5, AC-3611.6)
+# - 기존 helper.yml과 같은 차례다(그 파일은 고치지 않는다). 서명하지 않는다. 비밀값을 쓰지 않는다. 판(릴리스)도 이 실행의 기본 토큰(github.token)만 쓴다
+# - action은 판을 고정한다. 움직이는 판(main 등)은 쓰지 않는다
+# - erp-helper-v* 태그를 올릴 때만 판을 낸다. 태그·판 만들기는 사용자가 말할 때만 한다
+# - ERP 도우미는 helper/의 부품(Precheck.Core·Precheck.Windows)을 프로젝트 참조로 쓰므로 helper/**가 바뀌어도 돈다
+name: helper-erp
+
+on:
+  push:
+    # tags만 적으면 브랜치 push에는 돌지 않아서 모든 브랜치를 함께 적는다. 태그 push에는 paths가 걸리지 않는다
+    branches:
+      - '**'
+    paths:
+      - 'helper-erp/**'
+      - 'helper/**'
+      - '.github/workflows/helper-erp.yml'
+    tags:
+      - 'erp-helper-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helper-erp:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      # Erp.Core 시험(net48·net10.0)을 돈다. 실패하면 아래 빌드·zip은 돌지 않는다
+      - name: 시험
+        run: dotnet test helper-erp/ErpHelper.sln -c Release
+
+      - name: 빌드
+        run: dotnet build helper-erp/ErpHelper.sln -c Release
+
+      # seoseungkwan-erp-helper-<Version>.zip = install.cmd·install.ps1·uninstall.ps1·host-manifest.json + app\(exe·설정·DLL)
+      - name: zip 묶기
+        run: |
+          $props = [xml](Get-Content -Raw -LiteralPath 'helper-erp/Directory.Build.props')
+          $version = $props.SelectSingleNode('/Project/PropertyGroup/Version').InnerText.Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "helper-erp/Directory.Build.props의 Version이 틀렸다: $version" }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "erp-helper-v$version") {
+            throw "태그 $env:GITHUB_REF_NAME 와 helper-erp/Directory.Build.props Version $version 이 다르다"
+          }
+          $bin = 'helper-erp/src/Erp.Helper/bin/Release/net48'
+          if (-not (Test-Path -LiteralPath "$bin/SeoseungkwanErpHelper.exe")) { throw "$bin/SeoseungkwanErpHelper.exe 가 없다" }
+          $stage = Join-Path $env:RUNNER_TEMP 'seoseungkwan-erp-helper'
+          $app = Join-Path $stage 'app'
+          New-Item -ItemType Directory -Force -Path $app | Out-Null
+          Copy-Item -Path "$bin/*.exe", "$bin/*.exe.config", "$bin/*.dll" -Destination $app
+          Copy-Item -Path 'helper-erp/install/*' -Destination $stage
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zip = "seoseungkwan-erp-helper-$version.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/$zip"
+          Get-ChildItem -LiteralPath $stage -Recurse -File | ForEach-Object { $_.FullName.Substring($stage.Length + 1) }
+          Write-Output "만든 zip: dist/$zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seoseungkwan-erp-helper
+          path: dist/seoseungkwan-erp-helper-*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/erp-helper-v')
+    needs: [helper-erp]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: GitHub 릴리스 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/*.zip --verify-tag --title "$TAG" --notes "ERP 마감일지 도우미 $TAG. zip을 모두 풀고 install.cmd를 누릅니다. 설치 끝에 이 PC 등록(비트 로그인 → 병원 확인 → PC 확인 창)이 뜹니다."
