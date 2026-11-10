@@ -2,7 +2,6 @@
 // - YAML 해석 패키지는 넣지 않는다(package.json은 이 TASK 범위 밖). 이 workflow가 쓰는 YAML 모양
 //   (들여쓰기 맵·`- ` 목록·`[a, b]` 목록·블록 글자 `|`)만 읽는 작은 해석기를 둔다. 모르는 모양의 줄이 나오면 실패한다
 // - 윈도우에서 실제로 도는지는 Actions 실행과 의원 PC에서 본다. 이 시험은 파일끼리의 약속(이름·경로·권한·순서)만 본다
-import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,33 +18,6 @@ const README = 'helper/install/README.md'
 const PROPS = 'helper/Directory.Build.props'
 const HELPER_CSPROJ = 'helper/src/Precheck.Helper/Precheck.Helper.csproj'
 const COMMANDS = 'src/lib/bridge/commands.json'
-const ERP_MANIFEST = 'extension-erp/manifest.json'
-
-/**
- * 새 확장 공개키: TASK-1 커밋 703dc4c의 extension-erp/manifest.json key(ID lkancaiekmoieooheifdimahhkejfmjc).
- * TASK-2 갈래에는 그 manifest가 아직 없어 이 값과 견준다. 합쳐 manifest가 생기면 시험은 manifest key를 읽고 이 값은 쓰지 않는다.
- * 새 확장 key가 바뀌면 commands.json erp.extensionId·erp.extensionKey와 host-manifest.json 둘째 origin을 함께 바꾼다
- */
-const ERP_KEY_BEFORE_MERGE =
-  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvYrFyRZ1ktvwDcaAzvWcP9sVW1Ic2Ua6pNcg5dBDV/DGfBdZPqgQcBFdQPc8iH59pRqCM3Y4fjkcu9Ir+zjHAacdaytx8q2oyec7DaoPmD1lExMJw1bdwM/PJrDMkwbvpjaEHikE89Du/pdu+SaHQBwxDPwpjz12Lc8irfiIzcRe3OqY8MeIoBqXXjiVV4VFfb3sf/3U9AkxXMro3stSy2A3WzpJQG3lhrUeHO5d/fvmvWFLQFVU42azMoRldW84ARQ7XzAO1bIOmzqpiQIreMT+iMt+Ql5HunpgSnWp59gkgtjz/JW/qt5NewVNSD38y1s9VlfnQfWDjOdMv2Au/wIDAQAB'
-
-interface Commands {
-  hostName: string
-  extensionId: string
-  extensionKey: string
-  erp: { extensionId: string; extensionKey: string; commands: Record<string, unknown> }
-}
-
-/** 확장 ID = 공개키(DER) SHA-256 앞 32자를 0~f → a~p로 바꾼 것(크롬 규칙) */
-function extensionIdOf(base64Key: string): string {
-  const hex = createHash('sha256').update(Buffer.from(base64Key, 'base64')).digest('hex').slice(0, 32)
-  return [...hex].map((h) => String.fromCharCode(97 + parseInt(h, 16))).join('')
-}
-
-function erpManifestKey(): string {
-  if (!existsSync(path.join(ROOT, ERP_MANIFEST))) return ERP_KEY_BEFORE_MERGE
-  return (JSON.parse(read(ERP_MANIFEST)) as { key: string }).key
-}
 
 const TRIGGER_PATHS = ['helper/**', 'extension/**', 'src/lib/bridge/commands.json', '.github/workflows/helper.yml']
 const REG_KEY = 'HKCU:\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.seoseungkwan.precheck'
@@ -337,9 +309,9 @@ describe('REQ-002 도우미 윈도우 빌드 (.github/workflows/helper.yml)', ()
 })
 
 describe('REQ-002 도우미 설치 파일 (helper/install/)', () => {
-  it('AC-002.3 host-manifest.json 틀은 name·description·path·type·allowed_origins만 있고, allowed_origins는 우리 확장들(기존·ERP, AC-3601.2)이다', () => {
+  it('AC-002.3 host-manifest.json 틀은 name·description·path·type·allowed_origins만 있고, allowed_origins는 우리 확장 하나다', () => {
     const manifest = JSON.parse(read(MANIFEST)) as Record<string, unknown>
-    const commands = JSON.parse(read(COMMANDS)) as Commands
+    const commands = JSON.parse(read(COMMANDS)) as { hostName: string; extensionId: string }
 
     expect(Object.keys(manifest).sort()).toEqual(['allowed_origins', 'description', 'name', 'path', 'type'])
     expect(manifest.name).toBe('com.seoseungkwan.precheck')
@@ -351,10 +323,7 @@ describe('REQ-002 도우미 설치 파일 (helper/install/)', () => {
     expect(manifest.path).toBe('__HELPER_EXE__')
 
     expect(commands.extensionId).toMatch(/^[a-p]{32}$/)
-    expect(manifest.allowed_origins).toEqual([
-      `chrome-extension://${commands.extensionId}/`,
-      `chrome-extension://${commands.erp.extensionId}/`,
-    ])
+    expect(manifest.allowed_origins).toEqual([`chrome-extension://${commands.extensionId}/`])
     expect(JSON.stringify(manifest.allowed_origins)).not.toContain('*')
   })
 
@@ -446,36 +415,5 @@ describe('REQ-002 도우미 설치 파일 (helper/install/)', () => {
     expect(md).toMatch(/크롬을 다시 켤/)
     expect(md).toContain('uninstall.ps1')
     expect(md).toContain('%LOCALAPPDATA%\\Seoseungkwan\\PrecheckHelper')
-  })
-})
-
-// spec erp-closing-fill TASK-2: 새 확장 'ERP 마감일지 채우기'(extension-erp/)를 도우미가 받는다 (design.md 2절·3-1)
-describe('REQ-3601 새 확장과 도우미 연결', () => {
-  it('AC-3601.1 commands.json erp.extensionKey는 extension-erp/manifest.json key이고, 그 key로 계산한 ID가 erp.extensionId다(기존 확장 ID와 다름)', () => {
-    const commands = JSON.parse(read(COMMANDS)) as Commands
-
-    expect(Object.keys(commands.erp)).toEqual(['extensionId', 'extensionKey', 'commands'])
-    expect(commands.erp.extensionKey).toBe(erpManifestKey())
-    expect(commands.erp.extensionId).toMatch(/^[a-p]{32}$/)
-    expect(extensionIdOf(commands.erp.extensionKey)).toBe(commands.erp.extensionId)
-    expect(commands.erp.extensionId).not.toBe(commands.extensionId)
-    // 같은 계산이 기존 확장 ID도 맞힌다(계산 자체의 확인)
-    expect(extensionIdOf(commands.extensionKey)).toBe(commands.extensionId)
-  })
-
-  it('AC-3601.2 host-manifest.json allowed_origins는 기존 확장·새 확장 두 개뿐이다(* 없음, 겹침 없음)', () => {
-    const manifest = JSON.parse(read(MANIFEST)) as { allowed_origins: string[] }
-    const commands = JSON.parse(read(COMMANDS)) as Commands
-
-    expect(manifest.allowed_origins).toHaveLength(2)
-    expect(manifest.allowed_origins).toEqual([
-      `chrome-extension://${commands.extensionId}/`,
-      `chrome-extension://${commands.erp.extensionId}/`,
-    ])
-    expect(new Set(manifest.allowed_origins).size).toBe(2)
-    for (const origin of manifest.allowed_origins) expect(origin).toMatch(/^chrome-extension:\/\/[a-p]{32}\/$/)
-    expect(read(MANIFEST)).not.toContain('*')
-    // 설치는 이 틀을 그대로 복사한다(install.ps1이 origin을 따로 적지 않는다)
-    expect(psCode(read(INSTALL_PS1))).not.toMatch(/chrome-extension:\/\//)
   })
 })

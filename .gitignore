@@ -60,6 +60,8 @@ __pycache__/
 # 도우미(C#) 빌드 산출물
 helper/**/bin/
 helper/**/obj/
+helper-erp/**/bin/
+helper-erp/**/obj/
 
 # 크롬 확장 빌드 산출물(npm run ext:build)
 extension/dist/

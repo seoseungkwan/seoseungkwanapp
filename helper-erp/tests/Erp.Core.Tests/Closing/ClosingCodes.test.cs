@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Precheck.Core.Bit;
-using Precheck.Core.Closing;
+using Erp.Core.Closing;
 using Precheck.Core.Stats;
 using Precheck.Core.Tests.Bit;
 using Xunit;
 
-namespace Precheck.Core.Tests.Closing;
+namespace Erp.Core.Tests.Closing;
 
 /// <summary>REQ-3602 ClosingCodes.Read: 1년 처방 코드(Sql.TrendTotalsSql)·코드표 이름(StatsSql.CodeNamesSql)·예약 메모 목록(ClosingSql.MemoKindsSql). 값은 지어낸 것이다.</summary>
 public class ClosingCodesTests

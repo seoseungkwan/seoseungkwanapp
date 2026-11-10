@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- ERP 도우미 Core 시험(spec erp-closing-fill TASK-11). 이 PC·서버에서는 -f net10.0만, 윈도우 빌드에서는 net48도 돈다. 시험 파일 이름은 *.test.cs.
+       패키지·판은 기존 helper/tests/Precheck.Core.Tests와 같다 -->
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net48</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Erp.Core.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Erp.Core/Erp.Core.csproj" />
+    <ProjectReference Include="../../../helper/src/Precheck.Core/Precheck.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 기존 도우미 시험의 가짜 부품(가짜 DB·등록·봉투 모으기, 시험은 없음)을 고치지 않고 같이 쓴다. 이름공간은 Precheck.Core.Tests.* 그대로 -->
+    <Compile Include="../../../helper/tests/Precheck.Core.Tests/Bit/Fakes.test.cs" Link="Shared/Bit/Fakes.test.cs" />
+    <Compile Include="../../../helper/tests/Precheck.Core.Tests/Protocol/Support.test.cs" Link="Shared/Protocol/Support.test.cs" />
+    <Compile Include="../../../helper/tests/Precheck.Core.Tests/Revenue/RevenueFakes.test.cs" Link="Shared/Revenue/RevenueFakes.test.cs" />
+  </ItemGroup>
+</Project>

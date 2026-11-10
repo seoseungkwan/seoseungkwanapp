@@ -2,18 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Erp.Core;
+using Erp.Core.Closing;
 using Precheck.Core.Bit;
-using Precheck.Core.Closing;
 using Precheck.Core.Revenue;
 using Precheck.Core.Stats;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.Revenue;
 using Xunit;
 
-namespace Precheck.Core.Tests.Closing;
+namespace Erp.Core.Tests.Closing;
 
 /// <summary>
-/// AC-3606.1 마감일지 새 문장은 모두 SELECT 하나이고 ReadOnlyGuard가 받는 표에 매개변수와 함께 있다. 표 밖·틀린 매개변수는 DB에 닿기 전에 E-BIT-READ-FAILED.
+/// AC-3606.1 마감일지 새 문장은 모두 SELECT 하나이고 ERP 읽기 관문(ErpReadGuard)이 받는 표(ClosingSql.Parameters)에 매개변수와 함께 있다.
+/// 기존 관문(Sql.IsAllowed·ReadOnlyGuard)은 이 문장을 모른다(기존 도우미는 1a721ef 그대로). 표 밖·틀린 매개변수는 DB에 닿기 전에 E-BIT-READ-FAILED.
 /// AC-3606.2 새 문장은 이름·전화·주민번호·주소·메모 칸을 읽지 않고, 차트번호·생년월일을 결과 칸으로 내지 않는다(그날 번호·만 나이로 바꿔 낸다).
 /// </summary>
 public class ClosingSqlTests
@@ -27,7 +29,7 @@ public class ClosingSqlTests
     private static string Squash(string sql) => Regex.Replace(sql, @"\s+", " ").Trim();
 
     private static Dictionary<string, object?> ValidArgs(string sql) =>
-        Sql.ParametersOf(sql).ToDictionary(
+        ErpReadGuard.ParametersOf(sql).ToDictionary(
             parameter => parameter.Name,
             parameter => (object?)(parameter.Name == "@hospital" ? Synthetic.Scope
                 : parameter.Size == 8 ? ClosingFake.DayKey
@@ -78,15 +80,16 @@ public class ClosingSqlTests
         Assert.Equal("", Shape(ClosingSql.MemoKindsSql));
     }
 
-    [Fact(DisplayName = "AC-3606.1 Sql.IsAllowed·ReadOnlyGuard는 새 문장을 정해 둔 매개변수와 함께 통과시키고 Sql.ParametersOf는 이 표를 돌려준다")]
+    [Fact(DisplayName = "AC-3606.1 ErpReadGuard는 새 문장을 정해 둔 매개변수와 함께 통과시키고 ParametersOf는 이 표를 돌려준다(기존 Sql.IsAllowed는 모른다)")]
     public void GuardPassesClosingStatements()
     {
         foreach (var sql in ClosingFake.Statements)
         {
-            Assert.True(Sql.IsAllowed(sql));
-            ReadOnlyGuard.Require(sql);
-            ReadOnlyGuard.Require(sql, ValidArgs(sql));
-            Assert.Same(ClosingSql.Parameters[sql], Sql.ParametersOf(sql));
+            Assert.True(ErpReadGuard.IsAllowed(sql));
+            ErpReadGuard.Require(sql);
+            ErpReadGuard.Require(sql, ValidArgs(sql));
+            Assert.Same(ClosingSql.Parameters[sql], ErpReadGuard.ParametersOf(sql));
+            Assert.False(Sql.IsAllowed(sql));
         }
     }
 
@@ -106,10 +109,10 @@ public class ClosingSqlTests
     [MemberData(nameof(ChangedStatements))]
     public void GuardRefusesChangedStatements(string sql)
     {
-        Assert.False(Sql.IsAllowed(sql));
-        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(sql)).Code);
+        Assert.False(ErpReadGuard.IsAllowed(sql));
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ErpReadGuard.Require(sql)).Code);
         var db = new FakeDb();
-        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Query(db, sql, new Dictionary<string, object?>(), TimeSpan.FromSeconds(1))).Code);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ErpReadGuard.Query(db, sql, new Dictionary<string, object?>(), TimeSpan.FromSeconds(1))).Code);
         Assert.Empty(db.Calls);
     }
 
@@ -130,23 +133,25 @@ public class ClosingSqlTests
             foreach (var args in new[] { missing, extra, notText, tooLong })
             {
                 var db = new FakeDb();
-                Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Query(db, sql, args, TimeSpan.FromSeconds(1))).Code);
+                Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ErpReadGuard.Query(db, sql, args, TimeSpan.FromSeconds(1))).Code);
                 Assert.Empty(db.Calls);
             }
         }
 
         var longCode = ValidArgs(ClosingSql.InjectionFirstSql);
         longCode["@c3"] = new string('C', 21);
-        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(ClosingSql.InjectionFirstSql, longCode)).Code);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ErpReadGuard.Require(ClosingSql.InjectionFirstSql, longCode)).Code);
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() =>
-            ReadOnlyGuard.Require(ClosingSql.MemoKindsSql, new Dictionary<string, object?> { ["@day"] = ClosingFake.DayKey })).Code);
+            ErpReadGuard.Require(ClosingSql.MemoKindsSql, new Dictionary<string, object?> { ["@day"] = ClosingFake.DayKey })).Code);
     }
 
-    [Fact(DisplayName = "AC-3606.1 새 문장은 청구 Sql.All·매출·통계 목록에 끼지 않고, 그 목록은 그대로 허용된다")]
+    [Fact(DisplayName = "AC-3606.1 새 문장은 기존 관문(Sql.IsAllowed)·청구 Sql.All·매출·통계 목록에 끼지 않고, 그 목록은 그대로 허용된다")]
     public void OtherListsUntouched()
     {
         foreach (var sql in ClosingFake.Statements)
         {
+            Assert.False(Sql.IsAllowed(sql));
+            Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(sql)).Code);
             Assert.DoesNotContain(sql, Sql.All);
             Assert.False(RevenueSql.Parameters.ContainsKey(sql));
             Assert.False(StatsSql.IsAllowed(sql));
@@ -158,7 +163,7 @@ public class ClosingSqlTests
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Sql.ParametersOf("SELECT 1")).Code);
     }
 
-    [Fact(DisplayName = "AC-3606.1 ClosingDay·ClosingCodes가 DB에 보낸 문장은 모두 허용 목록 문장이고 매개변수가 그 문장의 표와 같다")]
+    [Fact(DisplayName = "AC-3606.1 ClosingDay·ClosingCodes가 DB에 보낸 문장은 모두 ErpReadGuard 허용 문장이고 매개변수가 그 문장의 표와 같다")]
     public void ReadsGoThroughGuard()
     {
         var rig = new DayRig()
@@ -175,8 +180,8 @@ public class ClosingSqlTests
 
         foreach (var call in rig.Db.Calls.Concat(codes.Calls))
         {
-            Assert.True(Sql.IsAllowed(call.Sql));
-            ReadOnlyGuard.Require(call.Sql, call.Args);
+            Assert.True(ErpReadGuard.IsAllowed(call.Sql));
+            ErpReadGuard.Require(call.Sql, call.Args);
         }
         foreach (var sql in ClosingFake.Statements.Where(sql => sql != ClosingSql.MemoKindsSql)) Assert.Contains(sql, rig.Db.Sqls);
         Assert.Contains(ClosingSql.MemoKindsSql, codes.Sqls);

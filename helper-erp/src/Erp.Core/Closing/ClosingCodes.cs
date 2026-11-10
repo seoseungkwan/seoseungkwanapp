@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Precheck.Core.Stats;
 
-namespace Precheck.Core.Closing;
+namespace Erp.Core.Closing;
 
 /// <summary>처방 코드 한 줄: 앞뒤 공백 없는 대문자 코드·비트 코드표 이름(없으면 null)·나온 진료 수.</summary>
 public sealed class ClosingCode

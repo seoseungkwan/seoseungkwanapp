@@ -250,6 +250,7 @@ describe('AC-034.5: 합친 뒤 설정 파일', () => {
         'supabase/**/*.test.ts',
         'e2e/**/*.test.ts',
         'helper/tests/*.test.ts',
+        'helper-erp/tests/*.test.ts',
         'extension/**/*.test.ts',
         'extension-erp/**/*.test.ts',
         'scripts/**/*.test.ts',
@@ -263,6 +264,7 @@ describe('AC-034.5: 합친 뒤 설정 파일', () => {
       'supabase/rls.test.ts',
       'e2e/config.test.ts',
       'helper/tests/protocol.dotnet.test.ts',
+      'helper-erp/tests/erp-core.dotnet.test.ts',
       'extension/src/manifest.test.ts',
     ]) {
       expect(caught(file), file).toBe(true)

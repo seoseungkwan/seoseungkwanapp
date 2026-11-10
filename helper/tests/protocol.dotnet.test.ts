@@ -59,21 +59,6 @@ describe('REQ-001 도우미 메시지 틀 (C# Precheck.Core.Tests.Protocol)', ()
   })
 })
 
-// spec erp-closing-fill TASK-2: 새 확장 'ERP 마감일지 채우기' 허용과 부른 쪽(origin)마다 명령 나눔 (design.md 2절·3-1)
-describe('REQ-3601 새 확장과 도우미 연결 (C# Precheck.Core.Tests.Protocol)', () => {
-  it('AC-3601.1 commands.json erp.extensionId는 erp.extensionKey(공개키 DER)로 계산한 ID이고 기존 확장 ID와 다르다', () => {
-    expectAc('AC-3601.1')
-  })
-
-  it('AC-3601.3 CallerOf: 기존 확장 → Web(지금 명령만, closing.*는 E-HELPER-UNKNOWN-COMMAND), 새 확장 → Erp(closing.*만, hello 포함 나머지는 E-HELPER-UNKNOWN-COMMAND), 그 밖 origin은 켜지자마자 끝남', () => {
-    expectAc('AC-3601.3')
-  })
-
-  it('AC-3601.4 erp 구역(extensionId·extensionKey·commands)을 읽고 closing.codes·closing.day는 patient false·design.md 2절 args, Names는 지금 그대로, 틀린 구역은 표 틀림', () => {
-    expectAc('AC-3601.4')
-  })
-})
-
 // 감싸개 공용 잠금 폴더(runDotnet.ts): 잡은 프로세스가 죽었거나, pid 파일 없이 오래 남은 폴더는 버린다.
 // 버리기(넘겨받기)는 넘겨받기 표시(<잠금>.takeover)를 잡은 한 쪽만 한다. 시험은 임시 lockDir()만 쓴다(공용 잠금은 건드리지 않음)
 describe('runDotnet 잠금 폴더', () => {

@@ -3,14 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Precheck.Core.Bit;
-using Precheck.Core.Closing;
+using Erp.Core.Closing;
 using Precheck.Core.Protocol;
 using Precheck.Core.Revenue;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.Revenue;
 using Xunit;
 
-namespace Precheck.Core.Tests.Closing;
+namespace Erp.Core.Tests.Closing;
 
 /// <summary>REQ-3603·3604·3605 ClosingDay.Read: 가짜 DB가 문장 글자로 답을 고른다. 진료·금액·코드는 모두 지어낸 것이다.</summary>
 public class ClosingDayTests

@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
-using Precheck.Core.Closing;
+using Erp.Core.Closing;
 using Precheck.Core.Protocol;
 using Precheck.Core.Revenue;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.Revenue;
 
-namespace Precheck.Core.Tests.Closing;
+namespace Erp.Core.Tests.Closing;
 
 /// <summary>
 /// 마감일지 읽기 시험이 같이 쓰는 가짜 DB(TASK-3). 가짜 DB는 문장 글자로 답을 고른다(Bit/Fakes.test.cs의 FakeDb).
