@@ -2,11 +2,12 @@
 // 글·모양은 승인된 목업 docs/mockups/erp-closing-fill/ ①~⑪ 그대로다(목업의 노란 띠·점선 표시는 앱에 없다).
 // 다만 requirements 기본값 (바)대로 'ERP 도우미 없음'(helperMissing)·'이 PC 등록 안 됨'(notRegistered) 두 줄은 명세 글을 쓰고,
 // 기본값 (아)·(사)대로 보류 줄(held)을 더하고 미수납 경고 줄의 뒤 문장을 뗐다(design.md 5절, TASK-14).
+// 씨암·SONO가 함께 있는 진료 묻기와 채운 뒤 그 줄(OVERLAP_TEXT)은 design.md 5절 글 그대로다(TASK-15, 목업 없이 명세 글로 만듦).
 // - ERP 화면 글꼴·색이 스며들거나 우리 모양이 ERP를 건드리지 않게 그림자 뿌리 안에 그린다. ERP 뿌리(div#root) 밖 body 끝에 붙는다
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·칸 이름만 보이고 환자 정보는 없다
 import { HELD_SALES } from './cells.js'
 import type { FillResult } from './fill.js'
-import { GROUP_NAMES, type ClosingDay } from './types.js'
+import { GROUP_NAMES, type ClosingDay, type OverlapChoice } from './types.js'
 
 /** ERP 화면에 붙이는 요소의 id */
 export const HOST_ID = 'erp-closing-fill'
@@ -37,6 +38,23 @@ export const TEXT = {
   held: (names: readonly string[]) => `${names.join('·')} 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.`,
 } as const
 
+/** 씨암·SONO가 함께 있는 진료 묻기와 채운 뒤 줄(design.md 5절 '겹친 진료 묻기', TASK-15) */
+export const OVERLAP_TEXT = {
+  ask: (visits: number, carm: number, sono: number) =>
+    `씨암·SONO 코드가 함께 있는 진료가 ${count(visits)}건 있어요(씨암 쪽 ${count(carm)}원 · SONO 쪽 ${count(sono)}원). 어디에 넣을까요?`,
+  /** 단추 글(차례 = 단추 차례) */
+  choice: { carm: '씨암에 넣기', sono: 'SONO에 넣기', both: '둘 다 넣기' } as Record<OverlapChoice, string>,
+  /** 지난번 고른 단추 글 끝에 붙는다 */
+  last: ' (지난번)',
+  into: { carm: '씨암에', sono: 'SONO에', both: '씨암·SONO 둘 다에' } as Record<OverlapChoice, string>,
+  done: (visits: number, choice: OverlapChoice) => `함께 있는 진료 ${count(visits)}건은 ${OVERLAP_TEXT.into[choice]} 넣었어요.`,
+}
+
+const CHOICES: readonly OverlapChoice[] = ['carm', 'sono', 'both']
+
+/** 묻는 줄에 보이는 숫자와 지난번 고른 것 */
+export type OverlapAsk = { visits: number; carm: number; sono: number; last?: OverlapChoice }
+
 /** design.md 5절 경고 글 */
 const WARN = {
   moneyUnconfirmed:
@@ -55,7 +73,7 @@ function count(n: number): string {
 
 /** 안내 상태(목업 ③~⑪) */
 export type View =
-  | { kind: 'done'; date: string; result: FillResult; day: ClosingDay }
+  | { kind: 'done'; date: string; result: FillResult; day: ClosingDay; overlap?: { visits: number; choice: OverlapChoice } }
   | { kind: 'first' }
   | { kind: 'errHelper' }
   | { kind: 'errNotRegistered' }
@@ -114,7 +132,8 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .warns li{display:flex;gap:8px;align-items:flex-start;color:var(--ink-2)}
 .warns li::before{content:'!';flex:none;display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--warning);color:#fff;font-size:12px;font-weight:600}
 .end{border-top:1px solid var(--line);padding-top:10px;color:var(--ink)}
-.acts{display:flex;justify-content:flex-end;gap:8px}
+.ovl{color:var(--ink)}
+.acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
 .btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
 .btn-2:hover{background:var(--canvas)}
@@ -141,6 +160,11 @@ export type Dock = {
   /** 읽는 중: 단추 글을 바꾸고 막으며 안내를 숨긴다 */
   setReading(on: boolean): void
   show(view: View): void
+  /**
+   * 씨암·SONO가 함께 있는 진료를 어디에 넣을지 묻는다(design.md 5절). 누른 단추의 선택으로 끝나고,
+   * [안내 닫기](×)·hide()·다른 안내를 보이면 null(아무것도 고르지 않음)로 끝난다. 지난번 고른 단추는 ' (지난번)'이 붙고 먼저 포커스를 받는다
+   */
+  askOverlap(ask: OverlapAsk): Promise<OverlapChoice | null>
   hide(): void
 }
 
@@ -157,11 +181,20 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
   const button = h('button', { type: 'button', class: 'fill-btn' }, TEXT.button)
   root.append(h('style', {}, CSS), h('div', { class: 'dock' }, panel, button))
 
+  /** 아직 답하지 않은 묻기(askOverlap). 끝내면 비운다 */
+  let pending: ((choice: OverlapChoice | null) => void) | null = null
+  const settle = (choice: OverlapChoice | null) => {
+    const done = pending
+    pending = null
+    done?.(choice)
+  }
+
   button.addEventListener('click', () => {
     if (!button.disabled) handlers.onFill()
   })
   close.addEventListener('click', () => {
     panel.hidden = true
+    settle(null)
   })
 
   const settingsButton = () => {
@@ -179,6 +212,7 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
         const warnings = warningLines(day)
         return [
           lead(TEXT.filled(view.date, result.filled)),
+          view.overlap && h('p', { class: 'ovl' }, OVERLAP_TEXT.done(view.overlap.visits, view.overlap.choice)),
           result.missing.length > 0 &&
             h(
               'div',
@@ -217,14 +251,40 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
     setReading(on) {
       button.disabled = on
       button.textContent = on ? TEXT.reading : TEXT.button
-      if (on) panel.hidden = true
+      if (on) {
+        panel.hidden = true
+        settle(null)
+      }
     },
     show(view) {
+      settle(null)
       body.replaceChildren(...parts(view).filter((p): p is Node | string => Boolean(p)))
       panel.hidden = false
     },
+    askOverlap(ask) {
+      settle(null)
+      let mine: ((choice: OverlapChoice | null) => void) | null = null
+      const answer = new Promise<OverlapChoice | null>((resolve) => {
+        mine = resolve
+      })
+      pending = mine
+      const buttons = CHOICES.map((choice) => {
+        const label = OVERLAP_TEXT.choice[choice] + (ask.last === choice ? OVERLAP_TEXT.last : '')
+        const one = h('button', { type: 'button', class: 'btn btn-2', 'data-choice': choice }, label)
+        // 이 묻기가 아직 열려 있을 때만(앞선 묻기의 떨어진 단추가 다음 묻기를 끝내지 않게)
+        one.addEventListener('click', () => {
+          if (pending !== null && pending === mine) settle(choice)
+        })
+        return one
+      })
+      body.replaceChildren(lead(OVERLAP_TEXT.ask(ask.visits, ask.carm, ask.sono)), h('div', { class: 'acts' }, ...buttons))
+      panel.hidden = false
+      if (ask.last) buttons[CHOICES.indexOf(ask.last)]?.focus()
+      return answer
+    },
     hide() {
       panel.hidden = true
+      settle(null)
     },
   }
 }

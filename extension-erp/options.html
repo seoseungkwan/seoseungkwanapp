@@ -65,6 +65,18 @@ button{background:none;border:0;cursor:pointer}
 .dd button:disabled{cursor:default}
 .dd button:disabled b,.dd button:disabled span{color:var(--muted)}
 .dd .empty{padding:8px 10px;color:var(--muted);font-size:13px}
+/* 씨암·SONO 줄 바로 아래 '매출로 셀 코드' 줄(design.md 4절, TASK-15). 위 줄과 한 덩어리로 보이게 사이 줄을 뺀다 */
+.orow:has(+ .amt){border-bottom:0;padding-bottom:4px}
+.orow.amt{padding-top:4px}
+.amt .oname b{font-size:13px;font-weight:500;color:var(--ink-2)}
+.amt .about{font-size:13px;line-height:20px;color:var(--ink-2)}
+.pickline .sub{font-size:12px;color:var(--muted);white-space:nowrap;min-width:92px}
+.padd{display:inline-flex;align-items:center;gap:6px}
+.padd input{width:120px;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:var(--surface)}
+.padd input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.padd input:disabled{background:var(--canvas);color:var(--muted)}
+.padd .btn{height:34px}
+.padd .btn:disabled{color:var(--muted);background:var(--canvas);cursor:default}
 .etc{display:flex;align-items:center;gap:8px;max-width:420px}
 .etc span{font-size:13px;color:var(--ink-2);white-space:nowrap}
 .etc input{max-width:240px}

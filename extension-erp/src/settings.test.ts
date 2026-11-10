@@ -4,13 +4,19 @@ import {
   DEFAULTS,
   MAX_CODES,
   MAX_ETC_NAME,
+  MAX_PREFIXES,
   MAX_RESULTS,
   addCode,
   addKind,
+  addPrefix,
+  cleanCode,
   cleanEtcName,
+  cleanPrefix,
   defaults,
   load,
+  normalize,
   save,
+  saveOverlap,
   search,
   toGroups,
   without,
@@ -50,12 +56,18 @@ const FIRST: Settings = {
   },
   etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
   reservations: {},
+  // 기본값 (자): 씨암·SONO 매출 규칙 처음 값은 앞글자 LA · 더 셀 코드 없음(TASK-15)
+  amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
 }
 
+/** 매출 규칙 처음 값(기본값 (자)) */
+const FIRST_AMOUNTS = () => ({ carm: { prefixes: ['LA'], codes: [] as string[] }, sono: { prefixes: ['LA'], codes: [] as string[] } })
+
 describe('AC-3607.3 처음 값', () => {
-  it('AC-3607.3: 처음 값은 이미 정한 것 7 그대로이고 예약 6줄은 비어 있다', () => {
+  it('AC-3607.3 AC-3607.6: 처음 값은 이미 정한 것 7 그대로이고 예약 6줄은 비어 있으며, 씨암·SONO 매출 규칙은 앞글자 LA · 더 셀 코드 없음이고 overlap은 없다', () => {
     expect(DEFAULTS).toEqual(FIRST)
     expect(defaults()).toEqual(FIRST)
+    expect(defaults()).not.toHaveProperty('overlap')
   })
 
   it('AC-3607.3: 물리치료 처음 코드는 6개(MM085·MM080·MM020 더함), 크라이오(기타1)는 CRYO·CRYO3 차례다(2026-11-10 밤 사용자 결정)', () => {
@@ -77,6 +89,8 @@ describe('AC-3607.3 처음 값', () => {
     a.picks.carm?.push('X1')
     a.etcNames.etc1 = '바꿈'
     a.reservations.manual = ['14']
+    a.amounts.carm.prefixes.push('KK')
+    a.amounts.sono.codes.push('KK090')
     expect(defaults()).toEqual(FIRST)
     expect(DEFAULTS).toEqual(FIRST)
   })
@@ -104,6 +118,7 @@ describe('AC-3607.3 저장·불러오기 (chrome.storage.local erpClosing 한 �
       picks: { ...FIRST.picks, manual: ['도수', 'MA4'] },
       etcNames: { etc1: '크라이오', etc2: '핫팩', etc3: '', etc4: '' },
       reservations: { manual: ['14', '20', '22'], eswt: ['1'] },
+      amounts: FIRST_AMOUNTS(),
     }
     expect(data[SETTINGS_KEY]).toEqual(expected)
     // 칸 차례도 정해 둔 대로(묶음은 GROUP_KEYS 차례)
@@ -120,12 +135,12 @@ describe('AC-3607.3 저장·불러오기 (chrome.storage.local erpClosing 한 �
     expect(await load()).toBeNull()
   })
 
-  it('AC-3607.3: 불러온 값의 모르는 칸·틀린 코드·겹친 코드·20개 넘는 코드는 떼어 낸다', async () => {
+  it('AC-3607.3 AC-3607.7: 불러온 값의 모르는 칸·틀린 코드·겹친 코드·20개 넘는 코드는 떼어 낸다(가운데 빈칸 하나 코드 A B는 남는다)', async () => {
     const many = Array.from({ length: 25 }, (_, i) => `C${i}`)
     fakeStorage({
       [SETTINGS_KEY]: {
         v: 1,
-        picks: { carm: ['CARM1', 'CARM1', 'A B', '', 3, 'X'.repeat(21)], sono: many, nope: ['X'] },
+        picks: { carm: ['CARM1', 'CARM1', 'A B', '', 3, 'X'.repeat(21), 'A\tB'], sono: many, nope: ['X'] },
         etcNames: { etc1: 7, etc2: ' 크라이오 ' },
         reservations: { manual: ['14', '14', 5], wrong: ['1'] },
         extra: true,
@@ -133,18 +148,19 @@ describe('AC-3607.3 저장·불러오기 (chrome.storage.local erpClosing 한 �
     })
     expect(await load()).toEqual({
       v: 1,
-      picks: { carm: ['CARM1'], sono: many.slice(0, 20) },
+      picks: { carm: ['CARM1', 'A B'], sono: many.slice(0, 20) },
       etcNames: { etc1: '', etc2: '크라이오', etc3: '', etc4: '' },
       reservations: { manual: ['14'] },
+      amounts: FIRST_AMOUNTS(),
     })
   })
 })
 
 describe('AC-3607.5 도우미에 보낼 묶음 toGroups', () => {
-  it('AC-3607.5: 처음 값이면 코드가 있는 8묶음을 design.md 2절 차례로 담는다', () => {
+  it('AC-3607.5 AC-3607.6: 처음 값이면 코드가 있는 8묶음을 design.md 2절 차례로 담고, 씨암·SONO에는 매출 규칙 두 칸(LA · 없음)을 붙인다', () => {
     expect(toGroups(defaults())).toEqual([
-      { key: 'carm', codes: ['CARM1'] },
-      { key: 'sono', codes: ['SONO1'] },
+      { key: 'carm', codes: ['CARM1'], amountPrefixes: ['LA'], amountCodes: [] },
+      { key: 'sono', codes: ['SONO1'], amountPrefixes: ['LA'], amountCodes: [] },
       { key: 'arthro', codes: ['HA280'] },
       { key: 'manual', codes: ['도수'] },
       { key: 'eswt', codes: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'] },
@@ -239,5 +255,160 @@ describe('AC-3607.1·AC-3607.2 고르기·빼기·기타 이름', () => {
     expect(cleanEtcName('  크라이오 ')).toBe('크라이오')
     expect(cleanEtcName('가'.repeat(25))).toBe('가'.repeat(20))
     expect(cleanEtcName('   ')).toBe('')
+  })
+})
+
+describe('AC-3607.7 가운데 빈칸 코드', () => {
+  it("AC-3607.7: 코드 꼴은 앞뒤 공백을 떼고 가운데 이어진 빈칸을 하나로 줄인 1~20자다('PROLO C' 그대로)", () => {
+    expect(cleanCode('PROLO C')).toBe('PROLO C')
+    expect(cleanCode('  PROLO   C  ')).toBe('PROLO C')
+    expect(cleanCode('HYALU MINI')).toBe('HYALU MINI')
+    expect(cleanCode('A B C D E F G H I J')).toBe('A B C D E F G H I J')
+    expect(cleanCode('CARM1')).toBe('CARM1')
+    expect(cleanCode('도수')).toBe('도수')
+    // 탭·다른 빈칸 글자·빈 글자·21자(줄인 뒤)는 받지 않는다
+    for (const bad of ['PROLO\tC', 'PROLO　C', 'PROLO\nC', '', '   ', 'X'.repeat(21), 'A B C D E F G H I J K']) {
+      expect(cleanCode(bad), JSON.stringify(bad)).toBeNull()
+    }
+    // 줄여서 20자가 되면 받는다
+    expect(cleanCode('A  B' + 'C'.repeat(16))).toBe('A B' + 'C'.repeat(16))
+  })
+
+  it('AC-3607.7: 찾기에서 고른 가운데 빈칸 코드는 저장(normalize) 뒤에도 남고 toGroups로 그대로 간다', async () => {
+    const { data } = fakeStorage()
+    const s = defaults()
+    s.picks.manual = ['도수', 'PROLO C']
+    s.amounts.sono.codes = ['HYALU MINI', '  PROLO   C ']
+    const saved = await save(s)
+    expect(saved.picks.manual).toEqual(['도수', 'PROLO C'])
+    expect(saved.amounts.sono.codes).toEqual(['HYALU MINI', 'PROLO C'])
+    expect((data[SETTINGS_KEY] as Settings).picks.manual).toEqual(['도수', 'PROLO C'])
+    const loaded = await load()
+    expect(loaded?.picks.manual).toEqual(['도수', 'PROLO C'])
+    const groups = toGroups(loaded as Settings)
+    expect(groups.find((g) => g.key === 'manual')?.codes).toEqual(['도수', 'PROLO C'])
+    expect(groups.find((g) => g.key === 'sono')?.amountCodes).toEqual(['HYALU MINI', 'PROLO C'])
+  })
+
+  it('AC-3607.7: 예약 메모 번호도 같은 꼴로 정리한다(앞뒤 공백 뗌)', () => {
+    expect(normalize({ v: 1, picks: {}, etcNames: {}, reservations: { manual: [' 14 ', '14', '2  0'] } })?.reservations).toEqual({
+      manual: ['14', '2 0'],
+    })
+  })
+})
+
+describe('AC-3607.6 씨암·SONO 매출 규칙 amounts', () => {
+  it('AC-3607.6: 저장값에 amounts가 없으면(이미 저장한 설정) 두 묶음 모두 처음 값(LA · 없음)으로 채운다', async () => {
+    const old = { v: 1, picks: { carm: ['CARM1'] }, etcNames: { etc1: '크라이오' }, reservations: {} }
+    fakeStorage({ [SETTINGS_KEY]: old })
+    expect((await load())?.amounts).toEqual(FIRST_AMOUNTS())
+    // 한 묶음만 빠졌거나 모양이 틀리면 그 묶음만 처음 값
+    expect(normalize({ ...old, amounts: { carm: { prefixes: ['KK'], codes: [] } } })?.amounts).toEqual({
+      carm: { prefixes: ['KK'], codes: [] },
+      sono: { prefixes: ['LA'], codes: [] },
+    })
+    expect(normalize({ ...old, amounts: 'x' })?.amounts).toEqual(FIRST_AMOUNTS())
+  })
+
+  it('AC-3607.6: 직원이 둘 다 비운 규칙은 비운 그대로 둔다(처음 값으로 다시 채우지 않음)', () => {
+    const amounts = { carm: { prefixes: [], codes: [] }, sono: { prefixes: ['LA'], codes: ['KK090'] } }
+    expect(normalize({ v: 1, picks: {}, etcNames: {}, reservations: {}, amounts })?.amounts).toEqual(amounts)
+  })
+
+  it('AC-3607.6: 앞글자는 앞뒤 공백을 떼고 대문자로, 겹침 없이 5개까지(1~10자·빈칸 없음), 더 셀 코드는 코드 꼴로 20개까지', () => {
+    const many = Array.from({ length: 25 }, (_, i) => `K${i}`)
+    const got = normalize({
+      v: 1,
+      picks: {},
+      etcNames: {},
+      reservations: {},
+      amounts: {
+        carm: { prefixes: [' la ', 'LA', 'kk', 'L A', '', 'X'.repeat(11), 7, 'a', 'b', 'c', 'd'], codes: ['KK090', 'KK090', 'PROLO  C', 'A\tB', 3] },
+        sono: { prefixes: 'LA', codes: many },
+      },
+    })
+    expect(MAX_PREFIXES).toBe(5)
+    expect(got?.amounts.carm).toEqual({ prefixes: ['LA', 'KK', 'A', 'B', 'C'], codes: ['KK090', 'PROLO C'] })
+    expect(got?.amounts.sono).toEqual({ prefixes: [], codes: many.slice(0, 20) })
+  })
+
+  it("AC-3607.6: overlap은 'carm'·'sono'·'both'만 두고, 없거나 틀리면 칸이 없다", () => {
+    const base = { v: 1, picks: {}, etcNames: {}, reservations: {} }
+    for (const choice of ['carm', 'sono', 'both'] as const) expect(normalize({ ...base, overlap: choice })?.overlap).toBe(choice)
+    for (const bad of ['x', 1, null, undefined]) expect(normalize({ ...base, overlap: bad })).not.toHaveProperty('overlap')
+  })
+
+  it("AC-3607.6: cleanPrefix·addPrefix — 대문자로, 1~10자·빈칸 없음, 겹침 없이 5개까지", () => {
+    expect(cleanPrefix(' la ')).toBe('LA')
+    expect(cleanPrefix('Kk0')).toBe('KK0')
+    for (const bad of ['', '  ', 'L A', 'X'.repeat(11), 'L\tA']) expect(cleanPrefix(bad), JSON.stringify(bad)).toBeNull()
+    expect(addPrefix(['LA'], 'kk')).toEqual(['LA', 'KK'])
+    expect(addPrefix(['LA'], ' la')).toEqual(['LA'])
+    expect(addPrefix(['LA'], 'L A')).toEqual(['LA'])
+    expect(addPrefix(['A', 'B', 'C', 'D', 'E'], 'F')).toEqual(['A', 'B', 'C', 'D', 'E'])
+  })
+
+  it('AC-3607.6: toGroups는 씨암·SONO에 앞글자·더 셀 코드 둘 중 하나라도 있으면 두 칸을 붙이고, 둘 다 비면 붙이지 않는다(다른 묶음에는 붙이지 않음)', () => {
+    const s = defaults()
+    s.amounts = { carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: ['KK090'] } }
+    s.picks.manual = ['도수']
+    const groups = toGroups(s)
+    expect(groups[0]).toEqual({ key: 'carm', codes: ['CARM1'] })
+    expect(groups[1]).toEqual({ key: 'sono', codes: ['SONO1'], amountPrefixes: [], amountCodes: ['KK090'] })
+    for (const g of groups.slice(2)) {
+      expect(g, g.key).not.toHaveProperty('amountPrefixes')
+      expect(g, g.key).not.toHaveProperty('amountCodes')
+    }
+    // 고른 코드가 없는 묶음은 규칙이 있어도 보내지 않는다
+    delete s.picks.sono
+    expect(toGroups(s).map((g) => g.key)).not.toContain('sono')
+    // 돌려준 목록은 복사본
+    s.picks.sono = ['SONO1']
+    toGroups(s)[1].amountCodes?.push('X')
+    expect(s.amounts.sono.codes).toEqual(['KK090'])
+  })
+
+  it('AC-3607.6: amounts가 빠진 설정을 받아도 toGroups는 처음 값 규칙(LA)으로 본다(normalize와 같음)', () => {
+    const raw = { v: 1, picks: { carm: ['CARM1'] }, etcNames: { etc1: '', etc2: '', etc3: '', etc4: '' }, reservations: {} } as unknown as Settings
+    expect(toGroups(raw)).toEqual([{ key: 'carm', codes: ['CARM1'], amountPrefixes: ['LA'], amountCodes: [] }])
+  })
+
+  it('AC-3607.6: [저장](save)은 저장된 overlap을 지우지 않고 그대로 둔다(화면이 가진 값이 아니라 저장된 값)', async () => {
+    const stored = { ...defaults(), overlap: 'sono' }
+    const { data } = fakeStorage({ [SETTINGS_KEY]: stored })
+    const screen = defaults()
+    screen.picks.manual = ['도수', 'MA4']
+    const saved = await save(screen)
+    expect((data[SETTINGS_KEY] as Settings).overlap).toBe('sono')
+    expect(saved.overlap).toBe('sono')
+    expect((data[SETTINGS_KEY] as Settings).picks.manual).toEqual(['도수', 'MA4'])
+    // 화면이 예전 값(carm)을 들고 있어도 저장된 값(both)이 이긴다
+    data[SETTINGS_KEY] = { ...stored, overlap: 'both' }
+    await save({ ...screen, overlap: 'carm' })
+    expect((data[SETTINGS_KEY] as Settings).overlap).toBe('both')
+  })
+
+  it('AC-3607.6: 처음 저장이면 overlap 칸이 없다', async () => {
+    const { data } = fakeStorage()
+    await save({ ...defaults(), overlap: 'carm' })
+    expect(data[SETTINGS_KEY]).not.toHaveProperty('overlap')
+  })
+})
+
+describe('AC-3609.7 saveOverlap: ERP 화면이 고른 겹친 진료 선택만 바꿔 쓴다', () => {
+  it('AC-3609.7: 저장된 설정의 overlap 칸만 바꾸고 나머지는 그대로다', async () => {
+    const stored = { ...defaults(), etcNames: { etc1: '크라이오', etc2: '핫팩', etc3: '', etc4: '' }, reservations: { eswt: ['1'] } }
+    const { data, local } = fakeStorage({ [SETTINGS_KEY]: stored })
+    await saveOverlap('sono')
+    expect(local.set).toHaveBeenCalledTimes(1)
+    expect(data[SETTINGS_KEY]).toEqual({ ...stored, overlap: 'sono' })
+    await saveOverlap('both')
+    expect((data[SETTINGS_KEY] as Settings).overlap).toBe('both')
+  })
+
+  it('AC-3609.7: 설정을 저장한 적이 없으면 아무것도 쓰지 않는다', async () => {
+    const { local } = fakeStorage()
+    await saveOverlap('carm')
+    expect(local.set).not.toHaveBeenCalled()
   })
 })

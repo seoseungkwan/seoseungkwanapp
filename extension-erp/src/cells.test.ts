@@ -30,12 +30,12 @@ describe('AC-3608.3 planCells: design.md 4절 칸 표 그대로', () => {
   const plan = planCells(sampleDay(), settingsAll())
   const all = sheet(plan)
 
-  it('AC-3608.3 AC-3608.4: 모두 고르면 업무일지 1은 32칸, 업무일지 2는 99칸이고, 보류 2칸(씨암·SONO 치료별 매출) 말고는 건너뛴 칸이 없다', () => {
+  it('AC-3608.3 AC-3608.4: 모두 고르면 업무일지 1은 32칸, 업무일지 2는 99칸이고, 보류가 끝나(HELD_SALES = []) 건너뛴 칸이 없다', () => {
     expect(plan).toHaveLength(131)
     expect(plan.filter((p) => p.where.j === 1)).toHaveLength(32)
     expect(plan.filter((p) => p.where.j === 2)).toHaveLength(99)
-    expect(count(plan)).toBe(129)
-    expect(count(plan, 'held')).toBe(2)
+    expect(count(plan)).toBe(131)
+    expect(count(plan, 'held')).toBe(0)
     expect(count(plan, 'unpicked')).toBe(0)
     expect(count(plan, 'unknown')).toBe(0)
     // 같은 칸이 두 번 나오지 않는다
@@ -174,10 +174,10 @@ describe('AC-3608.3 planCells: design.md 4절 칸 표 그대로', () => {
     expect(all['2|충격파 총금액']).toBe(all['2|치료별 매출|충격파|금액(원)'])
   })
 
-  it('AC-3608.3 AC-3608.4: 업무일지 2 치료별 매출 = 씨암·SONO·관절조영·도수·충격파·물리치료·{기타 이름} 금액(원), 씨암·SONO는 보류(held)', () => {
+  it('AC-3608.3 AC-3608.4: 업무일지 2 치료별 매출 = 씨암·SONO·관절조영·도수·충격파·물리치료·{기타 이름} 금액(원), 씨암·SONO도 묶음 total(보류 끝남)', () => {
     expect(pick(all, '2|치료별 매출|')).toEqual({
-      '2|치료별 매출|씨암|금액(원)': 'held',
-      '2|치료별 매출|SONO|금액(원)': 'held',
+      '2|치료별 매출|씨암|금액(원)': total(0),
+      '2|치료별 매출|SONO|금액(원)': total(1),
       '2|치료별 매출|관절조영|금액(원)': total(2),
       '2|치료별 매출|도수|금액(원)': total(3),
       '2|치료별 매출|충격파|금액(원)': total(4),
@@ -227,12 +227,12 @@ describe('AC-3608.3 planCells: design.md 4절 칸 표 그대로', () => {
 })
 
 describe('AC-3608.4 planCells: 고르지 않은 항목(unpicked)·셀 수 없는 칸(unknown)은 값이 null', () => {
-  it('AC-3608.4: 처음 값 + 예약 도수·충격파를 고르면 131칸 가운데 91칸, 고르지 않아 건너뛴 칸 38칸, 보류 2칸', () => {
+  it('AC-3608.4: 처음 값 + 예약 도수·충격파를 고르면 131칸 가운데 93칸, 고르지 않아 건너뛴 칸 38칸, 보류 0칸', () => {
     const plan = planCells(sampleDay(), settingsFirst())
     expect(plan).toHaveLength(131)
-    expect(count(plan)).toBe(91)
+    expect(count(plan)).toBe(93)
     expect(count(plan, 'unpicked')).toBe(38)
-    expect(count(plan, 'held')).toBe(2)
+    expect(count(plan, 'held')).toBe(0)
     expect(count(plan, 'unknown')).toBe(0)
     for (const p of plan) if (p.why) expect(p.value, cellKey(p)).toBeNull()
   })
@@ -309,31 +309,30 @@ describe('AC-3608.4 planCells: 고르지 않은 항목(unpicked)·셀 수 없는
     day.ages = day.ages.filter((a) => a.band !== '90')
     const all = sheet(planCells(day, settingsAll()))
     expect(all['1|진료 · 치료현황|SONO']).toBe('unknown')
-    // 보류 묶음의 치료별 매출 칸은 답과 상관없이 held(채우지 않음)
-    expect(all['2|치료별 매출|SONO|금액(원)']).toBe('held')
+    expect(all['2|치료별 매출|SONO|금액(원)']).toBe('unknown')
     expect(all['2|치료별 신환/90일초진/재진 건수|SONO(주사)|신환']).toBe('unknown')
     expect(all['2|연령별 신환/90일초진/재진|90대|재진']).toBe('unknown')
     expect(all['2|연령별 신환/90일초진/재진|80대|재진']).toBe('708')
   })
 })
 
-describe('AC-3608.4 planCells: 보류 묶음 HELD_SALES(기본값 (아), 씨암·SONO 치료별 매출)', () => {
-  /** HELD_SALES를 잠깐 비운다(정하면 cells.ts 이 한 곳만 바꾼다). 끝나면 되돌린다 */
-  function withoutHeld<T>(run: () => T): T {
-    const saved = HELD_SALES.splice(0)
+describe('AC-3608.4 planCells: 보류 묶음 HELD_SALES(기본값 (아) → TASK-15에서 비움)', () => {
+  /** 보류 장치가 그대로 도는지 보려고 HELD_SALES를 잠깐 씨암·SONO로 둔다. 끝나면 되돌린다 */
+  function withHeld<T>(run: () => T): T {
+    const saved = HELD_SALES.splice(0, HELD_SALES.length, 'carm', 'sono')
     try {
       return run()
     } finally {
-      HELD_SALES.push(...saved)
+      HELD_SALES.splice(0, HELD_SALES.length, ...saved)
     }
   }
 
-  it("AC-3608.4: 보류 묶음은 cells.ts HELD_SALES 한 곳이고 지금 ['carm', 'sono']다", () => {
-    expect(HELD_SALES).toEqual(['carm', 'sono'])
+  it('AC-3608.4: 보류 묶음은 cells.ts HELD_SALES 한 곳이고 TASK-15에서 비웠다(씨암·SONO 보류 끝, 이미 정한 것 10)', () => {
+    expect(HELD_SALES).toEqual([])
   })
 
   it('AC-3608.4: 보류 묶음의 치료별 매출 칸은 코드를 골랐으면 held(값 없음)이고, 같은 묶음의 건수 칸은 그대로 채운다', () => {
-    const plan = planCells(sampleDay(), settingsFirst())
+    const plan = withHeld(() => planCells(sampleDay(), settingsFirst()))
     const held = plan.filter((p) => p.why === 'held')
     expect(held.map(cellKey)).toEqual(['2|치료별 매출|씨암|금액(원)', '2|치료별 매출|SONO|금액(원)'])
     for (const p of held) expect(p.value).toBeNull()
@@ -350,21 +349,66 @@ describe('AC-3608.4 planCells: 보류 묶음 HELD_SALES(기본값 (아), 씨암�
   it('AC-3608.4: 보류 묶음이라도 코드를 고르지 않았으면 지금처럼 unpicked다', () => {
     const settings = settingsFirst()
     delete settings.picks.carm
-    const plan = planCells(sampleDay(), settings)
+    const plan = withHeld(() => planCells(sampleDay(), settings))
     const all = sheet(plan)
     expect(all['2|치료별 매출|씨암|금액(원)']).toBe('unpicked')
     expect(all['2|치료별 매출|SONO|금액(원)']).toBe('held')
     expect(count(plan, 'held')).toBe(1)
+    expect(HELD_SALES).toEqual([])
   })
 
-  it('AC-3608.4: HELD_SALES를 비우면 씨암·SONO 치료별 매출도 지금처럼(묶음 total) 채운다', () => {
-    const plan = withoutHeld(() => planCells(sampleDay(), settingsAll()))
+  it('AC-3608.4: HELD_SALES가 비어 있으면(지금) 씨암·SONO 치료별 매출도 묶음 total로 채운다', () => {
+    const plan = planCells(sampleDay(), settingsAll())
     const all = sheet(plan)
     expect(all['2|치료별 매출|씨암|금액(원)']).toBe(total(0))
     expect(all['2|치료별 매출|SONO|금액(원)']).toBe(total(1))
     expect(count(plan)).toBe(131)
     expect(count(plan, 'held')).toBe(0)
-    expect(HELD_SALES).toEqual(['carm', 'sono'])
+  })
+})
+
+describe('AC-3609.7 planCells: 함께 있는 진료 선택 셋(design.md 4절 식)', () => {
+  // 씨암 total = 1,001,234 · SONO total = 2,001,234(sampleDay). 함께 있는 진료 9건: 씨암 쪽 400,000 · SONO 쪽 300,000
+  const withOverlap = (overlap: ClosingDay['overlap']): ClosingDay => ({ ...sampleDay(), overlap })
+  const sales = (plan: Planned[]) => {
+    const all = sheet(plan)
+    return [all['2|치료별 매출|씨암|금액(원)'], all['2|치료별 매출|SONO|금액(원)']]
+  }
+  const OVERLAP = { visits: 9, carm: 400_000, sono: 300_000 }
+
+  it("AC-3609.7: '씨암에 넣기'(carm)면 SONO에서 overlap.sono를 빼고 씨암은 그대로다", () => {
+    expect(sales(planCells(withOverlap(OVERLAP), settingsFirst(), 'carm'))).toEqual([total(0), String(2_001_234 - 300_000)])
+  })
+
+  it("AC-3609.7: 'SONO에 넣기'(sono)면 씨암에서 overlap.carm을 빼고 SONO는 그대로다", () => {
+    expect(sales(planCells(withOverlap(OVERLAP), settingsFirst(), 'sono'))).toEqual([String(1_001_234 - 400_000), total(1)])
+  })
+
+  it("AC-3609.7: '둘 다 넣기'(both)·고르지 않음·overlap null·0건이면 두 칸 모두 묶음 total 그대로다", () => {
+    expect(sales(planCells(withOverlap(OVERLAP), settingsFirst(), 'both'))).toEqual([total(0), total(1)])
+    expect(sales(planCells(withOverlap(OVERLAP), settingsFirst()))).toEqual([total(0), total(1)])
+    expect(sales(planCells(withOverlap(null), settingsFirst(), 'carm'))).toEqual([total(0), total(1)])
+    expect(sales(planCells(withOverlap({ visits: 0, carm: 0, sono: 0 }), settingsFirst(), 'sono'))).toEqual([total(0), total(1)])
+    // 예전 답처럼 overlap 칸이 없어도 그대로
+    expect(sales(planCells(sampleDay(), settingsFirst(), 'carm'))).toEqual([total(0), total(1)])
+  })
+
+  it('AC-3609.7: 선택은 치료별 매출 씨암·SONO 두 칸만 바꾼다(건수·다른 매출·운영 지표 칸은 그대로)', () => {
+    const base = sheet(planCells(withOverlap(OVERLAP), settingsAll(), 'both'))
+    for (const choice of ['carm', 'sono'] as const) {
+      const got = sheet(planCells(withOverlap(OVERLAP), settingsAll(), choice))
+      const changed = Object.keys(base).filter((k) => base[k] !== got[k])
+      expect(changed, choice).toEqual([choice === 'carm' ? '2|치료별 매출|SONO|금액(원)' : '2|치료별 매출|씨암|금액(원)'])
+    }
+  })
+
+  it('AC-3609.7: 씨암·SONO 묶음이 답에 없거나 고르지 않았으면 그 칸은 지금처럼 unknown·unpicked다', () => {
+    const day = withOverlap(OVERLAP)
+    day.groups = day.groups.filter((g) => g.key !== 'sono')
+    expect(sales(planCells(day, settingsFirst(), 'carm'))).toEqual([total(0), 'unknown'])
+    const settings = settingsFirst()
+    delete settings.picks.carm
+    expect(sales(planCells(withOverlap(OVERLAP), settings, 'sono'))).toEqual(['unpicked', total(1)])
   })
 })
 

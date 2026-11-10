@@ -106,6 +106,42 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
   it('AC-3606.3 ERP 기록 줄은 기존 LogLine과 같은 시각·명령 이름·오류 번호 모양이고 이름은 ERP 표의 closing.*만', () => {
     expectAc('AC-3606.3')
   })
+
+  it("AC-3603.5 ERP 명령 표 codes·amountCodes pattern은 가운데 빈칸 하나 코드('PROLO C')를 받고 빈칸 두 칸·탭·앞뒤 공백은 막는다", () => {
+    expectAc('AC-3603.5')
+  })
+
+  it('AC-3604.6 ERP 명령 표의 매출 규칙 두 칸(amountPrefixes 0~5개·1~10자, amountCodes 0~20개, 둘 다 선택)', () => {
+    expectAc('AC-3604.6')
+  })
+})
+
+describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규칙 칸', () => {
+  type Spec = { type: string; optional?: boolean; min?: number; max?: number; pattern?: string; items?: Spec; fields?: Record<string, Spec> }
+  const groupFields = () => {
+    const table = readJson(path.join(ERP, 'commands.json')) as { commands: Record<string, { args: Record<string, Spec> }> }
+    return table.commands['closing.day'].args.groups.items?.fields as Record<string, Spec>
+  }
+
+  it('AC-3603.5: codes·amountCodes 항목은 ^\\S(?: ?\\S)*$ 1~20자, amountPrefixes 항목은 ^\\S{1,10}$ 1~10자다', () => {
+    const fields = groupFields()
+    expect(Object.keys(fields)).toEqual(['key', 'codes', 'amountPrefixes', 'amountCodes'])
+    for (const name of ['codes', 'amountCodes']) {
+      expect(fields[name].items, name).toEqual({ type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' })
+    }
+    expect(fields.amountPrefixes.items).toEqual({ type: 'string', min: 1, max: 10, pattern: '^\\S{1,10}$' })
+    const code = new RegExp(fields.codes.items?.pattern as string)
+    for (const ok of ['PROLO C', 'HYALU MINI', 'CARM1', '도수']) expect(code.test(ok), ok).toBe(true)
+    for (const bad of ['PROLO  C', 'PROLO\tC', ' PROLO C', 'PROLO C ', 'PROLO　C']) expect(code.test(bad), JSON.stringify(bad)).toBe(false)
+  })
+
+  it('AC-3604.6: amountPrefixes(0~5개)·amountCodes(0~20개)는 선택 칸이고 codes(1~20개)는 꼭 있다', () => {
+    const fields = groupFields()
+    expect({ ...fields.amountPrefixes, items: undefined }).toEqual({ type: 'array', optional: true, min: 0, max: 5, items: undefined })
+    expect({ ...fields.amountCodes, items: undefined }).toEqual({ type: 'array', optional: true, min: 0, max: 20, items: undefined })
+    expect(fields.codes.optional).toBeUndefined()
+    expect([fields.codes.min, fields.codes.max]).toEqual([1, 20])
+  })
 })
 
 describe('AC-3601.4 helper-erp/commands.json', () => {

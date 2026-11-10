@@ -3,24 +3,34 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Precheck.Core.Protocol;
 using Precheck.Core.Revenue;
 
 namespace Erp.Core.Closing;
 
-/// <summary>closing.day args의 묶음 하나(design.md 2절): key는 GroupKeys 가운데 하나, codes는 1~20개.</summary>
+/// <summary>
+/// closing.day args의 묶음 하나(design.md 2절): key는 GroupKeys 가운데 하나, codes는 1~20개.
+/// 매출 규칙 두 칸(TASK-15)은 보내지 않았으면 null: amountPrefixes 앞글자 0~5개 · amountCodes 더 셀 코드 0~20개.
+/// </summary>
 public sealed class ClosingGroup
 {
-    public ClosingGroup(string key, IReadOnlyList<string> codes)
+    public ClosingGroup(string key, IReadOnlyList<string> codes, IReadOnlyList<string>? amountPrefixes = null, IReadOnlyList<string>? amountCodes = null)
     {
         Key = key;
         Codes = codes;
+        AmountPrefixes = amountPrefixes;
+        AmountCodes = amountCodes;
     }
 
     public string Key { get; }
 
     public IReadOnlyList<string> Codes { get; }
+
+    public IReadOnlyList<string>? AmountPrefixes { get; }
+
+    public IReadOnlyList<string>? AmountCodes { get; }
 }
 
 /// <summary>closing.day 답(design.md 2절 ClosingDay). 칸 이름은 extension-erp/src/types.ts와 같다.</summary>
@@ -50,6 +60,10 @@ public sealed class ClosingDayResult
     /// <summary>injection 묶음이 없으면 null.</summary>
     [JsonPropertyName("injection")]
     public ClosingInjection? Injection { get; set; }
+
+    /// <summary>carm·sono 둘 다 매출 규칙이 있을 때만(TASK-15, design.md 3-3). 아니면 null.</summary>
+    [JsonPropertyName("overlap")]
+    public ClosingOverlap? Overlap { get; set; }
 
     [JsonPropertyName("warnings")]
     public ClosingWarnings Warnings { get; set; } = new ClosingWarnings();
@@ -200,6 +214,22 @@ public sealed class ClosingInjection
     public long NewLines { get; set; }
 }
 
+/// <summary>
+/// 씨암·SONO 표시 코드가 함께 있는 진료(TASK-15, AC-3604.7): 진료 수와 그 진료들만의 각 매출 규칙 금액(원 미만 버림).
+/// 진료·환자를 가리키는 값은 없다. groups total에는 이 진료가 들어 있다(= 둘 다 넣은 값).
+/// </summary>
+public sealed class ClosingOverlap
+{
+    [JsonPropertyName("visits")]
+    public long Visits { get; set; }
+
+    [JsonPropertyName("carm")]
+    public long Carm { get; set; }
+
+    [JsonPropertyName("sono")]
+    public long Sono { get; set; }
+}
+
 public sealed class ClosingWarnings
 {
     /// <summary>revenue.days가 금액을 확정하지 못한 날: 여덟 칸이 비트 수납 줄을 그대로 더한 값이다.</summary>
@@ -240,6 +270,19 @@ public static class ClosingDay
     /// <summary>코드 한 개 최대 글자 수(commands.json closing.day codes 항목 max).</summary>
     public const int MaxCodeLength = 20;
 
+    /// <summary>매출 규칙(TASK-15): 앞글자 최대 수·글자 수, 더 셀 코드 최대 수(commands.json amountPrefixes·amountCodes).</summary>
+    public const int MaxAmountPrefixes = 5;
+    public const int MaxPrefixLength = 10;
+    public const int MaxAmountCodes = 20;
+
+    public const string CarmKey = "carm";
+    public const string SonoKey = "sono";
+
+    // 코드 꼴(commands.json pattern ^\S(?: ?\S)*$와 같다, AC-3603.5): 앞뒤 공백 없음, 가운데는 빈칸(U+0020) 하나씩.
+    // 빈칸 두 칸·탭·줄바꿈·다른 빈칸 글자는 맞지 않는다. 앞글자는 빈칸이 없다(^\S{1,10}$)
+    private static readonly Regex CodeShape = new Regex(@"^\S(?: ?\S)*\z", RegexOptions.CultureInvariant);
+    private static readonly Regex PrefixShape = new Regex(@"^\S+\z", RegexOptions.CultureInvariant);
+
     public const string PtVisitKey = "ptVisit";
     public const string InjectionKey = "injection";
 
@@ -279,6 +322,7 @@ public static class ClosingDay
         result.Warnings.UnpaidVisits = visits.Count(visit => visit.Total == null);
         CountPatients(people, wanted, result);
         result.Groups = wanted.Select(group => CountGroup(people, group)).ToList();
+        result.Overlap = Overlap(visits, wanted);
         CountAges(people, result);
         result.Injection = Injection(db, values, people, wanted, result.Warnings);
 
@@ -291,7 +335,10 @@ public static class ClosingDay
 
     /// <summary>
     /// 묶음을 푼다. 명령 표(CommandTable)가 이미 검사하지만 처리기만 불려도 틀린 묶음으로 읽지 않게 DB에 닿기 전에 한 번 더 본다:
-    /// 19개 넘음·모르는 key·같은 key 두 번·코드 0개나 21개 이상·빈 코드·21자 이상·가운데 공백은 E-HELPER-BAD-MESSAGE. 코드는 앞뒤 공백을 떼고 대문자로.
+    /// 19개 넘음·모르는 key·같은 key 두 번·코드 0개나 21개 이상은 E-HELPER-BAD-MESSAGE. 코드는 앞뒤 공백을 떼고 대문자로(AC-3603.1) 바꾼 뒤
+    /// 명령 표와 같은 꼴(1~20자, 가운데 빈칸 하나씩 — 'PROLO C'는 됨, 빈칸 두 칸·탭은 E-HELPER-BAD-MESSAGE, AC-3603.5)이어야 한다.
+    /// 앞뒤 공백이 남은 코드는 명령 표 pattern이 먼저 막는다. 매출 규칙 두 칸(TASK-15, AC-3604.6): 앞글자 6개·더 셀 코드 21개·빈 글자·
+    /// 앞글자 빈칸·11자·더 셀 코드 꼴 틀림은 E-HELPER-BAD-MESSAGE, 둘 다 대문자로.
     /// </summary>
     private static List<Wanted> CheckGroups(IReadOnlyList<ClosingGroup>? groups)
     {
@@ -301,18 +348,33 @@ public static class ClosingDay
         foreach (var group in groups)
         {
             if (group == null || group.Key == null || !GroupKeys.Contains(group.Key, StringComparer.Ordinal) || !seen.Add(group.Key)) throw BadMessage();
-            if (group.Codes == null || group.Codes.Count < 1 || group.Codes.Count > MaxCodesPerGroup) throw BadMessage();
-            var codes = new List<string>();
-            foreach (var raw in group.Codes)
-            {
-                var code = NormalCode(raw);
-                if (code.Length == 0 || code.Length > MaxCodeLength || code.Any(char.IsWhiteSpace)) throw BadMessage();
-                if (!codes.Contains(code, StringComparer.Ordinal)) codes.Add(code);
-            }
-            wanted.Add(new Wanted(group.Key, codes));
+            if (group.Codes == null || group.Codes.Count < 1) throw BadMessage();
+            var codes = CheckList(group.Codes, MaxCodesPerGroup, IsCode);
+            var prefixes = CheckList(group.AmountPrefixes, MaxAmountPrefixes, IsPrefix);
+            var amountCodes = CheckList(group.AmountCodes, MaxAmountCodes, IsCode);
+            wanted.Add(new Wanted(group.Key, codes, prefixes, amountCodes));
         }
         return wanted;
     }
+
+    /// <summary>글자 목록 하나: max개 넘음·꼴 틀림은 E-HELPER-BAD-MESSAGE, 앞뒤 공백 뗀 대문자로 겹침 없이(받은 차례). 없으면(null) 빈 목록.</summary>
+    private static List<string> CheckList(IReadOnlyList<string>? raw, int max, Func<string, bool> shape)
+    {
+        var list = new List<string>();
+        if (raw == null) return list;
+        if (raw.Count > max) throw BadMessage();
+        foreach (var item in raw)
+        {
+            var text = NormalCode(item);
+            if (!shape(text)) throw BadMessage();
+            if (!list.Contains(text, StringComparer.Ordinal)) list.Add(text);
+        }
+        return list;
+    }
+
+    private static bool IsCode(string code) => code.Length >= 1 && code.Length <= MaxCodeLength && CodeShape.IsMatch(code);
+
+    private static bool IsPrefix(string prefix) => prefix.Length >= 1 && prefix.Length <= MaxPrefixLength && PrefixShape.IsMatch(prefix);
 
     internal static string NormalCode(string? raw) => (raw ?? "").Trim().ToUpperInvariant();
 
@@ -430,6 +492,7 @@ public static class ClosingDay
             person.Kind = Math.Min(person.Kind, KindOf(visit.ExamKind));
             person.Visits.Add(visit);
             if (!codes.TryGetValue(visit.Id, out var byCode)) continue;
+            visit.Codes = byCode;
             foreach (var pair in byCode)
             {
                 person.Lines[pair.Key] = person.Lines.TryGetValue(pair.Key, out var before) ? before + pair.Value.Lines : pair.Value.Lines;
@@ -478,6 +541,7 @@ public static class ClosingDay
     /// 묶음 코드를 하나라도 받은 사람: 서로 다른 사람 수·3분류(재진 = 신환·90일초진이 아닌 모두),
     /// total = 그날 진료의 묶음 코드 처방 줄 금액(DayCodesSql 금액 = 원내 줄 일수 × 수량 × 단가) 합, 묶음마다 원 미만 버림
     /// (TASK-14, 기본값 (사). 진찰료·묶음 밖 코드 줄·진료 총진료비는 더하지 않고, 한 코드가 두 묶음에 들면 묶음마다 더한다).
+    /// 매출 규칙이 있으면(TASK-15, AC-3604.6) total = 묶음 코드가 있는 진료 안의 규칙에 맞는 줄 금액 합(RuleAmount, 묶음마다 원 미만 버림).
     /// 수납 줄이 없는 진료도 처방 금액은 그대로이고, 그 사람들의 그런 진료 수를 unpaidVisits에 센다.
     /// </summary>
     private static ClosingGroupCount CountGroup(List<Person> people, Wanted group)
@@ -488,11 +552,53 @@ public static class ClosingDay
         {
             count.Patients++;
             AddThree(person, () => count.New++, () => count.First90++, () => count.Return++);
-            foreach (var pair in person.Amounts.Where(pair => group.Codes.Contains(pair.Key))) amount = ClosingRead.Add(amount, pair.Value);
+            if (group.HasRule)
+            {
+                foreach (var visit in person.Visits.Where(visit => visit.Has(group))) amount = ClosingRead.Add(amount, RuleAmount(visit, group));
+            }
+            else
+            {
+                foreach (var pair in person.Amounts.Where(pair => group.Codes.Contains(pair.Key))) amount = ClosingRead.Add(amount, pair.Value);
+            }
             count.UnpaidVisits += person.Visits.Count(visit => visit.Total == null);
         }
         count.Total = ClosingRead.Won(amount);
         return count;
+    }
+
+    /// <summary>
+    /// 진료 하나의 매출 규칙 금액(TASK-15, 기본값 (자)): 그 진료 처방 줄 가운데 코드가 앞글자 하나로 시작하고 바로 다음 글자가 숫자 0~9이거나
+    /// (LA → LA358 맞음, LAYLA·'LA' 하나·LAX1 안 맞음) 더 셀 코드인 줄의 금액 합. 코드마다 한 번만 더하므로 두 규칙에 맞는 줄도 한 번이다.
+    /// 견주기는 C#에서만 한다(새 SQL 문장·매개변수 없음, 규칙 글자는 SQL에 들어가지 않는다).
+    /// </summary>
+    private static decimal RuleAmount(Visit visit, Wanted group)
+    {
+        var amount = 0m;
+        foreach (var pair in visit.Codes.Where(pair => group.Counts(pair.Key))) amount = ClosingRead.Add(amount, pair.Value.Amount);
+        return amount;
+    }
+
+    /// <summary>
+    /// 씨암·SONO가 함께 있는 진료(TASK-15, AC-3604.7): carm·sono 둘 다 매출 규칙이 있을 때만 두 묶음 코드가 한 진료에 함께 있는
+    /// 진료 수와 그 진료들만의 각 규칙 금액(원 미만 버림). 아니면 null. 진료번호 같은 줄 값은 싣지 않는다.
+    /// </summary>
+    private static ClosingOverlap? Overlap(List<Visit> visits, List<Wanted> wanted)
+    {
+        var carm = wanted.FirstOrDefault(group => group.Key == CarmKey);
+        var sono = wanted.FirstOrDefault(group => group.Key == SonoKey);
+        if (carm == null || sono == null || !carm.HasRule || !sono.HasRule) return null;
+
+        var overlap = new ClosingOverlap();
+        decimal carmAmount = 0m, sonoAmount = 0m;
+        foreach (var visit in visits.Where(visit => visit.Has(carm) && visit.Has(sono)))
+        {
+            overlap.Visits++;
+            carmAmount = ClosingRead.Add(carmAmount, RuleAmount(visit, carm));
+            sonoAmount = ClosingRead.Add(sonoAmount, RuleAmount(visit, sono));
+        }
+        overlap.Carm = ClosingRead.Won(carmAmount);
+        overlap.Sono = ClosingRead.Won(sonoAmount);
+        return overlap;
     }
 
     private static void AddThree(Person person, Action addNew, Action addFirst90, Action addReturn)
@@ -584,14 +690,16 @@ public static class ClosingDay
 
     private static HelperException BadMessage() => new HelperException(ErrorCodes.BadMessage);
 
-    /// <summary>검사를 지난 묶음: key·코드(대문자, 겹침 없음, args 차례).</summary>
+    /// <summary>검사를 지난 묶음: key·코드(대문자, 겹침 없음, args 차례)·매출 규칙(앞글자·더 셀 코드, 대문자).</summary>
     private sealed class Wanted
     {
-        public Wanted(string key, List<string> ordered)
+        public Wanted(string key, List<string> ordered, List<string> prefixes, List<string> amountCodes)
         {
             Key = key;
             Ordered = ordered;
             Codes = new HashSet<string>(ordered, StringComparer.Ordinal);
+            Prefixes = prefixes;
+            AmountCodes = new HashSet<string>(amountCodes, StringComparer.Ordinal);
         }
 
         public string Key { get; }
@@ -599,6 +707,20 @@ public static class ClosingDay
         public List<string> Ordered { get; }
 
         public HashSet<string> Codes { get; }
+
+        public List<string> Prefixes { get; }
+
+        public HashSet<string> AmountCodes { get; }
+
+        /// <summary>앞글자·더 셀 코드가 하나라도 있으면 매출 규칙으로 센다(둘 다 비면 TASK-14 그대로).</summary>
+        public bool HasRule => Prefixes.Count > 0 || AmountCodes.Count > 0;
+
+        /// <summary>이 코드(대문자) 줄을 매출 규칙으로 세나: 더 셀 코드이거나, 앞글자로 시작하고 바로 다음 글자가 숫자 0~9.</summary>
+        public bool Counts(string code) =>
+            AmountCodes.Contains(code)
+            || Prefixes.Any(prefix => code.Length > prefix.Length
+                && code.StartsWith(prefix, StringComparison.Ordinal)
+                && code[prefix.Length] >= '0' && code[prefix.Length] <= '9');
     }
 
     /// <summary>진료 하나의 코드 하나: 처방 줄 수·금액 합(도우미 안에서만 쓴다).</summary>
@@ -638,6 +760,11 @@ public static class ClosingDay
         public long? Age { get; }
 
         public decimal? Total { get; }
+
+        /// <summary>이 진료의 코드 → 줄 수·금액(처방이 없으면 빈 표). 매출 규칙은 진료 단위로 본다(TASK-15).</summary>
+        public Dictionary<string, CodeLines> Codes { get; set; } = new Dictionary<string, CodeLines>(StringComparer.Ordinal);
+
+        public bool Has(Wanted group) => Codes.Keys.Any(group.Codes.Contains);
     }
 
     /// <summary>그날 한 사람(도우미 안에서만 쓴다).</summary>

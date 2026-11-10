@@ -44,6 +44,15 @@ public class ErpCommandTableTests
     private static string Group(string key, params string[] codes) =>
         "{\"key\":\"" + key + "\",\"codes\":[" + string.Join(",", codes.Select(code => "\"" + code + "\"")) + "]}";
 
+    /// <summary>JSON 글자 배열(탭 같은 글자도 이스케이프로 실린다).</summary>
+    private static string Arr(params string[] items) => "[" + string.Join(",", items.Select(item => JsonSerializer.Serialize(item))) + "]";
+
+    /// <summary>코드·매출 규칙 칸(TASK-15). null이면 그 칸을 넣지 않는다.</summary>
+    private static string RuleGroup(string key, string[] codes, string[]? prefixes, string[]? amountCodes = null) =>
+        "{\"key\":\"" + key + "\",\"codes\":" + Arr(codes)
+        + (prefixes == null ? "" : ",\"amountPrefixes\":" + Arr(prefixes))
+        + (amountCodes == null ? "" : ",\"amountCodes\":" + Arr(amountCodes)) + "}";
+
     private static string Day(string date, params string[] groups) =>
         "{\"date\":\"" + date + "\",\"groups\":[" + string.Join(",", groups) + "]}";
 
@@ -126,7 +135,10 @@ public class ErpCommandTableTests
         { "closing.day", Day("2026-11-09", Group("carm")) },
         { "closing.day", Day("2026-11-09", Group("carm", Enumerable.Range(0, 21).Select(i => "C" + i).ToArray())) },
         { "closing.day", Day("2026-11-09", Group("carm", new string('C', 21))) },
-        { "closing.day", Day("2026-11-09", Group("carm", "CA RM1")) },
+        { "closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CA  RM1" }, null)) },
+        { "closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CA\tRM1" }, null)) },
+        { "closing.day", Day("2026-11-09", RuleGroup("carm", new[] { " CARM1" }, null)) },
+        { "closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CARM1 " }, null)) },
         { "closing.day", Day("2026-11-09", Group("carm", "")) },
         { "closing.day", Day("2026-11-09", ClosingDay.GroupKeys.Select(key => Group(key, "X1")).Concat(new[] { Group("carm", "X2") }).ToArray()) },
         { "closing.day", "{\"date\":\"2026-11-09\",\"groups\":[],\"chart\":\"900001\"}" },
@@ -136,6 +148,54 @@ public class ErpCommandTableTests
     [Theory(DisplayName = "AC-3601.4 표 밖 args(모르는 칸·key·코드 수·코드 꼴·묶음 수·날짜 꼴)는 기존 Validate가 E-HELPER-BAD-MESSAGE로 막는다")]
     [MemberData(nameof(BadArgs))]
     public void ArgsShapeRefuses(string cmd, string args) => Refuses(cmd, args);
+
+    [Fact(DisplayName = "AC-3603.5 codes·amountCodes는 가운데 빈칸 하나인 코드('PROLO C'·'HYALU MINI', 20자까지)를 받는다(pattern ^\\S(?: ?\\S)*$)")]
+    public void InnerSpaceCodesAccepted()
+    {
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("manual", new[] { "PROLO C", "HYALU MINI", "A B C D E F G H I J" }, null)));
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("sono", new[] { "SONO1" }, new[] { "LA" }, new[] { "PROLO C", "HYALU MINI" })));
+    }
+
+    public static TheoryData<string> BadCodeShapes => new TheoryData<string>
+    {
+        "PROLO  C", "PROLO\tC", " PROLO C", "PROLO C ", "PROLO\u3000C", "", new string('P', 21), "PROLO\nC",
+    };
+
+    [Theory(DisplayName = "AC-3603.5 빈칸 두 칸·탭·앞뒤 공백·다른 빈칸 글자·빈 글자·21자·줄바꿈 코드는 codes·amountCodes 모두 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadCodeShapes))]
+    public void BadCodeShapesRefused(string code)
+    {
+        Refuses("closing.day", Day("2026-11-09", RuleGroup("manual", new[] { code }, null)));
+        Refuses("closing.day", Day("2026-11-09", RuleGroup("sono", new[] { "SONO1" }, new[] { "LA" }, new[] { code })));
+    }
+
+    [Fact(DisplayName = "AC-3604.6 매출 규칙 두 칸(design.md 2절): 둘 다 없어도 되고, 앞글자 0~5개(1~10자, 빈칸 없음)·더 셀 코드 0~20개를 받는다")]
+    public void RuleFieldsAccepted()
+    {
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "LA" })));
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, null, new[] { "KK090" })));
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new string[0], new string[0])));
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "LA", "KK", "A", "B", new string('Z', 10) },
+            Enumerable.Range(0, 20).Select(i => "C" + i).ToArray())));
+        Accepts("closing.day", Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "la" }), RuleGroup("sono", new[] { "SONO1" }, new[] { "LA" }, new[] { "kk090" })));
+    }
+
+    public static TheoryData<string> BadRuleArgs => new TheoryData<string>
+    {
+        Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "LA", "KK", "A", "B", "C", "D" })),
+        Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "LA" }, Enumerable.Range(0, 21).Select(i => "C" + i).ToArray())),
+        Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "" })),
+        Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { "L A" })),
+        Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { " LA" })),
+        Day("2026-11-09", RuleGroup("carm", new[] { "CARM1" }, new[] { new string('L', 11) })),
+        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"amountPrefixes\":\"LA\"}"),
+        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"amountCodes\":[1]}"),
+        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"amountPrefixes\":null}"),
+    };
+
+    [Theory(DisplayName = "AC-3604.6 앞글자 6개·더 셀 코드 21개·빈 앞글자·앞글자 빈칸·11자·배열 아님·글자 아님·null은 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadRuleArgs))]
+    public void BadRuleArgsRefused(string args) => Refuses("closing.day", args);
 
     [Fact(DisplayName = "AC-3601.4 표에 없는 명령은 기존 Validate가 E-HELPER-UNKNOWN-COMMAND로 막는다")]
     public void UnknownCommand()

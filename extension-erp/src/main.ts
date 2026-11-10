@@ -1,13 +1,14 @@
 // ERP 마감일지 화면(`/h/closing`) 쪽 흐름(design.md 1절·4절, REQ-3609). content.ts가 import()로 불러 startPage()를 부른다
 // - 주소가 /h/closing이고 '마감 일자'가 있을 때만 오른쪽 아래에 단추를 붙인다. 화면 안 이동(주소만 바뀜)은 0.5초마다 보고 안다
 // - 누르면: 마감 일자 읽기 → 설정(저장한 적 없으면 설정 화면 열기) → 서비스 워커에 closing.day(120초) → 날짜가 그대로면
-//   cells.ts 칸 계획대로 fill.ts가 채우고 panel.ts가 안내한다. 오류·날짜 바뀜이면 어느 칸도 바꾸지 않는다. 저장은 사용자가 누른다
+//   (씨암·SONO가 함께 있는 진료가 있으면 먼저 묻고 → 누를 때 날짜 다시 확인 → 고른 것을 설정 overlap에 기억, TASK-15)
+//   cells.ts 칸 계획대로 fill.ts가 채우고 panel.ts가 안내한다. 오류·날짜 바뀜·묻기 닫음이면 어느 칸도 바꾸지 않는다. 저장은 사용자가 누른다
 // - 도우미 답은 이 흐름 안에서만 쓰고 어디에도 두지 않는다
 import { planCells } from './cells.js'
 import { fillAll } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
-import { load, toGroups } from './settings.js'
-import type { ClosingDay, MoneyKey, Settings } from './types.js'
+import { load, saveOverlap, toGroups } from './settings.js'
+import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
 
 /** 단추를 붙이는 화면 주소 */
 export const PAGE_PATH = '/h/closing'
@@ -86,7 +87,7 @@ const MONEY: MoneyKey[] = ['total', 'insurer', 'receivableIn', 'unpaidNew', 'non
 /** closing.day 답(design.md 2절 모양)이고 부른 날짜의 답이면 그대로, 아니면 null */
 export function readDay(data: unknown, date: string): ClosingDay | null {
   if (!isRecord(data) || data.date !== date) return null
-  const { patients, groups, ages, money, reservations, injection, warnings } = data
+  const { patients, groups, ages, money, reservations, injection, overlap, warnings } = data
   const ok =
     numbers(patients, [...THREE, 'noExamFee', 'total']) &&
     isRecord(patients) &&
@@ -103,6 +104,8 @@ export function readDay(data: unknown, date: string): ClosingDay | null {
     Array.isArray(reservations.kinds) &&
     reservations.kinds.every((k) => numbers(k, ['total', 'visited', 'changed', 'canceled']) && isRecord(k) && typeof k.kind === 'string') &&
     (injection === null || (numbers(injection, ['newPatients', 'newLines']) && isRecord(injection) && isCount(injection.firstTime))) &&
+    // 함께 있는 진료(TASK-15). 예전 도우미는 칸이 없다(없음 = null)
+    (overlap === undefined || overlap === null || numbers(overlap, ['visits', 'carm', 'sono'])) &&
     numbers(warnings, ['unpaidVisits', 'unknownAge']) &&
     isRecord(warnings) &&
     ['moneyUnconfirmed', 'splitUnconfirmed', 'noHistory'].every((key) => typeof warnings[key] === 'boolean')
@@ -193,8 +196,28 @@ export function startPage(doc: Document = document): { stop(): void } {
         dock.show({ kind: 'dateChanged' })
         return
       }
-      const result = await fillAll(doc, planCells(outcome.day, settings))
-      if (still()) dock.show({ kind: 'done', date, result, day: outcome.day })
+      const day = outcome.day
+      // 씨암·SONO가 함께 있는 진료(AC-3609.7): 채우기 전에 묻고, 누를 때 날짜를 다시 보고, 고른 것을 기억한 뒤 그대로 채운다
+      const overlap = day.overlap && day.overlap.visits > 0 ? day.overlap : null
+      let choice: OverlapChoice | undefined
+      if (overlap) {
+        const picked = await dock.askOverlap({ visits: overlap.visits, carm: overlap.carm, sono: overlap.sono, last: settings.overlap })
+        if (!still() || picked === null) return
+        if (readDate(doc) !== date) {
+          dock.show({ kind: 'dateChanged' })
+          return
+        }
+        choice = picked
+        try {
+          await saveOverlap(picked)
+        } catch {
+          // 기억하지 못해도(확장과 끊김 등) 고른 대로 채운다. 다음엔 '(지난번)'이 예전 것으로 보일 뿐이다
+        }
+        if (!still()) return
+      }
+      const result = await fillAll(doc, planCells(day, settings, choice))
+      if (!still()) return
+      dock.show({ kind: 'done', date, result, day, ...(overlap && choice ? { overlap: { visits: overlap.visits, choice } } : {}) })
     } finally {
       if (still()) {
         busy = false

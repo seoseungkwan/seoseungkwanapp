@@ -190,7 +190,10 @@ public class ClosingCommandsTests
         yield return new object[] { "코드 0개", DayArgs(ClosingFake.DayText, G("carm")) };
         yield return new object[] { "코드 21개", DayArgs(ClosingFake.DayText, G("carm", Enumerable.Range(0, 21).Select(i => "C" + i).ToArray())) };
         yield return new object[] { "코드 21자", DayArgs(ClosingFake.DayText, G("carm", new string('C', 21))) };
-        yield return new object[] { "가운데 공백", DayArgs(ClosingFake.DayText, G("carm", "CA RM1")) };
+        yield return new object[] { "가운데 빈칸 두 칸", DayArgs(ClosingFake.DayText, G("carm", "CA  RM1")) };
+        yield return new object[] { "가운데 탭", DayArgs(ClosingFake.DayText, G("carm", "CA\\tRM1")) };
+        yield return new object[] { "앞 공백", DayArgs(ClosingFake.DayText, G("carm", " CARM1")) };
+        yield return new object[] { "뒤 공백", DayArgs(ClosingFake.DayText, G("carm", "CARM1 ")) };
         yield return new object[] { "빈 코드", DayArgs(ClosingFake.DayText, G("carm", "")) };
         yield return new object[] { "묶음 20개", DayArgs(ClosingFake.DayText, all.Concat(new[] { G("carm", "X2") }).ToArray()) };
         yield return new object[] { "날짜 빗금", DayArgs("2026/11/09", G("carm", "CARM1")) };
@@ -201,7 +204,7 @@ public class ClosingCommandsTests
         yield return new object[] { "묶음에 모르는 칸", DayArgs(ClosingFake.DayText, "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"name\":\"x\"}") };
     }
 
-    [Theory(DisplayName = "AC-3603.1 명령 표가 먼저 막는다(틀린 key·코드 수·코드 꼴·묶음 수·날짜 꼴·모르는 칸) → E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
+    [Theory(DisplayName = "AC-3603.1 명령 표가 먼저 막는다(틀린 key·코드 수·코드 꼴(빈칸 두 칸·탭·앞뒤 공백)·묶음 수·날짜 꼴·모르는 칸) → E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
     [MemberData(nameof(TableRefuses))]
     public void TableRefusesBadArgs(string why, string args)
     {
@@ -232,6 +235,108 @@ public class ClosingCommandsTests
         Assert.Equal(ErrorCodes.BadMessage, ErrorOf(outcome));
         Assert.DoesNotContain(rig.Session.Sqls, ReadStatements().Contains);
         Assert.Equal(rig.Connector.Opened.Count, rig.Session.Disposed);
+    }
+
+    // ---- 가운데 빈칸 코드·매출 규칙(AC-3603.5·AC-3604.6·AC-3604.7) ---------------------------------------
+
+    /// <summary>JSON 글자(따옴표·이스케이프 포함). 탭 같은 글자도 이스케이프로 실린다.</summary>
+    private static string J(string text) => JsonSerializer.Serialize(text);
+
+    private static string Arr(params string[] items) => "[" + string.Join(",", items.Select(J)) + "]";
+
+    /// <summary>매출 규칙 칸이 있는 묶음 JSON. null이면 그 칸을 넣지 않는다.</summary>
+    private static string RuleG(string key, string[] codes, string[]? prefixes, string[]? amountCodes = null) =>
+        "{\"key\":" + J(key) + ",\"codes\":" + Arr(codes)
+        + (prefixes == null ? "" : ",\"amountPrefixes\":" + Arr(prefixes))
+        + (amountCodes == null ? "" : ",\"amountCodes\":" + Arr(amountCodes)) + "}";
+
+    /// <summary>
+    /// 씨암·SONO가 함께 있는 진료 V001(LA358 213,800 · KK090 32,610 · 'PROLO C' 50,000)과 SONO만 V002(LA274 31,670).
+    /// 처방 코드는 비트처럼 UPPER(RTRIM()) 글자로 온다.
+    /// </summary>
+    private static Rig RuleDay()
+    {
+        var rig = Ready();
+        rig.Session.Answer(ClosingSql.DayCodesSql, _ => new[]
+        {
+            new object?[] { "V001", "CARM1", 1L, 0m },
+            new object?[] { "V001", "SONO1", 1L, 0m },
+            new object?[] { "V001", "LA358", 1L, 213800m },
+            new object?[] { "V001", "KK090", 1L, 32610m },
+            new object?[] { "V001", "PROLO C", 1L, 50000m },
+            new object?[] { "V002", "SONO1", 1L, 0m },
+            new object?[] { "V002", "LA274", 1L, 31670m },
+        });
+        return rig;
+    }
+
+    [Fact(DisplayName = "AC-3603.5 가운데 빈칸 코드('PROLO C')는 명령 표 pattern과 처리기를 지나 result 하나, 대문자로 견준다")]
+    public void InnerSpaceCodeIsOneResult()
+    {
+        using var rig = RuleDay();
+        var outcome = Handle(rig, "closing.day", DayArgs(ClosingFake.DayText, RuleG("manual", new[] { "PROLO C", "HYALU MINI" }, null)));
+
+        var group = Assert.Single(One(outcome, "result").GetProperty("data").GetProperty("groups").EnumerateArray());
+        Assert.Equal("manual", group.GetProperty("key").GetString());
+        Assert.Equal(1, group.GetProperty("patients").GetInt64());
+        Assert.Equal(50000, group.GetProperty("total").GetInt64());
+        Assert.Equal(("closing.day", (string?)null), Assert.Single(outcome.Log));
+    }
+
+    [Fact(DisplayName = "AC-3604.6 매출 규칙 두 칸(소문자 → 대문자)을 읽어 total을 그 규칙으로, AC-3604.7 둘 다 규칙이면 overlap을 답에 싣는다")]
+    public void RulesAreReadAndAnswered()
+    {
+        using var rig = RuleDay();
+        var args = DayArgs(ClosingFake.DayText,
+            RuleG("carm", new[] { "CARM1" }, new[] { "la" }, new string[0]),
+            RuleG("sono", new[] { "SONO1" }, new[] { "LA" }, new[] { "kk090", "prolo c" }));
+        var data = One(Handle(rig, "closing.day", args), "result").GetProperty("data");
+
+        var groups = data.GetProperty("groups").EnumerateArray().ToArray();
+        Assert.Equal(213800, groups[0].GetProperty("total").GetInt64());
+        Assert.Equal(213800 + 32610 + 50000 + 31670, groups[1].GetProperty("total").GetInt64());
+        var overlap = data.GetProperty("overlap");
+        Assert.Equal(1, overlap.GetProperty("visits").GetInt64());
+        Assert.Equal(213800, overlap.GetProperty("carm").GetInt64());
+        Assert.Equal(213800 + 32610 + 50000, overlap.GetProperty("sono").GetInt64());
+    }
+
+    [Fact(DisplayName = "AC-3604.6 규칙 두 칸이 없으면 지금(TASK-14) 그대로이고 overlap은 null")]
+    public void NoRulesKeepsCodeTotal()
+    {
+        using var rig = RuleDay();
+        var data = One(Handle(rig, "closing.day", DayArgs(ClosingFake.DayText, G("carm", "CARM1"), G("sono", "SONO1"))), "result").GetProperty("data");
+
+        Assert.All(data.GetProperty("groups").EnumerateArray(), group => Assert.Equal(0, group.GetProperty("total").GetInt64()));
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("overlap").ValueKind);
+    }
+
+    public static IEnumerable<object[]> TableRefusesRules()
+    {
+        var carm = new[] { "CARM1" };
+        yield return new object[] { "앞글자 6개", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "LA", "KK", "A", "B", "C", "D" })) };
+        yield return new object[] { "더 셀 코드 21개", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "LA" }, Enumerable.Range(0, 21).Select(i => "C" + i).ToArray())) };
+        yield return new object[] { "빈 앞글자", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "" })) };
+        yield return new object[] { "앞글자 빈칸", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "L A" })) };
+        yield return new object[] { "앞글자 11자", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { new string('L', 11) })) };
+        yield return new object[] { "빈 더 셀 코드", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "LA" }, new[] { "" })) };
+        yield return new object[] { "더 셀 코드 빈칸 두 칸", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "LA" }, new[] { "PROLO  C" })) };
+        yield return new object[] { "더 셀 코드 탭", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "LA" }, new[] { "PROLO\tC" })) };
+        yield return new object[] { "더 셀 코드 앞 공백", DayArgs(ClosingFake.DayText, RuleG("carm", carm, new[] { "LA" }, new[] { " KK090" })) };
+        yield return new object[] { "앞글자가 배열 아님", DayArgs(ClosingFake.DayText, "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"amountPrefixes\":\"LA\"}") };
+        yield return new object[] { "앞글자 칸이 숫자", DayArgs(ClosingFake.DayText, "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"amountPrefixes\":[1]}") };
+    }
+
+    [Theory(DisplayName = "AC-3604.6 매출 규칙 칸이 틀리면(앞글자 6개·더 셀 코드 21개·빈 글자·빈칸·11자·탭·앞 공백·배열 아님) 명령 표가 E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
+    [MemberData(nameof(TableRefusesRules))]
+    public void TableRefusesBadRules(string why, string args)
+    {
+        using var rig = Ready();
+        var outcome = Handle(rig, "closing.day", args);
+
+        Assert.True(ErrorOf(outcome) == ErrorCodes.BadMessage, why);
+        Assert.Empty(rig.Connector.Opened);
+        Assert.Equal(("closing.day", (string?)ErrorCodes.BadMessage), Assert.Single(outcome.Log));
     }
 
     // ---- 부른 쪽(AC-3601.3) ------------------------------------------------------------------------
@@ -338,7 +443,7 @@ public class ClosingCommandsTests
         }
 
         Assert.Equal(
-            ClosingFake.Sorted("date", "patients", "groups", "ages", "money", "inpatientVisits", "reservations", "injection", "warnings"),
+            ClosingFake.Sorted("date", "patients", "groups", "ages", "money", "inpatientVisits", "reservations", "injection", "overlap", "warnings"),
             ClosingFake.Keys(One(day, "result").GetProperty("data")));
         var codeData = One(codes, "result").GetProperty("data");
         Assert.Equal(ClosingFake.Sorted("codes", "kinds"), ClosingFake.Keys(codeData));

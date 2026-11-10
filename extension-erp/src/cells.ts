@@ -1,7 +1,7 @@
 // 도우미 답 + 설정 → ERP 마감일지 칸 계획(design.md 4절 칸 표 그대로, REQ-3608). 화면은 보지 않는다
 // 칸 이름은 ERP 화면 글자 그대로(notes/erp-closing-fields.md 3·4절). 값은 쉼표 없는 정수 글자이고,
 // 코드를 고르지 않은 묶음은 'unpicked', 비트에서 셀 수 없는 값(null)은 'unknown', 보류 묶음(HELD_SALES)의 치료별 매출은 'held'로
-// 값 없이 둔다(그 칸은 건드리지 않는다)
+// 값 없이 둔다(그 칸은 건드리지 않는다). 씨암·SONO가 함께 있는 진료는 작성자가 고른 대로 치료별 매출 두 칸을 나눈다(TASK-15)
 import {
   GROUP_NAMES,
   RSV_NAMES,
@@ -11,6 +11,7 @@ import {
   type EtcKey,
   type GroupKey,
   type MoneyKey,
+  type OverlapChoice,
   type Settings,
   type Three,
 } from './types.js'
@@ -24,10 +25,11 @@ export type Where =
 export type Planned = { where: Where; value: string | null; why?: 'unpicked' | 'unknown' | 'held' }
 
 /**
- * 치료별 매출을 채우지 않고 보류하는 묶음(requirements 기본값 (아), 사용자 '일단 보류' 2026-11-10 밤). 정하면 이 한 곳만 바꾼다.
- * 이 묶음의 치료별 매출 칸은 코드를 골랐으면 held(ERP 칸 그대로, 직원이 넣음), 안 골랐으면 지금처럼 unpicked. 건수 칸은 그대로 채운다
+ * 치료별 매출을 채우지 않고 보류하는 묶음(requirements 기본값 (아)). 이 묶음의 치료별 매출 칸은 코드를 골랐으면 held(ERP 칸 그대로,
+ * 직원이 넣음), 안 골랐으면 지금처럼 unpicked. 건수 칸은 그대로 채운다.
+ * 씨암·SONO 보류는 TASK-15에서 끝났다(이미 정한 것 10: 매출 규칙으로 센다). 다시 보류할 묶음이 생기면 이 한 곳에 넣는다
  */
-export const HELD_SALES: GroupKey[] = ['carm', 'sono']
+export const HELD_SALES: GroupKey[] = []
 
 /** 업무일지 2 낱칸이 있는 묶음 제목(못 찾은 칸 글에 쓴다) */
 export const FIELD_CARD = '운영 지표(치료사별·금액)'
@@ -116,7 +118,12 @@ function digits(n: number | null | undefined): string | null {
   return String(Math.trunc(n) || 0)
 }
 
-export function planCells(answer: ClosingDay, settings: Settings): Planned[] {
+/**
+ * 도우미 답 + 설정 → 칸 계획. choice = 씨암·SONO가 함께 있는 진료를 어디에 넣나(design.md 4절 식, AC-3609.7):
+ * 치료별 매출 씨암 = carm.total, SONO = sono.total이고 'carm'이면 SONO에서 overlap.sono를, 'sono'면 씨암에서 overlap.carm을 뺀다.
+ * 'both'·고르지 않음·overlap이 없거나 0건이면 그대로(둘 다 넣은 값)
+ */
+export function planCells(answer: ClosingDay, settings: Settings, choice?: OverlapChoice): Planned[] {
   const plan: Planned[] = []
   const picked = (key: GroupKey) => (settings.picks[key] ?? []).some((code) => code.trim() !== '')
   const group = (key: GroupKey) => answer.groups.find((g) => g.key === key)
@@ -179,15 +186,24 @@ export function planCells(answer: ClosingDay, settings: Settings): Planned[] {
   put({ j: 2, field: '신환주사환자' }, answer.injection?.newPatients, injection)
   put({ j: 2, field: '신환주사건수' }, answer.injection?.newLines, injection)
 
-  // 업무일지 2 치료별 매출(보류 묶음은 골랐어도 held)
+  // 업무일지 2 치료별 매출(보류 묶음은 골랐어도 held, 씨암·SONO는 함께 있는 진료 선택대로)
   const sales: { row: string; key: GroupKey; ok: boolean }[] = [
     ...SALES_ROWS.map(([row, key]) => ({ row, key, ok: picked(key) })),
     ...ETC_KEYS.map((key) => ({ key, ...etcRow(key) })),
   ]
+  const overlap = answer.overlap && answer.overlap.visits > 0 ? answer.overlap : null
+  /** 함께 있는 진료를 다른 쪽에 넣기로 했으면 이 묶음에서 뺄 금액 */
+  const minus = (key: GroupKey): number => {
+    if (!overlap) return 0
+    if (key === 'carm' && choice === 'sono') return overlap.carm
+    if (key === 'sono' && choice === 'carm') return overlap.sono
+    return 0
+  }
   for (const { row, key, ok } of sales) {
     const where: Where = { j: 2, card: '치료별 매출', row, col: '금액(원)' }
+    const total = group(key)?.total
     if (ok && HELD_SALES.includes(key)) plan.push({ where, value: null, why: 'held' })
-    else put(where, group(key)?.total, ok)
+    else put(where, typeof total === 'number' ? total - minus(key) : total, ok)
   }
 
   return plan

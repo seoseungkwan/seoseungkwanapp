@@ -62,7 +62,10 @@ public static class ClosingCommands
         throw Bad(request);
     }
 
-    /// <summary>groups 칸을 [{key, codes}] 목록으로 푼다. 모양이 틀리면 E-HELPER-BAD-MESSAGE.</summary>
+    /// <summary>
+    /// groups 칸을 [{key, codes, amountPrefixes?, amountCodes?}] 목록으로 푼다. 모양이 틀리면 E-HELPER-BAD-MESSAGE.
+    /// 매출 규칙 두 칸(TASK-15)은 없으면 null로 두고, 대문자로 바꾸기·개수·꼴 검사는 ClosingDay.Read가 DB 전에 한다.
+    /// </summary>
     private static IReadOnlyList<ClosingGroup> Groups(Request request)
     {
         if (!Field(request, "groups", out var value) || value.ValueKind != JsonValueKind.Array) throw Bad(request);
@@ -71,19 +74,29 @@ public static class ClosingCommands
         {
             if (item.ValueKind != JsonValueKind.Object
                 || !item.TryGetProperty("key", out var keyValue) || !TryGetString(keyValue, out var key)
-                || !item.TryGetProperty("codes", out var codesValue) || codesValue.ValueKind != JsonValueKind.Array)
+                || !item.TryGetProperty("codes", out var codesValue))
             {
                 throw Bad(request);
             }
-            var codes = new List<string>();
-            foreach (var codeValue in codesValue.EnumerateArray())
-            {
-                if (!TryGetString(codeValue, out var code)) throw Bad(request);
-                codes.Add(code);
-            }
-            groups.Add(new ClosingGroup(key, codes));
+            var codes = Strings(request, codesValue);
+            var prefixes = item.TryGetProperty("amountPrefixes", out var prefixesValue) ? Strings(request, prefixesValue) : null;
+            var amountCodes = item.TryGetProperty("amountCodes", out var amountValue) ? Strings(request, amountValue) : null;
+            groups.Add(new ClosingGroup(key, codes, prefixes, amountCodes));
         }
         return groups;
+    }
+
+    /// <summary>글자 배열 하나. 배열이 아니거나 글자가 아닌 칸이 있으면 E-HELPER-BAD-MESSAGE.</summary>
+    private static List<string> Strings(Request request, JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array) throw Bad(request);
+        var list = new List<string>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (!TryGetString(item, out var text)) throw Bad(request);
+            list.Add(text);
+        }
+        return list;
     }
 
     private static bool Field(Request request, string name, out JsonElement value)

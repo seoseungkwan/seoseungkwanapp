@@ -53,6 +53,10 @@ describe('REQ-3603 closing.day 환자 수 (C# Erp.Core.Tests.Closing)', () => {
   it('AC-3603.4 연령 10줄(9·10·99·100세), 생년월일 없음은 unknownAge', () => {
     expectAc('AC-3603.4')
   })
+
+  it("AC-3603.5 가운데 빈칸 코드('PROLO C')는 CheckGroups·명령 표를 지나 대문자로 견주고, 빈칸 두 칸·탭·앞뒤 공백은 E-HELPER-BAD-MESSAGE, 주사 코드는 @c 매개변수로만", () => {
+    expectAc('AC-3603.5')
+  })
 })
 
 describe('REQ-3604 closing.day 금액과 경고 (C# Erp.Core.Tests.Closing)', () => {
@@ -70,6 +74,14 @@ describe('REQ-3604 closing.day 금액과 경고 (C# Erp.Core.Tests.Closing)', ()
 
   it('AC-3604.4 inpatientVisits = 외래가 아닌 접수 수', () => {
     expectAc('AC-3604.4')
+  })
+
+  it('AC-3604.6 매출 규칙: 표시 코드가 있는 진료 안의 앞글자 + 숫자 줄·더 셀 코드 줄 금액 합(한 줄 한 번, 원 미만 버림), 6개 앞글자·21개 코드·빈 글자는 E-HELPER-BAD-MESSAGE, 없으면 TASK-14 그대로, 새 문장 없음', () => {
+    expectAc('AC-3604.6')
+  })
+
+  it('AC-3604.7 carm·sono 둘 다 규칙이면 overlap = 함께 있는 진료 수·각 규칙 금액, 아니면 null', () => {
+    expectAc('AC-3604.7')
   })
 })
 

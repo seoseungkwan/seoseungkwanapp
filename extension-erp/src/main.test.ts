@@ -224,6 +224,12 @@ describe('AC-3609.2 누르면', () => {
     await flush()
     expect(t.dayCalls()).toHaveLength(1)
     expect(t.dayCalls()[0][0]).toEqual({ cmd: 'closing.day', args: { date: '2026-11-09', groups: toGroups(stored) } })
+    // 매출 규칙이 없는 예전 저장값도 처음 값 규칙(LA)으로 씨암·SONO에 붙어 간다(AC-3607.6)
+    const sent = (t.dayCalls()[0][0] as { args: { groups: { key: string; amountPrefixes?: string[]; amountCodes?: string[] }[] } }).args.groups
+    expect(sent.slice(0, 2)).toEqual([
+      { key: 'carm', codes: ['CARM1'], amountPrefixes: ['LA'], amountCodes: [] },
+      { key: 'sono', codes: ['SONO1'], amountPrefixes: ['LA'], amountCodes: [] },
+    ])
     expect(text(button())).toBe('비트에서 읽는 중…')
     expect(button().disabled).toBe(true)
     expect(panel().hidden).toBe(true)
@@ -269,20 +275,21 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     const t = start({ reply: ok(day) })
     button().click()
     await flush()
-    // 처음 값 + 예약 도수·충격파: 131칸 가운데 고르지 않은 38칸과 보류 2칸(씨암·SONO 치료별 매출)을 빼고 91칸
-    expect(lead()).toBe('2026-11-09 비트 값으로 91칸을 채웠어요. 저장은 하지 않았어요.')
+    // 처음 값 + 예약 도수·충격파: 131칸 가운데 고르지 않은 38칸을 빼고 93칸(씨암·SONO 치료별 매출 보류는 TASK-15에서 끝남)
+    expect(lead()).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
     const skipped = shadow().querySelector('.blk')
     expect(text(skipped?.querySelector('p'))).toBe('고르지 않아 건너뛴 칸 38칸')
     expect(text(skipped?.querySelector('.small'))).toBe('설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.')
-    // 보류 줄은 고르지 않은 칸 줄 바로 아래
-    expect(text(skipped?.nextElementSibling)).toBe('씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.')
+    // 보류 줄은 없다
+    expect(shadow().querySelector('.held')).toBeNull()
+    expect(lines().join('\n')).not.toContain('치료별 매출은 채우지 않았어요')
     expect(lines()).toContain('확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.')
     expect(shadow().querySelector('.warns')).toBeNull()
     expect(t.page.state).toMatchObject({ NEW_PATIENT: '7', TOTAL_PATIENT: '84', TOTAL_FEE: '11668530', CARM_CNT: '400' })
-    // 씨암·SONO 치료별 매출 칸은 건드리지 않는다(같은 묶음 건수 칸은 채움)
-    expect(t.page.state.CARM_AMT).toBe('')
-    expect(t.page.state.SONO_AMT).toBe('')
-    expect(t.page.log.some((x) => x.key === 'CARM_AMT' || x.key === 'SONO_AMT')).toBe(false)
+    // 씨암·SONO 치료별 매출 칸도 묶음 total로 채운다(overlap 없음 → 묻지 않음)
+    expect(t.page.state.CARM_AMT).toBe('1001234')
+    expect(t.page.state.SONO_AMT).toBe('2001234')
+    expect(shadow().querySelector('.ovl')).toBeNull()
     expect(t.page.state.INJ_CARM_NEW).toBe('100')
     expect(t.page.clicks).toEqual([])
     expect(text(button())).toBe('비트 값 채우기')
@@ -296,7 +303,7 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     start({ page: { therapistRows: true }, reply: ok(day) })
     button().click()
     await flush()
-    expect(lead()).toBe('2026-11-09 비트 값으로 89칸을 채웠어요. 저장은 하지 않았어요.')
+    expect(lead()).toBe('2026-11-09 비트 값으로 91칸을 채웠어요. 저장은 하지 않았어요.')
     const miss = shadow().querySelector('.blk')
     expect(text(miss?.querySelector('.h'))).toBe('못 찾은 칸 2칸')
     expect([...(miss?.querySelectorAll('li') ?? [])].map(text)).toEqual([
@@ -328,6 +335,133 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     await flush()
     expect(t.dayCalls()).toHaveLength(2)
     expect(panel().hidden).toBe(false)
+  })
+})
+
+describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 → saveOverlap → 채움', () => {
+  // sampleDay 씨암 total 1,001,234 · SONO total 2,001,234. 함께 있는 진료 9건: 씨암 쪽 400,000 · SONO 쪽 300,000
+  const OVERLAP = { visits: 9, carm: 400_000, sono: 300_000 }
+  const dayWith = (overlap: unknown) => ({ ...sampleDay(), overlap })
+  const ASK = '씨암·SONO 코드가 함께 있는 진료가 9건 있어요(씨암 쪽 400,000원 · SONO 쪽 300,000원). 어디에 넣을까요?'
+  const choice = (c: string) => shadow().querySelector<HTMLButtonElement>(`.acts button[data-choice="${c}"]`) as HTMLButtonElement
+  const labels = () => [...shadow().querySelectorAll('.acts button')].map(text)
+  /** saveOverlap이 쓴 erpClosing 값들 */
+  const writes = (local: { set: { mock: { calls: unknown[][] } } }) =>
+    local.set.mock.calls.map(([items]) => (items as Record<string, Settings>)[SETTINGS_KEY])
+
+  it('AC-3609.7: overlap.visits > 0이면 칸을 채우기 전에 묻는 줄과 세 단추가 나오고, 아직 아무 칸도 바꾸지 않는다', async () => {
+    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    expect(lead()).toBe(ASK)
+    expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기'])
+    expect(t.page.state).toEqual(before)
+    expect(t.page.log).toEqual([])
+    expect(t.local.set).not.toHaveBeenCalled()
+    expect(text(button())).toBe('비트 값 채우기')
+  })
+
+  it("AC-3609.7: [SONO에 넣기]를 누르면 overlap 'sono'를 기억하고 씨암에서 씨암 쪽 금액을 빼 채우며, 채운 뒤 함께 있는 진료 줄이 있다", async () => {
+    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    button().click()
+    await flush()
+    choice('sono').click()
+    await flush()
+    expect(writes(t.local)).toHaveLength(1)
+    expect(writes(t.local)[0]).toMatchObject({ v: 1, overlap: 'sono', picks: settingsFirst().picks })
+    expect(t.page.state.CARM_AMT).toBe(String(1_001_234 - 400_000))
+    expect(t.page.state.SONO_AMT).toBe('2001234')
+    expect(lead()).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
+    expect(text(shadow().querySelector('.ovl'))).toBe('함께 있는 진료 9건은 SONO에 넣었어요.')
+  })
+
+  it("AC-3609.7: [씨암에 넣기]면 SONO에서 SONO 쪽 금액을 빼고, [둘 다 넣기]면 두 칸 모두 묶음 total이다", async () => {
+    let t = start({ reply: ok(dayWith(OVERLAP)) })
+    button().click()
+    await flush()
+    choice('carm').click()
+    await flush()
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', String(2_001_234 - 300_000)])
+    expect(text(shadow().querySelector('.ovl'))).toBe('함께 있는 진료 9건은 씨암에 넣었어요.')
+    expect(writes(t.local)[0].overlap).toBe('carm')
+    handle?.stop()
+    document.body.innerHTML = ''
+
+    t = start({ reply: ok(dayWith(OVERLAP)) })
+    button().click()
+    await flush()
+    choice('both').click()
+    await flush()
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(text(shadow().querySelector('.ovl'))).toBe('함께 있는 진료 9건은 씨암·SONO 둘 다에 넣었어요.')
+    expect(writes(t.local)[0].overlap).toBe('both')
+  })
+
+  it("AC-3609.7: 지난번 고른 것(저장된 overlap)은 ' (지난번)'이 붙고 먼저 포커스를 받는다", async () => {
+    start({ stored: { ...settingsFirst(), overlap: 'sono' } as Settings, reply: ok(dayWith(OVERLAP)) })
+    button().click()
+    await flush()
+    expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기'])
+    expect(shadow().activeElement).toBe(choice('sono'))
+  })
+
+  it('AC-3609.7: 누르기 전에 마감 일자가 바뀌었으면 채우지 않고 기억도 바꾸지 않는다(AC-3609.3과 같은 글)', async () => {
+    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    dateInput().value = '2026-11-08'
+    choice('carm').click()
+    await flush()
+    expect(lines()).toEqual(['읽는 동안 마감 일자가 바뀌어 채우지 않았어요. 다시 눌러 주세요.'])
+    expect(t.page.state).toEqual(before)
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3609.7: [안내 닫기]면 아무 칸도 바꾸지 않고 기억도 바꾸지 않으며, 다시 누르면 다시 묻는다', async () => {
+    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    shadow().querySelector<HTMLButtonElement>('.x')?.click()
+    await flush()
+    expect(panel().hidden).toBe(true)
+    expect(t.page.state).toEqual(before)
+    expect(t.page.log).toEqual([])
+    expect(t.local.set).not.toHaveBeenCalled()
+    expect(button().disabled).toBe(false)
+    button().click()
+    await flush()
+    expect(t.dayCalls()).toHaveLength(2)
+    expect(lead()).toBe(ASK)
+  })
+
+  it.each<[string, unknown]>([
+    ['overlap null', null],
+    ['overlap 0건', { visits: 0, carm: 0, sono: 0 }],
+  ])('AC-3609.7: %s 이면 묻지 않고 바로 채운다', async (_name, overlap) => {
+    const t = start({ reply: ok(dayWith(overlap)) })
+    button().click()
+    await flush()
+    expect(lead()).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(shadow().querySelector('.ovl')).toBeNull()
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3609.7: 묻는 동안 화면을 떠나면 늦게 누른 단추로 채우지 않는다', async () => {
+    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    const stale = choice('carm')
+    history.pushState(null, '', '/h/closing-calendar')
+    await vi.advanceTimersByTimeAsync(WATCH_MS)
+    stale.click()
+    await flush()
+    expect(t.page.state).toEqual(before)
+    expect(t.local.set).not.toHaveBeenCalled()
   })
 })
 
@@ -395,6 +529,8 @@ describe('AC-3609.5 오류 때 칸 그대로', () => {
     ['groups가 배열 아님', ok({ ...sampleDay(), groups: {} })],
     ['money 칸이 글자', ok({ ...sampleDay(), money: { ...sampleDay().money, total: '11668530' } })],
     ['다른 날짜의 답', ok({ ...sampleDay(), date: '2026-11-08' })],
+    ['overlap 모양 틀림', ok({ ...sampleDay(), overlap: { visits: '9', carm: 0, sono: 0 } })],
+    ['overlap이 배열', ok({ ...sampleDay(), overlap: [] })],
     ['오류 번호 모양 틀림', fail('<b>x</b>')],
   ])("AC-3609.5: %s 이면 '비트에서 읽지 못했어요 (E-BRIDGE-BAD-REPLY)'", async (_name, reply) => {
     expect(await failsWith(reply)).toBe('비트에서 읽지 못했어요 (E-BRIDGE-BAD-REPLY)')

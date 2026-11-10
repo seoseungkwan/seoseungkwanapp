@@ -181,6 +181,20 @@ describe('AC-3601.1 extension-erp/src/types.ts 이름표·차례', () => {
     })
   })
 
+  it('AC-3603.5 AC-3607.7: 확장 코드 꼴(CODE_PATTERN)·앞글자 꼴(PREFIX_PATTERN)은 ERP 명령 표 closing.day codes·amountCodes·amountPrefixes pattern과 같다', async () => {
+    const { CODE_PATTERN, PREFIX_PATTERN } = await loadTypes()
+    type Spec = { pattern?: string; max?: number; items?: Spec; fields?: Record<string, Spec> }
+    const erp = readJson(ERP_TABLE) as { commands: Record<string, { args: Record<string, Spec> }> }
+    const fields = erp.commands['closing.day'].args.groups.items?.fields as Record<string, Spec>
+    expect(CODE_PATTERN.source).toBe(fields.codes.items?.pattern)
+    expect(CODE_PATTERN.source).toBe(fields.amountCodes.items?.pattern)
+    expect(PREFIX_PATTERN.source).toBe(fields.amountPrefixes.items?.pattern)
+    expect(CODE_PATTERN.source).toBe('^\\S(?: ?\\S)*$')
+    expect(PREFIX_PATTERN.source).toBe('^\\S{1,10}$')
+    expect(CODE_PATTERN.flags).toBe('')
+    expect(PREFIX_PATTERN.flags).toBe('')
+  })
+
   it('AC-3601.5: 설정은 chrome.storage.local의 erpClosing 한 칸에 둔다', async () => {
     const { SETTINGS_KEY } = await loadTypes()
     expect(SETTINGS_KEY).toBe('erpClosing')

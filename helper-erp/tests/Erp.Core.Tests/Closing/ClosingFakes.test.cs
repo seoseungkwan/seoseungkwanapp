@@ -53,6 +53,10 @@ internal static class ClosingFake
 
     public static ClosingGroup Group(string key, params string[] codes) => new ClosingGroup(key, codes);
 
+    /// <summary>매출 규칙이 있는 묶음(TASK-15, design.md 2절 amountPrefixes·amountCodes). null이면 그 칸을 보내지 않은 것이다.</summary>
+    public static ClosingGroup Rule(string key, string[] codes, string[]? prefixes, string[]? amountCodes = null) =>
+        new ClosingGroup(key, codes, prefixes, amountCodes);
+
     /// <summary>봉투(Envelope.Result)에 실린 data를 JSON으로 읽는다. TASK-6 처리기가 보낼 모양 그대로다.</summary>
     public static JsonElement DataOf(object result)
     {

@@ -38,11 +38,12 @@ public class ClosingDayTests
         yield return new object?[] { new[] { G("sono", Enumerable.Range(0, 21).Select(i => "C" + i).ToArray()) } }; // 코드 21개
         yield return new object?[] { new[] { G("sono", "SONO1", " ") } };                                      // 빈 코드
         yield return new object?[] { new[] { G("sono", new string('S', 21)) } };                               // 21자
-        yield return new object?[] { new[] { G("sono", "SO NO") } };                                           // 가운데 공백
+        yield return new object?[] { new[] { G("sono", "SO  NO") } };                                          // 가운데 빈칸 두 칸
+        yield return new object?[] { new[] { G("sono", "SO\tNO") } };                                          // 가운데 탭
         yield return new object?[] { ClosingDay.GroupKeys.Concat(new[] { "carm" }).Select(key => G(key, "X1")).ToArray() }; // 20개
     }
 
-    [Theory(DisplayName = "AC-3603.1 같은 key 두 번·모르는 key·코드 0개·21개·빈 코드·21자 코드·20묶음은 DB에 닿기 전에 E-HELPER-BAD-MESSAGE")]
+    [Theory(DisplayName = "AC-3603.1 같은 key 두 번·모르는 key·코드 0개·21개·빈 코드·21자 코드·빈칸 두 칸·탭·20묶음은 DB에 닿기 전에 E-HELPER-BAD-MESSAGE")]
     [MemberData(nameof(BadGroups))]
     public void RefusesBadGroups(ClosingGroup[] groups)
     {
@@ -119,6 +120,250 @@ public class ClosingDayTests
         }
         // HistoryGuard는 revenue.days 안에서 한 번, 주사 묶음이 있어 한 번 더
         Assert.Equal(2, rig.Count(RevenueSql.HistoryGuard));
+    }
+
+    // ---- AC-3603.5 가운데 빈칸 코드 ------------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-3603.5 가운데 빈칸 하나인 코드('PROLO C'·'HYALU MINI', 20자까지)는 CheckGroups를 지나고 대문자로 견준다(비트 쪽 'prolo c '도 같은 코드)")]
+    public void InnerSpaceCodePasses()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m)
+            .Line("V001", "prolo c ", 50000m)
+            .Visit("V002", 2, "4", 40, 1000m)
+            .Line("V002", "HYALU MINI", 30000m)
+            .Visit("V003", 3, "4", 40, 1000m)
+            .Line("V003", "PROLOC", 7000m)
+            .Read(G("manual", "Prolo C", "HYALU MINI"), G("etc1", "A B C D E F G H I J"));
+
+        var manual = GroupOf(result, "manual");
+        Assert.Equal(2L, manual.Patients);
+        Assert.Equal(80000L, manual.Total);
+        Assert.Equal(0L, GroupOf(result, "etc1").Patients);
+    }
+
+    [Fact(DisplayName = "AC-3603.5 주사 묶음의 가운데 빈칸 코드는 InjectionFirstSql의 @c 매개변수 값으로만 가고 문장 글은 그대로다(어느 문장에도 코드 글자가 없다)")]
+    public void InnerSpaceInjectionCodeIsParameterOnly()
+    {
+        var rig = new DayRig().Visit("V001", 1, "1", 30, 1000m, "PROLO C");
+        RevenueFake.Row(rig.Db, ClosingSql.InjectionFirstSql, 1L);
+        var result = rig.Read(G("injection", "prolo c", "KK090"));
+
+        var call = Assert.Single(rig.Db.Calls, c => c.Sql == ClosingSql.InjectionFirstSql);
+        Assert.Equal("PROLO C", call.Args["@c0"]);
+        Assert.Equal("KK090", call.Args["@c1"]);
+        Assert.Equal("PROLO C", call.Args["@c2"]);
+        Assert.All(rig.Db.Calls, c => Assert.DoesNotContain("PROLO", c.Sql, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(1L, Assert.IsType<ClosingInjection>(result.Injection).NewPatients);
+    }
+
+    // ---- AC-3604.6 매출 규칙 묶음 검사 ------------------------------------------------------------------
+
+    private static ClosingGroup R(string key, string[] codes, string[]? prefixes, string[]? amountCodes = null) =>
+        ClosingFake.Rule(key, codes, prefixes, amountCodes);
+
+    public static IEnumerable<object?[]> BadRules()
+    {
+        var carm = new[] { "CARM1" };
+        yield return new object?[] { R("carm", carm, new[] { "LA", "KK", "A", "B", "C", "D" }) };                         // 앞글자 6개
+        yield return new object?[] { R("carm", carm, new[] { "LA" }, Enumerable.Range(0, 21).Select(i => "C" + i).ToArray()) }; // 더 셀 코드 21개
+        yield return new object?[] { R("carm", carm, new[] { "" }) };                                                       // 빈 앞글자
+        yield return new object?[] { R("carm", carm, new[] { "  " }) };                                                     // 빈칸뿐인 앞글자
+        yield return new object?[] { R("carm", carm, new[] { "L A" }) };                                                    // 앞글자 가운데 빈칸
+        yield return new object?[] { R("carm", carm, new[] { new string('L', 11) }) };                                      // 앞글자 11자
+        yield return new object?[] { R("carm", carm, new[] { "LA" }, new[] { "" }) };                                       // 빈 더 셀 코드
+        yield return new object?[] { R("carm", carm, new[] { "LA" }, new[] { "PROLO  C" }) };                               // 더 셀 코드 빈칸 두 칸
+        yield return new object?[] { R("carm", carm, new[] { "LA" }, new[] { "PROLO\tC" }) };                               // 더 셀 코드 탭
+        yield return new object?[] { R("carm", carm, new[] { "LA" }, new[] { new string('K', 21) }) };                      // 더 셀 코드 21자
+        yield return new object?[] { R("carm", carm, new[] { (string)null! }) };                                            // null 앞글자
+    }
+
+    [Theory(DisplayName = "AC-3604.6 매출 규칙: 앞글자 6개·더 셀 코드 21개·빈 글자·앞글자 빈칸·11자·더 셀 코드 빈칸 두 칸·탭·21자는 DB에 닿기 전에 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadRules))]
+    public void RefusesBadRules(ClosingGroup group)
+    {
+        var db = ClosingFake.Quiet();
+        var error = Assert.ThrowsAny<HelperException>(() => ClosingDay.Read(db, Synthetic.Scope, ClosingFake.Day, new[] { group }));
+        Assert.Equal(ErrorCodes.BadMessage, error.Code);
+        Assert.Empty(db.Calls);
+    }
+
+    // ---- AC-3604.6 매출 규칙 total ------------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-3604.6 규칙 total = 묶음 코드가 있는 진료 안의 앞글자 + 숫자 줄 금액(LA358·LA0 맞음, LAYLA·'LA' 하나·LAX1 안 맞음), 묶음 코드 줄·진찰료는 안 더함")]
+    public void RuleTotalCountsPrefixDigitLines()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 900000m)
+            .Line("V001", "CARM1", 500m)
+            .Line("V001", "LA358", 213800m)
+            .Line("V001", "la272 ", 15825m)
+            .Line("V001", "LA0", 10m)
+            .Line("V001", "LAYLA", 3000m)
+            .Line("V001", "LA", 2000m)
+            .Line("V001", "LAX1", 1000m)
+            .Line("V001", "AA254", 13370m)
+            .Read(R("carm", new[] { "CARM1" }, new[] { "LA" }));
+
+        var carm = GroupOf(result, "carm");
+        Assert.Equal(1L, carm.Patients);
+        Assert.Equal(229635L, carm.Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.6 표시 코드가 없는 진료의 LA 줄은 안 더한다(같은 사람의 다른 진료도 진료 단위로 본다), patients·3분류는 그대로")]
+    public void RuleTotalIsPerVisit()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "1", 40, 1000m)
+            .Line("V001", "CARM1", 0m)
+            .Line("V001", "LA358", 200000m)
+            .Visit("V002", 1, "4", 40, 1000m)
+            .Line("V002", "LA272", 15000m)      // 같은 사람, 씨암 표시 코드 없는 진료
+            .Visit("V003", 2, "4", 40, 1000m)
+            .Line("V003", "LA247", 31650m)      // 표시 코드 없는 진료
+            .Visit("V004", 3, "3", 40, 1000m)
+            .Line("V004", "CARM1", 0m)
+            .Line("V004", "LA251", 21070m)
+            .Read(R("carm", new[] { "CARM1" }, new[] { "LA" }));
+
+        var carm = GroupOf(result, "carm");
+        Assert.Equal(2L, carm.Patients);
+        Assert.Equal(new long[] { 1, 1, 0 }, Three(carm));
+        Assert.Equal(221070L, carm.Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.6 더 셀 코드 줄도 더하고(가운데 빈칸 코드 포함), 두 규칙에 맞는 줄·묶음 코드이면서 규칙에 맞는 줄은 한 번만, 대문자로 견준다")]
+    public void RuleTotalAddsExtraCodesOnce()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m)
+            .Line("V001", "SONO1", 0m)
+            .Line("V001", "LA358", 100000m)
+            .Line("V001", "KK090", 32610m)
+            .Line("V001", "PROLO C", 50000m)
+            .Line("V001", "A30", 30000m)
+            .Visit("V002", 2, "4", 40, 1000m)
+            .Line("V002", "LA358", 100000m)
+            .Line("V002", "KK090", 32610m)      // 표시 코드 없는 진료
+            .Read(R("sono", new[] { "SONO1", "LA358" }, new[] { "la" }, new[] { "kk090", "LA358", "prolo c" }));
+
+        var sono = GroupOf(result, "sono");
+        // V002는 LA358(묶음 코드)이 있어 표시 코드가 있는 진료다 → LA358·KK090 둘 다 센다
+        Assert.Equal(2L, sono.Patients);
+        Assert.Equal(100000L + 32610L + 50000L + 100000L + 32610L, sono.Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.6 앞글자 여럿, 원 미만은 묶음마다 버림")]
+    public void RuleTotalSeveralPrefixesTruncates()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m)
+            .Line("V001", "CARM1", 0m)
+            .Line("V001", "LA358", 1000.6m)
+            .Line("V001", "KK090", 500.7m)
+            .Line("V001", "KKX", 9000m)
+            .Read(R("carm", new[] { "CARM1" }, new[] { "LA", "KK" }));
+
+        Assert.Equal(1501L, GroupOf(result, "carm").Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.6 규칙 두 칸이 없거나 둘 다 비면 TASK-14 그대로(묶음 코드 줄 금액 합)")]
+    public void EmptyRuleIsCodeLineTotal()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m)
+            .Line("V001", "CARM1", 500m)
+            .Line("V001", "LA358", 200000m);
+
+        Assert.Equal(500L, GroupOf(Rig().Read(R("carm", new[] { "CARM1" }, null, null)), "carm").Total);
+        Assert.Equal(500L, GroupOf(Rig().Read(R("carm", new[] { "CARM1" }, new string[0], new string[0])), "carm").Total);
+        Assert.Equal(200000L, GroupOf(Rig().Read(R("carm", new[] { "CARM1" }, new string[0], new[] { "LA358" })), "carm").Total);
+        Assert.Equal(200000L, GroupOf(Rig().Read(R("carm", new[] { "CARM1" }, new[] { "LA" }, null)), "carm").Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.6 규칙이 있어도 문장·매개변수는 그대로(같은 문장을 같은 값으로 부름)이고 규칙 글자는 어느 문장·매개변수에도 없다")]
+    public void RuleAddsNoSql()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m)
+            .Line("V001", "CARM1", 0m)
+            .Line("V001", "QZ1", 100m);
+
+        var plain = Rig();
+        plain.Read(G("carm", "CARM1"), G("sono", "SONO1"));
+        var ruled = Rig();
+        ruled.Read(R("carm", new[] { "CARM1" }, new[] { "QZ" }, new[] { "RULE X1" }), R("sono", new[] { "SONO1" }, new[] { "QZ" }));
+
+        Assert.Equal(plain.Db.Calls.Select(call => call.Sql), ruled.Db.Calls.Select(call => call.Sql));
+        Assert.Equal(
+            plain.Db.Calls.Select(call => string.Join(",", call.Args.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => a.Key + "=" + a.Value))),
+            ruled.Db.Calls.Select(call => string.Join(",", call.Args.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => a.Key + "=" + a.Value))));
+        foreach (var call in ruled.Db.Calls)
+        {
+            Assert.DoesNotContain("QZ", call.Sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("RULE X1", call.Sql, StringComparison.Ordinal);
+            Assert.All(call.Args.Values, value => Assert.NotEqual("QZ", value as string));
+        }
+    }
+
+    // ---- AC-3604.7 함께 있는 진료(overlap) ------------------------------------------------------------
+
+    private static readonly string[] La = { "LA" };
+
+    /// <summary>
+    /// 씨암만 V001(LA358 200,000) · SONO만 V002(LA274 31,670 · KK090 32,610) · 함께 V003(LA358 213,800 · LA247 31,650.5 · KK090 32,610)
+    /// · 같은 사람 4가 V004 씨암 · V005 SONO(진료가 달라 함께가 아님) · 표시 코드 없는 V006(LA272 15,825).
+    /// </summary>
+    private static DayRig OverlapDay() => new DayRig()
+        .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA358", 200000m)
+        .Visit("V002", 2, "4", 40, 1000m).Line("V002", "SONO1", 0m).Line("V002", "LA274", 31670m).Line("V002", "KK090", 32610m)
+        .Visit("V003", 3, "1", 40, 1000m).Line("V003", "CARM1", 0m).Line("V003", "SONO1", 0m)
+            .Line("V003", "LA358", 213800m).Line("V003", "LA247", 31650.5m).Line("V003", "KK090", 32610m)
+        .Visit("V004", 4, "4", 40, 1000m).Line("V004", "CARM1", 0m).Line("V004", "LA272", 15825m)
+        .Visit("V005", 4, "4", 40, 1000m).Line("V005", "SONO1", 0m).Line("V005", "LA346", 25000m)
+        .Visit("V006", 5, "4", 40, 1000m).Line("V006", "LA272", 15825m);
+
+    [Fact(DisplayName = "AC-3604.7 carm·sono 둘 다 규칙이면 overlap = 두 표시 코드가 함께 있는 진료 수와 그 진료들만의 각 규칙 금액, groups total에는 그 진료가 들어 있다")]
+    public void OverlapOfBothRules()
+    {
+        var result = OverlapDay().Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
+
+        var overlap = Assert.IsType<ClosingOverlap>(result.Overlap);
+        Assert.Equal(1L, overlap.Visits);
+        Assert.Equal(245450L, overlap.Carm);          // 213,800 + 31,650.5 → 버림
+        Assert.Equal(278060L, overlap.Sono);          // 213,800 + 31,650.5 + 32,610 → 버림
+        Assert.Equal(200000L + 245450L + 15825L, GroupOf(result, "carm").Total);
+        Assert.Equal(31670L + 32610L + 278060L + 25000L, GroupOf(result, "sono").Total);
+        Assert.Equal(3L, GroupOf(result, "carm").Patients);
+        Assert.Equal(3L, GroupOf(result, "sono").Patients);
+    }
+
+    [Fact(DisplayName = "AC-3604.7 한쪽만 규칙이거나 한 묶음이 없으면 overlap은 null, 둘 다 규칙인데 함께 있는 진료가 없으면 0건·0원")]
+    public void OverlapNullUnlessBothRules()
+    {
+        Assert.Null(OverlapDay().Read(G("carm", "CARM1"), G("sono", "SONO1")).Overlap);
+        Assert.Null(OverlapDay().Read(R("carm", new[] { "CARM1" }, La), G("sono", "SONO1")).Overlap);
+        Assert.Null(OverlapDay().Read(G("carm", "CARM1"), R("sono", new[] { "SONO1" }, La)).Overlap);
+        Assert.Null(OverlapDay().Read(R("carm", new[] { "CARM1" }, La)).Overlap);
+        Assert.Null(OverlapDay().Read(R("carm", new[] { "CARM1" }, new string[0], new string[0]), R("sono", new[] { "SONO1" }, La)).Overlap);
+        Assert.Null(Quiet().Overlap);
+
+        var none = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA358", 1000m)
+            .Visit("V002", 1, "4", 40, 1000m).Line("V002", "SONO1", 0m).Line("V002", "LA358", 1000m)
+            .Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La));
+        var overlap = Assert.IsType<ClosingOverlap>(none.Overlap);
+        Assert.Equal(new long[] { 0, 0, 0 }, new[] { overlap.Visits, overlap.Carm, overlap.Sono });
+    }
+
+    [Fact(DisplayName = "AC-3604.7 overlap JSON은 visits·carm·sono 세 숫자 칸뿐이고 진료·환자를 가리키는 값이 없다")]
+    public void OverlapShape()
+    {
+        var data = ClosingFake.DataOf(OverlapDay().Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La)));
+        var overlap = data.GetProperty("overlap");
+        Assert.Equal(ClosingFake.Sorted("visits", "carm", "sono"), ClosingFake.Keys(overlap));
+        foreach (var property in overlap.EnumerateObject()) Assert.Equal(JsonValueKind.Number, property.Value.ValueKind);
+        Assert.DoesNotContain("V003", data.GetRawText(), StringComparison.Ordinal);
     }
 
     // ---- AC-3603.2 환자현황 -----------------------------------------------------------------------
@@ -730,7 +975,7 @@ public class ClosingDayTests
 
     // ---- AC-3606.2 답 모양 ------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3606.2 closing.day 답 JSON은 design.md 2절 칸만 있다(이름 그대로, null 칸도 실림)")]
+    [Fact(DisplayName = "AC-3606.2 closing.day 답 JSON은 design.md 2절 칸만 있다(이름 그대로, null 칸도 실림, overlap 포함)")]
     public void AnswerShape()
     {
         var withInjection = ClosingFake.DataOf(new DayRig()
@@ -743,7 +988,7 @@ public class ClosingDayTests
         foreach (var data in new[] { withInjection, plain })
         {
             Assert.Equal(
-                ClosingFake.Sorted("date", "patients", "groups", "ages", "money", "inpatientVisits", "reservations", "injection", "warnings"),
+                ClosingFake.Sorted("date", "patients", "groups", "ages", "money", "inpatientVisits", "reservations", "injection", "overlap", "warnings"),
                 ClosingFake.Keys(data));
             Assert.Equal(ClosingFake.Sorted("new", "first90", "return", "ptVisit", "noExamFee", "total"), ClosingFake.Keys(data.GetProperty("patients")));
             Assert.Equal(10, data.GetProperty("ages").GetArrayLength());
@@ -766,6 +1011,9 @@ public class ClosingDayTests
         }
         Assert.Equal(ClosingFake.Sorted("firstTime", "newPatients", "newLines"), ClosingFake.Keys(withInjection.GetProperty("injection")));
         Assert.Equal(JsonValueKind.Null, plain.GetProperty("injection").ValueKind);
+        // 매출 규칙이 없으면 overlap은 null(AC-3604.7)
+        Assert.Equal(JsonValueKind.Null, plain.GetProperty("overlap").ValueKind);
+        Assert.Equal(JsonValueKind.Null, withInjection.GetProperty("overlap").ValueKind);
         Assert.Equal(JsonValueKind.Null, plain.GetProperty("patients").GetProperty("ptVisit").ValueKind);
         var kind = Assert.Single(plain.GetProperty("reservations").GetProperty("kinds").EnumerateArray());
         Assert.Equal(ClosingFake.Sorted("kind", "total", "visited", "changed", "canceled"), ClosingFake.Keys(kind));

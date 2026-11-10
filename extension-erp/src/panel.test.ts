@@ -6,9 +6,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sampleDay } from './__tests__/erpPage'
+import { HELD_SALES } from './cells'
 import type { FillResult } from './fill'
-import { createDock, HOST_ID, TEXT, warningLines, type Dock, type View } from './panel'
-import type { ClosingDay } from './types'
+import { createDock, HOST_ID, OVERLAP_TEXT, TEXT, warningLines, type Dock, type View } from './panel'
+import type { ClosingDay, OverlapChoice } from './types'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const MOCKUP = readFileSync(path.join(ROOT, 'docs', 'mockups', 'erp-closing-fill', 'index.html'), 'utf8')
@@ -67,6 +68,16 @@ afterEach(() => {
   dock = null
   document.body.innerHTML = ''
 })
+
+/** 보류 줄 장치가 그대로 도는지 보려고 HELD_SALES를 잠깐 씨암·SONO로 둔다(TASK-15에서 비움). 끝나면 되돌린다 */
+function withHeld(run: () => void) {
+  const saved = HELD_SALES.splice(0, HELD_SALES.length, 'carm', 'sono')
+  try {
+    run()
+  } finally {
+    HELD_SALES.splice(0, HELD_SALES.length, ...saved)
+  }
+}
 
 describe('AC-3609.1 단추', () => {
   it("AC-3609.1: 오른쪽 아래에 [비트 값 채우기] 단추 하나가 있고 안내는 처음에 숨어 있다", () => {
@@ -151,7 +162,7 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     const missing = ['업무일지 1 › 진료 · 치료현황 › 도수치료']
     const day = quietDay()
     day.warnings.unpaidVisits = 1
-    p.dock.show(done({ day, result: { filled: 90, missing, held: 2 } }))
+    withHeld(() => p.dock.show(done({ day, result: { filled: 90, missing, held: 2 } })))
     const blocks = p.$$('.blk')
     expect(blocks).toHaveLength(3)
     expect(text(blocks[1].querySelector('p'))).toBe('고르지 않아 건너뛴 칸 38칸')
@@ -165,7 +176,7 @@ describe('AC-3609.4 채운 뒤 안내', () => {
 
   it('AC-3609.4: 고르지 않은 칸이 없어도 보류 줄은 보이고, 보류 칸이 없으면(held 0) 보류 줄이 없다', () => {
     const p = open()
-    p.dock.show(done({ result: { unpicked: 0, filled: 129, held: 2 } }))
+    withHeld(() => p.dock.show(done({ result: { unpicked: 0, filled: 129, held: 2 } })))
     expect(p.$$('.blk').map(text)).toEqual([HELD])
     expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk held', 'end', 'acts'])
     p.dock.show(done({ result: { held: 0 } }))
@@ -182,6 +193,88 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     expect(p.panel().hidden).toBe(true)
     p.dock.hide()
     expect(p.panel().hidden).toBe(true)
+  })
+})
+
+describe('AC-3609.7 함께 있는 진료 묻기(design.md 5절)', () => {
+  const ASK = '씨암·SONO 코드가 함께 있는 진료가 9건 있어요(씨암 쪽 1,886,520원 · SONO 쪽 1,234원). 어디에 넣을까요?'
+  const ask = (p: ReturnType<typeof open>, last?: OverlapChoice) =>
+    p.dock.askOverlap({ visits: 9, carm: 1_886_520, sono: 1_234, last })
+  const choices = (p: ReturnType<typeof open>) => p.$$('.acts button').map(text)
+
+  it('AC-3609.7: 묻는 줄과 [씨암에 넣기]·[SONO에 넣기]·[둘 다 넣기]가 보이고, 처음엔 (지난번)이 없다', () => {
+    const p = open()
+    void ask(p)
+    expect(p.panel().hidden).toBe(false)
+    expect(text(p.$('.lead'))).toBe(ASK)
+    expect(p.$('.lead')?.classList.contains('err')).toBe(false)
+    expect(choices(p)).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기'])
+    expect(p.$$('.acts button').map((b) => b.getAttribute('data-choice'))).toEqual(['carm', 'sono', 'both'])
+  })
+
+  it.each<[OverlapChoice, string[]]>([
+    ['carm', ['씨암에 넣기 (지난번)', 'SONO에 넣기', '둘 다 넣기']],
+    ['sono', ['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기']],
+    ['both', ['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기 (지난번)']],
+  ])("AC-3609.7: 지난번 고른 것(%s)은 글 끝에 ' (지난번)'이 붙고 먼저 포커스를 받는다", (last, labels) => {
+    const p = open()
+    void ask(p, last)
+    expect(choices(p)).toEqual(labels)
+    expect(p.shadow.activeElement?.getAttribute('data-choice')).toBe(last)
+  })
+
+  it.each<OverlapChoice>(['carm', 'sono', 'both'])('AC-3609.7: [%s] 단추를 누르면 그 선택으로 끝나고 안내는 그대로 열려 있다', async (choice) => {
+    const p = open()
+    const answer = ask(p)
+    p.$<HTMLButtonElement>(`.acts button[data-choice="${choice}"]`)?.click()
+    await expect(answer).resolves.toBe(choice)
+  })
+
+  it('AC-3609.7: [안내 닫기](×)·hide()·다른 안내를 보이면 null로 끝난다(아무것도 고르지 않음)', async () => {
+    const p = open()
+    const closed = ask(p)
+    p.$<HTMLButtonElement>('.x')?.click()
+    await expect(closed).resolves.toBeNull()
+    expect(p.panel().hidden).toBe(true)
+    const hidden = ask(p)
+    p.dock.hide()
+    await expect(hidden).resolves.toBeNull()
+    const replaced = ask(p)
+    p.dock.show({ kind: 'dateChanged' })
+    await expect(replaced).resolves.toBeNull()
+    // 그 뒤에 다시 물으면 새로 고를 수 있다
+    const again = ask(p)
+    p.$<HTMLButtonElement>('.acts button[data-choice="carm"]')?.click()
+    await expect(again).resolves.toBe('carm')
+  })
+
+  it('AC-3609.7: 채운 뒤 안내에 함께 있는 진료 줄이 머리글 바로 다음에 있다', () => {
+    const lines: [OverlapChoice, string][] = [
+      ['carm', '함께 있는 진료 9건은 씨암에 넣었어요.'],
+      ['sono', '함께 있는 진료 9건은 SONO에 넣었어요.'],
+      ['both', '함께 있는 진료 9건은 씨암·SONO 둘 다에 넣었어요.'],
+    ]
+    for (const [choice, line] of lines) {
+      const p = open()
+      p.dock.show({ ...done(), overlap: { visits: 9, choice } } as View)
+      expect(text(p.$('.ovl')), choice).toBe(line)
+      expect([...p.body().children].map((c) => c.className), choice).toEqual(['lead', 'ovl', 'blk', 'end', 'acts'])
+      p.dock.host.remove()
+    }
+    const p = open()
+    p.dock.show(done())
+    expect(p.$('.ovl')).toBeNull()
+  })
+
+  it('AC-3609.7: 글은 design.md 5절 겹친 진료 묻기 글 그대로다', () => {
+    const section = DESIGN.slice(DESIGN.indexOf('- 겹친 진료 묻기(TASK-15'))
+    const line = section.slice(0, section.indexOf('\n'))
+    expect(line).toContain(`'${OVERLAP_TEXT.ask(1, 2, 3).replace('1건', '{N}건').replace('2원', '{A}원').replace('3원', '{B}원')}'`)
+    for (const label of ['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기']) expect(line).toContain(`[${label}]`)
+    expect(Object.values(OVERLAP_TEXT.choice)).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기'])
+    expect(line).toContain(`'${OVERLAP_TEXT.last}'`)
+    expect(line).toContain("'함께 있는 진료 {N}건은 {씨암에 | SONO에 | 씨암·SONO 둘 다에} 넣었어요.'")
+    expect(Object.values(OVERLAP_TEXT.into)).toEqual(['씨암에', 'SONO에', '씨암·SONO 둘 다에'])
   })
 })
 
@@ -305,15 +398,17 @@ describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
     }
   })
 
-  it('AC-3609.5: 기본값 (바)의 두 줄은 requirements (바)·AC-3609.5 글 그대로이고 옛 글은 쓰지 않는다', () => {
+  it('AC-3609.5: 기본값 (바)의 두 줄은 requirements (바) 글 그대로이고 옛 글은 쓰지 않는다', () => {
     expect(TEXT.helperMissing).toBe('ERP 도우미를 설치해 주세요.')
     expect(TEXT.notRegistered).toBe('이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.')
     const defaultBa = REQUIREMENTS.split('\n').find((line) => line.startsWith('- (바)')) ?? ''
+    // AC-3609.5는 2026-11-10 22시 오류 표(design.md 5-2, TASK-17)로 바뀌어 이 두 줄을 따옴표로 갖지 않고 '(바)의 두 줄'로 가리킨다.
+    // 오류 글을 표 글로 바꾸는 일은 TASK-17이 한다
     const ac = REQUIREMENTS.split('\n').find((line) => line.startsWith('- AC-3609.5:')) ?? ''
+    expect(ac).toContain('(바)의 두 줄')
     for (const name of CHANGED_FROM_MOCKUP) {
       const value = TEXT[name as keyof typeof TEXT]
       expect(defaultBa, name).toContain(`'${String(value)}'`)
-      expect(ac, name).toContain(`'${String(value)}'`)
     }
     expect(Object.values(TEXT)).not.toContain('도우미를 새 판으로 설치해 주세요.')
   })
@@ -330,10 +425,12 @@ describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
     expect(warningLines(day).join('')).not.toContain('치료별 매출이 적게 나왔을 수 있어요')
   })
 
-  it('AC-3609.4: 경고 고정 글은 design.md 5절에, 오류·처음 안내 글은 requirements AC-3609.2·3609.3·3609.5에 그대로 있다', () => {
+  it('AC-3609.4: 경고 고정 글은 design.md 5절에, 처음 안내·날짜 글은 requirements AC-3609.2·3609.3·(바)에 그대로 있다', () => {
     for (const line of [W.moneyUnconfirmed, W.splitUnconfirmed, W.noHistory, W.inpatient, END]) expect(DESIGN).toContain(line)
-    for (const value of [TEXT.first, TEXT.noDate, TEXT.dateChanged, TEXT.helperMissing, TEXT.notRegistered, TEXT.timeout]) {
+    // 120초 글(TEXT.timeout)은 AC-3609.5가 오류 표(TASK-17)로 바뀌어 requirements에서 빠졌다. 지금 글은 목업에 그대로 있다(위 시험)
+    for (const value of [TEXT.first, TEXT.noDate, TEXT.dateChanged, TEXT.helperMissing, TEXT.notRegistered]) {
       expect(REQUIREMENTS).toContain(value)
     }
+    expect(MOCKUP).toContain(TEXT.timeout)
   })
 })

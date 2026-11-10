@@ -19,6 +19,8 @@ const SAMPLE: [string, string, number][] = [
   ['AA222', '물리치료 내원 진찰', 540], ['도수', '도수치료 [1일당] - 의원 (관리급여)', 326],
   ['MA12', '도수치료(50분) 비급여', 286], ['ESWT12', '체외충격파(4000타)', 214], ['ESWT10', '체외충격파(3000타)', 176],
   ['.', '도수상담', 128], ['HA280', '관절조영', 84], ['ESWT17', '체외충격파(6000타)', 25], ['MA4', '도수치료(30분) 비급여', 11],
+  // 가운데 빈칸 코드(AC-3607.7)·씨암·SONO 매출 규칙에 더할 만한 코드(AC-3607.6)
+  ['PROLO C', '증식치료(C)', 4], ['LA358', '주사 시술', 2],
 ]
 const CODES: ClosingCodes = {
   codes: [
@@ -403,6 +405,7 @@ describe('AC-3607.3 저장·처음 값으로', () => {
       },
       etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
       reservations: { eswt: ['1'] },
+      amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
     })
     expect(status()).toBe('저장했어요.')
     expect($('#optStatus').classList.contains('saved')).toBe(true)
@@ -497,5 +500,147 @@ describe('AC-3607.4 도우미에서 코드 목록을 받지 못했을 때·목�
     expect(document.body.textContent).not.toContain('가상환자01')
     await open({ reply: { type: 'result', data: { codes: [{ code: 1 }], kinds: [] } } })
     expect(text($('.notice.err b'))).toBe('도우미에서 코드 목록을 받지 못했어요 (E-BRIDGE-BAD-REPLY)')
+  })
+})
+
+describe("AC-3607.6 씨암·SONO '매출로 셀 코드' 줄(design.md 4절)", () => {
+  const amt = (key: string) => $(`[data-amount="${key}"]`)
+  const prefixChips = (key: string) => [...amt(key).querySelectorAll('[data-prefixes] .chip b')].map(text)
+  const extraChips = (key: string) => [...amt(key).querySelectorAll('[data-extras] .chip b')].map(text)
+  const prefixInput = (key: string) => amt(key).querySelector<HTMLInputElement>('[data-prefix]') as HTMLInputElement
+  const addButton = (key: string) => amt(key).querySelector<HTMLButtonElement>('[data-padd]') as HTMLButtonElement
+  const ABOUT = (name: string) =>
+    `${name} 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 ${name}에 넣어요. 앞글자는 바로 뒤가 숫자인 코드만 세요(예: LA → LA358·LA272는 세고 LAYLA는 안 세요).`
+
+  it('AC-3607.6: 씨암·SONO 두 줄에만 고른 코드 줄 바로 아래 같은 모양으로 있다(제목·안내 글)', async () => {
+    await open()
+    expect($$('[data-amount]').map((r) => r.dataset.amount)).toEqual(['carm', 'sono'])
+    for (const [key, name] of [['carm', '씨암'], ['sono', 'SONO']]) {
+      expect(row(key).nextElementSibling, key).toBe(amt(key))
+      expect(text(amt(key).querySelector('.oname b')), key).toBe('매출로 셀 코드')
+      expect(text(amt(key).querySelector('.about')), key).toBe(ABOUT(name))
+      expect(text(amt(key).querySelector('[data-prefixes] .sub')), key).toBe('이 글자 뒤에 숫자')
+      expect(text(amt(key).querySelector('[data-extras] .sub')), key).toBe('더 셀 코드')
+    }
+    // 다른 묶음 줄·고른 코드 조각에는 섞이지 않는다
+    expect(chipCodes('carm')).toEqual(['CARM1'])
+  })
+
+  it("AC-3607.6: 처음 값(저장값에 amounts가 없어도)은 앞글자 조각 'LA+숫자' 하나이고 더 셀 코드는 없다", async () => {
+    await open({ stored: SAVED })
+    for (const key of ['carm', 'sono']) {
+      expect(prefixChips(key), key).toEqual(['LA+숫자'])
+      expect(extraChips(key), key).toEqual([])
+      expect(amt(key).querySelector('[data-pdel="LA"]')?.getAttribute('aria-label'), key).toBe('LA 빼기')
+      expect(amt(key).querySelector('.none'), key).toBeNull()
+    }
+  })
+
+  it("AC-3607.6: 앞글자 칸(placeholder '예: LA', aria '{이름} 앞글자 더하기')에 넣고 [더하기]하면 대문자로 더해지고, 겹침·빈칸 든 글자는 더해지지 않는다", async () => {
+    await open()
+    expect(prefixInput('carm').placeholder).toBe('예: LA')
+    expect(prefixInput('carm').getAttribute('aria-label')).toBe('씨암 앞글자 더하기')
+    expect(prefixInput('sono').getAttribute('aria-label')).toBe('SONO 앞글자 더하기')
+    expect(prefixInput('carm').maxLength).toBe(10)
+    expect(text(addButton('carm'))).toBe('더하기')
+    type(prefixInput('carm'), ' kk ')
+    addButton('carm').click()
+    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자'])
+    expect(prefixInput('carm').value).toBe('')
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    type(prefixInput('carm'), 'la')
+    addButton('carm').click()
+    type(prefixInput('carm'), 'L A')
+    addButton('carm').click()
+    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자'])
+    // Enter로도 더한다
+    type(prefixInput('carm'), 'hy')
+    prefixInput('carm').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자', 'HY+숫자'])
+    // SONO 줄은 그대로
+    expect(prefixChips('sono')).toEqual(['LA+숫자'])
+  })
+
+  it('AC-3607.6: 앞글자는 5개까지이고, 5개면 칸·[더하기]가 막힌다. [×]로 빼면 다시 된다', async () => {
+    await open()
+    for (const p of ['A', 'B', 'C', 'D']) {
+      type(prefixInput('sono'), p)
+      addButton('sono').click()
+    }
+    expect(prefixChips('sono')).toEqual(['LA+숫자', 'A+숫자', 'B+숫자', 'C+숫자', 'D+숫자'])
+    expect(prefixInput('sono').disabled).toBe(true)
+    expect(addButton('sono').disabled).toBe(true)
+    amt('sono').querySelector<HTMLButtonElement>('[data-pdel="B"]')?.click()
+    expect(prefixChips('sono')).toEqual(['LA+숫자', 'A+숫자', 'C+숫자', 'D+숫자'])
+    expect(prefixInput('sono').disabled).toBe(false)
+  })
+
+  it("AC-3607.6: '더 셀 코드' 찾기(aria '{이름} 더 셀 코드 찾기')로 코드를 더하고(가운데 빈칸 코드 포함) [×]로 뺀다", async () => {
+    await open()
+    const find = amt('sono').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement
+    expect(find.getAttribute('aria-label')).toBe('SONO 더 셀 코드 찾기')
+    expect(find.placeholder).toBe('코드나 이름으로 찾기')
+    type(find, 'prolo')
+    const dd = amt('sono').querySelector<HTMLElement>('[data-add-dd]') as HTMLElement
+    expect(dd.hidden).toBe(false)
+    dd.querySelector<HTMLButtonElement>('[data-aadd="PROLO C"]')?.click()
+    expect(extraChips('sono')).toEqual(['PROLO C'])
+    expect(parts(amt('sono').querySelector('[data-extras] .chip'))).toBe('PROLO C 증식치료(C) ×')
+    // 고른 코드 줄(SONO 묶음 코드)은 그대로
+    expect(chipCodes('sono')).toEqual(['SONO1'])
+    // 같은 코드는 골랐어요로 막힌다
+    type(amt('sono').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement, 'PROLO')
+    const again = amt('sono').querySelector<HTMLButtonElement>('[data-aadd="PROLO C"]') as HTMLButtonElement
+    expect(again.disabled).toBe(true)
+    expect(text(again.querySelector('em'))).toBe('골랐어요')
+    amt('sono').querySelector<HTMLButtonElement>('[data-adel="PROLO C"]')?.click()
+    expect(extraChips('sono')).toEqual([])
+  })
+
+  it("AC-3607.6: 앞글자·더 셀 코드가 둘 다 비면 '비어 있으면 위 코드 줄 금액만 넣어요.'가 보인다", async () => {
+    await open()
+    amt('carm').querySelector<HTMLButtonElement>('[data-pdel="LA"]')?.click()
+    expect(prefixChips('carm')).toEqual([])
+    expect(text(amt('carm').querySelector('.none'))).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
+    expect(amt('sono').querySelector('.none')).toBeNull()
+  })
+
+  it('AC-3607.6: [저장]은 amounts를 design.md 4절 모양으로 쓰고 저장된 overlap을 지우지 않는다', async () => {
+    const { data } = await open({ stored: { ...SAVED, overlap: 'sono' } })
+    type(prefixInput('carm'), 'kk')
+    addButton('carm').click()
+    type(amt('carm').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement, 'LA358')
+    amt('carm').querySelector<HTMLButtonElement>('[data-aadd="LA358"]')?.click()
+    amt('sono').querySelector<HTMLButtonElement>('[data-pdel="LA"]')?.click()
+    $('#optSave').click()
+    await flush()
+    const saved = data[SETTINGS_KEY] as Settings
+    expect(saved.amounts).toEqual({ carm: { prefixes: ['LA', 'KK'], codes: ['LA358'] }, sono: { prefixes: [], codes: [] } })
+    expect(saved.overlap).toBe('sono')
+    expect(status()).toBe('저장했어요.')
+  })
+
+  it('AC-3607.6: 도우미 목록을 받지 못하면 더 셀 코드 찾기는 막히지만 앞글자는 더할 수 있다', async () => {
+    await open({ reply: { type: 'error', code: 'E-HELPER-MISSING' } })
+    const find = amt('carm').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement
+    expect(find.disabled).toBe(true)
+    expect(find.placeholder).toBe('코드 목록을 받지 못해 찾을 수 없어요')
+    type(prefixInput('carm'), 'kk')
+    addButton('carm').click()
+    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자'])
+  })
+})
+
+describe('AC-3607.7 가운데 빈칸 코드 고르기', () => {
+  it("AC-3607.7: 찾기에서 'PROLO C'를 고르면 조각으로 보이고 [저장] 뒤에도 남는다", async () => {
+    const { data } = await open()
+    type($<HTMLInputElement>('[data-find="manual"]'), 'prolo')
+    $<HTMLButtonElement>('[data-dd="manual"] [data-add="PROLO C"]').click()
+    expect(chipCodes('manual')).toEqual(['도수', 'PROLO C'])
+    $('#optSave').click()
+    await flush()
+    expect((data[SETTINGS_KEY] as Settings).picks.manual).toEqual(['도수', 'PROLO C'])
+    expect(chipCodes('manual')).toEqual(['도수', 'PROLO C'])
+    expect(chipText('manual', 'PROLO C')).toBe('PROLO C 증식치료(C) ×')
   })
 })
