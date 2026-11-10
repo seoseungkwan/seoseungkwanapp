@@ -93,7 +93,7 @@ describe('AC-3601.1 extension-erp/manifest.json', () => {
 
   it('AC-3601.1: 내용 스크립트가 불러오는 모듈 파일(web_accessible_resources)도 같은 주소 하나에만 연다', () => {
     expect(readJson(MANIFEST).web_accessible_resources).toEqual([
-      { resources: ['main.js', 'cells.js', 'fill.js', 'panel.js', 'types.js'], matches: [ERP_MATCH] },
+      { resources: ['main.js', 'cells.js', 'fill.js', 'panel.js', 'settings.js', 'types.js'], matches: [ERP_MATCH] },
     ])
     const url = new URL(ERP_MATCH.slice(0, -1))
     expect(url.protocol).toBe('https:')

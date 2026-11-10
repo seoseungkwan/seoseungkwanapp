@@ -63,6 +63,7 @@ helper/**/obj/
 
 # 크롬 확장 빌드 산출물(npm run ext:build)
 extension/dist/
+extension-erp/dist/
 
 # 확장 개인키는 저장소에 두지 않는다(웹스토어가 서명한다. 공개키만 commands.json에)
 *.pem
