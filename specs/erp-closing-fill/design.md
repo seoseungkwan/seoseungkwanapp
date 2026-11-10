@@ -132,12 +132,13 @@ SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick
 | `manifest.json` | MV3, 'ERP 마감일지 채우기' 0.1.0, permissions [nativeMessaging, storage], background `background.js`(module), content_scripts [{ matches [`https://erp.minesolution.com/*`], js [`content.js`] }], web_accessible_resources [{ resources [`main.js`·`cells.js`·`fill.js`·`panel.js`·`settings.js`·`types.js`·`errors.js`(TASK-17)], matches 같은 하나 }], options_page `options.html`, key. 판은 TASK-17에서 0.2.0(기본값 (파)) | 1 · 17 |
 | `src/types.ts` | 2절 답 모양·`GROUP_KEYS`(2절 차례)·`RSV_ROWS`·`HOST_NAME`(= `com.seoseungkwan.erp_helper`, TASK-13)·`Settings`·설정 이름 | 1 |
 | `src/settings.ts` | `DEFAULTS`, `load()`/`save()`, `toGroups(settings)`(코드 있는 항목만 GROUP_KEYS 차례), `search(codes, text)` | 5 |
-| `options.html`·`src/options.ts` | 설정 화면(목업대로) | 5 |
+| `options.html`·`src/options.ts` | 설정 화면(목업대로) | 5 · 21 |
 | `src/cells.ts` | `planCells(answer, settings) → Planned[]`(아래 표) | 4 |
-| `src/fill.ts` | `findInput(doc, where)`, `putValue(input, text)`, `fillAll(doc, plan) → { filled, missing: string[], unpicked, unknown, held }`(TASK-17에서 아래 '채우기 흐름' 모양으로) | 4 · 14 · 17 |
+| `src/fill.ts` | `findInput(doc, where)`, `putValue(input, text)`, `fillAll(doc, plan) → { filled, missing: string[], unpicked, unknown, held }`(TASK-17에서 아래 '채우기 흐름' 모양으로) | 4 · 14 · 17 · 21 |
 | `src/errors.ts` | 오류 번호 → 무엇이·어떻게 글(5-2 표 한 곳), `explain(code)` | 17 |
+| `src/josa.ts` | 이름 뒤 조사 고르기 `josa(word, pair)`(5-3 받침 규칙). 글자만 두고 다른 파일을 불러오지 않는다. 지금은 설정 화면만 쓴다(내용 스크립트가 불러오지 않아 manifest 그대로) | 21 |
 | `src/background.ts` | 통로(요청마다 연결 하나, 120초) | 7 |
-| `src/content.ts`(일반 스크립트, `import(chrome.runtime.getURL('main.js'))`만) · `src/main.ts` · `src/panel.ts` | 단추·날짜 읽기·부르기·채우기·안내 | 7 |
+| `src/content.ts`(일반 스크립트, `import(chrome.runtime.getURL('main.js'))`만) · `src/main.ts` · `src/panel.ts` | 단추·날짜 읽기·부르기·채우기·안내 | 7 · 21 |
 
 - 설정 모양: `{ v: 1, picks: Partial<Record<GroupKey, string[]>>, etcNames: Record<'etc1'|'etc2'|'etc3'|'etc4', string>, reservations: Partial<Record<RsvRow, string[]>>, amounts: Record<'carm'|'sono', { prefixes: string[]; codes: string[] }>, overlap?: 'carm' | 'sono' | 'both', defaultsSeen?: number }`(`defaultsSeen`은 TASK-18. 타입은 선택 칸이라 다른 TASK 시험의 설정 본보기를 고치지 않아도 되고, `normalize`가 늘 채운다 — 저장값에 없으면 1). `RsvRow` = injection 주사 · followup 경과 · manual 도수 · eswt 충격파 · clinic 진료예약 · etc 기타(수액,드레싱등). 설정 화면 차례 = GROUP_KEYS 차례 → 예약 6줄
 - `amounts`·`overlap`(TASK-15): `normalize`는 저장값에 `amounts`가 없으면(직원이 이미 저장한 설정) 두 묶음 모두 `{ prefixes: ['LA'], codes: [] }`로 채우고, 앞글자는 앞뒤 공백을 떼고 대문자로 5개까지, 코드는 20개까지 둔다. 코드 꼴 `CODE`(고른 코드·더 셀 코드·예약 메모 번호)는 앞뒤 공백을 떼고 가운데 이어진 빈칸을 하나로 줄인 뒤 `^\S(?: ?\S)*$` 1~20자다(지금 `^\S{1,20}$`는 'PROLO C'를 [저장] 때 조용히 지운다, AC-3607.7). `toGroups`는 carm·sono에 둘 중 하나라도 있으면 `amountPrefixes`·`amountCodes`를 붙인다. `overlap`은 ERP 화면이 `saveOverlap(choice)`로 그 칸만 바꿔 쓰고, 설정 화면 [저장]은 저장된 `overlap`을 그대로 둔다(같은 `erpClosing` 한 열쇠)
@@ -164,19 +165,25 @@ SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick
 - `fill.ts`(TASK-17):
   - `type Skip = 'notFound' | 'therapist' | 'locked'`, `locate(doc, where) → { input } | { skip }`. therapist = 줄은 찾았는데 그 칸에 입력칸이 없고 줄 첫 칸에 '치료사별 입력' 글이 있음(글자 견줄 때 '치료사별 입력' 표시도 '자동'처럼 뗀다), locked = disabled·readOnly·`fieldset[disabled]` 안(지금 `locked`), 그 밖은 notFound(둘 이상 맞음 포함)
   - `survey(doc, plan) → Promise<{ written: Where[]; fillable: number; locked: number }>`: 값을 넣을 칸(why 없음·value 있음)만 본다. 업무일지 1은 `fillAll`과 같이 탭을 잠깐 바꿨다 돌아온다. written = 쉼표·빈칸을 뺀 지금 글자가 빈 칸('' · '-' · 숫자 값 0)이 아니고 넣을 값과 다른 칸(기본값 (차)). 'empty' 모드는 빈 칸(0 포함)·같은 값 칸만 넣는다
-  - `fillAll(doc, plan, mode: 'all' | 'empty' = 'all') → Promise<FillResult>`, `FillResult = { filled: number; kept: number; skipped: { where: Where; skip: Skip }[]; unpicked: Where[]; noName: Where[]; unknown: number; held: number; undo: { input: HTMLInputElement; before: string }[] }`. 'empty'면 적힌 칸(written과 같은 판단)은 넣지 않고 kept에 센다. undo에는 실제로 값을 넣은 칸과 넣기 전 글자(그 화면 기억만)
-  - `undoAll(undo) → { restored: number; gone: number }`: 아직 문서에 붙은 칸만 `putValue(input, before)`로 돌리고(빈 글자면 빈 칸), 떨어진 칸은 gone. `shortPlace(where)`는 5-1 짧은 줄 이름
+  - `fillAll(doc, plan, mode: 'all' | 'empty' = 'all') → Promise<FillResult>`, `FillResult = { filled: number; kept: number; skipped: { where: Where; skip: Skip }[]; unpicked: Where[]; noName: Where[]; unknown: number; held: number; undo: UndoEntry[] }`, `UndoEntry = { input: HTMLInputElement; before: string; after: string; where: Where }`. 'empty'면 적힌 칸(written과 같은 판단)은 넣지 않고 kept에 센다. undo에는 실제로 값을 넣은 칸, 넣기 전 글자(before), 넣은 값(after, 쉼표 없는 글자 — TASK-21), 칸 자리(where, 다시 찾기용)를 넣은 차례로(그 화면 기억만)
+  - `undoAll(doc, undo) → Promise<{ restored: number; gone: number; edited: number }>`: 넣은 차례의 거꾸로 본다(한 값을 두 칸이 보이는 도수·충격파 총금액도 처음 값으로). 기억한 칸이 아직 문서에 붙어 있으면 그 칸, 떨어졌으면(ERP가 칸을 새로 그림 — 업무일지 2 탭에서 채우면 업무일지 1 칸이 새로 그려진다, 조사 2절) 같은 자리(where)를 `locate`로 다시 찾는다(업무일지 1이 안 보이면 탭을 잠깐 바꿨다 돌아옴). 다시 찾지 못하면 gone. 찾은 칸의 지금 글자가 after와 다르면(쉼표·빈칸을 빼고 숫자 값으로 견줌, ''·'-'는 0으로 봄) 채운 뒤 손으로 고친 칸이라 그대로 두고 edited에 센다(TASK-21, 직원이 고친 값을 지우지 않으려고). 아니면 `putValue(input, before)`로 돌리고(빈 글자면 빈 칸) restored. `shortPlace(where)`는 5-1 짧은 줄 이름
 - `cells.ts`(TASK-17): 기타 줄에 코드를 골랐는데 ERP 줄 이름이 비면 `why: 'noName'`(row = '기타N'. 지금은 unpicked로 조용히 빠짐). `export const ETC_CLASH_ROWS: readonly string[]` = 업무일지 2 치료별 건수·치료별 매출의 고정 줄 이름(씨암(주사)·SONO(주사)·관절조영·도수·충격파·씨암·SONO·물리치료, 지금 `COUNT_ROWS`·`SALES_ROWS`에서). 기타 이름이 이 이름이면 그 고정 줄에 기타 값이 들어간다(15번) → TASK-18이 [저장]에서 막는다
 - `background.ts`(TASK-17, 3번): `onDisconnect`에서 `chrome.runtime.lastError?.message`를 읽어 'not found'·'forbidden'(대소문자 무시)이 있으면 E-HELPER-MISSING, 아니면 E-HELPER-STOPPED(크롬 글 'Native host has exited.' 등, 글 없음 포함). `connectNative`가 던지면 지금처럼 E-HELPER-MISSING. 120초는 그대로
 - `panel.ts`(TASK-17): 새 보기 future·zeroVisits·readOnly·ask·undone·undoDateChanged, done 보기 차례는 5-1, 오류 보기는 하나(`{ kind: 'err', code }` → `errors.ts` 글. 지금 errHelper·errNotRegistered·errBit·errTimeout 넷을 합침). 단추 옆 [지난 결과](btn-2, 지난 결과가 있고 안내가 닫혀 있을 때만, 읽는 중엔 막힘). 안내가 열려 있을 때 문서 `keydown` Escape로 닫는다(`preventDefault`·`stopPropagation` 하지 않음)
 - `errors.ts`(TASK-17, 새 파일): `ERRORS: Readonly<Record<string, { what: string; how: string }>>`(5-2 표), `explain(code: unknown) → { code: string; what: string; how: string }`(오류 번호 모양이 아니면 E-BRIDGE-BAD-REPLY, 표에 없으면 '그 밖'). 글자만 두고 다른 파일을 불러오지 않는다(내용 스크립트·설정 화면이 같이 씀)
 - `settings.ts`(TASK-18, 3·5·15번): `DEFAULTS_VERSION = 2`, `defaults().defaultsSeen = 2`, `normalize`는 `defaultsSeen`을 1 이상 정수로(없거나 틀리면 1), `save`는 `defaultsSeen = DEFAULTS_VERSION`으로 쓴다. `newDefaultCodes(saved) → { key, codes }[]`(defaultsSeen < 2일 때만, 처음 값 코드 가운데 그 항목에 없는 것), `resetCodes(settings) → Settings`(`picks`·`amounts`만 처음 값), `unusedCodes(settings, saved, list) → { key, code }[]`(기본값 (타)), `conflicts(settings) → Conflict[]`(5-3 막는 글 셋의 재료, 고정 줄 이름은 `cells.js`의 `ETC_CLASH_ROWS`)
 - `options.ts`·`options.html`(TASK-18, 3·5·6·15번): 받는 중 줄, `beforeunload`(dirty일 때만 `preventDefault()`·`returnValue = ''`), 저장 실패 글(상태 줄), [저장] 차례 = 겹침 검사(막음) → 처방 없는 코드 묻기 → 쓰기, [처음 값으로] 묻기, 새 처음 코드 줄(맨 위 알림), 묻는 글은 저장 바 바로 위 알림 상자(목업대로), 코드 목록 오류 줄은 `errors.ts` 글
+- 마지막 검토·화면 확인 고침(TASK-21, 2026-11-11):
+  - `josa.ts`: `type JosaPair = '은/는' | '이/가' | '으로/로'`, `josa(word, pair) → string`(조사만 돌려줌). 규칙은 5-3. `options.ts` 겹침 막는 글 두 줄이 쓴다
+  - `fill.ts`: 위 `UndoEntry.after`·`undoAll`의 edited. 같은 값 판단(`sameValue`)은 `isWritten`(기본값 (차))과 같은 견주기를 함께 쓴다
+  - `main.ts`: [되돌리기] 뒤 undone 보기에 `undoAll`의 edited를 넘긴다(`{ kind: 'undone', restored, gone, edited }`)
+  - `panel.ts`: 겹친 진료 묻기에도 다른 두 묻기처럼 [안내 닫기] 단추(`closeButton`, 누르면 null·안내 닫힘). undone 보기에 edited 줄(5-1). 안내 모양: `.panel`은 `max-height`(창 높이에서 단추 자리를 뺀 값)·`overflow-y: auto`이고 스크롤 막대는 `.panel::-webkit-scrollbar`로 늘 보이게 그린다(`scrollbar-width`·`scrollbar-color`는 쓰지 않음 — 쓰면 크롬이 이 그림을 무시한다). 단추 줄 `.acts`는 `position: sticky; bottom: 0`, 흰 바탕·위 줄로 안내 아래에 붙어 스크롤해도 보인다. 안내 글은 `word-break: keep-all; overflow-wrap: anywhere`(한글 낱말 가운데서 줄을 바꾸지 않고, 한 줄보다 긴 코드만 끊음)
+  - `options.ts`·`options.html`: 상태 줄은 막는 글이 열려 있으면 '저장했어요.'를 보이지 않는다(비움, 바꾼 것이 있으면 '바꾼 것을 아직 저장하지 않았어요.'). 저장 실패면 실패 글(지금 그대로). 새 처음 코드 줄의 항목 이름은 기타 줄이면 화면의 그 줄 ERP 줄 이름(빈칸 하나로 줄이고 앞뒤 공백 뗌), 비었으면 '기타N'. `body`에 `word-break: keep-all; overflow-wrap: anywhere`
 
 ## 5. 화면 글 (결과 안내 `panel.ts` · 오류 `errors.ts` · 설정 화면 `options.ts`)
 
 아래 첫 묶음은 결과 안내의 경고 줄(해당할 때만)이고, 5-1~5-3은 2026-11-10 22시 '2번빼고 고쳐'로 더한 글이다. 승인된 목업이 이긴다.
-- 겹친 진료 묻기(TASK-15, 채우기 전): '씨암·SONO 코드가 함께 있는 진료가 {N}건 있어요(씨암 쪽 {A}원 · SONO 쪽 {B}원). 어디에 넣을까요?' + [씨암에 넣기] [SONO에 넣기] [둘 다 넣기]. 지난번 고른 단추는 글 끝에 ' (지난번)'이 붙고 먼저 포커스를 받는다(처음엔 없음). [안내 닫기]면 아무 칸도 바꾸지 않는다. 채운 뒤 줄: '함께 있는 진료 {N}건은 {씨암에 | SONO에 | 씨암·SONO 둘 다에} 넣었어요.'
+- 겹친 진료 묻기(TASK-15, 채우기 전): '씨암·SONO 코드가 함께 있는 진료가 {N}건 있어요(씨암 쪽 {A}원 · SONO 쪽 {B}원). 어디에 넣을까요?' + [씨암에 넣기] [SONO에 넣기] [둘 다 넣기] [안내 닫기](TASK-21). 지난번 고른 단추는 글 끝에 ' (지난번)'이 붙고 먼저 포커스를 받는다(처음엔 없음). [안내 닫기]면 아무 칸도 바꾸지 않는다. 채운 뒤 줄: '함께 있는 진료 {N}건은 {씨암에 | SONO에 | 씨암·SONO 둘 다에} 넣었어요.'
 - held > 0(TASK-14): '{보류 묶음 이름을 ·로 이음} 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.' — 지금 '씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.'(이름은 `GROUP_NAMES`, 고르지 않은 칸 줄 바로 아래)
 - moneyUnconfirmed: '환불·변경수납 등이 있는 날이에요. 외래 수입 8칸(총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌)은 비트 수납 줄을 그대로 더한 값이라 다를 수 있어요. 확인해 주세요.' · splitUnconfirmed: '청구액·비급여는 비트에서 딱 나눠지지 않아 그대로 더한 값이에요. 확인해 주세요.'
 - unpaidVisits N: '수납이 끝나지 않은 진료 N건이 있어요.'(TASK-14) · refund > 0: '환불 {금액}원이 있어요. 금액을 확인해 주세요.'
@@ -200,9 +207,9 @@ SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick
      - 'ERP 줄 이름이 빈 기타 줄' · '설정 화면에서 그 기타 줄의 ERP 줄 이름을 업무일지 2 줄 이름과 똑같이 넣어 주세요.'
      - '고르지 않아 건너뛴 칸' · '설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.'
   6. 보류 줄(보류 묶음이 있을 때) · 경고 줄(위) · 끝 줄 '확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.'
-  7. [되돌리기] [설정 열기]
+  7. [되돌리기] [설정 열기](안내가 창보다 길어도 안내 아래에 붙어 늘 보임 — 4절 `panel.ts` TASK-21)
 - 짧은 줄 이름: '{묶음} {줄}'. 묶음 = 업무일지 1 구역 이름('진료 · 치료현황'만 '치료현황') · 업무일지 2 '예약'·'치료별 건수'·'연령별'·'치료별 매출', 운영 지표 낱칸은 칸 이름만. 열 이름은 쓰지 않고 같은 줄은 한 번(예: '예약 경과' · '치료별 매출 기타2' · '외래 수입 감액' · 'ESWT Standard')
-- 되돌린 뒤(undone): '되돌렸어요. {N}칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.' + (gone > 0일 때) '화면이 바뀌어 {K}칸은 되돌리지 못했어요.'
+- 되돌린 뒤(undone): '되돌렸어요. {N}칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.' + (edited > 0일 때, TASK-21) '채운 뒤 손으로 고친 {K}칸은 그대로 두었어요.' + (gone > 0일 때) '화면이 바뀌어 {K}칸은 되돌리지 못했어요.'
 - 날짜가 바뀐 뒤 [되돌리기](undoDateChanged): '마감 일자가 바뀌어 되돌리지 않았어요.' · '아무 칸도 바꾸지 않았어요.'
 - 단추 옆 [지난 결과]: 마지막 채운 안내를 다시 연다. 열린 안내는 Esc로 닫힌다
 
@@ -232,11 +239,13 @@ SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick
 - 저장 실패: '저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.'(상태 줄, 주의 색)
 - 처방 없는 코드 묻기: '최근 1년에 처방이 없는 코드 {N}개 — 맞나요?' · '{항목 이름} {코드}'를 ' · '로 · '다른 의원 코드거나 잘못 고른 코드면 그 칸은 매일 0이 돼요.' · [그대로 저장] [돌아가기]
 - [처음 값으로] 묻기: '고른 코드와 씨암·SONO 매출 규칙을 처음 값으로 바꿀까요?' · '예약 메모 번호와 기타 줄 이름은 그대로 둬요. 바꾼 뒤 [저장]을 눌러야 저장돼요.' · [바꾸기] [그만두기]
-- 새 처음 코드: '새 처음 코드가 있어요: {항목 이름} {코드·코드} · …' · '[더하기]를 누르면 화면에 더해요. [저장]을 눌러야 저장돼요.' · [더하기]
+- 새 처음 코드: '새 처음 코드가 있어요: {항목 이름} {코드·코드} · …' · '[더하기]를 누르면 화면에 더해요. [저장]을 눌러야 저장돼요.' · [더하기]. 기타 줄의 항목 이름은 화면의 그 줄 ERP 줄 이름이고 비었으면 '기타{n}'이다(TASK-21. 예: '새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 크라이오 CRYO3')
 - 겹침 막기(겹친 것마다 한 줄 + 끝에 '저장하지 않았어요.'):
-  - '기타{n} 줄 이름 ‘{이름}’은 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.'
-  - '기타{n}·기타{m} 줄 이름이 ‘{이름}’으로 같아요. 서로 다르게 넣어 주세요.'
+  - '기타{n} 줄 이름 ‘{이름}’{은/는} 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.'
+  - '기타{n}·기타{m} 줄 이름이 ‘{이름}’{으로/로} 같아요. 서로 다르게 넣어 주세요.'
   - '예약 메모 {번호}번이 {줄 이름}·{줄 이름} 줄에 함께 있어요. 한 줄에만 두세요.'
+  - 조사 규칙(TASK-21, `josa.ts`): 이름 마지막 글자가 한글(가~힣)이면 받침으로 고른다 — '은/는'·'이/가'는 받침이 있으면 '은'·'이', 없으면 '는'·'가'. '으로/로'는 받침이 있으면 '으로', 없거나 받침이 ㄹ이면 '로'. 마지막 글자가 한글이 아니면(영문·숫자·괄호 등, 빈 이름 포함) '은(는)'·'이(가)'·'(으)로'. 예: '기타2 줄 이름 ‘도수’는 업무일지 2에 이미 있는 줄 이름이에요.' · '‘물리치료’는' · '‘씨암’은' · '‘sono’은(는)' · '‘씨암(주사)’은(는)' · '기타2·기타3 줄 이름이 ‘핫팩’으로 같아요.' · '‘크라이오’로' · '‘수술’로' · '‘CRYO3’(으)로'
+- 상태 줄(TASK-21): 막는 글이 열려 있으면 '✓ 저장했어요.'를 보이지 않는다(비움, 바꾼 것이 있으면 '바꾼 것을 아직 저장하지 않았어요.'). 저장 실패 때는 실패 글만. 둘 다 '저장했어요.'와 함께 보이지 않는다
 - '치료별 건수 · 매출' 안내(AC-3615.8): '그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그날 고른 코드 처방 줄의 금액 합을 매출로 채워요. 씨암 · SONO 매출은 그 줄의 '매출로 셀 코드'로 세요.'
 - 닫을 때 묻기: 크롬 기본 창(글은 크롬 것, 우리 글 없음)
 
@@ -246,7 +255,7 @@ SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick
 - 새 확장은 ERP 도우미가 있어야 한다. 의원 PC용 판은 GitHub에서 만들어 깔아야 하므로 사용자가 말할 때 한다
 - `ErpBitDb`는 기존 `SqlBitDb`와 몸통이 같은 약 100줄이다(기존 부품을 고치지 않으려고). 기존 것의 읽기 규칙이 바뀌면 같이 고쳐야 한다 → `ErpBitDb` 시험이 같은 규칙(되돌림·Commit 없음·관문 먼저)을 글자로 본다
 - '이미 적힌 칸'은 비었거나 0인 칸을 빼고 센다(Claude가 정함). 그래서 직원이 손으로 0을 적은 칸은 묻지 않고 비트 값으로 바뀐다([되돌리기]로는 돌릴 수 있음). ERP가 빈 날 칸을 ''·'0' 말고 다른 글자로 보이면 매번 묻게 된다 → TASK-20에서 본다
-- [되돌리기]는 채울 때 기억한 input 요소에 쓴다. ERP가 저장·날짜 바꿈으로 칸을 새로 그리면 그 칸은 '되돌리지 못한 칸'으로 센다. 마감 일자가 바뀌었으면 아예 쓰지 않는다
+- [되돌리기]는 채울 때 기억한 input 요소에 쓰고, ERP가 칸을 새로 그렸으면(업무일지 2 탭에서 채우면 업무일지 1 칸이 새로 그려진다) 같은 자리를 다시 찾아 쓴다. 다시 찾지 못한 칸만 '화면이 바뀌어 … 되돌리지 못했어요'로 센다. 채운 뒤 손으로 고친 칸(지금 글자 ≠ 넣은 값)은 그대로 둔다(TASK-21). ERP가 넣은 값을 쉼표 말고 다른 꼴로 보이면 손으로 고친 칸으로 보여 되돌리지 않게 된다 → TASK-20에서 본다. 마감 일자가 바뀌었으면 아예 쓰지 않는다
 - 도우미 '없음'과 '도중 멈춤'은 크롬 `lastError` 영어 글로만 나눈다. 크롬 판이 글을 바꾸면 'not found'·'forbidden'이 아닌 것은 모두 '도중 멈춤'이 되는데, 그 글에도 설치 파일 다시 실행이 들어 있다
 - `CodeListSql`은 새 문장이라 다른 의원 DB(코드표가 더 큰 곳)에서 더 느릴 수 있다 → 50초에 끊고 오류 글. 이 PC는 약 2초
 - ERP 도우미는 기존 `Precheck.Core`를 참조하므로 기존 부품이 바뀌면 ERP 도우미도 다시 만들어야 같아진다(판 번호는 따로)

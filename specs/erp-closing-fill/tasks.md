@@ -1,7 +1,7 @@
 # 작업 분할: ERP 마감일지 비트 값 채우기
 
 > 형식: `## TASK-n: 제목` 아래 `- REQ:`, `- AC:`, `- Files:`(수정 범위), `- Tests:`, `- TDD:`, `- 차례:`. 승인되면 Files/Tests 경로만 고칠 수 있다.
-> **할 순서**: Phase 0(TASK-1) → Phase 1(TASK-2 ‖ TASK-3 ‖ TASK-4 ‖ TASK-5) → Phase 2(TASK-6 ‖ TASK-7 ‖ TASK-9) — **여기까지 끝남**(2026-11-10). 방향이 바뀌어(ERP 전용 도우미) → Phase 4(TASK-11 ‖ TASK-13) → Phase 5(TASK-12 ‖ TASK-8) → Phase 6(TASK-10) → Phase 7(TASK-14, 2026-11-10 밤 묶음 금액 바꿈) → Phase 8(TASK-15, 씨암·SONO 매출 규칙 + 2026-11-10 22시 12·13번) → Phase 9(TASK-16 ‖ TASK-17) → Phase 10(TASK-18 ‖ TASK-19) → Phase 11(TASK-20, 사용자와 확인). 같은 Phase 안 TASK는 파일이 겹치지 않아 일꾼들이 각자 worktree에서 동시에 한다. 경계는 design.md 2·3·4절(명령 답 모양·ERP 도우미 틀·설정 모양·칸 표)로 고정한다.
+> **할 순서**: Phase 0(TASK-1) → Phase 1(TASK-2 ‖ TASK-3 ‖ TASK-4 ‖ TASK-5) → Phase 2(TASK-6 ‖ TASK-7 ‖ TASK-9) — **여기까지 끝남**(2026-11-10). 방향이 바뀌어(ERP 전용 도우미) → Phase 4(TASK-11 ‖ TASK-13) → Phase 5(TASK-12 ‖ TASK-8) → Phase 6(TASK-10) → Phase 7(TASK-14, 2026-11-10 밤 묶음 금액 바꿈) → Phase 8(TASK-15, 씨암·SONO 매출 규칙 + 2026-11-10 22시 12·13번) → Phase 9(TASK-16 ‖ TASK-17) → Phase 10(TASK-18 ‖ TASK-19) → Phase 12(TASK-21, 2026-11-11 마지막 검토·화면 확인 고침) → Phase 13(TASK-20, 사용자와 확인 — 맨 끝. 전에는 Phase 11이었고 TASK-21 뒤로 옮김). 같은 Phase 안 TASK는 파일이 겹치지 않아 일꾼들이 각자 worktree에서 동시에 한다. 경계는 design.md 2·3·4절(명령 답 모양·ERP 도우미 틀·설정 모양·칸 표)로 고정한다.
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 검토는 끝에 한 번(전체 시험·lint·build·`ext-erp:build`·ERP 도우미 만들기·`git diff 1a721ef -- helper src`). 기존 `extension/`·`helper/`·웹 `src/`는 고치지 않는다. 깃허브 올리기·도우미 판 만들기는 사용자가 말할 때만.
 
 ## 먼저 할 일 (코드 작업 아님)
@@ -11,6 +11,7 @@
 4. (TASK-17·18 전, 3과 한 번에 해도 됨) 2026-11-10 22시 '2번빼고 고쳐' 화면을 목업에 더하거나 고쳐 사용자 승인을 받는다(글은 design.md 5-1~5-3, 그림은 화면 확인 도구로):
    - 결과 안내(ERP 화면): 이미 적힌 칸 묻기([바꾸기]·[빈 칸만]·[안내 닫기], 바뀌는 칸 이름) · 진료 0건 멈춤과 [그래도 채우기] · 오늘보다 뒤 날짜 멈춤 · 읽기 전용 화면 한 줄 · 채운 뒤 맨 위 '비트와 맞춰 볼 숫자' 3줄 · 까닭별 넣지 않은 칸(찾지 못함·치료사별 입력·읽기 전용·이름 빈 기타 줄·고르지 않음, 짧은 줄 이름) · [되돌리기]와 되돌린 뒤 글 · 단추 옆 [지난 결과] · 오류 글(번호마다 무엇이·어떻게: 도우미 없음·도중 멈춤·예전 판·새로고침(F5)·등록·병원 다름 등)
    - 설정 화면: '코드 목록을 받는 중이에요(30초쯤).' · 저장 때 '최근 1년에 처방이 없는 코드 N개 — 맞나요?' · [처음 값으로] 묻기 · '새 처음 코드가 있어요 [더하기]' · 겹침 막는 글 · 저장 실패 글 · 코드 목록 오류 글('도우미를 켠 뒤' 지움) · '치료별 건수 · 매출' 안내 새 글 · 닫을 때 묻기(크롬 기본 창이라 그림 없이 한 줄 적기)
+5. (3·4) 사용자가 목업 승인을 기다리지 않기로 했다(자동 승인, 2026-11-10 밤). 그래서 화면 글은 design.md 4·5절 글로 만들었고, 다 만든 뒤 화면 사진(scratchpad 화면 a~n, 2026-11-11 새벽)으로 보고 고칠 것을 TASK-21에 모았다
 
 ## TASK-1: 새 확장 틀 — 이름표(ID)·권한·답 모양
 - REQ: REQ-3601
@@ -165,5 +166,13 @@
 - REQ: REQ-3612
 - AC: AC-3612.6
 - Files: specs/erp-closing-fill/notes/erp-screen-check.md
-- TDD: exempt — 시험이 아니라 확인 단계(TASK-10과 같은 방법). 이 PC에서 ERP 도우미 Release 만들기 → `install.ps1`(등록 창은 사용자) → `ext-erp:build` → 확장 새로고침 → ERP 마감일지에서 손으로 몇 칸을 적고 단추: 묻는 수·[빈 칸만]·[바꾸기]·[되돌리기]·[지난 결과]·Esc·맞춰 볼 숫자, 금액칸 쉼표·다른 칸으로 옮겨도 남는지, 설정 화면 받는 중·처방 없는 코드 묻기를 본다. 결과는 숫자·칸 이름만 notes에 적는다. ERP가 빈 날 칸을 ''·'0' 말고 다른 글자로 보이는 등 고칠 것이 나오면 고치기 전에 사용자에게 알린다. 저장은 사용자가 정한다
-- 차례: Phase 11 (TASK-18·19 뒤, 사용자와 시간 맞춰)
+- TDD: exempt — 시험이 아니라 확인 단계(TASK-10과 같은 방법). 이 PC에서 ERP 도우미 Release 만들기 → `install.ps1`(등록 창은 사용자) → `ext-erp:build` → 확장 새로고침 → ERP 마감일지에서 손으로 몇 칸을 적고 단추: 묻는 수·[빈 칸만]·[바꾸기]·[되돌리기]·[지난 결과]·Esc·맞춰 볼 숫자, 금액칸 쉼표·다른 칸으로 옮겨도 남는지, 설정 화면 받는 중·처방 없는 코드 묻기, 채운 뒤 손으로 고친 칸을 [되돌리기]가 그대로 두는지·긴 안내가 안에서 스크롤되고 단추가 보이는지(TASK-21)를 본다. 결과는 숫자·칸 이름만 notes에 적는다. ERP가 빈 날 칸을 ''·'0' 말고 다른 글자로 보이는 등 고칠 것이 나오면 고치기 전에 사용자에게 알린다. 저장은 사용자가 정한다
+- 차례: Phase 13 (TASK-21 뒤 — 맨 끝, 사용자와 시간 맞춰. 전에는 Phase 11)
+
+## TASK-21: 마지막 검토·화면 확인 고침 — 이름 뒤 조사 · 손으로 고친 칸은 되돌리지 않음 · 겹친 진료 [안내 닫기] · 안내 스크롤과 단추 줄 · 낱말 안 끊김 · 설정 상태 줄 · 새 처음 코드 기타 이름 (2026-11-11)
+- REQ: REQ-3618, REQ-3609, REQ-3612, REQ-3615, REQ-3617
+- AC: AC-3618.1, AC-3618.2, AC-3618.3, AC-3618.4, AC-3618.5, AC-3618.6, AC-3609.7, AC-3612.4, AC-3617.3
+- Files: extension-erp/src/josa.ts, extension-erp/src/josa.test.ts, extension-erp/src/options.ts, extension-erp/options.html, extension-erp/src/options.test.ts, extension-erp/src/fill.ts, extension-erp/src/fill.test.ts, extension-erp/src/main.ts, extension-erp/src/main.test.ts, extension-erp/src/panel.ts, extension-erp/src/panel.test.ts, extension-erp/README.md
+- Tests: extension-erp/src/josa.test.ts, extension-erp/src/options.test.ts, extension-erp/src/fill.test.ts, extension-erp/src/main.test.ts, extension-erp/src/panel.test.ts
+- TDD: required — design.md 4절(마지막 검토 고침 줄·`fill.ts`)·5절·5-1·5-3대로. 시험(RED 먼저, jsdom·가짜 chrome): `josa` — '도수'→는·가·로, '씨암'→은·이·으로, '수술'(받침 ㄹ)→은·이·로, '크라이오'→로, '핫팩'→으로, 'sono'·'CRYO3'·'씨암(주사)'·''→'은(는)'·'이(가)'·'(으)로' / 설정 막는 글 '‘도수’는'·'‘물리치료’는'·'‘sono’은(는)'·'‘핫팩’으로'·'‘크라이오’로'(기존 '은'·'으로' 고정 기대값을 고침) / 저장해 둔 설정에 겹침이 있어 [저장]이 막히면 상태 줄에 '저장했어요.'가 없음(비움, class saved 없음)·바꾼 뒤 막히면 '바꾼 것을 아직 저장하지 않았어요.'·이름을 고치면 막는 글이 닫히고 상태 줄이 돌아옴·`storage.set` 실패면 실패 글만 / 새 처음 코드 줄 '물리치료 MM085·MM080·MM020 · 크라이오 CRYO3'(기타1 이름 '크라이오'), 기타1 이름이 비었으면 '기타1 CRYO3', 이름 앞뒤 공백·이어진 빈칸 정리 / options.html `body`에 keep-all·anywhere / `fillAll` undo 칸마다 after(넣은 값) / `undoAll` → `{ restored, gone, edited }`: 채운 뒤 손으로 고친 칸은 그대로 두고 edited에 셈(금액칸 '1,234'와 넣은 '1234'는 같은 값이라 돌림, ''·'-'와 넣은 '0'은 같은 값), 새로 그려진 업무일지 1 칸은 같은 자리로 다시 찾아 돌림(지금처럼)·그 칸을 고쳤으면 edited / main: 채운 뒤 한 칸을 손으로 고치고 [되돌리기] → 그 칸은 손 값 그대로·나머지는 앞 글자·안내 '채운 뒤 손으로 고친 1칸은 그대로 두었어요.'(edited 0이면 그 줄 없음, gone 줄과 함께 보일 수 있음) / 겹친 진료 묻기 단추 넷([씨암에 넣기]·[SONO에 넣기]·[둘 다 넣기]·[안내 닫기]), [안내 닫기]면 null·안내 닫힘·칸과 `overlap` 그대로 / 안내 CSS: `.panel` max-height·overflow-y auto·`::-webkit-scrollbar`(scrollbar-width·scrollbar-color 없음), `.acts` sticky·bottom 0·흰 바탕, keep-all·anywhere / README [되돌리기] 절에 손으로 고친 칸 줄. 기존 시험은 바뀐 글·모양(`{ restored, gone }` → edited 포함, undo 칸의 after, 조사, 겹친 진료 단추 수)만 고친다. manifest·helper-erp·웹은 건드리지 않는다(`josa.ts`는 설정 화면만 불러 web_accessible_resources 그대로)
+- 차례: Phase 12 (TASK-18·19 뒤, TASK-20보다 먼저)

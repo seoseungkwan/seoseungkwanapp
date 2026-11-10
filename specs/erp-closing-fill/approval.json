@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-closing-fill",
-  "approved_at": "2026-11-10T14:33:16Z",
+  "approved_at": "2026-11-10T15:30:41Z",
   "approved_via": "auto",
   "session_id": "81f40a65-8944-4188-b6d0-80ee9b36878e",
-  "spec_sha256": "e934c768061d325142b891f82aedc2ae03b06c8afaf7622e48663c7535ac1b1e",
+  "spec_sha256": "0a23c474c12e404866926efb661e699f15c229ad4624401d895f3eb4499df91a",
   "scope": [
     ".github/workflows/helper-erp.yml",
     ".gitignore",
@@ -22,6 +22,8 @@
     "extension-erp/src/errors.ts",
     "extension-erp/src/fill.test.ts",
     "extension-erp/src/fill.ts",
+    "extension-erp/src/josa.test.ts",
+    "extension-erp/src/josa.ts",
     "extension-erp/src/main.test.ts",
     "extension-erp/src/main.ts",
     "extension-erp/src/manifest.test.ts",
