@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-closing-fill",
-  "approved_at": "2026-11-10T13:32:11Z",
+  "approved_at": "2026-11-10T14:11:40Z",
   "approved_via": "auto",
   "session_id": "81f40a65-8944-4188-b6d0-80ee9b36878e",
-  "spec_sha256": "fb3d448f4e66f056ceda9339d68c711079b81dc75ca685f5c1890a53b60d89c0",
+  "spec_sha256": "1b2a4a4bb770e0307599ce3d6bd1b1bb522829a44e23a89c397d93d7330f03c6",
   "scope": [
     ".github/workflows/helper-erp.yml",
     ".gitignore",
