@@ -1,7 +1,7 @@
 // TASK-4 REQ-3608: 도우미 답 + 설정 → design.md 4절 칸 표(planCells). 화면은 보지 않는다
 import { describe, expect, it } from 'vitest'
 import { ETC_NAMES, sampleDay, settingsAll, settingsFirst } from './__tests__/erpPage'
-import { HELD_SALES, planCells, type Planned } from './cells'
+import { ETC_CLASH_ROWS, HELD_SALES, planCells, type Planned } from './cells'
 import type { ClosingDay, Settings } from './types'
 
 /** 칸 하나를 글자 열쇠로: 1|구역|줄 · 2|묶음|줄|열 · 2|낱칸 */
@@ -18,7 +18,7 @@ function sheet(plan: Planned[]): Record<string, string> {
 function pick(all: Record<string, string>, prefix: string): Record<string, string> {
   return Object.fromEntries(Object.entries(all).filter(([k]) => k.startsWith(prefix)))
 }
-const count = (plan: Planned[], why?: 'unpicked' | 'unknown' | 'held') =>
+const count = (plan: Planned[], why?: NonNullable<Planned['why']>) =>
   plan.filter((p) => (why ? p.why === why : p.value !== null && !p.why)).length
 
 // sampleDay 묶음 i번째(GROUP_KEYS 차례) 값
@@ -413,17 +413,35 @@ describe('AC-3609.7 planCells: 함께 있는 진료 선택 셋(design.md 4절 �
 })
 
 describe('AC-3608.3 planCells: 기타 이름 줄·예약 메모 합 세부', () => {
-  it('AC-3608.3: 기타 줄 이름은 설정의 기타 이름(앞뒤 공백 뗌)이고, 이름이 비면 코드를 골라도 unpicked', () => {
+  it('AC-3608.3 AC-3613.2: 기타 줄 이름은 설정의 기타 이름(앞뒤 공백 뗌)이고, 코드를 골랐는데 이름이 비면 noName(기본 이름 기타N 줄)이다', () => {
     const settings: Settings = settingsAll()
     settings.etcNames = { etc1: '  크라이오 ', etc2: '', etc3: '수액', etc4: ' ' }
     const plan = planCells(sampleDay(), settings)
     const all = sheet(plan)
     expect(all['2|치료별 매출|크라이오|금액(원)']).toBe(total(6))
     expect(all['2|치료별 신환/90일초진/재진 건수|크라이오|90일초진']).toBe(G.f90(6))
-    expect(all['2|치료별 매출|기타2|금액(원)']).toBe('unpicked')
+    expect(all['2|치료별 매출|기타2|금액(원)']).toBe('noName')
     expect(all['2|치료별 매출|수액|금액(원)']).toBe(total(8))
-    expect(all['2|치료별 매출|기타4|금액(원)']).toBe('unpicked')
+    expect(all['2|치료별 매출|기타4|금액(원)']).toBe('noName')
+    expect(all['2|치료별 신환/90일초진/재진 건수|기타2|신환']).toBe('noName')
+    expect(all['2|치료별 신환/90일초진/재진 건수|기타4|재진']).toBe('noName')
+    // 기타2·기타4 줄마다 건수 3칸 + 매출 1칸, 고르지 않은 칸에 섞지 않는다
+    expect(count(plan, 'noName')).toBe(8)
+    expect(count(plan, 'unpicked')).toBe(0)
+    for (const p of plan.filter((x) => x.why === 'noName')) expect(p.value).toBeNull()
     expect(plan).toHaveLength(131)
+  })
+
+  it('AC-3613.2: 코드를 고르지 않은 기타 줄은 이름이 있든 없든 unpicked다(noName은 고른 줄만)', () => {
+    const settings: Settings = settingsAll()
+    delete settings.picks.etc2
+    delete settings.picks.etc3
+    settings.etcNames = { etc1: '크라이오', etc2: '', etc3: '수액', etc4: '테이핑' }
+    const all = sheet(planCells(sampleDay(), settings))
+    expect(all['2|치료별 매출|기타2|금액(원)']).toBe('unpicked')
+    expect(all['2|치료별 매출|수액|금액(원)']).toBe('unpicked')
+    expect(all['2|치료별 매출|테이핑|금액(원)']).toBe(total(9))
+    expect(Object.values(all)).not.toContain('noName')
   })
 
   it('AC-3608.3: 예약 메모 번호는 앞뒤 공백을 떼고 같은 번호를 두 번 더하지 않는다', () => {
@@ -444,5 +462,29 @@ describe('AC-3608.3 planCells: 기타 이름 줄·예약 메모 합 세부', () 
     const all = sheet(planCells(day, settingsAll()))
     expect(all['1|외래 수입|외래 총매출']).toBe('1234')
     expect(all['1|외래 수입|현금수납액(-)']).toBe('0')
+  })
+})
+
+describe('AC-3615.7 ETC_CLASH_ROWS: 업무일지 2 치료별 건수·치료별 매출의 고정 줄 이름(TASK-18이 [저장]에서 막는다)', () => {
+  it('AC-3615.7: design.md 4절 차례 그대로 씨암(주사)·SONO(주사)·관절조영·도수·충격파·씨암·SONO·물리치료다(같은 이름은 한 번)', () => {
+    expect([...ETC_CLASH_ROWS]).toEqual(['씨암(주사)', 'SONO(주사)', '관절조영', '도수', '충격파', '씨암', 'SONO', '물리치료'])
+    expect(Object.isFrozen(ETC_CLASH_ROWS)).toBe(true)
+  })
+
+  it('AC-3615.7: 칸 계획의 치료별 건수·치료별 매출 고정 줄은 모두 이 목록에 있다(기타 줄 말고)', () => {
+    const fixed = planCells(sampleDay(), settingsAll())
+      .map((p) => p.where)
+      .filter((w): w is Extract<Planned['where'], { card: string }> => 'card' in w)
+      .filter((w) => w.card === '치료별 신환/90일초진/재진 건수' || w.card === '치료별 매출')
+      .map((w) => w.row)
+      .filter((row) => !ETC_NAMES.includes(row))
+    expect([...new Set(fixed)].sort()).toEqual([...ETC_CLASH_ROWS].sort())
+  })
+
+  it("AC-3615.7: 기타 이름을 고정 줄 이름('도수')으로 두면 그 고정 줄과 같은 칸 자리가 두 번 나온다(그래서 [저장]에서 막는다)", () => {
+    const settings = settingsAll()
+    settings.etcNames.etc2 = '도수'
+    const keys = planCells(sampleDay(), settings).map(cellKey)
+    expect(keys.filter((k) => k === '2|치료별 매출|도수|금액(원)')).toHaveLength(2)
   })
 })

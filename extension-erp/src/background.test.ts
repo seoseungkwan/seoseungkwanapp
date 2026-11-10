@@ -1,4 +1,5 @@
 // TASK-7 REQ-3609 AC-3609.6: 새 확장 서비스 워커(도우미 통로)를 가짜 chrome(runtime.onMessage·connectNative)으로 시험한다.
+// TASK-17 AC-3614.2: 연결이 끊길 때 크롬 lastError 글로 '도우미 없음'(E-HELPER-MISSING)과 '도중 멈춤'(E-HELPER-STOPPED)을 나눈다.
 // 자료는 모두 가짜다(환자 정보 없음)
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -41,11 +42,16 @@ class FakePort implements NativePortLike {
     for (const fn of this.messageFns) fn(m)
   }
 
-  /** 도우미가 없거나(이름 없음) 옛 도우미가 새 확장을 거절해 끝남. 크롬처럼 lastError를 콜백 동안만 채운다 */
-  drop(message = 'Specified native messaging host not found.') {
+  /** 도우미가 없거나(이름 없음) 도중에 끝남. 크롬처럼 lastError를 콜백 동안만 채운다. null이면 lastError 없이 끊긴다 */
+  drop(message: string | null = 'Specified native messaging host not found.') {
+    this.dropWith(message === null ? undefined : { message })
+  }
+
+  /** lastError 모양을 그대로 주고 끊는다(message 칸이 없는 빈 객체 등) */
+  dropWith(lastError: { message?: string } | undefined) {
     if (this.disconnected) return
     this.disconnected = true
-    this.chrome.runtime.lastError = { message }
+    this.chrome.runtime.lastError = lastError
     for (const fn of this.disconnectFns) fn()
     this.chrome.runtime.lastError = undefined
   }
@@ -216,14 +222,42 @@ describe('AC-3609.6 도우미 없음·거절·120초', () => {
     expect(t.lastErrorReads()).toBeGreaterThan(before)
   })
 
-  it('AC-3609.6: 옛 도우미가 새 확장을 거절해 끝나도 E-HELPER-MISSING이다', () => {
+  it.each([
+    ['Specified native messaging host not found.'],
+    ['Access to the specified native messaging host is forbidden.'],
+    ['NATIVE MESSAGING HOST NOT FOUND'],
+    ['Forbidden'],
+  ])("AC-3614.2: lastError 글에 'not found'·'forbidden'(대소문자 무시)이 있으면(%s) E-HELPER-MISSING이다", (message) => {
     const t = setup()
     const { replies } = t.send({ cmd: 'closing.codes', args: {} })
-    t.natives[0].drop('Native host has exited.')
+    t.natives[0].drop(message)
     expect(replies).toEqual([{ type: 'error', code: 'E-HELPER-MISSING' }])
   })
 
-  it('AC-3609.6: connectNative가 던지면 E-HELPER-MISSING으로 바로 답한다', () => {
+  it.each<[string, string | null]>([
+    ['도우미가 끝남', 'Native host has exited.'],
+    ['다른 글', 'Error when communicating with the native messaging host.'],
+    ['빈 글자', ''],
+    ['lastError 없음', null],
+  ])('AC-3614.2: 그 밖(%s)이면 읽는 도중 멈춤 E-HELPER-STOPPED이고 연결은 다시 쓰지 않는다', (_name, message) => {
+    const t = setup()
+    const { replies } = t.send({ cmd: 'closing.day', args: DAY_ARGS })
+    const port = t.natives[0]
+    port.drop(message)
+    expect(replies).toEqual([{ type: 'error', code: 'E-HELPER-STOPPED' }])
+    // 끊긴 뒤 온 답·120초는 두 번 답하지 않는다
+    port.emit({ v: 1, id: envelope(port).id, type: 'result', data: {} })
+    expect(replies).toHaveLength(1)
+  })
+
+  it('AC-3614.2: lastError에 message 칸이 없어도(크롬이 빈 객체를 줌) E-HELPER-STOPPED다', () => {
+    const t = setup()
+    const { replies } = t.send({ cmd: 'closing.day', args: DAY_ARGS })
+    t.natives[0].dropWith({})
+    expect(replies).toEqual([{ type: 'error', code: 'E-HELPER-STOPPED' }])
+  })
+
+  it('AC-3609.6 AC-3614.2: connectNative가 던지면(연결 자체를 못 엶) 지금처럼 E-HELPER-MISSING으로 바로 답한다', () => {
     const t = setup({ connectThrows: true })
     const { replies } = t.send({ cmd: 'closing.day', args: DAY_ARGS })
     expect(replies).toEqual([{ type: 'error', code: 'E-HELPER-MISSING' }])

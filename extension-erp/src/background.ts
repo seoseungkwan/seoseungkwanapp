@@ -2,8 +2,11 @@
 // - 같은 확장(ERP 화면의 내용 스크립트·설정 화면)이 보낸 { cmd: closing.codes | closing.day, args }만 받는다
 // - 요청마다 도우미 연결을 하나 열어 { v: 1, id, cmd, args }를 보내고, 그 요청의 result·error 하나를 받으면 닫는다.
 //   답은 { type: 'result', data } | { type: 'error', code }로 돌려준다. 답은 고치지도 쌓아 두지도 않는다
-// - ERP 도우미(com.seoseungkwan.erp_helper)가 없거나 등록되지 않아 연결이 끊기면 E-HELPER-MISSING, 120초 안에 답이 없으면 E-HELPER-TIMEOUT
+// - 연결이 끊기면 크롬 lastError 글로 나눈다(AC-3614.2): 'not found'·'forbidden'(ERP 도우미가 안 깔림·허락 안 됨)이면 E-HELPER-MISSING,
+//   그 밖(읽는 도중 도우미가 끝남 'Native host has exited.'·글 없음)이면 E-HELPER-STOPPED. 연결 자체를 못 열면 E-HELPER-MISSING,
+//   120초 안에 답이 없으면 E-HELPER-TIMEOUT
 // - { open: 'options' }는 설정 화면만 연다(내용 스크립트는 확장 화면을 직접 열 수 없다). 도우미는 켜지 않는다
+import { E_BRIDGE_BAD_REPLY, E_BRIDGE_REJECTED, E_HELPER_MISSING, E_HELPER_STOPPED, E_HELPER_TIMEOUT } from './errors.js'
 import { HOST_NAME, type ClosingCommand } from './types.js'
 
 /** 도우미 봉투 판(helper-erp/commands.json protocol) */
@@ -13,10 +16,13 @@ export const COMMANDS: readonly ClosingCommand[] = ['closing.codes', 'closing.da
 /** 도우미 답을 기다리는 가장 긴 시간 */
 export const REPLY_TIMEOUT_MS = 120_000
 
-export const E_HELPER_MISSING = 'E-HELPER-MISSING'
-export const E_HELPER_TIMEOUT = 'E-HELPER-TIMEOUT'
-export const E_BRIDGE_REJECTED = 'E-BRIDGE-REJECTED'
-export const E_BRIDGE_BAD_REPLY = 'E-BRIDGE-BAD-REPLY'
+/** 크롬이 '도우미가 없음·허락 안 됨'일 때 주는 lastError 글 조각(영어, 대소문자 무시) */
+const MISSING_WORDS = /not found|forbidden/i
+
+/** 끊길 때의 lastError 글 → 오류 번호 */
+export function disconnectCode(message: unknown): string {
+  return typeof message === 'string' && MISSING_WORDS.test(message) ? E_HELPER_MISSING : E_HELPER_STOPPED
+}
 
 /** 확장 안 메시지의 답 모양(설정 화면 options.ts·ERP 화면 main.ts가 읽는다) */
 export type Reply = { type: 'result'; data: unknown } | { type: 'error'; code: string }
@@ -103,9 +109,9 @@ function askHelper(
   })
   mine.onDisconnect.addListener(() => {
     // 도우미가 없거나 끝나면 크롬이 lastError를 채운다. 읽어 두어야 '확인하지 않은 오류'로 남지 않는다
-    void chrome.runtime.lastError
+    const code = disconnectCode(chrome.runtime.lastError?.message)
     if (port === mine) port = null
-    finish({ type: 'error', code: E_HELPER_MISSING })
+    finish({ type: 'error', code })
   })
   try {
     mine.postMessage({ v: PROTOCOL, id, cmd: request.cmd, args: request.args })
