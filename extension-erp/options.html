@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP 마감일지 채우기 · 설정</title>
 <!-- 확장 설정 화면(design.md 4절). 글·배치는 승인된 목업 docs/mockups/erp-closing-fill/ ⑫~⑮ 그대로. 토큰 값은 docs/UI_GUIDE.md
-     TASK-18의 받는 중 줄·새 처음 코드 줄·저장 바 위 알림 상자(#optAsk)·저장 실패 글은 design.md 5-3 글 그대로 -->
+     TASK-18의 받는 중 줄·새 처음 코드 줄·저장 바 위 알림 상자(#optAsk)·저장 실패 글은 design.md 5-3 글 그대로
+     TASK-21: 한글 낱말 가운데서 줄을 바꾸지 않는다(body word-break:keep-all, 한 줄보다 긴 코드만 overflow-wrap:anywhere로 끊음) -->
 <style>
 :root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
 --accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;
@@ -14,7 +15,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 [hidden]{display:none !important}
 .nw{white-space:nowrap}
-body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--canvas);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--canvas);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere}
 button,input,select,textarea{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}

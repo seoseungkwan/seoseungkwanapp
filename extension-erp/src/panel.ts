@@ -7,6 +7,7 @@
 // - ERP 화면 글꼴·색이 스며들거나 우리 모양이 ERP를 건드리지 않게 그림자 뿌리 안에 그린다. ERP 뿌리(div#root) 밖 body 끝에 붙는다
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·칸 이름만 보이고 환자 정보는 없다
 // - 안내가 열려 있을 때 Esc는 안내를 닫는다(ERP 화면의 키 처리는 막지 않는다)
+// - 안내가 창보다 길면 안에서 스크롤하고(늘 보이는 스크롤 막대), 단추 줄은 안내 아래에 붙어 늘 보인다. 한글 낱말은 가운데서 끊지 않는다(TASK-21)
 import { HELD_SALES, type Where } from './cells.js'
 import { explain } from './errors.js'
 import { shortPlace, type FillResult } from './fill.js'
@@ -57,6 +58,8 @@ export const FLOW_TEXT = {
   undo: '되돌리기',
   undone: (n: number) => `되돌렸어요. ${count(n)}칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.`,
   undoneGone: (k: number) => `화면이 바뀌어 ${count(k)}칸은 되돌리지 못했어요.`,
+  /** 채운 뒤 손으로 고친 칸은 되돌리지 않았다(TASK-21, AC-3618.2) */
+  undoneEdited: (k: number) => `채운 뒤 손으로 고친 ${count(k)}칸은 그대로 두었어요.`,
   undoDateChanged: '마감 일자가 바뀌어 되돌리지 않았어요.',
   last: '지난 결과',
   /** 짧은 줄 이름이 10줄을 넘을 때 끝에 붙는다 */
@@ -142,7 +145,7 @@ export type View =
   | { kind: 'err'; code: string }
   | { kind: 'future'; date: string }
   | { kind: 'readOnly' }
-  | { kind: 'undone'; restored: number; gone: number }
+  | { kind: 'undone'; restored: number; gone: number; edited: number }
   | { kind: 'undoDateChanged' }
 
 /** 해당하는 경고 줄만, design.md 5절 차례로 */
@@ -177,7 +180,11 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .fill-btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border-radius:var(--r-control);background:var(--accent);color:var(--surface);font-size:15px;font-weight:600;box-shadow:var(--shadow-float);white-space:nowrap}
 .fill-btn:hover{background:var(--accent-strong)}
 .fill-btn:disabled{background:#93A6C9;cursor:default}
-.panel{width:440px;max-width:100%;max-height:calc(100vh - 210px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);color:var(--ink-2);font-size:14px;line-height:22px}
+.panel{width:440px;max-width:100%;max-height:calc(100vh - 210px);overflow-x:hidden;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);color:var(--ink-2);font-size:14px;line-height:22px;word-break:keep-all;overflow-wrap:anywhere}
+.panel::-webkit-scrollbar{width:10px}
+.panel::-webkit-scrollbar-track{background:transparent}
+.panel::-webkit-scrollbar-thumb{background:#C4C9D2;border-radius:5px;border:2px solid #FFFFFF}
+.panel::-webkit-scrollbar-thumb:hover{background:#9CA3AF}
 .ph{display:flex;justify-content:space-between;align-items:center;padding:10px 12px 0 18px}
 .pt{font-size:12px;font-weight:500;color:var(--muted)}
 .x{width:32px;height:32px;border-radius:var(--r-control);color:var(--muted);font-size:18px}
@@ -200,7 +207,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .warns li{display:flex;gap:8px;align-items:flex-start;color:var(--ink-2)}
 .warns li::before{content:'!';flex:none;display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--warning);color:#fff;font-size:12px;font-weight:600}
 .end{border-top:1px solid var(--line);padding-top:10px;color:var(--ink)}
-.acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;position:sticky;bottom:0;z-index:1;background:var(--surface);border-top:1px solid var(--line);margin:0 -18px -16px;padding:10px 18px 16px}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
 .btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
 .btn-2:hover{background:var(--canvas)}
@@ -231,7 +238,7 @@ export type Dock = {
   show(view: View): void
   /**
    * 씨암·SONO가 함께 있는 진료를 어디에 넣을지 묻는다(design.md 5절). 누른 단추의 선택으로 끝나고,
-   * [안내 닫기](×)·Esc·hide()·다른 안내를 보이면 null(아무것도 고르지 않음)로 끝난다. 지난번 고른 단추는 ' (지난번)'이 붙고 먼저 포커스를 받는다
+   * [안내 닫기](단추·×)·Esc·hide()·다른 안내를 보이면 null(아무것도 고르지 않음)로 끝난다. 지난번 고른 단추는 ' (지난번)'이 붙고 먼저 포커스를 받는다
    */
   askOverlap(ask: OverlapAsk): Promise<OverlapChoice | null>
   /** 진료 0건인 날(design.md 5-1): [그래도 채우기]면 true, [안내 닫기](먼저 포커스)·×·Esc·다른 안내면 false */
@@ -363,7 +370,11 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
       case 'readOnly':
         return [lead(FLOW_TEXT.readOnly), small(FLOW_TEXT.untouched)]
       case 'undone':
-        return [lead(FLOW_TEXT.undone(view.restored)), view.gone > 0 && plain(FLOW_TEXT.undoneGone(view.gone))]
+        return [
+          lead(FLOW_TEXT.undone(view.restored)),
+          view.edited > 0 && plain(FLOW_TEXT.undoneEdited(view.edited)),
+          view.gone > 0 && plain(FLOW_TEXT.undoneGone(view.gone)),
+        ]
       case 'undoDateChanged':
         return [lead(FLOW_TEXT.undoDateChanged), small(FLOW_TEXT.untouched)]
       case 'errDate':
@@ -430,8 +441,10 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
         value: choice as OverlapChoice | null,
         attrs: { 'data-choice': choice },
       }))
+      // 다른 두 묻기처럼 끝에 [안내 닫기](AC-3618.3): 누르면 null(아무것도 고르지 않음)
       return ask([lead(OVERLAP_TEXT.ask(question.visits, question.carm, question.sono))], choices, null, {
         focus: question.last ? CHOICES.indexOf(question.last) : undefined,
+        closeButton: true,
       })
     },
     askZero(date) {

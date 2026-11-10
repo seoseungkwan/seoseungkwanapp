@@ -6,13 +6,17 @@
 // TASK-18(design.md 5-3 글 그대로, 사용자가 목업 승인을 기다리지 말라고 함): 받는 중 줄 · 닫을 때 묻기(beforeunload) · 저장 실패 글 ·
 // [저장] 차례(겹침 막기 → 처방 없는 코드 묻기 → 쓰기) · [처음 값으로] 묻기 · 새 처음 코드 줄. 묻는 글은 저장 바 바로 위 알림 상자(#optAsk)
 // 코드 목록 오류 줄은 errors.ts 한 곳의 글만 쓴다(AC-3614.1)
+// TASK-21(design.md 5-3): 겹침 막는 글의 조사는 이름 받침으로(josa.ts) · 막는 글·저장 실패 때 상태 줄에 '저장했어요.'를 함께 보이지 않음 ·
+// 새 처음 코드 줄의 기타 줄은 그 ERP 줄 이름
 import { E_BRIDGE_BAD_REPLY, E_HELPER_MISSING, explain } from './errors.js'
+import { josa } from './josa.js'
 import {
   addCode,
   addKind,
   addPrefix,
   conflicts,
   defaults,
+  ETC_KEYS,
   load,
   MAX_CODES,
   MAX_PREFIXES,
@@ -113,13 +117,13 @@ const TEXT = {
   blocked: '저장하지 않았어요.',
 }
 
-/** 겹침 막는 글 한 줄(design.md 5-3) */
+/** 겹침 막는 글 한 줄(design.md 5-3). 이름 뒤 조사는 이름 마지막 글자의 받침으로 고른다(AC-3618.1) */
 function conflictLine(c: Conflict): string {
   if (c.kind === 'fixedName') {
-    return `${GROUP_NAMES[c.etc]} 줄 이름 ‘${c.name}’은 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.`
+    return `${GROUP_NAMES[c.etc]} 줄 이름 ‘${c.name}’${josa(c.name, '은/는')} 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.`
   }
   if (c.kind === 'sameName') {
-    return `${c.etcs.map((etc) => GROUP_NAMES[etc]).join('·')} 줄 이름이 ‘${c.name}’으로 같아요. 서로 다르게 넣어 주세요.`
+    return `${c.etcs.map((etc) => GROUP_NAMES[etc]).join('·')} 줄 이름이 ‘${c.name}’${josa(c.name, '으로/로')} 같아요. 서로 다르게 넣어 주세요.`
   }
   return `예약 메모 ${c.memo}번이 ${c.rows.map((row) => RSV_NAMES[row]).join('·')} 줄에 함께 있어요. 한 줄에만 두세요.`
 }
@@ -243,6 +247,21 @@ function helperNotice(): HTMLElement {
   )
 }
 
+const isEtcKey = (key: GroupKey): key is EtcKey => (ETC_KEYS as readonly string[]).includes(key)
+
+/** 새 처음 코드 줄의 항목 이름: 기타 줄은 화면의 그 ERP 줄 이름(빈칸 하나로·앞뒤 공백 뗌), 비었으면 '기타N'(AC-3618.6) */
+function itemName(key: GroupKey): string {
+  const own = isEtcKey(key) ? (page.settings.etcNames[key] ?? '').replace(/\s+/g, ' ').trim() : ''
+  return own || GROUP_NAMES[key]
+}
+
+/** 기타 줄 이름을 바꾸면 새 처음 코드 줄만 다시 그린다(이름 칸은 그대로라 쓰던 자리를 잃지 않는다) */
+function refreshFresh() {
+  const shown = main.querySelector('.notice.fresh')
+  const next = freshNotice()
+  if (shown && next) shown.replaceWith(next)
+}
+
 /** 맨 위 '새 처음 코드' 줄(AC-3615.6). 이미 화면에 있는 코드는 빼고, 남은 것이 없으면 없다 */
 function freshNotice(): HTMLElement | null {
   const items = page.fresh
@@ -252,7 +271,7 @@ function freshNotice(): HTMLElement | null {
   return h(
     'div',
     { class: 'notice fresh' },
-    h('p', {}, h('b', {}, TEXT.fresh), ' ', items.map(({ key, codes }) => `${GROUP_NAMES[key]} ${codes.join('·')}`).join(' · ')),
+    h('p', {}, h('b', {}, TEXT.fresh), ' ', items.map(({ key, codes }) => `${itemName(key)} ${codes.join('·')}`).join(' · ')),
     h('p', {}, TEXT.freshNote),
     h('button', { type: 'button', class: 'btn btn-2', 'data-fresh': '' }, TEXT.freshAdd),
   )
@@ -514,8 +533,17 @@ function renderStatus() {
     status.textContent = TEXT.saveFailed
     return
   }
-  status.className = 'status' + (page.dirty ? ' dirty' : page.everSaved ? ' saved' : '')
-  status.textContent = page.dirty ? '바꾼 것을 아직 저장하지 않았어요.' : page.everSaved ? '저장했어요.' : '아직 한 번도 저장하지 않았어요.'
+  // 막는 글이 열려 있으면 앞서 보이던 '저장했어요.'를 함께 보이지 않는다(비움, AC-3618.5)
+  const blocked = page.ask?.kind === 'blocked'
+  const saved = page.everSaved && !blocked
+  status.className = 'status' + (page.dirty ? ' dirty' : saved ? ' saved' : '')
+  status.textContent = page.dirty
+    ? '바꾼 것을 아직 저장하지 않았어요.'
+    : saved
+      ? '저장했어요.'
+      : page.everSaved
+        ? ''
+        : '아직 한 번도 저장하지 않았어요.'
 }
 
 /** 저장 바 바로 위 알림 상자를 그린다. focus = 먼저 포커스를 받을 단추(data-ask) */
@@ -551,11 +579,13 @@ function renderAsk(focus?: string) {
 function showAsk(ask: Ask, focus?: string) {
   page.ask = ask
   renderAsk(focus)
+  renderStatus()
 }
 
 function closeAsk() {
   page.ask = null
   renderAsk()
+  renderStatus()
 }
 
 /** 화면 값을 바꿨다: 저장 안 함 상태로, 열린 묻기·막는 글은 지난 값이라 닫는다 */
@@ -620,6 +650,7 @@ function onInput(event: Event) {
   if (etc) {
     page.settings.etcNames[etc] = target.value
     changed()
+    refreshFresh()
   }
 }
 

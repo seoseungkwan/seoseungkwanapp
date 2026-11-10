@@ -926,7 +926,7 @@ describe('AC-3615.6 새 처음 코드', () => {
     await open({ stored: SAVED })
     expect($('#optMain').firstElementChild).toBe($('.notice.fresh'))
     expect(freshLines()).toEqual([
-      '새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 기타1 CRYO3',
+      '새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 크라이오 CRYO3',
       '[더하기]를 누르면 화면에 더해요. [저장]을 눌러야 저장돼요.',
     ])
     expect(text($('[data-fresh]'))).toBe('더하기')
@@ -973,28 +973,70 @@ describe('AC-3615.6 새 처음 코드', () => {
   it('AC-3615.6: [더하기]도 항목마다 20개까지만 더한다', async () => {
     const nineteen = Array.from({ length: 19 }, (_, i) => `Z${String(i).padStart(4, '0')}`)
     await open({ stored: { ...SAVED, picks: { ...SAVED.picks, pt: nineteen } } })
-    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM010·MM015·MM011·MM085·MM080·MM020 · 기타1 CRYO3')
+    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM010·MM015·MM011·MM085·MM080·MM020 · 크라이오 CRYO3')
     $('[data-fresh]').click()
     expect(chipCodes('pt')).toEqual([...nineteen, 'MM010'])
     expect(chipCodes('etc1')).toEqual(['CRYO', 'CRYO3'])
   })
+  it("AC-3618.6: 기타 줄의 ERP 줄 이름이 비었으면 '기타1', 이름이 있으면 빈칸을 하나로 줄이고 앞뒤 공백을 뗀 그 이름이다", async () => {
+    await open({ stored: { ...SAVED, etcNames: { ...SAVED.etcNames, etc1: '' } } })
+    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 기타1 CRYO3')
+    await open({ stored: { ...SAVED, etcNames: { ...SAVED.etcNames, etc1: '  냉동   치료 ' } } })
+    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 냉동 치료 CRYO3')
+  })
+
+  it('AC-3618.6: 화면에서 기타 줄 이름을 바꾸면 새 처음 코드 줄의 이름도 바로 바뀐다', async () => {
+    await open({ stored: SAVED })
+    const input = $<HTMLInputElement>('[data-etc="etc1"]')
+    input.focus()
+    type(input, '냉동치료')
+    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 냉동치료 CRYO3')
+    // 이름 칸은 그대로라 쓰던 자리를 잃지 않는다
+    expect(document.activeElement).toBe(input)
+    type($<HTMLInputElement>('[data-etc="etc1"]'), '')
+    expect(freshLines()[0]).toBe('새 처음 코드가 있어요: 물리치료 MM085·MM080·MM020 · 기타1 CRYO3')
+  })
 })
 
 describe('AC-3615.7 [저장] 때 겹침 막기', () => {
-  const FIXED = (n: number, name: string) => `기타${n} 줄 이름 ‘${name}’은 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.`
+  const FIXED = (n: number, name: string, josa: string) =>
+    `기타${n} 줄 이름 ‘${name}’${josa} 업무일지 2에 이미 있는 줄 이름이에요. 다른 이름을 넣어 주세요.`
   const END = '저장하지 않았어요.'
 
   it("AC-3615.7: 기타 이름이 업무일지 2 고정 줄 이름('도수'·'sono'·' 도수 ')이면 쓰지 않고 막는 글을 보인다", async () => {
-    for (const [typed, shown] of [['도수', '도수'], ['sono', 'sono'], [' 도수 ', '도수']]) {
+    for (const [typed, shown, josa] of [['도수', '도수', '는'], ['sono', 'sono', '은(는)'], [' 도수 ', '도수', '는']]) {
       const { local } = await open({ stored: SAVED })
       type($<HTMLInputElement>('[data-etc="etc2"]'), typed)
       $('#optSave').click()
       await flush()
-      expect(askLines(), typed).toEqual([FIXED(2, shown), END])
+      expect(askLines(), typed).toEqual([FIXED(2, shown, josa), END])
       expect(askButtons(), typed).toEqual([])
       expect(local.set, typed).not.toHaveBeenCalled()
       expect(status(), typed).toBe('바꾼 것을 아직 저장하지 않았어요.')
     }
+  })
+
+  it("AC-3618.1: 막는 글의 조사는 이름 마지막 글자의 받침으로 고른다('‘씨암’은'·'‘크라이오’로'·'‘수술’로'·'‘CRYO3’(으)로')", async () => {
+    await open({ stored: SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '씨암')
+    $('#optSave').click()
+    await flush()
+    expect(askLines()).toEqual([FIXED(2, '씨암', '은'), END])
+    const cases: [string, string][] = [
+      ['크라이오', '로'],
+      ['수술', '로'],
+      ['수액', '으로'],
+      ['CRYO3', '(으)로'],
+    ]
+    for (const [name, josa] of cases) {
+      await open({ stored: SAVED })
+      type($<HTMLInputElement>('[data-etc="etc3"]'), name)
+      type($<HTMLInputElement>('[data-etc="etc4"]'), name)
+      $('#optSave').click()
+      await flush()
+      expect(askLines()[0], name).toContain(` 줄 이름이 ‘${name}’${josa} 같아요. 서로 다르게 넣어 주세요.`)
+    }
+    expect(document.body.textContent).not.toContain('’은 업무일지')
   })
 
   it("AC-3615.7: '도수2'는 저장된다", async () => {
@@ -1026,7 +1068,7 @@ describe('AC-3615.7 [저장] 때 겹침 막기', () => {
     type($<HTMLInputElement>('[data-etc="etc2"]'), '물리치료')
     $('#optSave').click()
     await flush()
-    expect(askLines()).toEqual([FIXED(2, '물리치료'), END])
+    expect(askLines()).toEqual([FIXED(2, '물리치료', '는'), END])
     // 이름을 고치면 막는 글은 닫힌다
     type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
     expect(askHidden()).toBe(true)
@@ -1034,6 +1076,55 @@ describe('AC-3615.7 [저장] 때 겹침 막기', () => {
     await flush()
     expect(askLines()[0]).toBe('최근 1년에 처방이 없는 코드 1개 — 맞나요?')
     expect(local.set).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-3618.5 막힘·실패 때 상태 줄', () => {
+  const CLASH: Settings = { ...SAVED, etcNames: { ...SAVED.etcNames, etc2: '도수' } }
+
+  it("AC-3618.5: 저장해 둔 설정에 겹침이 있어 [저장]이 막히면 상태 줄에 '저장했어요.'가 함께 보이지 않는다(비움)", async () => {
+    const { local } = await open({ stored: CLASH })
+    expect(status()).toBe('저장했어요.')
+    $('#optSave').click()
+    await flush()
+    expect(askLines()).toContain('저장하지 않았어요.')
+    expect(status()).toBe('')
+    expect($('#optStatus').classList.contains('saved')).toBe(false)
+    expect(local.set).not.toHaveBeenCalled()
+    // 이름을 고치면 막는 글이 닫히고 상태 줄이 지금 규칙대로 돌아온다
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '핫팩')
+    expect(askHidden()).toBe(true)
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+  })
+
+  it("AC-3618.5: 바꾼 뒤 막히면 상태 줄은 '바꾼 것을 아직 저장하지 않았어요.'다", async () => {
+    await open({ stored: SAVED })
+    type($<HTMLInputElement>('[data-etc="etc2"]'), '도수')
+    $('#optSave').click()
+    await flush()
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    expect($('#optStatus').classList.contains('saved')).toBe(false)
+  })
+
+  it("AC-3618.5: 바꾼 것 없이 [저장]이 쓰지 못하면 실패 글만이고 '저장했어요.'는 없다", async () => {
+    const { local } = await open({ stored: SAVED })
+    expect(status()).toBe('저장했어요.')
+    local.set.mockRejectedValueOnce(new Error('IO error'))
+    $('#optSave').click()
+    await flush()
+    expect(status()).toBe('저장하지 못했어요. 이 화면을 닫지 말고 [저장]을 다시 눌러 주세요.')
+    expect($('#optStatus').classList.contains('saved')).toBe(false)
+    expect(document.body.textContent).not.toContain('저장했어요.')
+  })
+})
+
+describe('AC-3618.4 설정 화면 글은 낱말 가운데서 줄을 바꾸지 않는다', () => {
+  it('AC-3618.4: options.html body에 word-break:keep-all·overflow-wrap:anywhere가 있다', () => {
+    const html = readFileSync(path.join(EXT, 'options.html'), 'utf8').replace(/\s+/g, '')
+    const at = html.indexOf('body{')
+    const body = at < 0 ? '' : html.slice(at, html.indexOf('}', at))
+    expect(body).toContain('word-break:keep-all')
+    expect(body).toContain('overflow-wrap:anywhere')
   })
 })
 

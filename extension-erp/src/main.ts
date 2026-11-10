@@ -267,7 +267,7 @@ export function startPage(doc: Document = document): { stop(): void } {
     }
   }
 
-  /** [되돌리기](AC-3612.4): 채울 때와 같은 마감 일자일 때만 넣은 칸을 넣기 전 글자로 돌리고 기억을 지운다 */
+  /** [되돌리기](AC-3612.4·3618.2): 채울 때와 같은 마감 일자일 때만 넣은 칸을 넣기 전 글자로 돌리고(손으로 고친 칸은 그대로) 기억을 지운다 */
   async function undo() {
     if (busy || !memory) return
     const mine = visit
@@ -278,10 +278,11 @@ export function startPage(doc: Document = document): { stop(): void } {
     }
     busy = true
     try {
-      const { restored, gone } = await undoAll(doc, kept.undo)
+      // 채운 뒤 손으로 고친 칸은 그대로 두고 edited로 센다(AC-3618.2)
+      const { restored, gone, edited } = await undoAll(doc, kept.undo)
       if (mine !== visit) return
       remember(null)
-      dock.show({ kind: 'undone', restored, gone })
+      dock.show({ kind: 'undone', restored, gone, edited })
     } finally {
       if (mine === visit) busy = false
     }

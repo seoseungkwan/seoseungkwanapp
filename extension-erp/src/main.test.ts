@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ETC_NAMES, mountErpPage, sampleDay, settingsFirst, type ErpPage, type ErpPageOptions } from './__tests__/erpPage'
+import { putValue } from './fill'
 import { READ_TIMEOUT_MS, readDate, startPage, WATCH_MS } from './main'
 import { HOST_ID } from './panel'
 import { toGroups } from './settings'
@@ -368,7 +369,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     button().click()
     await flush()
     expect(lead()).toBe(ASK)
-    expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기'])
+    expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기', '안내 닫기'])
     expect(t.page.state).toEqual(before)
     expect(t.page.log).toEqual([])
     expect(t.local.set).not.toHaveBeenCalled()
@@ -415,7 +416,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     start({ stored: { ...settingsFirst(), overlap: 'sono' } as Settings, reply: ok(dayWith(OVERLAP)) })
     button().click()
     await flush()
-    expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기'])
+    expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기', '안내 닫기'])
     expect(shadow().activeElement).toBe(choice('sono'))
   })
 
@@ -430,6 +431,24 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     expect(lines()).toEqual(['읽는 동안 마감 일자가 바뀌어 채우지 않았어요. 다시 눌러 주세요.'])
     expect(t.page.state).toEqual(before)
     expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3618.3 AC-3609.7: [안내 닫기] 단추면 안내가 닫히고 아무 칸도·기억(overlap)도 바꾸지 않으며, 다시 누르면 다시 묻는다', async () => {
+    const t = start({ stored: { ...settingsFirst(), overlap: 'carm' } as Settings, reply: ok(dayWith(OVERLAP)) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    act('안내 닫기').click()
+    await flush()
+    expect(panel().hidden).toBe(true)
+    expect(t.page.state).toEqual(before)
+    expect(t.page.log).toEqual([])
+    expect(t.local.set).not.toHaveBeenCalled()
+    expect(button().disabled).toBe(false)
+    button().click()
+    await flush()
+    expect(t.dayCalls()).toHaveLength(2)
+    expect(lead()).toBe(ASK)
   })
 
   it('AC-3609.7: [안내 닫기]면 아무 칸도 바꾸지 않고 기억도 바꾸지 않으며, 다시 누르면 다시 묻는다', async () => {
@@ -1054,6 +1073,57 @@ describe('AC-3612.4 [되돌리기]', () => {
     expect(panel().hidden).toBe(true)
     expect(lastButton().hidden).toBe(true)
     expect(t.page.state.NEW_PATIENT).toBe('7')
+  })
+})
+
+describe('AC-3618.2 [되돌리기]는 채운 뒤 손으로 고친 칸을 그대로 둔다', () => {
+  it("AC-3618.2: 손으로 고친 칸은 그 값 그대로, 나머지는 채우기 전 글자로 돌리고 '채운 뒤 손으로 고친 K칸은 그대로 두었어요.'", async () => {
+    const t = start({ page: { values: { NEW_PATIENT: '3', TOTAL_FEE: '1234' } } })
+    button().click()
+    await flush()
+    act('바꾸기').click()
+    await flush()
+    expect(t.page.state.NEW_PATIENT).toBe('7')
+    // 직원이 채운 뒤 두 칸을 손으로 고친다
+    putValue(t.page.inputs('NEW_PATIENT')[0] as HTMLInputElement, '9')
+    putValue(t.page.inputs('RETURN_PATIENT')[0] as HTMLInputElement, '50')
+    act('되돌리기').click()
+    await flush()
+    expect(t.page.state.NEW_PATIENT).toBe('9')
+    expect(t.page.state.RETURN_PATIENT).toBe('50')
+    expect(t.page.state.TOTAL_FEE).toBe('1234')
+    expect(t.page.state.FIRST90_PATIENT).toBe('')
+    expect(lines()).toEqual([
+      '되돌렸어요. 91칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.',
+      '채운 뒤 손으로 고친 2칸은 그대로 두었어요.',
+    ])
+  })
+
+  it('AC-3618.2: 손으로 고친 칸이 없으면 그 줄이 없다(금액칸 쉼표 꼴은 고친 것이 아님)', async () => {
+    const t = start()
+    button().click()
+    await flush()
+    expect(t.page.dom('TOTAL_FEE')).toEqual(['11,668,530'])
+    act('되돌리기').click()
+    await flush()
+    expect(lines()).toEqual(['되돌렸어요. 93칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.'])
+  })
+
+  it('AC-3618.2 AC-3612.4: 손으로 고친 칸과 화면에서 없어진 칸이 함께 있으면 두 줄 모두 보인다', async () => {
+    const t = start()
+    button().click()
+    await flush()
+    putValue(t.page.inputs('NEW_PATIENT')[0] as HTMLInputElement, '9')
+    ;[...document.querySelectorAll('td.rowlabel')].find((td) => td.textContent === '물리치료')?.closest('tr')?.remove()
+    act('되돌리기').click()
+    await flush()
+    expect(lines()).toEqual([
+      '되돌렸어요. 91칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.',
+      '채운 뒤 손으로 고친 1칸은 그대로 두었어요.',
+      '화면이 바뀌어 1칸은 되돌리지 못했어요.',
+    ])
+    expect(t.page.state.NEW_PATIENT).toBe('9')
+    expect(t.local.set).not.toHaveBeenCalled()
   })
 })
 

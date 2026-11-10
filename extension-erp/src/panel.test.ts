@@ -278,20 +278,30 @@ describe('AC-3609.7 함께 있는 진료 묻기(design.md 5절)', () => {
     p.dock.askOverlap({ visits: 9, carm: 1_886_520, sono: 1_234, last })
   const choices = (p: ReturnType<typeof open>) => p.$$('.acts button').map(text)
 
-  it('AC-3609.7: 묻는 줄과 [씨암에 넣기]·[SONO에 넣기]·[둘 다 넣기]가 보이고, 처음엔 (지난번)이 없다', () => {
+  it('AC-3609.7 AC-3618.3: 묻는 줄과 [씨암에 넣기]·[SONO에 넣기]·[둘 다 넣기]·[안내 닫기]가 보이고, 처음엔 (지난번)이 없다', () => {
     const p = open()
     void ask(p)
     expect(p.panel().hidden).toBe(false)
     expect(text(p.$('.lead'))).toBe(ASK)
     expect(p.$('.lead')?.classList.contains('err')).toBe(false)
-    expect(choices(p)).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기'])
-    expect(p.$$('.acts button').map((b) => b.getAttribute('data-choice'))).toEqual(['carm', 'sono', 'both'])
+    expect(choices(p)).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기', '안내 닫기'])
+    expect(p.$$('.acts button').map((b) => b.getAttribute('data-choice'))).toEqual(['carm', 'sono', 'both', null])
+    // 처음엔 먼저 포커스를 받는 단추가 없다
+    expect(p.shadow.activeElement).toBeNull()
+  })
+
+  it('AC-3618.3: [안내 닫기] 단추를 누르면 null로 끝나고 안내가 닫힌다(다른 두 묻기와 같음)', async () => {
+    const p = open()
+    const answer = ask(p, 'sono')
+    p.act('안내 닫기').click()
+    await expect(answer).resolves.toBeNull()
+    expect(p.panel().hidden).toBe(true)
   })
 
   it.each<[OverlapChoice, string[]]>([
-    ['carm', ['씨암에 넣기 (지난번)', 'SONO에 넣기', '둘 다 넣기']],
-    ['sono', ['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기']],
-    ['both', ['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기 (지난번)']],
+    ['carm', ['씨암에 넣기 (지난번)', 'SONO에 넣기', '둘 다 넣기', '안내 닫기']],
+    ['sono', ['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기', '안내 닫기']],
+    ['both', ['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기 (지난번)', '안내 닫기']],
   ])("AC-3609.7: 지난번 고른 것(%s)은 글 끝에 ' (지난번)'이 붙고 먼저 포커스를 받는다", (last, labels) => {
     const p = open()
     void ask(p, last)
@@ -346,7 +356,7 @@ describe('AC-3609.7 함께 있는 진료 묻기(design.md 5절)', () => {
     const section = DESIGN.slice(DESIGN.indexOf('- 겹친 진료 묻기(TASK-15'))
     const line = section.slice(0, section.indexOf('\n'))
     expect(line).toContain(`'${OVERLAP_TEXT.ask(1, 2, 3).replace('1건', '{N}건').replace('2원', '{A}원').replace('3원', '{B}원')}'`)
-    for (const label of ['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기']) expect(line).toContain(`[${label}]`)
+    for (const label of ['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기', TEXT.close]) expect(line).toContain(`[${label}]`)
     expect(Object.values(OVERLAP_TEXT.choice)).toEqual(['씨암에 넣기', 'SONO에 넣기', '둘 다 넣기'])
     expect(line).toContain(`'${OVERLAP_TEXT.last}'`)
     expect(line).toContain("'함께 있는 진료 {N}건은 {씨암에 | SONO에 | 씨암·SONO 둘 다에} 넣었어요.'")
@@ -483,13 +493,27 @@ describe('AC-3612.1·3612.4·3612.5 멈춤·되돌림 안내(design.md 5-1)', ()
     ['읽기 전용', { kind: 'readOnly' }, ['이 화면은 읽기 전용이라 채울 수 없어요(본사 열람 등).', '아무 칸도 바꾸지 않았어요.']],
     [
       '되돌린 뒤',
-      { kind: 'undone', restored: 1234, gone: 0 },
+      { kind: 'undone', restored: 1234, gone: 0, edited: 0 },
       ['되돌렸어요. 1,234칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.'],
     ],
     [
       '되돌린 뒤(못 돌린 칸 있음)',
-      { kind: 'undone', restored: 90, gone: 3 },
+      { kind: 'undone', restored: 90, gone: 3, edited: 0 },
       ['되돌렸어요. 90칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.', '화면이 바뀌어 3칸은 되돌리지 못했어요.'],
+    ],
+    [
+      '되돌린 뒤(AC-3618.2 손으로 고친 칸 있음)',
+      { kind: 'undone', restored: 88, gone: 0, edited: 2 },
+      ['되돌렸어요. 88칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.', '채운 뒤 손으로 고친 2칸은 그대로 두었어요.'],
+    ],
+    [
+      '되돌린 뒤(AC-3618.2 손으로 고친 칸·못 돌린 칸)',
+      { kind: 'undone', restored: 1000, gone: 1, edited: 1234 },
+      [
+        '되돌렸어요. 1,000칸을 채우기 전 값으로 돌렸어요. 저장은 하지 않았어요.',
+        '채운 뒤 손으로 고친 1,234칸은 그대로 두었어요.',
+        '화면이 바뀌어 1칸은 되돌리지 못했어요.',
+      ],
     ],
     ['날짜가 바뀐 뒤 되돌리기', { kind: 'undoDateChanged' }, ['마감 일자가 바뀌어 되돌리지 않았어요.', '아무 칸도 바꾸지 않았어요.']],
   ])('AC-3612.1·3612.4·3612.5: %s 안내 글(굵은 줄 → 보통 줄 → 작은 줄)', (_name, view, want) => {
@@ -667,6 +691,51 @@ describe('AC-3613.3 [지난 결과]·Esc', () => {
   })
 })
 
+describe('AC-3618.4 안내 모양: 창보다 길면 안에서 스크롤·단추 줄은 늘 보임·낱말 안 끊김', () => {
+  const css = (p: ReturnType<typeof open>) => (p.$('style')?.textContent ?? '').replace(/\s+/g, '')
+  /** 선택자 하나의 규칙 글(첫 번째) */
+  const rule = (all: string, selector: string) => {
+    const at = all.indexOf(`${selector}{`)
+    return at < 0 ? '' : all.slice(at + selector.length + 1, all.indexOf('}', at))
+  }
+
+  it('AC-3618.4: 안내는 창 높이에 맞춘 max-height와 overflow-y:auto로 안에서 스크롤된다', () => {
+    const panel = rule(css(open()), '.panel')
+    expect(panel).toMatch(/max-height:calc\(100vh-\d+px\)/)
+    expect(panel).toContain('overflow-y:auto')
+  })
+
+  it('AC-3618.4: 스크롤 막대는 ::-webkit-scrollbar로 늘 보이게 그리고, 그 그림을 끄는 scrollbar-width·scrollbar-color는 쓰지 않는다', () => {
+    const all = css(open())
+    expect(rule(all, '.panel::-webkit-scrollbar')).toMatch(/width:\d+px/)
+    expect(rule(all, '.panel::-webkit-scrollbar-thumb')).toContain('background')
+    expect(all).not.toContain('scrollbar-width')
+    expect(all).not.toContain('scrollbar-color')
+  })
+
+  it('AC-3618.4: 단추 줄(.acts)은 안내 아래에 붙는다(sticky·bottom 0·흰 바탕·위 줄)', () => {
+    const acts = rule(css(open()), '.acts')
+    expect(acts).toContain('position:sticky')
+    expect(acts).toContain('bottom:0')
+    expect(acts).toContain('background:var(--surface)')
+    expect(acts).toMatch(/border-top:1px/)
+  })
+
+  it('AC-3618.4: 채운 뒤 안내의 단추 줄은 안내 맨 끝 자식이고 [되돌리기]·[설정 열기]가 그 안에 있다', () => {
+    const p = open()
+    p.dock.show(done({ canUndo: true }))
+    const last = p.body().lastElementChild
+    expect(last?.className).toBe('acts')
+    expect([...(last?.children ?? [])].map(text)).toEqual(['되돌리기', '설정 열기'])
+  })
+
+  it('AC-3618.4: 안내 글은 한글 낱말 가운데서 줄을 바꾸지 않는다(keep-all·anywhere)', () => {
+    const panel = rule(css(open()), '.panel')
+    expect(panel).toContain('word-break:keep-all')
+    expect(panel).toContain('overflow-wrap:anywhere')
+  })
+})
+
 describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
   it('AC-3609.4: 목업에서 온 고정 글(TEXT)은 모두 목업 파일에 그대로 있다', () => {
     for (const [name, value] of Object.entries(TEXT)) {
@@ -726,6 +795,7 @@ describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
     quoted(FLOW_TEXT.kept(7).replace('7', '{K}'))
     quoted(FLOW_TEXT.undone(7).replace('7', '{N}'))
     quoted(FLOW_TEXT.undoneGone(7).replace('7', '{K}'))
+    quoted(FLOW_TEXT.undoneEdited(7).replace('7', '{K}'))
     quoted(FLOW_TEXT.undoDateChanged)
     expect(section).toContain(`' 외 {K}줄'`)
     expect(FLOW_TEXT.more(7)).toBe(' 외 7줄')

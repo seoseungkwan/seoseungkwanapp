@@ -630,6 +630,10 @@ describe('AC-3612.4 undoAll: 넣은 칸만 넣기 전 글자로', () => {
     expect(of('TOTAL_FEE')?.before).toBe('1,234')
     expect(of('RETURN_PATIENT')?.before).toBe('')
     expect(of('NEW_PATIENT')?.where).toEqual({ j: 1, box: '환자현황', row: '신환' })
+    // AC-3618.2: 칸마다 넣은 값(쉼표 없는 글자)도 기억한다
+    expect(of('NEW_PATIENT')?.after).toBe('7')
+    expect(of('TOTAL_FEE')?.after).toBe('11668530')
+    expect(result.undo.every((u) => typeof u.after === 'string' && u.after !== '')).toBe(true)
     // 고르지 않은 칸은 넣지 않았으니 없다
     expect(result.undo.some((u) => u.input === page.inputs('LIPUS_CNT')[0])).toBe(false)
   })
@@ -639,7 +643,7 @@ describe('AC-3612.4 undoAll: 넣은 칸만 넣기 전 글자로', () => {
     const result = await fillAll(document, fullPlan())
     expect(page.state.TOTAL_FEE).toBe('11668530')
     page.log.length = 0
-    expect(await undoAll(document, result.undo)).toEqual({ restored: 131, gone: 0 })
+    expect(await undoAll(document, result.undo)).toEqual({ restored: 131, gone: 0, edited: 0 })
     for (const code of Object.keys(EXPECTED)) expect(page.state[code], code).toBe('9999')
     expect(page.dom('THR_MANUAL_AMT')).toEqual(['9,999', '9,999'])
     expect(page.log.filter((x) => x.key === 'TOTAL_FEE')).toEqual([
@@ -666,7 +670,7 @@ describe('AC-3612.4 undoAll: 넣은 칸만 넣기 전 글자로', () => {
     const page = open({ values: PRE })
     const result = await fillAll(document, fullPlan())
     findInput(document, { j: 2, card: '치료별 매출', row: '물리치료', col: '금액(원)' })?.closest('tr')?.remove()
-    expect(await undoAll(document, result.undo)).toEqual({ restored: 130, gone: 1 })
+    expect(await undoAll(document, result.undo)).toEqual({ restored: 130, gone: 1, edited: 0 })
     expect(page.state.PT_AMT).toBe(EXPECTED.PT_AMT)
     expect(page.state.ARTHRO_AMT).toBe('9999')
   })
@@ -676,7 +680,7 @@ describe('AC-3612.4 undoAll: 넣은 칸만 넣기 전 글자로', () => {
     const result = await fillAll(document, fullPlan())
     ;(document.querySelector('#closing-tab-w2') as HTMLElement).click()
     expect(page.inputs('NEW_PATIENT')).toEqual([])
-    expect(await undoAll(document, result.undo)).toEqual({ restored: 131, gone: 0 })
+    expect(await undoAll(document, result.undo)).toEqual({ restored: 131, gone: 0, edited: 0 })
     for (const code of Object.keys(EXPECTED)) expect(page.state[code], code).toBe('9999')
     expect(page.clicks).toEqual(['closing-tab-w2', 'closing-tab-w1', 'closing-tab-w2'])
     expect(page.tab()).toBe('w2')
@@ -684,8 +688,73 @@ describe('AC-3612.4 undoAll: 넣은 칸만 넣기 전 글자로', () => {
 
   it('AC-3612.4: 되돌릴 칸이 없으면 아무것도 하지 않는다', async () => {
     const page = open()
-    expect(await undoAll(document, [])).toEqual({ restored: 0, gone: 0 })
+    expect(await undoAll(document, [])).toEqual({ restored: 0, gone: 0, edited: 0 })
     expect(page.log).toEqual([])
     expect(page.clicks).toEqual([])
+  })
+})
+
+describe('AC-3618.2 undoAll: 채운 뒤 손으로 고친 칸은 그대로', () => {
+  /** 직원이 손으로 고친 것처럼 넣는다(같은 넣는 법) */
+  const typeBy = (input: HTMLInputElement | HTMLTextAreaElement | undefined, value: string) => putValue(input as HTMLInputElement, value)
+
+  it('AC-3618.2: 지금 글자가 넣은 값과 다른 칸은 돌리지 않고 edited에 세며, 나머지는 넣기 전 글자로 돌린다', async () => {
+    const page = open({ values: PRE })
+    const result = await fillAll(document, fullPlan())
+    typeBy(page.inputs('NEW_PATIENT')[0], '8')
+    typeBy(page.inputs('TOTAL_FEE')[0], '12000000')
+    page.log.length = 0
+    expect(await undoAll(document, result.undo)).toEqual({ restored: 129, gone: 0, edited: 2 })
+    expect(page.state.NEW_PATIENT).toBe('8')
+    expect(page.state.TOTAL_FEE).toBe('12000000')
+    expect(page.state.FIRST90_PATIENT).toBe('9999')
+    expect(page.state.ARTHRO_AMT).toBe('9999')
+    expect(page.log.some((x) => x.key === 'NEW_PATIENT' || x.key === 'TOTAL_FEE')).toBe(false)
+  })
+
+  it("AC-3618.2: 금액칸이 쉼표와 함께 보여도('11,668,530') 넣은 값('11668530')과 같은 값이라 돌린다", async () => {
+    const page = open({ values: PRE })
+    const result = await fillAll(document, fullPlan())
+    expect(page.dom('TOTAL_FEE')).toEqual(['11,668,530'])
+    expect(await undoAll(document, result.undo)).toEqual({ restored: 131, gone: 0, edited: 0 })
+    expect(page.state.TOTAL_FEE).toBe('9999')
+  })
+
+  it("AC-3618.2: 넣은 값이 0이면 지금 글자 ''·'-'도 같은 값으로 보고 돌린다", async () => {
+    const page = open({ values: { INPAT_CLAIM: '5' } })
+    const result = await fillAll(document, planCells(sampleDay(), settingsFirst()))
+    const entry = result.undo.find((u) => u.input === page.inputs('INPAT_CLAIM')[0])
+    expect(entry?.after).toBe('0')
+    for (const shown of ['', '-']) {
+      const input = page.inputs('INPAT_CLAIM')[0] as HTMLInputElement
+      input.value = shown
+      expect(await undoAll(document, entry ? [entry] : []), JSON.stringify(shown)).toEqual({ restored: 1, gone: 0, edited: 0 })
+    }
+    expect(page.state.INPAT_CLAIM).toBe('5')
+  })
+
+  it('AC-3618.2 AC-3612.4: 새로 그려진 업무일지 1 칸도 같은 자리로 다시 찾고, 그 칸을 손으로 고쳤으면 그대로 둔다', async () => {
+    const page = open({ values: PRE })
+    const result = await fillAll(document, fullPlan())
+    ;(document.querySelector('#closing-tab-w2') as HTMLElement).click()
+    ;(document.querySelector('#closing-tab-w1') as HTMLElement).click()
+    // 업무일지 1 칸은 다음 차례에 다시 그려진다
+    await new Promise((done) => setTimeout(done, 0))
+    typeBy(page.inputs('NEW_PATIENT')[0], '8')
+    ;(document.querySelector('#closing-tab-w2') as HTMLElement).click()
+    expect(page.inputs('NEW_PATIENT')).toEqual([])
+    expect(await undoAll(document, result.undo)).toEqual({ restored: 130, gone: 0, edited: 1 })
+    expect(page.state.NEW_PATIENT).toBe('8')
+    expect(page.state.FIRST90_PATIENT).toBe('9999')
+    expect(page.tab()).toBe('w2')
+  })
+
+  it('AC-3618.2: 같은 값을 두 칸이 보이는 도수 총금액은 손으로 고쳤으면 두 칸 모두 그대로 둔다', async () => {
+    const page = open({ values: PRE })
+    const result = await fillAll(document, fullPlan())
+    typeBy(page.inputs('THR_MANUAL_AMT')[0], '5000')
+    const done = await undoAll(document, result.undo)
+    expect(done).toEqual({ restored: 129, gone: 0, edited: 2 })
+    expect(page.state.THR_MANUAL_AMT).toBe('5000')
   })
 })

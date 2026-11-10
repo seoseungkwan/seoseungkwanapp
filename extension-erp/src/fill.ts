@@ -5,13 +5,14 @@
 // - 탭 단추(#closing-tab-w1·처음 탭) 말고는 어떤 단추도 누르지 않고, select·textarea·잠긴 칸(fieldset[disabled] 등)은 바꾸지 않는다
 // - 채우기 전에 이미 적힌 칸을 세고(survey, 기본값 (차)), [빈 칸만]이면 그 칸을 그대로 둔다. 넣은 칸과 넣기 전 글자는
 //   이 화면 기억(FillResult.undo)에만 두고 [되돌리기](undoAll)에 쓴다. 어디에도 저장하지 않는다(TASK-17)
+// - [되돌리기]는 채운 뒤 손으로 고친 칸(지금 글자 ≠ 넣은 값)을 그대로 둔다(TASK-21, AC-3618.2)
 import type { Planned, Where } from './cells.js'
 
 /** 넣지 못한 까닭: 화면에 없음(둘 이상 맞음 포함) · 치료사별 입력 줄 · 잠긴 칸(읽기 전용) */
 export type Skip = 'notFound' | 'therapist' | 'locked'
 
-/** 넣은 칸 하나의 되돌릴 기억(그 화면 안에서만) */
-export type UndoEntry = { input: HTMLInputElement; before: string; where: Where }
+/** 넣은 칸 하나의 되돌릴 기억(그 화면 안에서만): 칸 · 넣기 전 글자 · 넣은 값(쉼표 없는 글자) · 칸 자리(다시 찾기용) */
+export type UndoEntry = { input: HTMLInputElement; before: string; after: string; where: Where }
 
 /**
  * filled = 넣은 칸 수 · kept = [빈 칸만]이라 그대로 둔 적힌 칸 수 · skipped = 넣지 못한 칸과 까닭 · unpicked = 고르지 않은 칸 ·
@@ -174,15 +175,34 @@ export function putValue(input: HTMLInputElement, value: string): void {
 
 const NUMBER = /^-?\d+(?:\.\d+)?$/
 
+const bare = (text: string) => text.replace(/[\s,]/g, '')
+
+/** 지금 글자와 넣을(넣은) 값이 같은 값인가: 쉼표·빈칸을 빼고 견주며 숫자면 숫자 값으로. '1,234'와 '1234'는 같다 */
+function sameValue(current: string, value: string): boolean {
+  const now = bare(current)
+  const want = bare(value)
+  return now === want || (NUMBER.test(now) && NUMBER.test(want) && Number(now) === Number(want))
+}
+
 /**
  * 이미 적힌 칸인가(기본값 (차)): 쉼표·빈칸을 뺀 지금 글자에 숫자가 있고, 빈 칸(''·'-'·숫자 값 0)이 아니며, 넣을 값과 다른 칸.
  * '1,234'와 '1234'는 같은 값이다
  */
 function isWritten(current: string, value: string): boolean {
-  const now = current.replace(/[\s,]/g, '')
+  const now = bare(current)
   if (now === '' || now === '-' || !/\d/.test(now)) return false
   if (NUMBER.test(now) && Number(now) === 0) return false
-  return !(now === value || (NUMBER.test(now) && Number(now) === Number(value)))
+  return !sameValue(now, value)
+}
+
+/**
+ * 채운 뒤 손으로 고친 칸인가(AC-3618.2): 지금 글자가 넣은 값과 다른 칸. ERP가 0을 비워 보이거나 '-'로 보일 수 있어
+ * ''·'-'는 0과 같은 값으로 본다
+ */
+function editedAfter(current: string, after: string): boolean {
+  const now = bare(current)
+  if ((now === '' || now === '-') && NUMBER.test(bare(after)) && Number(bare(after)) === 0) return false
+  return !sameValue(now, after)
 }
 
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms))
@@ -257,7 +277,7 @@ export async function fillAll(doc: Document, plan: Planned[], mode: FillMode = '
       return
     }
     putValue(at.input, cell.value)
-    result.undo.push({ input: at.input, before, where: cell.where })
+    result.undo.push({ input: at.input, before, after: cell.value, where: cell.where })
     result.filled += 1
   })
   return result
@@ -267,10 +287,12 @@ export async function fillAll(doc: Document, plan: Planned[], mode: FillMode = '
  * [되돌리기](AC-3612.4): 넣은 칸을 넣기 전 글자로 같은 넣는 법(putValue)으로 돌린다. 넣은 차례의 거꾸로 돌려서
  * 한 값을 두 칸이 보이는 도수·충격파 총금액도 처음 값으로 돌아간다.
  * 기억한 칸이 화면에서 떨어졌으면(업무일지 1은 탭을 바꾸면 ERP가 칸을 새로 그린다, 조사 2절) 같은 자리를 다시 찾아 돌리고
- * (업무일지 1이 안 보이면 탭을 잠깐 바꿨다 돌아옴), 다시 찾지 못한 칸만 gone에 센다. 날짜 확인은 부르는 쪽(main.ts)이 한다
+ * (업무일지 1이 안 보이면 탭을 잠깐 바꿨다 돌아옴), 다시 찾지 못한 칸만 gone에 센다.
+ * 찾은 칸의 지금 글자가 넣은 값(after)과 다르면 채운 뒤 손으로 고친 칸이라 그대로 두고 edited에 센다(AC-3618.2).
+ * 날짜 확인은 부르는 쪽(main.ts)이 한다
  */
-export async function undoAll(doc: Document, undo: UndoEntry[]): Promise<{ restored: number; gone: number }> {
-  const done = { restored: 0, gone: 0 }
+export async function undoAll(doc: Document, undo: UndoEntry[]): Promise<{ restored: number; gone: number; edited: number }> {
+  const done = { restored: 0, gone: 0, edited: 0 }
   if (undo.length === 0) return done
   const needW1 = undo.some((u) => !u.input.isConnected && u.where.j === 1)
   const back = needW1 ? await openW1(doc) : null
@@ -282,6 +304,10 @@ export async function undoAll(doc: Document, undo: UndoEntry[]): Promise<{ resto
     }
     if (!input) {
       done.gone += 1
+      continue
+    }
+    if (editedAfter(input.value, entry.after)) {
+      done.edited += 1
       continue
     }
     putValue(input, entry.before)
