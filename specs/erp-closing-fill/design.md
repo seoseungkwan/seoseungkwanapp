@@ -50,7 +50,7 @@ type ClosingDay = {
 
 ### 3-2 새 문장 (TASK-3, `Closing/ClosingSql.cs`, `Parameters` 표. `Bit/Sql.cs`의 `IsAllowed`·`ParametersOf`에 한 줄씩)
 - 진료 조건(모든 문장 같음): 외래(`OcmPatTyp='O'`)·접수취소 아님(`OcmRsuYon<>'O'`)·`OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')`·병원 범위(DepMst, `RevenueSql`과 같음). 처방 조건: `OdrDelFlg='N' AND OdrCanYon='N' AND OdrOutCod<>'99'`
-- `DayVisitsSql`(@day·@from·@to·@hospital): 진료마다 [진료번호, 그날 번호 `DENSE_RANK() OVER (ORDER BY RTRIM(OcmChtNum))`, `RTRIM(OcmDgsNfs)`, 만 나이(`PbsBirDte`가 8자리 날짜면 `(CONVERT(int,@day) − CONVERT(int,PbsBirDte)) / 10000`, 아니면 NULL), 마지막 수납 줄(`MAX(OrpRcpSeq)`) `OrpTotAmt` 또는 NULL]
+- `DayVisitsSql`(@day·@from·@to·@hospital): 진료마다 [진료번호, 그날 번호 `DENSE_RANK() OVER (ORDER BY RTRIM(OcmChtNum))`, `RTRIM(OcmDgsNfs)`, 만 나이(`PbsBirDte`가 8자리 날짜면 `(CONVERT(int,@day) − CONVERT(int,PbsBirDte)) / 10000`, 아니면 NULL), 마지막 정상 수납 줄(`OrpRcpStt<>'C'`인 줄 가운데 `MAX(OrpRcpSeq)`, 미수입금 줄 'C'는 진료비 칸이 늘 0이라 뺀다) `OrpTotAmt` 또는 NULL]
 - `DayCodesSql`(@from·@to·@hospital): [진료번호, `UPPER(RTRIM(OdrCod))`, 줄 수]
 - `InjectionFirstSql`(@from·@to·@hospital·@c0~@c19, 빈 자리는 첫 코드로 채움): 그날 그 코드를 받은 환자 가운데 @from 전 진료에 그 코드가 없는 환자 수 하나
 - `MoneyExtraSql`(@day·@nextDay·@hospital, 수납일 기준): [COO 현금 합, 할인 줄(DOD·DOE·DET·DNI·DN1·DN3·DN5) 현금 합, `OrpRcvBil` 합, TPR 현금+카드+계좌 합] (`notes/bit-codes.md` B절, 비트 수납집계 화면과 같은 칸)
